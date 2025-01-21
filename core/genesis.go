@@ -266,6 +266,7 @@ type ChainOverrides struct {
 	OverridePassedForkTime *uint64
 	OverridePascal         *uint64
 	OverridePrague         *uint64
+	OverrideLorentz        *uint64
 	OverrideVerkle         *uint64
 }
 
@@ -289,6 +290,9 @@ func (o *ChainOverrides) apply(cfg *params.ChainConfig) error {
 	}
 	if o.OverridePrague != nil {
 		cfg.PragueTime = o.OverridePrague
+	}
+	if o.OverrideLorentz != nil {
+		cfg.LorentzTime = o.OverrideLorentz
 	}
 	if o.OverrideVerkle != nil {
 		cfg.VerkleTime = o.OverrideVerkle
