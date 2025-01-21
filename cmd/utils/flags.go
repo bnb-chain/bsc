@@ -311,6 +311,11 @@ var (
 		Usage:    "Manually specify the Prague fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
+	OverrideLorentz = &cli.Uint64Flag{
+		Name:     "override.lorentz",
+		Usage:    "Manually specify the Lorentz fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
 	OverrideVerkle = &cli.Uint64Flag{
 		Name:     "override.verkle",
 		Usage:    "Manually specify the Verkle fork timestamp, overriding the bundled setting",

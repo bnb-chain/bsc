@@ -244,6 +244,7 @@ type ChainOverrides struct {
 	OverridePassedForkTime *uint64
 	OverridePascal         *uint64
 	OverridePrague         *uint64
+	OverrideLorentz        *uint64
 	OverrideVerkle         *uint64
 }
 
@@ -285,6 +286,9 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *triedb.Database, g
 			}
 			if overrides != nil && overrides.OverridePrague != nil {
 				config.PragueTime = overrides.OverridePrague
+			}
+			if overrides != nil && overrides.OverrideLorentz != nil {
+				config.LorentzTime = overrides.OverrideLorentz
 			}
 			if overrides != nil && overrides.OverrideVerkle != nil {
 				config.VerkleTime = overrides.OverrideVerkle

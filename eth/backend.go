@@ -198,6 +198,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		chainConfig.PragueTime = config.OverridePrague
 		overrides.OverridePrague = config.OverridePrague
 	}
+	if config.OverrideLorentz != nil {
+		chainConfig.LorentzTime = config.OverrideLorentz
+		overrides.OverrideLorentz = config.OverrideLorentz
+	}
 	if config.OverrideVerkle != nil {
 		chainConfig.VerkleTime = config.OverrideVerkle
 		overrides.OverrideVerkle = config.OverrideVerkle
