@@ -66,13 +66,13 @@ func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err
 		return nil
 	}
 
-	// only required to check within MinBlocksForBlobRequests block's DA
+	// only required to check within MinTimeDurationForBlobRequests seconds's DA
 	highest := chain.ChasingHead()
 	current := chain.CurrentHeader()
 	if highest == nil || highest.Number.Cmp(current.Number) < 0 {
 		highest = current
 	}
-	if block.NumberU64()+params.MinBlocksForBlobRequests < highest.Number.Uint64() {
+	if block.Time()+params.MinTimeDurationForBlobRequests < highest.Time {
 		// if we needn't check DA of this block, just clean it
 		block.CleanSidecars()
 		return nil

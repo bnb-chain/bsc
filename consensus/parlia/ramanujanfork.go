@@ -4,6 +4,7 @@ import (
 	"math/rand"
 	"time"
 
+	cmath "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -11,10 +12,11 @@ import (
 const (
 	wiggleTimeBeforeFork       = 500 * time.Millisecond // Random delay (per signer) to allow concurrent signers
 	fixedBackOffTimeBeforeFork = 200 * time.Millisecond
+	millisecondsUnit           = 500 // Set to 250 if block interval is 750ms; not enforced at the consensus level
 )
 
 func (p *Parlia) delayForRamanujanFork(snap *Snapshot, header *types.Header) time.Duration {
-	delay := time.Until(time.Unix(int64(header.Time), 0)) // nolint: gosimple
+	delay := time.Until(time.UnixMilli(int64(header.MilliTimestamp()))) // nolint: gosimple
 	if p.chainConfig.IsRamanujan(header.Number) {
 		return delay
 	}
@@ -27,16 +29,20 @@ func (p *Parlia) delayForRamanujanFork(snap *Snapshot, header *types.Header) tim
 }
 
 func (p *Parlia) blockTimeForRamanujanFork(snap *Snapshot, header, parent *types.Header) uint64 {
-	blockTime := parent.Time + p.config.Period
+	blockTime := parent.MilliTimestamp() + uint64(snap.BlockInterval)
 	if p.chainConfig.IsRamanujan(header.Number) {
-		blockTime = blockTime + p.backOffTime(snap, header, p.val)
+		blockTime = blockTime + p.backOffTime(snap, parent, header, p.val)
+	}
+	if now := uint64(time.Now().UnixMilli()); blockTime < now {
+		// Just to make the millisecond part of the time look more aligned.
+		blockTime = uint64(cmath.CeilDiv(int(now), millisecondsUnit)) * millisecondsUnit
 	}
 	return blockTime
 }
 
 func (p *Parlia) blockTimeVerifyForRamanujanFork(snap *Snapshot, header, parent *types.Header) error {
 	if p.chainConfig.IsRamanujan(header.Number) {
-		if header.Time < parent.Time+p.config.Period+p.backOffTime(snap, header, header.Coinbase) {
+		if header.MilliTimestamp() < parent.MilliTimestamp()+uint64(snap.BlockInterval)+p.backOffTime(snap, parent, header, header.Coinbase) {
 			return consensus.ErrFutureBlock
 		}
 	}
