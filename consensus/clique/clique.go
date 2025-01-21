@@ -628,6 +628,10 @@ func (c *Clique) Delay(chain consensus.ChainReader, header *types.Header, leftOv
 	return nil
 }
 
+func (c *Clique) BlockInterval(chain consensus.ChainHeaderReader, header *types.Header) (uint64, error) {
+	return c.config.Period * 1000, nil
+}
+
 // Seal implements consensus.Engine, attempting to create a sealed block using
 // the local signing credentials.
 func (c *Clique) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {

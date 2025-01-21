@@ -179,8 +179,7 @@ var (
 		LorentzTime: nil,
 
 		Parlia: &ParliaConfig{
-			Period: 3,
-			Epoch:  200,
+			Epoch: 200,
 		},
 	}
 
@@ -224,8 +223,7 @@ var (
 		LorentzTime: nil,
 
 		Parlia: &ParliaConfig{
-			Period: 3,
-			Epoch:  200,
+			Epoch: 200,
 		},
 	}
 
@@ -270,8 +268,7 @@ var (
 		LorentzTime: nil,
 
 		Parlia: &ParliaConfig{
-			Period: 3,
-			Epoch:  200,
+			Epoch: 200,
 		},
 	}
 
@@ -308,8 +305,7 @@ var (
 		CancunTime:          newUint64(0),
 
 		Parlia: &ParliaConfig{
-			Period: 3,
-			Epoch:  200,
+			Epoch: 200,
 		},
 	}
 
@@ -576,7 +572,7 @@ type ChainConfig struct {
 	// Various consensus engines
 	Ethash *EthashConfig `json:"ethash,omitempty"`
 	Clique *CliqueConfig `json:"clique,omitempty"`
-	Parlia *ParliaConfig `json:"parlia,omitempty"`
+	Parlia *ParliaConfig `json:"parlia,omitempty"` // A simple singleton. Please use this instead of creating a copy, as Parlia.Period may be updated after initialization.
 }
 
 // EthashConfig is the consensus engine configs for proof-of-work based sealing.
@@ -600,8 +596,7 @@ func (c CliqueConfig) String() string {
 
 // ParliaConfig is the consensus engine configs for proof-of-staked-authority based sealing.
 type ParliaConfig struct {
-	Period uint64 `json:"period"` // Number of seconds between blocks to enforce
-	Epoch  uint64 `json:"epoch"`  // Epoch length to update validatorSet
+	Epoch uint64 `json:"epoch"` // Epoch length to update validatorSet
 }
 
 // String implements the stringer interface, returning the consensus engine details.

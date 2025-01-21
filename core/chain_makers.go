@@ -614,7 +614,7 @@ func (cm *chainMaker) makeHeader(parent *types.Block, state *state.StateDB, engi
 			header.ParentBeaconRoot = new(common.Hash)
 		} else {
 			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
-			if cm.config.IsBohr(header.Number, header.Time) {
+			if cm.config.IsBohr(header.Number, header.Time) && !cm.config.IsLorentz(header.Number, header.Time) {
 				header.ParentBeaconRoot = new(common.Hash)
 			}
 			if cm.config.IsPrague(header.Number, header.Time) {

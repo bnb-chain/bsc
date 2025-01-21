@@ -147,6 +147,9 @@ type Engine interface {
 	// Delay returns the max duration the miner can commit txs
 	Delay(chain ChainReader, header *types.Header, leftOver *time.Duration) *time.Duration
 
+	// BlockInterval returns the block interval in milliseconds after given header applied
+	BlockInterval(chain ChainHeaderReader, header *types.Header) (uint64, error)
+
 	// Close terminates any background threads maintained by the consensus engine.
 	Close() error
 }
@@ -162,6 +165,5 @@ type PoSA interface {
 	GetFinalizedHeader(chain ChainHeaderReader, header *types.Header) *types.Header
 	VerifyVote(chain ChainHeaderReader, vote *types.VoteEnvelope) error
 	IsActiveValidatorAt(chain ChainHeaderReader, header *types.Header, checkVoteKeyFn func(bLSPublicKey *types.BLSPublicKey) bool) bool
-	BlockInterval() uint64
 	NextProposalBlock(chain ChainHeaderReader, header *types.Header, proposer common.Address) (uint64, uint64, error)
 }

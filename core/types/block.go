@@ -30,6 +30,8 @@ import (
 
 	"golang.org/x/crypto/sha3"
 
+	"github.com/holiman/uint256"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -154,6 +156,22 @@ type headerMarshaling struct {
 // RLP encoding.
 func (h *Header) Hash() common.Hash {
 	return rlpHash(h)
+}
+
+func (h *Header) SetMilliseconds(milliseconds uint64) {
+	tmp := common.Hash(uint256.NewInt(milliseconds % 1000).Bytes32())
+	h.ParentBeaconRoot = &tmp
+}
+
+func (h *Header) Milliseconds() uint64 {
+	if h.ParentBeaconRoot == nil || *h.ParentBeaconRoot == (common.Hash{}) {
+		return 0
+	}
+	return uint256.NewInt(0).SetBytes2(h.ParentBeaconRoot[30:]).Uint64()
+}
+
+func (h *Header) TimeInMilliseconds() uint64 {
+	return h.Time*1000 + h.Milliseconds()
 }
 
 var headerSize = common.StorageSize(reflect.TypeOf(Header{}).Size())

@@ -53,9 +53,11 @@ const (
 	inMemorySignatures = 4096  // Number of recent block signatures to keep in memory
 	inMemoryHeaders    = 86400 // Number of recent headers to keep in memory for double sign detection,
 
-	checkpointInterval = 1024        // Number of blocks after which to save the snapshot to the database
-	defaultEpochLength = uint64(200) // Default number of blocks of checkpoint to update validatorSet from contract
-	defaultTurnLength  = uint8(1)    // Default consecutive number of blocks a validator receives priority for block production
+	checkpointInterval   = 1024         // Number of blocks after which to save the snapshot to the database
+	defaultEpochLength   = uint64(200)  // Default number of blocks of checkpoint to update validatorSet from contract
+	defaultBlockInterval = uint16(3000) // Default block interval in milliseconds
+	lorentzBlockInterval = uint16(800)  // Block interval starting from the Lorentz hard fork
+	defaultTurnLength    = uint8(1)     // Default consecutive number of blocks a validator receives priority for block production
 
 	extraVanity      = 32 // Fixed number of extra-data prefix bytes reserved for signer vanity
 	extraSeal        = 65 // Fixed number of extra-data suffix bytes reserved for signer seal
@@ -66,8 +68,8 @@ const (
 	validatorBytesLength            = common.AddressLength + types.BLSPublicKeyLength
 	validatorNumberSize             = 1 // Fixed number of extra prefix bytes reserved for validator number after Luban
 
-	wiggleTime         = uint64(1) // second, Random delay (per signer) to allow concurrent signers
-	initialBackOffTime = uint64(1) // second
+	wiggleTime                = uint64(1000) // milliseconds, Random delay (per signer) to allow concurrent signers
+	defaultInitialBackOffTime = uint64(1000) // milliseconds, Backoff time for the second validator permitted to produce blocks
 
 	systemRewardPercent = 4 // it means 1/2^4 = 1/16 percentage of gas fee incoming will be distributed to system
 
@@ -314,10 +316,6 @@ func New(
 	}
 
 	return c
-}
-
-func (p *Parlia) Period() uint64 {
-	return p.config.Period
 }
 
 func (p *Parlia) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
@@ -640,8 +638,18 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
 		}
 	} else {
-		if header.ParentBeaconRoot == nil || *header.ParentBeaconRoot != (common.Hash{}) {
-			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected zero hash", header.ParentBeaconRoot)
+		if header.ParentBeaconRoot == nil {
+			return fmt.Errorf("nil parentBeaconRoot after bohr hard fork")
+		}
+		lorentz := chain.Config().IsLorentz(header.Number, header.Time)
+		if !lorentz {
+			if *header.ParentBeaconRoot != (common.Hash{}) { // remove it once bsc mainnet passed lorentz hard fork for simplicity
+				return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected zero hash", header.ParentBeaconRoot)
+			}
+		} else {
+			if header.Milliseconds() >= 1000 {
+				return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected the last two bytes to represent milliseconds", header.ParentBeaconRoot)
+			}
 		}
 	}
 
@@ -778,6 +786,10 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 
 				// new snapshot
 				snap = newSnapshot(p.config, p.signatures, number, blockHash, validators, voteAddrs, p.ethAPI)
+
+				if p.chainConfig.IsLorentz(checkpoint.Number, checkpoint.Time) {
+					snap.BlockInterval = lorentzBlockInterval
+				}
 
 				// get turnLength from headers and use that for new turnLength
 				turnLength, err := parseTurnLength(checkpoint, p.chainConfig, p.config)
@@ -1094,9 +1106,13 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	if parent == nil {
 		return consensus.ErrUnknownAncestor
 	}
-	header.Time = p.blockTimeForRamanujanFork(snap, header, parent)
-	if header.Time < uint64(time.Now().Unix()) {
-		header.Time = uint64(time.Now().Unix())
+	blockTime := p.blockTimeForRamanujanFork(snap, header, parent)
+	if now := uint64(time.Now().UnixMilli()); blockTime < now {
+		blockTime = now
+	}
+	header.Time = blockTime / 1000
+	if p.chainConfig.IsLorentz(header.Number, header.Time) {
+		header.SetMilliseconds(blockTime % 1000)
 	}
 
 	header.Extra = header.Extra[:extraVanity-nextForkHashSize]
@@ -1539,9 +1555,9 @@ func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header, leftOv
 	}
 	delay := p.delayForRamanujanFork(snap, header)
 
-	if *leftOver >= time.Duration(p.config.Period)*time.Second {
+	if *leftOver >= time.Duration(snap.BlockInterval)*time.Millisecond {
 		// ignore invalid leftOver
-		log.Error("Delay invalid argument", "leftOver", leftOver.String(), "Period", p.config.Period)
+		log.Error("Delay invalid argument", "leftOver", leftOver.String(), "Period", snap.BlockInterval)
 	} else if *leftOver >= delay {
 		delay = time.Duration(0)
 		return &delay
@@ -1550,9 +1566,9 @@ func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header, leftOv
 	}
 
 	// The blocking time should be no more than half of period when snap.TurnLength == 1
-	timeForMining := time.Duration(p.config.Period) * time.Second / 2
+	timeForMining := time.Duration(snap.BlockInterval) * time.Millisecond / 2
 	if !snap.lastBlockInOneTurn(header.Number.Uint64()) {
-		timeForMining = time.Duration(p.config.Period) * time.Second * 2 / 3
+		timeForMining = time.Duration(snap.BlockInterval) * time.Millisecond * 2 / 3
 	}
 	if delay > timeForMining {
 		delay = timeForMining
@@ -1569,11 +1585,6 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	number := header.Number.Uint64()
 	if number == 0 {
 		return errUnknownBlock
-	}
-	// For 0-period chains, refuse to seal empty blocks (no reward but would spin sealing)
-	if p.config.Period == 0 && len(block.Transactions()) == 0 {
-		log.Info("Sealing paused, waiting for transactions")
-		return nil
 	}
 	// Don't hold the val fields for the entire sealing procedure
 	p.lock.RLock()
@@ -2089,7 +2100,10 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 		log.Debug("backOffTime", "blockNumber", header.Number, "in turn validator", val)
 		return 0
 	} else {
-		delay := initialBackOffTime
+		delay := defaultInitialBackOffTime
+		if p.chainConfig.IsLorentz(header.Number, header.Time) && snap.lastBlockInOneTurn(header.Number.Uint64()) {
+			delay = uint64(snap.BlockInterval) / 2
+		}
 		validators := snap.validators()
 		if p.chainConfig.IsPlanck(header.Number) {
 			counts := snap.countRecents()
@@ -2159,8 +2173,15 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 	}
 }
 
-func (p *Parlia) BlockInterval() uint64 {
-	return p.config.Period
+func (p *Parlia) BlockInterval(chain consensus.ChainHeaderReader, header *types.Header) (uint64, error) {
+	if header == nil {
+		return uint64(defaultBlockInterval), errUnknownBlock
+	}
+	snap, err := p.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
+	if err != nil {
+		return uint64(defaultBlockInterval), err
+	}
+	return uint64(snap.BlockInterval), nil
 }
 
 func (p *Parlia) NextProposalBlock(chain consensus.ChainHeaderReader, header *types.Header, proposer common.Address) (uint64, uint64, error) {

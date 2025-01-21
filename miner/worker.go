@@ -461,7 +461,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			// If sealing is running resubmit a new work cycle periodically to pull in
 			// higher priced transactions. Disable this overhead for pending blocks.
 			if w.isRunning() && ((w.chainConfig.Clique != nil &&
-				w.chainConfig.Clique.Period > 0) || (w.chainConfig.Parlia != nil && w.chainConfig.Parlia.Period > 0)) {
+				w.chainConfig.Clique.Period > 0) || (w.chainConfig.Parlia != nil)) {
 				// Short circuit if no new transaction arrives.
 				commit(commitInterruptResubmit)
 			}
@@ -1032,7 +1032,7 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 			header.ParentBeaconRoot = genParams.beaconRoot
 		} else {
 			header.WithdrawalsHash = &types.EmptyWithdrawalsHash
-			if w.chainConfig.IsBohr(header.Number, header.Time) {
+			if w.chainConfig.IsBohr(header.Number, header.Time) && !w.chainConfig.IsLorentz(header.Number, header.Time) {
 				header.ParentBeaconRoot = new(common.Hash)
 			}
 			if w.chainConfig.IsPrague(header.Number, header.Time) {
@@ -1529,13 +1529,14 @@ func (w *worker) tryWaitProposalDoneWhenStopping() {
 		log.Warn("next proposal end block has passed, ignore")
 		return
 	}
-	if startBlock > currentBlock && (startBlock-currentBlock)*posa.BlockInterval() > w.config.MaxWaitProposalInSecs {
+	blockInterval, _ := w.engine.BlockInterval(w.chain, currentHeader)
+	if startBlock > currentBlock && (startBlock-currentBlock)*blockInterval/1000 > w.config.MaxWaitProposalInSecs {
 		log.Warn("the next proposal start block is too far, just skip waiting")
 		return
 	}
 
 	// wait one more block for safety
-	waitSecs := (endBlock - currentBlock + 1) * posa.BlockInterval()
+	waitSecs := (endBlock - currentBlock + 1) * blockInterval / 1000
 	log.Info("The miner will propose in later, waiting for the proposal to be done",
 		"currentBlock", currentBlock, "nextProposalStart", startBlock, "nextProposalEnd", endBlock, "waitTime", waitSecs)
 	time.Sleep(time.Duration(waitSecs) * time.Second)

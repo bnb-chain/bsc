@@ -83,3 +83,7 @@ func (ethash *Ethash) APIs(chain consensus.ChainHeaderReader) []rpc.API {
 func (ethash *Ethash) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
 	panic("ethash (pow) sealing not supported any more")
 }
+
+func (ethash *Ethash) BlockInterval(chain consensus.ChainHeaderReader, header *types.Header) (uint64, error) {
+	panic("not supported")
+}

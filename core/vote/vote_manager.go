@@ -8,7 +8,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
-	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/downloader"
@@ -147,13 +146,13 @@ func (voteManager *VoteManager) loop() {
 			}
 
 			curHead := cHead.Header
-			if p, ok := voteManager.engine.(*parlia.Parlia); ok {
-				nextBlockMinedTime := time.Unix(int64((curHead.Time + p.Period())), 0)
-				timeForBroadcast := 50 * time.Millisecond // enough to broadcast a vote
-				if time.Now().Add(timeForBroadcast).After(nextBlockMinedTime) {
-					log.Warn("too late to vote", "Head.Time(Second)", curHead.Time, "Now(Millisecond)", time.Now().UnixMilli())
-					continue
-				}
+			parentHeader := voteManager.chain.GetHeaderByHash(curHead.ParentHash)
+			blockInterval, _ := voteManager.engine.BlockInterval(voteManager.chain, parentHeader)
+			nextBlockMinedTime := time.UnixMilli(int64((curHead.TimeInMilliseconds() + blockInterval)))
+			timeForBroadcast := 50 * time.Millisecond // enough to broadcast a vote
+			if time.Now().Add(timeForBroadcast).After(nextBlockMinedTime) {
+				log.Warn("too late to vote", "Head.Time(Second)", curHead.Time, "Now(Millisecond)", time.Now().UnixMilli())
+				continue
 			}
 
 			// Check if cur validator is within the validatorSet at curHead

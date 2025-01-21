@@ -27,7 +27,7 @@ func (p *Parlia) delayForRamanujanFork(snap *Snapshot, header *types.Header) tim
 }
 
 func (p *Parlia) blockTimeForRamanujanFork(snap *Snapshot, header, parent *types.Header) uint64 {
-	blockTime := parent.Time + p.config.Period
+	blockTime := parent.TimeInMilliseconds() + uint64(snap.BlockInterval)
 	if p.chainConfig.IsRamanujan(header.Number) {
 		blockTime = blockTime + p.backOffTime(snap, header, p.val)
 	}
@@ -36,7 +36,7 @@ func (p *Parlia) blockTimeForRamanujanFork(snap *Snapshot, header, parent *types
 
 func (p *Parlia) blockTimeVerifyForRamanujanFork(snap *Snapshot, header, parent *types.Header) error {
 	if p.chainConfig.IsRamanujan(header.Number) {
-		if header.Time < parent.Time+p.config.Period+p.backOffTime(snap, header, header.Coinbase) {
+		if header.TimeInMilliseconds() < parent.TimeInMilliseconds()+uint64(snap.BlockInterval)+p.backOffTime(snap, header, header.Coinbase) {
 			return consensus.ErrFutureBlock
 		}
 	}
