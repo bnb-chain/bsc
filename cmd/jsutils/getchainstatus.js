@@ -41,7 +41,7 @@ function printUsage() {
     console.log("  node getchainstatus.js GetBlobTxs --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010")
     console.log("  node getchainstatus.js GetFaucetStatus --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010")
     console.log("  node getchainstatus.js GetKeyParameters --rpc https://bsc-testnet-dataseed.bnbchain.org") // default: latest block
-    console.log("  node getchainstatus.js GetEip7736 --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010")
+    console.log("  node getchainstatus.js GetEip7623 --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010")
 }
 
 program.usage = printUsage;
@@ -496,11 +496,11 @@ async function getKeyParameters()  {
     console.table(validatorTable)
 }
 
-// 9.cmd: "getEip7736", usage:
-// node getEip7736.js GetEip7736 \
+// 9.cmd: "getEip7623", usage:
+// node getEip7623.js GetEip7736 \
 //      --rpc https://bsc-testnet-dataseed.bnbchain.org \
 //      --startNum 40000001  --endNum 40000005
-async function getEip7736()  {
+async function getEip7623()  {
     var startBlock = parseInt(program.startNum)
     var endBlock = parseInt(program.endNum)
     if (isNaN(endBlock) || isNaN(startBlock) || startBlock === 0) {
@@ -574,8 +574,8 @@ const main = async () => {
         await getFaucetStatus()
     } else if (cmd === "GetKeyParameters") {
         await getKeyParameters()
-    } else if (cmd === "GetEip7736"){
-        await getEip7736()
+    } else if (cmd === "GetEip7623"){
+        await getEip7623()
     } else {
         console.log("unsupported cmd", cmd);
         printUsage()
