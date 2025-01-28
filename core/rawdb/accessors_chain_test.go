@@ -518,7 +518,7 @@ func checkBlobSidecarsRLP(have, want types.BlobSidecars) error {
 func TestAncientStorage(t *testing.T) {
 	// Freezer style fast import the chain.
 	frdir := t.TempDir()
-	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false, false, false)
+	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false)
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend")
 	}
@@ -657,7 +657,7 @@ func TestHashesInRange(t *testing.T) {
 func BenchmarkWriteAncientBlocks(b *testing.B) {
 	// Open freezer database.
 	frdir := b.TempDir()
-	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false, false, false)
+	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false)
 	if err != nil {
 		b.Fatalf("failed to create database with ancient backend")
 	}
@@ -1003,7 +1003,7 @@ func TestHeadersRLPStorage(t *testing.T) {
 	// Have N headers in the freezer
 	frdir := t.TempDir()
 
-	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false, false, false)
+	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false)
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend")
 	}

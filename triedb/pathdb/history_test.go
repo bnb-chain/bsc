@@ -130,7 +130,7 @@ func TestTruncateHeadHistory(t *testing.T) {
 		roots      []common.Hash
 		hs         = makeHistories(10)
 		db         = rawdb.NewMemoryDatabase()
-		freezer, _ = rawdb.NewStateFreezer(t.TempDir(), false, false, 0)
+		freezer, _ = rawdb.NewStateFreezer(t.TempDir(), false, false)
 	)
 	defer freezer.Close()
 
@@ -158,7 +158,7 @@ func TestTruncateTailHistory(t *testing.T) {
 		roots      []common.Hash
 		hs         = makeHistories(10)
 		db         = rawdb.NewMemoryDatabase()
-		freezer, _ = rawdb.NewStateFreezer(t.TempDir(), false, false, 0)
+		freezer, _ = rawdb.NewStateFreezer(t.TempDir(), false, false)
 	)
 	defer freezer.Close()
 
@@ -201,7 +201,7 @@ func TestTruncateTailHistories(t *testing.T) {
 			roots      []common.Hash
 			hs         = makeHistories(10)
 			db         = rawdb.NewMemoryDatabase()
-			freezer, _ = rawdb.NewStateFreezer(t.TempDir()+fmt.Sprintf("%d", i), false, false, 0)
+			freezer, _ = rawdb.NewStateFreezer(t.TempDir()+fmt.Sprintf("%d", i), false, false)
 		)
 		defer freezer.Close()
 
@@ -229,7 +229,7 @@ func TestTruncateOutOfRange(t *testing.T) {
 	var (
 		hs         = makeHistories(10)
 		db         = rawdb.NewMemoryDatabase()
-		freezer, _ = rawdb.NewStateFreezer(t.TempDir(), false, false, 0)
+		freezer, _ = rawdb.NewStateFreezer(t.TempDir(), false, false)
 	)
 	defer freezer.Close()
 
