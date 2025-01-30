@@ -1,4 +1,7 @@
 # Changelog
+## v1.5.4
+NA
+
 ## v1.5.3
 ### BUGFIX
 * [\#2827](https://github.com/bnb-chain/bsc/pull/2827) triedb/pathdb: fix nil field for stateSet
