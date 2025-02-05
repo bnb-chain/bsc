@@ -46,7 +46,7 @@ func newBuffer(limit int, nodes *nodeSet, states *stateSet, layers uint64) *buff
 		nodes = newNodeSet(nil)
 	}
 	if states == nil {
-		states = newStates(nil, nil)
+		states = newStates(nil, nil, false)
 	}
 	return &buffer{
 		layers: layers,
@@ -173,6 +173,10 @@ func (b *buffer) waitAndStopFlushing() {}
 // getAllNodesAndStates return the trie nodes and states cached in nodebuffer.
 func (b *buffer) getAllNodesAndStates() (*nodeSet, *stateSet) {
 	return b.nodes, b.states
+}
+
+func (b *buffer) getStates() *stateSet {
+	return b.states
 }
 
 // getLayers return the size of cached difflayers.

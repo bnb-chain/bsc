@@ -629,7 +629,7 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 		case !header.EmptyWithdrawalsHash():
 			return errors.New("header has wrong WithdrawalsHash")
 		}
-		if err := eip4844.VerifyEIP4844Header(parent, header); err != nil {
+		if err := eip4844.VerifyEIP4844Header(chain.Config(), parent, header); err != nil {
 			return err
 		}
 	}
@@ -2184,6 +2184,10 @@ func (c chainContext) Engine() consensus.Engine {
 
 func (c chainContext) GetHeader(hash common.Hash, number uint64) *types.Header {
 	return c.Chain.GetHeader(hash, number)
+}
+
+func (c chainContext) Config() *params.ChainConfig {
+	return c.Chain.Config()
 }
 
 // apply message
