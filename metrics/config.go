@@ -19,7 +19,7 @@ package metrics
 // Config contains the configuration for the metric collection.
 type Config struct {
 	Enabled          bool   `toml:",omitempty"`
-	EnabledExpensive bool   `toml:"-"`
+	EnabledExpensive bool   `toml:",omitempty"`
 	HTTP             string `toml:",omitempty"`
 	Port             int    `toml:",omitempty"`
 	EnableInfluxDB   bool   `toml:",omitempty"`

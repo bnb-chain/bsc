@@ -703,9 +703,7 @@ func TestParlia_applyTransactionTracing(t *testing.T) {
 	hooks := recording.hooks()
 
 	cx := chainContext{Chain: chain, parlia: engine}
-	applyErr := engine.applyTransaction(msg, state.NewHookedState(stateDB, hooks), bs[0].Header(), cx, &txs, &receipts, &receivedTxs, &usedGas, false, vm.Config{
-		Tracer: hooks,
-	})
+	applyErr := engine.applyTransaction(msg, state.NewHookedState(stateDB, hooks), bs[0].Header(), cx, &txs, &receipts, &receivedTxs, &usedGas, false, hooks)
 	if applyErr != nil {
 		t.Fatalf("failed to apply system contract transaction: %v", applyErr)
 	}

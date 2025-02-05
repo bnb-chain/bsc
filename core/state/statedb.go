@@ -26,6 +26,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/metrics"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
@@ -699,7 +701,9 @@ func (s *StateDB) getStateObject(addr common.Address) *stateObject {
 		s.setError(fmt.Errorf("getStateObject (%x) error: %w", addr.Bytes(), err))
 		return nil
 	}
-	s.AccountReads += time.Since(start)
+	if metrics.EnabledExpensive() {
+		s.AccountReads += time.Since(start)
+	}
 
 	// Short circuit if the account is not found
 	if acct == nil {
@@ -923,9 +927,13 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	// method will internally call a blocking trie fetch from the prefetcher,
 	// so there's no need to explicitly wait for the prefetchers to finish.
 	var (
-		start   = time.Now()
+		start   time.Time
 		workers errgroup.Group
 	)
+
+	if metrics.EnabledExpensive() {
+		start = time.Now()
+	}
 	if s.db.TrieDB().IsVerkle() {
 		// Whilst MPT storage tries are independent, Verkle has one single trie
 		// for all the accounts and all the storage slots merged together. The
@@ -988,7 +996,9 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 		}
 	}
 	workers.Wait()
-	s.StorageUpdates += time.Since(start)
+	if metrics.EnabledExpensive() {
+		s.StorageUpdates += time.Since(start)
+	}
 
 	// Now we're about to start to write changes to the trie. The trie is so far
 	// _untouched_. We can check with the prefetcher, if it can give us a trie
@@ -997,7 +1007,10 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	// Don't check prefetcher if verkle trie has been used. In the context of verkle,
 	// only a single trie is used for state hashing. Replacing a non-nil verkle tree
 	// here could result in losing uncommitted changes from storage.
-	start = time.Now()
+
+	if metrics.EnabledExpensive() {
+		start = time.Now()
+	}
 	if s.prefetcher != nil {
 		if trie := s.prefetcher.trie(common.Hash{}, s.originalRoot); trie == nil {
 			log.Debug("Failed to retrieve account pre-fetcher trie")
@@ -1044,14 +1057,18 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 		s.deleteStateObject(deletedAddr)
 		s.AccountDeleted += 1
 	}
-	s.AccountUpdates += time.Since(start)
+	if metrics.EnabledExpensive() {
+		s.AccountUpdates += time.Since(start)
+	}
 
 	if s.prefetcher != nil && len(usedAddrs) > 0 {
 		s.prefetcher.used(common.Hash{}, s.originalRoot, usedAddrs, nil)
 	}
 
-	// Track the amount of time wasted on hashing the account trie
-	defer func(start time.Time) { s.AccountHashes += time.Since(start) }(time.Now())
+	if metrics.EnabledExpensive() {
+		// Track the amount of time wasted on hashing the account trie
+		defer func(start time.Time) { s.AccountHashes += time.Since(start) }(time.Now())
+	}
 
 	hash := s.trie.Hash()
 
@@ -1357,7 +1374,9 @@ func (s *StateDB) commit(deleteEmptyObjects bool) (*stateUpdate, error) {
 		if err := merge(set); err != nil {
 			return err
 		}
-		s.AccountCommits = time.Since(start)
+		if metrics.EnabledExpensive() {
+			s.AccountCommits = time.Since(start)
+		}
 		return nil
 	})
 	// Schedule each of the storage tries that need to be updated, so they can
@@ -1388,7 +1407,9 @@ func (s *StateDB) commit(deleteEmptyObjects bool) (*stateUpdate, error) {
 			}
 			lock.Lock()
 			updates[obj.addrHash] = update
-			s.StorageCommits = time.Since(start) // overwrite with the longest storage commit runtime
+			if metrics.EnabledExpensive() {
+				s.StorageCommits = time.Since(start) // overwrite with the longest storage commit runtime
+			}
 			lock.Unlock()
 			return nil
 		})
@@ -1468,7 +1489,9 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool) (*stateU
 					log.Warn("Failed to cap snapshot tree", "root", ret.root, "layers", TriesInMemory, "err", err)
 				}
 			}()
-			s.SnapshotCommits += time.Since(start)
+			if metrics.EnabledExpensive() {
+				s.SnapshotCommits += time.Since(start)
+			}
 		}
 		// If trie database is enabled, commit the state update as a new layer
 		if db := s.db.TrieDB(); db != nil && !s.noTrie {
@@ -1476,7 +1499,9 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool) (*stateU
 			if err := db.Update(ret.root, ret.originRoot, block, ret.nodes, ret.stateSet()); err != nil {
 				return nil, err
 			}
-			s.TrieDBCommits += time.Since(start)
+			if metrics.EnabledExpensive() {
+				s.TrieDBCommits += time.Since(start)
+			}
 		}
 	}
 	s.reader, _ = s.db.Reader(s.originalRoot)

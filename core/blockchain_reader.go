@@ -504,7 +504,7 @@ func (bc *BlockChain) SubscribeChainHeadEvent(ch chan<- ChainHeadEvent) event.Su
 	return bc.scope.Track(bc.chainHeadFeed.Subscribe(ch))
 }
 
-// SubscribeHighestVerifiedBlockEvent registers a subscription of HighestVerifiedBlockEvent.
+// SubscribeHighestVerifiedHeaderEvent registers a subscription of HighestVerifiedBlockEvent.
 func (bc *BlockChain) SubscribeHighestVerifiedHeaderEvent(ch chan<- HighestVerifiedBlockEvent) event.Subscription {
 	return bc.scope.Track(bc.highestVerifiedBlockFeed.Subscribe(ch))
 }
