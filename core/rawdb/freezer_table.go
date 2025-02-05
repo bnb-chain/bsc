@@ -1294,6 +1294,7 @@ func (t *freezerTable) resetItems(startAt uint64) (*freezerTable, error) {
 	t.releaseFile(0)
 
 	// overwrite metadata file
+	t.metadata.setVirtualTail(startAt, false)
 	if err := t.metadata.write(true); err != nil {
 		return nil, err
 	}

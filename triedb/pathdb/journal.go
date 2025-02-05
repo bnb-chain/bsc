@@ -268,7 +268,7 @@ func (db *Database) loadNodeBufferAsJournalV0V1(diskRoot common.Hash) (layer, er
 	if err != nil {
 		return nil, errMissVersion
 	}
-	if version == journalVersion {
+	if version >= journalVersion {
 		return nil, fmt.Errorf("%w, only handle legacy journal version, got %v", errUnexpectedVersion, version)
 	}
 

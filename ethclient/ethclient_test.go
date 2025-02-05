@@ -144,7 +144,7 @@ var (
 )
 
 var genesis = &core.Genesis{
-	Config: params.AllDevChainProtocolChanges,
+	Config: params.AllEthashProtocolChanges, // AllDevChainProtocolChanges,
 	Alloc: types.GenesisAlloc{
 		testAddr:           {Balance: testBalance},
 		revertContractAddr: {Code: revertCode},

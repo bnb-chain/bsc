@@ -1871,7 +1871,7 @@ func (pool *LegacyPool) transferTransactions() {
 		return
 	}
 
-	pool.Add(txs, true)
+	pool.Add(txs, false)
 }
 
 func (pool *LegacyPool) PrintTxStats() {

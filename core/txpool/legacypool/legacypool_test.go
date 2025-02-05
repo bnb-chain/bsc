@@ -2222,8 +2222,10 @@ func TestSlotCount(t *testing.T) {
 	}
 }
 
+// TODO(Nathan): the concepts of `locals` has been removed, so no chance to reannounce now
 // Tests the local pending transaction announced again correctly.
-func TestTransactionPendingReannouce(t *testing.T) {
+// nolint:unused
+func testTransactionPendingReannouce(t *testing.T) {
 	t.Parallel()
 
 	// Create the pool to test the limit enforcement with
