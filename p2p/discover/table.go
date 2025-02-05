@@ -513,7 +513,7 @@ func (tab *Table) filterNode(n *enode.Node) bool {
 		return false
 	}
 	if node, err := tab.net.RequestENR(n); err != nil {
-		tab.log.Debug("ENR request failed", "id", n.ID(), "ipAddr", n.IPAddr(), "updPort", n.UDP(), "err", err)
+		tab.log.Trace("ENR request failed", "id", n.ID(), "ipAddr", n.IPAddr(), "updPort", n.UDP(), "err", err)
 		return false
 	} else if !tab.enrFilter(node.Record()) {
 		tab.log.Trace("ENR record filter out", "id", n.ID(), "ipAddr", n.IPAddr(), "updPort", n.UDP())
