@@ -1,6 +1,11 @@
 # Changelog
-## v1.5.4
+## v1.5.5
 NA
+
+## v1.5.4
+### BUGFIX
+* [\#2874](https://github.com/bnb-chain/bsc/pull/2874) crypto: add IsOnCurve check
+
 
 ## v1.5.3
 ### BUGFIX
