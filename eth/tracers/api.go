@@ -1161,7 +1161,7 @@ func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *cor
 	var intrinsicGas uint64 = 0
 	// Run the transaction with tracing enabled.
 	if isSystemTx {
-		intrinsicGas, _ = core.IntrinsicGas(message.Data, message.AccessList, message.AuthList, false, true, true, false)
+		intrinsicGas, _ = core.IntrinsicGas(message.Data, message.AccessList, message.SetCodeAuthorizations, false, true, true, false)
 	}
 
 	// Call Prepare to clear out the statedb access list
@@ -1226,6 +1226,10 @@ func overrideConfig(original *params.ChainConfig, override *params.ChainConfig) 
 	}
 	if timestamp := override.PragueTime; timestamp != nil {
 		copy.PragueTime = timestamp
+		canon = false
+	}
+	if timestamp := override.OsakaTime; timestamp != nil {
+		copy.OsakaTime = timestamp
 		canon = false
 	}
 	if timestamp := override.VerkleTime; timestamp != nil {

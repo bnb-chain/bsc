@@ -83,7 +83,7 @@ type txPool interface {
 	Get(hash common.Hash) *types.Transaction
 
 	// Add should add the given transactions to the pool.
-	Add(txs []*types.Transaction, local bool, sync bool) []error
+	Add(txs []*types.Transaction, sync bool) []error
 
 	// Pending should return pending transactions.
 	// The slice should be modifiable by the caller.
@@ -305,7 +305,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		return p.RequestTxs(hashes)
 	}
 	addTxs := func(peer string, txs []*types.Transaction) []error {
-		errors := h.txpool.Add(txs, false, false)
+		errors := h.txpool.Add(txs, false)
 		for _, err := range errors {
 			if err == txpool.ErrInBlackList {
 				accountBlacklistPeerCounter.Inc(1)

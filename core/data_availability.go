@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/params"
@@ -106,8 +107,9 @@ func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err
 	for _, s := range sidecars {
 		blobCnt += len(s.Blobs)
 	}
-	if blobCnt > params.MaxBlobGasPerBlock/params.BlobTxBlobGasPerBlob {
-		return fmt.Errorf("too many blobs in block: have %d, permitted %d", blobCnt, params.MaxBlobGasPerBlock/params.BlobTxBlobGasPerBlob)
+	maxBlobPerBlock := eip4844.MaxBlobsPerBlock(chain.Config(), block.Time())
+	if blobCnt > maxBlobPerBlock {
+		return fmt.Errorf("too many blobs in block: have %d, permitted %d", blobCnt, maxBlobPerBlock)
 	}
 
 	// check blob and versioned hash

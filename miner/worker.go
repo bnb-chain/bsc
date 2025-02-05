@@ -203,6 +203,7 @@ type worker struct {
 	chainConfig *params.ChainConfig
 	engine      consensus.Engine
 	eth         Backend
+	prio        []common.Address // A list of senders to prioritize
 	chain       *core.BlockChain
 
 	// Feeds
@@ -226,7 +227,7 @@ type worker struct {
 
 	current *environment // An environment for current running cycle.
 
-	mu       sync.RWMutex // The lock used to protect the coinbase and extra fields
+	confMu   sync.RWMutex // The lock used to protect the config fields: GasCeil, GasTip and Extradata
 	coinbase common.Address
 	extra    []byte
 	tip      *uint256.Int // Minimum tip needed for non-local transaction to include them
@@ -311,41 +312,41 @@ func (w *worker) setBestBidFetcher(fetcher bidFetcher) {
 
 // setEtherbase sets the etherbase used to initialize the block coinbase field.
 func (w *worker) setEtherbase(addr common.Address) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.confMu.Lock()
+	defer w.confMu.Unlock()
 	w.coinbase = addr
 }
 
 // etherbase retrieves the configured etherbase address.
 func (w *worker) etherbase() common.Address {
-	w.mu.RLock()
-	defer w.mu.RUnlock()
+	w.confMu.RLock()
+	defer w.confMu.RUnlock()
 	return w.coinbase
 }
 
 func (w *worker) setGasCeil(ceil uint64) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.confMu.Lock()
+	defer w.confMu.Unlock()
 	w.config.GasCeil = ceil
 }
 
 func (w *worker) getGasCeil() uint64 {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.confMu.Lock()
+	defer w.confMu.Unlock()
 	return w.config.GasCeil
 }
 
 // setExtra sets the content used to initialize the block extra field.
 func (w *worker) setExtra(extra []byte) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.confMu.Lock()
+	defer w.confMu.Unlock()
 	w.extra = extra
 }
 
 // setGasTip sets the minimum miner tip needed to include a non-local transaction.
 func (w *worker) setGasTip(tip *big.Int) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.confMu.Lock()
+	defer w.confMu.Unlock()
 	w.tip = uint256.MustFromBig(tip)
 }
 
@@ -355,6 +356,13 @@ func (w *worker) setRecommitInterval(interval time.Duration) {
 	case w.resubmitIntervalCh <- interval:
 	case <-w.exitCh:
 	}
+}
+
+// setPrioAddresses sets a list of addresses to prioritize for transaction inclusion.
+func (w *worker) setPrioAddresses(prio []common.Address) {
+	w.confMu.Lock()
+	defer w.confMu.Unlock()
+	w.prio = prio
 }
 
 // Pending returns the currently pending block, associated receipts and statedb.
@@ -744,7 +752,8 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, 
 	// isn't really a better place right now. The blob gas limit is checked at block validation time
 	// and not during execution. This means core.ApplyTransaction will not return an error if the
 	// tx has too many blobs. So we have to explicitly check it here.
-	if (env.blobs+len(sc.Blobs))*params.BlobTxBlobGasPerBlob > params.MaxBlobGasPerBlock {
+	maxBlobs := eip4844.MaxBlobsPerBlock(w.chainConfig, env.header.Time)
+	if env.blobs+len(sc.Blobs) > maxBlobs {
 		return nil, errors.New("max data blobs reached")
 	}
 
@@ -841,7 +850,7 @@ LOOP:
 
 		// If we don't have enough blob space for any further blob transactions,
 		// skip that list altogether
-		if !blobTxs.Empty() && env.blobs*params.BlobTxBlobGasPerBlob >= params.MaxBlobGasPerBlock {
+		if !blobTxs.Empty() && env.blobs >= eip4844.MaxBlobsPerBlock(w.chainConfig, env.header.Time) {
 			log.Trace("Not enough blob space for further blob transactions")
 			blobTxs.Clear()
 			// Fall though to pick up any plain txs
@@ -876,11 +885,19 @@ LOOP:
 			txs.Pop()
 			continue
 		}
-		if left := uint64(params.MaxBlobGasPerBlock - env.blobs*params.BlobTxBlobGasPerBlob); left < ltx.BlobGas {
-			log.Trace("Not enough blob gas left for transaction", "hash", ltx.Hash, "left", left, "needed", ltx.BlobGas)
-			txs.Pop()
-			continue
+
+		// Most of the blob gas logic here is agnostic as to if the chain supports
+		// blobs or not, however the max check panics when called on a chain without
+		// a defined schedule, so we need to verify it's safe to call.
+		if w.chainConfig.IsCancun(env.header.Number, env.header.Time) {
+			left := eip4844.MaxBlobsPerBlock(w.chainConfig, env.header.Time) - env.blobs
+			if left < int(ltx.BlobGas/params.BlobTxBlobGasPerBlob) {
+				log.Trace("Not enough blob space left for transaction", "hash", ltx.Hash, "left", left, "needed", ltx.BlobGas/params.BlobTxBlobGasPerBlob)
+				txs.Pop()
+				continue
+			}
 		}
+
 		// Transaction seems to fit, pull it up from the pool
 		tx := ltx.Resolve()
 		if tx == nil {
@@ -966,8 +983,8 @@ type generateParams struct {
 // either based on the last chain head or specified parent. In this function
 // the pending transactions are not filled yet, only the empty task returned.
 func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environment, error) {
-	w.mu.RLock()
-	defer w.mu.RUnlock()
+	w.confMu.RLock()
+	defer w.confMu.RUnlock()
 
 	// Find the parent block for sealing task
 	parent := w.chain.CurrentBlock()
@@ -1021,10 +1038,7 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 	if w.chainConfig.IsCancun(header.Number, header.Time) {
 		var excessBlobGas uint64
 		if w.chainConfig.IsCancun(parent.Number, parent.Time) {
-			excessBlobGas = eip4844.CalcExcessBlobGas(*parent.ExcessBlobGas, *parent.BlobGasUsed)
-		} else {
-			// For the first post-fork block, both parent.data_gas_used and parent.excess_data_gas are evaluated as 0
-			excessBlobGas = eip4844.CalcExcessBlobGas(0, 0)
+			excessBlobGas = eip4844.CalcExcessBlobGas(w.chainConfig, parent, header)
 		}
 		header.BlobGasUsed = new(uint64)
 		header.ExcessBlobGas = &excessBlobGas
@@ -1069,9 +1083,10 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
 func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stopTimer *time.Timer, bidTxs mapset.Set[common.Hash]) (err error) {
-	w.mu.RLock()
+	w.confMu.RLock()
 	tip := w.tip
-	w.mu.RUnlock()
+	prio := w.prio
+	w.confMu.RUnlock()
 
 	// Retrieve the pending transactions pre-filtered by the 1559/4844 dynamic fees
 	filter := txpool.PendingFilter{
@@ -1081,7 +1096,7 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 		filter.BaseFee = uint256.MustFromBig(env.header.BaseFee)
 	}
 	if env.header.ExcessBlobGas != nil {
-		filter.BlobFee = uint256.MustFromBig(eip4844.CalcBlobFee(*env.header.ExcessBlobGas))
+		filter.BlobFee = uint256.MustFromBig(eip4844.CalcBlobFee(w.chainConfig, env.header))
 	}
 	filter.OnlyPlainTxs, filter.OnlyBlobTxs = true, false
 	pendingPlainTxs := w.eth.TxPool().Pending(filter)
@@ -1110,38 +1125,32 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 	}
 
 	// Split the pending transactions into locals and remotes.
-	localPlainTxs, remotePlainTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingPlainTxs
-	localBlobTxs, remoteBlobTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingBlobTxs
+	prioPlainTxs, normalPlainTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingPlainTxs
+	prioBlobTxs, normalBlobTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingBlobTxs
 
-	for _, account := range w.eth.TxPool().Locals() {
-		if txs := remotePlainTxs[account]; len(txs) > 0 {
-			delete(remotePlainTxs, account)
-			localPlainTxs[account] = txs
+	for _, account := range prio {
+		if txs := normalPlainTxs[account]; len(txs) > 0 {
+			delete(normalPlainTxs, account)
+			prioPlainTxs[account] = txs
 		}
-		if txs := remoteBlobTxs[account]; len(txs) > 0 {
-			delete(remoteBlobTxs, account)
-			localBlobTxs[account] = txs
+		if txs := normalBlobTxs[account]; len(txs) > 0 {
+			delete(normalBlobTxs, account)
+			prioBlobTxs[account] = txs
 		}
 	}
 
 	// Fill the block with all available pending transactions.
-	// we will abort when:
-	//   1.new block was imported
-	//   2.out of Gas, no more transaction can be added.
-	//   3.the mining timer has expired, stop adding transactions.
-	//   4.interrupted resubmit timer, which is by default 10s.
-	//     resubmit is for PoW only, can be deleted for PoS consensus later
-	if len(localPlainTxs) > 0 || len(localBlobTxs) > 0 {
-		plainTxs := newTransactionsByPriceAndNonce(env.signer, localPlainTxs, env.header.BaseFee)
-		blobTxs := newTransactionsByPriceAndNonce(env.signer, localBlobTxs, env.header.BaseFee)
+	if len(prioPlainTxs) > 0 || len(prioBlobTxs) > 0 {
+		plainTxs := newTransactionsByPriceAndNonce(env.signer, prioPlainTxs, env.header.BaseFee)
+		blobTxs := newTransactionsByPriceAndNonce(env.signer, prioBlobTxs, env.header.BaseFee)
 
 		if err := w.commitTransactions(env, plainTxs, blobTxs, interruptCh, stopTimer); err != nil {
 			return err
 		}
 	}
-	if len(remotePlainTxs) > 0 || len(remoteBlobTxs) > 0 {
-		plainTxs := newTransactionsByPriceAndNonce(env.signer, remotePlainTxs, env.header.BaseFee)
-		blobTxs := newTransactionsByPriceAndNonce(env.signer, remoteBlobTxs, env.header.BaseFee)
+	if len(normalPlainTxs) > 0 || len(normalBlobTxs) > 0 {
+		plainTxs := newTransactionsByPriceAndNonce(env.signer, normalPlainTxs, env.header.BaseFee)
+		blobTxs := newTransactionsByPriceAndNonce(env.signer, normalBlobTxs, env.header.BaseFee)
 
 		if err := w.commitTransactions(env, plainTxs, blobTxs, interruptCh, stopTimer); err != nil {
 			return err
