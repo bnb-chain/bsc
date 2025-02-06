@@ -497,7 +497,7 @@ async function getKeyParameters()  {
 }
 
 // 9.cmd: "getEip7623", usage:
-// node getEip7623.js GetEip7736 \
+// node getEip7623.js GetEip7623 \
 //      --rpc https://bsc-testnet-dataseed.bnbchain.org \
 //      --startNum 40000001  --endNum 40000005
 async function getEip7623()  {
