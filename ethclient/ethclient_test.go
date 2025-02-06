@@ -39,7 +39,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/triedb"
 )
@@ -145,7 +144,7 @@ var (
 )
 
 var genesis = &core.Genesis{
-	Config: params.AllEthashProtocolChanges,
+	Config: params.AllEthashProtocolChanges, // AllDevChainProtocolChanges,
 	Alloc: types.GenesisAlloc{
 		testAddr:           {Balance: testBalance},
 		revertContractAddr: {Code: revertCode},
@@ -353,20 +352,7 @@ func testHeader(t *testing.T, chain []*types.Block, client *rpc.Client) {
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("HeaderByNumber(%v) error = %q, want %q", tt.block, err, tt.wantErr)
 			}
-
-			gotBytes, err := rlp.EncodeToBytes(got)
-			if err != nil {
-				t.Fatalf("Error serializing received block header.")
-			}
-			wantBytes, err := rlp.EncodeToBytes(tt.want)
-			if err != nil {
-				t.Fatalf("Error serializing wanted block header.")
-			}
-
-			// Instead of comparing the Header's compare the serialized bytes,
-			// because reflect.DeepEqual(*types.Header, *types.Header) sometimes
-			// returns false even though the underlying field values are exactly the same.
-			if !reflect.DeepEqual(gotBytes, wantBytes) {
+			if got.Hash() != tt.want.Hash() {
 				t.Fatalf("HeaderByNumber(%v) got = %v, want %v", tt.block, got, tt.want)
 			}
 		})
@@ -457,7 +443,7 @@ func testChainID(t *testing.T, client *rpc.Client) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if id == nil || id.Cmp(params.AllEthashProtocolChanges.ChainID) != 0 {
+	if id == nil || id.Cmp(params.AllDevChainProtocolChanges.ChainID) != 0 {
 		t.Fatalf("ChainID returned wrong number: %+v", id)
 	}
 }

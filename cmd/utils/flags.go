@@ -934,7 +934,7 @@ var (
 	}
 	NATFlag = &cli.StringFlag{
 		Name:     "nat",
-		Usage:    "NAT port mapping mechanism (any|none|upnp|pmp|pmp:<IP>|extip:<IP>)",
+		Usage:    "NAT port mapping mechanism (any|none|upnp|pmp|pmp:<IP>|extip:<IP>|stun:<IP:PORT>)",
 		Value:    "any",
 		Category: flags.NetworkingCategory,
 	}
@@ -2457,6 +2457,10 @@ func SetupMetrics(cfg *metrics.Config, options ...SetupMetricsOption) {
 	}
 	log.Info("Enabling metrics collection")
 	metrics.Enable()
+	if cfg.EnabledExpensive {
+		log.Info("Enabling expensive metrics collection")
+		metrics.EnableExpensive()
+	}
 
 	// InfluxDB exporter.
 	var (

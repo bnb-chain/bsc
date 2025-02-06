@@ -24,6 +24,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/metrics"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -224,13 +226,18 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 	}
 	s.db.StorageLoaded++
 
-	start := time.Now()
+	var start time.Time
+	if metrics.EnabledExpensive() {
+		start = time.Now()
+	}
 	value, err := s.db.reader.Storage(s.address, key)
 	if err != nil {
 		s.db.setError(err)
 		return common.Hash{}
 	}
-	s.db.StorageReads += time.Since(start)
+	if metrics.EnabledExpensive() {
+		s.db.StorageReads += time.Since(start)
+	}
 
 	// Schedule the resolved storage slots for prefetching if it's enabled.
 	if s.db.prefetcher != nil && s.data.Root != types.EmptyRootHash {
@@ -441,10 +448,16 @@ func (s *stateObject) commitStorage(op *accountUpdate) {
 			op.storages = make(map[common.Hash][]byte)
 		}
 		op.storages[hash] = encode(val)
-		if op.storagesOrigin == nil {
-			op.storagesOrigin = make(map[common.Hash][]byte)
+
+		if op.storagesOriginByKey == nil {
+			op.storagesOriginByKey = make(map[common.Hash][]byte)
 		}
-		op.storagesOrigin[hash] = encode(s.originStorage[key])
+		if op.storagesOriginByHash == nil {
+			op.storagesOriginByHash = make(map[common.Hash][]byte)
+		}
+		origin := encode(s.originStorage[key])
+		op.storagesOriginByKey[key] = origin
+		op.storagesOriginByHash[hash] = origin
 
 		// Overwrite the clean value of storage slots
 		s.originStorage[key] = val

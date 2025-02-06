@@ -2140,19 +2140,13 @@ func TestGolangBindings(t *testing.T) {
 		t.Fatalf("failed to replace tendermint dependency to bnb-chain source: %v\n%s", err, out)
 	}
 
-	replacer = exec.Command(gocmd, "mod", "edit", "-x", "-require", "github.com/cometbft/cometbft@v0.0.0", "-replace", "github.com/cometbft/cometbft=github.com/bnb-chain/greenfield-tendermint@v0.0.0-20230417032003-4cda1f296fb2") // Repo root
+	replacer = exec.Command(gocmd, "mod", "edit", "-x", "-require", "github.com/cometbft/cometbft@v0.0.0", "-replace", "github.com/cometbft/cometbft=github.com/bnb-chain/greenfield-cometbft@v1.3.1") // Repo root
 	replacer.Dir = pkg
 	if out, err := replacer.CombinedOutput(); err != nil {
 		t.Fatalf("failed to replace cometbft dependency to bnb-chain source: %v\n%s", err, out)
 	}
 
-	replacer = exec.Command(gocmd, "mod", "edit", "-x", "-require", "github.com/syndtr/goleveldb@v1.0.1", "-replace", "github.com/syndtr/goleveldb=github.com/syndtr/goleveldb@v1.0.1-0.20210819022825-2ae1ddf74ef7")
-	replacer.Dir = pkg
-	if out, err := replacer.CombinedOutput(); err != nil {
-		t.Fatalf("failed to replace cometbft dependency to bnb-chain source: %v\n%s", err, out)
-	}
-
-	tidier := exec.Command(gocmd, "mod", "tidy", "-compat=1.21")
+	tidier := exec.Command(gocmd, "mod", "tidy")
 	tidier.Dir = pkg
 	if out, err := tidier.CombinedOutput(); err != nil {
 		t.Fatalf("failed to tidy Go module file: %v\n%s", err, out)

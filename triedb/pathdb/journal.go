@@ -29,7 +29,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -50,7 +49,8 @@ var (
 // - Version 0: initial version
 // - Version 1: storage.Incomplete field is removed
 // - Version 2: add post-modification state values
-const journalVersion uint64 = 2
+// - Version 3: a flag has been added to indicate whether the storage slot key is the raw key or a hash
+const journalVersion uint64 = 3
 
 type JournalWriter interface {
 	io.Writer
@@ -223,9 +223,9 @@ func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
 // loadLayers loads a pre-existing state layer backed by a key-value store.
 func (db *Database) loadLayers() layer {
 	// Retrieve the root node of persistent state.
-	var root = types.EmptyRootHash
-	if blob := rawdb.ReadAccountTrieNode(db.diskdb, nil); len(blob) > 0 {
-		root = crypto.Keccak256Hash(blob)
+	root, err := db.hasher(rawdb.ReadAccountTrieNode(db.diskdb, nil))
+	if err != nil {
+		log.Crit("Failed to compute node hash", "err", err)
 	}
 	// Load the layers by resolving the journal
 	head, err := db.loadJournal(root)
@@ -268,7 +268,7 @@ func (db *Database) loadNodeBufferAsJournalV0V1(diskRoot common.Hash) (layer, er
 	if err != nil {
 		return nil, errMissVersion
 	}
-	if version == journalVersion {
+	if version >= journalVersion {
 		return nil, fmt.Errorf("%w, only handle legacy journal version, got %v", errUnexpectedVersion, version)
 	}
 
@@ -322,7 +322,7 @@ func (db *Database) loadDiskLayer(r *rlp.Stream, journalTypeForReader JournalTyp
 	}
 
 	// handle new states in journal v2
-	var states = newStates(nil, nil)
+	var states = newStates(nil, nil, false)
 	if version == journalVersion {
 		// Resolve flat state sets in aggregated buffer
 		if err := states.decode(journalBuf); err != nil {
@@ -509,6 +509,8 @@ func (dl *diffLayer) journal(w io.Writer, journalType JournalType) error {
 // This is meant to be used during shutdown to persist the layer without
 // flattening everything down (bad for reorgs). And this function will mark the
 // database as read-only to prevent all following mutation to disk.
+//
+// The supplied root must be a valid trie hash value.
 func (db *Database) Journal(root common.Hash) error {
 	// Run the journaling
 	db.lock.Lock()
@@ -543,9 +545,9 @@ func (db *Database) Journal(root common.Hash) error {
 	}
 	// Secondly write out the state root in disk, ensure all layers
 	// on top are continuous with disk.
-	diskRoot := types.EmptyRootHash
-	if blob := rawdb.ReadAccountTrieNode(db.diskdb, nil); len(blob) > 0 {
-		diskRoot = crypto.Keccak256Hash(blob)
+	diskRoot, err := db.hasher(rawdb.ReadAccountTrieNode(db.diskdb, nil))
+	if err != nil {
+		return err
 	}
 	if err := rlp.Encode(journal, diskRoot); err != nil {
 		return err
