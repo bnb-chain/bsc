@@ -193,6 +193,7 @@ var (
 		},
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfigBSC,
 		},
 	}
 
@@ -240,6 +241,7 @@ var (
 		},
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfigBSC,
 		},
 	}
 
@@ -288,6 +290,7 @@ var (
 		},
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfigBSC,
 		},
 	}
 
@@ -535,8 +538,6 @@ var (
 		Max:            6,
 		UpdateFraction: 3338477,
 	}
-	// for bsc, only DefaultCancunBlobConfig is used, so we can define MaxBlobsPerBlockForBSC more directly
-	MaxBlobsPerBlockForBSC = DefaultCancunBlobConfig.Max
 	// DefaultPragueBlobConfig is the default blob configuration for the Prague fork.
 	DefaultPragueBlobConfig = &BlobConfig{
 		Target:         6,
@@ -548,6 +549,10 @@ var (
 		Cancun: DefaultCancunBlobConfig,
 		Prague: DefaultPragueBlobConfig,
 	}
+
+	DefaultPragueBlobConfigBSC = DefaultCancunBlobConfig
+	// for bsc, only DefaultCancunBlobConfig is used, so we can define MaxBlobsPerBlockForBSC more directly
+	MaxBlobsPerBlockForBSC = DefaultCancunBlobConfig.Max
 )
 
 // NetworkNames are user friendly names to use in the chain spec banner.
