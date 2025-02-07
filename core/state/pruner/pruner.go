@@ -237,7 +237,7 @@ func (p *Pruner) pruneAll(maindb ethdb.Database, g *core.Genesis) error {
 	for addr, account := range g.Alloc {
 		statedb.AddBalance(addr, uint256.MustFromBig(account.Balance), tracing.BalanceChangeUnspecified)
 		statedb.SetCode(addr, account.Code)
-		statedb.SetNonce(addr, account.Nonce)
+		statedb.SetNonce(addr, account.Nonce, tracing.NonceChangeGenesis)
 		for key, value := range account.Storage {
 			statedb.SetState(addr, key, value)
 		}
