@@ -49,8 +49,6 @@ jobs:
         CGO_CFLAGS_ALLOW: "-O -D__BLST_PORTABLE__"
         ANDROID_HOME: "" # Skip android test
       run: |
-        git submodule update --init --depth 1 --recursive
         go mod download
-        cd tests
-        sed -i -e 's/\/\/ bt.skipLoad/bt.skipLoad/g' block_test.go
-        bash -x run-evm-tests.sh
+        cd tests && bash -x run-evm-tests.sh
+        
