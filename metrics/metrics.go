@@ -3,6 +3,7 @@
 // <https://github.com/rcrowley/go-metrics>
 //
 // Coda Hale's original work: <https://github.com/codahale/metrics>
+
 package metrics
 
 import (
@@ -13,6 +14,11 @@ import (
 
 var (
 	metricsEnabled = false
+
+	// metricsExpensiveEnabled is a soft-flag meant for external packages to check if costly
+	// metrics gathering is allowed or not. The goal is to separate standard metrics
+	// for health monitoring and debug metrics that might impact runtime performance.
+	metricsExpensiveEnabled = false
 )
 
 // Enabled is checked by functions that are deemed 'expensive', e.g. if a
@@ -29,6 +35,16 @@ func Enabled() bool {
 // the program, before any metrics collection will happen.
 func Enable() {
 	metricsEnabled = true
+}
+
+// EnabledExpensive is checked by functions that are deemed 'expensive'.
+func EnabledExpensive() bool {
+	return metricsExpensiveEnabled
+}
+
+// EnableExpensive enables the expensive metrics.
+func EnableExpensive() {
+	metricsExpensiveEnabled = true
 }
 
 var threadCreateProfile = pprof.Lookup("threadcreate")

@@ -1,4 +1,20 @@
 # Changelog
+## v1.5.5
+v1.5.5 mainly did a upstream code sync, it catches up to Geth of date around 5th-Feb-2025 to sync the latest Praque hard fork changes, see: https://github.com/bnb-chain/bsc/pull/2856
+
+Besides the code sync, there are a few improvement PRs of BSC:
+### IMPROVEMENT
+* [\#2846](https://github.com/bnb-chain/bsc/pull/2846) tracing: pass *tracing.Hooks around instead of vm.Config
+* [\#2850](https://github.com/bnb-chain/bsc/pull/2850) metric: revert default expensive metrics in blockchain
+* [\#2851](https://github.com/bnb-chain/bsc/pull/2851) eth/tracers: fix call nil OnSystemTxFixIntrinsicGas
+* [\#2862](https://github.com/bnb-chain/bsc/pull/2862) cmd/jsutils/getchainstatus.js: add GetEip7623
+* [\#2867](https://github.com/bnb-chain/bsc/pull/2867) p2p: lowered log lvl for failed enr request
+
+## v1.5.4
+### BUGFIX
+* [\#2874](https://github.com/bnb-chain/bsc/pull/2874) crypto: add IsOnCurve check
+
+
 ## v1.5.3
 ### BUGFIX
 * [\#2827](https://github.com/bnb-chain/bsc/pull/2827) triedb/pathdb: fix nil field for stateSet

@@ -37,8 +37,7 @@ func TestPrefetchLeaking(t *testing.T) {
 			Alloc:   GenesisAlloc{address: {Balance: funds}},
 			BaseFee: big.NewInt(params.InitialBaseFee),
 		}
-		triedb  = triedb.NewDatabase(gendb, nil)
-		genesis = gspec.MustCommit(gendb, triedb)
+		genesis = gspec.MustCommit(gendb, triedb.NewDatabase(gendb, nil))
 		signer  = types.LatestSigner(gspec.Config)
 	)
 	blocks, _ := GenerateChain(gspec.Config, genesis, ethash.NewFaker(), gendb, 1, func(i int, block *BlockGen) {
@@ -52,7 +51,7 @@ func TestPrefetchLeaking(t *testing.T) {
 		}
 	})
 	archiveDb := rawdb.NewMemoryDatabase()
-	gspec.MustCommit(archiveDb, triedb)
+	gspec.MustCommit(archiveDb, triedb.NewDatabase(archiveDb, nil))
 	archive, _ := NewBlockChain(archiveDb, nil, gspec, nil, ethash.NewFaker(), vm.Config{}, nil, nil)
 	defer archive.Stop()
 

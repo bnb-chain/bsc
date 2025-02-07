@@ -175,6 +175,11 @@ func (a *asyncnodebuffer) getAllNodesAndStates() (*nodeSet, *stateSet) {
 	return cached.nodes, cached.states
 }
 
+func (a *asyncnodebuffer) getStates() *stateSet {
+	_, states := a.getAllNodesAndStates()
+	return states
+}
+
 func (a *asyncnodebuffer) getLayers() uint64 {
 	a.mux.RLock()
 	defer a.mux.RUnlock()
@@ -283,6 +288,6 @@ func copyNodeCache(n *nodecache) *nodecache {
 	for accountHash, storage := range n.states.storageData {
 		storageData[accountHash] = maps.Clone(storage)
 	}
-	nc.states = newStates(maps.Clone(n.states.accountData), storageData)
+	nc.states = newStates(maps.Clone(n.states.accountData), storageData, n.states.rawStorageKey)
 	return nc
 }

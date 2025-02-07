@@ -663,11 +663,11 @@ func TestParlia_applyTransactionTracing(t *testing.T) {
 
 	bs, _ := core.GenerateChain(config, genesisBlock, mockEngine, db, 1, func(i int, gen *core.BlockGen) {
 		if !config.IsCancun(gen.Number(), gen.Timestamp()) {
-			tx, _ := makeMockTx(config, signer, testKey, gen.TxNonce(testAddr), gen.BaseFee().Uint64(), eip4844.CalcBlobFee(gen.ExcessBlobGas()).Uint64(), false)
+			tx, _ := makeMockTx(config, signer, testKey, gen.TxNonce(testAddr), gen.BaseFee().Uint64(), eip4844.CalcBlobFee(config, gen.HeadBlock()).Uint64(), false)
 			gen.AddTxWithChain(chain, tx)
 			return
 		}
-		tx, sidecar := makeMockTx(config, signer, testKey, gen.TxNonce(testAddr), gen.BaseFee().Uint64(), eip4844.CalcBlobFee(gen.ExcessBlobGas()).Uint64(), true)
+		tx, sidecar := makeMockTx(config, signer, testKey, gen.TxNonce(testAddr), gen.BaseFee().Uint64(), eip4844.CalcBlobFee(config, gen.HeadBlock()).Uint64(), true)
 		gen.AddTxWithChain(chain, tx)
 		gen.AddBlobSidecar(&types.BlobSidecar{
 			BlobTxSidecar: *sidecar,
@@ -703,9 +703,7 @@ func TestParlia_applyTransactionTracing(t *testing.T) {
 	hooks := recording.hooks()
 
 	cx := chainContext{Chain: chain, parlia: engine}
-	applyErr := engine.applyTransaction(msg, state.NewHookedState(stateDB, hooks), bs[0].Header(), cx, &txs, &receipts, &receivedTxs, &usedGas, false, vm.Config{
-		Tracer: hooks,
-	})
+	applyErr := engine.applyTransaction(msg, state.NewHookedState(stateDB, hooks), bs[0].Header(), cx, &txs, &receipts, &receivedTxs, &usedGas, false, hooks)
 	if applyErr != nil {
 		t.Fatalf("failed to apply system contract transaction: %v", applyErr)
 	}
