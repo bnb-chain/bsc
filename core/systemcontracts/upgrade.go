@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts/planck"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/plato"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/ramanujan"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
@@ -1058,7 +1059,7 @@ func TryUpdateBuildInSystemContract(config *params.ChainConfig, blockNumber *big
 		// HistoryStorageAddress is a special system contract in bsc, which can't be upgraded
 		if config.IsOnPrague(blockNumber, lastBlockTime, blockTime) {
 			statedb.SetCode(params.HistoryStorageAddress, params.HistoryStorageCode)
-			statedb.SetNonce(params.HistoryStorageAddress, 1)
+			statedb.SetNonce(params.HistoryStorageAddress, 1, tracing.NonceChangeNewContract)
 			log.Info("Set code for HistoryStorageAddress", "blockNumber", blockNumber.Int64(), "blockTime", blockTime)
 		}
 	} else {

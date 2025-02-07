@@ -2207,7 +2207,7 @@ func applyMessage(
 		state.ClearAccessList()
 	}
 	// Increment the nonce for the next transaction
-	state.SetNonce(msg.From, state.GetNonce(msg.From)+1)
+	state.SetNonce(msg.From, state.GetNonce(msg.From)+1, tracing.NonceChangeEoACall)
 
 	ret, returnGas, err := evm.Call(
 		vm.AccountRef(msg.From),
