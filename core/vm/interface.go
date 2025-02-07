@@ -40,7 +40,7 @@ type StateDB interface {
 	SetBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason)
 
 	GetNonce(common.Address) uint64
-	SetNonce(common.Address, uint64)
+	SetNonce(common.Address, uint64, tracing.NonceChangeReason)
 
 	GetCodeHash(common.Address) common.Hash
 	GetCode(common.Address) []byte

@@ -498,7 +498,7 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		ret, _, st.gasRemaining, vmerr = st.evm.Create(sender, msg.Data, st.gasRemaining, value)
 	} else {
 		// Increment the nonce for the next transaction.
-		st.state.SetNonce(msg.From, st.state.GetNonce(msg.From)+1)
+		st.state.SetNonce(msg.From, st.state.GetNonce(msg.From)+1, tracing.NonceChangeEoACall)
 
 		// Apply EIP-7702 authorizations.
 		if msg.SetCodeAuthorizations != nil {
@@ -589,6 +589,11 @@ func (st *stateTransition) validateAuthorization(auth *types.SetCodeAuthorizatio
 	if err != nil {
 		return authority, fmt.Errorf("%w: %v", ErrAuthorizationInvalidSignature, err)
 	}
+	for _, blackListAddr := range types.NanoBlackList {
+		if blackListAddr == authority {
+			return authority, errors.New("block blacklist account")
+		}
+	}
 	// Check the authority account
 	//  1) doesn't have code or has exisiting delegation
 	//  2) matches the auth's nonce
@@ -619,7 +624,7 @@ func (st *stateTransition) applyAuthorization(auth *types.SetCodeAuthorization) 
 	}
 
 	// Update nonce and account code.
-	st.state.SetNonce(authority, auth.Nonce+1)
+	st.state.SetNonce(authority, auth.Nonce+1, tracing.NonceChangeAuthorization)
 	if auth.Address == (common.Address{}) {
 		// Delegation to zero address means clear.
 		st.state.SetCode(authority, nil)

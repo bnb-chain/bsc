@@ -294,13 +294,13 @@ func doTest(cmdline []string) {
 		timeout  = flag.String("timeout", "10m", `Timeout of runing tests`)
 		race     = flag.Bool("race", false, "Execute the race detector")
 		short    = flag.Bool("short", false, "Pass the 'short'-flag to go test")
-		cachedir = flag.String("cachedir", "./build/cache", "directory for caching downloads")
+		// cachedir = flag.String("cachedir", "./build/cache", "directory for caching downloads")
 	)
 	flag.CommandLine.Parse(cmdline)
 
 	// Get test fixtures.
 	csdb := build.MustLoadChecksums("build/checksums.txt")
-	downloadSpecTestFixtures(csdb, *cachedir)
+	// downloadSpecTestFixtures(csdb, *cachedir)
 
 	// Configure the toolchain.
 	tc := build.GoToolchain{GOARCH: *arch, CC: *cc}
@@ -346,14 +346,16 @@ func doTest(cmdline []string) {
 }
 
 // downloadSpecTestFixtures downloads and extracts the execution-spec-tests fixtures.
+//
+//nolint:unused
 func downloadSpecTestFixtures(csdb *build.ChecksumDB, cachedir string) string {
 	executionSpecTestsVersion, err := build.Version(csdb, "spec-tests")
 	if err != nil {
 		log.Fatal(err)
 	}
 	ext := ".tar.gz"
-	base := "fixtures_develop" // TODO(MariusVanDerWijden) rename once the version becomes part of the filename
-	url := fmt.Sprintf("https://github.com/ethereum/execution-spec-tests/releases/download/v%s/%s%s", executionSpecTestsVersion, base, ext)
+	base := "fixtures_pectra-devnet-6" // TODO(s1na) rename once the version becomes part of the filename
+	url := fmt.Sprintf("https://github.com/ethereum/execution-spec-tests/releases/download/%s/%s%s", executionSpecTestsVersion, base, ext)
 	archivePath := filepath.Join(cachedir, base+ext)
 	if err := csdb.DownloadFile(url, archivePath); err != nil {
 		log.Fatal(err)
