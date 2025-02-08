@@ -84,11 +84,12 @@ var (
 	writeBlockTimer    = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
 
-	errBlockInterruptedByNewHead   = errors.New("new head arrived while building block")
-	errBlockInterruptedByRecommit  = errors.New("recommit interrupt while building block")
-	errBlockInterruptedByTimeout   = errors.New("timeout while building block")
-	errBlockInterruptedByOutOfGas  = errors.New("out of gas while building block")
-	errBlockInterruptedByBetterBid = errors.New("better bid arrived while building block")
+	errBlockInterruptedByNewHead        = errors.New("new head arrived while building block")
+	errBlockInterruptedByRecommit       = errors.New("recommit interrupt while building block")
+	errBlockInterruptedByTimeout        = errors.New("timeout while building block")
+	errBlockInterruptedByOutOfGas       = errors.New("out of gas while building block")
+	errBlockInterruptedByBetterBid      = errors.New("better bid arrived while building block")
+	errBlockInterruptedWhenBundleCommit = errors.New("bundle commit error while building block")
 )
 
 // environment is the worker's current environment and holds all
@@ -1649,6 +1650,8 @@ func signalToErr(signal int32) error {
 		return errBlockInterruptedByOutOfGas
 	case commitInterruptBetterBid:
 		return errBlockInterruptedByBetterBid
+	case commitInterruptBundleCommit:
+		return errBlockInterruptedWhenBundleCommit
 	default:
 		panic(fmt.Errorf("undefined signal %d", signal))
 	}
