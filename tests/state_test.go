@@ -25,7 +25,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -55,9 +54,18 @@ func initMatcher(st *testMatcher) {
 	// Uses 1GB RAM per tested fork
 	st.skipLoad(`^stStaticCall/static_Call1MB`)
 
+	// Out-of-date EIP-2537 tests
+	// TODO (@s1na) reenable in the future
+	st.skipLoad(`^stEIP2537/`)
+
 	// Broken tests:
 	// EOF is not part of cancun
 	st.skipLoad(`^stEOF/`)
+
+	// The tests under Pyspecs are the ones that are published as execution-spec tests.
+	// We run these tests separately, no need to _also_ run them as part of the
+	// reference tests.
+	st.skipLoad(`^Pyspecs/`)
 }
 
 func TestState(t *testing.T) {
@@ -92,22 +100,25 @@ func TestExecutionSpecState(t *testing.T) {
 		t.Skipf("directory %s does not exist", executionSpecStateTestDir)
 	}
 	st := new(testMatcher)
-
 	st.walk(t, executionSpecStateTestDir, func(t *testing.T, name string, test *StateTest) {
 		execStateTest(t, st, test)
 	})
 }
 
 func execStateTest(t *testing.T, st *testMatcher, test *StateTest) {
-	if runtime.GOARCH == "386" && runtime.GOOS == "windows" && rand.Int63()%2 == 0 {
-		t.Skip("test (randomly) skipped on 32-bit windows")
-		return
-	}
 	for _, subtest := range test.Subtests() {
-		subtest := subtest
 		key := fmt.Sprintf("%s/%d", subtest.Fork, subtest.Index)
 
+		// If -short flag is used, we don't execute all four permutations, only
+		// one.
+		executionMask := 0xf
+		if testing.Short() {
+			executionMask = (1 << (rand.Int63() & 4))
+		}
 		t.Run(key+"/hash/trie", func(t *testing.T) {
+			if executionMask&0x1 == 0 {
+				t.Skip("test (randomly) skipped due to short-tag")
+			}
 			withTrace(t, test.gasLimit(subtest), func(vmconfig vm.Config) error {
 				var result error
 				test.Run(subtest, vmconfig, false, rawdb.HashScheme, func(err error, state *StateTestState) {
@@ -117,6 +128,9 @@ func execStateTest(t *testing.T, st *testMatcher, test *StateTest) {
 			})
 		})
 		t.Run(key+"/hash/snap", func(t *testing.T) {
+			if executionMask&0x2 == 0 {
+				t.Skip("test (randomly) skipped due to short-tag")
+			}
 			withTrace(t, test.gasLimit(subtest), func(vmconfig vm.Config) error {
 				var result error
 				test.Run(subtest, vmconfig, true, rawdb.HashScheme, func(err error, state *StateTestState) {
@@ -132,6 +146,9 @@ func execStateTest(t *testing.T, st *testMatcher, test *StateTest) {
 			})
 		})
 		t.Run(key+"/path/trie", func(t *testing.T) {
+			if executionMask&0x4 == 0 {
+				t.Skip("test (randomly) skipped due to short-tag")
+			}
 			withTrace(t, test.gasLimit(subtest), func(vmconfig vm.Config) error {
 				var result error
 				test.Run(subtest, vmconfig, false, rawdb.PathScheme, func(err error, state *StateTestState) {
@@ -141,6 +158,9 @@ func execStateTest(t *testing.T, st *testMatcher, test *StateTest) {
 			})
 		})
 		t.Run(key+"/path/snap", func(t *testing.T) {
+			if executionMask&0x8 == 0 {
+				t.Skip("test (randomly) skipped due to short-tag")
+			}
 			withTrace(t, test.gasLimit(subtest), func(vmconfig vm.Config) error {
 				var result error
 				test.Run(subtest, vmconfig, true, rawdb.PathScheme, func(err error, state *StateTestState) {
@@ -224,14 +244,12 @@ func runBenchmarkFile(b *testing.B, path string) {
 		b.Fatal("expected single benchmark in a file")
 	}
 	for _, t := range m {
-		t := t
 		runBenchmark(b, &t)
 	}
 }
 
 func runBenchmark(b *testing.B, t *StateTest) {
 	for _, subtest := range t.Subtests() {
-		subtest := subtest
 		key := fmt.Sprintf("%s/%d", subtest.Fork, subtest.Index)
 
 		b.Run(key, func(b *testing.B) {
@@ -282,10 +300,11 @@ func runBenchmark(b *testing.B, t *StateTest) {
 
 			// Prepare the EVM.
 			txContext := core.NewEVMTxContext(msg)
-			context := core.NewEVMBlockContext(block.Header(), nil, &t.json.Env.Coinbase)
+			context := core.NewEVMBlockContext(block.Header(), &dummyChain{config: config}, &t.json.Env.Coinbase)
 			context.GetHash = vmTestBlockHash
 			context.BaseFee = baseFee
-			evm := vm.NewEVM(context, txContext, state.StateDB, config, vmconfig)
+			evm := vm.NewEVM(context, state.StateDB, config, vmconfig)
+			evm.SetTxContext(txContext)
 
 			// Create "contract" for sender to cache code analysis.
 			sender := vm.NewContract(vm.AccountRef(msg.From), vm.AccountRef(msg.From),

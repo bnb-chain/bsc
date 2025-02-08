@@ -1,22 +1,23 @@
-// Copyright 2023 The go-ethereum Authors
-// This file is part of go-ethereum.
+// Copyright 2024 The go-ethereum Authors
+// This file is part of the go-ethereum library.
 //
-// go-ethereum is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
+// The go-ethereum library is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Lesser General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
-// go-ethereum is distributed in the hope that it will be useful,
+// The go-ethereum library is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
+// GNU Lesser General Public License for more details.
 //
-// You should have received a copy of the GNU General Public License
-// along with go-ethereum. If not, see <http://www.gnu.org/licenses/>.
+// You should have received a copy of the GNU Lesser General Public License
+// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
 package era
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 
@@ -29,7 +30,7 @@ import (
 // accumulator of header records.
 func ComputeAccumulator(hashes []common.Hash, tds []*big.Int) (common.Hash, error) {
 	if len(hashes) != len(tds) {
-		return common.Hash{}, fmt.Errorf("must have equal number hashes as td values")
+		return common.Hash{}, errors.New("must have equal number hashes as td values")
 	}
 	if len(hashes) > MaxEra1Size {
 		return common.Hash{}, fmt.Errorf("too many records: have %d, max %d", len(hashes), MaxEra1Size)

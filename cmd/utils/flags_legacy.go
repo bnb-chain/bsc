@@ -47,6 +47,7 @@ var DeprecatedFlags = []cli.Flag{
 	LightNoSyncServeFlag,
 	LogBacktraceAtFlag,
 	LogDebugFlag,
+	MinerNewPayloadTimeoutFlag,
 }
 
 var (
@@ -89,36 +90,32 @@ var (
 	LightServeFlag = &cli.IntFlag{
 		Name:     "light.serve",
 		Usage:    "Maximum percentage of time allowed for serving LES requests (deprecated)",
-		Value:    ethconfig.Defaults.LightServ,
-		Category: flags.LightCategory,
+		Category: flags.DeprecatedCategory,
 	}
 	LightIngressFlag = &cli.IntFlag{
 		Name:     "light.ingress",
 		Usage:    "Incoming bandwidth limit for serving light clients (deprecated)",
-		Value:    ethconfig.Defaults.LightIngress,
-		Category: flags.LightCategory,
+		Category: flags.DeprecatedCategory,
 	}
 	LightEgressFlag = &cli.IntFlag{
 		Name:     "light.egress",
 		Usage:    "Outgoing bandwidth limit for serving light clients (deprecated)",
-		Value:    ethconfig.Defaults.LightEgress,
-		Category: flags.LightCategory,
+		Category: flags.DeprecatedCategory,
 	}
 	LightMaxPeersFlag = &cli.IntFlag{
 		Name:     "light.maxpeers",
 		Usage:    "Maximum number of light clients to serve, or light servers to attach to (deprecated)",
-		Value:    ethconfig.Defaults.LightPeers,
-		Category: flags.LightCategory,
+		Category: flags.DeprecatedCategory,
 	}
 	LightNoPruneFlag = &cli.BoolFlag{
 		Name:     "light.nopruning",
 		Usage:    "Disable ancient light chain data pruning (deprecated)",
-		Category: flags.LightCategory,
+		Category: flags.DeprecatedCategory,
 	}
 	LightNoSyncServeFlag = &cli.BoolFlag{
 		Name:     "light.nosyncserve",
 		Usage:    "Enables serving light clients before syncing (deprecated)",
-		Category: flags.LightCategory,
+		Category: flags.DeprecatedCategory,
 	}
 	// Deprecated November 2023
 	LogBacktraceAtFlag = &cli.StringFlag{
@@ -130,6 +127,24 @@ var (
 	LogDebugFlag = &cli.BoolFlag{
 		Name:     "log.debug",
 		Usage:    "Prepends log messages with call-site location (deprecated)",
+		Category: flags.DeprecatedCategory,
+	}
+	// Deprecated February 2024
+	MinerNewPayloadTimeoutFlag = &cli.DurationFlag{
+		Name:     "miner.newpayload-timeout",
+		Usage:    "Specify the maximum time allowance for creating a new payload (deprecated)",
+		Value:    ethconfig.Defaults.Miner.Recommit,
+		Category: flags.DeprecatedCategory,
+	}
+	MetricsEnabledExpensiveFlag = &cli.BoolFlag{
+		Name:     "metrics.expensive",
+		Usage:    "Enable expensive metrics collection and reporting (deprecated)",
+		Category: flags.DeprecatedCategory,
+	}
+	// Deprecated Oct 2024
+	EnablePersonal = &cli.BoolFlag{
+		Name:     "rpc.enabledeprecatedpersonal",
+		Usage:    "This used to enable the 'personal' namespace.",
 		Category: flags.DeprecatedCategory,
 	}
 )

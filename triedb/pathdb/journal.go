@@ -29,12 +29,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/trie/trienode"
-	"github.com/ethereum/go-ethereum/trie/triestate"
 )
 
 var (
@@ -45,34 +42,15 @@ var (
 	errUnmatchedJournal  = errors.New("unmatched journal")
 )
 
-const journalVersion uint64 = 0
-
-// journalNode represents a trie node persisted in the journal.
-type journalNode struct {
-	Path []byte // Path of the node in the trie
-	Blob []byte // RLP-encoded trie node blob, nil means the node is deleted
-}
-
-// journalNodes represents a list trie nodes belong to a single account
-// or the main account trie.
-type journalNodes struct {
-	Owner common.Hash
-	Nodes []journalNode
-}
-
-// journalAccounts represents a list accounts belong to the layer.
-type journalAccounts struct {
-	Addresses []common.Address
-	Accounts  [][]byte
-}
-
-// journalStorage represents a list of storage slots belong to an account.
-type journalStorage struct {
-	Incomplete bool
-	Account    common.Address
-	Hashes     []common.Hash
-	Slots      [][]byte
-}
+// journalVersion ensures that an incompatible journal is detected and discarded.
+//
+// Changelog:
+//
+// - Version 0: initial version
+// - Version 1: storage.Incomplete field is removed
+// - Version 2: add post-modification state values
+// - Version 3: a flag has been added to indicate whether the storage slot key is the raw key or a hash
+const journalVersion uint64 = 3
 
 type JournalWriter interface {
 	io.Writer
@@ -229,7 +207,7 @@ func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
 		return nil, fmt.Errorf("%w want %x got %x", errUnmatchedJournal, root, diskRoot)
 	}
 	// Load the disk layer from the journal
-	base, err := db.loadDiskLayer(r, journalTypeForReader)
+	base, err := db.loadDiskLayer(r, journalTypeForReader, version)
 	if err != nil {
 		return nil, err
 	}
@@ -245,9 +223,10 @@ func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
 // loadLayers loads a pre-existing state layer backed by a key-value store.
 func (db *Database) loadLayers() layer {
 	// Retrieve the root node of persistent state.
-	_, root := rawdb.ReadAccountTrieNode(db.diskdb, nil)
-	root = types.TrieRootHash(root)
-
+	root, err := db.hasher(rawdb.ReadAccountTrieNode(db.diskdb, nil))
+	if err != nil {
+		log.Crit("Failed to compute node hash", "err", err)
+	}
 	// Load the layers by resolving the journal
 	head, err := db.loadJournal(root)
 	if err == nil {
@@ -259,13 +238,54 @@ func (db *Database) loadLayers() layer {
 	if !(root == types.EmptyRootHash && errors.Is(err, errMissJournal)) {
 		log.Info("Failed to load journal, discard it", "err", err)
 	}
+	// try to load node buffer only, it can be compatible with old journal ver
+	base, err := db.loadNodeBufferAsJournalV0V1(root)
+	if err == nil {
+		log.Info("load legacy node buffer successful", "new root", base.rootHash(), "disk root", root)
+		return base
+	}
+	log.Warn("Failed to load disk journal with node buffer, discard it", "err", err)
 	// Return single layer with persistent state.
-	return newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.bufferSize, nil, 0))
+	return newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0))
+}
+
+// loadNodeBufferAsJournalV0V1 try to load legacy node buffer data from journal
+// TODO(galaio): the method is a temporary solution for legacy journal, it could be removed in the future
+func (db *Database) loadNodeBufferAsJournalV0V1(diskRoot common.Hash) (layer, error) {
+	journalTypeForReader := db.DetermineJournalTypeForReader()
+	reader, err := newJournalReader(db.config.JournalFilePath, db.diskdb, journalTypeForReader)
+
+	if err != nil {
+		return nil, err
+	}
+	if reader != nil {
+		defer reader.Close()
+	}
+	r := rlp.NewStream(reader, 0)
+
+	// read & check journal version
+	version, err := r.Uint64()
+	if err != nil {
+		return nil, errMissVersion
+	}
+	if version >= journalVersion {
+		return nil, fmt.Errorf("%w, only handle legacy journal version, got %v", errUnexpectedVersion, version)
+	}
+
+	// read & check disk root
+	var root common.Hash
+	if err := r.Decode(&root); err != nil {
+		return nil, errMissDiskRoot
+	}
+	if !bytes.Equal(root.Bytes(), diskRoot.Bytes()) {
+		return nil, fmt.Errorf("%w want %x got %x", errUnmatchedJournal, root, diskRoot)
+	}
+	return db.loadDiskLayer(r, journalTypeForReader, version)
 }
 
 // loadDiskLayer reads the binary blob from the layer journal, reconstructing
 // a new disk layer on it.
-func (db *Database) loadDiskLayer(r *rlp.Stream, journalTypeForReader JournalType) (layer, error) {
+func (db *Database) loadDiskLayer(r *rlp.Stream, journalTypeForReader JournalType, version uint64) (layer, error) {
 	// Resolve disk layer root
 	var (
 		root               common.Hash
@@ -295,22 +315,19 @@ func (db *Database) loadDiskLayer(r *rlp.Stream, journalTypeForReader JournalTyp
 	if stored > id {
 		return nil, fmt.Errorf("invalid state id: stored %d resolved %d", stored, id)
 	}
-	// Resolve nodes cached in node buffer
-	var encoded []journalNodes
-	if err := journalBuf.Decode(&encoded); err != nil {
-		return nil, fmt.Errorf("load disk nodes: %v", err)
+	// Resolve nodes cached in aggregated buffer
+	var nodes nodeSet
+	if err := nodes.decode(journalBuf); err != nil {
+		return nil, err
 	}
-	nodes := make(map[common.Hash]map[string]*trienode.Node)
-	for _, entry := range encoded {
-		subset := make(map[string]*trienode.Node)
-		for _, n := range entry.Nodes {
-			if len(n.Blob) > 0 {
-				subset[string(n.Path)] = trienode.New(crypto.Keccak256Hash(n.Blob), n.Blob)
-			} else {
-				subset[string(n.Path)] = trienode.NewDeleted()
-			}
+
+	// handle new states in journal v2
+	var states = newStates(nil, nil, false)
+	if version == journalVersion {
+		// Resolve flat state sets in aggregated buffer
+		if err := states.decode(journalBuf); err != nil {
+			return nil, err
 		}
-		nodes[entry.Owner] = subset
 	}
 
 	if journalTypeForReader == JournalFileType {
@@ -326,7 +343,7 @@ func (db *Database) loadDiskLayer(r *rlp.Stream, journalTypeForReader JournalTyp
 	}
 
 	// Calculate the internal state transitions by id difference.
-	base := newDiskLayer(root, id, db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.bufferSize, nodes, id-stored))
+	base := newDiskLayer(root, id, db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, &nodes, states, id-stored))
 	return base, nil
 }
 
@@ -364,52 +381,14 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream, journalTypeForRea
 		return nil, fmt.Errorf("load block number: %v", err)
 	}
 	// Read in-memory trie nodes from journal
-	var encoded []journalNodes
-	if err := journalBuf.Decode(&encoded); err != nil {
-		return nil, fmt.Errorf("load diff nodes: %v", err)
+	var nodes nodeSet
+	if err := nodes.decode(journalBuf); err != nil {
+		return nil, err
 	}
-	nodes := make(map[common.Hash]map[string]*trienode.Node)
-	for _, entry := range encoded {
-		subset := make(map[string]*trienode.Node)
-		for _, n := range entry.Nodes {
-			if len(n.Blob) > 0 {
-				subset[string(n.Path)] = trienode.New(crypto.Keccak256Hash(n.Blob), n.Blob)
-			} else {
-				subset[string(n.Path)] = trienode.NewDeleted()
-			}
-		}
-		nodes[entry.Owner] = subset
-	}
-	// Read state changes from journal
-	var (
-		jaccounts  journalAccounts
-		jstorages  []journalStorage
-		accounts   = make(map[common.Address][]byte)
-		storages   = make(map[common.Address]map[common.Hash][]byte)
-		incomplete = make(map[common.Address]struct{})
-	)
-	if err := journalBuf.Decode(&jaccounts); err != nil {
-		return nil, fmt.Errorf("load diff accounts: %v", err)
-	}
-	for i, addr := range jaccounts.Addresses {
-		accounts[addr] = jaccounts.Accounts[i]
-	}
-	if err := journalBuf.Decode(&jstorages); err != nil {
-		return nil, fmt.Errorf("load diff storages: %v", err)
-	}
-	for _, entry := range jstorages {
-		set := make(map[common.Hash][]byte)
-		for i, h := range entry.Hashes {
-			if len(entry.Slots[i]) > 0 {
-				set[h] = entry.Slots[i]
-			} else {
-				set[h] = nil
-			}
-		}
-		if entry.Incomplete {
-			incomplete[entry.Account] = struct{}{}
-		}
-		storages[entry.Account] = set
+	// Read flat states set (with original value attached) from journal
+	var stateSet StateSetWithOrigin
+	if err := stateSet.decode(journalBuf); err != nil {
+		return nil, err
 	}
 
 	if journalTypeForReader == JournalFileType {
@@ -426,7 +405,7 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream, journalTypeForRea
 
 	log.Debug("Loaded diff layer journal", "root", root, "parent", parent.rootHash(), "id", parent.stateID()+1, "block", block)
 
-	return db.loadDiffLayer(newDiffLayer(parent, root, parent.stateID()+1, block, nodes, triestate.New(accounts, storages, incomplete)), r, journalTypeForReader)
+	return db.loadDiffLayer(newDiffLayer(parent, root, parent.stateID()+1, block, &nodes, &stateSet), r, journalTypeForReader)
 }
 
 // journal implements the layer interface, marshaling the un-flushed trie nodes
@@ -450,17 +429,13 @@ func (dl *diskLayer) journal(w io.Writer, journalType JournalType) error {
 	if err := rlp.Encode(journalBuf, dl.id); err != nil {
 		return err
 	}
-	// Step three, write all unwritten nodes into the journal
-	bufferNodes := dl.buffer.getAllNodes()
-	nodes := make([]journalNodes, 0, len(bufferNodes))
-	for owner, subset := range bufferNodes {
-		entry := journalNodes{Owner: owner}
-		for path, node := range subset {
-			entry.Nodes = append(entry.Nodes, journalNode{Path: []byte(path), Blob: node.Blob})
-		}
-		nodes = append(nodes, entry)
+	nodes, states := dl.buffer.getAllNodesAndStates()
+	// Step three, write the accumulated trie nodes into the journal
+	if err := nodes.encode(journalBuf); err != nil {
+		return err
 	}
-	if err := rlp.Encode(journalBuf, nodes); err != nil {
+	// Step four, write the accumulated flat states into the journal
+	if err := states.encode(journalBuf); err != nil {
 		return err
 	}
 
@@ -479,7 +454,7 @@ func (dl *diskLayer) journal(w io.Writer, journalType JournalType) error {
 		}
 	}
 
-	log.Info("Journaled pathdb disk layer", "root", dl.root, "nodes", len(bufferNodes))
+	log.Info("Journaled pathdb disk layer", "root", dl.root)
 	return nil
 }
 
@@ -503,39 +478,11 @@ func (dl *diffLayer) journal(w io.Writer, journalType JournalType) error {
 		return err
 	}
 	// Write the accumulated trie nodes into buffer
-	nodes := make([]journalNodes, 0, len(dl.nodes))
-	for owner, subset := range dl.nodes {
-		entry := journalNodes{Owner: owner}
-		for path, node := range subset {
-			entry.Nodes = append(entry.Nodes, journalNode{Path: []byte(path), Blob: node.Blob})
-		}
-		nodes = append(nodes, entry)
-	}
-	if err := rlp.Encode(journalBuf, nodes); err != nil {
+	if err := dl.nodes.encode(journalBuf); err != nil {
 		return err
 	}
-	// Write the accumulated state changes into buffer
-	var jacct journalAccounts
-	for addr, account := range dl.states.Accounts {
-		jacct.Addresses = append(jacct.Addresses, addr)
-		jacct.Accounts = append(jacct.Accounts, account)
-	}
-	if err := rlp.Encode(journalBuf, jacct); err != nil {
-		return err
-	}
-	storage := make([]journalStorage, 0, len(dl.states.Storages))
-	for addr, slots := range dl.states.Storages {
-		entry := journalStorage{Account: addr}
-		if _, ok := dl.states.Incomplete[addr]; ok {
-			entry.Incomplete = true
-		}
-		for slotHash, slot := range slots {
-			entry.Hashes = append(entry.Hashes, slotHash)
-			entry.Slots = append(entry.Slots, slot)
-		}
-		storage = append(storage, entry)
-	}
-	if err := rlp.Encode(journalBuf, storage); err != nil {
+	// Write the associated flat state set into buffer
+	if err := dl.states.encode(journalBuf); err != nil {
 		return err
 	}
 
@@ -554,7 +501,7 @@ func (dl *diffLayer) journal(w io.Writer, journalType JournalType) error {
 		}
 	}
 
-	log.Info("Journaled pathdb diff layer", "root", dl.root, "parent", dl.parent.rootHash(), "id", dl.stateID(), "block", dl.block, "nodes", len(dl.nodes))
+	log.Info("Journaled pathdb diff layer", "root", dl.root, "parent", dl.parent.rootHash(), "id", dl.stateID(), "block", dl.block)
 	return nil
 }
 
@@ -562,6 +509,8 @@ func (dl *diffLayer) journal(w io.Writer, journalType JournalType) error {
 // This is meant to be used during shutdown to persist the layer without
 // flattening everything down (bad for reorgs). And this function will mark the
 // database as read-only to prevent all following mutation to disk.
+//
+// The supplied root must be a valid trie hash value.
 func (db *Database) Journal(root common.Hash) error {
 	// Run the journaling
 	db.lock.Lock()
@@ -594,14 +543,13 @@ func (db *Database) Journal(root common.Hash) error {
 	if err := rlp.Encode(journal, journalVersion); err != nil {
 		return err
 	}
-	// The stored state in disk might be empty, convert the
-	// root to emptyRoot in this case.
-	_, diskroot := rawdb.ReadAccountTrieNode(db.diskdb, nil)
-	diskroot = types.TrieRootHash(diskroot)
-
 	// Secondly write out the state root in disk, ensure all layers
 	// on top are continuous with disk.
-	if err := rlp.Encode(journal, diskroot); err != nil {
+	diskRoot, err := db.hasher(rawdb.ReadAccountTrieNode(db.diskdb, nil))
+	if err != nil {
+		return err
+	}
+	if err := rlp.Encode(journal, diskRoot); err != nil {
 		return err
 	}
 	// Finally write out the journal of each layer in reverse order.

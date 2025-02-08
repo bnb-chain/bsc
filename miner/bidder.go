@@ -14,17 +14,13 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/miner/validatorclient"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
 const maxBid int64 = 3
-
-type ValidatorConfig struct {
-	Address common.Address
-	URL     string
-}
 
 type validator struct {
 	*validatorclient.Client
@@ -33,7 +29,7 @@ type validator struct {
 }
 
 type Bidder struct {
-	config        *MevConfig
+	config        *minerconfig.MevConfig
 	delayLeftOver time.Duration
 	engine        consensus.Engine
 	chain         *core.BlockChain
@@ -52,7 +48,7 @@ type Bidder struct {
 	wallet accounts.Wallet
 }
 
-func NewBidder(config *MevConfig, delayLeftOver time.Duration, engine consensus.Engine, eth Backend) *Bidder {
+func NewBidder(config *minerconfig.MevConfig, delayLeftOver time.Duration, engine consensus.Engine, eth Backend) *Bidder {
 	b := &Bidder{
 		config:        config,
 		delayLeftOver: delayLeftOver,
@@ -171,7 +167,7 @@ func (b *Bidder) isRegistered(validator common.Address) bool {
 	return ok
 }
 
-func (b *Bidder) register(cfg ValidatorConfig) {
+func (b *Bidder) register(cfg minerconfig.ValidatorConfig) {
 	b.validatorsMu.Lock()
 	defer b.validatorsMu.Unlock()
 
@@ -186,6 +182,8 @@ func (b *Bidder) register(cfg ValidatorConfig) {
 		log.Error("Bidder: failed to get mev params", "url", cfg.URL, "err", err)
 		return
 	}
+
+	log.Debug("test: register validator", "address", cfg.Address, "params", params)
 
 	b.validators[cfg.Address] = &validator{
 		Client:                cl,
@@ -233,6 +231,10 @@ func (b *Bidder) bid(work *environment) {
 	if cli == nil {
 		log.Info("Bidder: validator not integrated", "validator", work.coinbase)
 		return
+	}
+
+	if len(work.txs) > 0 {
+		log.Debug("Bidder: bidding start", "txcount", len(work.txs), "txHash", work.txs[0].Hash())
 	}
 
 	// construct bid from work

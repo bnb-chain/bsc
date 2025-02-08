@@ -1,4 +1,4 @@
-// Copyright 2022 The go-ethereum Authors
+// Copyright 2023 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -12,7 +12,7 @@
 // GNU Lesser General Public License for more details.
 //
 // You should have received a copy of the GNU Lesser General Public License
-// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>
+// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
 package pathdb
 
@@ -26,32 +26,32 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/internal/testrand"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/trie/testutil"
-	"github.com/ethereum/go-ethereum/trie/triestate"
 )
 
 // randomStateSet generates a random state change set.
-func randomStateSet(n int) *triestate.Set {
+func randomStateSet(n int) (map[common.Address][]byte, map[common.Address]map[common.Hash][]byte) {
 	var (
 		accounts = make(map[common.Address][]byte)
 		storages = make(map[common.Address]map[common.Hash][]byte)
 	)
 	for i := 0; i < n; i++ {
-		addr := testutil.RandomAddress()
+		addr := testrand.Address()
 		storages[addr] = make(map[common.Hash][]byte)
 		for j := 0; j < 3; j++ {
-			v, _ := rlp.EncodeToBytes(common.TrimLeftZeroes(testutil.RandBytes(32)))
-			storages[addr][testutil.RandomHash()] = v
+			v, _ := rlp.EncodeToBytes(common.TrimLeftZeroes(testrand.Bytes(32)))
+			storages[addr][testrand.Hash()] = v
 		}
 		account := generateAccount(types.EmptyRootHash)
 		accounts[addr] = types.SlimAccountRLP(account)
 	}
-	return triestate.New(accounts, storages, nil)
+	return accounts, storages
 }
 
-func makeHistory() *history {
-	return newHistory(testutil.RandomHash(), types.EmptyRootHash, 0, randomStateSet(3))
+func makeHistory(rawStorageKey bool) *history {
+	accounts, storages := randomStateSet(3)
+	return newHistory(testrand.Hash(), types.EmptyRootHash, 0, accounts, storages, rawStorageKey)
 }
 
 func makeHistories(n int) []*history {
@@ -60,8 +60,9 @@ func makeHistories(n int) []*history {
 		result []*history
 	)
 	for i := 0; i < n; i++ {
-		root := testutil.RandomHash()
-		h := newHistory(root, parent, uint64(i), randomStateSet(3))
+		root := testrand.Hash()
+		accounts, storages := randomStateSet(3)
+		h := newHistory(root, parent, uint64(i), accounts, storages, false)
 		parent = root
 		result = append(result, h)
 	}
@@ -69,10 +70,15 @@ func makeHistories(n int) []*history {
 }
 
 func TestEncodeDecodeHistory(t *testing.T) {
+	testEncodeDecodeHistory(t, false)
+	testEncodeDecodeHistory(t, true)
+}
+
+func testEncodeDecodeHistory(t *testing.T, rawStorageKey bool) {
 	var (
 		m   meta
 		dec history
-		obj = makeHistory()
+		obj = makeHistory(rawStorageKey)
 	)
 	// check if meta data can be correctly encode/decode
 	blob := obj.meta.encode()
@@ -102,7 +108,7 @@ func TestEncodeDecodeHistory(t *testing.T) {
 	}
 }
 
-func checkHistory(t *testing.T, db ethdb.KeyValueReader, freezer *rawdb.ResettableFreezer, id uint64, root common.Hash, exist bool) {
+func checkHistory(t *testing.T, db ethdb.KeyValueReader, freezer ethdb.AncientReader, id uint64, root common.Hash, exist bool) {
 	blob := rawdb.ReadStateHistoryMeta(freezer, id)
 	if exist && len(blob) == 0 {
 		t.Fatalf("Failed to load trie history, %d", id)
@@ -118,7 +124,7 @@ func checkHistory(t *testing.T, db ethdb.KeyValueReader, freezer *rawdb.Resettab
 	}
 }
 
-func checkHistoriesInRange(t *testing.T, db ethdb.KeyValueReader, freezer *rawdb.ResettableFreezer, from, to uint64, roots []common.Hash, exist bool) {
+func checkHistoriesInRange(t *testing.T, db ethdb.KeyValueReader, freezer ethdb.AncientReader, from, to uint64, roots []common.Hash, exist bool) {
 	for i, j := from, 0; i <= to; i, j = i+1, j+1 {
 		checkHistory(t, db, freezer, i, roots[j], exist)
 	}
@@ -129,7 +135,7 @@ func TestTruncateHeadHistory(t *testing.T) {
 		roots      []common.Hash
 		hs         = makeHistories(10)
 		db         = rawdb.NewMemoryDatabase()
-		freezer, _ = openFreezer(t.TempDir(), false)
+		freezer, _ = rawdb.NewStateFreezer(t.TempDir(), false, false, 0)
 	)
 	defer freezer.Close()
 
@@ -157,7 +163,7 @@ func TestTruncateTailHistory(t *testing.T) {
 		roots      []common.Hash
 		hs         = makeHistories(10)
 		db         = rawdb.NewMemoryDatabase()
-		freezer, _ = openFreezer(t.TempDir(), false)
+		freezer, _ = rawdb.NewStateFreezer(t.TempDir(), false, false, 0)
 	)
 	defer freezer.Close()
 
@@ -200,7 +206,7 @@ func TestTruncateTailHistories(t *testing.T) {
 			roots      []common.Hash
 			hs         = makeHistories(10)
 			db         = rawdb.NewMemoryDatabase()
-			freezer, _ = openFreezer(t.TempDir()+fmt.Sprintf("%d", i), false)
+			freezer, _ = rawdb.NewStateFreezer(t.TempDir()+fmt.Sprintf("%d", i), false, false, 0)
 		)
 		defer freezer.Close()
 
@@ -228,7 +234,7 @@ func TestTruncateOutOfRange(t *testing.T) {
 	var (
 		hs         = makeHistories(10)
 		db         = rawdb.NewMemoryDatabase()
-		freezer, _ = openFreezer(t.TempDir(), false)
+		freezer, _ = rawdb.NewStateFreezer(t.TempDir(), false, false, 0)
 	)
 	defer freezer.Close()
 
@@ -266,11 +272,6 @@ func TestTruncateOutOfRange(t *testing.T) {
 			t.Errorf("Unexpected error, want: %v, got: %v", c.expErr, gotErr)
 		}
 	}
-}
-
-// openFreezer initializes the freezer instance for storing state histories.
-func openFreezer(datadir string, readOnly bool) (*rawdb.ResettableFreezer, error) {
-	return rawdb.NewStateFreezer(datadir, readOnly, 0)
 }
 
 func compareSet[k comparable](a, b map[k][]byte) bool {

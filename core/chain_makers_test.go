@@ -42,13 +42,12 @@ func TestGeneratePOSChain(t *testing.T) {
 		aa      = common.Address{0xaa}
 		bb      = common.Address{0xbb}
 		funds   = big.NewInt(0).Mul(big.NewInt(1337), big.NewInt(params.Ether))
-		config  = *params.AllEthashProtocolChanges
-		asm4788 = common.Hex2Bytes("3373fffffffffffffffffffffffffffffffffffffffe14604d57602036146024575f5ffd5b5f35801560495762001fff810690815414603c575f5ffd5b62001fff01545f5260205ff35b5f5ffd5b62001fff42064281555f359062001fff015500")
+		config  = *params.MergedTestChainConfig
 		gspec   = &Genesis{
 			Config: &config,
 			Alloc: types.GenesisAlloc{
 				address:                   {Balance: funds},
-				params.BeaconRootsAddress: {Balance: common.Big0, Code: asm4788},
+				params.BeaconRootsAddress: {Code: params.BeaconRootsCode},
 			},
 			BaseFee:    big.NewInt(params.InitialBaseFee),
 			Difficulty: common.Big1,
@@ -57,11 +56,6 @@ func TestGeneratePOSChain(t *testing.T) {
 		gendb = rawdb.NewMemoryDatabase()
 		db    = rawdb.NewMemoryDatabase()
 	)
-
-	config.TerminalTotalDifficultyPassed = true
-	config.TerminalTotalDifficulty = common.Big0
-	config.ShanghaiTime = u64(0)
-	config.CancunTime = u64(0)
 
 	// init 0xaa with some storage elements
 	storage := make(map[common.Hash]common.Hash)

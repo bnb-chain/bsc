@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -67,7 +68,7 @@ var (
 	pendingTxs []*types.Transaction
 	newTxs     []*types.Transaction
 
-	testConfig = &Config{
+	testConfig = &minerconfig.Config{
 		Recommit: time.Second,
 		GasCeil:  params.GenesisGasLimit,
 	}
@@ -164,8 +165,8 @@ func (b *testWorkerBackend) newRandomTx(creation bool) *types.Transaction {
 
 func newTestWorker(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, blocks int) (*worker, *testWorkerBackend) {
 	backend := newTestWorkerBackend(t, chainConfig, engine, db, blocks)
-	backend.txPool.Add(pendingTxs, true, false)
-	w := newWorker(testConfig, chainConfig, engine, backend, new(event.TypeMux), nil, false)
+	backend.txPool.Add(pendingTxs, true)
+	w := newWorker(testConfig, engine, backend, new(event.TypeMux), false)
 	w.setEtherbase(testBankAddress)
 	return w, backend
 }
@@ -199,8 +200,8 @@ func TestGenerateAndImportBlock(t *testing.T) {
 	w.start()
 
 	for i := 0; i < 5; i++ {
-		b.txPool.Add([]*types.Transaction{b.newRandomTx(true)}, true, false)
-		b.txPool.Add([]*types.Transaction{b.newRandomTx(false)}, true, false)
+		b.txPool.Add([]*types.Transaction{b.newRandomTx(true)}, true)
+		b.txPool.Add([]*types.Transaction{b.newRandomTx(false)}, true)
 
 		select {
 		case ev := <-sub.Chan():

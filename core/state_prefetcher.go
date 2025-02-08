@@ -17,7 +17,6 @@
 package core
 
 import (
-	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -32,16 +31,14 @@ const checkInterval = 10
 // data from disk before the main block processor start executing.
 type statePrefetcher struct {
 	config *params.ChainConfig // Chain configuration options
-	bc     *BlockChain         // Canonical block chain
-	engine consensus.Engine    // Consensus engine used for block rewards
+	chain  *HeaderChain        // Canonical block chain
 }
 
 // NewStatePrefetcher initialises a new statePrefetcher.
-func NewStatePrefetcher(config *params.ChainConfig, bc *BlockChain, engine consensus.Engine) *statePrefetcher {
+func NewStatePrefetcher(config *params.ChainConfig, chain *HeaderChain) *statePrefetcher {
 	return &statePrefetcher{
 		config: config,
-		bc:     bc,
-		engine: engine,
+		chain:  chain,
 	}
 }
 
@@ -63,8 +60,8 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 				newStatedb.EnableWriteOnSharedStorage()
 			}
 			gaspool := new(GasPool).AddGas(block.GasLimit())
-			blockContext := NewEVMBlockContext(header, p.bc, nil)
-			evm := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, *cfg)
+			blockContext := NewEVMBlockContext(header, p.chain, nil)
+			evm := vm.NewEVM(blockContext, newStatedb, p.config, *cfg)
 			// Iterate over and process the individual transactions
 			for {
 				select {
@@ -72,12 +69,15 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 					tx := transactions[txIndex]
 					// Convert the transaction into an executable message and pre-cache its sender
 					msg, err := TransactionToMessage(tx, signer, header.BaseFee)
-					msg.SkipAccountChecks = true
+					msg.SkipNonceChecks = true
+					msg.SkipFromEOACheck = true
 					if err != nil {
 						return // Also invalid block, bail out
 					}
 					newStatedb.SetTxContext(tx.Hash(), txIndex)
-					precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
+					// We attempt to apply a transaction. The goal is not to execute
+					// the transaction successfully, rather to warm up touched data slots.
+					ApplyMessage(evm, msg, gaspool)
 
 				case <-interruptCh:
 					// If block precaching was interrupted, abort
@@ -112,21 +112,22 @@ func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header
 				newStatedb.EnableWriteOnSharedStorage()
 			}
 			gaspool := new(GasPool).AddGas(gasLimit)
-			blockContext := NewEVMBlockContext(header, p.bc, nil)
-			evm := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
+			blockContext := NewEVMBlockContext(header, p.chain, nil)
+			evm := vm.NewEVM(blockContext, newStatedb, p.config, cfg)
 			// Iterate over and process the individual transactions
 			for {
 				select {
 				case tx := <-startCh:
 					// Convert the transaction into an executable message and pre-cache its sender
 					msg, err := TransactionToMessage(tx, signer, header.BaseFee)
-					msg.SkipAccountChecks = true
+					msg.SkipNonceChecks = true
+					msg.SkipFromEOACheck = true
 					if err != nil {
 						return // Also invalid block, bail out
 					}
 					idx++
 					newStatedb.SetTxContext(tx.Hash(), idx)
-					precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
+					ApplyMessage(evm, msg, gaspool)
 					gaspool = new(GasPool).AddGas(gasLimit)
 				case <-stopCh:
 					return
@@ -159,18 +160,4 @@ func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header
 			}
 		}
 	}(txs)
-}
-
-// precacheTransaction attempts to apply a transaction to the given state database
-// and uses the input parameters for its environment. The goal is not to execute
-// the transaction successfully, rather to warm up touched data slots.
-func precacheTransaction(msg *Message, config *params.ChainConfig, gaspool *GasPool, statedb *state.StateDB, header *types.Header, evm *vm.EVM) error {
-	// Update the evm with the new transaction context.
-	evm.Reset(NewEVMTxContext(msg), statedb)
-	// Add addresses to access list if applicable
-	_, err := ApplyMessage(evm, msg, gaspool)
-	if err == nil {
-		statedb.Finalise(true)
-	}
-	return err
 }

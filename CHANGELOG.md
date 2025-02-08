@@ -1,4 +1,131 @@
 # Changelog
+## v1.5.5
+v1.5.5 mainly did a upstream code sync, it catches up to Geth of date around 5th-Feb-2025 to sync the latest Praque hard fork changes, see: https://github.com/bnb-chain/bsc/pull/2856
+
+Besides the code sync, there are a few improvement PRs of BSC:
+### IMPROVEMENT
+* [\#2846](https://github.com/bnb-chain/bsc/pull/2846) tracing: pass *tracing.Hooks around instead of vm.Config
+* [\#2850](https://github.com/bnb-chain/bsc/pull/2850) metric: revert default expensive metrics in blockchain
+* [\#2851](https://github.com/bnb-chain/bsc/pull/2851) eth/tracers: fix call nil OnSystemTxFixIntrinsicGas
+* [\#2862](https://github.com/bnb-chain/bsc/pull/2862) cmd/jsutils/getchainstatus.js: add GetEip7623
+* [\#2867](https://github.com/bnb-chain/bsc/pull/2867) p2p: lowered log lvl for failed enr request
+
+## v1.5.4
+### BUGFIX
+* [\#2874](https://github.com/bnb-chain/bsc/pull/2874) crypto: add IsOnCurve check
+
+
+## v1.5.3
+### BUGFIX
+* [\#2827](https://github.com/bnb-chain/bsc/pull/2827) triedb/pathdb: fix nil field for stateSet
+* [\#2830](https://github.com/bnb-chain/bsc/pull/2830) fastnode: fix some pbss saving&rewind issues
+* [\#2835](https://github.com/bnb-chain/bsc/pull/2835) dep: fix nancy issues
+* [\#2836](https://github.com/bnb-chain/bsc/pull/2836) Revert "internal/ethapi: remove td field from block (#30386)"
+
+### FEATURE
+NA
+
+### IMPROVEMENT
+* [\#2834](https://github.com/bnb-chain/bsc/pull/2834) eth: make transaction acceptance depends on syncing status
+* [\#2844](https://github.com/bnb-chain/bsc/pull/2844) internal/ethapi: support GetFinalizedBlock by common ratio validators
+* [\#2772](https://github.com/bnb-chain/bsc/pull/2772) Push tracing of Parlia system transactions so that live tracers can properly traces those state changes
+* [\#2845](https://github.com/bnb-chain/bsc/pull/2845) feat: wait miner finish the later multi-proposals when restarting the node
+
+## v1.5.2
+v1.5.2-alpha is another release for upstream code sync, it catches up with [go-ethereum release [v1.14.12]](https://github.com/ethereum/go-ethereum/releases/tag/v1.14.12) and supported 4 BEPs for BSC Pascal hard fork.
+- BEP-439: Implement EIP-2537: Precompile for BLS12-381 curve operations
+- BEP-440: Implement EIP-2935: Serve historical block hashes from state
+- BEP-441: Implement EIP-7702: Set EOA account code
+- BEP-466: Make the block format compatible with EIP-7685
+
+#### Code Sync
+- [upstream: merge geth v1.14.12](https://github.com/bnb-chain/bsc/pull/2791)
+- [upstream: merge geth date 1210](https://github.com/bnb-chain/bsc/pull/2799)
+- [upstream: merge geth date 1213](https://github.com/bnb-chain/bsc/pull/2806)
+
+#### Pascal BEPs
+- [BEP-441: Implement EIP-7702: Set EOA account code](https://github.com/bnb-chain/bsc/pull/2807)
+- [BEP-466: Make the block header format compatible with EIP-7685](https://github.com/bnb-chain/bsc/pull/2777)
+- Note: BEP-439 and BEP-440 have already been implemented in previous v1.5.1-alpha release
+
+#### Others
+- [eth/fetcher: remove light mode in block fetcher](https://github.com/bnb-chain/bsc/pull/2804)
+- [fix: Opt pruneancient issues](https://github.com/bnb-chain/bsc/pull/2800)
+- [build(deps): bump github.com/golang-jwt/jwt/v4 from 4.5.0 to 4.5.1](https://github.com/bnb-chain/bsc/pull/2788)
+- [build(deps): bump golang.org/x/crypto from 0.22.0 to 0.31.0](https://github.com/bnb-chain/bsc/pull/2797)
+- [misc: mini fix and clearup](https://github.com/bnb-chain/bsc/pull/2811)
+
+## v1.5.1
+v1.5.1-alpha is for upstream code sync, it catches up with[go-ethereum release [v1.13.15, v1.14.11]](https://github.com/ethereum/go-ethereum/releases)
+
+#### Major Changes
+[eth: make transaction propagation paths in the network deterministic (#29034)](https://github.com/ethereum/go-ethereum/pull/29034)
+[core/state: parallelise parts of state commit (#29681)](https://github.com/ethereum/go-ethereum/pull/29681)
+Load trie nodes concurrently with trie updates, speeding up block import by 5-7% ([#29519](https://github.com/ethereum/go-ethereum/pull/29519), [#29768](https://github.com/ethereum/go-ethereum/pull/29768), [#29919](https://github.com/ethereum/go-ethereum/pull/29919)).
+[core/vm: reject contract creation if the storage is non-empty (](https://github.com/ethereum/go-ethereum/commit/c170cc0ab0a1f60adcde80d0af8e3050ee19da93)[#28912](https://github.com/ethereum/go-ethereum/pull/28912)[)](https://github.com/ethereum/go-ethereum/commit/c170cc0ab0a1f60adcde80d0af8e3050ee19da93)
+[Add state reader abstraction (#29761)](https://github.com/ethereum/go-ethereum/pull/29761)
+[Stateless witness prefetcher changes (#29519)](https://github.com/ethereum/go-ethereum/pull/29519)
+_not follow changes with trie_prefetcher, the implemenation in bsc is very different_
+[core: use finalized block as the chain freeze indicator (](https://github.com/ethereum/go-ethereum/commit/ca473b81cbe4a96cde4e8424c49b15ab304787bb)[#28683](https://github.com/ethereum/go-ethereum/pull/28683)[)](https://github.com/ethereum/go-ethereum/commit/ca473b81cbe4a96cde4e8424c49b15ab304787bb)
+_in bsc, this feature only enabled with multi-database_
+
+#### New EIPs
+[core/vm: enable bls-precompiles for Prague (](https://github.com/ethereum/go-ethereum/commit/823719b9e1b72174cd8245ae9e6f6f7d7072a8d6)[#29552](https://github.com/ethereum/go-ethereum/pull/29552)[)](https://github.com/ethereum/go-ethereum/commit/823719b9e1b72174cd8245ae9e6f6f7d7072a8d6)
+[EIP-2935: Serve historical block hashes from state](https://eips.ethereum.org/EIPS/eip-2935) ([#29465](https://github.com/ethereum/go-ethereum/pull/29465))
+
+#### Clear Up
+[eth, eth/downloader: remove references to LightChain, LightSync (#29711)](https://github.com/ethereum/go-ethereum/pull/29711)
+[eth/filters: remove support for pending logs(#29574)](https://github.com/ethereum/go-ethereum/pull/29574)
+[Drop large-contract (500MB+) deletion DoS protection from pathdb post Cancun (#28940)](https://github.com/ethereum/go-ethereum/pull/28940).
+Remove totalDifficulty field from RPC, in accordance with [spec update](https://github.com/ethereum/execution-apis/pull/570), [#30386](https://github.com/ethereum/go-ethereum/pull/30386)
+
+#### Merged but Reverted
+[consensus, cmd, core, eth: remove support for non-merge mode of operation (](https://github.com/ethereum/go-ethereum/commit/f4d53133f6e4b13f0dbcfef3bc45e9650d863b73)[#29169](https://github.com/ethereum/go-ethereum/pull/29169)[)](https://github.com/ethereum/go-ethereum/commit/f4d53133f6e4b13f0dbcfef3bc45e9650d863b73)
+[miner: refactor the miner, make the pending block on demand (](https://github.com/ethereum/go-ethereum/commit/d8e0807da22eb922539d15b0d5d01ccdd58b1267)[#28623](https://github.com/ethereum/go-ethereum/pull/28623)[)](https://github.com/ethereum/go-ethereum/commit/d8e0807da22eb922539d15b0d5d01ccdd58b1267)
+[miner: lower default min miner tip from 1 gwei to 0.001 gwei(#29895)](https://github.com/ethereum/go-ethereum/pull/29895)
+_bsc only has tip, 1 Gwei is the min value now_
+[eth/downloader: purge pre-merge sync code (](https://github.com/ethereum/go-ethereum/commit/45baf21111c03d2954c81fdf828e630a8d7b05c1)[#29281](https://github.com/ethereum/go-ethereum/pull/29281)[)](https://github.com/ethereum/go-ethereum/commit/45baf21111c03d2954c81fdf828e630a8d7b05c1)
+[all: remove forkchoicer and reorgNeeded (](https://github.com/ethereum/go-ethereum/commit/b0b67be0a2559073c1620555d2b6a73f825f7135)[#29179](https://github.com/ethereum/go-ethereum/pull/29179)[)](https://github.com/ethereum/go-ethereum/commit/b0b67be0a2559073c1620555d2b6a73f825f7135)
+
+#### Others
+[all: update to go version 1.23.0 (#30323)](https://github.com/ethereum/go-ethereum/pull/30323)
+[Switch to using Go's native log/slog package instead of golang/exp (#29302)](https://github.com/ethereum/go-ethereum/pull/29302).
+[Add the geth db inspect-history command to inspect pathdb state history (#29267)](https://github.com/ethereum/go-ethereum/pull/29267).
+Improve the discovery protocol's node revalidation ([#29572](https://github.com/ethereum/go-ethereum/pull/29572), [#29864](https://github.com/ethereum/go-ethereum/pull/29864), [#29836](https://github.com/ethereum/go-ethereum/pull/29836)).
+[Blobpool related flags in Geth now actually work. (#30203)](https://github.com/ethereum/go-ethereum/pull/30203)
+[core/rawdb: implement in-memory freezer (#29135)](https://github.com/ethereum/go-ethereum/commit/f46c878441e2e567e8815f1e252a38ad0ffafbc2)
+
+
+## v1.5.0
+v1.5.0 was skipped as we forgot to pump the version when create the tag, it is replaced by v1.5.1
+
+## v1.4.16
+### BUGFIX
+* [\#2736](https://github.com/bnb-chain/bsc/pull/2736) ethclient: move TransactionOpts to avoid import internal package;
+* [\#2755](https://github.com/bnb-chain/bsc/pull/2755) fix: fix multi-db env
+* [\#2759](https://github.com/bnb-chain/bsc/pull/2759) fix: add blobSidecars in db inspect
+* [\#2764](https://github.com/bnb-chain/bsc/pull/2764) fix: add blobSidecars in db inspect
+
+### FEATURE
+* [\#2692](https://github.com/bnb-chain/bsc/pull/2692) feat: add pascal hardfork
+* [\#2718](https://github.com/bnb-chain/bsc/pull/2718) feat: add Prague hardfork
+* [\#2734](https://github.com/bnb-chain/bsc/pull/2734) feat: update system contract bytecodes of pascal hardfork
+* [\#2737](https://github.com/bnb-chain/bsc/pull/2737) feat: modify LOCK_PERIOD_FOR_TOKEN_RECOVER to 300 seconds on BSC Testnet in pascal hardfork
+* [\#2660](https://github.com/bnb-chain/bsc/pull/2660) core/txpool/legacypool: add overflowpool for txs
+* [\#2754](https://github.com/bnb-chain/bsc/pull/2754) core/txpool: improve Add() logic, handle edge case
+
+### IMPROVEMENT
+* [\#2727](https://github.com/bnb-chain/bsc/pull/2727) core: clearup testflag for Bohr
+* [\#2716](https://github.com/bnb-chain/bsc/pull/2716) minor Update group_prover.sage
+* [\#2735](https://github.com/bnb-chain/bsc/pull/2735) concensus/parlia.go: make distribute incoming tx more independence
+* [\#2742](https://github.com/bnb-chain/bsc/pull/2742) feat: remove pipecommit
+* [\#2748](https://github.com/bnb-chain/bsc/pull/2748) jsutil: put all js utils in one file
+* [\#2749](https://github.com/bnb-chain/bsc/pull/2749) jsutils: add tool GetKeyParameters
+* [\#2756](https://github.com/bnb-chain/bsc/pull/2756) nancy: ignore github.com/golang-jwt/jwt/v4 4.5.0 in .nancy-ignore
+* [\#2757](https://github.com/bnb-chain/bsc/pull/2757) util: python script to get stats of reorg
+* [\#2758](https://github.com/bnb-chain/bsc/pull/2758) utils: print monikey for reorg script
+* [\#2714](https://github.com/bnb-chain/bsc/pull/2714) refactor: Directly swap two variables to optimize code
+
 ## v1.4.15
 ### BUGFIX
 * [\#2680](https://github.com/bnb-chain/bsc/pull/2680) txpool: apply miner's gasceil to txpool

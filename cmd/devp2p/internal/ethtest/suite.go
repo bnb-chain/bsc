@@ -754,8 +754,8 @@ func makeSidecar(data ...byte) *types.BlobTxSidecar {
 	)
 	for i := range blobs {
 		blobs[i][0] = data[i]
-		c, _ := kzg4844.BlobToCommitment(blobs[i])
-		p, _ := kzg4844.ComputeBlobProof(blobs[i], c)
+		c, _ := kzg4844.BlobToCommitment(&blobs[i])
+		p, _ := kzg4844.ComputeBlobProof(&blobs[i], c)
 		commitments = append(commitments, c)
 		proofs = append(proofs, p)
 	}
@@ -781,7 +781,7 @@ func (s *Suite) makeBlobTxs(count, blobs int, discriminator byte) (txs types.Tra
 			GasTipCap:  uint256.NewInt(1),
 			GasFeeCap:  uint256.MustFromBig(s.chain.Head().BaseFee()),
 			Gas:        100000,
-			BlobFeeCap: uint256.MustFromBig(eip4844.CalcBlobFee(*s.chain.Head().ExcessBlobGas())),
+			BlobFeeCap: uint256.MustFromBig(eip4844.CalcBlobFee(s.chain.config, s.chain.Head().Header())),
 			BlobHashes: makeSidecar(blobdata...).BlobHashes(),
 			Sidecar:    makeSidecar(blobdata...),
 		}
@@ -849,7 +849,16 @@ func (s *Suite) TestBlobViolations(t *utesting.T) {
 		if code, _, err := conn.Read(); err != nil {
 			t.Fatalf("expected disconnect on blob violation, got err: %v", err)
 		} else if code != discMsg {
-			t.Fatalf("expected disconnect on blob violation, got msg code: %d", code)
+			if code == protoOffset(ethProto)+eth.NewPooledTransactionHashesMsg {
+				// sometimes we'll get a blob transaction hashes announcement before the disconnect
+				// because blob transactions are scheduled to be fetched right away.
+				if code, _, err = conn.Read(); err != nil {
+					t.Fatalf("expected disconnect on blob violation, got err on second read: %v", err)
+				}
+			}
+			if code != discMsg {
+				t.Fatalf("expected disconnect on blob violation, got msg code: %d", code)
+			}
 		}
 		conn.Close()
 	}

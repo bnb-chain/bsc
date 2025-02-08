@@ -9,9 +9,8 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
-	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
-	"github.com/ethereum/go-ethereum/miner"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 )
 
 // MarshalTOML marshals as TOML.
@@ -19,7 +18,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	type Config struct {
 		Genesis                 *core.Genesis `toml:",omitempty"`
 		NetworkId               uint64
-		SyncMode                downloader.SyncMode
+		SyncMode                SyncMode
 		DisablePeerTxBroadcast  bool
 		EthDiscoveryURLs        []string
 		SnapDiscoveryURLs       []string
@@ -30,7 +29,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		DirectBroadcast         bool
 		DisableSnapProtocol     bool
 		EnableTrustProtocol     bool
-		PipeCommit              bool
 		RangeLimit              bool
 		TxLookupLimit           uint64 `toml:",omitempty"`
 		TransactionHistory      uint64 `toml:",omitempty"`
@@ -39,12 +37,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		PathSyncFlush           bool   `toml:",omitempty"`
 		JournalFileEnabled      bool
 		RequiredBlocks          map[uint64]common.Hash `toml:"-"`
-		LightServ               int                    `toml:",omitempty"`
-		LightIngress            int                    `toml:",omitempty"`
-		LightEgress             int                    `toml:",omitempty"`
-		LightPeers              int                    `toml:",omitempty"`
-		LightNoPrune            bool                   `toml:",omitempty"`
-		LightNoSyncServe        bool                   `toml:",omitempty"`
 		SkipBcVersionCheck      bool                   `toml:"-"`
 		DatabaseHandles         int                    `toml:"-"`
 		DatabaseCache           int
@@ -61,17 +53,19 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		TriesVerifyMode         core.VerifyMode
 		Preimages               bool
 		FilterLogCacheSize      int
-		Miner                   miner.Config
+		Miner                   minerconfig.Config
 		TxPool                  legacypool.Config
 		BlobPool                blobpool.Config
 		GPO                     gasprice.Config
 		EnablePreimageRecording bool
-		DocRoot                 string `toml:"-"`
+		VMTrace                 string
+		VMTraceJsonConfig       string
 		RPCGasCap               uint64
 		RPCEVMTimeout           time.Duration
 		RPCTxFeeCap             float64
-		OverridePassedForkTime      *uint64 `toml:",omitempty"`
-		OverrideBohr            *uint64 `toml:",omitempty"`
+		OverridePassedForkTime  *uint64 `toml:",omitempty"`
+		OverridePascal          *uint64 `toml:",omitempty"`
+		OverridePrague          *uint64 `toml:",omitempty"`
 		OverrideVerkle          *uint64 `toml:",omitempty"`
 		BlobExtraReserve        uint64
 	}
@@ -89,7 +83,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.DirectBroadcast = c.DirectBroadcast
 	enc.DisableSnapProtocol = c.DisableSnapProtocol
 	enc.EnableTrustProtocol = c.EnableTrustProtocol
-	enc.PipeCommit = c.PipeCommit
 	enc.RangeLimit = c.RangeLimit
 	enc.TxLookupLimit = c.TxLookupLimit
 	enc.TransactionHistory = c.TransactionHistory
@@ -98,12 +91,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.PathSyncFlush = c.PathSyncFlush
 	enc.JournalFileEnabled = c.JournalFileEnabled
 	enc.RequiredBlocks = c.RequiredBlocks
-	enc.LightServ = c.LightServ
-	enc.LightIngress = c.LightIngress
-	enc.LightEgress = c.LightEgress
-	enc.LightPeers = c.LightPeers
-	enc.LightNoPrune = c.LightNoPrune
-	enc.LightNoSyncServe = c.LightNoSyncServe
 	enc.SkipBcVersionCheck = c.SkipBcVersionCheck
 	enc.DatabaseHandles = c.DatabaseHandles
 	enc.DatabaseCache = c.DatabaseCache
@@ -125,12 +112,14 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.BlobPool = c.BlobPool
 	enc.GPO = c.GPO
 	enc.EnablePreimageRecording = c.EnablePreimageRecording
-	enc.DocRoot = c.DocRoot
+	enc.VMTrace = c.VMTrace
+	enc.VMTraceJsonConfig = c.VMTraceJsonConfig
 	enc.RPCGasCap = c.RPCGasCap
 	enc.RPCEVMTimeout = c.RPCEVMTimeout
 	enc.RPCTxFeeCap = c.RPCTxFeeCap
 	enc.OverridePassedForkTime = c.OverridePassedForkTime
-	enc.OverrideBohr = c.OverrideBohr
+	enc.OverridePascal = c.OverridePascal
+	enc.OverridePrague = c.OverridePrague
 	enc.OverrideVerkle = c.OverrideVerkle
 	enc.BlobExtraReserve = c.BlobExtraReserve
 	return &enc, nil
@@ -141,7 +130,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	type Config struct {
 		Genesis                 *core.Genesis `toml:",omitempty"`
 		NetworkId               *uint64
-		SyncMode                *downloader.SyncMode
+		SyncMode                *SyncMode
 		DisablePeerTxBroadcast  *bool
 		EthDiscoveryURLs        []string
 		SnapDiscoveryURLs       []string
@@ -152,7 +141,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		DirectBroadcast         *bool
 		DisableSnapProtocol     *bool
 		EnableTrustProtocol     *bool
-		PipeCommit              *bool
 		RangeLimit              *bool
 		TxLookupLimit           *uint64 `toml:",omitempty"`
 		TransactionHistory      *uint64 `toml:",omitempty"`
@@ -161,12 +149,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		PathSyncFlush           *bool   `toml:",omitempty"`
 		JournalFileEnabled      *bool
 		RequiredBlocks          map[uint64]common.Hash `toml:"-"`
-		LightServ               *int                   `toml:",omitempty"`
-		LightIngress            *int                   `toml:",omitempty"`
-		LightEgress             *int                   `toml:",omitempty"`
-		LightPeers              *int                   `toml:",omitempty"`
-		LightNoPrune            *bool                  `toml:",omitempty"`
-		LightNoSyncServe        *bool                  `toml:",omitempty"`
 		SkipBcVersionCheck      *bool                  `toml:"-"`
 		DatabaseHandles         *int                   `toml:"-"`
 		DatabaseCache           *int
@@ -183,17 +165,19 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		TriesVerifyMode         *core.VerifyMode
 		Preimages               *bool
 		FilterLogCacheSize      *int
-		Miner                   *miner.Config
+		Miner                   *minerconfig.Config
 		TxPool                  *legacypool.Config
 		BlobPool                *blobpool.Config
 		GPO                     *gasprice.Config
 		EnablePreimageRecording *bool
-		DocRoot                 *string `toml:"-"`
+		VMTrace                 *string
+		VMTraceJsonConfig       *string
 		RPCGasCap               *uint64
 		RPCEVMTimeout           *time.Duration
 		RPCTxFeeCap             *float64
-		OverridePassedForkTime      *uint64 `toml:",omitempty"`
-		OverrideBohr            *uint64 `toml:",omitempty"`
+		OverridePassedForkTime  *uint64 `toml:",omitempty"`
+		OverridePascal          *uint64 `toml:",omitempty"`
+		OverridePrague          *uint64 `toml:",omitempty"`
 		OverrideVerkle          *uint64 `toml:",omitempty"`
 		BlobExtraReserve        *uint64
 	}
@@ -240,9 +224,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.EnableTrustProtocol != nil {
 		c.EnableTrustProtocol = *dec.EnableTrustProtocol
 	}
-	if dec.PipeCommit != nil {
-		c.PipeCommit = *dec.PipeCommit
-	}
 	if dec.RangeLimit != nil {
 		c.RangeLimit = *dec.RangeLimit
 	}
@@ -266,24 +247,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.RequiredBlocks != nil {
 		c.RequiredBlocks = dec.RequiredBlocks
-	}
-	if dec.LightServ != nil {
-		c.LightServ = *dec.LightServ
-	}
-	if dec.LightIngress != nil {
-		c.LightIngress = *dec.LightIngress
-	}
-	if dec.LightEgress != nil {
-		c.LightEgress = *dec.LightEgress
-	}
-	if dec.LightPeers != nil {
-		c.LightPeers = *dec.LightPeers
-	}
-	if dec.LightNoPrune != nil {
-		c.LightNoPrune = *dec.LightNoPrune
-	}
-	if dec.LightNoSyncServe != nil {
-		c.LightNoSyncServe = *dec.LightNoSyncServe
 	}
 	if dec.SkipBcVersionCheck != nil {
 		c.SkipBcVersionCheck = *dec.SkipBcVersionCheck
@@ -348,8 +311,11 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.EnablePreimageRecording != nil {
 		c.EnablePreimageRecording = *dec.EnablePreimageRecording
 	}
-	if dec.DocRoot != nil {
-		c.DocRoot = *dec.DocRoot
+	if dec.VMTrace != nil {
+		c.VMTrace = *dec.VMTrace
+	}
+	if dec.VMTraceJsonConfig != nil {
+		c.VMTraceJsonConfig = *dec.VMTraceJsonConfig
 	}
 	if dec.RPCGasCap != nil {
 		c.RPCGasCap = *dec.RPCGasCap
@@ -363,8 +329,11 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.OverridePassedForkTime != nil {
 		c.OverridePassedForkTime = dec.OverridePassedForkTime
 	}
-	if dec.OverrideBohr != nil {
-		c.OverrideBohr = dec.OverrideBohr
+	if dec.OverridePascal != nil {
+		c.OverridePascal = dec.OverridePascal
+	}
+	if dec.OverridePrague != nil {
+		c.OverridePrague = dec.OverridePrague
 	}
 	if dec.OverrideVerkle != nil {
 		c.OverrideVerkle = dec.OverrideVerkle

@@ -37,19 +37,19 @@ const (
 )
 
 var (
-	activePeerGauge         metrics.Gauge = metrics.NilGauge{}
-	activeInboundPeerGauge  metrics.Gauge = metrics.NilGauge{}
-	activeOutboundPeerGauge metrics.Gauge = metrics.NilGauge{}
+	activePeerGauge         = metrics.NewRegisteredGauge("p2p/peers", nil)
+	activeInboundPeerGauge  = metrics.NewRegisteredGauge("p2p/peers/inbound", nil)
+	activeOutboundPeerGauge = metrics.NewRegisteredGauge("p2p/peers/outbound", nil)
 
 	ingressTrafficMeter = metrics.NewRegisteredMeter("p2p/ingress", nil)
 	egressTrafficMeter  = metrics.NewRegisteredMeter("p2p/egress", nil)
 
 	// general ingress/egress connection meters
-	serveMeter          metrics.Meter = metrics.NilMeter{}
-	serveSuccessMeter   metrics.Meter = metrics.NilMeter{}
-	dialMeter           metrics.Meter = metrics.NilMeter{}
-	dialSuccessMeter    metrics.Meter = metrics.NilMeter{}
-	dialConnectionError metrics.Meter = metrics.NilMeter{}
+	serveMeter          = metrics.NewRegisteredMeter("p2p/serves", nil)
+	serveSuccessMeter   = metrics.NewRegisteredMeter("p2p/serves/success", nil)
+	dialMeter           = metrics.NewRegisteredMeter("p2p/dials", nil)
+	dialSuccessMeter    = metrics.NewRegisteredMeter("p2p/dials/success", nil)
+	dialConnectionError = metrics.NewRegisteredMeter("p2p/dials/error/connection", nil)
 
 	// dial error meters
 	dialTooManyPeers        = metrics.NewRegisteredMeter("p2p/dials/error/saturated", nil)
@@ -70,25 +70,10 @@ var (
 	serveProtoHandshakeError = metrics.NewRegisteredMeter("p2p/serves/error/rlpx/proto", nil)
 )
 
-func init() {
-	if !metrics.Enabled {
-		return
-	}
-
-	activePeerGauge = metrics.NewRegisteredGauge("p2p/peers", nil)
-	activeInboundPeerGauge = metrics.NewRegisteredGauge("p2p/peers/inbound", nil)
-	activeOutboundPeerGauge = metrics.NewRegisteredGauge("p2p/peers/outbound", nil)
-	serveMeter = metrics.NewRegisteredMeter("p2p/serves", nil)
-	serveSuccessMeter = metrics.NewRegisteredMeter("p2p/serves/success", nil)
-	dialMeter = metrics.NewRegisteredMeter("p2p/dials", nil)
-	dialSuccessMeter = metrics.NewRegisteredMeter("p2p/dials/success", nil)
-	dialConnectionError = metrics.NewRegisteredMeter("p2p/dials/error/connection", nil)
-}
-
 // markDialError matches errors that occur while setting up a dial connection
 // to the corresponding meter.
 func markDialError(err error) {
-	if !metrics.Enabled {
+	if !metrics.Enabled() {
 		return
 	}
 	if err2 := errors.Unwrap(err); err2 != nil {
@@ -115,7 +100,7 @@ func markDialError(err error) {
 // markServeError matches errors that occur while setting up a serve connection
 // to the corresponding meter.
 func markServeError(err error) {
-	if !metrics.Enabled {
+	if !metrics.Enabled() {
 		return
 	}
 	if err2 := errors.Unwrap(err); err2 != nil {
@@ -149,7 +134,7 @@ type meteredConn struct {
 // connection meter and also increases the metered peer count. If the metrics
 // system is disabled, function returns the original connection.
 func newMeteredConn(conn net.Conn) net.Conn {
-	if !metrics.Enabled {
+	if !metrics.Enabled() {
 		return conn
 	}
 	return &meteredConn{Conn: conn}

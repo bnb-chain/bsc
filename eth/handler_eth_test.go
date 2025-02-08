@@ -25,14 +25,13 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/eth/downloader"
+	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/event"
@@ -128,9 +127,8 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 			Chain:      chainNoFork,
 			TxPool:     newTestTxPool(),
 			VotePool:   newTestVotePool(),
-			Merger:     consensus.NewMerger(rawdb.NewMemoryDatabase()),
 			Network:    1,
-			Sync:       downloader.FullSync,
+			Sync:       ethconfig.FullSync,
 			BloomCache: 1,
 		})
 		ethProFork, _ = newHandler(&handlerConfig{
@@ -138,9 +136,8 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 			Chain:      chainProFork,
 			TxPool:     newTestTxPool(),
 			VotePool:   newTestVotePool(),
-			Merger:     consensus.NewMerger(rawdb.NewMemoryDatabase()),
 			Network:    1,
-			Sync:       downloader.FullSync,
+			Sync:       ethconfig.FullSync,
 			BloomCache: 1,
 		})
 	)
@@ -260,7 +257,7 @@ func testRecvTransactions(t *testing.T, protocol uint) {
 	handler := newTestHandler()
 	defer handler.close()
 
-	handler.handler.synced.Store(true) // mark synced to accept transactions
+	handler.handler.acceptTxs.Store(true) // mark synced to accept transactions
 
 	txs := make(chan core.NewTxsEvent)
 	sub := handler.txpool.SubscribeTransactions(txs, false)
@@ -397,8 +394,8 @@ func testSendTransactions(t *testing.T, protocol uint) {
 		tx, _ = types.SignTx(tx, types.HomesteadSigner{}, testKey)
 		insert[nonce] = tx
 	}
-	go handler.txpool.Add(insert, false, false) // Need goroutine to not block on feed
-	time.Sleep(250 * time.Millisecond)          // Wait until tx events get out of the system (can't use events, tx broadcaster races with peer join)
+	go handler.txpool.Add(insert, false) // Need goroutine to not block on feed
+	time.Sleep(250 * time.Millisecond)   // Wait until tx events get out of the system (can't use events, tx broadcaster races with peer join)
 
 	// Create a source handler to send messages through and a sink peer to receive them
 	p2pSrc, p2pSink := p2p.MsgPipe()
@@ -483,12 +480,10 @@ func testTransactionPropagation(t *testing.T, protocol uint) {
 		sinks[i] = newTestHandler()
 		defer sinks[i].close()
 
-		sinks[i].handler.synced.Store(true) // mark synced to accept transactions
+		sinks[i].handler.acceptTxs.Store(true) // mark synced to accept transactions
 	}
 	// Interconnect all the sink handlers with the source handler
 	for i, sink := range sinks {
-		sink := sink // Closure for gorotuine below
-
 		sourcePipe, sinkPipe := p2p.MsgPipe()
 		defer sourcePipe.Close()
 		defer sinkPipe.Close()
@@ -520,7 +515,7 @@ func testTransactionPropagation(t *testing.T, protocol uint) {
 		tx, _ = types.SignTx(tx, types.HomesteadSigner{}, testKey)
 		txs[nonce] = tx
 	}
-	source.txpool.Add(txs, false, false)
+	source.txpool.Add(txs, false)
 
 	// Iterate through all the sinks and ensure they all got the transactions
 	for i := range sinks {
@@ -547,7 +542,7 @@ func TestTransactionPendingReannounce(t *testing.T) {
 
 	sink := newTestHandler()
 	defer sink.close()
-	sink.handler.synced.Store(true) // mark synced to accept transactions
+	sink.handler.acceptTxs.Store(true) // mark synced to accept transactions
 
 	sourcePipe, sinkPipe := p2p.MsgPipe()
 	defer sourcePipe.Close()
@@ -619,8 +614,6 @@ func testBroadcastBlock(t *testing.T, peers, bcasts int) {
 		td      = source.chain.GetTd(genesis.Hash(), genesis.NumberU64())
 	)
 	for i, sink := range sinks {
-		sink := sink // Closure for gorotuine below
-
 		sourcePipe, sinkPipe := p2p.MsgPipe()
 		defer sourcePipe.Close()
 		defer sinkPipe.Close()
@@ -658,7 +651,6 @@ func testBroadcastBlock(t *testing.T, peers, bcasts int) {
 	// Iterate through all the sinks and ensure the correct number got the block
 	done := make(chan struct{}, peers)
 	for _, ch := range blockChs {
-		ch := ch
 		go func() {
 			<-ch
 			done <- struct{}{}
@@ -736,7 +728,7 @@ func testBroadcastMalformedBlock(t *testing.T, protocol uint) {
 
 	// Try to broadcast all malformations and ensure they all get discarded
 	for _, header := range []*types.Header{malformedUncles, malformedTransactions, malformedEverything} {
-		block := types.NewBlockWithHeader(header).WithBody(block.Transactions(), block.Uncles())
+		block := types.NewBlockWithHeader(header).WithBody(types.Body{Transactions: block.Transactions(), Uncles: block.Uncles()})
 		if err := src.SendNewBlock(block, big.NewInt(131136)); err != nil {
 			t.Fatalf("failed to broadcast block: %v", err)
 		}

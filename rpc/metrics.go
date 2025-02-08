@@ -49,7 +49,7 @@ func updateServeTimeHistogram(method string, success bool, elapsed time.Duration
 	metrics.GetOrRegisterHistogramLazy(h, nil, sampler).Update(elapsed.Nanoseconds())
 }
 
-func newRPCRequestGauge(method string) metrics.Gauge {
+func newRPCRequestGauge(method string) *metrics.Gauge {
 	m := fmt.Sprintf("rpc/count/%s", method)
 	return metrics.GetOrRegisterGauge(m, nil)
 }

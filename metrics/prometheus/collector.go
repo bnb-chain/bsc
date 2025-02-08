@@ -52,25 +52,25 @@ func newCollector() *collector {
 // metric type is not supported/known.
 func (c *collector) Add(name string, i any) error {
 	switch m := i.(type) {
-	case metrics.Counter:
+	case *metrics.Counter:
 		c.addCounter(name, m.Snapshot())
-	case metrics.CounterFloat64:
+	case *metrics.CounterFloat64:
 		c.addCounterFloat64(name, m.Snapshot())
-	case metrics.Gauge:
+	case *metrics.Gauge:
 		c.addGauge(name, m.Snapshot())
-	case metrics.GaugeFloat64:
+	case *metrics.GaugeFloat64:
 		c.addGaugeFloat64(name, m.Snapshot())
-	case metrics.GaugeInfo:
+	case *metrics.GaugeInfo:
 		c.addGaugeInfo(name, m.Snapshot())
 	case metrics.Histogram:
 		c.addHistogram(name, m.Snapshot())
-	case metrics.Meter:
+	case *metrics.Meter:
 		c.addMeter(name, m.Snapshot())
-	case metrics.Timer:
+	case *metrics.Timer:
 		c.addTimer(name, m.Snapshot())
-	case metrics.ResettingTimer:
+	case *metrics.ResettingTimer:
 		c.addResettingTimer(name, m.Snapshot())
-	case metrics.Label:
+	case *metrics.Label:
 		c.addLabel(name, m)
 	default:
 		return fmt.Errorf("unknown prometheus metric type %T", i)
@@ -109,11 +109,11 @@ func (c *collector) addHistogram(name string, m metrics.HistogramSnapshot) {
 	c.buff.WriteRune('\n')
 }
 
-func (c *collector) addMeter(name string, m metrics.MeterSnapshot) {
+func (c *collector) addMeter(name string, m *metrics.MeterSnapshot) {
 	c.writeGaugeCounter(name, m.Count())
 }
 
-func (c *collector) addTimer(name string, m metrics.TimerSnapshot) {
+func (c *collector) addTimer(name string, m *metrics.TimerSnapshot) {
 	pv := []float64{0.5, 0.75, 0.95, 0.99, 0.999, 0.9999}
 	ps := m.Percentiles(pv)
 	c.writeSummaryCounter(name, m.Count())
@@ -124,20 +124,21 @@ func (c *collector) addTimer(name string, m metrics.TimerSnapshot) {
 	c.buff.WriteRune('\n')
 }
 
-func (c *collector) addResettingTimer(name string, m metrics.ResettingTimerSnapshot) {
+func (c *collector) addResettingTimer(name string, m *metrics.ResettingTimerSnapshot) {
 	if m.Count() <= 0 {
 		return
 	}
-	ps := m.Percentiles([]float64{0.50, 0.95, 0.99})
+	pv := []float64{0.5, 0.75, 0.95, 0.99, 0.999, 0.9999}
+	ps := m.Percentiles(pv)
 	c.writeSummaryCounter(name, m.Count())
 	c.buff.WriteString(fmt.Sprintf(typeSummaryTpl, mutateKey(name)))
-	c.writeSummaryPercentile(name, "0.50", ps[0])
-	c.writeSummaryPercentile(name, "0.95", ps[1])
-	c.writeSummaryPercentile(name, "0.99", ps[2])
+	for i := range pv {
+		c.writeSummaryPercentile(name, strconv.FormatFloat(pv[i], 'f', -1, 64), ps[i])
+	}
 	c.buff.WriteRune('\n')
 }
 
-func (c *collector) addLabel(name string, m metrics.Label) {
+func (c *collector) addLabel(name string, m *metrics.Label) {
 	labels := make([]string, 0, len(m.Value()))
 	for k, v := range m.Value() {
 		labels = append(labels, fmt.Sprintf(`%s="%s"`, mutateKey(k), fmt.Sprint(v)))

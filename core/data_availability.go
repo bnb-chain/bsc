@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/params"
@@ -44,7 +45,7 @@ func validateBlobSidecar(hashes []common.Hash, sidecar *types.BlobSidecar) error
 	// Blob commitments match with the hashes in the transaction, verify the
 	// blobs themselves via KZG
 	for i := range sidecar.Blobs {
-		if err := kzg4844.VerifyBlobProof(sidecar.Blobs[i], sidecar.Commitments[i], sidecar.Proofs[i]); err != nil {
+		if err := kzg4844.VerifyBlobProof(&sidecar.Blobs[i], sidecar.Commitments[i], sidecar.Proofs[i]); err != nil {
 			return fmt.Errorf("invalid blob %d: %v", i, err)
 		}
 	}
@@ -106,8 +107,9 @@ func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err
 	for _, s := range sidecars {
 		blobCnt += len(s.Blobs)
 	}
-	if blobCnt > params.MaxBlobGasPerBlock/params.BlobTxBlobGasPerBlob {
-		return fmt.Errorf("too many blobs in block: have %d, permitted %d", blobCnt, params.MaxBlobGasPerBlock/params.BlobTxBlobGasPerBlob)
+	maxBlobPerBlock := eip4844.MaxBlobsPerBlock(chain.Config(), block.Time())
+	if blobCnt > maxBlobPerBlock {
+		return fmt.Errorf("too many blobs in block: have %d, permitted %d", blobCnt, maxBlobPerBlock)
 	}
 
 	// check blob and versioned hash

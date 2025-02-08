@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -86,6 +87,16 @@ type BundlePool struct {
 	blockchain BlockChain
 }
 
+func (p *BundlePool) GetBlobs(vhashes []common.Hash) ([]*kzg4844.Blob, []*kzg4844.Proof) {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (p *BundlePool) Clear() {
+	// TODO implement me
+	panic("implement me")
+}
+
 func New(config Config, chain BlockChain) *BundlePool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
@@ -149,6 +160,7 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 
 	price, err := p.simulator.SimulateBundle(bundle)
 	if err != nil {
+		log.Debug("simulation failed when add bundle into bundlepool", "err", err)
 		return err
 	}
 	bundle.Price = price
@@ -281,7 +293,7 @@ func (p *BundlePool) Get(hash common.Hash) *types.Transaction {
 // Add enqueues a batch of transactions into the pool if they are valid. Due
 // to the large transaction churn, add may postpone fully integrating the tx
 // to a later point to batch multiple ones together.
-func (p *BundlePool) Add(txs []*types.Transaction, local bool, sync bool) []error {
+func (p *BundlePool) Add(txs []*types.Transaction, sync bool) []error {
 	return nil
 }
 
@@ -339,7 +351,7 @@ func (p *BundlePool) Status(hash common.Hash) txpool.TxStatus {
 
 func (p *BundlePool) filter(tx *types.Transaction) bool {
 	switch tx.Type() {
-	case types.LegacyTxType, types.AccessListTxType, types.DynamicFeeTxType:
+	case types.LegacyTxType, types.AccessListTxType, types.DynamicFeeTxType, types.SetCodeTxType:
 		return true
 	default:
 		return false

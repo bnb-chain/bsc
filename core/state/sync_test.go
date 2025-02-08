@@ -52,8 +52,8 @@ func makeTestState(scheme string) (ethdb.Database, Database, *triedb.Database, c
 	}
 	db := rawdb.NewMemoryDatabase()
 	nodeDb := triedb.NewDatabase(db, config)
-	sdb := NewDatabaseWithNodeDB(db, nodeDb)
-	state, _ := New(types.EmptyRootHash, sdb, nil)
+	sdb := NewDatabase(nodeDb, nil)
+	state, _ := New(types.EmptyRootHash, sdb)
 
 	// Fill it with some arbitrary data
 	var accounts []*testAccount
@@ -79,9 +79,7 @@ func makeTestState(scheme string) (ethdb.Database, Database, *triedb.Database, c
 		}
 		accounts = append(accounts, acc)
 	}
-	state.Finalise(false)
-	state.AccountsIntermediateRoot()
-	root, _, _ := state.Commit(0, nil)
+	root, _, _ := state.Commit(0, false, false)
 
 	// Return the generated state
 	return db, sdb, nodeDb, root, accounts
@@ -95,7 +93,7 @@ func checkStateAccounts(t *testing.T, db ethdb.Database, scheme string, root com
 		config.PathDB = pathdb.Defaults
 	}
 	// Check root availability and state contents
-	state, err := New(root, NewDatabaseWithConfig(db, &config), nil)
+	state, err := New(root, NewDatabase(triedb.NewDatabase(db, &config), nil))
 	if err != nil {
 		t.Fatalf("failed to create state trie at %x: %v", root, err)
 	}
@@ -121,7 +119,7 @@ func checkStateConsistency(db ethdb.Database, scheme string, root common.Hash) e
 	if scheme == rawdb.PathScheme {
 		config.PathDB = pathdb.Defaults
 	}
-	state, err := New(root, NewDatabaseWithConfig(db, config), nil)
+	state, err := New(root, NewDatabase(triedb.NewDatabase(db, config), nil))
 	if err != nil {
 		return err
 	}
@@ -208,7 +206,11 @@ func testIterativeStateSync(t *testing.T, count int, commit bool, bypath bool, s
 	for i := 0; i < len(codes); i++ {
 		codeElements = append(codeElements, stateElement{code: codes[i]})
 	}
-	reader, err := ndb.Reader(srcRoot)
+	reader, err := ndb.NodeReader(srcRoot)
+	if err != nil {
+		t.Fatalf("state is not existent, %#x", srcRoot)
+	}
+	cReader, err := srcDb.Reader(srcRoot)
 	if err != nil {
 		t.Fatalf("state is not existent, %#x", srcRoot)
 	}
@@ -218,8 +220,8 @@ func testIterativeStateSync(t *testing.T, count int, commit bool, bypath bool, s
 			codeResults = make([]trie.CodeSyncResult, len(codeElements))
 		)
 		for i, element := range codeElements {
-			data, err := srcDb.ContractCode(common.Address{}, element.code)
-			if err != nil {
+			data, err := cReader.Code(common.Address{}, element.code)
+			if err != nil || len(data) == 0 {
 				t.Fatalf("failed to retrieve contract bytecode for hash %x", element.code)
 			}
 			codeResults[i] = trie.CodeSyncResult{Hash: element.code, Data: data}
@@ -327,7 +329,11 @@ func testIterativeDelayedStateSync(t *testing.T, scheme string) {
 	for i := 0; i < len(codes); i++ {
 		codeElements = append(codeElements, stateElement{code: codes[i]})
 	}
-	reader, err := ndb.Reader(srcRoot)
+	reader, err := ndb.NodeReader(srcRoot)
+	if err != nil {
+		t.Fatalf("state is not existent, %#x", srcRoot)
+	}
+	cReader, err := srcDb.Reader(srcRoot)
 	if err != nil {
 		t.Fatalf("state is not existent, %#x", srcRoot)
 	}
@@ -338,8 +344,8 @@ func testIterativeDelayedStateSync(t *testing.T, scheme string) {
 		if len(codeElements) > 0 {
 			codeResults := make([]trie.CodeSyncResult, len(codeElements)/2+1)
 			for i, element := range codeElements[:len(codeResults)] {
-				data, err := srcDb.ContractCode(common.Address{}, element.code)
-				if err != nil {
+				data, err := cReader.Code(common.Address{}, element.code)
+				if err != nil || len(data) == 0 {
 					t.Fatalf("failed to retrieve contract bytecode for %x", element.code)
 				}
 				codeResults[i] = trie.CodeSyncResult{Hash: element.code, Data: data}
@@ -431,7 +437,11 @@ func testIterativeRandomStateSync(t *testing.T, count int, scheme string) {
 	for _, hash := range codes {
 		codeQueue[hash] = struct{}{}
 	}
-	reader, err := ndb.Reader(srcRoot)
+	reader, err := ndb.NodeReader(srcRoot)
+	if err != nil {
+		t.Fatalf("state is not existent, %#x", srcRoot)
+	}
+	cReader, err := srcDb.Reader(srcRoot)
 	if err != nil {
 		t.Fatalf("state is not existent, %#x", srcRoot)
 	}
@@ -440,8 +450,8 @@ func testIterativeRandomStateSync(t *testing.T, count int, scheme string) {
 		if len(codeQueue) > 0 {
 			results := make([]trie.CodeSyncResult, 0, len(codeQueue))
 			for hash := range codeQueue {
-				data, err := srcDb.ContractCode(common.Address{}, hash)
-				if err != nil {
+				data, err := cReader.Code(common.Address{}, hash)
+				if err != nil || len(data) == 0 {
 					t.Fatalf("failed to retrieve node data for %x", hash)
 				}
 				results = append(results, trie.CodeSyncResult{Hash: hash, Data: data})
@@ -524,7 +534,11 @@ func testIterativeRandomDelayedStateSync(t *testing.T, scheme string) {
 	for _, hash := range codes {
 		codeQueue[hash] = struct{}{}
 	}
-	reader, err := ndb.Reader(srcRoot)
+	reader, err := ndb.NodeReader(srcRoot)
+	if err != nil {
+		t.Fatalf("state is not existent, %#x", srcRoot)
+	}
+	cReader, err := srcDb.Reader(srcRoot)
 	if err != nil {
 		t.Fatalf("state is not existent, %#x", srcRoot)
 	}
@@ -535,8 +549,8 @@ func testIterativeRandomDelayedStateSync(t *testing.T, scheme string) {
 			for hash := range codeQueue {
 				delete(codeQueue, hash)
 
-				data, err := srcDb.ContractCode(common.Address{}, hash)
-				if err != nil {
+				data, err := cReader.Code(common.Address{}, hash)
+				if err != nil || len(data) == 0 {
 					t.Fatalf("failed to retrieve node data for %x", hash)
 				}
 				results = append(results, trie.CodeSyncResult{Hash: hash, Data: data})
@@ -629,9 +643,13 @@ func testIncompleteStateSync(t *testing.T, scheme string) {
 		addedPaths  []string
 		addedHashes []common.Hash
 	)
-	reader, err := ndb.Reader(srcRoot)
+	reader, err := ndb.NodeReader(srcRoot)
 	if err != nil {
 		t.Fatalf("state is not available %x", srcRoot)
+	}
+	cReader, err := srcDb.Reader(srcRoot)
+	if err != nil {
+		t.Fatalf("state is not existent, %#x", srcRoot)
 	}
 	nodeQueue := make(map[string]stateElement)
 	codeQueue := make(map[common.Hash]struct{})
@@ -651,8 +669,8 @@ func testIncompleteStateSync(t *testing.T, scheme string) {
 		if len(codeQueue) > 0 {
 			results := make([]trie.CodeSyncResult, 0, len(codeQueue))
 			for hash := range codeQueue {
-				data, err := srcDb.ContractCode(common.Address{}, hash)
-				if err != nil {
+				data, err := cReader.Code(common.Address{}, hash)
+				if err != nil || len(data) == 0 {
 					t.Fatalf("failed to retrieve node data for %x", hash)
 				}
 				results = append(results, trie.CodeSyncResult{Hash: hash, Data: data})
@@ -715,6 +733,11 @@ func testIncompleteStateSync(t *testing.T, scheme string) {
 	// Sanity check that removing any node from the database is detected
 	for _, node := range addedCodes {
 		val := rawdb.ReadCode(dstDb, node)
+		if len(val) == 0 {
+			t.Logf("no code: %v", node)
+		} else {
+			t.Logf("has code: %v", node)
+		}
 		rawdb.DeleteCode(dstDb, node)
 		if err := checkStateConsistency(dstDb, ndb.Scheme(), srcRoot); err == nil {
 			t.Errorf("trie inconsistency not caught, missing: %x", node)

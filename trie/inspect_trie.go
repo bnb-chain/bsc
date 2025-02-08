@@ -25,10 +25,10 @@ import (
 )
 
 type Database interface {
-	database.Database
+	database.NodeDatabase
 	Scheme() string
 	Cap(limit common.StorageSize) error
-	DiskDB() ethdb.Database
+	Disk() ethdb.Database
 }
 
 const TopN = 3
