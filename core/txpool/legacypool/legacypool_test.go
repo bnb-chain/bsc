@@ -2222,10 +2222,8 @@ func TestSlotCount(t *testing.T) {
 	}
 }
 
-// TODO(Nathan): the concepts of `locals` has been removed, so no chance to reannounce now
 // Tests the local pending transaction announced again correctly.
-// nolint:unused
-func testTransactionPendingReannouce(t *testing.T) {
+func TestTransactionPendingReannouce(t *testing.T) {
 	t.Parallel()
 
 	// Create the pool to test the limit enforcement with
@@ -2250,6 +2248,13 @@ func testTransactionPendingReannouce(t *testing.T) {
 	events := make(chan core.ReannoTxsEvent, testTxPoolConfig.AccountQueue)
 	sub := pool.reannoTxFeed.Subscribe(events)
 	defer sub.Unsubscribe()
+
+	// Generate a batch of transactions and add to tx_pool locally.
+	txs := make([]*types.Transaction, 0, testTxPoolConfig.AccountQueue)
+	for i := uint64(0); i < testTxPoolConfig.AccountQueue; i++ {
+		txs = append(txs, transaction(i, 100000, key))
+	}
+	pool.Add(txs, true)
 
 	select {
 	case ev := <-events:
