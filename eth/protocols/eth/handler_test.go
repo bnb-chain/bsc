@@ -80,7 +80,6 @@ func newTestBackendWithGenerator(blocks int, shanghai bool, generator func(int, 
 		config                  = params.TestChainConfig
 		engine consensus.Engine = ethash.NewFaker()
 	)
-
 	if shanghai {
 		config = &params.ChainConfig{
 			ChainID:                 big.NewInt(1),

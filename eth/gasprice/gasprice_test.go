@@ -26,7 +26,6 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
@@ -160,12 +159,10 @@ func newTestBackend(t *testing.T, londonBlock *big.Int, cancunBlock *big.Int, pe
 	config.LondonBlock = londonBlock
 	config.ArrowGlacierBlock = londonBlock
 	config.GrayGlacierBlock = londonBlock
-	config.GibbsBlock = nil
-	config.LubanBlock = nil
-	config.PlatoBlock = nil
-	config.HertzBlock = nil
-	config.HertzfixBlock = nil
-	var engine consensus.Engine = beacon.New(ethash.NewFaker())
+
+	engine := beacon.New(ethash.NewFaker())
+	engine.TestingTTDBlock(testHead + 1)
+
 	td := params.GenesisDifficulty.Uint64()
 
 	if cancunBlock != nil {
@@ -226,6 +223,7 @@ func newTestBackend(t *testing.T, londonBlock *big.Int, cancunBlock *big.Int, pe
 		}
 		td += b.Difficulty().Uint64()
 	})
+
 	// Construct testing chain
 	gspec.Config.TerminalTotalDifficulty = new(big.Int).SetUint64(td)
 	chain, err := core.NewBlockChain(db, &core.CacheConfig{TrieCleanNoPrefetch: true}, gspec, nil, engine, vm.Config{}, nil, nil)
