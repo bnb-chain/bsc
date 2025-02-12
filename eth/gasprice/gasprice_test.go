@@ -159,16 +159,11 @@ func newTestBackend(t *testing.T, londonBlock *big.Int, cancunBlock *big.Int, pe
 	config.LondonBlock = londonBlock
 	config.ArrowGlacierBlock = londonBlock
 	config.GrayGlacierBlock = londonBlock
-	config.GibbsBlock = nil
-	config.LubanBlock = nil
-	config.PlatoBlock = nil
-	config.HertzBlock = nil
-	config.HertzfixBlock = nil
-	if cancunBlock != nil {
-		// Enable the merge with cancun fork.
-		config.MergeNetsplitBlock = cancunBlock
-	}
+
 	engine := beacon.New(ethash.NewFaker())
+	engine.TestingTTDBlock(testHead + 1)
+
+	td := params.GenesisDifficulty.Uint64()
 
 	if cancunBlock != nil {
 		ts := gspec.Timestamp + cancunBlock.Uint64()*10 // fixed 10 sec block time in blockgen
@@ -226,9 +221,11 @@ func newTestBackend(t *testing.T, londonBlock *big.Int, cancunBlock *big.Int, pe
 				b.AddTx(types.MustSignNewTx(key, signer, blobTx))
 			}
 		}
+		td += b.Difficulty().Uint64()
 	})
 
 	// Construct testing chain
+	gspec.Config.TerminalTotalDifficulty = new(big.Int).SetUint64(td)
 	chain, err := core.NewBlockChain(db, &core.CacheConfig{TrieCleanNoPrefetch: true}, gspec, nil, engine, vm.Config{}, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create local chain, %v", err)

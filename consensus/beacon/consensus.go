@@ -62,7 +62,8 @@ var (
 // is only used for necessary consensus checks. The legacy consensus engine can be any
 // engine implements the consensus interface (except the beacon itself).
 type Beacon struct {
-	ethone consensus.Engine // Original consensus engine used in eth1, e.g. ethash or clique
+	ethone   consensus.Engine // Original consensus engine used in eth1, e.g. ethash or clique
+	ttdblock *uint64          // Merge block-number for testchain generation without TTDs
 }
 
 // New creates a consensus engine with the given embedded eth1 engine.
@@ -79,6 +80,18 @@ func New(ethone consensus.Engine) *Beacon {
 func isPostMerge(config *params.ChainConfig, block uint64) bool {
 	mergedAtGenesis := config.TerminalTotalDifficulty != nil && config.TerminalTotalDifficulty.Sign() == 0
 	return mergedAtGenesis || config.MergeNetsplitBlock != nil && block >= config.MergeNetsplitBlock.Uint64()
+}
+
+// TestingTTDBlock is a replacement mechanism for TTD-based pre-/post-merge
+// splitting. With chain history deletion, TD calculations become impossible.
+// This is fine for progressing the live chain, but to be able to generate test
+// chains, we do need a split point. This method supports setting an explicit
+// block number to use as the splitter *for testing*, instead of having to keep
+// the notion of TDs in the client just for testing.
+//
+// The block with supplied number is regarded as the last pre-merge block.
+func (beacon *Beacon) TestingTTDBlock(number uint64) {
+	beacon.ttdblock = &number
 }
 
 // Author implements consensus.Engine, returning the verified author of the block.
