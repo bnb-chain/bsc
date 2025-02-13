@@ -450,6 +450,10 @@ func TestDatabaseRollback(t *testing.T) {
 
 	// Verify state histories
 	tester := newTester(t, 0, false, 32)
+	bottom := tester.db.tree.bottom()
+	if err := bottom.buffer.flush(tester.db.diskdb, tester.db.freezer, bottom.nodes, bottom.id, true); err != nil {
+		t.Fatalf("Failed to force flush: %v", err)
+	}
 	defer tester.release()
 
 	if err := tester.verifyHistory(); err != nil {
@@ -520,10 +524,7 @@ func TestDatabaseRecoverable(t *testing.T) {
 	}
 }
 
-// TODO(joey): fail when using asyncbuffer
-//
-//nolint:unused
-func testDisable(t *testing.T) {
+func TestDisable(t *testing.T) {
 	// Redefine the diff layer depth allowance for faster testing.
 	maxDiffLayers = 4
 	defer func() {
@@ -531,6 +532,10 @@ func testDisable(t *testing.T) {
 	}()
 
 	tester := newTester(t, 0, false, 32)
+	bottom := tester.db.tree.bottom()
+	if err := bottom.buffer.flush(tester.db.diskdb, tester.db.freezer, nil, bottom.id, true); err != nil {
+		t.Fatalf("Failed to force flush: %v", err)
+	}
 	defer tester.release()
 
 	stored := crypto.Keccak256Hash(rawdb.ReadAccountTrieNode(tester.db.diskdb, nil))

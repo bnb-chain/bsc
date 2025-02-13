@@ -302,7 +302,7 @@ async function getSlashCount()  {
                 let isMaintaining = validatorExtra[1]
                 // let voteAddress = validatorExtra[2]
                 if (isMaintaining) {
-                    let jailHeight = (felonyThreshold - slashCount) * slashScale * maxElected + BigInt(enterMaintenanceHeight)
+                    let jailHeight = (felonyThreshold - BigInt(slashCount)) * slashScale * maxElected + BigInt(enterMaintenanceHeight)
                     console.log("          in maintenance mode since", enterMaintenanceHeight, "will jail after", ethers.toNumber(jailHeight))    
                 } else {
                     console.log("          exited maintenance mode")

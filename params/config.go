@@ -89,9 +89,11 @@ var (
 		MergeNetsplitBlock:      nil,
 		ShanghaiTime:            newUint64(1696000704),
 		CancunTime:              newUint64(1707305664),
+		PragueTime:              newUint64(1740434112),
 		Ethash:                  new(EthashConfig),
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfig,
 		},
 	}
 	// SepoliaChainConfig contains the chain parameters to run a node on the Sepolia test network.
@@ -116,9 +118,11 @@ var (
 		MergeNetsplitBlock:      big.NewInt(1735371),
 		ShanghaiTime:            newUint64(1677557088),
 		CancunTime:              newUint64(1706655072),
+		PragueTime:              newUint64(1741159776),
 		Ethash:                  new(EthashConfig),
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfig,
 		},
 	}
 
@@ -231,9 +235,8 @@ var (
 		HaberTime:           newUint64(1716962820), // 2024-05-29 06:07:00 AM UTC
 		HaberFixTime:        newUint64(1719986788), // 2024-07-03 06:06:28 AM UTC
 		BohrTime:            newUint64(1724116996), // 2024-08-20 01:23:16 AM UTC
-		// TODO
-		PascalTime: nil,
-		PragueTime: nil,
+		PascalTime:          newUint64(1740021480), // 2025-02-20 03:18:00 AM UTC
+		PragueTime:          newUint64(1740021480), // 2025-02-20 03:18:00 AM UTC
 
 		Parlia: &ParliaConfig{
 			Period: 3,

@@ -75,8 +75,6 @@ func TestSupplyOmittedFields(t *testing.T) {
 		}
 	)
 
-	gspec.Config.TerminalTotalDifficulty = big.NewInt(0)
-
 	out, _, err := testSupplyTracer(t, gspec, func(b *core.BlockGen) {
 		b.SetPoS()
 	})
@@ -545,9 +543,7 @@ func TestSupplySelfdestructItselfAndRevert(t *testing.T) {
 }
 
 func testSupplyTracer(t *testing.T, genesis *core.Genesis, gen func(*core.BlockGen)) ([]supplyInfo, *core.BlockChain, error) {
-	var (
-		engine = beacon.New(ethash.NewFaker())
-	)
+	engine := beacon.New(ethash.NewFaker())
 
 	traceOutputPath := filepath.ToSlash(t.TempDir())
 	traceOutputFilename := path.Join(traceOutputPath, "supply.jsonl")

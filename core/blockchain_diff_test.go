@@ -157,7 +157,7 @@ func newTestBackend(blocks int, light bool) *testBackend {
 	return newTestBackendWithGenerator(blocks, light)
 }
 
-// newTestBackend creates a chain with a number of explicitly defined blocks and
+// newTestBackendWithGenerator creates a chain with a number of explicitly defined blocks and
 // wraps it into a mock backend.
 func newTestBackendWithGenerator(blocks int, lightProcess bool) *testBackend {
 	signer := types.HomesteadSigner{}
