@@ -1,4 +1,9 @@
 # Changelog
+## v1.5.6
+v1.5.6 performed another small code sync with Geth upstream, mainly sync the 7702 tx type txpool update, refer: https://github.com/bnb-chain/bsc/pull/2888/
+
+And it also setup the Testnet Pascal hard fork date.
+
 ## v1.5.5
 v1.5.5 mainly did a upstream code sync, it catches up to Geth of date around 5th-Feb-2025 to sync the latest Praque hard fork changes, see: https://github.com/bnb-chain/bsc/pull/2856
 
