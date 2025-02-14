@@ -1391,6 +1391,24 @@ LOOP:
 	// when in-turn, compare with remote work.
 	from := bestWork.coinbase
 	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
+		// We want to start sealing the block as late as possible here if mev is enabled, so we could give builder the chance to send their final bid.
+		// Time left till sealing the block.
+		tillSealingTime := time.Until(time.Unix(int64(bestWork.header.Time), 0)) - w.config.DelayLeftOver
+		if tillSealingTime > max(100*time.Millisecond, w.config.DelayLeftOver) {
+			// Still a lot of time left, wait for the best bid.
+			// This happens during the peak time of the network, the local block building LOOP would break earlier than
+			// the final sealing time by meeting the errBlockInterruptedByOutOfGas criteria.
+
+			log.Info("commitWork local building finished, wait for the best bid", "tillSealingTime", common.PrettyDuration(tillSealingTime))
+			stopTimer.Reset(tillSealingTime)
+			select {
+			case <-stopTimer.C:
+			case <-interruptCh:
+				log.Debug("commitWork interruptCh closed, new block imported or resubmit triggered")
+				return
+			}
+		}
+
 		if pendingBid := w.bidFetcher.GetSimulatingBid(bestWork.header.ParentHash); pendingBid != nil {
 			waitBidTimer := time.NewTimer(waitMEVMinerEndTimeLimit)
 			defer waitBidTimer.Stop()
