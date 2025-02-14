@@ -790,7 +790,11 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
-		env.gasPool.SubGas(params.SystemTxsGas)
+		if p, ok := w.engine.(*parlia.Parlia); ok {
+			gasReserved := p.EstimateGasReservedForSystemTxs(w.chain, env.header)
+			env.gasPool.SubGas(gasReserved)
+			log.Debug("commitTransactions", "number", env.header.Number.Uint64(), "time", env.header.Time, "EstimateGasReservedForSystemTxs", gasReserved)
+		}
 	}
 
 	var coalescedLogs []*types.Log
