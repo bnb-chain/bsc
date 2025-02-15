@@ -1,6 +1,10 @@
 # Changelog
+## v1.4.18
+### IMPROVEMENT
+* [\#2892](https://github.com/bnb-chain/bsc/pull/2892) fix: wait builder's final bid during the peak time 
+
 ## v1.4.17
-NA
+It is a hotfix release for a P2P issue.
 
 ## v1.4.16
 ### BUGFIX
