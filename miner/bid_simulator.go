@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/bidutil"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -582,7 +583,9 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	gasLimit := bidRuntime.env.header.GasLimit
 	if bidRuntime.env.gasPool == nil {
 		bidRuntime.env.gasPool = new(core.GasPool).AddGas(gasLimit)
-		bidRuntime.env.gasPool.SubGas(params.SystemTxsGas)
+		if p, ok := b.engine.(*parlia.Parlia); ok {
+			bidRuntime.env.gasPool.SubGas(p.EstimateGasReservedForSystemTxs(b.chain, bidRuntime.env.header))
+		}
 		bidRuntime.env.gasPool.SubGas(params.PayBidTxGasLimit)
 	}
 
