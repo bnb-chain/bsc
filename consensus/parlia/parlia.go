@@ -1265,7 +1265,7 @@ func (p *Parlia) EstimateGasReservedForSystemTxs(chain consensus.ChainHeaderRead
 		if p.chainConfig.IsFeynman(header.Number, header.Time) &&
 			!p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
 			// const (
-			// 	// the following values are the max values found on the mainnet
+			// 	the following values represent the maximum values found in the most recent blocks on the mainnet
 			// 	depositTxGas         = uint64(60_000)
 			// 	slashTxGas           = uint64(140_000)
 			// 	finalityRewardTxGas  = uint64(350_000)
