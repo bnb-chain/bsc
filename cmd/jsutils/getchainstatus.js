@@ -6,6 +6,7 @@ program.option("--startNum <startNum>", "start num")
 program.option("--endNum <endNum>", "end num")
 program.option("--miner <miner>", "miner", "")
 program.option("--num <Num>", "validator num", 21)
+program.option("--turnLength <Num>", "the consecutive block length", 4)
 program.option("--topNum <Num>", "top num of address to be displayed", 20)
 program.option("--blockNum <Num>", "block num", 0)
 program.option("-h, --help", "")
@@ -34,7 +35,7 @@ function printUsage() {
     console.log("\nExample:");
     // mainnet https://bsc-mainnet.nodereal.io/v1/454e504917db4f82b756bd0cf6317dce
     console.log("  node getchainstatus.js GetMaxTxCountInBlockRange --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000005")
-    console.log("  node getchainstatus.js GetBinaryVersion --rpc https://bsc-testnet-dataseed.bnbchain.org --num 21")
+    console.log("  node getchainstatus.js GetBinaryVersion --rpc https://bsc-testnet-dataseed.bnbchain.org --num 21 --turnLength 4")
     console.log("  node getchainstatus.js GetTopAddr --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010 --topNum 10")
     console.log("  node getchainstatus.js GetSlashCount --rpc https://bsc-testnet-dataseed.bnbchain.org --blockNum 40000001")  // default: latest block
     console.log("  node getchainstatus.js GetPerformanceData --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010")
@@ -193,12 +194,13 @@ async function getMaxTxCountInBlockRange()  {
 // 2.cmd: "GetBinaryVersion", usage:
 // node getchainstatus.js GetBinaryVersion \
 //      --rpc https://bsc-testnet-dataseed.bnbchain.org \
-//       --num(optional): defualt 21, the number of blocks that will be checked
+//       --num(optional): default 21, the number of blocks that will be checked
+//       --turnLength(optional): default 4, the consecutive block length
 async function getBinaryVersion()  {
     const blockNum = await provider.getBlockNumber();
-    console.log(blockNum);
+    let turnLength = program.turnLength
     for (let i = 0; i < program.num; i++) {
-        let blockData = await provider.getBlock(blockNum - i);
+        let blockData = await provider.getBlock(blockNum - i*turnLength);
         // 1.get Geth client version
         let major = ethers.toNumber(ethers.dataSlice(blockData.extraData, 2, 3))
         let minor = ethers.toNumber(ethers.dataSlice(blockData.extraData, 3, 4))
@@ -215,7 +217,8 @@ async function getBinaryVersion()  {
             lastGasPrice = txData.gasPrice
             break
         }
-        console.log(blockData.miner, "version =", major + "." + minor + "." + patch, " MinGasPrice = " + lastGasPrice)
+        var moniker = await getValidatorMoniker(blockData.miner, blockNum)
+        console.log(blockNum - i*turnLength, blockData.miner, "version =", major + "." + minor + "." + patch, " MinGasPrice = " + lastGasPrice, moniker)
     }
 };
 
