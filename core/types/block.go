@@ -163,16 +163,13 @@ func (h *Header) SetMilliseconds(milliseconds uint64) {
 	h.MixDigest = common.Hash(uint256.NewInt(milliseconds % 1000).Bytes32())
 }
 
-// Ensure h.Milliseconds() is less than 1000 when verifying the block header
-func (h *Header) Milliseconds() uint64 {
-	if h.MixDigest == (common.Hash{}) {
-		return 0
-	}
-	return uint256.NewInt(0).SetBytes32(h.MixDigest[:]).Uint64()
-}
-
+// Ensure Milliseconds is less than 1000 when verifying the block header
 func (h *Header) MilliTimestamp() uint64 {
-	return h.Time*1000 + h.Milliseconds()
+	milliseconds := uint64(0)
+	if h.MixDigest != (common.Hash{}) {
+		milliseconds = uint256.NewInt(0).SetBytes32(h.MixDigest[:]).Uint64()
+	}
+	return h.Time*1000 + milliseconds
 }
 
 var headerSize = common.StorageSize(reflect.TypeOf(Header{}).Size())
