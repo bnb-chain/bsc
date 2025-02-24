@@ -317,6 +317,6 @@ require (
 
 replace (
 	github.com/cometbft/cometbft => github.com/bnb-chain/greenfield-cometbft v1.3.1
-	github.com/herumi/bls-eth-go-binary => github.com/bnb-chain/bls-eth-go-binary v0.0.0-20250224031406-d396eb9462d5
+	github.com/herumi/bls-eth-go-binary => github.com/herumi/bls-eth-go-binary v0.0.0-20210917013441-d37c07cfda4e
 	github.com/tendermint/tendermint => github.com/bnb-chain/tendermint v0.31.16
 )
