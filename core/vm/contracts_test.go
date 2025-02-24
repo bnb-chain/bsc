@@ -325,6 +325,8 @@ func TestPrecompiledBLS12381Pairing(t *testing.T)    { testJson("blsPairing", "f
 func TestPrecompiledBLS12381MapG1(t *testing.T)      { testJson("blsMapG1", "f0f", t) }
 func TestPrecompiledBLS12381MapG2(t *testing.T)      { testJson("blsMapG2", "f10", t) }
 
+func TestPrecompiledBlsSignatureVerify(t *testing.T) { testJson("blsSignatureVerify", "66", t) }
+
 func TestPrecompiledPointEvaluation(t *testing.T) { testJson("pointEvaluation", "0a", t) }
 
 func BenchmarkPrecompiledPointEvaluation(b *testing.B) { benchJson("pointEvaluation", "0a", b) }
@@ -347,6 +349,8 @@ func TestPrecompiledBLS12381G2MultiExpFail(t *testing.T) { testJsonFail("blsG2Mu
 func TestPrecompiledBLS12381PairingFail(t *testing.T)    { testJsonFail("blsPairing", "f0e", t) }
 func TestPrecompiledBLS12381MapG1Fail(t *testing.T)      { testJsonFail("blsMapG1", "f0f", t) }
 func TestPrecompiledBLS12381MapG2Fail(t *testing.T)      { testJsonFail("blsMapG2", "f10", t) }
+
+func TestPrecompiledBlsSignatureVerifyFail(t *testing.T) { testJson("blsSignatureVerify", "66", t) }
 
 func loadJson(name string) ([]precompiledTest, error) {
 	data, err := os.ReadFile(fmt.Sprintf("testdata/precompiles/%v.json", name))
