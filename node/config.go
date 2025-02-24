@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/vdn"
 )
 
 const (
@@ -39,6 +40,7 @@ const (
 	datadirStaticNodes     = "static-nodes.json"  // Path within the datadir to the static node list
 	datadirTrustedNodes    = "trusted-nodes.json" // Path within the datadir to the trusted node list
 	datadirNodeDatabase    = "nodes"              // Path within the datadir to store the node infos
+	datadirVDNPrivateKey   = "nodekey_vdn"
 )
 
 // Config represents a small collection of configuration values to fine tune the
@@ -241,6 +243,10 @@ type Config struct {
 	DBEngine string `toml:",omitempty"`
 
 	Instance int `toml:",omitempty"`
+
+	// Dedicated validator p2p config
+	VDN          vdn.Config `toml:",omitempty"`
+	EnableMining bool       `toml:"-"` // this field is for inner logic
 }
 
 // IPCEndpoint resolves an IPC endpoint based on a configured value, taking into

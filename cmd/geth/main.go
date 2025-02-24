@@ -197,6 +197,11 @@ var (
 		// utils.BeaconGenesisRootFlag,
 		// utils.BeaconGenesisTimeFlag,
 		// utils.BeaconCheckpointFlag,
+		// vdn flags
+		utils.VDNTCPPortFlag,
+		utils.VDNQuicPortFlag,
+		utils.VDNNodeKeyFileFlag,
+		utils.VDNBootnodesFlag,
 	}, utils.NetworkFlags, utils.DatabaseFlags)
 
 	rpcFlags = []cli.Flag{

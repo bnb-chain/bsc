@@ -42,6 +42,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/vdn"
 	"github.com/gofrs/flock"
 )
 
@@ -70,6 +71,8 @@ type Node struct {
 	inprocHandler *rpc.Server // In-process RPC request handler to process the API requests
 
 	databases map[*closeTrackingDB]struct{} // All open databases
+
+	valServer *vdn.Server // validator dedicated p2p server
 }
 
 const (
@@ -203,6 +206,16 @@ func New(conf *Config) (*Node, error) {
 	node.wsAuth = newHTTPServer(node.log, rpc.DefaultHTTPTimeouts)
 	node.ipc = newIPCServer(node.log, conf.IPCEndpoint())
 
+	// Configure validator p2p server.
+	if conf.EnableMining {
+		if conf.VDN.PrivateKeyPath == "" {
+			conf.VDN.PrivateKeyPath = conf.ResolvePath(datadirVDNPrivateKey)
+		}
+		node.valServer, err = vdn.NewServer(&conf.VDN)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return node, nil
 }
 
@@ -324,6 +337,11 @@ func (n *Node) openEndpoints() error {
 		n.stopRPC()
 		n.server.Stop()
 	}
+
+	// start validator p2p network
+	if n.valServer != nil {
+		n.valServer.Start()
+	}
 	return err
 }
 
@@ -343,6 +361,10 @@ func (n *Node) stopServices(running []Lifecycle) error {
 	// Stop p2p networking.
 	n.server.Stop()
 
+	// stop validator p2p network
+	if n.valServer != nil {
+		n.valServer.Stop()
+	}
 	if len(failure.Services) > 0 {
 		return failure
 	}

@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/vdn"
 )
 
 const (
@@ -77,6 +78,16 @@ var DefaultConfig = Config{
 	},
 	DBEngine: "", // Use whatever exists, will default to Pebble if non-existent and supported
 	Instance: 1,
+	VDN: vdn.Config{
+		HostAddress:      "127.0.0.1",
+		PrivateKeyPath:   "", // by default, it will be auto set PrivateKeyPath/nodekey_vdn
+		QUICPort:         13000,
+		TCPPort:          13000,
+		MaxPeers:         50,
+		EnableQuic:       true,
+		EnableDiscovery:  false,
+		MinimumSyncPeers: 1,
+	},
 }
 
 // DefaultDataDir is the default data directory to use for the databases and other
