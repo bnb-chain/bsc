@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"fmt"
 	"net"
+	"slices"
 	"sync"
 	"time"
 
@@ -36,12 +37,14 @@ type Server struct {
 	dht              *kaddht.IpfsDHT
 	watcher          *PeerWatcher
 	ipLimiter        *leakybucket.Collector
+	peerID           peer.ID
 	privKey          *ecdsa.PrivateKey
 	pubsub           *pubsub.PubSub
 	joinedTopics     map[string]*pubsub.Topic
 	joinedTopicsLock sync.RWMutex
 
-	stop chan struct{}
+	bootPeerInfo   map[peer.ID]peer.AddrInfo
+	staticPeerInfo map[peer.ID]peer.AddrInfo
 }
 
 func NewServer(cfg *Config) (*Server, error) {
@@ -51,20 +54,23 @@ func NewServer(cfg *Config) (*Server, error) {
 	if err := cfg.SanityCheck(); err != nil {
 		return nil, err
 	}
-	priv, err := LoadPrivateKey(cfg.PrivateKeyPath)
+	peerID, priv, err := cfg.LoadPrivateKey()
 	if err != nil {
-		return nil, errors.Wrapf(err, "LoadPrivateKey err")
+		return nil, errors.Wrap(err, "LoadPrivateKey err")
 	}
 
 	ipLimiter := leakybucket.NewCollector(ipLimit, ipBurst, 30*time.Second, true /* deleteEmptyBuckets */)
 
 	s := &Server{
-		ctx:          ctx,
-		cancel:       cancel,
-		cfg:          cfg,
-		ipLimiter:    ipLimiter,
-		privKey:      priv,
-		joinedTopics: make(map[string]*pubsub.Topic, 8),
+		ctx:            ctx,
+		cancel:         cancel,
+		cfg:            cfg,
+		ipLimiter:      ipLimiter,
+		peerID:         peerID,
+		privKey:        priv,
+		joinedTopics:   make(map[string]*pubsub.Topic, 8),
+		bootPeerInfo:   make(map[peer.ID]peer.AddrInfo, 8),
+		staticPeerInfo: make(map[peer.ID]peer.AddrInfo, 8),
 	}
 
 	// setup Kad-DHT discovery
@@ -81,14 +87,14 @@ func NewServer(cfg *Config) (*Server, error) {
 	// setup libp2p instance
 	opts, err := s.buildOptions()
 	if err != nil {
-		return nil, errors.Wrapf(err, "buildOptions err")
+		return nil, errors.Wrap(err, "buildOptions err")
 	}
 	opts = append(opts, libp2p.Routing(routingCfg))
 	gomplex.ResetStreamTimeout = 5 * time.Second
 
 	h, err := libp2p.New(opts...)
 	if err != nil {
-		return nil, errors.Wrapf(err, "create p2p host err")
+		return nil, errors.Wrap(err, "create p2p host err")
 	}
 	s.host = h
 
@@ -101,7 +107,7 @@ func NewServer(cfg *Config) (*Server, error) {
 
 	gs, err := pubsub.NewGossipSub(s.ctx, s.host, psOpts...)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create pubsub")
+		return nil, errors.Wrap(err, "failed to create pubsub")
 	}
 	s.pubsub = gs
 
@@ -112,7 +118,7 @@ func NewServer(cfg *Config) (*Server, error) {
 		BadRespDecayInterval: defaultBadRespDecayInterval,
 	})
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create peer watcher")
+		return nil, errors.Wrap(err, "failed to create peer watcher")
 	}
 	s.watcher = watcher
 	return s, nil
@@ -120,7 +126,7 @@ func NewServer(cfg *Config) (*Server, error) {
 
 func (s *Server) Start() {
 	if s.started {
-		log.Error("libp2p already started, skip...")
+		log.Error("VDN Server already started, skip...")
 		return
 	}
 
@@ -128,6 +134,7 @@ func (s *Server) Start() {
 	bootPeers := s.connectPeersFromAddr(s.cfg.BootStrapAddrs)
 	for _, p := range bootPeers {
 		s.host.ConnManager().Protect(p.ID, "bootnode")
+		s.bootPeerInfo[p.ID] = p
 	}
 	if err := s.dht.Bootstrap(s.ctx); err != nil {
 		log.Error("Kad-DHT bootstrap failed", "err", err)
@@ -138,7 +145,7 @@ func (s *Server) Start() {
 	for _, p := range staticPeers {
 		// TODO(galaio): set trust peer
 		//s.watcher.SetTrustedPeers(p.ID)
-		_ = p
+		s.staticPeerInfo[p.ID] = p
 	}
 
 	// Periodic functions.
@@ -146,9 +153,9 @@ func (s *Server) Start() {
 	// 1. retry connect static peers
 	// 2. prune peer in every 30 minutes
 	// 3. metrics updates, report connect peers, inbound, outbound, tcp, quic
-
+	go s.eventLoop()
 	listenAddrs := s.host.Network().ListenAddresses()
-	log.Info("libp2p started at:", "addrs", listenAddrs)
+	log.Info("VDN Server started at:", "addrs", listenAddrs)
 }
 
 func (s *Server) connectPeersFromAddr(addrs []string) []peer.AddrInfo {
@@ -203,17 +210,7 @@ func (s *Server) buildOptions() ([]libp2p.Option, error) {
 
 		multiaddrs = append(multiaddrs, multiAddrQUIC)
 	}
-
-	ipriv, err := ConvertToInterfacePrivkey(s.privKey)
-	if err != nil {
-		return nil, errors.Wrapf(err, "ConvertToInterfacePrivkey fail")
-	}
-	id, err := peer.IDFromPrivateKey(ipriv)
-	if err != nil {
-		return nil, errors.Wrapf(err, "IDFromPrivateKey fail, key: %s", ipriv.GetPublic().Type().String())
-	}
-
-	log.Info("setup libp2p with peerID: %s ", id.String())
+	log.Info("configure VDN Server", "peerID", s.peerID)
 	options := []libp2p.Option{
 		privKeyOption(s.privKey),
 		libp2p.ListenAddrs(multiaddrs...),
@@ -268,6 +265,36 @@ func (s *Server) Disconnect(pid peer.ID) error {
 // Connect to a specific peer.
 func (s *Server) Connect(pi peer.AddrInfo) error {
 	return s.host.Connect(s.ctx, pi)
+}
+
+func (s *Server) eventLoop() {
+	reportTicker := time.NewTicker(30 * time.Second)
+	for {
+		select {
+		case <-reportTicker.C:
+			peers := s.host.Network().Peers()
+			var statics []peer.ID
+			for id := range s.staticPeerInfo {
+				if slices.Contains(peers, id) {
+					statics = append(statics, id)
+				}
+			}
+			var boots []peer.ID
+			for id := range s.bootPeerInfo {
+				if slices.Contains(peers, id) {
+					boots = append(boots, id)
+				}
+			}
+			log.Info("Count VDN peers", "peers", len(peers), "bootnodes", len(boots), "static", len(statics))
+			// TODO(galaio): may remove below logs later.
+			for _, id := range peers {
+				log.Debug("VDN connect to peer", "peerID", id, "addr", s.host.Network().Peerstore().Addrs(id))
+			}
+		case <-s.ctx.Done():
+			log.Debug("VDN stopped, exit the event loop")
+			return
+		}
+	}
 }
 
 func privKeyOption(privkey *ecdsa.PrivateKey) libp2p.Option {

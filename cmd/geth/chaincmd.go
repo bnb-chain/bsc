@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"io"
 	"net"
 	"os"
@@ -83,6 +84,7 @@ It expects the genesis file as argument.`,
 		Flags: []cli.Flag{
 			utils.InitNetworkDir,
 			utils.InitNetworkPort,
+			utils.InitVDNPort,
 			utils.InitNetworkSize,
 			utils.InitNetworkIps,
 			configFileFlag,
@@ -362,9 +364,10 @@ func createNodeConfig(baseConfig gethConfig, enodes []*enode.Node, ip string, po
 }
 
 // Create configs for nodes in the cluster
-func createNodeConfigs(baseConfig gethConfig, initDir string, ips []string, ports []int, size int) ([]gethConfig, error) {
+func createNodeConfigs(baseConfig gethConfig, initDir string, ips []string, ports []int, vdnPorts []int, size int) ([]gethConfig, error) {
 	// Create the nodes
 	enodes := make([]*enode.Node, size)
+	peerIDs := make([]peer.ID, size)
 	for i := 0; i < size; i++ {
 		nodeConfig := baseConfig.Node
 		nodeConfig.DataDir = path.Join(initDir, fmt.Sprintf("node%d", i))
@@ -374,12 +377,24 @@ func createNodeConfigs(baseConfig gethConfig, initDir string, ips []string, port
 		}
 		pk := stack.Config().NodeKey()
 		enodes[i] = enode.NewV4(&pk.PublicKey, net.ParseIP(ips[i]), ports[i], ports[i])
+		stack.Config().VDN.PrivateKeyPath = stack.Config().VDNPrivateKeyPath()
+		peerID, _, err := stack.Config().VDN.LoadPrivateKey()
+		if err != nil {
+			return nil, err
+		}
+		peerIDs[i] = peerID
 	}
 
 	// Create the configs
 	configs := make([]gethConfig, size)
 	for i := 0; i < size; i++ {
 		configs[i] = createNodeConfig(baseConfig, enodes, ips[i], ports[i], size, i)
+	}
+
+	// set VDN bootnode, using the first node as bootnode default.
+	// TODO(galaio): may using enode url than multiaddr url in future?
+	for i := 1; i < size; i++ {
+		configs[i].Node.VDN.BootStrapAddrs = []string{fmt.Sprintf("/ip4/%v/tcp/%d/p2p/%v", ips[0], vdnPorts[0], peerIDs[0])}
 	}
 	return configs, nil
 }
@@ -398,6 +413,10 @@ func initNetwork(ctx *cli.Context) error {
 	if port <= 0 {
 		utils.Fatalf("port should be greater than 0")
 	}
+	vdnPort := ctx.Int(utils.InitVDNPort.Name)
+	if vdnPort <= 0 {
+		utils.Fatalf("VDN port should be greater than 0")
+	}
 	ipStr := ctx.String(utils.InitNetworkIps.Name)
 	cfgFile := ctx.String(configFileFlag.Name)
 
@@ -411,6 +430,7 @@ func initNetwork(ctx *cli.Context) error {
 	}
 
 	ports := createPorts(ipStr, port, size)
+	vdnPorts := createPorts(ipStr, vdnPort, size)
 
 	// Make sure we have a valid genesis JSON
 	genesisPath := ctx.Args().First()
@@ -435,7 +455,7 @@ func initNetwork(ctx *cli.Context) error {
 		return err
 	}
 
-	configs, err := createNodeConfigs(config, initDir, ips, ports, size)
+	configs, err := createNodeConfigs(config, initDir, ips, ports, vdnPorts, size)
 	if err != nil {
 		utils.Fatalf("Failed to create node configs: %v", err)
 	}

@@ -18,10 +18,10 @@ func LoadPrivateKey(keyPath string) (*ecdsa.PrivateKey, error) {
 	}
 	priv, err := crypto.GenerateKey()
 	if err != nil {
-		return nil, errors.Wrapf(err, "GenerateKey err")
+		return nil, errors.Wrap(err, "GenerateKey err")
 	}
 	if err := crypto.SaveECDSA(keyPath, priv); err != nil {
-		return nil, errors.Wrapf(err, "SaveKey err")
+		return nil, errors.Wrap(err, "SaveKey err")
 	}
 	return priv, nil
 }

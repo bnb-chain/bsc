@@ -209,7 +209,7 @@ func New(conf *Config) (*Node, error) {
 	// Configure validator p2p server.
 	if conf.EnableMining {
 		if conf.VDN.PrivateKeyPath == "" {
-			conf.VDN.PrivateKeyPath = conf.ResolvePath(datadirVDNPrivateKey)
+			conf.VDN.PrivateKeyPath = conf.VDNPrivateKeyPath()
 		}
 		node.valServer, err = vdn.NewServer(&conf.VDN)
 		if err != nil {

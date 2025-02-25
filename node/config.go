@@ -359,6 +359,10 @@ func (c *Config) name() string {
 	return c.Name
 }
 
+func (c *Config) VDNPrivateKeyPath() string {
+	return c.ResolvePath(datadirVDNPrivateKey)
+}
+
 // These resources are resolved differently for "geth" instances.
 var isOldGethResource = map[string]bool{
 	"chaindata":          true,
