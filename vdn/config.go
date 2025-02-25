@@ -2,6 +2,7 @@ package vdn
 
 import (
 	"crypto/ecdsa"
+
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/pkg/errors"

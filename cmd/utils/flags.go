@@ -24,7 +24,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/vdn"
 	"math"
 	"math/big"
 	"net"
@@ -36,6 +35,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ethereum/go-ethereum/vdn"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
