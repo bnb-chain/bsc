@@ -82,7 +82,8 @@ func (s *Server) topicScoreParams(topic string) (*pubsub.TopicScoreParams, error
 // Based on the lighthouse beacon block parameters.
 // https://gist.github.com/blacktemplar/5c1862cb3f0e32a1a7fb0b25e79e6e2c
 func defaultBlockTopicParams() *pubsub.TopicScoreParams {
-	decayEpoch := time.Duration(5)
+	decayEpoch := 5
+	decayEpochDuration := 5 * oneEpochDuration()
 	blocksInEpoch := blocksPerEpoch()
 	meshWeight := -0.717
 	invalidDecayPeriod := 50 * oneEpochDuration()
@@ -100,13 +101,13 @@ func defaultBlockTopicParams() *pubsub.TopicScoreParams {
 		FirstMessageDeliveriesDecay:     scoreDecay(20 * oneEpochDuration()),
 		FirstMessageDeliveriesCap:       23,
 		MeshMessageDeliveriesWeight:     meshWeight,
-		MeshMessageDeliveriesDecay:      scoreDecay(decayEpoch * oneEpochDuration()),
+		MeshMessageDeliveriesDecay:      scoreDecay(decayEpochDuration),
 		MeshMessageDeliveriesCap:        float64(blocksInEpoch * uint64(decayEpoch)),
 		MeshMessageDeliveriesThreshold:  float64(blocksInEpoch*uint64(decayEpoch)) / 10,
 		MeshMessageDeliveriesWindow:     2 * time.Second,
 		MeshMessageDeliveriesActivation: 4 * oneEpochDuration(),
 		MeshFailurePenaltyWeight:        meshWeight,
-		MeshFailurePenaltyDecay:         scoreDecay(decayEpoch * oneEpochDuration()),
+		MeshFailurePenaltyDecay:         scoreDecay(decayEpochDuration),
 		InvalidMessageDeliveriesWeight:  -140.4475,
 		InvalidMessageDeliveriesDecay:   scoreDecay(invalidDecayPeriod),
 	}

@@ -33,10 +33,7 @@ func (*Server) InterceptPeerDial(_ peer.ID) (allow bool) {
 // multiaddr for the given peer.
 func (s *Server) InterceptAddrDial(pid peer.ID, m multiaddr.Multiaddr) (allow bool) {
 	// Disallow bad peers from dialing in.
-	if s.watcher.IsBad(pid) != nil {
-		return false
-	}
-	return true
+	return s.watcher.IsBad(pid) == nil
 }
 
 // InterceptAccept checks whether the incidental inbound connection is allowed.

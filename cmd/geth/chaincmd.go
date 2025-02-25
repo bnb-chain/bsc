@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/libp2p/go-libp2p/core/peer"
 	"io"
 	"net"
 	"os"
@@ -31,6 +30,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/libp2p/go-libp2p/core/peer"
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/urfave/cli/v2"

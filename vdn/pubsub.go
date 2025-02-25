@@ -17,18 +17,11 @@ const (
 	gossipSubDhi = 12 // topic stable mesh high watermark
 
 	// gossip parameters
-	gossipSubMcacheLen    = 6   // number of windows to retain full messages in cache for `IWANT` responses
-	gossipSubMcacheGossip = 3   // number of windows to gossip about
-	gossipSubSeenTTL      = 768 // number of seconds to retain message IDs ( 2 epochs)
-
-	// fanout ttl
-	gossipSubFanoutTTL = 60000000000 // TTL for fanout maps for topics we are not subscribed to but have published to, in nano seconds
+	gossipSubMcacheLen    = 6 // number of windows to retain full messages in cache for `IWANT` responses
+	gossipSubMcacheGossip = 3 // number of windows to gossip about
 
 	// heartbeat interval
 	gossipSubHeartbeatInterval = 700 * time.Millisecond // frequency of heartbeat, milliseconds
-
-	// misc
-	rSubD = 8 // random gossip target
 )
 
 // JoinTopic will join PubSub topic, if not already joined.
@@ -109,9 +102,9 @@ func (s *Server) pubsubOptions() []pubsub.Option {
 		// Notice: Eth 2.0 uses no author, no sign & verify.
 		pubsub.WithMessageAuthor(""),
 		pubsub.WithMessageSignaturePolicy(pubsub.StrictSign),
-		pubsub.WithPeerOutboundQueueSize(int(s.cfg.QueueSize)),
+		pubsub.WithPeerOutboundQueueSize(s.cfg.QueueSize),
 		pubsub.WithMaxMessageSize(GossipMaxSize),
-		pubsub.WithValidateQueueSize(int(s.cfg.QueueSize)),
+		pubsub.WithValidateQueueSize(s.cfg.QueueSize),
 		pubsub.WithPeerScore(peerScoringParams()),
 		pubsub.WithPeerScoreInspect(s.peerInspector, time.Minute),
 		pubsub.WithGossipSubParams(pubsubGossipParam()),
