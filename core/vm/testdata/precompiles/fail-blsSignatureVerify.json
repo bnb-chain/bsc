@@ -1,0 +1,12 @@
+[
+    {
+      "Input": "",
+      "ExpectedError": "execution reverted",
+      "Name": "bls_signatureVerify_empty_input"
+    },
+    {
+      "Input": "f2d8e8e5bf354429e3ce8b97c4e88f7a0bf7bc917e856de762ed6d70dd8ec2d289a04d63285e4b45309e7c180ea82565e375dd62c7b80d957aea4c9b7e16bdb28a0f910036bd3220fe3d7614fb137a8f0a68b3c564ddd214b5041d8f7a124e6e7285ac42635e75eeb9051a052fb500b1c2bc23bd4290db59fc02be11f2b80896b6e22d5b8dd31ba2e49b13cd6be19fcd01c1e23af3e5165d88d8b9deaf38baa77770fa6a358e2eebdffd1bd8a1eb7387",
+      "ExpectedError": "execution reverted",
+      "Name": "bls_signatureVerify_wrong_signature"
+    }
+  ]
