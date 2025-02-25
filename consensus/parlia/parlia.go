@@ -321,18 +321,17 @@ func (p *Parlia) Period() uint64 {
 }
 
 func (p *Parlia) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
-	// deploy a contract
-	if tx.To() == nil {
+	if tx.To() == nil || !isToSystemContract(*tx.To()) {
+		return false, nil
+	}
+	if tx.GasPrice().Sign() != 0 {
 		return false, nil
 	}
 	sender, err := types.Sender(p.signer, tx)
 	if err != nil {
 		return false, errors.New("UnAuthorized transaction")
 	}
-	if sender == header.Coinbase && isToSystemContract(*tx.To()) && tx.GasPrice().Cmp(big.NewInt(0)) == 0 {
-		return true, nil
-	}
-	return false, nil
+	return sender == header.Coinbase, nil
 }
 
 func (p *Parlia) IsSystemContract(to *common.Address) bool {
