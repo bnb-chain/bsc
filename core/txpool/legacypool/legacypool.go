@@ -1423,8 +1423,9 @@ func (pool *LegacyPool) reset(oldHead, newHead *types.Header) {
 					}
 				}
 				lost := make([]*types.Transaction, 0, len(discarded))
+				gasTip := pool.gasTip.Load().ToBig()
 				for _, tx := range types.TxDifference(discarded, included) {
-					if pool.Filter(tx) {
+					if pool.Filter(tx) && tx.GasTipCapIntCmp(gasTip) >= 0 {
 						lost = append(lost, tx)
 					}
 				}
