@@ -1156,6 +1156,11 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Usage: "the p2p port of the nodes in the network",
 		Value: 30311,
 	}
+	InitVDNPort = &cli.IntFlag{
+		Name:  "init.vdn-port",
+		Usage: "the vdn p2p port of the nodes in the network",
+		Value: 13000,
+	}
 	MetricsInfluxDBOrganizationFlag = &cli.StringFlag{
 		Name:     "metrics.influxdb.organization",
 		Usage:    "InfluxDB organization name (v2 only)",

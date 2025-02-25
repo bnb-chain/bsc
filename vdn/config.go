@@ -1,7 +1,10 @@
 package vdn
 
 import (
+	"crypto/ecdsa"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -25,11 +28,11 @@ type Config struct {
 
 func (cfg *Config) SanityCheck() error {
 	if cfg.QueueSize == 0 {
-		log.Warn("Invalid pubsub queue size of %d, set %d", cfg.QueueSize, defaultPubsubQueueSize)
+		log.Warn("Invalid pubsub queue size", "input", cfg.QueueSize, "default", defaultPubsubQueueSize)
 		cfg.QueueSize = defaultPubsubQueueSize
 	}
 	if cfg.MaxPeers == 0 {
-		log.Warn("Invalid MaxPeers size of %d, set %d", cfg.QueueSize, defaultMaxPeers)
+		log.Warn("Invalid MaxPeers size", "input", cfg.MaxPeers, "default", defaultMaxPeers)
 		cfg.MaxPeers = defaultMaxPeers
 	}
 	if len(cfg.BootStrapAddrs) == 0 && cfg.EnableDiscovery {
@@ -37,4 +40,20 @@ func (cfg *Config) SanityCheck() error {
 		cfg.EnableDiscovery = false
 	}
 	return nil
+}
+
+func (cfg *Config) LoadPrivateKey() (peer.ID, *ecdsa.PrivateKey, error) {
+	priv, err := LoadPrivateKey(cfg.PrivateKeyPath)
+	if err != nil {
+		return "", nil, errors.Wrap(err, "failed to load private key")
+	}
+	ipriv, err := ConvertToInterfacePrivkey(priv)
+	if err != nil {
+		return "", nil, errors.Wrap(err, "failed to convert private key")
+	}
+	peerId, err := peer.IDFromPrivateKey(ipriv)
+	if err != nil {
+		return "", nil, errors.Wrap(err, "failed to parse peer id")
+	}
+	return peerId, priv, nil
 }
