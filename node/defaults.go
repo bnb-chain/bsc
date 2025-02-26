@@ -80,7 +80,7 @@ var DefaultConfig = Config{
 	Instance: 1,
 	VDN: vdn.Config{
 		HostAddress:      "127.0.0.1",
-		PrivateKeyPath:   "", // by default, it will be auto set PrivateKeyPath/nodekey_vdn
+		NodeKeyPath:      "", // by default, it will be auto set DataDir/geth/nodekey_vdn
 		QUICPort:         13000,
 		TCPPort:          13000,
 		MaxPeers:         50,

@@ -131,7 +131,7 @@ func (s *Server) Start() {
 	}
 
 	// setup discovery
-	bootPeers := s.connectPeersFromAddr(s.cfg.BootStrapAddrs)
+	bootPeers := s.connectPeersFromAddr(s.cfg.BootstrapPeers)
 	for _, p := range bootPeers {
 		s.host.ConnManager().Protect(p.ID, "bootnode")
 		s.bootPeerInfo[p.ID] = p
