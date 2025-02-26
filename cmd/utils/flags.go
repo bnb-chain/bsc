@@ -1700,10 +1700,10 @@ func SetValidatorP2PConfig(ctx *cli.Context, cfg *vdn.Config) {
 		cfg.QUICPort = ctx.Int(VDNQuicPortFlag.Name)
 	}
 	if ctx.IsSet(VDNBootnodesFlag.Name) {
-		cfg.BootStrapAddrs = SplitAndTrim(ctx.String(VDNBootnodesFlag.Name))
+		cfg.BootstrapPeers = SplitAndTrim(ctx.String(VDNBootnodesFlag.Name))
 	}
 	if ctx.IsSet(VDNNodeKeyFileFlag.Name) {
-		cfg.PrivateKeyPath = ctx.String(VDNNodeKeyFileFlag.Name)
+		cfg.NodeKeyPath = ctx.String(VDNNodeKeyFileFlag.Name)
 	}
 }
 

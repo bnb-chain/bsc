@@ -40,7 +40,7 @@ const (
 	datadirStaticNodes     = "static-nodes.json"  // Path within the datadir to the static node list
 	datadirTrustedNodes    = "trusted-nodes.json" // Path within the datadir to the trusted node list
 	datadirNodeDatabase    = "nodes"              // Path within the datadir to store the node infos
-	datadirVDNPrivateKey   = "nodekey_vdn"
+	datadirVDNNodeKey      = "nodekey_vdn"
 )
 
 // Config represents a small collection of configuration values to fine tune the
@@ -359,8 +359,8 @@ func (c *Config) name() string {
 	return c.Name
 }
 
-func (c *Config) VDNPrivateKeyPath() string {
-	return c.ResolvePath(datadirVDNPrivateKey)
+func (c *Config) VDNNodeKeyPath() string {
+	return c.ResolvePath(datadirVDNNodeKey)
 }
 
 // These resources are resolved differently for "geth" instances.

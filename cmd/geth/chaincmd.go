@@ -378,7 +378,7 @@ func createNodeConfigs(baseConfig gethConfig, initDir string, ips []string, port
 		}
 		pk := stack.Config().NodeKey()
 		enodes[i] = enode.NewV4(&pk.PublicKey, net.ParseIP(ips[i]), ports[i], ports[i])
-		stack.Config().VDN.PrivateKeyPath = stack.Config().VDNPrivateKeyPath()
+		stack.Config().VDN.NodeKeyPath = stack.Config().VDNNodeKeyPath()
 		peerID, _, err := stack.Config().VDN.LoadPrivateKey()
 		if err != nil {
 			return nil, err
@@ -395,7 +395,7 @@ func createNodeConfigs(baseConfig gethConfig, initDir string, ips []string, port
 	// set VDN bootnode, using the first node as bootnode default.
 	// TODO(galaio): may using enode url than multiaddr url in future?
 	for i := 1; i < size; i++ {
-		configs[i].Node.VDN.BootStrapAddrs = []string{fmt.Sprintf("/ip4/%v/tcp/%d/p2p/%v", ips[0], vdnPorts[0], peerIDs[0])}
+		configs[i].Node.VDN.BootstrapPeers = []string{fmt.Sprintf("/ip4/%v/tcp/%d/p2p/%v", ips[0], vdnPorts[0], peerIDs[0])}
 	}
 	return configs, nil
 }

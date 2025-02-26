@@ -15,9 +15,9 @@ const (
 
 type Config struct {
 	StaticPeers      []string // using multi address format
-	BootStrapAddrs   []string
+	BootstrapPeers   []string
 	HostAddress      string // it indicates listen IP addr, it better a external IP for public service
-	PrivateKeyPath   string // the path saves the key and cached nodes
+	NodeKeyPath      string // the path saves the key and cached nodes
 	QUICPort         int
 	TCPPort          int
 	MaxPeers         int
@@ -36,21 +36,21 @@ func (cfg *Config) SanityCheck() error {
 		log.Warn("Invalid MaxPeers size", "input", cfg.MaxPeers, "default", defaultMaxPeers)
 		cfg.MaxPeers = defaultMaxPeers
 	}
-	if len(cfg.BootStrapAddrs) == 0 && cfg.EnableDiscovery {
-		log.Warn("Invalid BootStrapAddrs, disable discovery")
+	if len(cfg.BootstrapPeers) == 0 && cfg.EnableDiscovery {
+		log.Warn("Invalid BootstrapPeers, disable discovery")
 		cfg.EnableDiscovery = false
 	}
 	return nil
 }
 
 func (cfg *Config) LoadPrivateKey() (peer.ID, *ecdsa.PrivateKey, error) {
-	priv, err := LoadPrivateKey(cfg.PrivateKeyPath)
+	priv, err := LoadPrivateKey(cfg.NodeKeyPath)
 	if err != nil {
-		return "", nil, errors.Wrap(err, "failed to load private key")
+		return "", nil, errors.Wrap(err, "failed to load node key")
 	}
 	ipriv, err := ConvertToInterfacePrivkey(priv)
 	if err != nil {
-		return "", nil, errors.Wrap(err, "failed to convert private key")
+		return "", nil, errors.Wrap(err, "failed to convert node key")
 	}
 	peerId, err := peer.IDFromPrivateKey(ipriv)
 	if err != nil {
