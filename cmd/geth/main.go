@@ -83,7 +83,7 @@ var (
 		utils.OverrideDefaultExtraReserveForBlobRequests,
 		utils.OverrideBreatheBlockInterval,
 		utils.OverrideFixedTurnLength,
-		utils.EnablePersonal, // deprecated
+		utils.EnablePersonal,
 		utils.TxPoolLocalsFlag,
 		utils.TxPoolNoLocalsFlag,
 		utils.TxPoolJournalFlag,

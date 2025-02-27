@@ -422,13 +422,25 @@ func (n *Node) obtainJWTSecret(cliParam string) ([]byte, error) {
 // startup. It's not meant to be called at any time afterwards as it makes certain
 // assumptions about the state of the node.
 func (n *Node) startRPC() error {
-	if err := n.startInProc(n.rpcAPIs); err != nil {
+	// Filter out personal api
+	var apis []rpc.API
+	for _, api := range n.rpcAPIs {
+		if api.Namespace == "personal" {
+			if n.config.EnablePersonal {
+				log.Warn("Deprecated personal namespace activated")
+			} else {
+				continue
+			}
+		}
+		apis = append(apis, api)
+	}
+	if err := n.startInProc(apis); err != nil {
 		return err
 	}
 
 	// Configure IPC.
 	if n.ipc.endpoint != "" {
-		if err := n.ipc.start(n.rpcAPIs); err != nil {
+		if err := n.ipc.start(apis); err != nil {
 			return err
 		}
 	}
