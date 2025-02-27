@@ -450,6 +450,11 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			if !w.isRunning() {
 				continue
 			}
+			if interruptCh != nil {
+				interruptCh <- commitInterruptNewHead
+				close(interruptCh)
+				interruptCh = nil
+			}
 			clearPending(head.Header.Number.Uint64())
 			timestamp = time.Now().Unix()
 			if p, ok := w.engine.(*parlia.Parlia); ok {
