@@ -64,6 +64,7 @@ var (
 			utils.OverridePassedForkTime,
 			utils.OverridePascal,
 			utils.OverridePrague,
+			utils.OverrideLorentz,
 			utils.OverrideVerkle,
 			utils.MultiDataBaseFlag,
 		}, utils.DatabaseFlags),
@@ -267,6 +268,10 @@ func initGenesis(ctx *cli.Context) error {
 	if ctx.IsSet(utils.OverridePrague.Name) {
 		v := ctx.Uint64(utils.OverridePrague.Name)
 		overrides.OverridePrague = &v
+	}
+	if ctx.IsSet(utils.OverrideLorentz.Name) {
+		v := ctx.Uint64(utils.OverrideLorentz.Name)
+		overrides.OverrideLorentz = &v
 	}
 	if ctx.IsSet(utils.OverrideVerkle.Name) {
 		v := ctx.Uint64(utils.OverrideVerkle.Name)

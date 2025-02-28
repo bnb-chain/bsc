@@ -76,6 +76,7 @@ var (
 		utils.OverridePassedForkTime,
 		utils.OverridePascal,
 		utils.OverridePrague,
+		utils.OverrideLorentz,
 		utils.OverrideVerkle,
 		utils.OverrideFullImmutabilityThreshold,
 		utils.OverrideMinBlocksForBlobRequests,
@@ -466,8 +467,8 @@ func startNode(ctx *cli.Context, stack *node.Node, backend ethapi.Backend, isCon
 	// Start auxiliary services if enabled
 	ethBackend, ok := backend.(*eth.EthAPIBackend)
 	gasCeil := ethBackend.Miner().GasCeil()
-	if gasCeil > params.SystemTxsGas {
-		ethBackend.TxPool().SetMaxGas(gasCeil - params.SystemTxsGas)
+	if gasCeil > params.SystemTxsGasSoftLimit {
+		ethBackend.TxPool().SetMaxGas(gasCeil - params.SystemTxsGasSoftLimit)
 	}
 	if ctx.Bool(utils.MiningEnabledFlag.Name) {
 		// Mining only makes sense if a full Ethereum node is running

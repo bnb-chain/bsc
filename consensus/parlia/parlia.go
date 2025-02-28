@@ -321,18 +321,17 @@ func (p *Parlia) Period() uint64 {
 }
 
 func (p *Parlia) IsSystemTransaction(tx *types.Transaction, header *types.Header) (bool, error) {
-	// deploy a contract
-	if tx.To() == nil {
+	if tx.To() == nil || !isToSystemContract(*tx.To()) {
+		return false, nil
+	}
+	if tx.GasPrice().Sign() != 0 {
 		return false, nil
 	}
 	sender, err := types.Sender(p.signer, tx)
 	if err != nil {
 		return false, errors.New("UnAuthorized transaction")
 	}
-	if sender == header.Coinbase && isToSystemContract(*tx.To()) && tx.GasPrice().Cmp(big.NewInt(0)) == 0 {
-		return true, nil
-	}
-	return false, nil
+	return sender == header.Coinbase, nil
 }
 
 func (p *Parlia) IsSystemContract(to *common.Address) bool {
@@ -1256,6 +1255,44 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 	}
 	msg := p.getSystemMessage(header.Coinbase, common.HexToAddress(systemcontracts.ValidatorContract), data, common.Big0)
 	return p.applyTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, mining, tracer)
+}
+
+func (p *Parlia) EstimateGasReservedForSystemTxs(chain consensus.ChainHeaderReader, header *types.Header) uint64 {
+	parent := chain.GetHeaderByHash(header.ParentHash)
+	if parent != nil {
+		// Mainnet and Chapel have both passed Feynman. Now, simplify the logic before and during the Feynman hard fork.
+		if p.chainConfig.IsFeynman(header.Number, header.Time) &&
+			!p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
+			// const (
+			// 	the following values represent the maximum values found in the most recent blocks on the mainnet
+			// 	depositTxGas         = uint64(60_000)
+			// 	slashTxGas           = uint64(140_000)
+			// 	finalityRewardTxGas  = uint64(350_000)
+			// 	updateValidatorTxGas = uint64(12_160_000)
+			// )
+			// suggestReservedGas := depositTxGas
+			// if header.Difficulty.Cmp(diffInTurn) != 0 {
+			// 	snap, err := p.snapshot(chain, header.Number.Uint64()-1, header.ParentHash, nil)
+			// 	if err != nil || !snap.SignRecently(snap.inturnValidator()) {
+			// 		suggestReservedGas += slashTxGas
+			// 	}
+			// }
+			// if header.Number.Uint64()%p.config.Epoch == 0 {
+			// 	suggestReservedGas += finalityRewardTxGas
+			// }
+			// if isBreatheBlock(parent.Time, header.Time) {
+			// 	suggestReservedGas += updateValidatorTxGas
+			// }
+			// return suggestReservedGas * 150 / 100
+			if !isBreatheBlock(parent.Time, header.Time) {
+				// params.SystemTxsGasSoftLimit > (depositTxGas+slashTxGas+finalityRewardTxGas)*150/100
+				return params.SystemTxsGasSoftLimit
+			}
+		}
+	}
+
+	// params.SystemTxsGasHardLimit > (depositTxGas+slashTxGas+finalityRewardTxGas+updateValidatorTxGas)*150/100
+	return params.SystemTxsGasHardLimit
 }
 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block

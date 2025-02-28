@@ -187,9 +187,9 @@ var (
 		HaberTime:           newUint64(1718863500), // 2024-06-20 06:05:00 AM UTC
 		HaberFixTime:        newUint64(1727316120), // 2024-09-26 02:02:00 AM UTC
 		BohrTime:            newUint64(1727317200), // 2024-09-26 02:20:00 AM UTC
-		// TODO
-		PascalTime: nil,
-		PragueTime: nil,
+		PascalTime:          newUint64(1742436600),
+		PragueTime:          newUint64(1742436600),
+		LorentzTime:         nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -237,6 +237,8 @@ var (
 		BohrTime:            newUint64(1724116996), // 2024-08-20 01:23:16 AM UTC
 		PascalTime:          newUint64(1740452880), // 2025-02-25 03:08:00 AM UTC
 		PragueTime:          newUint64(1740452880), // 2025-02-25 03:08:00 AM UTC
+		// TODO
+		LorentzTime: nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -284,8 +286,9 @@ var (
 		HaberFixTime:        newUint64(0),
 		BohrTime:            newUint64(0),
 		// TODO: set them to `0` when passed on the mainnet
-		PascalTime: nil,
-		PragueTime: nil,
+		PascalTime:  nil,
+		PragueTime:  nil,
+		LorentzTime: nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -610,6 +613,7 @@ type ChainConfig struct {
 	PascalTime     *uint64 `json:"pascalTime,omitempty"`     // Pascal switch time (nil = no fork, 0 = already on pascal)
 	PragueTime     *uint64 `json:"pragueTime,omitempty"`     // Prague switch time (nil = no fork, 0 = already on prague)
 	OsakaTime      *uint64 `json:"osakaTime,omitempty"`      // Osaka switch time (nil = no fork, 0 = already on osaka)
+	LorentzTime    *uint64 `json:"lorentzTime,omitempty"`    // Lorentz switch time (nil = no fork, 0 = already on lorentz)
 	VerkleTime     *uint64 `json:"verkleTime,omitempty"`     // Verkle switch time (nil = no fork, 0 = already on verkle)
 
 	// TerminalTotalDifficulty is the amount of total difficulty reached by
@@ -773,7 +777,12 @@ func (c *ChainConfig) String() string {
 		PragueTime = big.NewInt(0).SetUint64(*c.PragueTime)
 	}
 
-	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Hertzfix: %v, ShanghaiTime: %v, KeplerTime: %v, FeynmanTime: %v, FeynmanFixTime: %v, CancunTime: %v, HaberTime: %v, HaberFixTime: %v, BohrTime: %v, PascalTime: %v, PragueTime: %v, Engine: %v}",
+	var LorentzTime *big.Int
+	if c.LorentzTime != nil {
+		LorentzTime = big.NewInt(0).SetUint64(*c.LorentzTime)
+	}
+
+	return fmt.Sprintf("{ChainID: %v Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Hertzfix: %v ShanghaiTime: %v, KeplerTime: %v, FeynmanTime: %v, FeynmanFixTime: %v, CancunTime: %v, HaberTime: %v, HaberFixTime: %v, BohrTime: %v, PascalTime: %v, PragueTime: %v, LorentzTime: %v, Engine: %v}",
 		c.ChainID,
 		c.HomesteadBlock,
 		c.DAOForkBlock,
@@ -815,6 +824,7 @@ func (c *ChainConfig) String() string {
 		BohrTime,
 		PascalTime,
 		PragueTime,
+		LorentzTime,
 		engine,
 	)
 }
@@ -1157,6 +1167,20 @@ func (c *ChainConfig) IsOnPrague(currentBlockNumber *big.Int, lastBlockTime uint
 	return !c.IsPrague(lastBlockNumber, lastBlockTime) && c.IsPrague(currentBlockNumber, currentBlockTime)
 }
 
+// IsLorentz returns whether time is either equal to the Lorentz fork time or greater.
+func (c *ChainConfig) IsLorentz(num *big.Int, time uint64) bool {
+	return c.IsLondon(num) && isTimestampForked(c.LorentzTime, time)
+}
+
+// IsOnLorentz returns whether currentBlockTime is either equal to the Lorentz fork time or greater firstly.
+func (c *ChainConfig) IsOnLorentz(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	lastBlockNumber := new(big.Int)
+	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
+		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+	}
+	return !c.IsLorentz(lastBlockNumber, lastBlockTime) && c.IsLorentz(currentBlockNumber, currentBlockTime)
+}
+
 // IsOsaka returns whether time is either equal to the Osaka fork time or greater.
 func (c *ChainConfig) IsOsaka(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.OsakaTime, time)
@@ -1245,6 +1269,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "pascalTime", timestamp: c.PascalTime},
 		{name: "pragueTime", timestamp: c.PragueTime},
 		{name: "osakaTime", timestamp: c.OsakaTime, optional: true},
+		{name: "lorentzTime", timestamp: c.LorentzTime},
 		{name: "verkleTime", timestamp: c.VerkleTime, optional: true},
 	} {
 		if lastFork.name != "" {
@@ -1297,13 +1322,13 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 	} {
 		if cur.config != nil {
 			if err := cur.config.validate(); err != nil {
-				return fmt.Errorf("invalid blob configuration for fork %s: %v", cur.name, err)
+				return fmt.Errorf("invalid chain configuration in blobSchedule for fork %q: %v", cur.name, err)
 			}
 		}
 		if cur.timestamp != nil {
 			// If the fork is configured, a blob schedule must be defined for it.
 			if cur.config == nil {
-				return fmt.Errorf("unsupported fork configuration: missing blob configuration entry for %v in schedule", cur.name)
+				return fmt.Errorf("invalid chain configuration: missing entry for fork %q in blobSchedule", cur.name)
 			}
 		}
 	}
@@ -1447,6 +1472,9 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	}
 	if isForkTimestampIncompatible(c.OsakaTime, newcfg.OsakaTime, headTimestamp) {
 		return newTimestampCompatError("Osaka fork timestamp", c.OsakaTime, newcfg.OsakaTime)
+	}
+	if isForkTimestampIncompatible(c.LorentzTime, newcfg.LorentzTime, headTimestamp) {
+		return newTimestampCompatError("Lorentz fork timestamp", c.LorentzTime, newcfg.LorentzTime)
 	}
 	if isForkTimestampIncompatible(c.VerkleTime, newcfg.VerkleTime, headTimestamp) {
 		return newTimestampCompatError("Verkle fork timestamp", c.VerkleTime, newcfg.VerkleTime)
@@ -1633,7 +1661,8 @@ type Rules struct {
 	IsHertz                                                 bool
 	IsHertzfix                                              bool
 	IsShanghai, IsKepler, IsFeynman, IsCancun, IsHaber      bool
-	IsBohr, IsPascal, IsPrague, IsOsaka, IsVerkle           bool
+	IsBohr, IsPascal, IsPrague, IsLorentz, IsOsaka          bool
+	IsVerkle                                                bool
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -1675,6 +1704,7 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsPascal:         c.IsPascal(num, timestamp),
 		IsPrague:         c.IsPrague(num, timestamp),
 		IsOsaka:          c.IsOsaka(num, timestamp),
+		IsLorentz:        c.IsLorentz(num, timestamp),
 		IsVerkle:         c.IsVerkle(num, timestamp),
 		IsEIP4762:        isVerkle,
 	}
