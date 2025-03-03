@@ -76,7 +76,7 @@ func NewServer(cfg *Config) (*Server, error) {
 	// setup Kad-DHT discovery
 	dopts := []kaddht.Option{
 		kaddht.Mode(kaddht.ModeServer),
-		kaddht.ProtocolPrefix("/bsc/validator/disc"),
+		kaddht.ProtocolPrefix("/bsc/vdn/disc"),
 	}
 	routingCfg := func(h host.Host) (routing.PeerRouting, error) {
 		var err error
@@ -214,11 +214,11 @@ func (s *Server) buildOptions() ([]libp2p.Option, error) {
 	options := []libp2p.Option{
 		privKeyOption(s.privKey),
 		libp2p.ListenAddrs(multiaddrs...),
-		libp2p.UserAgent("bsc-vdb-p2p"),
+		libp2p.UserAgent("BSC-VDN"),
 		libp2p.ConnectionGater(s),
 		libp2p.Transport(libp2ptcp.NewTCPTransport),
 		libp2p.DefaultMuxers,
-		libp2p.Muxer("/mplex/6.7.0", mplex.DefaultTransport),
+		libp2p.Muxer(mplex.ID, mplex.DefaultTransport),
 		libp2p.Security(noise.ID, noise.New),
 		//libp2p.Ping(false),    // Disable Ping Service.
 		libp2p.DisableRelay(), // Disable relay transport, just connect directly
