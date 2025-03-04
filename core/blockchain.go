@@ -1781,6 +1781,9 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	defer wg.Wait()
 	wg.Add(1)
 	go func() {
+		if _, ok := bc.recvTimeCache.Get(block.Hash()); !ok {
+			bc.recvTimeCache.Add(block.Hash(), time.Now().UnixMilli())
+		}
 		blockBatch := bc.db.BlockStore().NewBatch()
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
 		rawdb.WriteBlock(blockBatch, block)
