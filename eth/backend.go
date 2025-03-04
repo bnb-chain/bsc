@@ -21,11 +21,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/metrics"
 	"math/big"
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/ethereum/go-ethereum/metrics"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -687,23 +688,29 @@ func (s *Ethereum) Stop() error {
 }
 
 func (s *Ethereum) reportRecentBlocksLoop() {
-	reportCnt := uint64(3)
+	reportCnt := uint64(2)
 	reportTicker := time.NewTicker(time.Second)
 	for {
 		select {
 		case <-reportTicker.C:
-			header := s.blockchain.CurrentBlock()
-			if header == nil || header.Number.Uint64() <= reportCnt {
+			cur := s.blockchain.CurrentBlock()
+			if cur == nil || cur.Number.Uint64() <= reportCnt {
 				continue
 			}
-			num := header.Number.Uint64()
-			hash := header.Hash()
+			num := cur.Number.Uint64()
+			hash := cur.Hash()
 			records := make(map[string]interface{})
-			for i := uint64(0); i < reportCnt; i++ {
-				records[fmt.Sprintf("block-%d", num-i)] = s.blockchain.GetRecvTime(hash)
-				records[fmt.Sprintf("vote-%d", num-i)] = s.votePool.GetMajorityVoteTime(hash)
-			}
-			metrics.GetOrRegisterLabel("recent-blocks", nil).Mark(records)
+			records["Current"] = num
+			records["Current_recvBlock"] = s.blockchain.GetRecvTime(hash)
+			records["Current_majorityVote"] = s.votePool.GetMajorityVoteTime(hash)
+
+			prv := s.blockchain.GetBlockByNumber(num - 1)
+			num = prv.NumberU64()
+			hash = prv.Hash()
+			records["Prev"] = num
+			records["Prev_recvBlock"] = s.blockchain.GetRecvTime(hash)
+			records["Prev_majorityVote"] = s.votePool.GetMajorityVoteTime(hash)
+			metrics.GetOrRegisterLabel("report-blocks", nil).Mark(records)
 		case <-s.stopCh:
 			return
 		}
