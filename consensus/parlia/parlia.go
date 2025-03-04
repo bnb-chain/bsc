@@ -75,6 +75,8 @@ const (
 	systemRewardPercent = 4 // it means 1/2^4 = 1/16 percentage of gas fee incoming will be distributed to system
 
 	collectAdditionalVotesRewardRatio = 100 // ratio of additional reward for collecting more votes than needed, the denominator is 100
+
+	GasLimitBoundDivisorBeforeLorentz uint64 = 256 // The bound divisor of the gas limit, used in update calculations.
 )
 
 var (
@@ -705,7 +707,11 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 	if diff < 0 {
 		diff *= -1
 	}
-	limit := parent.GasLimit / params.GasLimitBoundDivisor
+	gasLimitBoundDivisor := GasLimitBoundDivisorBeforeLorentz
+	if p.chainConfig.IsLorentz(header.Number, header.Time) {
+		gasLimitBoundDivisor = params.GasLimitBoundDivisor
+	}
+	limit := parent.GasLimit / gasLimitBoundDivisor
 
 	if uint64(diff) >= limit || header.GasLimit < params.MinGasLimit {
 		return fmt.Errorf("invalid gas limit: have %d, want %d += %d", header.GasLimit, parent.GasLimit, limit-1)
