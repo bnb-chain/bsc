@@ -34,9 +34,6 @@ const (
 
 	// egressMeterName is the prefix of the per-packet outbound metrics.
 	egressMeterName = "p2p/egress"
-
-	// peerLatencyName is the prefix of peer the latency metrics.
-	peerLatencyName = "p2p/peers/latency"
 )
 
 var (
@@ -71,6 +68,8 @@ var (
 	serveUnexpectedIdentity  = metrics.NewRegisteredMeter("p2p/serves/error/id/unexpected", nil)
 	serveEncHandshakeError   = metrics.NewRegisteredMeter("p2p/serves/error/rlpx/enc", nil)
 	serveProtoHandshakeError = metrics.NewRegisteredMeter("p2p/serves/error/rlpx/proto", nil)
+
+	peerLatencyStat = metrics.NewRegisteredTimer("p2p/peers/latency", nil)
 )
 
 // markDialError matches errors that occur while setting up a dial connection

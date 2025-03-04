@@ -22,7 +22,6 @@ import (
 	"io"
 	"net"
 	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -358,10 +357,7 @@ func (p *Peer) pingLoop() {
 			latency := (time.Now().UnixMilli() - startPing.Load()) / 2
 			if latency > 0 {
 				p.latency.Store(latency)
-				ip := strings.ReplaceAll(p.Node().IPAddr().String(), ".", "-")
-				m := fmt.Sprintf("%s/%s", peerLatencyName, ip)
-				metrics.GetOrRegisterGauge(m, nil).Update(latency)
-				metrics.GetOrRegisterTimer(peerLatencyName, nil).Update(time.Duration(latency))
+				peerLatencyStat.Update(time.Duration(latency))
 			}
 		case <-p.closed:
 			return
