@@ -592,7 +592,7 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 			return errInvalidMixDigest
 		}
 	} else {
-		if header.MilliTimestamp()%1000 != header.Time {
+		if header.MilliTimestamp()/1000 != header.Time {
 			return fmt.Errorf("invalid MixDigest, have %#x, expected the last two bytes to represent milliseconds", header.MixDigest)
 		}
 	}
