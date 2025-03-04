@@ -2138,6 +2138,7 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 	} else {
 		delay := defaultInitialBackOffTime
 		if p.chainConfig.IsLorentz(header.Number, header.Time) {
+			// If the in-turn validator has not signed recently, the expected backoff times are [2, 3, 4, ...].
 			delay = lorentzInitialBackOffTime
 		}
 		validators := snap.validators()
@@ -2205,6 +2206,7 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 		})
 
 		if delay == 0 && p.chainConfig.IsLorentz(header.Number, header.Time) && backOffSteps[idx] > 0 {
+			// If the in-turn validator has signed recently, the expected backoff times are [0, 2, 3, ...].
 			return lorentzInitialBackOffTime + (backOffSteps[idx]-1)*wiggleTime
 		}
 		delay += backOffSteps[idx] * wiggleTime
