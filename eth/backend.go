@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/metrics"
 	"math/big"
 	"runtime"
 	"sync"
@@ -702,6 +703,7 @@ func (s *Ethereum) reportRecentBlocksLoop() {
 				records[fmt.Sprintf("block-%d", num-i)] = s.blockchain.GetRecvTime(hash)
 				records[fmt.Sprintf("vote-%d", num-i)] = s.votePool.GetMajorityVoteTime(hash)
 			}
+			metrics.GetOrRegisterLabel("recent-blocks", nil).Mark(records)
 		case <-s.stopCh:
 			return
 		}
