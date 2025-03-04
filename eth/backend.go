@@ -701,15 +701,15 @@ func (s *Ethereum) reportRecentBlocksLoop() {
 			hash := cur.Hash()
 			records := make(map[string]interface{})
 			records["Current"] = num
-			records["Current_recvBlock"] = s.blockchain.GetRecvTime(hash)
-			records["Current_majorityVote"] = s.votePool.GetMajorityVoteTime(hash)
+			records["Current_recvBlock"] = common.FormatMilliTime(s.blockchain.GetRecvTime(hash))
+			records["Current_majorityVote"] = common.FormatMilliTime(s.votePool.GetMajorityVoteTime(hash))
 
 			prv := s.blockchain.GetBlockByNumber(num - 1)
 			num = prv.NumberU64()
 			hash = prv.Hash()
 			records["Prev"] = num
-			records["Prev_recvBlock"] = s.blockchain.GetRecvTime(hash)
-			records["Prev_majorityVote"] = s.votePool.GetMajorityVoteTime(hash)
+			records["Prev_recvBlock"] = common.FormatMilliTime(s.blockchain.GetRecvTime(hash))
+			records["Prev_majorityVote"] = common.FormatMilliTime(s.votePool.GetMajorityVoteTime(hash))
 			metrics.GetOrRegisterLabel("report-blocks", nil).Mark(records)
 		case <-s.stopCh:
 			return
