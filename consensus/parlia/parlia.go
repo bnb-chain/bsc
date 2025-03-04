@@ -2167,6 +2167,10 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 		return 0
 	} else {
 		delay := defaultInitialBackOffTime
+		// When mining blocks, `header.Time` is temporarily set to time.Now() + 1.
+		// Therefore, using `header.Time` to determine whether a hard fork has occurred is incorrect.
+		// As a result, during the Bohr and Lorentz hard forks, the network may experience some instability,
+		// but it will eventually stabilize and continue forward based on the resubmission mechanism in the miner.
 		if p.chainConfig.IsLorentz(header.Number, header.Time) {
 			// If the in-turn validator has not signed recently, the expected backoff times are [2, 3, 4, ...].
 			delay = lorentzInitialBackOffTime
