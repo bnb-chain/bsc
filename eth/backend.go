@@ -113,7 +113,8 @@ type Ethereum struct {
 
 	p2pServer *p2p.Server
 
-	lock sync.RWMutex // Protects the variadic fields (e.g. gas price and etherbase)
+	lock   sync.RWMutex // Protects the variadic fields (e.g. gas price and etherbase)
+	stopCh chan struct{}
 
 	shutdownTracker *shutdowncheck.ShutdownTracker // Tracks if and when the node has shutdown ungracefully
 
@@ -240,6 +241,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		p2pServer:         stack.Server(),
 		discmix:           enode.NewFairMix(0),
 		shutdownTracker:   shutdowncheck.NewShutdownTracker(chainDb),
+		stopCh:            make(chan struct{}),
 	}
 
 	eth.APIBackend = &EthAPIBackend{stack.Config().ExtRPCEnabled(), stack.Config().AllowUnprotectedTxs, eth, nil}
@@ -599,6 +601,8 @@ func (s *Ethereum) Start() error {
 
 	// Start the networking layer
 	s.handler.Start(s.p2pServer.MaxPeers, s.p2pServer.MaxPeersPerIP)
+
+	go s.reportRecentBlocksLoop()
 	return nil
 }
 
@@ -676,5 +680,30 @@ func (s *Ethereum) Stop() error {
 	s.chainDb.Close()
 	s.eventMux.Stop()
 
+	// stop report loop
+	s.stopCh <- struct{}{}
 	return nil
+}
+
+func (s *Ethereum) reportRecentBlocksLoop() {
+	reportCnt := uint64(3)
+	reportTicker := time.NewTicker(time.Second)
+	for {
+		select {
+		case <-reportTicker.C:
+			header := s.blockchain.CurrentBlock()
+			if header == nil || header.Number.Uint64() <= reportCnt {
+				continue
+			}
+			num := header.Number.Uint64()
+			hash := header.Hash()
+			records := make(map[string]interface{})
+			for i := uint64(0); i < reportCnt; i++ {
+				records[fmt.Sprintf("block-%d", num-i)] = s.blockchain.GetRecvTime(hash)
+				records[fmt.Sprintf("vote-%d", num-i)] = s.votePool.GetMajorityVoteTime(hash)
+			}
+		case <-s.stopCh:
+			return
+		}
+	}
 }
