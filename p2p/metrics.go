@@ -34,6 +34,9 @@ const (
 
 	// egressMeterName is the prefix of the per-packet outbound metrics.
 	egressMeterName = "p2p/egress"
+
+	// peerLatencyName is the prefix of peer the latency metrics.
+	peerLatencyName = "p2p/peers/latency"
 )
 
 var (
