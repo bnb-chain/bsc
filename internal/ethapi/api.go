@@ -573,7 +573,8 @@ func (api *BlockChainAPI) getFinalizedNumber(ctx context.Context, verifiedValida
 	lastHeader := latestHeader
 	confirmedValSet := make(map[common.Address]struct{}, valLen)
 	confirmedValSet[lastHeader.Coinbase] = struct{}{}
-	for count := 1; int64(len(confirmedValSet)) < verifiedValidatorNum && count <= int(parliaConfig.Epoch) && lastHeader.Number.Int64() > max(fastFinalizedHeader.Number.Int64(), 1); count++ {
+	epochLength := int(1000) // TODO(Nathan): sync latest EpochLength defined in parlia engine
+	for count := 1; int64(len(confirmedValSet)) < verifiedValidatorNum && count <= epochLength && lastHeader.Number.Int64() > max(fastFinalizedHeader.Number.Int64(), 1); count++ {
 		lastHeader, err = api.b.HeaderByHash(ctx, lastHeader.ParentHash)
 		if err != nil { // impossible
 			return 0, err

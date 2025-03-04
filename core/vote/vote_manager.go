@@ -148,8 +148,7 @@ func (voteManager *VoteManager) loop() {
 
 			curHead := cHead.Header
 			if p, ok := voteManager.engine.(*parlia.Parlia); ok {
-				parentHeader := voteManager.chain.GetHeaderByHash(curHead.ParentHash)
-				blockInterval, _ := p.BlockInterval(voteManager.chain, parentHeader)
+				blockInterval, _ := p.BlockInterval(voteManager.chain, curHead)
 				nextBlockMinedTime := time.UnixMilli(int64((curHead.MilliTimestamp() + blockInterval)))
 				timeForBroadcast := 50 * time.Millisecond // enough to broadcast a vote
 				if time.Now().Add(timeForBroadcast).After(nextBlockMinedTime) {

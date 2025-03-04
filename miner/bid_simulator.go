@@ -400,6 +400,7 @@ func (b *bidSimulator) newBidLoop() {
 
 func (b *bidSimulator) bidBetterBefore(parentHash common.Hash) time.Time {
 	parentHeader := b.chain.GetHeaderByHash(parentHash)
+	// Approximately equal to the block interval of currentHeader, except for the switch block.
 	blockInterval, _ := b.engine.BlockInterval(b.chain, parentHeader)
 	return bidutil.BidBetterBefore(parentHeader, blockInterval, b.delayLeftOver, b.config.BidSimulationLeftOver)
 }

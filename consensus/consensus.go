@@ -147,7 +147,7 @@ type Engine interface {
 	// Delay returns the max duration the miner can commit txs
 	Delay(chain ChainReader, header *types.Header, leftOver *time.Duration) *time.Duration
 
-	// BlockInterval returns the block interval in milliseconds after given header applied
+	// BlockInterval returns the block interval in milliseconds for the given header
 	BlockInterval(chain ChainHeaderReader, header *types.Header) (uint64, error)
 
 	// Close terminates any background threads maintained by the consensus engine.

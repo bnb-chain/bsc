@@ -191,9 +191,7 @@ var (
 		PragueTime:          newUint64(1742436600),
 		LorentzTime:         nil,
 
-		Parlia: &ParliaConfig{
-			Epoch: 200,
-		},
+		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfigBSC,
@@ -239,9 +237,7 @@ var (
 		// TODO
 		LorentzTime: nil,
 
-		Parlia: &ParliaConfig{
-			Epoch: 200,
-		},
+		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfigBSC,
@@ -288,9 +284,7 @@ var (
 		PragueTime:  nil,
 		LorentzTime: nil,
 
-		Parlia: &ParliaConfig{
-			Epoch: 2000, // temp change it this way for test
-		},
+		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun:  DefaultCancunBlobConfig,
 			Prague:  DefaultPragueBlobConfigBSC,
@@ -330,9 +324,7 @@ var (
 		FeynmanFixTime:      newUint64(0),
 		CancunTime:          newUint64(0),
 
-		Parlia: &ParliaConfig{
-			Epoch: 200,
-		},
+		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 		},
@@ -681,7 +673,6 @@ func (c CliqueConfig) String() string {
 
 // ParliaConfig is the consensus engine configs for proof-of-staked-authority based sealing.
 type ParliaConfig struct {
-	Epoch uint64 `json:"epoch"` // Epoch length to update validatorSet
 }
 
 // String implements the stringer interface, returning the consensus engine details.

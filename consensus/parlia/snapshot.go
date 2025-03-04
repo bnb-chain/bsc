@@ -44,6 +44,7 @@ type Snapshot struct {
 
 	Number           uint64                            `json:"number"`                // Block number where the snapshot was created
 	Hash             common.Hash                       `json:"hash"`                  // Block hash where the snapshot was created
+	EpochLength      uint16                            `json:"epoch_length"`          // Number of Blocks in one epoch
 	BlockInterval    uint16                            `json:"block_interval"`        // Block Interval in milliseconds
 	TurnLength       uint8                             `json:"turn_length"`           // Length of `turn`, meaning the consecutive number of blocks a validator receives priority for block production
 	Validators       map[common.Address]*ValidatorInfo `json:"validators"`            // Set of authorized validators at this moment
@@ -75,6 +76,7 @@ func newSnapshot(
 		sigCache:         sigCache,
 		Number:           number,
 		Hash:             hash,
+		EpochLength:      defaultEpochLength,
 		BlockInterval:    defaultBlockInterval,
 		TurnLength:       defaultTurnLength,
 		Recents:          make(map[uint64]common.Address),
@@ -119,6 +121,9 @@ func loadSnapshot(config *params.ParliaConfig, sigCache *lru.ARCCache, db ethdb.
 	if err := json.Unmarshal(blob, snap); err != nil {
 		return nil, err
 	}
+	if snap.EpochLength == 0 { // no EpochLength field in old snapshots
+		snap.EpochLength = defaultEpochLength
+	}
 	if snap.BlockInterval == 0 { // no BlockInterval field in old snapshots
 		snap.BlockInterval = defaultBlockInterval
 	}
@@ -150,6 +155,7 @@ func (s *Snapshot) copy() *Snapshot {
 		sigCache:         s.sigCache,
 		Number:           s.Number,
 		Hash:             s.Hash,
+		EpochLength:      s.EpochLength,
 		BlockInterval:    s.BlockInterval,
 		TurnLength:       s.TurnLength,
 		Validators:       make(map[common.Address]*ValidatorInfo),
@@ -190,13 +196,13 @@ func (s *Snapshot) isMajorityFork(forkHash string) bool {
 	return ally > len(s.RecentForkHashes)/2
 }
 
-func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.ChainConfig, parliaConfig *params.ParliaConfig) {
+func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.ChainConfig, epochLength uint64) {
 	if !chainConfig.IsLuban(header.Number) {
 		return
 	}
 
 	// The attestation should have been checked in verify header, update directly
-	attestation, _ := getVoteAttestationFromHeader(header, chainConfig, parliaConfig)
+	attestation, _ := getVoteAttestationFromHeader(header, chainConfig, epochLength)
 	if attestation == nil {
 		return
 	}
@@ -314,16 +320,18 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 				}
 			}
 		}
-		// It's better to set it based on IsOnLorentz, but in practice, the effect is the same as using IsLorentz.
-		if chainConfig.IsLorentz(header.Number, header.Time) {
-			snap.BlockInterval = lorentzBlockInterval
-		}
 		snap.Recents[number] = validator
 		snap.RecentForkHashes[number] = hex.EncodeToString(header.Extra[extraVanity-nextForkHashSize : extraVanity])
-		snap.updateAttestation(header, chainConfig, s.config)
+		epochLength := uint64(snap.EpochLength)
+		snap.updateAttestation(header, chainConfig, epochLength)
+		// It's better to set it based on IsOnLorentz, but in practice, the effect is the same as using IsLorentz.
+		if chainConfig.IsLorentz(header.Number, header.Time) {
+			snap.EpochLength = lorentzEpochLength
+			snap.BlockInterval = lorentzBlockInterval
+		}
 		// change validator set
-		if number > 0 && number%s.config.Epoch == snap.minerHistoryCheckLen() {
-			epochKey := math.MaxUint64 - header.Number.Uint64()/s.config.Epoch // impossible used as a block number
+		if number > 0 && number%epochLength == snap.minerHistoryCheckLen() {
+			epochKey := math.MaxUint64 - header.Number.Uint64()/epochLength // impossible used as a block number
 			if chainConfig.IsBohr(header.Number, header.Time) {
 				// after switching the validator set, snap.Validators may become larger,
 				// then the unexpected second switch will happen, just skip it.
@@ -339,7 +347,7 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 
 			oldVersionsLen := snap.versionHistoryCheckLen()
 			// get turnLength from headers and use that for new turnLength
-			turnLength, err := parseTurnLength(checkpointHeader, chainConfig, s.config)
+			turnLength, err := parseTurnLength(checkpointHeader, chainConfig, epochLength)
 			if err != nil {
 				return nil, err
 			}
@@ -349,7 +357,7 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 			}
 
 			// get validators from headers and use that for new validator set
-			newValArr, voteAddrs, err := parseValidators(checkpointHeader, chainConfig, s.config)
+			newValArr, voteAddrs, err := parseValidators(checkpointHeader, chainConfig, epochLength)
 			if err != nil {
 				return nil, err
 			}
@@ -422,12 +430,13 @@ func (s *Snapshot) inturnValidator() common.Address {
 }
 
 func (s *Snapshot) nexValidatorsChangeBlock() uint64 {
-	currentEpoch := s.Number - s.Number%s.config.Epoch
+	epochLength := uint64(s.EpochLength)
+	currentEpoch := s.Number - s.Number%epochLength
 	checkLen := s.minerHistoryCheckLen()
-	if s.Number%s.config.Epoch < checkLen {
+	if s.Number%epochLength < checkLen {
 		return currentEpoch + checkLen
 	}
-	return currentEpoch + s.config.Epoch + checkLen
+	return currentEpoch + epochLength + checkLen
 }
 
 // nextProposalBlock returns the validator next proposal block.
@@ -486,8 +495,8 @@ func (s *Snapshot) indexOfVal(validator common.Address) int {
 	return -1
 }
 
-func parseValidators(header *types.Header, chainConfig *params.ChainConfig, parliaConfig *params.ParliaConfig) ([]common.Address, []types.BLSPublicKey, error) {
-	validatorsBytes := getValidatorBytesFromHeader(header, chainConfig, parliaConfig)
+func parseValidators(header *types.Header, chainConfig *params.ChainConfig, epochLength uint64) ([]common.Address, []types.BLSPublicKey, error) {
+	validatorsBytes := getValidatorBytesFromHeader(header, chainConfig, epochLength)
 	if len(validatorsBytes) == 0 {
 		return nil, nil, errors.New("invalid validators bytes")
 	}
@@ -511,8 +520,8 @@ func parseValidators(header *types.Header, chainConfig *params.ChainConfig, parl
 	return cnsAddrs, voteAddrs, nil
 }
 
-func parseTurnLength(header *types.Header, chainConfig *params.ChainConfig, parliaConfig *params.ParliaConfig) (*uint8, error) {
-	if header.Number.Uint64()%parliaConfig.Epoch != 0 ||
+func parseTurnLength(header *types.Header, chainConfig *params.ChainConfig, epochLength uint64) (*uint8, error) {
+	if header.Number.Uint64()%epochLength != 0 ||
 		!chainConfig.IsBohr(header.Number, header.Time) {
 		return nil, nil
 	}
