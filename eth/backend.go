@@ -115,12 +115,12 @@ type Ethereum struct {
 
 	p2pServer *p2p.Server
 
-	lock   sync.RWMutex // Protects the variadic fields (e.g. gas price and etherbase)
-	stopCh chan struct{}
+	lock sync.RWMutex // Protects the variadic fields (e.g. gas price and etherbase)
 
 	shutdownTracker *shutdowncheck.ShutdownTracker // Tracks if and when the node has shutdown ungracefully
 
-	votePool *vote.VotePool
+	votePool     *vote.VotePool
+	stopReportCh chan struct{}
 }
 
 // New creates a new Ethereum object (including the initialisation of the common Ethereum object),
@@ -243,7 +243,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		p2pServer:         stack.Server(),
 		discmix:           enode.NewFairMix(0),
 		shutdownTracker:   shutdowncheck.NewShutdownTracker(chainDb),
-		stopCh:            make(chan struct{}, 1),
+		stopReportCh:      make(chan struct{}, 1),
 	}
 
 	eth.APIBackend = &EthAPIBackend{stack.Config().ExtRPCEnabled(), stack.Config().AllowUnprotectedTxs, eth, nil}
@@ -683,7 +683,7 @@ func (s *Ethereum) Stop() error {
 	s.eventMux.Stop()
 
 	// stop report loop
-	s.stopCh <- struct{}{}
+	s.stopReportCh <- struct{}{}
 	return nil
 }
 
@@ -705,10 +705,10 @@ func (s *Ethereum) reportRecentBlocksLoop() {
 			records["Coinbase"] = cur.Coinbase.String()
 			records["BlockTime"] = common.FormatUnixTime(int64(cur.Time))
 			if s.votePool != nil {
-				records["MajorityVotesAt"] = common.FormatMilliTime(s.votePool.GetMajorityVote(hash))
+				records["MajorityVotesAt"] = common.FormatMilliTime(s.votePool.GetMajorityVoteTime(hash))
 			}
 			metrics.GetOrRegisterLabel("report-blocks", nil).Mark(records)
-		case <-s.stopCh:
+		case <-s.stopReportCh:
 			return
 		}
 	}

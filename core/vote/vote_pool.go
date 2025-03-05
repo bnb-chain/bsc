@@ -27,7 +27,7 @@ const (
 
 	highestVerifiedBlockChanSize = 10 // highestVerifiedBlockChanSize is the size of channel listening to HighestVerifiedBlockEvent.
 
-	defaultMajorityThreshold = 14 // this is an inaccurate value, mainly used for metric acquisition
+	defaultMajorityThreshold = 15 // this is an inaccurate value, mainly used for metric acquisition
 )
 
 var (
@@ -348,7 +348,7 @@ func (pool *VotePool) GetVotes() []*types.VoteEnvelope {
 	return votesRes
 }
 
-func (pool *VotePool) GetMajorityVote(hash common.Hash) int64 {
+func (pool *VotePool) GetMajorityVoteTime(hash common.Hash) int64 {
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
 
