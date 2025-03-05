@@ -769,7 +769,7 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 		// !!! Caution
 		// Unable to retrieve the exact EpochLength here.
 		// Using lorentzEpochLength instead, assuming `lorentzEpochLength % defaultEpochLength == 0`.
-		// TODO(Nathan): sync latest EpochLength defined
+		// TODO(Nathan)(BEP-520 Phase Two): sync latest EpochLength defined
 		epochLength := uint64(lorentzEpochLength)
 		if number == 0 || ((number+1)%epochLength == 0 && (len(headers) > int(params.FullImmutabilityThreshold))) {
 			var (
@@ -1890,13 +1890,32 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) 
 	return valSet, voteAddrMap, nil
 }
 
+func (p *Parlia) isBlockDelayMinedOnPurpose(chain core.ChainContext, header *types.Header) (bool, error) {
+	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
+	if parent == nil {
+		return false, errors.New("parent not found")
+	}
+	if !p.chainConfig.IsLorentz(parent.Number, parent.Time) {
+		return false, nil
+	}
+	// Unable to retrieve blockInterval directly here—using a workaround:
+	// If the parent block has passed the Lorentz hard fork, this header uses `lorentzInitialBackOffTime` as the blockInterval.
+	// TODO(Nathan)(BEP-520 Phase Two): Adjust when the new xxxxBlockInterval is defined.
+	blockInterval := uint64(lorentzBlockInterval)
+	delayOnPurpose := header.Coinbase == parent.Coinbase &&
+		header.Difficulty == diffInTurn && parent.Difficulty == diffInTurn &&
+		parent.MilliTimestamp()+blockInterval < header.MilliTimestamp()
+	return delayOnPurpose, nil
+}
+
 // distributeIncoming distributes system incoming of the block
 func (p *Parlia) distributeIncoming(val common.Address, state vm.StateDB, header *types.Header, chain core.ChainContext,
 	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, tracer *tracing.Hooks) error {
 	coinbase := header.Coinbase
+	systemRewardContractAddr := common.HexToAddress(systemcontracts.SystemRewardContract)
 
 	doDistributeSysReward := !p.chainConfig.IsKepler(header.Number, header.Time) &&
-		state.GetBalance(common.HexToAddress(systemcontracts.SystemRewardContract)).Cmp(maxSystemBalance) < 0
+		state.GetBalance(systemRewardContractAddr).Cmp(maxSystemBalance) < 0
 	if doDistributeSysReward {
 		balance := state.GetBalance(consensus.SystemAddress)
 		rewards := new(uint256.Int)
@@ -1919,8 +1938,17 @@ func (p *Parlia) distributeIncoming(val common.Address, state vm.StateDB, header
 
 	state.SetBalance(consensus.SystemAddress, common.U2560, tracing.BalanceDecreaseBSCDistributeReward)
 	state.AddBalance(coinbase, balance, tracing.BalanceIncreaseBSCDistributeReward)
-	log.Trace("distribute to validator contract", "block hash", header.Hash(), "amount", balance)
-	return p.distributeToValidator(balance.ToBig(), val, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, tracer)
+
+	depositTo := val
+	PenalizeForDelayMined, err := p.isBlockDelayMinedOnPurpose(chain, header)
+	if err != nil {
+		return err
+	}
+	if PenalizeForDelayMined {
+		depositTo = systemRewardContractAddr
+	}
+	log.Trace("distribute to validator contract", "block hash", header.Hash(), "address", depositTo, "amount", balance)
+	return p.distributeToValidator(balance.ToBig(), depositTo, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, tracer)
 }
 
 // slash spoiled validators
