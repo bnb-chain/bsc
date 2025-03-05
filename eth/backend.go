@@ -243,7 +243,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		p2pServer:         stack.Server(),
 		discmix:           enode.NewFairMix(0),
 		shutdownTracker:   shutdowncheck.NewShutdownTracker(chainDb),
-		stopCh:            make(chan struct{}),
+		stopCh:            make(chan struct{}, 1),
 	}
 
 	eth.APIBackend = &EthAPIBackend{stack.Config().ExtRPCEnabled(), stack.Config().AllowUnprotectedTxs, eth, nil}
@@ -702,11 +702,13 @@ func (s *Ethereum) reportRecentBlocksLoop() {
 			records := make(map[string]interface{})
 			records["BlockNum"] = num
 			records["RecvBlockAt"] = common.FormatMilliTime(s.blockchain.GetRecvTime(hash))
-			t, cnt := s.votePool.GetMajorityVote(hash)
-			records["MajorityVotesAt"] = common.FormatMilliTime(t)
-			records["TotalVotes"] = cnt
 			records["Coinbase"] = cur.Coinbase.String()
 			records["BlockTime"] = common.FormatUnixTime(int64(cur.Time))
+			if s.votePool != nil {
+				t, cnt := s.votePool.GetMajorityVote(hash)
+				records["MajorityVotesAt"] = common.FormatMilliTime(t)
+				records["TotalVotes"] = cnt
+			}
 			metrics.GetOrRegisterLabel("report-blocks", nil).Mark(records)
 		case <-s.stopCh:
 			return
