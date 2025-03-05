@@ -3,6 +3,8 @@ package eth
 import (
 	"io"
 
+	"github.com/ethereum/go-ethereum/core/vote"
+
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/vdn"
@@ -10,70 +12,141 @@ import (
 )
 
 type VDNHandler struct {
-	chain  *core.BlockChain
-	server *vdn.Server
+	chain    *core.BlockChain
+	server   *vdn.Server
+	votePool *vote.VotePool
 }
 
-func NewVDNHandler(chain *core.BlockChain, server *vdn.Server) *VDNHandler {
+func NewVDNHandler(chain *core.BlockChain, server *vdn.Server, votePool *vote.VotePool) *VDNHandler {
 	h := &VDNHandler{
-		chain:  chain,
-		server: server,
+		chain:    chain,
+		server:   server,
+		votePool: votePool,
 	}
-	h.registerMsgHandler()
-	h.registerSubscription()
-	h.registerMinedBlock()
-	h.registerVoting()
-	h.registerDirectTxs()
-	h.registerPeerConnection()
+
+	// set vdn business logic handlers
+	h.setRPCMsgHandler()
+	h.setGossipMsgHandler()
+
+	// subscribe chain & network events
+	h.subMinedBlockEvent()
+	h.subVotingEvent()
+	h.subDirectTxsEvent()
+	h.subPeerConnectionEvent()
+
+	// start background task
 	go h.broadcastContactInfoLoop()
 	return h
 }
 
-func (h *VDNHandler) registerMsgHandler() {
-	h.server.SetMsgHandler(vdn.V1BlockTopic, h.handleBlockMsg)
-	h.server.SetMsgHandler(vdn.V1HandshakeTopic, h.handleHandshakeMsg)
-	h.server.SetMsgHandler(vdn.V1VoteTopic, h.handleVoteMsg)
-	h.server.SetMsgHandler(vdn.V1TransactionsTopic, h.handleTxsMsg)
-	h.server.SetMsgHandler(vdn.V1ReqBlockByRangeTopic, h.handleBlockByRangeMsg)
+func (h *VDNHandler) setRPCMsgHandler() {
+	h.server.SetMsgHandler(vdn.V1BlockTopic, h.handleRPCBlockMsg)
+	h.server.SetMsgHandler(vdn.V1VoteTopic, h.handleRPCVoteMsg)
+	h.server.SetMsgHandler(vdn.V1HandshakeTopic, h.handleRPCHandshakeMsg)
+	h.server.SetMsgHandler(vdn.V1TransactionsTopic, h.handleRPCTxsMsg)
+	h.server.SetMsgHandler(vdn.V1ReqBlockByRangeTopic, h.handleRPCBlockByRangeMsg)
 }
 
-func (h *VDNHandler) registerSubscription() {
-	h.server.SubscribeToTopic(vdn.V1ContactInfoTopic)
-	h.server.SubscribeToTopic(vdn.V1BlockTopic)
-	h.server.SubscribeToTopic(vdn.V1VoteTopic)
+func (h *VDNHandler) setGossipMsgHandler() {
+	h.server.Subscribe(vdn.V1BlockTopic, h.handleGossipBlockMsg)
+	h.server.Subscribe(vdn.V1VoteTopic, h.handleGossipVoteMsg)
+	h.server.Subscribe(vdn.V1ContactInfoTopic, h.handleGossipContactInfoMsg)
 }
 
-// registerMinedBlock, it will receive a mined block event, and send it to nextN validators, and gossip too
-func (h *VDNHandler) registerMinedBlock() {
+// subMinedBlockEvent, it will receive a mined block event, and send it to nextN validators, and gossip too
+func (h *VDNHandler) subMinedBlockEvent() {
 }
 
-// registerVoting, it will receive a voting event, and send it to nextN validators, and gossip too
-func (h *VDNHandler) registerVoting() {
+// subVotingEvent, it will receive a voting event, and send it to nextN validators, and gossip too
+func (h *VDNHandler) subVotingEvent() {
 
 }
 
-// registerVoting, it will receive a vdn peer connect event, and send handshake msg for verification
-func (h *VDNHandler) registerPeerConnection() {
+// subPeerConnectionEvent, it will receive a vdn peer connect event, and send handshake msg for verification
+// TODO(galaio): impl it later
+func (h *VDNHandler) subPeerConnectionEvent() {
 
 }
 
 // broadcastContactInfoLoop, it will periodically send its contact info and also the cached contact info to the network.
 // Once it connects to most nodes, it will reduce the sending frequency.
+// TODO(galaio): impl it later
 func (h *VDNHandler) broadcastContactInfoLoop() {
 
 }
 
-// registerDirectTxs, it will receive a direct txs sending event, and send it to nextN validators
+// subDirectTxsEvent, it will receive a direct txs sending event, and send it to nextN validators
 // TODO(galaio): impl it later
-func (h *VDNHandler) registerDirectTxs() {
+func (h *VDNHandler) subDirectTxsEvent() {
 }
 
-func (h *VDNHandler) handleBlockMsg(from peer.ID, rw io.ReadWriter) error {
+func (h *VDNHandler) handleRPCBlockMsg(from peer.ID, rw io.ReadWriter) error {
 	var msg vdn.BlockMsg
 	if err := vdn.DecodeFromStream(&msg, rw); err != nil {
 		return err
 	}
 
+	if err := h.handleNewBlock(msg); err != nil {
+		// TODO(galaio): reply err response
+		return err
+	}
+
+	// TODO(galaio): reply ok response
+	return nil
+}
+
+// TODO(galaio): impl it later
+func (h *VDNHandler) handleRPCVoteMsg(from peer.ID, rw io.ReadWriter) error {
+	var vote types.VoteEnvelope
+	// TODO(galaio): reply response
+	if err := vdn.DecodeFromStream(&vote, rw); err != nil {
+		return err
+	}
+
+	h.votePool.PutVote(&vote)
+	return nil
+}
+
+// TODO(galaio): impl it later
+func (h *VDNHandler) handleRPCHandshakeMsg(from peer.ID, rw io.ReadWriter) error {
+	return nil
+}
+
+// TODO(galaio): impl it later
+func (h *VDNHandler) handleRPCTxsMsg(from peer.ID, rw io.ReadWriter) error {
+	return nil
+}
+
+// TODO(galaio): impl it later
+func (h *VDNHandler) handleRPCBlockByRangeMsg(from peer.ID, rw io.ReadWriter) error {
+	return nil
+}
+
+func (h *VDNHandler) handleGossipBlockMsg(from peer.ID, reader io.Reader) error {
+	var msg vdn.BlockMsg
+	if err := vdn.DecodeFromStream(&msg, reader); err != nil {
+		return err
+	}
+	return h.handleNewBlock(msg)
+}
+
+func (h *VDNHandler) handleGossipVoteMsg(from peer.ID, reader io.Reader) error {
+	var vote types.VoteEnvelope
+	// TODO(galaio): reply response
+	if err := vdn.DecodeFromStream(&vote, reader); err != nil {
+		return err
+	}
+
+	h.votePool.PutVote(&vote)
+	return nil
+}
+
+// TODO(galaio): impl it later
+func (h *VDNHandler) handleGossipContactInfoMsg(from peer.ID, reader io.Reader) error {
+	return nil
+}
+
+func (h *VDNHandler) handleNewBlock(msg vdn.BlockMsg) error {
 	if err := msg.SanityCheck(); err != nil {
 		return err
 	}
@@ -83,25 +156,5 @@ func (h *VDNHandler) handleBlockMsg(from peer.ID, rw io.ReadWriter) error {
 	if _, err := h.chain.InsertChain(types.Blocks{msg.Block}); err != nil {
 		return err
 	}
-	return nil
-}
-
-// TODO(galaio): impl it later
-func (h *VDNHandler) handleVoteMsg(from peer.ID, rw io.ReadWriter) error {
-	return nil
-}
-
-// TODO(galaio): impl it later
-func (h *VDNHandler) handleHandshakeMsg(from peer.ID, rw io.ReadWriter) error {
-	return nil
-}
-
-// TODO(galaio): impl it later
-func (h *VDNHandler) handleTxsMsg(from peer.ID, rw io.ReadWriter) error {
-	return nil
-}
-
-// TODO(galaio): impl it later
-func (h *VDNHandler) handleBlockByRangeMsg(from peer.ID, rw io.ReadWriter) error {
 	return nil
 }

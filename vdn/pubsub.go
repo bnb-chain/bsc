@@ -1,6 +1,7 @@
 package vdn
 
 import (
+	"bytes"
 	"context"
 	"time"
 
@@ -93,6 +94,52 @@ func (s *Server) SubscribeToTopic(topic string, opts ...pubsub.SubOpt) (*pubsub.
 		}
 	}
 	return topicHandle.Subscribe(opts...)
+}
+
+func (s *Server) Subscribe(topic string, callback HandleSubscribeFn) error {
+	sub, err := s.SubscribeToTopic(topic)
+	if err != nil {
+		return err
+	}
+
+	go s.gossipSubLoop(sub, callback)
+	return nil
+}
+
+func (s *Server) Publish(msg interface{}, topic string) error {
+	data, err := EncodeToBytes(msg)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), ttfbTimeout)
+	defer cancel()
+	return s.PublishToTopic(ctx, topic, data)
+}
+
+func (s *Server) gossipSubLoop(sub *pubsub.Subscription, callback HandleSubscribeFn) {
+	for {
+		msg, err := sub.Next(s.ctx)
+		if err != nil {
+			// This should only happen when the context is cancelled or subscription is cancelled.
+			if !errors.Is(err, pubsub.ErrSubscriptionCancelled) { // Only log a warning on unexpected errors.
+				log.Debug("subscription next failed", "topic", sub.Topic(), "err", err)
+			}
+			// Cancel subscription in the event of an error, as we are
+			// now exiting topic event loop.
+			sub.Cancel()
+			return
+		}
+
+		if msg.ReceivedFrom == s.peerID {
+			continue
+		}
+
+		buf := bytes.NewBuffer(msg.Data)
+		// TODO(galaio): check msg.ValidatorData, if add validator on libp2p
+		if err = callback(msg.ReceivedFrom, buf); err != nil {
+			//TODO(galaio): biz logic err, using it for peer scoring
+		}
+	}
 }
 
 // pubsubOptionss creates a list of options to configure our router with.

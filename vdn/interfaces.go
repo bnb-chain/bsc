@@ -10,6 +10,7 @@ import (
 
 type HandleMsgFn func(from peer.ID, rw io.ReadWriter) error
 type HandleRespFn func(reader io.Reader) error
+type HandleSubscribeFn func(from peer.ID, reader io.Reader) error
 
 type TopicPubSub interface {
 	JoinTopic(topic string, opts ...pubsub.TopicOpt) (*pubsub.Topic, error)
@@ -26,4 +27,14 @@ type MsgSender interface {
 // MsgReceiver configures p2p to handle streams of a certain topic ID.
 type MsgReceiver interface {
 	SetMsgHandler(topic string, callback HandleMsgFn)
+}
+
+// GossipSubscriber give a simple way to handle subscription
+type GossipSubscriber interface {
+	Subscribe(topic string, callback HandleSubscribeFn) error
+}
+
+// GossipPublisher give a simple way to handle gossip publish
+type GossipPublisher interface {
+	Publish(msg interface{}, topic string) error
 }
