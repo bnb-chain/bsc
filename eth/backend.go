@@ -705,9 +705,7 @@ func (s *Ethereum) reportRecentBlocksLoop() {
 			records["Coinbase"] = cur.Coinbase.String()
 			records["BlockTime"] = common.FormatUnixTime(int64(cur.Time))
 			if s.votePool != nil {
-				t, cnt := s.votePool.GetMajorityVote(hash)
-				records["MajorityVotesAt"] = common.FormatMilliTime(t)
-				records["TotalVotes"] = cnt
+				records["MajorityVotesAt"] = common.FormatMilliTime(s.votePool.GetMajorityVote(hash))
 			}
 			metrics.GetOrRegisterLabel("report-blocks", nil).Mark(records)
 		case <-s.stopCh:

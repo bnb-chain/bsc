@@ -348,15 +348,15 @@ func (pool *VotePool) GetVotes() []*types.VoteEnvelope {
 	return votesRes
 }
 
-func (pool *VotePool) GetMajorityVote(hash common.Hash) (int64, int) {
+func (pool *VotePool) GetMajorityVote(hash common.Hash) int64 {
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
 
 	vb := pool.curVotes[hash]
 	if vb == nil {
-		return 0, 0
+		return 0
 	}
-	return vb.majorityVoteTime, len(vb.voteMessages)
+	return vb.majorityVoteTime
 }
 
 func (pool *VotePool) FetchVoteByBlockHash(blockHash common.Hash) []*types.VoteEnvelope {
