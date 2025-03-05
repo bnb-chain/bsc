@@ -29,6 +29,8 @@ const (
 	// our aggregate topic.
 	aggregateWeight = 0.5
 
+	defaultTopicWeight = 0.2
+
 	// maxInMeshScore describes the max score a peer can attain from being in the mesh.
 	maxInMeshScore = 10
 
@@ -75,7 +77,7 @@ func (s *Server) topicScoreParams(topic string) (*pubsub.TopicScoreParams, error
 		// TODO(galaio): set correct validator size
 		return defaultVoteTopicParams(21), nil
 	default:
-		return nil, errors.Errorf("unrecognized topic provided for parameter registration: %s", topic)
+		return defaultTopicParams(), nil
 	}
 }
 
@@ -154,6 +156,38 @@ func defaultVoteTopicParams(activeValidators uint64) *pubsub.TopicScoreParams {
 		MeshFailurePenaltyWeight:        meshWeight,
 		MeshFailurePenaltyDecay:         scoreDecay(1 * oneEpochDuration()),
 		InvalidMessageDeliveriesWeight:  -maxScore() / aggregateWeight,
+		InvalidMessageDeliveriesDecay:   scoreDecay(invalidDecayPeriod),
+	}
+}
+
+func defaultTopicParams() *pubsub.TopicScoreParams {
+	decayEpoch := 5
+	decayEpochDuration := 5 * oneEpochDuration()
+	blocksInEpoch := blocksPerEpoch()
+	meshWeight := -0.717
+	invalidDecayPeriod := 50 * oneEpochDuration()
+	if !meshDeliveryIsScored {
+		// Set the mesh weight as zero as a temporary measure, so as to prevent
+		// the average nodes from being penalised.
+		meshWeight = 0
+	}
+	return &pubsub.TopicScoreParams{
+		TopicWeight:                     defaultTopicWeight,
+		TimeInMeshWeight:                maxInMeshScore / inMeshCap(),
+		TimeInMeshQuantum:               inMeshTime(),
+		TimeInMeshCap:                   inMeshCap(),
+		FirstMessageDeliveriesWeight:    1,
+		FirstMessageDeliveriesDecay:     scoreDecay(20 * oneEpochDuration()),
+		FirstMessageDeliveriesCap:       23,
+		MeshMessageDeliveriesWeight:     meshWeight,
+		MeshMessageDeliveriesDecay:      scoreDecay(decayEpochDuration),
+		MeshMessageDeliveriesCap:        float64(blocksInEpoch * uint64(decayEpoch)),
+		MeshMessageDeliveriesThreshold:  float64(blocksInEpoch*uint64(decayEpoch)) / 10,
+		MeshMessageDeliveriesWindow:     2 * time.Second,
+		MeshMessageDeliveriesActivation: 4 * oneEpochDuration(),
+		MeshFailurePenaltyWeight:        meshWeight,
+		MeshFailurePenaltyDecay:         scoreDecay(decayEpochDuration),
+		InvalidMessageDeliveriesWeight:  -140.4475,
 		InvalidMessageDeliveriesDecay:   scoreDecay(invalidDecayPeriod),
 	}
 }
