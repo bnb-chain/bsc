@@ -292,6 +292,7 @@ type BlockChain struct {
 	bodyRLPCache  *lru.Cache[common.Hash, rlp.RawValue]
 	receiptsCache *lru.Cache[common.Hash, []*types.Receipt]
 	blockCache    *lru.Cache[common.Hash, *types.Block]
+	recvTimeCache *lru.Cache[common.Hash, int64]
 
 	txLookupLock  sync.RWMutex
 	txLookupCache *lru.Cache[common.Hash, txLookup]
@@ -383,6 +384,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		receiptsCache:      lru.NewCache[common.Hash, []*types.Receipt](receiptsCacheLimit),
 		sidecarsCache:      lru.NewCache[common.Hash, types.BlobSidecars](sidecarsCacheLimit),
 		blockCache:         lru.NewCache[common.Hash, *types.Block](blockCacheLimit),
+		recvTimeCache:      lru.NewCache[common.Hash, int64](blockCacheLimit),
 		txLookupCache:      lru.NewCache[common.Hash, txLookup](txLookupCacheLimit),
 		futureBlocks:       lru.NewCache[common.Hash, *types.Block](maxFutureBlocks),
 		diffLayerCache:     diffLayerCache,
@@ -1140,6 +1142,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 	bc.receiptsCache.Purge()
 	bc.sidecarsCache.Purge()
 	bc.blockCache.Purge()
+	bc.recvTimeCache.Purge()
 	bc.txLookupCache.Purge()
 	bc.futureBlocks.Purge()
 
@@ -1778,6 +1781,9 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	defer wg.Wait()
 	wg.Add(1)
 	go func() {
+		if _, ok := bc.recvTimeCache.Get(block.Hash()); !ok {
+			bc.recvTimeCache.Add(block.Hash(), time.Now().UnixMilli())
+		}
 		blockBatch := bc.db.BlockStore().NewBatch()
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
 		rawdb.WriteBlock(blockBatch, block)
@@ -2072,6 +2078,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 	// Start the parallel header verifier
 	headers := make([]*types.Header, len(chain))
 	for i, block := range chain {
+		bc.recvTimeCache.Add(block.Hash(), time.Now().UnixMilli())
 		headers[i] = block.Header()
 	}
 	abort, results := bc.engine.VerifyHeaders(bc, headers)

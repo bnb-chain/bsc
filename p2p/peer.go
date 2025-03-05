@@ -23,6 +23,7 @@ import (
 	"net"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/mclock"
@@ -113,12 +114,15 @@ type Peer struct {
 	protoErr chan error
 	closed   chan struct{}
 	pingRecv chan struct{}
+	pongRecv chan struct{}
 	disc     chan DiscReason
 
 	// events receives message send / receive events if set
 	events         *event.Feed
 	testPipe       *MsgPipeRW // for testing
 	testRemoteAddr string     // for testing
+
+	latency atomic.Int64 // mill second latency, estimated by ping msg
 }
 
 // NewPeer returns a peer for testing purposes.
@@ -268,6 +272,7 @@ func newPeer(log log.Logger, conn *conn, protocols []Protocol) *Peer {
 		protoErr: make(chan error, len(protomap)+1), // protocols + pingLoop
 		closed:   make(chan struct{}),
 		pingRecv: make(chan struct{}, 16),
+		pongRecv: make(chan struct{}, 16),
 		log:      log.New("id", conn.node.ID(), "conn", conn.flags),
 	}
 	return p
@@ -333,9 +338,11 @@ func (p *Peer) pingLoop() {
 	ping := time.NewTimer(pingInterval)
 	defer ping.Stop()
 
+	var startPing atomic.Int64
 	for {
 		select {
 		case <-ping.C:
+			startPing.Store(time.Now().UnixMilli())
 			if err := SendItems(p.rw, pingMsg); err != nil {
 				p.protoErr <- err
 				return
@@ -345,6 +352,13 @@ func (p *Peer) pingLoop() {
 		case <-p.pingRecv:
 			SendItems(p.rw, pongMsg)
 
+		case <-p.pongRecv:
+			// estimate latency here, it also includes tiny msg encode/decode, io wait time
+			latency := (time.Now().UnixMilli() - startPing.Load()) / 2
+			if latency > 0 {
+				p.latency.Store(latency)
+				peerLatencyStat.Update(time.Duration(latency))
+			}
 		case <-p.closed:
 			return
 		}
@@ -373,6 +387,12 @@ func (p *Peer) handle(msg Msg) error {
 		msg.Discard()
 		select {
 		case p.pingRecv <- struct{}{}:
+		case <-p.closed:
+		}
+	case msg.Code == pongMsg:
+		msg.Discard()
+		select {
+		case p.pongRecv <- struct{}{}:
 		case <-p.closed:
 		}
 	case msg.Code == discMsg:
@@ -557,6 +577,7 @@ type PeerInfo struct {
 		Static        bool   `json:"static"`
 	} `json:"network"`
 	Protocols map[string]interface{} `json:"protocols"` // Sub-protocol specific metadata fields
+	Latency   int64                  `json:"latency"`   // the estimate latency from ping msg
 }
 
 // Info gathers and returns a collection of metadata known about a peer.
@@ -573,6 +594,7 @@ func (p *Peer) Info() *PeerInfo {
 		Name:      p.Fullname(),
 		Caps:      caps,
 		Protocols: make(map[string]interface{}, len(p.running)),
+		Latency:   p.latency.Load(),
 	}
 	if p.Node().Seq() > 0 {
 		info.ENR = p.Node().String()

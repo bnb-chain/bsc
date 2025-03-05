@@ -3,6 +3,7 @@ package vote
 import (
 	"container/heap"
 	"sync"
+	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
 
@@ -25,6 +26,8 @@ const (
 	upperLimitOfVoteBlockNumber = 11 // refer to fetcher.maxUncleDist
 
 	highestVerifiedBlockChanSize = 10 // highestVerifiedBlockChanSize is the size of channel listening to HighestVerifiedBlockEvent.
+
+	defaultMajorityThreshold = 15 // this is an inaccurate value, mainly used for metric acquisition
 )
 
 var (
@@ -38,8 +41,25 @@ var (
 )
 
 type VoteBox struct {
-	blockNumber  uint64
-	voteMessages []*types.VoteEnvelope
+	blockNumber      uint64
+	voteMessages     []*types.VoteEnvelope
+	majorityVoteTime int64
+}
+
+func (v *VoteBox) trySetMajorityVoteTime(oldTime int64) {
+	if v.majorityVoteTime > 0 {
+		if oldTime > 0 && v.majorityVoteTime > oldTime {
+			v.majorityVoteTime = oldTime
+		}
+		return
+	}
+	if oldTime > 0 {
+		v.majorityVoteTime = oldTime
+		return
+	}
+	if len(v.voteMessages) >= defaultMajorityThreshold {
+		v.majorityVoteTime = time.Now().UnixMilli()
+	}
 }
 
 type VotePool struct {
@@ -197,6 +217,7 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 
 	// Put into corresponding votes map.
 	m[targetHash].voteMessages = append(m[targetHash].voteMessages, vote)
+	m[targetHash].trySetMajorityVoteTime(0)
 	// Add into received vote to avoid future duplicated vote comes.
 	pool.receivedVotes.Add(voteHash)
 	log.Debug("VoteHash put into votepool is:", "voteHash", voteHash)
@@ -269,10 +290,15 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 	// may len(curVotes[blockHash].voteMessages) extra maxCurVoteAmountPerBlock, but it doesn't matter
 	if _, ok := curVotes[blockHash]; !ok {
 		heap.Push(curPq, voteData)
-		curVotes[blockHash] = &VoteBox{voteBox.blockNumber, validVotes}
+		curVotes[blockHash] = &VoteBox{
+			blockNumber:      voteBox.blockNumber,
+			voteMessages:     validVotes,
+			majorityVoteTime: voteBox.majorityVoteTime,
+		}
 		localCurVotesPqGauge.Update(int64(curPq.Len()))
 	} else {
 		curVotes[blockHash].voteMessages = append(curVotes[blockHash].voteMessages, validVotes...)
+		curVotes[blockHash].trySetMajorityVoteTime(voteBox.majorityVoteTime)
 	}
 
 	delete(futureVotes, blockHash)
@@ -320,6 +346,17 @@ func (pool *VotePool) GetVotes() []*types.VoteEnvelope {
 		votesRes = append(votesRes, voteBox.voteMessages...)
 	}
 	return votesRes
+}
+
+func (pool *VotePool) GetMajorityVoteTime(hash common.Hash) int64 {
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+
+	vb := pool.curVotes[hash]
+	if vb == nil {
+		return 0
+	}
+	return vb.majorityVoteTime
 }
 
 func (pool *VotePool) FetchVoteByBlockHash(blockHash common.Hash) []*types.VoteEnvelope {

@@ -68,6 +68,8 @@ var (
 	serveUnexpectedIdentity  = metrics.NewRegisteredMeter("p2p/serves/error/id/unexpected", nil)
 	serveEncHandshakeError   = metrics.NewRegisteredMeter("p2p/serves/error/rlpx/enc", nil)
 	serveProtoHandshakeError = metrics.NewRegisteredMeter("p2p/serves/error/rlpx/proto", nil)
+
+	peerLatencyStat = metrics.NewRegisteredTimer("p2p/peers/latency", nil)
 )
 
 // markDialError matches errors that occur while setting up a dial connection

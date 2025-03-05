@@ -26,6 +26,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/metrics"
+
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -117,7 +119,8 @@ type Ethereum struct {
 
 	shutdownTracker *shutdowncheck.ShutdownTracker // Tracks if and when the node has shutdown ungracefully
 
-	votePool *vote.VotePool
+	votePool     *vote.VotePool
+	stopReportCh chan struct{}
 }
 
 // New creates a new Ethereum object (including the initialisation of the common Ethereum object),
@@ -240,6 +243,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		p2pServer:         stack.Server(),
 		discmix:           enode.NewFairMix(0),
 		shutdownTracker:   shutdowncheck.NewShutdownTracker(chainDb),
+		stopReportCh:      make(chan struct{}, 1),
 	}
 
 	eth.APIBackend = &EthAPIBackend{stack.Config().ExtRPCEnabled(), stack.Config().AllowUnprotectedTxs, eth, nil}
@@ -599,6 +603,8 @@ func (s *Ethereum) Start() error {
 
 	// Start the networking layer
 	s.handler.Start(s.p2pServer.MaxPeers, s.p2pServer.MaxPeersPerIP)
+
+	go s.reportRecentBlocksLoop()
 	return nil
 }
 
@@ -676,5 +682,34 @@ func (s *Ethereum) Stop() error {
 	s.chainDb.Close()
 	s.eventMux.Stop()
 
+	// stop report loop
+	s.stopReportCh <- struct{}{}
 	return nil
+}
+
+func (s *Ethereum) reportRecentBlocksLoop() {
+	reportCnt := uint64(2)
+	reportTicker := time.NewTicker(time.Second)
+	for {
+		select {
+		case <-reportTicker.C:
+			cur := s.blockchain.CurrentBlock()
+			if cur == nil || cur.Number.Uint64() <= reportCnt {
+				continue
+			}
+			num := cur.Number.Uint64()
+			hash := cur.Hash()
+			records := make(map[string]interface{})
+			records["BlockNum"] = num
+			records["RecvBlockAt"] = common.FormatMilliTime(s.blockchain.GetRecvTime(hash))
+			records["Coinbase"] = cur.Coinbase.String()
+			records["BlockTime"] = common.FormatUnixTime(int64(cur.Time))
+			if s.votePool != nil {
+				records["MajorityVotesAt"] = common.FormatMilliTime(s.votePool.GetMajorityVoteTime(hash))
+			}
+			metrics.GetOrRegisterLabel("report-blocks", nil).Mark(records)
+		case <-s.stopReportCh:
+			return
+		}
+	}
 }
