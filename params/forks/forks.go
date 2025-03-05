@@ -39,5 +39,6 @@ const (
 	Shanghai
 	Cancun
 	Prague
+	Lorentz
 	Osaka
 )

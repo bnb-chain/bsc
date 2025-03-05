@@ -178,7 +178,7 @@ func producerBlockDelay(candidates map[int]bool, height, numOfValidators int) (i
 			minCandidate = c
 		}
 	}
-	delay := initialBackOffTime + uint64(minDelay)*wiggleTime
+	delay := defaultInitialBackOffTime + uint64(minDelay)*wiggleTime
 	return minCandidate, delay
 }
 

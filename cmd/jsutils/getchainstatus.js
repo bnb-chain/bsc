@@ -347,7 +347,7 @@ async function getPerformanceData()  {
         if (difficulty == 2) {
             inturnBlocks += 1
         }
-        let timestamp = eval(eval(header.timestamp).toString(10))
+        let timestamp = eval(eval(header.milliTimestamp).toString(10))
         if (parliaEnabled) {
             let justifiedNumber = await provider.send("parlia_getJustifiedNumber", [ethers.toQuantity(i)]);
             if (justifiedNumber + 1 == i) {
@@ -363,11 +363,11 @@ async function getPerformanceData()  {
 
     let startHeader = await provider.send("eth_getHeaderByNumber", [
         ethers.toQuantity(program.startNum)]);
-    let startTime = eval(eval(startHeader.timestamp).toString(10))
+    let startTime = eval(eval(startHeader.milliTimestamp).toString(10))
     let endHeader = await provider.send("eth_getHeaderByNumber", [
         ethers.toQuantity(program.endNum)]);
-    let endTime = eval(eval(endHeader.timestamp).toString(10))
-    let timeCost = endTime - startTime
+    let endTime = eval(eval(endHeader.milliTimestamp).toString(10))
+    let timeCost = (endTime - startTime)/1000
     let avgBlockTime = timeCost/blockCount
     let inturnBlocksRatio = inturnBlocks/blockCount
     let justifiedBlocksRatio = justifiedBlocks/blockCount
