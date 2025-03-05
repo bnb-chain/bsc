@@ -36,6 +36,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/vdn"
+
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/beacon/fakebeacon"
@@ -984,6 +986,31 @@ var (
 		Category: flags.NetworkingCategory,
 	}
 
+	// Validator Dedicated P2P Network Settings
+	VDNTCPPortFlag = &cli.IntFlag{
+		Name:     "vdn.tcpport",
+		Usage:    "Network listening tcp port",
+		Value:    node.DefaultConfig.VDN.TCPPort,
+		Category: flags.NetworkingCategory,
+	}
+	VDNQuicPortFlag = &cli.IntFlag{
+		Name:     "vdn.quicport",
+		Usage:    "Network listening quic port",
+		Value:    node.DefaultConfig.VDN.QUICPort,
+		Category: flags.NetworkingCategory,
+	}
+	VDNBootnodesFlag = &cli.StringFlag{
+		Name:     "vdn.bootnodes",
+		Usage:    "Comma separated multiaddress URLs for P2P discovery bootstrap",
+		Value:    "",
+		Category: flags.NetworkingCategory,
+	}
+	VDNNodeKeyFileFlag = &cli.StringFlag{
+		Name:     "vdn.nodekey",
+		Usage:    "P2P node key file",
+		Category: flags.NetworkingCategory,
+	}
+
 	// Console
 	JSpathFlag = &flags.DirectoryFlag{
 		Name:     "jspath",
@@ -1129,6 +1156,11 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Name:  "init.p2p-port",
 		Usage: "the p2p port of the nodes in the network",
 		Value: 30311,
+	}
+	InitVDNPort = &cli.IntFlag{
+		Name:  "init.vdn-port",
+		Usage: "the vdn p2p port of the nodes in the network",
+		Value: 13000,
 	}
 	MetricsInfluxDBOrganizationFlag = &cli.StringFlag{
 		Name:     "metrics.influxdb.organization",
@@ -1660,6 +1692,21 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 	}
 }
 
+func SetValidatorP2PConfig(ctx *cli.Context, cfg *vdn.Config) {
+	if ctx.IsSet(VDNTCPPortFlag.Name) {
+		cfg.TCPPort = ctx.Int(VDNTCPPortFlag.Name)
+	}
+	if ctx.IsSet(VDNQuicPortFlag.Name) {
+		cfg.QUICPort = ctx.Int(VDNQuicPortFlag.Name)
+	}
+	if ctx.IsSet(VDNBootnodesFlag.Name) {
+		cfg.BootstrapPeers = SplitAndTrim(ctx.String(VDNBootnodesFlag.Name))
+	}
+	if ctx.IsSet(VDNNodeKeyFileFlag.Name) {
+		cfg.NodeKeyPath = ctx.String(VDNNodeKeyFileFlag.Name)
+	}
+}
+
 // SetNodeConfig applies node-related command line flags to the config.
 func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	setInstance(ctx, cfg)
@@ -1731,6 +1778,11 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	if ctx.IsSet(LogDebugFlag.Name) {
 		log.Warn("log.debug flag is deprecated")
 	}
+
+	if ctx.IsSet(MiningEnabledFlag.Name) {
+		cfg.EnableMining = true
+	}
+	SetValidatorP2PConfig(ctx, &cfg.VDN)
 }
 
 func setSmartCard(ctx *cli.Context, cfg *node.Config) {
@@ -2807,4 +2859,8 @@ func setInstance(ctx *cli.Context, cfg *node.Config) {
 	cfg.WSPort = node.DefaultWSPort + cfg.Instance*2 - 2
 	cfg.P2P.ListenAddr = fmt.Sprintf(":%d", node.DefaultListenPort+cfg.Instance-1)
 	cfg.P2P.DiscAddr = fmt.Sprintf(":%d", node.DefaultDiscPort+cfg.Instance-1)
+
+	// setup validator p2p config
+	cfg.VDN.TCPPort = node.DefaultConfig.VDN.TCPPort + cfg.Instance - 1
+	cfg.VDN.QUICPort = node.DefaultConfig.VDN.QUICPort + cfg.Instance - 1
 }
