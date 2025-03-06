@@ -117,7 +117,8 @@ type Ethereum struct {
 
 	shutdownTracker *shutdowncheck.ShutdownTracker // Tracks if and when the node has shutdown ungracefully
 
-	votePool *vote.VotePool
+	votePool   *vote.VotePool
+	vdnHandler *VDNHandler
 }
 
 // New creates a new Ethereum object (including the initialisation of the common Ethereum object),
@@ -413,6 +414,18 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	eth.APIBackend.gpo = gasprice.NewOracle(eth.APIBackend, config.GPO, config.Miner.GasPrice)
 
+	if eth.vdnHandler, err = NewVDNHandler(VDNHandlerConfig{
+		chain:    eth.blockchain,
+		server:   stack.VDNServer(),
+		votePool: eth.votePool,
+		eventMux: eth.eventMux,
+		checkSynced: func() bool {
+			return eth.handler.synced.Load()
+		},
+	}); err != nil {
+		return nil, err
+	}
+
 	// Start the RPC service
 	eth.netRPCService = ethapi.NewNetAPI(eth.p2pServer, networkID)
 
@@ -599,6 +612,8 @@ func (s *Ethereum) Start() error {
 
 	// Start the networking layer
 	s.handler.Start(s.p2pServer.MaxPeers, s.p2pServer.MaxPeersPerIP)
+
+	s.vdnHandler.Start()
 	return nil
 }
 
@@ -661,6 +676,7 @@ func (s *Ethereum) Stop() error {
 	// Stop all the peer-related stuff first.
 	s.discmix.Close()
 	s.handler.Stop()
+	s.vdnHandler.Stop()
 
 	// Then stop everything else.
 	s.bloomIndexer.Close()

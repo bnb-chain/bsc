@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/trie"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -51,19 +54,27 @@ type BlockMsg struct {
 }
 
 // SanityCheck verifies that the values are reasonable, as a DoS protection
-func (request *BlockMsg) SanityCheck() error {
-	if err := request.Block.SanityCheck(); err != nil {
+func (b *BlockMsg) SanityCheck() error {
+	if err := b.Block.SanityCheck(); err != nil {
 		return err
 	}
 	//TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
 	// larger, it will still fit within 100 bits
-	if tdlen := request.TD.BitLen(); tdlen > 100 {
+	if tdlen := b.TD.BitLen(); tdlen > 100 {
 		return fmt.Errorf("too large block TD: bitlen %d", tdlen)
 	}
 
-	if len(request.Sidecars) > 0 {
-		for _, sidecar := range request.Sidecars {
-			if err := sidecar.SanityCheck(request.Block.Number(), request.Block.Hash()); err != nil {
+	if hash := types.CalcUncleHash(b.Block.Uncles()); hash != b.Block.UncleHash() {
+		log.Warn("Propagated block has invalid uncles", "have", hash, "exp", b.Block.UncleHash())
+		return nil
+	}
+	if hash := types.DeriveSha(b.Block.Transactions(), trie.NewStackTrie(nil)); hash != b.Block.TxHash() {
+		log.Warn("Propagated block has invalid body", "have", hash, "exp", b.Block.TxHash())
+		return nil
+	}
+	if len(b.Sidecars) > 0 {
+		for _, sidecar := range b.Sidecars {
+			if err := sidecar.SanityCheck(b.Block.Number(), b.Block.Hash()); err != nil {
 				return err
 			}
 		}
