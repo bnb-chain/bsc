@@ -414,16 +414,18 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	eth.APIBackend.gpo = gasprice.NewOracle(eth.APIBackend, config.GPO, config.Miner.GasPrice)
 
-	if eth.vdnHandler, err = NewVDNHandler(VDNHandlerConfig{
-		chain:    eth.blockchain,
-		server:   stack.VDNServer(),
-		votePool: eth.votePool,
-		eventMux: eth.eventMux,
-		checkSynced: func() bool {
-			return eth.handler.synced.Load()
-		},
-	}); err != nil {
-		return nil, err
+	if stack.VDNServer() != nil {
+		if eth.vdnHandler, err = NewVDNHandler(VDNHandlerConfig{
+			chain:    eth.blockchain,
+			server:   stack.VDNServer(),
+			votePool: eth.votePool,
+			eventMux: eth.eventMux,
+			checkSynced: func() bool {
+				return eth.handler.synced.Load()
+			},
+		}); err != nil {
+			return nil, err
+		}
 	}
 
 	// Start the RPC service
@@ -613,7 +615,9 @@ func (s *Ethereum) Start() error {
 	// Start the networking layer
 	s.handler.Start(s.p2pServer.MaxPeers, s.p2pServer.MaxPeersPerIP)
 
-	s.vdnHandler.Start()
+	if s.vdnHandler != nil {
+		s.vdnHandler.Start()
+	}
 	return nil
 }
 
@@ -676,7 +680,9 @@ func (s *Ethereum) Stop() error {
 	// Stop all the peer-related stuff first.
 	s.discmix.Close()
 	s.handler.Stop()
-	s.vdnHandler.Stop()
+	if s.vdnHandler != nil {
+		s.vdnHandler.Stop()
+	}
 
 	// Then stop everything else.
 	s.bloomIndexer.Close()
