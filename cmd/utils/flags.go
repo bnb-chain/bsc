@@ -1162,6 +1162,11 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Usage: "the vdn p2p port of the nodes in the network",
 		Value: 13000,
 	}
+	InitLegacyP2P = &cli.IntFlag{
+		Name:  "init.legacyp2p",
+		Usage: "whether to enable legacy p2p, 0=disable, 1=enable",
+		Value: 1,
+	}
 	MetricsInfluxDBOrganizationFlag = &cli.StringFlag{
 		Name:     "metrics.influxdb.organization",
 		Usage:    "InfluxDB organization name (v2 only)",

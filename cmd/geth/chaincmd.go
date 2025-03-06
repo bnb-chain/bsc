@@ -88,6 +88,7 @@ It expects the genesis file as argument.`,
 			utils.InitVDNPort,
 			utils.InitNetworkSize,
 			utils.InitNetworkIps,
+			utils.InitLegacyP2P,
 			configFileFlag,
 		},
 		Category: "BLOCKCHAIN COMMANDS",
@@ -350,22 +351,27 @@ func createPorts(ipStr string, port int, size int) []int {
 }
 
 // Create config for node i in the cluster
-func createNodeConfig(baseConfig gethConfig, enodes []*enode.Node, ip string, port int, size int, i int) gethConfig {
+func createNodeConfig(baseConfig gethConfig, enodes []*enode.Node, ip string, port int, size int, i int, enableLegacyP2P int) gethConfig {
 	baseConfig.Node.HTTPHost = ip
 	baseConfig.Node.P2P.ListenAddr = fmt.Sprintf(":%d", port)
-	baseConfig.Node.P2P.BootstrapNodes = make([]*enode.Node, size-1)
-	// Set the P2P connections between this node and the other nodes
-	for j := 0; j < i; j++ {
-		baseConfig.Node.P2P.BootstrapNodes[j] = enodes[j]
-	}
-	for j := i + 1; j < size; j++ {
-		baseConfig.Node.P2P.BootstrapNodes[j-1] = enodes[j]
+	if enableLegacyP2P == 1 {
+		baseConfig.Node.P2P.BootstrapNodes = make([]*enode.Node, size-1)
+		// Set the P2P connections between this node and the other nodes
+		for j := 0; j < i; j++ {
+			baseConfig.Node.P2P.BootstrapNodes[j] = enodes[j]
+		}
+		for j := i + 1; j < size; j++ {
+			baseConfig.Node.P2P.BootstrapNodes[j-1] = enodes[j]
+		}
+	} else {
+		fmt.Println("skip legacy p2p boot node configuration...")
+		baseConfig.Node.P2P.BootstrapNodes = nil
 	}
 	return baseConfig
 }
 
 // Create configs for nodes in the cluster
-func createNodeConfigs(baseConfig gethConfig, initDir string, ips []string, ports []int, vdnPorts []int, size int) ([]gethConfig, error) {
+func createNodeConfigs(baseConfig gethConfig, initDir string, ips []string, ports []int, vdnPorts []int, size int, enableLegacyP2P int) ([]gethConfig, error) {
 	// Create the nodes
 	enodes := make([]*enode.Node, size)
 	peerIDs := make([]peer.ID, size)
@@ -389,7 +395,7 @@ func createNodeConfigs(baseConfig gethConfig, initDir string, ips []string, port
 	// Create the configs
 	configs := make([]gethConfig, size)
 	for i := 0; i < size; i++ {
-		configs[i] = createNodeConfig(baseConfig, enodes, ips[i], ports[i], size, i)
+		configs[i] = createNodeConfig(baseConfig, enodes, ips[i], ports[i], size, i, enableLegacyP2P)
 	}
 
 	// set VDN bootnode, using the first node as bootnode default.
@@ -418,6 +424,7 @@ func initNetwork(ctx *cli.Context) error {
 	if vdnPort <= 0 {
 		utils.Fatalf("VDN port should be greater than 0")
 	}
+	enableLegacyP2P := ctx.Int(utils.InitLegacyP2P.Name)
 	ipStr := ctx.String(utils.InitNetworkIps.Name)
 	cfgFile := ctx.String(configFileFlag.Name)
 
@@ -456,7 +463,7 @@ func initNetwork(ctx *cli.Context) error {
 		return err
 	}
 
-	configs, err := createNodeConfigs(config, initDir, ips, ports, vdnPorts, size)
+	configs, err := createNodeConfigs(config, initDir, ips, ports, vdnPorts, size, enableLegacyP2P)
 	if err != nil {
 		utils.Fatalf("Failed to create node configs: %v", err)
 	}
