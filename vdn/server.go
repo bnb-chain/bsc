@@ -157,17 +157,26 @@ func (s *Server) Start() {
 			log.Error("Failed to find peers via discovery", "err", err)
 			return
 		}
-		for discovered := range peerChan {
-			if discovered.ID == s.host.ID() {
-				continue // skip self
-			}
+		for {
+			select {
+			case <-s.ctx.Done():
+				log.Info("Context cancelled, stopping peer discovery")
+				return
+			case discovered, ok := <-peerChan:
+				if !ok {
+					return
+				}
+				if discovered.ID == s.host.ID() {
+					continue // skip self
+				}
 
-			log.Info("Discovered peer", "id", discovered.ID, "addrs", discovered.Addrs)
-			// Optionally attempt a connection
-			if err := s.host.Connect(s.ctx, discovered); err != nil {
-				log.Warn("Failed to connect to discovered peer", "id", discovered.ID, "err", err)
-			} else {
-				log.Info("Connected to discovered peer", "id", discovered.ID)
+				log.Info("Discovered peer", "id", discovered.ID, "addrs", discovered.Addrs)
+				// Optionally attempt a connection
+				if err := s.host.Connect(s.ctx, discovered); err != nil {
+					log.Warn("Failed to connect to discovered peer", "id", discovered.ID, "err", err)
+				} else {
+					log.Info("Connected to discovered peer", "id", discovered.ID)
+				}
 			}
 		}
 	}()
