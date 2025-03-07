@@ -79,14 +79,13 @@ var DefaultConfig = Config{
 	DBEngine: "", // Use whatever exists, will default to Pebble if non-existent and supported
 	Instance: 1,
 	VDN: vdn.Config{
-		HostAddress:      "127.0.0.1",
-		NodeKeyPath:      "", // by default, it will be auto set DataDir/geth/nodekey_vdn
-		QUICPort:         13000,
-		TCPPort:          13000,
-		MaxPeers:         50,
-		EnableQuic:       true,
-		EnableDiscovery:  false,
-		MinimumSyncPeers: 1,
+		HostAddress:     "127.0.0.1",
+		NodeKeyPath:     "", // by default, it will be auto set DataDir/geth/nodekey_vdn
+		QUICPort:        3000,
+		TCPPort:         3000,
+		MaxPeers:        50,
+		EnableQuic:      true,
+		EnableDiscovery: true,
 	},
 }
 

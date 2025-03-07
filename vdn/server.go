@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
+	dht "github.com/libp2p/go-libp2p-kad-dht"
 	kaddht "github.com/libp2p/go-libp2p-kad-dht"
-	"github.com/libp2p/go-libp2p/core/routing"
 
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/libp2p/go-libp2p"
@@ -18,10 +18,11 @@ import (
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
+	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	libp2ptcp "github.com/libp2p/go-libp2p/p2p/transport/tcp"
-	gomplex "github.com/libp2p/go-mplex"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/pkg/errors"
 	leakybucket "github.com/prysmaticlabs/prysm/v5/container/leaky-bucket"
@@ -73,24 +74,11 @@ func NewServer(cfg *Config) (*Server, error) {
 		staticPeerInfo: make(map[peer.ID]peer.AddrInfo, 8),
 	}
 
-	// setup Kad-DHT discovery
-	dopts := []kaddht.Option{
-		kaddht.Mode(kaddht.ModeServer),
-		kaddht.ProtocolPrefix("/bsc/validator/disc"),
-	}
-	routingCfg := func(h host.Host) (routing.PeerRouting, error) {
-		var err error
-		s.dht, err = kaddht.New(ctx, h, dopts...)
-		return s.dht, err
-	}
-
 	// setup libp2p instance
 	opts, err := s.buildOptions()
 	if err != nil {
 		return nil, errors.Wrap(err, "buildOptions err")
 	}
-	opts = append(opts, libp2p.Routing(routingCfg))
-	gomplex.ResetStreamTimeout = 5 * time.Second
 
 	h, err := libp2p.New(opts...)
 	if err != nil {
@@ -136,9 +124,56 @@ func (s *Server) Start() {
 		s.host.ConnManager().Protect(p.ID, "bootnode")
 		s.bootPeerInfo[p.ID] = p
 	}
-	if err := s.dht.Bootstrap(s.ctx); err != nil {
-		log.Error("Kad-DHT bootstrap failed", "err", err)
+
+	dhtOpts := []dht.Option{
+		dht.Mode(dht.ModeServer),
+		dht.ProtocolPrefix("/bsc/validator/disc"),
 	}
+
+	var err error
+	s.dht, err = dht.New(s.ctx, s.host, dhtOpts...)
+	if err != nil {
+		log.Error("Failed to create DHT", "err", err)
+		return
+	}
+
+	// Now bootstrap the DHT, which also starts its background refresh loop.
+	if err := s.dht.Bootstrap(s.ctx); err != nil {
+		log.Error("DHT bootstrap failed", "err", err)
+		return
+	}
+
+	// Set up the discovery interface
+	routingDiscovery := drouting.NewRoutingDiscovery(s.dht)
+	// Advertise ourselves under the Rendezvous string
+	log.Info("Advertising Rendezvous", "topic", Rendezvous)
+	dutil.Advertise(s.ctx, routingDiscovery, Rendezvous)
+
+	// Also, find peers in the background
+	go func() {
+		log.Info("Searching for peers for rendezvous", "topic", Rendezvous)
+		peerChan, err := routingDiscovery.FindPeers(s.ctx, Rendezvous)
+		if err != nil {
+			log.Error("Failed to find peers via discovery", "err", err)
+			return
+		}
+		for discovered := range peerChan {
+			if discovered.ID == s.host.ID() {
+				continue // skip self
+			}
+
+			log.Info("Discovered peer", "id", discovered.ID, "addrs", discovered.Addrs)
+			// Optionally attempt a connection
+			if err := s.host.Connect(s.ctx, discovered); err != nil {
+				log.Warn("Failed to connect to discovered peer", "id", discovered.ID, "err", err)
+			} else {
+				log.Info("Connected to discovered peer", "id", discovered.ID)
+			}
+		}
+	}()
+
+	log.Info("Rendezvous p2p server started", "peerID", s.host.ID(), "addrs", s.host.Addrs())
+
 	s.started = true
 
 	staticPeers := s.connectPeersFromAddr(s.cfg.StaticPeers)
@@ -198,7 +233,7 @@ func (s *Server) buildOptions() ([]libp2p.Option, error) {
 	// Example: /ip4/1.2.3.4./tcp/5678
 	multiAddrTCP, err := multiaddr.NewMultiaddr(fmt.Sprintf("/%s/%s/tcp/%d", ipType, ipAddr, s.cfg.TCPPort))
 	if err != nil {
-		return nil, errors.Wrapf(err, "QUIC NewMultiaddr fail from %s:%d", ipAddr, s.cfg.TCPPort)
+		return nil, errors.Wrapf(err, "NewMultiaddr fail from %s:%d", ipAddr, s.cfg.TCPPort)
 	}
 	multiaddrs := []multiaddr.Multiaddr{multiAddrTCP}
 	if s.cfg.EnableQuic {
@@ -220,7 +255,6 @@ func (s *Server) buildOptions() ([]libp2p.Option, error) {
 		libp2p.DefaultMuxers,
 		libp2p.Muxer("/mplex/6.7.0", mplex.DefaultTransport),
 		libp2p.Security(noise.ID, noise.New),
-		//libp2p.Ping(false),    // Disable Ping Service.
 		libp2p.DisableRelay(), // Disable relay transport, just connect directly
 	}
 

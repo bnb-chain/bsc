@@ -64,7 +64,7 @@ func (s *Server) PublishToTopic(ctx context.Context, topic string, data []byte, 
 
 	// Wait for at least 1 peer to be available to receive the published message.
 	for {
-		if len(topicHandle.ListPeers()) > 0 || s.cfg.MinimumSyncPeers == 0 {
+		if len(topicHandle.ListPeers()) > 0 {
 			return topicHandle.Publish(ctx, data, opts...)
 		}
 		select {
