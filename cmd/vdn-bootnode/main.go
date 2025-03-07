@@ -10,14 +10,12 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/vdn"
 	"github.com/prysmaticlabs/prysm/v5/network"
-
-	"github.com/sirupsen/logrus"
 )
 
 var (
 	debug          = flag.Bool("debug", false, "Enable debug logging")
 	privateKeyPath = flag.String("private-path", "./key", "Path to private key to use for peer ID")
-	port           = flag.Int("port", 3000, "udp port to listen for discovery connections")
+	port           = flag.Int("port", 13000, "udp port to listen for discovery connections")
 	externalIP     = flag.String("external-ip", "", "External IP for the bootnode")
 )
 
@@ -26,8 +24,6 @@ func main() {
 	fmt.Printf("Starting bootnode...\n")
 
 	if *debug {
-		logrus.SetLevel(logrus.DebugLevel)
-
 		// Geth specific logging.
 		log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LvlTrace, true)))
 
