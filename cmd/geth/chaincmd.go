@@ -88,7 +88,8 @@ It expects the genesis file as argument.`,
 			utils.InitVDNPort,
 			utils.InitNetworkSize,
 			utils.InitNetworkIps,
-			utils.InitLegacyP2P,
+			utils.InitDisableLegacyP2P,
+			utils.InitDisableVDN,
 			configFileFlag,
 		},
 		Category: "BLOCKCHAIN COMMANDS",
@@ -351,10 +352,10 @@ func createPorts(ipStr string, port int, size int) []int {
 }
 
 // Create config for node i in the cluster
-func createNodeConfig(baseConfig gethConfig, enodes []*enode.Node, ip string, port int, size int, i int, enableLegacyP2P int) gethConfig {
+func createNodeConfig(baseConfig gethConfig, enodes []*enode.Node, ip string, port int, size int, i int, disableLegacyP2P bool) gethConfig {
 	baseConfig.Node.HTTPHost = ip
 	baseConfig.Node.P2P.ListenAddr = fmt.Sprintf(":%d", port)
-	if enableLegacyP2P == 1 {
+	if !disableLegacyP2P {
 		baseConfig.Node.P2P.BootstrapNodes = make([]*enode.Node, size-1)
 		// Set the P2P connections between this node and the other nodes
 		for j := 0; j < i; j++ {
@@ -371,7 +372,7 @@ func createNodeConfig(baseConfig gethConfig, enodes []*enode.Node, ip string, po
 }
 
 // Create configs for nodes in the cluster
-func createNodeConfigs(baseConfig gethConfig, initDir string, ips []string, ports []int, vdnPorts []int, size int, enableLegacyP2P int) ([]gethConfig, error) {
+func createNodeConfigs(baseConfig gethConfig, initDir string, ips []string, ports []int, vdnPorts []int, size int, disableLegacyP2P bool, disableVDN bool) ([]gethConfig, error) {
 	// Create the nodes
 	enodes := make([]*enode.Node, size)
 	peerIDs := make([]peer.ID, size)
@@ -395,13 +396,15 @@ func createNodeConfigs(baseConfig gethConfig, initDir string, ips []string, port
 	// Create the configs
 	configs := make([]gethConfig, size)
 	for i := 0; i < size; i++ {
-		configs[i] = createNodeConfig(baseConfig, enodes, ips[i], ports[i], size, i, enableLegacyP2P)
+		configs[i] = createNodeConfig(baseConfig, enodes, ips[i], ports[i], size, i, disableLegacyP2P)
 	}
 
-	// set VDN bootnode, using the first node as bootnode default.
-	// TODO(galaio): may using enode url than multiaddr url in future?
-	for i := 1; i < size; i++ {
-		configs[i].Node.VDN.BootstrapPeers = []string{fmt.Sprintf("/ip4/%v/tcp/%d/p2p/%v", ips[0], vdnPorts[0], peerIDs[0])}
+	if !disableVDN {
+		// set VDN bootnode, using the first node as bootnode default.
+		// TODO(galaio): may using enode url than multiaddr url in future?
+		for i := 1; i < size; i++ {
+			configs[i].Node.VDN.BootstrapPeers = []string{fmt.Sprintf("/ip4/%v/tcp/%d/p2p/%v", ips[0], vdnPorts[0], peerIDs[0])}
+		}
 	}
 	return configs, nil
 }
@@ -424,7 +427,8 @@ func initNetwork(ctx *cli.Context) error {
 	if vdnPort <= 0 {
 		utils.Fatalf("VDN port should be greater than 0")
 	}
-	enableLegacyP2P := ctx.Int(utils.InitLegacyP2P.Name)
+	disableLegacyP2P := ctx.Bool(utils.InitDisableLegacyP2P.Name)
+	disableVDN := ctx.Bool(utils.InitDisableVDN.Name)
 	ipStr := ctx.String(utils.InitNetworkIps.Name)
 	cfgFile := ctx.String(configFileFlag.Name)
 
@@ -463,7 +467,7 @@ func initNetwork(ctx *cli.Context) error {
 		return err
 	}
 
-	configs, err := createNodeConfigs(config, initDir, ips, ports, vdnPorts, size, enableLegacyP2P)
+	configs, err := createNodeConfigs(config, initDir, ips, ports, vdnPorts, size, disableLegacyP2P, disableVDN)
 	if err != nil {
 		utils.Fatalf("Failed to create node configs: %v", err)
 	}

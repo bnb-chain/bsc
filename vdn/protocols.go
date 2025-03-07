@@ -1,6 +1,8 @@
 package vdn
 
 const (
+	DHTPrefix = "/bsc/vdn/disc"
+
 	HandshakeMsgSuffix       = "handshake"
 	ContactInfoMsgSuffix     = "contact_info"
 	BlockMsgSuffix           = "block"

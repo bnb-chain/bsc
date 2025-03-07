@@ -27,6 +27,8 @@ import (
 	leakybucket "github.com/prysmaticlabs/prysm/v5/container/leaky-bucket"
 )
 
+const ()
+
 // Server validator dedicated p2p server
 type Server struct {
 	started          bool
@@ -76,7 +78,7 @@ func NewServer(cfg *Config) (*Server, error) {
 	// setup Kad-DHT discovery
 	dopts := []kaddht.Option{
 		kaddht.Mode(kaddht.ModeServer),
-		kaddht.ProtocolPrefix("/bsc/vdn/disc"),
+		kaddht.ProtocolPrefix(DHTPrefix),
 	}
 	routingCfg := func(h host.Host) (routing.PeerRouting, error) {
 		var err error
@@ -198,7 +200,7 @@ func (s *Server) buildOptions() ([]libp2p.Option, error) {
 	// Example: /ip4/1.2.3.4./tcp/5678
 	multiAddrTCP, err := multiaddr.NewMultiaddr(fmt.Sprintf("/%s/%s/tcp/%d", ipType, ipAddr, s.cfg.TCPPort))
 	if err != nil {
-		return nil, errors.Wrapf(err, "QUIC NewMultiaddr fail from %s:%d", ipAddr, s.cfg.TCPPort)
+		return nil, errors.Wrapf(err, "TCP NewMultiaddr fail from %s:%d", ipAddr, s.cfg.TCPPort)
 	}
 	multiaddrs := []multiaddr.Multiaddr{multiAddrTCP}
 	if s.cfg.EnableQuic {
