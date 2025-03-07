@@ -27,6 +27,8 @@ import (
 	leakybucket "github.com/prysmaticlabs/prysm/v5/container/leaky-bucket"
 )
 
+const ()
+
 // Server validator dedicated p2p server
 type Server struct {
 	started          bool
@@ -76,7 +78,7 @@ func NewServer(cfg *Config) (*Server, error) {
 	// setup Kad-DHT discovery
 	dopts := []kaddht.Option{
 		kaddht.Mode(kaddht.ModeServer),
-		kaddht.ProtocolPrefix("/bsc/validator/disc"),
+		kaddht.ProtocolPrefix(DHTPrefix),
 	}
 	routingCfg := func(h host.Host) (routing.PeerRouting, error) {
 		var err error
@@ -198,7 +200,7 @@ func (s *Server) buildOptions() ([]libp2p.Option, error) {
 	// Example: /ip4/1.2.3.4./tcp/5678
 	multiAddrTCP, err := multiaddr.NewMultiaddr(fmt.Sprintf("/%s/%s/tcp/%d", ipType, ipAddr, s.cfg.TCPPort))
 	if err != nil {
-		return nil, errors.Wrapf(err, "QUIC NewMultiaddr fail from %s:%d", ipAddr, s.cfg.TCPPort)
+		return nil, errors.Wrapf(err, "TCP NewMultiaddr fail from %s:%d", ipAddr, s.cfg.TCPPort)
 	}
 	multiaddrs := []multiaddr.Multiaddr{multiAddrTCP}
 	if s.cfg.EnableQuic {
@@ -214,11 +216,11 @@ func (s *Server) buildOptions() ([]libp2p.Option, error) {
 	options := []libp2p.Option{
 		privKeyOption(s.privKey),
 		libp2p.ListenAddrs(multiaddrs...),
-		libp2p.UserAgent("bsc-vdb-p2p"),
+		libp2p.UserAgent("BSC-VDN"),
 		libp2p.ConnectionGater(s),
 		libp2p.Transport(libp2ptcp.NewTCPTransport),
 		libp2p.DefaultMuxers,
-		libp2p.Muxer("/mplex/6.7.0", mplex.DefaultTransport),
+		libp2p.Muxer(mplex.ID, mplex.DefaultTransport),
 		libp2p.Security(noise.ID, noise.New),
 		//libp2p.Ping(false),    // Disable Ping Service.
 		libp2p.DisableRelay(), // Disable relay transport, just connect directly
@@ -288,7 +290,14 @@ func (s *Server) eventLoop() {
 			log.Info("Count VDN peers", "peers", len(peers), "bootnodes", len(boots), "static", len(statics))
 			// TODO(galaio): may remove below logs later.
 			for _, id := range peers {
-				log.Debug("VDN connect to peer", "peerID", id, "addr", s.host.Network().Peerstore().Addrs(id))
+				connectedAddr := ""
+				conns := s.host.Network().ConnsToPeer(id)
+				if len(conns) > 0 {
+					connectedAddr = conns[0].RemoteMultiaddr().String()
+				}
+				peerstore := s.host.Network().Peerstore()
+				protos, _ := peerstore.GetProtocols(id)
+				log.Debug("VDN connect to peer", "peerID", id, "connected", connectedAddr, "addrs", peerstore.Addrs(id), "protos", protos)
 			}
 		case <-s.ctx.Done():
 			log.Debug("VDN stopped, exit the event loop")

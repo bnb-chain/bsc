@@ -72,7 +72,7 @@ type Node struct {
 
 	databases map[*closeTrackingDB]struct{} // All open databases
 
-	valServer *vdn.Server // validator dedicated p2p server
+	vdnServer *vdn.Server // validator dedicated p2p server
 }
 
 const (
@@ -211,7 +211,7 @@ func New(conf *Config) (*Node, error) {
 		if conf.VDN.NodeKeyPath == "" {
 			conf.VDN.NodeKeyPath = conf.VDNNodeKeyPath()
 		}
-		node.valServer, err = vdn.NewServer(&conf.VDN)
+		node.vdnServer, err = vdn.NewServer(&conf.VDN)
 		if err != nil {
 			return nil, err
 		}
@@ -339,8 +339,8 @@ func (n *Node) openEndpoints() error {
 	}
 
 	// start validator p2p network
-	if n.valServer != nil {
-		n.valServer.Start()
+	if n.vdnServer != nil {
+		n.vdnServer.Start()
 	}
 	return err
 }
@@ -362,8 +362,8 @@ func (n *Node) stopServices(running []Lifecycle) error {
 	n.server.Stop()
 
 	// stop validator p2p network
-	if n.valServer != nil {
-		n.valServer.Stop()
+	if n.vdnServer != nil {
+		n.vdnServer.Stop()
 	}
 	if len(failure.Services) > 0 {
 		return failure
@@ -704,6 +704,13 @@ func (n *Node) Server() *p2p.Server {
 	defer n.lock.Unlock()
 
 	return n.server
+}
+
+func (n *Node) VDNServer() *vdn.Server {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+
+	return n.vdnServer
 }
 
 // DataDir retrieves the current datadir used by the protocol stack.
