@@ -10,21 +10,20 @@ import (
 
 const (
 	defaultPubsubQueueSize = 600
-	defaultMaxPeers        = 11
+	defaultMaxPeers        = 50
 )
 
 type Config struct {
-	StaticPeers      []string // using multi address format
-	BootstrapPeers   []string
-	HostAddress      string // it indicates listen IP addr, it better a external IP for public service
-	NodeKeyPath      string // the path saves the key and cached nodes
-	QUICPort         int
-	TCPPort          int
-	MaxPeers         int
-	QueueSize        int
-	EnableQuic       bool
-	EnableDiscovery  bool
-	MinimumSyncPeers int
+	StaticPeers     []string // using multi address format
+	BootstrapPeers  []string
+	HostAddress     string // it indicates listen IP addr, it better a external IP for public service
+	NodeKeyPath     string // the path saves the key and cached nodes
+	QUICPort        int
+	TCPPort         int
+	MaxPeers        int
+	QueueSize       int
+	EnableQuic      bool
+	EnableDiscovery bool
 }
 
 func (cfg *Config) SanityCheck() error {

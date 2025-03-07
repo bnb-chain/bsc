@@ -14,7 +14,7 @@ import (
 
 const (
 	// Limit for rate limiter when processing new inbound dials.
-	ipLimit = 4
+	ipLimit = 2
 
 	// Burst limit for inbound dials.
 	ipBurst = 8
