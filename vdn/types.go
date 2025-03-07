@@ -12,16 +12,19 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
+type Signature struct {
+	V *big.Int
+	R *big.Int
+	S *big.Int
+}
+
 type HandshakeMsg struct {
 	ChainID     uint64
 	ForkID      forkid.ID
 	GenesisHash common.Hash
 	NodeVersion string
 	Extend      []byte
-	// Signature values that sign the rlp.encode(HandshakeBody)
-	V *big.Int
-	R *big.Int
-	S *big.Int
+	Sign        Signature
 }
 
 type ContactInfoMsg struct {
@@ -29,10 +32,7 @@ type ContactInfoMsg struct {
 	ListenP2PAddrs []string         // validator can connect it by the addresses.
 	Cache          []ContactInfoMsg // max 8 cache node's contact
 	CreateTime     uint64
-	// Signature values that sign the rlp.encode(ContactInfoBody)
-	V *big.Int
-	R *big.Int
-	S *big.Int
+	Sign           Signature
 }
 
 type StatusCode uint8

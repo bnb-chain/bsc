@@ -71,9 +71,9 @@ func peerScoringParams() (*pubsub.PeerScoreParams, *pubsub.PeerScoreThresholds) 
 
 func (s *Server) topicScoreParams(topic string) (*pubsub.TopicScoreParams, error) {
 	switch {
-	case strings.Contains(topic, BlockMessage):
+	case strings.Contains(topic, BlockMsgSuffix):
 		return defaultBlockTopicParams(), nil
-	case strings.Contains(topic, VoteMessage):
+	case strings.Contains(topic, VoteMsgSuffix):
 		// TODO(galaio): set correct validator size
 		return defaultVoteTopicParams(21), nil
 	default:
