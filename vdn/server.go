@@ -288,7 +288,14 @@ func (s *Server) eventLoop() {
 			log.Info("Count VDN peers", "peers", len(peers), "bootnodes", len(boots), "static", len(statics))
 			// TODO(galaio): may remove below logs later.
 			for _, id := range peers {
-				log.Debug("VDN connect to peer", "peerID", id, "addr", s.host.Network().Peerstore().Addrs(id))
+				connectedAddr := ""
+				conns := s.host.Network().ConnsToPeer(id)
+				if len(conns) > 0 {
+					connectedAddr = conns[0].RemoteMultiaddr().String()
+				}
+				peerstore := s.host.Network().Peerstore()
+				protos, _ := peerstore.GetProtocols(id)
+				log.Debug("VDN connect to peer", "peerID", id, "connected", connectedAddr, "addrs", peerstore.Addrs(id), "protos", protos)
 			}
 		case <-s.ctx.Done():
 			log.Debug("VDN stopped, exit the event loop")

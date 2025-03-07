@@ -19,11 +19,10 @@ import (
 )
 
 type VDNHandlerConfig struct {
-	chain       *core.BlockChain
-	server      *vdn.Server
-	votePool    *vote.VotePool
-	eventMux    *event.TypeMux
-	checkSynced func() bool
+	chain    *core.BlockChain
+	server   *vdn.Server
+	votePool *vote.VotePool
+	eventMux *event.TypeMux
 }
 
 func (c *VDNHandlerConfig) sanityCheck() error {
@@ -59,16 +58,17 @@ func NewVDNHandler(cfg VDNHandlerConfig) (*VDNHandler, error) {
 		return nil, err
 	}
 	h := &VDNHandler{
-		cfg: cfg,
+		cfg:    cfg,
+		stopCh: make(chan struct{}),
 	}
-
-	// set vdn business logic handlers
-	h.setRPCMsgHandler()
-	h.setGossipMsgHandler()
 	return h, nil
 }
 
 func (h *VDNHandler) Start() error {
+	// set vdn business logic handlers
+	h.setRPCMsgHandler()
+	h.setGossipMsgHandler()
+
 	// subscribe chain & network events
 	h.minedBlockSub = h.cfg.eventMux.Subscribe(core.NewMinedBlockEvent{})
 	go h.broadcastMinedBlockLoop()
@@ -152,15 +152,12 @@ func (h *VDNHandler) subDirectTxsEvent() {
 }
 
 func (h *VDNHandler) handleRPCBlockMsg(from peer.ID, rw io.ReadWriter) error {
-	if !h.cfg.checkSynced() {
-		return nil
-	}
 	var msg vdn.BlockMsg
 	if err := vdn.DecodeFromStream(&msg, rw); err != nil {
 		return err
 	}
 
-	if err := h.handleNewBlock(msg); err != nil {
+	if err := h.handleNewBlock(from, msg); err != nil {
 		// TODO(galaio): reply err response
 		return err
 	}
@@ -171,17 +168,13 @@ func (h *VDNHandler) handleRPCBlockMsg(from peer.ID, rw io.ReadWriter) error {
 
 // TODO(galaio): impl it later
 func (h *VDNHandler) handleRPCVoteMsg(from peer.ID, rw io.ReadWriter) error {
-	if !h.cfg.checkSynced() {
-		return nil
-	}
-	var vote types.VoteEnvelope
+	var msg vdn.VoteMsg
 	// TODO(galaio): reply response
-	if err := vdn.DecodeFromStream(&vote, rw); err != nil {
+	if err := vdn.DecodeFromStream(&msg, rw); err != nil {
 		return err
 	}
 
-	h.cfg.votePool.PutVote(&vote)
-	return nil
+	return h.handleNewVote(from, msg)
 }
 
 // TODO(galaio): impl it later
@@ -200,29 +193,21 @@ func (h *VDNHandler) handleRPCBlockByRangeMsg(from peer.ID, rw io.ReadWriter) er
 }
 
 func (h *VDNHandler) handleGossipBlockMsg(from peer.ID, reader io.Reader) error {
-	if !h.cfg.checkSynced() {
-		return nil
-	}
 	var msg vdn.BlockMsg
 	if err := vdn.DecodeFromStream(&msg, reader); err != nil {
 		return err
 	}
-	return h.handleNewBlock(msg)
+	return h.handleNewBlock(from, msg)
 }
 
 func (h *VDNHandler) handleGossipVoteMsg(from peer.ID, reader io.Reader) error {
-	if !h.cfg.checkSynced() {
-		return nil
-	}
-	var vote types.VoteEnvelope
+	var msg vdn.VoteMsg
 	// TODO(galaio): reply response
-	if err := vdn.DecodeFromStream(&vote, reader); err != nil {
+	if err := vdn.DecodeFromStream(&msg, reader); err != nil {
 		return err
 	}
 
-	// TODO(galaio): add validation here to score peer?
-	h.cfg.votePool.PutVote(&vote)
-	return nil
+	return h.handleNewVote(from, msg)
 }
 
 // TODO(galaio): impl it later
@@ -230,8 +215,9 @@ func (h *VDNHandler) handleGossipContactInfoMsg(from peer.ID, reader io.Reader) 
 	return nil
 }
 
-func (h *VDNHandler) handleNewBlock(msg vdn.BlockMsg) error {
+func (h *VDNHandler) handleNewBlock(from peer.ID, msg vdn.BlockMsg) error {
 	if err := msg.SanityCheck(); err != nil {
+		log.Warn("sanity check new block err", "err", err)
 		return err
 	}
 
@@ -241,6 +227,7 @@ func (h *VDNHandler) handleNewBlock(msg vdn.BlockMsg) error {
 	if msg.Sidecars != nil {
 		block = block.WithSidecars(msg.Sidecars)
 	}
+	log.Debug("handle new block in vdn", "number", block.Number(), "hash", block.Hash(), "from", from)
 
 	if block.Header().EmptyWithdrawalsHash() {
 		block = block.WithWithdrawals(make([]*types.Withdrawal, 0))
@@ -253,6 +240,18 @@ func (h *VDNHandler) handleNewBlock(msg vdn.BlockMsg) error {
 	if _, err := chain.InsertChain(types.Blocks{block}); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (h *VDNHandler) handleNewVote(from peer.ID, msg vdn.VoteMsg) error {
+	if err := msg.SanityCheck(); err != nil {
+		return err
+	}
+
+	vote := msg.Vote
+	// TODO(galaio): add validation here to score peer?
+	log.Debug("handle new vote in vdn", "source", vote.Data.SourceNumber, "hash", vote.Hash(), "from", from)
+	h.cfg.votePool.PutVote(vote)
 	return nil
 }
 
@@ -295,11 +294,12 @@ func (h *VDNHandler) sendNewBlock(block *types.Block) {
 		log.Error("Propagating dangling block", "number", block.Number(), "hash", block.Hash())
 		return
 	}
+	log.Debug("sending new block to vdn", "number", block.Number(), "hash", block.Hash())
 	err := h.cfg.server.Publish(&vdn.BlockMsg{
 		Block:      block,
 		TD:         td,
 		Sidecars:   block.Sidecars(),
-		CreateTime: time.Now().UnixMilli(),
+		CreateTime: uint64(time.Now().UnixMilli()),
 	}, vdn.V1BlockTopic)
 	if err != nil {
 		log.Warn("Failed to publish new block", "block", block.Number(), "hash", block.Hash(), "err", err)
@@ -308,9 +308,10 @@ func (h *VDNHandler) sendNewBlock(block *types.Block) {
 }
 
 func (h *VDNHandler) sendNewVote(vote *types.VoteEnvelope) {
+	log.Debug("sending new vote to vdn", "source", vote.Data.SourceNumber, "target", vote.Data.TargetNumber)
 	err := h.cfg.server.Publish(&vdn.VoteMsg{
 		Vote:       vote,
-		CreateTime: time.Now().UnixMilli(),
+		CreateTime: uint64(time.Now().UnixMilli()),
 	}, vdn.V1VoteTopic)
 	if err != nil {
 		log.Warn("Failed to publish new vote", "source", vote.Data.SourceNumber, "target", vote.Data.TargetNumber, "err", err)

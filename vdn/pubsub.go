@@ -138,7 +138,7 @@ func (s *Server) gossipSubLoop(sub *pubsub.Subscription, callback HandleSubscrib
 		// TODO(galaio): check msg.ValidatorData, if add validator on libp2p
 		if err = callback(msg.ReceivedFrom, buf); err != nil {
 			//TODO(galaio): biz logic err, using it for peer scoring
-			_ = err
+			log.Debug("handle gossip msg err", "topic", sub.Topic(), "err", err)
 		}
 	}
 }

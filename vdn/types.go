@@ -28,7 +28,7 @@ type ContactInfoMsg struct {
 	PeerID         string
 	ListenP2PAddrs []string         // validator can connect it by the addresses.
 	Cache          []ContactInfoMsg // max 8 cache node's contact
-	CreateTime     int64
+	CreateTime     uint64
 	// Signature values that sign the rlp.encode(ContactInfoBody)
 	V *big.Int
 	R *big.Int
@@ -50,7 +50,7 @@ type BlockMsg struct {
 	Block      *types.Block
 	TD         *big.Int
 	Sidecars   types.BlobSidecars `rlp:"optional"`
-	CreateTime int64
+	CreateTime uint64             `rlp:"optional"`
 }
 
 // SanityCheck verifies that the values are reasonable, as a DoS protection
@@ -104,7 +104,18 @@ type BlockByRangeResp struct {
 
 type VoteMsg struct {
 	Vote       *types.VoteEnvelope
-	CreateTime int64
+	CreateTime uint64
+}
+
+// SanityCheck verifies that the values are reasonable, as a DoS protection
+func (v *VoteMsg) SanityCheck() error {
+	if v.Vote == nil {
+		return fmt.Errorf("missing VoteEnvelope")
+	}
+	if v.Vote.Data == nil {
+		return fmt.Errorf("missing VoteData")
+	}
+	return nil
 }
 
 type TransactionsMsg struct {

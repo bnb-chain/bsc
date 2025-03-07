@@ -420,9 +420,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			server:   stack.VDNServer(),
 			votePool: eth.votePool,
 			eventMux: eth.eventMux,
-			checkSynced: func() bool {
-				return eth.handler.synced.Load()
-			},
 		}); err != nil {
 			return nil, err
 		}
