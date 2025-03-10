@@ -2,6 +2,7 @@ package vote
 
 import (
 	"container/heap"
+	"encoding/hex"
 	"sync"
 	"time"
 
@@ -55,10 +56,20 @@ func (v *VoteBox) trySetMajorityVoteTime(oldTime int64) {
 	}
 	if oldTime > 0 {
 		v.majorityVoteTime = oldTime
+		var addrs []string
+		for _, msg := range v.voteMessages {
+			addrs = append(addrs, hex.EncodeToString(msg.VoteAddress.Bytes()))
+		}
+		log.Info("receive MajorityVote from old", "block", v.blockNumber, "votes", addrs)
 		return
 	}
 	if len(v.voteMessages) >= defaultMajorityThreshold {
 		v.majorityVoteTime = time.Now().UnixMilli()
+		var addrs []string
+		for _, msg := range v.voteMessages {
+			addrs = append(addrs, hex.EncodeToString(msg.VoteAddress.Bytes()))
+		}
+		log.Info("receive MajorityVote", "block", v.blockNumber, "votes", addrs)
 	}
 }
 
