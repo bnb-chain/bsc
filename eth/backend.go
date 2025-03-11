@@ -729,8 +729,8 @@ func (s *Ethereum) reportRecentBlocksLoop() {
 			records["FirstRecvVoteTime"] = common.FormatMilliTime(firstVoteTime)
 			records["RecvMajorityVoteTime"] = common.FormatMilliTime(recvMajorityTime)
 
-			records["BlockMiningTime"] = common.FormatMilliTime(recorder.BlockMiningTime.Load())
-			records["BlockProcessTime"] = common.FormatMilliTime(recorder.BlockProcessTime.Load())
+			records["BlockMiningTime"] = recorder.BlockMiningTime.Load()
+			records["BlockProcessTime"] = recorder.BlockProcessTime.Load()
 
 			records["Coinbase"] = cur.Coinbase.String()
 			blockMsTime := int64(cur.Time * 1000)
