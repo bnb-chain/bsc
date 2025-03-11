@@ -358,6 +358,9 @@ func (p *Peer) pingLoop() {
 			if latency > 0 {
 				p.latency.Store(latency)
 				peerLatencyStat.Update(time.Duration(latency))
+				if latency > 1000 {
+					log.Warn("find a too slow peer", "id", p.ID(), "peer", p.RemoteAddr(), "latency", latency)
+				}
 			}
 		case <-p.closed:
 			return
