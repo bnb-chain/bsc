@@ -1943,6 +1943,13 @@ func (p *Parlia) distributeIncoming(val common.Address, state vm.StateDB, header
 		return err
 	}
 	if PenalizeForDelayMined {
+		spoiledVal := val
+		log.Trace("slash validator for delay mining", "block hash", header.Hash(), "address", spoiledVal)
+		err = p.slash(spoiledVal, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, tracer)
+		if err != nil {
+			// it is possible that slash validator failed because of the slash channel is disabled.
+			log.Error("slash validator for delay mining failed", "block hash", header.Hash(), "address", spoiledVal)
+		}
 		depositTo = systemRewardContractAddr
 	}
 	log.Trace("distribute to validator contract", "block hash", header.Hash(), "address", depositTo, "amount", balance)
