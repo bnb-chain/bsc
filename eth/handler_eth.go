@@ -106,11 +106,13 @@ func (h *ethHandler) handleBlockAnnounces(peer *eth.Peer, hashes []common.Hash, 
 	}
 	for _, hash := range hashes {
 		recorder := h.chain.GetBlockRecorder(hash)
-		recorder.RecvBlockTime.Store(time.Now().UnixMilli())
-		recorder.RecvBlockSource.Store("NewBlockHash")
-		addr := peer.RemoteAddr()
-		if addr != nil {
-			recorder.RecvBlockFrom.Store(addr.String())
+		if recorder.RecvBlockTime.Load() == 0 {
+			recorder.RecvBlockTime.Store(time.Now().UnixMilli())
+			recorder.RecvBlockSource.Store("NewBlockHash")
+			addr := peer.RemoteAddr()
+			if addr != nil {
+				recorder.RecvBlockFrom.Store(addr.String())
+			}
 		}
 	}
 	return nil
@@ -129,11 +131,13 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPa
 	// Schedule the block for import
 	h.blockFetcher.Enqueue(peer.ID(), block)
 	recorder := h.chain.GetBlockRecorder(block.Hash())
-	recorder.RecvBlockTime.Store(time.Now().UnixMilli())
-	recorder.RecvBlockSource.Store("NewBlock")
-	addr := peer.RemoteAddr()
-	if addr != nil {
-		recorder.RecvBlockFrom.Store(addr.String())
+	if recorder.RecvBlockTime.Load() == 0 {
+		recorder.RecvBlockTime.Store(time.Now().UnixMilli())
+		recorder.RecvBlockSource.Store("NewBlock")
+		addr := peer.RemoteAddr()
+		if addr != nil {
+			recorder.RecvBlockFrom.Store(addr.String())
+		}
 	}
 
 	// Assuming the block is importable by the peer, but possibly not yet done so,
