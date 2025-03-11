@@ -57,7 +57,8 @@ const (
 	defaultEpochLength   = uint16(200)  // Default number of blocks of checkpoint to update validatorSet from contract
 	defaultBlockInterval = uint16(3000) // Default block interval in milliseconds
 	defaultTurnLength    = uint8(1)     // Default consecutive number of blocks a validator receives priority for block production
-	lorentzEpochLength   = uint16(1000) // Epoch length starting from the Lorentz hard fork
+	lorentzEpochLength   = uint16(500)  // Epoch length starting from the Lorentz hard fork
+	maxwellEpochLength   = uint16(1000) // Epoch length starting from the Maxwell hard fork
 	lorentzBlockInterval = uint16(1500) // Block interval starting from the Lorentz hard fork
 
 	extraVanity      = 32 // Fixed number of extra-data prefix bytes reserved for signer vanity
@@ -766,9 +767,8 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 		// An offset `epochLength - 1` can ensure getting the right validators.
 
 		// Unable to retrieve the exact EpochLength here.
-		// Using lorentzEpochLength instead, assuming `lorentzEpochLength % defaultEpochLength == 0`.
-		// TODO(Nathan)(BEP-524 Phase Two): sync latest EpochLength defined
-		epochLength := uint64(lorentzEpochLength)
+		// Using maxwellEpochLength instead, assuming `maxwellEpochLength % defaultEpochLength == 0 && maxwellEpochLength % lorentzEpochLength == 0`.
+		epochLength := uint64(maxwellEpochLength)
 		if number == 0 || ((number+1)%epochLength == 0 && (len(headers) > int(params.FullImmutabilityThreshold))) {
 			var (
 				checkpoint *types.Header
