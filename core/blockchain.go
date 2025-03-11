@@ -237,6 +237,8 @@ type txLookup struct {
 }
 
 type BlockRecorder struct {
+	BlockMiningTime atomic.Int64
+
 	SendBlockTime   atomic.Int64
 	InsertBlockTime atomic.Int64
 	RecvBlockTime   atomic.Int64

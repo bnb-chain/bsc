@@ -150,10 +150,11 @@ func (env *environment) discard() {
 
 // task contains all information for consensus engine sealing and result submitting.
 type task struct {
-	receipts  []*types.Receipt
-	state     *state.StateDB
-	block     *types.Block
-	createdAt time.Time
+	receipts      []*types.Receipt
+	state         *state.StateDB
+	block         *types.Block
+	createdAt     time.Time
+	miningStartAt time.Time
 }
 
 const (
@@ -672,6 +673,7 @@ func (w *worker) resultLoop() {
 			mineTime := time.Now().UnixMilli()
 			recorder.SendBlockTime.Store(mineTime)
 			recorder.RecvBlockTime.Store(mineTime)
+			recorder.BlockMiningTime.Store(time.Since(task.miningStartAt).Milliseconds())
 			log.Info("Successfully sealed new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
 				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
 			w.mux.Post(core.NewMinedBlockEvent{Block: block})
@@ -1518,7 +1520,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		block = block.WithSidecars(env.sidecars)
 
 		select {
-		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now()}:
+		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
 			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
 				"txs", env.tcount, "blobs", env.blobs, "gas", block.GasUsed(), "fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
 
