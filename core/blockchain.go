@@ -237,13 +237,15 @@ type txLookup struct {
 }
 
 type BlockRecorder struct {
-	BlockMiningTime atomic.Int64
+	BlockMiningTime  atomic.Int64
+	BlockProcessTime atomic.Int64
 
-	SendBlockTime   atomic.Int64
-	InsertBlockTime atomic.Int64
-	RecvBlockTime   atomic.Int64
-	RecvBlockSource atomic.Value
-	RecvBlockFrom   atomic.Value
+	SendBlockTime        atomic.Int64
+	InsertBlockTime      atomic.Int64
+	RecvNewBlockTime     atomic.Int64
+	RecvNewBlockFrom     atomic.Value
+	RecvNewBlockHashTime atomic.Int64
+	RecvNewBlockHashFrom atomic.Value
 
 	SendVoteTime         atomic.Int64
 	FirstRecvVoteTime    atomic.Int64
@@ -1797,8 +1799,6 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	go func() {
 		if r := bc.GetBlockRecorder(block.Hash()); r.InsertBlockTime.Load() == 0 {
 			r.InsertBlockTime.Store(time.Now().UnixMilli())
-			r.RecvBlockSource.Store("mining")
-			r.RecvBlockFrom.Store("self")
 		}
 		blockBatch := bc.db.BlockStore().NewBatch()
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
@@ -2500,6 +2500,7 @@ func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, s
 	}
 	blockWriteTimer.Update(time.Since(wstart) - max(statedb.AccountCommits, statedb.StorageCommits) /* concurrent */ - statedb.SnapshotCommits - statedb.TrieDBCommits)
 	blockInsertTimer.UpdateSince(start)
+	bc.GetBlockRecorder(block.Hash()).BlockProcessTime.Store(time.Since(start).Milliseconds())
 
 	return &blockProcessingResult{usedGas: res.GasUsed, procTime: proctime, status: status}, nil
 }

@@ -672,7 +672,6 @@ func (w *worker) resultLoop() {
 			recorder := w.chain.GetBlockRecorder(block.Hash())
 			mineTime := time.Now().UnixMilli()
 			recorder.SendBlockTime.Store(mineTime)
-			recorder.RecvBlockTime.Store(mineTime)
 			recorder.BlockMiningTime.Store(time.Since(task.miningStartAt).Milliseconds())
 			log.Info("Successfully sealed new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
 				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))

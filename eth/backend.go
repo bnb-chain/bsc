@@ -710,7 +710,8 @@ func (s *Ethereum) reportRecentBlocksLoop() {
 			recorder := s.blockchain.GetBlockRecorder(cur.Hash())
 			sendBlockTime := recorder.SendBlockTime.Load()
 			insertBlockTIme := recorder.InsertBlockTime.Load()
-			recvBlockTime := recorder.RecvBlockTime.Load()
+			recvNewBlockTime := recorder.RecvNewBlockTime.Load()
+			recvNewBlockHashTime := recorder.RecvNewBlockHashTime.Load()
 			sendVoteTime := recorder.SendVoteTime.Load()
 			firstVoteTime := recorder.FirstRecvVoteTime.Load()
 			recvMajorityTime := recorder.RecvMajorityVoteTime.Load()
@@ -719,13 +720,17 @@ func (s *Ethereum) reportRecentBlocksLoop() {
 			records["BlockNum"] = num
 			records["SendBlockTime"] = common.FormatMilliTime(sendBlockTime)
 			records["InsertBlockTime"] = common.FormatMilliTime(insertBlockTIme)
-			records["RecvBlockTime"] = common.FormatMilliTime(recvBlockTime)
-			records["RecvBlockSource"] = recorder.RecvBlockSource.Load()
-			records["RecvBlockFrom"] = recorder.RecvBlockFrom.Load()
+			records["RecvNewBlockTime"] = common.FormatMilliTime(recvNewBlockTime)
+			records["RecvNewBlockHashTime"] = common.FormatMilliTime(recvNewBlockHashTime)
+			records["RecvNewBlockFrom"] = recorder.RecvNewBlockFrom.Load()
+			records["RecvNewBlockHashFrom"] = recorder.RecvNewBlockHashFrom.Load()
 
 			records["SendVoteTime"] = common.FormatMilliTime(sendVoteTime)
 			records["FirstRecvVoteTime"] = common.FormatMilliTime(firstVoteTime)
 			records["RecvMajorityVoteTime"] = common.FormatMilliTime(recvMajorityTime)
+
+			records["BlockMiningTime"] = common.FormatMilliTime(recorder.BlockMiningTime.Load())
+			records["BlockProcessTime"] = common.FormatMilliTime(recorder.BlockProcessTime.Load())
 
 			records["Coinbase"] = cur.Coinbase.String()
 			blockMsTime := int64(cur.Time * 1000)
@@ -735,8 +740,8 @@ func (s *Ethereum) reportRecentBlocksLoop() {
 			if sendBlockTime > blockMsTime {
 				sendBlockTimer.Update(time.Duration(sendBlockTime - blockMsTime))
 			}
-			if recvBlockTime > blockMsTime {
-				recvBlockTimer.Update(time.Duration(recvBlockTime - blockMsTime))
+			if recvNewBlockTime > blockMsTime {
+				recvBlockTimer.Update(time.Duration(recvNewBlockTime - blockMsTime))
 			}
 			if insertBlockTIme > blockMsTime {
 				insertBlockTimer.Update(time.Duration(insertBlockTIme - blockMsTime))

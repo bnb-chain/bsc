@@ -106,12 +106,11 @@ func (h *ethHandler) handleBlockAnnounces(peer *eth.Peer, hashes []common.Hash, 
 	}
 	for _, hash := range hashes {
 		recorder := h.chain.GetBlockRecorder(hash)
-		if recorder.RecvBlockTime.Load() == 0 {
-			recorder.RecvBlockTime.Store(time.Now().UnixMilli())
-			recorder.RecvBlockSource.Store("NewBlockHash")
+		if recorder.RecvNewBlockHashTime.Load() == 0 {
+			recorder.RecvNewBlockHashTime.Store(time.Now().UnixMilli())
 			addr := peer.RemoteAddr()
 			if addr != nil {
-				recorder.RecvBlockFrom.Store(addr.String())
+				recorder.RecvNewBlockHashFrom.Store(addr.String())
 			}
 		}
 	}
@@ -131,12 +130,11 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPa
 	// Schedule the block for import
 	h.blockFetcher.Enqueue(peer.ID(), block)
 	recorder := h.chain.GetBlockRecorder(block.Hash())
-	if recorder.RecvBlockTime.Load() == 0 {
-		recorder.RecvBlockTime.Store(time.Now().UnixMilli())
-		recorder.RecvBlockSource.Store("NewBlock")
+	if recorder.RecvNewBlockTime.Load() == 0 {
+		recorder.RecvNewBlockTime.Store(time.Now().UnixMilli())
 		addr := peer.RemoteAddr()
 		if addr != nil {
-			recorder.RecvBlockFrom.Store(addr.String())
+			recorder.RecvNewBlockFrom.Store(addr.String())
 		}
 	}
 
