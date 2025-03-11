@@ -236,6 +236,18 @@ type txLookup struct {
 	transaction *types.Transaction
 }
 
+type BlockRecorder struct {
+	SendBlockTime   atomic.Int64
+	InsertBlockTime atomic.Int64
+	RecvBlockTime   atomic.Int64
+	RecvBlockSource atomic.Value
+	RecvBlockFrom   atomic.Value
+
+	SendVoteTime         atomic.Int64
+	FirstRecvVoteTime    atomic.Int64
+	RecvMajorityVoteTime atomic.Int64
+}
+
 // BlockChain represents the canonical chain given a database with a genesis
 // block. The Blockchain manages chain imports, reverts, chain reorganisations.
 //
@@ -292,7 +304,7 @@ type BlockChain struct {
 	bodyRLPCache  *lru.Cache[common.Hash, rlp.RawValue]
 	receiptsCache *lru.Cache[common.Hash, []*types.Receipt]
 	blockCache    *lru.Cache[common.Hash, *types.Block]
-	recvTimeCache *lru.Cache[common.Hash, int64]
+	recorderCache *lru.Cache[common.Hash, *BlockRecorder]
 
 	txLookupLock  sync.RWMutex
 	txLookupCache *lru.Cache[common.Hash, txLookup]
@@ -384,7 +396,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		receiptsCache:      lru.NewCache[common.Hash, []*types.Receipt](receiptsCacheLimit),
 		sidecarsCache:      lru.NewCache[common.Hash, types.BlobSidecars](sidecarsCacheLimit),
 		blockCache:         lru.NewCache[common.Hash, *types.Block](blockCacheLimit),
-		recvTimeCache:      lru.NewCache[common.Hash, int64](blockCacheLimit),
+		recorderCache:      lru.NewCache[common.Hash, *BlockRecorder](blockCacheLimit),
 		txLookupCache:      lru.NewCache[common.Hash, txLookup](txLookupCacheLimit),
 		futureBlocks:       lru.NewCache[common.Hash, *types.Block](maxFutureBlocks),
 		diffLayerCache:     diffLayerCache,
@@ -1142,7 +1154,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 	bc.receiptsCache.Purge()
 	bc.sidecarsCache.Purge()
 	bc.blockCache.Purge()
-	bc.recvTimeCache.Purge()
+	bc.recorderCache.Purge()
 	bc.txLookupCache.Purge()
 	bc.futureBlocks.Purge()
 
@@ -1781,8 +1793,10 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	defer wg.Wait()
 	wg.Add(1)
 	go func() {
-		if _, ok := bc.recvTimeCache.Get(block.Hash()); !ok {
-			bc.recvTimeCache.Add(block.Hash(), time.Now().UnixMilli())
+		if r := bc.GetBlockRecorder(block.Hash()); r.InsertBlockTime.Load() == 0 {
+			r.InsertBlockTime.Store(time.Now().UnixMilli())
+			r.RecvBlockSource.Store("mining")
+			r.RecvBlockFrom.Store("self")
 		}
 		blockBatch := bc.db.BlockStore().NewBatch()
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
@@ -2078,7 +2092,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 	// Start the parallel header verifier
 	headers := make([]*types.Header, len(chain))
 	for i, block := range chain {
-		bc.recvTimeCache.Add(block.Hash(), time.Now().UnixMilli())
+		bc.GetBlockRecorder(block.Hash()).InsertBlockTime.Store(time.Now().UnixMilli())
 		headers[i] = block.Header()
 	}
 	abort, results := bc.engine.VerifyHeaders(bc, headers)
@@ -3328,4 +3342,14 @@ func (bc *BlockChain) SetTrieFlushInterval(interval time.Duration) {
 // GetTrieFlushInterval gets the in-memory tries flushAlloc interval
 func (bc *BlockChain) GetTrieFlushInterval() time.Duration {
 	return time.Duration(bc.flushInterval.Load())
+}
+
+func (bc *BlockChain) GetBlockRecorder(hash common.Hash) *BlockRecorder {
+	v, ok := bc.recorderCache.Get(hash)
+	if ok {
+		return v
+	}
+	n := &BlockRecorder{}
+	bc.recorderCache.Add(hash, n)
+	return n
 }

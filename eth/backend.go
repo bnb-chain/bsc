@@ -78,6 +78,15 @@ const (
 	ChainData        = "chaindata"
 )
 
+var (
+	sendBlockTimer    = metrics.NewRegisteredTimer("chain/delay/block/send", nil)
+	recvBlockTimer    = metrics.NewRegisteredTimer("chain/delay/block/recv", nil)
+	insertBlockTimer  = metrics.NewRegisteredTimer("chain/delay/block/insert", nil)
+	sendVoteTimer     = metrics.NewRegisteredTimer("chain/delay/vote/send", nil)
+	firstVoteTimer    = metrics.NewRegisteredTimer("chain/delay/vote/first", nil)
+	majorityVoteTimer = metrics.NewRegisteredTimer("chain/delay/vote/majority", nil)
+)
+
 // Config contains the configuration options of the ETH protocol.
 // Deprecated: use ethconfig.Config instead.
 type Config = ethconfig.Config
@@ -698,16 +707,49 @@ func (s *Ethereum) reportRecentBlocksLoop() {
 				continue
 			}
 			num := cur.Number.Uint64()
-			hash := cur.Hash()
+			recorder := s.blockchain.GetBlockRecorder(cur.Hash())
+			sendBlockTime := recorder.SendBlockTime.Load()
+			insertBlockTIme := recorder.InsertBlockTime.Load()
+			recvBlockTime := recorder.RecvBlockTime.Load()
+			sendVoteTime := recorder.SendVoteTime.Load()
+			firstVoteTime := recorder.FirstRecvVoteTime.Load()
+			recvMajorityTime := recorder.RecvMajorityVoteTime.Load()
+
 			records := make(map[string]interface{})
 			records["BlockNum"] = num
-			records["RecvBlockAt"] = common.FormatMilliTime(s.blockchain.GetRecvTime(hash))
+			records["SendBlockTime"] = common.FormatMilliTime(sendBlockTime)
+			records["InsertBlockTime"] = common.FormatMilliTime(insertBlockTIme)
+			records["RecvBlockTime"] = common.FormatMilliTime(recvBlockTime)
+			records["RecvBlockSource"] = recorder.RecvBlockSource.Load()
+			records["RecvBlockFrom"] = recorder.RecvBlockFrom.Load()
+
+			records["SendVoteTime"] = common.FormatMilliTime(sendVoteTime)
+			records["FirstRecvVoteTime"] = common.FormatMilliTime(firstVoteTime)
+			records["RecvMajorityVoteTime"] = common.FormatMilliTime(recvMajorityTime)
+
 			records["Coinbase"] = cur.Coinbase.String()
-			records["BlockTime"] = common.FormatUnixTime(int64(cur.Time))
-			if s.votePool != nil {
-				records["MajorityVotesAt"] = common.FormatMilliTime(s.votePool.GetMajorityVoteTime(hash))
-			}
+			blockMsTime := int64(cur.Time * 1000)
+			records["BlockTime"] = common.FormatMilliTime(blockMsTime)
 			metrics.GetOrRegisterLabel("report-blocks", nil).Mark(records)
+
+			if sendBlockTime > blockMsTime {
+				sendBlockTimer.Update(time.Duration(sendBlockTime - blockMsTime))
+			}
+			if recvBlockTime > blockMsTime {
+				recvBlockTimer.Update(time.Duration(recvBlockTime - blockMsTime))
+			}
+			if insertBlockTIme > blockMsTime {
+				insertBlockTimer.Update(time.Duration(insertBlockTIme - blockMsTime))
+			}
+			if sendVoteTime > blockMsTime {
+				sendVoteTimer.Update(time.Duration(sendVoteTime - blockMsTime))
+			}
+			if firstVoteTime > blockMsTime {
+				firstVoteTimer.Update(time.Duration(firstVoteTime - blockMsTime))
+			}
+			if recvMajorityTime > blockMsTime {
+				majorityVoteTimer.Update(time.Duration(recvMajorityTime - blockMsTime))
+			}
 		case <-s.stopReportCh:
 			return
 		}
