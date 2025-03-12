@@ -105,12 +105,12 @@ func (h *ethHandler) handleBlockAnnounces(peer *eth.Peer, hashes []common.Hash, 
 		h.blockFetcher.Notify(peer.ID(), unknownHashes[i], unknownNumbers[i], time.Now(), peer.RequestOneHeader, peer.RequestBodies)
 	}
 	for _, hash := range hashes {
-		recorder := h.chain.GetBlockRecorder(hash)
-		if recorder.RecvNewBlockHashTime.Load() == 0 {
-			recorder.RecvNewBlockHashTime.Store(time.Now().UnixMilli())
+		stats := h.chain.GetBlockStats(hash)
+		if stats.RecvNewBlockHashTime.Load() == 0 {
+			stats.RecvNewBlockHashTime.Store(time.Now().UnixMilli())
 			addr := peer.RemoteAddr()
 			if addr != nil {
-				recorder.RecvNewBlockHashFrom.Store(addr.String())
+				stats.RecvNewBlockHashFrom.Store(addr.String())
 			}
 		}
 	}
@@ -129,12 +129,12 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPa
 
 	// Schedule the block for import
 	h.blockFetcher.Enqueue(peer.ID(), block)
-	recorder := h.chain.GetBlockRecorder(block.Hash())
-	if recorder.RecvNewBlockTime.Load() == 0 {
-		recorder.RecvNewBlockTime.Store(time.Now().UnixMilli())
+	stats := h.chain.GetBlockStats(block.Hash())
+	if stats.RecvNewBlockTime.Load() == 0 {
+		stats.RecvNewBlockTime.Store(time.Now().UnixMilli())
 		addr := peer.RemoteAddr()
 		if addr != nil {
-			recorder.RecvNewBlockFrom.Store(addr.String())
+			stats.RecvNewBlockFrom.Store(addr.String())
 		}
 	}
 

@@ -79,12 +79,14 @@ const (
 )
 
 var (
-	sendBlockTimer    = metrics.NewRegisteredTimer("chain/delay/block/send", nil)
-	recvBlockTimer    = metrics.NewRegisteredTimer("chain/delay/block/recv", nil)
-	insertBlockTimer  = metrics.NewRegisteredTimer("chain/delay/block/insert", nil)
-	sendVoteTimer     = metrics.NewRegisteredTimer("chain/delay/vote/send", nil)
-	firstVoteTimer    = metrics.NewRegisteredTimer("chain/delay/vote/first", nil)
-	majorityVoteTimer = metrics.NewRegisteredTimer("chain/delay/vote/majority", nil)
+	sendBlockTimer        = metrics.NewRegisteredTimer("chain/delay/block/send", nil)
+	recvBlockTimer        = metrics.NewRegisteredTimer("chain/delay/block/recv", nil)
+	startInsertBlockTimer = metrics.NewRegisteredTimer("chain/delay/block/insert", nil)
+	startMiningTimer      = metrics.NewRegisteredTimer("chain/delay/block/mining", nil)
+	importedBlockTimer    = metrics.NewRegisteredTimer("chain/delay/block/imported", nil)
+	sendVoteTimer         = metrics.NewRegisteredTimer("chain/delay/vote/send", nil)
+	firstVoteTimer        = metrics.NewRegisteredTimer("chain/delay/vote/first", nil)
+	majorityVoteTimer     = metrics.NewRegisteredTimer("chain/delay/vote/majority", nil)
 )
 
 // Config contains the configuration options of the ETH protocol.
@@ -707,30 +709,32 @@ func (s *Ethereum) reportRecentBlocksLoop() {
 				continue
 			}
 			num := cur.Number.Uint64()
-			recorder := s.blockchain.GetBlockRecorder(cur.Hash())
-			sendBlockTime := recorder.SendBlockTime.Load()
-			insertBlockTIme := recorder.InsertBlockTime.Load()
-			recvNewBlockTime := recorder.RecvNewBlockTime.Load()
-			recvNewBlockHashTime := recorder.RecvNewBlockHashTime.Load()
-			sendVoteTime := recorder.SendVoteTime.Load()
-			firstVoteTime := recorder.FirstRecvVoteTime.Load()
-			recvMajorityTime := recorder.RecvMajorityVoteTime.Load()
+			stats := s.blockchain.GetBlockStats(cur.Hash())
+			sendBlockTime := stats.SendBlockTime.Load()
+			startImportBlockTime := stats.StartImportBlockTime.Load()
+			recvNewBlockTime := stats.RecvNewBlockTime.Load()
+			recvNewBlockHashTime := stats.RecvNewBlockHashTime.Load()
+			sendVoteTime := stats.SendVoteTime.Load()
+			firstVoteTime := stats.FirstRecvVoteTime.Load()
+			recvMajorityTime := stats.RecvMajorityVoteTime.Load()
+			startMiningTime := stats.StartMiningTime.Load()
+			importedBlockTime := stats.ImportedBlockTime.Load()
 
 			records := make(map[string]interface{})
 			records["BlockNum"] = num
 			records["SendBlockTime"] = common.FormatMilliTime(sendBlockTime)
-			records["InsertBlockTime"] = common.FormatMilliTime(insertBlockTIme)
+			records["StartImportBlockTime"] = common.FormatMilliTime(startImportBlockTime)
 			records["RecvNewBlockTime"] = common.FormatMilliTime(recvNewBlockTime)
 			records["RecvNewBlockHashTime"] = common.FormatMilliTime(recvNewBlockHashTime)
-			records["RecvNewBlockFrom"] = recorder.RecvNewBlockFrom.Load()
-			records["RecvNewBlockHashFrom"] = recorder.RecvNewBlockHashFrom.Load()
+			records["RecvNewBlockFrom"] = stats.RecvNewBlockFrom.Load()
+			records["RecvNewBlockHashFrom"] = stats.RecvNewBlockHashFrom.Load()
 
 			records["SendVoteTime"] = common.FormatMilliTime(sendVoteTime)
 			records["FirstRecvVoteTime"] = common.FormatMilliTime(firstVoteTime)
 			records["RecvMajorityVoteTime"] = common.FormatMilliTime(recvMajorityTime)
 
-			records["BlockMiningTime"] = recorder.BlockMiningTime.Load()
-			records["BlockProcessTime"] = recorder.BlockProcessTime.Load()
+			records["StartMiningTime"] = common.FormatMilliTime(startMiningTime)
+			records["ImportedBlockTime"] = common.FormatMilliTime(importedBlockTime)
 
 			records["Coinbase"] = cur.Coinbase.String()
 			blockMsTime := int64(cur.Time * 1000)
@@ -743,8 +747,8 @@ func (s *Ethereum) reportRecentBlocksLoop() {
 			if recvNewBlockTime > blockMsTime {
 				recvBlockTimer.Update(time.Duration(recvNewBlockTime - blockMsTime))
 			}
-			if insertBlockTIme > blockMsTime {
-				insertBlockTimer.Update(time.Duration(insertBlockTIme - blockMsTime))
+			if startImportBlockTime > blockMsTime {
+				startInsertBlockTimer.Update(time.Duration(startImportBlockTime - blockMsTime))
 			}
 			if sendVoteTime > blockMsTime {
 				sendVoteTimer.Update(time.Duration(sendVoteTime - blockMsTime))
@@ -754,6 +758,12 @@ func (s *Ethereum) reportRecentBlocksLoop() {
 			}
 			if recvMajorityTime > blockMsTime {
 				majorityVoteTimer.Update(time.Duration(recvMajorityTime - blockMsTime))
+			}
+			if importedBlockTime > blockMsTime {
+				importedBlockTimer.Update(time.Duration(importedBlockTime - blockMsTime))
+			}
+			if startMiningTime < blockMsTime {
+				startMiningTimer.Update(time.Duration(blockMsTime - startMiningTime))
 			}
 		case <-s.stopReportCh:
 			return

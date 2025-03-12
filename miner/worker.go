@@ -669,10 +669,9 @@ func (w *worker) resultLoop() {
 				continue
 			}
 			writeBlockTimer.UpdateSince(start)
-			recorder := w.chain.GetBlockRecorder(block.Hash())
-			mineTime := time.Now().UnixMilli()
-			recorder.SendBlockTime.Store(mineTime)
-			recorder.BlockMiningTime.Store(time.Since(task.miningStartAt).Milliseconds())
+			stats := w.chain.GetBlockStats(block.Hash())
+			stats.SendBlockTime.Store(time.Now().UnixMilli())
+			stats.StartMiningTime.Store(task.miningStartAt.UnixMilli())
 			log.Info("Successfully sealed new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
 				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
 			w.mux.Post(core.NewMinedBlockEvent{Block: block})

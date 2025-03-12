@@ -27,7 +27,7 @@ const (
 
 	highestVerifiedBlockChanSize = 10 // highestVerifiedBlockChanSize is the size of channel listening to HighestVerifiedBlockEvent.
 
-	defaultMajorityThreshold = 15 // this is an inaccurate value, mainly used for metric acquisition
+	defaultMajorityThreshold = 14 // this is an inaccurate value, mainly used for metric acquisition, ref parlia.verifyVoteAttestation
 )
 
 var (
@@ -47,24 +47,15 @@ type VoteBox struct {
 }
 
 func (v *VoteBox) trySetRecvVoteTime(chain *core.BlockChain) {
-	recorder := chain.GetBlockRecorder(v.blockHash)
+	stats := chain.GetBlockStats(v.blockHash)
 	if len(v.voteMessages) == 1 {
-		recorder.FirstRecvVoteTime.Store(time.Now().UnixMilli())
+		stats.FirstRecvVoteTime.Store(time.Now().UnixMilli())
 	}
-	if recorder.RecvMajorityVoteTime.Load() > 0 {
+	if stats.RecvMajorityVoteTime.Load() > 0 {
 		return
 	}
 	if len(v.voteMessages) >= defaultMajorityThreshold {
-		voteMap := make(map[types.BLSPublicKey]struct{})
-		for _, msg := range v.voteMessages {
-			voteMap[msg.VoteAddress] = struct{}{}
-		}
-		if len(voteMap) >= defaultMajorityThreshold {
-			recorder.RecvMajorityVoteTime.Store(time.Now().UnixMilli())
-		}
-		if len(voteMap) != len(v.voteMessages) {
-			log.Warn("receive MajorityVote with wrong count", "block", v.blockNumber, "expect", len(voteMap), "actual", len(v.voteMessages))
-		}
+		stats.RecvMajorityVoteTime.Store(time.Now().UnixMilli())
 	}
 }
 

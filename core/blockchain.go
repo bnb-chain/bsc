@@ -236,16 +236,15 @@ type txLookup struct {
 	transaction *types.Transaction
 }
 
-type BlockRecorder struct {
-	BlockMiningTime  atomic.Int64
-	BlockProcessTime atomic.Int64
-
+type BlockStats struct {
 	SendBlockTime        atomic.Int64
-	InsertBlockTime      atomic.Int64
+	StartImportBlockTime atomic.Int64
 	RecvNewBlockTime     atomic.Int64
 	RecvNewBlockFrom     atomic.Value
 	RecvNewBlockHashTime atomic.Int64
 	RecvNewBlockHashFrom atomic.Value
+	StartMiningTime      atomic.Int64
+	ImportedBlockTime    atomic.Int64
 
 	SendVoteTime         atomic.Int64
 	FirstRecvVoteTime    atomic.Int64
@@ -304,11 +303,11 @@ type BlockChain struct {
 	currentFinalBlock     atomic.Pointer[types.Header] // Latest (consensus) finalized block
 	chasingHead           atomic.Pointer[types.Header]
 
-	bodyCache     *lru.Cache[common.Hash, *types.Body]
-	bodyRLPCache  *lru.Cache[common.Hash, rlp.RawValue]
-	receiptsCache *lru.Cache[common.Hash, []*types.Receipt]
-	blockCache    *lru.Cache[common.Hash, *types.Block]
-	recorderCache *lru.Cache[common.Hash, *BlockRecorder]
+	bodyCache       *lru.Cache[common.Hash, *types.Body]
+	bodyRLPCache    *lru.Cache[common.Hash, rlp.RawValue]
+	receiptsCache   *lru.Cache[common.Hash, []*types.Receipt]
+	blockCache      *lru.Cache[common.Hash, *types.Block]
+	blockStatsCache *lru.Cache[common.Hash, *BlockStats]
 
 	txLookupLock  sync.RWMutex
 	txLookupCache *lru.Cache[common.Hash, txLookup]
@@ -400,7 +399,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		receiptsCache:      lru.NewCache[common.Hash, []*types.Receipt](receiptsCacheLimit),
 		sidecarsCache:      lru.NewCache[common.Hash, types.BlobSidecars](sidecarsCacheLimit),
 		blockCache:         lru.NewCache[common.Hash, *types.Block](blockCacheLimit),
-		recorderCache:      lru.NewCache[common.Hash, *BlockRecorder](blockCacheLimit),
+		blockStatsCache:    lru.NewCache[common.Hash, *BlockStats](blockCacheLimit),
 		txLookupCache:      lru.NewCache[common.Hash, txLookup](txLookupCacheLimit),
 		futureBlocks:       lru.NewCache[common.Hash, *types.Block](maxFutureBlocks),
 		diffLayerCache:     diffLayerCache,
@@ -1158,7 +1157,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 	bc.receiptsCache.Purge()
 	bc.sidecarsCache.Purge()
 	bc.blockCache.Purge()
-	bc.recorderCache.Purge()
+	bc.blockStatsCache.Purge()
 	bc.txLookupCache.Purge()
 	bc.futureBlocks.Purge()
 
@@ -1797,8 +1796,8 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	defer wg.Wait()
 	wg.Add(1)
 	go func() {
-		if r := bc.GetBlockRecorder(block.Hash()); r.InsertBlockTime.Load() == 0 {
-			r.InsertBlockTime.Store(time.Now().UnixMilli())
+		if r := bc.GetBlockStats(block.Hash()); r.StartImportBlockTime.Load() == 0 {
+			r.StartImportBlockTime.Store(time.Now().UnixMilli())
 		}
 		blockBatch := bc.db.BlockStore().NewBatch()
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
@@ -2094,7 +2093,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 	// Start the parallel header verifier
 	headers := make([]*types.Header, len(chain))
 	for i, block := range chain {
-		bc.GetBlockRecorder(block.Hash()).InsertBlockTime.Store(time.Now().UnixMilli())
+		bc.GetBlockStats(block.Hash()).StartImportBlockTime.Store(time.Now().UnixMilli())
 		headers[i] = block.Header()
 	}
 	abort, results := bc.engine.VerifyHeaders(bc, headers)
@@ -2298,6 +2297,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 		if err != nil {
 			return nil, it.index, err
 		}
+		bc.GetBlockStats(block.Hash()).ImportedBlockTime.Store(time.Now().UnixMilli())
+
 		// Report the import stats before returning the various results
 		stats.processed++
 		stats.usedGas += res.usedGas
@@ -2500,7 +2501,6 @@ func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, s
 	}
 	blockWriteTimer.Update(time.Since(wstart) - max(statedb.AccountCommits, statedb.StorageCommits) /* concurrent */ - statedb.SnapshotCommits - statedb.TrieDBCommits)
 	blockInsertTimer.UpdateSince(start)
-	bc.GetBlockRecorder(block.Hash()).BlockProcessTime.Store(time.Since(start).Milliseconds())
 
 	return &blockProcessingResult{usedGas: res.GasUsed, procTime: proctime, status: status}, nil
 }
@@ -3347,12 +3347,11 @@ func (bc *BlockChain) GetTrieFlushInterval() time.Duration {
 	return time.Duration(bc.flushInterval.Load())
 }
 
-func (bc *BlockChain) GetBlockRecorder(hash common.Hash) *BlockRecorder {
-	v, ok := bc.recorderCache.Get(hash)
-	if ok {
+func (bc *BlockChain) GetBlockStats(hash common.Hash) *BlockStats {
+	if v, ok := bc.blockStatsCache.Get(hash); ok {
 		return v
 	}
-	n := &BlockRecorder{}
-	bc.recorderCache.Add(hash, n)
+	n := &BlockStats{}
+	bc.blockStatsCache.Add(hash, n)
 	return n
 }
