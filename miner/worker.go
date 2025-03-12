@@ -150,10 +150,11 @@ func (env *environment) discard() {
 
 // task contains all information for consensus engine sealing and result submitting.
 type task struct {
-	receipts      []*types.Receipt
-	state         *state.StateDB
-	block         *types.Block
-	createdAt     time.Time
+	receipts  []*types.Receipt
+	state     *state.StateDB
+	block     *types.Block
+	createdAt time.Time
+
 	miningStartAt time.Time
 }
 
