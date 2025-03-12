@@ -154,6 +154,8 @@ type task struct {
 	state     *state.StateDB
 	block     *types.Block
 	createdAt time.Time
+
+	miningStartAt time.Time
 }
 
 const (
@@ -668,6 +670,9 @@ func (w *worker) resultLoop() {
 				continue
 			}
 			writeBlockTimer.UpdateSince(start)
+			stats := w.chain.GetBlockStats(block.Hash())
+			stats.SendBlockTime.Store(time.Now().UnixMilli())
+			stats.StartMiningTime.Store(task.miningStartAt.UnixMilli())
 			log.Info("Successfully sealed new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
 				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
 			w.mux.Post(core.NewMinedBlockEvent{Block: block})
@@ -1514,7 +1519,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		block = block.WithSidecars(env.sidecars)
 
 		select {
-		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now()}:
+		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
 			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
 				"txs", env.tcount, "blobs", env.blobs, "gas", block.GasUsed(), "fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
 

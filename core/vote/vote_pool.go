@@ -27,7 +27,7 @@ const (
 
 	highestVerifiedBlockChanSize = 10 // highestVerifiedBlockChanSize is the size of channel listening to HighestVerifiedBlockEvent.
 
-	defaultMajorityThreshold = 15 // this is an inaccurate value, mainly used for metric acquisition
+	defaultMajorityThreshold = 14 // this is an inaccurate value, mainly used for metric acquisition, ref parlia.verifyVoteAttestation
 )
 
 var (
@@ -41,24 +41,21 @@ var (
 )
 
 type VoteBox struct {
-	blockNumber      uint64
-	voteMessages     []*types.VoteEnvelope
-	majorityVoteTime int64
+	blockNumber  uint64
+	blockHash    common.Hash
+	voteMessages []*types.VoteEnvelope
 }
 
-func (v *VoteBox) trySetMajorityVoteTime(oldTime int64) {
-	if v.majorityVoteTime > 0 {
-		if oldTime > 0 && v.majorityVoteTime > oldTime {
-			v.majorityVoteTime = oldTime
-		}
-		return
+func (v *VoteBox) trySetRecvVoteTime(chain *core.BlockChain) {
+	stats := chain.GetBlockStats(v.blockHash)
+	if len(v.voteMessages) == 1 {
+		stats.FirstRecvVoteTime.Store(time.Now().UnixMilli())
 	}
-	if oldTime > 0 {
-		v.majorityVoteTime = oldTime
+	if stats.RecvMajorityVoteTime.Load() > 0 {
 		return
 	}
 	if len(v.voteMessages) >= defaultMajorityThreshold {
-		v.majorityVoteTime = time.Now().UnixMilli()
+		stats.RecvMajorityVoteTime.Store(time.Now().UnixMilli())
 	}
 }
 
@@ -204,6 +201,7 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 		heap.Push(votesPq, voteData)
 		voteBox := &VoteBox{
 			blockNumber:  targetNumber,
+			blockHash:    targetHash,
 			voteMessages: make([]*types.VoteEnvelope, 0, maxFutureVoteAmountPerBlock),
 		}
 		m[targetHash] = voteBox
@@ -217,7 +215,7 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 
 	// Put into corresponding votes map.
 	m[targetHash].voteMessages = append(m[targetHash].voteMessages, vote)
-	m[targetHash].trySetMajorityVoteTime(0)
+	m[targetHash].trySetRecvVoteTime(pool.chain)
 	// Add into received vote to avoid future duplicated vote comes.
 	pool.receivedVotes.Add(voteHash)
 	log.Debug("VoteHash put into votepool is:", "voteHash", voteHash)
@@ -291,14 +289,13 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 	if _, ok := curVotes[blockHash]; !ok {
 		heap.Push(curPq, voteData)
 		curVotes[blockHash] = &VoteBox{
-			blockNumber:      voteBox.blockNumber,
-			voteMessages:     validVotes,
-			majorityVoteTime: voteBox.majorityVoteTime,
+			blockNumber:  voteBox.blockNumber,
+			blockHash:    voteBox.blockHash,
+			voteMessages: validVotes,
 		}
 		localCurVotesPqGauge.Update(int64(curPq.Len()))
 	} else {
 		curVotes[blockHash].voteMessages = append(curVotes[blockHash].voteMessages, validVotes...)
-		curVotes[blockHash].trySetMajorityVoteTime(voteBox.majorityVoteTime)
 	}
 
 	delete(futureVotes, blockHash)
@@ -346,17 +343,6 @@ func (pool *VotePool) GetVotes() []*types.VoteEnvelope {
 		votesRes = append(votesRes, voteBox.voteMessages...)
 	}
 	return votesRes
-}
-
-func (pool *VotePool) GetMajorityVoteTime(hash common.Hash) int64 {
-	pool.mu.RLock()
-	defer pool.mu.RUnlock()
-
-	vb := pool.curVotes[hash]
-	if vb == nil {
-		return 0
-	}
-	return vb.majorityVoteTime
 }
 
 func (pool *VotePool) FetchVoteByBlockHash(blockHash common.Hash) []*types.VoteEnvelope {

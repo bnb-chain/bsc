@@ -47,6 +47,8 @@ const (
 	snappyProtocolVersion = 5
 
 	pingInterval = 15 * time.Second
+
+	slowPeerLatencyThreshold = 500
 )
 
 const (
@@ -358,6 +360,9 @@ func (p *Peer) pingLoop() {
 			if latency > 0 {
 				p.latency.Store(latency)
 				peerLatencyStat.Update(time.Duration(latency))
+				if latency > slowPeerLatencyThreshold {
+					log.Warn("find a too slow peer", "id", p.ID(), "peer", p.RemoteAddr(), "latency", latency)
+				}
 			}
 		case <-p.closed:
 			return

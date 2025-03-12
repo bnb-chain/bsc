@@ -199,14 +199,6 @@ func (bc *BlockChain) GetBlock(hash common.Hash, number uint64) *types.Block {
 	return block
 }
 
-func (bc *BlockChain) GetRecvTime(hash common.Hash) int64 {
-	t, ok := bc.recvTimeCache.Get(hash)
-	if !ok {
-		return 0
-	}
-	return t
-}
-
 // GetBlockByHash retrieves a block from the database by hash, caching it if found.
 func (bc *BlockChain) GetBlockByHash(hash common.Hash) *types.Block {
 	number := bc.hc.GetBlockNumber(hash)

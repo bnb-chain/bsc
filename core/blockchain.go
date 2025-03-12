@@ -236,6 +236,21 @@ type txLookup struct {
 	transaction *types.Transaction
 }
 
+type BlockStats struct {
+	SendBlockTime        atomic.Int64
+	StartImportBlockTime atomic.Int64
+	RecvNewBlockTime     atomic.Int64
+	RecvNewBlockFrom     atomic.Value
+	RecvNewBlockHashTime atomic.Int64
+	RecvNewBlockHashFrom atomic.Value
+	StartMiningTime      atomic.Int64
+	ImportedBlockTime    atomic.Int64
+
+	SendVoteTime         atomic.Int64
+	FirstRecvVoteTime    atomic.Int64
+	RecvMajorityVoteTime atomic.Int64
+}
+
 // BlockChain represents the canonical chain given a database with a genesis
 // block. The Blockchain manages chain imports, reverts, chain reorganisations.
 //
@@ -288,11 +303,11 @@ type BlockChain struct {
 	currentFinalBlock     atomic.Pointer[types.Header] // Latest (consensus) finalized block
 	chasingHead           atomic.Pointer[types.Header]
 
-	bodyCache     *lru.Cache[common.Hash, *types.Body]
-	bodyRLPCache  *lru.Cache[common.Hash, rlp.RawValue]
-	receiptsCache *lru.Cache[common.Hash, []*types.Receipt]
-	blockCache    *lru.Cache[common.Hash, *types.Block]
-	recvTimeCache *lru.Cache[common.Hash, int64]
+	bodyCache       *lru.Cache[common.Hash, *types.Body]
+	bodyRLPCache    *lru.Cache[common.Hash, rlp.RawValue]
+	receiptsCache   *lru.Cache[common.Hash, []*types.Receipt]
+	blockCache      *lru.Cache[common.Hash, *types.Block]
+	blockStatsCache *lru.Cache[common.Hash, *BlockStats]
 
 	txLookupLock  sync.RWMutex
 	txLookupCache *lru.Cache[common.Hash, txLookup]
@@ -384,7 +399,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		receiptsCache:      lru.NewCache[common.Hash, []*types.Receipt](receiptsCacheLimit),
 		sidecarsCache:      lru.NewCache[common.Hash, types.BlobSidecars](sidecarsCacheLimit),
 		blockCache:         lru.NewCache[common.Hash, *types.Block](blockCacheLimit),
-		recvTimeCache:      lru.NewCache[common.Hash, int64](blockCacheLimit),
+		blockStatsCache:    lru.NewCache[common.Hash, *BlockStats](blockCacheLimit),
 		txLookupCache:      lru.NewCache[common.Hash, txLookup](txLookupCacheLimit),
 		futureBlocks:       lru.NewCache[common.Hash, *types.Block](maxFutureBlocks),
 		diffLayerCache:     diffLayerCache,
@@ -1142,7 +1157,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 	bc.receiptsCache.Purge()
 	bc.sidecarsCache.Purge()
 	bc.blockCache.Purge()
-	bc.recvTimeCache.Purge()
+	bc.blockStatsCache.Purge()
 	bc.txLookupCache.Purge()
 	bc.futureBlocks.Purge()
 
@@ -1781,9 +1796,6 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	defer wg.Wait()
 	wg.Add(1)
 	go func() {
-		if _, ok := bc.recvTimeCache.Get(block.Hash()); !ok {
-			bc.recvTimeCache.Add(block.Hash(), time.Now().UnixMilli())
-		}
 		blockBatch := bc.db.BlockStore().NewBatch()
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
 		rawdb.WriteBlock(blockBatch, block)
@@ -2078,7 +2090,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 	// Start the parallel header verifier
 	headers := make([]*types.Header, len(chain))
 	for i, block := range chain {
-		bc.recvTimeCache.Add(block.Hash(), time.Now().UnixMilli())
+		bc.GetBlockStats(block.Hash()).StartImportBlockTime.Store(time.Now().UnixMilli())
 		headers[i] = block.Header()
 	}
 	abort, results := bc.engine.VerifyHeaders(bc, headers)
@@ -2282,6 +2294,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 		if err != nil {
 			return nil, it.index, err
 		}
+		bc.GetBlockStats(block.Hash()).ImportedBlockTime.Store(time.Now().UnixMilli())
+
 		// Report the import stats before returning the various results
 		stats.processed++
 		stats.usedGas += res.usedGas
@@ -3328,4 +3342,13 @@ func (bc *BlockChain) SetTrieFlushInterval(interval time.Duration) {
 // GetTrieFlushInterval gets the in-memory tries flushAlloc interval
 func (bc *BlockChain) GetTrieFlushInterval() time.Duration {
 	return time.Duration(bc.flushInterval.Load())
+}
+
+func (bc *BlockChain) GetBlockStats(hash common.Hash) *BlockStats {
+	if v, ok := bc.blockStatsCache.Get(hash); ok {
+		return v
+	}
+	n := &BlockStats{}
+	bc.blockStatsCache.Add(hash, n)
+	return n
 }
