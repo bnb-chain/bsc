@@ -90,6 +90,7 @@ var (
 	updateAttestationErrorCounter     = metrics.NewRegisteredCounter("parlia/updateAttestation/error", nil)
 	validVotesfromSelfCounter         = metrics.NewRegisteredCounter("parlia/VerifyVote/self", nil)
 	doubleSignCounter                 = metrics.NewRegisteredCounter("parlia/doublesign", nil)
+	intentionalDelayMiningCounter     = metrics.NewRegisteredCounter("parlia/intentionalDelayMining", nil)
 
 	systemContracts = map[common.Address]bool{
 		common.HexToAddress(systemcontracts.ValidatorContract):          true,
@@ -1409,7 +1410,16 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 			}
 		}
 	}
+
 	val := header.Coinbase
+	PenalizeForDelayMined, err := p.isBlockDelayMinedOnPurpose(chain, header)
+	if err != nil {
+		return err
+	}
+	if PenalizeForDelayMined {
+		intentionalDelayMiningCounter.Inc(1)
+		log.Warn("intentional delay block production detected", "validator", val, "number", header.Number, "hash", header.Hash())
+	}
 	err = p.distributeIncoming(val, state, header, cx, txs, receipts, systemTxs, usedGas, false, tracer)
 	if err != nil {
 		return err
@@ -1889,18 +1899,15 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) 
 	return valSet, voteAddrMap, nil
 }
 
-func (p *Parlia) isBlockDelayMinedOnPurpose(chain core.ChainContext, header *types.Header) (bool, error) {
+func (p *Parlia) isBlockDelayMinedOnPurpose(chain consensus.ChainHeaderReader, header *types.Header) (bool, error) {
 	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
 	if parent == nil {
 		return false, errors.New("parent not found")
 	}
-	if !p.chainConfig.IsLorentz(parent.Number, parent.Time) {
-		return false, nil
+	blockInterval, err := p.BlockInterval(chain, header)
+	if err != nil {
+		return false, err
 	}
-	// Unable to retrieve blockInterval directly here, so using a workaround:
-	// If the parent block has passed the Lorentz hard fork, this header uses `lorentzBlockInterval` as the blockInterval.
-	// TODO(Nathan)(BEP-524 Phase Two): Adjust when the new xxxxBlockInterval is defined.
-	blockInterval := uint64(lorentzBlockInterval)
 	delayOnPurpose := header.Coinbase == parent.Coinbase &&
 		header.Difficulty == diffInTurn && parent.Difficulty == diffInTurn &&
 		parent.MilliTimestamp()+blockInterval < header.MilliTimestamp()
@@ -1937,24 +1944,8 @@ func (p *Parlia) distributeIncoming(val common.Address, state vm.StateDB, header
 
 	state.SetBalance(consensus.SystemAddress, common.U2560, tracing.BalanceDecreaseBSCDistributeReward)
 	state.AddBalance(coinbase, balance, tracing.BalanceIncreaseBSCDistributeReward)
-
-	depositTo := val
-	PenalizeForDelayMined, err := p.isBlockDelayMinedOnPurpose(chain, header)
-	if err != nil {
-		return err
-	}
-	if PenalizeForDelayMined {
-		spoiledVal := val
-		log.Trace("slash validator for delay mining", "block hash", header.Hash(), "address", spoiledVal)
-		err = p.slash(spoiledVal, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, tracer)
-		if err != nil {
-			// it is possible that slash validator failed because of the slash channel is disabled.
-			log.Error("slash validator for delay mining failed", "block hash", header.Hash(), "address", spoiledVal)
-		}
-		depositTo = systemRewardContractAddr
-	}
-	log.Trace("distribute to validator contract", "block hash", header.Hash(), "address", depositTo, "amount", balance)
-	return p.distributeToValidator(balance.ToBig(), depositTo, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, tracer)
+	log.Trace("distribute to validator contract", "block hash", header.Hash(), "amount", balance)
+	return p.distributeToValidator(balance.ToBig(), val, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, tracer)
 }
 
 // slash spoiled validators
