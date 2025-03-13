@@ -70,8 +70,9 @@ const (
 	validatorBytesLength            = common.AddressLength + types.BLSPublicKeyLength
 	validatorNumberSize             = 1 // Fixed number of extra prefix bytes reserved for validator number after Luban
 
-	wiggleTime         = uint64(1000) // milliseconds, Random delay (per signer) to allow concurrent signers
-	initialBackOffTime = uint64(1000) // milliseconds, Default backoff time for the second validator permitted to produce blocks
+	wiggleTime                = uint64(1000) // milliseconds, Random delay (per signer) to allow concurrent signers
+	defaultInitialBackOffTime = uint64(1000) // milliseconds, Default backoff time for the second validator permitted to produce blocks
+	lorentzInitialBackOffTime = uint64(2000) // milliseconds, Backoff time for the second validator permitted to produce blocks from the Lorentz hard fork
 
 	systemRewardPercent = 4 // it means 1/2^4 = 1/16 percentage of gas fee incoming will be distributed to system
 
@@ -2194,12 +2195,21 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 }
 
 // ===========================     utility function        ==========================
-func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Address) uint64 {
+func (p *Parlia) backOffTime(snap *Snapshot, parent, header *types.Header, val common.Address) uint64 {
 	if snap.inturn(val) {
 		log.Debug("backOffTime", "blockNumber", header.Number, "in turn validator", val)
 		return 0
 	} else {
-		delay := initialBackOffTime
+		delay := defaultInitialBackOffTime
+		// When mining blocks, `header.Time` is temporarily set to time.Now() + 1.
+		// Therefore, using `header.Time` to determine whether a hard fork has occurred is incorrect.
+		// As a result, during the Bohr and Lorentz hard forks, the network may experience some instability,
+		// So use `parent.Time` instead.
+		isParerntLorentz := p.chainConfig.IsLorentz(parent.Number, parent.Time)
+		if isParerntLorentz {
+			// If the in-turn validator has not signed recently, the expected backoff times are [2, 3, 4, ...].
+			delay = lorentzInitialBackOffTime
+		}
 		validators := snap.validators()
 		if p.chainConfig.IsPlanck(header.Number) {
 			counts := snap.countRecents()
@@ -2264,6 +2274,10 @@ func (p *Parlia) backOffTime(snap *Snapshot, header *types.Header, val common.Ad
 			backOffSteps[i], backOffSteps[j] = backOffSteps[j], backOffSteps[i]
 		})
 
+		if delay == 0 && isParerntLorentz && backOffSteps[idx] > 0 {
+			// If the in-turn validator has signed recently, the expected backoff times are [0, 2, 3, ...].
+			return lorentzInitialBackOffTime + (backOffSteps[idx]-1)*wiggleTime
+		}
 		delay += backOffSteps[idx] * wiggleTime
 		return delay
 	}
