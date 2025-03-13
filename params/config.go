@@ -193,9 +193,8 @@ var (
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
-			Cancun:  DefaultCancunBlobConfig,
-			Prague:  DefaultPragueBlobConfigBSC,
-			Lorentz: DefaultLorentzBlobConfigBSC,
+			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfigBSC,
 		},
 	}
 
@@ -240,9 +239,8 @@ var (
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
-			Cancun:  DefaultCancunBlobConfig,
-			Prague:  DefaultPragueBlobConfigBSC,
-			Lorentz: DefaultLorentzBlobConfigBSC,
+			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfigBSC,
 		},
 	}
 
@@ -288,9 +286,8 @@ var (
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
-			Cancun:  DefaultCancunBlobConfig,
-			Prague:  DefaultPragueBlobConfigBSC,
-			Lorentz: DefaultLorentzBlobConfigBSC,
+			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfigBSC,
 		},
 	}
 
@@ -548,12 +545,6 @@ var (
 	}
 
 	DefaultPragueBlobConfigBSC = DefaultCancunBlobConfig
-	// DefaultLorentzBlobConfigBSC is the default blob configuration for the Lorentz fork.
-	DefaultLorentzBlobConfigBSC = &BlobConfig{
-		Target:         2,
-		Max:            3,
-		UpdateFraction: DefaultPragueBlobConfigBSC.UpdateFraction,
-	}
 )
 
 // NetworkNames are user friendly names to use in the chain spec banner.
