@@ -770,12 +770,18 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 		// An offset `epochLength - 1` can ensure getting the right validators.
 
 		// Unable to retrieve the exact EpochLength here.
-		// Using maxwellEpochLength instead, assuming `maxwellEpochLength % defaultEpochLength == 0 && maxwellEpochLength % lorentzEpochLength == 0`.
-		epochLength := maxwellEpochLength
-		if number == 0 || ((number+1)%epochLength == 0 && (len(headers) > int(params.FullImmutabilityThreshold))) {
+		// As known
+		// 		defaultEpochLength = 200 && turnLength = 1 or 4
+		// 		lorentzEpochLength = 500 && turnLength = 8
+		// 		maxwellEpochLength = 1000 && turnLength = 16
+		// So just select block number like 1200, 2200, 3200, we can always get the right validators from `number - 200`
+		offset := uint64(200)
+		if number == 0 || (number%maxwellEpochLength == offset && (len(headers) > int(params.FullImmutabilityThreshold))) {
 			var (
-				checkpoint *types.Header
-				blockHash  common.Hash
+				checkpoint    *types.Header
+				blockHash     common.Hash
+				blockInterval = defaultBlockInterval
+				epochLength   = defaultEpochLength
 			)
 			if number == 0 {
 				checkpoint = chain.GetHeaderByNumber(0)
@@ -783,10 +789,21 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 					blockHash = checkpoint.Hash()
 				}
 			} else {
-				checkpoint = chain.GetHeaderByNumber(number + 1 - epochLength)
+				checkpoint = chain.GetHeaderByNumber(number - offset)
 				blockHeader := chain.GetHeaderByNumber(number)
 				if blockHeader != nil {
 					blockHash = blockHeader.Hash()
+					if p.chainConfig.IsLorentz(blockHeader.Number, blockHeader.Time) {
+						blockInterval = lorentzBlockInterval
+					}
+				}
+				if number > offset { // exclude `number == 200`
+					blockBeforeCheckpoint := chain.GetHeaderByNumber(number - offset - 1)
+					if blockBeforeCheckpoint != nil {
+						if p.chainConfig.IsLorentz(blockBeforeCheckpoint.Number, blockBeforeCheckpoint.Time) {
+							epochLength = lorentzEpochLength
+						}
+					}
 				}
 			}
 			if checkpoint != nil && blockHash != (common.Hash{}) {
@@ -799,10 +816,6 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 				// new snapshot
 				snap = newSnapshot(p.config, p.signatures, number, blockHash, validators, voteAddrs, p.ethAPI)
 
-				if p.chainConfig.IsLorentz(checkpoint.Number, checkpoint.Time) {
-					snap.BlockInterval = lorentzBlockInterval
-				}
-
 				// get turnLength from headers and use that for new turnLength
 				turnLength, err := parseTurnLength(checkpoint, p.chainConfig, epochLength)
 				if err != nil {
@@ -811,6 +824,8 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 				if turnLength != nil {
 					snap.TurnLength = *turnLength
 				}
+				snap.BlockInterval = blockInterval
+				snap.EpochLength = epochLength
 
 				// snap.Recents is currently empty, which affects the following:
 				// a. The function SignRecently - This is acceptable since an empty snap.Recents results in a more lenient check.
