@@ -44,8 +44,8 @@ type Snapshot struct {
 
 	Number           uint64                            `json:"number"`                // Block number where the snapshot was created
 	Hash             common.Hash                       `json:"hash"`                  // Block hash where the snapshot was created
-	EpochLength      uint16                            `json:"epoch_length"`          // Number of Blocks in one epoch
-	BlockInterval    uint16                            `json:"block_interval"`        // Block Interval in milliseconds
+	EpochLength      uint64                            `json:"epoch_length"`          // Number of Blocks in one epoch
+	BlockInterval    uint64                            `json:"block_interval"`        // Block Interval in milliseconds
 	TurnLength       uint8                             `json:"turn_length"`           // Length of `turn`, meaning the consecutive number of blocks a validator receives priority for block production
 	Validators       map[common.Address]*ValidatorInfo `json:"validators"`            // Set of authorized validators at this moment
 	Recents          map[uint64]common.Address         `json:"recents"`               // Set of recent validators for spam protections
@@ -322,11 +322,11 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 		}
 		snap.Recents[number] = validator
 		snap.RecentForkHashes[number] = hex.EncodeToString(header.Extra[extraVanity-nextForkHashSize : extraVanity])
-		epochLength := uint64(snap.EpochLength)
+		epochLength := snap.EpochLength
 		snap.updateAttestation(header, chainConfig, epochLength)
 		if chainConfig.IsLorentz(header.Number, header.Time) {
 			// Without this condition, an incorrect block might be used to parse validators for certain blocks after the Lorentz hard fork.
-			if (header.Number.Uint64()+1)%uint64(lorentzEpochLength) == 0 {
+			if (header.Number.Uint64()+1)%lorentzEpochLength == 0 {
 				snap.EpochLength = lorentzEpochLength
 			}
 			snap.BlockInterval = lorentzBlockInterval
@@ -432,7 +432,7 @@ func (s *Snapshot) inturnValidator() common.Address {
 }
 
 func (s *Snapshot) nexValidatorsChangeBlock() uint64 {
-	epochLength := uint64(s.EpochLength)
+	epochLength := s.EpochLength
 	currentEpoch := s.Number - s.Number%epochLength
 	checkLen := s.minerHistoryCheckLen()
 	if s.Number%epochLength < checkLen {

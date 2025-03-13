@@ -53,13 +53,14 @@ const (
 	inMemorySignatures = 4096  // Number of recent block signatures to keep in memory
 	inMemoryHeaders    = 86400 // Number of recent headers to keep in memory for double sign detection,
 
-	checkpointInterval   = 1024         // Number of blocks after which to save the snapshot to the database
-	defaultEpochLength   = uint16(200)  // Default number of blocks of checkpoint to update validatorSet from contract
-	defaultBlockInterval = uint16(3000) // Default block interval in milliseconds
-	defaultTurnLength    = uint8(1)     // Default consecutive number of blocks a validator receives priority for block production
-	lorentzEpochLength   = uint16(500)  // Epoch length starting from the Lorentz hard fork
-	maxwellEpochLength   = uint16(1000) // Epoch length starting from the Maxwell hard fork
-	lorentzBlockInterval = uint16(1500) // Block interval starting from the Lorentz hard fork
+	checkpointInterval = 1024 // Number of blocks after which to save the snapshot to the database
+
+	defaultEpochLength   uint64 = 200  // Default number of blocks of checkpoint to update validatorSet from contract
+	lorentzEpochLength   uint64 = 500  // Epoch length starting from the Lorentz hard fork
+	maxwellEpochLength   uint64 = 1000 // Epoch length starting from the Maxwell hard fork
+	defaultBlockInterval uint64 = 3000 // Default block interval in milliseconds
+	lorentzBlockInterval uint64 = 1500 // Block interval starting from the Lorentz hard fork
+	defaultTurnLength    uint8  = 1    // Default consecutive number of blocks a validator receives priority for block production
 
 	extraVanity      = 32 // Fixed number of extra-data prefix bytes reserved for signer vanity
 	extraSeal        = 65 // Fixed number of extra-data suffix bytes reserved for signer seal
@@ -70,9 +71,9 @@ const (
 	validatorBytesLength            = common.AddressLength + types.BLSPublicKeyLength
 	validatorNumberSize             = 1 // Fixed number of extra prefix bytes reserved for validator number after Luban
 
-	wiggleTime                = uint64(1000) // milliseconds, Random delay (per signer) to allow concurrent signers
-	defaultInitialBackOffTime = uint64(1000) // milliseconds, Default backoff time for the second validator permitted to produce blocks
-	lorentzInitialBackOffTime = uint64(2000) // milliseconds, Backoff time for the second validator permitted to produce blocks from the Lorentz hard fork
+	wiggleTime                uint64 = 1000 // milliseconds, Random delay (per signer) to allow concurrent signers
+	defaultInitialBackOffTime uint64 = 1000 // milliseconds, Default backoff time for the second validator permitted to produce blocks
+	lorentzInitialBackOffTime uint64 = 2000 // milliseconds, Backoff time for the second validator permitted to produce blocks from the Lorentz hard fork
 
 	systemRewardPercent = 4 // it means 1/2^4 = 1/16 percentage of gas fee incoming will be distributed to system
 
@@ -770,7 +771,7 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 
 		// Unable to retrieve the exact EpochLength here.
 		// Using maxwellEpochLength instead, assuming `maxwellEpochLength % defaultEpochLength == 0 && maxwellEpochLength % lorentzEpochLength == 0`.
-		epochLength := uint64(maxwellEpochLength)
+		epochLength := maxwellEpochLength
 		if number == 0 || ((number+1)%epochLength == 0 && (len(headers) > int(params.FullImmutabilityThreshold))) {
 			var (
 				checkpoint *types.Header
@@ -1229,7 +1230,7 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 	currentHeight := header.Number.Uint64()
 	// `finalityRewardInterval` should be smaller than `inMemorySnapshots`, otherwise, it will result in excessive computation.
 	// Distribute finality rewards every `defaultEpochLength` blocks to avoid excessive computation at epoch blocks.
-	finalityRewardInterval := uint64(defaultEpochLength)
+	finalityRewardInterval := defaultEpochLength
 	if currentHeight%finalityRewardInterval != 0 {
 		return nil
 	}
@@ -2277,31 +2278,31 @@ func (p *Parlia) backOffTime(snap *Snapshot, parent, header *types.Header, val c
 // BlockInterval returns number of blocks in one epoch for the given header
 func (p *Parlia) epochLength(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) (uint64, error) {
 	if header == nil {
-		return uint64(defaultEpochLength), errUnknownBlock
+		return defaultEpochLength, errUnknownBlock
 	}
 	if header.Number.Uint64() == 0 {
-		return uint64(defaultEpochLength), nil
+		return defaultEpochLength, nil
 	}
 	snap, err := p.snapshot(chain, header.Number.Uint64()-1, header.ParentHash, parents)
 	if err != nil {
-		return uint64(defaultEpochLength), err
+		return defaultEpochLength, err
 	}
-	return uint64(snap.EpochLength), nil
+	return snap.EpochLength, nil
 }
 
 // BlockInterval returns the block interval in milliseconds for the given header
 func (p *Parlia) BlockInterval(chain consensus.ChainHeaderReader, header *types.Header) (uint64, error) {
 	if header == nil {
-		return uint64(defaultBlockInterval), errUnknownBlock
+		return defaultBlockInterval, errUnknownBlock
 	}
 	if header.Number.Uint64() == 0 {
-		return uint64(defaultBlockInterval), nil
+		return defaultBlockInterval, nil
 	}
 	snap, err := p.snapshot(chain, header.Number.Uint64()-1, header.ParentHash, nil)
 	if err != nil {
-		return uint64(defaultBlockInterval), err
+		return defaultBlockInterval, err
 	}
-	return uint64(snap.BlockInterval), nil
+	return snap.BlockInterval, nil
 }
 
 func (p *Parlia) NextProposalBlock(chain consensus.ChainHeaderReader, header *types.Header, proposer common.Address) (uint64, uint64, error) {
