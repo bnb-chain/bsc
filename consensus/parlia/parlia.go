@@ -1919,10 +1919,9 @@ func (p *Parlia) isBlockDelayMinedOnPurpose(chain consensus.ChainHeaderReader, h
 func (p *Parlia) distributeIncoming(val common.Address, state vm.StateDB, header *types.Header, chain core.ChainContext,
 	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, tracer *tracing.Hooks) error {
 	coinbase := header.Coinbase
-	systemRewardContractAddr := common.HexToAddress(systemcontracts.SystemRewardContract)
 
 	doDistributeSysReward := !p.chainConfig.IsKepler(header.Number, header.Time) &&
-		state.GetBalance(systemRewardContractAddr).Cmp(maxSystemBalance) < 0
+		state.GetBalance(common.HexToAddress(systemcontracts.SystemRewardContract)).Cmp(maxSystemBalance) < 0
 	if doDistributeSysReward {
 		balance := state.GetBalance(consensus.SystemAddress)
 		rewards := new(uint256.Int)
