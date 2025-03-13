@@ -822,10 +822,9 @@ type BlobConfig struct {
 
 // BlobScheduleConfig determines target and max number of blobs allow per fork.
 type BlobScheduleConfig struct {
-	Cancun  *BlobConfig `json:"cancun,omitempty"`
-	Prague  *BlobConfig `json:"prague,omitempty"`
-	Lorentz *BlobConfig `json:"lorentz,omitempty"`
-	Verkle  *BlobConfig `json:"verkle,omitempty"`
+	Cancun *BlobConfig `json:"cancun,omitempty"`
+	Prague *BlobConfig `json:"prague,omitempty"`
+	Verkle *BlobConfig `json:"verkle,omitempty"`
 }
 
 // IsHomestead returns whether num is either equal to the homestead block or greater.
@@ -1304,7 +1303,6 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 	}{
 		{name: "cancun", timestamp: c.CancunTime, config: bsc.Cancun},
 		{name: "prague", timestamp: c.PragueTime, config: bsc.Prague},
-		{name: "lorentz", timestamp: c.LorentzTime, config: bsc.Lorentz},
 	} {
 		if cur.config != nil {
 			if err := cur.config.validate(); err != nil {
