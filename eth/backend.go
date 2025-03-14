@@ -26,6 +26,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/metrics"
+
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -76,6 +78,17 @@ const (
 	ChainData        = "chaindata"
 )
 
+var (
+	sendBlockTimer        = metrics.NewRegisteredTimer("chain/delay/block/send", nil)
+	recvBlockTimer        = metrics.NewRegisteredTimer("chain/delay/block/recv", nil)
+	startInsertBlockTimer = metrics.NewRegisteredTimer("chain/delay/block/insert", nil)
+	startMiningTimer      = metrics.NewRegisteredTimer("chain/delay/block/mining", nil)
+	importedBlockTimer    = metrics.NewRegisteredTimer("chain/delay/block/imported", nil)
+	sendVoteTimer         = metrics.NewRegisteredTimer("chain/delay/vote/send", nil)
+	firstVoteTimer        = metrics.NewRegisteredTimer("chain/delay/vote/first", nil)
+	majorityVoteTimer     = metrics.NewRegisteredTimer("chain/delay/vote/majority", nil)
+)
+
 // Config contains the configuration options of the ETH protocol.
 // Deprecated: use ethconfig.Config instead.
 type Config = ethconfig.Config
@@ -117,7 +130,8 @@ type Ethereum struct {
 
 	shutdownTracker *shutdowncheck.ShutdownTracker // Tracks if and when the node has shutdown ungracefully
 
-	votePool *vote.VotePool
+	votePool     *vote.VotePool
+	stopReportCh chan struct{}
 }
 
 // New creates a new Ethereum object (including the initialisation of the common Ethereum object),
@@ -240,6 +254,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		p2pServer:         stack.Server(),
 		discmix:           enode.NewFairMix(0),
 		shutdownTracker:   shutdowncheck.NewShutdownTracker(chainDb),
+		stopReportCh:      make(chan struct{}, 1),
 	}
 
 	eth.APIBackend = &EthAPIBackend{stack.Config().ExtRPCEnabled(), stack.Config().AllowUnprotectedTxs, eth, nil}
@@ -599,6 +614,8 @@ func (s *Ethereum) Start() error {
 
 	// Start the networking layer
 	s.handler.Start(s.p2pServer.MaxPeers, s.p2pServer.MaxPeersPerIP)
+
+	go s.reportRecentBlocksLoop()
 	return nil
 }
 
@@ -676,5 +693,80 @@ func (s *Ethereum) Stop() error {
 	s.chainDb.Close()
 	s.eventMux.Stop()
 
+	// stop report loop
+	s.stopReportCh <- struct{}{}
 	return nil
+}
+
+func (s *Ethereum) reportRecentBlocksLoop() {
+	reportCnt := uint64(2)
+	reportTicker := time.NewTicker(time.Second)
+	for {
+		select {
+		case <-reportTicker.C:
+			cur := s.blockchain.CurrentBlock()
+			if cur == nil || cur.Number.Uint64() <= reportCnt {
+				continue
+			}
+			num := cur.Number.Uint64()
+			stats := s.blockchain.GetBlockStats(cur.Hash())
+			sendBlockTime := stats.SendBlockTime.Load()
+			startImportBlockTime := stats.StartImportBlockTime.Load()
+			recvNewBlockTime := stats.RecvNewBlockTime.Load()
+			recvNewBlockHashTime := stats.RecvNewBlockHashTime.Load()
+			sendVoteTime := stats.SendVoteTime.Load()
+			firstVoteTime := stats.FirstRecvVoteTime.Load()
+			recvMajorityTime := stats.RecvMajorityVoteTime.Load()
+			startMiningTime := stats.StartMiningTime.Load()
+			importedBlockTime := stats.ImportedBlockTime.Load()
+
+			records := make(map[string]interface{})
+			records["BlockNum"] = num
+			records["SendBlockTime"] = common.FormatMilliTime(sendBlockTime)
+			records["StartImportBlockTime"] = common.FormatMilliTime(startImportBlockTime)
+			records["RecvNewBlockTime"] = common.FormatMilliTime(recvNewBlockTime)
+			records["RecvNewBlockHashTime"] = common.FormatMilliTime(recvNewBlockHashTime)
+			records["RecvNewBlockFrom"] = stats.RecvNewBlockFrom.Load()
+			records["RecvNewBlockHashFrom"] = stats.RecvNewBlockHashFrom.Load()
+
+			records["SendVoteTime"] = common.FormatMilliTime(sendVoteTime)
+			records["FirstRecvVoteTime"] = common.FormatMilliTime(firstVoteTime)
+			records["RecvMajorityVoteTime"] = common.FormatMilliTime(recvMajorityTime)
+
+			records["StartMiningTime"] = common.FormatMilliTime(startMiningTime)
+			records["ImportedBlockTime"] = common.FormatMilliTime(importedBlockTime)
+
+			records["Coinbase"] = cur.Coinbase.String()
+			blockMsTime := int64(cur.Time * 1000)
+			records["BlockTime"] = common.FormatMilliTime(blockMsTime)
+			metrics.GetOrRegisterLabel("report-blocks", nil).Mark(records)
+
+			if sendBlockTime > blockMsTime {
+				sendBlockTimer.Update(time.Duration(sendBlockTime - blockMsTime))
+			}
+			if recvNewBlockTime > blockMsTime {
+				recvBlockTimer.Update(time.Duration(recvNewBlockTime - blockMsTime))
+			}
+			if startImportBlockTime > blockMsTime {
+				startInsertBlockTimer.Update(time.Duration(startImportBlockTime - blockMsTime))
+			}
+			if sendVoteTime > blockMsTime {
+				sendVoteTimer.Update(time.Duration(sendVoteTime - blockMsTime))
+			}
+			if firstVoteTime > blockMsTime {
+				firstVoteTimer.Update(time.Duration(firstVoteTime - blockMsTime))
+			}
+			if recvMajorityTime > blockMsTime {
+				majorityVoteTimer.Update(time.Duration(recvMajorityTime - blockMsTime))
+			}
+			if importedBlockTime > blockMsTime {
+				importedBlockTimer.Update(time.Duration(importedBlockTime - blockMsTime))
+			}
+			if startMiningTime < blockMsTime {
+				startMiningTimer.Update(time.Duration(blockMsTime - startMiningTime))
+			}
+		case <-s.stopReportCh:
+			return
+		}
+	}
 }
