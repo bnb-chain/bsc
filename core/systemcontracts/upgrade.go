@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts/gibbs"
 	haberFix "github.com/ethereum/go-ethereum/core/systemcontracts/haber_fix"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/kepler"
+	"github.com/ethereum/go-ethereum/core/systemcontracts/lorentz"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/luban"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/mirror"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/moran"
@@ -86,6 +87,8 @@ var (
 	bohrUpgrade = make(map[string]*Upgrade)
 
 	pascalUpgrade = make(map[string]*Upgrade)
+
+	lorentzUpgrade = make(map[string]*Upgrade)
 )
 
 func init() {
@@ -1049,6 +1052,39 @@ func init() {
 			},
 		},
 	}
+
+	lorentzUpgrade[mainNet] = &Upgrade{
+		UpgradeName: "lorentz",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(ValidatorContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/9323f7a133be0403957eef2266be29a835db0e44",
+				Code:         lorentz.MainnetValidatorContract,
+			},
+		},
+	}
+
+	lorentzUpgrade[chapelNet] = &Upgrade{
+		UpgradeName: "lorentz",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(ValidatorContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/9323f7a133be0403957eef2266be29a835db0e44",
+				Code:         lorentz.ChapelValidatorContract,
+			},
+		},
+	}
+
+	lorentzUpgrade[rialtoNet] = &Upgrade{
+		UpgradeName: "lorentz",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(ValidatorContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/9323f7a133be0403957eef2266be29a835db0e44",
+				Code:         lorentz.RialtoValidatorContract,
+			},
+		},
+	}
 }
 
 func TryUpdateBuildInSystemContract(config *params.ChainConfig, blockNumber *big.Int, lastBlockTime uint64, blockTime uint64, statedb vm.StateDB, atBlockBegin bool) {
@@ -1154,6 +1190,10 @@ func upgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 
 	if config.IsOnPascal(blockNumber, lastBlockTime, blockTime) {
 		applySystemContractUpgrade(pascalUpgrade[network], blockNumber, statedb, logger)
+	}
+
+	if config.IsOnLorentz(blockNumber, lastBlockTime, blockTime) {
+		applySystemContractUpgrade(lorentzUpgrade[network], blockNumber, statedb, logger)
 	}
 
 	/*

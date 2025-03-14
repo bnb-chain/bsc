@@ -1503,19 +1503,6 @@ const validatorSetABI = `
   },
   {
     "type": "function",
-    "name": "EPOCH",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "ERROR_FAIL_CHECK_VALIDATORS",
     "inputs": [],
     "outputs": [

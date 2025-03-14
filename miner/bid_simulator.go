@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/bidutil"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/txpool"
@@ -399,7 +400,14 @@ func (b *bidSimulator) newBidLoop() {
 
 func (b *bidSimulator) bidBetterBefore(parentHash common.Hash) time.Time {
 	parentHeader := b.chain.GetHeaderByHash(parentHash)
-	return bidutil.BidBetterBefore(parentHeader, b.chainConfig.Parlia.Period, b.delayLeftOver, b.config.BidSimulationLeftOver)
+	parlia, _ := b.engine.(*parlia.Parlia)
+	// only `Number` and `ParentHash` are used when `BlockInterval`
+	tmpHeader := &types.Header{ParentHash: parentHash, Number: new(big.Int).Add(parentHeader.Number, common.Big1)}
+	blockInterval, err := parlia.BlockInterval(b.chain, tmpHeader)
+	if err != nil {
+		log.Debug("failed to get BlockInterval when bidBetterBefore")
+	}
+	return bidutil.BidBetterBefore(parentHeader, blockInterval, b.delayLeftOver, b.config.BidSimulationLeftOver)
 }
 
 func (b *bidSimulator) clearLoop() {
@@ -844,7 +852,7 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 		// isn't really a better place right now. The blob gas limit is checked at block validation time
 		// and not during execution. This means core.ApplyTransaction will not return an error if the
 		// tx has too many blobs. So we have to explicitly check it here.
-		if (env.blobs + len(sc.Blobs)) > params.MaxBlobsPerBlockForBSC {
+		if (env.blobs + len(sc.Blobs)) > eip4844.MaxBlobsPerBlock(chainConfig, r.env.header.Time) {
 			return errors.New("max data blobs reached")
 		}
 	}
