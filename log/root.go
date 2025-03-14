@@ -3,19 +3,25 @@ package log
 import (
 	"log/slog"
 	"os"
-	"sync/atomic"
+	"sync"
 	"time"
 )
 
-var root atomic.Value
+var (
+	rootLock sync.RWMutex
+	root     Logger
+)
 
 func init() {
-	root.Store(&logger{slog.New(DiscardHandler())})
+	root = &logger{slog.New(DiscardHandler())}
 }
 
 // SetDefault sets the default global logger
 func SetDefault(l Logger) {
-	root.Store(l)
+	rootLock.Lock()
+	defer rootLock.Unlock()
+
+	root = l
 	if lg, ok := l.(*logger); ok {
 		slog.SetDefault(lg.inner)
 	}
@@ -23,7 +29,10 @@ func SetDefault(l Logger) {
 
 // Root returns the root logger
 func Root() Logger {
-	return root.Load().(Logger)
+	rootLock.RLock()
+	defer rootLock.RUnlock()
+
+	return root
 }
 
 // The following functions bypass the exported logger methods (logger.Debug,
