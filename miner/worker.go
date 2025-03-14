@@ -1574,13 +1574,13 @@ func (w *worker) tryWaitProposalDoneWhenStopping() {
 	if err != nil {
 		log.Debug("failed to get BlockInterval when tryWaitProposalDoneWhenStopping")
 	}
-	if startBlock > currentBlock && uint64(time.Duration((startBlock-currentBlock)*blockInterval*uint64(time.Millisecond)).Seconds()) > w.config.MaxWaitProposalInSecs {
+	if startBlock > currentBlock && ((startBlock-currentBlock)*blockInterval/1000) > w.config.MaxWaitProposalInSecs {
 		log.Warn("the next proposal start block is too far, just skip waiting")
 		return
 	}
 
 	// wait one more block for safety
-	waitSecs := time.Duration((endBlock - currentBlock + 1) * blockInterval * uint64(time.Millisecond)).Seconds()
+	waitSecs := (endBlock - currentBlock + 1) * blockInterval / 1000
 	log.Info("The miner will propose in later, waiting for the proposal to be done",
 		"currentBlock", currentBlock, "nextProposalStart", startBlock, "nextProposalEnd", endBlock, "waitTime", waitSecs)
 	time.Sleep(time.Duration(waitSecs) * time.Second)

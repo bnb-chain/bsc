@@ -80,6 +80,9 @@ const (
 	collectAdditionalVotesRewardRatio = 100 // ratio of additional reward for collecting more votes than needed, the denominator is 100
 
 	gasLimitBoundDivisorBeforeLorentz uint64 = 256 // The bound divisor of the gas limit, used in update calculations before lorentz hard fork.
+
+	// `finalityRewardInterval` should be smaller than `inMemorySnapshots`, otherwise, it will result in excessive computation.
+	finalityRewardInterval = 200
 )
 
 var (
@@ -767,7 +770,6 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 		// If we're at the genesis, snapshot the initial state. Alternatively if we have
 		// piled up more headers than allowed to be reorged (chain reinit from a freezer),
 		// consider the checkpoint trusted and snapshot it.
-		// An offset `epochLength - 1` can ensure getting the right validators.
 
 		// Unable to retrieve the exact EpochLength here.
 		// As known
@@ -1243,9 +1245,6 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 	cx core.ChainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction,
 	usedGas *uint64, mining bool, tracer *tracing.Hooks) error {
 	currentHeight := header.Number.Uint64()
-	// `finalityRewardInterval` should be smaller than `inMemorySnapshots`, otherwise, it will result in excessive computation.
-	// Distribute finality rewards every `defaultEpochLength` blocks to avoid excessive computation at epoch blocks.
-	finalityRewardInterval := defaultEpochLength
 	if currentHeight%finalityRewardInterval != 0 {
 		return nil
 	}
@@ -2280,8 +2279,11 @@ func (p *Parlia) backOffTime(snap *Snapshot, parent, header *types.Header, val c
 			backOffSteps[i], backOffSteps[j] = backOffSteps[j], backOffSteps[i]
 		})
 
-		if delay == 0 && isParerntLorentz && backOffSteps[idx] > 0 {
+		if delay == 0 && isParerntLorentz {
 			// If the in-turn validator has signed recently, the expected backoff times are [0, 2, 3, ...].
+			if backOffSteps[idx] == 0 {
+				return 0
+			}
 			return lorentzInitialBackOffTime + (backOffSteps[idx]-1)*wiggleTime
 		}
 		delay += backOffSteps[idx] * wiggleTime
