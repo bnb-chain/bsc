@@ -1428,13 +1428,13 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	}
 
 	val := header.Coinbase
-	PenalizeForDelayMined, err := p.isBlockDelayMinedOnPurpose(chain, header)
+	PenalizeForDelayMining, err := p.isIntentionalDelayMining(chain, header)
 	if err != nil {
-		return err
+		log.Debug("unexpected error happened when detecting intentional delay mining", "err", err)
 	}
-	if PenalizeForDelayMined {
+	if PenalizeForDelayMining {
 		intentionalDelayMiningCounter.Inc(1)
-		log.Warn("intentional delay block production detected", "validator", val, "number", header.Number, "hash", header.Hash())
+		log.Warn("intentional delay mining detected", "validator", val, "number", header.Number, "hash", header.Hash())
 	}
 	err = p.distributeIncoming(val, state, header, cx, txs, receipts, systemTxs, usedGas, false, tracer)
 	if err != nil {
@@ -1915,7 +1915,7 @@ func (p *Parlia) getCurrentValidators(blockHash common.Hash, blockNum *big.Int) 
 	return valSet, voteAddrMap, nil
 }
 
-func (p *Parlia) isBlockDelayMinedOnPurpose(chain consensus.ChainHeaderReader, header *types.Header) (bool, error) {
+func (p *Parlia) isIntentionalDelayMining(chain consensus.ChainHeaderReader, header *types.Header) (bool, error) {
 	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
 	if parent == nil {
 		return false, errors.New("parent not found")
@@ -1924,10 +1924,10 @@ func (p *Parlia) isBlockDelayMinedOnPurpose(chain consensus.ChainHeaderReader, h
 	if err != nil {
 		return false, err
 	}
-	delayOnPurpose := header.Coinbase == parent.Coinbase &&
+	isIntentional := header.Coinbase == parent.Coinbase &&
 		header.Difficulty == diffInTurn && parent.Difficulty == diffInTurn &&
 		parent.MilliTimestamp()+blockInterval < header.MilliTimestamp()
-	return delayOnPurpose, nil
+	return isIntentional, nil
 }
 
 // distributeIncoming distributes system incoming of the block
@@ -2220,7 +2220,7 @@ func (p *Parlia) backOffTime(snap *Snapshot, parent, header *types.Header, val c
 		if p.chainConfig.IsPlanck(header.Number) {
 			counts := snap.countRecents()
 			for addr, seenTimes := range counts {
-				log.Debug("backOffTime", "blockNumber", header.Number, "validator", addr, "seenTimes", seenTimes)
+				log.Trace("backOffTime", "blockNumber", header.Number, "validator", addr, "seenTimes", seenTimes)
 			}
 
 			// The backOffTime does not matter when a validator has signed recently.

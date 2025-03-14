@@ -403,7 +403,10 @@ func (b *bidSimulator) bidBetterBefore(parentHash common.Hash) time.Time {
 	parlia, _ := b.engine.(*parlia.Parlia)
 	// only `Number` and `ParentHash` are used when `BlockInterval`
 	tmpHeader := &types.Header{ParentHash: parentHash, Number: new(big.Int).Add(parentHeader.Number, common.Big1)}
-	blockInterval, _ := parlia.BlockInterval(b.chain, tmpHeader)
+	blockInterval, err := parlia.BlockInterval(b.chain, tmpHeader)
+	if err != nil {
+		log.Debug("failed to get BlockInterval when bidBetterBefore")
+	}
 	return bidutil.BidBetterBefore(parentHeader, blockInterval, b.delayLeftOver, b.config.BidSimulationLeftOver)
 }
 

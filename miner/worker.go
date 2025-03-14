@@ -1570,7 +1570,10 @@ func (w *worker) tryWaitProposalDoneWhenStopping() {
 		log.Warn("next proposal end block has passed, ignore")
 		return
 	}
-	blockInterval, _ := parlia.BlockInterval(w.chain, currentHeader)
+	blockInterval, err := parlia.BlockInterval(w.chain, currentHeader)
+	if err != nil {
+		log.Debug("failed to get BlockInterval when tryWaitProposalDoneWhenStopping")
+	}
 	if startBlock > currentBlock && uint64(time.Duration((startBlock-currentBlock)*blockInterval*uint64(time.Millisecond)).Seconds()) > w.config.MaxWaitProposalInSecs {
 		log.Warn("the next proposal start block is too far, just skip waiting")
 		return
