@@ -1343,13 +1343,10 @@ func (t *freezerTable) resetTailMeta(legacyOffset uint64) error {
 	legacyOffset += t.itemHidden.Load()
 
 	// overwrite metadata file
-	if err := writeMetadata(t.meta, newMetadata(legacyOffset)); err != nil {
-		return err
+	t.metadata.setVirtualTail(legacyOffset, true)
+	if t.metadata.flushOffset < int64(legacyOffset) {
+		t.metadata.setFlushOffset(int64(legacyOffset), true)
 	}
-	if err := t.meta.Sync(); err != nil {
-		return err
-	}
-	t.meta.Close()
 
 	// overwrite first index
 	var firstIndex indexEntry
