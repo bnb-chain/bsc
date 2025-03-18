@@ -32,7 +32,10 @@ import (
 
 const (
 	// maxBidPerBuilderPerBlock is the max bid number per builder
-	maxBidPerBuilderPerBlock = 3
+	maxBidPerBuilderPerBlock   = 3
+	MaxEstimatedSimulateTimeMs = int64(1500)           // 1.5s, half block interval
+	SimulateExtraCost          = 50 * time.Millisecond // additional time excluding commit transactions
+	NotInterruptTimeLeftMs     = 400 * time.Millisecond
 )
 
 var (
@@ -58,7 +61,43 @@ var (
 		Timeout:   5 * time.Second,
 		Transport: transport,
 	}
+
+	simulateSpeed = atomic.Uint32{}
 )
+
+func loadSimulateSpeed() uint32 {
+	if speed := simulateSpeed.Load(); speed != 0 {
+		return speed
+	}
+	simulateSpeed.Store(200_000) // gas simulate every millisecond, based on BSC client performance
+	return 200_000
+}
+
+func updateSimulateSpeed(gasSimulated uint64, timeCost time.Duration) {
+	const (
+		gasThreshold            = 5_000_000 // Ignore if gasSimulated is too small
+		gasSimulateBoundDivisor = 10
+	)
+	timeCostMs := timeCost.Milliseconds()
+	if gasSimulated < gasThreshold || timeCostMs <= 0 {
+		return
+	}
+
+	oldSpeed := loadSimulateSpeed()
+	desiredSpeed := uint32(float64(gasSimulated) / float64(timeCostMs))
+	delta := oldSpeed / gasSimulateBoundDivisor
+	newSpeed := oldSpeed
+
+	switch {
+	case oldSpeed < desiredSpeed:
+		newSpeed += delta
+	case oldSpeed > desiredSpeed:
+		newSpeed -= delta
+	}
+
+	simulateSpeed.Store(newSpeed)
+	log.Debug("updateSimulateSpeed", "old", oldSpeed, "desired", desiredSpeed, "new", newSpeed)
+}
 
 type bidWorker interface {
 	prepareWork(params *generateParams, witness bool) (*environment, error)
@@ -162,6 +201,38 @@ func newBidSimulator(
 	go b.newBidLoop()
 
 	return b
+}
+
+func (b *bidSimulator) isTimeEnoughForSimulating(newBid *BidRuntime) (bool, error) {
+	if !b.config.EstimateTimeBeforeSimulation {
+		return true, nil
+	}
+
+	if time.Until(time.Unix(int64(newBid.env.header.Time), 0)) < NotInterruptTimeLeftMs {
+		return false, fmt.Errorf("new bid can not interrupt, time before sealing less than %d milliseconds", NotInterruptTimeLeftMs.Milliseconds())
+	}
+
+	minTimeLeftOver := b.delayLeftOver + SimulateExtraCost
+	delay := b.engine.Delay(b.chain, newBid.env.header, &minTimeLeftOver)
+	if delay != nil {
+		return false, fmt.Errorf("new bid can not interrupt, no time left")
+	}
+
+	timeLeft := delay.Milliseconds()
+	estimateTime := min(int64(float64(newBid.bid.GasUsed)/float64(loadSimulateSpeed())), MaxEstimatedSimulateTimeMs)
+	isEnough := timeLeft > estimateTime
+
+	log.Debug("isTimeEnoughForSimulating",
+		"number", newBid.bid.BlockNumber,
+		"hash", newBid.bid.Hash().TerminalString(),
+		"estimate", estimateTime,
+		"timeLeft", timeLeft,
+		"isEnough", isEnough)
+
+	if isEnough {
+		return true, nil
+	}
+	return false, fmt.Errorf("new bid can not interrupt, simulate current bestBid need time(ms): %d, time left: %d", estimateTime, timeLeft)
 }
 
 func (b *bidSimulator) dialSentryAndBuilders() {
@@ -363,7 +434,11 @@ func (b *bidSimulator) newBidLoop() {
 			if simulatingBid := b.GetSimulatingBid(newBid.bid.ParentHash); simulatingBid != nil {
 				// simulatingBid always better than bestBid, so only compare with simulatingBid if a simulatingBid exists
 				if bidRuntime.isExpectedBetterThan(simulatingBid) {
-					commit(commitInterruptBetterBid, bidRuntime)
+					if isEnough, err := b.isTimeEnoughForSimulating(bidRuntime); isEnough {
+						commit(commitInterruptBetterBid, bidRuntime)
+					} else {
+						replyErr = err
+					}
 				} else {
 					replyErr = genDiscardedReply(simulatingBid)
 				}
@@ -595,10 +670,13 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		return
 	}
 
+	commitTxsStart := time.Now()
+	gasPoolStart := bidRuntime.env.gasPool.Gas()
 	// commit transactions in bid
 	for _, tx := range bidRuntime.bid.Txs {
 		select {
 		case <-interruptCh:
+			updateSimulateSpeed(gasPoolStart-bidRuntime.env.gasPool.Gas(), time.Since(commitTxsStart))
 			err = errors.New("simulation abort due to better bid arrived")
 			return
 
@@ -620,6 +698,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			return
 		}
 	}
+	updateSimulateSpeed(gasPoolStart-bidRuntime.env.gasPool.Gas(), time.Since(commitTxsStart))
 
 	// check if bid reward is valid
 	{
