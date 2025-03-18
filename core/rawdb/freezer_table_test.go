@@ -1563,7 +1563,7 @@ func TestFlushOffsetTracking(t *testing.T) {
 			// Data files:
 			//   F1(10 items) -> F2(10 items) -> F3(10 items) -> F4(10 items, full)
 			func(f *freezerTable) {
-				batch := f.newBatch(0)
+				batch := f.newBatch()
 				for i := 0; i < 5; i++ {
 					batch.AppendRaw(items+uint64(i), make([]byte, dataSize))
 				}
@@ -1577,7 +1577,7 @@ func TestFlushOffsetTracking(t *testing.T) {
 			// Data files:
 			//   F1(10 items) -> F2(10 items) -> F3(10 items) -> F4(10 items) -> F5(1 item)
 			func(f *freezerTable) {
-				batch := f.newBatch(0)
+				batch := f.newBatch()
 				batch.AppendRaw(items+5, make([]byte, dataSize))
 				batch.commit()
 			},
