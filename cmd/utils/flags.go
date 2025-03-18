@@ -394,7 +394,7 @@ var (
 	}
 	BlockHistoryFlag = &cli.Uint64Flag{
 		Name:     "history.blocks",
-		Usage:    "Number of recent blocks to maintain in DB (default = 0, 0 = entire chain). Notice!! it only prunes old blocks when starting, and pruning is not involving TxIndex/bloomIndex.",
+		Usage:    "Number of recent blocks to maintain in DB (default = 0, 0 = entire chain). Pruning is not involving TxIndex/bloomIndex.",
 		Value:    ethconfig.Defaults.BlockHistory,
 		Category: flags.BlockHistoryCategory,
 	}
