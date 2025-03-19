@@ -72,7 +72,9 @@ var (
 	justifiedBlockGauge = metrics.NewRegisteredGauge("chain/head/justified", nil)
 	finalizedBlockGauge = metrics.NewRegisteredGauge("chain/head/finalized", nil)
 
-	blockInsertMgaspsGauge = metrics.NewRegisteredGauge("chain/insert/mgasps", nil)
+	blockInsertMgaspsGauge  = metrics.NewRegisteredGauge("chain/insert/mgasps", nil)
+	blockInsertTxSizeGauge  = metrics.NewRegisteredGauge("chain/insert/txsize", nil)
+	blockInsertGasUsedGauge = metrics.NewRegisteredGauge("chain/insert/gasused", nil)
 
 	chainInfoGauge = metrics.NewRegisteredGaugeInfo("chain/info", nil)
 
@@ -2498,6 +2500,8 @@ func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, s
 	}
 	blockWriteTimer.Update(time.Since(wstart) - max(statedb.AccountCommits, statedb.StorageCommits) /* concurrent */ - statedb.SnapshotCommits - statedb.TrieDBCommits)
 	blockInsertTimer.UpdateSince(start)
+	blockInsertTxSizeGauge.Update(int64(len(block.Transactions())))
+	blockInsertGasUsedGauge.Update(int64(block.GasUsed()))
 
 	return &blockProcessingResult{usedGas: res.GasUsed, procTime: proctime, status: status}, nil
 }

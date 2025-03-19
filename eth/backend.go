@@ -737,7 +737,7 @@ func (s *Ethereum) reportRecentBlocksLoop() {
 			records["ImportedBlockTime"] = common.FormatMilliTime(importedBlockTime)
 
 			records["Coinbase"] = cur.Coinbase.String()
-			blockMsTime := int64(cur.Time * 1000)
+			blockMsTime := int64(cur.MilliTimestamp())
 			records["BlockTime"] = common.FormatMilliTime(blockMsTime)
 			metrics.GetOrRegisterLabel("report-blocks", nil).Mark(records)
 
