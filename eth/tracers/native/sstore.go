@@ -27,78 +27,37 @@ import (
 )
 
 func init() {
-	tracers.DefaultDirectory.Register("prestateTracer", newPrestateTracer, false)
+	tracers.DefaultDirectory.Register("sstoreTracer", newSstoreTracerTracer, false)
 }
 
-type prestate = map[common.Address]*account
-type account struct {
-	StateDiff state                      `json:"stateDiff"`
-	Code    string                      `json:"code"`
-}
-type state = map[common.Hash]common.Hash
-
-type prestate2 = map[common.Address]*account2
-type account2 struct {
-	StateDiff state                      `json:"stateDiff"`
-	Initialized state2
-}
-type state2 = map[common.Hash]bool
-type amountData struct{
-    Op string      `json:"op"`
-    Amount0     common.Hash `json:"amount0"`
-    Amount1     common.Hash `json:"amount1"`
-    Gas bool      `json:"gasprice"`
-}
-
-type prestateTracer struct {
+type sstoreTracer struct {
     env     *vm.EVM
-    PRE     prestate2
 	SSTORE  prestate    `json:"sstore"`
-    List        list                `json:"list"`
-    callstack []callFrame
-    gasLimit  uint64
-    data    amountData
-    
+	PRE     prestate2
+
     Op      string      `json:"op"`
 	Interrupt bool      `json:"interrupt"`
 	Reason    error     `json:"reason"`
 }
 
-func newPrestateTracer(ctx *tracers.Context, _ json.RawMessage) (tracers.Tracer, error) {
+func newSstoreTracerTracer(ctx *tracers.Context, _ json.RawMessage) (tracers.Tracer, error) {
 	// First callframe contains tx context info
 	// and is populated on start and end.
-	return &prestateTracer{SSTORE : prestate{},PRE : prestate2{},callstack: make([]callFrame, 1),data:amountData{}}, nil
+	return &sstoreTracer{SSTORE : prestate{},PRE : prestate2{}}, nil
 }
 
 // CaptureStart implements the EVMLogger interface to initialize the tracing operation.
-func (t *prestateTracer) CaptureStart(env *vm.EVM, from common.Address, to common.Address, create bool, input []byte, gas uint64, value *big.Int) {
-    t.env = env
-    t.List = make(map[common.Address]common.Address)
+func (t *sstoreTracer) CaptureStart(env *vm.EVM, from common.Address, to common.Address, create bool, input []byte, gas uint64, value *big.Int) {
     t.Op = "START"
-    t.List[to] = to
-    t.List[from] = from
-    
-	t.callstack[0] = callFrame{
-		Type:  vm.CALL,
-		From:  from,
-		To:    to,
-		Input: bytesToHex(input),
-		Gas:   gas,
-		Value: value,
-	}
-	if create {
-		t.callstack[0].Type = vm.CREATE
-	}
+    t.env = env
 }
 
 // CaptureEnd is called after the call finishes to finalize the tracing.
-
-func (t *prestateTracer) CaptureEnd(output []byte, gasUsed uint64, err error) {
-    t.callstack[0].processOutput(output, err)
+func (t *sstoreTracer) CaptureEnd(output []byte, gasUsed uint64, err error) {
 }
 
 // CaptureState implements the EVMLogger interface to trace a single step of VM execution.
-func (t *prestateTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *vm.ScopeContext, rData []byte, depth int, err error) {
+func (t *sstoreTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *vm.ScopeContext, rData []byte, depth int, err error) {
 	stack := scope.Stack
 	stackData := stack.Data()
 	stackLen := len(stackData)
@@ -160,68 +119,30 @@ func (t *prestateTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64,
 		    }
 	    }
 	    t.SSTORE[addr].Code = "1"
-    case op == vm.LT || op == vm.GT:
-        if op == vm.LT {
-            t.data.Op = "LT"
-        }
-        
-        if op == vm.GT {
-            t.data.Op = "GT"
-        }
-
-        t.data.Amount0 = common.Hash(stackData[stackLen-1].Bytes32())
-        t.data.Amount1 = common.Hash(stackData[stackLen-2].Bytes32())
-        
-    case op == vm.GASPRICE:
-        t.data.Gas = true
+	    
     default:
         t.Op = "other"
 	}
 }
 
 // CaptureFault implements the EVMLogger interface to trace an execution fault.
-func (t *prestateTracer) CaptureFault(pc uint64, op vm.OpCode, gas, cost uint64, _ *vm.ScopeContext, depth int, err error) {
-
+func (t *sstoreTracer) CaptureFault(pc uint64, op vm.OpCode, gas, cost uint64, _ *vm.ScopeContext, depth int, err error) {
+    //t.Reason = err
 }
 
 // CaptureEnter is called when EVM enters a new scope (via call, create or selfdestruct).
-func (t *prestateTracer) CaptureEnter(typ vm.OpCode, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
-    t.List[to] = to
-	call := callFrame{
-		Type:  typ,
-		From:  from,
-		To:    to,
-		Input: bytesToHex(input),
-		Gas:   gas,
-		Value: value,
-	}
-	t.callstack = append(t.callstack, call)
+func (t *sstoreTracer) CaptureEnter(typ vm.OpCode, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
 }
 
 // CaptureExit is called when EVM exits a scope, even if the scope didn't
 // execute any code.
-func (t *prestateTracer) CaptureExit(output []byte, gasUsed uint64, err error) {
-	size := len(t.callstack)
-	if size <= 1 {
-		return
-	}
-	// pop call
-	call := t.callstack[size-1]
-	t.callstack = t.callstack[:size-1]
-	size -= 1
-
-	call.GasUsed = gasUsed
-	call.processOutput(output, err)
-	t.callstack[size-1].Calls = append(t.callstack[size-1].Calls, call)
+func (t *sstoreTracer) CaptureExit(output []byte, gasUsed uint64, err error) {
 }
 
-func (t *prestateTracer) CaptureTxStart(gasLimit uint64) {
-    t.gasLimit = gasLimit
+func (t *sstoreTracer) CaptureTxStart(gasLimit uint64) {
 }
 
-func (t *prestateTracer) CaptureSystemTxEnd(intrinsicGas uint64) {}
-
-func (t *prestateTracer) CaptureTxEnd(restGas uint64) {
+func (t *sstoreTracer) CaptureTxEnd(restGas uint64) {
     for addr,state := range t.SSTORE{
     	for key,_ := range state.StateDiff {
             
@@ -238,28 +159,24 @@ func (t *prestateTracer) CaptureTxEnd(restGas uint64) {
     	    t.SSTORE[addr].Code = bytesToHex(t.env.StateDB.GetCode(addr))
     	}
 
-
     	if len(t.SSTORE[addr].StateDiff) == 0 && len(t.SSTORE[addr].Code) == 0{
     	    delete(t.SSTORE,addr)
     	}
-    }
-    t.callstack[0].GasUsed = t.gasLimit - restGas
+    }   
 }
+
+func (t *sstoreTracer) CaptureSystemTxEnd(intrinsicGas uint64) {}
 
 // GetResult returns the json-encoded nested list of call traces, and any
 // error arising from the encoding or forceful termination (via `Stop`).
-func (t *prestateTracer) GetResult() (json.RawMessage, error) {
+func (t *sstoreTracer) GetResult() (json.RawMessage, error) {
 	res, err := json.Marshal(struct{
     	SSTORE  prestate    `json:"sstore"`
-        List        list                `json:"list"`
-        
         Op      string      `json:"op"`
     	Interrupt bool      `json:"interrupt"`
     	Reason    error     `json:"reason"`
-    	
-    	Data amountData `json:"amountData"`
-    	Callstack callFrame `json:"callstack"`
-	}{t.SSTORE,t.List,t.Op,t.Interrupt,t.Reason,t.data,t.callstack[0]})
+	}{t.SSTORE,t.Op,t.Interrupt,t.Reason})
+
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +185,7 @@ func (t *prestateTracer) GetResult() (json.RawMessage, error) {
 }
 
 // Stop terminates execution of the tracer at the first opportune moment.
-func (t *prestateTracer) Stop(err error) {
+func (t *sstoreTracer) Stop(err error) {
 	t.Reason = err
 	t.Interrupt = true
 }

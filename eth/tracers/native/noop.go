@@ -21,10 +21,8 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/tracing"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers"
-	"github.com/ethereum/go-ethereum/params"
 )
 
 func init() {
@@ -33,67 +31,78 @@ func init() {
 
 // noopTracer is a go implementation of the Tracer interface which
 // performs no action. It's mostly useful for testing purposes.
-type noopTracer struct{}
+type list = map[common.Address]common.Address
+type noopTracer struct{
+    Op          string              `json:"op"`
+	Interrupt   bool                `json:"interrupt"`
+	Reason      error               `json:"reason"`
+    List        list                `json:"list"`
+}
 
 // newNoopTracer returns a new noop tracer.
-func newNoopTracer(ctx *tracers.Context, cfg json.RawMessage, chainConfig *params.ChainConfig) (*tracers.Tracer, error) {
-	t := &noopTracer{}
-	return &tracers.Tracer{
-		Hooks: &tracing.Hooks{
-			OnTxStart:       t.OnTxStart,
-			OnTxEnd:         t.OnTxEnd,
-			OnEnter:         t.OnEnter,
-			OnExit:          t.OnExit,
-			OnOpcode:        t.OnOpcode,
-			OnFault:         t.OnFault,
-			OnGasChange:     t.OnGasChange,
-			OnBalanceChange: t.OnBalanceChange,
-			OnNonceChange:   t.OnNonceChange,
-			OnCodeChange:    t.OnCodeChange,
-			OnStorageChange: t.OnStorageChange,
-			OnLog:           t.OnLog,
-		},
-		GetResult: t.GetResult,
-		Stop:      t.Stop,
-	}, nil
+func newNoopTracer(ctx *tracers.Context, _ json.RawMessage) (tracers.Tracer, error) {
+	return &noopTracer{}, nil
 }
 
-func (t *noopTracer) OnOpcode(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+// CaptureStart implements the EVMLogger interface to initialize the tracing operation.
+func (t *noopTracer) CaptureStart(env *vm.EVM, from common.Address, to common.Address, create bool, input []byte, gas uint64, value *big.Int) {
+    t.List = make(map[common.Address]common.Address)
+    t.Op = "START"
+    t.List[to] = to
 }
 
-func (t *noopTracer) OnFault(pc uint64, op byte, gas, cost uint64, _ tracing.OpContext, depth int, err error) {
+// CaptureEnd is called after the call finishes to finalize the tracing.
+func (t *noopTracer) CaptureEnd(output []byte, gasUsed uint64, err error) {
 }
 
-func (t *noopTracer) OnGasChange(old, new uint64, reason tracing.GasChangeReason) {}
-
-func (t *noopTracer) OnEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
+// CaptureState implements the EVMLogger interface to trace a single step of VM execution.
+func (t *noopTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *vm.ScopeContext, rData []byte, depth int, err error) {
+    switch {
+    case op == vm.RETURN || op == vm.STOP :
+        t.Op = "RETURN"
+    case op == vm.INVALID :
+        t.Op = "INVALID"
+    case op == vm.SELFDESTRUCT :
+        t.Op = "SELFDESTRUCT"
+    case op == vm.REVERT:
+        t.Op = "REVERT"
+    default:
+        t.Op = "other"
+    }
 }
 
-func (t *noopTracer) OnExit(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
+// CaptureFault implements the EVMLogger interface to trace an execution fault.
+func (t *noopTracer) CaptureFault(pc uint64, op vm.OpCode, gas, cost uint64, _ *vm.ScopeContext, depth int, err error) {
 }
 
-func (*noopTracer) OnTxStart(env *tracing.VMContext, tx *types.Transaction, from common.Address) {
+// CaptureEnter is called when EVM enters a new scope (via call, create or selfdestruct).
+func (t *noopTracer) CaptureEnter(typ vm.OpCode, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
+    t.List[to] = to
 }
 
-func (*noopTracer) OnTxEnd(receipt *types.Receipt, err error) {}
-
-func (*noopTracer) OnBalanceChange(a common.Address, prev, new *big.Int, reason tracing.BalanceChangeReason) {
+// CaptureExit is called when EVM exits a scope, even if the scope didn't
+// execute any code.
+func (t *noopTracer) CaptureExit(output []byte, gasUsed uint64, err error) {
 }
 
-func (*noopTracer) OnNonceChange(a common.Address, prev, new uint64) {}
+func (*noopTracer) CaptureTxStart(gasLimit uint64) {}
 
-func (*noopTracer) OnCodeChange(a common.Address, prevCodeHash common.Hash, prev []byte, codeHash common.Hash, code []byte) {
-}
+func (*noopTracer) CaptureTxEnd(restGas uint64) {}
 
-func (*noopTracer) OnStorageChange(a common.Address, k, prev, new common.Hash) {}
-
-func (*noopTracer) OnLog(log *types.Log) {}
+func (t *noopTracer) CaptureSystemTxEnd(intrinsicGas uint64) {}
 
 // GetResult returns an empty json object.
 func (t *noopTracer) GetResult() (json.RawMessage, error) {
-	return json.RawMessage(`{}`), nil
+    
+	res, err := json.Marshal(t)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(res), nil
 }
 
 // Stop terminates execution of the tracer at the first opportune moment.
 func (t *noopTracer) Stop(err error) {
+	t.Reason = err
+	t.Interrupt = true
 }
