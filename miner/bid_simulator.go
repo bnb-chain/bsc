@@ -363,7 +363,12 @@ func (b *bidSimulator) newBidLoop() {
 			if simulatingBid := b.GetSimulatingBid(newBid.bid.ParentHash); simulatingBid != nil {
 				// simulatingBid always better than bestBid, so only compare with simulatingBid if a simulatingBid exists
 				if bidRuntime.isExpectedBetterThan(simulatingBid) {
-					commit(commitInterruptBetterBid, bidRuntime)
+					if isEnough, err := b.isTimeEnoughForInterrupt(bidRuntime); isEnough {
+						commit(commitInterruptBetterBid, bidRuntime)
+					} else {
+						replyErr = err
+					}
+
 				} else {
 					replyErr = genDiscardedReply(simulatingBid)
 				}
@@ -395,6 +400,28 @@ func (b *bidSimulator) newBidLoop() {
 			return
 		}
 	}
+}
+
+func (b *bidSimulator) isTimeEnoughForInterrupt(newBid *BidRuntime) (bool, error) {
+	const blockIntervalMs = 3000
+	timeLeftMs := time.Until(time.Unix(int64(newBid.env.header.Time), 0)).Milliseconds()
+	timeLeftRatio := float64(timeLeftMs) / blockIntervalMs
+	gasUsedRatio := float64(newBid.env.header.GasUsed) / float64(newBid.env.header.GasLimit)
+
+	switch {
+	case timeLeftRatio >= 0.5:
+		return true, nil
+	case timeLeftRatio >= 0.333:
+		if gasUsedRatio <= 0.667 {
+			return true, nil
+		}
+	case timeLeftRatio >= 0.166:
+		if gasUsedRatio <= 0.333 {
+			return true, nil
+		}
+	}
+
+	return false, fmt.Errorf("bid is discarded, timeLeftRatio: %.3f, gasUsedRatio: %.3f", timeLeftRatio, gasUsedRatio)
 }
 
 func (b *bidSimulator) bidBetterBefore(parentHash common.Hash) time.Time {
