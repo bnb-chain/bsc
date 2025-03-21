@@ -64,7 +64,7 @@ func (b *BidArgs) ToBid(builder common.Address, signer Signer) (*Bid, error) {
 		ParentHash:   b.RawBid.ParentHash,
 		Txs:          txs,
 		UnRevertible: unRevertibleHashes,
-		GasUsed:      b.RawBid.GasUsed + b.PayBidTxGasUsed,
+		GasUsed:      b.RawBid.GasUsed,
 		GasFee:       b.RawBid.GasFee,
 		BuilderFee:   b.RawBid.BuilderFee,
 		rawBid:       *b.RawBid,
