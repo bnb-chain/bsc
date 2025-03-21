@@ -155,6 +155,8 @@ type bidSimulator struct {
 
 	simBidMu      sync.RWMutex
 	simulatingBid map[common.Hash]*BidRuntime // prevBlockHash -> bidRuntime, in the process of simulation
+
+	bestWaitingBid atomic.Value // *BidRuntime
 }
 
 func newBidSimulator(
@@ -205,6 +207,10 @@ func newBidSimulator(
 
 func (b *bidSimulator) isTimeEnoughForSimulating(newBid *BidRuntime) (bool, error) {
 	if !b.config.EstimateTimeBeforeSimulation {
+		return true, nil
+	}
+
+	if newBid.ignoreTimeLeft {
 		return true, nil
 	}
 
@@ -437,7 +443,9 @@ func (b *bidSimulator) newBidLoop() {
 					if isEnough, err := b.isTimeEnoughForSimulating(bidRuntime); isEnough {
 						commit(commitInterruptBetterBid, bidRuntime)
 					} else {
-						replyErr = err
+						if !b.setBestWaitingBid(bidRuntime) {
+							replyErr = err
+						}
 					}
 				} else {
 					replyErr = genDiscardedReply(simulatingBid)
@@ -472,6 +480,16 @@ func (b *bidSimulator) newBidLoop() {
 	}
 }
 
+func (b *bidSimulator) setBestWaitingBid(newBid *BidRuntime) bool {
+	lastBestWaitingBid := b.bestWaitingBid.Load().(*BidRuntime)
+	if lastBestWaitingBid == nil || newBid.isExpectedBetterThan(lastBestWaitingBid) {
+		b.bestWaitingBid.Store(newBid)
+		return true
+	}
+
+	return false
+}
+
 func (b *bidSimulator) bidBetterBefore(parentHash common.Hash) time.Time {
 	parentHeader := b.chain.GetHeaderByHash(parentHash)
 	return bidutil.BidBetterBefore(parentHeader, b.chainConfig.Parlia.Period, b.delayLeftOver, b.config.BidSimulationLeftOver)
@@ -504,6 +522,7 @@ func (b *bidSimulator) clearLoop() {
 			}
 		}
 		b.simBidMu.Unlock()
+		b.bestWaitingBid.Store((*BidRuntime)(nil))
 	}
 
 	for head := range b.chainHeadCh {
@@ -596,6 +615,34 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	b.SetSimulatingBid(parentHash, bidRuntime)
 	bestBidOnStart := b.GetBestBid(parentHash)
 
+	retryBest := func(bestBid *BidRuntime) {
+		lastBestWaitingBid := b.bestWaitingBid.Load().(*BidRuntime)
+		if lastBestWaitingBid != nil && lastBestWaitingBid.isExpectedBetterThan(bestBid) {
+			if len(b.newBidCh) > cap(b.newBidCh)/5 { // may deadlock if len(b.newBidCh) too large
+				return
+			}
+
+			b.bestWaitingBid.Store((*BidRuntime)(nil))
+			lastBestWaitingBid.ignoreTimeLeft = true
+			select {
+			case b.newBidCh <- newBidPackage{bid: lastBestWaitingBid.bid}:
+				log.Debug("BidSimulator: retry best waiting bid", "builder", lastBestWaitingBid.bid.Builder, "bidHash", lastBestWaitingBid.bid.Hash().Hex())
+			default:
+			}
+		} else {
+			// only recommit self bid when newBidCh is empty
+			if len(b.newBidCh) > 0 {
+				return
+			}
+
+			select {
+			case b.newBidCh <- newBidPackage{bid: bestBid.bid}:
+				log.Debug("BidSimulator: recommit", "builder", bestBid.bid.Builder, "bidHash", bestBid.bid.Hash().Hex())
+			default:
+			}
+		}
+	}
+
 	defer func(simStart time.Time) {
 		logCtx := []any{
 			"blockNumber", blockNumber,
@@ -625,17 +672,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		if success {
 			bidRuntime.duration = time.Since(simStart)
 			bidSimTimer.UpdateSince(simStart)
-
-			// only recommit self bid when newBidCh is empty
-			if len(b.newBidCh) > 0 {
-				return
-			}
-
-			select {
-			case b.newBidCh <- newBidPackage{bid: bidRuntime.bid}:
-				log.Debug("BidSimulator: recommit", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
-			default:
-			}
+			retryBest(bidRuntime)
 		}
 	}(startTS)
 
@@ -824,16 +861,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		return
 	}
 
-	// only recommit last best bid when newBidCh is empty
-	if len(b.newBidCh) > 0 {
-		return
-	}
-
-	select {
-	case b.newBidCh <- newBidPackage{bid: bestBid.bid}:
-		log.Debug("BidSimulator: recommit last bid", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
-	default:
-	}
+	retryBest(bestBid)
 }
 
 // reportIssue reports the issue to the mev-sentry
@@ -868,6 +896,8 @@ type BidRuntime struct {
 
 	finished chan struct{}
 	duration time.Duration
+
+	ignoreTimeLeft bool
 }
 
 func newBidRuntime(newBid *types.Bid, validatorCommission uint64) (*BidRuntime, error) {
@@ -891,6 +921,7 @@ func newBidRuntime(newBid *types.Bid, validatorCommission uint64) (*BidRuntime, 
 		packedBlockReward:       big.NewInt(0),
 		packedValidatorReward:   big.NewInt(0),
 		finished:                make(chan struct{}),
+		ignoreTimeLeft:          false,
 	}
 
 	return bidRuntime, nil
