@@ -402,6 +402,8 @@ func (b *bidSimulator) newBidLoop() {
 	}
 }
 
+// if the new bid is too large and with short time left, better not to interrupt the current running bid, as
+// new bid may not have enough to be simulated.
 func (b *bidSimulator) isTimeEnoughForInterrupt(newBid *BidRuntime) (bool, error) {
 	const blockIntervalMs = 3000
 	timeLeftMs := time.Until(time.Unix(int64(newBid.env.header.Time), 0)).Milliseconds()
@@ -421,7 +423,7 @@ func (b *bidSimulator) isTimeEnoughForInterrupt(newBid *BidRuntime) (bool, error
 		}
 	}
 
-	return false, fmt.Errorf("bid is discarded, timeLeftRatio: %.3f, gasUsedRatio: %.3f", timeLeftRatio, gasUsedRatio)
+	return false, fmt.Errorf("new bid can not interrupt, timeLeftRatio: %.3f, gasUsedRatio: %.3f", timeLeftRatio, gasUsedRatio)
 }
 
 func (b *bidSimulator) bidBetterBefore(parentHash common.Hash) time.Time {
