@@ -21,17 +21,23 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+
+	"github.com/ethereum/go-ethereum/core/tracing"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/tracers"
+	"github.com/ethereum/go-ethereum/eth/tracers/internal"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 )
 
 func init() {
-	tracers.DefaultDirectory.Register("sstoreTracer", newSstoreTracerTracer, false)
+	tracers.DefaultDirectory.Register("sstoreTracer", newSstoreTracer, false)
 }
 
 type sstoreTracer struct {
-    env     *vm.EVM
+    env     *tracing.VMContext
 	SSTORE  prestate    `json:"sstore"`
 	PRE     prestate2
 
@@ -40,16 +46,25 @@ type sstoreTracer struct {
 	Reason    error     `json:"reason"`
 }
 
-func newSstoreTracerTracer(ctx *tracers.Context, _ json.RawMessage) (tracers.Tracer, error) {
+func newSstoreTracer(ctx *tracers.Context, cfg json.RawMessage, chainConfig *params.ChainConfig) (*tracers.Tracer, error) {
 	// First callframe contains tx context info
 	// and is populated on start and end.
-	return &sstoreTracer{SSTORE : prestate{},PRE : prestate2{}}, nil
-}
+	t := &sstoreTracer{SSTORE : prestate{},PRE : prestate2{},Op : "start"}
 
-// CaptureStart implements the EVMLogger interface to initialize the tracing operation.
-func (t *sstoreTracer) CaptureStart(env *vm.EVM, from common.Address, to common.Address, create bool, input []byte, gas uint64, value *big.Int) {
-    t.Op = "START"
-    t.env = env
+	return &tracers.Tracer{
+		Hooks: &tracing.Hooks{
+			OnTxStart:       t.OnTxStart,
+			OnTxEnd:         t.OnTxEnd,
+			OnEnter:         t.OnEnter,
+			OnExit:          t.OnExit,
+			OnOpcode:        t.OnOpcode,
+
+
+			//OnStorageChange: t.OnStorageChange,
+		},
+		GetResult: t.GetResult,
+		Stop:      t.Stop,
+	}, nil
 }
 
 // CaptureEnd is called after the call finishes to finalize the tracing.
@@ -57,15 +72,18 @@ func (t *sstoreTracer) CaptureEnd(output []byte, gasUsed uint64, err error) {
 }
 
 // CaptureState implements the EVMLogger interface to trace a single step of VM execution.
-func (t *sstoreTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *vm.ScopeContext, rData []byte, depth int, err error) {
-	stack := scope.Stack
-	stackData := stack.Data()
+func (t *sstoreTracer) OnOpcode(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+
+	stackData := scope.StackData()
 	stackLen := len(stackData)
+	op := vm.OpCode(opcode)
+
 	switch {
-	case op == vm.SSTORE:
+	case stackLen >= 1 && op == vm.SSTORE:
+		caller := scope.Address()
 		slot := common.Hash(stackData[stackLen-1].Bytes32())
 		value := common.Hash(stackData[stackLen-2].Bytes32())
-		caller := scope.Contract.Address()
+
 		if _, ok := t.SSTORE[caller]; !ok {
 		    t.SSTORE[caller] = &account{
 				Code : "",
@@ -92,7 +110,7 @@ func (t *sstoreTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, s
     case op == vm.REVERT:
         t.Op = "REVERT"
 	case op == vm.CREATE:
-	    caller := scope.Contract.Address()
+	    caller := scope.Address()
 		nonce := t.env.StateDB.GetNonce(caller)
 		addr := crypto.CreateAddress(caller, nonce)
 
@@ -105,10 +123,15 @@ func (t *sstoreTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, s
 	    t.SSTORE[addr].Code = "1"
 
 	case stackLen >= 4 && op == vm.CREATE2:
-	    caller := scope.Contract.Address()
+	    caller := scope.Address()
 		offset := stackData[stackLen-2]
 		size := stackData[stackLen-3]
-		init := scope.Memory.GetCopy(int64(offset.Uint64()), int64(size.Uint64()))
+		init, err := internal.GetMemoryCopyPadded(scope.MemoryData(), int64(offset.Uint64()), int64(size.Uint64()))
+		if err != nil {
+			log.Warn("failed to copy CREATE2 input", "err", err, "tracer", "prestateTracer", "offset", offset, "size", size)
+			return
+		}
+
 		inithash := crypto.Keccak256(init)
 		salt := stackData[stackLen-4]
 		addr := crypto.CreateAddress2(caller, salt.Bytes32(), inithash)
@@ -119,7 +142,7 @@ func (t *sstoreTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, s
 		    }
 	    }
 	    t.SSTORE[addr].Code = "1"
-	    
+    
     default:
         t.Op = "other"
 	}
@@ -131,18 +154,19 @@ func (t *sstoreTracer) CaptureFault(pc uint64, op vm.OpCode, gas, cost uint64, _
 }
 
 // CaptureEnter is called when EVM enters a new scope (via call, create or selfdestruct).
-func (t *sstoreTracer) CaptureEnter(typ vm.OpCode, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
+func (t *sstoreTracer) OnEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
 }
 
 // CaptureExit is called when EVM exits a scope, even if the scope didn't
 // execute any code.
-func (t *sstoreTracer) CaptureExit(output []byte, gasUsed uint64, err error) {
+func (t *sstoreTracer) OnExit(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
 }
 
-func (t *sstoreTracer) CaptureTxStart(gasLimit uint64) {
+func (t *sstoreTracer) OnTxStart(env *tracing.VMContext, tx *types.Transaction, from common.Address) {
+	t.env = env
 }
 
-func (t *sstoreTracer) CaptureTxEnd(restGas uint64) {
+func (t *sstoreTracer) OnTxEnd(receipt *types.Receipt, err error) {
     for addr,state := range t.SSTORE{
     	for key,_ := range state.StateDiff {
             
@@ -165,7 +189,7 @@ func (t *sstoreTracer) CaptureTxEnd(restGas uint64) {
     }   
 }
 
-func (t *sstoreTracer) CaptureSystemTxEnd(intrinsicGas uint64) {}
+func (t *sstoreTracer) OnystemTxEnd(intrinsicGas uint64) {}
 
 // GetResult returns the json-encoded nested list of call traces, and any
 // error arising from the encoding or forceful termination (via `Stop`).

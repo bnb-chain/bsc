@@ -20,9 +20,12 @@ import (
 	"encoding/json"
 	"math/big"
 
+    "github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/core/tracing"
+
 	"github.com/ethereum/go-ethereum/eth/tracers"
+	"github.com/ethereum/go-ethereum/params"
 )
 
 func init() {
@@ -40,23 +43,21 @@ type noopTracer struct{
 }
 
 // newNoopTracer returns a new noop tracer.
-func newNoopTracer(ctx *tracers.Context, _ json.RawMessage) (tracers.Tracer, error) {
-	return &noopTracer{}, nil
-}
-
-// CaptureStart implements the EVMLogger interface to initialize the tracing operation.
-func (t *noopTracer) CaptureStart(env *vm.EVM, from common.Address, to common.Address, create bool, input []byte, gas uint64, value *big.Int) {
-    t.List = make(map[common.Address]common.Address)
-    t.Op = "START"
-    t.List[to] = to
-}
-
-// CaptureEnd is called after the call finishes to finalize the tracing.
-func (t *noopTracer) CaptureEnd(output []byte, gasUsed uint64, err error) {
+func newNoopTracer(ctx *tracers.Context, cfg json.RawMessage, chainConfig *params.ChainConfig) (*tracers.Tracer, error) {
+	t := &noopTracer{}
+	return &tracers.Tracer{
+		Hooks: &tracing.Hooks{
+			OnOpcode:                   t.OnOpcode,
+			OnEnter:                    t.OnEnter,
+		},
+		GetResult: t.GetResult,
+		Stop:      t.Stop,
+	}, nil
 }
 
 // CaptureState implements the EVMLogger interface to trace a single step of VM execution.
-func (t *noopTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *vm.ScopeContext, rData []byte, depth int, err error) {
+func (t *noopTracer) OnOpcode(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+    op := vm.OpCode(opcode)
     switch {
     case op == vm.RETURN || op == vm.STOP :
         t.Op = "RETURN"
@@ -71,25 +72,10 @@ func (t *noopTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, sco
     }
 }
 
-// CaptureFault implements the EVMLogger interface to trace an execution fault.
-func (t *noopTracer) CaptureFault(pc uint64, op vm.OpCode, gas, cost uint64, _ *vm.ScopeContext, depth int, err error) {
-}
-
 // CaptureEnter is called when EVM enters a new scope (via call, create or selfdestruct).
-func (t *noopTracer) CaptureEnter(typ vm.OpCode, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
+func (t *noopTracer) OnEnter(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
     t.List[to] = to
 }
-
-// CaptureExit is called when EVM exits a scope, even if the scope didn't
-// execute any code.
-func (t *noopTracer) CaptureExit(output []byte, gasUsed uint64, err error) {
-}
-
-func (*noopTracer) CaptureTxStart(gasLimit uint64) {}
-
-func (*noopTracer) CaptureTxEnd(restGas uint64) {}
-
-func (t *noopTracer) CaptureSystemTxEnd(intrinsicGas uint64) {}
 
 // GetResult returns an empty json object.
 func (t *noopTracer) GetResult() (json.RawMessage, error) {
