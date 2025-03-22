@@ -33,7 +33,7 @@ import (
 const (
 	// maxBidPerBuilderPerBlock is the max bid number per builder
 	maxBidPerBuilderPerBlock = 3
-	NotInterruptTimeLeftMs   = 400 * time.Millisecond
+	NoInterruptTimeLeft      = 400 * time.Millisecond
 )
 
 var (
@@ -75,8 +75,9 @@ type simBidReq struct {
 
 // newBidPackage is the warp of a new bid and a feedback channel
 type newBidPackage struct {
-	bid      *types.Bid
-	feedback chan error
+	bid       *types.Bid
+	feedback  chan error
+	simulated bool
 }
 
 // bidSimulator is in charge of receiving bid from builders, reporting issue to builders.
@@ -279,7 +280,7 @@ func (b *bidSimulator) GetBestBid(prevBlockHash common.Hash) *BidRuntime {
 	return b.bestBid[prevBlockHash]
 }
 
-// best bit to run is based on bid'd expectedBlockReward, which is
+// best bit to run is based on bid's expectedBlockReward before the bid is simulated
 func (b *bidSimulator) SetBestBidToRun(prevBlockHash common.Hash, bid newBidPackage) {
 	b.bestBidMu.Lock()
 	defer b.bestBidMu.Unlock()
@@ -340,8 +341,8 @@ func (b *bidSimulator) mainLoop() {
 
 func (b *bidSimulator) canBeInterrupted(newBid *BidRuntime) bool {
 	left := time.Until(time.Unix(int64(newBid.env.header.Time), 0))
-	if left < NotInterruptTimeLeftMs {
-		log.Warn("new bid can not interrupt", "left", left, "NotInterruptTimeLeftMs", NotInterruptTimeLeftMs.Milliseconds())
+	if left < NoInterruptTimeLeft {
+		log.Warn("new bid can not interrupt the current bid as no enough time left", "left", left, "NoInterruptTimeLeft", NoInterruptTimeLeft)
 		return false
 	}
 	return true
@@ -379,7 +380,7 @@ func (b *bidSimulator) newBidLoop() {
 				continue
 			}
 
-			newRuntime, err := newBidRuntime(newBid.bid, b.config.ValidatorCommission)
+			bidRuntime, err := newBidRuntime(newBid.bid, b.config.ValidatorCommission)
 			if err != nil {
 				if newBid.feedback != nil {
 					newBid.feedback <- err
@@ -388,15 +389,18 @@ func (b *bidSimulator) newBidLoop() {
 			}
 
 			var replyErr error
-			bidRuntime := newRuntime
 			if preBestBidToRun, exist := b.GetBestBidToRun(newBid.bid.ParentHash); exist {
 				preRuntime, _ := newBidRuntime(preBestBidToRun.bid, b.config.ValidatorCommission)
-				if newRuntime.isExpectedBetterThan(preRuntime) {
-					// new bid is expected to have better reward
+				if bidRuntime.isExpectedBetterThan(preRuntime) {
+					// case 1: new bid has better expected reward
+					//   a.new bid has not been simulated before
+					//   b.new bid has been simulated before, it wants to be simulated one more time
 					b.SetBestBidToRun(newBid.bid.ParentHash, newBid)
+				} else if !preBestBidToRun.simulated {
+					// case 2: previous bid has better expected reward and it has not been simulated yet.
+					log.Info("to simulate the best non-simulated bid")
 				} else {
-					// new bid will be discarded
-					bidRuntime = preRuntime
+					// new bid will be discarded and the
 					replyErr = genDiscardedReply(bidRuntime)
 				}
 			}
@@ -409,7 +413,7 @@ func (b *bidSimulator) newBidLoop() {
 						commit(commitInterruptBetterBid, bidRuntime)
 					} else {
 						left := time.Until(time.Unix(int64(bidRuntime.env.header.Time), 0))
-						replyErr = fmt.Errorf("bid is pending as no enough time to interrupt, left:%s, NotInterruptTimeLeftMs:%s", left, NotInterruptTimeLeftMs)
+						replyErr = fmt.Errorf("bid is pending as no enough time to interrupt, left:%s, NoInterruptTimeLeft:%s", left, NoInterruptTimeLeft)
 					}
 				} else {
 					commit(commitInterruptBetterBid, bidRuntime)
@@ -494,7 +498,7 @@ func (b *bidSimulator) sendBid(_ context.Context, bid *types.Bid) error {
 	replyCh := make(chan error, 1)
 
 	select {
-	case b.newBidCh <- newBidPackage{bid: bid, feedback: replyCh}:
+	case b.newBidCh <- newBidPackage{bid: bid, feedback: replyCh, simulated: false}:
 		b.AddPending(bid.BlockNumber, bid.Builder, bid.Hash())
 	case <-timer.C:
 		return types.ErrMevBusy
@@ -602,7 +606,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			}
 
 			select {
-			case b.newBidCh <- newBidPackage{bid: bidRuntime.bid}:
+			case b.newBidCh <- newBidPackage{bid: bidRuntime.bid, simulated: true}:
 				log.Debug("BidSimulator: recommit", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
 			default:
 			}
