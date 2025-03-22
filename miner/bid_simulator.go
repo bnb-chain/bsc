@@ -350,8 +350,12 @@ func (b *bidSimulator) mainLoop() {
 	}
 }
 
-func (b *bidSimulator) canBeInterrupted(newBid *BidRuntime) bool {
-	left := time.Until(time.Unix(int64(newBid.env.header.Time), 0))
+func (b *bidSimulator) canBeInterrupted(targetTime uint64) bool {
+	if targetTime == 0 {
+		// invalid targetTime, disable the interrupt check
+		return true
+	}
+	left := time.Until(time.Unix(int64(targetTime), 0))
 	return left >= NoInterruptTimeLeft
 }
 
@@ -421,16 +425,20 @@ func (b *bidSimulator) newBidLoop() {
 				// try to commit the new bid
 				// but if there is a simulating bid and with a short time left, don't interrupt it
 				if simulatingBid := b.GetSimulatingBid(newBid.bid.ParentHash); simulatingBid != nil {
-					if b.canBeInterrupted(bidRuntime) {
+					parentHeader := b.chain.GetHeaderByHash(newBid.bid.ParentHash)
+					var blockTime uint64 = 0
+					if parentHeader != nil {
+						const blockInterval uint64 = 3 // todo: to improve this hard code value
+						blockTime = parentHeader.Time + blockInterval
+					}
+
+					if b.canBeInterrupted(blockTime) {
 						commit(commitInterruptBetterBid, bidRuntime)
 					} else {
-						left := time.Until(time.Unix(int64(bidRuntime.env.header.Time), 0))
-						log.Warn("bid is pending as no enough time to interrupt",
-							"block", newBid.bid.BlockNumber,
-							"builder", newBid.bid.Builder,
-							"bidHash", newBid.bid.Hash().TerminalString(),
-							"left", left,
-							"NoInterruptTimeLeft", NoInterruptTimeLeft)
+						if newBid.bid.Hash() == bidRuntime.bid.Hash() {
+							left := time.Until(time.Unix(int64(blockTime), 0))
+							replyErr = fmt.Errorf("bid is pending as no enough time to interrupt, left:%s, NoInterruptTimeLeft:%s", left, NoInterruptTimeLeft)
+						}
 					}
 				} else {
 					commit(commitInterruptBetterBid, bidRuntime)
