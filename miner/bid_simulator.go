@@ -407,16 +407,20 @@ func (b *bidSimulator) newBidLoop() {
 				bestBidRuntime, _ := newBidRuntime(bestBidToRun, b.config.ValidatorCommission)
 				if bidRuntime.isExpectedBetterThan(bestBidRuntime) {
 					// new bid has better expectedBlockReward, use bidRuntime
-					log.Info("new bid has better expectedBlockReward")
+					log.Debug("new bid has better expectedBlockReward",
+						"builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().TerminalString())
 				} else if !bestBidToRun.Committed {
 					// bestBidToRun is not committed yet, this newBid will trigger bestBidToRun to commit
-					log.Info("to simulate the best non-committed bid")
 					bidRuntime = bestBidRuntime
 					replyErr = genDiscardedReply(bidRuntime)
+					log.Debug("discard new bid and to simulate the non-committed bestBidToRun",
+						"builder", bestBidToRun.Builder, "bidHash", bestBidToRun.Hash().TerminalString())
 				} else {
 					// new bid will be discarded, as it is useless now.
 					toCommit = false
 					replyErr = genDiscardedReply(bidRuntime)
+					log.Debug("new bid will be discarded", "builder", bestBidToRun.Builder,
+						"bidHash", bestBidToRun.Hash().TerminalString())
 				}
 			}
 
@@ -431,12 +435,13 @@ func (b *bidSimulator) newBidLoop() {
 						const blockInterval uint64 = 3 // todo: to improve this hard code value
 						blockTime = parentHeader.Time + blockInterval
 					}
-
+					left := time.Until(time.Unix(int64(blockTime), 0))
+					log.Debug("simulate in progress", "left", left.Milliseconds(), "blockTime", blockTime,
+						"builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().TerminalString())
 					if b.canBeInterrupted(blockTime) {
 						commit(commitInterruptBetterBid, bidRuntime)
 					} else {
 						if newBid.bid.Hash() == bidRuntime.bid.Hash() {
-							left := time.Until(time.Unix(int64(blockTime), 0))
 							replyErr = fmt.Errorf("bid is pending as no enough time to interrupt, left:%d, NoInterruptTimeLeft:%d",
 								left.Milliseconds(), NoInterruptTimeLeft.Milliseconds())
 						}
