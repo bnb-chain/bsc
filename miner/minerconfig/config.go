@@ -75,6 +75,7 @@ type MevConfig struct {
 	Builders              []BuilderConfig // The list of builders
 	ValidatorCommission   uint64          // 100 means the validator claims 1% from block reward
 	BidSimulationLeftOver time.Duration
+	NoInterruptLeftOver   time.Duration
 }
 
 var DefaultMevConfig = MevConfig{
@@ -84,4 +85,5 @@ var DefaultMevConfig = MevConfig{
 	Builders:              nil,
 	ValidatorCommission:   100,
 	BidSimulationLeftOver: 50 * time.Millisecond,
+	NoInterruptLeftOver:   400 * time.Millisecond,
 }

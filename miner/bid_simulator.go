@@ -33,7 +33,6 @@ import (
 const (
 	// maxBidPerBuilderPerBlock is the max bid number per builder
 	maxBidPerBuilderPerBlock = 3
-	NoInterruptTimeLeft      = 400 * time.Millisecond
 )
 
 var (
@@ -356,7 +355,7 @@ func (b *bidSimulator) canBeInterrupted(targetTime uint64) bool {
 		return true
 	}
 	left := time.Until(time.Unix(int64(targetTime), 0))
-	return left >= NoInterruptTimeLeft
+	return left >= b.config.NoInterruptLeftOver
 }
 
 func (b *bidSimulator) newBidLoop() {
@@ -372,7 +371,7 @@ func (b *bidSimulator) newBidLoop() {
 			close(interruptCh)
 		}
 		interruptCh = make(chan int32, 1)
-		bidRuntime.bid.Committed = true
+		bidRuntime.bid.Commit()
 		select {
 		case b.simBidCh <- &simBidReq{interruptCh: interruptCh, bid: bidRuntime}:
 			log.Debug("BidSimulator: commit", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
@@ -409,7 +408,7 @@ func (b *bidSimulator) newBidLoop() {
 					// new bid has better expectedBlockReward, use bidRuntime
 					log.Debug("new bid has better expectedBlockReward",
 						"builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().TerminalString())
-				} else if !bestBidToRun.Committed {
+				} else if !bestBidToRun.IsCommitted() {
 					// bestBidToRun is not committed yet, this newBid will trigger bestBidToRun to commit
 					bidRuntime = bestBidRuntime
 					replyErr = genDiscardedReply(bidRuntime)
@@ -418,7 +417,7 @@ func (b *bidSimulator) newBidLoop() {
 				} else {
 					// new bid will be discarded, as it is useless now.
 					toCommit = false
-					replyErr = genDiscardedReply(bidRuntime)
+					replyErr = genDiscardedReply(bestBidRuntime)
 					log.Debug("new bid will be discarded", "builder", bestBidToRun.Builder,
 						"bidHash", bestBidToRun.Hash().TerminalString())
 				}
@@ -442,8 +441,8 @@ func (b *bidSimulator) newBidLoop() {
 						commit(commitInterruptBetterBid, bidRuntime)
 					} else {
 						if newBid.bid.Hash() == bidRuntime.bid.Hash() {
-							replyErr = fmt.Errorf("bid is pending as no enough time to interrupt, left:%d, NoInterruptTimeLeft:%d",
-								left.Milliseconds(), NoInterruptTimeLeft.Milliseconds())
+							replyErr = fmt.Errorf("bid is pending as no enough time to interrupt, left:%d, NoInterruptLeftOver:%d",
+								left.Milliseconds(), b.config.NoInterruptLeftOver.Milliseconds())
 						}
 					}
 				} else {
