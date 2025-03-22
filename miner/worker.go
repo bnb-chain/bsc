@@ -78,6 +78,12 @@ const (
 )
 
 var (
+	bidExistGauge        = metrics.NewRegisteredGauge("worker/bidExist", nil)
+	bidWinGauge          = metrics.NewRegisteredGauge("worker/bidWin", nil)
+	inturnBlocksGauge    = metrics.NewRegisteredGauge("worker/inturnBlocks", nil)
+	bestBidGasUsedGauge  = metrics.NewRegisteredGauge("worker/bestBidGasUsed", nil)  // MGas
+	bestWorkGasUsedGauge = metrics.NewRegisteredGauge("worker/bestWorkGasUsed", nil) // MGas
+
 	writeBlockTimer    = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
 
@@ -1397,6 +1403,7 @@ LOOP:
 	// when in-turn, compare with remote work.
 	from := bestWork.coinbase
 	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
+		inturnBlocksGauge.Inc(1)
 		// We want to start sealing the block as late as possible here if mev is enabled, so we could give builder the chance to send their final bid.
 		// Time left till sealing the block.
 		tillSealingTime := time.Until(time.Unix(int64(bestWork.header.Time), 0)) - w.config.DelayLeftOver
@@ -1418,6 +1425,10 @@ LOOP:
 		bestBid := w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
 
 		if bestBid != nil {
+			bidExistGauge.Inc(1)
+			bestBidGasUsedGauge.Update(int64(bestBid.bid.GasUsed) / 1_000_000)
+			bestWorkGasUsedGauge.Update(int64(bestWork.header.GasUsed) / 1_000_000)
+
 			log.Debug("BidSimulator: final compare", "block", bestWork.header.Number.Uint64(),
 				"localBlockReward", bestReward.String(),
 				"bidBlockReward", bestBid.packedBlockReward.String())
@@ -1434,6 +1445,8 @@ LOOP:
 
 			// blockReward(benefits delegators) and validatorReward(benefits the validator) are both optimal
 			if localValidatorReward.CmpBig(bestBid.packedValidatorReward) < 0 {
+				bidWinGauge.Inc(1)
+
 				bestWork = bestBid.env
 				from = bestBid.bid.Builder
 
