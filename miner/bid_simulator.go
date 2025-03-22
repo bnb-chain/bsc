@@ -292,6 +292,9 @@ func (b *bidSimulator) DelBestBidToRun(prevBlockHash common.Hash, delBid *types.
 	b.bestBidMu.Lock()
 	defer b.bestBidMu.Unlock()
 	cur := b.bestBidToRun[prevBlockHash]
+	if cur == nil || delBid == nil {
+		return
+	}
 	if cur.Hash() == delBid.Hash() {
 		delete(b.bestBidToRun, prevBlockHash)
 	}
@@ -604,11 +607,11 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			go b.reportIssue(bidRuntime, err)
 		}
 
-		b.RemoveSimulatingBid(parentHash)
-		close(bidRuntime.finished)
 		if !isValidBid {
 			b.DelBestBidToRun(parentHash, bidRuntime.bid)
 		}
+		b.RemoveSimulatingBid(parentHash)
+		close(bidRuntime.finished)
 
 		if success {
 			bidRuntime.duration = time.Since(simStart)
