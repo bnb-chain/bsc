@@ -68,23 +68,22 @@ type BuilderConfig struct {
 }
 
 type MevConfig struct {
-	Enabled                      bool            // Whether to enable Mev or not
-	EstimateTimeBeforeSimulation bool            // Whether to enable time estimation before bid simulation
-	GreedyMergeTx                bool            // Whether to merge local transactions to the bid
-	BuilderFeeCeil               string          // The maximum builder fee of a bid
-	SentryURL                    string          // The url of Mev sentry
-	Builders                     []BuilderConfig // The list of builders
-	ValidatorCommission          uint64          // 100 means the validator claims 1% from block reward
-	BidSimulationLeftOver        time.Duration   // Time left for bid simulation
-
+	Enabled               bool            // Whether to enable Mev or not
+	EstimateTimeForBid    bool            // Whether to enable time estimation before bid simulation
+	GreedyMergeTx         bool            // Whether to merge local transactions to the bid
+	BuilderFeeCeil        string          // The maximum builder fee of a bid
+	SentryURL             string          // The url of Mev sentry
+	Builders              []BuilderConfig // The list of builders
+	ValidatorCommission   uint64          // 100 means the validator claims 1% from block reward
+	BidSimulationLeftOver time.Duration
 }
 
 var DefaultMevConfig = MevConfig{
-	Enabled:                      false,
-	EstimateTimeBeforeSimulation: true,
-	GreedyMergeTx:                true,
-	SentryURL:                    "",
-	Builders:                     nil,
-	ValidatorCommission:          100,
-	BidSimulationLeftOver:        50 * time.Millisecond,
+	Enabled:               false,
+	EstimateTimeForBid:    true,
+	GreedyMergeTx:         true,
+	SentryURL:             "",
+	Builders:              nil,
+	ValidatorCommission:   100,
+	BidSimulationLeftOver: 50 * time.Millisecond,
 }

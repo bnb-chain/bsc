@@ -206,7 +206,7 @@ func newBidSimulator(
 }
 
 func (b *bidSimulator) isTimeEnoughForSimulating(newBid *BidRuntime) (bool, error) {
-	if !b.config.EstimateTimeBeforeSimulation {
+	if !b.config.EstimateTimeForBid {
 		return true, nil
 	}
 
