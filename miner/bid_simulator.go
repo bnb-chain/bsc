@@ -401,6 +401,7 @@ func (b *bidSimulator) newBidLoop() {
 			}
 
 			var replyErr error
+			toCommit := true
 			bestBidToRun := b.GetBestBidToRun(newBid.bid.ParentHash)
 			if bestBidToRun != nil {
 				bestBidRuntime, _ := newBidRuntime(bestBidToRun, b.config.ValidatorCommission)
@@ -411,13 +412,15 @@ func (b *bidSimulator) newBidLoop() {
 					// bestBidToRun is not committed yet, this newBid will trigger bestBidToRun to commit
 					log.Info("to simulate the best non-committed bid")
 					bidRuntime = bestBidRuntime
+					replyErr = genDiscardedReply(bidRuntime)
 				} else {
 					// new bid will be discarded, as it is useless now.
+					toCommit = false
 					replyErr = genDiscardedReply(bidRuntime)
 				}
 			}
 
-			if replyErr == nil {
+			if toCommit {
 				b.SetBestBidToRun(bidRuntime.bid.ParentHash, bidRuntime.bid)
 				// try to commit the new bid
 				// but if there is a simulating bid and with a short time left, don't interrupt it
@@ -435,7 +438,6 @@ func (b *bidSimulator) newBidLoop() {
 
 			if newBid.feedback != nil {
 				newBid.feedback <- replyErr
-
 				log.Info("[BID ARRIVED]",
 					"block", newBid.bid.BlockNumber,
 					"builder", newBid.bid.Builder,
