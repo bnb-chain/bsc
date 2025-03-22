@@ -172,6 +172,7 @@ type Bid struct {
 	GasUsed      uint64
 	GasFee       *big.Int
 	BuilderFee   *big.Int
+	Committed    bool // whether the bid has been committed to simulate or not
 
 	rawBid RawBid
 }
