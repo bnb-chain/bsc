@@ -39,7 +39,8 @@ const (
 )
 
 var (
-	bidSimTimer = metrics.NewRegisteredTimer("bid/sim/duration", nil)
+	bidSimTimer        = metrics.NewRegisteredTimer("bid/sim/duration", nil)
+	simulateSpeedGauge = metrics.NewRegisteredGauge("bid/sim/simulateSpeed", nil) // Mps
 )
 
 var (
@@ -96,6 +97,7 @@ func updateSimulateSpeed(gasSimulated uint64, timeCost time.Duration) {
 	}
 
 	simulateSpeed.Store(newSpeed)
+	simulateSpeedGauge.Update(int64(newSpeed / 1000))
 	log.Debug("updateSimulateSpeed", "old", oldSpeed, "desired", desiredSpeed, "new", newSpeed)
 }
 
