@@ -435,11 +435,17 @@ func (b *bidSimulator) newBidLoop() {
 						blockTime = parentHeader.Time + blockInterval
 					}
 					left := time.Until(time.Unix(int64(blockTime), 0))
-					log.Debug("simulate in progress", "left", left.Milliseconds(), "blockTime", blockTime,
-						"builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().TerminalString())
 					if b.canBeInterrupted(blockTime) {
+						log.Debug("simulate in progress, interrupt",
+							"blockTime", blockTime, "left", left.Milliseconds(),
+							"NoInterruptLeftOver", b.config.NoInterruptLeftOver.Milliseconds(),
+							"builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().TerminalString())
 						commit(commitInterruptBetterBid, bidRuntime)
 					} else {
+						log.Debug("simulate in progress, no interrupt",
+							"blockTime", blockTime, "left", left.Milliseconds(),
+							"NoInterruptLeftOver", b.config.NoInterruptLeftOver.Milliseconds(),
+							"builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().TerminalString())
 						if newBid.bid.Hash() == bidRuntime.bid.Hash() {
 							replyErr = fmt.Errorf("bid is pending as no enough time to interrupt, left:%d, NoInterruptLeftOver:%d",
 								left.Milliseconds(), b.config.NoInterruptLeftOver.Milliseconds())
@@ -605,6 +611,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			"parentHash", parentHash,
 			"builder", builder,
 			"gasUsed", bidRuntime.bid.GasUsed,
+			"simElapsed", time.Since(simStart),
 		}
 
 		if bidRuntime.env != nil {
