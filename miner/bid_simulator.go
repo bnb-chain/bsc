@@ -643,7 +643,8 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 			select {
 			case b.newBidCh <- newBidPackage{bid: bidRuntime.bid}:
-				log.Debug("BidSimulator: recommit", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
+				log.Debug("BidSimulator: recommit", "builder", bidRuntime.bid.Builder,
+					"bidHash", bidRuntime.bid.Hash().Hex(), "simElapsed", bidRuntime.duration)
 			default:
 			}
 		} else {
