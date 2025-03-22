@@ -352,11 +352,7 @@ func (b *bidSimulator) mainLoop() {
 
 func (b *bidSimulator) canBeInterrupted(newBid *BidRuntime) bool {
 	left := time.Until(time.Unix(int64(newBid.env.header.Time), 0))
-	if left < NoInterruptTimeLeft {
-		log.Warn("new bid can not interrupt the current bid as no enough time left", "left", left, "NoInterruptTimeLeft", NoInterruptTimeLeft)
-		return false
-	}
-	return true
+	return left >= NoInterruptTimeLeft
 }
 
 func (b *bidSimulator) newBidLoop() {
@@ -429,7 +425,12 @@ func (b *bidSimulator) newBidLoop() {
 						commit(commitInterruptBetterBid, bidRuntime)
 					} else {
 						left := time.Until(time.Unix(int64(bidRuntime.env.header.Time), 0))
-						replyErr = fmt.Errorf("bid is pending as no enough time to interrupt, left:%s, NoInterruptTimeLeft:%s", left, NoInterruptTimeLeft)
+						log.Warn("bid is pending as no enough time to interrupt",
+							"block", newBid.bid.BlockNumber,
+							"builder", newBid.bid.Builder,
+							"bidHash", newBid.bid.Hash().TerminalString(),
+							"left", left,
+							"NoInterruptTimeLeft", NoInterruptTimeLeft)
 					}
 				} else {
 					commit(commitInterruptBetterBid, bidRuntime)
@@ -577,9 +578,8 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		bidTxLen = len(bidTxs)
 		payBidTx = bidTxs[bidTxLen-1]
 
-		err        error
-		success    bool
-		isValidBid bool = true
+		err     error
+		success bool
 	)
 
 	// ensure simulation exited then start next simulation
@@ -609,9 +609,6 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			go b.reportIssue(bidRuntime, err)
 		}
 
-		if !isValidBid {
-			b.DelBestBidToRun(parentHash, bidRuntime.bid)
-		}
 		b.RemoveSimulatingBid(parentHash)
 		close(bidRuntime.finished)
 
@@ -629,6 +626,8 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 				log.Debug("BidSimulator: recommit", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
 			default:
 			}
+		} else {
+			b.DelBestBidToRun(parentHash, bidRuntime.bid)
 		}
 	}(startTS)
 
@@ -671,7 +670,6 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	//	136782406 > 136791878 => false, Or 136807406 > 136816878 => false
 	if bidRuntime.bid.GasUsed > bidRuntime.env.gasPool.Gas() {
 		err = errors.New("gas used exceeds gas limit")
-		isValidBid = false
 		return
 	}
 
@@ -697,7 +695,6 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		if err != nil {
 			log.Error("BidSimulator: failed to commit tx", "bidHash", bidRuntime.bid.Hash(), "tx", tx.Hash(), "err", err)
 			err = fmt.Errorf("invalid tx in bid, %v", err)
-			isValidBid = false
 			return
 		}
 	}
@@ -707,7 +704,6 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		bidRuntime.packReward(b.config.ValidatorCommission)
 		if !bidRuntime.validReward() {
 			err = errors.New("reward does not achieve the expectation")
-			isValidBid = false
 			return
 		}
 	}
@@ -746,7 +742,6 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			bidGasPrice := new(big.Int).Div(bidGasFee, new(big.Int).SetUint64(bidGasUsed))
 			if bidGasPrice.Cmp(b.minGasPrice) < 0 {
 				err = fmt.Errorf("bid gas price is lower than min gas price, bid:%v, min:%v", bidGasPrice, b.minGasPrice)
-				isValidBid = false
 				return
 			}
 		}
@@ -780,7 +775,6 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		log.Error("BidSimulator: failed to commit tx", "builder", bidRuntime.bid.Builder,
 			"bidHash", bidRuntime.bid.Hash(), "tx", payBidTx.Hash(), "err", err)
 		err = fmt.Errorf("invalid tx in bid, %v", err)
-		isValidBid = false
 		return
 	}
 
@@ -789,7 +783,6 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		log.Error("BidSimulator: failed to check bid size", "builder", bidRuntime.bid.Builder,
 			"bidHash", bidRuntime.bid.Hash(), "env.size", bidRuntime.env.size)
 		err = errors.New("invalid bid size")
-		isValidBid = false
 		return
 	}
 
