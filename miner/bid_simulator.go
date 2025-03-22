@@ -437,7 +437,8 @@ func (b *bidSimulator) newBidLoop() {
 					} else {
 						if newBid.bid.Hash() == bidRuntime.bid.Hash() {
 							left := time.Until(time.Unix(int64(blockTime), 0))
-							replyErr = fmt.Errorf("bid is pending as no enough time to interrupt, left:%s, NoInterruptTimeLeft:%s", left, NoInterruptTimeLeft)
+							replyErr = fmt.Errorf("bid is pending as no enough time to interrupt, left:%d, NoInterruptTimeLeft:%d",
+								left.Milliseconds(), NoInterruptTimeLeft.Milliseconds())
 						}
 					}
 				} else {
