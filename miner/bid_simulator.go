@@ -279,12 +279,22 @@ func (b *bidSimulator) GetBestBid(prevBlockHash common.Hash) *BidRuntime {
 	return b.bestBid[prevBlockHash]
 }
 
-// best bit to run is based on bid's expectedBlockReward before the bid is simulated
+// best bid to run is based on bid's expectedBlockReward before the bid is simulated
 func (b *bidSimulator) SetBestBidToRun(prevBlockHash common.Hash, bid *types.Bid) {
 	b.bestBidMu.Lock()
 	defer b.bestBidMu.Unlock()
 
 	b.bestBidToRun[prevBlockHash] = bid
+}
+
+// in case the bid is invalid(invalid GasUsed,Reward,GasPrice...), remove it.
+func (b *bidSimulator) DelBestBidToRun(prevBlockHash common.Hash, delBid *types.Bid) {
+	b.bestBidMu.Lock()
+	defer b.bestBidMu.Unlock()
+	cur := b.bestBidToRun[prevBlockHash]
+	if cur.Hash() == delBid.Hash() {
+		delete(b.bestBidToRun, prevBlockHash)
+	}
 }
 
 func (b *bidSimulator) GetBestBidToRun(prevBlockHash common.Hash) *types.Bid {
@@ -405,7 +415,7 @@ func (b *bidSimulator) newBidLoop() {
 			}
 
 			if replyErr == nil {
-				b.SetBestBidToRun(newBid.bid.ParentHash, bidRuntime.bid)
+				b.SetBestBidToRun(bidRuntime.bid.ParentHash, bidRuntime.bid)
 				// try to commit the new bid
 				// but if there is a simulating bid and with a short time left, don't interrupt it
 				if simulatingBid := b.GetSimulatingBid(newBid.bid.ParentHash); simulatingBid != nil {
@@ -562,8 +572,9 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		bidTxLen = len(bidTxs)
 		payBidTx = bidTxs[bidTxLen-1]
 
-		err     error
-		success bool
+		err        error
+		success    bool
+		isValidBid bool = true
 	)
 
 	// ensure simulation exited then start next simulation
@@ -595,6 +606,9 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 		b.RemoveSimulatingBid(parentHash)
 		close(bidRuntime.finished)
+		if !isValidBid {
+			b.DelBestBidToRun(parentHash, bidRuntime.bid)
+		}
 
 		if success {
 			bidRuntime.duration = time.Since(simStart)
@@ -652,6 +666,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	//	136782406 > 136791878 => false, Or 136807406 > 136816878 => false
 	if bidRuntime.bid.GasUsed > bidRuntime.env.gasPool.Gas() {
 		err = errors.New("gas used exceeds gas limit")
+		isValidBid = false
 		return
 	}
 
@@ -677,6 +692,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		if err != nil {
 			log.Error("BidSimulator: failed to commit tx", "bidHash", bidRuntime.bid.Hash(), "tx", tx.Hash(), "err", err)
 			err = fmt.Errorf("invalid tx in bid, %v", err)
+			isValidBid = false
 			return
 		}
 	}
@@ -686,6 +702,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		bidRuntime.packReward(b.config.ValidatorCommission)
 		if !bidRuntime.validReward() {
 			err = errors.New("reward does not achieve the expectation")
+			isValidBid = false
 			return
 		}
 	}
@@ -724,6 +741,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			bidGasPrice := new(big.Int).Div(bidGasFee, new(big.Int).SetUint64(bidGasUsed))
 			if bidGasPrice.Cmp(b.minGasPrice) < 0 {
 				err = fmt.Errorf("bid gas price is lower than min gas price, bid:%v, min:%v", bidGasPrice, b.minGasPrice)
+				isValidBid = false
 				return
 			}
 		}
@@ -757,6 +775,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		log.Error("BidSimulator: failed to commit tx", "builder", bidRuntime.bid.Builder,
 			"bidHash", bidRuntime.bid.Hash(), "tx", payBidTx.Hash(), "err", err)
 		err = fmt.Errorf("invalid tx in bid, %v", err)
+		isValidBid = false
 		return
 	}
 
@@ -765,6 +784,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		log.Error("BidSimulator: failed to check bid size", "builder", bidRuntime.bid.Builder,
 			"bidHash", bidRuntime.bid.Hash(), "env.size", bidRuntime.env.size)
 		err = errors.New("invalid bid size")
+		isValidBid = false
 		return
 	}
 
