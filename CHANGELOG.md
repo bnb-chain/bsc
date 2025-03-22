@@ -1,4 +1,19 @@
 # Changelog
+## v1.5.8
+### FEATURE
+* [\#2955](https://github.com/bnb-chain/bsc/pull/2955) pbs: enable GreedyMergeTx by default
+
+### BUGFIX
+* [\#2967](https://github.com/bnb-chain/bsc/pull/2967) fix: gas compare in bid simulator
+
+### IMPROVEMENT
+* [\#2951](https://github.com/bnb-chain/bsc/pull/2951) bump golang.org/x/net from 0.34.0 to 0.36.0
+* [\#0000](https://github.com/bnb-chain/bsc/pull/0000) golang: upgrade toolchain to v1.23.0 (commit:3be156eec)
+* [\#2957](https://github.com/bnb-chain/bsc/pull/2957) miner: stop GreedyMergeTx before worker picking bids
+* [\#2959](https://github.com/bnb-chain/bsc/pull/2959) pbs: fix a inaccurate bid result log
+* [\#2971](https://github.com/bnb-chain/bsc/pull/2971) mev: no interrupt if it is too later
+* [\#2974](https://github.com/bnb-chain/bsc/pull/2974) miner: add metrics for bid simulation
+
 ## v1.5.7
 v1.5.7 conduct small upstream code merge to follow the latest pectra hard fork and apply some bug fix. There are two PR for the code merge:
 * [\#2897](https://github.com/bnb-chain/bsc/pull/2897) upstream: merge tag 'geth-v1.15.1' into bsc-develop
