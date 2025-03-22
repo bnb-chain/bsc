@@ -338,7 +338,7 @@ func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m
 
 	// Check duplicate voteMessage firstly.
 	if pool.receivedVotes.Contains(voteHash) {
-		log.Debug("Vote pool already contained the same vote", "voteHash", voteHash)
+		log.Trace("Vote pool already contained the same vote", "voteHash", voteHash)
 		return false
 	}
 
