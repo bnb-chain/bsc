@@ -508,7 +508,6 @@ func (b *bidSimulator) clearLoop() {
 		b.simBidMu.Lock()
 		for k, v := range b.simulatingBid {
 			if v.bid.BlockNumber <= blockNumber-b.chain.TriesInMemory() {
-				v.env.discard()
 				delete(b.simulatingBid, k)
 			}
 		}
@@ -648,6 +647,9 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			default:
 			}
 		} else {
+			if bidRuntime.env != nil {
+				bidRuntime.env.discard()
+			}
 			b.DelBestBidToRun(parentHash, bidRuntime.bid)
 		}
 	}(startTS)
