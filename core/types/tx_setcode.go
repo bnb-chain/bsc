@@ -113,7 +113,7 @@ func (a *SetCodeAuthorization) sigHash() common.Hash {
 	})
 }
 
-// Authority recovers the the authorizing account of an authorization.
+// Authority recovers the authorizing account of an authorization.
 func (a *SetCodeAuthorization) Authority() (common.Address, error) {
 	sighash := a.sigHash()
 	if !crypto.ValidateSignatureValues(a.V, a.R.ToBig(), a.S.ToBig(), true) {
