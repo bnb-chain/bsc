@@ -19,11 +19,9 @@ package rawdb
 import (
 	"fmt"
 	"math"
+	"slices"
 	"sync/atomic"
-
 	"time"
-
-	"golang.org/x/exp/slices"
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/golang/snappy"
