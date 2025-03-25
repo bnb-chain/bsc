@@ -299,6 +299,7 @@ func createMiner(t *testing.T) (*Miner, *event.TypeMux, func(skipMiner bool)) {
 	// Create Ethash config
 	config := minerconfig.Config{
 		Etherbase: common.HexToAddress("123456789"),
+		Recommit:  new(time.Duration),
 	}
 	// Create chainConfig
 	chainDB := rawdb.NewMemoryDatabase()

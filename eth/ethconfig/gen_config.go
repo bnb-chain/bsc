@@ -53,7 +53,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		TriesVerifyMode         core.VerifyMode
 		Preimages               bool
 		FilterLogCacheSize      int
-		Miner                   minerconfig.Config
+		Miner                   *minerconfig.Config
 		TxPool                  legacypool.Config
 		BlobPool                blobpool.Config
 		GPO                     gasprice.Config
@@ -297,7 +297,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		c.FilterLogCacheSize = *dec.FilterLogCacheSize
 	}
 	if dec.Miner != nil {
-		c.Miner = *dec.Miner
+		c.Miner = dec.Miner
 	}
 	if dec.TxPool != nil {
 		c.TxPool = *dec.TxPool

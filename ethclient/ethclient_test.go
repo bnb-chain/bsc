@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -195,7 +196,7 @@ func newTestBackend(config *node.Config) (*node.Node, []*types.Block, error) {
 		return nil, nil, fmt.Errorf("can't create new node: %v", err)
 	}
 	// Create Ethereum Service
-	ecfg := &ethconfig.Config{Genesis: genesis, RPCGasCap: 1000000}
+	ecfg := &ethconfig.Config{Genesis: genesis, RPCGasCap: 1000000, Miner: &minerconfig.Config{}}
 	ecfg.SnapshotCache = 256
 	ecfg.TriesInMemory = 128
 	ethservice, err := eth.New(n, ecfg)

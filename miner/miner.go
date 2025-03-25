@@ -69,8 +69,24 @@ func New(eth Backend, config *minerconfig.Config, mux *event.TypeMux, engine con
 		stopCh:  make(chan struct{}),
 		worker:  newWorker(config, engine, eth, mux, false),
 	}
+	mev := config.Mev
+	if mev == nil {
+		// for unit test, it could be nil, as it is not initialized
+		mev = &minerconfig.MevConfig{}
+	}
 
-	miner.bidSimulator = newBidSimulator(&config.Mev, config.DelayLeftOver, config.GasPrice, eth, eth.BlockChain().Config(), engine, miner.worker)
+	delayLeftOver := config.DelayLeftOver
+	if delayLeftOver == nil {
+		// for unit test, it could be nil, as it is not initialized
+		delayLeftOver = new(time.Duration)
+	}
+	gasPrice := config.GasPrice
+	if gasPrice == nil {
+		// for unit test, it could be nil, as it is not initialized
+		gasPrice = new(big.Int)
+	}
+
+	miner.bidSimulator = newBidSimulator(mev, *delayLeftOver, gasPrice, eth, eth.BlockChain().Config(), engine, miner.worker)
 	miner.worker.setBestBidFetcher(miner.bidSimulator)
 
 	miner.wg.Add(1)

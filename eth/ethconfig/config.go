@@ -63,7 +63,7 @@ var Defaults = Config{
 	SnapshotCache:      102,
 	DiffBlock:          uint64(86400),
 	FilterLogCacheSize: 32,
-	Miner:              minerconfig.DefaultConfig,
+	Miner:              &minerconfig.DefaultConfig,
 	TxPool:             legacypool.DefaultConfig,
 	BlobPool:           blobpool.DefaultConfig,
 	RPCGasCap:          50000000,
@@ -156,7 +156,7 @@ type Config struct {
 	FilterLogCacheSize int
 
 	// Mining options
-	Miner minerconfig.Config
+	Miner *minerconfig.Config
 
 	// Transaction pool options
 	TxPool   legacypool.Config
@@ -214,4 +214,14 @@ func CreateConsensusEngine(config *params.ChainConfig, db ethdb.Database, ee *et
 		return clique.New(config.Clique, db), nil
 	}
 	return beacon.New(ethash.NewFaker()), nil
+}
+
+func ApplyDefaultEthConfig(cfg *Config) {
+	if cfg == nil {
+		// [Eth] is a mandatory option in config.toml, it should never be nil
+		log.Error("ApplyDefaultEthConfig cfg should not be nil")
+		return
+	}
+
+	cfg.Miner = cfg.Miner.ApplyDefaultMinerConfig()
 }
