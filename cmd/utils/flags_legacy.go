@@ -133,7 +133,7 @@ var (
 	MinerNewPayloadTimeoutFlag = &cli.DurationFlag{
 		Name:     "miner.newpayload-timeout",
 		Usage:    "Specify the maximum time allowance for creating a new payload (deprecated)",
-		Value:    ethconfig.Defaults.Miner.Recommit,
+		Value:    *ethconfig.Defaults.Miner.Recommit,
 		Category: flags.DeprecatedCategory,
 	}
 	MetricsEnabledExpensiveFlag = &cli.BoolFlag{

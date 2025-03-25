@@ -108,7 +108,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.TriesVerifyMode = c.TriesVerifyMode
 	enc.Preimages = c.Preimages
 	enc.FilterLogCacheSize = c.FilterLogCacheSize
-	enc.Miner = c.Miner
+	enc.Miner = *c.Miner
 	enc.TxPool = c.TxPool
 	enc.BlobPool = c.BlobPool
 	enc.GPO = c.GPO
@@ -300,7 +300,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		c.FilterLogCacheSize = *dec.FilterLogCacheSize
 	}
 	if dec.Miner != nil {
-		c.Miner = *dec.Miner
+		c.Miner = dec.Miner
 	}
 	if dec.TxPool != nil {
 		c.TxPool = *dec.TxPool

@@ -155,6 +155,9 @@ func loadBaseConfig(ctx *cli.Context) gethConfig {
 		if err := loadConfig(file, &cfg); err != nil {
 			utils.Fatalf("%v", err)
 		}
+		// some default options could be overwritten after `loadConfig()`
+		// apply the default value if the options was not specified in config file.
+		ethconfig.ApplyDefaultEthConfig(&cfg.Eth)
 	}
 
 	scheme := cfg.Eth.StateScheme
@@ -280,7 +283,7 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	git, _ := version.VCS()
 	utils.SetupMetrics(&cfg.Metrics,
 		utils.EnableBuildInfo(git.Commit, git.Date),
-		utils.EnableMinerInfo(ctx, &cfg.Eth.Miner),
+		utils.EnableMinerInfo(ctx, cfg.Eth.Miner),
 		utils.EnableNodeInfo(&cfg.Eth.TxPool, stack.Server().NodeInfo()),
 		utils.EnableNodeTrack(ctx, &cfg.Eth, stack),
 	)
