@@ -33,7 +33,8 @@ import (
 
 const (
 	// maxBidPerBuilderPerBlock is the max bid number per builder
-	maxBidPerBuilderPerBlock = 3
+	maxBidPerBuilderPerBlock        = 3
+	LorentzMaxBidPerBuilderPerBlock = 2
 )
 
 var (
@@ -471,7 +472,7 @@ func (b *bidSimulator) sendBid(_ context.Context, bid *types.Bid) error {
 	}
 }
 
-func (b *bidSimulator) CheckPending(blockNumber uint64, builder common.Address, bidHash common.Hash) error {
+func (b *bidSimulator) CheckPending(parentHash common.Hash, blockNumber uint64, builder common.Address, bidHash common.Hash) error {
 	b.pendingMu.Lock()
 	defer b.pendingMu.Unlock()
 
@@ -488,7 +489,12 @@ func (b *bidSimulator) CheckPending(blockNumber uint64, builder common.Address, 
 		return errors.New("bid already exists")
 	}
 
-	if len(b.pending[blockNumber][builder]) >= maxBidPerBuilderPerBlock {
+	maxBids := maxBidPerBuilderPerBlock
+	parentHeader := b.chain.GetHeaderByHash(parentHash) // current block header is not available
+	if b.chainConfig.IsLorentz(parentHeader.Number, parentHeader.Time) {
+		maxBids = LorentzMaxBidPerBuilderPerBlock
+	}
+	if len(b.pending[blockNumber][builder]) >= maxBids {
 		return errors.New("too many bids")
 	}
 

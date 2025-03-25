@@ -52,7 +52,7 @@ func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common
 		return common.Hash{}, types.NewInvalidBidError("builder is not registered")
 	}
 
-	err = miner.bidSimulator.CheckPending(bidArgs.RawBid.BlockNumber, builder, bidArgs.RawBid.Hash())
+	err = miner.bidSimulator.CheckPending(bidArgs.RawBid.ParentHash, bidArgs.RawBid.BlockNumber, builder, bidArgs.RawBid.Hash())
 	if err != nil {
 		return common.Hash{}, err
 	}
