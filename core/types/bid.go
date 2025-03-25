@@ -172,8 +172,17 @@ type Bid struct {
 	GasUsed      uint64
 	GasFee       *big.Int
 	BuilderFee   *big.Int
+	committed    bool // whether the bid has been committed to simulate or not
 
 	rawBid RawBid
+}
+
+func (b *Bid) Commit() {
+	b.committed = true
+}
+
+func (b *Bid) IsCommitted() bool {
+	return b.committed
 }
 
 // Hash returns the bid hash.
@@ -192,6 +201,7 @@ type BidIssue struct {
 type MevParams struct {
 	ValidatorCommission   uint64 // 100 means 1%
 	BidSimulationLeftOver time.Duration
+	NoInterruptLeftOver   time.Duration
 	GasCeil               uint64
 	GasPrice              *big.Int // Minimum avg gas price for bid block
 	BuilderFeeCeil        *big.Int

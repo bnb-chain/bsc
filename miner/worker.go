@@ -70,9 +70,6 @@ const (
 	// save height, keep recently mined blocks to avoid double sign for safety,
 	recentMinedCacheLimit = 20
 
-	// the default to wait for the mev miner to finish
-	waitMEVMinerEndTimeLimit = 50 * time.Millisecond
-
 	// Reserve block size for the following 3 components:
 	// a. System transactions at the end of the block
 	// b. Seal in the block header
@@ -81,6 +78,12 @@ const (
 )
 
 var (
+	bidExistGauge        = metrics.NewRegisteredGauge("worker/bidExist", nil)
+	bidWinGauge          = metrics.NewRegisteredGauge("worker/bidWin", nil)
+	inturnBlocksGauge    = metrics.NewRegisteredGauge("worker/inturnBlocks", nil)
+	bestBidGasUsedGauge  = metrics.NewRegisteredGauge("worker/bestBidGasUsed", nil)  // MGas
+	bestWorkGasUsedGauge = metrics.NewRegisteredGauge("worker/bestWorkGasUsed", nil) // MGas
+
 	writeBlockTimer    = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
 
@@ -1405,11 +1408,12 @@ LOOP:
 	// when in-turn, compare with remote work.
 	from := bestWork.coinbase
 	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
+		inturnBlocksGauge.Inc(1)
 		// We want to start sealing the block as late as possible here if mev is enabled, so we could give builder the chance to send their final bid.
 		// Time left till sealing the block.
 		tillSealingTime := time.Until(time.UnixMilli(int64(bestWork.header.MilliTimestamp()))) - w.config.DelayLeftOver
-		if tillSealingTime > max(100*time.Millisecond, w.config.DelayLeftOver) {
-			// Still a lot of time left, wait for the best bid.
+		if tillSealingTime > 0 {
+			// Still some time left, wait for the best bid.
 			// This happens during the peak time of the network, the local block building LOOP would break earlier than
 			// the final sealing time by meeting the errBlockInterruptedByOutOfGas criteria.
 
@@ -1423,18 +1427,13 @@ LOOP:
 			}
 		}
 
-		if pendingBid := w.bidFetcher.GetSimulatingBid(bestWork.header.ParentHash); pendingBid != nil {
-			waitBidTimer := time.NewTimer(waitMEVMinerEndTimeLimit)
-			defer waitBidTimer.Stop()
-			select {
-			case <-waitBidTimer.C:
-			case <-pendingBid.finished:
-			}
-		}
-
 		bestBid := w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
 
 		if bestBid != nil {
+			bidExistGauge.Inc(1)
+			bestBidGasUsedGauge.Update(int64(bestBid.bid.GasUsed) / 1_000_000)
+			bestWorkGasUsedGauge.Update(int64(bestWork.header.GasUsed) / 1_000_000)
+
 			log.Debug("BidSimulator: final compare", "block", bestWork.header.Number.Uint64(),
 				"localBlockReward", bestReward.String(),
 				"bidBlockReward", bestBid.packedBlockReward.String())
@@ -1451,6 +1450,8 @@ LOOP:
 
 			// blockReward(benefits delegators) and validatorReward(benefits the validator) are both optimal
 			if localValidatorReward.CmpBig(bestBid.packedValidatorReward) < 0 {
+				bidWinGauge.Inc(1)
+
 				bestWork = bestBid.env
 				from = bestBid.bid.Builder
 
