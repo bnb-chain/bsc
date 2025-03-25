@@ -1,4 +1,19 @@
 # Changelog
+## v1.5.9
+### FEATURE
+[\#2932](https://github.com/bnb-chain/bsc/pull/2932) BEP-520: Short Block Interval Phase One: 1.5 seconds
+
+### BUGFIX
+NA
+
+### IMPROVEMENT
+[\#2933](https://github.com/bnb-chain/bsc/pull/2933) metrics: add more peer, block/vote metrics
+[\#2938](https://github.com/bnb-chain/bsc/pull/2938) cmd/geth: add example for geth bls account generate-proof
+[\#2949](https://github.com/bnb-chain/bsc/pull/2949) metrics: add more block/vote stats;
+[\#2948](https://github.com/bnb-chain/bsc/pull/2948) go.mod: update crypto to solve CVE-2025-22869
+[\#2960](https://github.com/bnb-chain/bsc/pull/2960) pool: debug log instead of warn
+[\#2961](https://github.com/bnb-chain/bsc/pull/2961) metric: add more block monitor metrics;
+
 ## v1.5.8
 ### FEATURE
 * [\#2955](https://github.com/bnb-chain/bsc/pull/2955) pbs: enable GreedyMergeTx by default
