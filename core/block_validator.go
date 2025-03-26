@@ -228,6 +228,7 @@ func (v *BlockValidator) RemoteVerifyManager() *remoteVerifyManager {
 // to keep the baseline gas close to the provided target, and increase it towards
 // the target if the baseline gas is lower.
 func CalcGasLimit(parentGasLimit, desiredLimit uint64) uint64 {
+	// change GasLimitBoundDivisor to 1024 from 256 from lorentz hard fork, but no need hard fork control here.
 	delta := parentGasLimit/params.GasLimitBoundDivisor - 1
 	limit := parentGasLimit
 	if desiredLimit < params.MinGasLimit {

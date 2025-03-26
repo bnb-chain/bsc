@@ -1,13 +1,13 @@
-From dba05084d6425657211702dd690ebef0c9c45448 Mon Sep 17 00:00:00 2001
+0001-diff-go-ethereum.patch
+bdaa06d694bf10297 Mon Sep 17 00:00:00 2001
 From: buddh0 <galaxystroller@gmail.com>
-Date: Wed, 5 Feb 2025 20:34:36 +0800
+Date: Tue, 4 Mar 2025 11:22:17 +0800
 Subject: [PATCH] diff go ethereum
 
 ---
- core/vm/contracts.go      | 19 -------------------
- core/vm/jump_table.go     |  2 +-
- params/protocol_params.go |  2 +-
- 3 files changed, 2 insertions(+), 21 deletions(-)
+ core/vm/contracts.go  | 19 -------------------
+ core/vm/jump_table.go |  2 +-
+ 2 files changed, 1 insertion(+), 20 deletions(-)
 
 diff --git a/core/vm/contracts.go b/core/vm/contracts.go
 index ddde8b0c9..39065b2f7 100644
@@ -66,19 +66,6 @@ index 299ee4c55..6610fa7f9 100644
  	enable3855(&instructionSet) // PUSH0 instruction
  	enable3860(&instructionSet) // Limit and meter initcode
  
-diff --git a/params/protocol_params.go b/params/protocol_params.go
-index c83e330a8..903e758df 100644
---- a/params/protocol_params.go
-+++ b/params/protocol_params.go
-@@ -23,7 +23,7 @@ import (
- )
- 
- const (
--	GasLimitBoundDivisor uint64 = 256                // The bound divisor of the gas limit, used in update calculations.
-+	GasLimitBoundDivisor uint64 = 1024               // The bound divisor of the gas limit, used in update calculations.
- 	MinGasLimit          uint64 = 5000               // Minimum the gas limit may ever be.
- 	MaxGasLimit          uint64 = 0x7fffffffffffffff // Maximum the gas limit (2^63-1).
- 	GenesisGasLimit      uint64 = 4712388            // Gas limit of the Genesis block.
 -- 
 2.41.0
 

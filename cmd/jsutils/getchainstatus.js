@@ -24,6 +24,7 @@ function printUsage() {
     console.log("  GetBlobTxs: get BlobTxs of a block range");
     console.log("  GetFaucetStatus: get faucet status of BSC testnet");
     console.log("  GetKeyParameters: dump some key governance parameter");
+    console.log("  GetMevStatus: get mev blocks of a block range");
     console.log("\nOptions:");
     console.log("  --rpc       specify the url of RPC endpoint");
     console.log("  --startNum  the start block number");
@@ -43,6 +44,7 @@ function printUsage() {
     console.log("  node getchainstatus.js GetFaucetStatus --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010")
     console.log("  node getchainstatus.js GetKeyParameters --rpc https://bsc-testnet-dataseed.bnbchain.org") // default: latest block
     console.log("  node getchainstatus.js GetEip7623 --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010")
+    console.log("  node getchainstatus.js GetMevStatus --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010")
 }
 
 program.usage = printUsage;
@@ -162,7 +164,38 @@ const validatorMap = new Map([
     ["0xfA4d592F9B152f7a10B5DE9bE24C27a74BCE431A","MyTWFMM"]
 ]);
 
-
+const builderMap = new Map([
+    // BSC mainnet
+    //     blockrazor
+    ["0x5532CdB3c0c4278f9848fc4560b495b70bA67455", "blockrazor dublin"],
+    ["0xBA4233f6e478DB76698b0A5000972Af0196b7bE1", "blockrazor frankfurt"],
+    ["0x539E24781f616F0d912B60813aB75B7b80b75C53", "blockrazor nyc"],
+    ["0x49D91b1Ab0CC6A1591c2e5863E602d7159d36149", "blockrazor relay"],
+    ["0x50061047B9c7150f0Dc105f79588D1B07D2be250", "blockrazor tokyo"],
+    ["0x0557E8CB169F90F6eF421a54e29d7dd0629Ca597", "blockrazor virginia"],
+    ["0x488e37fcB2024A5B2F4342c7dE636f0825dE6448", "blockrazor x"],
+    //     puissant
+    ["0x48a5Ed9abC1a8FBe86ceC4900483f43a7f2dBB48", "puissant ap"],
+    ["0x487e5Dfe70119C1b320B8219B190a6fa95a5BB48", "puissant eu"],
+    ["0x48FeE1BB3823D72fdF80671ebaD5646Ae397BB48", "puissant us"],
+    ["0x48B4bBEbF0655557A461e91B8905b85864B8BB48", "puissant x"],
+    ["0x4827b423D03a349b7519Dda537e9A28d31ecBB48", "puissant y"],
+    ["0x48B2665E5E9a343409199D70F7495c8aB660BB48", "puissant:z"],
+    //     blockroute
+    ["0xD4376FdC9b49d90e6526dAa929f2766a33BFFD52", "blockroute dublin"],
+    ["0x2873fc7aD9122933BECB384f5856f0E87918388d", "blockroute frankfurt"],
+    ["0x432101856a330aafdeB049dD5fA03a756B3f1c66", "blockroute japan"],
+    ["0x2B217a4158933AAdE6D6494e3791D454B4D13AE7", "blockroute nyc"],
+    ["0x0da52E9673529b6E06F444FbBED2904A37f66415", "blockroute relay"],
+    ["0xE1ec1AeCE7953ecB4539749B9AA2eEF63354860a", "blockroute singapore"],
+    ["0x89434FC3a09e583F2cb4e47A8B8fe58De8BE6a15", "blockroute virginia"],
+    ["0x10353562E662E333C0c2007400284e0e21cF74fF", "blockroute x"],
+    //     txboost
+    ["0x6Dddf681C908705472D09B1D7036B2241B50e5c7", "puissant ap"],
+    ["0x76736159984AE865a9b9Cc0Df61484A49dA68191", "puissant eu"],
+    ["0x5054b21D8baea3d602dca8761B235ee10bc0231E", "puissant us"],
+    // Chapel
+ ]);
 
 // 1.cmd: "GetMaxTxCountInBlockRange", usage:
 // node getchainstatus.js GetMaxTxCountInBlockRange --rpc https://bsc-testnet-dataseed.bnbchain.org \
@@ -347,7 +380,7 @@ async function getPerformanceData()  {
         if (difficulty == 2) {
             inturnBlocks += 1
         }
-        let timestamp = eval(eval(header.timestamp).toString(10))
+        let timestamp = eval(eval(header.milliTimestamp).toString(10))
         if (parliaEnabled) {
             let justifiedNumber = await provider.send("parlia_getJustifiedNumber", [ethers.toQuantity(i)]);
             if (justifiedNumber + 1 == i) {
@@ -363,11 +396,11 @@ async function getPerformanceData()  {
 
     let startHeader = await provider.send("eth_getHeaderByNumber", [
         ethers.toQuantity(program.startNum)]);
-    let startTime = eval(eval(startHeader.timestamp).toString(10))
+    let startTime = eval(eval(startHeader.milliTimestamp).toString(10))
     let endHeader = await provider.send("eth_getHeaderByNumber", [
         ethers.toQuantity(program.endNum)]);
-    let endTime = eval(eval(endHeader.timestamp).toString(10))
-    let timeCost = endTime - startTime
+    let endTime = eval(eval(endHeader.milliTimestamp).toString(10))
+    let timeCost = (endTime - startTime)/1000
     let avgBlockTime = timeCost/blockCount
     let inturnBlocksRatio = inturnBlocks/blockCount
     let justifiedBlocksRatio = justifiedBlocks/blockCount
@@ -550,6 +583,71 @@ async function getEip7623()  {
     console.log(`Script executed in: ${duration} seconds`);
 }
 
+// 10.cmd: "getMevStatus", usage:
+// node getchainstatus.js GetMeVStatus \
+//      --rpc https://bsc-testnet-dataseed.bnbchain.org \
+//      --startNum 40000001  --endNum 40000005
+async function getMevStatus() {
+    let localCount = 0
+    let blockrazorCount = 0
+    let puissantCount = 0
+    let blockrouteCount = 0
+    let txboostCount = 0
+    var startBlock = parseInt(program.startNum)
+    var endBlock = parseInt(program.endNum)
+    if (isNaN(endBlock) || isNaN(startBlock) || startBlock == 0) {
+       console.error("invalid input, --startNum", program.startNum, "--end", program.endNum)
+       return
+    }
+    // if --endNum is not specified, set it to the latest block number.
+    if (endBlock == 0) {
+       endBlock = await provider.getBlockNumber();
+    }
+    if (startBlock > endBlock) {
+       console.error("invalid input, startBlock:", startBlock, " endBlock:", endBlock);
+       return
+    }
+ 
+    for (let i = startBlock; i <= endBlock; i++) {
+       let blockData = await provider.getBlock(i);
+       let miner = validatorMap.get(blockData.miner)
+       const payBidTxReverseIdxMax = 3
+       let mevBlock = false
+       for (let idx = 0; idx <= payBidTxReverseIdxMax && blockData.transactions.length - 1 - idx >= 0; idx++) {
+          var txIndex = blockData.transactions.length - 1 - idx
+          let txHash = blockData.transactions[txIndex]
+          let txData = await provider.getTransaction(txHash);
+          if (builderMap.has(txData.to)) {
+             let builder = builderMap.get(txData.to)
+             if (builder.search("blockrazor") != -1) {
+                blockrazorCount++
+             } else if (builder.search("puissant") != -1) {
+                puissantCount++
+             } else if (builder.search("blockroute") != -1) {
+                blockrouteCount++
+             } else if (builder.search("txboost") != -1) {
+                txboostCount++
+             }
+             mevBlock = true
+             console.log("blockNum:", i, "  miner:", miner, "   builder:("+builderMap.get(txData.to)+")", txData.to);
+             break
+          }
+       }
+       if (!mevBlock) {
+          localCount++
+          console.log("blockNum:", i, " miner:", miner, "   builder:local");
+       }
+    }
+    console.log("Get Mev Status between [", program.startNum, ",", program.endNum, "]");
+    let total = program.endNum - program.startNum + 1
+    console.log("total =", total)
+    console.log("local =", localCount, "    ratio =", (localCount / total).toFixed(2))
+    console.log("blockrazor =", blockrazorCount, "  ratio =", (blockrazorCount / total).toFixed(2))
+    console.log("puissant =", puissantCount, "  ratio =", (puissantCount / total).toFixed(2))
+    console.log("blockroute =", blockrouteCount, "    ratio =", (blockrouteCount / total).toFixed(2))
+    console.log("txboost =", txboostCount, "   ratio =", (txboostCount / total).toFixed(2))
+ };
+
 const main = async () => {
     if (process.argv.length <= 2) {
         console.error('invalid process.argv.length', process.argv.length);
@@ -579,6 +677,8 @@ const main = async () => {
         await getKeyParameters()
     } else if (cmd === "GetEip7623"){
         await getEip7623()
+    } else if (cmd === "GetMevStatus"){
+        await getMevStatus()
     } else {
         console.log("unsupported cmd", cmd);
         printUsage()

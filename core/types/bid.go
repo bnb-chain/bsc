@@ -64,7 +64,7 @@ func (b *BidArgs) ToBid(builder common.Address, signer Signer) (*Bid, error) {
 		ParentHash:   b.RawBid.ParentHash,
 		Txs:          txs,
 		UnRevertible: unRevertibleHashes,
-		GasUsed:      b.RawBid.GasUsed + b.PayBidTxGasUsed,
+		GasUsed:      b.RawBid.GasUsed,
 		GasFee:       b.RawBid.GasFee,
 		BuilderFee:   b.RawBid.BuilderFee,
 		rawBid:       *b.RawBid,
@@ -172,8 +172,17 @@ type Bid struct {
 	GasUsed      uint64
 	GasFee       *big.Int
 	BuilderFee   *big.Int
+	committed    bool // whether the bid has been committed to simulate or not
 
 	rawBid RawBid
+}
+
+func (b *Bid) Commit() {
+	b.committed = true
+}
+
+func (b *Bid) IsCommitted() bool {
+	return b.committed
 }
 
 // Hash returns the bid hash.
@@ -192,6 +201,7 @@ type BidIssue struct {
 type MevParams struct {
 	ValidatorCommission   uint64 // 100 means 1%
 	BidSimulationLeftOver time.Duration
+	NoInterruptLeftOver   time.Duration
 	GasCeil               uint64
 	GasPrice              *big.Int // Minimum avg gas price for bid block
 	BuilderFeeCeil        *big.Int

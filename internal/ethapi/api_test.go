@@ -3187,6 +3187,9 @@ func TestRPCGetBlockOrHeader(t *testing.T) {
 			t.Errorf("test %d: want no error, have %v", i, err)
 			continue
 		}
+		if result != nil {
+			delete(result, "milliTimestamp")
+		}
 
 		testRPCResponseWithFile(t, i, result, rpc, tt.file)
 	}

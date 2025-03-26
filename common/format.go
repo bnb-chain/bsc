@@ -80,3 +80,13 @@ func (t PrettyAge) String() string {
 	}
 	return result
 }
+
+func FormatMilliTime(n int64) string {
+	if n < 0 {
+		return "invalid"
+	}
+	if n == 0 {
+		return ""
+	}
+	return time.UnixMilli(n).Format("2006-01-02 15:04:05.000")
+}

@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/bidutil"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/txpool"
@@ -111,8 +112,9 @@ type bidSimulator struct {
 	pendingMu sync.RWMutex
 	pending   map[uint64]map[common.Address]map[common.Hash]struct{} // blockNumber -> builder -> bidHash -> struct{}
 
-	bestBidMu sync.RWMutex
-	bestBid   map[common.Hash]*BidRuntime // prevBlockHash -> bidRuntime
+	bestBidMu    sync.RWMutex
+	bestBid      map[common.Hash]*BidRuntime // prevBlockHash -> bidRuntime
+	bestBidToRun map[common.Hash]*types.Bid  // prevBlockHash -> *types.Bid
 
 	simBidMu      sync.RWMutex
 	simulatingBid map[common.Hash]*BidRuntime // prevBlockHash -> bidRuntime, in the process of simulation
@@ -143,6 +145,7 @@ func newBidSimulator(
 		newBidCh:      make(chan newBidPackage, 100),
 		pending:       make(map[uint64]map[common.Address]map[common.Hash]struct{}),
 		bestBid:       make(map[common.Hash]*BidRuntime),
+		bestBidToRun:  make(map[common.Hash]*types.Bid),
 		simulatingBid: make(map[common.Hash]*BidRuntime),
 	}
 
@@ -255,6 +258,7 @@ func (b *bidSimulator) ExistBuilder(builder common.Address) bool {
 	return ok
 }
 
+// best bid here is based on packedBlockReward after the bid is simulated
 func (b *bidSimulator) SetBestBid(prevBlockHash common.Hash, bid *BidRuntime) {
 	b.bestBidMu.Lock()
 	defer b.bestBidMu.Unlock()
@@ -273,6 +277,34 @@ func (b *bidSimulator) GetBestBid(prevBlockHash common.Hash) *BidRuntime {
 	defer b.bestBidMu.RUnlock()
 
 	return b.bestBid[prevBlockHash]
+}
+
+// best bid to run is based on bid's expectedBlockReward before the bid is simulated
+func (b *bidSimulator) SetBestBidToRun(prevBlockHash common.Hash, bid *types.Bid) {
+	b.bestBidMu.Lock()
+	defer b.bestBidMu.Unlock()
+
+	b.bestBidToRun[prevBlockHash] = bid
+}
+
+// in case the bid is invalid(invalid GasUsed,Reward,GasPrice...), remove it.
+func (b *bidSimulator) DelBestBidToRun(prevBlockHash common.Hash, delBid *types.Bid) {
+	b.bestBidMu.Lock()
+	defer b.bestBidMu.Unlock()
+	cur := b.bestBidToRun[prevBlockHash]
+	if cur == nil || delBid == nil {
+		return
+	}
+	if cur.Hash() == delBid.Hash() {
+		delete(b.bestBidToRun, prevBlockHash)
+	}
+}
+
+func (b *bidSimulator) GetBestBidToRun(prevBlockHash common.Hash) *types.Bid {
+	b.bestBidMu.RLock()
+	defer b.bestBidMu.RUnlock()
+
+	return b.bestBidToRun[prevBlockHash]
 }
 
 func (b *bidSimulator) SetSimulatingBid(prevBlockHash common.Hash, bid *BidRuntime) {
@@ -318,6 +350,15 @@ func (b *bidSimulator) mainLoop() {
 	}
 }
 
+func (b *bidSimulator) canBeInterrupted(targetTime uint64) bool {
+	if targetTime == 0 {
+		// invalid targetTime, disable the interrupt check
+		return true
+	}
+	left := time.Until(time.UnixMilli(int64(targetTime)))
+	return left >= b.config.NoInterruptLeftOver
+}
+
 func (b *bidSimulator) newBidLoop() {
 	var (
 		interruptCh chan int32
@@ -331,6 +372,7 @@ func (b *bidSimulator) newBidLoop() {
 			close(interruptCh)
 		}
 		interruptCh = make(chan int32, 1)
+		bidRuntime.bid.Commit()
 		select {
 		case b.simBidCh <- &simBidReq{interruptCh: interruptCh, bid: bidRuntime}:
 			log.Debug("BidSimulator: commit", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
@@ -359,27 +401,61 @@ func (b *bidSimulator) newBidLoop() {
 			}
 
 			var replyErr error
-			// simulatingBid will be nil if there is no bid in simulation, compare with the bestBid instead
-			if simulatingBid := b.GetSimulatingBid(newBid.bid.ParentHash); simulatingBid != nil {
-				// simulatingBid always better than bestBid, so only compare with simulatingBid if a simulatingBid exists
-				if bidRuntime.isExpectedBetterThan(simulatingBid) {
-					commit(commitInterruptBetterBid, bidRuntime)
+			toCommit := true
+			bestBidToRun := b.GetBestBidToRun(newBid.bid.ParentHash)
+			if bestBidToRun != nil {
+				bestBidRuntime, _ := newBidRuntime(bestBidToRun, b.config.ValidatorCommission)
+				if bidRuntime.isExpectedBetterThan(bestBidRuntime) {
+					// new bid has better expectedBlockReward, use bidRuntime
+					log.Debug("new bid has better expectedBlockReward",
+						"builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().TerminalString())
+				} else if !bestBidToRun.IsCommitted() {
+					// bestBidToRun is not committed yet, this newBid will trigger bestBidToRun to commit
+					bidRuntime = bestBidRuntime
+					replyErr = genDiscardedReply(bidRuntime)
+					log.Debug("discard new bid and to simulate the non-committed bestBidToRun",
+						"builder", bestBidToRun.Builder, "bidHash", bestBidToRun.Hash().TerminalString())
 				} else {
-					replyErr = genDiscardedReply(simulatingBid)
+					// new bid will be discarded, as it is useless now.
+					toCommit = false
+					replyErr = genDiscardedReply(bestBidRuntime)
+					log.Debug("new bid will be discarded", "builder", bestBidToRun.Builder,
+						"bidHash", bestBidToRun.Hash().TerminalString())
 				}
-			} else {
-				// bestBid is nil means the bid is the first bid, otherwise the bid should compare with the bestBid
-				if bestBid := b.GetBestBid(newBid.bid.ParentHash); bestBid == nil ||
-					bidRuntime.isExpectedBetterThan(bestBid) {
-					commit(commitInterruptBetterBid, bidRuntime)
+			}
+
+			if toCommit {
+				b.SetBestBidToRun(bidRuntime.bid.ParentHash, bidRuntime.bid)
+				// try to commit the new bid
+				// but if there is a simulating bid and with a short time left, don't interrupt it
+				if simulatingBid := b.GetSimulatingBid(newBid.bid.ParentHash); simulatingBid != nil {
+					parentHeader := b.chain.GetHeaderByHash(newBid.bid.ParentHash)
+					blockInterval := b.getBlockInterval(parentHeader)
+					blockTime := parentHeader.MilliTimestamp() + blockInterval
+					left := time.Until(time.UnixMilli(int64(blockTime)))
+					if b.canBeInterrupted(blockTime) {
+						log.Debug("simulate in progress, interrupt",
+							"blockTime", blockTime, "left", left.Milliseconds(),
+							"NoInterruptLeftOver", b.config.NoInterruptLeftOver.Milliseconds(),
+							"builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().TerminalString())
+						commit(commitInterruptBetterBid, bidRuntime)
+					} else {
+						log.Debug("simulate in progress, no interrupt",
+							"blockTime", blockTime, "left", left.Milliseconds(),
+							"NoInterruptLeftOver", b.config.NoInterruptLeftOver.Milliseconds(),
+							"builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().TerminalString())
+						if newBid.bid.Hash() == bidRuntime.bid.Hash() {
+							replyErr = fmt.Errorf("bid is pending as no enough time to interrupt, left:%d, NoInterruptLeftOver:%d",
+								left.Milliseconds(), b.config.NoInterruptLeftOver.Milliseconds())
+						}
+					}
 				} else {
-					replyErr = genDiscardedReply(bestBid)
+					commit(commitInterruptBetterBid, bidRuntime)
 				}
 			}
 
 			if newBid.feedback != nil {
 				newBid.feedback <- replyErr
-
 				log.Info("[BID ARRIVED]",
 					"block", newBid.bid.BlockNumber,
 					"builder", newBid.bid.Builder,
@@ -397,9 +473,24 @@ func (b *bidSimulator) newBidLoop() {
 	}
 }
 
+// get block interval for current block by using parent header
+func (b *bidSimulator) getBlockInterval(parentHeader *types.Header) uint64 {
+	if parentHeader == nil {
+		return 1500 // lorentzBlockInterval
+	}
+	parlia, _ := b.engine.(*parlia.Parlia)
+	// only `Number` and `ParentHash` are used when `BlockInterval`
+	tmpHeader := &types.Header{ParentHash: parentHeader.Hash(), Number: new(big.Int).Add(parentHeader.Number, common.Big1)}
+	blockInterval, err := parlia.BlockInterval(b.chain, tmpHeader)
+	if err != nil {
+		log.Debug("failed to get BlockInterval when bidBetterBefore")
+	}
+	return blockInterval
+}
+
 func (b *bidSimulator) bidBetterBefore(parentHash common.Hash) time.Time {
 	parentHeader := b.chain.GetHeaderByHash(parentHash)
-	return bidutil.BidBetterBefore(parentHeader, b.chainConfig.Parlia.Period, b.delayLeftOver, b.config.BidSimulationLeftOver)
+	return bidutil.BidBetterBefore(parentHeader, b.getBlockInterval(parentHeader), b.delayLeftOver, b.config.BidSimulationLeftOver)
 }
 
 func (b *bidSimulator) clearLoop() {
@@ -417,6 +508,12 @@ func (b *bidSimulator) clearLoop() {
 			if v.bid.BlockNumber <= blockNumber-b.chain.TriesInMemory() {
 				v.env.discard()
 				delete(b.bestBid, k)
+			}
+		}
+		delete(b.bestBidToRun, parentHash)
+		for k, v := range b.bestBidToRun {
+			if v.BlockNumber <= blockNumber-b.chain.TriesInMemory() {
+				delete(b.bestBidToRun, k)
 			}
 		}
 		b.bestBidMu.Unlock()
@@ -519,6 +616,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 	// ensure simulation exited then start next simulation
 	b.SetSimulatingBid(parentHash, bidRuntime)
+	bestBidOnStart := b.GetBestBid(parentHash)
 
 	defer func(simStart time.Time) {
 		logCtx := []any{
@@ -526,6 +624,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			"parentHash", parentHash,
 			"builder", builder,
 			"gasUsed", bidRuntime.bid.GasUsed,
+			"simElapsed", time.Since(simStart),
 		}
 
 		if bidRuntime.env != nil {
@@ -557,9 +656,12 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 			select {
 			case b.newBidCh <- newBidPackage{bid: bidRuntime.bid}:
-				log.Debug("BidSimulator: recommit", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
+				log.Debug("BidSimulator: recommit", "builder", bidRuntime.bid.Builder,
+					"bidHash", bidRuntime.bid.Hash().Hex(), "simElapsed", bidRuntime.duration)
 			default:
 			}
+		} else {
+			b.DelBestBidToRun(parentHash, bidRuntime.bid)
 		}
 	}(startTS)
 
@@ -589,6 +691,17 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		bidRuntime.env.gasPool.SubGas(params.PayBidTxGasLimit)
 	}
 
+	// error log:
+	// 	simulation failed blockNumber=47630147 parentHash=0x2476bcc93db4c924a2c8079c6d5d783441a72d6ff70c5850b1afd778102e175e builder=0x48a5Ed9abC1a8FBe86ceC4900483f43a7f2dBB48
+	// 	gasUsed=136807406 gasLimit=137816878 err="gas used exceeds gas limit"
+	// error tracing:
+	// 	left: b.RawBid.GasUsed + b.PayBidTxGasUsed => (136782406 + 25000 = 136807406)
+	// 	right: headerGasLimit - b.PayBidTxGasLimit - systemGasReserved => (137816878 - 25000 - 1000000 = 136791878)
+	// 	cause: 136807406 > 136791878 => true
+	// error reason:
+	//	left should not be added with PayBidTxGasUsed, Or right should be not be subtracted with PayBidTxGasLimit
+	// error fix:
+	//	136782406 > 136791878 => false, Or 136807406 > 136816878 => false
 	if bidRuntime.bid.GasUsed > bidRuntime.env.gasPool.Gas() {
 		err = errors.New("gas used exceeds gas limit")
 		return
@@ -670,14 +783,17 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 	// if enable greedy merge, fill bid env with transactions from mempool
 	if b.config.GreedyMergeTx {
-		delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
+		endingBidsExtra := 20 * time.Millisecond // Add a buffer to ensure ending bids before `delayLeftOver`
+		minTimeLeftForEndingBids := b.delayLeftOver + endingBidsExtra
+		delay := b.engine.Delay(b.chain, bidRuntime.env.header, &minTimeLeftForEndingBids)
 		if delay != nil && *delay > 0 {
 			bidTxsSet := mapset.NewThreadUnsafeSetWithSize[common.Hash](len(bidRuntime.bid.Txs))
 			for _, tx := range bidRuntime.bid.Txs {
 				bidTxsSet.Add(tx.Hash())
 			}
-
-			fillErr := b.bidWorker.fillTransactions(interruptCh, bidRuntime.env, nil, bidTxsSet)
+			stopTimer := time.NewTimer(*delay)
+			defer stopTimer.Stop()
+			fillErr := b.bidWorker.fillTransactions(interruptCh, bidRuntime.env, stopTimer, bidTxsSet)
 			log.Trace("BidSimulator: greedy merge stopped", "block", bidRuntime.env.header.Number,
 				"builder", bidRuntime.bid.Builder, "tx count", bidRuntime.env.tcount-bidTxLen+1, "err", fillErr)
 
@@ -706,7 +822,12 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 	bestBid := b.GetBestBid(parentHash)
 	if bestBid == nil {
-		log.Info("[BID RESULT]", "win", "true[first]", "builder", bidRuntime.bid.Builder, "hash", bidRuntime.bid.Hash().TerminalString())
+		winResult := "true[first]"
+		if bestBidOnStart != nil {
+			// new block was imported, so the bestBidOnStart was cleared, the bid will be stale and useless.
+			winResult = "false[stale]"
+		}
+		log.Info("[BID RESULT]", "win", winResult, "builder", bidRuntime.bid.Builder, "hash", bidRuntime.bid.Hash().TerminalString())
 		b.SetBestBid(bidRuntime.bid.ParentHash, bidRuntime)
 		success = true
 		return
@@ -844,7 +965,7 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 		// isn't really a better place right now. The blob gas limit is checked at block validation time
 		// and not during execution. This means core.ApplyTransaction will not return an error if the
 		// tx has too many blobs. So we have to explicitly check it here.
-		if (env.blobs + len(sc.Blobs)) > params.MaxBlobsPerBlockForBSC {
+		if (env.blobs + len(sc.Blobs)) > eip4844.MaxBlobsPerBlock(chainConfig, r.env.header.Time) {
 			return errors.New("max data blobs reached")
 		}
 	}

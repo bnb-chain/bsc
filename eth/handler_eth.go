@@ -104,6 +104,16 @@ func (h *ethHandler) handleBlockAnnounces(peer *eth.Peer, hashes []common.Hash, 
 	for i := 0; i < len(unknownHashes); i++ {
 		h.blockFetcher.Notify(peer.ID(), unknownHashes[i], unknownNumbers[i], time.Now(), peer.RequestOneHeader, peer.RequestBodies)
 	}
+	for _, hash := range hashes {
+		stats := h.chain.GetBlockStats(hash)
+		if stats.RecvNewBlockHashTime.Load() == 0 {
+			stats.RecvNewBlockHashTime.Store(time.Now().UnixMilli())
+			addr := peer.RemoteAddr()
+			if addr != nil {
+				stats.RecvNewBlockHashFrom.Store(addr.String())
+			}
+		}
+	}
 	return nil
 }
 
@@ -119,6 +129,14 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPa
 
 	// Schedule the block for import
 	h.blockFetcher.Enqueue(peer.ID(), block)
+	stats := h.chain.GetBlockStats(block.Hash())
+	if stats.RecvNewBlockTime.Load() == 0 {
+		stats.RecvNewBlockTime.Store(time.Now().UnixMilli())
+		addr := peer.RemoteAddr()
+		if addr != nil {
+			stats.RecvNewBlockFrom.Store(addr.String())
+		}
+	}
 
 	// Assuming the block is importable by the peer, but possibly not yet done so,
 	// calculate the head hash and TD that the peer truly must have.

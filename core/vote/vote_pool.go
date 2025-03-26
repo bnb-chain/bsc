@@ -3,6 +3,7 @@ package vote
 import (
 	"container/heap"
 	"sync"
+	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
 
@@ -25,6 +26,8 @@ const (
 	upperLimitOfVoteBlockNumber = 11 // refer to fetcher.maxUncleDist
 
 	highestVerifiedBlockChanSize = 10 // highestVerifiedBlockChanSize is the size of channel listening to HighestVerifiedBlockEvent.
+
+	defaultMajorityThreshold = 14 // this is an inaccurate value, mainly used for metric acquisition, ref parlia.verifyVoteAttestation
 )
 
 var (
@@ -39,7 +42,21 @@ var (
 
 type VoteBox struct {
 	blockNumber  uint64
+	blockHash    common.Hash
 	voteMessages []*types.VoteEnvelope
+}
+
+func (v *VoteBox) trySetRecvVoteTime(chain *core.BlockChain) {
+	stats := chain.GetBlockStats(v.blockHash)
+	if len(v.voteMessages) == 1 {
+		stats.FirstRecvVoteTime.Store(time.Now().UnixMilli())
+	}
+	if stats.RecvMajorityVoteTime.Load() > 0 {
+		return
+	}
+	if len(v.voteMessages) >= defaultMajorityThreshold {
+		stats.RecvMajorityVoteTime.Store(time.Now().UnixMilli())
+	}
 }
 
 type VotePool struct {
@@ -184,6 +201,7 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 		heap.Push(votesPq, voteData)
 		voteBox := &VoteBox{
 			blockNumber:  targetNumber,
+			blockHash:    targetHash,
 			voteMessages: make([]*types.VoteEnvelope, 0, maxFutureVoteAmountPerBlock),
 		}
 		m[targetHash] = voteBox
@@ -197,6 +215,7 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 
 	// Put into corresponding votes map.
 	m[targetHash].voteMessages = append(m[targetHash].voteMessages, vote)
+	m[targetHash].trySetRecvVoteTime(pool.chain)
 	// Add into received vote to avoid future duplicated vote comes.
 	pool.receivedVotes.Add(voteHash)
 	log.Debug("VoteHash put into votepool is:", "voteHash", voteHash)
@@ -269,7 +288,11 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 	// may len(curVotes[blockHash].voteMessages) extra maxCurVoteAmountPerBlock, but it doesn't matter
 	if _, ok := curVotes[blockHash]; !ok {
 		heap.Push(curPq, voteData)
-		curVotes[blockHash] = &VoteBox{voteBox.blockNumber, validVotes}
+		curVotes[blockHash] = &VoteBox{
+			blockNumber:  voteBox.blockNumber,
+			blockHash:    voteBox.blockHash,
+			voteMessages: validVotes,
+		}
 		localCurVotesPqGauge.Update(int64(curPq.Len()))
 	} else {
 		curVotes[blockHash].voteMessages = append(curVotes[blockHash].voteMessages, validVotes...)
@@ -338,7 +361,7 @@ func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m
 
 	// Check duplicate voteMessage firstly.
 	if pool.receivedVotes.Contains(voteHash) {
-		log.Debug("Vote pool already contained the same vote", "voteHash", voteHash)
+		log.Trace("Vote pool already contained the same vote", "voteHash", voteHash)
 		return false
 	}
 

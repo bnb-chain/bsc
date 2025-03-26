@@ -1,4 +1,37 @@
 # Changelog
+## v1.5.9
+### FEATURE
+[\#2932](https://github.com/bnb-chain/bsc/pull/2932) BEP-520: Short Block Interval Phase One: 1.5 seconds
+[\#2991](https://github.com/bnb-chain/bsc/pull/2991) config: update BSC Testnet hardfork time: Lorentz
+
+### BUGFIX
+[\#2990](https://github.com/bnb-chain/bsc/pull/2990) core/state: fix concurrent map read and write for stateUpdate.accounts
+
+### IMPROVEMENT
+[\#2933](https://github.com/bnb-chain/bsc/pull/2933) metrics: add more peer, block/vote metrics
+[\#2938](https://github.com/bnb-chain/bsc/pull/2938) cmd/geth: add example for geth bls account generate-proof
+[\#2949](https://github.com/bnb-chain/bsc/pull/2949) metrics: add more block/vote stats;
+[\#2948](https://github.com/bnb-chain/bsc/pull/2948) go.mod: update crypto to solve CVE-2025-22869
+[\#2960](https://github.com/bnb-chain/bsc/pull/2960) pool: debug log instead of warn
+[\#2961](https://github.com/bnb-chain/bsc/pull/2961) metric: add more block monitor metrics;
+[\#2992](https://github.com/bnb-chain/bsc/pull/2992) core/systemcontracts: update url for lorentz hardfork
+[\#2993](https://github.com/bnb-chain/bsc/pull/2993) cmd/jsutils: add tool GetMevStatus
+
+## v1.5.8
+### FEATURE
+* [\#2955](https://github.com/bnb-chain/bsc/pull/2955) pbs: enable GreedyMergeTx by default
+
+### BUGFIX
+* [\#2967](https://github.com/bnb-chain/bsc/pull/2967) fix: gas compare in bid simulator
+
+### IMPROVEMENT
+* [\#2951](https://github.com/bnb-chain/bsc/pull/2951) bump golang.org/x/net from 0.34.0 to 0.36.0
+* [\#0000](https://github.com/bnb-chain/bsc/pull/0000) golang: upgrade toolchain to v1.23.0 (commit:3be156eec)
+* [\#2957](https://github.com/bnb-chain/bsc/pull/2957) miner: stop GreedyMergeTx before worker picking bids
+* [\#2959](https://github.com/bnb-chain/bsc/pull/2959) pbs: fix a inaccurate bid result log
+* [\#2971](https://github.com/bnb-chain/bsc/pull/2971) mev: no interrupt if it is too later
+* [\#2974](https://github.com/bnb-chain/bsc/pull/2974) miner: add metrics for bid simulation
+
 ## v1.5.7
 v1.5.7 conduct small upstream code merge to follow the latest pectra hard fork and apply some bug fix. There are two PR for the code merge:
 * [\#2897](https://github.com/bnb-chain/bsc/pull/2897) upstream: merge tag 'geth-v1.15.1' into bsc-develop

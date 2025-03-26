@@ -191,10 +191,7 @@ var (
 		PragueTime:          newUint64(1742436600),
 		LorentzTime:         nil,
 
-		Parlia: &ParliaConfig{
-			Period: 3,
-			Epoch:  200,
-		},
+		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfigBSC,
@@ -237,13 +234,9 @@ var (
 		BohrTime:            newUint64(1724116996), // 2024-08-20 01:23:16 AM UTC
 		PascalTime:          newUint64(1740452880), // 2025-02-25 03:08:00 AM UTC
 		PragueTime:          newUint64(1740452880), // 2025-02-25 03:08:00 AM UTC
-		// TODO
-		LorentzTime: nil,
+		LorentzTime:         newUint64(1744097580), // 2025-04-08 07:33:00 AM UTC
 
-		Parlia: &ParliaConfig{
-			Period: 3,
-			Epoch:  200,
-		},
+		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfigBSC,
@@ -290,10 +283,7 @@ var (
 		PragueTime:  nil,
 		LorentzTime: nil,
 
-		Parlia: &ParliaConfig{
-			Period: 3,
-			Epoch:  200,
-		},
+		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfigBSC,
@@ -332,10 +322,7 @@ var (
 		FeynmanFixTime:      newUint64(0),
 		CancunTime:          newUint64(0),
 
-		Parlia: &ParliaConfig{
-			Period: 3,
-			Epoch:  200,
-		},
+		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 		},
@@ -557,8 +544,6 @@ var (
 	}
 
 	DefaultPragueBlobConfigBSC = DefaultCancunBlobConfig
-	// for bsc, only DefaultCancunBlobConfig is used, so we can define MaxBlobsPerBlockForBSC more directly
-	MaxBlobsPerBlockForBSC = DefaultCancunBlobConfig.Max
 )
 
 // NetworkNames are user friendly names to use in the chain spec banner.
@@ -680,8 +665,6 @@ func (c CliqueConfig) String() string {
 
 // ParliaConfig is the consensus engine configs for proof-of-staked-authority based sealing.
 type ParliaConfig struct {
-	Period uint64 `json:"period"` // Number of seconds between blocks to enforce
-	Epoch  uint64 `json:"epoch"`  // Epoch length to update validatorSet
 }
 
 // String implements the stringer interface, returning the consensus engine details.
@@ -1501,6 +1484,8 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 	switch {
 	case c.IsOsaka(london, time):
 		return forks.Osaka
+	case c.IsLorentz(london, time):
+		return forks.Lorentz
 	case c.IsPrague(london, time):
 		return forks.Prague
 	case c.IsCancun(london, time):

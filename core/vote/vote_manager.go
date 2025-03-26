@@ -148,7 +148,12 @@ func (voteManager *VoteManager) loop() {
 
 			curHead := cHead.Header
 			if p, ok := voteManager.engine.(*parlia.Parlia); ok {
-				nextBlockMinedTime := time.Unix(int64((curHead.Time + p.Period())), 0)
+				// Approximately equal to the block interval of next block, except for the switch block.
+				blockInterval, err := p.BlockInterval(voteManager.chain, curHead)
+				if err != nil {
+					log.Debug("failed to get BlockInterval when voting")
+				}
+				nextBlockMinedTime := time.UnixMilli(int64((curHead.MilliTimestamp() + blockInterval)))
 				timeForBroadcast := 50 * time.Millisecond // enough to broadcast a vote
 				if time.Now().Add(timeForBroadcast).After(nextBlockMinedTime) {
 					log.Warn("too late to vote", "Head.Time(Second)", curHead.Time, "Now(Millisecond)", time.Now().UnixMilli())
@@ -198,6 +203,7 @@ func (voteManager *VoteManager) loop() {
 
 				log.Debug("vote manager produced vote", "votedBlockNumber", voteMessage.Data.TargetNumber, "votedBlockHash", voteMessage.Data.TargetHash, "voteMessageHash", voteMessage.Hash())
 				voteManager.pool.PutVote(voteMessage)
+				voteManager.chain.GetBlockStats(curHead.Hash()).SendVoteTime.Store(time.Now().UnixMilli())
 				votesManagerCounter.Inc(1)
 			}
 
