@@ -64,11 +64,11 @@ var (
 	testUserAddress = crypto.PubkeyToAddress(testUserKey.PublicKey)
 
 	// Test transactions
-	pendingTxs []*types.Transaction
-	newTxs     []*types.Transaction
-
-	testConfig = &minerconfig.Config{
-		Recommit: time.Second,
+	pendingTxs   []*types.Transaction
+	newTxs       []*types.Transaction
+	reCommitTime time.Duration = time.Second
+	testConfig                 = &minerconfig.Config{
+		Recommit: &reCommitTime,
 		GasCeil:  params.GenesisGasLimit,
 	}
 )
