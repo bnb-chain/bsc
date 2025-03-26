@@ -41,17 +41,17 @@ var (
 type Config struct {
 	Etherbase             common.Address `toml:",omitempty"` // Public address for block mining rewards
 	ExtraData             hexutil.Bytes  `toml:",omitempty"` // Block extra data set by the miner
-	DelayLeftOver         *time.Duration // Time reserved to finalize a block(calculate root, distribute income...)
+	DelayLeftOver         *time.Duration `toml:",omitempty"` // Time reserved to finalize a block(calculate root, distribute income...)
 	GasFloor              uint64         // Target gas floor for mined blocks. (deprecated)
 	GasCeil               uint64         // Target gas ceiling for mined blocks.
-	GasPrice              *big.Int       // Minimum gas price for mining a transaction
-	Recommit              *time.Duration // The time interval for miner to re-create mining work.
+	GasPrice              *big.Int       `toml:",omitempty"` // Minimum gas price for mining a transaction
+	Recommit              *time.Duration `toml:",omitempty"` // The time interval for miner to re-create mining work.
 	VoteEnable            bool           // Whether to vote when mining
-	MaxWaitProposalInSecs *uint64        // The maximum time to wait for the proposal to be done, it's aimed to prevent validator being slashed when restarting
+	MaxWaitProposalInSecs *uint64        `toml:",omitempty"` // The maximum time to wait for the proposal to be done, it's aimed to prevent validator being slashed when restarting
 
 	DisableVoteAttestation bool // Whether to skip assembling vote attestation
 
-	Mev *MevConfig // Mev configuration
+	Mev *MevConfig `toml:",omitempty"` // Mev configuration
 }
 
 // DefaultConfig contains default settings for miner.
@@ -84,9 +84,9 @@ type MevConfig struct {
 	BuilderFeeCeil        string          // The maximum builder fee of a bid
 	SentryURL             string          // The url of Mev sentry
 	Builders              []BuilderConfig // The list of builders
-	ValidatorCommission   *uint64         // 100 means the validator claims 1% from block reward
-	BidSimulationLeftOver *time.Duration
-	NoInterruptLeftOver   *time.Duration
+	ValidatorCommission   *uint64         `toml:",omitempty"` // 100 means the validator claims 1% from block reward
+	BidSimulationLeftOver *time.Duration  `toml:",omitempty"`
+	NoInterruptLeftOver   *time.Duration  `toml:",omitempty"`
 }
 
 var DefaultMevConfig = MevConfig{

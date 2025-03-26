@@ -290,19 +290,19 @@ func newWorker(config *minerconfig.Config, engine consensus.Engine, eth Backend,
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
 
 	// Sanitize recommit interval if the user-specified one is too short.
-	var recommit time.Duration
-	if worker.config.Recommit != nil {
-		recommit = *worker.config.Recommit
+	recommit := worker.config.Recommit
+	if recommit == nil {
+		recommit = new(time.Duration)
 	}
-	if recommit < minRecommitInterval {
+	if *recommit < minRecommitInterval {
 		log.Warn("Sanitizing miner recommit interval", "provided", recommit, "updated", minRecommitInterval)
-		recommit = minRecommitInterval
+		*recommit = minRecommitInterval
 	}
-	worker.recommit = recommit
+	worker.recommit = *recommit
 
 	worker.wg.Add(4)
 	go worker.mainLoop()
-	go worker.newWorkLoop(recommit)
+	go worker.newWorkLoop(*recommit)
 	go worker.resultLoop()
 	go worker.taskLoop()
 

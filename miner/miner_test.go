@@ -297,10 +297,9 @@ func minerTestGenesisBlock(period uint64, gasLimit uint64, faucet common.Address
 }
 func createMiner(t *testing.T) (*Miner, *event.TypeMux, func(skipMiner bool)) {
 	// Create Ethash config
-	var recommit time.Duration
 	config := minerconfig.Config{
 		Etherbase: common.HexToAddress("123456789"),
-		Recommit:  &recommit,
+		Recommit:  new(time.Duration),
 	}
 	// Create chainConfig
 	chainDB := rawdb.NewMemoryDatabase()
