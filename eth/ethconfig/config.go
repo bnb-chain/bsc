@@ -227,5 +227,4 @@ func ApplyDefaultEthConfig(cfg *Config) {
 	}
 
 	cfg.Miner = cfg.Miner.ApplyDefaultMinerConfig()
-	return
 }
