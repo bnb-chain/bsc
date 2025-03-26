@@ -644,8 +644,8 @@ async function getMevStatus() {
     console.log("local =", localCount, "    ratio =", (localCount / total).toFixed(2))
     console.log("blockrazor =", blockrazorCount, "  ratio =", (blockrazorCount / total).toFixed(2))
     console.log("puissant =", puissantCount, "  ratio =", (puissantCount / total).toFixed(2))
-    console.log("blockroute =", puissantCount, "    ratio =", (blockrouteCount / total).toFixed(2))
-    console.log("txboost =", puissantCount, "   ratio =", (txboostCount / total).toFixed(2))
+    console.log("blockroute =", blockrouteCount, "    ratio =", (blockrouteCount / total).toFixed(2))
+    console.log("txboost =", txboostCount, "   ratio =", (txboostCount / total).toFixed(2))
  };
 
 const main = async () => {
