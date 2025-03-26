@@ -41,7 +41,7 @@ var (
 type Config struct {
 	Etherbase             common.Address `toml:",omitempty"` // Public address for block mining rewards
 	ExtraData             hexutil.Bytes  `toml:",omitempty"` // Block extra data set by the miner
-	DelayLeftOver         *time.Duration `toml:",omitempty"` // Time reserved to finalize a block(calculate root, distribute income...)
+	DelayLeftOver         *time.Duration // Time reserved to finalize a block(calculate root, distribute income...)
 	GasFloor              uint64         // Target gas floor for mined blocks. (deprecated)
 	GasCeil               uint64         // Target gas ceiling for mined blocks.
 	GasPrice              *big.Int       // Minimum gas price for mining a transaction
@@ -101,9 +101,10 @@ var DefaultMevConfig = MevConfig{
 
 func (cfg *Config) ApplyDefaultMinerConfig() *Config {
 	if cfg == nil {
+		// [Eth.Miner] is not specified in config.toml
 		return &DefaultConfig
 	}
-	// `[Eth.Miner]` specified in config file, check the default Miner option
+	// `[Eth.Miner]` is specified in config file, check the default Miner option
 	if cfg.Recommit == nil {
 		cfg.Recommit = &defaultRecommit
 	}
@@ -116,9 +117,11 @@ func (cfg *Config) ApplyDefaultMinerConfig() *Config {
 
 	// check Miner's MEV options
 	if cfg.Mev == nil {
+		// [Eth.Miner.Mev] is not specified in config.toml
 		cfg.Mev = &DefaultMevConfig
 		return cfg
 	}
+	// `[Eth.Miner.Mev]` is specified in config file, check the default value
 	if cfg.Mev.GreedyMergeTx == nil {
 		cfg.Mev.GreedyMergeTx = &defaultGreedyMergeTx
 	}

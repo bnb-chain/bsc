@@ -156,7 +156,7 @@ func loadBaseConfig(ctx *cli.Context) gethConfig {
 			utils.Fatalf("%v", err)
 		}
 		// some default options could be overwritten after `loadConfig()`
-		// apply the default value if the options was not specified in config file.
+		// apply the default value if the options are not specified in config.toml file.
 		ethconfig.ApplyDefaultEthConfig(&cfg.Eth)
 	}
 
