@@ -53,7 +53,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		TriesVerifyMode         core.VerifyMode
 		Preimages               bool
 		FilterLogCacheSize      int
-		Miner                   minerconfig.Config
+		Miner                   *minerconfig.Config
 		TxPool                  legacypool.Config
 		BlobPool                blobpool.Config
 		GPO                     gasprice.Config
@@ -108,7 +108,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.TriesVerifyMode = c.TriesVerifyMode
 	enc.Preimages = c.Preimages
 	enc.FilterLogCacheSize = c.FilterLogCacheSize
-	enc.Miner = *c.Miner
+	enc.Miner = c.Miner
 	enc.TxPool = c.TxPool
 	enc.BlobPool = c.BlobPool
 	enc.GPO = c.GPO
