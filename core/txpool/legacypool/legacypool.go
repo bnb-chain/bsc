@@ -59,6 +59,9 @@ const (
 
 	// txReannoMaxNum is the maximum number of transactions a reannounce action can include.
 	txReannoMaxNum = 1024
+
+	txMaxGapLimit = 32
+	txEvictionAge = 24 * time.Hour
 )
 
 var (
@@ -391,16 +394,25 @@ func (pool *LegacyPool) loop() {
 		// Handle inactive account transaction eviction
 		case <-evict.C:
 			pool.mu.Lock()
-			for addr := range pool.queue {
-				// Any old enough should be removed
-				if time.Since(pool.beats[addr]) > pool.config.Lifetime {
-					list := pool.queue[addr].Flatten()
-					for _, tx := range list {
+
+			now := time.Now()
+			accountLifetime := pool.config.Lifetime
+			txList := make([]*types.Transaction, 0)
+
+			for addr, list := range pool.queue {
+				// Check account-level heartbeat age first
+				accountAgeExceeded := now.Sub(pool.beats[addr]) > accountLifetime
+
+				for _, tx := range list.Flatten() {
+					txAgeExceeded := now.Sub(tx.Time()) > txEvictionAge
+					if accountAgeExceeded || txAgeExceeded {
 						pool.removeTx(tx.Hash(), true, true)
+						txList = append(txList, tx)
+						// queuedEvictionMeter.Mark(1)
 					}
-					queuedEvictionMeter.Mark(int64(len(list)))
 				}
 			}
+			pool.addToOverflowPool(txList)
 			pool.mu.Unlock()
 
 		case <-reannounce.C:
@@ -916,6 +928,21 @@ func (pool *LegacyPool) enqueueTx(hash common.Hash, tx *types.Transaction, addAl
 	if pool.queue[from] == nil {
 		pool.queue[from] = newList(false)
 	}
+
+	nextNonce := pool.pendingNonces.get(from)
+	// Check if this tx creates or adds to a nonce gap
+	isNonceGap := tx.Nonce() > nextNonce
+
+	if isNonceGap {
+		nonceGapTxCount := pool.countNonceGapTxs(from)
+		if nonceGapTxCount >= txMaxGapLimit {
+			pool.addToOverflowPool([]*types.Transaction{tx})
+			// queuedRateLimitMeter.Mark(1)
+			log.Trace("Discarding nonce-gap transaction, per-account gap limit reached", "hash", hash, "from", from)
+			return false, fmt.Errorf("nonce-gap queued transaction limit reached for account %s", from.Hex())
+		}
+	}
+
 	inserted, old := pool.queue[from].Add(tx, pool.config.PriceBump)
 	if !inserted {
 		// An older transaction was better, discard this
@@ -945,6 +972,25 @@ func (pool *LegacyPool) enqueueTx(hash common.Hash, tx *types.Transaction, addAl
 		pool.beats[from] = time.Now()
 	}
 	return old != nil, nil
+}
+
+// countNonceGapTxs returns the number of queued nonce-gap transactions for a given account
+func (pool *LegacyPool) countNonceGapTxs(addr common.Address) int {
+	list, exists := pool.queue[addr]
+	if !exists {
+		return 0
+	}
+
+	nextNonce := pool.pendingNonces.get(addr)
+	gapCount := 0
+
+	for nonce := range list.txs.items {
+		if nonce > nextNonce {
+			gapCount++
+		}
+	}
+
+	return gapCount
 }
 
 // promoteTx adds a transaction to the pending (processable) list of transactions
