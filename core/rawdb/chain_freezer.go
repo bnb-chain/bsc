@@ -152,10 +152,7 @@ func (f *chainFreezer) freezeThreshold(db ethdb.Reader) (uint64, error) {
 	if final == 0 && headLimit == 0 {
 		return 0, errors.New("freezing threshold is not available")
 	}
-	if final > headLimit {
-		return final, nil
-	}
-	return headLimit, nil
+	return max(final, headLimit), nil
 }
 
 // freeze is a background thread that periodically checks the blockchain for any
