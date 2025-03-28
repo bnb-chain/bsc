@@ -683,7 +683,7 @@ async function getMevStatus() {
                 console.log(
                     `blockNum: ${blockData.number.toString().padStart(8)}      ` +
                     `miner: ${miner.padEnd(maxMinerLength)}        ` +
-                    `builder:( ${builder.padEnd(maxBuilderLength)} ) ${txData.to}`
+                    `builder: (${builder.padEnd(maxBuilderLength)}) ${txData.to}`
                 );
                 break;
             }
@@ -694,7 +694,7 @@ async function getMevStatus() {
             console.log(
                 `blockNum: ${blockData.number.toString().padStart(8)}      ` +
                 `miner: ${miner.padEnd(maxMinerLength)}        ` +
-                `builder:local`
+                `builder: local`
             );
         }
     }
