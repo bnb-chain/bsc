@@ -612,68 +612,128 @@ async function getEip7623() {
 }
 
 // 10.cmd: "getMevStatus", usage:
-// node getchainstatus.js GetMeVStatus \
+// node getchainstatus.js GetMevStatus \
 //      --rpc https://bsc-testnet-dataseed.bnbchain.org \
-//      --startNum 40000001  --endNum 40000005
+//      --startNum(optional): default to last 100 blocks, the start block number to analyze
+//      --endNum(optional): default to latest block, the end block number to analyze
+// 
+// Description:
+// Analyzes MEV (Maximal Extractable Value) blocks in a given range and displays:
+// 1. Block-by-block information including:
+//    - Block number
+//    - Miner name (from validator set)
+//    - Builder information (if MEV block) or "local" (if non-MEV block)
+// 2. Statistics summary including:
+//    - Block range analyzed
+//    - Total number of blocks
+//    - Distribution of blocks by builder type (local, blockrazor, puissant, blockroute, txboost)
+//    - Percentage of each builder type
+//
+// Example:
+// # Analyze last 100 blocks (default)
+// node getchainstatus.js GetMevStatus --rpc https://bsc-testnet-dataseed.bnbchain.org
+//
+// # Analyze specific range
+// node getchainstatus.js GetMevStatus --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001 --endNum 40000005
+//
+// # Analyze from specific block to latest
+// node getchainstatus.js GetMevStatus --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001
 async function getMevStatus() {
-    let localCount = 0;
-    let blockrazorCount = 0;
-    let puissantCount = 0;
-    let blockrouteCount = 0;
-    let txboostCount = 0;
-    var startBlock = parseInt(program.startNum);
-    var endBlock = parseInt(program.endNum);
-    if (isNaN(endBlock) || isNaN(startBlock) || startBlock == 0) {
-        console.error("invalid input, --startNum", program.startNum, "--end", program.endNum);
-        return;
+    let counts = {
+        local: 0,
+        blockrazor: 0,
+        puissant: 0,
+        blockroute: 0,
+        txboost: 0,
+    };
+
+    // Get the latest block number
+    const latestBlock = await provider.getBlockNumber();
+    
+    // If startNum is not specified or is 0, use last 100 blocks
+    let startBlock = parseInt(program.startNum, 10);
+    if (isNaN(startBlock) || startBlock === 0) {
+        startBlock = Math.max(1, latestBlock - 99); // Ensure we don't go below block 1
     }
-    // if --endNum is not specified, set it to the latest block number.
-    if (endBlock == 0) {
-        endBlock = await provider.getBlockNumber();
+
+    // If endNum is not specified or is 0, use the latest block number
+    let endBlock = parseInt(program.endNum, 10);
+    if (isNaN(endBlock) || endBlock === 0) {
+        endBlock = latestBlock;
     }
+
     if (startBlock > endBlock) {
-        console.error("invalid input, startBlock:", startBlock, " endBlock:", endBlock);
+        console.error("Invalid input, startBlock:", startBlock, " endBlock:", endBlock);
         return;
     }
 
+    const blockPromises = [];
     for (let i = startBlock; i <= endBlock; i++) {
-        let blockData = await provider.getBlock(i);
-        let miner = validatorMap.get(blockData.miner);
-        const payBidTxReverseIdxMax = 3;
+        blockPromises.push(provider.getBlock(i));
+    }
+
+    const blocks = await Promise.all(blockPromises);
+
+    // Calculate max lengths for alignment with default values
+    let maxMinerLength = 10; // Default length
+    let maxBuilderLength = 20; // Default length
+
+    if (validatorMap.size > 0) {
+        const minerLengths = Array.from(validatorMap.values()).map(m => m.length);
+        maxMinerLength = Math.max(...minerLengths);
+    }
+
+    if (builderMap.size > 0) {
+        const builderLengths = Array.from(builderMap.values()).map(b => b.length);
+        maxBuilderLength = Math.max(...builderLengths);
+    }
+
+    for (const blockData of blocks) {
+        const miner = validatorMap.get(blockData.miner) || "Unknown";
+        const transactions = blockData.transactions.slice(-4); // Last 4 transactions
+        const txPromises = transactions.map(txHash => provider.getTransaction(txHash));
+
+        const txResults = await Promise.all(txPromises);
         let mevBlock = false;
-        for (let idx = 0; idx <= payBidTxReverseIdxMax && blockData.transactions.length - 1 - idx >= 0; idx++) {
-            var txIndex = blockData.transactions.length - 1 - idx;
-            let txHash = blockData.transactions[txIndex];
-            let txData = await provider.getTransaction(txHash);
+
+        for (const txData of txResults) {
             if (builderMap.has(txData.to)) {
-                let builder = builderMap.get(txData.to);
-                if (builder.search("blockrazor") != -1) {
-                    blockrazorCount++;
-                } else if (builder.search("puissant") != -1) {
-                    puissantCount++;
-                } else if (builder.search("blockroute") != -1) {
-                    blockrouteCount++;
-                } else if (builder.search("txboost") != -1) {
-                    txboostCount++;
+                const builder = builderMap.get(txData.to);
+                const builderKey = Object.keys(counts).find(key => builder.includes(key));
+
+                if (builderKey) {
+                    counts[builderKey]++;
                 }
+
                 mevBlock = true;
-                console.log("blockNum:", i, "  miner:", miner, "   builder:(" + builderMap.get(txData.to) + ")", txData.to);
+                console.log(
+                    `blockNum: ${blockData.number.toString().padStart(8)}      ` +
+                    `miner: ${miner.padEnd(maxMinerLength)}        ` +
+                    `builder: (${builder.padEnd(maxBuilderLength)}) ${txData.to}`
+                );
                 break;
             }
         }
+
         if (!mevBlock) {
-            localCount++;
-            console.log("blockNum:", i, " miner:", miner, "   builder:local");
+            counts.local++;
+            console.log(
+                `blockNum: ${blockData.number.toString().padStart(8)}      ` +
+                `miner: ${miner.padEnd(maxMinerLength)}        ` +
+                `builder: local`
+            );
         }
     }
-    console.log("Get Mev Status between [", program.startNum, ",", program.endNum, "]");
-    let total = program.endNum - program.startNum + 1;
-    console.log("total =", total);
-    console.log("local =", localCount, "    ratio =", (localCount / total).toFixed(2));
-    console.log("blockrazor =", blockrazorCount, "  ratio =", (blockrazorCount / total).toFixed(2));
-    console.log("puissant =", puissantCount, "  ratio =", (puissantCount / total).toFixed(2));
-    console.log("blockroute =", blockrouteCount, "    ratio =", (blockrouteCount / total).toFixed(2));
-    console.log("txboost =", txboostCount, "   ratio =", (txboostCount / total).toFixed(2));
+
+    const total = endBlock - startBlock + 1;
+    console.log("\nMEV Statistics:");
+    console.log(`Range: [${startBlock}, ${endBlock}]`);
+    console.log(`Total Blocks: ${total}`);
+    console.log("\nBuilder Distribution:");
+    Object.entries(counts).forEach(([key, value]) => {
+        const ratio = (value *100 / total).toFixed(2);
+        console.log(`${key.padEnd(10)}: ${value.toString().padStart(3)} blocks (${ratio}%)`);
+    });
 }
 
 const main = async () => {
