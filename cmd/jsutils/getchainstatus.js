@@ -612,9 +612,32 @@ async function getEip7623() {
 }
 
 // 10.cmd: "getMevStatus", usage:
-// node getchainstatus.js GetMeVStatus \
+// node getchainstatus.js GetMevStatus \
 //      --rpc https://bsc-testnet-dataseed.bnbchain.org \
-//      --startNum 40000001  --endNum 40000005
+//      --startNum(optional): default to last 100 blocks, the start block number to analyze
+//      --endNum(optional): default to latest block, the end block number to analyze
+// 
+// Description:
+// Analyzes MEV (Maximal Extractable Value) blocks in a given range and displays:
+// 1. Block-by-block information including:
+//    - Block number
+//    - Miner name (from validator set)
+//    - Builder information (if MEV block) or "local" (if non-MEV block)
+// 2. Statistics summary including:
+//    - Block range analyzed
+//    - Total number of blocks
+//    - Distribution of blocks by builder type (local, blockrazor, puissant, blockroute, txboost)
+//    - Percentage of each builder type
+//
+// Example:
+// # Analyze last 100 blocks (default)
+// node getchainstatus.js GetMevStatus --rpc https://bsc-testnet-dataseed.bnbchain.org
+//
+// # Analyze specific range
+// node getchainstatus.js GetMevStatus --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001 --endNum 40000005
+//
+// # Analyze from specific block to latest
+// node getchainstatus.js GetMevStatus --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001
 async function getMevStatus() {
     let counts = {
         local: 0,
@@ -624,16 +647,19 @@ async function getMevStatus() {
         txboost: 0,
     };
 
-    const startBlock = parseInt(program.startNum, 10);
-    let endBlock = parseInt(program.endNum, 10);
-
-    if (isNaN(startBlock) || startBlock === 0 || isNaN(endBlock)) {
-        console.error("Invalid input, --startNum", program.startNum, "--end", program.endNum);
-        return;
+    // Get the latest block number
+    const latestBlock = await provider.getBlockNumber();
+    
+    // If startNum is not specified or is 0, use last 100 blocks
+    let startBlock = parseInt(program.startNum, 10);
+    if (isNaN(startBlock) || startBlock === 0) {
+        startBlock = Math.max(1, latestBlock - 99); // Ensure we don't go below block 1
     }
 
-    if (endBlock === 0) {
-        endBlock = await provider.getBlockNumber();
+    // If endNum is not specified or is 0, use the latest block number
+    let endBlock = parseInt(program.endNum, 10);
+    if (isNaN(endBlock) || endBlock === 0) {
+        endBlock = latestBlock;
     }
 
     if (startBlock > endBlock) {
