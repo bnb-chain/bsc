@@ -76,7 +76,7 @@ type MevConfig struct {
 	ValidatorCommission   uint64          // 100 means the validator claims 1% from block reward
 	BidSimulationLeftOver time.Duration
 	NoInterruptLeftOver   time.Duration
-	MaxBidsPerBuilder     uint32          // Maximum number of bids allowed per builder per block
+	MaxBidsPerBuilder     uint32 // Maximum number of bids allowed per builder per block
 }
 
 var DefaultMevConfig = MevConfig{
