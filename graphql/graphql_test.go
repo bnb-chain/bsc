@@ -39,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/filters"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
 
@@ -455,6 +456,7 @@ func newGQLService(t *testing.T, stack *node.Node, shanghai bool, gspec *core.Ge
 		SnapshotCache:  5,
 		RPCGasCap:      1000000,
 		StateScheme:    rawdb.HashScheme,
+		Miner:          &minerconfig.Config{},
 	}
 	var engine consensus.Engine = ethash.NewFaker()
 	if shanghai {
