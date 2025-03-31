@@ -31,11 +31,6 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-const (
-	// maxBidPerBuilderPerBlock is the max bid number per builder
-	maxBidPerBuilderPerBlock = 3
-)
-
 var (
 	bidSimTimer = metrics.NewRegisteredTimer("bid/sim/duration", nil)
 )
@@ -118,6 +113,8 @@ type bidSimulator struct {
 
 	simBidMu      sync.RWMutex
 	simulatingBid map[common.Hash]*BidRuntime // prevBlockHash -> bidRuntime, in the process of simulation
+
+	maxBidsPerBuilder uint32 // Maximum number of bids allowed per builder per block
 }
 
 func newBidSimulator(
@@ -129,24 +126,31 @@ func newBidSimulator(
 	engine consensus.Engine,
 	bidWorker bidWorker,
 ) *bidSimulator {
+	// Set default value
+	maxBids := uint32(3)
+	if config.MaxBidsPerBuilder > 0 {
+		maxBids = config.MaxBidsPerBuilder
+	}
+
 	b := &bidSimulator{
-		config:        config,
-		delayLeftOver: delayLeftOver,
-		minGasPrice:   minGasPrice,
-		chain:         eth.BlockChain(),
-		txpool:        eth.TxPool(),
-		chainConfig:   chainConfig,
-		engine:        engine,
-		bidWorker:     bidWorker,
-		exitCh:        make(chan struct{}),
-		chainHeadCh:   make(chan core.ChainHeadEvent, chainHeadChanSize),
-		builders:      make(map[common.Address]*builderclient.Client),
-		simBidCh:      make(chan *simBidReq),
-		newBidCh:      make(chan newBidPackage, 100),
-		pending:       make(map[uint64]map[common.Address]map[common.Hash]struct{}),
-		bestBid:       make(map[common.Hash]*BidRuntime),
-		bestBidToRun:  make(map[common.Hash]*types.Bid),
-		simulatingBid: make(map[common.Hash]*BidRuntime),
+		config:            config,
+		delayLeftOver:     delayLeftOver,
+		minGasPrice:       minGasPrice,
+		chain:             eth.BlockChain(),
+		txpool:            eth.TxPool(),
+		chainConfig:       chainConfig,
+		engine:            engine,
+		bidWorker:         bidWorker,
+		maxBidsPerBuilder: maxBids,
+		exitCh:            make(chan struct{}),
+		chainHeadCh:       make(chan core.ChainHeadEvent, chainHeadChanSize),
+		builders:          make(map[common.Address]*builderclient.Client),
+		simBidCh:          make(chan *simBidReq),
+		newBidCh:          make(chan newBidPackage, 100),
+		pending:           make(map[uint64]map[common.Address]map[common.Hash]struct{}),
+		bestBid:           make(map[common.Hash]*BidRuntime),
+		bestBidToRun:      make(map[common.Hash]*types.Bid),
+		simulatingBid:     make(map[common.Hash]*BidRuntime),
 	}
 
 	b.chainHeadSub = b.chain.SubscribeChainHeadEvent(b.chainHeadCh)
@@ -577,8 +581,8 @@ func (b *bidSimulator) CheckPending(blockNumber uint64, builder common.Address, 
 		return errors.New("bid already exists")
 	}
 
-	if len(b.pending[blockNumber][builder]) >= maxBidPerBuilderPerBlock {
-		return errors.New("too many bids")
+	if len(b.pending[blockNumber][builder]) >= int(b.maxBidsPerBuilder) {
+		return fmt.Errorf("too many bids: exceeded limit of %d bids per builder per block", b.maxBidsPerBuilder)
 	}
 
 	return nil
