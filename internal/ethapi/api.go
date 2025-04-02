@@ -54,14 +54,6 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// max is a helper function which returns the larger of the two given integers.
-func max(a, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 const UnHealthyTimeout = 5 * time.Second
 
 // estimateGasErrorRatio is the amount of overestimation eth_estimateGas is

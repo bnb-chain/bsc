@@ -19,7 +19,7 @@ package web3ext
 
 var Modules = map[string]string{
 	"admin":  AdminJs,
-	"clique": CliqueJs,
+	"parlia": ParliaJs,
 	"debug":  DebugJs,
 	"eth":    EthJs,
 	"miner":  MinerJs,
@@ -29,60 +29,46 @@ var Modules = map[string]string{
 	"dev":    DevJs,
 }
 
-const CliqueJs = `
+const ParliaJs = `
 web3._extend({
-	property: 'clique',
+	property: 'parlia',
 	methods: [
 		new web3._extend.Method({
 			name: 'getSnapshot',
-			call: 'clique_getSnapshot',
+			call: 'parlia_getSnapshot',
 			params: 1,
 			inputFormatter: [web3._extend.formatters.inputBlockNumberFormatter]
 		}),
 		new web3._extend.Method({
 			name: 'getSnapshotAtHash',
-			call: 'clique_getSnapshotAtHash',
+			call: 'parlia_getSnapshotAtHash',
 			params: 1
 		}),
 		new web3._extend.Method({
-			name: 'getSigners',
-			call: 'clique_getSigners',
+			name: 'getValidators',
+			call: 'parlia_getValidators',
 			params: 1,
 			inputFormatter: [web3._extend.formatters.inputBlockNumberFormatter]
 		}),
 		new web3._extend.Method({
-			name: 'getSignersAtHash',
-			call: 'clique_getSignersAtHash',
+			name: 'getValidatorsAtHash',
+			call: 'parlia_getValidatorsAtHash',
 			params: 1
 		}),
 		new web3._extend.Method({
-			name: 'propose',
-			call: 'clique_propose',
-			params: 2
-		}),
-		new web3._extend.Method({
-			name: 'discard',
-			call: 'clique_discard',
-			params: 1
-		}),
-		new web3._extend.Method({
-			name: 'status',
-			call: 'clique_status',
-			params: 0
-		}),
-		new web3._extend.Method({
-			name: 'getSigner',
-			call: 'clique_getSigner',
+			name: 'getJustifiedNumber',
+			call: 'parlia_getJustifiedNumber',
 			params: 1,
-			inputFormatter: [null]
+			inputFormatter: [web3._extend.formatters.inputBlockNumberFormatter]
+		}),
+		new web3._extend.Method({
+			name: 'getFinalizedNumber',
+			call: 'parlia_getFinalizedNumber',
+			params: 1,
+			inputFormatter: [web3._extend.formatters.inputBlockNumberFormatter]
 		}),
 	],
-	properties: [
-		new web3._extend.Property({
-			name: 'proposals',
-			getter: 'clique_proposals'
-		}),
-	]
+	properties: []
 });
 `
 
