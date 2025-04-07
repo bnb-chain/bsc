@@ -55,6 +55,7 @@ const provider = new ethers.JsonRpcProvider(program.rpc);
 const addrValidatorSet = "0x0000000000000000000000000000000000001000";
 const addrSlash = "0x0000000000000000000000000000000000001001";
 const addrStakeHub = "0x0000000000000000000000000000000000002002";
+const addrGovernor = "0x0000000000000000000000000000000000002004";
 
 const validatorSetAbi = [
     "function validatorExtraSet(uint256 offset) external view returns (uint256, bool, bytes)",
@@ -69,7 +70,12 @@ const validatorSetAbi = [
     "function burnRatio() external view returns (uint256)", // default: 10%
     "function systemRewardBaseRatio() external view returns (uint256)", // default: 1/16
 ];
-const slashAbi = ["function getSlashIndicator(address validatorAddr) external view returns (uint256, uint256)"];
+const slashAbi = [
+    "function getSlashIndicator(address validatorAddr) external view returns (uint256, uint256)",
+    "function misdemeanorThreshold() external view returns (uint256)",
+    "function felonyThreshold() external view returns (uint256)",
+    "function felonySlashScope() external view returns (uint256)",
+];
 
 // https://github.com/bnb-chain/bsc-genesis-contract/blob/master/contracts/StakeHub.sol
 const stakeHubAbi = [
@@ -85,9 +91,15 @@ const stakeHubAbi = [
     "function felonyJailTime() public view returns (uint256)", // default 30days,
 ];
 
+const governorAbi = [
+    "function votingPeriod() public view returns (uint256)",
+    "function lateQuorumVoteExtension() public view returns (uint64)", // it represents minPeriodAfterQuorum
+];
+
 const validatorSet = new ethers.Contract(addrValidatorSet, validatorSetAbi, provider);
 const slashIndicator = new ethers.Contract(addrSlash, slashAbi, provider);
 const stakeHub = new ethers.Contract(addrStakeHub, stakeHubAbi, provider);
+const governor = new ethers.Contract(addrGovernor, governorAbi, provider);
 
 const validatorMap = new Map([
     // BSC mainnet
@@ -136,6 +148,10 @@ const validatorMap = new Map([
     ["0xd849d1dF66bFF1c2739B4399425755C2E0fAbbAb", "Nexa"],
     ["0xA015d9e9206859c13201BB3D6B324d6634276534", "Star"],
     ["0x5ADde0151BfAB27f329e5112c1AeDeed7f0D3692", "Veri"],
+    ["0xd6Ab358AD430F65EB4Aa5a1598FF2c34489dcfdE", "Saturn"],
+    ["0x0dC5e1CAe4d364d0C79C9AE6BDdB5DA49b10A7d9", "ListaDAO"],
+    ["0xE554F591cCFAc02A84Cf9a5165DDF6C1447Cc67D", "ListaDAO2"],
+    ["0x059a8BFd798F29cE665816D12D56400Fa47DE028", "ListaDAO3"],
     // Chapel
     ["0x08265dA01E1A65d62b903c7B34c08cB389bF3D99", "Ararat"],
     ["0x7f5f2cF1aec83bF0c74DF566a41aa7ed65EA84Ea", "Kita"],
@@ -160,6 +176,13 @@ const validatorMap = new Map([
     ["0xEe22F03961b407bCBae66499a029Be4cA0AF4ab4", "AB4"],
     ["0x1AE5f5C3Cb452E042b0B7b9DC60596C9CD84BaF6", "Jake"],
     ["0xfA4d592F9B152f7a10B5DE9bE24C27a74BCE431A", "MyTWFMM"],
+    ["0x26Ba9aB44feb5D8eE47aDeaa46a472f71E50fbce", "Lime"],
+    ["0xC8824e38440893b62CaDC4d1BD05e33895B25d74", "Skynet3k"],
+    ["0x9a2da2Ce5Eda5E0b4914720c3A798521956E1009", "Musala"],
+    ["0x9270fF2EaA8ef253B57011A5b7505D948784E2be", "Vihren"],
+    ["0x86eb31b90566a9f4F3AB85138c78A000EBA81685", "GucciOp3k"],
+    ["0x28D70c3756d4939DCBdEB3f0fFF5B4B36E6e327F", "OmegaV"],
+    ["0x6a5470a3B7959ab064d6815e349eD4aE2dE5210d", "Skynet10k"],
 ]);
 
 const builderMap = new Map([
@@ -526,19 +549,26 @@ async function getKeyParameters() {
         numOfCabinets = 21;
     }
     // let maxNumOfCandidates = await validatorSet.maxNumOfCandidates({blockTag:blockNum})  // deprecated
-    // let turnLength = await validatorSet.turnLength({blockTag:blockNum})
+    let turnLength = await validatorSet.turnLength({blockTag:blockNum})
     let maxNumOfWorkingCandidates = await validatorSet.maxNumOfWorkingCandidates({ blockTag: blockNum });
     let maintainSlashScale = await validatorSet.maintainSlashScale({ blockTag: blockNum });
-    console.log(
-        "numOfCabinets",
-        Number(numOfCabinets),
-        "maxNumOfWorkingCandidates",
-        Number(maxNumOfWorkingCandidates),
-        "maintainSlashScale",
-        maintainSlashScale
-    );
+    console.log("##==== ValidatorContract: 0x0000000000000000000000000000000000001000");
+    console.log("\tturnLength", Number(turnLength));
+    console.log("\tnumOfCabinets", Number(numOfCabinets));
+    console.log("\tmaxNumOfWorkingCandidates", Number(maxNumOfWorkingCandidates));
+    console.log("\tmaintainSlashScale", Number(maintainSlashScale));
 
-    // part 2: staking
+    // part 2: slash
+    let misdemeanorThreshold = await slashIndicator.misdemeanorThreshold({blockTag:blockNum})
+    let felonyThreshold = await slashIndicator.felonyThreshold({blockTag:blockNum})
+    let felonySlashScope = await slashIndicator.felonySlashScope({blockTag:blockNum})
+    console.log("##==== SlashContract: 0x0000000000000000000000000000000000001001");
+    console.log("\tmisdemeanorThreshold", Number(misdemeanorThreshold));
+    console.log("\tfelonyThreshold", Number(felonyThreshold));
+    console.log("\tfelonySlashScope", Number(felonySlashScope));
+
+
+    // part 3: staking
     // let minSelfDelegationBNB = await stakeHub.minSelfDelegationBNB({blockTag:blockNum})/BigInt(10**18)
     let maxElectedValidators = await stakeHub.maxElectedValidators({ blockTag: blockNum });
     let validatorElectionInfo = await stakeHub.getValidatorElectionInfo(0, 0, { blockTag: blockNum });
@@ -546,7 +576,10 @@ async function getKeyParameters() {
     let votingPowers = validatorElectionInfo[1];
     let voteAddrs = validatorElectionInfo[2];
     let totalLength = validatorElectionInfo[3];
-    console.log("maxElectedValidators", Number(maxElectedValidators), "Registered", Number(totalLength));
+
+    console.log("\n##==== StakeHubContract: 0x0000000000000000000000000000000000002002")
+    console.log("\tmaxElectedValidators", Number(maxElectedValidators));
+    console.log("\tRegistered", Number(totalLength));
     let validatorTable = [];
     for (let i = 0; i < totalLength; i++) {
         validatorTable.push({
@@ -558,6 +591,13 @@ async function getKeyParameters() {
     }
     validatorTable.sort((a, b) => b.votingPower - a.votingPower);
     console.table(validatorTable);
+
+    // part 4: governance
+    let votingPeriod = await governor.votingPeriod({ blockTag: blockNum });
+    let minPeriodAfterQuorum = await governor.lateQuorumVoteExtension({ blockTag: blockNum });
+    console.log("\n##==== GovernorContract: 0x0000000000000000000000000000000000002004")
+    console.log("\tvotingPeriod", Number(votingPeriod));
+    console.log("\tminPeriodAfterQuorum", Number(minPeriodAfterQuorum));
 }
 
 // 9.cmd: "getEip7623", usage:
