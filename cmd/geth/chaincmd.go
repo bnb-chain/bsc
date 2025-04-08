@@ -63,6 +63,7 @@ var (
 			utils.CachePreimagesFlag,
 			utils.OverridePassedForkTime,
 			utils.OverrideLorentz,
+			utils.OverrideMaxwell,
 			utils.OverrideVerkle,
 			utils.MultiDataBaseFlag,
 		}, utils.DatabaseFlags),
@@ -262,6 +263,10 @@ func initGenesis(ctx *cli.Context) error {
 	if ctx.IsSet(utils.OverrideLorentz.Name) {
 		v := ctx.Uint64(utils.OverrideLorentz.Name)
 		overrides.OverrideLorentz = &v
+	}
+	if ctx.IsSet(utils.OverrideMaxwell.Name) {
+		v := ctx.Uint64(utils.OverrideMaxwell.Name)
+		overrides.OverrideMaxwell = &v
 	}
 	if ctx.IsSet(utils.OverrideVerkle.Name) {
 		v := ctx.Uint64(utils.OverrideVerkle.Name)

@@ -40,5 +40,6 @@ const (
 	Cancun
 	Prague
 	Lorentz
+	Maxwell
 	Osaka
 )
