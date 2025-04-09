@@ -1,4 +1,14 @@
 # Changelog
+## v1.5.10
+### FEATURE
+[\#3015](https://github.com/bnb-chain/bsc/pull/3015) config: update BSC Mainnet hardfork time: Lorentz
+
+### BUGFIX
+NA
+
+### IMPROVEMENT
+[\#2985](https://github.com/bnb-chain/bsc/pull/2985) core: clearup pascal&prague testflag and rialto code
+
 ## v1.5.9
 ### FEATURE
 [\#2932](https://github.com/bnb-chain/bsc/pull/2932) BEP-520: Short Block Interval Phase One: 1.5 seconds
