@@ -193,6 +193,11 @@ const builderMap = new Map([
     ["0x76736159984AE865a9b9Cc0Df61484A49dA68191", "puissant eu"],
     ["0x5054b21D8baea3d602dca8761B235ee10bc0231E", "puissant us"],
     // Chapel
+    ["0xA8caEc0D68a90Ac971EA1aDEFA1747447e1f9871", "blxrbdn"],
+    ["0x627fE6AFA2E84e461CB7AE7C2c46e8adf9a954a2", "blocksmith"],
+    ["0x79102dB16781ddDfF63F301C9Be557Fd1Dd48fA0", "bnbchain"],
+    ["0x4827b423D03a349b7519Dda537e9A28d31ecBB48", "48"],
+    ["0x0eAbBdE133fbF3c5eB2BEE6F7c8210deEAA0f7db", "blockrazor"],
 ]);
 
 // 1.cmd: "GetMaxTxCountInBlockRange", usage:
