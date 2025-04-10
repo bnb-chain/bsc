@@ -1,3 +1,1 @@
-CVE-2024-34478 # "CWE-754: Improper Check for Unusual or Exceptional Conditions." This vulnerability is BTC only, BSC does not have the issue.
-CVE-2024-51744 # "CWE-347: Improper Verification of Cryptographic Signature" & "CWE-755: Improper Handling of Exceptional Conditions" This vulnerability is caused mishandling of JWT error code, BSC does not have the issue as it does not check the detail error code.
 CVE-2025-22872 # "CWE-1286: github.com/golang/net - Improper Validation of Syntactic Correctness of Input", golang/golang.org/x/net@v0.36.0 was indirectly dependency by devp2p, can be will upgraded in the future
