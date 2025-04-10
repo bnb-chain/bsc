@@ -480,7 +480,7 @@ func (b *bidSimulator) newBidLoop() {
 // get block interval for current block by using parent header
 func (b *bidSimulator) getBlockInterval(parentHeader *types.Header) uint64 {
 	if parentHeader == nil {
-		return 1500 // lorentzBlockInterval
+		return 750 // maxwellBlockInterval
 	}
 	parlia, _ := b.engine.(*parlia.Parlia)
 	// only `Number` and `ParentHash` are used when `BlockInterval`

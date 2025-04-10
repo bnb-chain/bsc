@@ -331,6 +331,12 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 			}
 			snap.BlockInterval = lorentzBlockInterval
 		}
+		if chainConfig.IsMaxwell(header.Number, header.Time) {
+			if (header.Number.Uint64()+1)%maxwellEpochLength == 0 {
+				snap.EpochLength = maxwellEpochLength
+			}
+			snap.BlockInterval = maxwellBlockInterval
+		}
 		// change validator set
 		if number > 0 && number%epochLength == snap.minerHistoryCheckLen() {
 			epochKey := math.MaxUint64 - header.Number.Uint64()/epochLength // impossible used as a block number
