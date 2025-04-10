@@ -75,6 +75,7 @@ var (
 		utils.RialtoHash,
 		utils.OverridePassedForkTime,
 		utils.OverrideLorentz,
+		utils.OverrideMaxwell,
 		utils.OverrideVerkle,
 		utils.OverrideFullImmutabilityThreshold,
 		utils.OverrideMinBlocksForBlobRequests,

@@ -306,6 +306,11 @@ var (
 		Usage:    "Manually specify the Lorentz fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
+	OverrideMaxwell = &cli.Uint64Flag{
+		Name:     "override.maxwell",
+		Usage:    "Manually specify the Maxwell fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
 	OverrideVerkle = &cli.Uint64Flag{
 		Name:     "override.verkle",
 		Usage:    "Manually specify the Verkle fork timestamp, overriding the bundled setting",

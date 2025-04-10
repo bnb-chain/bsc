@@ -213,6 +213,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		chainConfig.LorentzTime = config.OverrideLorentz
 		overrides.OverrideLorentz = config.OverrideLorentz
 	}
+	if config.OverrideMaxwell != nil {
+		chainConfig.MaxwellTime = config.OverrideMaxwell
+		overrides.OverrideMaxwell = config.OverrideMaxwell
+	}
 	if config.OverrideVerkle != nil {
 		chainConfig.VerkleTime = config.OverrideVerkle
 		overrides.OverrideVerkle = config.OverrideVerkle
