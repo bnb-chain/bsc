@@ -26,7 +26,7 @@ import (
 
 type EmptyTrie struct{}
 
-// NewSecure creates a dummy trie
+// NewEmptyTrie creates a dummy trie
 func NewEmptyTrie() *EmptyTrie {
 	return &EmptyTrie{}
 }

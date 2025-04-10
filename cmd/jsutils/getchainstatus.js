@@ -188,11 +188,38 @@ const builderMap = new Map([
     ["0xE1ec1AeCE7953ecB4539749B9AA2eEF63354860a", "blockroute singapore"],
     ["0x89434FC3a09e583F2cb4e47A8B8fe58De8BE6a15", "blockroute virginia"],
     ["0x10353562E662E333C0c2007400284e0e21cF74fF", "blockroute x"],
-    //     txboost
-    ["0x6Dddf681C908705472D09B1D7036B2241B50e5c7", "puissant ap"],
-    ["0x76736159984AE865a9b9Cc0Df61484A49dA68191", "puissant eu"],
-    ["0x5054b21D8baea3d602dca8761B235ee10bc0231E", "puissant us"],
+    //      jetbldr
+    ["0x36CB523286D57680efBbfb417C63653115bCEBB5", "jetbldr ap"],
+    ["0x3aD6121407f6EDb65C8B2a518515D45863C206A8", "jetbldr eu"],
+    ["0x345324dC15F1CDcF9022E3B7F349e911fb823b4C", "jetbldr us"],
+    //      blockbus
+    ["0x3FC0c936c00908c07723ffbf2d536D6E0f62C3A4", "jetbldr dublin"],
+    ["0x17e9F0D7E45A500f0148B29C6C98EfD19d95F138", "jetbldr tokyo"],
+    ["0x1319Be8b8Ec4AA81f501924BdCF365fBcAa8d753", "jetbldr virginia"],
+    //     txboost(blocksmith)
+    ["0x6Dddf681C908705472D09B1D7036B2241B50e5c7", "txboost ap"],
+    ["0x76736159984AE865a9b9Cc0Df61484A49dA68191", "txboost eu"],
+    ["0x5054b21D8baea3d602dca8761B235ee10bc0231E", "txboost us"],
+    //      darwin
+    ["0xa6d6086222812eFD5292fF284b0F7ff2a2B86Af4", "darwin ap"],
+    ["0x3265A3243ee84e667a73073504cA4CdeD1413D82", "darwin eu"],
+    ["0xdf11CD23992Fd48Cf2d245aC144010673275f285", "darwin us"],
+    //      inblock
+    ["0x9a3234b450518fadA098388B88e00deCAd96ad38", "inblock ap"],
+    ["0xb49f86586a840AB9920D2f340a85586E50FD30a2", "inblock eu"],
+    ["0x0F6D8b72F3687de6f2824903a83B3ba13c0e88A0", "inblock us"],
+    //      nodereal
+    ["0x79102dB16781ddDfF63F301C9Be557Fd1Dd48fA0", "nodereal ap"],
+    ["0xd0d56b330a0dea077208b96910ce452fd77e1b6f", "nodereal eu"],
+    ["0x4f24ce4cd03a6503de97cf139af2c26347930b99", "nodereal us"],
+    //      xzbuilder
+    ["0x812720cb4639550D7BDb1d8F2be463F4a9663762", "xzbuilder"],
+
     // Chapel
+    ["0x627fE6AFA2E84e461CB7AE7C2c46e8adf9a954a2", "txboost"],
+    // ["0x79102dB16781ddDfF63F301C9Be557Fd1Dd48fA0", "nodereal ap"],
+    // ["0x4827b423D03a349b7519Dda537e9A28d31ecBB48", "puissant y"],
+    ["0x0eAbBdE133fbF3c5eB2BEE6F7c8210deEAA0f7db", "blockrazor"],
 ]);
 
 // 1.cmd: "GetMaxTxCountInBlockRange", usage:
@@ -644,7 +671,13 @@ async function getMevStatus() {
         blockrazor: 0,
         puissant: 0,
         blockroute: 0,
+        jetbldr: 0,
         txboost: 0,
+        blockbus: 0,
+        darwin: 0,
+        inblock: 0,
+        nodereal: 0,
+        xzbuilder: 0,
     };
 
     // Get the latest block number

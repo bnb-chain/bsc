@@ -187,9 +187,9 @@ var (
 		HaberTime:           newUint64(1718863500), // 2024-06-20 06:05:00 AM UTC
 		HaberFixTime:        newUint64(1727316120), // 2024-09-26 02:02:00 AM UTC
 		BohrTime:            newUint64(1727317200), // 2024-09-26 02:20:00 AM UTC
-		PascalTime:          newUint64(1742436600),
-		PragueTime:          newUint64(1742436600),
-		LorentzTime:         nil,
+		PascalTime:          newUint64(1742436600), // 2025-03-20 02:10:00 AM UTC
+		PragueTime:          newUint64(1742436600), // 2025-03-20 02:10:00 AM UTC
+		LorentzTime:         newUint64(1745903100), // 2025-04-29 05:05:00 AM UTC
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
@@ -278,9 +278,9 @@ var (
 		HaberTime:           newUint64(0),
 		HaberFixTime:        newUint64(0),
 		BohrTime:            newUint64(0),
+		PascalTime:          newUint64(0),
+		PragueTime:          newUint64(0),
 		// TODO: set them to `0` when passed on the mainnet
-		PascalTime:  nil,
-		PragueTime:  nil,
 		LorentzTime: nil,
 
 		Parlia: &ParliaConfig{},
