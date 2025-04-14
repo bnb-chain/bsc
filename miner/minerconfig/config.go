@@ -101,17 +101,17 @@ var DefaultMevConfig = MevConfig{
 	MaxBidsPerBuilder:     &defaultMaxBidsPerBuilder,
 }
 
-func ApplyDefaultMinerConfig(cfg *Config) {
+func MinerApplyDefaultConfig(cfg *Config) {
 	if cfg == nil {
-		log.Warn("ApplyDefaultMinerConfig cfg == nil")
+		log.Warn("MinerApplyDefaultConfig cfg == nil")
 		return
 	}
-	// `[Eth.Miner]` is specified in config file, check the default Miner option
+	// check [Eth.Miner]
 	if cfg.DelayLeftOver == nil {
 		cfg.DelayLeftOver = &defaultDelayLeftOver
 	}
 
-	// check Miner's MEV options
+	// check [Eth.Miner.Mev]
 	if cfg.Mev.GreedyMergeTx == nil {
 		cfg.Mev.GreedyMergeTx = &defaultGreedyMergeTx
 	}
