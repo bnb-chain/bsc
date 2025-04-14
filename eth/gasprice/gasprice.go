@@ -40,6 +40,7 @@ var (
 	DefaultIgnorePrice = big.NewInt(4 * params.Wei)
 )
 
+//go:generate go run github.com/fjl/gencodec -type Config -formats toml -out gen_config.go
 type Config struct {
 	Blocks           int
 	Percentile       int

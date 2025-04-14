@@ -141,6 +141,8 @@ type BlockChain interface {
 }
 
 // Config are the configuration parameters of the transaction pool.
+//
+//go:generate go run github.com/fjl/gencodec -type Config -formats toml -out gen_config.go
 type Config struct {
 	Locals    []common.Address // Addresses that should be treated by default as local
 	NoLocals  bool             // Whether local transaction handling should be disabled
@@ -161,11 +163,13 @@ type Config struct {
 }
 
 // DefaultConfig contains the default configurations for the transaction pool.
+//
+//go:generate go run github.com/fjl/gencodec -type Config -formats toml -out gen_config.go
 var DefaultConfig = Config{
 	Journal:   "transactions.rlp",
 	Rejournal: time.Hour,
 
-	PriceLimit: 1,
+	PriceLimit: 1000000000, // by default 1 gwei
 	PriceBump:  10,
 
 	AccountSlots:      16,
