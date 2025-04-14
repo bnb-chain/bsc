@@ -70,7 +70,7 @@ func New(eth Backend, config *minerconfig.Config, mux *event.TypeMux, engine con
 		worker:  newWorker(config, engine, eth, mux, false),
 	}
 
-	miner.bidSimulator = newBidSimulator(&config.Mev, config.DelayLeftOver, config.GasPrice, eth, eth.BlockChain().Config(), engine, miner.worker)
+	miner.bidSimulator = newBidSimulator(&config.Mev, *config.DelayLeftOver, config.GasPrice, eth, eth.BlockChain().Config(), engine, miner.worker)
 	miner.worker.setBestBidFetcher(miner.bidSimulator)
 
 	miner.wg.Add(1)
