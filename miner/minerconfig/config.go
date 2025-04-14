@@ -27,8 +27,6 @@ import (
 )
 
 // Config is the configuration parameters of mining.
-//
-//go:generate go run github.com/fjl/gencodec -type Config -formats toml -out gen_config.go
 type Config struct {
 	Etherbase             common.Address `toml:",omitempty"` // Public address for block mining rewards
 	ExtraData             hexutil.Bytes  `toml:",omitempty"` // Block extra data set by the miner
@@ -69,7 +67,6 @@ type BuilderConfig struct {
 	URL     string
 }
 
-//go:generate go run github.com/fjl/gencodec -type MevConfig -formats toml -out gen_mevconfig.go
 type MevConfig struct {
 	Enabled               bool            // Whether to enable Mev or not
 	GreedyMergeTx         bool            // Whether to merge local transactions to the bid
