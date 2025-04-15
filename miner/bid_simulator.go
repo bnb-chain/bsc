@@ -126,12 +126,6 @@ func newBidSimulator(
 	engine consensus.Engine,
 	bidWorker bidWorker,
 ) *bidSimulator {
-	// Set default value
-	maxBids := uint32(3)
-	if *config.MaxBidsPerBuilder > 0 {
-		maxBids = *config.MaxBidsPerBuilder
-	}
-
 	b := &bidSimulator{
 		config:            config,
 		delayLeftOver:     delayLeftOver,
@@ -141,7 +135,7 @@ func newBidSimulator(
 		chainConfig:       chainConfig,
 		engine:            engine,
 		bidWorker:         bidWorker,
-		maxBidsPerBuilder: maxBids,
+		maxBidsPerBuilder: *config.MaxBidsPerBuilder,
 		exitCh:            make(chan struct{}),
 		chainHeadCh:       make(chan core.ChainHeadEvent, chainHeadChanSize),
 		builders:          make(map[common.Address]*builderclient.Client),
