@@ -100,6 +100,7 @@ func (miner *Miner) MevParams() *types.MevParams {
 		ValidatorCommission:   *miner.worker.config.Mev.ValidatorCommission,
 		BidSimulationLeftOver: *miner.worker.config.Mev.BidSimulationLeftOver,
 		NoInterruptLeftOver:   *miner.worker.config.Mev.NoInterruptLeftOver,
+		MaxBidsPerBuilder:     *miner.worker.config.Mev.MaxBidsPerBuilder,
 		GasCeil:               miner.worker.config.GasCeil,
 		GasPrice:              miner.worker.config.GasPrice,
 		BuilderFeeCeil:        builderFeeCeil,
