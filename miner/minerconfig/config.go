@@ -41,7 +41,7 @@ var (
 type Config struct {
 	Etherbase             common.Address `toml:",omitempty"` // Public address for block mining rewards
 	ExtraData             hexutil.Bytes  `toml:",omitempty"` // Block extra data set by the miner
-	DelayLeftOver         *time.Duration // Time reserved to finalize a block(calculate root, distribute income...)
+	DelayLeftOver         *time.Duration `toml:",omitempty"` // Time reserved to finalize a block(calculate root, distribute income...)
 	GasFloor              uint64         // Target gas floor for mined blocks.
 	GasCeil               uint64         // Target gas ceiling for mined blocks.
 	GasPrice              *big.Int       // Minimum gas price for mining a transaction
@@ -80,14 +80,14 @@ type BuilderConfig struct {
 
 type MevConfig struct {
 	Enabled               bool            // Whether to enable Mev or not
-	GreedyMergeTx         *bool           // Whether to merge local transactions to the bid
+	GreedyMergeTx         *bool           `toml:",omitempty"` // Whether to merge local transactions to the bid
 	BuilderFeeCeil        string          // The maximum builder fee of a bid
 	SentryURL             string          // The url of Mev sentry
 	Builders              []BuilderConfig // The list of builders
-	ValidatorCommission   *uint64         // 100 means the validator claims 1% from block reward
-	BidSimulationLeftOver *time.Duration
-	NoInterruptLeftOver   *time.Duration
-	MaxBidsPerBuilder     *uint32 // Maximum number of bids allowed per builder per block
+	ValidatorCommission   *uint64         `toml:",omitempty"` // 100 means the validator claims 1% from block reward
+	BidSimulationLeftOver *time.Duration  `toml:",omitempty"`
+	NoInterruptLeftOver   *time.Duration  `toml:",omitempty"`
+	MaxBidsPerBuilder     *uint32         `toml:",omitempty"` // Maximum number of bids allowed per builder per block
 }
 
 var DefaultMevConfig = MevConfig{

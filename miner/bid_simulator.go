@@ -119,7 +119,7 @@ type bidSimulator struct {
 
 func newBidSimulator(
 	config *minerconfig.MevConfig,
-	delayLeftOver time.Duration,
+	delayLeftOver *time.Duration,
 	minGasPrice *big.Int,
 	eth Backend,
 	chainConfig *params.ChainConfig,
@@ -127,24 +127,28 @@ func newBidSimulator(
 	bidWorker bidWorker,
 ) *bidSimulator {
 	b := &bidSimulator{
-		config:            config,
-		delayLeftOver:     delayLeftOver,
-		minGasPrice:       minGasPrice,
-		chain:             eth.BlockChain(),
-		txpool:            eth.TxPool(),
-		chainConfig:       chainConfig,
-		engine:            engine,
-		bidWorker:         bidWorker,
-		maxBidsPerBuilder: *config.MaxBidsPerBuilder,
-		exitCh:            make(chan struct{}),
-		chainHeadCh:       make(chan core.ChainHeadEvent, chainHeadChanSize),
-		builders:          make(map[common.Address]*builderclient.Client),
-		simBidCh:          make(chan *simBidReq),
-		newBidCh:          make(chan newBidPackage, 100),
-		pending:           make(map[uint64]map[common.Address]map[common.Hash]struct{}),
-		bestBid:           make(map[common.Hash]*BidRuntime),
-		bestBidToRun:      make(map[common.Hash]*types.Bid),
-		simulatingBid:     make(map[common.Hash]*BidRuntime),
+		config:        config,
+		minGasPrice:   minGasPrice,
+		chain:         eth.BlockChain(),
+		txpool:        eth.TxPool(),
+		chainConfig:   chainConfig,
+		engine:        engine,
+		bidWorker:     bidWorker,
+		exitCh:        make(chan struct{}),
+		chainHeadCh:   make(chan core.ChainHeadEvent, chainHeadChanSize),
+		builders:      make(map[common.Address]*builderclient.Client),
+		simBidCh:      make(chan *simBidReq),
+		newBidCh:      make(chan newBidPackage, 100),
+		pending:       make(map[uint64]map[common.Address]map[common.Hash]struct{}),
+		bestBid:       make(map[common.Hash]*BidRuntime),
+		bestBidToRun:  make(map[common.Hash]*types.Bid),
+		simulatingBid: make(map[common.Hash]*BidRuntime),
+	}
+	if delayLeftOver != nil {
+		b.delayLeftOver = *delayLeftOver
+	}
+	if config.MaxBidsPerBuilder != nil {
+		b.maxBidsPerBuilder = *config.MaxBidsPerBuilder
 	}
 
 	b.chainHeadSub = b.chain.SubscribeChainHeadEvent(b.chainHeadCh)
