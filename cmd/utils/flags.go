@@ -647,7 +647,7 @@ var (
 	MinerDelayLeftoverFlag = &cli.DurationFlag{
 		Name:     "miner.delayleftover",
 		Usage:    "Time reserved to finalize a block",
-		Value:    ethconfig.Defaults.Miner.DelayLeftOver,
+		Value:    *ethconfig.Defaults.Miner.DelayLeftOver,
 		Category: flags.MinerCategory,
 	}
 
@@ -1865,7 +1865,8 @@ func setMiner(ctx *cli.Context, cfg *minerconfig.Config) {
 		cfg.Recommit = ctx.Duration(MinerRecommitIntervalFlag.Name)
 	}
 	if ctx.IsSet(MinerDelayLeftoverFlag.Name) {
-		cfg.DelayLeftOver = ctx.Duration(MinerDelayLeftoverFlag.Name)
+		minerDelayLeftover := ctx.Duration(MinerDelayLeftoverFlag.Name)
+		cfg.DelayLeftOver = &minerDelayLeftover
 	}
 	if ctx.Bool(VotingEnabledFlag.Name) {
 		cfg.VoteEnable = true
