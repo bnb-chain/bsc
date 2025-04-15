@@ -109,28 +109,28 @@ func ApplyDefaultMinerConfig(cfg *Config) {
 	// check [Eth.Miner]
 	if cfg.DelayLeftOver == nil {
 		cfg.DelayLeftOver = &defaultDelayLeftOver
-		log.Info("ApplyDefaultMinerConfig", "DelayLeftOver", cfg.DelayLeftOver)
+		log.Info("ApplyDefaultMinerConfig", "DelayLeftOver", *cfg.DelayLeftOver)
 	}
 
 	// check [Eth.Miner.Mev]
 	if cfg.Mev.GreedyMergeTx == nil {
 		cfg.Mev.GreedyMergeTx = &defaultGreedyMergeTx
-		log.Info("ApplyDefaultMinerConfig", "Mev.GreedyMergeTx", cfg.Mev.GreedyMergeTx)
+		log.Info("ApplyDefaultMinerConfig", "Mev.GreedyMergeTx", *cfg.Mev.GreedyMergeTx)
 	}
 	if cfg.Mev.ValidatorCommission == nil {
 		cfg.Mev.ValidatorCommission = &defaultValidatorCommission
-		log.Info("ApplyDefaultMinerConfig", "Mev.ValidatorCommission", cfg.Mev.ValidatorCommission)
+		log.Info("ApplyDefaultMinerConfig", "Mev.ValidatorCommission", *cfg.Mev.ValidatorCommission)
 	}
 	if cfg.Mev.BidSimulationLeftOver == nil {
 		cfg.Mev.BidSimulationLeftOver = &defaultBidSimulationLeftOver
-		log.Info("ApplyDefaultMinerConfig", "Mev.BidSimulationLeftOver", cfg.Mev.BidSimulationLeftOver)
+		log.Info("ApplyDefaultMinerConfig", "Mev.BidSimulationLeftOver", *cfg.Mev.BidSimulationLeftOver)
 	}
 	if cfg.Mev.NoInterruptLeftOver == nil {
 		cfg.Mev.NoInterruptLeftOver = &defaultNoInterruptLeftOver
-		log.Info("ApplyDefaultMinerConfig", "Mev.NoInterruptLeftOver", cfg.Mev.NoInterruptLeftOver)
+		log.Info("ApplyDefaultMinerConfig", "Mev.NoInterruptLeftOver", *cfg.Mev.NoInterruptLeftOver)
 	}
 	if cfg.Mev.MaxBidsPerBuilder == nil {
 		cfg.Mev.MaxBidsPerBuilder = &defaultMaxBidsPerBuilder
-		log.Info("ApplyDefaultMinerConfig", "Mev.MaxBidsPerBuilder", cfg.Mev.MaxBidsPerBuilder)
+		log.Info("ApplyDefaultMinerConfig", "Mev.MaxBidsPerBuilder", *cfg.Mev.MaxBidsPerBuilder)
 	}
 }
