@@ -29,12 +29,12 @@ import (
 
 var (
 	defaultDelayLeftOver = 50 * time.Millisecond
-	// default confogurations for MEV
+	// default configurations for MEV
 	defaultGreedyMergeTx         bool   = true
 	defaultValidatorCommission   uint64 = 100
 	defaultBidSimulationLeftOver        = 50 * time.Millisecond
-	defaultNoInterruptLeftOver          = 400 * time.Millisecond
-	defaultMaxBidsPerBuilder     uint32 = 3
+	defaultNoInterruptLeftOver          = 250 * time.Millisecond
+	defaultMaxBidsPerBuilder     uint32 = 2
 )
 
 // Config is the configuration parameters of mining.
