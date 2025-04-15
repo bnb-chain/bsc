@@ -101,9 +101,9 @@ var DefaultMevConfig = MevConfig{
 	MaxBidsPerBuilder:     &defaultMaxBidsPerBuilder,
 }
 
-func MinerApplyDefaultConfig(cfg *Config) {
+func ApplyDefaultMinerConfig(cfg *Config) {
 	if cfg == nil {
-		log.Warn("MinerApplyDefaultConfig cfg == nil")
+		log.Warn("ApplyDefaultMinerConfig cfg == nil")
 		return
 	}
 	// check [Eth.Miner]

@@ -157,7 +157,7 @@ func loadBaseConfig(ctx *cli.Context) gethConfig {
 		}
 		// some default options could be overwritten after `loadConfig()`
 		// apply the default value if the options are not specified in config.toml file.
-		ethconfig.EthApplyDefaultConfig(&cfg.Eth)
+		ethconfig.ApplyDefaultEthConfig(&cfg.Eth)
 	}
 
 	scheme := cfg.Eth.StateScheme

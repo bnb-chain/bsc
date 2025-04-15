@@ -216,11 +216,11 @@ func CreateConsensusEngine(config *params.ChainConfig, db ethdb.Database, ee *et
 	return beacon.New(ethash.NewFaker()), nil
 }
 
-func EthApplyDefaultConfig(cfg *Config) {
+func ApplyDefaultEthConfig(cfg *Config) {
 	if cfg == nil {
-		log.Warn("EthApplyDefaultConfig cfg == nil")
+		log.Warn("ApplyDefaultEthConfig cfg == nil")
 		return
 	}
 
-	minerconfig.MinerApplyDefaultConfig(&cfg.Miner)
+	minerconfig.ApplyDefaultMinerConfig(&cfg.Miner)
 }
