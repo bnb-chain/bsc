@@ -194,9 +194,8 @@ var (
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
-			Cancun:  DefaultCancunBlobConfig,
-			Prague:  DefaultPragueBlobConfigBSC,
-			Maxwell: DefaultMaxwellBlobConfig,
+			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfigBSC,
 		},
 	}
 
@@ -241,9 +240,8 @@ var (
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
-			Cancun:  DefaultCancunBlobConfig,
-			Prague:  DefaultPragueBlobConfigBSC,
-			Maxwell: DefaultMaxwellBlobConfig,
+			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfigBSC,
 		},
 	}
 
@@ -290,9 +288,8 @@ var (
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
-			Cancun:  DefaultCancunBlobConfig,
-			Prague:  DefaultPragueBlobConfigBSC,
-			Maxwell: DefaultMaxwellBlobConfig,
+			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfigBSC,
 		},
 	}
 
@@ -550,13 +547,6 @@ var (
 	}
 
 	DefaultPragueBlobConfigBSC = DefaultCancunBlobConfig
-
-	// DefaultMaxwellBlobConfig is the default blob configuration for the Maxwell fork.
-	DefaultMaxwellBlobConfig = &BlobConfig{
-		Target:         1,
-		Max:            2,
-		UpdateFraction: DefaultPragueBlobConfigBSC.UpdateFraction,
-	}
 )
 
 // NetworkNames are user friendly names to use in the chain spec banner.
@@ -841,10 +831,9 @@ type BlobConfig struct {
 
 // BlobScheduleConfig determines target and max number of blobs allow per fork.
 type BlobScheduleConfig struct {
-	Cancun  *BlobConfig `json:"cancun,omitempty"`
-	Prague  *BlobConfig `json:"prague,omitempty"`
-	Maxwell *BlobConfig `json:"lorentz,omitempty"`
-	Verkle  *BlobConfig `json:"verkle,omitempty"`
+	Cancun *BlobConfig `json:"cancun,omitempty"`
+	Prague *BlobConfig `json:"prague,omitempty"`
+	Verkle *BlobConfig `json:"verkle,omitempty"`
 }
 
 // IsHomestead returns whether num is either equal to the homestead block or greater.

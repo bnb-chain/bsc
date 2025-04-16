@@ -83,9 +83,7 @@ func CalcExcessBlobGas(config *params.ChainConfig, parent *types.Header, headTim
 func CalcBlobFee(config *params.ChainConfig, header *types.Header) *big.Int {
 	var frac uint64
 	switch config.LatestFork(header.Time) {
-	case forks.Maxwell:
-		frac = config.BlobScheduleConfig.Maxwell.UpdateFraction
-	case forks.Lorentz, forks.Prague:
+	case forks.Maxwell, forks.Lorentz, forks.Prague:
 		frac = config.BlobScheduleConfig.Prague.UpdateFraction
 	case forks.Cancun:
 		frac = config.BlobScheduleConfig.Cancun.UpdateFraction
@@ -105,8 +103,6 @@ func MaxBlobsPerBlock(cfg *params.ChainConfig, time uint64) int {
 		s      = cfg.BlobScheduleConfig
 	)
 	switch {
-	case cfg.IsMaxwell(london, time) && s.Maxwell != nil:
-		return s.Maxwell.Max
 	case cfg.IsPrague(london, time) && s.Prague != nil:
 		return s.Prague.Max
 	case cfg.IsCancun(london, time) && s.Cancun != nil:
@@ -129,8 +125,6 @@ func LatestMaxBlobsPerBlock(cfg *params.ChainConfig) int {
 		return 0
 	}
 	switch {
-	case s.Maxwell != nil:
-		return s.Maxwell.Max
 	case s.Prague != nil:
 		return s.Prague.Max
 	case s.Cancun != nil:
@@ -150,8 +144,6 @@ func targetBlobsPerBlock(cfg *params.ChainConfig, time uint64) int {
 		s      = cfg.BlobScheduleConfig
 	)
 	switch {
-	case cfg.IsMaxwell(london, time) && s.Maxwell != nil:
-		return s.Maxwell.Target
 	case cfg.IsPrague(london, time) && s.Prague != nil:
 		return s.Prague.Target
 	case cfg.IsCancun(london, time) && s.Cancun != nil:
