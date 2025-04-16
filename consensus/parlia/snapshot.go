@@ -269,6 +269,13 @@ func (s *Snapshot) SignRecently(validator common.Address) bool {
 	return s.signRecentlyByCounts(validator, s.countRecents())
 }
 
+func (s *Snapshot) getFinalizedNumber() uint64 {
+	if s.Attestation != nil {
+		return s.Attestation.SourceNumber
+	}
+	return 0
+}
+
 func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderReader, parents []*types.Header, chainConfig *params.ChainConfig) (*Snapshot, error) {
 	// Allow passing in no headers for cleaner code
 	if len(headers) == 0 {
@@ -323,7 +330,16 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 		snap.Recents[number] = validator
 		snap.RecentForkHashes[number] = hex.EncodeToString(header.Extra[extraVanity-nextForkHashSize : extraVanity])
 		epochLength := snap.EpochLength
+
 		snap.updateAttestation(header, chainConfig, epochLength)
+		latestFinalizedBlockNumber := s.getFinalizedNumber()
+		// BEP-524: Clear entries up to the latest finalized block
+		for blockNumber := range snap.Recents {
+			if blockNumber <= latestFinalizedBlockNumber {
+				delete(snap.Recents, blockNumber)
+			}
+		}
+
 		if chainConfig.IsLorentz(header.Number, header.Time) {
 			// Without this condition, an incorrect block might be used to parse validators for certain blocks after the Lorentz hard fork.
 			if (header.Number.Uint64()+1)%lorentzEpochLength == 0 {
