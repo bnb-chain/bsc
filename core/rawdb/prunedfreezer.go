@@ -30,7 +30,7 @@ type prunedfreezer struct {
 	closeOnce    sync.Once
 }
 
-// newNoDataFreezer creates a chain freezer that deletes data enough ‘old’.
+// newPrunedFreezer creates a chain freezer that deletes data enough ‘old’.
 func newPrunedFreezer(datadir string, db ethdb.KeyValueStore, offset uint64) (*prunedfreezer, error) {
 	if info, err := os.Lstat(datadir); !os.IsNotExist(err) {
 		if info.Mode()&os.ModeSymlink != 0 {
