@@ -332,7 +332,7 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 
 		snap.Recents[number] = validator
 		if chainConfig.IsMaxwell(header.Number, header.Time) {
-			latestFinalizedBlockNumber := s.getFinalizedNumber()
+			latestFinalizedBlockNumber := snap.getFinalizedNumber()
 			// BEP-524: Clear entries up to the latest finalized block
 			for blockNumber := range snap.Recents {
 				if blockNumber <= latestFinalizedBlockNumber {
