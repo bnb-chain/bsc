@@ -83,7 +83,7 @@ func CalcExcessBlobGas(config *params.ChainConfig, parent *types.Header, headTim
 func CalcBlobFee(config *params.ChainConfig, header *types.Header) *big.Int {
 	var frac uint64
 	switch config.LatestFork(header.Time) {
-	case forks.Lorentz, forks.Prague:
+	case forks.Maxwell, forks.Lorentz, forks.Prague:
 		frac = config.BlobScheduleConfig.Prague.UpdateFraction
 	case forks.Cancun:
 		frac = config.BlobScheduleConfig.Cancun.UpdateFraction

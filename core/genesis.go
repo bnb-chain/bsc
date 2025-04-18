@@ -265,6 +265,7 @@ func (e *GenesisMismatchError) Error() string {
 type ChainOverrides struct {
 	OverridePassedForkTime *uint64
 	OverrideLorentz        *uint64
+	OverrideMaxwell        *uint64
 	OverrideVerkle         *uint64
 }
 
@@ -287,6 +288,9 @@ func (o *ChainOverrides) apply(cfg *params.ChainConfig) error {
 	}
 	if o.OverrideLorentz != nil {
 		cfg.LorentzTime = o.OverrideLorentz
+	}
+	if o.OverrideMaxwell != nil {
+		cfg.MaxwellTime = o.OverrideMaxwell
 	}
 	if o.OverrideVerkle != nil {
 		cfg.VerkleTime = o.OverrideVerkle

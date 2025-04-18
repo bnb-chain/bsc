@@ -201,7 +201,7 @@ func (exp *exp) publishResettingTimer(name string, metric *metrics.ResettingTime
 }
 
 func (exp *exp) publishLabel(name string, metric *metrics.Label) {
-	labels := metric.Value()
+	labels := metric.Snapshot().Value()
 	for k, v := range labels {
 		exp.getMap(name).Set(k, exp.interfaceToExpVal(v))
 	}

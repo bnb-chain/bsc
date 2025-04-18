@@ -1,4 +1,19 @@
 # Changelog
+## v1.5.11
+### FEATURE
+[\#3008](https://github.com/bnb-chain/bsc/pull/3008) params: add MaxwellTime
+[\#3025](https://github.com/bnb-chain/bsc/pull/3025) config.toml: default value of [Eth.Miner] and [Eth.Miner.Mev]
+[\#3026](https://github.com/bnb-chain/bsc/pull/3026) mev: include MaxBidsPerBuilder in MevParams
+[\#3027](https://github.com/bnb-chain/bsc/pull/3027) mev: update two default mev paramater for 1.5s block interval
+
+### BUGFIX
+[\#3007](https://github.com/bnb-chain/bsc/pull/3007) metrics: fix panic for cocurrently accessing label
+
+### IMPROVEMENT
+[\#3006](https://github.com/bnb-chain/bsc/pull/3006) jsutil: update getKeyParameters
+[\#3018](https://github.com/bnb-chain/bsc/pull/3018) nancy: update nancy ignore
+[\#3021](https://github.com/bnb-chain/bsc/pull/3021) chore: remove duplicate package imports
+
 ## v1.5.10
 ### FEATURE
 [\#3015](https://github.com/bnb-chain/bsc/pull/3015) config: update BSC Mainnet hardfork time: Lorentz
@@ -138,7 +153,7 @@ _in bsc, this feature only enabled with multi-database_
 
 #### New EIPs
 [core/vm: enable bls-precompiles for Prague (](https://github.com/ethereum/go-ethereum/commit/823719b9e1b72174cd8245ae9e6f6f7d7072a8d6)[#29552](https://github.com/ethereum/go-ethereum/pull/29552)[)](https://github.com/ethereum/go-ethereum/commit/823719b9e1b72174cd8245ae9e6f6f7d7072a8d6)
-[EIP-2935: Serve historical block hashes from state](https://eips.ethereum.org/EIPS/eip-2935) ([#29465](https://github.com/ethereum/go-ethereum/pull/29465))
+[EIP-2935: Serve historical block hashes from state](https://eips.ethereum.org/EIPS/eip-2935) ([#29465](https://github.com/ethereum/go-ethereum/pull/29465))
 
 #### Clear Up
 [eth, eth/downloader: remove references to LightChain, LightSync (#29711)](https://github.com/ethereum/go-ethereum/pull/29711)

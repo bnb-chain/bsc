@@ -119,38 +119,36 @@ type bidSimulator struct {
 
 func newBidSimulator(
 	config *minerconfig.MevConfig,
-	delayLeftOver time.Duration,
+	delayLeftOver *time.Duration,
 	minGasPrice *big.Int,
 	eth Backend,
 	chainConfig *params.ChainConfig,
 	engine consensus.Engine,
 	bidWorker bidWorker,
 ) *bidSimulator {
-	// Set default value
-	maxBids := uint32(3)
-	if config.MaxBidsPerBuilder > 0 {
-		maxBids = config.MaxBidsPerBuilder
-	}
-
 	b := &bidSimulator{
-		config:            config,
-		delayLeftOver:     delayLeftOver,
-		minGasPrice:       minGasPrice,
-		chain:             eth.BlockChain(),
-		txpool:            eth.TxPool(),
-		chainConfig:       chainConfig,
-		engine:            engine,
-		bidWorker:         bidWorker,
-		maxBidsPerBuilder: maxBids,
-		exitCh:            make(chan struct{}),
-		chainHeadCh:       make(chan core.ChainHeadEvent, chainHeadChanSize),
-		builders:          make(map[common.Address]*builderclient.Client),
-		simBidCh:          make(chan *simBidReq),
-		newBidCh:          make(chan newBidPackage, 100),
-		pending:           make(map[uint64]map[common.Address]map[common.Hash]struct{}),
-		bestBid:           make(map[common.Hash]*BidRuntime),
-		bestBidToRun:      make(map[common.Hash]*types.Bid),
-		simulatingBid:     make(map[common.Hash]*BidRuntime),
+		config:        config,
+		minGasPrice:   minGasPrice,
+		chain:         eth.BlockChain(),
+		txpool:        eth.TxPool(),
+		chainConfig:   chainConfig,
+		engine:        engine,
+		bidWorker:     bidWorker,
+		exitCh:        make(chan struct{}),
+		chainHeadCh:   make(chan core.ChainHeadEvent, chainHeadChanSize),
+		builders:      make(map[common.Address]*builderclient.Client),
+		simBidCh:      make(chan *simBidReq),
+		newBidCh:      make(chan newBidPackage, 100),
+		pending:       make(map[uint64]map[common.Address]map[common.Hash]struct{}),
+		bestBid:       make(map[common.Hash]*BidRuntime),
+		bestBidToRun:  make(map[common.Hash]*types.Bid),
+		simulatingBid: make(map[common.Hash]*BidRuntime),
+	}
+	if delayLeftOver != nil {
+		b.delayLeftOver = *delayLeftOver
+	}
+	if config.MaxBidsPerBuilder != nil {
+		b.maxBidsPerBuilder = *config.MaxBidsPerBuilder
 	}
 
 	b.chainHeadSub = b.chain.SubscribeChainHeadEvent(b.chainHeadCh)
@@ -360,7 +358,7 @@ func (b *bidSimulator) canBeInterrupted(targetTime uint64) bool {
 		return true
 	}
 	left := time.Until(time.UnixMilli(int64(targetTime)))
-	return left >= b.config.NoInterruptLeftOver
+	return left >= *b.config.NoInterruptLeftOver
 }
 
 func (b *bidSimulator) newBidLoop() {
@@ -396,7 +394,7 @@ func (b *bidSimulator) newBidLoop() {
 				continue
 			}
 
-			bidRuntime, err := newBidRuntime(newBid.bid, b.config.ValidatorCommission)
+			bidRuntime, err := newBidRuntime(newBid.bid, *b.config.ValidatorCommission)
 			if err != nil {
 				if newBid.feedback != nil {
 					newBid.feedback <- err
@@ -408,7 +406,7 @@ func (b *bidSimulator) newBidLoop() {
 			toCommit := true
 			bestBidToRun := b.GetBestBidToRun(newBid.bid.ParentHash)
 			if bestBidToRun != nil {
-				bestBidRuntime, _ := newBidRuntime(bestBidToRun, b.config.ValidatorCommission)
+				bestBidRuntime, _ := newBidRuntime(bestBidToRun, *b.config.ValidatorCommission)
 				if bidRuntime.isExpectedBetterThan(bestBidRuntime) {
 					// new bid has better expectedBlockReward, use bidRuntime
 					log.Debug("new bid has better expectedBlockReward",
@@ -494,7 +492,7 @@ func (b *bidSimulator) getBlockInterval(parentHeader *types.Header) uint64 {
 
 func (b *bidSimulator) bidBetterBefore(parentHash common.Hash) time.Time {
 	parentHeader := b.chain.GetHeaderByHash(parentHash)
-	return bidutil.BidBetterBefore(parentHeader, b.getBlockInterval(parentHeader), b.delayLeftOver, b.config.BidSimulationLeftOver)
+	return bidutil.BidBetterBefore(parentHeader, b.getBlockInterval(parentHeader), b.delayLeftOver, *b.config.BidSimulationLeftOver)
 }
 
 func (b *bidSimulator) clearLoop() {
@@ -739,7 +737,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 	// check if bid reward is valid
 	{
-		bidRuntime.packReward(b.config.ValidatorCommission)
+		bidRuntime.packReward(*b.config.ValidatorCommission)
 		if !bidRuntime.validReward() {
 			err = errors.New("reward does not achieve the expectation")
 			return
@@ -786,7 +784,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 
 	// if enable greedy merge, fill bid env with transactions from mempool
-	if b.config.GreedyMergeTx {
+	if *b.config.GreedyMergeTx {
 		endingBidsExtra := 20 * time.Millisecond // Add a buffer to ensure ending bids before `delayLeftOver`
 		minTimeLeftForEndingBids := b.delayLeftOver + endingBidsExtra
 		delay := b.engine.Delay(b.chain, bidRuntime.env.header, &minTimeLeftForEndingBids)
@@ -802,7 +800,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 				"builder", bidRuntime.bid.Builder, "tx count", bidRuntime.env.tcount-bidTxLen+1, "err", fillErr)
 
 			// recalculate the packed reward
-			bidRuntime.packReward(b.config.ValidatorCommission)
+			bidRuntime.packReward(*b.config.ValidatorCommission)
 		}
 	}
 

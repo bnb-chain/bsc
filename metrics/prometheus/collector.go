@@ -71,7 +71,7 @@ func (c *collector) Add(name string, i any) error {
 	case *metrics.ResettingTimer:
 		c.addResettingTimer(name, m.Snapshot())
 	case *metrics.Label:
-		c.addLabel(name, m)
+		c.addLabel(name, m.Snapshot())
 	default:
 		return fmt.Errorf("unknown prometheus metric type %T", i)
 	}
@@ -138,9 +138,10 @@ func (c *collector) addResettingTimer(name string, m *metrics.ResettingTimerSnap
 	c.buff.WriteRune('\n')
 }
 
-func (c *collector) addLabel(name string, m *metrics.Label) {
-	labels := make([]string, 0, len(m.Value()))
-	for k, v := range m.Value() {
+func (c *collector) addLabel(name string, m *metrics.LabelSnapshot) {
+	labelValue := m.Value()
+	labels := make([]string, 0, len(labelValue))
+	for k, v := range labelValue {
 		labels = append(labels, fmt.Sprintf(`%s="%s"`, mutateKey(k), fmt.Sprint(v)))
 	}
 	c.writeLabel(mutateKey(name), "{"+strings.Join(labels, ", ")+"}")

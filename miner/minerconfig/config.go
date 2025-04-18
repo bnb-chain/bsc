@@ -23,14 +23,25 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+)
+
+var (
+	defaultDelayLeftOver = 50 * time.Millisecond
+	// default configurations for MEV
+	defaultGreedyMergeTx         bool   = true
+	defaultValidatorCommission   uint64 = 100
+	defaultBidSimulationLeftOver        = 50 * time.Millisecond
+	defaultNoInterruptLeftOver          = 250 * time.Millisecond
+	defaultMaxBidsPerBuilder     uint32 = 2
 )
 
 // Config is the configuration parameters of mining.
 type Config struct {
 	Etherbase             common.Address `toml:",omitempty"` // Public address for block mining rewards
 	ExtraData             hexutil.Bytes  `toml:",omitempty"` // Block extra data set by the miner
-	DelayLeftOver         time.Duration  // Time reserved to finalize a block(calculate root, distribute income...)
+	DelayLeftOver         *time.Duration `toml:",omitempty"` // Time reserved to finalize a block(calculate root, distribute income...)
 	GasFloor              uint64         // Target gas floor for mined blocks.
 	GasCeil               uint64         // Target gas ceiling for mined blocks.
 	GasPrice              *big.Int       // Minimum gas price for mining a transaction
@@ -53,7 +64,7 @@ var DefaultConfig = Config{
 	// for payload generation. It should be enough for Geth to
 	// run 3 rounds.
 	Recommit:      3 * time.Second,
-	DelayLeftOver: 50 * time.Millisecond,
+	DelayLeftOver: &defaultDelayLeftOver,
 
 	// The default value is set to 30 seconds.
 	// Because the avg restart time in mainnet is around 30s, so the node try to wait for the next multi-proposals to be done.
@@ -69,23 +80,57 @@ type BuilderConfig struct {
 
 type MevConfig struct {
 	Enabled               bool            // Whether to enable Mev or not
-	GreedyMergeTx         bool            // Whether to merge local transactions to the bid
+	GreedyMergeTx         *bool           `toml:",omitempty"` // Whether to merge local transactions to the bid
 	BuilderFeeCeil        string          // The maximum builder fee of a bid
 	SentryURL             string          // The url of Mev sentry
 	Builders              []BuilderConfig // The list of builders
-	ValidatorCommission   uint64          // 100 means the validator claims 1% from block reward
-	BidSimulationLeftOver time.Duration
-	NoInterruptLeftOver   time.Duration
-	MaxBidsPerBuilder     uint32 // Maximum number of bids allowed per builder per block
+	ValidatorCommission   *uint64         `toml:",omitempty"` // 100 means the validator claims 1% from block reward
+	BidSimulationLeftOver *time.Duration  `toml:",omitempty"`
+	NoInterruptLeftOver   *time.Duration  `toml:",omitempty"`
+	MaxBidsPerBuilder     *uint32         `toml:",omitempty"` // Maximum number of bids allowed per builder per block
 }
 
 var DefaultMevConfig = MevConfig{
 	Enabled:               false,
-	GreedyMergeTx:         true,
+	GreedyMergeTx:         &defaultGreedyMergeTx,
 	SentryURL:             "",
 	Builders:              nil,
-	ValidatorCommission:   100,
-	BidSimulationLeftOver: 50 * time.Millisecond,
-	NoInterruptLeftOver:   400 * time.Millisecond,
-	MaxBidsPerBuilder:     3,
+	ValidatorCommission:   &defaultValidatorCommission,
+	BidSimulationLeftOver: &defaultBidSimulationLeftOver,
+	NoInterruptLeftOver:   &defaultNoInterruptLeftOver,
+	MaxBidsPerBuilder:     &defaultMaxBidsPerBuilder,
+}
+
+func ApplyDefaultMinerConfig(cfg *Config) {
+	if cfg == nil {
+		log.Warn("ApplyDefaultMinerConfig cfg == nil")
+		return
+	}
+	// check [Eth.Miner]
+	if cfg.DelayLeftOver == nil {
+		cfg.DelayLeftOver = &defaultDelayLeftOver
+		log.Info("ApplyDefaultMinerConfig", "DelayLeftOver", *cfg.DelayLeftOver)
+	}
+
+	// check [Eth.Miner.Mev]
+	if cfg.Mev.GreedyMergeTx == nil {
+		cfg.Mev.GreedyMergeTx = &defaultGreedyMergeTx
+		log.Info("ApplyDefaultMinerConfig", "Mev.GreedyMergeTx", *cfg.Mev.GreedyMergeTx)
+	}
+	if cfg.Mev.ValidatorCommission == nil {
+		cfg.Mev.ValidatorCommission = &defaultValidatorCommission
+		log.Info("ApplyDefaultMinerConfig", "Mev.ValidatorCommission", *cfg.Mev.ValidatorCommission)
+	}
+	if cfg.Mev.BidSimulationLeftOver == nil {
+		cfg.Mev.BidSimulationLeftOver = &defaultBidSimulationLeftOver
+		log.Info("ApplyDefaultMinerConfig", "Mev.BidSimulationLeftOver", *cfg.Mev.BidSimulationLeftOver)
+	}
+	if cfg.Mev.NoInterruptLeftOver == nil {
+		cfg.Mev.NoInterruptLeftOver = &defaultNoInterruptLeftOver
+		log.Info("ApplyDefaultMinerConfig", "Mev.NoInterruptLeftOver", *cfg.Mev.NoInterruptLeftOver)
+	}
+	if cfg.Mev.MaxBidsPerBuilder == nil {
+		cfg.Mev.MaxBidsPerBuilder = &defaultMaxBidsPerBuilder
+		log.Info("ApplyDefaultMinerConfig", "Mev.MaxBidsPerBuilder", *cfg.Mev.MaxBidsPerBuilder)
+	}
 }
