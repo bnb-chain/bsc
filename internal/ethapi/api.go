@@ -564,7 +564,7 @@ func (api *BlockChainAPI) getFinalizedNumber(ctx context.Context, verifiedValida
 	lastHeader := latestHeader
 	confirmedValSet := make(map[common.Address]struct{}, valLen)
 	confirmedValSet[lastHeader.Coinbase] = struct{}{}
-	epochLength := int(500) // TODO(Nathan)(BEP-524 Phase Two): use `maxwellEpochLength` instead
+	epochLength := int(1000) // maxwellEpochLength
 	for count := 1; int64(len(confirmedValSet)) < verifiedValidatorNum && count <= epochLength && lastHeader.Number.Int64() > max(fastFinalizedHeader.Number.Int64(), 1); count++ {
 		lastHeader, err = api.b.HeaderByHash(ctx, lastHeader.ParentHash)
 		if err != nil { // impossible

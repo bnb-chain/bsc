@@ -12,7 +12,7 @@ import (
 const (
 	wiggleTimeBeforeFork       = 500 * time.Millisecond // Random delay (per signer) to allow concurrent signers
 	fixedBackOffTimeBeforeFork = 200 * time.Millisecond
-	millisecondsUnit           = 500 // Set to 250 if block interval is 750ms; not enforced at the consensus level
+	millisecondsUnit           = 250 // not enforced at the consensus level
 )
 
 func (p *Parlia) delayForRamanujanFork(snap *Snapshot, header *types.Header) time.Duration {
