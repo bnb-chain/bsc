@@ -715,7 +715,7 @@ func (bc *BlockChain) GetJustifiedNumber(header *types.Header) uint64 {
 }
 
 // getFinalizedNumber returns the highest finalized number before the specific block.
-func (bc *BlockChain) getFinalizedNumber(header *types.Header) uint64 {
+func (bc *BlockChain) GetFinalizedNumber(header *types.Header) uint64 {
 	if p, ok := bc.engine.(consensus.PoSA); ok {
 		if finalizedHeader := p.GetFinalizedHeader(bc, header); finalizedHeader != nil {
 			return finalizedHeader.Number.Uint64()
@@ -747,7 +747,7 @@ func (bc *BlockChain) loadLastState() error {
 	bc.currentBlock.Store(headBlock.Header())
 	headBlockGauge.Update(int64(headBlock.NumberU64()))
 	justifiedBlockGauge.Update(int64(bc.GetJustifiedNumber(headBlock.Header())))
-	finalizedBlockGauge.Update(int64(bc.getFinalizedNumber(headBlock.Header())))
+	finalizedBlockGauge.Update(int64(bc.GetFinalizedNumber(headBlock.Header())))
 
 	// Restore the last known head header
 	headHeader := headBlock.Header()
@@ -1196,7 +1196,7 @@ func (bc *BlockChain) SnapSyncCommitHead(hash common.Hash) error {
 	bc.currentBlock.Store(block.Header())
 	headBlockGauge.Update(int64(block.NumberU64()))
 	justifiedBlockGauge.Update(int64(bc.GetJustifiedNumber(block.Header())))
-	finalizedBlockGauge.Update(int64(bc.getFinalizedNumber(block.Header())))
+	finalizedBlockGauge.Update(int64(bc.GetFinalizedNumber(block.Header())))
 	bc.chainmu.Unlock()
 
 	// Destroy any existing state snapshot and regenerate it in the background,
@@ -1337,7 +1337,7 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 	bc.currentBlock.Store(block.Header())
 	headBlockGauge.Update(int64(block.NumberU64()))
 	justifiedBlockGauge.Update(int64(bc.GetJustifiedNumber(block.Header())))
-	finalizedBlockGauge.Update(int64(bc.getFinalizedNumber(block.Header())))
+	finalizedBlockGauge.Update(int64(bc.GetFinalizedNumber(block.Header())))
 }
 
 // stopWithoutSaving stops the blockchain service. If any imports are currently in progress

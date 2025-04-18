@@ -97,7 +97,7 @@ func NewHeaderChain(chainDb ethdb.Database, config *params.ChainConfig, engine c
 	hc.currentHeaderHash = hc.CurrentHeader().Hash()
 	headHeaderGauge.Update(hc.CurrentHeader().Number.Int64())
 	justifiedBlockGauge.Update(int64(hc.GetJustifiedNumber(hc.CurrentHeader())))
-	finalizedBlockGauge.Update(int64(hc.getFinalizedNumber(hc.CurrentHeader())))
+	finalizedBlockGauge.Update(int64(hc.GetFinalizedNumber(hc.CurrentHeader())))
 
 	return hc, nil
 }
@@ -116,7 +116,7 @@ func (hc *HeaderChain) GetJustifiedNumber(header *types.Header) uint64 {
 }
 
 // getFinalizedNumber returns the highest finalized number before the specific block.
-func (hc *HeaderChain) getFinalizedNumber(header *types.Header) uint64 {
+func (hc *HeaderChain) GetFinalizedNumber(header *types.Header) uint64 {
 	if p, ok := hc.engine.(consensus.PoSA); ok {
 		if finalizedHeader := p.GetFinalizedHeader(hc, header); finalizedHeader != nil {
 			return finalizedHeader.Number.Uint64()
@@ -585,7 +585,7 @@ func (hc *HeaderChain) SetCurrentHeader(head *types.Header) {
 	hc.currentHeaderHash = head.Hash()
 	headHeaderGauge.Update(head.Number.Int64())
 	justifiedBlockGauge.Update(int64(hc.GetJustifiedNumber(head)))
-	finalizedBlockGauge.Update(int64(hc.getFinalizedNumber(head)))
+	finalizedBlockGauge.Update(int64(hc.GetFinalizedNumber(head)))
 }
 
 type (
@@ -673,7 +673,7 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 		hc.currentHeaderHash = parentHash
 		headHeaderGauge.Update(parent.Number.Int64())
 		justifiedBlockGauge.Update(int64(hc.GetJustifiedNumber(parent)))
-		finalizedBlockGauge.Update(int64(hc.getFinalizedNumber(parent)))
+		finalizedBlockGauge.Update(int64(hc.GetFinalizedNumber(parent)))
 
 		// If this is the first iteration, wipe any leftover data upwards too so
 		// we don't end up with dangling daps in the database
