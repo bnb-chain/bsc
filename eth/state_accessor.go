@@ -241,7 +241,7 @@ func (eth *Ethereum) stateAtTransaction(ctx context.Context, block *types.Block,
 	if err != nil {
 		return nil, vm.BlockContext{}, nil, nil, err
 	}
-	// upgrade build-in system contract before normal txs if Feynman is not enabled
+	// upgrade built-in system contract before normal txs if Feynman is not enabled
 	systemcontracts.TryUpdateBuildInSystemContract(eth.blockchain.Config(), block.Number(), parent.Time(), block.Time(), statedb, true)
 	// Insert parent beacon block root in the state as per EIP-4788.
 	context := core.NewEVMBlockContext(block.Header(), eth.blockchain, nil)
@@ -262,7 +262,7 @@ func (eth *Ethereum) stateAtTransaction(ctx context.Context, block *types.Block,
 		beforeSystemTx = true
 	)
 	for idx, tx := range block.Transactions() {
-		// upgrade build-in system contract before system txs if Feynman is enabled
+		// upgrade built-in system contract before system txs if Feynman is enabled
 		if beforeSystemTx {
 			if posa, ok := eth.Engine().(consensus.PoSA); ok {
 				if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
