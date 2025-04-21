@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -82,6 +84,12 @@ var bsc1 = map[uint64]msgHandler{
 	VotesMsg: handleVotes,
 }
 
+var bsc2 = map[uint64]msgHandler{
+	VotesMsg:            handleVotes,
+	GetBlocksByRangeMsg: handleGetBlocksByRange,
+	BlocksByRangeMsg:    handleBlocksByRange,
+}
+
 // handleMessage is invoked whenever an inbound message is received from a
 // remote peer on the `bsc` protocol. The remote connection is torn down upon
 // returning any error.
@@ -97,6 +105,9 @@ func handleMessage(backend Backend, peer *Peer) error {
 	defer msg.Discard()
 
 	var handlers = bsc1
+	if peer.Version() >= Bsc2 {
+		handlers = bsc2
+	}
 
 	// Track the amount of time it takes to serve the request and run the handler
 	if metrics.Enabled() {
@@ -124,6 +135,114 @@ func handleVotes(backend Backend, msg Decoder, peer *Peer) error {
 	// Schedule all the unknown hashes for retrieval
 	peer.markVotes(ann.Votes)
 	return backend.Handle(peer, ann)
+}
+
+// GetBlocksByRange请求
+type GetBlocksByRangeRequest struct {
+	RequestId        uint64
+	StartBlockHeight uint64
+	Count            uint64
+	StartBlockHash   common.Hash
+}
+
+func (r *GetBlocksByRangeRequest) GetRequestId() uint64 {
+	return r.RequestId
+}
+
+func (r *GetBlocksByRangeRequest) GetMessageType() MessageType {
+	return GetBlocksByRangeMsg
+}
+
+// BlocksByRange响应
+type BlocksByRangeResponse struct {
+	RequestId uint64
+	Blocks    []*types.Block
+}
+
+func (r *BlocksByRangeResponse) GetRequestId() uint64 {
+	return r.RequestId
+}
+
+func (r *BlocksByRangeResponse) GetMessageType() MessageType {
+	return GetBlocksByRangeMsg
+}
+
+func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
+	req := new(GetBlocksByRangeRequest)
+	if err := msg.Decode(req); err != nil {
+		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
+	}
+
+	// Validate request parameters
+	if req.Count == 0 {
+		return fmt.Errorf("%w: invalid count: %d", errDecode, req.Count)
+	}
+	if req.Count > 1024 { // Limit maximum request count
+		req.Count = 1024
+	}
+
+	// Get requested blocks
+	blocks := make([]*types.Block, 0, req.Count)
+	var startBlock *types.Block
+
+	// Prioritize blockHash query
+	if req.StartBlockHash != (common.Hash{}) {
+		startBlock = backend.Chain().GetBlockByHash(req.StartBlockHash)
+		if startBlock == nil {
+			return fmt.Errorf("%w: block not found by hash: %s", errDecode, req.StartBlockHash.Hex())
+		}
+		blocks = append(blocks, startBlock)
+
+		// Query blocks backward from the found block
+		for i := uint64(1); i < req.Count; i++ {
+			nextBlock := backend.Chain().GetBlockByNumber(startBlock.NumberU64() - i)
+			if nextBlock == nil {
+				break
+			}
+			blocks = append(blocks, nextBlock)
+		}
+	} else {
+		// Use blockHeight query
+		startBlock = backend.Chain().GetBlockByNumber(req.StartBlockHeight)
+		if startBlock == nil {
+			return fmt.Errorf("%w: block not found by height: %d", errDecode, req.StartBlockHeight)
+		}
+		blocks = append(blocks, startBlock)
+
+		// Query blocks backward from the found block
+		for i := uint64(1); i < req.Count; i++ {
+			nextBlock := backend.Chain().GetBlockByNumber(req.StartBlockHeight - i)
+			if nextBlock == nil {
+				break
+			}
+			blocks = append(blocks, nextBlock)
+		}
+	}
+
+	// Return error if no blocks found
+	if len(blocks) == 0 {
+		return fmt.Errorf("%w: no blocks found", errDecode)
+	}
+
+	// Send block response
+	return p2p.Send(peer.rw, BlocksByRangeMsg, &BlocksByRangeResponse{
+		RequestId: req.RequestId,
+		Blocks:    blocks,
+	})
+}
+
+func handleBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
+	res := new(BlocksByRangeResponse)
+	if err := msg.Decode(res); err != nil {
+		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
+	}
+
+	// 使用调度器处理响应
+	if err := peer.dispatcher.HandleResponse(res); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // NodeInfo represents a short summary of the `bsc` sub-protocol metadata

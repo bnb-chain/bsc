@@ -99,6 +99,9 @@ type chainInsertFn func(types.Blocks) (int, error)
 // peerDropFn is a callback type for dropping a peer detected as malicious.
 type peerDropFn func(id string)
 
+// fetchRangeBlocksFn is a callback type for fetching a range of blocks from a peer.
+type fetchRangeBlocksFn func(peer string, startHeight uint64, startHash common.Hash, count uint64) ([]*types.Block, error)
+
 // blockAnnounce is the hash notification of the availability of a new block in the
 // network.
 type blockAnnounce struct {
@@ -189,6 +192,7 @@ type BlockFetcher struct {
 	chainFinalizedHeight chainFinalizedHeightFn // Retrieves the current chain's finalized height
 	insertChain          chainInsertFn          // Injects a batch of blocks into the chain
 	dropPeer             peerDropFn             // Drops a peer for misbehaving
+	fetchRangeBlocks     fetchRangeBlocksFn     // Fetches a range of blocks from a peer
 
 	// Testing hooks
 	announceChangeHook func(common.Hash, bool)           // Method to call upon adding or deleting a hash from the blockAnnounce list
@@ -417,6 +421,8 @@ func (f *BlockFetcher) loop() {
 			if f.announceChangeHook != nil && len(f.announced[notification.hash]) == 1 {
 				f.announceChangeHook(notification.hash, true)
 			}
+			// TODO: if there enable range fetch, just request it and wait for response, and donot wait the schedule timer
+			// schedule the first arrive announce hash
 			if len(f.announced) == 1 {
 				f.rescheduleFetch(fetchTimer)
 			}

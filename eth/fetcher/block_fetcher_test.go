@@ -19,6 +19,7 @@ package fetcher
 import (
 	"errors"
 	"math/big"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -31,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/triedb"
@@ -934,4 +936,207 @@ func TestBlockMemoryExhaustionAttack(t *testing.T) {
 		verifyImportEvent(t, imported, true)
 	}
 	verifyImportDone(t, imported)
+}
+
+// mockBlockRetriever 模拟本地链上的区块检索
+type mockBlockRetriever struct {
+	blocks map[common.Hash]*types.Block
+}
+
+func newMockBlockRetriever() *mockBlockRetriever {
+	return &mockBlockRetriever{
+		blocks: make(map[common.Hash]*types.Block),
+	}
+}
+
+func (m *mockBlockRetriever) getBlock(hash common.Hash) *types.Block {
+	return m.blocks[hash]
+}
+
+// mockHeaderRequester 模拟header请求
+type mockHeaderRequester struct {
+	headers map[common.Hash]*types.Header
+	delay   time.Duration
+}
+
+func newMockHeaderRequester(delay time.Duration) *mockHeaderRequester {
+	return &mockHeaderRequester{
+		headers: make(map[common.Hash]*types.Header),
+		delay:   delay,
+	}
+}
+
+func (m *mockHeaderRequester) requestHeader(hash common.Hash, ch chan *eth.Response) (*eth.Request, error) {
+	go func() {
+		time.Sleep(m.delay)
+		if header, ok := m.headers[hash]; ok {
+			ch <- &eth.Response{
+				Res: &eth.BlockHeadersRequest{header},
+			}
+		} else {
+			ch <- &eth.Response{
+				Res: &eth.BlockHeadersRequest{},
+			}
+		}
+	}()
+	return &eth.Request{}, nil
+}
+
+// mockBodyRequester 模拟body请求
+type mockBodyRequester struct {
+	bodies map[common.Hash]*types.Body
+	delay  time.Duration
+}
+
+func newMockBodyRequester(delay time.Duration) *mockBodyRequester {
+	return &mockBodyRequester{
+		bodies: make(map[common.Hash]*types.Body),
+		delay:  delay,
+	}
+}
+
+func (m *mockBodyRequester) requestBodies(hashes []common.Hash, ch chan *eth.Response) (*eth.Request, error) {
+	go func() {
+		time.Sleep(m.delay)
+		var bodies []*eth.BlockBody
+		for _, hash := range hashes {
+			if body, ok := m.bodies[hash]; ok {
+				bodies = append(bodies, &eth.BlockBody{
+					Transactions: body.Transactions,
+					Uncles:       body.Uncles,
+				})
+			}
+		}
+		ch <- &eth.Response{
+			Res: (*eth.BlockBodiesResponse)(&bodies),
+		}
+	}()
+	return &eth.Request{}, nil
+}
+
+// TestBlockFetcherMultiplePeers 测试多个peer节点之间的区块同步
+func TestBlockFetcherMultiplePeers(t *testing.T) {
+	// 设置测试环境
+	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stdout, log.LevelInfo, true)))
+
+	// 创建模拟组件
+	blockRetriever := newMockBlockRetriever()
+	headerRequester1 := newMockHeaderRequester(0)
+	bodyRequester1 := newMockBodyRequester(0)
+	bodyRequester2 := newMockBodyRequester(0)
+
+	// 创建测试区块
+	parent := types.NewBlock(&types.Header{
+		Number:     big.NewInt(1),
+		ParentHash: common.Hash{},
+	}, nil, nil, nil)
+	block := types.NewBlock(&types.Header{
+		Number:     big.NewInt(2),
+		ParentHash: parent.Hash(),
+	}, nil, nil, nil)
+
+	// 设置模拟数据
+	blockRetriever.blocks[parent.Hash()] = parent
+	headerRequester1.headers[block.Hash()] = block.Header()
+	bodyRequester1.bodies[block.Hash()] = &types.Body{
+		Transactions: block.Transactions(),
+		Uncles:       block.Uncles(),
+	}
+
+	// 创建fetcher
+	fetcher := NewBlockFetcher(
+		blockRetriever.getBlock,
+		func(header *types.Header) error { return nil },
+		func(block *types.Block, propagate bool) {},
+		func() uint64 { return 1 },
+		func() uint64 { return 0 },
+		func(blocks types.Blocks) (int, error) { return len(blocks), nil },
+		func(id string) {},
+	)
+
+	// 启动fetcher
+	fetcher.Start()
+	defer fetcher.Stop()
+
+	// 测试用例1: 正常下载流程
+	t.Run("normal download", func(t *testing.T) {
+		// Peer1 发送区块通知
+		err := fetcher.Notify("peer1", block.Hash(), block.NumberU64(), time.Now(),
+			headerRequester1.requestHeader, bodyRequester1.requestBodies)
+		if err != nil {
+			t.Fatalf("Notify failed: %v", err)
+		}
+
+		// 等待区块被处理
+		time.Sleep(100 * time.Millisecond)
+
+		// 验证区块是否被正确下载
+		if fetchedBlock := blockRetriever.getBlock(block.Hash()); fetchedBlock == nil {
+			t.Error("Block was not downloaded")
+		}
+	})
+
+	// 测试用例2: 下载超时
+	t.Run("download timeout", func(t *testing.T) {
+		// 创建超时的header请求器
+		slowHeaderRequester := newMockHeaderRequester(2 * fetchTimeout)
+
+		// Peer2 发送区块通知
+		err := fetcher.Notify("peer2", block.Hash(), block.NumberU64(), time.Now(),
+			slowHeaderRequester.requestHeader, bodyRequester2.requestBodies)
+		if err != nil {
+			t.Fatalf("Notify failed: %v", err)
+		}
+
+		// 等待超时
+		time.Sleep(fetchTimeout + 100*time.Millisecond)
+
+		// 验证peer是否被丢弃
+		// 注意：这里需要扩展fetcher以暴露peer状态，或者通过其他方式验证
+	})
+
+	// 测试用例3: 多个区块通知
+	t.Run("multiple block announcements", func(t *testing.T) {
+		// 创建多个测试区块
+		blocks := make([]*types.Block, 5)
+		for i := 0; i < 5; i++ {
+			blocks[i] = types.NewBlock(&types.Header{
+				Number:     big.NewInt(int64(i + 3)),
+				ParentHash: blocks[max(0, i-1)].Hash(),
+			}, nil, nil, nil)
+
+			// 设置模拟数据
+			headerRequester1.headers[blocks[i].Hash()] = blocks[i].Header()
+			bodyRequester1.bodies[blocks[i].Hash()] = &types.Body{
+				Transactions: blocks[i].Transactions(),
+				Uncles:       blocks[i].Uncles(),
+			}
+		}
+
+		// 发送多个区块通知
+		for i, block := range blocks {
+			err := fetcher.Notify("peer1", block.Hash(), block.NumberU64(), time.Now(),
+				headerRequester1.requestHeader, bodyRequester1.requestBodies)
+			if err != nil {
+				t.Fatalf("Notify failed for block %d: %v", i, err)
+			}
+		}
+
+		// 等待区块被处理
+		time.Sleep(500 * time.Millisecond)
+
+		// 验证所有区块是否被正确下载
+		for i, block := range blocks {
+			if fetchedBlock := blockRetriever.getBlock(block.Hash()); fetchedBlock == nil {
+				t.Errorf("Block %d was not downloaded", i)
+			}
+		}
+	})
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
