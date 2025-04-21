@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ethereum/go-ethereum/log"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -12,6 +14,8 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 )
+
+const MaxRequestRangeBlocksCount = 128
 
 // Handler is a callback to invoke from an outside runner after the boilerplate
 // exchanges have passed.
@@ -137,111 +141,58 @@ func handleVotes(backend Backend, msg Decoder, peer *Peer) error {
 	return backend.Handle(peer, ann)
 }
 
-// GetBlocksByRange请求
-type GetBlocksByRangeRequest struct {
-	RequestId        uint64
-	StartBlockHeight uint64
-	Count            uint64
-	StartBlockHash   common.Hash
-}
-
-func (r *GetBlocksByRangeRequest) GetRequestId() uint64 {
-	return r.RequestId
-}
-
-func (r *GetBlocksByRangeRequest) GetMessageType() MessageType {
-	return GetBlocksByRangeMsg
-}
-
-// BlocksByRange响应
-type BlocksByRangeResponse struct {
-	RequestId uint64
-	Blocks    []*types.Block
-}
-
-func (r *BlocksByRangeResponse) GetRequestId() uint64 {
-	return r.RequestId
-}
-
-func (r *BlocksByRangeResponse) GetMessageType() MessageType {
-	return GetBlocksByRangeMsg
-}
-
 func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
-	req := new(GetBlocksByRangeRequest)
+	req := new(GetBlocksByRangePacket)
 	if err := msg.Decode(req); err != nil {
-		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
+		return fmt.Errorf("msg %v, decode err: %v", GetBlocksByRangeMsg, err)
 	}
 
+	log.Trace("receive GetBlocksByRange request", "from", peer.id, "req", req)
 	// Validate request parameters
-	if req.Count == 0 {
-		return fmt.Errorf("%w: invalid count: %d", errDecode, req.Count)
-	}
-	if req.Count > 1024 { // Limit maximum request count
-		req.Count = 1024
+	if req.Count == 0 || req.Count > MaxRequestRangeBlocksCount { // Limit maximum request count
+		return fmt.Errorf("msg %v, invalid count: %v", GetBlocksByRangeMsg, req.Count)
 	}
 
 	// Get requested blocks
-	blocks := make([]*types.Block, 0, req.Count)
-	var startBlock *types.Block
-
+	blocks := make([]*BlockData, 0, req.Count)
+	var block *types.Block
 	// Prioritize blockHash query
 	if req.StartBlockHash != (common.Hash{}) {
-		startBlock = backend.Chain().GetBlockByHash(req.StartBlockHash)
-		if startBlock == nil {
-			return fmt.Errorf("%w: block not found by hash: %s", errDecode, req.StartBlockHash.Hex())
-		}
-		blocks = append(blocks, startBlock)
-
-		// Query blocks backward from the found block
-		for i := uint64(1); i < req.Count; i++ {
-			nextBlock := backend.Chain().GetBlockByNumber(startBlock.NumberU64() - i)
-			if nextBlock == nil {
-				break
-			}
-			blocks = append(blocks, nextBlock)
-		}
+		block = backend.Chain().GetBlockByHash(req.StartBlockHash)
 	} else {
-		// Use blockHeight query
-		startBlock = backend.Chain().GetBlockByNumber(req.StartBlockHeight)
-		if startBlock == nil {
-			return fmt.Errorf("%w: block not found by height: %d", errDecode, req.StartBlockHeight)
-		}
-		blocks = append(blocks, startBlock)
-
-		// Query blocks backward from the found block
-		for i := uint64(1); i < req.Count; i++ {
-			nextBlock := backend.Chain().GetBlockByNumber(req.StartBlockHeight - i)
-			if nextBlock == nil {
-				break
-			}
-			blocks = append(blocks, nextBlock)
-		}
+		block = backend.Chain().GetBlockByNumber(req.StartBlockHeight)
 	}
 
-	// Return error if no blocks found
-	if len(blocks) == 0 {
-		return fmt.Errorf("%w: no blocks found", errDecode)
+	if block == nil {
+		return fmt.Errorf("msg %v, cannot get start block: %v, %v", GetBlocksByRangeMsg, req.StartBlockHeight, req.StartBlockHash)
+	}
+	blocks = append(blocks, NewBlockData(block))
+	for i := uint64(1); i < req.Count; i++ {
+		block = backend.Chain().GetBlockByHash(block.ParentHash())
+		if block == nil {
+			break
+		}
+		blocks = append(blocks, NewBlockData(block))
 	}
 
-	// Send block response
-	return p2p.Send(peer.rw, BlocksByRangeMsg, &BlocksByRangeResponse{
+	log.Trace("reply GetBlocksByRange msg", "from", peer.id, "req", req.Count, "blocks", len(blocks))
+	return p2p.Send(peer.rw, BlocksByRangeMsg, &BlocksByRangePacket{
 		RequestId: req.RequestId,
 		Blocks:    blocks,
 	})
 }
 
 func handleBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
-	res := new(BlocksByRangeResponse)
+	res := new(BlocksByRangePacket)
 	if err := msg.Decode(res); err != nil {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
 	}
 
-	// 使用调度器处理响应
-	if err := peer.dispatcher.HandleResponse(res); err != nil {
-		return err
-	}
-
+	log.Trace("receive BlocksByRange response", "from", peer.id, "blocks", len(res.Blocks))
+	peer.dispatcher.DispatchResponse(&Response{
+		requestID: res.RequestId,
+		data:      res,
+	})
 	return nil
 }
 

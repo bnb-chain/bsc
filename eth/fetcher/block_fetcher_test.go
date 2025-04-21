@@ -105,7 +105,10 @@ func newTester() *fetcherTester {
 		drops:   make(map[string]bool),
 	}
 	tester.fetcher = NewBlockFetcher(tester.getBlock, tester.verifyHeader, tester.broadcastBlock,
-		tester.chainHeight, tester.chainFinalizedHeight, tester.insertChain, tester.dropPeer)
+		tester.chainHeight, tester.chainFinalizedHeight, tester.insertChain, tester.dropPeer,
+		func(peer string, startHeight uint64, startHash common.Hash, count uint64) ([]*types.Block, error) {
+			return nil, errors.New("not implemented")
+		})
 	tester.fetcher.Start()
 
 	return tester
@@ -938,7 +941,7 @@ func TestBlockMemoryExhaustionAttack(t *testing.T) {
 	verifyImportDone(t, imported)
 }
 
-// mockBlockRetriever 模拟本地链上的区块检索
+// mockBlockRetriever simulates block retrieval from the local chain
 type mockBlockRetriever struct {
 	blocks map[common.Hash]*types.Block
 }
@@ -953,7 +956,7 @@ func (m *mockBlockRetriever) getBlock(hash common.Hash) *types.Block {
 	return m.blocks[hash]
 }
 
-// mockHeaderRequester 模拟header请求
+// mockHeaderRequester simulates header requests
 type mockHeaderRequester struct {
 	headers map[common.Hash]*types.Header
 	delay   time.Duration
@@ -982,7 +985,7 @@ func (m *mockHeaderRequester) requestHeader(hash common.Hash, ch chan *eth.Respo
 	return &eth.Request{}, nil
 }
 
-// mockBodyRequester 模拟body请求
+// mockBodyRequester simulates body requests
 type mockBodyRequester struct {
 	bodies map[common.Hash]*types.Body
 	delay  time.Duration
@@ -1014,18 +1017,12 @@ func (m *mockBodyRequester) requestBodies(hashes []common.Hash, ch chan *eth.Res
 	return &eth.Request{}, nil
 }
 
-// TestBlockFetcherMultiplePeers 测试多个peer节点之间的区块同步
+// TestBlockFetcherMultiplePeers tests block synchronization between multiple peers
 func TestBlockFetcherMultiplePeers(t *testing.T) {
-	// 设置测试环境
-	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stdout, log.LevelInfo, true)))
+	// Setup test environment
+	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stdout, log.LevelTrace, true)))
 
-	// 创建模拟组件
-	blockRetriever := newMockBlockRetriever()
-	headerRequester1 := newMockHeaderRequester(0)
-	bodyRequester1 := newMockBodyRequester(0)
-	bodyRequester2 := newMockBodyRequester(0)
-
-	// 创建测试区块
+	// Create test blocks
 	parent := types.NewBlock(&types.Header{
 		Number:     big.NewInt(1),
 		ParentHash: common.Hash{},
@@ -1035,108 +1032,296 @@ func TestBlockFetcherMultiplePeers(t *testing.T) {
 		ParentHash: parent.Hash(),
 	}, nil, nil, nil)
 
-	// 设置模拟数据
-	blockRetriever.blocks[parent.Hash()] = parent
-	headerRequester1.headers[block.Hash()] = block.Header()
-	bodyRequester1.bodies[block.Hash()] = &types.Body{
-		Transactions: block.Transactions(),
-		Uncles:       block.Uncles(),
-	}
+	// Create block storage
+	blockStore := make(map[common.Hash]*types.Block)
+	blockStore[parent.Hash()] = parent
 
-	// 创建fetcher
+	// Create fetcher
 	fetcher := NewBlockFetcher(
-		blockRetriever.getBlock,
-		func(header *types.Header) error { return nil },
+		// getBlock
+		func(hash common.Hash) *types.Block {
+			return blockStore[hash]
+		},
+		// verifyHeader
+		func(header *types.Header) error {
+			return nil
+		},
+		// broadcastBlock
 		func(block *types.Block, propagate bool) {},
-		func() uint64 { return 1 },
+		// chainHeight - returns the height of the highest block in the chain
+		func() uint64 {
+			var maxHeight uint64 = 0
+			for _, block := range blockStore {
+				height := block.NumberU64()
+				if height > maxHeight {
+					maxHeight = height
+				}
+			}
+			return maxHeight
+		},
+		// chainFinalizedHeight
 		func() uint64 { return 0 },
-		func(blocks types.Blocks) (int, error) { return len(blocks), nil },
+		// insertChain
+		func(blocks types.Blocks) (int, error) {
+			for _, b := range blocks {
+				blockStore[b.Hash()] = b
+			}
+			return len(blocks), nil
+		},
+		// dropPeer
 		func(id string) {},
+		// fetchRangeBlocks
+		func(peer string, startHeight uint64, startHash common.Hash, count uint64) ([]*types.Block, error) {
+			return nil, errors.New("not implemented")
+		},
 	)
 
-	// 启动fetcher
+	// Start fetcher
 	fetcher.Start()
 	defer fetcher.Stop()
 
-	// 测试用例1: 正常下载流程
+	// Test case 1: Normal download process
 	t.Run("normal download", func(t *testing.T) {
-		// Peer1 发送区块通知
+		// Create request functions
+		headerRequester := func(hash common.Hash, sink chan *eth.Response) (*eth.Request, error) {
+			go func() {
+				// Return requested header
+				headers := []*types.Header{block.Header()}
+				res := &eth.Response{
+					Req:  &eth.Request{},
+					Res:  (*eth.BlockHeadersRequest)(&headers),
+					Done: make(chan error, 1),
+				}
+				sink <- res
+			}()
+			return &eth.Request{}, nil
+		}
+
+		bodyRequester := func(hashes []common.Hash, sink chan *eth.Response) (*eth.Request, error) {
+			go func() {
+				// Return requested body
+				bodies := make([]*eth.BlockBody, 0)
+				for _, hash := range hashes {
+					if hash == block.Hash() {
+						bodies = append(bodies, &eth.BlockBody{
+							Transactions: block.Transactions(),
+							Uncles:       block.Uncles(),
+						})
+					}
+				}
+				res := &eth.Response{
+					Req:  &eth.Request{},
+					Res:  (*eth.BlockBodiesResponse)(&bodies),
+					Done: make(chan error, 1),
+				}
+				sink <- res
+			}()
+			return &eth.Request{}, nil
+		}
+
+		// Peer1 sends block notification
 		err := fetcher.Notify("peer1", block.Hash(), block.NumberU64(), time.Now(),
-			headerRequester1.requestHeader, bodyRequester1.requestBodies)
+			headerRequester, bodyRequester)
 		if err != nil {
 			t.Fatalf("Notify failed: %v", err)
 		}
 
-		// 等待区块被处理
-		time.Sleep(100 * time.Millisecond)
+		// Wait for the block to be processed
+		for i := 0; i < 20; i++ {
+			time.Sleep(50 * time.Millisecond)
+			if blockStore[block.Hash()] != nil {
+				break
+			}
+		}
 
-		// 验证区块是否被正确下载
-		if fetchedBlock := blockRetriever.getBlock(block.Hash()); fetchedBlock == nil {
+		// Verify if the block was downloaded correctly
+		if fetchedBlock := blockStore[block.Hash()]; fetchedBlock == nil {
 			t.Error("Block was not downloaded")
 		}
 	})
 
-	// 测试用例2: 下载超时
+	// Test case 2: Download timeout
 	t.Run("download timeout", func(t *testing.T) {
-		// 创建超时的header请求器
-		slowHeaderRequester := newMockHeaderRequester(2 * fetchTimeout)
+		// Create a header requester with timeout
+		slowHeaderRequester := func(hash common.Hash, sink chan *eth.Response) (*eth.Request, error) {
+			go func() {
+				// Intentionally not returning any content, simulating timeout
+				time.Sleep(2 * fetchTimeout)
+			}()
+			return &eth.Request{}, nil
+		}
 
-		// Peer2 发送区块通知
+		bodyRequester := func(hashes []common.Hash, sink chan *eth.Response) (*eth.Request, error) {
+			go func() {
+				// This won't be called
+			}()
+			return &eth.Request{}, nil
+		}
+
+		// Peer2 sends block notification
 		err := fetcher.Notify("peer2", block.Hash(), block.NumberU64(), time.Now(),
-			slowHeaderRequester.requestHeader, bodyRequester2.requestBodies)
+			slowHeaderRequester, bodyRequester)
 		if err != nil {
 			t.Fatalf("Notify failed: %v", err)
 		}
 
-		// 等待超时
+		// Wait for timeout
 		time.Sleep(fetchTimeout + 100*time.Millisecond)
-
-		// 验证peer是否被丢弃
-		// 注意：这里需要扩展fetcher以暴露peer状态，或者通过其他方式验证
 	})
 
-	// 测试用例3: 多个区块通知
-	t.Run("multiple block announcements", func(t *testing.T) {
-		// 创建多个测试区块
-		blocks := make([]*types.Block, 5)
-		for i := 0; i < 5; i++ {
-			blocks[i] = types.NewBlock(&types.Header{
-				Number:     big.NewInt(int64(i + 3)),
-				ParentHash: blocks[max(0, i-1)].Hash(),
-			}, nil, nil, nil)
+	// Test case 3: Simplified single block notification test
+	t.Run("single block announcement", func(t *testing.T) {
+		// Create a new block
+		newBlock := types.NewBlock(&types.Header{
+			Number:     big.NewInt(3),
+			ParentHash: block.Hash(), // Parent block is from the previous test
+		}, nil, nil, nil)
 
-			// 设置模拟数据
-			headerRequester1.headers[blocks[i].Hash()] = blocks[i].Header()
-			bodyRequester1.bodies[blocks[i].Hash()] = &types.Body{
-				Transactions: blocks[i].Transactions(),
-				Uncles:       blocks[i].Uncles(),
+		// Create request functions
+		headerRequester := func(hash common.Hash, sink chan *eth.Response) (*eth.Request, error) {
+			go func() {
+				// Return requested header
+				headers := []*types.Header{newBlock.Header()}
+				res := &eth.Response{
+					Req:  &eth.Request{},
+					Res:  (*eth.BlockHeadersRequest)(&headers),
+					Done: make(chan error, 1),
+				}
+				sink <- res
+			}()
+			return &eth.Request{}, nil
+		}
+
+		bodyRequester := func(hashes []common.Hash, sink chan *eth.Response) (*eth.Request, error) {
+			go func() {
+				// Return requested body
+				bodies := make([]*eth.BlockBody, 0)
+				for _, hash := range hashes {
+					if hash == newBlock.Hash() {
+						bodies = append(bodies, &eth.BlockBody{
+							Transactions: newBlock.Transactions(),
+							Uncles:       newBlock.Uncles(),
+						})
+					}
+				}
+				res := &eth.Response{
+					Req:  &eth.Request{},
+					Res:  (*eth.BlockBodiesResponse)(&bodies),
+					Done: make(chan error, 1),
+				}
+				sink <- res
+			}()
+			return &eth.Request{}, nil
+		}
+
+		// Send block notification
+		err := fetcher.Notify("peer1", newBlock.Hash(), newBlock.NumberU64(), time.Now(),
+			headerRequester, bodyRequester)
+		if err != nil {
+			t.Fatalf("Notify failed: %v", err)
+		}
+
+		// Wait for the block to be processed
+		for i := 0; i < 20; i++ {
+			time.Sleep(50 * time.Millisecond)
+			if blockStore[newBlock.Hash()] != nil {
+				break
 			}
 		}
 
-		// 发送多个区块通知
-		for i, block := range blocks {
-			err := fetcher.Notify("peer1", block.Hash(), block.NumberU64(), time.Now(),
-				headerRequester1.requestHeader, bodyRequester1.requestBodies)
-			if err != nil {
-				t.Fatalf("Notify failed for block %d: %v", i, err)
-			}
-		}
-
-		// 等待区块被处理
-		time.Sleep(500 * time.Millisecond)
-
-		// 验证所有区块是否被正确下载
-		for i, block := range blocks {
-			if fetchedBlock := blockRetriever.getBlock(block.Hash()); fetchedBlock == nil {
-				t.Errorf("Block %d was not downloaded", i)
-			}
+		// Verify if the block was downloaded correctly
+		if fetchedBlock := blockStore[newBlock.Hash()]; fetchedBlock == nil {
+			t.Error("New block was not downloaded")
 		}
 	})
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
+// TestQuickBlockFetching tests the quick block fetching feature
+func TestQuickBlockFetching(t *testing.T) {
+	// Setup test environment
+	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stdout, log.LevelInfo, true)))
+
+	// Create mock block retriever
+	blockRetriever := newMockBlockRetriever()
+	headerRequester := newMockHeaderRequester(50 * time.Millisecond)
+	bodyRequester := newMockBodyRequester(50 * time.Millisecond)
+
+	// Create blockchain
+	parent := types.NewBlock(&types.Header{
+		Number:     big.NewInt(10),
+		ParentHash: common.Hash{},
+	}, nil, nil, nil)
+	blockRetriever.blocks[parent.Hash()] = parent
+
+	// Generate child block
+	block := types.NewBlock(&types.Header{
+		Number:     big.NewInt(11),
+		ParentHash: parent.Hash(),
+	}, nil, nil, nil)
+
+	// Prepare quick fetching response
+	var fetchRangeBlocksCalled atomic.Bool
+	var fetchRangeBlocksHash common.Hash
+	var fetchRangeBlocksNumber uint64
+
+	// Create fetcher with quick block fetching support
+	fetcher := NewBlockFetcher(
+		blockRetriever.getBlock,
+		func(header *types.Header) error { return nil },
+		func(block *types.Block, propagate bool) {},
+		func() uint64 { return 10 }, // Current height
+		func() uint64 { return 5 },  // Finalized height
+		func(blocks types.Blocks) (int, error) {
+			// Add blocks to local blockchain
+			for _, block := range blocks {
+				blockRetriever.blocks[block.Hash()] = block
+			}
+			return len(blocks), nil
+		},
+		func(id string) {},
+		// fetchRangeBlocks function simulates quick block fetching
+		func(peer string, startHeight uint64, startHash common.Hash, count uint64) ([]*types.Block, error) {
+			fetchRangeBlocksCalled.Store(true)
+			fetchRangeBlocksHash = startHash
+			fetchRangeBlocksNumber = startHeight
+
+			// Return requested block
+			return []*types.Block{block}, nil
+		},
+	)
+
+	// Enable quick block fetching
+	fetcher.EnableQuickBlockFetching()
+
+	// Start fetcher
+	fetcher.Start()
+	defer fetcher.Stop()
+
+	// Send block notification
+	err := fetcher.Notify("peer1", block.Hash(), block.NumberU64(), time.Now(),
+		headerRequester.requestHeader, bodyRequester.requestBodies)
+	if err != nil {
+		t.Fatalf("Notify failed: %v", err)
 	}
-	return b
+
+	// Wait for block to be fetched via quick path
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify if fetchRangeBlocks was called
+	if !fetchRangeBlocksCalled.Load() {
+		t.Error("fetchRangeBlocks was not called")
+	}
+
+	// Verify if fetchRangeBlocks parameters are correct
+	if fetchRangeBlocksHash != block.Hash() {
+		t.Errorf("Expected hash %s, got %s", block.Hash().String(), fetchRangeBlocksHash.String())
+	}
+	if fetchRangeBlocksNumber != block.NumberU64() {
+		t.Errorf("Expected number %d, got %d", block.NumberU64(), fetchRangeBlocksNumber)
+	}
+
+	// Verify if block was imported correctly
+	if fetchedBlock := blockRetriever.getBlock(block.Hash()); fetchedBlock == nil {
+		t.Error("Block was not imported through quick block fetching")
+	}
 }

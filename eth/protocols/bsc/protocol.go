@@ -32,7 +32,7 @@ const maxMessageSize = 10 * 1024 * 1024
 const (
 	BscCapMsg           = 0x00 // bsc capability msg used upon handshake
 	VotesMsg            = 0x01
-	GetBlocksByRangeMsg = 0x02 // it can request (Head-n, Head] range blocks from remote peer
+	GetBlocksByRangeMsg = 0x02 // it can request (StartBlockHeight-Count, StartBlockHeight] range blocks from remote peer
 	BlocksByRangeMsg    = 0x03 // the replied blocks from remote peer
 )
 
@@ -79,9 +79,28 @@ type GetBlocksByRangePacket struct {
 func (*GetBlocksByRangePacket) Name() string { return "GetBlocksByRange" }
 func (*GetBlocksByRangePacket) Kind() byte   { return GetBlocksByRangeMsg }
 
+// BlockData contains types.extblock + sidecars
+type BlockData struct {
+	Header      *types.Header
+	Txs         []*types.Transaction
+	Uncles      []*types.Header
+	Withdrawals []*types.Withdrawal `rlp:"optional"`
+	Sidecars    types.BlobSidecars  `rlp:"optional"`
+}
+
+func NewBlockData(block *types.Block) *BlockData {
+	return &BlockData{
+		Header:      block.Header(),
+		Txs:         block.Transactions(),
+		Uncles:      block.Uncles(),
+		Withdrawals: block.Withdrawals(),
+		Sidecars:    block.Sidecars(),
+	}
+}
+
 type BlocksByRangePacket struct {
 	RequestId uint64
-	Blocks    []*types.Block
+	Blocks    []*BlockData
 }
 
 func (*BlocksByRangePacket) Name() string { return "BlocksByRange" }

@@ -141,6 +141,11 @@ type blockOrHeaderInject struct {
 	block  *types.Block  // Used for normal mode fetcher which imports full block.
 }
 
+type BlockFetchingEntry struct {
+	origin string
+	blocks []*types.Block
+}
+
 // number returns the block number of the injected object.
 func (inject *blockOrHeaderInject) number() uint64 {
 	if inject.header != nil {
@@ -164,8 +169,9 @@ type BlockFetcher struct {
 	notify chan *blockAnnounce
 	inject chan *blockOrHeaderInject
 
-	headerFilter chan chan *headerFilterTask
-	bodyFilter   chan chan *bodyFilterTask
+	headerFilter         chan chan *headerFilterTask
+	bodyFilter           chan chan *bodyFilterTask
+	quickBlockFetchingCh chan *BlockFetchingEntry
 
 	done chan common.Hash
 	quit chan struct{}
@@ -194,6 +200,8 @@ type BlockFetcher struct {
 	dropPeer             peerDropFn             // Drops a peer for misbehaving
 	fetchRangeBlocks     fetchRangeBlocksFn     // Fetches a range of blocks from a peer
 
+	enableQuickBlockFetching bool
+
 	// Testing hooks
 	announceChangeHook func(common.Hash, bool)           // Method to call upon adding or deleting a hash from the blockAnnounce list
 	queueChangeHook    func(common.Hash, bool)           // Method to call upon adding or deleting a block from the import queue
@@ -204,12 +212,14 @@ type BlockFetcher struct {
 
 // NewBlockFetcher creates a block fetcher to retrieve blocks based on hash announcements.
 func NewBlockFetcher(getBlock blockRetrievalFn, verifyHeader headerVerifierFn, broadcastBlock blockBroadcasterFn,
-	chainHeight chainHeightFn, chainFinalizedHeight chainFinalizedHeightFn, insertChain chainInsertFn, dropPeer peerDropFn) *BlockFetcher {
+	chainHeight chainHeightFn, chainFinalizedHeight chainFinalizedHeightFn, insertChain chainInsertFn, dropPeer peerDropFn,
+	fetchRangeBlocks fetchRangeBlocksFn) *BlockFetcher {
 	return &BlockFetcher{
 		notify:               make(chan *blockAnnounce),
 		inject:               make(chan *blockOrHeaderInject),
 		headerFilter:         make(chan chan *headerFilterTask),
 		bodyFilter:           make(chan chan *bodyFilterTask),
+		quickBlockFetchingCh: make(chan *BlockFetchingEntry),
 		done:                 make(chan common.Hash),
 		quit:                 make(chan struct{}),
 		requeue:              make(chan *blockOrHeaderInject),
@@ -228,7 +238,12 @@ func NewBlockFetcher(getBlock blockRetrievalFn, verifyHeader headerVerifierFn, b
 		chainFinalizedHeight: chainFinalizedHeight,
 		insertChain:          insertChain,
 		dropPeer:             dropPeer,
+		fetchRangeBlocks:     fetchRangeBlocks,
 	}
+}
+
+func (f *BlockFetcher) EnableQuickBlockFetching() {
+	f.enableQuickBlockFetching = true
 }
 
 // Start boots up the announcement based synchroniser, accepting and processing
@@ -421,7 +436,22 @@ func (f *BlockFetcher) loop() {
 			if f.announceChangeHook != nil && len(f.announced[notification.hash]) == 1 {
 				f.announceChangeHook(notification.hash, true)
 			}
-			// TODO: if there enable range fetch, just request it and wait for response, and donot wait the schedule timer
+			// if there enable range fetching, just request it and wait for response,
+			// and if it gets timeout and wait for later header & body fetching.
+			if f.enableQuickBlockFetching {
+				go func() {
+					log.Trace("Quick fetching scheduled headers", "peer", notification.origin, "hash", notification.hash)
+					blocks, err := f.fetchRangeBlocks(notification.origin, notification.number, notification.hash, 1)
+					if err != nil {
+						log.Debug("quick block fetching err", "hash", notification.hash, "err", err)
+						return
+					}
+					f.quickBlockFetchingCh <- &BlockFetchingEntry{
+						origin: notification.origin,
+						blocks: blocks,
+					}
+				}()
+			}
 			// schedule the first arrive announce hash
 			if len(f.announced) == 1 {
 				f.rescheduleFetch(fetchTimer)
@@ -724,6 +754,15 @@ func (f *BlockFetcher) loop() {
 				if announce := f.completing[block.Hash()]; announce != nil {
 					f.enqueue(announce.origin, nil, block)
 				}
+			}
+		case entry := <-f.quickBlockFetchingCh:
+			for _, block := range entry.blocks {
+				hash := block.Hash()
+				if f.getBlock(hash) != nil {
+					f.forgetHash(hash)
+					continue
+				}
+				f.enqueue(entry.origin, nil, block)
 			}
 		}
 	}

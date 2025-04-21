@@ -373,18 +373,19 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	// Permit the downloader to use the trie cache allowance during fast sync
 	cacheLimit := cacheConfig.TrieCleanLimit + cacheConfig.TrieDirtyLimit + cacheConfig.SnapshotLimit
 	if eth.handler, err = newHandler(&handlerConfig{
-		NodeID:                 eth.p2pServer.Self().ID(),
-		Database:               chainDb,
-		Chain:                  eth.blockchain,
-		TxPool:                 eth.txPool,
-		Network:                networkID,
-		Sync:                   config.SyncMode,
-		BloomCache:             uint64(cacheLimit),
-		EventMux:               eth.eventMux,
-		RequiredBlocks:         config.RequiredBlocks,
-		DirectBroadcast:        config.DirectBroadcast,
-		DisablePeerTxBroadcast: config.DisablePeerTxBroadcast,
-		PeerSet:                peers,
+		NodeID:                   eth.p2pServer.Self().ID(),
+		Database:                 chainDb,
+		Chain:                    eth.blockchain,
+		TxPool:                   eth.txPool,
+		Network:                  networkID,
+		Sync:                     config.SyncMode,
+		BloomCache:               uint64(cacheLimit),
+		EventMux:                 eth.eventMux,
+		RequiredBlocks:           config.RequiredBlocks,
+		DirectBroadcast:          config.DirectBroadcast,
+		EnableQuickBlockFetching: stack.Config().EnableQuickBlockFetching,
+		DisablePeerTxBroadcast:   config.DisablePeerTxBroadcast,
+		PeerSet:                  peers,
 	}); err != nil {
 		return nil, err
 	}
