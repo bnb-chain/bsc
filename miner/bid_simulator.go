@@ -832,14 +832,6 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		return
 	}
 
-	// check bid size
-	if bidRuntime.env.size+blockReserveSize > params.MaxMessageSize {
-		log.Error("BidSimulator: failed to check bid size", "builder", bidRuntime.bid.Builder,
-			"bidHash", bidRuntime.bid.Hash(), "env.size", bidRuntime.env.size)
-		err = errors.New("invalid bid size")
-		return
-	}
-
 	bestBid := b.GetBestBid(parentHash)
 	if bestBid == nil {
 		winResult := "true[first]"
@@ -1011,7 +1003,6 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	}
 
 	r.env.tcount++
-	r.env.size += uint32(tx.Size())
 
 	return nil
 }
