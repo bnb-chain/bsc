@@ -7,24 +7,20 @@ This document provides a comprehensive list of JSON-RPC API methods supported. E
 | Command                                         | Parameters                                       |
 |-------------------------------------------------|--------------------------------------------------|
 | **Admin API**                                   |                                                  |
-| *Node administration functions*                 |                                                  |
 | admin_nodeInfo()                                | -                                                |
 | admin_peers()                                   | -                                                |
 | admin_addPeer(url)                              | `String`                                         |
 |                                                 |                                                  |
 | **Web3 API**                                    |                                                  |
-| *Basic web3 utility functions*                  |                                                  |
 | web3_clientVersion()                            | -                                                |
 | web3_sha3(data)                                 | `String`                                         |
 |                                                 |                                                  |
 | **Network API**                                 |                                                  |
-| *Network status information*                    |                                                  |
 | net_listening()                                 | -                                                |
 | net_peerCount()                                 | -                                                |
 | net_version()                                   | -                                                |
 |                                                 |                                                  |
 | **Ethereum API (Chain State)**                  |                                                  |
-| *Blockchain state information*                  |                                                  |
 | eth_blockNumber()                               | -                                                |
 | eth_chainID/eth_chainId()                       | -                                                |
 | eth_protocolVersion()                           | -                                                |
@@ -34,7 +30,6 @@ This document provides a comprehensive list of JSON-RPC API methods supported. E
 | eth_feeHistory()                                | -                                                |
 |                                                 |                                                  |
 | **Ethereum API (Blocks)**                       |                                                  |
-| *Block information and retrieval*               |                                                  |
 | eth_getBlockByHash(...)                         | `BlockHash`, `Boolean`                           |
 | eth_getBlockByNumber(...)                       | `BlockNumber\|Tag`, `Boolean`                    |
 | eth_getBlockTransactionCountByHash(...)         | `BlockHash`                                      |
@@ -45,7 +40,6 @@ This document provides a comprehensive list of JSON-RPC API methods supported. E
 | eth_getUncleCountByBlockNumber(...)             | `BlockNumber\|Tag`                               |
 |                                                 |                                                  |
 | **Ethereum API (Transactions)**                 |                                                  |
-| *Transaction information and retrieval*         |                                                  |
 | eth_getTransactionByHash(...)                   | `TxHash`                                         |
 | eth_getRawTransactionByHash(...)                | `TxHash`                                         |
 | eth_getTransactionByBlockHashAndIndex(...)      | `BlockHash`, `Integer`                           |
@@ -56,7 +50,6 @@ This document provides a comprehensive list of JSON-RPC API methods supported. E
 | eth_getBlockReceipts(...)                       | `BlockNumber\|Tag`                               |
 |                                                 |                                                  |
 | **Ethereum API (State Reading)**                |                                                  |
-| *Reading contract and account state*            |                                                  |
 | eth_estimateGas(...)                            | `TxCallObject`, `BlockNumber\|Tag`               |
 | eth_getBalance(...)                             | `Address`, `BlockNumber\|Tag`                    |
 | eth_getCode(...)                                | `Address`, `BlockNumber\|Tag`                    |
@@ -68,7 +61,6 @@ This document provides a comprehensive list of JSON-RPC API methods supported. E
 | eth_createAccessList(...)                       | `TxCallObject`, `BlockNumber\|Tag`               |
 |                                                 |                                                  |
 | **Ethereum API (Filters)**                      |                                                  |
-| *Event filtering and subscriptions*             |                                                  |
 | eth_newFilter(...)                              | `FilterOptions`                                  |
 | eth_newBlockFilter()                            | -                                                |
 | eth_newPendingTransactionFilter()               | -                                                |
@@ -78,7 +70,6 @@ This document provides a comprehensive list of JSON-RPC API methods supported. E
 | eth_getLogs(...)                                | `FilterOptions`                                  |
 |                                                 |                                                  |
 | **Ethereum API (Account Operations)**           |                                                  |
-| *Account-related operations*                    |                                                  |
 | eth_accounts()                                  | -                                                |
 | eth_sendRawTransaction(...)                     | `SignedTxData`                                   |
 | eth_sendTransaction(...)                        | `TransactionObject`                              |
@@ -88,7 +79,6 @@ This document provides a comprehensive list of JSON-RPC API methods supported. E
 |                                                 | `BlockNumber\|Tag`                               |
 |                                                 |                                                  |
 | **Ethereum API (Mining)**                       |                                                  |
-| *Mining-related operations*                     |                                                  |
 | eth_mining()                                    | -                                                |
 | eth_coinbase()                                  | -                                                |
 | eth_hashrate()                                  | -                                                |
@@ -97,12 +87,10 @@ This document provides a comprehensive list of JSON-RPC API methods supported. E
 | eth_submitWork(...)                             | `Nonce`, `PowHash`, `Digest`                     |
 |                                                 |                                                  |
 | **Ethereum API (Pub/Sub)**                      |                                                  |
-| *Real-time event subscriptions*                 |                                                  |
 | eth_subscribe(...)                              | `String`, `Object`                               |
 | eth_unsubscribe(...)                            | `SubscriptionId`                                 |
 |                                                 |                                                  |
 | **Engine API**                                  |                                                  |
-| *Execution layer consensus engine interface*    |                                                  |
 | engine_newPayloadV1(...)                        | `ExecutionPayloadV1`                             |
 | engine_newPayloadV2(...)                        | `ExecutionPayloadV2`                             |
 | engine_newPayloadV3(...)                        | `ExecutionPayloadV3`                             |
@@ -114,7 +102,6 @@ This document provides a comprehensive list of JSON-RPC API methods supported. E
 | engine_getPayloadV3(...)                        | `PayloadId`                                      |
 |                                                 |                                                  |
 | **Debug API**                                   |                                                  |
-| *Debugging and trace functions*                 |                                                  |
 | debug_getRawReceipts(...)                       | `BlockNumber\|Tag`                               |
 | debug_accountRange(...)                         | `BlockNumber\|Tag`, `AccountKey`, `Integer`, `Boolean` |
 | debug_accountAt(...)                            | `BlockNumber\|Tag`, `AccountIndex`               |
@@ -128,28 +115,20 @@ This document provides a comprehensive list of JSON-RPC API methods supported. E
 | debug_traceCallMany(...)                        | `Array<TxCallObject>`, `BlockNumber\|Tag`, `TraceConfig` |
 |                                                 |                                                  |
 | **Transaction Pool API**                        |                                                  |
-| *Pending transaction information*               |                                                  |
 | txpool_content()                                | -                                                |
 | txpool_contentFrom(...)                         | `Address`                                        |
 | txpool_status()                                 | -                                                |
 |                                                 |                                                  |
 | **BSC-Specific APIs**                           |                                                  |
-| *APIs exclusive to BSC chain*                   |                                                  |
-| **BSC Finality API**                            |                                                  |
-| *Block finality verification and confirmation*  |                                                  |
 | eth_getHeaderByNumber(...)                      | `BlockNumber\|Tag` with "finalized"              |
 | eth_getBlockByNumber(...)                       | `BlockNumber\|Tag` with "finalized", `Boolean`   |
 | eth_newFinalizedHeaderFilter()                  | -                                                |
 | eth_getFinalizedHeader(...)                     | `VerifiedValidatorNum`                           |
 | eth_getFinalizedBlock(...)                      | `VerifiedValidatorNum`, `Boolean`                |
 |                                                 |                                                  |
-| **BSC Blob API**                                |                                                  |
-| *Binary Large Object data retrieval*            |                                                  |
 | eth_getBlobSidecarByTxHash(...)                 | `TxHash`, `Boolean`                              |
 | eth_getBlobSidecars(...)                        | `BlockNumber\|Tag\|BlockHash`, `Boolean`         |
 |                                                 |                                                  |
-| **Other BSC-Specific APIs**                     |                                                  |
-| *Additional BSC-only functionality*             |                                                  |
 | eth_health()                                    | -                                                |
 | eth_getTransactionsByBlockNumber(...)           | `BlockNumber\|Tag`                               |
 | eth_getTransactionDataAndReceipt(...)           | `TxHash`                                         |
