@@ -75,8 +75,7 @@ This document provides a comprehensive list of JSON-RPC API methods supported. E
 | eth_sendTransaction(...)                        | `TransactionObject`                              |
 | eth_signTransaction(...)                        | `TransactionObject`                              |
 | eth_signTypedData(...)                          | `Address`, `TypedData`                           |
-| eth_getProof(...)                               | `Address`, `Array<StorageKey>`,                  |
-|                                                 | `BlockNumber\|Tag`                               |
+| eth_getProof(...)                               | `Address`, `Array<StorageKey>`,`BlockNumber\|Tag`|
 |                                                 |                                                  |
 | **Ethereum API (Mining)**                       |                                                  |
 | eth_mining()                                    | -                                                |
