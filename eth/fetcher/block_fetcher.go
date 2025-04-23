@@ -436,14 +436,14 @@ func (f *BlockFetcher) loop() {
 			if f.announceChangeHook != nil && len(f.announced[notification.hash]) == 1 {
 				f.announceChangeHook(notification.hash, true)
 			}
-			// if there enable range fetching, just request it and wait for response,
+			// if there enable range fetching, just request the first announce and wait for response,
 			// and if it gets timeout and wait for later header & body fetching.
-			if f.enableQuickBlockFetching {
+			if f.enableQuickBlockFetching && len(f.announced[notification.hash]) == 1 {
 				go func() {
-					log.Trace("Quick fetching scheduled headers", "peer", notification.origin, "hash", notification.hash)
+					log.Debug("Quick block fetching", "peer", notification.origin, "hash", notification.hash)
 					blocks, err := f.fetchRangeBlocks(notification.origin, notification.number, notification.hash, 1)
 					if err != nil {
-						log.Debug("quick block fetching err", "hash", notification.hash, "err", err)
+						log.Debug("Quick block fetching err", "hash", notification.hash, "err", err)
 						return
 					}
 					f.quickBlockFetchingCh <- &BlockFetchingEntry{
@@ -504,7 +504,7 @@ func (f *BlockFetcher) loop() {
 			}
 			// Send out all block header requests
 			for peer, hashes := range request {
-				log.Trace("Fetching scheduled headers", "peer", peer, "list", hashes)
+				log.Debug("Fetching scheduled headers", "peer", peer, "list", hashes)
 
 				// Create a closure of the fetch and schedule in on a new thread
 				fetchHeader := f.fetching[hashes[0]].fetchHeader
@@ -563,7 +563,7 @@ func (f *BlockFetcher) loop() {
 			}
 			// Send out all block body requests
 			for peer, hashes := range request {
-				log.Trace("Fetching scheduled bodies", "peer", peer, "list", hashes)
+				log.Debug("Fetching scheduled bodies", "peer", peer, "list", hashes)
 
 				// Create a closure of the fetch and schedule in on a new thread
 				if f.completingHook != nil {
@@ -758,8 +758,8 @@ func (f *BlockFetcher) loop() {
 		case entry := <-f.quickBlockFetchingCh:
 			for _, block := range entry.blocks {
 				hash := block.Hash()
+				f.forgetHash(hash)
 				if f.getBlock(hash) != nil {
-					f.forgetHash(hash)
 					continue
 				}
 				f.enqueue(entry.origin, nil, block)

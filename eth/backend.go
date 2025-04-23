@@ -383,9 +383,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		EventMux:                 eth.eventMux,
 		RequiredBlocks:           config.RequiredBlocks,
 		DirectBroadcast:          config.DirectBroadcast,
-		EnableQuickBlockFetching: stack.Config().EnableQuickBlockFetching,
 		DisablePeerTxBroadcast:   config.DisablePeerTxBroadcast,
 		PeerSet:                  peers,
+		EnableQuickBlockFetching: stack.Config().EnableQuickBlockFetching,
 	}); err != nil {
 		return nil, err
 	}

@@ -300,6 +300,9 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		if p == nil {
 			return nil, errors.New("peer not found")
 		}
+		if p.bscExt.Version() != bsc.Bsc2 {
+			return nil, errors.New("the remote peer is not bsc2")
+		}
 		res, err := p.bscExt.RequestBlocksByRange(startHeight, startHash, count)
 		if err != nil {
 			return nil, err
@@ -310,6 +313,16 @@ func newHandler(config *handlerConfig) (*handler, error) {
 			block := types.NewBlockWithHeader(item.Header).WithBody(types.Body{Transactions: item.Txs, Uncles: item.Uncles})
 			block = block.WithSidecars(item.Sidecars)
 			block.ReceivedAt = time.Now()
+			if err := block.SanityCheck(); err != nil {
+				return nil, err
+			}
+			if len(block.Sidecars()) > 0 {
+				for _, sidecar := range block.Sidecars() {
+					if err := sidecar.SanityCheck(block.Number(), block.Hash()); err != nil {
+						return nil, err
+					}
+				}
+			}
 			blocks[i] = block
 		}
 		return blocks, err

@@ -147,7 +147,7 @@ func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 		return fmt.Errorf("msg %v, decode err: %v", GetBlocksByRangeMsg, err)
 	}
 
-	log.Trace("receive GetBlocksByRange request", "from", peer.id, "req", req)
+	log.Debug("receive GetBlocksByRange request", "from", peer.id, "req", req)
 	// Validate request parameters
 	if req.Count == 0 || req.Count > MaxRequestRangeBlocksCount { // Limit maximum request count
 		return fmt.Errorf("msg %v, invalid count: %v", GetBlocksByRangeMsg, req.Count)
@@ -188,7 +188,7 @@ func handleBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
 	}
 
-	log.Trace("receive BlocksByRange response", "from", peer.id, "blocks", len(res.Blocks))
+	log.Debug("receive BlocksByRange response", "from", peer.id, "blocks", len(res.Blocks))
 	peer.dispatcher.DispatchResponse(&Response{
 		requestID: res.RequestId,
 		data:      res,
