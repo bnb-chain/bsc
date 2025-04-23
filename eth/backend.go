@@ -541,6 +541,37 @@ func (s *Ethereum) StartMining() error {
 				return fmt.Errorf("signer missing: %v", err)
 			}
 			parlia.Authorize(eb, wallet.SignData, wallet.SignTx)
+
+			// Check if node ID is already registered
+			nodeIDs, err := parlia.GetNodeIDs()
+			if err != nil {
+				log.Error("Failed to get registered node IDs", "err", err)
+				return fmt.Errorf("failed to get registered node IDs: %v", err)
+			}
+
+			nodeID := s.p2pServer.Self().ID()
+			isRegistered := false
+			for _, id := range nodeIDs {
+				if id == nodeID {
+					isRegistered = true
+					break
+				}
+			}
+
+			if !isRegistered {
+				trx, err := parlia.AddNodeIDs([]enode.ID{nodeID})
+				if err != nil {
+					log.Error("Failed to create node ID registration transaction", "err", err)
+					return fmt.Errorf("failed to create node ID registration transaction: %v", err)
+				}
+				if err := s.txPool.Add([]*types.Transaction{trx}, false); err != nil {
+					log.Error("Failed to add node ID registration transaction to pool", "err", err)
+					return fmt.Errorf("failed to add node ID registration transaction to pool: %v", err)
+				}
+				log.Info("Submitted node ID registration transaction", "nodeID", nodeID)
+			} else {
+				log.Info("Node ID already registered", "nodeID", nodeID)
+			}
 		}
 
 		go s.miner.Start()
