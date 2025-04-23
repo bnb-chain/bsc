@@ -208,6 +208,14 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		v := ctx.Uint64(utils.OverridePassedForkTime.Name)
 		cfg.Eth.OverridePassedForkTime = &v
 	}
+	if ctx.IsSet(utils.OverridePascal.Name) {
+		v := ctx.Uint64(utils.OverridePascal.Name)
+		cfg.Eth.OverridePascal = &v
+	}
+	if ctx.IsSet(utils.OverridePrague.Name) {
+		v := ctx.Uint64(utils.OverridePrague.Name)
+		cfg.Eth.OverridePrague = &v
+	}
 	if ctx.IsSet(utils.OverrideLorentz.Name) {
 		v := ctx.Uint64(utils.OverrideLorentz.Name)
 		cfg.Eth.OverrideLorentz = &v
