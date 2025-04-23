@@ -56,9 +56,8 @@ This document provides a comprehensive list of JSON-RPC API methods supported. E
 | eth_getTransactionCount(...)                    | `Address`, `BlockNumber\|Tag`                    |
 | eth_getStorageAt(...)                           | `Address`, `Integer`, `BlockNumber\|Tag`         |
 | eth_call(...)                                   | `TxCallObject`, `BlockNumber\|Tag`               |
-| eth_callMany(...)                               | `Array<TxCallObject>`, `BlockNumber\|Tag`        |
-| eth_callBundle(...)                             | `Array<TxCallObject>`, `BlockNumber\|Tag`        |
 | eth_createAccessList(...)                       | `TxCallObject`, `BlockNumber\|Tag`               |
+| eth_SimulateV1(...)                             | `BlockStateCalls`, `BlockNumber\|Tag`            |
 |                                                 |                                                  |
 | **Ethereum API (Filters)**                      |                                                  |
 | eth_newFilter(...)                              | `FilterOptions`                                  |
@@ -148,6 +147,7 @@ This document provides a comprehensive list of JSON-RPC API methods supported. E
 - `FilterId` - ID of a previously created filter
 - `VerifiedValidatorNum` - Number of validators that must verify a block
 - `TraceConfig` - Configuration options for tracing
+- `BlockStateCalls` - Series of transactions to simulate with optional state and block overrides
 
 ### Notes
 
