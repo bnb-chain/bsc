@@ -18,6 +18,7 @@
 package eth
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -516,6 +517,68 @@ func (s *Ethereum) SetEtherbase(etherbase common.Address) {
 	s.miner.SetEtherbase(etherbase)
 }
 
+// waitForSync waits for the node to be fully synced
+func (s *Ethereum) waitForSync() {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for !s.Synced() {
+		<-ticker.C
+	}
+	log.Info("Node is synced, proceeding with node ID registration")
+}
+
+// registerNodeID registers the node ID with the StakeHub contract
+func (s *Ethereum) registerNodeID(parlia *parlia.Parlia) {
+	// Check if node ID is already registered
+	nodeIDs, err := parlia.GetNodeIDs()
+	if err != nil {
+		log.Error("Failed to get registered node IDs", "err", err)
+		return
+	}
+
+	nodeIDsToRegister := []enode.ID{s.p2pServer.Self().ID()}
+	for _, id := range s.config.NodeIDsToRegister {
+		nodeIDsToRegister = append(nodeIDsToRegister, id)
+	}
+
+	// Check which node IDs need to be registered
+	nodeIDsToAdd := make([]enode.ID, 0)
+	for _, idToRegister := range nodeIDsToRegister {
+		isRegistered := false
+		for _, id := range nodeIDs {
+			if id == idToRegister {
+				isRegistered = true
+				break
+			}
+		}
+		if !isRegistered {
+			nodeIDsToAdd = append(nodeIDsToAdd, idToRegister)
+		}
+	}
+
+	if len(nodeIDsToAdd) > 0 {
+		// Get the current nonce for the validator address
+		nonce, err := s.APIBackend.GetPoolNonce(context.Background(), s.etherbase)
+		if err != nil {
+			log.Error("Failed to get nonce", "err", err)
+			return
+		}
+
+		trx, err := parlia.AddNodeIDs(nodeIDsToAdd, nonce)
+		if err != nil {
+			log.Error("Failed to create node ID registration transaction", "err", err)
+			return
+		}
+		if err := s.txPool.Add([]*types.Transaction{trx}, false); err != nil {
+			log.Error("Failed to add node ID registration transaction to pool", "err", err)
+			return
+		}
+		log.Info("Submitted node ID registration transaction", "nodeIDs", nodeIDsToAdd)
+	} else {
+		log.Info("All node IDs already registered", "nodeIDs", nodeIDsToRegister)
+	}
+}
+
 // StartMining starts the miner with the given number of CPU threads. If mining
 // is already running, this method adjust the number of threads allowed to use
 // and updates the minimum price required by the transaction pool.
@@ -542,36 +605,11 @@ func (s *Ethereum) StartMining() error {
 			}
 			parlia.Authorize(eb, wallet.SignData, wallet.SignTx)
 
-			// Check if node ID is already registered
-			nodeIDs, err := parlia.GetNodeIDs()
-			if err != nil {
-				log.Error("Failed to get registered node IDs", "err", err)
-				return fmt.Errorf("failed to get registered node IDs: %v", err)
-			}
-
-			nodeID := s.p2pServer.Self().ID()
-			isRegistered := false
-			for _, id := range nodeIDs {
-				if id == nodeID {
-					isRegistered = true
-					break
-				}
-			}
-
-			if !isRegistered {
-				trx, err := parlia.AddNodeIDs([]enode.ID{nodeID})
-				if err != nil {
-					log.Error("Failed to create node ID registration transaction", "err", err)
-					return fmt.Errorf("failed to create node ID registration transaction: %v", err)
-				}
-				if err := s.txPool.Add([]*types.Transaction{trx}, false); err != nil {
-					log.Error("Failed to add node ID registration transaction to pool", "err", err)
-					return fmt.Errorf("failed to add node ID registration transaction to pool: %v", err)
-				}
-				log.Info("Submitted node ID registration transaction", "nodeID", nodeID)
-			} else {
-				log.Info("Node ID already registered", "nodeID", nodeID)
-			}
+			// Start a goroutine to handle node ID registration after sync
+			go func() {
+				s.waitForSync()
+				s.registerNodeID(parlia)
+			}()
 		}
 
 		go s.miner.Start()

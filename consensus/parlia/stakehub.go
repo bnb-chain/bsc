@@ -110,7 +110,7 @@ func (p *Parlia) GetNodeIDs() ([]enode.ID, error) {
 }
 
 // AddNodeIDs creates a signed transaction to add node IDs to the StakeHub contract
-func (p *Parlia) AddNodeIDs(nodeIDs []enode.ID) (*types.Transaction, error) {
+func (p *Parlia) AddNodeIDs(nodeIDs []enode.ID, nonce uint64) (*types.Transaction, error) {
 	p.lock.RLock()
 	signTxFn := p.signTxFn
 	val := p.val
@@ -128,7 +128,7 @@ func (p *Parlia) AddNodeIDs(nodeIDs []enode.ID) (*types.Transaction, error) {
 
 	// Create the transaction
 	tx := types.NewTransaction(
-		0, // nonce will be set by the pool
+		nonce,
 		common.HexToAddress(systemcontracts.StakeHubContract),
 		common.Big0,
 		math.MaxUint64/2,
