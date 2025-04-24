@@ -57,7 +57,7 @@ This document provides a comprehensive list of JSON-RPC API methods supported. E
 | eth_getStorageAt(...)                           | `Address`, `Integer`, `BlockNumber\|Tag`         |
 | eth_call(...)                                   | `TxCallObject`, `BlockNumber\|Tag`               |
 | eth_createAccessList(...)                       | `TxCallObject`, `BlockNumber\|Tag`               |
-| eth_SimulateV1(...)                             | `BlockStateCalls`, `BlockNumber\|Tag`            |
+| eth_simulateV1(...)                             | `BlockStateCalls`, `BlockNumber\|Tag`            |
 |                                                 |                                                  |
 | **Ethereum API (Filters)**                      |                                                  |
 | eth_newFilter(...)                              | `FilterOptions`                                  |
