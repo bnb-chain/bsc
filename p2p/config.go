@@ -87,9 +87,13 @@ type Config struct {
 	// allowed to connect, even above the peer limit.
 	TrustedNodes []*enode.Node
 
-	// DirectBroadcastList is a list of peer IDs that should be directly broadcast block to
+	// DirectBroadcastList is a list of NodeIDs that should be directly broadcast block to
 	// the list is another choice for non-validator nodes to get block quickly
 	DirectBroadcastList []string `toml:",omitempty"`
+
+	// ProxyedValidatorList is a list of validator NodeIDs that the local node proxies,
+	// it used for block broadcast mechanism
+	ProxyedValidatorList []string `toml:",omitempty"`
 
 	// Connectivity can be restricted to certain IP networks.
 	// If this option is set to a non-nil value, only hosts which match one of the

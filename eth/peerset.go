@@ -76,6 +76,8 @@ type peerSet struct {
 	peers     map[string]*ethPeer // Peers connected on the `eth` protocol
 	snapPeers int                 // Number of `snap` compatible peers for connection prioritization
 
+	consensusAddressMap map[common.Address][]string
+
 	snapWait map[string]chan *snap.Peer // Peers connected on `eth` waiting for their snap extension
 	snapPend map[string]*snap.Peer      // Peers connected on the `snap` protocol, but not yet on `eth`
 
@@ -436,20 +438,50 @@ func (ps *peerSet) peer(id string) *ethPeer {
 }
 
 // enablePeerFeatures enables the given features for the given peers.
-func (ps *peerSet) enablePeerFeatures(directList []string, noTxList []string) {
+func (ps *peerSet) enablePeerFeatures(validatorMap map[common.Address][]string, directList []string, noTxList []string, proxyedList []string) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
+	ps.consensusAddressMap = validatorMap
+	var valNodeIDs []string
+	for _, nodeIDs := range validatorMap {
+		valNodeIDs = append(valNodeIDs, nodeIDs...)
+	}
 	for _, peer := range ps.peers {
-		if slices.Contains(directList, peer.ID()) {
-			log.Trace("enable direct broadcast feature for", "peer", peer.ID())
+		nodeID := peer.ID()
+		if slices.Contains(directList, nodeID) || slices.Contains(valNodeIDs, nodeID) {
+			log.Debug("enable direct broadcast feature for", "peer", nodeID)
 			peer.EnableDirectBroadcast.Store(true)
 		}
-		if slices.Contains(noTxList, peer.ID()) {
-			log.Trace("enable no tx broadcast feature for", "peer", peer.ID())
+		// if the peer is in the noTxList and not in the proxyedList, enable the no tx broadcast feature
+		// the node also need to forward tx to the proxyedList
+		if slices.Contains(noTxList, nodeID) && !slices.Contains(proxyedList, nodeID) {
+			log.Debug("enable no tx broadcast feature for", "peer", nodeID)
 			peer.EnableNoTxBroadcast.Store(true)
 		}
 	}
+	log.Info("enable peer features", "total", len(ps.peers), "directList", len(directList), "noTxList", len(noTxList), "proxyedList", len(proxyedList))
+}
+
+// existProxyedValidator checks if the given address is a connected proxyed validator.
+func (ps *peerSet) existProxyedValidator(address common.Address, proxyedList []string) bool {
+	ps.lock.RLock()
+	defer ps.lock.RUnlock()
+
+	if ps.consensusAddressMap == nil {
+		return false
+	}
+
+	peerIDs := ps.consensusAddressMap[address]
+	for _, peerID := range peerIDs {
+		if ps.peers[peerID] == nil {
+			continue
+		}
+		if slices.Contains(proxyedList, peerID) {
+			return true
+		}
+	}
+	return false
 }
 
 // headPeers retrieves a specified number list of peers.
