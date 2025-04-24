@@ -142,8 +142,11 @@ type blockOrHeaderInject struct {
 }
 
 type BlockFetchingEntry struct {
-	origin string
+	announce *blockAnnounce
+
+	// results
 	blocks []*types.Block
+	err    error
 }
 
 // number returns the block number of the injected object.
@@ -348,6 +351,18 @@ func (f *BlockFetcher) FilterBodies(peer string, transactions [][]*types.Transac
 	}
 }
 
+func (f *BlockFetcher) asyncFetchRangeBlocks(announce *blockAnnounce) {
+	go func() {
+		log.Debug("Quick block fetching", "peer", announce.origin, "hash", announce.hash)
+		blocks, err := f.fetchRangeBlocks(announce.origin, announce.number, announce.hash, 1)
+		f.quickBlockFetchingCh <- &BlockFetchingEntry{
+			announce: announce,
+			blocks:   blocks,
+			err:      err,
+		}
+	}()
+}
+
 // Loop is the main fetcher loop, checking and processing various notification
 // events.
 func (f *BlockFetcher) loop() {
@@ -439,18 +454,7 @@ func (f *BlockFetcher) loop() {
 			// if there enable range fetching, just request the first announce and wait for response,
 			// and if it gets timeout and wait for later header & body fetching.
 			if f.enableQuickBlockFetching && len(f.announced[notification.hash]) == 1 {
-				go func() {
-					log.Debug("Quick block fetching", "peer", notification.origin, "hash", notification.hash)
-					blocks, err := f.fetchRangeBlocks(notification.origin, notification.number, notification.hash, 1)
-					if err != nil {
-						log.Debug("Quick block fetching err", "hash", notification.hash, "err", err)
-						return
-					}
-					f.quickBlockFetchingCh <- &BlockFetchingEntry{
-						origin: notification.origin,
-						blocks: blocks,
-					}
-				}()
+				f.asyncFetchRangeBlocks(notification)
 			}
 			// schedule the first arrive announce hash
 			if len(f.announced) == 1 {
@@ -756,13 +760,26 @@ func (f *BlockFetcher) loop() {
 				}
 			}
 		case entry := <-f.quickBlockFetchingCh:
+			annHash := entry.announce.hash
+			// if there is error or timeout, and the shcedule have not started, just retry the fetch
+			if entry.err != nil {
+				log.Debug("Quick block fetching err", "hash", annHash, "err", entry.err)
+				if _, ok := f.fetching[annHash]; !ok && len(f.announced[annHash]) > 1 {
+					// Pick the last peer to retrieve from, but ignore the current one
+					next := f.announced[annHash][len(f.announced[annHash])-1]
+					if next.origin != entry.announce.origin {
+						f.asyncFetchRangeBlocks(next)
+					}
+				}
+				continue
+			}
 			for _, block := range entry.blocks {
 				hash := block.Hash()
 				f.forgetHash(hash)
 				if f.getBlock(hash) != nil {
 					continue
 				}
-				f.enqueue(entry.origin, nil, block)
+				f.enqueue(entry.announce.origin, nil, block)
 			}
 		}
 	}
