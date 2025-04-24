@@ -517,14 +517,26 @@ func (s *Ethereum) SetEtherbase(etherbase common.Address) {
 	s.miner.SetEtherbase(etherbase)
 }
 
-// waitForSync waits for the node to be fully synced
-func (s *Ethereum) waitForSync() {
+// waitForSyncAndMaxwell waits for the node to be fully synced and Maxwell fork to be active
+func (s *Ethereum) waitForSyncAndMaxwell() {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
-	for !s.Synced() {
+	for {
 		<-ticker.C
+		if !s.Synced() {
+			continue
+		}
+		// Check if Maxwell fork is active
+		header := s.blockchain.CurrentHeader()
+		if header == nil {
+			continue
+		}
+		chainConfig := s.blockchain.Config()
+		if chainConfig.IsOnMaxwell(header.Number, header.Time, header.Time) {
+			break
+		}
 	}
-	log.Info("Node is synced, proceeding with node ID registration")
+	log.Info("Node is synced and Maxwell fork is active, proceeding with node ID registration")
 }
 
 // registerNodeID registers the node ID with the StakeHub contract
@@ -607,7 +619,7 @@ func (s *Ethereum) StartMining() error {
 
 			// Start a goroutine to handle node ID registration after sync
 			go func() {
-				s.waitForSync()
+				s.waitForSyncAndMaxwell()
 				s.registerNodeID(parlia)
 			}()
 		}
