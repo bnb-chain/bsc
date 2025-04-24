@@ -523,7 +523,6 @@ func (b *bidSimulator) clearLoop() {
 				delete(b.bestBid, k)
 			}
 		}
-		delete(b.bestBidToRun, parentHash)
 		for k, v := range b.bestBidToRun {
 			if v.BlockNumber <= clearThreshold {
 				delete(b.bestBidToRun, k)
@@ -545,8 +544,8 @@ func (b *bidSimulator) clearLoop() {
 						bid.env.discard()
 					}
 				}
+				delete(b.bidsToSim, blockNumber)
 			}
-			delete(b.bidsToSim, blockNumber)
 		}
 		b.simBidMu.Unlock()
 	}
