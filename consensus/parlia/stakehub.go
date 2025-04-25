@@ -20,9 +20,12 @@ import (
 // GetValidators retrieves validators from the StakeHubContract
 // It returns operator addresses, credit addresses, and total length of validators
 func (p *Parlia) GetValidators(blockNumber uint64, offset, limit *big.Int) ([]common.Address, []common.Address, *big.Int, error) {
+	log.Debug("Getting validators", "block", blockNumber, "offset", offset, "limit", limit)
+
 	// Create the call data for getValidators
 	data, err := p.stakeHubABI.Pack("getValidators", offset, limit)
 	if err != nil {
+		log.Error("Failed to pack getValidators", "error", err)
 		return nil, nil, nil, fmt.Errorf("failed to pack getValidators: %v", err)
 	}
 
@@ -32,12 +35,14 @@ func (p *Parlia) GetValidators(blockNumber uint64, offset, limit *big.Int) ([]co
 	toAddress := common.HexToAddress(systemcontracts.StakeHubContract)
 	gas := (hexutil.Uint64)(uint64(math.MaxUint64 / 2))
 
+	log.Debug("Calling getValidators", "block", blockNumber, "to", toAddress)
 	result, err := p.ethAPI.Call(context.Background(), ethapi.TransactionArgs{
 		Gas:  &gas,
 		To:   &toAddress,
 		Data: &msgData,
 	}, &blockNr, nil, nil)
 	if err != nil {
+		log.Error("Failed to call getValidators", "error", err)
 		return nil, nil, nil, fmt.Errorf("failed to call getValidators: %v", err)
 	}
 
@@ -46,18 +51,23 @@ func (p *Parlia) GetValidators(blockNumber uint64, offset, limit *big.Int) ([]co
 	var creditAddrs []common.Address
 	var totalLength *big.Int
 	if err := p.stakeHubABI.UnpackIntoInterface(&[]interface{}{&operatorAddrs, &creditAddrs, &totalLength}, "getValidators", result); err != nil {
+		log.Error("Failed to unpack getValidators result", "error", err)
 		return nil, nil, nil, fmt.Errorf("failed to unpack getValidators result: %v", err)
 	}
 
+	log.Debug("Successfully retrieved validators", "operators", len(operatorAddrs), "credits", len(creditAddrs), "total", totalLength)
 	return operatorAddrs, creditAddrs, totalLength, nil
 }
 
 // ListNodeIDsFor retrieves node IDs for the given validators
-// It returns an array of node ID arrays, one for each validator
-func (p *Parlia) ListNodeIDsFor(blockNumber uint64, validatorsToQuery []common.Address) ([][]enode.ID, error) {
+// It returns a map of consensus addresses to their node IDs
+func (p *Parlia) ListNodeIDsFor(blockNumber uint64, validatorsToQuery []common.Address) (map[common.Address][]enode.ID, error) {
+	log.Debug("Listing node IDs for validators", "block", blockNumber, "validators", len(validatorsToQuery))
+
 	// Create the call data for listNodeIDsFor
 	data, err := p.stakeHubABI.Pack("listNodeIDsFor", validatorsToQuery)
 	if err != nil {
+		log.Error("Failed to pack listNodeIDsFor", "error", err)
 		return nil, fmt.Errorf("failed to pack listNodeIDsFor: %v", err)
 	}
 
@@ -67,63 +77,88 @@ func (p *Parlia) ListNodeIDsFor(blockNumber uint64, validatorsToQuery []common.A
 	toAddress := common.HexToAddress(systemcontracts.StakeHubContract)
 	gas := (hexutil.Uint64)(uint64(math.MaxUint64 / 2))
 
+	log.Debug("Calling listNodeIDsFor", "block", blockNumber, "to", toAddress)
 	result, err := p.ethAPI.Call(context.Background(), ethapi.TransactionArgs{
 		Gas:  &gas,
 		To:   &toAddress,
 		Data: &msgData,
 	}, &blockNr, nil, nil)
 	if err != nil {
+		log.Error("Failed to call listNodeIDsFor", "error", err)
 		return nil, fmt.Errorf("failed to call listNodeIDsFor: %v", err)
 	}
 
 	// Unpack the result
-	var nodeIDs [][]enode.ID
-	if err := p.stakeHubABI.UnpackIntoInterface(&nodeIDs, "listNodeIDsFor", result); err != nil {
+	var consensusAddresses []common.Address
+	var nodeIDsList [][]enode.ID
+	if err := p.stakeHubABI.UnpackIntoInterface(&[]interface{}{&consensusAddresses, &nodeIDsList}, "listNodeIDsFor", result); err != nil {
+		log.Error("Failed to unpack listNodeIDsFor result", "error", err)
 		return nil, fmt.Errorf("failed to unpack listNodeIDsFor result: %v", err)
 	}
 
-	return nodeIDs, nil
+	// Create a map of addresses to node IDs
+	addressToNodeIDs := make(map[common.Address][]enode.ID)
+	for i, addr := range consensusAddresses {
+		if i < len(nodeIDsList) {
+			addressToNodeIDs[addr] = nodeIDsList[i]
+		}
+	}
+
+	log.Debug("Successfully retrieved node IDs", "addresses", len(addressToNodeIDs))
+	return addressToNodeIDs, nil
 }
 
 // GetNodeIDs returns a flattened array of all node IDs for current validators
 func (p *Parlia) GetNodeIDs() ([]enode.ID, error) {
 	// Get latest block number
 	block := p.ethAPI.BlockNumber()
+	log.Debug("Getting all node IDs", "block", block)
 
 	// Call GetValidators with latest block number
 	operatorAddrs, _, _, err := p.GetValidators(uint64(block), big.NewInt(0), big.NewInt(1000))
 	if err != nil {
+		log.Error("Failed to get validators", "error", err)
 		return nil, fmt.Errorf("failed to get validators: %v", err)
 	}
+	log.Debug("Retrieved validators", "count", len(operatorAddrs))
 
 	// Get node IDs for validators
 	nodeIDs, err := p.ListNodeIDsFor(uint64(block), operatorAddrs)
 	if err != nil {
+		log.Error("Failed to get node IDs", "error", err)
 		return nil, fmt.Errorf("failed to get node IDs: %v", err)
 	}
+	log.Debug("Retrieved node IDs map", "addresses", len(nodeIDs))
 
 	// Flatten the array of arrays into a single array
 	flatNodeIDs := make([]enode.ID, 0)
-	for _, nodeIDArray := range nodeIDs {
+	for addr, nodeIDArray := range nodeIDs {
 		flatNodeIDs = append(flatNodeIDs, nodeIDArray...)
+		log.Debug("Processing node IDs", "address", addr, "count", len(nodeIDArray))
 	}
+
+	log.Debug("Successfully flattened node IDs", "total", len(flatNodeIDs))
 	return flatNodeIDs, nil
 }
 
 // AddNodeIDs creates a signed transaction to add node IDs to the StakeHub contract
 func (p *Parlia) AddNodeIDs(nodeIDs []enode.ID, nonce uint64) (*types.Transaction, error) {
+	log.Debug("Adding node IDs", "count", len(nodeIDs), "nonce", nonce)
+
 	p.lock.RLock()
 	signTxFn := p.signTxFn
 	val := p.val
 	p.lock.RUnlock()
 
 	if signTxFn == nil {
+		log.Error("Signing function not set")
 		return nil, fmt.Errorf("signing function not set, call Authorize first")
 	}
 
 	// Create the call data for addNodeIDs
 	data, err := p.stakeHubABI.Pack("addNodeIDs", nodeIDs)
 	if err != nil {
+		log.Error("Failed to pack addNodeIDs", "error", err)
 		return nil, fmt.Errorf("failed to pack addNodeIDs: %v", err)
 	}
 
@@ -138,51 +173,38 @@ func (p *Parlia) AddNodeIDs(nodeIDs []enode.ID, nonce uint64) (*types.Transactio
 	)
 
 	// Sign the transaction with the node's private key
+	log.Debug("Signing transaction", "validator", val)
 	signedTx, err := signTxFn(accounts.Account{Address: val}, tx, p.chainConfig.ChainID)
 	if err != nil {
+		log.Error("Failed to sign transaction", "error", err)
 		return nil, fmt.Errorf("failed to sign transaction: %v", err)
 	}
 
+	log.Debug("Successfully created signed transaction", "hash", signedTx.Hash())
 	return signedTx, nil
 }
 
-// GetNodeIDsForConsensus returns node IDs for validators identified by their consensus addresses
-func (p *Parlia) GetNodeIDsForConsensus(consensusAddresses []common.Address) ([][]enode.ID, error) {
+// GetNodeIDsMap returns a map of consensus addresses to their node IDs for all current validators
+func (p *Parlia) GetNodeIDsMap() (map[common.Address][]enode.ID, error) {
 	// Get latest block number
 	block := p.ethAPI.BlockNumber()
-	log.Debug("Getting node IDs for consensus addresses", "block", block, "addresses", consensusAddresses)
+	log.Debug("Getting node IDs map", "block", block)
 
-	// Create the call data for listNodeIDsForConsensus
-	data, err := p.stakeHubABI.Pack("listNodeIDsForConsensus", consensusAddresses)
+	// Call GetValidators with latest block number
+	operatorAddrs, _, _, err := p.GetValidators(uint64(block), big.NewInt(0), big.NewInt(1000))
 	if err != nil {
-		log.Error("Failed to pack listNodeIDsForConsensus", "error", err)
-		return nil, fmt.Errorf("failed to pack listNodeIDsForConsensus: %v", err)
+		log.Error("Failed to get validators", "error", err)
+		return nil, fmt.Errorf("failed to get validators: %v", err)
 	}
+	log.Debug("Retrieved validators", "count", len(operatorAddrs))
 
-	// Make the call
-	blockNr := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(block))
-	msgData := (hexutil.Bytes)(data)
-	toAddress := common.HexToAddress(systemcontracts.StakeHubContract)
-	gas := (hexutil.Uint64)(uint64(math.MaxUint64 / 2))
-
-	log.Debug("Calling listNodeIDsForConsensus", "block", block, "to", toAddress)
-	result, err := p.ethAPI.Call(context.Background(), ethapi.TransactionArgs{
-		Gas:  &gas,
-		To:   &toAddress,
-		Data: &msgData,
-	}, &blockNr, nil, nil)
+	// Get node IDs for validators
+	nodeIDsMap, err := p.ListNodeIDsFor(uint64(block), operatorAddrs)
 	if err != nil {
-		log.Error("Failed to call listNodeIDsForConsensus", "error", err)
-		return nil, fmt.Errorf("failed to call listNodeIDsForConsensus: %v", err)
+		log.Error("Failed to get node IDs", "error", err)
+		return nil, fmt.Errorf("failed to get node IDs: %v", err)
 	}
+	log.Debug("Retrieved node IDs map", "addresses", len(nodeIDsMap))
 
-	// Unpack the result
-	var nodeIDs [][]enode.ID
-	if err := p.stakeHubABI.UnpackIntoInterface(&nodeIDs, "listNodeIDsForConsensus", result); err != nil {
-		log.Error("Failed to unpack listNodeIDsForConsensus result", "error", err)
-		return nil, fmt.Errorf("failed to unpack listNodeIDsForConsensus result: %v", err)
-	}
-
-	log.Debug("Successfully retrieved node IDs", "count", len(nodeIDs))
-	return nodeIDs, nil
+	return nodeIDsMap, nil
 }
