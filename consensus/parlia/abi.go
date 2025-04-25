@@ -4946,6 +4946,25 @@ const stakeABI = `[
     },
     {
         "type": "function",
+        "name": "listNodeIDsForConsensus",
+        "inputs": [
+            {
+                "name": "consensusAddresses",
+                "type": "address[]",
+                "internalType": "address[]"
+            }
+        ],
+        "outputs": [
+            {
+                "name": "",
+                "type": "bytes32[][]",
+                "internalType": "bytes32[][]"
+            }
+        ],
+        "stateMutability": "view"
+    },
+    {
+        "type": "function",
         "name": "maliciousVoteSlash",
         "inputs": [
             {

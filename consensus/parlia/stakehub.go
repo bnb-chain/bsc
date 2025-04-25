@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/rpc"
 )
@@ -149,10 +150,12 @@ func (p *Parlia) AddNodeIDs(nodeIDs []enode.ID, nonce uint64) (*types.Transactio
 func (p *Parlia) GetNodeIDsForConsensus(consensusAddresses []common.Address) ([][]enode.ID, error) {
 	// Get latest block number
 	block := p.ethAPI.BlockNumber()
+	log.Debug("Getting node IDs for consensus addresses", "block", block, "addresses", consensusAddresses)
 
 	// Create the call data for listNodeIDsForConsensus
 	data, err := p.stakeHubABI.Pack("listNodeIDsForConsensus", consensusAddresses)
 	if err != nil {
+		log.Error("Failed to pack listNodeIDsForConsensus", "error", err)
 		return nil, fmt.Errorf("failed to pack listNodeIDsForConsensus: %v", err)
 	}
 
@@ -162,20 +165,24 @@ func (p *Parlia) GetNodeIDsForConsensus(consensusAddresses []common.Address) ([]
 	toAddress := common.HexToAddress(systemcontracts.StakeHubContract)
 	gas := (hexutil.Uint64)(uint64(math.MaxUint64 / 2))
 
+	log.Debug("Calling listNodeIDsForConsensus", "block", block, "to", toAddress)
 	result, err := p.ethAPI.Call(context.Background(), ethapi.TransactionArgs{
 		Gas:  &gas,
 		To:   &toAddress,
 		Data: &msgData,
 	}, &blockNr, nil, nil)
 	if err != nil {
+		log.Error("Failed to call listNodeIDsForConsensus", "error", err)
 		return nil, fmt.Errorf("failed to call listNodeIDsForConsensus: %v", err)
 	}
 
 	// Unpack the result
 	var nodeIDs [][]enode.ID
 	if err := p.stakeHubABI.UnpackIntoInterface(&nodeIDs, "listNodeIDsForConsensus", result); err != nil {
+		log.Error("Failed to unpack listNodeIDsForConsensus result", "error", err)
 		return nil, fmt.Errorf("failed to unpack listNodeIDsForConsensus result: %v", err)
 	}
 
+	log.Debug("Successfully retrieved node IDs", "count", len(nodeIDs))
 	return nodeIDs, nil
 }
