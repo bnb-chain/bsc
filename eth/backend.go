@@ -549,9 +549,7 @@ func (s *Ethereum) registerNodeID(parlia *parlia.Parlia) {
 	}
 
 	nodeIDsToRegister := []enode.ID{s.p2pServer.Self().ID()}
-	for _, id := range s.config.NodeIDsToRegister {
-		nodeIDsToRegister = append(nodeIDsToRegister, id)
-	}
+	nodeIDsToRegister = append(nodeIDsToRegister, s.config.NodeIDsToRegister...)
 
 	// Check which node IDs need to be registered
 	nodeIDsToAdd := make([]enode.ID, 0)
