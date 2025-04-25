@@ -144,3 +144,38 @@ func (p *Parlia) AddNodeIDs(nodeIDs []enode.ID, nonce uint64) (*types.Transactio
 
 	return signedTx, nil
 }
+
+// GetNodeIDsForConsensus returns node IDs for validators identified by their consensus addresses
+func (p *Parlia) GetNodeIDsForConsensus(consensusAddresses []common.Address) ([][]enode.ID, error) {
+	// Get latest block number
+	block := p.ethAPI.BlockNumber()
+
+	// Create the call data for listNodeIDsForConsensus
+	data, err := p.stakeHubABI.Pack("listNodeIDsForConsensus", consensusAddresses)
+	if err != nil {
+		return nil, fmt.Errorf("failed to pack listNodeIDsForConsensus: %v", err)
+	}
+
+	// Make the call
+	blockNr := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(block))
+	msgData := (hexutil.Bytes)(data)
+	toAddress := common.HexToAddress(systemcontracts.StakeHubContract)
+	gas := (hexutil.Uint64)(uint64(math.MaxUint64 / 2))
+
+	result, err := p.ethAPI.Call(context.Background(), ethapi.TransactionArgs{
+		Gas:  &gas,
+		To:   &toAddress,
+		Data: &msgData,
+	}, &blockNr, nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call listNodeIDsForConsensus: %v", err)
+	}
+
+	// Unpack the result
+	var nodeIDs [][]enode.ID
+	if err := p.stakeHubABI.UnpackIntoInterface(&nodeIDs, "listNodeIDsForConsensus", result); err != nil {
+		return nil, fmt.Errorf("failed to unpack listNodeIDsForConsensus result: %v", err)
+	}
+
+	return nodeIDs, nil
+}
