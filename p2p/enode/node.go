@@ -323,6 +323,15 @@ func (n ID) MarshalText() ([]byte, error) {
 
 // UnmarshalText implements the encoding.TextUnmarshaler interface.
 func (n *ID) UnmarshalText(text []byte) error {
+	// here can parse the V4 public key to id
+	if len(text) == 128 {
+		data, err := hex.DecodeString(strings.TrimPrefix(string(text), "0x"))
+		if err != nil {
+			return err
+		}
+		*n = V4NodeIDFromPublicKey(data)
+		return nil
+	}
 	id, err := ParseID(string(text))
 	if err != nil {
 		return err

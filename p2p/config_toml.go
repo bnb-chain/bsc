@@ -30,8 +30,8 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		StaticNodes          []*enode.Node
 		VerifyNodes          []*enode.Node
 		TrustedNodes         []*enode.Node
-		DirectBroadcastList  []string         `toml:",omitempty"`
-		ProxyedValidatorList []string         `toml:",omitempty"`
+		DirectBroadcastList  []enode.ID       `toml:",omitempty"`
+		ProxyedValidatorList []enode.ID       `toml:",omitempty"`
 		NetRestrict          *netutil.Netlist `toml:",omitempty"`
 		NodeDatabase         string           `toml:",omitempty"`
 		Protocols            []Protocol       `toml:"-" json:"-"`
@@ -92,8 +92,8 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		StaticNodes          []*enode.Node
 		VerifyNodes          []*enode.Node
 		TrustedNodes         []*enode.Node
-		DirectBroadcastList  []string         `toml:",omitempty"`
-		ProxyedValidatorList []string         `toml:",omitempty"`
+		DirectBroadcastList  []enode.ID       `toml:",omitempty"`
+		ProxyedValidatorList []enode.ID       `toml:",omitempty"`
 		NetRestrict          *netutil.Netlist `toml:",omitempty"`
 		NodeDatabase         *string          `toml:",omitempty"`
 		Protocols            []Protocol       `toml:"-" json:"-"`

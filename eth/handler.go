@@ -129,8 +129,8 @@ type handlerConfig struct {
 	PeerSet                  *peerSet
 	EnableQuickBlockFetching bool
 	EnableBroadcastFeatures  bool
-	DirectBroadcastList      []string
-	ProxyedValidatorList     []string
+	DirectBroadcastList      []enode.ID
+	ProxyedValidatorList     []enode.ID
 }
 
 type handler struct {
@@ -139,8 +139,8 @@ type handler struct {
 	forkFilter              forkid.Filter // Fork ID filter, constant across the lifetime of the node
 	disablePeerTxBroadcast  bool
 	enableBroadcastFeatures bool
-	directBroadcastList     []string
-	proxyedValidatorList    []string
+	directBroadcastList     []enode.ID
+	proxyedValidatorList    []enode.ID
 
 	snapSync        atomic.Bool // Flag whether snap sync is enabled (gets disabled if we already have blocks)
 	synced          atomic.Bool // Flag whether we're considered synchronised (enables transaction processing)
@@ -387,9 +387,9 @@ func (h *handler) protoTracker() {
 			active--
 		case <-updateTicker.C:
 			if h.enableBroadcastFeatures {
-				// TODO(galaio): add onchain validator p2p node list later, it will enable the direct broadcast + no tx broadcast feature
+				// add onchain validator p2p node list later, it will enable the direct broadcast + no tx broadcast feature
 				// here check & enable peer broadcast features periodically, and it's a simple way to handle the peer change and the list change scenarios.
-				h.peers.enablePeerFeatures(nil, h.directBroadcastList, nil, h.proxyedValidatorList)
+				h.peers.enablePeerFeatures(h.queryValidatorNodeIDs(), h.directBroadcastList, h.proxyedValidatorList)
 			}
 		case <-h.quitSync:
 			// Wait for all active handlers to finish.
@@ -867,6 +867,20 @@ func (h *handler) needMoreDirectBroadcastPeers(block *types.Block) bool {
 	}
 
 	return h.peers.existProxyedValidator(block.Coinbase(), h.proxyedValidatorList)
+}
+
+func (h *handler) queryValidatorNodeIDs() map[common.Address][]enode.ID {
+
+	parlia, ok := h.chain.Engine().(*parlia.Parlia)
+	if !ok {
+		return nil
+	}
+
+	nodeIDsMap, err := parlia.GetNodeIDsMap()
+	if err != nil {
+		return nil
+	}
+	return nodeIDsMap
 }
 
 // BroadcastTransactions will propagate a batch of transactions
