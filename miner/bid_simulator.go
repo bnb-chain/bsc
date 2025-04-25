@@ -336,7 +336,7 @@ func (b *bidSimulator) AddBidToSim(bidRuntime *BidRuntime) {
 
 	blockNumber := bidRuntime.bid.BlockNumber
 	if _, ok := b.bidsToSim[blockNumber]; !ok {
-		b.bidsToSim[blockNumber] = make([]*BidRuntime, 3)
+		b.bidsToSim[blockNumber] = make([]*BidRuntime, 0, 10)
 	}
 	b.bidsToSim[blockNumber] = append(b.bidsToSim[blockNumber], bidRuntime)
 }
