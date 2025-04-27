@@ -162,13 +162,27 @@ func (p *Parlia) AddNodeIDs(nodeIDs []enode.ID, nonce uint64) (*types.Transactio
 		return nil, fmt.Errorf("failed to pack addNodeIDs: %v", err)
 	}
 
+	to := common.HexToAddress(systemcontracts.StakeHubContract)
+	hexData := hexutil.Bytes(data)
+	hexNonce := hexutil.Uint64(nonce)
+	gas, err := p.ethAPI.EstimateGas(context.Background(), ethapi.TransactionArgs{
+		From:  &val,
+		To:    &to,
+		Nonce: &hexNonce,
+		Data:  &hexData,
+	}, nil, nil, nil)
+	if err != nil {
+		log.Error("Failed to estimate gas", "error", err)
+		return nil, fmt.Errorf("failed to estimate gas: %v", err)
+	}
+
 	// Create the transaction
 	tx := types.NewTransaction(
 		nonce,
 		common.HexToAddress(systemcontracts.StakeHubContract),
 		common.Big0,
-		math.MaxUint64/2,
-		common.Big0,
+		uint64(gas),
+		big.NewInt(1000000000),
 		data,
 	)
 
