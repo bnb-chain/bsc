@@ -871,7 +871,7 @@ func (h *handler) needMoreDirectBroadcastPeers(block *types.Block) bool {
 
 func (h *handler) queryValidatorNodeIDs() map[common.Address][]enode.ID {
 	latest := h.chain.CurrentHeader()
-	if h.chain.Config().IsMaxwell(latest.Number, latest.Time) {
+	if !h.chain.Config().IsMaxwell(latest.Number, latest.Time) {
 		return nil
 	}
 
