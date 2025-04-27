@@ -870,7 +870,12 @@ func (h *handler) needMoreDirectBroadcastPeers(block *types.Block) bool {
 }
 
 func (h *handler) queryValidatorNodeIDs() map[common.Address][]enode.ID {
+	latest := h.chain.CurrentHeader()
+	if h.chain.Config().IsMaxwell(latest.Number, latest.Time) {
+		return nil
+	}
 
+	log.Debug("queryValidatorNodeIDs after maxwell", "number", latest.Number, "time", latest.Time)
 	parlia, ok := h.chain.Engine().(*parlia.Parlia)
 	if !ok {
 		return nil
