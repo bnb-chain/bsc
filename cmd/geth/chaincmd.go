@@ -414,7 +414,7 @@ func createNodeConfigs(baseConfig gethConfig, initDir string, ips []string, port
 		// if enableSentryNode, sentry will connect each other, and vlaidator only connect sentry
 		configs = append(configs, createStaticNodeConfig(baseConfig, []*enode.Node{enodes[i], sentryEnodes[i]}, ips[j], ports[j], 2, 0))
 		sentry := createStaticNodeConfig(baseConfig, sentryEnodes, ips[j+1], ports[j+1], size, i)
-		sentry.Node.P2P.ProxyedValidatorList = append(sentry.Node.P2P.ProxyedValidatorList, enodes[i].ID())
+		sentry.Node.P2P.ProxyedValidatorNodeIDs = append(sentry.Node.P2P.ProxyedValidatorNodeIDs, enodes[i].ID())
 		configs = append(configs, sentry)
 		j += 2
 	}

@@ -77,7 +77,7 @@ type peerSet struct {
 	peers     map[string]*ethPeer // Peers connected on the `eth` protocol
 	snapPeers int                 // Number of `snap` compatible peers for connection prioritization
 
-	consensusAddressMap map[common.Address][]enode.ID
+	validatorNodeIDsMap map[common.Address][]enode.ID
 
 	snapWait map[string]chan *snap.Peer // Peers connected on `eth` waiting for their snap extension
 	snapPend map[string]*snap.Peer      // Peers connected on the `snap` protocol, but not yet on `eth`
@@ -438,42 +438,46 @@ func (ps *peerSet) peer(id string) *ethPeer {
 	return ps.peers[id]
 }
 
-// enablePeerFeatures enables the given features for the given peers.
-func (ps *peerSet) enablePeerFeatures(validatorMap map[common.Address][]enode.ID, directList []enode.ID, proxyedList []enode.ID) {
+// enableBroadcastFeatures enables the given features for the given peers.
+func (ps *peerSet) enableBroadcastFeatures(validatorNodeIDsMap map[common.Address][]enode.ID, directNodeIDs []enode.ID, proxyedNodeIDs []enode.ID) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
-	ps.consensusAddressMap = validatorMap
-	var valNodeIDs []enode.ID
-	for _, nodeIDs := range validatorMap {
-		valNodeIDs = append(valNodeIDs, nodeIDs...)
+	ps.validatorNodeIDsMap = validatorNodeIDsMap
+	var validatorNodeIDs []enode.ID
+	for _, nodeIDs := range validatorNodeIDsMap {
+		validatorNodeIDs = append(validatorNodeIDs, nodeIDs...)
 	}
 	for _, peer := range ps.peers {
 		nodeID := peer.NodeID()
-		if slices.Contains(directList, nodeID) || slices.Contains(valNodeIDs, nodeID) {
+		if slices.Contains(directNodeIDs, nodeID) || slices.Contains(proxyedNodeIDs, nodeID) {
 			log.Debug("enable direct broadcast feature for", "peer", nodeID)
 			peer.EnableDirectBroadcast.Store(true)
 		}
+		if slices.Contains(validatorNodeIDs, nodeID) {
+			log.Debug("enable full broadcast feature for", "peer", nodeID)
+			peer.EnableFullBroadcast.Store(true)
+		}
 		// if the peer is in the valNodeIDs and not in the proxyedList, enable the no tx broadcast feature
 		// the node also need to forward tx to the proxyedList
-		if slices.Contains(valNodeIDs, nodeID) && !slices.Contains(proxyedList, nodeID) {
+		if slices.Contains(validatorNodeIDs, nodeID) && !slices.Contains(proxyedNodeIDs, nodeID) {
 			log.Debug("enable no tx broadcast feature for", "peer", nodeID)
 			peer.EnableNoTxBroadcast.Store(true)
 		}
 	}
-	log.Info("enable peer features", "total", len(ps.peers), "directList", len(directList), "valNodeIDs", len(valNodeIDs), "proxyedList", len(proxyedList))
+	log.Info("enable peer features", "total", len(ps.peers), "directList", len(directNodeIDs), "valNodeIDs", len(validatorNodeIDs), "proxyedList", len(proxyedNodeIDs))
 }
 
-// existProxyedValidator checks if the given address is a connected proxyed validator.
-func (ps *peerSet) existProxyedValidator(address common.Address, proxyedList []enode.ID) bool {
+// isProxyedValidator checks if the given address is a connected proxyed validator.
+func (ps *peerSet) isProxyedValidator(address common.Address, proxyedList []enode.ID) bool {
 	ps.lock.RLock()
 	defer ps.lock.RUnlock()
 
-	if ps.consensusAddressMap == nil {
+	if ps.validatorNodeIDsMap == nil {
 		return false
 	}
 
-	nodeIDs := ps.consensusAddressMap[address]
+	nodeIDs := ps.validatorNodeIDsMap[address]
 	for _, id := range nodeIDs {
 		if ps.peers[id.String()] == nil {
 			continue

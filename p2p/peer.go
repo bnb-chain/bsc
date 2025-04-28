@@ -126,8 +126,9 @@ type Peer struct {
 
 	latency atomic.Int64 // mill second latency, estimated by ping msg
 
-	EnableDirectBroadcast atomic.Bool
-	EnableNoTxBroadcast   atomic.Bool
+	EnableFullBroadcast   atomic.Bool // it indicates the peer is in the validator network, it will directly broadcast when miner/sentry broadcast mined block.
+	EnableDirectBroadcast atomic.Bool // it indicates the peer is in the private network, it will directly broadcast in any scenario.
+	EnableNoTxBroadcast   atomic.Bool // it indicates the peer is in the validator network, it will not broadcast tx to other validator network node.
 }
 
 // NewPeer returns a peer for testing purposes.

@@ -129,8 +129,8 @@ type handlerConfig struct {
 	PeerSet                  *peerSet
 	EnableQuickBlockFetching bool
 	EnableBroadcastFeatures  bool
-	DirectBroadcastList      []enode.ID
-	ProxyedValidatorList     []enode.ID
+	DirectBroadcastNodeIDs   []enode.ID
+	ProxyedValidatorNodeIDs  []enode.ID
 }
 
 type handler struct {
@@ -139,8 +139,8 @@ type handler struct {
 	forkFilter              forkid.Filter // Fork ID filter, constant across the lifetime of the node
 	disablePeerTxBroadcast  bool
 	enableBroadcastFeatures bool
-	directBroadcastList     []enode.ID
-	proxyedValidatorList    []enode.ID
+	directBroadcastNodeIDs  []enode.ID
+	proxyedValidatorNodeIDs []enode.ID
 
 	snapSync        atomic.Bool // Flag whether snap sync is enabled (gets disabled if we already have blocks)
 	synced          atomic.Bool // Flag whether we're considered synchronised (enables transaction processing)
@@ -209,8 +209,8 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		requiredBlocks:          config.RequiredBlocks,
 		directBroadcast:         config.DirectBroadcast,
 		enableBroadcastFeatures: config.EnableBroadcastFeatures,
-		directBroadcastList:     config.DirectBroadcastList,
-		proxyedValidatorList:    config.ProxyedValidatorList,
+		directBroadcastNodeIDs:  config.DirectBroadcastNodeIDs,
+		proxyedValidatorNodeIDs: config.ProxyedValidatorNodeIDs,
 		quitSync:                make(chan struct{}),
 		handlerDoneCh:           make(chan struct{}),
 		handlerStartCh:          make(chan struct{}),
@@ -376,7 +376,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 // protoTracker tracks the number of active protocol handlers.
 func (h *handler) protoTracker() {
 	defer h.wg.Done()
-	updateTicker := time.NewTicker(1 * time.Minute)
+	updateTicker := time.NewTicker(10 * time.Second)
 	defer updateTicker.Stop()
 	var active int
 	for {
@@ -389,7 +389,7 @@ func (h *handler) protoTracker() {
 			if h.enableBroadcastFeatures {
 				// add onchain validator p2p node list later, it will enable the direct broadcast + no tx broadcast feature
 				// here check & enable peer broadcast features periodically, and it's a simple way to handle the peer change and the list change scenarios.
-				h.peers.enablePeerFeatures(h.queryValidatorNodeIDs(), h.directBroadcastList, h.proxyedValidatorList)
+				h.peers.enableBroadcastFeatures(h.queryValidatorNodeIDsMap(), h.directBroadcastNodeIDs, h.proxyedValidatorNodeIDs)
 			}
 		case <-h.quitSync:
 			// Wait for all active handlers to finish.
@@ -826,20 +826,28 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 			peer.AsyncSendNewBlock(block, td)
 		}
 
+		broadcastChecker := func(peer *ethPeer) bool {
+			return peer.EnableDirectBroadcast.Load()
+		}
 		if h.needMoreDirectBroadcastPeers(block) {
-			var morePeers []*ethPeer
-			for i := len(transfer); i < len(peers); i++ {
-				if peers[i].EnableDirectBroadcast.Load() {
-					log.Debug("add extra direct broadcast peer", "peer", peers[i].ID())
-					morePeers = append(morePeers, peers[i])
-				}
-			}
-			for _, peer := range morePeers {
-				peer.AsyncSendNewBlock(block, td)
+			log.Debug("needMoreDirectBroadcastPeers", "number", block.NumberU64(), "hash", block.Hash())
+			broadcastChecker = func(peer *ethPeer) bool {
+				return peer.EnableDirectBroadcast.Load() || peer.EnableFullBroadcast.Load()
 			}
 		}
 
-		log.Trace("Propagated block", "hash", hash, "recipients", len(transfer), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
+		var morePeers []*ethPeer
+		for i := len(transfer); i < len(peers); i++ {
+			if broadcastChecker(peers[i]) {
+				log.Debug("add extra direct broadcast peer", "peer", peers[i].ID())
+				morePeers = append(morePeers, peers[i])
+			}
+		}
+		for _, peer := range morePeers {
+			peer.AsyncSendNewBlock(block, td)
+		}
+
+		log.Trace("Propagated block", "hash", hash, "recipients", len(transfer)+len(morePeers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
 		return
 	}
 	// Otherwise if the block is indeed in our own chain, announce it
@@ -866,10 +874,10 @@ func (h *handler) needMoreDirectBroadcastPeers(block *types.Block) bool {
 		return true
 	}
 
-	return h.peers.existProxyedValidator(block.Coinbase(), h.proxyedValidatorList)
+	return h.peers.isProxyedValidator(block.Coinbase(), h.proxyedValidatorNodeIDs)
 }
 
-func (h *handler) queryValidatorNodeIDs() map[common.Address][]enode.ID {
+func (h *handler) queryValidatorNodeIDsMap() map[common.Address][]enode.ID {
 	latest := h.chain.CurrentHeader()
 	if !h.chain.Config().IsMaxwell(latest.Number, latest.Time) {
 		return nil
