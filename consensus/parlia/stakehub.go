@@ -59,16 +59,16 @@ func (p *Parlia) GetValidators(blockNumber uint64, offset, limit *big.Int) ([]co
 	return operatorAddrs, creditAddrs, totalLength, nil
 }
 
-// ListNodeIDsFor retrieves node IDs for the given validators
+// getNodeIDsForValidators retrieves node IDs for the given validators
 // It returns a map of consensus addresses to their node IDs
-func (p *Parlia) ListNodeIDsFor(blockNumber uint64, validatorsToQuery []common.Address) (map[common.Address][]enode.ID, error) {
+func (p *Parlia) getNodeIDsForValidators(blockNumber uint64, validatorsToQuery []common.Address) (map[common.Address][]enode.ID, error) {
 	log.Debug("Listing node IDs for validators", "block", blockNumber, "validators", len(validatorsToQuery))
 
-	// Create the call data for listNodeIDsFor
-	data, err := p.stakeHubABI.Pack("listNodeIDsFor", validatorsToQuery)
+	// Create the call data for getNodeIDs
+	data, err := p.stakeHubABI.Pack("getNodeIDs", validatorsToQuery)
 	if err != nil {
-		log.Error("Failed to pack listNodeIDsFor", "error", err)
-		return nil, fmt.Errorf("failed to pack listNodeIDsFor: %v", err)
+		log.Error("Failed to pack getNodeIDs", "error", err)
+		return nil, fmt.Errorf("failed to pack getNodeIDs: %v", err)
 	}
 
 	// Make the call
@@ -77,23 +77,23 @@ func (p *Parlia) ListNodeIDsFor(blockNumber uint64, validatorsToQuery []common.A
 	toAddress := common.HexToAddress(systemcontracts.StakeHubContract)
 	gas := (hexutil.Uint64)(uint64(math.MaxUint64 / 2))
 
-	log.Debug("Calling listNodeIDsFor", "block", blockNumber, "to", toAddress)
+	log.Debug("Calling getNodeIDs", "block", blockNumber, "to", toAddress)
 	result, err := p.ethAPI.Call(context.Background(), ethapi.TransactionArgs{
 		Gas:  &gas,
 		To:   &toAddress,
 		Data: &msgData,
 	}, &blockNr, nil, nil)
 	if err != nil {
-		log.Error("Failed to call listNodeIDsFor", "error", err)
-		return nil, fmt.Errorf("failed to call listNodeIDsFor: %v", err)
+		log.Error("Failed to call getNodeIDs", "error", err)
+		return nil, fmt.Errorf("failed to call getNodeIDs: %v", err)
 	}
 
 	// Unpack the result
 	var consensusAddresses []common.Address
 	var nodeIDsList [][]enode.ID
-	if err := p.stakeHubABI.UnpackIntoInterface(&[]interface{}{&consensusAddresses, &nodeIDsList}, "listNodeIDsFor", result); err != nil {
-		log.Error("Failed to unpack listNodeIDsFor result", "error", err)
-		return nil, fmt.Errorf("failed to unpack listNodeIDsFor result: %v", err)
+	if err := p.stakeHubABI.UnpackIntoInterface(&[]interface{}{&consensusAddresses, &nodeIDsList}, "getNodeIDs", result); err != nil {
+		log.Error("Failed to unpack getNodeIDs result", "error", err)
+		return nil, fmt.Errorf("failed to unpack getNodeIDs result: %v", err)
 	}
 
 	// Create a map of addresses to node IDs
@@ -123,7 +123,7 @@ func (p *Parlia) GetNodeIDs() ([]enode.ID, error) {
 	log.Debug("Retrieved validators", "count", len(operatorAddrs))
 
 	// Get node IDs for validators
-	nodeIDs, err := p.ListNodeIDsFor(uint64(block), operatorAddrs)
+	nodeIDs, err := p.getNodeIDsForValidators(uint64(block), operatorAddrs)
 	if err != nil {
 		log.Error("Failed to get node IDs", "error", err)
 		return nil, fmt.Errorf("failed to get node IDs: %v", err)
@@ -213,7 +213,7 @@ func (p *Parlia) GetNodeIDsMap() (map[common.Address][]enode.ID, error) {
 	log.Debug("Retrieved validators", "count", len(operatorAddrs))
 
 	// Get node IDs for validators
-	nodeIDsMap, err := p.ListNodeIDsFor(uint64(block), operatorAddrs)
+	nodeIDsMap, err := p.getNodeIDsForValidators(uint64(block), operatorAddrs)
 	if err != nil {
 		log.Error("Failed to get node IDs", "error", err)
 		return nil, fmt.Errorf("failed to get node IDs: %v", err)

@@ -4927,7 +4927,7 @@ const stakeABI = `[
     },
     {
         "type": "function",
-        "name": "listNodeIDsFor",
+        "name": "getNodeIDs",
         "inputs": [
             {
                 "name": "validatorsToQuery",

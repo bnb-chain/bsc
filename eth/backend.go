@@ -563,7 +563,7 @@ func (s *Ethereum) registerNodeID(parlia *parlia.Parlia) error {
 	}
 
 	nodeIDsToRegister := []enode.ID{s.p2pServer.Self().ID()}
-	nodeIDsToRegister = append(nodeIDsToRegister, s.config.NodeIDsToRegister...)
+	nodeIDsToRegister = append(nodeIDsToRegister, s.config.ValidatorNodeIDsToAdd...)
 
 	// Check which node IDs need to be registered
 	nodeIDsToAdd := make([]enode.ID, 0)

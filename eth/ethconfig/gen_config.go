@@ -21,7 +21,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		NetworkId               uint64
 		SyncMode                SyncMode
 		DisablePeerTxBroadcast  bool
-		NodeIDsToRegister       []enode.ID
+		ValidatorNodeIDsToAdd   []enode.ID
 		EthDiscoveryURLs        []string
 		SnapDiscoveryURLs       []string
 		TrustDiscoveryURLs      []string
@@ -76,7 +76,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.NetworkId = c.NetworkId
 	enc.SyncMode = c.SyncMode
 	enc.DisablePeerTxBroadcast = c.DisablePeerTxBroadcast
-	enc.NodeIDsToRegister = c.NodeIDsToRegister
+	enc.ValidatorNodeIDsToAdd = c.ValidatorNodeIDsToAdd
 	enc.EthDiscoveryURLs = c.EthDiscoveryURLs
 	enc.SnapDiscoveryURLs = c.SnapDiscoveryURLs
 	enc.TrustDiscoveryURLs = c.TrustDiscoveryURLs
@@ -135,7 +135,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		NetworkId               *uint64
 		SyncMode                *SyncMode
 		DisablePeerTxBroadcast  *bool
-		NodeIDsToRegister       []enode.ID
+		ValidatorNodeIDsToAdd   []enode.ID
 		EthDiscoveryURLs        []string
 		SnapDiscoveryURLs       []string
 		TrustDiscoveryURLs      []string
@@ -201,8 +201,8 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.DisablePeerTxBroadcast != nil {
 		c.DisablePeerTxBroadcast = *dec.DisablePeerTxBroadcast
 	}
-	if dec.NodeIDsToRegister != nil {
-		c.NodeIDsToRegister = dec.NodeIDsToRegister
+	if dec.ValidatorNodeIDsToAdd != nil {
+		c.ValidatorNodeIDsToAdd = dec.ValidatorNodeIDsToAdd
 	}
 	if dec.EthDiscoveryURLs != nil {
 		c.EthDiscoveryURLs = dec.EthDiscoveryURLs
