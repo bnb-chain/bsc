@@ -84,6 +84,7 @@ It expects the genesis file as argument.`,
 			utils.InitNetworkPort,
 			utils.InitNetworkSize,
 			utils.InitNetworkIps,
+			utils.InitSentryNode,
 			configFileFlag,
 		},
 		Category: "BLOCKCHAIN COMMANDS",
@@ -356,11 +357,30 @@ func createNodeConfig(baseConfig gethConfig, enodes []*enode.Node, ip string, po
 	return baseConfig
 }
 
+func createStaticNodeConfig(baseConfig gethConfig, enodes []*enode.Node, ip string, port int, size int, i int) gethConfig {
+	baseConfig.Node.HTTPHost = ip
+	baseConfig.Node.P2P.ListenAddr = fmt.Sprintf(":%d", port)
+	baseConfig.Node.P2P.StaticNodes = make([]*enode.Node, size-1)
+	// Set the P2P connections between this node and the other nodes
+	for j := 0; j < i; j++ {
+		baseConfig.Node.P2P.StaticNodes[j] = enodes[j]
+	}
+	for j := i + 1; j < size; j++ {
+		baseConfig.Node.P2P.StaticNodes[j-1] = enodes[j]
+	}
+	return baseConfig
+}
+
 // Create configs for nodes in the cluster
-func createNodeConfigs(baseConfig gethConfig, initDir string, ips []string, ports []int, size int) ([]gethConfig, error) {
+func createNodeConfigs(baseConfig gethConfig, initDir string, ips []string, ports []int, size int, enableSentryNode bool) ([]gethConfig, error) {
 	// Create the nodes
+	totalSize := size
+	if enableSentryNode {
+		totalSize = size * 2
+	}
 	enodes := make([]*enode.Node, size)
-	for i := 0; i < size; i++ {
+	sentryEnodes := make([]*enode.Node, size)
+	for i, j := 0, 0; i < size && j < totalSize; i++ {
 		nodeConfig := baseConfig.Node
 		nodeConfig.DataDir = path.Join(initDir, fmt.Sprintf("node%d", i))
 		stack, err := node.New(&nodeConfig)
@@ -368,13 +388,35 @@ func createNodeConfigs(baseConfig gethConfig, initDir string, ips []string, port
 			return nil, err
 		}
 		pk := stack.Config().NodeKey()
-		enodes[i] = enode.NewV4(&pk.PublicKey, net.ParseIP(ips[i]), ports[i], ports[i])
+		enodes[i] = enode.NewV4(&pk.PublicKey, net.ParseIP(ips[j]), ports[j], ports[j])
+		j++
+		if enableSentryNode {
+			nodeConfig := baseConfig.Node
+			nodeConfig.DataDir = path.Join(initDir, fmt.Sprintf("sentry%d", i))
+			stack, err := node.New(&nodeConfig)
+			if err != nil {
+				return nil, err
+			}
+			pk := stack.Config().NodeKey()
+			sentryEnodes[i] = enode.NewV4(&pk.PublicKey, net.ParseIP(ips[j]), ports[j], ports[j])
+			j++
+		}
 	}
 
 	// Create the configs
-	configs := make([]gethConfig, size)
-	for i := 0; i < size; i++ {
-		configs[i] = createNodeConfig(baseConfig, enodes, ips[i], ports[i], size, i)
+	configs := make([]gethConfig, 0, totalSize)
+	for i, j := 0, 0; i < size && j < totalSize; i++ {
+		if !enableSentryNode {
+			configs = append(configs, createNodeConfig(baseConfig, enodes, ips[j], ports[j], size, i))
+			j++
+			continue
+		}
+		// if enableSentryNode, sentry will connect each other, and vlaidator only connect sentry
+		configs = append(configs, createStaticNodeConfig(baseConfig, []*enode.Node{enodes[i], sentryEnodes[i]}, ips[j], ports[j], 2, 0))
+		sentry := createStaticNodeConfig(baseConfig, sentryEnodes, ips[j+1], ports[j+1], size, i)
+		sentry.Node.P2P.ProxyedValidatorList = append(sentry.Node.P2P.ProxyedValidatorList, enodes[i].ID())
+		configs = append(configs, sentry)
+		j += 2
 	}
 	return configs, nil
 }
@@ -393,6 +435,7 @@ func initNetwork(ctx *cli.Context) error {
 	if port <= 0 {
 		utils.Fatalf("port should be greater than 0")
 	}
+	enableSentryNode := ctx.Bool(utils.InitSentryNode.Name)
 	ipStr := ctx.String(utils.InitNetworkIps.Name)
 	cfgFile := ctx.String(configFileFlag.Name)
 
@@ -400,12 +443,16 @@ func initNetwork(ctx *cli.Context) error {
 		utils.Fatalf("config file is required")
 	}
 
-	ips, err := parseIps(ipStr, size)
+	totalSize := size
+	if enableSentryNode {
+		totalSize = size * 2
+	}
+	ips, err := parseIps(ipStr, totalSize)
 	if err != nil {
 		utils.Fatalf("Failed to pase ips string: %v", err)
 	}
 
-	ports := createPorts(ipStr, port, size)
+	ports := createPorts(ipStr, port, totalSize)
 
 	// Make sure we have a valid genesis JSON
 	genesisPath := ctx.Args().First()
@@ -430,37 +477,56 @@ func initNetwork(ctx *cli.Context) error {
 		return err
 	}
 
-	configs, err := createNodeConfigs(config, initDir, ips, ports, size)
+	configs, err := createNodeConfigs(config, initDir, ips, ports, size, enableSentryNode)
 	if err != nil {
 		utils.Fatalf("Failed to create node configs: %v", err)
 	}
 
-	for i := 0; i < size; i++ {
+	for i, j := 0, 0; i < size && j < totalSize; i++ {
 		// Write config.toml
-		configBytes, err := tomlSettings.Marshal(configs[i])
+		err = writeConfig(inGenesisFile, configs[j], path.Join(initDir, fmt.Sprintf("node%d", i)))
 		if err != nil {
 			return err
 		}
-		configFile, err := os.OpenFile(path.Join(initDir, fmt.Sprintf("node%d", i), "config.toml"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
-		if err != nil {
-			return err
+		j++
+		if enableSentryNode {
+			err = writeConfig(inGenesisFile, configs[j], path.Join(initDir, fmt.Sprintf("sentry%d", i)))
+			if err != nil {
+				return err
+			}
+			j++
 		}
-		defer configFile.Close()
-		configFile.Write(configBytes)
+	}
+	return nil
+}
 
-		// Write the input genesis.json to the node's directory
-		outGenesisFile, err := os.OpenFile(path.Join(initDir, fmt.Sprintf("node%d", i), "genesis.json"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
-		if err != nil {
-			return err
-		}
-		_, err = inGenesisFile.Seek(0, io.SeekStart)
-		if err != nil {
-			return err
-		}
-		_, err = io.Copy(outGenesisFile, inGenesisFile)
-		if err != nil {
-			return err
-		}
+func writeConfig(inGenesisFile *os.File, config gethConfig, dir string) error {
+	configBytes, err := tomlSettings.Marshal(config)
+	if err != nil {
+		return err
+	}
+	configFile, err := os.OpenFile(path.Join(dir, "config.toml"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer configFile.Close()
+	_, err = configFile.Write(configBytes)
+	if err != nil {
+		return err
+	}
+
+	// Write the input genesis.json to the node's directory
+	outGenesisFile, err := os.OpenFile(path.Join(dir, "genesis.json"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	_, err = inGenesisFile.Seek(0, io.SeekStart)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(outGenesisFile, inGenesisFile)
+	if err != nil {
+		return err
 	}
 	return nil
 }
