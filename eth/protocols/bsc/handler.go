@@ -15,7 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enr"
 )
 
-const MaxRequestRangeBlocksCount = 128
+const MaxRequestRangeBlocksCount = 64
 
 // Handler is a callback to invoke from an outside runner after the boilerplate
 // exchanges have passed.
