@@ -1003,7 +1003,7 @@ func init() {
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(StakeHubContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/44ebc6c17a00bd24db3240141a78091528dcebbb",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/19bfe7200029b41d0820efcc6feed6df84a96340",
 				Code:         maxwell.MainnetStakeHubContract,
 			},
 		},
@@ -1014,7 +1014,7 @@ func init() {
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(StakeHubContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/44ebc6c17a00bd24db3240141a78091528dcebbb",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/19bfe7200029b41d0820efcc6feed6df84a96340",
 				Code:         maxwell.ChapelStakeHubContract,
 			},
 		},
@@ -1025,7 +1025,7 @@ func init() {
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(StakeHubContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/44ebc6c17a00bd24db3240141a78091528dcebbb",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/19bfe7200029b41d0820efcc6feed6df84a96340",
 				Code:         maxwell.RialtoStakeHubContract,
 			},
 		},
