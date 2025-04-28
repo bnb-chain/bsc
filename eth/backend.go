@@ -18,6 +18,7 @@
 package eth
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -130,8 +131,8 @@ type Ethereum struct {
 
 	shutdownTracker *shutdowncheck.ShutdownTracker // Tracks if and when the node has shutdown ungracefully
 
-	votePool     *vote.VotePool
-	stopReportCh chan struct{}
+	votePool *vote.VotePool
+	stopCh   chan struct{}
 }
 
 // New creates a new Ethereum object (including the initialisation of the common Ethereum object),
@@ -252,7 +253,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		p2pServer:         stack.Server(),
 		discmix:           enode.NewFairMix(0),
 		shutdownTracker:   shutdowncheck.NewShutdownTracker(chainDb),
-		stopReportCh:      make(chan struct{}, 1),
+		stopCh:            make(chan struct{}),
 	}
 
 	eth.APIBackend = &EthAPIBackend{stack.Config().ExtRPCEnabled(), stack.Config().AllowUnprotectedTxs, eth, nil}
@@ -516,6 +517,87 @@ func (s *Ethereum) SetEtherbase(etherbase common.Address) {
 	s.miner.SetEtherbase(etherbase)
 }
 
+// waitForSyncAndMaxwell waits for the node to be fully synced and Maxwell fork to be active
+func (s *Ethereum) waitForSyncAndMaxwell(parlia *parlia.Parlia) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	retryCount := 0
+	for {
+		select {
+		case <-s.stopCh:
+			return
+		case <-ticker.C:
+			if !s.Synced() {
+				continue
+			}
+			// Check if Maxwell fork is active
+			header := s.blockchain.CurrentHeader()
+			if header == nil {
+				continue
+			}
+			chainConfig := s.blockchain.Config()
+			if !chainConfig.IsMaxwell(header.Number, header.Time) {
+				continue
+			}
+			log.Info("Node is synced and Maxwell fork is active, proceeding with node ID registration")
+			err := s.registerNodeID(parlia)
+			if err == nil {
+				return
+			}
+			retryCount++
+			if retryCount > 3 {
+				log.Error("Failed to register node ID exceed max retry count", "retryCount", retryCount, "err", err)
+				return
+			}
+		}
+	}
+}
+
+// registerNodeID registers the node ID with the StakeHub contract
+func (s *Ethereum) registerNodeID(parlia *parlia.Parlia) error {
+	// Check if node ID is already registered
+	nodeIDs, err := parlia.GetNodeIDs()
+	if err != nil {
+		log.Error("Failed to get registered node IDs", "err", err)
+		return err
+	}
+
+	// Check which node IDs need to be registered
+	nodeIDsToAdd := make([]enode.ID, 0)
+	for _, idToRegister := range s.config.ValidatorNodeIDsToAdd {
+		isRegistered := false
+		for _, id := range nodeIDs {
+			if id == idToRegister {
+				isRegistered = true
+				break
+			}
+		}
+		if !isRegistered {
+			nodeIDsToAdd = append(nodeIDsToAdd, idToRegister)
+		}
+	}
+
+	if len(nodeIDsToAdd) > 0 {
+		// Get the current nonce for the validator address
+		nonce, err := s.APIBackend.GetPoolNonce(context.Background(), s.etherbase)
+		if err != nil {
+			return fmt.Errorf("failed to get nonce: %v", err)
+		}
+
+		trx, err := parlia.AddNodeIDs(nodeIDsToAdd, nonce)
+		if err != nil {
+			return fmt.Errorf("failed to create node ID registration transaction: %v", err)
+		}
+		if err := s.txPool.Add([]*types.Transaction{trx}, false); err != nil {
+			return fmt.Errorf("failed to add node ID registration transaction to pool: %v", err)
+		}
+		log.Info("Submitted node ID registration transaction", "nodeIDs", nodeIDsToAdd)
+	} else {
+		log.Info("All node IDs already registered", "nodeIDs", s.config.ValidatorNodeIDsToAdd)
+	}
+	return nil
+}
+
 // StartMining starts the miner with the given number of CPU threads. If mining
 // is already running, this method adjust the number of threads allowed to use
 // and updates the minimum price required by the transaction pool.
@@ -541,6 +623,11 @@ func (s *Ethereum) StartMining() error {
 				return fmt.Errorf("signer missing: %v", err)
 			}
 			parlia.Authorize(eb, wallet.SignData, wallet.SignTx)
+
+			// Start a goroutine to handle node ID registration after sync
+			go func() {
+				s.waitForSyncAndMaxwell(parlia)
+			}()
 		}
 
 		go s.miner.Start()
@@ -692,7 +779,7 @@ func (s *Ethereum) Stop() error {
 	s.eventMux.Stop()
 
 	// stop report loop
-	s.stopReportCh <- struct{}{}
+	close(s.stopCh)
 	return nil
 }
 
@@ -763,7 +850,7 @@ func (s *Ethereum) reportRecentBlocksLoop() {
 			if startMiningTime < blockMsTime {
 				startMiningTimer.Update(time.Duration(blockMsTime - startMiningTime))
 			}
-		case <-s.stopReportCh:
+		case <-s.stopCh:
 			return
 		}
 	}
