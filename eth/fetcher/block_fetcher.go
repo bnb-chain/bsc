@@ -203,8 +203,6 @@ type BlockFetcher struct {
 	dropPeer             peerDropFn             // Drops a peer for misbehaving
 	fetchRangeBlocks     fetchRangeBlocksFn     // Fetches a range of blocks from a peer
 
-	enableQuickBlockFetching bool
-
 	// Testing hooks
 	announceChangeHook func(common.Hash, bool)           // Method to call upon adding or deleting a hash from the blockAnnounce list
 	queueChangeHook    func(common.Hash, bool)           // Method to call upon adding or deleting a block from the import queue
@@ -243,10 +241,6 @@ func NewBlockFetcher(getBlock blockRetrievalFn, verifyHeader headerVerifierFn, b
 		dropPeer:             dropPeer,
 		fetchRangeBlocks:     fetchRangeBlocks,
 	}
-}
-
-func (f *BlockFetcher) EnableQuickBlockFetching() {
-	f.enableQuickBlockFetching = true
 }
 
 // Start boots up the announcement based synchroniser, accepting and processing
@@ -353,6 +347,9 @@ func (f *BlockFetcher) FilterBodies(peer string, transactions [][]*types.Transac
 
 func (f *BlockFetcher) asyncFetchRangeBlocks(announce *blockAnnounce) {
 	go func() {
+		if f.fetchRangeBlocks == nil {
+			return
+		}
 		log.Debug("Quick block fetching", "peer", announce.origin, "hash", announce.hash)
 		blocks, err := f.fetchRangeBlocks(announce.origin, announce.number, announce.hash, 1)
 		f.quickBlockFetchingCh <- &BlockFetchingEntry{
@@ -453,7 +450,7 @@ func (f *BlockFetcher) loop() {
 			}
 			// if there enable range fetching, just request the first announce and wait for response,
 			// and if it gets timeout and wait for later header & body fetching.
-			if f.enableQuickBlockFetching && len(f.announced[notification.hash]) == 1 {
+			if f.fetchRangeBlocks != nil && len(f.announced[notification.hash]) == 1 {
 				f.asyncFetchRangeBlocks(notification)
 			}
 			// schedule the first arrive announce hash

@@ -301,7 +301,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 			return nil, errors.New("peer not found")
 		}
 		if p.bscExt.Version() != bsc.Bsc2 {
-			return nil, errors.New("the remote peer is not bsc2")
+			return nil, errors.New("Remote peer does not support the required Bsc2 protocol version")
 		}
 		res, err := p.bscExt.RequestBlocksByRange(startHeight, startHash, count)
 		if err != nil {
@@ -328,11 +328,12 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		return blocks, err
 	}
 
+	if !config.EnableQuickBlockFetching {
+		fetchRangeBlocks = nil
+	}
+
 	h.blockFetcher = fetcher.NewBlockFetcher(h.chain.GetBlockByHash, validator, broadcastBlockWithCheck,
 		heighter, finalizeHeighter, inserter, h.removePeer, fetchRangeBlocks)
-	if config.EnableQuickBlockFetching {
-		h.blockFetcher.EnableQuickBlockFetching()
-	}
 
 	fetchTx := func(peer string, hashes []common.Hash) error {
 		p := h.peers.peer(peer)

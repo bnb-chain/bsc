@@ -188,11 +188,11 @@ func handleBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
 	}
 
-	log.Debug("receive BlocksByRange response", "from", peer.id, "blocks", len(res.Blocks))
-	peer.dispatcher.DispatchResponse(&Response{
+	err := peer.dispatcher.DispatchResponse(&Response{
 		requestID: res.RequestId,
 		data:      res,
 	})
+	log.Debug("receive BlocksByRange response", "from", peer.id, "blocks", len(res.Blocks), "err", err)
 	return nil
 }
 
