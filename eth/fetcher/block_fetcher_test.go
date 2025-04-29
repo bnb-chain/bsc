@@ -1290,9 +1290,6 @@ func TestQuickBlockFetching(t *testing.T) {
 		},
 	)
 
-	// Enable quick block fetching
-	fetcher.EnableQuickBlockFetching()
-
 	// Start fetcher
 	fetcher.Start()
 	defer fetcher.Stop()
