@@ -383,6 +383,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		EventMux:                 eth.eventMux,
 		RequiredBlocks:           config.RequiredBlocks,
 		DirectBroadcast:          config.DirectBroadcast,
+		DirectBroadcastList:      stack.Config().P2P.DirectBroadcastList,
+		EnableBroadcastFeature:   stack.Config().EnableBroadcastFeature,
 		DisablePeerTxBroadcast:   config.DisablePeerTxBroadcast,
 		PeerSet:                  peers,
 		EnableQuickBlockFetching: stack.Config().EnableQuickBlockFetching,

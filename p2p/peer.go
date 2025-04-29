@@ -125,6 +125,9 @@ type Peer struct {
 	testRemoteAddr string     // for testing
 
 	latency atomic.Int64 // mill second latency, estimated by ping msg
+
+	EnableDirectBroadcast atomic.Bool
+	EnableNoTxBroadcast   atomic.Bool
 }
 
 // NewPeer returns a peer for testing purposes.

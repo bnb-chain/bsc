@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 	"sync"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 	"github.com/ethereum/go-ethereum/eth/protocols/trust"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 )
 
@@ -433,6 +435,23 @@ func (ps *peerSet) peer(id string) *ethPeer {
 	return ps.peers[id]
 }
 
+// enablePeerFeatures enables the given features for the given peers.
+func (ps *peerSet) enablePeerFeatures(directList []string, noTxList []string) {
+	ps.lock.Lock()
+	defer ps.lock.Unlock()
+
+	for _, peer := range ps.peers {
+		if slices.Contains(directList, peer.ID()) {
+			log.Trace("enable direct broadcast feature for", "peer", peer.ID())
+			peer.EnableDirectBroadcast.Store(true)
+		}
+		if slices.Contains(noTxList, peer.ID()) {
+			log.Trace("enable no tx broadcast feature for", "peer", peer.ID())
+			peer.EnableNoTxBroadcast.Store(true)
+		}
+	}
+}
+
 // headPeers retrieves a specified number list of peers.
 func (ps *peerSet) headPeers(num uint) []*ethPeer {
 	ps.lock.RLock()
@@ -475,6 +494,10 @@ func (ps *peerSet) peersWithoutTransaction(hash common.Hash) []*ethPeer {
 
 	list := make([]*ethPeer, 0, len(ps.peers))
 	for _, p := range ps.peers {
+		if p.EnableNoTxBroadcast.Load() {
+			log.Trace("skip peer with no tx broadcast feature", "peer", p.ID())
+			continue
+		}
 		if !p.KnownTransaction(hash) {
 			list = append(list, p)
 		}
