@@ -113,19 +113,20 @@ type votePool interface {
 // handlerConfig is the collection of initialization parameters to create a full
 // node network handler.
 type handlerConfig struct {
-	NodeID                 enode.ID         // P2P node ID used for tx propagation topology
-	Database               ethdb.Database   // Database for direct sync insertions
-	Chain                  *core.BlockChain // Blockchain to serve data from
-	TxPool                 txPool           // Transaction pool to propagate from
-	VotePool               votePool
-	Network                uint64                 // Network identifier to adfvertise
-	Sync                   ethconfig.SyncMode     // Whether to snap or full sync
-	BloomCache             uint64                 // Megabytes to alloc for snap sync bloom
-	EventMux               *event.TypeMux         // Legacy event mux, deprecate for `feed`
-	RequiredBlocks         map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
-	DirectBroadcast        bool
-	DisablePeerTxBroadcast bool
-	PeerSet                *peerSet
+	NodeID                   enode.ID         // P2P node ID used for tx propagation topology
+	Database                 ethdb.Database   // Database for direct sync insertions
+	Chain                    *core.BlockChain // Blockchain to serve data from
+	TxPool                   txPool           // Transaction pool to propagate from
+	VotePool                 votePool
+	Network                  uint64                 // Network identifier to adfvertise
+	Sync                     ethconfig.SyncMode     // Whether to snap or full sync
+	BloomCache               uint64                 // Megabytes to alloc for snap sync bloom
+	EventMux                 *event.TypeMux         // Legacy event mux, deprecate for `feed`
+	RequiredBlocks           map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
+	DirectBroadcast          bool
+	DisablePeerTxBroadcast   bool
+	PeerSet                  *peerSet
+	EnableQuickBlockFetching bool
 }
 
 type handler struct {
@@ -294,8 +295,45 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		h.BroadcastBlock(block, propagate)
 	}
 
+	fetchRangeBlocks := func(peer string, startHeight uint64, startHash common.Hash, count uint64) ([]*types.Block, error) {
+		p := h.peers.peer(peer)
+		if p == nil {
+			return nil, errors.New("peer not found")
+		}
+		if p.bscExt.Version() != bsc.Bsc2 {
+			return nil, errors.New("Remote peer does not support the required Bsc2 protocol version")
+		}
+		res, err := p.bscExt.RequestBlocksByRange(startHeight, startHash, count)
+		if err != nil {
+			return nil, err
+		}
+
+		blocks := make([]*types.Block, len(res))
+		for i, item := range res {
+			block := types.NewBlockWithHeader(item.Header).WithBody(types.Body{Transactions: item.Txs, Uncles: item.Uncles})
+			block = block.WithSidecars(item.Sidecars)
+			block.ReceivedAt = time.Now()
+			if err := block.SanityCheck(); err != nil {
+				return nil, err
+			}
+			if len(block.Sidecars()) > 0 {
+				for _, sidecar := range block.Sidecars() {
+					if err := sidecar.SanityCheck(block.Number(), block.Hash()); err != nil {
+						return nil, err
+					}
+				}
+			}
+			blocks[i] = block
+		}
+		return blocks, err
+	}
+
+	if !config.EnableQuickBlockFetching {
+		fetchRangeBlocks = nil
+	}
+
 	h.blockFetcher = fetcher.NewBlockFetcher(h.chain.GetBlockByHash, validator, broadcastBlockWithCheck,
-		heighter, finalizeHeighter, inserter, h.removePeer)
+		heighter, finalizeHeighter, inserter, h.removePeer, fetchRangeBlocks)
 
 	fetchTx := func(peer string, hashes []common.Hash) error {
 		p := h.peers.peer(peer)

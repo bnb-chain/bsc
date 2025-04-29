@@ -3,6 +3,8 @@ package bsc
 import (
 	"time"
 
+	"errors"
+
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -35,6 +37,7 @@ type Peer struct {
 	voteBroadcast chan []*types.VoteEnvelope // Channel used to queue votes propagation requests
 	periodBegin   time.Time                  // Begin time of the latest period for votes counting
 	periodCounter uint                       // Votes number in the latest period
+	dispatcher    *Dispatcher                // Message request-response dispatcher
 
 	*p2p.Peer                   // The embedded P2P package peer
 	rw        p2p.MsgReadWriter // Input/output streams for bsc
@@ -59,6 +62,7 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter) *Peer {
 		logger:        log.New("peer", id[:8]),
 		term:          make(chan struct{}),
 	}
+	peer.dispatcher = NewDispatcher(peer)
 	go peer.broadcastVotes()
 	return peer
 }
@@ -180,4 +184,32 @@ func (k *knownCache) add(hashes ...common.Hash) {
 // contains returns whether the given item is in the set.
 func (k *knownCache) contains(hash common.Hash) bool {
 	return k.hashes.Contains(hash)
+}
+
+// RequestBlocksByRange send GetBlocksByRangeMsg by request start block hash
+func (p *Peer) RequestBlocksByRange(startHeight uint64, startHash common.Hash, count uint64) ([]*BlockData, error) {
+	requestID := p.dispatcher.GenRequestID()
+	res, err := p.dispatcher.DispatchRequest(&Request{
+		code:      GetBlocksByRangeMsg,
+		want:      BlocksByRangeMsg,
+		requestID: requestID,
+		data: &GetBlocksByRangePacket{
+			RequestId:        requestID,
+			StartBlockHeight: startHeight,
+			StartBlockHash:   startHash,
+			Count:            count,
+		},
+		timeout: 400 * time.Millisecond,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Type assertion to get response object
+	ret, ok := res.(*BlocksByRangePacket)
+	if !ok {
+		return nil, errors.New("unexpected response type")
+	}
+
+	return ret.Blocks, nil
 }
