@@ -444,9 +444,11 @@ func (ps *peerSet) enableBroadcastFeatures(validatorNodeIDsMap map[common.Addres
 	defer ps.lock.Unlock()
 
 	ps.validatorNodeIDsMap = validatorNodeIDsMap
-	var validatorNodeIDs []enode.ID
+	valNodeIDMap := make(map[enode.ID]struct{})
 	for _, nodeIDs := range validatorNodeIDsMap {
-		validatorNodeIDs = append(validatorNodeIDs, nodeIDs...)
+		for _, nodeID := range nodeIDs {
+			valNodeIDMap[nodeID] = struct{}{}
+		}
 	}
 	for _, peer := range ps.peers {
 		nodeID := peer.NodeID()
@@ -454,18 +456,19 @@ func (ps *peerSet) enableBroadcastFeatures(validatorNodeIDsMap map[common.Addres
 			log.Debug("enable direct broadcast feature for", "peer", nodeID)
 			peer.EnableDirectBroadcast.Store(true)
 		}
-		if slices.Contains(validatorNodeIDs, nodeID) {
+		_, isValNodeID := valNodeIDMap[nodeID]
+		if isValNodeID {
 			log.Debug("enable full broadcast feature for", "peer", nodeID)
 			peer.EnableFullBroadcast.Store(true)
 		}
 		// if the peer is in the valNodeIDs and not in the proxyedList, enable the no tx broadcast feature
 		// the node also need to forward tx to the proxyedList
-		if slices.Contains(validatorNodeIDs, nodeID) && !slices.Contains(proxyedNodeIDs, nodeID) {
+		if isValNodeID && !slices.Contains(proxyedNodeIDs, nodeID) {
 			log.Debug("enable no tx broadcast feature for", "peer", nodeID)
 			peer.EnableNoTxBroadcast.Store(true)
 		}
 	}
-	log.Info("enable peer features", "total", len(ps.peers), "directList", len(directNodeIDs), "valNodeIDs", len(validatorNodeIDs), "proxyedList", len(proxyedNodeIDs))
+	log.Info("enable peer features", "total", len(ps.peers), "directList", len(directNodeIDs), "valNodeIDs", len(valNodeIDMap), "proxyedList", len(proxyedNodeIDs))
 }
 
 // isProxyedValidator checks if the given address is a connected proxyed validator.
