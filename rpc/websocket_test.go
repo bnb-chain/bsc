@@ -53,7 +53,7 @@ func TestWebsocketOriginCheck(t *testing.T) {
 
 	var (
 		srv     = newTestServer()
-		httpsrv = httptest.NewServer(srv.WebsocketHandler([]string{"http://example.com"}))
+		httpsrv = httptest.NewServer(srv.WebsocketHandler([]string{"http://example.com"}, 0))
 		wsURL   = "ws:" + strings.TrimPrefix(httpsrv.URL, "http:")
 	)
 	defer srv.Stop()
@@ -83,7 +83,7 @@ func TestWebsocketLargeCall(t *testing.T) {
 
 	var (
 		srv     = newTestServer()
-		httpsrv = httptest.NewServer(srv.WebsocketHandler([]string{"*"}))
+		httpsrv = httptest.NewServer(srv.WebsocketHandler([]string{"*"}, 0))
 		wsURL   = "ws:" + strings.TrimPrefix(httpsrv.URL, "http:")
 	)
 	defer srv.Stop()
@@ -119,7 +119,7 @@ func TestWebsocketLargeRead(t *testing.T) {
 
 	var (
 		srv     = newTestServer()
-		httpsrv = httptest.NewServer(srv.WebsocketHandler([]string{"*"}))
+		httpsrv = httptest.NewServer(srv.WebsocketHandler([]string{"*"}, 0))
 		wsURL   = "ws:" + strings.TrimPrefix(httpsrv.URL, "http:")
 	)
 	defer srv.Stop()
@@ -178,7 +178,7 @@ func TestWebsocketPeerInfo(t *testing.T) {
 
 	var (
 		s     = newTestServer()
-		ts    = httptest.NewServer(s.WebsocketHandler([]string{"origin.example.com"}))
+		ts    = httptest.NewServer(s.WebsocketHandler([]string{"origin.example.com"}, 0))
 		tsurl = "ws:" + strings.TrimPrefix(ts.URL, "http:")
 	)
 	defer s.Stop()
@@ -265,7 +265,7 @@ func TestClientWebsocketLargeMessage(t *testing.T) {
 
 	var (
 		srv     = NewServer()
-		httpsrv = httptest.NewServer(srv.WebsocketHandler(nil))
+		httpsrv = httptest.NewServer(srv.WebsocketHandler(nil, 0))
 		wsURL   = "ws:" + strings.TrimPrefix(httpsrv.URL, "http:")
 	)
 	defer srv.Stop()
@@ -397,7 +397,7 @@ func TestWebsocketMethodNameLengthLimit(t *testing.T) {
 
 	var (
 		srv     = newTestServer()
-		httpsrv = httptest.NewServer(srv.WebsocketHandler([]string{"*"}))
+		httpsrv = httptest.NewServer(srv.WebsocketHandler([]string{"*"}, 0))
 		wsURL   = "ws:" + strings.TrimPrefix(httpsrv.URL, "http:")
 	)
 	defer srv.Stop()

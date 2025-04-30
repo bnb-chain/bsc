@@ -188,6 +188,10 @@ type Config struct {
 	// private APIs to untrusted users is a major security risk.
 	WSExposeAll bool `toml:",omitempty"`
 
+	// WSMessageSizeLimit specifies the maximum size in bytes for a single WebSocket message.
+	// If this field is zero, the default message size limit will be used.
+	WSMessageSizeLimit int64 `toml:",omitempty"`
+
 	// GraphQLCors is the Cross-Origin Resource Sharing header to send to requesting
 	// clients. Please be aware that CORS is a browser enforced security, it's fully
 	// useless for custom HTTP clients.
