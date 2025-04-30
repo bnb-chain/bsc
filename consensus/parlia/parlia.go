@@ -350,6 +350,11 @@ func (p *Parlia) Author(header *types.Header) (common.Address, error) {
 	return header.Coinbase, nil
 }
 
+// ConsensusAddress returns the consensus address of the validator
+func (p *Parlia) ConsensusAddress() common.Address {
+	return p.val
+}
+
 // VerifyHeader checks whether a header conforms to the consensus rules.
 func (p *Parlia) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header) error {
 	return p.verifyHeader(chain, header, nil)

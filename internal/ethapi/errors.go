@@ -44,6 +44,10 @@ func (e *revertError) ErrorData() interface{} {
 	return e.reason
 }
 
+func (e *revertError) Error() string {
+	return fmt.Sprintf("%v: %s", e.error, e.reason)
+}
+
 // newRevertError creates a revertError instance with the provided revert data.
 func newRevertError(revert []byte) *revertError {
 	err := vm.ErrExecutionReverted

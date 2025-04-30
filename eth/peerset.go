@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 	"sync"
 	"time"
 
@@ -29,7 +30,9 @@ import (
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 	"github.com/ethereum/go-ethereum/eth/protocols/trust"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
+	"github.com/ethereum/go-ethereum/p2p/enode"
 )
 
 var (
@@ -73,6 +76,8 @@ const (
 type peerSet struct {
 	peers     map[string]*ethPeer // Peers connected on the `eth` protocol
 	snapPeers int                 // Number of `snap` compatible peers for connection prioritization
+
+	validatorNodeIDsMap map[common.Address][]enode.ID
 
 	snapWait map[string]chan *snap.Peer // Peers connected on `eth` waiting for their snap extension
 	snapPend map[string]*snap.Peer      // Peers connected on the `snap` protocol, but not yet on `eth`
@@ -433,6 +438,60 @@ func (ps *peerSet) peer(id string) *ethPeer {
 	return ps.peers[id]
 }
 
+// enableBroadcastFeatures enables the given features for the given peers.
+func (ps *peerSet) enableBroadcastFeatures(validatorNodeIDsMap map[common.Address][]enode.ID, directNodeIDs []enode.ID, proxyedNodeIDs []enode.ID) {
+	ps.lock.Lock()
+	defer ps.lock.Unlock()
+
+	ps.validatorNodeIDsMap = validatorNodeIDsMap
+	valNodeIDMap := make(map[enode.ID]struct{})
+	for _, nodeIDs := range validatorNodeIDsMap {
+		for _, nodeID := range nodeIDs {
+			valNodeIDMap[nodeID] = struct{}{}
+		}
+	}
+	for _, peer := range ps.peers {
+		nodeID := peer.NodeID()
+		if slices.Contains(directNodeIDs, nodeID) || slices.Contains(proxyedNodeIDs, nodeID) {
+			log.Debug("enable direct broadcast feature for", "peer", nodeID)
+			peer.EnableDirectBroadcast.Store(true)
+		}
+		_, isValNodeID := valNodeIDMap[nodeID]
+		if isValNodeID {
+			log.Debug("enable full broadcast feature for", "peer", nodeID)
+			peer.EnableFullBroadcast.Store(true)
+		}
+		// if the peer is in the valNodeIDs and not in the proxyedList, enable the no tx broadcast feature
+		// the node also need to forward tx to the proxyedList
+		if isValNodeID && !slices.Contains(proxyedNodeIDs, nodeID) {
+			log.Debug("enable no tx broadcast feature for", "peer", nodeID)
+			peer.EnableNoTxBroadcast.Store(true)
+		}
+	}
+	log.Info("enable peer features", "total", len(ps.peers), "directList", len(directNodeIDs), "valNodeIDs", len(valNodeIDMap), "proxyedList", len(proxyedNodeIDs))
+}
+
+// isProxyedValidator checks if the given address is a connected proxyed validator.
+func (ps *peerSet) isProxyedValidator(address common.Address, proxyedList []enode.ID) bool {
+	ps.lock.RLock()
+	defer ps.lock.RUnlock()
+
+	if ps.validatorNodeIDsMap == nil {
+		return false
+	}
+
+	nodeIDs := ps.validatorNodeIDsMap[address]
+	for _, id := range nodeIDs {
+		if ps.peers[id.String()] == nil {
+			continue
+		}
+		if slices.Contains(proxyedList, id) {
+			return true
+		}
+	}
+	return false
+}
+
 // headPeers retrieves a specified number list of peers.
 func (ps *peerSet) headPeers(num uint) []*ethPeer {
 	ps.lock.RLock()
@@ -475,6 +534,10 @@ func (ps *peerSet) peersWithoutTransaction(hash common.Hash) []*ethPeer {
 
 	list := make([]*ethPeer, 0, len(ps.peers))
 	for _, p := range ps.peers {
+		if p.EnableNoTxBroadcast.Load() {
+			log.Debug("skip peer with no tx broadcast feature", "peer", p.ID())
+			continue
+		}
 		if !p.KnownTransaction(hash) {
 			list = append(list, p)
 		}

@@ -93,6 +93,11 @@ type Config struct {
 	// DirectBroadcast enable directly broadcast mined block to all peers
 	DirectBroadcast bool `toml:",omitempty"`
 
+	// EnableBroadcastFeatures enable directly broadcast feature + no tx broadcast feature,
+	// it mainly used for validators, the validators can be recognized by StakHub contract
+	// Notice: validator, sentryNode need to set this flag to true.
+	EnableBroadcastFeatures bool `toml:",omitempty"`
+
 	// DisableSnapProtocol disable the snap protocol
 	DisableSnapProtocol bool `toml:",omitempty"`
 

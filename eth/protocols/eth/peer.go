@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/p2p"
+	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -137,6 +138,11 @@ func (p *Peer) CloseTxBroadcast() {
 // ID retrieves the peer's unique identifier.
 func (p *Peer) ID() string {
 	return p.id
+}
+
+// NodeID retrieves the peer's unique identifier.
+func (p *Peer) NodeID() enode.ID {
+	return p.Peer.ID()
 }
 
 // Version retrieves the peer's negotiated `eth` protocol version.

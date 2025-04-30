@@ -1125,6 +1125,10 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Usage: "the p2p port of the nodes in the network",
 		Value: 30311,
 	}
+	InitSentryNode = &cli.BoolFlag{
+		Name:  "init.sentrynode",
+		Usage: "whether to add a sentry node to the network",
+	}
 	MetricsInfluxDBOrganizationFlag = &cli.StringFlag{
 		Name:     "metrics.influxdb.organization",
 		Usage:    "InfluxDB organization name (v2 only)",
