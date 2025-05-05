@@ -599,3 +599,83 @@ func testCallContractWithBlockOverrides(t *testing.T, client *rpc.Client) {
 		t.Fatalf("unexpected result: %x", res)
 	}
 }
+
+func TestGetProofDeduplication(t *testing.T) {
+	backend, _ := newTestBackend(t)
+	client := backend.Attach()
+	defer backend.Close()
+	defer client.Close()
+
+	ec := New(client)
+
+	// Test cases
+	tests := []struct {
+		name     string
+		keys     []string
+		expected int
+	}{
+		{
+			name:     "nil keys",
+			keys:     nil,
+			expected: 0,
+		},
+		{
+			name:     "empty keys",
+			keys:     []string{},
+			expected: 0,
+		},
+		{
+			name:     "no duplicates",
+			keys:     []string{testSlot.String(), testSlot.String()},
+			expected: 1,
+		},
+		{
+			name:     "with empty strings",
+			keys:     []string{testSlot.String(), "", testSlot.String()},
+			expected: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := ec.GetProof(context.Background(), testAddr, tt.keys, nil)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(result.StorageProof) != tt.expected {
+				t.Errorf("expected %d storage proofs, got %d", tt.expected, len(result.StorageProof))
+			}
+		})
+	}
+}
+
+func TestGetProofMaxKeys(t *testing.T) {
+	backend, _ := newTestBackend(t)
+	client := backend.Attach()
+	defer backend.Close()
+	defer client.Close()
+
+	ec := New(client)
+
+	// Create a slice with MaxGetProofKeys + 1 keys
+	keys := make([]string, MaxGetProofKeys+1)
+	for i := 0; i < MaxGetProofKeys+1; i++ {
+		keys[i] = common.BigToHash(big.NewInt(int64(i))).String()
+	}
+
+	// Test that it fails with too many keys
+	_, err := ec.GetProof(context.Background(), testAddr, keys, nil)
+	if err == nil {
+		t.Error("expected error for too many keys, got nil")
+	}
+	if err.Error() != "too many keys: 513 (maximum 512)" {
+		t.Errorf("unexpected error message: %v", err)
+	}
+
+	// Test that it succeeds with exactly MaxGetProofKeys
+	keys = keys[:MaxGetProofKeys]
+	_, err = ec.GetProof(context.Background(), testAddr, keys, nil)
+	if err != nil {
+		t.Errorf("unexpected error with valid number of keys: %v", err)
+	}
+}
