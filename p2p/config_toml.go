@@ -30,7 +30,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		StaticNodes             []*enode.Node
 		VerifyNodes             []*enode.Node
 		TrustedNodes            []*enode.Node
-		DirectBroadcastNodeIDs  []enode.ID       `toml:",omitempty"`
+		EVNNodeIdsWhitelist     []enode.ID       `toml:",omitempty"`
 		ProxyedValidatorNodeIDs []enode.ID       `toml:",omitempty"`
 		NetRestrict             *netutil.Netlist `toml:",omitempty"`
 		NodeDatabase            string           `toml:",omitempty"`
@@ -59,7 +59,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.StaticNodes = c.StaticNodes
 	enc.VerifyNodes = c.VerifyNodes
 	enc.TrustedNodes = c.TrustedNodes
-	enc.DirectBroadcastNodeIDs = c.DirectBroadcastNodeIDs
+	enc.EVNNodeIdsWhitelist = c.EVNNodeIdsWhitelist
 	enc.ProxyedValidatorNodeIDs = c.ProxyedValidatorNodeIDs
 	enc.NetRestrict = c.NetRestrict
 	enc.NodeDatabase = c.NodeDatabase
@@ -92,7 +92,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		StaticNodes             []*enode.Node
 		VerifyNodes             []*enode.Node
 		TrustedNodes            []*enode.Node
-		DirectBroadcastNodeIDs  []enode.ID       `toml:",omitempty"`
+		EVNNodeIdsWhitelist     []enode.ID       `toml:",omitempty"`
 		ProxyedValidatorNodeIDs []enode.ID       `toml:",omitempty"`
 		NetRestrict             *netutil.Netlist `toml:",omitempty"`
 		NodeDatabase            *string          `toml:",omitempty"`
@@ -152,8 +152,8 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.TrustedNodes != nil {
 		c.TrustedNodes = dec.TrustedNodes
 	}
-	if dec.DirectBroadcastNodeIDs != nil {
-		c.DirectBroadcastNodeIDs = dec.DirectBroadcastNodeIDs
+	if dec.EVNNodeIdsWhitelist != nil {
+		c.EVNNodeIdsWhitelist = dec.EVNNodeIdsWhitelist
 	}
 	if dec.ProxyedValidatorNodeIDs != nil {
 		c.ProxyedValidatorNodeIDs = dec.ProxyedValidatorNodeIDs
