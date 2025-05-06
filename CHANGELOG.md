@@ -1,4 +1,8 @@
 # Changelog
+## v1.5.12
+### BUGFIX
+[\#3057](https://github.com/bnb-chain/bsc/pull/3057) eth/protocols/bsc: adjust vote reception limit
+
 ## v1.5.11
 ### FEATURE
 [\#3008](https://github.com/bnb-chain/bsc/pull/3008) params: add MaxwellTime
