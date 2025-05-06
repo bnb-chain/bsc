@@ -134,13 +134,13 @@ type handlerConfig struct {
 }
 
 type handler struct {
-	nodeID                  enode.ID
-	networkID               uint64
-	forkFilter              forkid.Filter // Fork ID filter, constant across the lifetime of the node
-	disablePeerTxBroadcast  bool
-	enableEVNFeatures       bool
-	evnNodeIdsWhitelist     []enode.ID
-	proxyedValidatorNodeIDs []enode.ID
+	nodeID                    enode.ID
+	networkID                 uint64
+	forkFilter                forkid.Filter // Fork ID filter, constant across the lifetime of the node
+	disablePeerTxBroadcast    bool
+	enableEVNFeatures         bool
+	evnNodeIdsWhitelistMap    map[enode.ID]struct{}
+	proxyedValidatorNodeIDMap map[enode.ID]struct{}
 
 	snapSync        atomic.Bool // Flag whether snap sync is enabled (gets disabled if we already have blocks)
 	synced          atomic.Bool // Flag whether we're considered synchronised (enables transaction processing)
@@ -195,26 +195,32 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		config.PeerSet = newPeerSet() // Nicety initialization for tests
 	}
 	h := &handler{
-		nodeID:                  config.NodeID,
-		networkID:               config.Network,
-		forkFilter:              forkid.NewFilter(config.Chain),
-		disablePeerTxBroadcast:  config.DisablePeerTxBroadcast,
-		eventMux:                config.EventMux,
-		database:                config.Database,
-		txpool:                  config.TxPool,
-		votepool:                config.VotePool,
-		chain:                   config.Chain,
-		peers:                   config.PeerSet,
-		peersPerIP:              make(map[string]int),
-		requiredBlocks:          config.RequiredBlocks,
-		directBroadcast:         config.DirectBroadcast,
-		enableEVNFeatures:       config.EnableEVNFeatures,
-		evnNodeIdsWhitelist:     config.EVNNodeIdsWhitelist,
-		proxyedValidatorNodeIDs: config.ProxyedValidatorNodeIDs,
-		quitSync:                make(chan struct{}),
-		handlerDoneCh:           make(chan struct{}),
-		handlerStartCh:          make(chan struct{}),
-		stopCh:                  make(chan struct{}),
+		nodeID:                    config.NodeID,
+		networkID:                 config.Network,
+		forkFilter:                forkid.NewFilter(config.Chain),
+		disablePeerTxBroadcast:    config.DisablePeerTxBroadcast,
+		eventMux:                  config.EventMux,
+		database:                  config.Database,
+		txpool:                    config.TxPool,
+		votepool:                  config.VotePool,
+		chain:                     config.Chain,
+		peers:                     config.PeerSet,
+		peersPerIP:                make(map[string]int),
+		requiredBlocks:            config.RequiredBlocks,
+		directBroadcast:           config.DirectBroadcast,
+		enableEVNFeatures:         config.EnableEVNFeatures,
+		evnNodeIdsWhitelistMap:    make(map[enode.ID]struct{}),
+		proxyedValidatorNodeIDMap: make(map[enode.ID]struct{}),
+		quitSync:                  make(chan struct{}),
+		handlerDoneCh:             make(chan struct{}),
+		handlerStartCh:            make(chan struct{}),
+		stopCh:                    make(chan struct{}),
+	}
+	for _, nodeID := range config.EVNNodeIdsWhitelist {
+		h.evnNodeIdsWhitelistMap[nodeID] = struct{}{}
+	}
+	for _, nodeID := range config.ProxyedValidatorNodeIDs {
+		h.proxyedValidatorNodeIDMap[nodeID] = struct{}{}
 	}
 	if config.Sync == ethconfig.FullSync {
 		// The database seems empty as the current block is the genesis. Yet the snap
@@ -389,7 +395,7 @@ func (h *handler) protoTracker() {
 			if h.enableEVNFeatures {
 				// add onchain validator p2p node list later, it will enable the direct broadcast + no tx broadcast feature
 				// here check & enable peer broadcast features periodically, and it's a simple way to handle the peer change and the list change scenarios.
-				h.peers.enableEVNFeatures(h.queryValidatorNodeIDsMap(), h.evnNodeIdsWhitelist, h.proxyedValidatorNodeIDs)
+				h.peers.enableEVNFeatures(h.queryValidatorNodeIDsMap(), h.evnNodeIdsWhitelistMap, h.proxyedValidatorNodeIDMap)
 			}
 		case <-h.quitSync:
 			// Wait for all active handlers to finish.
@@ -872,7 +878,7 @@ func (h *handler) needFullBroadcastInEVN(block *types.Block) bool {
 		return true
 	}
 
-	return h.peers.isProxyedValidator(block.Coinbase(), h.proxyedValidatorNodeIDs)
+	return h.peers.isProxyedValidator(block.Coinbase(), h.proxyedValidatorNodeIDMap)
 }
 
 func (h *handler) queryValidatorNodeIDsMap() map[common.Address][]enode.ID {

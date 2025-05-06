@@ -88,7 +88,7 @@ type Config struct {
 	TrustedNodes []*enode.Node
 
 	// EVNNodeIdsWhitelist is a list of NodeIDs that should be directly broadcast block to
-	// the list is another choice for non-validator nodes to get block quicklyPS: EVN = Enhanced Validator Network
+	// the list is another choice for non-validator nodes to get block quickly
 	EVNNodeIdsWhitelist []enode.ID `toml:",omitempty"`
 
 	// ProxyedValidatorNodeIDs is a list of validator NodeIDs that the local node proxies,
