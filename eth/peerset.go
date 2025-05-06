@@ -454,13 +454,13 @@ func (ps *peerSet) enableEVNFeatures(validatorNodeIDsMap map[common.Address][]en
 		nodeID := peer.NodeID()
 		if slices.Contains(proxyedNodeIDs, nodeID) {
 			log.Debug("enable direct broadcast feature for", "peer", nodeID)
-			peer.EVNWhitelistFlag.Store(true)
+			peer.ProxyedValidatorFlag.Store(true)
 		}
 
 		_, isValNodeID := valNodeIDMap[nodeID]
 		if isValNodeID || slices.Contains(evnWhitelist, nodeID) {
 			log.Debug("enable full broadcast feature for", "peer", nodeID)
-			peer.FullBroadcastFlag.Store(true)
+			peer.EVNPeerFlag.Store(true)
 		}
 		// if the peer is in the valNodeIDs and not in the proxyedList, enable the no tx broadcast feature
 		// the node also need to forward tx to the proxyedList

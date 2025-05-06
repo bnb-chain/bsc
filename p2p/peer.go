@@ -126,9 +126,9 @@ type Peer struct {
 
 	latency atomic.Int64 // mill second latency, estimated by ping msg
 
-	FullBroadcastFlag atomic.Bool // it indicates the peer is in the validator network, it will directly broadcast when miner/sentry broadcast mined block.
-	EVNWhitelistFlag  atomic.Bool // it indicates the peer is in the private network, it will directly broadcast in any scenario.
-	NoTxBroadcastFlag atomic.Bool // it indicates the peer is in the validator network, it will not broadcast tx to other validator network node.
+	EVNPeerFlag          atomic.Bool // it indicates the peer is in the validator network, it will directly broadcast when miner/sentry broadcast mined block.
+	ProxyedValidatorFlag atomic.Bool // it indicates the peer is proxyed by sentry node, it will directly broadcast in any scenario.
+	NoTxBroadcastFlag    atomic.Bool // it indicates the peer is connected by validator that registered on chain, it will not broadcast tx to other validator node.
 }
 
 // NewPeer returns a peer for testing purposes.
