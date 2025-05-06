@@ -94,7 +94,7 @@ type Config struct {
 	DirectBroadcast bool `toml:",omitempty"`
 
 	// EnableEVNFeatures enables the direct broadcast feature and disables the transaction broadcast feature.
-	// Used mainly for validators, which can be recognized by the StakHub contract.
+	// Used mainly for validators or sentry nodes, which can be recognized by the StakHub contract.
 	// Note: EVN = Enhanced Validator Network, Validator and sentry nodes need to set this flag to true.
 	EnableEVNFeatures bool `toml:",omitempty"`
 
