@@ -438,8 +438,8 @@ func (ps *peerSet) peer(id string) *ethPeer {
 	return ps.peers[id]
 }
 
-// enableBroadcastFeatures enables the given features for the given peers.
-func (ps *peerSet) enableBroadcastFeatures(validatorNodeIDsMap map[common.Address][]enode.ID, directNodeIDs []enode.ID, proxyedNodeIDs []enode.ID) {
+// enableEVNFeatures enables the given features for the given peers.
+func (ps *peerSet) enableEVNFeatures(validatorNodeIDsMap map[common.Address][]enode.ID, evnWhitelist []enode.ID, proxyedNodeIDs []enode.ID) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
@@ -452,23 +452,28 @@ func (ps *peerSet) enableBroadcastFeatures(validatorNodeIDsMap map[common.Addres
 	}
 	for _, peer := range ps.peers {
 		nodeID := peer.NodeID()
-		if slices.Contains(directNodeIDs, nodeID) || slices.Contains(proxyedNodeIDs, nodeID) {
+		if slices.Contains(proxyedNodeIDs, nodeID) {
 			log.Debug("enable direct broadcast feature for", "peer", nodeID)
-			peer.EnableDirectBroadcast.Store(true)
+			peer.EVNWhitelistFlag.Store(true)
 		}
+
 		_, isValNodeID := valNodeIDMap[nodeID]
-		if isValNodeID {
+		if isValNodeID || slices.Contains(evnWhitelist, nodeID) {
 			log.Debug("enable full broadcast feature for", "peer", nodeID)
-			peer.EnableFullBroadcast.Store(true)
+			peer.FullBroadcastFlag.Store(true)
 		}
 		// if the peer is in the valNodeIDs and not in the proxyedList, enable the no tx broadcast feature
 		// the node also need to forward tx to the proxyedList
 		if isValNodeID && !slices.Contains(proxyedNodeIDs, nodeID) {
 			log.Debug("enable no tx broadcast feature for", "peer", nodeID)
-			peer.EnableNoTxBroadcast.Store(true)
+			peer.NoTxBroadcastFlag.Store(true)
+		}
+		// Note: In the future, it need to check itself whether belong to EnhancedValidatorNetwork or not.
+		if slices.Contains(proxyedNodeIDs, nodeID) {
+			log.Warn("validator Nodeid is registered", "id", nodeID)
 		}
 	}
-	log.Info("enable peer features", "total", len(ps.peers), "directList", len(directNodeIDs), "valNodeIDs", len(valNodeIDMap), "proxyedList", len(proxyedNodeIDs))
+	log.Info("enable peer features", "total", len(ps.peers), "directList", len(evnWhitelist), "valNodeIDs", len(valNodeIDMap), "proxyedList", len(proxyedNodeIDs))
 }
 
 // isProxyedValidator checks if the given address is a connected proxyed validator.
@@ -534,7 +539,7 @@ func (ps *peerSet) peersWithoutTransaction(hash common.Hash) []*ethPeer {
 
 	list := make([]*ethPeer, 0, len(ps.peers))
 	for _, p := range ps.peers {
-		if p.EnableNoTxBroadcast.Load() {
+		if p.NoTxBroadcastFlag.Load() {
 			log.Debug("skip peer with no tx broadcast feature", "peer", p.ID())
 			continue
 		}
