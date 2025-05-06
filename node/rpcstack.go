@@ -47,9 +47,10 @@ type httpConfig struct {
 
 // wsConfig is the JSON-RPC/Websocket configuration
 type wsConfig struct {
-	Origins []string
-	Modules []string
-	prefix  string // path prefix on which to mount ws handler
+	Origins          []string
+	Modules          []string
+	prefix           string // path prefix on which to mount ws handler
+	messageSizeLimit int64
 	rpcEndpointConfig
 }
 
@@ -349,7 +350,7 @@ func (h *httpServer) enableWS(apis []rpc.API, config wsConfig) error {
 	}
 	h.wsConfig = config
 	h.wsHandler.Store(&rpcHandler{
-		Handler: NewWSHandlerStack(srv.WebsocketHandler(config.Origins), config.jwtSecret),
+		Handler: NewWSHandlerStack(srv.WebsocketHandler(config.Origins, config.messageSizeLimit), config.jwtSecret),
 		server:  srv,
 	})
 	return nil

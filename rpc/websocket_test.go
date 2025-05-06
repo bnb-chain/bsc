@@ -53,7 +53,7 @@ func TestWebsocketOriginCheck(t *testing.T) {
 
 	var (
 		srv     = newTestServer()
-		httpsrv = httptest.NewServer(srv.WebsocketHandler([]string{"http://example.com"}))
+		httpsrv = httptest.NewServer(srv.WebsocketHandler([]string{"http://example.com"}, 0))
 		wsURL   = "ws:" + strings.TrimPrefix(httpsrv.URL, "http:")
 	)
 	defer srv.Stop()
@@ -83,7 +83,7 @@ func TestWebsocketLargeCall(t *testing.T) {
 
 	var (
 		srv     = newTestServer()
-		httpsrv = httptest.NewServer(srv.WebsocketHandler([]string{"*"}))
+		httpsrv = httptest.NewServer(srv.WebsocketHandler([]string{"*"}, 0))
 		wsURL   = "ws:" + strings.TrimPrefix(httpsrv.URL, "http:")
 	)
 	defer srv.Stop()
@@ -119,7 +119,7 @@ func TestWebsocketLargeRead(t *testing.T) {
 
 	var (
 		srv     = newTestServer()
-		httpsrv = httptest.NewServer(srv.WebsocketHandler([]string{"*"}))
+		httpsrv = httptest.NewServer(srv.WebsocketHandler([]string{"*"}, 0))
 		wsURL   = "ws:" + strings.TrimPrefix(httpsrv.URL, "http:")
 	)
 	defer srv.Stop()
@@ -178,7 +178,7 @@ func TestWebsocketPeerInfo(t *testing.T) {
 
 	var (
 		s     = newTestServer()
-		ts    = httptest.NewServer(s.WebsocketHandler([]string{"origin.example.com"}))
+		ts    = httptest.NewServer(s.WebsocketHandler([]string{"origin.example.com"}, 0))
 		tsurl = "ws:" + strings.TrimPrefix(ts.URL, "http:")
 	)
 	defer s.Stop()
@@ -265,7 +265,7 @@ func TestClientWebsocketLargeMessage(t *testing.T) {
 
 	var (
 		srv     = NewServer()
-		httpsrv = httptest.NewServer(srv.WebsocketHandler(nil))
+		httpsrv = httptest.NewServer(srv.WebsocketHandler(nil, 0))
 		wsURL   = "ws:" + strings.TrimPrefix(httpsrv.URL, "http:")
 	)
 	defer srv.Stop()
@@ -389,5 +389,79 @@ func wsPingTestHandler(t *testing.T, conn *websocket.Conn, shutdown, sendPing <-
 			conn.Close()
 			return
 		}
+	}
+}
+
+func TestWebsocketMethodNameLengthLimit(t *testing.T) {
+	t.Parallel()
+
+	var (
+		srv     = newTestServer()
+		httpsrv = httptest.NewServer(srv.WebsocketHandler([]string{"*"}, 0))
+		wsURL   = "ws:" + strings.TrimPrefix(httpsrv.URL, "http:")
+	)
+	defer srv.Stop()
+	defer httpsrv.Close()
+
+	client, err := DialWebsocket(context.Background(), wsURL, "")
+	if err != nil {
+		t.Fatalf("can't dial: %v", err)
+	}
+	defer client.Close()
+
+	// Test cases
+	tests := []struct {
+		name           string
+		method         string
+		params         []interface{}
+		expectedError  string
+		isSubscription bool
+	}{
+		{
+			name:           "valid method name",
+			method:         "test_echo",
+			params:         []interface{}{"test", 1},
+			expectedError:  "",
+			isSubscription: false,
+		},
+		{
+			name:           "method name too long",
+			method:         "test_" + string(make([]byte, maxMethodNameLength+1)),
+			params:         []interface{}{"test", 1},
+			expectedError:  "method name too long",
+			isSubscription: false,
+		},
+		{
+			name:           "valid subscription",
+			method:         "nftest_subscribe",
+			params:         []interface{}{"someSubscription", 1, 2},
+			expectedError:  "",
+			isSubscription: true,
+		},
+		{
+			name:           "subscription name too long",
+			method:         string(make([]byte, maxMethodNameLength+1)) + "_subscribe",
+			params:         []interface{}{"newHeads"},
+			expectedError:  "subscription name too long",
+			isSubscription: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var result interface{}
+			err := client.Call(&result, tt.method, tt.params...)
+			if tt.expectedError == "" {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Error("expected error, got nil")
+				} else if !strings.Contains(err.Error(), tt.expectedError) {
+					t.Errorf("expected error containing %q, got %q", tt.expectedError, err.Error())
+				}
+			}
+		})
 	}
 }
