@@ -1129,6 +1129,56 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Name:  "init.sentrynode",
 		Usage: "whether to add a sentry node to the network",
 	}
+	InitSentryNodeSize = &cli.IntFlag{
+		Name:  "init.sentrynode-size",
+		Usage: "the size of the sentry node",
+		Value: 1,
+	}
+	InitSentryNodeIPs = &cli.StringFlag{
+		Name:  "init.sentrynode-ips",
+		Usage: "the ips of each sentry node in the network, example '192.168.0.1,192.168.0.2'",
+		Value: "",
+	}
+	InitSentryNodePorts = &cli.StringFlag{
+		Name:  "init.sentrynode-ports",
+		Usage: "the ports of each sentry node in the network, example '30311,30312'",
+		Value: "",
+	}
+	InitFullNode = &cli.BoolFlag{
+		Name:  "init.fullnode",
+		Usage: "whether to add a full node to the network",
+	}
+	InitFullNodeSize = &cli.IntFlag{
+		Name:  "init.fullnode-size",
+		Usage: "the size of the full node",
+		Value: 1,
+	}
+	InitFullNodeIPs = &cli.StringFlag{
+		Name:  "init.fullnode-ips",
+		Usage: "the ips of each full node in the network, example '192.168.0.1,192.168.0.2'",
+		Value: "",
+	}
+	InitFullNodePorts = &cli.StringFlag{
+		Name:  "init.fullnode-ports",
+		Usage: "the ports of each full node in the network, example '30311,30312'",
+		Value: "",
+	}
+	InitEVNSentryWhitelist = &cli.BoolFlag{
+		Name:  "init.evn-sentry-whitelist",
+		Usage: "whether to add evn sentry NodeIDs in Node.P2P.EVNNodeIdsWhitelist",
+	}
+	InitEVNValidatorWhitelist = &cli.BoolFlag{
+		Name:  "init.evn-validator-whitelist",
+		Usage: "whether to add evn validator NodeIDs in Node.P2P.EVNNodeIdsWhitelist",
+	}
+	InitEVNSentryRegister = &cli.BoolFlag{
+		Name:  "init.evn-sentry-register",
+		Usage: "whether to add evn sentry NodeIDs in ETH.ValidatorNodeIDsToAdd",
+	}
+	InitEVNValidatorRegister = &cli.BoolFlag{
+		Name:  "init.evn-validator-register",
+		Usage: "whether to add evn validator NodeIDs in ETH.ValidatorNodeIDsToAdd",
+	}
 	MetricsInfluxDBOrganizationFlag = &cli.StringFlag{
 		Name:     "metrics.influxdb.organization",
 		Usage:    "InfluxDB organization name (v2 only)",
