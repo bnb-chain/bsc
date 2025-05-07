@@ -222,3 +222,60 @@ func (p *Parlia) GetNodeIDsMap() (map[common.Address][]enode.ID, error) {
 
 	return nodeIDsMap, nil
 }
+
+// RemoveNodeIDs creates a signed transaction to remove node IDs from the StakeHub contract
+func (p *Parlia) RemoveNodeIDs(nodeIDs []enode.ID, nonce uint64) (*types.Transaction, error) {
+	log.Debug("Removing node IDs", "count", len(nodeIDs), "nonce", nonce)
+
+	p.lock.RLock()
+	signTxFn := p.signTxFn
+	val := p.val
+	p.lock.RUnlock()
+
+	if signTxFn == nil {
+		log.Error("Signing function not set")
+		return nil, fmt.Errorf("signing function not set, call Authorize first")
+	}
+
+	// Create the call data for removeNodeIDs
+	data, err := p.stakeHubABI.Pack("removeNodeIDs", nodeIDs)
+	if err != nil {
+		log.Error("Failed to pack removeNodeIDs", "error", err)
+		return nil, fmt.Errorf("failed to pack removeNodeIDs: %v", err)
+	}
+
+	to := common.HexToAddress(systemcontracts.StakeHubContract)
+	hexData := hexutil.Bytes(data)
+	hexNonce := hexutil.Uint64(nonce)
+	gas, err := p.ethAPI.EstimateGas(context.Background(), ethapi.TransactionArgs{
+		From:  &val,
+		To:    &to,
+		Nonce: &hexNonce,
+		Data:  &hexData,
+	}, nil, nil, nil)
+	if err != nil {
+		log.Error("Failed to estimate gas", "error", err)
+		return nil, fmt.Errorf("failed to estimate gas: %v", err)
+	}
+
+	// Create the transaction
+	tx := types.NewTransaction(
+		nonce,
+		common.HexToAddress(systemcontracts.StakeHubContract),
+		common.Big0,
+		uint64(gas),
+		big.NewInt(1000000000),
+		data,
+	)
+
+	// Sign the transaction with the node's private key
+	log.Debug("Signing transaction", "validator", val)
+	signedTx, err := signTxFn(accounts.Account{Address: val}, tx, p.chainConfig.ChainID)
+	if err != nil {
+		log.Error("Failed to sign transaction", "error", err)
+		return nil, fmt.Errorf("failed to sign transaction: %v", err)
+	}
+
+	log.Debug("Successfully created signed transaction", "hash", signedTx.Hash())
+	return signedTx, nil
+}

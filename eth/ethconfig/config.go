@@ -94,7 +94,8 @@ type Config struct {
 	// transactions) or is continuously under high pressure (e.g., mempool is always full), then you can consider
 	// to turn it on.
 	DisablePeerTxBroadcast bool
-	ValidatorNodeIDsToAdd  []enode.ID
+	EVNNodeIDsToAdd        []enode.ID
+	EVNNodeIDsToRemove     []enode.ID
 	// This can be set to list of enrtree:// URLs which will be queried for
 	// nodes to connect to.
 	EthDiscoveryURLs   []string
