@@ -544,21 +544,21 @@ func (s *Ethereum) waitForSyncAndMaxwell(parlia *parlia.Parlia) {
 				continue
 			}
 			log.Info("Node is synced and Maxwell fork is active, proceeding with node ID registration")
-			err := s.registerNodeID(parlia)
+			err := s.updateNodeID(parlia)
 			if err == nil {
 				return
 			}
 			retryCount++
 			if retryCount > 3 {
-				log.Error("Failed to register node ID exceed max retry count", "retryCount", retryCount, "err", err)
+				log.Error("Failed to update node ID exceed max retry count", "retryCount", retryCount, "err", err)
 				return
 			}
 		}
 	}
 }
 
-// registerNodeID registers the node ID with the StakeHub contract
-func (s *Ethereum) registerNodeID(parlia *parlia.Parlia) error {
+// updateNodeID registers the node ID with the StakeHub contract
+func (s *Ethereum) updateNodeID(parlia *parlia.Parlia) error {
 	nonce, err := s.APIBackend.GetPoolNonce(context.Background(), s.etherbase)
 	if err != nil {
 		return fmt.Errorf("failed to get nonce: %v", err)
