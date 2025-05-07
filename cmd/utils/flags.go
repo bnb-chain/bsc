@@ -1165,11 +1165,11 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 	}
 	InitEVNSentryWhitelist = &cli.BoolFlag{
 		Name:  "init.evn-sentry-whitelist",
-		Usage: "whether to add evn sentry NodeIDs in Node.P2P.EVNNodeIdsWhitelist",
+		Usage: "whether to add evn sentry NodeIDs in Node.P2P.EVNNodeIDsWhitelist",
 	}
 	InitEVNValidatorWhitelist = &cli.BoolFlag{
 		Name:  "init.evn-validator-whitelist",
-		Usage: "whether to add evn validator NodeIDs in Node.P2P.EVNNodeIdsWhitelist",
+		Usage: "whether to add evn validator NodeIDs in Node.P2P.EVNNodeIDsWhitelist",
 	}
 	InitEVNSentryRegister = &cli.BoolFlag{
 		Name:  "init.evn-sentry-register",

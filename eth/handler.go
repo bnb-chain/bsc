@@ -838,7 +838,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		for i := len(transfer); i < len(peers); i++ {
 			if peers[i].ProxyedValidatorFlag.Load() {
 				morePeers = append(morePeers, peers[i])
-				log.Debug("add extra whitelist broadcast peer in EVN", "peer", peers[i].ID())
+				log.Debug("add extra proxyed validator broadcast peer in EVN", "peer", peers[i].ID())
 				continue
 			}
 			if fullBroadcastInEVN && peers[i].EVNPeerFlag.Load() {
