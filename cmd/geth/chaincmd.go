@@ -496,7 +496,7 @@ func initNetwork(ctx *cli.Context) error {
 	}
 	if ctx.Bool(utils.InitEVNValidatorRegister.Name) {
 		for i := 0; i < size; i++ {
-			configs[i].Eth.ValidatorNodeIDsToAdd = []enode.ID{nodeIDs[i]}
+			configs[i].Eth.EVNNodeIDsToAdd = []enode.ID{nodeIDs[i]}
 		}
 	}
 	if enableSentryNode && ctx.Bool(utils.InitEVNSentryWhitelist.Name) {
@@ -506,7 +506,7 @@ func initNetwork(ctx *cli.Context) error {
 	}
 	if enableSentryNode && ctx.Bool(utils.InitEVNSentryRegister.Name) {
 		for i := 0; i < size; i++ {
-			configs[i].Eth.ValidatorNodeIDsToAdd = append(configs[i].Eth.ValidatorNodeIDsToAdd, sentryNodeIDs[i])
+			configs[i].Eth.EVNNodeIDsToAdd = append(configs[i].Eth.EVNNodeIDsToAdd, sentryNodeIDs[i])
 		}
 	}
 

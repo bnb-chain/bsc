@@ -1165,11 +1165,11 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 	}
 	InitEVNSentryRegister = &cli.BoolFlag{
 		Name:  "init.evn-sentry-register",
-		Usage: "whether to add evn sentry NodeIDs in ETH.ValidatorNodeIDsToAdd",
+		Usage: "whether to add evn sentry NodeIDs in ETH.EVNNodeIDsToAdd",
 	}
 	InitEVNValidatorRegister = &cli.BoolFlag{
 		Name:  "init.evn-validator-register",
-		Usage: "whether to add evn validator NodeIDs in ETH.ValidatorNodeIDsToAdd",
+		Usage: "whether to add evn validator NodeIDs in ETH.EVNNodeIDsToAdd",
 	}
 	MetricsInfluxDBOrganizationFlag = &cli.StringFlag{
 		Name:     "metrics.influxdb.organization",
