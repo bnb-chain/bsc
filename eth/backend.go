@@ -544,61 +544,127 @@ func (s *Ethereum) waitForSyncAndMaxwell(parlia *parlia.Parlia) {
 				continue
 			}
 			log.Info("Node is synced and Maxwell fork is active, proceeding with node ID registration")
-			err := s.registerNodeID(parlia)
+			err := s.updateNodeID(parlia)
 			if err == nil {
 				return
 			}
 			retryCount++
 			if retryCount > 3 {
-				log.Error("Failed to register node ID exceed max retry count", "retryCount", retryCount, "err", err)
+				log.Error("Failed to update node ID exceed max retry count", "retryCount", retryCount, "err", err)
 				return
 			}
 		}
 	}
 }
 
-// registerNodeID registers the node ID with the StakeHub contract
-func (s *Ethereum) registerNodeID(parlia *parlia.Parlia) error {
-	// Check if node ID is already registered
-	nodeIDs, err := parlia.GetNodeIDs()
+// updateNodeID registers the node ID with the StakeHub contract
+func (s *Ethereum) updateNodeID(parlia *parlia.Parlia) error {
+	nonce, err := s.APIBackend.GetPoolNonce(context.Background(), s.etherbase)
+	if err != nil {
+		return fmt.Errorf("failed to get nonce: %v", err)
+	}
+
+	// Handle removals first
+	if err := s.handleRemovals(parlia, nonce); err != nil {
+		return err
+	}
+	nonce++
+
+	// Handle additions
+	return s.handleAdditions(parlia, nonce)
+}
+
+func (s *Ethereum) handleRemovals(parlia *parlia.Parlia, nonce uint64) error {
+	if len(s.config.EVNNodeIDsToRemove) == 0 {
+		return nil
+	}
+
+	// Handle wildcard removal
+	if len(s.config.EVNNodeIDsToRemove) == 1 {
+		var zeroID enode.ID // This will be all zeros
+		if s.config.EVNNodeIDsToRemove[0] == zeroID {
+			trx, err := parlia.RemoveNodeIDs([]enode.ID{}, nonce)
+			if err != nil {
+				return fmt.Errorf("failed to create node ID removal transaction: %v", err)
+			}
+			if err := s.txPool.Add([]*types.Transaction{trx}, false); err != nil {
+				return fmt.Errorf("failed to add node ID removal transaction to pool: %v", err)
+			}
+			log.Info("Submitted node ID removal transaction for all node IDs")
+			return nil
+		}
+	}
+
+	// Create a set of node IDs to add for quick lookup
+	addSet := make(map[enode.ID]struct{}, len(s.config.EVNNodeIDsToAdd))
+	for _, id := range s.config.EVNNodeIDsToAdd {
+		addSet[id] = struct{}{}
+	}
+
+	// Filter out node IDs that are in the add set
+	nodeIDsToRemove := make([]enode.ID, 0, len(s.config.EVNNodeIDsToRemove))
+	for _, id := range s.config.EVNNodeIDsToRemove {
+		if _, exists := addSet[id]; !exists {
+			nodeIDsToRemove = append(nodeIDsToRemove, id)
+		} else {
+			log.Debug("Skipping node ID removal", "id", id, "reason", "also in EVNNodeIDsToAdd")
+		}
+	}
+
+	if len(nodeIDsToRemove) == 0 {
+		return nil
+	}
+
+	trx, err := parlia.RemoveNodeIDs(nodeIDsToRemove, nonce)
+	if err != nil {
+		return fmt.Errorf("failed to create node ID removal transaction: %v", err)
+	}
+	if err := s.txPool.Add([]*types.Transaction{trx}, false); err != nil {
+		return fmt.Errorf("failed to add node ID removal transaction to pool: %v", err)
+	}
+	log.Info("Submitted node ID removal transaction", "nodeIDs", nodeIDsToRemove)
+	return nil
+}
+
+func (s *Ethereum) handleAdditions(parlia *parlia.Parlia, nonce uint64) error {
+	if len(s.config.EVNNodeIDsToAdd) == 0 {
+		return nil
+	}
+
+	// Get currently registered node IDs
+	registeredIDs, err := parlia.GetNodeIDs()
 	if err != nil {
 		log.Error("Failed to get registered node IDs", "err", err)
 		return err
 	}
 
-	// Check which node IDs need to be registered
-	nodeIDsToAdd := make([]enode.ID, 0)
-	for _, idToRegister := range s.config.ValidatorNodeIDsToAdd {
-		isRegistered := false
-		for _, id := range nodeIDs {
-			if id == idToRegister {
-				isRegistered = true
-				break
-			}
-		}
-		if !isRegistered {
-			nodeIDsToAdd = append(nodeIDsToAdd, idToRegister)
+	// Create a set of registered IDs for quick lookup
+	registeredSet := make(map[enode.ID]struct{}, len(registeredIDs))
+	for _, id := range registeredIDs {
+		registeredSet[id] = struct{}{}
+	}
+
+	// Filter out already registered IDs in a single pass
+	nodeIDsToAdd := make([]enode.ID, 0, len(s.config.EVNNodeIDsToAdd))
+	for _, id := range s.config.EVNNodeIDsToAdd {
+		if _, exists := registeredSet[id]; !exists {
+			nodeIDsToAdd = append(nodeIDsToAdd, id)
 		}
 	}
 
-	if len(nodeIDsToAdd) > 0 {
-		// Get the current nonce for the validator address
-		nonce, err := s.APIBackend.GetPoolNonce(context.Background(), s.etherbase)
-		if err != nil {
-			return fmt.Errorf("failed to get nonce: %v", err)
-		}
-
-		trx, err := parlia.AddNodeIDs(nodeIDsToAdd, nonce)
-		if err != nil {
-			return fmt.Errorf("failed to create node ID registration transaction: %v", err)
-		}
-		if err := s.txPool.Add([]*types.Transaction{trx}, false); err != nil {
-			return fmt.Errorf("failed to add node ID registration transaction to pool: %v", err)
-		}
-		log.Info("Submitted node ID registration transaction", "nodeIDs", nodeIDsToAdd)
-	} else {
-		log.Info("All node IDs already registered", "nodeIDs", s.config.ValidatorNodeIDsToAdd)
+	if len(nodeIDsToAdd) == 0 {
+		log.Info("No new node IDs to register after deduplication")
+		return nil
 	}
+
+	trx, err := parlia.AddNodeIDs(nodeIDsToAdd, nonce)
+	if err != nil {
+		return fmt.Errorf("failed to create node ID registration transaction: %v", err)
+	}
+	if err := s.txPool.Add([]*types.Transaction{trx}, false); err != nil {
+		return fmt.Errorf("failed to add node ID registration transaction to pool: %v", err)
+	}
+	log.Info("Submitted node ID registration transaction", "nodeIDs", nodeIDsToAdd)
 	return nil
 }
 
