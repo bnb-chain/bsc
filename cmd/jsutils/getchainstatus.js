@@ -6,9 +6,10 @@ program.option("--startNum <startNum>", "start num");
 program.option("--endNum <endNum>", "end num");
 program.option("--miner <miner>", "miner", "");
 program.option("--num <Num>", "validator num", 21);
-program.option("--turnLength <Num>", "the consecutive block length", 4);
+program.option("--turnLength <Num>", "the consecutive block length", 8);
 program.option("--topNum <Num>", "top num of address to be displayed", 20);
 program.option("--blockNum <Num>", "block num", 0);
+program.option("--gasUsedThreshold <Num>", "gas used threshold", 5000000);
 program.option("-h, --help", "");
 
 function printUsage() {
@@ -25,6 +26,7 @@ function printUsage() {
     console.log("  GetFaucetStatus: get faucet status of BSC testnet");
     console.log("  GetKeyParameters: dump some key governance parameter");
     console.log("  GetMevStatus: get mev blocks of a block range");
+    console.log("  GetLargeTxs: get large txs of a block range");
     console.log("\nOptions:");
     console.log("  --rpc       specify the url of RPC endpoint");
     console.log("  --startNum  the start block number");
@@ -45,6 +47,7 @@ function printUsage() {
     console.log("  node getchainstatus.js GetKeyParameters --rpc https://bsc-testnet-dataseed.bnbchain.org"); // default: latest block
     console.log("  node getchainstatus.js GetEip7623 --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010");
     console.log("  node getchainstatus.js GetMevStatus --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010");
+    console.log("  node getchainstatus.js GetLargeTxs --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --num 100 --gasUsedThreshold 5000000");
 }
 
 program.usage = printUsage;
@@ -152,6 +155,7 @@ const validatorMap = new Map([
     ["0x0dC5e1CAe4d364d0C79C9AE6BDdB5DA49b10A7d9", "ListaDAO"],
     ["0xE554F591cCFAc02A84Cf9a5165DDF6C1447Cc67D", "ListaDAO2"],
     ["0x059a8BFd798F29cE665816D12D56400Fa47DE028", "ListaDAO3"],
+    ["0xEC3C2D51b8A6ca9Cf244F709EA3AdE0c7B21238F", "GlobalStk"],
     // Chapel
     ["0x08265dA01E1A65d62b903c7B34c08cB389bF3D99", "Ararat"],
     ["0x7f5f2cF1aec83bF0c74DF566a41aa7ed65EA84Ea", "Kita"],
@@ -816,6 +820,45 @@ async function getMevStatus() {
     });
 }
 
+// 11.cmd: "getLargeTxs", usage:
+// node getchainstatus.js GetLargeTxs \
+//      --rpc https://bsc-testnet-dataseed.bnbchain.org \
+//      --startNum 40000001  --endNum 40000010 \
+//      --gasUsedThreshold 1000000
+async function getLargeTxs() {
+    let gasUsedThreshold = program.gasUsedThreshold;
+    var startBlock = parseInt(program.startNum);
+    var size = parseInt(program.num);
+    if (isNaN(size) || size == 0) {
+        size = 100;
+    }
+    if (isNaN(startBlock) || startBlock == 0) {
+        startBlock = await provider.getBlockNumber() - size;
+    }
+    var endBlock = startBlock + size;
+    console.log("Find the big txs, start", startBlock, "size", size, "gasUsedThreshold", gasUsedThreshold);
+    for (let i = startBlock; i < endBlock; i++) {
+        // console.log("block:", i);
+        let blockData = await provider.getBlock(Number(i), true);
+        if (blockData.transactions.length == 0) {
+            continue;
+        }
+        for (let txIndex = blockData.transactions.length - 1; txIndex >= 0; txIndex--) {
+            let txData = await blockData.getTransaction(txIndex);
+            if (txData.gasLimit < gasUsedThreshold) {
+                continue;
+            }
+            let txReceipt = await provider.getTransactionReceipt(txData.hash);
+            if (txReceipt.gasUsed < gasUsedThreshold) {
+                continue;
+            }
+            console.log("block:", blockData.number, "difficulty:", Number(blockData.difficulty), 
+                "txHash:", txData.hash, "gasUsed:", Number(txReceipt.gasUsed),
+                "miner:", getValidatorMoniker(blockData.miner, blockData.number));
+        }
+    }
+}
+
 const main = async () => {
     if (process.argv.length <= 2) {
         console.error("invalid process.argv.length", process.argv.length);
@@ -847,6 +890,8 @@ const main = async () => {
         await getEip7623();
     } else if (cmd === "GetMevStatus") {
         await getMevStatus();
+    } else if (cmd === "GetLargeTxs") {
+        await getLargeTxs();
     } else {
         console.log("unsupported cmd", cmd);
         printUsage();
