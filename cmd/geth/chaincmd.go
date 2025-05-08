@@ -242,8 +242,8 @@ Therefore, you must specify the blockNumber or blockHash that locates in diffLay
 )
 
 const (
-	DefaultSentryP2PPort   = 30312
-	DefaultFullNodeP2PPort = 30313
+	DefaultSentryP2PPort   = 30411
+	DefaultFullNodeP2PPort = 30511
 )
 
 // initGenesis will initialise the given JSON format genesis file and writes it as
