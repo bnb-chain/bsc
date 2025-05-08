@@ -84,11 +84,9 @@ It expects the genesis file as argument.`,
 			utils.InitNetworkPort,
 			utils.InitNetworkSize,
 			utils.InitNetworkIps,
-			utils.InitSentryNode,
 			utils.InitSentryNodeSize,
 			utils.InitSentryNodeIPs,
 			utils.InitSentryNodePorts,
-			utils.InitFullNode,
 			utils.InitFullNodeSize,
 			utils.InitFullNodeIPs,
 			utils.InitFullNodePorts,
@@ -244,7 +242,8 @@ Therefore, you must specify the blockNumber or blockHash that locates in diffLay
 )
 
 const (
-	DefaultP2PPort = 30311
+	DefaultSentryP2PPort   = 30312
+	DefaultFullNodeP2PPort = 30313
 )
 
 // initGenesis will initialise the given JSON format genesis file and writes it as
@@ -345,7 +344,7 @@ func parseIps(ipStr string, size int) ([]string, error) {
 
 func parsePorts(portStr string, defaultPort int, size int) ([]int, error) {
 	var ports []int
-	if len(portStr) != 0 && strings.Contains(portStr, ",") {
+	if strings.Contains(portStr, ",") {
 		portParts := strings.Split(portStr, ",")
 		if len(portParts) != size {
 			return nil, errors.New("mismatch of size and length of ports")
@@ -459,7 +458,7 @@ func initNetwork(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	enableSentryNode := ctx.Bool(utils.InitSentryNode.Name)
+	enableSentryNode := ctx.Int(utils.InitSentryNodeSize.Name) > 0
 	var (
 		sentryConfigs         []gethConfig
 		sentryEnodes          []*enode.Node
@@ -525,7 +524,7 @@ func initNetwork(ctx *cli.Context) error {
 		}
 	}
 
-	if ctx.Bool(utils.InitFullNode.Name) {
+	if ctx.Int(utils.InitFullNodeSize.Name) > 0 {
 		var extraEnodes []*enode.Node
 		if enableSentryNode {
 			extraEnodes = sentryEnodes
@@ -552,7 +551,7 @@ func createSentryNodeConfigs(ctx *cli.Context, baseConfig gethConfig, initDir st
 	if err != nil {
 		utils.Fatalf("Failed to parse ips: %v", err)
 	}
-	ports, err := parsePorts(portStr, DefaultP2PPort, size)
+	ports, err := parsePorts(portStr, DefaultSentryP2PPort, size)
 	if err != nil {
 		utils.Fatalf("Failed to parse ports: %v", err)
 	}
@@ -571,7 +570,7 @@ func createAndSaveFullNodeConfigs(ctx *cli.Context, inGenesisFile *os.File, base
 	if err != nil {
 		utils.Fatalf("Failed to parse ips: %v", err)
 	}
-	ports, err := parsePorts(portStr, DefaultP2PPort, size)
+	ports, err := parsePorts(portStr, DefaultFullNodeP2PPort, size)
 	if err != nil {
 		utils.Fatalf("Failed to parse ports: %v", err)
 	}
