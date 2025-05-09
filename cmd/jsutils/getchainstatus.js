@@ -823,41 +823,120 @@ async function getMevStatus() {
 // 11.cmd: "getLargeTxs", usage:
 // node getchainstatus.js GetLargeTxs \
 //      --rpc https://bsc-testnet-dataseed.bnbchain.org \
-//      --startNum 40000001  --endNum 40000010 \
-//      --gasUsedThreshold 1000000
+//      --startNum 40000001  --num 100 \
+//      --gasUsedThreshold 5000000
 async function getLargeTxs() {
-    let gasUsedThreshold = program.gasUsedThreshold;
-    var startBlock = parseInt(program.startNum);
-    var size = parseInt(program.num);
-    if (isNaN(size) || size == 0) {
-        size = 100;
+    const startTime = Date.now();
+    const gasUsedThreshold = program.gasUsedThreshold;
+    const startBlock = parseInt(program.startNum);
+    const size = parseInt(program.num) || 100;
+    
+    let actualStartBlock = startBlock;
+    if (isNaN(startBlock) || startBlock === 0) {
+        actualStartBlock = await provider.getBlockNumber() - size;
     }
-    if (isNaN(startBlock) || startBlock == 0) {
-        startBlock = await provider.getBlockNumber() - size;
-    }
-    var endBlock = startBlock + size;
-    console.log("Find the big txs, start", startBlock, "size", size, "gasUsedThreshold", gasUsedThreshold);
-    for (let i = startBlock; i < endBlock; i++) {
-        // console.log("block:", i);
-        let blockData = await provider.getBlock(Number(i), true);
-        if (blockData.transactions.length == 0) {
-            continue;
+    const endBlock = actualStartBlock + size;
+    
+    console.log(`Finding transactions with gas usage >= ${gasUsedThreshold} between blocks ${actualStartBlock} and ${endBlock-1}`);
+    
+    // Cache for validator monikers to avoid redundant RPC calls
+    const validatorCache = new Map();
+    
+    // Process blocks in batches to avoid memory issues with large ranges
+    const BATCH_SIZE = 20;
+    let largeTxCount = 0;
+    
+    for (let batchStart = actualStartBlock; batchStart < endBlock; batchStart += BATCH_SIZE) {
+        const batchEnd = Math.min(batchStart + BATCH_SIZE, endBlock);
+        
+        // Create promises for all blocks in the current batch
+        const blockPromises = [];
+        for (let i = batchStart; i < batchEnd; i++) {
+            blockPromises.push(provider.getBlock(i, true));
         }
-        for (let txIndex = blockData.transactions.length - 1; txIndex >= 0; txIndex--) {
-            let txData = await blockData.getTransaction(txIndex);
-            if (txData.gasLimit < gasUsedThreshold) {
-                continue;
+        
+        // Process all blocks in parallel
+        const blocks = await Promise.all(blockPromises);
+        
+        // Process each block
+        const results = await Promise.all(blocks.map(async (blockData) => {
+            if (!blockData || blockData.transactions.length === 0) {
+                return [];
             }
-            let txReceipt = await provider.getTransactionReceipt(txData.hash);
-            if (txReceipt.gasUsed < gasUsedThreshold) {
-                continue;
+            
+            const blockResults = [];
+            const potentialTxs = [];
+            
+            // First-pass filter: check gas limit from the block data
+            for (let txIndex = 0; txIndex < blockData.transactions.length; txIndex++) {
+                const txData = await blockData.getTransaction(txIndex);
+                if (txData && txData.gasLimit >= gasUsedThreshold) {
+                    potentialTxs.push(txData);
+                }
             }
-            var moniker = await getValidatorMoniker(blockData.miner, blockData.number);
-            console.log("block:", blockData.number, "difficulty:", Number(blockData.difficulty), 
-                "txHash:", txData.hash, "gasUsed:", Number(txReceipt.gasUsed),
-                "miner:", moniker);
-        }
+            if (potentialTxs.length === 0) {
+                return [];
+            }
+            
+            // Fetch all transaction receipts in parallel
+            const receiptPromises = potentialTxs.map(tx => provider.getTransactionReceipt(tx.hash));
+            const receipts = await Promise.all(receiptPromises);
+            
+            // Filter transactions by actual gas used
+            const largeTxs = potentialTxs.filter((tx, index) => 
+                receipts[index] && receipts[index].gasUsed >= gasUsedThreshold
+            );
+            if (largeTxs.length === 0) {
+                return [];
+            }
+            
+            // Get validator moniker (use cache if available)
+            let moniker;
+            if (validatorCache.has(blockData.miner)) {
+                moniker = validatorCache.get(blockData.miner);
+            } else {
+                moniker = await getValidatorMoniker(blockData.miner, blockData.number);
+                validatorCache.set(blockData.miner, moniker);
+            }
+
+            // Add details for each large transaction
+            for (let i = 0; i < largeTxs.length; i++) {
+                const tx = largeTxs[i];
+                const receipt = receipts[potentialTxs.findIndex(p => p.hash === tx.hash)];
+                
+                blockResults.push({
+                    blockNumber: blockData.number,
+                    difficulty: Number(blockData.difficulty),
+                    txHash: tx.hash,
+                    gasUsed: Number(receipt.gasUsed),
+                    miner: moniker
+                });
+            }
+            
+            return blockResults;
+        }));
+        
+        // Flatten results and log
+        const flatResults = results.flat();
+        largeTxCount += flatResults.length;
+        
+        flatResults.forEach(result => {
+            console.log(
+                "block:", result.blockNumber, 
+                "difficulty:", result.difficulty, 
+                "txHash:", result.txHash, 
+                "gasUsed:", result.gasUsed,
+                "miner:", result.miner
+            );
+        });
+        
+        // Show progress
+        console.log(`Progress: ${Math.min(batchEnd, endBlock) - actualStartBlock}/${endBlock - actualStartBlock} blocks processed (${Math.round((batchEnd - actualStartBlock) * 100 / (endBlock - actualStartBlock))}%)`);
     }
+    
+    const endTime = Date.now();
+    const duration = (endTime - startTime) / 1000;
+    console.log(`Found ${largeTxCount} large transactions in ${duration.toFixed(2)} seconds`);
 }
 
 const main = async () => {
