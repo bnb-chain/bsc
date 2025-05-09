@@ -282,7 +282,7 @@ func newWorker(config *minerconfig.Config, engine consensus.Engine, eth Backend,
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
 
 	// Sanitize recommit interval if the user-specified one is too short.
-	recommit := worker.config.Recommit
+	recommit := *worker.config.Recommit
 	if recommit < minRecommitInterval {
 		log.Warn("Sanitizing miner recommit interval", "provided", recommit, "updated", minRecommitInterval)
 		recommit = minRecommitInterval
@@ -1168,7 +1168,7 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 
 	if !params.noTxs {
 		interrupt := new(atomic.Int32)
-		timer := time.AfterFunc(w.config.Recommit, func() {
+		timer := time.AfterFunc(*w.config.Recommit, func() {
 			interrupt.Store(commitInterruptTimeout)
 		})
 		defer timer.Stop()
@@ -1547,7 +1547,7 @@ func (w *worker) tryWaitProposalDoneWhenStopping() {
 	}
 
 	log.Info("Checking miner's next proposal block", "current", currentBlock,
-		"proposalStart", startBlock, "proposalEnd", endBlock, "maxWait", w.config.MaxWaitProposalInSecs)
+		"proposalStart", startBlock, "proposalEnd", endBlock, "maxWait", *w.config.MaxWaitProposalInSecs)
 	if endBlock <= currentBlock {
 		log.Warn("next proposal end block has passed, ignore")
 		return
@@ -1556,7 +1556,7 @@ func (w *worker) tryWaitProposalDoneWhenStopping() {
 	if err != nil {
 		log.Debug("failed to get BlockInterval when tryWaitProposalDoneWhenStopping")
 	}
-	if startBlock > currentBlock && ((startBlock-currentBlock)*blockInterval/1000) > w.config.MaxWaitProposalInSecs {
+	if startBlock > currentBlock && ((startBlock-currentBlock)*blockInterval/1000) > *w.config.MaxWaitProposalInSecs {
 		log.Warn("the next proposal start block is too far, just skip waiting")
 		return
 	}
