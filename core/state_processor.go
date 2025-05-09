@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -30,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -187,6 +189,19 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 // and uses the input parameters for its environment similar to ApplyTransaction. However,
 // this method takes an already created EVM instance as input.
 func ApplyTransactionWithEVM(msg *Message, gp *GasPool, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, tx *types.Transaction, usedGas *uint64, evm *vm.EVM, receiptProcessors ...ReceiptProcessor) (receipt *types.Receipt, err error) {
+	// Add timing measurement
+	var result *ExecutionResult
+	const largeTxGasLimit = 10000000 // 10M Gas
+	if tx.Gas() >= largeTxGasLimit {
+		start := time.Now()
+		defer func() {
+			if result != nil && result.UsedGas >= largeTxGasLimit {
+				elapsed := time.Since(start)
+				log.Info("LargeTX execution time", "block", blockNumber, "tx", tx.Hash(), "gasUsed", result.UsedGas, "elapsed", elapsed)
+			}
+		}()
+	}
+
 	if hooks := evm.Config.Tracer; hooks != nil {
 		if hooks.OnTxStart != nil {
 			hooks.OnTxStart(evm.GetVMContext(), tx, msg.From)
@@ -196,7 +211,7 @@ func ApplyTransactionWithEVM(msg *Message, gp *GasPool, statedb *state.StateDB, 
 		}
 	}
 	// Apply the transaction to the current state (included in the env).
-	result, err := ApplyMessage(evm, msg, gp)
+	result, err = ApplyMessage(evm, msg, gp)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +225,6 @@ func ApplyTransactionWithEVM(msg *Message, gp *GasPool, statedb *state.StateDB, 
 	*usedGas += result.UsedGas
 
 	// Merge the tx-local access event into the "block-local" one, in order to collect
-
 	// all values, so that the witness can be built.
 	if statedb.GetTrie().IsVerkle() {
 		statedb.AccessEvents().Merge(evm.AccessEvents)
