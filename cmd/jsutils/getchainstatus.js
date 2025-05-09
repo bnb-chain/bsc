@@ -843,7 +843,7 @@ async function getLargeTxs() {
     const validatorCache = new Map();
     
     // Process blocks in batches to avoid memory issues with large ranges
-    const BATCH_SIZE = 20;
+    const BATCH_SIZE = 50;
     let largeTxCount = 0;
     
     for (let batchStart = actualStartBlock; batchStart < endBlock; batchStart += BATCH_SIZE) {
