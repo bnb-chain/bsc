@@ -852,9 +852,10 @@ async function getLargeTxs() {
             if (txReceipt.gasUsed < gasUsedThreshold) {
                 continue;
             }
+            var moniker = await getValidatorMoniker(blockData.miner, blockData.number);
             console.log("block:", blockData.number, "difficulty:", Number(blockData.difficulty), 
                 "txHash:", txData.hash, "gasUsed:", Number(txReceipt.gasUsed),
-                "miner:", getValidatorMoniker(blockData.miner, blockData.number));
+                "miner:", moniker);
         }
     }
 }
