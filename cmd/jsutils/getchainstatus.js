@@ -6,9 +6,10 @@ program.option("--startNum <startNum>", "start num");
 program.option("--endNum <endNum>", "end num");
 program.option("--miner <miner>", "miner", "");
 program.option("--num <Num>", "validator num", 21);
-program.option("--turnLength <Num>", "the consecutive block length", 4);
+program.option("--turnLength <Num>", "the consecutive block length", 8);
 program.option("--topNum <Num>", "top num of address to be displayed", 20);
 program.option("--blockNum <Num>", "block num", 0);
+program.option("--gasUsedThreshold <Num>", "gas used threshold", 5000000);
 program.option("-h, --help", "");
 
 function printUsage() {
@@ -25,6 +26,7 @@ function printUsage() {
     console.log("  GetFaucetStatus: get faucet status of BSC testnet");
     console.log("  GetKeyParameters: dump some key governance parameter");
     console.log("  GetMevStatus: get mev blocks of a block range");
+    console.log("  GetLargeTxs: get large txs of a block range");
     console.log("\nOptions:");
     console.log("  --rpc       specify the url of RPC endpoint");
     console.log("  --startNum  the start block number");
@@ -45,6 +47,7 @@ function printUsage() {
     console.log("  node getchainstatus.js GetKeyParameters --rpc https://bsc-testnet-dataseed.bnbchain.org"); // default: latest block
     console.log("  node getchainstatus.js GetEip7623 --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010");
     console.log("  node getchainstatus.js GetMevStatus --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010");
+    console.log("  node getchainstatus.js GetLargeTxs --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --num 100 --gasUsedThreshold 5000000");
 }
 
 program.usage = printUsage;
@@ -152,6 +155,7 @@ const validatorMap = new Map([
     ["0x0dC5e1CAe4d364d0C79C9AE6BDdB5DA49b10A7d9", "ListaDAO"],
     ["0xE554F591cCFAc02A84Cf9a5165DDF6C1447Cc67D", "ListaDAO2"],
     ["0x059a8BFd798F29cE665816D12D56400Fa47DE028", "ListaDAO3"],
+    ["0xEC3C2D51b8A6ca9Cf244F709EA3AdE0c7B21238F", "GlobalStk"],
     // Chapel
     ["0x08265dA01E1A65d62b903c7B34c08cB389bF3D99", "Ararat"],
     ["0x7f5f2cF1aec83bF0c74DF566a41aa7ed65EA84Ea", "Kita"],
@@ -816,6 +820,125 @@ async function getMevStatus() {
     });
 }
 
+// 11.cmd: "getLargeTxs", usage:
+// node getchainstatus.js GetLargeTxs \
+//      --rpc https://bsc-testnet-dataseed.bnbchain.org \
+//      --startNum 40000001  --num 100 \
+//      --gasUsedThreshold 5000000
+async function getLargeTxs() {
+    const startTime = Date.now();
+    const gasUsedThreshold = program.gasUsedThreshold;
+    const startBlock = parseInt(program.startNum);
+    const size = parseInt(program.num) || 100;
+    
+    let actualStartBlock = startBlock;
+    if (isNaN(startBlock) || startBlock === 0) {
+        actualStartBlock = await provider.getBlockNumber() - size;
+    }
+    const endBlock = actualStartBlock + size;
+    
+    console.log(`Finding transactions with gas usage >= ${gasUsedThreshold} between blocks ${actualStartBlock} and ${endBlock-1}`);
+    
+    // Cache for validator monikers to avoid redundant RPC calls
+    const validatorCache = new Map();
+    
+    // Process blocks in batches to avoid memory issues with large ranges
+    const BATCH_SIZE = 50;
+    let largeTxCount = 0;
+    
+    for (let batchStart = actualStartBlock; batchStart < endBlock; batchStart += BATCH_SIZE) {
+        const batchEnd = Math.min(batchStart + BATCH_SIZE, endBlock);
+        
+        // Create promises for all blocks in the current batch
+        const blockPromises = [];
+        for (let i = batchStart; i < batchEnd; i++) {
+            blockPromises.push(provider.getBlock(i, true));
+        }
+        
+        // Process all blocks in parallel
+        const blocks = await Promise.all(blockPromises);
+        
+        // Process each block
+        const results = await Promise.all(blocks.map(async (blockData) => {
+            if (!blockData || blockData.transactions.length === 0) {
+                return [];
+            }
+            
+            const blockResults = [];
+            const potentialTxs = [];
+            
+            // First-pass filter: check gas limit from the block data
+            for (let txIndex = 0; txIndex < blockData.transactions.length; txIndex++) {
+                const txData = await blockData.getTransaction(txIndex);
+                if (txData && txData.gasLimit >= gasUsedThreshold) {
+                    potentialTxs.push(txData);
+                }
+            }
+            if (potentialTxs.length === 0) {
+                return [];
+            }
+            
+            // Fetch all transaction receipts in parallel
+            const receiptPromises = potentialTxs.map(tx => provider.getTransactionReceipt(tx.hash));
+            const receipts = await Promise.all(receiptPromises);
+            
+            // Filter transactions by actual gas used
+            const largeTxs = potentialTxs.filter((tx, index) => 
+                receipts[index] && receipts[index].gasUsed >= gasUsedThreshold
+            );
+            if (largeTxs.length === 0) {
+                return [];
+            }
+            
+            // Get validator moniker (use cache if available)
+            let moniker;
+            if (validatorCache.has(blockData.miner)) {
+                moniker = validatorCache.get(blockData.miner);
+            } else {
+                moniker = await getValidatorMoniker(blockData.miner, blockData.number);
+                validatorCache.set(blockData.miner, moniker);
+            }
+
+            // Add details for each large transaction
+            for (let i = 0; i < largeTxs.length; i++) {
+                const tx = largeTxs[i];
+                const receipt = receipts[potentialTxs.findIndex(p => p.hash === tx.hash)];
+                
+                blockResults.push({
+                    blockNumber: blockData.number,
+                    difficulty: Number(blockData.difficulty),
+                    txHash: tx.hash,
+                    gasUsed: Number(receipt.gasUsed),
+                    miner: moniker
+                });
+            }
+            
+            return blockResults;
+        }));
+        
+        // Flatten results and log
+        const flatResults = results.flat();
+        largeTxCount += flatResults.length;
+        
+        flatResults.forEach(result => {
+            console.log(
+                "block:", result.blockNumber, 
+                "difficulty:", result.difficulty, 
+                "txHash:", result.txHash, 
+                "gasUsed:", result.gasUsed,
+                "miner:", result.miner
+            );
+        });
+        
+        // Show progress
+        console.log(`Progress: ${Math.min(batchEnd, endBlock) - actualStartBlock}/${endBlock - actualStartBlock} blocks processed (${Math.round((batchEnd - actualStartBlock) * 100 / (endBlock - actualStartBlock))}%)`);
+    }
+    
+    const endTime = Date.now();
+    const duration = (endTime - startTime) / 1000;
+    console.log(`Found ${largeTxCount} large transactions in ${duration.toFixed(2)} seconds`);
+}
+
 const main = async () => {
     if (process.argv.length <= 2) {
         console.error("invalid process.argv.length", process.argv.length);
@@ -847,6 +970,8 @@ const main = async () => {
         await getEip7623();
     } else if (cmd === "GetMevStatus") {
         await getMevStatus();
+    } else if (cmd === "GetLargeTxs") {
+        await getLargeTxs();
     } else {
         console.log("unsupported cmd", cmd);
         printUsage();
