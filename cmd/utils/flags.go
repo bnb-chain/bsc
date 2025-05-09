@@ -641,7 +641,7 @@ var (
 	MinerRecommitIntervalFlag = &cli.DurationFlag{
 		Name:     "miner.recommit",
 		Usage:    "Time interval to recreate the block being mined",
-		Value:    ethconfig.Defaults.Miner.Recommit,
+		Value:    *ethconfig.Defaults.Miner.Recommit,
 		Category: flags.MinerCategory,
 	}
 	MinerDelayLeftoverFlag = &cli.DurationFlag{
@@ -1908,7 +1908,8 @@ func setMiner(ctx *cli.Context, cfg *minerconfig.Config) {
 		cfg.GasPrice = flags.GlobalBig(ctx, MinerGasPriceFlag.Name)
 	}
 	if ctx.IsSet(MinerRecommitIntervalFlag.Name) {
-		cfg.Recommit = ctx.Duration(MinerRecommitIntervalFlag.Name)
+		recommitIntervalFlag := ctx.Duration(MinerRecommitIntervalFlag.Name)
+		cfg.Recommit = &recommitIntervalFlag
 	}
 	if ctx.IsSet(MinerDelayLeftoverFlag.Name) {
 		minerDelayLeftover := ctx.Duration(MinerDelayLeftoverFlag.Name)
@@ -1919,7 +1920,8 @@ func setMiner(ctx *cli.Context, cfg *minerconfig.Config) {
 	}
 	if ctx.IsSet(MinerNewPayloadTimeoutFlag.Name) {
 		log.Warn("The flag --miner.newpayload-timeout is deprecated and will be removed, please use --miner.recommit")
-		cfg.Recommit = ctx.Duration(MinerNewPayloadTimeoutFlag.Name)
+		recommitIntervalFlag := ctx.Duration(MinerRecommitIntervalFlag.Name)
+		cfg.Recommit = &recommitIntervalFlag
 	}
 	if ctx.Bool(DisableVoteAttestationFlag.Name) {
 		cfg.DisableVoteAttestation = true
