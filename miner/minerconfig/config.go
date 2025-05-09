@@ -67,8 +67,8 @@ var DefaultConfig = Config{
 	Recommit:      &defaultRecommit,
 	DelayLeftOver: &defaultDelayLeftOver,
 
-	// The default value is set to 30 seconds.
-	// Because the avg restart time in mainnet is around 30s, so the node try to wait for the next multi-proposals to be done.
+	// The default value is set to 45 seconds.
+	// Because the avg restart time in mainnet could be 30+ seconds, so the node try to wait for the next multi-proposals to be done.
 	MaxWaitProposalInSecs: &defaultMaxWaitProposalInSecs,
 
 	Mev: DefaultMevConfig,
