@@ -47,9 +47,9 @@ type Config struct {
 	GasFloor               uint64         // Target gas floor for mined blocks.
 	GasCeil                uint64         // Target gas ceiling for mined blocks.
 	GasPrice               *big.Int       // Minimum gas price for mining a transaction
-	Recommit               *time.Duration // The time interval for miner to re-create mining work.
+	Recommit               *time.Duration `toml:",omitempty"` // The time interval for miner to re-create mining work.
 	VoteEnable             bool           // Whether to vote when mining
-	MaxWaitProposalInSecs  *uint64        // The maximum time to wait for the proposal to be done, it's aimed to prevent validator being slashed when restarting
+	MaxWaitProposalInSecs  *uint64        `toml:",omitempty"` // The maximum time to wait for the proposal to be done, it's aimed to prevent validator being slashed when restarting
 	DisableVoteAttestation bool           // Whether to skip assembling vote attestation
 
 	Mev MevConfig // Mev configuration
