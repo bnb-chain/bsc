@@ -66,9 +66,9 @@ var (
 	// Test transactions
 	pendingTxs []*types.Transaction
 	newTxs     []*types.Transaction
-
+	oneSecond  = time.Second
 	testConfig = &minerconfig.Config{
-		Recommit: time.Second,
+		Recommit: &oneSecond,
 		GasCeil:  params.GenesisGasLimit,
 	}
 )
