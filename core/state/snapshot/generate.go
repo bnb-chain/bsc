@@ -31,7 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
-	"github.com/ethereum/go-ethereum/trie/trienode"
+	"github.com/ethereum/go-ethereum/triedb"
 )
 
 var (
@@ -55,7 +55,7 @@ var (
 // generateSnapshot regenerates a brand new snapshot based on an existing state
 // database and head block asynchronously. The snapshot is returned immediately
 // and generation is continued in the background until done.
-func generateSnapshot(diskdb ethdb.KeyValueStore, triedb *trie.Database, cache int, root common.Hash) *diskLayer {
+func generateSnapshot(diskdb ethdb.KeyValueStore, triedb *triedb.Database, cache int, root common.Hash) *diskLayer {
 	// Create a new disk layer with an initialized state marker at zero
 	var (
 		stats     = &generatorStats{start: time.Now()}
@@ -230,7 +230,9 @@ func (dl *diskLayer) proveRange(ctx *generatorContext, trieId *trie.ID, prefix [
 	if origin == nil && !diskMore {
 		stackTr := trie.NewStackTrie(nil)
 		for i, key := range keys {
-			stackTr.Update(key, vals[i])
+			if err := stackTr.Update(key, vals[i]); err != nil {
+				return nil, err
+			}
 		}
 		if gotRoot := stackTr.Hash(); gotRoot != root {
 			return &proofResult{
@@ -247,11 +249,6 @@ func (dl *diskLayer) proveRange(ctx *generatorContext, trieId *trie.ID, prefix [
 		ctx.stats.Log("Trie missing, state snapshotting paused", dl.root, dl.genMarker)
 		return nil, errMissingTrie
 	}
-	// Firstly find out the key of last iterated element.
-	var last []byte
-	if len(keys) > 0 {
-		last = keys[len(keys)-1]
-	}
 	// Generate the Merkle proofs for the first and last element
 	if origin == nil {
 		origin = common.Hash{}.Bytes()
@@ -266,9 +263,9 @@ func (dl *diskLayer) proveRange(ctx *generatorContext, trieId *trie.ID, prefix [
 			tr:       tr,
 		}, nil
 	}
-	if last != nil {
-		if err := tr.Prove(last, proof); err != nil {
-			log.Debug("Failed to prove range", "kind", kind, "last", last, "err", err)
+	if len(keys) > 0 {
+		if err := tr.Prove(keys[len(keys)-1], proof); err != nil {
+			log.Debug("Failed to prove range", "kind", kind, "last", keys[len(keys)-1], "err", err)
 			return &proofResult{
 				keys:     keys,
 				vals:     vals,
@@ -280,7 +277,7 @@ func (dl *diskLayer) proveRange(ctx *generatorContext, trieId *trie.ID, prefix [
 	}
 	// Verify the snapshot segment with range prover, ensure that all flat states
 	// in this range correspond to merkle trie.
-	cont, err := trie.VerifyRangeProof(root, origin, last, keys, vals, proof)
+	cont, err := trie.VerifyRangeProof(root, origin, keys, vals, proof)
 	return &proofResult{
 			keys:     keys,
 			vals:     vals,
@@ -355,22 +352,14 @@ func (dl *diskLayer) generateRange(ctx *generatorContext, trieId *trie.ID, prefi
 	// main account trie as a primary lookup when resolving hashes
 	var resolver trie.NodeResolver
 	if len(result.keys) > 0 {
-		mdb := rawdb.NewMemoryDatabase()
-		tdb := trie.NewDatabase(mdb)
-		snapTrie := trie.NewEmpty(tdb)
+		tr := trie.NewEmpty(nil)
 		for i, key := range result.keys {
-			snapTrie.Update(key, result.vals[i])
+			tr.Update(key, result.vals[i])
 		}
-		root, nodes, err := snapTrie.Commit(false)
-		if err != nil {
-			return false, nil, err
-		}
-		if nodes != nil {
-			tdb.Update(root, types.EmptyRootHash, 0, trienode.NewWithNodeSet(nodes), nil)
-			tdb.Commit(root, false)
-		}
+		_, nodes := tr.Commit(false)
+		hashSet := nodes.HashSet()
 		resolver = func(owner common.Hash, path []byte, hash common.Hash) []byte {
-			return rawdb.ReadTrieNode(mdb, owner, path, hash, tdb.Scheme())
+			return hashSet[hash]
 		}
 	}
 	// Construct the trie for state iteration, reuse the trie
@@ -445,6 +434,10 @@ func (dl *diskLayer) generateRange(ctx *generatorContext, trieId *trie.ID, prefi
 		internal += time.Since(istart)
 	}
 	if iter.Err != nil {
+		// Trie errors should never happen. Still, in case of a bug, expose the
+		// error here, as the outer code will presume errors are interrupts, not
+		// some deeper issues.
+		log.Error("State snapshotter failed to iterate trie", "err", iter.Err)
 		return false, nil, iter.Err
 	}
 	// Delete all stale snapshot states remaining
@@ -631,16 +624,10 @@ func generateAccounts(ctx *generatorContext, dl *diskLayer, accMarker []byte) er
 		accMarker = nil
 		return nil
 	}
-	// Always reset the initial account range as 1 whenever recover from the
-	// interruption. TODO(rjl493456442) can we remove it?
-	var accountRange = accountCheckRange
-	if len(accMarker) > 0 {
-		accountRange = 1
-	}
 	origin := common.CopyBytes(accMarker)
 	for {
 		id := trie.StateTrieID(dl.root)
-		exhausted, last, err := dl.generateRange(ctx, id, rawdb.SnapshotAccountPrefix, snapAccount, origin, accountRange, onAccount, types.FullAccountRLP)
+		exhausted, last, err := dl.generateRange(ctx, id, rawdb.SnapshotAccountPrefix, snapAccount, origin, accountCheckRange, onAccount, types.FullAccountRLP)
 		if err != nil {
 			return err // The procedure it aborted, either by external signal or internal error.
 		}
@@ -652,7 +639,6 @@ func generateAccounts(ctx *generatorContext, dl *diskLayer, accMarker []byte) er
 			ctx.removeStorageLeft()
 			break
 		}
-		accountRange = accountCheckRange
 	}
 	return nil
 }

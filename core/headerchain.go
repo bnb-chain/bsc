@@ -17,12 +17,9 @@
 package core
 
 import (
-	crand "crypto/rand"
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
-	mrand "math/rand"
 	"sync/atomic"
 	"time"
 
@@ -38,50 +35,46 @@ import (
 )
 
 const (
-	headerCacheLimit = 512
-	tdCacheLimit     = 1024
+	headerCacheLimit = 1280 // a buffer exceeding the EpochLength
+	tdCacheLimit     = 1280 // a buffer exceeding the EpochLength
 	numberCacheLimit = 2048
 )
 
-// HeaderChain implements the basic block header chain logic that is shared by
-// core.BlockChain and light.LightChain. It is not usable in itself, only as
-// a part of either structure.
+// HeaderChain implements the basic block header chain logic. It is not usable
+// in itself, but rather an internal structure of core.Blockchain.
 //
 // HeaderChain is responsible for maintaining the header chain including the
 // header query and updating.
 //
-// The components maintained by headerchain includes: (1) total difficulty
-// (2) header (3) block hash -> number mapping (4) canonical number -> hash mapping
-// and (5) head header flag.
+// The data components maintained by HeaderChain include:
 //
-// It is not thread safe either, the encapsulating chain structures should do
-// the necessary mutex locking/unlocking.
+// - total difficulty
+// - header
+// - block hash -> number mapping
+// - canonical number -> hash mapping
+// - head header flag.
+//
+// It is not thread safe, the encapsulating chain structures should do the
+// necessary mutex locking/unlocking.
 type HeaderChain struct {
 	config        *params.ChainConfig
 	chainDb       ethdb.Database
 	genesisHeader *types.Header
 
-	currentHeader     atomic.Value // Current head of the header chain (may be above the block chain!)
-	currentHeaderHash common.Hash  // Hash of the current head of the header chain (prevent recomputing all the time)
+	currentHeader     atomic.Pointer[types.Header] // Current head of the header chain (maybe above the block chain!)
+	currentHeaderHash common.Hash                  // Hash of the current head of the header chain (prevent recomputing all the time)
 
 	headerCache *lru.Cache[common.Hash, *types.Header]
 	tdCache     *lru.Cache[common.Hash, *big.Int] // most recent total difficulties
 	numberCache *lru.Cache[common.Hash, uint64]   // most recent block numbers
 
 	procInterrupt func() bool
-
-	rand   *mrand.Rand
-	engine consensus.Engine
+	engine        consensus.Engine
 }
 
 // NewHeaderChain creates a new HeaderChain structure. ProcInterrupt points
 // to the parent's interrupt semaphore.
 func NewHeaderChain(chainDb ethdb.Database, config *params.ChainConfig, engine consensus.Engine, procInterrupt func() bool) (*HeaderChain, error) {
-	// Seed a fast but crypto originating random generator
-	seed, err := crand.Int(crand.Reader, big.NewInt(math.MaxInt64))
-	if err != nil {
-		return nil, err
-	}
 	hc := &HeaderChain{
 		config:        config,
 		chainDb:       chainDb,
@@ -89,7 +82,6 @@ func NewHeaderChain(chainDb ethdb.Database, config *params.ChainConfig, engine c
 		tdCache:       lru.NewCache[common.Hash, *big.Int](tdCacheLimit),
 		numberCache:   lru.NewCache[common.Hash, uint64](numberCacheLimit),
 		procInterrupt: procInterrupt,
-		rand:          mrand.New(mrand.NewSource(seed.Int64())),
 		engine:        engine,
 	}
 	hc.genesisHeader = hc.GetHeaderByNumber(0)
@@ -113,7 +105,7 @@ func NewHeaderChain(chainDb ethdb.Database, config *params.ChainConfig, engine c
 // GetJustifiedNumber returns the highest justified blockNumber on the branch including and before `header`.
 func (hc *HeaderChain) GetJustifiedNumber(header *types.Header) uint64 {
 	if p, ok := hc.engine.(consensus.PoSA); ok {
-		justifiedBlockNumber, _, err := p.GetJustifiedNumberAndHash(hc, header)
+		justifiedBlockNumber, _, err := p.GetJustifiedNumberAndHash(hc, []*types.Header{header})
 		if err == nil {
 			return justifiedBlockNumber
 		}
@@ -132,6 +124,10 @@ func (hc *HeaderChain) getFinalizedNumber(header *types.Header) uint64 {
 	}
 
 	return 0
+}
+
+func (hc *HeaderChain) GenesisHeader() *types.Header {
+	return hc.genesisHeader
 }
 
 // GetBlockNumber retrieves the block number belonging to the given hash
@@ -168,9 +164,9 @@ func (hc *HeaderChain) Reorg(headers []*types.Header) error {
 	// pile them onto the existing chain. Otherwise, do the necessary
 	// reorgs.
 	var (
-		first = headers[0]
-		last  = headers[len(headers)-1]
-		batch = hc.chainDb.NewBatch()
+		first      = headers[0]
+		last       = headers[len(headers)-1]
+		blockBatch = hc.chainDb.BlockStore().NewBatch()
 	)
 	if first.ParentHash != hc.currentHeaderHash {
 		// Delete any canonical number assignments above the new head
@@ -179,7 +175,7 @@ func (hc *HeaderChain) Reorg(headers []*types.Header) error {
 			if hash == (common.Hash{}) {
 				break
 			}
-			rawdb.DeleteCanonicalHash(batch, i)
+			rawdb.DeleteCanonicalHash(blockBatch, i)
 		}
 		// Overwrite any stale canonical number assignments, going
 		// backwards from the first header in this import until the
@@ -190,7 +186,7 @@ func (hc *HeaderChain) Reorg(headers []*types.Header) error {
 			headHash   = header.Hash()
 		)
 		for rawdb.ReadCanonicalHash(hc.chainDb, headNumber) != headHash {
-			rawdb.WriteCanonicalHash(batch, headHash, headNumber)
+			rawdb.WriteCanonicalHash(blockBatch, headHash, headNumber)
 			if headNumber == 0 {
 				break // It shouldn't be reached
 			}
@@ -205,16 +201,16 @@ func (hc *HeaderChain) Reorg(headers []*types.Header) error {
 	for i := 0; i < len(headers)-1; i++ {
 		hash := headers[i+1].ParentHash // Save some extra hashing
 		num := headers[i].Number.Uint64()
-		rawdb.WriteCanonicalHash(batch, hash, num)
-		rawdb.WriteHeadHeaderHash(batch, hash)
+		rawdb.WriteCanonicalHash(blockBatch, hash, num)
+		rawdb.WriteHeadHeaderHash(blockBatch, hash)
 	}
 	// Write the last header
 	hash := headers[len(headers)-1].Hash()
 	num := headers[len(headers)-1].Number.Uint64()
-	rawdb.WriteCanonicalHash(batch, hash, num)
-	rawdb.WriteHeadHeaderHash(batch, hash)
+	rawdb.WriteCanonicalHash(blockBatch, hash, num)
+	rawdb.WriteHeadHeaderHash(blockBatch, hash)
 
-	if err := batch.Write(); err != nil {
+	if err := blockBatch.Write(); err != nil {
 		return err
 	}
 	// Last step update all in-memory head header markers
@@ -240,7 +236,7 @@ func (hc *HeaderChain) WriteHeaders(headers []*types.Header) (int, error) {
 		newTD       = new(big.Int).Set(ptd) // Total difficulty of inserted chain
 		inserted    []rawdb.NumberHash      // Ephemeral lookup of number/hash for the chain
 		parentKnown = true                  // Set to true to force hc.HasHeader check the first iteration
-		batch       = hc.chainDb.NewBatch()
+		blockBatch  = hc.chainDb.BlockStore().NewBatch()
 	)
 	for i, header := range headers {
 		var hash common.Hash
@@ -260,10 +256,10 @@ func (hc *HeaderChain) WriteHeaders(headers []*types.Header) (int, error) {
 		alreadyKnown := parentKnown && hc.HasHeader(hash, number)
 		if !alreadyKnown {
 			// Irrelevant of the canonical status, write the TD and header to the database.
-			rawdb.WriteTd(batch, hash, number, newTD)
+			rawdb.WriteTd(blockBatch, hash, number, newTD)
 			hc.tdCache.Add(hash, new(big.Int).Set(newTD))
 
-			rawdb.WriteHeader(batch, header)
+			rawdb.WriteHeader(blockBatch, header)
 			inserted = append(inserted, rawdb.NumberHash{Number: number, Hash: hash})
 			hc.headerCache.Add(hash, header)
 			hc.numberCache.Add(hash, number)
@@ -276,7 +272,7 @@ func (hc *HeaderChain) WriteHeaders(headers []*types.Header) (int, error) {
 		return 0, errors.New("aborted")
 	}
 	// Commit to disk!
-	if err := batch.Write(); err != nil {
+	if err := blockBatch.Write(); err != nil {
 		log.Crit("Failed to write headers", "error", err)
 	}
 	return len(inserted), nil
@@ -339,14 +335,6 @@ func (hc *HeaderChain) ValidateHeaderChain(chain []*types.Header) (int, error) {
 
 			return 0, fmt.Errorf("non contiguous insert: item %d is #%d [%x..], item %d is #%d [%x..] (parent [%x..])", i-1, chain[i-1].Number,
 				parentHash.Bytes()[:4], i, chain[i].Number, hash.Bytes()[:4], chain[i].ParentHash[:4])
-		}
-		// If the header is a banned one, straight out abort
-		if BadHashes[chain[i].ParentHash] {
-			return i - 1, ErrBannedHash
-		}
-		// If it's the last header in the cunk, we need to check it too
-		if i == len(chain)-1 && BadHashes[chain[i].Hash()] {
-			return i, ErrBannedHash
 		}
 	}
 	// Start the parallel verifier
@@ -429,6 +417,14 @@ func (hc *HeaderChain) GetBlockHashesFromHash(hash common.Hash, max uint64) []co
 }
 
 func (hc *HeaderChain) GetHighestVerifiedHeader() *types.Header {
+	return nil
+}
+
+func (hc *HeaderChain) GetVerifiedBlockByHash(hash common.Hash) *types.Header {
+	return hc.GetHeaderByHash(hash)
+}
+
+func (hc *HeaderChain) ChasingHead() *types.Header {
 	return nil
 }
 
@@ -579,7 +575,7 @@ func (hc *HeaderChain) GetCanonicalHash(number uint64) common.Hash {
 // CurrentHeader retrieves the current head header of the canonical chain. The
 // header is retrieved from the HeaderChain's internal cache.
 func (hc *HeaderChain) CurrentHeader() *types.Header {
-	return hc.currentHeader.Load().(*types.Header)
+	return hc.currentHeader.Load()
 }
 
 // SetCurrentHeader sets the in-memory head header marker of the canonical chan
@@ -634,7 +630,7 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 	}
 	var (
 		parentHash common.Hash
-		batch      = hc.chainDb.NewBatch()
+		blockBatch = hc.chainDb.BlockStore().NewBatch()
 		origin     = true
 	)
 	done := func(header *types.Header) bool {
@@ -660,7 +656,7 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 		// first then remove the relative data from the database.
 		//
 		// Update head first(head fast block, head full block) before deleting the data.
-		markerBatch := hc.chainDb.NewBatch()
+		markerBatch := hc.chainDb.BlockStore().NewBatch()
 		if updateFn != nil {
 			newHead, force := updateFn(markerBatch, parent)
 			if force && ((headTime > 0 && newHead.Time < headTime) || (headTime == 0 && newHead.Number.Uint64() < headBlock)) {
@@ -683,7 +679,7 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 		// we don't end up with dangling daps in the database
 		var nums []uint64
 		if origin {
-			for n := num + 1; len(rawdb.ReadAllHashes(hc.chainDb, n)) > 0; n++ {
+			for n := num + 1; len(rawdb.ReadAllHashes(hc.chainDb.BlockStore(), n)) > 0; n++ {
 				nums = append([]uint64{n}, nums...) // suboptimal, but we don't really expect this path
 			}
 			origin = false
@@ -693,23 +689,23 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 		// Remove the related data from the database on all sidechains
 		for _, num := range nums {
 			// Gather all the side fork hashes
-			hashes := rawdb.ReadAllHashes(hc.chainDb, num)
+			hashes := rawdb.ReadAllHashes(hc.chainDb.BlockStore(), num)
 			if len(hashes) == 0 {
 				// No hashes in the database whatsoever, probably frozen already
 				hashes = append(hashes, hdr.Hash())
 			}
 			for _, hash := range hashes {
 				if delFn != nil {
-					delFn(batch, hash, num)
+					delFn(blockBatch, hash, num)
 				}
-				rawdb.DeleteHeader(batch, hash, num)
-				rawdb.DeleteTd(batch, hash, num)
+				rawdb.DeleteHeader(blockBatch, hash, num)
+				rawdb.DeleteTd(blockBatch, hash, num)
 			}
-			rawdb.DeleteCanonicalHash(batch, num)
+			rawdb.DeleteCanonicalHash(blockBatch, num)
 		}
 	}
 	// Flush all accumulated deletions.
-	if err := batch.Write(); err != nil {
+	if err := blockBatch.Write(); err != nil {
 		log.Crit("Failed to rewind block", "error", err)
 	}
 	// Clear out any stale content from the caches

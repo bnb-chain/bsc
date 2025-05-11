@@ -2,17 +2,16 @@ package vote
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"time"
 
 	"github.com/pkg/errors"
 
-	"github.com/prysmaticlabs/prysm/v4/crypto/bls"
-	validatorpb "github.com/prysmaticlabs/prysm/v4/proto/prysm/v1alpha1/validator-client"
-	"github.com/prysmaticlabs/prysm/v4/validator/accounts/iface"
-	"github.com/prysmaticlabs/prysm/v4/validator/accounts/wallet"
-	"github.com/prysmaticlabs/prysm/v4/validator/keymanager"
+	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
+	validatorpb "github.com/prysmaticlabs/prysm/v5/proto/prysm/v1alpha1/validator-client"
+	"github.com/prysmaticlabs/prysm/v5/validator/accounts/iface"
+	"github.com/prysmaticlabs/prysm/v5/validator/accounts/wallet"
+	"github.com/prysmaticlabs/prysm/v5/validator/keymanager"
 
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
@@ -38,7 +37,7 @@ func NewVoteSigner(blsPasswordPath, blsWalletPath string) (*VoteSigner, error) {
 	}
 	if !dirExists {
 		log.Error("BLS wallet did not exists.")
-		return nil, fmt.Errorf("BLS wallet did not exists")
+		return nil, errors.New("BLS wallet did not exists")
 	}
 
 	walletPassword, err := os.ReadFile(blsPasswordPath)

@@ -163,7 +163,7 @@ func (api *ExternalSigner) SignData(account accounts.Account, mimeType string, d
 		hexutil.Encode(data)); err != nil {
 		return nil, err
 	}
-	// If V is on 27/28-form, convert to to 0/1 for Clique and Parlia
+	// If V is on 27/28-form, convert to 0/1 for Clique and Parlia
 	if (mimeType == accounts.MimetypeClique || mimeType == accounts.MimetypeParlia) && (res[64] == 27 || res[64] == 28) {
 		res[64] -= 27 // Transform V from 27/28 to 0/1 for Clique and Parlia use
 	}
@@ -205,7 +205,7 @@ func (api *ExternalSigner) SignTx(account accounts.Account, tx *types.Transactio
 		to = &t
 	}
 	args := &apitypes.SendTxArgs{
-		Data:  &data,
+		Input: &data,
 		Nonce: hexutil.Uint64(tx.Nonce()),
 		Value: hexutil.Big(*tx.Value()),
 		Gas:   hexutil.Uint64(tx.Gas()),
@@ -215,7 +215,7 @@ func (api *ExternalSigner) SignTx(account accounts.Account, tx *types.Transactio
 	switch tx.Type() {
 	case types.LegacyTxType, types.AccessListTxType:
 		args.GasPrice = (*hexutil.Big)(tx.GasPrice())
-	case types.DynamicFeeTxType:
+	case types.DynamicFeeTxType, types.BlobTxType, types.SetCodeTxType:
 		args.MaxFeePerGas = (*hexutil.Big)(tx.GasFeeCap())
 		args.MaxPriorityFeePerGas = (*hexutil.Big)(tx.GasTipCap())
 	default:
@@ -235,6 +235,17 @@ func (api *ExternalSigner) SignTx(account accounts.Account, tx *types.Transactio
 		accessList := tx.AccessList()
 		args.AccessList = &accessList
 	}
+	if tx.Type() == types.BlobTxType {
+		args.BlobHashes = tx.BlobHashes()
+		sidecar := tx.BlobTxSidecar()
+		if sidecar == nil {
+			return nil, errors.New("blobs must be present for signing")
+		}
+		args.Blobs = sidecar.Blobs
+		args.Commitments = sidecar.Commitments
+		args.Proofs = sidecar.Proofs
+	}
+
 	var res signTransactionResult
 	if err := api.client.Call(&res, "account_signTransaction", args); err != nil {
 		return nil, err

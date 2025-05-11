@@ -20,8 +20,9 @@ import "github.com/urfave/cli/v2"
 
 const (
 	EthCategory          = "ETHEREUM"
-	LightCategory        = "LIGHT CLIENT"
+	BeaconCategory       = "BEACON CHAIN"
 	DevCategory          = "DEVELOPER CHAIN"
+	StateCategory        = "STATE HISTORY MANAGEMENT"
 	EthashCategory       = "ETHASH"
 	TxPoolCategory       = "TRANSACTION POOL (EVM)"
 	BlobPoolCategory     = "TRANSACTION POOL (BLOB)"
@@ -35,10 +36,11 @@ const (
 	LoggingCategory      = "LOGGING AND DEBUGGING"
 	MetricsCategory      = "METRICS AND STATS"
 	MiscCategory         = "MISC"
+	TestingCategory      = "TESTING"
 	DeprecatedCategory   = "ALIASED (deprecated)"
 	FastNodeCategory     = "FAST NODE"
 	FastFinalityCategory = "FAST FINALITY"
-	HistoryCategory      = "HISTORY"
+	BlockHistoryCategory = "BLOCK HISTORY MANAGEMENT"
 )
 
 func init() {

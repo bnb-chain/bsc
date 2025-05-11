@@ -373,3 +373,42 @@ func TestCometBFTLightBlockValidateHertz(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expectOutputStr, hex.EncodeToString(res))
 }
+
+func TestSecp256k1SignatureRecover(t *testing.T) {
+	// local key
+	{
+		pubKey, err := hex.DecodeString("0278caa4d6321aa856d6341dd3e8bcdfe0b55901548871c63c3f5cec43c2ae88a9")
+		require.NoError(t, err)
+		sig, err := hex.DecodeString("0cb78be0d8eaeab991907b06c61240c04f4ca83f54b7799ce77cf029b837988038c4b3b7f5df231695b0d14499b716e1fd6504860eb3c9244ecb4e569d44c062")
+		require.NoError(t, err)
+		msghash, err := hex.DecodeString("b6ac827edff4bbbf23579720782dbef40b65780af292cc66849e7e5944f1230f")
+		require.NoError(t, err)
+		expectedAddr, err := hex.DecodeString("fa3B227adFf8EA1706098928715076D76959Ae6c")
+		require.NoError(t, err)
+
+		input := append(append(pubKey, sig...), msghash...)
+		contract := &secp256k1SignatureRecover{}
+		res, err := contract.Run(input)
+		require.NoError(t, err)
+
+		require.Equal(t, expectedAddr, res)
+	}
+	// ledger
+	{
+		pubKey, err := hex.DecodeString("02d63ee39adb1779353b4393dd5ea9d6d2b6df63b71d168571803cc7b9a0a20e98")
+		require.NoError(t, err)
+		sig, err := hex.DecodeString("66bdb5d381b2773c0f569858c7ee143959522d7c1f46dc656c325cb7353ec40c28ec22dff3650b34c096c5b12e702d7237d409f1ebaaa6dd1128a8f2d401fd5b")
+		require.NoError(t, err)
+		msghash, err := hex.DecodeString("c45e8f0dc7c054c31912beeffd6f10f1c585606d61e252e97968cd66661c2571")
+		require.NoError(t, err)
+		expectedAddr, err := hex.DecodeString("65a284146b84210a01add088954bb52d88b230af")
+		require.NoError(t, err)
+
+		input := append(append(pubKey, sig...), msghash...)
+		contract := &secp256k1SignatureRecover{}
+		res, err := contract.Run(input)
+		require.NoError(t, err)
+
+		require.Equal(t, expectedAddr, res)
+	}
+}

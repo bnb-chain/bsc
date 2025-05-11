@@ -32,6 +32,22 @@ type Database struct {
 	remote *rpc.Client
 }
 
+func (db *Database) BlockStoreReader() ethdb.Reader {
+	return db
+}
+
+func (db *Database) BlockStore() ethdb.Database {
+	return db
+}
+
+func (db *Database) HasSeparateBlockStore() bool {
+	return false
+}
+
+func (db *Database) SetBlockStore(block ethdb.Database) {
+	panic("not supported")
+}
+
 func (db *Database) Has(key []byte) (bool, error) {
 	if _, err := db.Get(key); err != nil {
 		return false, nil
@@ -94,6 +110,22 @@ func (db *Database) SetDiffStore(diff ethdb.KeyValueStore) {
 	panic("not supported")
 }
 
+func (db *Database) StateStore() ethdb.Database {
+	panic("not supported")
+}
+
+func (db *Database) SetStateStore(state ethdb.Database) {
+	panic("not supported")
+}
+
+func (db *Database) GetStateStore() ethdb.Database {
+	panic("not supported")
+}
+
+func (db *Database) StateStoreReader() ethdb.Reader {
+	return db
+}
+
 func (db *Database) ReadAncients(fn func(op ethdb.AncientReaderOp) error) (err error) {
 	return fn(db)
 }
@@ -110,7 +142,15 @@ func (db *Database) Delete(key []byte) error {
 	panic("not supported")
 }
 
+func (db *Database) DeleteRange(start, end []byte) error {
+	panic("not supported")
+}
+
 func (db *Database) ModifyAncients(f func(ethdb.AncientWriteOp) error) (int64, error) {
+	panic("not supported")
+}
+
+func (db *Database) AncientReset(tail, head uint64) error {
 	panic("not supported")
 }
 
@@ -122,12 +162,18 @@ func (db *Database) TruncateTail(n uint64) (uint64, error) {
 	panic("not supported")
 }
 
-func (db *Database) Sync() error {
-	return nil
+// TruncateTableTail will truncate certain table to new tail
+func (db *Database) TruncateTableTail(kind string, tail uint64) (uint64, error) {
+	panic("not supported")
 }
 
-func (db *Database) MigrateTable(s string, f func([]byte) ([]byte, error)) error {
+// ResetTable will reset certain table with new start point
+func (db *Database) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
 	panic("not supported")
+}
+
+func (db *Database) Sync() error {
+	return nil
 }
 
 func (db *Database) NewBatch() ethdb.Batch {
@@ -142,8 +188,8 @@ func (db *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	panic("not supported")
 }
 
-func (db *Database) Stat(property string) (string, error) {
-	panic("not supported")
+func (db *Database) Stat() (string, error) {
+	return "", nil
 }
 
 func (db *Database) AncientDatadir() (string, error) {
@@ -154,13 +200,13 @@ func (db *Database) Compact(start []byte, limit []byte) error {
 	return nil
 }
 
-func (db *Database) NewSnapshot() (ethdb.Snapshot, error) {
-	panic("not supported")
-}
-
 func (db *Database) Close() error {
 	db.remote.Close()
 	return nil
+}
+
+func (db *Database) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+	panic("not supported")
 }
 
 func New(client *rpc.Client) ethdb.Database {

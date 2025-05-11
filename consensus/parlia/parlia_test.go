@@ -1,16 +1,34 @@
 package parlia
 
 import (
+	"crypto/ecdsa"
+	"crypto/rand"
 	"fmt"
-	"math/rand"
+	"math/big"
+	mrand "math/rand"
+	"slices"
+	"strings"
 	"testing"
-
-	"golang.org/x/crypto/sha3"
 
 	"github.com/ethereum/go-ethereum/common"
 	cmath "github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
+	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/systemcontracts"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/triedb"
+	"github.com/holiman/uint256"
+	"golang.org/x/crypto/sha3"
 )
 
 const (
@@ -21,22 +39,44 @@ func TestImpactOfValidatorOutOfService(t *testing.T) {
 	testCases := []struct {
 		totalValidators int
 		downValidators  int
+		turnLength      int
 	}{
-		{3, 1},
-		{5, 2},
-		{10, 1},
-		{10, 4},
-		{21, 1},
-		{21, 3},
-		{21, 5},
-		{21, 10},
+		{3, 1, 1},
+		{5, 2, 1},
+		{10, 1, 2},
+		{10, 4, 2},
+		{21, 1, 3},
+		{21, 3, 3},
+		{21, 5, 4},
+		{21, 10, 5},
 	}
 	for _, tc := range testCases {
-		simulateValidatorOutOfService(tc.totalValidators, tc.downValidators)
+		simulateValidatorOutOfService(tc.totalValidators, tc.downValidators, tc.turnLength)
 	}
 }
 
-func simulateValidatorOutOfService(totalValidators int, downValidators int) {
+// refer Snapshot.SignRecently
+func signRecently(idx int, recents map[uint64]int, turnLength int) bool {
+	recentSignTimes := 0
+	for _, signIdx := range recents {
+		if signIdx == idx {
+			recentSignTimes += 1
+		}
+	}
+	return recentSignTimes >= turnLength
+}
+
+// refer Snapshot.minerHistoryCheckLen
+func minerHistoryCheckLen(totalValidators int, turnLength int) uint64 {
+	return uint64(totalValidators/2+1)*uint64(turnLength) - 1
+}
+
+// refer Snapshot.inturnValidator
+func inturnValidator(totalValidators int, turnLength int, height int) int {
+	return height / turnLength % totalValidators
+}
+
+func simulateValidatorOutOfService(totalValidators int, downValidators int, turnLength int) {
 	downBlocks := 10000
 	recoverBlocks := 10000
 	recents := make(map[uint64]int)
@@ -47,19 +87,14 @@ func simulateValidatorOutOfService(totalValidators int, downValidators int) {
 		validators[i] = true
 		down[i] = i
 	}
-	rand.Shuffle(totalValidators, func(i, j int) {
+	mrand.Shuffle(totalValidators, func(i, j int) {
 		down[i], down[j] = down[j], down[i]
 	})
 	for i := 0; i < downValidators; i++ {
 		delete(validators, down[i])
 	}
 	isRecentSign := func(idx int) bool {
-		for _, signIdx := range recents {
-			if signIdx == idx {
-				return true
-			}
-		}
-		return false
+		return signRecently(idx, recents, turnLength)
 	}
 	isInService := func(idx int) bool {
 		return validators[idx]
@@ -67,10 +102,10 @@ func simulateValidatorOutOfService(totalValidators int, downValidators int) {
 
 	downDelay := uint64(0)
 	for h := 1; h <= downBlocks; h++ {
-		if limit := uint64(totalValidators/2 + 1); uint64(h) >= limit {
+		if limit := minerHistoryCheckLen(totalValidators, turnLength) + 1; uint64(h) >= limit {
 			delete(recents, uint64(h)-limit)
 		}
-		proposer := h % totalValidators
+		proposer := inturnValidator(totalValidators, turnLength, h)
 		if !isInService(proposer) || isRecentSign(proposer) {
 			candidates := make(map[int]bool, totalValidators/2)
 			for v := range validators {
@@ -98,10 +133,10 @@ func simulateValidatorOutOfService(totalValidators int, downValidators int) {
 	recoverDelay := uint64(0)
 	lastseen := downBlocks
 	for h := downBlocks + 1; h <= downBlocks+recoverBlocks; h++ {
-		if limit := uint64(totalValidators/2 + 1); uint64(h) >= limit {
+		if limit := minerHistoryCheckLen(totalValidators, turnLength) + 1; uint64(h) >= limit {
 			delete(recents, uint64(h)-limit)
 		}
-		proposer := h % totalValidators
+		proposer := inturnValidator(totalValidators, turnLength, h)
 		if !isInService(proposer) || isRecentSign(proposer) {
 			lastseen = h
 			candidates := make(map[int]bool, totalValidators/2)
@@ -125,8 +160,8 @@ func simulateValidatorOutOfService(totalValidators int, downValidators int) {
 }
 
 func producerBlockDelay(candidates map[int]bool, height, numOfValidators int) (int, uint64) {
-	s := rand.NewSource(int64(height))
-	r := rand.New(s)
+	s := mrand.NewSource(int64(height))
+	r := mrand.New(s)
 	n := numOfValidators
 	backOffSteps := make([]int, 0, n)
 	for idx := 0; idx < n; idx++ {
@@ -143,7 +178,7 @@ func producerBlockDelay(candidates map[int]bool, height, numOfValidators int) (i
 			minCandidate = c
 		}
 	}
-	delay := initialBackOffTime + uint64(minDelay)*wiggleTime
+	delay := defaultInitialBackOffTime + uint64(minDelay)*wiggleTime
 	return minCandidate, delay
 }
 
@@ -596,4 +631,230 @@ func TestSimulateP2P(t *testing.T) {
 			t.Fatalf("[Testcase %d] chain not works as expected", index)
 		}
 	}
+}
+
+var (
+	// testKey is a private key to use for funding a tester account.
+	testKey, _ = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	testAddr   = crypto.PubkeyToAddress(testKey.PublicKey)
+)
+
+func TestParlia_applyTransactionTracing(t *testing.T) {
+	frdir := t.TempDir()
+	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false, false, false, false, false)
+	if err != nil {
+		t.Fatalf("failed to create database with ancient backend")
+	}
+
+	trieDB := triedb.NewDatabase(db, nil)
+	defer trieDB.Close()
+
+	config := params.ParliaTestChainConfig
+	gspec := &core.Genesis{
+		Config: params.ParliaTestChainConfig,
+		Alloc:  types.GenesisAlloc{testAddr: {Balance: new(big.Int).SetUint64(10 * params.Ether)}},
+	}
+
+	mockEngine := &mockParlia{}
+	genesisBlock := gspec.MustCommit(db, trieDB)
+
+	chain, _ := core.NewBlockChain(db, nil, gspec, nil, mockEngine, vm.Config{}, nil, nil)
+	signer := types.LatestSigner(config)
+
+	bs, _ := core.GenerateChain(config, genesisBlock, mockEngine, db, 1, func(i int, gen *core.BlockGen) {
+		if !config.IsCancun(gen.Number(), gen.Timestamp()) {
+			tx, _ := makeMockTx(config, signer, testKey, gen.TxNonce(testAddr), gen.BaseFee().Uint64(), eip4844.CalcBlobFee(config, gen.HeadBlock()).Uint64(), false)
+			gen.AddTxWithChain(chain, tx)
+			return
+		}
+		tx, sidecar := makeMockTx(config, signer, testKey, gen.TxNonce(testAddr), gen.BaseFee().Uint64(), eip4844.CalcBlobFee(config, gen.HeadBlock()).Uint64(), true)
+		gen.AddTxWithChain(chain, tx)
+		gen.AddBlobSidecar(&types.BlobSidecar{
+			BlobTxSidecar: *sidecar,
+			TxIndex:       0,
+			TxHash:        tx.Hash(),
+		})
+	})
+
+	engine := New(params.ParliaTestChainConfig, db, nil, genesisBlock.Hash())
+
+	stateDatabase := state.NewDatabase(trieDB, nil)
+	stateDB, err := state.New(genesisBlock.Root(), stateDatabase)
+	if err != nil {
+		t.Fatalf("failed to create stateDB: %v", err)
+	}
+
+	method := "distributeFinalityReward"
+	data, err := engine.validatorSetABI.Pack(method, make([]common.Address, 0), make([]*big.Int, 0))
+	if err != nil {
+		t.Fatalf("failed to pack system contract method %s: %v", method, err)
+	}
+
+	msg := engine.getSystemMessage(genesisBlock.Coinbase(), common.HexToAddress(systemcontracts.ValidatorContract), data, common.Big0)
+	nonce := stateDB.GetNonce(msg.From)
+	expectedTx := types.NewTransaction(nonce, *msg.To, msg.Value, msg.GasLimit, msg.GasPrice, msg.Data)
+
+	receivedTxs := []*types.Transaction{expectedTx}
+	txs := make([]*types.Transaction, 0, 1)
+	receipts := make([]*types.Receipt, 0, 1)
+	usedGas := uint64(0)
+
+	recording := &recordingTracer{}
+	hooks := recording.hooks()
+
+	cx := chainContext{Chain: chain, parlia: engine}
+	applyErr := engine.applyTransaction(msg, state.NewHookedState(stateDB, hooks), bs[0].Header(), cx, &txs, &receipts, &receivedTxs, &usedGas, false, hooks)
+	if applyErr != nil {
+		t.Fatalf("failed to apply system contract transaction: %v", applyErr)
+	}
+
+	expectedRecords := []string{
+		"system tx start",
+		"tx [0xe9a5597c7f5a6a10a18959d262319fbf19cecb4d9d1ce8f2c990089bd88016fc] from [0x0000000000000000000000000000000000000000] start",
+		"nonce change [0x0000000000000000000000000000000000000000]: 0 -> 1",
+		"call enter [0x0000000000000000000000000000000000000000] -> [0x0000000000000000000000000000000000001000] (type 241, gas 9223372036854775807, value 0)",
+		"call exit (depth 0, gas used 0, reverted false, err: <none>)",
+		"tx [0xe9a5597c7f5a6a10a18959d262319fbf19cecb4d9d1ce8f2c990089bd88016fc] end (log count 0, cumulative gas used 0, err: <none>)",
+		"system tx end",
+	}
+
+	if !slices.Equal(recording.records, expectedRecords) {
+		t.Errorf("expected \n%s\n\ngot\n\n%s", formatRecords(recording.records), formatRecords(expectedRecords))
+	}
+}
+
+func formatRecords(records []string) string {
+	indented := make([]string, 0, len(records))
+	for _, record := range records {
+		indented = append(indented, fmt.Sprintf("  %q,", record))
+	}
+
+	return "[\n" + strings.Join(indented, "\n") + "\n]"
+}
+
+type errorView struct {
+	err error
+}
+
+func (e errorView) String() string {
+	if e.err == nil {
+		return "<none>"
+	}
+
+	return e.err.Error()
+}
+
+type recordingTracer struct {
+	records []string
+}
+
+func (t *recordingTracer) record(format string, args ...any) {
+	t.records = append(t.records, fmt.Sprintf(format, args...))
+}
+
+func (t *recordingTracer) hooks() *tracing.Hooks {
+	return &tracing.Hooks{
+		OnSystemTxStart: func() { t.record("system tx start") },
+		OnTxStart: func(vm *tracing.VMContext, tx *types.Transaction, from common.Address) {
+			t.record("tx [%s] from [%s] start", tx.Hash(), from)
+		},
+		OnTxEnd: func(receipt *types.Receipt, err error) {
+			t.record("tx [%s] end (log count %d, cumulative gas used %d, err: %s)", receipt.TxHash, len(receipt.Logs), receipt.CumulativeGasUsed, errorView{err})
+		},
+		OnSystemTxEnd: func() { t.record("system tx end") },
+		OnEnter: func(depth int, typ byte, from common.Address, to common.Address, input []byte, gas uint64, value *big.Int) {
+			t.record("call enter [%s] -> [%s] (type %d, gas %d, value %s)", from, to, typ, gas, value)
+		},
+		OnExit: func(depth int, output []byte, gasUsed uint64, err error, reverted bool) {
+			t.record("call exit (depth %d, gas used %d, reverted %v, err: %s)", depth, gasUsed, reverted, errorView{err})
+		},
+		OnNonceChange: func(addr common.Address, prev, new uint64) {
+			t.record("nonce change [%s]: %d -> %d", addr, prev, new)
+		},
+	}
+}
+
+var (
+	emptyBlob          = kzg4844.Blob{}
+	emptyBlobCommit, _ = kzg4844.BlobToCommitment(&emptyBlob)
+	emptyBlobProof, _  = kzg4844.ComputeBlobProof(&emptyBlob, emptyBlobCommit)
+)
+
+func makeMockTx(config *params.ChainConfig, signer types.Signer, key *ecdsa.PrivateKey, nonce uint64, baseFee uint64, blobBaseFee uint64, isBlobTx bool) (*types.Transaction, *types.BlobTxSidecar) {
+	if !isBlobTx {
+		raw := &types.DynamicFeeTx{
+			ChainID:   config.ChainID,
+			Nonce:     nonce,
+			GasTipCap: big.NewInt(10),
+			GasFeeCap: new(big.Int).SetUint64(baseFee + 10),
+			Gas:       params.TxGas,
+			To:        &common.Address{0x00},
+			Value:     big.NewInt(0),
+		}
+		tx, _ := types.SignTx(types.NewTx(raw), signer, key)
+		return tx, nil
+	}
+	sidecar := &types.BlobTxSidecar{
+		Blobs:       []kzg4844.Blob{emptyBlob, emptyBlob},
+		Commitments: []kzg4844.Commitment{emptyBlobCommit, emptyBlobCommit},
+		Proofs:      []kzg4844.Proof{emptyBlobProof, emptyBlobProof},
+	}
+	raw := &types.BlobTx{
+		ChainID:    uint256.MustFromBig(config.ChainID),
+		Nonce:      nonce,
+		GasTipCap:  uint256.NewInt(10),
+		GasFeeCap:  uint256.NewInt(baseFee + 10),
+		Gas:        params.TxGas,
+		To:         common.Address{0x00},
+		Value:      uint256.NewInt(0),
+		BlobFeeCap: uint256.NewInt(blobBaseFee),
+		BlobHashes: sidecar.BlobHashes(),
+	}
+	tx, _ := types.SignTx(types.NewTx(raw), signer, key)
+	return tx, sidecar
+}
+
+type mockParlia struct {
+	consensus.Engine
+}
+
+func (c *mockParlia) Author(header *types.Header) (common.Address, error) {
+	return header.Coinbase, nil
+}
+
+func (c *mockParlia) VerifyUncles(chain consensus.ChainReader, block *types.Block) error {
+	return nil
+}
+
+func (c *mockParlia) VerifyHeader(chain consensus.ChainHeaderReader, header *types.Header) error {
+	return nil
+}
+
+func (c *mockParlia) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*types.Header) (chan<- struct{}, <-chan error) {
+	abort := make(chan<- struct{})
+	results := make(chan error, len(headers))
+	for i := 0; i < len(headers); i++ {
+		results <- nil
+	}
+	return abort, results
+}
+
+func (c *mockParlia) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, _ *[]*types.Transaction, uncles []*types.Header, withdrawals []*types.Withdrawal,
+	_ *[]*types.Receipt, _ *[]*types.Transaction, _ *uint64, tracer *tracing.Hooks) (err error) {
+	return
+}
+
+func (c *mockParlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
+	// Finalize block
+	c.Finalize(chain, header, state, &body.Transactions, body.Uncles, body.Withdrawals, nil, nil, nil, tracer)
+
+	// Assign the final state root to header.
+	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+
+	// Header seems complete, assemble into a block and return
+	return types.NewBlock(header, body, receipts, trie.NewStackTrie(nil)), receipts, nil
+}
+
+func (c *mockParlia) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, parent *types.Header) *big.Int {
+	return big.NewInt(1)
 }

@@ -22,11 +22,10 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
-	"os"
-	"path"
 	"sync"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/core/rawdb/ancienttest"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/require"
@@ -275,12 +274,164 @@ func TestFreezerReadonlyValidate(t *testing.T) {
 	}
 	require.NoError(t, f.Close())
 
-	// Re-openening as readonly should fail when validating
+	// Re-opening as readonly should fail when validating
 	// table lengths.
 	_, err = NewFreezer(dir, "", true, 0, 2049, tables)
 	if err == nil {
 		t.Fatal("readonly freezer should fail with differing table lengths")
 	}
+}
+
+func TestFreezerConcurrentReadonly(t *testing.T) {
+	t.Parallel()
+
+	tables := map[string]bool{"a": true}
+	dir := t.TempDir()
+
+	f, err := NewFreezer(dir, "", false, 0, 2049, tables)
+	if err != nil {
+		t.Fatal("can't open freezer", err)
+	}
+	var item = make([]byte, 1024)
+	batch := f.tables["a"].newBatch(0)
+	items := uint64(10)
+	for i := uint64(0); i < items; i++ {
+		require.NoError(t, batch.AppendRaw(i, item))
+	}
+	require.NoError(t, batch.commit())
+	if loaded := f.tables["a"].items.Load(); loaded != items {
+		t.Fatalf("unexpected number of items in table, want: %d, have: %d", items, loaded)
+	}
+	require.NoError(t, f.Close())
+
+	var (
+		wg   sync.WaitGroup
+		fs   = make([]*Freezer, 5)
+		errs = make([]error, 5)
+	)
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+
+			f, err := NewFreezer(dir, "", true, 0, 2049, tables)
+			if err == nil {
+				fs[i] = f
+			} else {
+				errs[i] = err
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	for i := range fs {
+		if err := errs[i]; err != nil {
+			t.Fatal("failed to open freezer", err)
+		}
+		require.NoError(t, fs[i].Close())
+	}
+}
+
+func TestFreezer_AdditionTables(t *testing.T) {
+	dir := t.TempDir()
+	// Open non-readonly freezer and fill individual tables
+	// with different amount of data.
+	f, err := NewFreezer(dir, "", false, 0, 2049, map[string]bool{"o1": true, "o2": true})
+	if err != nil {
+		t.Fatal("can't open freezer", err)
+	}
+
+	var item = make([]byte, 1024)
+	_, err = f.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+		if err := op.AppendRaw("o1", 0, item); err != nil {
+			return err
+		}
+		if err := op.AppendRaw("o1", 1, item); err != nil {
+			return err
+		}
+		if err := op.AppendRaw("o2", 0, item); err != nil {
+			return err
+		}
+		if err := op.AppendRaw("o2", 1, item); err != nil {
+			return err
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	// check read only
+	additionTables = []string{"a1"}
+	f, err = NewFreezer(dir, "", true, 0, 2049, map[string]bool{"o1": true, "o2": true, "a1": true})
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	f, err = NewFreezer(dir, "", false, 0, 2049, map[string]bool{"o1": true, "o2": true, "a1": true})
+	require.NoError(t, err)
+	frozen, _ := f.Ancients()
+	require.NoError(t, f.ResetTable("a1", frozen, true))
+	_, err = f.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+		if err := appendSameItem(op, []string{"o1", "o2", "a1"}, 2, item); err != nil {
+			return err
+		}
+		if err := appendSameItem(op, []string{"o1", "o2", "a1"}, 3, item); err != nil {
+			return err
+		}
+		if err := appendSameItem(op, []string{"o1", "o2", "a1"}, 4, item); err != nil {
+			return err
+		}
+		return nil
+	})
+	require.NoError(t, err)
+
+	// check additional table boundary
+	_, err = f.Ancient("a1", 1)
+	require.Error(t, err)
+	actual, err := f.Ancient("a1", 2)
+	require.NoError(t, err)
+	require.Equal(t, item, actual)
+
+	// truncate additional table, and check boundary
+	_, err = f.TruncateTableTail("o1", 3)
+	require.Error(t, err)
+	_, err = f.TruncateTableTail("a1", 3)
+	require.NoError(t, err)
+	_, err = f.Ancient("a1", 2)
+	require.Error(t, err)
+	actual, err = f.Ancient("a1", 3)
+	require.NoError(t, err)
+	require.Equal(t, item, actual)
+
+	// check additional table head
+	ancients, err := f.TableAncients("a1")
+	require.NoError(t, err)
+	require.Equal(t, uint64(5), ancients)
+	require.NoError(t, f.Close())
+
+	// reopen and read
+	f, err = NewFreezer(dir, "", true, 0, 2049, map[string]bool{"o1": true, "o2": true, "a1": true})
+	require.NoError(t, err)
+
+	// recheck additional table boundary
+	_, err = f.Ancient("a1", 2)
+	require.Error(t, err)
+	actual, err = f.Ancient("a1", 3)
+	require.NoError(t, err)
+	require.Equal(t, item, actual)
+	ancients, err = f.TableAncients("a1")
+	require.NoError(t, err)
+	require.Equal(t, uint64(5), ancients)
+	require.NoError(t, f.Close())
+}
+
+func appendSameItem(op ethdb.AncientWriteOp, tables []string, i uint64, item []byte) error {
+	for _, t := range tables {
+		if err := op.AppendRaw(t, i, item); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func newFreezerForTesting(t *testing.T, tables map[string]bool) (*Freezer, string) {
@@ -327,87 +478,6 @@ func checkAncientCount(t *testing.T, f *Freezer, kind string, n uint64) {
 	}
 }
 
-func TestRenameWindows(t *testing.T) {
-	var (
-		fname   = "file.bin"
-		fname2  = "file2.bin"
-		data    = []byte{1, 2, 3, 4}
-		data2   = []byte{2, 3, 4, 5}
-		data3   = []byte{3, 5, 6, 7}
-		dataLen = 4
-	)
-
-	// Create 2 temp dirs
-	dir1 := t.TempDir()
-	dir2 := t.TempDir()
-
-	// Create file in dir1 and fill with data
-	f, err := os.Create(path.Join(dir1, fname))
-	if err != nil {
-		t.Fatal(err)
-	}
-	f2, err := os.Create(path.Join(dir1, fname2))
-	if err != nil {
-		t.Fatal(err)
-	}
-	f3, err := os.Create(path.Join(dir2, fname2))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.Write(data); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f2.Write(data2); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f3.Write(data3); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := f2.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := f3.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(f.Name(), path.Join(dir2, fname)); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(f2.Name(), path.Join(dir2, fname2)); err != nil {
-		t.Fatal(err)
-	}
-
-	// Check file contents
-	f, err = os.Open(path.Join(dir2, fname))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	defer os.Remove(f.Name())
-	buf := make([]byte, dataLen)
-	if _, err := f.Read(buf); err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(buf, data) {
-		t.Errorf("unexpected file contents. Got %v\n", buf)
-	}
-
-	f, err = os.Open(path.Join(dir2, fname2))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	defer os.Remove(f.Name())
-	if _, err := f.Read(buf); err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(buf, data2) {
-		t.Errorf("unexpected file contents. Got %v\n", buf)
-	}
-}
-
 func TestFreezerCloseSync(t *testing.T) {
 	t.Parallel()
 	f, _ := newFreezerForTesting(t, map[string]bool{"a": true, "b": true})
@@ -428,4 +498,23 @@ func TestFreezerCloseSync(t *testing.T) {
 	} else if have, want := err.Error(), "[closed closed]"; have != want {
 		t.Fatalf("want %v, have %v", have, want)
 	}
+}
+
+func TestFreezerSuite(t *testing.T) {
+	ancienttest.TestAncientSuite(t, func(kinds []string) ethdb.AncientStore {
+		tables := make(map[string]bool)
+		for _, kind := range kinds {
+			tables[kind] = true
+		}
+		f, _ := newFreezerForTesting(t, tables)
+		return f
+	})
+	ancienttest.TestResettableAncientSuite(t, func(kinds []string) ethdb.ResettableAncientStore {
+		tables := make(map[string]bool)
+		for _, kind := range kinds {
+			tables[kind] = true
+		}
+		f, _ := newResettableFreezer(t.TempDir(), "", false, 0, 2048, tables)
+		return f
+	})
 }

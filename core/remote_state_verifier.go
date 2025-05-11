@@ -110,7 +110,7 @@ func (vm *remoteVerifyManager) mainLoop() {
 	for {
 		select {
 		case h := <-vm.chainBlockCh:
-			vm.NewBlockVerifyTask(h.Block.Header())
+			vm.NewBlockVerifyTask(h.Header)
 		case hash := <-vm.verifyCh:
 			vm.cacheBlockVerified(hash)
 			vm.taskLock.Lock()
@@ -351,8 +351,9 @@ func (vt *verifyTask) sendVerifyRequest(n int) {
 	}
 
 	if n < len(validPeers) && n > 0 {
-		rand.Seed(time.Now().UnixNano())
-		rand.Shuffle(len(validPeers), func(i, j int) { validPeers[i], validPeers[j] = validPeers[j], validPeers[i] })
+		// rand.Seed(time.Now().UnixNano())
+		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		r.Shuffle(len(validPeers), func(i, j int) { validPeers[i], validPeers[j] = validPeers[j], validPeers[i] })
 	} else {
 		n = len(validPeers)
 	}
@@ -443,7 +444,11 @@ func (mode VerifyMode) NeedRemoteVerify() bool {
 	return mode == FullVerify || mode == InsecureVerify
 }
 
-func newVerifyMsgTypeGauge(msgType uint16, peerId string) metrics.Gauge {
+func (mode VerifyMode) NoTries() bool {
+	return mode != LocalVerify
+}
+
+func newVerifyMsgTypeGauge(msgType uint16, peerId string) *metrics.Gauge {
 	m := fmt.Sprintf("verifymanager/message/%d/peer/%s", msgType, peerId)
 	return metrics.GetOrRegisterGauge(m, nil)
 }

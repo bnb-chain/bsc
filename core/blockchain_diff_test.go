@@ -157,7 +157,7 @@ func newTestBackend(blocks int, light bool) *testBackend {
 	return newTestBackendWithGenerator(blocks, light)
 }
 
-// newTestBackend creates a chain with a number of explicitly defined blocks and
+// newTestBackendWithGenerator creates a chain with a number of explicitly defined blocks and
 // wraps it into a mock backend.
 func newTestBackendWithGenerator(blocks int, lightProcess bool) *testBackend {
 	signer := types.HomesteadSigner{}
@@ -237,7 +237,7 @@ func TestFreezeDiffLayer(t *testing.T) {
 		// Wait for the buffer to be zero.
 	}
 	// Minus one empty block.
-	if fullBackend.chain.diffQueue.Size() > blockNum-1 && fullBackend.chain.diffQueue.Size() < blockNum-2 {
+	if fullBackend.chain.diffQueue.Size() != blockNum-1 {
 		t.Errorf("size of diff queue is wrong, expected: %d, get: %d", blockNum-1, fullBackend.chain.diffQueue.Size())
 	}
 
@@ -268,7 +268,7 @@ func newTwoForkedBlockchains(len1, len2 int) (chain1 *BlockChain, chain2 *BlockC
 		BaseFee: big.NewInt(params.InitialBaseFee),
 	}
 	engine1 := ethash.NewFaker()
-	chain1, _ = NewBlockChain(db1, nil, gspec, nil, engine1, vm.Config{}, nil, nil, EnablePersistDiff(860000), EnableBlockValidator(params.TestChainConfig, engine1, 0, nil))
+	chain1, _ = NewBlockChain(db1, nil, gspec, nil, engine1, vm.Config{}, nil, nil, EnablePersistDiff(860000), EnableBlockValidator(params.TestChainConfig, 0, nil))
 	generator1 := func(i int, block *BlockGen) {
 		// The chain maker doesn't have access to a chain, so the difficulty will be
 		// lets unset (nil). Set it here to the correct value.
@@ -324,8 +324,7 @@ func newTwoForkedBlockchains(len1, len2 int) (chain1 *BlockChain, chain2 *BlockC
 		Alloc:   GenesisAlloc{testAddr: {Balance: big.NewInt(100000000000000000)}},
 		BaseFee: big.NewInt(params.InitialBaseFee),
 	}
-	engine2 := ethash.NewFaker()
-	chain2, _ = NewBlockChain(db2, nil, gspec2, nil, ethash.NewFaker(), vm.Config{}, nil, nil, EnablePersistDiff(860000), EnableBlockValidator(params.TestChainConfig, engine2, 0, nil))
+	chain2, _ = NewBlockChain(db2, nil, gspec2, nil, ethash.NewFaker(), vm.Config{}, nil, nil, EnablePersistDiff(860000), EnableBlockValidator(params.TestChainConfig, 0, nil))
 	generator2 := func(i int, block *BlockGen) {
 		// The chain maker doesn't have access to a chain, so the difficulty will be
 		// lets unset (nil). Set it here to the correct value.

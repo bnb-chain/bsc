@@ -104,13 +104,13 @@ func makeTestBackendWithRemoteValidator(blocks int, mode VerifyMode, failed *ver
 	peers := []VerifyPeer{peer}
 
 	verifier, err := NewBlockChain(db, nil, gspec, nil, engine, vm.Config{},
-		nil, nil, EnablePersistDiff(100000), EnableBlockValidator(params.TestChainConfig, engine2, LocalVerify, nil))
+		nil, nil, EnablePersistDiff(100000), EnableBlockValidator(params.TestChainConfig, LocalVerify, nil))
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
 	fastnode, err := NewBlockChain(db2, nil, gspec2, nil, engine2, vm.Config{},
-		nil, nil, EnableBlockValidator(params.TestChainConfig, engine2, mode, newMockRemoteVerifyPeer(peers)))
+		nil, nil, EnableBlockValidator(params.TestChainConfig, mode, newMockRemoteVerifyPeer(peers)))
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -188,17 +188,17 @@ func TestFastNode(t *testing.T) {
 	// test full mode and succeed
 	_, fastnode, blocks, err := makeTestBackendWithRemoteValidator(2048, FullVerify, nil)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("err: %v", err.Error())
 	}
 	_, err = fastnode.chain.InsertChain(blocks)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("err: %v", err.Error())
 	}
 	// test full mode and failed
 	failed := &verifFailedStatus{status: types.StatusDiffHashMismatch, blockNumber: 204}
 	_, fastnode, blocks, err = makeTestBackendWithRemoteValidator(2048, FullVerify, failed)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("err: %v", err.Error())
 	}
 	_, err = fastnode.chain.InsertChain(blocks)
 	if err == nil || fastnode.chain.CurrentBlock().Number.Uint64() != failed.blockNumber+10 {
@@ -207,17 +207,17 @@ func TestFastNode(t *testing.T) {
 	// test insecure mode and succeed
 	_, fastnode, blocks, err = makeTestBackendWithRemoteValidator(2048, InsecureVerify, nil)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("err: %v", err.Error())
 	}
 	_, err = fastnode.chain.InsertChain(blocks)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("err: %v", err.Error())
 	}
 	// test insecure mode and failed
 	failed = &verifFailedStatus{status: types.StatusImpossibleFork, blockNumber: 204}
 	_, fastnode, blocks, err = makeTestBackendWithRemoteValidator(2048, FullVerify, failed)
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("err: %v", err.Error())
 	}
 	_, err = fastnode.chain.InsertChain(blocks)
 	if err == nil || fastnode.chain.CurrentBlock().Number.Uint64() != failed.blockNumber+10 {

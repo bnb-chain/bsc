@@ -39,9 +39,7 @@ web3.eth.sendTransaction({
 web3.eth.sendTransaction({
    from: "consensus address of your validator",
    to: "0x0000000000000000000000000000000000001000",
+   gas: "1000000",
    data: "0x04c4fec6"
 })
 ```
-
-
-

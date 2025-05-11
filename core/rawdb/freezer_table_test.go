@@ -265,18 +265,6 @@ func TestSnappyDetection(t *testing.T) {
 		f.Close()
 	}
 
-	// Open without snappy
-	{
-		f, err := newTable(os.TempDir(), fname, rm, wm, sg, 50, false, false)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err = f.Retrieve(0); err == nil {
-			f.Close()
-			t.Fatalf("expected empty table")
-		}
-	}
-
 	// Open with snappy
 	{
 		f, err := newTable(os.TempDir(), fname, rm, wm, sg, 50, true, false)
@@ -287,6 +275,18 @@ func TestSnappyDetection(t *testing.T) {
 		if _, err = f.Retrieve(0xfe); err != nil {
 			f.Close()
 			t.Fatalf("expected no error, got %v", err)
+		}
+	}
+
+	// Open without snappy
+	{
+		f, err := newTable(os.TempDir(), fname, rm, wm, sg, 50, false, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = f.Retrieve(0); err == nil {
+			f.Close()
+			t.Fatalf("expected empty table")
 		}
 	}
 }
@@ -661,6 +661,13 @@ func TestFreezerOffset(t *testing.T) {
 	}
 }
 
+func assertTableSize(t *testing.T, f *freezerTable, size int) {
+	t.Helper()
+	if got, err := f.size(); got != uint64(size) {
+		t.Fatalf("expected size of %d bytes, got %d, err: %v", size, got, err)
+	}
+}
+
 func TestTruncateTail(t *testing.T) {
 	t.Parallel()
 	rm, wm, sg := metrics.NewMeter(), metrics.NewMeter(), metrics.NewGauge()
@@ -695,6 +702,9 @@ func TestTruncateTail(t *testing.T) {
 		5: getChunk(20, 0xaa),
 		6: getChunk(20, 0x11),
 	})
+	// maxFileSize*fileCount + headBytes + indexFileSize - hiddenBytes
+	expected := 20*7 + 48 - 0
+	assertTableSize(t, f, expected)
 
 	// truncate single element( item 0 ), deletion is only supported at file level
 	f.truncateTail(1)
@@ -710,6 +720,8 @@ func TestTruncateTail(t *testing.T) {
 		5: getChunk(20, 0xaa),
 		6: getChunk(20, 0x11),
 	})
+	expected = 20*7 + 48 - 20
+	assertTableSize(t, f, expected)
 
 	// Reopen the table, the deletion information should be persisted as well
 	f.Close()
@@ -742,6 +754,8 @@ func TestTruncateTail(t *testing.T) {
 		5: getChunk(20, 0xaa),
 		6: getChunk(20, 0x11),
 	})
+	expected = 20*5 + 36 - 0
+	assertTableSize(t, f, expected)
 
 	// Reopen the table, the above testing should still pass
 	f.Close()
@@ -763,6 +777,23 @@ func TestTruncateTail(t *testing.T) {
 		6: getChunk(20, 0x11),
 	})
 
+	// truncate 3 more elements( item 2, 3, 4), the file 1 should be deleted
+	// file 2 should only contain item 5
+	f.truncateTail(5)
+	checkRetrieveError(t, f, map[uint64]error{
+		0: errOutOfBounds,
+		1: errOutOfBounds,
+		2: errOutOfBounds,
+		3: errOutOfBounds,
+		4: errOutOfBounds,
+	})
+	checkRetrieve(t, f, map[uint64][]byte{
+		5: getChunk(20, 0xaa),
+		6: getChunk(20, 0x11),
+	})
+	expected = 20*3 + 24 - 20
+	assertTableSize(t, f, expected)
+
 	// truncate all, the entire freezer should be deleted
 	f.truncateTail(7)
 	checkRetrieveError(t, f, map[uint64]error{
@@ -774,6 +805,8 @@ func TestTruncateTail(t *testing.T) {
 		5: errOutOfBounds,
 		6: errOutOfBounds,
 	})
+	expected = 12
+	assertTableSize(t, f, expected)
 }
 
 func TestTruncateHead(t *testing.T) {
@@ -864,7 +897,7 @@ func getChunk(size int, b int) []byte {
 }
 
 // TODO (?)
-// - test that if we remove several head-files, aswell as data last data-file,
+// - test that if we remove several head-files, as well as data last data-file,
 //   the index is truncated accordingly
 // Right now, the freezer would fail on these conditions:
 // 1. have data files d0, d1, d2, d3
@@ -1335,5 +1368,322 @@ func TestRandom(t *testing.T) {
 			t.Fatalf("random test iteration %d failed: %s", cerr.Count, spew.Sdump(cerr.In))
 		}
 		t.Fatal(err)
+	}
+}
+
+func TestResetItems(t *testing.T) {
+	t.Parallel()
+	rm, wm, sg := metrics.NewMeter(), metrics.NewMeter(), metrics.NewGauge()
+	fname := fmt.Sprintf("truncate-tail-%d", rand.Uint64())
+
+	// Fill table
+	f, err := newTable(os.TempDir(), fname, rm, wm, sg, 40, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write 7 x 20 bytes, splitting out into four files
+	batch := f.newBatch(0)
+	require.NoError(t, batch.AppendRaw(0, getChunk(20, 0x00)))
+	require.NoError(t, batch.AppendRaw(1, getChunk(20, 0x11)))
+	require.NoError(t, batch.AppendRaw(2, getChunk(20, 0x22)))
+	require.NoError(t, batch.AppendRaw(3, getChunk(20, 0x33)))
+	require.NoError(t, batch.AppendRaw(4, getChunk(20, 0x44)))
+	require.NoError(t, batch.AppendRaw(5, getChunk(20, 0x55)))
+	require.NoError(t, batch.AppendRaw(6, getChunk(20, 0x66)))
+	require.NoError(t, batch.commit())
+
+	// nothing to do, all the items should still be there.
+	f, err = f.resetItems(0)
+	require.NoError(t, err)
+	f, err = f.resetItems(8)
+	require.NoError(t, err)
+	f, err = f.resetItems(7)
+	require.NoError(t, err)
+	fmt.Println(f.dumpIndexString(0, 1000))
+	checkRetrieveError(t, f, map[uint64]error{
+		0: errOutOfBounds,
+		6: errOutOfBounds,
+	})
+
+	// append
+	batch = f.newBatch(0)
+	require.Error(t, batch.AppendRaw(0, getChunk(20, 0xa0)))
+	require.NoError(t, batch.AppendRaw(7, getChunk(20, 0x77)))
+	require.NoError(t, batch.AppendRaw(8, getChunk(20, 0x88)))
+	require.NoError(t, batch.AppendRaw(9, getChunk(20, 0x99)))
+	require.NoError(t, batch.commit())
+	fmt.Println(f.dumpIndexString(0, 1000))
+	checkRetrieve(t, f, map[uint64][]byte{
+		7: getChunk(20, 0x77),
+		9: getChunk(20, 0x99),
+	})
+
+	// Reopen the table, the deletion information should be persisted as well
+	f.Close()
+	f, err = newTable(os.TempDir(), fname, rm, wm, sg, 40, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(f.dumpIndexString(0, 1000))
+	checkRetrieveError(t, f, map[uint64]error{
+		0:  errOutOfBounds,
+		6:  errOutOfBounds,
+		10: errOutOfBounds,
+	})
+	checkRetrieve(t, f, map[uint64][]byte{
+		7: getChunk(20, 0x77),
+		9: getChunk(20, 0x99),
+	})
+
+	// truncate all, the entire freezer should be deleted
+	f.truncateTail(10)
+	checkRetrieveError(t, f, map[uint64]error{
+		0: errOutOfBounds,
+		9: errOutOfBounds,
+	})
+}
+
+func TestIndexValidation(t *testing.T) {
+	const dataSize = 10
+
+	garbage := indexEntry{
+		filenum: 100,
+		offset:  200,
+	}
+	var cases = []struct {
+		write         int
+		offset        int64
+		data          []byte
+		expItems      int
+		hasCorruption bool
+	}{
+		// extend index file with zero bytes at the end
+		{
+			write:    5,
+			offset:   (5 + 1) * indexEntrySize,
+			data:     make([]byte, indexEntrySize),
+			expItems: 5,
+		},
+		// extend index file with unaligned zero bytes at the end
+		{
+			write:    5,
+			offset:   (5 + 1) * indexEntrySize,
+			data:     make([]byte, indexEntrySize*1.5),
+			expItems: 5,
+		},
+		// write garbage in the first non-head item
+		{
+			write:    5,
+			offset:   indexEntrySize,
+			data:     garbage.append(nil),
+			expItems: 0,
+		},
+		// write garbage in the middle
+		{
+			write:    5,
+			offset:   3 * indexEntrySize,
+			data:     garbage.append(nil),
+			expItems: 2,
+		},
+		// fulfill the first data file (but not yet advanced), the zero bytes
+		// at tail should be truncated.
+		{
+			write:    10,
+			offset:   11 * indexEntrySize,
+			data:     garbage.append(nil),
+			expItems: 10,
+		},
+	}
+	for _, c := range cases {
+		fn := fmt.Sprintf("t-%d", rand.Uint64())
+		f, err := newTable(os.TempDir(), fn, metrics.NewMeter(), metrics.NewMeter(), metrics.NewGauge(), 10*dataSize, true, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeChunks(t, f, c.write, dataSize)
+
+		// write corrupted data
+		f.index.WriteAt(c.data, c.offset)
+		f.Close()
+
+		// reopen the table, corruption should be truncated
+		f, err = newTable(os.TempDir(), fn, metrics.NewMeter(), metrics.NewMeter(), metrics.NewGauge(), 100, true, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < c.expItems; i++ {
+			exp := getChunk(10, i)
+			got, err := f.Retrieve(uint64(i))
+			if err != nil && !c.hasCorruption {
+				t.Fatalf("Failed to read from table, %v", err)
+			}
+			if !bytes.Equal(exp, got) && !c.hasCorruption {
+				t.Fatalf("Unexpected item data, want: %v, got: %v", exp, got)
+			}
+		}
+		if f.items.Load() != uint64(c.expItems) {
+			t.Fatalf("Unexpected item number, want: %d, got: %d", c.expItems, f.items.Load())
+		}
+	}
+}
+
+// TestFlushOffsetTracking tests the flush offset tracking. The offset moving
+// in the test is mostly triggered by the advanceHead (new data file) and
+// heda/tail truncation.
+func TestFlushOffsetTracking(t *testing.T) {
+	const (
+		items    = 35
+		dataSize = 10
+		fileSize = 100
+	)
+	fn := fmt.Sprintf("t-%d", rand.Uint64())
+	f, err := newTable(os.TempDir(), fn, metrics.NewMeter(), metrics.NewMeter(), metrics.NewGauge(), fileSize, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Data files:
+	//   F1(10 items) -> F2(10 items) -> F3(10 items) -> F4(5 items, non-full)
+	writeChunks(t, f, items, dataSize)
+
+	var cases = []struct {
+		op     func(*freezerTable)
+		offset int64
+	}{
+		{
+			// Data files:
+			//   F1(10 items) -> F2(10 items) -> F3(10 items) -> F4(5 items, non-full)
+			func(f *freezerTable) {}, // no-op
+			31 * indexEntrySize,
+		},
+		{
+			// Write more items to fulfill the newest data file, but the file advance
+			// is not triggered.
+
+			// Data files:
+			//   F1(10 items) -> F2(10 items) -> F3(10 items) -> F4(10 items, full)
+			func(f *freezerTable) {
+				batch := f.newBatch(0)
+				for i := 0; i < 5; i++ {
+					batch.AppendRaw(items+uint64(i), make([]byte, dataSize))
+				}
+				batch.commit()
+			},
+			31 * indexEntrySize,
+		},
+		{
+			// Write more items to trigger the data file advance
+
+			// Data files:
+			//   F1(10 items) -> F2(10 items) -> F3(10 items) -> F4(10 items) -> F5(1 item)
+			func(f *freezerTable) {
+				batch := f.newBatch(0)
+				batch.AppendRaw(items+5, make([]byte, dataSize))
+				batch.commit()
+			},
+			41 * indexEntrySize,
+		},
+		{
+			// Head truncate
+
+			// Data files:
+			//   F1(10 items) -> F2(10 items) -> F3(10 items) -> F4(10 items) -> F5(0 item)
+			func(f *freezerTable) {
+				f.truncateHead(items + 5)
+			},
+			41 * indexEntrySize,
+		},
+		{
+			// Tail truncate
+
+			// Data files:
+			//   F1(1 hidden, 9 visible) -> F2(10 items) -> F3(10 items) -> F4(10 items) -> F5(0 item)
+			func(f *freezerTable) {
+				f.truncateTail(1)
+			},
+			41 * indexEntrySize,
+		},
+		{
+			// Tail truncate
+
+			// Data files:
+			//   F2(10 items) -> F3(10 items) -> F4(10 items) -> F5(0 item)
+			func(f *freezerTable) {
+				f.truncateTail(10)
+			},
+			31 * indexEntrySize,
+		},
+		{
+			// Tail truncate
+
+			// Data files:
+			//   F4(10 items) -> F5(0 item)
+			func(f *freezerTable) {
+				f.truncateTail(30)
+			},
+			11 * indexEntrySize,
+		},
+		{
+			// Head truncate
+
+			// Data files:
+			//   F4(9 items)
+			func(f *freezerTable) {
+				f.truncateHead(items + 4)
+			},
+			10 * indexEntrySize,
+		},
+	}
+	for _, c := range cases {
+		c.op(f)
+		if f.metadata.flushOffset != c.offset {
+			t.Fatalf("Unexpected index flush offset, want: %d, got: %d", c.offset, f.metadata.flushOffset)
+		}
+	}
+}
+
+func TestTailTruncationCrash(t *testing.T) {
+	const (
+		items    = 35
+		dataSize = 10
+		fileSize = 100
+	)
+	fn := fmt.Sprintf("t-%d", rand.Uint64())
+	f, err := newTable(os.TempDir(), fn, metrics.NewMeter(), metrics.NewMeter(), metrics.NewGauge(), fileSize, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Data files:
+	//   F1(10 items) -> F2(10 items) -> F3(10 items) -> F4(5 items, non-full)
+	writeChunks(t, f, items, dataSize)
+
+	// The latest 5 items are not persisted yet
+	if f.metadata.flushOffset != 31*indexEntrySize {
+		t.Fatalf("Unexpected index flush offset, want: %d, got: %d", 31*indexEntrySize, f.metadata.flushOffset)
+	}
+
+	f.truncateTail(5)
+	if f.metadata.flushOffset != 31*indexEntrySize {
+		t.Fatalf("Unexpected index flush offset, want: %d, got: %d", 31*indexEntrySize, f.metadata.flushOffset)
+	}
+
+	// Truncate the first 10 items which results in the first data file
+	// being removed. The offset should be moved to 26*indexEntrySize.
+	f.truncateTail(10)
+	if f.metadata.flushOffset != 26*indexEntrySize {
+		t.Fatalf("Unexpected index flush offset, want: %d, got: %d", 26*indexEntrySize, f.metadata.flushOffset)
+	}
+
+	// Write the offset back to 31*indexEntrySize to simulate a crash
+	// which occurs after truncating the index file without updating
+	// the offset
+	f.metadata.setFlushOffset(31*indexEntrySize, true)
+
+	f, err = newTable(os.TempDir(), fn, metrics.NewMeter(), metrics.NewMeter(), metrics.NewGauge(), fileSize, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.metadata.flushOffset != 26*indexEntrySize {
+		t.Fatalf("Unexpected index flush offset, want: %d, got: %d", 26*indexEntrySize, f.metadata.flushOffset)
 	}
 }

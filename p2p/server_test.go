@@ -223,8 +223,8 @@ func TestServerStopTimeout(t *testing.T) {
 
 	select {
 	case <-stopChan:
-	case <-time.After(10 * time.Second):
-		t.Error("server should be shutdown in 10 seconds")
+	case <-time.After(defaultDialTimeout + 1*time.Second):
+		t.Error("server should be shutdown in defaultDialTimeout + 1 seconds")
 	}
 }
 

@@ -21,52 +21,85 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
+	"slices"
 
-	"github.com/ethereum/go-ethereum/core/vm"
-	"github.com/ethereum/go-ethereum/eth/tracers/logger"
-	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/tests"
 	"github.com/urfave/cli/v2"
+	"golang.org/x/exp/maps"
 )
 
 var blockTestCommand = &cli.Command{
 	Action:    blockTestCmd,
 	Name:      "blocktest",
-	Usage:     "executes the given blockchain tests",
-	ArgsUsage: "<file>",
+	Usage:     "Executes the given blockchain tests",
+	ArgsUsage: "<path>",
+	Flags: slices.Concat([]cli.Flag{
+		DumpFlag,
+		HumanReadableFlag,
+		RunFlag,
+		WitnessCrossCheckFlag,
+	}, traceFlags),
 }
 
 func blockTestCmd(ctx *cli.Context) error {
-	if len(ctx.Args().First()) == 0 {
-		return errors.New("path-to-test argument required")
+	path := ctx.Args().First()
+	if len(path) == 0 {
+		return errors.New("path argument required")
 	}
-	// Configure the go-ethereum logger
-	glogger := log.NewGlogHandler(log.StreamHandler(os.Stderr, log.TerminalFormat(false)))
-	glogger.Verbosity(log.Lvl(ctx.Int(VerbosityFlag.Name)))
-	log.Root().SetHandler(glogger)
-	var tracer vm.EVMLogger
-	// Configure the EVM logger
-	if ctx.Bool(MachineFlag.Name) {
-		tracer = logger.NewJSONLogger(&logger.Config{
-			EnableMemory:     !ctx.Bool(DisableMemoryFlag.Name),
-			DisableStack:     ctx.Bool(DisableStackFlag.Name),
-			DisableStorage:   ctx.Bool(DisableStorageFlag.Name),
-			EnableReturnData: !ctx.Bool(DisableReturnDataFlag.Name),
-		}, os.Stderr)
-	}
-	// Load the test content from the input file
-	src, err := os.ReadFile(ctx.Args().First())
-	if err != nil {
-		return err
-	}
-	var tests map[string]tests.BlockTest
-	if err = json.Unmarshal(src, &tests); err != nil {
-		return err
-	}
-	for i, test := range tests {
-		if err := test.Run(false, tracer); err != nil {
-			return fmt.Errorf("test %v: %w", i, err)
+	var (
+		collected = collectFiles(path)
+		results   []testResult
+	)
+	for _, fname := range collected {
+		r, err := runBlockTest(ctx, fname)
+		if err != nil {
+			return err
 		}
+		results = append(results, r...)
 	}
+	report(ctx, results)
 	return nil
+}
+
+func runBlockTest(ctx *cli.Context, fname string) ([]testResult, error) {
+	src, err := os.ReadFile(fname)
+	if err != nil {
+		return nil, err
+	}
+	var tests map[string]*tests.BlockTest
+	if err = json.Unmarshal(src, &tests); err != nil {
+		return nil, err
+	}
+	re, err := regexp.Compile(ctx.String(RunFlag.Name))
+	if err != nil {
+		return nil, fmt.Errorf("invalid regex -%s: %v", RunFlag.Name, err)
+	}
+	tracer := tracerFromFlags(ctx)
+
+	// Pull out keys to sort and ensure tests are run in order.
+	keys := maps.Keys(tests)
+	slices.Sort(keys)
+
+	// Run all the tests.
+	var results []testResult
+	for _, name := range keys {
+		if !re.MatchString(name) {
+			continue
+		}
+		result := &testResult{Name: name, Pass: true}
+		if err := tests[name].Run(false, rawdb.HashScheme, ctx.Bool(WitnessCrossCheckFlag.Name), tracer, func(res error, chain *core.BlockChain) {
+			if ctx.Bool(DumpFlag.Name) {
+				if s, _ := chain.State(); s != nil {
+					result.State = dump(s)
+				}
+			}
+		}); err != nil {
+			result.Pass, result.Error = false, err.Error()
+		}
+		results = append(results, *result)
+	}
+	return results, nil
 }

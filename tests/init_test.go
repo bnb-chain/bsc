@@ -34,14 +34,17 @@ import (
 )
 
 var (
-	baseDir            = filepath.Join(".", "testdata")
-	blockTestDir       = filepath.Join(baseDir, "BlockchainTests")
-	stateTestDir       = filepath.Join(baseDir, "GeneralStateTests")
-	legacyStateTestDir = filepath.Join(baseDir, "LegacyTests", "Constantinople", "GeneralStateTests")
-	transactionTestDir = filepath.Join(baseDir, "TransactionTests")
-	rlpTestDir         = filepath.Join(baseDir, "RLPTests")
-	difficultyTestDir  = filepath.Join(baseDir, "BasicTests")
-	benchmarksDir      = filepath.Join(".", "evm-benchmarks", "benchmarks")
+	baseDir                         = filepath.Join(".", "testdata")
+	blockTestDir                    = filepath.Join(baseDir, "BlockchainTests")
+	stateTestDir                    = filepath.Join(baseDir, "GeneralStateTests")
+	legacyStateTestDir              = filepath.Join(baseDir, "LegacyTests", "Constantinople", "GeneralStateTests")
+	transactionTestDir              = filepath.Join(baseDir, "TransactionTests")
+	rlpTestDir                      = filepath.Join(baseDir, "RLPTests")
+	difficultyTestDir               = filepath.Join(baseDir, "BasicTests")
+	executionSpecBlockchainTestDir  = filepath.Join(".", "spec-tests", "fixtures", "blockchain_tests")
+	executionSpecStateTestDir       = filepath.Join(".", "spec-tests", "fixtures", "state_tests")
+	executionSpecTransactionTestDir = filepath.Join(".", "spec-tests", "fixtures", "transaction_tests")
+	benchmarksDir                   = filepath.Join(".", "evm-benchmarks", "benchmarks")
 )
 
 func readJSON(reader io.Reader, value interface{}) error {
@@ -93,7 +96,7 @@ type testMatcher struct {
 	failpat        []testFailure
 	skiploadpat    []*regexp.Regexp
 	slowpat        []*regexp.Regexp
-	runonlylistpat *regexp.Regexp
+	runonlylistpat []*regexp.Regexp
 }
 
 type testConfig struct {
@@ -106,7 +109,7 @@ type testFailure struct {
 	reason string
 }
 
-// skipShortMode skips tests matching when the -short flag is used.
+// slow adds expected slow tests matching the pattern.
 func (tm *testMatcher) slow(pattern string) {
 	tm.slowpat = append(tm.slowpat, regexp.MustCompile(pattern))
 }
@@ -127,7 +130,7 @@ func (tm *testMatcher) fails(pattern string, reason string) {
 }
 
 func (tm *testMatcher) runonly(pattern string) {
-	tm.runonlylistpat = regexp.MustCompile(pattern)
+	tm.runonlylistpat = append(tm.runonlylistpat, regexp.MustCompile(pattern))
 }
 
 // config defines chain config for tests matching the pattern.
@@ -220,7 +223,14 @@ func (tm *testMatcher) runTestFile(t *testing.T, path, name string, runTest inte
 		t.Skip(r)
 	}
 	if tm.runonlylistpat != nil {
-		if !tm.runonlylistpat.MatchString(name) {
+		match := false
+		for _, pat := range tm.runonlylistpat {
+			if pat.MatchString(name) {
+				match = true
+				break
+			}
+		}
+		if !match {
 			t.Skip("Skipped by runonly")
 		}
 	}

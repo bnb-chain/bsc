@@ -22,11 +22,14 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/prque"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 )
 
 // ErrNotRequested is returned by the trie sync when it's requested to process a
@@ -41,6 +44,28 @@ var ErrAlreadyProcessed = errors.New("already processed")
 // role of this value is to limit the number of trie nodes that get expanded in
 // memory if the node was configured with a significant number of peers.
 const maxFetchesPerDepth = 16384
+
+var (
+	// deletionGauge is the metric to track how many trie node deletions
+	// are performed in total during the sync process.
+	deletionGauge = metrics.NewRegisteredGauge("trie/sync/delete", nil)
+
+	// lookupGauge is the metric to track how many trie node lookups are
+	// performed to determine if node needs to be deleted.
+	lookupGauge = metrics.NewRegisteredGauge("trie/sync/lookup", nil)
+
+	// accountNodeSyncedGauge is the metric to track how many account trie
+	// node are written during the sync.
+	accountNodeSyncedGauge = metrics.NewRegisteredGauge("trie/sync/nodes/account", nil)
+
+	// storageNodeSyncedGauge is the metric to track how many account trie
+	// node are written during the sync.
+	storageNodeSyncedGauge = metrics.NewRegisteredGauge("trie/sync/nodes/storage", nil)
+
+	// codeSyncedGauge is the metric to track how many contract codes are
+	// written during the sync.
+	codeSyncedGauge = metrics.NewRegisteredGauge("trie/sync/codes", nil)
+)
 
 // SyncPath is a path tuple identifying a particular trie node either in a single
 // trie (account) or a layered trie (account -> storage).
@@ -122,28 +147,62 @@ type CodeSyncResult struct {
 	Data []byte      // Data content of the retrieved bytecode
 }
 
+// nodeOp represents an operation upon the trie node. It can either represent a
+// deletion to the specific node or a node write for persisting retrieved node.
+type nodeOp struct {
+	del   bool        // flag if op stands for a delete operation
+	owner common.Hash // identifier of the trie (empty for account trie)
+	path  []byte      // path from the root to the specified node.
+	blob  []byte      // the content of the node (nil for deletion)
+	hash  common.Hash // hash of the node content (empty for node deletion)
+}
+
+// valid checks whether the node operation is valid.
+func (op *nodeOp) valid() bool {
+	if op.del && len(op.blob) != 0 {
+		return false
+	}
+	if !op.del && len(op.blob) == 0 {
+		return false
+	}
+	return true
+}
+
+// string returns the node operation in string representation.
+func (op *nodeOp) string() string {
+	var node string
+	if op.owner == (common.Hash{}) {
+		node = fmt.Sprintf("node: (%v)", op.path)
+	} else {
+		node = fmt.Sprintf("node: (%x-%v)", op.owner, op.path)
+	}
+	var blobHex string
+	if len(op.blob) == 0 {
+		blobHex = "nil"
+	} else {
+		blobHex = hexutil.Encode(op.blob)
+	}
+	if op.del {
+		return fmt.Sprintf("del %s %s %s", node, blobHex, op.hash.Hex())
+	}
+	return fmt.Sprintf("write %s %s %s", node, blobHex, op.hash.Hex())
+}
+
 // syncMemBatch is an in-memory buffer of successfully downloaded but not yet
 // persisted data items.
 type syncMemBatch struct {
-	nodes  map[string][]byte      // In-memory membatch of recently completed nodes
-	hashes map[string]common.Hash // Hashes of recently completed nodes
-	codes  map[common.Hash][]byte // In-memory membatch of recently completed codes
+	scheme string                 // State scheme identifier
+	codes  map[common.Hash][]byte // In-memory batch of recently completed codes
+	nodes  []nodeOp               // In-memory batch of recently completed/deleted nodes
 	size   uint64                 // Estimated batch-size of in-memory data.
 }
 
 // newSyncMemBatch allocates a new memory-buffer for not-yet persisted trie nodes.
-func newSyncMemBatch() *syncMemBatch {
+func newSyncMemBatch(scheme string) *syncMemBatch {
 	return &syncMemBatch{
-		nodes:  make(map[string][]byte),
-		hashes: make(map[string]common.Hash),
+		scheme: scheme,
 		codes:  make(map[common.Hash][]byte),
 	}
-}
-
-// hasNode reports the trie node with specific path is already cached.
-func (batch *syncMemBatch) hasNode(path []byte) bool {
-	_, ok := batch.nodes[string(path)]
-	return ok
 }
 
 // hasCode reports the contract code with specific hash is already cached.
@@ -152,12 +211,55 @@ func (batch *syncMemBatch) hasCode(hash common.Hash) bool {
 	return ok
 }
 
+// addCode caches a contract code database write operation.
+func (batch *syncMemBatch) addCode(hash common.Hash, code []byte) {
+	batch.codes[hash] = code
+	batch.size += common.HashLength + uint64(len(code))
+}
+
+// addNode caches a node database write operation.
+func (batch *syncMemBatch) addNode(owner common.Hash, path []byte, blob []byte, hash common.Hash) {
+	if batch.scheme == rawdb.PathScheme {
+		if owner == (common.Hash{}) {
+			batch.size += uint64(len(path) + len(blob))
+		} else {
+			batch.size += common.HashLength + uint64(len(path)+len(blob))
+		}
+	} else {
+		batch.size += common.HashLength + uint64(len(blob))
+	}
+	batch.nodes = append(batch.nodes, nodeOp{
+		owner: owner,
+		path:  path,
+		blob:  blob,
+		hash:  hash,
+	})
+}
+
+// delNode caches a node database delete operation.
+func (batch *syncMemBatch) delNode(owner common.Hash, path []byte) {
+	if batch.scheme != rawdb.PathScheme {
+		log.Error("Unexpected node deletion", "owner", owner, "path", path, "scheme", batch.scheme)
+		return // deletion is not supported in hash mode.
+	}
+	if owner == (common.Hash{}) {
+		batch.size += uint64(len(path))
+	} else {
+		batch.size += common.HashLength + uint64(len(path))
+	}
+	batch.nodes = append(batch.nodes, nodeOp{
+		del:   true,
+		owner: owner,
+		path:  path,
+	})
+}
+
 // Sync is the main state trie synchronisation scheduler, which provides yet
 // unknown trie hashes to retrieve, accepts node data associated with said hashes
 // and reconstructs the trie step by step until all is done.
 type Sync struct {
 	scheme   string                       // Node scheme descriptor used in database.
-	database ethdb.KeyValueReader         // Persistent database to check for existing entries
+	database ethdb.Database               // Persistent database to check for existing entries
 	membatch *syncMemBatch                // Memory buffer to avoid frequent database writes
 	nodeReqs map[string]*nodeRequest      // Pending requests pertaining to a trie node path
 	codeReqs map[common.Hash]*codeRequest // Pending requests pertaining to a code hash
@@ -166,11 +268,11 @@ type Sync struct {
 }
 
 // NewSync creates a new trie data download scheduler.
-func NewSync(root common.Hash, database ethdb.KeyValueReader, callback LeafCallback, scheme string) *Sync {
+func NewSync(root common.Hash, database ethdb.Database, callback LeafCallback, scheme string) *Sync {
 	ts := &Sync{
 		scheme:   scheme,
 		database: database,
-		membatch: newSyncMemBatch(),
+		membatch: newSyncMemBatch(scheme),
 		nodeReqs: make(map[string]*nodeRequest),
 		codeReqs: make(map[common.Hash]*codeRequest),
 		queue:    prque.New[int64, any](nil), // Ugh, can contain both string and hash, whyyy
@@ -184,16 +286,17 @@ func NewSync(root common.Hash, database ethdb.KeyValueReader, callback LeafCallb
 // parent for completion tracking. The given path is a unique node path in
 // hex format and contain all the parent path if it's layered trie node.
 func (s *Sync) AddSubTrie(root common.Hash, path []byte, parent common.Hash, parentPath []byte, callback LeafCallback) {
-	// Short circuit if the trie is empty or already known
 	if root == types.EmptyRootHash {
 		return
 	}
-	if s.membatch.hasNode(path) {
-		return
-	}
 	owner, inner := ResolvePath(path)
-	if rawdb.HasTrieNode(s.database, owner, inner, root, s.scheme) {
+	exist, inconsistent := s.hasNode(owner, inner, root)
+	if exist {
+		// The entire subtrie is already present in the database.
 		return
+	} else if inconsistent {
+		// There is a pre-existing node with the wrong hash in DB, remove it.
+		s.membatch.delNode(owner, inner)
 	}
 	// Assemble the new sub-trie sync request
 	req := &nodeRequest{
@@ -288,7 +391,7 @@ func (s *Sync) Missing(max int) ([]string, []common.Hash, []common.Hash) {
 }
 
 // ProcessCode injects the received data for requested item. Note it can
-// happpen that the single response commits two pending requests(e.g.
+// happen that the single response commits two pending requests(e.g.
 // there are two requests one for code and one for node but the hash
 // is same). In this case the second response for the same hash will
 // be treated as "non-requested" item or "already-processed" item but
@@ -345,18 +448,57 @@ func (s *Sync) ProcessNode(result NodeSyncResult) error {
 }
 
 // Commit flushes the data stored in the internal membatch out to persistent
-// storage, returning any occurred error.
-func (s *Sync) Commit(dbw ethdb.Batch) error {
-	// Dump the membatch into a database dbw
-	for path, value := range s.membatch.nodes {
-		owner, inner := ResolvePath([]byte(path))
-		rawdb.WriteTrieNode(dbw, owner, inner, s.membatch.hashes[path], value, s.scheme)
+// storage, returning any occurred error. The whole data set will be flushed
+// in an atomic database batch.
+func (s *Sync) Commit(dbw ethdb.Batch, stateBatch ethdb.Batch) error {
+	// Flush the pending node writes into database batch.
+	var (
+		account int
+		storage int
+	)
+	for _, op := range s.membatch.nodes {
+		if !op.valid() {
+			return fmt.Errorf("invalid op, %s", op.string())
+		}
+		if op.del {
+			// node deletion is only supported in path mode.
+			if op.owner == (common.Hash{}) {
+				if stateBatch != nil {
+					rawdb.DeleteAccountTrieNode(stateBatch, op.path)
+				} else {
+					rawdb.DeleteAccountTrieNode(dbw, op.path)
+				}
+			} else {
+				if stateBatch != nil {
+					rawdb.DeleteStorageTrieNode(stateBatch, op.owner, op.path)
+				} else {
+					rawdb.DeleteStorageTrieNode(dbw, op.owner, op.path)
+				}
+			}
+			deletionGauge.Inc(1)
+		} else {
+			if op.owner == (common.Hash{}) {
+				account += 1
+			} else {
+				storage += 1
+			}
+			if stateBatch != nil {
+				rawdb.WriteTrieNode(stateBatch, op.owner, op.path, op.hash, op.blob, s.scheme)
+			} else {
+				rawdb.WriteTrieNode(dbw, op.owner, op.path, op.hash, op.blob, s.scheme)
+			}
+		}
 	}
+	accountNodeSyncedGauge.Inc(int64(account))
+	storageNodeSyncedGauge.Inc(int64(storage))
+
+	// Flush the pending code writes into database batch.
 	for hash, value := range s.membatch.codes {
 		rawdb.WriteCode(dbw, hash, value)
 	}
-	// Drop the membatch data and return
-	s.membatch = newSyncMemBatch()
+	codeSyncedGauge.Inc(int64(len(s.membatch.codes)))
+
+	s.membatch = newSyncMemBatch(s.scheme) // reset the batch
 	return nil
 }
 
@@ -370,7 +512,7 @@ func (s *Sync) Pending() int {
 	return len(s.nodeReqs) + len(s.codeReqs)
 }
 
-// schedule inserts a new state retrieval request into the fetch queue. If there
+// scheduleNodeRequest inserts a new state retrieval request into the fetch queue. If there
 // is already a pending request for this node, the new request will be discarded
 // and only a parent reference added to the old one.
 func (s *Sync) scheduleNodeRequest(req *nodeRequest) {
@@ -385,7 +527,7 @@ func (s *Sync) scheduleNodeRequest(req *nodeRequest) {
 	s.queue.Push(string(req.path), prio)
 }
 
-// schedule inserts a new state retrieval request into the fetch queue. If there
+// scheduleCodeRequest inserts a new state retrieval request into the fetch queue. If there
 // is already a pending request for this node, the new request will be discarded
 // and only a parent reference added to the old one.
 func (s *Sync) scheduleCodeRequest(req *codeRequest) {
@@ -425,6 +567,41 @@ func (s *Sync) children(req *nodeRequest, object node) ([]*nodeRequest, error) {
 			node: node.Val,
 			path: append(append([]byte(nil), req.path...), key...),
 		}}
+		// Mark all internal nodes between shortNode and its **in disk**
+		// child as invalid. This is essential in the case of path mode
+		// scheme; otherwise, state healing might overwrite existing child
+		// nodes silently while leaving a dangling parent node within the
+		// range of this internal path on disk and the persistent state
+		// ends up with a very weird situation that nodes on the same path
+		// are not inconsistent while they all present in disk. This property
+		// would break the guarantee for state healing.
+		//
+		// While it's possible for this shortNode to overwrite a previously
+		// existing full node, the other branches of the fullNode can be
+		// retained as they are not accessible with the new shortNode, and
+		// also the whole sub-trie is still untouched and complete.
+		//
+		// This step is only necessary for path mode, as there is no deletion
+		// in hash mode at all.
+		if _, ok := node.Val.(hashNode); ok && s.scheme == rawdb.PathScheme {
+			owner, inner := ResolvePath(req.path)
+			for i := 1; i < len(key); i++ {
+				// While checking for a non-existent item in Pebble can be less efficient
+				// without a bloom filter, the relatively low frequency of lookups makes
+				// the performance impact negligible.
+				var exists bool
+				if owner == (common.Hash{}) {
+					exists = rawdb.HasAccountTrieNode(s.database.StateStoreReader(), append(inner, key[:i]...))
+				} else {
+					exists = rawdb.HasStorageTrieNode(s.database.StateStoreReader(), owner, append(inner, key[:i]...))
+				}
+				if exists {
+					s.membatch.delNode(owner, append(inner, key[:i]...))
+					log.Debug("Detected dangling node", "owner", owner, "path", append(inner, key[:i]...))
+				}
+			}
+			lookupGauge.Inc(int64(len(key) - 1))
+		}
 	case *fullNode:
 		for i := 0; i < 17; i++ {
 			if node.Children[i] != nil {
@@ -441,6 +618,7 @@ func (s *Sync) children(req *nodeRequest, object node) ([]*nodeRequest, error) {
 	var (
 		missing = make(chan *nodeRequest, len(children))
 		pending sync.WaitGroup
+		batchMu sync.Mutex
 	)
 	for _, child := range children {
 		// Notify any external watcher of a new key/value node
@@ -458,34 +636,32 @@ func (s *Sync) children(req *nodeRequest, object node) ([]*nodeRequest, error) {
 				}
 			}
 		}
-		// If the child references another node, resolve or schedule
+		// If the child references another node, resolve or schedule.
+		// We check all children concurrently.
 		if node, ok := (child.node).(hashNode); ok {
-			// Try to resolve the node from the local database
-			if s.membatch.hasNode(child.path) {
-				continue
-			}
-			// Check the presence of children concurrently
+			path := child.path
+			hash := common.BytesToHash(node)
 			pending.Add(1)
-			go func(child childNode) {
+			go func() {
 				defer pending.Done()
-
-				// If database says duplicate, then at least the trie node is present
-				// and we hold the assumption that it's NOT legacy contract code.
-				var (
-					chash        = common.BytesToHash(node)
-					owner, inner = ResolvePath(child.path)
-				)
-				if rawdb.HasTrieNode(s.database, owner, inner, chash, s.scheme) {
+				owner, inner := ResolvePath(path)
+				exist, inconsistent := s.hasNode(owner, inner, hash)
+				if exist {
 					return
+				} else if inconsistent {
+					// There is a pre-existing node with the wrong hash in DB, remove it.
+					batchMu.Lock()
+					s.membatch.delNode(owner, inner)
+					batchMu.Unlock()
 				}
 				// Locally unknown node, schedule for retrieval
 				missing <- &nodeRequest{
-					path:     child.path,
-					hash:     chash,
+					path:     path,
+					hash:     hash,
 					parent:   req,
 					callback: req.callback,
 				}
-			}(child)
+			}()
 		}
 	}
 	pending.Wait()
@@ -502,17 +678,15 @@ func (s *Sync) children(req *nodeRequest, object node) ([]*nodeRequest, error) {
 	return requests, nil
 }
 
-// commit finalizes a retrieval request and stores it into the membatch. If any
+// commitNodeRequest finalizes a retrieval request and stores it into the membatch. If any
 // of the referencing parent requests complete due to this commit, they are also
 // committed themselves.
 func (s *Sync) commitNodeRequest(req *nodeRequest) error {
 	// Write the node content to the membatch
-	s.membatch.nodes[string(req.path)] = req.data
-	s.membatch.hashes[string(req.path)] = req.hash
-	// The size tracking refers to the db-batch, not the in-memory data.
-	// Therefore, we ignore the req.path, and account only for the hash+data
-	// which eventually is written to db.
-	s.membatch.size += common.HashLength + uint64(len(req.data))
+	owner, path := ResolvePath(req.path)
+	s.membatch.addNode(owner, path, req.data, req.hash)
+
+	// Removed the completed node request
 	delete(s.nodeReqs, string(req.path))
 	s.fetches[len(req.path)]--
 
@@ -528,13 +702,14 @@ func (s *Sync) commitNodeRequest(req *nodeRequest) error {
 	return nil
 }
 
-// commit finalizes a retrieval request and stores it into the membatch. If any
+// commitCodeRequest finalizes a retrieval request and stores it into the membatch. If any
 // of the referencing parent requests complete due to this commit, they are also
 // committed themselves.
 func (s *Sync) commitCodeRequest(req *codeRequest) error {
 	// Write the node content to the membatch
-	s.membatch.codes[req.hash] = req.data
-	s.membatch.size += common.HashLength + uint64(len(req.data))
+	s.membatch.addCode(req.hash, req.data)
+
+	// Removed the completed code request
 	delete(s.codeReqs, req.hash)
 	s.fetches[len(req.path)]--
 
@@ -550,6 +725,29 @@ func (s *Sync) commitCodeRequest(req *codeRequest) error {
 	return nil
 }
 
+// hasNode reports whether the specified trie node is present in the database.
+// 'exists' is true when the node exists in the database and matches the given root
+// hash. The 'inconsistent' return value is true when the node exists but does not
+// match the expected hash.
+func (s *Sync) hasNode(owner common.Hash, path []byte, hash common.Hash) (exists bool, inconsistent bool) {
+	// If node is running with hash scheme, check the presence with node hash.
+	if s.scheme == rawdb.HashScheme {
+		return rawdb.HasLegacyTrieNode(s.database.StateStoreReader(), hash), false
+	}
+	// If node is running with path scheme, check the presence with node path.
+	var blob []byte
+	if owner == (common.Hash{}) {
+		blob = rawdb.ReadAccountTrieNode(s.database.StateStoreReader(), path)
+	} else {
+		blob = rawdb.ReadStorageTrieNode(s.database.StateStoreReader(), owner, path)
+	}
+	h := newBlobHasher()
+	defer h.release()
+	exists = hash == h.hash(blob)
+	inconsistent = !exists && len(blob) != 0
+	return exists, inconsistent
+}
+
 // ResolvePath resolves the provided composite node path by separating the
 // path in account trie if it's existent.
 func ResolvePath(path []byte) (common.Hash, []byte) {
@@ -559,4 +757,24 @@ func ResolvePath(path []byte) (common.Hash, []byte) {
 		path = path[2*common.HashLength:]
 	}
 	return owner, path
+}
+
+// blobHasher is used to compute the sha256 hash of the provided data.
+type blobHasher struct{ state crypto.KeccakState }
+
+// blobHasherPool is the pool for reusing pre-allocated hash state.
+var blobHasherPool = sync.Pool{
+	New: func() interface{} { return &blobHasher{state: crypto.NewKeccakState()} },
+}
+
+func newBlobHasher() *blobHasher {
+	return blobHasherPool.Get().(*blobHasher)
+}
+
+func (h *blobHasher) hash(data []byte) common.Hash {
+	return crypto.HashData(h.state, data)
+}
+
+func (h *blobHasher) release() {
+	blobHasherPool.Put(h)
 }

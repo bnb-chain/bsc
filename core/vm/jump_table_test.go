@@ -1,4 +1,4 @@
-// Copyright 2022 The go-ethereum Authors
+// Copyright 2016 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestJumpTableCopy tests that deep copy is necessery to prevent modify shared jump table
+// TestJumpTableCopy tests that deep copy is necessary to prevent modify shared jump table
 func TestJumpTableCopy(t *testing.T) {
 	tbl := newMergeInstructionSet()
 	require.Equal(t, uint64(0), tbl[SLOAD].constantGas)

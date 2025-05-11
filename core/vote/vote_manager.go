@@ -3,10 +3,12 @@ package vote
 import (
 	"bytes"
 	"fmt"
-	"sync"
+	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/downloader"
@@ -15,7 +17,15 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 )
 
+const blocksNumberSinceMining = 5 // the number of blocks need to wait before voting, counting from the validator begin to mine
+
+var diffInTurn = big.NewInt(2) // Block difficulty for in-turn signatures
 var votesManagerCounter = metrics.NewRegisteredCounter("votesManager/local", nil)
+var notJustified = metrics.NewRegisteredCounter("votesManager/notJustified", nil)
+var inTurnJustified = metrics.NewRegisteredCounter("votesManager/inTurnJustified", nil)
+var notInTurnJustified = metrics.NewRegisteredCounter("votesManager/notInTurnJustified", nil)
+var continuousJustified = metrics.NewRegisteredCounter("votesManager/continuousJustified", nil)
+var notContinuousJustified = metrics.NewRegisteredCounter("votesManager/notContinuousJustified", nil)
 
 // Backend wraps all methods required for voting.
 type Backend interface {
@@ -29,8 +39,8 @@ type VoteManager struct {
 
 	chain *core.BlockChain
 
-	chainHeadCh  chan core.ChainHeadEvent
-	chainHeadSub event.Subscription
+	highestVerifiedBlockCh  chan core.HighestVerifiedBlockEvent
+	highestVerifiedBlockSub event.Subscription
 
 	// used for backup validators to sync votes from corresponding mining validator
 	syncVoteCh  chan core.NewVoteEvent
@@ -45,12 +55,12 @@ type VoteManager struct {
 
 func NewVoteManager(eth Backend, chain *core.BlockChain, pool *VotePool, journalPath, blsPasswordPath, blsWalletPath string, engine consensus.PoSA) (*VoteManager, error) {
 	voteManager := &VoteManager{
-		eth:         eth,
-		chain:       chain,
-		chainHeadCh: make(chan core.ChainHeadEvent, chainHeadChanSize),
-		syncVoteCh:  make(chan core.NewVoteEvent, voteBufferForPut),
-		pool:        pool,
-		engine:      engine,
+		eth:                    eth,
+		chain:                  chain,
+		highestVerifiedBlockCh: make(chan core.HighestVerifiedBlockEvent, highestVerifiedBlockChanSize),
+		syncVoteCh:             make(chan core.NewVoteEvent, voteBufferForPut),
+		pool:                   pool,
+		engine:                 engine,
 	}
 
 	// Create voteSigner.
@@ -60,6 +70,7 @@ func NewVoteManager(eth Backend, chain *core.BlockChain, pool *VotePool, journal
 	}
 	log.Info("Create voteSigner successfully")
 	voteManager.signer = voteSigner
+	metrics.GetOrRegisterLabel("miner-info", nil).Mark(map[string]interface{}{"VoteKey": common.Bytes2Hex(voteManager.signer.PubKey[:])})
 
 	// Create voteJournal
 	voteJournal, err := NewVoteJournal(journalPath)
@@ -70,7 +81,7 @@ func NewVoteManager(eth Backend, chain *core.BlockChain, pool *VotePool, journal
 	voteManager.journal = voteJournal
 
 	// Subscribe to chain head event.
-	voteManager.chainHeadSub = voteManager.chain.SubscribeChainHeadEvent(voteManager.chainHeadCh)
+	voteManager.highestVerifiedBlockSub = voteManager.chain.SubscribeHighestVerifiedHeaderEvent(voteManager.highestVerifiedBlockCh)
 	voteManager.syncVoteSub = voteManager.pool.SubscribeNewVoteEvent(voteManager.syncVoteCh)
 
 	go voteManager.loop()
@@ -80,7 +91,7 @@ func NewVoteManager(eth Backend, chain *core.BlockChain, pool *VotePool, journal
 
 func (voteManager *VoteManager) loop() {
 	log.Debug("vote manager routine loop started")
-	defer voteManager.chainHeadSub.Unsubscribe()
+	defer voteManager.highestVerifiedBlockSub.Unsubscribe()
 	defer voteManager.syncVoteSub.Unsubscribe()
 
 	events := voteManager.eth.EventMux().Subscribe(downloader.StartEvent{}, downloader.DoneEvent{}, downloader.FailedEvent{})
@@ -95,7 +106,7 @@ func (voteManager *VoteManager) loop() {
 	dlEventCh := events.Chan()
 
 	startVote := true
-	var once sync.Once
+	blockCountSinceMining := 0
 	for {
 		select {
 		case ev := <-dlEventCh:
@@ -114,38 +125,50 @@ func (voteManager *VoteManager) loop() {
 				log.Debug("downloader is in DoneEvent mode, set the startVote flag to true")
 				startVote = true
 			}
-		case cHead := <-voteManager.chainHeadCh:
+		case cHead := <-voteManager.highestVerifiedBlockCh:
 			if !startVote {
 				log.Debug("startVote flag is false, continue")
 				continue
 			}
 			if !voteManager.eth.IsMining() {
+				blockCountSinceMining = 0
 				log.Debug("skip voting because mining is disabled, continue")
 				continue
 			}
-
-			if cHead.Block == nil {
-				log.Debug("cHead.Block is nil, continue")
+			blockCountSinceMining++
+			if blockCountSinceMining <= blocksNumberSinceMining {
+				log.Debug("skip voting", "blockCountSinceMining", blockCountSinceMining, "blocksNumberSinceMining", blocksNumberSinceMining)
 				continue
 			}
 
-			curHead := cHead.Block.Header()
+			if cHead.Header == nil {
+				log.Debug("cHead.Header is nil, continue")
+				continue
+			}
+
+			curHead := cHead.Header
+			if p, ok := voteManager.engine.(*parlia.Parlia); ok {
+				// Approximately equal to the block interval of next block, except for the switch block.
+				blockInterval, err := p.BlockInterval(voteManager.chain, curHead)
+				if err != nil {
+					log.Debug("failed to get BlockInterval when voting")
+				}
+				nextBlockMinedTime := time.UnixMilli(int64((curHead.MilliTimestamp() + blockInterval)))
+				timeForBroadcast := 50 * time.Millisecond // enough to broadcast a vote
+				if time.Now().Add(timeForBroadcast).After(nextBlockMinedTime) {
+					log.Warn("too late to vote", "Head.Time(Second)", curHead.Time, "Now(Millisecond)", time.Now().UnixMilli())
+					continue
+				}
+			}
+
 			// Check if cur validator is within the validatorSet at curHead
 			if !voteManager.engine.IsActiveValidatorAt(voteManager.chain, curHead,
 				func(bLSPublicKey *types.BLSPublicKey) bool {
 					return bytes.Equal(voteManager.signer.PubKey[:], bLSPublicKey[:])
 				}) {
-				log.Debug("cur validator is not within the validatorSet at curHead")
+				log.Debug("local validator with voteKey is not within the validatorSet at curHead")
 				continue
 			}
-
-			// Add VoteKey to `miner-info`
-			once.Do(func() {
-				minerInfo := metrics.Get("miner-info")
-				if minerInfo != nil {
-					minerInfo.(metrics.Label).Value()["VoteKey"] = common.Bytes2Hex(voteManager.signer.PubKey[:])
-				}
-			})
 
 			// Vote for curBlockHeader block.
 			vote := &types.VoteData{
@@ -180,8 +203,39 @@ func (voteManager *VoteManager) loop() {
 
 				log.Debug("vote manager produced vote", "votedBlockNumber", voteMessage.Data.TargetNumber, "votedBlockHash", voteMessage.Data.TargetHash, "voteMessageHash", voteMessage.Hash())
 				voteManager.pool.PutVote(voteMessage)
+				voteManager.chain.GetBlockStats(curHead.Hash()).SendVoteTime.Store(time.Now().UnixMilli())
 				votesManagerCounter.Inc(1)
 			}
+
+			// check the latest justified block, which indicating the stability of the network
+			curJustifiedNumber, _, err := voteManager.engine.GetJustifiedNumberAndHash(voteManager.chain, []*types.Header{curHead})
+			if err == nil && curJustifiedNumber != 0 {
+				if curJustifiedNumber+1 != curHead.Number.Uint64() {
+					log.Debug("not justified", "blockNumber", curHead.Number.Uint64()-1)
+					notJustified.Inc(1)
+				} else {
+					parent := voteManager.chain.GetHeaderByHash(curHead.ParentHash)
+					if parent != nil {
+						if parent.Difficulty.Cmp(diffInTurn) == 0 {
+							inTurnJustified.Inc(1)
+						} else {
+							log.Debug("not in turn block justified", "blockNumber", parent.Number.Int64(), "blockHash", parent.Hash())
+							notInTurnJustified.Inc(1)
+						}
+
+						lastJustifiedNumber, _, err := voteManager.engine.GetJustifiedNumberAndHash(voteManager.chain, []*types.Header{parent})
+						if err == nil {
+							if lastJustifiedNumber == 0 || lastJustifiedNumber+1 == curJustifiedNumber {
+								continuousJustified.Inc(1)
+							} else {
+								log.Debug("not continuous block justified", "lastJustified", lastJustifiedNumber, "curJustified", curJustifiedNumber)
+								notContinuousJustified.Inc(1)
+							}
+						}
+					}
+				}
+			}
+
 		case event := <-voteManager.syncVoteCh:
 			voteMessage := event.Vote
 			if voteManager.eth.IsMining() || !bytes.Equal(voteManager.signer.PubKey[:], voteMessage.VoteAddress[:]) {
@@ -197,7 +251,7 @@ func (voteManager *VoteManager) loop() {
 		case <-voteManager.syncVoteSub.Err():
 			log.Debug("voteManager subscribed votes failed")
 			return
-		case <-voteManager.chainHeadSub.Err():
+		case <-voteManager.highestVerifiedBlockSub.Err():
 			log.Debug("voteManager subscribed chainHead failed")
 			return
 		}
@@ -209,7 +263,7 @@ func (voteManager *VoteManager) loop() {
 // A validator must not vote within the span of its other votes . (Rule 2)
 // Validators always vote for their canonical chain’s latest block. (Rule 3)
 func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, common.Hash) {
-	sourceNumber, sourceHash, err := voteManager.engine.GetJustifiedNumberAndHash(voteManager.chain, header)
+	sourceNumber, sourceHash, err := voteManager.engine.GetJustifiedNumberAndHash(voteManager.chain, []*types.Header{header})
 	if err != nil {
 		log.Error("failed to get the highest justified number and hash at cur header", "curHeader's BlockNumber", header.Number, "curHeader's BlockHash", header.Hash())
 		return false, 0, common.Hash{}

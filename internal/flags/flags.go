@@ -17,14 +17,15 @@
 package flags
 
 import (
-	"encoding"
 	"errors"
 	"flag"
+	"fmt"
 	"math/big"
 	"os"
 	"os/user"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/urfave/cli/v2"
@@ -68,6 +69,7 @@ type DirectoryFlag struct {
 	Value DirectoryString
 
 	Aliases []string
+	EnvVars []string
 }
 
 // For cli.Flag:
@@ -79,8 +81,16 @@ func (f *DirectoryFlag) String() string  { return cli.FlagStringer(f) }
 // Apply called by cli library, grabs variable from environment (if in env)
 // and adds variable to flag set for parsing.
 func (f *DirectoryFlag) Apply(set *flag.FlagSet) error {
+	for _, envVar := range f.EnvVars {
+		envVar = strings.TrimSpace(envVar)
+		if value, found := syscall.Getenv(envVar); found {
+			f.Value.Set(value)
+			f.HasBeenSet = true
+			break
+		}
+	}
 	eachName(f, func(name string) {
-		set.Var(&f.Value, f.Name, f.Usage)
+		set.Var(&f.Value, name, f.Usage)
 	})
 	return nil
 }
@@ -102,115 +112,13 @@ func (f *DirectoryFlag) GetCategory() string { return f.Category }
 func (f *DirectoryFlag) TakesValue() bool     { return true }
 func (f *DirectoryFlag) GetUsage() string     { return f.Usage }
 func (f *DirectoryFlag) GetValue() string     { return f.Value.String() }
-func (f *DirectoryFlag) GetEnvVars() []string { return nil } // env not supported
+func (f *DirectoryFlag) GetEnvVars() []string { return f.EnvVars }
 
 func (f *DirectoryFlag) GetDefaultText() string {
 	if f.DefaultText != "" {
 		return f.DefaultText
 	}
 	return f.GetValue()
-}
-
-type TextMarshaler interface {
-	encoding.TextMarshaler
-	encoding.TextUnmarshaler
-}
-
-// textMarshalerVal turns a TextMarshaler into a flag.Value
-type textMarshalerVal struct {
-	v TextMarshaler
-}
-
-func (v textMarshalerVal) String() string {
-	if v.v == nil {
-		return ""
-	}
-	text, _ := v.v.MarshalText()
-	return string(text)
-}
-
-func (v textMarshalerVal) Set(s string) error {
-	return v.v.UnmarshalText([]byte(s))
-}
-
-var (
-	_ cli.Flag              = (*TextMarshalerFlag)(nil)
-	_ cli.RequiredFlag      = (*TextMarshalerFlag)(nil)
-	_ cli.VisibleFlag       = (*TextMarshalerFlag)(nil)
-	_ cli.DocGenerationFlag = (*TextMarshalerFlag)(nil)
-	_ cli.CategorizableFlag = (*TextMarshalerFlag)(nil)
-)
-
-// TextMarshalerFlag wraps a TextMarshaler value.
-type TextMarshalerFlag struct {
-	Name string
-
-	Category    string
-	DefaultText string
-	Usage       string
-
-	Required   bool
-	Hidden     bool
-	HasBeenSet bool
-
-	Value TextMarshaler
-
-	Aliases []string
-}
-
-// For cli.Flag:
-
-func (f *TextMarshalerFlag) Names() []string { return append([]string{f.Name}, f.Aliases...) }
-func (f *TextMarshalerFlag) IsSet() bool     { return f.HasBeenSet }
-func (f *TextMarshalerFlag) String() string  { return cli.FlagStringer(f) }
-
-func (f *TextMarshalerFlag) Apply(set *flag.FlagSet) error {
-	eachName(f, func(name string) {
-		set.Var(textMarshalerVal{f.Value}, f.Name, f.Usage)
-	})
-	return nil
-}
-
-// For cli.RequiredFlag:
-
-func (f *TextMarshalerFlag) IsRequired() bool { return f.Required }
-
-// For cli.VisibleFlag:
-
-func (f *TextMarshalerFlag) IsVisible() bool { return !f.Hidden }
-
-// For cli.CategorizableFlag:
-
-func (f *TextMarshalerFlag) GetCategory() string { return f.Category }
-
-// For cli.DocGenerationFlag:
-
-func (f *TextMarshalerFlag) TakesValue() bool     { return true }
-func (f *TextMarshalerFlag) GetUsage() string     { return f.Usage }
-func (f *TextMarshalerFlag) GetEnvVars() []string { return nil } // env not supported
-
-func (f *TextMarshalerFlag) GetValue() string {
-	t, err := f.Value.MarshalText()
-	if err != nil {
-		return "(ERR: " + err.Error() + ")"
-	}
-	return string(t)
-}
-
-func (f *TextMarshalerFlag) GetDefaultText() string {
-	if f.DefaultText != "" {
-		return f.DefaultText
-	}
-	return f.GetValue()
-}
-
-// GlobalTextMarshaler returns the value of a TextMarshalerFlag from the global flag set.
-func GlobalTextMarshaler(ctx *cli.Context, name string) TextMarshaler {
-	val := ctx.Generic(name)
-	if val == nil {
-		return nil
-	}
-	return val.(textMarshalerVal).v
 }
 
 var (
@@ -234,9 +142,11 @@ type BigFlag struct {
 	Hidden     bool
 	HasBeenSet bool
 
-	Value *big.Int
+	Value        *big.Int
+	defaultValue *big.Int
 
 	Aliases []string
+	EnvVars []string
 }
 
 // For cli.Flag:
@@ -246,11 +156,24 @@ func (f *BigFlag) IsSet() bool     { return f.HasBeenSet }
 func (f *BigFlag) String() string  { return cli.FlagStringer(f) }
 
 func (f *BigFlag) Apply(set *flag.FlagSet) error {
+	// Set default value so that environment won't be able to overwrite it
+	if f.Value != nil {
+		f.defaultValue = new(big.Int).Set(f.Value)
+	}
+	for _, envVar := range f.EnvVars {
+		envVar = strings.TrimSpace(envVar)
+		if value, found := syscall.Getenv(envVar); found {
+			if _, ok := f.Value.SetString(value, 10); !ok {
+				return fmt.Errorf("could not parse %q from environment variable %q for flag %s", value, envVar, f.Name)
+			}
+			f.HasBeenSet = true
+			break
+		}
+	}
 	eachName(f, func(name string) {
 		f.Value = new(big.Int)
-		set.Var((*bigValue)(f.Value), f.Name, f.Usage)
+		set.Var((*bigValue)(f.Value), name, f.Usage)
 	})
-
 	return nil
 }
 
@@ -271,13 +194,13 @@ func (f *BigFlag) GetCategory() string { return f.Category }
 func (f *BigFlag) TakesValue() bool     { return true }
 func (f *BigFlag) GetUsage() string     { return f.Usage }
 func (f *BigFlag) GetValue() string     { return f.Value.String() }
-func (f *BigFlag) GetEnvVars() []string { return nil } // env not supported
+func (f *BigFlag) GetEnvVars() []string { return f.EnvVars }
 
 func (f *BigFlag) GetDefaultText() string {
 	if f.DefaultText != "" {
 		return f.DefaultText
 	}
-	return f.GetValue()
+	return f.defaultValue.String()
 }
 
 // bigValue turns *big.Int into a flag.Value

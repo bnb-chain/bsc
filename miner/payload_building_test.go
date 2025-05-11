@@ -12,7 +12,7 @@
 // GNU Lesser General Public License for more details.
 //
 // You should have received a copy of the GNU Lesser General Public License
-// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>
+// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
 package miner
 
@@ -30,6 +30,7 @@ import (
 )
 
 func TestBuildPayload(t *testing.T) {
+	t.Parallel()
 	var (
 		db        = rawdb.NewMemoryDatabase()
 		recipient = common.HexToAddress("0xdeadbeef")
@@ -44,26 +45,26 @@ func TestBuildPayload(t *testing.T) {
 		Random:       common.Hash{},
 		FeeRecipient: recipient,
 	}
-	payload, err := w.buildPayload(args)
+	payload, err := w.buildPayload(args, false)
 	if err != nil {
 		t.Fatalf("Failed to build payload %v", err)
 	}
 	verify := func(outer *engine.ExecutionPayloadEnvelope, txs int) {
 		payload := outer.ExecutionPayload
 		if payload.ParentHash != b.chain.CurrentBlock().Hash() {
-			t.Fatal("Unexpect parent hash")
+			t.Fatal("Unexpected parent hash")
 		}
 		if payload.Random != (common.Hash{}) {
-			t.Fatal("Unexpect random value")
+			t.Fatal("Unexpected random value")
 		}
 		if payload.Timestamp != timestamp {
-			t.Fatal("Unexpect timestamp")
+			t.Fatal("Unexpected timestamp")
 		}
 		if payload.FeeRecipient != recipient {
-			t.Fatal("Unexpect fee recipient")
+			t.Fatal("Unexpected fee recipient")
 		}
 		if len(payload.Transactions) != txs {
-			t.Fatal("Unexpect transaction set")
+			t.Fatal("Unexpected transaction set")
 		}
 	}
 	empty := payload.ResolveEmpty()
@@ -82,6 +83,7 @@ func TestBuildPayload(t *testing.T) {
 }
 
 func TestPayloadId(t *testing.T) {
+	t.Parallel()
 	ids := make(map[string]int)
 	for i, tt := range []*BuildPayloadArgs{
 		{

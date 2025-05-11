@@ -9,8 +9,13 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-func postHertzConfig() *params.ChainConfig {
+func postHertzPreShanghaiConfig() *params.ChainConfig {
 	config := *params.ParliaTestChainConfig
+	config.ShanghaiTime = nil
+	config.KeplerTime = nil
+	config.FeynmanTime = nil
+	config.FeynmanFixTime = nil
+	config.CancunTime = nil
 	return &config
 }
 
@@ -19,6 +24,12 @@ func preHertzConfig() *params.ChainConfig {
 	config.LondonBlock = nil
 	config.BerlinBlock = nil
 	config.HertzBlock = nil
+	config.HertzfixBlock = nil
+	config.ShanghaiTime = nil
+	config.KeplerTime = nil
+	config.FeynmanTime = nil
+	config.FeynmanFixTime = nil
+	config.CancunTime = nil
 	return &config
 }
 
@@ -90,7 +101,7 @@ func TestSelfDestructGasPostHertz(t *testing.T) {
 	// Expected gas is intrinsic +  pc + cold load (due to legacy tx) + SelfDestructGas
 	// i.e. No refund
 	expectedGasUsed := params.TxGas + vm.GasQuickStep + params.ColdAccountAccessCostEIP2929 + params.SelfdestructGasEIP150
-	TestGasUsage(t, postHertzConfig(), ethash.NewFaker(), bytecode, nil, 60_000, expectedGasUsed)
+	TestGasUsage(t, postHertzPreShanghaiConfig(), ethash.NewFaker(), bytecode, nil, 60_000, expectedGasUsed)
 }
 
 func TestSstoreGasPostHertz(t *testing.T) {
@@ -102,7 +113,7 @@ func TestSstoreGasPostHertz(t *testing.T) {
 	// Expected gas is intrinsic +  2*pushGas + cold load (due to legacy tx) +  SstoreGas
 	// i.e. No refund
 	expectedGasUsed := params.TxGas + 2*vm.GasFastestStep + params.ColdSloadCostEIP2929 + params.SstoreSetGasEIP2200
-	TestGasUsage(t, postHertzConfig(), ethash.NewFaker(), bytecode, nil, 60_000, expectedGasUsed)
+	TestGasUsage(t, postHertzPreShanghaiConfig(), ethash.NewFaker(), bytecode, nil, 60_000, expectedGasUsed)
 }
 
 func TestSstoreModifyGasPostHertz(t *testing.T) {
@@ -119,7 +130,7 @@ func TestSstoreModifyGasPostHertz(t *testing.T) {
 	// Expected gas is intrinsic +  2*pushGas + cold load (due to legacy tx) + SstoreReset (a->b such that a!=0)
 	// i.e. No refund
 	expectedGasUsed := params.TxGas + 2*vm.GasFastestStep + params.SstoreResetGasEIP2200
-	TestGasUsage(t, postHertzConfig(), ethash.NewFaker(), bytecode, initialStorage, 60_000, expectedGasUsed)
+	TestGasUsage(t, postHertzPreShanghaiConfig(), ethash.NewFaker(), bytecode, initialStorage, 60_000, expectedGasUsed)
 }
 
 func TestSstoreClearGasPostHertz(t *testing.T) {
@@ -136,5 +147,5 @@ func TestSstoreClearGasPostHertz(t *testing.T) {
 
 	// Expected gas is intrinsic +  2*pushGas + SstoreReset (a->b such that a!=0) - sstoreClearGasRefund
 	expectedGasUsage := params.TxGas + 2*vm.GasFastestStep + params.SstoreResetGasEIP2200 - params.SstoreClearsScheduleRefundEIP3529
-	TestGasUsage(t, postHertzConfig(), ethash.NewFaker(), bytecode, initialStorage, 60_000, expectedGasUsage)
+	TestGasUsage(t, postHertzPreShanghaiConfig(), ethash.NewFaker(), bytecode, initialStorage, 60_000, expectedGasUsage)
 }

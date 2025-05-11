@@ -6,7 +6,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// sharedPool is used to store maps of originStorage of stateObjects
+// StoragePool is used to store maps of originStorage of stateObjects
 type StoragePool struct {
 	sync.RWMutex
 	sharedMap map[common.Address]*sync.Map

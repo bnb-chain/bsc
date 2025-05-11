@@ -25,39 +25,23 @@ import (
 )
 
 const (
-	blsG1Add      = byte(10)
-	blsG1Mul      = byte(11)
+	blsG1Add      = byte(11)
 	blsG1MultiExp = byte(12)
 	blsG2Add      = byte(13)
-	blsG2Mul      = byte(14)
-	blsG2MultiExp = byte(15)
-	blsPairing    = byte(16)
-	blsMapG1      = byte(17)
-	blsMapG2      = byte(18)
+	blsG2MultiExp = byte(14)
+	blsPairing    = byte(15)
+	blsMapG1      = byte(16)
+	blsMapG2      = byte(17)
 )
-
-func FuzzG1Add(data []byte) int      { return fuzz(blsG1Add, data) }
-func FuzzG1Mul(data []byte) int      { return fuzz(blsG1Mul, data) }
-func FuzzG1MultiExp(data []byte) int { return fuzz(blsG1MultiExp, data) }
-func FuzzG2Add(data []byte) int      { return fuzz(blsG2Add, data) }
-func FuzzG2Mul(data []byte) int      { return fuzz(blsG2Mul, data) }
-func FuzzG2MultiExp(data []byte) int { return fuzz(blsG2MultiExp, data) }
-func FuzzPairing(data []byte) int    { return fuzz(blsPairing, data) }
-func FuzzMapG1(data []byte) int      { return fuzz(blsMapG1, data) }
-func FuzzMapG2(data []byte) int      { return fuzz(blsMapG2, data) }
 
 func checkInput(id byte, inputLen int) bool {
 	switch id {
 	case blsG1Add:
 		return inputLen == 256
-	case blsG1Mul:
-		return inputLen == 160
 	case blsG1MultiExp:
 		return inputLen%160 == 0
 	case blsG2Add:
 		return inputLen == 512
-	case blsG2Mul:
-		return inputLen == 288
 	case blsG2MultiExp:
 		return inputLen%288 == 0
 	case blsPairing:

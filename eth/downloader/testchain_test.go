@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/triedb"
 )
 
 // Test chain parameters.
@@ -40,10 +41,10 @@ var (
 
 	testGspec = &core.Genesis{
 		Config:  params.TestChainConfig,
-		Alloc:   core.GenesisAlloc{testAddress: {Balance: big.NewInt(1000000000000000)}},
+		Alloc:   types.GenesisAlloc{testAddress: {Balance: big.NewInt(1000000000000000)}},
 		BaseFee: big.NewInt(params.InitialBaseFee),
 	}
-	testGenesis = testGspec.MustCommit(testDB)
+	testGenesis = testGspec.MustCommit(testDB, triedb.NewDatabase(testDB, triedb.HashDefaults))
 )
 
 // The common prefix of all test chains:
@@ -56,15 +57,14 @@ var pregenerated bool
 
 func init() {
 	// Reduce some of the parameters to make the tester faster
-	fullMaxForkAncestry = 10000
-	lightMaxForkAncestry = 10000
+	FullMaxForkAncestry = 10000
 	blockCacheMaxItems = 1024
 	fsHeaderSafetyNet = 256
 	fsHeaderContCheck = 500 * time.Millisecond
 
 	testChainBase = newTestChain(blockCacheMaxItems+200, testGenesis)
 
-	var forkLen = int(fullMaxForkAncestry + 50)
+	var forkLen = int(FullMaxForkAncestry + 50)
 	var wg sync.WaitGroup
 
 	// Generate the test chains to seed the peers with

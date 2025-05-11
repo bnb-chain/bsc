@@ -21,12 +21,13 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/trie"
-	"golang.org/x/exp/slices"
+	"github.com/ethereum/go-ethereum/triedb"
 )
 
 type kv struct {
@@ -56,7 +57,7 @@ func (f *fuzzer) readInt() uint64 {
 }
 
 func (f *fuzzer) randomTrie(n int) (*trie.Trie, map[string]*kv) {
-	trie := trie.NewEmpty(trie.NewDatabase(rawdb.NewMemoryDatabase()))
+	trie := trie.NewEmpty(triedb.NewDatabase(rawdb.NewMemoryDatabase(), nil))
 	vals := make(map[string]*kv)
 	size := f.readInt()
 	// Fill it with some fluff
@@ -128,7 +129,7 @@ func (f *fuzzer) fuzz() int {
 		if len(keys) == 0 {
 			return 0
 		}
-		var first, last = keys[0], keys[len(keys)-1]
+		var first = keys[0]
 		testcase %= 6
 		switch testcase {
 		case 0:
@@ -165,7 +166,7 @@ func (f *fuzzer) fuzz() int {
 		}
 		ok = 1
 		//nodes, subtrie
-		hasMore, err := trie.VerifyRangeProof(tr.Hash(), first, last, keys, vals, proof)
+		hasMore, err := trie.VerifyRangeProof(tr.Hash(), first, keys, vals, proof)
 		if err != nil {
 			if hasMore {
 				panic("err != nil && hasMore == true")
@@ -185,7 +186,7 @@ func (f *fuzzer) fuzz() int {
 //   - 0 otherwise
 //
 // other values are reserved for future use.
-func Fuzz(input []byte) int {
+func fuzz(input []byte) int {
 	if len(input) < 100 {
 		return 0
 	}

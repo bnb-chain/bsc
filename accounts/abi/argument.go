@@ -80,7 +80,7 @@ func (arguments Arguments) isTuple() bool {
 func (arguments Arguments) Unpack(data []byte) ([]interface{}, error) {
 	if len(data) == 0 {
 		if len(arguments.NonIndexed()) != 0 {
-			return nil, errors.New("abi: attempting to unmarshall an empty string while arguments are expected")
+			return nil, errors.New("abi: attempting to unmarshal an empty string while arguments are expected")
 		}
 		return make([]interface{}, 0), nil
 	}
@@ -95,7 +95,7 @@ func (arguments Arguments) UnpackIntoMap(v map[string]interface{}, data []byte) 
 	}
 	if len(data) == 0 {
 		if len(arguments.NonIndexed()) != 0 {
-			return errors.New("abi: attempting to unmarshall an empty string while arguments are expected")
+			return errors.New("abi: attempting to unmarshal an empty string while arguments are expected")
 		}
 		return nil // Nothing to unmarshal, return
 	}
@@ -127,7 +127,7 @@ func (arguments Arguments) Copy(v interface{}, values []interface{}) error {
 	return arguments.copyAtomic(v, values[0])
 }
 
-// unpackAtomic unpacks ( hexdata -> go ) a single value
+// copyAtomic copies ( hexdata -> go ) a single value
 func (arguments Arguments) copyAtomic(v interface{}, marshalledValues interface{}) error {
 	dst := reflect.ValueOf(v).Elem()
 	src := reflect.ValueOf(marshalledValues)

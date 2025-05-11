@@ -1,0 +1,37 @@
+name: Go Nancy
+
+on:
+    # Scan changed files in PRs (diff-aware scanning):
+    pull_request: {}
+    # Scan on-demand through GitHub Actions interface:
+    workflow_dispatch: {}
+    # Scan mainline branches and report all findings:
+    push:
+      branches: ["master", "develop"]
+
+jobs:
+  build:
+    strategy:
+        matrix:
+          go-version: [1.23.x]
+          os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v2
+
+    - name: Set up Go 1.x in order to write go.list file
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go-version }}
+    
+    - name: Go mod tidy
+      run: go mod tidy
+
+    - name: WriteGoList
+      run:  go list -json -deps ./... > go.list
+
+    - name: Nancy
+      uses: sonatype-nexus-community/nancy-github-action@main
+      with:
+        nancyCommand: sleuth --loud

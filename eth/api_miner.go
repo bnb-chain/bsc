@@ -20,6 +20,8 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/ethereum/go-ethereum/params"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
@@ -29,7 +31,7 @@ type MinerAPI struct {
 	e *Ethereum
 }
 
-// NewMinerAPI create a new MinerAPI instance.
+// NewMinerAPI creates a new MinerAPI instance.
 func NewMinerAPI(e *Ethereum) *MinerAPI {
 	return &MinerAPI{e}
 }
@@ -64,12 +66,16 @@ func (api *MinerAPI) SetGasPrice(gasPrice hexutil.Big) bool {
 	api.e.lock.Unlock()
 
 	api.e.txPool.SetGasTip((*big.Int)(&gasPrice))
+	api.e.Miner().SetGasTip((*big.Int)(&gasPrice))
 	return true
 }
 
 // SetGasLimit sets the gaslimit to target towards during mining.
 func (api *MinerAPI) SetGasLimit(gasLimit hexutil.Uint64) bool {
 	api.e.Miner().SetGasCeil(uint64(gasLimit))
+	if uint64(gasLimit) > params.SystemTxsGasSoftLimit {
+		api.e.TxPool().SetMaxGas(uint64(gasLimit) - params.SystemTxsGasSoftLimit)
+	}
 	return true
 }
 
@@ -82,4 +88,32 @@ func (api *MinerAPI) SetEtherbase(etherbase common.Address) bool {
 // SetRecommitInterval updates the interval for miner sealing work recommitting.
 func (api *MinerAPI) SetRecommitInterval(interval int) {
 	api.e.Miner().SetRecommitInterval(time.Duration(interval) * time.Millisecond)
+}
+
+// MevRunning returns true if the validator accept bids from builder
+func (api *MinerAPI) MevRunning() bool {
+	return api.e.APIBackend.MevRunning()
+}
+
+// StartMev starts mev. It notifies the miner to start to receive bids.
+func (api *MinerAPI) StartMev() {
+	api.e.APIBackend.StartMev()
+}
+
+// StopMev stops mev. It notifies the miner to stop receiving bids from this moment,
+// but the bids before this moment would still been taken into consideration by mev.
+func (api *MinerAPI) StopMev() {
+	api.e.APIBackend.StopMev()
+}
+
+// AddBuilder adds a builder to the bid simulator.
+// url is the endpoint of the builder, for example, "https://mev-builder.amazonaws.com",
+// if validator is equipped with sentry, ignore the url.
+func (api *MinerAPI) AddBuilder(builder common.Address, url string) error {
+	return api.e.APIBackend.AddBuilder(builder, url)
+}
+
+// RemoveBuilder removes a builder from the bid simulator.
+func (api *MinerAPI) RemoveBuilder(builder common.Address) error {
+	return api.e.APIBackend.RemoveBuilder(builder)
 }

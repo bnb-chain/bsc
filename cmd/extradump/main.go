@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -23,7 +24,7 @@ const (
 	BLSPublicKeyLength = 48
 
 	// follow order in extra field
-	// |---Extra Vanity---|---Validators Number and Validators Bytes (or Empty)---|---Vote Attestation (or Empty)---|---Extra Seal---|
+	// |---Extra Vanity---|---Validators Number and Validators Bytes (or Empty)---|---Turn Length (or Empty)---|---Vote Attestation (or Empty)---|---Extra Seal---|
 	extraVanityLength    = 32 // Fixed number of extra-data prefix bytes reserved for signer vanity
 	validatorNumberSize  = 1  // Fixed number of extra prefix bytes reserved for validator number after Luban
 	validatorBytesLength = common.AddressLength + types.BLSPublicKeyLength
@@ -34,6 +35,7 @@ type Extra struct {
 	ExtraVanity   string
 	ValidatorSize uint8
 	Validators    validatorsAscending
+	TurnLength    *uint8
 	*types.VoteAttestation
 	ExtraSeal []byte
 }
@@ -78,7 +80,7 @@ func parseExtra(hexData string) (*Extra, error) {
 	// decode hex into bytes
 	data, err := hex.DecodeString(strings.TrimPrefix(hexData, "0x"))
 	if err != nil {
-		return nil, fmt.Errorf("invalid hex data")
+		return nil, errors.New("invalid hex data")
 	}
 
 	// parse ExtraVanity and ExtraSeal
@@ -99,7 +101,7 @@ func parseExtra(hexData string) (*Extra, error) {
 			validatorNum := int(data[0])
 			validatorBytesTotalLength := validatorNumberSize + validatorNum*validatorBytesLength
 			if dataLength < validatorBytesTotalLength {
-				return nil, fmt.Errorf("parse validators failed")
+				return nil, errors.New("parse validators failed")
 			}
 			extra.ValidatorSize = uint8(validatorNum)
 			data = data[validatorNumberSize:]
@@ -112,12 +114,21 @@ func parseExtra(hexData string) (*Extra, error) {
 			sort.Sort(extra.Validators)
 			data = data[validatorBytesTotalLength-validatorNumberSize:]
 			dataLength = len(data)
+
+			// parse TurnLength
+			if dataLength > 0 {
+				if data[0] != '\xf8' {
+					extra.TurnLength = &data[0]
+					data = data[1:]
+					dataLength = len(data)
+				}
+			}
 		}
 
 		// parse Vote Attestation
 		if dataLength > 0 {
 			if err := rlp.Decode(bytes.NewReader(data), &extra.VoteAttestation); err != nil {
-				return nil, fmt.Errorf("parse voteAttestation failed")
+				return nil, errors.New("parse voteAttestation failed")
 			}
 			if extra.ValidatorSize > 0 {
 				validatorsBitSet := bitset.From([]uint64{uint64(extra.VoteAddressSet)})
@@ -145,6 +156,10 @@ func prettyExtra(extra Extra) {
 			fmt.Printf("\tVoteKey	:	%s\n", common.Bytes2Hex(extra.Validators[i].BLSPublicKey[:]))
 			fmt.Printf("\tVoteIncluded	:	%t\n", extra.Validators[i].VoteIncluded)
 		}
+	}
+
+	if extra.TurnLength != nil {
+		fmt.Printf("TurnLength	:	%d\n", *extra.TurnLength)
 	}
 
 	if extra.VoteAttestation != nil {

@@ -1,37 +1,53 @@
 package metrics
 
-// Label hold an map[string]interface{} value that can be set arbitrarily.
-type Label interface {
-	Value() map[string]interface{}
-	Mark(map[string]interface{})
+import (
+	"maps"
+	"sync"
+)
+
+// LabelValue is a mapping of keys to values
+type LabelValue map[string]any
+
+// LabelSnapshot is a read-only copy of a Label.
+type LabelSnapshot LabelValue
+
+// Value returns the value at the time the snapshot was taken.
+func (l LabelSnapshot) Value() LabelValue { return LabelValue(l) }
+
+// Label is the standard implementation of a Label.
+type Label struct {
+	value LabelValue
+
+	mutex sync.Mutex
 }
 
-// NewRegisteredLabel constructs and registers a new StandardLabel.
-func NewRegisteredLabel(name string, r Registry) Label {
-	c := NewStandardLabel()
-	if nil == r {
+// GetOrRegisterLabel returns an existing Label or constructs and registers a
+// new Label.
+func GetOrRegisterLabel(name string, r Registry) *Label {
+	if r == nil {
 		r = DefaultRegistry
 	}
-	r.Register(name, c)
-	return c
+	return r.GetOrRegister(name, NewLabel).(*Label)
 }
 
-// NewStandardLabel constructs a new StandardLabel.
-func NewStandardLabel() *StandardLabel {
-	return &StandardLabel{}
-}
-
-// StandardLabel is the standard implementation of a Label.
-type StandardLabel struct {
-	value map[string]interface{}
+// NewLabel constructs a new Label.
+func NewLabel() *Label {
+	return &Label{value: make(map[string]any)}
 }
 
 // Value returns label values.
-func (l *StandardLabel) Value() map[string]interface{} {
-	return l.value
+func (l *Label) Snapshot() *LabelSnapshot {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	snapshot := LabelSnapshot(maps.Clone(l.value))
+	return &snapshot
 }
 
 // Mark records the label.
-func (l *StandardLabel) Mark(value map[string]interface{}) {
-	l.value = value
+func (l *Label) Mark(value map[string]interface{}) {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	for k, v := range value {
+		l.value[k] = v
+	}
 }

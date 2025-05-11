@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/triedb"
 )
 
 var (
@@ -49,11 +50,11 @@ func newTestBackendWithGenerator(blocks int) *testBackend {
 	genspec := &core.Genesis{
 		Config:    params.AllCliqueProtocolChanges,
 		ExtraData: make([]byte, 32+common.AddressLength+65),
-		Alloc:     core.GenesisAlloc{testAddr: {Balance: big.NewInt(100000000000000000)}},
+		Alloc:     types.GenesisAlloc{testAddr: {Balance: big.NewInt(100000000000000000)}},
 		BaseFee:   big.NewInt(0),
 	}
 	copy(genspec.ExtraData[32:], testAddr[:])
-	genesis := genspec.MustCommit(db)
+	genesis := genspec.MustCommit(db, triedb.NewDatabase(db, nil))
 
 	chain, _ := core.NewBlockChain(db, nil, genspec, nil, engine, vm.Config{}, nil, nil)
 	generator := func(i int, block *core.BlockGen) {

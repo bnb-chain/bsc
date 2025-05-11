@@ -73,6 +73,14 @@ var (
 	DerivationSignatureHash = sha256.Sum256(common.Hash{}.Bytes())
 )
 
+var (
+	// PinRegexp is the regular expression used to validate PIN codes.
+	pinRegexp = regexp.MustCompile(`^[0-9]{6,}$`)
+
+	// PukRegexp is the regular expression used to validate PUK codes.
+	pukRegexp = regexp.MustCompile(`^[0-9]{12,}$`)
+)
+
 // List of APDU command-related constants
 const (
 	claISO7816  = 0
@@ -380,7 +388,7 @@ func (w *Wallet) Open(passphrase string) error {
 	case passphrase == "":
 		return ErrPINUnblockNeeded
 	case status.PinRetryCount > 0:
-		if !regexp.MustCompile(`^[0-9]{6,}$`).MatchString(passphrase) {
+		if !pinRegexp.MatchString(passphrase) {
 			w.log.Error("PIN needs to be at least 6 digits")
 			return ErrPINNeeded
 		}
@@ -388,7 +396,7 @@ func (w *Wallet) Open(passphrase string) error {
 			return err
 		}
 	default:
-		if !regexp.MustCompile(`^[0-9]{12,}$`).MatchString(passphrase) {
+		if !pukRegexp.MatchString(passphrase) {
 			w.log.Error("PUK needs to be at least 12 digits")
 			return ErrPINUnblockNeeded
 		}
@@ -776,16 +784,16 @@ func (w *Wallet) findAccountPath(account accounts.Account) (accounts.DerivationP
 		return nil, fmt.Errorf("scheme %s does not match wallet scheme %s", account.URL.Scheme, w.Hub.scheme)
 	}
 
-	parts := strings.SplitN(account.URL.Path, "/", 2)
-	if len(parts) != 2 {
+	url, path, found := strings.Cut(account.URL.Path, "/")
+	if !found {
 		return nil, fmt.Errorf("invalid URL format: %s", account.URL)
 	}
 
-	if parts[0] != fmt.Sprintf("%x", w.PublicKey[1:3]) {
+	if url != fmt.Sprintf("%x", w.PublicKey[1:3]) {
 		return nil, fmt.Errorf("URL %s is not for this wallet", account.URL)
 	}
 
-	return accounts.ParseDerivationPath(parts[1])
+	return accounts.ParseDerivationPath(path)
 }
 
 // Session represents a secured communication session with the wallet.

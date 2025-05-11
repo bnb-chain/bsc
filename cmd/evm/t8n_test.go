@@ -17,16 +17,20 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
-	"github.com/docker/docker/pkg/reexec"
 	"github.com/ethereum/go-ethereum/cmd/evm/internal/t8ntool"
 	"github.com/ethereum/go-ethereum/internal/cmdtest"
+	"github.com/ethereum/go-ethereum/internal/reexec"
 )
 
 func TestMain(m *testing.M) {
@@ -106,6 +110,7 @@ func (args *t8nOutput) get() (out []string) {
 }
 
 func TestT8n(t *testing.T) {
+	t.Parallel()
 	tt := new(testT8n)
 	tt.TestCmd = cmdtest.NewTestCmd(t, tt)
 	for i, tc := range []struct {
@@ -230,7 +235,7 @@ func TestT8n(t *testing.T) {
 		{ // Test post-merge transition
 			base: "./testdata/24",
 			input: t8nInput{
-				"alloc.json", "txs.json", "env.json", "Merge", "",
+				"alloc.json", "txs.json", "env.json", "Paris", "",
 			},
 			output: t8nOutput{alloc: true, result: true},
 			expOut: "exp.json",
@@ -238,7 +243,7 @@ func TestT8n(t *testing.T) {
 		{ // Test post-merge transition where input is missing random
 			base: "./testdata/24",
 			input: t8nInput{
-				"alloc.json", "txs.json", "env-missingrandom.json", "Merge", "",
+				"alloc.json", "txs.json", "env-missingrandom.json", "Paris", "",
 			},
 			output:      t8nOutput{alloc: false, result: false},
 			expExitCode: 3,
@@ -248,7 +253,7 @@ func TestT8n(t *testing.T) {
 			{ // Test base fee calculation
 				base: "./testdata/25",
 				input: t8nInput{
-					"alloc.json", "txs.json", "env.json", "Merge", "",
+					"alloc.json", "txs.json", "env.json", "Paris", "",
 				},
 				output: t8nOutput{alloc: true, result: true},
 				expOut: "exp.json",
@@ -262,17 +267,38 @@ func TestT8n(t *testing.T) {
 			output: t8nOutput{alloc: true, result: true},
 			expOut: "exp.json",
 		},
-		// TODO(Nathan): Cancun not ready
-		/*
-			{ // Cancun tests
-				base: "./testdata/28",
-				input: t8nInput{
-					"alloc.json", "txs.rlp", "env.json", "Cancun", "",
-				},
-				output: t8nOutput{alloc: true, result: true},
-				expOut: "exp.json",
+		{ // Cancun tests
+			base: "./testdata/28",
+			input: t8nInput{
+				"alloc.json", "txs.rlp", "env.json", "Cancun", "",
 			},
-		*/
+			output: t8nOutput{alloc: true, result: true},
+			expOut: "exp.json",
+		},
+		{ // More cancun tests
+			base: "./testdata/29",
+			input: t8nInput{
+				"alloc.json", "txs.json", "env.json", "Cancun", "",
+			},
+			output: t8nOutput{alloc: true, result: true},
+			expOut: "exp.json",
+		},
+		{ // More cancun test, plus example of rlp-transaction that cannot be decoded properly
+			base: "./testdata/30",
+			input: t8nInput{
+				"alloc.json", "txs_more.rlp", "env.json", "Cancun", "",
+			},
+			output: t8nOutput{alloc: true, result: true},
+			expOut: "exp.json",
+		},
+		{ // Prague test, EIP-7702 transaction
+			base: "./testdata/33",
+			input: t8nInput{
+				"alloc.json", "txs.json", "env.json", "Prague", "",
+			},
+			output: t8nOutput{alloc: true, result: true},
+			expOut: "exp.json",
+		},
 	} {
 		args := []string{"t8n"}
 		args = append(args, tc.output.get()...)
@@ -310,6 +336,23 @@ func TestT8n(t *testing.T) {
 	}
 }
 
+func lineIterator(path string) func() (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return func() (string, error) { return err.Error(), err }
+	}
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	return func() (string, error) {
+		if scanner.Scan() {
+			return scanner.Text(), nil
+		}
+		if err := scanner.Err(); err != nil {
+			return "", err
+		}
+		return "", io.EOF // scanner gobbles io.EOF, but we want it
+	}
+}
+
 type t9nInput struct {
 	inTxs  string
 	stFork string
@@ -328,6 +371,7 @@ func (args *t9nInput) get(base string) []string {
 }
 
 func TestT9n(t *testing.T) {
+	t.Parallel()
 	tt := new(testT8n)
 	tt.TestCmd = cmdtest.NewTestCmd(t, tt)
 	for i, tc := range []struct {
@@ -400,7 +444,7 @@ func TestT9n(t *testing.T) {
 			ok, err := cmpJson(have, want)
 			switch {
 			case err != nil:
-				t.Logf(string(have))
+				t.Log(string(have))
 				t.Fatalf("test %d, json parsing failed: %v", i, err)
 			case !ok:
 				t.Fatalf("test %d: output wrong, have \n%v\nwant\n%v\n", i, string(have), string(want))
@@ -463,6 +507,7 @@ func (args *b11rInput) get(base string) []string {
 }
 
 func TestB11r(t *testing.T) {
+	t.Parallel()
 	tt := new(testT8n)
 	tt.TestCmd = cmdtest.NewTestCmd(t, tt)
 	for i, tc := range []struct {
@@ -534,7 +579,7 @@ func TestB11r(t *testing.T) {
 			ok, err := cmpJson(have, want)
 			switch {
 			case err != nil:
-				t.Logf(string(have))
+				t.Log(string(have))
 				t.Fatalf("test %d, json parsing failed: %v", i, err)
 			case !ok:
 				t.Fatalf("test %d: output wrong, have \n%v\nwant\n%v\n", i, string(have), string(want))
@@ -543,6 +588,143 @@ func TestB11r(t *testing.T) {
 		tt.WaitExit()
 		if have, want := tt.ExitStatus(), tc.expExitCode; have != want {
 			t.Fatalf("test %d: wrong exit code, have %d, want %d", i, have, want)
+		}
+	}
+}
+
+func TestEvmRun(t *testing.T) {
+	t.Parallel()
+	tt := cmdtest.NewTestCmd(t, nil)
+	for i, tc := range []struct {
+		input      []string
+		wantStdout string
+		wantStderr string
+	}{
+		{ // json tracing
+			input:      []string{"run", "--trace", "--trace.format=json", "6040"},
+			wantStdout: "./testdata/evmrun/1.out.1.txt",
+			wantStderr: "./testdata/evmrun/1.out.2.txt",
+		},
+		{ // Same as above, using the deprecated --json
+			input:      []string{"run", "--json", "6040"},
+			wantStdout: "./testdata/evmrun/1.out.1.txt",
+			wantStderr: "./testdata/evmrun/1.out.2.txt",
+		},
+		{ // Struct tracing
+			input:      []string{"run", "--trace", "--trace.format=struct", "0x6040"},
+			wantStdout: "./testdata/evmrun/2.out.1.txt",
+			wantStderr: "./testdata/evmrun/2.out.2.txt",
+		},
+		{ // struct-tracing, plus alloc-dump
+			input:      []string{"run", "--trace", "--trace.format=struct", "--dump", "0x6040"},
+			wantStdout: "./testdata/evmrun/3.out.1.txt",
+			//wantStderr: "./testdata/evmrun/3.out.2.txt",
+		},
+		{ // json-tracing (default), plus alloc-dump
+			input:      []string{"run", "--trace", "--dump", "0x6040"},
+			wantStdout: "./testdata/evmrun/4.out.1.txt",
+			//wantStderr: "./testdata/evmrun/4.out.2.txt",
+		},
+		{ // md-tracing
+			input:      []string{"run", "--trace", "--trace.format=md", "0x6040"},
+			wantStdout: "./testdata/evmrun/5.out.1.txt",
+			wantStderr: "./testdata/evmrun/5.out.2.txt",
+		},
+		{ // statetest subcommand
+			input:      []string{"statetest", "./testdata/statetest.json"},
+			wantStdout: "./testdata/evmrun/6.out.1.txt",
+			wantStderr: "./testdata/evmrun/6.out.2.txt",
+		},
+		{ // statetest subcommand with output
+			input:      []string{"statetest", "--trace", "--trace.format=md", "./testdata/statetest.json"},
+			wantStdout: "./testdata/evmrun/7.out.1.txt",
+			wantStderr: "./testdata/evmrun/7.out.2.txt",
+		},
+		{ // statetest subcommand with output
+			input:      []string{"statetest", "--trace", "--trace.format=json", "./testdata/statetest.json"},
+			wantStdout: "./testdata/evmrun/8.out.1.txt",
+			wantStderr: "./testdata/evmrun/8.out.2.txt",
+		},
+	} {
+		tt.Logf("args: go run ./cmd/evm %v\n", strings.Join(tc.input, " "))
+		tt.Run("evm-test", tc.input...)
+
+		haveStdOut := tt.Output()
+		tt.WaitExit()
+		haveStdErr := tt.StderrText()
+
+		if have, wantFile := haveStdOut, tc.wantStdout; wantFile != "" {
+			want, err := os.ReadFile(wantFile)
+			if err != nil {
+				t.Fatalf("test %d: could not read expected output: %v", i, err)
+			}
+			if string(haveStdOut) != string(want) {
+				t.Fatalf("test %d, output wrong, have \n%v\nwant\n%v\n", i, string(have), string(want))
+			}
+		}
+		if have, wantFile := haveStdErr, tc.wantStderr; wantFile != "" {
+			want, err := os.ReadFile(wantFile)
+			if err != nil {
+				t.Fatalf("test %d: could not read expected output: %v", i, err)
+			}
+			if have != string(want) {
+				t.Fatalf("test %d, output wrong\nhave %q\nwant %q\n", i, have, string(want))
+			}
+		}
+	}
+}
+
+func TestEvmRunRegEx(t *testing.T) {
+	t.Parallel()
+	tt := cmdtest.NewTestCmd(t, nil)
+	for i, tc := range []struct {
+		input      []string
+		wantStdout string
+		wantStderr string
+	}{
+		{ // json tracing
+			input:      []string{"run", "--bench", "6040"},
+			wantStdout: "./testdata/evmrun/9.out.1.txt",
+			wantStderr: "./testdata/evmrun/9.out.2.txt",
+		},
+		{ // statetest subcommand
+			input:      []string{"statetest", "--bench", "./testdata/statetest.json"},
+			wantStdout: "./testdata/evmrun/10.out.1.txt",
+			wantStderr: "./testdata/evmrun/10.out.2.txt",
+		},
+	} {
+		tt.Logf("args: go run ./cmd/evm %v\n", strings.Join(tc.input, " "))
+		tt.Run("evm-test", tc.input...)
+
+		haveStdOut := tt.Output()
+		tt.WaitExit()
+		haveStdErr := tt.StderrText()
+
+		if have, wantFile := haveStdOut, tc.wantStdout; wantFile != "" {
+			want, err := os.ReadFile(wantFile)
+			if err != nil {
+				t.Fatalf("test %d: could not read expected output: %v", i, err)
+			}
+			re, err := regexp.Compile(string(want))
+			if err != nil {
+				t.Fatalf("test %d: could not compile regular expression: %v", i, err)
+			}
+			if !re.Match(have) {
+				t.Fatalf("test %d, output wrong, have \n%v\nwant\n%v\n", i, string(have), re)
+			}
+		}
+		if have, wantFile := haveStdErr, tc.wantStderr; wantFile != "" {
+			want, err := os.ReadFile(wantFile)
+			if err != nil {
+				t.Fatalf("test %d: could not read expected output: %v", i, err)
+			}
+			re, err := regexp.Compile(string(want))
+			if err != nil {
+				t.Fatalf("test %d: could not compile regular expression: %v", i, err)
+			}
+			if !re.MatchString(have) {
+				t.Fatalf("test %d, output wrong, have \n%v\nwant\n%v\n", i, have, re)
+			}
 		}
 	}
 }
@@ -557,4 +739,100 @@ func cmpJson(a, b []byte) (bool, error) {
 		return false, err
 	}
 	return reflect.DeepEqual(j2, j), nil
+}
+
+// TestEVMTracing is a test that checks the tracing-output from evm.
+func TestEVMTracing(t *testing.T) {
+	t.Parallel()
+	tt := cmdtest.NewTestCmd(t, nil)
+	for i, tc := range []struct {
+		base           string
+		input          []string
+		expectedTraces []string
+	}{
+		{
+			base: "./testdata/31",
+			input: []string{"t8n",
+				"--input.alloc=./testdata/31/alloc.json", "--input.txs=./testdata/31/txs.json",
+				"--input.env=./testdata/31/env.json", "--state.fork=Cancun",
+				"--trace",
+			},
+			//expectedTraces: []string{"trace-0-0x88f5fbd1524731a81e49f637aa847543268a5aaf2a6b32a69d2c6d978c45dcfb.jsonl"},
+			expectedTraces: []string{"trace-0-0x88f5fbd1524731a81e49f637aa847543268a5aaf2a6b32a69d2c6d978c45dcfb.jsonl",
+				"trace-1-0x03a7b0a91e61a170d64ea94b8263641ef5a8bbdb10ac69f466083a6789c77fb8.jsonl",
+				"trace-2-0xd96e0ce6418ee3360e11d3c7b6886f5a9a08f7ef183da72c23bb3b2374530128.jsonl"},
+		},
+		{
+			base: "./testdata/31",
+			input: []string{"t8n",
+				"--input.alloc=./testdata/31/alloc.json", "--input.txs=./testdata/31/txs.json",
+				"--input.env=./testdata/31/env.json", "--state.fork=Cancun",
+				"--trace.tracer", `
+{   count: 0,
+	result: function(){
+		this.count = this.count + 1;
+		return "hello world " + this.count
+	},
+	fault: function(){}
+}`,
+			},
+			expectedTraces: []string{"trace-0-0x88f5fbd1524731a81e49f637aa847543268a5aaf2a6b32a69d2c6d978c45dcfb.json",
+				"trace-1-0x03a7b0a91e61a170d64ea94b8263641ef5a8bbdb10ac69f466083a6789c77fb8.json",
+				"trace-2-0xd96e0ce6418ee3360e11d3c7b6886f5a9a08f7ef183da72c23bb3b2374530128.json"},
+		},
+		{
+			base: "./testdata/32",
+			input: []string{"t8n",
+				"--input.alloc=./testdata/32/alloc.json", "--input.txs=./testdata/32/txs.json",
+				"--input.env=./testdata/32/env.json", "--state.fork=Paris",
+				"--trace", "--trace.callframes",
+			},
+			expectedTraces: []string{"trace-0-0x47806361c0fa084be3caa18afe8c48156747c01dbdfc1ee11b5aecdbe4fcf23e.jsonl"},
+		},
+		// TODO, make it possible to run tracers on statetests, e.g:
+		//{
+		//			base: "./testdata/31",
+		//			input: []string{"statetest", "--trace", "--trace.tracer", `{
+		//	result: function(){
+		//		return "hello world"
+		//	},
+		//	fault: function(){}
+		//}`, "./testdata/statetest.json"},
+		//			expectedTraces: []string{"trace-0-0x88f5fbd1524731a81e49f637aa847543268a5aaf2a6b32a69d2c6d978c45dcfb.json"},
+		//		},
+	} {
+		// Place the output somewhere we can find it
+		outdir := t.TempDir()
+		args := append(tc.input, "--output.basedir", outdir)
+
+		tt.Run("evm-test", args...)
+		tt.Logf("args: go run ./cmd/evm %v\n", args)
+		tt.WaitExit()
+		//t.Log(string(tt.Output()))
+
+		// Compare the expected traces
+		for _, traceFile := range tc.expectedTraces {
+			haveFn := lineIterator(filepath.Join(outdir, traceFile))
+			wantFn := lineIterator(filepath.Join(tc.base, traceFile))
+
+			for line := 0; ; line++ {
+				want, wErr := wantFn()
+				have, hErr := haveFn()
+				if want != have {
+					t.Fatalf("test %d, trace %v, line %d\nwant: %v\nhave: %v\n",
+						i, traceFile, line, want, have)
+				}
+				if wErr != nil && hErr != nil {
+					break
+				}
+				if wErr != nil {
+					t.Fatal(wErr)
+				}
+				if hErr != nil {
+					t.Fatal(hErr)
+				}
+				//t.Logf("%v\n", want)
+			}
+		}
+	}
 }

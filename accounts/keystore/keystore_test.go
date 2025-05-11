@@ -20,6 +20,7 @@ import (
 	"math/rand"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,13 +31,13 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/event"
-	"golang.org/x/exp/slices"
 )
 
 var testSigData = make([]byte, 32)
 
 func TestKeyStore(t *testing.T) {
-	dir, ks := tmpKeyStore(t, true)
+	t.Parallel()
+	dir, ks := tmpKeyStore(t)
 
 	a, err := ks.NewAccount("foo")
 	if err != nil {
@@ -70,7 +71,8 @@ func TestKeyStore(t *testing.T) {
 }
 
 func TestSign(t *testing.T) {
-	_, ks := tmpKeyStore(t, true)
+	t.Parallel()
+	_, ks := tmpKeyStore(t)
 
 	pass := "" // not used but required by API
 	a1, err := ks.NewAccount(pass)
@@ -86,7 +88,8 @@ func TestSign(t *testing.T) {
 }
 
 func TestSignWithPassphrase(t *testing.T) {
-	_, ks := tmpKeyStore(t, true)
+	t.Parallel()
+	_, ks := tmpKeyStore(t)
 
 	pass := "passwd"
 	acc, err := ks.NewAccount(pass)
@@ -114,7 +117,7 @@ func TestSignWithPassphrase(t *testing.T) {
 
 func TestTimedUnlock(t *testing.T) {
 	t.Parallel()
-	_, ks := tmpKeyStore(t, true)
+	_, ks := tmpKeyStore(t)
 
 	pass := "foo"
 	a1, err := ks.NewAccount(pass)
@@ -149,7 +152,7 @@ func TestTimedUnlock(t *testing.T) {
 
 func TestOverrideUnlock(t *testing.T) {
 	t.Parallel()
-	_, ks := tmpKeyStore(t, false)
+	_, ks := tmpKeyStore(t)
 
 	pass := "foo"
 	a1, err := ks.NewAccount(pass)
@@ -190,7 +193,7 @@ func TestOverrideUnlock(t *testing.T) {
 // This test should fail under -race if signing races the expiration goroutine.
 func TestSignRace(t *testing.T) {
 	t.Parallel()
-	_, ks := tmpKeyStore(t, false)
+	_, ks := tmpKeyStore(t)
 
 	// Create a test account.
 	a1, err := ks.NewAccount("")
@@ -235,7 +238,7 @@ func waitForKsUpdating(t *testing.T, ks *KeyStore, wantStatus bool, maxTime time
 func TestWalletNotifierLifecycle(t *testing.T) {
 	t.Parallel()
 	// Create a temporary keystore to test with
-	_, ks := tmpKeyStore(t, false)
+	_, ks := tmpKeyStore(t)
 
 	// Ensure that the notification updater is not running yet
 	time.Sleep(250 * time.Millisecond)
@@ -280,7 +283,8 @@ type walletEvent struct {
 // Tests that wallet notifications and correctly fired when accounts are added
 // or deleted from the keystore.
 func TestWalletNotifications(t *testing.T) {
-	_, ks := tmpKeyStore(t, false)
+	t.Parallel()
+	_, ks := tmpKeyStore(t)
 
 	// Subscribe to the wallet feed and collect events.
 	var (
@@ -339,9 +343,10 @@ func TestWalletNotifications(t *testing.T) {
 	checkEvents(t, wantEvents, events)
 }
 
-// TestImportExport tests the import functionality of a keystore.
+// TestImportECDSA tests the import functionality of a keystore.
 func TestImportECDSA(t *testing.T) {
-	_, ks := tmpKeyStore(t, true)
+	t.Parallel()
+	_, ks := tmpKeyStore(t)
 	key, err := crypto.GenerateKey()
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", key)
@@ -357,9 +362,10 @@ func TestImportECDSA(t *testing.T) {
 	}
 }
 
-// TestImportECDSA tests the import and export functionality of a keystore.
+// TestImportExport tests the import and export functionality of a keystore.
 func TestImportExport(t *testing.T) {
-	_, ks := tmpKeyStore(t, true)
+	t.Parallel()
+	_, ks := tmpKeyStore(t)
 	acc, err := ks.NewAccount("old")
 	if err != nil {
 		t.Fatalf("failed to create account: %v", acc)
@@ -368,7 +374,7 @@ func TestImportExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to export account: %v", acc)
 	}
-	_, ks2 := tmpKeyStore(t, true)
+	_, ks2 := tmpKeyStore(t)
 	if _, err = ks2.Import(json, "old", "old"); err == nil {
 		t.Errorf("importing with invalid password succeeded")
 	}
@@ -387,7 +393,8 @@ func TestImportExport(t *testing.T) {
 // TestImportRace tests the keystore on races.
 // This test should fail under -race if importing races.
 func TestImportRace(t *testing.T) {
-	_, ks := tmpKeyStore(t, true)
+	t.Parallel()
+	_, ks := tmpKeyStore(t)
 	acc, err := ks.NewAccount("old")
 	if err != nil {
 		t.Fatalf("failed to create account: %v", acc)
@@ -396,7 +403,7 @@ func TestImportRace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to export account: %v", acc)
 	}
-	_, ks2 := tmpKeyStore(t, true)
+	_, ks2 := tmpKeyStore(t)
 	var atom atomic.Uint32
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -450,11 +457,7 @@ func checkEvents(t *testing.T, want []walletEvent, have []walletEvent) {
 	}
 }
 
-func tmpKeyStore(t *testing.T, encrypted bool) (string, *KeyStore) {
+func tmpKeyStore(t *testing.T) (string, *KeyStore) {
 	d := t.TempDir()
-	newKs := NewPlaintextKeyStore
-	if encrypted {
-		newKs = func(kd string) *KeyStore { return NewKeyStore(kd, veryLightScryptN, veryLightScryptP) }
-	}
-	return d, newKs(d)
+	return d, NewKeyStore(d, veryLightScryptN, veryLightScryptP)
 }

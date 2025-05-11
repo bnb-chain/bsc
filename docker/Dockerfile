@@ -1,4 +1,4 @@
-FROM golang:1.20-alpine as bsc
+FROM golang:1.23-alpine as bsc
 
 RUN apk add --no-cache make cmake gcc musl-dev linux-headers git bash build-base libc-dev
 
@@ -18,6 +18,7 @@ RUN apk add --no-cache ca-certificates npm nodejs bash alpine-sdk expect
 
 RUN git clone https://github.com/bnb-chain/bsc-genesis-contract.git /root/genesis \
     && cd /root/genesis && npm install
+#RUN curl -L https://foundry.paradigm.xyz | bash
 
 COPY --from=bsc /usr/local/bin/geth /usr/local/bin/geth
 

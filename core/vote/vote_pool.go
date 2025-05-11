@@ -3,6 +3,7 @@ package vote
 import (
 	"container/heap"
 	"sync"
+	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
 
@@ -24,7 +25,9 @@ const (
 	lowerLimitOfVoteBlockNumber = 256
 	upperLimitOfVoteBlockNumber = 11 // refer to fetcher.maxUncleDist
 
-	chainHeadChanSize = 10 // chainHeadChanSize is the size of channel listening to ChainHeadEvent.
+	highestVerifiedBlockChanSize = 10 // highestVerifiedBlockChanSize is the size of channel listening to HighestVerifiedBlockEvent.
+
+	defaultMajorityThreshold = 14 // this is an inaccurate value, mainly used for metric acquisition, ref parlia.verifyVoteAttestation
 )
 
 var (
@@ -39,7 +42,21 @@ var (
 
 type VoteBox struct {
 	blockNumber  uint64
+	blockHash    common.Hash
 	voteMessages []*types.VoteEnvelope
+}
+
+func (v *VoteBox) trySetRecvVoteTime(chain *core.BlockChain) {
+	stats := chain.GetBlockStats(v.blockHash)
+	if len(v.voteMessages) == 1 {
+		stats.FirstRecvVoteTime.Store(time.Now().UnixMilli())
+	}
+	if stats.RecvMajorityVoteTime.Load() > 0 {
+		return
+	}
+	if len(v.voteMessages) >= defaultMajorityThreshold {
+		stats.RecvMajorityVoteTime.Store(time.Now().UnixMilli())
+	}
 }
 
 type VotePool struct {
@@ -57,8 +74,8 @@ type VotePool struct {
 	curVotesPq    *votesPriorityQueue
 	futureVotesPq *votesPriorityQueue
 
-	chainHeadCh  chan core.ChainHeadEvent
-	chainHeadSub event.Subscription
+	highestVerifiedBlockCh  chan core.HighestVerifiedBlockEvent
+	highestVerifiedBlockSub event.Subscription
 
 	votesCh chan *types.VoteEnvelope
 
@@ -69,19 +86,19 @@ type votesPriorityQueue []*types.VoteData
 
 func NewVotePool(chain *core.BlockChain, engine consensus.PoSA) *VotePool {
 	votePool := &VotePool{
-		chain:         chain,
-		receivedVotes: mapset.NewSet[common.Hash](),
-		curVotes:      make(map[common.Hash]*VoteBox),
-		futureVotes:   make(map[common.Hash]*VoteBox),
-		curVotesPq:    &votesPriorityQueue{},
-		futureVotesPq: &votesPriorityQueue{},
-		chainHeadCh:   make(chan core.ChainHeadEvent, chainHeadChanSize),
-		votesCh:       make(chan *types.VoteEnvelope, voteBufferForPut),
-		engine:        engine,
+		chain:                  chain,
+		receivedVotes:          mapset.NewSet[common.Hash](),
+		curVotes:               make(map[common.Hash]*VoteBox),
+		futureVotes:            make(map[common.Hash]*VoteBox),
+		curVotesPq:             &votesPriorityQueue{},
+		futureVotesPq:          &votesPriorityQueue{},
+		highestVerifiedBlockCh: make(chan core.HighestVerifiedBlockEvent, highestVerifiedBlockChanSize),
+		votesCh:                make(chan *types.VoteEnvelope, voteBufferForPut),
+		engine:                 engine,
 	}
 
 	// Subscribe events from blockchain and start the main event loop.
-	votePool.chainHeadSub = votePool.chain.SubscribeChainHeadEvent(votePool.chainHeadCh)
+	votePool.highestVerifiedBlockSub = votePool.chain.SubscribeHighestVerifiedHeaderEvent(votePool.highestVerifiedBlockCh)
 
 	go votePool.loop()
 	return votePool
@@ -89,18 +106,18 @@ func NewVotePool(chain *core.BlockChain, engine consensus.PoSA) *VotePool {
 
 // loop is the vote pool's main even loop, waiting for and reacting to outside blockchain events and votes channel event.
 func (pool *VotePool) loop() {
-	defer pool.chainHeadSub.Unsubscribe()
+	defer pool.highestVerifiedBlockSub.Unsubscribe()
 
 	for {
 		select {
 		// Handle ChainHeadEvent.
-		case ev := <-pool.chainHeadCh:
-			if ev.Block != nil {
-				latestBlockNumber := ev.Block.NumberU64()
+		case ev := <-pool.highestVerifiedBlockCh:
+			if ev.Header != nil {
+				latestBlockNumber := ev.Header.Number.Uint64()
 				pool.prune(latestBlockNumber)
-				pool.transferVotesFromFutureToCur(ev.Block.Header())
+				pool.transferVotesFromFutureToCur(ev.Header)
 			}
-		case <-pool.chainHeadSub.Err():
+		case <-pool.highestVerifiedBlockSub.Err():
 			return
 
 		// Handle votes channel and put the vote into vote pool.
@@ -135,7 +152,7 @@ func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
 	var votesPq *votesPriorityQueue
 	isFutureVote := false
 
-	voteBlock := pool.chain.GetHeaderByHash(targetHash)
+	voteBlock := pool.chain.GetVerifiedBlockByHash(targetHash)
 	if voteBlock == nil {
 		votes = pool.futureVotes
 		votesPq = pool.futureVotesPq
@@ -184,6 +201,7 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 		heap.Push(votesPq, voteData)
 		voteBox := &VoteBox{
 			blockNumber:  targetNumber,
+			blockHash:    targetHash,
 			voteMessages: make([]*types.VoteEnvelope, 0, maxFutureVoteAmountPerBlock),
 		}
 		m[targetHash] = voteBox
@@ -197,6 +215,7 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 
 	// Put into corresponding votes map.
 	m[targetHash].voteMessages = append(m[targetHash].voteMessages, vote)
+	m[targetHash].trySetRecvVoteTime(pool.chain)
 	// Add into received vote to avoid future duplicated vote comes.
 	pool.receivedVotes.Add(voteHash)
 	log.Debug("VoteHash put into votepool is:", "voteHash", voteHash)
@@ -226,7 +245,7 @@ func (pool *VotePool) transferVotesFromFutureToCur(latestBlockHeader *types.Head
 	futurePqBuffer := make([]*types.VoteData, 0)
 	for futurePq.Len() > 0 && futurePq.Peek().TargetNumber <= latestBlockNumber {
 		blockHash := futurePq.Peek().TargetHash
-		header := pool.chain.GetHeaderByHash(blockHash)
+		header := pool.chain.GetVerifiedBlockByHash(blockHash)
 		if header == nil {
 			// Put into pq buffer used for later put again into futurePq
 			futurePqBuffer = append(futurePqBuffer, heap.Pop(futurePq).(*types.VoteData))
@@ -269,7 +288,11 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 	// may len(curVotes[blockHash].voteMessages) extra maxCurVoteAmountPerBlock, but it doesn't matter
 	if _, ok := curVotes[blockHash]; !ok {
 		heap.Push(curPq, voteData)
-		curVotes[blockHash] = &VoteBox{voteBox.blockNumber, validVotes}
+		curVotes[blockHash] = &VoteBox{
+			blockNumber:  voteBox.blockNumber,
+			blockHash:    voteBox.blockHash,
+			voteMessages: validVotes,
+		}
 		localCurVotesPqGauge.Update(int64(curPq.Len()))
 	} else {
 		curVotes[blockHash].voteMessages = append(curVotes[blockHash].voteMessages, validVotes...)
@@ -338,7 +361,7 @@ func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m
 
 	// Check duplicate voteMessage firstly.
 	if pool.receivedVotes.Contains(voteHash) {
-		log.Debug("Vote pool already contained the same vote", "voteHash", voteHash)
+		log.Trace("Vote pool already contained the same vote", "voteHash", voteHash)
 		return false
 	}
 

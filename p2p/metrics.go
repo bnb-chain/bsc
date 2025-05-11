@@ -37,19 +37,21 @@ const (
 )
 
 var (
-	activePeerGauge metrics.Gauge = metrics.NilGauge{}
+	activePeerGauge         = metrics.NewRegisteredGauge("p2p/peers", nil)
+	activeInboundPeerGauge  = metrics.NewRegisteredGauge("p2p/peers/inbound", nil)
+	activeOutboundPeerGauge = metrics.NewRegisteredGauge("p2p/peers/outbound", nil)
 
 	ingressTrafficMeter = metrics.NewRegisteredMeter("p2p/ingress", nil)
 	egressTrafficMeter  = metrics.NewRegisteredMeter("p2p/egress", nil)
 
 	// general ingress/egress connection meters
-	serveMeter          metrics.Meter = metrics.NilMeter{}
-	serveSuccessMeter   metrics.Meter = metrics.NilMeter{}
-	dialMeter           metrics.Meter = metrics.NilMeter{}
-	dialSuccessMeter    metrics.Meter = metrics.NilMeter{}
-	dialConnectionError metrics.Meter = metrics.NilMeter{}
+	serveMeter          = metrics.NewRegisteredMeter("p2p/serves", nil)
+	serveSuccessMeter   = metrics.NewRegisteredMeter("p2p/serves/success", nil)
+	dialMeter           = metrics.NewRegisteredMeter("p2p/dials", nil)
+	dialSuccessMeter    = metrics.NewRegisteredMeter("p2p/dials/success", nil)
+	dialConnectionError = metrics.NewRegisteredMeter("p2p/dials/error/connection", nil)
 
-	// handshake error meters
+	// dial error meters
 	dialTooManyPeers        = metrics.NewRegisteredMeter("p2p/dials/error/saturated", nil)
 	dialAlreadyConnected    = metrics.NewRegisteredMeter("p2p/dials/error/known", nil)
 	dialSelf                = metrics.NewRegisteredMeter("p2p/dials/error/self", nil)
@@ -57,25 +59,23 @@ var (
 	dialUnexpectedIdentity  = metrics.NewRegisteredMeter("p2p/dials/error/id/unexpected", nil)
 	dialEncHandshakeError   = metrics.NewRegisteredMeter("p2p/dials/error/rlpx/enc", nil)
 	dialProtoHandshakeError = metrics.NewRegisteredMeter("p2p/dials/error/rlpx/proto", nil)
+
+	// serve error meters
+	serveTooManyPeers        = metrics.NewRegisteredMeter("p2p/serves/error/saturated", nil)
+	serveAlreadyConnected    = metrics.NewRegisteredMeter("p2p/serves/error/known", nil)
+	serveSelf                = metrics.NewRegisteredMeter("p2p/serves/error/self", nil)
+	serveUselessPeer         = metrics.NewRegisteredMeter("p2p/serves/error/useless", nil)
+	serveUnexpectedIdentity  = metrics.NewRegisteredMeter("p2p/serves/error/id/unexpected", nil)
+	serveEncHandshakeError   = metrics.NewRegisteredMeter("p2p/serves/error/rlpx/enc", nil)
+	serveProtoHandshakeError = metrics.NewRegisteredMeter("p2p/serves/error/rlpx/proto", nil)
+
+	peerLatencyStat = metrics.NewRegisteredTimer("p2p/peers/latency", nil)
 )
-
-func init() {
-	if !metrics.Enabled {
-		return
-	}
-
-	activePeerGauge = metrics.NewRegisteredGauge("p2p/peers", nil)
-	serveMeter = metrics.NewRegisteredMeter("p2p/serves", nil)
-	serveSuccessMeter = metrics.NewRegisteredMeter("p2p/serves/success", nil)
-	dialMeter = metrics.NewRegisteredMeter("p2p/dials", nil)
-	dialSuccessMeter = metrics.NewRegisteredMeter("p2p/dials/success", nil)
-	dialConnectionError = metrics.NewRegisteredMeter("p2p/dials/error/connection", nil)
-}
 
 // markDialError matches errors that occur while setting up a dial connection
 // to the corresponding meter.
 func markDialError(err error) {
-	if !metrics.Enabled {
+	if !metrics.Enabled() {
 		return
 	}
 	if err2 := errors.Unwrap(err); err2 != nil {
@@ -99,6 +99,33 @@ func markDialError(err error) {
 	}
 }
 
+// markServeError matches errors that occur while setting up a serve connection
+// to the corresponding meter.
+func markServeError(err error) {
+	if !metrics.Enabled() {
+		return
+	}
+	if err2 := errors.Unwrap(err); err2 != nil {
+		err = err2
+	}
+	switch err {
+	case DiscTooManyPeers:
+		serveTooManyPeers.Mark(1)
+	case DiscAlreadyConnected:
+		serveAlreadyConnected.Mark(1)
+	case DiscSelf:
+		serveSelf.Mark(1)
+	case DiscUselessPeer:
+		serveUselessPeer.Mark(1)
+	case DiscUnexpectedIdentity:
+		serveUnexpectedIdentity.Mark(1)
+	case errEncHandshakeError:
+		serveEncHandshakeError.Mark(1)
+	case errProtoHandshakeError:
+		serveProtoHandshakeError.Mark(1)
+	}
+}
+
 // meteredConn is a wrapper around a net.Conn that meters both the
 // inbound and outbound network traffic.
 type meteredConn struct {
@@ -109,7 +136,7 @@ type meteredConn struct {
 // connection meter and also increases the metered peer count. If the metrics
 // system is disabled, function returns the original connection.
 func newMeteredConn(conn net.Conn) net.Conn {
-	if !metrics.Enabled {
+	if !metrics.Enabled() {
 		return conn
 	}
 	return &meteredConn{Conn: conn}

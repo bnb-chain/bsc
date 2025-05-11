@@ -3,10 +3,9 @@ package metrics
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
-
-	"golang.org/x/exp/slices"
 )
 
 // Write sorts writes each metric in the given registry periodically to the
@@ -27,19 +26,22 @@ func WriteOnce(r Registry, w io.Writer) {
 	slices.SortFunc(namedMetrics, namedMetric.cmp)
 	for _, namedMetric := range namedMetrics {
 		switch metric := namedMetric.m.(type) {
-		case Counter:
+		case *Counter:
 			fmt.Fprintf(w, "counter %s\n", namedMetric.name)
-			fmt.Fprintf(w, "  count:       %9d\n", metric.Count())
-		case CounterFloat64:
+			fmt.Fprintf(w, "  count:       %9d\n", metric.Snapshot().Count())
+		case *CounterFloat64:
 			fmt.Fprintf(w, "counter %s\n", namedMetric.name)
-			fmt.Fprintf(w, "  count:       %f\n", metric.Count())
-		case Gauge:
+			fmt.Fprintf(w, "  count:       %f\n", metric.Snapshot().Count())
+		case *Gauge:
 			fmt.Fprintf(w, "gauge %s\n", namedMetric.name)
-			fmt.Fprintf(w, "  value:       %9d\n", metric.Value())
-		case GaugeFloat64:
+			fmt.Fprintf(w, "  value:       %9d\n", metric.Snapshot().Value())
+		case *GaugeFloat64:
 			fmt.Fprintf(w, "gauge %s\n", namedMetric.name)
-			fmt.Fprintf(w, "  value:       %f\n", metric.Value())
-		case Healthcheck:
+			fmt.Fprintf(w, "  value:       %f\n", metric.Snapshot().Value())
+		case *GaugeInfo:
+			fmt.Fprintf(w, "gauge %s\n", namedMetric.name)
+			fmt.Fprintf(w, "  value:       %s\n", metric.Snapshot().Value().String())
+		case *Healthcheck:
 			metric.Check()
 			fmt.Fprintf(w, "healthcheck %s\n", namedMetric.name)
 			fmt.Fprintf(w, "  error:       %v\n", metric.Error())
@@ -57,7 +59,7 @@ func WriteOnce(r Registry, w io.Writer) {
 			fmt.Fprintf(w, "  95%%:         %12.2f\n", ps[2])
 			fmt.Fprintf(w, "  99%%:         %12.2f\n", ps[3])
 			fmt.Fprintf(w, "  99.9%%:       %12.2f\n", ps[4])
-		case Meter:
+		case *Meter:
 			m := metric.Snapshot()
 			fmt.Fprintf(w, "meter %s\n", namedMetric.name)
 			fmt.Fprintf(w, "  count:       %9d\n", m.Count())
@@ -65,7 +67,7 @@ func WriteOnce(r Registry, w io.Writer) {
 			fmt.Fprintf(w, "  5-min rate:  %12.2f\n", m.Rate5())
 			fmt.Fprintf(w, "  15-min rate: %12.2f\n", m.Rate15())
 			fmt.Fprintf(w, "  mean rate:   %12.2f\n", m.RateMean())
-		case Timer:
+		case *Timer:
 			t := metric.Snapshot()
 			ps := t.Percentiles([]float64{0.5, 0.75, 0.95, 0.99, 0.999})
 			fmt.Fprintf(w, "timer %s\n", namedMetric.name)

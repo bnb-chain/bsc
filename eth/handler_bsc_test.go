@@ -36,7 +36,7 @@ func (h *testBscHandler) Handle(peer *bsc.Peer, packet bsc.Packet) error {
 	}
 }
 
-func TestSendVotes67(t *testing.T) { testSendVotes(t, eth.ETH67) }
+func TestSendVotes68(t *testing.T) { testSendVotes(t, eth.ETH68) }
 
 func testSendVotes(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -65,11 +65,7 @@ func testSendVotes(t *testing.T, protocol uint) {
 	protos := []p2p.Protocol{
 		{
 			Name:    "eth",
-			Version: eth.ETH66,
-		},
-		{
-			Name:    "eth",
-			Version: eth.ETH67,
+			Version: eth.ETH68,
 		},
 		{
 			Name:    "bsc",
@@ -79,11 +75,7 @@ func testSendVotes(t *testing.T, protocol uint) {
 	caps := []p2p.Cap{
 		{
 			Name:    "eth",
-			Version: eth.ETH66,
-		},
-		{
-			Name:    "eth",
-			Version: eth.ETH67,
+			Version: eth.ETH68,
 		},
 		{
 			Name:    "bsc",
@@ -163,7 +155,7 @@ func testSendVotes(t *testing.T, protocol uint) {
 	}
 }
 
-func TestRecvVotes67(t *testing.T) { testRecvVotes(t, eth.ETH67) }
+func TestRecvVotes68(t *testing.T) { testRecvVotes(t, eth.ETH68) }
 
 func testRecvVotes(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -175,11 +167,7 @@ func testRecvVotes(t *testing.T, protocol uint) {
 	protos := []p2p.Protocol{
 		{
 			Name:    "eth",
-			Version: eth.ETH66,
-		},
-		{
-			Name:    "eth",
-			Version: eth.ETH67,
+			Version: eth.ETH68,
 		},
 		{
 			Name:    "bsc",
@@ -189,11 +177,7 @@ func testRecvVotes(t *testing.T, protocol uint) {
 	caps := []p2p.Cap{
 		{
 			Name:    "eth",
-			Version: eth.ETH66,
-		},
-		{
-			Name:    "eth",
-			Version: eth.ETH67,
+			Version: eth.ETH68,
 		},
 		{
 			Name:    "bsc",

@@ -4,6 +4,7 @@ package v2
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	"github.com/cometbft/cometbft/crypto/ed25519"
@@ -49,7 +50,7 @@ func (cs ConsensusState) EncodeConsensusState() ([]byte, error) {
 
 	pos := uint64(0)
 	if uint64(len(cs.ChainID)) > chainIDLength {
-		return nil, fmt.Errorf("chainID length should be no more than 32")
+		return nil, errors.New("chainID length should be no more than 32")
 	}
 	copy(encodingBytes[pos:pos+chainIDLength], cs.ChainID)
 	pos += chainIDLength
@@ -197,7 +198,7 @@ func DecodeConsensusState(input []byte) (ConsensusState, error) {
 // 32 bytes               |                 |             |
 func DecodeLightBlockValidationInput(input []byte) (*ConsensusState, *types.LightBlock, error) {
 	if uint64(len(input)) <= consensusStateLengthBytesLength {
-		return nil, nil, fmt.Errorf("invalid input")
+		return nil, nil, errors.New("invalid input")
 	}
 
 	csLen := binary.BigEndian.Uint64(input[consensusStateLengthBytesLength-uint64TypeLength : consensusStateLengthBytesLength])

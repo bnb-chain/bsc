@@ -23,11 +23,11 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// log2_1_125 is used in the eviction priority calculation.
-var log2_1_125 = math.Log2(1.125)
+// log1_125 is used in the eviction priority calculation.
+var log1_125 = math.Log(1.125)
 
 // evictionPriority calculates the eviction priority based on the algorithm
-// described in the BlobPool docs for a both fee components.
+// described in the BlobPool docs for both fee components.
 //
 // This method takes about 8ns on a very recent laptop CPU, recalculating about
 // 125 million transaction priority values per second.
@@ -36,10 +36,7 @@ func evictionPriority(basefeeJumps float64, txBasefeeJumps, blobfeeJumps, txBlob
 		basefeePriority = evictionPriority1D(basefeeJumps, txBasefeeJumps)
 		blobfeePriority = evictionPriority1D(blobfeeJumps, txBlobfeeJumps)
 	)
-	if basefeePriority < blobfeePriority {
-		return basefeePriority
-	}
-	return blobfeePriority
+	return min(basefeePriority, blobfeePriority)
 }
 
 // evictionPriority1D calculates the eviction priority based on the algorithm
@@ -57,8 +54,8 @@ func evictionPriority1D(basefeeJumps float64, txfeeJumps float64) int {
 
 // dynamicFeeJumps calculates the log1.125(fee), namely the number of fee jumps
 // needed to reach the requested one. We only use it when calculating the jumps
-// between 2 fees, so it doesn't matter from what exact number with returns.
-// it returns the result from (0, 1, 1.125).
+// between 2 fees, so it doesn't matter from what exact number it returns.
+// It returns the result from (0, 1, 1.125).
 //
 // This method is very expensive, taking about 75ns on a very recent laptop CPU,
 // but the result does not change with the lifetime of a transaction, so it can
@@ -67,7 +64,7 @@ func dynamicFeeJumps(fee *uint256.Int) float64 {
 	if fee.IsZero() {
 		return 0 // can't log2 zero, should never happen outside tests, but don't choke
 	}
-	return math.Log2(fee.Float64()) / log2_1_125
+	return math.Log(fee.Float64()) / log1_125
 }
 
 // intLog2 is a helper to calculate the integral part of a log2 of an unsigned

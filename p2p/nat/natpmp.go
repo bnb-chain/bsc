@@ -17,6 +17,7 @@
 package nat
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -26,7 +27,7 @@ import (
 	natpmp "github.com/jackpal/go-nat-pmp"
 )
 
-// natPMPClient adapts the NAT-PMP protocol implementation so it conforms to
+// pmp adapts the NAT-PMP protocol implementation so it conforms to
 // the common interface.
 type pmp struct {
 	gw net.IP
@@ -47,7 +48,7 @@ func (n *pmp) ExternalIP() (net.IP, error) {
 
 func (n *pmp) AddMapping(protocol string, extport, intport int, name string, lifetime time.Duration) (uint16, error) {
 	if lifetime <= 0 {
-		return 0, fmt.Errorf("lifetime must not be <= 0")
+		return 0, errors.New("lifetime must not be <= 0")
 	}
 	// Note order of port arguments is switched between our
 	// AddMapping and the client's AddPortMapping.
@@ -68,6 +69,10 @@ func (n *pmp) DeleteMapping(protocol string, extport, intport int) (err error) {
 	// time of zero.
 	_, err = n.c.AddPortMapping(strings.ToLower(protocol), intport, 0, 0)
 	return err
+}
+
+func (n *pmp) MarshalText() ([]byte, error) {
+	return []byte(fmt.Sprintf("natpmp:%v", n.gw)), nil
 }
 
 func discoverPMP() Interface {

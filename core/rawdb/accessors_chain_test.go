@@ -18,13 +18,20 @@ package rawdb
 
 import (
 	"bytes"
+	rand2 "crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"math/big"
 	"math/rand"
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/holiman/uint256"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -388,10 +395,10 @@ func TestBlockReceiptStorage(t *testing.T) {
 	// Insert the receipt slice into the database and check presence
 	WriteReceipts(db, hash, 0, receipts)
 	if rs := ReadReceipts(db, hash, 0, 0, params.TestChainConfig); len(rs) == 0 {
-		t.Fatalf("no receipts returned")
+		t.Fatal("no receipts returned")
 	} else {
 		if err := checkReceiptsRLP(rs, receipts); err != nil {
-			t.Fatalf(err.Error())
+			t.Fatal(err)
 		}
 	}
 	// Delete the body and ensure that the receipts are no longer returned (metadata can't be recomputed)
@@ -401,7 +408,7 @@ func TestBlockReceiptStorage(t *testing.T) {
 	}
 	// Ensure that receipts without metadata can be returned without the block body too
 	if err := checkReceiptsRLP(ReadRawReceipts(db, hash, 0), receipts); err != nil {
-		t.Fatalf(err.Error())
+		t.Fatal(err)
 	}
 	// Sanity check that body alone without the receipt is a full purge
 	WriteBody(db, hash, 0, body)
@@ -409,6 +416,62 @@ func TestBlockReceiptStorage(t *testing.T) {
 	DeleteReceipts(db, hash, 0)
 	if rs := ReadReceipts(db, hash, 0, 0, params.TestChainConfig); len(rs) != 0 {
 		t.Fatalf("deleted receipts returned: %v", rs)
+	}
+}
+
+func TestBlockBlobSidecarsStorage(t *testing.T) {
+	db := NewMemoryDatabase()
+
+	// Create a live block since we need metadata to reconstruct the receipt
+	genBlobs := makeBlkSidecars(1, 2)
+	tx1 := types.NewTx(&types.BlobTx{
+		ChainID:    new(uint256.Int).SetUint64(1),
+		GasTipCap:  new(uint256.Int),
+		GasFeeCap:  new(uint256.Int),
+		Gas:        0,
+		Value:      new(uint256.Int),
+		Data:       nil,
+		BlobFeeCap: new(uint256.Int),
+		BlobHashes: []common.Hash{common.HexToHash("0x34ec6e64f9cda8fe0451a391e4798085a3ef51a65ed1bfb016e34fc1a2028f8f"), common.HexToHash("0xb9a412e875f29fac436acde234f954e91173c4cf79814f6dcf630d8a6345747f")},
+		Sidecar:    genBlobs[0],
+		V:          new(uint256.Int),
+		R:          new(uint256.Int),
+		S:          new(uint256.Int),
+	})
+	tx2 := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   new(big.Int).SetUint64(1),
+		GasTipCap: new(big.Int),
+		GasFeeCap: new(big.Int),
+		Gas:       0,
+		Value:     new(big.Int),
+		Data:      nil,
+		V:         new(big.Int),
+		R:         new(big.Int),
+		S:         new(big.Int),
+	})
+
+	blkHash := common.BytesToHash([]byte{0x03, 0x14})
+	body := &types.Body{Transactions: types.Transactions{tx1, tx2}}
+	sidecars := types.BlobSidecars{types.NewBlobSidecarFromTx(tx1)}
+
+	// Check that no sidecars entries are in a pristine database
+	if bs := ReadBlobSidecars(db, blkHash, 0); len(bs) != 0 {
+		t.Fatalf("non existent sidecars returned: %v", bs)
+	}
+	WriteBody(db, blkHash, 0, body)
+	WriteBlobSidecars(db, blkHash, 0, sidecars)
+
+	if bs := ReadBlobSidecars(db, blkHash, 0); len(bs) == 0 {
+		t.Fatalf("no sidecars returned")
+	} else {
+		if err := checkBlobSidecarsRLP(bs, sidecars); err != nil {
+			t.Fatalf("err: %v", err.Error())
+		}
+	}
+
+	DeleteBlobSidecars(db, blkHash, 0)
+	if bs := ReadBlobSidecars(db, blkHash, 0); len(bs) != 0 {
+		t.Fatalf("deleted sidecars returned: %v", bs)
 	}
 }
 
@@ -432,15 +495,35 @@ func checkReceiptsRLP(have, want types.Receipts) error {
 	return nil
 }
 
+func checkBlobSidecarsRLP(have, want types.BlobSidecars) error {
+	if len(have) != len(want) {
+		return fmt.Errorf("blobs sizes mismatch: have %d, want %d", len(have), len(want))
+	}
+	for i := 0; i < len(want); i++ {
+		rlpHave, err := rlp.EncodeToBytes(have[i])
+		if err != nil {
+			return err
+		}
+		rlpWant, err := rlp.EncodeToBytes(want[i])
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(rlpHave, rlpWant) {
+			return fmt.Errorf("blob #%d: receipt mismatch: have %s, want %s", i, hex.EncodeToString(rlpHave), hex.EncodeToString(rlpWant))
+		}
+	}
+	return nil
+}
+
 func TestAncientStorage(t *testing.T) {
 	// Freezer style fast import the chain.
 	frdir := t.TempDir()
-
-	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false, false)
+	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false, false, false)
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend")
 	}
 	defer db.Close()
+
 	// Create a test block
 	block := types.NewBlockWithHeader(&types.Header{
 		Number:      big.NewInt(0),
@@ -465,7 +548,8 @@ func TestAncientStorage(t *testing.T) {
 	}
 
 	// Write and verify the header in the database
-	WriteAncientBlocks(db, []*types.Block{block}, []types.Receipts{nil}, big.NewInt(100))
+	_, err = WriteAncientBlocks(db, []*types.Block{block}, []types.Receipts{nil}, big.NewInt(100))
+	require.NoError(t, err)
 
 	if blob := ReadHeaderRLP(db, hash, number); len(blob) == 0 {
 		t.Fatalf("no header returned")
@@ -573,7 +657,7 @@ func TestHashesInRange(t *testing.T) {
 func BenchmarkWriteAncientBlocks(b *testing.B) {
 	// Open freezer database.
 	frdir := b.TempDir()
-	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false, false)
+	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false, false, false)
 	if err != nil {
 		b.Fatalf("failed to create database with ancient backend")
 	}
@@ -586,6 +670,7 @@ func BenchmarkWriteAncientBlocks(b *testing.B) {
 	const blockTxs = 20
 	allBlocks := makeTestBlocks(b.N, blockTxs)
 	batchReceipts := makeTestReceipts(batchSize, blockTxs)
+	batchSidecars := makeTestSidecars(batchSize, blockTxs)
 	b.ResetTimer()
 
 	// The benchmark loop writes batches of blocks, but note that the total block count is
@@ -601,6 +686,9 @@ func BenchmarkWriteAncientBlocks(b *testing.B) {
 
 		blocks := allBlocks[i : i+length]
 		receipts := batchReceipts[:length]
+		for j := 0; j < length; j++ {
+			blocks[i+j] = blocks[i+j].WithSidecars(batchSidecars[j])
+		}
 		writeSize, err := WriteAncientBlocks(db, blocks, receipts, td)
 		if err != nil {
 			b.Fatal(err)
@@ -640,7 +728,7 @@ func makeTestBlocks(nblock int, txsPerBlock int) []*types.Block {
 			Number: big.NewInt(int64(i)),
 			Extra:  []byte("test block"),
 		}
-		blocks[i] = types.NewBlockWithHeader(header).WithBody(txs, nil)
+		blocks[i] = types.NewBlockWithHeader(header).WithBody(types.Body{Transactions: txs})
 		blocks[i].Hash() // pre-cache the block hash
 	}
 	return blocks
@@ -649,11 +737,15 @@ func makeTestBlocks(nblock int, txsPerBlock int) []*types.Block {
 // makeTestReceipts creates fake receipts for the ancient write benchmark.
 func makeTestReceipts(n int, nPerBlock int) []types.Receipts {
 	receipts := make([]*types.Receipt, nPerBlock)
+	var logs []*types.Log
+	for i := 0; i < 5; i++ {
+		logs = append(logs, new(types.Log))
+	}
 	for i := 0; i < len(receipts); i++ {
 		receipts[i] = &types.Receipt{
 			Status:            types.ReceiptStatusSuccessful,
 			CumulativeGasUsed: 0x888888888,
-			Logs:              make([]*types.Log, 5),
+			Logs:              logs,
 		}
 	}
 	allReceipts := make([]types.Receipts, n)
@@ -661,6 +753,43 @@ func makeTestReceipts(n int, nPerBlock int) []types.Receipts {
 		allReceipts[i] = receipts
 	}
 	return allReceipts
+}
+
+func makeBlkSidecars(n, nPerTx int) []*types.BlobTxSidecar {
+	if n <= 0 {
+		return nil
+	}
+	ret := make([]*types.BlobTxSidecar, n)
+	for i := 0; i < n; i++ {
+		blobs := make([]kzg4844.Blob, nPerTx)
+		commitments := make([]kzg4844.Commitment, nPerTx)
+		proofs := make([]kzg4844.Proof, nPerTx)
+		for i := 0; i < nPerTx; i++ {
+			io.ReadFull(rand2.Reader, blobs[i][:])
+			commitments[i], _ = kzg4844.BlobToCommitment(&blobs[i])
+			proofs[i], _ = kzg4844.ComputeBlobProof(&blobs[i], commitments[i])
+		}
+		ret[i] = &types.BlobTxSidecar{
+			Blobs:       blobs,
+			Commitments: commitments,
+			Proofs:      proofs,
+		}
+	}
+	return ret
+}
+
+// makeTestSidecars creates fake blobs for the ancient write benchmark.
+func makeTestSidecars(n int, nPerBlock int) []types.BlobSidecars {
+	allBlobs := make([]types.BlobSidecars, n)
+	for i := 0; i < n; i++ {
+		raws := makeBlkSidecars(nPerBlock, i%3)
+		var sidecars types.BlobSidecars
+		for _, s := range raws {
+			sidecars = append(sidecars, &types.BlobSidecar{BlobTxSidecar: *s})
+		}
+		allBlobs[i] = sidecars
+	}
+	return allBlobs
 }
 
 type fullLogRLP struct {
@@ -736,7 +865,7 @@ func TestReadLogs(t *testing.T) {
 	// Insert the receipt slice into the database and check presence
 	WriteReceipts(db, hash, 0, receipts)
 
-	logs := ReadLogs(db, hash, 0, params.TestChainConfig)
+	logs := ReadLogs(db, hash, 0)
 	if len(logs) == 0 {
 		t.Fatalf("no logs returned")
 	}
@@ -794,7 +923,7 @@ func TestDeriveLogFields(t *testing.T) {
 		}),
 	}
 	// Create the corresponding receipts
-	receipts := []*receiptLogs{
+	receipts := []*types.Receipt{
 		{
 			Logs: []*types.Log{
 				{Address: common.BytesToAddress([]byte{0x11})},
@@ -818,9 +947,7 @@ func TestDeriveLogFields(t *testing.T) {
 	// Derive log metadata fields
 	number := big.NewInt(1)
 	hash := common.BytesToHash([]byte{0x03, 0x14})
-	if err := deriveLogFields(receipts, hash, number.Uint64(), txs); err != nil {
-		t.Fatal(err)
-	}
+	types.Receipts(receipts).DeriveFields(params.TestChainConfig, hash, number.Uint64(), 0, big.NewInt(0), big.NewInt(0), txs)
 
 	// Iterate over all the computed fields and check that they're correct
 	logIndex := uint(0)
@@ -876,11 +1003,12 @@ func TestHeadersRLPStorage(t *testing.T) {
 	// Have N headers in the freezer
 	frdir := t.TempDir()
 
-	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false, false)
+	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false, false, false)
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend")
 	}
 	defer db.Close()
+
 	// Create blocks
 	var chain []*types.Block
 	var pHash common.Hash
@@ -896,7 +1024,7 @@ func TestHeadersRLPStorage(t *testing.T) {
 		chain = append(chain, block)
 		pHash = block.Hash()
 	}
-	var receipts []types.Receipts = make([]types.Receipts, 100)
+	receipts := make([]types.Receipts, 100)
 	// Write first half to ancients
 	WriteAncientBlocks(db, chain[:50], receipts[:50], big.NewInt(100))
 	// Write second half to db

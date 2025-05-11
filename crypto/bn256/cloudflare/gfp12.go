@@ -1,7 +1,7 @@
 package bn256
 
 // For details of the algorithms used, see "Multiplication and Squaring on
-// Pairing-Friendly Fields, Devegili et al.
+// Pairing-Friendly Fields", Devegili et al.
 // http://eprint.iacr.org/2006/471.pdf.
 
 import (
@@ -105,8 +105,8 @@ func (e *gfP12) Mul(a, b *gfP12) *gfP12 {
 }
 
 func (e *gfP12) MulScalar(a *gfP12, b *gfP6) *gfP12 {
-	e.x.Mul(&e.x, b)
-	e.y.Mul(&e.y, b)
+	e.x.Mul(&a.x, b)
+	e.y.Mul(&a.y, b)
 	return e
 }
 

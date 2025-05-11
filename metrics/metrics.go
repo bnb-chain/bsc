@@ -3,56 +3,48 @@
 // <https://github.com/rcrowley/go-metrics>
 //
 // Coda Hale's original work: <https://github.com/codahale/metrics>
+
 package metrics
 
 import (
-	"os"
 	"runtime/metrics"
 	"runtime/pprof"
-	"strings"
 	"time"
-
-	"github.com/ethereum/go-ethereum/log"
 )
 
-// Enabled is checked by the constructor functions for all of the
-// standard metrics. If it is true, the metric returned is a stub.
+var (
+	metricsEnabled = false
+
+	// metricsExpensiveEnabled is a soft-flag meant for external packages to check if costly
+	// metrics gathering is allowed or not. The goal is to separate standard metrics
+	// for health monitoring and debug metrics that might impact runtime performance.
+	metricsExpensiveEnabled = false
+)
+
+// Enabled is checked by functions that are deemed 'expensive', e.g. if a
+// meter-type does locking and/or non-trivial math operations during update.
+func Enabled() bool {
+	return metricsEnabled
+}
+
+// Enable enables the metrics system.
+// The Enabled-flag is expected to be set, once, during startup, but toggling off and on
+// is not supported.
 //
-// This global kill-switch helps quantify the observer effect and makes
-// for less cluttered pprof profiles.
-var Enabled = false
+// Enable is not safe to call concurrently. You need to call this as early as possible in
+// the program, before any metrics collection will happen.
+func Enable() {
+	metricsEnabled = true
+}
 
-// EnabledExpensive is a soft-flag meant for external packages to check if costly
-// metrics gathering is allowed or not. The goal is to separate standard metrics
-// for health monitoring and debug metrics that might impact runtime performance.
-var EnabledExpensive = false
+// EnabledExpensive is checked by functions that are deemed 'expensive'.
+func EnabledExpensive() bool {
+	return metricsExpensiveEnabled
+}
 
-// enablerFlags is the CLI flag names to use to enable metrics collections.
-var enablerFlags = []string{"metrics"}
-
-// expensiveEnablerFlags is the CLI flag names to use to enable metrics collections.
-var expensiveEnablerFlags = []string{"metrics.expensive"}
-
-// Init enables or disables the metrics system. Since we need this to run before
-// any other code gets to create meters and timers, we'll actually do an ugly hack
-// and peek into the command line args for the metrics flag.
-func init() {
-	for _, arg := range os.Args {
-		flag := strings.TrimLeft(arg, "-")
-
-		for _, enabler := range enablerFlags {
-			if !Enabled && flag == enabler {
-				log.Info("Enabling metrics collection")
-				Enabled = true
-			}
-		}
-		for _, enabler := range expensiveEnablerFlags {
-			if !EnabledExpensive && flag == enabler {
-				log.Info("Enabling expensive metrics collection")
-				EnabledExpensive = true
-			}
-		}
-	}
+// EnableExpensive enables the expensive metrics.
+func EnableExpensive() {
+	metricsExpensiveEnabled = true
 }
 
 var threadCreateProfile = pprof.Lookup("threadcreate")
@@ -83,6 +75,12 @@ var runtimeSamples = []metrics.Sample{
 	{Name: "/memory/classes/heap/unused:bytes"},
 	{Name: "/sched/goroutines:goroutines"},
 	{Name: "/sched/latencies:seconds"}, // histogram
+}
+
+func ReadRuntimeStats() *runtimeStats {
+	r := new(runtimeStats)
+	readRuntimeStats(r)
+	return r
 }
 
 func readRuntimeStats(v *runtimeStats) {
@@ -123,7 +121,7 @@ func readRuntimeStats(v *runtimeStats) {
 // CollectProcessMetrics periodically collects various metrics about the running process.
 func CollectProcessMetrics(refresh time.Duration) {
 	// Short circuit if the metrics system is disabled
-	if !Enabled {
+	if !metricsEnabled {
 		return
 	}
 
@@ -141,27 +139,29 @@ func CollectProcessMetrics(refresh time.Duration) {
 
 	// Define the various metrics to collect
 	var (
-		cpuSysLoad            = GetOrRegisterGauge("system/cpu/sysload", DefaultRegistry)
-		cpuSysWait            = GetOrRegisterGauge("system/cpu/syswait", DefaultRegistry)
-		cpuProcLoad           = GetOrRegisterGauge("system/cpu/procload", DefaultRegistry)
-		cpuSysLoadTotal       = GetOrRegisterCounterFloat64("system/cpu/sysload/total", DefaultRegistry)
-		cpuSysWaitTotal       = GetOrRegisterCounterFloat64("system/cpu/syswait/total", DefaultRegistry)
-		cpuProcLoadTotal      = GetOrRegisterCounterFloat64("system/cpu/procload/total", DefaultRegistry)
-		cpuThreads            = GetOrRegisterGauge("system/cpu/threads", DefaultRegistry)
-		cpuGoroutines         = GetOrRegisterGauge("system/cpu/goroutines", DefaultRegistry)
-		cpuSchedLatency       = getOrRegisterRuntimeHistogram("system/cpu/schedlatency", secondsToNs, nil)
-		memPauses             = getOrRegisterRuntimeHistogram("system/memory/pauses", secondsToNs, nil)
-		memAllocs             = GetOrRegisterMeter("system/memory/allocs", DefaultRegistry)
-		memFrees              = GetOrRegisterMeter("system/memory/frees", DefaultRegistry)
-		memTotal              = GetOrRegisterGauge("system/memory/held", DefaultRegistry)
-		heapUsed              = GetOrRegisterGauge("system/memory/used", DefaultRegistry)
-		heapObjects           = GetOrRegisterGauge("system/memory/objects", DefaultRegistry)
-		diskReads             = GetOrRegisterMeter("system/disk/readcount", DefaultRegistry)
-		diskReadBytes         = GetOrRegisterMeter("system/disk/readdata", DefaultRegistry)
-		diskReadBytesCounter  = GetOrRegisterCounter("system/disk/readbytes", DefaultRegistry)
-		diskWrites            = GetOrRegisterMeter("system/disk/writecount", DefaultRegistry)
-		diskWriteBytes        = GetOrRegisterMeter("system/disk/writedata", DefaultRegistry)
-		diskWriteBytesCounter = GetOrRegisterCounter("system/disk/writebytes", DefaultRegistry)
+		cpuSysLoad              = GetOrRegisterGauge("system/cpu/sysload", DefaultRegistry)
+		cpuSysWait              = GetOrRegisterGauge("system/cpu/syswait", DefaultRegistry)
+		cpuProcLoad             = GetOrRegisterGauge("system/cpu/procload", DefaultRegistry)
+		cpuSysLoadTotal         = GetOrRegisterCounterFloat64("system/cpu/sysload/total", DefaultRegistry)
+		cpuSysWaitTotal         = GetOrRegisterCounterFloat64("system/cpu/syswait/total", DefaultRegistry)
+		cpuProcLoadTotal        = GetOrRegisterCounterFloat64("system/cpu/procload/total", DefaultRegistry)
+		cpuThreads              = GetOrRegisterGauge("system/cpu/threads", DefaultRegistry)
+		cpuGoroutines           = GetOrRegisterGauge("system/cpu/goroutines", DefaultRegistry)
+		cpuSchedLatency         = getOrRegisterRuntimeHistogram("system/cpu/schedlatency", secondsToNs, nil)
+		memPauses               = getOrRegisterRuntimeHistogram("system/memory/pauses", secondsToNs, nil)
+		memAllocs               = GetOrRegisterMeter("system/memory/allocs", DefaultRegistry)
+		memFrees                = GetOrRegisterMeter("system/memory/frees", DefaultRegistry)
+		memTotal                = GetOrRegisterGauge("system/memory/held", DefaultRegistry)
+		heapUsed                = GetOrRegisterGauge("system/memory/used", DefaultRegistry)
+		heapObjects             = GetOrRegisterGauge("system/memory/objects", DefaultRegistry)
+		diskReads               = GetOrRegisterMeter("system/disk/readcount", DefaultRegistry)
+		diskReadBytes           = GetOrRegisterMeter("system/disk/readdata", DefaultRegistry)
+		diskReadBytesCounter    = GetOrRegisterCounter("system/disk/readbytes", DefaultRegistry)
+		diskWrites              = GetOrRegisterMeter("system/disk/writecount", DefaultRegistry)
+		diskWriteBytes          = GetOrRegisterMeter("system/disk/writedata", DefaultRegistry)
+		diskWriteBytesCounter   = GetOrRegisterCounter("system/disk/writebytes", DefaultRegistry)
+		diskIOReadBytesCounter  = GetOrRegisterCounter("system/disk/io/readbytes", DefaultRegistry)
+		diskIOWriteBytesCounter = GetOrRegisterCounter("system/disk/io/writebytes", DefaultRegistry)
 	)
 
 	var lastCollectTime time.Time
@@ -213,6 +213,8 @@ func CollectProcessMetrics(refresh time.Duration) {
 			diskWriteBytes.Mark(diskstats[now].WriteBytes - diskstats[prev].WriteBytes)
 			diskReadBytesCounter.Inc(diskstats[now].ReadBytes - diskstats[prev].ReadBytes)
 			diskWriteBytesCounter.Inc(diskstats[now].WriteBytes - diskstats[prev].WriteBytes)
+			diskIOReadBytesCounter.Inc(diskstats[now].ReadIOBytes - diskstats[prev].ReadIOBytes)
+			diskIOWriteBytesCounter.Inc(diskstats[now].WriteIOBytes - diskstats[prev].WriteIOBytes)
 		}
 
 		time.Sleep(refresh)

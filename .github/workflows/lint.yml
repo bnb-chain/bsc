@@ -7,7 +7,7 @@ on:
       - develop
 
   pull_request:
-    branches: 
+    branches:
       - master
       - develop
 
@@ -15,7 +15,7 @@ jobs:
   golang-lint:
     strategy:
       matrix:
-        go-version: [1.19.x]
+        go-version: [1.23.x]
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -44,15 +44,12 @@ jobs:
           ${{ runner.os }}-go-
     
     - run: |
-        go mod download
+        go mod tidy
 
     - name: golangci-lint
-      uses: golangci/golangci-lint-action@v3
-      with:
-        # Optional: version of golangci-lint to use in form of v1.2 or v1.2.3 or `latest` to use the latest version
-        version: v1.52.2
-        working-directory: ./
-        skip-pkg-cache: true
-        skip-cache: true
-        skip-build-cache: true
-        args: --timeout=99m --config ./.golangci.yml
+      env:
+        CGO_CFLAGS: "-O -D__BLST_PORTABLE__"
+        CGO_CFLAGS_ALLOW: "-O -D__BLST_PORTABLE__"
+        ANDROID_HOME: "" # Skip android test
+      run: |
+        make lint

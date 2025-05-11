@@ -26,7 +26,7 @@ import (
 
 type EmptyTrie struct{}
 
-// NewSecure creates a dummy trie
+// NewEmptyTrie creates a dummy trie
 func NewEmptyTrie() *EmptyTrie {
 	return &EmptyTrie{}
 }
@@ -48,7 +48,7 @@ func (t *EmptyTrie) UpdateStorage(_ common.Address, key, value []byte) error {
 }
 
 // TryUpdateAccount abstract an account write in the trie.
-func (t *EmptyTrie) UpdateAccount(address common.Address, account *types.StateAccount) error {
+func (t *EmptyTrie) UpdateAccount(address common.Address, account *types.StateAccount, codeLen int) error {
 	return nil
 }
 
@@ -64,8 +64,8 @@ func (t *EmptyTrie) DeleteAccount(address common.Address) error {
 	return nil
 }
 
-func (t *EmptyTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet, error) {
-	return common.Hash{}, nil, nil
+func (t *EmptyTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet) {
+	return common.Hash{}, nil
 }
 
 func (t *EmptyTrie) Hash() common.Hash {
@@ -86,4 +86,13 @@ func (t *EmptyTrie) Prove(key []byte, proofDb ethdb.KeyValueWriter) error {
 func (t *EmptyTrie) Copy() *EmptyTrie {
 	cpy := *t
 	return &cpy
+}
+
+func (t *EmptyTrie) IsVerkle() bool {
+	return false
+}
+
+// Witness returns a set containing all trie nodes that have been accessed.
+func (t *EmptyTrie) Witness() map[string]struct{} {
+	panic("not implemented")
 }

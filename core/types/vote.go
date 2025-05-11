@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 
 	"github.com/pkg/errors"
-	"github.com/prysmaticlabs/prysm/v4/crypto/bls"
+	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -74,18 +74,18 @@ func (v *VoteEnvelope) calcVoteHash() common.Hash {
 func (b BLSPublicKey) Bytes() []byte { return b[:] }
 
 // Verify vote using BLS.
-func (vote *VoteEnvelope) Verify() error {
-	blsPubKey, err := bls.PublicKeyFromBytes(vote.VoteAddress[:])
+func (v *VoteEnvelope) Verify() error {
+	blsPubKey, err := bls.PublicKeyFromBytes(v.VoteAddress[:])
 	if err != nil {
 		return errors.Wrap(err, "convert public key from bytes to bls failed")
 	}
 
-	sig, err := bls.SignatureFromBytes(vote.Signature[:])
+	sig, err := bls.SignatureFromBytes(v.Signature[:])
 	if err != nil {
 		return errors.Wrap(err, "invalid signature")
 	}
 
-	voteDataHash := vote.Data.Hash()
+	voteDataHash := v.Data.Hash()
 	if !sig.Verify(blsPubKey, voteDataHash[:]) {
 		return errors.New("verify bls signature failed.")
 	}

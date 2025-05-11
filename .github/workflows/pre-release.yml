@@ -15,7 +15,7 @@ jobs:
     name: Build Release
     strategy:
       matrix:
-        go-version: [1.19.x]
+        go-version: [1.23.x]
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -82,28 +82,28 @@ jobs:
       # ==============================
 
       - name: Upload Linux Build
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4.3.3
         if: matrix.os == 'ubuntu-latest'
         with:
           name: linux
           path: ./build/bin/geth
 
       - name: Upload MacOS Build
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4.3.3
         if: matrix.os == 'macos-latest'
         with:
           name: macos
           path: ./build/bin/geth
       
       - name: Upload Windows Build
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4.3.3
         if: matrix.os == 'windows-latest'
         with:
           name: windows
           path: ./build/bin/geth.exe
 
       - name: Upload ARM-64 Build
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4.3.3
         if: matrix.os == 'ubuntu-latest'
         with:
           name: arm64
@@ -125,25 +125,25 @@ jobs:
       # ==============================
 
       - name: Download Artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4.1.7
         with:
           name: linux
           path: ./linux
       
       - name: Download Artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4.1.7
         with:
           name: macos
           path: ./macos
       
       - name: Download Artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4.1.7
         with:
           name: windows
           path: ./windows
       
       - name: Download Artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4.1.7
         with:
           name: arm64
           path: ./arm64

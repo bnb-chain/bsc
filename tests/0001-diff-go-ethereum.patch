@@ -1,0 +1,71 @@
+0001-diff-go-ethereum.patch
+bdaa06d694bf10297 Mon Sep 17 00:00:00 2001
+From: buddh0 <galaxystroller@gmail.com>
+Date: Tue, 4 Mar 2025 11:22:17 +0800
+Subject: [PATCH] diff go ethereum
+
+---
+ core/vm/contracts.go  | 19 -------------------
+ core/vm/jump_table.go |  2 +-
+ 2 files changed, 1 insertion(+), 20 deletions(-)
+
+diff --git a/core/vm/contracts.go b/core/vm/contracts.go
+index ddde8b0c9..39065b2f7 100644
+--- a/core/vm/contracts.go
++++ b/core/vm/contracts.go
+@@ -91,9 +91,6 @@ var PrecompiledContractsIstanbul = PrecompiledContracts{
+ 	common.BytesToAddress([]byte{0x7}): &bn256ScalarMulIstanbul{},
+ 	common.BytesToAddress([]byte{0x8}): &bn256PairingIstanbul{},
+ 	common.BytesToAddress([]byte{0x9}): &blake2F{},
+-
+-	common.BytesToAddress([]byte{0x64}): &tmHeaderValidate{},
+-	common.BytesToAddress([]byte{0x65}): &iavlMerkleProofValidate{},
+ }
+ 
+ var PrecompiledContractsNano = PrecompiledContracts{
+@@ -246,13 +243,6 @@ var PrecompiledContractsCancun = PrecompiledContracts{
+ 	common.BytesToAddress([]byte{0x8}):  &bn256PairingIstanbul{},
+ 	common.BytesToAddress([]byte{0x9}):  &blake2F{},
+ 	common.BytesToAddress([]byte{0x0a}): &kzgPointEvaluation{},
+-
+-	common.BytesToAddress([]byte{0x64}): &tmHeaderValidate{},
+-	common.BytesToAddress([]byte{0x65}): &iavlMerkleProofValidatePlato{},
+-	common.BytesToAddress([]byte{0x66}): &blsSignatureVerify{},
+-	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidateHertz{},
+-	common.BytesToAddress([]byte{0x68}): &verifyDoubleSignEvidence{},
+-	common.BytesToAddress([]byte{0x69}): &secp256k1SignatureRecover{},
+ }
+ 
+ // PrecompiledContractsHaber contains the default set of pre-compiled Ethereum
+@@ -299,15 +289,6 @@ var PrecompiledContractsPrague = PrecompiledContracts{
+ 	common.BytesToAddress([]byte{0x0f}): &bls12381Pairing{},
+ 	common.BytesToAddress([]byte{0x10}): &bls12381MapG1{},
+ 	common.BytesToAddress([]byte{0x11}): &bls12381MapG2{},
+-
+-	common.BytesToAddress([]byte{0x64}): &tmHeaderValidate{},
+-	common.BytesToAddress([]byte{0x65}): &iavlMerkleProofValidatePlato{},
+-	common.BytesToAddress([]byte{0x66}): &blsSignatureVerify{},
+-	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidateHertz{},
+-	common.BytesToAddress([]byte{0x68}): &verifyDoubleSignEvidence{},
+-	common.BytesToAddress([]byte{0x69}): &secp256k1SignatureRecover{},
+-
+-	common.BytesToAddress([]byte{0x01, 0x00}): &p256Verify{},
+ }
+ 
+ var PrecompiledContractsBLS = PrecompiledContractsPrague
+diff --git a/core/vm/jump_table.go b/core/vm/jump_table.go
+index 299ee4c55..6610fa7f9 100644
+--- a/core/vm/jump_table.go
++++ b/core/vm/jump_table.go
+@@ -119,7 +119,7 @@ func newCancunInstructionSet() JumpTable {
+ }
+ 
+ func newShanghaiInstructionSet() JumpTable {
+-	instructionSet := newLondonInstructionSet()
++	instructionSet := newMergeInstructionSet()
+ 	enable3855(&instructionSet) // PUSH0 instruction
+ 	enable3860(&instructionSet) // Limit and meter initcode
+ 
+-- 
+2.41.0
+

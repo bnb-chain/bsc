@@ -21,6 +21,7 @@ import (
 	"crypto/ecdsa"
 	"fmt"
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -30,7 +31,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
-	"golang.org/x/exp/slices"
 )
 
 // testerAccountPool is a pool to maintain currently active tester accounts,
@@ -467,7 +467,6 @@ func (tt *cliqueTest) run(t *testing.T) {
 	for j := 0; j < len(batches)-1; j++ {
 		if k, err := chain.InsertChain(batches[j]); err != nil {
 			t.Fatalf("failed to import batch %d, block %d: %v", j, k, err)
-			break
 		}
 	}
 	if _, err = chain.InsertChain(batches[len(batches)-1]); err != tt.failure {

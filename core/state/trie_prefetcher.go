@@ -50,11 +50,13 @@ type prefetchMsg struct {
 //
 // Note, the prefetcher's API is not thread safe.
 type triePrefetcher struct {
-	db         Database               // Database to fetch trie nodes through
-	root       common.Hash            // Root hash of the account trie for metrics
-	rootParent common.Hash            // Root has of the account trie from block before the prvious one, designed for pipecommit mode
-	fetches    map[string]Trie        // Partially or fully fetcher tries
-	fetchers   map[string]*subfetcher // Subfetchers for each trie
+	verkle   bool                   // Flag whether the prefetcher is in verkle mode
+	db       Database               // Database to fetch trie nodes through
+	root     common.Hash            // Root hash of the account trie for metrics
+	fetches  map[string]Trie        // Partially or fully fetched tries. Only populated for inactive copies
+	fetchers map[string]*subfetcher // Subfetchers for each trie
+
+	noreads bool // Whether to ignore state-read-only prefetch requests
 
 	abortChan         chan *subfetcher // to abort a single subfetcher and its children
 	closed            int32
@@ -63,31 +65,33 @@ type triePrefetcher struct {
 	fetchersMutex     sync.RWMutex
 	prefetchChan      chan *prefetchMsg // no need to wait for return
 
-	deliveryMissMeter metrics.Meter
-	accountLoadMeter  metrics.Meter
-	accountDupMeter   metrics.Meter
-	accountSkipMeter  metrics.Meter
-	accountWasteMeter metrics.Meter
-	storageLoadMeter  metrics.Meter
-	storageDupMeter   metrics.Meter
-	storageSkipMeter  metrics.Meter
-	storageWasteMeter metrics.Meter
+	deliveryMissMeter *metrics.Meter
+	accountLoadMeter  *metrics.Meter
+	accountDupMeter   *metrics.Meter
+	accountSkipMeter  *metrics.Meter
+	accountWasteMeter *metrics.Meter
+	storageLoadMeter  *metrics.Meter
+	storageDupMeter   *metrics.Meter
+	storageSkipMeter  *metrics.Meter
+	storageWasteMeter *metrics.Meter
 
-	accountStaleLoadMeter  metrics.Meter
-	accountStaleDupMeter   metrics.Meter
-	accountStaleSkipMeter  metrics.Meter
-	accountStaleWasteMeter metrics.Meter
+	accountStaleLoadMeter  *metrics.Meter
+	accountStaleDupMeter   *metrics.Meter
+	accountStaleSkipMeter  *metrics.Meter
+	accountStaleWasteMeter *metrics.Meter
 }
 
 // newTriePrefetcher
-func newTriePrefetcher(db Database, root, rootParent common.Hash, namespace string) *triePrefetcher {
+func newTriePrefetcher(db Database, root common.Hash, namespace string, noreads bool) *triePrefetcher {
 	prefix := triePrefetchMetricsPrefix + namespace
 	p := &triePrefetcher{
-		db:         db,
-		root:       root,
-		rootParent: rootParent,
-		fetchers:   make(map[string]*subfetcher), // Active prefetchers use the fetchers map
-		abortChan:  make(chan *subfetcher, abortChanSize),
+		verkle:    db.TrieDB().IsVerkle(),
+		db:        db,
+		root:      root,
+		fetchers:  make(map[string]*subfetcher), // Active prefetchers use the fetchers map
+		abortChan: make(chan *subfetcher, abortChanSize),
+
+		noreads: noreads,
 
 		closeMainChan:     make(chan struct{}),
 		closeMainDoneChan: make(chan struct{}),
@@ -157,42 +161,29 @@ func (p *triePrefetcher) mainLoop() {
 					<-child.term
 				}
 
-				if metrics.EnabledExpensive {
-					switch fetcher.root {
-					case p.root:
-						p.accountLoadMeter.Mark(int64(len(fetcher.seen)))
-						p.accountDupMeter.Mark(int64(fetcher.dups))
-						p.accountSkipMeter.Mark(int64(len(fetcher.tasks)))
-						fetcher.lock.Lock()
-						for _, key := range fetcher.used {
-							delete(fetcher.seen, string(key))
-						}
-						fetcher.lock.Unlock()
-						p.accountWasteMeter.Mark(int64(len(fetcher.seen)))
-
-					case p.rootParent:
-						p.accountStaleLoadMeter.Mark(int64(len(fetcher.seen)))
-						p.accountStaleDupMeter.Mark(int64(fetcher.dups))
-						p.accountStaleSkipMeter.Mark(int64(len(fetcher.tasks)))
-						fetcher.lock.Lock()
-						for _, key := range fetcher.used {
-							delete(fetcher.seen, string(key))
-						}
-						fetcher.lock.Unlock()
-						p.accountStaleWasteMeter.Mark(int64(len(fetcher.seen)))
-
-					default:
-						p.storageLoadMeter.Mark(int64(len(fetcher.seen)))
-						p.storageDupMeter.Mark(int64(fetcher.dups))
-						p.storageSkipMeter.Mark(int64(len(fetcher.tasks)))
-
-						fetcher.lock.Lock()
-						for _, key := range fetcher.used {
-							delete(fetcher.seen, string(key))
-						}
-						fetcher.lock.Unlock()
-						p.storageWasteMeter.Mark(int64(len(fetcher.seen)))
+				switch fetcher.root {
+				case p.root:
+					p.accountLoadMeter.Mark(int64(len(fetcher.seen)))
+					p.accountDupMeter.Mark(int64(fetcher.dups))
+					p.accountSkipMeter.Mark(int64(len(fetcher.tasks)))
+					fetcher.lock.Lock()
+					for _, key := range fetcher.used {
+						delete(fetcher.seen, string(key))
 					}
+					fetcher.lock.Unlock()
+					p.accountWasteMeter.Mark(int64(len(fetcher.seen)))
+
+				default:
+					p.storageLoadMeter.Mark(int64(len(fetcher.seen)))
+					p.storageDupMeter.Mark(int64(fetcher.dups))
+					p.storageSkipMeter.Mark(int64(len(fetcher.tasks)))
+
+					fetcher.lock.Lock()
+					for _, key := range fetcher.used {
+						delete(fetcher.seen, string(key))
+					}
+					fetcher.lock.Unlock()
+					p.storageWasteMeter.Mark(int64(len(fetcher.seen)))
 				}
 			}
 			close(p.closeMainDoneChan)
@@ -233,7 +224,7 @@ func (p *triePrefetcher) copy() *triePrefetcher {
 		// if the triePrefetcher is active, fetches will not be used in mainLoop
 		// otherwise, inactive triePrefetcher is readonly, it won't modify fetches
 		for root, fetch := range p.fetches {
-			fetcherCopied.fetches[root] = p.db.CopyTrie(fetch)
+			fetcherCopied.fetches[root] = mustCopyTrie(fetch)
 		}
 		return fetcherCopied
 	}
@@ -265,15 +256,28 @@ func (p *triePrefetcher) copy() *triePrefetcher {
 }
 
 // prefetch schedules a batch of trie items to prefetch.
-func (p *triePrefetcher) prefetch(owner common.Hash, root common.Hash, addr common.Address, keys [][]byte) {
+func (p *triePrefetcher) prefetch(owner common.Hash, root common.Hash, addr common.Address, addrs []common.Address, slots []common.Hash, read bool) error {
+	// If the state item is only being read, but reads are disabled, return
+	if read && p.noreads {
+		return nil
+	}
+
 	// If the prefetcher is an inactive one, bail out
 	if p.fetches != nil {
-		return
+		return nil
+	}
+	var keys [][]byte
+	for _, addr := range addrs {
+		keys = append(keys, addr[:])
+	}
+	for _, slot := range slots {
+		keys = append(keys, slot[:])
 	}
 	select {
 	case <-p.closeMainChan: // skip closed trie prefetcher
 	case p.prefetchChan <- &prefetchMsg{owner, root, addr, keys}:
 	}
+	return nil
 }
 
 // trie returns the trie matching the root hash, or nil if the prefetcher doesn't
@@ -286,7 +290,7 @@ func (p *triePrefetcher) trie(owner common.Hash, root common.Hash) Trie {
 		if trie == nil {
 			return nil
 		}
-		return p.db.CopyTrie(trie)
+		return mustCopyTrie(trie)
 	}
 
 	// use lock instead of request to mainLoop by chan to get the fetcher for performance concern.
@@ -315,10 +319,7 @@ func (p *triePrefetcher) trie(owner common.Hash, root common.Hash) Trie {
 
 // used marks a batch of state items used to allow creating statistics as to
 // how useful or wasteful the prefetcher is.
-func (p *triePrefetcher) used(owner common.Hash, root common.Hash, used [][]byte) {
-	if !metrics.EnabledExpensive {
-		return
-	}
+func (p *triePrefetcher) used(owner common.Hash, root common.Hash, usedAddr []common.Address, usedSlot []common.Hash) {
 	// If the prefetcher is an inactive one, bail out
 	if p.fetches != nil {
 		return
@@ -330,7 +331,12 @@ func (p *triePrefetcher) used(owner common.Hash, root common.Hash, used [][]byte
 		id := p.trieID(owner, root)
 		if fetcher := p.fetchers[id]; fetcher != nil {
 			fetcher.lock.Lock()
-			fetcher.used = used
+			for _, addr := range usedAddr {
+				fetcher.used = append(fetcher.used, addr[:])
+			}
+			for _, slot := range usedSlot {
+				fetcher.used = append(fetcher.used, slot[:])
+			}
 			fetcher.lock.Unlock()
 		}
 		p.fetchersMutex.RUnlock()
@@ -339,7 +345,16 @@ func (p *triePrefetcher) used(owner common.Hash, root common.Hash, used [][]byte
 
 // trieID returns an unique trie identifier consists the trie owner and root hash.
 func (p *triePrefetcher) trieID(owner common.Hash, root common.Hash) string {
-	return string(append(owner.Bytes(), root.Bytes()...))
+	// The trie in verkle is only identified by state root
+	if p.verkle {
+		return p.root.Hex()
+	}
+	// The trie in merkle is either identified by state root (account trie),
+	// or identified by the owner and trie root (storage trie)
+	trieID := make([]byte, common.HashLength*2)
+	copy(trieID, owner.Bytes())
+	copy(trieID[common.HashLength:], root.Bytes())
+	return string(trieID)
 }
 
 // subfetcher is a trie fetcher goroutine responsible for pulling entries for a
@@ -456,7 +471,7 @@ func (sf *subfetcher) peek() Trie {
 		if sf.trie == nil {
 			return nil
 		}
-		return sf.db.CopyTrie(sf.trie)
+		return mustCopyTrie(sf.trie)
 	}
 }
 
@@ -471,37 +486,59 @@ func (sf *subfetcher) abort() {
 	// no need to wait <-sf.term here, will check sf.term later
 }
 
+// openTrie resolves the target trie from database for prefetching.
+func (sf *subfetcher) openTrie() error {
+	// Open the verkle tree if the sub-fetcher is in verkle mode. Note, there is
+	// only a single fetcher for verkle.
+	if sf.db.TrieDB().IsVerkle() {
+		tr, err := sf.db.OpenTrie(sf.state)
+		if err != nil {
+			log.Warn("Trie prefetcher failed opening verkle trie", "root", sf.root, "err", err)
+			return err
+		}
+		sf.trie = tr
+		return nil
+	}
+	// Open the merkle tree if the sub-fetcher is in merkle mode
+	if sf.owner == (common.Hash{}) {
+		tr, err := sf.db.OpenTrie(sf.state)
+		if err != nil {
+			log.Warn("Trie prefetcher failed opening account trie", "root", sf.root, "err", err)
+			return err
+		}
+		sf.trie = tr
+		return nil
+	}
+	tr, err := sf.db.OpenStorageTrie(sf.state, sf.addr, sf.root, nil)
+	if err != nil {
+		log.Warn("Trie prefetcher failed opening storage trie", "root", sf.root, "err", err)
+		return err
+	}
+	sf.trie = tr
+	return nil
+}
+
 // loop waits for new tasks to be scheduled and keeps loading them until it runs
 // out of tasks or its underlying trie is retrieved for committing.
 func (sf *subfetcher) loop() {
 	// No matter how the loop stops, signal anyone waiting that it's terminated
 	defer close(sf.term)
 
-	// Start by opening the trie and stop processing if it fails
-	var trie Trie
 	var err error
-	if sf.owner == (common.Hash{}) {
-		trie, err = sf.db.OpenTrie(sf.root)
-	} else {
-		trie, err = sf.db.OpenStorageTrie(sf.state, sf.addr, sf.root)
-	}
-	if err != nil {
-		log.Debug("Trie prefetcher failed opening trie", "root", sf.root, "err", err)
+	if err := sf.openTrie(); err != nil {
 		return
 	}
-	sf.trie = trie
-
-	// Trie opened successfully, keep prefetching items
 	for {
 		select {
 		case <-sf.wake:
+			//TODO(zzzckck): why OpenTrie twice?
 			// Subfetcher was woken up, retrieve any tasks to avoid spinning the lock
 			if sf.trie == nil {
 				if sf.owner == (common.Hash{}) {
 					sf.trie, err = sf.db.OpenTrie(sf.root)
 				} else {
 					// address is useless
-					sf.trie, err = sf.db.OpenStorageTrie(sf.state, sf.addr, sf.root)
+					sf.trie, err = sf.db.OpenStorageTrie(sf.state, sf.addr, sf.root, nil)
 				}
 				if err != nil {
 					continue
@@ -525,7 +562,7 @@ func (sf *subfetcher) loop() {
 
 				case ch := <-sf.copy:
 					// Somebody wants a copy of the current trie, grant them
-					ch <- sf.db.CopyTrie(sf.trie)
+					ch <- mustCopyTrie(sf.trie)
 
 				default:
 					// No termination request yet, prefetch the next entry
@@ -545,7 +582,7 @@ func (sf *subfetcher) loop() {
 
 		case ch := <-sf.copy:
 			// Somebody wants a copy of the current trie, grant them
-			ch <- sf.db.CopyTrie(sf.trie)
+			ch <- mustCopyTrie(sf.trie)
 
 		case <-sf.stop:
 			// Termination is requested, abort and leave remaining tasks

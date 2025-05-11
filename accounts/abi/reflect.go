@@ -24,7 +24,7 @@ import (
 	"strings"
 )
 
-// ConvertType converts an interface of a runtime type into a interface of the
+// ConvertType converts an interface of a runtime type into an interface of the
 // given type, e.g. turn this code:
 //
 //	var fields []reflect.StructField
@@ -33,7 +33,7 @@ import (
 //			Name: "X",
 //			Type: reflect.TypeOf(new(big.Int)),
 //			Tag:  reflect.StructTag("json:\"" + "x" + "\""),
-//	}
+//	})
 //
 // into:
 //
@@ -134,7 +134,7 @@ func setSlice(dst, src reflect.Value) error {
 		dst.Set(slice)
 		return nil
 	}
-	return errors.New("Cannot set slice, destination not settable")
+	return errors.New("cannot set slice, destination not settable")
 }
 
 func setArray(dst, src reflect.Value) error {
@@ -155,7 +155,7 @@ func setArray(dst, src reflect.Value) error {
 		dst.Set(array)
 		return nil
 	}
-	return errors.New("Cannot set array, destination not settable")
+	return errors.New("cannot set array, destination not settable")
 }
 
 func setStruct(dst, src reflect.Value) error {
@@ -163,7 +163,7 @@ func setStruct(dst, src reflect.Value) error {
 		srcField := src.Field(i)
 		dstField := dst.Field(i)
 		if !dstField.IsValid() || !srcField.IsValid() {
-			return fmt.Errorf("Could not find src field: %v value: %v in destination", srcField.Type().Name(), srcField)
+			return fmt.Errorf("could not find src field: %v value: %v in destination", srcField.Type().Name(), srcField)
 		}
 		if err := set(dstField, srcField); err != nil {
 			return err

@@ -67,6 +67,20 @@ func StartENRFilter(chain *core.BlockChain, p2p *p2p.Server) {
 func currentENREntry(chain *core.BlockChain) *enrEntry {
 	head := chain.CurrentHeader()
 	return &enrEntry{
-		ForkID: forkid.NewID(chain.Config(), chain.Genesis().Hash(), head.Number.Uint64(), head.Time),
+		ForkID: forkid.NewID(chain.Config(), chain.Genesis(), head.Number.Uint64(), head.Time),
+	}
+}
+
+// NewNodeFilter returns a filtering function that returns whether the provided
+// enode advertises a forkid compatible with the current chain.
+func NewNodeFilter(chain *core.BlockChain) func(*enode.Node) bool {
+	filter := forkid.NewFilter(chain)
+	return func(n *enode.Node) bool {
+		var entry enrEntry
+		if err := n.Load(entry); err != nil {
+			return false
+		}
+		err := filter(entry.ForkID)
+		return err == nil
 	}
 }

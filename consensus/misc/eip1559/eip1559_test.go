@@ -51,6 +51,8 @@ func copyConfig(original *params.ChainConfig) *params.ChainConfig {
 
 func config() *params.ChainConfig {
 	config := copyConfig(params.TestChainConfig)
+	config.Ethash = nil
+	config.Parlia = &params.ParliaConfig{}
 	config.LondonBlock = big.NewInt(5)
 	return config
 }
@@ -113,9 +115,9 @@ func TestCalcBaseFee(t *testing.T) {
 		parentGasUsed   uint64
 		expectedBaseFee int64
 	}{
-		{params.InitialBaseFee, 20000000, 10000000, params.InitialBaseFee}, // usage == target
-		{params.InitialBaseFee, 20000000, 9000000, params.InitialBaseFee},  // usage below target
-		{params.InitialBaseFee, 20000000, 11000000, params.InitialBaseFee}, // usage above target
+		{params.InitialBaseFee, 20000000, 10000000, params.InitialBaseFeeForBSC}, // usage == target
+		{params.InitialBaseFee, 20000000, 9000000, params.InitialBaseFeeForBSC},  // usage below target
+		{params.InitialBaseFee, 20000000, 11000000, params.InitialBaseFeeForBSC}, // usage above target
 	}
 	for i, test := range tests {
 		parent := &types.Header{

@@ -6,10 +6,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestWriterHourly(t *testing.T) {
-	w := NewAsyncFileWriter("./hello.log", 100, 1)
+	w := NewAsyncFileWriter("./hello.log", 100, 1, 1)
 	w.Start()
 	w.Write([]byte("hello\n"))
 	w.Write([]byte("world\n"))
@@ -29,7 +31,7 @@ func TestWriterHourly(t *testing.T) {
 func TestGetNextRotationHour(t *testing.T) {
 	tcs := []struct {
 		now          time.Time
-		delta        int
+		delta        uint
 		expectedHour int
 	}{
 		{
@@ -54,7 +56,7 @@ func TestGetNextRotationHour(t *testing.T) {
 		},
 	}
 
-	test := func(now time.Time, delta, expectedHour int) func(*testing.T) {
+	test := func(now time.Time, delta uint, expectedHour int) func(*testing.T) {
 		return func(t *testing.T) {
 			got := getNextRotationHour(now, delta)
 			if got != expectedHour {
@@ -66,4 +68,23 @@ func TestGetNextRotationHour(t *testing.T) {
 	for i, tc := range tcs {
 		t.Run("TestGetNextRotationHour_"+strconv.Itoa(i), test(tc.now, tc.delta, tc.expectedHour))
 	}
+}
+
+func TestClearBackups(t *testing.T) {
+	dir := "./test"
+	os.Mkdir(dir, 0700)
+	w := NewAsyncFileWriter("./test/bsc.log", 100, 1, 1)
+	defer os.RemoveAll(dir)
+	fakeCurrentTime := time.Now()
+	name := ""
+	data := []byte("data")
+	for i := 0; i < 5; i++ {
+		name = w.filePath + "." + fakeCurrentTime.Format(backupTimeFormat)
+		_ = os.WriteFile(name, data, 0700)
+		fakeCurrentTime = fakeCurrentTime.Add(-time.Hour * 1)
+	}
+	oldFile := w.getExpiredFile(w.filePath, w.maxBackups, w.rotateHours)
+	w.removeExpiredFile()
+	_, err := os.Stat(oldFile)
+	assert.True(t, os.IsNotExist(err))
 }

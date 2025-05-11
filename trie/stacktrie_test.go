@@ -18,12 +18,14 @@ package trie
 
 import (
 	"bytes"
+	"encoding/binary"
 	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestStackTrieInsertAndHash(t *testing.T) {
@@ -165,13 +167,44 @@ func TestStackTrieInsertAndHash(t *testing.T) {
 			{"123e", "x___________________________2", "0d230561e398c579e09a9f7b69ceaf7d3970f5a436fdb28b68b7a37c5bdd6b80"},
 			{"13aa", "x___________________________3", "ff0dc70ce2e5db90ee42a4c2ad12139596b890e90eb4e16526ab38fa465b35cf"},
 		},
+		{ // branch node with short values
+			{"01", "a", "b48605025f5f4b129d40a420e721aa7d504487f015fce85b96e52126365ef7dc"},
+			{"80", "b", "2dc6b680daf74db067cb7aeaad73265ded93d96fce190fcbf64f498d475672ab"},
+			{"ee", "c", "017dc705a54ac5328dd263fa1bae68d655310fb3e3f7b7bc57e9a43ddf99c4bf"},
+			{"ff", "d", "bd5a3584d271d459bd4eb95247b2fc88656b3671b60c1125ffe7bc0b689470d0"},
+		},
+		{ // ext node with short branch node, then becoming long
+			{"a0", "a", "a83e028cb1e4365935661a9fd36a5c65c30b9ab416eaa877424146ca2a69d088"},
+			{"a1", "b", "f586a4639b07b01798ca65e05c253b75d51135ebfbf6f8d6e87c0435089e65f0"},
+			{"a2", "c", "63e297c295c008e09a8d531e18d57f270b6bc403e23179b915429db948cd62e3"},
+			{"a3", "d", "94a7b721535578e9381f1f4e4b6ec29f8bdc5f0458a30320684c562f5d47b4b5"},
+			{"a4", "e", "4b7e66d1c81965cdbe8fab8295ef56bc57fefdc5733d4782d2f8baf630f083c6"},
+			{"a5", "f", "2997e7b502198ce1783b5277faacf52b25844fb55a99b63e88bdbbafac573106"},
+			{"a6", "g", "bee629dd27a40772b2e1a67ec6db270d26acdf8d3b674dfae27866ad6ae1f48b"},
+		},
+		{ // branch node with short values, then long ones
+			{"a001", "v1", "b9cc982d995392b51e6787f1915f0b88efd4ad8b30f138da0a3e2242f2323e35"},
+			{"b002", "v2", "a7b474bc77ef5097096fa0ee6298fdae8928c0bc3724e7311cd0fa9ed1942fc7"},
+			{"c003", "v___________________________3", "dceb5bb7c92b0e348df988a8d9fc36b101397e38ebd405df55ba6ee5f14a264a"},
+			{"d004", "v___________________________4", "36e60ecb86b9626165e1c6543c42ecbe4d83bca58e8e1124746961511fce362a"},
+		},
+		{ // ext node to branch node with short values, then long ones
+			{"8002", "v1", "3258fcb3e9e7d7234ecd3b8d4743999e4ab3a21592565e0a5ca64c141e8620d9"},
+			{"8004", "v2", "b6cb95b7024a83c17624a3c9bed09b4b5e8ed426f49f54b8ad13c39028b1e75a"},
+			{"8008", "v___________________________3", "c769d82963abe6f0900bf69754738eeb2f84559777cfa87a44f54e1aab417871"},
+			{"800d", "v___________________________4", "1cad1fdaab1a6fa95d7b780fd680030e423eb76669971368ba04797a8d9cdfc9"},
+		},
+		{ // ext node with a child of size 31 (Y) and branch node with a child of size 31 (X)
+			{"000001", "ZZZZZZZZZ", "cef154b87c03c563408520ff9b26923c360cbc3ddb590c079bedeeb25a8c9c77"},
+			{"000002", "Y", "2130735e600f612f6e657a32bd7be64ddcaec6512c5694844b19de713922895d"},
+			{"000003", "XXXXXXXXXXXXXXXXXXXXXXXXXXXX", "962c0fffdeef7612a4f7bff1950d67e3e81c878e48b9ae45b3b374253b050bd8"},
+		},
 	}
-	st := NewStackTrie(nil)
 	for i, test := range tests {
 		// The StackTrie does not allow Insert(), Hash(), Insert(), ...
 		// so we will create new trie for every sequence length of inserts.
 		for l := 1; l <= len(test); l++ {
-			st.Reset()
+			st := NewStackTrie(nil)
 			for j := 0; j < l; j++ {
 				kv := &test[j]
 				if err := st.Update(common.FromHex(kv.K), []byte(kv.V)); err != nil {
@@ -188,7 +221,7 @@ func TestStackTrieInsertAndHash(t *testing.T) {
 
 func TestSizeBug(t *testing.T) {
 	st := NewStackTrie(nil)
-	nt := NewEmpty(NewDatabase(rawdb.NewMemoryDatabase()))
+	nt := NewEmpty(newTestDatabase(rawdb.NewMemoryDatabase(), rawdb.HashScheme))
 
 	leaf := common.FromHex("290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563")
 	value := common.FromHex("94cf40d0d2b44f2b66e07cace1372ca42b73cf21a3")
@@ -203,7 +236,7 @@ func TestSizeBug(t *testing.T) {
 
 func TestEmptyBug(t *testing.T) {
 	st := NewStackTrie(nil)
-	nt := NewEmpty(NewDatabase(rawdb.NewMemoryDatabase()))
+	nt := NewEmpty(newTestDatabase(rawdb.NewMemoryDatabase(), rawdb.HashScheme))
 
 	//leaf := common.FromHex("290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563")
 	//value := common.FromHex("94cf40d0d2b44f2b66e07cace1372ca42b73cf21a3")
@@ -229,7 +262,7 @@ func TestEmptyBug(t *testing.T) {
 
 func TestValLength56(t *testing.T) {
 	st := NewStackTrie(nil)
-	nt := NewEmpty(NewDatabase(rawdb.NewMemoryDatabase()))
+	nt := NewEmpty(newTestDatabase(rawdb.NewMemoryDatabase(), rawdb.HashScheme))
 
 	//leaf := common.FromHex("290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563")
 	//value := common.FromHex("94cf40d0d2b44f2b66e07cace1372ca42b73cf21a3")
@@ -254,7 +287,7 @@ func TestValLength56(t *testing.T) {
 // which causes a lot of node-within-node. This case was found via fuzzing.
 func TestUpdateSmallNodes(t *testing.T) {
 	st := NewStackTrie(nil)
-	nt := NewEmpty(NewDatabase(rawdb.NewMemoryDatabase()))
+	nt := NewEmpty(newTestDatabase(rawdb.NewMemoryDatabase(), rawdb.HashScheme))
 	kvs := []struct {
 		K string
 		V string
@@ -282,7 +315,7 @@ func TestUpdateSmallNodes(t *testing.T) {
 func TestUpdateVariableKeys(t *testing.T) {
 	t.SkipNow()
 	st := NewStackTrie(nil)
-	nt := NewEmpty(NewDatabase(rawdb.NewMemoryDatabase()))
+	nt := NewEmpty(newTestDatabase(rawdb.NewMemoryDatabase(), rawdb.HashScheme))
 	kvs := []struct {
 		K string
 		V string
@@ -346,47 +379,68 @@ func TestStacktrieNotModifyValues(t *testing.T) {
 	}
 }
 
-// TestStacktrieSerialization tests that the stacktrie works well if we
-// serialize/unserialize it a lot
-func TestStacktrieSerialization(t *testing.T) {
-	var (
-		st       = NewStackTrie(nil)
-		nt       = NewEmpty(NewDatabase(rawdb.NewMemoryDatabase()))
-		keyB     = big.NewInt(1)
-		keyDelta = big.NewInt(1)
-		vals     [][]byte
-		keys     [][]byte
-	)
-	getValue := func(i int) []byte {
-		if i%2 == 0 { // large
-			return crypto.Keccak256(big.NewInt(int64(i)).Bytes())
-		} else { //small
-			return big.NewInt(int64(i)).Bytes()
-		}
+func TestStackTrieErrors(t *testing.T) {
+	s := NewStackTrie(nil)
+	// Deletion
+	if err := s.Update(nil, nil); err == nil {
+		t.Fatal("expected error")
 	}
-	for i := 0; i < 10; i++ {
-		vals = append(vals, getValue(i))
-		keys = append(keys, common.BigToHash(keyB).Bytes())
-		keyB = keyB.Add(keyB, keyDelta)
-		keyDelta.Add(keyDelta, common.Big1)
+	if err := s.Update(nil, []byte{}); err == nil {
+		t.Fatal("expected error")
 	}
-	for i, k := range keys {
-		nt.Update(k, common.CopyBytes(vals[i]))
+	if err := s.Update([]byte{0xa}, []byte{}); err == nil {
+		t.Fatal("expected error")
 	}
+	// Non-ascending keys (going backwards or repeating)
+	assert.Nil(t, s.Update([]byte{0xaa}, []byte{0xa}))
+	assert.NotNil(t, s.Update([]byte{0xaa}, []byte{0xa}), "repeat insert same key")
+	assert.NotNil(t, s.Update([]byte{0xaa}, []byte{0xb}), "repeat insert same key")
+	assert.Nil(t, s.Update([]byte{0xab}, []byte{0xa}))
+	assert.NotNil(t, s.Update([]byte{0x10}, []byte{0xb}), "out of order insert")
+	assert.NotNil(t, s.Update([]byte{0xaa}, []byte{0xb}), "repeat insert same key")
+}
 
-	for i, k := range keys {
-		blob, err := st.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
+func BenchmarkInsert100K(b *testing.B) {
+	var num = 100_000
+	var key = make([]byte, 8)
+	var val = make([]byte, 20)
+	var hash common.Hash
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		s := NewStackTrie(nil)
+		var k uint64
+		for j := 0; j < num; j++ {
+			binary.BigEndian.PutUint64(key, k)
+			if err := s.Update(key, val); err != nil {
+				b.Fatal(err)
+			}
+			k += 1024
 		}
-		newSt, err := NewFromBinary(blob, nil)
-		if err != nil {
-			t.Fatal(err)
+		if hash == (common.Hash{}) {
+			hash = s.Hash()
+		} else {
+			if hash != s.Hash() && false {
+				b.Fatalf("hash wrong, have %x want %x", s.Hash(), hash)
+			}
 		}
-		st = newSt
-		st.Update(k, common.CopyBytes(vals[i]))
 	}
-	if have, want := st.Hash(), nt.Hash(); have != want {
-		t.Fatalf("have %#x want %#x", have, want)
+}
+
+func TestInsert100K(t *testing.T) {
+	var num = 100_000
+	var key = make([]byte, 8)
+	var val = make([]byte, 20)
+	s := NewStackTrie(nil)
+	var k uint64
+	for j := 0; j < num; j++ {
+		binary.BigEndian.PutUint64(key, k)
+		if err := s.Update(key, val); err != nil {
+			t.Fatal(err)
+		}
+		k += 1024
+	}
+	want := common.HexToHash("0xb0071bd257342925d9d8a9f002b9d2b646a35437aa8b089628ab56e428d29a1a")
+	if have := s.Hash(); have != want {
+		t.Fatalf("hash wrong, have %x want %x", have, want)
 	}
 }

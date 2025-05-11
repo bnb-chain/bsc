@@ -1,7 +1,7 @@
 package trust
 
 import (
-	"math/rand"
+	"crypto/rand"
 
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"

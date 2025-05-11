@@ -2,14 +2,17 @@ package vm
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 
 	"github.com/tendermint/iavl"
 	"github.com/tendermint/tendermint/crypto/merkle"
+	"github.com/tendermint/tendermint/crypto/secp256k1"
 	cmn "github.com/tendermint/tendermint/libs/common"
 
+	//nolint:staticcheck
 	v1 "github.com/ethereum/go-ethereum/core/vm/lightclient/v1"
 	v2 "github.com/ethereum/go-ethereum/core/vm/lightclient/v2"
 	"github.com/ethereum/go-ethereum/params"
@@ -66,7 +69,7 @@ func (c *tmHeaderValidate) Run(input []byte) (result []byte, err error) {
 	}()
 
 	if uint64(len(input)) <= precompileContractInputMetaDataLength {
-		return nil, fmt.Errorf("invalid input")
+		return nil, errors.New("invalid input")
 	}
 
 	payloadLength := binary.BigEndian.Uint64(input[precompileContractInputMetaDataLength-uint64TypeLength : precompileContractInputMetaDataLength])
@@ -104,7 +107,7 @@ func (c *tmHeaderValidate) Run(input []byte) (result []byte, err error) {
 	return result, nil
 }
 
-//------------------------------------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------------------------------
 
 // iavlMerkleProofValidate implemented as a native contract.
 type iavlMerkleProofValidate struct {
@@ -122,7 +125,7 @@ func (c *iavlMerkleProofValidate) Run(input []byte) (result []byte, err error) {
 	return c.basicIavlMerkleProofValidate.Run(input)
 }
 
-// tmHeaderValidate implemented as a native contract.
+// tmHeaderValidateNano implemented as a native contract.
 type tmHeaderValidateNano struct{}
 
 func (c *tmHeaderValidateNano) RequiredGas(input []byte) uint64 {
@@ -130,7 +133,7 @@ func (c *tmHeaderValidateNano) RequiredGas(input []byte) uint64 {
 }
 
 func (c *tmHeaderValidateNano) Run(input []byte) (result []byte, err error) {
-	return nil, fmt.Errorf("suspend")
+	return nil, errors.New("suspend")
 }
 
 type iavlMerkleProofValidateNano struct{}
@@ -140,7 +143,7 @@ func (c *iavlMerkleProofValidateNano) RequiredGas(_ []byte) uint64 {
 }
 
 func (c *iavlMerkleProofValidateNano) Run(_ []byte) (result []byte, err error) {
-	return nil, fmt.Errorf("suspend")
+	return nil, errors.New("suspend")
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------
@@ -248,7 +251,7 @@ func (c *basicIavlMerkleProofValidate) Run(input []byte) (result []byte, err err
 
 	valid := kvmp.Validate()
 	if !valid {
-		return nil, fmt.Errorf("invalid merkle proof")
+		return nil, errors.New("invalid merkle proof")
 	}
 
 	return successfulMerkleResult(), nil
@@ -396,4 +399,41 @@ type cometBFTLightBlockValidateHertz struct {
 
 func (c *cometBFTLightBlockValidateHertz) Run(input []byte) (result []byte, err error) {
 	return c.run(input, true)
+}
+
+// secp256k1SignatureRecover implemented as a native contract.
+type secp256k1SignatureRecover struct{}
+
+func (c *secp256k1SignatureRecover) RequiredGas(input []byte) uint64 {
+	return params.EcrecoverGas
+}
+
+const (
+	secp256k1PubKeyLength           uint8 = 33
+	secp256k1SignatureLength        uint8 = 64
+	secp256k1SignatureMsgHashLength uint8 = 32
+)
+
+// input:
+// | PubKey | Signature  |  SignatureMsgHash  |
+// | 33 bytes |  64 bytes    |       32 bytes       |
+func (c *secp256k1SignatureRecover) Run(input []byte) (result []byte, err error) {
+	if len(input) != int(secp256k1PubKeyLength)+int(secp256k1SignatureLength)+int(secp256k1SignatureMsgHashLength) {
+		return nil, errors.New("invalid input")
+	}
+
+	return c.runTMSecp256k1Signature(
+		input[:secp256k1PubKeyLength],
+		input[secp256k1PubKeyLength:secp256k1PubKeyLength+secp256k1SignatureLength],
+		input[secp256k1PubKeyLength+secp256k1SignatureLength:],
+	)
+}
+
+func (c *secp256k1SignatureRecover) runTMSecp256k1Signature(pubkey, signatureStr, msgHash []byte) (result []byte, err error) {
+	tmPubKey := secp256k1.PubKeySecp256k1(pubkey)
+	ok := tmPubKey.VerifyBytesWithMsgHash(msgHash, signatureStr)
+	if !ok {
+		return nil, errors.New("invalid signature")
+	}
+	return tmPubKey.Address().Bytes(), nil
 }

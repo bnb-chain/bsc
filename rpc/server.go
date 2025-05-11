@@ -18,7 +18,9 @@ package rpc
 
 import (
 	"context"
+	"errors"
 	"io"
+	"net"
 	"sync"
 	"sync/atomic"
 
@@ -51,13 +53,15 @@ type Server struct {
 	run                atomic.Bool
 	batchItemLimit     int
 	batchResponseLimit int
+	httpBodyLimit      int
 }
 
 // NewServer creates a new server instance with no registered handlers.
 func NewServer() *Server {
 	server := &Server{
-		idgen:  randomIDGenerator(),
-		codecs: make(map[ServerCodec]struct{}),
+		idgen:         randomIDGenerator(),
+		codecs:        make(map[ServerCodec]struct{}),
+		httpBodyLimit: defaultBodyLimit,
 	}
 	server.run.Store(true)
 	// Register the default service providing meta information about the RPC service such
@@ -78,8 +82,15 @@ func (s *Server) SetBatchLimits(itemLimit, maxResponseSize int) {
 	s.batchResponseLimit = maxResponseSize
 }
 
+// SetHTTPBodyLimit sets the size limit for HTTP requests.
+//
+// This method should be called before processing any requests via ServeHTTP.
+func (s *Server) SetHTTPBodyLimit(limit int) {
+	s.httpBodyLimit = limit
+}
+
 // RegisterName creates a service for the given receiver type under the given name. When no
-// methods on the given receiver match the criteria to be either a RPC method or a
+// methods on the given receiver match the criteria to be either an RPC method or a
 // subscription an error is returned. Otherwise a new service is created and added to the
 // service collection this server provides to clients.
 func (s *Server) RegisterName(name string, receiver interface{}) error {
@@ -142,8 +153,8 @@ func (s *Server) serveSingleRequest(ctx context.Context, codec ServerCodec) {
 
 	reqs, batch, err := codec.readBatch()
 	if err != nil {
-		if err != io.EOF {
-			resp := errorMessage(&invalidMessageError{"parse error"})
+		if msg := messageForReadError(err); msg != "" {
+			resp := errorMessage(&invalidMessageError{msg})
 			codec.writeJSON(ctx, resp, true)
 		}
 		return
@@ -153,6 +164,20 @@ func (s *Server) serveSingleRequest(ctx context.Context, codec ServerCodec) {
 	} else {
 		h.handleMsg(ctx, reqs[0])
 	}
+}
+
+func messageForReadError(err error) string {
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		if netErr.Timeout() {
+			return "read timeout"
+		} else {
+			return "read error"
+		}
+	} else if err != io.EOF {
+		return "parse error"
+	}
+	return ""
 }
 
 // Stop stops reading new requests, waits for stopPendingRequestTimeout to allow pending

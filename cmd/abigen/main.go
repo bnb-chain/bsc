@@ -98,6 +98,9 @@ func abigen(c *cli.Context) error {
 	if c.String(pkgFlag.Name) == "" {
 		utils.Fatalf("No destination package specified (--pkg)")
 	}
+	if c.String(abiFlag.Name) == "" && c.String(jsonFlag.Name) == "" {
+		utils.Fatalf("Either contract ABI source (--abi) or combined-json (--combined-json) are required")
+	}
 	var lang bind.Lang
 	switch c.String(langFlag.Name) {
 	case "go":
@@ -232,7 +235,7 @@ func abigen(c *cli.Context) error {
 }
 
 func main() {
-	log.Root().SetHandler(log.LvlFilterHandler(log.LvlInfo, log.StreamHandler(os.Stderr, log.TerminalFormat(true))))
+	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelInfo, true)))
 
 	if err := app.Run(os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, err)

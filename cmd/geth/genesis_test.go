@@ -29,7 +29,7 @@ var customGenesisTests = []struct {
 	query   string
 	result  string
 }{
-	// Genesis file with an empty chain configuration (ensure missing fields work)
+	// Genesis file with a mostly-empty chain configuration (ensure missing fields work)
 	{
 		genesis: `{
 			"alloc"      : {},
@@ -41,8 +41,8 @@ var customGenesisTests = []struct {
 			"mixhash"    : "0x0000000000000000000000000000000000000000000000000000000000000000",
 			"parentHash" : "0x0000000000000000000000000000000000000000000000000000000000000000",
 			"timestamp"  : "0x00",
-			"config"     : {
-				"terminalTotalDifficultyPassed": true
+			"config": {
+				"terminalTotalDifficulty": 0
 			}
 		}`,
 		query:  "eth.getBlock(0).nonce",
@@ -64,7 +64,7 @@ var customGenesisTests = []struct {
 				"homesteadBlock"                : 42,
 				"daoForkBlock"                  : 141,
 				"daoForkSupport"                : true,
-				"terminalTotalDifficultyPassed" : true
+				"terminalTotalDifficulty": 0
 			}
 		}`,
 		query:  "eth.getBlock(0).nonce",
@@ -89,7 +89,7 @@ func TestCustomGenesis(t *testing.T) {
 
 		// Query the custom genesis block
 		geth := runGeth(t, "--networkid", "1337", "--syncmode=full", "--cache", "16",
-			"--datadir", datadir, "--maxpeers", "0", "--port", "0", "--authrpc.port", "0",
+			"--datadir", datadir, "--maxpeers", "0", "--port", "0",
 			"--nodiscover", "--nat", "none", "--ipcdisable",
 			"--exec", tt.query, "console")
 		geth.ExpectRegexp(tt.result)
@@ -114,8 +114,8 @@ func TestCustomBackend(t *testing.T) {
 			"mixhash"    : "0x0000000000000000000000000000000000000000000000000000000000000000",
 			"parentHash" : "0x0000000000000000000000000000000000000000000000000000000000000000",
 			"timestamp"  : "0x00",
-			"config"     : {
-				"terminalTotalDifficultyPassed": true
+			"config": {
+				"terminalTotalDifficulty": 0
 			}
 		}`
 	type backendTest struct {
@@ -141,7 +141,7 @@ func TestCustomBackend(t *testing.T) {
 		}
 		{ // Exec + query
 			args := append(tt.execArgs, "--networkid", "1337", "--syncmode=full", "--cache", "16",
-				"--datadir", datadir, "--maxpeers", "0", "--port", "0", "--authrpc.port", "0",
+				"--datadir", datadir, "--maxpeers", "0", "--port", "0",
 				"--nodiscover", "--nat", "none", "--ipcdisable",
 				"--exec", "eth.getBlock(0).nonce", "console")
 			geth := runGeth(t, args...)
@@ -151,8 +151,8 @@ func TestCustomBackend(t *testing.T) {
 		return nil
 	}
 	for i, tt := range []backendTest{
-		{ // When not specified, it should default to leveldb
-			execArgs:   []string{"--db.engine", "leveldb"},
+		{ // When not specified, it should default to pebble
+			execArgs:   []string{"--db.engine", "pebble"},
 			execExpect: "0x0000000000001338",
 		},
 		{ // Explicit leveldb
@@ -188,7 +188,7 @@ func TestCustomBackend(t *testing.T) {
 			initExpect: `Fatal: Invalid choice for db.engine 'mssql', allowed 'leveldb' or 'pebble'`,
 			// Since the init fails, this will return the (default) mainnet genesis
 			// block nonce
-			execExpect: `0x0000000000000042`,
+			execExpect: `0x0000000000000000`,
 		},
 	} {
 		if err := testfunc(t, tt); err != nil {

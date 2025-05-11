@@ -35,10 +35,6 @@ var (
 	// errMemorydbNotFound is returned if a key is requested that is not found in
 	// the provided memory database.
 	errMemorydbNotFound = errors.New("not found")
-
-	// errSnapshotReleased is returned if callers want to retrieve data from a
-	// released snapshot.
-	errSnapshotReleased = errors.New("snapshot released")
 )
 
 // Database is an ephemeral key-value store. Apart from basic data storage
@@ -47,6 +43,84 @@ var (
 type Database struct {
 	db   map[string][]byte
 	lock sync.RWMutex
+
+	stateStore ethdb.Database
+	blockStore ethdb.Database
+}
+
+func (db *Database) ModifyAncients(f func(ethdb.AncientWriteOp) error) (int64, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) TruncateHead(n uint64) (uint64, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) TruncateTail(n uint64) (uint64, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) Sync() error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) TruncateTableTail(kind string, tail uint64) (uint64, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) HasAncient(kind string, number uint64) (bool, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) Ancient(kind string, number uint64) ([]byte, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) AncientRange(kind string, start, count, maxBytes uint64) ([][]byte, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) Ancients() (uint64, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) Tail() (uint64, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) AncientSize(kind string) (uint64, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) ItemAmountInAncient() (uint64, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) AncientOffSet() uint64 {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) ReadAncients(fn func(ethdb.AncientReaderOp) error) (err error) {
+	//TODO implement me
+	panic("implement me")
 }
 
 // New returns a wrapped map with all the required database interface methods
@@ -125,6 +199,23 @@ func (db *Database) Delete(key []byte) error {
 	return nil
 }
 
+// DeleteRange deletes all of the keys (and values) in the range [start,end)
+// (inclusive on start, exclusive on end).
+func (db *Database) DeleteRange(start, end []byte) error {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+	if db.db == nil {
+		return errMemorydbClosed
+	}
+
+	for key := range db.db {
+		if key >= string(start) && key < string(end) {
+			delete(db.db, key)
+		}
+	}
+	return nil
+}
+
 // NewBatch creates a write-only key-value store that buffers changes to its host
 // database until a final write is called.
 func (db *Database) NewBatch() ethdb.Batch {
@@ -175,16 +266,9 @@ func (db *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	}
 }
 
-// NewSnapshot creates a database snapshot based on the current state.
-// The created snapshot will not be affected by all following mutations
-// happened on the database.
-func (db *Database) NewSnapshot() (ethdb.Snapshot, error) {
-	return newSnapshot(db), nil
-}
-
-// Stat returns a particular internal stat of the database.
-func (db *Database) Stat(property string) (string, error) {
-	return "", errors.New("unknown property")
+// Stat returns the statistic data of the database.
+func (db *Database) Stat() (string, error) {
+	return "", nil
 }
 
 // Compact is not supported on a memory database, but there's no need either as
@@ -204,10 +288,24 @@ func (db *Database) Len() int {
 	return len(db.db)
 }
 
+func (db *Database) StateStoreReader() ethdb.Reader {
+	if db.stateStore == nil {
+		return db
+	}
+	return db.stateStore
+}
+
+func (db *Database) BlockStoreReader() ethdb.Reader {
+	if db.blockStore == nil {
+		return db
+	}
+	return db.blockStore
+}
+
 // keyvalue is a key-value tuple tagged with a deletion field to allow creating
 // memory-database write batches.
 type keyvalue struct {
-	key    []byte
+	key    string
 	value  []byte
 	delete bool
 }
@@ -222,14 +320,14 @@ type batch struct {
 
 // Put inserts the given value into the batch for later committing.
 func (b *batch) Put(key, value []byte) error {
-	b.writes = append(b.writes, keyvalue{common.CopyBytes(key), common.CopyBytes(value), false})
+	b.writes = append(b.writes, keyvalue{string(key), common.CopyBytes(value), false})
 	b.size += len(key) + len(value)
 	return nil
 }
 
-// Delete inserts the a key removal into the batch for later committing.
+// Delete inserts the key removal into the batch for later committing.
 func (b *batch) Delete(key []byte) error {
-	b.writes = append(b.writes, keyvalue{common.CopyBytes(key), nil, true})
+	b.writes = append(b.writes, keyvalue{string(key), nil, true})
 	b.size += len(key)
 	return nil
 }
@@ -249,10 +347,10 @@ func (b *batch) Write() error {
 	}
 	for _, keyvalue := range b.writes {
 		if keyvalue.delete {
-			delete(b.db.db, string(keyvalue.key))
+			delete(b.db.db, keyvalue.key)
 			continue
 		}
-		b.db.db[string(keyvalue.key)] = keyvalue.value
+		b.db.db[keyvalue.key] = keyvalue.value
 	}
 	return nil
 }
@@ -267,12 +365,12 @@ func (b *batch) Reset() {
 func (b *batch) Replay(w ethdb.KeyValueWriter) error {
 	for _, keyvalue := range b.writes {
 		if keyvalue.delete {
-			if err := w.Delete(keyvalue.key); err != nil {
+			if err := w.Delete([]byte(keyvalue.key)); err != nil {
 				return err
 			}
 			continue
 		}
-		if err := w.Put(keyvalue.key, keyvalue.value); err != nil {
+		if err := w.Put([]byte(keyvalue.key), keyvalue.value); err != nil {
 			return err
 		}
 	}
@@ -331,60 +429,4 @@ func (it *iterator) Value() []byte {
 // be called multiple times without causing error.
 func (it *iterator) Release() {
 	it.index, it.keys, it.values = -1, nil, nil
-}
-
-// snapshot wraps a batch of key-value entries deep copied from the in-memory
-// database for implementing the Snapshot interface.
-type snapshot struct {
-	db   map[string][]byte
-	lock sync.RWMutex
-}
-
-// newSnapshot initializes the snapshot with the given database instance.
-func newSnapshot(db *Database) *snapshot {
-	db.lock.RLock()
-	defer db.lock.RUnlock()
-
-	copied := make(map[string][]byte, len(db.db))
-	for key, val := range db.db {
-		copied[key] = common.CopyBytes(val)
-	}
-	return &snapshot{db: copied}
-}
-
-// Has retrieves if a key is present in the snapshot backing by a key-value
-// data store.
-func (snap *snapshot) Has(key []byte) (bool, error) {
-	snap.lock.RLock()
-	defer snap.lock.RUnlock()
-
-	if snap.db == nil {
-		return false, errSnapshotReleased
-	}
-	_, ok := snap.db[string(key)]
-	return ok, nil
-}
-
-// Get retrieves the given key if it's present in the snapshot backing by
-// key-value data store.
-func (snap *snapshot) Get(key []byte) ([]byte, error) {
-	snap.lock.RLock()
-	defer snap.lock.RUnlock()
-
-	if snap.db == nil {
-		return nil, errSnapshotReleased
-	}
-	if entry, ok := snap.db[string(key)]; ok {
-		return common.CopyBytes(entry), nil
-	}
-	return nil, errMemorydbNotFound
-}
-
-// Release releases associated resources. Release should always succeed and can
-// be called multiple times without causing error.
-func (snap *snapshot) Release() {
-	snap.lock.Lock()
-	defer snap.lock.Unlock()
-
-	snap.db = nil
 }
