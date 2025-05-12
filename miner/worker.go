@@ -1390,7 +1390,6 @@ LOOP:
 
 	// when out-turn, use bestWork to prevent bundle leakage.
 	// when in-turn, compare with remote work.
-	from := bestWork.coinbase
 	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
 		inturnBlocksGauge.Inc(1)
 		// We want to start sealing the block as late as possible here if mev is enabled, so we could give builder the chance to send their final bid.
@@ -1437,11 +1436,10 @@ LOOP:
 				bidWinGauge.Inc(1)
 
 				bestWork = bestBid.env
-				from = bestBid.bid.Builder
 
 				log.Info("[BUILDER BLOCK]",
 					"block", bestWork.header.Number.Uint64(),
-					"builder", from,
+					"builder", bestBid.bid.Builder,
 					"blockReward", weiToEtherStringF6(bestBid.packedBlockReward),
 					"validatorReward", weiToEtherStringF6(bestBid.packedValidatorReward),
 					"bid", bestBid.bid.Hash().TerminalString(),
@@ -1449,8 +1447,6 @@ LOOP:
 			}
 		}
 	}
-
-	metrics.GetOrRegisterCounter(fmt.Sprintf("block/from/%v", from), nil).Inc(1)
 
 	w.commit(bestWork, w.fullTaskHook, true, start)
 
