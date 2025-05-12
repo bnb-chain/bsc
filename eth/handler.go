@@ -829,6 +829,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		}
 
 		for _, peer := range transfer {
+			log.Debug("broadcast block to peer", "hash", hash, "peer", peer.ID(), "ProxyedValidatorFlag", peer.ProxyedValidatorFlag.Load(), "EVNPeerFlag", peer.EVNPeerFlag.Load())
 			peer.AsyncSendNewBlock(block, td)
 		}
 
@@ -838,25 +839,25 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		for i := len(transfer); i < len(peers); i++ {
 			if peers[i].ProxyedValidatorFlag.Load() {
 				morePeers = append(morePeers, peers[i])
-				log.Debug("add extra proxyed validator broadcast peer in EVN", "peer", peers[i].ID())
 				continue
 			}
 			if fullBroadcastInEVN && peers[i].EVNPeerFlag.Load() {
 				morePeers = append(morePeers, peers[i])
-				log.Debug("add extra full broadcast peer in EVN", "peer", peers[i].ID())
 				continue
 			}
 		}
 		for _, peer := range morePeers {
+			log.Debug("broadcast block to extra peer", "hash", hash, "peer", peer.ID(), "ProxyedValidatorFlag", peer.ProxyedValidatorFlag.Load(), "EVNPeerFlag", peer.EVNPeerFlag.Load())
 			peer.AsyncSendNewBlock(block, td)
 		}
 
-		log.Trace("Propagated block", "hash", hash, "recipients", len(transfer)+len(morePeers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
+		log.Trace("Propagated block", "hash", hash, "recipients", len(transfer), "extra", len(morePeers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
 		return
 	}
 	// Otherwise if the block is indeed in our own chain, announce it
 	if h.chain.HasBlock(hash, block.NumberU64()) {
 		for _, peer := range peers {
+			log.Debug("Announced block to peer", "hash", hash, "peer", peer.ID(), "ProxyedValidatorFlag", peer.ProxyedValidatorFlag.Load(), "EVNPeerFlag", peer.EVNPeerFlag.Load())
 			peer.AsyncSendNewBlockHash(block)
 		}
 		log.Trace("Announced block", "hash", hash, "recipients", len(peers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
