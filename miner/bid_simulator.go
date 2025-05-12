@@ -54,6 +54,7 @@ var (
 		Timeout:   5 * time.Second,
 		Transport: transport,
 	}
+	errBetterBid = errors.New("simulation abort due to better bid arrived")
 )
 
 type bidWorker interface {
@@ -656,8 +657,9 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		if err != nil {
 			logCtx = append(logCtx, "err", err)
 			log.Info("BidSimulator: simulation failed", logCtx...)
-
-			go b.reportIssue(bidRuntime, err)
+			if err != errBetterBid {
+				go b.reportIssue(bidRuntime, err)
+			}
 		}
 
 		b.RemoveSimulatingBid(parentHash)
@@ -730,7 +732,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	for _, tx := range bidRuntime.bid.Txs {
 		select {
 		case <-interruptCh:
-			err = errors.New("simulation abort due to better bid arrived")
+			err = errBetterBid
 			return
 
 		case <-b.exitCh:
