@@ -35,6 +35,8 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
+const largeTxGasLimit = 10000000 // 10M Gas, to measure the execution time of large tx
+
 // StateProcessor is a basic Processor, which takes care of transitioning
 // state from one point to another.
 //
@@ -191,11 +193,10 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 func ApplyTransactionWithEVM(msg *Message, gp *GasPool, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, tx *types.Transaction, usedGas *uint64, evm *vm.EVM, receiptProcessors ...ReceiptProcessor) (receipt *types.Receipt, err error) {
 	// Add timing measurement
 	var result *ExecutionResult
-	const largeTxGasLimit = 10000000 // 10M Gas
-	if tx.Gas() >= largeTxGasLimit {
+	if tx.Gas() > largeTxGasLimit {
 		start := time.Now()
 		defer func() {
-			if result != nil && result.UsedGas >= largeTxGasLimit {
+			if result != nil && result.UsedGas > largeTxGasLimit {
 				elapsed := time.Since(start)
 				log.Info("LargeTX execution time", "block", blockNumber, "tx", tx.Hash(), "gasUsed", result.UsedGas, "elapsed", elapsed)
 			}
