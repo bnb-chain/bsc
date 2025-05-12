@@ -564,17 +564,30 @@ func (s *Ethereum) updateNodeID(parlia *parlia.Parlia) error {
 		return fmt.Errorf("failed to get nonce: %v", err)
 	}
 
+	// Get currently registered node IDs
+	registeredIDs, err := parlia.GetNodeIDs()
+	if err != nil {
+		log.Error("Failed to get registered node IDs", "err", err)
+		return err
+	}
+
+	// Create a set of registered IDs for quick lookup
+	registeredSet := make(map[enode.ID]struct{}, len(registeredIDs))
+	for _, id := range registeredIDs {
+		registeredSet[id] = struct{}{}
+	}
+
 	// Handle removals first
-	if err := s.handleRemovals(parlia, nonce); err != nil {
+	if err := s.handleRemovals(parlia, nonce, registeredSet); err != nil {
 		return err
 	}
 	nonce++
 
 	// Handle additions
-	return s.handleAdditions(parlia, nonce)
+	return s.handleAdditions(parlia, nonce, registeredSet)
 }
 
-func (s *Ethereum) handleRemovals(parlia *parlia.Parlia, nonce uint64) error {
+func (s *Ethereum) handleRemovals(parlia *parlia.Parlia, nonce uint64, registeredSet map[enode.ID]struct{}) error {
 	if len(s.config.EVNNodeIDsToRemove) == 0 {
 		return nil
 	}
@@ -604,14 +617,19 @@ func (s *Ethereum) handleRemovals(parlia *parlia.Parlia, nonce uint64) error {
 	// Filter out node IDs that are in the add set
 	nodeIDsToRemove := make([]enode.ID, 0, len(s.config.EVNNodeIDsToRemove))
 	for _, id := range s.config.EVNNodeIDsToRemove {
-		if _, exists := addSet[id]; !exists {
-			nodeIDsToRemove = append(nodeIDsToRemove, id)
+		if _, exists := registeredSet[id]; exists {
+			if _, exists := addSet[id]; !exists {
+				nodeIDsToRemove = append(nodeIDsToRemove, id)
+			} else {
+				log.Debug("Skipping node ID removal", "id", id, "reason", "also in EVNNodeIDsToAdd")
+			}
 		} else {
-			log.Debug("Skipping node ID removal", "id", id, "reason", "also in EVNNodeIDsToAdd")
+			log.Debug("Skipping node ID removal", "id", id, "reason", "not registered")
 		}
 	}
 
 	if len(nodeIDsToRemove) == 0 {
+		log.Debug("No node IDs to remove after filtering")
 		return nil
 	}
 
@@ -619,29 +637,16 @@ func (s *Ethereum) handleRemovals(parlia *parlia.Parlia, nonce uint64) error {
 	if err != nil {
 		return fmt.Errorf("failed to create node ID removal transaction: %v", err)
 	}
-	if err := s.txPool.Add([]*types.Transaction{trx}, false); err != nil {
-		return fmt.Errorf("failed to add node ID removal transaction to pool: %v", err)
+	if errs := s.txPool.Add([]*types.Transaction{trx}, false); len(errs) > 0 && errs[0] != nil {
+		return fmt.Errorf("failed to add node ID removal transaction to pool: %v", errs)
 	}
 	log.Info("Submitted node ID removal transaction", "nodeIDs", nodeIDsToRemove)
 	return nil
 }
 
-func (s *Ethereum) handleAdditions(parlia *parlia.Parlia, nonce uint64) error {
+func (s *Ethereum) handleAdditions(parlia *parlia.Parlia, nonce uint64, registeredSet map[enode.ID]struct{}) error {
 	if len(s.config.EVNNodeIDsToAdd) == 0 {
 		return nil
-	}
-
-	// Get currently registered node IDs
-	registeredIDs, err := parlia.GetNodeIDs()
-	if err != nil {
-		log.Error("Failed to get registered node IDs", "err", err)
-		return err
-	}
-
-	// Create a set of registered IDs for quick lookup
-	registeredSet := make(map[enode.ID]struct{}, len(registeredIDs))
-	for _, id := range registeredIDs {
-		registeredSet[id] = struct{}{}
 	}
 
 	// Filter out already registered IDs in a single pass
@@ -661,8 +666,8 @@ func (s *Ethereum) handleAdditions(parlia *parlia.Parlia, nonce uint64) error {
 	if err != nil {
 		return fmt.Errorf("failed to create node ID registration transaction: %v", err)
 	}
-	if err := s.txPool.Add([]*types.Transaction{trx}, false); err != nil {
-		return fmt.Errorf("failed to add node ID registration transaction to pool: %v", err)
+	if errs := s.txPool.Add([]*types.Transaction{trx}, false); len(errs) > 0 && errs[0] != nil {
+		return fmt.Errorf("failed to add node ID registration transaction to pool: %v", errs)
 	}
 	log.Info("Submitted node ID registration transaction", "nodeIDs", nodeIDsToAdd)
 	return nil
