@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 	"github.com/ethereum/go-ethereum/eth/protocols/trust"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 )
@@ -68,6 +69,12 @@ const (
 	// complete before dropping the connection as malicious.
 	extensionWaitTimeout = 10 * time.Second
 	tryWaitTimeout       = 100 * time.Millisecond
+)
+
+var (
+	evnProxedPeerGuage           = metrics.NewRegisteredGauge("evn/peer/proxed", nil)
+	evnWhiteListPeerGuage        = metrics.NewRegisteredGauge("evn/peer/whiteList", nil)
+	evnOnchainValidatorPeerGuage = metrics.NewRegisteredGauge("evn/peer/onchainValidator", nil)
 )
 
 // peerSet represents the collection of active peers currently participating in
@@ -455,6 +462,12 @@ func (ps *peerSet) enableEVNFeatures(validatorNodeIDsMap map[common.Address][]en
 			valNodeIDMap[nodeID] = struct{}{}
 		}
 	}
+
+	var (
+		proxyedPeerCnt          int64 = 0
+		whiteListPeerCnt        int64 = 0
+		onchainValidatorPeerCnt int64 = 0
+	)
 	for _, peer := range peers {
 		nodeID := peer.NodeID()
 		_, isValidatorPeer := valNodeIDMap[nodeID]
@@ -464,6 +477,7 @@ func (ps *peerSet) enableEVNFeatures(validatorNodeIDsMap map[common.Address][]en
 		if isProxyedPeer {
 			log.Debug("enable ProxyedValidatorFlag for", "peer", nodeID)
 			peer.ProxyedValidatorFlag.Store(true)
+			proxyedPeerCnt++
 		} else {
 			peer.ProxyedValidatorFlag.Store(false)
 		}
@@ -487,8 +501,18 @@ func (ps *peerSet) enableEVNFeatures(validatorNodeIDsMap map[common.Address][]en
 		if isProxyedPeer && isValidatorPeer {
 			log.Warn("proyxed validator is registered on-chain", "id", nodeID)
 		}
+
+		if isValidatorPeer {
+			onchainValidatorPeerCnt++
+		}
+		if isWhitelistPeer {
+			whiteListPeerCnt++
+		}
 	}
-	log.Info("enable EVN features", "total", len(peers), "evnWhitelist", len(evnWhitelistMap), "validatorNodeIDs", len(valNodeIDMap), "proxyedNodeIDs", len(proxyedNodeIDMap))
+	evnProxedPeerGuage.Update(proxyedPeerCnt)
+	evnWhiteListPeerGuage.Update(whiteListPeerCnt)
+	evnOnchainValidatorPeerGuage.Update(onchainValidatorPeerCnt)
+	log.Info("enable EVN features", "total", len(peers), "proxyedPeerCnt", proxyedPeerCnt, "whiteListPeerCnt", whiteListPeerCnt, "onchainValidatorPeerCnt", onchainValidatorPeerCnt)
 }
 
 // isProxyedValidator checks if the given address is a connected proxyed validator.

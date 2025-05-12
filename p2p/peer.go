@@ -585,8 +585,11 @@ type PeerInfo struct {
 		Trusted       bool   `json:"trusted"`
 		Static        bool   `json:"static"`
 	} `json:"network"`
-	Protocols map[string]interface{} `json:"protocols"` // Sub-protocol specific metadata fields
-	Latency   int64                  `json:"latency"`   // the estimate latency from ping msg
+	Protocols            map[string]interface{} `json:"protocols"` // Sub-protocol specific metadata fields
+	Latency              int64                  `json:"latency"`   // the estimate latency from ping msg
+	EVNPeerFlag          bool                   `json:"evnPeerFlag"`
+	ProxyedValidatorFlag bool                   `json:"proxyedValidatorFlag"`
+	NoTxBroadcastFlag    bool                   `json:"noTxBroadcastFlag"`
 }
 
 // Info gathers and returns a collection of metadata known about a peer.
@@ -598,12 +601,15 @@ func (p *Peer) Info() *PeerInfo {
 	}
 	// Assemble the generic peer metadata
 	info := &PeerInfo{
-		Enode:     p.Node().URLv4(),
-		ID:        p.ID().String(),
-		Name:      p.Fullname(),
-		Caps:      caps,
-		Protocols: make(map[string]interface{}, len(p.running)),
-		Latency:   p.latency.Load(),
+		Enode:                p.Node().URLv4(),
+		ID:                   p.ID().String(),
+		Name:                 p.Fullname(),
+		Caps:                 caps,
+		Protocols:            make(map[string]interface{}, len(p.running)),
+		Latency:              p.latency.Load(),
+		EVNPeerFlag:          p.EVNPeerFlag.Load(),
+		ProxyedValidatorFlag: p.ProxyedValidatorFlag.Load(),
+		NoTxBroadcastFlag:    p.NoTxBroadcastFlag.Load(),
 	}
 	if p.Node().Seq() > 0 {
 		info.ENR = p.Node().String()
