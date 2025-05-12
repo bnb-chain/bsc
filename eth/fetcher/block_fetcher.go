@@ -67,6 +67,12 @@ var (
 	bodyFilterInMeter    = metrics.NewRegisteredMeter("eth/fetcher/block/filter/bodies/in", nil)
 	bodyFilterOutMeter   = metrics.NewRegisteredMeter("eth/fetcher/block/filter/bodies/out", nil)
 
+	legacyBlockFetchingTimer        = metrics.NewRegisteredTimer("eth/fetcher/block/legacy/cost", nil)
+	quickBlockFetchingTimer         = metrics.NewRegisteredTimer("eth/fetcher/block/quick/cost", nil)
+	quickBlockFetchingErrMeter      = metrics.NewRegisteredMeter("eth/fetcher/block/quick/err", nil)
+	quickBlockFetchingFallbackMeter = metrics.NewRegisteredMeter("eth/fetcher/block/quick/fallback", nil)
+	quickBlockFetchingSuccessMeter  = metrics.NewRegisteredMeter("eth/fetcher/block/quick/success", nil)
+
 	blockInsertFailRecords      = mapset.NewSet[common.Hash]()
 	blockInsertFailRecordslimit = 1000
 	blockInsertFailGauge        = metrics.NewRegisteredGauge("chain/insert/failed", nil)
@@ -514,6 +520,9 @@ func (f *BlockFetcher) loop() {
 					if f.fetchingHook != nil {
 						f.fetchingHook(hashes)
 					}
+					if f.fetchRangeBlocks != nil {
+						quickBlockFetchingFallbackMeter.Mark(1)
+					}
 					for _, hash := range hashes {
 						headerFetchMeter.Mark(1)
 						go func(hash common.Hash) {
@@ -754,12 +763,14 @@ func (f *BlockFetcher) loop() {
 			for _, block := range blocks {
 				if announce := f.completing[block.Hash()]; announce != nil {
 					f.enqueue(announce.origin, nil, block)
+					legacyBlockFetchingTimer.UpdateSince(announce.time)
 				}
 			}
 		case entry := <-f.quickBlockFetchingCh:
 			annHash := entry.announce.hash
 			// if there is error or timeout, and the shcedule have not started, just retry the fetch
 			if entry.err != nil {
+				quickBlockFetchingErrMeter.Mark(1)
 				log.Debug("Quick block fetching err", "hash", annHash, "err", entry.err)
 				if _, ok := f.fetching[annHash]; !ok && len(f.announced[annHash]) > 1 {
 					// Pick the last peer to retrieve from, but ignore the current one
@@ -770,6 +781,7 @@ func (f *BlockFetcher) loop() {
 				}
 				continue
 			}
+			quickBlockFetchingSuccessMeter.Mark(1)
 			for _, block := range entry.blocks {
 				hash := block.Hash()
 				f.forgetHash(hash)
@@ -777,6 +789,7 @@ func (f *BlockFetcher) loop() {
 					continue
 				}
 				f.enqueue(entry.announce.origin, nil, block)
+				quickBlockFetchingTimer.UpdateSince(entry.announce.time)
 			}
 		}
 	}
