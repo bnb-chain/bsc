@@ -88,13 +88,13 @@ type BlockData struct {
 	Sidecars    types.BlobSidecars  `rlp:"optional"`
 }
 
-func NewBlockData(block *types.Block) *BlockData {
+func NewBlockData(block *types.Block, sidecars types.BlobSidecars) *BlockData {
 	return &BlockData{
 		Header:      block.Header(),
 		Txs:         block.Transactions(),
 		Uncles:      block.Uncles(),
 		Withdrawals: block.Withdrawals(),
-		Sidecars:    block.Sidecars(),
+		Sidecars:    sidecars,
 	}
 }
 

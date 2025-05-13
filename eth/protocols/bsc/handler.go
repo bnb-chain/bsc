@@ -167,9 +167,7 @@ func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 	}
 	// query sidecars again to avoid blockWithSidecars cache miss
 	sidecars := backend.Chain().GetSidecarsByHash(block.Hash())
-	block.WithSidecars(sidecars)
-
-	blocks = append(blocks, NewBlockData(block))
+	blocks = append(blocks, NewBlockData(block, sidecars))
 	for i := uint64(1); i < req.Count; i++ {
 		block = backend.Chain().GetBlockByHash(block.ParentHash())
 		if block == nil {
@@ -177,8 +175,7 @@ func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 		}
 		// query sidecars again to avoid blockWithSidecars cache miss
 		sidecars := backend.Chain().GetSidecarsByHash(block.Hash())
-		block.WithSidecars(sidecars)
-		blocks = append(blocks, NewBlockData(block))
+		blocks = append(blocks, NewBlockData(block, sidecars))
 	}
 
 	log.Trace("reply GetBlocksByRange msg", "from", peer.id, "req", req.Count, "blocks", len(blocks))
