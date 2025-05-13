@@ -18,6 +18,7 @@ package eth
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"math/big"
 	"strings"
@@ -316,8 +317,11 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		if p == nil {
 			return nil, errors.New("peer not found")
 		}
+		if p.bscExt == nil {
+			return nil, fmt.Errorf("peer does not support bsc protocol, peer: %v", p.ID())
+		}
 		if p.bscExt.Version() != bsc.Bsc2 {
-			return nil, errors.New("Remote peer does not support the required Bsc2 protocol version")
+			return nil, fmt.Errorf("remote peer does not support the required Bsc2 protocol version, peer: %v", p.ID())
 		}
 		res, err := p.bscExt.RequestBlocksByRange(startHeight, startHash, count)
 		if err != nil {
