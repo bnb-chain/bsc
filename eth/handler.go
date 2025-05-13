@@ -337,6 +337,10 @@ func newHandler(config *handlerConfig) (*handler, error) {
 				return nil, err
 			}
 			if len(block.Sidecars()) > 0 {
+				// check sidecars sanity to avoid wrong block message, it will retry from other peer
+				if err := core.IsDataAvailable(h.chain, block); err != nil {
+					return nil, err
+				}
 				for _, sidecar := range block.Sidecars() {
 					if err := sidecar.SanityCheck(block.Number(), block.Hash()); err != nil {
 						return nil, err

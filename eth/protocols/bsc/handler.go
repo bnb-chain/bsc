@@ -162,16 +162,22 @@ func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 	} else {
 		block = backend.Chain().GetBlockByNumber(req.StartBlockHeight)
 	}
-
 	if block == nil {
 		return fmt.Errorf("msg %v, cannot get start block: %v, %v", GetBlocksByRangeMsg, req.StartBlockHeight, req.StartBlockHash)
 	}
+	// query sidecars again to avoid blockWithSidecars cache miss
+	sidecars := backend.Chain().GetSidecarsByHash(block.Hash())
+	block.WithSidecars(sidecars)
+
 	blocks = append(blocks, NewBlockData(block))
 	for i := uint64(1); i < req.Count; i++ {
 		block = backend.Chain().GetBlockByHash(block.ParentHash())
 		if block == nil {
 			break
 		}
+		// query sidecars again to avoid blockWithSidecars cache miss
+		sidecars := backend.Chain().GetSidecarsByHash(block.Hash())
+		block.WithSidecars(sidecars)
 		blocks = append(blocks, NewBlockData(block))
 	}
 
