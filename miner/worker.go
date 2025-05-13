@@ -814,6 +814,7 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 		processorCapacity = plainTxs.CurrentSize()
 	}
 	bloomProcessors := core.NewAsyncReceiptBloomGenerator(processorCapacity)
+	defer bloomProcessors.Close()
 
 	stopPrefetchCh := make(chan struct{})
 	defer close(stopPrefetchCh)
@@ -953,7 +954,6 @@ LOOP:
 			txs.Pop()
 		}
 	}
-	bloomProcessors.Close()
 	if !w.isRunning() && len(coalescedLogs) > 0 {
 		// We don't push the pendingLogsEvent while we are sealing. The reason is that
 		// when we are sealing, the worker will regenerate a sealing block every 3 seconds.
