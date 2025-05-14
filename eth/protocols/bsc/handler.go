@@ -156,7 +156,7 @@ func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 	// Get requested blocks
 	blocks := make([]*BlockData, 0, req.Count)
 	var block *types.Block
-	// Prioritize blockHash query
+	// Prioritize blockHash query, get block & sidecars from db
 	if req.StartBlockHash != (common.Hash{}) {
 		block = backend.Chain().GetBlockByHash(req.StartBlockHash)
 	} else {
@@ -165,16 +165,13 @@ func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 	if block == nil {
 		return fmt.Errorf("msg %v, cannot get start block: %v, %v", GetBlocksByRangeMsg, req.StartBlockHeight, req.StartBlockHash)
 	}
-	// query sidecars again to avoid blockWithSidecars cache miss
-	sidecars := backend.Chain().GetSidecarsByHash(block.Hash())
-	blocks = append(blocks, NewBlockData(block, sidecars))
+	blocks = append(blocks, NewBlockData(block))
 	for i := uint64(1); i < req.Count; i++ {
 		block = backend.Chain().GetBlockByHash(block.ParentHash())
 		if block == nil {
 			break
 		}
-		sidecars := backend.Chain().GetSidecarsByHash(block.Hash())
-		blocks = append(blocks, NewBlockData(block, sidecars))
+		blocks = append(blocks, NewBlockData(block))
 	}
 
 	log.Trace("reply GetBlocksByRange msg", "from", peer.id, "req", req.Count, "blocks", len(blocks))

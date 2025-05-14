@@ -180,7 +180,7 @@ func TestHandleBlocksByRange(t *testing.T) {
 	// Convert blocks to BlockData
 	blockDataList := make([]*BlockData, len(blocks))
 	for i, block := range blocks {
-		blockDataList[i] = NewBlockData(block, block.Sidecars())
+		blockDataList[i] = NewBlockData(block)
 	}
 
 	// Test cases
