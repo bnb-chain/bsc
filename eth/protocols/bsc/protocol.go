@@ -88,6 +88,8 @@ type BlockData struct {
 	Sidecars    types.BlobSidecars  `rlp:"optional"`
 }
 
+// NewBlockData creates a new BlockData object from a block and its sidecars
+// sidecars is optional, it can be nil, but you must retrival the sidecars if it is necessary
 func NewBlockData(block *types.Block, sidecars types.BlobSidecars) *BlockData {
 	return &BlockData{
 		Header:      block.Header(),

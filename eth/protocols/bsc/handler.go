@@ -173,7 +173,6 @@ func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 		if block == nil {
 			break
 		}
-		// query sidecars again to avoid blockWithSidecars cache miss
 		sidecars := backend.Chain().GetSidecarsByHash(block.Hash())
 		blocks = append(blocks, NewBlockData(block, sidecars))
 	}
