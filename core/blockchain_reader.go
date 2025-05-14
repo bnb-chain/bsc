@@ -183,7 +183,7 @@ func (bc *BlockChain) HasFastBlock(hash common.Hash, number uint64) bool {
 	return rawdb.HasReceipts(bc.db, hash, number)
 }
 
-// GetBlock retrieves a block from the database by hash and number,
+// GetBlock retrieves a block & sidecars from the database by hash and number,
 // caching it if found.
 func (bc *BlockChain) GetBlock(hash common.Hash, number uint64) *types.Block {
 	// Short circuit if the block's already in the cache, retrieve otherwise
@@ -194,12 +194,14 @@ func (bc *BlockChain) GetBlock(hash common.Hash, number uint64) *types.Block {
 	if block == nil {
 		return nil
 	}
+	sidecars := rawdb.ReadBlobSidecars(bc.db, hash, number)
+	block = block.WithSidecars(sidecars)
 	// Cache the found block for next time and return
 	bc.blockCache.Add(block.Hash(), block)
 	return block
 }
 
-// GetBlockByHash retrieves a block from the database by hash, caching it if found.
+// GetBlockByHash retrieves a block & sidecars from the database by hash, caching it if found.
 func (bc *BlockChain) GetBlockByHash(hash common.Hash) *types.Block {
 	number := bc.hc.GetBlockNumber(hash)
 	if number == nil {

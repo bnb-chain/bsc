@@ -156,13 +156,12 @@ func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 	// Get requested blocks
 	blocks := make([]*BlockData, 0, req.Count)
 	var block *types.Block
-	// Prioritize blockHash query
+	// Prioritize blockHash query, get block & sidecars from db
 	if req.StartBlockHash != (common.Hash{}) {
 		block = backend.Chain().GetBlockByHash(req.StartBlockHash)
 	} else {
 		block = backend.Chain().GetBlockByNumber(req.StartBlockHeight)
 	}
-
 	if block == nil {
 		return fmt.Errorf("msg %v, cannot get start block: %v, %v", GetBlocksByRangeMsg, req.StartBlockHeight, req.StartBlockHash)
 	}

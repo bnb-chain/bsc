@@ -2617,9 +2617,6 @@ func (bc *BlockChain) insertSideChain(block *types.Block, it *insertIterator, ma
 		if block == nil {
 			log.Crit("Importing heavy sidechain block is nil", "hash", hashes[i], "number", numbers[i])
 		}
-		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
-			block = block.WithSidecars(bc.GetSidecarsByHash(hashes[i]))
-		}
 		blocks = append(blocks, block)
 		memory += block.Size()
 
@@ -2690,9 +2687,6 @@ func (bc *BlockChain) recoverAncestors(block *types.Block, makeWitness bool) (co
 			b = block
 		} else {
 			b = bc.GetBlock(hashes[i], numbers[i])
-		}
-		if bc.chainConfig.IsCancun(b.Number(), b.Time()) {
-			b = b.WithSidecars(bc.GetSidecarsByHash(b.Hash()))
 		}
 		if _, _, err := bc.insertChain(types.Blocks{b}, false, makeWitness && i == 0); err != nil {
 			return b.ParentHash(), err
