@@ -987,17 +987,6 @@ func init() {
 		},
 	}
 
-	lorentzUpgrade[rialtoNet] = &Upgrade{
-		UpgradeName: "lorentz",
-		Configs: []*UpgradeConfig{
-			{
-				ContractAddr: common.HexToAddress(ValidatorContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/44ebc6c17a00bd24db3240141a78091528dcebbb",
-				Code:         lorentz.RialtoValidatorContract,
-			},
-		},
-	}
-
 	maxwellUpgrade[mainNet] = &Upgrade{
 		UpgradeName: "maxwell",
 		Configs: []*UpgradeConfig{
