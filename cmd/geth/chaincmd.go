@@ -489,6 +489,11 @@ func initNetwork(ctx *cli.Context) error {
 		nodeIDs[i] = enodes[i].ID()
 	}
 	// add more feature configs
+	if enableSentryNode {
+		for i := 0; i < len(sentryConfigs); i++ {
+			sentryConfigs[i].Node.P2P.ProxyedValidatorNodeIDs = []enode.ID{nodeIDs[i]}
+		}
+	}
 	if ctx.Bool(utils.InitEVNValidatorWhitelist.Name) {
 		for i := 0; i < size; i++ {
 			configs[i].Node.P2P.EVNNodeIdsWhitelist = nodeIDs
