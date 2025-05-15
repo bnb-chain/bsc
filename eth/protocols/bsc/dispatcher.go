@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 )
 
@@ -52,6 +53,7 @@ func (d *Dispatcher) DispatchRequest(req *Request) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Debug("send BlocksByRange request", "code", req.code, "requestId", req.requestID)
 	req.resCh = make(chan interface{}, 1)
 	req.cancelCh = make(chan string, 1)
 
