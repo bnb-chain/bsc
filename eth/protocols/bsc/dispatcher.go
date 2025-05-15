@@ -58,12 +58,14 @@ func (d *Dispatcher) DispatchRequest(req *Request) (interface{}, error) {
 	req.cancelCh = make(chan string, 1)
 
 	d.mu.Lock()
+	log.Debug("add the request", "requestId", req.requestID)
 	d.requests[req.requestID] = req
 	d.mu.Unlock()
 
 	// clean the requests when the request is done
 	defer func() {
 		d.mu.Lock()
+		log.Debug("clean the requests", "requestId", req.requestID)
 		delete(d.requests, req.requestID)
 		d.mu.Unlock()
 	}()
@@ -92,6 +94,7 @@ func (d *Dispatcher) getRequestByResp(res *Response) (*Request, error) {
 	if req.want != res.code {
 		return nil, fmt.Errorf("response mismatch: %d != %d", res.code, req.want)
 	}
+	log.Debug("get the request, then clean it", "requestId", req.requestID)
 	delete(d.requests, req.requestID)
 	return req, nil
 }
