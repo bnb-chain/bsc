@@ -49,23 +49,21 @@ func (d *Dispatcher) GenRequestID() uint64 {
 
 // DispatchRequest send the request, and block until the later response
 func (d *Dispatcher) DispatchRequest(req *Request) (interface{}, error) {
+	// record the request before sending
+	d.mu.Lock()
+	d.requests[req.requestID] = req
+	d.mu.Unlock()
+
 	err := p2p.Send(d.peer.rw, req.code, req.data)
 	if err != nil {
 		return nil, err
 	}
-	log.Debug("send BlocksByRange request", "code", req.code, "requestId", req.requestID)
 	req.resCh = make(chan interface{}, 1)
 	req.cancelCh = make(chan string, 1)
-
-	d.mu.Lock()
-	log.Debug("add the request", "requestId", req.requestID)
-	d.requests[req.requestID] = req
-	d.mu.Unlock()
 
 	// clean the requests when the request is done
 	defer func() {
 		d.mu.Lock()
-		log.Debug("clean the requests", "requestId", req.requestID)
 		delete(d.requests, req.requestID)
 		d.mu.Unlock()
 	}()
