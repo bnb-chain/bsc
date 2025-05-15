@@ -19,31 +19,31 @@ import (
 
 // GetValidators retrieves validators from the StakeHubContract
 // It returns operator addresses, credit addresses, and total length of validators
-func (p *Parlia) GetValidators(blockNumber uint64, offset, limit *big.Int) ([]common.Address, []common.Address, *big.Int, error) {
-	log.Debug("Getting validators", "block", blockNumber, "offset", offset, "limit", limit)
+func (p *Parlia) GetValidators(offset, limit *big.Int) ([]common.Address, []common.Address, *big.Int, error) {
+	log.Debug("Getting validators from latest block", "offset", offset, "limit", limit)
 
 	// Create the call data for getValidators
 	data, err := p.stakeHubABI.Pack("getValidators", offset, limit)
 	if err != nil {
-		log.Error("Failed to pack getValidators", "error", err)
+		log.Error("Failed to pack stakehub getValidators", "error", err)
 		return nil, nil, nil, fmt.Errorf("failed to pack getValidators: %v", err)
 	}
 
 	// Make the call
-	blockNr := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNumber))
+	blockNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 	msgData := (hexutil.Bytes)(data)
 	toAddress := common.HexToAddress(systemcontracts.StakeHubContract)
 	gas := (hexutil.Uint64)(uint64(math.MaxUint64 / 2))
 
-	log.Debug("Calling getValidators", "block", blockNumber, "to", toAddress)
+	log.Debug("Calling getValidators from latest block", "to", toAddress)
 	result, err := p.ethAPI.Call(context.Background(), ethapi.TransactionArgs{
 		Gas:  &gas,
 		To:   &toAddress,
 		Data: &msgData,
 	}, &blockNr, nil, nil)
 	if err != nil {
-		log.Error("Failed to call getValidators", "error", err)
-		return nil, nil, nil, fmt.Errorf("failed to call getValidators: %v", err)
+		log.Error("Failed to call stakehub getValidators", "error", err)
+		return nil, nil, nil, fmt.Errorf("failed to call stakehub getValidators: %v", err)
 	}
 
 	// Unpack the result
@@ -51,18 +51,18 @@ func (p *Parlia) GetValidators(blockNumber uint64, offset, limit *big.Int) ([]co
 	var creditAddrs []common.Address
 	var totalLength *big.Int
 	if err := p.stakeHubABI.UnpackIntoInterface(&[]interface{}{&operatorAddrs, &creditAddrs, &totalLength}, "getValidators", result); err != nil {
-		log.Error("Failed to unpack getValidators result", "error", err)
+		log.Error("Failed to unpack stakehub getValidators result", "error", err)
 		return nil, nil, nil, fmt.Errorf("failed to unpack getValidators result: %v", err)
 	}
 
-	log.Debug("Successfully retrieved validators", "operators", len(operatorAddrs), "credits", len(creditAddrs), "total", totalLength)
+	log.Debug("Successfully retrieved stakehub validators", "operators", len(operatorAddrs), "credits", len(creditAddrs), "total", totalLength)
 	return operatorAddrs, creditAddrs, totalLength, nil
 }
 
 // getNodeIDsForValidators retrieves node IDs for the given validators
 // It returns a map of consensus addresses to their node IDs
-func (p *Parlia) getNodeIDsForValidators(blockNumber uint64, validatorsToQuery []common.Address) (map[common.Address][]enode.ID, error) {
-	log.Debug("Listing node IDs for validators", "block", blockNumber, "validators", len(validatorsToQuery))
+func (p *Parlia) getNodeIDsForValidators(validatorsToQuery []common.Address) (map[common.Address][]enode.ID, error) {
+	log.Debug("Listing node IDs for validators from latest block", "validators", len(validatorsToQuery))
 
 	// Create the call data for getNodeIDs
 	data, err := p.stakeHubABI.Pack("getNodeIDs", validatorsToQuery)
@@ -72,12 +72,12 @@ func (p *Parlia) getNodeIDsForValidators(blockNumber uint64, validatorsToQuery [
 	}
 
 	// Make the call
-	blockNr := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNumber))
+	blockNr := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 	msgData := (hexutil.Bytes)(data)
 	toAddress := common.HexToAddress(systemcontracts.StakeHubContract)
 	gas := (hexutil.Uint64)(uint64(math.MaxUint64 / 2))
 
-	log.Debug("Calling getNodeIDs", "block", blockNumber, "to", toAddress)
+	log.Debug("Calling getNodeIDs from latest block", "to", toAddress)
 	result, err := p.ethAPI.Call(context.Background(), ethapi.TransactionArgs{
 		Gas:  &gas,
 		To:   &toAddress,
@@ -110,12 +110,8 @@ func (p *Parlia) getNodeIDsForValidators(blockNumber uint64, validatorsToQuery [
 
 // GetNodeIDs returns a flattened array of all node IDs for current validators
 func (p *Parlia) GetNodeIDs() ([]enode.ID, error) {
-	// Get latest block number
-	block := p.ethAPI.BlockNumber()
-	log.Debug("Getting all node IDs", "block", block)
-
 	// Call GetValidators with latest block number
-	operatorAddrs, _, _, err := p.GetValidators(uint64(block), big.NewInt(0), big.NewInt(1000))
+	operatorAddrs, _, _, err := p.GetValidators(big.NewInt(0), big.NewInt(1000))
 	if err != nil {
 		log.Error("Failed to get validators", "error", err)
 		return nil, fmt.Errorf("failed to get validators: %v", err)
@@ -123,7 +119,7 @@ func (p *Parlia) GetNodeIDs() ([]enode.ID, error) {
 	log.Debug("Retrieved validators", "count", len(operatorAddrs))
 
 	// Get node IDs for validators
-	nodeIDs, err := p.getNodeIDsForValidators(uint64(block), operatorAddrs)
+	nodeIDs, err := p.getNodeIDsForValidators(operatorAddrs)
 	if err != nil {
 		log.Error("Failed to get node IDs", "error", err)
 		return nil, fmt.Errorf("failed to get node IDs: %v", err)
@@ -200,12 +196,8 @@ func (p *Parlia) AddNodeIDs(nodeIDs []enode.ID, nonce uint64) (*types.Transactio
 
 // GetNodeIDsMap returns a map of consensus addresses to their node IDs for all current validators
 func (p *Parlia) GetNodeIDsMap() (map[common.Address][]enode.ID, error) {
-	// Get latest block number
-	block := p.ethAPI.BlockNumber()
-	log.Debug("Getting node IDs map", "block", block)
-
 	// Call GetValidators with latest block number
-	operatorAddrs, _, _, err := p.GetValidators(uint64(block), big.NewInt(0), big.NewInt(1000))
+	operatorAddrs, _, _, err := p.GetValidators(big.NewInt(0), big.NewInt(1000))
 	if err != nil {
 		log.Error("Failed to get validators", "error", err)
 		return nil, fmt.Errorf("failed to get validators: %v", err)
@@ -213,7 +205,7 @@ func (p *Parlia) GetNodeIDsMap() (map[common.Address][]enode.ID, error) {
 	log.Debug("Retrieved validators", "count", len(operatorAddrs))
 
 	// Get node IDs for validators
-	nodeIDsMap, err := p.getNodeIDsForValidators(uint64(block), operatorAddrs)
+	nodeIDsMap, err := p.getNodeIDsForValidators(operatorAddrs)
 	if err != nil {
 		log.Error("Failed to get node IDs", "error", err)
 		return nil, fmt.Errorf("failed to get node IDs: %v", err)

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 )
 
@@ -48,16 +49,18 @@ func (d *Dispatcher) GenRequestID() uint64 {
 
 // DispatchRequest send the request, and block until the later response
 func (d *Dispatcher) DispatchRequest(req *Request) (interface{}, error) {
+	// record the request before sending
+	d.mu.Lock()
+	d.requests[req.requestID] = req
+	d.mu.Unlock()
+
+	log.Debug("send BlocksByRange request", "code", req.code, "requestId", req.requestID)
 	err := p2p.Send(d.peer.rw, req.code, req.data)
 	if err != nil {
 		return nil, err
 	}
 	req.resCh = make(chan interface{}, 1)
 	req.cancelCh = make(chan string, 1)
-
-	d.mu.Lock()
-	d.requests[req.requestID] = req
-	d.mu.Unlock()
 
 	// clean the requests when the request is done
 	defer func() {
@@ -90,6 +93,7 @@ func (d *Dispatcher) getRequestByResp(res *Response) (*Request, error) {
 	if req.want != res.code {
 		return nil, fmt.Errorf("response mismatch: %d != %d", res.code, req.want)
 	}
+	log.Debug("get the request, then clean it", "requestId", req.requestID)
 	delete(d.requests, req.requestID)
 	return req, nil
 }

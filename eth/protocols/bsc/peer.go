@@ -201,6 +201,7 @@ func (p *Peer) RequestBlocksByRange(startHeight uint64, startHash common.Hash, c
 		},
 		timeout: 400 * time.Millisecond,
 	})
+	log.Debug("RequestBlocksByRange result", "requestID", requestID, "ret", res == nil, "err", err)
 	if err != nil {
 		return nil, err
 	}

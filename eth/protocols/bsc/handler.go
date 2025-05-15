@@ -174,7 +174,7 @@ func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 		blocks = append(blocks, NewBlockData(block))
 	}
 
-	log.Trace("reply GetBlocksByRange msg", "from", peer.id, "req", req.Count, "blocks", len(blocks))
+	log.Debug("reply GetBlocksByRange msg", "from", peer.id, "req", req.Count, "blocks", len(blocks))
 	return p2p.Send(peer.rw, BlocksByRangeMsg, &BlocksByRangePacket{
 		RequestId: req.RequestId,
 		Blocks:    blocks,
@@ -192,7 +192,7 @@ func handleBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 		data:      res,
 		code:      BlocksByRangeMsg,
 	})
-	log.Debug("receive BlocksByRange response", "from", peer.id, "blocks", len(res.Blocks), "err", err)
+	log.Debug("receive BlocksByRange response", "from", peer.id, "requestId", res.RequestId, "blocks", len(res.Blocks), "err", err)
 	return nil
 }
 
