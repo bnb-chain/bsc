@@ -20,6 +20,7 @@ import (
 	"crypto/ecdsa"
 	"fmt"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -94,6 +95,10 @@ type Config struct {
 	// ProxyedValidatorNodeIDs is a list of validator NodeIDs that the local node proxies,
 	// it usually used for sentry nodes
 	ProxyedValidatorNodeIDs []enode.ID `toml:",omitempty"`
+
+	// ProxyedValidatorAddresses is a list of validator addresses that the local node proxies,
+	// it usually used for sentry nodes
+	ProxyedValidatorAddresses []common.Address `toml:",omitempty"`
 
 	// Connectivity can be restricted to certain IP networks.
 	// If this option is set to a non-nil value, only hosts which match one of the

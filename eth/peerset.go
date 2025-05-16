@@ -515,25 +515,26 @@ func (ps *peerSet) enableEVNFeatures(validatorNodeIDsMap map[common.Address][]en
 	log.Info("enable EVN features", "total", len(peers), "proxyedPeerCnt", proxyedPeerCnt, "whiteListPeerCnt", whiteListPeerCnt, "onchainValidatorPeerCnt", onchainValidatorPeerCnt)
 }
 
-// isProxyedValidator checks if the given address is a connected proxyed validator.
-func (ps *peerSet) isProxyedValidator(address common.Address, proxyedNodeIDMap map[enode.ID]struct{}) bool {
+// isProxyedValidator checks if the received block from the proxyed validator.
+func (ps *peerSet) isProxyedValidator(validator common.Address, sourceID enode.ID, proxyedNodeIDMap map[enode.ID]struct{}, proxyedAddressMap map[common.Address]struct{}) bool {
 	ps.lock.RLock()
 	defer ps.lock.RUnlock()
 
-	if ps.validatorNodeIDsMap == nil {
+	if len(proxyedNodeIDMap) == 0 || len(proxyedAddressMap) == 0 {
 		return false
 	}
+	log.Debug("check whether received block from proxyed peer", "validator", validator,
+		"sourceID", sourceID, "proxyedNodeIDMap", proxyedNodeIDMap, "proxyedAddressMap", proxyedAddressMap)
 
-	nodeIDs := ps.validatorNodeIDsMap[address]
-	for _, id := range nodeIDs {
-		if ps.peers[id.String()] == nil {
-			continue
-		}
-		if _, ok := proxyedNodeIDMap[id]; ok {
-			return true
-		}
+	// check whether the source peer is proxyed peer
+	if _, ok := proxyedNodeIDMap[sourceID]; !ok {
+		return false
 	}
-	return false
+	// check whether the validator is proxyed validator
+	if _, ok := proxyedAddressMap[validator]; !ok {
+		return false
+	}
+	return true
 }
 
 // headPeers retrieves a specified number list of peers.
@@ -567,6 +568,7 @@ func (ps *peerSet) peersWithoutBlock(hash common.Hash) []*ethPeer {
 			list = append(list, p)
 		}
 	}
+	log.Debug("get peers without block", "hash", hash, "total", len(ps.peers), "unknonw", len(list))
 	return list
 }
 

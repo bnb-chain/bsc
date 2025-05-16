@@ -609,6 +609,21 @@ func (b *Block) WithSidecars(sidecars BlobSidecars) *Block {
 	return block
 }
 
+// WithReceiveInfos returns a block containing the given receive infos.
+func (b *Block) WithReceiveInfos(receivedAt time.Time, receivedFrom interface{}) *Block {
+	block := &Block{
+		header:       b.header,
+		transactions: b.transactions,
+		uncles:       b.uncles,
+		withdrawals:  b.withdrawals,
+		witness:      b.witness,
+		sidecars:     b.sidecars,
+		ReceivedAt:   receivedAt,
+		ReceivedFrom: receivedFrom,
+	}
+	return block
+}
+
 func (b *Block) WithWitness(witness *ExecutionWitness) *Block {
 	return &Block{
 		header:       b.header,
