@@ -571,6 +571,7 @@ func (ps *peerSet) peersWithoutBlock(hash common.Hash) []*ethPeer {
 			list = append(list, p)
 		}
 	}
+	log.Debug("get peers without block", "hash", hash, "total", len(ps.peers), "unknonw", len(list))
 	return list
 }
 
