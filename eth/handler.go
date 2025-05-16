@@ -856,7 +856,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 			peer.AsyncSendNewBlock(block, td)
 		}
 
-		log.Trace("Propagated block", "hash", hash, "recipients", len(transfer), "extra", len(morePeers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
+		log.Debug("Propagated block", "hash", hash, "recipients", len(transfer), "extra", len(morePeers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
 		return
 	}
 	// Otherwise if the block is indeed in our own chain, announce it
@@ -865,7 +865,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 			log.Debug("Announced block to peer", "hash", hash, "peer", peer.ID(), "ProxyedValidatorFlag", peer.ProxyedValidatorFlag.Load(), "EVNPeerFlag", peer.EVNPeerFlag.Load())
 			peer.AsyncSendNewBlockHash(block)
 		}
-		log.Trace("Announced block", "hash", hash, "recipients", len(peers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
+		log.Debug("Announced block", "hash", hash, "recipients", len(peers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
 	}
 }
 
@@ -884,6 +884,7 @@ func (h *handler) needFullBroadcastInEVN(block *types.Block) bool {
 	coinbase := block.Coinbase()
 	// check whether the block is create by self
 	if parlia.ConsensusAddress() == coinbase {
+		log.Debug("full broadcast mined block to EVN", "coinbase", coinbase)
 		return true
 	}
 
