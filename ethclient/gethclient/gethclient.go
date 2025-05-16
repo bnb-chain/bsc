@@ -33,6 +33,9 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
+// MaxGetProofKeys is the maximum number of keys allowed in a GetProof request
+const MaxGetProofKeys = 512
+
 // Client is a wrapper around rpc.Client that implements geth-specific functionality.
 //
 // If you want to use the standardized Ethereum RPC functionality, use ethclient.Client instead.
@@ -100,6 +103,14 @@ func (ec *Client) GetProof(ctx context.Context, account common.Address, keys []s
 	// Avoid keys being 'null'.
 	if keys == nil {
 		keys = []string{}
+	} else {
+		// Remove duplicate keys
+		keys = removeDuplicates(keys)
+	}
+
+	// Reject requests with too many keys
+	if len(keys) > MaxGetProofKeys {
+		return nil, fmt.Errorf("too many keys: %d (maximum %d)", len(keys), MaxGetProofKeys)
 	}
 
 	var res accountResult
@@ -251,6 +262,9 @@ func toCallArg(msg ethereum.CallMsg) interface{} {
 	if msg.BlobHashes != nil {
 		arg["blobVersionedHashes"] = msg.BlobHashes
 	}
+	if msg.AuthorizationList != nil {
+		arg["authorizationList"] = msg.AuthorizationList
+	}
 	return arg
 }
 
@@ -347,4 +361,22 @@ func (o BlockOverrides) MarshalJSON() ([]byte, error) {
 		output.Random = &o.Random
 	}
 	return json.Marshal(output)
+}
+
+// removeDuplicates removes duplicate values from a string slice while preserving order
+func removeDuplicates(slice []string) []string {
+	seen := make(map[string]struct{})
+	result := make([]string, 0, len(slice))
+
+	for _, item := range slice {
+		// Skip empty strings because they are considered invalid or irrelevant in this context.
+		if item == "" {
+			continue
+		}
+		if _, exists := seen[item]; !exists {
+			seen[item] = struct{}{}
+			result = append(result, item)
+		}
+	}
+	return result
 }

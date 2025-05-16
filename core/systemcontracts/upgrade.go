@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts/kepler"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/lorentz"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/luban"
+	"github.com/ethereum/go-ethereum/core/systemcontracts/maxwell"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/mirror"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/moran"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/niels"
@@ -89,6 +90,8 @@ var (
 	pascalUpgrade = make(map[string]*Upgrade)
 
 	lorentzUpgrade = make(map[string]*Upgrade)
+
+	maxwellUpgrade = make(map[string]*Upgrade)
 )
 
 func init() {
@@ -984,13 +987,35 @@ func init() {
 		},
 	}
 
-	lorentzUpgrade[rialtoNet] = &Upgrade{
-		UpgradeName: "lorentz",
+	maxwellUpgrade[mainNet] = &Upgrade{
+		UpgradeName: "maxwell",
 		Configs: []*UpgradeConfig{
 			{
-				ContractAddr: common.HexToAddress(ValidatorContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/44ebc6c17a00bd24db3240141a78091528dcebbb",
-				Code:         lorentz.RialtoValidatorContract,
+				ContractAddr: common.HexToAddress(StakeHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/bf3ac733f8aaf93ed88ca0ad2dcddd051166e4e1",
+				Code:         maxwell.MainnetStakeHubContract,
+			},
+		},
+	}
+
+	maxwellUpgrade[chapelNet] = &Upgrade{
+		UpgradeName: "maxwell",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(StakeHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/bf3ac733f8aaf93ed88ca0ad2dcddd051166e4e1",
+				Code:         maxwell.ChapelStakeHubContract,
+			},
+		},
+	}
+
+	maxwellUpgrade[rialtoNet] = &Upgrade{
+		UpgradeName: "maxwell",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(StakeHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/bf3ac733f8aaf93ed88ca0ad2dcddd051166e4e1",
+				Code:         maxwell.RialtoStakeHubContract,
 			},
 		},
 	}
@@ -1103,6 +1128,10 @@ func upgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 
 	if config.IsOnLorentz(blockNumber, lastBlockTime, blockTime) {
 		applySystemContractUpgrade(lorentzUpgrade[network], blockNumber, statedb, logger)
+	}
+
+	if config.IsOnMaxwell(blockNumber, lastBlockTime, blockTime) {
+		applySystemContractUpgrade(maxwellUpgrade[network], blockNumber, statedb, logger)
 	}
 
 	/*

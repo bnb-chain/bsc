@@ -641,7 +641,7 @@ var (
 	MinerRecommitIntervalFlag = &cli.DurationFlag{
 		Name:     "miner.recommit",
 		Usage:    "Time interval to recreate the block being mined",
-		Value:    ethconfig.Defaults.Miner.Recommit,
+		Value:    *ethconfig.Defaults.Miner.Recommit,
 		Category: flags.MinerCategory,
 	}
 	MinerDelayLeftoverFlag = &cli.DurationFlag{
@@ -1124,6 +1124,52 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Name:  "init.p2p-port",
 		Usage: "the p2p port of the nodes in the network",
 		Value: 30311,
+	}
+	InitSentryNodeSize = &cli.IntFlag{
+		Name:  "init.sentrynode-size",
+		Usage: "the size of the sentry node",
+		Value: 0,
+	}
+	InitSentryNodeIPs = &cli.StringFlag{
+		Name:  "init.sentrynode-ips",
+		Usage: "the ips of each sentry node in the network, example '192.168.0.1,192.168.0.2'",
+		Value: "",
+	}
+	InitSentryNodePorts = &cli.StringFlag{
+		Name:  "init.sentrynode-ports",
+		Usage: "the ports of each sentry node in the network, example '30311,30312'",
+		Value: "",
+	}
+	InitFullNodeSize = &cli.IntFlag{
+		Name:  "init.fullnode-size",
+		Usage: "the size of the full node",
+		Value: 0,
+	}
+	InitFullNodeIPs = &cli.StringFlag{
+		Name:  "init.fullnode-ips",
+		Usage: "the ips of each full node in the network, example '192.168.0.1,192.168.0.2'",
+		Value: "",
+	}
+	InitFullNodePorts = &cli.StringFlag{
+		Name:  "init.fullnode-ports",
+		Usage: "the ports of each full node in the network, example '30311,30312'",
+		Value: "",
+	}
+	InitEVNSentryWhitelist = &cli.BoolFlag{
+		Name:  "init.evn-sentry-whitelist",
+		Usage: "whether to add evn sentry NodeIDs in Node.P2P.EVNNodeIDsWhitelist",
+	}
+	InitEVNValidatorWhitelist = &cli.BoolFlag{
+		Name:  "init.evn-validator-whitelist",
+		Usage: "whether to add evn validator NodeIDs in Node.P2P.EVNNodeIDsWhitelist",
+	}
+	InitEVNSentryRegister = &cli.BoolFlag{
+		Name:  "init.evn-sentry-register",
+		Usage: "whether to add evn sentry NodeIDs in ETH.EVNNodeIDsToAdd",
+	}
+	InitEVNValidatorRegister = &cli.BoolFlag{
+		Name:  "init.evn-validator-register",
+		Usage: "whether to add evn validator NodeIDs in ETH.EVNNodeIDsToAdd",
 	}
 	MetricsInfluxDBOrganizationFlag = &cli.StringFlag{
 		Name:     "metrics.influxdb.organization",
@@ -1862,7 +1908,8 @@ func setMiner(ctx *cli.Context, cfg *minerconfig.Config) {
 		cfg.GasPrice = flags.GlobalBig(ctx, MinerGasPriceFlag.Name)
 	}
 	if ctx.IsSet(MinerRecommitIntervalFlag.Name) {
-		cfg.Recommit = ctx.Duration(MinerRecommitIntervalFlag.Name)
+		recommitIntervalFlag := ctx.Duration(MinerRecommitIntervalFlag.Name)
+		cfg.Recommit = &recommitIntervalFlag
 	}
 	if ctx.IsSet(MinerDelayLeftoverFlag.Name) {
 		minerDelayLeftover := ctx.Duration(MinerDelayLeftoverFlag.Name)
@@ -1873,7 +1920,8 @@ func setMiner(ctx *cli.Context, cfg *minerconfig.Config) {
 	}
 	if ctx.IsSet(MinerNewPayloadTimeoutFlag.Name) {
 		log.Warn("The flag --miner.newpayload-timeout is deprecated and will be removed, please use --miner.recommit")
-		cfg.Recommit = ctx.Duration(MinerNewPayloadTimeoutFlag.Name)
+		recommitIntervalFlag := ctx.Duration(MinerRecommitIntervalFlag.Name)
+		cfg.Recommit = &recommitIntervalFlag
 	}
 	if ctx.Bool(DisableVoteAttestationFlag.Name) {
 		cfg.DisableVoteAttestation = true

@@ -1,4 +1,47 @@
 # Changelog
+## v1.5.13
+### FEATURE
+[\#3019](https://github.com/bnb-chain/bsc/pull/3019) BEP-524: Short Block Interval Phase Two: 0.75 seconds
+[\#3044](https://github.com/bnb-chain/bsc/pull/3044) params: double FullImmutabilityThreshold for BEP-520 & BEP-524
+[\#3045](https://github.com/bnb-chain/bsc/pull/3045) Feature: StakeHub Contract Interface Implementation
+[\#3040](https://github.com/bnb-chain/bsc/pull/3040) bsc: add new block fetching mechanism
+[\#3043](https://github.com/bnb-chain/bsc/pull/3043) p2p: support new msg broadcast features
+[\#3070](https://github.com/bnb-chain/bsc/pull/3070) chore: renaming for evn and some optmization
+[\#3073](https://github.com/bnb-chain/bsc/pull/3073) evn: add support for node id removal
+[\#3072](https://github.com/bnb-chain/bsc/pull/3072) config: support more evn configuration in tool
+[\#3075](https://github.com/bnb-chain/bsc/pull/3075) config: apply two default miner option
+[\#3083](https://github.com/bnb-chain/bsc/pull/3083) evn: improve node ID management with better error handling
+[\#3084](https://github.com/bnb-chain/bsc/pull/3084) metrics: add more monitor metrics for EVN
+[\#3087](https://github.com/bnb-chain/bsc/pull/3087) bsc2: fix block sidecar fetching issue
+[\#3090](https://github.com/bnb-chain/bsc/pull/3090) chore: update maxwell contrats addresses
+[\#3091](https://github.com/bnb-chain/bsc/pull/3091) chore: fix several occasional issues for EVN
+[\#3049](https://github.com/bnb-chain/bsc/pull/3049) upstream: pick bugfix and feature from latest geth v1.5.9
+[\#3096](https://github.com/bnb-chain/bsc/pull/3096) config: update BSC Testnet hardfork time: Maxwell
+
+### BUGFIX
+[\#3050](https://github.com/bnb-chain/bsc/pull/3050) miner: fix memory leak caused by no discard env
+[\#3061](https://github.com/bnb-chain/bsc/pull/3061) p2p: fix bscExt checking logic
+
+### IMPROVEMENT
+[\#3034](https://github.com/bnb-chain/bsc/pull/3034) miner: optimize clear up logic for envs
+[\#3039](https://github.com/bnb-chain/bsc/pull/3039) Revert "miner: limit block size to eth protocol msg size (#2696)"
+[\#3041](https://github.com/bnb-chain/bsc/pull/3041) feat: add json-rpc-api.md
+[\#3057](https://github.com/bnb-chain/bsc/pull/3057) eth/protocols/bsc: adjust vote reception limit
+[\#3067](https://github.com/bnb-chain/bsc/pull/3067) ethclient/gethclient: add deduplication and max keys limit to GetProof
+[\#3063](https://github.com/bnb-chain/bsc/pull/3063) rpc: add method name length limit and configurable message size limit
+[\#3077](https://github.com/bnb-chain/bsc/pull/3077) performance: track large tx execution cost
+[\#3074](https://github.com/bnb-chain/bsc/pull/3074) jsutils: add tool GetLargeTxs
+[\#3082](https://github.com/bnb-chain/bsc/pull/3082) metrics: optimize mev metrics
+[\#3081](https://github.com/bnb-chain/bsc/pull/3081) miner: reset recommit timer on new block
+[\#3062](https://github.com/bnb-chain/bsc/pull/3062) refactor: use slices.Contains to simplify code
+[\#3088](https://github.com/bnb-chain/bsc/pull/3088) core/vote: change waiting blocks for voting since start mining
+[\#3089](https://github.com/bnb-chain/bsc/pull/3089) core/systemcontracts: remove lorentz/rialto
+[\#3085](https://github.com/bnb-chain/bsc/pull/0000) miner: fix goroutine leak
+
+## v1.5.12
+### BUGFIX
+[\#3057](https://github.com/bnb-chain/bsc/pull/3057) eth/protocols/bsc: adjust vote reception limit
+
 ## v1.5.11
 ### FEATURE
 [\#3008](https://github.com/bnb-chain/bsc/pull/3008) params: add MaxwellTime

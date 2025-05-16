@@ -468,6 +468,7 @@ func (n *Node) startRPC() error {
 			Modules:           n.config.WSModules,
 			Origins:           n.config.WSOrigins,
 			prefix:            n.config.WSPathPrefix,
+			messageSizeLimit:  n.config.WSMessageSizeLimit,
 			rpcEndpointConfig: rpcConfig,
 		}); err != nil {
 			return err

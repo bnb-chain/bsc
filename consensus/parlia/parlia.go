@@ -60,6 +60,7 @@ const (
 	maxwellEpochLength   uint64 = 1000 // Epoch length starting from the Maxwell hard fork
 	defaultBlockInterval uint64 = 3000 // Default block interval in milliseconds
 	lorentzBlockInterval uint64 = 1500 // Block interval starting from the Lorentz hard fork
+	maxwellBlockInterval uint64 = 750  // Block interval starting from the Maxwell hard fork
 	defaultTurnLength    uint8  = 1    // Default consecutive number of blocks a validator receives priority for block production
 
 	extraVanity      = 32 // Fixed number of extra-data prefix bytes reserved for signer vanity
@@ -347,6 +348,11 @@ func (p *Parlia) IsSystemContract(to *common.Address) bool {
 // Author implements consensus.Engine, returning the SystemAddress
 func (p *Parlia) Author(header *types.Header) (common.Address, error) {
 	return header.Coinbase, nil
+}
+
+// ConsensusAddress returns the consensus address of the validator
+func (p *Parlia) ConsensusAddress() common.Address {
+	return p.val
 }
 
 // VerifyHeader checks whether a header conforms to the consensus rules.
@@ -795,14 +801,18 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 				blockHeader := chain.GetHeaderByNumber(number)
 				if blockHeader != nil {
 					blockHash = blockHeader.Hash()
-					if p.chainConfig.IsLorentz(blockHeader.Number, blockHeader.Time) {
+					if p.chainConfig.IsMaxwell(blockHeader.Number, blockHeader.Time) {
+						blockInterval = maxwellBlockInterval
+					} else if p.chainConfig.IsLorentz(blockHeader.Number, blockHeader.Time) {
 						blockInterval = lorentzBlockInterval
 					}
 				}
 				if number > offset { // exclude `number == 200`
 					blockBeforeCheckpoint := chain.GetHeaderByNumber(number - offset - 1)
 					if blockBeforeCheckpoint != nil {
-						if p.chainConfig.IsLorentz(blockBeforeCheckpoint.Number, blockBeforeCheckpoint.Time) {
+						if p.chainConfig.IsMaxwell(blockBeforeCheckpoint.Number, blockBeforeCheckpoint.Time) {
+							epochLength = maxwellEpochLength
+						} else if p.chainConfig.IsLorentz(blockBeforeCheckpoint.Number, blockBeforeCheckpoint.Time) {
 							epochLength = lorentzEpochLength
 						}
 					}

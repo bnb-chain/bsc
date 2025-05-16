@@ -29,8 +29,6 @@ const (
 	GenesisGasLimit      uint64 = 4712388            // Gas limit of the Genesis block.
 	PayBidTxGasLimit     uint64 = 25000              // Gas limit of the PayBidTx in the types.BidArgs.
 
-	MaxMessageSize uint32 = 10 * 1024 * 1024 // MaxMessageSize is the maximum cap on the size of a eth protocol message.
-
 	MaximumExtraDataSize  uint64 = 32       // Maximum size extra data may be after Genesis.
 	ForkIDSize            uint64 = 4        // The length of fork id
 	ExpByteGas            uint64 = 10       // Times ceil(log256(exponent)) for the EXP instruction.
@@ -194,10 +192,10 @@ const (
 )
 
 var (
-	// lorentzBlockInterval                      = 1.5
-	MinTimeDurationForBlobRequests     uint64 = uint64(float64(24*3600) * 18.2)                       // it keeps blob data available for 18.2 days in local
-	MinBlocksForBlobRequests           uint64 = uint64(float64(MinTimeDurationForBlobRequests) / 1.5) // ref: https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-524.md#421-change-table.
-	DefaultExtraReserveForBlobRequests uint64 = uint64(24 * 3600 / 1.5)                               // it adds more time for expired blobs for some request cases, like expiry blob when remote peer is syncing, default 1 day.
+	// maxwellBlockInterval                      = 0.75
+	MinTimeDurationForBlobRequests     uint64 = uint64(float64(24*3600) * 18.2)                        // it keeps blob data available for 18.2 days in local
+	MinBlocksForBlobRequests           uint64 = uint64(float64(MinTimeDurationForBlobRequests) / 0.75) // ref: https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-524.md#421-change-table.
+	DefaultExtraReserveForBlobRequests uint64 = uint64(24 * 3600 / 0.75)                               // it adds more time for expired blobs for some request cases, like expiry blob when remote peer is syncing, default 1 day.
 
 	BreatheBlockInterval uint64 = 24 * 3600 // Controls the interval for updateValidatorSetV2
 

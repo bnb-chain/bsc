@@ -279,7 +279,7 @@ func (api *API) traceChain(start, end *types.Block, config *TraceConfig, closed 
 				)
 				// Trace all the transactions contained within
 				for i, tx := range task.block.Transactions() {
-					// upgrade build-in system contract before system txs if Feynman is enabled
+					// upgrade built-in system contract before system txs if Feynman is enabled
 					if beforeSystemTx {
 						if posa, ok := api.backend.Engine().(consensus.PoSA); ok {
 							if isSystem, _ := posa.IsSystemTransaction(tx, task.block.Header()); isSystem {
@@ -402,7 +402,7 @@ func (api *API) traceChain(start, end *types.Block, config *TraceConfig, closed 
 				break
 			}
 
-			// upgrade build-in system contract before normal txs if Feynman is not enabled
+			// upgrade built-in system contract before normal txs if Feynman is not enabled
 			systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), next.Number(), block.Time(), next.Time(), statedb, true)
 
 			// Insert block's parent beacon block root in the state
@@ -558,7 +558,7 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 	}
 	defer release()
 
-	// upgrade build-in system contract before normal txs if Feynman is not enabled
+	// upgrade built-in system contract before normal txs if Feynman is not enabled
 	systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, true)
 
 	var (
@@ -649,7 +649,7 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 	}
 	defer release()
 
-	// upgrade build-in system contract before normal txs if Feynman is not enabled
+	// upgrade built-in system contract before normal txs if Feynman is not enabled
 	systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, true)
 	blockCtx := core.NewEVMBlockContext(block.Header(), api.chainContext(ctx), nil)
 	evm := vm.NewEVM(blockCtx, statedb, api.backend.ChainConfig(), vm.Config{})
@@ -678,7 +678,7 @@ func (api *API) traceBlock(ctx context.Context, block *types.Block, config *Trac
 		beforeSystemTx = true
 	)
 	for i, tx := range txs {
-		// upgrade build-in system contract before system txs if Feynman is enabled
+		// upgrade built-in system contract before system txs if Feynman is enabled
 		if beforeSystemTx {
 			if posa, ok := api.backend.Engine().(consensus.PoSA); ok {
 				if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
@@ -771,7 +771,7 @@ func (api *API) traceBlockParallel(ctx context.Context, block *types.Block, stat
 
 txloop:
 	for i, tx := range txs {
-		// upgrade build-in system contract before system txs if Feynman is enabled
+		// upgrade built-in system contract before system txs if Feynman is enabled
 		if beforeSystemTx {
 			if posa, ok := api.backend.Engine().(consensus.PoSA); ok {
 				if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
@@ -845,7 +845,7 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 	}
 	defer release()
 
-	// upgrade build-in system contract before normal txs if Feynman is not enabled
+	// upgrade built-in system contract before normal txs if Feynman is not enabled
 	systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, true)
 
 	// Retrieve the tracing configurations, or use default values
@@ -884,7 +884,7 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 		core.ProcessParentBlockHash(block.ParentHash(), evm)
 	}
 	for i, tx := range block.Transactions() {
-		// upgrade build-in system contract before system txs if Feynman is enabled
+		// upgrade built-in system contract before system txs if Feynman is enabled
 		if beforeSystemTx {
 			if posa, ok := api.backend.Engine().(consensus.PoSA); ok {
 				if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
@@ -1068,7 +1068,7 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 	}
 	defer release()
 
-	// upgrade build-in system contract before tracing if Feynman is not enabled
+	// upgrade built-in system contract before tracing if Feynman is not enabled
 	if block.NumberU64() > 0 {
 		parent, err := api.blockByNumberAndHash(ctx, rpc.BlockNumber(block.NumberU64()-1), block.ParentHash())
 		if err != nil {

@@ -123,11 +123,10 @@ func (journal *VoteJournal) verifyJournal(size, lastLatestVoteNumber int) bool {
 		lastIndex, _ := journal.walLog.LastIndex()
 		firstIndex, _ := journal.walLog.FirstIndex()
 		if int(lastIndex)-int(firstIndex)+1 == size {
-			return true
-		}
-		lastVote, _ := journal.ReadVote(lastIndex)
-		if lastVote != nil && lastVote.Data.TargetNumber == uint64(lastLatestVoteNumber) {
-			return true
+			lastVote, _ := journal.ReadVote(lastIndex)
+			if lastVote != nil && lastVote.Data.TargetNumber == uint64(lastLatestVoteNumber)+blocksNumberSinceMining {
+				return true
+			}
 		}
 	}
 	return false
@@ -283,10 +282,10 @@ func testVotePool(t *testing.T, isValidRules bool) {
 		t.Fatalf("journal failed")
 	}
 
-	// Test future votes scenario: votes number within latestBlockHeader ~ latestBlockHeader + 13
+	// Test future votes scenario: votes number within latestBlockHeader ~ latestBlockHeader + 11
 	futureVote := &types.VoteEnvelope{
 		Data: &types.VoteData{
-			TargetNumber: 279,
+			TargetNumber: 294,
 		},
 	}
 	if err := voteManager.signer.SignVote(futureVote); err != nil {
@@ -306,7 +305,7 @@ func testVotePool(t *testing.T, isValidRules bool) {
 	// Test duplicate vote case, shouldn'd be put into vote pool
 	duplicateVote := &types.VoteEnvelope{
 		Data: &types.VoteData{
-			TargetNumber: 279,
+			TargetNumber: 294,
 		},
 	}
 	if err := voteManager.signer.SignVote(duplicateVote); err != nil {
@@ -335,14 +334,14 @@ func testVotePool(t *testing.T, isValidRules bool) {
 		t.Fatalf("put vote failed")
 	}
 
-	// Test transfer votes from future to cur, latest block header is #288 after the following generation
+	// Test transfer votes from future to cur, latest block header is #308 after the following generation
 	// For the above BlockNumber 279, it did not have blockHash, should be assigned as well below.
-	curNumber := 268
+	curNumber := 288
 	var futureBlockHash common.Hash
 	for i := 0; i < 20; i++ {
 		bs, _ = core.GenerateChain(params.TestChainConfig, bs[len(bs)-1], ethash.NewFaker(), db, 1, nil)
 		curNumber += 1
-		if curNumber == 279 {
+		if curNumber == 294 {
 			futureBlockHash = bs[0].Hash()
 			futureVotesMap := votePool.futureVotes
 			voteBox := futureVotesMap[common.Hash{}]

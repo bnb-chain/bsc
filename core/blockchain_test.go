@@ -2670,7 +2670,7 @@ func testSideImportPrunedBlocks(t *testing.T, scheme string) {
 	datadir := t.TempDir()
 	ancient := path.Join(datadir, "ancient")
 
-	pdb, err := pebble.New(datadir, 0, 0, "", false)
+	pdb, err := pebble.New(datadir, 0, 0, "", false, true)
 	if err != nil {
 		t.Fatalf("Failed to create persistent key-value database: %v", err)
 	}
@@ -4431,7 +4431,7 @@ func TestEIP7702(t *testing.T) {
 	// The way the auths are combined, it becomes
 	// 1. tx -> addr1 which is delegated to 0xaaaa
 	// 2. addr1:0xaaaa calls into addr2:0xbbbb
-	// 3. addr2:0xbbbb  writes to storage
+	// 3. addr2:0xbbbb writes to storage
 	auth1, _ := types.SignSetCode(key1, types.SetCodeAuthorization{
 		ChainID: *uint256.MustFromBig(gspec.Config.ChainID),
 		Address: aa,
