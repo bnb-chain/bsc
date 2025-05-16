@@ -905,7 +905,7 @@ func (f *BlockFetcher) importBlocks(op *blockOrHeaderInject) {
 		}
 
 		if block.Header().EmptyWithdrawalsHash() {
-			block = block.WithWithdrawals(make([]*types.Withdrawal, 0))
+			block = block.WithWithdrawals(make([]*types.Withdrawal, 0)).WithReceiveInfos(block.ReceivedAt, block.ReceivedFrom)
 		}
 
 		defer func() { f.done <- hash }()
