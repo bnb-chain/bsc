@@ -112,6 +112,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 	// initialise bloom processors
 	bloomProcessors := NewAsyncReceiptBloomGenerator(txNum)
+	defer bloomProcessors.Close()
 	statedb.MarkFullProcessed()
 
 	// usually do have two tx, one for validator set contract, another for system reward contract.
@@ -120,7 +121,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	for i, tx := range block.Transactions() {
 		if isPoSA {
 			if isSystemTx, err := posa.IsSystemTransaction(tx, block.Header()); err != nil {
-				bloomProcessors.Close()
 				return nil, err
 			} else if isSystemTx {
 				systemTxs = append(systemTxs, tx)
@@ -129,7 +129,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		}
 		if p.config.IsCancun(block.Number(), block.Time()) {
 			if len(systemTxs) > 0 {
-				bloomProcessors.Close()
 				// systemTxs should be always at the end of block.
 				return nil, fmt.Errorf("normal tx %d [%v] after systemTx", i, tx.Hash().Hex())
 			}
@@ -137,14 +136,12 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 		msg, err := TransactionToMessage(tx, signer, header.BaseFee)
 		if err != nil {
-			bloomProcessors.Close()
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
 		statedb.SetTxContext(tx.Hash(), i)
 
 		receipt, err := ApplyTransactionWithEVM(msg, gp, statedb, blockNumber, blockHash, tx, usedGas, evm, bloomProcessors)
 		if err != nil {
-			bloomProcessors.Close()
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
 		commonTxs = append(commonTxs, tx)

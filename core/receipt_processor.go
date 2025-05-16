@@ -60,7 +60,9 @@ func (p *AsyncReceiptBloomGenerator) Apply(receipt *types.Receipt) {
 }
 
 func (p *AsyncReceiptBloomGenerator) Close() {
-	close(p.receipts)
-	p.isClosed = true
-	p.wg.Wait()
+	if !p.isClosed { // allow to close more than once
+		close(p.receipts)
+		p.isClosed = true
+		p.wg.Wait()
+	}
 }
