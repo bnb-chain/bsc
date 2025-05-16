@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 	"sync"
 	"time"
 
@@ -516,22 +517,23 @@ func (ps *peerSet) enableEVNFeatures(validatorNodeIDsMap map[common.Address][]en
 }
 
 // isProxyedValidator checks if the given address is a connected proxyed validator.
-func (ps *peerSet) isProxyedValidator(address common.Address, proxyedNodeIDMap map[enode.ID]struct{}) bool {
+func (ps *peerSet) isProxyedValidator(coinbase common.Address, selfID enode.ID, sourceID enode.ID, proxyedNodeIDMap map[enode.ID]struct{}) bool {
 	ps.lock.RLock()
 	defer ps.lock.RUnlock()
 
-	if ps.validatorNodeIDsMap == nil {
+	if len(ps.validatorNodeIDsMap) == 0 || len(proxyedNodeIDMap) == 0 {
+		return false
+	}
+	nodeIDs := ps.validatorNodeIDsMap[coinbase]
+
+	// check whether the block is create by self validator according the on-chain registration
+	if !slices.Contains(nodeIDs, selfID) {
 		return false
 	}
 
-	nodeIDs := ps.validatorNodeIDsMap[address]
-	for _, id := range nodeIDs {
-		if ps.peers[id.String()] == nil {
-			continue
-		}
-		if _, ok := proxyedNodeIDMap[id]; ok {
-			return true
-		}
+	// check whether the source peer is proxyed peer
+	if _, ok := proxyedNodeIDMap[sourceID]; ok {
+		return true
 	}
 	return false
 }

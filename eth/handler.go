@@ -333,6 +333,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 			block := types.NewBlockWithHeader(item.Header).WithBody(types.Body{Transactions: item.Txs, Uncles: item.Uncles})
 			block = block.WithSidecars(item.Sidecars)
 			block.ReceivedAt = time.Now()
+			block.ReceivedFrom = p.ID()
 			if err := block.SanityCheck(); err != nil {
 				return nil, err
 			}
@@ -875,15 +876,26 @@ func (h *handler) needFullBroadcastInEVN(block *types.Block) bool {
 	if !h.enableEVNFeatures {
 		return false
 	}
+
 	parlia, ok := h.chain.Engine().(*parlia.Parlia)
 	if !ok {
 		return false
 	}
-	if parlia.ConsensusAddress() == block.Coinbase() {
+	coinbase := block.Coinbase()
+	// check whether the block is create by self
+	if parlia.ConsensusAddress() == coinbase {
 		return true
 	}
 
-	return h.peers.isProxyedValidator(block.Coinbase(), h.proxyedValidatorNodeIDMap)
+	// if here know the source peer, parse the source peer NodeID
+	var sourceID enode.ID
+	if block.ReceivedFrom != nil {
+		if peerID, ok := block.ReceivedFrom.(string); ok {
+			sourceID = enode.HexID(peerID)
+		}
+	}
+
+	return h.peers.isProxyedValidator(coinbase, h.nodeID, sourceID, h.proxyedValidatorNodeIDMap)
 }
 
 func (h *handler) queryValidatorNodeIDsMap() map[common.Address][]enode.ID {
