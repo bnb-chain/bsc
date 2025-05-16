@@ -115,33 +115,35 @@ type votePool interface {
 // handlerConfig is the collection of initialization parameters to create a full
 // node network handler.
 type handlerConfig struct {
-	NodeID                   enode.ID         // P2P node ID used for tx propagation topology
-	Database                 ethdb.Database   // Database for direct sync insertions
-	Chain                    *core.BlockChain // Blockchain to serve data from
-	TxPool                   txPool           // Transaction pool to propagate from
-	VotePool                 votePool
-	Network                  uint64                 // Network identifier to adfvertise
-	Sync                     ethconfig.SyncMode     // Whether to snap or full sync
-	BloomCache               uint64                 // Megabytes to alloc for snap sync bloom
-	EventMux                 *event.TypeMux         // Legacy event mux, deprecate for `feed`
-	RequiredBlocks           map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
-	DirectBroadcast          bool
-	DisablePeerTxBroadcast   bool
-	PeerSet                  *peerSet
-	EnableQuickBlockFetching bool
-	EnableEVNFeatures        bool
-	EVNNodeIdsWhitelist      []enode.ID
-	ProxyedValidatorNodeIDs  []enode.ID
+	NodeID                    enode.ID         // P2P node ID used for tx propagation topology
+	Database                  ethdb.Database   // Database for direct sync insertions
+	Chain                     *core.BlockChain // Blockchain to serve data from
+	TxPool                    txPool           // Transaction pool to propagate from
+	VotePool                  votePool
+	Network                   uint64                 // Network identifier to adfvertise
+	Sync                      ethconfig.SyncMode     // Whether to snap or full sync
+	BloomCache                uint64                 // Megabytes to alloc for snap sync bloom
+	EventMux                  *event.TypeMux         // Legacy event mux, deprecate for `feed`
+	RequiredBlocks            map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
+	DirectBroadcast           bool
+	DisablePeerTxBroadcast    bool
+	PeerSet                   *peerSet
+	EnableQuickBlockFetching  bool
+	EnableEVNFeatures         bool
+	EVNNodeIdsWhitelist       []enode.ID
+	ProxyedValidatorNodeIDs   []enode.ID
+	ProxyedValidatorAddresses []common.Address
 }
 
 type handler struct {
-	nodeID                    enode.ID
-	networkID                 uint64
-	forkFilter                forkid.Filter // Fork ID filter, constant across the lifetime of the node
-	disablePeerTxBroadcast    bool
-	enableEVNFeatures         bool
-	evnNodeIdsWhitelistMap    map[enode.ID]struct{}
-	proxyedValidatorNodeIDMap map[enode.ID]struct{}
+	nodeID                     enode.ID
+	networkID                  uint64
+	forkFilter                 forkid.Filter // Fork ID filter, constant across the lifetime of the node
+	disablePeerTxBroadcast     bool
+	enableEVNFeatures          bool
+	evnNodeIdsWhitelistMap     map[enode.ID]struct{}
+	proxyedValidatorNodeIDMap  map[enode.ID]struct{}
+	proxyedValidatorAddressMap map[common.Address]struct{}
 
 	snapSync        atomic.Bool // Flag whether snap sync is enabled (gets disabled if we already have blocks)
 	synced          atomic.Bool // Flag whether we're considered synchronised (enables transaction processing)
@@ -196,32 +198,36 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		config.PeerSet = newPeerSet() // Nicety initialization for tests
 	}
 	h := &handler{
-		nodeID:                    config.NodeID,
-		networkID:                 config.Network,
-		forkFilter:                forkid.NewFilter(config.Chain),
-		disablePeerTxBroadcast:    config.DisablePeerTxBroadcast,
-		eventMux:                  config.EventMux,
-		database:                  config.Database,
-		txpool:                    config.TxPool,
-		votepool:                  config.VotePool,
-		chain:                     config.Chain,
-		peers:                     config.PeerSet,
-		peersPerIP:                make(map[string]int),
-		requiredBlocks:            config.RequiredBlocks,
-		directBroadcast:           config.DirectBroadcast,
-		enableEVNFeatures:         config.EnableEVNFeatures,
-		evnNodeIdsWhitelistMap:    make(map[enode.ID]struct{}),
-		proxyedValidatorNodeIDMap: make(map[enode.ID]struct{}),
-		quitSync:                  make(chan struct{}),
-		handlerDoneCh:             make(chan struct{}),
-		handlerStartCh:            make(chan struct{}),
-		stopCh:                    make(chan struct{}),
+		nodeID:                     config.NodeID,
+		networkID:                  config.Network,
+		forkFilter:                 forkid.NewFilter(config.Chain),
+		disablePeerTxBroadcast:     config.DisablePeerTxBroadcast,
+		eventMux:                   config.EventMux,
+		database:                   config.Database,
+		txpool:                     config.TxPool,
+		votepool:                   config.VotePool,
+		chain:                      config.Chain,
+		peers:                      config.PeerSet,
+		peersPerIP:                 make(map[string]int),
+		requiredBlocks:             config.RequiredBlocks,
+		directBroadcast:            config.DirectBroadcast,
+		enableEVNFeatures:          config.EnableEVNFeatures,
+		evnNodeIdsWhitelistMap:     make(map[enode.ID]struct{}),
+		proxyedValidatorNodeIDMap:  make(map[enode.ID]struct{}),
+		proxyedValidatorAddressMap: make(map[common.Address]struct{}),
+		quitSync:                   make(chan struct{}),
+		handlerDoneCh:              make(chan struct{}),
+		handlerStartCh:             make(chan struct{}),
+		stopCh:                     make(chan struct{}),
 	}
 	for _, nodeID := range config.EVNNodeIdsWhitelist {
 		h.evnNodeIdsWhitelistMap[nodeID] = struct{}{}
 	}
 	for _, nodeID := range config.ProxyedValidatorNodeIDs {
 		h.proxyedValidatorNodeIDMap[nodeID] = struct{}{}
+	}
+	for _, address := range config.ProxyedValidatorAddresses {
+		h.proxyedValidatorAddressMap[address] = struct{}{}
 	}
 	if config.Sync == ethconfig.FullSync {
 		// The database seems empty as the current block is the genesis. Yet the snap
@@ -896,7 +902,7 @@ func (h *handler) needFullBroadcastInEVN(block *types.Block) bool {
 		}
 	}
 
-	return h.peers.isProxyedValidator(coinbase, h.nodeID, sourceID, h.proxyedValidatorNodeIDMap)
+	return h.peers.isProxyedValidator(coinbase, sourceID, h.proxyedValidatorNodeIDMap, h.proxyedValidatorAddressMap)
 }
 
 func (h *handler) queryValidatorNodeIDsMap() map[common.Address][]enode.ID {
