@@ -331,6 +331,12 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 		log.Warn("Propagated block has invalid body", "have", hash, "exp", ann.Block.TxHash())
 		return nil // TODO(karalabe): return error eventually, but wait a few releases
 	}
+
+	sidecars := ann.Sidecars
+	if sidecars != nil {
+		ann.Block = ann.Block.WithSidecars(sidecars)
+	}
+
 	ann.Block.ReceivedAt = msg.Time()
 	// Set the block's receiver to the current peer's ID
 	// This makes it easier to track block sources and verify the originating peer
