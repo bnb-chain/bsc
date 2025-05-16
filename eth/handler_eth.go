@@ -125,6 +125,10 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPa
 	block := packet.Block
 	td := packet.TD
 
+	sidecars := packet.Sidecars
+	if sidecars != nil {
+		block = block.WithSidecars(sidecars).WithReceiveInfos(block.ReceivedAt, block.ReceivedFrom)
+	}
 	// Schedule the block for import
 	log.Debug("handleBlockBroadcast", "peer", peer.ID(), "block", block.Number(), "hash", block.Hash())
 	h.blockFetcher.Enqueue(peer.ID(), block)
