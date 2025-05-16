@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"slices"
 	"sync"
 	"time"
 
@@ -516,28 +515,26 @@ func (ps *peerSet) enableEVNFeatures(validatorNodeIDsMap map[common.Address][]en
 	log.Info("enable EVN features", "total", len(peers), "proxyedPeerCnt", proxyedPeerCnt, "whiteListPeerCnt", whiteListPeerCnt, "onchainValidatorPeerCnt", onchainValidatorPeerCnt)
 }
 
-// isProxyedValidator checks if the given address is a connected proxyed validator.
-func (ps *peerSet) isProxyedValidator(coinbase common.Address, selfID enode.ID, sourceID enode.ID, proxyedNodeIDMap map[enode.ID]struct{}) bool {
+// isProxyedValidator checks if the received block from the proxyed validator.
+func (ps *peerSet) isProxyedValidator(validator common.Address, sourceID enode.ID, proxyedNodeIDMap map[enode.ID]struct{}, proxyedAddressMap map[common.Address]struct{}) bool {
 	ps.lock.RLock()
 	defer ps.lock.RUnlock()
 
-	if len(ps.validatorNodeIDsMap) == 0 || len(proxyedNodeIDMap) == 0 {
+	if len(proxyedNodeIDMap) == 0 || len(proxyedAddressMap) == 0 {
 		return false
 	}
-	log.Debug("check whether received block from proxyed peer", "coinbase", coinbase, "selfID", selfID,
-		"sourceID", sourceID, "validatorNodeIDsMap", ps.validatorNodeIDsMap, "proxyedNodeIDMap", proxyedNodeIDMap)
-	nodeIDs := ps.validatorNodeIDsMap[coinbase]
-
-	// check whether the block is created by self validator according the on-chain registration
-	if !slices.Contains(nodeIDs, selfID) {
-		return false
-	}
+	log.Debug("check whether received block from proxyed peer", "validator", validator,
+		"sourceID", sourceID, "proxyedNodeIDMap", proxyedNodeIDMap, "proxyedAddressMap", proxyedAddressMap)
 
 	// check whether the source peer is proxyed peer
-	if _, ok := proxyedNodeIDMap[sourceID]; ok {
-		return true
+	if _, ok := proxyedNodeIDMap[sourceID]; !ok {
+		return false
 	}
-	return false
+	// check whether the validator is proxyed validator
+	if _, ok := proxyedAddressMap[validator]; !ok {
+		return false
+	}
+	return true
 }
 
 // headPeers retrieves a specified number list of peers.
