@@ -935,9 +935,9 @@ func (s *Ethereum) reportRecentBlocksLoop() {
 	}
 }
 
-func validTimeMetric(start, end int64) bool {
-	if start >= end {
+func validTimeMetric(startMs, endMs int64) bool {
+	if startMs >= endMs {
 		return false
 	}
-	return end-start <= MaxBlockHandleDelayMs
+	return endMs-startMs <= MaxBlockHandleDelayMs
 }
