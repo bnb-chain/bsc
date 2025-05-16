@@ -882,7 +882,7 @@ func (h *handler) needFullBroadcastInEVN(block *types.Block) bool {
 		return false
 	}
 	coinbase := block.Coinbase()
-	// check whether the block is create by self
+	// check whether the block is created by self
 	if parlia.ConsensusAddress() == coinbase {
 		log.Debug("full broadcast mined block to EVN", "coinbase", coinbase)
 		return true

@@ -524,11 +524,11 @@ func (ps *peerSet) isProxyedValidator(coinbase common.Address, selfID enode.ID, 
 	if len(ps.validatorNodeIDsMap) == 0 || len(proxyedNodeIDMap) == 0 {
 		return false
 	}
-	log.Debug("check whether receoved block from Proxyed Peer", "coinbase", coinbase, "selfID", selfID,
+	log.Debug("check whether received block from proxyed peer", "coinbase", coinbase, "selfID", selfID,
 		"sourceID", sourceID, "validatorNodeIDsMap", ps.validatorNodeIDsMap, "proxyedNodeIDMap", proxyedNodeIDMap)
 	nodeIDs := ps.validatorNodeIDsMap[coinbase]
 
-	// check whether the block is create by self validator according the on-chain registration
+	// check whether the block is created by self validator according the on-chain registration
 	if !slices.Contains(nodeIDs, selfID) {
 		return false
 	}
