@@ -826,6 +826,12 @@ var (
 		Value:    strings.Join(node.DefaultConfig.GraphQLVirtualHosts, ","),
 		Category: flags.APICategory,
 	}
+	LogTimeFormatFlag = &cli.StringFlag{
+		Name:     "log.timeformat",
+		Usage:    "Time format used for file logging (Go time layout)",
+		Value:    *node.DefaultConfig.LogConfig.TimeFormat,
+		Category: flags.LoggingCategory,
+	}
 	WSEnabledFlag = &cli.BoolFlag{
 		Name:     "ws",
 		Usage:    "Enable the WS-RPC server",
@@ -1771,6 +1777,10 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	}
 	if ctx.IsSet(LogDebugFlag.Name) {
 		log.Warn("log.debug flag is deprecated")
+	}
+	if ctx.IsSet(LogTimeFormatFlag.Name) {
+		tf := ctx.String(LogTimeFormatFlag.Name)
+		cfg.LogConfig.TimeFormat = &tf
 	}
 }
 

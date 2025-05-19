@@ -49,6 +49,8 @@ import (
 	_ "github.com/ethereum/go-ethereum/eth/tracers/native"
 
 	"github.com/urfave/cli/v2"
+
+	"encoding/json" // For pretty-printing the configuration
 )
 
 const (
@@ -162,6 +164,7 @@ var (
 		utils.NodeKeyFileFlag,
 		utils.NodeKeyHexFlag,
 		utils.DNSDiscoveryFlag,
+		utils.LogTimeFormatFlag,
 		// utils.DeveloperFlag,
 		// utils.DeveloperGasLimitFlag,
 		// utils.DeveloperPeriodFlag,
@@ -380,6 +383,55 @@ func geth(ctx *cli.Context) error {
 	}
 
 	prepare(ctx)
+
+	log.Info("Loading configuration for inspection...")
+
+	// makeConfigNode is the function (from cmd/geth/config.go) that loads
+	// all configurations (defaults, TOML, CLI flags) and returns the gethConfig object.
+	// It also returns a basic node stack, which we might not use further if we exit early.
+	_, gethFinalConfig := makeConfigNode(ctx) // The first return is *node.Node, second is gethConfig
+
+	log.Info("-------------------------------------------------------------------")
+	log.Info("                      PARSED GETH CONFIGURATION                    ")
+	log.Info("-------------------------------------------------------------------")
+
+	// Print the Eth.Miner configuration, which contains DelayLeftOver
+	fullConfigJSON, err := json.MarshalIndent(gethFinalConfig, "", "  ")
+	if err != nil {
+		log.Error("Failed to marshal Eth.Miner config to JSON", "err", err)
+	} else {
+		fmt.Printf("\nAll Configuration:\n%s\n", string(fullConfigJSON))
+	}
+
+	// Specifically log the DelayLeftOver value
+	if gethFinalConfig.Eth.Miner.DelayLeftOver != nil {
+		log.Info("Parsed Eth.Miner.DelayLeftOver", "value", gethFinalConfig.Eth.Miner.DelayLeftOver.String())
+	} else {
+		// If DelayLeftOver is a pointer type and it's nil.
+		// If it's a non-pointer time.Duration, it would be 0 if not set by default or TOML.
+		log.Info("Parsed Eth.Miner.DelayLeftOver is nil or zero")
+	}
+	log.Info("-------------------------------------------------------------------")
+
+	// You can print other parts of gethFinalConfig as needed, for example:
+	// nodeConfigJSON, err := json.MarshalIndent(gethFinalConfig.Node, "", "  ")
+	// if err != nil {
+	//     log.Error("Failed to marshal Node config to JSON", "err", err)
+	// } else {
+	//     fmt.Printf("\n[Node] Configuration:\n%s\n", string(nodeConfigJSON))
+	// }
+
+	// To print the entire gethFinalConfig (can be very verbose):
+	// fullConfigJSON, err := json.MarshalIndent(gethFinalConfig, "", "  ")
+	// if err != nil {
+	//    log.Error("Failed to marshal full config to JSON", "err", err)
+	// } else {
+	//    fmt.Printf("\n--- Full Geth Configuration ---\n%s\n", string(fullConfigJSON))
+	// }
+
+	log.Info("Exiting Geth after printing configuration (as requested for debugging). Node will not start.")
+	os.Exit(0) // This will terminate the program here.
+
 	stack, backend := makeFullNode(ctx)
 	defer stack.Close()
 
