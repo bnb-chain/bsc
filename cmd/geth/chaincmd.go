@@ -535,7 +535,8 @@ func initNetwork(ctx *cli.Context) error {
 	if ctx.Int(utils.InitFullNodeSize.Name) > 0 {
 		var extraEnodes []*enode.Node
 		if enableSentryNode {
-			extraEnodes = sentryEnodes
+			extraEnodes = append(extraEnodes, enodes...)
+			extraEnodes = append(extraEnodes, sentryEnodes...)
 		} else {
 			extraEnodes = enodes
 		}
