@@ -50,6 +50,8 @@ func (d *Dispatcher) GenRequestID() uint64 {
 // DispatchRequest send the request, and block until the later response
 func (d *Dispatcher) DispatchRequest(req *Request) (interface{}, error) {
 	// record the request before sending
+	req.resCh = make(chan interface{}, 1)
+	req.cancelCh = make(chan string, 1)
 	d.mu.Lock()
 	d.requests[req.requestID] = req
 	d.mu.Unlock()
@@ -59,8 +61,6 @@ func (d *Dispatcher) DispatchRequest(req *Request) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.resCh = make(chan interface{}, 1)
-	req.cancelCh = make(chan string, 1)
 
 	// clean the requests when the request is done
 	defer func() {
