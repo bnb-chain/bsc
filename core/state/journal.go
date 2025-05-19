@@ -21,6 +21,7 @@ import (
 	"maps"
 	"slices"
 	"sort"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -56,6 +57,12 @@ type journal struct {
 	nextRevisionId int
 }
 
+var storageChangePool = sync.Pool{
+	New: func() interface{} {
+		return &storageChange{}
+	},
+}
+
 // newJournal creates a new initialized journal.
 func newJournal() *journal {
 	return &journal{
@@ -68,6 +75,7 @@ func newJournal() *journal {
 // It is semantically similar to calling 'newJournal', but the underlying slices
 // can be reused.
 func (j *journal) reset() {
+	// Clear slices while preserving capacity
 	j.entries = j.entries[:0]
 	j.validRevisions = j.validRevisions[:0]
 	clear(j.dirties)
@@ -137,10 +145,10 @@ func (j *journal) length() int {
 
 // copy returns a deep-copied journal.
 func (j *journal) copy() *journal {
-	entries := make([]journalEntry, 0, j.length())
-	for i := 0; i < j.length(); i++ {
-		entries = append(entries, j.entries[i].copy())
-	}
+	// Pre-allocate slices with exact capacity needed
+	entries := make([]journalEntry, len(j.entries))
+	copy(entries, j.entries)
+
 	return &journal{
 		entries:        entries,
 		dirties:        maps.Clone(j.dirties),
@@ -166,12 +174,12 @@ func (j *journal) destruct(addr common.Address) {
 }
 
 func (j *journal) storageChange(addr common.Address, key, prev, origin common.Hash) {
-	j.append(storageChange{
-		account:   addr,
-		key:       key,
-		prevvalue: prev,
-		origvalue: origin,
-	})
+	entry := storageChangePool.Get().(*storageChange)
+	entry.account = addr
+	entry.key = key
+	entry.prevvalue = prev
+	entry.origvalue = origin
+	j.append(entry)
 }
 
 func (j *journal) transientStateChange(addr common.Address, key, prev common.Hash) {
@@ -396,20 +404,21 @@ func (ch codeChange) copy() journalEntry {
 	}
 }
 
-func (ch storageChange) revert(s *StateDB) {
+func (ch *storageChange) revert(s *StateDB) {
 	s.getStateObject(ch.account).setState(ch.key, ch.prevvalue, ch.origvalue)
 }
 
-func (ch storageChange) dirtied() *common.Address {
+func (ch *storageChange) dirtied() *common.Address {
 	return &ch.account
 }
 
-func (ch storageChange) copy() journalEntry {
-	return storageChange{
-		account:   ch.account,
-		key:       ch.key,
-		prevvalue: ch.prevvalue,
-	}
+func (ch *storageChange) copy() journalEntry {
+	cpy := storageChangePool.Get().(*storageChange)
+	cpy.account = ch.account
+	cpy.key = ch.key
+	cpy.prevvalue = ch.prevvalue
+	cpy.origvalue = common.Hash{}
+	return cpy
 }
 
 func (ch transientStorageChange) revert(s *StateDB) {
