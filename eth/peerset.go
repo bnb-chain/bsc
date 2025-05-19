@@ -550,6 +550,7 @@ func (ps *peerSet) peersWithoutTransaction(hash common.Hash) []*ethPeer {
 
 	list := make([]*ethPeer, 0, len(ps.peers))
 	for _, p := range ps.peers {
+		// it can be optimized in the future, to make it more clear that only when both peers of a connection are EVN nodes, will enable no tx broadcast.
 		if p.EVNPeerFlag.Load() {
 			log.Debug("skip EVN peer with no tx forwarding feature", "peer", p.ID())
 			continue

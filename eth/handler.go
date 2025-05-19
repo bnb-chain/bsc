@@ -844,7 +844,6 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 			for i := len(transfer); i < len(peers); i++ {
 				if peers[i].EVNPeerFlag.Load() {
 					morePeers = append(morePeers, peers[i])
-					continue
 				}
 			}
 			for _, peer := range morePeers {
