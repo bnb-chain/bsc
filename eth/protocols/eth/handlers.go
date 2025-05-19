@@ -332,9 +332,7 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 		return nil // TODO(karalabe): return error eventually, but wait a few releases
 	}
 	ann.Block.ReceivedAt = msg.Time()
-	// Set the block's receiver to the current peer's ID
-	// This makes it easier to track block sources and verify the originating peer
-	ann.Block.ReceivedFrom = peer.ID()
+	ann.Block.ReceivedFrom = peer
 
 	// Mark the peer as owning the block
 	peer.markBlock(ann.Block.Hash())

@@ -654,7 +654,6 @@ func (f *BlockFetcher) loop() {
 								block = block.WithWithdrawals(make([]*types.Withdrawal, 0))
 							}
 							block.ReceivedAt = task.time
-							block.ReceivedFrom = announce.origin
 
 							complete = append(complete, block)
 							f.completing[hash] = announce
@@ -740,7 +739,6 @@ func (f *BlockFetcher) loop() {
 							block := types.NewBlockWithHeader(announce.header).WithBody(types.Body{Transactions: task.transactions[i], Uncles: task.uncles[i]})
 							block = block.WithSidecars(task.sidecars[i])
 							block.ReceivedAt = task.time
-							block.ReceivedFrom = announce.origin
 							blocks = append(blocks, block)
 						} else {
 							f.forgetHash(hash)
