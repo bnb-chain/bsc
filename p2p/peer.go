@@ -126,9 +126,9 @@ type Peer struct {
 
 	latency atomic.Int64 // mill second latency, estimated by ping msg
 
-	EVNPeerFlag          atomic.Bool // it indicates the peer is in the validator network, it will directly broadcast when miner/sentry broadcast mined block.
-	ProxyedValidatorFlag atomic.Bool // it indicates the peer is proxyed by sentry node, it will directly broadcast in any scenario.
-	NoTxBroadcastFlag    atomic.Bool // it indicates the peer is connected by validator that registered on chain, it will not broadcast tx to other validator node.
+	// it indicates the peer is in the validator network, it will directly broadcast when miner/sentry broadcast mined block,
+	// and won't broadcast any txs between EVN peers.
+	EVNPeerFlag atomic.Bool
 }
 
 // NewPeer returns a peer for testing purposes.
@@ -585,11 +585,9 @@ type PeerInfo struct {
 		Trusted       bool   `json:"trusted"`
 		Static        bool   `json:"static"`
 	} `json:"network"`
-	Protocols            map[string]interface{} `json:"protocols"` // Sub-protocol specific metadata fields
-	Latency              int64                  `json:"latency"`   // the estimate latency from ping msg
-	EVNPeerFlag          bool                   `json:"evnPeerFlag"`
-	ProxyedValidatorFlag bool                   `json:"proxyedValidatorFlag"`
-	NoTxBroadcastFlag    bool                   `json:"noTxBroadcastFlag"`
+	Protocols   map[string]interface{} `json:"protocols"` // Sub-protocol specific metadata fields
+	Latency     int64                  `json:"latency"`   // the estimate latency from ping msg
+	EVNPeerFlag bool                   `json:"evnPeerFlag"`
 }
 
 // Info gathers and returns a collection of metadata known about a peer.
@@ -601,15 +599,13 @@ func (p *Peer) Info() *PeerInfo {
 	}
 	// Assemble the generic peer metadata
 	info := &PeerInfo{
-		Enode:                p.Node().URLv4(),
-		ID:                   p.ID().String(),
-		Name:                 p.Fullname(),
-		Caps:                 caps,
-		Protocols:            make(map[string]interface{}, len(p.running)),
-		Latency:              p.latency.Load(),
-		EVNPeerFlag:          p.EVNPeerFlag.Load(),
-		ProxyedValidatorFlag: p.ProxyedValidatorFlag.Load(),
-		NoTxBroadcastFlag:    p.NoTxBroadcastFlag.Load(),
+		Enode:       p.Node().URLv4(),
+		ID:          p.ID().String(),
+		Name:        p.Fullname(),
+		Caps:        caps,
+		Protocols:   make(map[string]interface{}, len(p.running)),
+		Latency:     p.latency.Load(),
+		EVNPeerFlag: p.EVNPeerFlag.Load(),
 	}
 	if p.Node().Seq() > 0 {
 		info.ENR = p.Node().String()

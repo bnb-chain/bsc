@@ -79,6 +79,10 @@ const (
 	ChainData        = "chaindata"
 )
 
+const (
+	MaxBlockHandleDelayMs = 3000 // max delay for block handles, max 3000 ms
+)
+
 var (
 	sendBlockTimer        = metrics.NewRegisteredTimer("chain/delay/block/send", nil)
 	recvBlockTimer        = metrics.NewRegisteredTimer("chain/delay/block/recv", nil)
@@ -373,22 +377,22 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	// Permit the downloader to use the trie cache allowance during fast sync
 	cacheLimit := cacheConfig.TrieCleanLimit + cacheConfig.TrieDirtyLimit + cacheConfig.SnapshotLimit
 	if eth.handler, err = newHandler(&handlerConfig{
-		NodeID:                   eth.p2pServer.Self().ID(),
-		Database:                 chainDb,
-		Chain:                    eth.blockchain,
-		TxPool:                   eth.txPool,
-		Network:                  networkID,
-		Sync:                     config.SyncMode,
-		BloomCache:               uint64(cacheLimit),
-		EventMux:                 eth.eventMux,
-		RequiredBlocks:           config.RequiredBlocks,
-		DirectBroadcast:          config.DirectBroadcast,
-		EnableEVNFeatures:        stack.Config().EnableEVNFeatures,
-		EVNNodeIdsWhitelist:      stack.Config().P2P.EVNNodeIdsWhitelist,
-		ProxyedValidatorNodeIDs:  stack.Config().P2P.ProxyedValidatorNodeIDs,
-		DisablePeerTxBroadcast:   config.DisablePeerTxBroadcast,
-		PeerSet:                  peers,
-		EnableQuickBlockFetching: stack.Config().EnableQuickBlockFetching,
+		NodeID:                    eth.p2pServer.Self().ID(),
+		Database:                  chainDb,
+		Chain:                     eth.blockchain,
+		TxPool:                    eth.txPool,
+		Network:                   networkID,
+		Sync:                      config.SyncMode,
+		BloomCache:                uint64(cacheLimit),
+		EventMux:                  eth.eventMux,
+		RequiredBlocks:            config.RequiredBlocks,
+		DirectBroadcast:           config.DirectBroadcast,
+		EnableEVNFeatures:         stack.Config().EnableEVNFeatures,
+		EVNNodeIdsWhitelist:       stack.Config().P2P.EVNNodeIdsWhitelist,
+		ProxyedValidatorAddresses: stack.Config().P2P.ProxyedValidatorAddresses,
+		DisablePeerTxBroadcast:    config.DisablePeerTxBroadcast,
+		PeerSet:                   peers,
+		EnableQuickBlockFetching:  stack.Config().EnableQuickBlockFetching,
 	}); err != nil {
 		return nil, err
 	}
@@ -901,32 +905,39 @@ func (s *Ethereum) reportRecentBlocksLoop() {
 			records["BlockTime"] = common.FormatMilliTime(blockMsTime)
 			metrics.GetOrRegisterLabel("report-blocks", nil).Mark(records)
 
-			if sendBlockTime > blockMsTime {
+			if validTimeMetric(blockMsTime, sendBlockTime) {
 				sendBlockTimer.Update(time.Duration(sendBlockTime - blockMsTime))
 			}
-			if recvNewBlockTime > blockMsTime {
+			if validTimeMetric(blockMsTime, recvNewBlockTime) {
 				recvBlockTimer.Update(time.Duration(recvNewBlockTime - blockMsTime))
 			}
-			if startImportBlockTime > blockMsTime {
+			if validTimeMetric(blockMsTime, startImportBlockTime) {
 				startInsertBlockTimer.Update(time.Duration(startImportBlockTime - blockMsTime))
 			}
-			if sendVoteTime > blockMsTime {
+			if validTimeMetric(blockMsTime, sendVoteTime) {
 				sendVoteTimer.Update(time.Duration(sendVoteTime - blockMsTime))
 			}
-			if firstVoteTime > blockMsTime {
+			if validTimeMetric(blockMsTime, firstVoteTime) {
 				firstVoteTimer.Update(time.Duration(firstVoteTime - blockMsTime))
 			}
-			if recvMajorityTime > blockMsTime {
+			if validTimeMetric(blockMsTime, recvMajorityTime) {
 				majorityVoteTimer.Update(time.Duration(recvMajorityTime - blockMsTime))
 			}
-			if importedBlockTime > blockMsTime {
+			if validTimeMetric(blockMsTime, importedBlockTime) {
 				importedBlockTimer.Update(time.Duration(importedBlockTime - blockMsTime))
 			}
-			if startMiningTime < blockMsTime {
+			if validTimeMetric(startMiningTime, blockMsTime) {
 				startMiningTimer.Update(time.Duration(blockMsTime - startMiningTime))
 			}
 		case <-s.stopCh:
 			return
 		}
 	}
+}
+
+func validTimeMetric(startMs, endMs int64) bool {
+	if startMs >= endMs {
+		return false
+	}
+	return endMs-startMs <= MaxBlockHandleDelayMs
 }
