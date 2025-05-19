@@ -72,7 +72,6 @@ const (
 )
 
 var (
-	evnProxedPeerGuage           = metrics.NewRegisteredGauge("evn/peer/proxed", nil)
 	evnWhiteListPeerGuage        = metrics.NewRegisteredGauge("evn/peer/whiteList", nil)
 	evnOnchainValidatorPeerGuage = metrics.NewRegisteredGauge("evn/peer/onchainValidator", nil)
 )
@@ -445,7 +444,7 @@ func (ps *peerSet) peer(id string) *ethPeer {
 }
 
 // enableEVNFeatures enables the given features for the given peers.
-func (ps *peerSet) enableEVNFeatures(validatorNodeIDsMap map[common.Address][]enode.ID, evnWhitelistMap map[enode.ID]struct{}, proxyedNodeIDMap map[enode.ID]struct{}) {
+func (ps *peerSet) enableEVNFeatures(validatorNodeIDsMap map[common.Address][]enode.ID, evnWhitelistMap map[enode.ID]struct{}) {
 	// clone current all peers, and update the validatorNodeIDsMap
 	ps.lock.Lock()
 	peers := make([]*ethPeer, 0, len(ps.peers))
@@ -464,7 +463,6 @@ func (ps *peerSet) enableEVNFeatures(validatorNodeIDsMap map[common.Address][]en
 	}
 
 	var (
-		proxyedPeerCnt          int64 = 0
 		whiteListPeerCnt        int64 = 0
 		onchainValidatorPeerCnt int64 = 0
 	)
@@ -472,34 +470,12 @@ func (ps *peerSet) enableEVNFeatures(validatorNodeIDsMap map[common.Address][]en
 		nodeID := peer.NodeID()
 		_, isValidatorPeer := valNodeIDMap[nodeID]
 		_, isWhitelistPeer := evnWhitelistMap[nodeID]
-		_, isProxyedPeer := proxyedNodeIDMap[nodeID]
-
-		if isProxyedPeer {
-			log.Debug("enable ProxyedValidatorFlag for", "peer", nodeID)
-			peer.ProxyedValidatorFlag.Store(true)
-			proxyedPeerCnt++
-		} else {
-			peer.ProxyedValidatorFlag.Store(false)
-		}
 
 		if isValidatorPeer || isWhitelistPeer {
-			log.Debug("enable EVNPeerFlag for", "peer", nodeID)
+			log.Debug("enable EVNPeerFlag & NoTxBroadcastFlag for", "peer", nodeID)
 			peer.EVNPeerFlag.Store(true)
 		} else {
 			peer.EVNPeerFlag.Store(false)
-		}
-		// if the peer is in the valNodeIDs and not in the proxyedList, enable the no tx broadcast feature
-		// the node also need to forward tx to the proxyedList
-		if isValidatorPeer && !isProxyedPeer {
-			log.Debug("enable NoTxBroadcastFlag for", "peer", nodeID)
-			peer.NoTxBroadcastFlag.Store(true)
-		} else {
-			peer.NoTxBroadcastFlag.Store(false)
-		}
-
-		// Note: In the future, it need to check proxyed validator whether belong to EnhancedValidatorNetwork or not.
-		if isProxyedPeer && isValidatorPeer {
-			log.Warn("proyxed validator is registered on-chain", "id", nodeID)
 		}
 
 		if isValidatorPeer {
@@ -509,31 +485,26 @@ func (ps *peerSet) enableEVNFeatures(validatorNodeIDsMap map[common.Address][]en
 			whiteListPeerCnt++
 		}
 	}
-	evnProxedPeerGuage.Update(proxyedPeerCnt)
 	evnWhiteListPeerGuage.Update(whiteListPeerCnt)
 	evnOnchainValidatorPeerGuage.Update(onchainValidatorPeerCnt)
-	log.Info("enable EVN features", "total", len(peers), "proxyedPeerCnt", proxyedPeerCnt, "whiteListPeerCnt", whiteListPeerCnt, "onchainValidatorPeerCnt", onchainValidatorPeerCnt)
+	log.Info("enable EVN features", "total", len(peers), "whiteListPeerCnt", whiteListPeerCnt, "onchainValidatorPeerCnt", onchainValidatorPeerCnt)
 }
 
-// isProxyedValidator checks if the given address is a connected proxyed validator.
-func (ps *peerSet) isProxyedValidator(address common.Address, proxyedNodeIDMap map[enode.ID]struct{}) bool {
+// isProxyedValidator checks if the received block from the proxyed validator.
+func (ps *peerSet) isProxyedValidator(validator common.Address, proxyedAddressMap map[common.Address]struct{}) bool {
 	ps.lock.RLock()
 	defer ps.lock.RUnlock()
 
-	if ps.validatorNodeIDsMap == nil {
+	if len(proxyedAddressMap) == 0 {
 		return false
 	}
+	log.Debug("check whether received block from proxyed peer", "validator", validator, "proxyedAddressMap", proxyedAddressMap)
 
-	nodeIDs := ps.validatorNodeIDsMap[address]
-	for _, id := range nodeIDs {
-		if ps.peers[id.String()] == nil {
-			continue
-		}
-		if _, ok := proxyedNodeIDMap[id]; ok {
-			return true
-		}
+	// check whether the validator is proxyed validator
+	if _, ok := proxyedAddressMap[validator]; !ok {
+		return false
 	}
-	return false
+	return true
 }
 
 // headPeers retrieves a specified number list of peers.
@@ -567,6 +538,7 @@ func (ps *peerSet) peersWithoutBlock(hash common.Hash) []*ethPeer {
 			list = append(list, p)
 		}
 	}
+	log.Debug("get peers without block", "hash", hash, "total", len(ps.peers), "unknonw", len(list))
 	return list
 }
 
@@ -578,8 +550,9 @@ func (ps *peerSet) peersWithoutTransaction(hash common.Hash) []*ethPeer {
 
 	list := make([]*ethPeer, 0, len(ps.peers))
 	for _, p := range ps.peers {
-		if p.NoTxBroadcastFlag.Load() {
-			log.Debug("skip peer with no tx broadcast feature", "peer", p.ID())
+		// it can be optimized in the future, to make it more clear that only when both peers of a connection are EVN nodes, will enable no tx broadcast.
+		if p.EVNPeerFlag.Load() {
+			log.Debug("skip EVN peer with no tx forwarding feature", "peer", p.ID())
 			continue
 		}
 		if !p.KnownTransaction(hash) {
