@@ -491,7 +491,6 @@ func initNetwork(ctx *cli.Context) error {
 	// add more feature configs
 	if enableSentryNode {
 		for i := 0; i < len(sentryConfigs); i++ {
-			sentryConfigs[i].Node.P2P.ProxyedValidatorNodeIDs = []enode.ID{nodeIDs[i]}
 			sentryConfigs[i].Node.P2P.ProxyedValidatorAddresses = accounts[i]
 		}
 	}
@@ -507,7 +506,10 @@ func initNetwork(ctx *cli.Context) error {
 	}
 	if enableSentryNode && ctx.Bool(utils.InitEVNSentryWhitelist.Name) {
 		for i := 0; i < len(sentryConfigs); i++ {
-			sentryConfigs[i].Node.P2P.EVNNodeIdsWhitelist = sentryNodeIDs
+			// whitelist all sentry nodes + proxyed validator NodeID
+			wlNodeIDs := []enode.ID{nodeIDs[i]}
+			wlNodeIDs = append(wlNodeIDs, sentryNodeIDs...)
+			sentryConfigs[i].Node.P2P.EVNNodeIdsWhitelist = wlNodeIDs
 		}
 	}
 	if enableSentryNode && ctx.Bool(utils.InitEVNSentryRegister.Name) {

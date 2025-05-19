@@ -389,7 +389,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		DirectBroadcast:           config.DirectBroadcast,
 		EnableEVNFeatures:         stack.Config().EnableEVNFeatures,
 		EVNNodeIdsWhitelist:       stack.Config().P2P.EVNNodeIdsWhitelist,
-		ProxyedValidatorNodeIDs:   stack.Config().P2P.ProxyedValidatorNodeIDs,
 		ProxyedValidatorAddresses: stack.Config().P2P.ProxyedValidatorAddresses,
 		DisablePeerTxBroadcast:    config.DisablePeerTxBroadcast,
 		PeerSet:                   peers,

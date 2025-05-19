@@ -32,7 +32,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		VerifyNodes               []*enode.Node
 		TrustedNodes              []*enode.Node
 		EVNNodeIdsWhitelist       []enode.ID       `toml:",omitempty"`
-		ProxyedValidatorNodeIDs   []enode.ID       `toml:",omitempty"`
 		ProxyedValidatorAddresses []common.Address `toml:",omitempty"`
 		NetRestrict               *netutil.Netlist `toml:",omitempty"`
 		NodeDatabase              string           `toml:",omitempty"`
@@ -62,7 +61,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.VerifyNodes = c.VerifyNodes
 	enc.TrustedNodes = c.TrustedNodes
 	enc.EVNNodeIdsWhitelist = c.EVNNodeIdsWhitelist
-	enc.ProxyedValidatorNodeIDs = c.ProxyedValidatorNodeIDs
 	enc.ProxyedValidatorAddresses = c.ProxyedValidatorAddresses
 	enc.NetRestrict = c.NetRestrict
 	enc.NodeDatabase = c.NodeDatabase
@@ -96,7 +94,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		VerifyNodes               []*enode.Node
 		TrustedNodes              []*enode.Node
 		EVNNodeIdsWhitelist       []enode.ID       `toml:",omitempty"`
-		ProxyedValidatorNodeIDs   []enode.ID       `toml:",omitempty"`
 		ProxyedValidatorAddresses []common.Address `toml:",omitempty"`
 		NetRestrict               *netutil.Netlist `toml:",omitempty"`
 		NodeDatabase              *string          `toml:",omitempty"`
@@ -158,9 +155,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.EVNNodeIdsWhitelist != nil {
 		c.EVNNodeIdsWhitelist = dec.EVNNodeIdsWhitelist
-	}
-	if dec.ProxyedValidatorNodeIDs != nil {
-		c.ProxyedValidatorNodeIDs = dec.ProxyedValidatorNodeIDs
 	}
 	if dec.ProxyedValidatorAddresses != nil {
 		c.ProxyedValidatorAddresses = dec.ProxyedValidatorAddresses

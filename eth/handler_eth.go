@@ -124,11 +124,11 @@ func (h *ethHandler) handleBlockAnnounces(peer *eth.Peer, hashes []common.Hash, 
 func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPacket) error {
 	block := packet.Block
 	td := packet.TD
-
 	sidecars := packet.Sidecars
 	if sidecars != nil {
-		block = block.WithSidecars(sidecars).WithReceiveInfos(block.ReceivedAt, block.ReceivedFrom)
+		block = block.WithSidecars(sidecars)
 	}
+
 	// Schedule the block for import
 	log.Debug("handleBlockBroadcast", "peer", peer.ID(), "block", block.Number(), "hash", block.Hash())
 	h.blockFetcher.Enqueue(peer.ID(), block)
