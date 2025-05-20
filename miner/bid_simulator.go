@@ -156,7 +156,7 @@ func newBidSimulator(
 
 	b.chainHeadSub = b.chain.SubscribeChainHeadEvent(b.chainHeadCh)
 
-	if config.Enabled {
+	if *config.Enabled {
 		b.bidReceiving.Store(true)
 		b.dialSentryAndBuilders()
 

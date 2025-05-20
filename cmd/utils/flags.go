@@ -2501,7 +2501,7 @@ func parseMiningFeatures(ctx *cli.Context, cfg *ethconfig.Config) string {
 		return ""
 	}
 	var features []string
-	if cfg.Miner.Mev.Enabled {
+	if *cfg.Miner.Mev.Enabled {
 		features = append(features, "MEV")
 	}
 	if cfg.Miner.VoteEnable {
