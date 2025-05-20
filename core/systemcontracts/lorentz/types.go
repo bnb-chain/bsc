@@ -13,3 +13,9 @@ var (
 	//go:embed chapel/ValidatorContract
 	ChapelValidatorContract string
 )
+
+// contract codes for Rialto upgrade
+var (
+	//go:embed rialto/ValidatorContract
+	RialtoValidatorContract string
+)
