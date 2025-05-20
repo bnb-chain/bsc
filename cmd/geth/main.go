@@ -381,7 +381,6 @@ func geth(ctx *cli.Context) error {
 	}
 
 	prepare(ctx)
-
 	stack, backend := makeFullNode(ctx)
 	defer stack.Close()
 

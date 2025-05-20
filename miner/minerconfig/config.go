@@ -84,7 +84,7 @@ type BuilderConfig struct {
 type MevConfig struct {
 	Enabled               *bool           `toml:",omitempty"` // Whether to enable Mev or not
 	GreedyMergeTx         *bool           `toml:",omitempty"` // Whether to merge local transactions to the bid
-	BuilderFeeCeil        *string         //`toml:",omitempty"` // The maximum builder fee of a bid
+	BuilderFeeCeil        *string         // The maximum builder fee of a bid
 	SentryURL             string          // The url of Mev sentry
 	Builders              []BuilderConfig // The list of builders
 	ValidatorCommission   *uint64         `toml:",omitempty"` // 100 means the validator claims 1% from block reward
