@@ -167,7 +167,7 @@ func (j *journal) copy() *journal {
 		dirties:        maps.Clone(j.dirties),
 		validRevisions: slices.Clone(j.validRevisions),
 		nextRevisionId: j.nextRevisionId,
-		storageEntries: slices.Clone(j.storageEntries),
+		storageEntries: make([]*storageChange, 0, defaultNumOfSlots),
 	}
 }
 
