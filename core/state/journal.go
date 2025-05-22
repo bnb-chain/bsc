@@ -21,6 +21,7 @@ import (
 	"maps"
 	"slices"
 	"sort"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -54,13 +55,23 @@ type journal struct {
 
 	validRevisions []revision
 	nextRevisionId int
+
+	// Track storage entries separately for faster cleanup
+	storageEntries []*storageChange
+}
+
+var storageChangePool = sync.Pool{
+	New: func() interface{} {
+		return &storageChange{}
+	},
 }
 
 // newJournal creates a new initialized journal.
 func newJournal() *journal {
 	return &journal{
-		dirties: make(map[common.Address]int, defaultNumOfSlots),
-		entries: make([]journalEntry, 0, defaultNumOfSlots),
+		dirties:        make(map[common.Address]int, defaultNumOfSlots),
+		entries:        make([]journalEntry, 0, defaultNumOfSlots),
+		storageEntries: make([]*storageChange, 0, defaultNumOfSlots),
 	}
 }
 
@@ -68,6 +79,11 @@ func newJournal() *journal {
 // It is semantically similar to calling 'newJournal', but the underlying slices
 // can be reused.
 func (j *journal) reset() {
+	// Return all storage entries to the pool
+	for _, entry := range j.storageEntries {
+		storageChangePool.Put(entry)
+	}
+	j.storageEntries = j.storageEntries[:0]
 	j.entries = j.entries[:0]
 	j.validRevisions = j.validRevisions[:0]
 	clear(j.dirties)
@@ -103,6 +119,10 @@ func (j *journal) append(entry journalEntry) {
 	j.entries = append(j.entries, entry)
 	if addr := entry.dirtied(); addr != nil {
 		j.dirties[*addr]++
+	}
+	// Track storage entries separately
+	if sc, ok := entry.(*storageChange); ok {
+		j.storageEntries = append(j.storageEntries, sc)
 	}
 }
 
@@ -141,11 +161,13 @@ func (j *journal) copy() *journal {
 	for i := 0; i < j.length(); i++ {
 		entries = append(entries, j.entries[i].copy())
 	}
+
 	return &journal{
 		entries:        entries,
 		dirties:        maps.Clone(j.dirties),
 		validRevisions: slices.Clone(j.validRevisions),
 		nextRevisionId: j.nextRevisionId,
+		storageEntries: make([]*storageChange, 0, defaultNumOfSlots),
 	}
 }
 
@@ -166,12 +188,12 @@ func (j *journal) destruct(addr common.Address) {
 }
 
 func (j *journal) storageChange(addr common.Address, key, prev, origin common.Hash) {
-	j.append(storageChange{
-		account:   addr,
-		key:       key,
-		prevvalue: prev,
-		origvalue: origin,
-	})
+	entry := storageChangePool.Get().(*storageChange)
+	entry.account = addr
+	entry.key = key
+	entry.prevvalue = prev
+	entry.origvalue = origin
+	j.append(entry)
 }
 
 func (j *journal) transientStateChange(addr common.Address, key, prev common.Hash) {
@@ -396,20 +418,21 @@ func (ch codeChange) copy() journalEntry {
 	}
 }
 
-func (ch storageChange) revert(s *StateDB) {
+func (ch *storageChange) revert(s *StateDB) {
 	s.getStateObject(ch.account).setState(ch.key, ch.prevvalue, ch.origvalue)
 }
 
-func (ch storageChange) dirtied() *common.Address {
+func (ch *storageChange) dirtied() *common.Address {
 	return &ch.account
 }
 
-func (ch storageChange) copy() journalEntry {
-	return storageChange{
-		account:   ch.account,
-		key:       ch.key,
-		prevvalue: ch.prevvalue,
-	}
+func (ch *storageChange) copy() journalEntry {
+	cpy := storageChangePool.Get().(*storageChange)
+	cpy.account = ch.account
+	cpy.key = ch.key
+	cpy.prevvalue = ch.prevvalue
+	cpy.origvalue = ch.origvalue
+	return cpy
 }
 
 func (ch transientStorageChange) revert(s *StateDB) {
