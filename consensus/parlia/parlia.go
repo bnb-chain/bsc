@@ -1668,7 +1668,7 @@ func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header, leftOv
 	// The blocking time should be no more than half of period when snap.TurnLength == 1
 	timeForMining := time.Duration(snap.BlockInterval) * time.Millisecond / 2
 	if !snap.lastBlockInOneTurn(header.Number.Uint64()) {
-		timeForMining = time.Duration(snap.BlockInterval) * time.Millisecond * 2 / 3
+		timeForMining = time.Duration(snap.BlockInterval) * time.Millisecond * 4 / 5
 	}
 	if delay > timeForMining {
 		delay = timeForMining
