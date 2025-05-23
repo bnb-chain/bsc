@@ -235,8 +235,8 @@ func (db *nofreezedb) ResetTable(kind string, startAt uint64, onlyEmpty bool) er
 	return errNotSupported
 }
 
-// Sync returns an error as we don't have a backing chain freezer.
-func (db *nofreezedb) Sync() error {
+// SyncAncient returns an error as we don't have a backing chain freezer.
+func (db *nofreezedb) SyncAncient() error {
 	return errNotSupported
 }
 
@@ -391,8 +391,8 @@ func (db *emptyfreezedb) ResetTable(kind string, startAt uint64, onlyEmpty bool)
 	return nil
 }
 
-// Sync returns nil for pruned db that we don't have a backing chain freezer.
-func (db *emptyfreezedb) Sync() error {
+// SyncAncient returns nil for pruned db that we don't have a backing chain freezer.
+func (db *emptyfreezedb) SyncAncient() error {
 	return nil
 }
 

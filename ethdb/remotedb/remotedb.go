@@ -172,7 +172,7 @@ func (db *Database) ResetTable(kind string, startAt uint64, onlyEmpty bool) erro
 	panic("not supported")
 }
 
-func (db *Database) Sync() error {
+func (db *Database) SyncAncient() error {
 	return nil
 }
 
@@ -197,6 +197,10 @@ func (db *Database) AncientDatadir() (string, error) {
 }
 
 func (db *Database) Compact(start []byte, limit []byte) error {
+	return nil
+}
+
+func (db *Database) SyncKeyValue() error {
 	return nil
 }
 

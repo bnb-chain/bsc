@@ -1119,17 +1119,16 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 		// Ignore the error here since light client won't hit this path
 		frozen, _ := bc.db.BlockStore().Ancients()
 		if num+1 <= frozen {
-			// Truncate all relative data(header, total difficulty, body, receipt
-			// and canonical hash) from ancient store.
-			if _, err := bc.db.BlockStore().TruncateHead(num); err != nil {
-				log.Crit("Failed to truncate ancient data", "number", num, "err", err)
-			}
-			// Remove the hash <-> number mapping from the active store.
-			rawdb.DeleteHeaderNumber(db, hash)
+			// The chain segment, such as the block header, canonical hash,
+			// body, and receipt, will be removed from the ancient store
+			// in one go.
+			//
+			// The hash-to-number mapping in the key-value store will be
+			// removed by the hc.SetHead function.
 		} else {
-			// Remove relative body and receipts from the active store.
-			// The header, total difficulty and canonical hash will be
-			// removed in the hc.SetHead function.
+			// Remove the associated body and receipts from the key-value store.
+			// The header, hash-to-number mapping, and canonical hash will be
+			// removed by the hc.SetHead function.
 			rawdb.DeleteBody(db, hash, num)
 			rawdb.DeleteBlobSidecars(db, hash, num)
 			rawdb.DeleteReceipts(db, hash, num)
@@ -1599,7 +1598,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		size += writeSize
 
 		// Sync the ancient store explicitly to ensure all data has been flushed to disk.
-		if err := bc.db.BlockStore().Sync(); err != nil {
+		if err := bc.db.BlockStore().SyncAncient(); err != nil {
 			return 0, err
 		}
 		// Update the current snap block because all block data is now present in DB.
