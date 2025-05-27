@@ -406,6 +406,14 @@ func (b *bidSimulator) newBidLoop() {
 				continue
 			}
 
+			if latestBlockNumber := b.chain.CurrentBlock().Number.Uint64(); newBid.bid.BlockNumber <= latestBlockNumber {
+				if newBid.feedback != nil {
+					log.Debug("bid is discarded", "blockNumber", newBid.bid.BlockNumber, "latest block", latestBlockNumber)
+					newBid.feedback <- fmt.Errorf("bid is discarded, stale block number: %d, latest block: %d", newBid.bid.BlockNumber, latestBlockNumber)
+				}
+				continue
+			}
+
 			bidRuntime, err := newBidRuntime(newBid.bid, *b.config.ValidatorCommission)
 			if err != nil {
 				if newBid.feedback != nil {
@@ -513,7 +521,8 @@ func (b *bidSimulator) clearLoop() {
 		delete(b.pending, blockNumber)
 		b.pendingMu.Unlock()
 
-		clearThreshold := b.chain.GetFinalizedNumber(b.chain.GetHeaderByHash(parentHash))
+		// clearThreshold := b.chain.GetFinalizedNumber(b.chain.GetHeaderByHash(parentHash))
+		clearThreshold := uint64(0) // Leave a sufficient buffer to avoid clearing active bids, which could cause panic
 		if blockNumber > b.chain.TriesInMemory() {
 			clearThreshold = max(clearThreshold, blockNumber-b.chain.TriesInMemory())
 		}
