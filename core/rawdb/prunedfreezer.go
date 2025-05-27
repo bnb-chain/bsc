@@ -161,7 +161,7 @@ func (f *prunedfreezer) AncientDatadir() (string, error) {
 
 // Tail returns the number of first stored item in the freezer.
 func (f *prunedfreezer) Tail() (uint64, error) {
-	return 0, errNotSupported
+	return atomic.LoadUint64(&f.frozen), nil
 }
 
 // AncientSize returns the ancient size of the specified category, return 0.
