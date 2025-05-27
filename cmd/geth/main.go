@@ -162,7 +162,6 @@ var (
 		utils.NodeKeyFileFlag,
 		utils.NodeKeyHexFlag,
 		utils.DNSDiscoveryFlag,
-		utils.LogTimeFormatFlag,
 		// utils.DeveloperFlag,
 		// utils.DeveloperGasLimitFlag,
 		// utils.DeveloperPeriodFlag,

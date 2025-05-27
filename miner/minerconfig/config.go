@@ -29,7 +29,7 @@ import (
 
 var (
 	defaultDelayLeftOver         = 50 * time.Millisecond
-	defaultRecommit              = 3 * time.Second
+	defaultRecommit              = 10 * time.Second
 	defaultMaxWaitProposalInSecs = uint64(45)
 	// default configurations for MEV
 	defaultMevEnabled                   = true
