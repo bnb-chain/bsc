@@ -47,7 +47,5 @@ func (l *Label) Snapshot() *LabelSnapshot {
 func (l *Label) Mark(value map[string]interface{}) {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
-	for k, v := range value {
-		l.value[k] = v
-	}
+	maps.Copy(l.value, value)
 }
