@@ -390,11 +390,42 @@ func (tx *Transaction) EffectiveGasTipValue(baseFee *big.Int) *big.Int {
 }
 
 // EffectiveGasTipCmp compares the effective gasTipCap of two transactions assuming the given base fee.
+// The effective gas tip is the minimum of:
+// 1. The transaction's gasTipCap
+// 2. The transaction's gasFeeCap minus the base fee
+//
+// Returns:
+//
+//	-1 if tx's effective gas tip is less than other's
+//	 0 if they are equal
+//	+1 if tx's effective gas tip is greater than other's
 func (tx *Transaction) EffectiveGasTipCmp(other *Transaction, baseFee *big.Int) int {
 	if baseFee == nil {
 		return tx.GasTipCapCmp(other)
 	}
-	return tx.EffectiveGasTipValue(baseFee).Cmp(other.EffectiveGasTipValue(baseFee))
+
+	// Calculate effective gas tips for both transactions
+	txGasFeeCap := tx.GasFeeCap()
+	txGasFeeCap = txGasFeeCap.Sub(txGasFeeCap, baseFee)
+	otherGasFeeCap := other.GasFeeCap()
+	otherGasFeeCap = otherGasFeeCap.Sub(otherGasFeeCap, baseFee)
+
+	// Get gas tip caps
+	txGasTipCap := tx.inner.gasTipCap()
+	otherGasTipCap := other.inner.gasTipCap()
+
+	// Compare minimum values
+	txMin := txGasTipCap
+	if txGasTipCap.Cmp(txGasFeeCap) > 0 {
+		txMin = txGasFeeCap
+	}
+
+	otherMin := otherGasTipCap
+	if otherGasTipCap.Cmp(otherGasFeeCap) > 0 {
+		otherMin = otherGasFeeCap
+	}
+
+	return txMin.Cmp(otherMin)
 }
 
 // EffectiveGasTipIntCmp compares the effective gasTipCap of a transaction to the given gasTipCap.
