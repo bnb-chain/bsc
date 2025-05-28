@@ -29,6 +29,8 @@ function printUsage() {
     console.log("  GetLargeTxs: get large txs of a block range");
     console.log("\nOptions:");
     console.log("  --rpc       specify the url of RPC endpoint");
+    console.log("              mainnet: https://bsc-mainnet.nodereal.io/v1/454e504917db4f82b756bd0cf6317dce");
+    console.log("              testnet: https://bsc-testnet-dataseed.bnbchain.org");
     console.log("  --startNum  the start block number");
     console.log("  --endNum    the end block number");
     console.log("  --miner     the miner address");
@@ -36,9 +38,8 @@ function printUsage() {
     console.log("  --topNum    the topNum of blocks to be checked");
     console.log("  --blockNum  the block number to be checked");
     console.log("\nExample:");
-    // mainnet https://bsc-mainnet.nodereal.io/v1/454e504917db4f82b756bd0cf6317dce
     console.log("  node getchainstatus.js GetMaxTxCountInBlockRange --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000005");
-    console.log("  node getchainstatus.js GetBinaryVersion --rpc https://bsc-testnet-dataseed.bnbchain.org --num 21 --turnLength 4");
+    console.log("  node getchainstatus.js GetBinaryVersion --rpc https://bsc-testnet-dataseed.bnbchain.org --num 21 --turnLength 8");
     console.log("  node getchainstatus.js GetTopAddr --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010 --topNum 10");
     console.log("  node getchainstatus.js GetSlashCount --rpc https://bsc-testnet-dataseed.bnbchain.org --blockNum 40000001"); // default: latest block
     console.log("  node getchainstatus.js GetPerformanceData --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010");
@@ -59,6 +60,7 @@ const addrValidatorSet = "0x0000000000000000000000000000000000001000";
 const addrSlash = "0x0000000000000000000000000000000000001001";
 const addrStakeHub = "0x0000000000000000000000000000000000002002";
 const addrGovernor = "0x0000000000000000000000000000000000002004";
+const TimelockContract = "0x0000000000000000000000000000000000002006";
 
 const validatorSetAbi = [
     "function validatorExtraSet(uint256 offset) external view returns (uint256, bool, bytes)",
@@ -92,17 +94,25 @@ const stakeHubAbi = [
     "function felonySlashAmount() public view returns (uint256)", // default 200BNB, valid: > max(100, downtimeSlashAmount)
     "function downtimeJailTime() public view returns (uint256)", // default 2days,
     "function felonyJailTime() public view returns (uint256)", // default 30days,
-];
+    "function getValidators(uint256, uint256) external view returns(address[], address[], uint256)",
+    "function getNodeIDs(address[] validatorsToQuery) external view returns(address[], bytes32[][])",
+    ];
+
 
 const governorAbi = [
     "function votingPeriod() public view returns (uint256)",
     "function lateQuorumVoteExtension() public view returns (uint64)", // it represents minPeriodAfterQuorum
 ];
 
+const timelockAbi = [
+    "function getMinDelay() public view returns (uint256)",
+];
+
 const validatorSet = new ethers.Contract(addrValidatorSet, validatorSetAbi, provider);
 const slashIndicator = new ethers.Contract(addrSlash, slashAbi, provider);
 const stakeHub = new ethers.Contract(addrStakeHub, stakeHubAbi, provider);
 const governor = new ethers.Contract(addrGovernor, governorAbi, provider);
+const timelock = new ethers.Contract(TimelockContract, timelockAbi, provider);
 
 const validatorMap = new Map([
     // BSC mainnet
@@ -279,7 +289,7 @@ async function getMaxTxCountInBlockRange() {
 // node getchainstatus.js GetBinaryVersion \
 //      --rpc https://bsc-testnet-dataseed.bnbchain.org \
 //       --num(optional): default 21, the number of blocks that will be checked
-//       --turnLength(optional): default 4, the consecutive block length
+//       --turnLength(optional): default 8, the consecutive block length
 async function getBinaryVersion() {
     const blockNum = await provider.getBlockNumber();
     let turnLength = program.turnLength;
@@ -408,7 +418,7 @@ async function getPerformanceData() {
     let gasUsedTotal = 0;
     let inturnBlocks = 0;
     let justifiedBlocks = 0;
-    let turnLength = 4;
+    let turnLength = 8;
     let lastTimestamp = null; 
     let parliaEnabled = true;
     
@@ -621,7 +631,7 @@ async function getKeyParameters() {
     let validatorTable = [];
     for (let i = 0; i < totalLength; i++) {
         validatorTable.push({
-            addr: consensusAddrs[i],
+            consensusAddr: consensusAddrs[i],
             votingPower: Number(votingPowers[i] / BigInt(10 ** 18)),
             voteAddr: voteAddrs[i],
             moniker: await getValidatorMoniker(consensusAddrs[i], blockNum),
@@ -629,6 +639,20 @@ async function getKeyParameters() {
     }
     validatorTable.sort((a, b) => b.votingPower - a.votingPower);
     console.table(validatorTable);
+    // get EVN node ids
+    let validators = await stakeHub.getValidators(0, 1000, { blockTag: blockNum });
+    let operatorAddrs = validators[0];
+    let nodeIdss = await stakeHub.getNodeIDs(Array.from(operatorAddrs), { blockTag: blockNum });
+    let consensusAddrs2 = nodeIdss[0];
+    let nodeIdArr = nodeIdss[1];
+    for (let i = 0; i < consensusAddrs2.length; i++) {
+        let addr = consensusAddrs2[i];
+        let nodeId = nodeIdArr[i];
+        if (nodeId.length > 0) {
+            console.log("consensusAddr:", addr, "nodeId:", nodeId);
+        }
+    }
+
 
     // part 4: governance
     let votingPeriod = await governor.votingPeriod({ blockTag: blockNum });
@@ -636,6 +660,11 @@ async function getKeyParameters() {
     console.log("\n##==== GovernorContract: 0x0000000000000000000000000000000000002004")
     console.log("\tvotingPeriod", Number(votingPeriod));
     console.log("\tminPeriodAfterQuorum", Number(minPeriodAfterQuorum));
+
+    // part 5: timelock
+    let minDelay = await timelock.getMinDelay({ blockTag: blockNum });
+    console.log("\n##==== TimelockContract: 0x0000000000000000000000000000000000002006")
+    console.log("\tminDelay", Number(minDelay));
 }
 
 // 9.cmd: "getEip7623", usage:
