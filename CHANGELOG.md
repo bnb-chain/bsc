@@ -1,4 +1,21 @@
 # Changelog
+## v1.5.14
+### FEATURE
+[\#3130](https://github.com/bnb-chain/bsc/pull/3130) config: update BSC Mainnet hardfork time: Maxwell
+
+### BUGFIX
+[\#3117](https://github.com/bnb-chain/bsc/pull/3117) core, ethdb: introduce database sync function (#31703)
+[\#3122](https://github.com/bnb-chain/bsc/pull/3122) freezer: implement tail method in prunedfreezer
+[\#3121](https://github.com/bnb-chain/bsc/pull/3121) miner: discard outdated bids before simulation
+
+### IMPROVEMENT
+[\#3105](https://github.com/bnb-chain/bsc/pull/3105) parlia.go: adjust timeForMining to 4/5 second
+[\#3112](https://github.com/bnb-chain/bsc/pull/3112) feat: add storagechange object pool for better performance
+[\#3110](https://github.com/bnb-chain/bsc/pull/3110) refactor: use the built-in max/min to simplify the code
+[\#3120](https://github.com/bnb-chain/bsc/pull/3120) tx_pool: remove one non-necessary allocation
+[\#3123](https://github.com/bnb-chain/bsc/pull/3123) refactor: use maps.copy for cleaner map handling
+[\#3126](https://github.com/bnb-chain/bsc/pull/3126) jsutils: update getKeyParameters
+
 ## v1.5.13
 ### FEATURE
 [\#3019](https://github.com/bnb-chain/bsc/pull/3019) BEP-524: Short Block Interval Phase Two: 0.75 seconds
