@@ -190,7 +190,7 @@ var (
 		PascalTime:          newUint64(1742436600), // 2025-03-20 02:10:00 AM UTC
 		PragueTime:          newUint64(1742436600), // 2025-03-20 02:10:00 AM UTC
 		LorentzTime:         newUint64(1745903100), // 2025-04-29 05:05:00 AM UTC
-		MaxwellTime:         nil,
+		MaxwellTime:         newUint64(1751250600), // 2025-06-30 02:30:00 AM UTC
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
