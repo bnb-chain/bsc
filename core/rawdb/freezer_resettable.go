@@ -226,12 +226,12 @@ func (f *resettableFreezer) ResetTable(kind string, startAt uint64, onlyEmpty bo
 	return f.freezer.ResetTable(kind, startAt, onlyEmpty)
 }
 
-// Sync flushes all data tables to disk.
-func (f *resettableFreezer) Sync() error {
+// SyncAncient flushes all data tables to disk.
+func (f *resettableFreezer) SyncAncient() error {
 	f.lock.RLock()
 	defer f.lock.RUnlock()
 
-	return f.freezer.Sync()
+	return f.freezer.SyncAncient()
 }
 
 // AncientDatadir returns the path of the ancient store.

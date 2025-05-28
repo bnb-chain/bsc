@@ -1282,7 +1282,7 @@ func hbss2pbss(ctx *cli.Context) error {
 	defer stack.Close()
 
 	db := utils.MakeChainDatabase(ctx, stack, false, false)
-	db.BlockStore().Sync()
+	db.BlockStore().SyncAncient()
 	stateDiskDb := db.StateStore()
 	defer db.Close()
 

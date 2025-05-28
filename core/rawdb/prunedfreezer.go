@@ -106,7 +106,7 @@ func (f *prunedfreezer) repair(datadir string) error {
 	log.Info("Read ancient db item counts", "items", minItems, "frozen", maxOffset)
 
 	atomic.StoreUint64(&f.frozen, maxOffset)
-	if err := f.Sync(); err != nil {
+	if err := f.SyncAncient(); err != nil {
 		return nil
 	}
 	return nil
@@ -117,7 +117,7 @@ func (f *prunedfreezer) Close() error {
 	var err error
 	f.closeOnce.Do(func() {
 		close(f.quit)
-		f.Sync()
+		f.SyncAncient()
 		err = f.instanceLock.Release()
 	})
 	return err
@@ -200,8 +200,8 @@ func (f *prunedfreezer) TruncateTail(tail uint64) (uint64, error) {
 	return 0, errNotSupported
 }
 
-// Sync flushes meta data tables to disk.
-func (f *prunedfreezer) Sync() error {
+// SyncAncient flushes meta data tables to disk.
+func (f *prunedfreezer) SyncAncient() error {
 	WriteFrozenOfAncientFreezer(f.db, atomic.LoadUint64(&f.frozen))
 	// compatible offline prune blocks tool
 	WriteOffSetOfCurrentAncientFreezer(f.db, atomic.LoadUint64(&f.frozen))
@@ -315,7 +315,7 @@ func (f *prunedfreezer) freeze() {
 			ancients = append(ancients, hash)
 		}
 		// Batch of blocks have been frozen, flush them before wiping from leveldb
-		if err := f.Sync(); err != nil {
+		if err := f.SyncAncient(); err != nil {
 			log.Crit("Failed to flush frozen tables", "err", err)
 		}
 		backoff = f.frozen-first >= freezerBatchLimit
