@@ -197,6 +197,7 @@ const validatorMap = new Map([
     ["0x86eb31b90566a9f4F3AB85138c78A000EBA81685", "GucciOp3k"],
     ["0x28D70c3756d4939DCBdEB3f0fFF5B4B36E6e327F", "OmegaV"],
     ["0x6a5470a3B7959ab064d6815e349eD4aE2dE5210d", "Skynet10k"],
+    ["0x90409F56966B5da954166eB005Cb1A8790430BA1", "Legend"],
 ]);
 
 const builderMap = new Map([
@@ -246,7 +247,7 @@ const builderMap = new Map([
     ["0xb49f86586a840AB9920D2f340a85586E50FD30a2", "inblock eu"],
     ["0x0F6D8b72F3687de6f2824903a83B3ba13c0e88A0", "inblock us"],
     //      nodereal
-    ["0x79102dB16781ddDfF63F301C9Be557Fd1Dd48fA0", "nodereal ap"],
+    ["0x79102dB16781ddDfF63F301C9Be557Fd1Dd48fA0", "nodereal ap x"],
     ["0xd0d56b330a0dea077208b96910ce452fd77e1b6f", "nodereal eu"],
     ["0x4f24ce4cd03a6503de97cf139af2c26347930b99", "nodereal us"],
     //      xzbuilder
@@ -254,7 +255,7 @@ const builderMap = new Map([
 
     // Chapel
     ["0x627fE6AFA2E84e461CB7AE7C2c46e8adf9a954a2", "txboost"],
-    // ["0x79102dB16781ddDfF63F301C9Be557Fd1Dd48fA0", "nodereal ap"],
+    ["0x5EC60f73f938e36400ec3CC3Ff4d7a7703F7c005", "nodereal ap y"],
     // ["0x4827b423D03a349b7519Dda537e9A28d31ecBB48", "puissant y"],
     ["0x0eAbBdE133fbF3c5eB2BEE6F7c8210deEAA0f7db", "blockrazor"],
 ]);
