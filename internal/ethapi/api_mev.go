@@ -29,13 +29,9 @@ func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, 
 		return common.Hash{}, types.ErrMevNotRunning
 	}
 
-	if !m.b.MinerInTurn() {
-		return common.Hash{}, types.ErrMevNotInTurn
-	}
-
 	var (
 		rawBid        = args.RawBid
-		currentHeader = m.b.CurrentHeader()
+		currentHeader = m.b.CurrentHeader() // `currentHeader` might change during use.
 	)
 
 	if rawBid == nil {
@@ -43,8 +39,19 @@ func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, 
 	}
 
 	// only support bidding for the next block not for the future block
-	if rawBid.BlockNumber != currentHeader.Number.Uint64()+1 {
-		return common.Hash{}, types.NewInvalidBidError("stale block number or block in future")
+	if latestBlockNumber := currentHeader.Number.Uint64(); rawBid.BlockNumber < latestBlockNumber+1 {
+		return common.Hash{}, types.NewInvalidBidError(
+			fmt.Sprintf("stale block number: %d, latest block: %d", rawBid.BlockNumber, latestBlockNumber))
+	} else if rawBid.BlockNumber > latestBlockNumber+1 {
+		// For the first block of a validator's turn, the previous block must be imported first.
+		// If a builder sends bids before the import is complete, the following error message will be returned.
+		// However, this is not a significant issue because:
+		//   a. Each turn consists of 16 blocks, so this situation can only occur at most 1/16 of the time.
+		//   b. Each builder is allowed to submit multiple bids for each block.
+		return common.Hash{}, types.NewInvalidBidError(
+			fmt.Sprintf("block in future: %d, latest block: %d", rawBid.BlockNumber, latestBlockNumber))
+	} else if !m.b.MinerInTurn() {
+		return common.Hash{}, types.ErrMevNotInTurn
 	}
 
 	if rawBid.ParentHash != currentHeader.Hash() {
