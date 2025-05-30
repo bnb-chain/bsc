@@ -506,10 +506,7 @@ func initNetwork(ctx *cli.Context) error {
 	}
 	if enableSentryNode && ctx.Bool(utils.InitEVNSentryWhitelist.Name) {
 		for i := 0; i < len(sentryConfigs); i++ {
-			// whitelist all sentry nodes + proxyed validator NodeID
-			wlNodeIDs := []enode.ID{nodeIDs[i]}
-			wlNodeIDs = append(wlNodeIDs, sentryNodeIDs...)
-			sentryConfigs[i].Node.P2P.EVNNodeIdsWhitelist = wlNodeIDs
+			sentryConfigs[i].Node.P2P.EVNNodeIdsWhitelist = sentryNodeIDs
 		}
 	}
 	if enableSentryNode && ctx.Bool(utils.InitEVNSentryRegister.Name) {
