@@ -1,0 +1,34 @@
+.md-footer {
+    background: var(--doc-bg-1);
+    border-top: 1px solid var(--doc-border-3);
+}
+
+.md-footer__inner {
+    color: var(--doc-text-primary);
+    padding: 0;
+}
+
+.md-footer__inner a:hover .md-footer__direction,
+.md-footer__inner a:hover {
+    color: var(--doc-text-brand);
+}
+
+.md-footer__title {
+    margin-bottom: 0;
+    font-size: 20px;
+    font-weight: 400;
+    line-height: 1.4;
+}
+
+.md-footer__direction {
+    margin-bottom: 4px;
+    font-size: 14px;
+    line-height: 16px;
+    color: var(--doc-text-secondary);
+    opacity: 1;
+}
+
+.md-footer__link {
+    margin-top: 30px;
+    margin-bottom: 30px;
+}
