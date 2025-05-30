@@ -1,0 +1,19 @@
+.md-sidebar__scrollwrap {
+    margin: 0;
+}
+
+.md-nav__item .md-nav__link--active, .md-nav__item .md-nav__link--active code {
+    color: var(--doc-text-brand);
+}
+
+@media screen and (min-width: 76.25em) {
+    .md-sidebar__inner > .md-nav {
+        margin-left: -0.6rem;
+    }
+}
+
+@media screen and (max-width: 76.234375em) {
+    [data-md-toggle=drawer]:checked~.md-container .md-sidebar--primary {
+        width: 260px;
+    }
+}
