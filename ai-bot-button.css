@@ -1,0 +1,65 @@
+.ai-bot-wrapper {
+    height: 40px;
+    border-radius: 40px;
+    background: linear-gradient(180deg, #FFE900 0%, #18DC7E 100%);
+    padding: 1px;
+    overflow: hidden;
+    position: fixed;
+    z-index: 3;
+    right: 24px;
+    bottom: 80px;
+}
+
+.ai-bot-wrapper button {
+    display: inline-flex;
+    appearance: none;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    position: relative;
+    white-space: nowrap;
+    vertical-align: middle;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    line-height: 1rem;
+    min-width: 72px;
+    padding-inline-start: 16px;
+    padding-inline-end: 16px;
+    padding-left: 15px;
+    padding-right: 7px;
+    border-radius: 38px;
+    background: #181A1E;
+    height: 100%;
+    color: #FFE900;
+    font-weight: 500;
+    transition: all 0.15s;
+    cursor: pointer;
+    font-size: 14px;
+    border-width: 0;
+}
+
+.ai-bot-wrapper button:hover {
+    background: transparent;
+    color: #181A1E;
+}
+
+.ai-bot-wrapper span {
+    display: inline-flex;
+    align-self: center;
+    flex-shrink: 0;
+    margin-inline-start: 0;
+}
+
+.ai-bot-wrapper svg {
+    width: 24px;
+    height: 24px;
+    display: inline-block;
+    line-height: 1em;
+    flex-shrink: 0;
+    color: currentColor;
+    vertical-align: middle;
+}
+
+[id^=inkeep-widget] {
+    display: none;
+}
