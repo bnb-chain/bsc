@@ -1,0 +1,22 @@
+.md-banner {
+    background-color: var(--doc-support-warning-2);
+    text-align: center;
+    color: var(--doc-text-on-color);
+}
+
+.md-banner a {
+    color: var(--doc-text-on-color);
+    font-weight: 700;
+    text-decoration: underline;
+}
+
+.md-banner a:focus,
+.md-banner a:hover {
+    color: var(--doc-text-brand);
+}
+
+.md-banner__inner {
+    font-size: 14px;
+    line-height: 20px;
+    margin: 10px auto;
+}
