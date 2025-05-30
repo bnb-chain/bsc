@@ -1,0 +1,230 @@
+.md-content .md-content__inner {
+    margin-left: 0;
+    margin-right: 0;
+}
+
+.section-head {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 40px;
+}
+
+.section-head h1 {
+    color: var(--doc-text-primary);
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1.25;
+    margin-bottom: 0;
+}
+
+.section-head p {
+    color: var(--doc-text-primary);
+    font-size: 16px;
+    line-height: 1.5;
+    margin: 0;
+}
+
+.section-head .left {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+    flex: 1;
+    min-width: 0;
+}
+
+.section-head .image {
+    width: 400px;
+    aspect-ratio: 659/323;
+}
+
+.version-tag {
+    padding: 2px 4px;
+    border-radius: 4px;
+    background: var(--doc-layer-inverse);
+    color: var(--doc-text-on-color);
+    font-size: 12px;
+    line-height: 16px;
+    width: max-content;
+}
+
+.section-body {
+    padding-top: 40px;
+    border-top: 1px solid var(--doc-border-3);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding-bottom: 60px;
+}
+
+.section-body a {
+    border: 1px solid var(--doc-border-3);
+    background: var(--doc-layer-2);
+    padding: 16px;
+    border-radius: 8px;
+    transition: all 0.15s;
+    flex: 32%;
+    width: 32%;
+}
+
+.section-body > a:active,
+.section-body > a:hover {
+    background: var(--doc-layer-4);
+    text-decoration: none;
+}
+
+.section-body a div {
+    color: var(--doc-text-primary);
+    font-weight: 500;
+    font-size: 16px;
+    line-height: 24px;
+    margin-bottom: 4px;
+}
+
+.section-body div + p {
+    color: var(--doc-text-secondary);
+    font-weight: 400;
+    line-height: 20px;
+    font-size: 14px;
+    margin: 0;
+}
+
+.home-hero img {
+    margin-bottom: 48px;
+    width: 100%;
+    aspect-ratio: 840/240;
+    object-fit: cover;
+    border-radius: 12px;
+    background: var(--doc-layer-4);
+}
+
+.md-main__inner {
+    margin-top: 0;
+    flex: 1;
+}
+
+.md-content {
+    min-height: 100%;
+}
+
+.md-content__inner {
+    padding-top: 38px;
+    padding-bottom: 40px;
+}
+
+.md-content__inner:before {
+    height: 2px;
+}
+
+.md-sidebar {
+    width: 200px;
+    padding: 52px 0;
+}
+
+.md-main {
+    display: flex;
+    flex-direction: column;
+}
+
+.doc-announce {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.doc-announce > a {
+    border-radius: 8px;
+    border: 1px solid var(--doc-border-3);
+    background: var(--doc-layer-2);
+    padding: 16px 32px;
+    transition: all .15s;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+
+.doc-announce > a > div {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.announce-title {
+    color: var(--doc-text-primary);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+}
+
+.announce-desc {
+    color: var(--doc-text-secondary);
+    font-size: 12px;
+    line-height: 16px;
+}
+
+.announce-date {
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--doc-text-secondary);
+}
+
+.doc-announce > a:hover {
+    background: var(--doc-layer-4);
+    text-decoration: none;
+}
+
+.doc-announce-info > span {
+    margin-right: 20px;
+}
+
+.doc-announce-info .announce-date {
+    font-size: 14px;
+}
+
+@media (max-width: 767px) {
+    .doc-announce > a {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 16px;
+    }
+
+    .section-body a {
+        flex: 100%;
+        width: 100%;
+    }
+
+    .section-body {
+        padding-top: 24px;
+    }
+
+    .section-head {
+        flex-direction: column;
+    }
+
+    .section-head .image {
+        max-width: 100%;
+    }
+}
+
+@media screen and (min-width: 76.25em) {
+    [dir=ltr] .md-sidebar--primary:not([hidden]) ~ .md-content > .md-content__inner {
+        margin-left: 40px;
+    }
+
+    [dir=ltr] .md-sidebar--secondary:not([hidden]) ~ .md-content > .md-content__inner,
+    [dir=rtl] .md-sidebar--primary:not([hidden]) ~ .md-content > .md-content__inner {
+        margin-right: 40px;
+    }
+
+    .md-sidebar--primary:not([hidden]) ~ .md-content {
+        border-left: 1px solid var(--doc-border-3);
+    }
+
+    .md-sidebar--primary[hidden] + .md-sidebar--secondary[hidden] ~ .md-content {
+        max-width: 840px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+}
