@@ -77,7 +77,12 @@ var DefaultConfig = Config{
 	},
 	DBEngine: "", // Use whatever exists, will default to Pebble if non-existent and supported
 	Instance: 1,
+	LogConfig: &LogConfig{
+		TimeFormat: stringPtr("01-02|15:04:05.000"),
+	},
 }
+
+func stringPtr(s string) *string { return &s }
 
 // DefaultDataDir is the default data directory to use for the databases and other
 // persistence requirements.

@@ -1694,7 +1694,7 @@ func TestStableUnderpricing(t *testing.T) {
 	blockchain := newTestBlockChain(params.TestChainConfig, 1000000, statedb, new(event.Feed))
 
 	config := testTxPoolConfig
-	config.GlobalSlots = 128
+	config.GlobalSlots = 201
 	config.GlobalQueue = 0
 
 	pool := New(config, blockchain)

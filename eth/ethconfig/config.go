@@ -58,7 +58,7 @@ var Defaults = Config{
 	DatabaseCache:      512,
 	TrieCleanCache:     154,
 	TrieDirtyCache:     256,
-	TrieTimeout:        60 * time.Minute,
+	TrieTimeout:        10 * time.Minute,
 	TriesInMemory:      128,
 	TriesVerifyMode:    core.LocalVerify,
 	SnapshotCache:      102,
