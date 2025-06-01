@@ -1,5 +1,8 @@
 name: EVM Test
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: 
