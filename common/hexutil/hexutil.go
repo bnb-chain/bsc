@@ -81,11 +81,14 @@ func MustDecode(input string) []byte {
 }
 
 // Encode encodes b as a hex string with 0x prefix.
-func Encode(b []byte) string {
+func Encode(b []byte) (string, error) {
+	if len(b) > (int(^uint(0))>>1)/2 { // Check if len(b)*2 would overflow
+		return "", fmt.Errorf("input too large to encode")
+	}
 	enc := make([]byte, len(b)*2+2)
 	copy(enc, "0x")
 	hex.Encode(enc[2:], b)
-	return string(enc)
+	return string(enc), nil
 }
 
 // DecodeUint64 decodes a hex string with 0x prefix as a quantity.
