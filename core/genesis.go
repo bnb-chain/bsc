@@ -580,7 +580,11 @@ func (g *Genesis) Commit(db ethdb.Database, triedb *triedb.Database) (*types.Blo
 	if err != nil {
 		return nil, err
 	}
-	rawdb.WriteGenesisStateSpec(db, block.Hash(), blob)
+	encodedBlob, err := hexutil.Encode(blob)
+	if err != nil {
+		return nil, err
+	}
+	rawdb.WriteGenesisStateSpec(db, block.Hash(), []byte(encodedBlob))
 	rawdb.WriteTd(db.BlockStore(), block.Hash(), block.NumberU64(), block.Difficulty())
 	rawdb.WriteBlock(db.BlockStore(), block)
 	rawdb.WriteReceipts(db.BlockStore(), block.Hash(), block.NumberU64(), nil)
