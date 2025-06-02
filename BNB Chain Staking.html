@@ -12,7 +12,7 @@
                       'https://www.googletagmanager.com/gtm.js?id=' +
                       i +
                       dl +
-                      (window.location.hostname.endsWith('bnbchain.org')
+                      (['bnbchain.org', 'www.bnbchain.org'].includes(window.location.hostname)
                         ? '&gtm_auth=yNIE-L06jPH-rS5Wug7Dxg&gtm_preview=env-1&gtm_cookies_win=x'
                         : '&gtm_auth=nbvRy1iQiFBIlgDWE8wJUA&gtm_preview=env-4&gtm_cookies_win=x');
                     f.parentNode.insertBefore(j, f);
