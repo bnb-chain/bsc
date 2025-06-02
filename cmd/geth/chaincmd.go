@@ -354,6 +354,9 @@ func parsePorts(portStr string, defaultPort int, size int) ([]int, error) {
 			if err != nil {
 				return nil, errors.New("invalid format of port")
 			}
+			if port < 0 || port > 65535 {
+				return nil, errors.New("port out of range (must be 0-65535)")
+			}
 			ports[i] = port
 		}
 	} else if len(portStr) != 0 {
