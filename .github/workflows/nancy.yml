@@ -1,5 +1,8 @@
 name: Go Nancy
 
+permissions:
+  contents: read
+
 on:
     # Scan changed files in PRs (diff-aware scanning):
     pull_request: {}
