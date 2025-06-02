@@ -3,6 +3,8 @@ package fakebeacon
 import (
 	"context"
 	"sort"
+	"math"
+	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
@@ -49,6 +51,10 @@ func beaconGenesis() APIGenesisResponse {
 
 func beaconBlobSidecars(ctx context.Context, backend ethapi.Backend, slot uint64, indices []int) (APIGetBlobSidecarsResponse, error) {
 	var blockNrOrHash rpc.BlockNumberOrHash
+	if slot > uint64(math.MaxInt64) {
+		log.Error("Slot value exceeds int64 range", "slot", slot)
+		return APIGetBlobSidecarsResponse{}, fmt.Errorf("slot value exceeds int64 range")
+	}
 	header, err := fetchBlockNumberByTime(ctx, int64(slot), backend)
 	if err != nil {
 		log.Error("Error fetching block number", "slot", slot, "indices", indices)
