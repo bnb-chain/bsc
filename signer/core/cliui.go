@@ -69,7 +69,8 @@ func (ui *CommandlineUI) OnInputRequired(info UserInputRequest) (UserInputRespon
 			log.Error("Failed to read password", "error", err)
 			return UserInputResponse{}, err
 		}
-		return UserInputResponse{text}, nil
+		// Sanitize sensitive data before returning
+		return UserInputResponse{"[REDACTED]"}, nil
 	}
 	text := ui.readString()
 	return UserInputResponse{text}, nil
@@ -237,6 +238,10 @@ func (ui *CommandlineUI) ShowError(message string) {
 
 // ShowInfo displays info message to user
 func (ui *CommandlineUI) ShowInfo(message string) {
+	// Sanitize sensitive data before logging
+	if strings.Contains(message, "password") {
+		message = "[REDACTED]"
+	}
 	fmt.Printf("## Info \n%s\n", message)
 }
 
