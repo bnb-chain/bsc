@@ -1089,6 +1089,7 @@ func GenDoc(ctx *cli.Context) error {
 			switch obj := v.(type) {
 			case *core.UserInputRequest:
 				obj.Prompt = "REDACTED"
+				obj.IsPassword = false // Ensure sensitive flag is not exposed
 			case *core.UserInputResponse:
 				obj.Text = "REDACTED"
 			}
