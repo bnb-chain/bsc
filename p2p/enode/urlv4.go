@@ -87,9 +87,15 @@ func NewV4(pubkey *ecdsa.PublicKey, ip net.IP, tcp, udp int) *Node {
 		r.Set(enr.IP(ip))
 	}
 	if udp != 0 {
+		if udp < 0 || udp > 65535 {
+			panic(fmt.Sprintf("invalid UDP port: %d (must be 0-65535)", udp))
+		}
 		r.Set(enr.UDP(udp))
 	}
 	if tcp != 0 {
+		if tcp < 0 || tcp > 65535 {
+			panic(fmt.Sprintf("invalid TCP port: %d (must be 0-65535)", tcp))
+		}
 		r.Set(enr.TCP(tcp))
 	}
 	signV4Compat(&r, pubkey)
