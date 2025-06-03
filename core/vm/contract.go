@@ -19,6 +19,7 @@ package vm
 import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
+	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/holiman/uint256"
@@ -72,8 +73,9 @@ type Contract struct {
 	IsDeployment bool
 	IsSystemCall bool
 
-	Gas   uint64
-	value *uint256.Int
+	Gas       uint64
+	value     *uint256.Int
+	optimized bool
 }
 
 func (c *Contract) validJumpdest(dest *uint256.Int) bool {
@@ -106,7 +108,14 @@ func (c *Contract) isCode(udest uint64) bool {
 		if !exist {
 			if cached, ok := codeBitmapCache.Get(c.CodeHash); ok {
 				contractCodeBitmapHitMeter.Mark(1)
-				analysis = cached
+				analysis = cached.(bitvec)
+			} else if c.optimized {
+				analysis = compiler.LoadBitvec(c.CodeHash)
+				if analysis == nil {
+					analysis = codeBitmap(c.Code)
+					compiler.StoreBitvec(c.CodeHash, analysis)
+				}
+				c.jumpdests[c.CodeHash] = analysis
 			} else {
 				// Do the analysis and save in parent context
 				// We do not need to store it in c.analysis
