@@ -299,7 +299,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	journalFilePath = stack.ResolvePath(path) + "/" + JournalFileName
 	var (
 		vmConfig = vm.Config{
-			EnablePreimageRecording: config.EnablePreimageRecording,
+			EnablePreimageRecording:   config.EnablePreimageRecording,
+			EnableOpcodeOptimizations: config.EnableOpcodeOptimizing,
 		}
 		cacheConfig = &core.CacheConfig{
 			TrieCleanLimit:      config.TrieCleanCache,
