@@ -345,7 +345,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		return false
 	}
 	txLookupLimit := &config.TransactionHistory
-	if !config.EnableTxIndexer {
+	if config.DisableTxIndexer {
 		log.Warn("The TxIndexer is disabled. Please note that the next time you re-enable it, it may affect the node performance because of rebuilding the tx index.")
 		txLookupLimit = nil
 	}

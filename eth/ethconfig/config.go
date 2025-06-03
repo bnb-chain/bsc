@@ -124,7 +124,7 @@ type Config struct {
 	PathSyncFlush      bool   `toml:",omitempty"` // State scheme used to store ethereum state and merkle trie nodes on top
 	JournalFileEnabled bool   // Whether the TrieJournal is stored using journal file
 
-	EnableTxIndexer bool `toml:",omitempty"` // Whether to enable the transaction indexer
+	DisableTxIndexer bool `toml:",omitempty"` // Whether to enable the transaction indexer
 
 	// RequiredBlocks is a set of block number -> hash mappings which must be in the
 	// canonical chain of all remote peers. Setting the option makes geth verify the
