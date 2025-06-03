@@ -660,7 +660,7 @@ func (w *worker) resultLoop() {
 			// Commit block and state to database.
 			task.state.SetExpectedStateRoot(block.Root())
 			start := time.Now()
-			status, err := w.chain.WriteBlockAndSetHead(block, receipts, logs, task.state, true)
+			status, err := w.chain.WriteBlockAndSetHead(block, receipts, logs, task.state, w.mux)
 			if status != core.CanonStatTy {
 				if err != nil {
 					log.Error("Failed writing block to chain", "err", err, "status", status)
@@ -673,10 +673,8 @@ func (w *worker) resultLoop() {
 			stats := w.chain.GetBlockStats(block.Hash())
 			stats.SendBlockTime.Store(time.Now().UnixMilli())
 			stats.StartMiningTime.Store(task.miningStartAt.UnixMilli())
-			log.Info("Successfully sealed new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
+			log.Info("Successfully seal and write new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
 				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
-			w.mux.Post(core.NewMinedBlockEvent{Block: block})
-
 		case <-w.exitCh:
 			return
 		}
