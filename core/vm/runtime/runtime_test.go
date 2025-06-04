@@ -868,7 +868,7 @@ func TestRuntimeJSTracerWithOpcodeOptimizer(t *testing.T) {
 				byte(vm.CREATE),
 				byte(vm.POP),
 			},
-			results: []string{`"1,1,952855,6,11"`, `"1,1,952855,6,0"`},
+			results: []string{`"1,1,952853,6,11"`, `"1,1,952853,6,0"`},
 		},
 		{
 			// CREATE2
@@ -884,7 +884,7 @@ func TestRuntimeJSTracerWithOpcodeOptimizer(t *testing.T) {
 				byte(vm.CREATE2),
 				byte(vm.POP),
 			},
-			results: []string{`"1,1,952846,6,11"`, `"1,1,952846,6,0"`},
+			results: []string{`"1,1,952844,6,11"`, `"1,1,952844,6,0"`},
 		},
 		{
 			// CALL
@@ -981,7 +981,7 @@ func TestRuntimeJSTracerWithOpcodeOptimizer(t *testing.T) {
 				State:    statedb,
 				EVMConfig: vm.Config{
 					Tracer:                    tracer.Hooks,
-					EnableOpcodeOptimizations: false,
+					EnableOpcodeOptimizations: true,
 				}})
 			if err != nil {
 				t.Fatal("didn't expect error", err)
