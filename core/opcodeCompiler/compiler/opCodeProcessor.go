@@ -2,9 +2,10 @@ package compiler
 
 import (
 	"errors"
+	"runtime"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/holiman/uint256"
-	"runtime"
 )
 
 var (
@@ -73,7 +74,6 @@ func LoadOptimizedCode(hash common.Hash) []byte {
 	}
 	processedCode := codeCache.GetCachedCode(hash)
 	return processedCode
-
 }
 
 func LoadBitvec(codeHash common.Hash) []byte {
@@ -132,7 +132,7 @@ func GenOrRewriteOptimizedCode(hash common.Hash, code []byte) ([]byte, error) {
 func TryGenerateOptimizedCode(hash common.Hash, code []byte) ([]byte, error) {
 	processedCode := codeCache.GetCachedCode(hash)
 	var err error = nil
-	if processedCode == nil || len(processedCode) == 0 {
+	if len(processedCode) == 0 {
 		processedCode, err = GenOrRewriteOptimizedCode(hash, code)
 	}
 	return processedCode, err
@@ -287,7 +287,6 @@ func doCodeFusion(code []byte) ([]byte, error) {
 					fusedCode[cur+2] = byte(Nop)
 					skipToNext = true
 				}
-
 			}
 			if skipToNext {
 				i += 2

@@ -19,7 +19,6 @@ package runtime
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"math/big"
 	"os"
 	"strconv"
@@ -32,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/asm"
+	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
