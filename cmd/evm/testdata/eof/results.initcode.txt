@@ -202,24 +202,24 @@ ERR: undefined instruction: op opcode 0xac not defined, pos 0
 ERR: undefined instruction: op opcode 0xad not defined, pos 0
 ERR: undefined instruction: op opcode 0xae not defined, pos 0
 ERR: undefined instruction: op opcode 0xaf not defined, pos 0
-ERR: undefined instruction: op opcode 0xb0 not defined, pos 0
-ERR: undefined instruction: op opcode 0xb1 not defined, pos 0
-ERR: undefined instruction: op opcode 0xb2 not defined, pos 0
-ERR: undefined instruction: op opcode 0xb3 not defined, pos 0
-ERR: undefined instruction: op opcode 0xb4 not defined, pos 0
-ERR: undefined instruction: op opcode 0xb5 not defined, pos 0
-ERR: undefined instruction: op opcode 0xb6 not defined, pos 0
-ERR: undefined instruction: op opcode 0xb7 not defined, pos 0
-ERR: undefined instruction: op opcode 0xb8 not defined, pos 0
-ERR: undefined instruction: op opcode 0xb9 not defined, pos 0
-ERR: undefined instruction: op opcode 0xba not defined, pos 0
-ERR: undefined instruction: op opcode 0xbb not defined, pos 0
-ERR: undefined instruction: op opcode 0xbc not defined, pos 0
-ERR: undefined instruction: op opcode 0xbd not defined, pos 0
-ERR: undefined instruction: op opcode 0xbe not defined, pos 0
-ERR: undefined instruction: op opcode 0xbf not defined, pos 0
-ERR: undefined instruction: op opcode 0xc0 not defined, pos 0
-ERR: undefined instruction: op opcode 0xc1 not defined, pos 0
+ERR: undefined instruction: op NOP, pos 0
+ERR: undefined instruction: op ANDSWAP1POPSWAP2SWAP1, pos 0
+ERR: undefined instruction: op SWAP2SWAP1POPJUMP, pos 0
+ERR: undefined instruction: op SWAP1POPSWAP2SWAP1, pos 0
+ERR: undefined instruction: op POPSWAP2SWAP1POP, pos 0
+ERR: undefined instruction: op PUSH2JUMP, pos 0
+ERR: undefined instruction: op PUSH2JUMPI, pos 0
+ERR: undefined instruction: op PUSH1PUSH1, pos 0
+ERR: undefined instruction: op PUSH1ADD, pos 0
+ERR: undefined instruction: op PUSH1SHL, pos 0
+ERR: undefined instruction: op PUSH1DUP1, pos 0
+ERR: undefined instruction: op SWAP1POP, pos 0
+ERR: undefined instruction: op POPJUMP, pos 0
+ERR: undefined instruction: op POP2, pos 0
+ERR: undefined instruction: op SWAP2SWAP1, pos 0
+ERR: undefined instruction: op SWAP2POP, pos 0
+ERR: undefined instruction: op DUP2LT, pos 0
+ERR: undefined instruction: op JUMPIFZERO, pos 0
 ERR: undefined instruction: op opcode 0xc2 not defined, pos 0
 ERR: undefined instruction: op opcode 0xc3 not defined, pos 0
 ERR: undefined instruction: op opcode 0xc4 not defined, pos 0

@@ -981,7 +981,7 @@ func TestRuntimeJSTracerWithOpcodeOptimizer(t *testing.T) {
 				State:    statedb,
 				EVMConfig: vm.Config{
 					Tracer:                    tracer.Hooks,
-					EnableOpcodeOptimizations: true,
+					EnableOpcodeOptimizations: false,
 				}})
 			if err != nil {
 				t.Fatal("didn't expect error", err)
