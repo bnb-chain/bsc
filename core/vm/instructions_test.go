@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/stretchr/testify/require"
 	"math/big"
 	"os"
 	"strings"
@@ -1244,7 +1245,10 @@ func TestOpPush1Push1Push1SHLSub(t *testing.T) {
 	require.NoError(t, err)
 	pc2++
 	_, err = opSHL(&pc2, interpreter2, scope2)
+<<<<<<< HEAD
 	require.NoError(t, err)
+=======
+>>>>>>> 165d2670a (feat: add some super instruction)
 	pc2++
 	_, err = opSub(&pc2, interpreter2, scope2)
 	require.NoError(t, err)
@@ -1298,10 +1302,15 @@ func TestOpAndDup2AddSwap1Dup2LT(t *testing.T) {
 	require.NoError(t, err)
 	pc2++
 	_, err = opSwap1(&pc2, interpreter2, scope2)
+<<<<<<< HEAD
 	require.NoError(t, err)
 	pc2++
 	_, err = makeDup(2)(&pc2, interpreter2, scope2)
 	require.NoError(t, err)
+=======
+	pc2++
+	_, err = makeDup(2)(&pc2, interpreter2, scope2)
+>>>>>>> 165d2670a (feat: add some super instruction)
 	pc2++
 	_, err = opLt(&pc2, interpreter2, scope2)
 	require.NoError(t, err)
@@ -1355,6 +1364,7 @@ func TestOpSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(t *testing.T) {
 	require.NoError(t, err)
 	pc2++
 	_, err = opNot(&pc2, interpreter2, scope2)
+<<<<<<< HEAD
 	require.NoError(t, err)
 	pc2++
 	_, err = opSwap2(&pc2, interpreter2, scope2)
@@ -1377,6 +1387,22 @@ func TestOpSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(t *testing.T) {
 	pc2++
 	_, err = makeDup(2)(&pc2, interpreter2, scope2)
 	require.NoError(t, err)
+=======
+	pc2++
+	_, err = opSwap2(&pc2, interpreter2, scope2)
+	pc2++
+	_, err = opAdd(&pc2, interpreter2, scope2)
+	pc2++
+	_, err = opAnd(&pc2, interpreter2, scope2)
+	pc2++
+	_, err = makeDup(2)(&pc2, interpreter2, scope2)
+	pc2++
+	_, err = opAdd(&pc2, interpreter2, scope2)
+	pc2++
+	_, err = opSwap1(&pc2, interpreter2, scope2)
+	pc2++
+	_, err = makeDup(2)(&pc2, interpreter2, scope2)
+>>>>>>> 165d2670a (feat: add some super instruction)
 	pc2++
 	_, err = opLt(&pc2, interpreter2, scope2)
 	require.NoError(t, err)
