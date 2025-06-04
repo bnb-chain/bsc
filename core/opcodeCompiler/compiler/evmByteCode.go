@@ -77,6 +77,8 @@ const (
 	CHAINID     ByteCode = 0x46
 	SELFBALANCE ByteCode = 0x47
 	BASEFEE     ByteCode = 0x48
+	BLOBHASH    ByteCode = 0x49
+	BLOBBASEFEE ByteCode = 0x4a
 )
 
 // 0x50 range - 'storage' and execution.
@@ -93,6 +95,9 @@ const (
 	MSIZE    ByteCode = 0x59
 	GAS      ByteCode = 0x5a
 	JUMPDEST ByteCode = 0x5b
+	TLOAD    ByteCode = 0x5c
+	TSTORE   ByteCode = 0x5d
+	MCOPY    ByteCode = 0x5e
 	PUSH0    ByteCode = 0x5f
 )
 
@@ -134,7 +139,7 @@ const (
 
 // 0x80 range - dups.
 const (
-	DUP1 = 0x80 + iota
+	DUP1 ByteCode = 0x80 + iota
 	DUP2
 	DUP3
 	DUP4
@@ -154,7 +159,7 @@ const (
 
 // 0x90 range - swaps.
 const (
-	SWAP1 = 0x90 + iota
+	SWAP1 ByteCode = 0x90 + iota
 	SWAP2
 	SWAP3
 	SWAP4
@@ -181,9 +186,9 @@ const (
 	LOG4
 )
 
-// 0xd0 range - customized instructions.
+// 0xb0 range - customized instructions.
 const (
-	Nop ByteCode = 0xd0 + iota
+	Nop ByteCode = 0xb0 + iota
 	AndSwap1PopSwap2Swap1
 	Swap2Swap1PopJump
 	Swap1PopSwap2Swap1
@@ -203,6 +208,29 @@ const (
 	JumpIfZero // 0xe2
 )
 
+// 0xd0 range - eof operations.
+const (
+	DATALOAD  ByteCode = 0xd0
+	DATALOADN ByteCode = 0xd1
+	DATASIZE  ByteCode = 0xd2
+	DATACOPY  ByteCode = 0xd3
+)
+
+// 0xe0 range - eof operations.
+const (
+	RJUMP          ByteCode = 0xe0
+	RJUMPI         ByteCode = 0xe1
+	RJUMPV         ByteCode = 0xe2
+	CALLF          ByteCode = 0xe3
+	RETF           ByteCode = 0xe4
+	JUMPF          ByteCode = 0xe5
+	DUPN           ByteCode = 0xe6
+	SWAPN          ByteCode = 0xe7
+	EXCHANGE       ByteCode = 0xe8
+	EOFCREATE      ByteCode = 0xec
+	RETURNCONTRACT ByteCode = 0xee
+)
+
 // 0xf0 range - closures.
 const (
 	CREATE       ByteCode = 0xf0
@@ -212,14 +240,13 @@ const (
 	DELEGATECALL ByteCode = 0xf4
 	CREATE2      ByteCode = 0xf5
 
-	STATICCALL   ByteCode = 0xfa
-	REVERT       ByteCode = 0xfd
-	INVALID      ByteCode = 0xfe
-	SELFDESTRUCT ByteCode = 0xff
-)
+	RETURNDATALOAD  ByteCode = 0xf7
+	EXTCALL         ByteCode = 0xf8
+	EXTDELEGATECALL ByteCode = 0xf9
 
-// 0xb0 range.
-const (
-	TLOAD  ByteCode = 0xb3
-	TSTORE ByteCode = 0xb4
+	STATICCALL    ByteCode = 0xfa
+	EXTSTATICCALL ByteCode = 0xfb
+	REVERT        ByteCode = 0xfd
+	INVALID       ByteCode = 0xfe
+	SELFDESTRUCT  ByteCode = 0xff
 )
