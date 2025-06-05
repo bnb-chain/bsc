@@ -676,6 +676,7 @@ func (w *worker) resultLoop() {
 			log.Info("Successfully seal and write new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
 				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
 			w.mux.Post(core.NewMinedBlockEvent{Block: block})
+
 		case <-w.exitCh:
 			return
 		}
