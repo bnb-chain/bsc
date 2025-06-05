@@ -230,7 +230,15 @@ const (
 	Swap2Swap1
 	Swap2Pop
 	Dup2LT
-	JumpIfZero // 0xe2
+	JumpIfZero // 0xc1
+
+	IsZeroPush2
+	Dup2MStorePush1Add
+	Dup1Push4EqPush2
+	Push1CalldataloadPush1ShrDup1Push4GtPush2
+	Push1Push1Push1SHLSub
+	AndDup2AddSwap1Dup2LT
+	Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT // 0xc8
 )
 
 // 0xd0 range - eof operations.
@@ -455,6 +463,13 @@ var opCodeToString = [256]string{
 	Swap2Pop:              "SWAP2POP",
 	Dup2LT:                "DUP2LT",
 	JumpIfZero:            "JUMPIFZERO",
+	IsZeroPush2:           "ISZEROPUSH2",
+	Dup2MStorePush1Add:    "DUP2MSTOREPUSH1ADD",
+	Dup1Push4EqPush2:      "DUP1PUSH4EQPUSH2",
+	Push1CalldataloadPush1ShrDup1Push4GtPush2:      "PUSH1CALLDATALOADPUSH1SHRDUP1PUSH4GTPUSH2",
+	Push1Push1Push1SHLSub:                          "PUSH1PUSH1PUSH1SHLSUB",
+	AndDup2AddSwap1Dup2LT:                          "ANDDUP2ADDSWAP1DUP2LT",
+	Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT: "SWAP1PUSH1DUP1NOTSWAP2ADDANDDUP2ADDSWAP1DUP2LT",
 
 	// 0xd range - eof ops.
 	DATALOAD:  "DATALOAD",
@@ -688,6 +703,13 @@ var stringToOp = map[string]OpCode{
 	"REVERT":                REVERT,
 	"INVALID":               INVALID,
 	"SELFDESTRUCT":          SELFDESTRUCT,
+	"ISZEROPUSH2":           IsZeroPush2,
+	"DUP2MSTOREPUSH1ADD":    Dup2MStorePush1Add,
+	"DUP1PUSH4EQPUSH2":      Dup1Push4EqPush2,
+	"PUSH1CALLDATALOADPUSH1SHRDUP1PUSH4GTPUSH2":      Push1CalldataloadPush1ShrDup1Push4GtPush2,
+	"PUSH1PUSH1PUSH1SHLSUB":                          Push1Push1Push1SHLSub,
+	"ANDDUP2ADDSWAP1DUP2LT":                          AndDup2AddSwap1Dup2LT,
+	"SWAP1PUSH1DUP1NOTSWAP2ADDANDDUP2ADDSWAP1DUP2LT": Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT,
 }
 
 // StringToOp finds the opcode whose name is stored in `str`.

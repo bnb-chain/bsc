@@ -206,6 +206,14 @@ const (
 	Swap2Pop
 	Dup2LT
 	JumpIfZero // 0xe2
+
+	IsZeroPush2
+	Dup2MStorePush1Add
+	Dup1Push4EqPush2
+	Push1CalldataloadPush1ShrDup1Push4GtPush2
+	Push1Push1Push1SHLSub
+	AndDup2AddSwap1Dup2LT
+	Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT // 0xc8
 )
 
 // 0xd0 range - eof operations.
