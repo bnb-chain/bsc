@@ -32,7 +32,7 @@ var (
 	defaultRecommit              = 10 * time.Second
 	defaultMaxWaitProposalInSecs = uint64(45)
 	// default configurations for MEV
-	defaultMevEnabled                   = true
+	defaultMevEnabled                   = false
 	defaultGreedyMergeTx         bool   = true
 	defaultBuilderFeeCeil        string = "0"
 	defaultValidatorCommission   uint64 = 100

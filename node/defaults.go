@@ -52,6 +52,7 @@ var (
 	DefaultAuthOrigins = []string{"localhost"} // Default origins for the authenticated apis
 	DefaultAuthPrefix  = ""                    // Default prefix for the authenticated apis
 	DefaultAuthModules = []string{"eth", "engine"}
+	DefaultTimeFormat  = "01-02|15:04:05.000"
 )
 
 // DefaultConfig contains reasonable default settings.
@@ -78,11 +79,9 @@ var DefaultConfig = Config{
 	DBEngine: "", // Use whatever exists, will default to Pebble if non-existent and supported
 	Instance: 1,
 	LogConfig: &LogConfig{
-		TimeFormat: stringPtr("01-02|15:04:05.000"),
+		TimeFormat: &DefaultTimeFormat,
 	},
 }
-
-func stringPtr(s string) *string { return &s }
 
 // DefaultDataDir is the default data directory to use for the databases and other
 // persistence requirements.
