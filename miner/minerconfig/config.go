@@ -28,15 +28,20 @@ import (
 )
 
 var (
-	defaultDelayLeftOver         = 50 * time.Millisecond
+	defaultDelayLeftOver         = 35 * time.Millisecond
 	defaultRecommit              = 10 * time.Second
 	defaultMaxWaitProposalInSecs = uint64(45)
 	// default configurations for MEV
 	defaultGreedyMergeTx         bool   = true
 	defaultValidatorCommission   uint64 = 100
 	defaultBidSimulationLeftOver        = 50 * time.Millisecond
-	defaultNoInterruptLeftOver          = 250 * time.Millisecond
-	defaultMaxBidsPerBuilder     uint32 = 2
+	// Bid simulation speed on mainnet ranges from 40M to 70M per 100ms.
+	// Here, we assume a typical speed of 50M per 100ms for estimation.
+	// Recommended settings: use 300 for a 125M gas limit, and 350 for 150M.
+	// For a 125M gas limit: (300 - 35) / (100 * 50) = 132.5M > 125M
+	// For a 150M gas limit: (350 - 35) / (100 * 60) = 157.5M > 150M
+	defaultNoInterruptLeftOver        = 350 * time.Millisecond
+	defaultMaxBidsPerBuilder   uint32 = 2
 )
 
 // Config is the configuration parameters of mining.
