@@ -258,6 +258,8 @@ const builderMap = new Map([
     ["0x5EC60f73f938e36400ec3CC3Ff4d7a7703F7c005", "nodereal ap y"],
     // ["0x4827b423D03a349b7519Dda537e9A28d31ecBB48", "puissant y"],
     ["0x0eAbBdE133fbF3c5eB2BEE6F7c8210deEAA0f7db", "blockrazor"],
+    ["0x7b3ee856c98b1bb3689ef7f90477df2927fcbdb6",  "trustnet"],
+    ["0xA8caEc0D68a90Ac971EA1aDEFA1747447e1f9871",  "blockroute"],
 ]);
 
 // 1.cmd: "GetMaxTxCountInBlockRange", usage:
@@ -759,6 +761,7 @@ async function getMevStatus() {
         inblock: 0,
         nodereal: 0,
         xzbuilder: 0,
+        trustnet: 0,
     };
 
     // Get the latest block number
