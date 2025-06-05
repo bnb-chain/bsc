@@ -1262,8 +1262,8 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 	tbl[Push1CalldataloadPush1ShrDup1Push4GtPush2] = &operation{
 		execute:     opPush1CalldataloadPush1ShrDup1Push4GtPush2,
 		constantGas: 8 * GasFastestStep,
-		minStack:    minStack(0, 3),
-		maxStack:    maxStack(0, 3),
+		minStack:    minStack(0, 5),
+		maxStack:    maxStack(0, 5),
 	}
 
 	tbl[Push1Push1Push1SHLSub] = &operation{
