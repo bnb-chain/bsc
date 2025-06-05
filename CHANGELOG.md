@@ -1,5 +1,5 @@
 # Changelog
-## v1.5.15
+## v1.5.16
 ### FEATURE
 [\#3130](https://github.com/bnb-chain/bsc/pull/3130) config: update BSC Mainnet hardfork time: Maxwell
 
@@ -16,8 +16,10 @@
 [\#3123](https://github.com/bnb-chain/bsc/pull/3123) refactor: use maps.copy for cleaner map handling
 [\#3126](https://github.com/bnb-chain/bsc/pull/3126) jsutils: update getKeyParameters
 
+
+## v1.5.15
 ## v1.5.14
-deprecated, v1.5.14 was replaced by v1.5.15
+deprecated, v1.5.14 & v1.5.15 are replaced by v1.5.16
 
 ## v1.5.13
 ### FEATURE
