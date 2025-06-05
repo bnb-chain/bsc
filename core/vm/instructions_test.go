@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/stretchr/testify/require"
 	"math/big"
 	"os"
 	"strings"
@@ -33,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/require"
 )
 
 type TwoOperandTestcase struct {
@@ -1242,6 +1242,7 @@ func TestOpPush1Push1Push1SHLSub(t *testing.T) {
 	require.NoError(t, err)
 	pc2++
 	_, err = opSHL(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
 	pc2++
 	_, err = opSub(&pc2, interpreter2, scope2)
 	require.NoError(t, err)
@@ -1295,8 +1296,10 @@ func TestOpAndDup2AddSwap1Dup2LT(t *testing.T) {
 	require.NoError(t, err)
 	pc2++
 	_, err = opSwap1(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
 	pc2++
 	_, err = makeDup(2)(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
 	pc2++
 	_, err = opLt(&pc2, interpreter2, scope2)
 	require.NoError(t, err)
@@ -1350,20 +1353,28 @@ func TestOpSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(t *testing.T) {
 	require.NoError(t, err)
 	pc2++
 	_, err = opNot(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
 	pc2++
 	_, err = opSwap2(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
 	pc2++
 	_, err = opAdd(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
 	pc2++
 	_, err = opAnd(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
 	pc2++
 	_, err = makeDup(2)(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
 	pc2++
 	_, err = opAdd(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
 	pc2++
 	_, err = opSwap1(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
 	pc2++
 	_, err = makeDup(2)(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
 	pc2++
 	_, err = opLt(&pc2, interpreter2, scope2)
 	require.NoError(t, err)
