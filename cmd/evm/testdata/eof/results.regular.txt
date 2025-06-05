@@ -220,13 +220,13 @@ ERR: undefined instruction: op SWAP2SWAP1, pos 0
 ERR: undefined instruction: op SWAP2POP, pos 0
 ERR: undefined instruction: op DUP2LT, pos 0
 ERR: undefined instruction: op JUMPIFZERO, pos 0
-ERR: undefined instruction: op opcode 0xc2 not defined, pos 0
-ERR: undefined instruction: op opcode 0xc3 not defined, pos 0
-ERR: undefined instruction: op opcode 0xc4 not defined, pos 0
-ERR: undefined instruction: op opcode 0xc5 not defined, pos 0
-ERR: undefined instruction: op opcode 0xc6 not defined, pos 0
-ERR: undefined instruction: op opcode 0xc7 not defined, pos 0
-ERR: undefined instruction: op opcode 0xc8 not defined, pos 0
+ERR: undefined instruction: op ISZEROPUSH2, pos 0
+ERR: undefined instruction: op DUP2MSTOREPUSH1ADD, pos 0
+ERR: undefined instruction: op DUP1PUSH4EQPUSH2, pos 0
+ERR: undefined instruction: op PUSH1CALLDATALOADPUSH1SHRDUP1PUSH4GTPUSH2, pos 0
+ERR: undefined instruction: op PUSH1PUSH1PUSH1SHLSUB, pos 0
+ERR: undefined instruction: op ANDDUP2ADDSWAP1DUP2LT, pos 0
+ERR: undefined instruction: op Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT, pos 0
 ERR: undefined instruction: op opcode 0xc9 not defined, pos 0
 ERR: undefined instruction: op opcode 0xca not defined, pos 0
 ERR: undefined instruction: op opcode 0xcb not defined, pos 0
