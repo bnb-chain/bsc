@@ -112,8 +112,6 @@ type StateDB struct {
 	// perspective. This map is populated at the transaction boundaries.
 	mutations map[common.Address]*mutation
 
-	storagePool          *StoragePool // sharedPool to store L1 originStorage of stateObjects
-	writeOnSharedStorage bool         // Write to the shared origin storage of a stateObject while reading from the underlying storage layer.
 	// DB error.
 	// State objects are used by the consensus core and VM which are
 	// unable to deal with database-level errors. Any error that occurs
@@ -176,7 +174,6 @@ func NewWithSharedPool(root common.Hash, db Database) (*StateDB, error) {
 	if err != nil {
 		return nil, err
 	}
-	statedb.storagePool = NewStoragePool()
 	return statedb, nil
 }
 
@@ -210,10 +207,6 @@ func New(root common.Hash, db Database) (*StateDB, error) {
 		sdb.accessEvents = NewAccessEvents(db.PointCache())
 	}
 	return sdb, nil
-}
-
-func (s *StateDB) EnableWriteOnSharedStorage() {
-	s.writeOnSharedStorage = true
 }
 
 // In mining mode, we will try multi-fillTransactions to get the most profitable one.
@@ -793,14 +786,12 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 		stateObjectsDestruct: make(map[common.Address]*stateObject, len(s.stateObjectsDestruct)),
 		mutations:            make(map[common.Address]*mutation, len(s.mutations)),
 		dbErr:                s.dbErr,
-		storagePool:          s.storagePool,
-		// writeOnSharedStorage: s.writeOnSharedStorage,
-		refund:    s.refund,
-		thash:     s.thash,
-		txIndex:   s.txIndex,
-		logs:      make(map[common.Hash][]*types.Log, len(s.logs)),
-		logSize:   s.logSize,
-		preimages: maps.Clone(s.preimages),
+		refund:               s.refund,
+		thash:                s.thash,
+		txIndex:              s.txIndex,
+		logs:                 make(map[common.Hash][]*types.Log, len(s.logs)),
+		logSize:              s.logSize,
+		preimages:            maps.Clone(s.preimages),
 
 		transientStorage: s.transientStorage.Copy(),
 		journal:          s.journal.copy(),
@@ -1618,10 +1609,6 @@ func (s *StateDB) SlotInAccessList(addr common.Address, slot common.Hash) (addre
 		return false, false
 	}
 	return s.accessList.Contains(addr, slot)
-}
-
-func (s *StateDB) GetStorage(address common.Address) *sync.Map {
-	return s.storagePool.getStorage(address)
 }
 
 func (s *StateDB) GetSnap() snapshot.Snapshot {

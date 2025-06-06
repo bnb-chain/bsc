@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/metrics"
@@ -58,10 +57,9 @@ type stateObject struct {
 	trie Trie   // storage trie, which becomes non-nil on first access
 	code []byte // contract bytecode, which gets set when code is loaded
 
-	sharedOriginStorage *sync.Map // Point to the entry of the stateObject in sharedPool
-	originStorage       Storage   // Storage entries that have been accessed within the current block
-	dirtyStorage        Storage   // Storage entries that have been modified within the current transaction
-	pendingStorage      Storage   // Storage entries that have been modified within the current block
+	originStorage  Storage // Storage entries that have been accessed within the current block
+	dirtyStorage   Storage // Storage entries that have been modified within the current transaction
+	pendingStorage Storage // Storage entries that have been modified within the current block
 
 	// uncommittedStorage tracks a set of storage entries that have been modified
 	// but not yet committed since the "last commit operation", along with their
@@ -100,23 +98,16 @@ func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *s
 	if acct == nil {
 		acct = types.NewEmptyStateAccount()
 	}
-	var storageMap *sync.Map
-	// Check whether the storage exist in pool, new originStorage if not exist
-	if db != nil && db.storagePool != nil {
-		storageMap = db.GetStorage(address)
-	}
-
 	return &stateObject{
-		db:                  db,
-		address:             address,
-		addrHash:            crypto.Keccak256Hash(address[:]),
-		origin:              origin,
-		data:                *acct,
-		sharedOriginStorage: storageMap,
-		originStorage:       make(Storage),
-		pendingStorage:      make(Storage),
-		dirtyStorage:        make(Storage),
-		uncommittedStorage:  make(Storage),
+		db:                 db,
+		address:            address,
+		addrHash:           crypto.Keccak256Hash(address[:]),
+		origin:             origin,
+		data:               *acct,
+		originStorage:      make(Storage),
+		pendingStorage:     make(Storage),
+		dirtyStorage:       make(Storage),
+		uncommittedStorage: make(Storage),
 	}
 }
 
@@ -161,30 +152,6 @@ func (s *stateObject) getPrefetchedTrie() Trie {
 	return s.db.prefetcher.trie(s.addrHash, s.data.Root)
 }
 
-func (s *stateObject) getOriginStorage(key common.Hash) (common.Hash, bool) {
-	if value, cached := s.originStorage[key]; cached {
-		return value, true
-	}
-	// if L1 cache miss, try to get it from shared pool
-	if s.sharedOriginStorage != nil {
-		val, ok := s.sharedOriginStorage.Load(key)
-		if !ok {
-			return common.Hash{}, false
-		}
-		storage := val.(common.Hash)
-		s.originStorage[key] = storage
-		return storage, true
-	}
-	return common.Hash{}, false
-}
-
-func (s *stateObject) setOriginStorage(key common.Hash, value common.Hash) {
-	if s.db.writeOnSharedStorage && s.sharedOriginStorage != nil {
-		s.sharedOriginStorage.Store(key, value)
-	}
-	s.originStorage[key] = value
-}
-
 // GetState retrieves a value from the committed account storage trie.
 // GetState retrieves a value associated with the given storage key.
 func (s *stateObject) GetState(key common.Hash) common.Hash {
@@ -211,7 +178,7 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 		return value
 	}
 
-	if value, cached := s.getOriginStorage(key); cached {
+	if value, cached := s.originStorage[key]; cached {
 		return value
 	}
 	// If the object was destructed in *this* block (and potentially resurrected),
@@ -245,7 +212,7 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 			log.Error("Failed to prefetch storage slot", "addr", s.address, "key", key, "err", err)
 		}
 	}
-	s.setOriginStorage(key, value)
+	s.originStorage[key] = value
 	return value
 }
 
