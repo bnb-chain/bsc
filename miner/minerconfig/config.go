@@ -32,7 +32,9 @@ var (
 	defaultRecommit              = 10 * time.Second
 	defaultMaxWaitProposalInSecs = uint64(45)
 	// default configurations for MEV
+	defaultMevEnabled                   = false
 	defaultGreedyMergeTx         bool   = true
+	defaultBuilderFeeCeil        string = "0"
 	defaultValidatorCommission   uint64 = 100
 	defaultBidSimulationLeftOver        = 50 * time.Millisecond
 	defaultNoInterruptLeftOver          = 250 * time.Millisecond
@@ -80,9 +82,9 @@ type BuilderConfig struct {
 }
 
 type MevConfig struct {
-	Enabled               bool            // Whether to enable Mev or not
+	Enabled               *bool           `toml:",omitempty"` // Whether to enable Mev or not
 	GreedyMergeTx         *bool           `toml:",omitempty"` // Whether to merge local transactions to the bid
-	BuilderFeeCeil        string          // The maximum builder fee of a bid
+	BuilderFeeCeil        *string         `toml:",omitempty"` // The maximum builder fee of a bid
 	SentryURL             string          // The url of Mev sentry
 	Builders              []BuilderConfig // The list of builders
 	ValidatorCommission   *uint64         `toml:",omitempty"` // 100 means the validator claims 1% from block reward
@@ -92,8 +94,9 @@ type MevConfig struct {
 }
 
 var DefaultMevConfig = MevConfig{
-	Enabled:               false,
+	Enabled:               &defaultMevEnabled,
 	GreedyMergeTx:         &defaultGreedyMergeTx,
+	BuilderFeeCeil:        &defaultBuilderFeeCeil,
 	SentryURL:             "",
 	Builders:              nil,
 	ValidatorCommission:   &defaultValidatorCommission,
@@ -123,6 +126,14 @@ func ApplyDefaultMinerConfig(cfg *Config) {
 	}
 
 	// check [Eth.Miner.Mev]
+	if cfg.Mev.Enabled == nil {
+		cfg.Mev.Enabled = &defaultMevEnabled
+		log.Info("ApplyDefaultMinerConfig", "Mev.Enabled", *cfg.Mev.Enabled)
+	}
+	if cfg.Mev.BuilderFeeCeil == nil {
+		cfg.Mev.BuilderFeeCeil = &defaultBuilderFeeCeil
+		log.Info("ApplyDefaultMinerConfig", "Mev.BuilderFeeCeil", *cfg.Mev.BuilderFeeCeil)
+	}
 	if cfg.Mev.GreedyMergeTx == nil {
 		cfg.Mev.GreedyMergeTx = &defaultGreedyMergeTx
 		log.Info("ApplyDefaultMinerConfig", "Mev.GreedyMergeTx", *cfg.Mev.GreedyMergeTx)

@@ -90,9 +90,9 @@ func (miner *Miner) BestPackedBlockReward(parentHash common.Hash) *big.Int {
 }
 
 func (miner *Miner) MevParams() *types.MevParams {
-	builderFeeCeil, ok := big.NewInt(0).SetString(miner.worker.config.Mev.BuilderFeeCeil, 10)
+	builderFeeCeil, ok := big.NewInt(0).SetString(*miner.worker.config.Mev.BuilderFeeCeil, 10)
 	if !ok {
-		log.Error("failed to parse builder fee ceil", "BuilderFeeCeil", miner.worker.config.Mev.BuilderFeeCeil)
+		log.Error("failed to parse builder fee ceil", "BuilderFeeCeil", *miner.worker.config.Mev.BuilderFeeCeil)
 		return nil
 	}
 

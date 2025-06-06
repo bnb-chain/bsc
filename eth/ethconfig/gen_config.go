@@ -39,6 +39,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		StateScheme             string `toml:",omitempty"`
 		PathSyncFlush           bool   `toml:",omitempty"`
 		JournalFileEnabled      bool
+		DisableTxIndexer        bool                   `toml:",omitempty"`
 		RequiredBlocks          map[uint64]common.Hash `toml:"-"`
 		SkipBcVersionCheck      bool                   `toml:"-"`
 		DatabaseHandles         int                    `toml:"-"`
@@ -96,6 +97,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.StateScheme = c.StateScheme
 	enc.PathSyncFlush = c.PathSyncFlush
 	enc.JournalFileEnabled = c.JournalFileEnabled
+	enc.DisableTxIndexer = c.DisableTxIndexer
 	enc.RequiredBlocks = c.RequiredBlocks
 	enc.SkipBcVersionCheck = c.SkipBcVersionCheck
 	enc.DatabaseHandles = c.DatabaseHandles
@@ -157,6 +159,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		StateScheme             *string `toml:",omitempty"`
 		PathSyncFlush           *bool   `toml:",omitempty"`
 		JournalFileEnabled      *bool
+		DisableTxIndexer        *bool                  `toml:",omitempty"`
 		RequiredBlocks          map[uint64]common.Hash `toml:"-"`
 		SkipBcVersionCheck      *bool                  `toml:"-"`
 		DatabaseHandles         *int                   `toml:"-"`
@@ -260,6 +263,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.JournalFileEnabled != nil {
 		c.JournalFileEnabled = *dec.JournalFileEnabled
+	}
+	if dec.DisableTxIndexer != nil {
+		c.DisableTxIndexer = *dec.DisableTxIndexer
 	}
 	if dec.RequiredBlocks != nil {
 		c.RequiredBlocks = dec.RequiredBlocks

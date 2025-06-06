@@ -1239,50 +1239,50 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 	tbl[IsZeroPush2] = &operation{
 		execute:     opIsZeroPush2,
 		constantGas: 2*GasFastestStep + GasSlowStep,
-		minStack:    minStack(1, 0),
-		maxStack:    maxStack(1, 0),
+		minStack:    minStack(2, 0),
+		maxStack:    maxStack(2, 0),
 	}
 
 	tbl[Dup2MStorePush1Add] = &operation{
 		execute:     opDup2MStorePush1Add,
 		constantGas: 2*GasFastestStep + GasSlowStep,
-		minStack:    minStack(1, 0),
-		maxStack:    maxStack(1, 0),
+		minStack:    minStack(2, 0),
+		maxStack:    maxStack(2, 0),
 	}
 
 	tbl[Dup1Push4EqPush2] = &operation{
 		execute:     opDup1Push4EqPush2,
 		constantGas: 2*GasFastestStep + GasSlowStep,
-		minStack:    minStack(1, 0),
-		maxStack:    maxStack(1, 0),
+		minStack:    minStack(3, 0),
+		maxStack:    maxStack(3, 0),
 	}
 
 	tbl[Push1CalldataloadPush1ShrDup1Push4GtPush2] = &operation{
 		execute:     opPush1CalldataloadPush1ShrDup1Push4GtPush2,
 		constantGas: 2*GasFastestStep + GasSlowStep,
-		minStack:    minStack(1, 0),
-		maxStack:    maxStack(1, 0),
+		minStack:    minStack(3, 0),
+		maxStack:    maxStack(3, 0),
 	}
 
 	tbl[Push1Push1Push1SHLSub] = &operation{
 		execute:     opPush1Push1Push1SHLSub,
 		constantGas: 2*GasFastestStep + GasSlowStep,
 		minStack:    minStack(1, 0),
-		maxStack:    maxStack(1, 0),
+		maxStack:    maxStack(3, 0),
 	}
 
 	tbl[AndDup2AddSwap1Dup2LT] = &operation{
 		execute:     opAndDup2AddSwap1Dup2LT,
 		constantGas: 2*GasFastestStep + GasSlowStep,
-		minStack:    minStack(1, 0),
-		maxStack:    maxStack(1, 0),
+		minStack:    minStack(3, 0),
+		maxStack:    maxStack(3, 0),
 	}
 
 	tbl[Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT] = &operation{
 		execute:     opSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT,
 		constantGas: 2*GasFastestStep + GasSlowStep,
-		minStack:    minStack(1, 0),
-		maxStack:    maxStack(1, 0),
+		minStack:    minStack(4, 0),
+		maxStack:    maxStack(4, 0),
 	}
 
 	return tbl

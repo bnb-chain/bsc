@@ -156,7 +156,7 @@ func newBidSimulator(
 
 	b.chainHeadSub = b.chain.SubscribeChainHeadEvent(b.chainHeadCh)
 
-	if config.Enabled {
+	if config.Enabled != nil && *config.Enabled {
 		b.bidReceiving.Store(true)
 		b.dialSentryAndBuilders()
 
@@ -648,7 +648,6 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 	// ensure simulation exited then start next simulation
 	b.SetSimulatingBid(parentHash, bidRuntime)
-	bestBidOnStart := b.GetBestBid(parentHash)
 
 	defer func(simStart time.Time) {
 		logCtx := []any{
@@ -674,23 +673,21 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		b.RemoveSimulatingBid(parentHash)
 		close(bidRuntime.finished)
 
-		if success {
-			bidRuntime.duration = time.Since(simStart)
-			bidSimTimer.UpdateSince(simStart)
+		if !success {
+			b.DelBestBidToRun(parentHash, bidRuntime.bid)
+		}
 
-			// only recommit self bid when newBidCh is empty
-			if len(b.newBidCh) > 0 {
-				return
-			}
-
+		// only recommit last best bid when newBidCh is empty
+		if len(b.newBidCh) > 0 {
+			return
+		}
+		toRecommit := b.GetBestBid(parentHash)
+		if toRecommit != nil {
 			select {
-			case b.newBidCh <- newBidPackage{bid: bidRuntime.bid}:
-				log.Debug("BidSimulator: recommit", "builder", bidRuntime.bid.Builder,
-					"bidHash", bidRuntime.bid.Hash().Hex(), "simElapsed", bidRuntime.duration)
+			case b.newBidCh <- newBidPackage{bid: toRecommit.bid}:
+				log.Debug("BidSimulator: recommit", "builder", toRecommit.bid.Builder, "bidHash", toRecommit.bid.Hash().Hex())
 			default:
 			}
-		} else {
-			b.DelBestBidToRun(parentHash, bidRuntime.bid)
 		}
 	}(startTS)
 
@@ -845,19 +842,10 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	bestBid := b.GetBestBid(parentHash)
 	if bestBid == nil {
 		winResult := "true[first]"
-		if bestBidOnStart != nil {
-			// new block was imported, so the bestBidOnStart was cleared, the bid will be stale and useless.
-			winResult = "false[stale]"
-		}
-		log.Info("[BID RESULT]", "win", winResult, "builder", bidRuntime.bid.Builder, "hash", bidRuntime.bid.Hash().TerminalString())
-		b.SetBestBid(bidRuntime.bid.ParentHash, bidRuntime)
-		success = true
-		return
-	}
-
-	if bidRuntime.bid.Hash() != bestBid.bid.Hash() {
+		log.Info("[BID RESULT]", "win", winResult, "builder", bidRuntime.bid.Builder, "hash", bidRuntime.bid.Hash().TerminalString(), "simElapsed", time.Since(startTS))
+	} else if bidRuntime.bid.Hash() != bestBid.bid.Hash() { // skip log flushing when only one bid is present
 		log.Info("[BID RESULT]",
-			"win", bidRuntime.packedBlockReward.Cmp(bestBid.packedBlockReward) >= 0,
+			"win", bidRuntime.packedBlockReward.Cmp(bestBid.packedBlockReward) > 0,
 
 			"bidHash", bidRuntime.bid.Hash().TerminalString(),
 			"bestHash", bestBid.bid.Hash().TerminalString(),
@@ -873,21 +861,11 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 
 	// this is the simplest strategy: best for all the delegators.
-	if bidRuntime.packedBlockReward.Cmp(bestBid.packedBlockReward) >= 0 {
+	if bestBid == nil || bidRuntime.packedBlockReward.Cmp(bestBid.packedBlockReward) > 0 {
 		b.SetBestBid(bidRuntime.bid.ParentHash, bidRuntime)
+		bidRuntime.duration = time.Since(startTS)
+		bidSimTimer.UpdateSince(startTS)
 		success = true
-		return
-	}
-
-	// only recommit last best bid when newBidCh is empty
-	if len(b.newBidCh) > 0 {
-		return
-	}
-
-	select {
-	case b.newBidCh <- newBidPackage{bid: bestBid.bid}:
-		log.Debug("BidSimulator: recommit last bid", "builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
-	default:
 	}
 }
 
