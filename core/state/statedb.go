@@ -278,35 +278,6 @@ func (s *StateDB) StopPrefetcher() {
 	s.prefetcherLock.Unlock()
 }
 
-func (s *StateDB) TriePrefetchInAdvance(block *types.Block, signer types.Signer) {
-	// s is a temporary throw away StateDB, s.prefetcher won't be resetted to nil
-	// so no need to add lock for s.prefetcher
-	prefetcher := s.prefetcher
-	if prefetcher == nil {
-		return
-	}
-	accounts := make(map[common.Address]struct{}, block.Transactions().Len()<<1)
-	for _, tx := range block.Transactions() {
-		from, err := types.Sender(signer, tx)
-		if err != nil {
-			// invalid block, skip prefetch
-			return
-		}
-		accounts[from] = struct{}{}
-		if tx.To() != nil {
-			accounts[*tx.To()] = struct{}{}
-		}
-	}
-	addressesToPrefetch := make([]common.Address, 0, len(accounts))
-	for addr := range accounts {
-		addressesToPrefetch = append(addressesToPrefetch, addr) // Copy needed for closure
-	}
-
-	if len(addressesToPrefetch) > 0 {
-		prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, addressesToPrefetch, nil, false)
-	}
-}
-
 // Mark that the block is processed by diff layer
 func (s *StateDB) SetExpectedStateRoot(root common.Hash) {
 	s.expectedRoot = root
@@ -492,6 +463,12 @@ func (s *StateDB) GetCommittedState(addr common.Address, hash common.Hash) commo
 		return stateObject.GetCommittedState(hash)
 	}
 	return common.Hash{}
+}
+
+// Reader retrieves the low level database reader supporting the
+// lower level operations.
+func (s *StateDB) Reader() Reader {
+	return s.reader
 }
 
 // Database retrieves the low level database supporting the lower level trie ops.
