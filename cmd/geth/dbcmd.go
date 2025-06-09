@@ -94,6 +94,7 @@ Remove blockchain and state databases`,
 			dbTrieGetCmd,
 			dbTrieDeleteCmd,
 			dbInspectHistoryCmd,
+			incrInspectCmd,
 		},
 	}
 	dbInspectCmd = &cli.Command{
@@ -102,6 +103,7 @@ Remove blockchain and state databases`,
 		ArgsUsage: "<prefix> <start>",
 		Flags: slices.Concat([]cli.Flag{
 			utils.SyncModeFlag,
+			utils.IncrementalSnapshotFlag,
 		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Usage:       "Inspect the storage size for each type of data in the database",
 		Description: `This commands iterates the entire database. If the optional 'prefix' and 'start' arguments are provided, then the iteration is limited to the given subset of data.`,
@@ -310,6 +312,15 @@ of ancientStore, will also displays the reserved number of blocks in ancientStor
 			},
 		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Description: "This command queries the history of the account or storage slot within the specified block range",
+	}
+	incrInspectCmd = &cli.Command{
+		Action: inspectIncr,
+		Name:   "inspect-incremental",
+		Flags: []cli.Flag{
+			utils.IncrementalSnapshotPathFlag,
+		},
+		Usage:       "Inspect the incremental information",
+		Description: `This commands will read and display incremental store information`,
 	}
 )
 
@@ -533,7 +544,9 @@ func inspect(ctx *cli.Context) error {
 	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
 
-	return rawdb.InspectDatabase(db, prefix, start)
+	isIncr := ctx.IsSet(utils.IncrementalSnapshotFlag.Name)
+
+	return rawdb.InspectDatabase(db, isIncr, prefix, start)
 }
 
 func ancientInspect(ctx *cli.Context) error {
@@ -1518,4 +1531,12 @@ func inspectHistory(ctx *cli.Context) error {
 		return inspectAccount(triedb, start, end, address, ctx.Bool("raw"))
 	}
 	return inspectStorage(triedb, start, end, address, slot, ctx.Bool("raw"))
+}
+
+func inspectIncr(ctx *cli.Context) error {
+	baseDir := ctx.String(utils.IncrementalSnapshotPathFlag.Name)
+	if err := rawdb.InspectIncrStore(baseDir); err != nil {
+		return err
+	}
+	return nil
 }

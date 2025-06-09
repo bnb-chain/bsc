@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
@@ -35,6 +36,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
+	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -188,6 +191,15 @@ block is used.
 The export-preimages command exports hash preimages to a flat file, in exactly
 the expected order for the overlay tree migration.
 `,
+			},
+			{
+				Action:    mergeIncrSnapshot,
+				Name:      "merge-incr-snapshot",
+				Usage:     "Merge the incremental snapshot into base snapshot",
+				ArgsUsage: "",
+				Flags: slices.Concat([]cli.Flag{utils.IncrementalSnapshotPathFlag},
+					utils.DatabaseFlags),
+				Description: `This command aims to help merge multiple incremental snapshot into base snapshot`,
 			},
 		},
 	}
@@ -764,5 +776,209 @@ func checkAccount(ctx *cli.Context) error {
 		return err
 	}
 	log.Info("Checked the snapshot journalled storage", "time", common.PrettyDuration(time.Since(start)))
+	return nil
+}
+
+// mergeIncrSnapshot
+func mergeIncrSnapshot(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	chainDB := utils.MakeChainDatabase(ctx, stack, false, false)
+	defer chainDB.Close()
+
+	trieDB := utils.MakeTrieDatabase(ctx, stack, chainDB, false, false, false)
+	defer trieDB.Close()
+
+	if !ctx.IsSet(utils.IncrementalSnapshotPathFlag.Name) {
+		return errors.New("incremental snapshot path is not set")
+	}
+
+	path := ctx.String(utils.IncrementalSnapshotPathFlag.Name)
+	dirs, err := rawdb.GetAllIncrDirs(path)
+	if err != nil {
+		log.Error("Failed to get all incremental directories", "err", err)
+		return err
+	}
+	log.Info("Start merging incremental snapshot", "path", path, "incremental snapshot number", len(dirs))
+
+	for _, dir := range dirs {
+		var wg sync.WaitGroup
+		errChan := make(chan error, 3)
+
+		// merge incremental state data
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			log.Info("Starting merge incremental state data", "path", dir.Path)
+			if err := trieDB.MergeIncrState(dir.Path); err != nil {
+				log.Error("Failed to merge incremental state data", "path", dir.Path, "err", err)
+				errChan <- fmt.Errorf("failed to merge incremental state data: %v", err)
+			} else {
+				log.Info("Successfully merged incremental state data", "path", dir.Path)
+			}
+		}()
+
+		// merge incremental block data
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			log.Info("Starting merge incremental block data", "path", dir.Path)
+			if err := mergeIncrBlock(dir.Path, chainDB); err != nil {
+				log.Error("Failed to merge incremental block data", "path", dir.Path, "err", err)
+				errChan <- fmt.Errorf("failed to merge incremental block data: %v", err)
+			} else {
+				log.Info("Successfully merged incremental block data", "path", dir.Path)
+			}
+		}()
+
+		// merge contract codes
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			log.Info("Starting merge contract codes", "path", dir.Path)
+			if err := mergeContractCodes(dir.Path, chainDB); err != nil {
+				log.Error("Failed to merge incremental contract codes", "path", dir.Path, "err", err)
+				errChan <- fmt.Errorf("failed to merge incremental contract codes: %v", err)
+			} else {
+				log.Info("Successfully merged contract codes", "path", dir.Path)
+			}
+		}()
+
+		go func() {
+			wg.Wait()
+			close(errChan)
+		}()
+
+		var mergeErrors []error
+		for err = range errChan {
+			mergeErrors = append(mergeErrors, err)
+		}
+		if len(mergeErrors) > 0 {
+			errs := errors.Join(mergeErrors...)
+			log.Error("Parallel merge operations failed", "total_errors", len(mergeErrors), "path", dir.Path)
+			return errs
+		}
+
+		log.Info("All merge operations completed successfully", "path", dir.Path)
+	}
+
+	return nil
+}
+
+func mergeIncrBlock(incrDir string, chainDB ethdb.Database) error {
+	incrChainFreezer, err := rawdb.OpenIncrChainFreezer(incrDir, true, 0)
+	if err != nil {
+		log.Error("Failed to open incremental chain freezer", "err", err)
+		return err
+	}
+	defer incrChainFreezer.Close()
+
+	incrAncients, _ := incrChainFreezer.Ancients()
+	tail, _ := incrChainFreezer.Tail()
+	count, _ := incrChainFreezer.ItemAmountInAncient()
+	log.Info("Incr chain info", "ancients", incrAncients, "tail", tail, "count", count)
+
+	// Get chain config from database
+	chainConfig, err := rawdb.GetChainConfig(chainDB)
+	if err != nil {
+		log.Error("Failed to get chain config", "err", err)
+		return err
+	}
+
+	// Force migration of existing blocks from pebble to chainFreezer
+	// This ensures all non-genesis blocks are in ancient store before adding incremental data
+	if err = chainDB.ForceFreeze(chainDB.BlockStore()); err != nil {
+		log.Error("Failed to force freeze to ancients", "err", err)
+		return err
+	}
+
+	// check block overlap and write incremental data directly into chainFreezer
+	baseHead, _ := chainDB.Ancients()
+	if tail <= baseHead && baseHead <= incrAncients {
+		log.Info("There are block data overlap", "overlap_count", baseHead-tail, "incr_tail", tail, "base_head", baseHead)
+		for number := baseHead; number < incrAncients-1; number++ {
+			hashBytes, header, body, receipts, td, err := rawdb.ReadIncrBlock(incrChainFreezer, number)
+			if err != nil {
+				log.Error("Failed to read incremental block", "block", number, "err", err)
+				return err
+			}
+
+			var h types.Header
+			if err = rlp.DecodeBytes(header, &h); err != nil {
+				log.Error("Failed to decode header", "block", number, "err", err)
+				return err
+			}
+			// Check if Cancun hardfork is active for this block
+			isCancunActive := chainConfig.IsCancun(h.Number, h.Time)
+			var sidecars rlp.RawValue
+			if isCancunActive {
+				sidecars, err = rawdb.ReadIncrChainBlobSideCars(incrChainFreezer, number)
+				if err != nil {
+					log.Error("Failed to read increment chain blob side car", "block", number, "err", err)
+					return err
+				}
+			}
+
+			if err = rawdb.WriteBlockData(chainDB, number, hashBytes, header, body, receipts, td, sidecars, isCancunActive); err != nil {
+				log.Error("Failed to write block data", "block", number, "err", err)
+				return err
+			}
+			rawdb.WriteHeaderNumber(chainDB.BlockStore(), common.BytesToHash(hashBytes), number)
+		}
+	} else {
+		log.Crit("There are block data gap", "tail", tail, "baseHead", baseHead)
+	}
+
+	if err = rawdb.FinalizeIncrementalMerge(chainDB, incrChainFreezer, chainConfig, incrAncients-1); err != nil {
+		log.Error("Failed to finalize incremental data merge", "err", err)
+		return err
+	}
+
+	log.Info("Finished merging incremental block data", "merged_number", incrAncients-baseHead)
+	return nil
+}
+
+func mergeContractCodes(incrDir string, chainDB ethdb.Database) error {
+	newDB, err := pebble.New(incrDir, 10, 10, "incremental", true)
+	if err != nil {
+		log.Error("Failed to open pebble to read incremental data", "err", err)
+		return err
+	}
+	defer newDB.Close()
+
+	it := newDB.NewIterator(rawdb.CodePrefix, nil)
+	defer it.Release()
+
+	codeCount := 0
+	for it.Next() {
+		key := it.Key()
+		value := it.Value()
+
+		isCode, hashBytes := rawdb.IsCodeKey(key)
+		if !isCode {
+			log.Warn("Invalid code key found", "key", fmt.Sprintf("%x", key))
+			continue
+		}
+
+		codeHash := common.BytesToHash(hashBytes)
+		if rawdb.HasCodeWithPrefix(chainDB.BlockStore(), codeHash) {
+			log.Debug("Code already exists, skipping", "hash", codeHash.Hex())
+			continue
+		}
+		rawdb.WriteCode(chainDB.BlockStore(), codeHash, value)
+
+		codeCount++
+		if codeCount%1000 == 0 {
+			log.Info("Inserting contract codes", "processed", codeCount)
+		}
+	}
+
+	if err = it.Error(); err != nil {
+		log.Error("Iterator error while reading contract codes", "err", err)
+		return err
+	}
+
+	log.Info("Complete merging contract codes", "total", codeCount)
 	return nil
 }

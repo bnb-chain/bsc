@@ -1235,6 +1235,38 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Value:    fakebeacon.DefaultPort,
 		Category: flags.APICategory,
 	}
+
+	// incremental snapshot
+	MaximumBlockHeightFlag = &cli.Uint64Flag{
+		Name:     "maximum-block-height",
+		Usage:    "Specify maximum block height that can sync",
+		Value:    0,
+		Category: flags.StateCategory,
+	}
+	IncrementalSnapshotFlag = &cli.BoolFlag{
+		Name:     "incremental-snapshot",
+		Usage:    "Enable incremental snapshot generation",
+		Value:    false,
+		Category: flags.StateCategory,
+	}
+	IncrementalSnapshotPathFlag = &cli.StringFlag{
+		Name:     "data-dir.incr",
+		Usage:    "Data directory for incremental snapshot data",
+		Value:    "",
+		Category: flags.StateCategory,
+	}
+	IncrementalSnapshotBlockIntervalFlag = &cli.Uint64Flag{
+		Name:     "incremental-snapshot-block-interval",
+		Usage:    "Set how many blocks interval are stored into one incremental snapshot",
+		Value:    100_000,
+		Category: flags.StateCategory,
+	}
+	MaximumRetainedIncrementalSnapshotFlag = &cli.Uint64Flag{
+		Name:     "maximum-retained-incremental-snapshot",
+		Usage:    "Maximum number of incremental snapshots that can be retained. Older snapshots are automatically removed as new snapshots are taken. 0 means retain all incremental snapshot",
+		Value:    0,
+		Category: flags.StateCategory,
+	}
 )
 
 var (
@@ -2303,6 +2335,24 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		if name := ctx.String(VMTraceFlag.Name); name != "" {
 			cfg.VMTrace = name
 			cfg.VMTraceJsonConfig = ctx.String(VMTraceJsonConfigFlag.Name)
+		}
+	}
+
+	if ctx.IsSet(MaximumBlockHeightFlag.Name) {
+		cfg.MaximumBlockHeight = ctx.Uint64(MaximumBlockHeightFlag.Name)
+	}
+
+	// incremental snapshot config
+	if ctx.IsSet(IncrementalSnapshotFlag.Name) {
+		cfg.EnableIncrementalSnapshots = true
+		if ctx.IsSet(IncrementalSnapshotPathFlag.Name) {
+			cfg.IncrementalSnapshotPath = ctx.String(IncrementalSnapshotPathFlag.Name)
+		}
+		if ctx.IsSet(IncrementalSnapshotBlockIntervalFlag.Name) {
+			cfg.IncrementalSnapshotBlockInterval = ctx.Uint64(IncrementalSnapshotBlockIntervalFlag.Name)
+		}
+		if ctx.IsSet(MaximumRetainedIncrementalSnapshotFlag.Name) {
+			cfg.MaximumRetainedIncrementalSnapshot = ctx.Uint64(MaximumRetainedIncrementalSnapshotFlag.Name)
 		}
 	}
 }

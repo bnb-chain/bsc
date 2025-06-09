@@ -20,9 +20,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -123,14 +126,18 @@ type layer interface {
 
 // Config contains the settings for database.
 type Config struct {
-	SyncFlush       bool   // Flag of trienodebuffer sync flush cache to disk
-	StateHistory    uint64 // Number of recent blocks to maintain state history for
-	CleanCacheSize  int    // Maximum memory allowance (in bytes) for caching clean nodes
-	WriteBufferSize int    // Maximum memory allowance (in bytes) for write buffer
-	ReadOnly        bool   // Flag whether the database is opened in read only mode.
-	NoTries         bool
-	JournalFilePath string
-	JournalFile     bool
+	SyncFlush            bool   // Flag of trienodebuffer sync flush cache to disk
+	StateHistory         uint64 // Number of recent blocks to maintain state history for
+	CleanCacheSize       int    // Maximum memory allowance (in bytes) for caching clean nodes
+	WriteBufferSize      int    // Maximum memory allowance (in bytes) for write buffer
+	ReadOnly             bool   // Flag whether the database is opened in read only mode.
+	NoTries              bool   // Flag whether the database stores tries
+	JournalFilePath      string // The path of journal file
+	JournalFile          bool   // Flag whether store memory diffLayer into file
+	EnableIncrHistory    bool   // Flag whether the freezer db stores incremental block and state history
+	IncrHistory          uint64 // Amount of block and state history stored in incremental freezer db
+	IncrHistoryPath      string // The path to store incremental block and chain files
+	IncrBlockStartNumber uint64 // Starting block number for incremental block data storage
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -215,6 +222,8 @@ type Database struct {
 	tree    *layerTree                   // The group for all known layers
 	freezer ethdb.ResettableAncientStore // Freezer for storing trie histories, nil possible in tests
 	lock    sync.RWMutex                 // Lock to prevent mutations from happening at the same time
+
+	incr *incrManager // used to store incremental data: block, state and contract codes
 }
 
 // New attempts to load an already existing layer from a persistent key-value
@@ -251,6 +260,16 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 	if err := db.repairHistory(); err != nil {
 		log.Crit("Failed to repair state history", "err", err)
 	}
+
+	if db.config.EnableIncrHistory {
+		db.checkIncrConfig()
+		if err := db.repairIncrStore(); err != nil {
+			log.Crit("Failed to repair incremental history", "err", err)
+		}
+		// Start incremental store async workers
+		db.incr.Start()
+	}
+
 	// Disable database in case node is still in the initial state sync stage.
 	if rawdb.ReadSnapSyncStatusFlag(diskdb) == rawdb.StateSyncRunning && !db.readOnly {
 		if err := db.Disable(); err != nil {
@@ -263,6 +282,20 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 	}
 	log.Info("Initialized path database", fields...)
 	return db
+}
+
+func (db *Database) checkIncrConfig() {
+	ancientDir, err := db.diskdb.AncientDatadir()
+	if err != nil {
+		log.Crit("Failed to get ancient data dir", "err", err)
+	}
+
+	if db.config.IncrHistoryPath == "" {
+		db.config.IncrHistoryPath = filepath.Join(ancientDir, rawdb.IncrementalPath)
+	}
+	if db.config.IncrHistory == 0 {
+		db.config.IncrHistory = math.MaxUint64
+	}
 }
 
 // repairHistory truncates leftover state history objects, which may occur due
@@ -286,6 +319,14 @@ func (db *Database) repairHistory() error {
 		log.Crit("Failed to open state history freezer", "err", err)
 	}
 	db.freezer = freezer
+	item, err := db.freezer.Ancients()
+	if err != nil {
+		log.Error("Failed to get freezer ancients", "err", err)
+		return nil
+	}
+	a, _ := db.freezer.Tail()
+	b, _ := db.freezer.ItemAmountInAncient()
+	log.Info("Print ancient info in repair", "item", item, "a", a, "b", b)
 
 	// Reset the entire state histories if the trie database is not initialized
 	// yet. This action is necessary because these state histories are not
@@ -314,6 +355,102 @@ func (db *Database) repairHistory() error {
 	if pruned != 0 {
 		log.Warn("Truncated extra state histories", "number", pruned)
 	}
+	return nil
+}
+
+func (db *Database) repairIncrStore() error {
+	if db.config.NoTries {
+		return nil
+	}
+
+	var block uint64
+	if dl := db.tree.bottomDiffLayer(); dl != nil {
+		// use the bottom diff layer block number
+		block = dl.block
+	} else {
+		// use disk layer block number
+		disk := db.tree.bottom()
+		var m meta
+		blob := rawdb.ReadStateHistoryMeta(db.freezer, disk.id)
+		if err := m.decode(blob); err != nil {
+			log.Error("Failed to decode state histories", "err", err)
+			return err
+		}
+		block = m.block
+	}
+
+	incrDB, err := rawdb.NewIncrDB(db.config.IncrHistoryPath, db.readOnly, block, db.config.IncrHistory)
+	if err != nil {
+		log.Error("Failed to open incremental db", "err", err)
+		return err
+	}
+	db.incr = NewIncrManager(db, incrDB)
+
+	incrStateFreezer := db.incr.incrDB.GetStateFreezer()
+	if incrStateFreezer == nil {
+		log.Crit("Incremental state freezer is nil")
+		return nil
+	}
+	frozen, err := incrStateFreezer.Ancients()
+	if err != nil {
+		log.Error("Failed to retrieve head of incr state history", "err", err)
+		return err
+	}
+
+	id := db.tree.bottom().stateID()
+	if id == 0 {
+		if frozen != 0 {
+			if err = incrStateFreezer.Reset(); err != nil {
+				log.Error("Failed to reset incr state histories", "err", err)
+				return err
+			}
+			if err = db.incr.incrDB.GetChainFreezer().Reset(); err != nil {
+				log.Error("Failed to reset incr chain histories", "err", err)
+				return err
+			}
+			log.Info("Truncated extraneous state history")
+		}
+		return nil
+	}
+
+	if frozen != 0 && id != frozen {
+		log.Warn("Disk layer state id is not equal to incr state freezer ancients", "id", id, "frozen", frozen)
+		db.incr.skipCount = frozen - id
+		db.incr.endStateID = frozen
+
+		// Truncate the extra incr state and chain histories above in freezer in case
+		// it's not aligned with the disk layer. It might happen after an unclean shutdown.
+		// truncate incr state freezer
+		pruned, err := truncateFromHead(db.diskdb, incrStateFreezer, frozen)
+		if err != nil {
+			log.Error("Failed to truncate extra incr state histories", "err", err)
+			return err
+		}
+		if pruned != 0 {
+			log.Warn("Truncated extra incr state histories", "number", pruned)
+		}
+
+		// align incremental block freezer with state
+		number, err := rawdb.ReadIncrStateBlockNumber(incrStateFreezer, frozen)
+		if err != nil {
+			log.Error("Failed to read incr state histories", "err", err)
+			if strings.Contains(err.Error(), "out of bounds") {
+				log.Warn("No need to prune")
+				return nil
+			}
+		}
+		// truncate incr chain freezer
+		pruned, err = truncateIncrChainFreezerFromHead(db.diskdb, db.incr.incrDB.GetChainFreezer(), number)
+		if err != nil {
+			log.Error("Failed to truncate extra incr chain histories", "err", err)
+			return err
+		}
+		if pruned != 0 {
+			log.Warn("Truncated extra incr chain histories", "number", pruned)
+		}
+	}
+
+	log.Info("Open incremental db")
 	return nil
 }
 
@@ -541,6 +678,23 @@ func (db *Database) Close() error {
 	if db.freezer == nil {
 		return nil
 	}
+
+	if db.config.EnableIncrHistory {
+		log.Info("Closing incremental store")
+
+		// Wait for all async write tasks to complete before closing
+		if db.incr != nil {
+			log.Info("Waiting for async write tasks to complete", "pending", db.incr.GetQueueLength())
+			db.incr.LogStats()
+			db.incr.Stop()
+		}
+
+		if err := db.incr.incrDB.Close(); err != nil {
+			log.Error("Failed to close incremental db", "err", err)
+			return err
+		}
+	}
+
 	return db.freezer.Close()
 }
 
@@ -681,4 +835,100 @@ func (db *Database) AccountIterator(root common.Hash, seek common.Hash) (Account
 // account. The iterator will be moved to the specific start position.
 func (db *Database) StorageIterator(root common.Hash, account common.Hash, seek common.Hash) (StorageIterator, error) {
 	return newFastStorageIterator(db, root, account, seek)
+}
+
+// SetIncrBlockStartNumber sets the starting block number for incremental block data
+func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+
+	if db.config.IncrBlockStartNumber == 0 {
+		db.config.IncrBlockStartNumber = startBlock
+		log.Info("Set incremental block start number", "startBlock", startBlock)
+	}
+}
+
+// IsIncrEnabled returns true if incremental is enabled, otherwise false.
+func (db *Database) IsIncrEnabled() bool {
+	return db.config.EnableIncrHistory
+}
+
+func (db *Database) MergeIncrState(incrDir string) error {
+	incrStateFreezer, err := rawdb.OpenIncrStateFreezer(incrDir, true, 0)
+	if err != nil {
+		log.Error("Failed to open incremental state freezer", "err", err)
+		return err
+	}
+	defer incrStateFreezer.Close()
+
+	incrAncients, _ := incrStateFreezer.Ancients()
+	tail, _ := incrStateFreezer.Tail()
+	count, _ := incrStateFreezer.ItemAmountInAncient()
+	log.Info("Incr state info", "ancients", incrAncients, "tail", tail, "count", count)
+	log.Info("Layer tree", "count", db.tree.len())
+
+	// check data overlap
+	baseHead, _ := db.freezer.Ancients()
+	if tail <= baseHead && baseHead <= incrAncients {
+		log.Warn("There are state data overlap", "number", baseHead-tail, "incr_tail", tail, "base_head", baseHead)
+		// merge data into state ancient store
+		if err = db.mergeIncrHistory(incrStateFreezer, baseHead+1, incrAncients); err != nil {
+			log.Error("Failed to merge incremental state history", "err", err)
+			return err
+		}
+
+		dl := db.tree.bottom()
+		if a, ok := dl.buffer.(*asyncnodebuffer); ok {
+			if err = a.mergeIncrTrieNodes(db.diskdb, db.freezer, incrStateFreezer, tail+1, incrAncients); err != nil {
+				log.Error("Failed to merge incremental trie nodes", "err", err)
+				return err
+			}
+		} else {
+			return errors.New("Insert incremental state only supports async node buffer")
+		}
+	} else {
+		log.Crit("There are state data gap", "tail", tail, "baseHead", baseHead)
+	}
+
+	log.Info("Completed incremental state")
+	return nil
+}
+
+func (db *Database) mergeIncrHistory(incrStateFreezer ethdb.ResettableAncientStore, firstStateID, endStateID uint64) error {
+	for id := firstStateID; id <= endStateID; id++ {
+		h, err := readIncrHistory(incrStateFreezer, id)
+		if err != nil {
+			log.Error("Failed to read history", "err", err)
+			return err
+		}
+
+		accountData, storageData, accountIndex, storageIndex := h.encode()
+		rawdb.WriteStateHistory(db.freezer, id, h.meta.encode(), accountIndex, storageIndex, accountData, storageData)
+		rawdb.WriteStateID(db.diskdb, h.meta.root, id)
+	}
+	log.Info("Merge incremental state to base snapshot state ancient db", "first state ID", firstStateID,
+		"end state ID", endStateID)
+
+	tail, err := db.freezer.Tail()
+	if err != nil {
+		log.Error("Failed to get tail history", "err", err)
+		return err
+	}
+
+	limit := db.config.StateHistory
+	if (limit != 0) && (endStateID-tail > limit) {
+		oldest := endStateID - limit + 1
+		pruned, err := truncateFromTail(db.diskdb, db.freezer, oldest-1)
+		if err != nil {
+			log.Error("Failed to truncate state freezer", "err", err)
+			return err
+		}
+		log.Info("Pruned state history", "items", pruned, "tail_id", oldest)
+	}
+	return nil
+}
+
+// WriteContractCodes wrote codes into incremental chain freezer
+func (db *Database) WriteContractCodes(codes map[common.Address]rawdb.ContractCode) error {
+	return db.incr.incrDB.WriteIncrContractCodes(codes)
 }

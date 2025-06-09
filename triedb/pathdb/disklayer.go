@@ -19,7 +19,9 @@ package pathdb
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
@@ -305,6 +307,21 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 			oldest = bottom.stateID() - limit + 1 // track the id of history **after truncation**
 		}
 	}
+
+	if dl.db.config.EnableIncrHistory {
+		// should handle journal data in merge command
+		if bottom.block < dl.db.config.IncrBlockStartNumber {
+			log.Warn("Blocks comes from journal", "blockNumber", bottom.block, "stateID", bottom.stateID(),
+				"incrBlockStartNumber", dl.db.config.IncrBlockStartNumber)
+		}
+		// Commit incremental data with retry mechanism
+		err := dl.commitIncrDataWithRetry(bottom)
+		if err != nil {
+			log.Error("Failed to commit incremental data after retries", "err", err)
+			return nil, err
+		}
+	}
+
 	// Mark the diskLayer as stale before applying any mutations on top.
 	dl.stale = true
 
@@ -435,4 +452,70 @@ func (h *hasher) hash(data []byte) common.Hash {
 
 func (h *hasher) release() {
 	hasherPool.Put(h)
+}
+
+// commitIncrDataWithRetry attempts to commit incremental data with retry mechanism
+// This handles the "task queue is full" error that can occur during directory switching
+func (dl *diskLayer) commitIncrDataWithRetry(bottom *diffLayer) error {
+	const (
+		maxRetries = 5
+		baseDelay  = 100 * time.Millisecond
+		maxDelay   = 5 * time.Second
+	)
+
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		err := dl.db.incr.commit(bottom)
+		if err == nil {
+			// Success
+			if attempt > 0 {
+				log.Info("Incremental data commit succeeded after retries",
+					"block", bottom.block, "stateID", bottom.stateID(), "attempts", attempt+1)
+			}
+			return nil
+		}
+
+		lastErr = err
+
+		// Check if this is a queue full error
+		if strings.Contains(err.Error(), "task queue is full") {
+			// Calculate delay with exponential backoff
+			delay := baseDelay * time.Duration(1<<uint(attempt))
+			if delay > maxDelay {
+				delay = maxDelay
+			}
+
+			// Check if directory switch is in progress
+			switching := dl.db.incr.incrDB.IsSwitching()
+			queueUsage := dl.db.incr.GetQueueUsageRate()
+
+			log.Warn("Task queue is full, retrying after delay", "block", bottom.block,
+				"stateID", bottom.stateID(), "attempt", attempt+1, "maxRetries", maxRetries, "delay", delay,
+				"switching", switching, "queueUsage", fmt.Sprintf("%.1f%%", queueUsage))
+
+			// If directory switch is in progress, use longer delay
+			if switching {
+				delay = maxDelay
+				log.Info("Directory switch detected, using longer delay", "delay", delay)
+			}
+
+			// Wait before retry
+			time.Sleep(delay)
+			continue
+		}
+
+		// For non-queue-full errors, fail immediately
+		log.Error("Non-recoverable error committing incremental data",
+			"block", bottom.block, "stateID", bottom.stateID(), "err", err)
+		return err
+	}
+
+	// All retries exhausted
+	log.Error("Failed to commit incremental data after all retries",
+		"block", bottom.block, "stateID", bottom.stateID(), "maxRetries", maxRetries, "finalError", lastErr)
+
+	// Log current queue statistics for debugging
+	dl.db.incr.LogStats()
+
+	return fmt.Errorf("failed to commit incremental data after %d retries: %w", maxRetries, lastErr)
 }

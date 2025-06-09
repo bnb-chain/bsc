@@ -666,3 +666,29 @@ func truncateFromTail(db ethdb.Batcher, store ethdb.AncientStore, ntail uint64) 
 	}
 	return int(ntail - otail), nil
 }
+
+// truncateIncrChainFreezerFromHead removes the extra incr chain histories from the head with the given
+// parameters. It returns the number of items removed from the head.
+func truncateIncrChainFreezerFromHead(db ethdb.Batcher, store ethdb.AncientStore, nhead uint64) (int, error) {
+	ohead, err := store.Ancients()
+	if err != nil {
+		return 0, err
+	}
+	otail, err := store.Tail()
+	if err != nil {
+		return 0, err
+	}
+	// Ensure that the truncation target falls within the specified range.
+	if ohead < nhead || nhead < otail {
+		return 0, fmt.Errorf("out of range, tail: %d, head: %d, target: %d", otail, ohead, nhead)
+	}
+	// Short circuit if nothing to truncate.
+	if ohead == nhead {
+		return 0, nil
+	}
+	ohead, err = store.TruncateHead(nhead)
+	if err != nil {
+		return 0, err
+	}
+	return int(ohead - nhead), nil
+}

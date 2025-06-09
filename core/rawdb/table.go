@@ -262,6 +262,10 @@ func (t *table) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) erro
 	return nil
 }
 
+func (t *table) ForceFreeze(kvStore ethdb.KeyValueStore) error {
+	return nil
+}
+
 // tableBatch is a wrapper around a database batch that prefixes each key access
 // with a pre-configured string.
 type tableBatch struct {

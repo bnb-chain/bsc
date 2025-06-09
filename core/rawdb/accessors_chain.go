@@ -419,6 +419,18 @@ func WriteHeader(db ethdb.KeyValueWriter, header *types.Header) {
 	}
 }
 
+// WriteHeaderRLP stores a RLP encoded block header into the database and also stores the
+// hash-to-number mapping.
+func WriteHeaderRLP(db ethdb.KeyValueWriter, hash common.Hash, number uint64, header rlp.RawValue) {
+	// Write the hash -> number mapping
+	WriteHeaderNumber(db, hash, number)
+
+	key := headerKey(number, hash)
+	if err := db.Put(key, header); err != nil {
+		log.Crit("Failed to store header", "err", err)
+	}
+}
+
 // DeleteHeader removes all block header data associated with a hash.
 func DeleteHeader(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
 	deleteHeaderWithoutNumber(db, hash, number)
@@ -572,6 +584,13 @@ func WriteTd(db ethdb.KeyValueWriter, hash common.Hash, number uint64, td *big.I
 	}
 }
 
+// WriteTd stores the rlp encoded total difficulty of a block into the database.
+func WriteTdRLP(db ethdb.KeyValueWriter, hash common.Hash, number uint64, td rlp.RawValue) {
+	if err := db.Put(headerTDKey(number, hash), td); err != nil {
+		log.Crit("Failed to store block total difficulty", "err", err)
+	}
+}
+
 // DeleteTd removes all block total difficulty data associated with a hash.
 func DeleteTd(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
 	if err := db.Delete(headerTDKey(number, hash)); err != nil {
@@ -680,6 +699,13 @@ func WriteReceipts(db ethdb.KeyValueWriter, hash common.Hash, number uint64, rec
 	}
 	// Store the flattened receipt slice
 	if err := db.Put(blockReceiptsKey(number, hash), bytes); err != nil {
+		log.Crit("Failed to store block receipts", "err", err)
+	}
+}
+
+// WriteReceiptsRLP stores all the RLP encoded transaction receipts belonging to a block.
+func WriteReceiptsRLP(db ethdb.KeyValueWriter, hash common.Hash, number uint64, receipts rlp.RawValue) {
+	if err := db.Put(blockReceiptsKey(number, hash), receipts); err != nil {
 		log.Crit("Failed to store block receipts", "err", err)
 	}
 }
@@ -858,6 +884,14 @@ func ReadBlobSidecars(db ethdb.Reader, hash common.Hash, number uint64) types.Bl
 		return nil
 	}
 	return ret
+}
+
+// WriteBlobSidecarsRLP stores all the RLP encoded transaction blobs belonging to a block.
+// It could input nil for empty blobs.
+func WriteBlobSidecarsRLP(db ethdb.KeyValueWriter, hash common.Hash, number uint64, blobs rlp.RawValue) {
+	if err := db.Put(blockBlobSidecarsKey(number, hash), blobs); err != nil {
+		log.Crit("Failed to store block blobs", "err", err)
+	}
 }
 
 // WriteBlobSidecars stores all the transaction blobs belonging to a block.

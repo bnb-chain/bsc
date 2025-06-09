@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"os"
 	"runtime"
 	"slices"
 	"sync"
@@ -168,8 +169,12 @@ type CacheConfig struct {
 	StateHistory        uint64        // Number of blocks from head whose state histories are reserved.
 	StateScheme         string        // Scheme used to store ethereum states and merkle tree nodes on top
 	PathSyncFlush       bool          // Whether sync flush the trienodebuffer of pathdb to disk.
-	JournalFilePath     string
-	JournalFile         bool
+	JournalFilePath     string        // The path to store journal file which is used in pathdb
+	JournalFile         bool          // Whether to use single file to store journal data in pathdb
+	MaximumBlockHeight  uint64        // The maximum block height that geth can sync blocks to
+	EnableIncrHistory   bool          // Flag whether the freezer db stores incremental block and state history
+	IncrHistoryPath     string        // The path to store incremental block and chain files
+	IncrHistory         uint64        // Amount of block and state history stored in incremental freezer db
 
 	SnapshotNoBuild bool // Whether the background generation is allowed
 	SnapshotWait    bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
@@ -190,12 +195,15 @@ func (c *CacheConfig) triedbConfig(isVerkle bool) *triedb.Config {
 	}
 	if c.StateScheme == rawdb.PathScheme {
 		config.PathDB = &pathdb.Config{
-			SyncFlush:       c.PathSyncFlush,
-			StateHistory:    c.StateHistory,
-			CleanCacheSize:  c.TrieCleanLimit * 1024 * 1024,
-			WriteBufferSize: c.TrieDirtyLimit * 1024 * 1024,
-			JournalFilePath: c.JournalFilePath,
-			JournalFile:     c.JournalFile,
+			SyncFlush:         c.PathSyncFlush,
+			StateHistory:      c.StateHistory,
+			CleanCacheSize:    c.TrieCleanLimit * 1024 * 1024,
+			WriteBufferSize:   c.TrieDirtyLimit * 1024 * 1024,
+			JournalFilePath:   c.JournalFilePath,
+			JournalFile:       c.JournalFile,
+			EnableIncrHistory: c.EnableIncrHistory,
+			IncrHistoryPath:   c.IncrHistoryPath,
+			IncrHistory:       c.IncrHistory,
 		}
 	}
 	return config
@@ -332,8 +340,8 @@ type BlockChain struct {
 // NewBlockChain returns a fully initialised block chain using information
 // available in the database. It initialises the default Ethereum Validator and
 // Processor.
-func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis, overrides *ChainOverrides, engine consensus.Engine,
-	vmConfig vm.Config, shouldPreserve func(block *types.Header) bool, txLookupLimit *uint64,
+func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis, overrides *ChainOverrides,
+	engine consensus.Engine, vmConfig vm.Config, shouldPreserve func(block *types.Header) bool, txLookupLimit *uint64,
 	options ...BlockChainOption) (*BlockChain, error) {
 	if cacheConfig == nil {
 		cacheConfig = defaultCacheConfig
@@ -391,6 +399,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		vmConfig:        vmConfig,
 		logger:          vmConfig.Tracer,
 	}
+
 	bc.hc, err = NewHeaderChain(db, chainConfig, engine, bc.insertStopped)
 	if err != nil {
 		return nil, err
@@ -429,6 +438,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	// Make sure the state associated with the block is available, or log out
 	// if there is no available state, waiting for state sync.
 	head := bc.CurrentBlock()
+	log.Info("Print head info", "head", head.Number.Uint64(), "has state", bc.HasState(head.Root))
 	if !bc.HasState(head.Root) {
 		if head.Number.Uint64() == 0 {
 			// The genesis state is missing, which is only possible in the path-based
@@ -527,6 +537,15 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			bc.logger.OnGenesisBlock(bc.genesisBlock, alloc)
 		}
 	}
+
+	// if bc.cacheConfig.StateScheme == rawdb.PathScheme {
+	// 	log.Info("First start block info", "current", bc.CurrentBlock().Number.Uint64(),
+	// 		"snap", bc.CurrentSnapBlock().Number.Uint64(), "safe", bc.CurrentSafeBlock().Number.Uint64(),
+	// 		"final", bc.CurrentFinalBlock().Number.Uint64(), "head block", bc.CurrentHeader().Number.Uint64())
+	//
+	// 	currentBlockNumber := bc.CurrentBlock().Number.Uint64()
+	// 	log.Info("Set incremental block start number for PathDB", "startBlock", currentBlockNumber)
+	// }
 
 	// Load any existing snapshot, regenerating it if loading failed
 	if bc.cacheConfig.SnapshotLimit > 0 {
@@ -730,7 +749,6 @@ func (bc *BlockChain) loadLastState() error {
 			}
 		}
 	}
-
 	if pivot := rawdb.ReadLastPivotNumber(bc.db); pivot != nil {
 		log.Info("Loaded last snap-sync pivot marker", "number", *pivot)
 	}
@@ -1760,6 +1778,10 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		wg.Done()
 	}()
 
+	// log.Info("statedb commit", "block number", block.NumberU64(), "current", bc.CurrentBlock().Number.Uint64(),
+	// 	"snap", bc.CurrentSnapBlock().Number.Uint64(), "safe", bc.CurrentSafeBlock().Number.Uint64(),
+	// 	"final", bc.CurrentFinalBlock().Number.Uint64(), "head block", bc.CurrentHeader().Number.Uint64())
+
 	// Commit all cached state changes into underlying memory database.
 	root, err := statedb.Commit(block.NumberU64(), bc.chainConfig.IsEIP158(block.Number()), bc.chainConfig.IsCancun(block.Number(), block.Time()))
 	if err != nil {
@@ -1949,6 +1971,16 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 	bc.blockProcFeed.Send(true)
 	defer bc.blockProcFeed.Send(false)
 
+	if bc.cacheConfig.MaximumBlockHeight > 0 {
+		currBlock := bc.CurrentBlock().Number.Uint64()
+		if currBlock >= bc.cacheConfig.MaximumBlockHeight {
+			log.Info("Reached maximum block height, stopping sync", "maxHeight", bc.cacheConfig.MaximumBlockHeight,
+				"currBlock", currBlock)
+			bc.Stop()
+			os.Exit(1)
+		}
+	}
+
 	// Do a sanity check that the provided chain is actually ordered and linked.
 	for i := 1; i < len(chain); i++ {
 		block, prev := chain[i], chain[i-1]
@@ -2115,6 +2147,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 	case err != nil && !errors.Is(err, ErrKnownBlock):
 		bc.futureBlocks.Remove(block.Hash())
 		stats.ignored += len(it.chain)
+		log.Error("InsertChain failed", "block", block.Number(), "hash", block.Hash())
 		bc.reportBlock(block, nil, err)
 		return nil, it.index, err
 	}
@@ -2340,6 +2373,7 @@ func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, s
 	res, err := bc.processor.Process(block, statedb, bc.vmConfig)
 	close(interruptCh) // state prefetch can be stopped
 	if err != nil {
+		log.Error("Process failed", "block", block.Number(), "hash", block.Hash())
 		bc.reportBlock(block, res, err)
 		statedb.StopPrefetcher()
 		return nil, err
@@ -2349,6 +2383,7 @@ func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, s
 	// Validate the state using the default validator
 	vstart := time.Now()
 	if err := bc.validator.ValidateState(block, statedb, res, false); err != nil {
+		log.Error("ValidateState failed", "block", block.Number(), "hash", block.Hash())
 		bc.reportBlock(block, res, err)
 		statedb.StopPrefetcher()
 		return nil, err

@@ -294,6 +294,9 @@ func (db *nofreezedb) AncientDatadir() (string, error) {
 func (db *nofreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
 	return nil
 }
+func (db *nofreezedb) ForceFreeze(ethdb.KeyValueStore) error {
+	return nil
+}
 
 // NewDatabase creates a high level database on top of a given key-value data
 // store without a freezer moving immutable chain segments into cold storage.
@@ -390,6 +393,9 @@ func (db *emptyfreezedb) AncientDatadir() (string, error) {
 func (db *emptyfreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
 	return nil
 }
+func (db *emptyfreezedb) ForceFreeze(ethdb.KeyValueStore) error {
+	return nil
+}
 
 // NewEmptyFreezeDB is used for CLI such as `geth db inspect` in pruned db that we don't
 // have a backing chain freezer.
@@ -401,7 +407,7 @@ func NewEmptyFreezeDB(db ethdb.KeyValueStore) ethdb.Database {
 // NewFreezerDb only create a freezer without statedb.
 func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, newOffSet uint64) (*Freezer, error) {
 	// Create the idle freezer instance, this operation should be atomic to avoid mismatch between offset and acientDB.
-	frdb, err := NewFreezer(frz, namespace, readonly, freezerTableSize, chainFreezerNoSnappy)
+	frdb, err := NewFreezer(frz, namespace, readonly, freezerTableSize, chainFreezerNoSnappy, false)
 	if err != nil {
 		return nil, err
 	}
@@ -714,7 +720,7 @@ func DataTypeByKey(key []byte) DataType {
 
 // InspectDatabase traverses the entire database and checks the size
 // of all different categories of data.
-func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
+func InspectDatabase(db ethdb.Database, isIncr bool, keyPrefix, keyStart []byte) error {
 	it := db.NewIterator(keyPrefix, keyStart)
 	defer it.Release()
 
@@ -1038,6 +1044,58 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 	if unaccounted.size > 0 {
 		log.Error("Database contains unaccounted data", "size", unaccounted.size, "count", unaccounted.count)
 	}
+	return nil
+}
+
+func InspectIncrStore(baseDir string) error {
+	dirs, err := GetAllIncrDirs(baseDir)
+	if err != nil {
+		return err
+	}
+	fmt.Println(dirs)
+
+	var (
+		total common.StorageSize
+		stats [][]string
+		info  = incrDBInfo{
+			readonly:     true,
+			namespace:    "eth/db/incremental/",
+			offset:       0,
+			maxTableSize: stateHistoryTableSize,
+			chainTables:  incrChainFreezerNoSnappy,
+			stateTables:  incrStateFreezerNoSnappy,
+			blockLimit:   0,
+		}
+	)
+
+	for _, dir := range dirs {
+		db, err := newDBWrapper(dir.Path, &info)
+		if err != nil {
+			return fmt.Errorf("failed to create initial database wrapper: %v", err)
+		}
+
+		ancients, err := inspectIncrFreezers(db)
+		if err != nil {
+			return err
+		}
+		for _, ancient := range ancients {
+			for _, table := range ancient.sizes {
+				stats = append(stats, []string{
+					fmt.Sprintf("%s/%s", dir.Name, strings.Title(ancient.name)),
+					strings.Title(table.name),
+					table.size.String(),
+					fmt.Sprintf("%d", ancient.count()),
+				})
+			}
+			total += ancient.size()
+		}
+	}
+
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"Database", "Category", "Size", "Items"})
+	table.SetFooter([]string{"", "Total", total.String(), " "})
+	table.AppendBulk(stats)
+	table.Render()
 	return nil
 }
 
