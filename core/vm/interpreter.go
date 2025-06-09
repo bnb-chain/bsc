@@ -247,8 +247,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 		// Get the operation from the jump table and validate the stack to ensure there are
 		// enough stack items available to perform the operation.
+
 		op = contract.GetOp(pc)
 		operation := in.table[op]
+
 		cost = operation.constantGas // For tracing
 		// Validate stack
 		if sLen := stack.len(); sLen < operation.minStack {
@@ -271,6 +273,12 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// Memory check needs to be done prior to evaluating the dynamic gas portion,
 			// to detect calculation overflows
 			if operation.memorySize != nil {
+				//if in.evm.Context.BlockNumber.Int64() == 4744959 && pc == 14562 {
+				//	log.Info("DEBUG", "pc", pc, "op", op)
+				//	for i := 0; i < stack.len(); i++ {
+				//		log.Info("DEBUG", "i", i, "value", stack.data[i])
+				//	}
+				//}
 				memSize, overflow := operation.memorySize(stack)
 				if overflow {
 					return nil, ErrGasUintOverflow
@@ -312,18 +320,13 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			mem.Resize(memorySize)
 		}
 
+		if in.evm.Context.BlockNumber.Int64() == 4744934 && op == Dup2MStorePush1Add {
+			log.Info("DEBUG", "pc", pc, "op", op.String(), "cost", cost)
+		}
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
 		if err != nil {
 			break
-		}
-
-		// Additional tracing for super instructions
-		if debug && op >= Nop && op <= Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT {
-			if in.evm.Config.Tracer.OnOpcode != nil && !logged {
-				// For super instructions, we need to trace the execution
-				in.evm.Config.Tracer.OnOpcode(pc, byte(op), gasCopy, cost, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
-			}
 		}
 
 		pc++
