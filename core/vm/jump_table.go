@@ -1247,8 +1247,8 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 		execute:     opDup2MStorePush1Add,
 		constantGas: 4 * GasFastestStep,
 		dynamicGas:  gasMStore,
-		minStack:    minStack(1, 2),
-		maxStack:    maxStack(1, 2),
+		minStack:    minStack(2, 1),
+		maxStack:    maxStack(2, 1),
 		memorySize:  memoryDup2MStorePush1Add,
 	}
 
@@ -1283,8 +1283,8 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 	tbl[Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT] = &operation{
 		execute:     opSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT,
 		constantGas: 12 * GasFastestStep,
-		minStack:    minStack(0, 4),
-		maxStack:    maxStack(0, 4),
+		minStack:    minStack(1, 4),
+		maxStack:    maxStack(1, 4),
 	}
 
 	return tbl

@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -1390,6 +1391,7 @@ func opIsZeroPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext)
 
 // DUP2 MSTORE PUSH1 ADD
 func opDup2MStorePush1Add(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	log.Info("opDup2MStorePush1Add used", "pc", pc)
 	var mStart, val uint256.Int
 
 	if scope.Stack.len() >= 2 {
@@ -1422,7 +1424,10 @@ func opDup1Push4EqPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeCon
 	if err != nil {
 		return nil, err
 	}
+<<<<<<< HEAD
 
+=======
+>>>>>>> 3159516bb (fix: gas bug)
 	*pc += 1
 	x, y := scope.Stack.pop(), scope.Stack.peek()
 	if x.Eq(y) {
