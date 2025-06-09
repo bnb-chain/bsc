@@ -1245,11 +1245,11 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 
 	tbl[Dup2MStorePush1Add] = &operation{
 		execute:     opDup2MStorePush1Add,
-		constantGas: GasFastestStep + GasFastestStep + GasFastestStep, // DUP2 + PUSH1 + ADD
-		dynamicGas:  gasMStore,                                        // MSTORE需要动态gas计算
-		minStack:    minStack(2, 1),
-		maxStack:    maxStack(2, 1),
-		memorySize:  memoryMStore,
+		constantGas: 4 * GasFastestStep, // DUP2 + PUSH1 + ADD
+		dynamicGas:  gasMStore,          // MSTORE需要动态gas计算
+		minStack:    minStack(1, 2),
+		maxStack:    maxStack(1, 2),
+		memorySize:  memoryDup2MStorePush1Add,
 	}
 
 	tbl[Dup1Push4EqPush2] = &operation{
@@ -1261,7 +1261,7 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 
 	tbl[Push1CalldataloadPush1ShrDup1Push4GtPush2] = &operation{
 		execute:     opPush1CalldataloadPush1ShrDup1Push4GtPush2,
-		constantGas: 7 * GasFastestStep, // PUSH1 + CALLDATALOAD + PUSH1 + SHR + DUP1 + PUSH4 + GT + PUSH2 (8个操作，但GT算作7个基础操作)
+		constantGas: 8 * GasFastestStep, // PUSH1 + CALLDATALOAD + PUSH1 + SHR + DUP1 + PUSH4 + GT + PUSH2 (8个操作，但GT算作7个基础操作)
 		minStack:    minStack(0, 3),
 		maxStack:    maxStack(0, 3),
 	}
@@ -1282,7 +1282,7 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 
 	tbl[Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT] = &operation{
 		execute:     opSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT,
-		constantGas: 11 * GasFastestStep, // 11个基础操作
+		constantGas: 12 * GasFastestStep, // 11个基础操作
 		minStack:    minStack(3, 3),
 		maxStack:    maxStack(3, 3),
 	}
