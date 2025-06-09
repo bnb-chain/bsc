@@ -131,6 +131,9 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.OverrideFermi = c.OverrideFermi
 	enc.OverrideVerkle = c.OverrideVerkle
 	enc.BlobExtraReserve = c.BlobExtraReserve
+	enc.EnableIncrementalSnapshots = c.EnableIncrementalSnapshots
+	enc.IncrementalSnapshotBlockInterval = c.IncrementalSnapshotBlockInterval
+	enc.MaximumRetainedIncrementalSnapshot = c.MaximumRetainedIncrementalSnapshot
 	return &enc, nil
 }
 
@@ -365,6 +368,15 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.BlobExtraReserve != nil {
 		c.BlobExtraReserve = *dec.BlobExtraReserve
+	}
+	if dec.EnableIncrementalSnapshots != nil {
+		c.EnableIncrementalSnapshots = *dec.EnableIncrementalSnapshots
+	}
+	if dec.IncrementalSnapshotBlockInterval != nil {
+		c.IncrementalSnapshotBlockInterval = *dec.IncrementalSnapshotBlockInterval
+	}
+	if dec.MaximumRetainedIncrementalSnapshot != nil {
+		c.MaximumRetainedIncrementalSnapshot = *dec.MaximumRetainedIncrementalSnapshot
 	}
 	return nil
 }

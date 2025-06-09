@@ -203,6 +203,11 @@ type Config struct {
 
 	// blob setting
 	BlobExtraReserve uint64
+
+	// incremental snapshot config
+	EnableIncrementalSnapshots         bool
+	IncrementalSnapshotBlockInterval   uint64
+	MaximumRetainedIncrementalSnapshot uint64
 }
 
 // CreateConsensusEngine creates a consensus engine for the given chain config.
