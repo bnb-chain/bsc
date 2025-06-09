@@ -178,11 +178,18 @@ const (
 
 // BlockChainConfig contains the configuration of the BlockChain object.
 type BlockChainConfig struct {
-	TriesInMemory   uint64 // How many tries keeps in memory
-	NoTries         bool   // Insecure settings. Do not have any tries in databases if enabled.
-	PathSyncFlush   bool   // Whether sync flush the trienodebuffer of pathdb to disk.
-	JournalFilePath string
-	JournalFile     bool
+	TriesInMemory         uint64 // How many tries keeps in memory
+	NoTries               bool   // Insecure settings. Do not have any tries in databases if enabled.
+	PathSyncFlush         bool   // Whether sync flush the trienodebuffer of pathdb to disk.
+	JournalFilePath       string // The path to store journal file which is used in pathdb
+	JournalFile           bool   // Whether to use single file to store journal data in pathdb
+	EnableIncr            bool   // Flag whether the freezer db stores incremental block and state history
+	IncrHistoryPath       string // The path to store incremental block and chain files
+	IncrHistory           uint64 // Amount of block and state history stored in incremental freezer db
+	IncrStateBuffer       uint64 // Maximum memory allowance (in bytes) for incr state buffer
+	IncrKeptBlocks        uint64 // Amount of block kept in incr snapshot
+	UseRemoteIncrSnapshot bool   // Whether to download and merge incremental snapshots
+	RemoteIncrURL         string // The url to download incremental snapshots
 
 	// Trie database related options
 	TrieCleanLimit   int           // Memory allowance (MB) to use for caching trie nodes in memory
@@ -269,6 +276,11 @@ func (cfg *BlockChainConfig) triedbConfig(isVerkle bool) *triedb.Config {
 		config.PathDB = &pathdb.Config{
 			JournalFilePath: cfg.JournalFilePath,
 			JournalFile:     cfg.JournalFile,
+			EnableIncr:      cfg.EnableIncr,
+			IncrHistoryPath: cfg.IncrHistoryPath,
+			IncrHistory:     cfg.IncrHistory,
+			IncrStateBuffer: cfg.IncrStateBuffer,
+			IncrKeptBlocks:  cfg.IncrKeptBlocks,
 
 			StateHistory:        cfg.StateHistory,
 			EnableStateIndexing: cfg.ArchiveMode,
@@ -412,7 +424,27 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 	if err != nil {
 		return nil, err
 	}
-	triedb := triedb.NewDatabase(db, cfg.triedbConfig(enableVerkle))
+	trieConfig := cfg.triedbConfig(enableVerkle)
+	if cfg.UseRemoteIncrSnapshot && cfg.StateScheme == rawdb.PathScheme {
+		trieConfig.PathDB.MergeIncr = true
+	}
+	triedb := triedb.NewDatabase(db, trieConfig)
+
+	if cfg.UseRemoteIncrSnapshot {
+		log.Info("Download the incremental snapshot", "remote incr url", cfg.RemoteIncrURL)
+		startBlock, err := triedb.GetStartBlock()
+		if err != nil {
+			log.Error("Failed to get start block", "error", err)
+			return nil, err
+		}
+		downloader := NewIncrDownloader(db, triedb, cfg.RemoteIncrURL, cfg.IncrHistoryPath, startBlock)
+		if err = downloader.RunConcurrent(); err != nil {
+			log.Error("Failed to download and merge incremental snapshot", "error", err)
+			return nil, err
+		}
+		log.Info("Download and merge incr snapshots successfully")
+		triedb.SetStateGenerator()
+	}
 
 	// Write the supplied genesis to the database if it has not been initialized
 	// yet. The corresponding chain config will be returned, either from the
