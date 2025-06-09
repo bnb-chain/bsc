@@ -317,6 +317,15 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		if err != nil {
 			break
 		}
+
+		// Additional tracing for super instructions
+		if debug && op >= Nop && op <= Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT {
+			if in.evm.Config.Tracer.OnOpcode != nil && !logged {
+				// For super instructions, we need to trace the execution
+				in.evm.Config.Tracer.OnOpcode(pc, byte(op), gasCopy, cost, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
+			}
+		}
+
 		pc++
 	}
 
