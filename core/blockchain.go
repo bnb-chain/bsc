@@ -156,21 +156,26 @@ const (
 // CacheConfig contains the configuration values for the trie database
 // and state snapshot these are resident in a blockchain.
 type CacheConfig struct {
-	EnableSharedStorage bool          // Whether to enable shared storage in statedb, improve execute stage performance ~6%.
-	TrieCleanLimit      int           // Memory allowance (MB) to use for caching trie nodes in memory
-	TrieCleanNoPrefetch bool          // Whether to disable heuristic state prefetching for followup blocks
-	TrieDirtyLimit      int           // Memory limit (MB) at which to start flushing dirty trie nodes to disk
-	TrieDirtyDisabled   bool          // Whether to disable trie write caching and GC altogether (archive node)
-	TrieTimeLimit       time.Duration // Time limit after which to flush the current in-memory trie to disk
-	SnapshotLimit       int           // Memory allowance (MB) to use for caching snapshot entries in memory
-	Preimages           bool          // Whether to store preimage of trie key to the disk
-	TriesInMemory       uint64        // How many tries keeps in memory
-	NoTries             bool          // Insecure settings. Do not have any tries in databases if enabled.
-	StateHistory        uint64        // Number of blocks from head whose state histories are reserved.
-	StateScheme         string        // Scheme used to store ethereum states and merkle tree nodes on top
-	PathSyncFlush       bool          // Whether sync flush the trienodebuffer of pathdb to disk.
-	JournalFilePath     string
-	JournalFile         bool
+	EnableSharedStorage   bool          // Whether to enable shared storage in statedb, improve execute stage performance ~6%.
+	TrieCleanLimit        int           // Memory allowance (MB) to use for caching trie nodes in memory
+	TrieCleanNoPrefetch   bool          // Whether to disable heuristic state prefetching for followup blocks
+	TrieDirtyLimit        int           // Memory limit (MB) at which to start flushing dirty trie nodes to disk
+	TrieDirtyDisabled     bool          // Whether to disable trie write caching and GC altogether (archive node)
+	TrieTimeLimit         time.Duration // Time limit after which to flush the current in-memory trie to disk
+	SnapshotLimit         int           // Memory allowance (MB) to use for caching snapshot entries in memory
+	Preimages             bool          // Whether to store preimage of trie key to the disk
+	TriesInMemory         uint64        // How many tries keeps in memory
+	NoTries               bool          // Insecure settings. Do not have any tries in databases if enabled.
+	StateHistory          uint64        // Number of blocks from head whose state histories are reserved.
+	StateScheme           string        // Scheme used to store ethereum states and merkle tree nodes on top
+	PathSyncFlush         bool          // Whether sync flush the trienodebuffer of pathdb to disk.
+	JournalFilePath       string        // The path to store journal file which is used in pathdb
+	JournalFile           bool          // Whether to use single file to store journal data in pathdb
+	EnableIncrHistory     bool          // Flag whether the freezer db stores incremental block and state history
+	IncrHistoryPath       string        // The path to store incremental block and chain files
+	IncrHistory           uint64        // Amount of block and state history stored in incremental freezer db
+	UseRemoteIncrSnapshot bool          // Whether to download and merge incremental snapshots
+	RemoteIncrURL         string        // The url to download incremental snapshots
 
 	SnapshotNoBuild bool // Whether the background generation is allowed
 	SnapshotWait    bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
@@ -191,12 +196,15 @@ func (c *CacheConfig) triedbConfig(isVerkle bool) *triedb.Config {
 	}
 	if c.StateScheme == rawdb.PathScheme {
 		config.PathDB = &pathdb.Config{
-			SyncFlush:       c.PathSyncFlush,
-			StateHistory:    c.StateHistory,
-			CleanCacheSize:  c.TrieCleanLimit * 1024 * 1024,
-			WriteBufferSize: c.TrieDirtyLimit * 1024 * 1024,
-			JournalFilePath: c.JournalFilePath,
-			JournalFile:     c.JournalFile,
+			SyncFlush:         c.PathSyncFlush,
+			StateHistory:      c.StateHistory,
+			CleanCacheSize:    c.TrieCleanLimit * 1024 * 1024,
+			WriteBufferSize:   c.TrieDirtyLimit * 1024 * 1024,
+			JournalFilePath:   c.JournalFilePath,
+			JournalFile:       c.JournalFile,
+			EnableIncrHistory: c.EnableIncrHistory,
+			IncrHistoryPath:   c.IncrHistoryPath,
+			IncrHistory:       c.IncrHistory,
 		}
 	}
 	return config
@@ -350,6 +358,30 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		return nil, err
 	}
 	triedb := triedb.NewDatabase(db, cacheConfig.triedbConfig(enableVerkle))
+
+	// TODO: for force kill case, need to use rewound block
+	if cacheConfig.UseRemoteIncrSnapshot {
+		log.Info("Download the incremental snapshot", "remote incr url", cacheConfig.RemoteIncrURL)
+		if err = triedb.RepairIncrStore(); err != nil {
+			log.Error("Failed to repair incremental snapshot", "err", err)
+			return nil, err
+		}
+		startBlock, err := triedb.GetStartBlock()
+		if err != nil {
+			log.Error("Failed to get start block", "error", err)
+			return nil, err
+		}
+		downloader := NewIncrDownloader(db, cacheConfig.RemoteIncrURL, cacheConfig.IncrHistoryPath, startBlock)
+		if err = downloader.RunAll(); err != nil {
+			log.Error("Failed to download incremental snapshot", "error", err)
+			return nil, err
+		}
+		log.Info("Merge the incremental snapshot")
+		if err = MergeIncrSnapshot(db, triedb, cacheConfig.IncrHistoryPath, startBlock); err != nil {
+			log.Error("Failed to merge incremental snapshot", "error", err)
+			return nil, err
+		}
+	}
 
 	// Write the supplied genesis to the database if it has not been initialized
 	// yet. The corresponding chain config will be returned, either from the

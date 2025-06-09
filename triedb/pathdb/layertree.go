@@ -301,3 +301,28 @@ func (tree *layerTree) front() common.Hash {
 		parent = children[0]
 	}
 }
+
+// bottomDiffLayer returns the bottom-most diff layer in this tree.
+// It returns the first diffLayer that is directly built on top of a diskLayer.
+func (tree *layerTree) bottomDiffLayer() *diffLayer {
+	tree.lock.RLock()
+	defer tree.lock.RUnlock()
+
+	bottomDisk := tree.bottom()
+	if bottomDisk == nil {
+		return nil
+	}
+
+	// Find diffLayer that has bottomDisk as parent
+	for _, l := range tree.layers {
+		if dl, ok := l.(*diffLayer); ok {
+			if parent := dl.parentLayer(); parent != nil {
+				if parentDisk, ok := parent.(*diskLayer); ok && parentDisk.rootHash() == bottomDisk.rootHash() {
+					return dl
+				}
+			}
+		}
+	}
+
+	return nil
+}
