@@ -247,8 +247,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 		// Get the operation from the jump table and validate the stack to ensure there are
 		// enough stack items available to perform the operation.
+
 		op = contract.GetOp(pc)
 		operation := in.table[op]
+
 		cost = operation.constantGas // For tracing
 		// Validate stack
 		if sLen := stack.len(); sLen < operation.minStack {
@@ -318,19 +320,17 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			break
 		}
 
-		// Additional tracing for super instructions
-		if debug && op >= Nop && op <= Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT {
-			if in.evm.Config.Tracer.OnOpcode != nil && !logged {
-				// For super instructions, we need to trace the execution
-				in.evm.Config.Tracer.OnOpcode(pc, byte(op), gasCopy, cost, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
-			}
-		}
-
 		pc++
 	}
 
 	if err == errStopToken {
 		err = nil // clear stop token error
+	}
+	if in.evm.Context.BlockNumber.Int64() == 398 && contract.Caller().String() == "0xb005741528b86F5952469d80A8614591E3c5B632" {
+		log.Info("DEBUG", "execRes", res)
+		for i := 0; i < callContext.Stack.len(); i++ {
+			log.Info("DEBUG", "index", i, "data", callContext.Stack.Data()[i])
+		}
 	}
 
 	return res, err

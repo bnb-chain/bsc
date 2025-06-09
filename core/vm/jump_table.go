@@ -1249,7 +1249,7 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 		dynamicGas:  gasMStore,                                        // MSTORE需要动态gas计算
 		minStack:    minStack(2, 1),
 		maxStack:    maxStack(2, 1),
-		memorySize:  memoryMStore,
+		memorySize:  memoryDup2MStorePush1Add,
 	}
 
 	tbl[Dup1Push4EqPush2] = &operation{

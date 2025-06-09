@@ -127,3 +127,9 @@ func memoryEOFCreate(stack *Stack) (uint64, bool) {
 func memoryReturnContract(stack *Stack) (uint64, bool) {
 	return calcMemSize64(stack.Back(0), stack.Back(1))
 }
+
+func memoryDup2MStorePush1Add(stack *Stack) (uint64, bool) {
+	// 对于 DUP2 MSTORE PUSH1 ADD 超级指令
+	// 内存地址在栈的第二个位置（stack.Back(1)）
+	return calcMemSize64WithUint(stack.Back(1), 32)
+}

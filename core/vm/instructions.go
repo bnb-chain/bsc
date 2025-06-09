@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -1294,6 +1295,7 @@ func opNop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte
 
 // opIsZeroPush2 is a super instruction
 func opIsZeroPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	log.Info("opIsZeroPush2 used")
 	x := scope.Stack.peek()
 	if x.IsZero() {
 		x.SetOne()
@@ -1319,6 +1321,7 @@ func opIsZeroPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext)
 
 // DUP2 MSTORE PUSH1 ADD
 func opDup2MStorePush1Add(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	log.Info("opDup2MStorePush1Add used")
 	var mStart, val uint256.Int
 
 	if scope.Stack.len() >= 2 {
@@ -1345,9 +1348,13 @@ func opDup2MStorePush1Add(pc *uint64, interpreter *EVMInterpreter, scope *ScopeC
 
 // DUP1 PUSH4 EQ PUSH2
 func opDup1Push4EqPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	log.Info("opDup1Push4EqPush2 used")
 	scope.Stack.dup(1)
 	*pc += 1
-	_, _ = makePush(4, 4)(pc, interpreter, scope)
+	_, err := makePush(4, 4)(pc, interpreter, scope)
+	if err != nil {
+		return nil, err
+	}
 	*pc += 1
 	x, y := scope.Stack.pop(), scope.Stack.peek()
 	if x.Eq(y) {
@@ -1356,11 +1363,17 @@ func opDup1Push4EqPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeCon
 		y.Clear()
 	}
 	*pc += 1
-	return makePush(2, 2)(pc, interpreter, scope)
+	_, err = makePush(2, 2)(pc, interpreter, scope)
+	if err != nil {
+		return nil, err
+	}
+
+	return nil, nil
 }
 
 // PUSH1 CALLDATALOAD PUSH1 SHR DUP1 PUSH4 GT PUSH2
 func opPush1CalldataloadPush1ShrDup1Push4GtPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	log.Info("opPush1CalldataloadPush1ShrDup1Push4GtPush2 used")
 	codeLen := uint64(len(scope.Contract.Code))
 	var x = new(uint256.Int)
 	*pc += 1
@@ -1391,7 +1404,6 @@ func opPush1CalldataloadPush1ShrDup1Push4GtPush2(pc *uint64, interpreter *EVMInt
 	scope.Stack.dup(1)
 	*pc += 1 // push4
 
-	//_, _ = makePush(4, 4)(pc, interpreter, scope)
 	var (
 		start = min(codeLen, *pc+1)
 		end   = min(codeLen, start+4)
@@ -1410,11 +1422,16 @@ func opPush1CalldataloadPush1ShrDup1Push4GtPush2(pc *uint64, interpreter *EVMInt
 		p.Clear()
 	}
 	*pc += 1 // push2
-	return makePush(2, 2)(pc, interpreter, scope)
+	_, err := makePush(2, 2)(pc, interpreter, scope)
+	if err != nil {
+		return nil, err
+	}
+	return nil, nil
 }
 
 // PUSH1 PUSH1 PUSH1 SHL SUB
 func opPush1Push1Push1SHLSub(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	log.Info("opPush1Push1Push1SHLSub used")
 	codeLen := uint64(len(scope.Contract.Code))
 	var integer1, integer2, integer3 = new(uint256.Int), new(uint256.Int), new(uint256.Int)
 	*pc += 1
@@ -1447,6 +1464,7 @@ func opPush1Push1Push1SHLSub(pc *uint64, interpreter *EVMInterpreter, scope *Sco
 
 // AND DUP2 ADD SWAP1 DUP2 LT
 func opAndDup2AddSwap1Dup2LT(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	log.Info("opAndDup2AddSwap1Dup2LT used")
 	x, y := scope.Stack.pop(), scope.Stack.peek()
 	y.And(&x, y)
 
@@ -1472,6 +1490,7 @@ func opAndDup2AddSwap1Dup2LT(pc *uint64, interpreter *EVMInterpreter, scope *Sco
 
 // SWAP1 PUSH1 DUP1 NOT SWAP2 ADD AND DUP2 ADD SWAP1 DUP2 LT
 func opSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	log.Info("opSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT used")
 	codeLen := uint64(len(scope.Contract.Code))
 	scope.Stack.swap1()
 
