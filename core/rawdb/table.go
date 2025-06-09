@@ -95,6 +95,10 @@ func (t *table) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
 	return t.db.ResetTable(kind, startAt, onlyEmpty)
 }
 
+func (t *table) ResetTableForIncr(kind string, startAt uint64, onlyEmpty bool) error {
+	return t.db.ResetTableForIncr(kind, startAt, onlyEmpty)
+}
+
 func (t *table) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {
 	return t.db.ReadAncients(fn)
 }
@@ -232,6 +236,10 @@ func (t *table) NewBatchWithSize(size int) ethdb.Batch {
 }
 
 func (t *table) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
+	return nil
+}
+
+func (t *table) CleanBlock(kvStore ethdb.KeyValueStore, start uint64) error {
 	return nil
 }
 

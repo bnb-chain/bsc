@@ -133,6 +133,10 @@ func (db *Database) ResetTable(kind string, startAt uint64, onlyEmpty bool) erro
 	panic("not supported")
 }
 
+func (db *Database) ResetTableForIncr(kind string, startAt uint64, onlyEmpty bool) error {
+	panic("not supported")
+}
+
 func (db *Database) SyncAncient() error {
 	return nil
 }
@@ -171,6 +175,10 @@ func (db *Database) Close() error {
 }
 
 func (db *Database) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
+	panic("not supported")
+}
+
+func (db *Database) CleanBlock(ethdb.KeyValueStore, uint64) error {
 	panic("not supported")
 }
 
