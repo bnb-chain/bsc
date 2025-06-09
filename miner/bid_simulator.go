@@ -32,7 +32,13 @@ import (
 )
 
 var (
-	bidSimTimer = metrics.NewRegisteredTimer("bid/sim/duration", nil)
+	bidTryInterruptTimer = metrics.NewRegisteredTimer("bid/sim/tryInterrupt", nil)
+	bidSim1stBidTimer    = metrics.NewRegisteredTimer("bid/sim/sim1stBid", nil)
+	bidSimTimer          = metrics.NewRegisteredTimer("bid/sim/duration", nil)
+
+	simulateSpeedGauge = metrics.NewRegisteredGauge("bid/sim/simulateSpeed", nil) // Mps
+
+	bidSimTimeoutCounter = metrics.NewRegisteredCounter("chain/sim/simTimeout", nil)
 )
 
 var (
@@ -71,8 +77,9 @@ type simBidReq struct {
 
 // newBidPackage is the warp of a new bid and a feedback channel
 type newBidPackage struct {
-	bid      *types.Bid
-	feedback chan error
+	bid         *types.Bid
+	feedback    chan error
+	receiveTime int64
 }
 
 // bidSimulator is in charge of receiving bid from builders, reporting issue to builders.
@@ -455,6 +462,7 @@ func (b *bidSimulator) newBidLoop() {
 					blockInterval := b.getBlockInterval(parentHeader)
 					blockTime := parentHeader.MilliTimestamp() + blockInterval
 					left := time.Until(time.UnixMilli(int64(blockTime)))
+					bidTryInterruptTimer.UpdateSince(time.UnixMilli(newBid.receiveTime))
 					if b.canBeInterrupted(blockTime) {
 						log.Debug("simulate in progress, interrupt",
 							"blockTime", blockTime, "left", left.Milliseconds(),
@@ -571,14 +579,21 @@ func (b *bidSimulator) clearLoop() {
 
 // sendBid checks if the bid is already exists or if the builder sends too many bids,
 // if yes, return error, if not, add bid into newBid chan waiting for judge profit.
-func (b *bidSimulator) sendBid(_ context.Context, bid *types.Bid) error {
+func (b *bidSimulator) sendBid(ctx context.Context, bid *types.Bid) error {
 	timer := time.NewTimer(1 * time.Second)
 	defer timer.Stop()
 
 	replyCh := make(chan error, 1)
 
+	receiveTime, ok := ctx.Value("receiveTime").(int64)
+	if ok {
+		bidPreCheckTimer.UpdateSince(time.UnixMilli(receiveTime))
+	} else {
+		receiveTime = time.Now().UnixMilli()
+	}
+
 	select {
-	case b.newBidCh <- newBidPackage{bid: bid, feedback: replyCh}:
+	case b.newBidCh <- newBidPackage{bid: bid, feedback: replyCh, receiveTime: receiveTime}:
 		b.AddPending(bid.BlockNumber, bid.Builder, bid.Hash())
 	case <-timer.C:
 		return types.ErrMevBusy
@@ -654,6 +669,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			"blockNumber", blockNumber,
 			"parentHash", parentHash,
 			"builder", builder,
+			"bidHash", bidRuntime.bid.Hash().Hex(),
 			"gasUsed", bidRuntime.bid.GasUsed,
 			"simElapsed", time.Since(simStart),
 		}
@@ -704,8 +720,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	// if the left time is not enough to do simulation, return
 	delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
 	if delay == nil || *delay <= 0 {
-		log.Info("BidSimulator: abort commit, not enough time to simulate",
-			"builder", bidRuntime.bid.Builder, "bidHash", bidRuntime.bid.Hash().Hex())
+		log.Info("BidSimulator: abort commit, no time to begin simulating")
 		return
 	}
 
@@ -734,6 +749,10 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		return
 	}
 
+	if len(b.bidsToSim[bidRuntime.bid.BlockNumber]) == 1 {
+		bidSim1stBidTimer.UpdateSince(time.UnixMilli(int64(bidRuntime.env.header.MilliTimestamp())))
+	}
+
 	// commit transactions in bid
 	for _, tx := range bidRuntime.bid.Txs {
 		select {
@@ -758,6 +777,14 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			err = fmt.Errorf("invalid tx in bid, %v", err)
 			return
 		}
+	}
+
+	// check whether time `NoInterruptLeftOver-delayLeftOver` is enough for simulating
+	delay = b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
+	if delay != nil && *delay < 0 {
+		bidSimTimeoutCounter.Inc(1)
+		log.Info("BidSimulator: fail to commit, timeout when simulating completed")
+		return
 	}
 
 	// check if bid reward is valid
@@ -809,11 +836,13 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 
 	// if enable greedy merge, fill bid env with transactions from mempool
+	greedyMergeElapsed := time.Duration(0)
 	if *b.config.GreedyMergeTx {
 		endingBidsExtra := 20 * time.Millisecond // Add a buffer to ensure ending bids before `delayLeftOver`
 		minTimeLeftForEndingBids := b.delayLeftOver + endingBidsExtra
 		delay := b.engine.Delay(b.chain, bidRuntime.env.header, &minTimeLeftForEndingBids)
 		if delay != nil && *delay > 0 {
+			greedyMergeStartTs := time.Now()
 			bidTxsSet := mapset.NewThreadUnsafeSetWithSize[common.Hash](len(bidRuntime.bid.Txs))
 			for _, tx := range bidRuntime.bid.Txs {
 				bidTxsSet.Add(tx.Hash())
@@ -821,11 +850,13 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			stopTimer := time.NewTimer(*delay)
 			defer stopTimer.Stop()
 			fillErr := b.bidWorker.fillTransactions(interruptCh, bidRuntime.env, stopTimer, bidTxsSet)
-			log.Trace("BidSimulator: greedy merge stopped", "block", bidRuntime.env.header.Number,
-				"builder", bidRuntime.bid.Builder, "tx count", bidRuntime.env.tcount-bidTxLen+1, "err", fillErr)
 
 			// recalculate the packed reward
 			bidRuntime.packReward(*b.config.ValidatorCommission)
+			greedyMergeElapsed = time.Since(greedyMergeStartTs)
+
+			log.Debug("BidSimulator: greedy merge stopped", "block", bidRuntime.env.header.Number,
+				"builder", bidRuntime.bid.Builder, "tx count", bidRuntime.env.tcount-bidTxLen+1, "err", fillErr, "greedyMergeElapsed", greedyMergeElapsed)
 		}
 	}
 
@@ -840,9 +871,10 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 
 	bestBid := b.GetBestBid(parentHash)
+	simElapsed := time.Since(startTS)
 	if bestBid == nil {
 		winResult := "true[first]"
-		log.Info("[BID RESULT]", "win", winResult, "builder", bidRuntime.bid.Builder, "hash", bidRuntime.bid.Hash().TerminalString(), "simElapsed", time.Since(startTS))
+		log.Info("[BID RESULT]", "win", winResult, "builder", bidRuntime.bid.Builder, "hash", bidRuntime.bid.Hash().TerminalString(), "simElapsed", simElapsed)
 	} else if bidRuntime.bid.Hash() != bestBid.bid.Hash() { // skip log flushing when only one bid is present
 		log.Info("[BID RESULT]",
 			"win", bidRuntime.packedBlockReward.Cmp(bestBid.packedBlockReward) > 0,
@@ -856,8 +888,14 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			"bidBlockTx", bidRuntime.env.tcount,
 			"bestBlockTx", bestBid.env.tcount,
 
-			"simElapsed", time.Since(startTS),
+			"simElapsed", simElapsed,
 		)
+	}
+	if bidRuntime.bid.GasUsed > 30_000_000 {
+		timeCostMs := (simElapsed - greedyMergeElapsed).Microseconds()
+		if timeCostMs > 0 {
+			simulateSpeedGauge.Update(int64(uint32(float64(bidRuntime.bid.GasUsed)/float64(timeCostMs)) / 1000))
+		}
 	}
 
 	// this is the simplest strategy: best for all the delegators.

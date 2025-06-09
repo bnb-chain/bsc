@@ -10,6 +10,11 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/internal/version"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
+)
+
+var (
+	bidPreCheckTimer = metrics.NewRegisteredTimer("bid/preCheck", nil)
 )
 
 // MevRunning return true if mev is running.
@@ -67,7 +72,7 @@ func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common
 	timeout := time.Until(bidBetterBefore)
 
 	if timeout <= 0 {
-		return common.Hash{}, fmt.Errorf("too late, expected befor %s, appeared %s later", bidBetterBefore,
+		return common.Hash{}, fmt.Errorf("too late, expected before %s, appeared %s later", bidBetterBefore,
 			common.PrettyDuration(timeout))
 	}
 
