@@ -576,10 +576,12 @@ func TestOpTstore(t *testing.T) {
 		caller       = common.Address{}
 		to           = common.Address{1}
 		contractRef  = contractRef{caller}
-		contract     = NewContract(contractRef, AccountRef(to), new(uint256.Int), 0)
+		contract     = GetContract(contractRef, AccountRef(to), new(uint256.Int), 0)
 		scopeContext = ScopeContext{mem, stack, contract}
 		value        = common.Hex2Bytes("abcdef00000000000000abba000000000deaf000000c0de00100000000133700")
 	)
+
+	defer ReturnContract(contract)
 
 	// Add a stateObject for the caller and the contract being called
 	statedb.CreateAccount(caller)

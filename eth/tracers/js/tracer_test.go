@@ -68,8 +68,10 @@ func runTrace(tracer *tracers.Tracer, vmctx *vmContext, chaincfg *params.ChainCo
 		gasLimit uint64 = 31000
 		startGas uint64 = 10000
 		value           = uint256.NewInt(0)
-		contract        = vm.NewContract(account{}, account{}, value, startGas)
+		contract        = vm.GetContract(account{}, account{}, value, startGas)
 	)
+	defer vm.ReturnContract(contract)
+
 	evm.SetTxContext(vmctx.txCtx)
 	contract.Code = []byte{byte(vm.PUSH1), 0x1, byte(vm.PUSH1), 0x1, 0x0}
 	if contractCode != nil {
@@ -190,8 +192,9 @@ func TestHaltBetweenSteps(t *testing.T) {
 		t.Fatal(err)
 	}
 	scope := &vm.ScopeContext{
-		Contract: vm.NewContract(&account{}, &account{}, uint256.NewInt(0), 0),
+		Contract: vm.GetContract(&account{}, &account{}, uint256.NewInt(0), 0),
 	}
+	defer vm.ReturnContract(scope.Contract)
 	evm := vm.NewEVM(vm.BlockContext{BlockNumber: big.NewInt(1)}, &dummyStatedb{}, chainConfig, vm.Config{Tracer: tracer.Hooks})
 	evm.SetTxContext(vm.TxContext{GasPrice: big.NewInt(1)})
 	tracer.OnTxStart(evm.GetVMContext(), types.NewTx(&types.LegacyTx{}), common.Address{})
@@ -287,9 +290,12 @@ func TestEnterExit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	contract := vm.GetContract(&account{}, &account{}, uint256.NewInt(0), 0)
+	defer vm.ReturnContract(contract)
 	scope := &vm.ScopeContext{
-		Contract: vm.NewContract(&account{}, &account{}, uint256.NewInt(0), 0),
+		Contract: contract,
 	}
+
 	tracer.OnEnter(1, byte(vm.CALL), scope.Contract.Caller(), scope.Contract.Address(), []byte{}, 1000, new(big.Int))
 	tracer.OnExit(1, []byte{}, 400, nil, false)
 
