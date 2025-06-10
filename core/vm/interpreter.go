@@ -29,10 +29,11 @@ import (
 
 // Config are the configuration options for the Interpreter
 type Config struct {
-	Tracer                  *tracing.Hooks
-	NoBaseFee               bool  // Forces the EIP-1559 baseFee to 0 (needed for 0 price calls)
-	EnablePreimageRecording bool  // Enables recording of SHA3/keccak preimages
-	ExtraEips               []int // Additional EIPS that are to be enabled
+	Tracer                    *tracing.Hooks
+	NoBaseFee                 bool  // Forces the EIP-1559 baseFee to 0 (needed for 0 price calls)
+	EnablePreimageRecording   bool  // Enables recording of SHA3/keccak preimages
+	ExtraEips                 []int // Additional EIPS that are to be enabled
+	EnableOpcodeOptimizations bool  // Enable opcode optimization
 
 	StatelessSelfValidation bool // Generate execution witnesses and self-check against them (testing purpose)
 }
@@ -151,6 +152,9 @@ func NewEVMInterpreter(evm *EVM) *EVMInterpreter {
 		}
 	}
 	evm.Config.ExtraEips = extraEips
+	if evm.Config.EnableOpcodeOptimizations {
+		table = createOptimizedOpcodeTable(table)
+	}
 	return &EVMInterpreter{evm: evm, table: table}
 }
 
@@ -243,8 +247,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 		// Get the operation from the jump table and validate the stack to ensure there are
 		// enough stack items available to perform the operation.
+
 		op = contract.GetOp(pc)
 		operation := in.table[op]
+
 		cost = operation.constantGas // For tracing
 		// Validate stack
 		if sLen := stack.len(); sLen < operation.minStack {
@@ -313,11 +319,18 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		if err != nil {
 			break
 		}
+
 		pc++
 	}
 
 	if err == errStopToken {
 		err = nil // clear stop token error
+	}
+	if in.evm.Context.BlockNumber.Int64() == 398 && contract.Caller().String() == "0xb005741528b86F5952469d80A8614591E3c5B632" {
+		log.Info("DEBUG", "execRes", res)
+		for i := 0; i < callContext.Stack.len(); i++ {
+			log.Info("DEBUG", "index", i, "data", callContext.Stack.Data()[i])
+		}
 	}
 
 	return res, err

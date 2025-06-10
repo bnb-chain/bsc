@@ -2384,6 +2384,11 @@ func applyMessage(
 		msg.GasLimit,
 		uint256.MustFromBig(msg.Value),
 	)
+
+	if evm.Context.BlockNumber.Int64() == 398 && msg.From.String() == "0xb005741528b86F5952469d80A8614591E3c5B632" {
+		log.Info("DEBUG", "returnGas", returnGas)
+	}
+
 	if err != nil {
 		log.Error("apply message failed", "msg", string(ret), "err", err)
 	}
