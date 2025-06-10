@@ -395,10 +395,6 @@ func (b *bidSimulator) newBidLoop() {
 		}
 	}
 
-	genDiscardedReply := func(betterBid *BidRuntime) error {
-		return fmt.Errorf("bid is discarded, current bestBid is [blockReward: %s, validatorReward: %s]", betterBid.expectedBlockReward, betterBid.expectedValidatorReward)
-	}
-
 	for {
 		select {
 		case newBid := <-b.newBidCh:
@@ -434,13 +430,11 @@ func (b *bidSimulator) newBidLoop() {
 				} else if !bestBidToRun.IsCommitted() {
 					// bestBidToRun is not committed yet, this newBid will trigger bestBidToRun to commit
 					bidRuntime = bestBidRuntime
-					replyErr = genDiscardedReply(bidRuntime)
 					log.Debug("discard new bid and to simulate the non-committed bestBidToRun",
 						"builder", bestBidToRun.Builder, "bidHash", bestBidToRun.Hash().TerminalString())
 				} else {
 					// new bid will be discarded, as it is useless now.
 					toCommit = false
-					replyErr = genDiscardedReply(bestBidRuntime)
 					log.Debug("new bid will be discarded", "builder", bestBidToRun.Builder,
 						"bidHash", bestBidToRun.Hash().TerminalString())
 				}
