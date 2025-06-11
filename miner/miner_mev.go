@@ -10,11 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/internal/version"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
-)
-
-var (
-	bidPreCheckTimer = metrics.NewRegisteredTimer("bid/preCheck", nil)
 )
 
 // MevRunning return true if mev is running.
