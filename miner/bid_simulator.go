@@ -751,7 +751,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 
 	if len(b.bidsToSim[bidRuntime.bid.BlockNumber]) == 1 {
-		bidSim1stBidTimer.UpdateSince(time.UnixMilli(int64(bidRuntime.env.header.MilliTimestamp())))
+		bidSim1stBidTimer.UpdateSince(time.UnixMilli(int64(b.chain.GetHeaderByHash(bidRuntime.bid.ParentHash).MilliTimestamp())))
 	}
 
 	// commit transactions in bid
