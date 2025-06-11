@@ -284,3 +284,44 @@ func WriteStateHistory(db ethdb.AncientWriter, id uint64, meta []byte, accountIn
 		return nil
 	})
 }
+
+// WriteIncrStateTrieNodes writes the provided trie nodes to the database.
+// Compute the position of state history in freezer by minus one since the id of first state
+// history starts from one(zero for initial state).
+func WriteIncrStateTrieNodes(db ethdb.AncientWriter, id uint64, trieNodes []byte) error {
+	_, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+		if err := op.AppendRaw(incrStateHistoryTrieNodesData, id-1, trieNodes); err != nil {
+			return err
+		}
+		return nil
+	})
+	return err
+}
+
+// WriteIncrBlockData writes the provided block data to the database.
+func WriteIncrBlockData(db ethdb.AncientWriter, number uint64, hash, header, body, receipts, td, sidecars []byte, isCancun bool) error {
+	_, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+		if err := op.AppendRaw(ChainFreezerHashTable, number, hash); err != nil {
+			return err
+		}
+		if err := op.AppendRaw(ChainFreezerHeaderTable, number, header); err != nil {
+			return err
+		}
+		if err := op.AppendRaw(ChainFreezerBodiesTable, number, body); err != nil {
+			return err
+		}
+		if err := op.AppendRaw(ChainFreezerReceiptTable, number, receipts); err != nil {
+			return err
+		}
+		if err := op.AppendRaw(ChainFreezerDifficultyTable, number, td); err != nil {
+			return err
+		}
+		if isCancun {
+			if err := op.AppendRaw(ChainFreezerBlobSidecarTable, number, sidecars); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return err
+}

@@ -305,6 +305,13 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 			oldest = bottom.stateID() - limit + 1 // track the id of history **after truncation**
 		}
 	}
+
+	if dl.db.incrFreezer != nil && dl.db.config.EnableIncrStateHistory {
+		if err := writeHistoryTrieNodes(dl.db.incrFreezer, bottom); err != nil {
+			return nil, err
+		}
+	}
+
 	// Mark the diskLayer as stale before applying any mutations on top.
 	dl.stale = true
 

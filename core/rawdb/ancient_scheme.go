@@ -66,6 +66,9 @@ const (
 	stateHistoryStorageIndex = "storage.index"
 	stateHistoryAccountData  = "account.data"
 	stateHistoryStorageData  = "storage.data"
+
+	// indicates the name of the freezer incremental state history table.
+	incrStateHistoryTrieNodesData = "trienodes.data"
 )
 
 // stateFreezerNoSnappy configures whether compression is disabled for the state freezer.
@@ -77,11 +80,18 @@ var stateFreezerNoSnappy = map[string]bool{
 	stateHistoryStorageData:  false,
 }
 
+// incrStateFreezerNoSnappy configures whether compression is disabled for the incremental state freezer.
+var incrStateFreezerNoSnappy = map[string]bool{
+	incrStateHistoryTrieNodesData: false,
+}
+
 // The list of identifiers of ancient stores.
 var (
 	ChainFreezerName       = "chain"        // the folder name of chain segment ancient store.
 	MerkleStateFreezerName = "state"        // the folder name of state history ancient store.
 	VerkleStateFreezerName = "state_verkle" // the folder name of state history ancient store.
+
+	IncrementalPath = "incremental_snapshot" // the folder name of incremental ancient store
 )
 
 // freezers the collections of all builtin freezers.
@@ -104,4 +114,31 @@ func NewStateFreezer(ancientDir string, verkle bool, readOnly bool, offset uint6
 		name = filepath.Join(ancientDir, MerkleStateFreezerName)
 	}
 	return newResettableFreezer(name, "eth/db/state", readOnly, offset, stateHistoryTableSize, stateFreezerNoSnappy)
+}
+
+// NewIncrStateFreezer initializes the ancient store for incremental state history.
+//
+//   - if the empty directory is given, initializes the pure in-memory
+//     incremental state freezer (e.g. dev mode).
+//   - if non-empty directory is given, initializes the regular file-based
+//     incremental state freezer.
+func NewIncrStateFreezer(ancientDir string, readOnly bool, offset, blockLimit uint64) (ethdb.ResettableAncientStore, error) {
+	if ancientDir == "" {
+		return NewMemoryFreezer(readOnly, incrStateFreezerNoSnappy), nil
+	}
+
+	name := filepath.Join(ancientDir, IncrementalPath)
+	return newIncrFreezer(name, MerkleStateFreezerName, "eth/db/incremental/state", readOnly, offset, stateHistoryTableSize,
+		incrStateFreezerNoSnappy, blockLimit)
+}
+
+// NewIncrChainFreezer initializes the ancient store for incremental block history.
+func NewIncrChainFreezer(ancientDir string, readOnly bool, offset, blockLimit uint64) (ethdb.ResettableAncientStore, error) {
+	if ancientDir == "" {
+		return NewMemoryFreezer(readOnly, incrStateFreezerNoSnappy), nil
+	}
+
+	name := filepath.Join(ancientDir, IncrementalPath)
+	return newIncrFreezer(name, ChainFreezerName, "eth/db/incremental/chain", readOnly, offset, stateHistoryTableSize,
+		chainFreezerNoSnappy, blockLimit)
 }

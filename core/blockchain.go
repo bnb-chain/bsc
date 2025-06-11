@@ -177,6 +177,8 @@ type CacheConfig struct {
 	PathSyncFlush       bool          // Whether sync flush the trienodebuffer of pathdb to disk.
 	JournalFilePath     string
 	JournalFile         bool
+	EnableIncrHistory   bool   // Flag whether the freezer db stores incremental block and state history
+	IncrHistory         uint64 // Amount of block and state history stored in incremental freezer db
 
 	SnapshotNoBuild bool // Whether the background generation is allowed
 	SnapshotWait    bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
@@ -197,12 +199,14 @@ func (c *CacheConfig) triedbConfig(isVerkle bool) *triedb.Config {
 	}
 	if c.StateScheme == rawdb.PathScheme {
 		config.PathDB = &pathdb.Config{
-			SyncFlush:       c.PathSyncFlush,
-			StateHistory:    c.StateHistory,
-			CleanCacheSize:  c.TrieCleanLimit * 1024 * 1024,
-			WriteBufferSize: c.TrieDirtyLimit * 1024 * 1024,
-			JournalFilePath: c.JournalFilePath,
-			JournalFile:     c.JournalFile,
+			SyncFlush:              c.PathSyncFlush,
+			StateHistory:           c.StateHistory,
+			CleanCacheSize:         c.TrieCleanLimit * 1024 * 1024,
+			WriteBufferSize:        c.TrieDirtyLimit * 1024 * 1024,
+			JournalFilePath:        c.JournalFilePath,
+			JournalFile:            c.JournalFile,
+			EnableIncrStateHistory: c.EnableIncrHistory,
+			IncrStateHistory:       c.IncrHistory,
 		}
 	}
 	return config
@@ -281,6 +285,8 @@ type BlockChain struct {
 	statedb       *state.CachingDB                 // State database to reuse between imports (contains state cache)
 	triesInMemory uint64
 	txIndexer     *txIndexer // Transaction indexer, might be nil if not enabled
+
+	incrChainFreezer ethdb.ResettableAncientStore // store block data into incr freezer database for incremental snapshot usage
 
 	hc                       *HeaderChain
 	rmLogsFeed               event.Feed
@@ -412,6 +418,21 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		diffQueueBuffer:    make(chan *types.DiffLayer),
 		logger:             vmConfig.Tracer,
 	}
+
+	if cacheConfig.EnableIncrHistory {
+		ancient, err := db.AncientDatadir()
+		if err != nil {
+			log.Crit("Failed to get ancient dir", "err", err)
+			return nil, err
+		}
+		incrChainFreezer, err := rawdb.NewIncrChainFreezer(ancient, false, 1, cacheConfig.IncrHistory)
+		if err != nil {
+			log.Crit("Failed to create incr chain freezer", "err", err)
+			return nil, err
+		}
+		bc.incrChainFreezer = incrChainFreezer
+	}
+
 	bc.hc, err = NewHeaderChain(db, chainConfig, engine, bc.insertStopped)
 	if err != nil {
 		return nil, err
@@ -1802,7 +1823,8 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		rawdb.WriteBlock(blockBatch, block)
 		rawdb.WriteReceipts(blockBatch, block.Hash(), block.NumberU64(), receipts)
 		// if cancun is enabled, here need to write sidecars too
-		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+		isCancun := bc.chainConfig.IsCancun(block.Number(), block.Time())
+		if isCancun {
 			rawdb.WriteBlobSidecars(blockBatch, block.Hash(), block.NumberU64(), block.Sidecars())
 		}
 		if bc.db.StateStore() != nil {
@@ -1816,8 +1838,12 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		bc.hc.tdCache.Add(block.Hash(), externTd)
 		bc.blockCache.Add(block.Hash(), block)
 		bc.cacheReceipts(block.Hash(), receipts, block)
-		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
+		if isCancun {
 			bc.sidecarsCache.Add(block.Hash(), block.Sidecars())
+		}
+
+		if bc.cacheConfig.EnableIncrHistory {
+			bc.writeBlockIntoIncrFreezer(block.NumberU64(), block.Hash().Bytes(), block, receipts, externTd, isCancun)
 		}
 		wg.Done()
 	}()
@@ -1916,6 +1942,39 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	}
 
 	return nil
+}
+
+func (bc *BlockChain) writeBlockIntoIncrFreezer(number uint64, hash []byte, block *types.Block, receipts []*types.Receipt,
+	td *big.Int, isCancun bool) {
+	headerData, err := rlp.EncodeToBytes(block.Header())
+	if err != nil {
+		log.Crit("Failed to RLP encode header", "err", err)
+	}
+	bodyData, err := rlp.EncodeToBytes(block.Body())
+	if err != nil {
+		log.Crit("Failed to RLP encode body", "err", err)
+	}
+	receiptsData, err := rlp.EncodeToBytes(receipts)
+	if err != nil {
+		log.Crit("Failed to encode block receipts", "err", err)
+	}
+	tdData, err := rlp.EncodeToBytes(td)
+	if err != nil {
+		log.Crit("Failed to RLP encode block total difficulty", "err", err)
+	}
+
+	blobData := []byte{}
+	if isCancun {
+		blobData, err = rlp.EncodeToBytes(block.Sidecars())
+		if err != nil {
+			log.Crit("Failed to encode block blobs", "err", err)
+		}
+	}
+
+	err = rawdb.WriteIncrBlockData(bc.incrChainFreezer, number, hash, headerData, bodyData, receiptsData, tdData, blobData, isCancun)
+	if err != nil {
+		log.Crit("Failed to write block into incremental freezer db", "err", err)
+	}
 }
 
 // WriteBlockAndSetHead writes the given block and all associated state to the database,

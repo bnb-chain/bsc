@@ -123,14 +123,16 @@ type layer interface {
 
 // Config contains the settings for database.
 type Config struct {
-	SyncFlush       bool   // Flag of trienodebuffer sync flush cache to disk
-	StateHistory    uint64 // Number of recent blocks to maintain state history for
-	CleanCacheSize  int    // Maximum memory allowance (in bytes) for caching clean nodes
-	WriteBufferSize int    // Maximum memory allowance (in bytes) for write buffer
-	ReadOnly        bool   // Flag whether the database is opened in read only mode.
-	NoTries         bool
-	JournalFilePath string
-	JournalFile     bool
+	SyncFlush              bool   // Flag of trienodebuffer sync flush cache to disk
+	StateHistory           uint64 // Number of recent blocks to maintain state history for
+	CleanCacheSize         int    // Maximum memory allowance (in bytes) for caching clean nodes
+	WriteBufferSize        int    // Maximum memory allowance (in bytes) for write buffer
+	ReadOnly               bool   // Flag whether the database is opened in read only mode.
+	NoTries                bool   // Flag whether the database stores tries
+	JournalFilePath        string // The path of journal file
+	JournalFile            bool   // Flag whether store memory diffLayer into file
+	EnableIncrStateHistory bool   // Flag whether the freezer db stores incremental state history
+	IncrStateHistory       uint64 // Amount of state history stored in incremental freezer db
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -210,11 +212,12 @@ type Database struct {
 	isVerkle bool       // Flag if database is used for verkle tree
 	hasher   nodeHasher // Trie node hasher
 
-	config  *Config                      // Configuration for database
-	diskdb  ethdb.Database               // Persistent storage for matured trie nodes
-	tree    *layerTree                   // The group for all known layers
-	freezer ethdb.ResettableAncientStore // Freezer for storing trie histories, nil possible in tests
-	lock    sync.RWMutex                 // Lock to prevent mutations from happening at the same time
+	config      *Config                      // Configuration for database
+	diskdb      ethdb.Database               // Persistent storage for matured trie nodes
+	tree        *layerTree                   // The group for all known layers
+	freezer     ethdb.ResettableAncientStore // Freezer for storing trie histories, nil possible in tests
+	incrFreezer ethdb.ResettableAncientStore // Incremental freezer for storing trie histories, nil possible in tests
+	lock        sync.RWMutex                 // Lock to prevent mutations from happening at the same time
 }
 
 // New attempts to load an already existing layer from a persistent key-value
@@ -251,6 +254,12 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 	if err := db.repairHistory(); err != nil {
 		log.Crit("Failed to repair state history", "err", err)
 	}
+	if db.config.EnableIncrStateHistory {
+		if err := db.repairIncrHistory(); err != nil {
+			log.Crit("Failed to repair incremental state history", "err", err)
+		}
+	}
+
 	// Disable database in case node is still in the initial state sync stage.
 	if rawdb.ReadSnapSyncStatusFlag(diskdb) == rawdb.StateSyncRunning && !db.readOnly {
 		if err := db.Disable(); err != nil {
@@ -315,6 +324,123 @@ func (db *Database) repairHistory() error {
 	if pruned != 0 {
 		log.Warn("Truncated extra state histories", "number", pruned)
 	}
+	return nil
+
+	// TODO: handle restart in incr freezer db
+	// log.Info("Open incremental state history", "EnableIncrStateHistory", db.config.EnableIncrStateHistory,
+	// 	"IncrStateHistory", db.config.IncrStateHistory)
+	// if db.config.EnableIncrStateHistory {
+	// 	log.Info("Open incremental state history")
+	// 	incrFreezer, err := rawdb.NewIncrStateFreezer(ancient, db.readOnly, offset, db.config.IncrStateHistory)
+	// 	if err != nil {
+	// 		log.Crit("Failed to open incremental state history freezer", "err", err)
+	// 	}
+	// 	db.incrFreezer = incrFreezer
+	//
+	// 	// Reset the entire state histories if the trie database is not initialized
+	// 	// yet. This action is necessary because these state histories are not
+	// 	// expected to exist without an initialized trie database.
+	// 	id = db.tree.bottom().stateID()
+	// 	if id == 0 {
+	// 		frozen, err := db.incrFreezer.Ancients()
+	// 		if err != nil {
+	// 			log.Crit("Failed to retrieve head of state history", "err", err)
+	// 		}
+	// 		if frozen != 0 {
+	// 			err := db.incrFreezer.Reset()
+	// 			if err != nil {
+	// 				log.Crit("Failed to reset state histories", "err", err)
+	// 			}
+	// 			log.Info("Truncated extraneous state history")
+	// 		}
+	// 		return nil
+	// 	}
+	//
+	// 	ohead, err := db.incrFreezer.Ancients()
+	// 	if err != nil {
+	// 		log.Crit("Failed to retrieve head of state history", "err", err)
+	// 	}
+	// 	nhead, err := db.incrFreezer.Tail()
+	// 	if err != nil {
+	// 		log.Crit("Failed to retrieve tail of state history", "err", err)
+	// 	}
+	// 	if ohead != 0 || nhead != 0 {
+	// 		// Truncate the extra state histories above in freezer in case it's not
+	// 		// aligned with the disk layer. It might happen after a unclean shutdown.
+	// 		pruned, err = truncateFromHead(db.diskdb, db.incrFreezer, id)
+	// 		if err != nil {
+	// 			log.Crit("Failed to truncate extra incremental state histories", "err", err)
+	// 		}
+	// 		if pruned != 0 {
+	// 			log.Warn("Truncated extra incremental state histories", "number", pruned)
+	// 		}
+	// 	}
+	// 	log.Info("Finish opening incremental state history")
+	// }
+}
+
+func (db *Database) repairIncrHistory() *layerTree {
+	log.Info("Open incremental state history")
+	if db.config.NoTries {
+		return nil
+	}
+	log.Info("1")
+	// Open the freezer for state history. This mechanism ensures that
+	// only one database instance can be opened at a time to prevent
+	// accidental mutation.
+	ancient, err := db.diskdb.AncientDatadir()
+	if err != nil {
+		// TODO error out if ancient store is disabled. A tons of unit tests
+		// disable the ancient store thus the error here will immediately fail
+		// all of them. Fix the tests first.
+		return nil
+	}
+	offset := uint64(0) // differ from in block data, only metadata is used in state data
+	incrFreezer, err := rawdb.NewIncrStateFreezer(ancient, db.readOnly, offset, db.config.IncrStateHistory)
+	if err != nil {
+		log.Crit("Failed to open incremental state history freezer", "err", err)
+	}
+	db.incrFreezer = incrFreezer
+
+	// Reset the entire state histories if the trie database is not initialized
+	// yet. This action is necessary because these state histories are not
+	// expected to exist without an initialized trie database.
+	id := db.tree.bottom().stateID()
+	if id == 0 {
+		frozen, err := db.incrFreezer.Ancients()
+		if err != nil {
+			log.Crit("Failed to retrieve head of state history", "err", err)
+		}
+		if frozen != 0 {
+			err := db.incrFreezer.Reset()
+			if err != nil {
+				log.Crit("Failed to reset state histories", "err", err)
+			}
+			log.Info("Truncated extraneous state history")
+		}
+		return nil
+	}
+
+	ohead, err := db.incrFreezer.Ancients()
+	if err != nil {
+		log.Crit("Failed to retrieve head of state history", "err", err)
+	}
+	nhead, err := db.incrFreezer.Tail()
+	if err != nil {
+		log.Crit("Failed to retrieve tail of state history", "err", err)
+	}
+	if ohead != 0 || nhead != 0 {
+		// Truncate the extra state histories above in freezer in case it's not
+		// aligned with the disk layer. It might happen after a unclean shutdown.
+		pruned, err := truncateFromHead(db.diskdb, db.incrFreezer, id)
+		if err != nil {
+			log.Crit("Failed to truncate extra incremental state histories", "err", err)
+		}
+		if pruned != 0 {
+			log.Warn("Truncated extra incremental state histories", "number", pruned)
+		}
+	}
+	log.Info("Finish opening incremental state history")
 	return nil
 }
 

@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rlp"
 	"golang.org/x/exp/maps"
 )
 
@@ -552,6 +553,31 @@ func writeHistory(writer ethdb.AncientWriter, dl *diffLayer) error {
 	historyIndexBytesMeter.Mark(int64(indexSize))
 	historyBuildTimeMeter.UpdateSince(start)
 	log.Debug("Stored state history", "id", dl.stateID(), "block", dl.block, "data", dataSize, "index", indexSize, "elapsed", common.PrettyDuration(time.Since(start)))
+
+	return nil
+}
+
+// writeHistoryTrieNodes persists the history trie nodes
+func writeHistoryTrieNodes(writer ethdb.AncientWriter, dl *diffLayer) error {
+	// Short circuit if state set is not available.
+	if dl.states == nil {
+		return errors.New("state change set is not available")
+	}
+
+	var (
+		start = time.Now()
+		nodes = compressTrieNodes(dl.nodes.nodes)
+	)
+	nodesBytes, err := rlp.EncodeToBytes(nodes)
+	if err != nil {
+		log.Crit("Failed to encode trie nodes", "error", err)
+	}
+
+	if err = rawdb.WriteIncrStateTrieNodes(writer, dl.stateID(), nodesBytes); err != nil {
+		return err
+	}
+	log.Debug("Stored trie nodes", "id", dl.stateID(), "block", dl.block, "nodes size", dl.nodes.size,
+		"elapsed", common.PrettyDuration(time.Since(start)))
 
 	return nil
 }
