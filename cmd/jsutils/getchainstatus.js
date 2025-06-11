@@ -257,7 +257,9 @@ const builderMap = new Map([
     ["0x627fE6AFA2E84e461CB7AE7C2c46e8adf9a954a2", "txboost"],
     ["0x5EC60f73f938e36400ec3CC3Ff4d7a7703F7c005", "nodereal ap y"],
     // ["0x4827b423D03a349b7519Dda537e9A28d31ecBB48", "puissant y"],
-    ["0x0eAbBdE133fbF3c5eB2BEE6F7c8210deEAA0f7db", "blockrazor"],
+    ["0x0eAbBdE133fbF3c5eB2BEE6F7c8210deEAA0f7db", "blockrazor ap"],
+    ["0x95c8436143c82Ea4d3529A3ed8DDa9998F6daC5F", "blockrazor eu"],
+    ["0xb71Ba9e570ee20E983De1d5aE01baf5dCB4e4299", "blockrazor us"],
     ["0x7b3ee856c98b1bb3689ef7f90477df2927fcbdb6",  "trustnet"],
     ["0xA8caEc0D68a90Ac971EA1aDEFA1747447e1f9871",  "blockroute"],
 ]);
