@@ -659,7 +659,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		if err != nil {
 			logCtx = append(logCtx, "err", err)
 			log.Info("BidSimulator: simulation failed", logCtx...)
-			if err != errBetterBid {
+			if !errors.Is(errBetterBid, err) {
 				go b.reportIssue(bidRuntime, err)
 			}
 		}
