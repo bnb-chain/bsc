@@ -111,13 +111,18 @@ func (a *asyncnodebuffer) empty() bool {
 // memory threshold is reached. Note, all data must be written atomically.
 func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, clean *fastcache.Cache, id uint64, force bool) error {
 	a.mux.Lock()
-	defer a.mux.Unlock()
+	start := time.Now()
+	defer func() {
+		a.mux.Unlock()
+		log.Info("finish flush", "cost", time.Since(start).Milliseconds())
+	}()
 
 	if a.stopFlushing.Load() {
 		return nil
 	}
 
 	if force {
+		log.Info("force flush")
 		for {
 			if atomic.LoadUint64(&a.background.immutable) == 1 {
 				time.Sleep(time.Duration(DefaultBackgroundFlushInterval) * time.Second)

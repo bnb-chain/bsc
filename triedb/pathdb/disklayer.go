@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
@@ -314,8 +315,9 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	if dl.id == 0 {
 		rawdb.WriteStateID(dl.db.diskdb, dl.root, 0)
 	}
+	start := time.Now()
 	rawdb.WriteStateID(dl.db.diskdb, bottom.rootHash(), bottom.stateID())
-
+	log.Info("diff layer write state id finish", "cost", time.Since(start).Nanoseconds())
 	// In a unique scenario where the ID of the oldest history object (after tail
 	// truncation) surpasses the persisted state ID, we take the necessary action
 	// of forcibly committing the cached dirty states to ensure that the persisted

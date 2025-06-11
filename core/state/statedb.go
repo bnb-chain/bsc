@@ -44,6 +44,12 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+var (
+	blockCodeWriteTimer = metrics.NewRegisteredTimer("chain/code/write", nil)
+	StateCommitTimer    = metrics.NewRegisteredTimer("chain/state/write", nil)
+	snapCommitTimer     = metrics.NewRegisteredTimer("chain/snap/write", nil)
+)
+
 const defaultNumOfSlots = 100
 
 // TriesInMemory represents the number of layers that are kept in RAM.
@@ -1460,11 +1466,17 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 	if snaps != nil {
 		ret.diffLayer = &types.DiffLayer{}
 	}
-	// Commit dirty contract code if any exists
+
+	// Step 2: Commit dirty contract code if any exists
+	var codeCommitDuration time.Duration
 	if db := s.db.TrieDB().Disk(); db != nil && len(ret.codes) > 0 {
+		codeStart := time.Now()
+
 		batch := db.NewBatch()
+		var totalCodeSize int64
 		for _, code := range ret.codes {
 			rawdb.WriteCode(batch, code.hash, code.blob)
+			totalCodeSize += int64(len(code.blob))
 			if snaps != nil {
 				ret.diffLayer.Codes = append(ret.diffLayer.Codes, types.DiffCode{
 					Hash: code.hash,
@@ -1476,14 +1488,20 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 		if err := batch.Write(); err != nil {
 			return nil, err
 		}
+		codeCommitDuration = time.Since(codeStart)
+		blockCodeWriteTimer.Update(codeCommitDuration)
 	}
+
+	// Step 3: Update snapshots and persist state
+	var snapshotDuration, trieDBDuration time.Duration
 	if !ret.empty() {
-		// If snapshotting is enabled, update the snapshot tree with this new version
+		// Step 3a: Update snapshot tree
 		if snap := s.db.Snapshot(); snap != nil && snap.Snapshot(ret.originRoot) != nil {
-			start := time.Now()
+			snapshotStart := time.Now()
 			if err := snap.Update(ret.root, ret.originRoot, ret.accounts, ret.storages); err != nil {
 				log.Warn("Failed to update snapshot tree", "from", ret.originRoot, "to", ret.root, "err", err)
 			}
+
 			// Keep 128 diff layers in the memory, persistent layer is 129th.
 			// - head layer is paired with HEAD state
 			// - head-1 layer is paired with HEAD-1 state
@@ -1491,22 +1509,39 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 			if err := snap.Cap(ret.root, snap.CapLimit()); err != nil {
 				log.Warn("Failed to cap snapshot tree", "root", ret.root, "layers", TriesInMemory, "err", err)
 			}
+			snapshotDuration = time.Since(snapshotStart)
 			if metrics.EnabledExpensive() {
-				s.SnapshotCommits += time.Since(start)
+				s.SnapshotCommits += snapshotDuration
 			}
+			log.Info("Snapshot update completed",
+				"duration", snapshotDuration.Nanoseconds(),
+				"capLimit", snap.CapLimit())
 		}
-		// If trie database is enabled, commit the state update as a new layer
+
+		// Step 3b: Update trie database (PBSS/HashDB)
 		if db := s.db.TrieDB(); db != nil && !s.noTrie {
-			start := time.Now()
+			trieDBStart := time.Now()
+			// Calculate node set statistics
+			var totalSets, totalNodes int
+			for _, set := range ret.nodes.Sets {
+				totalSets++
+				updates, deletes := set.Size()
+				totalNodes += updates + deletes
+			}
 			if err := db.Update(ret.root, ret.originRoot, block, ret.nodes, ret.stateSet()); err != nil {
 				return nil, err
 			}
+			trieDBDuration = time.Since(trieDBStart)
 			if metrics.EnabledExpensive() {
-				s.TrieDBCommits += time.Since(start)
+				s.TrieDBCommits += trieDBDuration
 			}
+			log.Info("TrieDB update completed",
+				"duration", trieDBDuration.Nanoseconds(),
+				"scheme", db.Scheme())
 		}
 	}
 	s.reader, _ = s.db.Reader(s.originalRoot)
+
 	return ret, err
 }
 

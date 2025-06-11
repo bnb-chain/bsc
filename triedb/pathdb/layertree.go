@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
@@ -146,10 +147,11 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 		if err != nil {
 			return err
 		}
+
 		for _, ly := range tree.layers {
 			if dl, ok := ly.(*diffLayer); ok {
 				dl.cache.Remove(dl)
-				log.Debug("Cleanup difflayer hash cache due to cap all", "diff_root", dl.root.String(), "diff_block_number", dl.block)
+				log.Info("Cleanup difflayer hash cache due to cap all", "diff_root", dl.root.String(), "diff_block_number", dl.block)
 			}
 		}
 		// Replace the entire layer tree with the flat base
@@ -178,12 +180,13 @@ func (tree *layerTree) cap(root common.Hash, layers int) error {
 		// Hold the lock to prevent any read operations until the new
 		// parent is linked correctly.
 		diff.lock.Lock()
-
+		start := time.Now()
 		base, err := parent.persist(false)
 		if err != nil {
 			diff.lock.Unlock()
 			return err
 		}
+		log.Info("persist diff layer duration", time.Since(start).Milliseconds(), "root", base.rootHash())
 		tree.layers[base.rootHash()] = base
 		diff.parent = base
 

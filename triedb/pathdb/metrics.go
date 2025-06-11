@@ -48,6 +48,8 @@ var (
 
 	commitTimeTimer  = metrics.NewRegisteredTimer("pathdb/commit/time", nil)
 	commitNodesMeter = metrics.NewRegisteredMeter("pathdb/commit/nodes", nil)
+	commitNodesGauge = metrics.NewRegisteredGauge("pathdb/commit/nodesvalue", nil)
+	commitBytesGauge = metrics.NewRegisteredGauge("pathdb/commit/bytesvalue", nil)
 	commitBytesMeter = metrics.NewRegisteredMeter("pathdb/commit/bytes", nil)
 
 	gcTrieNodeMeter      = metrics.NewRegisteredMeter("pathdb/gc/node/count", nil)

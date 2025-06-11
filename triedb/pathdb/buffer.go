@@ -163,11 +163,10 @@ func (b *buffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, node
 	if err := batch.Write(); err != nil {
 		return err
 	}
-	commitBytesMeter.Mark(int64(size))
-	commitNodesMeter.Mark(int64(nodes))
+	updateMetrics(nodes, int(size))
 	commitTimeTimer.UpdateSince(start)
 	b.reset()
-	log.Debug("Persisted buffer content", "nodes", nodes, "bytes", common.StorageSize(size), "elapsed", common.PrettyDuration(time.Since(start)))
+	log.Info("Persisted buffer content", "nodes", nodes, "bytes", common.StorageSize(size), "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
 }
 
@@ -190,4 +189,11 @@ func (b *buffer) getLayers() uint64 {
 // getSize return the nodebuffer used size.
 func (b *buffer) getSize() (uint64, uint64) {
 	return b.size(), 0
+}
+
+func updateMetrics(nodes int, size int) {
+	commitNodesGauge.Update(int64(nodes))
+	commitBytesGauge.Update(int64(size))
+	commitBytesMeter.Mark(int64(size))
+	commitNodesMeter.Mark(int64(nodes))
 }
