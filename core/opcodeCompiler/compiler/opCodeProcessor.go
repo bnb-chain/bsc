@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"errors"
+	"github.com/ethereum/go-ethereum/log"
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -24,6 +25,9 @@ const taskChannelSize = 1024 * 1024
 const (
 	generate optimizeTaskType = 1
 	flush    optimizeTaskType = 2
+
+	minOptimizedOpcode = 0xb0
+	maxOptimizedOpcode = 0xcf
 )
 
 type OpCodeProcessorConfig struct {
@@ -165,6 +169,10 @@ func doCodeFusion(code []byte) ([]byte, error) {
 	for i := 0; i < length; i++ {
 		cur := i
 		skipToNext = false
+		if fusedCode[cur] >= minOptimizedOpcode && fusedCode[cur] <= maxOptimizedOpcode {
+			log.Error("original opcode cannot be an optimized opcode already", "fusedCode[cur]", fusedCode[cur])
+			return code, ErrFailPreprocessing
+		}
 
 		if length > cur+4 {
 			code0 := ByteCode(fusedCode[cur+0])
@@ -184,6 +192,7 @@ func doCodeFusion(code []byte) ([]byte, error) {
 
 			// Test zero and Jump. target offset at code[2-3]
 			if code0 == ISZERO && code1 == PUSH2 && code4 == JUMPI {
+				log.Error("original opcode result in jumpIfZero")
 				op := JumpIfZero
 				fusedCode[cur] = byte(op)
 				fusedCode[cur+1] = byte(Nop)

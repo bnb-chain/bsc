@@ -1948,11 +1948,19 @@ func (p *Parlia) distributeIncoming(val common.Address, state vm.StateDB, header
 		state.GetBalance(common.HexToAddress(systemcontracts.SystemRewardContract)).Cmp(maxSystemBalance) < 0
 	if doDistributeSysReward {
 		balance := state.GetBalance(consensus.SystemAddress)
+		actualTxTest := (*receivedTxs)[0]
+		if actualTxTest.Hash().String() == "0x8cd9c4979cd33321417cafde8f8bf2be6c5dcb14aed7dd4eba2eb49f4da91999" {
+			log.Error("check value of balance in distributeIncoming", "balance", balance)
+		}
 		rewards := new(uint256.Int)
 		rewards = rewards.Rsh(balance, systemRewardPercent)
 		if rewards.Cmp(common.U2560) > 0 {
 			state.SetBalance(consensus.SystemAddress, balance.Sub(balance, rewards), tracing.BalanceChangeUnspecified)
 			state.AddBalance(coinbase, rewards, tracing.BalanceChangeUnspecified)
+			actualTxTest := (*receivedTxs)[0]
+			if actualTxTest.Hash().String() == "0x8cd9c4979cd33321417cafde8f8bf2be6c5dcb14aed7dd4eba2eb49f4da91999" {
+				log.Error("check value in distributeIncoming into distributeToSystem", "rewards", rewards, "rewards.ToBig()", rewards.ToBig())
+			}
 			err := p.distributeToSystem(rewards.ToBig(), state, header, chain, txs, receipts, receivedTxs, usedGas, mining, tracer)
 			if err != nil {
 				return err
@@ -1969,6 +1977,10 @@ func (p *Parlia) distributeIncoming(val common.Address, state vm.StateDB, header
 	state.SetBalance(consensus.SystemAddress, common.U2560, tracing.BalanceDecreaseBSCDistributeReward)
 	state.AddBalance(coinbase, balance, tracing.BalanceIncreaseBSCDistributeReward)
 	log.Trace("distribute to validator contract", "block hash", header.Hash(), "amount", balance)
+	actualTxTest := (*receivedTxs)[0]
+	if actualTxTest.Hash().String() == "0x8cd9c4979cd33321417cafde8f8bf2be6c5dcb14aed7dd4eba2eb49f4da91999" {
+		log.Error("check value in distributeIncoming into distributeToValidator", "balance", balance, "balance.ToBig()", balance.ToBig())
+	}
 	return p.distributeToValidator(balance.ToBig(), val, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, tracer)
 }
 
@@ -2091,6 +2103,8 @@ func (p *Parlia) applyTransaction(
 		}
 		actualTx := (*receivedTxs)[0]
 		if !bytes.Equal(p.signer.Hash(actualTx).Bytes(), expectedHash.Bytes()) {
+			log.Error("ExpectedTx calc by", "nonce", nonce, "*msg.To", *msg.To, "msg.Value", msg.Value, "msg.GasLimit", msg.GasLimit, "msg.GasPrice", msg.GasPrice, "msg.Data", hex.EncodeToString(msg.Data))
+			log.Error("ActualTx calc by", "nonce", actualTx.Nonce(), "*msg.To", actualTx.To().String(), "msg.Value", actualTx.Value().String(), "msg.GasLimit", actualTx.Gas(), "msg.GasPrice", actualTx.GasPrice().String(), "msg.Data", hex.EncodeToString(actualTx.Data()))
 			return fmt.Errorf("expected tx hash %v, get %v, nonce %d, to %s, value %s, gas %d, gasPrice %s, data %s", expectedHash.String(), actualTx.Hash().String(),
 				expectedTx.Nonce(),
 				expectedTx.To().String(),

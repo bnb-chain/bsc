@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/core/tracing"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/holiman/uint256"
@@ -130,6 +131,7 @@ func (c *Contract) isCode(udest uint64) bool {
 				contractCodeBitmapHitMeter.Mark(1)
 				analysis = cached.(bitvec)
 			} else if c.optimized {
+				log.Error("into isCode", "c.optimized", c.optimized, "line", 134)
 				analysis = compiler.LoadBitvec(c.CodeHash)
 				if analysis == nil {
 					analysis = codeBitmap(c.Code)
