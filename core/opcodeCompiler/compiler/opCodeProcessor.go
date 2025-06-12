@@ -5,8 +5,6 @@ import (
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/log"
-
 	"github.com/holiman/uint256"
 )
 
@@ -171,7 +169,6 @@ func doCodeFusion(code []byte) ([]byte, error) {
 		cur := i
 		skipToNext = false
 		if fusedCode[cur] >= minOptimizedOpcode && fusedCode[cur] <= maxOptimizedOpcode {
-			log.Error("original opcode cannot be an optimized opcode already", "fusedCode[cur]", fusedCode[cur])
 			return code, ErrFailPreprocessing
 		}
 
