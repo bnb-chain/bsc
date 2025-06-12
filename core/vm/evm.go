@@ -318,8 +318,8 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 			contract.SetCallCode(&addrCopy, codeHash, code)
 			ret, err = evm.interpreter.Run(contract, input, false)
-			if evm.Context.BlockNumber.Uint64() == 5137393 && evm.StateDB.TxIndex() == 0 {
-				log.Error("show contract gas after Run", "contract.Gas", contract.Gas)
+			if evm.Context.BlockNumber.Uint64() == 5137393 {
+				log.Error("show contract gas after Run", "contract.Gas", contract.Gas, "evm.StateDB.TxIndex()", evm.StateDB.TxIndex())
 			}
 			gas = contract.Gas
 		} else {
@@ -329,8 +329,8 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 			contract := NewContract(caller, AccountRef(caller.Address()), value, gas)
 			contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
 			ret, err = evm.interpreter.Run(contract, input, false)
-			if evm.Context.BlockNumber.Uint64() == 5137393 && evm.StateDB.TxIndex() == 0 {
-				log.Error("show contract gas after Run", "contract.Gas", contract.Gas)
+			if evm.Context.BlockNumber.Uint64() == 5137393 {
+				log.Error("show contract gas after Run", "contract.Gas", contract.Gas, "evm.StateDB.TxIndex()", evm.StateDB.TxIndex())
 			}
 			gas = contract.Gas
 		}
