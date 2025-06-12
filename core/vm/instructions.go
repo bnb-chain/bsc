@@ -1262,6 +1262,10 @@ func opJumpIfZero(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) 
 	integer := new(uint256.Int)
 	pos := new(uint256.Int)
 
+	if scope.Contract.optimized == false {
+		return nil, ErrInvalidOptimizedCode
+	}
+
 	if value.IsZero() {
 		codeLen := len(scope.Contract.Code)
 		*pc += 2
