@@ -154,7 +154,6 @@ func NewEVMInterpreter(evm *EVM) *EVMInterpreter {
 	}
 	evm.Config.ExtraEips = extraEips
 	if evm.Config.EnableOpcodeOptimizations {
-		log.Error("into NewEVMInterpreter", "evm.Config.EnableOpcodeOptimizations ", evm.Config.EnableOpcodeOptimizations, "line", 156)
 		table = createOptimizedOpcodeTable(table)
 	}
 	return &EVMInterpreter{evm: evm, table: table}
@@ -252,9 +251,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		op = contract.GetOp(pc)
 		operation := in.table[op]
 		cost = operation.constantGas // For tracing
-		if in.evm.StateDB.TxIndex() == 0 {
-			log.Error("interpreter check op", "block", in.evm.Context.BlockNumber.Uint64(), "tx", in.evm.StateDB.TxIndex(), "opcode", op.String(), "cost", cost, "in.table", in.table)
-		}
 		// Validate stack
 		if sLen := stack.len(); sLen < operation.minStack {
 			return nil, &ErrStackUnderflow{stackLen: sLen, required: operation.minStack}
@@ -317,7 +313,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			mem.Resize(memorySize)
 		}
 
-		log.Error("interpreter Run", "block", in.evm.Context.BlockNumber.Uint64(), "tx", in.evm.StateDB.TxIndex(), "opcode", op.String(), "gasUsed", cost)
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
 		if errors.Is(err, ErrInvalidOptimizedCode) {

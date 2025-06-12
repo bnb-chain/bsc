@@ -149,7 +149,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		}
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)
-		log.Error("Debug tx", "transaction Index", i, "txHash", receipt.TxHash, "gasUsed", receipt.GasUsed)
 	}
 	bloomProcessors.Close()
 

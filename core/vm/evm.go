@@ -18,7 +18,6 @@ package vm
 
 import (
 	"errors"
-	"github.com/ethereum/go-ethereum/log"
 	"math/big"
 	"sync"
 	"sync/atomic"
@@ -31,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -241,7 +241,6 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				contract := NewContract(caller, AccountRef(addrCopy), value, gas)
 				codeHash := evm.resolveCodeHash(addrCopy)
 				// codeHash := evm.StateDB.GetCodeHash(addrCopy) // todo: check
-				log.Error("into tryGetOptimizedCode", "evm.Config.EnableOpcodeOptimizations", evm.Config.EnableOpcodeOptimizations, "line", 244)
 				contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 				contract.SetCallCode(&addrCopy, codeHash, code)
 				ret, err = evm.interpreter.Run(contract, input, false)
@@ -316,7 +315,6 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 			contract := NewContract(caller, AccountRef(caller.Address()), value, gas)
 			code := evm.resolveCode(addrCopy)
 			codeHash := evm.resolveCodeHash(addrCopy)
-			log.Error("into tryGetOptimizedCode", "evm.Config.EnableOpcodeOptimizations", evm.Config.EnableOpcodeOptimizations, "line", 319)
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 			contract.SetCallCode(&addrCopy, codeHash, code)
 			ret, err = evm.interpreter.Run(contract, input, false)
@@ -383,7 +381,6 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 			contract := NewContract(caller, AccountRef(caller.Address()), nil, gas).AsDelegate()
 			code := evm.resolveCode(addrCopy)
 			codeHash := evm.resolveCodeHash(addrCopy)
-			log.Error("into tryGetOptimizedCode", "evm.Config.EnableOpcodeOptimizations", evm.Config.EnableOpcodeOptimizations, "line", 380)
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 			contract.SetCallCode(&addrCopy, codeHash, code)
 			ret, err = evm.interpreter.Run(contract, input, false)
@@ -451,7 +448,6 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 			contract := NewContract(caller, AccountRef(addrCopy), new(uint256.Int), gas)
 			code := evm.resolveCode(addrCopy)
 			codeHash := evm.resolveCodeHash(addrCopy)
-			log.Error("into tryGetOptimizedCode", "evm.Config.EnableOpcodeOptimizations", evm.Config.EnableOpcodeOptimizations, "line", 448)
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 			contract.SetCallCode(&addrCopy, codeHash, code)
 			// When an error was returned by the EVM or when setting the creation code

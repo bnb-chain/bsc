@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/log"
 	"math"
 	"math/big"
 
@@ -299,9 +298,6 @@ func (st *stateTransition) buyGas() error {
 	st.gasRemaining = st.msg.GasLimit
 
 	st.initialGas = st.msg.GasLimit
-	if st.state.TxIndex() == 0 {
-		log.Error("check gas in buyGas", "st.state.TxIndex()", st.state.TxIndex(), "st.initialGas", st.initialGas)
-	}
 	mgvalU256, _ := uint256.FromBig(mgval)
 	st.state.SubBalance(st.msg.From, mgvalU256, tracing.BalanceDecreaseGasBuy)
 	return nil
@@ -553,17 +549,13 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 	fee.Mul(fee, effectiveTipU256)
 	// consensus engine is parlia
 	if st.evm.ChainConfig().Parlia != nil {
-		log.Error("check value in execute 1 before AddBalance", "st.state.TxIndex()", st.state.TxIndex(), "st.state.GetBalance(consensus.SystemAddress)", st.state.GetBalance(consensus.SystemAddress))
 		st.state.AddBalance(consensus.SystemAddress, fee, tracing.BalanceIncreaseRewardTransactionFee)
-		log.Error("check value in execute 1 after AddBalance", "st.state.TxIndex()", st.state.TxIndex(), "fee", fee, "st.gasUsed()", st.gasUsed(), "effectiveTipU256", effectiveTipU256, "st.state.GetBalance(consensus.SystemAddress)", st.state.GetBalance(consensus.SystemAddress))
 		// add extra blob fee reward
 		if rules.IsCancun {
 			blobFee := new(big.Int).SetUint64(st.blobGasUsed())
 			blobFee.Mul(blobFee, st.evm.Context.BlobBaseFee)
 			blobFeeU256, _ := uint256.FromBig(blobFee)
-			log.Error("check value in execute 2 before AddBalance", "st.state.TxIndex()", st.state.TxIndex(), "st.state.GetBalance(consensus.SystemAddress)", st.state.GetBalance(consensus.SystemAddress))
 			st.state.AddBalance(consensus.SystemAddress, blobFeeU256, tracing.BalanceIncreaseRewardTransactionFee)
-			log.Error("check value in execute 2 after AddBalance", "blobFeeU256", blobFeeU256, "st.state.TxIndex()", st.state.TxIndex(), "st.state.GetBalance(consensus.SystemAddress)", st.state.GetBalance(consensus.SystemAddress))
 		}
 	} else {
 		st.state.AddBalance(st.evm.Context.Coinbase, fee, tracing.BalanceIncreaseRewardTransactionFee)

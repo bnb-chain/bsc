@@ -2,10 +2,11 @@ package compiler
 
 import (
 	"errors"
-	"github.com/ethereum/go-ethereum/log"
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/log"
+
 	"github.com/holiman/uint256"
 )
 
@@ -192,7 +193,6 @@ func doCodeFusion(code []byte) ([]byte, error) {
 
 			// Test zero and Jump. target offset at code[2-3]
 			if code0 == ISZERO && code1 == PUSH2 && code4 == JUMPI {
-				log.Error("original opcode result in jumpIfZero")
 				op := JumpIfZero
 				fusedCode[cur] = byte(op)
 				fusedCode[cur+1] = byte(Nop)

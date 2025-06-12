@@ -3,7 +3,6 @@ package compiler
 import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
-	"github.com/ethereum/go-ethereum/log"
 )
 
 type OpCodeCache struct {
@@ -12,7 +11,6 @@ type OpCodeCache struct {
 }
 
 func (c *OpCodeCache) GetCachedBitvec(codeHash common.Hash) []byte {
-	log.Error("into GetCachedBitvec", "codeHash", codeHash)
 	bitvec, _ := c.bitvecCache.Get(codeHash)
 	return bitvec
 }
@@ -26,7 +24,6 @@ func (c *OpCodeCache) RemoveCachedCode(hash common.Hash) {
 }
 
 func (c *OpCodeCache) GetCachedCode(hash common.Hash) []byte {
-	log.Error("into GetCachedCode", "hash", hash)
 	processedCode, _ := c.optimizedCodeCache.Get(hash)
 	return processedCode
 }

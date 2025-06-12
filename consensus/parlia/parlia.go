@@ -1948,19 +1948,11 @@ func (p *Parlia) distributeIncoming(val common.Address, state vm.StateDB, header
 		state.GetBalance(common.HexToAddress(systemcontracts.SystemRewardContract)).Cmp(maxSystemBalance) < 0
 	if doDistributeSysReward {
 		balance := state.GetBalance(consensus.SystemAddress)
-		actualTxTest := (*receivedTxs)[0]
-		if actualTxTest.Hash().String() == "0x8cd9c4979cd33321417cafde8f8bf2be6c5dcb14aed7dd4eba2eb49f4da91999" {
-			log.Error("check value of balance in distributeIncoming", "balance", balance)
-		}
 		rewards := new(uint256.Int)
 		rewards = rewards.Rsh(balance, systemRewardPercent)
 		if rewards.Cmp(common.U2560) > 0 {
 			state.SetBalance(consensus.SystemAddress, balance.Sub(balance, rewards), tracing.BalanceChangeUnspecified)
 			state.AddBalance(coinbase, rewards, tracing.BalanceChangeUnspecified)
-			actualTxTest := (*receivedTxs)[0]
-			if actualTxTest.Hash().String() == "0x8cd9c4979cd33321417cafde8f8bf2be6c5dcb14aed7dd4eba2eb49f4da91999" {
-				log.Error("check value in distributeIncoming into distributeToSystem", "rewards", rewards, "rewards.ToBig()", rewards.ToBig())
-			}
 			err := p.distributeToSystem(rewards.ToBig(), state, header, chain, txs, receipts, receivedTxs, usedGas, mining, tracer)
 			if err != nil {
 				return err
@@ -1977,10 +1969,6 @@ func (p *Parlia) distributeIncoming(val common.Address, state vm.StateDB, header
 	state.SetBalance(consensus.SystemAddress, common.U2560, tracing.BalanceDecreaseBSCDistributeReward)
 	state.AddBalance(coinbase, balance, tracing.BalanceIncreaseBSCDistributeReward)
 	log.Trace("distribute to validator contract", "block hash", header.Hash(), "amount", balance)
-	actualTxTest := (*receivedTxs)[0]
-	if actualTxTest.Hash().String() == "0x8cd9c4979cd33321417cafde8f8bf2be6c5dcb14aed7dd4eba2eb49f4da91999" {
-		log.Error("check value in distributeIncoming into distributeToValidator", "balance", balance, "balance.ToBig()", balance.ToBig())
-	}
 	return p.distributeToValidator(balance.ToBig(), val, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, tracer)
 }
 
