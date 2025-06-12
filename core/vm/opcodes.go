@@ -230,7 +230,7 @@ const (
 	Swap2Swap1
 	Swap2Pop
 	Dup2LT
-	JumpIfZero // 0xe2
+	JumpIfZero // 0xc1
 )
 
 // 0xd0 range - eof operations.
