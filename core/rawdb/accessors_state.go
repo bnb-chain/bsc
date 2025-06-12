@@ -18,6 +18,7 @@ package rawdb
 
 import (
 	"encoding/binary"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -107,10 +108,15 @@ func ReadStateID(db ethdb.KeyValueReader, root common.Hash) *uint64 {
 
 // WriteStateID writes the provided state lookup to database.
 func WriteStateID(db ethdb.KeyValueWriter, root common.Hash, id uint64) {
+	start := time.Now()
 	var buff [8]byte
 	binary.BigEndian.PutUint64(buff[:], id)
 	if err := db.Put(stateIDKey(root), buff[:]); err != nil {
 		log.Crit("Failed to store state ID", "err", err)
+	}
+	elapsed := time.Since(start)
+	if elapsed > 100*time.Millisecond {
+		log.Info("Slow WriteStateID detected", "root", root, "id", id, "elapsed", elapsed)
 	}
 }
 

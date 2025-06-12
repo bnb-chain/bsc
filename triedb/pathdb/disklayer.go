@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
@@ -311,11 +312,12 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	// Store the root->id lookup afterwards. All stored lookups are identified
 	// by the **unique** state root. It's impossible that in the same chain
 	// blocks are not adjacent but have the same root.
+	start := time.Now()
 	if dl.id == 0 {
 		rawdb.WriteStateID(dl.db.diskdb, dl.root, 0)
 	}
 	rawdb.WriteStateID(dl.db.diskdb, bottom.rootHash(), bottom.stateID())
-
+	log.Info("WriteStateID finished", "duration", time.Since(start).Milliseconds(), "ms")
 	// In a unique scenario where the ID of the oldest history object (after tail
 	// truncation) surpasses the persisted state ID, we take the necessary action
 	// of forcibly committing the cached dirty states to ensure that the persisted
@@ -325,10 +327,13 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	}
 	// Merge the trie nodes and flat states of the bottom-most diff layer into the
 	// buffer as the combined layer.
+	commitStart := time.Now()
 	combined := dl.buffer.commit(bottom.nodes, bottom.states.stateSet)
+	log.Info("Commit finished", "duration", time.Since(commitStart).Milliseconds(), "ms")
 	if err := combined.flush(dl.db.diskdb, dl.db.freezer, dl.nodes, bottom.stateID(), force); err != nil {
 		return nil, err
 	}
+	log.Debug("Flush finished", "duration", time.Since(commitStart).Milliseconds(), "ms")
 	ndl := newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.nodes, combined)
 
 	// To remove outdated history objects from the end, we set the 'tail' parameter
