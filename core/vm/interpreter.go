@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -325,6 +326,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
+		if errors.Is(err, ErrInvalidOptimizedCode) {
+			contract.Gas += cost
+			cost = 0
+		}
 		if err != nil {
 			break
 		}
@@ -336,5 +341,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		err = nil // clear stop token error
 	}
 
+	if in.evm.Context.BlockNumber.Uint64() == 5137393 && in.evm.StateDB.TxIndex() == 0 {
+		log.Error("show contract gas", "contract.Gas", contract.Gas, "evm.StateDB.TxIndex()", in.evm.StateDB.TxIndex(), "evm.Context.BlockNumber.Uint64()", in.evm.Context.BlockNumber.Uint64())
+	}
 	return res, err
 }
