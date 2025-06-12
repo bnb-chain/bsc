@@ -168,9 +168,10 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 	// Taken from https://github.com/cockroachdb/pebble/blob/master/internal/constants/constants.go
 	maxMemTableSize := (1<<31)<<(^uint(0)>>63) - 1
 
-	// Two memory tables is configured which is identical to leveldb,
-	// including a frozen memory table and another live one.
-	memTableLimit := 2
+	// Six memory tables are configured
+	// Maintaining the same total memory limit but dividing it into multiple
+	// smaller memtables enables smoother flush operations.
+	memTableLimit := 6
 	memTableSize := cache * 1024 * 1024 / 2 / memTableLimit
 
 	// The memory table size is currently capped at maxMemTableSize-1 due to a
