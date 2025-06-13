@@ -430,6 +430,3 @@ func (b *backendMock) SendBid(ctx context.Context, bid *types.BidArgs) (common.H
 	panic("implement me")
 }
 func (b *backendMock) MinerInTurn() bool { return false }
-func (b *backendMock) BestBidGasFee(parentHash common.Hash) *big.Int {
-	panic("implement me")
-}

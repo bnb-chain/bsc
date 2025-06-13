@@ -665,10 +665,6 @@ func (b *testBackend) SendBid(ctx context.Context, bid *types.BidArgs) (common.H
 	panic("implement me")
 }
 func (b *testBackend) MinerInTurn() bool { return false }
-func (b *testBackend) BestBidGasFee(parentHash common.Hash) *big.Int {
-	//TODO implement me
-	panic("implement me")
-}
 
 func TestEstimateGas(t *testing.T) {
 	t.Parallel()
