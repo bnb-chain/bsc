@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/log"
 )
 
 // incrFreezer is a wrapper of multiple freezers which automatically
@@ -29,7 +27,7 @@ type incrFreezer struct {
 
 // newIncrFreezer creates a new incremental freezer that automatically
 // switches to a new freezer when the current one exceeds the item limit.
-func newIncrFreezer(baseDir, kind, namespace string, readonly bool, offset uint64, maxTableSize uint32,
+func newIncrFreezer(baseDir, namespace string, readonly bool, offset uint64, maxTableSize uint32,
 	tables map[string]bool, blockLimit uint64) (*incrFreezer, error) {
 	if blockLimit == 0 {
 		return nil, errors.New("block limit must be greater than 0")
@@ -40,34 +38,34 @@ func newIncrFreezer(baseDir, kind, namespace string, readonly bool, offset uint6
 	}
 
 	// Find the latest data directory
-	latestDir := baseDir
-	entries, err := os.ReadDir(baseDir)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
+	// latestDir := baseDir
+	// entries, err := os.ReadDir(baseDir)
+	// if err != nil && !os.IsNotExist(err) {
+	// 	return nil, err
+	// }
 
 	// If there are subdirectories, find the one with the highest block number
-	if len(entries) > 0 {
-		var maxBlock uint64
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				continue
-			}
-			// Try to parse directory name as block number
-			if blockNum, err := strconv.ParseUint(entry.Name(), 10, 64); err == nil {
-				if blockNum > maxBlock {
-					maxBlock = blockNum
-					latestDir = filepath.Join(baseDir, entry.Name())
-				}
-			}
-		}
-	} else {
-		latestDir = filepath.Join(fmt.Sprintf("%s/%d/%s", baseDir, 0, kind))
-		log.Info("Creating new incremental base directory", "dir", latestDir)
-	}
+	// if len(entries) > 0 {
+	// 	var maxBlock uint64
+	// 	for _, entry := range entries {
+	// 		if !entry.IsDir() {
+	// 			continue
+	// 		}
+	// 		// Try to parse directory name as block number
+	// 		if blockNum, err := strconv.ParseUint(entry.Name(), 10, 64); err == nil {
+	// 			if blockNum > maxBlock {
+	// 				maxBlock = blockNum
+	// 				latestDir = filepath.Join(baseDir, entry.Name())
+	// 			}
+	// 		}
+	// 	}
+	// } else {
+	// 	latestDir = filepath.Join(fmt.Sprintf("%s/%d/%s", baseDir, 0, kind))
+	// 	log.Info("Creating new incremental base directory", "dir", latestDir)
+	// }
 
 	// Create initial freezer
-	freezer, err := newResettableFreezer(latestDir, namespace, readonly, offset, maxTableSize, tables)
+	freezer, err := newResettableFreezer(baseDir, namespace, readonly, offset, maxTableSize, tables)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +74,6 @@ func newIncrFreezer(baseDir, kind, namespace string, readonly bool, offset uint6
 		readOnly:       readonly,
 		currentFreezer: freezer,
 		baseDir:        baseDir,
-		kind:           kind,
 		namespace:      namespace,
 		offset:         offset,
 		maxTableSize:   maxTableSize,

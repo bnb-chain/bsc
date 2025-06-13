@@ -1267,6 +1267,12 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 	}
 
 	// incremental snapshot
+	MaximumBlockHeightFlag = &cli.Uint64Flag{
+		Name:     "maximum-block-height",
+		Usage:    "Specify maximum block height that can sync",
+		Value:    0,
+		Category: flags.StateCategory,
+	}
 	IncrementalSnapshotFlag = &cli.BoolFlag{
 		Name:     "incremental-snapshot",
 		Usage:    "Enable incremental snapshot generation",
@@ -2363,6 +2369,10 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 			cfg.VMTrace = name
 			cfg.VMTraceJsonConfig = ctx.String(VMTraceJsonConfigFlag.Name)
 		}
+	}
+
+	if ctx.IsSet(MaximumBlockHeightFlag.Name) {
+		cfg.MaximumBlockHeight = ctx.Uint64(MaximumBlockHeightFlag.Name)
 	}
 
 	// incremental snapshot config

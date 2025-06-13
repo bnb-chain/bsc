@@ -325,58 +325,6 @@ func (db *Database) repairHistory() error {
 		log.Warn("Truncated extra state histories", "number", pruned)
 	}
 	return nil
-
-	// TODO: handle restart in incr freezer db
-	// log.Info("Open incremental state history", "EnableIncrStateHistory", db.config.EnableIncrStateHistory,
-	// 	"IncrStateHistory", db.config.IncrStateHistory)
-	// if db.config.EnableIncrStateHistory {
-	// 	log.Info("Open incremental state history")
-	// 	incrFreezer, err := rawdb.NewIncrStateFreezer(ancient, db.readOnly, offset, db.config.IncrStateHistory)
-	// 	if err != nil {
-	// 		log.Crit("Failed to open incremental state history freezer", "err", err)
-	// 	}
-	// 	db.incrFreezer = incrFreezer
-	//
-	// 	// Reset the entire state histories if the trie database is not initialized
-	// 	// yet. This action is necessary because these state histories are not
-	// 	// expected to exist without an initialized trie database.
-	// 	id = db.tree.bottom().stateID()
-	// 	if id == 0 {
-	// 		frozen, err := db.incrFreezer.Ancients()
-	// 		if err != nil {
-	// 			log.Crit("Failed to retrieve head of state history", "err", err)
-	// 		}
-	// 		if frozen != 0 {
-	// 			err := db.incrFreezer.Reset()
-	// 			if err != nil {
-	// 				log.Crit("Failed to reset state histories", "err", err)
-	// 			}
-	// 			log.Info("Truncated extraneous state history")
-	// 		}
-	// 		return nil
-	// 	}
-	//
-	// 	ohead, err := db.incrFreezer.Ancients()
-	// 	if err != nil {
-	// 		log.Crit("Failed to retrieve head of state history", "err", err)
-	// 	}
-	// 	nhead, err := db.incrFreezer.Tail()
-	// 	if err != nil {
-	// 		log.Crit("Failed to retrieve tail of state history", "err", err)
-	// 	}
-	// 	if ohead != 0 || nhead != 0 {
-	// 		// Truncate the extra state histories above in freezer in case it's not
-	// 		// aligned with the disk layer. It might happen after a unclean shutdown.
-	// 		pruned, err = truncateFromHead(db.diskdb, db.incrFreezer, id)
-	// 		if err != nil {
-	// 			log.Crit("Failed to truncate extra incremental state histories", "err", err)
-	// 		}
-	// 		if pruned != 0 {
-	// 			log.Warn("Truncated extra incremental state histories", "number", pruned)
-	// 		}
-	// 	}
-	// 	log.Info("Finish opening incremental state history")
-	// }
 }
 
 func (db *Database) repairIncrHistory() *layerTree {
@@ -384,7 +332,6 @@ func (db *Database) repairIncrHistory() *layerTree {
 	if db.config.NoTries {
 		return nil
 	}
-	log.Info("1")
 	// Open the freezer for state history. This mechanism ensures that
 	// only one database instance can be opened at a time to prevent
 	// accidental mutation.
@@ -402,6 +349,7 @@ func (db *Database) repairIncrHistory() *layerTree {
 	}
 	db.incrFreezer = incrFreezer
 
+	// TODO: handle restart in incr freezer db
 	// Reset the entire state histories if the trie database is not initialized
 	// yet. This action is necessary because these state histories are not
 	// expected to exist without an initialized trie database.

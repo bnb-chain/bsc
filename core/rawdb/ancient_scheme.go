@@ -127,8 +127,8 @@ func NewIncrStateFreezer(ancientDir string, readOnly bool, offset, blockLimit ui
 		return NewMemoryFreezer(readOnly, incrStateFreezerNoSnappy), nil
 	}
 
-	name := filepath.Join(ancientDir, IncrementalPath)
-	return newIncrFreezer(name, MerkleStateFreezerName, "eth/db/incremental/state", readOnly, offset, stateHistoryTableSize,
+	name := filepath.Join(ancientDir, IncrementalPath, MerkleStateFreezerName)
+	return newIncrFreezer(name, "eth/db/incremental/state", readOnly, offset, stateHistoryTableSize,
 		incrStateFreezerNoSnappy, blockLimit)
 }
 
@@ -138,7 +138,7 @@ func NewIncrChainFreezer(ancientDir string, readOnly bool, offset, blockLimit ui
 		return NewMemoryFreezer(readOnly, incrStateFreezerNoSnappy), nil
 	}
 
-	name := filepath.Join(ancientDir, IncrementalPath)
-	return newIncrFreezer(name, ChainFreezerName, "eth/db/incremental/chain", readOnly, offset, stateHistoryTableSize,
+	name := filepath.Join(ancientDir, IncrementalPath, ChainFreezerName)
+	return newIncrFreezer(name, "eth/db/incremental/chain", readOnly, offset, stateHistoryTableSize,
 		chainFreezerNoSnappy, blockLimit)
 }

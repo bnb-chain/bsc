@@ -320,6 +320,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			PathSyncFlush:       config.PathSyncFlush,
 			JournalFilePath:     journalFilePath,
 			JournalFile:         config.JournalFileEnabled,
+			MaximumBlockHeight:  config.MaximumBlockHeight,
 			EnableIncrHistory:   config.EnableIncrementalSnapshots,
 			IncrHistory:         config.IncrementalSnapshotBlockInterval,
 		}

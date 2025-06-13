@@ -205,6 +205,7 @@ type Config struct {
 	BlobExtraReserve uint64
 
 	// incremental snapshot config
+	MaximumBlockHeight                 uint64
 	EnableIncrementalSnapshots         bool
 	IncrementalSnapshotBlockInterval   uint64
 	MaximumRetainedIncrementalSnapshot uint64

@@ -189,6 +189,7 @@ var (
 		utils.LogDebugFlag,
 		utils.LogBacktraceAtFlag,
 		utils.BlobExtraReserveFlag,
+		utils.MaximumBlockHeightFlag,
 		utils.IncrementalSnapshotFlag,
 		utils.IncrementalSnapshotBlockIntervalFlag,
 		utils.MaximumRetainedIncrementalSnapshotFlag,
