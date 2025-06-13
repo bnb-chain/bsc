@@ -1817,7 +1817,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 
 		elapsed := time.Since(start)
 		if elapsed > 100*time.Millisecond {
-			log.Info("Slow Write blockstore detected")
+			log.Info("Slow Write blockstore detected", "elapesed", elapsed)
 		}
 		bc.hc.tdCache.Add(block.Hash(), externTd)
 		bc.blockCache.Add(block.Hash(), block)
