@@ -2088,15 +2088,15 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 	bc.blockProcFeed.Send(true)
 	defer bc.blockProcFeed.Send(false)
 
-	// if bc.cacheConfig.MaximumBlockHeight > 0 {
-	// 	currBlock := bc.CurrentBlock().Number.Uint64()
-	// 	if currBlock >= bc.cacheConfig.MaximumBlockHeight {
-	// 		log.Info("Reached maximum block height, stopping sync", "maxHeight", bc.cacheConfig.MaximumBlockHeight,
-	// 			"currBlock", currBlock)
-	// 		bc.Stop()
-	// 		os.Exit(1)
-	// 	}
-	// }
+	if bc.cacheConfig.MaximumBlockHeight > 0 {
+		currBlock := bc.CurrentBlock().Number.Uint64()
+		if currBlock >= bc.cacheConfig.MaximumBlockHeight {
+			log.Info("Reached maximum block height, stopping sync", "maxHeight", bc.cacheConfig.MaximumBlockHeight,
+				"currBlock", currBlock)
+			bc.Stop()
+			os.Exit(1)
+		}
+	}
 
 	// Do a sanity check that the provided chain is actually ordered and linked.
 	for i := 1; i < len(chain); i++ {
@@ -2114,24 +2114,23 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 		}
 	}
 
-	// Check if we need to adjust chain length based on MaximumBlockHeight
-	if bc.cacheConfig.MaximumBlockHeight > 0 {
-		currBlock := bc.CurrentBlock().Number.Uint64()
-		lastBlock := chain[len(chain)-1].NumberU64()
-		log.Info("Print block info", "currBlock", currBlock, "lastBlock", lastBlock)
-
-		// If the last block in chain is beyond MaximumBlockHeight
-		if lastBlock > bc.cacheConfig.MaximumBlockHeight {
-			// Calculate how many blocks we need to keep
-			blocksToKeep := bc.cacheConfig.MaximumBlockHeight - currBlock
-			if blocksToKeep > 0 && blocksToKeep < 2048 {
-				// Adjust chain length to keep only blocks up to MaximumBlockHeight
-				chain = chain[:blocksToKeep]
-				log.Info("Adjusted chain length to respect MaximumBlockHeight",
-					"maxHeight", bc.cacheConfig.MaximumBlockHeight, "adjustedLength", len(chain))
-			}
-		}
-	}
+	// if bc.cacheConfig.MaximumBlockHeight > 0 {
+	// 	currBlock := bc.CurrentBlock().Number.Uint64()
+	// 	lastBlock := chain[len(chain)-1].NumberU64()
+	// 	log.Info("Print block info", "currBlock", currBlock, "lastBlock", lastBlock)
+	//
+	// 	// If the last block in chain is beyond MaximumBlockHeight
+	// 	if lastBlock > bc.cacheConfig.MaximumBlockHeight {
+	// 		// Calculate how many blocks we need to keep
+	// 		blocksToKeep := bc.cacheConfig.MaximumBlockHeight - currBlock
+	// 		if blocksToKeep > 0 && blocksToKeep < 2048 {
+	// 			// Adjust chain length to keep only blocks up to MaximumBlockHeight
+	// 			chain = chain[:blocksToKeep]
+	// 			log.Info("Adjusted chain length to respect MaximumBlockHeight",
+	// 				"maxHeight", bc.cacheConfig.MaximumBlockHeight, "adjustedLength", len(chain))
+	// 		}
+	// 	}
+	// }
 
 	// Pre-checks passed, start the full block imports
 	if !bc.chainmu.TryLock() {
@@ -2140,17 +2139,15 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 	defer bc.chainmu.Unlock()
 
 	_, n, err := bc.insertChain(chain, true, false) // No witness collection for mass inserts (would get super large)
-
-	// Check if we've reached the maximum block height
-	if bc.cacheConfig.MaximumBlockHeight > 0 {
-		currBlock := bc.CurrentBlock().Number.Uint64()
-		if currBlock >= bc.cacheConfig.MaximumBlockHeight {
-			log.Info("Reached maximum block height, stopping sync", "maxHeight", bc.cacheConfig.MaximumBlockHeight,
-				"currBlock", currBlock)
-			bc.Stop()
-			os.Exit(1)
-		}
-	}
+	// if bc.cacheConfig.MaximumBlockHeight > 0 {
+	// 	currBlock := bc.CurrentBlock().Number.Uint64()
+	// 	if currBlock >= bc.cacheConfig.MaximumBlockHeight {
+	// 		log.Info("Reached maximum block height, stopping sync", "maxHeight", bc.cacheConfig.MaximumBlockHeight,
+	// 			"currBlock", currBlock)
+	// 		bc.Stop()
+	// 		os.Exit(1)
+	// 	}
+	// }
 	return n, err
 }
 

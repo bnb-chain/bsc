@@ -142,9 +142,9 @@ func (f *incrFreezer) ModifyAncients(fn func(ethdb.AncientWriteOp) error) (int64
 	defer f.lock.Unlock()
 
 	// Check if we need to switch to a new freezer before writing
-	if err := f.checkAndSwitch(); err != nil {
-		return 0, err
-	}
+	// if err := f.checkAndSwitch(); err != nil {
+	// 	return 0, err
+	// }
 
 	return f.currentFreezer.ModifyAncients(fn)
 }
