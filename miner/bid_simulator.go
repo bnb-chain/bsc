@@ -31,6 +31,8 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
+const prefetchTxNumber = 100
+
 var (
 	bidSimTimer = metrics.NewRegisteredTimer("bid/sim/duration", nil)
 )
@@ -60,6 +62,7 @@ var (
 type bidWorker interface {
 	prepareWork(params *generateParams, witness bool) (*environment, error)
 	etherbase() common.Address
+	getPrefetcher() core.Prefetcher
 	fillTransactions(interruptCh chan int32, env *environment, stopTimer *time.Timer, bidTxs mapset.Set[common.Hash]) (err error)
 }
 
@@ -732,6 +735,16 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	if bidRuntime.bid.GasUsed > bidRuntime.env.gasPool.Gas() {
 		err = errors.New("gas used exceeds gas limit")
 		return
+	}
+
+	if len(bidRuntime.bid.Txs) > prefetchTxNumber {
+		interruptPrefetchCh := make(chan struct{})
+		defer close(interruptPrefetchCh)
+		throwaway := bidRuntime.env.state.CopyDoPrefetch()
+		// Disable tracing for prefetcher executions.
+		vmCfg := *b.chain.GetVMConfig()
+		vmCfg.Tracer = nil
+		go b.bidWorker.getPrefetcher().Prefetch(bidRuntime.bid.Txs, bidRuntime.env.header, gasLimit, throwaway, &vmCfg, interruptPrefetchCh)
 	}
 
 	// commit transactions in bid
