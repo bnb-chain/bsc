@@ -84,3 +84,40 @@ func TestParseStun(t *testing.T) {
 		assert.Equal(t, stun.serverList, tc.want.serverList)
 	}
 }
+
+func TestExtIP_MarshalText(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   ExtIP
+		want    []byte
+		wantErr bool
+	}{
+		{
+			name:  "valid ipv4",
+			input: ExtIP{192, 168, 1, 1},
+			want:  []byte("extip:192.168.1.1"),
+		},
+		{
+			name:  "valid ipv6",
+			input: ExtIP(net.ParseIP("2001:db8::68")), // Create ExtIP from net.IP
+			want:  []byte("extip:2001:db8::68"),
+		},
+		{
+			name:  "zero ip",
+			input: ExtIP{0, 0, 0, 0},
+			want:  []byte("extip:0.0.0.0"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.input.MarshalText()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ExtIP.MarshalText() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if string(got) != string(tt.want) { // Compare as strings for better error messages with IPs
+				t.Errorf("ExtIP.MarshalText() = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
