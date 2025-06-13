@@ -1797,6 +1797,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	defer wg.Wait()
 	wg.Add(1)
 	go func() {
+		start := time.Now()
 		blockBatch := bc.db.BlockStore().NewBatch()
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
 		rawdb.WriteBlock(blockBatch, block)
@@ -1812,6 +1813,11 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		}
 		if err := blockBatch.Write(); err != nil {
 			log.Crit("Failed to write block into disk", "err", err)
+		}
+
+		elapsed := time.Since(start)
+		if elapsed > 100*time.Millisecond {
+			log.Info("Slow Write blockstore detected")
 		}
 		bc.hc.tdCache.Add(block.Hash(), externTd)
 		bc.blockCache.Add(block.Hash(), block)

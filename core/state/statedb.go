@@ -1463,6 +1463,7 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 	// Commit dirty contract code if any exists
 	if db := s.db.TrieDB().Disk(); db != nil && len(ret.codes) > 0 {
 		batch := db.NewBatch()
+		start := time.Now()
 		for _, code := range ret.codes {
 			rawdb.WriteCode(batch, code.hash, code.blob)
 			if snaps != nil {
@@ -1475,6 +1476,10 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 
 		if err := batch.Write(); err != nil {
 			return nil, err
+		}
+		elapsed := time.Since(start)
+		if elapsed > 100*time.Millisecond {
+			log.Info("Slow Write blockstore detected")
 		}
 	}
 	if !ret.empty() {
