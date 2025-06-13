@@ -317,7 +317,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 		rawdb.WriteStateID(dl.db.diskdb, dl.root, 0)
 	}
 	rawdb.WriteStateID(dl.db.diskdb, bottom.rootHash(), bottom.stateID())
-	log.Info("WriteStateID finished", "duration", time.Since(start).Milliseconds(), "ms")
+	log.Info("WriteStateID finished", "duration", common.PrettyDuration(time.Since(start)))
 	// In a unique scenario where the ID of the oldest history object (after tail
 	// truncation) surpasses the persisted state ID, we take the necessary action
 	// of forcibly committing the cached dirty states to ensure that the persisted
