@@ -757,17 +757,7 @@ async function getEip7623() {
 async function getMevStatus() {
     let counts = {
         local: 0,
-        blockrazor: 0,
-        club48: 0,
-        blockroute: 0,
-        jetbldr: 0,
-        txboost: 0,
-        blockbus: 0,
-        darwin: 0,
-        inblock: 0,
-        nodereal: 0,
-        xzbuilder: 0,
-        trustnet: 0,
+        ...Object.fromEntries([...new Set(builderMap.values())].map(builder => [builder, 0]))
     };
 
     // Get the latest block number
@@ -822,11 +812,7 @@ async function getMevStatus() {
         for (const txData of txResults) {
             if (builderMap.has(txData.to)) {
                 const builder = builderMap.get(txData.to);
-                const builderKey = Object.keys(counts).find(key => builder.includes(key));
-
-                if (builderKey) {
-                    counts[builderKey]++;
-                }
+                counts[builder]++;
 
                 mevBlock = true;
                 console.log(
@@ -853,10 +839,16 @@ async function getMevStatus() {
     console.log(`Range: [${startBlock}, ${endBlock}]`);
     console.log(`Total Blocks: ${total}`);
     console.log("\nBuilder Distribution:");
-    Object.entries(counts).forEach(([key, value]) => {
-        const ratio = (value *100 / total).toFixed(2);
-        console.log(`${key.padEnd(10)}: ${value.toString().padStart(3)} blocks (${ratio}%)`);
-    });
+    const localRatio = (counts.local * 100 / total).toFixed(2);
+    console.log(`${"local".padEnd(maxBuilderLength)}: ${counts.local.toString().padStart(3)} blocks (${localRatio}%)`);
+
+    Object.entries(counts)
+        .filter(([key, value]) => key !== "local" && value > 0)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .forEach(([key, value]) => {
+            const ratio = (value * 100 / total).toFixed(2);
+            console.log(`${key.padEnd(maxBuilderLength)}: ${value.toString().padStart(3)} blocks (${ratio}%)`);
+        });
 }
 
 // 11.cmd: "getLargeTxs", usage:
