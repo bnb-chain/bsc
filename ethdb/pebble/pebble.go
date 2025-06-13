@@ -73,6 +73,7 @@ type Database struct {
 	nonlevel0CompGauge  *metrics.Gauge // Gauge for tracking the number of table compaction in non0 level
 	seekCompGauge       *metrics.Gauge // Gauge for tracking the number of table compaction caused by read opt
 	manualMemAllocGauge *metrics.Gauge // Gauge for tracking amount of non-managed memory currently allocated
+	memTableAllocGauge  *metrics.Gauge // Gauge for tracking amount of non-managed memory currently allocated
 
 	levelsGauge []*metrics.Gauge // Gauge for tracking the number of tables in levels
 
@@ -290,7 +291,7 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 	db.nonlevel0CompGauge = metrics.GetOrRegisterGauge(namespace+"compact/nonlevel0", nil)
 	db.seekCompGauge = metrics.GetOrRegisterGauge(namespace+"compact/seek", nil)
 	db.manualMemAllocGauge = metrics.GetOrRegisterGauge(namespace+"memory/manualalloc", nil)
-
+	db.memTableAllocGauge = metrics.GetOrRegisterGauge(namespace+"memory/tablealloc", nil)
 	// Start up the metrics gathering and return
 	go db.meter(metricsGatheringInterval, namespace)
 	return db, nil
@@ -547,7 +548,9 @@ func (d *Database) meter(refresh time.Duration, namespace string) {
 		}
 		// See https://github.com/cockroachdb/pebble/pull/1628#pullrequestreview-1026664054
 		manuallyAllocated := stats.BlockCache.Size + int64(stats.MemTable.Size) + int64(stats.MemTable.ZombieSize)
+		memtableSize := int64(stats.MemTable.Size)
 		d.manualMemAllocGauge.Update(manuallyAllocated)
+		d.memTableAllocGauge.Update(memtableSize)
 		d.memCompGauge.Update(stats.Flush.Count)
 		d.nonlevel0CompGauge.Update(nonLevel0CompCount)
 		d.level0CompGauge.Update(level0CompCount)
