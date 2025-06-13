@@ -463,7 +463,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 			// above we revert to the snapshot and consume any gas remaining. Additionally
 			// when we're in Homestead this also counts for code storage gas errors.
 			ret, err = evm.interpreter.Run(contract, input, true)
-			if evm.Context.BlockNumber.Uint64() == 5137393 {
+			if evm.Context.BlockNumber.Uint64() == 5137393 && (evm.StateDB.TxIndex() == 0 || evm.StateDB.TxIndex() == 1) {
 				log.Error("show contract gas enable optimize after Run 4", "contract.Gas", contract.Gas, "evm.StateDB.TxIndex()", evm.StateDB.TxIndex(), "evm.Context.BlockNumber.Uint64()", evm.Context.BlockNumber.Uint64())
 			}
 			gas = contract.Gas
@@ -512,6 +512,7 @@ func tryGetOptimizedCode(evm *EVM, codeHash common.Hash, rawCode []byte) (bool, 
 	} else {
 		compiler.GenOrLoadOptimizedCode(codeHash, rawCode)
 	}
+	log.Error("tryGetOptimizedCode optimized calc", "optimized", optimized)
 	return optimized, code
 }
 
