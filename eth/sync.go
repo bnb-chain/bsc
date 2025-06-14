@@ -192,7 +192,7 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 
 		// Re-check local head to see if it has caught up
 		if _, latestTD := cs.modeAndLocalHead(); ourTD.Cmp(latestTD) < 0 {
-			log.Debug("The local head is already caught up; synchronization is not required.")
+			log.Trace("The local head is already caught up; synchronization is not required.")
 			return nil
 		}
 	}
