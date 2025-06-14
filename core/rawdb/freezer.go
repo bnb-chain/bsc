@@ -208,6 +208,8 @@ func (f *Freezer) Close() error {
 	if errs != nil {
 		return fmt.Errorf("%v", errs)
 	}
+
+	log.Info("Closed ancient database", "frozen", f.frozen.Load())
 	return nil
 }
 

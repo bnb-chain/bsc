@@ -368,26 +368,33 @@ func (db *Database) repairIncrHistory() *layerTree {
 		}
 		return nil
 	}
+	pruned, err := truncateFromHead(db.diskdb, db.freezer, id)
+	if err != nil {
+		log.Crit("Failed to truncate extra state histories", "err", err)
+	}
+	if pruned != 0 {
+		log.Warn("Truncated extra state histories", "number", pruned)
+	}
 
-	ohead, err := db.incrFreezer.Ancients()
-	if err != nil {
-		log.Crit("Failed to retrieve head of state history", "err", err)
-	}
-	nhead, err := db.incrFreezer.Tail()
-	if err != nil {
-		log.Crit("Failed to retrieve tail of state history", "err", err)
-	}
-	if ohead != 0 || nhead != 0 {
-		// Truncate the extra state histories above in freezer in case it's not
-		// aligned with the disk layer. It might happen after a unclean shutdown.
-		pruned, err := truncateFromHead(db.diskdb, db.incrFreezer, id)
-		if err != nil {
-			log.Crit("Failed to truncate extra incremental state histories", "err", err)
-		}
-		if pruned != 0 {
-			log.Warn("Truncated extra incremental state histories", "number", pruned)
-		}
-	}
+	// ohead, err := db.incrFreezer.Ancients()
+	// if err != nil {
+	// 	log.Crit("Failed to retrieve head of state history", "err", err)
+	// }
+	// nhead, err := db.incrFreezer.Tail()
+	// if err != nil {
+	// 	log.Crit("Failed to retrieve tail of state history", "err", err)
+	// }
+	// if ohead != 0 || nhead != 0 {
+	// 	// Truncate the extra state histories above in freezer in case it's not
+	// 	// aligned with the disk layer. It might happen after a unclean shutdown.
+	// 	pruned, err := truncateFromHead(db.diskdb, db.incrFreezer, id)
+	// 	if err != nil {
+	// 		log.Crit("Failed to truncate extra incremental state histories", "err", err)
+	// 	}
+	// 	if pruned != 0 {
+	// 		log.Warn("Truncated extra incremental state histories", "number", pruned)
+	// 	}
+	// }
 	log.Info("Finish opening incremental state history")
 	return nil
 }
@@ -615,6 +622,12 @@ func (db *Database) Close() error {
 	// Close the attached state history freezer.
 	if db.freezer == nil {
 		return nil
+	}
+	if db.config.EnableIncrStateHistory && db.incrFreezer != nil {
+		log.Info("Closing incremental state history")
+		if err := db.incrFreezer.Close(); err != nil {
+			log.Error("Failed to close incremental state history", "err", err)
+		}
 	}
 	return db.freezer.Close()
 }

@@ -117,6 +117,16 @@ func (t *freezerTable) newBatch(offset uint64) *freezerTableBatch {
 func (batch *freezerTableBatch) reset() {
 	batch.dataBuffer = batch.dataBuffer[:0]
 	batch.indexBuffer = batch.indexBuffer[:0]
+
+	// If the table is empty, start from the offset
+	// if batch.t.items.Load() == 0 {
+	// 	log.Info("freezerTableBatch reset 0")
+	// 	batch.curItem = batch.offset
+	// } else {
+	// 	log.Info("freezerTableBatch reset non 0")
+	// 	curItem := batch.t.items.Load() + batch.offset
+	// 	batch.curItem = atomic.LoadUint64(&curItem)
+	// }
 	curItem := batch.t.items.Load() + batch.offset
 	batch.curItem = atomic.LoadUint64(&curItem)
 	batch.totalBytes = 0
@@ -126,6 +136,12 @@ func (batch *freezerTableBatch) reset() {
 // precautionary parameter to ensure data correctness, but the table will reject already
 // existing data.
 func (batch *freezerTableBatch) Append(item uint64, data interface{}) error {
+	// If we're starting fresh and the item is not 0, update curItem
+	// if batch.t.items.Load() == 0 && item > 0 {
+	// 	log.Info("freezerTableBatch Append zero item")
+	// 	batch.curItem = item
+	// }
+
 	if item != batch.curItem {
 		return fmt.Errorf("%w: have %d want %d", errOutOrderInsertion, item, batch.curItem)
 	}
@@ -146,6 +162,12 @@ func (batch *freezerTableBatch) Append(item uint64, data interface{}) error {
 // precautionary parameter to ensure data correctness, but the table will reject already
 // existing data.
 func (batch *freezerTableBatch) AppendRaw(item uint64, blob []byte) error {
+	// If we're starting fresh and the item is not 0, update curItem
+	// if batch.t.items.Load() == 0 && item > 0 {
+	// 	log.Info("freezerTableBatch AppendRaw zero item")
+	// 	batch.curItem = item
+	// }
+
 	if item != batch.curItem {
 		return fmt.Errorf("%w: have %d want %d", errOutOrderInsertion, item, batch.curItem)
 	}
