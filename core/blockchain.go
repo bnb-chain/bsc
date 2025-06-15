@@ -1462,6 +1462,11 @@ func (bc *BlockChain) Stop() {
 	if err := bc.triedb.Close(); err != nil {
 		log.Error("Failed to close trie database", "err", err)
 	}
+	if bc.cacheConfig.EnableIncrHistory && bc.incrChainFreezer != nil {
+		if err := bc.incrChainFreezer.Close(); err != nil {
+			log.Error("Failed to close incremental chain freezer", "err", err)
+		}
+	}
 	log.Info("Blockchain stopped")
 }
 

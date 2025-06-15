@@ -368,13 +368,14 @@ func (db *Database) repairIncrHistory() *layerTree {
 		}
 		return nil
 	}
-	pruned, err := truncateFromHead(db.diskdb, db.freezer, id)
-	if err != nil {
-		log.Crit("Failed to truncate extra state histories", "err", err)
-	}
-	if pruned != 0 {
-		log.Warn("Truncated extra state histories", "number", pruned)
-	}
+
+	// pruned, err := truncateFromHead(db.diskdb, db.freezer, id)
+	// if err != nil {
+	// 	log.Crit("Failed to truncate extra state histories", "err", err)
+	// }
+	// if pruned != 0 {
+	// 	log.Warn("Truncated extra state histories", "number", pruned)
+	// }
 
 	// ohead, err := db.incrFreezer.Ancients()
 	// if err != nil {
@@ -623,12 +624,14 @@ func (db *Database) Close() error {
 	if db.freezer == nil {
 		return nil
 	}
+
 	if db.config.EnableIncrStateHistory && db.incrFreezer != nil {
 		log.Info("Closing incremental state history")
 		if err := db.incrFreezer.Close(); err != nil {
 			log.Error("Failed to close incremental state history", "err", err)
 		}
 	}
+
 	return db.freezer.Close()
 }
 
