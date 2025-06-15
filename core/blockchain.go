@@ -422,17 +422,17 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	}
 
 	if cacheConfig.EnableIncrHistory {
-		// ancient, err := db.AncientDatadir()
-		// if err != nil {
-		// 	log.Crit("Failed to get ancient dir", "err", err)
-		// 	return nil, err
-		// }
-		// incrChainFreezer, err := rawdb.NewIncrChainFreezer(ancient, false, 1, cacheConfig.IncrHistory)
-		// if err != nil {
-		// 	log.Crit("Failed to create incr chain freezer", "err", err)
-		// 	return nil, err
-		// }
-		// bc.incrChainFreezer = incrChainFreezer
+		ancient, err := db.AncientDatadir()
+		if err != nil {
+			log.Crit("Failed to get ancient dir", "err", err)
+			return nil, err
+		}
+		incrChainFreezer, err := rawdb.NewIncrChainFreezer(ancient, false, 1, cacheConfig.IncrHistory)
+		if err != nil {
+			log.Crit("Failed to create incr chain freezer", "err", err)
+			return nil, err
+		}
+		bc.incrChainFreezer = incrChainFreezer
 	}
 
 	bc.hc, err = NewHeaderChain(db, chainConfig, engine, bc.insertStopped)
@@ -1850,7 +1850,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		}
 
 		if bc.cacheConfig.EnableIncrHistory {
-			// bc.writeBlockIntoIncrFreezer(block.NumberU64(), block.Hash().Bytes(), block, receipts, externTd, isCancun)
+			bc.writeBlockIntoIncrFreezer(block.NumberU64(), block.Hash().Bytes(), block, receipts, externTd, isCancun)
 		}
 		wg.Done()
 	}()
