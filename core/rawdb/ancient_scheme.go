@@ -113,7 +113,7 @@ func NewStateFreezer(ancientDir string, verkle bool, readOnly bool, offset uint6
 	} else {
 		name = filepath.Join(ancientDir, MerkleStateFreezerName)
 	}
-	return newResettableFreezer(name, "eth/db/state", readOnly, offset, stateHistoryTableSize, stateFreezerNoSnappy)
+	return newResettableFreezer(name, "eth/db/state", readOnly, offset, stateHistoryTableSize, stateFreezerNoSnappy, false)
 }
 
 // NewIncrStateFreezer initializes the ancient store for incremental state history.
@@ -128,10 +128,10 @@ func NewIncrStateFreezer(ancientDir string, readOnly bool, offset, blockLimit ui
 	}
 
 	name := filepath.Join(ancientDir, IncrementalPath, MerkleStateFreezerName)
-	// return newIncrFreezer(name, "eth/db/incremental/state", readOnly, offset, stateHistoryTableSize,
-	// 	incrStateFreezerNoSnappy, blockLimit)
-	return newResettableFreezer(name, "eth/db/incremental/state", readOnly, offset, stateHistoryTableSize,
-		incrStateFreezerNoSnappy)
+	return newIncrFreezer(name, "eth/db/incremental/state", readOnly, offset, stateHistoryTableSize,
+		incrStateFreezerNoSnappy, blockLimit)
+	// return newResettableFreezer(name, "eth/db/incremental/state", readOnly, offset, stateHistoryTableSize,
+	// 	incrStateFreezerNoSnappy)
 }
 
 // NewIncrChainFreezer initializes the ancient store for incremental block history.

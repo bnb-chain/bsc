@@ -65,7 +65,7 @@ func newIncrFreezer(baseDir, namespace string, readonly bool, offset uint64, max
 	// }
 
 	// Create initial freezer
-	freezer, err := newResettableFreezer(baseDir, namespace, readonly, offset, maxTableSize, tables)
+	freezer, err := newResettableFreezer(baseDir, namespace, readonly, offset, maxTableSize, tables, true)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func (f *incrFreezer) switchToNewFreezer(blockNumber uint64) error {
 	}
 
 	// Create new freezer
-	newFreezer, err := newResettableFreezer(newDir, f.namespace, f.readOnly, f.offset, f.maxTableSize, f.tables)
+	newFreezer, err := newResettableFreezer(newDir, f.namespace, f.readOnly, f.offset, f.maxTableSize, f.tables, true)
 	if err != nil {
 		os.RemoveAll(newDir)
 		return err

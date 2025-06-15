@@ -39,7 +39,7 @@ type freezerBatch struct {
 func newFreezerBatch(f *Freezer) *freezerBatch {
 	batch := &freezerBatch{tables: make(map[string]*freezerTableBatch, len(f.tables))}
 	for kind, table := range f.tables {
-		batch.tables[kind] = table.newBatch(f.offset)
+		batch.tables[kind] = table.newBatch(f.offset, f.isIncr)
 	}
 	return batch
 }
@@ -91,6 +91,7 @@ func (batch *freezerBatch) commit() (item uint64, writeSize int64, err error) {
 type freezerTableBatch struct {
 	t *freezerTable
 
+	isIncr      bool
 	sb          *snappyBuffer
 	encBuffer   writeBuffer
 	dataBuffer  []byte
@@ -101,10 +102,11 @@ type freezerTableBatch struct {
 }
 
 // newBatch creates a new batch for the freezer table.
-func (t *freezerTable) newBatch(offset uint64) *freezerTableBatch {
+func (t *freezerTable) newBatch(offset uint64, isIncr bool) *freezerTableBatch {
 	var batch = &freezerTableBatch{
 		t:      t,
 		offset: offset,
+		isIncr: isIncr,
 	}
 	if !t.noCompression {
 		batch.sb = new(snappyBuffer)
@@ -118,16 +120,19 @@ func (batch *freezerTableBatch) reset() {
 	batch.dataBuffer = batch.dataBuffer[:0]
 	batch.indexBuffer = batch.indexBuffer[:0]
 
-	// If the table is empty, start from the offset
-	if batch.t.items.Load() == 0 {
+	if batch.isIncr {
 		batch.curItem = batch.offset
 	} else {
 		curItem := batch.t.items.Load() + batch.offset
 		batch.curItem = atomic.LoadUint64(&curItem)
 	}
-	// curItem := batch.t.items.Load() + batch.offset
-	// batch.curItem = atomic.LoadUint64(&curItem)
 	batch.totalBytes = 0
+	// if batch.t.items.Load() == 0 {
+	// 	batch.curItem = batch.offset
+	// } else {
+	// 	curItem := batch.t.items.Load() + batch.offset
+	// 	batch.curItem = atomic.LoadUint64(&curItem)
+	// }
 }
 
 // Append rlp-encodes and adds data at the end of the freezer table. The item number is a
@@ -135,7 +140,7 @@ func (batch *freezerTableBatch) reset() {
 // existing data.
 func (batch *freezerTableBatch) Append(item uint64, data interface{}) error {
 	// If we're starting fresh and the item is not 0, update curItem
-	if batch.t.items.Load() == 0 && item > 0 {
+	if batch.isIncr && item > 0 {
 		batch.curItem = item
 	}
 
@@ -159,8 +164,7 @@ func (batch *freezerTableBatch) Append(item uint64, data interface{}) error {
 // precautionary parameter to ensure data correctness, but the table will reject already
 // existing data.
 func (batch *freezerTableBatch) AppendRaw(item uint64, blob []byte) error {
-	// If we're starting fresh and the item is not 0, update curItem
-	if batch.t.items.Load() == 0 && item > 0 {
+	if batch.isIncr && item > 0 {
 		batch.curItem = item
 	}
 

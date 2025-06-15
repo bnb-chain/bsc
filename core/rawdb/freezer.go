@@ -64,6 +64,7 @@ type Freezer struct {
 	datadir string
 	frozen  atomic.Uint64 // Number of items already frozen
 	tail    atomic.Uint64 // Number of the first stored item in the freezer
+	isIncr  bool
 
 	// This lock synchronizes writers and the truncate operation, as well as
 	// the "atomic" (batched) read operations.
@@ -83,7 +84,8 @@ type Freezer struct {
 // The 'tables' argument defines the data tables. If the value of a map
 // entry is true, snappy compression is disabled for the table.
 // additionTables indicates the new add tables for freezerDB, it has some special rules.
-func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, maxTableSize uint32, tables map[string]bool) (*Freezer, error) {
+func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, maxTableSize uint32,
+	tables map[string]bool, isIncr bool) (*Freezer, error) {
 	// Create the initial freezer object
 	var (
 		readMeter  = metrics.NewRegisteredMeter(namespace+"ancient/read", nil)
@@ -124,6 +126,7 @@ func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, 
 		tables:       make(map[string]*freezerTable),
 		instanceLock: lock,
 		offset:       offset,
+		isIncr:       isIncr,
 	}
 
 	// Create the tables.
