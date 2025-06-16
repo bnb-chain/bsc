@@ -171,7 +171,7 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 
 	// increasing the memtableStopWriteThreshold allows writes to be flushed more smoothly
 	// total size of memTable not changed
-	memTableLimit := 6
+	memTableLimit := 8
 	memTableSize := cache * 1024 * 1024 / 2 / memTableLimit
 
 	// The memory table size is currently capped at maxMemTableSize-1 due to a
