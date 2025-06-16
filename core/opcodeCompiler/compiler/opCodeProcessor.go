@@ -165,15 +165,15 @@ func doOpcodesProcess(code []byte) ([]byte, error) {
 
 func doCodeFusion(code []byte) ([]byte, error) {
 	fusedCode := make([]byte, len(code))
-	length := copy(fusedCode, code)
+	originalLength := copy(fusedCode, code)
 	skipToNext := false
-	length = bytes.LastIndex(code, []byte{byte(INVALID)})
+	length := bytes.LastIndex(code, []byte{byte(INVALID)})
 
 	for i := 0; i < length; i++ {
 		cur := i
 		skipToNext = false
 		if fusedCode[cur] >= minOptimizedOpcode && fusedCode[cur] <= maxOptimizedOpcode {
-			log.Error("raw opcode fall in optimized range", "length", length, "cur", cur, "fusedCode[cur]", fusedCode[cur])
+			log.Error("raw opcode fall in optimized range", "length", length, "originalLength", originalLength, "cur", cur, "fusedCode[cur]", fusedCode[cur])
 			return code, ErrFailPreprocessing
 		}
 
