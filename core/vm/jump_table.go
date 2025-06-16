@@ -1238,15 +1238,15 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 
 	tbl[IsZeroPush2] = &operation{
 		execute:     opIsZeroPush2,
-		constantGas: GasFastestStep + GasFastestStep, // ISZERO + PUSH2
+		constantGas: GasFastestStep + GasFastestStep,
 		minStack:    minStack(1, 1),
 		maxStack:    maxStack(1, 1),
 	}
 
 	tbl[Dup2MStorePush1Add] = &operation{
 		execute:     opDup2MStorePush1Add,
-		constantGas: 4 * GasFastestStep, // DUP2 + PUSH1 + ADD
-		dynamicGas:  gasMStore,          // MSTORE需要动态gas计算
+		constantGas: 4 * GasFastestStep,
+		dynamicGas:  gasMStore,
 		minStack:    minStack(1, 2),
 		maxStack:    maxStack(1, 2),
 		memorySize:  memoryDup2MStorePush1Add,
@@ -1254,37 +1254,37 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 
 	tbl[Dup1Push4EqPush2] = &operation{
 		execute:     opDup1Push4EqPush2,
-		constantGas: GasFastestStep + GasFastestStep + GasFastestStep + GasFastestStep, // DUP1 + PUSH4 + EQ + PUSH2
+		constantGas: GasFastestStep + GasFastestStep + GasFastestStep + GasFastestStep,
 		minStack:    minStack(1, 2),
 		maxStack:    maxStack(1, 2),
 	}
 
 	tbl[Push1CalldataloadPush1ShrDup1Push4GtPush2] = &operation{
 		execute:     opPush1CalldataloadPush1ShrDup1Push4GtPush2,
-		constantGas: 8 * GasFastestStep, // PUSH1 + CALLDATALOAD + PUSH1 + SHR + DUP1 + PUSH4 + GT + PUSH2 (8个操作，但GT算作7个基础操作)
+		constantGas: 8 * GasFastestStep,
 		minStack:    minStack(0, 3),
 		maxStack:    maxStack(0, 3),
 	}
 
 	tbl[Push1Push1Push1SHLSub] = &operation{
 		execute:     opPush1Push1Push1SHLSub,
-		constantGas: 5 * GasFastestStep, // PUSH1 + PUSH1 + PUSH1 + SHL + SUB
-		minStack:    minStack(1, 1),
-		maxStack:    maxStack(1, 1),
+		constantGas: 5 * GasFastestStep,
+		minStack:    minStack(0, 3),
+		maxStack:    maxStack(0, 3),
 	}
 
 	tbl[AndDup2AddSwap1Dup2LT] = &operation{
 		execute:     opAndDup2AddSwap1Dup2LT,
-		constantGas: 6 * GasFastestStep, // AND + DUP2 + ADD + SWAP1 + DUP2 + LT
-		minStack:    minStack(3, 3),
-		maxStack:    maxStack(3, 3),
+		constantGas: 6 * GasFastestStep,
+		minStack:    minStack(0, 3),
+		maxStack:    maxStack(0, 3),
 	}
 
 	tbl[Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT] = &operation{
 		execute:     opSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT,
-		constantGas: 12 * GasFastestStep, // 11个基础操作
-		minStack:    minStack(3, 3),
-		maxStack:    maxStack(3, 3),
+		constantGas: 12 * GasFastestStep,
+		minStack:    minStack(0, 4),
+		maxStack:    maxStack(0, 4),
 	}
 
 	return tbl
