@@ -102,6 +102,7 @@ Remove blockchain and state databases`,
 		ArgsUsage: "<prefix> <start>",
 		Flags: slices.Concat([]cli.Flag{
 			utils.SyncModeFlag,
+			utils.IncrementalSnapshotFlag,
 		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Usage:       "Inspect the storage size for each type of data in the database",
 		Description: `This commands iterates the entire database. If the optional 'prefix' and 'start' arguments are provided, then the iteration is limited to the given subset of data.`,
@@ -533,7 +534,9 @@ func inspect(ctx *cli.Context) error {
 	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
 
-	return rawdb.InspectDatabase(db, prefix, start)
+	isIncr := ctx.IsSet(utils.IncrementalSnapshotFlag.Name)
+
+	return rawdb.InspectDatabase(db, isIncr, prefix, start)
 }
 
 func ancientInspect(ctx *cli.Context) error {
