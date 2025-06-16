@@ -273,12 +273,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// Memory check needs to be done prior to evaluating the dynamic gas portion,
 			// to detect calculation overflows
 			if operation.memorySize != nil {
-				//if in.evm.Context.BlockNumber.Int64() == 4744959 && pc == 14562 {
-				//	log.Info("DEBUG", "pc", pc, "op", op)
-				//	for i := 0; i < stack.len(); i++ {
-				//		log.Info("DEBUG", "i", i, "value", stack.data[i])
-				//	}
-				//}
 				memSize, overflow := operation.memorySize(stack)
 				if overflow {
 					return nil, ErrGasUintOverflow
@@ -320,9 +314,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			mem.Resize(memorySize)
 		}
 
-		if in.evm.Context.BlockNumber.Int64() == 4744934 && op == Dup2MStorePush1Add {
-			log.Info("DEBUG", "pc", pc, "op", op.String(), "cost", cost)
-		}
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
 		if err != nil {
