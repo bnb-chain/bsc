@@ -2290,7 +2290,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 			// Disable tracing for prefetcher executions.
 			vmCfg := bc.vmConfig
 			vmCfg.Tracer = nil
-			go bc.prefetcher.Prefetch(block, throwaway, &vmCfg, interruptCh)
+			go bc.prefetcher.Prefetch(block.Transactions(), block.Header(), block.GasLimit(), throwaway, &vmCfg, interruptCh)
 
 			// 2.do trie prefetch for MPT trie node cache
 			// it is for the big state trie tree, prefetch based on transaction's From/To address.

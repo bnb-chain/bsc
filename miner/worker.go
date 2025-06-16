@@ -310,6 +310,10 @@ func (w *worker) setBestBidFetcher(fetcher bidFetcher) {
 	w.bidFetcher = fetcher
 }
 
+func (w *worker) getPrefetcher() core.Prefetcher {
+	return w.prefetcher
+}
+
 // setEtherbase sets the etherbase used to initialize the block coinbase field.
 func (w *worker) setEtherbase(addr common.Address) {
 	w.confMu.Lock()
