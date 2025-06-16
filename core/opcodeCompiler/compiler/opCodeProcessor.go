@@ -1,7 +1,7 @@
 package compiler
 
 import (
-	"encoding/binary"
+	"bytes"
 	"errors"
 	"github.com/ethereum/go-ethereum/log"
 	"runtime"
@@ -167,15 +167,13 @@ func doCodeFusion(code []byte) ([]byte, error) {
 	fusedCode := make([]byte, len(code))
 	length := copy(fusedCode, code)
 	skipToNext := false
+	length = bytes.LastIndex(code, []byte{byte(INVALID)})
 
-	twoBytes := []byte{fusedCode[len(fusedCode)-3], fusedCode[len(fusedCode)-2]}
-	metaLength := binary.BigEndian.Uint16(twoBytes)
-	log.Error("verify legit metadata format", "metaLength", metaLength, "beforeMeta is 0xfe", fusedCode[len(fusedCode)-2-1-int(metaLength)] == 0xfe)
 	for i := 0; i < length; i++ {
 		cur := i
 		skipToNext = false
 		if fusedCode[cur] >= minOptimizedOpcode && fusedCode[cur] <= maxOptimizedOpcode {
-			//log.Error("raw opcode fall in optimized range", "length", length, "cur", cur, "fusedCode[cur]", fusedCode[cur])
+			log.Error("raw opcode fall in optimized range", "length", length, "cur", cur, "fusedCode[cur]", fusedCode[cur])
 			return code, ErrFailPreprocessing
 		}
 
