@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/trie/trienode"
 	"golang.org/x/exp/maps"
 )
 
@@ -580,6 +581,19 @@ func writeHistoryTrieNodes(writer ethdb.AncientWriter, dl *diffLayer) error {
 		"elapsed", common.PrettyDuration(time.Since(start)))
 
 	return nil
+}
+
+// readHistoryTrieNodes reads the history trie nodes
+func readHistoryTrieNodes(reader ethdb.AncientReader, id uint64) map[common.Hash]map[string]*trienode.Node {
+	blob, err := rawdb.ReadIncrStateTrieNodes(reader, id)
+	if err != nil {
+		log.Crit("Failed to read incremental trie nodes", "error", err)
+	}
+	var decodedTrieNodes []journalNodes
+	if err = rlp.DecodeBytes(blob, &decodedTrieNodes); err != nil {
+		log.Crit("Failed to decode incremental trie nodes", "error", err)
+	}
+	return flattenTrieNodes(decodedTrieNodes)
 }
 
 // checkHistories retrieves a batch of meta objects with the specified range

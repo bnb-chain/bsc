@@ -17,9 +17,11 @@
 package rawdb
 
 import (
+	"errors"
 	"path/filepath"
 
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // The list of table names of chain freezer.
@@ -130,6 +132,15 @@ func NewIncrStateFreezer(ancientDir string, readOnly bool, offset, blockLimit ui
 	name := filepath.Join(ancientDir, IncrementalPath, MerkleStateFreezerName)
 	return newIncrFreezer(name, "eth/db/incremental/state", readOnly, offset, stateHistoryTableSize,
 		incrStateFreezerNoSnappy, blockLimit)
+}
+
+func OpenIncrStateFreezer(incrStateDir string, readOnly bool) (ethdb.ResettableAncientStore, error) {
+	if incrStateDir == "" {
+		log.Error("Incremental state directory is empty")
+		return nil, errors.New("empty incr state directory")
+	}
+	return newIncrFreezer(incrStateDir, "eth/db/incremental/state", readOnly, 0, stateHistoryTableSize,
+		incrStateFreezerNoSnappy, 1)
 }
 
 // NewIncrChainFreezer initializes the ancient store for incremental block history.

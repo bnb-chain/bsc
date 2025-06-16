@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
-
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/trienode"
@@ -32,6 +32,49 @@ func newAsyncNodeBuffer(limit int, nodes *nodeSet, states *stateSet, layers uint
 		current:    newNodeCache(limit, nodes, states, layers),
 		background: newNodeCache(limit, nil, nil, 0),
 	}
+}
+
+func (a *asyncnodebuffer) mergeIncrStateHistory(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, incrFreezer ethdb.ResettableAncientStore) error {
+	head, err := incrFreezer.Ancients()
+	if err != nil {
+		log.Error("Failed to get incremental freezer ancients", "error", err)
+		return err
+	}
+	// tail state id should be equal to persistent state id
+	tail, err := incrFreezer.Tail()
+	if err != nil {
+		log.Error("Failed to get incremental freezer tail", "error", err)
+		return err
+	}
+	persistID := rawdb.ReadPersistentStateID(db)
+	if persistID != tail {
+		log.Crit("Invalid last state id in incremental snapshot which is different from persist state id",
+			"persistent_state_id", persistID, "head_state_id", head, "tail_state_id", tail)
+	}
+	log.Info("Ancient db meta info", "persistent_state_id", persistID, "head_state_id", head,
+		"tail_state_id", tail, "total_num", head-tail)
+
+	// check persistent state id with incr state id
+	for i := tail; i <= head; i++ {
+		trieNodes := readHistoryTrieNodes(incrFreezer, i)
+		nodesSet := newNodeSet(trieNodes)
+		if err = a.current.commit(nodesSet, nil); err != nil {
+			log.Crit("Failed to commit history", "error", err)
+			return err
+		}
+		if err = a.flush(db, freezer, nil, i, false); err != nil {
+			log.Error("Failed to flush history", "error", err)
+			return err
+		}
+	}
+
+	if err = a.flush(db, freezer, nil, head, true); err != nil {
+		log.Error("Failed to force flush history", "error", err)
+		return err
+	}
+	a.waitAndStopFlushing()
+
+	return nil
 }
 
 func (a *asyncnodebuffer) account(hash common.Hash) ([]byte, bool) {

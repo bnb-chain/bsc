@@ -732,6 +732,28 @@ func (db *Database) DeleteTrieJournal(writer ethdb.KeyValueWriter) error {
 	return nil
 }
 
+func (db *Database) InsertIncrState(incrStateDir string) error {
+	root := db.tree.front()
+	if err := db.Commit(root, false); err != nil {
+		log.Error("Failed to commit all state", "err", err)
+	}
+
+	incrFreezer, err := rawdb.OpenIncrStateFreezer(incrStateDir, true)
+	if err != nil {
+		log.Error("Failed to open incremental state freezer", "err", err)
+		return err
+	}
+	db.incrFreezer = incrFreezer
+	defer incrFreezer.Close()
+
+	a := newAsyncNodeBuffer(MaxDirtyBufferSize, nil, nil, 0)
+	if err = a.mergeIncrStateHistory(db.diskdb, db.freezer, db.incrFreezer); err != nil {
+		log.Error("Failed to merge incr state history", "err", err)
+		return err
+	}
+	return nil
+}
+
 // AccountHistory inspects the account history within the specified range.
 //
 // Start: State ID of the first history object for the query. 0 implies the first

@@ -1279,6 +1279,12 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Value:    false,
 		Category: flags.StateCategory,
 	}
+	IncrementalSnapshotPathFlag = &cli.StringFlag{
+		Name:     "data-dir.incr",
+		Usage:    "Data directory for incremental snapshot data",
+		Value:    "",
+		Category: flags.StateCategory,
+	}
 	IncrementalSnapshotBlockIntervalFlag = &cli.Uint64Flag{
 		Name:     "incremental-snapshot-block-interval",
 		Usage:    "Set how many blocks interval are stored into one incremental snapshot",

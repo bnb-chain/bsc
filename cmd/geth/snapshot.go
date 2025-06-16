@@ -221,12 +221,21 @@ The export-preimages command exports hash preimages to a flat file, in exactly
 the expected order for the overlay tree migration.
 `,
 			},
+			{
+				Action:    mergeIncrSnapshot,
+				Name:      "merge-incr-snapshot",
+				Usage:     "Merge the incremental snapshot into base snapshot",
+				ArgsUsage: "",
+				Flags: slices.Concat([]cli.Flag{utils.IncrementalSnapshotPathFlag},
+					utils.DatabaseFlags),
+				Description: `This command aims to help merge multiple incremental snapshot into base snapshot`,
+			},
 		},
 	}
 )
 
 func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
-	//The layer of tries trees that keep in memory.
+	// The layer of tries trees that keep in memory.
 	TriesInMemory := int(ctx.Uint64(utils.TriesInMemoryFlag.Name))
 	chaindb := utils.MakeChainDatabase(ctx, stack, false, true)
 	defer chaindb.Close()
@@ -239,7 +248,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 		return nil, errors.New("failed to load head block")
 	}
 	headHeader := headBlock.Header()
-	//Make sure the MPT and snapshot matches before pruning, otherwise the node can not start.
+	// Make sure the MPT and snapshot matches before pruning, otherwise the node can not start.
 	snapconfig := snapshot.Config{
 		CacheSize:  256,
 		Recovery:   false,
@@ -439,7 +448,7 @@ func pruneBlock(ctx *cli.Context) error {
 
 	log.Info("backup block successfully")
 
-	//After backing up successfully, rename the new ancientdb name to the original one, and delete the old ancientdb
+	// After backing up successfully, rename the new ancientdb name to the original one, and delete the old ancientdb
 	if err := blockpruner.AncientDbReplacer(); err != nil {
 		return err
 	}
@@ -1020,5 +1029,29 @@ func checkAccount(ctx *cli.Context) error {
 		return err
 	}
 	log.Info("Checked the snapshot journalled storage", "time", common.PrettyDuration(time.Since(start)))
+	return nil
+}
+
+// mergeIncrSnapshot
+func mergeIncrSnapshot(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	chainDB := utils.MakeChainDatabase(ctx, stack, false, false)
+	defer chainDB.Close()
+
+	trieDB := utils.MakeTrieDatabase(ctx, stack, chainDB, false, false, false)
+	defer trieDB.Close()
+
+	if !ctx.IsSet(utils.IncrementalSnapshotPathFlag.Name) {
+		return errors.New("Incremental snapshot path is not set")
+	}
+
+	path := ctx.String(utils.IncrementalSnapshotPathFlag.Name)
+	log.Info("Start merging incremental snapshot", "path", path)
+
+	if err := trieDB.InsertIncrState(path); err != nil {
+		return err
+	}
 	return nil
 }

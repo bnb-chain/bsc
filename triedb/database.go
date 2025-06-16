@@ -392,3 +392,13 @@ func (db *Database) IsVerkle() bool {
 func (db *Database) Disk() ethdb.Database {
 	return db.disk
 }
+
+// InsertIncrState inserts the state in incremental snapshot into base snapshot
+func (db *Database) InsertIncrState(incrStateDir string) error {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		log.Error("Not supported")
+		return nil
+	}
+	return pdb.InsertIncrState(incrStateDir)
+}

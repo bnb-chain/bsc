@@ -191,6 +191,7 @@ var (
 		utils.BlobExtraReserveFlag,
 		utils.MaximumBlockHeightFlag,
 		utils.IncrementalSnapshotFlag,
+		utils.IncrementalSnapshotPathFlag,
 		utils.IncrementalSnapshotBlockIntervalFlag,
 		utils.MaximumRetainedIncrementalSnapshotFlag,
 		// utils.BeaconApiFlag,

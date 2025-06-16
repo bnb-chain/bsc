@@ -298,6 +298,17 @@ func WriteIncrStateTrieNodes(db ethdb.AncientWriter, id uint64, trieNodes []byte
 	return err
 }
 
+// ReadIncrStateTrieNodes retrieves the trie nodes corresponding to the specified
+// state history. Compute the position of state history in freezer by minus one
+// since the id of first state history starts from one(zero for initial state).
+func ReadIncrStateTrieNodes(db ethdb.AncientReaderOp, id uint64) ([]byte, error) {
+	blob, err := db.Ancient(incrStateHistoryTrieNodesData, id-1)
+	if err != nil {
+		return nil, err
+	}
+	return blob, nil
+}
+
 // WriteIncrBlockData writes the provided block data to the database.
 func WriteIncrBlockData(db ethdb.AncientWriter, number uint64, hash, header, body, receipts, td, sidecars []byte, isCancun bool) error {
 	_, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
