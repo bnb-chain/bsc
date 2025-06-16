@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"github.com/ethereum/go-ethereum/log"
 	"runtime"
@@ -173,7 +174,7 @@ func doCodeFusion(code []byte) ([]byte, error) {
 		cur := i
 		skipToNext = false
 		if fusedCode[cur] >= minOptimizedOpcode && fusedCode[cur] <= maxOptimizedOpcode {
-			log.Error("raw opcode fall in optimized range", "length", length, "originalLength", originalLength, "cur", cur, "fusedCode[cur]", fusedCode[cur])
+			log.Error("raw opcode fall in optimized range", "length", length, "originalLength", originalLength, "cur", cur, "fusedCode[cur]", fusedCode[cur], "code", hex.EncodeToString(code))
 			return code, ErrFailPreprocessing
 		}
 
