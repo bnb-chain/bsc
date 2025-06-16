@@ -205,7 +205,7 @@ const (
 	Swap2Swap1
 	Swap2Pop
 	Dup2LT
-	JumpIfZero // 0xe2
+	JumpIfZero // 0xc1
 
 	IsZeroPush2
 	Dup2MStorePush1Add

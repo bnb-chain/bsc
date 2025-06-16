@@ -23,6 +23,9 @@ const taskChannelSize = 1024 * 1024
 const (
 	generate optimizeTaskType = 1
 	flush    optimizeTaskType = 2
+
+	minOptimizedOpcode = 0xb0
+	maxOptimizedOpcode = 0xcf
 )
 
 type OpCodeProcessorConfig struct {
@@ -164,6 +167,9 @@ func doCodeFusion(code []byte) ([]byte, error) {
 	for i := 0; i < length; i++ {
 		cur := i
 		skipToNext = false
+		if fusedCode[cur] >= minOptimizedOpcode && fusedCode[cur] <= maxOptimizedOpcode {
+			return code, ErrFailPreprocessing
+		}
 
 		if length > cur+15 {
 			code0 := ByteCode(fusedCode[cur+0])
