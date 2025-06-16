@@ -1424,10 +1424,7 @@ func opDup1Push4EqPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeCon
 	if err != nil {
 		return nil, err
 	}
-<<<<<<< HEAD
 
-=======
->>>>>>> 3159516bb (fix: gas bug)
 	*pc += 1
 	x, y := scope.Stack.pop(), scope.Stack.peek()
 	if x.Eq(y) {
