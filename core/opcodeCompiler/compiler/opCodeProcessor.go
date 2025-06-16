@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"errors"
+	"math/big"
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -160,12 +161,45 @@ func doOpcodesProcess(code []byte) ([]byte, error) {
 	return code, nil
 }
 
+// StripMetadata removes Solidity metadata (if present) from contract bytecode.
+// It uses the Solidity convention: the last 2 bytes encode the metadata length in big-endian.
+func stripMetadata(code []byte) []byte {
+	codeLen := len(code)
+	if codeLen < 2 {
+		// Too short to contain metadata
+		return code
+	}
+
+	// Read last 2 bytes as big-endian unsigned int
+	metadataLen := int(new(big.Int).SetBytes(code[codeLen-2:]).Uint64())
+
+	// Validate metadata length
+	if metadataLen+2 > codeLen {
+		// Length field invalid, don't strip
+		return code
+	}
+
+	// Calculate actual code length
+	strippedLen := codeLen - (metadataLen + 2)
+	if code[strippedLen-1] == 0xFE {
+		return code[:strippedLen]
+	}
+
+	return code
+}
+
 func doCodeFusion(code []byte) ([]byte, error) {
+	stripMetadataCode := stripMetadata(code)
+	stripMetadataCodeLen := len(stripMetadataCode)
 	fusedCode := make([]byte, len(code))
 	length := copy(fusedCode, code)
+
 	skipToNext := false
 	for i := 0; i < length; i++ {
 		cur := i
+		if cur >= stripMetadataCodeLen {
+			break
+		}
 		skipToNext = false
 		if fusedCode[cur] >= minOptimizedOpcode && fusedCode[cur] <= maxOptimizedOpcode {
 			return code, ErrFailPreprocessing
