@@ -421,20 +421,6 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		logger:             vmConfig.Tracer,
 	}
 
-	if cacheConfig.EnableIncrHistory {
-		ancient, err := db.AncientDatadir()
-		if err != nil {
-			log.Crit("Failed to get ancient dir", "err", err)
-			return nil, err
-		}
-		incrChainFreezer, err := rawdb.NewIncrChainFreezer(ancient, false, 1, cacheConfig.IncrHistory)
-		if err != nil {
-			log.Crit("Failed to create incr chain freezer", "err", err)
-			return nil, err
-		}
-		bc.incrChainFreezer = incrChainFreezer
-	}
-
 	bc.hc, err = NewHeaderChain(db, chainConfig, engine, bc.insertStopped)
 	if err != nil {
 		return nil, err
@@ -1462,11 +1448,6 @@ func (bc *BlockChain) Stop() {
 	if err := bc.triedb.Close(); err != nil {
 		log.Error("Failed to close trie database", "err", err)
 	}
-	if bc.cacheConfig.EnableIncrHistory && bc.incrChainFreezer != nil {
-		if err := bc.incrChainFreezer.Close(); err != nil {
-			log.Error("Failed to close incremental chain freezer", "err", err)
-		}
-	}
 	log.Info("Blockchain stopped")
 }
 
@@ -1830,8 +1811,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		rawdb.WriteBlock(blockBatch, block)
 		rawdb.WriteReceipts(blockBatch, block.Hash(), block.NumberU64(), receipts)
 		// if cancun is enabled, here need to write sidecars too
-		isCancun := bc.chainConfig.IsCancun(block.Number(), block.Time())
-		if isCancun {
+		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 			rawdb.WriteBlobSidecars(blockBatch, block.Hash(), block.NumberU64(), block.Sidecars())
 		}
 		if bc.db.StateStore() != nil {
@@ -1845,12 +1825,8 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		bc.hc.tdCache.Add(block.Hash(), externTd)
 		bc.blockCache.Add(block.Hash(), block)
 		bc.cacheReceipts(block.Hash(), receipts, block)
-		if isCancun {
+		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 			bc.sidecarsCache.Add(block.Hash(), block.Sidecars())
-		}
-
-		if bc.cacheConfig.EnableIncrHistory {
-			bc.writeBlockIntoIncrFreezer(block.NumberU64(), block.Hash().Bytes(), block, receipts, externTd, isCancun)
 		}
 		wg.Done()
 	}()
@@ -1949,39 +1925,6 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	}
 
 	return nil
-}
-
-func (bc *BlockChain) writeBlockIntoIncrFreezer(number uint64, hash []byte, block *types.Block, receipts []*types.Receipt,
-	td *big.Int, isCancun bool) {
-	headerData, err := rlp.EncodeToBytes(block.Header())
-	if err != nil {
-		log.Crit("Failed to RLP encode header", "err", err)
-	}
-	bodyData, err := rlp.EncodeToBytes(block.Body())
-	if err != nil {
-		log.Crit("Failed to RLP encode body", "err", err)
-	}
-	receiptsData, err := rlp.EncodeToBytes(receipts)
-	if err != nil {
-		log.Crit("Failed to encode block receipts", "err", err)
-	}
-	tdData, err := rlp.EncodeToBytes(td)
-	if err != nil {
-		log.Crit("Failed to RLP encode block total difficulty", "err", err)
-	}
-
-	blobData := []byte{}
-	if isCancun {
-		blobData, err = rlp.EncodeToBytes(block.Sidecars())
-		if err != nil {
-			log.Crit("Failed to encode block blobs", "err", err)
-		}
-	}
-
-	err = rawdb.WriteIncrBlockData(bc.incrChainFreezer, number, hash, headerData, bodyData, receiptsData, tdData, blobData, isCancun)
-	if err != nil {
-		log.Crit("Failed to write block into incremental freezer db", "err", err)
-	}
 }
 
 // WriteBlockAndSetHead writes the given block and all associated state to the database,
@@ -2119,24 +2062,6 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 		}
 	}
 
-	// if bc.cacheConfig.MaximumBlockHeight > 0 {
-	// 	currBlock := bc.CurrentBlock().Number.Uint64()
-	// 	lastBlock := chain[len(chain)-1].NumberU64()
-	// 	log.Info("Print block info", "currBlock", currBlock, "lastBlock", lastBlock)
-	//
-	// 	// If the last block in chain is beyond MaximumBlockHeight
-	// 	if lastBlock > bc.cacheConfig.MaximumBlockHeight {
-	// 		// Calculate how many blocks we need to keep
-	// 		blocksToKeep := bc.cacheConfig.MaximumBlockHeight - currBlock
-	// 		if blocksToKeep > 0 && blocksToKeep < 2048 {
-	// 			// Adjust chain length to keep only blocks up to MaximumBlockHeight
-	// 			chain = chain[:blocksToKeep]
-	// 			log.Info("Adjusted chain length to respect MaximumBlockHeight",
-	// 				"maxHeight", bc.cacheConfig.MaximumBlockHeight, "adjustedLength", len(chain))
-	// 		}
-	// 	}
-	// }
-
 	// Pre-checks passed, start the full block imports
 	if !bc.chainmu.TryLock() {
 		return 0, errChainStopped
@@ -2144,15 +2069,6 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 	defer bc.chainmu.Unlock()
 
 	_, n, err := bc.insertChain(chain, true, false) // No witness collection for mass inserts (would get super large)
-	// if bc.cacheConfig.MaximumBlockHeight > 0 {
-	// 	currBlock := bc.CurrentBlock().Number.Uint64()
-	// 	if currBlock >= bc.cacheConfig.MaximumBlockHeight {
-	// 		log.Info("Reached maximum block height, stopping sync", "maxHeight", bc.cacheConfig.MaximumBlockHeight,
-	// 			"currBlock", currBlock)
-	// 		bc.Stop()
-	// 		os.Exit(1)
-	// 	}
-	// }
 	return n, err
 }
 

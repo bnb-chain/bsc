@@ -82,8 +82,17 @@ var stateFreezerNoSnappy = map[string]bool{
 	stateHistoryStorageData:  false,
 }
 
+var additionIncrTables = []string{ChainFreezerHeaderTable, ChainFreezerHashTable, ChainFreezerBodiesTable, ChainFreezerReceiptTable,
+	ChainFreezerDifficultyTable, stateHistoryMeta, stateHistoryAccountIndex, stateHistoryStorageIndex,
+	stateHistoryAccountData, stateHistoryStorageData, incrStateHistoryTrieNodesData}
+
 // incrStateFreezerNoSnappy configures whether compression is disabled for the incremental state freezer.
 var incrStateFreezerNoSnappy = map[string]bool{
+	stateHistoryMeta:              true,
+	stateHistoryAccountIndex:      false,
+	stateHistoryStorageIndex:      false,
+	stateHistoryAccountData:       false,
+	stateHistoryStorageData:       false,
 	incrStateHistoryTrieNodesData: false,
 }
 
@@ -93,7 +102,7 @@ var (
 	MerkleStateFreezerName = "state"        // the folder name of state history ancient store.
 	VerkleStateFreezerName = "state_verkle" // the folder name of state history ancient store.
 
-	IncrementalPath = "incremental_snapshot" // the folder name of incremental ancient store
+	IncrementalPath = "incremental" // the folder name of incremental ancient store
 )
 
 // freezers the collections of all builtin freezers.
@@ -130,8 +139,9 @@ func NewIncrStateFreezer(ancientDir string, readOnly bool, offset, blockLimit ui
 	}
 
 	name := filepath.Join(ancientDir, IncrementalPath, MerkleStateFreezerName)
-	return newIncrFreezer(name, "eth/db/incremental/state", readOnly, offset, stateHistoryTableSize,
-		incrStateFreezerNoSnappy, blockLimit)
+	return newResettableFreezer(name, "eth/db/state", readOnly, offset, stateHistoryTableSize, incrStateFreezerNoSnappy, true)
+	// return newIncrFreezer(name, "eth/db/incremental/state", readOnly, offset, stateHistoryTableSize,
+	// 	incrStateFreezerNoSnappy, blockLimit)
 }
 
 func OpenIncrStateFreezer(incrStateDir string, readOnly bool) (ethdb.ResettableAncientStore, error) {
@@ -150,6 +160,7 @@ func NewIncrChainFreezer(ancientDir string, readOnly bool, offset, blockLimit ui
 	}
 
 	name := filepath.Join(ancientDir, IncrementalPath, ChainFreezerName)
-	return newIncrFreezer(name, "eth/db/incremental/chain", readOnly, offset, stateHistoryTableSize,
-		chainFreezerNoSnappy, blockLimit)
+	return newResettableFreezer(name, "eth/db/chain", readOnly, offset, stateHistoryTableSize, chainFreezerNoSnappy, true)
+	// return newIncrFreezer(name, "eth/db/incremental/chain", readOnly, offset, stateHistoryTableSize,
+	// 	chainFreezerNoSnappy, blockLimit)
 }

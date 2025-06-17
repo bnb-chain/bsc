@@ -71,6 +71,11 @@ func (batch *freezerBatch) commit() (item uint64, writeSize int64, err error) {
 		if slices.Contains(additionTables, name) && EmptyTable(tb.t) {
 			continue
 		}
+		// skip empty incremental addition tables
+		// if tb.isIncr && slices.Contains(additionIncrTables, name) && EmptyTable(tb.t) {
+		// 	continue
+		// }
+
 		if item < math.MaxUint64 && tb.curItem != item {
 			return 0, 0, fmt.Errorf("table %s is at item %d, want %d", name, tb.curItem, item)
 		}
@@ -119,31 +124,15 @@ func (t *freezerTable) newBatch(offset uint64, isIncr bool) *freezerTableBatch {
 func (batch *freezerTableBatch) reset() {
 	batch.dataBuffer = batch.dataBuffer[:0]
 	batch.indexBuffer = batch.indexBuffer[:0]
-
-	if batch.isIncr {
-		batch.curItem = batch.offset
-	} else {
-		curItem := batch.t.items.Load() + batch.offset
-		batch.curItem = atomic.LoadUint64(&curItem)
-	}
+	curItem := batch.t.items.Load() + batch.offset
+	batch.curItem = atomic.LoadUint64(&curItem)
 	batch.totalBytes = 0
-	// if batch.t.items.Load() == 0 {
-	// 	batch.curItem = batch.offset
-	// } else {
-	// 	curItem := batch.t.items.Load() + batch.offset
-	// 	batch.curItem = atomic.LoadUint64(&curItem)
-	// }
 }
 
 // Append rlp-encodes and adds data at the end of the freezer table. The item number is a
 // precautionary parameter to ensure data correctness, but the table will reject already
 // existing data.
 func (batch *freezerTableBatch) Append(item uint64, data interface{}) error {
-	// If we're starting fresh and the item is not 0, update curItem
-	if batch.isIncr && item > 0 {
-		batch.curItem = item
-	}
-
 	if item != batch.curItem {
 		return fmt.Errorf("%w: have %d want %d", errOutOrderInsertion, item, batch.curItem)
 	}
@@ -164,10 +153,6 @@ func (batch *freezerTableBatch) Append(item uint64, data interface{}) error {
 // precautionary parameter to ensure data correctness, but the table will reject already
 // existing data.
 func (batch *freezerTableBatch) AppendRaw(item uint64, blob []byte) error {
-	if batch.isIncr && item > 0 {
-		batch.curItem = item
-	}
-
 	if item != batch.curItem {
 		return fmt.Errorf("%w: have %d want %d", errOutOrderInsertion, item, batch.curItem)
 	}

@@ -21,11 +21,13 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math/big"
 	"slices"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
@@ -503,6 +505,7 @@ func (h *history) decode(accountData, storageData, accountIndexes, storageIndexe
 			storages[accIndex.address] = slotData
 		}
 	}
+
 	h.accounts = accounts
 	h.accountList = accountList
 	h.storages = storages
@@ -566,34 +569,92 @@ func writeHistoryTrieNodes(writer ethdb.AncientWriter, dl *diffLayer) error {
 	}
 
 	var (
-		start = time.Now()
-		nodes = compressTrieNodes(dl.nodes.nodes)
+		start   = time.Now()
+		nodes   = compressTrieNodes(dl.nodes.nodes)
+		history = newHistory(dl.rootHash(), dl.parentLayer().rootHash(), dl.block, dl.states.accountOrigin, dl.states.storageOrigin, dl.states.rawStorageKey)
 	)
+	accountData, storageData, accountIndex, storageIndex := history.encode()
 	nodesBytes, err := rlp.EncodeToBytes(nodes)
 	if err != nil {
 		log.Crit("Failed to encode trie nodes", "error", err)
 	}
 
-	if err = rawdb.WriteIncrStateTrieNodes(writer, dl.stateID(), nodesBytes); err != nil {
+	err = rawdb.WriteIncrStateTrieNodes(writer, dl.stateID(), history.meta.encode(), accountIndex, storageIndex,
+		accountData, storageData, nodesBytes)
+	if err != nil {
 		return err
 	}
-	log.Debug("Stored trie nodes", "id", dl.stateID(), "block", dl.block, "nodes size", dl.nodes.size,
+	log.Debug("Stored incremental history", "id", dl.stateID(), "block", dl.block, "nodes size", dl.nodes.size,
 		"elapsed", common.PrettyDuration(time.Since(start)))
 
 	return nil
 }
 
 // readHistoryTrieNodes reads the history trie nodes
-func readHistoryTrieNodes(reader ethdb.AncientReader, id uint64) map[common.Hash]map[string]*trienode.Node {
-	blob, err := rawdb.ReadIncrStateTrieNodes(reader, id)
+func readHistoryTrieNodes(reader ethdb.AncientReader, id uint64) (*history, map[common.Hash]map[string]*trienode.Node, error) {
+	blob := rawdb.ReadStateHistoryMeta(reader, id)
+	if len(blob) == 0 {
+		return nil, nil, fmt.Errorf("state history not found %d", id)
+	}
+	var m meta
+	if err := m.decode(blob); err != nil {
+		return nil, nil, err
+	}
+
+	var (
+		dec            = history{meta: &m}
+		accountData    = rawdb.ReadStateAccountHistory(reader, id)
+		storageData    = rawdb.ReadStateStorageHistory(reader, id)
+		accountIndexes = rawdb.ReadStateAccountIndex(reader, id)
+		storageIndexes = rawdb.ReadStateStorageIndex(reader, id)
+	)
+	if err := dec.decode(accountData, storageData, accountIndexes, storageIndexes); err != nil {
+		return nil, nil, err
+	}
+
+	data, err := rawdb.ReadIncrStateTrieNodes(reader, id)
 	if err != nil {
 		log.Crit("Failed to read incremental trie nodes", "error", err)
 	}
 	var decodedTrieNodes []journalNodes
-	if err = rlp.DecodeBytes(blob, &decodedTrieNodes); err != nil {
+	if err = rlp.DecodeBytes(data, &decodedTrieNodes); err != nil {
 		log.Crit("Failed to decode incremental trie nodes", "error", err)
 	}
-	return flattenTrieNodes(decodedTrieNodes)
+
+	return &dec, flattenTrieNodes(decodedTrieNodes), nil
+}
+
+func writeBlockIntoIncrFreezer(writer ethdb.AncientWriter, number uint64, hash []byte, block *types.Block,
+	receipts []*types.Receipt, td *big.Int, isCancun bool) {
+	headerData, err := rlp.EncodeToBytes(block.Header())
+	if err != nil {
+		log.Crit("Failed to RLP encode header", "err", err)
+	}
+	bodyData, err := rlp.EncodeToBytes(block.Body())
+	if err != nil {
+		log.Crit("Failed to RLP encode body", "err", err)
+	}
+	receiptsData, err := rlp.EncodeToBytes(receipts)
+	if err != nil {
+		log.Crit("Failed to encode block receipts", "err", err)
+	}
+	tdData, err := rlp.EncodeToBytes(td)
+	if err != nil {
+		log.Crit("Failed to RLP encode block total difficulty", "err", err)
+	}
+
+	blobData := []byte{}
+	if isCancun {
+		blobData, err = rlp.EncodeToBytes(block.Sidecars())
+		if err != nil {
+			log.Crit("Failed to encode block blobs", "err", err)
+		}
+	}
+
+	err = rawdb.WriteIncrBlockData(writer, number, hash, headerData, bodyData, receiptsData, tdData, blobData, isCancun)
+	if err != nil {
+		log.Crit("Failed to write block into incremental freezer db", "err", err)
+	}
 }
 
 // checkHistories retrieves a batch of meta objects with the specified range
