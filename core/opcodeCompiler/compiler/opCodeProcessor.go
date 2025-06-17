@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"runtime"
 
@@ -128,7 +127,7 @@ func GenOrRewriteOptimizedCode(hash common.Hash, code []byte) ([]byte, error) {
 	if !enabled {
 		return nil, ErrOptimizedDisabled
 	}
-	processedCode, err := processByteCodes(code)
+	processedCode, err := processByteCodes(hash, code)
 	if err != nil {
 		return nil, err
 	}
@@ -153,19 +152,19 @@ func DeleteCodeCache(hash common.Hash) {
 	codeCache.RemoveCachedCode(hash)
 }
 
-func processByteCodes(code []byte) ([]byte, error) {
-	return doOpcodesProcess(code)
+func processByteCodes(hash common.Hash, code []byte) ([]byte, error) {
+	return doOpcodesProcess(hash, code)
 }
 
-func doOpcodesProcess(code []byte) ([]byte, error) {
-	code, err := doCodeFusion(code)
+func doOpcodesProcess(hash common.Hash, code []byte) ([]byte, error) {
+	code, err := doCodeFusion(hash, code)
 	if err != nil {
 		return nil, ErrFailPreprocessing
 	}
 	return code, nil
 }
 
-func doCodeFusion(code []byte) ([]byte, error) {
+func doCodeFusion(hash common.Hash, code []byte) ([]byte, error) {
 	fusedCode := make([]byte, len(code))
 	originalLength := copy(fusedCode, code)
 	skipToNext := false
@@ -175,8 +174,7 @@ func doCodeFusion(code []byte) ([]byte, error) {
 		cur := i
 		skipToNext = false
 		if fusedCode[cur] >= minOptimizedOpcode && fusedCode[cur] <= maxOptimizedOpcode {
-			codeHash := crypto.Keccak256Hash(code)
-			log.Error("raw opcode fall in optimized range", "length", length, "originalLength", originalLength, "cur", cur, "fusedCode[cur]", fusedCode[cur], "codeHash.Hex()", codeHash.Hex(), "code", hex.EncodeToString(code))
+			log.Error("raw opcode fall in optimized range", "length", length, "originalLength", originalLength, "cur", cur, "fusedCode[cur]", fusedCode[cur], "hash", hash, "code", hex.EncodeToString(code))
 			return code, ErrFailPreprocessing
 		}
 
