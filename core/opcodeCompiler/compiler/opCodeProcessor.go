@@ -41,9 +41,11 @@ type optimizeTaskType byte
 type CodeType uint8
 
 type optimizeTask struct {
-	taskType optimizeTaskType
-	hash     common.Hash
-	rawCode  []byte
+	taskType    optimizeTaskType
+	hash        common.Hash
+	rawCode     []byte
+	blockNumber uint64
+	txIndex     int
 }
 
 func init() {
@@ -97,11 +99,11 @@ func StoreBitvec(codeHash common.Hash, bitvec []byte) {
 	codeCache.AddBitvecCache(codeHash, bitvec)
 }
 
-func GenOrLoadOptimizedCode(hash common.Hash, code []byte) {
+func GenOrLoadOptimizedCode(hash common.Hash, code []byte, blockNumber uint64, txIndex int) {
 	if !enabled {
 		return
 	}
-	task := optimizeTask{generate, hash, code}
+	task := optimizeTask{generate, hash, code, blockNumber, txIndex}
 	taskChannel <- task
 }
 
@@ -116,18 +118,18 @@ func taskProcessor() {
 func handleOptimizationTask(task optimizeTask) {
 	switch task.taskType {
 	case generate:
-		TryGenerateOptimizedCode(task.hash, task.rawCode)
+		TryGenerateOptimizedCode(task.hash, task.rawCode, task.blockNumber, task.txIndex)
 	case flush:
 		DeleteCodeCache(task.hash)
 	}
 }
 
 // GenOrRewriteOptimizedCode generate the optimized code and refresh the code cache.
-func GenOrRewriteOptimizedCode(hash common.Hash, code []byte) ([]byte, error) {
+func GenOrRewriteOptimizedCode(hash common.Hash, code []byte, blockNumber uint64, txIndex int) ([]byte, error) {
 	if !enabled {
 		return nil, ErrOptimizedDisabled
 	}
-	processedCode, err := processByteCodes(hash, code)
+	processedCode, err := processByteCodes(hash, code, blockNumber, txIndex)
 	if err != nil {
 		return nil, err
 	}
@@ -135,11 +137,11 @@ func GenOrRewriteOptimizedCode(hash common.Hash, code []byte) ([]byte, error) {
 	return processedCode, err
 }
 
-func TryGenerateOptimizedCode(hash common.Hash, code []byte) ([]byte, error) {
+func TryGenerateOptimizedCode(hash common.Hash, code []byte, blockNumber uint64, txIndex int) ([]byte, error) {
 	processedCode := codeCache.GetCachedCode(hash)
 	var err error = nil
 	if len(processedCode) == 0 {
-		processedCode, err = GenOrRewriteOptimizedCode(hash, code)
+		processedCode, err = GenOrRewriteOptimizedCode(hash, code, blockNumber, txIndex)
 	}
 	return processedCode, err
 }
@@ -152,19 +154,19 @@ func DeleteCodeCache(hash common.Hash) {
 	codeCache.RemoveCachedCode(hash)
 }
 
-func processByteCodes(hash common.Hash, code []byte) ([]byte, error) {
-	return doOpcodesProcess(hash, code)
+func processByteCodes(hash common.Hash, code []byte, blockNumber uint64, txIndex int) ([]byte, error) {
+	return doOpcodesProcess(hash, code, blockNumber, txIndex)
 }
 
-func doOpcodesProcess(hash common.Hash, code []byte) ([]byte, error) {
-	code, err := doCodeFusion(hash, code)
+func doOpcodesProcess(hash common.Hash, code []byte, blockNumber uint64, txIndex int) ([]byte, error) {
+	code, err := doCodeFusion(hash, code, blockNumber, txIndex)
 	if err != nil {
 		return nil, ErrFailPreprocessing
 	}
 	return code, nil
 }
 
-func doCodeFusion(hash common.Hash, code []byte) ([]byte, error) {
+func doCodeFusion(hash common.Hash, code []byte, blockNumber uint64, txIndex int) ([]byte, error) {
 	fusedCode := make([]byte, len(code))
 	originalLength := copy(fusedCode, code)
 	skipToNext := false
@@ -174,7 +176,7 @@ func doCodeFusion(hash common.Hash, code []byte) ([]byte, error) {
 		cur := i
 		skipToNext = false
 		if fusedCode[cur] >= minOptimizedOpcode && fusedCode[cur] <= maxOptimizedOpcode {
-			log.Error("raw opcode fall in optimized range", "length", length, "originalLength", originalLength, "cur", cur, "fusedCode[cur]", fusedCode[cur], "hash", hash.String(), "code", hex.EncodeToString(code))
+			log.Error("raw opcode fall in optimized range", "length", length, "originalLength", originalLength, "cur", cur, "fusedCode[cur]", fusedCode[cur], "blockNumber", blockNumber, "txIndex", txIndex, "code", hex.EncodeToString(code))
 			return code, ErrFailPreprocessing
 		}
 
