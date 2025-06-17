@@ -168,6 +168,10 @@ func doCodeFusion(code []byte) ([]byte, error) {
 	for i := 0; i < length; i++ {
 		cur := i
 		skipToNext = false
+
+		if fusedCode[cur] == byte(INVALID) {
+			return fusedCode, nil
+		}
 		if fusedCode[cur] >= minOptimizedOpcode && fusedCode[cur] <= maxOptimizedOpcode {
 			return code, ErrFailPreprocessing
 		}
