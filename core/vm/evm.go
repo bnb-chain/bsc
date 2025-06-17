@@ -241,7 +241,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				contract := NewContract(caller, AccountRef(addrCopy), value, gas)
 				codeHash := evm.resolveCodeHash(addrCopy)
 				// codeHash := evm.StateDB.GetCodeHash(addrCopy) // todo: check
-				contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code, evm.Context.BlockNumber.Uint64(), evm.StateDB.TxIndex())
+				contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code, evm.Context.BlockNumber.Uint64(), evm.StateDB.TxIndex(), addrCopy)
 				contract.SetCallCode(&addrCopy, codeHash, code)
 				ret, err = evm.interpreter.Run(contract, input, false)
 				if evm.Context.BlockNumber.Uint64() == 5137393 {
@@ -321,7 +321,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 			contract := NewContract(caller, AccountRef(caller.Address()), value, gas)
 			code := evm.resolveCode(addrCopy)
 			codeHash := evm.resolveCodeHash(addrCopy)
-			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code, evm.Context.BlockNumber.Uint64(), evm.StateDB.TxIndex())
+			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code, evm.Context.BlockNumber.Uint64(), evm.StateDB.TxIndex(), addrCopy)
 			contract.SetCallCode(&addrCopy, codeHash, code)
 			ret, err = evm.interpreter.Run(contract, input, false)
 			if evm.Context.BlockNumber.Uint64() == 5137393 {
@@ -387,7 +387,7 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 			contract := NewContract(caller, AccountRef(caller.Address()), nil, gas).AsDelegate()
 			code := evm.resolveCode(addrCopy)
 			codeHash := evm.resolveCodeHash(addrCopy)
-			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code, evm.Context.BlockNumber.Uint64(), evm.StateDB.TxIndex())
+			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code, evm.Context.BlockNumber.Uint64(), evm.StateDB.TxIndex(), addrCopy)
 			contract.SetCallCode(&addrCopy, codeHash, code)
 			ret, err = evm.interpreter.Run(contract, input, false)
 			if evm.Context.BlockNumber.Uint64() == 5137393 {
@@ -460,7 +460,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 			contract := NewContract(caller, AccountRef(addrCopy), new(uint256.Int), gas)
 			code := evm.resolveCode(addrCopy)
 			codeHash := evm.resolveCodeHash(addrCopy)
-			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code, evm.Context.BlockNumber.Uint64(), evm.StateDB.TxIndex())
+			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code, evm.Context.BlockNumber.Uint64(), evm.StateDB.TxIndex(), addrCopy)
 			contract.SetCallCode(&addrCopy, codeHash, code)
 			// When an error was returned by the EVM or when setting the creation code
 			// above we revert to the snapshot and consume any gas remaining. Additionally
@@ -502,7 +502,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 	return ret, gas, err
 }
 
-func tryGetOptimizedCode(evm *EVM, codeHash common.Hash, rawCode []byte, blockNumber uint64, txIndex int) (bool, []byte) {
+func tryGetOptimizedCode(evm *EVM, codeHash common.Hash, rawCode []byte, blockNumber uint64, txIndex int, addr common.Address) (bool, []byte) {
 	var code []byte
 	optimized := false
 	code = rawCode
@@ -511,7 +511,7 @@ func tryGetOptimizedCode(evm *EVM, codeHash common.Hash, rawCode []byte, blockNu
 		code = optCode
 		optimized = true
 	} else {
-		compiler.GenOrLoadOptimizedCode(codeHash, rawCode, blockNumber, txIndex)
+		compiler.GenOrLoadOptimizedCode(codeHash, rawCode, blockNumber, txIndex, addr)
 	}
 	//log.Error("tryGetOptimizedCode optimized calc", "optimized", optimized)
 	return optimized, code

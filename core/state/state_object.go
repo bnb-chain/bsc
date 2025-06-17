@@ -609,7 +609,7 @@ func (s *stateObject) setCode(codeHash common.Hash, code []byte) {
 	s.code = code
 	s.data.CodeHash = codeHash[:]
 	s.dirtyCode = true
-	compiler.GenOrLoadOptimizedCode(codeHash, s.code, 0, 0)
+	compiler.GenOrLoadOptimizedCode(codeHash, s.code, 0, 0, common.Address{})
 }
 
 func (s *stateObject) SetNonce(nonce uint64) {

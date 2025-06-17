@@ -1,7 +1,9 @@
 package compiler
 
 import (
+	"encoding/hex"
 	"errors"
+	"github.com/ethereum/go-ethereum/log"
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -43,6 +45,7 @@ type optimizeTask struct {
 	rawCode     []byte
 	blockNumber uint64
 	txIndex     int
+	addr        common.Address
 }
 
 func init() {
@@ -96,11 +99,11 @@ func StoreBitvec(codeHash common.Hash, bitvec []byte) {
 	codeCache.AddBitvecCache(codeHash, bitvec)
 }
 
-func GenOrLoadOptimizedCode(hash common.Hash, code []byte, blockNumber uint64, txIndex int) {
+func GenOrLoadOptimizedCode(hash common.Hash, code []byte, blockNumber uint64, txIndex int, addr common.Address) {
 	if !enabled {
 		return
 	}
-	task := optimizeTask{generate, hash, code, blockNumber, txIndex}
+	task := optimizeTask{generate, hash, code, blockNumber, txIndex, addr}
 	taskChannel <- task
 }
 
@@ -115,18 +118,18 @@ func taskProcessor() {
 func handleOptimizationTask(task optimizeTask) {
 	switch task.taskType {
 	case generate:
-		TryGenerateOptimizedCode(task.hash, task.rawCode, task.blockNumber, task.txIndex)
+		TryGenerateOptimizedCode(task.hash, task.rawCode, task.blockNumber, task.txIndex, task.addr)
 	case flush:
 		DeleteCodeCache(task.hash)
 	}
 }
 
 // GenOrRewriteOptimizedCode generate the optimized code and refresh the code cache.
-func GenOrRewriteOptimizedCode(hash common.Hash, code []byte, blockNumber uint64, txIndex int) ([]byte, error) {
+func GenOrRewriteOptimizedCode(hash common.Hash, code []byte, blockNumber uint64, txIndex int, addr common.Address) ([]byte, error) {
 	if !enabled {
 		return nil, ErrOptimizedDisabled
 	}
-	processedCode, err := processByteCodes(hash, code, blockNumber, txIndex)
+	processedCode, err := processByteCodes(hash, code, blockNumber, txIndex, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -134,11 +137,11 @@ func GenOrRewriteOptimizedCode(hash common.Hash, code []byte, blockNumber uint64
 	return processedCode, err
 }
 
-func TryGenerateOptimizedCode(hash common.Hash, code []byte, blockNumber uint64, txIndex int) ([]byte, error) {
+func TryGenerateOptimizedCode(hash common.Hash, code []byte, blockNumber uint64, txIndex int, addr common.Address) ([]byte, error) {
 	processedCode := codeCache.GetCachedCode(hash)
 	var err error = nil
 	if len(processedCode) == 0 {
-		processedCode, err = GenOrRewriteOptimizedCode(hash, code, blockNumber, txIndex)
+		processedCode, err = GenOrRewriteOptimizedCode(hash, code, blockNumber, txIndex, addr)
 	}
 	return processedCode, err
 }
@@ -151,19 +154,19 @@ func DeleteCodeCache(hash common.Hash) {
 	codeCache.RemoveCachedCode(hash)
 }
 
-func processByteCodes(hash common.Hash, code []byte, blockNumber uint64, txIndex int) ([]byte, error) {
-	return doOpcodesProcess(hash, code, blockNumber, txIndex)
+func processByteCodes(hash common.Hash, code []byte, blockNumber uint64, txIndex int, addr common.Address) ([]byte, error) {
+	return doOpcodesProcess(hash, code, blockNumber, txIndex, addr)
 }
 
-func doOpcodesProcess(hash common.Hash, code []byte, blockNumber uint64, txIndex int) ([]byte, error) {
-	code, err := doCodeFusion(hash, code, blockNumber, txIndex)
+func doOpcodesProcess(hash common.Hash, code []byte, blockNumber uint64, txIndex int, addr common.Address) ([]byte, error) {
+	code, err := doCodeFusion(hash, code, blockNumber, txIndex, addr)
 	if err != nil {
 		return nil, ErrFailPreprocessing
 	}
 	return code, nil
 }
 
-func doCodeFusion(hash common.Hash, code []byte, blockNumber uint64, txIndex int) ([]byte, error) {
+func doCodeFusion(hash common.Hash, code []byte, blockNumber uint64, txIndex int, addr common.Address) ([]byte, error) {
 	fusedCode := make([]byte, len(code))
 	length := copy(fusedCode, code)
 	skipToNext := false
@@ -173,7 +176,7 @@ func doCodeFusion(hash common.Hash, code []byte, blockNumber uint64, txIndex int
 		cur := i
 		skipToNext = false
 		if fusedCode[cur] >= minOptimizedOpcode && fusedCode[cur] <= maxOptimizedOpcode {
-			//log.Error("raw opcode fall in optimized range", "length", length, "cur", cur, "fusedCode[cur]", fusedCode[cur], "blockNumber", blockNumber, "txIndex", txIndex, "code", hex.EncodeToString(code))
+			log.Error("raw opcode fall in optimized range", "length", length, "cur", cur, "fusedCode[cur]", fusedCode[cur], "blockNumber", blockNumber, "txIndex", txIndex, "addr", addr, "code", hex.EncodeToString(code))
 			return code, ErrFailPreprocessing
 		}
 
