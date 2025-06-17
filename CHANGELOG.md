@@ -1,4 +1,25 @@
 # Changelog
+## v1.5.17
+### FEATURE
+[\#3141](https://github.com/bnb-chain/bsc/pull/3141) feat: support to disable txindexer;
+
+### BUGFIX
+[\#3157](https://github.com/bnb-chain/bsc/pull/3157) build(deps): bump github.com/pion/interceptor from 0.1.37 to 0.1.39
+[\#3167](https://github.com/bnb-chain/bsc/pull/3167) eth: not begin to sync during processing broadcasted blocks or hash
+
+### IMPROVEMENT
+[\#3140](https://github.com/bnb-chain/bsc/pull/3140) feat: remove gc restriction for large mem;
+[\#3135](https://github.com/bnb-chain/bsc/pull/3135) miner: simplify code for simulating bids
+[\#3151](https://github.com/bnb-chain/bsc/pull/3151) cmd/jsutils: add new builders for chapel net
+[\#3111](https://github.com/bnb-chain/bsc/pull/3111) config: default config values if not set in config.toml
+[\#3137](https://github.com/bnb-chain/bsc/pull/3137) Docker arm64 runners
+[\#3156](https://github.com/bnb-chain/bsc/pull/3156) vm: implement contract pool
+[\#3166](https://github.com/bnb-chain/bsc/pull/3166) chore: remove unused file
+[\#3164](https://github.com/bnb-chain/bsc/pull/3164) cmd/jsutils: add builders and improve output for getMevStatus
+[\#3139](https://github.com/bnb-chain/bsc/pull/3139) miner/worker: broadcast mined block immediately before wroten into db
+[\#3160](https://github.com/bnb-chain/bsc/pull/3160) miner: add more metrics for mev
+[\#3145](https://github.com/bnb-chain/bsc/pull/3145) miner: prefetch states for bids simulating
+
 ## v1.5.16
 ### FEATURE
 [\#3130](https://github.com/bnb-chain/bsc/pull/3130) config: update BSC Mainnet hardfork time: Maxwell
