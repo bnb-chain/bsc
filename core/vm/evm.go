@@ -513,7 +513,7 @@ func tryGetOptimizedCode(evm *EVM, codeHash common.Hash, rawCode []byte) (bool, 
 	} else {
 		compiler.GenOrLoadOptimizedCode(codeHash, rawCode)
 	}
-	//log.Error("tryGetOptimizedCode optimized calc", "optimized", optimized)
+	log.Error("tryGetOptimizedCode optimized calc", "optimized", optimized)
 	return optimized, code
 }
 
