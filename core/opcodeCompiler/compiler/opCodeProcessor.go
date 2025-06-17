@@ -174,7 +174,7 @@ func doCodeFusion(hash common.Hash, code []byte) ([]byte, error) {
 		cur := i
 		skipToNext = false
 		if fusedCode[cur] >= minOptimizedOpcode && fusedCode[cur] <= maxOptimizedOpcode {
-			log.Error("raw opcode fall in optimized range", "length", length, "originalLength", originalLength, "cur", cur, "fusedCode[cur]", fusedCode[cur], "hash", hash, "code", hex.EncodeToString(code))
+			log.Error("raw opcode fall in optimized range", "length", length, "originalLength", originalLength, "cur", cur, "fusedCode[cur]", fusedCode[cur], "hash", hash.String(), "code", hex.EncodeToString(code))
 			return code, ErrFailPreprocessing
 		}
 
