@@ -394,11 +394,11 @@ func (db *Database) Disk() ethdb.Database {
 }
 
 // InsertIncrState inserts the state in incremental snapshot into base snapshot
-func (db *Database) InsertIncrState(incrStateDir string) error {
+func (db *Database) InsertIncrState(incrDir string) error {
 	pdb, ok := db.backend.(*pathdb.Database)
 	if !ok {
 		log.Error("Not supported")
 		return nil
 	}
-	return pdb.InsertIncrState(incrStateDir)
+	return pdb.InsertIncrState(incrDir)
 }

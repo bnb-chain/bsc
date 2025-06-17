@@ -427,7 +427,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			log.Crit("Failed to get ancient dir", "err", err)
 			return nil, err
 		}
-		incrChainFreezer, err := rawdb.NewIncrChainFreezer(ancient, false, 1, cacheConfig.IncrHistory)
+		incrChainFreezer, err := rawdb.NewIncrChainFreezer(ancient, false, 0, cacheConfig.IncrHistory)
 		if err != nil {
 			log.Crit("Failed to create incr chain freezer", "err", err)
 			return nil, err
@@ -1849,7 +1849,15 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 			bc.sidecarsCache.Add(block.Hash(), block.Sidecars())
 		}
 
+		// Write block data to incrFreezer for all blocks (including empty blocks)
 		if bc.cacheConfig.EnableIncrHistory {
+			log.Info("Reset empty incr chain table", "block number", block.NumberU64())
+			if block.NumberU64() >= 0 {
+				if err := rawdb.ResetEmptyIncrChainTable(bc.incrChainFreezer, block.NumberU64(), isCancun); err != nil {
+					log.Error("Failed to reset empty incr chain freezer", "err", err)
+				}
+			}
+
 			bc.writeBlockIntoIncrFreezer(block.NumberU64(), block.Hash().Bytes(), block, receipts, externTd, isCancun)
 		}
 		wg.Done()

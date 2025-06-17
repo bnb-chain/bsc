@@ -479,8 +479,10 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 	// The offset of ancientDB should be handled differently in different scenarios.
 	if isLastOffset {
 		offset = ReadOffSetOfLastAncientFreezer(db)
+		log.Info("aaa", "offset", offset)
 	} else {
 		offset = ReadOffSetOfCurrentAncientFreezer(db)
+		log.Info("bbb", "offset", offset)
 	}
 
 	// This case is used for someone who wants to execute geth db inspect CLI in a pruned db

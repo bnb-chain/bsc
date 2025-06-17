@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"sync"
@@ -31,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie/trienode"
@@ -296,6 +298,14 @@ func (db *Database) repairHistory() error {
 		log.Crit("Failed to open state history freezer", "err", err)
 	}
 	db.freezer = freezer
+	item, err := db.freezer.Ancients()
+	if err != nil {
+		log.Error("Failed to get freezer ancients", "err", err)
+		return nil
+	}
+	a, _ := db.freezer.Tail()
+	b, _ := db.freezer.ItemAmountInAncient()
+	log.Info("Print ancient info in repair", "item", item, "a", a, "b", b)
 
 	// Reset the entire state histories if the trie database is not initialized
 	// yet. This action is necessary because these state histories are not
@@ -348,6 +358,15 @@ func (db *Database) repairIncrHistory() *layerTree {
 		log.Crit("Failed to open incremental state history freezer", "err", err)
 	}
 	db.incrFreezer = incrFreezer
+
+	item, err := db.incrFreezer.Ancients()
+	if err != nil {
+		log.Error("Failed to get incrFreezer ancients", "err", err)
+		return nil
+	}
+	a, _ := db.incrFreezer.Tail()
+	b, _ := db.incrFreezer.ItemAmountInAncient()
+	log.Info("Print incr ancient info in repair", "item", item, "a", a, "b", b)
 
 	// TODO: handle restart in incr freezer db
 	// Reset the entire state histories if the trie database is not initialized
@@ -629,6 +648,7 @@ func (db *Database) Close() error {
 		log.Info("Closing incremental state history")
 		if err := db.incrFreezer.Close(); err != nil {
 			log.Error("Failed to close incremental state history", "err", err)
+			return err
 		}
 	}
 
@@ -732,13 +752,14 @@ func (db *Database) DeleteTrieJournal(writer ethdb.KeyValueWriter) error {
 	return nil
 }
 
-func (db *Database) InsertIncrState(incrStateDir string) error {
-	root := db.tree.front()
-	if err := db.Commit(root, false); err != nil {
-		log.Error("Failed to commit all state", "err", err)
-	}
+func (db *Database) InsertIncrState(incrDir string) error {
+	// root := db.tree.front()
+	// if err := db.Commit(root, false); err != nil {
+	// 	log.Error("Failed to commit all state", "err", err)
+	// }
 
-	incrFreezer, err := rawdb.OpenIncrStateFreezer(incrStateDir, true)
+	path := filepath.Join(incrDir, rawdb.IncrementalPath, rawdb.MerkleStateFreezerName)
+	incrFreezer, err := rawdb.OpenIncrStateFreezer(path, true)
 	if err != nil {
 		log.Error("Failed to open incremental state freezer", "err", err)
 		return err
@@ -746,8 +767,17 @@ func (db *Database) InsertIncrState(incrStateDir string) error {
 	db.incrFreezer = incrFreezer
 	defer incrFreezer.Close()
 
+	pebblePath := filepath.Join(incrDir, rawdb.IncrementalPath)
+	newDB, err := pebble.New(pebblePath, 1000, 100, "incr/pebble", true)
+	if err != nil {
+		log.Error("Failed to create incr/pebble", "err", err)
+		return err
+	}
+	firstStateID := rawdb.ReadIncrStateFirstID(newDB)
+	log.Info("Inserting incremental state", "first state id", firstStateID)
+
 	a := newAsyncNodeBuffer(MaxDirtyBufferSize, nil, nil, 0)
-	if err = a.mergeIncrStateHistory(db.diskdb, db.freezer, db.incrFreezer); err != nil {
+	if err = a.mergeIncrStateHistory(db.diskdb, db.freezer, db.incrFreezer, firstStateID); err != nil {
 		log.Error("Failed to merge incr state history", "err", err)
 		return err
 	}

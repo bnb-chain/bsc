@@ -288,8 +288,23 @@ func WriteStateHistory(db ethdb.AncientWriter, id uint64, meta []byte, accountIn
 // WriteIncrStateTrieNodes writes the provided trie nodes to the database.
 // Compute the position of state history in freezer by minus one since the id of first state
 // history starts from one(zero for initial state).
-func WriteIncrStateTrieNodes(db ethdb.AncientWriter, id uint64, trieNodes []byte) error {
+func WriteIncrStateTrieNodes(db ethdb.AncientWriter, id uint64, meta, accountIndex, storageIndex, accounts, storages, trieNodes []byte) error {
 	_, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+		if err := op.AppendRaw(stateHistoryMeta, id-1, meta); err != nil {
+			return err
+		}
+		if err := op.AppendRaw(stateHistoryAccountIndex, id-1, accountIndex); err != nil {
+			return err
+		}
+		if err := op.AppendRaw(stateHistoryStorageIndex, id-1, storageIndex); err != nil {
+			return err
+		}
+		if err := op.AppendRaw(stateHistoryAccountData, id-1, accounts); err != nil {
+			return err
+		}
+		if err := op.AppendRaw(stateHistoryStorageData, id-1, storages); err != nil {
+			return err
+		}
 		if err := op.AppendRaw(incrStateHistoryTrieNodesData, id-1, trieNodes); err != nil {
 			return err
 		}
@@ -313,26 +328,105 @@ func ReadIncrStateTrieNodes(db ethdb.AncientReaderOp, id uint64) ([]byte, error)
 func WriteIncrBlockData(db ethdb.AncientWriter, number uint64, hash, header, body, receipts, td, sidecars []byte, isCancun bool) error {
 	_, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
 		if err := op.AppendRaw(ChainFreezerHashTable, number, hash); err != nil {
+			log.Error("1", "err", err)
 			return err
 		}
 		if err := op.AppendRaw(ChainFreezerHeaderTable, number, header); err != nil {
+			log.Error("2", "err", err)
 			return err
 		}
 		if err := op.AppendRaw(ChainFreezerBodiesTable, number, body); err != nil {
+			log.Error("3", "err", err)
 			return err
 		}
 		if err := op.AppendRaw(ChainFreezerReceiptTable, number, receipts); err != nil {
+			log.Error("4", "err", err)
 			return err
 		}
 		if err := op.AppendRaw(ChainFreezerDifficultyTable, number, td); err != nil {
+			log.Error("5", "err", err)
 			return err
 		}
 		if isCancun {
+			log.Info("isCancun", "isCancun", isCancun)
 			if err := op.AppendRaw(ChainFreezerBlobSidecarTable, number, sidecars); err != nil {
+				log.Error("6", "err", err)
 				return err
 			}
 		}
 		return nil
 	})
 	return err
+}
+
+// WriteIncrStateFirstID writes the first state id to the database
+func WriteIncrStateFirstID(db ethdb.KeyValueWriter, firstStateID uint64) error {
+	if err := db.Put(incrStateFirstIDKey, encodeBlockNumber(firstStateID)); err != nil {
+		log.Crit("Failed to store the first state id", "err", err)
+	}
+	return nil
+}
+
+// ReadIncrStateFirstID reads the first state id from the database
+func ReadIncrStateFirstID(db ethdb.KeyValueReader) uint64 {
+	data, err := db.Get(incrStateFirstIDKey)
+	if err != nil {
+		log.Crit("Failed to read the first state id", "err", err)
+	}
+	if len(data) != 8 {
+		return 0
+	}
+	return binary.BigEndian.Uint64(data)
+}
+
+func ResetEmptyIncrChainTable(db ethdb.AncientWriter, next uint64, isCancun bool) error {
+	if err := db.ResetTable(ChainFreezerHeaderTable, next, true); err != nil {
+		return err
+	}
+	if err := db.ResetTable(ChainFreezerHashTable, next, true); err != nil {
+		return err
+	}
+	if err := db.ResetTable(ChainFreezerBodiesTable, next, true); err != nil {
+		return err
+	}
+	if err := db.ResetTable(ChainFreezerReceiptTable, next, true); err != nil {
+		return err
+	}
+	if err := db.ResetTable(ChainFreezerDifficultyTable, next, true); err != nil {
+		return err
+	}
+	if isCancun {
+		if err := db.ResetTable(ChainFreezerBlobSidecarTable, next, true); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ResetEmptyIncrStateTable(db ethdb.AncientWriter, next uint64) error {
+	if err := db.ResetTable(stateHistoryMeta, next, true); err != nil {
+		log.Error("1", "err", err)
+		return err
+	}
+	if err := db.ResetTable(stateHistoryAccountIndex, next, true); err != nil {
+		log.Error("2", "err", err)
+		return err
+	}
+	if err := db.ResetTable(stateHistoryStorageIndex, next, true); err != nil {
+		log.Error("3", "err", err)
+		return err
+	}
+	if err := db.ResetTable(stateHistoryAccountData, next, true); err != nil {
+		log.Error("4", "err", err)
+		return err
+	}
+	if err := db.ResetTable(stateHistoryStorageData, next, true); err != nil {
+		log.Error("5", "err", err)
+		return err
+	}
+	if err := db.ResetTable(incrStateHistoryTrieNodesData, next, true); err != nil {
+		log.Error("6", "err", err)
+		return err
+	}
+	return nil
 }

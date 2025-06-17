@@ -622,6 +622,7 @@ func (t *freezerTable) truncateHead(items uint64) error {
 		return nil
 	}
 	if items < t.itemHidden.Load() {
+		log.Error("wdenew", "items", items, "itemHidden", t.itemHidden.Load())
 		return errTruncationBelowTail
 	}
 	// We need to truncate, save the old size for metrics tracking
@@ -1039,6 +1040,7 @@ func (t *freezerTable) retrieveItems(start, count, maxBytes uint64) ([]byte, []i
 		items  = t.items.Load()      // the total items(head + 1)
 		hidden = t.itemHidden.Load() // the number of hidden items
 	)
+	// log.Info("retrieveItems", "items", items, "hidden", hidden, "start", start, "count", count)
 	// Ensure the start is written, not deleted from the tail, and that the
 	// caller actually wants something
 	if items <= start || hidden > start || count == 0 {

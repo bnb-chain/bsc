@@ -34,7 +34,8 @@ func newAsyncNodeBuffer(limit int, nodes *nodeSet, states *stateSet, layers uint
 	}
 }
 
-func (a *asyncnodebuffer) mergeIncrStateHistory(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, incrFreezer ethdb.ResettableAncientStore) error {
+func (a *asyncnodebuffer) mergeIncrStateHistory(db ethdb.KeyValueStore, freezer ethdb.AncientWriter,
+	incrFreezer ethdb.ResettableAncientStore, firstStateID uint64) error {
 	head, err := incrFreezer.Ancients()
 	if err != nil {
 		log.Error("Failed to get incremental freezer ancients", "error", err)
@@ -47,18 +48,19 @@ func (a *asyncnodebuffer) mergeIncrStateHistory(db ethdb.KeyValueStore, freezer 
 		return err
 	}
 	persistID := rawdb.ReadPersistentStateID(db)
-	if persistID != tail {
-		log.Crit("Invalid last state id in incremental snapshot which is different from persist state id",
-			"persistent_state_id", persistID, "head_state_id", head, "tail_state_id", tail)
-	}
+	// if persistID != tail {
+	// 	log.Crit("Invalid last state id in incremental snapshot which is different from persist state id",
+	// 		"persistent_state_id", persistID, "head_state_id", head, "tail_state_id", tail)
+	// }
 	log.Info("Ancient db meta info", "persistent_state_id", persistID, "head_state_id", head,
-		"tail_state_id", tail, "total_num", head-tail)
+		"tail_state_id", tail, "total_state_num", head-tail, "firstStateID", firstStateID)
 
+	// TODO: async read history and commit
 	// check persistent state id with incr state id
-	for i := tail; i <= head; i++ {
-		trieNodes := readHistoryTrieNodes(incrFreezer, i)
+	for i := uint64(0); i <= head; i++ {
+		_, trieNodes, _ := readHistoryTrieNodes(incrFreezer, i+firstStateID)
 		nodesSet := newNodeSet(trieNodes)
-		if err = a.current.commit(nodesSet, nil); err != nil {
+		if err = a.current.commit(nodesSet, newStates(nil, nil, false)); err != nil {
 			log.Crit("Failed to commit history", "error", err)
 			return err
 		}

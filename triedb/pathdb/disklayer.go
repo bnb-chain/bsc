@@ -19,6 +19,7 @@ package pathdb
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sync"
 
 	"github.com/VictoriaMetrics/fastcache"
@@ -26,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 )
@@ -95,6 +97,7 @@ type diskLayer struct {
 	buffer trienodebuffer   // Dirty buffer to aggregate writes of nodes and states
 	stale  bool             // Signals that the layer became stale (state progressed)
 	lock   sync.RWMutex     // Lock used to protect stale flag
+	count  int
 }
 
 // newDiskLayer creates a new disk layer based on the passing arguments.
@@ -111,6 +114,7 @@ func newDiskLayer(root common.Hash, id uint64, db *Database, nodes *fastcache.Ca
 		db:     db,
 		nodes:  nodes,
 		buffer: buffer,
+		count:  0,
 	}
 }
 
@@ -307,7 +311,37 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	}
 
 	if dl.db.incrFreezer != nil && dl.db.config.EnableIncrStateHistory {
-		if err := writeHistoryTrieNodes(dl.db.incrFreezer, bottom); err != nil {
+		item, err := dl.db.incrFreezer.Ancients()
+		if err != nil {
+			log.Error("Failed to get incrFreezer ancients", "err", err)
+			return nil, err
+		}
+		a, _ := dl.db.incrFreezer.Tail()
+		b, _ := dl.db.incrFreezer.ItemAmountInAncient()
+		log.Info("Print incr ancient info", "item", item, "a", a, "b", b)
+
+		if item == 0 {
+			log.Info("Put first state id in pebble", "first state id", bottom.stateID())
+			ancient, _ := dl.db.diskdb.AncientDatadir()
+			path := filepath.Join(ancient, rawdb.IncrementalPath)
+			db, err := pebble.New(path, 1000, 100, "incr/pebble", false)
+			if err != nil {
+				log.Error("Failed to create incr/pebble", "err", err)
+				return nil, err
+			}
+			if err = rawdb.WriteIncrStateFirstID(db, bottom.stateID()); err != nil {
+				log.Error("Failed to write first state id into db", "err", err)
+				return nil, err
+			}
+		}
+		log.Info("idj2e", "bottom", bottom.stateID())
+		if bottom.stateID() > 1 {
+			if err = rawdb.ResetEmptyIncrStateTable(dl.db.incrFreezer, bottom.stateID()-1); err != nil {
+				log.Error("Failed to reset empty incr state freezer", "err", err)
+			}
+		}
+
+		if err = writeHistoryTrieNodes(dl.db.incrFreezer, bottom); err != nil {
 			return nil, err
 		}
 	}

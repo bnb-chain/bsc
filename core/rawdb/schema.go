@@ -46,6 +46,9 @@ var (
 	// persistentStateIDKey tracks the id of latest stored state(for path-based only).
 	persistentStateIDKey = []byte("LastStateID")
 
+	// incrStateFirstIDKey tracks the first state id of incremental state history.
+	incrStateFirstIDKey = []byte("IncrStateFirstID")
+
 	// lastPivotKey tracks the last pivot block used by fast sync (to reenable on sethead).
 	lastPivotKey = []byte("LastPivot")
 
