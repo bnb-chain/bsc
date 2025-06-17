@@ -2,7 +2,10 @@ package compiler
 
 import (
 	"bytes"
+	"encoding/hex"
 	"errors"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -164,7 +167,7 @@ func doOpcodesProcess(code []byte) ([]byte, error) {
 
 func doCodeFusion(code []byte) ([]byte, error) {
 	fusedCode := make([]byte, len(code))
-	//originalLength := copy(fusedCode, code)
+	originalLength := copy(fusedCode, code)
 	skipToNext := false
 	length := bytes.LastIndex(code, []byte{byte(INVALID)})
 
@@ -172,7 +175,8 @@ func doCodeFusion(code []byte) ([]byte, error) {
 		cur := i
 		skipToNext = false
 		if fusedCode[cur] >= minOptimizedOpcode && fusedCode[cur] <= maxOptimizedOpcode {
-			//log.Error("raw opcode fall in optimized range", "length", length, "originalLength", originalLength, "cur", cur, "fusedCode[cur]", fusedCode[cur], "code", hex.EncodeToString(code))
+			codeHash := crypto.Keccak256Hash(code)
+			log.Error("raw opcode fall in optimized range", "length", length, "originalLength", originalLength, "cur", cur, "fusedCode[cur]", fusedCode[cur], "codeHash.Hex()", codeHash.Hex(), "code", hex.EncodeToString(code))
 			return code, ErrFailPreprocessing
 		}
 
