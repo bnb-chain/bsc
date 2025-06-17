@@ -172,13 +172,13 @@ var DefaultConfig = Config{
 	PriceLimit: 1,
 	PriceBump:  10,
 
-	AccountSlots:      16,
-	GlobalSlots:       4096 + 1024, // urgent + floating queue capacity with 4:1 ratio
-	AccountQueue:      64,
-	GlobalQueue:       1024,
+	AccountSlots:      200,
+	GlobalSlots:       8000,
+	AccountQueue:      200,
+	GlobalQueue:       4000,
 	OverflowPoolSlots: 0,
 
-	Lifetime:       3 * time.Hour,
+	Lifetime:       10 * time.Minute,
 	ReannounceTime: 10 * 365 * 24 * time.Hour,
 }
 
