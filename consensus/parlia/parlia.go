@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	lru "github.com/hashicorp/golang-lru"
+	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/holiman/uint256"
 	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 	"github.com/willf/bitset"
@@ -196,11 +196,11 @@ func isToSystemContract(to common.Address) bool {
 }
 
 // ecrecover extracts the Ethereum account address from a signed header.
-func ecrecover(header *types.Header, sigCache *lru.ARCCache, chainId *big.Int) (common.Address, error) {
+func ecrecover(header *types.Header, sigCache *lru.Cache[common.Hash, common.Address], chainId *big.Int) (common.Address, error) {
 	// If the signature's already cached, return that
 	hash := header.Hash()
 	if address, known := sigCache.Get(hash); known {
-		return address.(common.Address), nil
+		return address, nil
 	}
 	// Retrieve the signature from the header extra-data
 	if len(header.Extra) < extraSeal {
@@ -240,9 +240,9 @@ type Parlia struct {
 	genesisHash common.Hash
 	db          ethdb.Database // Database to store and retrieve snapshot checkpoints
 
-	recentSnaps   *lru.ARCCache // Snapshots for recent block to speed up
-	signatures    *lru.ARCCache // Signatures of recent blocks to speed up mining
-	recentHeaders *lru.ARCCache //
+	recentSnaps   *lru.Cache[common.Hash, *Snapshot]      // Snapshots for recent block to speed up
+	signatures    *lru.Cache[common.Hash, common.Address] // Signatures of recent blocks to speed up mining
+	recentHeaders *lru.Cache[string, common.Hash]
 	// Recent headers to check for double signing: key includes block number and miner. value is the block header
 	// If same key's value already exists for different block header roots then double sign is detected
 
@@ -276,19 +276,6 @@ func New(
 	parliaConfig := chainConfig.Parlia
 	log.Info("Parlia", "chainConfig", chainConfig)
 
-	// Allocate the snapshot caches and create the engine
-	recentSnaps, err := lru.NewARC(inMemorySnapshots)
-	if err != nil {
-		panic(err)
-	}
-	signatures, err := lru.NewARC(inMemorySignatures)
-	if err != nil {
-		panic(err)
-	}
-	recentHeaders, err := lru.NewARC(inMemoryHeaders)
-	if err != nil {
-		panic(err)
-	}
 	vABIBeforeLuban, err := abi.JSON(strings.NewReader(validatorSetABIBeforeLuban))
 	if err != nil {
 		panic(err)
@@ -311,9 +298,9 @@ func New(
 		genesisHash:                genesisHash,
 		db:                         db,
 		ethAPI:                     ethAPI,
-		recentSnaps:                recentSnaps,
-		recentHeaders:              recentHeaders,
-		signatures:                 signatures,
+		recentSnaps:                lru.NewCache[common.Hash, *Snapshot](inMemorySnapshots),
+		recentHeaders:              lru.NewCache[string, common.Hash](inMemoryHeaders),
+		signatures:                 lru.NewCache[common.Hash, common.Address](inMemorySignatures),
 		validatorSetABIBeforeLuban: vABIBeforeLuban,
 		validatorSetABI:            vABI,
 		slashABI:                   sABI,
@@ -760,7 +747,7 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 	for snap == nil {
 		// If an in-memory snapshot was found, use that
 		if s, ok := p.recentSnaps.Get(hash); ok {
-			snap = s.(*Snapshot)
+			snap = s
 			break
 		}
 
@@ -950,7 +937,7 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 	if ok && preHash != header.Hash() {
 		doubleSignCounter.Inc(1)
 		log.Warn("DoubleSign detected", " block", header.Number, " miner", header.Coinbase,
-			"hash1", preHash.(common.Hash), "hash2", header.Hash())
+			"hash1", preHash, "hash2", header.Hash())
 	} else {
 		p.recentHeaders.Add(key, header.Hash())
 	}
