@@ -322,7 +322,7 @@ func (vt *verifyTask) Start(verifyCh chan common.Hash) {
 			}
 			newVerifyMsgTypeGauge(msg.verifyResult.Status.Code, msg.peerId).Inc(1)
 		case <-resend.C:
-			// if a task has run over 15s, try all the vaild peers to verify.
+			// if a task has run over 15s, try all the valid peers to verify.
 			if time.Since(vt.startAt) < tryAllPeersTime {
 				vt.sendVerifyRequest(1)
 			} else {
