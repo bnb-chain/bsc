@@ -1841,8 +1841,8 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	}()
 
 	log.Info("statedb commit", "block number", block.NumberU64(), "current", bc.CurrentBlock().Number.Uint64(),
-		"snap", bc.CurrentSnapBlock().Number.Uint64(), "safe", bc.CurrentSafeBlock(), "final", bc.CurrentFinalBlock().Number.Uint64(),
-		"head block", bc.CurrentHeader().Number.Uint64())
+		"snap", bc.CurrentSnapBlock().Number.Uint64(), "safe", bc.CurrentSafeBlock().Number.Uint64(),
+		"final", bc.CurrentFinalBlock().Number.Uint64(), "head block", bc.CurrentHeader().Number.Uint64())
 	// Commit all cached state changes into underlying memory database.
 	root, diffLayer, err := statedb.Commit(block.NumberU64(), bc.chainConfig.IsEIP158(block.Number()), bc.chainConfig.IsCancun(block.Number(), block.Time()))
 	if err != nil {
