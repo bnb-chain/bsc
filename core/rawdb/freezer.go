@@ -165,7 +165,6 @@ func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, 
 		lock.Unlock()
 		return nil, err
 	}
-	log.Info("before", "tail", freezer.tail.Load(), "frozen", freezer.frozen.Load())
 
 	// Some blocks in ancientDB may have already been frozen and been pruned, so adding the offset to
 	// represent the absolute number of blocks already frozen.
@@ -487,32 +486,24 @@ func (f *Freezer) repair() error {
 	for kind, table := range f.tables {
 		// addition tables only align head
 		if slices.Contains(additionTables, kind) {
-			log.Info("blob in chain", "kind", kind)
 			if EmptyTable(table) {
-				log.Info("deidweij")
 				continue
 			}
 			items := table.items.Load()
-			log.Info("438hfj", "items", items)
 			if head > items {
 				head = items
-				log.Info("dj2ji", "head", head)
 			}
 			continue
 		}
 
 		// addition incremental tables only align head
 		if f.isIncr && slices.Contains(additionIncrTables, kind) {
-			log.Info("ascsd", "kind", kind)
 			if EmptyTable(table) {
-				log.Info("22332")
 				continue
 			}
 			items := table.items.Load()
-			log.Info("d22e332", "items", items)
 			if head > items {
 				head = items
-				log.Info("fn3", "head", head)
 			}
 			hidden := table.itemHidden.Load()
 			if hidden > tail {
@@ -536,18 +527,15 @@ func (f *Freezer) repair() error {
 	for kind, table := range f.tables {
 		//  try to align with exist tables, skip empty table
 		if slices.Contains(additionTables, kind) && EmptyTable(table) {
-			log.Info("fewew", "kind", kind)
 			continue
 		}
 		//  try to align with exist tables, skip empty table
 		if f.isIncr && slices.Contains(additionIncrTables, kind) && EmptyTable(table) {
-			log.Info("fefr", "kind", kind)
 			continue
 		}
 
 		err := table.truncateHead(head)
 		if err == errTruncationBelowTail {
-			log.Info("truncated", "kind", kind)
 			// This often happens in chain rewinds, but the blob table is special.
 			// It has the same head, but a different tail from other tables (like bodies, receipts).
 			// So if the chain is rewound to head below the blob's tail, it needs to reset again.
@@ -664,12 +652,10 @@ func (f *Freezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error 
 	}
 
 	if err := f.SyncAncient(); err != nil {
-		log.Error("Failed to sync ancient", "err", err)
 		return err
 	}
 	nt, err := t.resetItems(startAt - f.offset)
 	if err != nil {
-		log.Error("Failed to reset items", "err", err)
 		return err
 	}
 	f.tables[kind] = nt
@@ -679,7 +665,6 @@ func (f *Freezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error 
 		for _, table := range f.tables {
 			table.Close()
 		}
-		log.Error("Failed to repair", "err", err)
 		return err
 	}
 

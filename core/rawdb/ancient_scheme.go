@@ -102,7 +102,7 @@ var (
 	MerkleStateFreezerName = "state"        // the folder name of state history ancient store.
 	VerkleStateFreezerName = "state_verkle" // the folder name of state history ancient store.
 
-	IncrementalPath = "incremental_snapshot" // the folder name of incremental ancient store
+	IncrementalPath = "incremental" // the folder name of incremental ancient store
 )
 
 // freezers the collections of all builtin freezers.

@@ -48,10 +48,6 @@ func (a *asyncnodebuffer) mergeIncrStateHistory(db ethdb.KeyValueStore, freezer 
 		return err
 	}
 	persistID := rawdb.ReadPersistentStateID(db)
-	// if persistID != tail {
-	// 	log.Crit("Invalid last state id in incremental snapshot which is different from persist state id",
-	// 		"persistent_state_id", persistID, "head_state_id", head, "tail_state_id", tail)
-	// }
 	log.Info("Ancient db meta info", "persistent_state_id", persistID, "head_state_id", head,
 		"tail_state_id", tail, "total_state_num", head-tail, "firstStateID", firstStateID)
 

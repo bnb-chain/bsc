@@ -753,11 +753,6 @@ func (db *Database) DeleteTrieJournal(writer ethdb.KeyValueWriter) error {
 }
 
 func (db *Database) InsertIncrState(incrDir string) error {
-	// root := db.tree.front()
-	// if err := db.Commit(root, false); err != nil {
-	// 	log.Error("Failed to commit all state", "err", err)
-	// }
-
 	path := filepath.Join(incrDir, rawdb.IncrementalPath, rawdb.MerkleStateFreezerName)
 	incrFreezer, err := rawdb.OpenIncrStateFreezer(path, true)
 	if err != nil {
