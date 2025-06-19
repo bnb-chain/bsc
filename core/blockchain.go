@@ -98,6 +98,9 @@ var (
 	blockCrossValidationTimer = metrics.NewRegisteredTimer("chain/crossvalidation", nil)
 	blockExecutionTimer       = metrics.NewRegisteredTimer("chain/execution", nil)
 	blockWriteTimer           = metrics.NewRegisteredTimer("chain/write", nil)
+	blockDataWriteTimer       = metrics.NewRegisteredTimer("chain/blockdata/write", nil)
+	headBlockIndexWriteTimer  = metrics.NewRegisteredTimer("chain/headblock/index/write", nil)
+	headBlockTxWriteTimer     = metrics.NewRegisteredTimer("chain/headblock/tx/write", nil)
 
 	blockReorgMeter     = metrics.NewRegisteredMeter("chain/reorg/executes", nil)
 	blockReorgAddMeter  = metrics.NewRegisteredMeter("chain/reorg/add", nil)
@@ -1305,6 +1308,7 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 	go func() {
 		defer bc.dbWg.Done()
 		// Add the block to the canonical chain number scheme and mark as the head
+		start := time.Now()
 		blockBatch := bc.db.BlockStore().NewBatch()
 		rawdb.WriteCanonicalHash(blockBatch, block.Hash(), block.NumberU64())
 		rawdb.WriteHeadHeaderHash(blockBatch, block.Hash())
@@ -1314,10 +1318,12 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 		if err := blockBatch.Write(); err != nil {
 			log.Crit("Failed to update chain indexes and markers in block db", "err", err)
 		}
+		headBlockIndexWriteTimer.Update(time.Since(start))
 	}()
 	go func() {
 		defer bc.dbWg.Done()
 
+		start := time.Now()
 		batch := bc.db.NewBatch()
 		rawdb.WriteTxLookupEntriesByBlock(batch, block)
 
@@ -1325,6 +1331,7 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 		if err := batch.Write(); err != nil {
 			log.Crit("Failed to update chain indexes in chain db", "err", err)
 		}
+		headBlockTxWriteTimer.Update(time.Since(start))
 	}()
 
 	// Update all in-memory chain markers in the last step
@@ -1797,6 +1804,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	defer wg.Wait()
 	wg.Add(1)
 	go func() {
+		start := time.Now()
 		blockBatch := bc.db.BlockStore().NewBatch()
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
 		rawdb.WriteBlock(blockBatch, block)
@@ -1813,6 +1821,13 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		if err := blockBatch.Write(); err != nil {
 			log.Crit("Failed to write block into disk", "err", err)
 		}
+
+		elapsed := time.Since(start)
+		blockDataWriteTimer.Update(elapsed)
+		if elapsed > 100*time.Millisecond {
+			log.Info("Slow Write blockstore detected", "elapesed", elapsed)
+		}
+
 		bc.hc.tdCache.Add(block.Hash(), externTd)
 		bc.blockCache.Add(block.Hash(), block)
 		bc.cacheReceipts(block.Hash(), receipts, block)

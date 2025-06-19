@@ -19,15 +19,23 @@ package snapshot
 import (
 	"bytes"
 	"sync"
+	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/triedb"
 )
+
+// Timer metric for monitoring storage snapshot read latency
+var storageSnapshotReadTimer = metrics.NewRegisteredTimer("snapshot/storage/read", nil)
+
+// Timer metric for monitoring account snapshot read latency
+var accountSnapshotReadTimer = metrics.NewRegisteredTimer("snapshot/account/read", nil)
 
 // diskLayer is a low level persistent snapshot built on top of a key-value store.
 type diskLayer struct {
@@ -131,7 +139,9 @@ func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 		return blob, nil
 	}
 	// Cache doesn't contain account, pull from disk and cache for later
+	start := time.Now()
 	blob := rawdb.ReadAccountSnapshot(dl.diskdb, hash)
+	accountSnapshotReadTimer.Update(time.Since(start))
 	dl.cache.Set(hash[:], blob)
 
 	snapshotCleanAccountMissMeter.Mark(1)
@@ -171,7 +181,9 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 		return blob, nil
 	}
 	// Cache doesn't contain storage slot, pull from disk and cache for later
+	start := time.Now()
 	blob := rawdb.ReadStorageSnapshot(dl.diskdb, accountHash, storageHash)
+	storageSnapshotReadTimer.Update(time.Since(start))
 	dl.cache.Set(key, blob)
 
 	snapshotCleanStorageMissMeter.Mark(1)

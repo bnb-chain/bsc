@@ -18,11 +18,17 @@ package rawdb
 
 import (
 	"encoding/binary"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 )
+
+// Timer metric for monitoring WriteStateID latency
+var writeStateIDTimer = metrics.NewRegisteredTimer("rawdb/stateid/write", nil)
+var writePersistStateIDTimer = metrics.NewRegisteredTimer("rawdb/persiststateid/write", nil)
 
 // ReadPreimage retrieves a single preimage of the provided hash.
 func ReadPreimage(db ethdb.KeyValueReader, hash common.Hash) []byte {
@@ -107,10 +113,16 @@ func ReadStateID(db ethdb.KeyValueReader, root common.Hash) *uint64 {
 
 // WriteStateID writes the provided state lookup to database.
 func WriteStateID(db ethdb.KeyValueWriter, root common.Hash, id uint64) {
+	start := time.Now()
 	var buff [8]byte
 	binary.BigEndian.PutUint64(buff[:], id)
 	if err := db.Put(stateIDKey(root), buff[:]); err != nil {
 		log.Crit("Failed to store state ID", "err", err)
+	}
+	elapsed := time.Since(start)
+	writeStateIDTimer.Update(elapsed)
+	if elapsed > 100*time.Millisecond {
+		log.Info("Slow WriteStateID detected", "root", root, "id", id, "elapsed", elapsed)
 	}
 }
 
@@ -132,9 +144,11 @@ func ReadPersistentStateID(db ethdb.KeyValueReader) uint64 {
 
 // WritePersistentStateID stores the id of the persistent state into database.
 func WritePersistentStateID(db ethdb.KeyValueWriter, number uint64) {
+	start := time.Now()
 	if err := db.Put(persistentStateIDKey, encodeBlockNumber(number)); err != nil {
 		log.Crit("Failed to store the persistent state ID", "err", err)
 	}
+	writePersistStateIDTimer.Update(time.Since(start))
 }
 
 // ReadTrieJournal retrieves the serialized in-memory trie nodes of layers saved at
