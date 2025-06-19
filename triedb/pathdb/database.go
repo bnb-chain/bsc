@@ -135,6 +135,7 @@ type Config struct {
 	JournalFile            bool   // Flag whether store memory diffLayer into file
 	EnableIncrStateHistory bool   // Flag whether the freezer db stores incremental state history
 	IncrStateHistory       uint64 // Amount of state history stored in incremental freezer db
+	IncrBlockStartNumber   uint64 // Starting block number for incremental block data storage
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -819,4 +820,67 @@ func (db *Database) AccountIterator(root common.Hash, seek common.Hash) (Account
 // account. The iterator will be moved to the specific start position.
 func (db *Database) StorageIterator(root common.Hash, account common.Hash, seek common.Hash) (StorageIterator, error) {
 	return newFastStorageIterator(db, root, account, seek)
+}
+
+// writeIncrementalBlockData writes block data to incremental freezer
+// This handles both empty blocks and blocks with state changes
+func (db *Database) writeIncrementalBlockData(blockNumber uint64) error {
+	if db.incrFreezer == nil {
+		return nil
+	}
+
+	// Check if we need to initialize the starting block number
+	if db.config.IncrBlockStartNumber == 0 {
+		// Set the starting block number to current block
+		db.config.IncrBlockStartNumber = blockNumber
+		log.Info("Initialized incremental block start number", "startBlock", blockNumber)
+	}
+
+	// Only write blocks at or after the start number
+	if blockNumber < db.config.IncrBlockStartNumber {
+		return nil
+	}
+
+	// Get the expected next block number in freezer
+	expectedBlock := db.config.IncrBlockStartNumber
+	if frozen, err := db.incrFreezer.Ancients(); err == nil && frozen > 0 {
+		if tail, err := db.incrFreezer.Tail(); err == nil {
+			expectedBlock = tail + frozen
+		}
+	}
+
+	// Fill any missing blocks (empty blocks) between expected and current
+	for missingBlock := expectedBlock; missingBlock < blockNumber; missingBlock++ {
+		if err := db.writeEmptyBlockToFreezer(missingBlock); err != nil {
+			return fmt.Errorf("failed to write empty block %d: %v", missingBlock, err)
+		}
+	}
+
+	// Write the current block (will be handled by blockchain layer)
+	// This is just a placeholder - actual block data writing happens in blockchain.go
+	log.Debug("Incremental block data write triggered", "block", blockNumber)
+	return nil
+}
+
+// writeEmptyBlockToFreezer writes placeholder data for empty blocks
+func (db *Database) writeEmptyBlockToFreezer(blockNumber uint64) error {
+	// This would write minimal block data for empty blocks
+	// Implementation depends on the specific freezer structure
+	log.Debug("Writing empty block placeholder", "block", blockNumber)
+
+	// TODO: Implement actual empty block data writing
+	// This might involve writing empty headers, bodies, receipts, etc.
+
+	return nil
+}
+
+// SetIncrBlockStartNumber sets the starting block number for incremental block data
+func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+
+	if db.config.IncrBlockStartNumber == 0 {
+		db.config.IncrBlockStartNumber = startBlock
+		log.Info("Set incremental block start number", "startBlock", startBlock)
+	}
 }

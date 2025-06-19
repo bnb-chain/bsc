@@ -402,3 +402,13 @@ func (db *Database) InsertIncrState(incrDir string) error {
 	}
 	return pdb.InsertIncrState(incrDir)
 }
+
+// SetIncrBlockStartNumber sets the starting block number for incremental block data
+// It's only supported by path-based database and will do nothing for others.
+func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		return
+	}
+	pdb.SetIncrBlockStartNumber(startBlock)
+}
