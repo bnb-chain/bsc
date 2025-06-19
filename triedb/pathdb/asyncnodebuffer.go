@@ -54,7 +54,7 @@ func (a *asyncnodebuffer) mergeIncrStateHistory(db ethdb.KeyValueStore, freezer 
 	// TODO: async read history and commit
 	// check persistent state id with incr state id
 	for i := uint64(0); i <= head; i++ {
-		_, trieNodes, _ := readHistoryTrieNodes(incrFreezer, i+firstStateID)
+		_, trieNodes, _ := readIncrHistory(incrFreezer, i+firstStateID)
 		nodesSet := newNodeSet(trieNodes)
 		if err = a.current.commit(nodesSet, newStates(nil, nil, false)); err != nil {
 			log.Crit("Failed to commit history", "error", err)
