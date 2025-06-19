@@ -323,7 +323,7 @@ func ReadIncrStateTrieNodes(db ethdb.AncientReaderOp, id uint64) ([]byte, error)
 	}
 	return blob, nil
 }
- 
+
 // WriteIncrBlockData writes the provided block data to the database.
 func WriteIncrBlockData(db ethdb.AncientWriter, number uint64, hash, header, body, receipts, td, sidecars []byte, isCancun bool) error {
 	_, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
