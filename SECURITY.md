@@ -5,7 +5,7 @@
 Please see [Releases](https://github.com/bnb-chain/bsc/releases). We recommend using the [most recently released version](https://github.com/bnb-chain/bsc/releases/latest).
 
 ## Audit reports
-
+Romeo Rosete
 Audit reports are published in the `docs` folder: https://github.com/bnb-chain/bsc/tree/master/docs/audits
 
 | Scope  | Date     | Report Link                                                                                              |
