@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
@@ -29,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 )
 
@@ -90,14 +92,14 @@ func NewTrieNodeBuffer(sync bool, limit int, nodes *nodeSet, states *stateSet, l
 
 // diskLayer is a low level persistent layer built on top of a key-value store.
 type diskLayer struct {
-	root   common.Hash      // Immutable, root hash to which this layer was made for
-	id     uint64           // Immutable, corresponding state id
-	db     *Database        // Path-based trie database
-	nodes  *fastcache.Cache // GC friendly memory cache of clean nodes
-	buffer trienodebuffer   // Dirty buffer to aggregate writes of nodes and states
-	stale  bool             // Signals that the layer became stale (state progressed)
-	lock   sync.RWMutex     // Lock used to protect stale flag
-	count  int
+	root      common.Hash      // Immutable, root hash to which this layer was made for
+	id        uint64           // Immutable, corresponding state id
+	db        *Database        // Path-based trie database
+	nodes     *fastcache.Cache // GC friendly memory cache of clean nodes
+	buffer    trienodebuffer   // Dirty buffer to aggregate writes of nodes and states
+	stale     bool             // Signals that the layer became stale (state progressed)
+	lock      sync.RWMutex     // Lock used to protect stale flag
+	lastBlock atomic.Uint64    // Record last stored block number
 }
 
 // newDiskLayer creates a new disk layer based on the passing arguments.
@@ -114,7 +116,6 @@ func newDiskLayer(root common.Hash, id uint64, db *Database, nodes *fastcache.Ca
 		db:     db,
 		nodes:  nodes,
 		buffer: buffer,
-		count:  0,
 	}
 }
 
@@ -310,38 +311,17 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 		}
 	}
 
-	if dl.db.incrFreezer != nil && dl.db.config.EnableIncrStateHistory {
-		item, err := dl.db.incrFreezer.Ancients()
-		if err != nil {
-			log.Error("Failed to get incrFreezer ancients", "err", err)
+	if dl.db.config.EnableIncrHistory {
+		if err := rawdb.ResetEmptyIncrStateTable(dl.db.incrStateFreezer, bottom.stateID()-1); err != nil {
+			log.Error("Failed to reset empty incr state freezer", "err", err)
+		}
+
+		if err := writeIncrHistory(dl.db.incrStateFreezer, bottom); err != nil {
+			log.Error("Failed to write incremental state history", "err", err)
 			return nil, err
 		}
-		a, _ := dl.db.incrFreezer.Tail()
-		b, _ := dl.db.incrFreezer.ItemAmountInAncient()
-		log.Info("Print incr ancient info", "item", item, "a", a, "b", b)
-
-		if item == 0 {
-			log.Info("Put first state id in pebble", "first state id", bottom.stateID())
-			ancient, _ := dl.db.diskdb.AncientDatadir()
-			path := filepath.Join(ancient, rawdb.IncrementalPath)
-			db, err := pebble.New(path, 1000, 100, "incr/pebble", false)
-			if err != nil {
-				log.Error("Failed to create incr/pebble", "err", err)
-				return nil, err
-			}
-			if err = rawdb.WriteIncrStateFirstID(db, bottom.stateID()); err != nil {
-				log.Error("Failed to write first state id into db", "err", err)
-				return nil, err
-			}
-		}
-		log.Info("idj2e", "bottom", bottom.stateID())
-		if bottom.stateID() > 1 {
-			if err = rawdb.ResetEmptyIncrStateTable(dl.db.incrFreezer, bottom.stateID()-1); err != nil {
-				log.Error("Failed to reset empty incr state freezer", "err", err)
-			}
-		}
-
-		if err = writeHistoryTrieNodes(dl.db.incrFreezer, bottom); err != nil {
+		if err := dl.writeIncrementalBlockData(bottom.block); err != nil {
+			log.Error("Failed to write incremental chain history", "err", err)
 			return nil, err
 		}
 	}
@@ -457,6 +437,162 @@ func (dl *diskLayer) resetCache() {
 	if dl.nodes != nil {
 		dl.nodes.Reset()
 	}
+}
+
+func (dl *diskLayer) checkIncrChainEmpty() error {
+	item, err := dl.db.incrChainFreezer.Ancients()
+	if err != nil {
+		log.Error("Failed to get incrChainFreezer ancients", "err", err)
+		return err
+	}
+
+	if item == 0 {
+		log.Info("Put first block number in pebble", "first block number", dl.db.config.IncrBlockStartNumber)
+		ancient, _ := dl.db.diskdb.AncientDatadir()
+		path := filepath.Join(ancient, rawdb.IncrementalPath)
+		db, err := pebble.New(path, 1000, 100, "incr/pebble", false)
+		if err != nil {
+			log.Error("Failed to create incr/pebble", "err", err)
+			return err
+		}
+
+		if err = rawdb.WriteIncrFirstStateID(db, dl.db.config.IncrBlockStartNumber); err != nil {
+			log.Error("Failed to write first state id into db", "err", err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (dl *diskLayer) checkIncrStateEmpty(stateID uint64) error {
+	item, err := dl.db.incrStateFreezer.Ancients()
+	if err != nil {
+		log.Error("Failed to get incrStateFreezer ancients", "err", err)
+		return err
+	}
+	// a, _ := dl.db.incrStateFreezer.Tail()
+	// b, _ := dl.db.incrStateFreezer.ItemAmountInAncient()
+	// log.Info("Print incr state ancient info", "item", item, "a", a, "b", b)
+
+	if item == 0 {
+		log.Info("Put first state id in pebble", "first state id", stateID)
+		ancient, _ := dl.db.diskdb.AncientDatadir()
+		path := filepath.Join(ancient, rawdb.IncrementalPath)
+		db, err := pebble.New(path, 1000, 100, "incr/pebble", false)
+		if err != nil {
+			log.Error("Failed to create incr/pebble", "err", err)
+			return err
+		}
+
+		if err = rawdb.WriteIncrFirstStateID(db, stateID); err != nil {
+			log.Error("Failed to write first state id into db", "err", err)
+			return err
+		}
+	}
+	return nil
+}
+
+// writeIncrementalBlockData writes block data to incremental freezer
+// This handles both empty blocks and blocks with state changes
+func (dl *diskLayer) writeIncrementalBlockData(blockNumber uint64) error {
+	startBlockNumber := dl.db.config.IncrBlockStartNumber
+	if startBlockNumber == 0 {
+		log.Crit("Incremental block start number shouldn't be 0")
+	}
+
+	// Only write blocks at or after the start number
+	if blockNumber < startBlockNumber {
+		log.Crit("Passed block number should be greater than or equal to IncrBlockStartNumber",
+			"blockNumber", blockNumber, "incrBlockStartNumber", startBlockNumber)
+		return nil
+	}
+
+	// Get the last processed block number
+	lastBlock := dl.lastBlock.Load()
+
+	// Determine the range of blocks to process
+	var startBlock uint64
+	if lastBlock == 0 {
+		// First time processing, start from configured start block
+		startBlock = startBlockNumber
+	} else {
+		// Continue from the next block after last processed
+		if blockNumber <= lastBlock {
+			log.Crit("Passed block number should be greater than last block number",
+				"blockNumber", blockNumber, "lastBlock", lastBlock)
+			return nil
+		}
+		startBlock = lastBlock + 1
+	}
+
+	// Process all blocks in the range [startBlock, blockNumber]
+	log.Debug("Processing incremental block data range",
+		"startBlock", startBlock, "endBlock", blockNumber, "count", blockNumber-startBlock+1)
+
+	for i := startBlock; i <= blockNumber; i++ {
+		if err := dl.writeBlockToFreezer(i); err != nil {
+			log.Error("Failed to write block data to freezer", "block", i, "err", err)
+			return fmt.Errorf("failed to write block %d to freezer: %w", i, err)
+		}
+
+		// Update progress for large ranges
+		if (i-startBlock+1)%1000 == 0 {
+			log.Info("Incremental block processing progress",
+				"processed", i-startBlock+1, "total", blockNumber-startBlock+1, "currentBlock", i)
+		}
+	}
+
+	// Update the last processed block number
+	dl.lastBlock.Store(blockNumber)
+
+	log.Debug("Incremental block data processing completed",
+		"startBlock", startBlock, "endBlock", blockNumber, "totalProcessed", blockNumber-startBlock+1)
+
+	return nil
+}
+
+// writeBlockToFreezer writes placeholder data for empty blocks
+func (dl *diskLayer) writeBlockToFreezer(blockNumber uint64) error {
+	// Get the canonical hash for this block number
+	blockHash := rawdb.ReadCanonicalHash(dl.db.diskdb.BlockStore(), blockNumber)
+	if blockHash == (common.Hash{}) {
+		return fmt.Errorf("canonical hash not found for block %d", blockNumber)
+	}
+	_, header := rawdb.ReadHeaderAndRaw(dl.db.diskdb.BlockStore(), blockHash, blockNumber)
+	if len(header) == 0 {
+		return fmt.Errorf("block header missing, can't freeze block %d", blockNumber)
+	}
+	body := rawdb.ReadBodyRLP(dl.db.diskdb.BlockStore(), blockHash, blockNumber)
+	if len(body) == 0 {
+		return fmt.Errorf("block body missing, can't freeze block %d", blockNumber)
+	}
+	receipts := rawdb.ReadReceiptsRLP(dl.db.diskdb.BlockStore(), blockHash, blockNumber)
+	if len(receipts) == 0 {
+		return fmt.Errorf("block receipts missing, can't freeze block %d", blockNumber)
+	}
+	td := rawdb.ReadTdRLP(dl.db.diskdb.BlockStore(), blockHash, blockNumber)
+	if len(td) == 0 {
+		return fmt.Errorf("total difficulty not found for block %d (hash: %s)", blockNumber, blockHash.Hex())
+	}
+	// TODO: handle chain env
+	// blobs is nil before cancun fork
+	var sidecars rlp.RawValue
+	// isCancun(env, h.Number, h.Time)
+	if false {
+		sidecars = rawdb.ReadBlobSidecarsRLP(dl.db.diskdb.BlockStore(), blockHash, blockNumber)
+		if len(sidecars) == 0 {
+			return fmt.Errorf("block blobs missing, can't freeze block %d", blockNumber)
+		}
+	}
+
+	err := rawdb.WriteIncrBlockData(dl.db.incrChainFreezer, blockNumber, blockHash[:], header, body, receipts, td, sidecars, false)
+	if err != nil {
+		log.Error("Failed to write block data", "err", err)
+		return err
+	}
+
+	log.Debug("Write one block data into incr chain freezer", "block", blockNumber, "hash", blockHash.Hex())
+	return nil
 }
 
 // hasher is used to compute the sha256 hash of the provided data.

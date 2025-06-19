@@ -43,6 +43,9 @@ const (
 
 	// ChainFreezerBlobSidecarTable indicates the name of the freezer total blob table.
 	ChainFreezerBlobSidecarTable = "blobs"
+
+	// IncrChainFreezerBlockStateIDMappingTable indicates the mapping table between block numbers and state IDs
+	IncrChainFreezerBlockStateIDMappingTable = "mapping"
 )
 
 // chainFreezerNoSnappy configures whether compression is disabled for the ancient-tables.
@@ -54,6 +57,18 @@ var chainFreezerNoSnappy = map[string]bool{
 	ChainFreezerReceiptTable:     false,
 	ChainFreezerDifficultyTable:  true,
 	ChainFreezerBlobSidecarTable: false,
+}
+
+// incrChainFreezerNoSnappy configures whether compression is disabled for the ancient-tables.
+// Hashes and difficulties don't compress well.
+var incrChainFreezerNoSnappy = map[string]bool{
+	ChainFreezerHeaderTable:                  false,
+	ChainFreezerHashTable:                    true,
+	ChainFreezerBodiesTable:                  false,
+	ChainFreezerReceiptTable:                 false,
+	ChainFreezerDifficultyTable:              true,
+	ChainFreezerBlobSidecarTable:             false,
+	IncrChainFreezerBlockStateIDMappingTable: false,
 }
 
 var additionTables = []string{ChainFreezerBlobSidecarTable}
@@ -160,7 +175,7 @@ func NewIncrChainFreezer(ancientDir string, readOnly bool, offset, blockLimit ui
 	}
 
 	name := filepath.Join(ancientDir, IncrementalPath, ChainFreezerName)
-	return newResettableFreezer(name, "eth/db/chain", readOnly, offset, stateHistoryTableSize, chainFreezerNoSnappy, true)
+	return newResettableFreezer(name, "eth/db/chain", readOnly, offset, stateHistoryTableSize, incrChainFreezerNoSnappy, true)
 	// return newIncrFreezer(name, "eth/db/incremental/chain", readOnly, offset, stateHistoryTableSize,
 	// 	chainFreezerNoSnappy, blockLimit)
 }

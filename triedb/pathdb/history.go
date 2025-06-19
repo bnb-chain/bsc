@@ -561,8 +561,8 @@ func writeHistory(writer ethdb.AncientWriter, dl *diffLayer) error {
 	return nil
 }
 
-// writeHistoryTrieNodes persists the history trie nodes
-func writeHistoryTrieNodes(writer ethdb.AncientWriter, dl *diffLayer) error {
+// writeIncrHistory persists the incremental history
+func writeIncrHistory(writer ethdb.AncientWriter, dl *diffLayer) error {
 	// Short circuit if state set is not available.
 	if dl.states == nil {
 		return errors.New("state change set is not available")
@@ -590,8 +590,8 @@ func writeHistoryTrieNodes(writer ethdb.AncientWriter, dl *diffLayer) error {
 	return nil
 }
 
-// readHistoryTrieNodes reads the history trie nodes
-func readHistoryTrieNodes(reader ethdb.AncientReader, id uint64) (*history, map[common.Hash]map[string]*trienode.Node, error) {
+// readIncrHistory reads the incremental history
+func readIncrHistory(reader ethdb.AncientReader, id uint64) (*history, map[common.Hash]map[string]*trienode.Node, error) {
 	blob := rawdb.ReadStateHistoryMeta(reader, id)
 	if len(blob) == 0 {
 		return nil, nil, fmt.Errorf("state history not found %d", id)

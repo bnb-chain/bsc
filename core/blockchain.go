@@ -201,14 +201,14 @@ func (c *CacheConfig) triedbConfig(isVerkle bool) *triedb.Config {
 	}
 	if c.StateScheme == rawdb.PathScheme {
 		config.PathDB = &pathdb.Config{
-			SyncFlush:              c.PathSyncFlush,
-			StateHistory:           c.StateHistory,
-			CleanCacheSize:         c.TrieCleanLimit * 1024 * 1024,
-			WriteBufferSize:        c.TrieDirtyLimit * 1024 * 1024,
-			JournalFilePath:        c.JournalFilePath,
-			JournalFile:            c.JournalFile,
-			EnableIncrStateHistory: c.EnableIncrHistory,
-			IncrStateHistory:       c.IncrHistory,
+			SyncFlush:         c.PathSyncFlush,
+			StateHistory:      c.StateHistory,
+			CleanCacheSize:    c.TrieCleanLimit * 1024 * 1024,
+			WriteBufferSize:   c.TrieDirtyLimit * 1024 * 1024,
+			JournalFilePath:   c.JournalFilePath,
+			JournalFile:       c.JournalFile,
+			EnableIncrHistory: c.EnableIncrHistory,
+			IncrHistory:       c.IncrHistory,
 		}
 	}
 	return config
@@ -561,12 +561,12 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	// Initialize incremental block start number for PathDB after potential chain rewinds
 	// This ensures we use the correct final head block number
 	if bc.cacheConfig.StateScheme == rawdb.PathScheme {
-		log.Info("statedb commit", "current", bc.CurrentBlock().Number.Uint64(),
+		log.Info("First start block info", "current", bc.CurrentBlock().Number.Uint64(),
 			"snap", bc.CurrentSnapBlock().Number.Uint64(), "safe", bc.CurrentSafeBlock().Number.Uint64(),
 			"final", bc.CurrentFinalBlock().Number.Uint64(), "head block", bc.CurrentHeader().Number.Uint64())
 
 		currentBlockNumber := bc.CurrentBlock().Number.Uint64()
-		bc.triedb.SetIncrBlockStartNumber(currentBlockNumber)
+		bc.triedb.SetIncrBlockStartNumber(currentBlockNumber + 1)
 		log.Info("Set incremental block start number for PathDB", "startBlock", currentBlockNumber)
 	}
 
