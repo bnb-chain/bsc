@@ -527,11 +527,11 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber uint64) error {
 	// 	log.Crit("Incremental block start number shouldn't be 0")
 	// }
 
-	if blockNumber < startBlockNumber {
-		log.Warn("Not save journal data into incremental",
-			"blockNumber", blockNumber, "incrBlockStartNumber", startBlockNumber)
-		return nil
-	}
+	// if blockNumber < startBlockNumber {
+	// 	log.Warn("Not save journal data into incremental",
+	// 		"blockNumber", blockNumber, "incrBlockStartNumber", startBlockNumber)
+	// 	return nil
+	// }
 
 	var (
 		lastBlock  = dl.lastBlock.Load()
