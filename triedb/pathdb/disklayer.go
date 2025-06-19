@@ -314,32 +314,30 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	if dl.db.config.EnableIncrHistory {
 		// should handle journal data in merge command
 		if bottom.block < dl.db.config.IncrBlockStartNumber {
-			log.Warn("Not save journal data into incremental",
-				"blockNumber", bottom.block, "incrBlockStartNumber", dl.db.config.IncrBlockStartNumber)
-		} else {
-			if err := dl.checkIncrStateEmpty(bottom.stateID()); err != nil {
-				log.Error("Failed to check incr chain freezer is empty", "err", err)
-				return nil, err
-			}
-
-			if err := rawdb.ResetEmptyIncrStateTable(dl.db.incrStateFreezer, bottom.stateID()-1); err != nil {
-				log.Error("Failed to reset empty incr state freezer", "err", err)
-				return nil, err
-			}
-			if err := writeIncrHistory(dl.db.incrStateFreezer, bottom); err != nil {
-				log.Error("Failed to write incremental state history", "err", err)
-				return nil, err
-			}
-
-			if err := rawdb.ResetEmptyIncrChainTable(dl.db.incrChainFreezer, bottom.block, false); err != nil {
-				log.Error("Failed to reset empty incr chain freezer", "err", err)
-				return nil, err
-			}
-			if err := dl.writeIncrementalBlockData(bottom.block); err != nil {
-				log.Error("Failed to write incremental chain history", "err", err)
-				return nil, err
-			}
+			log.Warn("Blocks comes from journal", "blockNumber", bottom.block, "incrBlockStartNumber", dl.db.config.IncrBlockStartNumber)
 		}
+
+		if err := dl.checkIncrStateEmpty(bottom.stateID()); err != nil {
+			log.Error("Failed to check incr chain freezer is empty", "err", err)
+			return nil, err
+		}
+		if err := rawdb.ResetEmptyIncrStateTable(dl.db.incrStateFreezer, bottom.stateID()-1); err != nil {
+			log.Error("Failed to reset empty incr state freezer", "err", err)
+			return nil, err
+		}
+		if err := writeIncrHistory(dl.db.incrStateFreezer, bottom); err != nil {
+			log.Error("Failed to write incremental state history", "err", err)
+			return nil, err
+		}
+		if err := rawdb.ResetEmptyIncrChainTable(dl.db.incrChainFreezer, bottom.block, false); err != nil {
+			log.Error("Failed to reset empty incr chain freezer", "err", err)
+			return nil, err
+		}
+		if err := dl.writeIncrementalBlockData(bottom.block); err != nil {
+			log.Error("Failed to write incremental chain history", "err", err)
+			return nil, err
+		}
+
 	}
 
 	// Mark the diskLayer as stale before applying any mutations on top.
