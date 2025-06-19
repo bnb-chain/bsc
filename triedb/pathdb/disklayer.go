@@ -314,7 +314,8 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	if dl.db.config.EnableIncrHistory {
 		// should handle journal data in merge command
 		if bottom.block < dl.db.config.IncrBlockStartNumber {
-			log.Warn("Blocks comes from journal", "blockNumber", bottom.block, "incrBlockStartNumber", dl.db.config.IncrBlockStartNumber)
+			log.Warn("Blocks comes from journal", "blockNumber", bottom.block, "stateID", bottom.stateID(),
+				"incrBlockStartNumber", dl.db.config.IncrBlockStartNumber)
 		}
 
 		if err := dl.checkIncrStateEmpty(bottom.stateID()); err != nil {
@@ -333,7 +334,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 			log.Error("Failed to reset empty incr chain freezer", "err", err)
 			return nil, err
 		}
-		if err := dl.writeIncrementalBlockData(bottom.block); err != nil {
+		if err := dl.writeIncrementalBlockData(bottom.block, 0); err != nil {
 			log.Error("Failed to write incremental chain history", "err", err)
 			return nil, err
 		}
@@ -521,7 +522,7 @@ func (dl *diskLayer) checkIncrStateEmpty(stateID uint64) error {
 
 // writeIncrementalBlockData writes block data to incremental freezer
 // This handles both empty blocks and blocks with state changes
-func (dl *diskLayer) writeIncrementalBlockData(blockNumber uint64) error {
+func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) error {
 	startBlockNumber := dl.db.config.IncrBlockStartNumber
 	// if startBlockNumber == 0 {
 	// 	log.Crit("Incremental block start number shouldn't be 0")
@@ -538,8 +539,9 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber uint64) error {
 		startBlock uint64
 	)
 	if lastBlock == 0 && blockNumber < startBlockNumber {
-		log.Warn("Use first journal block", "blockNumber", blockNumber, "incrBlockStartNumber", startBlockNumber)
 		startBlock = blockNumber
+		log.Warn("Use first journal block", "blockNumber", blockNumber, "lastBlock", lastBlock,
+			"startBlock", startBlock, "incrBlockStartNumber", startBlockNumber)
 	} else {
 		if blockNumber <= lastBlock {
 			log.Crit("Passed block number should be greater than last block number",
@@ -548,50 +550,28 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber uint64) error {
 		}
 		startBlock = lastBlock + 1
 	}
-	// if lastBlock == 0 {
-	// 	// First time processing, start from configured start block
-	// 	startBlock = blockNumber
-	// } else {
-	// if lastBlock == 0 {
-	// 	// First time processing, start from configured start block
-	// 	startBlock = startBlockNumber
-	// } else {
-	// 	// Continue from the next block after last processed
-	// 	if blockNumber <= lastBlock {
-	// 		log.Crit("Passed block number should be greater than last block number",
-	// 			"blockNumber", blockNumber, "lastBlock", lastBlock)
-	// 		return nil
-	// 	}
-	// 	startBlock = lastBlock + 1
-	// }
 
 	// Process all blocks in the range [startBlock, blockNumber]
-	log.Debug("Processing incremental block data range",
+	log.Info("Processing incremental block data range",
 		"startBlock", startBlock, "endBlock", blockNumber, "count", blockNumber-startBlock+1)
 
 	for i := startBlock; i <= blockNumber; i++ {
-		if err := dl.writeBlockToFreezer(i); err != nil {
+		if err := dl.writeBlockToFreezer(i, 0); err != nil {
 			log.Error("Failed to write block data to freezer", "block", i, "err", err)
 			return err
-		}
-
-		// Update progress for large ranges
-		if (i-startBlock+1)%1000 == 0 {
-			log.Info("Incremental block processing progress",
-				"processed", i-startBlock+1, "total", blockNumber-startBlock+1, "currentBlock", i)
 		}
 	}
 
 	dl.lastBlock.Store(blockNumber)
 
-	log.Debug("Incremental block data processing completed",
+	log.Info("Incremental block data processing completed",
 		"startBlock", startBlock, "endBlock", blockNumber, "totalProcessed", blockNumber-startBlock+1)
 
 	return nil
 }
 
 // writeBlockToFreezer writes placeholder data for empty blocks
-func (dl *diskLayer) writeBlockToFreezer(blockNumber uint64) error {
+func (dl *diskLayer) writeBlockToFreezer(blockNumber, stateID uint64) error {
 	// Get the canonical hash for this block number
 	blockHash := rawdb.ReadCanonicalHash(dl.db.diskdb.BlockStore(), blockNumber)
 	if blockHash == (common.Hash{}) {
@@ -624,7 +604,7 @@ func (dl *diskLayer) writeBlockToFreezer(blockNumber uint64) error {
 		}
 	}
 
-	err := rawdb.WriteIncrBlockData(dl.db.incrChainFreezer, blockNumber, blockHash[:], header, body, receipts, td, sidecars, false)
+	err := rawdb.WriteIncrBlockData(dl.db.incrChainFreezer, blockNumber, stateID, blockHash[:], header, body, receipts, td, sidecars, false)
 	if err != nil {
 		log.Error("Failed to write block data", "err", err)
 		return err

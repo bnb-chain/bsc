@@ -21,13 +21,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"math/big"
 	"slices"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
@@ -624,38 +622,38 @@ func readIncrHistory(reader ethdb.AncientReader, id uint64) (*history, map[commo
 	return &dec, flattenTrieNodes(decodedTrieNodes), nil
 }
 
-func writeBlockIntoIncrFreezer(writer ethdb.AncientWriter, number uint64, hash []byte, block *types.Block,
-	receipts []*types.Receipt, td *big.Int, isCancun bool) {
-	headerData, err := rlp.EncodeToBytes(block.Header())
-	if err != nil {
-		log.Crit("Failed to RLP encode header", "err", err)
-	}
-	bodyData, err := rlp.EncodeToBytes(block.Body())
-	if err != nil {
-		log.Crit("Failed to RLP encode body", "err", err)
-	}
-	receiptsData, err := rlp.EncodeToBytes(receipts)
-	if err != nil {
-		log.Crit("Failed to encode block receipts", "err", err)
-	}
-	tdData, err := rlp.EncodeToBytes(td)
-	if err != nil {
-		log.Crit("Failed to RLP encode block total difficulty", "err", err)
-	}
-
-	blobData := []byte{}
-	if isCancun {
-		blobData, err = rlp.EncodeToBytes(block.Sidecars())
-		if err != nil {
-			log.Crit("Failed to encode block blobs", "err", err)
-		}
-	}
-
-	err = rawdb.WriteIncrBlockData(writer, number, hash, headerData, bodyData, receiptsData, tdData, blobData, isCancun)
-	if err != nil {
-		log.Crit("Failed to write block into incremental freezer db", "err", err)
-	}
-}
+// func writeBlockIntoIncrFreezer(writer ethdb.AncientWriter, number uint64, hash []byte, block *types.Block,
+// 	receipts []*types.Receipt, td *big.Int, isCancun bool) {
+// 	headerData, err := rlp.EncodeToBytes(block.Header())
+// 	if err != nil {
+// 		log.Crit("Failed to RLP encode header", "err", err)
+// 	}
+// 	bodyData, err := rlp.EncodeToBytes(block.Body())
+// 	if err != nil {
+// 		log.Crit("Failed to RLP encode body", "err", err)
+// 	}
+// 	receiptsData, err := rlp.EncodeToBytes(receipts)
+// 	if err != nil {
+// 		log.Crit("Failed to encode block receipts", "err", err)
+// 	}
+// 	tdData, err := rlp.EncodeToBytes(td)
+// 	if err != nil {
+// 		log.Crit("Failed to RLP encode block total difficulty", "err", err)
+// 	}
+//
+// 	blobData := []byte{}
+// 	if isCancun {
+// 		blobData, err = rlp.EncodeToBytes(block.Sidecars())
+// 		if err != nil {
+// 			log.Crit("Failed to encode block blobs", "err", err)
+// 		}
+// 	}
+//
+// 	err = rawdb.WriteIncrBlockData(writer, number, hash, headerData, bodyData, receiptsData, tdData, blobData, isCancun)
+// 	if err != nil {
+// 		log.Crit("Failed to write block into incremental freezer db", "err", err)
+// 	}
+// }
 
 // checkHistories retrieves a batch of meta objects with the specified range
 // and performs the callback on each item.

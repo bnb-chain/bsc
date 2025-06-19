@@ -325,7 +325,7 @@ func ReadIncrStateTrieNodes(db ethdb.AncientReaderOp, id uint64) ([]byte, error)
 }
 
 // WriteIncrBlockData writes the provided block data to the database.
-func WriteIncrBlockData(db ethdb.AncientWriter, number uint64, hash, header, body, receipts, td, sidecars []byte, isCancun bool) error {
+func WriteIncrBlockData(db ethdb.AncientWriter, number, stateID uint64, hash, header, body, receipts, td, sidecars []byte, isCancun bool) error {
 	_, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
 		if err := op.AppendRaw(ChainFreezerHashTable, number, hash); err != nil {
 			return err
@@ -342,7 +342,7 @@ func WriteIncrBlockData(db ethdb.AncientWriter, number uint64, hash, header, bod
 		if err := op.AppendRaw(ChainFreezerDifficultyTable, number, td); err != nil {
 			return err
 		}
-		if err := op.AppendRaw(IncrChainFreezerBlockStateIDMappingTable, number, td); err != nil {
+		if err := op.AppendRaw(IncrChainFreezerBlockStateIDMappingTable, number, encodeBlockNumber(stateID)); err != nil {
 			return err
 		}
 		if isCancun {
