@@ -361,7 +361,7 @@ func (db *Database) repairIncrChainHistory(ancientDir string) error {
 	}
 
 	offset := uint64(0) // differ from in block data, only metadata is used in state data
-	incrChainFreezer, err := rawdb.NewIncrStateFreezer(ancientDir, db.readOnly, offset, db.config.IncrHistory)
+	incrChainFreezer, err := rawdb.NewIncrChainFreezer(ancientDir, db.readOnly, offset, db.config.IncrHistory)
 	if err != nil {
 		log.Crit("Failed to open incremental chain history freezer", "err", err)
 	}
