@@ -49,6 +49,9 @@ const defaultNumOfSlots = 100
 // TriesInMemory represents the number of layers that are kept in RAM.
 const TriesInMemory = 128
 
+// Timer metric for monitoring code write latency
+var codeWriteTimer = metrics.NewRegisteredTimer("state/code/write", nil)
+
 type mutationType int
 
 const (
@@ -165,6 +168,8 @@ type StateDB struct {
 	StorageCommits  time.Duration
 	SnapshotCommits time.Duration
 	TrieDBCommits   time.Duration
+	SnapshotWrite   time.Duration
+	TrieDBWrite     time.Duration
 
 	AccountLoaded  int          // Number of accounts retrieved from the database during the state transition
 	AccountUpdated int          // Number of accounts updated during the state transition
@@ -1470,6 +1475,7 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 	// Commit dirty contract code if any exists
 	if db := s.db.TrieDB().Disk(); db != nil && len(ret.codes) > 0 {
 		batch := db.NewBatch()
+		start := time.Now()
 		for _, code := range ret.codes {
 			rawdb.WriteCode(batch, code.hash, code.blob)
 		}
@@ -1477,6 +1483,7 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 		if err := batch.Write(); err != nil {
 			return nil, err
 		}
+		codeWriteTimer.Update(time.Since(start))
 	}
 	if !ret.empty() {
 		// If snapshotting is enabled, update the snapshot tree with this new version

@@ -95,6 +95,9 @@ var (
 	blockCrossValidationTimer = metrics.NewRegisteredTimer("chain/crossvalidation", nil)
 	blockExecutionTimer       = metrics.NewRegisteredTimer("chain/execution", nil)
 	blockWriteTimer           = metrics.NewRegisteredTimer("chain/write", nil)
+	blockCommitTimer          = metrics.NewRegisteredTimer("chain/commit", nil)
+	headBlockIndexWriteTimer  = metrics.NewRegisteredTimer("chain/headblock/index/write", nil)
+	headBlockTxWriteTimer     = metrics.NewRegisteredTimer("chain/headblock/tx/write", nil)
 
 	blockReorgMeter     = metrics.NewRegisteredMeter("chain/reorg/executes", nil)
 	blockReorgAddMeter  = metrics.NewRegisteredMeter("chain/reorg/add", nil)
@@ -1257,14 +1260,16 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 	}()
 	go func() {
 		defer bc.dbWg.Done()
-
+		start := time.Now()
 		batch := bc.db.GetTxIndexStore().NewBatch()
+
 		rawdb.WriteTxLookupEntriesByBlock(batch, block)
 
 		// Flush the whole batch into the disk, exit the node if failed
 		if err := batch.Write(); err != nil {
 			log.Crit("Failed to update chain indexes in chain db", "err", err)
 		}
+		headBlockTxWriteTimer.Update(time.Since(start))
 	}()
 
 	// Update all in-memory chain markers in the last step
@@ -1753,6 +1758,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		if err := blockBatch.Write(); err != nil {
 			log.Crit("Failed to write block into disk", "err", err)
 		}
+
 		bc.hc.tdCache.Add(block.Hash(), externTd)
 		bc.blockCache.Add(block.Hash(), block)
 		bc.cacheReceipts(block.Hash(), receipts, block)
@@ -2432,6 +2438,7 @@ func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, s
 		triedbCommitTimer.Update(statedb.TrieDBCommits)     // Trie database commits are complete, we can mark them
 	}
 	blockWriteTimer.Update(time.Since(wstart) - max(statedb.AccountCommits, statedb.StorageCommits) /* concurrent */ - statedb.SnapshotCommits - statedb.TrieDBCommits)
+	blockCommitTimer.Update(time.Since(wstart))
 	blockInsertTimer.UpdateSince(start)
 	blockInsertTxSizeGauge.Update(int64(len(block.Transactions())))
 	blockInsertGasUsedGauge.Update(int64(block.GasUsed()))

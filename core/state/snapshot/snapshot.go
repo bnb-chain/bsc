@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -67,6 +68,9 @@ var (
 
 	snapshotBloomIndexTimer = metrics.NewRegisteredResettingTimer("state/snapshot/bloom/index", nil)
 	snapshotBloomErrorGauge = metrics.NewRegisteredGaugeFloat64("state/snapshot/bloom/error", nil)
+
+	// Timer metrics for monitoring diffToDisk write latency
+	diffToDiskBatchWriteTimer = metrics.NewRegisteredTimer("state/snapshot/difftodisk/batch/write", nil)
 
 	snapshotBloomAccountTrueHitMeter  = metrics.NewRegisteredMeter("state/snapshot/bloom/account/truehit", nil)
 	snapshotBloomAccountFalseHitMeter = metrics.NewRegisteredMeter("state/snapshot/bloom/account/falsehit", nil)
@@ -575,12 +579,15 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 		// root will go missing in case of a crash and we'll detect and regen
 		// the snapshot.
 		if batch.ValueSize() > 64*1024*1024 {
+			batchWriteStart := time.Now()
 			if err := batch.Write(); err != nil {
 				log.Crit("Failed to write state changes", "err", err)
 			}
+			diffToDiskBatchWriteTimer.Update(time.Since(batchWriteStart))
 			batch.Reset()
 		}
 	}
+
 	// Push all the storage slots into the database
 	for accountHash, storage := range bottom.storageData {
 		// Skip any account not covered yet by the snapshot
@@ -610,13 +617,16 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 			// root will go missing in case of a crash and we'll detect and regen
 			// the snapshot.
 			if batch.ValueSize() > 64*1024*1024 {
+				batchWriteStart := time.Now()
 				if err := batch.Write(); err != nil {
 					log.Crit("Failed to write state changes", "err", err)
 				}
+				diffToDiskBatchWriteTimer.Update(time.Since(batchWriteStart))
 				batch.Reset()
 			}
 		}
 	}
+
 	// Update the snapshot block marker and write any remainder data
 	rawdb.WriteSnapshotRoot(batch, bottom.root)
 
@@ -625,9 +635,11 @@ func diffToDisk(bottom *diffLayer) *diskLayer {
 
 	// Flush all the updates in the single db operation. Ensure the
 	// disk layer transition is atomic.
+	batchWriteStart := time.Now()
 	if err := batch.Write(); err != nil {
 		log.Crit("Failed to write leftover snapshot", "err", err)
 	}
+	diffToDiskBatchWriteTimer.Update(time.Since(batchWriteStart))
 	log.Debug("Journalled disk layer", "root", bottom.root, "complete", base.genMarker == nil)
 	res := &diskLayer{
 		root:       bottom.root,
