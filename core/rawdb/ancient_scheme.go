@@ -98,8 +98,8 @@ var stateFreezerNoSnappy = map[string]bool{
 }
 
 var additionIncrTables = []string{ChainFreezerHeaderTable, ChainFreezerHashTable, ChainFreezerBodiesTable, ChainFreezerReceiptTable,
-	ChainFreezerDifficultyTable, stateHistoryMeta, stateHistoryAccountIndex, stateHistoryStorageIndex,
-	stateHistoryAccountData, stateHistoryStorageData, incrStateHistoryTrieNodesData}
+	ChainFreezerDifficultyTable, IncrChainFreezerBlockStateIDMappingTable, stateHistoryMeta, stateHistoryAccountIndex,
+	stateHistoryStorageIndex, stateHistoryAccountData, stateHistoryStorageData, incrStateHistoryTrieNodesData}
 
 // incrStateFreezerNoSnappy configures whether compression is disabled for the incremental state freezer.
 var incrStateFreezerNoSnappy = map[string]bool{

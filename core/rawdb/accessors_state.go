@@ -342,6 +342,9 @@ func WriteIncrBlockData(db ethdb.AncientWriter, number uint64, hash, header, bod
 		if err := op.AppendRaw(ChainFreezerDifficultyTable, number, td); err != nil {
 			return err
 		}
+		if err := op.AppendRaw(IncrChainFreezerBlockStateIDMappingTable, number, td); err != nil {
+			return err
+		}
 		if isCancun {
 			if err := op.AppendRaw(ChainFreezerBlobSidecarTable, number, sidecars); err != nil {
 				return err
@@ -406,6 +409,9 @@ func ResetEmptyIncrChainTable(db ethdb.AncientWriter, next uint64, isCancun bool
 		return err
 	}
 	if err := db.ResetTable(ChainFreezerDifficultyTable, next, true); err != nil {
+		return err
+	}
+	if err := db.ResetTable(IncrChainFreezerBlockStateIDMappingTable, next, true); err != nil {
 		return err
 	}
 	if isCancun {
