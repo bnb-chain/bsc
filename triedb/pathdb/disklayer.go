@@ -537,11 +537,10 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber uint64) error {
 		lastBlock  = dl.lastBlock.Load()
 		startBlock uint64
 	)
-	if lastBlock == 0 {
-		// First time processing, start from configured start block
-		startBlock = startBlockNumber
+	if lastBlock == 0 && blockNumber < startBlockNumber {
+		log.Warn("Use first journal block", "blockNumber", blockNumber, "incrBlockStartNumber", startBlockNumber)
+		startBlock = blockNumber
 	} else {
-		// Continue from the next block after last processed
 		if blockNumber <= lastBlock {
 			log.Crit("Passed block number should be greater than last block number",
 				"blockNumber", blockNumber, "lastBlock", lastBlock)
@@ -549,6 +548,22 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber uint64) error {
 		}
 		startBlock = lastBlock + 1
 	}
+	// if lastBlock == 0 {
+	// 	// First time processing, start from configured start block
+	// 	startBlock = blockNumber
+	// } else {
+	// if lastBlock == 0 {
+	// 	// First time processing, start from configured start block
+	// 	startBlock = startBlockNumber
+	// } else {
+	// 	// Continue from the next block after last processed
+	// 	if blockNumber <= lastBlock {
+	// 		log.Crit("Passed block number should be greater than last block number",
+	// 			"blockNumber", blockNumber, "lastBlock", lastBlock)
+	// 		return nil
+	// 	}
+	// 	startBlock = lastBlock + 1
+	// }
 
 	// Process all blocks in the range [startBlock, blockNumber]
 	log.Debug("Processing incremental block data range",
@@ -557,7 +572,7 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber uint64) error {
 	for i := startBlock; i <= blockNumber; i++ {
 		if err := dl.writeBlockToFreezer(i); err != nil {
 			log.Error("Failed to write block data to freezer", "block", i, "err", err)
-			return fmt.Errorf("failed to write block %d to freezer: %w", i, err)
+			return err
 		}
 
 		// Update progress for large ranges
