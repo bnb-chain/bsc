@@ -519,9 +519,9 @@ func (dl *diskLayer) checkIncrStateEmpty(stateID uint64) error {
 // This handles both empty blocks and blocks with state changes
 func (dl *diskLayer) writeIncrementalBlockData(blockNumber uint64) error {
 	startBlockNumber := dl.db.config.IncrBlockStartNumber
-	if startBlockNumber == 0 {
-		log.Crit("Incremental block start number shouldn't be 0")
-	}
+	// if startBlockNumber == 0 {
+	// 	log.Crit("Incremental block start number shouldn't be 0")
+	// }
 
 	if blockNumber < startBlockNumber {
 		log.Crit("Passed block number should be greater than or equal to IncrBlockStartNumber",
