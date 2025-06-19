@@ -312,27 +312,33 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	}
 
 	if dl.db.config.EnableIncrHistory {
-		if err := dl.checkIncrStateEmpty(bottom.stateID()); err != nil {
-			log.Error("Failed to check incr chain freezer is empty", "err", err)
-			return nil, err
-		}
+		// should handle journal data in merge command
+		if bottom.block < dl.db.config.IncrBlockStartNumber {
+			log.Warn("Not save journal data into incremental",
+				"blockNumber", bottom.block, "incrBlockStartNumber", dl.db.config.IncrBlockStartNumber)
+		} else {
+			if err := dl.checkIncrStateEmpty(bottom.stateID()); err != nil {
+				log.Error("Failed to check incr chain freezer is empty", "err", err)
+				return nil, err
+			}
 
-		if err := rawdb.ResetEmptyIncrStateTable(dl.db.incrStateFreezer, bottom.stateID()-1); err != nil {
-			log.Error("Failed to reset empty incr state freezer", "err", err)
-			return nil, err
-		}
-		if err := writeIncrHistory(dl.db.incrStateFreezer, bottom); err != nil {
-			log.Error("Failed to write incremental state history", "err", err)
-			return nil, err
-		}
+			if err := rawdb.ResetEmptyIncrStateTable(dl.db.incrStateFreezer, bottom.stateID()-1); err != nil {
+				log.Error("Failed to reset empty incr state freezer", "err", err)
+				return nil, err
+			}
+			if err := writeIncrHistory(dl.db.incrStateFreezer, bottom); err != nil {
+				log.Error("Failed to write incremental state history", "err", err)
+				return nil, err
+			}
 
-		if err := rawdb.ResetEmptyIncrChainTable(dl.db.incrChainFreezer, bottom.block, false); err != nil {
-			log.Error("Failed to reset empty incr chain freezer", "err", err)
-			return nil, err
-		}
-		if err := dl.writeIncrementalBlockData(bottom.block); err != nil {
-			log.Error("Failed to write incremental chain history", "err", err)
-			return nil, err
+			if err := rawdb.ResetEmptyIncrChainTable(dl.db.incrChainFreezer, bottom.block, false); err != nil {
+				log.Error("Failed to reset empty incr chain freezer", "err", err)
+				return nil, err
+			}
+			if err := dl.writeIncrementalBlockData(bottom.block); err != nil {
+				log.Error("Failed to write incremental chain history", "err", err)
+				return nil, err
+			}
 		}
 	}
 
@@ -490,7 +496,7 @@ func (dl *diskLayer) checkIncrDataEmpty(dataType IncrDataType, value uint64) err
 
 	if item == 0 {
 		pebblePath := filepath.Join(dl.db.config.IncrHistoryPath, rawdb.IncrementalPath)
-		db, err := pebble.New(pebblePath, 1000, 100, "incremental", false)
+		db, err := pebble.New(pebblePath, 10, 10, "incremental", false)
 		if err != nil {
 			log.Error("Failed to create pebble to store incremental data", "path", pebblePath, "err", err)
 			return err
@@ -524,7 +530,7 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber uint64) error {
 	// }
 
 	if blockNumber < startBlockNumber {
-		log.Crit("Passed block number should be greater than or equal to IncrBlockStartNumber",
+		log.Warn("Not save journal data into incremental",
 			"blockNumber", blockNumber, "incrBlockStartNumber", startBlockNumber)
 		return nil
 	}
