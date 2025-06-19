@@ -257,7 +257,7 @@ const builderMap = new Map([
     ["0x627fE6AFA2E84e461CB7AE7C2c46e8adf9a954a2", "txboost"],
     ["0x5EC60f73f938e36400ec3CC3Ff4d7a7703F7c005", "nodereal ap"],
     ["0x6C98EB21139F6E12db5b78a4AeD4d8eBA147FB7b", "nodereal eu"],
-    // ["0x79102dB16781ddDfF63F301C9Be557Fd1Dd48fA0", "nodereal us"],
+    ["0x5b67a234592331e85fC57Bb148769c1d2fF62520", "nodereal us"],
     ["0x4827b423D03a349b7519Dda537e9A28d31ecBB48", "club48 ap"],
     ["0x48B2665E5E9a343409199D70F7495c8aB660BB48", "club48 eu"],
     ["0x48B4bBEbF0655557A461e91B8905b85864B8BB48", "club48 us"],
@@ -661,7 +661,6 @@ async function getKeyParameters() {
             console.log("consensusAddr:", addr, "nodeId:", nodeId);
         }
     }
-
 
     // part 4: governance
     let votingPeriod = await governor.votingPeriod({ blockTag: blockNum });
