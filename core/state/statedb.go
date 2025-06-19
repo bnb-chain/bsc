@@ -1460,6 +1460,7 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 	if snaps != nil {
 		ret.diffLayer = &types.DiffLayer{}
 	}
+	// TODO: handle code data
 	// Commit dirty contract code if any exists
 	if db := s.db.TrieDB().Disk(); db != nil && len(ret.codes) > 0 {
 		batch := db.NewBatch()

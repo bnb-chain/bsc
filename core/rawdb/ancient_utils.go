@@ -147,7 +147,7 @@ func inspectIncrFreezers(db ethdb.Database) ([]freezerInfo, error) {
 			}
 			defer cFreezer.Close()
 
-			info, err := inspect(ChainFreezerName, chainFreezerNoSnappy, cFreezer)
+			info, err := inspect(ChainFreezerName, incrChainFreezerNoSnappy, cFreezer)
 			if err != nil {
 				return nil, err
 			}

@@ -38,13 +38,13 @@ func (a *asyncnodebuffer) mergeIncrStateHistory(db ethdb.KeyValueStore, freezer 
 	incrFreezer ethdb.ResettableAncientStore, firstStateID uint64) error {
 	head, err := incrFreezer.Ancients()
 	if err != nil {
-		log.Error("Failed to get incremental freezer ancients", "error", err)
+		log.Error("Failed to get ancients from incr state freezer", "error", err)
 		return err
 	}
 	// tail state id should be equal to persistent state id
 	tail, err := incrFreezer.Tail()
 	if err != nil {
-		log.Error("Failed to get incremental freezer tail", "error", err)
+		log.Error("Failed to get tail incr state freezer", "error", err)
 		return err
 	}
 	persistID := rawdb.ReadPersistentStateID(db)
@@ -53,8 +53,8 @@ func (a *asyncnodebuffer) mergeIncrStateHistory(db ethdb.KeyValueStore, freezer 
 
 	// TODO: async read history and commit
 	// check persistent state id with incr state id
-	for i := uint64(0); i <= head; i++ {
-		_, trieNodes, _ := readHistoryTrieNodes(incrFreezer, i+firstStateID)
+	for i := firstStateID; i <= head; i++ {
+		_, trieNodes, _ := readIncrHistory(incrFreezer, i)
 		nodesSet := newNodeSet(trieNodes)
 		if err = a.current.commit(nodesSet, newStates(nil, nil, false)); err != nil {
 			log.Crit("Failed to commit history", "error", err)

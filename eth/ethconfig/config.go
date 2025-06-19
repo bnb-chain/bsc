@@ -207,6 +207,7 @@ type Config struct {
 	// incremental snapshot config
 	MaximumBlockHeight                 uint64
 	EnableIncrementalSnapshots         bool
+	IncrementalSnapshotPath            string
 	IncrementalSnapshotBlockInterval   uint64
 	MaximumRetainedIncrementalSnapshot uint64
 }

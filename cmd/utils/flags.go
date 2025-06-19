@@ -2384,6 +2384,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	// incremental snapshot config
 	if ctx.IsSet(IncrementalSnapshotFlag.Name) {
 		cfg.EnableIncrementalSnapshots = true
+		if ctx.IsSet(IncrementalSnapshotPathFlag.Name) {
+			cfg.IncrementalSnapshotPath = ctx.String(IncrementalSnapshotPathFlag.Name)
+		}
 		if ctx.IsSet(IncrementalSnapshotBlockIntervalFlag.Name) {
 			cfg.IncrementalSnapshotBlockInterval = ctx.Uint64(IncrementalSnapshotBlockIntervalFlag.Name)
 		}

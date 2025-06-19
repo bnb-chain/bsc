@@ -46,8 +46,11 @@ var (
 	// persistentStateIDKey tracks the id of latest stored state(for path-based only).
 	persistentStateIDKey = []byte("LastStateID")
 
-	// incrStateFirstIDKey tracks the first state id of incremental state history.
-	incrStateFirstIDKey = []byte("IncrStateFirstID")
+	// incrFirstBlockKey tracks the first block number in one incremental directory.
+	incrFirstBlockKey = []byte("IncrFirstBlockKey")
+
+	// incrFirstStateIDKey tracks the first state id in one incremental directory.
+	incrFirstStateIDKey = []byte("IncrFirstStateIDKey")
 
 	// lastPivotKey tracks the last pivot block used by fast sync (to reenable on sethead).
 	lastPivotKey = []byte("LastPivot")
@@ -87,19 +90,19 @@ var (
 	// database.
 	fastTxLookupLimitKey = []byte("FastTransactionLookupLimit")
 
-	//offSet of new updated ancientDB.
+	// offSet of new updated ancientDB.
 	offSetOfCurrentAncientFreezer = []byte("offSetOfCurrentAncientFreezer")
 
-	//offSet of the ancientDB before updated version.
+	// offSet of the ancientDB before updated version.
 	offSetOfLastAncientFreezer = []byte("offSetOfLastAncientFreezer")
 
-	//frozenOfAncientDBKey tracks the block number for ancientDB to save.
+	// frozenOfAncientDBKey tracks the block number for ancientDB to save.
 	frozenOfAncientDBKey = []byte("FrozenOfAncientDB")
 
-	//LastSafePointBlockKey tracks the block number for block state that write disk
+	// LastSafePointBlockKey tracks the block number for block state that write disk
 	LastSafePointBlockKey = []byte("LastSafePointBlockNumber")
 
-	//PruneAncientFlag flag whether prune ancient
+	// PruneAncientFlag flag whether prune ancient
 	pruneAncientKey = []byte("PruneAncientFlag")
 
 	// badBlockKey tracks the list of bad blocks seen by local

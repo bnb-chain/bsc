@@ -43,6 +43,9 @@ const (
 
 	// ChainFreezerBlobSidecarTable indicates the name of the freezer total blob table.
 	ChainFreezerBlobSidecarTable = "blobs"
+
+	// IncrChainFreezerBlockStateIDMappingTable indicates the mapping table between block numbers and state IDs
+	IncrChainFreezerBlockStateIDMappingTable = "mapping"
 )
 
 // chainFreezerNoSnappy configures whether compression is disabled for the ancient-tables.
@@ -54,6 +57,18 @@ var chainFreezerNoSnappy = map[string]bool{
 	ChainFreezerReceiptTable:     false,
 	ChainFreezerDifficultyTable:  true,
 	ChainFreezerBlobSidecarTable: false,
+}
+
+// incrChainFreezerNoSnappy configures whether compression is disabled for the ancient-tables.
+// Hashes and difficulties don't compress well.
+var incrChainFreezerNoSnappy = map[string]bool{
+	ChainFreezerHeaderTable:                  false,
+	ChainFreezerHashTable:                    true,
+	ChainFreezerBodiesTable:                  false,
+	ChainFreezerReceiptTable:                 false,
+	ChainFreezerDifficultyTable:              true,
+	ChainFreezerBlobSidecarTable:             false,
+	IncrChainFreezerBlockStateIDMappingTable: false,
 }
 
 var additionTables = []string{ChainFreezerBlobSidecarTable}
@@ -83,8 +98,8 @@ var stateFreezerNoSnappy = map[string]bool{
 }
 
 var additionIncrTables = []string{ChainFreezerHeaderTable, ChainFreezerHashTable, ChainFreezerBodiesTable, ChainFreezerReceiptTable,
-	ChainFreezerDifficultyTable, stateHistoryMeta, stateHistoryAccountIndex, stateHistoryStorageIndex,
-	stateHistoryAccountData, stateHistoryStorageData, incrStateHistoryTrieNodesData}
+	ChainFreezerDifficultyTable, IncrChainFreezerBlockStateIDMappingTable, stateHistoryMeta, stateHistoryAccountIndex,
+	stateHistoryStorageIndex, stateHistoryAccountData, stateHistoryStorageData, incrStateHistoryTrieNodesData}
 
 // incrStateFreezerNoSnappy configures whether compression is disabled for the incremental state freezer.
 var incrStateFreezerNoSnappy = map[string]bool{
@@ -144,11 +159,13 @@ func NewIncrStateFreezer(ancientDir string, readOnly bool, offset, blockLimit ui
 	// 	incrStateFreezerNoSnappy, blockLimit)
 }
 
+// OpenIncrStateFreezer
 func OpenIncrStateFreezer(incrStateDir string, readOnly bool) (ethdb.ResettableAncientStore, error) {
 	if incrStateDir == "" {
 		log.Error("Incremental state directory is empty")
 		return nil, errors.New("empty incr state directory")
 	}
+
 	return newIncrFreezer(incrStateDir, "eth/db/incremental/state", readOnly, 0, stateHistoryTableSize,
 		incrStateFreezerNoSnappy, 1)
 }
@@ -160,7 +177,18 @@ func NewIncrChainFreezer(ancientDir string, readOnly bool, offset, blockLimit ui
 	}
 
 	name := filepath.Join(ancientDir, IncrementalPath, ChainFreezerName)
-	return newResettableFreezer(name, "eth/db/chain", readOnly, offset, stateHistoryTableSize, chainFreezerNoSnappy, true)
+	return newResettableFreezer(name, "eth/db/chain", readOnly, offset, stateHistoryTableSize, incrChainFreezerNoSnappy, true)
 	// return newIncrFreezer(name, "eth/db/incremental/chain", readOnly, offset, stateHistoryTableSize,
 	// 	chainFreezerNoSnappy, blockLimit)
+}
+
+// OpenIncrChainFreezer
+func OpenIncrChainFreezer(incrStateDir string, readOnly bool) (ethdb.ResettableAncientStore, error) {
+	if incrStateDir == "" {
+		log.Error("Incremental state directory is empty")
+		return nil, errors.New("empty incr chain directory")
+	}
+
+	return newIncrFreezer(incrStateDir, "eth/db/incremental/chain", readOnly, 0, stateHistoryTableSize,
+		incrChainFreezerNoSnappy, 1)
 }

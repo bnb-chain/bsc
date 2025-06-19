@@ -325,7 +325,7 @@ func ReadIncrStateTrieNodes(db ethdb.AncientReaderOp, id uint64) ([]byte, error)
 }
 
 // WriteIncrBlockData writes the provided block data to the database.
-func WriteIncrBlockData(db ethdb.AncientWriter, number uint64, hash, header, body, receipts, td, sidecars []byte, isCancun bool) error {
+func WriteIncrBlockData(db ethdb.AncientWriter, number, stateID uint64, hash, header, body, receipts, td, sidecars []byte, isCancun bool) error {
 	_, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
 		if err := op.AppendRaw(ChainFreezerHashTable, number, hash); err != nil {
 			return err
@@ -342,6 +342,9 @@ func WriteIncrBlockData(db ethdb.AncientWriter, number uint64, hash, header, bod
 		if err := op.AppendRaw(ChainFreezerDifficultyTable, number, td); err != nil {
 			return err
 		}
+		if err := op.AppendRaw(IncrChainFreezerBlockStateIDMappingTable, number, encodeBlockNumber(stateID)); err != nil {
+			return err
+		}
 		if isCancun {
 			if err := op.AppendRaw(ChainFreezerBlobSidecarTable, number, sidecars); err != nil {
 				return err
@@ -352,17 +355,37 @@ func WriteIncrBlockData(db ethdb.AncientWriter, number uint64, hash, header, bod
 	return err
 }
 
-// WriteIncrStateFirstID writes the first state id to the database
-func WriteIncrStateFirstID(db ethdb.KeyValueWriter, firstStateID uint64) error {
-	if err := db.Put(incrStateFirstIDKey, encodeBlockNumber(firstStateID)); err != nil {
+// WriteIncrFirstBlockNumber writes the first block number to the database
+func WriteIncrFirstBlockNumber(db ethdb.KeyValueWriter, firstBlockNumber uint64) error {
+	if err := db.Put(incrFirstBlockKey, encodeBlockNumber(firstBlockNumber)); err != nil {
+		log.Crit("Failed to store the first block number", "err", err)
+	}
+	return nil
+}
+
+// ReadIncrFirstBlockNumber reads the first block number from the database
+func ReadIncrFirstBlockNumber(db ethdb.KeyValueReader) uint64 {
+	data, err := db.Get(incrFirstBlockKey)
+	if err != nil {
+		log.Crit("Failed to read the first block number", "err", err)
+	}
+	if len(data) != 8 {
+		return 0
+	}
+	return binary.BigEndian.Uint64(data)
+}
+
+// WriteIncrFirstStateID writes the first state id to the database
+func WriteIncrFirstStateID(db ethdb.KeyValueWriter, firstStateID uint64) error {
+	if err := db.Put(incrFirstBlockKey, encodeBlockNumber(firstStateID)); err != nil {
 		log.Crit("Failed to store the first state id", "err", err)
 	}
 	return nil
 }
 
-// ReadIncrStateFirstID reads the first state id from the database
-func ReadIncrStateFirstID(db ethdb.KeyValueReader) uint64 {
-	data, err := db.Get(incrStateFirstIDKey)
+// ReadIncrFirstStateID reads the first state id from the database
+func ReadIncrFirstStateID(db ethdb.KeyValueReader) uint64 {
+	data, err := db.Get(incrFirstStateIDKey)
 	if err != nil {
 		log.Crit("Failed to read the first state id", "err", err)
 	}
@@ -386,6 +409,9 @@ func ResetEmptyIncrChainTable(db ethdb.AncientWriter, next uint64, isCancun bool
 		return err
 	}
 	if err := db.ResetTable(ChainFreezerDifficultyTable, next, true); err != nil {
+		return err
+	}
+	if err := db.ResetTable(IncrChainFreezerBlockStateIDMappingTable, next, true); err != nil {
 		return err
 	}
 	if isCancun {

@@ -75,6 +75,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		BlobExtraReserve                   uint64
 		MaximumBlockHeight                 uint64
 		EnableIncrementalSnapshots         bool
+		IncrementalSnapshotPath            string
 		IncrementalSnapshotBlockInterval   uint64
 		MaximumRetainedIncrementalSnapshot uint64
 	}
@@ -137,6 +138,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.BlobExtraReserve = c.BlobExtraReserve
 	enc.MaximumBlockHeight = c.MaximumBlockHeight
 	enc.EnableIncrementalSnapshots = c.EnableIncrementalSnapshots
+	enc.IncrementalSnapshotPath = c.IncrementalSnapshotPath
 	enc.IncrementalSnapshotBlockInterval = c.IncrementalSnapshotBlockInterval
 	enc.MaximumRetainedIncrementalSnapshot = c.MaximumRetainedIncrementalSnapshot
 	return &enc, nil
@@ -203,6 +205,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		BlobExtraReserve                   *uint64
 		MaximumBlockHeight                 *uint64
 		EnableIncrementalSnapshots         *bool
+		IncrementalSnapshotPath            *string
 		IncrementalSnapshotBlockInterval   *uint64
 		MaximumRetainedIncrementalSnapshot *uint64
 	}
@@ -383,6 +386,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.EnableIncrementalSnapshots != nil {
 		c.EnableIncrementalSnapshots = *dec.EnableIncrementalSnapshots
+	}
+	if dec.IncrementalSnapshotPath != nil {
+		c.IncrementalSnapshotPath = *dec.IncrementalSnapshotPath
 	}
 	if dec.IncrementalSnapshotBlockInterval != nil {
 		c.IncrementalSnapshotBlockInterval = *dec.IncrementalSnapshotBlockInterval
