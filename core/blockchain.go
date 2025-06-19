@@ -176,11 +176,12 @@ type CacheConfig struct {
 	StateHistory        uint64        // Number of blocks from head whose state histories are reserved.
 	StateScheme         string        // Scheme used to store ethereum states and merkle tree nodes on top
 	PathSyncFlush       bool          // Whether sync flush the trienodebuffer of pathdb to disk.
-	JournalFilePath     string
-	JournalFile         bool
-	MaximumBlockHeight  uint64 // The maximum block height that geth can sync blocks to
-	EnableIncrHistory   bool   // Flag whether the freezer db stores incremental block and state history
-	IncrHistory         uint64 // Amount of block and state history stored in incremental freezer db
+	JournalFilePath     string        // The path to store journal file which is used in pathdb
+	JournalFile         bool          // Whether to use single file to store journal data in pathdb
+	MaximumBlockHeight  uint64        // The maximum block height that geth can sync blocks to
+	EnableIncrHistory   bool          // Flag whether the freezer db stores incremental block and state history
+	IncrHistoryPath     string        // The path to store incremental block and chain files
+	IncrHistory         uint64        // Amount of block and state history stored in incremental freezer db
 
 	SnapshotNoBuild bool // Whether the background generation is allowed
 	SnapshotWait    bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
@@ -208,6 +209,7 @@ func (c *CacheConfig) triedbConfig(isVerkle bool) *triedb.Config {
 			JournalFilePath:   c.JournalFilePath,
 			JournalFile:       c.JournalFile,
 			EnableIncrHistory: c.EnableIncrHistory,
+			IncrHistoryPath:   c.IncrHistoryPath,
 			IncrHistory:       c.IncrHistory,
 		}
 	}

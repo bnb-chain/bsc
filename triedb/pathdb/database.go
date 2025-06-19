@@ -135,6 +135,7 @@ type Config struct {
 	JournalFile          bool   // Flag whether store memory diffLayer into file
 	EnableIncrHistory    bool   // Flag whether the freezer db stores incremental block and state history
 	IncrHistory          uint64 // Amount of block and state history stored in incremental freezer db
+	IncrHistoryPath      string // The path to store incremental block and chain files
 	IncrBlockStartNumber uint64 // Starting block number for incremental block data storage
 }
 
@@ -271,7 +272,14 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 	if err := db.repairHistory(ancientDir); err != nil {
 		log.Crit("Failed to repair state history", "err", err)
 	}
+
 	if db.config.EnableIncrHistory {
+		if db.config.IncrHistoryPath != "" {
+			ancientDir = db.config.IncrHistoryPath
+		} else {
+			db.config.IncrHistoryPath = ancientDir
+		}
+
 		if err := db.repairIncrStateHistory(ancientDir); err != nil {
 			log.Crit("Failed to repair incremental state history", "err", err)
 		}

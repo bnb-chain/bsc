@@ -312,12 +312,22 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	}
 
 	if dl.db.config.EnableIncrHistory {
-		if err := rawdb.ResetEmptyIncrStateTable(dl.db.incrStateFreezer, bottom.stateID()-1); err != nil {
-			log.Error("Failed to reset empty incr state freezer", "err", err)
+		if err := dl.checkIncrStateEmpty(bottom.stateID()); err != nil {
+			log.Error("Failed to check incr chain freezer is empty", "err", err)
+			return nil, err
 		}
 
+		if err := rawdb.ResetEmptyIncrStateTable(dl.db.incrStateFreezer, bottom.stateID()-1); err != nil {
+			log.Error("Failed to reset empty incr state freezer", "err", err)
+			return nil, err
+		}
 		if err := writeIncrHistory(dl.db.incrStateFreezer, bottom); err != nil {
 			log.Error("Failed to write incremental state history", "err", err)
+			return nil, err
+		}
+
+		if err := rawdb.ResetEmptyIncrChainTable(dl.db.incrChainFreezer, bottom.block, false); err != nil {
+			log.Error("Failed to reset empty incr chain freezer", "err", err)
 			return nil, err
 		}
 		if err := dl.writeIncrementalBlockData(bottom.block); err != nil {
@@ -439,57 +449,70 @@ func (dl *diskLayer) resetCache() {
 	}
 }
 
-func (dl *diskLayer) checkIncrChainEmpty() error {
-	item, err := dl.db.incrChainFreezer.Ancients()
+// IncrDataType represents the type of incremental data
+type IncrDataType int
+
+const (
+	IncrChainData IncrDataType = iota
+	IncrStateData
+)
+
+// checkIncrDataEmpty is a generic function to check if incremental data is empty
+// and initialize it with the first record if needed
+func (dl *diskLayer) checkIncrDataEmpty(dataType IncrDataType, value uint64) error {
+	var (
+		freezer    ethdb.ResettableAncientStore
+		dataName   string
+		logMessage string
+		writeFunc  func(ethdb.KeyValueWriter, uint64) error
+	)
+
+	switch dataType {
+	case IncrChainData:
+		freezer = dl.db.incrChainFreezer
+		dataName = "incrChainFreezer"
+		logMessage = "Put first block number in pebble"
+		writeFunc = rawdb.WriteIncrFirstBlockNumber
+	case IncrStateData:
+		freezer = dl.db.incrStateFreezer
+		dataName = "incrStateFreezer"
+		logMessage = "Put first state id in pebble"
+		writeFunc = rawdb.WriteIncrFirstStateID
+	default:
+		return fmt.Errorf("unknown incremental data type: %d", dataType)
+	}
+
+	item, err := freezer.Ancients()
 	if err != nil {
-		log.Error("Failed to get incrChainFreezer ancients", "err", err)
+		log.Error(fmt.Sprintf("Failed to get %s ancients", dataName), "err", err)
 		return err
 	}
 
 	if item == 0 {
-		log.Info("Put first block number in pebble", "first block number", dl.db.config.IncrBlockStartNumber)
-		ancient, _ := dl.db.diskdb.AncientDatadir()
-		path := filepath.Join(ancient, rawdb.IncrementalPath)
-		db, err := pebble.New(path, 1000, 100, "incr/pebble", false)
+		pebblePath := filepath.Join(dl.db.config.IncrHistoryPath, rawdb.IncrementalPath)
+		db, err := pebble.New(pebblePath, 1000, 100, "incremental", false)
 		if err != nil {
-			log.Error("Failed to create incr/pebble", "err", err)
+			log.Error("Failed to create pebble to store incremental data", "path", pebblePath, "err", err)
 			return err
 		}
+		defer db.Close()
 
-		if err = rawdb.WriteIncrFirstStateID(db, dl.db.config.IncrBlockStartNumber); err != nil {
-			log.Error("Failed to write first state id into db", "err", err)
+		if err = writeFunc(db, value); err != nil {
+			log.Error("Failed to write first record into db", "type", dataName, "value", value, "err", err)
 			return err
 		}
+		log.Info(logMessage, "type", dataName, "value", value)
 	}
+
 	return nil
 }
 
+func (dl *diskLayer) checkIncrChainEmpty() error {
+	return dl.checkIncrDataEmpty(IncrChainData, dl.db.config.IncrBlockStartNumber)
+}
+
 func (dl *diskLayer) checkIncrStateEmpty(stateID uint64) error {
-	item, err := dl.db.incrStateFreezer.Ancients()
-	if err != nil {
-		log.Error("Failed to get incrStateFreezer ancients", "err", err)
-		return err
-	}
-	// a, _ := dl.db.incrStateFreezer.Tail()
-	// b, _ := dl.db.incrStateFreezer.ItemAmountInAncient()
-	// log.Info("Print incr state ancient info", "item", item, "a", a, "b", b)
-
-	if item == 0 {
-		log.Info("Put first state id in pebble", "first state id", stateID)
-		ancient, _ := dl.db.diskdb.AncientDatadir()
-		path := filepath.Join(ancient, rawdb.IncrementalPath)
-		db, err := pebble.New(path, 1000, 100, "incr/pebble", false)
-		if err != nil {
-			log.Error("Failed to create incr/pebble", "err", err)
-			return err
-		}
-
-		if err = rawdb.WriteIncrFirstStateID(db, stateID); err != nil {
-			log.Error("Failed to write first state id into db", "err", err)
-			return err
-		}
-	}
-	return nil
+	return dl.checkIncrDataEmpty(IncrStateData, stateID)
 }
 
 // writeIncrementalBlockData writes block data to incremental freezer
@@ -500,18 +523,16 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber uint64) error {
 		log.Crit("Incremental block start number shouldn't be 0")
 	}
 
-	// Only write blocks at or after the start number
 	if blockNumber < startBlockNumber {
 		log.Crit("Passed block number should be greater than or equal to IncrBlockStartNumber",
 			"blockNumber", blockNumber, "incrBlockStartNumber", startBlockNumber)
 		return nil
 	}
 
-	// Get the last processed block number
-	lastBlock := dl.lastBlock.Load()
-
-	// Determine the range of blocks to process
-	var startBlock uint64
+	var (
+		lastBlock  = dl.lastBlock.Load()
+		startBlock uint64
+	)
 	if lastBlock == 0 {
 		// First time processing, start from configured start block
 		startBlock = startBlockNumber
@@ -542,7 +563,6 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber uint64) error {
 		}
 	}
 
-	// Update the last processed block number
 	dl.lastBlock.Store(blockNumber)
 
 	log.Debug("Incremental block data processing completed",

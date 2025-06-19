@@ -322,6 +322,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			JournalFile:         config.JournalFileEnabled,
 			MaximumBlockHeight:  config.MaximumBlockHeight,
 			EnableIncrHistory:   config.EnableIncrementalSnapshots,
+			IncrHistoryPath:     config.IncrementalSnapshotPath,
 			IncrHistory:         config.IncrementalSnapshotBlockInterval,
 		}
 	)
