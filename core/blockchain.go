@@ -558,6 +558,18 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		}
 	}
 
+	// Initialize incremental block start number for PathDB after potential chain rewinds
+	// This ensures we use the correct final head block number
+	if bc.cacheConfig.StateScheme == rawdb.PathScheme {
+		log.Info("statedb commit", "current", bc.CurrentBlock().Number.Uint64(),
+			"snap", bc.CurrentSnapBlock().Number.Uint64(), "safe", bc.CurrentSafeBlock().Number.Uint64(),
+			"final", bc.CurrentFinalBlock().Number.Uint64(), "head block", bc.CurrentHeader().Number.Uint64())
+
+		currentBlockNumber := bc.CurrentBlock().Number.Uint64()
+		bc.triedb.SetIncrBlockStartNumber(currentBlockNumber)
+		log.Info("Set incremental block start number for PathDB", "startBlock", currentBlockNumber)
+	}
+
 	// Load any existing snapshot, regenerating it if loading failed
 	if bc.cacheConfig.SnapshotLimit > 0 {
 		// If the chain was rewound past the snapshot persistent layer (causing
@@ -801,19 +813,9 @@ func (bc *BlockChain) loadLastState() error {
 			}
 		}
 	}
-
 	if pivot := rawdb.ReadLastPivotNumber(bc.db); pivot != nil {
 		log.Info("Loaded last snap-sync pivot marker", "number", *pivot)
 	}
-
-	// Initialize incremental block start number for PathDB after potential chain rewinds
-	// This ensures we use the correct final head block number
-	if bc.cacheConfig.StateScheme == rawdb.PathScheme {
-		currentBlockNumber := bc.CurrentBlock().Number.Uint64()
-		bc.triedb.SetIncrBlockStartNumber(currentBlockNumber)
-		log.Info("Set incremental block start number for PathDB", "startBlock", currentBlockNumber)
-	}
-
 	return nil
 }
 
