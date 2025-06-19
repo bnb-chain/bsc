@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
-	"sync/atomic"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
@@ -92,14 +91,13 @@ func NewTrieNodeBuffer(sync bool, limit int, nodes *nodeSet, states *stateSet, l
 
 // diskLayer is a low level persistent layer built on top of a key-value store.
 type diskLayer struct {
-	root      common.Hash      // Immutable, root hash to which this layer was made for
-	id        uint64           // Immutable, corresponding state id
-	db        *Database        // Path-based trie database
-	nodes     *fastcache.Cache // GC friendly memory cache of clean nodes
-	buffer    trienodebuffer   // Dirty buffer to aggregate writes of nodes and states
-	stale     bool             // Signals that the layer became stale (state progressed)
-	lock      sync.RWMutex     // Lock used to protect stale flag
-	lastBlock atomic.Uint64    // Record last stored block number
+	root   common.Hash      // Immutable, root hash to which this layer was made for
+	id     uint64           // Immutable, corresponding state id
+	db     *Database        // Path-based trie database
+	nodes  *fastcache.Cache // GC friendly memory cache of clean nodes
+	buffer trienodebuffer   // Dirty buffer to aggregate writes of nodes and states
+	stale  bool             // Signals that the layer became stale (state progressed)
+	lock   sync.RWMutex     // Lock used to protect stale flag
 }
 
 // newDiskLayer creates a new disk layer based on the passing arguments.
@@ -535,7 +533,7 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) erro
 	// }
 
 	var (
-		lastBlock  = dl.lastBlock.Load()
+		lastBlock  = dl.db.lastBlock.Load()
 		startBlock uint64
 	)
 	if lastBlock == 0 && blockNumber < startBlockNumber {
@@ -562,7 +560,7 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) erro
 		}
 	}
 
-	dl.lastBlock.Store(blockNumber)
+	dl.db.lastBlock.Store(blockNumber)
 
 	log.Info("Incremental block data processing completed",
 		"startBlock", startBlock, "endBlock", blockNumber, "totalProcessed", blockNumber-startBlock+1)
