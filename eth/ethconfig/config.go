@@ -58,7 +58,7 @@ var Defaults = Config{
 	DatabaseCache:          512,
 	TrieCleanCache:         154,
 	TrieDirtyCache:         256,
-	TrieTimeout:            60 * time.Minute,
+	TrieTimeout:            10 * time.Minute,
 	TriesInMemory:          128,
 	TriesVerifyMode:        core.LocalVerify,
 	SnapshotCache:          102,
@@ -124,6 +124,8 @@ type Config struct {
 	StateScheme        string `toml:",omitempty"` // State scheme used to store ethereum state and merkle trie nodes on top
 	PathSyncFlush      bool   `toml:",omitempty"` // State scheme used to store ethereum state and merkle trie nodes on top
 	JournalFileEnabled bool   // Whether the TrieJournal is stored using journal file
+
+	DisableTxIndexer bool `toml:",omitempty"` // Whether to enable the transaction indexer
 
 	// RequiredBlocks is a set of block number -> hash mappings which must be in the
 	// canonical chain of all remote peers. Setting the option makes geth verify the

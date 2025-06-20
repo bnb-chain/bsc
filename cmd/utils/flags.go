@@ -827,6 +827,7 @@ var (
 		Value:    strings.Join(node.DefaultConfig.GraphQLVirtualHosts, ","),
 		Category: flags.APICategory,
 	}
+
 	WSEnabledFlag = &cli.BoolFlag{
 		Name:     "ws",
 		Usage:    "Enable the WS-RPC server",
@@ -2032,12 +2033,17 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 			ctx.Set(CacheFlag.Name, strconv.Itoa(allowance))
 		}
 	}
-	// Ensure Go's GC ignores the database cache for trigger percentage
-	cache := ctx.Int(CacheFlag.Name)
-	gogc := math.Max(20, math.Min(100, 100/(float64(cache)/1024)))
+	// if the total memory is greater than 64GB, skip the GC trigger sanitization
+	if err == nil && int(mem.Total/1024/1024) > 64000 {
+		log.Info("Skipping Go's GC trigger sanitization", "total", mem.Total/1024/1024)
+	} else {
+		// Ensure Go's GC ignores the database cache for trigger percentage
+		cache := ctx.Int(CacheFlag.Name)
+		gogc := math.Max(20, math.Min(100, 100/(float64(cache)/1024)))
 
-	log.Debug("Sanitizing Go's GC trigger", "percent", int(gogc))
-	godebug.SetGCPercent(int(gogc))
+		log.Info("Sanitizing Go's GC trigger", "percent", int(gogc))
+		godebug.SetGCPercent(int(gogc))
+	}
 
 	if ctx.IsSet(SyncTargetFlag.Name) {
 		cfg.SyncMode = ethconfig.FullSync // dev sync target forces full sync
@@ -2505,7 +2511,7 @@ func parseMiningFeatures(ctx *cli.Context, cfg *ethconfig.Config) string {
 		return ""
 	}
 	var features []string
-	if cfg.Miner.Mev.Enabled {
+	if cfg.Miner.Mev.Enabled != nil && *cfg.Miner.Mev.Enabled {
 		features = append(features, "MEV")
 	}
 	if cfg.Miner.VoteEnable {
