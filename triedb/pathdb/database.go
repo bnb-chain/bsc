@@ -280,10 +280,10 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 			db.config.IncrHistoryPath = ancientDir
 		}
 
-		if err := db.repairIncrStateHistory(ancientDir); err != nil {
+		if err = db.repairIncrStateHistory(ancientDir); err != nil {
 			log.Crit("Failed to repair incremental state history", "err", err)
 		}
-		if err := db.repairIncrChainHistory(ancientDir); err != nil {
+		if err = db.repairIncrChainHistory(ancientDir); err != nil {
 			log.Crit("Failed to repair incremental chain history", "err", err)
 		}
 	}
@@ -394,7 +394,7 @@ func (db *Database) repairIncrChainHistory(ancientDir string) error {
 	return nil
 }
 
-func (db *Database) repairIncrStateHistory(ancientDir string) *layerTree {
+func (db *Database) repairIncrStateHistory(ancientDir string) error {
 	log.Info("Open incremental state history")
 	if db.config.NoTries {
 		return nil
@@ -834,6 +834,8 @@ func (db *Database) InsertIncrState(incrDir string) error {
 		log.Error("Failed to pebble to read incremental data", "err", err)
 		return err
 	}
+	defer newDB.Close()
+
 	firstBlockNumber := rawdb.ReadIncrFirstBlockNumber(newDB)
 	log.Info("Inserting incremental state", "first block number", firstBlockNumber)
 
@@ -846,11 +848,56 @@ func (db *Database) InsertIncrState(incrDir string) error {
 	tail, _ = db.incrStateFreezer.Tail()
 	count, _ = db.incrStateFreezer.ItemAmountInAncient()
 	log.Info("Incr state info", "ancients", ancients, "tail", tail, "count", count)
-	// a := newAsyncNodeBuffer(MaxDirtyBufferSize, nil, nil, 0)
-	// if err = a.mergeIncrStateHistory(db.diskdb, db.freezer, db.incrStateFreezer, firstBlockNumber); err != nil {
-	// 	log.Error("Failed to merge incr state history", "err", err)
-	// 	return err
-	// }
+	log.Info("Layer tree", "count", db.tree.len())
+
+	// merge data into state ancient store
+	if err = db.mergeIncrHistory(tail+1, ancients); err != nil {
+		log.Error("Failed to merge incremental state history", "err", err)
+		return err
+	}
+
+	dl := db.tree.bottom()
+	if a, ok := dl.buffer.(*asyncnodebuffer); ok {
+		log.Info("async node buffer")
+		if err = a.mergeIncrTrieNodes(db.diskdb, db.freezer, db.incrStateFreezer, tail+1); err != nil {
+			log.Error("Failed to merge incremental trie nodes", "err", err)
+			return err
+		}
+	}
+	log.Info("Completed incremental state")
+	return nil
+}
+
+func (db *Database) mergeIncrHistory(firstStateID, endStateID uint64) error {
+	for i := firstStateID; i <= endStateID; i++ {
+		h, err := readIncrHistory(db.incrStateFreezer, i)
+		if err != nil {
+			log.Error("Failed to read history", "err", err)
+			return err
+		}
+
+		accountData, storageData, accountIndex, storageIndex := h.encode()
+		rawdb.WriteStateHistory(db.freezer, i, h.meta.encode(), accountIndex, storageIndex, accountData, storageData)
+	}
+	log.Info("Insert incremental state to base snapshot state ancient db", "first state ID", firstStateID,
+		"end state ID", endStateID)
+
+	tail, err := db.freezer.Tail()
+	if err != nil {
+		log.Error("Failed to get tail history", "err", err)
+		return err
+	}
+
+	limit := db.config.StateHistory
+	if (limit != 0) && (endStateID-tail > limit) {
+		oldest := endStateID - limit + 1
+		pruned, err := truncateFromTail(db.diskdb, db.freezer, oldest-1)
+		if err != nil {
+			log.Error("Failed to truncate state freezer", "err", err)
+			return err
+		}
+		log.Info("Pruned state history", "items", pruned, "tail_id", oldest)
+	}
 	return nil
 }
 

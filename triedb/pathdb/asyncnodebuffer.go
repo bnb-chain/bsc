@@ -34,14 +34,13 @@ func newAsyncNodeBuffer(limit int, nodes *nodeSet, states *stateSet, layers uint
 	}
 }
 
-func (a *asyncnodebuffer) mergeIncrStateHistory(db ethdb.KeyValueStore, freezer ethdb.AncientWriter,
+func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer ethdb.AncientWriter,
 	incrFreezer ethdb.ResettableAncientStore, firstStateID uint64) error {
 	head, err := incrFreezer.Ancients()
 	if err != nil {
 		log.Error("Failed to get ancients from incr state freezer", "error", err)
 		return err
 	}
-	// tail state id should be equal to persistent state id
 	tail, err := incrFreezer.Tail()
 	if err != nil {
 		log.Error("Failed to get tail incr state freezer", "error", err)
@@ -51,13 +50,19 @@ func (a *asyncnodebuffer) mergeIncrStateHistory(db ethdb.KeyValueStore, freezer 
 	log.Info("Ancient db meta info", "persistent_state_id", persistID, "head_state_id", head,
 		"tail_state_id", tail, "total_state_num", head-tail, "firstStateID", firstStateID)
 
+	log.Info("Before place incr state data", "empty", a.empty(), "layers", a.getLayers())
 	// TODO: async read history and commit
-	// check persistent state id with incr state id
 	for i := firstStateID; i <= head; i++ {
-		_, trieNodes, _ := readIncrHistory(incrFreezer, i)
+		trieNodes, err := readIncrTrieNodes(incrFreezer, i)
+		if err != nil {
+			return err
+		}
+		if i%1000 == 0 {
+			log.Info("trie nodes length", "length", len(trieNodes))
+		}
 		nodesSet := newNodeSet(trieNodes)
 		if err = a.current.commit(nodesSet, newStates(nil, nil, false)); err != nil {
-			log.Crit("Failed to commit history", "error", err)
+			log.Error("Failed to commit history", "error", err)
 			return err
 		}
 		if err = a.flush(db, freezer, nil, i, false); err != nil {
@@ -66,11 +71,13 @@ func (a *asyncnodebuffer) mergeIncrStateHistory(db ethdb.KeyValueStore, freezer 
 		}
 	}
 
+	log.Info("Force flush async node buffer", "empty", a.empty(), "layers", a.getLayers())
 	if err = a.flush(db, freezer, nil, head, true); err != nil {
 		log.Error("Failed to force flush history", "error", err)
 		return err
 	}
 	a.waitAndStopFlushing()
+	log.Info("Finished merging incremental state history", "empty", a.empty(), "layers", a.getLayers())
 
 	return nil
 }
