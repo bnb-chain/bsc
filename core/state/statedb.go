@@ -1507,18 +1507,6 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 			}
 		}
 	}
-	// else {
-	// 	// If trie database is enabled, commit the block without state into pathdb for incremental data
-	// 	if db := s.db.TrieDB(); db != nil && !s.noTrie {
-	// 		start := time.Now()
-	// 		if err := db.UpdateIncrEmptyBlock(block); err != nil {
-	// 			return nil, err
-	// 		}
-	// 		if metrics.EnabledExpensive() {
-	// 			s.TrieDBCommits += time.Since(start)
-	// 		}
-	// 	}
-	// }
 	s.reader, _ = s.db.Reader(s.originalRoot)
 	return ret, err
 }

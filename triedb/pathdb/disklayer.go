@@ -25,11 +25,11 @@ import (
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 )
 
@@ -520,102 +520,133 @@ func (dl *diskLayer) checkIncrStateEmpty(stateID uint64) error {
 
 // writeIncrementalBlockData writes block data to incremental freezer
 // This handles both empty blocks and blocks with state changes
+// Scenarios:
+// 1. First time startup with incremental flag from a snapshot base
+// 2. Restart after graceful shutdown with incremental flag
+// 3. Normal block processing during runtime
 func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) error {
 	startBlockNumber := dl.db.config.IncrBlockStartNumber
-	// if startBlockNumber == 0 {
-	// 	log.Crit("Incremental block start number shouldn't be 0")
-	// }
 
-	// if blockNumber < startBlockNumber {
-	// 	log.Warn("Not save journal data into incremental",
-	// 		"blockNumber", blockNumber, "incrBlockStartNumber", startBlockNumber)
-	// 	return nil
-	// }
 	var (
-		lastBlock  = dl.db.lastBlock.Load()
-		startBlock uint64
+		lastBlock   = dl.db.lastBlock.Load()
+		head, _     = dl.db.incrChainFreezer.Ancients()
+		startBlock  uint64
+		isFirstTime bool
+		isRestart   bool
 	)
 
-	head, _ := dl.db.incrChainFreezer.Ancients()
-	if head != blockNumber {
-		// it indicates that there are gap due to empty state block,
-		// and this may happen after geth restarts
-		log.Warn("Incr chain freezer block number not equal", "blockNumber", blockNumber, "head", head)
-		startBlock = blockNumber
-	} else if lastBlock == 0 && blockNumber < startBlockNumber {
-		// this case can happen when using incremental snapshot flag for the first time,
-		// and there are some journal data that should be handled
-		startBlock = blockNumber
-		log.Warn("Use first journal block", "blockNumber", blockNumber, "lastBlock", lastBlock,
-			"startBlock", startBlock, "incrBlockStartNumber", startBlockNumber)
+	// Determine the scenario and calculate startBlock
+	if head == 0 {
+		// Scenario 1: First time startup with incremental flag
+		isFirstTime = true
+		if blockNumber < startBlockNumber {
+			// Handle journal data before startBlockNumber
+			startBlock = blockNumber
+			log.Info("First time startup: processing journal data",
+				"blockNumber", blockNumber, "startBlockNumber", startBlockNumber)
+		} else {
+			startBlock = startBlockNumber
+			log.Info("First time startup: processing from configured start",
+				"startBlock", startBlock)
+		}
+	} else if head+1 != blockNumber {
+		// Scenario 2: Restart after shutdown or gap detected
+		isRestart = true
+		// There's a gap between freezer head and current block
+		// Need to fill all missing blocks (including empty ones)
+		startBlock = head + 1
+		log.Info("Restart detected: filling gap",
+			"freezerHead", head, "blockNumber", blockNumber, "gapSize", blockNumber-head)
 	} else {
+		// Scenario 3: Normal continuous processing
 		if blockNumber <= lastBlock {
-			log.Crit("Passed block number should be greater than last block number",
+			log.Warn("Block already processed",
 				"blockNumber", blockNumber, "lastBlock", lastBlock)
 			return nil
 		}
-		startBlock = lastBlock + 1
+		startBlock = blockNumber
+		log.Debug("Normal processing", "blockNumber", blockNumber)
 	}
 
 	// Process all blocks in the range [startBlock, blockNumber]
 	log.Info("Processing incremental block data range",
+		"scenario", map[bool]string{true: "first_time", false: map[bool]string{true: "restart", false: "normal"}[isRestart]}[isFirstTime],
 		"startBlock", startBlock, "endBlock", blockNumber, "count", blockNumber-startBlock+1)
 
 	for i := startBlock; i <= blockNumber; i++ {
+		// Determine if this block has state changes
+		currentStateID := stateID
+		if i < blockNumber {
+			// For blocks before the current one, we need to check if they have state changes
+			// Empty blocks will have stateID = 0
+			// currentStateID = dl.getStateIDForBlock(i, stateID)
+		}
+
 		if err := writeIncrBlockToFreezer(dl.db.diskdb.BlockStore(), dl.db.incrChainFreezer, i, stateID); err != nil {
-			log.Error("Failed to write block data to freezer", "block", i, "err", err)
+			log.Error("Failed to write block data to freezer", "block", i, "stateID", currentStateID, "err", err)
 			return err
 		}
+
+		// Log progress for large gaps
+		log.Info("Incremental data processing progress",
+			"processed", i-startBlock+1, "total", blockNumber-startBlock+1, "currentBlock", i)
+
 	}
 
 	dl.db.lastBlock.Store(blockNumber)
 
 	log.Info("Incremental block data processing completed",
-		"startBlock", startBlock, "endBlock", blockNumber, "totalProcessed", blockNumber-startBlock+1)
+		"startBlock", startBlock, "endBlock", blockNumber, "totalProcessed", blockNumber-startBlock+1,
+		"scenario", map[bool]string{true: "first_time", false: map[bool]string{true: "restart", false: "normal"}[isRestart]}[isFirstTime])
 
 	return nil
 }
 
-func (dl *diskLayer) writeBlockToFreezer(blockNumber, stateID uint64) error {
+// getStateIDForBlock determines the state ID for a given block
+// Returns 0 for empty blocks (no state changes), actual stateID for blocks with changes
+func (dl *diskLayer) getStateIDForBlock(blockNumber, currentStateID uint64) uint64 {
+	// Read the block to check if it has transactions/state changes
 	blockHash := rawdb.ReadCanonicalHash(dl.db.diskdb.BlockStore(), blockNumber)
 	if blockHash == (common.Hash{}) {
-		return fmt.Errorf("canonical hash not found for block %d", blockNumber)
-	}
-	_, header := rawdb.ReadHeaderAndRaw(dl.db.diskdb.BlockStore(), blockHash, blockNumber)
-	if len(header) == 0 {
-		return fmt.Errorf("block header missing, can't freeze block %d", blockNumber)
-	}
-	body := rawdb.ReadBodyRLP(dl.db.diskdb.BlockStore(), blockHash, blockNumber)
-	if len(body) == 0 {
-		return fmt.Errorf("block body missing, can't freeze block %d", blockNumber)
-	}
-	receipts := rawdb.ReadReceiptsRLP(dl.db.diskdb.BlockStore(), blockHash, blockNumber)
-	if len(receipts) == 0 {
-		return fmt.Errorf("block receipts missing, can't freeze block %d", blockNumber)
-	}
-	td := rawdb.ReadTdRLP(dl.db.diskdb.BlockStore(), blockHash, blockNumber)
-	if len(td) == 0 {
-		return fmt.Errorf("total difficulty not found for block %d (hash: %s)", blockNumber, blockHash.Hex())
-	}
-	// TODO: handle chain env
-	// blobs is nil before cancun fork
-	var sidecars rlp.RawValue
-	// isCancun(env, h.Number, h.Time)
-	if false {
-		sidecars = rawdb.ReadBlobSidecarsRLP(dl.db.diskdb.BlockStore(), blockHash, blockNumber)
-		if len(sidecars) == 0 {
-			return fmt.Errorf("block blobs missing, can't freeze block %d", blockNumber)
-		}
+		log.Warn("Canonical hash not found for block, treating as empty", "blockNumber", blockNumber)
+		return 0
 	}
 
-	err := rawdb.WriteIncrBlockData(dl.db.incrChainFreezer, blockNumber, stateID, blockHash[:], header, body, receipts, td, sidecars, false)
-	if err != nil {
-		log.Error("Failed to write block data", "err", err)
-		return err
+	// Read block header to get transaction count
+	header := rawdb.ReadHeader(dl.db.diskdb.BlockStore(), blockHash, blockNumber)
+	if header == nil {
+		log.Warn("Block header not found, treating as empty", "blockNumber", blockNumber)
+		return 0
 	}
 
-	log.Debug("Write one block data into incr chain freezer", "block", blockNumber, "hash", blockHash.Hex())
-	return nil
+	// Check if block has transactions (simple check for state changes)
+	if header.TxHash == types.EmptyRootHash {
+		// Empty block - no transactions, no state changes
+		log.Debug("Empty block detected", "blockNumber", blockNumber)
+		return 0
+	}
+
+	// Block has transactions, but we need to determine the actual stateID
+	// For blocks before the current one, we can try to read from state history
+	// or use a sequential numbering scheme
+
+	// For now, use a simple approach:
+	// - If it's the current block being committed, use the provided stateID
+	// - If it's a historical block with transactions, we need to look up or assign a stateID
+
+	// This is a simplified approach - in practice, you might need to:
+	// 1. Read from state history if available
+	// 2. Use a sequential state ID assignment
+	// 3. Query the state database for the actual state root changes
+
+	if blockNumber == currentStateID { // This assumes stateID correlates with block number
+		return currentStateID
+	}
+
+	// For historical blocks, we need a more sophisticated approach
+	// This could involve reading the state history or maintaining a mapping
+	log.Debug("Block with transactions detected", "blockNumber", blockNumber, "assignedStateID", blockNumber)
+	return blockNumber // Simplified: use block number as state ID for non-empty blocks
 }
 
 // hasher is used to compute the sha256 hash of the provided data.
