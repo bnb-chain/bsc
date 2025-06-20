@@ -413,13 +413,3 @@ func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
 	}
 	pdb.SetIncrBlockStartNumber(startBlock)
 }
-
-// UpdateIncrEmptyBlock
-func (db *Database) UpdateIncrEmptyBlock(block uint64) error {
-	pdb, ok := db.backend.(*pathdb.Database)
-	if !ok {
-		log.Error("Not supported")
-		return nil
-	}
-	return pdb.UpdateIncrEmptyBlock(block)
-}
