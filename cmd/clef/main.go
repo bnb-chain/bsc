@@ -1085,6 +1085,14 @@ func GenDoc(ctx *cli.Context) error {
 		}
 		output []string
 		add    = func(name, desc string, v interface{}) {
+			// Redact sensitive fields if the object is of a sensitive type
+			switch obj := v.(type) {
+			case *core.UserInputRequest:
+				obj.Prompt = "REDACTED"
+				obj.IsPassword = false // Ensure sensitive flag is not exposed
+			case *core.UserInputResponse:
+				obj.Text = "REDACTED"
+			}
 			if data, err := json.MarshalIndent(v, "", "  "); err == nil {
 				output = append(output, fmt.Sprintf("### %s\n\n%s\n\nExample:\n```json\n%s\n```", name, desc, data))
 			} else {
