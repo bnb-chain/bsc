@@ -536,12 +536,12 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) erro
 	if blockNumber == head {
 		// Scenario 1: First time startup with incremental flag
 		startBlock = blockNumber
-		log.Info("First time startup: processing journal data", "blockNumber", blockNumber)
+		log.Debug("Block number is equal to head", "blockNumber", blockNumber)
 	} else if blockNumber > head {
 		// There's a gap between freezer head and current block
 		// Need to fill all missing blocks (including empty ones)
 		startBlock = head
-		log.Info("Restart detected: filling gap",
+		log.Debug("Block number is greater than head",
 			"freezerHead", head, "blockNumber", blockNumber, "gapSize", blockNumber-head)
 	} else {
 		if blockNumber < head {
@@ -562,7 +562,7 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) erro
 		}
 	}
 
-	log.Info("Incremental block data processing completed",
+	log.Debug("Incremental block data processing completed",
 		"startBlock", startBlock, "endBlock", blockNumber, "totalProcessed", blockNumber-startBlock+1)
 	return nil
 }

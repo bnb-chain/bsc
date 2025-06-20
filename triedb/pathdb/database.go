@@ -820,19 +820,28 @@ func (db *Database) InsertIncrState(incrDir string) error {
 	defer incrStateFreezer.Close()
 
 	pebblePath := filepath.Join(incrDir, rawdb.IncrementalPath)
-	newDB, err := pebble.New(pebblePath, 1000, 100, "incr/pebble", true)
+	newDB, err := pebble.New(pebblePath, 10, 10, "incremental", true)
 	if err != nil {
-		log.Error("Failed to create incr/pebble", "err", err)
+		log.Error("Failed to pebble to read incremental data", "err", err)
 		return err
 	}
 	firstBlockNumber := rawdb.ReadIncrFirstBlockNumber(newDB)
 	log.Info("Inserting incremental state", "first block number", firstBlockNumber)
 
-	a := newAsyncNodeBuffer(MaxDirtyBufferSize, nil, nil, 0)
-	if err = a.mergeIncrStateHistory(db.diskdb, db.freezer, db.incrStateFreezer, firstBlockNumber); err != nil {
-		log.Error("Failed to merge incr state history", "err", err)
-		return err
-	}
+	ancients, _ := db.incrChainFreezer.Ancients()
+	tail, _ := db.incrChainFreezer.Tail()
+	count, _ := db.incrChainFreezer.ItemAmountInAncient()
+	log.Info("Incr chain info", "ancients", ancients, "tail", tail, "count", count)
+
+	ancients, _ = db.incrStateFreezer.Ancients()
+	tail, _ = db.incrStateFreezer.Tail()
+	count, _ = db.incrStateFreezer.ItemAmountInAncient()
+	log.Info("Incr state info", "ancients", ancients, "tail", tail, "count", count)
+	// a := newAsyncNodeBuffer(MaxDirtyBufferSize, nil, nil, 0)
+	// if err = a.mergeIncrStateHistory(db.diskdb, db.freezer, db.incrStateFreezer, firstBlockNumber); err != nil {
+	// 	log.Error("Failed to merge incr state history", "err", err)
+	// 	return err
+	// }
 	return nil
 }
 
@@ -888,45 +897,3 @@ func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
 		log.Info("Set incremental block start number", "startBlock", startBlock)
 	}
 }
-
-// // UpdateIncrEmptyBlock
-// func (db *Database) UpdateIncrEmptyBlock(block uint64) error {
-// 	db.lock.Lock()
-// 	defer db.lock.Unlock()
-//
-// 	startBlockNumber := db.config.IncrBlockStartNumber
-//
-// 	var (
-// 		lastBlock  = db.lastBlock.Load()
-// 		startBlock uint64
-// 	)
-// 	if lastBlock == 0 && block < startBlockNumber {
-// 		startBlock = block
-// 		log.Warn("UpdateIncrEmptyBlock", "block", block, "lastBlock", lastBlock,
-// 			"startBlock", startBlock, "incrBlockStartNumber", startBlockNumber)
-// 	} else {
-// 		if block <= lastBlock {
-// 			log.Crit("Passed block number should be greater than last block number",
-// 				"blockNumber", block, "lastBlock", lastBlock)
-// 			return nil
-// 		}
-// 		startBlock = lastBlock + 1
-// 	}
-//
-// 	log.Info("Processing incremental block data range in UpdateIncrEmptyBlock",
-// 		"startBlock", startBlock, "endBlock", block, "count", block-startBlock+1)
-//
-// 	for i := startBlock; i <= block; i++ {
-// 		if err := writeIncrBlockToFreezer(db.diskdb.BlockStore(), db.incrChainFreezer, i, 0); err != nil {
-// 			log.Error("Failed to write block data to freezer", "block", i, "err", err)
-// 			return err
-// 		}
-// 	}
-//
-// 	db.lastBlock.Store(block)
-//
-// 	log.Info("Incremental block data processing completed in UpdateIncrEmptyBlock",
-// 		"startBlock", startBlock, "endBlock", block, "totalProcessed", block-startBlock+1)
-//
-// 	return nil
-// }
