@@ -266,6 +266,7 @@ type ChainOverrides struct {
 	OverridePassedForkTime *uint64
 	OverrideLorentz        *uint64
 	OverrideMaxwell        *uint64
+	OverrideFermi          *uint64
 	OverrideVerkle         *uint64
 }
 
@@ -291,6 +292,9 @@ func (o *ChainOverrides) apply(cfg *params.ChainConfig) error {
 	}
 	if o.OverrideMaxwell != nil {
 		cfg.MaxwellTime = o.OverrideMaxwell
+	}
+	if o.OverrideFermi != nil {
+		cfg.FermiTime = o.OverrideFermi
 	}
 	if o.OverrideVerkle != nil {
 		cfg.VerkleTime = o.OverrideVerkle

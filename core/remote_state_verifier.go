@@ -7,9 +7,8 @@ import (
 	"sync"
 	"time"
 
-	lru "github.com/hashicorp/golang-lru"
-
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -48,7 +47,7 @@ type remoteVerifyManager struct {
 	taskLock      sync.RWMutex
 	tasks         map[common.Hash]*verifyTask
 	peers         verifyPeers
-	verifiedCache *lru.Cache
+	verifiedCache *lru.Cache[common.Hash, bool]
 	allowInsecure bool
 
 	// Subscription
@@ -61,7 +60,7 @@ type remoteVerifyManager struct {
 }
 
 func NewVerifyManager(blockchain *BlockChain, peers verifyPeers, allowInsecure bool) (*remoteVerifyManager, error) {
-	verifiedCache, _ := lru.New(verifiedCacheSize)
+	verifiedCache := lru.NewCache[common.Hash, bool](verifiedCacheSize)
 	block := blockchain.CurrentBlock()
 	if block == nil {
 		return nil, ErrCurrentBlockNotFound
@@ -178,7 +177,7 @@ func (vm *remoteVerifyManager) NewBlockVerifyTask(header *types.Header) {
 
 			var diffLayer *types.DiffLayer
 			if cached, ok := vm.bc.diffLayerChanCache.Get(hash); ok {
-				diffLayerCh := cached.(chan struct{})
+				diffLayerCh := cached
 				<-diffLayerCh
 				diffLayer = vm.bc.GetTrustedDiffLayer(hash)
 			}
@@ -203,9 +202,6 @@ func (vm *remoteVerifyManager) NewBlockVerifyTask(header *types.Header) {
 }
 
 func (vm *remoteVerifyManager) cacheBlockVerified(hash common.Hash) {
-	if vm.verifiedCache.Len() >= verifiedCacheSize {
-		vm.verifiedCache.RemoveOldest()
-	}
 	vm.verifiedCache.Add(hash, true)
 }
 
@@ -322,7 +318,7 @@ func (vt *verifyTask) Start(verifyCh chan common.Hash) {
 			}
 			newVerifyMsgTypeGauge(msg.verifyResult.Status.Code, msg.peerId).Inc(1)
 		case <-resend.C:
-			// if a task has run over 15s, try all the vaild peers to verify.
+			// if a task has run over 15s, try all the valid peers to verify.
 			if time.Since(vt.startAt) < tryAllPeersTime {
 				vt.sendVerifyRequest(1)
 			} else {

@@ -195,6 +195,9 @@ type Config struct {
 	// OverrideMaxwell (TODO: remove after the fork)
 	OverrideMaxwell *uint64 `toml:",omitempty"`
 
+	// OverrideFermi (TODO: remove after the fork)
+	OverrideFermi *uint64 `toml:",omitempty"`
+
 	// OverrideVerkle (TODO: remove after the fork)
 	OverrideVerkle *uint64 `toml:",omitempty"`
 
