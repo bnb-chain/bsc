@@ -890,3 +890,45 @@ func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
 		log.Info("Set incremental block start number", "startBlock", startBlock)
 	}
 }
+
+// UpdateIncrEmptyBlock
+func (db *Database) UpdateIncrEmptyBlock(block uint64) error {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+
+	startBlockNumber := db.config.IncrBlockStartNumber
+
+	var (
+		lastBlock  = db.lastBlock.Load()
+		startBlock uint64
+	)
+	if lastBlock == 0 && block < startBlockNumber {
+		startBlock = block
+		log.Warn("UpdateIncrEmptyBlock", "block", block, "lastBlock", lastBlock,
+			"startBlock", startBlock, "incrBlockStartNumber", startBlockNumber)
+	} else {
+		if block <= lastBlock {
+			log.Crit("Passed block number should be greater than last block number",
+				"blockNumber", block, "lastBlock", lastBlock)
+			return nil
+		}
+		startBlock = lastBlock + 1
+	}
+
+	log.Info("Processing incremental block data range in UpdateIncrEmptyBlock",
+		"startBlock", startBlock, "endBlock", block, "count", block-startBlock+1)
+
+	for i := startBlock; i <= block; i++ {
+		if err := writeIncrBlockToFreezer(db.diskdb.BlockStore(), db.incrChainFreezer, i, 0); err != nil {
+			log.Error("Failed to write block data to freezer", "block", i, "err", err)
+			return err
+		}
+	}
+
+	db.lastBlock.Store(block)
+
+	log.Info("Incremental block data processing completed in UpdateIncrEmptyBlock",
+		"startBlock", startBlock, "endBlock", block, "totalProcessed", block-startBlock+1)
+
+	return nil
+}

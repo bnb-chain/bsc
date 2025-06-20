@@ -503,7 +503,6 @@ func (h *history) decode(accountData, storageData, accountIndexes, storageIndexe
 			storages[accIndex.address] = slotData
 		}
 	}
-
 	h.accounts = accounts
 	h.accountList = accountList
 	h.storages = storages
@@ -620,6 +619,49 @@ func readIncrHistory(reader ethdb.AncientReader, id uint64) (*history, map[commo
 	}
 
 	return &dec, flattenTrieNodes(decodedTrieNodes), nil
+}
+
+// writeIncrBlockToFreezer writes incremental block into freezer
+func writeIncrBlockToFreezer(reader ethdb.Reader, writer ethdb.AncientWriter, blockNumber, stateID uint64) error {
+	blockHash := rawdb.ReadCanonicalHash(reader, blockNumber)
+	if blockHash == (common.Hash{}) {
+		return fmt.Errorf("canonical hash not found for block %d", blockNumber)
+	}
+	_, header := rawdb.ReadHeaderAndRaw(reader, blockHash, blockNumber)
+	if len(header) == 0 {
+		return fmt.Errorf("block header missing, can't freeze block %d", blockNumber)
+	}
+	body := rawdb.ReadBodyRLP(reader, blockHash, blockNumber)
+	if len(body) == 0 {
+		return fmt.Errorf("block body missing, can't freeze block %d", blockNumber)
+	}
+	receipts := rawdb.ReadReceiptsRLP(reader, blockHash, blockNumber)
+	if len(receipts) == 0 {
+		return fmt.Errorf("block receipts missing, can't freeze block %d", blockNumber)
+	}
+	td := rawdb.ReadTdRLP(reader, blockHash, blockNumber)
+	if len(td) == 0 {
+		return fmt.Errorf("total difficulty not found for block %d (hash: %s)", blockNumber, blockHash.Hex())
+	}
+	// TODO: handle chain env
+	// blobs is nil before cancun fork
+	var sidecars rlp.RawValue
+	// isCancun(env, h.Number, h.Time)
+	if false {
+		sidecars = rawdb.ReadBlobSidecarsRLP(reader, blockHash, blockNumber)
+		if len(sidecars) == 0 {
+			return fmt.Errorf("block blobs missing, can't freeze block %d", blockNumber)
+		}
+	}
+
+	err := rawdb.WriteIncrBlockData(writer, blockNumber, stateID, blockHash[:], header, body, receipts, td, sidecars, false)
+	if err != nil {
+		log.Error("Failed to write block data", "err", err)
+		return err
+	}
+
+	log.Debug("Write one block data into incr chain freezer", "block", blockNumber, "hash", blockHash.Hex())
+	return nil
 }
 
 // func writeBlockIntoIncrFreezer(writer ethdb.AncientWriter, number uint64, hash []byte, block *types.Block,

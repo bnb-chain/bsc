@@ -531,12 +531,20 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) erro
 	// 		"blockNumber", blockNumber, "incrBlockStartNumber", startBlockNumber)
 	// 	return nil
 	// }
-
 	var (
 		lastBlock  = dl.db.lastBlock.Load()
 		startBlock uint64
 	)
-	if lastBlock == 0 && blockNumber < startBlockNumber {
+
+	head, _ := dl.db.incrChainFreezer.Ancients()
+	if head != blockNumber {
+		// it indicates that there are gap due to empty state block,
+		// and this may happen after geth restarts
+		log.Warn("Incr chain freezer block number not equal", "blockNumber", blockNumber, "head", head)
+		startBlock = blockNumber
+	} else if lastBlock == 0 && blockNumber < startBlockNumber {
+		// this case can happen when using incremental snapshot flag for the first time,
+		// and there are some journal data that should be handled
 		startBlock = blockNumber
 		log.Warn("Use first journal block", "blockNumber", blockNumber, "lastBlock", lastBlock,
 			"startBlock", startBlock, "incrBlockStartNumber", startBlockNumber)
@@ -554,7 +562,7 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) erro
 		"startBlock", startBlock, "endBlock", blockNumber, "count", blockNumber-startBlock+1)
 
 	for i := startBlock; i <= blockNumber; i++ {
-		if err := dl.writeBlockToFreezer(i, 0); err != nil {
+		if err := writeIncrBlockToFreezer(dl.db.diskdb.BlockStore(), dl.db.incrChainFreezer, i, stateID); err != nil {
 			log.Error("Failed to write block data to freezer", "block", i, "err", err)
 			return err
 		}
@@ -568,7 +576,6 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) erro
 	return nil
 }
 
-// writeBlockToFreezer writes placeholder data for empty blocks
 func (dl *diskLayer) writeBlockToFreezer(blockNumber, stateID uint64) error {
 	blockHash := rawdb.ReadCanonicalHash(dl.db.diskdb.BlockStore(), blockNumber)
 	if blockHash == (common.Hash{}) {
