@@ -316,9 +316,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 				"incrBlockStartNumber", dl.db.config.IncrBlockStartNumber)
 		}
 
-		head, _ := dl.db.incrChainFreezer.Ancients()
-
-		if err := dl.checkIncrChainEmpty(head); err != nil {
+		if err := dl.checkIncrChainEmpty(bottom.block); err != nil {
 			log.Error("Failed to check incr chain freezer is empty", "err", err)
 			return nil, err
 		}
@@ -334,7 +332,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 			log.Error("Failed to reset empty incr chain freezer", "err", err)
 			return nil, err
 		}
-		if err := dl.writeIncrementalBlockData(head, bottom.block, bottom.stateID()); err != nil {
+		if err := dl.writeIncrementalBlockData(bottom.block, bottom.stateID()); err != nil {
 			log.Error("Failed to write incremental chain history", "err", err)
 			return nil, err
 		}
@@ -512,11 +510,11 @@ func (dl *diskLayer) checkIncrDataEmpty(dataType IncrDataType, value uint64) err
 	return nil
 }
 
-func (dl *diskLayer) checkIncrChainEmpty(head uint64) error {
-	return dl.checkIncrDataEmpty(IncrChainData, head)
+func (dl *diskLayer) checkIncrChainEmpty(block uint64) error {
+	return dl.checkIncrDataEmpty(IncrChainData, block)
 }
 
-func (dl *diskLayer) checkIncrStateEmpty(head, stateID uint64) error {
+func (dl *diskLayer) checkIncrStateEmpty(stateID uint64) error {
 	return dl.checkIncrDataEmpty(IncrStateData, stateID)
 }
 
@@ -526,7 +524,13 @@ func (dl *diskLayer) checkIncrStateEmpty(head, stateID uint64) error {
 // 1. First time startup with incremental flag from a snapshot base
 // 2. Restart after graceful shutdown with incremental flag
 // 3. Normal block processing during runtime
-func (dl *diskLayer) writeIncrementalBlockData(head, blockNumber, stateID uint64) error {
+func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) error {
+	head, err := dl.db.incrChainFreezer.Ancients()
+	if err != nil {
+		log.Error("Failed to get ancients from incr chain freezer", "err", err)
+		return err
+	}
+
 	var startBlock uint64
 	// Determine the scenario and calculate startBlock
 	if blockNumber == head {
@@ -541,7 +545,7 @@ func (dl *diskLayer) writeIncrementalBlockData(head, blockNumber, stateID uint64
 			"freezerHead", head, "blockNumber", blockNumber, "gapSize", blockNumber-head)
 	} else {
 		if blockNumber < head {
-			log.Crit("Block number should be greater than head", "blockNumber", blockNumber, "head", head)
+			log.Crit("Block number should be greater than or equal to head", "blockNumber", blockNumber, "head", head)
 		}
 	}
 
