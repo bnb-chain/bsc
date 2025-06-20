@@ -536,20 +536,27 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) erro
 	)
 
 	// Determine the scenario and calculate startBlock
-	if head == blockNumber {
+	if blockNumber == head {
 		// Scenario 1: First time startup with incremental flag
 		isFirstTime = true
-		if blockNumber < startBlockNumber {
-			// Handle journal data before startBlockNumber
-			startBlock = blockNumber
-			log.Info("First time startup: processing journal data",
-				"blockNumber", blockNumber, "startBlockNumber", startBlockNumber)
-		} else {
-			startBlock = startBlockNumber
-			log.Info("First time startup: processing from configured start",
-				"startBlock", startBlock)
-		}
-	} else if head != blockNumber {
+		startBlock = blockNumber
+		log.Info("First time startup: processing journal data",
+			"blockNumber", blockNumber, "startBlockNumber", startBlockNumber)
+
+		// if blockNumber < startBlockNumber {
+		// 	// Handle journal data before startBlockNumber
+		// 	startBlock = blockNumber
+		// 	log.Info("First time startup: processing journal data",
+		// 		"blockNumber", blockNumber, "startBlockNumber", startBlockNumber)
+		// } else {
+		// 	startBlock = startBlockNumber
+		// 	log.Info("First time startup: processing from configured start",
+		// 		"startBlock", startBlock, "head", head)
+		// }
+	} else if blockNumber > head {
+		// if blockNumber < head {
+		// 	log.Crit("Block number should be greater than head", "blockNumber", blockNumber, "head", head)
+		// }
 		// Scenario 2: Restart after shutdown or gap detected
 		isRestart = true
 		// There's a gap between freezer head and current block
@@ -565,7 +572,7 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) erro
 			return nil
 		}
 		startBlock = blockNumber
-		log.Debug("Normal processing", "blockNumber", blockNumber)
+		log.Info("Normal processing", "blockNumber", blockNumber)
 	}
 
 	// Process all blocks in the range [startBlock, blockNumber]
