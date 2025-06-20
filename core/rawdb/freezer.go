@@ -521,7 +521,7 @@ func (f *Freezer) repair() error {
 			tail = hidden
 		}
 	}
-	if head == math.MaxUint64 {
+	if f.isIncr && (head == math.MaxUint64) {
 		head = 0
 	}
 	for kind, table := range f.tables {
