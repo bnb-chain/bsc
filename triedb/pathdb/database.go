@@ -857,7 +857,7 @@ func (db *Database) InsertIncrState(incrDir string) error {
 	dl := db.tree.bottom()
 	if a, ok := dl.buffer.(*asyncnodebuffer); ok {
 		log.Info("async node buffer")
-		if err = a.mergeIncrStateHistory(db.diskdb, db.freezer, db.incrStateFreezer, tail); err != nil {
+		if err = a.mergeIncrStateHistory(db.diskdb, db.freezer, db.incrStateFreezer, tail+1); err != nil {
 			log.Error("Failed to merge incr state history", "err", err)
 			return err
 		}
