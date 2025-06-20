@@ -159,11 +159,13 @@ func NewIncrStateFreezer(ancientDir string, readOnly bool, offset, blockLimit ui
 	// 	incrStateFreezerNoSnappy, blockLimit)
 }
 
+// OpenIncrStateFreezer
 func OpenIncrStateFreezer(incrStateDir string, readOnly bool) (ethdb.ResettableAncientStore, error) {
 	if incrStateDir == "" {
 		log.Error("Incremental state directory is empty")
 		return nil, errors.New("empty incr state directory")
 	}
+
 	return newIncrFreezer(incrStateDir, "eth/db/incremental/state", readOnly, 0, stateHistoryTableSize,
 		incrStateFreezerNoSnappy, 1)
 }
@@ -178,4 +180,15 @@ func NewIncrChainFreezer(ancientDir string, readOnly bool, offset, blockLimit ui
 	return newResettableFreezer(name, "eth/db/chain", readOnly, offset, stateHistoryTableSize, incrChainFreezerNoSnappy, true)
 	// return newIncrFreezer(name, "eth/db/incremental/chain", readOnly, offset, stateHistoryTableSize,
 	// 	chainFreezerNoSnappy, blockLimit)
+}
+
+// OpenIncrChainFreezer
+func OpenIncrChainFreezer(incrStateDir string, readOnly bool) (ethdb.ResettableAncientStore, error) {
+	if incrStateDir == "" {
+		log.Error("Incremental state directory is empty")
+		return nil, errors.New("empty incr chain directory")
+	}
+
+	return newIncrFreezer(incrStateDir, "eth/db/incremental/chain", readOnly, 0, stateHistoryTableSize,
+		incrChainFreezerNoSnappy, 1)
 }

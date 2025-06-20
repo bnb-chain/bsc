@@ -810,14 +810,23 @@ func (db *Database) DeleteTrieJournal(writer ethdb.KeyValueWriter) error {
 }
 
 func (db *Database) InsertIncrState(incrDir string) error {
-	path := filepath.Join(incrDir, rawdb.IncrementalPath, rawdb.MerkleStateFreezerName)
-	incrStateFreezer, err := rawdb.OpenIncrStateFreezer(path, true)
+	incrStatePath := filepath.Join(incrDir, rawdb.MerkleStateFreezerName)
+	incrStateFreezer, err := rawdb.OpenIncrStateFreezer(incrStatePath, true)
 	if err != nil {
 		log.Error("Failed to open incremental state freezer", "err", err)
 		return err
 	}
 	db.incrStateFreezer = incrStateFreezer
 	defer incrStateFreezer.Close()
+
+	incrChainPath := filepath.Join(incrDir, rawdb.ChainFreezerName)
+	incrChainFreezer, err := rawdb.OpenIncrChainFreezer(incrChainPath, true)
+	if err != nil {
+		log.Error("Failed to open incremental chain freezer", "err", err)
+		return err
+	}
+	db.incrChainFreezer = incrChainFreezer
+	defer incrChainFreezer.Close()
 
 	pebblePath := filepath.Join(incrDir, rawdb.IncrementalPath)
 	newDB, err := pebble.New(pebblePath, 10, 10, "incremental", true)
