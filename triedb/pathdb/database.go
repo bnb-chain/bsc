@@ -828,7 +828,7 @@ func (db *Database) InsertIncrState(incrDir string) error {
 	db.incrChainFreezer = incrChainFreezer
 	defer incrChainFreezer.Close()
 
-	pebblePath := filepath.Join(incrDir, rawdb.IncrementalPath)
+	pebblePath := filepath.Join(incrDir)
 	newDB, err := pebble.New(pebblePath, 10, 10, "incremental", true)
 	if err != nil {
 		log.Error("Failed to pebble to read incremental data", "err", err)
