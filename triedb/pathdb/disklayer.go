@@ -554,7 +554,7 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) erro
 		isRestart = true
 		// There's a gap between freezer head and current block
 		// Need to fill all missing blocks (including empty ones)
-		startBlock = head + 1
+		startBlock = head
 		log.Info("Restart detected: filling gap",
 			"freezerHead", head, "blockNumber", blockNumber, "gapSize", blockNumber-head)
 	} else {
