@@ -849,17 +849,20 @@ func (db *Database) InsertIncrState(incrDir string) error {
 	count, _ = db.incrStateFreezer.ItemAmountInAncient()
 	log.Info("Incr state info", "ancients", ancients, "tail", tail, "count", count)
 
-	if db.tree.len() == 129 {
-		log.Info("Layer tree is full")
-	}
+	// if db.tree.len() == 129 {
+	// 	log.Info("Layer tree is full")
+	// }
+	log.Info("Layer tree", "count", db.tree.len())
 
 	dl := db.tree.bottom()
 	if a, ok := dl.buffer.(*asyncnodebuffer); ok {
+		log.Info("async node buffer")
 		if err = a.mergeIncrStateHistory(db.diskdb, db.freezer, db.incrStateFreezer, tail); err != nil {
 			log.Error("Failed to merge incr state history", "err", err)
 			return err
 		}
 	}
+	log.Info("Completed incremental state")
 	// a := newAsyncNodeBuffer(MaxDirtyBufferSize, nil, nil, 0)
 	// if err = a.mergeIncrStateHistory(db.diskdb, db.freezer, db.incrStateFreezer, firstBlockNumber); err != nil {
 	// 	log.Error("Failed to merge incr state history", "err", err)
