@@ -587,8 +587,8 @@ func writeIncrHistory(writer ethdb.AncientWriter, dl *diffLayer) error {
 	return nil
 }
 
-// readIncrHistory reads the incremental history
-func readIncrHistory(reader ethdb.AncientReader, id uint64) (*history, map[common.Hash]map[string]*trienode.Node, error) {
+// readIncrData reads the incremental history and tre nodes
+func readIncrData(reader ethdb.AncientReader, id uint64) (*history, map[common.Hash]map[string]*trienode.Node, error) {
 	blob := rawdb.ReadStateHistoryMeta(reader, id)
 	if len(blob) == 0 {
 		return nil, nil, fmt.Errorf("state history not found %d", id)
@@ -619,6 +619,46 @@ func readIncrHistory(reader ethdb.AncientReader, id uint64) (*history, map[commo
 	}
 
 	return &dec, flattenTrieNodes(decodedTrieNodes), nil
+}
+
+// readIncrHistory reads incremental trie nodes
+func readIncrHistory(reader ethdb.AncientReader, id uint64) (*history, error) {
+	blob := rawdb.ReadStateHistoryMeta(reader, id)
+	if len(blob) == 0 {
+		return nil, fmt.Errorf("state history not found %d", id)
+	}
+	var m meta
+	if err := m.decode(blob); err != nil {
+		return nil, err
+	}
+
+	var (
+		dec            = history{meta: &m}
+		accountData    = rawdb.ReadStateAccountHistory(reader, id)
+		storageData    = rawdb.ReadStateStorageHistory(reader, id)
+		accountIndexes = rawdb.ReadStateAccountIndex(reader, id)
+		storageIndexes = rawdb.ReadStateStorageIndex(reader, id)
+	)
+	if err := dec.decode(accountData, storageData, accountIndexes, storageIndexes); err != nil {
+		return nil, err
+	}
+	return &dec, nil
+}
+
+func readIncrTrieNodes(reader ethdb.AncientReader, id uint64) (map[common.Hash]map[string]*trienode.Node, error) {
+	data, err := rawdb.ReadIncrStateTrieNodes(reader, id)
+	if err != nil {
+		log.Error("Failed to read incremental trie nodes", "id", id, "error", err)
+		return nil, err
+	}
+
+	var decodedTrieNodes []journalNodes
+	if err = rlp.DecodeBytes(data, &decodedTrieNodes); err != nil {
+		log.Error("Failed to decode incremental trie nodes", "id", id, "error", err)
+		return nil, err
+	}
+
+	return flattenTrieNodes(decodedTrieNodes), nil
 }
 
 // writeIncrBlockToFreezer writes incremental block into freezer
@@ -663,39 +703,6 @@ func writeIncrBlockToFreezer(reader ethdb.Reader, writer ethdb.AncientWriter, bl
 	log.Debug("Write one block data into incr chain freezer", "block", blockNumber, "hash", blockHash.Hex())
 	return nil
 }
-
-// func writeBlockIntoIncrFreezer(writer ethdb.AncientWriter, number uint64, hash []byte, block *types.Block,
-// 	receipts []*types.Receipt, td *big.Int, isCancun bool) {
-// 	headerData, err := rlp.EncodeToBytes(block.Header())
-// 	if err != nil {
-// 		log.Crit("Failed to RLP encode header", "err", err)
-// 	}
-// 	bodyData, err := rlp.EncodeToBytes(block.Body())
-// 	if err != nil {
-// 		log.Crit("Failed to RLP encode body", "err", err)
-// 	}
-// 	receiptsData, err := rlp.EncodeToBytes(receipts)
-// 	if err != nil {
-// 		log.Crit("Failed to encode block receipts", "err", err)
-// 	}
-// 	tdData, err := rlp.EncodeToBytes(td)
-// 	if err != nil {
-// 		log.Crit("Failed to RLP encode block total difficulty", "err", err)
-// 	}
-//
-// 	blobData := []byte{}
-// 	if isCancun {
-// 		blobData, err = rlp.EncodeToBytes(block.Sidecars())
-// 		if err != nil {
-// 			log.Crit("Failed to encode block blobs", "err", err)
-// 		}
-// 	}
-//
-// 	err = rawdb.WriteIncrBlockData(writer, number, hash, headerData, bodyData, receiptsData, tdData, blobData, isCancun)
-// 	if err != nil {
-// 		log.Crit("Failed to write block into incremental freezer db", "err", err)
-// 	}
-// }
 
 // checkHistories retrieves a batch of meta objects with the specified range
 // and performs the callback on each item.

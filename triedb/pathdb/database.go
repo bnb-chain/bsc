@@ -280,10 +280,10 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 			db.config.IncrHistoryPath = ancientDir
 		}
 
-		if err := db.repairIncrStateHistory(ancientDir); err != nil {
+		if err = db.repairIncrStateHistory(ancientDir); err != nil {
 			log.Crit("Failed to repair incremental state history", "err", err)
 		}
-		if err := db.repairIncrChainHistory(ancientDir); err != nil {
+		if err = db.repairIncrChainHistory(ancientDir); err != nil {
 			log.Crit("Failed to repair incremental chain history", "err", err)
 		}
 	}
@@ -394,7 +394,7 @@ func (db *Database) repairIncrChainHistory(ancientDir string) error {
 	return nil
 }
 
-func (db *Database) repairIncrStateHistory(ancientDir string) *layerTree {
+func (db *Database) repairIncrStateHistory(ancientDir string) error {
 	log.Info("Open incremental state history")
 	if db.config.NoTries {
 		return nil
@@ -834,6 +834,8 @@ func (db *Database) InsertIncrState(incrDir string) error {
 		log.Error("Failed to pebble to read incremental data", "err", err)
 		return err
 	}
+	defer newDB.Close()
+
 	firstBlockNumber := rawdb.ReadIncrFirstBlockNumber(newDB)
 	log.Info("Inserting incremental state", "first block number", firstBlockNumber)
 
@@ -846,6 +848,18 @@ func (db *Database) InsertIncrState(incrDir string) error {
 	tail, _ = db.incrStateFreezer.Tail()
 	count, _ = db.incrStateFreezer.ItemAmountInAncient()
 	log.Info("Incr state info", "ancients", ancients, "tail", tail, "count", count)
+
+	if db.tree.len() == 129 {
+		log.Info("Layer tree is full")
+	}
+
+	dl := db.tree.bottom()
+	if a, ok := dl.buffer.(*asyncnodebuffer); ok {
+		if err = a.mergeIncrStateHistory(db.diskdb, db.freezer, db.incrStateFreezer, tail); err != nil {
+			log.Error("Failed to merge incr state history", "err", err)
+			return err
+		}
+	}
 	// a := newAsyncNodeBuffer(MaxDirtyBufferSize, nil, nil, 0)
 	// if err = a.mergeIncrStateHistory(db.diskdb, db.freezer, db.incrStateFreezer, firstBlockNumber); err != nil {
 	// 	log.Error("Failed to merge incr state history", "err", err)
