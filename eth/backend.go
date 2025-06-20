@@ -222,6 +222,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		chainConfig.MaxwellTime = config.OverrideMaxwell
 		overrides.OverrideMaxwell = config.OverrideMaxwell
 	}
+	if config.OverrideFermi != nil {
+		chainConfig.FermiTime = config.OverrideFermi
+		overrides.OverrideFermi = config.OverrideFermi
+	}
 	if config.OverrideVerkle != nil {
 		chainConfig.VerkleTime = config.OverrideVerkle
 		overrides.OverrideVerkle = config.OverrideVerkle
@@ -344,7 +348,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	shouldPreserve := func(header *types.Header) bool {
 		return false
 	}
-	eth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, config.Genesis, &overrides, eth.engine, vmConfig, shouldPreserve, &config.TransactionHistory, bcOps...)
+	txLookupLimit := &config.TransactionHistory
+	if config.DisableTxIndexer {
+		log.Warn("The TxIndexer is disabled. Please note that the next time you re-enable it, it may affect the node performance because of rebuilding the tx index.")
+		txLookupLimit = nil
+	}
+	eth.blockchain, err = core.NewBlockChain(chainDb, cacheConfig, config.Genesis, &overrides, eth.engine, vmConfig, shouldPreserve, txLookupLimit, bcOps...)
 	if err != nil {
 		return nil, err
 	}

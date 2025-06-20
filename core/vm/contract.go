@@ -76,26 +76,6 @@ type Contract struct {
 	value *uint256.Int
 }
 
-// NewContract returns a new contract environment for the execution of EVM.
-func NewContract(caller ContractRef, object ContractRef, value *uint256.Int, gas uint64) *Contract {
-	c := &Contract{CallerAddress: caller.Address(), caller: caller, self: object}
-
-	if parent, ok := caller.(*Contract); ok {
-		// Reuse JUMPDEST analysis from parent context if available.
-		c.jumpdests = parent.jumpdests
-	} else {
-		c.jumpdests = make(map[common.Hash]bitvec)
-	}
-
-	// Gas should be a pointer so it can safely be reduced through the run
-	// This pointer will be off the state transition
-	c.Gas = gas
-	// ensures a value is set
-	c.value = value
-
-	return c
-}
-
 func (c *Contract) validJumpdest(dest *uint256.Int) bool {
 	udest, overflow := dest.Uint64WithOverflow()
 	// PC cannot go beyond len(code) and certainly can't be bigger than 63bits.

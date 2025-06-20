@@ -41,5 +41,6 @@ const (
 	Prague
 	Lorentz
 	Maxwell
+	Fermi
 	Osaka
 )
