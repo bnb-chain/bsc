@@ -316,7 +316,9 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 				"incrBlockStartNumber", dl.db.config.IncrBlockStartNumber)
 		}
 
-		if err := dl.checkIncrStateEmpty(bottom.stateID()); err != nil {
+		head, _ := dl.db.incrChainFreezer.Ancients()
+
+		if err := dl.checkIncrChainEmpty(head); err != nil {
 			log.Error("Failed to check incr chain freezer is empty", "err", err)
 			return nil, err
 		}
@@ -332,7 +334,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 			log.Error("Failed to reset empty incr chain freezer", "err", err)
 			return nil, err
 		}
-		if err := dl.writeIncrementalBlockData(bottom.block, 0); err != nil {
+		if err := dl.writeIncrementalBlockData(head, bottom.block, bottom.stateID()); err != nil {
 			log.Error("Failed to write incremental chain history", "err", err)
 			return nil, err
 		}
@@ -510,11 +512,11 @@ func (dl *diskLayer) checkIncrDataEmpty(dataType IncrDataType, value uint64) err
 	return nil
 }
 
-func (dl *diskLayer) checkIncrChainEmpty() error {
-	return dl.checkIncrDataEmpty(IncrChainData, dl.db.config.IncrBlockStartNumber)
+func (dl *diskLayer) checkIncrChainEmpty(head uint64) error {
+	return dl.checkIncrDataEmpty(IncrChainData, head)
 }
 
-func (dl *diskLayer) checkIncrStateEmpty(stateID uint64) error {
+func (dl *diskLayer) checkIncrStateEmpty(head, stateID uint64) error {
 	return dl.checkIncrDataEmpty(IncrStateData, stateID)
 }
 
@@ -524,88 +526,40 @@ func (dl *diskLayer) checkIncrStateEmpty(stateID uint64) error {
 // 1. First time startup with incremental flag from a snapshot base
 // 2. Restart after graceful shutdown with incremental flag
 // 3. Normal block processing during runtime
-func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) error {
-	startBlockNumber := dl.db.config.IncrBlockStartNumber
-
-	var (
-		lastBlock   = dl.db.lastBlock.Load()
-		head, _     = dl.db.incrChainFreezer.Ancients()
-		startBlock  uint64
-		isFirstTime bool
-		isRestart   bool
-	)
-
+func (dl *diskLayer) writeIncrementalBlockData(head, blockNumber, stateID uint64) error {
+	var startBlock uint64
 	// Determine the scenario and calculate startBlock
 	if blockNumber == head {
 		// Scenario 1: First time startup with incremental flag
-		isFirstTime = true
 		startBlock = blockNumber
-		log.Info("First time startup: processing journal data",
-			"blockNumber", blockNumber, "startBlockNumber", startBlockNumber)
-
-		// if blockNumber < startBlockNumber {
-		// 	// Handle journal data before startBlockNumber
-		// 	startBlock = blockNumber
-		// 	log.Info("First time startup: processing journal data",
-		// 		"blockNumber", blockNumber, "startBlockNumber", startBlockNumber)
-		// } else {
-		// 	startBlock = startBlockNumber
-		// 	log.Info("First time startup: processing from configured start",
-		// 		"startBlock", startBlock, "head", head)
-		// }
+		log.Info("First time startup: processing journal data", "blockNumber", blockNumber)
 	} else if blockNumber > head {
-		// if blockNumber < head {
-		// 	log.Crit("Block number should be greater than head", "blockNumber", blockNumber, "head", head)
-		// }
-		// Scenario 2: Restart after shutdown or gap detected
-		isRestart = true
 		// There's a gap between freezer head and current block
 		// Need to fill all missing blocks (including empty ones)
 		startBlock = head
 		log.Info("Restart detected: filling gap",
 			"freezerHead", head, "blockNumber", blockNumber, "gapSize", blockNumber-head)
 	} else {
-		// Scenario 3: Normal continuous processing
-		if blockNumber <= lastBlock {
-			log.Warn("Block already processed",
-				"blockNumber", blockNumber, "lastBlock", lastBlock)
-			return nil
+		if blockNumber < head {
+			log.Crit("Block number should be greater than head", "blockNumber", blockNumber, "head", head)
 		}
-		startBlock = blockNumber
-		log.Info("Normal processing", "blockNumber", blockNumber)
 	}
-
-	// Process all blocks in the range [startBlock, blockNumber]
-	log.Info("Processing incremental block data range",
-		"scenario", map[bool]string{true: "first_time", false: map[bool]string{true: "restart", false: "normal"}[isRestart]}[isFirstTime],
-		"startBlock", startBlock, "endBlock", blockNumber, "count", blockNumber-startBlock+1)
 
 	for i := startBlock; i <= blockNumber; i++ {
 		// Determine if this block has state changes
-		currentStateID := stateID
-		if i < blockNumber {
-			// For blocks before the current one, we need to check if they have state changes
-			// Empty blocks will have stateID = 0
-			// currentStateID = dl.getStateIDForBlock(i, stateID)
+		currentStateID := uint64(0)
+		if i == blockNumber {
+			currentStateID = stateID
 		}
 
-		if err := writeIncrBlockToFreezer(dl.db.diskdb.BlockStore(), dl.db.incrChainFreezer, i, stateID); err != nil {
+		if err := writeIncrBlockToFreezer(dl.db.diskdb.BlockStore(), dl.db.incrChainFreezer, i, currentStateID); err != nil {
 			log.Error("Failed to write block data to freezer", "block", i, "stateID", currentStateID, "err", err)
 			return err
 		}
-
-		// Log progress for large gaps
-		log.Info("Incremental data processing progress",
-			"processed", i-startBlock+1, "total", blockNumber-startBlock+1, "currentBlock", i)
-
 	}
 
-	dl.db.lastBlock.Store(blockNumber)
-
 	log.Info("Incremental block data processing completed",
-		"startBlock", startBlock, "endBlock", blockNumber, "totalProcessed", blockNumber-startBlock+1,
-		"scenario", map[bool]string{true: "first_time", false: map[bool]string{true: "restart", false: "normal"}[isRestart]}[isFirstTime])
-
+		"startBlock", startBlock, "endBlock", blockNumber, "totalProcessed", blockNumber-startBlock+1)
 	return nil
 }
 

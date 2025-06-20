@@ -226,7 +226,6 @@ type Database struct {
 	// These two freezers are used to store incremental block and state histories,nil possible in tests
 	incrStateFreezer ethdb.ResettableAncientStore
 	incrChainFreezer ethdb.ResettableAncientStore
-	lastBlock        atomic.Uint64 // Record last stored block number
 }
 
 // New attempts to load an already existing layer from a persistent key-value
