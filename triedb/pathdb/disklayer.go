@@ -549,7 +549,7 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) erro
 			log.Info("First time startup: processing from configured start",
 				"startBlock", startBlock)
 		}
-	} else if head+1 != blockNumber {
+	} else if head != blockNumber {
 		// Scenario 2: Restart after shutdown or gap detected
 		isRestart = true
 		// There's a gap between freezer head and current block
