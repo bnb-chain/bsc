@@ -536,7 +536,7 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) erro
 	)
 
 	// Determine the scenario and calculate startBlock
-	if head == 0 {
+	if head == blockNumber {
 		// Scenario 1: First time startup with incremental flag
 		isFirstTime = true
 		if blockNumber < startBlockNumber {
