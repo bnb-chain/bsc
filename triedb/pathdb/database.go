@@ -370,6 +370,29 @@ func (db *Database) repairIncrChainHistory(ancientDir string) error {
 	db.incrChainFreezer = incrChainFreezer
 
 	// TODO: handle incr chain restart
+	id := db.tree.bottom().stateID()
+	if id == 0 {
+		frozen, err := db.incrStateFreezer.Ancients()
+		if err != nil {
+			log.Crit("Failed to retrieve head of state history", "err", err)
+		}
+		if frozen != 0 {
+			err := db.incrStateFreezer.Reset()
+			if err != nil {
+				log.Crit("Failed to reset state histories", "err", err)
+			}
+			log.Info("Truncated extraneous state history")
+		}
+		return nil
+	}
+
+	pruned, err := truncateFromHead(db.diskdb, db.freezer, id)
+	if err != nil {
+		log.Crit("Failed to truncate extra state histories", "err", err)
+	}
+	if pruned != 0 {
+		log.Warn("Truncated extra state histories", "number", pruned)
+	}
 	return nil
 }
 
@@ -396,9 +419,6 @@ func (db *Database) repairIncrStateHistory(ancientDir string) *layerTree {
 	log.Info("Print incr state ancient info in repair", "item", item, "a", a, "b", b)
 
 	// TODO: handle restart in incr freezer db
-	// Reset the entire state histories if the trie database is not initialized
-	// yet. This action is necessary because these state histories are not
-	// expected to exist without an initialized trie database.
 	id := db.tree.bottom().stateID()
 	if id == 0 {
 		frozen, err := db.incrStateFreezer.Ancients()
@@ -414,6 +434,16 @@ func (db *Database) repairIncrStateHistory(ancientDir string) *layerTree {
 		}
 		return nil
 	}
+
+	pruned, err := truncateFromHead(db.diskdb, db.freezer, id)
+	if err != nil {
+		log.Crit("Failed to truncate extra state histories", "err", err)
+	}
+	if pruned != 0 {
+		log.Warn("Truncated extra state histories", "number", pruned)
+	}
+	log.Info("Finish opening incremental state history")
+	return nil
 
 	// pruned, err := truncateFromHead(db.diskdb, db.freezer, id)
 	// if err != nil {
@@ -442,8 +472,6 @@ func (db *Database) repairIncrStateHistory(ancientDir string) *layerTree {
 	// 		log.Warn("Truncated extra incremental state histories", "number", pruned)
 	// 	}
 	// }
-	log.Info("Finish opening incremental state history")
-	return nil
 }
 
 // Update adds a new layer into the tree, if that can be linked to an existing

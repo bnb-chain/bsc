@@ -570,7 +570,6 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) erro
 
 // writeBlockToFreezer writes placeholder data for empty blocks
 func (dl *diskLayer) writeBlockToFreezer(blockNumber, stateID uint64) error {
-	// Get the canonical hash for this block number
 	blockHash := rawdb.ReadCanonicalHash(dl.db.diskdb.BlockStore(), blockNumber)
 	if blockHash == (common.Hash{}) {
 		return fmt.Errorf("canonical hash not found for block %d", blockNumber)
