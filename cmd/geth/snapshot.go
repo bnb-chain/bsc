@@ -1051,6 +1051,12 @@ func mergeIncrSnapshot(ctx *cli.Context) error {
 	log.Info("Start merging incremental snapshot", "path", path)
 
 	if err := trieDB.InsertIncrState(path); err != nil {
+		log.Error("Failed to incremental snapshot", "err", err)
+		return err
+	}
+
+	if err := insertIncrBlock(path, chainDB); err != nil {
+		log.Error("Failed to insert increment block", "err", err)
 		return err
 	}
 	return nil
