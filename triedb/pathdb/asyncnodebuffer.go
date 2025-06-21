@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
-
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/trienode"
@@ -32,6 +32,54 @@ func newAsyncNodeBuffer(limit int, nodes *nodeSet, states *stateSet, layers uint
 		current:    newNodeCache(limit, nodes, states, layers),
 		background: newNodeCache(limit, nil, nil, 0),
 	}
+}
+
+func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer ethdb.AncientWriter,
+	incrFreezer ethdb.ResettableAncientStore, firstStateID uint64) error {
+	head, err := incrFreezer.Ancients()
+	if err != nil {
+		log.Error("Failed to get ancients from incr state freezer", "error", err)
+		return err
+	}
+	tail, err := incrFreezer.Tail()
+	if err != nil {
+		log.Error("Failed to get tail incr state freezer", "error", err)
+		return err
+	}
+	persistID := rawdb.ReadPersistentStateID(db)
+	log.Info("Ancient db meta info", "persistent_state_id", persistID, "head_state_id", head,
+		"tail_state_id", tail, "total_state_num", head-tail, "firstStateID", firstStateID)
+
+	log.Info("Before place incr state data", "empty", a.empty(), "layers", a.getLayers())
+	// TODO: async read history and commit
+	for i := firstStateID; i <= head; i++ {
+		trieNodes, err := readIncrTrieNodes(incrFreezer, i)
+		if err != nil {
+			return err
+		}
+		if i%1000 == 0 {
+			log.Info("trie nodes length", "length", len(trieNodes))
+		}
+		nodesSet := newNodeSet(trieNodes)
+		if err = a.current.commit(nodesSet, newStates(nil, nil, false)); err != nil {
+			log.Error("Failed to commit history", "error", err)
+			return err
+		}
+		if err = a.flush(db, freezer, nil, i, false); err != nil {
+			log.Error("Failed to flush history", "error", err)
+			return err
+		}
+	}
+
+	log.Info("Force flush async node buffer", "empty", a.empty(), "layers", a.getLayers())
+	if err = a.flush(db, freezer, nil, head, true); err != nil {
+		log.Error("Failed to force flush history", "error", err)
+		return err
+	}
+	a.waitAndStopFlushing()
+	log.Info("Finished merging incremental state history", "empty", a.empty(), "layers", a.getLayers())
+
+	return nil
 }
 
 func (a *asyncnodebuffer) account(hash common.Hash) ([]byte, bool) {

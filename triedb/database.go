@@ -392,3 +392,34 @@ func (db *Database) IsVerkle() bool {
 func (db *Database) Disk() ethdb.Database {
 	return db.disk
 }
+
+// InsertIncrState inserts the state in incremental snapshot into base snapshot
+func (db *Database) InsertIncrState(incrDir string) error {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		log.Error("Not supported")
+		return nil
+	}
+	return pdb.InsertIncrState(incrDir)
+}
+
+// SetIncrBlockStartNumber sets the starting block number for incremental block data
+// It's only supported by path-based database and will do nothing for others.
+func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		log.Error("Not supported")
+		return
+	}
+	pdb.SetIncrBlockStartNumber(startBlock)
+}
+
+// SetFreezerEnv used for check Cancun hardfork
+func (db *Database) SetFreezerEnv(env *ethdb.FreezerEnv) {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		log.Error("Not supported")
+	} else {
+		pdb.SetFreezerEnv(env)
+	}
+}

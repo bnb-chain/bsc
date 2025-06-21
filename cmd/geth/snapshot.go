@@ -221,12 +221,21 @@ The export-preimages command exports hash preimages to a flat file, in exactly
 the expected order for the overlay tree migration.
 `,
 			},
+			{
+				Action:    mergeIncrSnapshot,
+				Name:      "merge-incr-snapshot",
+				Usage:     "Merge the incremental snapshot into base snapshot",
+				ArgsUsage: "",
+				Flags: slices.Concat([]cli.Flag{utils.IncrementalSnapshotPathFlag},
+					utils.DatabaseFlags),
+				Description: `This command aims to help merge multiple incremental snapshot into base snapshot`,
+			},
 		},
 	}
 )
 
 func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
-	//The layer of tries trees that keep in memory.
+	// The layer of tries trees that keep in memory.
 	TriesInMemory := int(ctx.Uint64(utils.TriesInMemoryFlag.Name))
 	chaindb := utils.MakeChainDatabase(ctx, stack, false, true)
 	defer chaindb.Close()
@@ -239,7 +248,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 		return nil, errors.New("failed to load head block")
 	}
 	headHeader := headBlock.Header()
-	//Make sure the MPT and snapshot matches before pruning, otherwise the node can not start.
+	// Make sure the MPT and snapshot matches before pruning, otherwise the node can not start.
 	snapconfig := snapshot.Config{
 		CacheSize:  256,
 		Recovery:   false,
@@ -439,7 +448,7 @@ func pruneBlock(ctx *cli.Context) error {
 
 	log.Info("backup block successfully")
 
-	//After backing up successfully, rename the new ancientdb name to the original one, and delete the old ancientdb
+	// After backing up successfully, rename the new ancientdb name to the original one, and delete the old ancientdb
 	if err := blockpruner.AncientDbReplacer(); err != nil {
 		return err
 	}
@@ -1020,5 +1029,117 @@ func checkAccount(ctx *cli.Context) error {
 		return err
 	}
 	log.Info("Checked the snapshot journalled storage", "time", common.PrettyDuration(time.Since(start)))
+	return nil
+}
+
+// mergeIncrSnapshot
+func mergeIncrSnapshot(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	chainDB := utils.MakeChainDatabase(ctx, stack, false, false)
+	defer chainDB.Close()
+
+	trieDB := utils.MakeTrieDatabase(ctx, stack, chainDB, false, false, false)
+	defer trieDB.Close()
+
+	if !ctx.IsSet(utils.IncrementalSnapshotPathFlag.Name) {
+		return errors.New("Incremental snapshot path is not set")
+	}
+
+	path := ctx.String(utils.IncrementalSnapshotPathFlag.Name)
+	log.Info("Start merging incremental snapshot", "path", path)
+
+	if err := trieDB.InsertIncrState(path); err != nil {
+		log.Error("Failed to incremental snapshot", "err", err)
+		return err
+	}
+
+	if err := insertIncrBlock(path, chainDB); err != nil {
+		log.Error("Failed to insert increment block", "err", err)
+		return err
+	}
+	return nil
+}
+
+func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
+	incrChainPath := filepath.Join(incrDir, rawdb.ChainFreezerName)
+	incrChainFreezer, err := rawdb.OpenIncrChainFreezer(incrChainPath, true)
+	if err != nil {
+		log.Error("Failed to open incremental chain freezer", "err", err)
+		return err
+	}
+	defer incrChainFreezer.Close()
+
+	ancients, _ := incrChainFreezer.Ancients()
+	tail, _ := incrChainFreezer.Tail()
+	count, _ := incrChainFreezer.ItemAmountInAncient()
+	log.Info("Incr chain info", "ancients", ancients, "tail", tail, "count", count)
+
+	for i := tail; i < ancients; i++ {
+		hashBytes, err := rawdb.ReadIncrChainHash(incrChainFreezer, i)
+		if err != nil {
+			log.Error("Failed to read increment chain hash", "err", err)
+			return err
+		}
+		hash := common.BytesToHash(hashBytes)
+		header, err := rawdb.ReadIncrChainHeader(incrChainFreezer, i)
+		if err != nil {
+			log.Error("Failed to read increment chain header", "err", err)
+			return err
+		}
+		body, err := rawdb.ReadIncrChainBodies(incrChainFreezer, i)
+		if err != nil {
+			log.Error("Failed to read increment chain bodies", "err", err)
+			return err
+		}
+		receipts, err := rawdb.ReadIncrChainReceipts(incrChainFreezer, i)
+		if err != nil {
+			log.Error("Failed to read increment chain receipts", "err", err)
+			return err
+		}
+		td, err := rawdb.ReadIncrChainDifficulty(incrChainFreezer, i)
+		if err != nil {
+			log.Error("Failed to read increment chain difficulty", "err", err)
+			return err
+		}
+		var blobs rlp.RawValue
+		if false {
+			blobs, err = rawdb.ReadIncrChainBlobSideCars(incrChainFreezer, i)
+			if err != nil {
+				log.Error("Failed to read increment chain blob side car", "err", err)
+				return err
+			}
+		}
+		blockBatch := chainDB.BlockStore().NewBatch()
+		rawdb.WriteCanonicalHash(blockBatch, hash, i)
+		rawdb.WriteTdRLP(blockBatch, hash, i, td)
+		rawdb.WriteBodyRLP(blockBatch, hash, i, body)
+		rawdb.WriteHeaderRLP(blockBatch, hash, i, header)
+		rawdb.WriteReceiptsRLP(blockBatch, hash, i, receipts)
+		if false {
+			rawdb.WriteBlobSidecarsRLP(blockBatch, hash, i, blobs)
+		}
+		if err = blockBatch.Write(); err != nil {
+			log.Crit("Failed to write block into disk", "err", err)
+		}
+	}
+
+	// TODO: should wait background chain freezer finish
+
+	// set blockchain metadata: current snap block and current block
+	hashBytes, err := rawdb.ReadIncrChainHash(incrChainFreezer, ancients-1)
+	if err != nil {
+		log.Error("Failed to read increment chain hash for metadata", "err", err)
+		return err
+	}
+	hash := common.BytesToHash(hashBytes)
+	blockBatch := chainDB.BlockStore().NewBatch()
+	rawdb.WriteHeadBlockHash(blockBatch, hash)
+	rawdb.WriteHeadHeaderHash(blockBatch, hash)
+	rawdb.WriteHeadFastBlockHash(blockBatch, hash)
+	if err = blockBatch.Write(); err != nil {
+		log.Crit("Failed to update block metadata into disk", "err", err)
+	}
 	return nil
 }

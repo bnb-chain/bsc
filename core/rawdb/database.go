@@ -429,7 +429,7 @@ func NewEmptyFreezeDB(db ethdb.KeyValueStore) ethdb.Database {
 // NewFreezerDb only create a freezer without statedb.
 func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, newOffSet uint64) (*Freezer, error) {
 	// Create the idle freezer instance, this operation should be atomic to avoid mismatch between offset and acientDB.
-	frdb, err := NewFreezer(frz, namespace, readonly, newOffSet, freezerTableSize, chainFreezerNoSnappy)
+	frdb, err := NewFreezer(frz, namespace, readonly, newOffSet, freezerTableSize, chainFreezerNoSnappy, false)
 	if err != nil {
 		return nil, err
 	}
@@ -784,7 +784,7 @@ func DataTypeByKey(key []byte) DataType {
 
 // InspectDatabase traverses the entire database and checks the size
 // of all different categories of data.
-func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
+func InspectDatabase(db ethdb.Database, isIncr bool, keyPrefix, keyStart []byte) error {
 	it := db.NewIterator(keyPrefix, keyStart)
 	defer it.Release()
 
@@ -1091,6 +1091,25 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 				}
 				stats = append(stats, []string{
 					fmt.Sprintf("Ancient store (%s)", strings.Title(ancient.name)),
+					strings.Title(table.name),
+					table.size.String(),
+					fmt.Sprintf("%d", ancient.count()),
+				})
+			}
+			total += ancient.size()
+		}
+	}
+
+	if isIncr {
+		log.Info("Inspect incremental freezer")
+		ancients, err = inspectIncrFreezers(db)
+		if err != nil {
+			return err
+		}
+		for _, ancient := range ancients {
+			for _, table := range ancient.sizes {
+				stats = append(stats, []string{
+					fmt.Sprintf("Incr store (%s)", strings.Title(ancient.name)),
 					strings.Title(table.name),
 					table.size.String(),
 					fmt.Sprintf("%d", ancient.count()),
