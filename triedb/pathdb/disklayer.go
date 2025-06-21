@@ -25,7 +25,6 @@ import (
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
@@ -315,6 +314,9 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 			log.Warn("Blocks comes from journal", "blockNumber", bottom.block, "stateID", bottom.stateID(),
 				"incrBlockStartNumber", dl.db.config.IncrBlockStartNumber)
 		}
+		if err := dl.checkFreezerEnv(); err != nil {
+			return nil, err
+		}
 
 		if err := dl.checkIncrChainEmpty(bottom.block); err != nil {
 			log.Error("Failed to check incr chain freezer is empty", "err", err)
@@ -328,7 +330,18 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 			log.Error("Failed to write incremental state history", "err", err)
 			return nil, err
 		}
-		if err := rawdb.ResetEmptyIncrChainTable(dl.db.incrChainFreezer, bottom.block, false); err != nil {
+
+		blockHash := rawdb.ReadCanonicalHash(dl.db.diskdb.BlockStore(), bottom.block)
+		if blockHash == (common.Hash{}) {
+			return nil, fmt.Errorf("canonical hash not found for block %d", bottom.block)
+		}
+		h, _ := rawdb.ReadHeaderAndRaw(dl.db.diskdb.BlockStore(), blockHash, bottom.block)
+		if h == nil {
+			return nil, fmt.Errorf("block header missing, can't freeze block %d", bottom.block)
+		}
+		env, _ := dl.db.freezeEnv.Load().(*ethdb.FreezerEnv)
+		
+		if err := rawdb.ResetEmptyIncrChainTable(dl.db.incrChainFreezer, bottom.block, isCancun(env, h.Number, h.Time)); err != nil {
 			log.Error("Failed to reset empty incr chain freezer", "err", err)
 			return nil, err
 		}
@@ -556,7 +569,8 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) erro
 			currentStateID = stateID
 		}
 
-		if err := writeIncrBlockToFreezer(dl.db.diskdb.BlockStore(), dl.db.incrChainFreezer, i, currentStateID); err != nil {
+		env, _ := dl.db.freezeEnv.Load().(*ethdb.FreezerEnv)
+		if err := writeIncrBlockToFreezer(env, dl.db.diskdb.BlockStore(), dl.db.incrChainFreezer, i, currentStateID); err != nil {
 			log.Error("Failed to write block data to freezer", "block", i, "stateID", currentStateID, "err", err)
 			return err
 		}
@@ -567,51 +581,12 @@ func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) erro
 	return nil
 }
 
-// getStateIDForBlock determines the state ID for a given block
-// Returns 0 for empty blocks (no state changes), actual stateID for blocks with changes
-func (dl *diskLayer) getStateIDForBlock(blockNumber, currentStateID uint64) uint64 {
-	// Read the block to check if it has transactions/state changes
-	blockHash := rawdb.ReadCanonicalHash(dl.db.diskdb.BlockStore(), blockNumber)
-	if blockHash == (common.Hash{}) {
-		log.Warn("Canonical hash not found for block, treating as empty", "blockNumber", blockNumber)
-		return 0
+func (dl *diskLayer) checkFreezerEnv() error {
+	_, exist := dl.db.freezeEnv.Load().(*ethdb.FreezerEnv)
+	if exist {
+		return nil
 	}
-
-	// Read block header to get transaction count
-	header := rawdb.ReadHeader(dl.db.diskdb.BlockStore(), blockHash, blockNumber)
-	if header == nil {
-		log.Warn("Block header not found, treating as empty", "blockNumber", blockNumber)
-		return 0
-	}
-
-	// Check if block has transactions (simple check for state changes)
-	if header.TxHash == types.EmptyRootHash {
-		// Empty block - no transactions, no state changes
-		log.Debug("Empty block detected", "blockNumber", blockNumber)
-		return 0
-	}
-
-	// Block has transactions, but we need to determine the actual stateID
-	// For blocks before the current one, we can try to read from state history
-	// or use a sequential numbering scheme
-
-	// For now, use a simple approach:
-	// - If it's the current block being committed, use the provided stateID
-	// - If it's a historical block with transactions, we need to look up or assign a stateID
-
-	// This is a simplified approach - in practice, you might need to:
-	// 1. Read from state history if available
-	// 2. Use a sequential state ID assignment
-	// 3. Query the state database for the actual state root changes
-
-	if blockNumber == currentStateID { // This assumes stateID correlates with block number
-		return currentStateID
-	}
-
-	// For historical blocks, we need a more sophisticated approach
-	// This could involve reading the state history or maintaining a mapping
-	log.Debug("Block with transactions detected", "blockNumber", blockNumber, "assignedStateID", blockNumber)
-	return blockNumber // Simplified: use block number as state ID for non-empty blocks
+	return errors.New("missing freezer env error")
 }
 
 // hasher is used to compute the sha256 hash of the provided data.
