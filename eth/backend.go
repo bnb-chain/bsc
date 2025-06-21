@@ -363,6 +363,13 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	eth.bloomIndexer.Start(eth.blockchain)
 
+	if cacheConfig.EnableIncrHistory {
+		eth.blockchain.SetFreezerEnv(&ethdb.FreezerEnv{
+			ChainCfg:         chainConfig,
+			BlobExtraReserve: config.BlobExtraReserve,
+		})
+	}
+
 	if config.BlobPool.Datadir != "" {
 		config.BlobPool.Datadir = stack.ResolvePath(config.BlobPool.Datadir)
 	}

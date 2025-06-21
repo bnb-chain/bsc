@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -225,6 +226,7 @@ type Database struct {
 	// These two freezers are used to store incremental block and state histories,nil possible in tests
 	incrStateFreezer ethdb.ResettableAncientStore
 	incrChainFreezer ethdb.ResettableAncientStore
+	freezeEnv        atomic.Value
 }
 
 // New attempts to load an already existing layer from a persistent key-value
@@ -952,4 +954,9 @@ func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
 		db.config.IncrBlockStartNumber = startBlock
 		log.Info("Set incremental block start number", "startBlock", startBlock)
 	}
+}
+
+// SetFreezerEnv is used to check Cancun hardfork time
+func (db *Database) SetFreezerEnv(env *ethdb.FreezerEnv) {
+	db.freezeEnv.Store(env)
 }

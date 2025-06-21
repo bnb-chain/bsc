@@ -645,6 +645,12 @@ func (bc *BlockChain) NoTries() bool {
 	return bc.statedb.NoTries()
 }
 
+func (bc *BlockChain) SetFreezerEnv(env *ethdb.FreezerEnv) {
+	if bc.triedb.Scheme() == rawdb.PathScheme {
+		bc.triedb.SetFreezerEnv(env)
+	}
+}
+
 func (bc *BlockChain) cacheReceipts(hash common.Hash, receipts types.Receipts, block *types.Block) {
 	// TODO, This is a hot fix for the block hash of logs is `0x0000000000000000000000000000000000000000000000000000000000000000` for system tx
 	// Please check details in https://github.com/bnb-chain/bsc/issues/443

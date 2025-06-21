@@ -413,3 +413,13 @@ func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
 	}
 	pdb.SetIncrBlockStartNumber(startBlock)
 }
+
+// SetFreezerEnv used for check Cancun hardfork
+func (db *Database) SetFreezerEnv(env *ethdb.FreezerEnv) {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		log.Error("Not supported")
+	} else {
+		pdb.SetFreezerEnv(env)
+	}
+}
