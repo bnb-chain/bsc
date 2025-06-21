@@ -821,15 +821,6 @@ func (db *Database) InsertIncrState(incrDir string) error {
 	db.incrStateFreezer = incrStateFreezer
 	defer incrStateFreezer.Close()
 
-	incrChainPath := filepath.Join(incrDir, rawdb.ChainFreezerName)
-	incrChainFreezer, err := rawdb.OpenIncrChainFreezer(incrChainPath, true)
-	if err != nil {
-		log.Error("Failed to open incremental chain freezer", "err", err)
-		return err
-	}
-	db.incrChainFreezer = incrChainFreezer
-	defer incrChainFreezer.Close()
-
 	pebblePath := filepath.Join(incrDir)
 	newDB, err := pebble.New(pebblePath, 10, 10, "incremental", true)
 	if err != nil {
@@ -841,14 +832,9 @@ func (db *Database) InsertIncrState(incrDir string) error {
 	firstBlockNumber := rawdb.ReadIncrFirstBlockNumber(newDB)
 	log.Info("Inserting incremental state", "first block number", firstBlockNumber)
 
-	ancients, _ := db.incrChainFreezer.Ancients()
-	tail, _ := db.incrChainFreezer.Tail()
-	count, _ := db.incrChainFreezer.ItemAmountInAncient()
-	log.Info("Incr chain info", "ancients", ancients, "tail", tail, "count", count)
-
-	ancients, _ = db.incrStateFreezer.Ancients()
-	tail, _ = db.incrStateFreezer.Tail()
-	count, _ = db.incrStateFreezer.ItemAmountInAncient()
+	ancients, _ := db.incrStateFreezer.Ancients()
+	tail, _ := db.incrStateFreezer.Tail()
+	count, _ := db.incrStateFreezer.ItemAmountInAncient()
 	log.Info("Incr state info", "ancients", ancients, "tail", tail, "count", count)
 	log.Info("Layer tree", "count", db.tree.len())
 
@@ -865,6 +851,8 @@ func (db *Database) InsertIncrState(incrDir string) error {
 			log.Error("Failed to merge incremental trie nodes", "err", err)
 			return err
 		}
+	} else {
+		return errors.New("Insert incremental state only supports async node buffer")
 	}
 	log.Info("Completed incremental state")
 	return nil

@@ -1055,3 +1055,73 @@ func mergeIncrSnapshot(ctx *cli.Context) error {
 	}
 	return nil
 }
+
+func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
+	incrChainPath := filepath.Join(incrDir, rawdb.ChainFreezerName)
+	incrChainFreezer, err := rawdb.OpenIncrChainFreezer(incrChainPath, true)
+	if err != nil {
+		log.Error("Failed to open incremental chain freezer", "err", err)
+		return err
+	}
+	defer incrChainFreezer.Close()
+
+	ancients, _ := incrChainFreezer.Ancients()
+	tail, _ := incrChainFreezer.Tail()
+	count, _ := incrChainFreezer.ItemAmountInAncient()
+	log.Info("Incr chain info", "ancients", ancients, "tail", tail, "count", count)
+
+	for i := tail; i < ancients; i++ {
+		hashBytes, err := rawdb.ReadIncrChainHash(incrChainFreezer, i)
+		if err != nil {
+			return err
+		}
+		hash := common.BytesToHash(hashBytes)
+		header, err := rawdb.ReadIncrChainHeader(incrChainFreezer, i)
+		if err != nil {
+			return err
+		}
+		body, err := rawdb.ReadIncrChainBodies(incrChainFreezer, i)
+		if err != nil {
+			return err
+		}
+		receipts, err := rawdb.ReadIncrChainReceipts(incrChainFreezer, i)
+		if err != nil {
+			return err
+		}
+		td, err := rawdb.ReadIncrChainDifficulty(incrChainFreezer, i)
+		if err != nil {
+			return err
+		}
+		var blobs rlp.RawValue
+		if false {
+			blobs, err = rawdb.ReadIncrChainBlobSideCars(incrChainFreezer, i)
+			if err != nil {
+				return err
+			}
+		}
+		blockBatch := chainDB.BlockStore().NewBatch()
+		rawdb.WriteTdRLP(blockBatch, hash, i, td)
+		rawdb.WriteBodyRLP(blockBatch, hash, i, body)
+		rawdb.WriteHeaderRLP(blockBatch, hash, i, header)
+		rawdb.WriteReceiptsRLP(blockBatch, hash, i, receipts)
+		if false {
+			rawdb.WriteBlobSidecarsRLP(blockBatch, hash, i, blobs)
+		}
+		if err = blockBatch.Write(); err != nil {
+			log.Crit("Failed to write block into disk", "err", err)
+		}
+	}
+
+	// TODO: should wait background chain freezer finish
+
+	// set blockchain metadata: current snap block and current block
+	hashBytes, err := rawdb.ReadIncrChainHash(incrChainFreezer, ancients)
+	if err != nil {
+		return err
+	}
+	hash := common.BytesToHash(hashBytes)
+	rawdb.WriteHeadBlockHash(chainDB, hash)
+	rawdb.WriteHeadHeaderHash(chainDB, hash)
+	rawdb.WriteHeadFastBlockHash(chainDB, hash)
+	return nil
+}
