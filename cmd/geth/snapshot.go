@@ -1079,29 +1079,35 @@ func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
 	for i := tail; i < ancients; i++ {
 		hashBytes, err := rawdb.ReadIncrChainHash(incrChainFreezer, i)
 		if err != nil {
+			log.Error("Failed to read increment chain hash", "err", err)
 			return err
 		}
 		hash := common.BytesToHash(hashBytes)
 		header, err := rawdb.ReadIncrChainHeader(incrChainFreezer, i)
 		if err != nil {
+			log.Error("Failed to read increment chain header", "err", err)
 			return err
 		}
 		body, err := rawdb.ReadIncrChainBodies(incrChainFreezer, i)
 		if err != nil {
+			log.Error("Failed to read increment chain bodies", "err", err)
 			return err
 		}
 		receipts, err := rawdb.ReadIncrChainReceipts(incrChainFreezer, i)
 		if err != nil {
+			log.Error("Failed to read increment chain receipts", "err", err)
 			return err
 		}
 		td, err := rawdb.ReadIncrChainDifficulty(incrChainFreezer, i)
 		if err != nil {
+			log.Error("Failed to read increment chain difficulty", "err", err)
 			return err
 		}
 		var blobs rlp.RawValue
 		if false {
 			blobs, err = rawdb.ReadIncrChainBlobSideCars(incrChainFreezer, i)
 			if err != nil {
+				log.Error("Failed to read increment chain blob side car", "err", err)
 				return err
 			}
 		}
@@ -1123,11 +1129,16 @@ func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
 	// set blockchain metadata: current snap block and current block
 	hashBytes, err := rawdb.ReadIncrChainHash(incrChainFreezer, ancients)
 	if err != nil {
+		log.Error("Failed to read increment chain hash for metadata", "err", err)
 		return err
 	}
 	hash := common.BytesToHash(hashBytes)
-	rawdb.WriteHeadBlockHash(chainDB, hash)
-	rawdb.WriteHeadHeaderHash(chainDB, hash)
-	rawdb.WriteHeadFastBlockHash(chainDB, hash)
+	blockBatch := chainDB.BlockStore().NewBatch()
+	rawdb.WriteHeadBlockHash(blockBatch, hash)
+	rawdb.WriteHeadHeaderHash(blockBatch, hash)
+	rawdb.WriteHeadFastBlockHash(blockBatch, hash)
+	if err = blockBatch.Write(); err != nil {
+		log.Crit("Failed to update block metadata into disk", "err", err)
+	}
 	return nil
 }
