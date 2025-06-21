@@ -1112,6 +1112,7 @@ func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
 			}
 		}
 		blockBatch := chainDB.BlockStore().NewBatch()
+		rawdb.WriteCanonicalHash(blockBatch, hash, i)
 		rawdb.WriteTdRLP(blockBatch, hash, i, td)
 		rawdb.WriteBodyRLP(blockBatch, hash, i, body)
 		rawdb.WriteHeaderRLP(blockBatch, hash, i, header)
@@ -1127,7 +1128,7 @@ func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
 	// TODO: should wait background chain freezer finish
 
 	// set blockchain metadata: current snap block and current block
-	hashBytes, err := rawdb.ReadIncrChainHash(incrChainFreezer, ancients)
+	hashBytes, err := rawdb.ReadIncrChainHash(incrChainFreezer, ancients-1)
 	if err != nil {
 		log.Error("Failed to read increment chain hash for metadata", "err", err)
 		return err
