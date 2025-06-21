@@ -355,6 +355,60 @@ func WriteIncrBlockData(db ethdb.AncientWriter, number, stateID uint64, hash, he
 	return err
 }
 
+// ReadIncrChainHash retrieves the incremental hash history from the database with the provided block number.
+func ReadIncrChainHash(db ethdb.AncientReaderOp, number uint64) ([]byte, error) {
+	blob, err := db.Ancient(ChainFreezerHashTable, number)
+	if err != nil {
+		return nil, err
+	}
+	return blob, nil
+}
+
+// ReadIncrChainHeader retrieves the incremental header history from the database with the provided block number.
+func ReadIncrChainHeader(db ethdb.AncientReaderOp, number uint64) ([]byte, error) {
+	blob, err := db.Ancient(ChainFreezerHeaderTable, number)
+	if err != nil {
+		return nil, err
+	}
+	return blob, nil
+}
+
+// ReadIncrChainBodies retrieves the incremental bodies history from the database with the provided block number.
+func ReadIncrChainBodies(db ethdb.AncientReaderOp, number uint64) ([]byte, error) {
+	blob, err := db.Ancient(ChainFreezerBodiesTable, number)
+	if err != nil {
+		return nil, err
+	}
+	return blob, nil
+}
+
+// ReadIncrChainReceipt retrieves the incremental receipts history from the database with the provided block number.
+func ReadIncrChainReceipts(db ethdb.AncientReaderOp, number uint64) ([]byte, error) {
+	blob, err := db.Ancient(ChainFreezerReceiptTable, number)
+	if err != nil {
+		return nil, err
+	}
+	return blob, nil
+}
+
+// ReadIncrChainDifficulty retrieves the incremental difficulty history from the database with the provided block number.
+func ReadIncrChainDifficulty(db ethdb.AncientReaderOp, number uint64) ([]byte, error) {
+	blob, err := db.Ancient(ChainFreezerDifficultyTable, number)
+	if err != nil {
+		return nil, err
+	}
+	return blob, nil
+}
+
+// ReadIncrChainBlobSideCars retrieves the incremental blob history from the database with the provided block number.
+func ReadIncrChainBlobSideCars(db ethdb.AncientReaderOp, number uint64) ([]byte, error) {
+	blobs, err := db.Ancient(ChainFreezerBlobSidecarTable, number)
+	if err != nil {
+		return nil, err
+	}
+	return blobs, nil
+}
+
 // WriteIncrFirstBlockNumber writes the first block number to the database
 func WriteIncrFirstBlockNumber(db ethdb.KeyValueWriter, firstBlockNumber uint64) error {
 	if err := db.Put(incrFirstBlockKey, encodeBlockNumber(firstBlockNumber)); err != nil {
@@ -423,22 +477,22 @@ func ResetEmptyIncrChainTable(db ethdb.AncientWriter, next uint64, isCancun bool
 }
 
 func ResetEmptyIncrStateTable(db ethdb.AncientWriter, next uint64) error {
-	if err := db.ResetTable(stateHistoryMeta, next, true); err != nil {
+	if err := db.ResetTable(stateHistoryMeta, next-1, true); err != nil {
 		return err
 	}
-	if err := db.ResetTable(stateHistoryAccountIndex, next, true); err != nil {
+	if err := db.ResetTable(stateHistoryAccountIndex, next-1, true); err != nil {
 		return err
 	}
-	if err := db.ResetTable(stateHistoryStorageIndex, next, true); err != nil {
+	if err := db.ResetTable(stateHistoryStorageIndex, next-1, true); err != nil {
 		return err
 	}
-	if err := db.ResetTable(stateHistoryAccountData, next, true); err != nil {
+	if err := db.ResetTable(stateHistoryAccountData, next-1, true); err != nil {
 		return err
 	}
-	if err := db.ResetTable(stateHistoryStorageData, next, true); err != nil {
+	if err := db.ResetTable(stateHistoryStorageData, next-1, true); err != nil {
 		return err
 	}
-	if err := db.ResetTable(incrStateHistoryTrieNodesData, next, true); err != nil {
+	if err := db.ResetTable(incrStateHistoryTrieNodesData, next-1, true); err != nil {
 		return err
 	}
 	return nil

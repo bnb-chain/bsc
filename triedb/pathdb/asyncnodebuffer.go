@@ -35,24 +35,14 @@ func newAsyncNodeBuffer(limit int, nodes *nodeSet, states *stateSet, layers uint
 }
 
 func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer ethdb.AncientWriter,
-	incrFreezer ethdb.ResettableAncientStore, firstStateID uint64) error {
-	head, err := incrFreezer.Ancients()
-	if err != nil {
-		log.Error("Failed to get ancients from incr state freezer", "error", err)
-		return err
-	}
-	tail, err := incrFreezer.Tail()
-	if err != nil {
-		log.Error("Failed to get tail incr state freezer", "error", err)
-		return err
-	}
+	incrFreezer ethdb.ResettableAncientStore, firstStateID, endStateID uint64) error {
 	persistID := rawdb.ReadPersistentStateID(db)
-	log.Info("Ancient db meta info", "persistent_state_id", persistID, "head_state_id", head,
-		"tail_state_id", tail, "total_state_num", head-tail, "firstStateID", firstStateID)
+	log.Info("Ancient db meta info", "persistent_state_id", persistID, "endStateID", endStateID,
+		"tail_state_id", firstStateID, "total_state_num", endStateID-firstStateID)
 
 	log.Info("Before place incr state data", "empty", a.empty(), "layers", a.getLayers())
 	// TODO: async read history and commit
-	for i := firstStateID; i <= head; i++ {
+	for i := firstStateID; i <= endStateID; i++ {
 		trieNodes, err := readIncrTrieNodes(incrFreezer, i)
 		if err != nil {
 			return err
@@ -72,7 +62,7 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 	}
 
 	log.Info("Force flush async node buffer", "empty", a.empty(), "layers", a.getLayers())
-	if err = a.flush(db, freezer, nil, head, true); err != nil {
+	if err := a.flush(db, freezer, nil, endStateID, true); err != nil {
 		log.Error("Failed to force flush history", "error", err)
 		return err
 	}

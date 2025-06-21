@@ -1854,6 +1854,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	// log.Info("statedb commit", "block number", block.NumberU64(), "current", bc.CurrentBlock().Number.Uint64(),
 	// 	"snap", bc.CurrentSnapBlock().Number.Uint64(), "safe", bc.CurrentSafeBlock().Number.Uint64(),
 	// 	"final", bc.CurrentFinalBlock().Number.Uint64(), "head block", bc.CurrentHeader().Number.Uint64())
+
 	// Commit all cached state changes into underlying memory database.
 	root, diffLayer, err := statedb.Commit(block.NumberU64(), bc.chainConfig.IsEIP158(block.Number()), bc.chainConfig.IsCancun(block.Number(), block.Time()))
 	if err != nil {
@@ -2084,7 +2085,6 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 				prev.Hash().Bytes()[:4], i, block.NumberU64(), block.Hash().Bytes()[:4], block.ParentHash().Bytes()[:4])
 		}
 	}
-
 	// Pre-checks passed, start the full block imports
 	if !bc.chainmu.TryLock() {
 		return 0, errChainStopped
@@ -2236,6 +2236,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 	case err != nil && !errors.Is(err, ErrKnownBlock):
 		bc.futureBlocks.Remove(block.Hash())
 		stats.ignored += len(it.chain)
+		log.Error("InsertChain failed", "block", block.Number(), "hash", block.Hash())
 		bc.reportBlock(block, nil, err)
 		return nil, it.index, err
 	}
@@ -2461,6 +2462,7 @@ func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, s
 	res, err := bc.processor.Process(block, statedb, bc.vmConfig)
 	close(interruptCh) // state prefetch can be stopped
 	if err != nil {
+		log.Error("Process failed", "block", block.Number(), "hash", block.Hash())
 		bc.reportBlock(block, res, err)
 		statedb.StopPrefetcher()
 		return nil, err
@@ -2470,6 +2472,7 @@ func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, s
 	// Validate the state using the default validator
 	vstart := time.Now()
 	if err := bc.validator.ValidateState(block, statedb, res, false); err != nil {
+		log.Error("ValidateState failed", "block", block.Number(), "hash", block.Hash())
 		bc.reportBlock(block, res, err)
 		statedb.StopPrefetcher()
 		return nil, err

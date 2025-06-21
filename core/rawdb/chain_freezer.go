@@ -168,6 +168,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 	)
 	timer := time.NewTimer(freezerRecheckInterval)
 	defer timer.Stop()
+	log.Info("Start freezing")
 
 	for {
 		select {

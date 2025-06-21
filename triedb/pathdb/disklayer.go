@@ -308,6 +308,10 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 		}
 	}
 
+	if bottom.block == 197025 {
+		log.Info("Block number is in 197025", "state_id", bottom.stateID(), "root", bottom.root.String())
+	}
+
 	if dl.db.config.EnableIncrHistory {
 		// should handle journal data in merge command
 		if bottom.block < dl.db.config.IncrBlockStartNumber {
@@ -318,11 +322,11 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 			return nil, err
 		}
 
-		if err := dl.checkIncrChainEmpty(bottom.block); err != nil {
-			log.Error("Failed to check incr chain freezer is empty", "err", err)
-			return nil, err
-		}
-		if err := rawdb.ResetEmptyIncrStateTable(dl.db.incrStateFreezer, bottom.stateID()-1); err != nil {
+		// if err := dl.checkIncrChainEmpty(bottom.block); err != nil {
+		// 	log.Error("Failed to check incr chain freezer is empty", "err", err)
+		// 	return nil, err
+		// }
+		if err := rawdb.ResetEmptyIncrStateTable(dl.db.incrStateFreezer, bottom.stateID()); err != nil {
 			log.Error("Failed to reset empty incr state freezer", "err", err)
 			return nil, err
 		}
@@ -340,7 +344,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 			return nil, fmt.Errorf("block header missing, can't freeze block %d", bottom.block)
 		}
 		env, _ := dl.db.freezeEnv.Load().(*ethdb.FreezerEnv)
-		
+
 		if err := rawdb.ResetEmptyIncrChainTable(dl.db.incrChainFreezer, bottom.block, isCancun(env, h.Number, h.Time)); err != nil {
 			log.Error("Failed to reset empty incr chain freezer", "err", err)
 			return nil, err

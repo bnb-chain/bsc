@@ -33,7 +33,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie/trienode"
@@ -821,34 +820,20 @@ func (db *Database) InsertIncrState(incrDir string) error {
 	db.incrStateFreezer = incrStateFreezer
 	defer incrStateFreezer.Close()
 
-	incrChainPath := filepath.Join(incrDir, rawdb.ChainFreezerName)
-	incrChainFreezer, err := rawdb.OpenIncrChainFreezer(incrChainPath, true)
-	if err != nil {
-		log.Error("Failed to open incremental chain freezer", "err", err)
-		return err
-	}
-	db.incrChainFreezer = incrChainFreezer
-	defer incrChainFreezer.Close()
+	// pebblePath := filepath.Join(incrDir)
+	// newDB, err := pebble.New(pebblePath, 10, 10, "incremental", true)
+	// if err != nil {
+	// 	log.Error("Failed to pebble to read incremental data", "err", err)
+	// 	return err
+	// }
+	// defer newDB.Close()
+	//
+	// firstBlockNumber := rawdb.ReadIncrFirstBlockNumber(newDB)
+	// log.Info("Inserting incremental state", "first block number", firstBlockNumber)
 
-	pebblePath := filepath.Join(incrDir)
-	newDB, err := pebble.New(pebblePath, 10, 10, "incremental", true)
-	if err != nil {
-		log.Error("Failed to pebble to read incremental data", "err", err)
-		return err
-	}
-	defer newDB.Close()
-
-	firstBlockNumber := rawdb.ReadIncrFirstBlockNumber(newDB)
-	log.Info("Inserting incremental state", "first block number", firstBlockNumber)
-
-	ancients, _ := db.incrChainFreezer.Ancients()
-	tail, _ := db.incrChainFreezer.Tail()
-	count, _ := db.incrChainFreezer.ItemAmountInAncient()
-	log.Info("Incr chain info", "ancients", ancients, "tail", tail, "count", count)
-
-	ancients, _ = db.incrStateFreezer.Ancients()
-	tail, _ = db.incrStateFreezer.Tail()
-	count, _ = db.incrStateFreezer.ItemAmountInAncient()
+	ancients, _ := db.incrStateFreezer.Ancients()
+	tail, _ := db.incrStateFreezer.Tail()
+	count, _ := db.incrStateFreezer.ItemAmountInAncient()
 	log.Info("Incr state info", "ancients", ancients, "tail", tail, "count", count)
 	log.Info("Layer tree", "count", db.tree.len())
 
@@ -858,13 +843,20 @@ func (db *Database) InsertIncrState(incrDir string) error {
 		return err
 	}
 
+	// TODO: check data overlap
+	// a := newAsyncNodeBuffer(db.config.WriteBufferSize, nil, nil, 0)
+	// if err = a.mergeIncrTrieNodes(db.diskdb, db.freezer, db.incrStateFreezer, tail+1, ancients); err != nil {
+	// 	log.Error("Failed to merge incremental state trie nodes", "err", err)
+	// 	return err
+	// }
 	dl := db.tree.bottom()
 	if a, ok := dl.buffer.(*asyncnodebuffer); ok {
-		log.Info("async node buffer")
-		if err = a.mergeIncrTrieNodes(db.diskdb, db.freezer, db.incrStateFreezer, tail+1); err != nil {
+		if err = a.mergeIncrTrieNodes(db.diskdb, db.freezer, db.incrStateFreezer, tail+1, ancients); err != nil {
 			log.Error("Failed to merge incremental trie nodes", "err", err)
 			return err
 		}
+	} else {
+		return errors.New("Insert incremental state only supports async node buffer")
 	}
 	log.Info("Completed incremental state")
 	return nil
@@ -878,8 +870,10 @@ func (db *Database) mergeIncrHistory(firstStateID, endStateID uint64) error {
 			return err
 		}
 
+		// TODO: write state id
 		accountData, storageData, accountIndex, storageIndex := h.encode()
 		rawdb.WriteStateHistory(db.freezer, i, h.meta.encode(), accountIndex, storageIndex, accountData, storageData)
+		rawdb.WriteStateID(db.diskdb, h.meta.root, i)
 	}
 	log.Info("Insert incremental state to base snapshot state ancient db", "first state ID", firstStateID,
 		"end state ID", endStateID)
