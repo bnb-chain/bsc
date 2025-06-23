@@ -237,7 +237,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				addrCopy := addr
 				// If the account has no code, we can abort here
 				// The depth-check is already done, and precompiles handled above
-				contract := NewContract(caller, AccountRef(addrCopy), value, gas)
+				contract := GetContract(caller, AccountRef(addrCopy), value, gas)
 				codeHash := evm.resolveCodeHash(addrCopy)
 				// codeHash := evm.StateDB.GetCodeHash(addrCopy) // todo: check
 				contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
@@ -246,15 +246,15 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				gas = contract.Gas
 			} else {
 				addrCopy := addr
-			  // If the account has no code, we can abort here
-			  // The depth-check is already done, and precompiles handled above
-			  contract := GetContract(caller, AccountRef(addrCopy), value, gas)
-			  defer ReturnContract(contract)
+				// If the account has no code, we can abort here
+				// The depth-check is already done, and precompiles handled above
+				contract := GetContract(caller, AccountRef(addrCopy), value, gas)
+				defer ReturnContract(contract)
 
-			  contract.IsSystemCall = isSystemCall(caller)
-			  contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), code)
-			  ret, err = evm.interpreter.Run(contract, input, false)
-			  gas = contract.Gas
+				contract.IsSystemCall = isSystemCall(caller)
+				contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), code)
+				ret, err = evm.interpreter.Run(contract, input, false)
+				gas = contract.Gas
 			}
 		}
 	}
@@ -313,7 +313,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 			addrCopy := addr
 			// Initialise a new contract and set the code that is to be used by the EVM.
 			// The contract is a scoped environment for this execution context only.
-			contract := NewContract(caller, AccountRef(caller.Address()), value, gas)
+			contract := GetContract(caller, AccountRef(caller.Address()), value, gas)
 			code := evm.resolveCode(addrCopy)
 			codeHash := evm.resolveCodeHash(addrCopy)
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
@@ -322,14 +322,14 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 			gas = contract.Gas
 		} else {
 			addrCopy := addr
-		  // Initialise a new contract and set the code that is to be used by the EVM.
-		  // The contract is a scoped environment for this execution context only.
-		  contract := GetContract(caller, AccountRef(caller.Address()), value, gas)
-		  defer ReturnContract(contract)
-  
-		  contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
-		  ret, err = evm.interpreter.Run(contract, input, false)
-		  gas = contract.Gas
+			// Initialise a new contract and set the code that is to be used by the EVM.
+			// The contract is a scoped environment for this execution context only.
+			contract := GetContract(caller, AccountRef(caller.Address()), value, gas)
+			defer ReturnContract(contract)
+
+			contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
+			ret, err = evm.interpreter.Run(contract, input, false)
+			gas = contract.Gas
 		}
 	}
 	if err != nil {
@@ -375,7 +375,7 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 		if evm.Config.EnableOpcodeOptimizations {
 			addrCopy := addr
 			// Initialise a new contract and make initialise the delegate values
-			contract := NewContract(caller, AccountRef(caller.Address()), nil, gas).AsDelegate()
+			contract := GetContract(caller, AccountRef(caller.Address()), nil, gas).AsDelegate()
 			code := evm.resolveCode(addrCopy)
 			codeHash := evm.resolveCodeHash(addrCopy)
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
@@ -384,13 +384,13 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 			gas = contract.Gas
 		} else {
 			addrCopy := addr
-		  // Initialise a new contract and make initialise the delegate values
-		  contract := GetContract(caller, AccountRef(caller.Address()), nil, gas).AsDelegate()
-		  defer ReturnContract(contract)
+			// Initialise a new contract and make initialise the delegate values
+			contract := GetContract(caller, AccountRef(caller.Address()), nil, gas).AsDelegate()
+			defer ReturnContract(contract)
 
-		  contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
-		  ret, err = evm.interpreter.Run(contract, input, false)
-		  gas = contract.Gas
+			contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
+			ret, err = evm.interpreter.Run(contract, input, false)
+			gas = contract.Gas
 		}
 	}
 	if err != nil {
@@ -444,7 +444,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 			addrCopy := addr
 			// Initialise a new contract and set the code that is to be used by the EVM.
 			// The contract is a scoped environment for this execution context only.
-			contract := NewContract(caller, AccountRef(addrCopy), new(uint256.Int), gas)
+			contract := GetContract(caller, AccountRef(addrCopy), new(uint256.Int), gas)
 			code := evm.resolveCode(addrCopy)
 			codeHash := evm.resolveCodeHash(addrCopy)
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
@@ -456,20 +456,20 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 			gas = contract.Gas
 		} else {
 			// At this point, we use a copy of address. If we don't, the go compiler will
-		  // leak the 'contract' to the outer scope, and make allocation for 'contract'
-		  // even if the actual execution ends on RunPrecompiled above.
-		  addrCopy := addr
-		  // Initialise a new contract and set the code that is to be used by the EVM.
-		  // The contract is a scoped environment for this execution context only.
-		  contract := GetContract(caller, AccountRef(addrCopy), new(uint256.Int), gas)
-		  defer ReturnContract(contract)
+			// leak the 'contract' to the outer scope, and make allocation for 'contract'
+			// even if the actual execution ends on RunPrecompiled above.
+			addrCopy := addr
+			// Initialise a new contract and set the code that is to be used by the EVM.
+			// The contract is a scoped environment for this execution context only.
+			contract := GetContract(caller, AccountRef(addrCopy), new(uint256.Int), gas)
+			defer ReturnContract(contract)
 
-		  contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
-		  // When an error was returned by the EVM or when setting the creation code
-		  // above we revert to the snapshot and consume any gas remaining. Additionally
-		  // when we're in Homestead this also counts for code storage gas errors.
-		  ret, err = evm.interpreter.Run(contract, input, true)
-		  gas = contract.Gas
+			contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
+			// When an error was returned by the EVM or when setting the creation code
+			// above we revert to the snapshot and consume any gas remaining. Additionally
+			// when we're in Homestead this also counts for code storage gas errors.
+			ret, err = evm.interpreter.Run(contract, input, true)
+			gas = contract.Gas
 		}
 	}
 	if err != nil {

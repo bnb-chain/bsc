@@ -1018,7 +1018,7 @@ func makeDup(size int64) executionFunc {
 // fused instructions
 // opAndSwap1PopSwap2Swap1 implements the fused instruction of And and `move to the stack bottom`.
 func opAndSwap1PopSwap2Swap1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 
@@ -1035,7 +1035,7 @@ func opAndSwap1PopSwap2Swap1(pc *uint64, interpreter *EVMInterpreter, scope *Sco
 
 // opSwap2Swap1PopJump
 func opSwap2Swap1PopJump(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 
@@ -1052,7 +1052,7 @@ func opSwap2Swap1PopJump(pc *uint64, interpreter *EVMInterpreter, scope *ScopeCo
 
 // opSwap1PopSwap2Swap1
 func opSwap1PopSwap2Swap1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 
@@ -1067,7 +1067,7 @@ func opSwap1PopSwap2Swap1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeC
 
 // opPopSwap2Swap1Pop
 func opPopSwap2Swap1Pop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 
@@ -1081,7 +1081,7 @@ func opPopSwap2Swap1Pop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeCon
 
 // opPush2Jump
 func opPush2Jump(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 
@@ -1113,7 +1113,7 @@ func opPush2Jump(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) (
 
 // opPush2JumpI
 func opPush2JumpI(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 
@@ -1150,7 +1150,7 @@ func opPush2JumpI(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) 
 
 // opPush1Push1
 func opPush1Push1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 
@@ -1170,7 +1170,7 @@ func opPush1Push1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) 
 
 // opPush1Add
 func opPush1Add(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 
@@ -1190,7 +1190,7 @@ func opPush1Add(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 
 // opPush1Shl
 func opPush1Shl(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 
@@ -1217,7 +1217,7 @@ func opPush1Shl(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 
 // opPush1Dup1
 func opPush1Dup1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 
@@ -1238,7 +1238,7 @@ func opPush1Dup1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) (
 
 // opSwap1Pop
 func opSwap1Pop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 
@@ -1250,7 +1250,7 @@ func opSwap1Pop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 
 // opPopJump
 func opPopJump(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 
@@ -1264,7 +1264,7 @@ func opPopJump(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]
 
 // opPop2
 func opPop2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 
@@ -1275,7 +1275,7 @@ func opPop2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byt
 
 // opSwap2Swap1
 func opSwap2Swap1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 
@@ -1290,7 +1290,7 @@ func opSwap2Swap1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) 
 
 // opSwap2Pop
 func opSwap2Pop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 
@@ -1304,7 +1304,7 @@ func opSwap2Pop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 
 // opDup2Lt
 func opDup2LT(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 
@@ -1321,7 +1321,7 @@ func opDup2LT(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]b
 
 // opJumpIfZero
 func opJumpIfZero(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 
@@ -1357,7 +1357,7 @@ func opJumpIfZero(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) 
 
 // opNop has no behavior.
 func opNop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 	return nil, nil
@@ -1365,7 +1365,7 @@ func opNop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte
 
 // opIsZeroPush2 is a super instruction
 func opIsZeroPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 	x := scope.Stack.peek()
@@ -1393,7 +1393,7 @@ func opIsZeroPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext)
 
 // DUP2 MSTORE PUSH1 ADD
 func opDup2MStorePush1Add(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 	var mStart, val uint256.Int
@@ -1422,7 +1422,7 @@ func opDup2MStorePush1Add(pc *uint64, interpreter *EVMInterpreter, scope *ScopeC
 
 // DUP1 PUSH4 EQ PUSH2
 func opDup1Push4EqPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 	scope.Stack.dup(1)
@@ -1450,7 +1450,7 @@ func opDup1Push4EqPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeCon
 
 // PUSH1 CALLDATALOAD PUSH1 SHR DUP1 PUSH4 GT PUSH2
 func opPush1CalldataloadPush1ShrDup1Push4GtPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 	codeLen := uint64(len(scope.Contract.Code))
@@ -1510,7 +1510,7 @@ func opPush1CalldataloadPush1ShrDup1Push4GtPush2(pc *uint64, interpreter *EVMInt
 
 // PUSH1 PUSH1 PUSH1 SHL SUB
 func opPush1Push1Push1SHLSub(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 	codeLen := uint64(len(scope.Contract.Code))
@@ -1545,7 +1545,7 @@ func opPush1Push1Push1SHLSub(pc *uint64, interpreter *EVMInterpreter, scope *Sco
 
 // AND DUP2 ADD SWAP1 DUP2 LT
 func opAndDup2AddSwap1Dup2LT(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 	x, y := scope.Stack.pop(), scope.Stack.peek()
@@ -1573,7 +1573,7 @@ func opAndDup2AddSwap1Dup2LT(pc *uint64, interpreter *EVMInterpreter, scope *Sco
 
 // SWAP1 PUSH1 DUP1 NOT SWAP2 ADD AND DUP2 ADD SWAP1 DUP2 LT
 func opSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if scope.Contract.optimized == false {
+	if !scope.Contract.optimized {
 		return nil, ErrInvalidOptimizedCode
 	}
 	codeLen := uint64(len(scope.Contract.Code))

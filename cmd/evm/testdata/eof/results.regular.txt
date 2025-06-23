@@ -226,11 +226,7 @@ ERR: undefined instruction: op DUP1PUSH4EQPUSH2, pos 0
 ERR: undefined instruction: op PUSH1CALLDATALOADPUSH1SHRDUP1PUSH4GTPUSH2, pos 0
 ERR: undefined instruction: op PUSH1PUSH1PUSH1SHLSUB, pos 0
 ERR: undefined instruction: op ANDDUP2ADDSWAP1DUP2LT, pos 0
-<<<<<<< HEAD
 ERR: undefined instruction: op SWAP1PUSH1DUP1NOTSWAP2ADDANDDUP2ADDSWAP1DUP2LT, pos 0
-=======
-ERR: undefined instruction: op Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT, pos 0
->>>>>>> 911590120 (feat: add some super instruction)
 ERR: undefined instruction: op opcode 0xc9 not defined, pos 0
 ERR: undefined instruction: op opcode 0xca not defined, pos 0
 ERR: undefined instruction: op opcode 0xcb not defined, pos 0

@@ -991,7 +991,7 @@ func TestOpPush1Push1(t *testing.T) {
 	pc1 := uint64(0)
 	stack1 := new(Stack)
 	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code},
+		Contract: &Contract{Code: code, optimized: true},
 		Stack:    stack1,
 	}
 	interpreter1 := &EVMInterpreter{}
@@ -1031,7 +1031,7 @@ func TestOpIsZeroPush2(t *testing.T) {
 	stack1 := new(Stack)
 	stack1.push(new(uint256.Int).SetUint64(1))
 	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code},
+		Contract: &Contract{Code: code, optimized: true},
 		Stack:    stack1,
 	}
 	interpreter1 := &EVMInterpreter{}
@@ -1068,7 +1068,7 @@ func TestOpPop2(t *testing.T) {
 	stack1.push(new(uint256.Int).SetUint64(2))
 	stack1.push(new(uint256.Int).SetUint64(3))
 	scope1 := &ScopeContext{
-		Contract: &Contract{},
+		Contract: &Contract{optimized: true},
 		Stack:    stack1,
 	}
 	interpreter1 := &EVMInterpreter{}
@@ -1109,7 +1109,7 @@ func TestOpDup2MStorePush1Add(t *testing.T) {
 	stack1.push(new(uint256.Int).SetUint64(2))
 	stack1.push(new(uint256.Int).SetUint64(3))
 	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code},
+		Contract: &Contract{Code: code, optimized: true},
 		Stack:    stack1,
 		Memory:   NewMemory(),
 	}
@@ -1125,7 +1125,7 @@ func TestOpDup2MStorePush1Add(t *testing.T) {
 	stack2.push(new(uint256.Int).SetUint64(2))
 	stack2.push(new(uint256.Int).SetUint64(3))
 	scope2 := &ScopeContext{
-		Contract: &Contract{Code: code},
+		Contract: &Contract{Code: code, optimized: true},
 		Stack:    stack2,
 		Memory:   NewMemory(),
 	}
@@ -1160,7 +1160,7 @@ func TestOpDup1Push4EqPush2(t *testing.T) {
 	stack1.push(new(uint256.Int).SetUint64(2))
 	stack1.push(new(uint256.Int).SetUint64(3))
 	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code},
+		Contract: &Contract{Code: code, optimized: true},
 		Stack:    stack1,
 		Memory:   NewMemory(),
 	}
@@ -1211,7 +1211,7 @@ func TestOpPush1Push1Push1SHLSub(t *testing.T) {
 	stack1.push(new(uint256.Int).SetUint64(2))
 	stack1.push(new(uint256.Int).SetUint64(3))
 	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code},
+		Contract: &Contract{Code: code, optimized: true},
 		Stack:    stack1,
 		Memory:   NewMemory(),
 	}
@@ -1244,14 +1244,7 @@ func TestOpPush1Push1Push1SHLSub(t *testing.T) {
 	require.NoError(t, err)
 	pc2++
 	_, err = opSHL(&pc2, interpreter2, scope2)
-<<<<<<< HEAD
-<<<<<<< HEAD
 	require.NoError(t, err)
-=======
->>>>>>> 165d2670a (feat: add some super instruction)
-=======
-	require.NoError(t, err)
->>>>>>> 911590120 (feat: add some super instruction)
 	pc2++
 	_, err = opSub(&pc2, interpreter2, scope2)
 	require.NoError(t, err)
@@ -1272,7 +1265,7 @@ func TestOpAndDup2AddSwap1Dup2LT(t *testing.T) {
 	stack1.push(new(uint256.Int).SetUint64(2))
 	stack1.push(new(uint256.Int).SetUint64(3))
 	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code},
+		Contract: &Contract{Code: code, optimized: true},
 		Stack:    stack1,
 		Memory:   NewMemory(),
 	}
@@ -1305,21 +1298,10 @@ func TestOpAndDup2AddSwap1Dup2LT(t *testing.T) {
 	require.NoError(t, err)
 	pc2++
 	_, err = opSwap1(&pc2, interpreter2, scope2)
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 911590120 (feat: add some super instruction)
 	require.NoError(t, err)
 	pc2++
 	_, err = makeDup(2)(&pc2, interpreter2, scope2)
 	require.NoError(t, err)
-<<<<<<< HEAD
-=======
-	pc2++
-	_, err = makeDup(2)(&pc2, interpreter2, scope2)
->>>>>>> 165d2670a (feat: add some super instruction)
-=======
->>>>>>> 911590120 (feat: add some super instruction)
 	pc2++
 	_, err = opLt(&pc2, interpreter2, scope2)
 	require.NoError(t, err)
@@ -1340,7 +1322,7 @@ func TestOpSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(t *testing.T) {
 	stack1.push(new(uint256.Int).SetUint64(2))
 	stack1.push(new(uint256.Int).SetUint64(3))
 	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code},
+		Contract: &Contract{Code: code, optimized: true},
 		Stack:    stack1,
 		Memory:   NewMemory(),
 	}
@@ -1373,8 +1355,6 @@ func TestOpSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(t *testing.T) {
 	require.NoError(t, err)
 	pc2++
 	_, err = opNot(&pc2, interpreter2, scope2)
-<<<<<<< HEAD
-<<<<<<< HEAD
 	require.NoError(t, err)
 	pc2++
 	_, err = opSwap2(&pc2, interpreter2, scope2)
@@ -1397,35 +1377,6 @@ func TestOpSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(t *testing.T) {
 	pc2++
 	_, err = makeDup(2)(&pc2, interpreter2, scope2)
 	require.NoError(t, err)
-=======
-=======
-	require.NoError(t, err)
->>>>>>> 911590120 (feat: add some super instruction)
-	pc2++
-	_, err = opSwap2(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opAdd(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opAnd(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makeDup(2)(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opAdd(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = opSwap1(&pc2, interpreter2, scope2)
-	require.NoError(t, err)
-	pc2++
-	_, err = makeDup(2)(&pc2, interpreter2, scope2)
-<<<<<<< HEAD
->>>>>>> 165d2670a (feat: add some super instruction)
-=======
-	require.NoError(t, err)
->>>>>>> 911590120 (feat: add some super instruction)
 	pc2++
 	_, err = opLt(&pc2, interpreter2, scope2)
 	require.NoError(t, err)
@@ -1446,7 +1397,7 @@ func TestOpPush1CalldataloadPush1ShrDup1Push4GtPush2(t *testing.T) {
 	stack1.push(new(uint256.Int).SetUint64(2))
 	stack1.push(new(uint256.Int).SetUint64(3))
 	scope1 := &ScopeContext{
-		Contract: &Contract{Code: code, Input: []byte{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8}},
+		Contract: &Contract{Code: code, optimized: true, Input: []byte{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8}},
 		Stack:    stack1,
 		Memory:   NewMemory(),
 	}
