@@ -406,10 +406,6 @@ func (b *bidSimulator) newBidLoop() {
 		}
 	}
 
-	genDiscardedReply := func(betterBid *BidRuntime) error {
-		return fmt.Errorf("bid is discarded, current bestBid is [blockReward: %s, validatorReward: %s]", betterBid.expectedBlockReward, betterBid.expectedValidatorReward)
-	}
-
 	for {
 		select {
 		case newBid := <-b.newBidCh:
@@ -435,6 +431,7 @@ func (b *bidSimulator) newBidLoop() {
 
 			var replyErr error
 			toCommit := true
+			bidAcceptted := true
 			bestBidToRun := b.GetBestBidToRun(newBid.bid.ParentHash)
 			if bestBidToRun != nil {
 				bestBidRuntime, _ := newBidRuntime(bestBidToRun, *b.config.ValidatorCommission)
@@ -445,13 +442,13 @@ func (b *bidSimulator) newBidLoop() {
 				} else if !bestBidToRun.IsCommitted() {
 					// bestBidToRun is not committed yet, this newBid will trigger bestBidToRun to commit
 					bidRuntime = bestBidRuntime
-					replyErr = genDiscardedReply(bidRuntime)
+					bidAcceptted = false
 					log.Debug("discard new bid and to simulate the non-committed bestBidToRun",
 						"builder", bestBidToRun.Builder, "bidHash", bestBidToRun.Hash().TerminalString())
 				} else {
 					// new bid will be discarded, as it is useless now.
 					toCommit = false
-					replyErr = genDiscardedReply(bestBidRuntime)
+					bidAcceptted = false
 					log.Debug("new bid will be discarded", "builder", bestBidToRun.Builder,
 						"bidHash", bestBidToRun.Hash().TerminalString())
 				}
@@ -493,7 +490,7 @@ func (b *bidSimulator) newBidLoop() {
 				log.Info("[BID ARRIVED]",
 					"block", newBid.bid.BlockNumber,
 					"builder", newBid.bid.Builder,
-					"accepted", replyErr == nil,
+					"accepted", bidAcceptted,
 					"blockReward", weiToEtherStringF6(bidRuntime.expectedBlockReward),
 					"validatorReward", weiToEtherStringF6(bidRuntime.expectedValidatorReward),
 					"tx", len(newBid.bid.Txs),
@@ -685,7 +682,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		if err != nil {
 			logCtx = append(logCtx, "err", err)
 			log.Info("BidSimulator: simulation failed", logCtx...)
-			if err != errBetterBid {
+			if !errors.Is(errBetterBid, err) {
 				go b.reportIssue(bidRuntime, err)
 			}
 		}
