@@ -2250,7 +2250,7 @@ ERR: invalid jump destination: out-of-bounds offset: offset -21151, dest -20628,
 ERR: invalid dataloadN argument: arg 24833, last 0, pos 1397
 ERR: invalid jump destination: out-of-bounds offset: offset 24833, dest 26278, pos 1443
 ERR: stack limit reached 1048 (1024): at pos 75
-ERR: undefined instruction: op opcode 0xc8 not defined, pos 1179
+ERR: undefined instruction: op SWAP1PUSH1DUP1NOTSWAP2ADDANDDUP2ADDSWAP1DUP2LT, pos 1179
 ERR: invalid dataloadN argument: arg 5, last 32, pos 1728
 ERR: invalid dataloadN argument: arg 62719, last 32, pos 945
 ERR: invalid dataloadN argument: arg 16, last 32, pos 771
