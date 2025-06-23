@@ -328,9 +328,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	if err == errStopToken {
 		err = nil // clear stop token error
 	}
-
-	if in.evm.Context.BlockNumber.Uint64() == 5137393 && in.evm.StateDB.TxIndex() == 0 {
-		log.Error("show contract gas", "contract.Gas", contract.Gas, "evm.StateDB.TxIndex()", in.evm.StateDB.TxIndex(), "evm.Context.BlockNumber.Uint64()", in.evm.Context.BlockNumber.Uint64())
-	}
+	
 	return res, err
 }
