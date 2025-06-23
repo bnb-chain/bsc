@@ -62,7 +62,7 @@ func TestPrefetchLeaking(t *testing.T) {
 
 	Track(ctx, t, func(ctx context.Context) {
 		close(inter)
-		go archive.prefetcher.Prefetch(block, statedb, &archive.vmConfig, inter)
+		go archive.prefetcher.Prefetch(block.Transactions(), block.Header(), block.GasLimit(), statedb, &archive.vmConfig, inter)
 		time.Sleep(1 * time.Second)
 	})
 }

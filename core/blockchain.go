@@ -56,7 +56,6 @@ import (
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/ethereum/go-ethereum/triedb/hashdb"
 	"github.com/ethereum/go-ethereum/triedb/pathdb"
-	exlru "github.com/hashicorp/golang-lru"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -319,9 +318,9 @@ type BlockChain struct {
 	futureBlocks *lru.Cache[common.Hash, *types.Block]
 
 	// trusted diff layers
-	diffLayerCache             *exlru.Cache                          // Cache for the diffLayers
-	diffLayerChanCache         *exlru.Cache                          // Cache for the difflayer channel
-	diffQueue                  *prque.Prque[int64, *types.DiffLayer] // A Priority queue to store recent diff layer
+	diffLayerCache             *lru.Cache[common.Hash, *types.DiffLayer] // Cache for the diffLayers
+	diffLayerChanCache         *lru.Cache[common.Hash, chan struct{}]    // Cache for the difflayer channel
+	diffQueue                  *prque.Prque[int64, *types.DiffLayer]     // A Priority queue to store recent diff layer
 	diffQueueBuffer            chan *types.DiffLayer
 	diffLayerFreezerBlockLimit uint64
 
@@ -356,9 +355,6 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		log.Warn("TriesInMemory isn't the default value (128), you need specify the same TriesInMemory when pruning data",
 			"triesInMemory", cacheConfig.TriesInMemory, "scheme", cacheConfig.StateScheme)
 	}
-
-	diffLayerCache, _ := exlru.New(diffLayerCacheLimit)
-	diffLayerChanCache, _ := exlru.New(diffLayerCacheLimit)
 
 	// Open trie database with provided config
 	enableVerkle, err := EnableVerkleAtGenesis(db, genesis)
@@ -404,8 +400,8 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		blockStatsCache:    lru.NewCache[common.Hash, *BlockStats](blockCacheLimit),
 		txLookupCache:      lru.NewCache[common.Hash, txLookup](txLookupCacheLimit),
 		futureBlocks:       lru.NewCache[common.Hash, *types.Block](maxFutureBlocks),
-		diffLayerCache:     diffLayerCache,
-		diffLayerChanCache: diffLayerChanCache,
+		diffLayerCache:     lru.NewCache[common.Hash, *types.DiffLayer](diffLayerCacheLimit),
+		diffLayerChanCache: lru.NewCache[common.Hash, chan struct{}](diffLayerCacheLimit),
 		engine:             engine,
 		vmConfig:           vmConfig,
 		diffQueue:          prque.New[int64, *types.DiffLayer](nil),
@@ -672,10 +668,6 @@ func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, diffLayerCh cha
 	for index := range diffLayer.Storages {
 		// Sort keys and vals by key.
 		sort.Sort(&diffLayer.Storages[index])
-	}
-
-	if bc.diffLayerCache.Len() >= diffLayerCacheLimit {
-		bc.diffLayerCache.RemoveOldest()
 	}
 
 	bc.diffLayerCache.Add(diffLayer.BlockHash, diffLayer)
@@ -1836,9 +1828,6 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		diffLayer.Number = block.NumberU64()
 
 		diffLayerCh := make(chan struct{})
-		if bc.diffLayerChanCache.Len() >= diffLayerCacheLimit {
-			bc.diffLayerChanCache.RemoveOldest()
-		}
 		bc.diffLayerChanCache.Add(diffLayer.BlockHash, diffLayerCh)
 
 		go bc.cacheDiffLayer(diffLayer, diffLayerCh)
@@ -1920,18 +1909,18 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 
 // WriteBlockAndSetHead writes the given block and all associated state to the database,
 // and applies the block as the new chain head.
-func (bc *BlockChain) WriteBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
+func (bc *BlockChain) WriteBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, sealedBlockSender *event.TypeMux) (status WriteStatus, err error) {
 	if !bc.chainmu.TryLock() {
 		return NonStatTy, errChainStopped
 	}
 	defer bc.chainmu.Unlock()
 
-	return bc.writeBlockAndSetHead(block, receipts, logs, state, emitHeadEvent)
+	return bc.writeBlockAndSetHead(block, receipts, logs, state, sealedBlockSender)
 }
 
 // writeBlockAndSetHead is the internal implementation of WriteBlockAndSetHead.
 // This function expects the chain mutex to be held.
-func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
+func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, sealedBlockSender *event.TypeMux) (status WriteStatus, err error) {
 	currentBlock := bc.CurrentBlock()
 	reorg, err := bc.forker.ReorgNeededWithFastFinality(currentBlock, block.Header())
 	if err != nil {
@@ -1940,6 +1929,14 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 	if reorg {
 		bc.highestVerifiedBlock.Store(types.CopyHeader(block.Header()))
 		bc.highestVerifiedBlockFeed.Send(HighestVerifiedBlockEvent{Header: block.Header()})
+		if sealedBlockSender != nil {
+			// If the local DB is corrupted, writeBlockWithState may fail.
+			// It's fine — other nodes will persist the block.
+			//
+			// If the block is invalid, writeBlockWithState will also fail.
+			// It's fine — other nodes will reject the block.
+			sealedBlockSender.Post(NewSealedBlockEvent{Block: block})
+		}
 	}
 
 	if err := bc.writeBlockWithState(block, receipts, state); err != nil {
@@ -1978,7 +1975,7 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 				bc.SetFinalized(finalizedHeader)
 			}
 		}
-		if emitHeadEvent {
+		if sealedBlockSender != nil {
 			bc.chainHeadFeed.Send(ChainHeadEvent{Header: block.Header()})
 			if finalizedHeader != nil {
 				bc.finalizedHeaderFeed.Send(FinalizedHeaderEvent{finalizedHeader})
@@ -2282,7 +2279,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 			// Disable tracing for prefetcher executions.
 			vmCfg := bc.vmConfig
 			vmCfg.Tracer = nil
-			go bc.prefetcher.Prefetch(block, throwaway, &vmCfg, interruptCh)
+			go bc.prefetcher.Prefetch(block.Transactions(), block.Header(), block.GasLimit(), throwaway, &vmCfg, interruptCh)
 
 			// 2.do trie prefetch for MPT trie node cache
 			// it is for the big state trie tree, prefetch based on transaction's From/To address.
@@ -2485,7 +2482,7 @@ func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, s
 		// Don't set the head, only insert the block
 		err = bc.writeBlockWithState(block, res.Receipts, statedb)
 	} else {
-		status, err = bc.writeBlockAndSetHead(block, res.Receipts, res.Logs, statedb, false)
+		status, err = bc.writeBlockAndSetHead(block, res.Receipts, res.Logs, statedb, nil)
 	}
 	if err != nil {
 		return nil, err
@@ -3267,12 +3264,11 @@ func (bc *BlockChain) GetVerifyResult(blockNumber uint64, blockHash common.Hash,
 }
 
 func (bc *BlockChain) GetTrustedDiffLayer(blockHash common.Hash) *types.DiffLayer {
-	var diff *types.DiffLayer
 	if cached, ok := bc.diffLayerCache.Get(blockHash); ok {
-		diff = cached.(*types.DiffLayer)
-		return diff
+		return cached
 	}
 
+	var diff *types.DiffLayer
 	diffStore := bc.db.DiffStore()
 	if diffStore != nil {
 		diff = rawdb.ReadDiffLayer(diffStore, blockHash)

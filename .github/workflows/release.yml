@@ -14,7 +14,7 @@ jobs:
     name: Build Release
     strategy:
       matrix:
-        go-version: [1.23.x]
+        go-version: [1.24.x]
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -50,7 +50,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           go mod download
-          wget https://musl.cc/x86_64-linux-musl-cross.tgz
+          wget https://pub-c0627345c16f47ab858c9469133073a8.r2.dev/x86_64-linux-musl-cross.tgz
           tar -xvf ./x86_64-linux-musl-cross.tgz
           GIT_COMMIT=$(git rev-parse HEAD)
           GIT_COMMIT_DATE=$(git log -n1 --pretty='format:%cd' --date=format:'%Y%m%d')
@@ -70,7 +70,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           go mod download
-          wget https://musl.cc/aarch64-linux-musl-cross.tgz
+          wget https://pub-c0627345c16f47ab858c9469133073a8.r2.dev/aarch64-linux-musl-cross.tgz
           tar -xvf ./aarch64-linux-musl-cross.tgz
           GIT_COMMIT=$(git rev-parse HEAD)
           GIT_COMMIT_DATE=$(git log -n1 --pretty='format:%cd' --date=format:'%Y%m%d')
