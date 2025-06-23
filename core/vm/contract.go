@@ -108,7 +108,7 @@ func (c *Contract) isCode(udest uint64) bool {
 		if !exist {
 			if cached, ok := codeBitmapCache.Get(c.CodeHash); ok {
 				contractCodeBitmapHitMeter.Mark(1)
-				analysis = cached.(bitvec)
+				analysis = cached
 			} else if c.optimized {
 				analysis = compiler.LoadBitvec(c.CodeHash)
 				if analysis == nil {
