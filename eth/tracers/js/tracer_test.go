@@ -93,6 +93,7 @@ func runTraceWithOption(tracer *tracers.Tracer, vmctx *vmContext, chaincfg *para
 		compiler.DeleteCodeCache(contract.CodeHash)
 		optimized, _ := compiler.GenOrRewriteOptimizedCode(contract.CodeHash, contract.Code)
 		contract.Code = optimized
+		contract.SetOptimizedForTest()
 	}
 
 	tracer.OnTxStart(evm.GetVMContext(), types.NewTx(&types.LegacyTx{Gas: gasLimit, GasPrice: vmctx.txCtx.GasPrice}), contract.Caller())

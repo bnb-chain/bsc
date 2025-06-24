@@ -216,3 +216,10 @@ func (c *Contract) SetCodeOptionalHash(addr *common.Address, codeAndHash *codeAn
 	c.CodeHash = codeAndHash.hash
 	c.CodeAddr = addr
 }
+
+// SetOptimizedForTest returns a contract with optimized equals true for test purpose only
+func (c *Contract) SetOptimizedForTest() *Contract {
+	c.optimized = true
+
+	return c
+}
