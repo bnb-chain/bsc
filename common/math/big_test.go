@@ -157,3 +157,46 @@ func TestU256Bytes(t *testing.T) {
 		t.Errorf("expected %x got %x", ubytes, unsigned)
 	}
 }
+
+
+func TestHexOrDecimal256_MarshalText(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   *HexOrDecimal256
+		want    []byte
+		wantErr bool
+	}{
+		{
+			name:  "nil input",
+			input: nil,
+			want:  []byte("0x0"),
+		},
+		{
+			name:  "zero value",
+			input: (*HexOrDecimal256)(big.NewInt(0)),
+			want:  []byte("0x0"),
+		},
+		{
+			name:  "positive value",
+			input: (*HexOrDecimal256)(big.NewInt(0x123abc)),
+			want:  []byte("0x123abc"),
+		},
+		{
+			name:  "large positive value",
+			input: (*HexOrDecimal256)(new(big.Int).SetBytes(bytes.Repeat([]byte{0xff}, 32))),
+			want:  []byte("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.input.MarshalText()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("HexOrDecimal256.MarshalText() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !bytes.Equal(got, tt.want) {
+				t.Errorf("HexOrDecimal256.MarshalText() = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
