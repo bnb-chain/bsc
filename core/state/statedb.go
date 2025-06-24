@@ -1478,6 +1478,13 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 			return nil, err
 		}
 	}
+	if db := s.db.TrieDB(); db != nil && len(ret.codes) > 0 {
+		if db.IsIncr() {
+			for _, code := range ret.codes {
+				db.WriteCode(code.hash, code.blob)
+			}
+		}
+	}
 	if !ret.empty() {
 		// If snapshotting is enabled, update the snapshot tree with this new version
 		if snap := s.db.Snapshot(); snap != nil && snap.Snapshot(ret.originRoot) != nil {

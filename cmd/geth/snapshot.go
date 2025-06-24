@@ -39,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/node"
@@ -1260,6 +1261,12 @@ func mergeIncrSnapshot(ctx *cli.Context) error {
 		log.Error("Failed to insert increment block", "err", err)
 		return err
 	}
+
+	if err := insertContractCodes(path, chainDB); err != nil {
+		log.Error("Failed to insert contract codes", "err", err)
+		return err
+	}
+
 	return nil
 }
 
@@ -1441,5 +1448,50 @@ func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
 		log.Crit("Failed to update block metadata into disk", "err", err)
 	}
 
+	return nil
+}
+
+func insertContractCodes(incrDir string, chainDB ethdb.Database) error {
+	newDB, err := pebble.New(incrDir, 10, 10, "incremental", true)
+	if err != nil {
+		log.Error("Failed to open pebble to read incremental data", "err", err)
+		return err
+	}
+	defer newDB.Close()
+
+	it := newDB.NewIterator(rawdb.CodePrefix, nil)
+	defer it.Release()
+
+	codeCount := 0
+	for it.Next() {
+		key := it.Key()
+		value := it.Value()
+
+		// 验证是否为有效的代码键
+		isCode, hashBytes := rawdb.IsCodeKey(key)
+		if !isCode {
+			log.Warn("Invalid code key found", "key", fmt.Sprintf("%x", key))
+			continue
+		}
+
+		codeHash := common.BytesToHash(hashBytes)
+		if rawdb.HasCodeWithPrefix(chainDB.BlockStore(), codeHash) {
+			log.Debug("Code already exists, skipping", "hash", codeHash.Hex())
+			continue
+		}
+		rawdb.WriteCode(chainDB.BlockStore(), codeHash, value)
+
+		codeCount++
+		if codeCount%1000 == 0 {
+			log.Info("Inserting contract codes", "processed", codeCount)
+		}
+	}
+
+	if err := it.Error(); err != nil {
+		log.Error("Iterator error while reading contract codes", "err", err)
+		return err
+	}
+
+	log.Info("Contract codes insertion completed", "total", codeCount)
 	return nil
 }

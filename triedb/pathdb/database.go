@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie/trienode"
@@ -225,6 +226,7 @@ type Database struct {
 	// These two freezers are used to store incremental block and state histories,nil possible in tests
 	incrStateFreezer ethdb.ResettableAncientStore
 	incrChainFreezer ethdb.ResettableAncientStore
+	incrKVDB         ethdb.KeyValueStore
 	freezeEnv        atomic.Value
 }
 
@@ -287,6 +289,9 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 		if err = db.repairIncrChainHistory(ancientDir); err != nil {
 			log.Crit("Failed to repair incremental chain history", "err", err)
 		}
+		if err = db.newKVDB(ancientDir); err != nil {
+			log.Crit("Failed to create new KVDB", "err", err)
+		}
 	}
 
 	// Disable database in case node is still in the initial state sync stage.
@@ -301,6 +306,17 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 	}
 	log.Info("Initialized path database", fields...)
 	return db
+}
+
+func (db *Database) newKVDB(ancientDir string) error {
+	name := filepath.Join(ancientDir, rawdb.IncrementalPath)
+	newDB, err := pebble.New(name, 10, 10, "incremental", false)
+	if err != nil {
+		log.Error("Failed to create pebble to write incremental data", "err", err)
+		return err
+	}
+	db.incrKVDB = newDB
+	return err
 }
 
 // repairHistory truncates leftover state history objects, which may occur due
@@ -708,6 +724,10 @@ func (db *Database) Close() error {
 			log.Error("Failed to close incremental state freezer", "err", err)
 			return err
 		}
+		if err := db.incrKVDB.Close(); err != nil {
+			log.Error("Failed to close incremental kv db", "err", err)
+			return err
+		}
 	}
 
 	return db.freezer.Close()
@@ -820,17 +840,6 @@ func (db *Database) InsertIncrState(incrDir string) error {
 	db.incrStateFreezer = incrStateFreezer
 	defer incrStateFreezer.Close()
 
-	// pebblePath := filepath.Join(incrDir)
-	// newDB, err := pebble.New(pebblePath, 10, 10, "incremental", true)
-	// if err != nil {
-	// 	log.Error("Failed to pebble to read incremental data", "err", err)
-	// 	return err
-	// }
-	// defer newDB.Close()
-	//
-	// firstBlockNumber := rawdb.ReadIncrFirstBlockNumber(newDB)
-	// log.Info("Inserting incremental state", "first block number", firstBlockNumber)
-
 	ancients, _ := db.incrStateFreezer.Ancients()
 	tail, _ := db.incrStateFreezer.Tail()
 	count, _ := db.incrStateFreezer.ItemAmountInAncient()
@@ -844,11 +853,6 @@ func (db *Database) InsertIncrState(incrDir string) error {
 	}
 
 	// TODO: check data overlap
-	// a := newAsyncNodeBuffer(db.config.WriteBufferSize, nil, nil, 0)
-	// if err = a.mergeIncrTrieNodes(db.diskdb, db.freezer, db.incrStateFreezer, tail+1, ancients); err != nil {
-	// 	log.Error("Failed to merge incremental state trie nodes", "err", err)
-	// 	return err
-	// }
 	dl := db.tree.bottom()
 	if a, ok := dl.buffer.(*asyncnodebuffer); ok {
 		if err = a.mergeIncrTrieNodes(db.diskdb, db.freezer, db.incrStateFreezer, tail+1, ancients); err != nil {
@@ -895,6 +899,13 @@ func (db *Database) mergeIncrHistory(firstStateID, endStateID uint64) error {
 		log.Info("Pruned state history", "items", pruned, "tail_id", oldest)
 	}
 	return nil
+}
+
+// WriteCode wrote codes into incremental chain freezer
+func (db *Database) WriteCode(codeHash common.Hash, blob []byte) {
+	if db.config.EnableIncrHistory && db.incrKVDB != nil {
+		rawdb.WriteCode(db.incrKVDB, codeHash, blob)
+	}
 }
 
 // AccountHistory inspects the account history within the specified range.
@@ -953,4 +964,9 @@ func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
 // SetFreezerEnv is used to check Cancun hardfork time
 func (db *Database) SetFreezerEnv(env *ethdb.FreezerEnv) {
 	db.freezeEnv.Store(env)
+}
+
+// IsIncr
+func (db *Database) IsIncr() bool {
+	return db.config.EnableIncrHistory
 }

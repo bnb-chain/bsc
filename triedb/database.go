@@ -423,3 +423,21 @@ func (db *Database) SetFreezerEnv(env *ethdb.FreezerEnv) {
 		pdb.SetFreezerEnv(env)
 	}
 }
+
+func (db *Database) WriteCode(codeHash common.Hash, blob []byte) {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		log.Error("Not supported")
+	}
+	pdb.WriteCode(codeHash, blob)
+}
+
+// IsIncr
+func (db *Database) IsIncr() bool {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		log.Error("Not supported")
+		return false
+	}
+	return pdb.IsIncr()
+}
