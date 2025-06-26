@@ -21,6 +21,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/triedb"
 )
@@ -39,6 +40,7 @@ type accountDelete struct {
 	// storages stores mutated slots, the value should be nil.
 	storages map[common.Hash][]byte
 
+	obj *stateObject
 	// storagesOrigin stores the original values of mutated slots in
 	// prefix-zero-trimmed RLP format. The map key refers to the **HASH**
 	// of the raw storage slot key.
@@ -98,21 +100,21 @@ func (sc *stateUpdate) empty() bool {
 //
 // rawStorageKey is a flag indicating whether to use the raw storage slot key or
 // the hash of the slot key for constructing state update object.
-func newStateUpdate(rawStorageKey bool, originRoot common.Hash, root common.Hash, deletes map[common.Hash]*accountDelete, updates map[common.Hash]*accountUpdate, nodes *trienode.MergedNodeSet) *stateUpdate {
+func newStateUpdate(statedb *StateDB, rawStorageKey bool, originRoot common.Hash, root common.Hash, deletes map[common.Hash]*accountDelete, updates map[common.Hash]*accountUpdate, nodes *trienode.MergedNodeSet) *stateUpdate {
 	var (
 		accounts       = make(map[common.Hash][]byte)
 		accountsOrigin = make(map[common.Address][]byte)
 		storages       = make(map[common.Hash]map[common.Hash][]byte)
 		storagesOrigin = make(map[common.Address]map[common.Hash][]byte)
 		codes          = make(map[common.Address]contractCode)
-		destructsAddrs = make(map[common.Address]struct{})
+		destructsAddrs = make(map[common.Address]*stateObject)
 	)
 	// Since some accounts might be destroyed and recreated within the same
 	// block, deletions must be aggregated first.
 	for addrHash, op := range deletes {
 		addr := op.address
 		accounts[addrHash] = nil
-		destructsAddrs[addr] = struct{}{}
+		destructsAddrs[addr] = op.obj
 		accountsOrigin[addr] = op.origin
 
 		// If storage wiping exists, the hash of the storage slot key must be used
@@ -202,6 +204,34 @@ func newStateUpdate(rawStorageKey bool, originRoot common.Hash, root common.Hash
 				Keys:    keys,
 				Vals:    values,
 			})
+		}
+	}
+
+	if statedb.cacheAmongBlocks != nil {
+		for addr, account := range destructsAddrs {
+			obj, exist := statedb.stateObjects[addr]
+			if !exist {
+				statedb.cacheAmongBlocks.SetAccount(crypto.Keccak256Hash(addr.Bytes()), []byte(""))
+			} else {
+				statedb.cacheAmongBlocks.SetAccount(obj.addrHash, []byte(""))
+			}
+			// if it is a CA account, purge the storage cache to avoid reading dirty storage data
+			if account != nil && account.Root() != types.EmptyRootHash {
+				SnapshotBlockCacheStoragePurge.Mark(1)
+				statedb.cacheAmongBlocks.PurgeStorageCache()
+			}
+		}
+
+		for accountHash, account := range sc.accounts {
+			if statedb.cacheAmongBlocks != nil {
+				statedb.cacheAmongBlocks.SetAccount(accountHash, account)
+			}
+		}
+
+		for accountHash, storage := range sc.storages {
+			for k, v := range storage {
+				statedb.cacheAmongBlocks.SetStorage(accountHash, k, v)
+			}
 		}
 	}
 

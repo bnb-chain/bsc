@@ -225,16 +225,29 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 		return common.Hash{}
 	}
 	s.db.StorageLoaded++
+	var (
+		err               error
+		value             common.Hash
+		existInAmongCache bool
+	)
 
-	var start time.Time
-	if metrics.EnabledExpensive() {
-		start = time.Now()
+	start := time.Now()
+	// Try to get from cache among blocks if the cache root is the pre-state root
+	if s.db.EnableCacheAmongBlock() {
+		value, existInAmongCache, err = s.db.cacheAmongBlocks.GetStorage(s.addrHash, crypto.Keccak256Hash(key.Bytes()))
+		if err != nil {
+			s.db.setError(err)
+			return common.Hash{}
+		}
 	}
-	value, err := s.db.reader.Storage(s.address, key)
-	if err != nil {
-		s.db.setError(err)
-		return common.Hash{}
+	if !existInAmongCache {
+		value, err = s.db.reader.Storage(s.address, key)
+		if err != nil {
+			s.db.setError(err)
+			return common.Hash{}
+		}
 	}
+
 	if metrics.EnabledExpensive() {
 		s.db.StorageReads += time.Since(start)
 	}

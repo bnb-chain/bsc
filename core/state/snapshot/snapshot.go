@@ -82,7 +82,8 @@ var (
 	ErrSnapshotStale = errors.New("snapshot stale")
 
 	// ErrNotCoveredYet is returned from data accessors if the underlying snapshot
-	// is being generated currently and the requested data item is not yet in the
+	// is being generated currently and the requested data itSnapshot updated", "blockRoot", blockRoot)
+	//	//log.Info("Snapshot updated", "blockRem is not yet in the
 	// range of accounts covered.
 	ErrNotCoveredYet = errors.New("not covered yet")
 
