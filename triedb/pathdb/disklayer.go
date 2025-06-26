@@ -19,7 +19,6 @@ package pathdb
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 	"sync"
 
 	"github.com/VictoriaMetrics/fastcache"
@@ -27,7 +26,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 )
@@ -308,52 +306,17 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 		}
 	}
 
-	if bottom.block == 197025 {
-		log.Info("Block number is in 197025", "state_id", bottom.stateID(), "root", bottom.root.String())
-	}
-
 	if dl.db.config.EnableIncrHistory {
 		// should handle journal data in merge command
 		if bottom.block < dl.db.config.IncrBlockStartNumber {
 			log.Warn("Blocks comes from journal", "blockNumber", bottom.block, "stateID", bottom.stateID(),
 				"incrBlockStartNumber", dl.db.config.IncrBlockStartNumber)
 		}
-		if err := dl.checkFreezerEnv(); err != nil {
-			return nil, err
-		}
 
-		// if err := dl.checkIncrChainEmpty(bottom.block); err != nil {
-		// 	log.Error("Failed to check incr chain freezer is empty", "err", err)
-		// 	return nil, err
-		// }
-		if err := rawdb.ResetEmptyIncrStateTable(dl.db.incrStateFreezer, bottom.stateID()); err != nil {
-			log.Error("Failed to reset empty incr state freezer", "err", err)
+		if err := dl.db.incr.commit(dl.db.diskdb.BlockStore(), bottom); err != nil {
+			log.Error("Failed to commit incremental data", "err", err)
 			return nil, err
 		}
-		if err := writeIncrHistory(dl.db.incrStateFreezer, bottom); err != nil {
-			log.Error("Failed to write incremental state history", "err", err)
-			return nil, err
-		}
-
-		blockHash := rawdb.ReadCanonicalHash(dl.db.diskdb.BlockStore(), bottom.block)
-		if blockHash == (common.Hash{}) {
-			return nil, fmt.Errorf("canonical hash not found for block %d", bottom.block)
-		}
-		h, _ := rawdb.ReadHeaderAndRaw(dl.db.diskdb.BlockStore(), blockHash, bottom.block)
-		if h == nil {
-			return nil, fmt.Errorf("block header missing, can't freeze block %d", bottom.block)
-		}
-		env, _ := dl.db.freezeEnv.Load().(*ethdb.FreezerEnv)
-
-		if err := rawdb.ResetEmptyIncrChainTable(dl.db.incrChainFreezer, bottom.block, isCancun(env, h.Number, h.Time)); err != nil {
-			log.Error("Failed to reset empty incr chain freezer", "err", err)
-			return nil, err
-		}
-		if err := dl.writeIncrementalBlockData(bottom.block, bottom.stateID()); err != nil {
-			log.Error("Failed to write incremental chain history", "err", err)
-			return nil, err
-		}
-
 	}
 
 	// Mark the diskLayer as stale before applying any mutations on top.
@@ -467,130 +430,6 @@ func (dl *diskLayer) resetCache() {
 	if dl.nodes != nil {
 		dl.nodes.Reset()
 	}
-}
-
-// IncrDataType represents the type of incremental data
-type IncrDataType int
-
-const (
-	IncrChainData IncrDataType = iota
-	IncrStateData
-)
-
-// checkIncrDataEmpty is a generic function to check if incremental data is empty
-// and initialize it with the first record if needed
-func (dl *diskLayer) checkIncrDataEmpty(dataType IncrDataType, value uint64) error {
-	var (
-		freezer    ethdb.ResettableAncientStore
-		dataName   string
-		logMessage string
-		writeFunc  func(ethdb.KeyValueWriter, uint64) error
-	)
-
-	switch dataType {
-	case IncrChainData:
-		freezer = dl.db.incrChainFreezer
-		dataName = "incrChainFreezer"
-		logMessage = "Put first block number in pebble"
-		writeFunc = rawdb.WriteIncrFirstBlockNumber
-	case IncrStateData:
-		freezer = dl.db.incrStateFreezer
-		dataName = "incrStateFreezer"
-		logMessage = "Put first state id in pebble"
-		writeFunc = rawdb.WriteIncrFirstStateID
-	default:
-		return fmt.Errorf("unknown incremental data type: %d", dataType)
-	}
-
-	item, err := freezer.Ancients()
-	if err != nil {
-		log.Error(fmt.Sprintf("Failed to get %s ancients", dataName), "err", err)
-		return err
-	}
-
-	if item == 0 {
-		pebblePath := filepath.Join(dl.db.config.IncrHistoryPath, rawdb.IncrementalPath)
-		db, err := pebble.New(pebblePath, 10, 10, "incremental", false)
-		if err != nil {
-			log.Error("Failed to create pebble to store incremental data", "path", pebblePath, "err", err)
-			return err
-		}
-		defer db.Close()
-
-		if err = writeFunc(db, value); err != nil {
-			log.Error("Failed to write first record into db", "type", dataName, "value", value, "err", err)
-			return err
-		}
-		log.Info(logMessage, "type", dataName, "value", value)
-	}
-
-	return nil
-}
-
-func (dl *diskLayer) checkIncrChainEmpty(block uint64) error {
-	return dl.checkIncrDataEmpty(IncrChainData, block)
-}
-
-func (dl *diskLayer) checkIncrStateEmpty(stateID uint64) error {
-	return dl.checkIncrDataEmpty(IncrStateData, stateID)
-}
-
-// writeIncrementalBlockData writes block data to incremental freezer
-// This handles both empty blocks and blocks with state changes
-// Scenarios:
-// 1. First time startup with incremental flag from a snapshot base
-// 2. Restart after graceful shutdown with incremental flag
-// 3. Normal block processing during runtime
-func (dl *diskLayer) writeIncrementalBlockData(blockNumber, stateID uint64) error {
-	head, err := dl.db.incrChainFreezer.Ancients()
-	if err != nil {
-		log.Error("Failed to get ancients from incr chain freezer", "err", err)
-		return err
-	}
-
-	var startBlock uint64
-	// Determine the scenario and calculate startBlock
-	if blockNumber == head {
-		// Scenario 1: First time startup with incremental flag
-		startBlock = blockNumber
-		log.Debug("Block number is equal to head", "blockNumber", blockNumber)
-	} else if blockNumber > head {
-		// There's a gap between freezer head and current block
-		// Need to fill all missing blocks (including empty ones)
-		startBlock = head
-		log.Debug("Block number is greater than head",
-			"freezerHead", head, "blockNumber", blockNumber, "gapSize", blockNumber-head)
-	} else {
-		if blockNumber < head {
-			log.Crit("Block number should be greater than or equal to head", "blockNumber", blockNumber, "head", head)
-		}
-	}
-
-	for i := startBlock; i <= blockNumber; i++ {
-		// Determine if this block has state changes
-		currentStateID := uint64(0)
-		if i == blockNumber {
-			currentStateID = stateID
-		}
-
-		env, _ := dl.db.freezeEnv.Load().(*ethdb.FreezerEnv)
-		if err := writeIncrBlockToFreezer(env, dl.db.diskdb.BlockStore(), dl.db.incrChainFreezer, i, currentStateID); err != nil {
-			log.Error("Failed to write block data to freezer", "block", i, "stateID", currentStateID, "err", err)
-			return err
-		}
-	}
-
-	log.Debug("Incremental block data processing completed",
-		"startBlock", startBlock, "endBlock", blockNumber, "totalProcessed", blockNumber-startBlock+1)
-	return nil
-}
-
-func (dl *diskLayer) checkFreezerEnv() error {
-	_, exist := dl.db.freezeEnv.Load().(*ethdb.FreezerEnv)
-	if exist {
-		return nil
-	}
-	return errors.New("missing freezer env error")
 }
 
 // hasher is used to compute the sha256 hash of the provided data.

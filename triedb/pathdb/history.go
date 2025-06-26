@@ -21,7 +21,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"math/big"
 	"slices"
 	"time"
 
@@ -30,8 +29,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/trie/trienode"
 	"golang.org/x/exp/maps"
 )
 
@@ -557,158 +554,6 @@ func writeHistory(writer ethdb.AncientWriter, dl *diffLayer) error {
 	log.Debug("Stored state history", "id", dl.stateID(), "block", dl.block, "data", dataSize, "index", indexSize, "elapsed", common.PrettyDuration(time.Since(start)))
 
 	return nil
-}
-
-// writeIncrHistory persists the incremental history
-func writeIncrHistory(writer ethdb.AncientWriter, dl *diffLayer) error {
-	// Short circuit if state set is not available.
-	if dl.states == nil {
-		return errors.New("state change set is not available")
-	}
-
-	var (
-		start   = time.Now()
-		nodes   = compressTrieNodes(dl.nodes.nodes)
-		history = newHistory(dl.rootHash(), dl.parentLayer().rootHash(), dl.block, dl.states.accountOrigin, dl.states.storageOrigin, dl.states.rawStorageKey)
-	)
-	accountData, storageData, accountIndex, storageIndex := history.encode()
-	nodesBytes, err := rlp.EncodeToBytes(nodes)
-	if err != nil {
-		log.Crit("Failed to encode trie nodes", "error", err)
-	}
-
-	err = rawdb.WriteIncrStateTrieNodes(writer, dl.stateID(), history.meta.encode(), accountIndex, storageIndex,
-		accountData, storageData, nodesBytes)
-	if err != nil {
-		return err
-	}
-	log.Debug("Stored incremental history", "id", dl.stateID(), "block", dl.block, "nodes size", dl.nodes.size,
-		"elapsed", common.PrettyDuration(time.Since(start)))
-
-	return nil
-}
-
-// readIncrData reads the incremental history and tre nodes
-func readIncrData(reader ethdb.AncientReader, id uint64) (*history, map[common.Hash]map[string]*trienode.Node, error) {
-	blob := rawdb.ReadStateHistoryMeta(reader, id)
-	if len(blob) == 0 {
-		return nil, nil, fmt.Errorf("state history not found %d", id)
-	}
-	var m meta
-	if err := m.decode(blob); err != nil {
-		return nil, nil, err
-	}
-
-	var (
-		dec            = history{meta: &m}
-		accountData    = rawdb.ReadStateAccountHistory(reader, id)
-		storageData    = rawdb.ReadStateStorageHistory(reader, id)
-		accountIndexes = rawdb.ReadStateAccountIndex(reader, id)
-		storageIndexes = rawdb.ReadStateStorageIndex(reader, id)
-	)
-	if err := dec.decode(accountData, storageData, accountIndexes, storageIndexes); err != nil {
-		return nil, nil, err
-	}
-
-	data, err := rawdb.ReadIncrStateTrieNodes(reader, id)
-	if err != nil {
-		log.Crit("Failed to read incremental trie nodes", "error", err)
-	}
-	var decodedTrieNodes []journalNodes
-	if err = rlp.DecodeBytes(data, &decodedTrieNodes); err != nil {
-		log.Crit("Failed to decode incremental trie nodes", "error", err)
-	}
-
-	return &dec, flattenTrieNodes(decodedTrieNodes), nil
-}
-
-// readIncrHistory reads incremental trie nodes
-func readIncrHistory(reader ethdb.AncientReader, id uint64) (*history, error) {
-	blob := rawdb.ReadStateHistoryMeta(reader, id)
-	if len(blob) == 0 {
-		return nil, fmt.Errorf("state history not found %d", id)
-	}
-	var m meta
-	if err := m.decode(blob); err != nil {
-		return nil, err
-	}
-
-	var (
-		dec            = history{meta: &m}
-		accountData    = rawdb.ReadStateAccountHistory(reader, id)
-		storageData    = rawdb.ReadStateStorageHistory(reader, id)
-		accountIndexes = rawdb.ReadStateAccountIndex(reader, id)
-		storageIndexes = rawdb.ReadStateStorageIndex(reader, id)
-	)
-	if err := dec.decode(accountData, storageData, accountIndexes, storageIndexes); err != nil {
-		return nil, err
-	}
-	return &dec, nil
-}
-
-func readIncrTrieNodes(reader ethdb.AncientReader, id uint64) (map[common.Hash]map[string]*trienode.Node, error) {
-	data, err := rawdb.ReadIncrStateTrieNodes(reader, id)
-	if err != nil {
-		log.Error("Failed to read incremental trie nodes", "id", id, "error", err)
-		return nil, err
-	}
-
-	var decodedTrieNodes []journalNodes
-	if err = rlp.DecodeBytes(data, &decodedTrieNodes); err != nil {
-		log.Error("Failed to decode incremental trie nodes", "id", id, "error", err)
-		return nil, err
-	}
-
-	return flattenTrieNodes(decodedTrieNodes), nil
-}
-
-// writeIncrBlockToFreezer writes incremental block into freezer
-func writeIncrBlockToFreezer(env *ethdb.FreezerEnv, reader ethdb.Reader, writer ethdb.AncientWriter, blockNumber, stateID uint64) error {
-	blockHash := rawdb.ReadCanonicalHash(reader, blockNumber)
-	if blockHash == (common.Hash{}) {
-		return fmt.Errorf("canonical hash not found for block %d", blockNumber)
-	}
-	h, header := rawdb.ReadHeaderAndRaw(reader, blockHash, blockNumber)
-	if len(header) == 0 {
-		return fmt.Errorf("block header missing, can't freeze block %d", blockNumber)
-	}
-	body := rawdb.ReadBodyRLP(reader, blockHash, blockNumber)
-	if len(body) == 0 {
-		return fmt.Errorf("block body missing, can't freeze block %d", blockNumber)
-	}
-	receipts := rawdb.ReadReceiptsRLP(reader, blockHash, blockNumber)
-	if len(receipts) == 0 {
-		return fmt.Errorf("block receipts missing, can't freeze block %d", blockNumber)
-	}
-	td := rawdb.ReadTdRLP(reader, blockHash, blockNumber)
-	if len(td) == 0 {
-		return fmt.Errorf("total difficulty not found for block %d (hash: %s)", blockNumber, blockHash.Hex())
-	}
-	// blobs is nil before cancun fork
-	var sidecars rlp.RawValue
-	if isCancun(env, h.Number, h.Time) {
-		sidecars = rawdb.ReadBlobSidecarsRLP(reader, blockHash, blockNumber)
-		if len(sidecars) == 0 {
-			return fmt.Errorf("block blobs missing, can't freeze block %d", blockNumber)
-		}
-	}
-
-	err := rawdb.WriteIncrBlockData(writer, blockNumber, stateID, blockHash[:], header, body, receipts, td, sidecars, isCancun(env, h.Number, h.Time))
-	if err != nil {
-		log.Error("Failed to write block data", "err", err)
-		return err
-	}
-
-	log.Debug("Write one block data into incr chain freezer", "block", blockNumber, "hash", blockHash.Hex())
-	return nil
-}
-
-func isCancun(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
-	if env == nil || env.ChainCfg == nil {
-		return false
-	}
-
-	return env.ChainCfg.IsCancun(num, time)
 }
 
 // checkHistories retrieves a batch of meta objects with the specified range

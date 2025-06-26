@@ -249,6 +249,14 @@ type ResettableAncientStore interface {
 	Reset() error
 }
 
+// IncrStore is used to store incremental data which contains ancient db and kv db .
+type IncrStore interface {
+	WriteIncrBlockData(number, id uint64, hash, header, body, receipts, td, sidecars []byte, isCancun bool) error
+	ReadIncrBlockData(table string, number uint64) ([]byte, error)
+	WriteIncrState(id uint64, meta, accountIndex, storageIndex, accounts, storages, trieNodes []byte) error
+	Iteratee
+}
+
 // Database contains all the methods required by the high level database to not
 // only access the key-value data store but also the ancient chain store.
 type Database interface {

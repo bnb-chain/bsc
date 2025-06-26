@@ -1467,7 +1467,6 @@ func insertContractCodes(incrDir string, chainDB ethdb.Database) error {
 		key := it.Key()
 		value := it.Value()
 
-		// 验证是否为有效的代码键
 		isCode, hashBytes := rawdb.IsCodeKey(key)
 		if !isCode {
 			log.Warn("Invalid code key found", "key", fmt.Sprintf("%x", key))

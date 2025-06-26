@@ -25,7 +25,6 @@ import (
 	"sort"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -33,7 +32,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie/trienode"
@@ -223,11 +221,15 @@ type Database struct {
 	freezer ethdb.ResettableAncientStore // Freezer for storing trie histories, nil possible in tests
 	lock    sync.RWMutex                 // Lock to prevent mutations from happening at the same time
 
-	// These two freezers are used to store incremental block and state histories,nil possible in tests
-	incrStateFreezer ethdb.ResettableAncientStore
-	incrChainFreezer ethdb.ResettableAncientStore
-	incrKVDB         ethdb.KeyValueStore
-	freezeEnv        atomic.Value
+	incr *incrStore
+	// // These two freezers are used to store incremental block and state histories,nil possible in tests
+	// incrStateFreezer ethdb.ResettableAncientStore
+	// incrChainFreezer ethdb.ResettableAncientStore
+	// incrKVDB         ethdb.KeyValueStore
+	// freezeEnv        atomic.Value
+	//
+	// // Async write manager for incremental data
+	// asyncWriteManager *AsyncWriteManager
 }
 
 // New attempts to load an already existing layer from a persistent key-value
@@ -283,15 +285,13 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 			db.config.IncrHistoryPath = ancientDir
 		}
 
-		if err = db.repairIncrStateHistory(ancientDir); err != nil {
+		if err = db.repairIncrStore(ancientDir); err != nil {
 			log.Crit("Failed to repair incremental state history", "err", err)
 		}
-		if err = db.repairIncrChainHistory(ancientDir); err != nil {
-			log.Crit("Failed to repair incremental chain history", "err", err)
-		}
-		if err = db.newKVDB(ancientDir); err != nil {
-			log.Crit("Failed to create new KVDB", "err", err)
-		}
+
+		// Initialize async write manager for incremental data
+		db.incr.asyncWriteManager = NewAsyncWriteManager(db, 2) // Use 2 workers
+		db.incr.asyncWriteManager.Start()
 	}
 
 	// Disable database in case node is still in the initial state sync stage.
@@ -306,17 +306,6 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 	}
 	log.Info("Initialized path database", fields...)
 	return db
-}
-
-func (db *Database) newKVDB(ancientDir string) error {
-	name := filepath.Join(ancientDir, rawdb.IncrementalPath)
-	newDB, err := pebble.New(name, 10, 10, "incremental", false)
-	if err != nil {
-		log.Error("Failed to create pebble to write incremental data", "err", err)
-		return err
-	}
-	db.incrKVDB = newDB
-	return err
 }
 
 // repairHistory truncates leftover state history objects, which may occur due
@@ -371,122 +360,56 @@ func (db *Database) repairHistory(ancientDir string) error {
 	return nil
 }
 
-func (db *Database) repairIncrChainHistory(ancientDir string) error {
-	log.Info("Open incremental chain history")
+func (db *Database) repairIncrStore(ancientDir string) error {
 	if db.config.NoTries {
 		return nil
 	}
 
 	offset := uint64(0) // differ from in block data, only metadata is used in state data
-	incrChainFreezer, err := rawdb.NewIncrChainFreezer(ancientDir, db.readOnly, offset, db.config.IncrHistory)
+	incrDB, err := rawdb.NewIncrDB(ancientDir, db.readOnly, offset, db.config.IncrHistory)
 	if err != nil {
-		log.Crit("Failed to open incremental chain history freezer", "err", err)
+		log.Crit("Failed to open incremental db", "err", err)
 	}
-	db.incrChainFreezer = incrChainFreezer
+	db.incr.incrDB = incrDB
 
-	// TODO: handle incr chain restart
 	id := db.tree.bottom().stateID()
 	if id == 0 {
-		frozen, err := db.incrStateFreezer.Ancients()
+		frozen, err := db.incr.incrDB.GetStateFreezer().Ancients()
 		if err != nil {
-			log.Crit("Failed to retrieve head of state history", "err", err)
+			log.Crit("Failed to retrieve head of incr state history", "err", err)
 		}
 		if frozen != 0 {
-			err := db.incrStateFreezer.Reset()
-			if err != nil {
-				log.Crit("Failed to reset state histories", "err", err)
+			if err = db.incr.incrDB.GetStateFreezer().Reset(); err != nil {
+				log.Crit("Failed to reset incr state histories", "err", err)
+			}
+			if err = db.incr.incrDB.GetChainFreezer().Reset(); err != nil {
+				log.Crit("Failed to reset incr chain histories", "err", err)
 			}
 			log.Info("Truncated extraneous state history")
 		}
 		return nil
 	}
 
-	pruned, err := truncateFromHead(db.diskdb, db.freezer, id)
+	// truncate incr state freezer
+	pruned, err := truncateFromHead(db.diskdb, db.incr.incrDB.GetStateFreezer(), id)
 	if err != nil {
-		log.Crit("Failed to truncate extra state histories", "err", err)
+		log.Crit("Failed to truncate extra incr state histories", "err", err)
 	}
 	if pruned != 0 {
-		log.Warn("Truncated extra state histories", "number", pruned)
-	}
-	return nil
-}
-
-func (db *Database) repairIncrStateHistory(ancientDir string) error {
-	log.Info("Open incremental state history")
-	if db.config.NoTries {
-		return nil
+		log.Warn("Truncated extra incr state histories", "number", pruned)
 	}
 
-	offset := uint64(0) // differ from in block data, only metadata is used in state data
-	incrStateFreezer, err := rawdb.NewIncrStateFreezer(ancientDir, db.readOnly, offset, db.config.IncrHistory)
+	// truncate incr chain freezer
+	pruned, err = truncateFromHead(db.diskdb, db.incr.incrDB.GetStateFreezer(), id)
 	if err != nil {
-		log.Crit("Failed to open incremental state history freezer", "err", err)
-	}
-	db.incrStateFreezer = incrStateFreezer
-
-	item, err := db.incrStateFreezer.Ancients()
-	if err != nil {
-		log.Error("Failed to get incrFreezer ancients", "err", err)
-		return nil
-	}
-	a, _ := db.incrStateFreezer.Tail()
-	b, _ := db.incrStateFreezer.ItemAmountInAncient()
-	log.Info("Print incr state ancient info in repair", "item", item, "a", a, "b", b)
-
-	// TODO: handle restart in incr freezer db
-	id := db.tree.bottom().stateID()
-	if id == 0 {
-		frozen, err := db.incrStateFreezer.Ancients()
-		if err != nil {
-			log.Crit("Failed to retrieve head of state history", "err", err)
-		}
-		if frozen != 0 {
-			err := db.incrStateFreezer.Reset()
-			if err != nil {
-				log.Crit("Failed to reset state histories", "err", err)
-			}
-			log.Info("Truncated extraneous state history")
-		}
-		return nil
-	}
-
-	pruned, err := truncateFromHead(db.diskdb, db.freezer, id)
-	if err != nil {
-		log.Crit("Failed to truncate extra state histories", "err", err)
+		log.Crit("Failed to truncate extra incr chain histories", "err", err)
 	}
 	if pruned != 0 {
-		log.Warn("Truncated extra state histories", "number", pruned)
+		log.Warn("Truncated extra incr chain histories", "number", pruned)
 	}
-	log.Info("Finish opening incremental state history")
+
+	log.Info("Open incremental db")
 	return nil
-
-	// pruned, err := truncateFromHead(db.diskdb, db.freezer, id)
-	// if err != nil {
-	// 	log.Crit("Failed to truncate extra state histories", "err", err)
-	// }
-	// if pruned != 0 {
-	// 	log.Warn("Truncated extra state histories", "number", pruned)
-	// }
-
-	// ohead, err := db.incrFreezer.Ancients()
-	// if err != nil {
-	// 	log.Crit("Failed to retrieve head of state history", "err", err)
-	// }
-	// nhead, err := db.incrFreezer.Tail()
-	// if err != nil {
-	// 	log.Crit("Failed to retrieve tail of state history", "err", err)
-	// }
-	// if ohead != 0 || nhead != 0 {
-	// 	// Truncate the extra state histories above in freezer in case it's not
-	// 	// aligned with the disk layer. It might happen after a unclean shutdown.
-	// 	pruned, err := truncateFromHead(db.diskdb, db.incrFreezer, id)
-	// 	if err != nil {
-	// 		log.Crit("Failed to truncate extra incremental state histories", "err", err)
-	// 	}
-	// 	if pruned != 0 {
-	// 		log.Warn("Truncated extra incremental state histories", "number", pruned)
-	// 	}
-	// }
 }
 
 // Update adds a new layer into the tree, if that can be linked to an existing
@@ -715,17 +638,18 @@ func (db *Database) Close() error {
 	}
 
 	if db.config.EnableIncrHistory {
-		log.Info("Closing incremental block and state history")
-		if err := db.incrChainFreezer.Close(); err != nil {
-			log.Error("Failed to close incremental chain freezer", "err", err)
-			return err
+		log.Info("Closing incremental store")
+
+		// Wait for all async write tasks to complete before closing
+		if db.incr.asyncWriteManager != nil {
+			log.Info("Waiting for async write tasks to complete", "pending", db.incr.asyncWriteManager.GetQueueLength())
+			db.incr.asyncWriteManager.WaitForCompletion()
+			db.incr.asyncWriteManager.LogStats() // Log final statistics
+			db.incr.asyncWriteManager.Stop()
 		}
-		if err := db.incrStateFreezer.Close(); err != nil {
-			log.Error("Failed to close incremental state freezer", "err", err)
-			return err
-		}
-		if err := db.incrKVDB.Close(); err != nil {
-			log.Error("Failed to close incremental kv db", "err", err)
+
+		if err := db.incr.incrDB.Close(); err != nil {
+			log.Error("Failed to close incremental db", "err", err)
 			return err
 		}
 	}
@@ -837,17 +761,16 @@ func (db *Database) InsertIncrState(incrDir string) error {
 		log.Error("Failed to open incremental state freezer", "err", err)
 		return err
 	}
-	db.incrStateFreezer = incrStateFreezer
 	defer incrStateFreezer.Close()
 
-	ancients, _ := db.incrStateFreezer.Ancients()
-	tail, _ := db.incrStateFreezer.Tail()
-	count, _ := db.incrStateFreezer.ItemAmountInAncient()
+	ancients, _ := incrStateFreezer.Ancients()
+	tail, _ := incrStateFreezer.Tail()
+	count, _ := incrStateFreezer.ItemAmountInAncient()
 	log.Info("Incr state info", "ancients", ancients, "tail", tail, "count", count)
 	log.Info("Layer tree", "count", db.tree.len())
 
 	// merge data into state ancient store
-	if err = db.mergeIncrHistory(tail+1, ancients); err != nil {
+	if err = db.mergeIncrHistory(incrStateFreezer, tail+1, ancients); err != nil {
 		log.Error("Failed to merge incremental state history", "err", err)
 		return err
 	}
@@ -855,7 +778,7 @@ func (db *Database) InsertIncrState(incrDir string) error {
 	// TODO: check data overlap
 	dl := db.tree.bottom()
 	if a, ok := dl.buffer.(*asyncnodebuffer); ok {
-		if err = a.mergeIncrTrieNodes(db.diskdb, db.freezer, db.incrStateFreezer, tail+1, ancients); err != nil {
+		if err = a.mergeIncrTrieNodes(db.diskdb, db.freezer, incrStateFreezer, tail+1, ancients); err != nil {
 			log.Error("Failed to merge incremental trie nodes", "err", err)
 			return err
 		}
@@ -866,9 +789,9 @@ func (db *Database) InsertIncrState(incrDir string) error {
 	return nil
 }
 
-func (db *Database) mergeIncrHistory(firstStateID, endStateID uint64) error {
+func (db *Database) mergeIncrHistory(incrStateFreezer ethdb.ResettableAncientStore, firstStateID, endStateID uint64) error {
 	for i := firstStateID; i <= endStateID; i++ {
-		h, err := readIncrHistory(db.incrStateFreezer, i)
+		h, err := readIncrHistory(incrStateFreezer, i)
 		if err != nil {
 			log.Error("Failed to read history", "err", err)
 			return err
@@ -901,11 +824,9 @@ func (db *Database) mergeIncrHistory(firstStateID, endStateID uint64) error {
 	return nil
 }
 
-// WriteCode wrote codes into incremental chain freezer
-func (db *Database) WriteCode(codeHash common.Hash, blob []byte) {
-	if db.config.EnableIncrHistory && db.incrKVDB != nil {
-		rawdb.WriteCode(db.incrKVDB, codeHash, blob)
-	}
+// WriteContractCodes wrote codes into incremental chain freezer
+func (db *Database) WriteContractCodes(codes map[common.Address]rawdb.ContractCode) error {
+	return db.incr.incrDB.WriteIncrContractCodes(codes)
 }
 
 // AccountHistory inspects the account history within the specified range.
@@ -961,12 +882,12 @@ func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
 	}
 }
 
-// SetFreezerEnv is used to check Cancun hardfork time
+// SetFreezerEnv is used to store freezer env.
 func (db *Database) SetFreezerEnv(env *ethdb.FreezerEnv) {
-	db.freezeEnv.Store(env)
+	db.incr.freezeEnv.Store(env)
 }
 
-// IsIncr
-func (db *Database) IsIncr() bool {
+// IsIncrEnabled returns true if incremental is enabled, otherwise false.
+func (db *Database) IsIncrEnabled() bool {
 	return db.config.EnableIncrHistory
 }

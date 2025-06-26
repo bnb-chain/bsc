@@ -414,7 +414,7 @@ func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
 	pdb.SetIncrBlockStartNumber(startBlock)
 }
 
-// SetFreezerEnv used for check Cancun hardfork
+// SetFreezerEnv is used to store freezer env.
 func (db *Database) SetFreezerEnv(env *ethdb.FreezerEnv) {
 	pdb, ok := db.backend.(*pathdb.Database)
 	if !ok {
@@ -424,20 +424,22 @@ func (db *Database) SetFreezerEnv(env *ethdb.FreezerEnv) {
 	}
 }
 
-func (db *Database) WriteCode(codeHash common.Hash, blob []byte) {
+// WriteContractCodes used to write contract codes into incremental db.
+func (db *Database) WriteContractCodes(codes map[common.Address]rawdb.ContractCode) error {
 	pdb, ok := db.backend.(*pathdb.Database)
 	if !ok {
 		log.Error("Not supported")
+		return errors.New("not supported")
 	}
-	pdb.WriteCode(codeHash, blob)
+	return pdb.WriteContractCodes(codes)
 }
 
-// IsIncr
-func (db *Database) IsIncr() bool {
+// IsIncrEnabled returns true if incremental is enabled, otherwise false.
+func (db *Database) IsIncrEnabled() bool {
 	pdb, ok := db.backend.(*pathdb.Database)
 	if !ok {
 		log.Error("Not supported")
 		return false
 	}
-	return pdb.IsIncr()
+	return pdb.IsIncrEnabled()
 }
