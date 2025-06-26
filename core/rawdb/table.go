@@ -237,14 +237,6 @@ func (t *table) NewBatch() ethdb.Batch {
 	return &tableBatch{t.db.NewBatch(), t.prefix}
 }
 
-func (t *table) DiffStore() ethdb.KeyValueStore {
-	return nil
-}
-
-func (t *table) SetDiffStore(diff ethdb.KeyValueStore) {
-	panic("not implement")
-}
-
 func (t *table) StateStore() ethdb.Database {
 	return nil
 }

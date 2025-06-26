@@ -24,7 +24,6 @@ import (
 	"math/big"
 	"runtime"
 	"slices"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -56,7 +55,6 @@ import (
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/ethereum/go-ethereum/triedb/hashdb"
 	"github.com/ethereum/go-ethereum/triedb/pathdb"
-	"golang.org/x/crypto/sha3"
 )
 
 var (
@@ -113,7 +111,6 @@ var (
 const (
 	bodyCacheLimit      = 256
 	blockCacheLimit     = 256
-	diffLayerCacheLimit = 1024
 	receiptsCacheLimit  = 10000
 	sidecarsCacheLimit  = 1024
 	txLookupCacheLimit  = 1024
@@ -121,9 +118,6 @@ const (
 	maxTimeFutureBlocks = 30
 	maxBeyondBlocks     = 2048
 	prefetchTxNumber    = 100
-
-	diffLayerFreezerRecheckInterval = 3 * time.Second
-	maxDiffForkDist                 = 11 // Maximum allowed backward distance from the chain head
 
 	// BlockChainVersion ensures that an incompatible database forces a resync from scratch.
 	//
@@ -317,13 +311,6 @@ type BlockChain struct {
 	// future blocks are blocks added for later processing
 	futureBlocks *lru.Cache[common.Hash, *types.Block]
 
-	// trusted diff layers
-	diffLayerCache             *lru.Cache[common.Hash, *types.DiffLayer] // Cache for the diffLayers
-	diffLayerChanCache         *lru.Cache[common.Hash, chan struct{}]    // Cache for the difflayer channel
-	diffQueue                  *prque.Prque[int64, *types.DiffLayer]     // A Priority queue to store recent diff layer
-	diffQueueBuffer            chan *types.DiffLayer
-	diffLayerFreezerBlockLimit uint64
-
 	wg            sync.WaitGroup
 	dbWg          sync.WaitGroup
 	quit          chan struct{} // shutdown signal, closed in Stop.
@@ -384,29 +371,25 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	*/
 
 	bc := &BlockChain{
-		chainConfig:        chainConfig,
-		cacheConfig:        cacheConfig,
-		db:                 db,
-		triedb:             triedb,
-		triegc:             prque.New[int64, common.Hash](nil),
-		quit:               make(chan struct{}),
-		triesInMemory:      cacheConfig.TriesInMemory,
-		chainmu:            syncx.NewClosableMutex(),
-		bodyCache:          lru.NewCache[common.Hash, *types.Body](bodyCacheLimit),
-		bodyRLPCache:       lru.NewCache[common.Hash, rlp.RawValue](bodyCacheLimit),
-		receiptsCache:      lru.NewCache[common.Hash, []*types.Receipt](receiptsCacheLimit),
-		sidecarsCache:      lru.NewCache[common.Hash, types.BlobSidecars](sidecarsCacheLimit),
-		blockCache:         lru.NewCache[common.Hash, *types.Block](blockCacheLimit),
-		blockStatsCache:    lru.NewCache[common.Hash, *BlockStats](blockCacheLimit),
-		txLookupCache:      lru.NewCache[common.Hash, txLookup](txLookupCacheLimit),
-		futureBlocks:       lru.NewCache[common.Hash, *types.Block](maxFutureBlocks),
-		diffLayerCache:     lru.NewCache[common.Hash, *types.DiffLayer](diffLayerCacheLimit),
-		diffLayerChanCache: lru.NewCache[common.Hash, chan struct{}](diffLayerCacheLimit),
-		engine:             engine,
-		vmConfig:           vmConfig,
-		diffQueue:          prque.New[int64, *types.DiffLayer](nil),
-		diffQueueBuffer:    make(chan *types.DiffLayer),
-		logger:             vmConfig.Tracer,
+		chainConfig:     chainConfig,
+		cacheConfig:     cacheConfig,
+		db:              db,
+		triedb:          triedb,
+		triegc:          prque.New[int64, common.Hash](nil),
+		quit:            make(chan struct{}),
+		triesInMemory:   cacheConfig.TriesInMemory,
+		chainmu:         syncx.NewClosableMutex(),
+		bodyCache:       lru.NewCache[common.Hash, *types.Body](bodyCacheLimit),
+		bodyRLPCache:    lru.NewCache[common.Hash, rlp.RawValue](bodyCacheLimit),
+		receiptsCache:   lru.NewCache[common.Hash, []*types.Receipt](receiptsCacheLimit),
+		sidecarsCache:   lru.NewCache[common.Hash, types.BlobSidecars](sidecarsCacheLimit),
+		blockCache:      lru.NewCache[common.Hash, *types.Block](blockCacheLimit),
+		blockStatsCache: lru.NewCache[common.Hash, *BlockStats](blockCacheLimit),
+		txLookupCache:   lru.NewCache[common.Hash, txLookup](txLookupCacheLimit),
+		futureBlocks:    lru.NewCache[common.Hash, *types.Block](maxFutureBlocks),
+		engine:          engine,
+		vmConfig:        vmConfig,
+		logger:          vmConfig.Tracer,
 	}
 	bc.hc, err = NewHeaderChain(db, chainConfig, engine, bc.insertStopped)
 	if err != nil {
@@ -580,12 +563,6 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	bc.wg.Add(1)
 	go bc.updateFutureBlocks()
 
-	// Need persist and prune diff layer
-	if bc.db.DiffStore() != nil {
-		bc.wg.Add(1)
-		go bc.trustedDiffLayerLoop()
-	}
-
 	if bc.doubleSignMonitor != nil {
 		bc.wg.Add(1)
 		go bc.startDoubleSignMonitor()
@@ -646,37 +623,6 @@ func (bc *BlockChain) cacheReceipts(hash common.Hash, receipts types.Receipts, b
 	}
 
 	bc.receiptsCache.Add(hash, receipts)
-}
-
-func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, diffLayerCh chan struct{}) {
-	// The difflayer in the system is stored by the map structure,
-	// so it will be out of order.
-	// It must be sorted first and then cached,
-	// otherwise the DiffHash calculated by different nodes will be inconsistent
-	sort.SliceStable(diffLayer.Codes, func(i, j int) bool {
-		return diffLayer.Codes[i].Hash.Hex() < diffLayer.Codes[j].Hash.Hex()
-	})
-	sort.SliceStable(diffLayer.Destructs, func(i, j int) bool {
-		return diffLayer.Destructs[i].Hex() < (diffLayer.Destructs[j].Hex())
-	})
-	sort.SliceStable(diffLayer.Accounts, func(i, j int) bool {
-		return diffLayer.Accounts[i].Account.Hex() < diffLayer.Accounts[j].Account.Hex()
-	})
-	sort.SliceStable(diffLayer.Storages, func(i, j int) bool {
-		return diffLayer.Storages[i].Account.Hex() < diffLayer.Storages[j].Account.Hex()
-	})
-	for index := range diffLayer.Storages {
-		// Sort keys and vals by key.
-		sort.Sort(&diffLayer.Storages[index])
-	}
-
-	bc.diffLayerCache.Add(diffLayer.BlockHash, diffLayer)
-	close(diffLayerCh)
-
-	if bc.db.DiffStore() != nil {
-		// push to priority queue before persisting
-		bc.diffQueueBuffer <- diffLayer
-	}
 }
 
 // empty returns an indicator whether the blockchain is empty.
@@ -1815,22 +1761,9 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	}()
 
 	// Commit all cached state changes into underlying memory database.
-	root, diffLayer, err := statedb.Commit(block.NumberU64(), bc.chainConfig.IsEIP158(block.Number()), bc.chainConfig.IsCancun(block.Number(), block.Time()))
+	root, err := statedb.Commit(block.NumberU64(), bc.chainConfig.IsEIP158(block.Number()), bc.chainConfig.IsCancun(block.Number(), block.Time()))
 	if err != nil {
 		return err
-	}
-
-	// Ensure no empty block body
-	if diffLayer != nil && block.Header().TxHash != types.EmptyRootHash {
-		// Filling necessary field
-		diffLayer.Receipts = receipts
-		diffLayer.BlockHash = block.Hash()
-		diffLayer.Number = block.NumberU64()
-
-		diffLayerCh := make(chan struct{})
-		bc.diffLayerChanCache.Add(diffLayer.BlockHash, diffLayerCh)
-
-		go bc.cacheDiffLayer(diffLayer, diffLayerCh)
 	}
 
 	// If node is running in path mode, skip explicit gc operation
@@ -2980,81 +2913,6 @@ func (bc *BlockChain) updateFutureBlocks() {
 	}
 }
 
-func (bc *BlockChain) trustedDiffLayerLoop() {
-	recheck := time.NewTicker(diffLayerFreezerRecheckInterval)
-	defer func() {
-		recheck.Stop()
-		bc.wg.Done()
-	}()
-	for {
-		select {
-		case diff := <-bc.diffQueueBuffer:
-			bc.diffQueue.Push(diff, -(int64(diff.Number)))
-		case <-bc.quit:
-			// Persist all diffLayers when shutdown, it will introduce redundant storage, but it is acceptable.
-			// If the client been ungracefully shutdown, it will missing all cached diff layers, it is acceptable as well.
-			var batch ethdb.Batch
-			for !bc.diffQueue.Empty() {
-				diffLayer, _ := bc.diffQueue.Pop()
-				if batch == nil {
-					batch = bc.db.DiffStore().NewBatch()
-				}
-				rawdb.WriteDiffLayer(batch, diffLayer.BlockHash, diffLayer)
-				if batch.ValueSize() > ethdb.IdealBatchSize {
-					if err := batch.Write(); err != nil {
-						log.Error("Failed to write diff layer", "err", err)
-						return
-					}
-					batch.Reset()
-				}
-			}
-			if batch != nil {
-				// flush data
-				if err := batch.Write(); err != nil {
-					log.Error("Failed to write diff layer", "err", err)
-					return
-				}
-				batch.Reset()
-			}
-			return
-		case <-recheck.C:
-			currentHeight := bc.CurrentBlock().Number.Uint64()
-			var batch ethdb.Batch
-			for !bc.diffQueue.Empty() {
-				diffLayer, prio := bc.diffQueue.Pop()
-
-				// if the block not old enough
-				if int64(currentHeight)+prio < int64(bc.triesInMemory) {
-					bc.diffQueue.Push(diffLayer, prio)
-					break
-				}
-				canonicalHash := bc.GetCanonicalHash(uint64(-prio))
-				// on the canonical chain
-				if canonicalHash == diffLayer.BlockHash {
-					if batch == nil {
-						batch = bc.db.DiffStore().NewBatch()
-					}
-					rawdb.WriteDiffLayer(batch, diffLayer.BlockHash, diffLayer)
-					staleHash := bc.GetCanonicalHash(uint64(-prio) - bc.diffLayerFreezerBlockLimit)
-					rawdb.DeleteDiffLayer(batch, staleHash)
-				}
-				if batch != nil && batch.ValueSize() > ethdb.IdealBatchSize {
-					if err := batch.Write(); err != nil {
-						panic(fmt.Sprintf("Failed to write diff layer, error %v", err))
-					}
-					batch.Reset()
-				}
-			}
-			if batch != nil {
-				if err := batch.Write(); err != nil {
-					panic(fmt.Sprintf("Failed to write diff layer, error %v", err))
-				}
-				batch.Reset()
-			}
-		}
-	}
-}
-
 func (bc *BlockChain) startDoubleSignMonitor() {
 	eventChan := make(chan ChainHeadEvent, monitor.MaxCacheHeader)
 	sub := bc.SubscribeChainHeadEvent(eventChan)
@@ -3186,135 +3044,9 @@ func (bc *BlockChain) HeadChain() *HeaderChain {
 
 func (bc *BlockChain) TriesInMemory() uint64 { return bc.triesInMemory }
 
-func EnablePersistDiff(limit uint64) BlockChainOption {
-	return func(chain *BlockChain) (*BlockChain, error) {
-		chain.diffLayerFreezerBlockLimit = limit
-		return chain, nil
-	}
-}
-
-func EnableBlockValidator(chainConfig *params.ChainConfig, mode VerifyMode, peers verifyPeers) BlockChainOption {
-	return func(bc *BlockChain) (*BlockChain, error) {
-		if mode.NeedRemoteVerify() {
-			vm, err := NewVerifyManager(bc, peers, mode == InsecureVerify)
-			if err != nil {
-				return nil, err
-			}
-			go vm.mainLoop()
-			bc.validator = NewBlockValidator(chainConfig, bc, EnableRemoteVerifyManager(vm))
-		}
-		return bc, nil
-	}
-}
-
 func EnableDoubleSignChecker(bc *BlockChain) (*BlockChain, error) {
 	bc.doubleSignMonitor = monitor.NewDoubleSignMonitor()
 	return bc, nil
-}
-
-func (bc *BlockChain) GetVerifyResult(blockNumber uint64, blockHash common.Hash, diffHash common.Hash) *VerifyResult {
-	var res VerifyResult
-	res.BlockNumber = blockNumber
-	res.BlockHash = blockHash
-
-	if blockNumber > bc.CurrentHeader().Number.Uint64()+maxDiffForkDist {
-		res.Status = types.StatusBlockTooNew
-		return &res
-	} else if blockNumber > bc.CurrentHeader().Number.Uint64() {
-		res.Status = types.StatusBlockNewer
-		return &res
-	}
-
-	header := bc.GetHeaderByHash(blockHash)
-	if header == nil {
-		if blockNumber > bc.CurrentHeader().Number.Uint64()-maxDiffForkDist {
-			res.Status = types.StatusPossibleFork
-			return &res
-		}
-
-		res.Status = types.StatusImpossibleFork
-		return &res
-	}
-
-	diff := bc.GetTrustedDiffLayer(blockHash)
-	if diff != nil {
-		if diff.DiffHash.Load() == nil {
-			hash, err := CalculateDiffHash(diff)
-			if err != nil {
-				res.Status = types.StatusUnexpectedError
-				return &res
-			}
-
-			diff.DiffHash.Store(hash)
-		}
-
-		if diffHash != diff.DiffHash.Load().(common.Hash) {
-			res.Status = types.StatusDiffHashMismatch
-			return &res
-		}
-
-		res.Status = types.StatusFullVerified
-		res.Root = header.Root
-		return &res
-	}
-
-	res.Status = types.StatusPartiallyVerified
-	res.Root = header.Root
-	return &res
-}
-
-func (bc *BlockChain) GetTrustedDiffLayer(blockHash common.Hash) *types.DiffLayer {
-	if cached, ok := bc.diffLayerCache.Get(blockHash); ok {
-		return cached
-	}
-
-	var diff *types.DiffLayer
-	diffStore := bc.db.DiffStore()
-	if diffStore != nil {
-		diff = rawdb.ReadDiffLayer(diffStore, blockHash)
-	}
-	return diff
-}
-
-func CalculateDiffHash(d *types.DiffLayer) (common.Hash, error) {
-	if d == nil {
-		return common.Hash{}, errors.New("nil diff layer")
-	}
-
-	diff := &types.ExtDiffLayer{
-		BlockHash: d.BlockHash,
-		Receipts:  make([]*types.ReceiptForStorage, 0),
-		Number:    d.Number,
-		Codes:     d.Codes,
-		Destructs: d.Destructs,
-		Accounts:  d.Accounts,
-		Storages:  d.Storages,
-	}
-
-	for index, account := range diff.Accounts {
-		full, err := types.FullAccount(account.Blob)
-		if err != nil {
-			return common.Hash{}, fmt.Errorf("decode full account error: %v", err)
-		}
-		// set account root to empty root
-		full.Root = types.EmptyRootHash
-		diff.Accounts[index].Blob = types.SlimAccountRLP(*full)
-	}
-
-	rawData, err := rlp.EncodeToBytes(diff)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("encode new diff error: %v", err)
-	}
-
-	hasher := sha3.NewLegacyKeccak256()
-	_, err = hasher.Write(rawData)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("hasher write error: %v", err)
-	}
-
-	var hash common.Hash
-	hasher.Sum(hash[:0])
-	return hash, nil
 }
 
 // SetBlockValidatorAndProcessorForTesting sets the current validator and processor.

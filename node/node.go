@@ -36,7 +36,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/ethdb/leveldb"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -76,12 +75,11 @@ const (
 	initializingState = iota
 	runningState
 	closedState
-	blockDbCacheSize           = 256
-	blockDbHandlesMinSize      = 1000
-	blockDbHandlesMaxSize      = 2000
-	chainDbMemoryPercentage    = 50
-	chainDbHandlesPercentage   = 50
-	diffStoreHandlesPercentage = 20
+	blockDbCacheSize         = 256
+	blockDbHandlesMinSize    = 1000
+	blockDbHandlesMaxSize    = 2000
+	chainDbMemoryPercentage  = 50
+	chainDbHandlesPercentage = 50
 )
 
 const StateDBNamespace = "eth/db/statedata/"
@@ -782,15 +780,11 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 		blockDb                      ethdb.Database
 		disableChainDbFreeze         = false
 		blockDbHandlesSize           int
-		diffStoreHandles             int
 		chainDataHandles             = config.DatabaseHandles
 		chainDbCache                 = config.DatabaseCache
 		stateDbCache, stateDbHandles int
 	)
 
-	if config.PersistDiff {
-		diffStoreHandles = config.DatabaseHandles * diffStoreHandlesPercentage / 100
-	}
 	isMultiDatabase := n.CheckIfMultiDataBase()
 	// Open the separated state database if the state directory exists
 	if isMultiDatabase {
@@ -829,15 +823,6 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 		log.Warn("Multi-database is an experimental feature")
 		chainDB.SetStateStore(stateDiskDb)
 		chainDB.SetBlockStore(blockDb)
-	}
-
-	if config.PersistDiff {
-		diffStore, err := n.OpenDiffDatabase(name, diffStoreHandles, config.DatabaseDiff, namespace, readonly)
-		if err != nil {
-			chainDB.Close()
-			return nil, err
-		}
-		chainDB.SetDiffStore(diffStore)
 	}
 
 	return chainDB, nil
@@ -903,30 +888,6 @@ func (n *Node) CheckIfMultiDataBase() bool {
 	} else {
 		panic("data corruption! missing block or state dir.")
 	}
-}
-
-func (n *Node) OpenDiffDatabase(name string, handles int, diff, namespace string, readonly bool) (*leveldb.Database, error) {
-	n.lock.Lock()
-	defer n.lock.Unlock()
-	if n.state == closedState {
-		return nil, ErrNodeStopped
-	}
-
-	var db *leveldb.Database
-	var err error
-	if n.config.DataDir == "" {
-		panic("datadir is missing")
-	}
-	root := n.ResolvePath(name)
-	switch {
-	case diff == "":
-		diff = filepath.Join(root, "diff")
-	case !filepath.IsAbs(diff):
-		diff = n.ResolvePath(diff)
-	}
-	db, err = leveldb.New(diff, 0, handles, namespace, readonly)
-
-	return db, err
 }
 
 // ResolvePath returns the absolute path of a resource in the instance directory.
