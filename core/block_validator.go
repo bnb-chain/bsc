@@ -27,8 +27,6 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 )
 
-type BlockValidatorOption func(*BlockValidator) *BlockValidator
-
 // BlockValidator is responsible for validating block headers, uncles and
 // processed state.
 //
