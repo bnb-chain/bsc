@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -496,6 +497,7 @@ func tryGetOptimizedCode(evm *EVM, codeHash common.Hash, rawCode []byte) (bool, 
 	} else {
 		compiler.GenOrLoadOptimizedCode(codeHash, rawCode)
 	}
+	log.Error("tryGetOptimizedCode optimized calc", "optimized", optimized) // method to calc optimized rate, comment when not used
 	return optimized, code
 }
 
