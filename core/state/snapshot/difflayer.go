@@ -371,14 +371,12 @@ func (dl *diffLayer) storage(accountHash, storageHash common.Hash, depth int) ([
 			return data, nil
 		}
 	}
-
 	// Storage slot unknown to this diff, resolve from parent
 	if diff, ok := dl.parent.(*diffLayer); ok {
 		return diff.storage(accountHash, storageHash, depth+1)
 	}
 	// Failed to resolve through diff layers, mark a bloom error and use the disk
 	snapshotBloomStorageFalseHitMeter.Mark(1)
-
 	return dl.parent.Storage(accountHash, storageHash)
 }
 

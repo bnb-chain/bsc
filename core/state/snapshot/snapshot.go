@@ -68,14 +68,9 @@ var (
 	snapshotBloomIndexTimer = metrics.NewRegisteredResettingTimer("state/snapshot/bloom/index", nil)
 	snapshotBloomErrorGauge = metrics.NewRegisteredGaugeFloat64("state/snapshot/bloom/error", nil)
 
-	snapshotBloomAccountTrueHitMeter   = metrics.NewRegisteredMeter("state/snapshot/bloom/account/truehit", nil)
-	snapshotBloomAccountFalseHitMeter  = metrics.NewRegisteredMeter("state/snapshot/bloom/account/falsehit", nil)
-	snapshotBloomAccountMissMeter      = metrics.NewRegisteredMeter("state/snapshot/bloom/account/miss", nil)
-	SnapshotBlockCacheAccountMissMeter = metrics.NewRegisteredMeter("state/snapshot/cacheblock/account/miss", nil)
-	SnapshotBlockCacheAccountHitMeter  = metrics.NewRegisteredMeter("state/snapshot/cacheblock/account/hit", nil)
-
-	SnapshotBlockCacheStorageMissMeter = metrics.NewRegisteredMeter("state/snapshot/cacheblock/storage/miss", nil)
-	SnapshotBlockCacheStorageHitMeter  = metrics.NewRegisteredMeter("state/snapshot/cacheblock/storage/hit", nil)
+	snapshotBloomAccountTrueHitMeter  = metrics.NewRegisteredMeter("state/snapshot/bloom/account/truehit", nil)
+	snapshotBloomAccountFalseHitMeter = metrics.NewRegisteredMeter("state/snapshot/bloom/account/falsehit", nil)
+	snapshotBloomAccountMissMeter     = metrics.NewRegisteredMeter("state/snapshot/bloom/account/miss", nil)
 
 	snapshotBloomStorageTrueHitMeter  = metrics.NewRegisteredMeter("state/snapshot/bloom/storage/truehit", nil)
 	snapshotBloomStorageFalseHitMeter = metrics.NewRegisteredMeter("state/snapshot/bloom/storage/falsehit", nil)
@@ -87,7 +82,8 @@ var (
 	ErrSnapshotStale = errors.New("snapshot stale")
 
 	// ErrNotCoveredYet is returned from data accessors if the underlying snapshot
-	// is being generated currently and the requested data item is not yet in the
+	// is being generated currently and the requested data itSnapshot updated", "blockRoot", blockRoot)
+	//	//log.Info("Snapshot updated", "blockRem is not yet in the
 	// range of accounts covered.
 	ErrNotCoveredYet = errors.New("not covered yet")
 
@@ -369,7 +365,7 @@ func (t *Tree) Update(blockRoot common.Hash, parentRoot common.Hash, accounts ma
 	defer t.lock.Unlock()
 
 	t.layers[snap.root] = snap
-	//log.Info("Snapshot updated", "blockRoot", blockRoot)
+	log.Debug("Snapshot updated", "blockRoot", blockRoot)
 	return nil
 }
 
@@ -413,7 +409,6 @@ func (t *Tree) Cap(root common.Hash, layers int) error {
 	if layers == 0 {
 		// If full commit was requested, flatten the diffs and merge onto disk
 		diff.lock.RLock()
-		log.Info("diff layer faltten happen")
 		base := diffToDisk(diff.flatten().(*diffLayer))
 		diff.lock.RUnlock()
 

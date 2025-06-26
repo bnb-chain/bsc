@@ -224,7 +224,7 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 		s.originStorage[key] = common.Hash{} // track the empty slot as origin value
 		return common.Hash{}
 	}
-	// If no live objects are available, attempt to use snapshots
+	s.db.StorageLoaded++
 	var (
 		err               error
 		value             common.Hash
