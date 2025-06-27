@@ -59,7 +59,6 @@ require (
 	github.com/peterh/liner v1.2.0
 	github.com/pion/stun/v2 v2.0.0
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/tsdb v0.10.0
 	github.com/protolambda/bls12-381-util v0.1.0
 	github.com/protolambda/zrnt v0.32.2
 	github.com/protolambda/ztyp v0.2.2

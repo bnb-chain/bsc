@@ -166,7 +166,7 @@ type FreezerEnv struct {
 // AncientFreezer defines the help functions for freezing ancient data
 type AncientFreezer interface {
 	// SetupFreezerEnv provides params.ChainConfig for checking hark forks, like isCancun.
-	SetupFreezerEnv(env *FreezerEnv) error
+	SetupFreezerEnv(env *FreezerEnv, blockHistory uint64) error
 }
 
 // AncientWriteOp is given to the function argument of ModifyAncients.

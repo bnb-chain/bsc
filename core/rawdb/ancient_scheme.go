@@ -93,7 +93,7 @@ var freezers = []string{ChainFreezerName, MerkleStateFreezerName, VerkleStateFre
 //     state freezer (e.g. dev mode).
 //   - if non-empty directory is given, initializes the regular file-based
 //     state freezer.
-func NewStateFreezer(ancientDir string, verkle bool, readOnly bool, offset uint64) (ethdb.ResettableAncientStore, error) {
+func NewStateFreezer(ancientDir string, verkle bool, readOnly bool) (ethdb.ResettableAncientStore, error) {
 	if ancientDir == "" {
 		return NewMemoryFreezer(readOnly, stateFreezerNoSnappy), nil
 	}
@@ -103,5 +103,5 @@ func NewStateFreezer(ancientDir string, verkle bool, readOnly bool, offset uint6
 	} else {
 		name = filepath.Join(ancientDir, MerkleStateFreezerName)
 	}
-	return newResettableFreezer(name, "eth/db/state", readOnly, offset, stateHistoryTableSize, stateFreezerNoSnappy)
+	return newResettableFreezer(name, "eth/db/state", readOnly, stateHistoryTableSize, stateFreezerNoSnappy)
 }
