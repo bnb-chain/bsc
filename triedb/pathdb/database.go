@@ -366,11 +366,12 @@ func (db *Database) repairIncrStore(ancientDir string) error {
 	db.incr = NewIncrStore(db.diskdb, incrDB, 2)
 
 	id := db.tree.bottom().stateID()
+	frozen, err := db.incr.incrDB.GetStateFreezer().Ancients()
+	if err != nil {
+		log.Crit("Failed to retrieve head of incr state history", "err", err)
+	}
+
 	if id == 0 {
-		frozen, err := db.incr.incrDB.GetStateFreezer().Ancients()
-		if err != nil {
-			log.Crit("Failed to retrieve head of incr state history", "err", err)
-		}
 		if frozen != 0 {
 			if err = db.incr.incrDB.GetStateFreezer().Reset(); err != nil {
 				log.Crit("Failed to reset incr state histories", "err", err)
@@ -383,23 +384,26 @@ func (db *Database) repairIncrStore(ancientDir string) error {
 		return nil
 	}
 
-	// truncate incr state freezer
-	pruned, err := truncateFromHead(db.diskdb, db.incr.incrDB.GetStateFreezer(), id)
-	if err != nil {
-		log.Crit("Failed to truncate extra incr state histories", "err", err)
-	}
-	if pruned != 0 {
-		log.Warn("Truncated extra incr state histories", "number", pruned)
-	}
+	// no need truncate incremental freezer when count is 0
+	if frozen != 0 {
+		// truncate incr state freezer
+		pruned, err := truncateFromHead(db.diskdb, db.incr.incrDB.GetStateFreezer(), id)
+		if err != nil {
+			log.Crit("Failed to truncate extra incr state histories", "err", err)
+		}
+		if pruned != 0 {
+			log.Warn("Truncated extra incr state histories", "number", pruned)
+		}
 
-	// TODO: check corresponding id with block number
-	// truncate incr chain freezer
-	pruned, err = truncateFromHead(db.diskdb, db.incr.incrDB.GetStateFreezer(), id)
-	if err != nil {
-		log.Crit("Failed to truncate extra incr chain histories", "err", err)
-	}
-	if pruned != 0 {
-		log.Warn("Truncated extra incr chain histories", "number", pruned)
+		// TODO: check corresponding id with block number
+		// truncate incr chain freezer
+		pruned, err = truncateFromHead(db.diskdb, db.incr.incrDB.GetStateFreezer(), id)
+		if err != nil {
+			log.Crit("Failed to truncate extra incr chain histories", "err", err)
+		}
+		if pruned != 0 {
+			log.Warn("Truncated extra incr chain histories", "number", pruned)
+		}
 	}
 
 	log.Info("Open incremental db")
