@@ -293,7 +293,7 @@ func initGenesis(ctx *cli.Context) error {
 		overrides.OverrideVerkle = &v
 	}
 	name := "chaindata"
-	chaindb, err := stack.OpenDatabaseWithFreezer(name, 0, 0, ctx.String(utils.AncientFlag.Name), "", false, false, false)
+	chaindb, err := stack.OpenDatabaseWithFreezer(name, 0, 0, ctx.String(utils.AncientFlag.Name), "", false, false)
 	if err != nil {
 		utils.Fatalf("Failed to open database: %v", err)
 	}
@@ -301,12 +301,12 @@ func initGenesis(ctx *cli.Context) error {
 
 	// if the trie data dir has been set, new trie db with a new state database
 	if ctx.IsSet(utils.MultiDataBaseFlag.Name) {
-		statediskdb, dbErr := stack.OpenDatabaseWithFreezer(name+"/state", 0, 0, "", "", false, false, false)
+		statediskdb, dbErr := stack.OpenDatabaseWithFreezer(name+"/state", 0, 0, "", "", false, false)
 		if dbErr != nil {
 			utils.Fatalf("Failed to open separate trie database: %v", dbErr)
 		}
 		chaindb.SetStateStore(statediskdb)
-		blockdb, err := stack.OpenDatabaseWithFreezer(name+"/block", 0, 0, "", "", false, false, false)
+		blockdb, err := stack.OpenDatabaseWithFreezer(name+"/block", 0, 0, "", "", false, false)
 		if err != nil {
 			utils.Fatalf("Failed to open separate block database: %v", err)
 		}
