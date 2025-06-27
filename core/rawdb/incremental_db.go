@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -22,6 +23,11 @@ type IncrDB struct {
 	currentDir string
 	blockCount uint64
 	lock       sync.RWMutex
+
+	// Directory switching control
+	switching   bool
+	switchCond  *sync.Cond
+	switchMutex sync.Mutex
 }
 
 type dbWrapper struct {
@@ -70,26 +76,42 @@ func NewIncrDB(baseDir string, readonly bool, offset uint64, blockLimit uint64) 
 		baseDir:    baseDir,
 		currentDir: currentDir,
 		blockCount: 0,
+		switching:  false,
 	}
+	incrDB.switchCond = sync.NewCond(&incrDB.switchMutex)
 
 	log.Info("IncrDB created", "baseDir", baseDir, "currentDir", currentDir, "blockLimit", blockLimit)
 	return incrDB, nil
 }
 
-// WriteBlock writes incremental block data and checks if directory switch is needed
+// waitForSwitchComplete waits until directory switching is complete
+func (idb *IncrDB) waitForSwitchComplete() {
+	idb.switchMutex.Lock()
+	defer idb.switchMutex.Unlock()
+
+	for idb.switching {
+		log.Debug("Waiting for directory switch to complete")
+		idb.switchCond.Wait()
+	}
+}
+
+// WriteIncrBlockData writes incremental block data and checks if directory switch is needed
 func (idb *IncrDB) WriteIncrBlockData(number, id uint64, hash, header, body, receipts, td, sidecars []byte, isCancun bool) error {
+	// Wait for any ongoing directory switch to complete
+	idb.waitForSwitchComplete()
+
 	idb.lock.Lock()
 	defer idb.lock.Unlock()
 
 	// Check if we need to switch to a new directory
 	if idb.info.blockLimit > 0 && idb.blockCount >= idb.info.blockLimit {
-		if err := idb.switchToNewDirectory(number); err != nil {
+		if err := idb.switchToNewDirectoryBlocking(number); err != nil {
 			return fmt.Errorf("failed to switch to new directory: %v", err)
 		}
 	}
 
 	if err := WriteIncrBlockData(idb.currDB.chainFreezer, number, id, hash, header, body, receipts, td, sidecars, isCancun); err != nil {
-		log.Error("Failed to write incremental data", "err", err)
+		log.Error("Failed to write incremental block data", "err", err)
 		return err
 	}
 	idb.blockCount++
@@ -106,7 +128,11 @@ func (idb *IncrDB) ReadIncrBlockData(table string, number uint64) ([]byte, error
 	return idb.currDB.chainFreezer.Ancient(table, number)
 }
 
+// WriteIncrState writes incremental state data
 func (idb *IncrDB) WriteIncrState(id uint64, meta, accountIndex, storageIndex, accounts, storages, trieNodes []byte) error {
+	// Wait for any ongoing directory switch to complete
+	idb.waitForSwitchComplete()
+
 	idb.lock.Lock()
 	defer idb.lock.Unlock()
 
@@ -120,7 +146,11 @@ func (idb *IncrDB) ReadStateData(table string, id uint64) ([]byte, error) {
 	return idb.currDB.stateFreezer.Ancient(table, id-1)
 }
 
+// WriteIncrContractCodes writes contract codes
 func (idb *IncrDB) WriteIncrContractCodes(codes map[common.Address]ContractCode) error {
+	// Wait for any ongoing directory switch to complete
+	idb.waitForSwitchComplete()
+
 	idb.lock.Lock()
 	defer idb.lock.Unlock()
 
@@ -142,9 +172,22 @@ func (idb *IncrDB) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	return idb.currDB.kvDB.NewIterator(prefix, start)
 }
 
-// switchToNewDirectory closes current databases and creates new ones in a new directory
-func (idb *IncrDB) switchToNewDirectory(blockNum uint64) error {
-	log.Info("Switching to new incremental directory", "currentBlocks", idb.blockCount, "blockLimit", idb.info.blockLimit, "newStartBlock", blockNum)
+// switchToNewDirectoryBlocking performs directory switch and blocks all writes during the process
+func (idb *IncrDB) switchToNewDirectoryBlocking(blockNum uint64) error {
+	log.Info("Starting directory switch", "currentBlocks", idb.blockCount, "blockLimit", idb.info.blockLimit, "newStartBlock", blockNum)
+
+	// Set switching flag to block new writes
+	idb.switchMutex.Lock()
+	idb.switching = true
+	idb.switchMutex.Unlock()
+
+	defer func() {
+		// Clear switching flag and notify waiting writers
+		idb.switchMutex.Lock()
+		idb.switching = false
+		idb.switchCond.Broadcast()
+		idb.switchMutex.Unlock()
+	}()
 
 	// Close current databases safely
 	if err := idb.closeCurrentDatabases(); err != nil {
@@ -166,6 +209,55 @@ func (idb *IncrDB) switchToNewDirectory(blockNum uint64) error {
 	idb.blockCount = 0
 
 	log.Info("Successfully switched to new incremental directory", "newDir", newDir)
+	return nil
+}
+
+// SwitchToNewDirectoryWithAsyncManager performs directory switch with async write manager coordination
+func (idb *IncrDB) SwitchToNewDirectoryWithAsyncManager(blockNum uint64, asyncManager AsyncWriteManagerInterface) error {
+	log.Info("Starting coordinated directory switch", "blockNum", blockNum)
+
+	// Set switching flag to block new writes
+	idb.switchMutex.Lock()
+	idb.switching = true
+	idb.switchMutex.Unlock()
+
+	defer func() {
+		// Clear switching flag and notify waiting writers
+		idb.switchMutex.Lock()
+		idb.switching = false
+		idb.switchCond.Broadcast()
+		idb.switchMutex.Unlock()
+	}()
+
+	// Wait for all pending async writes to complete
+	log.Info("Waiting for async writes to complete", "pending", asyncManager.GetQueueLength())
+	start := time.Now()
+	asyncManager.DrainQueue()
+	log.Info("Async writes completed", "duration", time.Since(start))
+
+	idb.lock.Lock()
+	defer idb.lock.Unlock()
+
+	// Close current databases safely
+	if err := idb.closeCurrentDatabases(); err != nil {
+		return fmt.Errorf("failed to close current databases: %v", err)
+	}
+
+	// Create new directory name based on block number
+	newDir := filepath.Join(idb.baseDir, fmt.Sprintf("incr_%d", blockNum))
+
+	// Create new database wrapper
+	db, err := newDBWrapper(newDir, &idb.info)
+	if err != nil {
+		return fmt.Errorf("failed to create new database wrapper in directory %s: %v", newDir, err)
+	}
+
+	// Update current database and directory
+	idb.currDB = db
+	idb.currentDir = newDir
+	idb.blockCount = 0
+
+	log.Info("Successfully completed coordinated directory switch", "newDir", newDir)
 	return nil
 }
 
@@ -213,6 +305,7 @@ func (idb *IncrDB) closeCurrentDatabases() error {
 func (idb *IncrDB) GetChainFreezer() ethdb.ResettableAncientStore {
 	idb.lock.RLock()
 	defer idb.lock.RUnlock()
+
 	if idb.currDB != nil {
 		return idb.currDB.chainFreezer
 	}
@@ -223,6 +316,7 @@ func (idb *IncrDB) GetChainFreezer() ethdb.ResettableAncientStore {
 func (idb *IncrDB) GetStateFreezer() ethdb.ResettableAncientStore {
 	idb.lock.RLock()
 	defer idb.lock.RUnlock()
+
 	if idb.currDB != nil {
 		return idb.currDB.stateFreezer
 	}
@@ -233,6 +327,7 @@ func (idb *IncrDB) GetStateFreezer() ethdb.ResettableAncientStore {
 func (idb *IncrDB) GetKVDB() ethdb.KeyValueStore {
 	idb.lock.RLock()
 	defer idb.lock.RUnlock()
+
 	if idb.currDB != nil {
 		return idb.currDB.kvDB
 	}
@@ -252,6 +347,7 @@ func (idb *IncrDB) Close() error {
 func (idb *IncrDB) GetCurrentStats() (currentDir string, blockCount, blockLimit uint64) {
 	idb.lock.RLock()
 	defer idb.lock.RUnlock()
+
 	return idb.currentDir, idb.blockCount, idb.info.blockLimit
 }
 
@@ -416,7 +512,7 @@ func (idb *IncrDB) ForceSwitch(blockNum uint64) error {
 	idb.lock.Lock()
 	defer idb.lock.Unlock()
 
-	return idb.switchToNewDirectory(blockNum)
+	return idb.switchToNewDirectoryBlocking(blockNum)
 }
 
 // RecoverFromDirectory recovers the IncrDB to use a specific directory
@@ -491,29 +587,20 @@ func (idb *IncrDB) UpdateBlockLimit(newLimit uint64) {
 	log.Info("Block limit updated", "oldLimit", oldLimit, "newLimit", newLimit)
 }
 
-// IncrDBInterface defines the interface for incremental database operations
-// type IncrDBInterface interface {
-// 	// Core operations
-// 	WriteBlock(blockNum uint64, data []byte) error
-// 	GetChainFreezer() ethdb.ResettableAncientStore
-// 	GetStateFreezer() ethdb.ResettableAncientStore
-// 	GetKVDB() ethdb.KeyValueStore
-// 	Close() error
-//
-// 	// Directory management
-// 	ForceSwitch(blockNum uint64) error
-// 	GetAllIncrDirs() ([]IncrDirInfo, error)
-// 	RecoverFromDirectory(targetDir string) error
-// 	GetDirectoryBlockRange(dirPath string) (startBlock uint64, endBlock uint64, err error)
-//
-// 	// Status and configuration
-// 	GetCurrentStats() (currentDir string, blockCount, blockLimit uint64)
-// 	IsBlockLimitReached() bool
-// 	UpdateBlockLimit(newLimit uint64)
-// }
-//
-// // Ensure IncrDB implements IncrDBInterface
-// var _ IncrDBInterface = (*IncrDB)(nil)
+// IsSwitching returns true if directory switching is in progress
+func (idb *IncrDB) IsSwitching() bool {
+	idb.switchMutex.Lock()
+	defer idb.switchMutex.Unlock()
+	return idb.switching
+}
+
+// AsyncWriteManagerInterface defines the interface for async write manager
+type AsyncWriteManagerInterface interface {
+	DrainQueue()
+	GetQueueLength() int
+	GetStats() (total, completed, failed uint64, queueLen int)
+	IsHealthy() bool
+}
 
 /*
 Usage Example:

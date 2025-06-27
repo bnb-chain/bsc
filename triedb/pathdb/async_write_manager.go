@@ -1,38 +1,51 @@
 package pathdb
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
-// IncrDataType represents the type of incremental data
-type IncrDataType int
+var (
+	taskQueueFullError            = errors.New("task queue is full")
+	asyncWriteManagerStoppedError = errors.New("async write manager is stopping")
+)
+
+// IncrTaskType represents the task type of incremental data
+type IncrTaskType int
 
 const (
-	IncrChainData IncrDataType = iota
-	IncrStateData
+	IncrChainTask IncrTaskType = iota
+	IncrStateTask
 )
 
 // AsyncWriteTask represents an asynchronous write task
 type AsyncWriteTask struct {
-	taskType   IncrDataType
-	bottom     *diffLayer
-	blockNum   uint64
-	stateID    uint64
-	resultChan chan error
+	taskType IncrTaskType
+	bottom   *diffLayer
+}
+
+// IncrStoreInterface defines the interface for incremental store operations
+type IncrStoreInterface interface {
+	GetIncrDB() *rawdb.IncrDB
+	GetDiskDB() ethdb.Database
+	GetFreezerEnv() *ethdb.FreezerEnv
 }
 
 // AsyncWriteManager manages asynchronous writes for incremental data
 type AsyncWriteManager struct {
 	taskQueue   chan *AsyncWriteTask
-	db          *Database
+	incrStore   IncrStoreInterface
 	workerCount int
 	stopChan    chan struct{}
-	doneChan    chan struct{}
+	wg          sync.WaitGroup
 
 	// Statistics
 	totalTasks     uint64
@@ -41,39 +54,38 @@ type AsyncWriteManager struct {
 	statsLock      sync.RWMutex
 }
 
+// Ensure AsyncWriteManager implements AsyncWriteManagerInterface
+var _ rawdb.AsyncWriteManagerInterface = (*AsyncWriteManager)(nil)
+
 // NewAsyncWriteManager creates a new async write manager
-func NewAsyncWriteManager(db *Database, workerCount int) *AsyncWriteManager {
+func NewAsyncWriteManager(incrStore IncrStoreInterface, workerCount int) *AsyncWriteManager {
 	return &AsyncWriteManager{
-		taskQueue:   make(chan *AsyncWriteTask, 100), // Buffer for 100 tasks
-		db:          db,
+		taskQueue:   make(chan *AsyncWriteTask, 100),
+		incrStore:   incrStore,
 		workerCount: workerCount,
 		stopChan:    make(chan struct{}),
-		doneChan:    make(chan struct{}),
 	}
 }
 
 // Start starts the async write workers
 func (awm *AsyncWriteManager) Start() {
 	for i := 0; i < awm.workerCount; i++ {
+		awm.wg.Add(1)
 		go awm.worker(i)
 	}
 	log.Info("Async write manager started", "workers", awm.workerCount)
 }
 
-// Stop stops the async write manager
+// Stop stops the async write manager and waits for all workers to finish
 func (awm *AsyncWriteManager) Stop() {
 	close(awm.stopChan)
-	<-awm.doneChan
+	awm.wg.Wait()
 	log.Info("Async write manager stopped")
 }
 
 // worker processes write tasks asynchronously
 func (awm *AsyncWriteManager) worker(id int) {
-	defer func() {
-		if id == 0 { // Only the first worker signals completion
-			close(awm.doneChan)
-		}
-	}()
+	defer awm.wg.Done()
 
 	for {
 		select {
@@ -84,16 +96,15 @@ func (awm *AsyncWriteManager) worker(id int) {
 			awm.statsLock.Lock()
 			if err != nil {
 				awm.failedTasks++
-				log.Error("Async write task failed", "type", task.taskType, "err", err)
+				log.Error("Async write task failed", "worker", id, "type", task.taskType, "err", err)
 			} else {
 				awm.completedTasks++
+				log.Debug("Async write task completed", "worker", id, "type", task.taskType)
 			}
 			awm.statsLock.Unlock()
 
-			if task.resultChan != nil {
-				task.resultChan <- err
-			}
 		case <-awm.stopChan:
+			log.Debug("Worker stopping", "id", id)
 			return
 		}
 	}
@@ -101,34 +112,129 @@ func (awm *AsyncWriteManager) worker(id int) {
 
 // processTask processes a single write task
 func (awm *AsyncWriteManager) processTask(task *AsyncWriteTask) error {
-	// Handle special sync task for WaitForCompletion
-	if task.resultChan != nil && task.bottom == nil && task.blockNum == 0 && task.stateID == 0 {
-		return nil // Just return to signal completion
-	}
-
 	switch task.taskType {
-	case IncrStateData:
+	case IncrStateTask:
 		if task.bottom == nil {
 			return fmt.Errorf("missing bottom layer for state write task")
 		}
-		return writeIncrHistory(awm.db.incr.stateFreezer, task.bottom)
-	case IncrChainData:
-		env, _ := awm.db.incr.freezeEnv.Load().(*ethdb.FreezerEnv)
-		return writeIncrBlockToFreezer(env, awm.db.diskdb.BlockStore(), awm.db.incr.chainFreezer, task.blockNum, task.stateID)
+		return awm.writeStateData(task.bottom)
+	case IncrChainTask:
+		return awm.writeChainData(task.bottom.block, task.bottom.stateID())
 	default:
 		return fmt.Errorf("unknown task type: %d", task.taskType)
 	}
 }
 
-// SubmitStateWriteTask submits a state write task
-func (awm *AsyncWriteManager) SubmitStateWriteTask(bottom *diffLayer, sync bool) error {
-	task := &AsyncWriteTask{
-		taskType: IncrStateData,
-		bottom:   bottom,
+// writeStateData writes state data to incremental database
+func (awm *AsyncWriteManager) writeStateData(dl *diffLayer) error {
+	incrDB := awm.incrStore.GetIncrDB()
+	if incrDB == nil {
+		return errors.New("incremental database not available")
 	}
 
-	if sync {
-		task.resultChan = make(chan error, 1)
+	// Short circuit if state set is not available.
+	if dl.states == nil {
+		return errors.New("state change set is not available")
+	}
+
+	var (
+		start   = time.Now()
+		nodes   = compressTrieNodes(dl.nodes.nodes)
+		history = newHistory(dl.rootHash(), dl.parentLayer().rootHash(), dl.block, dl.states.accountOrigin,
+			dl.states.storageOrigin, dl.states.rawStorageKey)
+	)
+	accountData, storageData, accountIndex, storageIndex := history.encode()
+	nodesBytes, err := rlp.EncodeToBytes(nodes)
+	if err != nil {
+		log.Crit("Failed to encode trie nodes", "error", err)
+	}
+
+	err = incrDB.WriteIncrState(dl.stateID(), history.meta.encode(), accountIndex, storageIndex, accountData, storageData, nodesBytes)
+	if err != nil {
+		return err
+	}
+	log.Debug("Stored incremental history", "id", dl.stateID(), "block", dl.block, "nodes size", dl.nodes.size,
+		"elapsed", common.PrettyDuration(time.Since(start)))
+
+	return nil
+}
+
+// writeChainData writes incremental chain data into db
+func (awm *AsyncWriteManager) writeChainData(blockNumber, stateID uint64) error {
+	incrDB := awm.incrStore.GetIncrDB()
+	if incrDB == nil {
+		return errors.New("incremental db is not available")
+	}
+
+	diskDB := awm.incrStore.GetDiskDB()
+	if diskDB == nil {
+		return errors.New("disk db is not available")
+	}
+
+	env := awm.incrStore.GetFreezerEnv()
+	if env == nil {
+		return errors.New("freezer env is not available")
+	}
+
+	// Check if directory switch is needed before writing
+	if incrDB.IsBlockLimitReached() && !incrDB.IsSwitching() {
+		log.Info("Block limit reached, initiating directory switch", "blockNumber", blockNumber)
+		if err := incrDB.SwitchToNewDirectoryWithAsyncManager(blockNumber, awm); err != nil {
+			return fmt.Errorf("failed to switch directory: %v", err)
+		}
+	}
+
+	head, err := incrDB.GetChainFreezer().Ancients()
+	if err != nil {
+		log.Error("Failed to get ancients from incr chain freezer", "err", err)
+		return err
+	}
+
+	var startBlock uint64
+	// Determine the scenario and calculate startBlock
+	if blockNumber == head {
+		// Scenario 1: First time startup with incremental flag
+		startBlock = blockNumber
+		log.Debug("Block number is equal to head", "blockNumber", blockNumber)
+	} else if blockNumber > head {
+		// There's a gap between freezer head and current block
+		// Need to fill all missing blocks (including empty ones)
+		startBlock = head
+		log.Debug("Block number is greater than head",
+			"freezerHead", head, "blockNumber", blockNumber, "gapSize", blockNumber-head)
+	} else {
+		if blockNumber < head {
+			log.Crit("Block number should be greater than or equal to head", "blockNumber", blockNumber, "head", head)
+		}
+	}
+
+	for i := startBlock; i <= blockNumber; i++ {
+		// Determine if this block has state changes
+		currentStateID := uint64(0)
+		if i == blockNumber {
+			currentStateID = stateID
+		}
+
+		if err = writeIncrBlockToFreezer(env, diskDB.BlockStore(), incrDB, i, currentStateID); err != nil {
+			log.Error("Failed to write block data to freezer", "block", i, "stateID", currentStateID, "err", err)
+			return err
+		}
+	}
+
+	log.Debug("Incremental block data processing completed",
+		"startBlock", startBlock, "endBlock", blockNumber, "totalProcessed", blockNumber-startBlock+1)
+	return nil
+}
+
+// SubmitIncrWriteTask submits an incremental write task
+func (awm *AsyncWriteManager) SubmitIncrWriteTask(taskType IncrTaskType, bottom *diffLayer) error {
+	if bottom == nil {
+		return fmt.Errorf("bottom layer cannot be nil")
+	}
+
+	task := &AsyncWriteTask{
+		taskType,
+		bottom,
 	}
 
 	awm.statsLock.Lock()
@@ -137,55 +243,24 @@ func (awm *AsyncWriteManager) SubmitStateWriteTask(bottom *diffLayer, sync bool)
 
 	select {
 	case awm.taskQueue <- task:
-		if sync {
-			return <-task.resultChan
-		}
+		log.Debug("Write task is submitted", "stateID", bottom.stateID(), "block", bottom.block,
+			"taskType", taskType)
 		return nil
+	case <-awm.stopChan:
+		return asyncWriteManagerStoppedError
 	default:
-		return fmt.Errorf("task queue is full")
+		return taskQueueFullError
 	}
 }
 
-// SubmitBlockWriteTask submits a block write task
-func (awm *AsyncWriteManager) SubmitBlockWriteTask(blockNum, stateID uint64, sync bool) error {
-	task := &AsyncWriteTask{
-		taskType: IncrChainData,
-		blockNum: blockNum,
-		stateID:  stateID,
-	}
-
-	if sync {
-		task.resultChan = make(chan error, 1)
-	}
-
-	awm.statsLock.Lock()
-	awm.totalTasks++
-	awm.statsLock.Unlock()
-
-	select {
-	case awm.taskQueue <- task:
-		if sync {
-			return <-task.resultChan
+// DrainQueue waits for all pending tasks to be processed
+func (awm *AsyncWriteManager) DrainQueue() {
+	for {
+		queueLen := awm.GetQueueLength()
+		if queueLen == 0 {
+			break
 		}
-		return nil
-	default:
-		return fmt.Errorf("task queue is full")
-	}
-}
-
-// WaitForCompletion waits for all pending tasks to complete
-func (awm *AsyncWriteManager) WaitForCompletion() {
-	// Send a sync task to ensure all previous tasks are completed
-	task := &AsyncWriteTask{
-		taskType:   IncrStateData, // Use any type, it won't be processed
-		resultChan: make(chan error, 1),
-	}
-
-	select {
-	case awm.taskQueue <- task:
-		<-task.resultChan // Wait for completion
-	default:
-		// Queue is full, tasks are being processed
+		log.Debug("Waiting for queue to drain", "remaining", queueLen)
 		time.Sleep(100 * time.Millisecond)
 	}
 }
@@ -205,6 +280,42 @@ func (awm *AsyncWriteManager) GetStats() (total, completed, failed uint64, queue
 // LogStats logs current statistics
 func (awm *AsyncWriteManager) LogStats() {
 	total, completed, failed, queueLen := awm.GetStats()
-	log.Info("Async write manager stats", "total", total, "completed", completed, "failed", failed,
-		"pending", queueLen, "success_rate", fmt.Sprintf("%.2f%%", float64(completed)/float64(total)*100))
+	successRate := float64(0)
+	if total > 0 {
+		successRate = float64(completed) / float64(total) * 100
+	}
+
+	log.Info("Async write manager stats",
+		"total", total,
+		"completed", completed,
+		"failed", failed,
+		"pending", queueLen,
+		"success_rate", fmt.Sprintf("%.2f%%", successRate))
+}
+
+// IsHealthy returns true if the async write manager is functioning properly
+func (awm *AsyncWriteManager) IsHealthy() bool {
+	awm.statsLock.RLock()
+	defer awm.statsLock.RUnlock()
+
+	// Consider healthy if failure rate is less than 10%
+	if awm.totalTasks == 0 {
+		return true
+	}
+
+	failureRate := float64(awm.failedTasks) / float64(awm.totalTasks)
+	return failureRate < 0.1
+}
+
+// WaitForDirectorySwitchComplete waits for any ongoing directory switch to complete
+func (awm *AsyncWriteManager) WaitForDirectorySwitchComplete() {
+	incrDB := awm.incrStore.GetIncrDB()
+	if incrDB == nil {
+		return
+	}
+
+	for incrDB.IsSwitching() {
+		log.Debug("Waiting for directory switch to complete")
+		time.Sleep(50 * time.Millisecond)
+	}
 }

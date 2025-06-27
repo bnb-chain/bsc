@@ -16,7 +16,7 @@ import (
 )
 
 type incrStore struct {
-	// These two freezers are used to store incremental block and state history, nil possible in tests
+	diskDB    ethdb.Database
 	incrDB    *rawdb.IncrDB
 	freezeEnv atomic.Value
 
@@ -24,9 +24,46 @@ type incrStore struct {
 	asyncWriteManager *AsyncWriteManager
 }
 
+// NewIncrStore creates a new incremental store with async write manager
+func NewIncrStore(diskDB ethdb.Database, incrDB *rawdb.IncrDB, workerCount int) IncrStoreInterface {
+	store := &incrStore{
+		diskDB: diskDB,
+		incrDB: incrDB,
+	}
+	store.asyncWriteManager = NewAsyncWriteManager(store, workerCount)
+
+	return store
+}
+
+// GetIncrDB returns the IncrDB instance (implements IncrStoreInterface)
+func (in *incrStore) GetIncrDB() *rawdb.IncrDB {
+	return in.incrDB
+}
+
+// GetDiskDB returns the disk db.
+func (in *incrStore) GetDiskDB() ethdb.Database {
+	return in.diskDB
+}
+
+// GetFreezerEnv returns the freezer env which is used to check Cancun hardfork.
+func (in *incrStore) GetFreezerEnv() *ethdb.FreezerEnv {
+	env, _ := in.freezeEnv.Load().(*ethdb.FreezerEnv)
+	return env
+}
+
 func (in *incrStore) commit(db ethdb.BlockStore, bottom *diffLayer) error {
 	if err := in.checkFreezerEnv(); err != nil {
 		return err
+	}
+
+	// Check if directory switch is in progress and wait for completion
+	if in.incrDB.IsSwitching() {
+		log.Info("Directory switch in progress, waiting for completion", "block", bottom.block)
+		// Wait for switch to complete before proceeding
+		for in.incrDB.IsSwitching() {
+			time.Sleep(50 * time.Millisecond)
+		}
+		log.Info("Directory switch completed, resuming commit", "block", bottom.block)
 	}
 
 	// reset incremental state freezer table
@@ -36,9 +73,22 @@ func (in *incrStore) commit(db ethdb.BlockStore, bottom *diffLayer) error {
 	}
 
 	// async write state data
-	if err := in.asyncWriteManager.SubmitStateWriteTask(bottom, false); err != nil {
+	if err := in.asyncWriteManager.SubmitIncrWriteTask(IncrStateTask, bottom); err != nil {
 		log.Error("Failed to submit async state write task", "err", err)
-		return err
+		// If async submission fails, try to wait for directory switch completion and retry
+		if in.incrDB.IsSwitching() {
+			log.Info("Async write failed during directory switch, waiting and retrying", "block", bottom.block)
+			for in.incrDB.IsSwitching() {
+				time.Sleep(50 * time.Millisecond)
+			}
+			// Retry once after directory switch
+			if retryErr := in.asyncWriteManager.SubmitIncrWriteTask(IncrStateTask, bottom); retryErr != nil {
+				log.Error("Failed to submit async state write task after retry", "err", retryErr)
+				return retryErr
+			}
+		} else {
+			return err
+		}
 	}
 
 	blockHash := rawdb.ReadCanonicalHash(db.BlockStore(), bottom.block)
@@ -57,100 +107,32 @@ func (in *incrStore) commit(db ethdb.BlockStore, bottom *diffLayer) error {
 		return err
 	}
 
-	if err := in.asyncWriteManager.SubmitBlockWriteTask(bottom.block, bottom.stateID(), false); err != nil {
+	if err := in.asyncWriteManager.SubmitIncrWriteTask(IncrChainTask, bottom); err != nil {
 		log.Error("Failed to submit async block write task", "err", err)
-		return err
-	}
-	return nil
-}
-
-// writeIncrementalBlockData writes block data to incremental freezer
-// This handles both empty blocks and blocks with state changes
-// Scenarios:
-// 1. First time startup with incremental flag from a snapshot base
-// 2. Restart after graceful shutdown with incremental flag
-// 3. Normal block processing during runtime
-func (in *incrStore) writeIncrementalBlockData(db ethdb.BlockStore, blockNumber, stateID uint64) error {
-	head, err := in.incrDB.GetChainFreezer().Ancients()
-	if err != nil {
-		log.Error("Failed to get ancients from incr chain freezer", "err", err)
-		return err
-	}
-
-	var startBlock uint64
-	// Determine the scenario and calculate startBlock
-	if blockNumber == head {
-		// Scenario 1: First time startup with incremental flag
-		startBlock = blockNumber
-		log.Debug("Block number is equal to head", "blockNumber", blockNumber)
-	} else if blockNumber > head {
-		// There's a gap between freezer head and current block
-		// Need to fill all missing blocks (including empty ones)
-		startBlock = head
-		log.Debug("Block number is greater than head",
-			"freezerHead", head, "blockNumber", blockNumber, "gapSize", blockNumber-head)
-	} else {
-		if blockNumber < head {
-			log.Crit("Block number should be greater than or equal to head", "blockNumber", blockNumber, "head", head)
-		}
-	}
-
-	for i := startBlock; i <= blockNumber; i++ {
-		// Determine if this block has state changes
-		currentStateID := uint64(0)
-		if i == blockNumber {
-			currentStateID = stateID
-		}
-
-		env, _ := in.freezeEnv.Load().(*ethdb.FreezerEnv)
-		if err = writeIncrBlockToFreezer(env, db.BlockStore(), in.incrDB.GetChainFreezer(), i, currentStateID); err != nil {
-			log.Error("Failed to write block data to freezer", "block", i, "stateID", currentStateID, "err", err)
+		// If async submission fails, try to wait for directory switch completion and retry
+		if in.incrDB.IsSwitching() {
+			log.Info("Async block write failed during directory switch, waiting and retrying", "block", bottom.block)
+			for in.incrDB.IsSwitching() {
+				time.Sleep(50 * time.Millisecond)
+			}
+			// Retry once after directory switch
+			if retryErr := in.asyncWriteManager.SubmitIncrWriteTask(IncrChainTask, bottom); retryErr != nil {
+				log.Error("Failed to submit async block write task after retry", "err", retryErr)
+				return retryErr
+			}
+		} else {
 			return err
 		}
 	}
-
-	log.Debug("Incremental block data processing completed",
-		"startBlock", startBlock, "endBlock", blockNumber, "totalProcessed", blockNumber-startBlock+1)
 	return nil
 }
 
-func (i *incrStore) checkFreezerEnv() error {
-	_, exist := i.freezeEnv.Load().(*ethdb.FreezerEnv)
+func (in *incrStore) checkFreezerEnv() error {
+	_, exist := in.freezeEnv.Load().(*ethdb.FreezerEnv)
 	if exist {
 		return nil
 	}
 	return errors.New("missing freezer env error")
-}
-
-// This scheme can store incremental data, including state and block data.
-
-// writeIncrHistory persists the incremental history
-func writeIncrHistory(writer ethdb.AncientWriter, dl *diffLayer) error {
-	// Short circuit if state set is not available.
-	if dl.states == nil {
-		return errors.New("state change set is not available")
-	}
-
-	var (
-		start   = time.Now()
-		nodes   = compressTrieNodes(dl.nodes.nodes)
-		history = newHistory(dl.rootHash(), dl.parentLayer().rootHash(), dl.block, dl.states.accountOrigin, dl.states.storageOrigin, dl.states.rawStorageKey)
-	)
-	accountData, storageData, accountIndex, storageIndex := history.encode()
-	nodesBytes, err := rlp.EncodeToBytes(nodes)
-	if err != nil {
-		log.Crit("Failed to encode trie nodes", "error", err)
-	}
-
-	err = rawdb.WriteIncrState(writer, dl.stateID(), history.meta.encode(), accountIndex, storageIndex,
-		accountData, storageData, nodesBytes)
-	if err != nil {
-		return err
-	}
-	log.Debug("Stored incremental history", "id", dl.stateID(), "block", dl.block, "nodes size", dl.nodes.size,
-		"elapsed", common.PrettyDuration(time.Since(start)))
-
-	return nil
 }
 
 // readIncrData reads the incremental history and tre nodes
@@ -228,7 +210,7 @@ func readIncrTrieNodes(reader ethdb.AncientReader, id uint64) (map[common.Hash]m
 }
 
 // writeIncrBlockToFreezer writes incremental block into freezer
-func writeIncrBlockToFreezer(env *ethdb.FreezerEnv, reader ethdb.Reader, writer ethdb.AncientWriter, blockNumber, stateID uint64) error {
+func writeIncrBlockToFreezer(env *ethdb.FreezerEnv, reader ethdb.Reader, incrDB *rawdb.IncrDB, blockNumber, stateID uint64) error {
 	blockHash := rawdb.ReadCanonicalHash(reader, blockNumber)
 	if blockHash == (common.Hash{}) {
 		return fmt.Errorf("canonical hash not found for block %d", blockNumber)
@@ -258,7 +240,7 @@ func writeIncrBlockToFreezer(env *ethdb.FreezerEnv, reader ethdb.Reader, writer 
 		}
 	}
 
-	err := rawdb.WriteIncrBlockData(writer, blockNumber, stateID, blockHash[:], header, body, receipts, td, sidecars, isCancun(env, h.Number, h.Time))
+	err := incrDB.WriteIncrBlockData(blockNumber, stateID, blockHash[:], header, body, receipts, td, sidecars, isCancun(env, h.Number, h.Time))
 	if err != nil {
 		log.Error("Failed to write block data", "err", err)
 		return err

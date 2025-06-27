@@ -222,14 +222,6 @@ type Database struct {
 	lock    sync.RWMutex                 // Lock to prevent mutations from happening at the same time
 
 	incr *incrStore
-	// // These two freezers are used to store incremental block and state histories,nil possible in tests
-	// incrStateFreezer ethdb.ResettableAncientStore
-	// incrChainFreezer ethdb.ResettableAncientStore
-	// incrKVDB         ethdb.KeyValueStore
-	// freezeEnv        atomic.Value
-	//
-	// // Async write manager for incremental data
-	// asyncWriteManager *AsyncWriteManager
 }
 
 // New attempts to load an already existing layer from a persistent key-value
@@ -289,8 +281,7 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 			log.Crit("Failed to repair incremental state history", "err", err)
 		}
 
-		// Initialize async write manager for incremental data
-		db.incr.asyncWriteManager = NewAsyncWriteManager(db, 2) // Use 2 workers
+		// Start async write manager for incremental data
 		db.incr.asyncWriteManager.Start()
 	}
 
@@ -370,7 +361,9 @@ func (db *Database) repairIncrStore(ancientDir string) error {
 	if err != nil {
 		log.Crit("Failed to open incremental db", "err", err)
 	}
-	db.incr.incrDB = incrDB
+
+	// Create incremental store with async write manager
+	db.incr = NewIncrStore(db.diskdb, incrDB, 2)
 
 	id := db.tree.bottom().stateID()
 	if id == 0 {
@@ -399,6 +392,7 @@ func (db *Database) repairIncrStore(ancientDir string) error {
 		log.Warn("Truncated extra incr state histories", "number", pruned)
 	}
 
+	// TODO: check corresponding id with block number
 	// truncate incr chain freezer
 	pruned, err = truncateFromHead(db.diskdb, db.incr.incrDB.GetStateFreezer(), id)
 	if err != nil {
@@ -643,7 +637,7 @@ func (db *Database) Close() error {
 		// Wait for all async write tasks to complete before closing
 		if db.incr.asyncWriteManager != nil {
 			log.Info("Waiting for async write tasks to complete", "pending", db.incr.asyncWriteManager.GetQueueLength())
-			db.incr.asyncWriteManager.WaitForCompletion()
+			db.incr.asyncWriteManager.DrainQueue()
 			db.incr.asyncWriteManager.LogStats() // Log final statistics
 			db.incr.asyncWriteManager.Stop()
 		}
