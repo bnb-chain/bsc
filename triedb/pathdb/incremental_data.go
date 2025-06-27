@@ -25,7 +25,7 @@ type incrStore struct {
 }
 
 // NewIncrStore creates a new incremental store with async write manager
-func NewIncrStore(diskDB ethdb.Database, incrDB *rawdb.IncrDB, workerCount int) IncrStoreInterface {
+func NewIncrStore(diskDB ethdb.Database, incrDB *rawdb.IncrDB, workerCount int) *incrStore {
 	store := &incrStore{
 		diskDB: diskDB,
 		incrDB: incrDB,
