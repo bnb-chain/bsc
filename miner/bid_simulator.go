@@ -39,7 +39,7 @@ var (
 	bidSim1stBidTimer    = metrics.NewRegisteredTimer("bid/sim/sim1stBid", nil)
 	bidSimTimer          = metrics.NewRegisteredTimer("bid/sim/duration", nil)
 
-	simulateSpeedGauge = metrics.NewRegisteredGauge("bid/sim/simulateSpeed", nil) // Mps
+	simulateSpeedGauge = metrics.NewRegisteredGauge("bid/sim/simulateSpeed", nil) // mgasps
 
 	bidSimTimeoutCounter = metrics.NewRegisteredCounter("bid/sim/simTimeout", nil)
 )
@@ -904,7 +904,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 	const minGasForSpeedMetric = 30_000_000
 	if bidRuntime.bid.GasUsed > minGasForSpeedMetric {
-		timeCostMs := (simElapsed - greedyMergeElapsed).Microseconds()
+		timeCostMs := (simElapsed - greedyMergeElapsed).Milliseconds()
 		if timeCostMs > 0 {
 			simulateSpeedGauge.Update(int64(float64(bidRuntime.bid.GasUsed) / float64(timeCostMs) / 1000))
 		}
