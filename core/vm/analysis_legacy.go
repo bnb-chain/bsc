@@ -76,6 +76,14 @@ func codeBitmapInternal(code, bits bitvec) bitvec {
 	for pc := uint64(0); pc < uint64(len(code)); {
 		op := OpCode(code[pc])
 		pc++
+
+		// handle super instruction.
+		step, processed := codeBitmapForSI(code, pc, op, &bits)
+		if processed {
+			pc += step
+			continue
+		}
+
 		if int8(op) < int8(PUSH1) { // If not PUSH (the int8(op) > int(PUSH32) is always false).
 			continue
 		}
@@ -115,4 +123,31 @@ func codeBitmapInternal(code, bits bitvec) bitvec {
 		}
 	}
 	return bits
+}
+
+func codeBitmapForSI(code []byte, pc uint64, op OpCode, bits *bitvec) (step uint64, processed bool) {
+	// pc points to the data pointer for push, or the next op for opcode
+	// bits marks the data bytes pointed by [pc]
+	switch op {
+	case Push2Jump, Push2JumpI:
+		bits.setN(set2BitsMask, pc)
+		step = 3
+		processed = true
+	case Push1Push1:
+		bits.set1(pc)
+		bits.set1(pc + 2)
+		step = 3
+		processed = true
+	case Push1Add, Push1Shl, Push1Dup1:
+		bits.set1(pc)
+		step = 2
+		processed = true
+	case JumpIfZero:
+		bits.setN(set2BitsMask, pc+1)
+		step = 4
+		processed = true
+	default:
+		return 0, false
+	}
+	return step, processed
 }

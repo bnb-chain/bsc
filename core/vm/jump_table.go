@@ -1107,3 +1107,134 @@ func copyJumpTable(source *JumpTable) *JumpTable {
 	}
 	return &dest
 }
+
+func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
+	// super instructions
+	tbl[Nop] = &operation{
+		execute:     opNop,
+		constantGas: 0,
+		minStack:    minStack(0, 0),
+		maxStack:    maxStack(0, 0),
+	}
+
+	tbl[AndSwap1PopSwap2Swap1] = &operation{
+		execute:     opAndSwap1PopSwap2Swap1,
+		constantGas: 4*GasFastestStep + GasQuickStep,
+		minStack:    minStack(2, 0),
+		maxStack:    maxStack(2, 0),
+	}
+
+	tbl[Swap2Swap1PopJump] = &operation{
+		execute:     opSwap2Swap1PopJump,
+		constantGas: 2*GasFastestStep + GasQuickStep + GasMidStep,
+		minStack:    minStack(3, 3),
+		maxStack:    maxStack(3, 3),
+	}
+
+	tbl[Swap1PopSwap2Swap1] = &operation{
+		execute:     opSwap1PopSwap2Swap1,
+		constantGas: 3*GasFastestStep + GasQuickStep,
+		minStack:    minStack(4, 4),
+		maxStack:    maxStack(4, 4),
+	}
+
+	tbl[PopSwap2Swap1Pop] = &operation{
+		execute:     opPopSwap2Swap1Pop,
+		constantGas: 2*GasFastestStep + 2*GasQuickStep,
+		minStack:    minStack(4, 4),
+		maxStack:    maxStack(4, 4),
+	}
+
+	tbl[Push2Jump] = &operation{
+		execute:     opPush2Jump,
+		constantGas: GasFastestStep + GasMidStep,
+		minStack:    minStack(0, 0),
+		maxStack:    maxStack(0, 0),
+	}
+
+	tbl[Push2JumpI] = &operation{
+		execute:     opPush2JumpI,
+		constantGas: GasFastestStep + GasSlowStep,
+		minStack:    minStack(1, 0),
+		maxStack:    maxStack(1, 0),
+	}
+
+	tbl[Push1Push1] = &operation{
+		execute:     opPush1Push1,
+		constantGas: 2 * GasFastestStep,
+		minStack:    minStack(0, 2),
+		maxStack:    maxStack(0, 2),
+	}
+
+	tbl[Push1Add] = &operation{
+		execute:     opPush1Add,
+		constantGas: 2 * GasFastestStep,
+		minStack:    minStack(1, 1),
+		maxStack:    maxStack(1, 1),
+	}
+
+	tbl[Push1Shl] = &operation{
+		execute:     opPush1Shl,
+		constantGas: 2 * GasFastestStep,
+		minStack:    minStack(1, 1),
+		maxStack:    maxStack(1, 1),
+	}
+
+	tbl[Push1Dup1] = &operation{
+		execute:     opPush1Dup1,
+		constantGas: 2 * GasFastestStep,
+		minStack:    minStack(0, 2),
+		maxStack:    maxStack(0, 2),
+	}
+
+	tbl[Swap1Pop] = &operation{
+		execute:     opSwap1Pop,
+		constantGas: GasFastestStep + GasQuickStep,
+		minStack:    minStack(1, 0),
+		maxStack:    maxStack(1, 0),
+	}
+
+	tbl[PopJump] = &operation{
+		execute:     opPopJump,
+		constantGas: GasQuickStep + GasMidStep,
+		minStack:    minStack(1, 0),
+		maxStack:    maxStack(1, 0),
+	}
+
+	tbl[Pop2] = &operation{
+		execute:     opPop2,
+		constantGas: 2 * GasQuickStep,
+		minStack:    minStack(2, 0),
+		maxStack:    maxStack(2, 0),
+	}
+
+	tbl[Swap2Swap1] = &operation{
+		execute:     opSwap2Swap1,
+		constantGas: 2 * GasFastestStep,
+		minStack:    minStack(0, 0),
+		maxStack:    maxStack(0, 0),
+	}
+
+	tbl[Swap2Pop] = &operation{
+		execute:     opSwap2Pop,
+		constantGas: GasFastestStep + GasQuickStep,
+		minStack:    minStack(0, 0),
+		maxStack:    maxStack(0, 0),
+	}
+
+	tbl[Dup2LT] = &operation{
+		execute:     opDup2LT,
+		constantGas: 2 * GasFastestStep,
+		minStack:    minStack(2, 2),
+		maxStack:    maxStack(2, 2),
+	}
+
+	tbl[JumpIfZero] = &operation{
+		execute:     opJumpIfZero,
+		constantGas: 2*GasFastestStep + GasSlowStep,
+		minStack:    minStack(1, 0),
+		maxStack:    maxStack(1, 0),
+	}
+
+	return tbl
+}
