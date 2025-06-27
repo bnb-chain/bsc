@@ -146,8 +146,8 @@ func (frdb *freezerdb) Freeze(threshold uint64) error {
 	return nil
 }
 
-func (frdb *freezerdb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
-	return frdb.AncientFreezer.SetupFreezerEnv(env)
+func (frdb *freezerdb) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
+	return frdb.AncientFreezer.SetupFreezerEnv(env, blockHistory)
 }
 
 // nofreezedb is a database wrapper that disables freezer data retrievals.
@@ -291,7 +291,7 @@ func (db *nofreezedb) AncientDatadir() (string, error) {
 	return "", errNotSupported
 }
 
-func (db *nofreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+func (db *nofreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
 	return nil
 }
 
@@ -387,7 +387,7 @@ func (db *emptyfreezedb) AncientOffSet() uint64 { return 0 }
 func (db *emptyfreezedb) AncientDatadir() (string, error) {
 	return "", nil
 }
-func (db *emptyfreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+func (db *emptyfreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
 	return nil
 }
 
@@ -401,7 +401,7 @@ func NewEmptyFreezeDB(db ethdb.KeyValueStore) ethdb.Database {
 // NewFreezerDb only create a freezer without statedb.
 func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, newOffSet uint64) (*Freezer, error) {
 	// Create the idle freezer instance, this operation should be atomic to avoid mismatch between offset and acientDB.
-	frdb, err := NewFreezer(frz, namespace, readonly, newOffSet, freezerTableSize, chainFreezerNoSnappy)
+	frdb, err := NewFreezer(frz, namespace, readonly, freezerTableSize, chainFreezerNoSnappy)
 	if err != nil {
 		return nil, err
 	}
@@ -438,7 +438,7 @@ func resolveChainFreezerDir(ancient string) string {
 // value data store with a freezer moving immutable chain segments into cold
 // storage. The passed ancient indicates the path of root ancient directory
 // where the chain freezer can be opened.
-func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace string, readonly, disableFreeze, pruneAncientData, multiDatabase bool) (ethdb.Database, error) {
+func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace string, readonly, disableFreeze, multiDatabase bool) (ethdb.Database, error) {
 	// Create the idle freezer instance. If the given ancient directory is empty,
 	// in-memory chain freezer is used (e.g. dev mode); otherwise the regular
 	// file-based freezer is created.
@@ -447,41 +447,17 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 		chainFreezerDir = resolveChainFreezerDir(chainFreezerDir)
 	}
 
-	var offset uint64
-	// This case is used for someone who wants to execute geth db inspect CLI in a pruned db
-	if !disableFreeze && readonly && ReadAncientType(db) == PruneFreezerType {
-		log.Warn("Disk db is pruned, using an empty freezer db for CLI")
-		return NewEmptyFreezeDB(db), nil
-	}
-
-	if pruneAncientData && !disableFreeze && !readonly {
-		frdb, err := newPrunedFreezer(chainFreezerDir, db, offset)
-		if err != nil {
+	// if there has legacy offset, try to clean & reset the freezer metadata
+	if legacyOffset := ReadLegacyOffset(db); legacyOffset > 0 {
+		log.Info("Found legacy offset in freezerDB, will reset freezer meta", "offset", legacyOffset)
+		if err := resetFreezerMeta(chainFreezerDir, namespace, legacyOffset); err != nil {
 			return nil, err
 		}
-
-		go frdb.freeze()
-		if !readonly {
-			WriteAncientType(db, PruneFreezerType)
-		}
-		return &freezerdb{
-			ancientRoot:    ancient,
-			KeyValueStore:  db,
-			AncientStore:   frdb,
-			AncientFreezer: frdb,
-		}, nil
-	}
-
-	if pruneAncientData {
-		log.Error("pruneancient not take effect, disableFreezer or readonly be set")
-	}
-
-	if prunedFrozen := ReadFrozenOfAncientFreezer(db); prunedFrozen > offset {
-		offset = prunedFrozen
+		CleanLegacyOffset(db)
 	}
 
 	// Create the idle freezer instance
-	frdb, err := newChainFreezer(chainFreezerDir, namespace, readonly, offset, multiDatabase)
+	frdb, err := newChainFreezer(chainFreezerDir, namespace, readonly, multiDatabase)
 
 	// We are creating the freezerdb here because the validation logic for db and freezer below requires certain interfaces
 	// that need a database type. Therefore, we are pre-creating it for subsequent use.
@@ -524,7 +500,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve Tail from ancient %v", err)
 	}
-	if kvgenesis, _ := db.Get(headerHashKey(0)); (offset == 0 && ancientTail == 0) && len(kvgenesis) > 0 {
+	if kvgenesis, _ := db.Get(headerHashKey(0)); ancientTail == 0 && len(kvgenesis) > 0 {
 		if frozen, _ := frdb.Ancients(); frozen > 0 {
 			// If the freezer already contains something, ensure that the genesis blocks
 			// match, otherwise we might mix up freezers across chains and destroy both
@@ -581,10 +557,6 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 		}
 	}
 
-	// no prune ancient start success
-	if !readonly {
-		WriteAncientType(db, EntireFreezerType)
-	}
 	// Freezer is consistent with the key-value database, permit combining the two
 	if !disableFreeze && !readonly {
 		frdb.wg.Add(1)

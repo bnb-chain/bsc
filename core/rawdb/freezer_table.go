@@ -131,11 +131,6 @@ func newFreezerTable(path, name string, disableSnappy, readonly bool) (*freezerT
 	return newTable(path, name, metrics.NewInactiveMeter(), metrics.NewInactiveMeter(), metrics.NewGauge(), freezerTableSize, disableSnappy, readonly)
 }
 
-// newAdditionTable opens the given path as a addition table.
-func newAdditionTable(path, name string, disableSnappy, readonly bool) (*freezerTable, error) {
-	return openAdditionTable(path, name, metrics.NewInactiveMeter(), metrics.NewInactiveMeter(), metrics.NewGauge(), freezerTableSize, disableSnappy, readonly)
-}
-
 // newTable opens a freezer table, creating the data and index files if they are
 // non-existent. Both files are truncated to the shortest common length to ensure
 // they don't go out of sync.
@@ -1333,4 +1328,39 @@ func (t *freezerTable) resetItems(startAt uint64) (*freezerTable, error) {
 	index.Close()
 
 	return newFreezerTable(t.path, t.name, t.noCompression, t.readonly)
+}
+
+// resetTailMeta reset freezer table with new legacyOffset
+// Caution: the table cannot be used anymore, it will sync/close all data files
+func (t *freezerTable) resetTailMeta(legacyOffset uint64) error {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	if t.readonly {
+		return errors.New("resetItems in readonly mode")
+	}
+
+	// if the table enable the tail truncation, add the hidden items
+	legacyOffset += t.itemHidden.Load()
+
+	// overwrite metadata file
+	t.metadata.setVirtualTail(legacyOffset, true)
+	if t.metadata.flushOffset < int64(legacyOffset) {
+		t.metadata.setFlushOffset(int64(legacyOffset), true)
+	}
+
+	// overwrite first index
+	var firstIndex indexEntry
+	buffer := make([]byte, indexEntrySize)
+	t.index.ReadAt(buffer, 0)
+	firstIndex.unmarshalBinary(buffer)
+	firstIndex.offset = uint32(legacyOffset)
+	if _, err := t.index.WriteAt(firstIndex.append(nil), 0); err != nil {
+		return err
+	}
+	if err := t.index.Sync(); err != nil {
+		return err
+	}
+	t.index.Close()
+
+	return nil
 }

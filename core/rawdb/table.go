@@ -258,7 +258,7 @@ func (t *table) NewBatchWithSize(size int) ethdb.Batch {
 	return &tableBatch{t.db.NewBatchWithSize(size), t.prefix}
 }
 
-func (t *table) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+func (t *table) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
 	return nil
 }
 

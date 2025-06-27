@@ -195,22 +195,6 @@ func WriteTransitionStatus(db ethdb.KeyValueWriter, data []byte) {
 	}
 }
 
-// ReadFrozenOfAncientFreezer return freezer block number
-func ReadFrozenOfAncientFreezer(db ethdb.KeyValueReader) uint64 {
-	fozen, _ := db.Get(frozenOfAncientDBKey)
-	if fozen == nil {
-		return 0
-	}
-	return new(big.Int).SetBytes(fozen).Uint64()
-}
-
-// WriteFrozenOfAncientFreezer write freezer block number
-func WriteFrozenOfAncientFreezer(db ethdb.KeyValueWriter, frozen uint64) {
-	if err := db.Put(frozenOfAncientDBKey, new(big.Int).SetUint64(frozen).Bytes()); err != nil {
-		log.Crit("Failed to store the ancient frozen number", "err", err)
-	}
-}
-
 // ReadSafePointBlockNumber return the number of block that roothash save to disk
 func ReadSafePointBlockNumber(db ethdb.KeyValueReader) uint64 {
 	num, _ := db.Get(LastSafePointBlockKey)
@@ -224,21 +208,5 @@ func ReadSafePointBlockNumber(db ethdb.KeyValueReader) uint64 {
 func WriteSafePointBlockNumber(db ethdb.KeyValueWriter, number uint64) {
 	if err := db.Put(LastSafePointBlockKey, new(big.Int).SetUint64(number).Bytes()); err != nil {
 		log.Crit("Failed to store safe point of block number", "err", err)
-	}
-}
-
-// ReadAncientType return freezer type
-func ReadAncientType(db ethdb.KeyValueReader) uint64 {
-	data, _ := db.Get(pruneAncientKey)
-	if data == nil {
-		return EntireFreezerType
-	}
-	return new(big.Int).SetBytes(data).Uint64()
-}
-
-// WriteAncientType write freezer type
-func WriteAncientType(db ethdb.KeyValueWriter, flag uint64) {
-	if err := db.Put(pruneAncientKey, new(big.Int).SetUint64(flag).Bytes()); err != nil {
-		log.Crit("Failed to store prune ancient type", "err", err)
 	}
 }
