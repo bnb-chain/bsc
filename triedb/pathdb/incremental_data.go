@@ -221,26 +221,8 @@ func (in *incrStore) worker() {
 }
 
 func (in *incrStore) processWriteTask(dl *diffLayer) error {
-	// Check if directory switch is in progress
-	if in.incrDB.IsSwitching() {
-		log.Info("Directory switch in progress, waiting for completion", "block", dl.block)
-
-		// Add timeout to prevent infinite waiting
-		timeout := time.After(30 * time.Second)
-		ticker := time.NewTicker(100 * time.Millisecond)
-		defer ticker.Stop()
-
-		for in.incrDB.IsSwitching() {
-			select {
-			case <-timeout:
-				log.Error("Timeout waiting for directory switch", "block", dl.block)
-				return fmt.Errorf("timeout waiting for directory switch for block %d", dl.block)
-			case <-ticker.C:
-				// Continue checking
-			}
-		}
-		log.Info("Directory switch completed, resuming commit", "block", dl.block)
-	}
+	// Directory switch logic moved to commit method - no longer need to wait here
+	// since switch happens before task submission to avoid deadlock
 
 	if dl.block%10000 == 0 {
 		log.Info("Processing", "stateID", dl.stateID(), "block", dl.block)
@@ -323,13 +305,8 @@ func (in *incrStore) writeChainData(blockNumber, stateID uint64) error {
 		return errors.New("freezer env is not available")
 	}
 
-	// Check if directory switch is needed before writing
-	if in.incrDB.IsBlockLimitReached() && !in.incrDB.IsSwitching() {
-		log.Info("Block limit reached, initiating directory switch", "blockNumber", blockNumber)
-		if err := in.incrDB.SwitchToNewDirectoryWithAsyncManager(blockNumber, in); err != nil {
-			return fmt.Errorf("failed to switch directory: %v", err)
-		}
-	}
+	// Directory switch logic moved to commit method to avoid deadlock
+	// The switch should happen before tasks are submitted to the queue
 
 	head, err := in.incrDB.GetChainFreezer().Ancients()
 	if err != nil {
@@ -375,6 +352,15 @@ func (in *incrStore) writeChainData(blockNumber, stateID uint64) error {
 func (in *incrStore) commit(bottom *diffLayer) error {
 	if !in.started {
 		return errors.New("incremental store not started")
+	}
+
+	// Check if directory switch is needed BEFORE submitting task to avoid deadlock
+	// This prevents the worker from being stuck while trying to switch directories
+	if in.incrDB.IsBlockLimitReached() && !in.incrDB.IsSwitching() {
+		log.Info("Block limit reached, initiating directory switch before task submission", "blockNumber", bottom.block)
+		if err := in.incrDB.SwitchToNewDirectoryWithAsyncManager(bottom.block, in); err != nil {
+			return fmt.Errorf("failed to switch directory: %v", err)
+		}
 	}
 
 	// Update statistics
@@ -674,59 +660,47 @@ func isCancun(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
 }
 
 /*
-Directory Switch Queue Full Issue - Solutions Implemented:
+Directory Switch Queue Full Issue - DEADLOCK RESOLVED:
 
-**Problem:**
-During directory switching, the worker thread blocks waiting for the switch to complete,
-causing the task queue to fill up and reject new commits.
+**Original Problem:**
+During directory switching, the worker thread blocked waiting for the switch to complete,
+causing the task queue to fill up and reject new commits. This created a deadlock:
+1. Worker waits for directory switch to complete
+2. Directory switch waits for queue to drain (DrainQueue)
+3. Queue can't drain because worker is blocked
+4. Classic deadlock situation
 
 **Root Cause:**
-1. Directory switch blocks the worker thread
-2. New commit requests keep coming
-3. Queue fills up (reaches capacity)
-4. New commits are rejected with "task queue is full"
+Directory switch was initiated from within the worker thread (processWriteTask -> writeChainData),
+creating a circular dependency where the worker waits for a switch that can't complete
+because it needs the worker to finish.
 
-**Solutions Implemented:**
+**SOLUTION - Architecture Change:**
+**Moved directory switch logic from worker thread to commit method:**
+1. **Pre-submission Check**: Directory switch now happens in `commit()` method BEFORE task submission
+2. **No Worker Blocking**: Worker threads never wait for directory switches
+3. **Clean Separation**: Switch coordination happens at the submission layer, not processing layer
 
-1. **Increased Queue Capacity**:
-   - Raised from 100 to 1000 to provide more buffer during switches
-   - Handles temporary spikes during directory operations
+**Implementation Details:**
+- `commit()` method checks `IsBlockLimitReached()` before submitting tasks
+- `SwitchToNewDirectoryWithAsyncManager()` called before queue submission
+- `processWriteTask()` no longer contains switch waiting logic
+- `writeChainData()` no longer initiates directory switches
 
-2. **Timeout Protection**:
-   - Added 30-second timeout for directory switch waiting
-   - Prevents infinite blocking if switch gets stuck
+**Benefits:**
+1. **Deadlock Eliminated**: No circular dependencies between worker and switch
+2. **Predictable Behavior**: Switches complete before new tasks are submitted
+3. **Better Performance**: No worker thread blocking during switches
+4. **Cleaner Architecture**: Clear separation of concerns
 
-3. **Enhanced Error Messages**:
-   - Distinguishes between queue full during switch vs normal operation
-   - Provides context (block number, queue length, switch status)
-
-4. **Queue Monitoring**:
-   - GetQueueUsageRate() for monitoring queue pressure
-   - IsQueueNearFull() for early warning (>80% usage)
-   - Enhanced logging with queue statistics
-
-5. **Operational Guidance**:
-   - Queue full during switch: Expected, will resolve after switch
-   - Queue full during normal operation: Performance issue, needs investigation
-
-**Monitoring Commands:**
-```go
-// Check queue status
-if incrStore.IsQueueNearFull() {
-    log.Warn("Queue approaching capacity", "usage", incrStore.GetQueueUsageRate())
-}
-
-// Log detailed statistics
-incrStore.LogStats()
-
-// Check if directory switch is causing the issue
-if incrStore.incrDB.IsSwitching() {
-    log.Info("Directory switch in progress, queue pressure expected")
-}
-```
+**Monitoring Features Retained:**
+- Queue capacity monitoring and statistics
+- Enhanced error messages with context
+- Health checks and operational visibility
 
 **Expected Behavior:**
-- During directory switch: Queue may fill up temporarily (normal)
-- After switch completion: Queue should drain quickly
-- Normal operation: Queue usage should stay below 50%
+- Directory switch: Happens cleanly before task submission
+- Queue usage: Should remain stable during switches
+- Worker threads: Never block on directory operations
+- Performance: Improved throughput and predictability
 */
