@@ -315,6 +315,11 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 				"incrBlockStartNumber", dl.db.config.IncrBlockStartNumber)
 		}
 
+		if in.incrDB.IsBlockLimitReached() && !in.incrDB.IsSwitching() {
+			log.Info("Block limit reached, initiating directory switch", "blockNumber", blockNumber)
+
+		}
+
 		// Commit incremental data with retry mechanism
 		if err := dl.commitIncrementalDataWithRetry(bottom); err != nil {
 			log.Error("Failed to commit incremental data after retries", "err", err)
@@ -470,9 +475,7 @@ func (dl *diskLayer) commitIncrementalDataWithRetry(bottom *diffLayer) error {
 			// Success
 			if attempt > 0 {
 				log.Info("Incremental data commit succeeded after retries",
-					"block", bottom.block,
-					"stateID", bottom.stateID(),
-					"attempts", attempt+1)
+					"block", bottom.block, "stateID", bottom.stateID(), "attempts", attempt+1)
 			}
 			return nil
 		}
@@ -491,14 +494,9 @@ func (dl *diskLayer) commitIncrementalDataWithRetry(bottom *diffLayer) error {
 			switching := dl.db.incr.incrDB.IsSwitching()
 			queueUsage := dl.db.incr.GetQueueUsageRate()
 
-			log.Warn("Task queue is full, retrying after delay",
-				"block", bottom.block,
-				"stateID", bottom.stateID(),
-				"attempt", attempt+1,
-				"maxRetries", maxRetries,
-				"delay", delay,
-				"switching", switching,
-				"queueUsage", fmt.Sprintf("%.1f%%", queueUsage))
+			log.Warn("Task queue is full, retrying after delay", "block", bottom.block,
+				"stateID", bottom.stateID(), "attempt", attempt+1, "maxRetries", maxRetries, "delay", delay,
+				"switching", switching, "queueUsage", fmt.Sprintf("%.1f%%", queueUsage))
 
 			// If directory switch is in progress, use longer delay
 			if switching {
@@ -513,18 +511,13 @@ func (dl *diskLayer) commitIncrementalDataWithRetry(bottom *diffLayer) error {
 
 		// For non-queue-full errors, fail immediately
 		log.Error("Non-recoverable error committing incremental data",
-			"block", bottom.block,
-			"stateID", bottom.stateID(),
-			"err", err)
+			"block", bottom.block, "stateID", bottom.stateID(), "err", err)
 		return err
 	}
 
 	// All retries exhausted
 	log.Error("Failed to commit incremental data after all retries",
-		"block", bottom.block,
-		"stateID", bottom.stateID(),
-		"maxRetries", maxRetries,
-		"finalError", lastErr)
+		"block", bottom.block, "stateID", bottom.stateID(), "maxRetries", maxRetries, "finalError", lastErr)
 
 	// Log current queue statistics for debugging
 	dl.db.incr.LogStats()

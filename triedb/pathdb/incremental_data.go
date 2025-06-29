@@ -169,8 +169,7 @@ func (in *incrStore) stopWithReset(resetStats bool) {
 		log.Info("Incremental store stopped gracefully")
 	case <-time.After(shutdownTimeout):
 		log.Warn("Incremental store shutdown timeout, forcing stop",
-			"timeout", shutdownTimeout,
-			"remaining_tasks", in.GetQueueLength())
+			"timeout", shutdownTimeout, "remaining_tasks", in.GetQueueLength())
 	}
 
 	// Final cleanup
@@ -243,6 +242,10 @@ func (in *incrStore) processWriteTask(dl *diffLayer) error {
 		log.Info("Directory switch completed, resuming commit", "block", dl.block)
 	}
 
+	if dl.block%10000 == 0 {
+		log.Info("Processing", "stateID", dl.stateID(), "block", dl.block)
+	}
+
 	// check and write block firstly
 	blockHash := rawdb.ReadCanonicalHash(in.diskDB.BlockStore(), dl.block)
 	if blockHash == (common.Hash{}) {
@@ -272,6 +275,10 @@ func (in *incrStore) processWriteTask(dl *diffLayer) error {
 	if err := in.writeStateData(dl); err != nil {
 		log.Error("Failed to write state data", "block", dl.block, "stateID", dl.stateID(), "err", err)
 		return err
+	}
+
+	if dl.block%10000 == 0 {
+		log.Info("Processed", "stateID", dl.stateID(), "block", dl.block)
 	}
 
 	return nil
@@ -376,7 +383,9 @@ func (in *incrStore) commit(bottom *diffLayer) error {
 
 	select {
 	case in.writeQueue <- bottom:
-		log.Debug("Write task submitted", "stateID", bottom.stateID(), "block", bottom.block)
+		if bottom.block%10000 == 0 {
+			log.Info("Write task submitted", "stateID", bottom.stateID(), "block", bottom.block)
+		}
 		return nil
 
 	case <-in.stopChan:
@@ -389,25 +398,21 @@ func (in *incrStore) commit(bottom *diffLayer) error {
 		// Enhanced error handling for queue full scenario
 		queueLen := in.GetQueueLength()
 		log.Warn("Task queue is full, checking if directory switch is in progress",
-			"queueLength", queueLen,
-			"block", bottom.block,
-			"stateID", bottom.stateID(),
-			"switching", in.incrDB.IsSwitching())
+			"queueLength", queueLen, "block", bottom.block,
+			"stateID", bottom.stateID(), "switching", in.incrDB.IsSwitching())
 
 		// If directory switch is in progress, this is expected
 		if in.incrDB.IsSwitching() {
 			log.Info("Queue full during directory switch - this is expected",
-				"block", bottom.block,
-				"queueLength", queueLen)
+				"block", bottom.block, "queueLength", queueLen)
 			return fmt.Errorf("task queue is full during directory switch (block %d, queue length %d)",
 				bottom.block, queueLen)
 		}
 
 		// If not switching, this indicates a performance issue
 		log.Error("Task queue is full outside of directory switch",
-			"queueLength", queueLen,
-			"block", bottom.block)
-		in.LogStats() // Log detailed statistics for debugging
+			"queueLength", queueLen, "block", bottom.block)
+		in.LogStats()
 
 		return fmt.Errorf("task queue is full (length %d, block %d)", queueLen, bottom.block)
 	}

@@ -289,7 +289,7 @@ func (idb *IncrDB) closeCurrentDatabases() error {
 	// Close KV database
 	if idb.currDB.kvDB != nil {
 		if err := idb.currDB.kvDB.Close(); err != nil {
-			log.Error("Failed to close KV database", "err", err)
+			log.Error("Failed to close kv db", "err", err)
 			errors = append(errors, fmt.Errorf("kv database: %v", err))
 		}
 	}
@@ -602,58 +602,3 @@ type AsyncWriteManagerInterface interface {
 	GetStats() (total, completed, failed uint64, queueLen int)
 	IsHealthy() bool
 }
-
-/*
-Usage Example:
-
-// Create incremental database
-chainTables := map[string]bool{
-	"headers":  true,
-	"bodies":   true,
-	"receipts": true,
-}
-
-stateTables := map[string]bool{
-	"stateHistory": true,
-	"trieNodes":    true,
-}
-
-incrDB, err := NewIncrDB(
-	"/data/incremental",  // base directory
-	"bsc",                // namespace
-	false,                // readonly
-	1000000,              // offset (starting block)
-	1024*1024*1024,       // maxTableSize (1GB)
-	chainTables,          // chain tables
-	stateTables,          // state tables
-	100000,               // blockLimit (switch every 100k blocks)
-)
-if err != nil {
-	log.Fatal("Failed to create IncrDB", "err", err)
-}
-defer incrDB.Close()
-
-// Write blocks
-for blockNum := uint64(1000000); blockNum < 1200000; blockNum++ {
-	if err := incrDB.WriteBlock(blockNum, []byte("block data")); err != nil {
-		log.Error("Failed to write block", "blockNum", blockNum, "err", err)
-		break
-	}
-
-	// Check if we've switched directories
-	if blockNum%10000 == 0 {
-		currentDir, blockCount, blockLimit := incrDB.GetCurrentStats()
-		log.Info("Progress", "blockNum", blockNum, "currentDir", currentDir,
-			"blockCount", blockCount, "blockLimit", blockLimit)
-	}
-}
-
-// Get all directories
-allDirs, err := incrDB.GetAllIncrDirs()
-if err == nil {
-	for _, dir := range allDirs {
-		startBlock, endBlock, _ := incrDB.GetDirectoryBlockRange(dir.Path)
-		log.Info("Directory", "path", dir.Path, "startBlock", startBlock, "endBlock", endBlock)
-	}
-}
-*/
