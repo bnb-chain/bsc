@@ -93,10 +93,14 @@ type incrStore struct {
 
 // NewIncrStore creates a new incremental store with async write capability
 func NewIncrStore(diskDB ethdb.Database, incrDB *rawdb.IncrDB) *incrStore {
+	// Use larger queue size to handle directory switching scenarios
+	// During directory switch, worker may be blocked, so we need more buffer
+	queueSize := 1000 // Increased from 100 to handle switch scenarios
+
 	store := &incrStore{
 		diskDB:     diskDB,
 		incrDB:     incrDB,
-		writeQueue: make(chan *diffLayer, 100),
+		writeQueue: make(chan *diffLayer, queueSize),
 		stopChan:   make(chan struct{}),
 		started:    false,
 	}
@@ -218,11 +222,23 @@ func (in *incrStore) worker() {
 }
 
 func (in *incrStore) processWriteTask(dl *diffLayer) error {
-	// Check if directory switch is in progress and wait for completion
+	// Check if directory switch is in progress
 	if in.incrDB.IsSwitching() {
 		log.Info("Directory switch in progress, waiting for completion", "block", dl.block)
+
+		// Add timeout to prevent infinite waiting
+		timeout := time.After(30 * time.Second)
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+
 		for in.incrDB.IsSwitching() {
-			time.Sleep(50 * time.Millisecond)
+			select {
+			case <-timeout:
+				log.Error("Timeout waiting for directory switch", "block", dl.block)
+				return fmt.Errorf("timeout waiting for directory switch for block %d", dl.block)
+			case <-ticker.C:
+				// Continue checking
+			}
 		}
 		log.Info("Directory switch completed, resuming commit", "block", dl.block)
 	}
@@ -369,7 +385,31 @@ func (in *incrStore) commit(bottom *diffLayer) error {
 
 	default:
 		atomic.AddInt32(&in.stats.queueLength, -1)
-		return errors.New("task queue is full")
+
+		// Enhanced error handling for queue full scenario
+		queueLen := in.GetQueueLength()
+		log.Warn("Task queue is full, checking if directory switch is in progress",
+			"queueLength", queueLen,
+			"block", bottom.block,
+			"stateID", bottom.stateID(),
+			"switching", in.incrDB.IsSwitching())
+
+		// If directory switch is in progress, this is expected
+		if in.incrDB.IsSwitching() {
+			log.Info("Queue full during directory switch - this is expected",
+				"block", bottom.block,
+				"queueLength", queueLen)
+			return fmt.Errorf("task queue is full during directory switch (block %d, queue length %d)",
+				bottom.block, queueLen)
+		}
+
+		// If not switching, this indicates a performance issue
+		log.Error("Task queue is full outside of directory switch",
+			"queueLength", queueLen,
+			"block", bottom.block)
+		in.LogStats() // Log detailed statistics for debugging
+
+		return fmt.Errorf("task queue is full (length %d, block %d)", queueLen, bottom.block)
 	}
 }
 
@@ -404,6 +444,26 @@ func (in *incrStore) GetQueueLength() int {
 	return int(atomic.LoadInt32(&in.stats.queueLength))
 }
 
+// GetQueueCapacity returns the maximum queue capacity
+func (in *incrStore) GetQueueCapacity() int {
+	return cap(in.writeQueue)
+}
+
+// GetQueueUsageRate returns the queue usage rate as a percentage
+func (in *incrStore) GetQueueUsageRate() float64 {
+	queueLen := in.GetQueueLength()
+	capacity := in.GetQueueCapacity()
+	if capacity == 0 {
+		return 0
+	}
+	return float64(queueLen) / float64(capacity) * 100
+}
+
+// IsQueueNearFull returns true if queue usage is above 80%
+func (in *incrStore) IsQueueNearFull() bool {
+	return in.GetQueueUsageRate() > 80.0
+}
+
 // GetStats returns current statistics
 func (in *incrStore) GetStats() (total, completed, failed uint64, queueLen int) {
 	return atomic.LoadUint64(&in.stats.totalTasks),
@@ -418,6 +478,8 @@ func (in *incrStore) LogStats() {
 	completed := atomic.LoadUint64(&in.stats.completedTasks)
 	failed := atomic.LoadUint64(&in.stats.failedTasks)
 	queueLen := in.GetQueueLength()
+	queueCapacity := in.GetQueueCapacity()
+	queueUsage := in.GetQueueUsageRate()
 
 	avgProcessTime := atomic.LoadUint64(&in.stats.avgProcessTime)
 	maxProcessTime := atomic.LoadUint64(&in.stats.maxProcessTime)
@@ -432,9 +494,12 @@ func (in *incrStore) LogStats() {
 		"completed", completed,
 		"failed", failed,
 		"pending", queueLen,
+		"queue_capacity", queueCapacity,
+		"queue_usage", fmt.Sprintf("%.1f%%", queueUsage),
 		"success_rate", fmt.Sprintf("%.2f%%", successRate),
 		"avg_process_time", time.Duration(avgProcessTime),
 		"max_process_time", time.Duration(maxProcessTime),
+		"switching", in.incrDB.IsSwitching(),
 		"uptime", time.Since(in.stats.lastResetTime).Round(time.Second))
 }
 
@@ -604,55 +669,59 @@ func isCancun(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
 }
 
 /*
-Design Philosophy: Fire-and-Forget Async Processing
+Directory Switch Queue Full Issue - Solutions Implemented:
 
-This incremental store now uses a true async approach:
+**Problem:**
+During directory switching, the worker thread blocks waiting for the switch to complete,
+causing the task queue to fill up and reject new commits.
 
-**Benefits of Removing Callback Channels:**
-1. **Reduced Memory Overhead**: No channel allocation per task
-2. **Better Performance**: No blocking on async operations
-3. **Simplified Code**: Less complexity in task handling
-4. **True Async**: Doesn't defeat the purpose of async processing
+**Root Cause:**
+1. Directory switch blocks the worker thread
+2. New commit requests keep coming
+3. Queue fills up (reaches capacity)
+4. New commits are rejected with "task queue is full"
 
-**Error Handling Strategy:**
-Instead of immediate error feedback, we use:
-1. **Comprehensive Logging**: All errors are logged with context
-2. **Statistics Monitoring**: Track success/failure rates
-3. **Health Checks**: IsHealthy() method for system status
-4. **Periodic Monitoring**: Check statistics regularly
+**Solutions Implemented:**
 
-**Usage Example:**
+1. **Increased Queue Capacity**:
+   - Raised from 100 to 1000 to provide more buffer during switches
+   - Handles temporary spikes during directory operations
 
+2. **Timeout Protection**:
+   - Added 30-second timeout for directory switch waiting
+   - Prevents infinite blocking if switch gets stuck
+
+3. **Enhanced Error Messages**:
+   - Distinguishes between queue full during switch vs normal operation
+   - Provides context (block number, queue length, switch status)
+
+4. **Queue Monitoring**:
+   - GetQueueUsageRate() for monitoring queue pressure
+   - IsQueueNearFull() for early warning (>80% usage)
+   - Enhanced logging with queue statistics
+
+5. **Operational Guidance**:
+   - Queue full during switch: Expected, will resolve after switch
+   - Queue full during normal operation: Performance issue, needs investigation
+
+**Monitoring Commands:**
 ```go
-// Submit tasks asynchronously
-for _, diffLayer := range layers {
-    if err := incrStore.commit(diffLayer); err != nil {
-        // Only queue-related errors (full queue, stopping, etc.)
-        log.Error("Failed to queue task", "err", err)
-        break
-    }
+// Check queue status
+if incrStore.IsQueueNearFull() {
+    log.Warn("Queue approaching capacity", "usage", incrStore.GetQueueUsageRate())
 }
 
-// Monitor health periodically
-go func() {
-    ticker := time.NewTicker(30 * time.Second)
-    defer ticker.Stop()
+// Log detailed statistics
+incrStore.LogStats()
 
-    for range ticker.C {
-        if !incrStore.IsHealthy() {
-            log.Warn("Incremental store unhealthy")
-            incrStore.LogStats() // Show detailed statistics
-
-            // Take corrective action:
-            // - Alert operators
-            // - Pause processing
-            // - Switch to backup storage
-        }
-    }
-}()
+// Check if directory switch is causing the issue
+if incrStore.incrDB.IsSwitching() {
+    log.Info("Directory switch in progress, queue pressure expected")
+}
 ```
 
-**When to Use Each Approach:**
-- **Fire-and-Forget**: High throughput scenarios, non-critical writes
-- **Synchronous**: Critical operations where immediate error handling is essential
+**Expected Behavior:**
+- During directory switch: Queue may fill up temporarily (normal)
+- After switch completion: Queue should drain quickly
+- Normal operation: Queue usage should stay below 50%
 */
