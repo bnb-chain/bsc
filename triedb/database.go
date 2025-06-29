@@ -418,7 +418,7 @@ func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
 func (db *Database) SetFreezerEnv(env *ethdb.FreezerEnv) {
 	pdb, ok := db.backend.(*pathdb.Database)
 	if !ok {
-		log.Error("Not supported")
+		log.Error("Not supported SetFreezerEnv")
 	} else {
 		pdb.SetFreezerEnv(env)
 	}
@@ -429,7 +429,7 @@ func (db *Database) WriteContractCodes(codes map[common.Address]rawdb.ContractCo
 	pdb, ok := db.backend.(*pathdb.Database)
 	if !ok {
 		log.Error("Not supported")
-		return errors.New("not supported")
+		return errors.New("not supported WriteContractCodes")
 	}
 	return pdb.WriteContractCodes(codes)
 }
@@ -438,7 +438,7 @@ func (db *Database) WriteContractCodes(codes map[common.Address]rawdb.ContractCo
 func (db *Database) IsIncrEnabled() bool {
 	pdb, ok := db.backend.(*pathdb.Database)
 	if !ok {
-		log.Error("Not supported")
+		log.Error("Not supported IsIncrEnabled")
 		return false
 	}
 	return pdb.IsIncrEnabled()

@@ -74,7 +74,7 @@ func NewIncrDB(baseDir string, readonly bool, offset uint64, blockLimit uint64) 
 	incrDB := &IncrDB{
 		currDB:     db,
 		info:       info,
-		baseDir:    baseDir,
+		baseDir:    incrBaseDir,
 		currentDir: currentDir,
 		blockCount: 0,
 		switching:  false,

@@ -116,10 +116,13 @@ func (in *incrStore) Start() {
 		return
 	}
 
-	for i := 0; i < in.workerCount; i++ {
-		in.wg.Add(1)
-		go in.worker(i)
-	}
+	in.wg.Add(1)
+	go in.worker()
+
+	// for i := 0; i < in.workerCount; i++ {
+	// 	in.wg.Add(1)
+	// 	go in.worker(i)
+	// }
 
 	in.started = true
 	log.Info("Incremental store async workers started", "workers", in.workerCount)
@@ -185,7 +188,7 @@ func (in *incrStore) stopWithReset(resetStats bool) {
 }
 
 // worker processes write tasks asynchronously
-func (in *incrStore) worker(id int) {
+func (in *incrStore) worker() {
 	defer in.wg.Done()
 
 	for {
@@ -207,22 +210,15 @@ func (in *incrStore) worker(id int) {
 			in.updateStats(err)
 
 			if err != nil {
-				log.Error("Async write task failed",
-					"worker", id,
-					"block", dl.block,
-					"stateID", dl.stateID(),
-					"processingTime", processingTime,
-					"err", err)
+				log.Error("Async write task failed", "block", dl.block, "stateID", dl.stateID(),
+					"processingTime", processingTime, "err", err)
 			} else {
-				log.Debug("Async write task completed",
-					"worker", id,
-					"block", dl.block,
-					"stateID", dl.stateID(),
-					"processingTime", processingTime)
+				log.Debug("Async write task completed", "block", dl.block,
+					"stateID", dl.stateID(), "processingTime", processingTime)
 			}
 
 		case <-in.stopChan:
-			log.Debug("Worker stopping", "id", id)
+			log.Debug("Worker stopping")
 			return
 		}
 	}
