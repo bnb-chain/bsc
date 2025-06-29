@@ -58,8 +58,9 @@ func NewIncrDB(baseDir string, readonly bool, offset uint64, blockLimit uint64) 
 		blockLimit:   blockLimit,
 	}
 
+	incrBaseDir := filepath.Join(baseDir, IncrementalPath)
 	// Find the latest directory or create the first one
-	currentDir, err := findLatestIncrDir(baseDir, offset)
+	currentDir, err := findLatestIncrDir(incrBaseDir, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find latest incremental directory: %v", err)
 	}
@@ -415,8 +416,8 @@ type IncrDirInfo struct {
 	BlockNum uint64
 }
 
-func newDBWrapper(baseDir string, info *incrDBInfo) (*dbWrapper, error) {
-	if baseDir == "" {
+func newDBWrapper(incrDir string, info *incrDBInfo) (*dbWrapper, error) {
+	if incrDir == "" {
 		return &dbWrapper{
 			chainFreezer: NewMemoryFreezer(info.readonly, incrChainFreezerNoSnappy),
 			stateFreezer: NewMemoryFreezer(info.readonly, incrStateFreezerNoSnappy),
@@ -424,7 +425,7 @@ func newDBWrapper(baseDir string, info *incrDBInfo) (*dbWrapper, error) {
 		}, nil
 	}
 
-	chainPath := filepath.Join(baseDir, IncrementalPath, ChainFreezerName)
+	chainPath := filepath.Join(incrDir, ChainFreezerName)
 	chainNamespace := fmt.Sprintf("%s%s", info.namespace, "ChainFreezerName")
 	cFreezer, err := newResettableFreezer(chainPath, chainNamespace, info.readonly, info.offset, info.maxTableSize,
 		info.chainTables, true)
@@ -438,7 +439,7 @@ func newDBWrapper(baseDir string, info *incrDBInfo) (*dbWrapper, error) {
 	b, _ := cFreezer.ItemAmountInAncient()
 	log.Info("Print incr chain ancient info", "item", item, "a", a, "b", b)
 
-	statePath := filepath.Join(baseDir, IncrementalPath, MerkleStateFreezerName)
+	statePath := filepath.Join(incrDir, MerkleStateFreezerName)
 	stateNamespace := fmt.Sprintf("%s%s", info.namespace, "MerkleStateFreezerName")
 	sFreezer, err := newResettableFreezer(statePath, stateNamespace, info.readonly, info.offset, info.maxTableSize,
 		info.stateTables, true)
@@ -452,9 +453,8 @@ func newDBWrapper(baseDir string, info *incrDBInfo) (*dbWrapper, error) {
 	b, _ = sFreezer.ItemAmountInAncient()
 	log.Info("Print incr state ancient info", "item", item, "a", a, "b", b)
 
-	kvPath := filepath.Join(baseDir, IncrementalPath)
 	kvNamespace := fmt.Sprintf("%s%s", info.namespace, "kv")
-	db, err := pebble.New(kvPath, 10, 10, kvNamespace, info.readonly)
+	db, err := pebble.New(incrDir, 10, 10, kvNamespace, info.readonly)
 	if err != nil {
 		log.Error("Failed to create incremental kv db", "err", err)
 		return nil, err

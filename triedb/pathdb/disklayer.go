@@ -313,7 +313,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 				"incrBlockStartNumber", dl.db.config.IncrBlockStartNumber)
 		}
 
-		if err := dl.db.incr.commit(dl.db.diskdb.BlockStore(), bottom); err != nil {
+		if err := dl.db.incr.commit(bottom); err != nil {
 			log.Error("Failed to commit incremental data", "err", err)
 			return nil, err
 		}

@@ -281,8 +281,8 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 			log.Crit("Failed to repair incremental state history", "err", err)
 		}
 
-		// Start async write manager for incremental data
-		db.incr.asyncWriteManager.Start()
+		// Start incremental store async workers
+		db.incr.Start()
 	}
 
 	// Disable database in case node is still in the initial state sync stage.
@@ -639,11 +639,10 @@ func (db *Database) Close() error {
 		log.Info("Closing incremental store")
 
 		// Wait for all async write tasks to complete before closing
-		if db.incr.asyncWriteManager != nil {
-			log.Info("Waiting for async write tasks to complete", "pending", db.incr.asyncWriteManager.GetQueueLength())
-			db.incr.asyncWriteManager.DrainQueue()
-			db.incr.asyncWriteManager.LogStats() // Log final statistics
-			db.incr.asyncWriteManager.Stop()
+		if db.incr != nil {
+			log.Info("Waiting for async write tasks to complete", "pending", db.incr.GetQueueLength())
+			db.incr.LogStats() // Log final statistics
+			db.incr.Stop()
 		}
 
 		if err := db.incr.incrDB.Close(); err != nil {
@@ -882,7 +881,9 @@ func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
 
 // SetFreezerEnv is used to store freezer env.
 func (db *Database) SetFreezerEnv(env *ethdb.FreezerEnv) {
-	db.incr.freezeEnv.Store(env)
+	if db.incr != nil {
+		db.incr.SetFreezerEnv(env)
+	}
 }
 
 // IsIncrEnabled returns true if incremental is enabled, otherwise false.
