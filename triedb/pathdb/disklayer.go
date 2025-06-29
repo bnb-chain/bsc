@@ -315,10 +315,10 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 				"incrBlockStartNumber", dl.db.config.IncrBlockStartNumber)
 		}
 
-		if in.incrDB.IsBlockLimitReached() && !in.incrDB.IsSwitching() {
-			log.Info("Block limit reached, initiating directory switch", "blockNumber", blockNumber)
-
-		}
+		// if in.incrDB.IsBlockLimitReached() && !in.incrDB.IsSwitching() {
+		// 	log.Info("Block limit reached, initiating directory switch", "blockNumber", blockNumber)
+		//
+		// }
 
 		// Commit incremental data with retry mechanism
 		if err := dl.commitIncrementalDataWithRetry(bottom); err != nil {
