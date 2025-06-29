@@ -313,6 +313,14 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 				"incrBlockStartNumber", dl.db.config.IncrBlockStartNumber)
 		}
 
+		// if dl.db.incr.incrDB.IsSwitching() {
+		// 	log.Info("Directory switch in progress, waiting for completion")
+		// 	for dl.db.incr.incrDB.IsSwitching() {
+		// 		time.Sleep(50 * time.Millisecond)
+		// 	}
+		// 	log.Info("Directory switch completed, resuming commit")
+		// }
+
 		if err := dl.db.incr.commit(bottom); err != nil {
 			log.Error("Failed to commit incremental data", "err", err)
 			return nil, err

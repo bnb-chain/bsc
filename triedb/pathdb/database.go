@@ -363,7 +363,7 @@ func (db *Database) repairIncrStore(ancientDir string) error {
 	}
 
 	// Create incremental store with async write manager
-	db.incr = NewIncrStore(db.diskdb, incrDB, 1)
+	db.incr = NewIncrStore(db.diskdb, incrDB)
 
 	id := db.tree.bottom().stateID()
 	frozen, err := db.incr.incrDB.GetStateFreezer().Ancients()

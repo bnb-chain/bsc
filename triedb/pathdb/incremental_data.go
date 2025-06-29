@@ -78,10 +78,9 @@ type incrStore struct {
 	freezeEnv atomic.Value
 
 	// Async write control
-	writeQueue  chan *diffLayer
-	workerCount int
-	stopChan    chan struct{}
-	wg          sync.WaitGroup
+	writeQueue chan *diffLayer
+	stopChan   chan struct{}
+	wg         sync.WaitGroup
 
 	// Statistics
 	stats     WriteStats
@@ -93,14 +92,13 @@ type incrStore struct {
 }
 
 // NewIncrStore creates a new incremental store with async write capability
-func NewIncrStore(diskDB ethdb.Database, incrDB *rawdb.IncrDB, workerCount int) *incrStore {
+func NewIncrStore(diskDB ethdb.Database, incrDB *rawdb.IncrDB) *incrStore {
 	store := &incrStore{
-		diskDB:      diskDB,
-		incrDB:      incrDB,
-		writeQueue:  make(chan *diffLayer, 100), // Buffer for 100 tasks
-		workerCount: workerCount,
-		stopChan:    make(chan struct{}),
-		started:     false,
+		diskDB:     diskDB,
+		incrDB:     incrDB,
+		writeQueue: make(chan *diffLayer, 100),
+		stopChan:   make(chan struct{}),
+		started:    false,
 	}
 
 	return store
@@ -119,13 +117,8 @@ func (in *incrStore) Start() {
 	in.wg.Add(1)
 	go in.worker()
 
-	// for i := 0; i < in.workerCount; i++ {
-	// 	in.wg.Add(1)
-	// 	go in.worker(i)
-	// }
-
 	in.started = true
-	log.Info("Incremental store async workers started", "workers", in.workerCount)
+	log.Info("Incremental store async workers started")
 }
 
 // Stop stops the async write workers and waits for completion
@@ -234,43 +227,34 @@ func (in *incrStore) processWriteTask(dl *diffLayer) error {
 		log.Info("Directory switch completed, resuming commit", "block", dl.block)
 	}
 
-	// Reset incremental state freezer table - fail fast on error
-	if err := rawdb.ResetEmptyIncrStateTable(in.incrDB.GetStateFreezer(), dl.stateID()); err != nil {
-		log.Error("Failed to reset empty incr state freezer", "block", dl.block, "stateID", dl.stateID(), "err", err)
-		return err
-	}
-
-	// Write state data - fail fast on error
-	if err := in.writeStateData(dl); err != nil {
-		log.Error("Failed to write state data", "block", dl.block, "stateID", dl.stateID(), "err", err)
-		return err
-	}
-
-	// Get block information
+	// check and write block firstly
 	blockHash := rawdb.ReadCanonicalHash(in.diskDB.BlockStore(), dl.block)
 	if blockHash == (common.Hash{}) {
 		return fmt.Errorf("canonical hash not found for block %d", dl.block)
 	}
-
 	h, _ := rawdb.ReadHeaderAndRaw(in.diskDB.BlockStore(), blockHash, dl.block)
 	if h == nil {
 		return fmt.Errorf("block header missing, can't freeze block %d", dl.block)
 	}
-
 	env := in.GetFreezerEnv()
 	if env == nil {
 		return errors.New("freezer env is not available")
 	}
-
-	// Reset incremental chain freezer table - fail fast on error
 	if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), dl.block, isCancun(env, h.Number, h.Time)); err != nil {
 		log.Error("Failed to reset empty incr chain freezer", "block", dl.block, "err", err)
 		return err
 	}
-
-	// Write chain data - fail fast on error
 	if err := in.writeChainData(dl.block, dl.stateID()); err != nil {
 		log.Error("Failed to write chain data", "block", dl.block, "stateID", dl.stateID(), "err", err)
+		return err
+	}
+
+	if err := rawdb.ResetEmptyIncrStateTable(in.incrDB.GetStateFreezer(), dl.stateID()); err != nil {
+		log.Error("Failed to reset empty incr state freezer", "block", dl.block, "stateID", dl.stateID(), "err", err)
+		return err
+	}
+	if err := in.writeStateData(dl); err != nil {
+		log.Error("Failed to write state data", "block", dl.block, "stateID", dl.stateID(), "err", err)
 		return err
 	}
 
@@ -377,7 +361,7 @@ func (in *incrStore) commit(bottom *diffLayer) error {
 	select {
 	case in.writeQueue <- bottom:
 		log.Debug("Write task submitted", "stateID", bottom.stateID(), "block", bottom.block)
-		return nil // Fire-and-forget: return immediately
+		return nil
 
 	case <-in.stopChan:
 		atomic.AddInt32(&in.stats.queueLength, -1)

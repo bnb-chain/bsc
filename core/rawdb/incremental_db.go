@@ -105,11 +105,11 @@ func (idb *IncrDB) WriteIncrBlockData(number, id uint64, hash, header, body, rec
 	defer idb.lock.Unlock()
 
 	// Check if we need to switch to a new directory
-	if idb.info.blockLimit > 0 && idb.blockCount >= idb.info.blockLimit {
-		if err := idb.switchToNewDirectoryBlocking(number); err != nil {
-			return fmt.Errorf("failed to switch to new directory: %v", err)
-		}
-	}
+	// if idb.info.blockLimit > 0 && idb.blockCount >= idb.info.blockLimit {
+	// 	if err := idb.switchToNewDirectoryBlocking(number); err != nil {
+	// 		return fmt.Errorf("failed to switch to new directory: %v", err)
+	// 	}
+	// }
 
 	if err := WriteIncrBlockData(idb.currDB.chainFreezer, number, id, hash, header, body, receipts, td, sidecars, isCancun); err != nil {
 		log.Error("Failed to write incremental block data", "err", err)
@@ -591,6 +591,7 @@ func (idb *IncrDB) UpdateBlockLimit(newLimit uint64) {
 func (idb *IncrDB) IsSwitching() bool {
 	idb.switchMutex.Lock()
 	defer idb.switchMutex.Unlock()
+
 	return idb.switching
 }
 
