@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"os"
 	"runtime"
 	"slices"
 	"sort"
@@ -175,8 +176,12 @@ type CacheConfig struct {
 	StateHistory        uint64        // Number of blocks from head whose state histories are reserved.
 	StateScheme         string        // Scheme used to store ethereum states and merkle tree nodes on top
 	PathSyncFlush       bool          // Whether sync flush the trienodebuffer of pathdb to disk.
-	JournalFilePath     string
-	JournalFile         bool
+	JournalFilePath     string        // The path to store journal file which is used in pathdb
+	JournalFile         bool          // Whether to use single file to store journal data in pathdb
+	MaximumBlockHeight  uint64        // The maximum block height that geth can sync blocks to
+	EnableIncrHistory   bool          // Flag whether the freezer db stores incremental block and state history
+	IncrHistoryPath     string        // The path to store incremental block and chain files
+	IncrHistory         uint64        // Amount of block and state history stored in incremental freezer db
 
 	SnapshotNoBuild bool // Whether the background generation is allowed
 	SnapshotWait    bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
@@ -197,12 +202,15 @@ func (c *CacheConfig) triedbConfig(isVerkle bool) *triedb.Config {
 	}
 	if c.StateScheme == rawdb.PathScheme {
 		config.PathDB = &pathdb.Config{
-			SyncFlush:       c.PathSyncFlush,
-			StateHistory:    c.StateHistory,
-			CleanCacheSize:  c.TrieCleanLimit * 1024 * 1024,
-			WriteBufferSize: c.TrieDirtyLimit * 1024 * 1024,
-			JournalFilePath: c.JournalFilePath,
-			JournalFile:     c.JournalFile,
+			SyncFlush:         c.PathSyncFlush,
+			StateHistory:      c.StateHistory,
+			CleanCacheSize:    c.TrieCleanLimit * 1024 * 1024,
+			WriteBufferSize:   c.TrieDirtyLimit * 1024 * 1024,
+			JournalFilePath:   c.JournalFilePath,
+			JournalFile:       c.JournalFile,
+			EnableIncrHistory: c.EnableIncrHistory,
+			IncrHistoryPath:   c.IncrHistoryPath,
+			IncrHistory:       c.IncrHistory,
 		}
 	}
 	return config
@@ -282,6 +290,8 @@ type BlockChain struct {
 	triesInMemory uint64
 	txIndexer     *txIndexer // Transaction indexer, might be nil if not enabled
 
+	incrChainFreezer ethdb.ResettableAncientStore // store block data into incr freezer database for incremental snapshot usage
+
 	hc                       *HeaderChain
 	rmLogsFeed               event.Feed
 	chainFeed                event.Feed
@@ -346,8 +356,8 @@ type BlockChain struct {
 // NewBlockChain returns a fully initialised block chain using information
 // available in the database. It initialises the default Ethereum Validator and
 // Processor.
-func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis, overrides *ChainOverrides, engine consensus.Engine,
-	vmConfig vm.Config, shouldPreserve func(block *types.Header) bool, txLookupLimit *uint64,
+func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis, overrides *ChainOverrides,
+	engine consensus.Engine, vmConfig vm.Config, shouldPreserve func(block *types.Header) bool, txLookupLimit *uint64,
 	options ...BlockChainOption) (*BlockChain, error) {
 	if cacheConfig == nil {
 		cacheConfig = defaultCacheConfig
@@ -412,6 +422,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		diffQueueBuffer:    make(chan *types.DiffLayer),
 		logger:             vmConfig.Tracer,
 	}
+
 	bc.hc, err = NewHeaderChain(db, chainConfig, engine, bc.insertStopped)
 	if err != nil {
 		return nil, err
@@ -450,6 +461,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	// Make sure the state associated with the block is available, or log out
 	// if there is no available state, waiting for state sync.
 	head := bc.CurrentBlock()
+	log.Info("Print head info", "head", head.Number.Uint64(), "has state", bc.HasState(head.Root))
 	if !bc.HasState(head.Root) {
 		if head.Number.Uint64() == 0 {
 			// The genesis state is missing, which is only possible in the path-based
@@ -549,6 +561,18 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		}
 	}
 
+	// Initialize incremental block start number for PathDB after potential chain rewinds
+	// This ensures we use the correct final head block number
+	if bc.cacheConfig.StateScheme == rawdb.PathScheme {
+		log.Info("First start block info", "current", bc.CurrentBlock().Number.Uint64(),
+			"snap", bc.CurrentSnapBlock().Number.Uint64(), "safe", bc.CurrentSafeBlock().Number.Uint64(),
+			"final", bc.CurrentFinalBlock().Number.Uint64(), "head block", bc.CurrentHeader().Number.Uint64())
+
+		currentBlockNumber := bc.CurrentBlock().Number.Uint64()
+		bc.triedb.SetIncrBlockStartNumber(currentBlockNumber + 1)
+		log.Info("Set incremental block start number for PathDB", "startBlock", currentBlockNumber)
+	}
+
 	// Load any existing snapshot, regenerating it if loading failed
 	if bc.cacheConfig.SnapshotLimit > 0 {
 		// If the chain was rewound past the snapshot persistent layer (causing
@@ -619,6 +643,12 @@ func (bc *BlockChain) GetVMConfig() *vm.Config {
 
 func (bc *BlockChain) NoTries() bool {
 	return bc.statedb.NoTries()
+}
+
+func (bc *BlockChain) SetFreezerEnv(env *ethdb.FreezerEnv) {
+	if bc.triedb.Scheme() == rawdb.PathScheme {
+		bc.triedb.SetFreezerEnv(env)
+	}
 }
 
 func (bc *BlockChain) cacheReceipts(hash common.Hash, receipts types.Receipts, block *types.Block) {
@@ -792,7 +822,6 @@ func (bc *BlockChain) loadLastState() error {
 			}
 		}
 	}
-
 	if pivot := rawdb.ReadLastPivotNumber(bc.db); pivot != nil {
 		log.Info("Loaded last snap-sync pivot marker", "number", *pivot)
 	}
@@ -1822,6 +1851,10 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		wg.Done()
 	}()
 
+	// log.Info("statedb commit", "block number", block.NumberU64(), "current", bc.CurrentBlock().Number.Uint64(),
+	// 	"snap", bc.CurrentSnapBlock().Number.Uint64(), "safe", bc.CurrentSafeBlock().Number.Uint64(),
+	// 	"final", bc.CurrentFinalBlock().Number.Uint64(), "head block", bc.CurrentHeader().Number.Uint64())
+
 	// Commit all cached state changes into underlying memory database.
 	root, diffLayer, err := statedb.Commit(block.NumberU64(), bc.chainConfig.IsEIP158(block.Number()), bc.chainConfig.IsCancun(block.Number(), block.Time()))
 	if err != nil {
@@ -2027,6 +2060,16 @@ func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
 	bc.blockProcFeed.Send(true)
 	defer bc.blockProcFeed.Send(false)
 
+	if bc.cacheConfig.MaximumBlockHeight > 0 {
+		currBlock := bc.CurrentBlock().Number.Uint64()
+		if currBlock >= bc.cacheConfig.MaximumBlockHeight {
+			log.Info("Reached maximum block height, stopping sync", "maxHeight", bc.cacheConfig.MaximumBlockHeight,
+				"currBlock", currBlock)
+			bc.Stop()
+			os.Exit(1)
+		}
+	}
+
 	// Do a sanity check that the provided chain is actually ordered and linked.
 	for i := 1; i < len(chain); i++ {
 		block, prev := chain[i], chain[i-1]
@@ -2193,6 +2236,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 	case err != nil && !errors.Is(err, ErrKnownBlock):
 		bc.futureBlocks.Remove(block.Hash())
 		stats.ignored += len(it.chain)
+		log.Error("InsertChain failed", "block", block.Number(), "hash", block.Hash())
 		bc.reportBlock(block, nil, err)
 		return nil, it.index, err
 	}
@@ -2418,6 +2462,7 @@ func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, s
 	res, err := bc.processor.Process(block, statedb, bc.vmConfig)
 	close(interruptCh) // state prefetch can be stopped
 	if err != nil {
+		log.Error("Process failed", "block", block.Number(), "hash", block.Hash())
 		bc.reportBlock(block, res, err)
 		statedb.StopPrefetcher()
 		return nil, err
@@ -2427,6 +2472,7 @@ func (bc *BlockChain) processBlock(block *types.Block, statedb *state.StateDB, s
 	// Validate the state using the default validator
 	vstart := time.Now()
 	if err := bc.validator.ValidateState(block, statedb, res, false); err != nil {
+		log.Error("ValidateState failed", "block", block.Number(), "hash", block.Hash())
 		bc.reportBlock(block, res, err)
 		statedb.StopPrefetcher()
 		return nil, err
@@ -3356,4 +3402,179 @@ func (bc *BlockChain) GetBlockStats(hash common.Hash) *BlockStats {
 	n := &BlockStats{}
 	bc.blockStatsCache.Add(hash, n)
 	return n
+}
+
+// InsertIncrementalSnapshotResult represents the result of incremental snapshot insertion
+type InsertIncrementalSnapshotResult struct {
+	BaseBlockNumber   uint64        // The base snapshot block number
+	TargetBlockNumber uint64        // The target block number after insertion
+	ProcessedBlocks   uint64        // Number of blocks processed
+	Duration          time.Duration // Time taken for the operation
+	Success           bool          // Whether the operation was successful
+	Error             error         // Error if any occurred
+}
+
+// InsertIncrementalSnapshot inserts incremental block and state data into the base snapshot
+// This method handles the insertion process asynchronously and updates blockchain metadata
+func (bc *BlockChain) InsertIncrementalSnapshot(incrDir string, baseBlockNumber uint64) (*InsertIncrementalSnapshotResult, error) {
+	if bc.cacheConfig.StateScheme != rawdb.PathScheme {
+		return nil, errors.New("incremental snapshot insertion only supported with PathDB scheme")
+	}
+
+	if !bc.chainmu.TryLock() {
+		return nil, errChainStopped
+	}
+	defer bc.chainmu.Unlock()
+
+	log.Info("Starting incremental snapshot insertion",
+		"incrDir", incrDir,
+		"baseBlockNumber", baseBlockNumber)
+
+	result := &InsertIncrementalSnapshotResult{
+		BaseBlockNumber: baseBlockNumber,
+	}
+	start := time.Now()
+
+	// Channel for receiving insertion results
+	resultCh := make(chan error, 1)
+
+	// Start the insertion process in a goroutine
+	bc.wg.Add(1)
+	go func() {
+		defer bc.wg.Done()
+		defer func() {
+			result.Duration = time.Since(start)
+		}()
+
+		// Step 1: Insert incremental state data
+		if err := bc.triedb.InsertIncrState(incrDir); err != nil {
+			log.Error("Failed to insert incremental state", "error", err)
+			result.Error = err
+			result.Success = false
+			resultCh <- err
+			return
+		}
+
+		log.Info("Successfully inserted incremental state data")
+
+		// Step 2: Update blockchain metadata after successful insertion
+		if err := bc.updateMetadataAfterIncrementalInsertion(baseBlockNumber); err != nil {
+			log.Error("Failed to update metadata after incremental insertion", "error", err)
+			result.Error = err
+			result.Success = false
+			resultCh <- err
+			return
+		}
+
+		result.Success = true
+		resultCh <- nil
+	}()
+
+	// Wait for the insertion to complete
+	if err := <-resultCh; err != nil {
+		return result, err
+	}
+
+	log.Info("Incremental snapshot insertion completed successfully",
+		"duration", result.Duration,
+		"baseBlock", result.BaseBlockNumber,
+		"targetBlock", result.TargetBlockNumber)
+
+	return result, nil
+}
+
+// updateMetadataAfterIncrementalInsertion updates blockchain metadata after successful incremental data insertion
+func (bc *BlockChain) updateMetadataAfterIncrementalInsertion(baseBlockNumber uint64) error {
+	// Get the current head block hash and header
+	currentHead := bc.CurrentBlock()
+	if currentHead == nil {
+		return errors.New("current head block is nil")
+	}
+
+	// Verify that the base block exists and is accessible
+	baseBlock := bc.GetBlockByNumber(baseBlockNumber)
+	if baseBlock == nil {
+		return fmt.Errorf("base block %d not found", baseBlockNumber)
+	}
+
+	log.Info("Updating blockchain metadata after incremental insertion",
+		"currentHead", currentHead.Number.Uint64(),
+		"baseBlock", baseBlockNumber)
+
+	// Update currentSnapBlock to reflect the new snapshot state
+	// This ensures that the snapshot system knows about the new data
+	bc.currentSnapBlock.Store(baseBlock.Header())
+	headFastBlockGauge.Update(int64(baseBlock.NumberU64()))
+
+	// Write the updated snap block hash to database
+	rawdb.WriteHeadFastBlockHash(bc.db, baseBlock.Hash())
+
+	// Update the incremental block start number for future operations
+	bc.triedb.SetIncrBlockStartNumber(baseBlockNumber)
+
+	// Send chain head event to notify other components
+	bc.chainHeadFeed.Send(ChainHeadEvent{Header: currentHead})
+
+	log.Info("Blockchain metadata updated successfully",
+		"newSnapBlock", baseBlockNumber,
+		"snapBlockHash", baseBlock.Hash().Hex())
+
+	return nil
+}
+
+// InsertIncrementalSnapshotAsync performs incremental snapshot insertion asynchronously
+// Returns immediately with a channel that will receive the result
+func (bc *BlockChain) InsertIncrementalSnapshotAsync(incrDir string, baseBlockNumber uint64) (<-chan *InsertIncrementalSnapshotResult, error) {
+	if bc.cacheConfig.StateScheme != rawdb.PathScheme {
+		return nil, errors.New("incremental snapshot insertion only supported with PathDB scheme")
+	}
+
+	resultCh := make(chan *InsertIncrementalSnapshotResult, 1)
+
+	bc.wg.Add(1)
+	go func() {
+		defer bc.wg.Done()
+		result, err := bc.InsertIncrementalSnapshot(incrDir, baseBlockNumber)
+		if err != nil && result == nil {
+			result = &InsertIncrementalSnapshotResult{
+				BaseBlockNumber: baseBlockNumber,
+				Success:         false,
+				Error:           err,
+			}
+		}
+		resultCh <- result
+		close(resultCh)
+	}()
+
+	return resultCh, nil
+}
+
+// GetIncrementalSnapshotStatus returns the current status of incremental snapshot operations
+func (bc *BlockChain) GetIncrementalSnapshotStatus() map[string]interface{} {
+	currentBlock := bc.CurrentBlock()
+	currentSnapBlock := bc.CurrentSnapBlock()
+
+	status := map[string]interface{}{
+		"stateScheme":       bc.cacheConfig.StateScheme,
+		"currentBlock":      currentBlock.Number.Uint64(),
+		"currentSnapBlock":  currentSnapBlock.Number.Uint64(),
+		"enableIncrHistory": bc.cacheConfig.EnableIncrHistory,
+		"incrHistoryBlocks": bc.cacheConfig.IncrHistory,
+	}
+
+	// Add PathDB specific information if available
+	if bc.cacheConfig.StateScheme == rawdb.PathScheme {
+		// Get additional PathDB status information
+		status["pathDBEnabled"] = true
+
+		// Get trie database head
+		head := bc.triedb.Head()
+		if head != (common.Hash{}) {
+			status["trieDBHead"] = head.Hex()
+		}
+	} else {
+		status["pathDBEnabled"] = false
+	}
+
+	return status
 }

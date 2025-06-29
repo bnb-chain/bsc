@@ -29,9 +29,11 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/trie/trienode"
 )
 
 var (
@@ -563,4 +565,34 @@ func (db *Database) Journal(root common.Hash) error {
 	db.readOnly = true
 	log.Info("Persisted dirty state to disk", "size", common.StorageSize(journalSize), "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
+}
+
+// compressTrieNodes returns a compressed journal nodes slice.
+func compressTrieNodes(nodes map[common.Hash]map[string]*trienode.Node) []journalNodes {
+	jn := make([]journalNodes, 0, len(nodes))
+	for owner, subset := range nodes {
+		entry := journalNodes{Owner: owner}
+		for path, node := range subset {
+			entry.Nodes = append(entry.Nodes, journalNode{Path: []byte(path), Blob: node.Blob})
+		}
+		jn = append(jn, entry)
+	}
+	return jn
+}
+
+// flattenTrieNodes returns a two-dimensional map for internal nodes.
+func flattenTrieNodes(jn []journalNodes) map[common.Hash]map[string]*trienode.Node {
+	nodes := make(map[common.Hash]map[string]*trienode.Node)
+	for _, entry := range jn {
+		subset := make(map[string]*trienode.Node)
+		for _, n := range entry.Nodes {
+			if len(n.Blob) > 0 {
+				subset[string(n.Path)] = trienode.New(crypto.Keccak256Hash(n.Blob), n.Blob)
+			} else {
+				subset[string(n.Path)] = trienode.NewDeleted()
+			}
+		}
+		nodes[entry.Owner] = subset
+	}
+	return nodes
 }

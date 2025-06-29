@@ -320,6 +320,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			PathSyncFlush:       config.PathSyncFlush,
 			JournalFilePath:     journalFilePath,
 			JournalFile:         config.JournalFileEnabled,
+			MaximumBlockHeight:  config.MaximumBlockHeight,
+			EnableIncrHistory:   config.EnableIncrementalSnapshots,
+			IncrHistoryPath:     config.IncrementalSnapshotPath,
+			IncrHistory:         config.IncrementalSnapshotBlockInterval,
 		}
 	)
 	if config.VMTrace != "" {
@@ -358,6 +362,13 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		return nil, err
 	}
 	eth.bloomIndexer.Start(eth.blockchain)
+
+	if cacheConfig.EnableIncrHistory {
+		eth.blockchain.SetFreezerEnv(&ethdb.FreezerEnv{
+			ChainCfg:         chainConfig,
+			BlobExtraReserve: config.BlobExtraReserve,
+		})
+	}
 
 	if config.BlobPool.Datadir != "" {
 		config.BlobPool.Datadir = stack.ResolvePath(config.BlobPool.Datadir)

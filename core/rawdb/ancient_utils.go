@@ -132,6 +132,54 @@ func inspectFreezers(db ethdb.Database) ([]freezerInfo, error) {
 	return infos, nil
 }
 
+// TODO: scan all incr freezer
+func inspectIncrFreezers(db ethdb.Database) ([]freezerInfo, error) {
+	var infos []freezerInfo
+	datadir, err := db.AncientDatadir()
+	if err != nil {
+		return nil, err
+	}
+	for _, freezer := range freezers {
+		switch freezer {
+		case ChainFreezerName:
+			cFreezer, err := NewIncrChainFreezer(datadir, true, 0, 50)
+			if err != nil {
+				return nil, err
+			}
+			defer cFreezer.Close()
+
+			info, err := inspect(ChainFreezerName, incrChainFreezerNoSnappy, cFreezer)
+			if err != nil {
+				return nil, err
+			}
+			infos = append(infos, info)
+
+		case MerkleStateFreezerName:
+			if db.StateStore() != nil {
+				continue
+			}
+
+			f, err := NewIncrStateFreezer(datadir, true, 0, 50)
+			if err != nil {
+				return nil, err
+			}
+			defer f.Close()
+
+			info, err := inspect(freezer, incrStateFreezerNoSnappy, f)
+			if err != nil {
+				return nil, err
+			}
+			infos = append(infos, info)
+		case VerkleStateFreezerName:
+			continue
+
+		default:
+			return nil, fmt.Errorf("unknown freezer, supported ones: %v", freezers)
+		}
+	}
+	return infos, nil
+}
+
 // InspectFreezerTable dumps out the index of a specific freezer table. The passed
 // ancient indicates the path of root ancient directory where the chain freezer can
 // be opened. Start and end specify the range for dumping out indexes.

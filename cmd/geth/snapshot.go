@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/node"
@@ -221,12 +223,30 @@ The export-preimages command exports hash preimages to a flat file, in exactly
 the expected order for the overlay tree migration.
 `,
 			},
+			{
+				Action:    mergeIncrSnapshot,
+				Name:      "merge-incr-snapshot",
+				Usage:     "Merge the incremental snapshot into base snapshot",
+				ArgsUsage: "",
+				Flags: slices.Concat([]cli.Flag{utils.IncrementalSnapshotPathFlag},
+					utils.DatabaseFlags),
+				Description: `This command aims to help merge multiple incremental snapshot into base snapshot`,
+			},
+			{
+				Action:    compareBlockAndStateID,
+				Name:      "compare-state-block",
+				Usage:     "Compare two snapshots block and state id",
+				ArgsUsage: "",
+				Flags: slices.Concat([]cli.Flag{utils.IncrementalSnapshotPathFlag, utils.IncrementalSnapshotFlag},
+					utils.DatabaseFlags),
+				Description: `This command is used to debug incremental snapshots issues`,
+			},
 		},
 	}
 )
 
 func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
-	//The layer of tries trees that keep in memory.
+	// The layer of tries trees that keep in memory.
 	TriesInMemory := int(ctx.Uint64(utils.TriesInMemoryFlag.Name))
 	chaindb := utils.MakeChainDatabase(ctx, stack, false, true)
 	defer chaindb.Close()
@@ -239,7 +259,7 @@ func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
 		return nil, errors.New("failed to load head block")
 	}
 	headHeader := headBlock.Header()
-	//Make sure the MPT and snapshot matches before pruning, otherwise the node can not start.
+	// Make sure the MPT and snapshot matches before pruning, otherwise the node can not start.
 	snapconfig := snapshot.Config{
 		CacheSize:  256,
 		Recovery:   false,
@@ -439,7 +459,7 @@ func pruneBlock(ctx *cli.Context) error {
 
 	log.Info("backup block successfully")
 
-	//After backing up successfully, rename the new ancientdb name to the original one, and delete the old ancientdb
+	// After backing up successfully, rename the new ancientdb name to the original one, and delete the old ancientdb
 	if err := blockpruner.AncientDbReplacer(); err != nil {
 		return err
 	}
@@ -1020,5 +1040,457 @@ func checkAccount(ctx *cli.Context) error {
 		return err
 	}
 	log.Info("Checked the snapshot journalled storage", "time", common.PrettyDuration(time.Since(start)))
+	return nil
+}
+
+func compareBlockAndStateID(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	chainDB := utils.MakeChainDatabase(ctx, stack, false, false)
+	defer chainDB.Close()
+
+	ancientsDir, _ := chainDB.AncientDatadir()
+
+	// trieDB := utils.MakeTrieDatabase(ctx, stack, chainDB, false, false, false)
+	// defer trieDB.Close()
+
+	stateFreezer, err := rawdb.NewStateFreezer(ancientsDir, false, true, 0)
+	if err != nil {
+		log.Error("Failed to load state freezer", "err", err)
+		return err
+	}
+
+	path := ctx.String(utils.IncrementalSnapshotPathFlag.Name)
+	log.Info("Print incremental snapshot info", "path", path, "ancientsDir", ancientsDir)
+
+	if ctx.IsSet(utils.IncrementalSnapshotFlag.Name) {
+		log.Info("Compare incremental data with synced data")
+		incrChainPath := filepath.Join(path, rawdb.ChainFreezerName)
+		incrChainFreezer, err := rawdb.OpenIncrChainFreezer(incrChainPath, true)
+		if err != nil {
+			log.Error("Failed to open incremental chain freezer", "err", err)
+			return err
+		}
+		defer incrChainFreezer.Close()
+		ancients, _ := incrChainFreezer.Ancients()
+		tail, _ := incrChainFreezer.Tail()
+		count, _ := incrChainFreezer.ItemAmountInAncient()
+		log.Info("Incr chain info", "ancients", ancients, "tail", tail, "count", count)
+
+		incrStatePath := filepath.Join(path, rawdb.MerkleStateFreezerName)
+		incrStateFreezer, err := rawdb.OpenIncrStateFreezer(incrStatePath, true)
+		if err != nil {
+			log.Error("Failed to open incremental state freezer", "err", err)
+			return err
+		}
+		incrStateFreezer = incrStateFreezer
+		defer incrStateFreezer.Close()
+
+		ancientsState, _ := incrStateFreezer.Ancients()
+		tailState, _ := incrStateFreezer.Tail()
+		countState, _ := incrStateFreezer.ItemAmountInAncient()
+		log.Info("Incr state info", "ancients", ancientsState, "tail", tailState, "count", countState)
+
+		// iterate incr chain freezer
+		a := 0
+		nonEmptyMap := make(map[uint64]uint64)
+		for i := tail; i < ancients; i++ {
+			data, err := incrChainFreezer.Ancient(rawdb.IncrChainFreezerBlockStateIDMappingTable, i)
+			if err != nil {
+				log.Error("Failed to get mapping in incr chain freezer", "err", err)
+			}
+			stateID := binary.BigEndian.Uint64(data)
+			if stateID == 0 {
+				a++
+				// log.Warn("State id is empty", "stateID", stateID, "block", i)
+				continue
+			}
+			nonEmptyMap[stateID] = i
+		}
+		log.Info("Incr chain freezer", "count", len(nonEmptyMap), "empty count", a)
+
+		for i := tailState + 1; i <= ancientsState; i++ {
+			blob, err := incrStateFreezer.Ancient("history.meta", i-1)
+			if err != nil {
+				log.Error("Failed to get history meta in incr state freezer", "err", err)
+			}
+			if len(blob) == 0 {
+				return fmt.Errorf("state history not found %d in incr state freezer", i)
+			}
+			var m meta
+			if err = m.decode(blob); err != nil {
+				log.Error("Failed to decode state meta", "err", err)
+				return err
+			}
+			// log.Info("Incr chain freezer", "stateID", i, "block", i, "meta", m.block, "root", m.root.String())
+
+			c, err := stateFreezer.Ancient("history.meta", i-1)
+			if err != nil {
+				log.Error("Failed to get history meta in state freezer", "err", err)
+			}
+			if len(c) == 0 {
+				return fmt.Errorf("state history not found %d in state freezer", i)
+			}
+			var m1 meta
+			if err = m1.decode(c); err != nil {
+				log.Error("Failed to decode state meta", "err", err)
+				return err
+			}
+			if i == 10867 {
+				log.Info("Print 10867 state", "incr_block", m.block, "raw_block", m1.block,
+					"incr_root", m.root.String(), "raw_root", m1.root.String())
+			}
+
+			if m1.block != m.block {
+				log.Error("Unequal block number", "state_id", i, "incr_block", m.block, "raw_block", m1.block)
+				continue
+			}
+			if m1.root != m.root {
+				log.Error("Unequal root hash", "state_id", i, "incr_root", m.root.String(),
+					"raw_root", m1.root.String())
+				continue
+			}
+
+			if i%2000 == 0 {
+				log.Info("Iterating", "i", i)
+			}
+		}
+	} else {
+		log.Info("Compare merged data with synced data")
+		mergedAncient := path
+		mergedStateFreezer, err := rawdb.NewStateFreezer(mergedAncient, false, true, 0)
+		if err != nil {
+			log.Error("Failed to load merged state freezer", "err", err)
+			return err
+		}
+		ancientsState, _ := mergedStateFreezer.Ancients()
+		tailState, _ := mergedStateFreezer.Tail()
+		countState, _ := mergedStateFreezer.ItemAmountInAncient()
+		log.Info("Merged state info", "ancients", ancientsState, "tail", tailState, "count", countState)
+
+		latestRoot := common.Hash{}
+		for i := uint64(1); i <= ancientsState; i++ {
+			blob, err := mergedStateFreezer.Ancient("history.meta", i-1)
+			if err != nil {
+				log.Error("Failed to get history meta in incr state freezer", "err", err)
+			}
+			if len(blob) == 0 {
+				return fmt.Errorf("state history not found %d in incr state freezer", i)
+			}
+			var m meta
+			if err = m.decode(blob); err != nil {
+				log.Error("Failed to decode state meta", "err", err)
+				return err
+			}
+
+			c, err := stateFreezer.Ancient("history.meta", i-1)
+			if err != nil {
+				log.Error("Failed to get history meta in state freezer", "err", err)
+			}
+			if len(c) == 0 {
+				return fmt.Errorf("state history not found %d in state freezer", i)
+			}
+			var m1 meta
+			if err = m1.decode(c); err != nil {
+				log.Error("Failed to decode state meta", "err", err)
+				return err
+			}
+
+			if m1.block != m.block {
+				log.Error("Unequal block number", "state_id", i, "incr_block", m.block, "raw_block", m1.block)
+				continue
+			}
+			if m1.root != m.root {
+				log.Error("Unequal root hash", "state_id", i, "incr_root", m.root.String(),
+					"raw_root", m1.root.String())
+				continue
+			}
+
+			if i == ancientsState {
+				log.Info("ancientsState block number", "state_id", i, "incr_block", m.block, "raw_block", m1.block,
+					"incr_root", m.root.String(), "raw_root", m1.root.String())
+				latestRoot = m1.root
+			}
+			if m.block == 197025 {
+				log.Info("197025 block number", "state_id", i, "incr_block", m.block, "raw_block", m1.block,
+					"incr_root", m.root.String(), "raw_root", m1.root.String())
+				latestRoot = m1.root
+			}
+
+			if i%2000 == 0 {
+				log.Info("Iterating", "i", i)
+			}
+		}
+
+		id := rawdb.ReadStateID(chainDB.BlockStore(), latestRoot)
+		log.Info("Read state info", "id", *id)
+	}
+	return nil
+}
+
+// mergeIncrSnapshot
+func mergeIncrSnapshot(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	chainDB := utils.MakeChainDatabase(ctx, stack, false, false)
+	defer chainDB.Close()
+
+	trieDB := utils.MakeTrieDatabase(ctx, stack, chainDB, false, false, false)
+	defer trieDB.Close()
+
+	if !ctx.IsSet(utils.IncrementalSnapshotPathFlag.Name) {
+		return errors.New("incremental snapshot path is not set")
+	}
+
+	path := ctx.String(utils.IncrementalSnapshotPathFlag.Name)
+	log.Info("Start merging incremental snapshot", "path", path)
+
+	// if err := checkStateWithBlock(path); err != nil {
+	// 	log.Error("Failed to check incremental snapshot", "path", path, "err", err)
+	// 	return err
+	// }
+
+	if err := trieDB.InsertIncrState(path); err != nil {
+		log.Error("Failed to insert incremental state", "err", err)
+		return err
+	}
+
+	if err := insertIncrBlock(path, chainDB); err != nil {
+		log.Error("Failed to insert increment block", "err", err)
+		return err
+	}
+
+	if err := insertContractCodes(path, chainDB); err != nil {
+		log.Error("Failed to insert contract codes", "err", err)
+		return err
+	}
+
+	return nil
+}
+
+const (
+	historyMetaSize = 9 + 2*common.HashLength // The length of encoded history meta
+
+	stateHistoryV0 = uint8(0) // initial version of state history structure
+	stateHistoryV1 = uint8(1) // use the storage slot raw key as the identifier instead of the key hash
+)
+
+type meta struct {
+	version uint8       // version tag of history object
+	parent  common.Hash // prev-state root before the state transition
+	root    common.Hash // post-state root after the state transition
+	block   uint64      // associated block number
+}
+
+// decode unpacks the meta object from byte stream.
+func (m *meta) decode(blob []byte) error {
+	if len(blob) < 1 {
+		return errors.New("no version tag")
+	}
+	switch blob[0] {
+	case stateHistoryV0, stateHistoryV1:
+		if len(blob) != historyMetaSize {
+			return fmt.Errorf("invalid state history meta, len: %d", len(blob))
+		}
+		m.version = blob[0]
+		m.parent = common.BytesToHash(blob[1 : 1+common.HashLength])
+		m.root = common.BytesToHash(blob[1+common.HashLength : 1+2*common.HashLength])
+		m.block = binary.BigEndian.Uint64(blob[1+2*common.HashLength : historyMetaSize])
+		return nil
+	default:
+		return fmt.Errorf("unknown version %d", blob[0])
+	}
+}
+
+// before inserting incremental snapshot into base snapshot, should check the latest block number
+// is existent with the latest state id
+func checkStateWithBlock(incrDir string) error {
+	incrChainPath := filepath.Join(incrDir, rawdb.ChainFreezerName)
+	incrChainFreezer, err := rawdb.OpenIncrChainFreezer(incrChainPath, true)
+	if err != nil {
+		log.Error("Failed to open incremental chain freezer", "err", err)
+		return err
+	}
+	defer incrChainFreezer.Close()
+	ancients, _ := incrChainFreezer.Ancients()
+	tail, _ := incrChainFreezer.Tail()
+	count, _ := incrChainFreezer.ItemAmountInAncient()
+	log.Info("Incr chain info", "ancients", ancients, "tail", tail, "count", count)
+
+	incrStatePath := filepath.Join(incrDir, rawdb.MerkleStateFreezerName)
+	incrStateFreezer, err := rawdb.OpenIncrStateFreezer(incrStatePath, true)
+	if err != nil {
+		log.Error("Failed to open incremental state freezer", "err", err)
+		return err
+	}
+	incrStateFreezer = incrStateFreezer
+	defer incrStateFreezer.Close()
+
+	ancientsState, _ := incrStateFreezer.Ancients()
+	tailState, _ := incrStateFreezer.Tail()
+	countState, _ := incrStateFreezer.ItemAmountInAncient()
+	log.Info("Incr state info", "ancients", ancientsState, "tail", tailState, "count", countState)
+
+	// TODO: traverse in descending order, check state id with block is right
+	for i := ancients - 1; i >= tail; i-- {
+		data, err := incrChainFreezer.Ancient(rawdb.IncrChainFreezerBlockStateIDMappingTable, i)
+		if err != nil {
+			log.Error("Failed to get mapping in chain freezer", "err", err)
+		}
+		stateID := binary.BigEndian.Uint64(data)
+		if stateID == 0 {
+			log.Warn("State id is empty", "stateID", stateID, "block", i)
+			continue
+		}
+		blob, err := incrStateFreezer.Ancient("history.meta", stateID-1)
+		if len(blob) == 0 {
+			return fmt.Errorf("state history not found %d", stateID)
+		}
+		var m meta
+		if err := m.decode(blob); err != nil {
+			log.Error("Failed to decode state meta", "err", err)
+			return err
+		}
+		log.Info("Incr chain freezer", "stateID", stateID, "block", i, "meta", m.block, "root", m.root.String())
+	}
+	return nil
+}
+
+func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
+	incrChainPath := filepath.Join(incrDir, rawdb.ChainFreezerName)
+	incrChainFreezer, err := rawdb.OpenIncrChainFreezer(incrChainPath, true)
+	if err != nil {
+		log.Error("Failed to open incremental chain freezer", "err", err)
+		return err
+	}
+	defer incrChainFreezer.Close()
+
+	ancients, _ := incrChainFreezer.Ancients()
+	tail, _ := incrChainFreezer.Tail()
+	count, _ := incrChainFreezer.ItemAmountInAncient()
+	log.Info("Incr chain info", "ancients", ancients, "tail", tail, "count", count)
+
+	existCount := 0
+	// TODO: start two goroutines, optimize pebble batch commit
+	for i := tail; i < ancients; i++ {
+		hashBytes, err := rawdb.ReadIncrChainHash(incrChainFreezer, i)
+		if err != nil {
+			log.Error("Failed to read increment chain hash", "err", err)
+			return err
+		}
+		hash := common.BytesToHash(hashBytes)
+		header, err := rawdb.ReadIncrChainHeader(incrChainFreezer, i)
+		if err != nil {
+			log.Error("Failed to read increment chain header", "err", err)
+			return err
+		}
+		body, err := rawdb.ReadIncrChainBodies(incrChainFreezer, i)
+		if err != nil {
+			log.Error("Failed to read increment chain bodies", "err", err)
+			return err
+		}
+		receipts, err := rawdb.ReadIncrChainReceipts(incrChainFreezer, i)
+		if err != nil {
+			log.Error("Failed to read increment chain receipts", "err", err)
+			return err
+		}
+		td, err := rawdb.ReadIncrChainDifficulty(incrChainFreezer, i)
+		if err != nil {
+			log.Error("Failed to read increment chain difficulty", "err", err)
+			return err
+		}
+		// TODO: check cancun hardfork
+		var blobs rlp.RawValue
+		if false {
+			blobs, err = rawdb.ReadIncrChainBlobSideCars(incrChainFreezer, i)
+			if err != nil {
+				log.Error("Failed to read increment chain blob side car", "err", err)
+				return err
+			}
+		}
+		if exist := rawdb.HasBody(chainDB.BlockStore(), hash, i); exist {
+			existCount++
+		}
+		blockBatch := chainDB.BlockStore().NewBatch()
+
+		// td, block(body and header), receipts, blob(if present)
+		rawdb.WriteCanonicalHash(blockBatch, hash, i)
+		rawdb.WriteTdRLP(blockBatch, hash, i, td)
+		rawdb.WriteBodyRLP(blockBatch, hash, i, body)
+		rawdb.WriteHeaderRLP(blockBatch, hash, i, header)
+		rawdb.WriteReceiptsRLP(blockBatch, hash, i, receipts)
+		if false {
+			rawdb.WriteBlobSidecarsRLP(blockBatch, hash, i, blobs)
+		}
+		if err = blockBatch.Write(); err != nil {
+			log.Crit("Failed to write block into disk", "err", err)
+		}
+	}
+	log.Info("After merging block", "exist count", existCount)
+
+	// TODO: should wait background chain freezer finish
+
+	// set blockchain metadata: current snap block and current block
+	hashBytes, err := rawdb.ReadIncrChainHash(incrChainFreezer, ancients-1)
+	if err != nil {
+		log.Error("Failed to read increment chain hash for metadata", "err", err)
+		return err
+	}
+	hash := common.BytesToHash(hashBytes)
+	blockBatch := chainDB.BlockStore().NewBatch()
+	rawdb.WriteHeadBlockHash(blockBatch, hash)
+	rawdb.WriteHeadHeaderHash(blockBatch, hash)
+	rawdb.WriteHeadFastBlockHash(blockBatch, hash)
+	rawdb.WriteFinalizedBlockHash(blockBatch, hash)
+	if err = blockBatch.Write(); err != nil {
+		log.Crit("Failed to update block metadata into disk", "err", err)
+	}
+
+	return nil
+}
+
+func insertContractCodes(incrDir string, chainDB ethdb.Database) error {
+	newDB, err := pebble.New(incrDir, 10, 10, "incremental", true)
+	if err != nil {
+		log.Error("Failed to open pebble to read incremental data", "err", err)
+		return err
+	}
+	defer newDB.Close()
+
+	it := newDB.NewIterator(rawdb.CodePrefix, nil)
+	defer it.Release()
+
+	codeCount := 0
+	for it.Next() {
+		key := it.Key()
+		value := it.Value()
+
+		isCode, hashBytes := rawdb.IsCodeKey(key)
+		if !isCode {
+			log.Warn("Invalid code key found", "key", fmt.Sprintf("%x", key))
+			continue
+		}
+
+		codeHash := common.BytesToHash(hashBytes)
+		if rawdb.HasCodeWithPrefix(chainDB.BlockStore(), codeHash) {
+			log.Debug("Code already exists, skipping", "hash", codeHash.Hex())
+			continue
+		}
+		rawdb.WriteCode(chainDB.BlockStore(), codeHash, value)
+
+		codeCount++
+		if codeCount%1000 == 0 {
+			log.Info("Inserting contract codes", "processed", codeCount)
+		}
+	}
+
+	if err := it.Error(); err != nil {
+		log.Error("Iterator error while reading contract codes", "err", err)
+		return err
+	}
+
+	log.Info("Contract codes insertion completed", "total", codeCount)
 	return nil
 }
