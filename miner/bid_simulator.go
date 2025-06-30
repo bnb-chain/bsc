@@ -63,7 +63,8 @@ var (
 		Timeout:   5 * time.Second,
 		Transport: transport,
 	}
-	errBetterBid = errors.New("simulation abort due to better bid arrived")
+	errBetterBid  = errors.New("simulation abort due to better bid arrived")
+	errNoTimeLeft = errors.New("bid discarded due to lack of simulation time")
 )
 
 type bidWorker interface {
@@ -682,7 +683,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		if err != nil {
 			logCtx = append(logCtx, "err", err)
 			log.Info("BidSimulator: simulation failed", logCtx...)
-			if !errors.Is(errBetterBid, err) {
+			if !errors.Is(errBetterBid, err) && !errors.Is(errNoTimeLeft, err) {
 				go b.reportIssue(bidRuntime, err)
 			}
 		}
@@ -724,7 +725,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	// if the left time is not enough to do simulation, return
 	delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
 	if delay == nil || *delay <= 0 {
-		err = errors.New("no time to begin simulating")
+		err = errNoTimeLeft
 		return
 	}
 
@@ -797,7 +798,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	delay = b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
 	if delay != nil && *delay < 0 {
 		bidSimTimeoutCounter.Inc(1)
-		err = errors.New("timeout when simulating completed")
+		err = errNoTimeLeft
 		return
 	}
 
