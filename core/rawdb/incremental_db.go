@@ -461,9 +461,10 @@ func findLatestIncrDir(baseDir string, offset uint64) (string, error) {
 
 // GetAllIncrDirs returns all incremental directories sorted by block number
 func GetAllIncrDirs(baseDir string) ([]IncrDirInfo, error) {
-	entries, err := os.ReadDir(baseDir)
+	dir := filepath.Join(baseDir, IncrementalPath)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read base directory %s: %v", baseDir, err)
+		return nil, fmt.Errorf("failed to read base directory %s: %v", dir, err)
 	}
 
 	incrDirPattern := regexp.MustCompile(`^incr_(\d+)$`)
@@ -486,7 +487,7 @@ func GetAllIncrDirs(baseDir string) ([]IncrDirInfo, error) {
 
 		incrDirs = append(incrDirs, IncrDirInfo{
 			Name:     entry.Name(),
-			Path:     filepath.Join(baseDir, entry.Name()),
+			Path:     filepath.Join(dir, entry.Name()),
 			BlockNum: blockNum,
 		})
 	}
