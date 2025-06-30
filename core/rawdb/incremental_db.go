@@ -352,16 +352,25 @@ func (idb *IncrDB) SwitchToNewDirectoryWithAsyncManager(blockNum uint64, asyncMa
 			"emptyBlockStart", emptyBlockStart, "emptyBlockEnd", emptyBlockEnd,
 			"gapSize", emptyBlockEnd-emptyBlockStart+1)
 
-		// Store gap information for later processing
-		// The async manager should handle filling these empty blocks
+		// Instead of filling blocks immediately (which can cause deadlock),
+		// schedule the empty block filling to be done asynchronously after directory switch
 		if filler, ok := asyncManager.(EmptyBlockFillerInterface); ok {
-			err := filler.FillEmptyBlocks(emptyBlockStart, emptyBlockEnd, idb)
-			if err != nil {
-				log.Error("Failed to fill empty blocks during directory switch",
-					"start", emptyBlockStart, "end", emptyBlockEnd, "err", err)
-				return fmt.Errorf("failed to fill empty blocks: %v", err)
-			}
-			log.Info("Successfully filled empty blocks during directory switch",
+			// Schedule async filling without blocking the directory switch
+			go func() {
+				// Small delay to ensure directory switch is fully completed
+				time.Sleep(100 * time.Millisecond)
+
+				err := filler.FillEmptyBlocks(emptyBlockStart, emptyBlockEnd, idb)
+				if err != nil {
+					log.Error("Failed to fill empty blocks after directory switch",
+						"start", emptyBlockStart, "end", emptyBlockEnd, "err", err)
+				} else {
+					log.Info("Successfully filled empty blocks after directory switch",
+						"start", emptyBlockStart, "end", emptyBlockEnd)
+				}
+			}()
+
+			log.Info("Scheduled async empty block filling after directory switch",
 				"start", emptyBlockStart, "end", emptyBlockEnd)
 		} else {
 			log.Warn("Async manager does not support empty block filling, gap may remain",
