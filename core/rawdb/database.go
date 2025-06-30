@@ -1099,25 +1099,6 @@ func InspectDatabase(db ethdb.Database, isIncr bool, keyPrefix, keyStart []byte)
 			total += ancient.size()
 		}
 	}
-
-	if isIncr {
-		log.Info("Inspect incremental freezer")
-		ancients, err = inspectIncrFreezers(db)
-		if err != nil {
-			return err
-		}
-		for _, ancient := range ancients {
-			for _, table := range ancient.sizes {
-				stats = append(stats, []string{
-					fmt.Sprintf("Incr store (%s)", strings.Title(ancient.name)),
-					strings.Title(table.name),
-					table.size.String(),
-					fmt.Sprintf("%d", ancient.count()),
-				})
-			}
-			total += ancient.size()
-		}
-	}
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Database", "Category", "Size", "Items"})
 	table.SetFooter([]string{"", "Total", total.String(), " "})
