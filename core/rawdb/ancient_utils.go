@@ -133,39 +133,19 @@ func inspectFreezers(db ethdb.Database) ([]freezerInfo, error) {
 }
 
 // TODO: scan all incr freezer
-func inspectIncrFreezers(db ethdb.Database) ([]freezerInfo, error) {
+func inspectIncrFreezers(db *dbWrapper) ([]freezerInfo, error) {
 	var infos []freezerInfo
-	datadir, err := db.AncientDatadir()
-	if err != nil {
-		return nil, err
-	}
 	for _, freezer := range freezers {
 		switch freezer {
 		case ChainFreezerName:
-			cFreezer, err := NewIncrChainFreezer(datadir, true, 0, 50)
-			if err != nil {
-				return nil, err
-			}
-			defer cFreezer.Close()
-
-			info, err := inspect(ChainFreezerName, incrChainFreezerNoSnappy, cFreezer)
+			info, err := inspect(ChainFreezerName, incrChainFreezerNoSnappy, db.chainFreezer)
 			if err != nil {
 				return nil, err
 			}
 			infos = append(infos, info)
 
 		case MerkleStateFreezerName:
-			if db.StateStore() != nil {
-				continue
-			}
-
-			f, err := NewIncrStateFreezer(datadir, true, 0, 50)
-			if err != nil {
-				return nil, err
-			}
-			defer f.Close()
-
-			info, err := inspect(freezer, incrStateFreezerNoSnappy, f)
+			info, err := inspect(freezer, incrStateFreezerNoSnappy, db.stateFreezer)
 			if err != nil {
 				return nil, err
 			}

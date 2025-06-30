@@ -1131,15 +1131,53 @@ func InspectDatabase(db ethdb.Database, isIncr bool, keyPrefix, keyStart []byte)
 }
 
 func InspectIncrStore(baseDir string) error {
-	// incrDB, err := NewIncrDB(baseDir, true, 0, 0)
-	// if err != nil {
-	// 	return err
-	// }
 	dirs, err := GetAllIncrDirs(baseDir)
 	if err != nil {
 		return err
 	}
 	fmt.Println(dirs)
+
+	var (
+		total common.StorageSize
+		stats [][]string
+	)
+	info := incrDBInfo{
+		readonly:     true,
+		namespace:    "eth/db/incremental/",
+		offset:       0,
+		maxTableSize: stateHistoryTableSize,
+		chainTables:  incrChainFreezerNoSnappy,
+		stateTables:  incrStateFreezerNoSnappy,
+		blockLimit:   0,
+	}
+	for _, dir := range dirs {
+		db, err := newDBWrapper(dir.Path, &info)
+		if err != nil {
+			return fmt.Errorf("failed to create initial database wrapper: %v", err)
+		}
+
+		ancients, err := inspectIncrFreezers(db)
+		if err != nil {
+			return err
+		}
+		for _, ancient := range ancients {
+			for _, table := range ancient.sizes {
+				stats = append(stats, []string{
+					fmt.Sprintf("Incr store (%s/%s)", dir.Name, strings.Title(ancient.name)),
+					strings.Title(table.name),
+					table.size.String(),
+					fmt.Sprintf("%d", ancient.count()),
+				})
+			}
+			total += ancient.size()
+		}
+	}
+
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"Database", "Category", "Size", "Items"})
+	table.SetFooter([]string{"", "Total", total.String(), " "})
+	table.AppendBulk(stats)
+	table.Render()
 	return nil
 }
 
