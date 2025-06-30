@@ -694,6 +694,9 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			b.DelBestBidToRun(parentHash, bidRuntime.bid)
 		}
 
+		if err != nil {
+			return
+		}
 		// only recommit last best bid when newBidCh is empty
 		if len(b.newBidCh) > 0 {
 			return
@@ -721,7 +724,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	// if the left time is not enough to do simulation, return
 	delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
 	if delay == nil || *delay <= 0 {
-		log.Info("BidSimulator: abort commit, no time to begin simulating")
+		err = errors.New("no time to begin simulating")
 		return
 	}
 
@@ -794,7 +797,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	delay = b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
 	if delay != nil && *delay < 0 {
 		bidSimTimeoutCounter.Inc(1)
-		log.Info("BidSimulator: fail to commit, timeout when simulating completed")
+		err = errors.New("timeout when simulating completed")
 		return
 	}
 
