@@ -1447,8 +1447,7 @@ func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
 }
 
 func insertContractCodes(incrDir string, chainDB ethdb.Database) error {
-	kvDir := filepath.Join(incrDir, rawdb.IncrementalPath)
-	newDB, err := pebble.New(kvDir, 10, 10, "incremental", true)
+	newDB, err := pebble.New(incrDir, 10, 10, "incremental", true)
 	if err != nil {
 		log.Error("Failed to open pebble to read incremental data", "err", err)
 		return err
