@@ -149,7 +149,7 @@ func OpenIncrStateFreezer(incrStateDir string, readOnly bool, offset uint64) (et
 		return nil, errors.New("empty incr state directory")
 	}
 
-	name := filepath.Join(incrStateDir, IncrementalPath, MerkleStateFreezerName)
+	name := filepath.Join(incrStateDir, MerkleStateFreezerName)
 	return newResettableFreezer(name, "eth/db/incr/state", readOnly, offset, stateHistoryTableSize, incrStateFreezerNoSnappy, true)
 }
 
@@ -160,6 +160,6 @@ func OpenIncrChainFreezer(incrChainDir string, readOnly bool, offset uint64) (et
 		return nil, errors.New("empty incr chain directory")
 	}
 
-	name := filepath.Join(incrChainDir, IncrementalPath, ChainFreezerName)
+	name := filepath.Join(incrChainDir, ChainFreezerName)
 	return newResettableFreezer(name, "eth/db/incr/chain", readOnly, offset, stateHistoryTableSize, incrChainFreezerNoSnappy, true)
 }
