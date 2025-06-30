@@ -126,9 +126,6 @@ var (
 	SnapshotStoragePrefix = []byte("o") // SnapshotStoragePrefix + account hash + storage hash -> storage trie value
 	CodePrefix            = []byte("c") // CodePrefix + code hash -> account code
 
-	// difflayer database
-	diffLayerPrefix = []byte("d") // diffLayerPrefix + hash  -> diffLayer
-
 	// Path-based storage scheme of merkle patricia trie.
 	TrieNodeAccountPrefix = []byte("A") // TrieNodeAccountPrefix + hexPath -> trie node
 	TrieNodeStoragePrefix = []byte("O") // TrieNodeStoragePrefix + accountHash + hexPath -> trie node
@@ -218,11 +215,6 @@ func blockReceiptsKey(number uint64, hash common.Hash) []byte {
 // blockBlobSidecarsKey = BlockBlobSidecarsPrefix + blockNumber (uint64 big endian) + blockHash
 func blockBlobSidecarsKey(number uint64, hash common.Hash) []byte {
 	return append(append(BlockBlobSidecarsPrefix, encodeBlockNumber(number)...), hash.Bytes()...)
-}
-
-// diffLayerKey = diffLayerKeyPrefix + hash
-func diffLayerKey(hash common.Hash) []byte {
-	return append(diffLayerPrefix, hash.Bytes()...)
 }
 
 // txLookupKey = txLookupPrefix + hash

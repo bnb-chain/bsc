@@ -1456,21 +1456,11 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 		return nil, err
 	}
 
-	snaps := s.db.Snapshot()
-	if snaps != nil {
-		ret.diffLayer = &types.DiffLayer{}
-	}
 	// Commit dirty contract code if any exists
 	if db := s.db.TrieDB().Disk(); db != nil && len(ret.codes) > 0 {
 		batch := db.NewBatch()
 		for _, code := range ret.codes {
 			rawdb.WriteCode(batch, code.hash, code.blob)
-			if snaps != nil {
-				ret.diffLayer.Codes = append(ret.diffLayer.Codes, types.DiffCode{
-					Hash: code.hash,
-					Code: code.blob,
-				})
-			}
 		}
 
 		if err := batch.Write(); err != nil {
@@ -1524,12 +1514,12 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 // Since self-destruction was deprecated with the Cancun fork and there are
 // no empty accounts left that could be deleted by EIP-158, storage wiping
 // should not occur.
-func (s *StateDB) Commit(block uint64, deleteEmptyObjects bool, noStorageWiping bool) (common.Hash, *types.DiffLayer, error) {
+func (s *StateDB) Commit(block uint64, deleteEmptyObjects bool, noStorageWiping bool) (common.Hash, error) {
 	ret, err := s.commitAndFlush(block, deleteEmptyObjects, noStorageWiping)
 	if err != nil {
-		return common.Hash{}, nil, err
+		return common.Hash{}, err
 	}
-	return ret.root, ret.diffLayer, nil
+	return ret.root, nil
 }
 
 // Prepare handles the preparatory steps for executing a state transition with.
