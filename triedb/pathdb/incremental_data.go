@@ -231,17 +231,21 @@ func (in *incrStore) processWriteTask(dl *diffLayer) error {
 		return errors.New("freezer env is not available")
 	}
 	// this case can happen when the underlying freezer is new and block state is empty
-	if dl.block > in.lastBlock+1 {
-		log.Info("Reset empty incr chain table", "block", in.lastBlock+1)
-		if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), in.lastBlock+1, isCancun(env, h.Number, h.Time)); err != nil {
-			log.Error("Failed to reset empty incr chain freezer", "block", dl.block, "err", err)
-			return err
-		}
-	} else {
-		if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), in.lastBlock+1, isCancun(env, h.Number, h.Time)); err != nil {
-			log.Error("Failed to reset empty incr chain freezer", "block", dl.block, "err", err)
-			return err
-		}
+	// if dl.block > in.lastBlock+1 {
+	// 	log.Info("Reset empty incr chain table", "block", in.lastBlock+1)
+	// 	if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), in.lastBlock+1, isCancun(env, h.Number, h.Time)); err != nil {
+	// 		log.Error("Failed to reset empty incr chain freezer", "block", dl.block, "err", err)
+	// 		return err
+	// 	}
+	// } else {
+	// 	if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), dl.block, isCancun(env, h.Number, h.Time)); err != nil {
+	// 		log.Error("Failed to reset empty incr chain freezer", "block", dl.block, "err", err)
+	// 		return err
+	// 	}
+	// }
+	if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), dl.block, isCancun(env, h.Number, h.Time)); err != nil {
+		log.Error("Failed to reset empty incr chain freezer", "block", dl.block, "err", err)
+		return err
 	}
 	if err := in.writeChainData(dl.block, dl.stateID()); err != nil {
 		log.Error("Failed to write chain data", "block", dl.block, "stateID", dl.stateID(), "err", err)
@@ -343,7 +347,7 @@ func (in *incrStore) writeChainData(blockNumber, stateID uint64) error {
 		}
 	}
 
-	in.lastBlock = blockNumber
+	// in.lastBlock = blockNumber
 
 	log.Info("Incremental block data processing completed", "startBlock", startBlock, "endBlock", blockNumber,
 		"totalProcessed", blockNumber-startBlock+1)
