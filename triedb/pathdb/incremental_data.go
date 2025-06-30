@@ -69,6 +69,8 @@ type incrStore struct {
 	// State
 	started bool
 	lock    sync.RWMutex
+
+	lastBlock uint64
 }
 
 // NewIncrStore creates a new incremental store with async write capability
@@ -79,6 +81,7 @@ func NewIncrStore(diskDB ethdb.Database, incrDB *rawdb.IncrDB) *incrStore {
 		writeQueue: make(chan *diffLayer, 100),
 		stopChan:   make(chan struct{}),
 		started:    false,
+		lastBlock:  0,
 	}
 
 	return store
@@ -227,9 +230,18 @@ func (in *incrStore) processWriteTask(dl *diffLayer) error {
 	if env == nil {
 		return errors.New("freezer env is not available")
 	}
-	if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), dl.block, isCancun(env, h.Number, h.Time)); err != nil {
-		log.Error("Failed to reset empty incr chain freezer", "block", dl.block, "err", err)
-		return err
+	// this case can happen when the underlying freezer is new and block state is empty
+	if dl.block > in.lastBlock+1 {
+		log.Info("Reset empty incr chain table", "block", in.lastBlock+1)
+		if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), in.lastBlock+1, isCancun(env, h.Number, h.Time)); err != nil {
+			log.Error("Failed to reset empty incr chain freezer", "block", dl.block, "err", err)
+			return err
+		}
+	} else {
+		if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), in.lastBlock+1, isCancun(env, h.Number, h.Time)); err != nil {
+			log.Error("Failed to reset empty incr chain freezer", "block", dl.block, "err", err)
+			return err
+		}
 	}
 	if err := in.writeChainData(dl.block, dl.stateID()); err != nil {
 		log.Error("Failed to write chain data", "block", dl.block, "stateID", dl.stateID(), "err", err)
@@ -303,11 +315,6 @@ func (in *incrStore) writeChainData(blockNumber, stateID uint64) error {
 		return err
 	}
 
-	// Get current stats for debugging
-	currentDir, blockCount, blockLimit := in.incrDB.GetCurrentStats()
-	log.Debug("writeChainData debug info", "blockNumber", blockNumber, "freezerHead", head,
-		"incrBlockCount", blockCount, "blockLimit", blockLimit, "currentDir", currentDir)
-
 	var startBlock uint64
 	if blockNumber == head {
 		startBlock = blockNumber
@@ -336,8 +343,10 @@ func (in *incrStore) writeChainData(blockNumber, stateID uint64) error {
 		}
 	}
 
-	log.Info("Incremental block data processing completed",
-		"startBlock", startBlock, "endBlock", blockNumber, "totalProcessed", blockNumber-startBlock+1)
+	in.lastBlock = blockNumber
+
+	log.Info("Incremental block data processing completed", "startBlock", startBlock, "endBlock", blockNumber,
+		"totalProcessed", blockNumber-startBlock+1)
 	return nil
 }
 

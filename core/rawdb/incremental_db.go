@@ -583,9 +583,7 @@ func (idb *IncrDB) IsBlockLimitReached() bool {
 		}
 		return ancients-tail >= idb.info.blockLimit
 	}
-
-	// Fallback to blockCount if freezer is not available
-	return idb.blockCount >= idb.info.blockLimit
+	return false
 }
 
 // IsSwitching returns true if directory switching is in progress
