@@ -70,7 +70,7 @@ type incrStore struct {
 	started bool
 	lock    sync.RWMutex
 
-	lastBlock uint64
+	lastBlock atomic.Uint64
 }
 
 // NewIncrStore creates a new incremental store with async write capability
@@ -81,7 +81,7 @@ func NewIncrStore(diskDB ethdb.Database, incrDB *rawdb.IncrDB) *incrStore {
 		writeQueue: make(chan *diffLayer, 100),
 		stopChan:   make(chan struct{}),
 		started:    false,
-		lastBlock:  0,
+		lastBlock:  atomic.Uint64{},
 	}
 
 	return store
@@ -231,9 +231,10 @@ func (in *incrStore) processWriteTask(dl *diffLayer) error {
 		return errors.New("freezer env is not available")
 	}
 	// this case can happen when the underlying freezer is new and block state is empty
-	if dl.block > in.lastBlock+1 {
-		log.Info("Reset empty incr chain table", "block", in.lastBlock+1)
-		if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), in.lastBlock+1, isCancun(env, h.Number, h.Time)); err != nil {
+	lastBlock := in.lastBlock.Load()
+	if dl.block > lastBlock+1 {
+		log.Info("Reset empty incr chain table", "block", lastBlock+1)
+		if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), lastBlock+1, isCancun(env, h.Number, h.Time)); err != nil {
 			log.Error("Failed to reset empty incr chain freezer", "block", dl.block, "err", err)
 			return err
 		}
@@ -303,17 +304,9 @@ func (in *incrStore) writeChainData(blockNumber, stateID uint64) error {
 		return errors.New("freezer env is not available")
 	}
 
-	// Wait for any ongoing directory switch to complete BEFORE getting freezer reference
-	// This ensures we get a consistent freezer instance for the entire operation
-	in.incrDB.WaitForSwitchComplete()
-
-	// Get a consistent freezer reference that won't change during this operation
-	freezer := in.incrDB.GetChainFreezer()
-	if freezer == nil {
-		return errors.New("chain freezer is not available")
-	}
-
-	head, err := freezer.Ancients()
+	// Get freezer reference directly without waiting for switch completion
+	// This avoids deadlock while still maintaining data consistency
+	head, err := in.incrDB.GetChainFreezer().Ancients()
 	if err != nil {
 		log.Error("Failed to get ancients from incr chain freezer", "err", err)
 		return err
@@ -347,7 +340,7 @@ func (in *incrStore) writeChainData(blockNumber, stateID uint64) error {
 		}
 	}
 
-	in.lastBlock = blockNumber
+	in.lastBlock.Store(blockNumber)
 
 	log.Debug("Incremental block data processing completed", "startBlock", startBlock, "endBlock", blockNumber,
 		"totalProcessed", blockNumber-startBlock+1)
