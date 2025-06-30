@@ -53,7 +53,7 @@ func (ws *WriteStats) UpdateProcessTime(duration time.Duration) {
 
 type incrStore struct {
 	// Core components
-	diskDB    ethdb.Database
+	db        *Database // Reference to parent Database for accessing diskdb
 	incrDB    *rawdb.IncrDB
 	freezeEnv atomic.Value
 
@@ -74,9 +74,9 @@ type incrStore struct {
 }
 
 // NewIncrStore creates a new incremental store with async write capability
-func NewIncrStore(diskDB ethdb.Database, incrDB *rawdb.IncrDB) *incrStore {
+func NewIncrStore(db *Database, incrDB *rawdb.IncrDB) *incrStore {
 	store := &incrStore{
-		diskDB:     diskDB,
+		db:         db,
 		incrDB:     incrDB,
 		writeQueue: make(chan *diffLayer, 100),
 		stopChan:   make(chan struct{}),
@@ -100,7 +100,6 @@ func (in *incrStore) Start() {
 	// Initialize lastBlock from database to avoid inconsistency after restart
 	if err := in.initializeLastBlock(); err != nil {
 		log.Error("Failed to initialize lastBlock from database", "error", err)
-		// Continue with default value 0, but log the error
 	}
 
 	in.wg.Add(1)
@@ -261,11 +260,11 @@ func (in *incrStore) worker() {
 
 func (in *incrStore) processWriteTask(dl *diffLayer) error {
 	// check and write block firstly
-	blockHash := rawdb.ReadCanonicalHash(in.diskDB.BlockStore(), dl.block)
+	blockHash := rawdb.ReadCanonicalHash(in.db.diskdb.BlockStore(), dl.block)
 	if blockHash == (common.Hash{}) {
 		return fmt.Errorf("canonical hash not found for block %d", dl.block)
 	}
-	h, _ := rawdb.ReadHeaderAndRaw(in.diskDB.BlockStore(), blockHash, dl.block)
+	h, _ := rawdb.ReadHeaderAndRaw(in.db.diskdb.BlockStore(), blockHash, dl.block)
 	if h == nil {
 		return fmt.Errorf("block header missing, can't freeze block %d", dl.block)
 	}
@@ -400,7 +399,7 @@ func (in *incrStore) writeChainData(blockNumber, stateID uint64) error {
 			currentStateID = stateID
 		}
 
-		if err = writeIncrBlockToFreezer(env, in.diskDB.BlockStore(), in.incrDB, i, currentStateID); err != nil {
+		if err = writeIncrBlockToFreezer(env, in.db.diskdb.BlockStore(), in.incrDB, i, currentStateID); err != nil {
 			log.Error("Failed to write block data to freezer", "block", i, "stateID", currentStateID, "err", err)
 			return err
 		}
@@ -514,7 +513,7 @@ func (in *incrStore) GetIncrDB() *rawdb.IncrDB {
 
 // GetDiskDB returns the disk database
 func (in *incrStore) GetDiskDB() ethdb.Database {
-	return in.diskDB
+	return in.db.diskdb
 }
 
 // GetFreezerEnv returns the freezer environment
