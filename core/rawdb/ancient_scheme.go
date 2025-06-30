@@ -142,53 +142,24 @@ func NewStateFreezer(ancientDir string, verkle bool, readOnly bool, offset uint6
 	return newResettableFreezer(name, "eth/db/state", readOnly, offset, stateHistoryTableSize, stateFreezerNoSnappy, false)
 }
 
-// NewIncrStateFreezer initializes the ancient store for incremental state history.
-//
-//   - if the empty directory is given, initializes the pure in-memory
-//     incremental state freezer (e.g. dev mode).
-//   - if non-empty directory is given, initializes the regular file-based
-//     incremental state freezer.
-func NewIncrStateFreezer(ancientDir string, readOnly bool, offset, blockLimit uint64) (ethdb.ResettableAncientStore, error) {
-	if ancientDir == "" {
-		return NewMemoryFreezer(readOnly, incrStateFreezerNoSnappy), nil
-	}
-
-	name := filepath.Join(ancientDir, IncrementalPath, MerkleStateFreezerName)
-	return newResettableFreezer(name, "eth/db/state", readOnly, offset, stateHistoryTableSize, incrStateFreezerNoSnappy, true)
-	// return newIncrFreezer(name, "eth/db/incremental/state", readOnly, offset, stateHistoryTableSize,
-	// 	incrStateFreezerNoSnappy, blockLimit)
-}
-
 // OpenIncrStateFreezer
-func OpenIncrStateFreezer(incrStateDir string, readOnly bool) (ethdb.ResettableAncientStore, error) {
+func OpenIncrStateFreezer(incrStateDir string, readOnly bool, offset uint64) (ethdb.ResettableAncientStore, error) {
 	if incrStateDir == "" {
 		log.Error("Incremental state directory is empty")
 		return nil, errors.New("empty incr state directory")
 	}
 
-	return newIncrFreezer(incrStateDir, "eth/db/incremental/state", readOnly, 0, stateHistoryTableSize,
-		incrStateFreezerNoSnappy, 1)
-}
-
-// NewIncrChainFreezer initializes the ancient store for incremental block history.
-func NewIncrChainFreezer(ancientDir string, readOnly bool, offset, blockLimit uint64) (ethdb.ResettableAncientStore, error) {
-	if ancientDir == "" {
-		return NewMemoryFreezer(readOnly, incrStateFreezerNoSnappy), nil
-	}
-
-	name := filepath.Join(ancientDir, IncrementalPath, ChainFreezerName)
-	return newResettableFreezer(name, "eth/db/chain", readOnly, offset, stateHistoryTableSize, incrChainFreezerNoSnappy, true)
-	// return newIncrFreezer(name, "eth/db/incremental/chain", readOnly, offset, stateHistoryTableSize,
-	// 	chainFreezerNoSnappy, blockLimit)
+	name := filepath.Join(incrStateDir, IncrementalPath, MerkleStateFreezerName)
+	return newResettableFreezer(name, "eth/db/incr/state", readOnly, offset, stateHistoryTableSize, incrStateFreezerNoSnappy, true)
 }
 
 // OpenIncrChainFreezer
-func OpenIncrChainFreezer(incrStateDir string, readOnly bool) (ethdb.ResettableAncientStore, error) {
-	if incrStateDir == "" {
-		log.Error("Incremental state directory is empty")
+func OpenIncrChainFreezer(incrChainDir string, readOnly bool, offset uint64) (ethdb.ResettableAncientStore, error) {
+	if incrChainDir == "" {
+		log.Error("Incremental chain directory is empty")
 		return nil, errors.New("empty incr chain directory")
 	}
 
-	return newIncrFreezer(incrStateDir, "eth/db/incremental/chain", readOnly, 0, stateHistoryTableSize,
-		incrChainFreezerNoSnappy, 1)
+	name := filepath.Join(incrChainDir, IncrementalPath, ChainFreezerName)
+	return newResettableFreezer(name, "eth/db/incr/chain", readOnly, offset, stateHistoryTableSize, incrChainFreezerNoSnappy, true)
 }

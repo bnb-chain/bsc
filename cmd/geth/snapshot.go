@@ -1067,7 +1067,7 @@ func compareBlockAndStateID(ctx *cli.Context) error {
 	if ctx.IsSet(utils.IncrementalSnapshotFlag.Name) {
 		log.Info("Compare incremental data with synced data")
 		incrChainPath := filepath.Join(path, rawdb.ChainFreezerName)
-		incrChainFreezer, err := rawdb.OpenIncrChainFreezer(incrChainPath, true)
+		incrChainFreezer, err := rawdb.OpenIncrChainFreezer(incrChainPath, true, 0)
 		if err != nil {
 			log.Error("Failed to open incremental chain freezer", "err", err)
 			return err
@@ -1079,7 +1079,7 @@ func compareBlockAndStateID(ctx *cli.Context) error {
 		log.Info("Incr chain info", "ancients", ancients, "tail", tail, "count", count)
 
 		incrStatePath := filepath.Join(path, rawdb.MerkleStateFreezerName)
-		incrStateFreezer, err := rawdb.OpenIncrStateFreezer(incrStatePath, true)
+		incrStateFreezer, err := rawdb.OpenIncrStateFreezer(incrStatePath, true, 0)
 		if err != nil {
 			log.Error("Failed to open incremental state freezer", "err", err)
 			return err
@@ -1308,7 +1308,7 @@ func (m *meta) decode(blob []byte) error {
 // is existent with the latest state id
 func checkStateWithBlock(incrDir string) error {
 	incrChainPath := filepath.Join(incrDir, rawdb.ChainFreezerName)
-	incrChainFreezer, err := rawdb.OpenIncrChainFreezer(incrChainPath, true)
+	incrChainFreezer, err := rawdb.OpenIncrChainFreezer(incrChainPath, true, 0)
 	if err != nil {
 		log.Error("Failed to open incremental chain freezer", "err", err)
 		return err
@@ -1320,7 +1320,7 @@ func checkStateWithBlock(incrDir string) error {
 	log.Info("Incr chain info", "ancients", ancients, "tail", tail, "count", count)
 
 	incrStatePath := filepath.Join(incrDir, rawdb.MerkleStateFreezerName)
-	incrStateFreezer, err := rawdb.OpenIncrStateFreezer(incrStatePath, true)
+	incrStateFreezer, err := rawdb.OpenIncrStateFreezer(incrStatePath, true, 0)
 	if err != nil {
 		log.Error("Failed to open incremental state freezer", "err", err)
 		return err
@@ -1360,7 +1360,7 @@ func checkStateWithBlock(incrDir string) error {
 
 func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
 	incrChainPath := filepath.Join(incrDir, rawdb.ChainFreezerName)
-	incrChainFreezer, err := rawdb.OpenIncrChainFreezer(incrChainPath, true)
+	incrChainFreezer, err := rawdb.OpenIncrChainFreezer(incrChainPath, true, 0)
 	if err != nil {
 		log.Error("Failed to open incremental chain freezer", "err", err)
 		return err
@@ -1452,7 +1452,8 @@ func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
 }
 
 func insertContractCodes(incrDir string, chainDB ethdb.Database) error {
-	newDB, err := pebble.New(incrDir, 10, 10, "incremental", true)
+	kvDir := filepath.Join(incrDir, rawdb.IncrementalPath)
+	newDB, err := pebble.New(kvDir, 10, 10, "incremental", true)
 	if err != nil {
 		log.Error("Failed to open pebble to read incremental data", "err", err)
 		return err
