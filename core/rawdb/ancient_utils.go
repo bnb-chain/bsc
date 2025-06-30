@@ -132,7 +132,6 @@ func inspectFreezers(db ethdb.Database) ([]freezerInfo, error) {
 	return infos, nil
 }
 
-// TODO: scan all incr freezer
 func inspectIncrFreezers(db *dbWrapper) ([]freezerInfo, error) {
 	var infos []freezerInfo
 	for _, freezer := range freezers {

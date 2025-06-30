@@ -1121,16 +1121,17 @@ func InspectIncrStore(baseDir string) error {
 	var (
 		total common.StorageSize
 		stats [][]string
+		info  = incrDBInfo{
+			readonly:     true,
+			namespace:    "eth/db/incremental/",
+			offset:       0,
+			maxTableSize: stateHistoryTableSize,
+			chainTables:  incrChainFreezerNoSnappy,
+			stateTables:  incrStateFreezerNoSnappy,
+			blockLimit:   0,
+		}
 	)
-	info := incrDBInfo{
-		readonly:     true,
-		namespace:    "eth/db/incremental/",
-		offset:       0,
-		maxTableSize: stateHistoryTableSize,
-		chainTables:  incrChainFreezerNoSnappy,
-		stateTables:  incrStateFreezerNoSnappy,
-		blockLimit:   0,
-	}
+
 	for _, dir := range dirs {
 		db, err := newDBWrapper(dir.Path, &info)
 		if err != nil {
@@ -1144,7 +1145,7 @@ func InspectIncrStore(baseDir string) error {
 		for _, ancient := range ancients {
 			for _, table := range ancient.sizes {
 				stats = append(stats, []string{
-					fmt.Sprintf("Incr store (%s/%s)", dir.Name, strings.Title(ancient.name)),
+					fmt.Sprintf("%s/%s", dir.Name, strings.Title(ancient.name)),
 					strings.Title(table.name),
 					table.size.String(),
 					fmt.Sprintf("%d", ancient.count()),

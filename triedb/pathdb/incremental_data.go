@@ -141,6 +141,50 @@ func (in *incrStore) Stop() {
 	in.LogStats()
 }
 
+// commit submits an async write task.
+func (in *incrStore) commit(bottom *diffLayer) error {
+	if !in.started {
+		return errors.New("incremental store not started")
+	}
+
+	// Check if directory switch is needed before committing to avoid deadlock.
+	// This prevents the worker from being stuck while trying to switch directories
+	if in.incrDB.IsBlockLimitReached() && !in.incrDB.IsSwitching() {
+		log.Info("Block limit reached, initiating directory switch before task submission", "blockNumber", bottom.block)
+		if err := in.incrDB.SwitchToNewDirectoryWithAsyncManager(bottom.block, in); err != nil {
+			return fmt.Errorf("failed to switch directory: %v", err)
+		}
+	}
+
+	atomic.AddUint64(&in.stats.totalTasks, 1)
+	atomic.AddInt32(&in.stats.queueLength, 1)
+
+	select {
+	case in.writeQueue <- bottom:
+		return nil
+
+	case <-in.stopChan:
+		atomic.AddInt32(&in.stats.queueLength, -1)
+		return errors.New("incremental store is stopping")
+
+	default:
+		atomic.AddInt32(&in.stats.queueLength, -1)
+		queueLen := in.GetQueueLength()
+		log.Warn("Task queue is full, checking if directory switch is in progress", "queueLength", queueLen,
+			"block", bottom.block, "stateID", bottom.stateID(), "switching", in.incrDB.IsSwitching())
+
+		if in.incrDB.IsSwitching() {
+			log.Info("Queue full during directory switch - this is expected",
+				"block", bottom.block, "queueLength", queueLen)
+			return nil
+		}
+
+		log.Error("Task queue is full outside of directory switch", "queueLength", queueLen, "block", bottom.block)
+		in.LogStats()
+		return fmt.Errorf("task queue is full (length %d, block %d)", queueLen, bottom.block)
+	}
+}
+
 // worker processes write tasks asynchronously
 func (in *incrStore) worker() {
 	defer in.wg.Done()
@@ -278,50 +322,6 @@ func (in *incrStore) writeChainData(blockNumber, stateID uint64) error {
 	log.Debug("Incremental block data processing completed",
 		"startBlock", startBlock, "endBlock", blockNumber, "totalProcessed", blockNumber-startBlock+1)
 	return nil
-}
-
-// commit submits an async write task.
-func (in *incrStore) commit(bottom *diffLayer) error {
-	if !in.started {
-		return errors.New("incremental store not started")
-	}
-
-	// Check if directory switch is needed before committing to avoid deadlock.
-	// This prevents the worker from being stuck while trying to switch directories
-	if in.incrDB.IsBlockLimitReached() && !in.incrDB.IsSwitching() {
-		log.Info("Block limit reached, initiating directory switch before task submission", "blockNumber", bottom.block)
-		if err := in.incrDB.SwitchToNewDirectoryWithAsyncManager(bottom.block, in); err != nil {
-			return fmt.Errorf("failed to switch directory: %v", err)
-		}
-	}
-
-	atomic.AddUint64(&in.stats.totalTasks, 1)
-	atomic.AddInt32(&in.stats.queueLength, 1)
-
-	select {
-	case in.writeQueue <- bottom:
-		return nil
-
-	case <-in.stopChan:
-		atomic.AddInt32(&in.stats.queueLength, -1)
-		return errors.New("incremental store is stopping")
-
-	default:
-		atomic.AddInt32(&in.stats.queueLength, -1)
-		queueLen := in.GetQueueLength()
-		log.Warn("Task queue is full, checking if directory switch is in progress", "queueLength", queueLen,
-			"block", bottom.block, "stateID", bottom.stateID(), "switching", in.incrDB.IsSwitching())
-
-		if in.incrDB.IsSwitching() {
-			log.Info("Queue full during directory switch - this is expected",
-				"block", bottom.block, "queueLength", queueLen)
-			return nil
-		}
-
-		log.Error("Task queue is full outside of directory switch", "queueLength", queueLen, "block", bottom.block)
-		in.LogStats()
-		return fmt.Errorf("task queue is full (length %d, block %d)", queueLen, bottom.block)
-	}
 }
 
 // updateStats updates operation statistics
