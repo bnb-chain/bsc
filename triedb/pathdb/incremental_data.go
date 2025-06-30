@@ -16,14 +16,6 @@ import (
 	"github.com/ethereum/go-ethereum/trie/trienode"
 )
 
-// IncrStoreConfig holds configuration for incremental store
-type IncrStoreConfig struct {
-	QueueSize         int           // Size of the task queue buffer
-	WorkerCount       int           // Number of async write workers
-	SwitchWaitTimeout time.Duration // Timeout for waiting directory switch
-	HealthThreshold   float64       // Failure rate threshold for health check
-}
-
 // WriteStats tracks write operation statistics
 type WriteStats struct {
 	totalTasks       uint64
@@ -34,18 +26,6 @@ type WriteStats struct {
 	maxProcessTime   uint64    // Maximum processing time in nanoseconds
 	totalProcessTime uint64    // Total processing time for calculating average
 	lastResetTime    time.Time // Last time stats were reset
-}
-
-// ResetStats resets all statistics
-func (ws *WriteStats) ResetStats() {
-	atomic.StoreUint64(&ws.totalTasks, 0)
-	atomic.StoreUint64(&ws.completedTasks, 0)
-	atomic.StoreUint64(&ws.failedTasks, 0)
-	atomic.StoreInt32(&ws.queueLength, 0)
-	atomic.StoreUint64(&ws.avgProcessTime, 0)
-	atomic.StoreUint64(&ws.maxProcessTime, 0)
-	atomic.StoreUint64(&ws.totalProcessTime, 0)
-	ws.lastResetTime = time.Now()
 }
 
 // UpdateProcessTime updates processing time statistics
@@ -93,14 +73,10 @@ type incrStore struct {
 
 // NewIncrStore creates a new incremental store with async write capability
 func NewIncrStore(diskDB ethdb.Database, incrDB *rawdb.IncrDB) *incrStore {
-	// Use larger queue size to handle directory switching scenarios
-	// During directory switch, worker may be blocked, so we need more buffer
-	queueSize := 1000 // Increased from 100 to handle switch scenarios
-
 	store := &incrStore{
 		diskDB:     diskDB,
 		incrDB:     incrDB,
-		writeQueue: make(chan *diffLayer, queueSize),
+		writeQueue: make(chan *diffLayer, 100),
 		stopChan:   make(chan struct{}),
 		started:    false,
 	}
@@ -128,17 +104,6 @@ func (in *incrStore) Start() {
 // Stop stops the async write workers and waits for completion
 // Statistics are preserved for debugging purposes
 func (in *incrStore) Stop() {
-	in.stopWithReset(false)
-}
-
-// StopWithReset stops the async write workers and resets all statistics
-// Useful when restarting the store within the same process
-func (in *incrStore) StopWithReset() {
-	in.stopWithReset(true)
-}
-
-// stopWithReset is the internal implementation of stop with optional reset
-func (in *incrStore) stopWithReset(resetStats bool) {
 	in.lock.Lock()
 	defer in.lock.Unlock()
 
@@ -146,7 +111,7 @@ func (in *incrStore) stopWithReset(resetStats bool) {
 		return
 	}
 
-	log.Info("Stopping incremental store", "pending", in.GetQueueLength(), "resetStats", resetStats)
+	log.Info("Stopping incremental store", "pending", in.GetQueueLength())
 
 	// Set a timeout for graceful shutdown
 	shutdownTimeout := 30 * time.Second
@@ -172,15 +137,8 @@ func (in *incrStore) stopWithReset(resetStats bool) {
 			"timeout", shutdownTimeout, "remaining_tasks", in.GetQueueLength())
 	}
 
-	// Final cleanup
 	in.started = false
-	in.LogStats() // Log final statistics before potential reset
-
-	// Optionally reset statistics
-	if resetStats {
-		log.Debug("Resetting incremental store statistics")
-		in.stats.ResetStats()
-	}
+	in.LogStats()
 }
 
 // worker processes write tasks asynchronously
@@ -190,29 +148,18 @@ func (in *incrStore) worker() {
 	for {
 		select {
 		case dl := <-in.writeQueue:
-			// Update queue length
 			atomic.AddInt32(&in.stats.queueLength, -1)
 
-			// Record start time for performance monitoring
 			startTime := time.Now()
-
 			err := in.processWriteTask(dl)
-
-			// Record processing time
 			processingTime := time.Since(startTime)
 			in.stats.UpdateProcessTime(processingTime)
-
-			// Update statistics
-			in.updateStats(err)
-
 			if err != nil {
 				log.Error("Async write task failed", "block", dl.block, "stateID", dl.stateID(),
 					"processingTime", processingTime, "err", err)
-			} else {
-				log.Debug("Async write task completed", "block", dl.block,
-					"stateID", dl.stateID(), "processingTime", processingTime)
 			}
 
+			in.updateStats(err)
 		case <-in.stopChan:
 			log.Debug("Worker stopping")
 			return
@@ -221,13 +168,6 @@ func (in *incrStore) worker() {
 }
 
 func (in *incrStore) processWriteTask(dl *diffLayer) error {
-	// Directory switch logic moved to commit method - no longer need to wait here
-	// since switch happens before task submission to avoid deadlock
-
-	if dl.block%10000 == 0 {
-		log.Info("Processing", "stateID", dl.stateID(), "block", dl.block)
-	}
-
 	// check and write block firstly
 	blockHash := rawdb.ReadCanonicalHash(in.diskDB.BlockStore(), dl.block)
 	if blockHash == (common.Hash{}) {
@@ -257,10 +197,6 @@ func (in *incrStore) processWriteTask(dl *diffLayer) error {
 	if err := in.writeStateData(dl); err != nil {
 		log.Error("Failed to write state data", "block", dl.block, "stateID", dl.stateID(), "err", err)
 		return err
-	}
-
-	if dl.block%10000 == 0 {
-		log.Info("Processed", "stateID", dl.stateID(), "block", dl.block)
 	}
 
 	return nil
@@ -305,9 +241,6 @@ func (in *incrStore) writeChainData(blockNumber, stateID uint64) error {
 		return errors.New("freezer env is not available")
 	}
 
-	// Directory switch logic moved to commit method to avoid deadlock
-	// The switch should happen before tasks are submitted to the queue
-
 	head, err := in.incrDB.GetChainFreezer().Ancients()
 	if err != nil {
 		log.Error("Failed to get ancients from incr chain freezer", "err", err)
@@ -315,7 +248,6 @@ func (in *incrStore) writeChainData(blockNumber, stateID uint64) error {
 	}
 
 	var startBlock uint64
-	// Determine the scenario and calculate startBlock
 	if blockNumber == head {
 		startBlock = blockNumber
 		log.Debug("Block number is equal to head", "blockNumber", blockNumber)
@@ -331,7 +263,7 @@ func (in *incrStore) writeChainData(blockNumber, stateID uint64) error {
 	}
 
 	for i := startBlock; i <= blockNumber; i++ {
-		// Determine if this block has state changes
+		// check if this block has state changes
 		currentStateID := uint64(0)
 		if i == blockNumber {
 			currentStateID = stateID
@@ -343,18 +275,18 @@ func (in *incrStore) writeChainData(blockNumber, stateID uint64) error {
 		}
 	}
 
-	log.Info("Incremental block data processing completed",
+	log.Debug("Incremental block data processing completed",
 		"startBlock", startBlock, "endBlock", blockNumber, "totalProcessed", blockNumber-startBlock+1)
 	return nil
 }
 
-// commit submits an async write task using fire-and-forget approach
+// commit submits an async write task.
 func (in *incrStore) commit(bottom *diffLayer) error {
 	if !in.started {
 		return errors.New("incremental store not started")
 	}
 
-	// Check if directory switch is needed BEFORE submitting task to avoid deadlock
+	// Check if directory switch is needed before committing to avoid deadlock.
 	// This prevents the worker from being stuck while trying to switch directories
 	if in.incrDB.IsBlockLimitReached() && !in.incrDB.IsSwitching() {
 		log.Info("Block limit reached, initiating directory switch before task submission", "blockNumber", bottom.block)
@@ -363,15 +295,11 @@ func (in *incrStore) commit(bottom *diffLayer) error {
 		}
 	}
 
-	// Update statistics
 	atomic.AddUint64(&in.stats.totalTasks, 1)
 	atomic.AddInt32(&in.stats.queueLength, 1)
 
 	select {
 	case in.writeQueue <- bottom:
-		if bottom.block%10000 == 0 {
-			log.Info("Write task submitted", "stateID", bottom.stateID(), "block", bottom.block)
-		}
 		return nil
 
 	case <-in.stopChan:
@@ -380,26 +308,18 @@ func (in *incrStore) commit(bottom *diffLayer) error {
 
 	default:
 		atomic.AddInt32(&in.stats.queueLength, -1)
-
-		// Enhanced error handling for queue full scenario
 		queueLen := in.GetQueueLength()
-		log.Warn("Task queue is full, checking if directory switch is in progress",
-			"queueLength", queueLen, "block", bottom.block,
-			"stateID", bottom.stateID(), "switching", in.incrDB.IsSwitching())
+		log.Warn("Task queue is full, checking if directory switch is in progress", "queueLength", queueLen,
+			"block", bottom.block, "stateID", bottom.stateID(), "switching", in.incrDB.IsSwitching())
 
-		// If directory switch is in progress, this is expected
 		if in.incrDB.IsSwitching() {
 			log.Info("Queue full during directory switch - this is expected",
 				"block", bottom.block, "queueLength", queueLen)
-			return fmt.Errorf("task queue is full during directory switch (block %d, queue length %d)",
-				bottom.block, queueLen)
+			return nil
 		}
 
-		// If not switching, this indicates a performance issue
-		log.Error("Task queue is full outside of directory switch",
-			"queueLength", queueLen, "block", bottom.block)
+		log.Error("Task queue is full outside of directory switch", "queueLength", queueLen, "block", bottom.block)
 		in.LogStats()
-
 		return fmt.Errorf("task queue is full (length %d, block %d)", queueLen, bottom.block)
 	}
 }
@@ -425,7 +345,7 @@ func (in *incrStore) drainQueue() {
 	}
 }
 
-// DrainQueue waits for all pending tasks to be processed (interface implementation)
+// DrainQueue waits for all pending tasks to be processed
 func (in *incrStore) DrainQueue() {
 	in.drainQueue()
 }
@@ -480,17 +400,10 @@ func (in *incrStore) LogStats() {
 		successRate = float64(completed) / float64(total) * 100
 	}
 
-	log.Info("Incremental store statistics",
-		"total_tasks", total,
-		"completed", completed,
-		"failed", failed,
-		"pending", queueLen,
-		"queue_capacity", queueCapacity,
-		"queue_usage", fmt.Sprintf("%.1f%%", queueUsage),
-		"success_rate", fmt.Sprintf("%.2f%%", successRate),
-		"avg_process_time", time.Duration(avgProcessTime),
-		"max_process_time", time.Duration(maxProcessTime),
-		"switching", in.incrDB.IsSwitching(),
+	log.Info("Incremental store statistics", "total_tasks", total, "completed", completed,
+		"failed", failed, "pending", queueLen, "queue_capacity", queueCapacity, "queue_usage", fmt.Sprintf("%.1f%%", queueUsage),
+		"success_rate", fmt.Sprintf("%.2f%%", successRate), "avg_process_time", time.Duration(avgProcessTime),
+		"max_process_time", time.Duration(maxProcessTime), "switching", in.incrDB.IsSwitching(),
 		"uptime", time.Since(in.stats.lastResetTime).Round(time.Second))
 }
 
@@ -658,49 +571,3 @@ func isCancun(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
 
 	return env.ChainCfg.IsCancun(num, time)
 }
-
-/*
-Directory Switch Queue Full Issue - DEADLOCK RESOLVED:
-
-**Original Problem:**
-During directory switching, the worker thread blocked waiting for the switch to complete,
-causing the task queue to fill up and reject new commits. This created a deadlock:
-1. Worker waits for directory switch to complete
-2. Directory switch waits for queue to drain (DrainQueue)
-3. Queue can't drain because worker is blocked
-4. Classic deadlock situation
-
-**Root Cause:**
-Directory switch was initiated from within the worker thread (processWriteTask -> writeChainData),
-creating a circular dependency where the worker waits for a switch that can't complete
-because it needs the worker to finish.
-
-**SOLUTION - Architecture Change:**
-**Moved directory switch logic from worker thread to commit method:**
-1. **Pre-submission Check**: Directory switch now happens in `commit()` method BEFORE task submission
-2. **No Worker Blocking**: Worker threads never wait for directory switches
-3. **Clean Separation**: Switch coordination happens at the submission layer, not processing layer
-
-**Implementation Details:**
-- `commit()` method checks `IsBlockLimitReached()` before submitting tasks
-- `SwitchToNewDirectoryWithAsyncManager()` called before queue submission
-- `processWriteTask()` no longer contains switch waiting logic
-- `writeChainData()` no longer initiates directory switches
-
-**Benefits:**
-1. **Deadlock Eliminated**: No circular dependencies between worker and switch
-2. **Predictable Behavior**: Switches complete before new tasks are submitted
-3. **Better Performance**: No worker thread blocking during switches
-4. **Cleaner Architecture**: Clear separation of concerns
-
-**Monitoring Features Retained:**
-- Queue capacity monitoring and statistics
-- Enhanced error messages with context
-- Health checks and operational visibility
-
-**Expected Behavior:**
-- Directory switch: Happens cleanly before task submission
-- Queue usage: Should remain stable during switches
-- Worker threads: Never block on directory operations
-- Performance: Improved throughput and predictability
-*/

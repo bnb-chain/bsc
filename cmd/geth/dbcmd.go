@@ -312,6 +312,15 @@ of ancientStore, will also displays the reserved number of blocks in ancientStor
 		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Description: "This command queries the history of the account or storage slot within the specified block range",
 	}
+	incrInspectCmd = &cli.Command{
+		Action: inspectIncr,
+		Name:   "inspect-incremental",
+		Flags: []cli.Flag{
+			utils.DataDirFlag,
+		},
+		Usage:       "Inspect the incremental information",
+		Description: `This commands will read and display incremental store information`,
+	}
 )
 
 func removeDB(ctx *cli.Context) error {
@@ -1521,4 +1530,12 @@ func inspectHistory(ctx *cli.Context) error {
 		return inspectAccount(triedb, start, end, address, ctx.Bool("raw"))
 	}
 	return inspectStorage(triedb, start, end, address, slot, ctx.Bool("raw"))
+}
+
+func inspectIncr(ctx *cli.Context) error {
+	baseDir := ctx.String(utils.IncrementalSnapshotPathFlag.Name)
+	if err := rawdb.InspectIncrStore(baseDir); err != nil {
+		return err
+	}
+	return nil
 }

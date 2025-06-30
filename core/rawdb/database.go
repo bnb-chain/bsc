@@ -1130,6 +1130,19 @@ func InspectDatabase(db ethdb.Database, isIncr bool, keyPrefix, keyStart []byte)
 	return nil
 }
 
+func InspectIncrStore(baseDir string) error {
+	// incrDB, err := NewIncrDB(baseDir, true, 0, 0)
+	// if err != nil {
+	// 	return err
+	// }
+	dirs, err := GetAllIncrDirs(baseDir)
+	if err != nil {
+		return err
+	}
+	fmt.Println(dirs)
+	return nil
+}
+
 func DeleteTrieState(db ethdb.Database) error {
 	var (
 		it     ethdb.Iterator

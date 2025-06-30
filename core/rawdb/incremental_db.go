@@ -46,6 +46,13 @@ type incrDBInfo struct {
 	blockLimit   uint64 // write needs to set it; 0 is used in reading data from incr db
 }
 
+// IncrDirInfo holds information about an incremental directory
+type IncrDirInfo struct {
+	Name     string
+	Path     string
+	BlockNum uint64
+}
+
 // NewIncrDB creates a new incremental database
 func NewIncrDB(baseDir string, readonly bool, offset uint64, blockLimit uint64) (*IncrDB, error) {
 	info := incrDBInfo{
@@ -65,7 +72,6 @@ func NewIncrDB(baseDir string, readonly bool, offset uint64, blockLimit uint64) 
 		return nil, fmt.Errorf("failed to find latest incremental directory: %v", err)
 	}
 
-	// Create initial database wrapper
 	db, err := newDBWrapper(currentDir, &info)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create initial database wrapper: %v", err)
@@ -83,6 +89,57 @@ func NewIncrDB(baseDir string, readonly bool, offset uint64, blockLimit uint64) 
 
 	log.Info("IncrDB created", "baseDir", baseDir, "currentDir", currentDir, "blockLimit", blockLimit)
 	return incrDB, nil
+}
+
+func newDBWrapper(incrDir string, info *incrDBInfo) (*dbWrapper, error) {
+	if incrDir == "" {
+		return &dbWrapper{
+			chainFreezer: NewMemoryFreezer(info.readonly, incrChainFreezerNoSnappy),
+			stateFreezer: NewMemoryFreezer(info.readonly, incrStateFreezerNoSnappy),
+			kvDB:         NewMemoryDatabase(),
+		}, nil
+	}
+
+	chainPath := filepath.Join(incrDir, ChainFreezerName)
+	chainNamespace := fmt.Sprintf("%s%s", info.namespace, "ChainFreezerName")
+	cFreezer, err := newResettableFreezer(chainPath, chainNamespace, info.readonly, info.offset, info.maxTableSize,
+		info.chainTables, true)
+	if err != nil {
+		log.Error("Failed to create incremental chain freezer", "err", err)
+		return nil, err
+	}
+
+	item, _ := cFreezer.Ancients()
+	a, _ := cFreezer.Tail()
+	b, _ := cFreezer.ItemAmountInAncient()
+	log.Info("Print incr chain ancient info", "item", item, "a", a, "b", b)
+
+	statePath := filepath.Join(incrDir, MerkleStateFreezerName)
+	stateNamespace := fmt.Sprintf("%s%s", info.namespace, "MerkleStateFreezerName")
+	sFreezer, err := newResettableFreezer(statePath, stateNamespace, info.readonly, info.offset, info.maxTableSize,
+		info.stateTables, true)
+	if err != nil {
+		log.Error("Failed to create incremental state freezer", "err", err)
+		return nil, err
+	}
+
+	item, _ = sFreezer.Ancients()
+	a, _ = sFreezer.Tail()
+	b, _ = sFreezer.ItemAmountInAncient()
+	log.Info("Print incr state ancient info", "item", item, "a", a, "b", b)
+
+	kvNamespace := fmt.Sprintf("%s%s", info.namespace, "kv")
+	db, err := pebble.New(incrDir, 10, 10, kvNamespace, info.readonly)
+	if err != nil {
+		log.Error("Failed to create incremental kv db", "err", err)
+		return nil, err
+	}
+
+	return &dbWrapper{
+		chainFreezer: cFreezer,
+		stateFreezer: sFreezer,
+		kvDB:         NewDatabase(db),
+	}, nil
 }
 
 // waitForSwitchComplete waits until directory switching is complete
@@ -103,13 +160,6 @@ func (idb *IncrDB) WriteIncrBlockData(number, id uint64, hash, header, body, rec
 
 	idb.lock.Lock()
 	defer idb.lock.Unlock()
-
-	// Check if we need to switch to a new directory
-	// if idb.info.blockLimit > 0 && idb.blockCount >= idb.info.blockLimit {
-	// 	if err := idb.switchToNewDirectoryBlocking(number); err != nil {
-	// 		return fmt.Errorf("failed to switch to new directory: %v", err)
-	// 	}
-	// }
 
 	if err := WriteIncrBlockData(idb.currDB.chainFreezer, number, id, hash, header, body, receipts, td, sidecars, isCancun); err != nil {
 		log.Error("Failed to write incremental block data", "err", err)
@@ -409,69 +459,11 @@ func findLatestIncrDir(baseDir string, offset uint64) (string, error) {
 	return latestDir.Path, nil
 }
 
-// IncrDirInfo holds information about an incremental directory
-type IncrDirInfo struct {
-	Name     string
-	Path     string
-	BlockNum uint64
-}
-
-func newDBWrapper(incrDir string, info *incrDBInfo) (*dbWrapper, error) {
-	if incrDir == "" {
-		return &dbWrapper{
-			chainFreezer: NewMemoryFreezer(info.readonly, incrChainFreezerNoSnappy),
-			stateFreezer: NewMemoryFreezer(info.readonly, incrStateFreezerNoSnappy),
-			kvDB:         NewMemoryDatabase(),
-		}, nil
-	}
-
-	chainPath := filepath.Join(incrDir, ChainFreezerName)
-	chainNamespace := fmt.Sprintf("%s%s", info.namespace, "ChainFreezerName")
-	cFreezer, err := newResettableFreezer(chainPath, chainNamespace, info.readonly, info.offset, info.maxTableSize,
-		info.chainTables, true)
-	if err != nil {
-		log.Error("Failed to create incremental chain freezer", "err", err)
-		return nil, err
-	}
-
-	item, _ := cFreezer.Ancients()
-	a, _ := cFreezer.Tail()
-	b, _ := cFreezer.ItemAmountInAncient()
-	log.Info("Print incr chain ancient info", "item", item, "a", a, "b", b)
-
-	statePath := filepath.Join(incrDir, MerkleStateFreezerName)
-	stateNamespace := fmt.Sprintf("%s%s", info.namespace, "MerkleStateFreezerName")
-	sFreezer, err := newResettableFreezer(statePath, stateNamespace, info.readonly, info.offset, info.maxTableSize,
-		info.stateTables, true)
-	if err != nil {
-		log.Error("Failed to create incremental state freezer", "err", err)
-		return nil, err
-	}
-
-	item, _ = sFreezer.Ancients()
-	a, _ = sFreezer.Tail()
-	b, _ = sFreezer.ItemAmountInAncient()
-	log.Info("Print incr state ancient info", "item", item, "a", a, "b", b)
-
-	kvNamespace := fmt.Sprintf("%s%s", info.namespace, "kv")
-	db, err := pebble.New(incrDir, 10, 10, kvNamespace, info.readonly)
-	if err != nil {
-		log.Error("Failed to create incremental kv db", "err", err)
-		return nil, err
-	}
-
-	return &dbWrapper{
-		chainFreezer: cFreezer,
-		stateFreezer: sFreezer,
-		kvDB:         NewDatabase(db),
-	}, nil
-}
-
 // GetAllIncrDirs returns all incremental directories sorted by block number
-func (idb *IncrDB) GetAllIncrDirs() ([]IncrDirInfo, error) {
-	entries, err := os.ReadDir(idb.baseDir)
+func GetAllIncrDirs(baseDir string) ([]IncrDirInfo, error) {
+	entries, err := os.ReadDir(baseDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read base directory %s: %v", idb.baseDir, err)
+		return nil, fmt.Errorf("failed to read base directory %s: %v", baseDir, err)
 	}
 
 	incrDirPattern := regexp.MustCompile(`^incr_(\d+)$`)
@@ -494,7 +486,7 @@ func (idb *IncrDB) GetAllIncrDirs() ([]IncrDirInfo, error) {
 
 		incrDirs = append(incrDirs, IncrDirInfo{
 			Name:     entry.Name(),
-			Path:     filepath.Join(idb.baseDir, entry.Name()),
+			Path:     filepath.Join(baseDir, entry.Name()),
 			BlockNum: blockNum,
 		})
 	}
@@ -505,14 +497,6 @@ func (idb *IncrDB) GetAllIncrDirs() ([]IncrDirInfo, error) {
 	})
 
 	return incrDirs, nil
-}
-
-// ForceSwitch forces a switch to a new directory regardless of block limit
-func (idb *IncrDB) ForceSwitch(blockNum uint64) error {
-	idb.lock.Lock()
-	defer idb.lock.Unlock()
-
-	return idb.switchToNewDirectoryBlocking(blockNum)
 }
 
 // RecoverFromDirectory recovers the IncrDB to use a specific directory
@@ -574,17 +558,6 @@ func (idb *IncrDB) IsBlockLimitReached() bool {
 	defer idb.lock.RUnlock()
 
 	return idb.info.blockLimit > 0 && idb.blockCount >= idb.info.blockLimit
-}
-
-// UpdateBlockLimit updates the block limit for future directory switches
-func (idb *IncrDB) UpdateBlockLimit(newLimit uint64) {
-	idb.lock.Lock()
-	defer idb.lock.Unlock()
-
-	oldLimit := idb.info.blockLimit
-	idb.info.blockLimit = newLimit
-
-	log.Info("Block limit updated", "oldLimit", oldLimit, "newLimit", newLimit)
 }
 
 // IsSwitching returns true if directory switching is in progress

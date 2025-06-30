@@ -221,7 +221,7 @@ type Database struct {
 	freezer ethdb.ResettableAncientStore // Freezer for storing trie histories, nil possible in tests
 	lock    sync.RWMutex                 // Lock to prevent mutations from happening at the same time
 
-	incr *incrStore
+	incr *incrStore // used to store incremental data: block, state and contract codes
 }
 
 // New attempts to load an already existing layer from a persistent key-value
@@ -641,7 +641,7 @@ func (db *Database) Close() error {
 		// Wait for all async write tasks to complete before closing
 		if db.incr != nil {
 			log.Info("Waiting for async write tasks to complete", "pending", db.incr.GetQueueLength())
-			db.incr.LogStats() // Log final statistics
+			db.incr.LogStats()
 			db.incr.Stop()
 		}
 

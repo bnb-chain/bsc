@@ -315,13 +315,8 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 				"incrBlockStartNumber", dl.db.config.IncrBlockStartNumber)
 		}
 
-		// if in.incrDB.IsBlockLimitReached() && !in.incrDB.IsSwitching() {
-		// 	log.Info("Block limit reached, initiating directory switch", "blockNumber", blockNumber)
-		//
-		// }
-
 		// Commit incremental data with retry mechanism
-		if err := dl.commitIncrementalDataWithRetry(bottom); err != nil {
+		if err := dl.commitIncrDataWithRetry(bottom); err != nil {
 			log.Error("Failed to commit incremental data after retries", "err", err)
 			return nil, err
 		}
@@ -459,9 +454,9 @@ func (h *hasher) release() {
 	hasherPool.Put(h)
 }
 
-// commitIncrementalDataWithRetry attempts to commit incremental data with retry mechanism
+// commitIncrDataWithRetry attempts to commit incremental data with retry mechanism
 // This handles the "task queue is full" error that can occur during directory switching
-func (dl *diskLayer) commitIncrementalDataWithRetry(bottom *diffLayer) error {
+func (dl *diskLayer) commitIncrDataWithRetry(bottom *diffLayer) error {
 	const (
 		maxRetries = 5
 		baseDelay  = 100 * time.Millisecond
