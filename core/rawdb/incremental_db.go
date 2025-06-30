@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -21,7 +22,7 @@ type IncrDB struct {
 	info       incrDBInfo
 	baseDir    string
 	currentDir string
-	blockCount uint64
+	blockCount atomic.Uint64
 	lock       sync.RWMutex
 
 	// Directory switching control
@@ -82,9 +83,9 @@ func NewIncrDB(baseDir string, readonly bool, offset uint64, blockLimit uint64) 
 		info:       info,
 		baseDir:    incrBaseDir,
 		currentDir: currentDir,
-		blockCount: 0,
 		switching:  false,
 	}
+	incrDB.blockCount.Store(0)
 	incrDB.switchCond = sync.NewCond(&incrDB.switchMutex)
 
 	log.Info("IncrDB created", "baseDir", baseDir, "currentDir", currentDir, "blockLimit", blockLimit)
@@ -165,7 +166,7 @@ func (idb *IncrDB) WriteIncrBlockData(number, id uint64, hash, header, body, rec
 		log.Error("Failed to write incremental block data", "err", err)
 		return err
 	}
-	idb.blockCount++
+	idb.blockCount.Store(number + 1)
 	log.Debug("Block written to IncrDB", "blockNum", number, "currentDir", idb.currentDir, "blockCount", idb.blockCount)
 
 	return nil
@@ -257,7 +258,7 @@ func (idb *IncrDB) switchToNewDirectoryBlocking(blockNum uint64) error {
 	// Update current database and directory
 	idb.currDB = db
 	idb.currentDir = newDir
-	idb.blockCount = 0
+	idb.blockCount.Store(0)
 
 	log.Info("Successfully switched to new incremental directory", "newDir", newDir)
 	return nil
@@ -306,7 +307,7 @@ func (idb *IncrDB) SwitchToNewDirectoryWithAsyncManager(blockNum uint64, asyncMa
 	// Update current database and directory
 	idb.currDB = db
 	idb.currentDir = newDir
-	idb.blockCount = 0
+	idb.blockCount.Store(0)
 
 	log.Info("Successfully completed coordinated directory switch", "newDir", newDir)
 	return nil
@@ -399,7 +400,7 @@ func (idb *IncrDB) GetCurrentStats() (currentDir string, blockCount, blockLimit 
 	idb.lock.RLock()
 	defer idb.lock.RUnlock()
 
-	return idb.currentDir, idb.blockCount, idb.info.blockLimit
+	return idb.currentDir, idb.blockCount.Load(), idb.info.blockLimit
 }
 
 // findLatestIncrDir finds the latest incremental directory or creates the first one
@@ -524,7 +525,7 @@ func (idb *IncrDB) RecoverFromDirectory(targetDir string) error {
 	// Update current database and directory
 	idb.currDB = db
 	idb.currentDir = targetDir
-	idb.blockCount = 0 // Reset block count
+	idb.blockCount.Store(0)
 
 	log.Info("Successfully recovered to directory", "dir", targetDir)
 	return nil
@@ -558,7 +559,7 @@ func (idb *IncrDB) IsBlockLimitReached() bool {
 	idb.lock.RLock()
 	defer idb.lock.RUnlock()
 
-	return idb.info.blockLimit > 0 && idb.blockCount >= idb.info.blockLimit
+	return idb.info.blockLimit > 0 && idb.blockCount.Load() >= idb.info.blockLimit
 }
 
 // IsSwitching returns true if directory switching is in progress
