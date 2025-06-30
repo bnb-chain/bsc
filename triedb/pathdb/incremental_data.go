@@ -97,11 +97,55 @@ func (in *incrStore) Start() {
 		return
 	}
 
+	// Initialize lastBlock from database to avoid inconsistency after restart
+	if err := in.initializeLastBlock(); err != nil {
+		log.Error("Failed to initialize lastBlock from database", "error", err)
+		// Continue with default value 0, but log the error
+	}
+
 	in.wg.Add(1)
 	go in.worker()
 
 	in.started = true
-	log.Info("Incremental store async workers started")
+	log.Info("Incremental store async workers started", "lastBlock", in.lastBlock.Load())
+}
+
+// initializeLastBlock initializes lastBlock from the current database state
+func (in *incrStore) initializeLastBlock() error {
+	if in.incrDB == nil {
+		return errors.New("incrDB is not initialized")
+	}
+
+	// Get the current head from chain freezer
+	chainFreezer := in.incrDB.GetChainFreezer()
+	if chainFreezer == nil {
+		log.Warn("Chain freezer is not available, using default lastBlock value 0")
+		return nil
+	}
+
+	ancients, err := chainFreezer.Ancients()
+	if err != nil {
+		return fmt.Errorf("failed to get ancients count: %v", err)
+	}
+
+	tail, err := chainFreezer.Tail()
+	if err != nil {
+		return fmt.Errorf("failed to get tail: %v", err)
+	}
+
+	// The last block number should be ancients - 1 (since ancients is count, not index)
+	// But we need to consider the tail offset
+	var lastBlockNum uint64
+	if ancients > tail {
+		lastBlockNum = ancients - 1
+	} else {
+		lastBlockNum = 0
+	}
+
+	in.lastBlock.Store(lastBlockNum)
+	log.Info("Initialized lastBlock from database", "lastBlock", lastBlockNum, "ancients", ancients, "tail", tail)
+
+	return nil
 }
 
 // Stop stops the async write workers and waits for completion
@@ -150,15 +194,19 @@ func (in *incrStore) commit(bottom *diffLayer) error {
 		return errors.New("incremental store not started")
 	}
 
-	// Check if directory switch is needed before committing to avoid deadlock.
-	// This prevents the worker from being stuck while trying to switch directories
-	// Use atomic check-and-switch to prevent race conditions
-	switched, err := in.incrDB.CheckAndInitiateSwitch(bottom.block, in)
-	if err != nil {
-		return fmt.Errorf("failed to switch directory: %v", err)
-	}
-	if switched {
-		log.Info("Directory switch completed before task submission", "blockNumber", bottom.block)
+	// Check if directory switch is needed but don't wait for completion to avoid deadlock
+	// Only check if we need to switch, but don't block on the actual switch operation
+	if in.shouldInitiateSwitch() {
+		// Schedule switch asynchronously to avoid deadlock
+		go func() {
+			switched, err := in.incrDB.CheckAndInitiateSwitch(bottom.block, in)
+			if err != nil {
+				log.Error("Failed to initiate directory switch", "block", bottom.block, "error", err)
+			}
+			if switched {
+				log.Info("Directory switch completed asynchronously", "blockNumber", bottom.block)
+			}
+		}()
 	}
 
 	atomic.AddUint64(&in.stats.totalTasks, 1)
@@ -188,6 +236,17 @@ func (in *incrStore) commit(bottom *diffLayer) error {
 		in.LogStats()
 		return fmt.Errorf("task queue is full (length %d, block %d)", queueLen, bottom.block)
 	}
+}
+
+// shouldInitiateSwitch checks if directory switch should be initiated without blocking
+func (in *incrStore) shouldInitiateSwitch() bool {
+	// Fast path: if already switching or limit not reached, no need to switch
+	if in.incrDB.IsSwitching() {
+		return false
+	}
+
+	// Check if block limit is reached
+	return in.incrDB.IsBlockLimitReached()
 }
 
 // worker processes write tasks asynchronously
@@ -230,29 +289,37 @@ func (in *incrStore) processWriteTask(dl *diffLayer) error {
 	if env == nil {
 		return errors.New("freezer env is not available")
 	}
-	// this case can happen when the underlying freezer is new and block state is empty
-	lastBlock := in.lastBlock.Load()
-	if dl.block > lastBlock+1 {
-		log.Info("Reset empty incr chain table", "block", lastBlock+1)
-		if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), lastBlock+1, isCancun(env, h.Number, h.Time)); err != nil {
-			log.Error("Failed to reset empty incr chain freezer", "block", dl.block, "err", err)
+
+	// Get current lastBlock atomically to avoid race conditions
+	currentLastBlock := in.lastBlock.Load()
+
+	// Handle potential gaps in block sequence
+	// Use Compare-And-Swap to ensure atomic update and avoid race conditions
+	if dl.block > currentLastBlock+1 {
+		// There's a gap, we need to reset from the next expected block
+		resetFromBlock := currentLastBlock + 1
+		log.Info("Detected block gap, resetting empty incr chain table",
+			"currentLastBlock", currentLastBlock, "processingBlock", dl.block, "resetFromBlock", resetFromBlock)
+
+		if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), resetFromBlock, isCancun(env, h.Number, h.Time)); err != nil {
+			log.Error("Failed to reset empty incr chain freezer from gap", "resetFromBlock", resetFromBlock, "processingBlock", dl.block, "err", err)
 			return err
 		}
 	} else {
+		// Normal case or reprocessing the same block
 		if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), dl.block, isCancun(env, h.Number, h.Time)); err != nil {
 			log.Error("Failed to reset empty incr chain freezer", "block", dl.block, "err", err)
 			return err
 		}
 	}
-	// if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), dl.block, isCancun(env, h.Number, h.Time)); err != nil {
-	// 	log.Error("Failed to reset empty incr chain freezer", "block", dl.block, "err", err)
-	// 	return err
-	// }
+
+	// Write chain data first
 	if err := in.writeChainData(dl.block, dl.stateID()); err != nil {
 		log.Error("Failed to write chain data", "block", dl.block, "stateID", dl.stateID(), "err", err)
 		return err
 	}
 
+	// Write state data
 	if err := rawdb.ResetEmptyIncrStateTable(in.incrDB.GetStateFreezer(), dl.stateID()); err != nil {
 		log.Error("Failed to reset empty incr state freezer", "block", dl.block, "stateID", dl.stateID(), "err", err)
 		return err
@@ -260,6 +327,21 @@ func (in *incrStore) processWriteTask(dl *diffLayer) error {
 	if err := in.writeStateData(dl); err != nil {
 		log.Error("Failed to write state data", "block", dl.block, "stateID", dl.stateID(), "err", err)
 		return err
+	}
+
+	// Only update lastBlock after successful completion of all operations
+	// Use Compare-And-Swap to ensure we only advance, never go backward
+	for {
+		current := in.lastBlock.Load()
+		if dl.block <= current {
+			// Another task has already processed a later block, no need to update
+			break
+		}
+		if in.lastBlock.CompareAndSwap(current, dl.block) {
+			log.Debug("Updated lastBlock", "from", current, "to", dl.block)
+			break
+		}
+		// CAS failed, another goroutine updated it, retry
 	}
 
 	return nil
@@ -339,8 +421,6 @@ func (in *incrStore) writeChainData(blockNumber, stateID uint64) error {
 			return err
 		}
 	}
-
-	in.lastBlock.Store(blockNumber)
 
 	log.Debug("Incremental block data processing completed", "startBlock", startBlock, "endBlock", blockNumber,
 		"totalProcessed", blockNumber-startBlock+1)
