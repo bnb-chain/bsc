@@ -263,11 +263,6 @@ func (p *Peer) Inbound() bool {
 	return p.rw.is(inboundConn)
 }
 
-// VerifyNode returns true if the peer is a verification connection
-func (p *Peer) VerifyNode() bool {
-	return p.rw.is(verifyConn)
-}
-
 func newPeer(log log.Logger, conn *conn, protocols []Protocol) *Peer {
 	protomap := matchProtocols(protocols, conn.caps, conn)
 	p := &Peer{

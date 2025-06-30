@@ -224,11 +224,6 @@ type AncientStore interface {
 	io.Closer
 }
 
-type DiffStore interface {
-	DiffStore() KeyValueStore
-	SetDiffStore(diff KeyValueStore)
-}
-
 type StateStore interface {
 	StateStore() Database
 	SetStateStore(state Database)
@@ -252,7 +247,6 @@ type ResettableAncientStore interface {
 // Database contains all the methods required by the high level database to not
 // only access the key-value data store but also the ancient chain store.
 type Database interface {
-	DiffStore
 	StateStore
 	BlockStore
 	StateStoreReader

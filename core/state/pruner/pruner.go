@@ -242,7 +242,7 @@ func (p *Pruner) pruneAll(maindb ethdb.Database, g *core.Genesis) error {
 			statedb.SetState(addr, key, value)
 		}
 	}
-	root, _, _ := statedb.Commit(0, false, false)
+	root, _ := statedb.Commit(0, false, false)
 	statedb.Database().TrieDB().Commit(root, true)
 	log.Info("State pruning successful", "pruned", size, "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil

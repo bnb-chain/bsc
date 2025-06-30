@@ -82,7 +82,7 @@ func TestAccountRange(t *testing.T) {
 			m[addr] = true
 		}
 	}
-	root, _, _ := sdb.Commit(0, true, false)
+	root, _ := sdb.Commit(0, true, false)
 	sdb, _ = state.New(root, statedb)
 
 	trie, err := statedb.OpenTrie(root)
@@ -183,7 +183,7 @@ func TestStorageRangeAt(t *testing.T) {
 	for _, entry := range storage {
 		sdb.SetState(addr, *entry.Key, entry.Value)
 	}
-	root, _, _ := sdb.Commit(0, false, false)
+	root, _ := sdb.Commit(0, false, false)
 	sdb, _ = state.New(root, db)
 
 	// Check a few combinations of limit and start/end.

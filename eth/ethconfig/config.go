@@ -62,7 +62,6 @@ var Defaults = Config{
 	TriesInMemory:      128,
 	TriesVerifyMode:    core.LocalVerify,
 	SnapshotCache:      102,
-	DiffBlock:          uint64(86400),
 	FilterLogCacheSize: 32,
 	Miner:              minerconfig.DefaultConfig,
 	TxPool:             legacypool.DefaultConfig,
@@ -98,10 +97,9 @@ type Config struct {
 	EVNNodeIDsToRemove     []enode.ID
 	// This can be set to list of enrtree:// URLs which will be queried for
 	// nodes to connect to.
-	EthDiscoveryURLs   []string
-	SnapDiscoveryURLs  []string
-	TrustDiscoveryURLs []string
-	BscDiscoveryURLs   []string
+	EthDiscoveryURLs  []string
+	SnapDiscoveryURLs []string
+	BscDiscoveryURLs  []string
 
 	// State options.
 	NoPruning  bool // Whether to disable pruning and flush everything to disk
@@ -109,7 +107,6 @@ type Config struct {
 
 	DirectBroadcast     bool
 	DisableSnapProtocol bool // Whether disable snap protocol
-	EnableTrustProtocol bool // Whether enable trust protocol
 	RangeLimit          bool
 
 	// Deprecated: use 'TransactionHistory' instead.
@@ -136,9 +133,6 @@ type Config struct {
 	DatabaseHandles    int  `toml:"-"`
 	DatabaseCache      int
 	DatabaseFreezer    string
-	DatabaseDiff       string
-	PersistDiff        bool
-	DiffBlock          uint64
 	// PruneAncientData is an optional config and disabled by default, and usually you do not need it.
 	// When this flag is enabled, only keep the latest 9w blocks' data, the older blocks' data will be
 	// pruned instead of being dumped to freezerdb, the pruned data includes CanonicalHash, Header, Block,

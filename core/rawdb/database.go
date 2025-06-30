@@ -41,7 +41,6 @@ type freezerdb struct {
 	ancientRoot string
 
 	ethdb.AncientFreezer
-	diffStore  ethdb.KeyValueStore
 	stateStore ethdb.Database
 	blockStore ethdb.Database
 }
@@ -75,11 +74,6 @@ func (frdb *freezerdb) Close() error {
 	if err := frdb.KeyValueStore.Close(); err != nil {
 		errs = append(errs, err)
 	}
-	if frdb.diffStore != nil {
-		if err := frdb.diffStore.Close(); err != nil {
-			errs = append(errs, err)
-		}
-	}
 	if frdb.stateStore != nil {
 		if err := frdb.stateStore.Close(); err != nil {
 			errs = append(errs, err)
@@ -94,17 +88,6 @@ func (frdb *freezerdb) Close() error {
 		return fmt.Errorf("%v", errs)
 	}
 	return nil
-}
-
-func (frdb *freezerdb) DiffStore() ethdb.KeyValueStore {
-	return frdb.diffStore
-}
-
-func (frdb *freezerdb) SetDiffStore(diff ethdb.KeyValueStore) {
-	if frdb.diffStore != nil {
-		frdb.diffStore.Close()
-	}
-	frdb.diffStore = diff
 }
 
 func (frdb *freezerdb) StateStore() ethdb.Database {
@@ -170,7 +153,6 @@ func (frdb *freezerdb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
 // nofreezedb is a database wrapper that disables freezer data retrievals.
 type nofreezedb struct {
 	ethdb.KeyValueStore
-	diffStore  ethdb.KeyValueStore
 	stateStore ethdb.Database
 	blockStore ethdb.Database
 }
@@ -238,14 +220,6 @@ func (db *nofreezedb) ResetTable(kind string, startAt uint64, onlyEmpty bool) er
 // SyncAncient returns an error as we don't have a backing chain freezer.
 func (db *nofreezedb) SyncAncient() error {
 	return errNotSupported
-}
-
-func (db *nofreezedb) DiffStore() ethdb.KeyValueStore {
-	return db.diffStore
-}
-
-func (db *nofreezedb) SetDiffStore(diff ethdb.KeyValueStore) {
-	db.diffStore = diff
 }
 
 func (db *nofreezedb) StateStore() ethdb.Database {
@@ -396,16 +370,14 @@ func (db *emptyfreezedb) SyncAncient() error {
 	return nil
 }
 
-func (db *emptyfreezedb) DiffStore() ethdb.KeyValueStore        { return db }
-func (db *emptyfreezedb) SetDiffStore(diff ethdb.KeyValueStore) {}
-func (db *emptyfreezedb) StateStore() ethdb.Database            { return db }
-func (db *emptyfreezedb) GetStateStore() ethdb.Database         { return db }
-func (db *emptyfreezedb) SetStateStore(state ethdb.Database)    {}
-func (db *emptyfreezedb) StateStoreReader() ethdb.Reader        { return db }
-func (db *emptyfreezedb) BlockStore() ethdb.Database            { return db }
-func (db *emptyfreezedb) SetBlockStore(block ethdb.Database)    {}
-func (db *emptyfreezedb) HasSeparateBlockStore() bool           { return false }
-func (db *emptyfreezedb) BlockStoreReader() ethdb.Reader        { return db }
+func (db *emptyfreezedb) StateStore() ethdb.Database         { return db }
+func (db *emptyfreezedb) GetStateStore() ethdb.Database      { return db }
+func (db *emptyfreezedb) SetStateStore(state ethdb.Database) {}
+func (db *emptyfreezedb) StateStoreReader() ethdb.Reader     { return db }
+func (db *emptyfreezedb) BlockStore() ethdb.Database         { return db }
+func (db *emptyfreezedb) SetBlockStore(block ethdb.Database) {}
+func (db *emptyfreezedb) HasSeparateBlockStore() bool        { return false }
+func (db *emptyfreezedb) BlockStoreReader() ethdb.Reader     { return db }
 func (db *emptyfreezedb) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {
 	return nil
 }

@@ -4226,6 +4226,10 @@ func (c *mockParlia) CalcDifficulty(chain consensus.ChainHeaderReader, time uint
 }
 
 func TestParliaBlobFeeReward(t *testing.T) {
+	testKey, _ := crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	// testAddr is the Ethereum address of the tester account.
+	testAddr := crypto.PubkeyToAddress(testKey.PublicKey)
+
 	// Have N headers in the freezer
 	frdir := t.TempDir()
 	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false, false, false, false, false)

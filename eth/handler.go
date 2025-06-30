@@ -42,7 +42,6 @@ import (
 	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
-	"github.com/ethereum/go-ethereum/eth/protocols/trust"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -443,11 +442,6 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		peer.Log().Error("Snapshot extension barrier failed", "err", err)
 		return err
 	}
-	trust, err := h.peers.waitTrustExtension(peer)
-	if err != nil {
-		peer.Log().Error("Trust extension barrier failed", "err", err)
-		return err
-	}
 	bsc, err := h.peers.waitBscExtension(peer)
 	if err != nil {
 		peer.Log().Error("Bsc extension barrier failed", "err", err)
@@ -505,7 +499,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	}
 
 	// Register the peer locally
-	if err := h.peers.registerPeer(peer, snap, trust, bsc); err != nil {
+	if err := h.peers.registerPeer(peer, snap, bsc); err != nil {
 		peer.Log().Error("Ethereum peer registration failed", "err", err)
 		return err
 	}
@@ -605,30 +599,6 @@ func (h *handler) runSnapExtension(peer *snap.Peer, handler snap.Handler) error 
 			}
 		}
 		peer.Log().Debug("Snapshot extension registration failed", "err", err)
-		return err
-	}
-	return handler(peer)
-}
-
-// runTrustExtension registers a `trust` peer into the joint eth/trust peerset and
-// starts handling inbound messages. As `trust` is only a satellite protocol to
-// `eth`, all subsystem registrations and lifecycle management will be done by
-// the main `eth` handler to prevent strange races.
-func (h *handler) runTrustExtension(peer *trust.Peer, handler trust.Handler) error {
-	if !h.incHandlers() {
-		return p2p.DiscQuitting
-	}
-	defer h.decHandlers()
-
-	if err := h.peers.registerTrustExtension(peer); err != nil {
-		if metrics.Enabled() {
-			if peer.Inbound() {
-				trust.IngressRegistrationErrorMeter.Mark(1)
-			} else {
-				trust.EgressRegistrationErrorMeter.Mark(1)
-			}
-		}
-		peer.Log().Error("Trust extension registration failed", "err", err)
 		return err
 	}
 	return handler(peer)

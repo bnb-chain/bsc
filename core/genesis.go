@@ -159,7 +159,7 @@ func hashAlloc(ga *types.GenesisAlloc, isVerkle bool) (common.Hash, error) {
 			statedb.SetState(addr, key, value)
 		}
 	}
-	root, _, err := statedb.Commit(0, false, false)
+	root, err := statedb.Commit(0, false, false)
 	return root, err
 }
 
@@ -191,7 +191,7 @@ func flushAlloc(ga *types.GenesisAlloc, triedb *triedb.Database) (common.Hash, e
 			statedb.SetState(addr, key, value)
 		}
 	}
-	root, _, err := statedb.Commit(0, false, false)
+	root, err := statedb.Commit(0, false, false)
 	if err != nil {
 		return common.Hash{}, err
 	}

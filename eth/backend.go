@@ -53,7 +53,6 @@ import (
 	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
-	"github.com/ethereum/go-ethereum/eth/protocols/trust"
 	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
@@ -335,15 +334,11 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 
 	bcOps := make([]core.BlockChainOption, 0)
-	if config.PersistDiff {
-		bcOps = append(bcOps, core.EnablePersistDiff(config.DiffBlock))
-	}
 	if stack.Config().EnableDoubleSignMonitor {
 		bcOps = append(bcOps, core.EnableDoubleSignChecker)
 	}
 
 	peers := newPeerSet()
-	bcOps = append(bcOps, core.EnableBlockValidator(chainConfig, config.TriesVerifyMode, peers))
 	// TODO (MariusVanDerWijden) get rid of shouldPreserve in a follow-up PR
 	shouldPreserve := func(header *types.Header) bool {
 		return false
@@ -765,9 +760,6 @@ func (s *Ethereum) Protocols() []p2p.Protocol {
 	if !s.config.DisableSnapProtocol && s.config.SnapshotCache > 0 {
 		protos = append(protos, snap.MakeProtocols((*snapHandler)(s.handler))...)
 	}
-	if s.config.EnableTrustProtocol {
-		protos = append(protos, trust.MakeProtocols((*trustHandler)(s.handler))...)
-	}
 	protos = append(protos, bsc.MakeProtocols((*bscHandler)(s.handler))...)
 
 	return protos
@@ -808,15 +800,6 @@ func (s *Ethereum) setupDiscovery() error {
 	// Add snap nodes from DNS.
 	if len(s.config.SnapDiscoveryURLs) > 0 {
 		iter, err := dnsclient.NewIterator(s.config.SnapDiscoveryURLs...)
-		if err != nil {
-			return err
-		}
-		s.discmix.AddSource(iter)
-	}
-
-	// Add trust nodes from DNS.
-	if len(s.config.TrustDiscoveryURLs) > 0 {
-		iter, err := dnsclient.NewIterator(s.config.TrustDiscoveryURLs...)
 		if err != nil {
 			return err
 		}

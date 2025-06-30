@@ -68,7 +68,6 @@ var (
 		utils.NoUSBFlag, // deprecated
 		utils.DirectBroadcastFlag,
 		utils.DisableSnapProtocolFlag,
-		utils.EnableTrustProtocolFlag,
 		utils.RangeLimitFlag,
 		utils.USBFlag,
 		utils.SmartCardDaemonPathFlag,
@@ -132,8 +131,6 @@ var (
 		// utils.CacheNoPrefetchFlag,
 		utils.CachePreimagesFlag,
 		utils.MultiDataBaseFlag,
-		utils.PersistDiffFlag,
-		utils.DiffBlockFlag,
 		utils.PruneAncientDataFlag,
 		utils.CacheLogSizeFlag,
 		utils.FDLimitFlag,
