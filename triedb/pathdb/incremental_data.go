@@ -662,3 +662,55 @@ func isCancun(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
 
 	return env.ChainCfg.IsCancun(num, time)
 }
+
+// FillEmptyBlocks fills empty blocks during directory switch to maintain chain continuity
+// This handles the case where empty blocks (blocks without state changes) are skipped during directory switching
+func (in *incrStore) FillEmptyBlocks(startBlock, endBlock uint64, incrDB *rawdb.IncrDB) error {
+	if startBlock > endBlock {
+		return fmt.Errorf("invalid block range: start %d > end %d", startBlock, endBlock)
+	}
+
+	log.Info("Filling empty blocks during directory switch",
+		"startBlock", startBlock, "endBlock", endBlock, "count", endBlock-startBlock+1)
+
+	env := in.GetFreezerEnv()
+	if env == nil {
+		return errors.New("freezer env is not available for empty block filling")
+	}
+
+	// Fill each empty block
+	for blockNum := startBlock; blockNum <= endBlock; blockNum++ {
+		// Reset empty chain table for this block
+		// For empty blocks, we need to determine if Cancun fork is active
+		blockHash := rawdb.ReadCanonicalHash(in.db.diskdb.BlockStore(), blockNum)
+		if blockHash == (common.Hash{}) {
+			log.Error("Cannot find canonical hash for empty block", "block", blockNum)
+			continue // Skip this block but continue with others
+		}
+
+		h, _ := rawdb.ReadHeaderAndRaw(in.db.diskdb.BlockStore(), blockHash, blockNum)
+		if h == nil {
+			log.Error("Cannot find header for empty block", "block", blockNum, "hash", blockHash.Hex())
+			continue // Skip this block but continue with others
+		}
+
+		// Reset chain table for this empty block
+		if err := rawdb.ResetEmptyIncrChainTable(incrDB.GetChainFreezer(), blockNum, isCancun(env, h.Number, h.Time)); err != nil {
+			log.Error("Failed to reset empty incr chain table for empty block", "block", blockNum, "err", err)
+			return fmt.Errorf("failed to reset chain table for empty block %d: %v", blockNum, err)
+		}
+
+		// Write chain data for this empty block (no state changes, so stateID = 0)
+		if err := writeIncrBlockToFreezer(env, in.db.diskdb.BlockStore(), incrDB, blockNum, 0); err != nil {
+			log.Error("Failed to write empty block to freezer", "block", blockNum, "err", err)
+			return fmt.Errorf("failed to write empty block %d to freezer: %v", blockNum, err)
+		}
+
+		log.Debug("Successfully filled empty block", "block", blockNum, "hash", blockHash.Hex())
+	}
+
+	log.Info("Successfully filled all empty blocks",
+		"startBlock", startBlock, "endBlock", endBlock, "count", endBlock-startBlock+1)
+
+	return nil
+}

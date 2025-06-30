@@ -296,6 +296,32 @@ func (idb *IncrDB) SwitchToNewDirectoryWithAsyncManager(blockNum uint64, asyncMa
 	idb.lock.Lock()
 	defer idb.lock.Unlock()
 
+	// Critical: Record the last block in old chain freezer before switching
+	// This is needed to detect and handle empty blocks that might be skipped
+	var oldChainLastBlock uint64
+	if idb.currDB != nil && idb.currDB.chainFreezer != nil {
+		ancients, err := idb.currDB.chainFreezer.Ancients()
+		if err != nil {
+			log.Error("Failed to get ancients from old chain freezer", "err", err)
+			return fmt.Errorf("failed to get old chain freezer ancients: %v", err)
+		}
+		tail, err := idb.currDB.chainFreezer.Tail()
+		if err != nil {
+			log.Error("Failed to get tail from old chain freezer", "err", err)
+			return fmt.Errorf("failed to get old chain freezer tail: %v", err)
+		}
+
+		// Calculate the actual last block number in old freezer
+		if ancients > tail {
+			oldChainLastBlock = ancients - 1 // ancients is count, so last block is ancients-1
+		} else {
+			oldChainLastBlock = 0
+		}
+
+		log.Info("Recorded old chain freezer state",
+			"lastBlock", oldChainLastBlock, "ancients", ancients, "tail", tail)
+	}
+
 	// Close current databases safely
 	if err := idb.closeCurrentDatabases(); err != nil {
 		return fmt.Errorf("failed to close current databases: %v", err)
@@ -313,10 +339,38 @@ func (idb *IncrDB) SwitchToNewDirectoryWithAsyncManager(blockNum uint64, asyncMa
 	// Update current database and directory
 	idb.currDB = db
 	idb.currentDir = newDir
-	// idb.blockCount.Store(0)
 	idb.blockCount = 0
 
-	log.Info("Successfully completed coordinated directory switch", "newDir", newDir)
+	// Critical: Check for block gap and handle empty blocks
+	// If blockNum > oldChainLastBlock + 1, there are empty blocks that need to be filled
+	if oldChainLastBlock > 0 && blockNum > oldChainLastBlock+1 {
+		emptyBlockStart := oldChainLastBlock + 1
+		emptyBlockEnd := blockNum - 1
+
+		log.Warn("Detected empty block gap during directory switch",
+			"oldLastBlock", oldChainLastBlock, "newStartBlock", blockNum,
+			"emptyBlockStart", emptyBlockStart, "emptyBlockEnd", emptyBlockEnd,
+			"gapSize", emptyBlockEnd-emptyBlockStart+1)
+
+		// Store gap information for later processing
+		// The async manager should handle filling these empty blocks
+		if filler, ok := asyncManager.(EmptyBlockFillerInterface); ok {
+			err := filler.FillEmptyBlocks(emptyBlockStart, emptyBlockEnd, idb)
+			if err != nil {
+				log.Error("Failed to fill empty blocks during directory switch",
+					"start", emptyBlockStart, "end", emptyBlockEnd, "err", err)
+				return fmt.Errorf("failed to fill empty blocks: %v", err)
+			}
+			log.Info("Successfully filled empty blocks during directory switch",
+				"start", emptyBlockStart, "end", emptyBlockEnd)
+		} else {
+			log.Warn("Async manager does not support empty block filling, gap may remain",
+				"start", emptyBlockStart, "end", emptyBlockEnd)
+		}
+	}
+
+	log.Info("Successfully completed coordinated directory switch", "newDir", newDir,
+		"oldLastBlock", oldChainLastBlock, "newStartBlock", blockNum)
 	return nil
 }
 
@@ -645,4 +699,10 @@ type AsyncWriteManagerInterface interface {
 	GetQueueLength() int
 	GetStats() (total, completed, failed uint64, queueLen int)
 	IsHealthy() bool
+}
+
+// EmptyBlockFillerInterface extends AsyncWriteManagerInterface to support empty block filling
+type EmptyBlockFillerInterface interface {
+	AsyncWriteManagerInterface
+	FillEmptyBlocks(startBlock, endBlock uint64, incrDB *IncrDB) error
 }
