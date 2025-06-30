@@ -22,6 +22,7 @@ type IncrDB struct {
 	baseDir    string
 	currentDir string
 	blockCount uint64
+	lastBlock  uint64
 	lock       sync.RWMutex
 
 	// Directory switching control
@@ -298,7 +299,6 @@ func (idb *IncrDB) SwitchToNewDirectoryWithAsyncManager(blockNum uint64, asyncMa
 
 	// Critical: Record the last block in old chain freezer before switching
 	// This is needed to detect and handle empty blocks that might be skipped
-	var oldChainLastBlock uint64
 	if idb.currDB != nil && idb.currDB.chainFreezer != nil {
 		ancients, err := idb.currDB.chainFreezer.Ancients()
 		if err != nil {
@@ -311,15 +311,9 @@ func (idb *IncrDB) SwitchToNewDirectoryWithAsyncManager(blockNum uint64, asyncMa
 			return fmt.Errorf("failed to get old chain freezer tail: %v", err)
 		}
 
-		// Calculate the actual last block number in old freezer
-		if ancients > tail {
-			oldChainLastBlock = ancients - 1 // ancients is count, so last block is ancients-1
-		} else {
-			oldChainLastBlock = 0
-		}
-
+		idb.lastBlock = ancients - 1
 		log.Info("Recorded old chain freezer state",
-			"lastBlock", oldChainLastBlock, "ancients", ancients, "tail", tail)
+			"lastBlock", idb.lastBlock, "ancients", ancients, "tail", tail)
 	}
 
 	// Close current databases safely
@@ -341,45 +335,8 @@ func (idb *IncrDB) SwitchToNewDirectoryWithAsyncManager(blockNum uint64, asyncMa
 	idb.currentDir = newDir
 	idb.blockCount = 0
 
-	// Critical: Check for block gap and handle empty blocks
-	// If blockNum > oldChainLastBlock + 1, there are empty blocks that need to be filled
-	if oldChainLastBlock > 0 && blockNum > oldChainLastBlock+1 {
-		emptyBlockStart := oldChainLastBlock + 1
-		emptyBlockEnd := blockNum - 1
-
-		log.Warn("Detected empty block gap during directory switch",
-			"oldLastBlock", oldChainLastBlock, "newStartBlock", blockNum,
-			"emptyBlockStart", emptyBlockStart, "emptyBlockEnd", emptyBlockEnd,
-			"gapSize", emptyBlockEnd-emptyBlockStart+1)
-
-		// Instead of filling blocks immediately (which can cause deadlock),
-		// schedule the empty block filling to be done asynchronously after directory switch
-		if filler, ok := asyncManager.(EmptyBlockFillerInterface); ok {
-			// Schedule async filling without blocking the directory switch
-			go func() {
-				// Small delay to ensure directory switch is fully completed
-				time.Sleep(100 * time.Millisecond)
-
-				err := filler.FillEmptyBlocks(emptyBlockStart, emptyBlockEnd, idb)
-				if err != nil {
-					log.Error("Failed to fill empty blocks after directory switch",
-						"start", emptyBlockStart, "end", emptyBlockEnd, "err", err)
-				} else {
-					log.Info("Successfully filled empty blocks after directory switch",
-						"start", emptyBlockStart, "end", emptyBlockEnd)
-				}
-			}()
-
-			log.Info("Scheduled async empty block filling after directory switch",
-				"start", emptyBlockStart, "end", emptyBlockEnd)
-		} else {
-			log.Warn("Async manager does not support empty block filling, gap may remain",
-				"start", emptyBlockStart, "end", emptyBlockEnd)
-		}
-	}
-
 	log.Info("Successfully completed coordinated directory switch", "newDir", newDir,
-		"oldLastBlock", oldChainLastBlock, "newStartBlock", blockNum)
+		"oldLastBlock", idb.lastBlock, "newStartBlock", blockNum)
 	return nil
 }
 
@@ -454,6 +411,13 @@ func (idb *IncrDB) GetKVDB() ethdb.KeyValueStore {
 		return idb.currDB.kvDB
 	}
 	return nil
+}
+
+// GetLastBlock returns the last block number
+func (idb *IncrDB) GetLastBlock() uint64 {
+	idb.lock.RLock()
+	defer idb.lock.RUnlock()
+	return idb.lastBlock
 }
 
 // Close closes the IncrDB and all underlying databases

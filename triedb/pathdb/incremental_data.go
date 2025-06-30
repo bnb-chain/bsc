@@ -71,28 +71,17 @@ type incrStore struct {
 	lock    sync.RWMutex
 
 	lastBlock atomic.Uint64
-
-	// Empty block gap tracking
-	pendingEmptyBlocks chan emptyBlockRange
-}
-
-// emptyBlockRange represents a range of empty blocks that need to be filled
-type emptyBlockRange struct {
-	startBlock uint64
-	endBlock   uint64
-	incrDB     *rawdb.IncrDB
 }
 
 // NewIncrStore creates a new incremental store with async write capability
 func NewIncrStore(db *Database, incrDB *rawdb.IncrDB) *incrStore {
 	store := &incrStore{
-		db:                 db,
-		incrDB:             incrDB,
-		writeQueue:         make(chan *diffLayer, 100),
-		stopChan:           make(chan struct{}),
-		started:            false,
-		lastBlock:          atomic.Uint64{},
-		pendingEmptyBlocks: make(chan emptyBlockRange, 100),
+		db:         db,
+		incrDB:     incrDB,
+		writeQueue: make(chan *diffLayer, 100),
+		stopChan:   make(chan struct{}),
+		started:    false,
+		lastBlock:  atomic.Uint64{},
 	}
 
 	return store
@@ -168,17 +157,15 @@ func (in *incrStore) Stop() {
 		return
 	}
 
-	log.Info("Stopping incremental store", "pending_tasks", in.GetQueueLength(),
-		"pending_empty_blocks", len(in.pendingEmptyBlocks))
+	log.Info("Stopping incremental store", "pending_tasks", in.GetQueueLength())
 
 	// Set a timeout for graceful shutdown
 	shutdownTimeout := 30 * time.Second
 	shutdownComplete := make(chan struct{})
 
 	go func() {
-		// Drain both queues first
+		// Drain queue first
 		in.drainQueue()
-		in.drainEmptyBlockQueue()
 
 		// Stop workers
 		close(in.stopChan)
@@ -193,8 +180,7 @@ func (in *incrStore) Stop() {
 		log.Info("Incremental store stopped gracefully")
 	case <-time.After(shutdownTimeout):
 		log.Warn("Incremental store shutdown timeout, forcing stop",
-			"timeout", shutdownTimeout, "remaining_tasks", in.GetQueueLength(),
-			"remaining_empty_blocks", len(in.pendingEmptyBlocks))
+			"timeout", shutdownTimeout, "remaining_tasks", in.GetQueueLength())
 	}
 
 	in.started = false
@@ -208,13 +194,18 @@ func (in *incrStore) commit(bottom *diffLayer) error {
 	}
 
 	// Check if directory switch is needed before committing
-	// Now it's safe to do this synchronously since diskLayer.commit releases its lock
 	switched, err := in.incrDB.CheckAndInitiateSwitch(bottom.block, in)
 	if err != nil {
 		return fmt.Errorf("failed to switch directory: %v", err)
 	}
+
+	// If directory switched, check and fill empty blocks
 	if switched {
-		log.Info("Directory switch completed before task submission", "blockNumber", bottom.block)
+		log.Info("Directory switch completed, checking for empty blocks", "blockNumber", bottom.block)
+		if err := in.checkAndFillEmptyBlocks(bottom.block); err != nil {
+			log.Error("Failed to fill empty blocks after directory switch", "block", bottom.block, "err", err)
+			// Don't fail the commit, just log the error
+		}
 	}
 
 	atomic.AddUint64(&in.stats.totalTasks, 1)
@@ -265,26 +256,6 @@ func (in *incrStore) worker() {
 			}
 
 			in.updateStats(err)
-
-		case emptyRange := <-in.pendingEmptyBlocks:
-			// Process empty block range in the worker context
-			// This is safer than processing during directory switch
-			log.Info("Worker processing empty block range",
-				"startBlock", emptyRange.startBlock, "endBlock", emptyRange.endBlock)
-
-			startTime := time.Now()
-			err := in.fillEmptyBlocksSync(emptyRange.startBlock, emptyRange.endBlock, emptyRange.incrDB)
-			processingTime := time.Since(startTime)
-
-			if err != nil {
-				log.Error("Worker failed to fill empty blocks",
-					"startBlock", emptyRange.startBlock, "endBlock", emptyRange.endBlock,
-					"processingTime", processingTime, "err", err)
-			} else {
-				log.Info("Worker successfully filled empty blocks",
-					"startBlock", emptyRange.startBlock, "endBlock", emptyRange.endBlock,
-					"processingTime", processingTime)
-			}
 
 		case <-in.stopChan:
 			log.Debug("Worker stopping")
@@ -351,21 +322,6 @@ func (in *incrStore) processWriteTask(dl *diffLayer) error {
 		log.Error("Failed to write state data", "block", dl.block, "stateID", dl.stateID(), "err", err)
 		return err
 	}
-
-	// Only update lastBlock after successful completion of all operations
-	// Use Compare-And-Swap to ensure we only advance, never go backward
-	// for {
-	// 	current := in.lastBlock.Load()
-	// 	if dl.block <= current {
-	// 		// Another task has already processed a later block, no need to update
-	// 		break
-	// 	}
-	// 	if in.lastBlock.CompareAndSwap(current, dl.block) {
-	// 		log.Debug("Updated lastBlock", "from", current, "to", dl.block)
-	// 		break
-	// 	}
-	// 	// CAS failed, another goroutine updated it, retry
-	// }
 
 	return nil
 }
@@ -467,18 +423,6 @@ func (in *incrStore) drainQueue() {
 			break
 		}
 		log.Debug("Waiting for queue to drain", "remaining", queueLen)
-		time.Sleep(100 * time.Millisecond)
-	}
-}
-
-// drainEmptyBlockQueue waits for all pending empty block requests to be processed
-func (in *incrStore) drainEmptyBlockQueue() {
-	for {
-		emptyBlockQueueLen := len(in.pendingEmptyBlocks)
-		if emptyBlockQueueLen == 0 {
-			break
-		}
-		log.Debug("Waiting for empty block queue to drain", "remaining", emptyBlockQueueLen)
 		time.Sleep(100 * time.Millisecond)
 	}
 }
@@ -710,113 +654,84 @@ func isCancun(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
 	return env.ChainCfg.IsCancun(num, time)
 }
 
-// FillEmptyBlocks schedules empty block filling to be handled by worker (non-blocking)
-// This avoids deadlock issues during directory switching
+// FillEmptyBlocks is kept for interface compatibility but not used
+// Empty block filling is now handled directly in commit()
 func (in *incrStore) FillEmptyBlocks(startBlock, endBlock uint64, incrDB *rawdb.IncrDB) error {
-	if startBlock > endBlock {
-		return fmt.Errorf("invalid block range: start %d > end %d", startBlock, endBlock)
-	}
-
-	log.Info("Scheduling empty block filling",
-		"startBlock", startBlock, "endBlock", endBlock, "count", endBlock-startBlock+1)
-
-	// Schedule the empty block range to be processed by worker
-	emptyRange := emptyBlockRange{
-		startBlock: startBlock,
-		endBlock:   endBlock,
-		incrDB:     incrDB,
-	}
-
-	select {
-	case in.pendingEmptyBlocks <- emptyRange:
-		log.Info("Successfully scheduled empty block filling",
-			"startBlock", startBlock, "endBlock", endBlock)
-		return nil
-	default:
-		log.Warn("Empty block queue is full, skipping range",
-			"startBlock", startBlock, "endBlock", endBlock)
-		return errors.New("empty block queue is full")
-	}
+	// This method is kept for interface compatibility but empty block filling
+	// is now handled directly in the commit() method for simplicity
+	log.Info("FillEmptyBlocks called but empty block filling is handled in commit()",
+		"startBlock", startBlock, "endBlock", endBlock)
+	return nil
 }
 
-// fillEmptyBlocksSync performs the actual empty block filling synchronously
-// This should only be called from worker context to avoid deadlocks
-func (in *incrStore) fillEmptyBlocksSync(startBlock, endBlock uint64, incrDB *rawdb.IncrDB) error {
-	if startBlock > endBlock {
-		return fmt.Errorf("invalid block range: start %d > end %d", startBlock, endBlock)
+// checkAndFillEmptyBlocks checks for gaps and fills empty blocks after directory switch
+func (in *incrStore) checkAndFillEmptyBlocks(currentBlock uint64) error {
+	lastBlock := in.incrDB.GetLastBlock()
+
+	log.Info("Checking for empty blocks after directory switch",
+		"currentBlock", currentBlock, "freezerLastBlock", lastBlock)
+
+	// If there's a gap between freezer and current block, fill it
+	if currentBlock > lastBlock+1 {
+		startBlock := lastBlock + 1
+		endBlock := currentBlock - 1
+
+		log.Info("Found empty block gap, filling",
+			"startBlock", startBlock, "endBlock", endBlock, "count", endBlock-startBlock+1)
+
+		// Fill the gap using existing writeChainData logic
+		for blockNum := startBlock; blockNum <= endBlock; blockNum++ {
+			if err := in.fillSingleEmptyBlock(blockNum); err != nil {
+				log.Error("Failed to fill empty block", "block", blockNum, "err", err)
+				return fmt.Errorf("failed to fill empty block %d: %v", blockNum, err)
+			}
+			log.Info("Filled empty block", "block", blockNum)
+		}
+
+		log.Info("Successfully filled all empty blocks",
+			"startBlock", startBlock, "endBlock", endBlock, "count", endBlock-startBlock+1)
+	} else {
+		log.Info("No empty blocks to fill", "currentBlock", currentBlock, "freezerLastBlock", lastBlock)
 	}
 
-	log.Info("Starting synchronous empty block filling",
-		"startBlock", startBlock, "endBlock", endBlock, "count", endBlock-startBlock+1)
+	return nil
+}
 
-	// Check if we can access the freezer environment
+// fillSingleEmptyBlock fills a single empty block, reusing existing logic
+func (in *incrStore) fillSingleEmptyBlock(blockNum uint64) error {
+	// Get freezer environment
 	env := in.GetFreezerEnv()
 	if env == nil {
-		log.Error("fillEmptyBlocksSync: freezer env is not available")
-		return errors.New("freezer env is not available for empty block filling")
+		return errors.New("freezer env not available")
 	}
-	log.Debug("fillEmptyBlocksSync: freezer env obtained successfully")
 
-	// Try to access diskdb to see if it's available
-	diskdb := in.GetDiskDB()
-	if diskdb == nil {
-		log.Error("fillEmptyBlocksSync: diskdb is not available")
-		return errors.New("diskdb is not available")
-	}
-	log.Debug("fillEmptyBlocksSync: diskdb obtained successfully")
-
-	// Try to get BlockStore to see if it causes blocking
-	log.Debug("fillEmptyBlocksSync: attempting to get BlockStore")
-	blockStore := diskdb.BlockStore()
+	// Get block store
+	blockStore := in.db.diskdb.BlockStore()
 	if blockStore == nil {
-		log.Error("fillEmptyBlocksSync: BlockStore is nil")
-		return errors.New("BlockStore is not available")
-	}
-	log.Debug("fillEmptyBlocksSync: BlockStore obtained successfully")
-
-	log.Info("fillEmptyBlocksSync: all dependencies ready, starting to fill blocks",
-		"startBlock", startBlock, "endBlock", endBlock)
-
-	// Fill each empty block
-	for blockNum := startBlock; blockNum <= endBlock; blockNum++ {
-		log.Debug("fillEmptyBlocksSync: processing block", "block", blockNum)
-
-		// Try to read canonical hash
-		blockHash := rawdb.ReadCanonicalHash(blockStore, blockNum)
-		if blockHash == (common.Hash{}) {
-			log.Error("fillEmptyBlocksSync: cannot find canonical hash", "block", blockNum)
-			continue // Skip this block but continue with others
-		}
-		log.Debug("fillEmptyBlocksSync: found canonical hash", "block", blockNum, "hash", blockHash.Hex())
-
-		// Try to read header
-		h, _ := rawdb.ReadHeaderAndRaw(blockStore, blockHash, blockNum)
-		if h == nil {
-			log.Error("fillEmptyBlocksSync: cannot find header", "block", blockNum, "hash", blockHash.Hex())
-			continue // Skip this block but continue with others
-		}
-		log.Debug("fillEmptyBlocksSync: found header", "block", blockNum)
-
-		// Reset chain table for this empty block
-		log.Debug("fillEmptyBlocksSync: resetting chain table", "block", blockNum)
-		if err := rawdb.ResetEmptyIncrChainTable(incrDB.GetChainFreezer(), blockNum, isCancun(env, h.Number, h.Time)); err != nil {
-			log.Error("fillEmptyBlocksSync: failed to reset chain table", "block", blockNum, "err", err)
-			return fmt.Errorf("failed to reset chain table for empty block %d: %v", blockNum, err)
-		}
-		log.Debug("fillEmptyBlocksSync: chain table reset successfully", "block", blockNum)
-
-		// Write chain data for this empty block (no state changes, so stateID = 0)
-		log.Debug("fillEmptyBlocksSync: writing block to freezer", "block", blockNum)
-		if err := writeIncrBlockToFreezer(env, blockStore, incrDB, blockNum, 0); err != nil {
-			log.Error("fillEmptyBlocksSync: failed to write block to freezer", "block", blockNum, "err", err)
-			return fmt.Errorf("failed to write empty block %d to freezer: %v", blockNum, err)
-		}
-
-		log.Info("fillEmptyBlocksSync: successfully filled empty block", "block", blockNum, "hash", blockHash.Hex())
+		return errors.New("block store not available")
 	}
 
-	log.Info("fillEmptyBlocksSync: successfully completed",
-		"startBlock", startBlock, "endBlock", endBlock, "count", endBlock-startBlock+1)
+	// Check if block exists
+	blockHash := rawdb.ReadCanonicalHash(blockStore, blockNum)
+	if blockHash == (common.Hash{}) {
+		return fmt.Errorf("canonical hash not found for block %d", blockNum)
+	}
+
+	h, _ := rawdb.ReadHeaderAndRaw(blockStore, blockHash, blockNum)
+	if h == nil {
+		return fmt.Errorf("block header not found for block %d", blockNum)
+	}
+
+	// Reset chain table for this empty block
+	chainFreezer := in.incrDB.GetChainFreezer()
+	if err := rawdb.ResetEmptyIncrChainTable(chainFreezer, blockNum, isCancun(env, h.Number, h.Time)); err != nil {
+		return fmt.Errorf("failed to reset chain table: %v", err)
+	}
+
+	// Write the empty block (stateID = 0 for empty blocks)
+	if err := writeIncrBlockToFreezer(env, blockStore, in.incrDB, blockNum, 0); err != nil {
+		return fmt.Errorf("failed to write block to freezer: %v", err)
+	}
 
 	return nil
 }
