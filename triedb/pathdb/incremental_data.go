@@ -149,11 +149,13 @@ func (in *incrStore) commit(bottom *diffLayer) error {
 
 	// Check if directory switch is needed before committing to avoid deadlock.
 	// This prevents the worker from being stuck while trying to switch directories
-	if in.incrDB.IsBlockLimitReached() && !in.incrDB.IsSwitching() {
-		log.Info("Block limit reached, initiating directory switch before task submission", "blockNumber", bottom.block)
-		if err := in.incrDB.SwitchToNewDirectoryWithAsyncManager(bottom.block, in); err != nil {
-			return fmt.Errorf("failed to switch directory: %v", err)
-		}
+	// Use atomic check-and-switch to prevent race conditions
+	switched, err := in.incrDB.CheckAndInitiateSwitch(bottom.block, in)
+	if err != nil {
+		return fmt.Errorf("failed to switch directory: %v", err)
+	}
+	if switched {
+		log.Info("Directory switch completed before task submission", "blockNumber", bottom.block)
 	}
 
 	atomic.AddUint64(&in.stats.totalTasks, 1)
@@ -290,6 +292,11 @@ func (in *incrStore) writeChainData(blockNumber, stateID uint64) error {
 		log.Error("Failed to get ancients from incr chain freezer", "err", err)
 		return err
 	}
+
+	// Get current stats for debugging
+	currentDir, blockCount, blockLimit := in.incrDB.GetCurrentStats()
+	log.Debug("writeChainData debug info", "blockNumber", blockNumber, "freezerHead", head,
+		"incrBlockCount", blockCount, "blockLimit", blockLimit, "currentDir", currentDir)
 
 	var startBlock uint64
 	if blockNumber == head {

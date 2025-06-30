@@ -563,7 +563,25 @@ func (idb *IncrDB) IsBlockLimitReached() bool {
 	idb.lock.RLock()
 	defer idb.lock.RUnlock()
 
-	return idb.info.blockLimit > 0 && idb.blockCount >= idb.info.blockLimit
+	if idb.info.blockLimit == 0 {
+		return false
+	}
+
+	// Use actual freezer count instead of internal blockCount to avoid race conditions
+	if idb.currDB != nil && idb.currDB.chainFreezer != nil {
+		ancients, err := idb.currDB.chainFreezer.Ancients()
+		if err != nil {
+			log.Crit("Failed to get ancients count for limit check", "err", err)
+		}
+		tail, err := idb.currDB.chainFreezer.Tail()
+		if err != nil {
+			log.Crit("Failed to get tail for limit check", "err", err)
+		}
+		return ancients-tail >= idb.info.blockLimit
+	}
+
+	// Fallback to blockCount if freezer is not available
+	return idb.blockCount >= idb.info.blockLimit
 }
 
 // IsSwitching returns true if directory switching is in progress
@@ -572,6 +590,51 @@ func (idb *IncrDB) IsSwitching() bool {
 	defer idb.switchMutex.Unlock()
 
 	return idb.switching
+}
+
+// CheckAndInitiateSwitch safely checks if directory switch is needed and initiates it
+// Returns true if switch was initiated, false if not needed or already in progress
+func (idb *IncrDB) CheckAndInitiateSwitch(blockNum uint64, asyncManager AsyncWriteManagerInterface) (bool, error) {
+	// First check without lock (fast path)
+	if !idb.IsBlockLimitReached() || idb.IsSwitching() {
+		return false, nil
+	}
+
+	// Double-checked locking to prevent race conditions
+	idb.switchMutex.Lock()
+	if idb.switching {
+		// Another goroutine already initiated the switch
+		idb.switchMutex.Unlock()
+		return false, nil
+	}
+
+	// Check limit again with proper lock to ensure consistency
+	idb.lock.RLock()
+	limitReached := idb.info.blockLimit > 0
+	if limitReached && idb.currDB != nil && idb.currDB.chainFreezer != nil {
+		ancients, err := idb.currDB.chainFreezer.Ancients()
+		if err != nil {
+			log.Error("Failed to get ancients count for switch check", "err", err)
+		}
+		tail, err := idb.currDB.chainFreezer.Tail()
+		if err != nil {
+			log.Crit("Failed to get tail for limit check", "err", err)
+		}
+		limitReached = ancients-tail >= idb.info.blockLimit
+	}
+	idb.lock.RUnlock()
+
+	if !limitReached {
+		idb.switchMutex.Unlock()
+		return false, nil
+	}
+
+	// We need to switch and we're the first to acquire the switch lock
+	idb.switchMutex.Unlock()
+
+	log.Info("Initiating directory switch", "blockNum", blockNum)
+	err := idb.SwitchToNewDirectoryWithAsyncManager(blockNum, asyncManager)
+	return true, err
 }
 
 // AsyncWriteManagerInterface defines the interface for async write manager
