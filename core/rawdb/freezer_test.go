@@ -469,7 +469,7 @@ func TestFreezer_ResetTailMeta_WithAdditionTable(t *testing.T) {
 		return nil
 	})
 	require.NoError(t, err)
-	require.NoError(t, f.Sync())
+	require.NoError(t, f.SyncAncient())
 
 	var offset uint64 = 10000
 	require.NoError(t, f.resetTailMeta(offset))
@@ -550,7 +550,7 @@ func TestFreezer_ResetTailMeta_EmptyTable(t *testing.T) {
 		return nil
 	})
 	require.NoError(t, err)
-	require.NoError(t, f.Sync())
+	require.NoError(t, f.SyncAncient())
 
 	// truncate tail
 	_, err = f.TruncateTail(offset + 2)
