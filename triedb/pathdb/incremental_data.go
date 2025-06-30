@@ -98,15 +98,15 @@ func (in *incrStore) Start() {
 	}
 
 	// Initialize lastBlock from database to avoid inconsistency after restart
-	if err := in.initializeLastBlock(); err != nil {
-		log.Error("Failed to initialize lastBlock from database", "error", err)
-	}
+	// if err := in.initializeLastBlock(); err != nil {
+	// 	log.Error("Failed to initialize lastBlock from database", "error", err)
+	// }
 
 	in.wg.Add(1)
 	go in.worker()
 
 	in.started = true
-	log.Info("Incremental store async workers started", "lastBlock", in.lastBlock.Load())
+	log.Info("Incremental store async workers started")
 }
 
 // initializeLastBlock initializes lastBlock from the current database state
@@ -274,26 +274,31 @@ func (in *incrStore) processWriteTask(dl *diffLayer) error {
 	}
 
 	// Get current lastBlock atomically to avoid race conditions
-	currentLastBlock := in.lastBlock.Load()
+	// currentLastBlock := in.lastBlock.Load()
 
 	// Handle potential gaps in block sequence
 	// Use Compare-And-Swap to ensure atomic update and avoid race conditions
-	if dl.block > currentLastBlock+1 {
-		// There's a gap, we need to reset from the next expected block
-		resetFromBlock := currentLastBlock + 1
-		log.Info("Detected block gap, resetting empty incr chain table",
-			"currentLastBlock", currentLastBlock, "processingBlock", dl.block, "resetFromBlock", resetFromBlock)
+	// if dl.block > currentLastBlock+1 {
+	// 	// There's a gap, we need to reset from the next expected block
+	// 	resetFromBlock := currentLastBlock + 1
+	// 	log.Info("Detected block gap, resetting empty incr chain table",
+	// 		"currentLastBlock", currentLastBlock, "processingBlock", dl.block, "resetFromBlock", resetFromBlock)
 
-		if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), resetFromBlock, isCancun(env, h.Number, h.Time)); err != nil {
-			log.Error("Failed to reset empty incr chain freezer from gap", "resetFromBlock", resetFromBlock, "processingBlock", dl.block, "err", err)
-			return err
-		}
-	} else {
-		// Normal case or reprocessing the same block
-		if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), dl.block, isCancun(env, h.Number, h.Time)); err != nil {
-			log.Error("Failed to reset empty incr chain freezer", "block", dl.block, "err", err)
-			return err
-		}
+	// 	if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), resetFromBlock, isCancun(env, h.Number, h.Time)); err != nil {
+	// 		log.Error("Failed to reset empty incr chain freezer from gap", "resetFromBlock", resetFromBlock, "processingBlock", dl.block, "err", err)
+	// 		return err
+	// 	}
+	// } else {
+	// 	// Normal case or reprocessing the same block
+	// 	if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), dl.block, isCancun(env, h.Number, h.Time)); err != nil {
+	// 		log.Error("Failed to reset empty incr chain freezer", "block", dl.block, "err", err)
+	// 		return err
+	// 	}
+	// }
+
+	if err := rawdb.ResetEmptyIncrChainTable(in.incrDB.GetChainFreezer(), dl.block, isCancun(env, h.Number, h.Time)); err != nil {
+		log.Error("Failed to reset empty incr chain freezer", "block", dl.block, "err", err)
+		return err
 	}
 
 	// Write chain data first
@@ -314,18 +319,18 @@ func (in *incrStore) processWriteTask(dl *diffLayer) error {
 
 	// Only update lastBlock after successful completion of all operations
 	// Use Compare-And-Swap to ensure we only advance, never go backward
-	for {
-		current := in.lastBlock.Load()
-		if dl.block <= current {
-			// Another task has already processed a later block, no need to update
-			break
-		}
-		if in.lastBlock.CompareAndSwap(current, dl.block) {
-			log.Debug("Updated lastBlock", "from", current, "to", dl.block)
-			break
-		}
-		// CAS failed, another goroutine updated it, retry
-	}
+	// for {
+	// 	current := in.lastBlock.Load()
+	// 	if dl.block <= current {
+	// 		// Another task has already processed a later block, no need to update
+	// 		break
+	// 	}
+	// 	if in.lastBlock.CompareAndSwap(current, dl.block) {
+	// 		log.Debug("Updated lastBlock", "from", current, "to", dl.block)
+	// 		break
+	// 	}
+	// 	// CAS failed, another goroutine updated it, retry
+	// }
 
 	return nil
 }
