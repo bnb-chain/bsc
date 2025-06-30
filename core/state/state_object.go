@@ -167,6 +167,11 @@ func (s *stateObject) getOriginStorage(key common.Hash) (common.Hash, bool) {
 	}
 	// if L1 cache miss, try to get it from shared pool
 	if s.sharedOriginStorage != nil {
+		if s.db.isHertzfix {
+			if _, destructed := s.db.stateObjectsDestruct[s.address]; destructed {
+				return common.Hash{}, false
+			}
+		}
 		val, ok := s.sharedOriginStorage.Load(key)
 		if !ok {
 			return common.Hash{}, false
