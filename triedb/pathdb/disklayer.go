@@ -315,8 +315,17 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 				"incrBlockStartNumber", dl.db.config.IncrBlockStartNumber)
 		}
 
+		// Critical fix: Release the lock before calling incremental commit to avoid deadlock
+		// The incremental commit may need to wait for workers, which might need to access diskLayer
+		dl.lock.Unlock()
+
 		// Commit incremental data with retry mechanism
-		if err := dl.commitIncrDataWithRetry(bottom); err != nil {
+		err := dl.commitIncrDataWithRetry(bottom)
+
+		// Re-acquire the lock after incremental commit
+		dl.lock.Lock()
+
+		if err != nil {
 			log.Error("Failed to commit incremental data after retries", "err", err)
 			return nil, err
 		}

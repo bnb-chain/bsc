@@ -194,19 +194,14 @@ func (in *incrStore) commit(bottom *diffLayer) error {
 		return errors.New("incremental store not started")
 	}
 
-	// Check if directory switch is needed but don't wait for completion to avoid deadlock
-	// Only check if we need to switch, but don't block on the actual switch operation
-	if in.shouldInitiateSwitch() {
-		// Schedule switch asynchronously to avoid deadlock
-		go func() {
-			switched, err := in.incrDB.CheckAndInitiateSwitch(bottom.block, in)
-			if err != nil {
-				log.Error("Failed to initiate directory switch", "block", bottom.block, "error", err)
-			}
-			if switched {
-				log.Info("Directory switch completed asynchronously", "blockNumber", bottom.block)
-			}
-		}()
+	// Check if directory switch is needed before committing
+	// Now it's safe to do this synchronously since diskLayer.commit releases its lock
+	switched, err := in.incrDB.CheckAndInitiateSwitch(bottom.block, in)
+	if err != nil {
+		return fmt.Errorf("failed to switch directory: %v", err)
+	}
+	if switched {
+		log.Info("Directory switch completed before task submission", "blockNumber", bottom.block)
 	}
 
 	atomic.AddUint64(&in.stats.totalTasks, 1)
@@ -236,17 +231,6 @@ func (in *incrStore) commit(bottom *diffLayer) error {
 		in.LogStats()
 		return fmt.Errorf("task queue is full (length %d, block %d)", queueLen, bottom.block)
 	}
-}
-
-// shouldInitiateSwitch checks if directory switch should be initiated without blocking
-func (in *incrStore) shouldInitiateSwitch() bool {
-	// Fast path: if already switching or limit not reached, no need to switch
-	if in.incrDB.IsSwitching() {
-		return false
-	}
-
-	// Check if block limit is reached
-	return in.incrDB.IsBlockLimitReached()
 }
 
 // worker processes write tasks asynchronously
