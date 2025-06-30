@@ -287,7 +287,17 @@ func (in *incrStore) writeChainData(blockNumber, stateID uint64) error {
 		return errors.New("freezer env is not available")
 	}
 
-	head, err := in.incrDB.GetChainFreezer().Ancients()
+	// Wait for any ongoing directory switch to complete BEFORE getting freezer reference
+	// This ensures we get a consistent freezer instance for the entire operation
+	in.incrDB.WaitForSwitchComplete()
+
+	// Get a consistent freezer reference that won't change during this operation
+	freezer := in.incrDB.GetChainFreezer()
+	if freezer == nil {
+		return errors.New("chain freezer is not available")
+	}
+
+	head, err := freezer.Ancients()
 	if err != nil {
 		log.Error("Failed to get ancients from incr chain freezer", "err", err)
 		return err

@@ -154,6 +154,11 @@ func (idb *IncrDB) waitForSwitchComplete() {
 	}
 }
 
+// WaitForSwitchComplete waits until directory switching is complete (public version)
+func (idb *IncrDB) WaitForSwitchComplete() {
+	idb.waitForSwitchComplete()
+}
+
 // WriteIncrBlockData writes incremental block data and checks if directory switch is needed
 func (idb *IncrDB) WriteIncrBlockData(number, id uint64, hash, header, body, receipts, td, sidecars []byte, isCancun bool) error {
 	// Wait for any ongoing directory switch to complete
@@ -167,7 +172,6 @@ func (idb *IncrDB) WriteIncrBlockData(number, id uint64, hash, header, body, rec
 		return err
 	}
 	idb.blockCount++
-	// idb.blockCount.Store(number + 1)
 	log.Debug("Block written to IncrDB", "blockNum", number, "currentDir", idb.currentDir, "blockCount", idb.blockCount)
 
 	return nil
