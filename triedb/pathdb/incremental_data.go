@@ -336,7 +336,7 @@ func (in *incrStore) writeChainData(blockNumber, stateID uint64) error {
 		}
 	}
 
-	log.Debug("Incremental block data processing completed",
+	log.Info("Incremental block data processing completed",
 		"startBlock", startBlock, "endBlock", blockNumber, "totalProcessed", blockNumber-startBlock+1)
 	return nil
 }
