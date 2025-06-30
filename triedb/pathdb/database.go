@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"sync"
@@ -752,8 +751,7 @@ func (db *Database) DeleteTrieJournal(writer ethdb.KeyValueWriter) error {
 }
 
 func (db *Database) InsertIncrState(incrDir string) error {
-	incrStatePath := filepath.Join(incrDir, rawdb.MerkleStateFreezerName)
-	incrStateFreezer, err := rawdb.OpenIncrStateFreezer(incrStatePath, true, 0)
+	incrStateFreezer, err := rawdb.OpenIncrStateFreezer(incrDir, true, 0)
 	if err != nil {
 		log.Error("Failed to open incremental state freezer", "err", err)
 		return err
