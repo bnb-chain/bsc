@@ -1416,7 +1416,7 @@ func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
 	log.Info("Starting direct write of incremental data to chainFreezer")
 	baseHead, _ := chainDB.Ancients()
 	if tail <= baseHead && baseHead <= ancients {
-		log.Warn("There are block overlap", "number", baseHead-tail, "incr_tail", tail, "base_head", baseHead)
+		log.Warn("There are block data overlap", "number", baseHead-tail, "incr_tail", tail, "base_head", baseHead)
 		_, err = chainDB.ModifyAncients(func(op ethdb.AncientWriteOp) error {
 			for i := baseHead; i < ancients; i++ {
 				hashBytes, err := rawdb.ReadIncrChainHash(incrChainFreezer, i)
@@ -1490,7 +1490,7 @@ func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
 			return nil
 		})
 	} else {
-		log.Crit("There are data gap", "tail", tail, "baseHead", baseHead)
+		log.Crit("There are block data gap", "tail", tail, "baseHead", baseHead)
 	}
 
 	// existCount := 0

@@ -766,10 +766,10 @@ func (db *Database) InsertIncrState(incrDir string) error {
 
 	// check data overlap
 	baseHead, _ := db.freezer.Ancients()
-	if tail+1 <= baseHead && baseHead <= ancients {
-		log.Warn("There are block overlap", "number", baseHead-tail, "incr_tail", tail, "base_head", baseHead)
+	if tail <= baseHead && baseHead <= ancients {
+		log.Warn("There are state data overlap", "number", baseHead-tail, "incr_tail", tail, "base_head", baseHead)
 		// merge data into state ancient store
-		if err = db.mergeIncrHistory(incrStateFreezer, tail+1, ancients); err != nil {
+		if err = db.mergeIncrHistory(incrStateFreezer, baseHead+1, ancients); err != nil {
 			log.Error("Failed to merge incremental state history", "err", err)
 			return err
 		}
@@ -784,7 +784,7 @@ func (db *Database) InsertIncrState(incrDir string) error {
 			return errors.New("Insert incremental state only supports async node buffer")
 		}
 	} else {
-		log.Crit("There are data gap", "tail", tail, "baseHead", baseHead)
+		log.Crit("There are state data gap", "tail", tail, "baseHead", baseHead)
 	}
 
 	log.Info("Completed incremental state")
