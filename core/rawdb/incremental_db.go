@@ -298,12 +298,12 @@ func (idb *IncrDB) SwitchToNewDirectoryWithAsyncManager(blockNum uint64, asyncMa
 		ancients, err := idb.currDB.chainFreezer.Ancients()
 		if err != nil {
 			log.Error("Failed to get ancients from old chain freezer", "err", err)
-			return fmt.Errorf("failed to get old chain freezer ancients: %v", err)
+			return err
 		}
 		tail, err := idb.currDB.chainFreezer.Tail()
 		if err != nil {
 			log.Error("Failed to get tail from old chain freezer", "err", err)
-			return fmt.Errorf("failed to get old chain freezer tail: %v", err)
+			return err
 		}
 
 		idb.lastBlock = ancients - 1
@@ -311,26 +311,21 @@ func (idb *IncrDB) SwitchToNewDirectoryWithAsyncManager(blockNum uint64, asyncMa
 			"lastBlock", idb.lastBlock, "ancients", ancients, "tail", tail)
 	}
 
-	// Close current databases safely
 	if err := idb.closeCurrentDatabases(); err != nil {
-		return fmt.Errorf("failed to close current databases: %v", err)
+		return err
 	}
 
-	// Create new directory name based on block number
 	newDir := filepath.Join(idb.baseDir, fmt.Sprintf("incr_%d", blockNum))
-
-	// Create new database wrapper
 	db, err := newDBWrapper(newDir, &idb.info)
 	if err != nil {
 		return fmt.Errorf("failed to create new database wrapper in directory %s: %v", newDir, err)
 	}
 
-	// Update current database and directory
 	idb.currDB = db
 	idb.currentDir = newDir
-
 	log.Info("Successfully completed coordinated directory switch", "newDir", newDir,
 		"oldLastBlock", idb.lastBlock, "newStartBlock", blockNum)
+
 	return nil
 }
 
@@ -444,26 +439,21 @@ func findLatestIncrDir(baseDir string, offset uint64) (string, error) {
 		return "", fmt.Errorf("failed to read base directory %s: %v", baseDir, err)
 	}
 
-	// Regular expression to match incr_<number> pattern
 	incrDirPattern := regexp.MustCompile(`^incr_(\d+)$`)
 	var incrDirs []IncrDirInfo
-
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
-
 		matches := incrDirPattern.FindStringSubmatch(entry.Name())
 		if len(matches) != 2 {
 			continue
 		}
-
 		blockNum, err := strconv.ParseUint(matches[1], 10, 64)
 		if err != nil {
 			log.Warn("Invalid incremental directory name", "dir", entry.Name(), "err", err)
 			continue
 		}
-
 		incrDirs = append(incrDirs, IncrDirInfo{
 			Name:     entry.Name(),
 			Path:     filepath.Join(baseDir, entry.Name()),
@@ -482,9 +472,9 @@ func findLatestIncrDir(baseDir string, offset uint64) (string, error) {
 	sort.Slice(incrDirs, func(i, j int) bool {
 		return incrDirs[i].BlockNum < incrDirs[j].BlockNum
 	})
-
 	latestDir := incrDirs[len(incrDirs)-1]
 	log.Info("Found latest incremental directory", "dir", latestDir.Path, "blockNum", latestDir.BlockNum)
+
 	return latestDir.Path, nil
 }
 
