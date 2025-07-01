@@ -27,22 +27,6 @@ type table struct {
 	prefix string
 }
 
-func (t *table) BlockStoreReader() ethdb.Reader {
-	return t
-}
-
-func (t *table) BlockStore() ethdb.Database {
-	return t
-}
-
-func (t *table) SetBlockStore(block ethdb.Database) {
-	panic("not implement")
-}
-
-func (t *table) HasSeparateBlockStore() bool {
-	panic("not implement")
-}
-
 // NewTable returns a database object that prefixes all keys with a given string.
 func NewTable(db ethdb.Database, prefix string) ethdb.Database {
 	return &table{

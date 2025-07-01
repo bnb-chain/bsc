@@ -166,7 +166,7 @@ func (hc *HeaderChain) Reorg(headers []*types.Header) error {
 	var (
 		first      = headers[0]
 		last       = headers[len(headers)-1]
-		blockBatch = hc.chainDb.BlockStore().NewBatch()
+		blockBatch = hc.chainDb.NewBatch()
 	)
 	if first.ParentHash != hc.currentHeaderHash {
 		// Delete any canonical number assignments above the new head
@@ -236,7 +236,7 @@ func (hc *HeaderChain) WriteHeaders(headers []*types.Header) (int, error) {
 		newTD       = new(big.Int).Set(ptd) // Total difficulty of inserted chain
 		inserted    []rawdb.NumberHash      // Ephemeral lookup of number/hash for the chain
 		parentKnown = true                  // Set to true to force hc.HasHeader check the first iteration
-		blockBatch  = hc.chainDb.BlockStore().NewBatch()
+		blockBatch  = hc.chainDb.NewBatch()
 	)
 	for i, header := range headers {
 		var hash common.Hash
@@ -630,7 +630,7 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 	}
 	var (
 		parentHash common.Hash
-		blockBatch = hc.chainDb.BlockStore().NewBatch()
+		blockBatch = hc.chainDb.NewBatch()
 		origin     = true
 	)
 	done := func(header *types.Header) bool {
@@ -656,7 +656,7 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 		// first then remove the relative data from the database.
 		//
 		// Update head first(head fast block, head full block) before deleting the data.
-		markerBatch := hc.chainDb.BlockStore().NewBatch()
+		markerBatch := hc.chainDb.NewBatch()
 		if updateFn != nil {
 			newHead, force := updateFn(markerBatch, parent)
 			if force && ((headTime > 0 && newHead.Time < headTime) || (headTime == 0 && newHead.Number.Uint64() < headBlock)) {
@@ -679,7 +679,7 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 		// we don't end up with dangling daps in the database
 		var nums []uint64
 		if origin {
-			for n := num + 1; len(rawdb.ReadAllHashes(hc.chainDb.BlockStore(), n)) > 0; n++ {
+			for n := num + 1; len(rawdb.ReadAllHashes(hc.chainDb, n)) > 0; n++ {
 				nums = append([]uint64{n}, nums...) // suboptimal, but we don't really expect this path
 			}
 			origin = false
@@ -689,7 +689,7 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 		// Remove the related data from the database on all sidechains
 		for _, num := range nums {
 			// Gather all the side fork hashes
-			hashes := rawdb.ReadAllHashes(hc.chainDb.BlockStore(), num)
+			hashes := rawdb.ReadAllHashes(hc.chainDb, num)
 			if len(hashes) == 0 {
 				// No hashes in the database whatsoever, probably frozen already
 				hashes = append(hashes, hdr.Hash())
@@ -735,7 +735,7 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 		// Truncate the excessive chain segment above the current chain head
 		// in the ancient store.
 		if header.Number.Uint64()+1 < frozen {
-			_, err := hc.chainDb.BlockStore().TruncateHead(header.Number.Uint64() + 1)
+			_, err := hc.chainDb.TruncateHead(header.Number.Uint64() + 1)
 			if err != nil {
 				log.Crit("Failed to truncate head block", "err", err)
 			}

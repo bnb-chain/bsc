@@ -473,8 +473,8 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		}
 	}
 	// Ensure that a previous crash in SetHead doesn't leave extra ancients
-	if frozen, err := bc.db.BlockStore().ItemAmountInAncient(); err == nil && frozen > 0 {
-		frozen, err = bc.db.BlockStore().Ancients()
+	if frozen, err := bc.db.ItemAmountInAncient(); err == nil && frozen > 0 {
+		frozen, err = bc.db.Ancients()
 		if err != nil {
 			return nil, err
 		}
@@ -949,9 +949,9 @@ func (bc *BlockChain) rewindHead(head *types.Header, root common.Hash) (*types.H
 func (bc *BlockChain) SetFinalized(header *types.Header) {
 	bc.currentFinalBlock.Store(header)
 	if header != nil {
-		rawdb.WriteFinalizedBlockHash(bc.db.BlockStore(), header.Hash())
+		rawdb.WriteFinalizedBlockHash(bc.db, header.Hash())
 	} else {
-		rawdb.WriteFinalizedBlockHash(bc.db.BlockStore(), common.Hash{})
+		rawdb.WriteFinalizedBlockHash(bc.db, common.Hash{})
 	}
 }
 
@@ -1046,7 +1046,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 		// intent afterwards is full block importing, delete the chain segment
 		// between the stateful-block and the sethead target.
 		var wipe bool
-		frozen, _ := bc.db.BlockStore().Ancients()
+		frozen, _ := bc.db.Ancients()
 		if headNumber+1 < frozen {
 			wipe = pivot == nil || headNumber >= *pivot
 		}
@@ -1055,7 +1055,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 	// Rewind the header chain, deleting all block bodies until then
 	delFn := func(db ethdb.KeyValueWriter, hash common.Hash, num uint64) {
 		// Ignore the error here since light client won't hit this path
-		frozen, _ := bc.db.BlockStore().Ancients()
+		frozen, _ := bc.db.Ancients()
 		if num+1 <= frozen {
 			// The chain segment, such as the block header, canonical hash,
 			// body, and receipt, will be removed from the ancient store
@@ -1076,7 +1076,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 	// If SetHead was only called as a chain reparation method, try to skip
 	// touching the header chain altogether, unless the freezer is broken
 	if repair {
-		if target, force := updateFn(bc.db.BlockStore(), bc.CurrentBlock()); force {
+		if target, force := updateFn(bc.db, bc.CurrentBlock()); force {
 			bc.hc.SetHead(target.Number.Uint64(), nil, delFn)
 		}
 	} else {
@@ -1173,7 +1173,7 @@ func (bc *BlockChain) ResetWithGenesisBlock(genesis *types.Block) error {
 	defer bc.chainmu.Unlock()
 
 	// Prepare the genesis block and reinitialise the chain
-	blockBatch := bc.db.BlockStore().NewBatch()
+	blockBatch := bc.db.NewBatch()
 	rawdb.WriteTd(blockBatch, genesis.Hash(), genesis.NumberU64(), genesis.Difficulty())
 	rawdb.WriteBlock(blockBatch, genesis)
 	if err := blockBatch.Write(); err != nil {
@@ -1243,7 +1243,7 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 	go func() {
 		defer bc.dbWg.Done()
 		// Add the block to the canonical chain number scheme and mark as the head
-		blockBatch := bc.db.BlockStore().NewBatch()
+		blockBatch := bc.db.NewBatch()
 		rawdb.WriteCanonicalHash(blockBatch, block.Hash(), block.NumberU64())
 		rawdb.WriteHeadHeaderHash(blockBatch, block.Hash())
 		rawdb.WriteHeadBlockHash(blockBatch, block.Hash())
@@ -1346,7 +1346,7 @@ func (bc *BlockChain) Stop() {
 						} else {
 							rawdb.WriteSafePointBlockNumber(bc.db, recent.NumberU64())
 							once.Do(func() {
-								rawdb.WriteHeadBlockHash(bc.db.BlockStore(), recent.Hash())
+								rawdb.WriteHeadBlockHash(bc.db, recent.Hash())
 							})
 						}
 					}
@@ -1491,7 +1491,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			} else if !reorg {
 				return false
 			}
-			rawdb.WriteHeadFastBlockHash(bc.db.BlockStore(), head.Hash())
+			rawdb.WriteHeadFastBlockHash(bc.db, head.Hash())
 			bc.currentSnapBlock.Store(head.Header())
 			headFastBlockGauge.Update(int64(head.NumberU64()))
 			return true
@@ -1508,9 +1508,9 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 
 		// Ensure genesis is in ancients.
 		if first.NumberU64() == 1 {
-			if frozen, _ := bc.db.BlockStore().Ancients(); frozen == 0 {
+			if frozen, _ := bc.db.Ancients(); frozen == 0 {
 				td := bc.genesisBlock.Difficulty()
-				writeSize, err := rawdb.WriteAncientBlocks(bc.db.BlockStore(), []*types.Block{bc.genesisBlock}, []types.Receipts{nil}, td)
+				writeSize, err := rawdb.WriteAncientBlocks(bc.db, []*types.Block{bc.genesisBlock}, []types.Receipts{nil}, td)
 				if err != nil {
 					log.Error("Error writing genesis to ancients", "err", err)
 					return 0, err
@@ -1528,7 +1528,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 
 		// Write all chain data to ancients.
 		td := bc.GetTd(first.Hash(), first.NumberU64())
-		writeSize, err := rawdb.WriteAncientBlocksWithBlobs(bc.db.BlockStore(), blockChain, receiptChain, td)
+		writeSize, err := rawdb.WriteAncientBlocksWithBlobs(bc.db, blockChain, receiptChain, td)
 		if err != nil {
 			log.Error("Error importing chain data to ancients", "err", err)
 			return 0, err
@@ -1536,7 +1536,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		size += writeSize
 
 		// Sync the ancient store explicitly to ensure all data has been flushed to disk.
-		if err := bc.db.BlockStore().SyncAncient(); err != nil {
+		if err := bc.db.SyncAncient(); err != nil {
 			return 0, err
 		}
 		// Update the current snap block because all block data is now present in DB.
@@ -1544,7 +1544,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		if !updateHead(blockChain[len(blockChain)-1]) {
 			// We end up here if the header chain has reorg'ed, and the blocks/receipts
 			// don't match the canonical chain.
-			if _, err := bc.db.BlockStore().TruncateHead(previousSnapBlock + 1); err != nil {
+			if _, err := bc.db.TruncateHead(previousSnapBlock + 1); err != nil {
 				log.Error("Can't truncate ancient store after failed insert", "err", err)
 			}
 			return 0, errSideChainReceipts
@@ -1552,7 +1552,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 
 		// Delete block data from the main database.
 		var (
-			blockBatch  = bc.db.BlockStore().NewBatch()
+			blockBatch  = bc.db.NewBatch()
 			canonHashes = make(map[common.Hash]struct{}, len(blockChain))
 		)
 		for _, block := range blockChain {
@@ -1564,7 +1564,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			rawdb.DeleteBlockWithoutNumber(blockBatch, block.Hash(), block.NumberU64())
 		}
 		// Delete side chain hash-to-number mappings.
-		for _, nh := range rawdb.ReadAllHashesInRange(bc.db.BlockStore(), first.NumberU64(), last.NumberU64()) {
+		for _, nh := range rawdb.ReadAllHashesInRange(bc.db, first.NumberU64(), last.NumberU64()) {
 			if _, canon := canonHashes[nh.Hash]; !canon {
 				rawdb.DeleteHeader(blockBatch, nh.Hash, nh.Number)
 			}
@@ -1581,7 +1581,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		var (
 			skipPresenceCheck = false
 			batch             = bc.db.NewBatch()
-			blockBatch        = bc.db.BlockStore().NewBatch()
+			blockBatch        = bc.db.NewBatch()
 		)
 		for i, block := range blockChain {
 			// Short circuit insertion if shutting down or processing failed
@@ -1689,7 +1689,7 @@ func (bc *BlockChain) writeBlockWithoutState(block *types.Block, td *big.Int) (e
 	if bc.insertStopped() {
 		return errInsertionInterrupted
 	}
-	blockBatch := bc.db.BlockStore().NewBatch()
+	blockBatch := bc.db.NewBatch()
 	rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), td)
 	rawdb.WriteBlock(blockBatch, block)
 	// if cancun is enabled, here need to write sidecars too
@@ -1735,7 +1735,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	defer wg.Wait()
 	wg.Add(1)
 	go func() {
-		blockBatch := bc.db.BlockStore().NewBatch()
+		blockBatch := bc.db.NewBatch()
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
 		rawdb.WriteBlock(blockBatch, block)
 		rawdb.WriteReceipts(blockBatch, block.Hash(), block.NumberU64(), receipts)
@@ -2152,7 +2152,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 			// state, but if it's this special case here(skip reexecution) we will lose
 			// the empty receipt entry.
 			if len(block.Transactions()) == 0 {
-				rawdb.WriteReceipts(bc.db.BlockStore(), block.Hash(), block.NumberU64(), nil)
+				rawdb.WriteReceipts(bc.db, block.Hash(), block.NumberU64(), nil)
 			} else {
 				log.Error("Please file an issue, skip known block execution without receipt",
 					"hash", block.Hash(), "number", block.NumberU64())
@@ -2804,7 +2804,7 @@ func (bc *BlockChain) reorg(oldHead *types.Header, newHead *types.Header) error 
 	// transaction indexes, canonical chain indexes which above the head.
 	var (
 		indexesBatch = bc.db.NewBatch()
-		blockBatch   = bc.db.BlockStore().NewBatch()
+		blockBatch   = bc.db.NewBatch()
 	)
 	for _, tx := range types.HashDifference(deletedTxs, rebirthTxs) {
 		rawdb.DeleteTxLookupEntry(indexesBatch, tx)

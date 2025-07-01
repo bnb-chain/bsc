@@ -624,8 +624,6 @@ func dbStats(ctx *cli.Context) error {
 	if stack.CheckIfMultiDataBase() {
 		fmt.Println("show stats of state store")
 		showDBStats(db.StateStore())
-		fmt.Println("show stats of block store")
-		showDBStats(db.BlockStore())
 	}
 
 	return nil
@@ -643,8 +641,6 @@ func dbCompact(ctx *cli.Context) error {
 	if stack.CheckIfMultiDataBase() {
 		fmt.Println("show stats of state store")
 		showDBStats(db.StateStore())
-		fmt.Println("show stats of block store")
-		showDBStats(db.BlockStore())
 	}
 
 	log.Info("Triggering compaction")
@@ -658,10 +654,6 @@ func dbCompact(ctx *cli.Context) error {
 			log.Error("Compact err", "error", err)
 			return err
 		}
-		if err := db.BlockStore().Compact(nil, nil); err != nil {
-			log.Error("Compact err", "error", err)
-			return err
-		}
 	}
 
 	log.Info("Stats after compaction")
@@ -669,8 +661,6 @@ func dbCompact(ctx *cli.Context) error {
 	if stack.CheckIfMultiDataBase() {
 		fmt.Println("show stats of state store after compaction")
 		showDBStats(db.StateStore())
-		fmt.Println("show stats of block store after compaction")
-		showDBStats(db.BlockStore())
 	}
 	return nil
 }
@@ -692,13 +682,8 @@ func dbGet(ctx *cli.Context) error {
 		return err
 	}
 	opDb := db
-	if stack.CheckIfMultiDataBase() {
-		keyType := rawdb.DataTypeByKey(key)
-		if keyType == rawdb.StateDataType {
-			opDb = db.StateStore()
-		} else if keyType == rawdb.BlockDataType {
-			opDb = db.BlockStore()
-		}
+	if stack.CheckIfMultiDataBase() && rawdb.DataTypeByKey(key) == rawdb.StateDataType {
+		opDb = db.StateStore()
 	}
 
 	data, err := opDb.Get(key)
@@ -870,8 +855,6 @@ func dbDelete(ctx *cli.Context) error {
 		keyType := rawdb.DataTypeByKey(key)
 		if keyType == rawdb.StateDataType {
 			opDb = db.StateStore()
-		} else if keyType == rawdb.BlockDataType {
-			opDb = db.BlockStore()
 		}
 	}
 
@@ -995,8 +978,6 @@ func dbPut(ctx *cli.Context) error {
 		keyType := rawdb.DataTypeByKey(key)
 		if keyType == rawdb.StateDataType {
 			opDb = db.StateStore()
-		} else if keyType == rawdb.BlockDataType {
-			opDb = db.BlockStore()
 		}
 	}
 
@@ -1235,7 +1216,7 @@ func showMetaData(ctx *cli.Context) error {
 	defer stack.Close()
 	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
-	ancients, err := db.BlockStore().Ancients()
+	ancients, err := db.Ancients()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error accessing ancients: %v", err)
 	}
@@ -1282,7 +1263,7 @@ func hbss2pbss(ctx *cli.Context) error {
 	defer stack.Close()
 
 	db := utils.MakeChainDatabase(ctx, stack, false, false)
-	db.BlockStore().SyncAncient()
+	db.SyncAncient()
 	stateDiskDb := db.StateStore()
 	defer db.Close()
 
