@@ -463,40 +463,6 @@ func (in *incrStore) checkFreezerEnv() error {
 	return errors.New("missing freezer env error")
 }
 
-// readIncrData reads the incremental history and trie nodes
-func readIncrData(reader ethdb.AncientReader, id uint64) (*history, map[common.Hash]map[string]*trienode.Node, error) {
-	blob := rawdb.ReadStateHistoryMeta(reader, id)
-	if len(blob) == 0 {
-		return nil, nil, fmt.Errorf("state history not found %d", id)
-	}
-	var m meta
-	if err := m.decode(blob); err != nil {
-		return nil, nil, err
-	}
-
-	var (
-		dec            = history{meta: &m}
-		accountData    = rawdb.ReadStateAccountHistory(reader, id)
-		storageData    = rawdb.ReadStateStorageHistory(reader, id)
-		accountIndexes = rawdb.ReadStateAccountIndex(reader, id)
-		storageIndexes = rawdb.ReadStateStorageIndex(reader, id)
-	)
-	if err := dec.decode(accountData, storageData, accountIndexes, storageIndexes); err != nil {
-		return nil, nil, err
-	}
-
-	data, err := rawdb.ReadIncrStateTrieNodes(reader, id)
-	if err != nil {
-		log.Crit("Failed to read incremental trie nodes", "error", err)
-	}
-	var decodedTrieNodes []journalNodes
-	if err = rlp.DecodeBytes(data, &decodedTrieNodes); err != nil {
-		log.Crit("Failed to decode incremental trie nodes", "error", err)
-	}
-
-	return &dec, flattenTrieNodes(decodedTrieNodes), nil
-}
-
 // readIncrHistory reads incremental history
 func readIncrHistory(reader ethdb.AncientReader, id uint64) (*history, error) {
 	blob := rawdb.ReadStateHistoryMeta(reader, id)
