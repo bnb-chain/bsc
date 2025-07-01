@@ -1572,6 +1572,7 @@ func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
 	blockBatch := chainDB.BlockStore().NewBatch()
 	rawdb.WriteHeadBlockHash(blockBatch, hash)
 	rawdb.WriteHeadHeaderHash(blockBatch, hash)
+	rawdb.WriteHeaderNumber(blockBatch, hash, ancients-1)
 	rawdb.WriteHeadFastBlockHash(blockBatch, hash)
 	rawdb.WriteFinalizedBlockHash(blockBatch, hash)
 	if err = blockBatch.Write(); err != nil {
