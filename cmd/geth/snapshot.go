@@ -1448,7 +1448,8 @@ func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
 				log.Error("Failed to write block data", "block", i, "err", err)
 				return err
 			}
-			rawdb.WriteCanonicalHash(chainDB.BlockStore(), common.BytesToHash(hashBytes), i)
+			rawdb.WriteHeaderNumber(chainDB.BlockStore(), common.BytesToHash(hashBytes), i)
+			// rawdb.WriteCanonicalHash(chainDB.BlockStore(), common.BytesToHash(hashBytes), i)
 		}
 	} else {
 		log.Crit("There are block data gap", "tail", tail, "baseHead", baseHead)
