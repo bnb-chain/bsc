@@ -158,7 +158,6 @@ func TestU256Bytes(t *testing.T) {
 	}
 }
 
-
 func TestHexOrDecimal256_MarshalText(t *testing.T) {
 	tests := []struct {
 		name    string
