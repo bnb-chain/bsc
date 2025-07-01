@@ -654,16 +654,6 @@ func isCancun(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
 	return env.ChainCfg.IsCancun(num, time)
 }
 
-// FillEmptyBlocks is kept for interface compatibility but not used
-// Empty block filling is now handled directly in commit()
-func (in *incrStore) FillEmptyBlocks(startBlock, endBlock uint64, incrDB *rawdb.IncrDB) error {
-	// This method is kept for interface compatibility but empty block filling
-	// is now handled directly in the commit() method for simplicity
-	log.Info("FillEmptyBlocks called but empty block filling is handled in commit()",
-		"startBlock", startBlock, "endBlock", endBlock)
-	return nil
-}
-
 // checkAndFillEmptyBlocks checks for gaps and fills empty blocks after directory switch
 func (in *incrStore) checkAndFillEmptyBlocks(currentBlock uint64) error {
 	lastBlock := in.incrDB.GetLastBlock()

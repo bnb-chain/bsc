@@ -21,7 +21,6 @@ type IncrDB struct {
 	info       incrDBInfo
 	baseDir    string
 	currentDir string
-	blockCount uint64
 	lastBlock  uint64
 	lock       sync.RWMutex
 
@@ -83,7 +82,6 @@ func NewIncrDB(baseDir string, readonly bool, offset uint64, blockLimit uint64) 
 		info:       info,
 		baseDir:    incrBaseDir,
 		currentDir: currentDir,
-		blockCount: 0,
 		switching:  false,
 	}
 	// incrDB.blockCount.Store(0)
@@ -172,8 +170,7 @@ func (idb *IncrDB) WriteIncrBlockData(number, id uint64, hash, header, body, rec
 		log.Error("Failed to write incremental block data", "err", err)
 		return err
 	}
-	idb.blockCount++
-	log.Debug("Block written to IncrDB", "blockNum", number, "currentDir", idb.currentDir, "blockCount", idb.blockCount)
+	log.Debug("Block written to IncrDB", "blockNum", number, "currentDir", idb.currentDir)
 
 	return nil
 }
@@ -232,7 +229,7 @@ func (idb *IncrDB) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 
 // switchToNewDirectoryBlocking performs directory switch and blocks all writes during the process
 func (idb *IncrDB) switchToNewDirectoryBlocking(blockNum uint64) error {
-	log.Info("Starting directory switch", "currentBlocks", idb.blockCount, "blockLimit", idb.info.blockLimit, "newStartBlock", blockNum)
+	log.Info("Starting directory switch", "blockLimit", idb.info.blockLimit, "newStartBlock", blockNum)
 
 	// Set switching flag to block new writes
 	idb.switchMutex.Lock()
@@ -264,8 +261,6 @@ func (idb *IncrDB) switchToNewDirectoryBlocking(blockNum uint64) error {
 	// Update current database and directory
 	idb.currDB = db
 	idb.currentDir = newDir
-	// idb.blockCount.Store(0)
-	idb.blockCount = 0
 
 	log.Info("Successfully switched to new incremental directory", "newDir", newDir)
 	return nil
@@ -333,7 +328,6 @@ func (idb *IncrDB) SwitchToNewDirectoryWithAsyncManager(blockNum uint64, asyncMa
 	// Update current database and directory
 	idb.currDB = db
 	idb.currentDir = newDir
-	idb.blockCount = 0
 
 	log.Info("Successfully completed coordinated directory switch", "newDir", newDir,
 		"oldLastBlock", idb.lastBlock, "newStartBlock", blockNum)
@@ -425,16 +419,16 @@ func (idb *IncrDB) Close() error {
 	idb.lock.Lock()
 	defer idb.lock.Unlock()
 
-	log.Info("Closing IncrDB", "currentDir", idb.currentDir, "blockCount", idb.blockCount)
+	log.Info("Closing IncrDB", "currentDir", idb.currentDir)
 	return idb.closeCurrentDatabases()
 }
 
 // GetCurrentStats returns current statistics
-func (idb *IncrDB) GetCurrentStats() (currentDir string, blockCount, blockLimit uint64) {
+func (idb *IncrDB) GetCurrentStats() (string, uint64) {
 	idb.lock.RLock()
 	defer idb.lock.RUnlock()
 
-	return idb.currentDir, idb.blockCount, idb.info.blockLimit
+	return idb.currentDir, idb.info.blockLimit
 }
 
 // findLatestIncrDir finds the latest incremental directory or creates the first one
@@ -559,8 +553,6 @@ func (idb *IncrDB) RecoverFromDirectory(targetDir string) error {
 	// Update current database and directory
 	idb.currDB = db
 	idb.currentDir = targetDir
-	// idb.blockCount.Store(0)
-	idb.blockCount = 0
 
 	log.Info("Successfully recovered to directory", "dir", targetDir)
 	return nil
@@ -643,7 +635,7 @@ func (idb *IncrDB) CheckAndInitiateSwitch(blockNum uint64, asyncManager AsyncWri
 	if limitReached && idb.currDB != nil && idb.currDB.chainFreezer != nil {
 		ancients, err := idb.currDB.chainFreezer.Ancients()
 		if err != nil {
-			log.Error("Failed to get ancients count for switch check", "err", err)
+			log.Crit("Failed to get ancients count for switch check", "err", err)
 		}
 		tail, err := idb.currDB.chainFreezer.Tail()
 		if err != nil {
@@ -672,10 +664,4 @@ type AsyncWriteManagerInterface interface {
 	GetQueueLength() int
 	GetStats() (total, completed, failed uint64, queueLen int)
 	IsHealthy() bool
-}
-
-// EmptyBlockFillerInterface extends AsyncWriteManagerInterface to support empty block filling
-type EmptyBlockFillerInterface interface {
-	AsyncWriteManagerInterface
-	FillEmptyBlocks(startBlock, endBlock uint64, incrDB *IncrDB) error
 }
