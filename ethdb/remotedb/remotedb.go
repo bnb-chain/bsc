@@ -213,6 +213,10 @@ func (db *Database) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
 	panic("not supported")
 }
 
+func (db *Database) ForceFreeze(ethdb.KeyValueStore) error {
+	panic("not supported")
+}
+
 func New(client *rpc.Client) ethdb.Database {
 	return &Database{
 		remote: client,
