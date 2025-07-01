@@ -1711,7 +1711,7 @@ func (api *TransactionAPI) GetRawTransactionByHash(ctx context.Context, hash com
 	return tx.MarshalBinary()
 }
 
-// GetTransactionReceipt returns the transaction receipt for the given transaction hash.
+// GetTransactionReceiptsByBlockNumber returns the transaction receipts for the given block number.
 func (api *TransactionAPI) GetTransactionReceiptsByBlockNumber(ctx context.Context, blockNr rpc.BlockNumber) ([]map[string]interface{}, error) {
 	blockNumber := uint64(blockNr.Int64())
 	blockHash := rawdb.ReadCanonicalHash(api.b.ChainDb(), blockNumber)
