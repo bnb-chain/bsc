@@ -132,8 +132,6 @@ var (
 		// utils.CacheNoPrefetchFlag,
 		utils.CachePreimagesFlag,
 		utils.MultiDataBaseFlag,
-		utils.PersistDiffFlag,
-		utils.DiffBlockFlag,
 		utils.PruneAncientDataFlag, // deprecated
 		utils.CacheLogSizeFlag,
 		utils.FDLimitFlag,

@@ -574,17 +574,6 @@ var (
 		Usage:    "Enable recording the SHA3/keccak preimages of trie keys",
 		Category: flags.PerfCategory,
 	}
-	PersistDiffFlag = &cli.BoolFlag{
-		Name:     "persistdiff",
-		Usage:    "Enable persistence of the diff layer",
-		Category: flags.FastNodeCategory,
-	}
-	DiffBlockFlag = &cli.Uint64Flag{
-		Name:     "diffblock",
-		Usage:    "The number of blocks should be persisted in db (default = 86400)",
-		Value:    uint64(86400),
-		Category: flags.FastNodeCategory,
-	}
 	CacheLogSizeFlag = &cli.IntFlag{
 		Name:     "cache.blocklogs",
 		Usage:    "Size (in number of blocks) of the log cache for filtering",
@@ -2092,7 +2081,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(BlockHistoryFlag.Name) {
 		cfg.BlockHistory = ctx.Uint64(BlockHistoryFlag.Name)
 		if cfg.BlockHistory != 0 && cfg.BlockHistory < params.FullImmutabilityThreshold {
-			log.Warn("The number of block history is too small, that it will force to 90000")
+			log.Warn("The number of block history is too small, that it will force to", "fullImmutabilityThreshold", params.FullImmutabilityThreshold)
 			cfg.BlockHistory = params.FullImmutabilityThreshold
 		}
 	}
