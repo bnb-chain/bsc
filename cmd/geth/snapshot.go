@@ -1418,7 +1418,7 @@ func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
 	if tail <= baseHead && baseHead <= ancients {
 		log.Warn("There are block data overlap", "number", baseHead-tail, "incr_tail", tail, "base_head", baseHead)
 		_, err = chainDB.ModifyAncients(func(op ethdb.AncientWriteOp) error {
-			for i := baseHead; i < ancients; i++ {
+			for i := baseHead; i < ancients-1; i++ {
 				hashBytes, err := rawdb.ReadIncrChainHash(incrChainFreezer, i)
 				if err != nil {
 					log.Error("Failed to read increment chain hash", "err", err)
