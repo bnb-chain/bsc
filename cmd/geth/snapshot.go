@@ -241,6 +241,15 @@ the expected order for the overlay tree migration.
 					utils.DatabaseFlags),
 				Description: `This command is used to debug incremental snapshots issues`,
 			},
+			{
+				Action:    forceFlushToAncient,
+				Name:      "force-flush-ancient",
+				Usage:     "Force flush block data in pebble into ancient db",
+				ArgsUsage: "",
+				Flags: slices.Concat([]cli.Flag{utils.IncrementalSnapshotPathFlag, utils.IncrementalSnapshotFlag},
+					utils.DatabaseFlags),
+				Description: `This command is used to debug incremental snapshots issues`,
+			},
 		},
 	}
 )
@@ -1227,6 +1236,21 @@ func compareBlockAndStateID(ctx *cli.Context) error {
 	return nil
 }
 
+func forceFlushToAncient(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	chainDB := utils.MakeChainDatabase(ctx, stack, false, false)
+	defer chainDB.Close()
+
+	if err := chainDB.ForceFreeze(chainDB.BlockStore()); err != nil {
+		log.Error("Failed to force freeze to ancients", "err", err)
+		return err
+	}
+
+	return nil
+}
+
 // mergeIncrSnapshot
 func mergeIncrSnapshot(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
@@ -1367,6 +1391,26 @@ func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
 	count, _ := incrChainFreezer.ItemAmountInAncient()
 	log.Info("Incr chain info", "ancients", ancients, "tail", tail, "count", count)
 
+	// Get chain config from database
+	genesisHash := rawdb.ReadCanonicalHash(chainDB.BlockStore(), 0)
+	if genesisHash == (common.Hash{}) {
+		return errors.New("genesis hash not found")
+	}
+
+	chainConfig := rawdb.ReadChainConfig(chainDB.BlockStore(), genesisHash)
+	if chainConfig == nil {
+		return errors.New("chain config not found")
+	}
+
+	log.Info("Loaded chain config", "chainID", chainConfig.ChainID, "cancunTime", chainConfig.CancunTime)
+
+	// Step 1: Force migration of existing blocks from pebble to chainFreezer
+	// This ensures all non-genesis blocks are in ancient store before adding incremental data
+	log.Info("Starting forced migration of existing blocks to chainFreezer")
+
+	// Step 2: Directly write incremental data to chainFreezer
+	log.Info("Starting direct write of incremental data to chainFreezer")
+
 	existCount := 0
 	// TODO: start two goroutines, optimize pebble batch commit
 	for i := tail; i < ancients; i++ {
@@ -1396,9 +1440,20 @@ func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
 			log.Error("Failed to read increment chain difficulty", "err", err)
 			return err
 		}
-		// TODO: check cancun hardfork
+
+		// Decode header to get block number and timestamp for Cancun check
+		var h types.Header
+		if err := rlp.DecodeBytes(header, &h); err != nil {
+			log.Error("Failed to decode header", "block", i, "err", err)
+			return err
+		}
+
+		// Check if Cancun hardfork is active for this block
+		isCancunActive := chainConfig.IsCancun(h.Number, h.Time)
+
+		// Read blob sidecars only if Cancun is active
 		var blobs rlp.RawValue
-		if false {
+		if isCancunActive {
 			blobs, err = rawdb.ReadIncrChainBlobSideCars(incrChainFreezer, i)
 			if err != nil {
 				log.Error("Failed to read increment chain blob side car", "err", err)

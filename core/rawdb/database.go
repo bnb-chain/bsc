@@ -320,6 +320,9 @@ func (db *nofreezedb) AncientDatadir() (string, error) {
 func (db *nofreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
 	return nil
 }
+func (db *nofreezedb) ForceFreeze(store ethdb.KeyValueStore) error {
+	return nil
+}
 
 // NewDatabase creates a high level database on top of a given key-value data
 // store without a freezer moving immutable chain segments into cold storage.
@@ -416,6 +419,9 @@ func (db *emptyfreezedb) AncientDatadir() (string, error) {
 	return "", nil
 }
 func (db *emptyfreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+	return nil
+}
+func (db *emptyfreezedb) ForceFreeze(ethdb.KeyValueStore) error {
 	return nil
 }
 
