@@ -1404,6 +1404,14 @@ func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
 
 	log.Info("Loaded chain config", "chainID", chainConfig.ChainID, "cancunTime", *chainConfig.CancunTime)
 
+	// Force migration of existing blocks from pebble to chainFreezer
+	// This ensures all non-genesis blocks are in ancient store before adding incremental data
+	log.Info("Starting forced migration of existing blocks to chainFreezer")
+	if err = chainDB.ForceFreeze(chainDB.BlockStore()); err != nil {
+		log.Error("Failed to force freeze to ancients", "err", err)
+		return err
+	}
+
 	// check block overlap and write incremental data directly into chainFreezer
 	log.Info("Starting direct write of incremental data to chainFreezer")
 	baseHead, _ := chainDB.Ancients()
