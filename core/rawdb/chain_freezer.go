@@ -155,10 +155,10 @@ func (f *chainFreezer) freezeThreshold(db ethdb.Reader) (uint64, error) {
 	return max(final, headLimit), nil
 }
 
-// ForceFreeze freeze all block in pebble into freezer, except genesis block.
-func (f *chainFreezer) ForceFreeze(db ethdb.KeyValueStore) error {
+// ForceFreeze force migration of existing blocks from kv db to chainFreezer, except genesis block.
+func (f *chainFreezer) ForceFreeze(kvStore ethdb.KeyValueStore) error {
 	log.Info("Start force freezing")
-	nfdb := &nofreezedb{KeyValueStore: db}
+	nfdb := &nofreezedb{KeyValueStore: kvStore}
 	frozen, _ := f.Ancients() // no error will occur, safe to ignore
 	head := f.readHeadNumber(nfdb)
 	log.Info("ForceFreeze", "head", head, "frozen", frozen)
@@ -175,7 +175,7 @@ func (f *chainFreezer) ForceFreeze(db ethdb.KeyValueStore) error {
 		log.Crit("Failed to flush frozen tables", "err", err)
 	}
 	// Wipe out all data from the active database
-	batch := db.NewBatch()
+	batch := kvStore.NewBatch()
 	for i := 0; i < len(hashes); i++ {
 		// Always keep the genesis block in active database
 		if first+uint64(i) != 0 {
@@ -194,7 +194,7 @@ func (f *chainFreezer) ForceFreeze(db ethdb.KeyValueStore) error {
 	for number := first; number < frozen; number++ {
 		// Always keep the genesis block in active database
 		if number != 0 {
-			dangling = ReadAllHashes(db, number)
+			dangling = ReadAllHashes(kvStore, number)
 			for _, hash := range dangling {
 				log.Trace("Deleting side chain", "number", number, "hash", hash)
 				DeleteBlock(batch, hash, number)
@@ -215,7 +215,7 @@ func (f *chainFreezer) ForceFreeze(db ethdb.KeyValueStore) error {
 				log.Debug("Dangling parent from Freezer", "number", tip-1, "hash", hash)
 				drop[hash] = struct{}{}
 			}
-			children := ReadAllHashes(db, tip)
+			children := ReadAllHashes(kvStore, tip)
 			for i := 0; i < len(children); i++ {
 				// Dig up the child and ensure it's dangling
 				child := ReadHeader(nfdb, children[i], tip)
@@ -257,7 +257,6 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 	)
 	timer := time.NewTimer(freezerRecheckInterval)
 	defer timer.Stop()
-	log.Info("Start freezing")
 
 	for {
 		select {

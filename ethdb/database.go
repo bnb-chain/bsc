@@ -168,8 +168,9 @@ type AncientFreezer interface {
 	// SetupFreezerEnv provides params.ChainConfig for checking hark forks, like isCancun.
 	SetupFreezerEnv(env *FreezerEnv) error
 
-	// ForceFreeze
-	ForceFreeze(store KeyValueStore) error
+	// ForceFreeze force migration of existing blocks from kv db to chainFreezer.
+	// WARN: it's only used in the incremental snapshot situation.
+	ForceFreeze(kvStore KeyValueStore) error
 }
 
 // AncientWriteOp is given to the function argument of ModifyAncients.

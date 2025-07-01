@@ -764,22 +764,29 @@ func (db *Database) InsertIncrState(incrDir string) error {
 	log.Info("Incr state info", "ancients", ancients, "tail", tail, "count", count)
 	log.Info("Layer tree", "count", db.tree.len())
 
-	// merge data into state ancient store
-	if err = db.mergeIncrHistory(incrStateFreezer, tail+1, ancients); err != nil {
-		log.Error("Failed to merge incremental state history", "err", err)
-		return err
-	}
-
-	// TODO: check data overlap
-	dl := db.tree.bottom()
-	if a, ok := dl.buffer.(*asyncnodebuffer); ok {
-		if err = a.mergeIncrTrieNodes(db.diskdb, db.freezer, incrStateFreezer, tail+1, ancients); err != nil {
-			log.Error("Failed to merge incremental trie nodes", "err", err)
+	// check data overlap
+	baseHead, _ := db.freezer.Ancients()
+	if tail+1 <= baseHead && baseHead <= ancients {
+		log.Warn("There are block overlap", "number", baseHead-tail, "incr_tail", tail, "base_head", baseHead)
+		// merge data into state ancient store
+		if err = db.mergeIncrHistory(incrStateFreezer, tail+1, ancients); err != nil {
+			log.Error("Failed to merge incremental state history", "err", err)
 			return err
 		}
+
+		dl := db.tree.bottom()
+		if a, ok := dl.buffer.(*asyncnodebuffer); ok {
+			if err = a.mergeIncrTrieNodes(db.diskdb, db.freezer, incrStateFreezer, tail+1, ancients); err != nil {
+				log.Error("Failed to merge incremental trie nodes", "err", err)
+				return err
+			}
+		} else {
+			return errors.New("Insert incremental state only supports async node buffer")
+		}
 	} else {
-		return errors.New("Insert incremental state only supports async node buffer")
+		log.Crit("There are data gap", "tail", tail, "baseHead", baseHead)
 	}
+
 	log.Info("Completed incremental state")
 	return nil
 }
@@ -792,7 +799,6 @@ func (db *Database) mergeIncrHistory(incrStateFreezer ethdb.ResettableAncientSto
 			return err
 		}
 
-		// TODO: write state id
 		accountData, storageData, accountIndex, storageIndex := h.encode()
 		rawdb.WriteStateHistory(db.freezer, i, h.meta.encode(), accountIndex, storageIndex, accountData, storageData)
 		rawdb.WriteStateID(db.diskdb, h.meta.root, i)

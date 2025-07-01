@@ -1404,83 +1404,163 @@ func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
 
 	log.Info("Loaded chain config", "chainID", chainConfig.ChainID, "cancunTime", chainConfig.CancunTime)
 
-	// Step 1: Force migration of existing blocks from pebble to chainFreezer
+	// Force migration of existing blocks from pebble to chainFreezer
 	// This ensures all non-genesis blocks are in ancient store before adding incremental data
 	log.Info("Starting forced migration of existing blocks to chainFreezer")
-
-	// Step 2: Directly write incremental data to chainFreezer
-	log.Info("Starting direct write of incremental data to chainFreezer")
-
-	existCount := 0
-	// TODO: start two goroutines, optimize pebble batch commit
-	for i := tail; i < ancients; i++ {
-		hashBytes, err := rawdb.ReadIncrChainHash(incrChainFreezer, i)
-		if err != nil {
-			log.Error("Failed to read increment chain hash", "err", err)
-			return err
-		}
-		hash := common.BytesToHash(hashBytes)
-		header, err := rawdb.ReadIncrChainHeader(incrChainFreezer, i)
-		if err != nil {
-			log.Error("Failed to read increment chain header", "err", err)
-			return err
-		}
-		body, err := rawdb.ReadIncrChainBodies(incrChainFreezer, i)
-		if err != nil {
-			log.Error("Failed to read increment chain bodies", "err", err)
-			return err
-		}
-		receipts, err := rawdb.ReadIncrChainReceipts(incrChainFreezer, i)
-		if err != nil {
-			log.Error("Failed to read increment chain receipts", "err", err)
-			return err
-		}
-		td, err := rawdb.ReadIncrChainDifficulty(incrChainFreezer, i)
-		if err != nil {
-			log.Error("Failed to read increment chain difficulty", "err", err)
-			return err
-		}
-
-		// Decode header to get block number and timestamp for Cancun check
-		var h types.Header
-		if err := rlp.DecodeBytes(header, &h); err != nil {
-			log.Error("Failed to decode header", "block", i, "err", err)
-			return err
-		}
-
-		// Check if Cancun hardfork is active for this block
-		isCancunActive := chainConfig.IsCancun(h.Number, h.Time)
-
-		// Read blob sidecars only if Cancun is active
-		var blobs rlp.RawValue
-		if isCancunActive {
-			blobs, err = rawdb.ReadIncrChainBlobSideCars(incrChainFreezer, i)
-			if err != nil {
-				log.Error("Failed to read increment chain blob side car", "err", err)
-				return err
-			}
-		}
-		if exist := rawdb.HasBody(chainDB.BlockStore(), hash, i); exist {
-			existCount++
-		}
-		blockBatch := chainDB.BlockStore().NewBatch()
-
-		// td, block(body and header), receipts, blob(if present)
-		rawdb.WriteCanonicalHash(blockBatch, hash, i)
-		rawdb.WriteTdRLP(blockBatch, hash, i, td)
-		rawdb.WriteBodyRLP(blockBatch, hash, i, body)
-		rawdb.WriteHeaderRLP(blockBatch, hash, i, header)
-		rawdb.WriteReceiptsRLP(blockBatch, hash, i, receipts)
-		if false {
-			rawdb.WriteBlobSidecarsRLP(blockBatch, hash, i, blobs)
-		}
-		if err = blockBatch.Write(); err != nil {
-			log.Crit("Failed to write block into disk", "err", err)
-		}
+	if err = chainDB.ForceFreeze(chainDB.BlockStore()); err != nil {
+		log.Error("Failed to force freeze to ancients", "err", err)
+		return err
 	}
-	log.Info("After merging block", "exist count", existCount)
 
-	// TODO: should wait background chain freezer finish
+	// check block overlap and write incremental data directly into chainFreezer
+	log.Info("Starting direct write of incremental data to chainFreezer")
+	baseHead, _ := chainDB.Ancients()
+	if tail <= baseHead && baseHead <= ancients {
+		log.Warn("There are block overlap", "number", baseHead-tail, "incr_tail", tail, "base_head", baseHead)
+		_, err = chainDB.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+			for i := baseHead; i < ancients; i++ {
+				hashBytes, err := rawdb.ReadIncrChainHash(incrChainFreezer, i)
+				if err != nil {
+					log.Error("Failed to read increment chain hash", "err", err)
+					return err
+				}
+				hash := common.BytesToHash(hashBytes)
+				header, err := rawdb.ReadIncrChainHeader(incrChainFreezer, i)
+				if err != nil {
+					log.Error("Failed to read increment chain header", "err", err)
+					return err
+				}
+				body, err := rawdb.ReadIncrChainBodies(incrChainFreezer, i)
+				if err != nil {
+					log.Error("Failed to read increment chain bodies", "err", err)
+					return err
+				}
+				receipts, err := rawdb.ReadIncrChainReceipts(incrChainFreezer, i)
+				if err != nil {
+					log.Error("Failed to read increment chain receipts", "err", err)
+					return err
+				}
+				td, err := rawdb.ReadIncrChainDifficulty(incrChainFreezer, i)
+				if err != nil {
+					log.Error("Failed to read increment chain difficulty", "err", err)
+					return err
+				}
+
+				// Decode header to get block number and timestamp for Cancun check
+				var h types.Header
+				if err := rlp.DecodeBytes(header, &h); err != nil {
+					log.Error("Failed to decode header", "block", i, "err", err)
+					return err
+				}
+
+				// Check if Cancun hardfork is active for this block
+				isCancunActive := chainConfig.IsCancun(h.Number, h.Time)
+
+				// Read blob sidecars only if Cancun is active
+				var sidecars rlp.RawValue
+				if isCancunActive {
+					sidecars, err = rawdb.ReadIncrChainBlobSideCars(incrChainFreezer, i)
+					if err != nil {
+						log.Error("Failed to read increment chain blob side car", "err", err)
+						return err
+					}
+				}
+
+				if err = op.AppendRaw(rawdb.ChainFreezerHashTable, i, hash[:]); err != nil {
+					return fmt.Errorf("can't write hash to Freezer: %v", err)
+				}
+				if err = op.AppendRaw(rawdb.ChainFreezerHeaderTable, i, header); err != nil {
+					return fmt.Errorf("can't write header to Freezer: %v", err)
+				}
+				if err = op.AppendRaw(rawdb.ChainFreezerBodiesTable, i, body); err != nil {
+					return fmt.Errorf("can't write body to Freezer: %v", err)
+				}
+				if err = op.AppendRaw(rawdb.ChainFreezerReceiptTable, i, receipts); err != nil {
+					return fmt.Errorf("can't write receipts to Freezer: %v", err)
+				}
+				if err = op.AppendRaw(rawdb.ChainFreezerDifficultyTable, i, td); err != nil {
+					return fmt.Errorf("can't write td to Freezer: %v", err)
+				}
+				if isCancunActive {
+					if err = op.AppendRaw(rawdb.ChainFreezerBlobSidecarTable, i, sidecars); err != nil {
+						return fmt.Errorf("can't write blobs to Freezer: %v", err)
+					}
+				}
+			}
+			return nil
+		})
+	} else {
+		log.Crit("There are data gap", "tail", tail, "baseHead", baseHead)
+	}
+
+	// existCount := 0
+	// // TODO: start two goroutines, optimize pebble batch commit
+	// for i := tail; i < ancients; i++ {
+	// 	hashBytes, err := rawdb.ReadIncrChainHash(incrChainFreezer, i)
+	// 	if err != nil {
+	// 		log.Error("Failed to read increment chain hash", "err", err)
+	// 		return err
+	// 	}
+	// 	hash := common.BytesToHash(hashBytes)
+	// 	header, err := rawdb.ReadIncrChainHeader(incrChainFreezer, i)
+	// 	if err != nil {
+	// 		log.Error("Failed to read increment chain header", "err", err)
+	// 		return err
+	// 	}
+	// 	body, err := rawdb.ReadIncrChainBodies(incrChainFreezer, i)
+	// 	if err != nil {
+	// 		log.Error("Failed to read increment chain bodies", "err", err)
+	// 		return err
+	// 	}
+	// 	receipts, err := rawdb.ReadIncrChainReceipts(incrChainFreezer, i)
+	// 	if err != nil {
+	// 		log.Error("Failed to read increment chain receipts", "err", err)
+	// 		return err
+	// 	}
+	// 	td, err := rawdb.ReadIncrChainDifficulty(incrChainFreezer, i)
+	// 	if err != nil {
+	// 		log.Error("Failed to read increment chain difficulty", "err", err)
+	// 		return err
+	// 	}
+	//
+	// 	// Decode header to get block number and timestamp for Cancun check
+	// 	var h types.Header
+	// 	if err := rlp.DecodeBytes(header, &h); err != nil {
+	// 		log.Error("Failed to decode header", "block", i, "err", err)
+	// 		return err
+	// 	}
+	//
+	// 	// Check if Cancun hardfork is active for this block
+	// 	isCancunActive := chainConfig.IsCancun(h.Number, h.Time)
+	//
+	// 	// Read blob sidecars only if Cancun is active
+	// 	var blobs rlp.RawValue
+	// 	if isCancunActive {
+	// 		blobs, err = rawdb.ReadIncrChainBlobSideCars(incrChainFreezer, i)
+	// 		if err != nil {
+	// 			log.Error("Failed to read increment chain blob side car", "err", err)
+	// 			return err
+	// 		}
+	// 	}
+	// 	if exist := rawdb.HasBody(chainDB.BlockStore(), hash, i); exist {
+	// 		existCount++
+	// 	}
+	// 	blockBatch := chainDB.BlockStore().NewBatch()
+	//
+	// 	// td, block(body and header), receipts, blob(if present)
+	// 	rawdb.WriteCanonicalHash(blockBatch, hash, i)
+	// 	rawdb.WriteTdRLP(blockBatch, hash, i, td)
+	// 	rawdb.WriteBodyRLP(blockBatch, hash, i, body)
+	// 	rawdb.WriteHeaderRLP(blockBatch, hash, i, header)
+	// 	rawdb.WriteReceiptsRLP(blockBatch, hash, i, receipts)
+	// 	if false {
+	// 		rawdb.WriteBlobSidecarsRLP(blockBatch, hash, i, blobs)
+	// 	}
+	// 	if err = blockBatch.Write(); err != nil {
+	// 		log.Crit("Failed to write block into disk", "err", err)
+	// 	}
+	// }
+	// log.Info("After merging block", "exist count", existCount)
 
 	// set blockchain metadata: current snap block and current block
 	hashBytes, err := rawdb.ReadIncrChainHash(incrChainFreezer, ancients-1)

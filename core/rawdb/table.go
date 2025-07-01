@@ -270,7 +270,7 @@ func (t *table) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
 	return nil
 }
 
-func (t *table) ForceFreeze(db ethdb.KeyValueStore) error {
+func (t *table) ForceFreeze(kvStore ethdb.KeyValueStore) error {
 	return nil
 }
 

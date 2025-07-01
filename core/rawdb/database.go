@@ -320,7 +320,7 @@ func (db *nofreezedb) AncientDatadir() (string, error) {
 func (db *nofreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
 	return nil
 }
-func (db *nofreezedb) ForceFreeze(store ethdb.KeyValueStore) error {
+func (db *nofreezedb) ForceFreeze(ethdb.KeyValueStore) error {
 	return nil
 }
 

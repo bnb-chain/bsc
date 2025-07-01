@@ -349,6 +349,6 @@ func (f *prunedfreezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) 
 	return errNotSupported
 }
 
-func (f *prunedfreezer) ForceFreeze(store ethdb.KeyValueStore) error {
+func (f *prunedfreezer) ForceFreeze(ethdb.KeyValueStore) error {
 	return errNotSupported
 }
