@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"sync"
@@ -273,7 +274,7 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 		if db.config.IncrHistoryPath != "" {
 			ancientDir = db.config.IncrHistoryPath
 		} else {
-			db.config.IncrHistoryPath = ancientDir
+			db.config.IncrHistoryPath = filepath.Join(ancientDir, rawdb.IncrementalPath)
 		}
 
 		if err = db.repairIncrStore(ancientDir); err != nil {
@@ -355,6 +356,7 @@ func (db *Database) repairIncrStore(ancientDir string) error {
 		return nil
 	}
 
+	// TODO: use bottom diff layer block number
 	id := db.tree.bottom().stateID()
 	blob := rawdb.ReadStateHistoryMeta(db.freezer, id)
 	if len(blob) == 0 {

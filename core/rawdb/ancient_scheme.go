@@ -143,7 +143,7 @@ func NewStateFreezer(ancientDir string, verkle bool, readOnly bool, offset uint6
 	return newResettableFreezer(name, "eth/db/state", readOnly, offset, stateHistoryTableSize, stateFreezerNoSnappy, false)
 }
 
-// OpenIncrStateFreezer
+// OpenIncrStateFreezer opens the incremental state freezer.
 func OpenIncrStateFreezer(incrStateDir string, readOnly bool, offset uint64) (ethdb.ResettableAncientStore, error) {
 	if incrStateDir == "" {
 		return nil, errors.New("empty incr state directory")
@@ -153,7 +153,7 @@ func OpenIncrStateFreezer(incrStateDir string, readOnly bool, offset uint64) (et
 	return newResettableFreezer(name, "eth/db/incr/state", readOnly, offset, stateHistoryTableSize, incrStateFreezerNoSnappy, true)
 }
 
-// OpenIncrChainFreezer
+// OpenIncrChainFreezer opens the incremental chain freezer.
 func OpenIncrChainFreezer(incrChainDir string, readOnly bool, offset uint64) (ethdb.ResettableAncientStore, error) {
 	if incrChainDir == "" {
 		return nil, errors.New("empty incr chain directory")

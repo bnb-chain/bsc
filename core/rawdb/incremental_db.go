@@ -65,9 +65,8 @@ func NewIncrDB(baseDir string, readonly bool, offset, startBlock, blockLimit uin
 		blockLimit:   blockLimit,
 	}
 
-	incrBaseDir := filepath.Join(baseDir, IncrementalPath)
 	// Find the latest directory or create the first one
-	currentDir, err := findLatestIncrDir(incrBaseDir, offset, startBlock)
+	currentDir, err := findLatestIncrDir(baseDir, offset, startBlock)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find latest incremental directory: %v", err)
 	}
@@ -80,7 +79,7 @@ func NewIncrDB(baseDir string, readonly bool, offset, startBlock, blockLimit uin
 	incrDB := &IncrDB{
 		currDB:     db,
 		info:       info,
-		baseDir:    incrBaseDir,
+		baseDir:    baseDir,
 		currentDir: currentDir,
 		switching:  false,
 	}
@@ -479,10 +478,9 @@ func findLatestIncrDir(baseDir string, offset, startBlock uint64) (string, error
 
 // GetAllIncrDirs returns all incremental directories sorted by block number
 func GetAllIncrDirs(baseDir string) ([]IncrDirInfo, error) {
-	dir := filepath.Join(baseDir, IncrementalPath)
-	entries, err := os.ReadDir(dir)
+	entries, err := os.ReadDir(baseDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read base directory %s: %v", dir, err)
+		return nil, fmt.Errorf("failed to read base directory %s: %v", baseDir, err)
 	}
 
 	incrDirPattern := regexp.MustCompile(`^incr_(\d+)$`)
@@ -505,7 +503,7 @@ func GetAllIncrDirs(baseDir string) ([]IncrDirInfo, error) {
 
 		incrDirs = append(incrDirs, IncrDirInfo{
 			Name:     entry.Name(),
-			Path:     filepath.Join(dir, entry.Name()),
+			Path:     filepath.Join(baseDir, entry.Name()),
 			BlockNum: blockNum,
 		})
 	}
