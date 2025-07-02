@@ -225,45 +225,6 @@ func (idb *IncrDB) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	return idb.currDB.kvDB.NewIterator(prefix, start)
 }
 
-// switchToNewDirectoryBlocking performs directory switch and blocks all writes during the process
-func (idb *IncrDB) switchToNewDirectoryBlocking(blockNum uint64) error {
-	log.Info("Starting directory switch", "blockLimit", idb.info.blockLimit, "newStartBlock", blockNum)
-
-	// Set switching flag to block new writes
-	idb.switchMutex.Lock()
-	idb.switching = true
-	idb.switchMutex.Unlock()
-
-	defer func() {
-		// Clear switching flag and notify waiting writers
-		idb.switchMutex.Lock()
-		idb.switching = false
-		idb.switchCond.Broadcast()
-		idb.switchMutex.Unlock()
-	}()
-
-	// Close current databases safely
-	if err := idb.closeCurrentDatabases(); err != nil {
-		return fmt.Errorf("failed to close current databases: %v", err)
-	}
-
-	// Create new directory name based on block number
-	newDir := filepath.Join(idb.baseDir, fmt.Sprintf("incr_%d", blockNum))
-
-	// Create new database wrapper
-	db, err := newDBWrapper(newDir, &idb.info)
-	if err != nil {
-		return fmt.Errorf("failed to create new database wrapper in directory %s: %v", newDir, err)
-	}
-
-	// Update current database and directory
-	idb.currDB = db
-	idb.currentDir = newDir
-
-	log.Info("Successfully switched to new incremental directory", "newDir", newDir)
-	return nil
-}
-
 // SwitchToNewDirectoryWithAsyncManager performs directory switch with async write manager coordination
 func (idb *IncrDB) SwitchToNewDirectoryWithAsyncManager(blockNum uint64, asyncManager AsyncWriteManagerInterface) error {
 	log.Info("Starting coordinated directory switch", "blockNum", blockNum)

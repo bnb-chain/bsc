@@ -63,8 +63,7 @@ type incrManager struct {
 	wg         sync.WaitGroup
 
 	// Statistics
-	stats     WriteStats
-	statsLock sync.RWMutex
+	stats WriteStats
 
 	// State
 	started bool

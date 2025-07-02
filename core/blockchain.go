@@ -290,8 +290,6 @@ type BlockChain struct {
 	triesInMemory uint64
 	txIndexer     *txIndexer // Transaction indexer, might be nil if not enabled
 
-	incrChainFreezer ethdb.ResettableAncientStore // store block data into incr freezer database for incremental snapshot usage
-
 	hc                       *HeaderChain
 	rmLogsFeed               event.Feed
 	chainFeed                event.Feed
