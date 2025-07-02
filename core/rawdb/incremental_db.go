@@ -54,7 +54,7 @@ type IncrDirInfo struct {
 }
 
 // NewIncrDB creates a new incremental database
-func NewIncrDB(baseDir string, readonly bool, offset uint64, blockLimit uint64) (*IncrDB, error) {
+func NewIncrDB(baseDir string, readonly bool, offset, startBlock, blockLimit uint64) (*IncrDB, error) {
 	info := incrDBInfo{
 		readonly:     readonly,
 		namespace:    "eth/db/incremental/",
@@ -67,7 +67,7 @@ func NewIncrDB(baseDir string, readonly bool, offset uint64, blockLimit uint64) 
 
 	incrBaseDir := filepath.Join(baseDir, IncrementalPath)
 	// Find the latest directory or create the first one
-	currentDir, err := findLatestIncrDir(incrBaseDir, offset)
+	currentDir, err := findLatestIncrDir(incrBaseDir, offset, startBlock)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find latest incremental directory: %v", err)
 	}
@@ -84,7 +84,6 @@ func NewIncrDB(baseDir string, readonly bool, offset uint64, blockLimit uint64) 
 		currentDir: currentDir,
 		switching:  false,
 	}
-	// incrDB.blockCount.Store(0)
 	incrDB.switchCond = sync.NewCond(&incrDB.switchMutex)
 
 	log.Info("IncrDB created", "baseDir", baseDir, "currentDir", currentDir, "blockLimit", blockLimit)
@@ -427,7 +426,7 @@ func (idb *IncrDB) GetCurrentStats() (string, uint64) {
 }
 
 // findLatestIncrDir finds the latest incremental directory or creates the first one
-func findLatestIncrDir(baseDir string, offset uint64) (string, error) {
+func findLatestIncrDir(baseDir string, offset, startBlock uint64) (string, error) {
 	// Ensure base directory exists
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create base directory %s: %v", baseDir, err)
@@ -463,7 +462,7 @@ func findLatestIncrDir(baseDir string, offset uint64) (string, error) {
 
 	// If no existing directories found, create the first one
 	if len(incrDirs) == 0 {
-		firstDir := filepath.Join(baseDir, fmt.Sprintf("incr_%d", offset))
+		firstDir := filepath.Join(baseDir, fmt.Sprintf("incr_%d", startBlock))
 		log.Info("No existing incremental directories found, creating first one", "dir", firstDir)
 		return firstDir, nil
 	}
@@ -517,58 +516,6 @@ func GetAllIncrDirs(baseDir string) ([]IncrDirInfo, error) {
 	})
 
 	return incrDirs, nil
-}
-
-// RecoverFromDirectory recovers the IncrDB to use a specific directory
-func (idb *IncrDB) RecoverFromDirectory(targetDir string) error {
-	idb.lock.Lock()
-	defer idb.lock.Unlock()
-
-	// Validate target directory exists
-	if _, err := os.Stat(targetDir); os.IsNotExist(err) {
-		return fmt.Errorf("target directory does not exist: %s", targetDir)
-	}
-
-	// Close current databases
-	if err := idb.closeCurrentDatabases(); err != nil {
-		return fmt.Errorf("failed to close current databases: %v", err)
-	}
-
-	// Create new database wrapper for target directory
-	db, err := newDBWrapper(targetDir, &idb.info)
-	if err != nil {
-		return fmt.Errorf("failed to create database wrapper for directory %s: %v", targetDir, err)
-	}
-
-	// Update current database and directory
-	idb.currDB = db
-	idb.currentDir = targetDir
-
-	log.Info("Successfully recovered to directory", "dir", targetDir)
-	return nil
-}
-
-// GetDirectoryBlockRange returns the block range for a specific directory
-func (idb *IncrDB) GetDirectoryBlockRange(dirPath string) (startBlock uint64, endBlock uint64, err error) {
-	// Extract start block from directory name
-	dirName := filepath.Base(dirPath)
-	incrDirPattern := regexp.MustCompile(`^incr_(\d+)$`)
-	matches := incrDirPattern.FindStringSubmatch(dirName)
-
-	if len(matches) != 2 {
-		return 0, 0, fmt.Errorf("invalid directory name format: %s", dirName)
-	}
-
-	startBlock, err = strconv.ParseUint(matches[1], 10, 64)
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to parse start block from directory name: %v", err)
-	}
-
-	// For end block, we would need to check the actual data in the directory
-	// This is a placeholder - actual implementation would query the databases
-	endBlock = startBlock + idb.info.blockLimit - 1
-
-	return startBlock, endBlock, nil
 }
 
 // IsBlockLimitReached checks if the current directory has reached its block limit

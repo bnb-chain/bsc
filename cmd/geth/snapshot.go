@@ -241,15 +241,6 @@ the expected order for the overlay tree migration.
 					utils.DatabaseFlags),
 				Description: `This command is used to debug incremental snapshots issues`,
 			},
-			{
-				Action:    forceFlushToAncient,
-				Name:      "force-flush-ancient",
-				Usage:     "Force flush block data in pebble into ancient db",
-				ArgsUsage: "",
-				Flags: slices.Concat([]cli.Flag{utils.IncrementalSnapshotPathFlag, utils.IncrementalSnapshotFlag},
-					utils.DatabaseFlags),
-				Description: `This command is used to debug incremental snapshots issues`,
-			},
 		},
 	}
 )
@@ -1236,21 +1227,6 @@ func compareBlockAndStateID(ctx *cli.Context) error {
 	return nil
 }
 
-func forceFlushToAncient(ctx *cli.Context) error {
-	stack, _ := makeConfigNode(ctx)
-	defer stack.Close()
-
-	chainDB := utils.MakeChainDatabase(ctx, stack, false, false)
-	defer chainDB.Close()
-
-	if err := chainDB.ForceFreeze(chainDB.BlockStore()); err != nil {
-		log.Error("Failed to force freeze to ancients", "err", err)
-		return err
-	}
-
-	return nil
-}
-
 // mergeIncrSnapshot
 func mergeIncrSnapshot(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
@@ -1268,20 +1244,26 @@ func mergeIncrSnapshot(ctx *cli.Context) error {
 
 	path := ctx.String(utils.IncrementalSnapshotPathFlag.Name)
 	log.Info("Start merging incremental snapshot", "path", path)
-
-	if err := trieDB.MergeIncrState(path); err != nil {
-		log.Error("Failed to merge incremental state", "err", err)
+	dirs, err := rawdb.GetAllIncrDirs(path)
+	if err != nil {
+		log.Error("Failed to get all incremental directories", "err", err)
 		return err
 	}
+	for _, dir := range dirs {
+		if err = trieDB.MergeIncrState(dir.Path); err != nil {
+			log.Error("Failed to merge incremental state data", "err", err)
+			return err
+		}
 
-	if err := mergeIncrBlock(path, chainDB); err != nil {
-		log.Error("Failed to merge increment block", "err", err)
-		return err
-	}
+		if err = mergeIncrBlock(dir.Path, chainDB); err != nil {
+			log.Error("Failed to merge incremental block data", "err", err)
+			return err
+		}
 
-	if err := mergeContractCodes(path, chainDB); err != nil {
-		log.Error("Failed to merge contract codes", "err", err)
-		return err
+		if err = mergeContractCodes(dir.Path, chainDB); err != nil {
+			log.Error("Failed to merge incremental contract codes", "err", err)
+			return err
+		}
 	}
 
 	return nil
@@ -1482,7 +1464,7 @@ func mergeContractCodes(incrDir string, chainDB ethdb.Database) error {
 		}
 	}
 
-	if err := it.Error(); err != nil {
+	if err = it.Error(); err != nil {
 		log.Error("Iterator error while reading contract codes", "err", err)
 		return err
 	}

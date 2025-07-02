@@ -355,8 +355,19 @@ func (db *Database) repairIncrStore(ancientDir string) error {
 		return nil
 	}
 
+	id := db.tree.bottom().stateID()
+	blob := rawdb.ReadStateHistoryMeta(db.freezer, id+1)
+	if len(blob) == 0 {
+		return fmt.Errorf("state history not found %d", id+1)
+	}
+	var m meta
+	if err := m.decode(blob); err != nil {
+		log.Error("Failed to decode state history", "err", err)
+		return err
+	}
+
 	offset := uint64(0) // differ from in block data, only metadata is used in state data
-	incrDB, err := rawdb.NewIncrDB(ancientDir, db.readOnly, offset, db.config.IncrHistory)
+	incrDB, err := rawdb.NewIncrDB(ancientDir, db.readOnly, offset, m.block, db.config.IncrHistory)
 	if err != nil {
 		log.Crit("Failed to open incremental db", "err", err)
 	}
@@ -366,14 +377,14 @@ func (db *Database) repairIncrStore(ancientDir string) error {
 
 	incrStateFreezer := db.incr.incrDB.GetStateFreezer()
 	if incrStateFreezer == nil {
-		return errors.New("Incremental state freezer is nil")
+		log.Crit("Incremental state freezer is nil")
+		return nil
 	}
 	frozen, err := incrStateFreezer.Ancients()
 	if err != nil {
 		log.Crit("Failed to retrieve head of incr state history", "err", err)
 	}
 
-	id := db.tree.bottom().stateID()
 	if id == 0 {
 		if frozen != 0 {
 			if err = incrStateFreezer.Reset(); err != nil {
