@@ -356,9 +356,9 @@ func (db *Database) repairIncrStore(ancientDir string) error {
 	}
 
 	id := db.tree.bottom().stateID()
-	blob := rawdb.ReadStateHistoryMeta(db.freezer, id+1)
+	blob := rawdb.ReadStateHistoryMeta(db.freezer, id)
 	if len(blob) == 0 {
-		return fmt.Errorf("state history not found %d", id+1)
+		return fmt.Errorf("state history not found %d", id)
 	}
 	var m meta
 	if err := m.decode(blob); err != nil {
@@ -369,7 +369,8 @@ func (db *Database) repairIncrStore(ancientDir string) error {
 	offset := uint64(0) // differ from in block data, only metadata is used in state data
 	incrDB, err := rawdb.NewIncrDB(ancientDir, db.readOnly, offset, m.block, db.config.IncrHistory)
 	if err != nil {
-		log.Crit("Failed to open incremental db", "err", err)
+		log.Error("Failed to open incremental db", "err", err)
+		return err
 	}
 
 	// Create incremental store with async write manager
@@ -382,16 +383,19 @@ func (db *Database) repairIncrStore(ancientDir string) error {
 	}
 	frozen, err := incrStateFreezer.Ancients()
 	if err != nil {
-		log.Crit("Failed to retrieve head of incr state history", "err", err)
+		log.Error("Failed to retrieve head of incr state history", "err", err)
+		return err
 	}
 
 	if id == 0 {
 		if frozen != 0 {
 			if err = incrStateFreezer.Reset(); err != nil {
-				log.Crit("Failed to reset incr state histories", "err", err)
+				log.Error("Failed to reset incr state histories", "err", err)
+				return err
 			}
 			if err = db.incr.incrDB.GetChainFreezer().Reset(); err != nil {
-				log.Crit("Failed to reset incr chain histories", "err", err)
+				log.Error("Failed to reset incr chain histories", "err", err)
+				return err
 			}
 			log.Info("Truncated extraneous state history")
 		}
@@ -399,24 +403,28 @@ func (db *Database) repairIncrStore(ancientDir string) error {
 	}
 
 	// Truncate the extra incr state and chain histories above in freezer in case
-	// it's not aligned with the disk layer. It might happen after a unclean shutdown.
+	// it's not aligned with the disk layer. It might happen after an unclean shutdown.
 	// truncate incr state freezer
 	pruned, err := truncateFromHead(db.diskdb, incrStateFreezer, id)
 	if err != nil {
-		log.Crit("Failed to truncate extra incr state histories", "err", err)
+		log.Error("Failed to truncate extra incr state histories", "err", err)
+		return err
 	}
 	if pruned != 0 {
 		log.Warn("Truncated extra incr state histories", "number", pruned)
 	}
 
+	// align incremental block freezer with state
 	number, err := rawdb.ReadIncrStateBlockNumber(incrStateFreezer, id)
 	if err != nil {
-		log.Crit("Failed to read incr state histories", "err", err)
+		log.Error("Failed to read incr state histories", "err", err)
+		return err
 	}
 	// truncate incr chain freezer
 	pruned, err = truncateFromHead(db.diskdb, db.incr.incrDB.GetChainFreezer(), number)
 	if err != nil {
-		log.Crit("Failed to truncate extra incr chain histories", "err", err)
+		log.Error("Failed to truncate extra incr chain histories", "err", err)
+		return err
 	}
 	if pruned != 0 {
 		log.Warn("Truncated extra incr chain histories", "number", pruned)
