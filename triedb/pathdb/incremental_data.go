@@ -3,7 +3,6 @@ package pathdb
 import (
 	"errors"
 	"fmt"
-	"math/big"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 )
@@ -53,9 +53,9 @@ func (ws *WriteStats) UpdateProcessTime(duration time.Duration) {
 
 type incrManager struct {
 	// Core components
-	db        *Database // Reference to parent Database for accessing diskdb
-	incrDB    *rawdb.IncrDB
-	freezeEnv atomic.Value
+	db          *Database // Reference to parent Database for accessing diskdb
+	incrDB      *rawdb.IncrDB
+	chainConfig *params.ChainConfig
 
 	// Async write control
 	writeQueue chan *diffLayer
@@ -69,22 +69,25 @@ type incrManager struct {
 	// State
 	started bool
 	lock    sync.RWMutex
-
-	lastBlock atomic.Uint64
 }
 
-// NewIncrManager creates a new incremental store with async write capability
+// NewIncrManager creates a new incremental manager with async write capability
 func NewIncrManager(db *Database, incrDB *rawdb.IncrDB) *incrManager {
-	store := &incrManager{
+	im := &incrManager{
 		db:         db,
 		incrDB:     incrDB,
 		writeQueue: make(chan *diffLayer, 100),
 		stopChan:   make(chan struct{}),
 		started:    false,
-		lastBlock:  atomic.Uint64{},
 	}
 
-	return store
+	chainConfig, err := rawdb.GetChainConfig(db.diskdb.BlockStore())
+	if err != nil {
+		log.Crit("Failed to get chain config", "err", err)
+	}
+	im.chainConfig = chainConfig
+
+	return im
 }
 
 // Start starts the async write workers
@@ -231,11 +234,8 @@ func (im *incrManager) processWriteTask(dl *diffLayer) error {
 	if h == nil {
 		return fmt.Errorf("block header missing, can't freeze block %d", dl.block)
 	}
-	env := im.GetFreezerEnv()
-	if env == nil {
-		return errors.New("freezer env is not available")
-	}
-	if err := rawdb.ResetEmptyIncrChainTable(im.incrDB.GetChainFreezer(), dl.block, isCancun(env, h.Number, h.Time)); err != nil {
+	isCancun := im.chainConfig.IsCancun(h.Number, h.Time)
+	if err := rawdb.ResetEmptyIncrChainTable(im.incrDB.GetChainFreezer(), dl.block, isCancun); err != nil {
 		log.Error("Failed to reset empty incr chain freezer", "block", dl.block, "err", err)
 		return err
 	}
@@ -292,11 +292,6 @@ func (im *incrManager) writeStateData(dl *diffLayer) error {
 
 // writeChainData writes incremental chain data
 func (im *incrManager) writeChainData(blockNumber, stateID uint64) error {
-	env := im.GetFreezerEnv()
-	if env == nil {
-		return errors.New("freezer env is not available")
-	}
-
 	// Get freezer reference directly without waiting for switch completion
 	// This avoids deadlock while still maintaining data consistency
 	head, err := im.incrDB.GetChainFreezer().Ancients()
@@ -327,7 +322,7 @@ func (im *incrManager) writeChainData(blockNumber, stateID uint64) error {
 			currentStateID = stateID
 		}
 
-		if err = writeIncrBlockToFreezer(env, im.db.diskdb.BlockStore(), im.incrDB, i, currentStateID); err != nil {
+		if err = im.writeIncrBlock(im.db.diskdb.BlockStore(), i, currentStateID); err != nil {
 			log.Error("Failed to write block data to freezer", "block", i, "stateID", currentStateID, "err", err)
 			return err
 		}
@@ -434,15 +429,118 @@ func (im *incrManager) IsHealthy() bool {
 	return failureRate < 0.1
 }
 
-// GetFreezerEnv returns the freezer environment
-func (im *incrManager) GetFreezerEnv() *ethdb.FreezerEnv {
-	env, _ := im.freezeEnv.Load().(*ethdb.FreezerEnv)
-	return env
+// checkAndFillEmptyBlocks checks for gaps and fills empty blocks after directory switch
+func (im *incrManager) checkAndFillEmptyBlocks(currentBlock uint64) error {
+	lastBlock := im.incrDB.GetLastBlock()
+
+	log.Info("Checking for empty blocks after directory switch",
+		"currentBlock", currentBlock, "freezerLastBlock", lastBlock)
+
+	// If there's a gap between freezer and current block, fill it
+	if currentBlock > lastBlock+1 {
+		startBlock := lastBlock + 1
+		endBlock := currentBlock - 1
+
+		log.Info("Found empty block gap, filling",
+			"startBlock", startBlock, "endBlock", endBlock, "count", endBlock-startBlock+1)
+
+		// Fill the gap using existing writeChainData logic
+		for blockNum := startBlock; blockNum <= endBlock; blockNum++ {
+			if err := im.fillSingleEmptyBlock(blockNum); err != nil {
+				log.Error("Failed to fill empty block", "block", blockNum, "err", err)
+				return fmt.Errorf("failed to fill empty block %d: %v", blockNum, err)
+			}
+			log.Info("Filled empty block", "block", blockNum)
+		}
+
+		log.Info("Successfully filled all empty blocks",
+			"startBlock", startBlock, "endBlock", endBlock, "count", endBlock-startBlock+1)
+	} else {
+		log.Info("No empty blocks to fill", "currentBlock", currentBlock, "freezerLastBlock", lastBlock)
+	}
+
+	return nil
 }
 
-// SetFreezerEnv sets the freezer environment
-func (im *incrManager) SetFreezerEnv(env *ethdb.FreezerEnv) {
-	im.freezeEnv.Store(env)
+// fillSingleEmptyBlock fills a single empty block, reusing existing logic
+func (im *incrManager) fillSingleEmptyBlock(blockNum uint64) error {
+	blockStore := im.db.diskdb.BlockStore()
+	if blockStore == nil {
+		return errors.New("block store not available")
+	}
+
+	// Check if block exists
+	blockHash := rawdb.ReadCanonicalHash(blockStore, blockNum)
+	if blockHash == (common.Hash{}) {
+		return fmt.Errorf("canonical hash not found for block %d", blockNum)
+	}
+
+	h, _ := rawdb.ReadHeaderAndRaw(blockStore, blockHash, blockNum)
+	if h == nil {
+		return fmt.Errorf("block header not found for block %d", blockNum)
+	}
+	isCancun := im.chainConfig.IsCancun(h.Number, h.Time)
+
+	// Reset chain table for this empty block
+	chainFreezer := im.incrDB.GetChainFreezer()
+	if err := rawdb.ResetEmptyIncrChainTable(chainFreezer, blockNum, isCancun); err != nil {
+		return fmt.Errorf("failed to reset chain table: %v", err)
+	}
+
+	// Write the empty block (stateID = 0 for empty blocks)
+	if err := im.writeIncrBlock(blockStore, blockNum, 0); err != nil {
+		return fmt.Errorf("failed to write block to freezer: %v", err)
+	}
+
+	return nil
+}
+
+// writeIncrBlock writes incremental block
+func (im *incrManager) writeIncrBlock(reader ethdb.Reader, blockNumber, stateID uint64) error {
+	blockHash := rawdb.ReadCanonicalHash(reader, blockNumber)
+	if blockHash == (common.Hash{}) {
+		return fmt.Errorf("canonical hash not found for block %d", blockNumber)
+	}
+	h, header := rawdb.ReadHeaderAndRaw(reader, blockHash, blockNumber)
+	if len(header) == 0 {
+		return fmt.Errorf("block header missing, can't freeze block %d", blockNumber)
+	}
+	body := rawdb.ReadBodyRLP(reader, blockHash, blockNumber)
+	if len(body) == 0 {
+		return fmt.Errorf("block body missing, can't freeze block %d", blockNumber)
+	}
+	receipts := rawdb.ReadReceiptsRLP(reader, blockHash, blockNumber)
+	if len(receipts) == 0 {
+		return fmt.Errorf("block receipts missing, can't freeze block %d", blockNumber)
+	}
+	td := rawdb.ReadTdRLP(reader, blockHash, blockNumber)
+	if len(td) == 0 {
+		return fmt.Errorf("total difficulty not found for block %d (hash: %s)", blockNumber, blockHash.Hex())
+	}
+
+	chainConfig, err := rawdb.GetChainConfig(reader)
+	if err != nil {
+		log.Error("Failed to get chain config", "err", err)
+		return err
+	}
+	// blobs is nil before cancun fork
+	var sidecars rlp.RawValue
+	isCancun := chainConfig.IsCancun(h.Number, h.Time)
+	if isCancun {
+		sidecars = rawdb.ReadBlobSidecarsRLP(reader, blockHash, blockNumber)
+		if len(sidecars) == 0 {
+			return fmt.Errorf("block blobs missing, can't freeze block %d", blockNumber)
+		}
+	}
+
+	err = im.incrDB.WriteIncrBlockData(blockNumber, stateID, blockHash[:], header, body, receipts, td, sidecars, isCancun)
+	if err != nil {
+		log.Error("Failed to write block data", "err", err)
+		return err
+	}
+
+	log.Debug("Write one block data into incr chain freezer", "block", blockNumber, "hash", blockHash.Hex())
+	return nil
 }
 
 // readIncrHistory reads incremental history
@@ -483,122 +581,4 @@ func readIncrTrieNodes(reader ethdb.AncientReader, id uint64) (map[common.Hash]m
 	}
 
 	return flattenTrieNodes(decodedTrieNodes), nil
-}
-
-// writeIncrBlockToFreezer writes incremental block into freezer
-func writeIncrBlockToFreezer(env *ethdb.FreezerEnv, reader ethdb.Reader, incrDB *rawdb.IncrDB, blockNumber, stateID uint64) error {
-	blockHash := rawdb.ReadCanonicalHash(reader, blockNumber)
-	if blockHash == (common.Hash{}) {
-		return fmt.Errorf("canonical hash not found for block %d", blockNumber)
-	}
-	h, header := rawdb.ReadHeaderAndRaw(reader, blockHash, blockNumber)
-	if len(header) == 0 {
-		return fmt.Errorf("block header missing, can't freeze block %d", blockNumber)
-	}
-	body := rawdb.ReadBodyRLP(reader, blockHash, blockNumber)
-	if len(body) == 0 {
-		return fmt.Errorf("block body missing, can't freeze block %d", blockNumber)
-	}
-	receipts := rawdb.ReadReceiptsRLP(reader, blockHash, blockNumber)
-	if len(receipts) == 0 {
-		return fmt.Errorf("block receipts missing, can't freeze block %d", blockNumber)
-	}
-	td := rawdb.ReadTdRLP(reader, blockHash, blockNumber)
-	if len(td) == 0 {
-		return fmt.Errorf("total difficulty not found for block %d (hash: %s)", blockNumber, blockHash.Hex())
-	}
-	// blobs is nil before cancun fork
-	var sidecars rlp.RawValue
-	if isCancun(env, h.Number, h.Time) {
-		sidecars = rawdb.ReadBlobSidecarsRLP(reader, blockHash, blockNumber)
-		if len(sidecars) == 0 {
-			return fmt.Errorf("block blobs missing, can't freeze block %d", blockNumber)
-		}
-	}
-
-	err := incrDB.WriteIncrBlockData(blockNumber, stateID, blockHash[:], header, body, receipts, td, sidecars, isCancun(env, h.Number, h.Time))
-	if err != nil {
-		log.Error("Failed to write block data", "err", err)
-		return err
-	}
-
-	log.Debug("Write one block data into incr chain freezer", "block", blockNumber, "hash", blockHash.Hex())
-	return nil
-}
-
-func isCancun(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
-	if env == nil || env.ChainCfg == nil {
-		return false
-	}
-
-	return env.ChainCfg.IsCancun(num, time)
-}
-
-// checkAndFillEmptyBlocks checks for gaps and fills empty blocks after directory switch
-func (im *incrManager) checkAndFillEmptyBlocks(currentBlock uint64) error {
-	lastBlock := im.incrDB.GetLastBlock()
-
-	log.Info("Checking for empty blocks after directory switch",
-		"currentBlock", currentBlock, "freezerLastBlock", lastBlock)
-
-	// If there's a gap between freezer and current block, fill it
-	if currentBlock > lastBlock+1 {
-		startBlock := lastBlock + 1
-		endBlock := currentBlock - 1
-
-		log.Info("Found empty block gap, filling",
-			"startBlock", startBlock, "endBlock", endBlock, "count", endBlock-startBlock+1)
-
-		// Fill the gap using existing writeChainData logic
-		for blockNum := startBlock; blockNum <= endBlock; blockNum++ {
-			if err := im.fillSingleEmptyBlock(blockNum); err != nil {
-				log.Error("Failed to fill empty block", "block", blockNum, "err", err)
-				return fmt.Errorf("failed to fill empty block %d: %v", blockNum, err)
-			}
-			log.Info("Filled empty block", "block", blockNum)
-		}
-
-		log.Info("Successfully filled all empty blocks",
-			"startBlock", startBlock, "endBlock", endBlock, "count", endBlock-startBlock+1)
-	} else {
-		log.Info("No empty blocks to fill", "currentBlock", currentBlock, "freezerLastBlock", lastBlock)
-	}
-
-	return nil
-}
-
-// fillSingleEmptyBlock fills a single empty block, reusing existing logic
-func (im *incrManager) fillSingleEmptyBlock(blockNum uint64) error {
-	env := im.GetFreezerEnv()
-	if env == nil {
-		return errors.New("freezer env not available")
-	}
-	blockStore := im.db.diskdb.BlockStore()
-	if blockStore == nil {
-		return errors.New("block store not available")
-	}
-
-	// Check if block exists
-	blockHash := rawdb.ReadCanonicalHash(blockStore, blockNum)
-	if blockHash == (common.Hash{}) {
-		return fmt.Errorf("canonical hash not found for block %d", blockNum)
-	}
-
-	h, _ := rawdb.ReadHeaderAndRaw(blockStore, blockHash, blockNum)
-	if h == nil {
-		return fmt.Errorf("block header not found for block %d", blockNum)
-	}
-
-	// Reset chain table for this empty block
-	chainFreezer := im.incrDB.GetChainFreezer()
-	if err := rawdb.ResetEmptyIncrChainTable(chainFreezer, blockNum, isCancun(env, h.Number, h.Time)); err != nil {
-		return fmt.Errorf("failed to reset chain table: %v", err)
-	}
-
-	// Write the empty block (stateID = 0 for empty blocks)
-	if err := writeIncrBlockToFreezer(env, blockStore, im.incrDB, blockNum, 0); err != nil {
-		return fmt.Errorf("failed to write block to freezer: %v", err)
-	}
-
-	return nil
 }

@@ -1269,18 +1269,18 @@ func mergeIncrSnapshot(ctx *cli.Context) error {
 	path := ctx.String(utils.IncrementalSnapshotPathFlag.Name)
 	log.Info("Start merging incremental snapshot", "path", path)
 
-	if err := trieDB.InsertIncrState(path); err != nil {
-		log.Error("Failed to insert incremental state", "err", err)
+	if err := trieDB.MergeIncrState(path); err != nil {
+		log.Error("Failed to merge incremental state", "err", err)
 		return err
 	}
 
-	if err := insertIncrBlock(path, chainDB); err != nil {
-		log.Error("Failed to insert increment block", "err", err)
+	if err := mergeIncrBlock(path, chainDB); err != nil {
+		log.Error("Failed to merge increment block", "err", err)
 		return err
 	}
 
-	if err := insertContractCodes(path, chainDB); err != nil {
-		log.Error("Failed to insert contract codes", "err", err)
+	if err := mergeContractCodes(path, chainDB); err != nil {
+		log.Error("Failed to merge contract codes", "err", err)
 		return err
 	}
 
@@ -1373,7 +1373,7 @@ func checkStateWithBlock(incrDir string) error {
 	return nil
 }
 
-func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
+func mergeIncrBlock(incrDir string, chainDB ethdb.Database) error {
 	incrChainFreezer, err := rawdb.OpenIncrChainFreezer(incrDir, true, 0)
 	if err != nil {
 		log.Error("Failed to open incremental chain freezer", "err", err)
@@ -1443,11 +1443,11 @@ func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
 		return err
 	}
 
-	log.Info("Finished inserting block data", "insert_number", incrAncients-baseHead)
+	log.Info("Finished merging incremental block data", "merged_number", incrAncients-baseHead)
 	return nil
 }
 
-func insertContractCodes(incrDir string, chainDB ethdb.Database) error {
+func mergeContractCodes(incrDir string, chainDB ethdb.Database) error {
 	newDB, err := pebble.New(incrDir, 10, 10, "incremental", true)
 	if err != nil {
 		log.Error("Failed to open pebble to read incremental data", "err", err)
@@ -1487,6 +1487,6 @@ func insertContractCodes(incrDir string, chainDB ethdb.Database) error {
 		return err
 	}
 
-	log.Info("Contract codes insertion completed", "total", codeCount)
+	log.Info("Complete merging contract codes", "total", codeCount)
 	return nil
 }

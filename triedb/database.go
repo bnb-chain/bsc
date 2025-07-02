@@ -393,14 +393,14 @@ func (db *Database) Disk() ethdb.Database {
 	return db.disk
 }
 
-// InsertIncrState inserts the state in incremental snapshot into base snapshot
-func (db *Database) InsertIncrState(incrDir string) error {
+// MergeIncrState merges the state in incremental snapshot into base snapshot
+func (db *Database) MergeIncrState(incrDir string) error {
 	pdb, ok := db.backend.(*pathdb.Database)
 	if !ok {
 		log.Error("Not supported")
 		return nil
 	}
-	return pdb.InsertIncrState(incrDir)
+	return pdb.MergeIncrState(incrDir)
 }
 
 // SetIncrBlockStartNumber sets the starting block number for incremental block data
@@ -412,16 +412,6 @@ func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
 		return
 	}
 	pdb.SetIncrBlockStartNumber(startBlock)
-}
-
-// SetFreezerEnv is used to store freezer env.
-func (db *Database) SetFreezerEnv(env *ethdb.FreezerEnv) {
-	pdb, ok := db.backend.(*pathdb.Database)
-	if !ok {
-		log.Error("Not supported SetFreezerEnv")
-	} else {
-		pdb.SetFreezerEnv(env)
-	}
 }
 
 // WriteContractCodes used to write contract codes into incremental db.

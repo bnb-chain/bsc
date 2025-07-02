@@ -362,7 +362,7 @@ func (db *Database) repairIncrStore(ancientDir string) error {
 	}
 
 	// Create incremental store with async write manager
-	db.incr = NewIncrStore(db, incrDB)
+	db.incr = NewIncrManager(db, incrDB)
 
 	id := db.tree.bottom().stateID()
 	frozen, err := db.incr.incrDB.GetStateFreezer().Ancients()
@@ -803,19 +803,12 @@ func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
 	}
 }
 
-// SetFreezerEnv is used to store freezer env.
-func (db *Database) SetFreezerEnv(env *ethdb.FreezerEnv) {
-	if db.incr != nil {
-		db.incr.SetFreezerEnv(env)
-	}
-}
-
 // IsIncrEnabled returns true if incremental is enabled, otherwise false.
 func (db *Database) IsIncrEnabled() bool {
 	return db.config.EnableIncrHistory
 }
 
-func (db *Database) InsertIncrState(incrDir string) error {
+func (db *Database) MergeIncrState(incrDir string) error {
 	incrStateFreezer, err := rawdb.OpenIncrStateFreezer(incrDir, true, 0)
 	if err != nil {
 		log.Error("Failed to open incremental state freezer", "err", err)
@@ -823,25 +816,25 @@ func (db *Database) InsertIncrState(incrDir string) error {
 	}
 	defer incrStateFreezer.Close()
 
-	ancients, _ := incrStateFreezer.Ancients()
+	incrAncients, _ := incrStateFreezer.Ancients()
 	tail, _ := incrStateFreezer.Tail()
 	count, _ := incrStateFreezer.ItemAmountInAncient()
-	log.Info("Incr state info", "ancients", ancients, "tail", tail, "count", count)
+	log.Info("Incr state info", "ancients", incrAncients, "tail", tail, "count", count)
 	log.Info("Layer tree", "count", db.tree.len())
 
 	// check data overlap
 	baseHead, _ := db.freezer.Ancients()
-	if tail <= baseHead && baseHead <= ancients {
+	if tail <= baseHead && baseHead <= incrAncients {
 		log.Warn("There are state data overlap", "number", baseHead-tail, "incr_tail", tail, "base_head", baseHead)
 		// merge data into state ancient store
-		if err = db.mergeIncrHistory(incrStateFreezer, baseHead+1, ancients); err != nil {
+		if err = db.mergeIncrHistory(incrStateFreezer, baseHead+1, incrAncients); err != nil {
 			log.Error("Failed to merge incremental state history", "err", err)
 			return err
 		}
 
 		dl := db.tree.bottom()
 		if a, ok := dl.buffer.(*asyncnodebuffer); ok {
-			if err = a.mergeIncrTrieNodes(db.diskdb, db.freezer, incrStateFreezer, tail+1, ancients); err != nil {
+			if err = a.mergeIncrTrieNodes(db.diskdb, db.freezer, incrStateFreezer, tail+1, incrAncients); err != nil {
 				log.Error("Failed to merge incremental trie nodes", "err", err)
 				return err
 			}
@@ -857,18 +850,18 @@ func (db *Database) InsertIncrState(incrDir string) error {
 }
 
 func (db *Database) mergeIncrHistory(incrStateFreezer ethdb.ResettableAncientStore, firstStateID, endStateID uint64) error {
-	for i := firstStateID; i <= endStateID; i++ {
-		h, err := readIncrHistory(incrStateFreezer, i)
+	for id := firstStateID; id <= endStateID; id++ {
+		h, err := readIncrHistory(incrStateFreezer, id)
 		if err != nil {
 			log.Error("Failed to read history", "err", err)
 			return err
 		}
 
 		accountData, storageData, accountIndex, storageIndex := h.encode()
-		rawdb.WriteStateHistory(db.freezer, i, h.meta.encode(), accountIndex, storageIndex, accountData, storageData)
-		rawdb.WriteStateID(db.diskdb, h.meta.root, i)
+		rawdb.WriteStateHistory(db.freezer, id, h.meta.encode(), accountIndex, storageIndex, accountData, storageData)
+		rawdb.WriteStateID(db.diskdb, h.meta.root, id)
 	}
-	log.Info("Insert incremental state to base snapshot state ancient db", "first state ID", firstStateID,
+	log.Info("Merge incremental state to base snapshot state ancient db", "first state ID", firstStateID,
 		"end state ID", endStateID)
 
 	tail, err := db.freezer.Tail()

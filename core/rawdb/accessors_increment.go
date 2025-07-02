@@ -342,13 +342,13 @@ func ResetEmptyIncrStateTable(db ethdb.AncientWriter, next uint64) error {
 }
 
 // GetChainConfig reads chain config from db.
-func GetChainConfig(db ethdb.Database) (*params.ChainConfig, error) {
-	genesisHash := ReadCanonicalHash(db.BlockStore(), 0)
+func GetChainConfig(db ethdb.Reader) (*params.ChainConfig, error) {
+	genesisHash := ReadCanonicalHash(db, 0)
 	if genesisHash == (common.Hash{}) {
 		return nil, errors.New("genesis hash not found")
 	}
 
-	chainConfig := ReadChainConfig(db.BlockStore(), genesisHash)
+	chainConfig := ReadChainConfig(db, genesisHash)
 	if chainConfig == nil {
 		return nil, errors.New("chain config not found")
 	}
