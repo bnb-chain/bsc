@@ -21,7 +21,6 @@ import (
 	"path/filepath"
 
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/log"
 )
 
 // The list of table names of chain freezer.
@@ -43,10 +42,11 @@ const (
 
 	// ChainFreezerBlobSidecarTable indicates the name of the freezer total blob table.
 	ChainFreezerBlobSidecarTable = "blobs"
-
-	// IncrChainFreezerBlockStateIDMappingTable indicates the mapping table between block numbers and state IDs
-	IncrChainFreezerBlockStateIDMappingTable = "mapping"
 )
+
+// IncrBlockStateIDMappingTable indicates the mapping table between block numbers and state IDs.
+// NOTICE: it's used to store data in incremental chain and state freezer.
+const IncrBlockStateIDMappingTable = "mapping"
 
 // chainFreezerNoSnappy configures whether compression is disabled for the ancient-tables.
 // Hashes and difficulties don't compress well.
@@ -62,13 +62,13 @@ var chainFreezerNoSnappy = map[string]bool{
 // incrChainFreezerNoSnappy configures whether compression is disabled for the ancient-tables.
 // Hashes and difficulties don't compress well.
 var incrChainFreezerNoSnappy = map[string]bool{
-	ChainFreezerHeaderTable:                  false,
-	ChainFreezerHashTable:                    true,
-	ChainFreezerBodiesTable:                  false,
-	ChainFreezerReceiptTable:                 false,
-	ChainFreezerDifficultyTable:              true,
-	ChainFreezerBlobSidecarTable:             false,
-	IncrChainFreezerBlockStateIDMappingTable: false,
+	ChainFreezerHeaderTable:      false,
+	ChainFreezerHashTable:        true,
+	ChainFreezerBodiesTable:      false,
+	ChainFreezerReceiptTable:     false,
+	ChainFreezerDifficultyTable:  true,
+	ChainFreezerBlobSidecarTable: false,
+	IncrBlockStateIDMappingTable: false, // block number -> state id
 }
 
 var additionTables = []string{ChainFreezerBlobSidecarTable}
@@ -98,7 +98,7 @@ var stateFreezerNoSnappy = map[string]bool{
 }
 
 var additionIncrTables = []string{ChainFreezerHeaderTable, ChainFreezerHashTable, ChainFreezerBodiesTable, ChainFreezerReceiptTable,
-	ChainFreezerDifficultyTable, IncrChainFreezerBlockStateIDMappingTable, stateHistoryMeta, stateHistoryAccountIndex,
+	ChainFreezerDifficultyTable, IncrBlockStateIDMappingTable, stateHistoryMeta, stateHistoryAccountIndex,
 	stateHistoryStorageIndex, stateHistoryAccountData, stateHistoryStorageData, incrStateHistoryTrieNodesData}
 
 // incrStateFreezerNoSnappy configures whether compression is disabled for the incremental state freezer.
@@ -109,6 +109,7 @@ var incrStateFreezerNoSnappy = map[string]bool{
 	stateHistoryAccountData:       false,
 	stateHistoryStorageData:       false,
 	incrStateHistoryTrieNodesData: false,
+	IncrBlockStateIDMappingTable:  false, // state id -> block number
 }
 
 // The list of identifiers of ancient stores.
@@ -145,7 +146,6 @@ func NewStateFreezer(ancientDir string, verkle bool, readOnly bool, offset uint6
 // OpenIncrStateFreezer
 func OpenIncrStateFreezer(incrStateDir string, readOnly bool, offset uint64) (ethdb.ResettableAncientStore, error) {
 	if incrStateDir == "" {
-		log.Error("Incremental state directory is empty")
 		return nil, errors.New("empty incr state directory")
 	}
 
@@ -156,7 +156,6 @@ func OpenIncrStateFreezer(incrStateDir string, readOnly bool, offset uint64) (et
 // OpenIncrChainFreezer
 func OpenIncrChainFreezer(incrChainDir string, readOnly bool, offset uint64) (ethdb.ResettableAncientStore, error) {
 	if incrChainDir == "" {
-		log.Error("Incremental chain directory is empty")
 		return nil, errors.New("empty incr chain directory")
 	}
 

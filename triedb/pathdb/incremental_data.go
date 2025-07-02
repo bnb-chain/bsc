@@ -278,7 +278,7 @@ func (im *incrManager) writeStateData(dl *diffLayer) error {
 		log.Crit("Failed to encode trie nodes", "error", err)
 	}
 
-	err = im.incrDB.WriteIncrState(dl.stateID(), history.meta.encode(), accountIndex, storageIndex,
+	err = im.incrDB.WriteIncrState(dl.block, dl.stateID(), history.meta.encode(), accountIndex, storageIndex,
 		accountData, storageData, nodesBytes)
 	if err != nil {
 		return err

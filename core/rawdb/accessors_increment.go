@@ -21,7 +21,7 @@ type ContractCode struct {
 // WriteIncrState writes the provided state data into the database.
 // Compute the position of state history in freezer by minus one since the id of first state
 // history starts from one(zero for initial state).
-func WriteIncrState(db ethdb.AncientWriter, id uint64, meta, accountIndex, storageIndex, accounts, storages, trieNodes []byte) error {
+func WriteIncrState(db ethdb.AncientWriter, number, id uint64, meta, accountIndex, storageIndex, accounts, storages, trieNodes []byte) error {
 	_, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
 		if err := op.AppendRaw(stateHistoryMeta, id-1, meta); err != nil {
 			return err
@@ -41,6 +41,9 @@ func WriteIncrState(db ethdb.AncientWriter, id uint64, meta, accountIndex, stora
 		if err := op.AppendRaw(incrStateHistoryTrieNodesData, id-1, trieNodes); err != nil {
 			return err
 		}
+		if err := op.AppendRaw(IncrBlockStateIDMappingTable, id-1, encodeBlockNumber(number)); err != nil {
+			return err
+		}
 		return nil
 	})
 	return err
@@ -55,6 +58,18 @@ func ReadIncrStateTrieNodes(db ethdb.AncientReaderOp, id uint64) ([]byte, error)
 		return nil, err
 	}
 	return blob, nil
+}
+
+// ReadIncrStateBlockNumber retrieves the block number corresponding to the specified
+// state id. Compute the position of state history in freezer by minus one
+// since the id of first state history starts from one(zero for initial state).
+func ReadIncrStateBlockNumber(db ethdb.AncientReaderOp, id uint64) (uint64, error) {
+	blob, err := db.Ancient(IncrBlockStateIDMappingTable, id-1)
+	if err != nil {
+		return 0, err
+	}
+	number := binary.BigEndian.Uint64(blob)
+	return number, nil
 }
 
 // WriteBlockData writes the provided block data to the database.
@@ -103,7 +118,7 @@ func WriteIncrBlockData(db ethdb.AncientWriter, number, stateID uint64, hash, he
 		if err := op.AppendRaw(ChainFreezerDifficultyTable, number, td); err != nil {
 			return err
 		}
-		if err := op.AppendRaw(IncrChainFreezerBlockStateIDMappingTable, number, encodeBlockNumber(stateID)); err != nil {
+		if err := op.AppendRaw(IncrBlockStateIDMappingTable, number, encodeBlockNumber(stateID)); err != nil {
 			return err
 		}
 		if isCancun {
@@ -308,7 +323,7 @@ func ResetEmptyIncrChainTable(db ethdb.AncientWriter, next uint64, isCancun bool
 	if err := db.ResetTable(ChainFreezerDifficultyTable, next, true); err != nil {
 		return err
 	}
-	if err := db.ResetTable(IncrChainFreezerBlockStateIDMappingTable, next, true); err != nil {
+	if err := db.ResetTable(IncrBlockStateIDMappingTable, next, true); err != nil {
 		return err
 	}
 	if isCancun {
@@ -336,6 +351,9 @@ func ResetEmptyIncrStateTable(db ethdb.AncientWriter, next uint64) error {
 		return err
 	}
 	if err := db.ResetTable(incrStateHistoryTrieNodesData, next-1, true); err != nil {
+		return err
+	}
+	if err := db.ResetTable(IncrBlockStateIDMappingTable, next-1, true); err != nil {
 		return err
 	}
 	return nil

@@ -1103,7 +1103,7 @@ func compareBlockAndStateID(ctx *cli.Context) error {
 		a := 0
 		nonEmptyMap := make(map[uint64]uint64)
 		for i := tail; i < ancients; i++ {
-			data, err := incrChainFreezer.Ancient(rawdb.IncrChainFreezerBlockStateIDMappingTable, i)
+			data, err := incrChainFreezer.Ancient(rawdb.IncrBlockStateIDMappingTable, i)
 			if err != nil {
 				log.Error("Failed to get mapping in incr chain freezer", "err", err)
 			}
@@ -1350,7 +1350,7 @@ func checkStateWithBlock(incrDir string) error {
 
 	// TODO: traverse in descending order, check state id with block is right
 	for i := ancients - 1; i >= tail; i-- {
-		data, err := incrChainFreezer.Ancient(rawdb.IncrChainFreezerBlockStateIDMappingTable, i)
+		data, err := incrChainFreezer.Ancient(rawdb.IncrBlockStateIDMappingTable, i)
 		if err != nil {
 			log.Error("Failed to get mapping in chain freezer", "err", err)
 		}

@@ -364,15 +364,19 @@ func (db *Database) repairIncrStore(ancientDir string) error {
 	// Create incremental store with async write manager
 	db.incr = NewIncrManager(db, incrDB)
 
-	id := db.tree.bottom().stateID()
-	frozen, err := db.incr.incrDB.GetStateFreezer().Ancients()
+	incrStateFreezer := db.incr.incrDB.GetStateFreezer()
+	if incrStateFreezer == nil {
+		return errors.New("Incremental state freezer is nil")
+	}
+	frozen, err := incrStateFreezer.Ancients()
 	if err != nil {
 		log.Crit("Failed to retrieve head of incr state history", "err", err)
 	}
 
+	id := db.tree.bottom().stateID()
 	if id == 0 {
 		if frozen != 0 {
-			if err = db.incr.incrDB.GetStateFreezer().Reset(); err != nil {
+			if err = incrStateFreezer.Reset(); err != nil {
 				log.Crit("Failed to reset incr state histories", "err", err)
 			}
 			if err = db.incr.incrDB.GetChainFreezer().Reset(); err != nil {
@@ -383,26 +387,28 @@ func (db *Database) repairIncrStore(ancientDir string) error {
 		return nil
 	}
 
-	// no need truncate incremental freezer when count is 0
-	if frozen != 0 {
-		// truncate incr state freezer
-		pruned, err := truncateFromHead(db.diskdb, db.incr.incrDB.GetStateFreezer(), id)
-		if err != nil {
-			log.Crit("Failed to truncate extra incr state histories", "err", err)
-		}
-		if pruned != 0 {
-			log.Warn("Truncated extra incr state histories", "number", pruned)
-		}
+	// Truncate the extra incr state and chain histories above in freezer in case
+	// it's not aligned with the disk layer. It might happen after a unclean shutdown.
+	// truncate incr state freezer
+	pruned, err := truncateFromHead(db.diskdb, incrStateFreezer, id)
+	if err != nil {
+		log.Crit("Failed to truncate extra incr state histories", "err", err)
+	}
+	if pruned != 0 {
+		log.Warn("Truncated extra incr state histories", "number", pruned)
+	}
 
-		// TODO: check corresponding id with block number
-		// truncate incr chain freezer
-		pruned, err = truncateFromHead(db.diskdb, db.incr.incrDB.GetStateFreezer(), id)
-		if err != nil {
-			log.Crit("Failed to truncate extra incr chain histories", "err", err)
-		}
-		if pruned != 0 {
-			log.Warn("Truncated extra incr chain histories", "number", pruned)
-		}
+	number, err := rawdb.ReadIncrStateBlockNumber(incrStateFreezer, id)
+	if err != nil {
+		log.Crit("Failed to read incr state histories", "err", err)
+	}
+	// truncate incr chain freezer
+	pruned, err = truncateFromHead(db.diskdb, db.incr.incrDB.GetChainFreezer(), number)
+	if err != nil {
+		log.Crit("Failed to truncate extra incr chain histories", "err", err)
+	}
+	if pruned != 0 {
+		log.Warn("Truncated extra incr chain histories", "number", pruned)
 	}
 
 	log.Info("Open incremental db")

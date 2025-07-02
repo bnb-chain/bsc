@@ -184,14 +184,14 @@ func (idb *IncrDB) ReadIncrBlockData(table string, number uint64) ([]byte, error
 }
 
 // WriteIncrState writes incremental state data
-func (idb *IncrDB) WriteIncrState(id uint64, meta, accountIndex, storageIndex, accounts, storages, trieNodes []byte) error {
+func (idb *IncrDB) WriteIncrState(number, id uint64, meta, accountIndex, storageIndex, accounts, storages, trieNodes []byte) error {
 	// Wait for any ongoing directory switch to complete
 	idb.waitForSwitchComplete()
 
 	idb.lock.Lock()
 	defer idb.lock.Unlock()
 
-	return WriteIncrState(idb.currDB.stateFreezer, id, meta, accountIndex, storageIndex, accounts, storages, trieNodes)
+	return WriteIncrState(idb.currDB.stateFreezer, number, id, meta, accountIndex, storageIndex, accounts, storages, trieNodes)
 }
 
 func (idb *IncrDB) ReadStateData(table string, id uint64) ([]byte, error) {
