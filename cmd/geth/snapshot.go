@@ -1052,9 +1052,6 @@ func compareBlockAndStateID(ctx *cli.Context) error {
 
 	ancientsDir, _ := chainDB.AncientDatadir()
 
-	// trieDB := utils.MakeTrieDatabase(ctx, stack, chainDB, false, false, false)
-	// defer trieDB.Close()
-
 	stateFreezer, err := rawdb.NewStateFreezer(ancientsDir, false, true, 0)
 	if err != nil {
 		log.Error("Failed to load state freezer", "err", err)
@@ -1243,25 +1240,28 @@ func mergeIncrSnapshot(ctx *cli.Context) error {
 	}
 
 	path := ctx.String(utils.IncrementalSnapshotPathFlag.Name)
-	log.Info("Start merging incremental snapshot", "path", path)
 	dirs, err := rawdb.GetAllIncrDirs(path)
 	if err != nil {
 		log.Error("Failed to get all incremental directories", "err", err)
 		return err
 	}
+	log.Info("Start merging incremental snapshot", "path", path, "incremental snapshot number", len(dirs))
+
 	for _, dir := range dirs {
 		if err = trieDB.MergeIncrState(dir.Path); err != nil {
 			log.Error("Failed to merge incremental state data", "err", err)
 			return err
 		}
-
 		if err = mergeIncrBlock(dir.Path, chainDB); err != nil {
 			log.Error("Failed to merge incremental block data", "err", err)
 			return err
 		}
-
 		if err = mergeContractCodes(dir.Path, chainDB); err != nil {
 			log.Error("Failed to merge incremental contract codes", "err", err)
+			return err
+		}
+		if err = chainDB.SyncAncient(); err != nil {
+			log.Error("Failed to sync ancients", "err", err)
 			return err
 		}
 	}

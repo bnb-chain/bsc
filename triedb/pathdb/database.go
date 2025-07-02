@@ -356,26 +356,14 @@ func (db *Database) repairIncrStore(ancientDir string) error {
 		return nil
 	}
 
-	// TODO: use bottom diff layer block number
-	id := db.tree.bottom().stateID()
-	blob := rawdb.ReadStateHistoryMeta(db.freezer, id)
-	if len(blob) == 0 {
-		return fmt.Errorf("state history not found %d", id)
-	}
-	var m meta
-	if err := m.decode(blob); err != nil {
-		log.Error("Failed to decode state history", "err", err)
-		return err
-	}
-
+	// get the bottom diff layer block number
+	block := db.tree.bottomDiffLayer().block
 	offset := uint64(0) // differ from in block data, only metadata is used in state data
-	incrDB, err := rawdb.NewIncrDB(ancientDir, db.readOnly, offset, m.block, db.config.IncrHistory)
+	incrDB, err := rawdb.NewIncrDB(ancientDir, db.readOnly, offset, block, db.config.IncrHistory)
 	if err != nil {
 		log.Error("Failed to open incremental db", "err", err)
 		return err
 	}
-
-	// Create incremental store with async write manager
 	db.incr = NewIncrManager(db, incrDB)
 
 	incrStateFreezer := db.incr.incrDB.GetStateFreezer()
@@ -389,6 +377,7 @@ func (db *Database) repairIncrStore(ancientDir string) error {
 		return err
 	}
 
+	id := db.tree.bottom().stateID()
 	if id == 0 {
 		if frozen != 0 {
 			if err = incrStateFreezer.Reset(); err != nil {

@@ -66,7 +66,10 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 		log.Error("Failed to force flush history", "error", err)
 		return err
 	}
-	a.waitAndStopFlushing()
+	for a.isFlushing.Load() {
+		time.Sleep(time.Second)
+		log.Warn("Waiting background memory table flushed into disk")
+	}
 	log.Info("Finished merging incremental state history", "empty", a.empty(), "layers", a.getLayers())
 
 	return nil
