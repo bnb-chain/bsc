@@ -281,8 +281,7 @@ func (db *Database) repairHistory() error {
 		// all of them. Fix the tests first.
 		return nil
 	}
-	offset := uint64(0) // differ from in block data, only metadata is used in state data
-	freezer, err := rawdb.NewStateFreezer(ancient, db.isVerkle, db.readOnly, offset)
+	freezer, err := rawdb.NewStateFreezer(ancient, db.isVerkle, db.readOnly)
 	if err != nil {
 		log.Crit("Failed to open state history freezer", "err", err)
 	}

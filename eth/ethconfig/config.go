@@ -54,6 +54,7 @@ var Defaults = Config{
 	NetworkId:          0, // enable auto configuration of networkID == chainID
 	TxLookupLimit:      2350000,
 	TransactionHistory: 2350000,
+	BlockHistory:       0,
 	StateHistory:       params.FullImmutabilityThreshold,
 	DatabaseCache:      512,
 	TrieCleanCache:     154,
@@ -113,6 +114,7 @@ type Config struct {
 	TxLookupLimit uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
 
 	TransactionHistory uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
+	BlockHistory       uint64 `toml:",omitempty"` // The maximum number of blocks from head whose block body/header/receipt/diff/hash are reserved.
 	StateHistory       uint64 `toml:",omitempty"` // The maximum number of blocks from head whose state histories are reserved.
 	// State scheme represents the scheme used to store ethereum states and trie
 	// nodes on top. It can be 'hash', 'path', or none which means use the scheme
@@ -140,6 +142,7 @@ type Config struct {
 	// Notice: the PruneAncientData once be turned on, the get/chaindata/ancient dir will be removed,
 	// if restart without the pruneancient flag, the ancient data will start with the previous point that
 	// the oldest unpruned block number.
+	// !!Deprecated: use 'BlockHistory' instead.
 	PruneAncientData bool
 
 	TrieCleanCache  int

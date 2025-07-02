@@ -32,7 +32,6 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/core/monitor"
-	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -233,9 +232,6 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		// In these cases however it's safe to reenable snap sync.
 		fullBlock, snapBlock := h.chain.CurrentBlock(), h.chain.CurrentSnapBlock()
 		if fullBlock.Number.Uint64() == 0 && snapBlock.Number.Uint64() > 0 {
-			if rawdb.ReadAncientType(h.database) == rawdb.PruneFreezerType {
-				log.Crit("Fast Sync not finish, can't enable pruneancient mode")
-			}
 			h.snapSync.Store(true)
 			log.Warn("Switch sync mode from full sync to snap sync", "reason", "snap sync incomplete")
 		} else if !h.chain.NoTries() && !h.chain.HasState(fullBlock.Root) {

@@ -379,6 +379,12 @@ var (
 		Value:    ethconfig.Defaults.TransactionHistory,
 		Category: flags.StateCategory,
 	}
+	BlockHistoryFlag = &cli.Uint64Flag{
+		Name:     "history.blocks",
+		Usage:    "Number of recent blocks to maintain in DB (default = 0, 0 = entire chain). Pruning is not involving TxIndex/bloomIndex.",
+		Value:    ethconfig.Defaults.BlockHistory,
+		Category: flags.BlockHistoryCategory,
+	}
 	// Beacon client light sync settings
 	BeaconApiFlag = &cli.StringSliceFlag{
 		Name:     "beacon.api",
@@ -567,11 +573,6 @@ var (
 		Name:     "cache.preimages",
 		Usage:    "Enable recording the SHA3/keccak preimages of trie keys",
 		Category: flags.PerfCategory,
-	}
-	PruneAncientDataFlag = &cli.BoolFlag{
-		Name:     "pruneancient",
-		Usage:    "Prune ancient data, is an optional config and disabled by default. Only keep the latest 9w blocks' data,the older blocks' data will be permanently pruned. Notice:the geth/chaindata/ancient dir will be removed, if restart without the flag, the ancient data will start with the previous point that the oldest unpruned block number. Recommends to the user who don't care about the ancient data.",
-		Category: flags.BlockHistoryCategory,
 	}
 	CacheLogSizeFlag = &cli.IntFlag{
 		Name:     "cache.blocklogs",
@@ -1158,13 +1159,6 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Usage:    "InfluxDB organization name (v2 only)",
 		Value:    metrics.DefaultConfig.InfluxDBOrganization,
 		Category: flags.MetricsCategory,
-	}
-
-	BlockAmountReserved = &cli.Uint64Flag{
-		Name:     "block-amount-reserved",
-		Usage:    "Sets the expected remained amount of blocks for offline block prune",
-		Category: flags.BlockHistoryCategory,
-		Value:    params.FullImmutabilityThreshold,
 	}
 
 	CheckSnapshotWithMPT = &cli.BoolFlag{
@@ -2037,10 +2031,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		cfg.DatabaseFreezer = ctx.String(AncientFlag.Name)
 	}
 	if ctx.IsSet(PruneAncientDataFlag.Name) {
-		if cfg.SyncMode != ethconfig.FullSync {
-			log.Warn("pruneancient parameter can only be used with syncmode=full, force to full sync")
-			cfg.SyncMode = ethconfig.FullSync
-		}
+		log.Warn(fmt.Sprintf("Option --%s is deprecated. Please using --%s in the future", PruneAncientDataFlag.Name, BlockHistoryFlag.Name))
 		cfg.PruneAncientData = ctx.Bool(PruneAncientDataFlag.Name)
 	}
 	if gcmode := ctx.String(GCModeFlag.Name); gcmode != "full" && gcmode != "archive" {
@@ -2087,6 +2078,13 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		log.Warn("The flag --txlookuplimit is deprecated and will be removed, please use --history.transactions")
 		cfg.TransactionHistory = ctx.Uint64(TxLookupLimitFlag.Name)
 	}
+	if ctx.IsSet(BlockHistoryFlag.Name) {
+		cfg.BlockHistory = ctx.Uint64(BlockHistoryFlag.Name)
+		if cfg.BlockHistory != 0 && cfg.BlockHistory < params.FullImmutabilityThreshold {
+			log.Warn("The number of block history is too small, that it will force to", "fullImmutabilityThreshold", params.FullImmutabilityThreshold)
+			cfg.BlockHistory = params.FullImmutabilityThreshold
+		}
+	}
 	if ctx.IsSet(PathDBSyncFlag.Name) {
 		cfg.PathSyncFlush = true
 	}
@@ -2100,6 +2098,10 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 
 		cfg.StateScheme = rawdb.HashScheme
 		log.Warn("Forcing hash state-scheme for archive mode")
+	}
+	if ctx.String(GCModeFlag.Name) == "archive" && cfg.BlockHistory != 0 {
+		cfg.BlockHistory = 0
+		log.Warn("Disabled partial block reserve for archive node")
 	}
 	if ctx.IsSet(CacheFlag.Name) || ctx.IsSet(CacheTrieFlag.Name) {
 		cfg.TrieCleanCache = ctx.Int(CacheFlag.Name) * ctx.Int(CacheTrieFlag.Name) / 100
@@ -2449,8 +2451,8 @@ func parseDBFeatures(cfg *ethconfig.Config, stack *node.Node) string {
 	if stack.CheckIfMultiDataBase() {
 		features = append(features, "MultiDB")
 	}
-	if cfg.PruneAncientData {
-		features = append(features, "PruneAncient")
+	if cfg.PruneAncientData || cfg.BlockHistory > 0 {
+		features = append(features, "PruneBlocks")
 	}
 	return strings.Join(features, "|")
 }
@@ -2560,7 +2562,7 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 		}
 		chainDb = remotedb.New(client)
 	default:
-		chainDb, err = stack.OpenDatabaseWithFreezer("chaindata", cache, handles, ctx.String(AncientFlag.Name), "", readonly, disableFreeze, false, false)
+		chainDb, err = stack.OpenDatabaseWithFreezer("chaindata", cache, handles, ctx.String(AncientFlag.Name), "", readonly, disableFreeze)
 		// set the separate state database
 		if stack.CheckIfMultiDataBase() && err == nil {
 			stateDiskDb := MakeStateDataBase(ctx, stack, readonly, false)
@@ -2579,7 +2581,7 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 func MakeStateDataBase(ctx *cli.Context, stack *node.Node, readonly, disableFreeze bool) ethdb.Database {
 	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) / 100
 	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name)) * 90 / 100
-	statediskdb, err := stack.OpenDatabaseWithFreezer("chaindata/state", cache, handles, "", "", readonly, disableFreeze, false, false)
+	statediskdb, err := stack.OpenDatabaseWithFreezer("chaindata/state", cache, handles, "", "", readonly, disableFreeze)
 	if err != nil {
 		Fatalf("Failed to open separate trie database: %v", err)
 	}
@@ -2590,7 +2592,7 @@ func MakeStateDataBase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 func MakeBlockDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFreeze bool) ethdb.Database {
 	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) / 100
 	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name)) / 10
-	blockDb, err := stack.OpenDatabaseWithFreezer("chaindata/block", cache, handles, "", "", readonly, disableFreeze, false, false)
+	blockDb, err := stack.OpenDatabaseWithFreezer("chaindata/block", cache, handles, "", "", readonly, disableFreeze)
 	if err != nil {
 		Fatalf("Failed to open separate block database: %v", err)
 	}
