@@ -253,24 +253,17 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 	// and in-memory layer journal.
 	db.tree = newLayerTree(db.loadLayers())
 
-	// Open the freezer for state history. This mechanism ensures that
-	// only one database instance can be opened at a time to prevent
-	// accidental mutation.
-	ancientDir, err := db.diskdb.AncientDatadir()
-	if err != nil {
-		// TODO error out if ancient store is disabled. A tons of unit tests
-		// disable the ancient store thus the error here will immediately fail
-		// all of them. Fix the tests first.
-		return nil
-	}
-
 	// Repair the state history, which might not be aligned with the state
 	// in the key-value store due to an unclean shutdown.
-	if err := db.repairHistory(ancientDir); err != nil {
+	if err := db.repairHistory(); err != nil {
 		log.Crit("Failed to repair state history", "err", err)
 	}
 
 	if db.config.EnableIncrHistory {
+		ancientDir, err := db.diskdb.AncientDatadir()
+		if err != nil {
+			log.Crit("Failed to get ancient datadir", "err", err)
+		}
 		if db.config.IncrHistoryPath != "" {
 			ancientDir = db.config.IncrHistoryPath
 		} else {
@@ -301,13 +294,23 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 
 // repairHistory truncates leftover state history objects, which may occur due
 // to an unclean shutdown or other unexpected reasons.
-func (db *Database) repairHistory(ancientDir string) error {
+func (db *Database) repairHistory() error {
 	if db.config.NoTries {
 		return nil
 	}
 
+	// Open the freezer for state history. This mechanism ensures that
+	// only one database instance can be opened at a time to prevent
+	// accidental mutation.
+	ancient, err := db.diskdb.AncientDatadir()
+	if err != nil {
+		// TODO error out if ancient store is disabled. A tons of unit tests
+		// disable the ancient store thus the error here will immediately fail
+		// all of them. Fix the tests first.
+		return nil
+	}
 	offset := uint64(0) // differ from in block data, only metadata is used in state data
-	freezer, err := rawdb.NewStateFreezer(ancientDir, db.isVerkle, db.readOnly, offset)
+	freezer, err := rawdb.NewStateFreezer(ancient, db.isVerkle, db.readOnly, offset)
 	if err != nil {
 		log.Crit("Failed to open state history freezer", "err", err)
 	}
