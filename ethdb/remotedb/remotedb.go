@@ -86,15 +86,15 @@ func (db *Database) AncientSize(kind string) (uint64, error) {
 	panic("not supported")
 }
 
-func (db *Database) StateStore() ethdb.Database {
-	panic("not supported")
-}
-
 func (db *Database) SetStateStore(state ethdb.Database) {
 	panic("not supported")
 }
 
 func (db *Database) GetStateStore() ethdb.Database {
+	panic("not supported")
+}
+
+func (db *Database) HasSeparateStateStore() bool {
 	panic("not supported")
 }
 

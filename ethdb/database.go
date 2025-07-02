@@ -213,9 +213,9 @@ type AncientStore interface {
 }
 
 type StateStore interface {
-	StateStore() Database
 	SetStateStore(state Database)
 	GetStateStore() Database
+	HasSeparateStateStore() bool
 }
 
 // ResettableAncientStore extends the AncientStore interface by adding a Reset method.

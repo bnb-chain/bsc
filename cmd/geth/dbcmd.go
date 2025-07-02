@@ -574,11 +574,8 @@ func checkStateContent(ctx *cli.Context) error {
 		startTime = time.Now()
 		lastLog   = time.Now()
 	)
-	if stack.CheckIfMultiDataBase() {
-		it = rawdb.NewKeyLengthIterator(db.StateStore().NewIterator(prefix, start), 32)
-	} else {
-		it = rawdb.NewKeyLengthIterator(db.NewIterator(prefix, start), 32)
-	}
+
+	it = rawdb.NewKeyLengthIterator(db.GetStateStore().NewIterator(prefix, start), 32)
 	for it.Next() {
 		count++
 		k := it.Key()
@@ -621,9 +618,9 @@ func dbStats(ctx *cli.Context) error {
 	defer db.Close()
 
 	showDBStats(db)
-	if stack.CheckIfMultiDataBase() {
+	if db.HasSeparateStateStore() {
 		fmt.Println("show stats of state store")
-		showDBStats(db.StateStore())
+		showDBStats(db.GetStateStore())
 	}
 
 	return nil
@@ -638,9 +635,10 @@ func dbCompact(ctx *cli.Context) error {
 
 	log.Info("Stats before compaction")
 	showDBStats(db)
+
 	if stack.CheckIfMultiDataBase() {
 		fmt.Println("show stats of state store")
-		showDBStats(db.StateStore())
+		showDBStats(db.GetStateStore())
 	}
 
 	log.Info("Triggering compaction")
@@ -650,7 +648,7 @@ func dbCompact(ctx *cli.Context) error {
 	}
 
 	if stack.CheckIfMultiDataBase() {
-		if err := db.StateStore().Compact(nil, nil); err != nil {
+		if err := db.GetStateStore().Compact(nil, nil); err != nil {
 			log.Error("Compact err", "error", err)
 			return err
 		}
@@ -660,7 +658,7 @@ func dbCompact(ctx *cli.Context) error {
 	showDBStats(db)
 	if stack.CheckIfMultiDataBase() {
 		fmt.Println("show stats of state store after compaction")
-		showDBStats(db.StateStore())
+		showDBStats(db.GetStateStore())
 	}
 	return nil
 }
@@ -683,7 +681,7 @@ func dbGet(ctx *cli.Context) error {
 	}
 	opDb := db
 	if stack.CheckIfMultiDataBase() && rawdb.DataTypeByKey(key) == rawdb.StateDataType {
-		opDb = db.StateStore()
+		opDb = db.GetStateStore()
 	}
 
 	data, err := opDb.Get(key)
@@ -705,11 +703,7 @@ func dbTrieGet(ctx *cli.Context) error {
 
 	var db ethdb.Database
 	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
-	if chaindb.StateStore() != nil {
-		db = chaindb.StateStore()
-	} else {
-		db = chaindb
-	}
+	db = chaindb.GetStateStore()
 	defer chaindb.Close()
 
 	scheme := ctx.String(utils.StateSchemeFlag.Name)
@@ -777,11 +771,7 @@ func dbTrieDelete(ctx *cli.Context) error {
 
 	var db ethdb.Database
 	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
-	if chaindb.StateStore() != nil {
-		db = chaindb.StateStore()
-	} else {
-		db = chaindb
-	}
+	db = chaindb.GetStateStore()
 	defer chaindb.Close()
 
 	scheme := ctx.String(utils.StateSchemeFlag.Name)
@@ -851,11 +841,8 @@ func dbDelete(ctx *cli.Context) error {
 		return err
 	}
 	opDb := db
-	if stack.CheckIfMultiDataBase() {
-		keyType := rawdb.DataTypeByKey(key)
-		if keyType == rawdb.StateDataType {
-			opDb = db.StateStore()
-		}
+	if opDb.HasSeparateStateStore() && rawdb.DataTypeByKey(key) == rawdb.StateDataType {
+		opDb = db.GetStateStore()
 	}
 
 	data, err := opDb.Get(key)
@@ -887,7 +874,7 @@ func dbDeleteTrieState(ctx *cli.Context) error {
 	)
 
 	// If separate trie db exists, delete all files in the db folder
-	if db.StateStore() != nil {
+	if db.HasSeparateStateStore() {
 		statePath := filepath.Join(stack.ResolvePath("chaindata"), "state")
 		log.Info("Removing separate trie database", "path", statePath)
 		err = filepath.Walk(statePath, func(path string, info os.FileInfo, err error) error {
@@ -974,11 +961,8 @@ func dbPut(ctx *cli.Context) error {
 	}
 
 	opDb := db
-	if stack.CheckIfMultiDataBase() {
-		keyType := rawdb.DataTypeByKey(key)
-		if keyType == rawdb.StateDataType {
-			opDb = db.StateStore()
-		}
+	if db.HasSeparateStateStore() && rawdb.DataTypeByKey(key) == rawdb.StateDataType {
+		opDb = db.GetStateStore()
 	}
 
 	data, err = opDb.Get(key)
@@ -1264,16 +1248,11 @@ func hbss2pbss(ctx *cli.Context) error {
 
 	db := utils.MakeChainDatabase(ctx, stack, false, false)
 	db.SyncAncient()
-	stateDiskDb := db.StateStore()
 	defer db.Close()
 
 	// convert hbss trie node to pbss trie node
 	var lastStateID uint64
-	if stateDiskDb != nil {
-		lastStateID = rawdb.ReadPersistentStateID(stateDiskDb)
-	} else {
-		lastStateID = rawdb.ReadPersistentStateID(db)
-	}
+	lastStateID = rawdb.ReadPersistentStateID(db.GetStateStore())
 	if lastStateID == 0 || force {
 		config := triedb.HashDefaults
 		triedb := triedb.NewDatabase(db, config)
@@ -1324,19 +1303,14 @@ func hbss2pbss(ctx *cli.Context) error {
 		log.Info("Convert hbss to pbss success. Nothing to do.")
 	}
 
-	// repair state ancient offset
-	if stateDiskDb != nil {
-		lastStateID = rawdb.ReadPersistentStateID(stateDiskDb)
-	} else {
-		lastStateID = rawdb.ReadPersistentStateID(db)
-	}
+	lastStateID = rawdb.ReadPersistentStateID(db.GetStateStore())
 
 	if lastStateID == 0 {
 		log.Error("Convert hbss to pbss trie node error. The last state id is still 0")
 	}
 
 	var ancient string
-	if db.StateStore() != nil {
+	if db.HasSeparateStateStore() {
 		dirName := filepath.Join(stack.ResolvePath("chaindata"), "state")
 		ancient = filepath.Join(dirName, "ancient")
 	} else {
@@ -1348,11 +1322,7 @@ func hbss2pbss(ctx *cli.Context) error {
 		return err
 	}
 	// prune hbss trie node
-	if stateDiskDb != nil {
-		err = rawdb.PruneHashTrieNodeInDataBase(stateDiskDb)
-	} else {
-		err = rawdb.PruneHashTrieNodeInDataBase(db)
-	}
+	err = rawdb.PruneHashTrieNodeInDataBase(db.GetStateStore())
 	if err != nil {
 		log.Error("Prune Hash trie node in database failed", "error", err)
 		return err

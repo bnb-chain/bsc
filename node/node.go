@@ -772,10 +772,9 @@ func (n *Node) OpenDatabase(name string, cache, handles int, namespace string, r
 
 func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool, config *ethconfig.Config) (ethdb.Database, error) {
 	var (
-		err                  error
-		stateDiskDb          ethdb.Database
-		disableChainDbFreeze = false
-		//	blockDbHandlesSize           int
+		err                          error
+		stateDiskDb                  ethdb.Database
+		disableChainDbFreeze         = false
 		chainDataHandles             = config.DatabaseHandles
 		chainDbCache                 = config.DatabaseCache
 		stateDbCache, stateDbHandles int

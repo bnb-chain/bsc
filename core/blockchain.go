@@ -1743,8 +1743,8 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 			rawdb.WriteBlobSidecars(blockBatch, block.Hash(), block.NumberU64(), block.Sidecars())
 		}
-		if bc.db.StateStore() != nil {
-			rawdb.WritePreimages(bc.db.StateStore(), statedb.Preimages())
+		if bc.db.HasSeparateStateStore() {
+			rawdb.WritePreimages(bc.db.GetStateStore(), statedb.Preimages())
 		} else {
 			rawdb.WritePreimages(blockBatch, statedb.Preimages())
 		}
@@ -3091,14 +3091,14 @@ func (bc *BlockChain) PruneBlockHistory(blockHistory uint64) error {
 		return nil
 	}
 	pruneHeight := bestHeight - blockHistory
-	ancientHead, err := bc.db.BlockStore().Ancients()
+	ancientHead, err := bc.db.Ancients()
 	if err != nil {
 		return err
 	}
 	if pruneHeight > ancientHead {
 		pruneHeight = ancientHead
 	}
-	old, err := bc.db.BlockStore().TruncateTail(pruneHeight)
+	old, err := bc.db.TruncateTail(pruneHeight)
 	if err != nil {
 		return err
 	}

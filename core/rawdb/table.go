@@ -221,16 +221,16 @@ func (t *table) NewBatch() ethdb.Batch {
 	return &tableBatch{t.db.NewBatch(), t.prefix}
 }
 
-func (t *table) StateStore() ethdb.Database {
-	return nil
-}
-
 func (t *table) SetStateStore(state ethdb.Database) {
 	panic("not implement")
 }
 
 func (t *table) GetStateStore() ethdb.Database {
 	return nil
+}
+
+func (t *table) HasSeparateStateStore() bool {
+	return false
 }
 
 func (t *table) StateStoreReader() ethdb.Reader {

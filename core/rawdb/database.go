@@ -66,8 +66,8 @@ func (frdb *freezerdb) Close() error {
 	if err := frdb.KeyValueStore.Close(); err != nil {
 		errs = append(errs, err)
 	}
-	if frdb.stateStore != nil {
-		if err := frdb.stateStore.Close(); err != nil {
+	if frdb.HasSeparateStateStore() {
+		if err := frdb.GetStateStore().Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -75,10 +75,6 @@ func (frdb *freezerdb) Close() error {
 		return fmt.Errorf("%v", errs)
 	}
 	return nil
-}
-
-func (frdb *freezerdb) StateStore() ethdb.Database {
-	return frdb.stateStore
 }
 
 func (frdb *freezerdb) SetStateStore(state ethdb.Database) {
@@ -93,6 +89,10 @@ func (frdb *freezerdb) GetStateStore() ethdb.Database {
 		return frdb.stateStore
 	}
 	return frdb
+}
+
+func (frdb *freezerdb) HasSeparateStateStore() bool {
+	return frdb.stateStore != nil
 }
 
 // Freeze is a helper method used for external testing to trigger and block until
@@ -189,10 +189,6 @@ func (db *nofreezedb) SyncAncient() error {
 	return errNotSupported
 }
 
-func (db *nofreezedb) StateStore() ethdb.Database {
-	return db.stateStore
-}
-
 func (db *nofreezedb) SetStateStore(state ethdb.Database) {
 	db.stateStore = state
 }
@@ -202,6 +198,10 @@ func (db *nofreezedb) GetStateStore() ethdb.Database {
 		return db.stateStore
 	}
 	return db
+}
+
+func (db *nofreezedb) HasSeparateStateStore() bool {
+	return db.stateStore != nil
 }
 
 func (db *nofreezedb) StateStoreReader() ethdb.Reader {
@@ -315,10 +315,10 @@ func (db *emptyfreezedb) SyncAncient() error {
 	return nil
 }
 
-func (db *emptyfreezedb) StateStore() ethdb.Database         { return db }
 func (db *emptyfreezedb) GetStateStore() ethdb.Database      { return db }
 func (db *emptyfreezedb) SetStateStore(state ethdb.Database) {}
 func (db *emptyfreezedb) StateStoreReader() ethdb.Reader     { return db }
+func (db *emptyfreezedb) HasSeparateStateStore() bool        { return false }
 func (db *emptyfreezedb) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {
 	return nil
 }
@@ -646,8 +646,8 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 	defer it.Release()
 
 	var trieIter ethdb.Iterator
-	if db.StateStore() != nil {
-		trieIter = db.StateStore().NewIterator(keyPrefix, nil)
+	if db.HasSeparateStateStore() {
+		trieIter = db.GetStateStore().NewIterator(keyPrefix, nil)
 		defer trieIter.Release()
 	}
 
@@ -884,7 +884,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 
 	// inspect ancient state in separate trie db if exist
 	if trieIter != nil {
-		stateAncients, err := inspectFreezers(db.StateStore())
+		stateAncients, err := inspectFreezers(db.GetStateStore())
 		if err != nil {
 			return err
 		}

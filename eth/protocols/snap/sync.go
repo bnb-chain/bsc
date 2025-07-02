@@ -2049,7 +2049,7 @@ func (s *Syncer) processStorageResponse(res *storageResponse) {
 		},
 	}
 	var snapBatch ethdb.HookedBatch
-	if s.db.StateStore() != nil {
+	if s.db.HasSeparateStateStore() {
 		usingMultDatabase = true
 		snapBatch = ethdb.HookedBatch{
 			Batch: s.db.NewBatch(),
@@ -2380,8 +2380,8 @@ func (s *Syncer) commitHealer(force bool) {
 	batch := s.db.NewBatch()
 	var stateBatch ethdb.Batch
 	var err error
-	if s.db.StateStore() != nil {
-		stateBatch = s.db.StateStore().NewBatch()
+	if s.db.HasSeparateStateStore() {
+		stateBatch = s.db.GetStateStore().NewBatch()
 		err = s.healer.scheduler.Commit(batch, stateBatch)
 	} else {
 		err = s.healer.scheduler.Commit(batch, nil)
@@ -2392,7 +2392,7 @@ func (s *Syncer) commitHealer(force bool) {
 	if err := batch.Write(); err != nil {
 		log.Crit("Failed to persist healing data", "err", err)
 	}
-	if s.db.StateStore() != nil {
+	if s.db.HasSeparateStateStore() {
 		if err := stateBatch.Write(); err != nil {
 			log.Crit("Failed to persist healing data", "err", err)
 		}
