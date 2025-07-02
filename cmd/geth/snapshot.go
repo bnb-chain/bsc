@@ -1269,11 +1269,6 @@ func mergeIncrSnapshot(ctx *cli.Context) error {
 	path := ctx.String(utils.IncrementalSnapshotPathFlag.Name)
 	log.Info("Start merging incremental snapshot", "path", path)
 
-	// if err := checkStateWithBlock(path); err != nil {
-	// 	log.Error("Failed to check incremental snapshot", "path", path, "err", err)
-	// 	return err
-	// }
-
 	if err := trieDB.InsertIncrState(path); err != nil {
 		log.Error("Failed to insert incremental state", "err", err)
 		return err
@@ -1386,81 +1381,69 @@ func insertIncrBlock(incrDir string, chainDB ethdb.Database) error {
 	}
 	defer incrChainFreezer.Close()
 
-	ancients, _ := incrChainFreezer.Ancients()
+	incrAncients, _ := incrChainFreezer.Ancients()
 	tail, _ := incrChainFreezer.Tail()
 	count, _ := incrChainFreezer.ItemAmountInAncient()
-	log.Info("Incr chain info", "ancients", ancients, "tail", tail, "count", count)
+	log.Info("Incr chain info", "ancients", incrAncients, "tail", tail, "count", count)
 
 	// Get chain config from database
-	genesisHash := rawdb.ReadCanonicalHash(chainDB.BlockStore(), 0)
-	if genesisHash == (common.Hash{}) {
-		return errors.New("genesis hash not found")
+	chainConfig, err := rawdb.GetChainConfig(chainDB)
+	if err != nil {
+		log.Error("Failed to get chain config", "err", err)
+		return err
 	}
-
-	chainConfig := rawdb.ReadChainConfig(chainDB.BlockStore(), genesisHash)
-	if chainConfig == nil {
-		return errors.New("chain config not found")
-	}
-
 	log.Info("Loaded chain config", "chainID", chainConfig.ChainID, "cancunTime", *chainConfig.CancunTime)
 
 	// Force migration of existing blocks from pebble to chainFreezer
 	// This ensures all non-genesis blocks are in ancient store before adding incremental data
-	log.Info("Starting forced migration of existing blocks to chainFreezer")
 	if err = chainDB.ForceFreeze(chainDB.BlockStore()); err != nil {
 		log.Error("Failed to force freeze to ancients", "err", err)
 		return err
 	}
 
 	// check block overlap and write incremental data directly into chainFreezer
-	log.Info("Starting direct write of incremental data to chainFreezer")
 	baseHead, _ := chainDB.Ancients()
-	if tail <= baseHead && baseHead <= ancients {
-		log.Warn("There are block data overlap", "number", baseHead-tail, "incr_tail", tail, "base_head", baseHead)
-		for i := baseHead; i < ancients-1; i++ {
-			hashBytes, header, body, receipts, td, err := rawdb.ReadIncrBlock(incrChainFreezer, i)
+	if tail <= baseHead && baseHead <= incrAncients {
+		log.Warn("There are block data overlap", "overlap_count", baseHead-tail, "incr_tail", tail, "base_head", baseHead)
+		for number := baseHead; number < incrAncients-1; number++ {
+			hashBytes, header, body, receipts, td, err := rawdb.ReadIncrBlock(incrChainFreezer, number)
 			if err != nil {
-				log.Error("Failed to read incremental block", "block", i, "err", err)
+				log.Error("Failed to read incremental block", "block", number, "err", err)
 				return err
 			}
 
-			// Decode header to get block number and timestamp for Cancun check
 			var h types.Header
 			if err = rlp.DecodeBytes(header, &h); err != nil {
-				log.Error("Failed to decode header", "block", i, "err", err)
+				log.Error("Failed to decode header", "block", number, "err", err)
 				return err
 			}
-
 			// Check if Cancun hardfork is active for this block
 			isCancunActive := chainConfig.IsCancun(h.Number, h.Time)
-
-			// Read blob sidecars only if Cancun is active
 			var sidecars rlp.RawValue
 			if isCancunActive {
-				sidecars, err = rawdb.ReadIncrChainBlobSideCars(incrChainFreezer, i)
+				sidecars, err = rawdb.ReadIncrChainBlobSideCars(incrChainFreezer, number)
 				if err != nil {
-					log.Error("Failed to read increment chain blob side car", "block", i, "err", err)
+					log.Error("Failed to read increment chain blob side car", "block", number, "err", err)
 					return err
 				}
 			}
 
-			if err = rawdb.WriteBlockData(chainDB, i, hashBytes, header, body, receipts, td, sidecars, isCancunActive); err != nil {
-				log.Error("Failed to write block data", "block", i, "err", err)
+			if err = rawdb.WriteBlockData(chainDB, number, hashBytes, header, body, receipts, td, sidecars, isCancunActive); err != nil {
+				log.Error("Failed to write block data", "block", number, "err", err)
 				return err
 			}
-			rawdb.WriteHeaderNumber(chainDB.BlockStore(), common.BytesToHash(hashBytes), i)
-			// rawdb.WriteCanonicalHash(chainDB.BlockStore(), common.BytesToHash(hashBytes), i)
+			rawdb.WriteHeaderNumber(chainDB.BlockStore(), common.BytesToHash(hashBytes), number)
 		}
 	} else {
 		log.Crit("There are block data gap", "tail", tail, "baseHead", baseHead)
 	}
 
-	if err = rawdb.FinalizeIncrementalMerge(chainDB, incrChainFreezer, chainConfig, ancients-1); err != nil {
+	if err = rawdb.FinalizeIncrementalMerge(chainDB, incrChainFreezer, chainConfig, incrAncients-1); err != nil {
 		log.Error("Failed to finalize incremental data merge", "err", err)
 		return err
 	}
-	log.Info("Updated blockchain metadata", "lastBlock", ancients-1)
 
+	log.Info("Finished inserting block data", "insert_number", incrAncients-baseHead)
 	return nil
 }
 

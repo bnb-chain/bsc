@@ -2,6 +2,7 @@ package rawdb
 
 import (
 	"encoding/binary"
+	"errors"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -338,4 +339,19 @@ func ResetEmptyIncrStateTable(db ethdb.AncientWriter, next uint64) error {
 		return err
 	}
 	return nil
+}
+
+// GetChainConfig reads chain config from db.
+func GetChainConfig(db ethdb.Database) (*params.ChainConfig, error) {
+	genesisHash := ReadCanonicalHash(db.BlockStore(), 0)
+	if genesisHash == (common.Hash{}) {
+		return nil, errors.New("genesis hash not found")
+	}
+
+	chainConfig := ReadChainConfig(db.BlockStore(), genesisHash)
+	if chainConfig == nil {
+		return nil, errors.New("chain config not found")
+	}
+
+	return chainConfig, nil
 }

@@ -220,7 +220,7 @@ type Database struct {
 	freezer ethdb.ResettableAncientStore // Freezer for storing trie histories, nil possible in tests
 	lock    sync.RWMutex                 // Lock to prevent mutations from happening at the same time
 
-	incr *incrStore // used to store incremental data: block, state and contract codes
+	incr *incrManager // used to store incremental data: block, state and contract codes
 }
 
 // New attempts to load an already existing layer from a persistent key-value
@@ -750,6 +750,71 @@ func (db *Database) DeleteTrieJournal(writer ethdb.KeyValueWriter) error {
 	return nil
 }
 
+// AccountHistory inspects the account history within the specified range.
+//
+// Start: State ID of the first history object for the query. 0 implies the first
+// available object is selected as the starting point.
+//
+// End: State ID of the last history for the query. 0 implies the last available
+// object is selected as the ending point. Note end is included in the query.
+func (db *Database) AccountHistory(address common.Address, start, end uint64) (*HistoryStats, error) {
+	return accountHistory(db.freezer, address, start, end)
+}
+
+// StorageHistory inspects the storage history within the specified range.
+//
+// Start: State ID of the first history object for the query. 0 implies the first
+// available object is selected as the starting point.
+//
+// End: State ID of the last history for the query. 0 implies the last available
+// object is selected as the ending point. Note end is included in the query.
+//
+// Note, slot refers to the hash of the raw slot key.
+func (db *Database) StorageHistory(address common.Address, slot common.Hash, start uint64, end uint64) (*HistoryStats, error) {
+	return storageHistory(db.freezer, address, slot, start, end)
+}
+
+// HistoryRange returns the block numbers associated with earliest and latest
+// state history in the local store.
+func (db *Database) HistoryRange() (uint64, uint64, error) {
+	return historyRange(db.freezer)
+}
+
+// AccountIterator creates a new account iterator for the specified root hash and
+// seeks to a starting account hash.
+func (db *Database) AccountIterator(root common.Hash, seek common.Hash) (AccountIterator, error) {
+	return newFastAccountIterator(db, root, seek)
+}
+
+// StorageIterator creates a new storage iterator for the specified root hash and
+// account. The iterator will be moved to the specific start position.
+func (db *Database) StorageIterator(root common.Hash, account common.Hash, seek common.Hash) (StorageIterator, error) {
+	return newFastStorageIterator(db, root, account, seek)
+}
+
+// SetIncrBlockStartNumber sets the starting block number for incremental block data
+func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+
+	if db.config.IncrBlockStartNumber == 0 {
+		db.config.IncrBlockStartNumber = startBlock
+		log.Info("Set incremental block start number", "startBlock", startBlock)
+	}
+}
+
+// SetFreezerEnv is used to store freezer env.
+func (db *Database) SetFreezerEnv(env *ethdb.FreezerEnv) {
+	if db.incr != nil {
+		db.incr.SetFreezerEnv(env)
+	}
+}
+
+// IsIncrEnabled returns true if incremental is enabled, otherwise false.
+func (db *Database) IsIncrEnabled() bool {
+	return db.config.EnableIncrHistory
+}
+
 func (db *Database) InsertIncrState(incrDir string) error {
 	incrStateFreezer, err := rawdb.OpenIncrStateFreezer(incrDir, true, 0)
 	if err != nil {
@@ -828,69 +893,4 @@ func (db *Database) mergeIncrHistory(incrStateFreezer ethdb.ResettableAncientSto
 // WriteContractCodes wrote codes into incremental chain freezer
 func (db *Database) WriteContractCodes(codes map[common.Address]rawdb.ContractCode) error {
 	return db.incr.incrDB.WriteIncrContractCodes(codes)
-}
-
-// AccountHistory inspects the account history within the specified range.
-//
-// Start: State ID of the first history object for the query. 0 implies the first
-// available object is selected as the starting point.
-//
-// End: State ID of the last history for the query. 0 implies the last available
-// object is selected as the ending point. Note end is included in the query.
-func (db *Database) AccountHistory(address common.Address, start, end uint64) (*HistoryStats, error) {
-	return accountHistory(db.freezer, address, start, end)
-}
-
-// StorageHistory inspects the storage history within the specified range.
-//
-// Start: State ID of the first history object for the query. 0 implies the first
-// available object is selected as the starting point.
-//
-// End: State ID of the last history for the query. 0 implies the last available
-// object is selected as the ending point. Note end is included in the query.
-//
-// Note, slot refers to the hash of the raw slot key.
-func (db *Database) StorageHistory(address common.Address, slot common.Hash, start uint64, end uint64) (*HistoryStats, error) {
-	return storageHistory(db.freezer, address, slot, start, end)
-}
-
-// HistoryRange returns the block numbers associated with earliest and latest
-// state history in the local store.
-func (db *Database) HistoryRange() (uint64, uint64, error) {
-	return historyRange(db.freezer)
-}
-
-// AccountIterator creates a new account iterator for the specified root hash and
-// seeks to a starting account hash.
-func (db *Database) AccountIterator(root common.Hash, seek common.Hash) (AccountIterator, error) {
-	return newFastAccountIterator(db, root, seek)
-}
-
-// StorageIterator creates a new storage iterator for the specified root hash and
-// account. The iterator will be moved to the specific start position.
-func (db *Database) StorageIterator(root common.Hash, account common.Hash, seek common.Hash) (StorageIterator, error) {
-	return newFastStorageIterator(db, root, account, seek)
-}
-
-// SetIncrBlockStartNumber sets the starting block number for incremental block data
-func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
-	db.lock.Lock()
-	defer db.lock.Unlock()
-
-	if db.config.IncrBlockStartNumber == 0 {
-		db.config.IncrBlockStartNumber = startBlock
-		log.Info("Set incremental block start number", "startBlock", startBlock)
-	}
-}
-
-// SetFreezerEnv is used to store freezer env.
-func (db *Database) SetFreezerEnv(env *ethdb.FreezerEnv) {
-	if db.incr != nil {
-		db.incr.SetFreezerEnv(env)
-	}
-}
-
-// IsIncrEnabled returns true if incremental is enabled, otherwise false.
-func (db *Database) IsIncrEnabled() bool {
-	return db.config.EnableIncrHistory
 }
