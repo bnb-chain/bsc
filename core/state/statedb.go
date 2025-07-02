@@ -1478,18 +1478,16 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 		}
 	}
 	// Write dirty contract code into incremental db if any exists and incr is enabled
-	if db := s.db.TrieDB(); db != nil && len(ret.codes) > 0 {
-		if db.IsIncrEnabled() {
-			codes := make(map[common.Address]rawdb.ContractCode)
-			for hash, code := range ret.codes {
-				codes[hash] = rawdb.ContractCode{
-					Hash: code.hash,
-					Blob: code.blob,
-				}
+	if db := s.db.TrieDB(); db != nil && len(ret.codes) > 0 && db.IsIncrEnabled() {
+		codes := make(map[common.Address]rawdb.ContractCode)
+		for hash, code := range ret.codes {
+			codes[hash] = rawdb.ContractCode{
+				Hash: code.hash,
+				Blob: code.blob,
 			}
-			if err = db.WriteContractCodes(codes); err != nil {
-				return nil, err
-			}
+		}
+		if err = db.WriteContractCodes(codes); err != nil {
+			return nil, err
 		}
 	}
 

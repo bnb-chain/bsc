@@ -561,17 +561,14 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		}
 	}
 
-	// Initialize incremental block start number for PathDB after potential chain rewinds
-	// This ensures we use the correct final head block number
-	if bc.cacheConfig.StateScheme == rawdb.PathScheme {
-		log.Info("First start block info", "current", bc.CurrentBlock().Number.Uint64(),
-			"snap", bc.CurrentSnapBlock().Number.Uint64(), "safe", bc.CurrentSafeBlock().Number.Uint64(),
-			"final", bc.CurrentFinalBlock().Number.Uint64(), "head block", bc.CurrentHeader().Number.Uint64())
-
-		currentBlockNumber := bc.CurrentBlock().Number.Uint64()
-		bc.triedb.SetIncrBlockStartNumber(currentBlockNumber + 1)
-		log.Info("Set incremental block start number for PathDB", "startBlock", currentBlockNumber)
-	}
+	// if bc.cacheConfig.StateScheme == rawdb.PathScheme {
+	// 	log.Info("First start block info", "current", bc.CurrentBlock().Number.Uint64(),
+	// 		"snap", bc.CurrentSnapBlock().Number.Uint64(), "safe", bc.CurrentSafeBlock().Number.Uint64(),
+	// 		"final", bc.CurrentFinalBlock().Number.Uint64(), "head block", bc.CurrentHeader().Number.Uint64())
+	//
+	// 	currentBlockNumber := bc.CurrentBlock().Number.Uint64()
+	// 	log.Info("Set incremental block start number for PathDB", "startBlock", currentBlockNumber)
+	// }
 
 	// Load any existing snapshot, regenerating it if loading failed
 	if bc.cacheConfig.SnapshotLimit > 0 {
