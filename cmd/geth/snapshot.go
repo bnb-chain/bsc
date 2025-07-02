@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
@@ -1248,22 +1249,64 @@ func mergeIncrSnapshot(ctx *cli.Context) error {
 	log.Info("Start merging incremental snapshot", "path", path, "incremental snapshot number", len(dirs))
 
 	for _, dir := range dirs {
-		if err = trieDB.MergeIncrState(dir.Path); err != nil {
-			log.Error("Failed to merge incremental state data", "err", err)
-			return err
+		var wg sync.WaitGroup
+		errChan := make(chan error, 3)
+
+		// merge incremental state data
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			log.Info("Starting merge incremental state data", "path", dir.Path)
+			if err := trieDB.MergeIncrState(dir.Path); err != nil {
+				log.Error("Failed to merge incremental state data", "path", dir.Path, "err", err)
+				errChan <- fmt.Errorf("failed to merge incremental state data: %v", err)
+			} else {
+				log.Info("Successfully merged incremental state data", "path", dir.Path)
+			}
+		}()
+
+		// merge incremental block data
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			log.Info("Starting merge incremental block data", "path", dir.Path)
+			if err := mergeIncrBlock(dir.Path, chainDB); err != nil {
+				log.Error("Failed to merge incremental block data", "path", dir.Path, "err", err)
+				errChan <- fmt.Errorf("failed to merge incremental block data: %v", err)
+			} else {
+				log.Info("Successfully merged incremental block data", "path", dir.Path)
+			}
+		}()
+
+		// merge contract codes
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			log.Info("Starting merge contract codes", "path", dir.Path)
+			if err := mergeContractCodes(dir.Path, chainDB); err != nil {
+				log.Error("Failed to merge incremental contract codes", "path", dir.Path, "err", err)
+				errChan <- fmt.Errorf("failed to merge incremental contract codes: %v", err)
+			} else {
+				log.Info("Successfully merged contract codes", "path", dir.Path)
+			}
+		}()
+
+		go func() {
+			wg.Wait()
+			close(errChan)
+		}()
+
+		var mergeErrors []error
+		for err = range errChan {
+			mergeErrors = append(mergeErrors, err)
 		}
-		if err = mergeIncrBlock(dir.Path, chainDB); err != nil {
-			log.Error("Failed to merge incremental block data", "err", err)
-			return err
+		if len(mergeErrors) > 0 {
+			errs := errors.Join(mergeErrors...)
+			log.Error("Parallel merge operations failed", "total_errors", len(mergeErrors), "path", dir.Path)
+			return errs
 		}
-		if err = mergeContractCodes(dir.Path, chainDB); err != nil {
-			log.Error("Failed to merge incremental contract codes", "err", err)
-			return err
-		}
-		if err = chainDB.SyncAncient(); err != nil {
-			log.Error("Failed to sync ancients", "err", err)
-			return err
-		}
+
+		log.Info("All merge operations completed successfully", "path", dir.Path)
 	}
 
 	return nil
@@ -1374,7 +1417,6 @@ func mergeIncrBlock(incrDir string, chainDB ethdb.Database) error {
 		log.Error("Failed to get chain config", "err", err)
 		return err
 	}
-	log.Info("Loaded chain config", "chainID", chainConfig.ChainID, "cancunTime", *chainConfig.CancunTime)
 
 	// Force migration of existing blocks from pebble to chainFreezer
 	// This ensures all non-genesis blocks are in ancient store before adding incremental data
@@ -1386,7 +1428,7 @@ func mergeIncrBlock(incrDir string, chainDB ethdb.Database) error {
 	// check block overlap and write incremental data directly into chainFreezer
 	baseHead, _ := chainDB.Ancients()
 	if tail <= baseHead && baseHead <= incrAncients {
-		log.Warn("There are block data overlap", "overlap_count", baseHead-tail, "incr_tail", tail, "base_head", baseHead)
+		log.Info("There are block data overlap", "overlap_count", baseHead-tail, "incr_tail", tail, "base_head", baseHead)
 		for number := baseHead; number < incrAncients-1; number++ {
 			hashBytes, header, body, receipts, td, err := rawdb.ReadIncrBlock(incrChainFreezer, number)
 			if err != nil {

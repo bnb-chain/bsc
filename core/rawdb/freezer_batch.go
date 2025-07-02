@@ -39,7 +39,7 @@ type freezerBatch struct {
 func newFreezerBatch(f *Freezer) *freezerBatch {
 	batch := &freezerBatch{tables: make(map[string]*freezerTableBatch, len(f.tables))}
 	for kind, table := range f.tables {
-		batch.tables[kind] = table.newBatch(f.offset, f.isIncr)
+		batch.tables[kind] = table.newBatch(f.offset)
 	}
 	return batch
 }
@@ -96,7 +96,6 @@ func (batch *freezerBatch) commit() (item uint64, writeSize int64, err error) {
 type freezerTableBatch struct {
 	t *freezerTable
 
-	isIncr      bool
 	sb          *snappyBuffer
 	encBuffer   writeBuffer
 	dataBuffer  []byte
@@ -107,11 +106,10 @@ type freezerTableBatch struct {
 }
 
 // newBatch creates a new batch for the freezer table.
-func (t *freezerTable) newBatch(offset uint64, isIncr bool) *freezerTableBatch {
+func (t *freezerTable) newBatch(offset uint64) *freezerTableBatch {
 	var batch = &freezerTableBatch{
 		t:      t,
 		offset: offset,
-		isIncr: isIncr,
 	}
 	if !t.noCompression {
 		batch.sb = new(snappyBuffer)
