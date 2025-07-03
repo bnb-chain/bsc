@@ -2412,10 +2412,10 @@ func EnableNodeTrack(ctx *cli.Context, cfg *ethconfig.Config, stack *node.Node) 
 		metrics.GetOrRegisterLabel("node-stats", nil).Mark(map[string]interface{}{
 			"NodeType":       parseNodeType(),
 			"ENR":            nodeInfo.ENR,
-			"Mining":         ctx.Bool(MiningEnabledFlag.Name),
 			"Etherbase":      parseEtherbase(cfg),
 			"MiningFeatures": parseMiningFeatures(ctx, cfg),
 			"DBFeatures":     parseDBFeatures(cfg, stack),
+			"NetFeatures":    parseNetFeatures(stack),
 		})
 	}
 }
@@ -2467,6 +2467,17 @@ func parseMiningFeatures(ctx *cli.Context, cfg *ethconfig.Config) string {
 	}
 	if cfg.Miner.VoteEnable {
 		features = append(features, "FFVoting")
+	}
+	if len(features) == 0 {
+		features = append(features, "Mining")
+	}
+	return strings.Join(features, "|")
+}
+
+func parseNetFeatures(stack *node.Node) string {
+	var features []string
+	if stack.Config().EnableEVNFeatures {
+		features = append(features, "EVN")
 	}
 	return strings.Join(features, "|")
 }

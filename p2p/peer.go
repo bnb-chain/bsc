@@ -359,6 +359,9 @@ func (p *Peer) pingLoop() {
 			if latency > 0 {
 				p.latency.Store(latency)
 				peerLatencyStat.Update(time.Duration(latency))
+				if p.EVNPeerFlag.Load() {
+					evnPeerLatencyStat.Update(time.Duration(latency))
+				}
 				if latency > slowPeerLatencyThreshold {
 					log.Warn("find a too slow peer", "id", p.ID(), "peer", p.RemoteAddr(), "latency", latency)
 				}
