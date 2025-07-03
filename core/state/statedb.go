@@ -112,8 +112,12 @@ type StateDB struct {
 	// perspective. This map is populated at the transaction boundaries.
 	mutations map[common.Address]*mutation
 
-	storagePool          *StoragePool // sharedPool to store L1 originStorage of stateObjects
+	// before Hertzfix hard fork, read from sharedPool directly, compatible with old erroneous data(https://forum.bnbchain.org/t/about-the-hertzfix/2400).
+	// after Hertzfix hard fork, read from sharedPool which is not in stateObjectsDestruct.
+	isHertzfix           bool
 	writeOnSharedStorage bool         // Write to the shared origin storage of a stateObject while reading from the underlying storage layer.
+	storagePool          *StoragePool // sharedPool to store L1 originStorage of stateObjects
+
 	// DB error.
 	// State objects are used by the consensus core and VM which are
 	// unable to deal with database-level errors. Any error that occurs
@@ -214,6 +218,10 @@ func New(root common.Hash, db Database) (*StateDB, error) {
 
 func (s *StateDB) EnableWriteOnSharedStorage() {
 	s.writeOnSharedStorage = true
+}
+
+func (s *StateDB) SetIsHertzfix(isHertzfix bool) {
+	s.isHertzfix = isHertzfix
 }
 
 // In mining mode, we will try multi-fillTransactions to get the most profitable one.
@@ -793,13 +801,12 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 		mutations:            make(map[common.Address]*mutation, len(s.mutations)),
 		dbErr:                s.dbErr,
 		storagePool:          s.storagePool,
-		// writeOnSharedStorage: s.writeOnSharedStorage,
-		refund:    s.refund,
-		thash:     s.thash,
-		txIndex:   s.txIndex,
-		logs:      make(map[common.Hash][]*types.Log, len(s.logs)),
-		logSize:   s.logSize,
-		preimages: maps.Clone(s.preimages),
+		refund:               s.refund,
+		thash:                s.thash,
+		txIndex:              s.txIndex,
+		logs:                 make(map[common.Hash][]*types.Log, len(s.logs)),
+		logSize:              s.logSize,
+		preimages:            maps.Clone(s.preimages),
 
 		transientStorage: s.transientStorage.Copy(),
 		journal:          s.journal.copy(),
