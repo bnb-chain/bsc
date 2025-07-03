@@ -319,7 +319,9 @@ func (b *testHandler) close() {
 	b.chain.Stop()
 }
 
-// newTestVotePool creates a mock vote pool.
+// testVotePool is a mock vote pool that simply collects and stores votes.
+// Its purpose is to simulate vote collection behavior without implementing
+// complex validation and consensus rules.
 type testVotePool struct {
 	pool map[common.Hash]*types.VoteEnvelope // Hash map of collected votes
 
