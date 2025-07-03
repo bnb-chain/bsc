@@ -569,6 +569,12 @@ var (
 		Usage:    "Disable heuristic state prefetch during block import (less CPU and disk IO, more time waiting for data)",
 		Category: flags.PerfCategory,
 	}
+	CacheEnableSharedStorageFlag = &cli.BoolFlag{
+		Name:     "cache.enablesharedpool",
+		Usage:    "Enable shared storage pool cache for state, default is false",
+		Value:    false,
+		Category: flags.PerfCategory,
+	}
 	CachePreimagesFlag = &cli.BoolFlag{
 		Name:     "cache.preimages",
 		Usage:    "Enable recording the SHA3/keccak preimages of trie keys",
@@ -2129,6 +2135,12 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.IsSet(CacheFlag.Name) || ctx.IsSet(CacheSnapshotFlag.Name) {
 		cfg.SnapshotCache = ctx.Int(CacheFlag.Name) * ctx.Int(CacheSnapshotFlag.Name) / 100
+	}
+	if ctx.IsSet(CacheEnableSharedStorageFlag.Name) {
+		cfg.EnableSharedStorage = true
+		log.Info("Enabled shared storage pool cache for state")
+	} else {
+		log.Info("Disabled shared storage pool cache for state")
 	}
 	if ctx.IsSet(CacheLogSizeFlag.Name) {
 		cfg.FilterLogCacheSize = ctx.Int(CacheLogSizeFlag.Name)

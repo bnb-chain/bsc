@@ -216,12 +216,15 @@ func New(root common.Hash, db Database) (*StateDB, error) {
 	return sdb, nil
 }
 
-func (s *StateDB) EnableWriteOnSharedStorage() {
-	s.writeOnSharedStorage = true
+func (s *StateDB) EnableSharedStorage(enableSharedStorage bool) {
+	s.writeOnSharedStorage = enableSharedStorage
 }
 
 func (s *StateDB) SetNeedBadSharedStorage(needBadSharedStorage bool) {
 	s.needBadSharedStorage = needBadSharedStorage
+	if needBadSharedStorage {
+		s.writeOnSharedStorage = true
+	}
 }
 
 // In mining mode, we will try multi-fillTransactions to get the most profitable one.
@@ -800,6 +803,7 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 		stateObjectsDestruct: make(map[common.Address]*stateObject, len(s.stateObjectsDestruct)),
 		mutations:            make(map[common.Address]*mutation, len(s.mutations)),
 		dbErr:                s.dbErr,
+		writeOnSharedStorage: s.writeOnSharedStorage,
 		storagePool:          s.storagePool,
 		refund:               s.refund,
 		thash:                s.thash,
