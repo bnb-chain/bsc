@@ -183,7 +183,6 @@ func (idb *IncrDB) ReadIncrBlockData(table string, number uint64) ([]byte, error
 
 // WriteIncrState writes incremental state data
 func (idb *IncrDB) WriteIncrState(number, id uint64, meta, accountIndex, storageIndex, accounts, storages, trieNodes []byte) error {
-	// Wait for any ongoing directory switch to complete
 	idb.waitForSwitchComplete()
 
 	idb.lock.Lock()
@@ -201,7 +200,6 @@ func (idb *IncrDB) ReadStateData(table string, id uint64) ([]byte, error) {
 
 // WriteIncrContractCodes writes contract codes
 func (idb *IncrDB) WriteIncrContractCodes(codes map[common.Address]ContractCode) error {
-	// Wait for any ongoing directory switch to complete
 	idb.waitForSwitchComplete()
 
 	idb.lock.Lock()
@@ -365,6 +363,7 @@ func (idb *IncrDB) GetKVDB() ethdb.KeyValueStore {
 func (idb *IncrDB) GetLastBlock() uint64 {
 	idb.lock.RLock()
 	defer idb.lock.RUnlock()
+
 	return idb.lastBlock
 }
 
@@ -387,12 +386,10 @@ func (idb *IncrDB) GetCurrentStats() (string, uint64) {
 
 // findLatestIncrDir finds the latest incremental directory or creates the first one
 func findLatestIncrDir(baseDir string, offset, startBlock uint64) (string, error) {
-	// Ensure base directory exists
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create base directory %s: %v", baseDir, err)
 	}
 
-	// Scan for existing incr_* directories
 	entries, err := os.ReadDir(baseDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to read base directory %s: %v", baseDir, err)
@@ -451,17 +448,14 @@ func GetAllIncrDirs(baseDir string) ([]IncrDirInfo, error) {
 		if !entry.IsDir() {
 			continue
 		}
-
 		matches := incrDirPattern.FindStringSubmatch(entry.Name())
 		if len(matches) != 2 {
 			continue
 		}
-
 		blockNum, err := strconv.ParseUint(matches[1], 10, 64)
 		if err != nil {
 			continue
 		}
-
 		incrDirs = append(incrDirs, IncrDirInfo{
 			Name:     entry.Name(),
 			Path:     filepath.Join(baseDir, entry.Name()),
@@ -486,7 +480,6 @@ func (idb *IncrDB) IsBlockLimitReached() bool {
 		return false
 	}
 
-	// Use actual freezer count instead of internal blockCount to avoid race conditions
 	if idb.currDB != nil && idb.currDB.chainFreezer != nil {
 		ancients, err := idb.currDB.chainFreezer.Ancients()
 		if err != nil {

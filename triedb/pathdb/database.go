@@ -288,12 +288,10 @@ func (db *Database) checkIncrConfig() {
 	if err != nil {
 		log.Crit("Failed to get ancient data dir", "err", err)
 	}
-	if db.config.IncrHistoryPath != "" {
-		ancientDir = db.config.IncrHistoryPath
-	} else {
+
+	if db.config.IncrHistoryPath == "" {
 		db.config.IncrHistoryPath = filepath.Join(ancientDir, rawdb.IncrementalPath)
 	}
-
 	if db.config.IncrHistory == 0 {
 		db.config.IncrHistory = math.MaxUint64
 	}
@@ -416,7 +414,7 @@ func (db *Database) repairIncrStore() error {
 		return nil
 	}
 
-	// no need truncate incremental freezer when its length is 0
+	// no need to truncate incremental freezer when its length is 0
 	if frozen != 0 {
 		// Truncate the extra incr state and chain histories above in freezer in case
 		// it's not aligned with the disk layer. It might happen after an unclean shutdown.
