@@ -231,6 +231,9 @@ func (im *incrManager) processWriteTask(dl *diffLayer) error {
 	// skip already written incremental data
 	if dl.stateID() <= im.endStateID {
 		im.count++
+		if im.count%10000 == 0 {
+			log.Info("Print skipped info", "im.count", im.count, "dl.stateID()", dl.stateID(), "im.endStateID", im.endStateID)
+		}
 		return nil
 	}
 
