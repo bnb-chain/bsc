@@ -428,7 +428,6 @@ func (db *Database) WriteContractCodes(codes map[common.Address]rawdb.ContractCo
 func (db *Database) IsIncrEnabled() bool {
 	pdb, ok := db.backend.(*pathdb.Database)
 	if !ok {
-		log.Error("Not supported IsIncrEnabled")
 		return false
 	}
 	return pdb.IsIncrEnabled()

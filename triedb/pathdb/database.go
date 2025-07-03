@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -260,20 +261,10 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 	}
 
 	if db.config.EnableIncrHistory {
-		ancientDir, err := db.diskdb.AncientDatadir()
-		if err != nil {
-			log.Crit("Failed to get ancient datadir", "err", err)
-		}
-		if db.config.IncrHistoryPath != "" {
-			ancientDir = db.config.IncrHistoryPath
-		} else {
-			db.config.IncrHistoryPath = filepath.Join(ancientDir, rawdb.IncrementalPath)
-		}
-
-		if err = db.repairIncrStore(); err != nil {
+		db.checkIncrConfig()
+		if err := db.repairIncrStore(); err != nil {
 			log.Crit("Failed to repair incremental history", "err", err)
 		}
-
 		// Start incremental store async workers
 		db.incr.Start()
 	}
@@ -290,6 +281,22 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 	}
 	log.Info("Initialized path database", fields...)
 	return db
+}
+
+func (db *Database) checkIncrConfig() {
+	ancientDir, err := db.diskdb.AncientDatadir()
+	if err != nil {
+		log.Crit("Failed to get ancient data dir", "err", err)
+	}
+	if db.config.IncrHistoryPath != "" {
+		ancientDir = db.config.IncrHistoryPath
+	} else {
+		db.config.IncrHistoryPath = filepath.Join(ancientDir, rawdb.IncrementalPath)
+	}
+
+	if db.config.IncrHistory == 0 {
+		db.config.IncrHistory = math.MaxUint64
+	}
 }
 
 // repairHistory truncates leftover state history objects, which may occur due
