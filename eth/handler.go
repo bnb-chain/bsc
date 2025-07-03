@@ -382,6 +382,10 @@ func newHandler(config *handlerConfig) (*handler, error) {
 // protoTracker tracks the number of active protocol handlers.
 func (h *handler) protoTracker() {
 	defer h.wg.Done()
+
+	if h.enableEVNFeatures {
+		h.peers.enableEVNFeatures(h.queryValidatorNodeIDsMap(), h.evnNodeIdsWhitelistMap)
+	}
 	updateTicker := time.NewTicker(10 * time.Second)
 	defer updateTicker.Stop()
 	var active int
