@@ -197,7 +197,6 @@ func doCodeFusion(code []byte) ([]byte, error) {
 				fusedCode[cur+12] = byte(Nop)
 				fusedCode[cur+13] = byte(Nop)
 				skipToNext = true
-				optimizedCounter.Inc(1)
 			}
 
 			if skipToNext {
@@ -237,7 +236,6 @@ func doCodeFusion(code []byte) ([]byte, error) {
 				fusedCode[cur+11] = byte(Nop)
 				fusedCode[cur+12] = byte(Nop)
 				skipToNext = true
-				optimizedCounter.Inc(1)
 			}
 
 			if skipToNext {
@@ -259,7 +257,6 @@ func doCodeFusion(code []byte) ([]byte, error) {
 				fusedCode[cur+6] = byte(Nop)
 				fusedCode[cur+7] = byte(Nop)
 				skipToNext = true
-				optimizedCounter.Inc(1)
 			}
 
 			if skipToNext {
@@ -283,7 +280,6 @@ func doCodeFusion(code []byte) ([]byte, error) {
 				fusedCode[cur+6] = byte(Nop)
 				fusedCode[cur+7] = byte(Nop)
 				skipToNext = true
-				optimizedCounter.Inc(1)
 			}
 			if skipToNext {
 				i += 7
@@ -308,7 +304,6 @@ func doCodeFusion(code []byte) ([]byte, error) {
 				fusedCode[cur+4] = byte(Nop)
 				fusedCode[cur+5] = byte(Nop)
 				skipToNext = true
-				optimizedCounter.Inc(1)
 			}
 			if skipToNext {
 				i += 5
@@ -353,7 +348,6 @@ func doCodeFusion(code []byte) ([]byte, error) {
 			}
 
 			if skipToNext {
-				optimizedCounter.Inc(1)
 				i += 4
 				continue
 			}
@@ -420,7 +414,6 @@ func doCodeFusion(code []byte) ([]byte, error) {
 			}
 
 			if skipToNext {
-				optimizedCounter.Inc(1)
 				i += 3
 				continue
 			}
@@ -452,7 +445,6 @@ func doCodeFusion(code []byte) ([]byte, error) {
 				}
 			}
 			if skipToNext {
-				optimizedCounter.Inc(1)
 				i += 2
 				continue
 			}
@@ -504,7 +496,6 @@ func doCodeFusion(code []byte) ([]byte, error) {
 			}
 
 			if skipToNext {
-				optimizedCounter.Inc(1)
 				i++
 				continue
 			}
