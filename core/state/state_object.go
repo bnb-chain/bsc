@@ -161,17 +161,9 @@ func (s *stateObject) getPrefetchedTrie() Trie {
 	return s.db.prefetcher.trie(s.addrHash, s.data.Root)
 }
 
-func (s *stateObject) getOriginStorage(key common.Hash) (common.Hash, bool) {
-	if value, cached := s.originStorage[key]; cached {
-		return value, true
-	}
+func (s *stateObject) tryGetFromSharedPool(key common.Hash) (common.Hash, bool) {
 	// if L1 cache miss, try to get it from shared pool
 	if s.sharedOriginStorage != nil {
-		if s.db.isHertzfix {
-			if _, destructed := s.db.stateObjectsDestruct[s.address]; destructed {
-				return common.Hash{}, false
-			}
-		}
 		val, ok := s.sharedOriginStorage.Load(key)
 		if !ok {
 			return common.Hash{}, false
@@ -216,9 +208,16 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 		return value
 	}
 
-	if value, cached := s.getOriginStorage(key); cached {
+	if value, cached := s.originStorage[key]; cached {
 		return value
 	}
+
+	if s.db.needBadSharedStorage {
+		if value, cached := s.tryGetFromSharedPool(key); cached {
+			return value
+		}
+	}
+
 	// If the object was destructed in *this* block (and potentially resurrected),
 	// the storage has been cleared out, and we should *not* consult the previous
 	// database about any storage values. The only possible alternatives are:
@@ -229,6 +228,11 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 		s.originStorage[key] = common.Hash{} // track the empty slot as origin value
 		return common.Hash{}
 	}
+
+	if value, cached := s.tryGetFromSharedPool(key); cached {
+		return value
+	}
+
 	s.db.StorageLoaded++
 
 	var start time.Time

@@ -112,9 +112,9 @@ type StateDB struct {
 	// perspective. This map is populated at the transaction boundaries.
 	mutations map[common.Address]*mutation
 
-	// before Hertzfix hard fork, read from sharedPool directly, compatible with old erroneous data(https://forum.bnbchain.org/t/about-the-hertzfix/2400).
-	// after Hertzfix hard fork, read from sharedPool which is not in stateObjectsDestruct.
-	isHertzfix           bool
+	// if needBadSharedStorage = true, try read from sharedPool firstly, compatible with old erroneous data(https://forum.bnbchain.org/t/about-the-hertzfix/2400).
+	// else read from sharedPool which is not in stateObjectsDestruct.
+	needBadSharedStorage bool
 	writeOnSharedStorage bool         // Write to the shared origin storage of a stateObject while reading from the underlying storage layer.
 	storagePool          *StoragePool // sharedPool to store L1 originStorage of stateObjects
 
@@ -220,8 +220,8 @@ func (s *StateDB) EnableWriteOnSharedStorage() {
 	s.writeOnSharedStorage = true
 }
 
-func (s *StateDB) SetIsHertzfix(isHertzfix bool) {
-	s.isHertzfix = isHertzfix
+func (s *StateDB) SetNeedBadSharedStorage(needBadSharedStorage bool) {
+	s.needBadSharedStorage = needBadSharedStorage
 }
 
 // In mining mode, we will try multi-fillTransactions to get the most profitable one.

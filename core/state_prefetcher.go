@@ -54,9 +54,8 @@ func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *type
 	for i := 0; i < prefetchThread; i++ {
 		go func() {
 			newStatedb := statedb.CopyDoPrefetch()
-			if p.config.NeedBadSharedStorage(header.Number) {
-				newStatedb.EnableWriteOnSharedStorage()
-			}
+			newStatedb.SetNeedBadSharedStorage(p.config.NeedBadSharedStorage(header.Number))
+			newStatedb.EnableWriteOnSharedStorage()
 
 			gaspool := new(GasPool).AddGas(gasLimit)
 			evm := vm.NewEVM(NewEVMBlockContext(header, p.chain, nil), newStatedb, p.config, *cfg)
@@ -106,6 +105,7 @@ func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header
 	for i := 0; i < prefetchThread; i++ {
 		go func(startCh <-chan *types.Transaction, stopCh <-chan struct{}) {
 			newStatedb := statedb.CopyDoPrefetch()
+			newStatedb.EnableWriteOnSharedStorage()
 			evm := vm.NewEVM(NewEVMBlockContext(header, p.chain, nil), newStatedb, p.config, cfg)
 			idx := 0
 			// Iterate over and process the individual transactions
