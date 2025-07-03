@@ -128,9 +128,10 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPa
 	if sidecars != nil {
 		block = block.WithSidecars(sidecars)
 	}
+	block = block.WithBAL(packet.Bal)
 
 	// Schedule the block for import
-	log.Debug("handleBlockBroadcast", "peer", peer.ID(), "block", block.Number(), "hash", block.Hash())
+	log.Debug("handleBlockBroadcast", "peer", peer.ID(), "block", block.Number(), "hash", block.Hash(), "len(bal)", len(block.BAL()))
 	h.blockFetcher.Enqueue(peer.ID(), block)
 	stats := h.chain.GetBlockStats(block.Hash())
 	if stats.RecvNewBlockTime.Load() == 0 {

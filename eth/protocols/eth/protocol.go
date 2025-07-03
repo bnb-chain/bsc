@@ -218,6 +218,7 @@ type NewBlockPacket struct {
 	Block    *types.Block
 	TD       *big.Int
 	Sidecars types.BlobSidecars `rlp:"optional"`
+	Bal      []byte             `rlp:"optional"`
 }
 
 // sanityCheck verifies that the values are reasonable, as a DoS protection

@@ -20,7 +20,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const prefetchThread = 3
@@ -90,6 +92,44 @@ func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *type
 			return
 		}
 	}
+}
+
+func (p *statePrefetcher) PrefetchBAL(block *types.Block, statedb *state.StateDB) {
+	if block.BAL() == nil || len(block.BAL()) == 0 {
+		return
+	}
+
+	// bal := statedb.GetEncodedAccessList(block)
+	blockAccessList := types.BlockAccessListEncode{}
+	rlp.DecodeBytes(block.BAL(), &blockAccessList)
+
+	// get index sorted block access list, each transaction has a list of accounts, each account has a list of storage items
+	// txIndex 0:
+	// 			 account1: storage1_1, storage1_2, storage1_3
+	// 			 account2: storage2_1, storage2_2, storage2_3
+	// txIndex 1:
+	// 			 account3: storage3_1, storage3_2, storage3_3
+	// ...
+	balPrefetch := types.BlockAccessListPrefetch{
+		AccessListItems: make(map[uint32]types.TxAccessListPrefetch),
+	}
+	for _, account := range blockAccessList.Accounts {
+		balPrefetch.Update(&account)
+	}
+
+	// prefetch snapshot cache
+	for txIndex, txAccessList := range balPrefetch.AccessListItems {
+		for accAddr, storageItems := range txAccessList.Accounts {
+			log.Info("PrefetchBAL", "txIndex", txIndex, "accAddr", accAddr)
+			statedb.PreloadAccount(accAddr)
+			for _, storageItem := range storageItems {
+				log.Info("PrefetchBAL", "txIndex", txIndex, "accAddr", accAddr, "storageItem", storageItem.Key, "dirty", storageItem.Dirty)
+				statedb.PreloadStorage(accAddr, storageItem.Key)
+			}
+		}
+	}
+	// prefetch MPT trie node cache
+	// go statedb.TriePrefetchInAdvance(block, signer)
 }
 
 // PrefetchMining processes the state changes according to the Ethereum rules by running

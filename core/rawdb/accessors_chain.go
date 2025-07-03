@@ -871,6 +871,18 @@ func DeleteBlobSidecars(db ethdb.KeyValueWriter, hash common.Hash, number uint64
 	}
 }
 
+func WriteBAL(db ethdb.KeyValueWriter, hash common.Hash, number uint64, bal []byte) {
+	if err := db.Put(blockBALKey(number, hash), bal); err != nil {
+		log.Crit("Failed to store block BAL", "err", err)
+	}
+}
+
+func DeleteBAL(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
+	if err := db.Delete(blockBALKey(number, hash)); err != nil {
+		log.Crit("Failed to delete block BAL", "err", err)
+	}
+}
+
 func writeAncientBlock(op ethdb.AncientWriteOp, block *types.Block, header *types.Header, receipts []*types.ReceiptForStorage, td *big.Int) error {
 	num := block.NumberU64()
 	if err := op.AppendRaw(ChainFreezerHashTable, num, block.Hash().Bytes()); err != nil {
@@ -903,6 +915,7 @@ func DeleteBlock(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
 	DeleteBody(db, hash, number)
 	DeleteTd(db, hash, number)
 	DeleteBlobSidecars(db, hash, number) // it is safe to delete non-exist blob
+	DeleteBAL(db, hash, number)
 }
 
 // DeleteBlockWithoutNumber removes all block data associated with a hash, except
@@ -913,6 +926,7 @@ func DeleteBlockWithoutNumber(db ethdb.KeyValueWriter, hash common.Hash, number 
 	DeleteBody(db, hash, number)
 	DeleteTd(db, hash, number)
 	DeleteBlobSidecars(db, hash, number)
+	DeleteBAL(db, hash, number)
 }
 
 const badBlockToKeep = 10
