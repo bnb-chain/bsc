@@ -348,3 +348,7 @@ func (f *prunedfreezer) TruncateTableTail(kind string, tail uint64) (uint64, err
 func (f *prunedfreezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
 	return errNotSupported
 }
+
+func (f *prunedfreezer) ForceFreeze(ethdb.KeyValueStore) error {
+	return errNotSupported
+}
