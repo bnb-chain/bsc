@@ -20,6 +20,7 @@ package ethash
 import (
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -75,4 +76,12 @@ func (ethash *Ethash) Close() error {
 // just panic as sealing is not supported anymore.
 func (ethash *Ethash) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
 	panic("ethash (pow) sealing not supported any more")
+}
+
+func (ethash *Ethash) SignBAL(bal *types.BlockAccessListEncode) error {
+	return nil
+}
+
+func (ethash *Ethash) VerifyBAL(signer common.Address, bal *types.BlockAccessListEncode) error {
+	return nil
 }

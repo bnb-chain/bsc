@@ -491,6 +491,15 @@ func (beacon *Beacon) SealHash(header *types.Header) common.Hash {
 	return beacon.ethone.SealHash(header)
 }
 
+func (beacon *Beacon) SignBAL(blockAccessList *types.BlockAccessListEncode) error {
+	return nil
+}
+
+// VerifyBAL verifies the BAL of the block
+func (beacon *Beacon) VerifyBAL(signer common.Address, bal *types.BlockAccessListEncode) error {
+	return nil
+}
+
 // CalcDifficulty is the difficulty adjustment algorithm. It returns
 // the difficulty that a new block should have when created at time
 // given the parent block's time and difficulty.

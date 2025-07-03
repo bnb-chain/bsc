@@ -121,6 +121,7 @@ func (env *environment) copy() *environment {
 		receipts:  copyReceipts(env.receipts),
 		committed: env.committed,
 	}
+	env.state.TransferBAL(cpy.state)
 	if env.gasPool != nil {
 		gasPool := *env.gasPool
 		cpy.gasPool = &gasPool
@@ -970,6 +971,7 @@ LOOP:
 			coalescedLogs = append(coalescedLogs, logs...)
 			env.tcount++
 			txs.Shift()
+			// update the BAL metedata
 
 		default:
 			// Transaction is regarded as invalid, drop all consecutive transactions from
@@ -1535,7 +1537,12 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		env := env.copy()
 
 		block = block.WithSidecars(env.sidecars)
-
+		bal := env.state.GetBlockAccessList(block)
+		if bal != nil && w.engine.SignBAL(bal) == nil {
+			block = block.WithBAL(bal)
+		}
+		env.state.DumpAccessList(block)
+		log.Info("worker Commit", "blockNumber", block.NumberU64(), "GasUsed", block.GasUsed(), "block size(noBal)", block.Size(), "balSize", block.BALSize())
 		select {
 		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
 			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),

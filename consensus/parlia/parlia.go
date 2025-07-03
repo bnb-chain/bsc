@@ -1755,6 +1755,52 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	return nil
 }
 
+func (p *Parlia) SignBAL(blockAccessList *types.BlockAccessListEncode) error {
+	p.lock.RLock()
+	val, signFn := p.val, p.signFn
+	p.lock.RUnlock()
+
+	data, err := rlp.EncodeToBytes([]interface{}{blockAccessList.Version, blockAccessList.Accounts})
+	if err != nil {
+		log.Error("Encode to bytes failed when sealing", "err", err)
+		return errors.New("encode to bytes failed")
+	}
+
+	sig, err := signFn(accounts.Account{Address: val}, accounts.MimetypeParlia, data)
+	if err != nil {
+		log.Error("Sign for the block header failed when sealing", "err", err)
+		return errors.New("sign for the block header failed")
+	}
+
+	copy(blockAccessList.SignData, sig)
+	return nil
+}
+
+func (p *Parlia) VerifyBAL(signer common.Address, bal *types.BlockAccessListEncode) error {
+	if len(bal.SignData) != 65 {
+		return errors.New("invalid BAL signature")
+	}
+
+	// Recover the public key and the Ethereum address
+	data, err := rlp.EncodeToBytes([]interface{}{bal.Version, bal.Accounts})
+	if err != nil {
+		return errors.New("encode to bytes failed")
+	}
+
+	pubkey, err := crypto.Ecrecover(crypto.Keccak256(data), bal.SignData)
+	if err != nil {
+		return err
+	}
+	var pubkeyAddr common.Address
+	copy(pubkeyAddr[:], crypto.Keccak256(pubkey[1:])[12:])
+
+	if signer != pubkeyAddr {
+		return errors.New("signer mismatch")
+	}
+
+	return nil
+}
+
 func (p *Parlia) shouldWaitForCurrentBlockProcess(chain consensus.ChainHeaderReader, header *types.Header, snap *Snapshot) bool {
 	if header.Difficulty.Cmp(diffInTurn) == 0 {
 		return false

@@ -787,3 +787,11 @@ func encodeSigHeader(w io.Writer, header *types.Header) {
 		panic("can't encode: " + err.Error())
 	}
 }
+
+func (c *Clique) SignBAL(bal *types.BlockAccessListEncode) error {
+	return nil
+}
+
+func (c *Clique) VerifyBAL(signer common.Address, bal *types.BlockAccessListEncode) error {
+	return nil
+}

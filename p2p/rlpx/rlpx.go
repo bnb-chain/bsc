@@ -35,6 +35,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/ecies"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/golang/snappy"
 	"golang.org/x/crypto/sha3"
@@ -214,12 +215,20 @@ func (c *Conn) Write(code uint64, data []byte) (uint32, error) {
 	if len(data) > maxUint24 {
 		return 0, errPlainMessageTooLarge
 	}
+	// 	NewBlockMsg                   = 0x07
+	if code == 0x07 {
+		log.Info("rlpx Write(before snappy)", "code", code, "len(data)", len(data))
+	}
 	if c.snappyWriteBuffer != nil {
 		// Ensure the buffer has sufficient size.
 		// Package snappy will allocate its own buffer if the provided
 		// one is smaller than MaxEncodedLen.
 		c.snappyWriteBuffer = growslice(c.snappyWriteBuffer, snappy.MaxEncodedLen(len(data)))
 		data = snappy.Encode(c.snappyWriteBuffer, data)
+		if code == 0x07 {
+			log.Info("rlpx Write(after snappy)", "code", code, "len(data)", len(data))
+		}
+
 	}
 
 	wireSize := uint32(len(data))

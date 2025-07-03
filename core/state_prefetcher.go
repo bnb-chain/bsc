@@ -25,11 +25,13 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"golang.org/x/sync/errgroup"
 )
 
 const prefetchMiningThread = 3
+const prefetchThreadBAL = 3
 const checkInterval = 10
 
 // statePrefetcher is a basic Prefetcher that executes transactions from a block
@@ -127,6 +129,100 @@ func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *type
 	blockPrefetchTxsValidMeter.Mark(int64(len(transactions)) - fails.Load())
 	blockPrefetchTxsInvalidMeter.Mark(fails.Load())
 	return
+}
+
+func (p *statePrefetcher) PrefetchBALSnapshot(balPrefetch *types.BlockAccessListPrefetch, block *types.Block, txSize int, statedb *state.StateDB, interruptCh <-chan struct{}) {
+	accChan := make(chan common.Address, prefetchThreadBAL)
+	keyChan := make(chan struct {
+		accAddr common.Address
+		key     common.Hash
+	}, prefetchThreadBAL)
+
+	// prefetch snapshot cache
+	for i := 0; i < prefetchThreadBAL; i++ {
+		go func() {
+			newStatedb := statedb.CopyDoPrefetch()
+			for {
+				select {
+				case accAddr := <-accChan:
+					newStatedb.PreloadAccount(accAddr)
+				case item := <-keyChan:
+					newStatedb.PreloadStorage(item.accAddr, item.key)
+				case <-interruptCh:
+					// If block precaching was interrupted, abort
+					return
+				}
+			}
+		}()
+	}
+	for txIndex := 0; txIndex < txSize; txIndex++ {
+		txAccessList := balPrefetch.AccessListItems[uint32(txIndex)]
+		for accAddr, storageItems := range txAccessList.Accounts {
+			select {
+			case accChan <- accAddr:
+			case <-interruptCh:
+				return
+			}
+			for _, storageItem := range storageItems {
+				select {
+				case keyChan <- struct {
+					accAddr common.Address
+					key     common.Hash
+				}{
+					accAddr: accAddr,
+					key:     storageItem.Key,
+				}:
+				case <-interruptCh:
+					return
+				}
+			}
+		}
+	}
+}
+
+func (p *statePrefetcher) PrefetchBALTrie(balPrefetch *types.BlockAccessListPrefetch, block *types.Block, statedb *state.StateDB, interruptCh <-chan struct{}) {
+	for txIndex, txAccessList := range balPrefetch.AccessListItems {
+		for accAddr, storageItems := range txAccessList.Accounts {
+			log.Info("PrefetchBAL", "txIndex", txIndex, "accAddr", accAddr)
+			statedb.PreloadAccountTrie(accAddr)
+			for _, storageItem := range storageItems {
+				log.Info("PrefetchBAL", "txIndex", txIndex, "accAddr", accAddr, "storageItem", storageItem.Key, "dirty", storageItem.Dirty)
+				if storageItem.Dirty {
+					statedb.PreloadStorageTrie(accAddr, storageItem.Key)
+				}
+			}
+		}
+	}
+}
+
+func (p *statePrefetcher) PrefetchBAL(block *types.Block, statedb *state.StateDB, interruptCh <-chan struct{}) {
+	if block.BAL() == nil {
+		return
+	}
+	transactions := block.Transactions()
+
+	// bal := statedb.GetBlockAccessList(block)
+	blockAccessList := block.BAL()
+
+	// get index sorted block access list, each transaction has a list of accounts, each account has a list of storage items
+	// txIndex 0:
+	// 			 account1: storage1_1, storage1_2, storage1_3
+	// 			 account2: storage2_1, storage2_2, storage2_3
+	// txIndex 1:
+	// 			 account3: storage3_1, storage3_2, storage3_3
+	// ...
+	balPrefetch := types.BlockAccessListPrefetch{
+		AccessListItems: make(map[uint32]types.TxAccessListPrefetch),
+	}
+	for _, account := range blockAccessList.Accounts {
+		balPrefetch.Update(&account)
+	}
+
+	// prefetch snapshot cache
+	go p.PrefetchBALSnapshot(&balPrefetch, block, len(transactions), statedb, interruptCh)
+
+	// prefetch MPT trie node cache
+	go p.PrefetchBALTrie(&balPrefetch, block, statedb, interruptCh)
 }
 
 // PrefetchMining processes the state changes according to the Ethereum rules by running

@@ -1222,6 +1222,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 			rawdb.DeleteReceipts(db, hash, num)
 			rawdb.DeleteTd(db, hash, num)
 			rawdb.DeleteBlobSidecars(db, hash, num)
+			rawdb.DeleteBAL(db, hash, num)
 		}
 		// Todo(rjl493456442) txlookup, log index, etc
 	}
@@ -1860,6 +1861,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 			rawdb.WriteBlobSidecars(blockBatch, block.Hash(), block.NumberU64(), block.Sidecars())
 		}
+		rawdb.WriteBAL(blockBatch, block.Hash(), block.NumberU64(), block.BAL())
 		if bc.db.HasSeparateStateStore() {
 			rawdb.WritePreimages(bc.db.GetStateStore(), statedb.Preimages())
 		} else {
@@ -2302,6 +2304,11 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 		}
 		bc.updateHighestVerifiedHeader(block.Header())
+
+		// TODO: add BAL to the block
+		// throwawayBAL := statedb.CopyDoPrefetch()
+		// bc.prefetcher.PrefetchBAL(block, throwawayBAL, interruptCh)
+
 		// The traced section of block import.
 		start := time.Now()
 		res, err := bc.processBlock(parent.Root, block, setHead, makeWitness && len(chain) == 1)

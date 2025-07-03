@@ -315,6 +315,7 @@ func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
 		Block:    block,
 		TD:       td,
 		Sidecars: block.Sidecars(),
+		Bal:      block.BAL(),
 	})
 }
 
