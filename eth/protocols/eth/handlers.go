@@ -318,6 +318,7 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
 	}
 
+	log.Debug("handleNewBlock", "number", ann.Block.NumberU64(), "hash", ann.Block.Hash(), "balSize", ann.Block.BALSize())
 	// Now that we have our packet, perform operations using the interface methods
 	if err := ann.sanityCheck(); err != nil {
 		return err

@@ -145,9 +145,9 @@ var (
 	ParliaSnapshotPrefix = []byte("parlia-")
 
 	BlockBlobSidecarsPrefix = []byte("blobs")
-
-	preimageCounter    = metrics.NewRegisteredCounter("db/preimage/total", nil)
-	preimageHitCounter = metrics.NewRegisteredCounter("db/preimage/hits", nil)
+	BlockBALPrefix          = []byte("bal")
+	preimageCounter         = metrics.NewRegisteredCounter("db/preimage/total", nil)
+	preimageHitCounter      = metrics.NewRegisteredCounter("db/preimage/hits", nil)
 )
 
 // LegacyTxLookupEntry is the legacy TxLookupEntry definition with some unnecessary
@@ -203,6 +203,11 @@ func blockReceiptsKey(number uint64, hash common.Hash) []byte {
 // blockBlobSidecarsKey = BlockBlobSidecarsPrefix + blockNumber (uint64 big endian) + blockHash
 func blockBlobSidecarsKey(number uint64, hash common.Hash) []byte {
 	return append(append(BlockBlobSidecarsPrefix, encodeBlockNumber(number)...), hash.Bytes()...)
+}
+
+// blockBALKey = blockBALPrefix + blockNumber (uint64 big endian) + blockHash
+func blockBALKey(number uint64, hash common.Hash) []byte {
+	return append(append(BlockBALPrefix, encodeBlockNumber(number)...), hash.Bytes()...)
 }
 
 // txLookupKey = txLookupPrefix + hash

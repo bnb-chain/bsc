@@ -187,7 +187,11 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	for _, receipt := range receipts {
 		allLogs = append(allLogs, receipt.Logs...)
 	}
+	statedb.DumpAccessList(block)
+	bal := statedb.GetBlockAccessList(block)
+	block = block.WithBAL(bal)
 
+	log.Info("Process", "blockNumber", block.NumberU64(), "GasUsed", block.GasUsed(), "block size(noBal)", block.Size(), "balSize", block.BALSize())
 	return &ProcessResult{
 		Receipts: receipts,
 		Requests: requests,
