@@ -270,8 +270,8 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 			db.config.IncrHistoryPath = filepath.Join(ancientDir, rawdb.IncrementalPath)
 		}
 
-		if err = db.repairIncrStore(ancientDir); err != nil {
-			log.Crit("Failed to repair incremental state history", "err", err)
+		if err = db.repairIncrStore(); err != nil {
+			log.Crit("Failed to repair incremental history", "err", err)
 		}
 
 		// Start incremental store async workers
@@ -298,7 +298,6 @@ func (db *Database) repairHistory() error {
 	if db.config.NoTries {
 		return nil
 	}
-
 	// Open the freezer for state history. This mechanism ensures that
 	// only one database instance can be opened at a time to prevent
 	// accidental mutation.
@@ -354,15 +353,29 @@ func (db *Database) repairHistory() error {
 	return nil
 }
 
-func (db *Database) repairIncrStore(ancientDir string) error {
+func (db *Database) repairIncrStore() error {
 	if db.config.NoTries {
 		return nil
 	}
 
-	// get the bottom diff layer block number
-	block := db.tree.bottomDiffLayer().block
+	var block uint64
+	if dl := db.tree.bottomDiffLayer(); dl != nil {
+		// use the bottom diff layer block number
+		block = dl.block
+	} else {
+		// use disk layer block number
+		disk := db.tree.bottom()
+		var m meta
+		blob := rawdb.ReadStateHistoryMeta(db.freezer, disk.id)
+		if err := m.decode(blob); err != nil {
+			log.Error("Failed to decode state histories", "err", err)
+			return err
+		}
+		block = m.block
+	}
+
 	offset := uint64(0) // differ from in block data, only metadata is used in state data
-	incrDB, err := rawdb.NewIncrDB(ancientDir, db.readOnly, offset, block, db.config.IncrHistory)
+	incrDB, err := rawdb.NewIncrDB(db.config.IncrHistoryPath, db.readOnly, offset, block, db.config.IncrHistory)
 	if err != nil {
 		log.Error("Failed to open incremental db", "err", err)
 		return err
@@ -417,7 +430,7 @@ func (db *Database) repairIncrStore(ancientDir string) error {
 			return err
 		}
 		// truncate incr chain freezer
-		pruned, err = truncateFromHead(db.diskdb, db.incr.incrDB.GetChainFreezer(), number)
+		pruned, err = truncateIncrChainFreezerFromHead(db.diskdb, db.incr.incrDB.GetChainFreezer(), number)
 		if err != nil {
 			log.Error("Failed to truncate extra incr chain histories", "err", err)
 			return err
