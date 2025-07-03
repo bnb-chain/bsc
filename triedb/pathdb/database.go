@@ -413,7 +413,7 @@ func (db *Database) repairIncrStore() error {
 		}
 		return nil
 	}
-	if id != frozen {
+	if frozen != 0 && id != frozen {
 		log.Warn("Disk layer state id is not equal to incr state freezer ancients", "id", id, "frozen", frozen)
 		db.incr.skipCount = frozen - id
 		db.incr.endStateID = frozen
