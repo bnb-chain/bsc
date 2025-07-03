@@ -240,11 +240,8 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				// The depth-check is already done, and precompiles handled above
 				contract := GetContract(caller, AccountRef(addrCopy), value, gas)
 				defer ReturnContract(contract)
-				tryStart := time.Now()
 				codeHash := evm.resolveCodeHash(addrCopy)
 				contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
-				tryTime := time.Since(tryStart)
-				tryGetOptimizedCodeTimer.Update(tryTime)
 				runStart := time.Now()
 				contract.IsSystemCall = isSystemCall(caller)
 				contract.SetCallCode(&addrCopy, codeHash, code)
