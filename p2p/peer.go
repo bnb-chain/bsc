@@ -609,6 +609,8 @@ func (p *Peer) Info() *PeerInfo {
 	info.Network.RemoteAddress = p.RemoteAddr().String()
 	info.Network.Inbound = p.rw.is(inboundConn)
 	info.Network.Trusted = p.rw.is(trustedConn)
+	// After Maxwell, we treat all EVN peer as trusted
+	info.Network.Trusted = info.Network.Trusted || p.EVNPeerFlag.Load()
 	info.Network.Static = p.rw.is(staticDialedConn)
 
 	// Gather all the running protocol infos
