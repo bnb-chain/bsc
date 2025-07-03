@@ -54,7 +54,7 @@ func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *type
 	for i := 0; i < prefetchThread; i++ {
 		go func() {
 			newStatedb := statedb.CopyDoPrefetch()
-			if p.config.NeedSharedStorage(header.Number) {
+			if p.config.NeedBadSharedStorage(header.Number) {
 				newStatedb.EnableWriteOnSharedStorage()
 			}
 

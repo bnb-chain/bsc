@@ -967,7 +967,7 @@ func (c *ChainConfig) IsHertzfix(num *big.Int) bool {
 	return isBlockForked(c.HertzfixBlock, num)
 }
 
-func (c *ChainConfig) NeedSharedStorage(num *big.Int) bool {
+func (c *ChainConfig) NeedBadSharedStorage(num *big.Int) bool {
 	if c.IsHertzfix(num) {
 		return false
 	}
