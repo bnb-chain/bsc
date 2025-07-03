@@ -57,6 +57,10 @@ type incrManager struct {
 	incrDB      *rawdb.IncrDB
 	chainConfig *params.ChainConfig
 
+	count      uint64
+	skipCount  uint64
+	endStateID uint64
+
 	// Async write control
 	writeQueue chan *diffLayer
 	stopChan   chan struct{}
@@ -224,6 +228,12 @@ func (im *incrManager) worker() {
 }
 
 func (im *incrManager) processWriteTask(dl *diffLayer) error {
+	// skip already written incremental data
+	if dl.stateID() <= im.endStateID {
+		im.count++
+		return nil
+	}
+
 	// check and write block firstly
 	blockHash := rawdb.ReadCanonicalHash(im.db.diskdb.BlockStore(), dl.block)
 	if blockHash == (common.Hash{}) {
@@ -252,6 +262,10 @@ func (im *incrManager) processWriteTask(dl *diffLayer) error {
 	if err := im.writeStateData(dl); err != nil {
 		log.Error("Failed to write state data", "block", dl.block, "stateID", dl.stateID(), "err", err)
 		return err
+	}
+
+	if im.skipCount != im.count {
+		log.Error("different number of skipped blocks", "im.skipCount", im.skipCount, "im.count", im.count)
 	}
 
 	return nil
