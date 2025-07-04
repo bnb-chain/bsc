@@ -306,11 +306,6 @@ func initGenesis(ctx *cli.Context) error {
 			utils.Fatalf("Failed to open separate trie database: %v", dbErr)
 		}
 		chaindb.SetStateStore(statediskdb)
-		blockdb, err := stack.OpenDatabaseWithFreezer(name+"/block", 0, 0, "", "", false, false)
-		if err != nil {
-			utils.Fatalf("Failed to open separate block database: %v", err)
-		}
-		chaindb.SetBlockStore(blockdb)
 		log.Warn("Multi-database is an experimental feature")
 	}
 
@@ -698,8 +693,6 @@ func dumpGenesis(ctx *cli.Context) error {
 	if stack.CheckIfMultiDataBase() && err == nil {
 		stateDiskDb := utils.MakeStateDataBase(ctx, stack, true, false)
 		db.SetStateStore(stateDiskDb)
-		blockDb := utils.MakeBlockDatabase(ctx, stack, true, false)
-		db.SetBlockStore(blockDb)
 	}
 
 	genesis, err = core.ReadGenesis(db)
