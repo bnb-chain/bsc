@@ -803,6 +803,7 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 		stateObjectsDestruct: make(map[common.Address]*stateObject, len(s.stateObjectsDestruct)),
 		mutations:            make(map[common.Address]*mutation, len(s.mutations)),
 		dbErr:                s.dbErr,
+		needBadSharedStorage: s.needBadSharedStorage,
 		writeOnSharedStorage: s.writeOnSharedStorage,
 		storagePool:          s.storagePool,
 		refund:               s.refund,

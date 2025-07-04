@@ -571,7 +571,7 @@ var (
 	}
 	CacheEnableSharedStorageFlag = &cli.BoolFlag{
 		Name:     "cache.enablesharedpool",
-		Usage:    "Enable shared storage pool cache for state, default is false",
+		Usage:    "Enable shared storage pool cache in statedb, default is false",
 		Value:    false,
 		Category: flags.PerfCategory,
 	}
@@ -2138,9 +2138,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.IsSet(CacheEnableSharedStorageFlag.Name) {
 		cfg.EnableSharedStorage = true
-		log.Info("Enabled shared storage pool cache for state")
+		log.Info("Enabled shared storage pool cache")
 	} else {
-		log.Info("Disabled shared storage pool cache for state")
+		log.Info("Disabled shared storage pool cache")
 	}
 	if ctx.IsSet(CacheLogSizeFlag.Name) {
 		cfg.FilterLogCacheSize = ctx.Int(CacheLogSizeFlag.Name)

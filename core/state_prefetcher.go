@@ -54,8 +54,6 @@ func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *type
 	for i := 0; i < prefetchThread; i++ {
 		go func() {
 			newStatedb := statedb.CopyDoPrefetch()
-			newStatedb.SetNeedBadSharedStorage(p.config.NeedBadSharedStorage(header.Number))
-
 			gaspool := new(GasPool).AddGas(gasLimit)
 			evm := vm.NewEVM(NewEVMBlockContext(header, p.chain, nil), newStatedb, p.config, *cfg)
 			// Iterate over and process the individual transactions
