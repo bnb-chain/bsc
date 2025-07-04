@@ -126,7 +126,7 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 		preimages = newPreimageStore(triediskdb)
 	}
 	db := &Database{
-		disk:      triediskdb,
+		disk:      diskdb,
 		config:    config,
 		preimages: preimages,
 	}
