@@ -17,9 +17,7 @@
 package vm
 
 import (
-	"errors"
 	"fmt"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -248,9 +246,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 		// Get the operation from the jump table and validate the stack to ensure there are
 		// enough stack items available to perform the operation.
-
 		op = contract.GetOp(pc)
 		operation := in.table[op]
+		if !contract.optimized && (op >= 0xb0 && op <= 0xc8) {
+			operation = in.table[INVALID]
+		}
 
 		cost = operation.constantGas // For tracing
 		// Validate stack
@@ -317,10 +317,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
-		if errors.Is(err, ErrInvalidOptimizedCode) {
-			contract.Gas += cost
-			cost = 0
-		}
+		// todo: confirm logic
+		//if errors.Is(err, ErrInvalidOptimizedCode) {
+		//	contract.Gas += cost
+		//	cost = 0
+		//}
 		if err != nil {
 			break
 		}
