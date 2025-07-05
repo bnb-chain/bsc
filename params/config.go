@@ -968,7 +968,7 @@ func (c *ChainConfig) IsHertzfix(num *big.Int) bool {
 }
 
 func (c *ChainConfig) NeedBadSharedStorage(num *big.Int) bool {
-	if c.IsHertzfix(num) {
+	if c.IsHertzfix(num) || c.ChainID == nil {
 		return false
 	}
 

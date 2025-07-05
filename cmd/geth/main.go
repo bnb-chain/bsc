@@ -130,6 +130,7 @@ var (
 		utils.CacheGCFlag,
 		utils.CacheSnapshotFlag,
 		// utils.CacheNoPrefetchFlag,
+		utils.CacheEnableSharedStorageFlag,
 		utils.CachePreimagesFlag,
 		utils.MultiDataBaseFlag,
 		utils.PruneAncientDataFlag, // deprecated

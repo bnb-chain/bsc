@@ -416,10 +416,11 @@ func (bc *BlockChain) State() (*state.StateDB, error) {
 
 // StateAt returns a new mutable state based on a particular point in time.
 func (bc *BlockChain) StateAt(root common.Hash) (*state.StateDB, error) {
-	stateDb, err := state.New(root, bc.statedb)
+	stateDb, err := state.NewWithSharedPool(root, bc.statedb)
 	if err != nil {
 		return nil, err
 	}
+	stateDb.EnableSharedStorage(bc.cacheConfig.EnableSharedStorage)
 
 	// If there's no trie and the specified snapshot is not available, getting
 	// any state will by default return nil.
