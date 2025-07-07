@@ -126,18 +126,17 @@ type layer interface {
 
 // Config contains the settings for database.
 type Config struct {
-	SyncFlush            bool   // Flag of trienodebuffer sync flush cache to disk
-	StateHistory         uint64 // Number of recent blocks to maintain state history for
-	CleanCacheSize       int    // Maximum memory allowance (in bytes) for caching clean nodes
-	WriteBufferSize      int    // Maximum memory allowance (in bytes) for write buffer
-	ReadOnly             bool   // Flag whether the database is opened in read only mode.
-	NoTries              bool   // Flag whether the database stores tries
-	JournalFilePath      string // The path of journal file
-	JournalFile          bool   // Flag whether store memory diffLayer into file
-	EnableIncrHistory    bool   // Flag whether the freezer db stores incremental block and state history
-	IncrHistory          uint64 // Amount of block and state history stored in incremental freezer db
-	IncrHistoryPath      string // The path to store incremental block and chain files
-	IncrBlockStartNumber uint64 // Starting block number for incremental block data storage
+	SyncFlush         bool   // Flag of trienodebuffer sync flush cache to disk
+	StateHistory      uint64 // Number of recent blocks to maintain state history for
+	CleanCacheSize    int    // Maximum memory allowance (in bytes) for caching clean nodes
+	WriteBufferSize   int    // Maximum memory allowance (in bytes) for write buffer
+	ReadOnly          bool   // Flag whether the database is opened in read only mode.
+	NoTries           bool   // Flag whether the database stores tries
+	JournalFilePath   string // The path of journal file
+	JournalFile       bool   // Flag whether store memory diffLayer into file
+	EnableIncrHistory bool   // Flag whether the freezer db stores incremental block and state history
+	IncrHistory       uint64 // Amount of block and state history stored in incremental freezer db
+	IncrHistoryPath   string // The path to store incremental block and chain files
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -835,17 +834,6 @@ func (db *Database) AccountIterator(root common.Hash, seek common.Hash) (Account
 // account. The iterator will be moved to the specific start position.
 func (db *Database) StorageIterator(root common.Hash, account common.Hash, seek common.Hash) (StorageIterator, error) {
 	return newFastStorageIterator(db, root, account, seek)
-}
-
-// SetIncrBlockStartNumber sets the starting block number for incremental block data
-func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
-	db.lock.Lock()
-	defer db.lock.Unlock()
-
-	if db.config.IncrBlockStartNumber == 0 {
-		db.config.IncrBlockStartNumber = startBlock
-		log.Info("Set incremental block start number", "startBlock", startBlock)
-	}
 }
 
 // IsIncrEnabled returns true if incremental is enabled, otherwise false.

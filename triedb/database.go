@@ -403,17 +403,6 @@ func (db *Database) MergeIncrState(incrDir string) error {
 	return pdb.MergeIncrState(incrDir)
 }
 
-// SetIncrBlockStartNumber sets the starting block number for incremental block data
-// It's only supported by path-based database and will do nothing for others.
-func (db *Database) SetIncrBlockStartNumber(startBlock uint64) {
-	pdb, ok := db.backend.(*pathdb.Database)
-	if !ok {
-		log.Error("Not supported")
-		return
-	}
-	pdb.SetIncrBlockStartNumber(startBlock)
-}
-
 // WriteContractCodes used to write contract codes into incremental db.
 func (db *Database) WriteContractCodes(codes map[common.Address]rawdb.ContractCode) error {
 	pdb, ok := db.backend.(*pathdb.Database)

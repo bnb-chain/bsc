@@ -309,11 +309,6 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	}
 
 	if dl.db.config.EnableIncrHistory {
-		// should handle journal data in merge command
-		if bottom.block < dl.db.config.IncrBlockStartNumber {
-			log.Warn("Blocks comes from journal", "blockNumber", bottom.block, "stateID", bottom.stateID(),
-				"incrBlockStartNumber", dl.db.config.IncrBlockStartNumber)
-		}
 		// Commit incremental data with retry mechanism
 		err := dl.commitIncrDataWithRetry(bottom)
 		if err != nil {
@@ -467,7 +462,6 @@ func (dl *diskLayer) commitIncrDataWithRetry(bottom *diffLayer) error {
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		err := dl.db.incr.commit(bottom)
 		if err == nil {
-			// Success
 			if attempt > 0 {
 				log.Info("Incremental data commit succeeded after retries",
 					"block", bottom.block, "stateID", bottom.stateID(), "attempts", attempt+1)
