@@ -238,9 +238,11 @@ func opKeccak256(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) (
 
 	if interpreter.hasher == nil {
 		interpreter.hasher = crypto.NewKeccakState()
+	} else {
+		interpreter.hasher.Reset()
 	}
-
-	interpreter.hasherBuf = crypto.HashData(interpreter.hasher, data)
+	interpreter.hasher.Write(data)
+	interpreter.hasher.Read(interpreter.hasherBuf[:])
 
 	evm := interpreter.evm
 	if evm.Config.EnablePreimageRecording {
@@ -1017,10 +1019,9 @@ func opAndSwap1PopSwap2Swap1(pc *uint64, interpreter *EVMInterpreter, scope *Sco
 	a, b := scope.Stack.pop2()
 	c, d, e := scope.Stack.peek(), scope.Stack.Back(1), scope.Stack.Back(2)
 	r := a.And(&a, &b)
-	tmp := *e
-	*e = *r
 	*c = *d
-	*d = tmp
+	*d = *e
+	*e = *r
 	*pc += 4
 	return nil, nil
 }
