@@ -320,7 +320,7 @@ of ancientStore, will also displays the reserved number of blocks in ancientStor
 			utils.IncrementalSnapshotPathFlag,
 		},
 		Usage:       "Inspect the incremental information",
-		Description: `This commands will read and display incremental store information`,
+		Description: `This commands read and display incremental store information`,
 	}
 )
 

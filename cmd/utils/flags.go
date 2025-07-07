@@ -1244,7 +1244,7 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Category: flags.StateCategory,
 	}
 	IncrementalSnapshotFlag = &cli.BoolFlag{
-		Name:     "incremental-snapshot",
+		Name:     "snapshot.increment",
 		Usage:    "Enable incremental snapshot generation",
 		Value:    false,
 		Category: flags.StateCategory,

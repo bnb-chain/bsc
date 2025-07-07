@@ -195,11 +195,11 @@ the expected order for the overlay tree migration.
 			{
 				Action:    mergeIncrSnapshot,
 				Name:      "merge-incr-snapshot",
-				Usage:     "Merge the incremental snapshot into base snapshot",
+				Usage:     "Merge the incremental snapshot into local data",
 				ArgsUsage: "",
 				Flags: slices.Concat([]cli.Flag{utils.IncrementalSnapshotPathFlag},
 					utils.DatabaseFlags),
-				Description: `This command aims to help merge multiple incremental snapshot into base snapshot`,
+				Description: `This command merges multiple incremental snapshots into local data`,
 			},
 		},
 	}

@@ -207,6 +207,9 @@ func (im *incrManager) worker() {
 	for {
 		select {
 		case dl := <-im.writeQueue:
+			if dl == nil {
+				log.Crit("Diff layer is nil")
+			}
 			atomic.AddInt32(&im.stats.queueLength, -1)
 
 			startTime := time.Now()
