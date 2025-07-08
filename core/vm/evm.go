@@ -121,7 +121,9 @@ type EVM struct {
 	// applied in opCall*.
 	callGasTemp uint64
 	// precompiles holds the precompiled contracts for the current epoch
-	precompiles map[common.Address]PrecompiledContract
+	precompiles     map[common.Address]PrecompiledContract
+	optInterpreter  *EVMInterpreter
+	baseInterpreter *EVMInterpreter
 }
 
 // NewEVM constructs an EVM instance with the supplied block context, state
@@ -137,12 +139,36 @@ func NewEVM(blockCtx BlockContext, statedb StateDB, chainConfig *params.ChainCon
 		chainRules:  chainConfig.Rules(blockCtx.BlockNumber, blockCtx.Random != nil, blockCtx.Time),
 	}
 	evm.precompiles = activePrecompiledContracts(evm.chainRules)
-	evm.interpreter = NewEVMInterpreter(evm)
+
+	evm.baseInterpreter = NewEVMInterpreter(evm)
+	evm.interpreter = evm.baseInterpreter
+	if evm.Config.EnableOpcodeOptimizations {
+		evm.optInterpreter = NewEVMInterpreter(evm)
+		evm.optInterpreter.InstallSuperInstruction()
+		evm.interpreter = evm.optInterpreter
+	}
+
 	if config.EnableOpcodeOptimizations {
 		compiler.EnableOptimization()
 	}
-
 	return evm
+}
+
+func (evm *EVM) UseOptInterpreter() {
+	if !evm.Config.EnableOpcodeOptimizations {
+		return
+	}
+	if evm.interpreter == evm.optInterpreter {
+		return
+	}
+	evm.interpreter = evm.optInterpreter
+}
+
+func (evm *EVM) UseBaseInterpreter() {
+	if evm.interpreter == evm.baseInterpreter {
+		return
+	}
+	evm.interpreter = evm.baseInterpreter
 }
 
 // SetPrecompiles sets the precompiled contracts for the EVM.
@@ -241,6 +267,11 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				codeHash := evm.resolveCodeHash(addrCopy)
 				contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 				//runStart := time.Now()
+				if contract.optimized {
+					evm.UseOptInterpreter()
+				} else {
+					evm.UseBaseInterpreter()
+				}
 				contract.IsSystemCall = isSystemCall(caller)
 				contract.SetCallCode(&addrCopy, codeHash, code)
 				ret, err = evm.interpreter.Run(contract, input, false)
@@ -325,6 +356,13 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 			codeHash := evm.resolveCodeHash(addrCopy)
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 			contract.SetCallCode(&addrCopy, codeHash, code)
+
+			if contract.optimized {
+				evm.UseOptInterpreter()
+			} else {
+				evm.UseBaseInterpreter()
+			}
+
 			ret, err = evm.interpreter.Run(contract, input, false)
 			gas = contract.Gas
 		} else {
@@ -388,6 +426,11 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 			codeHash := evm.resolveCodeHash(addrCopy)
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 			contract.SetCallCode(&addrCopy, codeHash, code)
+			if contract.optimized {
+				evm.UseOptInterpreter()
+			} else {
+				evm.UseBaseInterpreter()
+			}
 			ret, err = evm.interpreter.Run(contract, input, false)
 			gas = contract.Gas
 		} else {
@@ -457,6 +500,11 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 			code := evm.resolveCode(addrCopy)
 			codeHash := evm.resolveCodeHash(addrCopy)
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
+			if contract.optimized {
+				evm.UseOptInterpreter()
+			} else {
+				evm.UseBaseInterpreter()
+			}
 			contract.SetCallCode(&addrCopy, codeHash, code)
 			// When an error was returned by the EVM or when setting the creation code
 			// above we revert to the snapshot and consume any gas remaining. Additionally
@@ -630,7 +678,7 @@ func (evm *EVM) initNewContract(contract *Contract, address common.Address, valu
 	if evm.Config.EnableOpcodeOptimizations {
 		compiler.DisableOptimization()
 	}
-
+	evm.UseBaseInterpreter()
 	ret, err := evm.interpreter.Run(contract, nil, false)
 	if err != nil {
 		return ret, err
