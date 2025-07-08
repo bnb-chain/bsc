@@ -151,10 +151,11 @@ func NewEVMInterpreter(evm *EVM) *EVMInterpreter {
 		}
 	}
 	evm.Config.ExtraEips = extraEips
-	if evm.Config.EnableOpcodeOptimizations {
-		table = createOptimizedOpcodeTable(table)
-	}
 	return &EVMInterpreter{evm: evm, table: table}
+}
+
+func (in *EVMInterpreter) InstallSuperInstruction() {
+	in.table = createOptimizedOpcodeTable(in.table)
 }
 
 // Run loops and evaluates the contract's code with the given input data and returns
@@ -248,9 +249,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// enough stack items available to perform the operation.
 		op = contract.GetOp(pc)
 		operation := in.table[op]
-		if !contract.optimized && (op >= 0xb0 && op <= 0xc8) {
-			operation = in.table[INVALID]
-		}
 
 		cost = operation.constantGas // For tracing
 		// Validate stack
@@ -317,11 +315,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
-		// todo: confirm logic
-		//if errors.Is(err, ErrInvalidOptimizedCode) {
-		//	contract.Gas += cost
-		//	cost = 0
-		//}
+
 		if err != nil {
 			break
 		}
