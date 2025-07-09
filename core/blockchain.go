@@ -156,6 +156,7 @@ const (
 // CacheConfig contains the configuration values for the trie database
 // and state snapshot these are resident in a blockchain.
 type CacheConfig struct {
+	EnableSharedStorage bool          // Whether to enable shared storage in statedb, improve execute stage performance ~6%.
 	TrieCleanLimit      int           // Memory allowance (MB) to use for caching trie nodes in memory
 	TrieCleanNoPrefetch bool          // Whether to disable heuristic state prefetching for followup blocks
 	TrieDirtyLimit      int           // Memory limit (MB) at which to start flushing dirty trie nodes to disk
@@ -2185,6 +2186,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 		if err != nil {
 			return nil, it.index, err
 		}
+		statedb.EnableSharedStorage(bc.cacheConfig.EnableSharedStorage)
+		statedb.SetNeedBadSharedStorage(bc.chainConfig.NeedBadSharedStorage(block.Number()))
 		bc.updateHighestVerifiedHeader(block.Header())
 
 		// If we are past Byzantium, enable prefetching to pull in trie node paths
