@@ -69,8 +69,8 @@ var (
 	serveEncHandshakeError   = metrics.NewRegisteredMeter("p2p/serves/error/rlpx/enc", nil)
 	serveProtoHandshakeError = metrics.NewRegisteredMeter("p2p/serves/error/rlpx/proto", nil)
 
-	peerLatencyStat    = metrics.NewRegisteredTimer("p2p/peers/latency", nil)
-	evnPeerLatencyStat = metrics.NewRegisteredTimer("p2p/peers/evn/latency", nil)
+	normalPeerLatencyStat = metrics.NewRegisteredTimer("p2p/peers/normal/latency", nil)
+	evnPeerLatencyStat    = metrics.NewRegisteredTimer("p2p/peers/evn/latency", nil)
 )
 
 // markDialError matches errors that occur while setting up a dial connection

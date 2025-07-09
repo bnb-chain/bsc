@@ -358,9 +358,10 @@ func (p *Peer) pingLoop() {
 			latency := (time.Now().UnixMilli() - startPing.Load()) / 2
 			if latency > 0 {
 				p.latency.Store(latency)
-				peerLatencyStat.Update(time.Duration(latency))
 				if p.EVNPeerFlag.Load() {
 					evnPeerLatencyStat.Update(time.Duration(latency))
+				} else {
+					normalPeerLatencyStat.Update(time.Duration(latency))
 				}
 				if latency > slowPeerLatencyThreshold {
 					log.Warn("find a too slow peer", "id", p.ID(), "peer", p.RemoteAddr(), "latency", latency)
@@ -611,7 +612,7 @@ func (p *Peer) Info() *PeerInfo {
 	info.Network.LocalAddress = p.LocalAddr().String()
 	info.Network.RemoteAddress = p.RemoteAddr().String()
 	info.Network.Inbound = p.rw.is(inboundConn)
-	// After Maxwell, we treat all EVN peer as trusted
+	// After Maxwell, we treat all EVN peers as trusted
 	info.Network.Trusted = p.rw.is(trustedConn) || p.EVNPeerFlag.Load()
 	info.Network.Static = p.rw.is(staticDialedConn)
 
