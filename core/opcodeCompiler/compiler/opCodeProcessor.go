@@ -43,6 +43,9 @@ type optimizeTask struct {
 }
 
 func init() {
+	if !enabled {
+		return
+	}
 	taskChannel = make(chan optimizeTask, taskChannelSize)
 	taskNumber := runtime.NumCPU() * 3 / 8
 	if taskNumber < 1 {
