@@ -1016,7 +1016,7 @@ func makeDup(size int64) executionFunc {
 // fused instructions
 // opAndSwap1PopSwap2Swap1 implements the fused instruction of And and `move to the stack bottom`.
 func opAndSwap1PopSwap2Swap1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	andSwap1PopSwap2Swap1.Inc(1)
 	a, b := scope.Stack.pop2()
 	c, d, e := scope.Stack.peek(), scope.Stack.Back(1), scope.Stack.Back(2)
 	r := a.And(&a, &b)
@@ -1029,7 +1029,7 @@ func opAndSwap1PopSwap2Swap1(pc *uint64, interpreter *EVMInterpreter, scope *Sco
 
 // opSwap2Swap1PopJump
 func opSwap2Swap1PopJump(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	swap2Swap1PopJump.Inc(1)
 	a, _ := scope.Stack.pop2()
 	c := scope.Stack.peek()
 	dest := *c
@@ -1043,7 +1043,7 @@ func opSwap2Swap1PopJump(pc *uint64, interpreter *EVMInterpreter, scope *ScopeCo
 
 // opSwap1PopSwap2Swap1
 func opSwap1PopSwap2Swap1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	swap1PopSwap2Swap1.Inc(1)
 	a, _ := scope.Stack.pop2()
 	c, d := scope.Stack.pop(), scope.Stack.peek()
 	scope.Stack.push(d)
@@ -1055,7 +1055,7 @@ func opSwap1PopSwap2Swap1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeC
 
 // opPopSwap2Swap1Pop
 func opPopSwap2Swap1Pop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	popSwap2Swap1Pop.Inc(1)
 	_, b := scope.Stack.pop2()
 	_, d := scope.Stack.pop(), scope.Stack.peek()
 	scope.Stack.push(d)
@@ -1066,7 +1066,7 @@ func opPopSwap2Swap1Pop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeCon
 
 // opPush2Jump
 func opPush2Jump(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	push2Jump.Inc(1)
 	var (
 		codeLen = len(scope.Contract.Code)
 		integer = new(uint256.Int)
@@ -1095,7 +1095,7 @@ func opPush2Jump(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) (
 
 // opPush2JumpI
 func opPush2JumpI(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	push2JumpI.Inc(1)
 	var (
 		codeLen = len(scope.Contract.Code)
 		integer = new(uint256.Int)
@@ -1129,7 +1129,7 @@ func opPush2JumpI(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) 
 
 // opPush1Push1
 func opPush1Push1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	push1Push1.Inc(1)
 	var (
 		codeLen = uint64(len(scope.Contract.Code))
 		a, b    = new(uint256.Int), new(uint256.Int)
@@ -1146,7 +1146,7 @@ func opPush1Push1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) 
 
 // opPush1Add
 func opPush1Add(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	push1Add.Inc(1)
 	var (
 		codeLen = uint64(len(scope.Contract.Code))
 		a       = new(uint256.Int)
@@ -1163,7 +1163,7 @@ func opPush1Add(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 
 // opPush1Shl
 func opPush1Shl(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	push1Shl.Inc(1)
 	var (
 		codeLen = uint64(len(scope.Contract.Code))
 		shift   = new(uint256.Int)
@@ -1187,7 +1187,7 @@ func opPush1Shl(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 
 // opPush1Dup1
 func opPush1Dup1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	push1Dup1.Inc(1)
 	var (
 		codeLen = uint64(len(scope.Contract.Code))
 		value   = new(uint256.Int)
@@ -1205,7 +1205,7 @@ func opPush1Dup1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) (
 
 // opSwap1Pop
 func opSwap1Pop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	swap1Pop.Inc(1)
 	a, b := scope.Stack.pop(), scope.Stack.peek()
 	*b = a
 	*pc += 1
@@ -1214,7 +1214,7 @@ func opSwap1Pop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 
 // opPopJump
 func opPopJump(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	popJump.Inc(1)
 	_, pos := scope.Stack.pop2()
 	if !scope.Contract.validJumpdest(&pos) {
 		return nil, ErrInvalidJump
@@ -1225,7 +1225,7 @@ func opPopJump(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]
 
 // opPop2
 func opPop2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	pop2.Inc(1)
 	_, _ = scope.Stack.pop2()
 	*pc += 1 // pc will be increased by the interpreter loop
 	return nil, nil
@@ -1233,7 +1233,7 @@ func opPop2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byt
 
 // opSwap2Swap1
 func opSwap2Swap1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	swap2Swap1.Inc(1)
 	a, b, c := *scope.Stack.peek(), *scope.Stack.Back(1), *scope.Stack.Back(2)
 	// to b, c, a
 	*scope.Stack.peek() = b
@@ -1245,7 +1245,7 @@ func opSwap2Swap1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) 
 
 // opSwap2Pop
 func opSwap2Pop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	swap2Pop.Inc(1)
 	// a,b,c -> b,a
 	a := scope.Stack.peek()
 	*scope.Stack.Back(2) = *a
@@ -1256,7 +1256,7 @@ func opSwap2Pop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 
 // opDup2Lt
 func opDup2LT(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	dup2LT.Inc(1)
 	x := scope.Stack.peek()
 	y := scope.Stack.Back(1)
 	if y.Lt(x) {
@@ -1270,7 +1270,7 @@ func opDup2LT(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]b
 
 // opJumpIfZero
 func opJumpIfZero(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	jumpIfZero.Inc(1)
 	value := scope.Stack.pop()
 	integer := new(uint256.Int)
 	pos := new(uint256.Int)
@@ -1311,7 +1311,7 @@ func opNop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte
 
 // opIsZeroPush2 is a super instruction
 func opIsZeroPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	isZeroPush2.Inc(1)
 	x := scope.Stack.peek()
 	if x.IsZero() {
 		x.SetOne()
@@ -1337,7 +1337,7 @@ func opIsZeroPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext)
 
 // DUP2 MSTORE PUSH1 ADD
 func opDup2MStorePush1Add(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	dup2MStorePush1Add.Inc(1)
 	var mStart, val uint256.Int
 
 	if scope.Stack.len() >= 2 {
@@ -1364,7 +1364,7 @@ func opDup2MStorePush1Add(pc *uint64, interpreter *EVMInterpreter, scope *ScopeC
 
 // DUP1 PUSH4 EQ PUSH2
 func opDup1Push4EqPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	dup1Push4EqPush2.Inc(1)
 	scope.Stack.dup(1)
 	*pc += 1
 	_, err := makePush(4, 4)(pc, interpreter, scope)
@@ -1390,7 +1390,7 @@ func opDup1Push4EqPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeCon
 
 // PUSH1 CALLDATALOAD PUSH1 SHR DUP1 PUSH4 GT PUSH2
 func opPush1CalldataloadPush1ShrDup1Push4GtPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	push1CalldataloadPush1ShrDup1Push4GtPush2.Inc(1)
 	codeLen := uint64(len(scope.Contract.Code))
 	var x = new(uint256.Int)
 	*pc += 1
@@ -1448,7 +1448,7 @@ func opPush1CalldataloadPush1ShrDup1Push4GtPush2(pc *uint64, interpreter *EVMInt
 
 // PUSH1 PUSH1 PUSH1 SHL SUB
 func opPush1Push1Push1SHLSub(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	push1Push1Push1SHLSub.Inc(1)
 	codeLen := uint64(len(scope.Contract.Code))
 	var integer1, integer2, integer3 = new(uint256.Int), new(uint256.Int), new(uint256.Int)
 	*pc += 1
@@ -1481,7 +1481,7 @@ func opPush1Push1Push1SHLSub(pc *uint64, interpreter *EVMInterpreter, scope *Sco
 
 // AND DUP2 ADD SWAP1 DUP2 LT
 func opAndDup2AddSwap1Dup2LT(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	andDup2AddSwap1Dup2LT.Inc(1)
 	x, y := scope.Stack.pop(), scope.Stack.peek()
 	y.And(&x, y)
 
@@ -1507,7 +1507,7 @@ func opAndDup2AddSwap1Dup2LT(pc *uint64, interpreter *EVMInterpreter, scope *Sco
 
 // SWAP1 PUSH1 DUP1 NOT SWAP2 ADD AND DUP2 ADD SWAP1 DUP2 LT
 func opSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	optimizedCodeCount.Inc(1)
+	swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT.Inc(1)
 	codeLen := uint64(len(scope.Contract.Code))
 	scope.Stack.swap1()
 
