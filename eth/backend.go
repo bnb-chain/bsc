@@ -232,9 +232,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 	// startup ancient freeze
 	freezeDb := chainDb
-	if stack.CheckIfMultiDataBase() {
-		freezeDb = chainDb.BlockStore()
-	}
 	if err = freezeDb.SetupFreezerEnv(&ethdb.FreezerEnv{
 		ChainCfg:         chainConfig,
 		BlobExtraReserve: config.BlobExtraReserve,

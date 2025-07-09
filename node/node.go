@@ -75,9 +75,6 @@ const (
 	initializingState = iota
 	runningState
 	closedState
-	blockDbCacheSize         = 256
-	blockDbHandlesMinSize    = 1000
-	blockDbHandlesMaxSize    = 2000
 	chainDbMemoryPercentage  = 50
 	chainDbHandlesPercentage = 50
 )
@@ -777,9 +774,7 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 	var (
 		err                          error
 		stateDiskDb                  ethdb.Database
-		blockDb                      ethdb.Database
 		disableChainDbFreeze         = false
-		blockDbHandlesSize           int
 		chainDataHandles             = config.DatabaseHandles
 		chainDbCache                 = config.DatabaseCache
 		stateDbCache, stateDbHandles int
@@ -790,17 +785,12 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 	if isMultiDatabase {
 		// Resource allocation rules:
 		// 1) Allocate a fixed percentage of memory for chainDb based on chainDbMemoryPercentage & chainDbHandlesPercentage.
-		// 2) Allocate a fixed size for blockDb based on blockDbCacheSize & blockDbHandlesSize.
-		// 3) Allocate the remaining resources to stateDb.
+		// 2) Allocate the remaining resources to stateDb.
 		chainDbCache = int(float64(config.DatabaseCache) * chainDbMemoryPercentage / 100)
 		chainDataHandles = int(float64(config.DatabaseHandles) * chainDbHandlesPercentage / 100)
-		if config.DatabaseHandles/10 > blockDbHandlesMaxSize {
-			blockDbHandlesSize = blockDbHandlesMaxSize
-		} else {
-			blockDbHandlesSize = blockDbHandlesMinSize
-		}
-		stateDbCache = config.DatabaseCache - chainDbCache - blockDbCacheSize
-		stateDbHandles = config.DatabaseHandles - chainDataHandles - blockDbHandlesSize
+
+		stateDbCache = config.DatabaseCache - chainDbCache
+		stateDbHandles = config.DatabaseHandles - chainDataHandles
 		disableChainDbFreeze = true
 	}
 
@@ -816,13 +806,8 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 			return nil, err
 		}
 
-		blockDb, err = n.OpenDatabaseWithFreezer(name+"/block", blockDbCacheSize, blockDbHandlesSize, "", "eth/db/blockdata/", readonly, false)
-		if err != nil {
-			return nil, err
-		}
 		log.Warn("Multi-database is an experimental feature")
 		chainDB.SetStateStore(stateDiskDb)
-		chainDB.SetBlockStore(blockDb)
 	}
 
 	return chainDB, nil
@@ -863,29 +848,15 @@ func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient,
 
 // CheckIfMultiDataBase check the state and block subdirectory of db, if subdirectory exists, return true
 func (n *Node) CheckIfMultiDataBase() bool {
-	var (
-		stateExist = true
-		blockExist = true
-	)
+	stateExist := true
 
 	separateStateDir := filepath.Join(n.ResolvePath("chaindata"), "state")
 	fileInfo, stateErr := os.Stat(separateStateDir)
 	if os.IsNotExist(stateErr) || !fileInfo.IsDir() {
 		stateExist = false
 	}
-	separateBlockDir := filepath.Join(n.ResolvePath("chaindata"), "block")
-	blockFileInfo, blockErr := os.Stat(separateBlockDir)
-	if os.IsNotExist(blockErr) || !blockFileInfo.IsDir() {
-		blockExist = false
-	}
 
-	if stateExist && blockExist {
-		return true
-	} else if !stateExist && !blockExist {
-		return false
-	} else {
-		panic("data corruption! missing block or state dir.")
-	}
+	return stateExist
 }
 
 // ResolvePath returns the absolute path of a resource in the instance directory.
