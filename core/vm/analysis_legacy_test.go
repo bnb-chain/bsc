@@ -52,7 +52,7 @@ func TestJumpDestAnalysis(t *testing.T) {
 		{[]byte{byte(PUSH32)}, 0b0000_0001, 4},
 	}
 	for i, test := range tests {
-		ret := codeBitmap(test.code)
+		ret := codeBitmap(test.code, false)
 		if ret[test.which] != test.exp {
 			t.Fatalf("test %d: expected %x, got %02x", i, test.exp, ret[test.which])
 		}
@@ -67,7 +67,7 @@ func BenchmarkJumpdestAnalysis_1200k(bench *testing.B) {
 	bench.SetBytes(analysisCodeSize)
 	bench.ResetTimer()
 	for i := 0; i < bench.N; i++ {
-		codeBitmap(code)
+		codeBitmap(code, false)
 	}
 	bench.StopTimer()
 }
@@ -94,7 +94,7 @@ func BenchmarkJumpdestOpAnalysis(bench *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			clear(bits)
-			codeBitmapInternal(code, bits)
+			codeBitmapInternal(code, bits, false)
 		}
 	}
 	for op = PUSH1; op <= PUSH32; op++ {

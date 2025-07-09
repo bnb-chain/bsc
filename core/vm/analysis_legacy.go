@@ -61,29 +61,30 @@ func (bits *bitvec) codeSegment(pos uint64) bool {
 }
 
 // codeBitmap collects data locations in code.
-func codeBitmap(code []byte) bitvec {
+func codeBitmap(code []byte, processOptimized bool) bitvec {
 	// The bitmap is 4 bytes longer than necessary, in case the code
 	// ends with a PUSH32, the algorithm will set bits on the
 	// bitvector outside the bounds of the actual code.
 	bits := make(bitvec, len(code)/8+1+4)
-	return codeBitmapInternal(code, bits)
+	return codeBitmapInternal(code, bits, processOptimized)
 }
 
 // codeBitmapInternal is the internal implementation of codeBitmap.
 // It exists for the purpose of being able to run benchmark tests
 // without dynamic allocations affecting the results.
-func codeBitmapInternal(code, bits bitvec) bitvec {
+func codeBitmapInternal(code, bits bitvec, processOptimized bool) bitvec {
 	for pc := uint64(0); pc < uint64(len(code)); {
 		op := OpCode(code[pc])
 		pc++
 
 		// handle super instruction.
-		step, processed := codeBitmapForSI(code, pc, op, &bits)
-		if processed {
-			pc += step
-			continue
+		if processOptimized {
+			step, processed := codeBitmapForSI(code, pc, op, &bits)
+			if processed {
+				pc += step
+				continue
+			}
 		}
-
 		if int8(op) < int8(PUSH1) { // If not PUSH (the int8(op) > int(PUSH32) is always false).
 			continue
 		}
