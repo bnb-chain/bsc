@@ -214,6 +214,13 @@ const (
 	Push1Push1Push1SHLSub
 	AndDup2AddSwap1Dup2LT
 	Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT // 0xc8
+	Dup3And
+	Swap2Swap1Dup3SubSwap2Dup3GtPush2
+	Swap1Dup2
+	SHRSHRDup1MulDup1
+	Swap3PopPopPop
+	SubSLTIsZeroPush2
+	Dup11MulDup3SubMulDup1
 )
 
 // 0xd0 range - eof operations.

@@ -239,6 +239,18 @@ const (
 	Push1Push1Push1SHLSub
 	AndDup2AddSwap1Dup2LT
 	Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT // 0xc8
+	Dup3And
+	Swap2Swap1Dup3SubSwap2Dup3GtPush2
+	Swap1Dup2
+	SHRSHRDup1MulDup1
+	Swap3PopPopPop
+	SubSLTIsZeroPush2
+	Dup11MulDup3SubMulDup1
+	//Swap3Swap2PopPop
+	//Push8Dup3GtORPush2
+	//Dup2AddSwap1Push2Swap2Swap1Push2
+	//Swap4Swap3PopPopPop
+	//Swap2AddAndDup2Add
 )
 
 // 0xd0 range - eof operations.
@@ -470,6 +482,13 @@ var opCodeToString = [256]string{
 	Push1Push1Push1SHLSub:                          "PUSH1PUSH1PUSH1SHLSUB",
 	AndDup2AddSwap1Dup2LT:                          "ANDDUP2ADDSWAP1DUP2LT",
 	Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT: "SWAP1PUSH1DUP1NOTSWAP2ADDANDDUP2ADDSWAP1DUP2LT",
+	Dup3And:                           "DUP3AND",
+	Swap2Swap1Dup3SubSwap2Dup3GtPush2: "SWAP2SWAP1DUP3SUBSWAP2DUP3GTPUSH2",
+	Swap1Dup2:                         "SWAP1DUP2",
+	SHRSHRDup1MulDup1:                 "SHRSHRDUP1MULDUP1",
+	Swap3PopPopPop:                    "SWAP3POPPOPPOP",
+	SubSLTIsZeroPush2:                 "SUBSLTISZEROPUSH2",
+	Dup11MulDup3SubMulDup1:            "DUP11MULDUP3SUBMULDUP1",
 
 	// 0xd range - eof ops.
 	DATALOAD:  "DATALOAD",
@@ -710,6 +729,13 @@ var stringToOp = map[string]OpCode{
 	"PUSH1PUSH1PUSH1SHLSUB":                          Push1Push1Push1SHLSub,
 	"ANDDUP2ADDSWAP1DUP2LT":                          AndDup2AddSwap1Dup2LT,
 	"SWAP1PUSH1DUP1NOTSWAP2ADDANDDUP2ADDSWAP1DUP2LT": Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT,
+	"DUP3AND":                           Dup3And,
+	"SWAP2SWAP1DUP3SUBSWAP2DUP3GTPUSH2": Swap2Swap1Dup3SubSwap2Dup3GtPush2,
+	"SWAP1DUP2":                         Swap1Dup2,
+	"SHRSHRDUP1MULDUP1":                 SHRSHRDup1MulDup1,
+	"SWAP3POPPOPPOP":                    Swap3PopPopPop,
+	"SUBSLTISZEROPUSH2":                 SubSLTIsZeroPush2,
+	"DUP11MULDUP3SUBMULDUP1":            Dup11MulDup3SubMulDup1,
 }
 
 // StringToOp finds the opcode whose name is stored in `str`.
