@@ -391,3 +391,32 @@ func (db *Database) IsVerkle() bool {
 func (db *Database) Disk() ethdb.Database {
 	return db.disk
 }
+
+// MergeIncrState merges the state in incremental snapshot into base snapshot
+func (db *Database) MergeIncrState(incrDir string) error {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		log.Error("Not supported")
+		return nil
+	}
+	return pdb.MergeIncrState(incrDir)
+}
+
+// WriteContractCodes used to write contract codes into incremental db.
+func (db *Database) WriteContractCodes(codes map[common.Address]rawdb.ContractCode) error {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		log.Error("Not supported")
+		return errors.New("not supported WriteContractCodes")
+	}
+	return pdb.WriteContractCodes(codes)
+}
+
+// IsIncrEnabled returns true if incremental is enabled, otherwise false.
+func (db *Database) IsIncrEnabled() bool {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		return false
+	}
+	return pdb.IsIncrEnabled()
+}

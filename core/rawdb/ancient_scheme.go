@@ -17,6 +17,7 @@
 package rawdb
 
 import (
+	"errors"
 	"path/filepath"
 
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -43,6 +44,10 @@ const (
 	ChainFreezerBlobSidecarTable = "blobs"
 )
 
+// IncrBlockStateIDMappingTable indicates the mapping table between block numbers and state IDs.
+// NOTICE: it's used to store data in incremental chain and state freezer.
+const IncrBlockStateIDMappingTable = "mapping"
+
 // chainFreezerNoSnappy configures whether compression is disabled for the ancient-tables.
 // Hashes and difficulties don't compress well.
 var chainFreezerNoSnappy = map[string]bool{
@@ -52,6 +57,18 @@ var chainFreezerNoSnappy = map[string]bool{
 	ChainFreezerReceiptTable:     false,
 	ChainFreezerDifficultyTable:  true,
 	ChainFreezerBlobSidecarTable: false,
+}
+
+// incrChainFreezerNoSnappy configures whether compression is disabled for the ancient-tables.
+// Hashes and difficulties don't compress well.
+var incrChainFreezerNoSnappy = map[string]bool{
+	ChainFreezerHeaderTable:      false,
+	ChainFreezerHashTable:        true,
+	ChainFreezerBodiesTable:      false,
+	ChainFreezerReceiptTable:     false,
+	ChainFreezerDifficultyTable:  true,
+	ChainFreezerBlobSidecarTable: false,
+	IncrBlockStateIDMappingTable: false, // block number -> state id
 }
 
 var additionTables = []string{ChainFreezerBlobSidecarTable}
@@ -66,6 +83,9 @@ const (
 	stateHistoryStorageIndex = "storage.index"
 	stateHistoryAccountData  = "account.data"
 	stateHistoryStorageData  = "storage.data"
+
+	// indicates the name of the freezer incremental state history table.
+	incrStateHistoryTrieNodesData = "trienodes.data"
 )
 
 // stateFreezerNoSnappy configures whether compression is disabled for the state freezer.
@@ -77,11 +97,28 @@ var stateFreezerNoSnappy = map[string]bool{
 	stateHistoryStorageData:  false,
 }
 
+var additionIncrTables = []string{ChainFreezerHeaderTable, ChainFreezerHashTable, ChainFreezerBodiesTable, ChainFreezerReceiptTable,
+	ChainFreezerDifficultyTable, IncrBlockStateIDMappingTable, stateHistoryMeta, stateHistoryAccountIndex,
+	stateHistoryStorageIndex, stateHistoryAccountData, stateHistoryStorageData, incrStateHistoryTrieNodesData}
+
+// incrStateFreezerNoSnappy configures whether compression is disabled for the incremental state freezer.
+var incrStateFreezerNoSnappy = map[string]bool{
+	stateHistoryMeta:              true,
+	stateHistoryAccountIndex:      false,
+	stateHistoryStorageIndex:      false,
+	stateHistoryAccountData:       false,
+	stateHistoryStorageData:       false,
+	incrStateHistoryTrieNodesData: false,
+	IncrBlockStateIDMappingTable:  false, // state id -> block number
+}
+
 // The list of identifiers of ancient stores.
 var (
 	ChainFreezerName       = "chain"        // the folder name of chain segment ancient store.
 	MerkleStateFreezerName = "state"        // the folder name of state history ancient store.
 	VerkleStateFreezerName = "state_verkle" // the folder name of state history ancient store.
+
+	IncrementalPath = "incremental" // the folder name of incremental ancient store
 )
 
 // freezers the collections of all builtin freezers.
@@ -103,5 +140,25 @@ func NewStateFreezer(ancientDir string, verkle bool, readOnly bool) (ethdb.Reset
 	} else {
 		name = filepath.Join(ancientDir, MerkleStateFreezerName)
 	}
-	return newResettableFreezer(name, "eth/db/state", readOnly, stateHistoryTableSize, stateFreezerNoSnappy)
+	return newResettableFreezer(name, "eth/db/state", readOnly, stateHistoryTableSize, stateFreezerNoSnappy, false)
+}
+
+// OpenIncrStateFreezer opens the incremental state freezer.
+func OpenIncrStateFreezer(incrStateDir string, readOnly bool, offset uint64) (ethdb.ResettableAncientStore, error) {
+	if incrStateDir == "" {
+		return nil, errors.New("empty incr state directory")
+	}
+
+	name := filepath.Join(incrStateDir, MerkleStateFreezerName)
+	return newResettableFreezer(name, "eth/db/incr/state", readOnly, stateHistoryTableSize, incrStateFreezerNoSnappy, true)
+}
+
+// OpenIncrChainFreezer opens the incremental chain freezer.
+func OpenIncrChainFreezer(incrChainDir string, readOnly bool, offset uint64) (ethdb.ResettableAncientStore, error) {
+	if incrChainDir == "" {
+		return nil, errors.New("empty incr chain directory")
+	}
+
+	name := filepath.Join(incrChainDir, ChainFreezerName)
+	return newResettableFreezer(name, "eth/db/incr/chain", readOnly, stateHistoryTableSize, incrChainFreezerNoSnappy, true)
 }

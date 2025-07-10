@@ -167,6 +167,10 @@ type FreezerEnv struct {
 type AncientFreezer interface {
 	// SetupFreezerEnv provides params.ChainConfig for checking hark forks, like isCancun.
 	SetupFreezerEnv(env *FreezerEnv, blockHistory uint64) error
+
+	// ForceFreeze force migration of existing blocks from kv db to chainFreezer.
+	// WARN: it's only used in the incremental snapshot situation.
+	ForceFreeze(kvStore KeyValueStore) error
 }
 
 // AncientWriteOp is given to the function argument of ModifyAncients.
@@ -224,6 +228,14 @@ type ResettableAncientStore interface {
 
 	// Reset is designed to reset the entire ancient store to its default state.
 	Reset() error
+}
+
+// IncrStore is used to store incremental data which contains ancient db and kv db .
+type IncrStore interface {
+	WriteIncrBlockData(number, id uint64, hash, header, body, receipts, td, sidecars []byte, isCancun bool) error
+	ReadIncrBlockData(table string, number uint64) ([]byte, error)
+	WriteIncrState(id uint64, meta, accountIndex, storageIndex, accounts, storages, trieNodes []byte) error
+	Iteratee
 }
 
 // Database contains all the methods required by the high level database to not

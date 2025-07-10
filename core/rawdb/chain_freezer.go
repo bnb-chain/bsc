@@ -80,7 +80,7 @@ func newChainFreezer(datadir string, namespace string, readonly bool, multiDatab
 	if datadir == "" {
 		freezer = NewMemoryFreezer(readonly, chainFreezerNoSnappy)
 	} else {
-		freezer, err = NewFreezer(datadir, namespace, readonly, freezerTableSize, chainFreezerNoSnappy)
+		freezer, err = NewFreezer(datadir, namespace, readonly, freezerTableSize, chainFreezerNoSnappy, false)
 	}
 	if err != nil {
 		return nil, err
@@ -103,7 +103,7 @@ func resetFreezerMeta(datadir string, namespace string, legacyOffset uint64) err
 		return nil
 	}
 
-	freezer, err := NewFreezer(datadir, namespace, false, freezerTableSize, chainFreezerNoSnappy)
+	freezer, err := NewFreezer(datadir, namespace, false, freezerTableSize, chainFreezerNoSnappy, false)
 	if err != nil {
 		return err
 	}
@@ -613,4 +613,93 @@ func isCancun(env *ethdb.FreezerEnv, num *big.Int, time uint64) bool {
 
 func ResetEmptyBlobAncientTable(db ethdb.AncientWriter, next uint64) error {
 	return db.ResetTable(ChainFreezerBlobSidecarTable, next, true)
+}
+
+// ForceFreeze force migration of existing blocks from kv db to chainFreezer, except genesis block.
+func (f *chainFreezer) ForceFreeze(kvStore ethdb.KeyValueStore) error {
+	log.Info("Start force freezing")
+	nfdb := &nofreezedb{KeyValueStore: kvStore}
+	frozen, _ := f.Ancients() // no error will occur, safe to ignore
+	head := f.readHeadNumber(nfdb)
+	log.Info("ForceFreeze", "head", head, "frozen", frozen)
+
+	first := frozen
+	last := head
+	hashes, err := f.freezeRangeWithBlobs(nfdb, first, last)
+	if err != nil {
+		log.Error("Failed to freeze block forcefully", "err", err)
+		return err
+	}
+	// Batch of blocks have been frozen, flush them before wiping from key-value store
+	if err = f.SyncAncient(); err != nil {
+		log.Crit("Failed to flush frozen tables", "err", err)
+	}
+	// Wipe out all data from the active database
+	batch := kvStore.NewBatch()
+	for i := 0; i < len(hashes); i++ {
+		// Always keep the genesis block in active database
+		if first+uint64(i) != 0 {
+			DeleteBlockWithoutNumber(batch, hashes[i], first+uint64(i))
+			DeleteCanonicalHash(batch, first+uint64(i))
+		}
+	}
+	if err = batch.Write(); err != nil {
+		log.Crit("Failed to delete frozen canonical blocks", "err", err)
+	}
+	batch.Reset()
+
+	// Wipe out side chains also and track dangling side chains
+	var dangling []common.Hash
+	frozen, _ = f.Ancients() // Needs reload after during freezeRange
+	for number := first; number < frozen; number++ {
+		// Always keep the genesis block in active database
+		if number != 0 {
+			dangling = ReadAllHashes(kvStore, number)
+			for _, hash := range dangling {
+				log.Trace("Deleting side chain", "number", number, "hash", hash)
+				DeleteBlock(batch, hash, number)
+			}
+		}
+	}
+	if err = batch.Write(); err != nil {
+		log.Crit("Failed to delete frozen side blocks", "err", err)
+	}
+	batch.Reset()
+
+	// Step into the future and delete any dangling side chains
+	if frozen > 0 {
+		tip := frozen
+		for len(dangling) > 0 {
+			drop := make(map[common.Hash]struct{})
+			for _, hash := range dangling {
+				log.Debug("Dangling parent from Freezer", "number", tip-1, "hash", hash)
+				drop[hash] = struct{}{}
+			}
+			children := ReadAllHashes(kvStore, tip)
+			for i := 0; i < len(children); i++ {
+				// Dig up the child and ensure it's dangling
+				child := ReadHeader(nfdb, children[i], tip)
+				if child == nil {
+					log.Error("Missing dangling header", "number", tip, "hash", children[i])
+					continue
+				}
+				if _, ok := drop[child.ParentHash]; !ok {
+					children = append(children[:i], children[i+1:]...)
+					i--
+					continue
+				}
+				// Delete all block data associated with the child
+				log.Debug("Deleting dangling block", "number", tip, "hash", children[i], "parent", child.ParentHash)
+				DeleteBlock(batch, children[i], tip)
+			}
+			dangling = children
+			tip++
+		}
+		if err = batch.Write(); err != nil {
+			log.Crit("Failed to delete dangling side blocks", "err", err)
+		}
+	}
+
+	log.Info("Finished forcing to freeze blocks", "num", len(hashes))
+	return nil
 }
