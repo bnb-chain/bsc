@@ -154,7 +154,7 @@ type StateDB struct {
 	witness *stateless.Witness // TODO(Nathan): more define the relation with `noTrie`
 
 	// Measurements gathered during execution for debugging purposes
-	// MetricsMux should be used in more places, but will affect on performance, so following meteration is not accruate
+	// MetricsMux should be used in more places, but will affect on performance, so following meteration is not accurate
 	MetricsMux      sync.Mutex
 	AccountReads    time.Duration
 	AccountHashes   time.Duration

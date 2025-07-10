@@ -251,7 +251,7 @@ func (ec *Client) HeaderByNumber(ctx context.Context, number *big.Int) (*types.H
 	return head, err
 }
 
-// GetFinalizedHeader returns the requested finalized block header.
+// FinalizedHeader returns the requested finalized block header.
 func (ec *Client) FinalizedHeader(ctx context.Context, verifiedValidatorNum int64) (*types.Header, error) {
 	var head *types.Header
 	err := ec.c.CallContext(ctx, &head, "eth_getFinalizedHeader", verifiedValidatorNum)
