@@ -204,8 +204,6 @@ const validatorMap = new Map([
     ['0xce6cCa0DE7b3EB3fd0CcE4bc38cceF473166e4f4', ['Infinity'  , '0xc8A6Bfe0834FB99340a0Df253d79B7CaE25053b8', '0xa40f553889e9de6b4fe8005a06d7335fa061ae51ef5ba2b0c4ea477fcaa8f6de1650e318cf59824462b1831a725488da']],
 ]);
 
-
-
 const builderMap = new Map([
     // BSC mainnet
     //     blockrazor
