@@ -25,7 +25,7 @@ const (
 	flush    optimizeTaskType = 2
 
 	minOptimizedOpcode = 0xb0
-	maxOptimizedOpcode = 0xc8
+	maxOptimizedOpcode = 0xcf
 )
 
 type OpCodeProcessorConfig struct {
