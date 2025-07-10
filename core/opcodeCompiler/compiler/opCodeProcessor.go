@@ -681,6 +681,10 @@ func doCodeFusion(code []byte) ([]byte, error) {
 		if length > cur+9 {
 			code0 := ByteCode(fusedCode[cur+0])
 			code1 := ByteCode(fusedCode[cur+1])
+			code2 := ByteCode(fusedCode[cur+2])
+			code3 := ByteCode(fusedCode[cur+2])
+			code4 := ByteCode(fusedCode[cur+2])
+			code5 := ByteCode(fusedCode[cur+2])
 			code6 := ByteCode(fusedCode[cur+6])
 			code7 := ByteCode(fusedCode[cur+7])
 
@@ -688,6 +692,19 @@ func doCodeFusion(code []byte) ([]byte, error) {
 				op := Dup1Push4EqPush2
 				fusedCode[cur] = byte(op)
 				fusedCode[cur+1] = byte(Nop)
+				fusedCode[cur+6] = byte(Nop)
+				fusedCode[cur+7] = byte(Nop)
+				skipToNext = true
+			}
+
+			if code0 == SWAP2 && code1 == SWAP1 && code2 == DUP3 && code3 == SUB && code4 == SWAP2 && code5 == DUP3 && code6 == GT && code7 == PUSH2 {
+				op := Swap2Swap1Dup3SubSwap2Dup3GtPush2
+				fusedCode[cur] = byte(op)
+				fusedCode[cur+1] = byte(Nop)
+				fusedCode[cur+2] = byte(Nop)
+				fusedCode[cur+3] = byte(Nop)
+				fusedCode[cur+4] = byte(Nop)
+				fusedCode[cur+5] = byte(Nop)
 				fusedCode[cur+6] = byte(Nop)
 				fusedCode[cur+7] = byte(Nop)
 				skipToNext = true
@@ -739,6 +756,24 @@ func doCodeFusion(code []byte) ([]byte, error) {
 				fusedCode[cur+5] = byte(Nop)
 				skipToNext = true
 			}
+			if code0 == SUB && code1 == SLT && code2 == ISZERO && code3 == PUSH2 {
+				op := SubSLTIsZeroPush2
+				fusedCode[cur] = byte(op)
+				fusedCode[cur+1] = byte(Nop)
+				fusedCode[cur+2] = byte(Nop)
+				fusedCode[cur+3] = byte(Nop)
+				skipToNext = true
+			}
+			if code0 == DUP11 && code1 == MUL && code2 == DUP3 && code3 == SUB && code4 == MUL && code5 == DUP1 {
+				op := Dup11MulDup3SubMulDup1
+				fusedCode[cur] = byte(op)
+				fusedCode[cur+1] = byte(Nop)
+				fusedCode[cur+2] = byte(Nop)
+				fusedCode[cur+3] = byte(Nop)
+				fusedCode[cur+4] = byte(Nop)
+				fusedCode[cur+5] = byte(Nop)
+				skipToNext = true
+			}
 			if skipToNext {
 				i += 5
 				continue
@@ -776,6 +811,17 @@ func doCodeFusion(code []byte) ([]byte, error) {
 				fusedCode[cur] = byte(op)
 				fusedCode[cur+1] = byte(Nop)
 				fusedCode[cur+2] = byte(Nop)
+				fusedCode[cur+4] = byte(Nop)
+
+				skipToNext = true
+			}
+
+			if code0 == SHR && code1 == SHR && code2 == DUP1 && code3 == MUL && code4 == DUP1 {
+				op := SHRSHRDup1MulDup1
+				fusedCode[cur] = byte(op)
+				fusedCode[cur+1] = byte(Nop)
+				fusedCode[cur+2] = byte(Nop)
+				fusedCode[cur+3] = byte(Nop)
 				fusedCode[cur+4] = byte(Nop)
 
 				skipToNext = true
@@ -844,6 +890,15 @@ func doCodeFusion(code []byte) ([]byte, error) {
 				op := IsZeroPush2
 				fusedCode[cur] = byte(op)
 				fusedCode[cur+1] = byte(Nop)
+				skipToNext = true
+			}
+
+			if code0 == SWAP3 && code1 == POP && code2 == POP && code3 == POP {
+				op := Swap3PopPopPop
+				fusedCode[cur] = byte(op)
+				fusedCode[cur+1] = byte(Nop)
+				fusedCode[cur+2] = byte(Nop)
+				fusedCode[cur+3] = byte(Nop)
 				skipToNext = true
 			}
 
@@ -924,6 +979,20 @@ func doCodeFusion(code []byte) ([]byte, error) {
 
 			if code0 == DUP2 && code1 == LT {
 				op := Dup2LT
+				fusedCode[cur] = byte(op)
+				fusedCode[cur+1] = byte(Nop)
+				skipToNext = true
+			}
+
+			if code0 == DUP3 && code1 == AND {
+				op := Dup3And
+				fusedCode[cur] = byte(op)
+				fusedCode[cur+1] = byte(Nop)
+				skipToNext = true
+			}
+
+			if code0 == SWAP1 && code1 == DUP2 {
+				op := Swap1Dup2
 				fusedCode[cur] = byte(op)
 				fusedCode[cur+1] = byte(Nop)
 				skipToNext = true
