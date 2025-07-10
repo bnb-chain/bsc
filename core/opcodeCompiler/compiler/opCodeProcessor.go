@@ -419,36 +419,36 @@ func doCodeFusion(code []byte) ([]byte, error) {
 		//	}
 		//}
 
-		if length > cur+2 {
-			code0 := ByteCode(fusedCode[cur+0])
-			_ = ByteCode(fusedCode[cur+1])
-			code2 := ByteCode(fusedCode[cur+2])
-			if code0 == PUSH1 {
-				if code2 == ADD {
-					op := Push1Add
-					fusedCode[cur] = byte(op)
-					fusedCode[cur+2] = byte(Nop)
-					skipToNext = true
-				}
-				if code2 == SHL {
-					op := Push1Shl
-					fusedCode[cur] = byte(op)
-					fusedCode[cur+2] = byte(Nop)
-					skipToNext = true
-				}
-
-				if code2 == DUP1 {
-					op := Push1Dup1
-					fusedCode[cur] = byte(op)
-					fusedCode[cur+2] = byte(Nop)
-					skipToNext = true
-				}
-			}
-			if skipToNext {
-				i += 2
-				continue
-			}
-		}
+		//if length > cur+2 {
+		//	code0 := ByteCode(fusedCode[cur+0])
+		//	_ = ByteCode(fusedCode[cur+1])
+		//	code2 := ByteCode(fusedCode[cur+2])
+		//	if code0 == PUSH1 {
+		//		if code2 == ADD {
+		//			op := Push1Add
+		//			fusedCode[cur] = byte(op)
+		//			fusedCode[cur+2] = byte(Nop)
+		//			skipToNext = true
+		//		}
+		//		if code2 == SHL {
+		//			op := Push1Shl
+		//			fusedCode[cur] = byte(op)
+		//			fusedCode[cur+2] = byte(Nop)
+		//			skipToNext = true
+		//		}
+		//
+		//		if code2 == DUP1 {
+		//			op := Push1Dup1
+		//			fusedCode[cur] = byte(op)
+		//			fusedCode[cur+2] = byte(Nop)
+		//			skipToNext = true
+		//		}
+		//	}
+		//	if skipToNext {
+		//		i += 2
+		//		continue
+		//	}
+		//}
 
 		if length > cur+1 {
 			code0 := ByteCode(fusedCode[cur+0])
