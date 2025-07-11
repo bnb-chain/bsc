@@ -354,71 +354,71 @@ func doCodeFusion(code []byte) ([]byte, error) {
 		//	}
 		//}
 
-		if length > cur+3 {
-			code0 := ByteCode(fusedCode[cur+0])
-			code1 := ByteCode(fusedCode[cur+1])
-			code2 := ByteCode(fusedCode[cur+2])
-			code3 := ByteCode(fusedCode[cur+3])
-			if code0 == SWAP2 && code1 == SWAP1 && code2 == POP && code3 == JUMP {
-				op := Swap2Swap1PopJump
-				fusedCode[cur] = byte(op)
-				fusedCode[cur+1] = byte(Nop)
-				fusedCode[cur+2] = byte(Nop)
-				fusedCode[cur+3] = byte(Nop)
-				skipToNext = true
-			}
-
-			if code0 == SWAP1 && code1 == POP && code2 == SWAP2 && code3 == SWAP1 {
-				op := Swap1PopSwap2Swap1
-				fusedCode[cur] = byte(op)
-				fusedCode[cur+1] = byte(Nop)
-				fusedCode[cur+2] = byte(Nop)
-				fusedCode[cur+3] = byte(Nop)
-				skipToNext = true
-			}
-
-			if code0 == POP && code1 == SWAP2 && code2 == SWAP1 && code3 == POP {
-				op := PopSwap2Swap1Pop
-				fusedCode[cur] = byte(op)
-				fusedCode[cur+1] = byte(Nop)
-				fusedCode[cur+2] = byte(Nop)
-				fusedCode[cur+3] = byte(Nop)
-				skipToNext = true
-			}
-			// push and jump
-			if code0 == PUSH2 && code3 == JUMP {
-				op := Push2Jump
-				fusedCode[cur] = byte(op)
-				fusedCode[cur+3] = byte(Nop)
-				skipToNext = true
-			}
-
-			if code0 == PUSH2 && code3 == JUMPI {
-				op := Push2JumpI
-				fusedCode[cur] = byte(op)
-				fusedCode[cur+3] = byte(Nop)
-				skipToNext = true
-			}
-
-			if code0 == PUSH1 && code2 == PUSH1 {
-				op := Push1Push1
-				fusedCode[cur] = byte(op)
-				fusedCode[cur+2] = byte(Nop)
-				skipToNext = true
-			}
-
-			//if code0 == ISZERO && code1 == PUSH2 {
-			//	op := IsZeroPush2
-			//	fusedCode[cur] = byte(op)
-			//	fusedCode[cur+1] = byte(Nop)
-			//	skipToNext = true
-			//}
-
-			if skipToNext {
-				i += 3
-				continue
-			}
-		}
+		//if length > cur+3 {
+		//	code0 := ByteCode(fusedCode[cur+0])
+		//	code1 := ByteCode(fusedCode[cur+1])
+		//	code2 := ByteCode(fusedCode[cur+2])
+		//	code3 := ByteCode(fusedCode[cur+3])
+		//	if code0 == SWAP2 && code1 == SWAP1 && code2 == POP && code3 == JUMP {
+		//		op := Swap2Swap1PopJump
+		//		fusedCode[cur] = byte(op)
+		//		fusedCode[cur+1] = byte(Nop)
+		//		fusedCode[cur+2] = byte(Nop)
+		//		fusedCode[cur+3] = byte(Nop)
+		//		skipToNext = true
+		//	}
+		//
+		//	if code0 == SWAP1 && code1 == POP && code2 == SWAP2 && code3 == SWAP1 {
+		//		op := Swap1PopSwap2Swap1
+		//		fusedCode[cur] = byte(op)
+		//		fusedCode[cur+1] = byte(Nop)
+		//		fusedCode[cur+2] = byte(Nop)
+		//		fusedCode[cur+3] = byte(Nop)
+		//		skipToNext = true
+		//	}
+		//
+		//	if code0 == POP && code1 == SWAP2 && code2 == SWAP1 && code3 == POP {
+		//		op := PopSwap2Swap1Pop
+		//		fusedCode[cur] = byte(op)
+		//		fusedCode[cur+1] = byte(Nop)
+		//		fusedCode[cur+2] = byte(Nop)
+		//		fusedCode[cur+3] = byte(Nop)
+		//		skipToNext = true
+		//	}
+		//	// push and jump
+		//	if code0 == PUSH2 && code3 == JUMP {
+		//		op := Push2Jump
+		//		fusedCode[cur] = byte(op)
+		//		fusedCode[cur+3] = byte(Nop)
+		//		skipToNext = true
+		//	}
+		//
+		//	if code0 == PUSH2 && code3 == JUMPI {
+		//		op := Push2JumpI
+		//		fusedCode[cur] = byte(op)
+		//		fusedCode[cur+3] = byte(Nop)
+		//		skipToNext = true
+		//	}
+		//
+		//	if code0 == PUSH1 && code2 == PUSH1 {
+		//		op := Push1Push1
+		//		fusedCode[cur] = byte(op)
+		//		fusedCode[cur+2] = byte(Nop)
+		//		skipToNext = true
+		//	}
+		//
+		//	//if code0 == ISZERO && code1 == PUSH2 {
+		//	//	op := IsZeroPush2
+		//	//	fusedCode[cur] = byte(op)
+		//	//	fusedCode[cur+1] = byte(Nop)
+		//	//	skipToNext = true
+		//	//}
+		//
+		//	if skipToNext {
+		//		i += 3
+		//		continue
+		//	}
+		//}
 
 		if length > cur+2 {
 			code0 := ByteCode(fusedCode[cur+0])
