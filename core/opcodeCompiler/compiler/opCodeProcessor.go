@@ -455,12 +455,12 @@ func doCodeFusion(code []byte) ([]byte, error) {
 			code0 := ByteCode(fusedCode[cur+0])
 			code1 := ByteCode(fusedCode[cur+1])
 
-			//if code0 == SWAP1 && code1 == POP {
-			//	op := Swap1Pop
-			//	fusedCode[cur] = byte(op)
-			//	fusedCode[cur+1] = byte(Nop)
-			//	skipToNext = true
-			//}
+			if code0 == SWAP1 && code1 == POP {
+				op := Swap1Pop
+				fusedCode[cur] = byte(op)
+				fusedCode[cur+1] = byte(Nop)
+				skipToNext = true
+			}
 			//if code0 == POP && code1 == JUMP {
 			//	op := PopJump
 			//	fusedCode[cur] = byte(op)
@@ -468,33 +468,33 @@ func doCodeFusion(code []byte) ([]byte, error) {
 			//	skipToNext = true
 			//}
 
-			if code0 == POP && code1 == POP {
-				op := Pop2
-				fusedCode[cur] = byte(op)
-				fusedCode[cur+1] = byte(Nop)
-				skipToNext = true
-			}
-
-			if code0 == SWAP2 && code1 == SWAP1 {
-				op := Swap2Swap1
-				fusedCode[cur] = byte(op)
-				fusedCode[cur+1] = byte(Nop)
-				skipToNext = true
-			}
-
-			if code0 == SWAP2 && code1 == POP {
-				op := Swap2Pop
-				fusedCode[cur] = byte(op)
-				fusedCode[cur+1] = byte(Nop)
-				skipToNext = true
-			}
-
-			if code0 == DUP2 && code1 == LT {
-				op := Dup2LT
-				fusedCode[cur] = byte(op)
-				fusedCode[cur+1] = byte(Nop)
-				skipToNext = true
-			}
+			//if code0 == POP && code1 == POP {
+			//	op := Pop2
+			//	fusedCode[cur] = byte(op)
+			//	fusedCode[cur+1] = byte(Nop)
+			//	skipToNext = true
+			//}
+			//
+			//if code0 == SWAP2 && code1 == SWAP1 {
+			//	op := Swap2Swap1
+			//	fusedCode[cur] = byte(op)
+			//	fusedCode[cur+1] = byte(Nop)
+			//	skipToNext = true
+			//}
+			//
+			//if code0 == SWAP2 && code1 == POP {
+			//	op := Swap2Pop
+			//	fusedCode[cur] = byte(op)
+			//	fusedCode[cur+1] = byte(Nop)
+			//	skipToNext = true
+			//}
+			//
+			//if code0 == DUP2 && code1 == LT {
+			//	op := Dup2LT
+			//	fusedCode[cur] = byte(op)
+			//	fusedCode[cur+1] = byte(Nop)
+			//	skipToNext = true
+			//}
 
 			if skipToNext {
 				i++
