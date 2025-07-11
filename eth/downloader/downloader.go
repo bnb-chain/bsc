@@ -589,12 +589,17 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td, ttd *
 			log.Info("Extend the ancient range with configured cutoff", "cutoff", d.chainCutoffNumber)
 		}
 		frozen, _ := d.stateDB.Ancients() // Ignore the error here since light client can also hit here.
-		itemAmountInAncient, _ := d.stateDB.ItemAmountInAncient()
 		// If a part of blockchain data has already been written into active store,
 		// disable the ancient style insertion explicitly.
-		if origin >= frozen && itemAmountInAncient != 0 {
+		if origin >= frozen && origin != 0 {
 			d.ancientLimit = 0
-			log.Info("Disabling direct-ancient mode", "origin", origin, "ancient", frozen-1)
+			var ancient string
+			if frozen == 0 {
+				ancient = "null"
+			} else {
+				ancient = fmt.Sprintf("%d", frozen-1)
+			}
+			log.Info("Disabling direct-ancient mode", "origin", origin, "ancient", ancient)
 		} else if d.ancientLimit > 0 {
 			log.Debug("Enabling direct-ancient mode", "ancient", d.ancientLimit)
 		}
