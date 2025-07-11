@@ -312,47 +312,47 @@ func doCodeFusion(code []byte) ([]byte, error) {
 		//	}
 		//}
 
-		if length > cur+4 {
-			code0 := ByteCode(fusedCode[cur+0])
-			code1 := ByteCode(fusedCode[cur+1])
-			code2 := ByteCode(fusedCode[cur+2])
-			code3 := ByteCode(fusedCode[cur+3])
-			code4 := ByteCode(fusedCode[cur+4])
-			if code0 == AND && code1 == SWAP1 && code2 == POP && code3 == SWAP2 && code4 == SWAP1 {
-				op := AndSwap1PopSwap2Swap1
-				fusedCode[cur] = byte(op)
-				fusedCode[cur+1] = byte(Nop)
-				fusedCode[cur+2] = byte(Nop)
-				fusedCode[cur+3] = byte(Nop)
-				fusedCode[cur+4] = byte(Nop)
-				skipToNext = true
-			}
-
-			// Test zero and Jump. target offset at code[2-3]
-			if code0 == ISZERO && code1 == PUSH2 && code4 == JUMPI {
-				op := JumpIfZero
-				fusedCode[cur] = byte(op)
-				fusedCode[cur+1] = byte(Nop)
-				fusedCode[cur+4] = byte(Nop)
-
-				skipToNext = true
-			}
-
-			//if code0 == DUP2 && code1 == MSTORE && code2 == PUSH1 && code4 == ADD {
-			//	op := Dup2MStorePush1Add
-			//	fusedCode[cur] = byte(op)
-			//	fusedCode[cur+1] = byte(Nop)
-			//	fusedCode[cur+2] = byte(Nop)
-			//	fusedCode[cur+4] = byte(Nop)
-			//
-			//	skipToNext = true
-			//}
-
-			if skipToNext {
-				i += 4
-				continue
-			}
-		}
+		//if length > cur+4 {
+		//	code0 := ByteCode(fusedCode[cur+0])
+		//	code1 := ByteCode(fusedCode[cur+1])
+		//	code2 := ByteCode(fusedCode[cur+2])
+		//	code3 := ByteCode(fusedCode[cur+3])
+		//	code4 := ByteCode(fusedCode[cur+4])
+		//	if code0 == AND && code1 == SWAP1 && code2 == POP && code3 == SWAP2 && code4 == SWAP1 {
+		//		op := AndSwap1PopSwap2Swap1
+		//		fusedCode[cur] = byte(op)
+		//		fusedCode[cur+1] = byte(Nop)
+		//		fusedCode[cur+2] = byte(Nop)
+		//		fusedCode[cur+3] = byte(Nop)
+		//		fusedCode[cur+4] = byte(Nop)
+		//		skipToNext = true
+		//	}
+		//
+		//	// Test zero and Jump. target offset at code[2-3]
+		//	if code0 == ISZERO && code1 == PUSH2 && code4 == JUMPI {
+		//		op := JumpIfZero
+		//		fusedCode[cur] = byte(op)
+		//		fusedCode[cur+1] = byte(Nop)
+		//		fusedCode[cur+4] = byte(Nop)
+		//
+		//		skipToNext = true
+		//	}
+		//
+		//	//if code0 == DUP2 && code1 == MSTORE && code2 == PUSH1 && code4 == ADD {
+		//	//	op := Dup2MStorePush1Add
+		//	//	fusedCode[cur] = byte(op)
+		//	//	fusedCode[cur+1] = byte(Nop)
+		//	//	fusedCode[cur+2] = byte(Nop)
+		//	//	fusedCode[cur+4] = byte(Nop)
+		//	//
+		//	//	skipToNext = true
+		//	//}
+		//
+		//	if skipToNext {
+		//		i += 4
+		//		continue
+		//	}
+		//}
 
 		if length > cur+3 {
 			code0 := ByteCode(fusedCode[cur+0])
