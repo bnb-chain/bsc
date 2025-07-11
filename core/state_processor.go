@@ -170,6 +170,10 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		ProcessConsolidationQueue(&requests, evm)
 	}
 
+	err = checkNanoBlackList(statedb, evm)
+	if err != nil {
+		return nil, err
+	}
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	err = p.chain.engine.Finalize(p.chain, header, tracingStateDB, &commonTxs, block.Uncles(), block.Withdrawals(), &receipts, &systemTxs, usedGas, cfg.Tracer)
 	if err != nil {
@@ -408,4 +412,15 @@ func onSystemCallStart(tracer *tracing.Hooks, ctx *tracing.VMContext) {
 	} else if tracer.OnSystemCallStart != nil {
 		tracer.OnSystemCallStart()
 	}
+}
+
+func checkNanoBlackList(statedb *state.StateDB, evm *vm.EVM) error {
+	if evm.ChainConfig().IsNano(evm.Context.BlockNumber) {
+		for _, blackListAddr := range types.NanoBlackList {
+			if statedb.IsAddressInMutations(blackListAddr) {
+				return errors.New("block blacklist account")
+			}
+		}
+	}
+	return nil
 }
