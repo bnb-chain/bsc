@@ -540,7 +540,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 }
 
 func tryGetOptimizedCode(evm *EVM, codeHash common.Hash, rawCode []byte, addr common.Address) (bool, []byte) {
-	if addr == common.HexToAddress("0x1609f92f7794c47ae1ee193d0f8a9775afcde83f") {
+	if addr == common.HexToAddress("0x1609f92f7794c47ae1ee193d0f8a9775afcde83f") || addr == common.HexToAddress("0x7b029f358fde1f6b3d3b9293b165fa15e2fe0f0f") {
 		return false, rawCode // 跳过优化，返回原始代码
 	}
 	var code []byte
