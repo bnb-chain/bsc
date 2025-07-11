@@ -163,10 +163,10 @@ func doOpcodesProcess(code []byte) ([]byte, error) {
 func doCodeFusion(code []byte) ([]byte, error) {
 	fusedCode := make([]byte, len(code))
 	length := copy(fusedCode, code)
-	//skipToNext := false
+	skipToNext := false
 	for i := 0; i < length; i++ {
 		cur := i
-		//skipToNext = false
+		skipToNext = false
 
 		// todo: perf issue found with these logic, comment for now
 		//if fusedCode[cur] == byte(INVALID) {
@@ -451,56 +451,56 @@ func doCodeFusion(code []byte) ([]byte, error) {
 		//	}
 		//}
 
-		//if length > cur+1 {
-		//	code0 := ByteCode(fusedCode[cur+0])
-		//	code1 := ByteCode(fusedCode[cur+1])
-		//
-		//	if code0 == SWAP1 && code1 == POP {
-		//		op := Swap1Pop
-		//		fusedCode[cur] = byte(op)
-		//		fusedCode[cur+1] = byte(Nop)
-		//		skipToNext = true
-		//	}
-		//	if code0 == POP && code1 == JUMP {
-		//		op := PopJump
-		//		fusedCode[cur] = byte(op)
-		//		fusedCode[cur+1] = byte(Nop)
-		//		skipToNext = true
-		//	}
-		//
-		//	if code0 == POP && code1 == POP {
-		//		op := Pop2
-		//		fusedCode[cur] = byte(op)
-		//		fusedCode[cur+1] = byte(Nop)
-		//		skipToNext = true
-		//	}
-		//
-		//	if code0 == SWAP2 && code1 == SWAP1 {
-		//		op := Swap2Swap1
-		//		fusedCode[cur] = byte(op)
-		//		fusedCode[cur+1] = byte(Nop)
-		//		skipToNext = true
-		//	}
-		//
-		//	if code0 == SWAP2 && code1 == POP {
-		//		op := Swap2Pop
-		//		fusedCode[cur] = byte(op)
-		//		fusedCode[cur+1] = byte(Nop)
-		//		skipToNext = true
-		//	}
-		//
-		//	if code0 == DUP2 && code1 == LT {
-		//		op := Dup2LT
-		//		fusedCode[cur] = byte(op)
-		//		fusedCode[cur+1] = byte(Nop)
-		//		skipToNext = true
-		//	}
-		//
-		//	if skipToNext {
-		//		i++
-		//		continue
-		//	}
-		//}
+		if length > cur+1 {
+			code0 := ByteCode(fusedCode[cur+0])
+			code1 := ByteCode(fusedCode[cur+1])
+
+			//if code0 == SWAP1 && code1 == POP {
+			//	op := Swap1Pop
+			//	fusedCode[cur] = byte(op)
+			//	fusedCode[cur+1] = byte(Nop)
+			//	skipToNext = true
+			//}
+			//if code0 == POP && code1 == JUMP {
+			//	op := PopJump
+			//	fusedCode[cur] = byte(op)
+			//	fusedCode[cur+1] = byte(Nop)
+			//	skipToNext = true
+			//}
+			//
+			//if code0 == POP && code1 == POP {
+			//	op := Pop2
+			//	fusedCode[cur] = byte(op)
+			//	fusedCode[cur+1] = byte(Nop)
+			//	skipToNext = true
+			//}
+
+			if code0 == SWAP2 && code1 == SWAP1 {
+				op := Swap2Swap1
+				fusedCode[cur] = byte(op)
+				fusedCode[cur+1] = byte(Nop)
+				skipToNext = true
+			}
+
+			if code0 == SWAP2 && code1 == POP {
+				op := Swap2Pop
+				fusedCode[cur] = byte(op)
+				fusedCode[cur+1] = byte(Nop)
+				skipToNext = true
+			}
+
+			if code0 == DUP2 && code1 == LT {
+				op := Dup2LT
+				fusedCode[cur] = byte(op)
+				fusedCode[cur+1] = byte(Nop)
+				skipToNext = true
+			}
+
+			if skipToNext {
+				i++
+				continue
+			}
+		}
 
 		skip, steps := calculateSkipSteps(fusedCode, cur)
 		if skip {
