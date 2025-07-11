@@ -482,19 +482,19 @@ func doCodeFusion(code []byte) ([]byte, error) {
 			//	skipToNext = true
 			//}
 			//
-			if code0 == SWAP2 && code1 == POP {
-				op := Swap2Pop
-				fusedCode[cur] = byte(op)
-				fusedCode[cur+1] = byte(Nop)
-				skipToNext = true
-			}
-			//
-			//if code0 == DUP2 && code1 == LT {
-			//	op := Dup2LT
+			//if code0 == SWAP2 && code1 == POP {
+			//	op := Swap2Pop
 			//	fusedCode[cur] = byte(op)
 			//	fusedCode[cur+1] = byte(Nop)
 			//	skipToNext = true
 			//}
+			//
+			if code0 == DUP2 && code1 == LT {
+				op := Dup2LT
+				fusedCode[cur] = byte(op)
+				fusedCode[cur+1] = byte(Nop)
+				skipToNext = true
+			}
 
 			if skipToNext {
 				i++
