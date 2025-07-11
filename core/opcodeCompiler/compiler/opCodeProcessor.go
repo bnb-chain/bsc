@@ -338,15 +338,15 @@ func doCodeFusion(code []byte) ([]byte, error) {
 				skipToNext = true
 			}
 
-			if code0 == DUP2 && code1 == MSTORE && code2 == PUSH1 && code4 == ADD {
-				op := Dup2MStorePush1Add
-				fusedCode[cur] = byte(op)
-				fusedCode[cur+1] = byte(Nop)
-				fusedCode[cur+2] = byte(Nop)
-				fusedCode[cur+4] = byte(Nop)
-
-				skipToNext = true
-			}
+			//if code0 == DUP2 && code1 == MSTORE && code2 == PUSH1 && code4 == ADD {
+			//	op := Dup2MStorePush1Add
+			//	fusedCode[cur] = byte(op)
+			//	fusedCode[cur+1] = byte(Nop)
+			//	fusedCode[cur+2] = byte(Nop)
+			//	fusedCode[cur+4] = byte(Nop)
+			//
+			//	skipToNext = true
+			//}
 
 			if skipToNext {
 				i += 4
@@ -407,12 +407,12 @@ func doCodeFusion(code []byte) ([]byte, error) {
 				skipToNext = true
 			}
 
-			if code0 == ISZERO && code1 == PUSH2 {
-				op := IsZeroPush2
-				fusedCode[cur] = byte(op)
-				fusedCode[cur+1] = byte(Nop)
-				skipToNext = true
-			}
+			//if code0 == ISZERO && code1 == PUSH2 {
+			//	op := IsZeroPush2
+			//	fusedCode[cur] = byte(op)
+			//	fusedCode[cur+1] = byte(Nop)
+			//	skipToNext = true
+			//}
 
 			if skipToNext {
 				i += 3
