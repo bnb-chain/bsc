@@ -160,6 +160,11 @@ func doOpcodesProcess(code []byte) ([]byte, error) {
 	return code, nil
 }
 
+// Exported version of doCodeFusion for use in benchmarks and external tests
+func DoCodeFusion(code []byte) ([]byte, error) {
+	return doCodeFusion(code)
+}
+
 func doCodeFusion(code []byte) ([]byte, error) {
 	fusedCode := make([]byte, len(code))
 	length := copy(fusedCode, code)
@@ -536,4 +541,109 @@ func calculateSkipSteps(code []byte, cur int) (skip bool, steps int) {
 		return false, 0
 	}
 	return skip, steps
+}
+
+// BasicBlock represents a sequence of opcodes that can be executed linearly
+// without any jumps in or out except at the beginning and end.
+type BasicBlock struct {
+	StartPC    uint64  // Program counter where this block starts
+	EndPC      uint64  // Program counter where this block ends (exclusive)
+	Opcodes    []byte  // The actual opcodes in this block
+	JumpTarget *uint64 // If this block ends with a jump, the target PC
+	IsJumpDest bool    // Whether this block starts with a JUMPDEST
+}
+
+// GenerateBasicBlocks takes a byte array of opcodes and returns an array of BasicBlocks.
+// This function parses the opcodes to identify basic blocks - sequences of instructions
+// that can be executed linearly without jumps in the middle.
+func GenerateBasicBlocks(code []byte) []BasicBlock {
+	if len(code) == 0 {
+		return nil
+	}
+
+	var blocks []BasicBlock
+	jumpDests := make(map[uint64]bool)
+	var pc uint64
+
+	// First pass: identify all JUMPDEST locations
+	for pc < uint64(len(code)) {
+		op := ByteCode(code[pc])
+		if op == JUMPDEST {
+			jumpDests[pc] = true
+		}
+		skip, steps := calculateSkipSteps(code, int(pc))
+		if skip {
+			pc += uint64(steps)
+		} else {
+			pc++
+		}
+	}
+
+	// Second pass: build basic blocks
+	pc = 0
+	var currentBlock *BasicBlock
+	for pc < uint64(len(code)) {
+		op := ByteCode(code[pc])
+
+		// Start a new block if we encounter INVALID or if we're at a JUMPDEST
+		if op == INVALID || jumpDests[pc] {
+			if currentBlock != nil && len(currentBlock.Opcodes) > 0 {
+				currentBlock.EndPC = pc
+				blocks = append(blocks, *currentBlock)
+			}
+			currentBlock = &BasicBlock{
+				StartPC:    pc,
+				IsJumpDest: op == JUMPDEST, // Fix: set IsJumpDest if first opcode is JUMPDEST
+			}
+		} else if currentBlock == nil {
+			currentBlock = &BasicBlock{
+				StartPC:    pc,
+				IsJumpDest: op == JUMPDEST, // Fix: set IsJumpDest if first opcode is JUMPDEST
+			}
+		}
+
+		// Determine instruction length
+		skip, steps := calculateSkipSteps(code, int(pc))
+		instLen := uint64(1)
+		if skip {
+			instLen += uint64(steps)
+		}
+		// Check bounds before accessing
+		if pc+instLen > uint64(len(code)) {
+			// If we can't read the full instruction, just add what we can
+			instLen = uint64(len(code)) - pc
+		}
+		// Add instruction bytes to block
+		currentBlock.Opcodes = append(currentBlock.Opcodes, code[pc:pc+instLen]...)
+		pc += instLen
+
+		// If this is a block terminator (other than INVALID since we already handled it), end the block
+		if isBlockTerminator(op) {
+			currentBlock.EndPC = pc
+			blocks = append(blocks, *currentBlock)
+			currentBlock = nil
+		}
+	}
+	// If there's a block in progress, add it
+	if currentBlock != nil && len(currentBlock.Opcodes) > 0 {
+		currentBlock.EndPC = pc
+		blocks = append(blocks, *currentBlock)
+	}
+	return blocks
+}
+
+// isBlockTerminator checks if an opcode terminates a basic block
+func isBlockTerminator(op ByteCode) bool {
+	switch op {
+	case STOP, RETURN, REVERT, SELFDESTRUCT:
+		return true
+	case JUMP, JUMPI:
+		return true
+	case RJUMP, RJUMPI, RJUMPV:
+		return true
+	case CALLF, RETF, JUMPF:
+		return true
+	default:
+		return false
+	}
 }
