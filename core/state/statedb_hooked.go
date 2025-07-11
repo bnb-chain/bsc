@@ -304,3 +304,7 @@ func (s *hookedStateDB) Finalise(deleteEmptyObjects bool) {
 func (s *hookedStateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	return s.inner.IntermediateRoot(deleteEmptyObjects)
 }
+
+func (s *hookedStateDB) IsAddressInMutations(addr common.Address) bool {
+	return s.inner.IsAddressInMutations(addr)
+}

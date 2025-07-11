@@ -1665,3 +1665,8 @@ func (s *StateDB) Witness() *stateless.Witness {
 func (s *StateDB) AccessEvents() *AccessEvents {
 	return s.accessEvents
 }
+
+func (s *StateDB) IsAddressInMutations(addr common.Address) bool {
+	_, ok := s.mutations[addr]
+	return ok
+}
