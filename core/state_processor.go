@@ -170,10 +170,10 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		ProcessConsolidationQueue(&requests, evm)
 	}
 
-	err = checkNanoBlackList(statedb, evm)
-	if err != nil {
+	if err = checkNanoBlackList(statedb, evm); err != nil {
 		return nil, err
 	}
+
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
 	err = p.chain.engine.Finalize(p.chain, header, tracingStateDB, &commonTxs, block.Uncles(), block.Withdrawals(), &receipts, &systemTxs, usedGas, cfg.Tracer)
 	if err != nil {
