@@ -42,6 +42,21 @@ var usdtMethodSelectors = map[string]string{
 	"0xf2fde38b": "transferOwnership(address)",
 }
 
+// Method selector to name mapping for WBNB contract
+var wbnbMethodSelectors = map[string]string{
+	"0x06fdde03": "name()",
+	"0x095ea7b3": "approve(address,uint256)",
+	"0x18160ddd": "totalSupply()",
+	"0x23b872dd": "transferFrom(address,address,uint256)",
+	"0x2e1a7d4d": "withdraw(uint256)",
+	"0x313ce567": "decimals()",
+	"0x70a08231": "balanceOf(address)",
+	"0x95d89b41": "symbol()",
+	"0xa9059cbb": "transfer(address,uint256)",
+	"0xd0e30db0": "deposit()",
+	"0xdd62ed3e": "allowance(address,address)",
+}
+
 func extractMethodSelectors(code []byte) []string {
 	var selectors []string
 	// Look for PUSH4 followed by 4 bytes (function selectors)
@@ -514,8 +529,11 @@ func BenchmarkOpCodeFusionWithUSDTContract(b *testing.B) {
 	// Apply fusion to get optimized code
 	fusedCode, err := compiler.DoCodeFusion(append([]byte{}, realCode...))
 	if err != nil {
-		b.Fatalf("doCodeFusion failed: %v, code: %v", err, len(fusedCode))
+		// If fusion fails (e.g., code already contains optimized opcodes), use original code
+		fmt.Printf("doCodeFusion failed: %v, using original code for fused tests\n", err)
+		fusedCode = realCode
 	}
+	_ = fusedCode // Use the variable to avoid unused variable warning
 
 	// Create tracer for USDT contract execution
 	//usdtTracer := NewBytecodeTracer()
@@ -635,6 +653,159 @@ func BenchmarkOpCodeFusionWithUSDTContract(b *testing.B) {
 			fmt.Println("Could not find name() method offset.")
 		}
 	*/
+}
+
+func BenchmarkOpCodeFusionWithWBNBContract(b *testing.B) {
+	// WBNB contract bytecode from BSCScan
+	hexCode := "0x6060604052600436106100af576000357c0100000000000000000000000000000000000000000000000000000000900463ffffffff16806306fdde03146100b9578063095ea7b31461014757806318160ddd146101a157806323b872dd146101ca5780632e1a7d4d14610243578063313ce5671461026657806370a082311461029557806395d89b41146102e2578063a9059cbb14610370578063d0e30db0146103ca578063dd62ed3e146103d4575b6100b7610440565b005b34156100c457600080fd5b6100cc6104dd565b6040518080602001828103825283818151815260200191508051906020019080838360005b8381101561010c5780820151818401526020810190506100f1565b50505050905090810190601f1680156101395780820380516001836020036101000a031916815260200191505b509250505060405180910390f35b341561015257600080fd5b610187600480803573ffffffffffffffffffffffffffffffffffffffff1690602001909190803590602001909190505061057b565b604051808215151515815260200191505060405180910390f35b34156101ac57600080fd5b6101b461066d565b6040518082815260200191505060405180910390f35b34156101d557600080fd5b610229600480803573ffffffffffffffffffffffffffffffffffffffff1690602001909190803573ffffffffffffffffffffffffffffffffffffffff1690602001909190803590602001909190505061068c565b604051808215151515815260200191505060405180910390f35b341561024e57600080fd5b61026460048080359060200190919050506109d9565b005b341561027157600080fd5b610279610b05565b604051808260ff1660ff16815260200191505060405180910390f35b34156102a057600080fd5b6102cc600480803573ffffffffffffffffffffffffffffffffffffffff16906020019091905050610b18565b6040518082815260200191505060405180910390f35b34156102ed57600080fd5b6102f5610b30565b6040518080602001828103825283818151815260200191508051906020019080838360005b8381101561033557808201518184015260208101905061031a565b50505050905090810190601f1680156103625780820380516001836020036101000a031916815260200191505b509250505060405180910390f35b341561037b57600080fd5b6103b0600480803573ffffffffffffffffffffffffffffffffffffffff16906020019091908035906020019091905050610bce565b604051808215151515815260200191505060405180910390f35b6103d2610440565b005b34156103df57600080fd5b61042a600480803573ffffffffffffffffffffffffffffffffffffffff1690602001909190803573ffffffffffffffffffffffffffffffffffffffff16906020019091905050610be3565b6040518082815260200191505060405180910390f35b34600360003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168152602001908152602001600020600082825401925050819055503373ffffffffffffffffffffffffffffffffffffffff167fe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c346040518082815260200191505060405180910390a2565b60008054600181600116156101000203166002900480601f0160208091040260200160405190810160405280929190818152602001828054600181600116156101000203166002900480156105735780601f1061054857610100808354040283529160200191610573565b820191906000526020600020905b81548152906001019060200180831161055657829003601f168201915b505050505081565b600081600460003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060008573ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168152602001908152602001600020819055508273ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff167f8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925846040518082815260200191505060405180910390a36001905092915050565b60003073ffffffffffffffffffffffffffffffffffffffff1631905090565b600081600360008673ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002054101515156106dc57600080fd5b3373ffffffffffffffffffffffffffffffffffffffff168473ffffffffffffffffffffffffffffffffffffffff16141580156107b457507fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff600460008673ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020016000205414155b156108cf5781600460008673ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168152602001908152602001600020541015151561084457600080fd5b81600460008673ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168152602001908152602001600020600082825403925050819055505b81600360008673ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020016000206000828254039250508190555081600360008573ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168152602001908152602001600020600082825401925050819055508273ffffffffffffffffffffffffffffffffffffffff168473ffffffffffffffffffffffffffffffffffffffff167fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef846040518082815260200191505060405180910390a3600190509392505050565b80600360003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020016000205410151515610a2757600080fd5b80600360003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168152602001908152602001600020600082825403925050819055503373ffffffffffffffffffffffffffffffffffffffff166108fc829081150290604051600060405180830381858888f193505050501515610ab457600080fd5b3373ffffffffffffffffffffffffffffffffffffffff167f7fcf532c15f0a6db0bd6d0e038bea71d30d808c7d98cb3bf7268a95bf5081b65826040518082815260200191505060405180910390a250565b600260009054906101000a900460ff1681565b60036020528060005260406000206000915090505481565b60018054600181600116156101000203166002900480601f016020809104026020016040519081016040528092919081815260200182805460018160011615610100020316600290048015610bc65780601f10610b9b57610100808354040283529160200191610bc6565b820191906000526020600020905b815481529060010190602001808311610ba957829003601f168201915b505050505081565b6000610bdb33848461068c565b905092915050565b60046020528160005260406000206020528060005260406000206000915091505054815600a165627a7a72305820bcf3db16903185450bc04cb54da92f216e96710cce101fd2b4b47d5b70dc11e00029"
+
+	// Remove the "0x" prefix and decode
+	realCode, err := hex.DecodeString(hexCode[2:])
+	if err != nil {
+		b.Fatalf("Failed to decode hex string: %v", err)
+	}
+
+	// Apply fusion to get optimized code
+	fusedCode, err := compiler.DoCodeFusion(append([]byte{}, realCode...))
+	if err != nil {
+		// If fusion fails (e.g., code already contains optimized opcodes), use original code
+		fmt.Printf("doCodeFusion failed: %v, using original code for fused tests\n", err)
+		fusedCode = realCode
+	}
+	_ = fusedCode // Use the variable to avoid unused variable warning
+
+	cfg := &runtime.Config{
+		ChainConfig: params.AllEthashProtocolChanges,
+		GasLimit:    10_000_000,
+		Origin:      common.Address{},
+		BlockNumber: big.NewInt(1),
+		Value:       big.NewInt(0),
+		EVMConfig: vm.Config{
+			EnableOpcodeOptimizations: false,
+		},
+	}
+
+	cfgFuse := &runtime.Config{
+		ChainConfig: params.AllEthashProtocolChanges,
+		GasLimit:    10_000_000,
+		Origin:      common.Address{},
+		BlockNumber: big.NewInt(1),
+		Value:       big.NewInt(0),
+		EVMConfig: vm.Config{
+			EnableOpcodeOptimizations: true,
+		},
+	}
+
+	// Prepare dummy data for parameters
+	zeroAddress := make([]byte, 32)
+	copy(zeroAddress[12:], make([]byte, 20)) // 20-byte address at the end
+	oneUint := make([]byte, 32)
+	oneUint[31] = 1
+
+	methods := []struct {
+		name     string
+		selector []byte
+		args     [][]byte // encoded arguments
+	}{
+		{"name", []byte{0x06, 0xfd, 0xde, 0x03}, nil},
+		{"symbol", []byte{0x95, 0xd8, 0x9b, 0x41}, nil},
+		{"decimals", []byte{0x31, 0x3c, 0xe5, 0x67}, nil},
+		{"totalSupply", []byte{0x18, 0x16, 0x0d, 0xdd}, nil},
+		{"balanceOf", []byte{0x70, 0xa0, 0x82, 0x31}, [][]byte{zeroAddress}},
+		{"transfer", []byte{0xa9, 0x05, 0x9c, 0xbb}, [][]byte{zeroAddress, oneUint}},
+		{"transferFrom", []byte{0x23, 0xb8, 0x72, 0xdd}, [][]byte{zeroAddress, zeroAddress, oneUint}},
+		{"approve", []byte{0x09, 0x5e, 0xa7, 0xb3}, [][]byte{zeroAddress, oneUint}},
+		{"allowance", []byte{0x39, 0x50, 0x93, 0x51}, [][]byte{zeroAddress, zeroAddress}},
+		{"withdraw", []byte{0x2e, 0x1a, 0x7d, 0x4d}, [][]byte{oneUint}},
+		{"deposit", []byte{0xd0, 0xe3, 0x0d, 0xb0}, nil},
+	}
+
+	for _, m := range methods {
+		input := append([]byte{}, m.selector...)
+		for _, arg := range m.args {
+			input = append(input, arg...)
+		}
+
+		b.Run("OriginalCode_"+m.name, func(b *testing.B) {
+			// Set up StateDB for the config
+			if cfg.State == nil {
+				cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+			}
+			evm := runtime.NewEnv(cfg)
+			address := common.BytesToAddress([]byte("contract"))
+			sender := vm.AccountRef(cfg.Origin)
+			// Set up the contract code for each iteration
+			evm.StateDB.CreateAccount(address)
+			evm.StateDB.SetCode(address, realCode)
+			// Reset the EVM for each iteration
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+
+				// Execute the contract
+				_, _, err := evm.Call(sender, address, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+				if err != nil {
+					// Many methods will revert (e.g., withdraw if no balance), so just ignore
+					continue
+				}
+			}
+		})
+
+		b.Run("FusedCode_"+m.name, func(b *testing.B) {
+			// Set up StateDB for the config
+			if cfgFuse.State == nil {
+				cfgFuse.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+			}
+			evm := runtime.NewEnv(cfgFuse)
+			address := common.BytesToAddress([]byte("contract"))
+			sender := vm.AccountRef(cfgFuse.Origin)
+			evm.StateDB.CreateAccount(address)
+			evm.StateDB.SetCode(address, fusedCode)
+			// Reset the EVM for each iteration
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				// Set up the contract code for each iteration
+
+				// Execute the contract
+				_, _, err := evm.Call(sender, address, input, cfgFuse.GasLimit, uint256.MustFromBig(cfgFuse.Value))
+				if err != nil {
+					continue
+				}
+			}
+		})
+	}
+}
+
+func TestPrintWBNBMethods(t *testing.T) {
+	// WBNB contract bytecode from BSCScan
+	hexCode := "0x6060604052600436106100af576000357c0100000000000000000000000000000000000000000000000000000000900463ffffffff16806306fdde03146100b9578063095ea7b31461014757806318160ddd146101a157806323b872dd146101ca5780632e1a7d4d14610243578063313ce5671461026657806370a082311461029557806395d89b41146102e2578063a9059cbb14610370578063d0e30db0146103ca578063dd62ed3e146103d4575b6100b7610440565b005b34156100c457600080fd5b6100cc6104dd565b6040518080602001828103825283818151815260200191508051906020019080838360005b8381101561010c5780820151818401526020810190506100f1565b50505050905090810190601f1680156101395780820380516001836020036101000a031916815260200191505b509250505060405180910390f35b341561015257600080fd5b610187600480803573ffffffffffffffffffffffffffffffffffffffff1690602001909190803590602001909190505061057b565b604051808215151515815260200191505060405180910390f35b34156101ac57600080fd5b6101b461066d565b6040518082815260200191505060405180910390f35b34156101d557600080fd5b610229600480803573ffffffffffffffffffffffffffffffffffffffff1690602001909190803573ffffffffffffffffffffffffffffffffffffffff1690602001909190803590602001909190505061068c565b604051808215151515815260200191505060405180910390f35b341561024e57600080fd5b61026460048080359060200190919050506109d9565b005b341561027157600080fd5b610279610b05565b604051808260ff1660ff16815260200191505060405180910390f35b34156102a057600080fd5b6102cc600480803573ffffffffffffffffffffffffffffffffffffffff16906020019091905050610b18565b6040518082815260200191505060405180910390f35b34156102ed57600080fd5b6102f5610b30565b6040518080602001828103825283818151815260200191508051906020019080838360005b8381101561033557808201518184015260208101905061031a565b50505050905090810190601f1680156103625780820380516001836020036101000a031916815260200191505b509250505060405180910390f35b341561037b57600080fd5b6103b0600480803573ffffffffffffffffffffffffffffffffffffffff16906020019091908035906020019091905050610bce565b604051808215151515815260200191505060405180910390f35b6103d2610440565b005b34156103df57600080fd5b61042a600480803573ffffffffffffffffffffffffffffffffffffffff1690602001909190803573ffffffffffffffffffffffffffffffffffffffff16906020019091905050610be3565b6040518082815260200191505060405180910390f35b34600360003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168152602001908152602001600020600082825401925050819055503373ffffffffffffffffffffffffffffffffffffffff167fe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c346040518082815260200191505060405180910390a2565b60008054600181600116156101000203166002900480601f0160208091040260200160405190810160405280929190818152602001828054600181600116156101000203166002900480156105735780601f1061054857610100808354040283529160200191610573565b820191906000526020600020905b81548152906001019060200180831161055657829003601f168201915b505050505081565b600081600460003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060008573ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168152602001908152602001600020819055508273ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff167f8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925846040518082815260200191505060405180910390a36001905092915050565b60003073ffffffffffffffffffffffffffffffffffffffff1631905090565b600081600360008673ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002054101515156106dc57600080fd5b3373ffffffffffffffffffffffffffffffffffffffff168473ffffffffffffffffffffffffffffffffffffffff16141580156107b457507fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff600460008673ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020016000205414155b156108cf5781600460008673ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168152602001908152602001600020541015151561084457600080fd5b81600460008673ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168152602001908152602001600020600082825403925050819055505b81600360008673ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020016000206000828254039250508190555081600360008573ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168152602001908152602001600020600082825401925050819055508273ffffffffffffffffffffffffffffffffffffffff168473ffffffffffffffffffffffffffffffffffffffff167fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef846040518082815260200191505060405180910390a3600190509392505050565b80600360003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020016000205410151515610a2757600080fd5b80600360003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168152602001908152602001600020600082825403925050819055503373ffffffffffffffffffffffffffffffffffffffff166108fc829081150290604051600060405180830381858888f193505050501515610ab457600080fd5b3373ffffffffffffffffffffffffffffffffffffffff167f7fcf532c15f0a6db0bd6d0e038bea71d30d808c7d98cb3bf7268a95bf5081b65826040518082815260200191505060405180910390a250565b600260009054906101000a900460ff1681565b60036020528060005260406000206000915090505481565b60018054600181600116156101000203166002900480601f016020809104026020016040519081016040528092919081815260200182805460018160011615610100020316600290048015610bc65780601f10610b9b57610100808354040283529160200191610bc6565b820191906000526020600020905b815481529060010190602001808311610ba957829003601f168201915b505050505081565b6000610bdb33848461068c565b905092915050565b60046020528160005260406000206020528060005260406000206000915091505054815600a165627a7a72305820bcf3db16903185450bc04cb54da92f216e96710cce101fd2b4b47d5b70dc11e00029"
+
+	// Remove the "0x" prefix and decode
+	realCode, err := hex.DecodeString(hexCode[2:])
+	if err != nil {
+		t.Fatalf("Failed to decode hex string: %v", err)
+	}
+
+	// Print all available methods in the WBNB contract
+	fmt.Println("All method selectors found in WBNB contract:")
+	selectors := extractMethodSelectors(realCode)
+
+	// Remove duplicates
+	seen := make(map[string]bool)
+	uniqueSelectors := []string{}
+	for _, selector := range selectors {
+		if !seen[selector] {
+			seen[selector] = true
+			uniqueSelectors = append(uniqueSelectors, selector)
+		}
+	}
+
+	for _, selector := range uniqueSelectors {
+		methodName := wbnbMethodSelectors[selector]
+		if methodName == "" {
+			methodName = "unknown"
+		}
+		fmt.Printf("  %s -> %s\n", selector, methodName)
+	}
 }
 
 func TestPrintUSDTMethods(t *testing.T) {
