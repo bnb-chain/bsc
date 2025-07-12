@@ -149,7 +149,8 @@ func DeleteCodeCache(hash common.Hash) {
 }
 
 func processByteCodes(code []byte) ([]byte, error) {
-	return doOpcodesProcess(code)
+	//return doOpcodesProcess(code)
+	return DoCFGBasedOpcodeFusion(code)
 }
 
 func doOpcodesProcess(code []byte) ([]byte, error) {
@@ -162,7 +163,434 @@ func doOpcodesProcess(code []byte) ([]byte, error) {
 
 // Exported version of doCodeFusion for use in benchmarks and external tests
 func DoCodeFusion(code []byte) ([]byte, error) {
-	return doCodeFusion(code)
+	// return doCodeFusion(code)
+	return DoCFGBasedOpcodeFusion(code)
+}
+
+// DoCFGBasedOpcodeFusion performs opcode fusion within basic blocks, skipping blocks of type "others"
+func DoCFGBasedOpcodeFusion(code []byte) ([]byte, error) {
+	// Generate basic blocks
+	blocks := GenerateBasicBlocks(code)
+	if len(blocks) == 0 {
+		return code, nil
+	}
+
+	// Create a copy of the original code (only after checking for optimized opcodes)
+	fusedCode := make([]byte, len(code))
+	copy(fusedCode, code)
+
+	// Process each basic block
+	for i, block := range blocks {
+		// Skip blocks of type "others"
+		blockType := getBlockType(block, blocks, i)
+		if blockType == "others" {
+			continue
+		}
+
+		// Check if the block contains optimized opcodes in the original code
+		hasOptimized := false
+		for pc := block.StartPC; pc < block.EndPC && pc < uint64(len(code)); {
+			if code[pc] >= minOptimizedOpcode && code[pc] <= maxOptimizedOpcode {
+				hasOptimized = true
+				break
+			}
+			// Skip data bytes for PUSH instructions
+			skip, steps := calculateSkipSteps(code, int(pc))
+			if skip {
+				pc += uint64(steps) + 1 // Add 1 for the opcode byte
+			} else {
+				pc++
+			}
+		}
+		if hasOptimized {
+			// If any block being processed contains optimized opcodes, return nil, ErrFailPreprocessing
+			return nil, ErrFailPreprocessing
+		}
+
+		// Check if the block contains INVALID opcodes in the original code
+		hasInvalid := false
+		for pc := block.StartPC; pc < block.EndPC && pc < uint64(len(code)); {
+			if ByteCode(code[pc]) == INVALID {
+				hasInvalid = true
+				break
+			}
+			// Skip data bytes for PUSH instructions
+			skip, steps := calculateSkipSteps(code, int(pc))
+			if skip {
+				pc += uint64(steps) + 1 // Add 1 for the opcode byte
+			} else {
+				pc++
+			}
+		}
+		if hasInvalid {
+			// Skip processing this block if it contains INVALID opcodes
+			continue
+		}
+
+		// Apply fusion within this block
+		err := fuseBlock(fusedCode, block)
+		if err != nil {
+			return code, err
+		}
+	}
+
+	return fusedCode, nil
+}
+
+// fuseBlock applies opcode fusion to a single basic block
+func fuseBlock(code []byte, block BasicBlock) error {
+	startPC := int(block.StartPC)
+	endPC := int(block.EndPC)
+
+	// Process the block's opcodes
+	for i := startPC; i < endPC; {
+		if i >= len(code) {
+			break
+		}
+
+		// Apply fusion patterns within the block
+		skipSteps := applyFusionPatterns(code, i, endPC)
+		if skipSteps > 0 {
+			i += skipSteps
+		} else {
+			// Skip data bytes for PUSH instructions
+			skip, steps := calculateSkipSteps(code, i)
+			if skip {
+				i += steps + 1 // Add 1 for the opcode byte
+			} else {
+				i++
+			}
+		}
+	}
+
+	return nil
+}
+
+// applyFusionPatterns applies known fusion patterns and returns the number of steps to skip
+func applyFusionPatterns(code []byte, cur int, endPC int) int {
+	length := len(code)
+
+	// Pattern 1: 15-byte pattern
+	if length > cur+15 && cur+15 < endPC {
+		code0 := ByteCode(code[cur+0])
+		code2 := ByteCode(code[cur+2])
+		code3 := ByteCode(code[cur+3])
+		code5 := ByteCode(code[cur+5])
+		code6 := ByteCode(code[cur+6])
+		code7 := ByteCode(code[cur+7])
+		code12 := ByteCode(code[cur+12])
+		code13 := ByteCode(code[cur+13])
+
+		if code0 == PUSH1 && code2 == CALLDATALOAD && code3 == PUSH1 && code5 == SHR &&
+			code6 == DUP1 && code7 == PUSH4 && code12 == GT && code13 == PUSH2 {
+			op := Push1CalldataloadPush1ShrDup1Push4GtPush2
+			code[cur] = byte(op)
+			code[cur+2] = byte(Nop)
+			code[cur+3] = byte(Nop)
+			code[cur+5] = byte(Nop)
+			code[cur+6] = byte(Nop)
+			code[cur+7] = byte(Nop)
+			code[cur+12] = byte(Nop)
+			code[cur+13] = byte(Nop)
+			return 15
+		}
+	}
+
+	// Pattern 2: 12-byte pattern
+	if length > cur+12 && cur+12 < endPC {
+		code0 := ByteCode(code[cur+0])
+		code1 := ByteCode(code[cur+1])
+		code3 := ByteCode(code[cur+3])
+		code4 := ByteCode(code[cur+4])
+		code5 := ByteCode(code[cur+5])
+		code6 := ByteCode(code[cur+6])
+		code7 := ByteCode(code[cur+7])
+		code8 := ByteCode(code[cur+8])
+		code9 := ByteCode(code[cur+9])
+		code10 := ByteCode(code[cur+10])
+		code11 := ByteCode(code[cur+11])
+		code12 := ByteCode(code[cur+12])
+
+		if code0 == SWAP1 && code1 == PUSH1 && code3 == DUP1 && code4 == NOT &&
+			code5 == SWAP2 && code6 == ADD && code7 == AND && code8 == DUP2 &&
+			code9 == ADD && code10 == SWAP1 && code11 == DUP2 && code12 == LT {
+			op := Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT
+			code[cur] = byte(op)
+			code[cur+1] = byte(Nop)
+			code[cur+3] = byte(Nop)
+			code[cur+4] = byte(Nop)
+			code[cur+5] = byte(Nop)
+			code[cur+6] = byte(Nop)
+			code[cur+7] = byte(Nop)
+			code[cur+8] = byte(Nop)
+			code[cur+9] = byte(Nop)
+			code[cur+10] = byte(Nop)
+			code[cur+11] = byte(Nop)
+			code[cur+12] = byte(Nop)
+			return 12
+		}
+	}
+
+	// Pattern 3: 9-byte pattern
+	if length > cur+9 && cur+9 < endPC {
+		code0 := ByteCode(code[cur+0])
+		code1 := ByteCode(code[cur+1])
+		code6 := ByteCode(code[cur+6])
+		code7 := ByteCode(code[cur+7])
+
+		if code0 == DUP1 && code1 == PUSH4 && code6 == EQ && code7 == PUSH2 {
+			op := Dup1Push4EqPush2
+			code[cur] = byte(op)
+			code[cur+1] = byte(Nop)
+			code[cur+6] = byte(Nop)
+			code[cur+7] = byte(Nop)
+			return 9
+		}
+	}
+
+	// Pattern 4: 7-byte pattern
+	if length > cur+7 && cur+7 < endPC {
+		code0 := ByteCode(code[cur+0])
+		code2 := ByteCode(code[cur+2])
+		code4 := ByteCode(code[cur+4])
+		code6 := ByteCode(code[cur+6])
+		code7 := ByteCode(code[cur+7])
+
+		if code0 == PUSH1 && code2 == PUSH1 && code4 == PUSH1 && code6 == SHL && code7 == SUB {
+			op := Push1Push1Push1SHLSub
+			code[cur] = byte(op)
+			code[cur+2] = byte(Nop)
+			code[cur+4] = byte(Nop)
+			code[cur+6] = byte(Nop)
+			code[cur+7] = byte(Nop)
+			return 7
+		}
+	}
+
+	// Pattern 5: 5-byte pattern
+	if length > cur+5 && cur+5 < endPC {
+		code0 := ByteCode(code[cur+0])
+		code1 := ByteCode(code[cur+1])
+		code2 := ByteCode(code[cur+2])
+		code3 := ByteCode(code[cur+3])
+		code4 := ByteCode(code[cur+4])
+		code5 := ByteCode(code[cur+5])
+
+		if code0 == AND && code1 == DUP2 && code2 == ADD && code3 == SWAP1 && code4 == DUP2 && code5 == LT {
+			op := AndDup2AddSwap1Dup2LT
+			code[cur] = byte(op)
+			code[cur+1] = byte(Nop)
+			code[cur+2] = byte(Nop)
+			code[cur+3] = byte(Nop)
+			code[cur+4] = byte(Nop)
+			code[cur+5] = byte(Nop)
+			return 5
+		}
+	}
+
+	// Pattern 6: 4-byte pattern
+	if length > cur+4 && cur+4 < endPC {
+		code0 := ByteCode(code[cur+0])
+		code1 := ByteCode(code[cur+1])
+		code2 := ByteCode(code[cur+2])
+		code3 := ByteCode(code[cur+3])
+		code4 := ByteCode(code[cur+4])
+
+		if code0 == AND && code1 == SWAP1 && code2 == POP && code3 == SWAP2 && code4 == SWAP1 {
+			op := AndSwap1PopSwap2Swap1
+			code[cur] = byte(op)
+			code[cur+1] = byte(Nop)
+			code[cur+2] = byte(Nop)
+			code[cur+3] = byte(Nop)
+			code[cur+4] = byte(Nop)
+			return 4
+		}
+
+		// Test zero and Jump. target offset at code[2-3]
+		if code0 == ISZERO && code1 == PUSH2 && code4 == JUMPI {
+			op := JumpIfZero
+			code[cur] = byte(op)
+			code[cur+1] = byte(Nop)
+			code[cur+4] = byte(Nop)
+			return 4
+		}
+
+		if code0 == DUP2 && code1 == MSTORE && code2 == PUSH1 && code4 == ADD {
+			op := Dup2MStorePush1Add
+			code[cur] = byte(op)
+			code[cur+1] = byte(Nop)
+			code[cur+2] = byte(Nop)
+			code[cur+4] = byte(Nop)
+			return 4
+		}
+	}
+
+	// Pattern 7: 3-byte pattern
+	if length > cur+3 && cur+3 < endPC {
+		code0 := ByteCode(code[cur+0])
+		code1 := ByteCode(code[cur+1])
+		code2 := ByteCode(code[cur+2])
+		code3 := ByteCode(code[cur+3])
+
+		if code0 == SWAP2 && code1 == SWAP1 && code2 == POP && code3 == JUMP {
+			op := Swap2Swap1PopJump
+			code[cur] = byte(op)
+			code[cur+1] = byte(Nop)
+			code[cur+2] = byte(Nop)
+			code[cur+3] = byte(Nop)
+			return 3
+		}
+
+		if code0 == SWAP1 && code1 == POP && code2 == SWAP2 && code3 == SWAP1 {
+			op := Swap1PopSwap2Swap1
+			code[cur] = byte(op)
+			code[cur+1] = byte(Nop)
+			code[cur+2] = byte(Nop)
+			code[cur+3] = byte(Nop)
+			return 3
+		}
+
+		if code0 == POP && code1 == SWAP2 && code2 == SWAP1 && code3 == POP {
+			op := PopSwap2Swap1Pop
+			code[cur] = byte(op)
+			code[cur+1] = byte(Nop)
+			code[cur+2] = byte(Nop)
+			code[cur+3] = byte(Nop)
+			return 3
+		}
+
+		// push and jump
+		if code0 == PUSH2 && code3 == JUMP {
+			op := Push2Jump
+			code[cur] = byte(op)
+			code[cur+3] = byte(Nop)
+			return 3
+		}
+
+		if code0 == PUSH2 && code3 == JUMPI {
+			op := Push2JumpI
+			code[cur] = byte(op)
+			code[cur+3] = byte(Nop)
+			return 3
+		}
+
+		if code0 == PUSH1 && code2 == PUSH1 {
+			op := Push1Push1
+			code[cur] = byte(op)
+			code[cur+2] = byte(Nop)
+			return 3
+		}
+
+		if code0 == ISZERO && code1 == PUSH2 {
+			op := IsZeroPush2
+			code[cur] = byte(op)
+			code[cur+1] = byte(Nop)
+			return 3
+		}
+	}
+
+	// Pattern 8: 2-byte pattern
+	if length > cur+2 && cur+2 < endPC {
+		code0 := ByteCode(code[cur+0])
+		code2 := ByteCode(code[cur+2])
+
+		if code0 == PUSH1 {
+			if code2 == ADD {
+				op := Push1Add
+				code[cur] = byte(op)
+				code[cur+2] = byte(Nop)
+				return 2
+			}
+			if code2 == SHL {
+				op := Push1Shl
+				code[cur] = byte(op)
+				code[cur+2] = byte(Nop)
+				return 2
+			}
+			if code2 == DUP1 {
+				op := Push1Dup1
+				code[cur] = byte(op)
+				code[cur+2] = byte(Nop)
+				return 2
+			}
+		}
+	}
+
+	// Pattern 9: 1-byte pattern
+	if length > cur+1 && cur+1 < endPC {
+		code0 := ByteCode(code[cur+0])
+		code1 := ByteCode(code[cur+1])
+
+		if code0 == SWAP1 && code1 == POP {
+			op := Swap1Pop
+			code[cur] = byte(op)
+			code[cur+1] = byte(Nop)
+			return 1
+		}
+		if code0 == POP && code1 == JUMP {
+			op := PopJump
+			code[cur] = byte(op)
+			code[cur+1] = byte(Nop)
+			return 1
+		}
+		if code0 == POP && code1 == POP {
+			op := Pop2
+			code[cur] = byte(op)
+			code[cur+1] = byte(Nop)
+			return 1
+		}
+		if code0 == SWAP2 && code1 == SWAP1 {
+			op := Swap2Swap1
+			code[cur] = byte(op)
+			code[cur+1] = byte(Nop)
+			return 1
+		}
+		if code0 == SWAP2 && code1 == POP {
+			op := Swap2Pop
+			code[cur] = byte(op)
+			code[cur+1] = byte(Nop)
+			return 1
+		}
+		if code0 == DUP2 && code1 == LT {
+			op := Dup2LT
+			code[cur] = byte(op)
+			code[cur+1] = byte(Nop)
+			return 1
+		}
+	}
+
+	return 0
+}
+
+// getBlockType categorizes a basic block based on its content
+func getBlockType(block BasicBlock, blocks []BasicBlock, blockIndex int) string {
+	if len(block.Opcodes) == 0 {
+		return "Empty"
+	}
+
+	// Check for entry basic block (first block)
+	if block.StartPC == 0 {
+		return "entryBB"
+	}
+
+	// Check for jump destination blocks (begin with JUMPDEST)
+	if block.IsJumpDest {
+		return "JumpDest"
+	}
+
+	// Check for conditional fallthrough (previous block ends with JUMPI)
+	if blockIndex > 0 {
+		prevBlock := blocks[blockIndex-1]
+		if len(prevBlock.Opcodes) > 0 {
+			lastOp := ByteCode(prevBlock.Opcodes[len(prevBlock.Opcodes)-1])
+			if lastOp == JUMPI {
+				return "conditional fallthrough"
+			}
+		}
+	}
+
+	// Default categorization
+	return "others"
 }
 
 func doCodeFusion(code []byte) ([]byte, error) {
@@ -573,7 +1001,7 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 		}
 		skip, steps := calculateSkipSteps(code, int(pc))
 		if skip {
-			pc += uint64(steps)
+			pc += uint64(steps) + 1 // Add 1 for the opcode byte
 		} else {
 			pc++
 		}
