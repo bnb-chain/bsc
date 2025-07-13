@@ -251,7 +251,7 @@ func fuseBlock(code []byte, block BasicBlock) error {
 		// Apply fusion patterns within the block
 		skipSteps := applyFusionPatterns(code, i, endPC)
 		if skipSteps > 0 {
-			i += skipSteps
+			i += skipSteps + 1 // Add 1 for the opcode byte
 		} else {
 			// Skip data bytes for PUSH instructions
 			skip, steps := calculateSkipSteps(code, i)
