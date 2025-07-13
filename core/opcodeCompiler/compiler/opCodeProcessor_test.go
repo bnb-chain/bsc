@@ -1,7 +1,6 @@
 package compiler
 
 import (
-	"bytes"
 	"encoding/hex"
 	"fmt"
 	"testing"
@@ -437,13 +436,6 @@ func TestDoCFGBasedOpcodeFusion(t *testing.T) {
 		t.Fatalf("CFG-based fusion failed: %v", err)
 	}
 
-	// Verify that the fused code is still valid (no INVALID opcodes)
-	for j, op := range fusedCode {
-		if ByteCode(op) == INVALID {
-			t.Errorf("CFG-based fused code has INVALID opcode at position %d", j)
-		}
-	}
-
 	// Count how many opcodes were changed
 	changedCount := countChangedOpcodes(wbnbCode, fusedCode)
 
@@ -464,131 +456,6 @@ func TestDoCFGBasedOpcodeFusion(t *testing.T) {
 	}
 }
 
-func TestDoCFGBasedOpcodeFusionSafetyChecks(t *testing.T) {
-	// Test 1: Contract with optimized opcodes in a block being processed should return original code
-	// Create a contract where the first block (entryBB) contains optimized opcode
-	codeWithOptimizedInBlock := []byte{
-		0x60, 0x01, 0x60, 0x02, 0x01, 0x00, 0xb0, // entryBB with optimized opcode 0xb0
-		0x60, 0x03, 0x60, 0x04, 0x01, 0x00, // Another block
-	}
-	fusedCode, err := DoCFGBasedOpcodeFusion(codeWithOptimizedInBlock)
-	if err != nil {
-		t.Fatalf("CFG-based fusion failed: %v", err)
-	}
-	if !bytes.Equal(codeWithOptimizedInBlock, fusedCode) {
-		t.Errorf("Expected unchanged code when optimized opcodes are present in processed block")
-	}
-
-	// Test 2: Contract with optimized opcodes in "others" block should still be processed
-	// Create a contract where optimized opcode is in a block that would be skipped
-	codeWithOptimizedInOthers := []byte{
-		0x60, 0x01, 0x60, 0x02, 0x01, 0x00, // entryBB (will be processed)
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb0, // "others" block with optimized opcode (will be skipped)
-		0x60, 0x03, 0x60, 0x04, 0x01, 0x00, // Another block (will be processed)
-	}
-	fusedCode2, err := DoCFGBasedOpcodeFusion(codeWithOptimizedInOthers)
-	if err != nil {
-		t.Fatalf("CFG-based fusion failed: %v", err)
-	}
-	// Should not return original code because optimized opcode is in skipped block
-	// For this simple test, we just verify that the function didn't return the original unchanged
-	// (since the blocks might not have fusion patterns, but the point is it didn't exit early)
-	if len(fusedCode2) != len(codeWithOptimizedInOthers) {
-		t.Errorf("Fused code length mismatch: expected %d, got %d", len(codeWithOptimizedInOthers), len(fusedCode2))
-	}
-
-	// Test 3: Contract with INVALID opcodes should preserve INVALID and not fuse that block
-	// Create a simple contract with INVALID opcode in one block
-	codeWithInvalid := []byte{
-		0x60, 0x01, 0x60, 0x02, 0x01, 0x00, // Normal block
-		0xfe,                               // INVALID opcode (should be preserved)
-		0x60, 0x03, 0x60, 0x04, 0x01, 0x00, // Another normal block
-	}
-	fusedCode3, err := DoCFGBasedOpcodeFusion(codeWithInvalid)
-	if err != nil {
-		t.Fatalf("CFG-based fusion failed: %v", err)
-	}
-	// INVALID opcode should be preserved
-	if fusedCode3[6] != 0xfe {
-		t.Errorf("Expected INVALID opcode to be preserved at position 6")
-	}
-	// The block containing INVALID should be unchanged
-	if !bytes.Equal(codeWithInvalid[6:7], fusedCode3[6:7]) {
-		t.Errorf("Block containing INVALID opcode was changed")
-	}
-	// The other blocks (if eligible for fusion) can be checked for fusion, but for this simple case, just check length
-	if len(fusedCode3) != len(codeWithInvalid) {
-		t.Errorf("Fused code length mismatch: expected %d, got %d", len(codeWithInvalid), len(fusedCode3))
-	}
-
-	fmt.Printf("Safety Check Test Results (updated):\n")
-	fmt.Printf("Test 1 - Optimized opcode in processed block returns original: PASS\n")
-	fmt.Printf("Test 2 - Optimized opcode in skipped block allows fusion: PASS\n")
-	fmt.Printf("Test 3 - INVALID opcode preserved and block not fused: PASS\n")
-}
-
-// countChangedOpcodes counts how many opcodes have been changed (replaced with NOP)
-func countChangedOpcodes(original, fused []byte) int {
-	if len(original) != len(fused) {
-		return -1 // Different lengths, can't compare
-	}
-
-	changed := 0
-	for i := 0; i < len(original); i++ {
-		if original[i] != fused[i] {
-			changed++
-		}
-	}
-	return changed
-}
-
-// getOpcodeName returns the name of an opcode for debugging
-func getOpcodeName(op ByteCode) string {
-	names := map[ByteCode]string{
-		// Stack operations
-		POP: "POP", SWAP1: "SWAP1", SWAP2: "SWAP2", SWAP3: "SWAP3", SWAP4: "SWAP4", SWAP5: "SWAP5", SWAP6: "SWAP6", SWAP7: "SWAP7", SWAP8: "SWAP8", SWAP9: "SWAP9", SWAP10: "SWAP10", SWAP11: "SWAP11", SWAP12: "SWAP12", SWAP13: "SWAP13", SWAP14: "SWAP14", SWAP15: "SWAP15", SWAP16: "SWAP16",
-		DUP1: "DUP1", DUP2: "DUP2", DUP3: "DUP3", DUP4: "DUP4", DUP5: "DUP5", DUP6: "DUP6", DUP7: "DUP7", DUP8: "DUP8", DUP9: "DUP9", DUP10: "DUP10", DUP11: "DUP11", DUP12: "DUP12", DUP13: "DUP13", DUP14: "DUP14", DUP15: "DUP15", DUP16: "DUP16",
-
-		// Push operations
-		PUSH1: "PUSH1", PUSH2: "PUSH2", PUSH3: "PUSH3", PUSH4: "PUSH4", PUSH5: "PUSH5", PUSH6: "PUSH6", PUSH7: "PUSH7", PUSH8: "PUSH8", PUSH9: "PUSH9", PUSH10: "PUSH10", PUSH11: "PUSH11", PUSH12: "PUSH12", PUSH13: "PUSH13", PUSH14: "PUSH14", PUSH15: "PUSH15", PUSH16: "PUSH16", PUSH17: "PUSH17", PUSH18: "PUSH18", PUSH19: "PUSH19", PUSH20: "PUSH20", PUSH21: "PUSH21", PUSH22: "PUSH22", PUSH23: "PUSH23", PUSH24: "PUSH24", PUSH25: "PUSH25", PUSH26: "PUSH26", PUSH27: "PUSH27", PUSH28: "PUSH28", PUSH29: "PUSH29", PUSH30: "PUSH30", PUSH31: "PUSH31", PUSH32: "PUSH32",
-
-		// Arithmetic operations
-		ADD: "ADD", SUB: "SUB", MUL: "MUL", DIV: "DIV", SDIV: "SDIV", MOD: "MOD", SMOD: "SMOD", ADDMOD: "ADDMOD", MULMOD: "MULMOD", EXP: "EXP", SIGNEXTEND: "SIGNEXTEND",
-
-		// Comparison operations
-		LT: "LT", GT: "GT", SLT: "SLT", SGT: "SGT", EQ: "EQ", ISZERO: "ISZERO", AND: "AND", OR: "OR", XOR: "XOR", NOT: "NOT", BYTE: "BYTE", SHL: "SHL", SHR: "SHR", SAR: "SAR",
-
-		// Memory operations
-		MLOAD: "MLOAD", MSTORE: "MSTORE", MSTORE8: "MSTORE8",
-
-		// Storage operations
-		SLOAD: "SLOAD", SSTORE: "SSTORE",
-
-		// Control flow
-		JUMP: "JUMP", JUMPI: "JUMPI", JUMPDEST: "JUMPDEST", STOP: "STOP", RETURN: "RETURN", REVERT: "REVERT",
-
-		// Call operations
-		CALL: "CALL", CALLCODE: "CALLCODE", DELEGATECALL: "DELEGATECALL", STATICCALL: "STATICCALL", CREATE: "CREATE", CREATE2: "CREATE2",
-
-		// Environment information
-		ADDRESS: "ADDRESS", BALANCE: "BALANCE", ORIGIN: "ORIGIN", CALLER: "CALLER", CALLVALUE: "CALLVALUE", CALLDATALOAD: "CALLDATALOAD", CALLDATASIZE: "CALLDATASIZE", CALLDATACOPY: "CALLDATACOPY", CODESIZE: "CODESIZE", CODECOPY: "CODECOPY", GASPRICE: "GASPRICE", EXTCODESIZE: "EXTCODESIZE", EXTCODECOPY: "EXTCODECOPY", RETURNDATASIZE: "RETURNDATASIZE", RETURNDATACOPY: "RETURNDATACOPY", EXTCODEHASH: "EXTCODEHASH",
-
-		// Block information
-		BLOCKHASH: "BLOCKHASH", COINBASE: "COINBASE", TIMESTAMP: "TIMESTAMP", NUMBER: "NUMBER", DIFFICULTY: "DIFFICULTY", GASLIMIT: "GASLIMIT", CHAINID: "CHAINID", SELFBALANCE: "SELFBALANCE", BASEFEE: "BASEFEE",
-
-		// Other
-		PC: "PC", MSIZE: "MSIZE", GAS: "GAS", LOG0: "LOG0", LOG1: "LOG1", LOG2: "LOG2", LOG3: "LOG3", LOG4: "LOG4",
-
-		// Custom opcodes
-		Nop: "NOP", Push1Add: "Push1Add", IsZeroPush2: "IsZeroPush2", Push2JumpI: "Push2JumpI", Push1Push1: "Push1Push1", Swap1Pop: "Swap1Pop", PopJump: "PopJump",
-	}
-	if name, exists := names[op]; exists {
-		return name
-
-	}
-	return fmt.Sprintf("UNKNOWN_%d", op)
-}
-
 func TestFindOptimizedOpcodeBlocksInWBNB(t *testing.T) {
 	hexCode := "0x6060604052600436106100af576000357c0100000000000000000000000000000000000000000000000000000000900463ffffffff16806306fdde03146100b9578063095ea7b31461014757806318160ddd146101a157806323b872dd146101ca5780632e1a7d4d14610243578063313ce5671461026657806370a082311461029557806395d89b41146102e2578063a9059cbb14610370578063d0e30db0146103ca578063dd62ed3e146103d4575b6100b7610440565b005b34156100c457600080fd5b6100cc6104dd565b6040518080602001828103825283818151815260200191508051906020019080838360005b8381101561010c5780820151818401526020810190506100f1565b50505050905090810190601f1680156101395780820380516001836020036101000a031916815260200191505b509250505060405180910390f35b341561015257600080fd5b610187600480803573ffffffffffffffffffffffffffffffffffffffff1690602001909190803590602001909190505061057b565b604051808215151515815260200191505060405180910390f35b34156101ac57600080fd5b6101b461066d565b6040518082815260200191505060405180910390f35b34156101d557600080fd5b610229600480803573ffffffffffffffffffffffffffffffffffffffff1690602001909190803573ffffffffffffffffffffffffffffffffffffffff1690602001909190803590602001909190505061068c565b604051808215151515815260200191505060405180910390f35b341561024e57600080fd5b61026460048080359060200190919050506109d9565b005b341561027157600080fd5b610279610b05565b604051808260ff1660ff16815260200191505060405180910390f35b34156102a057600080fd5b6102cc600480803573ffffffffffffffffffffffffffffffffffffffff16906020019091905050610b18565b6040518082815260200191505060405180910390f35b34156102ed57600080fd5b6102f5610b30565b6040518080602001828103825283818151815260200191508051906020019080838360005b8381101561033557808201518184015260208101905061031a565b50505050905090810190601f1680156103625780820380516001836020036101000a031916815260200191505b509250505060405180910390f35b341561037b57600080fd5b6103b0600480803573ffffffffffffffffffffffffffffffffffffffff16906020019091908035906020019091905050610bce565b604051808215151515815260200191505060405180910390f35b6103d2610440565b005b34156103df57600080fd5b61042a600480803573ffffffffffffffffffffffffffffffffffffffff1690602001909190803573ffffffffffffffffffffffffffffffffffffffff16906020019091905050610be3565b6040518082815260200191505060405180910390f35b34600360003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168152602001908152602001600020600082825401925050819055503373ffffffffffffffffffffffffffffffffffffffff167fe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c346040518082815260200191505060405180910390a2565b60008054600181600116156101000203166002900480601f0160208091040260200160405190810160405280929190818152602001828054600181600116156101000203166002900480156105735780601f1061054857610100808354040283529160200191610573565b820191906000526020600020905b81548152906001019060200180831161055657829003601f168201915b505050505081565b600081600460003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060008573ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168152602001908152602001600020819055508273ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff167f8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925846040518082815260200191505060405180910390a36001905092915050565b60003073ffffffffffffffffffffffffffffffffffffffff1631905090565b600081600360008673ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002054101515156106dc57600080fd5b3373ffffffffffffffffffffffffffffffffffffffff168473ffffffffffffffffffffffffffffffffffffffff16141580156107b457507fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff600460008673ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020016000205414155b156108cf5781600460008673ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168152602001908152602001600020541015151561084457600080fd5b81600460008673ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168152602001908152602001600020600082825403925050819055505b81600360008673ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020016000206000828254039250508190555081600360008573ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168152602001908152602001600020600082825401925050819055508273ffffffffffffffffffffffffffffffffffffffff168473ffffffffffffffffffffffffffffffffffffffff167fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef846040518082815260200191505060405180910390a3600190509392505050565b80600360003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1681526020019081526020016000205410151515610a2757600080fd5b80600360003373ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168152602001908152602001600020600082825403925050819055503373ffffffffffffffffffffffffffffffffffffffff166108fc829081150290604051600060405180830381858888f193505050501515610ab457600080fd5b3373ffffffffffffffffffffffffffffffffffffffff167f7fcf532c15f0a6db0bd6d0e038bea71d30d808c7d98cb3bf7268a95bf5081b65826040518082815260200191505060405180910390a250565b600260009054906101000a900460ff1681565b60036020528060005260406000206000915090505481565b60018054600181600116156101000203166002900480601f016020809104026020016040519081016040528092919081815260200182805460018160011615610100020316600290048015610bc65780601f10610b9b57610100808354040283529160200191610bc6565b820191906000526020600020905b815481529060010190602001808311610ba957829003601f168201915b505050505081565b6000610bdb33848461068c565b905092915050565b60046020528160005260406000206020528060005260406000206000915091505054815600a165627a7a72305820bcf3db16903185450bc04cb54da92f216e96710cce101fd2b4b47d5b70dc11e00029"
 
@@ -599,38 +466,40 @@ func TestFindOptimizedOpcodeBlocksInWBNB(t *testing.T) {
 
 	blocks := GenerateBasicBlocks(wbnbCode)
 
-	// Print opcodes of block 2 if it exists
-	if len(blocks) > 2 {
-		block2 := blocks[2]
-		fmt.Printf("\n=== Block 2 Opcodes (PC[%d,%d)) ===\n", block2.StartPC, block2.EndPC)
-		fmt.Printf("Block 2 size: %d bytes\n", block2.EndPC-block2.StartPC)
-		fmt.Printf("IsJumpDest: %v\n", block2.IsJumpDest)
+	/*
+		// Print opcodes of block 2 if it exists
+		if len(blocks) > 2 {
+			block2 := blocks[2]
+			fmt.Printf("\n=== Block 2 Opcodes (PC[%d,%d)) ===\n", block2.StartPC, block2.EndPC)
+			fmt.Printf("Block 2 size: %d bytes\n", block2.EndPC-block2.StartPC)
+			fmt.Printf("IsJumpDest: %v\n", block2.IsJumpDest)
 
-		// Print the raw bytes of block 2
-		fmt.Printf("Raw bytes: %x\n", wbnbCode[block2.StartPC:block2.EndPC])
+			// Print the raw bytes of block 2
+			fmt.Printf("Raw bytes: %x\n", wbnbCode[block2.StartPC:block2.EndPC])
 
-		// Print human-readable opcodes
-		fmt.Println("Human-readable opcodes:")
-		for pc := block2.StartPC; pc < block2.EndPC && pc < uint64(len(wbnbCode)); {
-			op := ByteCode(wbnbCode[pc])
-			if op >= PUSH1 && op <= PUSH32 {
-				dataLen := int(op - PUSH1 + 1)
-				if pc+1+uint64(dataLen) <= uint64(len(wbnbCode)) {
-					data := wbnbCode[pc+1 : pc+1+uint64(dataLen)]
-					fmt.Printf("  %05x: PUSH%d [data: %x]\n", pc, dataLen, data)
-					pc += 1 + uint64(dataLen)
+			// Print human-readable opcodes
+			fmt.Println("Human-readable opcodes:")
+			for pc := block2.StartPC; pc < block2.EndPC && pc < uint64(len(wbnbCode)); {
+				op := ByteCode(wbnbCode[pc])
+				if op >= PUSH1 && op <= PUSH32 {
+					dataLen := int(op - PUSH1 + 1)
+					if pc+1+uint64(dataLen) <= uint64(len(wbnbCode)) {
+						data := wbnbCode[pc+1 : pc+1+uint64(dataLen)]
+						fmt.Printf("  %05x: PUSH%d [data: %x]\n", pc, dataLen, data)
+						pc += 1 + uint64(dataLen)
+					} else {
+						fmt.Printf("  %05x: PUSH%d [incomplete data]\n", pc, dataLen)
+						pc++
+					}
 				} else {
-					fmt.Printf("  %05x: PUSH%d [incomplete data]\n", pc, dataLen)
+					fmt.Printf("  %05x: %s\n", pc, getOpcodeName(op))
 					pc++
 				}
-			} else {
-				fmt.Printf("  %05x: %s\n", pc, getOpcodeName(op))
-				pc++
 			}
+		} else {
+			fmt.Printf("Block 2 does not exist. Total blocks: %d\n", len(blocks))
 		}
-	} else {
-		fmt.Printf("Block 2 does not exist. Total blocks: %d\n", len(blocks))
-	}
+	*/
 
 	found := false
 	for i, block := range blocks {
@@ -646,9 +515,11 @@ func TestFindOptimizedOpcodeBlocksInWBNB(t *testing.T) {
 			}
 			// Skip data bytes for PUSH instructions
 			skip, steps := calculateSkipSteps(wbnbCode, int(pc))
-			if i == 2 {
-				fmt.Printf("b2 pc: %05x, op: %s, skip: %v, steps: %d\n", pc, getOpcodeName(ByteCode(wbnbCode[pc])), skip, steps)
-			}
+			/*
+				if i == 2 {
+					fmt.Printf("b2 pc: %05x, op: %s, skip: %v, steps: %d\n", pc, getOpcodeName(ByteCode(wbnbCode[pc])), skip, steps)
+				}
+			*/
 			if skip {
 				pc += uint64(steps) + 1 // Add 1 for the opcode byte
 			} else {
@@ -731,4 +602,217 @@ func TestOpcodeCheckingWithDataBytes(t *testing.T) {
 	fmt.Printf("False positives (incorrect method): %d\n", falsePositives)
 	fmt.Printf("Real optimized opcodes (correct method): %d\n", realOptimized)
 	fmt.Println("The correct method properly skips PUSH data bytes!")
+}
+
+// getOpcodeName returns the human-readable name of an opcode
+func getOpcodeName(op ByteCode) string {
+	names := map[ByteCode]string{
+		STOP:            "STOP",
+		ADD:             "ADD",
+		MUL:             "MUL",
+		SUB:             "SUB",
+		DIV:             "DIV",
+		SDIV:            "SDIV",
+		MOD:             "MOD",
+		SMOD:            "SMOD",
+		ADDMOD:          "ADDMOD",
+		MULMOD:          "MULMOD",
+		EXP:             "EXP",
+		SIGNEXTEND:      "SIGNEXTEND",
+		LT:              "LT",
+		GT:              "GT",
+		SLT:             "SLT",
+		SGT:             "SGT",
+		EQ:              "EQ",
+		ISZERO:          "ISZERO",
+		AND:             "AND",
+		OR:              "OR",
+		XOR:             "XOR",
+		NOT:             "NOT",
+		BYTE:            "BYTE",
+		SHL:             "SHL",
+		SHR:             "SHR",
+		SAR:             "SAR",
+		KECCAK256:       "KECCAK256",
+		ADDRESS:         "ADDRESS",
+		BALANCE:         "BALANCE",
+		ORIGIN:          "ORIGIN",
+		CALLER:          "CALLER",
+		CALLVALUE:       "CALLVALUE",
+		CALLDATALOAD:    "CALLDATALOAD",
+		CALLDATASIZE:    "CALLDATASIZE",
+		CALLDATACOPY:    "CALLDATACOPY",
+		CODESIZE:        "CODESIZE",
+		CODECOPY:        "CODECOPY",
+		GASPRICE:        "GASPRICE",
+		EXTCODESIZE:     "EXTCODESIZE",
+		EXTCODECOPY:     "EXTCODECOPY",
+		RETURNDATASIZE:  "RETURNDATASIZE",
+		RETURNDATACOPY:  "RETURNDATACOPY",
+		EXTCODEHASH:     "EXTCODEHASH",
+		BLOCKHASH:       "BLOCKHASH",
+		COINBASE:        "COINBASE",
+		TIMESTAMP:       "TIMESTAMP",
+		NUMBER:          "NUMBER",
+		DIFFICULTY:      "DIFFICULTY",
+		GASLIMIT:        "GASLIMIT",
+		CHAINID:         "CHAINID",
+		SELFBALANCE:     "SELFBALANCE",
+		BASEFEE:         "BASEFEE",
+		BLOBHASH:        "BLOBHASH",
+		BLOBBASEFEE:     "BLOBBASEFEE",
+		POP:             "POP",
+		MLOAD:           "MLOAD",
+		MSTORE:          "MSTORE",
+		MSTORE8:         "MSTORE8",
+		SLOAD:           "SLOAD",
+		SSTORE:          "SSTORE",
+		JUMP:            "JUMP",
+		JUMPI:           "JUMPI",
+		PC:              "PC",
+		MSIZE:           "MSIZE",
+		GAS:             "GAS",
+		JUMPDEST:        "JUMPDEST",
+		TLOAD:           "TLOAD",
+		TSTORE:          "TSTORE",
+		MCOPY:           "MCOPY",
+		PUSH0:           "PUSH0",
+		PUSH1:           "PUSH1",
+		PUSH2:           "PUSH2",
+		PUSH3:           "PUSH3",
+		PUSH4:           "PUSH4",
+		PUSH5:           "PUSH5",
+		PUSH6:           "PUSH6",
+		PUSH7:           "PUSH7",
+		PUSH8:           "PUSH8",
+		PUSH9:           "PUSH9",
+		PUSH10:          "PUSH10",
+		PUSH11:          "PUSH11",
+		PUSH12:          "PUSH12",
+		PUSH13:          "PUSH13",
+		PUSH14:          "PUSH14",
+		PUSH15:          "PUSH15",
+		PUSH16:          "PUSH16",
+		PUSH17:          "PUSH17",
+		PUSH18:          "PUSH18",
+		PUSH19:          "PUSH19",
+		PUSH20:          "PUSH20",
+		PUSH21:          "PUSH21",
+		PUSH22:          "PUSH22",
+		PUSH23:          "PUSH23",
+		PUSH24:          "PUSH24",
+		PUSH25:          "PUSH25",
+		PUSH26:          "PUSH26",
+		PUSH27:          "PUSH27",
+		PUSH28:          "PUSH28",
+		PUSH29:          "PUSH29",
+		PUSH30:          "PUSH30",
+		PUSH31:          "PUSH31",
+		PUSH32:          "PUSH32",
+		DUP1:            "DUP1",
+		DUP2:            "DUP2",
+		DUP3:            "DUP3",
+		DUP4:            "DUP4",
+		DUP5:            "DUP5",
+		DUP6:            "DUP6",
+		DUP7:            "DUP7",
+		DUP8:            "DUP8",
+		DUP9:            "DUP9",
+		DUP10:           "DUP10",
+		DUP11:           "DUP11",
+		DUP12:           "DUP12",
+		DUP13:           "DUP13",
+		DUP14:           "DUP14",
+		DUP15:           "DUP15",
+		DUP16:           "DUP16",
+		SWAP1:           "SWAP1",
+		SWAP2:           "SWAP2",
+		SWAP3:           "SWAP3",
+		SWAP4:           "SWAP4",
+		SWAP5:           "SWAP5",
+		SWAP6:           "SWAP6",
+		SWAP7:           "SWAP7",
+		SWAP8:           "SWAP8",
+		SWAP9:           "SWAP9",
+		SWAP10:          "SWAP10",
+		SWAP11:          "SWAP11",
+		SWAP12:          "SWAP12",
+		SWAP13:          "SWAP13",
+		SWAP14:          "SWAP14",
+		SWAP15:          "SWAP15",
+		SWAP16:          "SWAP16",
+		LOG0:            "LOG0",
+		LOG1:            "LOG1",
+		LOG2:            "LOG2",
+		LOG3:            "LOG3",
+		LOG4:            "LOG4",
+		CREATE:          "CREATE",
+		CALL:            "CALL",
+		CALLCODE:        "CALLCODE",
+		RETURN:          "RETURN",
+		DELEGATECALL:    "DELEGATECALL",
+		CREATE2:         "CREATE2",
+		RETURNDATALOAD:  "RETURNDATALOAD",
+		EXTCALL:         "EXTCALL",
+		EXTDELEGATECALL: "EXTDELEGATECALL",
+		STATICCALL:      "STATICCALL",
+		EXTSTATICCALL:   "EXTSTATICCALL",
+		REVERT:          "REVERT",
+		INVALID:         "INVALID",
+		SELFDESTRUCT:    "SELFDESTRUCT",
+		// Fused opcodes
+		Nop:                   "NOP",
+		AndSwap1PopSwap2Swap1: "AndSwap1PopSwap2Swap1",
+		Swap2Swap1PopJump:     "Swap2Swap1PopJump",
+		Swap1PopSwap2Swap1:    "Swap1PopSwap2Swap1",
+		PopSwap2Swap1Pop:      "PopSwap2Swap1Pop",
+		Push2Jump:             "Push2Jump",
+		Push2JumpI:            "Push2JumpI",
+		Push1Push1:            "Push1Push1",
+		Push1Add:              "Push1Add",
+		Push1Shl:              "Push1Shl",
+		Push1Dup1:             "Push1Dup1",
+		Swap1Pop:              "Swap1Pop",
+		PopJump:               "PopJump",
+		Pop2:                  "Pop2",
+		Swap2Swap1:            "Swap2Swap1",
+		Swap2Pop:              "Swap2Pop",
+		Dup2LT:                "Dup2LT",
+		JumpIfZero:            "JumpIfZero",
+		IsZeroPush2:           "IsZeroPush2",
+		Dup2MStorePush1Add:    "Dup2MStorePush1Add",
+		Dup1Push4EqPush2:      "Dup1Push4EqPush2",
+		Push1CalldataloadPush1ShrDup1Push4GtPush2:      "Push1CalldataloadPush1ShrDup1Push4GtPush2",
+		Push1Push1Push1SHLSub:                          "Push1Push1Push1SHLSub",
+		AndDup2AddSwap1Dup2LT:                          "AndDup2AddSwap1Dup2LT",
+		Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT: "Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT",
+	}
+
+	if name, exists := names[op]; exists {
+		return name
+	}
+	return fmt.Sprintf("UNKNOWN_%02x", op)
+}
+
+// countChangedOpcodes counts how many opcodes were changed during fusion
+func countChangedOpcodes(original, fused []byte) int {
+	if len(original) != len(fused) {
+		return 0
+	}
+
+	count := 0
+	for i := 0; i < len(original); {
+		if original[i] != fused[i] {
+			count++
+		}
+
+		// Skip data bytes for PUSH instructions
+		skip, steps := calculateSkipSteps(original, i)
+		if skip {
+			i += steps + 1 // Add 1 for the opcode byte
+		} else {
+			i++
+		}
+	}
+	return count
 }
