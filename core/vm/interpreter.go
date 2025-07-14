@@ -249,13 +249,12 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// enough stack items available to perform the operation.
 		op = contract.GetOp(pc)
 		operation := in.table[op]
+
 		cost = operation.constantGas // For tracing
 		// Validate stack
 		if sLen := stack.len(); sLen < operation.minStack {
-			log.Error("DEBUG MIN stack error", "sLen", sLen, "minStack", operation.minStack)
 			return nil, &ErrStackUnderflow{stackLen: sLen, required: operation.minStack}
 		} else if sLen > operation.maxStack {
-			log.Error("DEBUG MAX stack error", "sLen", sLen, "minStack", operation.maxStack)
 			return nil, &ErrStackOverflow{stackLen: sLen, limit: operation.maxStack}
 		}
 		// for tracing: this gas consumption event is emitted below in the debug section.
@@ -275,13 +274,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			if operation.memorySize != nil {
 				memSize, overflow := operation.memorySize(stack)
 				if overflow {
-					log.Error("DEBUG ErrGasUintOverflow")
 					return nil, ErrGasUintOverflow
 				}
 				// memory is expanded in words of 32 bytes. Gas
 				// is also calculated in words.
 				if memorySize, overflow = math.SafeMul(toWordSize(memSize), 32); overflow {
-					log.Error("DEBUG ErrGasUintOverflow")
 					return nil, ErrGasUintOverflow
 				}
 			}
@@ -292,7 +289,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
 			cost += dynamicCost // for tracing
 			if err != nil {
-				log.Error("DEBUG dynamicCost gas err")
 				return nil, fmt.Errorf("%w: %v", ErrOutOfGas, err)
 			}
 			// for tracing: this gas consumption event is emitted below in the debug section.
@@ -319,13 +315,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
-		if in.evm.Context.BlockNumber.Uint64() == 50897368 && in.evm.StateDB.TxIndex() == 302 {
-			log.Error("DEBUG", "pc", pc, "op", op, "gas", cost)
-		}
+
 		if err != nil {
-			if in.evm.Context.BlockNumber.Uint64() == 50897368 && in.evm.StateDB.TxIndex() == 302 {
-				log.Error("DEBUG", "err", err, "pc", pc, "op", op)
-			}
 			break
 		}
 
