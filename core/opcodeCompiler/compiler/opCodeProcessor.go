@@ -176,6 +176,10 @@ func doCodeFusion(code []byte) ([]byte, error) {
 		//	return code, ErrFailPreprocessing
 		//}
 
+		if fusedCode[cur] == byte(CODECOPY) {
+			return code, nil
+		}
+
 		if length > cur+15 {
 			code0 := ByteCode(fusedCode[cur+0])
 			code2 := ByteCode(fusedCode[cur+2])
