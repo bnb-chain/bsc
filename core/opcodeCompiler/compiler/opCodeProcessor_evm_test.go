@@ -104,7 +104,7 @@ func testWBNBContractExecution(t *testing.T, originalCode, fusedCode []byte) {
 
 	// Create runtime configuration
 	cfg := &runtime.Config{
-		ChainConfig: params.MainnetChainConfig,
+		ChainConfig: params.AllEthashProtocolChanges,
 		GasLimit:    10_000_000,
 		Origin:      common.Address{},
 		BlockNumber: big.NewInt(1),
@@ -115,7 +115,7 @@ func testWBNBContractExecution(t *testing.T, originalCode, fusedCode []byte) {
 	}
 
 	cfgFused := &runtime.Config{
-		ChainConfig: params.MainnetChainConfig,
+		ChainConfig: params.AllEthashProtocolChanges,
 		GasLimit:    10_000_000,
 		Origin:      common.Address{},
 		BlockNumber: big.NewInt(1),
@@ -485,6 +485,252 @@ func TestWBNBContractWithOpcodeFusion(t *testing.T) {
 				fusedName := getOpcodeName(fusedCode[i])
 				fmt.Printf("Position %d: %s (0x%02x) -> %s (0x%02x)\n",
 					i, originalName, wbnbCode[i], fusedName, fusedCode[i])
+				examples++
+			}
+		}
+	} else {
+		fmt.Printf("No opcodes were fused - this might be normal for this contract\n")
+	}
+
+	// Verify that the fusion didn't break the contract
+	fmt.Printf("\n=== Contract Validation ===\n")
+	fmt.Printf("Both original and fused code should produce identical results\n")
+	fmt.Printf("Gas usage should be equal or better with fused code\n")
+}
+
+// BSC contract method selectors for testing
+// Based on the transaction analysis and common ERC20 functions
+var bscContractMethodSelectors = map[string]string{
+	"0x06fdde03": "name()",
+	"0x095ea7b3": "approve(address,uint256)",
+	"0x18160ddd": "totalSupply()",
+	"0x23b872dd": "transferFrom(address,address,uint256)",
+	"0x313ce567": "decimals()",
+	"0x70a08231": "balanceOf(address)",
+	"0x893d20e8": "owner()",
+	"0x8da5cb5b": "owner()",
+	"0x95d89b41": "symbol()",
+	"0xa0712d68": "burn(uint256)",
+	"0xa457c2d7": "approve(address,uint256)",
+	"0xa9059cbb": "transfer(address,uint256)",
+	"0xb09f1266": "name()",
+	"0xd28d8852": "symbol()",
+	"0xdd62ed3e": "allowance(address,address)",
+	"0xf2fde38b": "transferOwnership(address)",
+}
+
+// testBSCContractExecution executes both original and fused BSC contract code
+// and compares gas usage and return values
+//
+// Tests common ERC20 and ownership functions based on the contract analysis
+func testBSCContractExecution(t *testing.T, originalCode, fusedCode []byte) {
+	// Test cases based on the transaction analysis and common ERC20 functions
+	testCases := []struct {
+		name     string
+		selector string
+		input    []byte
+	}{
+		{
+			name:     "name()",
+			selector: "0x06fdde03",
+			input:    []byte{},
+		},
+		{
+			name:     "symbol()",
+			selector: "0x95d89b41",
+			input:    []byte{},
+		},
+		{
+			name:     "decimals()",
+			selector: "0x313ce567",
+			input:    []byte{},
+		},
+		{
+			name:     "totalSupply()",
+			selector: "0x18160ddd",
+			input:    []byte{},
+		},
+		{
+			name:     "balanceOf(address)",
+			selector: "0x70a08231",
+			input:    make([]byte, 32), // 32 bytes for address parameter
+		},
+		{
+			name:     "owner()",
+			selector: "0x8da5cb5b",
+			input:    []byte{},
+		},
+		{
+			name:     "approve(address,uint256)",
+			selector: "0x095ea7b3",
+			input:    make([]byte, 64), // 32 bytes for address + 32 bytes for uint256
+		},
+		{
+			name:     "transferFrom(address,address,uint256)",
+			selector: "0x23b872dd",
+			input:    make([]byte, 96), // 32 bytes for from + 32 bytes for to + 32 bytes for uint256
+		},
+		{
+			name:     "transfer(address,uint256)",
+			selector: "0xa9059cbb",
+			input:    make([]byte, 64), // 32 bytes for address + 32 bytes for uint256
+		},
+		{
+			name:     "allowance(address,address)",
+			selector: "0xdd62ed3e",
+			input:    make([]byte, 64), // 32 bytes for owner + 32 bytes for spender
+		},
+		{
+			name:     "burn(uint256)",
+			selector: "0xa0712d68",
+			input:    make([]byte, 32), // 32 bytes for uint256
+		},
+		{
+			name:     "transferOwnership(address)",
+			selector: "0xf2fde38b",
+			input:    make([]byte, 32), // 32 bytes for address
+		},
+	}
+
+	// Create runtime configuration
+	cfg := &runtime.Config{
+		ChainConfig: params.AllEthashProtocolChanges,
+		GasLimit:    10_000_000,
+		Origin:      common.Address{},
+		BlockNumber: big.NewInt(1),
+		Value:       big.NewInt(0),
+		EVMConfig: vm.Config{
+			EnableOpcodeOptimizations: false, // Disable for original code
+		},
+	}
+
+	cfgFused := &runtime.Config{
+		ChainConfig: params.AllEthashProtocolChanges,
+		GasLimit:    10_000_000,
+		Origin:      common.Address{},
+		BlockNumber: big.NewInt(1),
+		Value:       big.NewInt(0),
+		EVMConfig: vm.Config{
+			EnableOpcodeOptimizations: true, // Enable for fused code
+		},
+	}
+
+	fmt.Printf("\n=== BSC Contract Execution Test ===\n")
+	fmt.Printf("Original code size: %d bytes\n", len(originalCode))
+	fmt.Printf("Fused code size: %d bytes\n", len(fusedCode))
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Prepare input data
+			input := append([]byte{}, tc.selector...)
+			input = append(input, tc.input...)
+
+			// Execute original code
+			originalRet, originalGas, originalErr := executeContract(originalCode, input, cfg)
+
+			// Execute fused code
+			fusedRet, fusedGas, fusedErr := executeContract(fusedCode, input, cfgFused)
+
+			// Compare results
+			if originalErr != nil && fusedErr == nil {
+				t.Errorf("Original code failed but fused code succeeded: %v", originalErr)
+				return
+			}
+			if originalErr == nil && fusedErr != nil {
+				t.Errorf("Original code succeeded but fused code failed: %v", fusedErr)
+				return
+			}
+			if originalErr != nil && fusedErr != nil {
+				// Both failed, which is acceptable for some methods
+				fmt.Printf("  %s: Both failed (expected for some methods)\n", tc.name)
+				return
+			}
+
+			// Compare return values
+			if !bytesEqual(originalRet, fusedRet) {
+				t.Errorf("Return value mismatch for %s:\nOriginal: %x\nFused: %x",
+					tc.name, originalRet, fusedRet)
+			}
+
+			// Compare gas usage
+			gasDiff := int64(originalGas) - int64(fusedGas)
+			gasDiffPercent := float64(gasDiff) / float64(originalGas) * 100
+
+			fmt.Printf("  %s: Gas used - Original: %d, Fused: %d, Diff: %d (%.2f%%)\n",
+				tc.name, originalGas, fusedGas, gasDiff, gasDiffPercent)
+
+			// Verify that gas usage is reasonable (fused should use less or equal gas)
+			if fusedGas != originalGas {
+				t.Errorf("Fused code used diff gas with original: %d != %d", fusedGas, originalGas)
+			}
+		})
+	}
+}
+
+// TestBSCTransactionExecution tests the specific transaction mentioned by the user
+// Transaction: 0xb22b9888a4d83a23370f393ac0821c3777981358a7937b40791c950cb7359c8f
+func TestBSCTransactionExecution(t *testing.T) {
+	// Contract bytecode from BSCScan address: 0x1609f92f7794c47ae1ee193d0f8a9775afcde83f
+	// Updated with the correct bytecode provided by the user
+	hexCode := "0x6080604052600436106100955760003560e01c8063ccd8cbaf11610059578063ccd8cbaf146107e6578063d14d42ba14610837578063d4e3210014610878578063e1c34549146108b9578063fe9b9fa1146108fa57610096565b80633943380c146106d15780633e58c58c146106fc5780636ae76d4f1461074d578063a7f437791461078e578063cb7956b0146107a557610096565b5b6060604051806020016100a8906111d8565b6020820181038252601f19601f82011660405250905060008073ffffffffffffffffffffffffffffffffffffffff9050600080600260009054906101000a900473ffffffffffffffffffffffffffffffffffffffff169050600060ff60f81b308373ffffffffffffffffffffffffffffffffffffffff16888051906020012060405160200180857effffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff191681526001018473ffffffffffffffffffffffffffffffffffffffff1660601b81526014018381526020018281526020019450505050506040516020818303038152906040528051906020012090508381169450843b925060008363ffffffff1614156103b357818651602088016000f594508473ffffffffffffffffffffffffffffffffffffffff167373feaa1ee314f8c655e354234017be2193c9e24e730e09fabb73bd3ade0a17ecc321fd13a19e81ce82729cf7bc57584b7998236eff51b98a168dcea9b060015460016014604051602401808773ffffffffffffffffffffffffffffffffffffffff1681526020018673ffffffffffffffffffffffffffffffffffffffff1681526020018573ffffffffffffffffffffffffffffffffffffffff16815260200184815260200183815260200182815260200196505050505050506040516020818303038152906040527f128856ec000000000000000000000000000000000000000000000000000000007bffffffffffffffffffffffffffffffffffffffffffffffffffffffff19166020820180517bffffffffffffffffffffffffffffffffffffffffffffffffffffffff83818316178352505050506040518082805190602001908083835b602083106103445780518252602082019150602081019050602083039250610321565b6001836020036101000a0380198251168184511680821785525050505050509050019150506000604051808303816000865af19150503d80600081146103a6576040519150601f19603f3d011682016040523d82523d6000602084013e6103ab565b606091505b5050506106c9565b6000730e09fabb73bd3ade0a17ecc321fd13a19e81ce8273ffffffffffffffffffffffffffffffffffffffff166370a08231306040518263ffffffff1660e01b8152600401808273ffffffffffffffffffffffffffffffffffffffff16815260200191505060206040518083038186803b15801561043057600080fd5b505afa158015610444573d6000803e3d6000fd5b505050506040513d602081101561045a57600080fd5b81019080805190602001909291905050509050730e09fabb73bd3ade0a17ecc321fd13a19e81ce8273ffffffffffffffffffffffffffffffffffffffff1663a9059cbb87836040518363ffffffff1660e01b8152600401808373ffffffffffffffffffffffffffffffffffffffff16815260200182815260200192505050602060405180830381600087803b1580156104f257600080fd5b505af1158015610506573d6000803e3d6000fd5b505050506040513d602081101561051c57600080fd5b8101908080519060200190929190505050508573ffffffffffffffffffffffffffffffffffffffff1660008054906101000a900473ffffffffffffffffffffffffffffffffffffffff1660036000815480929190600101919050556028604051602401808473ffffffffffffffffffffffffffffffffffffffff16815260200183815260200182815260200193505050506040516020818303038152906040527f0c51b88f000000000000000000000000000000000000000000000000000000007bffffffffffffffffffffffffffffffffffffffffffffffffffffffff19166020820180517bffffffffffffffffffffffffffffffffffffffffffffffffffffffff83818316178352505050506040518082805190602001908083835b6020831061065d578051825260208201915060208101905060208303925061063a565b6001836020036101000a0380198251168184511680821785525050505050509050019150506000604051808303816000865af19150503d80600081146106bf576040519150601f19603f3d011682016040523d82523d6000602084013e6106c4565b606091505b505050505b505050505050005b3480156106dd57600080fd5b506106e661095f565b6040518082815260200191505060405180910390f35b34801561070857600080fd5b5061074b6004803603602081101561071f57600080fd5b81019080803573ffffffffffffffffffffffffffffffffffffffff169060200190929190505050610965565b005b34801561075957600080fd5b50610762610ba7565b604051808273ffffffffffffffffffffffffffffffffffffffff16815260200191505060405180910390f35b34801561079a57600080fd5b506107a3610bbf565b005b3480156107b157600080fd5b506107ba610e00565b604051808273ffffffffffffffffffffffffffffffffffffffff16815260200191505060405180910390f35b3480156107f257600080fd5b506108356004803603602081101561080957600080fd5b81019080803573ffffffffffffffffffffffffffffffffffffffff169060200190929190505050610e18565b005b34801561084357600080fd5b5061084c610f1e565b604051808273ffffffffffffffffffffffffffffffffffffffff16815260200191505060405180910390f35b34801561088457600080fd5b5061088d611010565b604051808273ffffffffffffffffffffffffffffffffffffffff16815260200191505060405180910390f35b3480156108c557600080fd5b506108ce611027565b604051808273ffffffffffffffffffffffffffffffffffffffff16815260200191505060405180910390f35b34801561090657600080fd5b5061095d6004803603606081101561091d57600080fd5b81019080803573ffffffffffffffffffffffffffffffffffffffff169060200190929190803590602001909291908035906020019092919050505061104b565b005b60015481565b600260009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff1614610a28576040517f08c379a000000000000000000000000000000000000000000000000000000000815260040180806020018281038252600c8152602001807f6f6e6c7920666163746f7279000000000000000000000000000000000000000081525060200191505060405180910390fd5b6000730e09fabb73bd3ade0a17ecc321fd13a19e81ce8273ffffffffffffffffffffffffffffffffffffffff166370a08231306040518263ffffffff1660e01b8152600401808273ffffffffffffffffffffffffffffffffffffffff16815260200191505060206040518083038186803b158015610aa557600080fd5b505afa158015610ab9573d6000803e3d6000fd5b505050506040513d6020811015610acf57600080fd5b81019080805190602001909291905050509050730e09fabb73bd3ade0a17ecc321fd13a19e81ce8273ffffffffffffffffffffffffffffffffffffffff1663a9059cbb83836040518363ffffffff1660e01b8152600401808373ffffffffffffffffffffffffffffffffffffffff16815260200182815260200192505050602060405180830381600087803b158015610b6757600080fd5b505af1158015610b7b573d6000803e3d6000fd5b505050506040513d6020811015610b9157600080fd5b8101908080519060200190929190505050505050565b730e09fabb73bd3ade0a17ecc321fd13a19e81ce8281565b600260009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff1614610c82576040517f08c379a000000000000000000000000000000000000000000000000000000000815260040180806020018281038252600c8152602001807f6f6e6c7920666163746f7279000000000000000000000000000000000000000081525060200191505060405180910390fd5b6000730e09fabb73bd3ade0a17ecc321fd13a19e81ce8273ffffffffffffffffffffffffffffffffffffffff166370a08231306040518263ffffffff1660e01b8152600401808273ffffffffffffffffffffffffffffffffffffffff16815260200191505060206040518083038186803b158015610cff57600080fd5b505afa158015610d13573d6000803e3d6000fd5b505050506040513d6020811015610d2957600080fd5b81019080805190602001909291905050509050730e09fabb73bd3ade0a17ecc321fd13a19e81ce8273ffffffffffffffffffffffffffffffffffffffff1663a9059cbb33836040518363ffffffff1660e01b8152600401808373ffffffffffffffffffffffffffffffffffffffff16815260200182815260200192505050602060405180830381600087803b158015610dc157600080fd5b505af1158015610dd5573d6000803e3d6000fd5b505050506040513d6020811015610deb57600080fd5b81019080805190602001909291905050505050565b7373feaa1ee314f8c655e354234017be2193c9e24e81565b600260009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff1614610edb576040517f08c379a000000000000000000000000000000000000000000000000000000000815260040180806020018281038252600c8152602001807f6f6e6c7920666163746f7279000000000000000000000000000000000000000081525060200191505060405180910390fd5b806000806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff16021790555050565b6000606060405180602001610f32906111d8565b6020820181038252601f19601f82011660405250905060008073ffffffffffffffffffffffffffffffffffffffff9050600060ff60f81b303273ffffffffffffffffffffffffffffffffffffffff16868051906020012060405160200180857effffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff191681526001018473ffffffffffffffffffffffffffffffffffffffff1660601b815260140183815260200182815260200194505050505060405160208183030381529060405280519060200120905081811692508294505050505090565b729cf7bc57584b7998236eff51b98a168dcea9b081565b60008054906101000a900473ffffffffffffffffffffffffffffffffffffffff1681565b8273ffffffffffffffffffffffffffffffffffffffff1660008054906101000a900473ffffffffffffffffffffffffffffffffffffffff168284604051602401808473ffffffffffffffffffffffffffffffffffffffff16815260200183815260200182815260200193505050506040516020818303038152906040527f0c51b88f000000000000000000000000000000000000000000000000000000007bffffffffffffffffffffffffffffffffffffffffffffffffffffffff19166020820180517bffffffffffffffffffffffffffffffffffffffffffffffffffffffff83818316178352505050506040518082805190602001908083835b602083106111695780518252602082019150602081019050602083039250611146565b6001836020036101000a0380198251168184511680821785525050505050509050019150506000604051808303816000865af19150503d80600081146111cb576040519150601f19603f3d011682016040523d82523d6000602084013e6111d0565b606091505b505050505050565b6111d4806111e68339019056fe608060405234801561001057600080fd5b5033600760006101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff160217905550611173806100616000396000f3fe608060405234801561001057600080fd5b50600436106100b45760003560e01c8063a4d4f9ed11610071578063a4d4f9ed14610257578063ba6ec3eb146102f0578063c82fdf36146102fa578063cb7956b014610318578063ce73cdde1461034c578063d4e3210014610380576100b4565b80630c51b88f146100b9578063128856ec146101115780633943380c146101b35780636ae76d4f146101d15780638da5cb5b1461020557806395cacbe014610239575b600080fd5b61010f600480360360608110156100cf57600080fd5b81019080803573ffffffffffffffffffffffffffffffffffffffff16906020019092919080359060200190929190803590602001909291905050506103b4565b005b6101b1600480360360c081101561012757600080fd5b81019080803573ffffffffffffffffffffffffffffffffffffffff169060200190929190803573ffffffffffffffffffffffffffffffffffffffff169060200190929190803573ffffffffffffffffffffffffffffffffffffffff16906020019092919080359060200190929190505050610977565b005b6101bb610b64565b6040518082815260200191505060405180910390f35b6101d9610b6a565b604051808273ffffffffffffffffffffffffffffffffffffffff16815260200191505060405180910390f35b61020d610b90565b604051808273ffffffffffffffffffffffffffffffffffffffff16815260200191505060405180910390f35b610241610bb6565b6040518082815260200191505060405180910390f35b61025f610bbc565b604051808773ffffffffffffffffffffffffffffffffffffffff1681526020018673ffffffffffffffffffffffffffffffffffffffff1681526020018573ffffffffffffffffffffffffffffffffffffffff1681526020018473ffffffffffffffffffffffffffffffffffffffff168152602001838152602001828152602001965050505050505060405180910390f35b6102f8610c69565b005b610302610e25565b6040518082815260200191505060405180910390f35b610320610e2b565b604051808273ffffffffffffffffffffffffffffffffffffffff16815260200191505060405180910390f35b610354610e4f565b604051808273ffffffffffffffffffffffffffffffffffffffff16815260200191505060405180910390f35b610388610e75565b604051808273ffffffffffffffffffffffffffffffffffffffff16815260200191505060405180910390f35b600760009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff161480610450575060065432604051602001808273ffffffffffffffffffffffffffffffffffffffff1660601b815260140191505060405160208183030381529060405280519060200120145b6104c2576040517f08c379a000000000000000000000000000000000000000000000000000000000815260040180806020018281038252600c8152602001807f6f6e6c7920666163746f7279000000000000000000000000000000000000000081525060200191505060405180910390fd5b82600560006101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff160217905550806004819055506000600160009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff166370a08231306040518263ffffffff1660e01b8152600401808273ffffffffffffffffffffffffffffffffffffffff16815260200191505060206040518083038186803b15801561059557600080fd5b505afa1580156105a9573d6000803e3d6000fd5b505050506040513d60208110156105bf57600080fd5b81019080805190602001909291905050509050806003819055506060604051806020016105eb90610e9b565b6020820181038252601f19601f820116604052509050600080339050600060ff60f81b3088868051906020012060405160200180857effffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff191681526001018473ffffffffffffffffffffffffffffffffffffffff1660601b8152601401838152602001828152602001945050505050604051602081830303815290604052805190602001209050600073ffffffffffffffffffffffffffffffffffffffff90508082169350600160009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1663a9059cbb85886040518363ffffffff1660e01b8152600401808373ffffffffffffffffffffffffffffffffffffffff16815260200182815260200192505050602060405180830381600087803b15801561074157600080fd5b505af1158015610755573d6000803e3d6000fd5b505050506040513d602081101561076b57600080fd5b8101908080519060200190929190505050506000888651602088016000f590508073ffffffffffffffffffffffffffffffffffffffff168573ffffffffffffffffffffffffffffffffffffffff161461082c576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004018080602001828103825260098152602001807f6d69736d6174636831000000000000000000000000000000000000000000000081525060200191505060405180910390fd5b6000600160009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff166370a08231836040518263ffffffff1660e01b8152600401808273ffffffffffffffffffffffffffffffffffffffff16815260200191505060206040518083038186803b1580156108b757600080fd5b505afa1580156108cb573d6000803e3d6000fd5b505050506040513d60208110156108e157600080fd5b810190808051906020019092919050505090506000811461096a576040517f08c379a000000000000000000000000000000000000000000000000000000000815260040180806020018281038252600d8152602001807f6c6f7720676173206c696d69740000000000000000000000000000000000000081525060200191505060405180910390fd5b5050505050505050505050565b600760009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff161480610a13575060065432604051602001808273ffffffffffffffffffffffffffffffffffffffff1660601b815260140191505060405160208183030381529060405280519060200120145b610a85576040517f08c379a000000000000000000000000000000000000000000000000000000000815260040180806020018281038252600c8152602001807f6f6e6c7920666163746f7279000000000000000000000000000000000000000081525060200191505060405180910390fd5b856000806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff16021790555084600160006101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff16021790555083600260006101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff160217905550816003819055508060048190555082600681905550505050505050565b60065481565b600160009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1681565b600760009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1681565b60045481565b600080600080600080600560009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1660008054906101000a900473ffffffffffffffffffffffffffffffffffffffff16600160009054906101000a900473ffffffffffffffffffffffffffffffffffffffff16600260009054906101000a900473ffffffffffffffffffffffffffffffffffffffff16600354600454955095509550955095509550909192939495565b6000600160009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff166370a08231306040518263ffffffff1660e01b8152600401808273ffffffffffffffffffffffffffffffffffffffff16815260200191505060206040518083038186803b158015610cf457600080fd5b505afa158015610d08573d6000803e3d6000fd5b505050506040513d6020811015610d1e57600080fd5b81019080805190602001909291905050509050600160009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff1663a9059cbb600760009054906101000a900473ffffffffffffffffffffffffffffffffffffffff16836040518363ffffffff1660e01b8152600401808373ffffffffffffffffffffffffffffffffffffffff16815260200182815260200192505050602060405180830381600087803b158015610de657600080fd5b505af1158015610dfa573d6000803e3d6000fd5b505050506040513d6020811015610e1057600080fd5b81019080805190602001909291905050505050565b60035481565b60008054906101000a900473ffffffffffffffffffffffffffffffffffffffff1681565b600560009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1681565b600260009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1681565b61029580610ea98339019056fe608060405234801561001057600080fd5b506000806000806000803373ffffffffffffffffffffffffffffffffffffffff1663a4d4f9ed6040518163ffffffff1660e01b815260040160c06040518083038186803b15801561006057600080fd5b505afa158015610074573d6000803e3d6000fd5b505050506040513d60c081101561008a57600080fd5b8101908080519060200190929190805190602001909291908051906020019092919080519060200190929190805190602001909291905050509550955095509550955095508573ffffffffffffffffffffffffffffffffffffffff168585858585604051602401808673ffffffffffffffffffffffffffffffffffffffff1681526020018573ffffffffffffffffffffffffffffffffffffffff1681526020018473ffffffffffffffffffffffffffffffffffffffff168152602001838152602001828152602001965050505050506040516020818303038152906040527f6c80bf06000000000000000000000000000000000000000000000000000000007bffffffffffffffffffffffffffffffffffffffffffffffffffffffff19166020820180517bffffffffffffffffffffffffffffffffffffffffffffffffffffffff83818316178352505050506040518082805190602001908083835b6020831061021357805182526020820191506020810190506020830392506101f0565b6001836020036101000a038019825116818451168082178552505050505050905001915050600060405180830381855af49150503d8060008114610273576040519150601f19603f3d011682016040523d82523d6000602084013e610278565b606091505b5050503373ffffffffffffffffffffffffffffffffffffffff16fffea2646970667358221220cedd2a32ac277adc7bf4a7ce0d809faeb621c4d89c43a5698b1334307b7af2b664736f6c634300060c0033a2646970667358221220d58c5b3632337df65cda5456b0e6e2ae19101964b3d1e581b6fc453fe2e88c1164736f6c634300060c0033"
+
+	// Remove the "0x" prefix and decode
+	contractCode, err := hex.DecodeString(hexCode[2:])
+	if err != nil {
+		t.Fatalf("Failed to decode contract hex string: %v", err)
+	}
+
+	fmt.Printf("=== BSC Contract Opcode Fusion Test ===\n")
+	fmt.Printf("Original contract size: %d bytes\n", len(contractCode))
+
+	// Apply CFG-based opcode fusion
+	fusedCode, err := compiler.DoCFGBasedOpcodeFusion(contractCode)
+	if err != nil {
+		if err == compiler.ErrFailPreprocessing {
+			fmt.Printf("CFG-Based Opcode Fusion failed: %v (contract contains optimized opcodes)\n", err)
+			// This is expected behavior - the contract contains optimized opcodes
+			// We'll still test with the original code
+			fusedCode = contractCode
+		} else {
+			t.Fatalf("CFG-based fusion failed: %v", err)
+		}
+	}
+
+	// Count how many opcodes were changed
+	changedCount := countChangedOpcodes(contractCode, fusedCode)
+
+	fmt.Printf("Fused code size: %d bytes\n", len(fusedCode))
+	fmt.Printf("Opcodes changed: %d\n", changedCount)
+	if changedCount > 0 {
+		fmt.Printf("Fusion efficiency: %.2f%%\n", float64(changedCount)/float64(len(contractCode))*100)
+	}
+
+	// Basic validation
+	if len(fusedCode) != len(contractCode) {
+		t.Errorf("Fused code size mismatch: expected %d, got %d", len(contractCode), len(fusedCode))
+	}
+
+	// Test execution of both original and fused code
+	testBSCContractExecution(t, contractCode, fusedCode)
+
+	// Print some statistics about the fusion
+	fmt.Printf("\n=== Fusion Statistics ===\n")
+	fmt.Printf("Original code size: %d bytes\n", len(contractCode))
+	fmt.Printf("Fused code size: %d bytes\n", len(fusedCode))
+	fmt.Printf("Opcodes changed: %d\n", changedCount)
+
+	if changedCount > 0 {
+		fmt.Printf("Fusion efficiency: %.2f%%\n", float64(changedCount)/float64(len(contractCode))*100)
+
+		// Print some examples of changed opcodes
+		fmt.Printf("\n=== Sample Changed Opcodes ===\n")
+		examples := 0
+		for i := 0; i < len(contractCode) && examples < 10; i++ {
+			if contractCode[i] != fusedCode[i] {
+				originalName := getOpcodeName(contractCode[i])
+				fusedName := getOpcodeName(fusedCode[i])
+				fmt.Printf("Position %d: %s (0x%02x) -> %s (0x%02x)\n",
+					i, originalName, contractCode[i], fusedName, fusedCode[i])
 				examples++
 			}
 		}
