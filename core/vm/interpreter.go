@@ -18,7 +18,6 @@ package vm
 
 import (
 	"fmt"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -29,10 +28,11 @@ import (
 
 // Config are the configuration options for the Interpreter
 type Config struct {
-	Tracer                  *tracing.Hooks
-	NoBaseFee               bool  // Forces the EIP-1559 baseFee to 0 (needed for 0 price calls)
-	EnablePreimageRecording bool  // Enables recording of SHA3/keccak preimages
-	ExtraEips               []int // Additional EIPS that are to be enabled
+	Tracer                    *tracing.Hooks
+	NoBaseFee                 bool  // Forces the EIP-1559 baseFee to 0 (needed for 0 price calls)
+	EnablePreimageRecording   bool  // Enables recording of SHA3/keccak preimages
+	ExtraEips                 []int // Additional EIPS that are to be enabled
+	EnableOpcodeOptimizations bool  // Enable opcode optimization
 
 	StatelessSelfValidation bool // Generate execution witnesses and self-check against them (testing purpose)
 }
@@ -152,6 +152,10 @@ func NewEVMInterpreter(evm *EVM) *EVMInterpreter {
 	}
 	evm.Config.ExtraEips = extraEips
 	return &EVMInterpreter{evm: evm, table: table}
+}
+
+func (in *EVMInterpreter) InstallSuperInstruction() {
+	in.table = createOptimizedOpcodeTable(in.table)
 }
 
 // Run loops and evaluates the contract's code with the given input data and returns
@@ -313,6 +317,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		if err != nil {
 			break
 		}
+
 		pc++
 	}
 
