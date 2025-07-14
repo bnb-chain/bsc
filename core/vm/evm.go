@@ -18,7 +18,6 @@ package vm
 
 import (
 	"errors"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 	"math/big"
 	"strings"
@@ -552,7 +551,7 @@ func tryGetOptimizedCode(evm *EVM, codeHash common.Hash, rawCode []byte, addr co
 	if !isWhitelistedContract(addr) {
 		return false, rawCode
 	}
-	log.Error("tryGetOptimizedCode in whitelist", "addr", addr.String())
+	//log.Error("tryGetOptimizedCode in whitelist", "addr", addr.String())
 	var code []byte
 	optimized := false
 	code = rawCode
