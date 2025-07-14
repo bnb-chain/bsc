@@ -21,6 +21,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 	"math/big"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -541,7 +542,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 }
 
 func isWhitelistedContract(addr common.Address) bool {
-	if _, ok := whiteListContracts[addr.String()]; ok {
+	if _, ok := whiteListContracts[strings.ToLower(addr.String())]; ok {
 		return true
 	}
 	return false
