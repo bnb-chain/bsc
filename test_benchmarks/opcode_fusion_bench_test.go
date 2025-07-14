@@ -759,7 +759,7 @@ func BenchmarkOpCodeFusionWithWBNBContract(b *testing.B) {
 			address := common.BytesToAddress([]byte("contract"))
 			sender := vm.AccountRef(cfgFuse.Origin)
 			evm.StateDB.CreateAccount(address)
-			evm.StateDB.SetCode(address, fusedCode)
+			evm.StateDB.SetCode(address, realCode)
 			// Reset the EVM for each iteration
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
