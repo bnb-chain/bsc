@@ -2062,7 +2062,7 @@ func (api *TransactionAPI) SendRawTransactionConditional(ctx context.Context, in
 //
 // The account associated with addr must be unlocked.
 //
-// https://github.com/ethereum/wiki/wiki/JSON-RPC#eth_sign
+// https://ethereum.org/en/developers/docs/apis/json-rpc/#eth_sign
 func (api *TransactionAPI) Sign(addr common.Address, data hexutil.Bytes) (hexutil.Bytes, error) {
 	// Look up the wallet containing the requested signer
 	account := accounts.Account{Address: addr}
