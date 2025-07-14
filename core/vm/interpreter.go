@@ -317,16 +317,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			mem.Resize(memorySize)
 		}
 
-		if in.evm.Context.BlockNumber.Uint64() == 50897368 && in.evm.StateDB.TxIndex() == 302 {
-			log.Error("DEBUG", "pc", pc, "op", op, "gas", cost)
-			stacks := make([]uint256.Int, 0)
-			for _, data := range callContext.Stack.Data() {
-				stacks = append(stacks, data)
-			}
-			log.Error("DEBUG", "stack", stacks)
-		}
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
+		if in.evm.Context.BlockNumber.Uint64() == 50897368 && in.evm.StateDB.TxIndex() == 302 {
+			log.Error("DEBUG", "pc", pc, "op", op, "gas", cost)
+		}
 		if err != nil {
 			if in.evm.Context.BlockNumber.Uint64() == 50897368 && in.evm.StateDB.TxIndex() == 302 {
 				log.Error("DEBUG", "err", err, "pc", pc, "op", op)
