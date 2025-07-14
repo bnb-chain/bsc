@@ -22,9 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
@@ -37,16 +35,10 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
-	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
-	"github.com/ethereum/go-ethereum/triedb"
-	"github.com/ethereum/go-ethereum/triedb/pathdb"
-	"github.com/prometheus/tsdb/fileutil"
 	"github.com/urfave/cli/v2"
 )
 
@@ -75,30 +67,6 @@ two version states are available: genesis and the specific one.
 The default pruning target is the HEAD-127 state.
 
 WARNING: it's only supported in hash mode(--state.scheme=hash)".
-`,
-			},
-			{
-				Name:     "prune-block",
-				Usage:    "Prune block data offline",
-				Action:   pruneBlock,
-				Category: "MISCELLANEOUS COMMANDS",
-				Flags: []cli.Flag{
-					utils.DataDirFlag,
-					utils.AncientFlag,
-					utils.BlockAmountReserved,
-					utils.TriesInMemoryFlag,
-					utils.CheckSnapshotWithMPT,
-				},
-				Description: `
-geth offline prune-block for block data in ancientdb.
-The amount of blocks expected for remaining after prune can be specified via block-amount-reserved in this command,
-will prune and only remain the specified amount of old block data in ancientdb.
-the brief workflow is to backup the number of this specified amount blocks backward in original ancientdb
-into new ancient_backup, then delete the original ancientdb dir and rename the ancient_backup to original one for replacement,
-finally assemble the statedb and new ancientDb together.
-The purpose of doing it is because the block data will be moved into the ancient store when it
-becomes old enough(exceed the Threshold 90000), the disk usage will be very large over time, and is occupied mainly by ancientDb,
-so it's very necessary to do block data prune, this feature will handle it.
 `,
 			},
 			{
@@ -224,230 +192,6 @@ the expected order for the overlay tree migration.
 		},
 	}
 )
-
-func accessDb(ctx *cli.Context, stack *node.Node) (ethdb.Database, error) {
-	//The layer of tries trees that keep in memory.
-	TriesInMemory := int(ctx.Uint64(utils.TriesInMemoryFlag.Name))
-	chaindb := utils.MakeChainDatabase(ctx, stack, false, true)
-	defer chaindb.Close()
-
-	if !ctx.Bool(utils.CheckSnapshotWithMPT.Name) {
-		return chaindb, nil
-	}
-	headBlock := rawdb.ReadHeadBlock(chaindb)
-	if headBlock == nil {
-		return nil, errors.New("failed to load head block")
-	}
-	headHeader := headBlock.Header()
-	//Make sure the MPT and snapshot matches before pruning, otherwise the node can not start.
-	snapconfig := snapshot.Config{
-		CacheSize:  256,
-		Recovery:   false,
-		NoBuild:    true,
-		AsyncBuild: false,
-	}
-	dbScheme := rawdb.ReadStateScheme(chaindb)
-	var config *triedb.Config
-	if dbScheme == rawdb.PathScheme {
-		config = &triedb.Config{
-			PathDB: utils.PathDBConfigAddJournalFilePath(stack, pathdb.ReadOnly),
-		}
-	} else if dbScheme == rawdb.HashScheme {
-		config = triedb.HashDefaults
-	}
-	snaptree, err := snapshot.New(snapconfig, chaindb, triedb.NewDatabase(chaindb, config), headBlock.Root(), TriesInMemory, false)
-	if err != nil {
-		log.Error("snaptree error", "err", err)
-		return nil, err // The relevant snapshot(s) might not exist
-	}
-
-	// Use the HEAD-(n-1) as the target root. The reason for picking it is:
-	// - in most of the normal cases, the related state is available
-	// - the probability of this layer being reorg is very low
-
-	// Retrieve all snapshot layers from the current HEAD.
-	// In theory there are n difflayers + 1 disk layer present,
-	// so n diff layers are expected to be returned.
-	layers := snaptree.Snapshots(headHeader.Root, TriesInMemory, true)
-	if len(layers) != TriesInMemory {
-		// Reject if the accumulated diff layers are less than n. It
-		// means in most of normal cases, there is no associated state
-		// with bottom-most diff layer.
-		log.Error("snapshot layers != TriesInMemory", "err", err)
-		return nil, fmt.Errorf("snapshot not old enough yet: need %d more blocks", TriesInMemory-len(layers))
-	}
-	// Use the bottom-most diff layer as the target
-	targetRoot := layers[len(layers)-1].Root()
-
-	// Ensure the root is really present. The weak assumption
-	// is the presence of root can indicate the presence of the
-	// entire trie.
-	if blob := rawdb.ReadLegacyTrieNode(chaindb, targetRoot); len(blob) == 0 {
-		// The special case is for clique based networks(rinkeby, goerli
-		// and some other private networks), it's possible that two
-		// consecutive blocks will have same root. In this case snapshot
-		// difflayer won't be created. So HEAD-(n-1) may not paired with
-		// head-(n-1) layer. Instead the paired layer is higher than the
-		// bottom-most diff layer. Try to find the bottom-most snapshot
-		// layer with state available.
-		//
-		// Note HEAD is ignored. Usually there is the associated
-		// state available, but we don't want to use the topmost state
-		// as the pruning target.
-		var found bool
-		for i := len(layers) - 2; i >= 1; i-- {
-			if blob := rawdb.ReadLegacyTrieNode(chaindb, layers[i].Root()); len(blob) != 0 {
-				targetRoot = layers[i].Root()
-				found = true
-				log.Info("Selecting middle-layer as the pruning target", "root", targetRoot, "depth", i)
-				break
-			}
-		}
-		if !found {
-			if blob := rawdb.ReadLegacyTrieNode(chaindb, snaptree.DiskRoot()); len(blob) != 0 {
-				targetRoot = snaptree.DiskRoot()
-				found = true
-				log.Info("Selecting disk-layer as the pruning target", "root", targetRoot)
-			}
-		}
-		if !found {
-			if len(layers) > 0 {
-				log.Error("no snapshot paired state")
-				return nil, errors.New("no snapshot paired state")
-			}
-			return nil, fmt.Errorf("associated state[%x] is not present", targetRoot)
-		}
-	} else {
-		if len(layers) > 0 {
-			log.Info("Selecting bottom-most difflayer as the pruning target", "root", targetRoot, "height", headHeader.Number.Uint64()-uint64(len(layers)-1))
-		} else {
-			log.Info("Selecting user-specified state as the pruning target", "root", targetRoot)
-		}
-	}
-	return chaindb, nil
-}
-
-func pruneBlock(ctx *cli.Context) error {
-	var (
-		stack   *node.Node
-		config  gethConfig
-		chaindb ethdb.Database
-		err     error
-
-		oldAncientPath      string
-		newAncientPath      string
-		blockAmountReserved uint64
-		blockpruner         *pruner.BlockPruner
-	)
-
-	stack, config = makeConfigNode(ctx)
-	defer stack.Close()
-	blockAmountReserved = ctx.Uint64(utils.BlockAmountReserved.Name)
-	if blockAmountReserved < params.FullImmutabilityThreshold {
-		return fmt.Errorf("block-amount-reserved must be greater than or equal to %d", params.FullImmutabilityThreshold)
-	}
-	chaindb, err = accessDb(ctx, stack)
-	if err != nil {
-		return err
-	}
-
-	// Most of the problems reported by users when first using the prune-block
-	// tool are due to incorrect directory settings.Here, the default directory
-	// and relative directory are canceled, and the user is forced to formulate
-	// an absolute path to guide users to run the prune-block command correctly.
-	if !ctx.IsSet(utils.DataDirFlag.Name) {
-		return errors.New("datadir must be set")
-	} else {
-		datadir := ctx.String(utils.DataDirFlag.Name)
-		if !filepath.IsAbs(datadir) {
-			// force absolute paths, which often fail due to the splicing of relative paths
-			return errors.New("datadir not abs path")
-		}
-	}
-
-	if !ctx.IsSet(utils.AncientFlag.Name) {
-		return errors.New("datadir.ancient must be set")
-	} else {
-		if stack.CheckIfMultiDataBase() {
-			ancientPath := ctx.String(utils.AncientFlag.Name)
-			index := strings.LastIndex(ancientPath, "/ancient/chain")
-			if index != -1 {
-				oldAncientPath = ancientPath[:index] + "/block/ancient/chain"
-			}
-		} else {
-			oldAncientPath = ctx.String(utils.AncientFlag.Name)
-		}
-		if !filepath.IsAbs(oldAncientPath) {
-			// force absolute paths, which often fail due to the splicing of relative paths
-			return errors.New("datadir.ancient not abs path")
-		}
-	}
-
-	path, _ := filepath.Split(oldAncientPath)
-	if path == "" {
-		return errors.New("prune failed, did not specify the AncientPath")
-	}
-	newVersionPath := false
-	files, err := os.ReadDir(oldAncientPath)
-	if err != nil {
-		return err
-	}
-	for _, file := range files {
-		if file.IsDir() && file.Name() == "chain" {
-			newVersionPath = true
-		}
-	}
-	if newVersionPath && !strings.HasSuffix(oldAncientPath, "geth/chaindata/ancient/chain") {
-		log.Error("datadir.ancient subdirectory incorrect", "got path", oldAncientPath, "want subdirectory", "geth/chaindata/ancient/chain/")
-		return errors.New("datadir.ancient subdirectory incorrect")
-	}
-	newAncientPath = filepath.Join(path, "chain_back")
-
-	blockpruner = pruner.NewBlockPruner(chaindb, stack, oldAncientPath, newAncientPath, blockAmountReserved)
-
-	lock, exist, err := fileutil.Flock(filepath.Join(oldAncientPath, "PRUNEFLOCK"))
-	if err != nil {
-		log.Error("file lock error", "err", err)
-		return err
-	}
-	if exist {
-		defer lock.Release()
-		log.Info("file lock existed, waiting for prune recovery and continue", "err", err)
-		if err := blockpruner.RecoverInterruption("chaindata", config.Eth.DatabaseCache, utils.MakeDatabaseHandles(0), "", false); err != nil {
-			log.Error("Pruning failed", "err", err)
-			return err
-		}
-		log.Info("Block prune successfully")
-		return nil
-	}
-
-	if _, err := os.Stat(newAncientPath); err == nil {
-		// No file lock found for old ancientDB but new ancientDB existed, indicating the geth was interrupted
-		// after old ancientDB removal, this happened after backup successfully, so just rename the new ancientDB
-		if err := blockpruner.AncientDbReplacer(); err != nil {
-			log.Error("Failed to rename new ancient directory")
-			return err
-		}
-		log.Info("Block prune successfully")
-		return nil
-	}
-	name := "chaindata"
-	if err := blockpruner.BlockPruneBackUp(name, config.Eth.DatabaseCache, utils.MakeDatabaseHandles(0), "", false, false); err != nil {
-		log.Error("Failed to back up block", "err", err)
-		return err
-	}
-
-	log.Info("backup block successfully")
-
-	//After backing up successfully, rename the new ancientdb name to the original one, and delete the old ancientdb
-	if err := blockpruner.AncientDbReplacer(); err != nil {
-		return err
-	}
-
-	lock.Release()
-	log.Info("Block prune successfully")
-	return nil
-}
 
 // Deprecation: this command should be deprecated once the hash-based
 // scheme is deprecated.

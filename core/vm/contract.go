@@ -18,16 +18,16 @@ package vm
 
 import (
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/metrics"
-	lru "github.com/hashicorp/golang-lru"
 	"github.com/holiman/uint256"
 )
 
 const codeBitmapCacheSize = 2000
 
 var (
-	codeBitmapCache, _ = lru.New(codeBitmapCacheSize)
+	codeBitmapCache = lru.NewCache[common.Hash, bitvec](codeBitmapCacheSize)
 
 	contractCodeBitmapHitMeter  = metrics.NewRegisteredMeter("vm/contract/code/bitmap/hit", nil)
 	contractCodeBitmapMissMeter = metrics.NewRegisteredMeter("vm/contract/code/bitmap/miss", nil)
@@ -106,7 +106,7 @@ func (c *Contract) isCode(udest uint64) bool {
 		if !exist {
 			if cached, ok := codeBitmapCache.Get(c.CodeHash); ok {
 				contractCodeBitmapHitMeter.Mark(1)
-				analysis = cached.(bitvec)
+				analysis = cached
 			} else {
 				// Do the analysis and save in parent context
 				// We do not need to store it in c.analysis

@@ -24,6 +24,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 type GoToolchain struct {
@@ -62,7 +64,11 @@ func (g *GoToolchain) Go(command string, args ...string) *exec.Cmd {
 
 func (g *GoToolchain) goTool(command string, args ...string) *exec.Cmd {
 	if g.Root == "" {
-		g.Root = runtime.GOROOT()
+		goRoot, err := common.GetGoRoot()
+		if err != nil {
+			panic("GOROOT not found")
+		}
+		g.Root = goRoot
 	}
 	tool := exec.Command(filepath.Join(g.Root, "bin", "go"), command) // nolint: gosec
 	tool.Args = append(tool.Args, args...)
@@ -94,7 +100,11 @@ func DownloadGo(csdb *ChecksumDB) string {
 	activeGo := strings.TrimPrefix(runtime.Version(), "go")
 	if activeGo == version {
 		log.Printf("-dlgo version matches active Go version %s, skipping download.", activeGo)
-		return runtime.GOROOT()
+		goRoot, err := common.GetGoRoot()
+		if err != nil {
+			panic("GOROOT not found")
+		}
+		return goRoot
 	}
 
 	ucache, err := os.UserCacheDir()

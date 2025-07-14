@@ -50,28 +50,29 @@ var FullNodeGPO = gasprice.Config{
 
 // Defaults contains default settings for use on the BSC main net.
 var Defaults = Config{
-	SyncMode:           SnapSync,
-	NetworkId:          0, // enable auto configuration of networkID == chainID
-	TxLookupLimit:      2350000,
-	TransactionHistory: 2350000,
-	StateHistory:       params.FullImmutabilityThreshold,
-	DatabaseCache:      512,
-	TrieCleanCache:     154,
-	TrieDirtyCache:     256,
-	TrieTimeout:        10 * time.Minute,
-	TriesInMemory:      128,
-	TriesVerifyMode:    core.LocalVerify,
-	SnapshotCache:      102,
-	DiffBlock:          uint64(86400),
-	FilterLogCacheSize: 32,
-	Miner:              minerconfig.DefaultConfig,
-	TxPool:             legacypool.DefaultConfig,
-	BlobPool:           blobpool.DefaultConfig,
-	RPCGasCap:          50000000,
-	RPCEVMTimeout:      5 * time.Second,
-	GPO:                FullNodeGPO,
-	RPCTxFeeCap:        1,                                         // 1 ether
-	BlobExtraReserve:   params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
+	SyncMode:            SnapSync,
+	NetworkId:           0, // enable auto configuration of networkID == chainID
+	TxLookupLimit:       2350000,
+	TransactionHistory:  2350000,
+	BlockHistory:        0,
+	StateHistory:        params.FullImmutabilityThreshold,
+	DatabaseCache:       512,
+	EnableSharedStorage: false,
+	TrieCleanCache:      154,
+	TrieDirtyCache:      256,
+	TrieTimeout:         10 * time.Minute,
+	TriesInMemory:       128,
+	TriesVerifyMode:     core.LocalVerify,
+	SnapshotCache:       102,
+	FilterLogCacheSize:  32,
+	Miner:               minerconfig.DefaultConfig,
+	TxPool:              legacypool.DefaultConfig,
+	BlobPool:            blobpool.DefaultConfig,
+	RPCGasCap:           50000000,
+	RPCEVMTimeout:       5 * time.Second,
+	GPO:                 FullNodeGPO,
+	RPCTxFeeCap:         1,                                         // 1 ether
+	BlobExtraReserve:    params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
 }
 
 //go:generate go run github.com/fjl/gencodec -type Config -formats toml -out gen_config.go
@@ -98,10 +99,9 @@ type Config struct {
 	EVNNodeIDsToRemove     []enode.ID
 	// This can be set to list of enrtree:// URLs which will be queried for
 	// nodes to connect to.
-	EthDiscoveryURLs   []string
-	SnapDiscoveryURLs  []string
-	TrustDiscoveryURLs []string
-	BscDiscoveryURLs   []string
+	EthDiscoveryURLs  []string
+	SnapDiscoveryURLs []string
+	BscDiscoveryURLs  []string
 
 	// State options.
 	NoPruning  bool // Whether to disable pruning and flush everything to disk
@@ -109,13 +109,13 @@ type Config struct {
 
 	DirectBroadcast     bool
 	DisableSnapProtocol bool // Whether disable snap protocol
-	EnableTrustProtocol bool // Whether enable trust protocol
 	RangeLimit          bool
 
 	// Deprecated: use 'TransactionHistory' instead.
 	TxLookupLimit uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
 
 	TransactionHistory uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
+	BlockHistory       uint64 `toml:",omitempty"` // The maximum number of blocks from head whose block body/header/receipt/diff/hash are reserved.
 	StateHistory       uint64 `toml:",omitempty"` // The maximum number of blocks from head whose state histories are reserved.
 	// State scheme represents the scheme used to store ethereum states and trie
 	// nodes on top. It can be 'hash', 'path', or none which means use the scheme
@@ -136,9 +136,6 @@ type Config struct {
 	DatabaseHandles    int  `toml:"-"`
 	DatabaseCache      int
 	DatabaseFreezer    string
-	DatabaseDiff       string
-	PersistDiff        bool
-	DiffBlock          uint64
 	// PruneAncientData is an optional config and disabled by default, and usually you do not need it.
 	// When this flag is enabled, only keep the latest 9w blocks' data, the older blocks' data will be
 	// pruned instead of being dumped to freezerdb, the pruned data includes CanonicalHash, Header, Block,
@@ -146,15 +143,17 @@ type Config struct {
 	// Notice: the PruneAncientData once be turned on, the get/chaindata/ancient dir will be removed,
 	// if restart without the pruneancient flag, the ancient data will start with the previous point that
 	// the oldest unpruned block number.
+	// !!Deprecated: use 'BlockHistory' instead.
 	PruneAncientData bool
 
-	TrieCleanCache  int
-	TrieDirtyCache  int
-	TrieTimeout     time.Duration
-	SnapshotCache   int
-	TriesInMemory   uint64
-	TriesVerifyMode core.VerifyMode
-	Preimages       bool
+	EnableSharedStorage bool
+	TrieCleanCache      int
+	TrieDirtyCache      int
+	TrieTimeout         time.Duration
+	SnapshotCache       int
+	TriesInMemory       uint64
+	TriesVerifyMode     core.VerifyMode
+	Preimages           bool
 
 	// This is the number of blocks for which logs will be cached in the filter system.
 	FilterLogCacheSize int

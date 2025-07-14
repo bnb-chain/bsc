@@ -93,7 +93,7 @@ func inspectFreezers(db ethdb.Database) ([]freezerInfo, error) {
 			infos = append(infos, info)
 
 		case MerkleStateFreezerName, VerkleStateFreezerName:
-			if db.StateStore() != nil {
+			if db.HasSeparateStateStore() {
 				continue
 			}
 			datadir, err := db.AncientDatadir()
@@ -113,7 +113,7 @@ func inspectFreezers(db ethdb.Database) ([]freezerInfo, error) {
 				continue
 			}
 
-			f, err := NewStateFreezer(datadir, freezer == VerkleStateFreezerName, true, 0)
+			f, err := NewStateFreezer(datadir, freezer == VerkleStateFreezerName, true)
 			if err != nil {
 				continue // might be possible the state freezer is not existent
 			}

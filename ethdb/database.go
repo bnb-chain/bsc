@@ -166,7 +166,7 @@ type FreezerEnv struct {
 // AncientFreezer defines the help functions for freezing ancient data
 type AncientFreezer interface {
 	// SetupFreezerEnv provides params.ChainConfig for checking hark forks, like isCancun.
-	SetupFreezerEnv(env *FreezerEnv) error
+	SetupFreezerEnv(env *FreezerEnv, blockHistory uint64) error
 }
 
 // AncientWriteOp is given to the function argument of ModifyAncients.
@@ -190,20 +190,9 @@ type AncientStater interface {
 	AncientDatadir() (string, error)
 }
 
+// StateStoreReader wraps the StateStoreReader method.
 type StateStoreReader interface {
 	StateStoreReader() Reader
-}
-
-type BlockStoreReader interface {
-	BlockStoreReader() Reader
-}
-
-// MultiDatabaseReader contains the methods required to read data from both key-value as well as
-// blockStore or stateStore.
-type MultiDatabaseReader interface {
-	KeyValueReader
-	StateStoreReader
-	BlockStoreReader
 }
 
 // Reader contains the methods required to read data from both key-value as well as
@@ -212,7 +201,6 @@ type Reader interface {
 	KeyValueReader
 	AncientReader
 	StateStoreReader
-	BlockStoreReader
 }
 
 // AncientStore contains all the methods required to allow handling different
@@ -224,21 +212,10 @@ type AncientStore interface {
 	io.Closer
 }
 
-type DiffStore interface {
-	DiffStore() KeyValueStore
-	SetDiffStore(diff KeyValueStore)
-}
-
 type StateStore interface {
-	StateStore() Database
 	SetStateStore(state Database)
 	GetStateStore() Database
-}
-
-type BlockStore interface {
-	BlockStore() Database
-	SetBlockStore(block Database)
-	HasSeparateBlockStore() bool
+	HasSeparateStateStore() bool
 }
 
 // ResettableAncientStore extends the AncientStore interface by adding a Reset method.
@@ -252,11 +229,8 @@ type ResettableAncientStore interface {
 // Database contains all the methods required by the high level database to not
 // only access the key-value data store but also the ancient chain store.
 type Database interface {
-	DiffStore
 	StateStore
-	BlockStore
 	StateStoreReader
-	BlockStoreReader
 	AncientFreezer
 
 	KeyValueStore

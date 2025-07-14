@@ -84,20 +84,8 @@ var (
 	// database.
 	fastTxLookupLimitKey = []byte("FastTransactionLookupLimit")
 
-	//offSet of new updated ancientDB.
-	offSetOfCurrentAncientFreezer = []byte("offSetOfCurrentAncientFreezer")
-
-	//offSet of the ancientDB before updated version.
-	offSetOfLastAncientFreezer = []byte("offSetOfLastAncientFreezer")
-
-	//frozenOfAncientDBKey tracks the block number for ancientDB to save.
-	frozenOfAncientDBKey = []byte("FrozenOfAncientDB")
-
 	//LastSafePointBlockKey tracks the block number for block state that write disk
 	LastSafePointBlockKey = []byte("LastSafePointBlockNumber")
-
-	//PruneAncientFlag flag whether prune ancient
-	pruneAncientKey = []byte("PruneAncientFlag")
 
 	// badBlockKey tracks the list of bad blocks seen by local
 	badBlockKey = []byte("InvalidBlock")
@@ -125,9 +113,6 @@ var (
 	SnapshotAccountPrefix = []byte("a") // SnapshotAccountPrefix + account hash -> account trie value
 	SnapshotStoragePrefix = []byte("o") // SnapshotStoragePrefix + account hash + storage hash -> storage trie value
 	CodePrefix            = []byte("c") // CodePrefix + code hash -> account code
-
-	// difflayer database
-	diffLayerPrefix = []byte("d") // diffLayerPrefix + hash  -> diffLayer
 
 	// Path-based storage scheme of merkle patricia trie.
 	TrieNodeAccountPrefix = []byte("A") // TrieNodeAccountPrefix + hexPath -> trie node
@@ -218,11 +203,6 @@ func blockReceiptsKey(number uint64, hash common.Hash) []byte {
 // blockBlobSidecarsKey = BlockBlobSidecarsPrefix + blockNumber (uint64 big endian) + blockHash
 func blockBlobSidecarsKey(number uint64, hash common.Hash) []byte {
 	return append(append(BlockBlobSidecarsPrefix, encodeBlockNumber(number)...), hash.Bytes()...)
-}
-
-// diffLayerKey = diffLayerKeyPrefix + hash
-func diffLayerKey(hash common.Hash) []byte {
-	return append(diffLayerPrefix, hash.Bytes()...)
 }
 
 // txLookupKey = txLookupPrefix + hash

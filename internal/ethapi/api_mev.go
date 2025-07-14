@@ -3,7 +3,6 @@ package ethapi
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -86,10 +85,6 @@ func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, 
 	}
 
 	return m.b.SendBid(ctx, &args)
-}
-
-func (m *MevAPI) BestBidGasFee(_ context.Context, parentHash common.Hash) *big.Int {
-	return m.b.BestBidGasFee(parentHash)
 }
 
 func (m *MevAPI) Params() *types.MevParams {

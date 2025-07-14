@@ -112,8 +112,12 @@ type StateDB struct {
 	// perspective. This map is populated at the transaction boundaries.
 	mutations map[common.Address]*mutation
 
-	storagePool          *StoragePool // sharedPool to store L1 originStorage of stateObjects
+	// if needBadSharedStorage = true, try read from sharedPool firstly, compatible with old erroneous data(https://forum.bnbchain.org/t/about-the-hertzfix/2400).
+	// else read from sharedPool which is not in stateObjectsDestruct.
+	needBadSharedStorage bool
 	writeOnSharedStorage bool         // Write to the shared origin storage of a stateObject while reading from the underlying storage layer.
+	storagePool          *StoragePool // sharedPool to store L1 originStorage of stateObjects
+
 	// DB error.
 	// State objects are used by the consensus core and VM which are
 	// unable to deal with database-level errors. Any error that occurs
@@ -150,7 +154,7 @@ type StateDB struct {
 	witness *stateless.Witness // TODO(Nathan): more define the relation with `noTrie`
 
 	// Measurements gathered during execution for debugging purposes
-	// MetricsMux should be used in more places, but will affect on performance, so following meteration is not accruate
+	// MetricsMux should be used in more places, but will affect on performance, so following meteration is not accurate
 	MetricsMux      sync.Mutex
 	AccountReads    time.Duration
 	AccountHashes   time.Duration
@@ -212,8 +216,15 @@ func New(root common.Hash, db Database) (*StateDB, error) {
 	return sdb, nil
 }
 
-func (s *StateDB) EnableWriteOnSharedStorage() {
-	s.writeOnSharedStorage = true
+func (s *StateDB) EnableSharedStorage(enableSharedStorage bool) {
+	s.writeOnSharedStorage = enableSharedStorage
+}
+
+func (s *StateDB) SetNeedBadSharedStorage(needBadSharedStorage bool) {
+	s.needBadSharedStorage = needBadSharedStorage
+	if needBadSharedStorage {
+		s.writeOnSharedStorage = true
+	}
 }
 
 // In mining mode, we will try multi-fillTransactions to get the most profitable one.
@@ -718,7 +729,6 @@ func (s *StateDB) getStateObject(addr common.Address) *stateObject {
 	// Insert into the live set
 	obj := newObject(s, addr, acct)
 	s.setStateObject(obj)
-	s.AccountLoaded++
 	return obj
 }
 
@@ -793,14 +803,15 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 		stateObjectsDestruct: make(map[common.Address]*stateObject, len(s.stateObjectsDestruct)),
 		mutations:            make(map[common.Address]*mutation, len(s.mutations)),
 		dbErr:                s.dbErr,
+		needBadSharedStorage: s.needBadSharedStorage,
+		writeOnSharedStorage: s.writeOnSharedStorage,
 		storagePool:          s.storagePool,
-		// writeOnSharedStorage: s.writeOnSharedStorage,
-		refund:    s.refund,
-		thash:     s.thash,
-		txIndex:   s.txIndex,
-		logs:      make(map[common.Hash][]*types.Log, len(s.logs)),
-		logSize:   s.logSize,
-		preimages: maps.Clone(s.preimages),
+		refund:               s.refund,
+		thash:                s.thash,
+		txIndex:              s.txIndex,
+		logs:                 make(map[common.Hash][]*types.Log, len(s.logs)),
+		logSize:              s.logSize,
+		preimages:            maps.Clone(s.preimages),
 
 		transientStorage: s.transientStorage.Copy(),
 		journal:          s.journal.copy(),
@@ -1456,21 +1467,11 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 		return nil, err
 	}
 
-	snaps := s.db.Snapshot()
-	if snaps != nil {
-		ret.diffLayer = &types.DiffLayer{}
-	}
 	// Commit dirty contract code if any exists
 	if db := s.db.TrieDB().Disk(); db != nil && len(ret.codes) > 0 {
 		batch := db.NewBatch()
 		for _, code := range ret.codes {
 			rawdb.WriteCode(batch, code.hash, code.blob)
-			if snaps != nil {
-				ret.diffLayer.Codes = append(ret.diffLayer.Codes, types.DiffCode{
-					Hash: code.hash,
-					Code: code.blob,
-				})
-			}
 		}
 
 		if err := batch.Write(); err != nil {
@@ -1524,12 +1525,12 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 // Since self-destruction was deprecated with the Cancun fork and there are
 // no empty accounts left that could be deleted by EIP-158, storage wiping
 // should not occur.
-func (s *StateDB) Commit(block uint64, deleteEmptyObjects bool, noStorageWiping bool) (common.Hash, *types.DiffLayer, error) {
+func (s *StateDB) Commit(block uint64, deleteEmptyObjects bool, noStorageWiping bool) (common.Hash, error) {
 	ret, err := s.commitAndFlush(block, deleteEmptyObjects, noStorageWiping)
 	if err != nil {
-		return common.Hash{}, nil, err
+		return common.Hash{}, err
 	}
-	return ret.root, ret.diffLayer, nil
+	return ret.root, nil
 }
 
 // Prepare handles the preparatory steps for executing a state transition with.
@@ -1663,4 +1664,9 @@ func (s *StateDB) Witness() *stateless.Witness {
 
 func (s *StateDB) AccessEvents() *AccessEvents {
 	return s.accessEvents
+}
+
+func (s *StateDB) IsAddressInMutations(addr common.Address) bool {
+	_, ok := s.mutations[addr]
+	return ok
 }
