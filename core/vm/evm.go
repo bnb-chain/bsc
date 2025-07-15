@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"bytes"
 	"errors"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
@@ -276,6 +277,11 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 						log.Error("contract not optimized", "addrCopy", addrCopy, "codeHash", codeHash)
 					} else {
 						log.Error("contract optimized", "addrCopy", addrCopy, "code", code, "codeHash", codeHash)
+						if i == 0 {
+							log.Error("check contract code correctly saved", "addrCopy", addrCopy, "code is same", bytes.Equal(PreloadUSDT, code))
+						} else {
+							log.Error("check contract code not equal to other code", "addrCopy", addrCopy, "code shall not be same", bytes.Equal(PreloadUSDT, code))
+						}
 					}
 					//runStart := time.Now()
 					if contract.optimized {
