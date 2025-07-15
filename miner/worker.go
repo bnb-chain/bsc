@@ -1505,7 +1505,10 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		env := env.copy()
 
 		block = block.WithSidecars(env.sidecars)
-		block = block.WithBAL(env.state.GetEncodedAccessList(block))
+		balData := env.state.GetEncodedAccessList(block)
+		block = block.WithBAL(balData)
+		env.state.DumpAccessList(block)
+		log.Info("worker Commit", "blockNumber", block.NumberU64(), "GasUsed", block.GasUsed(), "block size(noBal)", block.Size(), "bal.length", len(balData))
 		select {
 		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
 			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),

@@ -180,7 +180,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	}
 	statedb.DumpAccessList(block)
 	balData := statedb.GetEncodedAccessList(block)
-	log.Info("GetEncodedAccessList", "blockNumber", block.NumberU64(), "GasUsed", block.GasUsed(), "block size", block.Size(), "encoded.length", len(balData))
+	log.Info("Process", "blockNumber", block.NumberU64(), "GasUsed", block.GasUsed(), "block size(noBal)", block.Size(), "bal.size", len(balData))
 	return &ProcessResult{
 		Receipts: receipts,
 		Requests: requests,

@@ -1752,7 +1752,7 @@ func (s *StateDB) GetEncodedAccessList(block *types.Block) []byte {
 	if err != nil {
 		return nil
 	}
-	log.Info("GetEncodedAccessList", "blockNumber", block.NumberU64(), "GasUsed", block.GasUsed(),
+	log.Debug("GetEncodedAccessList", "blockNumber", block.NumberU64(), "GasUsed", block.GasUsed(),
 		"encoded.length", len(encoded), "encoded", hex.EncodeToString(encoded))
 	return encoded
 }
