@@ -217,110 +217,111 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 			return
 		}
 		addr = whitelistArr[i]
-	}
-	if evm.Config.Tracer != nil {
-		evm.captureBegin(evm.depth, CALL, caller.Address(), addr, input, gas, value.ToBig())
-		defer func(startGas uint64) {
-			evm.captureEnd(evm.depth, startGas, leftOverGas, ret, err)
-		}(gas)
-	}
-	// Fail if we're trying to execute above the call depth limit
-	if evm.depth > int(params.CallCreateDepth) {
-		return nil, gas, ErrDepth
-	}
-	// Fail if we're trying to transfer more than the available balance
-	if !value.IsZero() && !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value) {
-		return nil, gas, ErrInsufficientBalance
-	}
-	snapshot := evm.StateDB.Snapshot()
-	p, isPrecompile := evm.precompile(addr)
 
-	if !evm.StateDB.Exist(addr) {
-		if !isPrecompile && evm.chainRules.IsEIP4762 && !isSystemCall(caller) {
-			// add proof of absence to witness
-			wgas := evm.AccessEvents.AddAccount(addr, false)
-			if gas < wgas {
-				evm.StateDB.RevertToSnapshot(snapshot)
-				return nil, 0, ErrOutOfGas
+		if evm.Config.Tracer != nil {
+			evm.captureBegin(evm.depth, CALL, caller.Address(), addr, input, gas, value.ToBig())
+			defer func(startGas uint64) {
+				evm.captureEnd(evm.depth, startGas, leftOverGas, ret, err)
+			}(gas)
+		}
+		// Fail if we're trying to execute above the call depth limit
+		if evm.depth > int(params.CallCreateDepth) {
+			return nil, gas, ErrDepth
+		}
+		// Fail if we're trying to transfer more than the available balance
+		if !value.IsZero() && !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value) {
+			return nil, gas, ErrInsufficientBalance
+		}
+		snapshot := evm.StateDB.Snapshot()
+		p, isPrecompile := evm.precompile(addr)
+
+		if !evm.StateDB.Exist(addr) {
+			if !isPrecompile && evm.chainRules.IsEIP4762 && !isSystemCall(caller) {
+				// add proof of absence to witness
+				wgas := evm.AccessEvents.AddAccount(addr, false)
+				if gas < wgas {
+					evm.StateDB.RevertToSnapshot(snapshot)
+					return nil, 0, ErrOutOfGas
+				}
+				gas -= wgas
 			}
-			gas -= wgas
-		}
 
-		if !isPrecompile && evm.chainRules.IsEIP158 && value.IsZero() {
-			// Calling a non-existing account, don't do anything.
-			return nil, gas, nil
+			if !isPrecompile && evm.chainRules.IsEIP158 && value.IsZero() {
+				// Calling a non-existing account, don't do anything.
+				return nil, gas, nil
+			}
+			evm.StateDB.CreateAccount(addr)
 		}
-		evm.StateDB.CreateAccount(addr)
-	}
-	evm.Context.Transfer(evm.StateDB, caller.Address(), addr, value)
+		evm.Context.Transfer(evm.StateDB, caller.Address(), addr, value)
 
-	if isPrecompile {
-		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.Config.Tracer)
-	} else {
-		// Initialise a new contract and set the code that is to be used by the EVM.
-		// The contract is a scoped environment for this execution context only.
-		code := evm.resolveCode(addr)
-		log.Error("log addr and code", "addr", addr, "code", code)
-		if len(code) == 0 {
-			ret, err = nil, nil // gas is unchanged
+		if isPrecompile {
+			ret, gas, err = RunPrecompiledContract(p, input, gas, evm.Config.Tracer)
 		} else {
-			if evm.Config.EnableOpcodeOptimizations {
-				addrCopy := addr
-				// If the account has no code, we can abort here
-				// The depth-check is already done, and precompiles handled above
-				contract := GetContract(caller, AccountRef(addrCopy), value, gas)
-				defer ReturnContract(contract)
-				codeHash := evm.resolveCodeHash(addrCopy)
-				contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code, addrCopy)
-				if !contract.optimized {
-					log.Error("contract not optimized", "addrCopy", addrCopy, "codeHash", codeHash)
-				} else {
-					log.Error("contract optimized", "addrCopy", addrCopy, "code", code, "codeHash", codeHash)
-				}
-				//runStart := time.Now()
-				if contract.optimized {
-					evm.UseOptInterpreter()
-				} else {
-					evm.UseBaseInterpreter()
-				}
-				contract.IsSystemCall = isSystemCall(caller)
-				contract.SetCallCode(&addrCopy, codeHash, code)
-				ret, err = evm.interpreter.Run(contract, input, false)
-				gas = contract.Gas
-				//runTime := time.Since(runStart)
-				//interpreterRunTimer.Update(runTime)
+			// Initialise a new contract and set the code that is to be used by the EVM.
+			// The contract is a scoped environment for this execution context only.
+			code := evm.resolveCode(addr)
+			log.Error("log addr and code", "addr", addr, "code", code)
+			if len(code) == 0 {
+				ret, err = nil, nil // gas is unchanged
 			} else {
-				addrCopy := addr
-				// If the account has no code, we can abort here
-				// The depth-check is already done, and precompiles handled above
-				contract := GetContract(caller, AccountRef(addrCopy), value, gas)
-				defer ReturnContract(contract)
+				if evm.Config.EnableOpcodeOptimizations {
+					addrCopy := addr
+					// If the account has no code, we can abort here
+					// The depth-check is already done, and precompiles handled above
+					contract := GetContract(caller, AccountRef(addrCopy), value, gas)
+					defer ReturnContract(contract)
+					codeHash := evm.resolveCodeHash(addrCopy)
+					contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code, addrCopy)
+					if !contract.optimized {
+						log.Error("contract not optimized", "addrCopy", addrCopy, "codeHash", codeHash)
+					} else {
+						log.Error("contract optimized", "addrCopy", addrCopy, "code", code, "codeHash", codeHash)
+					}
+					//runStart := time.Now()
+					if contract.optimized {
+						evm.UseOptInterpreter()
+					} else {
+						evm.UseBaseInterpreter()
+					}
+					contract.IsSystemCall = isSystemCall(caller)
+					contract.SetCallCode(&addrCopy, codeHash, code)
+					ret, err = evm.interpreter.Run(contract, input, false)
+					gas = contract.Gas
+					//runTime := time.Since(runStart)
+					//interpreterRunTimer.Update(runTime)
+				} else {
+					addrCopy := addr
+					// If the account has no code, we can abort here
+					// The depth-check is already done, and precompiles handled above
+					contract := GetContract(caller, AccountRef(addrCopy), value, gas)
+					defer ReturnContract(contract)
 
-				//runStart := time.Now()
-				contract.IsSystemCall = isSystemCall(caller)
-				contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), code)
-				ret, err = evm.interpreter.Run(contract, input, false)
-				gas = contract.Gas
-				//runTime := time.Since(runStart)
-				//interpreterRunTimer.Update(runTime)
+					//runStart := time.Now()
+					contract.IsSystemCall = isSystemCall(caller)
+					contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), code)
+					ret, err = evm.interpreter.Run(contract, input, false)
+					gas = contract.Gas
+					//runTime := time.Since(runStart)
+					//interpreterRunTimer.Update(runTime)
+				}
 			}
 		}
-	}
-	// When an error was returned by the EVM or when setting the creation code
-	// above we revert to the snapshot and consume any gas remaining. Additionally,
-	// when we're in homestead this also counts for code storage gas errors.
-	if err != nil {
-		evm.StateDB.RevertToSnapshot(snapshot)
-		if err != ErrExecutionReverted {
-			if evm.Config.Tracer != nil && evm.Config.Tracer.OnGasChange != nil {
-				evm.Config.Tracer.OnGasChange(gas, 0, tracing.GasChangeCallFailedExecution)
-			}
+		// When an error was returned by the EVM or when setting the creation code
+		// above we revert to the snapshot and consume any gas remaining. Additionally,
+		// when we're in homestead this also counts for code storage gas errors.
+		if err != nil {
+			evm.StateDB.RevertToSnapshot(snapshot)
+			if err != ErrExecutionReverted {
+				if evm.Config.Tracer != nil && evm.Config.Tracer.OnGasChange != nil {
+					evm.Config.Tracer.OnGasChange(gas, 0, tracing.GasChangeCallFailedExecution)
+				}
 
-			gas = 0
+				gas = 0
+			}
+			// TODO: consider clearing up unused snapshots:
+			// } else {
+			//	evm.StateDB.DiscardSnapshot(snapshot)
 		}
-		// TODO: consider clearing up unused snapshots:
-		// } else {
-		//	evm.StateDB.DiscardSnapshot(snapshot)
 	}
 	return ret, gas, err
 }
