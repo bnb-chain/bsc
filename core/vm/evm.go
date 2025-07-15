@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"bytes"
 	"errors"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
@@ -270,7 +271,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 					contract := GetContract(caller, AccountRef(addrCopy), value, gas)
 					defer ReturnContract(contract)
 					codeHash := evm.resolveCodeHash(addrCopy)
-					contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code, addrCopy)
+					contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 					if !contract.optimized {
 						log.Error("contract not optimized", "addrCopy", addrCopy, "codeHash", codeHash.String())
 					} else {
@@ -365,7 +366,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 			defer ReturnContract(contract)
 			code := evm.resolveCode(addrCopy)
 			codeHash := evm.resolveCodeHash(addrCopy)
-			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code, addrCopy)
+			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 			contract.SetCallCode(&addrCopy, codeHash, code)
 
 			if contract.optimized {
@@ -435,7 +436,7 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 			defer ReturnContract(contract)
 			code := evm.resolveCode(addrCopy)
 			codeHash := evm.resolveCodeHash(addrCopy)
-			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code, addrCopy)
+			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 			contract.SetCallCode(&addrCopy, codeHash, code)
 			if contract.optimized {
 				evm.UseOptInterpreter()
@@ -510,7 +511,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 			defer ReturnContract(contract)
 			code := evm.resolveCode(addrCopy)
 			codeHash := evm.resolveCodeHash(addrCopy)
-			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code, addrCopy)
+			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 			if contract.optimized {
 				evm.UseOptInterpreter()
 			} else {
@@ -560,21 +561,31 @@ func isWhitelistedContract(addr common.Address) bool {
 	return false
 }
 
-func tryGetOptimizedCode(evm *EVM, codeHash common.Hash, rawCode []byte, addr common.Address) (bool, []byte) {
-	if !isWhitelistedContract(addr) {
+func getPreloadedOptimization(codeHash common.Hash) []byte {
+	if value, ok := PreloadOptimizeCodeHash[codeHash]; ok {
+		return value
+	}
+	return []byte{}
+}
+
+func tryGetOptimizedCode(evm *EVM, codeHash common.Hash, rawCode []byte) (bool, []byte) {
+	preloadedCode := getPreloadedOptimization(codeHash)
+	if bytes.Equal(preloadedCode, []byte{}) {
 		return false, rawCode
-	}
-	var code []byte
-	optimized := false
-	code = rawCode
-	optCode := compiler.LoadOptimizedCode(codeHash)
-	if len(optCode) != 0 {
-		code = optCode
-		optimized = true
 	} else {
-		compiler.GenOrLoadOptimizedCode(codeHash, rawCode)
+		return true, preloadedCode
 	}
-	return optimized, code
+	//var code []byte
+	//optimized := false
+	//code = rawCode
+	//optCode := compiler.LoadOptimizedCode(codeHash)
+	//if len(optCode) != 0 {
+	//	code = optCode
+	//	optimized = true
+	//} else {
+	//	compiler.GenOrLoadOptimizedCode(codeHash, rawCode)
+	//}
+	//return optimized, code
 }
 
 type codeAndHash struct {
