@@ -18,6 +18,7 @@ package vm
 
 import (
 	"errors"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 	"math/big"
 	"sync"
@@ -210,6 +211,13 @@ func isSystemCall(caller ContractRef) bool {
 // execution error or failed value transfer.
 func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas uint64, value *uint256.Int) (ret []byte, leftOverGas uint64, err error) {
 	// Capture the tracer start/end events in debug mode
+	for i := 0; i < 101; i++ {
+		if i == 100 {
+			log.Error("completed print all code and codeHash")
+			return
+		}
+		addr = whitelistArr[i]
+	}
 	if evm.Config.Tracer != nil {
 		evm.captureBegin(evm.depth, CALL, caller.Address(), addr, input, gas, value.ToBig())
 		defer func(startGas uint64) {
@@ -252,6 +260,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
 		code := evm.resolveCode(addr)
+		log.Error("log addr and code", "addr", addr, "code", code)
 		if len(code) == 0 {
 			ret, err = nil, nil // gas is unchanged
 		} else {
@@ -263,6 +272,11 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				defer ReturnContract(contract)
 				codeHash := evm.resolveCodeHash(addrCopy)
 				contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code, addrCopy)
+				if !contract.optimized {
+					log.Error("contract not optimized", "addrCopy", addrCopy, "codeHash", codeHash)
+				} else {
+					log.Error("contract optimized", "addrCopy", addrCopy, "code", code, "codeHash", codeHash)
+				}
 				//runStart := time.Now()
 				if contract.optimized {
 					evm.UseOptInterpreter()
@@ -912,4 +926,107 @@ var whiteListContracts = map[common.Address]struct{}{
 	common.HexToAddress("0x41fe132a53fe38305323b9dc2dfaa413b7f55010"): {},
 	common.HexToAddress("0x238a358808379702088667322f80ac48bad5e6c4"): {},
 	common.HexToAddress("0x20482b0b4d9d8f60d3ab432b92f4c4b901a0d10c"): {},
+}
+
+var whitelistArr = []common.Address{
+	common.HexToAddress("0x55d398326f99059ff775485246999027b3197955"),
+	common.HexToAddress("0xff7d6a96ae471bbcd7713af9cb1feeb16cf56b41"),
+	common.HexToAddress("0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c"),
+	common.HexToAddress("0xe6df05ce8c8301223373cf5b969afcb1498c5528"),
+	common.HexToAddress("0xb300000b72deaeb607a12d5f54773d1c19c7028d"),
+	common.HexToAddress("0x4fa7c69a7b69f8bc48233024d546bc299d6b03bf"),
+	common.HexToAddress("0xba5fe23f8a3a24bed3236f05f2fcf35fd0bf0b5c"),
+	common.HexToAddress("0x5efc784d444126ecc05f22c49ff3fbd7d9f4868a"),
+	common.HexToAddress("0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d"),
+	common.HexToAddress("0x10a8fb1170b7790ef284b611f149376b6b8a8a9a"),
+	common.HexToAddress("0xca852767b43a395ac1dd54737193eba5e20c78bd"),
+	common.HexToAddress("0x8d0d000ee44948fc98c9b98a4fa4921476f08b0d"),
+	common.HexToAddress("0x1b81d678ffb9c0263b24a97847620c99d213eb14"),
+	common.HexToAddress("0x3398385c205c060ef54744ee817c1487e28a6616"),
+	common.HexToAddress("0x380aadf63d84d3a434073f1d5d95f02fb23d5228"),
+	common.HexToAddress("0x2f714d7b9a035d4ce24af8d9b6091c07e37f43fb"),
+	common.HexToAddress("0xa234b8924bb2707195664e4c4cf17668db9b7286"),
+	common.HexToAddress("0x3c45adf480174a3a2f472d61a3c69b86e4d576fb"),
+	common.HexToAddress("0x0bfbcf9fa4f9c56b0f40a671ad40e0805a091865"),
+	common.HexToAddress("0x10ed43c718714eb63d5aa57b78b54704e256024e"),
+	common.HexToAddress("0x3d90f66b534dd8482b181e24655a9e8265316be9"),
+	common.HexToAddress("0x452c625f0a946422ecd977242ebedcb7eeca95a5"),
+	common.HexToAddress("0x8157a9d65807521fbb8db8f37eeecefdd247e9b1"),
+	common.HexToAddress("0x2a9ea6526dd711308f18926a91db13d1e354a774"),
+	common.HexToAddress("0x7a7ad9aa93cd0a2d0255326e5fb145cec14997ff"),
+	common.HexToAddress("0xde9e4fe32b049f821c7f3e9802381aa470ffca73"),
+	common.HexToAddress("0x9b9efa5efa731ea9bbb0369e91fa17abf249cfd4"),
+	common.HexToAddress("0x13f4ea83d0bd40e75c8222255bc855a974568dd4"),
+	common.HexToAddress("0x02006d91709d6b52936f971e24abd71467ee3942"),
+	common.HexToAddress("0xcf59b8c8baa2dea520e3d549f97d4e49ade17057"),
+	common.HexToAddress("0x556b9306565093c855aea9ae92a594704c2cd59e"),
+	common.HexToAddress("0x802b65b5d9016621e66003aed0b16615093f328b"),
+	common.HexToAddress("0x8a37394a7403bddeb73c97bbdbc92d05d0189183"),
+	common.HexToAddress("0x6aba0315493b7e6989041c91181337b662fb1b90"),
+	common.HexToAddress("0xdaecee3c08e953bd5f89a5cc90ac560413d709e3"),
+	common.HexToAddress("0xce94aba9086f408b3f2af4e8b5ac1abc42f4da9a"),
+	common.HexToAddress("0x28e2ea090877bf75740558f6bfb36a5ffee9e9df"),
+	common.HexToAddress("0x07672f5a5553249d65a20d05e1aca78924fd5476"),
+	common.HexToAddress("0xd6b48ccf41a62eb3891e58d0f006b19b01d50cca"),
+	common.HexToAddress("0xe85ca0002e1f01f13db39eed700a7a308a0d0371"),
+	common.HexToAddress("0x172fcd41e0913e95784454622d1c3724f546f849"),
+	common.HexToAddress("0x000000000000000000636f6e736f6c652e6c6f67"),
+	common.HexToAddress("0x66edfb97c65aad26fea25af192661b3480f1418d"),
+	common.HexToAddress("0x51363f073b1e4920fda7aa9e9d84ba97ede1560e"),
+	common.HexToAddress("0xf486ad071f3bee968384d2e39e2d8af0fcf6fd46"),
+	common.HexToAddress("0x9558a9254890b2a8b057a789f413631b9084f4a3"),
+	common.HexToAddress("0x194b302a4b0a79795fb68e2adf1b8c9ec5ff8d1f"),
+	common.HexToAddress("0xce7c3b5e058c196a0eaaa21f8e4bf8c2c07c2935"),
+	common.HexToAddress("0x6b3affc894b0d2d566e5ff03ad79188f1b65bfff"),
+	common.HexToAddress("0x389ad4bb96d0d6ee5b6ef0efaf4b7db0ba2e02a0"),
+	common.HexToAddress("0xb8638d3a15ac1403d4716a323f0954048e939c05"),
+	common.HexToAddress("0x595e21b20e78674f8a64c1566a20b2b316bc3511"),
+	common.HexToAddress("0x73d8bd54f7cf5fab43fe4ef40a62d390644946db"),
+	common.HexToAddress("0x503fa24b7972677f00c4618e5fbe237780c1df53"),
+	common.HexToAddress("0xfcaf676fa34bfbeedeb5062c136715cbc27183e7"),
+	common.HexToAddress("0x0f757969e9a982732bda9440228a831ff21f6955"),
+	common.HexToAddress("0x971435fc38eed5e0aaff0dd717d0d16a02a4110e"),
+	common.HexToAddress("0x2a917aaa1cc49556a011422b28521a828ecab47e"),
+	common.HexToAddress("0xd17f20b0c7e7294affe15b2129450dbe34d5ce1b"),
+	common.HexToAddress("0xd84005dd553ecd7521f37f76b6bdaa6dd35390cd"),
+	common.HexToAddress("0xb9e1d99884633f5712946dc5291861ff8cd222a7"),
+	common.HexToAddress("0x9485ff32b6b4444c21d5abe4d9a2283d127075a2"),
+	common.HexToAddress("0x2170ed0880ac9a755fd29b2688956bd959f933f8"),
+	common.HexToAddress("0xd99cae3fac551f6b6ba7b9f19bdd316951eeee98"),
+	common.HexToAddress("0x2c34a2fb1d0b4f55de51e1d0bdefaddce6b7cdd6"),
+	common.HexToAddress("0xb971ef87ede563556b2ed4b1c0b0019111dd85d2"),
+	common.HexToAddress("0x06238c1b8e618abedf17669228dc95fb2d2e210b"),
+	common.HexToAddress("0xc1b45ec6ed9b65d76a49ff0c38794d1daa135050"),
+	common.HexToAddress("0xe9e7cea3dedca5984780bafc599bd69add087d56"),
+	common.HexToAddress("0xb5435cfc219d263e1854f9c13b4392f5a0889f05"),
+	common.HexToAddress("0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c"),
+	common.HexToAddress("0x5c8daeabc57e9249606d3bd6d1e097ef492ea3c5"),
+	common.HexToAddress("0x3cf30c1d8decbf45cd36c9492f6395d47357b91c"),
+	common.HexToAddress("0xb80ccaa913d36757fe7b6251333113e650a11867"),
+	common.HexToAddress("0x22b1458e780f8fa71e2f84502cee8b5a3cc731fa"),
+	common.HexToAddress("0x5d3f233b3335106953bbb7dd693d4f1da0363701"),
+	common.HexToAddress("0x47a90a2d92a8367a91efa1906bfc8c1e05bf10c4"),
+	common.HexToAddress("0x51220a0fdd6235a6b426a0090111f45a3b05e708"),
+	common.HexToAddress("0x95034f653d5d161890836ad2b6b8cc49d14e029a"),
+	common.HexToAddress("0xd9c500dff816a1da21a48a732d3498bf09dc9aeb"),
+	common.HexToAddress("0xac175d676d9d4027aa72f13bc9406fd05c28cf1e"),
+	common.HexToAddress("0x4848489f0b2bedd788c696e2d79b6b69d7484848"),
+	common.HexToAddress("0x45eb49d2cfc594caaebe5e3d37c9cc14bd1704bc"),
+	common.HexToAddress("0x258474cd00b4f42842ed424e6c2c1da0087031b8"),
+	common.HexToAddress("0x0000000000000000000000000000000000001000"),
+	common.HexToAddress("0x90869b3a42e399951bd5f5ff278b8cc5ee1dc0fe"),
+	common.HexToAddress("0xc15efeacdc18ac3ad0dd1b7a4fa47bb639014444"),
+	common.HexToAddress("0xc08cd26474722ce93f4d0c34d16201461c10aa8c"),
+	common.HexToAddress("0x387a86d863420ffa2ef88b2524e54513a0ded845"),
+	common.HexToAddress("0xb994882a1b9bd98a71dd6ea5f61577c42848b0e8"),
+	common.HexToAddress("0x0b5f474ad0e3f7ef629bd10dbf9e4a8fd60d9a48"),
+	common.HexToAddress("0x9d1d2c29547f74228a5fd5c098c50cdc66e0d710"),
+	common.HexToAddress("0xe88144af81a5f123dbb9bd7baa9e6a3180fd560e"),
+	common.HexToAddress("0x16b9a82891338f9ba80e2d6970fdda79d1eb0dae"),
+	common.HexToAddress("0x5037861a294192e60cdff83c6d90f9e06914e7d7"),
+	common.HexToAddress("0x208bf3e7da9639f1eaefa2de78c23396b0682025"),
+	common.HexToAddress("0x46a15b0b27311cedf172ab29e4f4766fbe7f4364"),
+	common.HexToAddress("0x41fe132a53fe38305323b9dc2dfaa413b7f55010"),
+	common.HexToAddress("0x238a358808379702088667322f80ac48bad5e6c4"),
+	common.HexToAddress("0x20482b0b4d9d8f60d3ab432b92f4c4b901a0d10c"),
 }
