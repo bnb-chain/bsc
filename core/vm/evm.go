@@ -19,6 +19,7 @@ package vm
 import (
 	"bytes"
 	"errors"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 	"math/big"
 	"sync"
@@ -263,11 +264,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				defer ReturnContract(contract)
 				codeHash := evm.resolveCodeHash(addrCopy)
 				contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
-				//if !contract.optimized {
-				//	log.Error("contract not optimized", "addrCopy", addrCopy, "codeHash", codeHash.String())
-				//} else {
-				//	log.Error("contract optimized", "addrCopy", addrCopy, "codeHash", codeHash.String(), "code matches preload", bytes.Equal(code, getPreloadedOptimization(codeHash)))
-				//}
+				log.Error("check contract optimized ratio", "contract.optimized", contract.optimized, "addrCopy", addrCopy)
 				//runStart := time.Now()
 				if contract.optimized {
 					evm.UseOptInterpreter()
