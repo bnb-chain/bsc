@@ -43,7 +43,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/fdlimit"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
@@ -2202,7 +2201,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(VMOpcodeOptimizeFlag.Name) {
 		cfg.EnableOpcodeOptimizing = ctx.Bool(VMOpcodeOptimizeFlag.Name)
 		if cfg.EnableOpcodeOptimizing {
-			compiler.EnableOptimization()
+			//compiler.EnableOptimization()
 		}
 	}
 
@@ -2780,7 +2779,7 @@ func MakeChain(ctx *cli.Context, stack *node.Node, readonly bool) (*core.BlockCh
 	}
 
 	if vmcfg.EnableOpcodeOptimizations {
-		compiler.EnableOptimization()
+		//compiler.EnableOptimization()
 	}
 
 	if ctx.IsSet(VMTraceFlag.Name) {

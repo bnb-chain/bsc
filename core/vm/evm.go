@@ -25,7 +25,6 @@ import (
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -147,7 +146,7 @@ func NewEVM(blockCtx BlockContext, statedb StateDB, chainConfig *params.ChainCon
 		evm.optInterpreter = NewEVMInterpreter(evm)
 		evm.optInterpreter.InstallSuperInstruction()
 		evm.interpreter = evm.optInterpreter
-		compiler.EnableOptimization()
+		//compiler.EnableOptimization()
 	}
 	return evm
 }
@@ -700,7 +699,7 @@ func (evm *EVM) initNewContract(contract *Contract, address common.Address, valu
 	// We don't optimize creation code as it run only once.
 	contract.optimized = false
 	if evm.Config.EnableOpcodeOptimizations {
-		compiler.DisableOptimization()
+		//compiler.DisableOptimization()
 		evm.UseBaseInterpreter()
 	}
 
@@ -711,7 +710,7 @@ func (evm *EVM) initNewContract(contract *Contract, address common.Address, valu
 
 	// After creation, retrieve to optimization
 	if evm.Config.EnableOpcodeOptimizations {
-		compiler.EnableOptimization()
+		//compiler.EnableOptimization()
 		evm.UseOptInterpreter()
 	}
 
