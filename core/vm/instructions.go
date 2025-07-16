@@ -345,7 +345,11 @@ func opExtCodeSize(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext)
 }
 
 func opCodeSize(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	scope.Stack.push(new(uint256.Int).SetUint64(uint64(len(scope.Contract.Code))))
+	code := scope.Contract.Code
+	if scope.Contract.optimized {
+		code = interpreter.evm.resolveCode(*scope.Contract.CodeAddr)
+	}
+	scope.Stack.push(new(uint256.Int).SetUint64(uint64(len(code))))
 	return nil, nil
 }
 
