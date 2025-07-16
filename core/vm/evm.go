@@ -275,7 +275,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 					if !contract.optimized {
 						log.Error("contract not optimized", "addrCopy", addrCopy, "codeHash", codeHash.String())
 					} else {
-						log.Error("contract optimized", "addrCopy", addrCopy, "codeHash", codeHash.String(), "code", code)
+						log.Error("contract optimized", "addrCopy", addrCopy, "codeHash", codeHash.String(), "code matches preload", bytes.Equal(code, getPreloadedOptimization(codeHash)))
 					}
 					//runStart := time.Now()
 					if contract.optimized {
@@ -572,20 +572,22 @@ func tryGetOptimizedCode(evm *EVM, codeHash common.Hash, rawCode []byte) (bool, 
 	preloadedCode := getPreloadedOptimization(codeHash)
 	if bytes.Equal(preloadedCode, []byte{}) {
 		return false, rawCode
-	} else {
-		return true, preloadedCode
 	}
-	//var code []byte
-	//optimized := false
-	//code = rawCode
-	//optCode := compiler.LoadOptimizedCode(codeHash)
-	//if len(optCode) != 0 {
-	//	code = optCode
-	//	optimized = true
 	//} else {
-	//	compiler.GenOrLoadOptimizedCode(codeHash, rawCode)
+	//	return true, preloadedCode
 	//}
-	//return optimized, code
+
+	var code []byte
+	optimized := false
+	code = rawCode
+	optCode := compiler.LoadOptimizedCode(codeHash)
+	if len(optCode) != 0 {
+		code = optCode
+		optimized = true
+	} else {
+		compiler.GenOrLoadOptimizedCode(codeHash, rawCode)
+	}
+	return optimized, code
 }
 
 type codeAndHash struct {
