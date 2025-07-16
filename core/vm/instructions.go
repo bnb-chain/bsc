@@ -360,7 +360,7 @@ func opCodeCopy(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([
 	}
 	code := scope.Contract.Code
 	if scope.Contract.optimized {
-		code = interpreter.evm.resolveCode(scope.Contract.Address())
+		code = interpreter.evm.resolveCode(*scope.Contract.CodeAddr)
 	}
 	codeCopy := getData(code, uint64CodeOffset, length.Uint64())
 	scope.Memory.Set(memOffset.Uint64(), length.Uint64(), codeCopy)
