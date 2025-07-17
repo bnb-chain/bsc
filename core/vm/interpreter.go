@@ -154,8 +154,9 @@ func NewEVMInterpreter(evm *EVM) *EVMInterpreter {
 	return &EVMInterpreter{evm: evm, table: table}
 }
 
-func (in *EVMInterpreter) InstallSuperInstruction() {
-	in.table = createOptimizedOpcodeTable(in.table)
+func (in *EVMInterpreter) CopyAndInstallSuperInstruction() {
+	table := copyJumpTable(in.table)
+	in.table = createOptimizedOpcodeTable(table)
 }
 
 // Run loops and evaluates the contract's code with the given input data and returns

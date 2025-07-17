@@ -144,7 +144,7 @@ func NewEVM(blockCtx BlockContext, statedb StateDB, chainConfig *params.ChainCon
 	evm.interpreter = evm.baseInterpreter
 	if evm.Config.EnableOpcodeOptimizations {
 		evm.optInterpreter = NewEVMInterpreter(evm)
-		evm.optInterpreter.InstallSuperInstruction()
+		evm.optInterpreter.CopyAndInstallSuperInstruction()
 		evm.interpreter = evm.optInterpreter
 		compiler.EnableOptimization()
 	}

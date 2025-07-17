@@ -172,7 +172,7 @@ func DoCFGBasedOpcodeFusion(code []byte) ([]byte, error) {
 	// Generate basic blocks
 	blocks := GenerateBasicBlocks(code)
 	if len(blocks) == 0 {
-		return code, nil
+		return nil, ErrFailPreprocessing
 	}
 
 	// Create a copy of the original code (only after checking for optimized opcodes)
