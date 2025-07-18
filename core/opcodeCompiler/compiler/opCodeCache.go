@@ -35,8 +35,8 @@ func (c *OpCodeCache) AddCodeCache(hash common.Hash, optimizedCode []byte) {
 var opcodeCache *OpCodeCache
 
 const (
-	optimizedCodeCacheCap = 1024
-	bitvecCacheCap        = 1024
+	optimizedCodeCacheCap = 1024 * 128
+	bitvecCacheCap        = 1024 * 128
 )
 
 func init() {
