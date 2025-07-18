@@ -279,25 +279,6 @@ func (idb *IncrSnapDB) switchToNewDirectoryWithAsyncManager(blockNum uint64, asy
 		return fmt.Errorf("failed to force flush buffered data: %v", err)
 	}
 
-	// Then drain the task queue to ensure all tasks are processed
-	// Add timeout to prevent infinite waiting for queue drain
-	// drainTimeout := 15 * time.Second
-	// drainComplete := make(chan struct{})
-
-	// go func() {
-	// 	asyncManager.DrainQueue()
-	// 	close(drainComplete)
-	// }()
-
-	// select {
-	// case <-drainComplete:
-	// 	log.Info("Async writes completed", "duration", time.Since(start))
-	// case <-time.After(drainTimeout):
-	// 	log.Error("Timeout waiting for async writes to complete",
-	// 		"duration", time.Since(start), "remaining", asyncManager.GetQueueLength())
-	// 	return errors.New("timeout waiting for async writes to complete")
-	// }
-
 	idb.lock.Lock()
 	defer idb.lock.Unlock()
 

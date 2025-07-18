@@ -25,7 +25,7 @@ const (
 	parliaSnapCheckpointInterval = 1024
 
 	// DefaultIncrBufferSize is the default memory allowance for incremental state buffer (20GB)
-	DefaultIncrBufferSize = 20 * 1024 * 1024 * 1024
+	DefaultIncrBufferSize = 1 * 1024 * 1024 * 1024
 
 	// DefaultIncrNodeBatchSize is the default batch size for writing trie nodes to ancient db (1 million)
 	DefaultIncrNodeBatchSize = 1000000
