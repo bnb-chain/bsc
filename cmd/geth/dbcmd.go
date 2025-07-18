@@ -1438,7 +1438,7 @@ func inspectHistory(ctx *cli.Context) error {
 		if header == nil {
 			return 0, fmt.Errorf("block #%d is not existent", blockNumber)
 		}
-		id := rawdb.ReadStateID(db, header.Root)
+		id := rawdb.ReadStateID(db.GetStateStore(), header.Root)
 		if id == nil {
 			first, last, err := triedb.HistoryRange()
 			if err == nil {

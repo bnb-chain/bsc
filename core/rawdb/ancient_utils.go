@@ -143,11 +143,7 @@ func InspectFreezerTable(ancient string, freezerName string, tableName string, s
 	)
 	switch freezerName {
 	case ChainFreezerName:
-		if multiDatabase {
-			path, tables = resolveChainFreezerDir(filepath.Dir(ancient)+"/block/ancient"), chainFreezerNoSnappy
-		} else {
-			path, tables = resolveChainFreezerDir(ancient), chainFreezerNoSnappy
-		}
+		path, tables = resolveChainFreezerDir(ancient), chainFreezerNoSnappy
 
 	case MerkleStateFreezerName, VerkleStateFreezerName:
 		if multiDatabase {

@@ -768,7 +768,7 @@ func (f *BlockFetcher) loop() {
 			}
 		case entry := <-f.quickBlockFetchingCh:
 			annHash := entry.announce.hash
-			// if there is error or timeout, and the shcedule have not started, just retry the fetch
+			// if there is error or timeout, and the schedule have not started, just retry the fetch
 			if entry.err != nil {
 				quickBlockFetchingErrMeter.Mark(1)
 				log.Debug("Quick block fetching err", "hash", annHash, "err", entry.err)
