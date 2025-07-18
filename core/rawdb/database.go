@@ -184,6 +184,10 @@ func (db *nofreezedb) ResetTable(kind string, startAt uint64, onlyEmpty bool) er
 	return errNotSupported
 }
 
+func (db *nofreezedb) ResetTableForIncr(kind string, startAt uint64, onlyEmpty bool) error {
+	return errNotSupported
+}
+
 // SyncAncient returns an error as we don't have a backing chain freezer.
 func (db *nofreezedb) SyncAncient() error {
 	return errNotSupported
@@ -237,6 +241,9 @@ func (db *nofreezedb) AncientDatadir() (string, error) {
 }
 
 func (db *nofreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
+	return nil
+}
+func (db *nofreezedb) CleanBlock(ethdb.KeyValueStore, uint64) error {
 	return nil
 }
 
@@ -310,6 +317,10 @@ func (db *emptyfreezedb) ResetTable(kind string, startAt uint64, onlyEmpty bool)
 	return nil
 }
 
+func (db *emptyfreezedb) ResetTableForIncr(kind string, startAt uint64, onlyEmpty bool) error {
+	return nil
+}
+
 // SyncAncient returns nil for pruned db that we don't have a backing chain freezer.
 func (db *emptyfreezedb) SyncAncient() error {
 	return nil
@@ -331,6 +342,9 @@ func (db *emptyfreezedb) AncientDatadir() (string, error) {
 func (db *emptyfreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
 	return nil
 }
+func (db *emptyfreezedb) CleanBlock(ethdb.KeyValueStore, uint64) error {
+	return nil
+}
 
 // NewEmptyFreezeDB is used for CLI such as `geth db inspect` in pruned db that we don't
 // have a backing chain freezer.
@@ -342,7 +356,7 @@ func NewEmptyFreezeDB(db ethdb.KeyValueStore) ethdb.Database {
 // NewFreezerDb only create a freezer without statedb.
 func NewFreezerDb(db ethdb.KeyValueStore, frz, namespace string, readonly bool, newOffSet uint64) (*Freezer, error) {
 	// Create the idle freezer instance, this operation should be atomic to avoid mismatch between offset and acientDB.
-	frdb, err := NewFreezer(frz, namespace, readonly, freezerTableSize, chainFreezerNoSnappy)
+	frdb, err := NewFreezer(frz, namespace, readonly, freezerTableSize, chainFreezerNoSnappy, false)
 	if err != nil {
 		return nil, err
 	}
@@ -903,6 +917,86 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			total += ancient.size()
 		}
 	}
+	table := tablewriter.NewWriter(os.Stdout)
+	table.SetHeader([]string{"Database", "Category", "Size", "Items"})
+	table.SetFooter([]string{"", "Total", total.String(), " "})
+	table.AppendBulk(stats)
+	table.Render()
+
+	if unaccounted.size > 0 {
+		log.Error("Database contains unaccounted data", "size", unaccounted.size, "count", unaccounted.count)
+	}
+	return nil
+}
+
+func InspectIncrStore(baseDir string) error {
+	dirs, err := GetAllIncrDirs(baseDir)
+	if err != nil {
+		return err
+	}
+	fmt.Println(dirs)
+
+	var (
+		total       common.StorageSize
+		stats       [][]string
+		unaccounted stat
+		info        = incrSnapDBInfo{
+			readonly:     true,
+			namespace:    "eth/db/incremental/",
+			offset:       0,
+			maxTableSize: stateHistoryTableSize,
+			chainTables:  incrChainFreezerNoSnappy,
+			stateTables:  incrStateFreezerNoSnappy,
+			blockLimit:   0,
+		}
+	)
+
+	for _, dir := range dirs {
+		db, err := newSnapDBWrapper(dir.Path, &info)
+		if err != nil {
+			return fmt.Errorf("failed to create initial database wrapper: %v", err)
+		}
+		var (
+			codes, parliaSnaps stat
+		)
+		it := db.kvDB.NewIterator(nil, nil)
+		for it.Next() {
+			var (
+				key  = it.Key()
+				size = common.StorageSize(len(key) + len(it.Value()))
+			)
+			switch {
+			case bytes.HasPrefix(key, ParliaSnapshotPrefix) && len(key) == 7+common.HashLength:
+				parliaSnaps.Add(size)
+			case bytes.HasPrefix(key, CodePrefix) && len(key) == len(CodePrefix)+common.HashLength:
+				codes.Add(size)
+			default:
+				unaccounted.Add(size)
+			}
+		}
+		title := fmt.Sprintf("%s/KV store", dir.Name)
+		stats = append(stats, [][]string{
+			{title, "Contract codes", codes.Size(), codes.Count()},
+			{title, "Parlia snapshots", parliaSnaps.Size(), parliaSnaps.Count()},
+		}...)
+
+		ancients, err := inspectIncrFreezers(db)
+		if err != nil {
+			return err
+		}
+		for _, ancient := range ancients {
+			for _, table := range ancient.sizes {
+				stats = append(stats, []string{
+					fmt.Sprintf("%s/%s", dir.Name, strings.Title(ancient.name)),
+					strings.Title(table.name),
+					table.size.String(),
+					fmt.Sprintf("%d", ancient.count()),
+				})
+			}
+			total += ancient.size()
+		}
+	}
+
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Database", "Category", "Size", "Items"})
 	table.SetFooter([]string{"", "Total", total.String(), " "})
