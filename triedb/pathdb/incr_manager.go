@@ -268,10 +268,9 @@ func (im *incrManager) processWriteTask(dl *diffLayer) error {
 	return nil
 }
 
-// writeChainData writes incremental chain data
+// writeChainData writes incremental data: chain and state
 func (im *incrManager) writeIncrData(dl *diffLayer) error {
-	incrChainFreezer := im.incrDB.GetChainFreezer()
-	head, err := incrChainFreezer.Ancients()
+	head, err := im.incrDB.GetChainFreezer().Ancients()
 	if err != nil {
 		log.Error("Failed to get ancients from incr chain freezer", "error", err)
 		return err
@@ -303,7 +302,7 @@ func (im *incrManager) writeIncrData(dl *diffLayer) error {
 				return err
 			}
 			if switched {
-				log.Info("Directory switch completed", "blockNumber", i)
+				log.Info("Directory switch completed", "blockNumber", i, "currentStateID", currentStateID)
 				im.asyncBuffer = newAsyncIncrStateBuffer(im.bufferLimit, DefaultIncrNodeBatchSize)
 			}
 			if err = im.resetIncrChainFreezer(im.db.diskdb, i); err != nil {
@@ -325,7 +324,7 @@ func (im *incrManager) writeIncrData(dl *diffLayer) error {
 	}
 
 	// truncate here to ensure the last block must have state id
-	if err = im.truncateExtraBlock(incrChainFreezer, dl.block); err != nil {
+	if err = im.truncateExtraBlock(dl.block); err != nil {
 		log.Error("Failed to truncate incr chain freezer", "blockNumber", dl.block, "error", err)
 		return err
 	}
@@ -370,7 +369,9 @@ func (im *incrManager) writeIncrStateData(dl *diffLayer) error {
 	return nil
 }
 
-func (im *incrManager) truncateExtraBlock(incrChainFreezer ethdb.ResettableAncientStore, blockNumber uint64) error {
+func (im *incrManager) truncateExtraBlock(blockNumber uint64) error {
+	// always reload the incr chain freezer to
+	incrChainFreezer := im.incrDB.GetChainFreezer()
 	tail, err := incrChainFreezer.Tail()
 	if err != nil {
 		log.Error("Failed to get incr chain freezer tail", "error", err)
