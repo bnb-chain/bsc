@@ -44,7 +44,7 @@ type optimizeTask struct {
 
 func init() {
 	taskChannel = make(chan optimizeTask, taskChannelSize)
-	taskNumber := runtime.NumCPU() * 3 / 8
+	taskNumber := runtime.NumCPU() * 1 / 4
 	if taskNumber < 1 {
 		taskNumber = 1
 	}
