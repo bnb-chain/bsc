@@ -81,7 +81,7 @@ func NewIncrSnapDB(baseDir string, readonly bool, startBlock, blockLimit uint64)
 		return nil, fmt.Errorf("failed to create initial database wrapper: %v", err)
 	}
 
-	var blockCount uint64 = 0
+	var blockCount uint64
 	// parse the current directory name to get its start block number
 	dirStartBlock, dirEndBlock, err := parseDirBlockNumber(currentDir)
 	if err != nil {

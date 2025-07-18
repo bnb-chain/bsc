@@ -721,7 +721,6 @@ func (t *freezerTable) truncateTail(items uint64) error {
 		return nil
 	}
 	if t.items.Load() < items {
-		log.Error("Truncating freezer table", "items", items, "t.items.Load()", t.items.Load())
 		return errors.New("truncation above head")
 	}
 	// Load the new tail index by the given new tail position
@@ -932,9 +931,6 @@ func (t *freezerTable) releaseFilesBefore(num uint32, remove bool) {
 }
 
 // getIndices returns the index entries for the given from-item, covering 'count' items.
-// The retrieval will check the file size boundaries to prevent EOF errors when
-// reading corrupted or truncated index files after a force kill scenario.
-//
 // N.B: The actual number of returned indices for N items will always be N+1 (unless an
 // error is returned).
 // OBS: This method assumes that the caller has already verified (and/or trimmed) the range
@@ -947,8 +943,6 @@ func (t *freezerTable) getIndices(from, count uint64) ([]*indexEntry, error) {
 	// For reading N items, we need N+1 indices.
 	buffer := make([]byte, (count+1)*indexEntrySize)
 	if _, err := t.index.ReadAt(buffer, int64(from*indexEntrySize)); err != nil {
-		log.Error("index.ReadAt failed even after bounds check", "error", err, "table", t.name,
-			"from", from, "count", count, "offset", int64(from*indexEntrySize))
 		return nil, err
 	}
 	var (

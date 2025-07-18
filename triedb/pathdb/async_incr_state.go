@@ -273,8 +273,3 @@ func (c *incrNodeCache) reset() {
 	c.stateIDArray = emptyArray
 	c.blockNumberArray = emptyArray
 }
-
-// getAllNodesAndStates returns the nodes in the cache
-func (c *incrNodeCache) getAllNodes() *nodeSet {
-	return c.nodes
-}

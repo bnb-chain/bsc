@@ -431,34 +431,6 @@ func (d *IncrDownloader) checkFileContinuity(files []*IncrFileInfo) error {
 	return nil
 }
 
-// validateBlockSequence checks for gaps in block sequence
-func (d *IncrDownloader) validateBlockSequence(files []*IncrFileInfo) error {
-	if len(files) == 0 {
-		return nil
-	}
-
-	for i := 1; i < len(files); i++ {
-		if files[i].StartBlock != files[i-1].EndBlock+1 {
-			return fmt.Errorf("gap detected: file %s ends at %d, file %s starts at %d",
-				files[i-1].Metadata.FileName, files[i-1].EndBlock,
-				files[i].Metadata.FileName, files[i].StartBlock)
-		}
-	}
-
-	return nil
-}
-
-// filterRequiredFiles filters files based on local block number
-func (d *IncrDownloader) filterRequiredFiles(files []*IncrFileInfo) []*IncrFileInfo {
-	var required []*IncrFileInfo
-	for _, file := range files {
-		if file.StartBlock >= d.localBlockNum {
-			required = append(required, file)
-		}
-	}
-	return required
-}
-
 // downloadWorker handles file downloads
 func (d *IncrDownloader) downloadWorker() {
 	defer d.downloadWG.Done()
@@ -920,16 +892,6 @@ func (d *IncrDownloader) mergeFile(file *IncrFileInfo) error {
 	time.Sleep(1 * time.Second)
 
 	return nil
-}
-
-// canMerge checks if file can be merged (sequential order) - now deprecated, use checkAndScheduleMerge instead
-func (d *IncrDownloader) canMerge(file *IncrFileInfo) bool {
-	// This method is now deprecated in favor of checkAndScheduleMerge
-	// which handles proper ordering
-	d.mergeMutex.Lock()
-	defer d.mergeMutex.Unlock()
-
-	return file.StartBlock == d.expectedNextBlockStart
 }
 
 // progressMonitor monitors and reports download progress

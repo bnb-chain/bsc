@@ -415,9 +415,6 @@ func (f *Freezer) validate() error {
 		if slices.Contains(additionTables, kind) {
 			continue
 		}
-		// if f.isIncr && slices.Contains(additionIncrTables, kind) {
-		// 	continue
-		// }
 		head = table.items.Load()
 		tail = table.itemHidden.Load()
 		name = kind
@@ -440,22 +437,6 @@ func (f *Freezer) validate() error {
 			}
 			continue
 		}
-
-		// check incremental table against those boundaries
-		// if f.isIncr && slices.Contains(additionIncrTables, kind) {
-		// 	// if the table is empty, just skip
-		// 	if EmptyTable(table) {
-		// 		continue
-		// 	}
-		// 	// otherwise, just align head
-		// 	if head != table.items.Load() {
-		// 		return fmt.Errorf("freezer tables %s and %s have differing head: %d != %d", kind, name, table.items.Load(), head)
-		// 	}
-		// 	if tail > table.itemHidden.Load() {
-		// 		return fmt.Errorf("freezer tables %s and %s have differing tail: %d != %d", kind, name, table.itemHidden.Load(), tail)
-		// 	}
-		// 	continue
-		// }
 
 		if head != table.items.Load() {
 			return fmt.Errorf("freezer tables %s and %s have differing head: %d != %d", kind, name, table.items.Load(), head)

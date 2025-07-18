@@ -88,9 +88,6 @@ type incrManager struct {
 	// Async incremental state buffer
 	asyncBuffer *asyncIncrStateBuffer
 	bufferLimit uint64 // Memory limit for buffer (default 20GB)
-
-	switchLock      sync.Mutex // Protects directory switch operations
-	lastSwitchBlock uint64     // Last block number that triggered a switch
 }
 
 // NewIncrManager creates a new incremental manager with async write capability
@@ -222,6 +219,7 @@ func (im *incrManager) worker() {
 		case dl := <-im.writeQueue:
 			if dl == nil {
 				log.Crit("Diff layer is nil")
+				return
 			}
 			atomic.AddInt32(&im.stats.queueLength, -1)
 

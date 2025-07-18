@@ -317,7 +317,7 @@ of ancientStore, will also displays the reserved number of blocks in ancientStor
 		Name:        "inspect-incr-snapshot",
 		Flags:       []cli.Flag{utils.IncrSnapshotPathFlag},
 		Usage:       "Inspect the incremental snapshot information",
-		Description: `This commands read and display incremental store information`,
+		Description: `This command reads and displays incremental store information`,
 	}
 )
 
