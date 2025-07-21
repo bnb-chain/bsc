@@ -115,7 +115,7 @@ func NewIncrSnapDB(baseDir string, readonly bool, startBlock, blockLimit uint64)
 	incrDB.switchCond = sync.NewCond(&incrDB.switchMutex)
 
 	if err = incrDB.repair(startBlock); err != nil {
-		return nil, fmt.Errorf("failed to repair db: %v", err)
+		return nil, fmt.Errorf("failed to repair incr snap db: %v", err)
 	}
 
 	log.Info("IncrDB created", "baseDir", baseDir, "currentDir", currentDir, "blockLimit", blockLimit,
@@ -134,14 +134,17 @@ func (idb *IncrSnapDB) repair(startBlock uint64) error {
 		return err
 	}
 
-	if stateAncients == 0 || chainAncients == 0 {
-		if stateAncients == 0 && chainAncients == 0 {
-			if err = idb.reset(idb.currentDir, startBlock); err != nil {
-				return err
-			}
-			log.Warn("Resets current incr snap db and create a new one")
-		}
+	// If both freezers are empty, no repair needed
+	if stateAncients == 0 && chainAncients == 0 {
 		return nil
+	}
+
+	// If one freezer is empty but the other is not, reset the database
+	if stateAncients == 0 || chainAncients == 0 {
+		if err = idb.reset(idb.currentDir, startBlock); err != nil {
+			return err
+		}
+		log.Warn("Resets current incr snap db and create a new one")
 	}
 	return nil
 }
@@ -160,7 +163,7 @@ func newSnapDBWrapper(incrDir string, info *incrSnapDBInfo) (*snapDBWrapper, err
 	cFreezer, err := newResettableFreezer(chainPath, chainNamespace, info.readonly, info.maxTableSize,
 		info.chainTables, true)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create chain freezer: %w", err)
 	}
 
 	statePath := filepath.Join(incrDir, MerkleStateFreezerName)
@@ -168,13 +171,13 @@ func newSnapDBWrapper(incrDir string, info *incrSnapDBInfo) (*snapDBWrapper, err
 	sFreezer, err := newResettableFreezer(statePath, stateNamespace, info.readonly, info.maxTableSize,
 		info.stateTables, true)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create state freezer: %w", err)
 	}
 
 	kvNamespace := fmt.Sprintf("%s%s", info.namespace, "kv")
 	db, err := pebble.New(incrDir, 10, 10, kvNamespace, info.readonly)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create KV database: %w", err)
 	}
 
 	return &snapDBWrapper{
@@ -186,10 +189,16 @@ func newSnapDBWrapper(incrDir string, info *incrSnapDBInfo) (*snapDBWrapper, err
 
 // waitForSwitchComplete waits until directory switching is complete
 func (idb *IncrSnapDB) waitForSwitchComplete() {
-	// Add timeout to prevent indefinite blocking
-	timeout := time.Now().Add(60 * time.Second)
+	const (
+		pollInterval = 100 * time.Millisecond
+		timeout      = 60 * time.Second
+	)
 
-	for time.Now().Before(timeout) {
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	for time.Now().Before(deadline) {
 		idb.switchMutex.Lock()
 		if !idb.switching {
 			idb.switchMutex.Unlock()
@@ -197,8 +206,10 @@ func (idb *IncrSnapDB) waitForSwitchComplete() {
 		}
 		idb.switchMutex.Unlock()
 
-		log.Debug("Waiting for directory switch to complete")
-		time.Sleep(100 * time.Millisecond)
+		select {
+		case <-ticker.C:
+			log.Debug("Waiting for directory switch to complete")
+		}
 	}
 
 	// Timeout occurred
@@ -212,16 +223,12 @@ func (idb *IncrSnapDB) WaitForSwitchComplete() {
 
 // WriteIncrBlockData writes incremental block data and checks if directory switch is needed
 func (idb *IncrSnapDB) WriteIncrBlockData(number, id uint64, hash, header, body, receipts, td, sidecars []byte, isCancun bool) error {
-	// Wait for any ongoing directory switch to complete
-	idb.waitForSwitchComplete()
-
 	idb.lock.Lock()
 	defer idb.lock.Unlock()
 
 	err := WriteIncrBlockData(idb.currSnapDB.chainFreezer, number, id, hash, header, body, receipts, td, sidecars, isCancun)
 	if err != nil {
-		log.Error("Failed to write incremental block data", "err", err)
-		return err
+		return fmt.Errorf("failed to write block %d: %w", number, err)
 	}
 	idb.blockCount++
 	log.Debug("Block written to IncrDB", "blockNum", number, "currentDir", idb.currentDir, "blockCount", idb.blockCount)
@@ -234,7 +241,10 @@ func (idb *IncrSnapDB) WriteIncrState(id uint64, meta, trieNodes []byte) error {
 	idb.lock.Lock()
 	defer idb.lock.Unlock()
 
-	return WriteIncrState(idb.currSnapDB.stateFreezer, id, meta, trieNodes)
+	if err := WriteIncrState(idb.currSnapDB.stateFreezer, id, meta, trieNodes); err != nil {
+		return fmt.Errorf("failed to write incr state: %w", err)
+	}
+	return nil
 }
 
 // WriteIncrContractCodes writes contract codes
@@ -249,21 +259,20 @@ func (idb *IncrSnapDB) WriteIncrContractCodes(codes map[common.Address]ContractC
 		WriteCode(batch, code.Hash, code.Blob)
 	}
 	if err := batch.Write(); err != nil {
-		return err
+		return fmt.Errorf("failed to write incr contract codes: %w", err)
 	}
-
 	return nil
 }
 
 // WriteParliaSnapshot stores parlia snapshot into pebble.
 func (idb *IncrSnapDB) WriteParliaSnapshot(hash common.Hash, blob []byte) error {
-	// Wait for any ongoing directory switch to complete
-	idb.waitForSwitchComplete()
-
 	idb.lock.Lock()
 	defer idb.lock.Unlock()
 
-	return idb.currSnapDB.kvDB.Put(append(ParliaSnapshotPrefix, hash[:]...), blob)
+	if err := idb.currSnapDB.kvDB.Put(append(ParliaSnapshotPrefix, hash[:]...), blob); err != nil {
+		return fmt.Errorf("failed to write parlia snapshot: %w", err)
+	}
+	return nil
 }
 
 func (idb *IncrSnapDB) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
