@@ -138,7 +138,6 @@ func (idb *IncrSnapDB) repair(startBlock uint64) error {
 	if stateAncients == 0 && chainAncients == 0 {
 		return nil
 	}
-
 	// If one freezer is empty but the other is not, reset the database
 	if stateAncients == 0 || chainAncients == 0 {
 		if err = idb.reset(idb.currentDir, startBlock); err != nil {

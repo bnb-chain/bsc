@@ -864,6 +864,10 @@ func (info *incrInfo) isEmpty() bool {
 	return info.stateAncients == 0 || info.chainAncients == 0
 }
 
+func (info *incrInfo) allEmpty() bool {
+	return info.stateAncients == 0 && info.chainAncients == 0
+}
+
 // initIncrManager initializes the incremental manager
 func (db *Database) initIncrManager() error {
 	block, err := db.GetStartBlock()
@@ -949,6 +953,11 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 		return err
 	}
 
+	if info.allEmpty() {
+		log.Info("All incr data is empty")
+		return nil
+	}
+
 	// Calculate final state and block
 	var finalStateID, finalBlock uint64
 	if info.lastChainStateID < info.lastStateID {
@@ -962,11 +971,11 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 	}
 
 	// Validate final state ID
-	// if finalStateID < diskLayerID {
-	// 	log.Error("Recorded state id shouldn't be less than disk layer state id",
-	// 		"diskLayerID", diskLayerID, "finalStateID", finalStateID)
-	// 	return errors.New("recorded state id shouldn't be less than disk layer state id")
-	// }
+	if finalStateID < diskLayerID {
+		log.Error("Recorded state id shouldn't be less than disk layer state id",
+			"diskLayerID", diskLayerID, "finalStateID", finalStateID)
+		return errors.New("recorded state id shouldn't be less than disk layer state id")
+	}
 
 	// Update incremental manager state
 	log.Warn("Truncate extra data in incremental snapshot", "diskLayerID", diskLayerID,
