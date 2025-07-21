@@ -208,9 +208,9 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 			return err
 		}
 	}
-	c.reset()
+	
 	log.Info("Flushed incremental state buffer to ancient db", "total_nodes", nodeCount, "size", c.nodes.size)
-
+	c.reset()
 	return nil
 }
 

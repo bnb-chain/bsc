@@ -268,11 +268,7 @@ func (idb *IncrSnapDB) switchToNewDirectoryWithAsyncManager(blockNum uint64, asy
 		idb.switchMutex.Unlock()
 	}()
 
-	// Wait for all pending async writes to complete
-	log.Info("Waiting for async writes to complete", "pending", asyncManager.GetQueueLength())
-	// start := time.Now()
-
-	// First, force flush all buffered data in asyncIncrStateBuffer
+	// force flush all buffered data in asyncIncrStateBuffer
 	log.Info("Force flushing all buffered incremental state data before directory switch")
 	if err := asyncManager.ForceFlushAllData(); err != nil {
 		log.Error("Failed to force flush buffered data before directory switch", "error", err)
@@ -620,9 +616,6 @@ func GetAllIncrDirs(baseDir string) ([]IncrDirInfo, error) {
 
 // AsyncWriteManagerInterface defines the interface for async write manager
 type AsyncWriteManagerInterface interface {
-	DrainQueue()
-	GetQueueLength() int
-	GetStats() (total, completed, failed uint64, queueLen int)
 	// ForceFlushAllData forces all buffered data to be written before directory switch
 	ForceFlushAllData() error
 }

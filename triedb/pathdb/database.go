@@ -356,7 +356,7 @@ func (db *Database) RepairIncrStore() error {
 	}
 
 	if err := db.initIncrManager(); err != nil {
-		log.Error("Failed to initialize incr manager", "err", err)
+		log.Error("Failed to initialize incr manager", "error", err)
 		return err
 	}
 
@@ -379,7 +379,7 @@ func (db *Database) RepairIncrStore() error {
 		if stateAncients != 0 {
 			block, err := db.GetStartBlock()
 			if err != nil {
-				log.Error("Failed to retrieve start block", "err", err)
+				log.Error("Failed to retrieve start block", "error", err)
 				return err
 			}
 			if err = db.incr.incrDB.Reset(block); err != nil {
