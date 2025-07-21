@@ -444,11 +444,18 @@ func applyFusionPatterns(code []byte, cur int, endPC int) int {
 
 		// Test zero and Jump. target offset at code[2-3]
 		if code0 == ISZERO && code1 == PUSH2 && code4 == JUMPI {
-			op := JumpIfZero
-			code[cur] = byte(op)
-			code[cur+1] = byte(Nop)
-			code[cur+4] = byte(Nop)
-			return 4
+			// Extract jump target from PUSH2 data (bytes 2-3)
+			if cur+3 < len(code) {
+				target := extractPush2Value(code[cur+2 : cur+4])
+				// Only do code fusion if the jump target is valid
+				if isValidJumpTarget(code, target) {
+					op := JumpIfZero
+					code[cur] = byte(op)
+					code[cur+1] = byte(Nop)
+					code[cur+4] = byte(Nop)
+					return 4
+				}
+			}
 		}
 
 		if code0 == DUP2 && code1 == MSTORE && code2 == PUSH1 && code4 == ADD {
@@ -507,17 +514,31 @@ func applyFusionPatterns(code []byte, cur int, endPC int) int {
 
 		// push and jump
 		if code0 == PUSH2 && code3 == JUMP {
-			op := Push2Jump
-			code[cur] = byte(op)
-			code[cur+3] = byte(Nop)
-			return 3
+			// Extract jump target from PUSH2 data (bytes 1-2)
+			if cur+2 < len(code) {
+				target := extractPush2Value(code[cur+1 : cur+3])
+				// Only do code fusion if the jump target is valid
+				if isValidJumpTarget(code, target) {
+					op := Push2Jump
+					code[cur] = byte(op)
+					code[cur+3] = byte(Nop)
+					return 3
+				}
+			}
 		}
 
 		if code0 == PUSH2 && code3 == JUMPI {
-			op := Push2JumpI
-			code[cur] = byte(op)
-			code[cur+3] = byte(Nop)
-			return 3
+			// Extract jump target from PUSH2 data (bytes 1-2)
+			if cur+2 < len(code) {
+				target := extractPush2Value(code[cur+1 : cur+3])
+				// Only do code fusion if the jump target is valid
+				if isValidJumpTarget(code, target) {
+					op := Push2JumpI
+					code[cur] = byte(op)
+					code[cur+3] = byte(Nop)
+					return 3
+				}
+			}
 		}
 
 		if code0 == PUSH1 && code2 == PUSH1 {
@@ -865,12 +886,18 @@ func doCodeFusion(code []byte) ([]byte, error) {
 
 			// Test zero and Jump. target offset at code[2-3]
 			if code0 == ISZERO && code1 == PUSH2 && code4 == JUMPI {
-				op := JumpIfZero
-				fusedCode[cur] = byte(op)
-				fusedCode[cur+1] = byte(Nop)
-				fusedCode[cur+4] = byte(Nop)
-
-				skipToNext = true
+				// Extract jump target from PUSH2 data (bytes 2-3)
+				if cur+3 < len(fusedCode) {
+					target := extractPush2Value(fusedCode[cur+2 : cur+4])
+					// Only do code fusion if the jump target is valid
+					if isValidJumpTarget(fusedCode, target) {
+						op := JumpIfZero
+						fusedCode[cur] = byte(op)
+						fusedCode[cur+1] = byte(Nop)
+						fusedCode[cur+4] = byte(Nop)
+						skipToNext = true
+					}
+				}
 			}
 
 			if code0 == DUP2 && code1 == MSTORE && code2 == PUSH1 && code4 == ADD {
@@ -933,17 +960,31 @@ func doCodeFusion(code []byte) ([]byte, error) {
 			}
 			// push and jump
 			if code0 == PUSH2 && code3 == JUMP {
-				op := Push2Jump
-				fusedCode[cur] = byte(op)
-				fusedCode[cur+3] = byte(Nop)
-				skipToNext = true
+				// Extract jump target from PUSH2 data (bytes 1-2)
+				if cur+2 < len(fusedCode) {
+					target := extractPush2Value(fusedCode[cur+1 : cur+3])
+					// Only do code fusion if the jump target is valid
+					if isValidJumpTarget(fusedCode, target) {
+						op := Push2Jump
+						fusedCode[cur] = byte(op)
+						fusedCode[cur+3] = byte(Nop)
+						skipToNext = true
+					}
+				}
 			}
 
 			if code0 == PUSH2 && code3 == JUMPI {
-				op := Push2JumpI
-				fusedCode[cur] = byte(op)
-				fusedCode[cur+3] = byte(Nop)
-				skipToNext = true
+				// Extract jump target from PUSH2 data (bytes 1-2)
+				if cur+2 < len(fusedCode) {
+					target := extractPush2Value(fusedCode[cur+1 : cur+3])
+					// Only do code fusion if the jump target is valid
+					if isValidJumpTarget(fusedCode, target) {
+						op := Push2JumpI
+						fusedCode[cur] = byte(op)
+						fusedCode[cur+3] = byte(Nop)
+						skipToNext = true
+					}
+				}
 			}
 
 			if code0 == PUSH1 && code2 == PUSH1 {
@@ -953,6 +994,8 @@ func doCodeFusion(code []byte) ([]byte, error) {
 				skipToNext = true
 			}
 
+			// Note: JumpIfZero pattern (ISZERO + PUSH2 + JUMPI) should be checked before IsZeroPush2
+			// to avoid the simpler IsZeroPush2 pattern (ISZERO + PUSH2) from matching first
 			if code0 == ISZERO && code1 == PUSH2 {
 				op := IsZeroPush2
 				fusedCode[cur] = byte(op)
@@ -1211,4 +1254,99 @@ func isBlockTerminator(op ByteCode) bool {
 	default:
 		return false
 	}
+}
+
+// extractPush2Value extracts a 16-bit value from PUSH2 data bytes, consistent with EVM behavior
+func extractPush2Value(data []byte) uint64 {
+	if len(data) < 2 {
+		return 0
+	}
+	// EVM uses big-endian encoding for PUSH2 data
+	return uint64(data[0])<<8 | uint64(data[1])
+}
+
+// isValidJumpTarget checks if the given position is a valid jump destination.
+// A valid jump destination must be a JUMPDEST opcode and must be in a code segment (not data).
+func isValidJumpTarget(code []byte, target uint64) bool {
+	// Check bounds
+	if target >= uint64(len(code)) {
+		return false
+	}
+
+	// Check if the target is a JUMPDEST opcode
+	if ByteCode(code[target]) != JUMPDEST {
+		return false
+	}
+
+	// Check if the target is in a code segment (not data)
+	return isCodeSegment(code, target)
+}
+
+// isCodeSegment checks if the given position is in a code segment (not data).
+// This is a simplified version of the VM's code bitmap analysis.
+func isCodeSegment(code []byte, pos uint64) bool {
+	var pc uint64
+	for pc < uint64(len(code)) && pc <= pos {
+		op := ByteCode(code[pc])
+		pc++
+
+		// Handle super instructions that contain data
+		step, processed := codeBitmapForSI(code, pc, op)
+		if processed {
+			pc += step
+			continue
+		}
+
+		// Handle PUSH instructions (mark data bytes)
+		if op >= PUSH1 && op <= PUSH32 {
+			numbits := uint64(op - PUSH1 + 1)
+			// If the target position is within the data bytes of this PUSH, it's not code
+			if pos >= pc && pos < pc+numbits {
+				return false
+			}
+			pc += numbits
+		}
+	}
+
+	// If we reach here, the position is in a code segment
+	return true
+}
+
+// codeBitmapForSI is a simplified version for jump target validation
+func codeBitmapForSI(code []byte, pc uint64, op ByteCode) (step uint64, processed bool) {
+	switch op {
+	case Push2Jump, Push2JumpI:
+		step = 3
+		processed = true
+	case Push1Push1:
+		step = 3
+		processed = true
+	case Push1Add, Push1Shl, Push1Dup1:
+		step = 2
+		processed = true
+	case JumpIfZero:
+		step = 4
+		processed = true
+	case IsZeroPush2:
+		step = 3
+		processed = true
+	case Dup2MStorePush1Add:
+		step = 4
+		processed = true
+	case Dup1Push4EqPush2:
+		step = 9
+		processed = true
+	case Push1CalldataloadPush1ShrDup1Push4GtPush2:
+		step = 15
+		processed = true
+	case Push1Push1Push1SHLSub:
+		step = 7
+		processed = true
+	case Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT:
+		step = 12
+		processed = true
+	default:
+		return 0, false
+	}
+	return step, processed
 }
