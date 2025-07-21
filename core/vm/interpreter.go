@@ -315,6 +315,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
+		if in.evm.Context.BlockNumber.Uint64() == 50897368 && in.evm.StateDB.TxIndex() == 302 {
+			log.Error("DEBUG", "pc", pc, "op", op, "gas", cost)
+		}
 		if err != nil {
 			break
 		}
