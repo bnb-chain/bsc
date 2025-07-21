@@ -51,7 +51,7 @@ func opSwap1Dup2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) (
 	log.Error("DEBUG", "instruction", "opSwap1Dup2")
 	scope.Stack.swap1()
 	scope.Stack.dup(2)
-	*pc += 2
+	*pc += 1
 	return nil, nil
 }
 
