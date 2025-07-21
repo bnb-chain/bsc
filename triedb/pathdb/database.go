@@ -962,11 +962,11 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 	}
 
 	// Validate final state ID
-	if finalStateID < diskLayerID {
-		log.Error("Recorded state id shouldn't be less than disk layer state id",
-			"diskLayerID", diskLayerID, "finalStateID", finalStateID)
-		return errors.New("recorded state id shouldn't be less than disk layer state id")
-	}
+	// if finalStateID < diskLayerID {
+	// 	log.Error("Recorded state id shouldn't be less than disk layer state id",
+	// 		"diskLayerID", diskLayerID, "finalStateID", finalStateID)
+	// 	return errors.New("recorded state id shouldn't be less than disk layer state id")
+	// }
 
 	// Update incremental manager state
 	log.Warn("Truncate extra data in incremental snapshot", "diskLayerID", diskLayerID,
@@ -975,12 +975,12 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 	db.incr.endStateID = finalStateID
 
 	// Truncate incr state freezer
-	if err := db.truncateIncrStateFreezer(info, finalStateID); err != nil {
+	if err = db.truncateIncrStateFreezer(info, finalStateID); err != nil {
 		log.Error("Failed to truncate incr state freezer", "error", err)
 		return err
 	}
 	// Truncate incr chain freezer
-	if err := db.truncateIncrChainFreezer(info, finalBlock); err != nil {
+	if err = db.truncateIncrChainFreezer(info, finalBlock); err != nil {
 		log.Error("Failed to truncate incr chain freezer", "error", err)
 		return err
 	}
