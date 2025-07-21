@@ -11,8 +11,8 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-// the size of the batch to be flushed to the ancient db: about 3.8GB
-const flushBatchSize = 4080218931
+// the size of the batch to be flushed to the ancient db: 3.5GB
+const flushBatchSize = 3758096384
 
 // asyncIncrStateBuffer writes the incremental state trie nodes into incr state db.
 type asyncIncrStateBuffer struct {
@@ -193,7 +193,12 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 			entry.Nodes = append(entry.Nodes, journalNode{Path: []byte(path), Blob: node.Blob})
 		}
 		jn = append(jn, entry)
-		if c.estimatedRLPEncodedSize(jn) >= flushBatchSize {
+
+		// Check if we need to flush based on estimated size
+		estimatedSize := c.estimatedRLPEncodedSize(jn)
+		if estimatedSize >= flushBatchSize {
+			log.Info("Batch size limit reached, flushing to ancient db", "estimatedSize", estimatedSize,
+				"limit", flushBatchSize, "entryCount", len(jn))
 			if err := c.writeBatchToAncientDB(incrDB, jn); err != nil {
 				return err
 			}
@@ -214,13 +219,20 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 func (c *incrNodeCache) estimatedRLPEncodedSize(jn []journalNodes) uint64 {
 	totalSize := uint64(0)
 	for _, entry := range jn {
-		totalSize += rlp.BytesSize(entry.Owner[:])
+		entrySize := uint64(0)
+		entrySize += rlp.BytesSize(entry.Owner[:])
+
+		nodesListSize := uint64(0)
 		for _, node := range entry.Nodes {
-			totalSize += rlp.BytesSize(node.Blob)
-			totalSize += rlp.BytesSize(node.Path)
+			nodeSize := rlp.BytesSize(node.Path) + rlp.BytesSize(node.Blob)
+			nodesListSize += rlp.ListSize(nodeSize)
 		}
+
+		entrySize += rlp.ListSize(nodesListSize)
+		totalSize += rlp.ListSize(entrySize)
 	}
-	return totalSize
+
+	return rlp.ListSize(totalSize)
 }
 
 // writeBatchToAncientDB writes a batch of trie nodes to the incremental state db.
