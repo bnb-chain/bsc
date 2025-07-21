@@ -11,6 +11,9 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
+// used to estimate the size of the batch to be written to the ancient db: about 3.8GB
+const flushBatchSize = 4080218931
+
 // asyncIncrStateBuffer writes the incremental state trie nodes into incr state db.
 type asyncIncrStateBuffer struct {
 	mux          sync.RWMutex
@@ -184,7 +187,6 @@ func (c *incrNodeCache) flush(incrDB *rawdb.IncrSnapDB) error {
 
 // flushToAncientDB writes the trie nodes to the incremental state db.
 func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
-	nodeCount := 0
 	jn := make([]journalNodes, 0, len(c.nodes.nodes))
 
 	for owner, subset := range c.nodes.nodes {
@@ -193,13 +195,11 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 			entry.Nodes = append(entry.Nodes, journalNode{Path: []byte(path), Blob: node.Blob})
 		}
 		jn = append(jn, entry)
-		nodeCount++
-
-		if len(jn) >= int(c.batchSize) {
+		if c.estimatedRLPEncodedSize(incrDB, jn) >= flushBatchSize {
 			if err := c.writeBatchToAncientDB(incrDB, jn); err != nil {
 				return err
 			}
-			jn = jn[:0]
+			jn = make([]journalNodes, 0, len(c.nodes.nodes))
 		}
 	}
 
@@ -208,10 +208,21 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 			return err
 		}
 	}
-	
-	log.Info("Flushed incremental state buffer to ancient db", "total_nodes", nodeCount, "size", c.nodes.size)
+	log.Info("Flushed incremental state buffer to ancient db", "size", c.nodes.size)
 	c.reset()
 	return nil
+}
+
+func (c *incrNodeCache) estimatedRLPEncodedSize(incrDB *rawdb.IncrSnapDB, jn []journalNodes) uint64 {
+	totalSize := uint64(0)
+	for _, entry := range jn {
+		totalSize += rlp.BytesSize(entry.Owner[:])
+		for _, node := range entry.Nodes {
+			totalSize += rlp.BytesSize(node.Blob)
+			totalSize += rlp.BytesSize(node.Path)
+		}
+	}
+	return totalSize
 }
 
 // writeBatchToAncientDB writes a batch of trie nodes to the incremental state db.
@@ -245,8 +256,8 @@ func (c *incrNodeCache) writeBatchToAncientDB(incrDB *rawdb.IncrSnapDB, jn []jou
 	}
 
 	log.Info("Wrote incremental state batch to ancient db", "incrementalID", incrementalID,
-		"nodeCount", len(jn), "layers", c.layers, "stateIDArray", c.stateIDArray, "blockNumberArray", c.blockNumberArray)
-
+		"nodeCount", len(jn), "layers", c.layers, "batchSize", len(encodedBatch), "stateIDArray", c.stateIDArray,
+		"blockNumberArray", c.blockNumberArray)
 	return nil
 }
 
