@@ -26,7 +26,6 @@ type IncrSnapDB struct {
 	currentDir string
 	lastBlock  uint64 // last updated block number
 	blockCount uint64 // record the stored number of blocks in current snap db
-	endBlock   uint64 // the end of block number in current snap db (due to empty block)
 	lock       sync.RWMutex
 
 	// directory switching control
@@ -111,14 +110,40 @@ func NewIncrSnapDB(baseDir string, readonly bool, startBlock, blockLimit uint64)
 		baseDir:    baseDir,
 		currentDir: currentDir,
 		blockCount: blockCount,
-		endBlock:   dirEndBlock,
 		switching:  false,
 	}
 	incrDB.switchCond = sync.NewCond(&incrDB.switchMutex)
 
+	if err = incrDB.repair(startBlock); err != nil {
+		return nil, fmt.Errorf("failed to repair db: %v", err)
+	}
+
 	log.Info("IncrDB created", "baseDir", baseDir, "currentDir", currentDir, "blockLimit", blockLimit,
 		"blockCount", blockCount, "startBlock", startBlock, "dirStartBlock", dirStartBlock)
 	return incrDB, nil
+}
+
+// repair handles empty incremental data.
+func (idb *IncrSnapDB) repair(startBlock uint64) error {
+	stateAncients, err := idb.GetStateFreezer().Ancients()
+	if err != nil {
+		return err
+	}
+	chainAncients, err := idb.GetChainFreezer().Ancients()
+	if err != nil {
+		return err
+	}
+
+	if stateAncients == 0 || chainAncients == 0 {
+		if stateAncients == 0 && chainAncients == 0 {
+			if err = idb.reset(idb.currentDir, startBlock); err != nil {
+				return err
+			}
+			log.Warn("Resets current incr snap db and create a new one")
+		}
+		return nil
+	}
+	return nil
 }
 
 func newSnapDBWrapper(incrDir string, info *incrSnapDBInfo) (*snapDBWrapper, error) {
@@ -135,7 +160,6 @@ func newSnapDBWrapper(incrDir string, info *incrSnapDBInfo) (*snapDBWrapper, err
 	cFreezer, err := newResettableFreezer(chainPath, chainNamespace, info.readonly, info.maxTableSize,
 		info.chainTables, true)
 	if err != nil {
-		log.Error("Failed to create incremental chain freezer", "err", err)
 		return nil, err
 	}
 
@@ -144,14 +168,12 @@ func newSnapDBWrapper(incrDir string, info *incrSnapDBInfo) (*snapDBWrapper, err
 	sFreezer, err := newResettableFreezer(statePath, stateNamespace, info.readonly, info.maxTableSize,
 		info.stateTables, true)
 	if err != nil {
-		log.Error("Failed to create incremental state freezer", "err", err)
 		return nil, err
 	}
 
 	kvNamespace := fmt.Sprintf("%s%s", info.namespace, "kv")
 	db, err := pebble.New(incrDir, 10, 10, kvNamespace, info.readonly)
 	if err != nil {
-		log.Error("Failed to create incremental kv db", "err", err)
 		return nil, err
 	}
 
@@ -468,23 +490,29 @@ func (idb *IncrSnapDB) CheckAndInitiateSwitch(blockNum uint64, asyncManager Asyn
 }
 
 // Reset all incremental directories.
-func (idb *IncrSnapDB) Reset(block uint64) error {
+func (idb *IncrSnapDB) ResetAllIncr(block uint64) error {
 	idb.lock.RLock()
 	defer idb.lock.RUnlock()
 
+	if err := idb.reset(idb.baseDir, block); err != nil {
+		return err
+	}
+	return nil
+}
+
+// reset the specified directory and create a new snap db.
+func (idb *IncrSnapDB) reset(dir string, block uint64) error {
 	if err := idb.closeCurrentDatabases(); err != nil {
 		return err
 	}
-
-	tmp := tmpName(idb.baseDir)
-	if err := os.Rename(idb.baseDir, tmp); err != nil {
+	if err := os.RemoveAll(idb.currentDir); err != nil {
 		return err
 	}
-	if err := os.RemoveAll(tmp); err != nil {
-		return err
+	if err := os.MkdirAll(idb.baseDir, 0755); err != nil {
+		return fmt.Errorf("failed to create base directory %s: %v", idb.baseDir, err)
 	}
 
-	newDir := filepath.Join(idb.baseDir, fmt.Sprintf("incr_%d_%d", block, block+idb.info.blockLimit-1))
+	newDir := filepath.Join(dir, fmt.Sprintf("incr_%d_%d", block, block+idb.info.blockLimit-1))
 	db, err := newSnapDBWrapper(newDir, &idb.info)
 	if err != nil {
 		return fmt.Errorf("failed to create new snap db wrapper in directory %s: %v", newDir, err)
@@ -493,8 +521,6 @@ func (idb *IncrSnapDB) Reset(block uint64) error {
 	idb.currSnapDB = db
 	idb.currentDir = newDir
 	idb.blockCount = 0
-	log.Info("Resets all incremental successfully", "newDir", newDir, "newStartBlock", block)
-
 	return nil
 }
 

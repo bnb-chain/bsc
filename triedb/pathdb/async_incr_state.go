@@ -11,7 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-// used to estimate the size of the batch to be written to the ancient db: about 3.8GB
+// the size of the batch to be flushed to the ancient db: about 3.8GB
 const flushBatchSize = 4080218931
 
 // asyncIncrStateBuffer writes the incremental state trie nodes into incr state db.
@@ -24,10 +24,10 @@ type asyncIncrStateBuffer struct {
 }
 
 // newAsyncIncrStateBuffer initializes the async incremental state buffer.
-func newAsyncIncrStateBuffer(limit, batchSize uint64) *asyncIncrStateBuffer {
+func newAsyncIncrStateBuffer(limit uint64) *asyncIncrStateBuffer {
 	b := &asyncIncrStateBuffer{
-		current:    newIncrNodeCache(limit, batchSize, nil, 0),
-		background: newIncrNodeCache(limit, batchSize, nil, 0),
+		current:    newIncrNodeCache(limit, nil, 0),
+		background: newIncrNodeCache(limit, nil, 0),
 	}
 	return b
 }
@@ -122,7 +122,6 @@ type incrNodeCache struct {
 	nodes            *nodeSet
 	layers           uint64
 	limit            uint64 // Memory limit in bytes
-	batchSize        uint64
 	stateIDArray     [2]uint64
 	blockNumberArray [2]uint64
 	immutable        uint64 // atomic flag: 1 = immutable, 0 = mutable
@@ -131,7 +130,7 @@ type incrNodeCache struct {
 var emptyArray = [2]uint64{0, 0}
 
 // newIncrNodeCache creates a new incremental node cache
-func newIncrNodeCache(limit, batchSize uint64, nodes *nodeSet, layers uint64) *incrNodeCache {
+func newIncrNodeCache(limit uint64, nodes *nodeSet, layers uint64) *incrNodeCache {
 	if nodes == nil {
 		nodes = newNodeSet(nil)
 	}
@@ -140,7 +139,6 @@ func newIncrNodeCache(limit, batchSize uint64, nodes *nodeSet, layers uint64) *i
 		nodes:            nodes,
 		layers:           layers,
 		limit:            limit,
-		batchSize:        batchSize,
 		stateIDArray:     emptyArray,
 		blockNumberArray: emptyArray,
 		immutable:        0,
@@ -195,7 +193,7 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 			entry.Nodes = append(entry.Nodes, journalNode{Path: []byte(path), Blob: node.Blob})
 		}
 		jn = append(jn, entry)
-		if c.estimatedRLPEncodedSize(incrDB, jn) >= flushBatchSize {
+		if c.estimatedRLPEncodedSize(jn) >= flushBatchSize {
 			if err := c.writeBatchToAncientDB(incrDB, jn); err != nil {
 				return err
 			}
@@ -213,7 +211,7 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 	return nil
 }
 
-func (c *incrNodeCache) estimatedRLPEncodedSize(incrDB *rawdb.IncrSnapDB, jn []journalNodes) uint64 {
+func (c *incrNodeCache) estimatedRLPEncodedSize(jn []journalNodes) uint64 {
 	totalSize := uint64(0)
 	for _, entry := range jn {
 		totalSize += rlp.BytesSize(entry.Owner[:])

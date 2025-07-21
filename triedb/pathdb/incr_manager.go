@@ -26,9 +26,6 @@ const (
 
 	// DefaultIncrBufferSize is the default memory allowance for incremental state buffer (2GB)
 	DefaultIncrBufferSize = 5 * 1024 * 1024 * 1024
-
-	// DefaultIncrNodeBatchSize is the default batch size for writing trie nodes to ancient db (1 million)
-	DefaultIncrNodeBatchSize = 1000000
 )
 
 // writeStats tracks write operation statistics
@@ -108,7 +105,7 @@ func NewIncrManager(db *Database, incrDB *rawdb.IncrSnapDB) *incrManager {
 	im.chainConfig = chainConfig
 
 	// Initialize async incremental state buffer
-	im.asyncBuffer = newAsyncIncrStateBuffer(im.bufferLimit, DefaultIncrNodeBatchSize)
+	im.asyncBuffer = newAsyncIncrStateBuffer(im.bufferLimit)
 
 	return im
 }
@@ -303,7 +300,7 @@ func (im *incrManager) writeIncrData(dl *diffLayer) error {
 			}
 			if switched {
 				log.Info("Directory switch completed", "blockNumber", i, "currentStateID", currentStateID)
-				im.asyncBuffer = newAsyncIncrStateBuffer(im.bufferLimit, DefaultIncrNodeBatchSize)
+				im.asyncBuffer = newAsyncIncrStateBuffer(im.bufferLimit)
 			}
 			if err = im.resetIncrChainFreezer(im.db.diskdb, i); err != nil {
 				log.Error("Failed to reset incr chain freezer", "blockNumber", i, "error", err)

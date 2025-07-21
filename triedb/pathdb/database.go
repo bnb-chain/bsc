@@ -363,14 +363,7 @@ func (db *Database) RepairIncrStore() error {
 	// Get disk layer state ID for validation
 	diskLayerID := db.tree.bottom().stateID()
 	if diskLayerID == 0 {
-		// Handle empty disk layer case
-		stateFreezer := db.incr.incrDB.GetStateFreezer()
-		if stateFreezer == nil {
-			log.Crit("Incremental state freezer is nil")
-			return nil
-		}
-
-		stateAncients, err := stateFreezer.Ancients()
+		stateAncients, err := db.incr.incrDB.GetStateFreezer().Ancients()
 		if err != nil {
 			log.Error("Failed to retrieve head of incr state history", "error", err)
 			return err
@@ -382,40 +375,17 @@ func (db *Database) RepairIncrStore() error {
 				log.Error("Failed to retrieve start block", "error", err)
 				return err
 			}
-			if err = db.incr.incrDB.Reset(block); err != nil {
+			if err = db.incr.incrDB.ResetAllIncr(block); err != nil {
 				log.Error("Failed to reset incremental state histories", "error", err)
 				return err
 			}
-			log.Info("Reset all incremental state histories")
-		}
-		return nil
-	}
-
-	// Load current incremental data info
-	info, err := db.loadIncrInfo()
-	if err != nil {
-		return err
-	}
-
-	// Handle empty incremental data
-	if info.isEmpty() {
-		if !info.allEmpty() {
-			log.Warn("Reset current incremental histories", "incrStateAncients", info.stateAncients,
-				"chainAncients", info.chainAncients)
-			if err = info.stateFreezer.Reset(); err != nil {
-				log.Error("Failed to reset incremental state histories", "error", err)
-				return err
-			}
-			if err = info.chainFreezer.Reset(); err != nil {
-				log.Error("Failed to reset incremental chain histories", "error", err)
-				return err
-			}
+			log.Warn("Reset all incremental state histories")
 		}
 		return nil
 	}
 
 	// Align incremental data with disk layer
-	return db.alignIncrData(info, diskLayerID)
+	return db.alignIncrData(diskLayerID)
 }
 
 func (db *Database) GetStartBlock() (uint64, error) {
@@ -894,10 +864,6 @@ func (info *incrInfo) isEmpty() bool {
 	return info.stateAncients == 0 || info.chainAncients == 0
 }
 
-func (info *incrInfo) allEmpty() bool {
-	return info.stateAncients == 0 && info.chainAncients == 0
-}
-
 // initIncrManager initializes the incremental manager
 func (db *Database) initIncrManager() error {
 	block, err := db.GetStartBlock()
@@ -976,7 +942,13 @@ func (db *Database) loadIncrInfo() (*incrInfo, error) {
 }
 
 // alignIncrData aligns incremental data with disk layer
-func (db *Database) alignIncrData(info *incrInfo, diskLayerID uint64) error {
+func (db *Database) alignIncrData(diskLayerID uint64) error {
+	// Load current incremental data info
+	info, err := db.loadIncrInfo()
+	if err != nil {
+		return err
+	}
+
 	// Calculate final state and block
 	var finalStateID, finalBlock uint64
 	if info.lastChainStateID < info.lastStateID {
