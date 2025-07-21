@@ -1332,7 +1332,7 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 	tbl[Dup11MulDup3SubMulDup1] = &operation{
 		execute:     opDup11MulDup3SubMulDup1,
 		constantGas: 4*GasFastestStep + 2*GasFastStep,
-		minStack:    minStack(12, 0),
+		minStack:    minStack(11, 0),
 		maxStack:    maxStack(0, 1),
 	}
 	return tbl
