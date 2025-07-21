@@ -1317,7 +1317,7 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 
 	tbl[Swap3PopPopPop] = &operation{
 		execute:     opSwap3PopPopPop,
-		constantGas: 4 * GasFastestStep,
+		constantGas: GasFastestStep + 3*GasQuickStep,
 		minStack:    minStack(4, 0),
 		maxStack:    maxStack(0, 0),
 	}

@@ -1,13 +1,11 @@
 package vm
 
 import (
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 )
 
 // opDup3And
 func opDup3And(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	log.Error("DEBUG", "instruction", "opDup3And")
 	x := scope.Stack.data[scope.Stack.len()-3]
 	y := scope.Stack.peek()
 	y.And(&x, y)
@@ -17,7 +15,6 @@ func opDup3And(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]
 
 // opSwap2Swap1Dup3SubSwap2Dup3GtPush2
 func opSwap2Swap1Dup3SubSwap2Dup3GtPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	log.Error("DEBUG", "instruction", "opSwap2Swap1Dup3SubSwap2Dup3GtPush2")
 	scope.Stack.swap2()
 	scope.Stack.swap1()
 	x := scope.Stack.data[scope.Stack.len()-3]
@@ -48,7 +45,6 @@ func opSwap2Swap1Dup3SubSwap2Dup3GtPush2(pc *uint64, interpreter *EVMInterpreter
 }
 
 func opSwap1Dup2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	log.Error("DEBUG", "instruction", "opSwap1Dup2")
 	scope.Stack.swap1()
 	scope.Stack.dup(2)
 	*pc += 1
@@ -56,7 +52,6 @@ func opSwap1Dup2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) (
 }
 
 func opSHRSHRDup1MulDup1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	log.Error("DEBUG", "instruction", "opSHRSHRDup1MulDup1")
 	shift, value := scope.Stack.pop(), scope.Stack.pop()
 	if shift.LtUint64(256) {
 		value.Rsh(&value, uint(shift.Uint64()))
@@ -78,7 +73,6 @@ func opSHRSHRDup1MulDup1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeCo
 }
 
 func opSwap3PopPopPop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	log.Error("DEBUG", "instruction", "opSwap3PopPopPop")
 	scope.Stack.swap3()
 	scope.Stack.pop2()
 	scope.Stack.pop()
@@ -87,7 +81,6 @@ func opSwap3PopPopPop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeConte
 }
 
 func opSubSLTIsZeroPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	log.Error("DEBUG", "instruction", "opSubSLTIsZeroPush2")
 	x, y := scope.Stack.pop(), scope.Stack.pop()
 	y.Sub(&x, &y)
 	z := scope.Stack.peek()
@@ -119,7 +112,6 @@ func opSubSLTIsZeroPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeCo
 }
 
 func opDup11MulDup3SubMulDup1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	log.Error("DEBUG", "instruction", "opDup11MulDup3SubMulDup1")
 	x := scope.Stack.data[scope.Stack.len()-11]
 	y := scope.Stack.pop()
 	y.Mul(&x, &y)

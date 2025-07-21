@@ -312,7 +312,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		if memorySize > 0 {
 			mem.Resize(memorySize)
 		}
-
+		if in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 1 {
+			log.Error("DEBUG", "pc", pc, "op", op, "cost", cost)
+		}
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
 		if err != nil {
