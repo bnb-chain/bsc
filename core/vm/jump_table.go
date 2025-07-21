@@ -1310,7 +1310,7 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 
 	tbl[SHRSHRDup1MulDup1] = &operation{
 		execute:     opSHRSHRDup1MulDup1,
-		constantGas: 5 * GasFastestStep,
+		constantGas: 4*GasFastestStep + GasFastStep,
 		minStack:    minStack(2, 0),
 		maxStack:    maxStack(0, 1),
 	}
@@ -1325,14 +1325,14 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 	tbl[SubSLTIsZeroPush2] = &operation{
 		execute:     opSubSLTIsZeroPush2,
 		constantGas: 4 * GasFastestStep,
-		minStack:    minStack(2, 0),
+		minStack:    minStack(3, 0),
 		maxStack:    maxStack(0, 1),
 	}
 
 	tbl[Dup11MulDup3SubMulDup1] = &operation{
 		execute:     opDup11MulDup3SubMulDup1,
-		constantGas: 6 * GasFastestStep,
-		minStack:    minStack(11, 0),
+		constantGas: 4*GasFastestStep + 2*GasFastStep,
+		minStack:    minStack(12, 0),
 		maxStack:    maxStack(0, 1),
 	}
 	return tbl

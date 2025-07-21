@@ -66,7 +66,8 @@ func opSHRSHRDup1MulDup1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeCo
 		value2.Clear()
 	}
 
-	value2.Mul(value2, value2)
+	value3 := *value2
+	value2.Mul(value2, &value3)
 	scope.Stack.dup(1)
 	*pc += 4
 	return nil, nil
@@ -116,7 +117,7 @@ func opDup11MulDup3SubMulDup1(pc *uint64, interpreter *EVMInterpreter, scope *Sc
 	y := scope.Stack.pop()
 	y.Mul(&x, &y)
 
-	x = scope.Stack.data[scope.Stack.len()-3]
+	x = scope.Stack.data[scope.Stack.len()-2]
 	y.Sub(&x, &y)
 
 	z := scope.Stack.peek()
