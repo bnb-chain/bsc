@@ -1,7 +1,6 @@
 package impl
 
 import (
-	"encoding/hex"
 	"errors"
 
 	"github.com/holiman/uint256"
@@ -33,7 +32,7 @@ func (s *ShortcutImpl55D398326F99059FF775485246999027B3197955) Shortcut(inputs [
 		return 0, 0, nil, nil, false, errors.New("call data length < 4")
 	}
 
-	selector := hex.EncodeToString(inputs[:5])
+	selector := hexutil.Encode(inputs[:5])
 	log.Info("shortcut", "selector", selector)
 	switch selector {
 	case "0xa0712d68":

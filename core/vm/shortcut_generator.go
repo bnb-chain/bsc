@@ -307,10 +307,10 @@ func (sg *ShortcutGenerator) generateGoCode() string {
 	// 生成包声明和导入
 	code.WriteString("package impl\n\n")
 	code.WriteString("import (\n")
-	code.WriteString("\t\"encoding/hex\"\n")
 	code.WriteString("\t\"errors\"\n")
 	code.WriteString("\t\"github.com/holiman/uint256\"\n")
 	code.WriteString("\t\"github.com/ethereum/go-ethereum/common\"\n")
+	code.WriteString("\t\"\"github.com/ethereum/go-ethereum/common/hexutil\"\"\n")
 	code.WriteString("\t\"github.com/ethereum/go-ethereum/core/opcodeCompiler/shortcut\"\n")
 	code.WriteString(")\n\n")
 
@@ -339,7 +339,7 @@ func (sg *ShortcutGenerator) generateGoCode() string {
 		code.WriteString("\t\treturn 0, 0, nil, nil, false, nil\n")
 		code.WriteString("\t}\n\n")
 
-		code.WriteString("\tselector := hex.EncodeToString(inputs[:5])\n")
+		code.WriteString("\tselector := hexutil.Encode(inputs[:5])\n")
 		code.WriteString("\tswitch selector {\n")
 
 		for selector, info := range sg.selectors {
