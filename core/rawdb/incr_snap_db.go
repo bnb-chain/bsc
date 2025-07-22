@@ -17,7 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-const incrSnapshotDirNamePattern = `^incr_(\d+)_(\d+)$`
+const incrSnapshotDirNamePattern = `^incr-(\d+)-(\d+)$`
 
 type IncrSnapDB struct {
 	currSnapDB *snapDBWrapper
@@ -205,10 +205,8 @@ func (idb *IncrSnapDB) waitForSwitchComplete() {
 		}
 		idb.switchMutex.Unlock()
 
-		select {
-		case <-ticker.C:
-			log.Debug("Waiting for directory switch to complete")
-		}
+		<-ticker.C
+		log.Debug("Waiting for directory switch to complete")
 	}
 
 	// Timeout occurred

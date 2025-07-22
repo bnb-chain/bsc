@@ -28,7 +28,7 @@ const (
 	defaultIncrBufferSize = 5 * 1024 * 1024 * 1024
 
 	// the maximum size of the batch to be flushed into the ancient db: 3GB
-	defaultFlushBatchSize = 3221225472
+	defaultFlushBatchSize = 3 * 1024 * 1024 * 1024
 )
 
 // writeStats tracks write operation statistics

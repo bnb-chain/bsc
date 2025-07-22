@@ -362,10 +362,10 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	// TODO: for force kill case, need to use rewound block
 	if cacheConfig.UseRemoteIncrSnapshot {
 		log.Info("Download the incremental snapshot", "remote incr url", cacheConfig.RemoteIncrURL)
-		if err = triedb.RepairIncrStore(); err != nil {
-			log.Error("Failed to repair incremental snapshot", "err", err)
-			return nil, err
-		}
+		// if err = triedb.RepairIncrStore(); err != nil {
+		// 	log.Error("Failed to repair incremental snapshot", "err", err)
+		// 	return nil, err
+		// }
 		startBlock, err := triedb.GetStartBlock()
 		if err != nil {
 			log.Error("Failed to get start block", "error", err)

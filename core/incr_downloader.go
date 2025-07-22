@@ -168,17 +168,14 @@ func (d *IncrDownloader) Prepare() error {
 		return err
 	}
 
-	// Parse file information
 	files, err := d.parseFileInfo(metadata)
 	if err != nil {
 		log.Error("Failed to parse file info", "error", err)
 		return err
 	}
-
 	d.files = files
 	d.totalFiles = len(d.files)
 
-	// 6. Check for already downloaded files
 	downloadedFiles, err := d.loadDownloadedFiles()
 	if err != nil {
 		log.Warn("Failed to load downloaded files list, starting fresh", "error", err)
@@ -290,9 +287,9 @@ func (d *IncrDownloader) RunAll() error {
 		return err
 	}
 
-	// if err := d.Merge(); err != nil {
-	// 	return err
-	// }
+	if err := d.Merge(); err != nil {
+		return err
+	}
 
 	return nil
 }
