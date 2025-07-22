@@ -414,6 +414,17 @@ func ExampleUsage() {
 	fmt.Println(code)
 }
 
+var (
+	simOpBlacklist = map[OpCode]bool{
+		SSTORE: true,
+		SLOAD:  true,
+		LOG0:   true,
+		LOG1:   true,
+		LOG2:   true,
+		LOG3:   true,
+	}
+)
+
 func analyzeCall(addr common.Address, code []byte, selector [4]byte, endPc uint64, block *types.Block) (gasUsed, opsUsed uint64, stack []uint256.Int, mem []byte, err error) {
 	statedb := MockStateDB{}
 	vmctx := BlockContext{
@@ -529,6 +540,11 @@ func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly 
 		// Get the operation from the jump table and validate the stack to ensure there are
 		// enough stack items available to perform the operation.
 		op = contract.GetOp(pc)
+
+		if _, found := simOpBlacklist[op]; found {
+			return 0, 0, nil, nil, errors.New(fmt.Sprintf("op %s is not blacklisted", op.String()))
+		}
+
 		operation := in.table[op]
 
 		// disallow storage op

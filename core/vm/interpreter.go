@@ -248,15 +248,27 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				"value", contract.Value(),
 			)
 		} else {
+			if debug {
+				// Capture pre-execution values for tracing.
+				pcCopy, gasCopy = pc, contract.Gas
+			}
+
 			for _, frame := range sStk {
 				callContext.Stack.push(&frame)
 			}
-
 			callContext.Memory.store = sMem
-
 			pc = sPc
-
 			contract.Gas -= sGas
+
+			if debug {
+				if in.evm.Config.Tracer.OnGasChange != nil {
+					in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-sPc, tracing.GasChangeCallOpCode)
+				}
+				if in.evm.Config.Tracer.OnOpcode != nil {
+					in.evm.Config.Tracer.OnOpcode(pc, byte(Nop), gasCopy, sPc, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
+					logged = true
+				}
+			}
 		}
 	}
 
