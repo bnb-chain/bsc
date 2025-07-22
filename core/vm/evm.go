@@ -18,7 +18,6 @@ package vm
 
 import (
 	"errors"
-	"github.com/holiman/uint256"
 	"math/big"
 	"sync"
 	"sync/atomic"
@@ -30,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 )
 
 var EvmPool = sync.Pool{

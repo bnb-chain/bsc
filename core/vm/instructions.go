@@ -1088,9 +1088,7 @@ func opPush2Jump(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) (
 	pos = integer.SetBytes(common.RightPadBytes(
 		scope.Contract.Code[startMin:endMin], 2))
 
-	if !scope.Contract.validJumpdest(pos) {
-		return nil, ErrInvalidJump
-	}
+	// Jump target validation is done at compile time during fusion
 	*pc = pos.Uint64() - 1 // pc will be increased by the interpreter loop
 	return nil, nil
 }
@@ -1118,9 +1116,7 @@ func opPush2JumpI(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) 
 
 	cond := scope.Stack.pop()
 	if !cond.IsZero() {
-		if !scope.Contract.validJumpdest(pos) {
-			return nil, ErrInvalidJump
-		}
+		// Jump target validation is done at compile time during fusion
 		*pc = pos.Uint64() - 1 // pc will be increased by the interpreter loop
 	} else {
 		*pc += 3
@@ -1281,9 +1277,7 @@ func opJumpIfZero(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) 
 		pos = integer.SetBytes(common.RightPadBytes(
 			scope.Contract.Code[startMin:endMin], 2))
 
-		if !scope.Contract.validJumpdest(pos) {
-			return nil, ErrInvalidJump
-		}
+		// Jump target validation is done at compile time during fusion
 		*pc = pos.Uint64() - 1 // pc will be increased by the interpreter loop
 	} else {
 		*pc += 4
@@ -1521,5 +1515,128 @@ func opSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(pc *uint64, interpreter *E
 	}
 
 	*pc += 10
+	return nil, nil
+}
+
+// opDup3And
+func opDup3And(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	x := scope.Stack.data[scope.Stack.len()-3]
+	y := scope.Stack.peek()
+	y.And(&x, y)
+	*pc += 1
+	return nil, nil
+}
+
+// opSwap2Swap1Dup3SubSwap2Dup3GtPush2
+func opSwap2Swap1Dup3SubSwap2Dup3GtPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	scope.Stack.swap2()
+	scope.Stack.swap1()
+	x := scope.Stack.data[scope.Stack.len()-3]
+	y := scope.Stack.peek()
+	y.Sub(&x, y)
+	scope.Stack.swap2()
+	x = scope.Stack.data[scope.Stack.len()-3]
+	y = scope.Stack.peek()
+	if x.Gt(y) {
+		y.SetOne()
+	} else {
+		y.Clear()
+	}
+	*pc += 7
+	var (
+		codeLen = uint64(len(scope.Contract.Code))
+		integer = new(uint256.Int)
+	)
+	if *pc+2 < codeLen {
+		scope.Stack.push(integer.SetBytes2(scope.Contract.Code[*pc+1 : *pc+3]))
+	} else if *pc+1 < codeLen {
+		scope.Stack.push(integer.SetUint64(uint64(scope.Contract.Code[*pc+1]) << 8))
+	} else {
+		scope.Stack.push(integer.Clear())
+	}
+	*pc += 2
+	return nil, nil
+}
+
+func opSwap1Dup2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	scope.Stack.swap1()
+	scope.Stack.dup(2)
+	*pc += 1
+	return nil, nil
+}
+
+func opSHRSHRDup1MulDup1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	shift, value := scope.Stack.pop(), scope.Stack.pop()
+	if shift.LtUint64(256) {
+		value.Rsh(&value, uint(shift.Uint64()))
+	} else {
+		value.Clear()
+	}
+
+	value2 := scope.Stack.peek()
+	if value.LtUint64(256) {
+		value2.Rsh(value2, uint(value.Uint64()))
+	} else {
+		value2.Clear()
+	}
+
+	value3 := *value2
+	value2.Mul(value2, &value3)
+	scope.Stack.dup(1)
+	*pc += 4
+	return nil, nil
+}
+
+func opSwap3PopPopPop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	scope.Stack.swap3()
+	scope.Stack.pop2()
+	scope.Stack.pop()
+	*pc += 3
+	return nil, nil
+}
+
+func opSubSLTIsZeroPush2(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	x, y := scope.Stack.pop(), scope.Stack.pop()
+	y.Sub(&x, &y)
+	z := scope.Stack.peek()
+	if y.Slt(z) {
+		z.SetOne()
+	} else {
+		z.Clear()
+	}
+
+	if z.IsZero() {
+		z.SetOne()
+	} else {
+		z.Clear()
+	}
+	*pc += 3
+	var (
+		codeLen = uint64(len(scope.Contract.Code))
+		integer = new(uint256.Int)
+	)
+	if *pc+2 < codeLen {
+		scope.Stack.push(integer.SetBytes2(scope.Contract.Code[*pc+1 : *pc+3]))
+	} else if *pc+1 < codeLen {
+		scope.Stack.push(integer.SetUint64(uint64(scope.Contract.Code[*pc+1]) << 8))
+	} else {
+		scope.Stack.push(integer.Clear())
+	}
+	*pc += 2
+	return nil, nil
+}
+
+func opDup11MulDup3SubMulDup1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	x := scope.Stack.data[scope.Stack.len()-11]
+	y := scope.Stack.pop()
+	y.Mul(&x, &y)
+
+	x = scope.Stack.data[scope.Stack.len()-2]
+	y.Sub(&x, &y)
+
+	z := scope.Stack.peek()
+	z.Mul(&y, z)
+	scope.Stack.dup(1)
+	*pc += 5
 	return nil, nil
 }
