@@ -35,16 +35,16 @@ import (
 // injects into the database the block hash->number mappings.
 func InitDatabaseFromFreezer(db ethdb.Database) {
 	// If we can't access the freezer or it's empty, abort
-	frozen, err := db.BlockStore().ItemAmountInAncient()
+	frozen, err := db.ItemAmountInAncient()
 	if err != nil || frozen == 0 {
 		return
 	}
 	var (
-		batch  = db.BlockStore().NewBatch()
+		batch  = db.NewBatch()
 		start  = time.Now()
 		logged = start.Add(-7 * time.Second) // Unindex during import is fast, don't double log
 		hash   common.Hash
-		offset = db.BlockStore().AncientOffSet()
+		offset = db.AncientOffSet()
 	)
 	for i := uint64(0) + offset; i < frozen+offset; i++ {
 		// We read 100K hashes at a time, for a total of 3.2M
@@ -52,7 +52,7 @@ func InitDatabaseFromFreezer(db ethdb.Database) {
 		if i+count > frozen+offset {
 			count = frozen + offset - i
 		}
-		data, err := db.BlockStore().AncientRange(ChainFreezerHashTable, i, count, 32*count)
+		data, err := db.AncientRange(ChainFreezerHashTable, i, count, 32*count)
 		if err != nil {
 			log.Crit("Failed to init database from freezer", "err", err)
 		}
@@ -80,8 +80,8 @@ func InitDatabaseFromFreezer(db ethdb.Database) {
 	}
 	batch.Reset()
 
-	WriteHeadHeaderHash(db.BlockStore(), hash)
-	WriteHeadFastBlockHash(db.BlockStore(), hash)
+	WriteHeadHeaderHash(db, hash)
+	WriteHeadFastBlockHash(db, hash)
 	log.Info("Initialized database from freezer", "blocks", frozen, "elapsed", common.PrettyDuration(time.Since(start)))
 }
 
@@ -100,7 +100,7 @@ func iterateTransactions(db ethdb.Database, from uint64, to uint64, reverse bool
 		number uint64
 		rlp    rlp.RawValue
 	}
-	if offset := db.BlockStore().AncientOffSet(); offset > from {
+	if offset := db.AncientOffSet(); offset > from {
 		from = offset
 	}
 	if to <= from {
@@ -187,7 +187,7 @@ func iterateTransactions(db ethdb.Database, from uint64, to uint64, reverse bool
 // signal received.
 func indexTransactions(db ethdb.Database, from uint64, to uint64, interrupt chan struct{}, hook func(uint64) bool, report bool) {
 	// short circuit for invalid range
-	if offset := db.BlockStore().AncientOffSet(); offset > from {
+	if offset := db.AncientOffSet(); offset > from {
 		from = offset
 	}
 	if from >= to {
@@ -286,7 +286,7 @@ func indexTransactionsForTesting(db ethdb.Database, from uint64, to uint64, inte
 // signal received.
 func unindexTransactions(db ethdb.Database, from uint64, to uint64, interrupt chan struct{}, hook func(uint64) bool, report bool) {
 	// short circuit for invalid range
-	if offset := db.BlockStore().AncientOffSet(); offset > from {
+	if offset := db.AncientOffSet(); offset > from {
 		from = offset
 	}
 	if from >= to {

@@ -967,6 +967,22 @@ func (c *ChainConfig) IsHertzfix(num *big.Int) bool {
 	return isBlockForked(c.HertzfixBlock, num)
 }
 
+func (c *ChainConfig) NeedBadSharedStorage(num *big.Int) bool {
+	if c.IsHertzfix(num) || c.ChainID == nil {
+		return false
+	}
+
+	if c.ChainID.Cmp(big.NewInt(56)) == 0 && num.Cmp(big.NewInt(33851236)) == 0 {
+		return true
+	}
+
+	if c.ChainID.Cmp(big.NewInt(97)) == 0 && (num.Cmp(big.NewInt(35547779)) == 0 || num.Cmp(big.NewInt(35548081)) == 0) {
+		return true
+	}
+
+	return false
+}
+
 func (c *ChainConfig) IsOnHertzfix(num *big.Int) bool {
 	return configBlockEqual(c.HertzfixBlock, num)
 }

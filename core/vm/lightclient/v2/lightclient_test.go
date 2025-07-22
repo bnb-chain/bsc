@@ -132,7 +132,7 @@ func TestEncodeConsensusState(t *testing.T) {
 		require.NoError(t, err)
 
 		if !bytes.Equal(csBytes, expectCsBytes) {
-			t.Fatalf("Consensus state mimatch, expect: %s, real:%s\n", testcase.consensusStateBytes, hex.EncodeToString(csBytes))
+			t.Fatalf("Consensus state mismatch, expect: %s, real:%s\n", testcase.consensusStateBytes, hex.EncodeToString(csBytes))
 		}
 	}
 }
@@ -148,11 +148,11 @@ func TestDecodeConsensusState(t *testing.T) {
 		require.NoError(t, err)
 
 		if cs.ChainID != testcase.chainID {
-			t.Fatalf("Chain ID mimatch, expect: %s, real:%s\n", testcase.chainID, cs.ChainID)
+			t.Fatalf("Chain ID mismatch, expect: %s, real:%s\n", testcase.chainID, cs.ChainID)
 		}
 
 		if cs.Height != testcase.height {
-			t.Fatalf("Height mimatch, expect: %d, real:%d\n", testcase.height, cs.Height)
+			t.Fatalf("Height mismatch, expect: %d, real:%d\n", testcase.height, cs.Height)
 		}
 
 		nextValidatorSetHashBytes, err := hex.DecodeString(testcase.nextValidatorSetHash)
@@ -161,7 +161,7 @@ func TestDecodeConsensusState(t *testing.T) {
 		}
 
 		if !bytes.Equal(cs.NextValidatorSetHash, nextValidatorSetHashBytes) {
-			t.Fatalf("Next validator set hash mimatch, expect: %s, real:%s\n", testcase.nextValidatorSetHash, hex.EncodeToString(cs.NextValidatorSetHash))
+			t.Fatalf("Next validator set hash mismatch, expect: %s, real:%s\n", testcase.nextValidatorSetHash, hex.EncodeToString(cs.NextValidatorSetHash))
 		}
 	}
 }

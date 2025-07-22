@@ -68,10 +68,10 @@ func (t *Trie) resloveWithoutTrack(n node, prefix []byte) (node, error) {
 
 func (h2p *Hbss2Pbss) writeNode(pathKey []byte, n *trienode.Node, owner common.Hash) {
 	if owner == (common.Hash{}) {
-		rawdb.WriteAccountTrieNode(h2p.db.Disk(), pathKey, n.Blob)
+		rawdb.WriteAccountTrieNode(h2p.db.Disk().GetStateStore(), pathKey, n.Blob)
 		log.Debug("WriteNodes account node, ", "path: ", common.Bytes2Hex(pathKey), "Hash: ", n.Hash, "BlobHash: ", crypto.Keccak256Hash(n.Blob))
 	} else {
-		rawdb.WriteStorageTrieNode(h2p.db.Disk(), owner, pathKey, n.Blob)
+		rawdb.WriteStorageTrieNode(h2p.db.Disk().GetStateStore(), owner, pathKey, n.Blob)
 		log.Debug("WriteNodes storage node, ", "path: ", common.Bytes2Hex(pathKey), "owner: ", owner.String(), "Hash: ", n.Hash, "BlobHash: ", crypto.Keccak256Hash(n.Blob))
 	}
 }
@@ -85,8 +85,8 @@ func (h2p *Hbss2Pbss) Run() {
 
 	log.Info("Total", "complete", h2p.totalNum, "go routines Num", runtime.NumGoroutine, "h2p concurrentQueue", len(h2p.concurrentQueue))
 
-	rawdb.WritePersistentStateID(h2p.db.Disk(), h2p.blocknum)
-	rawdb.WriteStateID(h2p.db.Disk(), h2p.stateRootHash, h2p.blocknum)
+	rawdb.WritePersistentStateID(h2p.db.Disk().GetStateStore(), h2p.blocknum)
+	rawdb.WriteStateID(h2p.db.Disk().GetStateStore(), h2p.stateRootHash, h2p.blocknum)
 }
 
 func (h2p *Hbss2Pbss) SubConcurrentTraversal(theTrie *Trie, theNode node, path []byte) {

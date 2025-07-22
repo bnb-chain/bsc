@@ -19,16 +19,16 @@ package vm
 import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
+	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/metrics"
-	lru "github.com/hashicorp/golang-lru"
 	"github.com/holiman/uint256"
 )
 
 const codeBitmapCacheSize = 2000
 
 var (
-	codeBitmapCache, _ = lru.New(codeBitmapCacheSize)
+	codeBitmapCache = lru.NewCache[common.Hash, bitvec](codeBitmapCacheSize)
 
 	contractCodeBitmapHitMeter  = metrics.NewRegisteredMeter("vm/contract/code/bitmap/hit", nil)
 	contractCodeBitmapMissMeter = metrics.NewRegisteredMeter("vm/contract/code/bitmap/miss", nil)

@@ -31,9 +31,6 @@ type Validator interface {
 
 	// ValidateState validates the given statedb and optionally the process result.
 	ValidateState(block *types.Block, state *state.StateDB, res *ProcessResult, stateless bool) error
-
-	// RemoteVerifyManager return remoteVerifyManager of validator.
-	RemoteVerifyManager() *remoteVerifyManager
 }
 
 type TransactionsByPriceAndNonce interface {

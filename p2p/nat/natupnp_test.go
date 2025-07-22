@@ -222,6 +222,43 @@ func (dev *fakeIGD) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func TestPMP_MarshalText(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   *pmp
+		want    []byte
+		wantErr bool
+	}{
+		{
+			name:  "valid pmp with gateway IP",
+			input: &pmp{gw: net.ParseIP("192.168.1.254")},
+			want:  []byte("natpmp:192.168.1.254"),
+		},
+		{
+			name:  "pmp with nil gateway IP",
+			input: &pmp{gw: nil},
+			want:  []byte("natpmp:<nil>"), // Behavior of net.IP.String() for nil IP
+		},
+		{
+			name:  "pmp with zero gateway IP",
+			input: &pmp{gw: net.IPv4zero},
+			want:  []byte("natpmp:0.0.0.0"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.input.MarshalText()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("pmp.MarshalText() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if string(got) != string(tt.want) {
+				t.Errorf("pmp.MarshalText() = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
 func (dev *fakeIGD) replaceListenAddr(resp string) string {
 	return strings.ReplaceAll(resp, "{{listenAddr}}", dev.listener.Addr().String())
 }

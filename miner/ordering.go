@@ -126,7 +126,7 @@ func newTransactionsByPriceAndNonce(signer types.Signer, txs map[common.Address]
 	}
 }
 
-// Copy copys a new TransactionsPriceAndNonce with the same *transaction
+// Copy copies a new TransactionsPriceAndNonce with the same *transaction
 func (t *transactionsByPriceAndNonce) Copy() *transactionsByPriceAndNonce {
 	heads := make([]*txWithMinerFee, len(t.heads))
 	copy(heads, t.heads)
