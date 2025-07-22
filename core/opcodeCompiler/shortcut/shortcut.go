@@ -17,7 +17,11 @@ func RegisterShortcut(addr common.Address, s Shortcut) {
 	shortcutPcRegisters[s.Contract()] = s
 }
 
+func GetShortcut(addr common.Address) Shortcut {
+	return shortcutPcRegisters[addr]
+}
+
 type Shortcut interface {
 	Contract() common.Address
-	Shortcut(pc uint64, inputs []byte, origin, caller common.Address, value *uint256.Int) (shortcutPc uint64, gasUsed uint64, stack []uint256.Int, mem []byte, expected bool, err error)
+	Shortcut(inputs []byte, origin, caller common.Address, value *uint256.Int) (shortcutPc uint64, gasUsed uint64, stack []uint256.Int, mem []byte, expected bool, err error)
 }

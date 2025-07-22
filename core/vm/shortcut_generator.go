@@ -323,7 +323,7 @@ func (sg *ShortcutGenerator) generateGoCode() string {
 	code.WriteString("}\n\n")
 
 	// 生成Shortcut方法
-	code.WriteString(fmt.Sprintf("func (s *ShortcutImpl%s) Shortcut(pc uint64, inputs []byte, origin, caller common.Address, value *uint256.Int) (shortcutPc uint64, gasUsed uint64, stack []uint256.Int, mem []byte, expected bool, err error) {\n", strings.ToUpper(sg.contractAddr.Hex()[2:])))
+	code.WriteString(fmt.Sprintf("func (s *ShortcutImpl%s) Shortcut(inputs []byte, origin, caller common.Address, value *uint256.Int) (shortcutPc uint64, gasUsed uint64, stack []uint256.Int, mem []byte, expected bool, err error) {\n", strings.ToUpper(sg.contractAddr.Hex()[2:])))
 
 	// 生成函数选择器逻辑
 	if len(sg.selectors) > 0 {

@@ -17,14 +17,17 @@
 package vm
 
 import (
+	"encoding/hex"
 	"fmt"
+
+	"github.com/holiman/uint256"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/core/opcodeCompiler/shortcut"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/holiman/uint256"
 )
 
 // Config are the configuration options for the Interpreter
@@ -230,6 +233,33 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			}
 		}()
 	}
+
+	// shortcut
+	inliner := shortcut.GetShortcut(contract.Address())
+	if inliner != nil {
+		sPc, sGas, sStk, sMem, expected, err := inliner.Shortcut(input, in.evm.Origin, contract.Caller(), contract.Value())
+		if err != nil || !expected {
+			log.Warn("Shortcut unexpected",
+				"error", err,
+				"contract", contract.Address(),
+				"inputs", hex.EncodeToString(input),
+				"origin", in.evm.Origin,
+				"caller", contract.Caller(),
+				"value", contract.Value(),
+			)
+		} else {
+			for _, frame := range sStk {
+				callContext.Stack.push(&frame)
+			}
+
+			callContext.Memory.store = sMem
+
+			pc = sPc
+
+			contract.Gas -= sGas
+		}
+	}
+
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
 	// the execution of one of the operations or until the done flag is set by the

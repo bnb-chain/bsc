@@ -23,7 +23,7 @@ func (s *ShortcutImpl55D398326F99059FF775485246999027B3197955) Contract() common
 	return common.HexToAddress("0x55d398326f99059fF775485246999027B3197955")
 }
 
-func (s *ShortcutImpl55D398326F99059FF775485246999027B3197955) Shortcut(pc uint64, inputs []byte, origin, caller common.Address, value *uint256.Int) (shortcutPc uint64, gasUsed uint64, stack []uint256.Int, mem []byte, expected bool, err error) {
+func (s *ShortcutImpl55D398326F99059FF775485246999027B3197955) Shortcut(inputs []byte, origin, caller common.Address, value *uint256.Int) (shortcutPc uint64, gasUsed uint64, stack []uint256.Int, mem []byte, expected bool, err error) {
 	// 入参分析 TODO: 目前还是人工分析，后续想办法自动化生成，还是有点难度的
 	if !value.IsZero() {
 		return 0, 0, nil, nil, false, errors.New("value is not zero")
