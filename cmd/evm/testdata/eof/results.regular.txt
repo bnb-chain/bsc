@@ -227,13 +227,13 @@ ERR: undefined instruction: op PUSH1CALLDATALOADPUSH1SHRDUP1PUSH4GTPUSH2, pos 0
 ERR: undefined instruction: op PUSH1PUSH1PUSH1SHLSUB, pos 0
 ERR: undefined instruction: op ANDDUP2ADDSWAP1DUP2LT, pos 0
 ERR: undefined instruction: op SWAP1PUSH1DUP1NOTSWAP2ADDANDDUP2ADDSWAP1DUP2LT, pos 0
-ERR: undefined instruction: op opcode 0xc9 not defined, pos 0
-ERR: undefined instruction: op opcode 0xca not defined, pos 0
-ERR: undefined instruction: op opcode 0xcb not defined, pos 0
-ERR: undefined instruction: op opcode 0xcc not defined, pos 0
-ERR: undefined instruction: op opcode 0xcd not defined, pos 0
-ERR: undefined instruction: op opcode 0xce not defined, pos 0
-ERR: undefined instruction: op opcode 0xcf not defined, pos 0
+ERR: undefined instruction: op DUP3AND, pos 0
+ERR: undefined instruction: op SWAP2SWAP1DUP3SUBSWAP2DUP3GTPUSH2, pos 0
+ERR: undefined instruction: op SWAP1DUP2, pos 0
+ERR: undefined instruction: op SHRSHRDUP1MULDUP1, pos 0
+ERR: undefined instruction: op SWAP3POPPOPPOP, pos 0
+ERR: undefined instruction: op SUBSLTISZEROPUSH2, pos 0
+ERR: undefined instruction: op DUP11MULDUP3SUBMULDUP1, pos 0
 ERR: undefined instruction: op opcode 0xd4 not defined, pos 0
 ERR: undefined instruction: op opcode 0xd5 not defined, pos 0
 ERR: undefined instruction: op opcode 0xd6 not defined, pos 0

@@ -291,7 +291,7 @@ func doTest(cmdline []string) {
 		cc       = flag.String("cc", "", "Sets C compiler binary")
 		coverage = flag.Bool("coverage", false, "Whether to record code coverage")
 		verbose  = flag.Bool("v", false, "Whether to log verbosely")
-		timeout  = flag.String("timeout", "10m", `Timeout of runing tests`)
+		timeout  = flag.String("timeout", "10m", `Timeout of running tests`)
 		race     = flag.Bool("race", false, "Execute the race detector")
 		short    = flag.Bool("short", false, "Pass the 'short'-flag to go test")
 		// cachedir = flag.String("cachedir", "./build/cache", "directory for caching downloads")
@@ -396,7 +396,7 @@ func doCheckGenerate() {
 	var hashes map[string][32]byte
 
 	var err error
-	hashes, err = build.HashFolder(".", []string{"tests/testdata", "build/cache"})
+	hashes, err = build.HashFolder(".", []string{"tests/testdata", "build/cache", ".git"})
 	if err != nil {
 		log.Fatal("Error computing hashes", "err", err)
 	}
@@ -411,7 +411,7 @@ func doCheckGenerate() {
 	build.MustRun(c)
 
 	// Check if generate file hashes have changed
-	generated, err := build.HashFolder(".", []string{"tests/testdata", "build/cache"})
+	generated, err := build.HashFolder(".", []string{"tests/testdata", "build/cache", ".git"})
 	if err != nil {
 		log.Fatalf("Error re-computing hashes: %v", err)
 	}

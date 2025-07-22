@@ -176,6 +176,14 @@ func codeBitmapForSI(code []byte, pc uint64, op OpCode, bits *bitvec) (step uint
 		bits.set1(pc + 1)
 		step = 12
 		processed = true
+	case Swap2Swap1Dup3SubSwap2Dup3GtPush2:
+		bits.setN(set2BitsMask, pc+7)
+		step = 9
+		processed = true
+	case SubSLTIsZeroPush2:
+		bits.setN(set2BitsMask, pc+3)
+		step = 5
+		processed = true
 	default:
 		return 0, false
 	}
