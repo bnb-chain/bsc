@@ -170,7 +170,6 @@ func (p *statePrefetcher) PrefetchBAL(block *types.Block, statedb *state.StateDB
 	if block.BAL() == nil {
 		return
 	}
-	throwaway := statedb.CopyDoPrefetch()
 	transactions := block.Transactions()
 
 	// bal := statedb.GetBlockAccessList(block)
@@ -191,10 +190,10 @@ func (p *statePrefetcher) PrefetchBAL(block *types.Block, statedb *state.StateDB
 	}
 
 	// prefetch snapshot cache
-	go p.PrefetchBALSnapshot(&balPrefetch, block, len(transactions), throwaway, interruptCh)
+	go p.PrefetchBALSnapshot(&balPrefetch, block, len(transactions), statedb, interruptCh)
 
 	// prefetch MPT trie node cache
-	go p.PrefetchBALTrie(&balPrefetch, block, throwaway, interruptCh)
+	go p.PrefetchBALTrie(&balPrefetch, block, statedb, interruptCh)
 }
 
 // PrefetchMining processes the state changes according to the Ethereum rules by running

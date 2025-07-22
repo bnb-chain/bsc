@@ -2229,7 +2229,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 		}
 
 		// TODO: add BAL to the block
-		bc.prefetcher.PrefetchBAL(block, statedb)
+		throwawayBAL := statedb.CopyDoPrefetch()
+		bc.prefetcher.PrefetchBAL(block, throwawayBAL, interruptCh)
 		// The traced section of block import.
 		res, err := bc.processBlock(block, statedb, start, setHead, interruptCh)
 		if err != nil {
