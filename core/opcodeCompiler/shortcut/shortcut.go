@@ -4,6 +4,7 @@ import (
 	"github.com/holiman/uint256"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 var (
@@ -14,7 +15,8 @@ func RegisterShortcut(addr common.Address, s Shortcut) {
 	if shortcutPcRegisters == nil {
 		shortcutPcRegisters = make(map[common.Address]Shortcut)
 	}
-	shortcutPcRegisters[s.Contract()] = s
+	log.Info("Registering shortcut", "addr", addr.String())
+	shortcutPcRegisters[addr] = s
 }
 
 func GetShortcut(addr common.Address) Shortcut {
