@@ -173,11 +173,9 @@ func (c *incrNodeCache) flush(incrDB *rawdb.IncrSnapDB) error {
 		return fmt.Errorf("cannot flush mutable cache")
 	}
 
-	err := c.flushToAncientDB(incrDB)
-	if err != nil {
+	if err := c.flushToAncientDB(incrDB); err != nil {
 		return err
 	}
-
 	atomic.StoreUint64(&c.immutable, 0)
 	return nil
 }
