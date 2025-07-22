@@ -186,6 +186,14 @@ func (im *incrManager) commit(bottom *diffLayer) error {
 	atomic.AddUint64(&im.stats.totalTasks, 1)
 	atomic.AddInt32(&im.stats.queueLength, 1)
 
+	if im.incrDB.IsSwitching() {
+		log.Info("Directory switching in progress, waiting for completion", "block", bottom.block, "stateID", bottom.stateID())
+		for im.incrDB.IsSwitching() {
+			time.Sleep(100 * time.Millisecond)
+		}
+		log.Info("Directory switch completed, proceeding with commit", "block", bottom.block, "stateID", bottom.stateID())
+	}
+
 	select {
 	case im.writeQueue <- bottom:
 		return nil
@@ -199,12 +207,6 @@ func (im *incrManager) commit(bottom *diffLayer) error {
 		queueLen := im.GetQueueLength()
 		log.Warn("Task queue is full, checking if directory switch is in progress", "queueLength", queueLen,
 			"block", bottom.block, "stateID", bottom.stateID(), "switching", im.incrDB.IsSwitching())
-
-		if im.incrDB.IsSwitching() {
-			log.Info("Queue full during directory switch - this is expected",
-				"block", bottom.block, "queueLength", queueLen)
-			return nil
-		}
 
 		log.Error("Task queue is full outside of directory switch", "queueLength", queueLen, "block", bottom.block)
 		im.LogStats()
