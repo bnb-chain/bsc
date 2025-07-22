@@ -1088,7 +1088,9 @@ func opPush2Jump(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) (
 	pos = integer.SetBytes(common.RightPadBytes(
 		scope.Contract.Code[startMin:endMin], 2))
 
-	// Jump target validation is done at compile time during fusion
+	if !scope.Contract.validJumpdest(pos) {
+		return nil, ErrInvalidJump
+	}
 	*pc = pos.Uint64() - 1 // pc will be increased by the interpreter loop
 	return nil, nil
 }
@@ -1116,7 +1118,9 @@ func opPush2JumpI(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) 
 
 	cond := scope.Stack.pop()
 	if !cond.IsZero() {
-		// Jump target validation is done at compile time during fusion
+		if !scope.Contract.validJumpdest(pos) {
+			return nil, ErrInvalidJump
+		}
 		*pc = pos.Uint64() - 1 // pc will be increased by the interpreter loop
 	} else {
 		*pc += 3
@@ -1277,7 +1281,9 @@ func opJumpIfZero(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) 
 		pos = integer.SetBytes(common.RightPadBytes(
 			scope.Contract.Code[startMin:endMin], 2))
 
-		// Jump target validation is done at compile time during fusion
+		if !scope.Contract.validJumpdest(pos) {
+			return nil, ErrInvalidJump
+		}
 		*pc = pos.Uint64() - 1 // pc will be increased by the interpreter loop
 	} else {
 		*pc += 4
