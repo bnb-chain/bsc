@@ -814,9 +814,9 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 	}
 
 	// Third pass: build jump target
-	for _, block := range blocks {
-		block.BuildJumpTable()
-	}
+	//for _, block := range blocks {
+	//	block.BuildJumpTable()
+	//}
 
 	return blocks
 }
