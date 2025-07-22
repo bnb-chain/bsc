@@ -591,7 +591,7 @@ func findLatestIncrDir(baseDir string, startBlock, blockLimit uint64) (string, e
 
 	// If no existing directories found, create the first one
 	if len(incrDirs) == 0 {
-		firstDir := filepath.Join(baseDir, fmt.Sprintf("incr_%d_%d", startBlock, startBlock+blockLimit-1))
+		firstDir := filepath.Join(baseDir, fmt.Sprintf("incr-%d-%d", startBlock, startBlock+blockLimit-1))
 		log.Info("No existing incremental directories found, creating first one", "dir", firstDir)
 		return firstDir, nil
 	}
