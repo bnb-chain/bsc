@@ -37,6 +37,7 @@ type Config struct {
 	EnablePreimageRecording   bool  // Enables recording of SHA3/keccak preimages
 	ExtraEips                 []int // Additional EIPS that are to be enabled
 	EnableOpcodeOptimizations bool  // Enable opcode optimization
+	EnableInline              bool  // Enable contract inline
 
 	StatelessSelfValidation bool // Generate execution witnesses and self-check against them (testing purpose)
 }
@@ -235,38 +236,40 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	}
 
 	// shortcut
-	inliner := shortcut.GetShortcut(contract.Address())
-	if inliner != nil {
-		sPc, sGas, sStk, sMem, expected, err := inliner.Shortcut(input, in.evm.Origin, contract.Caller(), contract.Value())
-		if err != nil || !expected {
-			log.Warn("Shortcut unexpected",
-				"error", err,
-				"contract", contract.Address(),
-				"inputs", hex.EncodeToString(input),
-				"origin", in.evm.Origin,
-				"caller", contract.Caller(),
-				"value", contract.Value(),
-			)
-		} else {
-			if debug {
-				// Capture pre-execution values for tracing.
-				pcCopy, gasCopy = pc, contract.Gas
-			}
-
-			for _, frame := range sStk {
-				callContext.Stack.push(&frame)
-			}
-			callContext.Memory.store = sMem
-			pc = sPc
-			contract.Gas -= sGas
-
-			if debug {
-				if in.evm.Config.Tracer.OnGasChange != nil {
-					in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-sPc, tracing.GasChangeCallOpCode)
+	if in.evm.Config.EnableInline {
+		inliner := shortcut.GetShortcut(contract.Address())
+		if inliner != nil {
+			sPc, sGas, sStk, sMem, expected, err := inliner.Shortcut(input, in.evm.Origin, contract.Caller(), contract.Value())
+			if err != nil || !expected {
+				log.Warn("Shortcut unexpected",
+					"error", err,
+					"contract", contract.Address(),
+					"inputs", hex.EncodeToString(input),
+					"origin", in.evm.Origin,
+					"caller", contract.Caller(),
+					"value", contract.Value(),
+				)
+			} else {
+				if debug {
+					// Capture pre-execution values for tracing.
+					pcCopy, gasCopy = pc, contract.Gas
 				}
-				if in.evm.Config.Tracer.OnOpcode != nil {
-					in.evm.Config.Tracer.OnOpcode(pc, byte(Nop), gasCopy, sPc, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
-					logged = true
+
+				for _, frame := range sStk {
+					callContext.Stack.push(&frame)
+				}
+				callContext.Memory.store = sMem
+				pc = sPc
+				contract.Gas -= sGas
+
+				if debug {
+					if in.evm.Config.Tracer.OnGasChange != nil {
+						in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-sPc, tracing.GasChangeCallOpCode)
+					}
+					if in.evm.Config.Tracer.OnOpcode != nil {
+						in.evm.Config.Tracer.OnOpcode(pc, byte(Nop), gasCopy, sPc, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
+						logged = true
+					}
 				}
 			}
 		}
