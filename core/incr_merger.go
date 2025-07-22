@@ -42,30 +42,30 @@ func MergeIncrSnapshot(chainDB ethdb.Database, trieDB *triedb.Database, incrPath
 		}()
 
 		// merge incremental block data
-		// wg.Add(1)
-		// go func() {
-		// 	defer wg.Done()
-		// 	log.Info("Starting merge incremental block data", "path", dir.Path)
-		// 	if err = mergeIncrBlock(dir.Path, chainDB); err != nil {
-		// 		log.Error("Failed to merge incremental block data", "path", dir.Path, "err", err)
-		// 		errChan <- fmt.Errorf("failed to merge incremental block data: %v", err)
-		// 	} else {
-		// 		log.Info("Successfully merged incremental block data", "path", dir.Path)
-		// 	}
-		// }()
-		//
-		// // merge contract codes
-		// wg.Add(1)
-		// go func() {
-		// 	defer wg.Done()
-		// 	log.Info("Starting merge contract codes", "path", dir.Path)
-		// 	if err = mergeContractCodes(dir.Path, chainDB); err != nil {
-		// 		log.Error("Failed to merge incremental contract codes", "path", dir.Path, "err", err)
-		// 		errChan <- fmt.Errorf("failed to merge incremental contract codes: %v", err)
-		// 	} else {
-		// 		log.Info("Successfully merged contract codes", "path", dir.Path)
-		// 	}
-		// }()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			log.Info("Starting merge incremental block data", "path", dir.Path)
+			if err = mergeIncrBlock(dir.Path, chainDB); err != nil {
+				log.Error("Failed to merge incremental block data", "path", dir.Path, "err", err)
+				errChan <- fmt.Errorf("failed to merge incremental block data: %v", err)
+			} else {
+				log.Info("Successfully merged incremental block data", "path", dir.Path)
+			}
+		}()
+
+		// merge contract codes
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			log.Info("Starting merge contract codes", "path", dir.Path)
+			if err = mergeContractCodes(dir.Path, chainDB); err != nil {
+				log.Error("Failed to merge incremental contract codes", "path", dir.Path, "err", err)
+				errChan <- fmt.Errorf("failed to merge incremental contract codes: %v", err)
+			} else {
+				log.Info("Successfully merged contract codes", "path", dir.Path)
+			}
+		}()
 
 		go func() {
 			wg.Wait()
