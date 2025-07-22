@@ -263,7 +263,6 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				defer ReturnContract(contract)
 				codeHash := evm.resolveCodeHash(addrCopy)
 				contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
-				//runStart := time.Now()
 				if contract.optimized {
 					evm.UseOptInterpreter()
 				} else {
@@ -273,8 +272,6 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				contract.SetCallCode(&addrCopy, codeHash, code)
 				ret, err = evm.interpreter.Run(contract, input, false)
 				gas = contract.Gas
-				//runTime := time.Since(runStart)
-				//interpreterRunTimer.Update(runTime)
 			} else {
 				addrCopy := addr
 				// If the account has no code, we can abort here
@@ -282,13 +279,10 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				contract := GetContract(caller, AccountRef(addrCopy), value, gas)
 				defer ReturnContract(contract)
 
-				//runStart := time.Now()
 				contract.IsSystemCall = isSystemCall(caller)
 				contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), code)
 				ret, err = evm.interpreter.Run(contract, input, false)
 				gas = contract.Gas
-				//runTime := time.Since(runStart)
-				//interpreterRunTimer.Update(runTime)
 			}
 		}
 	}
