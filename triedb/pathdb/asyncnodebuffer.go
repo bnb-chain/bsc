@@ -80,7 +80,6 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 
 	for _, stateRangeKey := range keys {
 		group := stateRangeGroups[stateRangeKey]
-		log.Info("Processing state range group", "stateRange", stateRangeKey, "groupSize", len(group))
 		mergedNodes := newNodeSet(nil)
 		var groupMetadata *incrStateMetadata
 		for _, item := range group {
@@ -101,6 +100,7 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 		}
 		a.current.layers += groupMetadata.Layers - 1
 		totalLayers += groupMetadata.Layers
+		log.Info("Processing state range group", "stateRange", stateRangeKey, "groupSize", len(group), "layers", groupMetadata.Layers)
 
 		if err := a.flush(db, freezer, nil, groupMetadata.StateIDArray[1], false); err != nil {
 			log.Error("Failed to flush history", "error", err)
@@ -108,47 +108,18 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 		}
 	}
 
-	// for i := start; i <= end; i++ {
-	// 	trieNodes, err := readIncrTrieNodes(incrFreezer, i)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	m, err := readIncrMetadata(incrFreezer, i)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-
-	// 	nodesSet := newNodeSet(trieNodes)
-	// 	if err = a.current.commit(nodesSet, newStates(nil, nil, false)); err != nil {
-	// 		log.Error("Failed to commit history", "error", err)
-	// 		return err
-	// 	}
-
-	// 	stateRangeKey := fmt.Sprintf("%d-%d", m.StateIDArray[0], m.StateIDArray[1])
-	// 	if !processedStateRanges[stateRangeKey] {
-	// 		a.current.layers += m.Layers - 1
-	// 		totalLayers += m.Layers
-	// 		processedStateRanges[stateRangeKey] = true
-	// 	}
-
-	// 	if err = a.flush(db, freezer, nil, m.StateIDArray[1], false); err != nil {
-	// 		log.Error("Failed to flush history", "error", err)
-	// 		return err
-	// 	}
-	// }
-
 	log.Info("Force flush async node buffer", "empty", a.empty(), "layers", a.getLayers(),
 		"lastStateID", lastStateID, "totalLayers", totalLayers)
 	if err := a.flush(db, freezer, nil, lastStateID, true); err != nil {
 		log.Error("Failed to force flush history", "error", err)
 		return err
 	}
+
 	for a.isFlushing.Load() {
 		time.Sleep(time.Second)
 		log.Warn("Waiting background memory table flushed into disk")
 	}
 	log.Info("Finished merging incremental state history", "empty", a.empty(), "layers", a.getLayers())
-
 	return nil
 }
 
