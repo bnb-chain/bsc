@@ -47,41 +47,87 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 	var (
 		totalLayers, lastStateID uint64
 		processedStateRanges     = make(map[string]bool)
+		stateRangeGroups         = make(map[string][]struct {
+			index    uint64
+			metadata *incrStateMetadata
+		})
 	)
 
 	for i := start; i <= end; i++ {
-		trieNodes, err := readIncrTrieNodes(incrFreezer, i)
-		if err != nil {
-			return err
-		}
 		m, err := readIncrMetadata(incrFreezer, i)
 		if err != nil {
 			return err
 		}
-		log.Info("incr meta info", "count", m.NodeCount, "layers", m.Layers, "state id_array", m.StateIDArray,
-			"block number array", m.BlockNumberArray)
+		stateRangeKey := fmt.Sprintf("%d-%d", m.StateIDArray[0], m.StateIDArray[1])
+		stateRangeGroups[stateRangeKey] = append(stateRangeGroups[stateRangeKey], struct {
+			index    uint64
+			metadata *incrStateMetadata
+		}{
+			index:    i,
+			metadata: m,
+		})
 		if i == end {
 			lastStateID = m.StateIDArray[1]
 		}
+	}
 
-		nodesSet := newNodeSet(trieNodes)
-		if err = a.current.commit(nodesSet, newStates(nil, nil, false)); err != nil {
+	for stateRangeKey, group := range stateRangeGroups {
+		log.Info("Processing state range group", "stateRange", stateRangeKey, "groupSize", len(group))
+		mergedNodes := newNodeSet(nil)
+		var groupMetadata *incrStateMetadata
+		for _, item := range group {
+			trieNodes, err := readIncrTrieNodes(incrFreezer, item.index)
+			if err != nil {
+				return err
+			}
+			nodesSet := newNodeSet(trieNodes)
+			mergedNodes.merge(nodesSet)
+			if groupMetadata == nil {
+				groupMetadata = item.metadata
+			}
+		}
+
+		if err := a.current.commit(mergedNodes, newStates(nil, nil, false)); err != nil {
 			log.Error("Failed to commit history", "error", err)
 			return err
 		}
+		a.current.layers += groupMetadata.Layers - 1
+		totalLayers += groupMetadata.Layers
 
-		stateRangeKey := fmt.Sprintf("%d-%d", m.StateIDArray[0], m.StateIDArray[1])
-		if !processedStateRanges[stateRangeKey] {
-			a.current.layers += m.Layers - 1
-			totalLayers += m.Layers
-			processedStateRanges[stateRangeKey] = true
-		}
-
-		if err = a.flush(db, freezer, nil, m.StateIDArray[1], false); err != nil {
+		if err := a.flush(db, freezer, nil, groupMetadata.StateIDArray[1], false); err != nil {
 			log.Error("Failed to flush history", "error", err)
 			return err
 		}
 	}
+
+	// for i := start; i <= end; i++ {
+	// 	trieNodes, err := readIncrTrieNodes(incrFreezer, i)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	m, err := readIncrMetadata(incrFreezer, i)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+
+	// 	nodesSet := newNodeSet(trieNodes)
+	// 	if err = a.current.commit(nodesSet, newStates(nil, nil, false)); err != nil {
+	// 		log.Error("Failed to commit history", "error", err)
+	// 		return err
+	// 	}
+
+	// 	stateRangeKey := fmt.Sprintf("%d-%d", m.StateIDArray[0], m.StateIDArray[1])
+	// 	if !processedStateRanges[stateRangeKey] {
+	// 		a.current.layers += m.Layers - 1
+	// 		totalLayers += m.Layers
+	// 		processedStateRanges[stateRangeKey] = true
+	// 	}
+
+	// 	if err = a.flush(db, freezer, nil, m.StateIDArray[1], false); err != nil {
+	// 		log.Error("Failed to flush history", "error", err)
+	// 		return err
+	// 	}
+	// }
 
 	log.Info("Force flush async node buffer", "empty", a.empty(), "layers", a.getLayers(),
 		"lastStateID", lastStateID, "totalLayers", totalLayers, "processedRanges", len(processedStateRanges))
