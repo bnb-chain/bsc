@@ -258,7 +258,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				for _, frame := range sStk {
 					callContext.Stack.push(&frame)
 				}
-				callContext.Memory.store = sMem
+				copy(callContext.Memory.store, sMem)
 				callContext.Memory.lastGasCost = memLastGasCost
 				pc = sPc
 				contract.Gas -= sGas
