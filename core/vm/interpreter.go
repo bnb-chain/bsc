@@ -239,7 +239,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	if in.evm.Config.EnableInline {
 		inliner := shortcut.GetShortcut(contract.Address())
 		if inliner != nil {
-			sPc, sGas, sStk, sMem, expected, err := inliner.Shortcut(input, in.evm.Origin, contract.Caller(), contract.Value())
+			sPc, sGas, sStk, sMem, memLastGasCost, expected, err := inliner.Shortcut(input, in.evm.Origin, contract.Caller(), contract.Value())
 			if err != nil || !expected {
 				log.Warn("Shortcut unexpected",
 					"error", err,
@@ -259,6 +259,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 					callContext.Stack.push(&frame)
 				}
 				callContext.Memory.store = sMem
+				callContext.Memory.lastGasCost = memLastGasCost
 				pc = sPc
 				contract.Gas -= sGas
 
@@ -267,7 +268,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 						in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-sPc, tracing.GasChangeCallOpCode)
 					}
 					if in.evm.Config.Tracer.OnOpcode != nil {
-						in.evm.Config.Tracer.OnOpcode(pc, byte(Nop), gasCopy, sPc, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
+						in.evm.Config.Tracer.OnOpcode(pc, byte(Nop), gasCopy, sGas, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
 						logged = true
 					}
 				}

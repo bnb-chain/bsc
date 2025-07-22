@@ -197,7 +197,7 @@ type FunctionSelector struct {
 	// from simulate execution
 	GasUsed uint64 // 预估gas消耗
 	Stack   []uint256.Int
-	Memory  []byte
+	Memory  Memory
 	SimErr  error
 }
 
@@ -275,14 +275,17 @@ func (sg *ShortcutGenerator) analyzeOpcodes() error {
 			selector.SimErr = err
 		} else {
 			selector.GasUsed = gas
-			selector.Stack = make([]uint256.Int, len(stk))
-			selector.Memory = make([]byte, len(mem))
+			selector.Stack = make([]uint256.Int, len(stk.data))
+			selector.Memory = Memory{
+				store:       make([]byte, mem.Len()),
+				lastGasCost: mem.lastGasCost,
+			}
 
-			for i, frame := range stk {
+			for i, frame := range stk.data {
 				selector.Stack[i].SetBytes(frame.Bytes())
 			}
 
-			copy(selector.Memory, mem)
+			copy(selector.Memory.store, mem.store)
 		}
 	}
 
@@ -310,7 +313,7 @@ func (sg *ShortcutGenerator) generateGoCode() string {
 	code.WriteString("\t\"errors\"\n")
 	code.WriteString("\t\"github.com/holiman/uint256\"\n")
 	code.WriteString("\t\"github.com/ethereum/go-ethereum/common\"\n")
-	code.WriteString("\t\"\"github.com/ethereum/go-ethereum/common/hexutil\"\"\n")
+	code.WriteString("\t\"github.com/ethereum/go-ethereum/common/hexutil\"\n")
 	code.WriteString("\t\"github.com/ethereum/go-ethereum/core/opcodeCompiler/shortcut\"\n")
 	code.WriteString(")\n\n")
 
@@ -330,13 +333,13 @@ func (sg *ShortcutGenerator) generateGoCode() string {
 	code.WriteString("}\n\n")
 
 	// 生成Shortcut方法
-	code.WriteString(fmt.Sprintf("func (s *ShortcutImpl%s) Shortcut(inputs []byte, origin, caller common.Address, value *uint256.Int) (shortcutPc uint64, gasUsed uint64, stack []uint256.Int, mem []byte, expected bool, err error) {\n", strings.ToUpper(sg.contractAddr.Hex()[2:])))
+	code.WriteString(fmt.Sprintf("func (s *ShortcutImpl%s) Shortcut(inputs []byte, origin, caller common.Address, value *uint256.Int) (shortcutPc uint64, gasUsed uint64, stack []uint256.Int, mem []byte, lastGasCost uint64, expected bool, err error) {\n", strings.ToUpper(sg.contractAddr.Hex()[2:])))
 
 	// 生成函数选择器逻辑
 	if len(sg.selectors) > 0 {
 		code.WriteString("\t// 函数选择器分析\n")
 		code.WriteString("\tif len(inputs) < 4 {\n")
-		code.WriteString("\t\treturn 0, 0, nil, nil, false, nil\n")
+		code.WriteString("\t\treturn 0, 0, nil, nil, 0, false, nil\n")
 		code.WriteString("\t}\n\n")
 
 		code.WriteString("\tselector := hexutil.Encode(inputs[:4])\n")
@@ -356,7 +359,7 @@ func (sg *ShortcutGenerator) generateGoCode() string {
 			}
 			stkStr += "\t\t\t}"
 
-			memStr := fmt.Sprintf("\n\t\t\thexutil.MustDecode(\"%s\")", hexutil.Encode(mem))
+			memStr := fmt.Sprintf("\n\t\t\thexutil.MustDecode(\"%s\")", hexutil.Encode(mem.Data()))
 
 			code.WriteString(fmt.Sprintf("\tcase \"%s\":\n", selector))
 			code.WriteString(fmt.Sprintf("\t\t// 函数: %s\n", selector))
@@ -364,15 +367,15 @@ func (sg *ShortcutGenerator) generateGoCode() string {
 			code.WriteString(fmt.Sprintf("\t\t// 栈操作: %v\n", info.StackOps))
 			code.WriteString(fmt.Sprintf("\t\t// 内存操作: %v\n", info.MemoryOps))
 			code.WriteString(fmt.Sprintf("\t\t// 存储操作: %v\n", info.StorageOps))
-			code.WriteString(fmt.Sprintf("\t\treturn %d, %d, %s, %s, true, nil\n", info.PC, info.GasUsed, stkStr, memStr))
+			code.WriteString(fmt.Sprintf("\t\treturn %d, %d, %s, %s, %d, true, nil\n", info.PC, info.GasUsed, stkStr, memStr, mem.lastGasCost))
 		}
 
 		code.WriteString("\tdefault:\n")
-		code.WriteString("\t\treturn 0, 0, nil, nil, false, nil\n")
+		code.WriteString("\t\treturn 0, 0, nil, nil, 0, false, nil\n")
 		code.WriteString("\t}\n")
 	} else {
 		code.WriteString("\t// 未找到函数选择器\n")
-		code.WriteString("\treturn 0, 0, nil, nil, false, nil\n")
+		code.WriteString("\treturn 0, 0, nil, nil, 0, false, nil\n")
 	}
 
 	code.WriteString("}\n")
@@ -432,7 +435,7 @@ var (
 	}
 )
 
-func analyzeCall(addr common.Address, code []byte, selector [4]byte, endPc uint64, block *types.Block) (gasUsed, opsUsed uint64, stack []uint256.Int, mem []byte, err error) {
+func analyzeCall(addr common.Address, code []byte, selector [4]byte, endPc uint64, block *types.Block) (gasUsed, opsUsed uint64, stack *Stack, mem *Memory, err error) {
 	statedb := MockStateDB{}
 	vmctx := BlockContext{
 		Coinbase:    common.Address{},
@@ -469,7 +472,7 @@ func analyzeCall(addr common.Address, code []byte, selector [4]byte, endPc uint6
 	return gasUsed, opsUsed, stk, mem, err
 }
 
-func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly bool, endPc uint64) (gasUsed, opsUsed uint64, stack_ []uint256.Int, mem_ []byte, err error) {
+func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly bool, endPc uint64) (gasUsed, opsUsed uint64, stack_ *Stack, mem_ *Memory, err error) {
 	// Increment the call depth which is restricted to 1024
 	in.evm.depth++
 	defer func() { in.evm.depth-- }()
@@ -520,10 +523,10 @@ func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly 
 	// Don't move this deferred function, it's placed before the OnOpcode-deferred method,
 	// so that it gets executed _after_: the OnOpcode needs the stacks before
 	// they are returned to the pools
-	defer func() {
-		returnStack(stack)
-		mem.Free()
-	}()
+	//defer func() {
+	//	returnStack(stack)
+	//	mem.Free()
+	//}()
 	contract.Input = input
 
 	// The Interpreter main run loop (contextual). This loop runs until either an
@@ -563,6 +566,7 @@ func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly 
 		if operation.dynamicGas != nil {
 			switch op {
 			case MSTORE:
+				fmt.Println("debug")
 			default:
 				return 0, 0, nil, nil, errors.New("dynamic gas is not supported")
 			}
@@ -640,5 +644,5 @@ func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly 
 		return 0, 0, nil, nil, errors.New("sim err: unexpected end pc")
 	}
 
-	return totalCost, ops, stack.Data(), mem.Data(), err
+	return totalCost, ops, stack, mem, err
 }

@@ -26,5 +26,5 @@ func GetShortcut(addr common.Address) Shortcut {
 
 type Shortcut interface {
 	Contract() common.Address
-	Shortcut(inputs []byte, origin, caller common.Address, value *uint256.Int) (shortcutPc uint64, gasUsed uint64, stack []uint256.Int, mem []byte, expected bool, err error)
+	Shortcut(inputs []byte, origin, caller common.Address, value *uint256.Int) (shortcutPc uint64, gasUsed uint64, stack []uint256.Int, mem []byte, lastGasCost uint64, expected bool, err error)
 }
