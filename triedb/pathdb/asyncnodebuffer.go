@@ -58,16 +58,6 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 		if err != nil {
 			return err
 		}
-
-		stateRangeKey := fmt.Sprintf("%d-%d", m.StateIDArray[0], m.StateIDArray[1])
-		if !processedStateRanges[stateRangeKey] {
-			totalLayers += m.Layers
-			processedStateRanges[stateRangeKey] = true
-			log.Debug("Added layers for new state range", "stateRange", stateRangeKey, "layers", m.Layers, "totalLayers", totalLayers)
-		} else {
-			log.Debug("Skipped duplicate state range", "stateRange", stateRangeKey, "layers", m.Layers)
-		}
-
 		if i == end {
 			lastStateID = m.StateIDArray[1]
 		}
@@ -78,8 +68,13 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 			return err
 		}
 
+		stateRangeKey := fmt.Sprintf("%d-%d", m.StateIDArray[0], m.StateIDArray[1])
 		if !processedStateRanges[stateRangeKey] {
 			a.current.layers += m.Layers - 1
+		}
+		if !processedStateRanges[stateRangeKey] {
+			totalLayers += m.Layers
+			processedStateRanges[stateRangeKey] = true
 		}
 
 		if err = a.flush(db, freezer, nil, m.StateIDArray[1], false); err != nil {
@@ -201,21 +196,16 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWri
 	}
 
 	if !a.current.full() {
-		log.Info("Current node cache is not full, skip flushing", "limit", a.current.limit)
 		return nil
 	}
 
-	log.Info("fkmdmc")
 	// background flush doing
 	if atomic.LoadUint64(&a.background.immutable) == 1 {
-		log.Info("ceijwcei")
 		return nil
 	}
 
-	log.Info("cewjcw")
 	atomic.StoreUint64(&a.current.immutable, 1)
 	a.current, a.background = a.background, a.current
-	log.Info("cwemkcm2ii")
 	a.isFlushing.Store(true)
 	go func(persistID uint64) {
 		defer a.isFlushing.Store(false)
@@ -303,11 +293,12 @@ func (nc *nodecache) reset() {
 }
 
 func (nc *nodecache) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, nodesCache *fastcache.Cache, id uint64, force bool) error {
-	log.Info("Flush node cache", "immutable", atomic.LoadUint64(&nc.immutable), "id", id, "force", force)
 	if atomic.LoadUint64(&nc.immutable) != 1 {
 		return errFlushMutable
 	}
-	nc.buffer.flush(db, freezer, nodesCache, id, force)
+	if err := nc.buffer.flush(db, freezer, nodesCache, id, force); err != nil {
+		return err
+	}
 	atomic.StoreUint64(&nc.immutable, 0)
 	return nil
 }
