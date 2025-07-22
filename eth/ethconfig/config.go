@@ -62,7 +62,6 @@ var Defaults = Config{
 	TriesInMemory:          128,
 	TriesVerifyMode:        core.LocalVerify,
 	SnapshotCache:          102,
-	DiffBlock:              uint64(86400),
 	FilterLogCacheSize:     32,
 	Miner:                  minerconfig.DefaultConfig,
 	TxPool:                 legacypool.DefaultConfig,
