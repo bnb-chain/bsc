@@ -12,7 +12,7 @@ import (
 )
 
 // the size of the batch to be flushed to the ancient db: 3.5GB
-const flushBatchSize = 3758096384
+const flushBatchSize = 3221225472
 
 // asyncIncrStateBuffer writes the incremental state trie nodes into incr state db.
 type asyncIncrStateBuffer struct {
@@ -194,10 +194,9 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 		}
 		jn = append(jn, entry)
 
-		// Check if we need to flush based on estimated size
-		estimatedSize := c.estimatedRLPEncodedSize(jn)
-		if estimatedSize >= flushBatchSize {
-			log.Info("Batch size limit reached, flushing to ancient db", "estimatedSize", estimatedSize,
+		computedSize := c.computeRLPEncodedSize(jn)
+		if computedSize >= flushBatchSize {
+			log.Info("Batch size limit reached, flushing to ancient db", "computedSize", computedSize,
 				"limit", flushBatchSize, "entryCount", len(jn))
 			if err := c.writeBatchToAncientDB(incrDB, jn); err != nil {
 				return err
@@ -216,7 +215,7 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 	return nil
 }
 
-func (c *incrNodeCache) estimatedRLPEncodedSize(jn []journalNodes) uint64 {
+func (c *incrNodeCache) computeRLPEncodedSize(jn []journalNodes) uint64 {
 	totalSize := uint64(0)
 	for _, entry := range jn {
 		entrySize := uint64(0)
