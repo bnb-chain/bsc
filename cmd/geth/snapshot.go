@@ -792,6 +792,9 @@ func downloadIncrSnapshot(ctx *cli.Context) error {
 	chainDB := utils.MakeChainDatabase(ctx, stack, false, false)
 	defer chainDB.Close()
 
+	trieDB := utils.MakeTrieDatabase(ctx, stack, chainDB, false, true, false)
+	defer trieDB.Close()
+
 	var path string
 	if !ctx.IsSet(utils.IncrSnapshotPathFlag.Name) {
 		path = "./in"
@@ -801,7 +804,7 @@ func downloadIncrSnapshot(ctx *cli.Context) error {
 
 	url := ctx.String(utils.RemoteIncrSnapshotURLFlag.Name)
 
-	downloader := core.NewIncrDownloader(chainDB, url, path, 10)
+	downloader := core.NewIncrDownloader(chainDB, trieDB, url, path, 10)
 	defer downloader.Close()
 
 	if err := downloader.RunAll(); err != nil {
