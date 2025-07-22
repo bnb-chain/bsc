@@ -17,7 +17,10 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-const incrSnapshotDirNamePattern = `^incr-(\d+)-(\d+)$`
+const (
+	incrDirNameRegexPattern = `^incr-(\d+)-(\d+)$`
+	incrDirNamePattern      = "incr-%d-%d"
+)
 
 type IncrSnapDB struct {
 	currSnapDB *snapDBWrapper
@@ -331,7 +334,7 @@ func (idb *IncrSnapDB) switchToNewDirectoryWithAsyncManager(blockNum uint64, asy
 		return err
 	}
 
-	newDir := filepath.Join(idb.baseDir, fmt.Sprintf("incr_%d_%d", blockNum, blockNum+idb.info.blockLimit-1))
+	newDir := filepath.Join(idb.baseDir, fmt.Sprintf(incrDirNamePattern, blockNum, blockNum+idb.info.blockLimit-1))
 	db, err := newSnapDBWrapper(newDir, &idb.info)
 	if err != nil {
 		log.Error("Failed to create incr snapshot database", "err", err)
@@ -518,7 +521,7 @@ func (idb *IncrSnapDB) reset(dir string, block uint64) error {
 		return fmt.Errorf("failed to create base directory %s: %v", idb.baseDir, err)
 	}
 
-	newDir := filepath.Join(dir, fmt.Sprintf("incr_%d_%d", block, block+idb.info.blockLimit-1))
+	newDir := filepath.Join(dir, fmt.Sprintf(incrDirNamePattern, block, block+idb.info.blockLimit-1))
 	db, err := newSnapDBWrapper(newDir, &idb.info)
 	if err != nil {
 		return fmt.Errorf("failed to create new snap db wrapper in directory %s: %v", newDir, err)
@@ -533,7 +536,7 @@ func (idb *IncrSnapDB) reset(dir string, block uint64) error {
 // parseDirBlockNumber parses the start and end block number from directory path
 func parseDirBlockNumber(dirPath string) (uint64, uint64, error) {
 	dirName := filepath.Base(dirPath)
-	pattern := regexp.MustCompile(incrSnapshotDirNamePattern)
+	pattern := regexp.MustCompile(incrDirNameRegexPattern)
 	matches := pattern.FindStringSubmatch(dirName)
 	if len(matches) != 3 {
 		return 0, 0, fmt.Errorf("invalid directory name format: %s", dirName)
@@ -562,7 +565,7 @@ func findLatestIncrDir(baseDir string, startBlock, blockLimit uint64) (string, e
 		return "", fmt.Errorf("failed to read base directory %s: %v", baseDir, err)
 	}
 
-	newIncrDirPattern := regexp.MustCompile(incrSnapshotDirNamePattern)
+	newIncrDirPattern := regexp.MustCompile(incrDirNameRegexPattern)
 	var incrDirs []IncrDirInfo
 
 	for _, entry := range entries {
@@ -591,7 +594,7 @@ func findLatestIncrDir(baseDir string, startBlock, blockLimit uint64) (string, e
 
 	// If no existing directories found, create the first one
 	if len(incrDirs) == 0 {
-		firstDir := filepath.Join(baseDir, fmt.Sprintf("incr-%d-%d", startBlock, startBlock+blockLimit-1))
+		firstDir := filepath.Join(baseDir, fmt.Sprintf(incrDirNamePattern, startBlock, startBlock+blockLimit-1))
 		log.Info("No existing incremental directories found, creating first one", "dir", firstDir)
 		return firstDir, nil
 	}
@@ -614,7 +617,7 @@ func GetAllIncrDirs(baseDir string) ([]IncrDirInfo, error) {
 		return nil, fmt.Errorf("failed to read base directory %s: %v", baseDir, err)
 	}
 
-	newIncrDirPattern := regexp.MustCompile(incrSnapshotDirNamePattern)
+	newIncrDirPattern := regexp.MustCompile(incrDirNameRegexPattern)
 	var incrDirs []IncrDirInfo
 
 	for _, entry := range entries {
