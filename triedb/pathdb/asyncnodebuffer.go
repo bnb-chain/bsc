@@ -58,6 +58,8 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 		if err != nil {
 			return err
 		}
+		log.Info("incr meta info", "count", m.NodeCount, "layers", m.Layers, "state id_array", m.StateIDArray,
+			"block number array", m.BlockNumberArray)
 		if i == end {
 			lastStateID = m.StateIDArray[1]
 		}
@@ -71,8 +73,6 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 		stateRangeKey := fmt.Sprintf("%d-%d", m.StateIDArray[0], m.StateIDArray[1])
 		if !processedStateRanges[stateRangeKey] {
 			a.current.layers += m.Layers - 1
-		}
-		if !processedStateRanges[stateRangeKey] {
 			totalLayers += m.Layers
 			processedStateRanges[stateRangeKey] = true
 		}
@@ -190,7 +190,6 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWri
 				continue
 			}
 			atomic.StoreUint64(&a.current.immutable, 1)
-			log.Info("Current node cache is not full, force flush it")
 			return a.current.flush(db, freezer, clean, id, true)
 		}
 	}
