@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/opcodeCompiler/shortcut"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 func init() {
@@ -33,6 +34,7 @@ func (s *ShortcutImpl55D398326F99059FF775485246999027B3197955) Shortcut(inputs [
 	}
 
 	selector := hex.EncodeToString(inputs[:5])
+	log.Info("shortcut", "selector", selector)
 	switch selector {
 	case "0xa0712d68":
 		// 函数: 0xa0712d68
