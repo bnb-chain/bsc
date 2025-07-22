@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"errors"
+	"math/big"
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -195,7 +196,7 @@ func DoCFGBasedOpcodeFusion(code []byte) ([]byte, error) {
 				break
 			}
 			// Skip data bytes for PUSH instructions
-			skip, steps := calculateSkipSteps(code, int(pc))
+			skip, steps, _ := calculateSkipSteps(code, int(pc))
 			if skip {
 				pc += uint64(steps) + 1 // Add 1 for the opcode byte
 			} else {
@@ -215,7 +216,7 @@ func DoCFGBasedOpcodeFusion(code []byte) ([]byte, error) {
 				break
 			}
 			// Skip data bytes for PUSH instructions
-			skip, steps := calculateSkipSteps(code, int(pc))
+			skip, steps, _ := calculateSkipSteps(code, int(pc))
 			if skip {
 				pc += uint64(steps) + 1 // Add 1 for the opcode byte
 			} else {
@@ -254,7 +255,7 @@ func fuseBlock(code []byte, block BasicBlock) error {
 			i += skipSteps + 1 // Add 1 for the opcode byte
 		} else {
 			// Skip data bytes for PUSH instructions
-			skip, steps := calculateSkipSteps(code, i)
+			skip, steps, _ := calculateSkipSteps(code, i)
 			if skip {
 				i += steps + 1 // Add 1 for the opcode byte
 			} else {
@@ -935,7 +936,7 @@ func doCodeFusion(code []byte) ([]byte, error) {
 			}
 		}
 
-		skip, steps := calculateSkipSteps(fusedCode, cur)
+		skip, steps, _ := calculateSkipSteps(fusedCode, cur)
 		if skip {
 			i += steps
 			continue
@@ -944,13 +945,13 @@ func doCodeFusion(code []byte) ([]byte, error) {
 	return fusedCode, nil
 }
 
-func calculateSkipSteps(code []byte, cur int) (skip bool, steps int) {
+func calculateSkipSteps(code []byte, cur int) (skip bool, steps int, param []byte) {
 	inst := ByteCode(code[cur])
 	if inst >= PUSH1 && inst <= PUSH32 {
 		// skip the data.
 		steps = int(inst - PUSH1 + 1)
 		skip = true
-		return skip, steps
+		return skip, steps, code[cur+1 : cur+1+steps]
 	}
 
 	switch inst {
@@ -967,9 +968,9 @@ func calculateSkipSteps(code []byte, cur int) (skip bool, steps int) {
 		steps = 4
 		skip = true
 	default:
-		return false, 0
+		return false, 0, nil
 	}
-	return skip, steps
+	return skip, steps, nil
 }
 
 // BasicBlock represents a sequence of opcodes that can be executed linearly
@@ -980,6 +981,29 @@ type BasicBlock struct {
 	Opcodes    []byte  // The actual opcodes in this block
 	JumpTarget *uint64 // If this block ends with a jump, the target PC
 	IsJumpDest bool    // Whether this block starts with a JUMPDEST
+
+	ImmediateParams [][]byte
+}
+
+// BuildJumpTable version 1, only found push jump
+func (b *BasicBlock) BuildJumpTable() {
+	if len(b.Opcodes) > 2 {
+		if ByteCode(b.Opcodes[len(b.Opcodes)-2]) < PUSH0 || ByteCode(b.Opcodes[len(b.Opcodes)-2]) > PUSH32 {
+			return
+		}
+		destPc := big.NewInt(0).SetBytes(b.ImmediateParams[len(b.Opcodes)-2]).Uint64()
+		switch ByteCode(b.Opcodes[len(b.Opcodes)-1]) {
+		case JUMP, JUMPI:
+			b.JumpTarget = &destPc
+		default:
+			return
+		}
+	}
+}
+
+// BuildJumpTableV2 version 2, analyze stack
+func (b *BasicBlock) BuildJumpTableV2() {
+	panic("not implemented")
 }
 
 // GenerateBasicBlocks takes a byte array of opcodes and returns an array of BasicBlocks.
@@ -1000,7 +1024,7 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 		if op == JUMPDEST {
 			jumpDests[pc] = true
 		}
-		skip, steps := calculateSkipSteps(code, int(pc))
+		skip, steps, _ := calculateSkipSteps(code, int(pc))
 		if skip {
 			pc += uint64(steps) + 1 // Add 1 for the opcode byte
 		} else {
@@ -1032,7 +1056,7 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 		}
 
 		// Determine instruction length
-		skip, steps := calculateSkipSteps(code, int(pc))
+		skip, steps, param := calculateSkipSteps(code, int(pc))
 		instLen := uint64(1)
 		if skip {
 			instLen += uint64(steps)
@@ -1044,6 +1068,7 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 		}
 		// Add instruction bytes to block
 		currentBlock.Opcodes = append(currentBlock.Opcodes, code[pc:pc+instLen]...)
+		currentBlock.ImmediateParams = append(currentBlock.ImmediateParams, param)
 		pc += instLen
 
 		// If this is a block terminator (other than INVALID since we already handled it), end the block
@@ -1058,6 +1083,12 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 		currentBlock.EndPC = pc
 		blocks = append(blocks, *currentBlock)
 	}
+
+	// Third pass: build jump target
+	for _, block := range blocks {
+		block.BuildJumpTable()
+	}
+
 	return blocks
 }
 
