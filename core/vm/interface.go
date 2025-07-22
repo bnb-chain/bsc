@@ -98,8 +98,6 @@ type StateDB interface {
 	RevertToSnapshot(int)
 	Snapshot() int
 
-	NoTrie() bool
-
 	AddLog(*types.Log)
 	GetLogs(hash common.Hash, blockNumber uint64, blockHash common.Hash) []*types.Log
 	AddPreimage(common.Hash, []byte)
@@ -111,8 +109,6 @@ type StateDB interface {
 	// Finalise must be invoked at the end of a transaction
 	Finalise(bool)
 	IntermediateRoot(deleteEmptyObjects bool) common.Hash
-
-	IsAddressInMutations(addr common.Address) bool
 }
 
 // CallContext provides a basic interface for the EVM calling conventions. The EVM
