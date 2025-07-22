@@ -26,12 +26,17 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
+	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/discover"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 func main() {
@@ -130,6 +135,12 @@ func main() {
 		}
 	}
 
+	var eth struct {
+		ForkID forkid.ID
+		Tail   []rlp.RawValue `rlp:"tail"`
+	}
+	eth.ForkID = forkid.NewID(params.BSCChainConfig, core.DefaultBSCGenesisBlock().ToBlock(), uint64(0), uint64(0))
+	ln.Set(enr.WithEntry("eth", &eth))
 	printNotice(&nodeKey.PublicKey, *listenerAddr)
 	cfg := discover.Config{
 		PrivateKey:     nodeKey,
