@@ -18,19 +18,17 @@ import (
 )
 
 const (
-	// only keep the latest 1024 blocks in incremental chain freezer.
+	// Only keep the latest 1024 blocks in incremental chain freezer.
 	keptBlockLimit = 1024
 
 	// Number of blocks after which to save the parlia snapshot to the database
 	parliaSnapCheckpointInterval = 1024
 
-	// DefaultIncrBufferSize is the default memory allowance for incremental state buffer (5GB)
-	// defaultIncrBufferSize = 5 * 1024 * 1024 * 1024
-	defaultIncrBufferSize = 10 * 1024 * 1024
+	// The default memory allowance for incremental state buffer: 5GB
+	defaultIncrBufferSize = 5 * 1024 * 1024 * 1024
 
-	// the maximum size of the batch to be flushed into the ancient db: 3GB
-	// defaultFlushBatchSize = 3 * 1024 * 1024 * 1024
-	defaultFlushBatchSize = 3 * 1024 * 1024
+	// The maximum size of the batch to be flushed into the ancient db: 3GB
+	defaultFlushBatchSize = 3 * 1024 * 1024 * 1024
 )
 
 // writeStats tracks write operation statistics
@@ -204,13 +202,9 @@ func (im *incrManager) commit(bottom *diffLayer) error {
 
 	default:
 		atomic.AddInt32(&im.stats.queueLength, -1)
-		queueLen := im.GetQueueLength()
-		log.Warn("Task queue is full, checking if directory switch is in progress", "queueLength", queueLen,
-			"block", bottom.block, "stateID", bottom.stateID(), "switching", im.incrDB.IsSwitching())
-
-		log.Error("Task queue is full outside of directory switch", "queueLength", queueLen, "block", bottom.block)
+		log.Error("Task queue is full", "queueLength", im.GetQueueLength(), "block", bottom.block)
 		im.LogStats()
-		return fmt.Errorf("task queue is full (length %d, block %d)", queueLen, bottom.block)
+		return fmt.Errorf("task queue is full (length %d, block %d)", im.GetQueueLength(), bottom.block)
 	}
 }
 
