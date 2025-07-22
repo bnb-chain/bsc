@@ -443,7 +443,12 @@ func analyzeCall(addr common.Address, code []byte, selector [4]byte, endPc uint6
 	// When an error was returned by the EVM or when setting the creation code
 	// above we revert to the snapshot and consume any gas remaining. Additionally
 	// when we're in Homestead this also counts for code storage gas errors.
-	return evm.interpreter.RunUntilPc(contract, input, true, endPc)
+	gasUsed, opsUsed, stk, mem, err := evm.interpreter.RunUntilPc(contract, input, true, endPc)
+
+	if statedb.touched {
+		return 0, 0, nil, nil, errors.New("sim err: statedb touched")
+	}
+	return gasUsed, opsUsed, stk, mem, err
 }
 
 func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly bool, endPc uint64) (gasUsed, opsUsed uint64, stack_ []uint256.Int, mem_ []byte, err error) {
@@ -609,7 +614,7 @@ func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly 
 	}
 
 	if pc != endPc {
-		return 0, 0, nil, nil, errors.New("unexpected end pc")
+		return 0, 0, nil, nil, errors.New("sim err: unexpected end pc")
 	}
 
 	return totalCost, ops, stack.Data(), mem.Data(), err
