@@ -275,8 +275,14 @@ func (sg *ShortcutGenerator) analyzeOpcodes() error {
 			selector.SimErr = err
 		} else {
 			selector.GasUsed = gas
-			selector.Stack = stk
-			selector.Memory = mem
+			selector.Stack = make([]uint256.Int, len(stk))
+			selector.Memory = make([]byte, len(mem))
+
+			for i, frame := range stk {
+				selector.Stack[i].SetBytes(frame.Bytes())
+			}
+
+			copy(selector.Memory, mem)
 		}
 	}
 
@@ -302,6 +308,7 @@ func (sg *ShortcutGenerator) generateGoCode() string {
 	code.WriteString("package impl\n\n")
 	code.WriteString("import (\n")
 	code.WriteString("\t\"encoding/hex\"\n")
+	code.WriteString("\t\"errors\"\n")
 	code.WriteString("\t\"github.com/holiman/uint256\"\n")
 	code.WriteString("\t\"github.com/ethereum/go-ethereum/common\"\n")
 	code.WriteString("\t\"github.com/ethereum/go-ethereum/core/opcodeCompiler/shortcut\"\n")
