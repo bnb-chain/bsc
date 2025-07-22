@@ -25,6 +25,17 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
+func PathExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
 func TestShortcutGenerator(t *testing.T) {
 	// 测试合约地址
 	contractAddr := common.HexToAddress("0x1234567890123456789012345678901234567890")
@@ -212,15 +223,17 @@ func TestShortcutGeneratorWithComplexContract(t *testing.T) {
 	//path = "./"
 	fileName := "contract_" + contractAddr.String() + ".go"
 
-	//fmt.Println()
-	//f, err := os.Open(path + fileName)
-	f, err := os.Create(path + fileName)
-	if err != nil {
-		t.Errorf("failed to open file: %v", err)
-	}
-	defer f.Close()
+	if exist, _ := PathExists(path + fileName); exist {
+		t.Skipf("file %s skiped because it exists, if need recreate please delete it first", fileName)
+	} else {
+		f, err := os.Create(path + fileName)
+		if err != nil {
+			t.Errorf("failed to open file: %v", err)
+		}
+		defer f.Close()
 
-	f.WriteString(code)
+		f.WriteString(code)
+	}
 }
 
 // contains 检查字符串是否包含子字符串

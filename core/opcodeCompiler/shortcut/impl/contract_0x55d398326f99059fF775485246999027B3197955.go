@@ -2,6 +2,7 @@ package impl
 
 import (
 	"encoding/hex"
+	"errors"
 
 	"github.com/holiman/uint256"
 
@@ -23,9 +24,12 @@ func (s *ShortcutImpl55D398326F99059FF775485246999027B3197955) Contract() common
 }
 
 func (s *ShortcutImpl55D398326F99059FF775485246999027B3197955) Shortcut(pc uint64, inputs []byte, origin, caller common.Address, value *uint256.Int) (shortcutPc uint64, gasUsed uint64, stack []uint256.Int, mem []byte, expected bool, err error) {
-	// 函数选择器分析
+	// 入参分析 TODO: 目前还是人工分析，后续想办法自动化生成，还是有点难度的
+	if !value.IsZero() {
+		return 0, 0, nil, nil, false, errors.New("value is not zero")
+	}
 	if len(inputs) < 4 {
-		return 0, 0, nil, nil, false, nil
+		return 0, 0, nil, nil, false, errors.New("call data length < 4")
 	}
 
 	selector := hex.EncodeToString(inputs[:4])
