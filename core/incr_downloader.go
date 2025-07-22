@@ -19,6 +19,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/pierrec/lz4/v4"
 )
 
@@ -61,6 +62,7 @@ type DownloadProgress struct {
 // IncrDownloader handles incremental snapshot downloading and merging
 type IncrDownloader struct {
 	db            ethdb.Database
+	triedb        *triedb.Database
 	remoteURL     string
 	incrPath      string
 	localBlockNum uint64
@@ -91,11 +93,12 @@ type IncrDownloader struct {
 }
 
 // NewIncrDownloader creates a new incremental downloader
-func NewIncrDownloader(db ethdb.Database, remoteURL, incrPath string, localBlockNum uint64) *IncrDownloader {
+func NewIncrDownloader(db ethdb.Database, triedb *triedb.Database, remoteURL, incrPath string, localBlockNum uint64) *IncrDownloader {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	downloader := &IncrDownloader{
 		db:                db,
+		triedb:            triedb,
 		remoteURL:         remoteURL,
 		incrPath:          incrPath,
 		localBlockNum:     localBlockNum,
@@ -282,15 +285,12 @@ func (d *IncrDownloader) RunAll() error {
 	if err := d.Prepare(); err != nil {
 		return err
 	}
-
 	if err := d.Download(); err != nil {
 		return err
 	}
-
 	if err := d.Merge(); err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -876,18 +876,12 @@ func (d *IncrDownloader) mergeWorker() {
 
 // mergeFile merges extracted incremental data with local data
 func (d *IncrDownloader) mergeFile(file *IncrFileInfo) error {
-	extractDir := filepath.Join(d.incrPath,
-		fmt.Sprintf("incr_%d_%d", file.StartBlock, file.EndBlock))
-
-	log.Info("Merging incremental data", "file", file.Metadata.FileName,
-		"extractDir", extractDir, "blocks", fmt.Sprintf("%d-%d", file.StartBlock, file.EndBlock))
-
-	// TODO: Implement actual merge logic based on your specific requirements
-	// This is a placeholder for the merge operation
-
-	// Simulate merge time
-	time.Sleep(1 * time.Second)
-
+	extractDir := filepath.Join(d.incrPath, fmt.Sprintf("incr_%d_%d", file.StartBlock, file.EndBlock))
+	if err := MergeIncrSnapshot(d.db, d.triedb, extractDir, file.StartBlock); err != nil {
+		return err
+	}
+	log.Info("Merged incremental data", "file", file.Metadata.FileName, "extractDir", extractDir,
+		"blocks", fmt.Sprintf("%d-%d", file.StartBlock, file.EndBlock))
 	return nil
 }
 

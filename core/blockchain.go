@@ -371,7 +371,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			log.Error("Failed to get start block", "error", err)
 			return nil, err
 		}
-		downloader := NewIncrDownloader(db, cacheConfig.RemoteIncrURL, cacheConfig.IncrHistoryPath, startBlock)
+		downloader := NewIncrDownloader(db, triedb, cacheConfig.RemoteIncrURL, cacheConfig.IncrHistoryPath, startBlock)
 		if err = downloader.RunAll(); err != nil {
 			log.Error("Failed to download incremental snapshot", "error", err)
 			return nil, err

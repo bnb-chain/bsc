@@ -25,10 +25,12 @@ const (
 	parliaSnapCheckpointInterval = 1024
 
 	// DefaultIncrBufferSize is the default memory allowance for incremental state buffer (5GB)
-	defaultIncrBufferSize = 5 * 1024 * 1024 * 1024
+	// defaultIncrBufferSize = 5 * 1024 * 1024 * 1024
+	defaultIncrBufferSize = 10 * 1024 * 1024
 
 	// the maximum size of the batch to be flushed into the ancient db: 3GB
-	defaultFlushBatchSize = 3 * 1024 * 1024 * 1024
+	// defaultFlushBatchSize = 3 * 1024 * 1024 * 1024
+	defaultFlushBatchSize = 3 * 1024 * 1024
 )
 
 // writeStats tracks write operation statistics

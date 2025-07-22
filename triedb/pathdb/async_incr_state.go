@@ -189,30 +189,11 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 
 	for owner, subset := range c.nodes.nodes {
 		entry := journalNodes{Owner: owner}
-
-		// Compute size for this owner entry
-		ownerSize := c.computeEntrySize(entry)
-		if currentBatchSize+ownerSize >= c.batchSize && len(jn) > 0 {
-			// Flush current batch before adding new owner
-			log.Info("Batch size limit reached before adding new owner, flushing to ancient db",
-				"currentSize", currentBatchSize, "batchSize", c.batchSize, "entryCount", len(jn))
-			if err := c.writeBatchToAncientDB(incrDB, jn); err != nil {
-				return err
-			}
-			jn = make([]journalNodes, 0, len(c.nodes.nodes))
-			currentBatchSize = 0
-		}
-
-		// Add nodes to the current entry
 		for path, node := range subset {
-			// Create a temporary journalNode for size estimation
-			tempJournalNode := journalNode{Path: []byte(path), Blob: node.Blob}
-			nodeSize := c.computeNodeSize(tempJournalNode)
+			entry.Nodes = append(entry.Nodes, journalNode{Path: []byte(path), Blob: node.Blob})
 			entrySize := c.computeEntrySize(entry)
 
-			// Check if adding this node would exceed batch size
-			if currentBatchSize+entrySize+nodeSize >= c.batchSize && len(entry.Nodes) > 0 {
-				// Flush current batch including the current entry
+			if currentBatchSize+entrySize >= c.batchSize {
 				log.Info("Batch size limit reached during node iteration, flushing to ancient db",
 					"currentSize", currentBatchSize+entrySize, "batchSize", c.batchSize, "entryCount", len(jn)+1)
 				if err := c.writeBatchToAncientDB(incrDB, append(jn, entry)); err != nil {
@@ -222,17 +203,13 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 				currentBatchSize = 0
 				entry = journalNodes{Owner: owner} // Reset entry for remaining nodes
 			}
-
-			entry.Nodes = append(entry.Nodes, tempJournalNode)
 		}
 
-		// Add the completed entry to the batch
 		if len(entry.Nodes) > 0 {
 			jn = append(jn, entry)
-			currentBatchSize = c.computeRLPEncodedSize(jn) // Recalculate for accuracy
+			currentBatchSize = c.computeRLPEncodedSize(jn)
 		}
 
-		// Final check for the current batch
 		if currentBatchSize >= c.batchSize {
 			log.Info("Batch size limit reached after adding entry, flushing to ancient db",
 				"currentSize", currentBatchSize, "batchSize", c.batchSize, "entryCount", len(jn))

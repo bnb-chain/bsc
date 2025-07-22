@@ -1,6 +1,7 @@
 package pathdb
 
 import (
+	"fmt"
 	"maps"
 	"sync"
 	"sync/atomic"
@@ -42,7 +43,12 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 		"end", end, "total_count", end-start)
 
 	log.Info("Before place incr state data", "empty", a.empty(), "layers", a.getLayers())
-	var totalLayers, lastStateID uint64
+
+	var (
+		totalLayers, lastStateID uint64
+		processedStateRanges     = make(map[string]bool)
+	)
+
 	for i := start; i <= end; i++ {
 		trieNodes, err := readIncrTrieNodes(incrFreezer, i)
 		if err != nil {
@@ -52,7 +58,16 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 		if err != nil {
 			return err
 		}
-		totalLayers += m.Layers
+
+		stateRangeKey := fmt.Sprintf("%d-%d", m.StateIDArray[0], m.StateIDArray[1])
+		if !processedStateRanges[stateRangeKey] {
+			totalLayers += m.Layers
+			processedStateRanges[stateRangeKey] = true
+			log.Debug("Added layers for new state range", "stateRange", stateRangeKey, "layers", m.Layers, "totalLayers", totalLayers)
+		} else {
+			log.Debug("Skipped duplicate state range", "stateRange", stateRangeKey, "layers", m.Layers)
+		}
+
 		if i == end {
 			lastStateID = m.StateIDArray[1]
 		}
@@ -62,7 +77,11 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 			log.Error("Failed to commit history", "error", err)
 			return err
 		}
-		a.current.layers += m.Layers - 1
+
+		if !processedStateRanges[stateRangeKey] {
+			a.current.layers += m.Layers - 1
+		}
+
 		if err = a.flush(db, freezer, nil, m.StateIDArray[1], false); err != nil {
 			log.Error("Failed to flush history", "error", err)
 			return err
@@ -70,7 +89,7 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 	}
 
 	log.Info("Force flush async node buffer", "empty", a.empty(), "layers", a.getLayers(),
-		"lastStateID", lastStateID, "totalLayers", totalLayers)
+		"lastStateID", lastStateID, "totalLayers", totalLayers, "processedRanges", len(processedStateRanges))
 	if err := a.flush(db, freezer, nil, lastStateID, true); err != nil {
 		log.Error("Failed to force flush history", "error", err)
 		return err
