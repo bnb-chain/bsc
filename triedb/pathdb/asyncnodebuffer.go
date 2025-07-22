@@ -1,8 +1,8 @@
 package pathdb
 
 import (
-	"fmt"
 	"maps"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -46,8 +46,8 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 
 	var (
 		totalLayers, lastStateID uint64
-		processedStateRanges     = make(map[string]bool)
-		stateRangeGroups         = make(map[string][]struct {
+		// stateRangeGroups key is the last state id of the state range
+		stateRangeGroups = make(map[uint64][]struct {
 			index    uint64
 			metadata *incrStateMetadata
 		})
@@ -58,8 +58,7 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 		if err != nil {
 			return err
 		}
-		stateRangeKey := fmt.Sprintf("%d-%d", m.StateIDArray[0], m.StateIDArray[1])
-		stateRangeGroups[stateRangeKey] = append(stateRangeGroups[stateRangeKey], struct {
+		stateRangeGroups[m.StateIDArray[1]] = append(stateRangeGroups[m.StateIDArray[1]], struct {
 			index    uint64
 			metadata *incrStateMetadata
 		}{
@@ -71,7 +70,16 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 		}
 	}
 
-	for stateRangeKey, group := range stateRangeGroups {
+	keys := make([]uint64, 0, len(stateRangeGroups))
+	for k := range stateRangeGroups {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i] < keys[j]
+	})
+
+	for _, stateRangeKey := range keys {
+		group := stateRangeGroups[stateRangeKey]
 		log.Info("Processing state range group", "stateRange", stateRangeKey, "groupSize", len(group))
 		mergedNodes := newNodeSet(nil)
 		var groupMetadata *incrStateMetadata
@@ -130,7 +138,7 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 	// }
 
 	log.Info("Force flush async node buffer", "empty", a.empty(), "layers", a.getLayers(),
-		"lastStateID", lastStateID, "totalLayers", totalLayers, "processedRanges", len(processedStateRanges))
+		"lastStateID", lastStateID, "totalLayers", totalLayers)
 	if err := a.flush(db, freezer, nil, lastStateID, true); err != nil {
 		log.Error("Failed to force flush history", "error", err)
 		return err
