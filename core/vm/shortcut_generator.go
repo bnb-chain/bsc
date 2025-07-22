@@ -17,12 +17,22 @@
 package vm
 
 import (
+	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
+	"time"
+
+	"github.com/holiman/uint256"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	eth_math "github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/trie"
 )
 
 type Selector struct {
@@ -175,14 +185,24 @@ type ShortcutGenerator struct {
 
 // FunctionSelector 表示函数选择器信息
 type FunctionSelector struct {
-	Selector    string   // 4字节函数选择器
-	PC          uint64   // 函数入口PC
-	GasUsed     uint64   // 预估gas消耗
+	Selector string // 4字节函数选择器
+	PC       uint64 // 函数入口PC
+
 	StackOps    []string // 栈操作序列
 	MemoryOps   []string // 内存操作序列
 	StorageOps  []string // 存储操作序列
 	InputParams []string // 输入参数
 	ReturnData  []string // 返回数据
+
+	// from simulate execution
+	GasUsed uint64 // 预估gas消耗
+	Stack   []uint256.Int
+	Memory  []byte
+	SimErr  error
+}
+
+func (f *FunctionSelector) getSelectorBts() [4]byte {
+	return [4]byte(hexutil.MustDecode(f.Selector))
 }
 
 // NewShortcutGenerator 创建新的ShortcutGenerator
@@ -223,6 +243,40 @@ func (sg *ShortcutGenerator) analyzeOpcodes() error {
 		jumpMeta := JumperTree.match(sg.opcodes, i)
 		if jumpMeta != nil {
 
+		}
+	}
+	block := types.NewBlock(&types.Header{
+		ParentHash:       common.Hash{},
+		UncleHash:        common.Hash{},
+		Coinbase:         common.Address{},
+		Root:             common.Hash{},
+		TxHash:           common.Hash{},
+		ReceiptHash:      common.Hash{},
+		Bloom:            types.Bloom{},
+		Difficulty:       nil,
+		Number:           big.NewInt(60000000),
+		GasLimit:         0,
+		GasUsed:          0,
+		Time:             uint64(time.Now().Unix()),
+		Extra:            nil,
+		MixDigest:        common.Hash{},
+		Nonce:            types.BlockNonce{},
+		BaseFee:          nil,
+		WithdrawalsHash:  nil,
+		BlobGasUsed:      nil,
+		ExcessBlobGas:    nil,
+		ParentBeaconRoot: nil,
+		RequestsHash:     nil,
+	}, nil, nil, trie.NewStackTrie(nil))
+
+	for _, selector := range sg.selectors {
+		gas, _, stk, mem, err := analyzeCall(sg.contractAddr, sg.opcodes, selector.getSelectorBts(), selector.PC, block)
+		if err != nil {
+			selector.SimErr = err
+		} else {
+			selector.GasUsed = gas
+			selector.Stack = stk
+			selector.Memory = mem
 		}
 	}
 
@@ -282,13 +336,28 @@ func (sg *ShortcutGenerator) generateGoCode() string {
 		code.WriteString("\tswitch selector {\n")
 
 		for selector, info := range sg.selectors {
+			if info.SimErr != nil {
+				code.WriteString(fmt.Sprintf("\t\t // case %s has sim error %s \n", selector, info.SimErr.Error()))
+				continue
+			}
+
+			stk, mem := info.Stack, info.Memory
+
+			stkStr := "\n\t\t\t[]uint256.Int{\n"
+			for _, item := range stk {
+				stkStr += fmt.Sprintf("\t\t\t\t{%d, %d, %d, %d}, \n", item[0], item[1], item[2], item[3])
+			}
+			stkStr += "\t\t\t}"
+
+			memStr := fmt.Sprintf("\n\t\t\thexutil.MustDecode(\"%s\")", hexutil.Encode(mem))
+
 			code.WriteString(fmt.Sprintf("\tcase \"%s\":\n", selector))
 			code.WriteString(fmt.Sprintf("\t\t// 函数: %s\n", selector))
 			code.WriteString(fmt.Sprintf("\t\t// 预估Gas消耗: %d\n", info.GasUsed))
 			code.WriteString(fmt.Sprintf("\t\t// 栈操作: %v\n", info.StackOps))
 			code.WriteString(fmt.Sprintf("\t\t// 内存操作: %v\n", info.MemoryOps))
 			code.WriteString(fmt.Sprintf("\t\t// 存储操作: %v\n", info.StorageOps))
-			code.WriteString(fmt.Sprintf("\t\treturn %d, %d, nil, nil, true, nil\n", info.PC, info.GasUsed))
+			code.WriteString(fmt.Sprintf("\t\treturn %d, %d, %s, %s, true, nil\n", info.PC, info.GasUsed, stkStr, memStr))
 		}
 
 		code.WriteString("\tdefault:\n")
@@ -343,4 +412,205 @@ func ExampleUsage() {
 
 	fmt.Println("生成的Shortcut代码:")
 	fmt.Println(code)
+}
+
+func analyzeCall(addr common.Address, code []byte, selector [4]byte, endPc uint64, block *types.Block) (gasUsed, opsUsed uint64, stack []uint256.Int, mem []byte, err error) {
+	statedb := MockStateDB{}
+	vmctx := BlockContext{
+		Coinbase:    common.Address{},
+		BlockNumber: block.Number(),
+		Time:        block.Time(),
+		Random:      &types.EmptyCodeHash,
+	}
+	evm := NewEVM(vmctx, statedb, params.BSCChainConfig, Config{})
+
+	caller := AccountRef(common.Address{})
+	input := selector[:]
+	codeHash := crypto.Keccak256Hash(code)
+
+	initGas := uint64(math.MaxUint64) / 2
+	interpreter := NewEVMInterpreter(evm)
+	evm.interpreter = interpreter
+
+	// At this point, we use a copy of address. If we don't, the go compiler will
+	// leak the 'contract' to the outer scope, and make allocation for 'contract'
+	// even if the actual execution ends on RunPrecompiled above.
+	addrCopy := addr
+	// Initialise a new contract and set the code that is to be used by the EVM.
+	// The contract is a scoped environment for this execution context only.
+	contract := GetContract(caller, AccountRef(addrCopy), new(uint256.Int), initGas)
+	contract.SetCallCode(&addrCopy, codeHash, code)
+	// When an error was returned by the EVM or when setting the creation code
+	// above we revert to the snapshot and consume any gas remaining. Additionally
+	// when we're in Homestead this also counts for code storage gas errors.
+	return evm.interpreter.RunUntilPc(contract, input, true, endPc)
+}
+
+func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly bool, endPc uint64) (gasUsed, opsUsed uint64, stack_ []uint256.Int, mem_ []byte, err error) {
+	// Increment the call depth which is restricted to 1024
+	in.evm.depth++
+	defer func() { in.evm.depth-- }()
+
+	// Make sure the readOnly is only set if we aren't in readOnly yet.
+	// This also makes sure that the readOnly flag isn't removed for child calls.
+	if readOnly && !in.readOnly {
+		in.readOnly = true
+		defer func() { in.readOnly = false }()
+	}
+
+	// Reset the previous call's return data. It's unimportant to preserve the old buffer
+	// as every returning call will return new data anyway.
+	in.returnData = nil
+
+	// Don't bother with the execution if there's no code.
+	if len(contract.Code) == 0 {
+		return 0, 0, nil, nil, errors.New("code is empty")
+	}
+
+	var (
+		op    OpCode        // current opcode
+		mem   = NewMemory() // bound memory
+		stack = newstack()  // local stack
+
+		callContext = &ScopeContext{
+			Memory:   mem,
+			Stack:    stack,
+			Contract: contract,
+		}
+
+		// For optimisation reason we're using uint64 as the program counter.
+		// It's theoretically possible to go above 2^64. The YP defines the PC
+		// to be uint256. Practically much less so feasible.
+		pc        = uint64(0) // program counter
+		cost      uint64
+		totalCost uint64
+		// copies used by tracer
+		//pcCopy  uint64 // needed for the deferred EVMLogger
+		//gasCopy uint64 // for EVMLogger to log gas remaining before execution
+		//logged  bool   // deferred EVMLogger should ignore already logged steps
+		res []byte // result of the opcode execution function
+		//debug = in.evm.Config.Tracer != nil
+	)
+
+	_ = res
+
+	// Don't move this deferred function, it's placed before the OnOpcode-deferred method,
+	// so that it gets executed _after_: the OnOpcode needs the stacks before
+	// they are returned to the pools
+	defer func() {
+		returnStack(stack)
+		mem.Free()
+	}()
+	contract.Input = input
+
+	// The Interpreter main run loop (contextual). This loop runs until either an
+	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
+	// the execution of one of the operations or until the done flag is set by the
+	// parent context.
+
+	var ops uint64
+	for {
+		if pc == endPc {
+			break
+		}
+
+		if in.evm.chainRules.IsEIP4762 && !contract.IsDeployment && !contract.IsSystemCall {
+			// if the PC ends up in a new "chunk" of verkleized code, charge the
+			// associated costs.
+			contractAddr := contract.Address()
+			contract.Gas -= in.evm.TxContext.AccessEvents.CodeChunksRangeGas(contractAddr, pc, 1, uint64(len(contract.Code)), false)
+		}
+
+		// Get the operation from the jump table and validate the stack to ensure there are
+		// enough stack items available to perform the operation.
+		op = contract.GetOp(pc)
+		operation := in.table[op]
+
+		// disallow storage op
+		switch op {
+		case SLOAD, SSTORE:
+			return 0, 0, nil, nil, errors.New("storage ops are not supported")
+		}
+
+		if operation.dynamicGas != nil {
+			switch op {
+			case MSTORE:
+			default:
+				return 0, 0, nil, nil, errors.New("dynamic gas is not supported")
+			}
+		}
+
+		cost = operation.constantGas // For tracing
+		// Validate stack
+		if sLen := stack.len(); sLen < operation.minStack {
+			return 0, 0, nil, nil, &ErrStackUnderflow{stackLen: sLen, required: operation.minStack}
+		} else if sLen > operation.maxStack {
+			return 0, 0, nil, nil, &ErrStackOverflow{stackLen: sLen, limit: operation.maxStack}
+		}
+		// for tracing: this gas consumption event is emitted below in the debug section.
+		if contract.Gas < cost {
+			return 0, 0, nil, nil, ErrOutOfGas
+		} else {
+			contract.Gas -= cost
+		}
+
+		// All ops with a dynamic memory usage also has a dynamic gas cost.
+		var memorySize uint64
+		if operation.dynamicGas != nil {
+			// calculate the new memory size and expand the memory to fit
+			// the operation
+			// Memory check needs to be done prior to evaluating the dynamic gas portion,
+			// to detect calculation overflows
+			if operation.memorySize != nil {
+				memSize, overflow := operation.memorySize(stack)
+				if overflow {
+					return 0, 0, nil, nil, ErrGasUintOverflow
+				}
+				// memory is expanded in words of 32 bytes. Gas
+				// is also calculated in words.
+				if memorySize, overflow = eth_math.SafeMul(toWordSize(memSize), 32); overflow {
+					return 0, 0, nil, nil, ErrGasUintOverflow
+				}
+			}
+			// Consume the gas and return an error if not enough gas is available.
+			// cost is explicitly set so that the capture state defer method can get the proper cost
+			// cost is explicitly set so that the capture state defer method can get the proper cost
+			var dynamicCost uint64
+			dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
+			cost += dynamicCost // for tracing
+			if err != nil {
+				return 0, 0, nil, nil, fmt.Errorf("%w: %v", ErrOutOfGas, err)
+			}
+			// for tracing: this gas consumption event is emitted below in the debug section.
+			if contract.Gas < dynamicCost {
+				return 0, 0, nil, nil, ErrOutOfGas
+			} else {
+				contract.Gas -= dynamicCost
+			}
+		}
+
+		totalCost += cost
+
+		if memorySize > 0 {
+			mem.Resize(memorySize)
+		}
+
+		res, err = operation.execute(&pc, in, callContext)
+		if err != nil {
+			break
+		}
+
+		pc++
+		ops++
+	}
+
+	if err == errStopToken {
+		err = nil // clear stop token error
+	}
+
+	if pc != endPc {
+		return 0, 0, nil, nil, errors.New("unexpected end pc")
+	}
+
+	return totalCost, ops, stack.Data(), mem.Data(), err
 }
