@@ -339,7 +339,7 @@ func (sg *ShortcutGenerator) generateGoCode() string {
 		code.WriteString("\t\treturn 0, 0, nil, nil, false, nil\n")
 		code.WriteString("\t}\n\n")
 
-		code.WriteString("\tselector := hexutil.Encode(inputs[:5])\n")
+		code.WriteString("\tselector := hexutil.Encode(inputs[:4])\n")
 		code.WriteString("\tswitch selector {\n")
 
 		for selector, info := range sg.selectors {
