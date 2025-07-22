@@ -103,6 +103,7 @@ func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *type
 }
 
 func (p *statePrefetcher) PrefetchBALSnapshot(balPrefetch *types.BlockAccessListPrefetch, block *types.Block, txSize int, statedb *state.StateDB, interruptCh <-chan struct{}) {
+	defer debug.Handler.StartRegionAuto("PrefetchBALSnapshot")()
 	accChan := make(chan common.Address, prefetchThreadBAL)
 	keyChan := make(chan struct {
 		accAddr common.Address
@@ -112,6 +113,7 @@ func (p *statePrefetcher) PrefetchBALSnapshot(balPrefetch *types.BlockAccessList
 	// prefetch snapshot cache
 	for i := 0; i < prefetchThreadBAL; i++ {
 		go func() {
+			defer debug.Handler.StartRegionAuto("PrefetchBALSnapshot thread")()
 			newStatedb := statedb.CopyDoPrefetch()
 			for {
 				select {
@@ -152,6 +154,7 @@ func (p *statePrefetcher) PrefetchBALSnapshot(balPrefetch *types.BlockAccessList
 }
 
 func (p *statePrefetcher) PrefetchBALTrie(balPrefetch *types.BlockAccessListPrefetch, block *types.Block, statedb *state.StateDB, interruptCh <-chan struct{}) {
+	defer debug.Handler.StartRegionAuto("PrefetchBALTrie")()
 	for txIndex, txAccessList := range balPrefetch.AccessListItems {
 		for accAddr, storageItems := range txAccessList.Accounts {
 			log.Info("PrefetchBAL", "txIndex", txIndex, "accAddr", accAddr)
@@ -167,6 +170,8 @@ func (p *statePrefetcher) PrefetchBALTrie(balPrefetch *types.BlockAccessListPref
 }
 
 func (p *statePrefetcher) PrefetchBAL(block *types.Block, statedb *state.StateDB, interruptCh <-chan struct{}) {
+	defer debug.Handler.StartRegionAuto("PrefetchBAL")()
+
 	if block.BAL() == nil {
 		return
 	}

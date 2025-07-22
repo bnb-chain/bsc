@@ -2210,6 +2210,9 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 			}
 			statedb.StartPrefetcher("chain", witness)
 		}
+		if !debug.Handler.EnableTraceCapture(block.Header().Number.Uint64(), "") {
+			debug.Handler.EnableTraceBigBlock(block.Header().Number.Uint64(), len(block.Transactions()), "")
+		}
 
 		interruptCh := make(chan struct{})
 		// For diff sync, it may fallback to full sync, so we still do prefetch

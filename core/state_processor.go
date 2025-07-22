@@ -74,9 +74,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	)
 
 	txNum := len(block.Transactions())
-	if !debug.Handler.EnableTraceCapture(block.Header().Number.Uint64(), "") {
-		debug.Handler.EnableTraceBigBlock(block.Header().Number.Uint64(), txNum, "")
-	}
 	log.Info("Process", "block", block.Header().Number)
 	traceMsg := "Process " + block.Header().Number.String()
 	defer debug.Handler.StartRegionAuto(traceMsg)()

@@ -445,6 +445,7 @@ func (s *StateDB) GetNonce(addr common.Address) uint64 {
 }
 
 func (s *StateDB) PreloadAccount(addr common.Address) {
+	defer debug.Handler.StartRegionAuto("StateDB.PreloadAccount")()
 	if s.Empty(addr) {
 		return
 	}
@@ -452,6 +453,7 @@ func (s *StateDB) PreloadAccount(addr common.Address) {
 }
 
 func (s *StateDB) PreloadStorage(addr common.Address, key common.Hash) {
+	defer debug.Handler.StartRegionAuto("StateDB.PreloadStorage")()
 	if s.Empty(addr) {
 		return
 	}
