@@ -296,9 +296,7 @@ func (nc *nodecache) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, 
 	if atomic.LoadUint64(&nc.immutable) != 1 {
 		return errFlushMutable
 	}
-	if err := nc.buffer.flush(db, freezer, nodesCache, id, force); err != nil {
-		return err
-	}
+	nc.buffer.flush(db, freezer, nodesCache, id, force)
 	atomic.StoreUint64(&nc.immutable, 0)
 	return nil
 }
