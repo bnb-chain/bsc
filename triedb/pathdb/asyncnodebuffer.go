@@ -183,6 +183,7 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWri
 	defer a.mux.Unlock()
 
 	if a.stopFlushing.Load() {
+		log.Info("Stop flushing node buffer")
 		return nil
 	}
 
@@ -194,22 +195,27 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWri
 				continue
 			}
 			atomic.StoreUint64(&a.current.immutable, 1)
+			log.Info("Current node cache is not full, force flush it")
 			return a.current.flush(db, freezer, clean, id, true)
 		}
 	}
 
 	if !a.current.full() {
+		log.Info("Current node cache is not full, skip flushing", "limit", a.current.limit)
 		return nil
 	}
 
+	log.Info("fkmdmc")
 	// background flush doing
 	if atomic.LoadUint64(&a.background.immutable) == 1 {
+		log.Info("ceijwcei")
 		return nil
 	}
 
+	log.Info("cewjcw")
 	atomic.StoreUint64(&a.current.immutable, 1)
 	a.current, a.background = a.background, a.current
-
+	log.Info("cwemkcm2ii")
 	a.isFlushing.Store(true)
 	go func(persistID uint64) {
 		defer a.isFlushing.Store(false)
@@ -297,6 +303,7 @@ func (nc *nodecache) reset() {
 }
 
 func (nc *nodecache) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, nodesCache *fastcache.Cache, id uint64, force bool) error {
+	log.Info("Flush node cache", "immutable", atomic.LoadUint64(&nc.immutable), "id", id, "force", force)
 	if atomic.LoadUint64(&nc.immutable) != 1 {
 		return errFlushMutable
 	}
