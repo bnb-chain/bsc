@@ -77,7 +77,7 @@ func NewIncrSnapDB(baseDir string, readonly bool, startBlock, blockLimit uint64)
 
 	db, err := newSnapDBWrapper(currentDir, &info)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create initial database wrapper: %v", err)
+		return nil, fmt.Errorf("failed to create snap db wrapper: %v", err)
 	}
 
 	var blockCount uint64
@@ -162,7 +162,7 @@ func newSnapDBWrapper(incrDir string, info *incrSnapDBInfo) (*snapDBWrapper, err
 	cFreezer, err := newResettableFreezer(chainPath, chainNamespace, info.readonly, info.maxTableSize,
 		info.chainTables, true)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create chain freezer: %w", err)
+		return nil, fmt.Errorf("failed to create incr chain freezer: %w", err)
 	}
 
 	statePath := filepath.Join(incrDir, MerkleStateFreezerName)
@@ -170,13 +170,13 @@ func newSnapDBWrapper(incrDir string, info *incrSnapDBInfo) (*snapDBWrapper, err
 	sFreezer, err := newResettableFreezer(statePath, stateNamespace, info.readonly, info.maxTableSize,
 		info.stateTables, true)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create state freezer: %w", err)
+		return nil, fmt.Errorf("failed to create incr state freezer: %w", err)
 	}
 
 	kvNamespace := fmt.Sprintf("%s%s", info.namespace, "kv")
 	db, err := pebble.New(incrDir, 10, 10, kvNamespace, info.readonly)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create KV database: %w", err)
+		return nil, fmt.Errorf("failed to create incr KV database: %w", err)
 	}
 
 	return &snapDBWrapper{

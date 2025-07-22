@@ -954,7 +954,7 @@ func InspectIncrStore(baseDir string) error {
 	for _, dir := range dirs {
 		db, err := newSnapDBWrapper(dir.Path, &info)
 		if err != nil {
-			return fmt.Errorf("failed to create initial database wrapper: %v", err)
+			return err
 		}
 		var (
 			codes, parliaSnaps stat

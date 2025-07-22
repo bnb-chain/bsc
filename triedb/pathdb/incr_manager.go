@@ -24,8 +24,11 @@ const (
 	// Number of blocks after which to save the parlia snapshot to the database
 	parliaSnapCheckpointInterval = 1024
 
-	// DefaultIncrBufferSize is the default memory allowance for incremental state buffer (2GB)
-	DefaultIncrBufferSize = 5 * 1024 * 1024 * 1024
+	// DefaultIncrBufferSize is the default memory allowance for incremental state buffer (5GB)
+	defaultIncrBufferSize = 5 * 1024 * 1024 * 1024
+
+	// the maximum size of the batch to be flushed into the ancient db: 3GB
+	defaultFlushBatchSize = 3221225472
 )
 
 // writeStats tracks write operation statistics
@@ -95,7 +98,7 @@ func NewIncrManager(db *Database, incrDB *rawdb.IncrSnapDB) *incrManager {
 		writeQueue:  make(chan *diffLayer, 100),
 		stopChan:    make(chan struct{}),
 		started:     false,
-		bufferLimit: DefaultIncrBufferSize,
+		bufferLimit: defaultIncrBufferSize,
 	}
 
 	chainConfig, err := rawdb.GetChainConfig(db.diskdb)
@@ -105,7 +108,7 @@ func NewIncrManager(db *Database, incrDB *rawdb.IncrSnapDB) *incrManager {
 	im.chainConfig = chainConfig
 
 	// Initialize async incremental state buffer
-	im.asyncBuffer = newAsyncIncrStateBuffer(im.bufferLimit)
+	im.asyncBuffer = newAsyncIncrStateBuffer(im.bufferLimit, defaultFlushBatchSize)
 
 	return im
 }
@@ -300,7 +303,7 @@ func (im *incrManager) writeIncrData(dl *diffLayer) error {
 			}
 			if switched {
 				log.Info("Directory switch completed", "blockNumber", i, "currentStateID", currentStateID)
-				im.asyncBuffer = newAsyncIncrStateBuffer(im.bufferLimit)
+				im.asyncBuffer = newAsyncIncrStateBuffer(im.bufferLimit, defaultFlushBatchSize)
 			}
 			if err = im.resetIncrChainFreezer(im.db.diskdb, i); err != nil {
 				log.Error("Failed to reset incr chain freezer", "blockNumber", i, "error", err)

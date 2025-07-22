@@ -11,9 +11,6 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-// the size of the batch to be flushed to the ancient db: 3.5GB
-const flushBatchSize = 3221225472
-
 // asyncIncrStateBuffer writes the incremental state trie nodes into incr state db.
 type asyncIncrStateBuffer struct {
 	mux          sync.RWMutex
@@ -24,10 +21,10 @@ type asyncIncrStateBuffer struct {
 }
 
 // newAsyncIncrStateBuffer initializes the async incremental state buffer.
-func newAsyncIncrStateBuffer(limit uint64) *asyncIncrStateBuffer {
+func newAsyncIncrStateBuffer(limit, batchSize uint64) *asyncIncrStateBuffer {
 	b := &asyncIncrStateBuffer{
-		current:    newIncrNodeCache(limit, nil, 0),
-		background: newIncrNodeCache(limit, nil, 0),
+		current:    newIncrNodeCache(limit, batchSize, nil, 0),
+		background: newIncrNodeCache(limit, batchSize, nil, 0),
 	}
 	return b
 }
@@ -122,6 +119,7 @@ type incrNodeCache struct {
 	nodes            *nodeSet
 	layers           uint64
 	limit            uint64 // Memory limit in bytes
+	batchSize        uint64 // Maximum flush batch size
 	stateIDArray     [2]uint64
 	blockNumberArray [2]uint64
 	immutable        uint64 // atomic flag: 1 = immutable, 0 = mutable
@@ -130,7 +128,7 @@ type incrNodeCache struct {
 var emptyArray = [2]uint64{0, 0}
 
 // newIncrNodeCache creates a new incremental node cache
-func newIncrNodeCache(limit uint64, nodes *nodeSet, layers uint64) *incrNodeCache {
+func newIncrNodeCache(limit, batchSize uint64, nodes *nodeSet, layers uint64) *incrNodeCache {
 	if nodes == nil {
 		nodes = newNodeSet(nil)
 	}
@@ -139,6 +137,7 @@ func newIncrNodeCache(limit uint64, nodes *nodeSet, layers uint64) *incrNodeCach
 		nodes:            nodes,
 		layers:           layers,
 		limit:            limit,
+		batchSize:        batchSize,
 		stateIDArray:     emptyArray,
 		blockNumberArray: emptyArray,
 		immutable:        0,
@@ -186,26 +185,67 @@ func (c *incrNodeCache) flush(incrDB *rawdb.IncrSnapDB) error {
 // flushToAncientDB writes the trie nodes to the incremental state db.
 func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 	jn := make([]journalNodes, 0, len(c.nodes.nodes))
+	currentBatchSize := uint64(0)
 
 	for owner, subset := range c.nodes.nodes {
 		entry := journalNodes{Owner: owner}
-		for path, node := range subset {
-			entry.Nodes = append(entry.Nodes, journalNode{Path: []byte(path), Blob: node.Blob})
-		}
-		jn = append(jn, entry)
 
-		computedSize := c.computeRLPEncodedSize(jn)
-		if computedSize >= flushBatchSize {
-			log.Info("Batch size limit reached, flushing to ancient db", "computedSize", computedSize,
-				"limit", flushBatchSize, "entryCount", len(jn))
+		// Compute size for this owner entry
+		ownerSize := c.computeEntrySize(entry)
+		if currentBatchSize+ownerSize >= c.batchSize && len(jn) > 0 {
+			// Flush current batch before adding new owner
+			log.Info("Batch size limit reached before adding new owner, flushing to ancient db",
+				"currentSize", currentBatchSize, "batchSize", c.batchSize, "entryCount", len(jn))
 			if err := c.writeBatchToAncientDB(incrDB, jn); err != nil {
 				return err
 			}
 			jn = make([]journalNodes, 0, len(c.nodes.nodes))
+			currentBatchSize = 0
+		}
+
+		// Add nodes to the current entry
+		for path, node := range subset {
+			// Create a temporary journalNode for size estimation
+			tempJournalNode := journalNode{Path: []byte(path), Blob: node.Blob}
+			nodeSize := c.computeNodeSize(tempJournalNode)
+			entrySize := c.computeEntrySize(entry)
+
+			// Check if adding this node would exceed batch size
+			if currentBatchSize+entrySize+nodeSize >= c.batchSize && len(entry.Nodes) > 0 {
+				// Flush current batch including the current entry
+				log.Info("Batch size limit reached during node iteration, flushing to ancient db",
+					"currentSize", currentBatchSize+entrySize, "batchSize", c.batchSize, "entryCount", len(jn)+1)
+				if err := c.writeBatchToAncientDB(incrDB, append(jn, entry)); err != nil {
+					return err
+				}
+				jn = make([]journalNodes, 0, len(c.nodes.nodes))
+				currentBatchSize = 0
+				entry = journalNodes{Owner: owner} // Reset entry for remaining nodes
+			}
+
+			entry.Nodes = append(entry.Nodes, tempJournalNode)
+		}
+
+		// Add the completed entry to the batch
+		if len(entry.Nodes) > 0 {
+			jn = append(jn, entry)
+			currentBatchSize = c.computeRLPEncodedSize(jn) // Recalculate for accuracy
+		}
+
+		// Final check for the current batch
+		if currentBatchSize >= c.batchSize {
+			log.Info("Batch size limit reached after adding entry, flushing to ancient db",
+				"currentSize", currentBatchSize, "batchSize", c.batchSize, "entryCount", len(jn))
+			if err := c.writeBatchToAncientDB(incrDB, jn); err != nil {
+				return err
+			}
+			jn = make([]journalNodes, 0, len(c.nodes.nodes))
+			currentBatchSize = 0
 		}
 	}
 
 	if len(jn) > 0 {
+		log.Info("Flushing remaining incremental state buffer to ancient db", "size", c.nodes.size, "entryCount", len(jn))
 		if err := c.writeBatchToAncientDB(incrDB, jn); err != nil {
 			return err
 		}
@@ -215,22 +255,36 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 	return nil
 }
 
+// computeEntrySize computes the RLP encoded size of a journalNodes entry
+func (c *incrNodeCache) computeEntrySize(entry journalNodes) uint64 {
+	size := rlp.BytesSize(entry.Owner[:])
+	nodesSize := uint64(0)
+	for _, node := range entry.Nodes {
+		nodesSize += c.computeNodeSize(node)
+	}
+	size += rlp.ListSize(nodesSize)
+	return rlp.ListSize(size)
+}
+
+// computeNodeSize computes the RLP encoded size of a journalNode
+func (c *incrNodeCache) computeNodeSize(node journalNode) uint64 {
+	nodeSize := rlp.BytesSize(node.Path) + rlp.BytesSize(node.Blob)
+	return rlp.ListSize(nodeSize)
+}
+
+// computeRLPEncodedSize computes the RLP encoded size of a journalNodes batch
 func (c *incrNodeCache) computeRLPEncodedSize(jn []journalNodes) uint64 {
 	totalSize := uint64(0)
 	for _, entry := range jn {
 		entrySize := uint64(0)
 		entrySize += rlp.BytesSize(entry.Owner[:])
-
 		nodesListSize := uint64(0)
 		for _, node := range entry.Nodes {
-			nodeSize := rlp.BytesSize(node.Path) + rlp.BytesSize(node.Blob)
-			nodesListSize += rlp.ListSize(nodeSize)
+			nodesListSize += c.computeNodeSize(node)
 		}
-
 		entrySize += rlp.ListSize(nodesListSize)
 		totalSize += rlp.ListSize(entrySize)
 	}
-
 	return rlp.ListSize(totalSize)
 }
 
