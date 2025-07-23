@@ -197,10 +197,10 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 			nodeSize := computeNodeSize(singleNode)
 			nodesListSize += nodeSize
 
-			batchTotalSize := totalSize + nodeSize + ownerSize
+			batchTotalSize := rlp.ListSize(totalSize) + rlp.ListSize(nodeSize) + rlp.ListSize(ownerSize)
 			if rlp.ListSize(batchTotalSize) >= c.batchSize {
 				log.Info("Batch size limit reached during node iteration, flushing to ancient db",
-					"batchTotalSize", batchTotalSize, "batchSize", c.batchSize, "entryCount", len(jn)+1)
+					"batchTotalSize", rlp.ListSize(batchTotalSize), "batchSize", c.batchSize, "entryCount", len(jn)+1)
 				if err := c.writeBatchToAncientDB(incrDB, append(jn, entry)); err != nil {
 					return err
 				}
