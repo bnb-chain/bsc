@@ -96,7 +96,7 @@ func TestAncientDBFlush(t *testing.T) {
 		for j := 0; j < nodeCount; j++ {
 			path := fmt.Sprintf("path%d_%d", i, j)
 			// create different size of blob
-			blobSize := 500 + (i+j)*25 + (i*j)%100 // 50-300 bytes random size
+			blobSize := 5032032 + (i+j)*25 + (i*j)%100 // 50-300 bytes random size
 			blob := make([]byte, blobSize)
 			for k := range blob {
 				blob[k] = byte((i + j + k) % 256) // use different seed to generate data

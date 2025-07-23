@@ -215,7 +215,7 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 		if len(entry.Nodes) > 0 {
 			jn = append(jn, entry)
 			entrySize := ownerSize + nodesListSize
-			totalSize += uint64(entrySize)
+			totalSize += entrySize
 		}
 
 		if totalSize >= c.batchSize {

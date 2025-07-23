@@ -23,6 +23,8 @@ import (
 	"github.com/pierrec/lz4/v4"
 )
 
+const incrSnapshotNamePattern = `(testnet|mainnet)-geth-pbss-incr-(\d+)-(\d+)\.tar\.lz4`
+
 // Database keys for download status
 var (
 	incrDownloadedFilesKey  = []byte("incr_downloaded_files")
@@ -154,7 +156,7 @@ func (d *IncrDownloader) loadDownloadingFiles() ([]string, error) {
 	}
 
 	var files []string
-	if err := json.Unmarshal(data, &files); err != nil {
+	if err = json.Unmarshal(data, &files); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal downloading files: %v", err)
 	}
 	return files, nil
@@ -205,7 +207,7 @@ func (d *IncrDownloader) Prepare() error {
 	d.files = remainingFiles
 	log.Info("Filtered files", "totalFiles", d.totalFiles, "downloadedFiles", len(downloadedFiles), "remainingFiles", len(remainingFiles))
 
-	// 7. Initialize expected next block start for merge ordering
+	// Initialize expected next block start for merge ordering
 	if len(d.files) > 0 {
 		d.expectedNextBlockStart = d.files[0].StartBlock
 		log.Info("Initialized expected next block start", "expectedNextBlockStart", d.expectedNextBlockStart)
@@ -349,7 +351,7 @@ func (d *IncrDownloader) parseFileInfo(metadata []IncrMetadata) ([]*IncrFileInfo
 		return nil, fmt.Errorf("no metadata found")
 	}
 
-	incrSnapshotNamePattern := regexp.MustCompile(`(testnet|mainnet)-geth-pbss-incr-(\d+)-(\d+)\.tar\.lz4`)
+	pattern := regexp.MustCompile(incrSnapshotNamePattern)
 
 	var (
 		files         []*IncrFileInfo
@@ -358,7 +360,7 @@ func (d *IncrDownloader) parseFileInfo(metadata []IncrMetadata) ([]*IncrFileInfo
 
 	// Parse all files from metadata and separate by format
 	for _, meta := range metadata {
-		if matches := incrSnapshotNamePattern.FindStringSubmatch(meta.FileName); len(matches) == 4 {
+		if matches := pattern.FindStringSubmatch(meta.FileName); len(matches) == 4 {
 			startBlock, err := strconv.ParseUint(matches[2], 10, 64)
 			if err != nil {
 				return nil, fmt.Errorf("invalid start block in %s: %v", meta.FileName, err)
@@ -393,13 +395,16 @@ func (d *IncrDownloader) parseFileInfo(metadata []IncrMetadata) ([]*IncrFileInfo
 	for _, file := range files {
 		if file.EndBlock > d.localBlockNum {
 			filteredFiles = append(filteredFiles, file)
-			log.Debug("Keeping file", "fileName", file.Metadata.FileName, "endBlock", file.EndBlock, "localBlockNum", d.localBlockNum)
+			log.Debug("Keeping file", "fileName", file.Metadata.FileName, "endBlock", file.EndBlock,
+				"localBlockNum", d.localBlockNum)
 		} else {
-			log.Debug("Skipping file (endBlock <= localBlockNum)", "fileName", file.Metadata.FileName, "endBlock", file.EndBlock, "localBlockNum", d.localBlockNum)
+			log.Debug("Skipping file (endBlock <= localBlockNum)", "fileName", file.Metadata.FileName,
+				"endBlock", file.EndBlock, "localBlockNum", d.localBlockNum)
 		}
 	}
 
-	log.Info("Filtered incremental files", "totalFiles", len(files), "keptFiles", len(filteredFiles), "localBlockNum", d.localBlockNum)
+	log.Info("Filtered incremental files", "totalFiles", len(files), "keptFiles", len(filteredFiles),
+		"localBlockNum", d.localBlockNum)
 	return filteredFiles, nil
 }
 
@@ -597,9 +602,41 @@ func (d *IncrDownloader) processNextMergeFiles(completedFile *IncrFileInfo) {
 	}
 }
 
-// downloadFile downloads a single file
+// downloadFile downloads a single file with retry mechanism
 func (d *IncrDownloader) downloadFile(file *IncrFileInfo) error {
-	return d.downloadWithHTTP(file)
+	const maxRetries = 3
+	const baseDelay = time.Second
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		err := d.downloadWithHTTP(file)
+		if err == nil {
+			// Success, no need to retry
+			return nil
+		}
+
+		// Log the error for this attempt
+		log.Warn("Download attempt failed", "file", file.Metadata.FileName, "attempt", attempt,
+			"maxRetries", maxRetries, "error", err)
+
+		// If this is the last attempt, return the error
+		if attempt == maxRetries {
+			return fmt.Errorf("download failed after %d attempts, last error: %w", maxRetries, err)
+		}
+
+		// Calculate delay with exponential backoff
+		delay := baseDelay * time.Duration(attempt)
+		log.Info("Retrying download", "file", file.Metadata.FileName, "attempt", attempt+1, "delay", delay)
+
+		// Wait before retrying
+		select {
+		case <-d.ctx.Done():
+			return d.ctx.Err()
+		case <-time.After(delay):
+			continue
+		}
+	}
+
+	return fmt.Errorf("failed to download file after %d attempts", maxRetries)
 }
 
 // ChunkInfo represents a download chunk
@@ -732,19 +769,56 @@ func (d *IncrDownloader) downloadWithHTTP(file *IncrFileInfo) error {
 	return nil
 }
 
-// verifyAndExtract verifies MD5 hash and extracts file
+// verifyAndExtract verifies MD5 hash and extracts file with retry mechanism
 func (d *IncrDownloader) verifyAndExtract(file *IncrFileInfo) error {
-	// Verify MD5
-	if err := d.verifyHash(file); err != nil {
-		return err
-	}
-	file.Verified = true
+	const maxRetries = 3
+	const baseDelay = time.Second
 
-	// Extract file
-	if err := d.extractFile(file); err != nil {
-		return err
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		// Verify MD5
+		if err := d.verifyHash(file); err != nil {
+			log.Warn("Hash verification attempt failed", "file", file.Metadata.FileName, "attempt", attempt,
+				"maxRetries", maxRetries, "error", err)
+
+			if attempt == maxRetries {
+				return fmt.Errorf("hash verification failed after %d attempts, last error: %w", maxRetries, err)
+			}
+
+			// Wait before retrying
+			delay := baseDelay * time.Duration(attempt)
+			select {
+			case <-d.ctx.Done():
+				return d.ctx.Err()
+			case <-time.After(delay):
+				continue
+			}
+		}
+		file.Verified = true
+		break
 	}
-	file.Extracted = true
+
+	// Extract file with retry mechanism
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if err := d.extractFile(file); err != nil {
+			log.Warn("Failed to extract file", "file", file.Metadata.FileName, "attempt", attempt,
+				"maxRetries", maxRetries, "error", err)
+
+			if attempt == maxRetries {
+				return fmt.Errorf("file extraction failed after %d attempts, last error: %w", maxRetries, err)
+			}
+
+			// Wait before retrying
+			delay := baseDelay * time.Duration(attempt)
+			select {
+			case <-d.ctx.Done():
+				return d.ctx.Err()
+			case <-time.After(delay):
+				continue
+			}
+		}
+		file.Extracted = true
+		break
+	}
 
 	return nil
 }
@@ -1078,8 +1152,45 @@ func (d *IncrDownloader) checkExistingChunks(chunks []*ChunkInfo) {
 	}
 }
 
-// downloadChunk downloads a single chunk
+// downloadChunk downloads a single chunk with retry mechanism
 func (d *IncrDownloader) downloadChunk(url string, chunk *ChunkInfo, progressChan chan<- *ChunkProgress) error {
+	const maxRetries = 3
+	const baseDelay = time.Second
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		err := d.downloadChunkAttempt(url, chunk, progressChan)
+		if err == nil {
+			// Success, no need to retry
+			return nil
+		}
+
+		// Log the error for this attempt
+		log.Warn("Chunk download attempt failed", "chunk", chunk.Index, "attempt", attempt,
+			"maxRetries", maxRetries, "error", err)
+
+		// If this is the last attempt, return the error
+		if attempt == maxRetries {
+			return fmt.Errorf("chunk download failed after %d attempts, last error: %w", maxRetries, err)
+		}
+
+		// Calculate delay with exponential backoff
+		delay := baseDelay * time.Duration(attempt)
+		log.Info("Retrying chunk download", "chunk", chunk.Index, "attempt", attempt+1, "delay", delay)
+
+		// Wait before retrying
+		select {
+		case <-d.ctx.Done():
+			return d.ctx.Err()
+		case <-time.After(delay):
+			continue
+		}
+	}
+
+	return fmt.Errorf("chunk download failed after %d attempts", maxRetries)
+}
+
+// downloadChunkAttempt performs a single attempt to download a chunk
+func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, progressChan chan<- *ChunkProgress) error {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err
