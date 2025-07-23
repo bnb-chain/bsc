@@ -96,7 +96,7 @@ func TestAncientDBFlush(t *testing.T) {
 		for j := 0; j < nodeCount; j++ {
 			path := fmt.Sprintf("path%d_%d", i, j)
 			// create different size of blob
-			blobSize := 50 + (i+j)*25 + (i*j)%100 // 50-300 bytes random size
+			blobSize := 500 + (i+j)*25 + (i*j)%100 // 50-300 bytes random size
 			blob := make([]byte, blobSize)
 			for k := range blob {
 				blob[k] = byte((i + j + k) % 256) // use different seed to generate data
@@ -130,16 +130,19 @@ func mockFlushToAncientDBWithBatchSize(t *testing.T, nodes map[common.Hash]map[s
 			nodeSize := computeNodeSize(singleNode)
 			nodesListSize += nodeSize
 
-			batchTotalSize := rlp.ListSize(totalSize) + rlp.ListSize(nodeSize) + rlp.ListSize(ownerSize)
-			if rlp.ListSize(batchTotalSize) >= batchSize {
+			currentEntrySize := rlp.ListSize(ownerSize + rlp.ListSize(nodesListSize))
+			newTotalSize := totalSize + currentEntrySize
+			if rlp.ListSize(newTotalSize) >= batchSize {
 				batchToWrite := append(jn, entry)
 				computedSize := computeRLPEncodedSize(batchToWrite)
 				actualSize := getActualRLPSize(batchToWrite)
 				flushCount++
 
-				if computedSize != actualSize && computedSize != rlp.ListSize(batchTotalSize) {
+				t.Logf("Flush #%d: when iterating node: currentSize=%d, batchSize=%d, entryCount=%d, actualSize=%d, computedSize=%d\n",
+					flushCount, rlp.ListSize(newTotalSize), batchSize, len(jn)+1, actualSize, computedSize)
+				if computedSize != actualSize && computedSize != rlp.ListSize(newTotalSize) {
 					t.Errorf("Flush #%d: when iterating node, size is not consistent: currentSize=%d, batchSize=%d, entryCount=%d, actualSize=%d, computedSize=%d\n",
-						flushCount, rlp.ListSize(batchTotalSize), batchSize, len(jn)+1, actualSize, computedSize)
+						flushCount, rlp.ListSize(newTotalSize), batchSize, len(jn)+1, actualSize, computedSize)
 				}
 
 				jn = make([]journalNodes, 0, len(nodes))
@@ -159,6 +162,8 @@ func mockFlushToAncientDBWithBatchSize(t *testing.T, nodes map[common.Hash]map[s
 		if rlp.ListSize(totalSize) >= batchSize {
 			actualSize := getActualRLPSize(jn)
 			flushCount++
+			t.Logf("Flush #%d: when adding entry: currentSize=%d, batchSize=%d, entryCount=%d, actualSize=%d\n",
+				flushCount, rlp.ListSize(totalSize), batchSize, len(jn), actualSize)
 			if actualSize != rlp.ListSize(totalSize) {
 				t.Errorf("Flush #%d: when adding entry, size is not consistent: currentSize=%d, batchSize=%d, entryCount=%d, actualSize=%d\n",
 					flushCount, rlp.ListSize(totalSize), batchSize, len(jn), actualSize)
@@ -175,5 +180,86 @@ func mockFlushToAncientDBWithBatchSize(t *testing.T, nodes map[common.Hash]map[s
 		t.Errorf("Final batch size %d exceeds limit %d", finalBatchSize, batchSize)
 	} else {
 		t.Logf("Final batch size %d is within limit %d\n", finalBatchSize, batchSize)
+	}
+}
+
+func TestFlush(t *testing.T) {
+	nodes := make(map[common.Hash]map[string]*trienode.Node)
+	// add multiple owners, each with different number of nodes
+	for i := 0; i < 5; i++ {
+		owner := common.Hash{byte(i), 0x02, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+		nodes[owner] = make(map[string]*trienode.Node)
+
+		// add different number of nodes to each owner
+		nodeCount := 3 + i*2 // 3, 5, 7, 9, 11 nodes
+		for j := 0; j < nodeCount; j++ {
+			path := fmt.Sprintf("path%d_%d", i, j)
+			// create different size of blob
+			blobSize := 50000000 + (i+j)*25 + (i*j)%100 // 50-300 bytes random size
+			blob := make([]byte, blobSize)
+			for k := range blob {
+				blob[k] = byte((i + j + k) % 256) // use different seed to generate data
+			}
+			nodes[owner][path] = &trienode.Node{
+				Hash: common.Hash{},
+				Blob: blob,
+			}
+		}
+	}
+
+	batchSize := uint64(1000)
+
+	jn := make([]journalNodes, 0, len(nodes))
+	totalSize := uint64(0)
+	flushCount := 0
+
+	for owner, subset := range nodes {
+		entry := journalNodes{Owner: owner}
+		ownerSize := uint64(len(owner[:]))
+		nodesListSize := uint64(0)
+
+		for path, node := range subset {
+			entry.Nodes = append(entry.Nodes, journalNode{Path: []byte(path), Blob: node.Blob})
+
+			nodeSize := uint64(len([]byte(path)) + len(node.Blob))
+			nodesListSize += nodeSize
+			currentEntrySize := ownerSize + nodesListSize
+			newTotalSize := totalSize + currentEntrySize
+			if newTotalSize >= batchSize {
+				batchToWrite := append(jn, entry)
+				computedSize := computeRLPEncodedSize(batchToWrite)
+				actualSize := getActualRLPSize(batchToWrite)
+				flushCount++
+
+				t.Logf("Flush #%d: when iterating node: currentSize=%d, batchSize=%d, entryCount=%d, actualSize=%d, computedSize=%d\n",
+					flushCount, newTotalSize, batchSize, len(jn)+1, actualSize, computedSize)
+				if computedSize != actualSize && computedSize != rlp.ListSize(newTotalSize) {
+					t.Errorf("Flush #%d: when iterating node, size is not consistent: currentSize=%d, batchSize=%d, entryCount=%d, actualSize=%d, computedSize=%d\n",
+						flushCount, newTotalSize, batchSize, len(jn)+1, actualSize, computedSize)
+				}
+
+				jn = make([]journalNodes, 0, len(nodes))
+				totalSize = 0
+				entry = journalNodes{Owner: owner} // Reset entry for remaining nodes
+				ownerSize = uint64(len(owner[:]))  // Reset entry size
+				nodesListSize = 0
+			}
+		}
+
+		if len(entry.Nodes) > 0 {
+			jn = append(jn, entry)
+			entrySize := ownerSize + nodesListSize
+			totalSize += uint64(entrySize)
+		}
+
+		if totalSize >= batchSize {
+			actualSize := getActualRLPSize(jn)
+			flushCount++
+			t.Logf("Flush #%d: when adding entry: currentSize=%d, batchSize=%d, entryCount=%d, actualSize=%d\n",
+				flushCount, totalSize, batchSize, len(jn), actualSize)
+
+			jn = make([]journalNodes, 0, len(nodes))
+			totalSize = 0
+		}
 	}
 }

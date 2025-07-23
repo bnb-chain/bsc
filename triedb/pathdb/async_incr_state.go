@@ -180,46 +180,45 @@ func (c *incrNodeCache) flush(incrDB *rawdb.IncrSnapDB) error {
 	return nil
 }
 
-// flushToAncientDB writes the trie nodes to the incremental state db.
 func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 	jn := make([]journalNodes, 0, len(c.nodes.nodes))
 	totalSize := uint64(0)
 
 	for owner, subset := range c.nodes.nodes {
 		entry := journalNodes{Owner: owner}
-		ownerSize := rlp.BytesSize(owner[:])
+		ownerSize := uint64(len(owner[:]))
 		nodesListSize := uint64(0)
 
 		for path, node := range subset {
-			singleNode := journalNode{Path: []byte(path), Blob: node.Blob}
-			entry.Nodes = append(entry.Nodes, singleNode)
+			entry.Nodes = append(entry.Nodes, journalNode{Path: []byte(path), Blob: node.Blob})
 
-			nodeSize := computeNodeSize(singleNode)
+			nodeSize := uint64(len([]byte(path)) + len(node.Blob))
 			nodesListSize += nodeSize
+			currentEntrySize := ownerSize + nodesListSize
+			newTotalSize := totalSize + currentEntrySize
 
-			batchTotalSize := rlp.ListSize(totalSize) + rlp.ListSize(nodeSize) + rlp.ListSize(ownerSize)
-			if rlp.ListSize(batchTotalSize) >= c.batchSize {
+			if newTotalSize >= c.batchSize {
 				log.Info("Batch size limit reached during node iteration, flushing to ancient db",
-					"batchTotalSize", rlp.ListSize(batchTotalSize), "batchSize", c.batchSize, "entryCount", len(jn)+1)
+					"newTotalSize", newTotalSize, "batchSize", c.batchSize, "entryCount", len(jn)+1)
 				if err := c.writeBatchToAncientDB(incrDB, append(jn, entry)); err != nil {
 					return err
 				}
 
 				jn = make([]journalNodes, 0, len(c.nodes.nodes))
 				totalSize = 0
-				entry = journalNodes{Owner: owner}        // Reset entry for remaining nodes
-				ownerSize = rlp.BytesSize(entry.Owner[:]) // Reset entry size
+				entry = journalNodes{Owner: owner} // Reset entry for remaining nodes
+				ownerSize = uint64(len(owner[:]))  // Reset owner size
 				nodesListSize = 0
 			}
 		}
 
 		if len(entry.Nodes) > 0 {
 			jn = append(jn, entry)
-			entryRLPSize := rlp.ListSize(ownerSize + rlp.ListSize(nodesListSize))
-			totalSize += rlp.ListSize(entryRLPSize)
+			entrySize := ownerSize + nodesListSize
+			totalSize += uint64(entrySize)
 		}
 
-		if rlp.ListSize(totalSize) >= c.batchSize {
+		if totalSize >= c.batchSize {
 			log.Info("Batch size limit reached after adding entry, flushing to ancient db",
 				"totalSize", totalSize, "batchSize", c.batchSize, "entryCount", len(jn))
 			if err := c.writeBatchToAncientDB(incrDB, jn); err != nil {
@@ -240,6 +239,69 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 	c.reset()
 	return nil
 }
+
+// flushToAncientDB writes the trie nodes to the incremental state db.
+// func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
+// 	jn := make([]journalNodes, 0, len(c.nodes.nodes))
+// 	totalSize := uint64(0)
+
+// 	for owner, subset := range c.nodes.nodes {
+// 		entry := journalNodes{Owner: owner}
+// 		ownerSize := rlp.BytesSize(owner[:])
+// 		nodesListSize := uint64(0)
+
+// 		for path, node := range subset {
+// 			singleNode := journalNode{Path: []byte(path), Blob: node.Blob}
+// 			entry.Nodes = append(entry.Nodes, singleNode)
+
+// 			nodeSize := computeNodeSize(singleNode)
+// 			nodesListSize += nodeSize
+
+// 			currentEntrySize := rlp.ListSize(ownerSize + rlp.ListSize(nodesListSize))
+// 			newTotalSize := totalSize + currentEntrySize
+// 			// batchTotalSize := rlp.ListSize(totalSize) + rlp.ListSize(nodeSize) + rlp.ListSize(ownerSize)
+// 			if rlp.ListSize(newTotalSize) >= c.batchSize {
+// 				log.Info("Batch size limit reached during node iteration, flushing to ancient db",
+// 					"batchTotalSize", rlp.ListSize(newTotalSize), "batchSize", c.batchSize, "entryCount", len(jn)+1)
+// 				if err := c.writeBatchToAncientDB(incrDB, append(jn, entry)); err != nil {
+// 					return err
+// 				}
+
+// 				jn = make([]journalNodes, 0, len(c.nodes.nodes))
+// 				totalSize = 0
+// 				entry = journalNodes{Owner: owner}        // Reset entry for remaining nodes
+// 				ownerSize = rlp.BytesSize(entry.Owner[:]) // Reset entry size
+// 				nodesListSize = 0
+// 			}
+// 		}
+
+// 		if len(entry.Nodes) > 0 {
+// 			jn = append(jn, entry)
+// 			entryRLPSize := rlp.ListSize(ownerSize + rlp.ListSize(nodesListSize))
+// 			totalSize += rlp.ListSize(entryRLPSize)
+// 		}
+
+// 		if rlp.ListSize(totalSize) >= c.batchSize {
+// 			log.Info("Batch size limit reached after adding entry, flushing to ancient db",
+// 				"totalSize", totalSize, "batchSize", c.batchSize, "entryCount", len(jn))
+// 			if err := c.writeBatchToAncientDB(incrDB, jn); err != nil {
+// 				return err
+// 			}
+// 			jn = make([]journalNodes, 0, len(c.nodes.nodes))
+// 			totalSize = 0
+// 		}
+// 	}
+
+// 	if len(jn) > 0 {
+// 		log.Info("Flushing remaining incremental state buffer to ancient db", "entryCount", len(jn))
+// 		if err := c.writeBatchToAncientDB(incrDB, jn); err != nil {
+// 			return err
+// 		}
+// 	}
+// 	log.Info("Flushed incremental state buffer to ancient db", "size", c.nodes.size)
+// 	c.reset()
+// 	return nil
+// }
 
 // writeBatchToAncientDB writes a batch of trie nodes to the incremental state db.
 func (c *incrNodeCache) writeBatchToAncientDB(incrDB *rawdb.IncrSnapDB, jn []journalNodes) error {
