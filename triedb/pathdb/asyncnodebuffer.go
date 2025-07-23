@@ -42,8 +42,6 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 	log.Info("Ancient db meta info", "persistent_state_id", persistID, "start", start,
 		"end", end, "total_count", end-start)
 
-	log.Info("Before place incr state data", "empty", a.empty(), "layers", a.getLayers())
-
 	var (
 		totalLayers, lastStateID uint64
 		// stateRangeGroups key is the last state id of the state range
@@ -100,7 +98,6 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 		}
 		a.current.layers += groupMetadata.Layers - 1
 		totalLayers += groupMetadata.Layers
-		log.Info("Processing state range group", "stateRange", stateRangeKey, "groupSize", len(group), "layers", groupMetadata.Layers)
 
 		if err := a.flush(db, freezer, nil, groupMetadata.StateIDArray[1], false); err != nil {
 			log.Error("Failed to flush history", "error", err)
