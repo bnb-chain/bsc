@@ -187,9 +187,14 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 
 	for owner, subset := range c.nodes.nodes {
 		entry := journalNodes{Owner: owner}
+		currentEntrySize := rlp.BytesSize(entry.Owner[:])
 		for path, node := range subset {
-			entry.Nodes = append(entry.Nodes, journalNode{Path: []byte(path), Blob: node.Blob})
-			entrySize := c.computeEntrySize(entry)
+			singleNode := journalNode{Path: []byte(path), Blob: node.Blob}
+			entry.Nodes = append(entry.Nodes, singleNode)
+			// entrySize := c.computeEntrySize(entry)
+			nodeSize := c.computeNodeSize(singleNode)
+			currentEntrySize += nodeSize
+			entrySize := rlp.ListSize(currentEntrySize)
 
 			if currentBatchSize+entrySize >= c.batchSize {
 				log.Info("Batch size limit reached during node iteration, flushing to ancient db",
