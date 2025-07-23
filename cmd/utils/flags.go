@@ -2354,12 +2354,14 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(UseRemoteIncrSnapshotFlag.Name) {
 		cfg.UseRemoteIncrSnapshot = true
 		if !ctx.IsSet(RemoteIncrSnapshotURLFlag.Name) {
-			log.Crit("Must provide a remote increment snapshot URL")
+			Fatalf("Must provide a remote increment snapshot URL")
 		} else {
 			cfg.RemoteIncrSnapshotURL = ctx.String(RemoteIncrSnapshotURLFlag.Name)
 		}
 		if ctx.IsSet(IncrSnapshotPathFlag.Name) {
 			cfg.IncrSnapshotPath = ctx.String(IncrSnapshotPathFlag.Name)
+		} else {
+			Fatalf("Must provide a path to store downloaded incr snapshot")
 		}
 	}
 
@@ -2369,8 +2371,11 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		if ctx.IsSet(IncrSnapshotPathFlag.Name) {
 			cfg.IncrSnapshotPath = ctx.String(IncrSnapshotPathFlag.Name)
 		}
+		// TODO: set a default value
 		if ctx.IsSet(IncrSnapshotBlockIntervalFlag.Name) {
 			cfg.IncrSnapshotBlockInterval = ctx.Uint64(IncrSnapshotBlockIntervalFlag.Name)
+		} else {
+			cfg.IncrSnapshotBlockInterval = 100000
 		}
 	}
 }

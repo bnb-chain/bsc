@@ -183,46 +183,50 @@ func (c *incrNodeCache) flush(incrDB *rawdb.IncrSnapDB) error {
 // flushToAncientDB writes the trie nodes to the incremental state db.
 func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 	jn := make([]journalNodes, 0, len(c.nodes.nodes))
-	currentBatchSize := uint64(0)
-	// totalBatchSize := uint64(0)
+	totalSize := uint64(0)
 
 	for owner, subset := range c.nodes.nodes {
 		entry := journalNodes{Owner: owner}
-		currentEntrySize := rlp.BytesSize(entry.Owner[:])
+		ownerSize := rlp.BytesSize(owner[:])
+		nodesListSize := uint64(0)
+
 		for path, node := range subset {
 			singleNode := journalNode{Path: []byte(path), Blob: node.Blob}
 			entry.Nodes = append(entry.Nodes, singleNode)
 
 			nodeSize := computeNodeSize(singleNode)
-			currentEntrySize += rlp.ListSize(nodeSize)
-			entrySize := rlp.ListSize(currentEntrySize)
+			nodesListSize += nodeSize
 
-			if currentBatchSize+entrySize >= c.batchSize {
+			batchTotalSize := totalSize + nodeSize + ownerSize
+			if rlp.ListSize(batchTotalSize) >= c.batchSize {
 				log.Info("Batch size limit reached during node iteration, flushing to ancient db",
-					"currentSize", currentBatchSize+entrySize, "batchSize", c.batchSize, "entryCount", len(jn)+1)
+					"batchTotalSize", batchTotalSize, "batchSize", c.batchSize, "entryCount", len(jn)+1)
 				if err := c.writeBatchToAncientDB(incrDB, append(jn, entry)); err != nil {
 					return err
 				}
+
 				jn = make([]journalNodes, 0, len(c.nodes.nodes))
-				currentBatchSize = 0
-				entry = journalNodes{Owner: owner} // Reset entry for remaining nodes
-				currentEntrySize = rlp.BytesSize(entry.Owner[:])
+				totalSize = 0
+				entry = journalNodes{Owner: owner}        // Reset entry for remaining nodes
+				ownerSize = rlp.BytesSize(entry.Owner[:]) // Reset entry size
+				nodesListSize = 0
 			}
 		}
 
 		if len(entry.Nodes) > 0 {
 			jn = append(jn, entry)
-			currentBatchSize = computeRLPEncodedSize(jn)
+			entryRLPSize := rlp.ListSize(ownerSize + rlp.ListSize(nodesListSize))
+			totalSize += rlp.ListSize(entryRLPSize)
 		}
 
-		if currentBatchSize >= c.batchSize {
+		if rlp.ListSize(totalSize) >= c.batchSize {
 			log.Info("Batch size limit reached after adding entry, flushing to ancient db",
-				"currentSize", currentBatchSize, "batchSize", c.batchSize, "entryCount", len(jn))
+				"totalSize", totalSize, "batchSize", c.batchSize, "entryCount", len(jn))
 			if err := c.writeBatchToAncientDB(incrDB, jn); err != nil {
 				return err
 			}
 			jn = make([]journalNodes, 0, len(c.nodes.nodes))
-			currentBatchSize = 0
+			totalSize = 0
 		}
 	}
 
