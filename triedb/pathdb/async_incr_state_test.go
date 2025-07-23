@@ -5,10 +5,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/trie/trienode"
 )
 
 func TestComputedRLPEncodedSize(t *testing.T) {
-	cache := newIncrNodeCache(1000, 1000000, nil, 0)
 	jn := []journalNodes{
 		{
 			Owner: common.Hash{0x01, 0x02, 0x03},
@@ -25,32 +25,15 @@ func TestComputedRLPEncodedSize(t *testing.T) {
 		},
 	}
 
-	computedSize := cache.computeRLPEncodedSize(jn)
-	actualSize, err := getActualRLPSize(jn)
-	if err != nil {
-		t.Fatalf("Failed to get actual RLP size: %v", err)
+	computedSize := computeRLPEncodedSize(jn)
+	actualSize := getActualRLPSize(jn)
+	if computedSize != actualSize {
+		t.Errorf("ComputedSize is not equal to actual size: computed=%d, actual=%d",
+			computedSize, actualSize)
 	}
-
-	// Verify estimation is reasonable (within 10% of actual)
-	diff := uint64(0)
-	if computedSize > actualSize {
-		diff = computedSize - actualSize
-	} else {
-		diff = actualSize - computedSize
-	}
-
-	accuracy := float64(diff) / float64(actualSize)
-	if accuracy > 0.1 {
-		t.Errorf("Estimation accuracy too low: computed=%d, actual=%d, accuracy=%.2f%%",
-			computedSize, actualSize, accuracy*100)
-	}
-	t.Logf("Computed size: %d, Actual size: %d, Accuracy: %.2f%%",
-		computedSize, actualSize, (1-accuracy)*100)
 }
 
 func TestComputeNodeSize(t *testing.T) {
-	cache := newIncrNodeCache(1000, 1000000, nil, 0)
-
 	testCases := []struct {
 		name     string
 		path     []byte
@@ -65,21 +48,18 @@ func TestComputeNodeSize(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			node := journalNode{Path: tc.path, Blob: tc.blob}
-			computedSize := cache.computeNodeSize(node)
+			computedSize := computeNodeSize(node)
 			if computedSize == 0 {
 				t.Error("Computed size should not be zero")
 			}
 			if computedSize < tc.expected {
 				t.Errorf("Computed size too small: got %d, expected at least %d", computedSize, tc.expected)
 			}
-			t.Logf("%s: computed=%d", tc.name, computedSize)
 		})
 	}
 }
 
 func TestComputeEntrySize(t *testing.T) {
-	cache := newIncrNodeCache(1000, 1000000, nil, 0)
-
 	entry := journalNodes{
 		Owner: common.Hash{0x01, 0x02, 0x03},
 		Nodes: []journalNode{
@@ -88,95 +68,58 @@ func TestComputeEntrySize(t *testing.T) {
 		},
 	}
 
-	computedSize := cache.computeEntrySize(entry)
-	if computedSize == 0 {
-		t.Error("Computed size should not be zero")
-	}
-	// Should be at least the sum of individual node sizes plus owner size
-	minExpected := uint64(32) // owner
-	for _, node := range entry.Nodes {
-		minExpected += cache.computeNodeSize(node)
-	}
-	if computedSize < minExpected {
-		t.Errorf("Computed size too small: got %d, expected at least %d", computedSize, minExpected)
-	}
-	t.Logf("Entry computed size: %d", computedSize)
-}
-
-func TestRLPSizeCalculation(t *testing.T) {
-	cache := newIncrNodeCache(1000, 1000000, nil, 0)
-
-	// Test with different data sizes
-	testCases := []struct {
-		name      string
-		pathSize  int
-		blobSize  int
-		nodeCount int
-	}{
-		{"small", 2, 10, 1},
-		{"medium", 32, 100, 5},
-		{"large", 64, 1000, 10},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			jn := make([]journalNodes, 1)
-			jn[0] = journalNodes{
-				Owner: common.Hash{0x01},
-				Nodes: make([]journalNode, tc.nodeCount),
-			}
-
-			for i := 0; i < tc.nodeCount; i++ {
-				jn[0].Nodes[i] = journalNode{
-					Path: make([]byte, tc.pathSize),
-					Blob: make([]byte, tc.blobSize),
-				}
-			}
-
-			computedSize := cache.computeRLPEncodedSize(jn)
-			actualSize, err := getActualRLPSize(jn)
-			if err != nil {
-				t.Fatalf("Failed to get actual size: %v", err)
-			}
-			// Check if estimated size is reasonable
-			if computedSize == 0 {
-				t.Error("Estimated size should not be zero")
-			}
-			if computedSize < actualSize/2 || computedSize > actualSize*2 {
-				t.Errorf("Estimation too far off: estimated=%d, actual=%d", computedSize, actualSize)
-			}
-			t.Logf("%s: estimated=%d, actual=%d", tc.name, computedSize, actualSize)
-		})
+	computedSize := computeEntrySize(entry)
+	actualRLPSize := getActualRLPSize(entry)
+	if computedSize != actualRLPSize {
+		t.Errorf("Computed size: got %d, expected %d", actualRLPSize, computedSize)
 	}
 }
 
-func TestBatchSizeLimit(t *testing.T) {
-	cache := newIncrNodeCache(1000, 1000000, nil, 0)
+func mockFlushToAncientDB(nodes map[common.Hash]map[string]*trienode.Node) {
+	batchSize := 1024 * 1024
+	jn := make([]journalNodes, 0, len(nodes))
+	currentBatchSize := uint64(0)
+	// totalBatchSize := uint64(0)
 
-	// Create a batch that should exceed the limit
-	largeBatch := make([]journalNodes, 1000)
-	for i := 0; i < 1000; i++ {
-		largeBatch[i] = journalNodes{
-			Owner: common.Hash{byte(i)},
-			Nodes: []journalNode{
-				{Path: make([]byte, 64), Blob: make([]byte, 10000)}, // 10KB per node
-			},
+	for owner, subset := range nodes {
+		entry := journalNodes{Owner: owner}
+		currentEntrySize := rlp.BytesSize(entry.Owner[:])
+		for path, node := range subset {
+			singleNode := journalNode{Path: []byte(path), Blob: node.Blob}
+			entry.Nodes = append(entry.Nodes, singleNode)
+
+			nodeSize := computeNodeSize(singleNode)
+			currentEntrySize += rlp.ListSize(nodeSize)
+			entrySize := rlp.ListSize(currentEntrySize)
+
+			if currentBatchSize+entrySize >= uint64(batchSize) {
+				// log.Info("Batch size limit reached during node iteration, flushing to ancient db",
+				// 	"currentSize", currentBatchSize+entrySize, "batchSize", batchSize, "entryCount", len(jn)+1)
+				jn = make([]journalNodes, 0, len(nodes))
+				currentBatchSize = 0
+				entry = journalNodes{Owner: owner} // Reset entry for remaining nodes
+				currentEntrySize = rlp.BytesSize(entry.Owner[:])
+			}
+		}
+
+		if len(entry.Nodes) > 0 {
+			jn = append(jn, entry)
+			currentBatchSize = computeRLPEncodedSize(jn)
+		}
+
+		if currentBatchSize >= uint64(batchSize) {
+			// log.Info("Batch size limit reached after adding entry, flushing to ancient db",
+			// 	"currentSize", currentBatchSize, "batchSize", c.batchSize, "entryCount", len(jn))
+			jn = make([]journalNodes, 0, len(nodes))
+			currentBatchSize = 0
 		}
 	}
-
-	computedSize := cache.computeRLPEncodedSize(largeBatch)
-	// Check if the estimated size is reasonable for a large batch
-	if computedSize < 1000000 { // Should be at least 1MB
-		t.Errorf("Estimated size too small for large batch: %d", computedSize)
-	}
-	t.Logf("Large batch computed size: %d bytes (%.2f MB)",
-		computedSize, float64(computedSize)/(1024*1024))
 }
 
-func getActualRLPSize(jn []journalNodes) (uint64, error) {
-	encoded, err := rlp.EncodeToBytes(jn)
+func getActualRLPSize(val interface{}) uint64 {
+	encoded, err := rlp.EncodeToBytes(val)
 	if err != nil {
-		return 0, err
+		panic("rlp.EncodeToBytes failed")
 	}
-	return uint64(len(encoded)), nil
+	return uint64(len(encoded))
 }

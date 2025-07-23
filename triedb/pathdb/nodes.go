@@ -36,8 +36,9 @@ import (
 // transition, typically corresponding to a block execution. It can also represent
 // the combined trie node set from several aggregated state transitions.
 type nodeSet struct {
-	size  uint64                                    // aggregated size of the trie node
-	nodes map[common.Hash]map[string]*trienode.Node // node set, mapped by owner and path
+	size    uint64                                    // aggregated size of the trie node
+	nodes   map[common.Hash]map[string]*trienode.Node // node set, mapped by owner and path
+	sizeMap map[common.Hash]uint64
 }
 
 // newNodeSet constructs the set with the provided dirty trie nodes.

@@ -184,6 +184,7 @@ func (c *incrNodeCache) flush(incrDB *rawdb.IncrSnapDB) error {
 func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 	jn := make([]journalNodes, 0, len(c.nodes.nodes))
 	currentBatchSize := uint64(0)
+	// totalBatchSize := uint64(0)
 
 	for owner, subset := range c.nodes.nodes {
 		entry := journalNodes{Owner: owner}
@@ -191,9 +192,9 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 		for path, node := range subset {
 			singleNode := journalNode{Path: []byte(path), Blob: node.Blob}
 			entry.Nodes = append(entry.Nodes, singleNode)
-			// entrySize := c.computeEntrySize(entry)
-			nodeSize := c.computeNodeSize(singleNode)
-			currentEntrySize += nodeSize
+
+			nodeSize := computeNodeSize(singleNode)
+			currentEntrySize += rlp.ListSize(nodeSize)
 			entrySize := rlp.ListSize(currentEntrySize)
 
 			if currentBatchSize+entrySize >= c.batchSize {
@@ -205,12 +206,13 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 				jn = make([]journalNodes, 0, len(c.nodes.nodes))
 				currentBatchSize = 0
 				entry = journalNodes{Owner: owner} // Reset entry for remaining nodes
+				currentEntrySize = rlp.BytesSize(entry.Owner[:])
 			}
 		}
 
 		if len(entry.Nodes) > 0 {
 			jn = append(jn, entry)
-			currentBatchSize = c.computeRLPEncodedSize(jn)
+			currentBatchSize = computeRLPEncodedSize(jn)
 		}
 
 		if currentBatchSize >= c.batchSize {
@@ -225,7 +227,7 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 	}
 
 	if len(jn) > 0 {
-		log.Info("Flushing remaining incremental state buffer to ancient db", "size", c.nodes.size, "entryCount", len(jn))
+		log.Info("Flushing remaining incremental state buffer to ancient db", "entryCount", len(jn))
 		if err := c.writeBatchToAncientDB(incrDB, jn); err != nil {
 			return err
 		}
@@ -233,39 +235,6 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 	log.Info("Flushed incremental state buffer to ancient db", "size", c.nodes.size)
 	c.reset()
 	return nil
-}
-
-// computeEntrySize computes the RLP encoded size of a journalNodes entry
-func (c *incrNodeCache) computeEntrySize(entry journalNodes) uint64 {
-	size := rlp.BytesSize(entry.Owner[:])
-	nodesSize := uint64(0)
-	for _, node := range entry.Nodes {
-		nodesSize += c.computeNodeSize(node)
-	}
-	size += rlp.ListSize(nodesSize)
-	return rlp.ListSize(size)
-}
-
-// computeNodeSize computes the RLP encoded size of a journalNode
-func (c *incrNodeCache) computeNodeSize(node journalNode) uint64 {
-	nodeSize := rlp.BytesSize(node.Path) + rlp.BytesSize(node.Blob)
-	return rlp.ListSize(nodeSize)
-}
-
-// computeRLPEncodedSize computes the RLP encoded size of a journalNodes batch
-func (c *incrNodeCache) computeRLPEncodedSize(jn []journalNodes) uint64 {
-	totalSize := uint64(0)
-	for _, entry := range jn {
-		entrySize := uint64(0)
-		entrySize += rlp.BytesSize(entry.Owner[:])
-		nodesListSize := uint64(0)
-		for _, node := range entry.Nodes {
-			nodesListSize += c.computeNodeSize(node)
-		}
-		entrySize += rlp.ListSize(nodesListSize)
-		totalSize += rlp.ListSize(entrySize)
-	}
-	return rlp.ListSize(totalSize)
 }
 
 // writeBatchToAncientDB writes a batch of trie nodes to the incremental state db.
@@ -326,4 +295,37 @@ func (c *incrNodeCache) reset() {
 	c.layers = 0
 	c.stateIDArray = emptyArray
 	c.blockNumberArray = emptyArray
+}
+
+// computeNodeSize computes the RLP encoded size of a journalNode
+func computeNodeSize(node journalNode) uint64 {
+	nodeSize := rlp.BytesSize(node.Path) + rlp.BytesSize(node.Blob)
+	return rlp.ListSize(nodeSize)
+}
+
+// computeEntrySize computes the RLP encoded size of a journalNodes entry
+func computeEntrySize(entry journalNodes) uint64 {
+	size := rlp.BytesSize(entry.Owner[:])
+	nodesSize := uint64(0)
+	for _, node := range entry.Nodes {
+		nodesSize += computeNodeSize(node)
+	}
+	size += rlp.ListSize(nodesSize)
+	return rlp.ListSize(size)
+}
+
+// computeRLPEncodedSize computes the RLP encoded size of a journalNodes slice
+func computeRLPEncodedSize(jn []journalNodes) uint64 {
+	totalSize := uint64(0)
+	for _, entry := range jn {
+		entrySize := uint64(0)
+		entrySize += rlp.BytesSize(entry.Owner[:])
+		nodesListSize := uint64(0)
+		for _, node := range entry.Nodes {
+			nodesListSize += computeNodeSize(node)
+		}
+		entrySize += rlp.ListSize(nodesListSize)
+		totalSize += rlp.ListSize(entrySize)
+	}
+	return rlp.ListSize(totalSize)
 }
