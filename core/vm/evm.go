@@ -18,10 +18,11 @@ package vm
 
 import (
 	"errors"
-	"github.com/holiman/uint256"
 	"math/big"
 	"sync"
 	"sync/atomic"
+
+	"github.com/holiman/uint256"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
@@ -548,7 +549,12 @@ func tryGetOptimizedCode(evm *EVM, codeHash common.Hash, rawCode []byte) (bool, 
 		code = optCode
 		optimized = true
 	} else {
-		compiler.GenOrLoadOptimizedCode(codeHash, rawCode)
+		// Try to generate optimized code synchronously
+		optCode, err := compiler.GenOrRewriteOptimizedCode(codeHash, rawCode)
+		if err == nil && len(optCode) != 0 {
+			code = optCode
+			optimized = true
+		}
 	}
 	return optimized, code
 }

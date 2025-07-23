@@ -8,9 +8,10 @@ import (
 )
 
 var (
-	enabled     bool
-	codeCache   *OpCodeCache
-	taskChannel chan optimizeTask
+	enabled            bool
+	opcodeParseEnabled bool
+	codeCache          *OpCodeCache
+	taskChannel        chan optimizeTask
 )
 
 var (
@@ -70,6 +71,13 @@ func IsEnabled() bool {
 	return enabled
 }
 
+func EnableOpcodeParse() {
+	if opcodeParseEnabled {
+		return
+	}
+	opcodeParseEnabled = true
+}
+
 func LoadOptimizedCode(hash common.Hash) []byte {
 	if !enabled {
 		return nil
@@ -123,6 +131,9 @@ func GenOrRewriteOptimizedCode(hash common.Hash, code []byte) ([]byte, error) {
 	if !enabled {
 		return nil, ErrOptimizedDisabled
 	}
+	if opcodeParseEnabled {
+		doOpcodesParse(hash, code)
+	}
 	processedCode, err := processByteCodes(code)
 	if err != nil {
 		return nil, err
@@ -149,7 +160,6 @@ func DeleteCodeCache(hash common.Hash) {
 }
 
 func processByteCodes(code []byte) ([]byte, error) {
-	//return doOpcodesProcess(code)
 	return DoCFGBasedOpcodeFusion(code)
 }
 

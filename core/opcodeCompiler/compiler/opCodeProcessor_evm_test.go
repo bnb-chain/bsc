@@ -138,8 +138,8 @@ func testWBNBContractExecution(t *testing.T, originalCode, fusedCode []byte) {
 			// Execute original code
 			originalRet, originalGas, originalErr := executeContract(originalCode, input, cfg)
 
-			// Execute fused code
-			fusedRet, fusedGas, fusedErr := executeContract(fusedCode, input, cfgFused)
+			// Execute original code with optimizations enabled (EVM will load optimized version)
+			fusedRet, fusedGas, fusedErr := executeContract(originalCode, input, cfgFused)
 
 			// Compare results
 			if originalErr != nil && fusedErr == nil {
@@ -628,8 +628,8 @@ func testBSCContractExecution(t *testing.T, originalCode, fusedCode []byte) {
 			// Execute original code
 			originalRet, originalGas, originalErr := executeContract(originalCode, input, cfg)
 
-			// Execute fused code
-			fusedRet, fusedGas, fusedErr := executeContract(fusedCode, input, cfgFused)
+			// Execute original code with optimizations enabled (EVM will load optimized version)
+			fusedRet, fusedGas, fusedErr := executeContract(originalCode, input, cfgFused)
 
 			// Compare results
 			if originalErr != nil && fusedErr == nil {
