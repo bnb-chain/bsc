@@ -195,6 +195,7 @@ func (d *IncrDownloader) Prepare() error {
 
 	// Filter out already downloaded files
 	var remainingFiles []*IncrFileInfo
+	var remainingFileNames []string
 	for _, file := range d.files {
 		if downloadedSet[file.Metadata.FileName] {
 			log.Debug("Skipping already downloaded file", "fileName", file.Metadata.FileName)
@@ -202,9 +203,14 @@ func (d *IncrDownloader) Prepare() error {
 			continue
 		}
 		remainingFiles = append(remainingFiles, file)
+		remainingFileNames = append(remainingFileNames, file.Metadata.FileName)
 	}
 
 	d.files = remainingFiles
+	if err = d.saveDownloadingFiles(remainingFileNames); err != nil {
+		log.Error("Failed to save downloading files", "error", err)
+		return err
+	}
 	log.Info("Filtered files", "totalFiles", d.totalFiles, "downloadedFiles", len(downloadedFiles), "remainingFiles", len(remainingFiles))
 
 	// Initialize expected next block start for merge ordering
@@ -439,24 +445,23 @@ func (d *IncrDownloader) downloadWorker() {
 
 	for file := range d.downloadChan {
 		// Mark file as downloading
-		d.markFileAsDownloading(file.Metadata.FileName)
+		// d.markFileAsDownloading(file.Metadata.FileName)
 
 		if err := d.downloadFile(file); err != nil {
-			log.Error("Download failed", "file", file.Metadata.FileName, "error", err)
-			d.removeFromDownloading(file.Metadata.FileName)
+			log.Error("Failed to download file", "file", file.Metadata.FileName, "error", err)
 			d.errorChan <- err
 			continue
 		}
 
 		if err := d.verifyAndExtract(file); err != nil {
-			log.Error("Verification or extraction failed", "file", file.Metadata.FileName, "error", err)
-			d.removeFromDownloading(file.Metadata.FileName)
+			log.Error("Failed to verify or extract failed", "file", file.Metadata.FileName, "error", err)
 			d.errorChan <- err
 			continue
 		}
 
 		// Mark file as downloaded
 		d.markFileAsDownloaded(file.Metadata.FileName)
+		d.removeFromDownloading(file.Metadata.FileName)
 
 		d.mu.Lock()
 		d.downloadedFiles++
@@ -930,7 +935,7 @@ func (d *IncrDownloader) mergeWorker() {
 
 	for file := range d.mergeChan {
 		if err := d.mergeFile(file); err != nil {
-			log.Error("Merge failed", "file", file.Metadata.FileName, "error", err)
+			log.Error("Failed to merge", "file", file.Metadata.FileName, "error", err)
 			d.errorChan <- err
 			continue
 		}
