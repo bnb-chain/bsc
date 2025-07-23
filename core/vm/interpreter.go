@@ -19,20 +19,24 @@ package vm
 import (
 	"fmt"
 
+	"github.com/holiman/uint256"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/core/opcodeCompiler/shortcut"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/holiman/uint256"
 )
 
 // Config are the configuration options for the Interpreter
 type Config struct {
-	Tracer                  *tracing.Hooks
-	NoBaseFee               bool  // Forces the EIP-1559 baseFee to 0 (needed for 0 price calls)
-	EnablePreimageRecording bool  // Enables recording of SHA3/keccak preimages
-	ExtraEips               []int // Additional EIPS that are to be enabled
+	Tracer                    *tracing.Hooks
+	NoBaseFee                 bool  // Forces the EIP-1559 baseFee to 0 (needed for 0 price calls)
+	EnablePreimageRecording   bool  // Enables recording of SHA3/keccak preimages
+	ExtraEips                 []int // Additional EIPS that are to be enabled
+	EnableOpcodeOptimizations bool  // Enable opcode optimization
+	EnableInline              bool  // Enable contract inline
 
 	StatelessSelfValidation bool // Generate execution witnesses and self-check against them (testing purpose)
 }
@@ -154,6 +158,11 @@ func NewEVMInterpreter(evm *EVM) *EVMInterpreter {
 	return &EVMInterpreter{evm: evm, table: table}
 }
 
+func (in *EVMInterpreter) CopyAndInstallSuperInstruction() {
+	table := copyJumpTable(in.table)
+	in.table = createOptimizedOpcodeTable(table)
+}
+
 // Run loops and evaluates the contract's code with the given input data and returns
 // the return byte-slice and an error if one occurred.
 //
@@ -224,6 +233,49 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			}
 		}()
 	}
+
+	// shortcut
+	if in.evm.Config.EnableInline {
+		inliner := shortcut.GetShortcut(contract.Address())
+		if inliner != nil {
+			sPc, sGas, sStk, sMem, memLastGasCost, expected, err := inliner.Shortcut(input, in.evm.Origin, contract.Caller(), contract.Value())
+			if err != nil || !expected {
+				//log.Warn("Shortcut unexpected",
+				//	"error", err,
+				//	"contract", contract.Address(),
+				//	"inputs", hex.EncodeToString(input),
+				//	"origin", in.evm.Origin,
+				//	"caller", contract.Caller(),
+				//	"value", contract.Value(),
+				//)
+			} else {
+				if debug {
+					// Capture pre-execution values for tracing.
+					pcCopy, gasCopy = pc, contract.Gas
+				}
+
+				for _, frame := range sStk {
+					callContext.Stack.push(&frame)
+				}
+				callContext.Memory.store = make([]byte, len(sMem))
+				copy(callContext.Memory.store, sMem)
+				callContext.Memory.lastGasCost = memLastGasCost
+				pc = sPc
+				contract.Gas -= sGas
+
+				if debug {
+					if in.evm.Config.Tracer.OnGasChange != nil {
+						in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-sPc, tracing.GasChangeCallOpCode)
+					}
+					if in.evm.Config.Tracer.OnOpcode != nil {
+						in.evm.Config.Tracer.OnOpcode(pc, byte(Nop), gasCopy, sGas, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
+						logged = true
+					}
+				}
+			}
+		}
+	}
+
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
 	// the execution of one of the operations or until the done flag is set by the
@@ -313,6 +365,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		if err != nil {
 			break
 		}
+
 		pc++
 	}
 

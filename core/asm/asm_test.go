@@ -44,7 +44,7 @@ func TestInstructionIterator(t *testing.T) {
 00001: STOP`},
 		{"d1aabb00", `00000: DATALOADN
 00001: opcode 0xaa not defined
-00002: opcode 0xbb not defined
+00002: SWAP1POP
 00003: STOP`, `
 00000: DATALOADN 0xaabb
 00003: STOP`}, // DATALOADN(aabb),STOP
