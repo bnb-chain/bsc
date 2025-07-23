@@ -17,7 +17,6 @@
 package vm
 
 import (
-	"encoding/hex"
 	"fmt"
 
 	"github.com/holiman/uint256"
@@ -241,14 +240,14 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		if inliner != nil {
 			sPc, sGas, sStk, sMem, memLastGasCost, expected, err := inliner.Shortcut(input, in.evm.Origin, contract.Caller(), contract.Value())
 			if err != nil || !expected {
-				log.Warn("Shortcut unexpected",
-					"error", err,
-					"contract", contract.Address(),
-					"inputs", hex.EncodeToString(input),
-					"origin", in.evm.Origin,
-					"caller", contract.Caller(),
-					"value", contract.Value(),
-				)
+				//log.Warn("Shortcut unexpected",
+				//	"error", err,
+				//	"contract", contract.Address(),
+				//	"inputs", hex.EncodeToString(input),
+				//	"origin", in.evm.Origin,
+				//	"caller", contract.Caller(),
+				//	"value", contract.Value(),
+				//)
 			} else {
 				if debug {
 					// Capture pre-execution values for tracing.

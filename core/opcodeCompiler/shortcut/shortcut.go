@@ -20,7 +20,7 @@ func RegisterShortcut(addr common.Address, s Shortcut) {
 }
 
 func GetShortcut(addr common.Address) Shortcut {
-	log.Info("Getting shortcut", "addr", addr.String())
+	//log.Info("Getting shortcut", "addr", addr.String())
 	return shortcutPcRegisters[addr]
 }
 
