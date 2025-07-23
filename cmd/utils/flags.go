@@ -2371,7 +2371,6 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		if ctx.IsSet(IncrSnapshotPathFlag.Name) {
 			cfg.IncrSnapshotPath = ctx.String(IncrSnapshotPathFlag.Name)
 		}
-		// TODO: set a default value
 		if ctx.IsSet(IncrSnapshotBlockIntervalFlag.Name) {
 			cfg.IncrSnapshotBlockInterval = ctx.Uint64(IncrSnapshotBlockIntervalFlag.Name)
 		} else {

@@ -376,11 +376,6 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			log.Error("Failed to download incremental snapshot", "error", err)
 			return nil, err
 		}
-		log.Info("Merge the incremental snapshot")
-		if err = MergeIncrSnapshot(db, triedb, cacheConfig.IncrHistoryPath, startBlock); err != nil {
-			log.Error("Failed to merge incremental snapshot", "error", err)
-			return nil, err
-		}
 	}
 
 	// Write the supplied genesis to the database if it has not been initialized

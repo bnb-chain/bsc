@@ -272,7 +272,7 @@ func (c *incrNodeCache) writeBatchToAncientDB(incrDB *rawdb.IncrSnapDB, jn []jou
 	}
 
 	log.Info("Wrote incremental state batch to ancient db", "incrementalID", incrementalID,
-		"nodeCount", len(jn), "layers", c.layers, "batchSize", len(encodedBatch), "stateIDArray", c.stateIDArray,
+		"nodeCount", len(jn), "layers", c.layers, "nodesSize", len(encodedBatch), "stateIDArray", c.stateIDArray,
 		"blockNumberArray", c.blockNumberArray)
 	return nil
 }

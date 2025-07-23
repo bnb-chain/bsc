@@ -131,7 +131,7 @@ func (d *IncrDownloader) loadDownloadedFiles() ([]string, error) {
 	}
 
 	var files []string
-	if err := json.Unmarshal(data, &files); err != nil {
+	if err = json.Unmarshal(data, &files); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal downloaded files: %v", err)
 	}
 	return files, nil
