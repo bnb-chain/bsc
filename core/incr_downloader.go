@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -97,11 +98,13 @@ type IncrDownloader struct {
 // NewIncrDownloader creates a new incremental downloader
 func NewIncrDownloader(db ethdb.Database, triedb *triedb.Database, remoteURL, incrPath string, localBlockNum uint64) *IncrDownloader {
 	ctx, cancel := context.WithCancel(context.Background())
+	// we don't validate the url and assume it's valid
+	newURL := strings.TrimSuffix(remoteURL, "/")
 
 	downloader := &IncrDownloader{
 		db:                db,
 		triedb:            triedb,
-		remoteURL:         remoteURL,
+		remoteURL:         newURL,
 		incrPath:          incrPath,
 		localBlockNum:     localBlockNum,
 		downloadChan:      make(chan *IncrFileInfo, 100),
@@ -394,11 +397,14 @@ func (d *IncrDownloader) parseFileInfo(metadata []IncrMetadata) ([]*IncrFileInfo
 	})
 	// Check continuity of all files before filtering
 	if err := d.checkFileContinuity(files); err != nil {
-		return nil, fmt.Errorf("file continuity check failed: %v", err)
+		return nil, err
 	}
 
-	// only keep files with endBlock > localBlockNum
+	// filter the block number that matches local data
 	for _, file := range files {
+		if file.StartBlock > d.localBlockNum {
+			continue
+		}
 		if file.EndBlock > d.localBlockNum {
 			filteredFiles = append(filteredFiles, file)
 			log.Debug("Keeping file", "fileName", file.Metadata.FileName, "endBlock", file.EndBlock,
@@ -407,6 +413,10 @@ func (d *IncrDownloader) parseFileInfo(metadata []IncrMetadata) ([]*IncrFileInfo
 			log.Debug("Skipping file (endBlock <= localBlockNum)", "fileName", file.Metadata.FileName,
 				"endBlock", file.EndBlock, "localBlockNum", d.localBlockNum)
 		}
+	}
+
+	if len(filteredFiles) == 0 {
+		return nil, fmt.Errorf("remote incr snapshots don't match local data")
 	}
 
 	log.Info("Filtered incremental files", "totalFiles", len(files), "keptFiles", len(filteredFiles),
