@@ -265,6 +265,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 				if contract.optimized {
 					evm.UseOptInterpreter()
+					contract.codeBitmapFunc = codeBitmapWhitSI
 				} else {
 					evm.UseBaseInterpreter()
 				}
@@ -350,6 +351,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 
 			if contract.optimized {
 				evm.UseOptInterpreter()
+				contract.codeBitmapFunc = codeBitmapWhitSI
 			} else {
 				evm.UseBaseInterpreter()
 			}
@@ -419,6 +421,7 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 			contract.SetCallCode(&addrCopy, codeHash, code)
 			if contract.optimized {
 				evm.UseOptInterpreter()
+				contract.codeBitmapFunc = codeBitmapWhitSI
 			} else {
 				evm.UseBaseInterpreter()
 			}
@@ -493,6 +496,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 			if contract.optimized {
 				evm.UseOptInterpreter()
+				contract.codeBitmapFunc = codeBitmapWhitSI
 			} else {
 				evm.UseBaseInterpreter()
 			}
@@ -680,6 +684,7 @@ func (evm *EVM) initNewContract(contract *Contract, address common.Address, valu
 	if evm.Config.EnableOpcodeOptimizations {
 		compiler.EnableOptimization()
 		evm.UseOptInterpreter()
+		contract.codeBitmapFunc = codeBitmapWhitSI
 	}
 
 	// Check whether the max code size has been exceeded, assign err if the case.
