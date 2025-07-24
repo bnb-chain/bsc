@@ -148,6 +148,7 @@ func (d *IncrDownloader) loadDownloadedFiles() ([]string, error) {
 
 // saveDownloadingFiles saves list of currently downloading files to database
 func (d *IncrDownloader) saveDownloadingFiles(files []string) error {
+	log.Info("e3k9e32k")
 	data, err := json.Marshal(files)
 	if err != nil {
 		return fmt.Errorf("failed to marshal downloading files: %v", err)
@@ -505,16 +506,20 @@ func (d *IncrDownloader) removeFromDownloading(fileName string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
+	log.Info("d23", "fileName", fileName)
 	downloadingFiles, _ := d.loadDownloadingFiles()
+	log.Info("3j23mifd")
 	if downloadingFiles != nil {
+		log.Info("20eewjk")
 		var newDownloadingFiles []string
 		for _, file := range downloadingFiles {
+			log.Info("d323nud2n")
 			if file != fileName {
 				newDownloadingFiles = append(newDownloadingFiles, file)
 			}
 		}
 		d.saveDownloadingFiles(newDownloadingFiles)
-		log.Debug("Removed file from downloading list", "fileName", fileName)
+		log.Info("Removed file from downloading list", "fileName", fileName)
 	}
 	log.Info("11111", "fileName", fileName)
 }
