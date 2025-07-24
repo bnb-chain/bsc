@@ -459,8 +459,9 @@ func (d *IncrDownloader) downloadWorker() {
 		log.Info("Finished downloading and verifying file", "file", file.Metadata.FileName)
 		// Mark file as downloaded
 		d.markFileAsDownloaded(file.Metadata.FileName)
-		// d.removeFromDownloading(file.Metadata.FileName)
 		log.Info("22222", "fileName", file.Metadata.FileName)
+
+		// d.removeFromDownloading(file.Metadata.FileName)
 
 		d.mu.Lock()
 		d.downloadedFiles++
@@ -501,11 +502,8 @@ func (d *IncrDownloader) markFileAsDownloading(fileName string) {
 	}
 }
 
-// removeFromDownloading removes a file from downloading list
+// removeFromDownloading removes a file from downloading list (assumes caller holds the lock)
 func (d *IncrDownloader) removeFromDownloading(fileName string) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	log.Info("d23", "fileName", fileName)
 	downloadingFiles, err := d.loadDownloadingFiles()
 	if err != nil {
