@@ -401,22 +401,15 @@ func (d *IncrDownloader) parseFileInfo(metadata []IncrMetadata) ([]*IncrFileInfo
 	}
 
 	// filter the block number that matches local data
-	for _, file := range files {
-		if file.StartBlock > d.localBlockNum {
-			continue
-		}
-		if file.EndBlock > d.localBlockNum {
-			filteredFiles = append(filteredFiles, file)
-			log.Debug("Keeping file", "fileName", file.Metadata.FileName, "endBlock", file.EndBlock,
-				"localBlockNum", d.localBlockNum)
-		} else {
-			log.Debug("Skipping file (endBlock <= localBlockNum)", "fileName", file.Metadata.FileName,
-				"endBlock", file.EndBlock, "localBlockNum", d.localBlockNum)
+	for index, file := range files {
+		if file.StartBlock >= d.localBlockNum && file.EndBlock > d.localBlockNum {
+			filteredFiles = append(filteredFiles, files[index:]...)
+			break
 		}
 	}
 
 	if len(filteredFiles) == 0 {
-		return nil, fmt.Errorf("remote incr snapshots don't match local data")
+		return nil, fmt.Errorf("remote incr snapshots don't match local data: %d", d.localBlockNum)
 	}
 
 	log.Info("Filtered incremental files", "totalFiles", len(files), "keptFiles", len(filteredFiles),
