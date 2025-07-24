@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	"os"
 	"runtime"
 	"slices"
 	"sync"
