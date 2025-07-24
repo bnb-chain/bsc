@@ -24,7 +24,11 @@ import (
 	"github.com/pierrec/lz4/v4"
 )
 
-const incrSnapshotNamePattern = `(testnet|mainnet)-geth-pbss-incr-(\d+)-(\d+)\.tar\.lz4`
+const (
+	incrSnapshotNamePattern = `(testnet|mainnet)-geth-pbss-incr-(\d+)-(\d+)\.tar\.lz4`
+	maxRetries              = 3
+	baseDelay               = time.Second
+)
 
 // Database keys for download status
 var (
@@ -451,9 +455,11 @@ func (d *IncrDownloader) downloadWorker() {
 			continue
 		}
 
+		log.Info("Finished downloading and verifying file", "file", file.Metadata.FileName)
 		// Mark file as downloaded
 		d.markFileAsDownloaded(file.Metadata.FileName)
-		d.removeFromDownloading(file.Metadata.FileName)
+		// d.removeFromDownloading(file.Metadata.FileName)
+		log.Info("22222", "fileName", file.Metadata.FileName)
 
 		d.mu.Lock()
 		d.downloadedFiles++
@@ -510,6 +516,7 @@ func (d *IncrDownloader) removeFromDownloading(fileName string) {
 		d.saveDownloadingFiles(newDownloadingFiles)
 		log.Debug("Removed file from downloading list", "fileName", fileName)
 	}
+	log.Info("11111", "fileName", fileName)
 }
 
 // markFileAsDownloaded marks a file as downloaded and removes from downloading list
@@ -517,6 +524,7 @@ func (d *IncrDownloader) markFileAsDownloaded(fileName string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
+	log.Info("Marking file as downloaded", "fileName", fileName)
 	// Add to downloaded files
 	downloadedFiles, _ := d.loadDownloadedFiles()
 	if downloadedFiles == nil {
@@ -538,6 +546,7 @@ func (d *IncrDownloader) markFileAsDownloaded(fileName string) {
 		log.Debug("Marked file as downloaded", "fileName", fileName)
 	}
 
+	log.Info("ewewewew", "fileName", fileName)
 	// Remove from downloading files
 	d.removeFromDownloading(fileName)
 }
@@ -599,9 +608,6 @@ func (d *IncrDownloader) processNextMergeFiles(completedFile *IncrFileInfo) {
 
 // downloadFile downloads a single file with retry mechanism
 func (d *IncrDownloader) downloadFile(file *IncrFileInfo) error {
-	const maxRetries = 3
-	const baseDelay = time.Second
-
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		err := d.downloadWithHTTP(file)
 		if err == nil {
@@ -766,9 +772,6 @@ func (d *IncrDownloader) downloadWithHTTP(file *IncrFileInfo) error {
 
 // verifyAndExtract verifies MD5 hash and extracts file with retry mechanism
 func (d *IncrDownloader) verifyAndExtract(file *IncrFileInfo) error {
-	const maxRetries = 3
-	const baseDelay = time.Second
-
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		// Verify MD5
 		if err := d.verifyHash(file); err != nil {
@@ -846,13 +849,10 @@ func (d *IncrDownloader) verifyHash(file *IncrFileInfo) error {
 // go get github.com/pierrec/lz4/v4
 func (d *IncrDownloader) extractFile(file *IncrFileInfo) error {
 	// Extract directory
-	extractDir := filepath.Join(d.incrPath,
-		fmt.Sprintf("incr_%d_%d", file.StartBlock, file.EndBlock))
-
+	extractDir := filepath.Join(d.incrPath, fmt.Sprintf("incr_%d_%d", file.StartBlock, file.EndBlock))
 	if err := os.MkdirAll(extractDir, 0755); err != nil {
 		return err
 	}
-
 	log.Info("Extracting file", "file", file.Metadata.FileName, "extractDir", extractDir)
 
 	// Open the lz4 file
@@ -864,7 +864,6 @@ func (d *IncrDownloader) extractFile(file *IncrFileInfo) error {
 
 	// Create lz4 reader
 	lz4Reader := lz4.NewReader(inputFile)
-
 	// Create tar reader from lz4 output
 	tarReader := tar.NewReader(lz4Reader)
 
