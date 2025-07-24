@@ -806,11 +806,6 @@ func downloadIncrSnapshot(ctx *cli.Context) error {
 
 	downloader := core.NewIncrDownloader(chainDB, trieDB, url, path, 10)
 	defer downloader.Close()
-
-	if err := downloader.RunAll(); err != nil {
-		log.Error("Failed to download incremental snapshot metadata", "err", err)
-		return err
-	}
 	return nil
 }
 
