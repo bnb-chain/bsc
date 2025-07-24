@@ -376,7 +376,7 @@ func (d *IncrDownloader) parseFileInfo(metadata []IncrMetadata) ([]*IncrFileInfo
 				Metadata:   meta,
 				StartBlock: startBlock,
 				EndBlock:   endBlock,
-				LocalPath:  filepath.Join(d.incrPath, meta.FileName),
+				LocalPath:  filepath.Join(d.incrPath),
 			})
 		} else {
 			log.Warn("Invalid file name format", "fileName", meta.FileName)
