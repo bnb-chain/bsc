@@ -1473,7 +1473,7 @@ func opAndDup2AddSwap1Dup2LT(pc *uint64, interpreter *EVMInterpreter, scope *Sco
 
 	a, b := scope.Stack.pop(), scope.Stack.peek()
 	if a.Lt(b) {
-		a.SetOne()
+		b.SetOne()
 	} else {
 		b.Clear()
 	}
