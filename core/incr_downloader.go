@@ -376,7 +376,7 @@ func (d *IncrDownloader) parseFileInfo(metadata []IncrMetadata) ([]*IncrFileInfo
 				Metadata:   meta,
 				StartBlock: startBlock,
 				EndBlock:   endBlock,
-				LocalPath:  filepath.Join(d.incrPath),
+				LocalPath:  filepath.Join(d.incrPath, meta.FileName),
 			})
 		} else {
 			log.Warn("Invalid file name format", "fileName", meta.FileName)
@@ -847,7 +847,7 @@ func (d *IncrDownloader) verifyHash(file *IncrFileInfo) error {
 // go get github.com/pierrec/lz4/v4
 func (d *IncrDownloader) extractFile(file *IncrFileInfo) error {
 	// Extract directory
-	extractDir := filepath.Join(d.incrPath, fmt.Sprintf("incr_%d_%d", file.StartBlock, file.EndBlock))
+	extractDir := filepath.Join(d.incrPath)
 	if err := os.MkdirAll(extractDir, 0755); err != nil {
 		return err
 	}
