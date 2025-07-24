@@ -944,7 +944,7 @@ func (d *IncrDownloader) mergeWorker() {
 
 // mergeFile merges extracted incremental data with local data
 func (d *IncrDownloader) mergeFile(file *IncrFileInfo) error {
-	extractDir := filepath.Join(d.incrPath, fmt.Sprintf("incr_%d_%d", file.StartBlock, file.EndBlock))
+	extractDir := filepath.Join(d.incrPath)
 	if err := MergeIncrSnapshot(d.db, d.triedb, extractDir, file.StartBlock); err != nil {
 		return err
 	}
