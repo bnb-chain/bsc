@@ -40,7 +40,9 @@ const (
 
 	// freezerBatchLimit is the maximum number of blocks to freeze in one batch
 	// before doing an fsync and deleting it from the key-value store.
-	freezerBatchLimit = 30000
+	// TODO(galaio): For BSC, the 0.75 interval and freezing of 30,000 blocks will seriously affect performance.
+	// It is temporarily adjusted to 100, and improves the freezing performance later.
+	freezerBatchLimit = 100
 )
 
 var (
