@@ -272,36 +272,22 @@ func (d *IncrDownloader) Merge() error {
 	d.mergeWG.Add(1)
 	go d.mergeWorker()
 
-	// Send files to merge in order
-	for _, file := range d.files {
-		if file.Extracted {
-			select {
-			case d.mergeChan <- file:
-			case <-d.ctx.Done():
-				return d.ctx.Err()
-			}
-		}
-	}
+	// // Send files to merge in order
+	// for _, file := range d.files {
+	// 	if file.Extracted {
+	// 		select {
+	// 		case d.mergeChan <- file:
+	// 		case <-d.ctx.Done():
+	// 			return d.ctx.Err()
+	// 		}
+	// 	}
+	// }
 	close(d.mergeChan)
 
 	// Wait for merge to complete
 	d.mergeWG.Wait()
 
 	log.Info("Merge phase completed", "mergedFiles", d.mergedFiles)
-	return nil
-}
-
-// RunAll executes all stages sequentially
-func (d *IncrDownloader) RunAll() error {
-	if err := d.Prepare(); err != nil {
-		return err
-	}
-	if err := d.Download(); err != nil {
-		return err
-	}
-	if err := d.Merge(); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -473,10 +459,10 @@ func (d *IncrDownloader) downloadWorker() {
 		d.downloadedFiles++
 		d.mu.Unlock()
 
-		log.Info("File completed, scheduling merge", "file", file.Metadata.FileName, "downloadedFiles", d.downloadedFiles)
+		log.Info("File completed, queuing for merge", "file", file.Metadata.FileName, "downloadedFiles", d.downloadedFiles)
 
-		// Check if file can be merged immediately or should be queued
-		d.checkAndScheduleMerge(file)
+		// Queue file for merge (non-blocking)
+		d.queueForMerge(file)
 	}
 
 	log.Info("Download worker completed")
@@ -557,27 +543,42 @@ func (d *IncrDownloader) markFileAsDownloaded(fileName string) {
 }
 
 // checkAndScheduleMerge checks if file can be merged immediately or should be queued
-func (d *IncrDownloader) checkAndScheduleMerge(file *IncrFileInfo) {
+// queueForMerge queues a file for merge (non-blocking)
+func (d *IncrDownloader) queueForMerge(file *IncrFileInfo) {
 	d.mergeMutex.Lock()
 	defer d.mergeMutex.Unlock()
 
-	// Check if this is the next expected file for merge
-	if file.StartBlock == d.expectedNextBlockStart {
-		// Can merge immediately
-		log.Info("File ready for immediate merge", "file", file.Metadata.FileName,
-			"startBlock", file.StartBlock, "expectedNextBlockStart", d.expectedNextBlockStart)
+	// Add to pending queue
+	d.pendingMergeFiles[file.StartBlock] = file
+	log.Debug("File queued for merge", "file", file.Metadata.FileName, "startBlock", file.StartBlock)
+}
 
+// trySendNextFileToMerge tries to send the next file in sequence to merge channel
+func (d *IncrDownloader) trySendNextFileToMerge() {
+	// Try to send as many consecutive files as possible
+	for {
+		// Check if the next expected file is available
+		nextFile, exists := d.pendingMergeFiles[d.expectedNextBlockStart]
+		if !exists {
+			break
+		}
+
+		// Remove from pending queue
+		delete(d.pendingMergeFiles, d.expectedNextBlockStart)
+
+		// Try to send to merge channel (non-blocking)
 		select {
-		case d.mergeChan <- file:
-		case <-d.ctx.Done():
+		case d.mergeChan <- nextFile:
+			log.Info("File sent to merge channel", "file", nextFile.Metadata.FileName,
+				"startBlock", nextFile.StartBlock, "expectedNextBlockStart", d.expectedNextBlockStart)
+			// Update expected next start block for next iteration
+			d.expectedNextBlockStart = nextFile.EndBlock + 1
+		default:
+			// Channel is full, put back in pending queue
+			d.pendingMergeFiles[d.expectedNextBlockStart] = nextFile
+			log.Debug("Merge channel full, file put back in queue", "file", nextFile.Metadata.FileName)
 			return
 		}
-	} else {
-		// Cannot merge now, add to pending queue
-		log.Info("File queued for later merge", "file", file.Metadata.FileName,
-			"startBlock", file.StartBlock, "expectedNextBlockStart", d.expectedNextBlockStart)
-
-		d.pendingMergeFiles[file.StartBlock] = file
 	}
 }
 
@@ -592,29 +593,8 @@ func (d *IncrDownloader) processNextMergeFiles(completedFile *IncrFileInfo) {
 	log.Info("Updated expected next block start", "expectedNextBlockStart", d.expectedNextBlockStart,
 		"completedFile", completedFile.Metadata.FileName, "endBlock", completedFile.EndBlock)
 
-	// Check if any files in pending queue can now be merged
-	for {
-		nextFile, exists := d.pendingMergeFiles[d.expectedNextBlockStart]
-		if !exists {
-			break
-		}
-
-		// Remove from pending queue
-		delete(d.pendingMergeFiles, d.expectedNextBlockStart)
-
-		log.Info("Found next file in pending queue", "file", nextFile.Metadata.FileName,
-			"startBlock", nextFile.StartBlock)
-
-		// Send to merge channel
-		select {
-		case d.mergeChan <- nextFile:
-		case <-d.ctx.Done():
-			return
-		}
-
-		// Update expected next start block for next iteration
-		d.expectedNextBlockStart = nextFile.EndBlock + 1
-	}
+	// Try to send the next available file to merge channel (non-blocking)
+	d.trySendNextFileToMerge()
 }
 
 // downloadFile downloads a single file with retry mechanism
