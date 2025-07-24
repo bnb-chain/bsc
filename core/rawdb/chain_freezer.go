@@ -40,7 +40,9 @@ const (
 
 	// freezerBatchLimit is the maximum number of blocks to freeze in one batch
 	// before doing an fsync and deleting it from the key-value store.
-	freezerBatchLimit = 30000
+	// TODO(galaio): For BSC, the 0.75 interval and freezing of 30,000 blocks will seriously affect performance.
+	// It is temporarily adjusted to 100, and improves the freezing performance later.
+	freezerBatchLimit = 100
 )
 
 var (
@@ -175,7 +177,7 @@ func (f *chainFreezer) freezeThreshold(db ethdb.Reader) (uint64, error) {
 //
 // This functionality is deliberately broken off from block importing to avoid
 // incurring additional data shuffling delays on block propagation.
-func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
+func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 	var (
 		backoff   bool
 		triggered chan struct{} // Used in tests
@@ -409,6 +411,12 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 		}
 		f.tryPruneHistoryBlock(*number)
 
+		// TODO(galaio): Temporarily comment that the current BSC is suitable for small-volume writes,
+		// and then the large-volume mode will be enabled after optimizing the freeze performance of ancient.
+		if !continueFreeze {
+			backoff = true
+			continue
+		}
 		// Avoid database thrashing with tiny writes
 		if frozen-first < freezerBatchLimit {
 			backoff = true
@@ -427,6 +435,18 @@ func (f *chainFreezer) tryPruneBlobAncientTable(env *ethdb.FreezerEnv, num uint6
 		return
 	}
 	expectTail := num - reserveThreshold
+
+	// check if the head is larger than expectTail, it occurs when a large number of historical blocks are not frozen in time
+	// expect: blobAncientTail < expectTail < ancientHead
+	ancientHead, err := f.Ancients()
+	if err != nil {
+		log.Error("Cannot get ancients", "err", err)
+		return
+	}
+	if ancientHead <= expectTail {
+		return
+	}
+
 	start := time.Now()
 	if _, err := f.TruncateTableTail(ChainFreezerBlobSidecarTable, expectTail); err != nil {
 		log.Error("Cannot prune blob ancient", "block", num, "expectTail", expectTail, "err", err)
