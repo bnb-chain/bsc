@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	incrSnapshotNamePattern = `(testnet|mainnet)-geth-pbss-incr-(\d+)-(\d+)\.tar\.lz4`
+	incrSnapshotNamePattern = `(.*)-incr-(\d+)-(\d+)\.tar\.lz4`
 	maxRetries              = 3
 	baseDelay               = time.Second
 )
@@ -148,7 +148,6 @@ func (d *IncrDownloader) loadDownloadedFiles() ([]string, error) {
 
 // saveDownloadingFiles saves list of currently downloading files to database
 func (d *IncrDownloader) saveDownloadingFiles(files []string) error {
-	log.Info("e3k9e32k")
 	data, err := json.Marshal(files)
 	if err != nil {
 		return fmt.Errorf("failed to marshal downloading files: %v", err)
@@ -556,6 +555,9 @@ func (d *IncrDownloader) queueForMerge(file *IncrFileInfo) {
 	// Add to pending queue
 	d.pendingMergeFiles[file.StartBlock] = file
 	log.Debug("File queued for merge", "file", file.Metadata.FileName, "startBlock", file.StartBlock)
+
+	// Try to send the next available file to merge channel (non-blocking)
+	d.trySendNextFileToMerge()
 }
 
 // trySendNextFileToMerge tries to send the next file in sequence to merge channel
@@ -747,7 +749,7 @@ func (d *IncrDownloader) downloadWithHTTP(file *IncrFileInfo) error {
 	}
 
 	// Merge chunks
-	log.Info("Merging chunks", "file", file.Metadata.FileName, "chunks", numChunks)
+	log.Debug("Merging chunks", "file", file.Metadata.FileName, "chunks", numChunks)
 	if err = d.mergeChunks(chunks, file.LocalPath); err != nil {
 		return fmt.Errorf("failed to merge chunks: %v", err)
 	}
