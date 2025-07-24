@@ -1,4 +1,12 @@
 # Changelog
+## v1.5.19
+### BUGFIX
+[\#3251](https://github.com/bnb-chain/bsc/pull/3251) freezer: change freeze batch size
+
+### IMPROVEMENT
+[\#3243](https://github.com/bnb-chain/bsc/pull/3178) build(deps): bump golang.org/x/oauth2 from 0.24.0 to 0.27.0
+[\#3235](https://github.com/bnb-chain/bsc/pull/3178) refactor: use maps.Copy for cleaner map handling
+
 ## v1.5.18
 ### FEATURE
 [\#3158](https://github.com/bnb-chain/bsc/pull/3158) feat: blind bid serves the validator's best interest
