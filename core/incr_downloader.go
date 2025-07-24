@@ -402,6 +402,7 @@ func (d *IncrDownloader) parseFileInfo(metadata []IncrMetadata) ([]*IncrFileInfo
 
 	// filter the block number that matches local data
 	for index, file := range files {
+		log.Info("Checking file", "fileName", file.Metadata.FileName, "startBlock", file.StartBlock, "endBlock", file.EndBlock, "localBlockNum", d.localBlockNum)
 		if file.StartBlock >= d.localBlockNum && file.EndBlock > d.localBlockNum {
 			filteredFiles = append(filteredFiles, files[index:]...)
 			break
