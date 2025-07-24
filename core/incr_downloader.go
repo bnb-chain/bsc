@@ -186,7 +186,7 @@ func (d *IncrDownloader) Prepare() error {
 
 	downloadedFiles, err := d.loadDownloadedFiles()
 	if err != nil {
-		log.Warn("Failed to load downloaded files list, starting fresh", "error", err)
+		log.Warn("Failed to load downloaded files list, starting fresh")
 		downloadedFiles = []string{}
 	}
 
@@ -324,11 +324,14 @@ func (d *IncrDownloader) RunConcurrent() error {
 			log.Error("Download failed", "error", err)
 			d.errorChan <- err
 		}
+		log.Info("Download goroutine completed")
 	}()
 
 	wg.Wait()
+	log.Info("All downloads completed, closing merge channel")
 	close(d.mergeChan)
 	d.mergeWG.Wait()
+	log.Info("All merges completed")
 
 	return nil
 }
@@ -400,10 +403,8 @@ func (d *IncrDownloader) parseFileInfo(metadata []IncrMetadata) ([]*IncrFileInfo
 		return nil, err
 	}
 
-	log.Info("Files", "files", files)
 	// filter the block number that matches local data
 	for index, file := range files {
-		log.Info("Checking file", "fileName", file.Metadata.FileName, "startBlock", file.StartBlock, "endBlock", file.EndBlock, "localBlockNum", d.localBlockNum)
 		if file.StartBlock >= d.localBlockNum && file.EndBlock > d.localBlockNum {
 			filteredFiles = append(filteredFiles, files[index:]...)
 			break
@@ -472,9 +473,13 @@ func (d *IncrDownloader) downloadWorker() {
 		d.downloadedFiles++
 		d.mu.Unlock()
 
+		log.Info("File completed, scheduling merge", "file", file.Metadata.FileName, "downloadedFiles", d.downloadedFiles)
+
 		// Check if file can be merged immediately or should be queued
 		d.checkAndScheduleMerge(file)
 	}
+
+	log.Info("Download worker completed")
 }
 
 // markFileAsDownloading marks a file as currently downloading
@@ -939,6 +944,8 @@ func (d *IncrDownloader) mergeWorker() {
 	defer d.mergeWG.Done()
 
 	for file := range d.mergeChan {
+		log.Info("Merge worker processing file", "file", file.Metadata.FileName)
+
 		if err := d.mergeFile(file); err != nil {
 			log.Error("Failed to merge", "file", file.Metadata.FileName, "error", err)
 			d.errorChan <- err

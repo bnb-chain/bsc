@@ -372,7 +372,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			return nil, err
 		}
 		downloader := NewIncrDownloader(db, triedb, cacheConfig.RemoteIncrURL, cacheConfig.IncrHistoryPath, startBlock)
-		if err = downloader.RunAll(); err != nil {
+		if err = downloader.RunConcurrent(); err != nil {
 			log.Error("Failed to download and merge incremental snapshot", "error", err)
 			return nil, err
 		}
