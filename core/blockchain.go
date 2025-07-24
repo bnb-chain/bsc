@@ -420,8 +420,6 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		vmConfig:        vmConfig,
 		logger:          vmConfig.Tracer,
 	}
-	bc.Stop()
-	os.Exit(1)
 	bc.hc, err = NewHeaderChain(db, chainConfig, engine, bc.insertStopped)
 	if err != nil {
 		return nil, err
