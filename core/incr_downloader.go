@@ -442,7 +442,7 @@ func (d *IncrDownloader) downloadWorker() {
 
 	for file := range d.downloadChan {
 		// Mark file as downloading
-		// d.markFileAsDownloading(file.Metadata.FileName)
+		d.markFileAsDownloading(file.Metadata.FileName)
 
 		if err := d.downloadFile(file); err != nil {
 			log.Error("Failed to download file", "file", file.Metadata.FileName, "error", err)
@@ -459,9 +459,6 @@ func (d *IncrDownloader) downloadWorker() {
 		log.Info("Finished downloading and verifying file", "file", file.Metadata.FileName)
 		// Mark file as downloaded
 		d.markFileAsDownloaded(file.Metadata.FileName)
-		log.Info("22222", "fileName", file.Metadata.FileName)
-
-		// d.removeFromDownloading(file.Metadata.FileName)
 
 		d.mu.Lock()
 		d.downloadedFiles++
@@ -502,27 +499,23 @@ func (d *IncrDownloader) markFileAsDownloading(fileName string) {
 	}
 }
 
-// removeFromDownloading removes a file from downloading list (assumes caller holds the lock)
+// removeFromDownloading removes a file from downloading list
 func (d *IncrDownloader) removeFromDownloading(fileName string) {
-	log.Info("d23", "fileName", fileName)
 	downloadingFiles, err := d.loadDownloadingFiles()
 	if err != nil {
 		log.Error("Failed to load downloading files", "error", err)
 	}
-	log.Info("3j23mifd")
+
 	if downloadingFiles != nil {
-		log.Info("20eewjk")
 		var newDownloadingFiles []string
 		for _, file := range downloadingFiles {
-			log.Info("d323nud2n")
 			if file != fileName {
 				newDownloadingFiles = append(newDownloadingFiles, file)
 			}
 		}
 		d.saveDownloadingFiles(newDownloadingFiles)
-		log.Info("Removed file from downloading list", "fileName", fileName)
+		log.Debug("Removed file from downloading list", "fileName", fileName)
 	}
-	log.Info("11111", "fileName", fileName)
 }
 
 // markFileAsDownloaded marks a file as downloaded and removes from downloading list
@@ -530,13 +523,11 @@ func (d *IncrDownloader) markFileAsDownloaded(fileName string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	log.Info("Marking file as downloaded", "fileName", fileName)
 	// Add to downloaded files
 	downloadedFiles, _ := d.loadDownloadedFiles()
 	if downloadedFiles == nil {
 		downloadedFiles = []string{}
 	}
-	log.Info("jd32nd")
 	// Check if already in list
 	found := false
 	for _, file := range downloadedFiles {
@@ -546,14 +537,12 @@ func (d *IncrDownloader) markFileAsDownloaded(fileName string) {
 		}
 	}
 
-	log.Info("d32jidm2332")
 	if !found {
 		downloadedFiles = append(downloadedFiles, fileName)
 		d.saveDownloadedFiles(downloadedFiles)
 		log.Info("Marked file as downloaded", "fileName", fileName)
 	}
 
-	log.Info("ewewewew", "fileName", fileName)
 	// Remove from downloading files
 	d.removeFromDownloading(fileName)
 }
