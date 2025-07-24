@@ -177,7 +177,7 @@ func (f *chainFreezer) freezeThreshold(db ethdb.Reader) (uint64, error) {
 //
 // This functionality is deliberately broken off from block importing to avoid
 // incurring additional data shuffling delays on block propagation.
-func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
+func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 	var (
 		backoff   bool
 		triggered chan struct{} // Used in tests
@@ -413,11 +413,14 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore) {
 
 		// TODO(galaio): Temporarily comment that the current BSC is suitable for small-volume writes,
 		// and then the large-volume mode will be enabled after optimizing the freeze performance of ancient.
+		if !continueFreeze {
+			backoff = true
+			continue
+		}
 		// Avoid database thrashing with tiny writes
-		// if frozen-first < freezerBatchLimit {
-		// 	backoff = true
-		// }
-		backoff = true
+		if frozen-first < freezerBatchLimit {
+			backoff = true
+		}
 	}
 }
 
