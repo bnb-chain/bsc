@@ -507,7 +507,10 @@ func (d *IncrDownloader) removeFromDownloading(fileName string) {
 	defer d.mu.Unlock()
 
 	log.Info("d23", "fileName", fileName)
-	downloadingFiles, _ := d.loadDownloadingFiles()
+	downloadingFiles, err := d.loadDownloadingFiles()
+	if err != nil {
+		log.Error("Failed to load downloading files", "error", err)
+	}
 	log.Info("3j23mifd")
 	if downloadingFiles != nil {
 		log.Info("20eewjk")
@@ -535,7 +538,7 @@ func (d *IncrDownloader) markFileAsDownloaded(fileName string) {
 	if downloadedFiles == nil {
 		downloadedFiles = []string{}
 	}
-
+	log.Info("jd32nd")
 	// Check if already in list
 	found := false
 	for _, file := range downloadedFiles {
@@ -545,10 +548,11 @@ func (d *IncrDownloader) markFileAsDownloaded(fileName string) {
 		}
 	}
 
+	log.Info("d32jidm2332")
 	if !found {
 		downloadedFiles = append(downloadedFiles, fileName)
 		d.saveDownloadedFiles(downloadedFiles)
-		log.Debug("Marked file as downloaded", "fileName", fileName)
+		log.Info("Marked file as downloaded", "fileName", fileName)
 	}
 
 	log.Info("ewewewew", "fileName", fileName)
