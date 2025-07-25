@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -639,15 +640,12 @@ func (w *worker) resultLoop() {
 			if prev, ok := w.recentMinedBlocks.Get(block.NumberU64()); ok {
 				doubleSign := false
 				prevParents := prev
-				for _, prevParent := range prevParents {
-					if prevParent == block.ParentHash() {
-						log.Error("Reject Double Sign!!", "block", block.NumberU64(),
-							"hash", block.Hash(),
-							"root", block.Root(),
-							"ParentHash", block.ParentHash())
-						doubleSign = true
-						break
-					}
+				if slices.Contains(prevParents, block.ParentHash()) {
+					log.Error("Reject Double Sign!!", "block", block.NumberU64(),
+						"hash", block.Hash(),
+						"root", block.Root(),
+						"ParentHash", block.ParentHash())
+					doubleSign = true
 				}
 				if doubleSign {
 					continue
