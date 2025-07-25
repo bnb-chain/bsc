@@ -840,6 +840,12 @@ func (db *Database) MergeIncrState(incrDir string) error {
 		return errors.New("Insert incremental state only supports async node buffer")
 	}
 
+	root, err := db.hasher(rawdb.ReadAccountTrieNode(db.diskdb, nil))
+	if err != nil {
+		log.Crit("Failed to compute node hash", "err", err)
+	}
+	dl = newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0))
+	db.tree = newLayerTree(dl)
 	log.Info("Completed merging incr state")
 	return nil
 }
