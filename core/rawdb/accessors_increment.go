@@ -284,6 +284,9 @@ func ResetEmptyIncrChainTable(db ethdb.AncientWriter, next uint64, isCancun bool
 	if err := db.ResetTable(IncrBlockStateIDMappingTable, next, true); err != nil {
 		return err
 	}
+	if err := db.ResetTable(IncrEmptyBlockTable, next, true); err != nil {
+		return err
+	}
 	if isCancun {
 		if err := db.ResetTable(ChainFreezerBlobSidecarTable, next, true); err != nil {
 			return err
