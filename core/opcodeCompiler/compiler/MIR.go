@@ -1,6 +1,9 @@
 package compiler
 
-import "github.com/holiman/uint256"
+import (
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/holiman/uint256"
+)
 
 // MIR is register based intermediate representation
 type MIR struct {
@@ -68,13 +71,6 @@ func doPeepHole(operation MirOperation, opnd1 *Value, opnd2 *Value, stack *Value
 				} else {
 					val1.Clear()
 				}
-			case MirKECCAK256:
-				// try to calculate hash
-				// todo - add hash cache
-				//offset := val1
-				//size := val2
-				//if memoryAccessor.rangeIsKnow(offset, size) {
-				optimized = false
 			}
 		} else if opnd2.kind == Konst {
 			val2 := uint256.NewInt(0).SetBytes(opnd2.payload)
@@ -146,6 +142,22 @@ func doPeepHole(operation MirOperation, opnd1 *Value, opnd2 *Value, stack *Value
 				val1 = val1.Rsh(val1, uint(val2.Uint64()))
 			case MirSAR:
 				val1 = val1.SRsh(val1, uint(val2.Uint64()))
+			case MirKECCAK256:
+				// KECCAK256 takes offset (val1) and size (val2) as operands
+				// Check if the memory range is known and can be loaded
+				if memoryAccessoraccessor != nil {
+					// Try to load data from memory at the specified offset and size
+					memData := memoryAccessoraccessor.getValueWithOffset(val1, val2)
+					if memData.kind == Konst && len(memData.payload) > 0 {
+						// Calculate Keccak256 hash of the known data
+						hash := crypto.Keccak256(memData.payload)
+						val1 = uint256.NewInt(0).SetBytes(hash)
+					} else {
+						optimized = false
+					}
+				} else {
+					optimized = false
+				}
 			default:
 				optimized = false
 			}

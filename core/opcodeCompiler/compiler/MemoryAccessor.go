@@ -27,6 +27,10 @@ func (a *MemoryAccessor) recordLoad(offset Value, size Value) {
 	a.reads = append(a.reads, &AccessRecord{contract: nil, offset: offset, size: size})
 }
 
+func (a *MemoryAccessor) recordStore(offset Value, size Value, value Value) {
+	a.writes = append(a.writes, &AccessRecord{contract: nil, offset: offset, size: size, Value: value})
+}
+
 func (a *MemoryAccessor) getValueWithOffset(offset *uint256.Int, size *uint256.Int) Value {
 	// if the place is known, return the konst value, else return unknown value.
 	if val, ok := a.tryGetRecord(offset, size); ok {
@@ -59,6 +63,12 @@ func (a *MemoryAccessor) tryGetRecord(offset *uint256.Int, size *uint256.Int) (V
 	}
 
 	return Value{}, false
+}
+
+// rangeIsKnown checks if the memory range at the given offset and size is known
+func (a *MemoryAccessor) rangeIsKnown(offset *uint256.Int, size *uint256.Int) bool {
+	_, ok := a.tryGetRecord(offset, size)
+	return ok
 }
 
 type StateAccessor struct {
