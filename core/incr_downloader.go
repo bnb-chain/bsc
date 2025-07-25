@@ -545,7 +545,6 @@ func (d *IncrDownloader) queueForMerge(file *IncrFileInfo) {
 	d.pendingMergeFiles[file.StartBlock] = file
 	log.Debug("File queued for merge", "file", file.Metadata.FileName, "startBlock", file.StartBlock)
 
-	log.Info("called trySendNextFileToMerge 7 times")
 	// Try to send the next available file to merge channel (non-blocking)
 	d.trySendNextFileToMerge()
 }
@@ -554,7 +553,6 @@ func (d *IncrDownloader) queueForMerge(file *IncrFileInfo) {
 func (d *IncrDownloader) trySendNextFileToMerge() {
 	// Only send one file at a time to ensure sequential merging
 	// Check if the next expected file is available
-	log.Info("inner trySendNextFileToMerge", "expectedNextBlockStart", d.expectedNextBlockStart)
 	nextFile, exists := d.pendingMergeFiles[d.expectedNextBlockStart]
 	if !exists {
 		return
@@ -607,7 +605,6 @@ func (d *IncrDownloader) downloadFile(file *IncrFileInfo) error {
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		err := d.downloadWithHTTP(file)
 		if err == nil {
-			// Success, no need to retry
 			return nil
 		}
 
@@ -951,12 +948,11 @@ func (d *IncrDownloader) mergeWorker() {
 
 // mergeFile merges extracted incremental data with local data
 func (d *IncrDownloader) mergeFile(file *IncrFileInfo) error {
-	extractDir := filepath.Join(d.incrPath)
-	if err := MergeIncrSnapshot(d.db, d.triedb, extractDir); err != nil {
+	path := filepath.Join(d.incrPath, file.Metadata.FileName)
+	if err := MergeIncrSnapshot(d.db, d.triedb, path); err != nil {
 		return err
 	}
-	log.Info("Merged incremental data", "file", file.Metadata.FileName, "extractDir", extractDir,
-		"blocks", fmt.Sprintf("%d-%d", file.StartBlock, file.EndBlock))
+	log.Info("Merged incremental data", "path", path, "startBlock", file.StartBlock, "endBlock", file.EndBlock)
 	return nil
 }
 
