@@ -551,54 +551,54 @@ func (d *IncrDownloader) queueForMerge(file *IncrFileInfo) {
 	d.pendingMergeFiles[file.StartBlock] = file
 	log.Debug("File queued for merge", "file", file.Metadata.FileName, "startBlock", file.StartBlock)
 
+	log.Info("called trySendNextFileToMerge 7 times")
 	// Try to send the next available file to merge channel (non-blocking)
 	d.trySendNextFileToMerge()
 }
 
 // trySendNextFileToMerge tries to send the next file in sequence to merge channel
 func (d *IncrDownloader) trySendNextFileToMerge() {
-	// Try to send as many consecutive files as possible
-	for {
-		// Check if the next expected file is available
-		nextFile, exists := d.pendingMergeFiles[d.expectedNextBlockStart]
-		if !exists {
-			break
-		}
+	// Only send one file at a time to ensure sequential merging
+	// Check if the next expected file is available
+	nextFile, exists := d.pendingMergeFiles[d.expectedNextBlockStart]
+	if !exists {
+		return
+	}
 
-		// Check if file has already been merged
-		if nextFile.Merged {
-			log.Warn("File already merged, removing from pending queue", "file", nextFile.Metadata.FileName)
-			delete(d.pendingMergeFiles, d.expectedNextBlockStart)
-			d.expectedNextBlockStart = nextFile.EndBlock + 1
-			continue
-		}
-
-		// Check if file is already being processed
-		if nextFile.Processing {
-			log.Info("File already being processed, skipping", "file", nextFile.Metadata.FileName)
-			break
-		}
-
-		// Remove from pending queue BEFORE sending to channel to prevent race conditions
+	// Check if file has already been merged
+	if nextFile.Merged {
+		log.Warn("File already merged, removing from pending queue", "file", nextFile.Metadata.FileName)
 		delete(d.pendingMergeFiles, d.expectedNextBlockStart)
+		d.expectedNextBlockStart = nextFile.EndBlock + 1
+		// Recursively try to send the next file
+		d.trySendNextFileToMerge()
+		return
+	}
 
-		// Mark file as processing
-		nextFile.Processing = true
+	// Check if file is already being processed
+	if nextFile.Processing {
+		log.Info("File already being processed, skipping", "file", nextFile.Metadata.FileName)
+		return
+	}
 
-		// Try to send to merge channel (non-blocking)
-		select {
-		case d.mergeChan <- nextFile:
-			log.Info("File sent to merge channel", "file", nextFile.Metadata.FileName,
-				"startBlock", nextFile.StartBlock, "expectedNextBlockStart", d.expectedNextBlockStart)
-			// Update expected next start block for next iteration
-			d.expectedNextBlockStart = nextFile.EndBlock + 1
-		default:
-			// Channel is full, put back in pending queue and reset processing flag
-			nextFile.Processing = false
-			d.pendingMergeFiles[d.expectedNextBlockStart] = nextFile
-			log.Info("Merge channel full, file put back in queue", "file", nextFile.Metadata.FileName)
-			return
-		}
+	// Remove from pending queue BEFORE sending to channel to prevent race conditions
+	delete(d.pendingMergeFiles, d.expectedNextBlockStart)
+
+	// Mark file as processing
+	nextFile.Processing = true
+
+	// Try to send to merge channel (non-blocking)
+	select {
+	case d.mergeChan <- nextFile:
+		log.Info("File sent to merge channel", "file", nextFile.Metadata.FileName,
+			"startBlock", nextFile.StartBlock, "expectedNextBlockStart", d.expectedNextBlockStart)
+		// Update expected next start block for next iteration
+		d.expectedNextBlockStart = nextFile.EndBlock + 1
+	default:
+		// Channel is full, put back in pending queue and reset processing flag
+		nextFile.Processing = false
+		d.pendingMergeFiles[d.expectedNextBlockStart] = nextFile
+		log.Info("Merge channel full, file put back in queue", "file", nextFile.Metadata.FileName)
 	}
 }
 
@@ -964,8 +964,8 @@ func (d *IncrDownloader) mergeWorker() {
 			"progress", fmt.Sprintf("%d/%d", d.mergedFiles, d.totalFiles),
 			"startBlock", file.StartBlock, "endBlock", file.EndBlock)
 
-		// // Process other files that may now be ready for merge
-		// d.processNextMergeFiles(file)
+		// Process other files that may now be ready for merge
+		d.processNextMergeFiles(file)
 	}
 }
 
