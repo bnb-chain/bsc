@@ -53,7 +53,6 @@ type IncrFileInfo struct {
 	Verified   bool
 	Extracted  bool
 	Merged     bool
-	// Processing bool
 }
 
 // DownloadProgress represents download progress for a file
@@ -526,7 +525,6 @@ func (d *IncrDownloader) queueForMerge(file *IncrFileInfo) {
 	d.mergeMutex.Lock()
 	defer d.mergeMutex.Unlock()
 
-	log.Info("Queueing file for merge, only called 7 times", "file", file.Metadata.FileName, "startBlock", file.StartBlock)
 	// Check if file is already in pending queue
 	if existingFile, exists := d.pendingMergeFiles[file.StartBlock]; exists {
 		if existingFile.Metadata.FileName == file.Metadata.FileName {
@@ -654,7 +652,6 @@ type ChunkProgress struct {
 // downloadWithHTTP downloads file using concurrent HTTP requests
 func (d *IncrDownloader) downloadWithHTTP(file *IncrFileInfo) error {
 	url := fmt.Sprintf("%s/%s", d.remoteURL, file.Metadata.FileName)
-
 	log.Info("Starting concurrent HTTP download", "file", file.Metadata.FileName, "url", url)
 
 	// Check if file already exists and has correct size
@@ -837,9 +834,7 @@ func (d *IncrDownloader) verifyHash(file *IncrFileInfo) error {
 	return nil
 }
 
-// extractFile extracts tar.lz4 file using Go code
-// To use this implementation, first add the lz4 dependency:
-// go get github.com/pierrec/lz4/v4
+// extractFile extracts tar.lz4 file
 func (d *IncrDownloader) extractFile(file *IncrFileInfo) error {
 	// Extract directory
 	extractDir := filepath.Join(d.incrPath)
@@ -926,7 +921,8 @@ func (d *IncrDownloader) mergeWorker() {
 			continue
 		}
 
-		if err := d.mergeFile(file); err != nil {
+		path := filepath.Join(d.incrPath, fmt.Sprintf("incr-%d-%d", file.StartBlock, file.EndBlock))
+		if err := MergeIncrSnapshot(d.db, d.triedb, path); err != nil {
 			log.Error("Failed to merge", "file", file.Metadata.FileName, "error", err)
 			d.errorChan <- err
 			return
@@ -944,16 +940,6 @@ func (d *IncrDownloader) mergeWorker() {
 		// Process other files that may now be ready for merge
 		d.processNextMergeFiles(file)
 	}
-}
-
-// mergeFile merges extracted incremental data with local data
-func (d *IncrDownloader) mergeFile(file *IncrFileInfo) error {
-	path := filepath.Join(d.incrPath, file.Metadata.FileName)
-	if err := MergeIncrSnapshot(d.db, d.triedb, path); err != nil {
-		return err
-	}
-	log.Info("Merged incremental data", "path", path, "startBlock", file.StartBlock, "endBlock", file.EndBlock)
-	return nil
 }
 
 // progressMonitor monitors and reports download progress
