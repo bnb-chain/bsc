@@ -377,7 +377,6 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			return nil, err
 		}
 		log.Info("Download and merge incr snapshots successfully")
-		// os.Exit(0)
 	}
 
 	// Write the supplied genesis to the database if it has not been initialized

@@ -32,8 +32,10 @@ const (
 
 // Database keys for download status
 var (
-	incrDownloadedFilesKey  = []byte("incr_downloaded_files")
-	incrDownloadingFilesKey = []byte("incr_downloading_files")
+	incrDownloadedFilesKey = []byte("incr_downloaded_files")
+	incrToDownloadFilesKey = []byte("incr_to_download_files")
+	incrMergedFilesKey     = []byte("incr_merged_files")
+	incrToMergeFilesKey    = []byte("incr_to_merge_files")
 )
 
 // metadata file contains many IncrMetadata, array
@@ -121,7 +123,7 @@ func NewIncrDownloader(db ethdb.Database, triedb *triedb.Database, remoteURL, in
 	return downloader
 }
 
-// saveDownloadedFiles saves list of downloaded files to database
+// saveDownloadedFiles saves list of downloaded files to db
 func (d *IncrDownloader) saveDownloadedFiles(files []string) error {
 	data, err := json.Marshal(files)
 	if err != nil {
@@ -130,7 +132,7 @@ func (d *IncrDownloader) saveDownloadedFiles(files []string) error {
 	return d.db.Put(incrDownloadedFilesKey, data)
 }
 
-// loadDownloadedFiles loads list of downloaded files from database
+// loadDownloadedFiles loads list of downloaded files from db
 func (d *IncrDownloader) loadDownloadedFiles() ([]string, error) {
 	data, err := d.db.Get(incrDownloadedFilesKey)
 	if err != nil {
@@ -144,25 +146,71 @@ func (d *IncrDownloader) loadDownloadedFiles() ([]string, error) {
 	return files, nil
 }
 
-// saveDownloadingFiles saves list of currently downloading files to database
-func (d *IncrDownloader) saveDownloadingFiles(files []string) error {
+// saveToDownloadFiles saves list of currently to download files to db
+func (d *IncrDownloader) saveToDownloadFiles(files []string) error {
 	data, err := json.Marshal(files)
 	if err != nil {
-		return fmt.Errorf("failed to marshal downloading files: %v", err)
+		return fmt.Errorf("failed to marshal to download files: %v", err)
 	}
-	return d.db.Put(incrDownloadingFilesKey, data)
+	return d.db.Put(incrToDownloadFilesKey, data)
 }
 
-// loadDownloadingFiles loads list of currently downloading files from database
-func (d *IncrDownloader) loadDownloadingFiles() ([]string, error) {
-	data, err := d.db.Get(incrDownloadingFilesKey)
+// loadToDownloadFiles loads list of currently to download files from db
+func (d *IncrDownloader) loadToDownloadFiles() ([]string, error) {
+	data, err := d.db.Get(incrToDownloadFilesKey)
 	if err != nil {
 		return nil, err
 	}
 
 	var files []string
 	if err = json.Unmarshal(data, &files); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal downloading files: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal to download files: %v", err)
+	}
+	return files, nil
+}
+
+// saveDownloadedFiles saves list of downloaded files to db
+func (d *IncrDownloader) saveMergedFiles(files []string) error {
+	data, err := json.Marshal(files)
+	if err != nil {
+		return fmt.Errorf("failed to marshal merged files: %v", err)
+	}
+	return d.db.Put(incrMergedFilesKey, data)
+}
+
+// loadMergedFiles loads list of merged files from db
+func (d *IncrDownloader) loadMergedFiles() ([]string, error) {
+	data, err := d.db.Get(incrMergedFilesKey)
+	if err != nil {
+		return nil, err
+	}
+
+	var files []string
+	if err = json.Unmarshal(data, &files); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal merged files: %v", err)
+	}
+	return files, nil
+}
+
+// saveToMergeFiles saves list of currently to merge files to db
+func (d *IncrDownloader) saveToMergeFiles(files []string) error {
+	data, err := json.Marshal(files)
+	if err != nil {
+		return fmt.Errorf("failed to marshal to merge files: %v", err)
+	}
+	return d.db.Put(incrToMergeFilesKey, data)
+}
+
+// loadToMergeFiles loads list of currently to merge files from db
+func (d *IncrDownloader) loadToMergeFiles() ([]string, error) {
+	data, err := d.db.Get(incrToMergeFilesKey)
+	if err != nil {
+		return nil, err
+	}
+
+	var files []string
+	if err = json.Unmarshal(data, &files); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal to merge files: %v", err)
 	}
 	return files, nil
 }
@@ -183,13 +231,17 @@ func (d *IncrDownloader) Prepare() error {
 		log.Error("Failed to parse file info", "error", err)
 		return err
 	}
-	d.files = files
-	d.totalFiles = len(d.files)
 
 	downloadedFiles, err := d.loadDownloadedFiles()
 	if err != nil {
 		log.Warn("Failed to load downloaded files list, starting fresh")
 		downloadedFiles = []string{}
+	}
+
+	mergedFiles, err := d.loadMergedFiles()
+	if err != nil {
+		log.Warn("Failed to load merged files list, starting fresh")
+		mergedFiles = []string{}
 	}
 
 	// Create set for quick lookup
@@ -198,25 +250,35 @@ func (d *IncrDownloader) Prepare() error {
 		downloadedSet[file] = true
 	}
 
+	mergedSet := make(map[string]bool)
+	for _, file := range mergedFiles {
+		mergedSet[file] = true
+	}
+
 	// Filter out already downloaded files
-	var remainingFiles []*IncrFileInfo
-	var remainingFileNames []string
-	for _, file := range d.files {
+	var toDownloadFiles []*IncrFileInfo
+	var toDownloadFileNames []string
+	for _, file := range files {
 		if downloadedSet[file.Metadata.FileName] {
 			log.Debug("Skipping already downloaded file", "fileName", file.Metadata.FileName)
 			d.downloadedFiles++
 			continue
 		}
-		remainingFiles = append(remainingFiles, file)
-		remainingFileNames = append(remainingFileNames, file.Metadata.FileName)
+		if mergedSet[file.Metadata.FileName] {
+			log.Debug("Skipping already merged file", "fileName", file.Metadata.FileName)
+			continue
+		}
+		toDownloadFiles = append(toDownloadFiles, file)
+		toDownloadFileNames = append(toDownloadFileNames, file.Metadata.FileName)
 	}
 
-	d.files = remainingFiles
-	if err = d.saveDownloadingFiles(remainingFileNames); err != nil {
-		log.Error("Failed to save downloading files", "error", err)
+	d.files = toDownloadFiles
+	d.totalFiles = len(d.files)
+	if err = d.saveToDownloadFiles(toDownloadFileNames); err != nil {
+		log.Error("Failed to save to download files", "error", err)
 		return err
 	}
-	log.Info("Filtered files", "totalFiles", d.totalFiles, "downloadedFiles", len(downloadedFiles), "remainingFiles", len(remainingFiles))
+	log.Info("Filtered files", "totalFiles", d.totalFiles, "downloadedFiles", len(downloadedFiles), "toDownloadFiles", len(toDownloadFiles))
 
 	// Initialize expected next block start for merge ordering
 	if len(d.files) > 0 {
@@ -412,8 +474,8 @@ func (d *IncrDownloader) downloadWorker() {
 	defer d.downloadWG.Done()
 
 	for file := range d.downloadChan {
-		// Mark file as downloading
-		d.markFileAsDownloading(file.Metadata.FileName)
+		// Mark file as to download
+		d.markFileAsToDownload(file.Metadata.FileName)
 
 		if err := d.downloadFile(file); err != nil {
 			log.Error("Failed to download file", "file", file.Metadata.FileName, "error", err)
@@ -442,12 +504,12 @@ func (d *IncrDownloader) downloadWorker() {
 	log.Info("Download worker completed")
 }
 
-// markFileAsDownloading marks a file as currently downloading
-func (d *IncrDownloader) markFileAsDownloading(fileName string) {
+// markFileAsToDownload marks a file as currently to download
+func (d *IncrDownloader) markFileAsToDownload(fileName string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	downloadingFiles, _ := d.loadDownloadingFiles()
+	downloadingFiles, _ := d.loadToDownloadFiles()
 	if downloadingFiles == nil {
 		downloadingFiles = []string{}
 	}
@@ -463,27 +525,27 @@ func (d *IncrDownloader) markFileAsDownloading(fileName string) {
 
 	if !found {
 		downloadingFiles = append(downloadingFiles, fileName)
-		d.saveDownloadingFiles(downloadingFiles)
+		d.saveToDownloadFiles(downloadingFiles)
 		log.Debug("Marked file as downloading", "fileName", fileName)
 	}
 }
 
-// removeFromDownloading removes a file from downloading list
-func (d *IncrDownloader) removeFromDownloading(fileName string) {
-	downloadingFiles, err := d.loadDownloadingFiles()
+// removeFromToDownload removes a file from to download list
+func (d *IncrDownloader) removeFromToDownload(fileName string) {
+	toDownloadFiles, err := d.loadToDownloadFiles()
 	if err != nil {
-		log.Error("Failed to load downloading files", "error", err)
+		log.Error("Failed to load to download files", "error", err)
 	}
 
-	if downloadingFiles != nil {
+	if toDownloadFiles != nil {
 		var newDownloadingFiles []string
-		for _, file := range downloadingFiles {
+		for _, file := range toDownloadFiles {
 			if file != fileName {
 				newDownloadingFiles = append(newDownloadingFiles, file)
 			}
 		}
-		d.saveDownloadingFiles(newDownloadingFiles)
-		log.Debug("Removed file from downloading list", "fileName", fileName)
+		d.saveToDownloadFiles(newDownloadingFiles)
+		log.Debug("Removed file from to download list", "fileName", fileName)
 	}
 }
 
@@ -512,8 +574,8 @@ func (d *IncrDownloader) markFileAsDownloaded(fileName string) {
 		log.Debug("Marked file as downloaded", "fileName", fileName)
 	}
 
-	// Remove from downloading files
-	d.removeFromDownloading(fileName)
+	// Remove from to download files
+	d.removeFromToDownload(fileName)
 }
 
 // queueForMerge queues a file for merge (non-blocking)
@@ -594,7 +656,7 @@ type ChunkProgress struct {
 // downloadWithHTTP downloads file using concurrent HTTP requests
 func (d *IncrDownloader) downloadWithHTTP(file *IncrFileInfo) error {
 	url := fmt.Sprintf("%s/%s", d.remoteURL, file.Metadata.FileName)
-	log.Info("Starting concurrent HTTP download", "file", file.Metadata.FileName, "url", url)
+	log.Info("Start downloading incremental snapshot", "url", url)
 
 	// Check if file already exists and has correct size
 	if info, err := os.Stat(file.LocalPath); err == nil {
@@ -698,7 +760,7 @@ func (d *IncrDownloader) downloadWithHTTP(file *IncrFileInfo) error {
 		return fmt.Errorf("downloaded file size mismatch: expected %d, got %d", totalSize, info.Size())
 	}
 
-	log.Info("Concurrent HTTP download completed successfully", "file", file.Metadata.FileName, "size", totalSize)
+	log.Debug("Download completed successfully", "file", file.Metadata.FileName, "size", totalSize)
 	return nil
 }
 
@@ -772,7 +834,7 @@ func (d *IncrDownloader) verifyHash(file *IncrFileInfo) error {
 			file.Metadata.FileName, file.Metadata.MD5Sum, actualHash)
 	}
 
-	log.Info("Finished verifying md5 hash", "file", file.LocalPath)
+	log.Debug("Finished verifying md5 hash", "file", file.LocalPath)
 	return nil
 }
 
@@ -783,7 +845,7 @@ func (d *IncrDownloader) extractFile(file *IncrFileInfo) error {
 	if err := os.MkdirAll(extractDir, 0755); err != nil {
 		return err
 	}
-	log.Info("Extracting file", "file", file.Metadata.FileName, "extractDir", extractDir)
+	log.Debug("Extracting file", "file", file.Metadata.FileName, "extractDir", extractDir)
 
 	// Open the lz4 file
 	inputFile, err := os.Open(file.LocalPath)
@@ -976,33 +1038,6 @@ func (pr *progressReader) Read(p []byte) (int, error) {
 	}
 
 	return n, err
-}
-
-// GetProgress returns current download progress
-func (d *IncrDownloader) GetProgress() (downloaded, merged, total int) {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	return d.downloadedFiles, d.mergedFiles, d.totalFiles
-}
-
-// GetPendingMergeStatus returns status of pending merge files
-func (d *IncrDownloader) GetPendingMergeStatus() (int, []string) {
-	d.mergeMutex.Lock()
-	defer d.mergeMutex.Unlock()
-
-	var fileNames []string
-	for _, file := range d.downloadedFilesMap {
-		fileNames = append(fileNames, file.Metadata.FileName)
-	}
-
-	return len(d.downloadedFilesMap), fileNames
-}
-
-// GetExpectedNextBlockStart returns the expected next block start for merge
-func (d *IncrDownloader) GetExpectedNextBlockStart() uint64 {
-	d.mergeMutex.Lock()
-	defer d.mergeMutex.Unlock()
-	return d.expectedNextBlockStart
 }
 
 // Cancel cancels all operations
