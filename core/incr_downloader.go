@@ -552,6 +552,20 @@ func (d *IncrDownloader) queueForMerge(file *IncrFileInfo) {
 	d.mergeMutex.Lock()
 	defer d.mergeMutex.Unlock()
 
+	// Check if file is already in pending queue
+	if existingFile, exists := d.pendingMergeFiles[file.StartBlock]; exists {
+		if existingFile.Metadata.FileName == file.Metadata.FileName {
+			log.Debug("File already in pending queue, skipping", "file", file.Metadata.FileName, "startBlock", file.StartBlock)
+			return
+		}
+	}
+
+	// Check if file has already been merged
+	if file.Merged {
+		log.Debug("File already merged, skipping queue", "file", file.Metadata.FileName, "startBlock", file.StartBlock)
+		return
+	}
+
 	// Add to pending queue
 	d.pendingMergeFiles[file.StartBlock] = file
 	log.Debug("File queued for merge", "file", file.Metadata.FileName, "startBlock", file.StartBlock)
@@ -570,6 +584,14 @@ func (d *IncrDownloader) trySendNextFileToMerge() {
 			break
 		}
 
+		// Check if file has already been merged
+		if nextFile.Merged {
+			log.Warn("File already merged, removing from pending queue", "file", nextFile.Metadata.FileName)
+			delete(d.pendingMergeFiles, d.expectedNextBlockStart)
+			d.expectedNextBlockStart = nextFile.EndBlock + 1
+			continue
+		}
+
 		// Remove from pending queue
 		delete(d.pendingMergeFiles, d.expectedNextBlockStart)
 
@@ -583,7 +605,7 @@ func (d *IncrDownloader) trySendNextFileToMerge() {
 		default:
 			// Channel is full, put back in pending queue
 			d.pendingMergeFiles[d.expectedNextBlockStart] = nextFile
-			log.Debug("Merge channel full, file put back in queue", "file", nextFile.Metadata.FileName)
+			log.Info("Merge channel full, file put back in queue", "file", nextFile.Metadata.FileName)
 			return
 		}
 	}
@@ -921,7 +943,15 @@ func (d *IncrDownloader) mergeWorker() {
 	defer d.mergeWG.Done()
 
 	for file := range d.mergeChan {
-		log.Info("Merge worker processing file", "file", file.Metadata.FileName)
+		log.Info("Merge worker processing file", "file", file.Metadata.FileName,
+			"startBlock", file.StartBlock, "endBlock", file.EndBlock, "merged", file.Merged)
+
+		// Check if file has already been merged
+		if file.Merged {
+			log.Warn("File already merged, skipping", "file", file.Metadata.FileName,
+				"startBlock", file.StartBlock, "endBlock", file.EndBlock)
+			continue
+		}
 
 		if err := d.mergeFile(file); err != nil {
 			log.Error("Failed to merge", "file", file.Metadata.FileName, "error", err)
@@ -935,7 +965,8 @@ func (d *IncrDownloader) mergeWorker() {
 		d.mu.Unlock()
 
 		log.Info("File merged successfully", "file", file.Metadata.FileName,
-			"progress", fmt.Sprintf("%d/%d", d.mergedFiles, d.totalFiles))
+			"progress", fmt.Sprintf("%d/%d", d.mergedFiles, d.totalFiles),
+			"startBlock", file.StartBlock, "endBlock", file.EndBlock)
 
 		// Process other files that may now be ready for merge
 		d.processNextMergeFiles(file)
