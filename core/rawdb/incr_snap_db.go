@@ -222,11 +222,12 @@ func (idb *IncrSnapDB) WaitForSwitchComplete() {
 }
 
 // WriteIncrBlockData writes incremental block data and checks if directory switch is needed
-func (idb *IncrSnapDB) WriteIncrBlockData(number, id uint64, hash, header, body, receipts, td, sidecars []byte, isCancun bool) error {
+func (idb *IncrSnapDB) WriteIncrBlockData(number, id uint64, hash, header, body, receipts, td, sidecars []byte,
+	isEmptyBlock, isCancun bool) error {
 	idb.lock.Lock()
 	defer idb.lock.Unlock()
 
-	err := WriteIncrBlockData(idb.currSnapDB.chainFreezer, number, id, hash, header, body, receipts, td, sidecars, isCancun)
+	err := WriteIncrBlockData(idb.currSnapDB.chainFreezer, number, id, hash, header, body, receipts, td, sidecars, isEmptyBlock, isCancun)
 	if err != nil {
 		return fmt.Errorf("failed to write block %d: %w", number, err)
 	}

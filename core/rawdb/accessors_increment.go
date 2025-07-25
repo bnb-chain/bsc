@@ -74,7 +74,8 @@ func WriteBlockData(db ethdb.AncientWriter, number uint64, hash, header, body, r
 }
 
 // WriteIncrBlockData writes the provided block data to the database.
-func WriteIncrBlockData(db ethdb.AncientWriter, number, stateID uint64, hash, header, body, receipts, td, sidecars []byte, isCancun bool) error {
+func WriteIncrBlockData(db ethdb.AncientWriter, number, stateID uint64, hash, header, body, receipts, td, sidecars []byte,
+	isEmptyBlock, isCancun bool) error {
 	_, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
 		if err := op.AppendRaw(ChainFreezerHashTable, number, hash); err != nil {
 			return err
@@ -92,6 +93,9 @@ func WriteIncrBlockData(db ethdb.AncientWriter, number, stateID uint64, hash, he
 			return err
 		}
 		if err := op.AppendRaw(IncrBlockStateIDMappingTable, number, encodeBlockNumber(stateID)); err != nil {
+			return err
+		}
+		if err := op.AppendRaw(IncrEmptyBlockTable, number, boolToBytes(isEmptyBlock)); err != nil {
 			return err
 		}
 		if isCancun {
@@ -354,4 +358,12 @@ func GetChainConfig(db ethdb.Reader) (*params.ChainConfig, error) {
 	}
 
 	return chainConfig, nil
+}
+
+func boolToBytes(b bool) []byte {
+	buf := make([]byte, 1)
+	if b {
+		buf[0] = 1
+	}
+	return buf
 }

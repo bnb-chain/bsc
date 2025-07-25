@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -57,16 +58,16 @@ func (a *asyncIncrStateBuffer) printCacheInfo() {
 	defer a.mux.RUnlock()
 
 	log.Info("Current Cache Status", "empty", a.current.empty(), "full", a.current.full(),
-		"size", a.current.size(), "layers", a.current.layers, "immutable", atomic.LoadUint64(&a.current.immutable) == 1,
+		"size", common.StorageSize(a.current.size()), "layers", a.current.layers,
+		"immutable", atomic.LoadUint64(&a.current.immutable) == 1,
 		"stateIDRange", fmt.Sprintf("%d-%d", a.current.stateIDArray[0], a.current.stateIDArray[1]),
 		"blockNumberRange", fmt.Sprintf("%d-%d", a.current.blockNumberArray[0], a.current.blockNumberArray[1]),
-		"limit", a.current.limit, "batchSize", a.current.batchSize)
+		"limit", common.StorageSize(a.current.limit), "batchSize", common.StorageSize(a.current.batchSize))
 
 	log.Info("Background Cache Status", "empty", a.background.empty(), "full", a.background.full(),
 		"size", a.background.size(), "layers", a.background.layers, "immutable", atomic.LoadUint64(&a.background.immutable) == 1,
 		"stateIDRange", fmt.Sprintf("%d-%d", a.background.stateIDArray[0], a.background.stateIDArray[1]),
-		"blockNumberRange", fmt.Sprintf("%d-%d", a.background.blockNumberArray[0], a.background.blockNumberArray[1]),
-		"limit", a.background.limit, "batchSize", a.background.batchSize)
+		"blockNumberRange", fmt.Sprintf("%d-%d", a.background.blockNumberArray[0], a.background.blockNumberArray[1]))
 }
 
 // commit merges the provided states and trie nodes into the buffer.
@@ -285,69 +286,6 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 	return nil
 }
 
-// flushToAncientDB writes the trie nodes to the incremental state db.
-// func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
-// 	jn := make([]journalNodes, 0, len(c.nodes.nodes))
-// 	totalSize := uint64(0)
-
-// 	for owner, subset := range c.nodes.nodes {
-// 		entry := journalNodes{Owner: owner}
-// 		ownerSize := rlp.BytesSize(owner[:])
-// 		nodesListSize := uint64(0)
-
-// 		for path, node := range subset {
-// 			singleNode := journalNode{Path: []byte(path), Blob: node.Blob}
-// 			entry.Nodes = append(entry.Nodes, singleNode)
-
-// 			nodeSize := computeNodeSize(singleNode)
-// 			nodesListSize += nodeSize
-
-// 			currentEntrySize := rlp.ListSize(ownerSize + rlp.ListSize(nodesListSize))
-// 			newTotalSize := totalSize + currentEntrySize
-// 			// batchTotalSize := rlp.ListSize(totalSize) + rlp.ListSize(nodeSize) + rlp.ListSize(ownerSize)
-// 			if rlp.ListSize(newTotalSize) >= c.batchSize {
-// 				log.Info("Batch size limit reached during node iteration, flushing to ancient db",
-// 					"batchTotalSize", rlp.ListSize(newTotalSize), "batchSize", c.batchSize, "entryCount", len(jn)+1)
-// 				if err := c.writeBatchToAncientDB(incrDB, append(jn, entry)); err != nil {
-// 					return err
-// 				}
-
-// 				jn = make([]journalNodes, 0, len(c.nodes.nodes))
-// 				totalSize = 0
-// 				entry = journalNodes{Owner: owner}        // Reset entry for remaining nodes
-// 				ownerSize = rlp.BytesSize(entry.Owner[:]) // Reset entry size
-// 				nodesListSize = 0
-// 			}
-// 		}
-
-// 		if len(entry.Nodes) > 0 {
-// 			jn = append(jn, entry)
-// 			entryRLPSize := rlp.ListSize(ownerSize + rlp.ListSize(nodesListSize))
-// 			totalSize += rlp.ListSize(entryRLPSize)
-// 		}
-
-// 		if rlp.ListSize(totalSize) >= c.batchSize {
-// 			log.Info("Batch size limit reached after adding entry, flushing to ancient db",
-// 				"totalSize", totalSize, "batchSize", c.batchSize, "entryCount", len(jn))
-// 			if err := c.writeBatchToAncientDB(incrDB, jn); err != nil {
-// 				return err
-// 			}
-// 			jn = make([]journalNodes, 0, len(c.nodes.nodes))
-// 			totalSize = 0
-// 		}
-// 	}
-
-// 	if len(jn) > 0 {
-// 		log.Info("Flushing remaining incremental state buffer to ancient db", "entryCount", len(jn))
-// 		if err := c.writeBatchToAncientDB(incrDB, jn); err != nil {
-// 			return err
-// 		}
-// 	}
-// 	log.Info("Flushed incremental state buffer to ancient db", "size", c.nodes.size)
-// 	c.reset()
-// 	return nil
-// }
-
 // writeBatchToAncientDB writes a batch of trie nodes to the incremental state db.
 func (c *incrNodeCache) writeBatchToAncientDB(incrDB *rawdb.IncrSnapDB, jn []journalNodes) error {
 	if len(jn) == 0 {
@@ -406,37 +344,4 @@ func (c *incrNodeCache) reset() {
 	c.layers = 0
 	c.stateIDArray = emptyArray
 	c.blockNumberArray = emptyArray
-}
-
-// computeNodeSize computes the RLP encoded size of a journalNode
-func computeNodeSize(node journalNode) uint64 {
-	nodeSize := rlp.BytesSize(node.Path) + rlp.BytesSize(node.Blob)
-	return rlp.ListSize(nodeSize)
-}
-
-// computeEntrySize computes the RLP encoded size of a journalNodes entry
-func computeEntrySize(entry journalNodes) uint64 {
-	size := rlp.BytesSize(entry.Owner[:])
-	nodesSize := uint64(0)
-	for _, node := range entry.Nodes {
-		nodesSize += computeNodeSize(node)
-	}
-	size += rlp.ListSize(nodesSize)
-	return rlp.ListSize(size)
-}
-
-// computeRLPEncodedSize computes the RLP encoded size of a journalNodes slice
-func computeRLPEncodedSize(jn []journalNodes) uint64 {
-	totalSize := uint64(0)
-	for _, entry := range jn {
-		entrySize := uint64(0)
-		entrySize += rlp.BytesSize(entry.Owner[:])
-		nodesListSize := uint64(0)
-		for _, node := range entry.Nodes {
-			nodesListSize += computeNodeSize(node)
-		}
-		entrySize += rlp.ListSize(nodesListSize)
-		totalSize += rlp.ListSize(entrySize)
-	}
-	return rlp.ListSize(totalSize)
 }

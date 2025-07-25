@@ -45,6 +45,8 @@ const (
 
 	// IncrBlockStateIDMappingTable indicates the mapping table between block numbers and state IDs.
 	IncrBlockStateIDMappingTable = "mapping"
+
+	IncrEmptyBlockTable = "empty"
 )
 
 // chainFreezerNoSnappy configures whether compression is disabled for the ancient-tables.
@@ -67,7 +69,8 @@ var incrChainFreezerNoSnappy = map[string]bool{
 	ChainFreezerReceiptTable:     false,
 	ChainFreezerDifficultyTable:  true,
 	ChainFreezerBlobSidecarTable: false,
-	IncrBlockStateIDMappingTable: false, // block number -> state id
+	IncrBlockStateIDMappingTable: true, // block number -> state id
+	IncrEmptyBlockTable:          true,
 }
 
 var additionTables = []string{ChainFreezerBlobSidecarTable}
@@ -98,7 +101,7 @@ var stateFreezerNoSnappy = map[string]bool{
 }
 
 var additionIncrTables = []string{ChainFreezerHeaderTable, ChainFreezerHashTable, ChainFreezerBodiesTable, ChainFreezerReceiptTable,
-	ChainFreezerDifficultyTable, IncrBlockStateIDMappingTable}
+	ChainFreezerDifficultyTable, IncrBlockStateIDMappingTable, IncrEmptyBlockTable}
 
 // incrStateFreezerNoSnappy configures whether compression is disabled for the incremental state freezer.
 var incrStateFreezerNoSnappy = map[string]bool{

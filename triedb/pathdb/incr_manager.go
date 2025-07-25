@@ -287,9 +287,9 @@ func (im *incrManager) writeIncrData(dl *diffLayer) error {
 
 	for i := startBlock; i <= dl.block; i++ {
 		// check if this block has state changes, empty block stateID is set 0
-		currentStateID := uint64(0)
+		isEmptyBlock := true
 		if i == dl.block {
-			currentStateID = dl.stateID()
+			isEmptyBlock = false
 		}
 
 		if im.incrDB.Full() {
@@ -299,7 +299,7 @@ func (im *incrManager) writeIncrData(dl *diffLayer) error {
 				return err
 			}
 			if switched {
-				log.Info("Directory switch completed", "blockNumber", i, "currentStateID", currentStateID)
+				log.Info("Directory switch completed", "blockNumber", i, "currentStateID", dl.stateID())
 				im.asyncBuffer = newAsyncIncrStateBuffer(im.bufferLimit, defaultFlushBatchSize)
 			}
 			if err = im.resetIncrChainFreezer(im.db.diskdb, i); err != nil {
@@ -308,11 +308,11 @@ func (im *incrManager) writeIncrData(dl *diffLayer) error {
 			}
 		}
 
-		if err = im.writeIncrBlock(im.db.diskdb, i, currentStateID); err != nil {
-			log.Error("Failed to write block data to freezer", "block", i, "stateID", currentStateID, "error", err)
+		if err = im.writeIncrBlock(im.db.diskdb, i, dl.stateID(), isEmptyBlock); err != nil {
+			log.Error("Failed to write block data to freezer", "block", i, "stateID", dl.stateID(), "error", err)
 			return err
 		}
-		if currentStateID != 0 {
+		if !isEmptyBlock {
 			if err = im.writeIncrStateData(dl); err != nil {
 				log.Error("Failed to write incr state data", "block", dl.block, "stateID", dl.stateID(), "error", err)
 				return err
@@ -472,7 +472,7 @@ func (im *incrManager) LogStats() {
 }
 
 // writeIncrBlock writes incremental block
-func (im *incrManager) writeIncrBlock(reader ethdb.Reader, blockNumber, stateID uint64) error {
+func (im *incrManager) writeIncrBlock(reader ethdb.Reader, blockNumber, stateID uint64, isEmptyBlock bool) error {
 	blockHash := rawdb.ReadCanonicalHash(reader, blockNumber)
 	if blockHash == (common.Hash{}) {
 		return fmt.Errorf("canonical hash not found for block %d", blockNumber)
@@ -509,7 +509,7 @@ func (im *incrManager) writeIncrBlock(reader ethdb.Reader, blockNumber, stateID 
 		}
 	}
 
-	err = im.incrDB.WriteIncrBlockData(blockNumber, stateID, blockHash[:], header, body, receipts, td, sidecars, isCancun)
+	err = im.incrDB.WriteIncrBlockData(blockNumber, stateID, blockHash[:], header, body, receipts, td, sidecars, isEmptyBlock, isCancun)
 	if err != nil {
 		log.Error("Failed to write block data", "error", err)
 		return err
