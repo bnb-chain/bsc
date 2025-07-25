@@ -143,7 +143,13 @@ func (idb *IncrSnapDB) repair(startBlock uint64) error {
 	}
 	// If one freezer is empty but the other is not, reset the database
 	if stateAncients == 0 || chainAncients == 0 {
-		if err = idb.reset(startBlock); err != nil {
+		// if err = idb.reset(startBlock); err != nil {
+		// 	return err
+		// }
+		if err = idb.currSnapDB.stateFreezer.Reset(); err != nil {
+			return err
+		}
+		if err = idb.currSnapDB.chainFreezer.Reset(); err != nil {
 			return err
 		}
 		log.Warn("Reset current incr snap db and create a new one")
