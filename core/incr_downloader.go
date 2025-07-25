@@ -500,8 +500,6 @@ func (d *IncrDownloader) downloadWorker() {
 		log.Debug("File completed, queuing for merge", "file", file.Metadata.FileName, "downloadedFiles", d.downloadedFiles)
 		d.queueForMerge(file)
 	}
-
-	log.Info("Download worker completed")
 }
 
 // markFileAsToDownload marks a file as currently to download

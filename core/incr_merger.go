@@ -123,9 +123,6 @@ func mergeIncrBlock(incrDir string, chainDB ethdb.Database) error {
 
 			blockBatch := chainDB.NewBatch()
 			hash := common.BytesToHash(hashBytes)
-			if number == 1284864 || number == 1284863 {
-				log.Info("WriteCanonicalHash", "hash", hash.String(), "number", number)
-			}
 			rawdb.WriteCanonicalHash(blockBatch, hash, number)
 			rawdb.WriteTdRLP(blockBatch, hash, number, td)
 			rawdb.WriteBodyRLP(blockBatch, hash, number, body)

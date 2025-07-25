@@ -807,6 +807,7 @@ func (db *Database) MergeIncrState(incrDir string) error {
 	}
 	defer incrChainFreezer.Close()
 
+	// TODO: handle lastStateID is 0 case
 	number, _ := incrChainFreezer.Ancients()
 	lastStateID, err := rawdb.ReadIncrChainMapping(incrChainFreezer, number-1)
 	if err != nil {

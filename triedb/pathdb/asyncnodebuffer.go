@@ -2,7 +2,6 @@ package pathdb
 
 import (
 	"maps"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -39,75 +38,40 @@ func newAsyncNodeBuffer(limit int, nodes *nodeSet, states *stateSet, layers uint
 func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer ethdb.AncientWriter,
 	incrFreezer ethdb.ResettableAncientStore, start, end uint64) error {
 	persistID := rawdb.ReadPersistentStateID(db)
-	log.Info("Ancient db meta info", "persistent_state_id", persistID, "start", start,
-		"end", end)
+	log.Info("Ancient db meta info", "persistent_state_id", persistID, "start", start, "end", end)
 
 	var (
 		totalLayers, lastStateID uint64
-		// stateRangeGroups key is the last state id of the state range
-		stateRangeGroups = make(map[uint64][]struct {
-			index    uint64
-			metadata *incrStateMetadata
-		})
 	)
 
 	for i := start; i <= end; i++ {
+		trieNodes, err := readIncrTrieNodes(incrFreezer, i)
+		if err != nil {
+			return err
+		}
 		m, err := readIncrMetadata(incrFreezer, i)
 		if err != nil {
 			return err
 		}
-		stateRangeGroups[m.StateIDArray[1]] = append(stateRangeGroups[m.StateIDArray[1]], struct {
-			index    uint64
-			metadata *incrStateMetadata
-		}{
-			index:    i,
-			metadata: m,
-		})
 		if i == end {
 			lastStateID = m.StateIDArray[1]
 		}
-	}
 
-	keys := make([]uint64, 0, len(stateRangeGroups))
-	for k := range stateRangeGroups {
-		keys = append(keys, k)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		return keys[i] < keys[j]
-	})
-
-	for _, stateRangeKey := range keys {
-		group := stateRangeGroups[stateRangeKey]
-		mergedNodes := newNodeSet(nil)
-		var groupMetadata *incrStateMetadata
-		for _, item := range group {
-			trieNodes, err := readIncrTrieNodes(incrFreezer, item.index)
-			if err != nil {
-				return err
-			}
-			nodesSet := newNodeSet(trieNodes)
-			mergedNodes.merge(nodesSet)
-			if groupMetadata == nil {
-				groupMetadata = item.metadata
-			}
-		}
-
-		if err := a.current.commit(mergedNodes, newStates(nil, nil, false)); err != nil {
+		nodesSet := newNodeSet(trieNodes)
+		if err = a.current.commit(nodesSet, newStates(nil, nil, false)); err != nil {
 			log.Error("Failed to commit history", "error", err)
 			return err
 		}
-		a.current.layers += groupMetadata.Layers - 1
-		totalLayers += groupMetadata.Layers
 
-		if err := a.flush(db, freezer, nil, groupMetadata.StateIDArray[1], false); err != nil {
+		if err = a.flush(db, freezer, nil, m.StateIDArray[1], false, false); err != nil {
 			log.Error("Failed to flush history", "error", err)
 			return err
 		}
 	}
 
-	log.Info("Force flush async node buffer", "layers", a.getLayers(),
-		"lastStateID", lastStateID, "totalLayers", totalLayers)
-	if err := a.flush(db, freezer, nil, lastStateID, true); err != nil {
+	log.Info("Force flush async node buffer", "layers", a.getLayers(), "lastStateID", lastStateID,
+		"totalLayers", totalLayers)
+	if err := a.flush(db, freezer, nil, lastStateID, true, false); err != nil {
 		log.Error("Failed to force flush history", "error", err)
 		return err
 	}
@@ -195,7 +159,7 @@ func (a *asyncnodebuffer) empty() bool {
 
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
-func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, clean *fastcache.Cache, id uint64, force bool) error {
+func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, clean *fastcache.Cache, id uint64, force, validateID bool) error {
 	a.mux.Lock()
 	defer a.mux.Unlock()
 
@@ -212,7 +176,7 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWri
 				continue
 			}
 			atomic.StoreUint64(&a.current.immutable, 1)
-			return a.current.flush(db, freezer, clean, id, true)
+			return a.current.flush(db, freezer, clean, id, true, validateID)
 		}
 	}
 
@@ -231,7 +195,7 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWri
 	go func(persistID uint64) {
 		defer a.isFlushing.Store(false)
 		for {
-			err := a.background.flush(db, freezer, clean, persistID, true)
+			err := a.background.flush(db, freezer, clean, persistID, true, validateID)
 			if err == nil {
 				log.Debug("Succeed to flush background nodecache to disk", "state_id", persistID)
 				return
@@ -313,11 +277,11 @@ func (nc *nodecache) reset() {
 	nc.buffer.reset()
 }
 
-func (nc *nodecache) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, nodesCache *fastcache.Cache, id uint64, force bool) error {
+func (nc *nodecache) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, nodesCache *fastcache.Cache, id uint64, force, validateID bool) error {
 	if atomic.LoadUint64(&nc.immutable) != 1 {
 		return errFlushMutable
 	}
-	nc.buffer.flush(db, freezer, nodesCache, id, force)
+	nc.buffer.flush(db, freezer, nodesCache, id, force, validateID)
 	atomic.StoreUint64(&nc.immutable, 0)
 	return nil
 }

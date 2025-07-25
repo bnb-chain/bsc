@@ -58,7 +58,7 @@ type trienodebuffer interface {
 
 	// flush persists the in-memory dirty trie node into the disk if the configured
 	// memory threshold is reached. Note, all data must be written atomically.
-	flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, clean *fastcache.Cache, id uint64, force bool) error
+	flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, clean *fastcache.Cache, id uint64, force, validateID bool) error
 
 	// empty returns an indicator if trienodebuffer contains any state transition inside.
 	empty() bool
@@ -337,7 +337,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	// Merge the trie nodes and flat states of the bottom-most diff layer into the
 	// buffer as the combined layer.
 	combined := dl.buffer.commit(bottom.nodes, bottom.states.stateSet)
-	if err := combined.flush(dl.db.diskdb, dl.db.freezer, dl.nodes, bottom.stateID(), force); err != nil {
+	if err := combined.flush(dl.db.diskdb, dl.db.freezer, dl.nodes, bottom.stateID(), force, true); err != nil {
 		return nil, err
 	}
 	ndl := newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.nodes, combined)
