@@ -1466,26 +1466,20 @@ func opPush1Push1Push1SHLSub(pc *uint64, interpreter *EVMInterpreter, scope *Sco
 
 // AND DUP2 ADD SWAP1 DUP2 LT
 func opAndDup2AddSwap1Dup2LT(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	x, y := scope.Stack.pop(), scope.Stack.peek()
+	x, y := scope.Stack.pop(), scope.Stack.Back(0)
 	y.And(&x, y)
-
-	scope.Stack.dup(2)
-
-	z := scope.Stack.pop()
-	y.Add(&z, y)
-
+	z := scope.Stack.Back(1)
+	y.Add(z, y)
+	tmpy := *y
+	tmpz := *z
 	scope.Stack.swap1()
-	scope.Stack.dup(2)
-
-	a, b := scope.Stack.pop(), scope.Stack.peek()
-	if a.Lt(b) {
-		a.SetOne()
+	if tmpy.Lt(&tmpz) {
+		scope.Stack.Back(0).SetOne()
 	} else {
-		b.Clear()
+		scope.Stack.Back(0).Clear()
 	}
 
 	*pc += 5
-
 	return nil, nil
 }
 
@@ -1504,16 +1498,14 @@ func opSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(pc *uint64, interpreter *E
 	x := scope.Stack.peek()
 	x.Not(x)
 	scope.Stack.swap2()
-	a, b := scope.Stack.pop(), scope.Stack.peek()
-	b.Add(&a, b)
-	c, d := scope.Stack.pop(), scope.Stack.peek()
-	d.And(&c, d)
-	scope.Stack.dup(2)
-	e, f := scope.Stack.pop(), scope.Stack.peek()
-	f.Add(&e, f)
+	a, b := scope.Stack.pop(), scope.Stack.pop()
+	b.Add(&a, &b)
+	c := scope.Stack.peek()
+	c.And(&b, c)
+	e := scope.Stack.Back(1)
+	c.Add(e, c)
 	scope.Stack.swap1()
-	scope.Stack.dup(2)
-	g, h := scope.Stack.pop(), scope.Stack.peek()
+	g, h := *c, scope.Stack.peek()
 	if g.Lt(h) {
 		h.SetOne()
 	} else {
