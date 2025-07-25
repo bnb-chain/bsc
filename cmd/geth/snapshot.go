@@ -809,7 +809,7 @@ func downloadIncrSnapshot(ctx *cli.Context) error {
 	return nil
 }
 
-// mergeIncrSnapshot
+// mergeIncrSnapshot merges the incremental snapshot into local data.
 func mergeIncrSnapshot(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
@@ -825,15 +825,19 @@ func mergeIncrSnapshot(ctx *cli.Context) error {
 	}
 	path := ctx.String(utils.IncrSnapshotPathFlag.Name)
 
-	// TODO: handle repair for force kill incr snapshot
-	startBlock, err := trieDB.GetStartBlock()
+	// TODO: handle repair for force kill incr snapshot\
+	dirs, err := rawdb.GetAllIncrDirs(path)
 	if err != nil {
-		log.Error("Failed to get start block", "error", err)
+		log.Error("Failed to get all incremental directories", "err", err)
 		return err
 	}
-	if err = core.MergeIncrSnapshot(chainDB, trieDB, path, startBlock); err != nil {
-		log.Error("Failed to merge incremental snapshot", "err", err)
-		return err
+	log.Info("Start merging incremental snapshot", "path", path, "incremental snapshot number", len(dirs))
+
+	for _, dir := range dirs {
+		if err = core.MergeIncrSnapshot(chainDB, trieDB, dir.Path); err != nil {
+			log.Error("Failed to merge incremental snapshot", "err", err)
+			return err
+		}
 	}
 	return nil
 }

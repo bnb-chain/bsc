@@ -16,7 +16,60 @@ import (
 )
 
 // MergeIncrSnapshot merges the incremental snapshot into local data.
-func MergeIncrSnapshot(chainDB ethdb.Database, trieDB *triedb.Database, incrPath string, startBlock uint64) error {
+func MergeIncrSnapshot(chainDB ethdb.Database, trieDB *triedb.Database, incrPath string) error {
+	var wg sync.WaitGroup
+	errChan := make(chan error, 3)
+
+	// merge incremental state data
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := trieDB.MergeIncrState(incrPath); err != nil {
+			log.Error("Failed to merge incremental state data", "path", incrPath, "err", err)
+			errChan <- fmt.Errorf("failed to merge incremental state data: %v", err)
+		}
+	}()
+
+	// merge incremental block data
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := mergeIncrBlock(incrPath, chainDB); err != nil {
+			log.Error("Failed to merge incremental block data", "path", incrPath, "err", err)
+			errChan <- fmt.Errorf("failed to merge incremental block data: %v", err)
+		}
+	}()
+
+	// merge contract codes
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := mergeContractCodes(incrPath, chainDB); err != nil {
+			log.Error("Failed to merge incremental contract codes", "path", incrPath, "err", err)
+			errChan <- fmt.Errorf("failed to merge incremental contract codes: %v", err)
+		}
+	}()
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var mergeErrors []error
+	for err := range errChan {
+		mergeErrors = append(mergeErrors, err)
+	}
+	if len(mergeErrors) > 0 {
+		errs := errors.Join(mergeErrors...)
+		log.Error("Parallel merge operations failed", "total_errors", len(mergeErrors), "path", incrPath)
+		return errs
+	}
+
+	log.Info("All merge operations completed successfully", "path", incrPath)
+	return nil
+}
+
+func MergeIncrSnapshot1(chainDB ethdb.Database, trieDB *triedb.Database, incrPath string, startBlock uint64) error {
 	dirs, err := rawdb.GetAllIncrDirs(incrPath)
 	if err != nil {
 		log.Error("Failed to get all incremental directories", "err", err)
