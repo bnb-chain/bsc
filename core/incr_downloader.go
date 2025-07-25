@@ -518,7 +518,6 @@ func (d *IncrDownloader) markFileAsDownloaded(fileName string) {
 	d.removeFromDownloading(fileName)
 }
 
-// checkAndScheduleMerge checks if file can be merged immediately or should be queued
 // queueForMerge queues a file for merge (non-blocking)
 func (d *IncrDownloader) queueForMerge(file *IncrFileInfo) {
 	d.mergeMutex.Lock()
@@ -541,54 +540,6 @@ func (d *IncrDownloader) queueForMerge(file *IncrFileInfo) {
 	// Add to downloaded files map
 	d.downloadedFilesMap[file.StartBlock] = file
 	log.Debug("File queued for merge", "file", file.Metadata.FileName, "startBlock", file.StartBlock)
-}
-
-// trySendNextFileToMerge tries to send the next file in sequence to merge channel
-func (d *IncrDownloader) trySendNextFileToMerge() {
-	// Only send one file at a time to ensure sequential merging
-	// Check if the next expected file is available
-	nextFile, exists := d.downloadedFilesMap[d.expectedNextBlockStart]
-	if !exists {
-		return
-	}
-
-	// Check if file has already been merged
-	if nextFile.Merged {
-		log.Warn("File already merged, removing from downloaded files map", "file", nextFile.Metadata.FileName)
-		delete(d.downloadedFilesMap, d.expectedNextBlockStart)
-		d.expectedNextBlockStart = nextFile.EndBlock + 1
-		// Recursively try to send the next file
-		d.trySendNextFileToMerge()
-		return
-	}
-
-	// Remove from downloaded files map BEFORE processing to prevent race conditions
-	delete(d.downloadedFilesMap, d.expectedNextBlockStart)
-
-	// Process the file directly
-	log.Info("Processing file for merge", "file", nextFile.Metadata.FileName,
-		"startBlock", nextFile.StartBlock, "expectedNextBlockStart", d.expectedNextBlockStart)
-
-	// Update expected next start block for next iteration
-	d.expectedNextBlockStart = nextFile.EndBlock + 1
-
-	// Process the file (this will be handled by merge worker)
-	d.processFile(nextFile)
-}
-
-// processNextMergeFiles processes files that can now be merged after current file is merged
-func (d *IncrDownloader) processNextMergeFiles(completedFile *IncrFileInfo) {
-	d.mergeMutex.Lock()
-	defer d.mergeMutex.Unlock()
-
-	// Update expected next start block
-	d.expectedNextBlockStart = completedFile.EndBlock + 1
-
-	log.Info("Updated expected next block start", "expectedNextBlockStart", d.expectedNextBlockStart,
-		"completedFile", completedFile.Metadata.FileName, "endBlock", completedFile.EndBlock)
-
-	// Try to send the next available file to merge channel (non-blocking)
-	d.trySendNextFileToMerge()
 }
 
 // downloadFile downloads a single file with retry mechanism
@@ -899,38 +850,6 @@ func (d *IncrDownloader) extractFile(file *IncrFileInfo) error {
 	return nil
 }
 
-// processFile processes a single file for merge
-func (d *IncrDownloader) processFile(file *IncrFileInfo) {
-	log.Info("Processing file for merge", "file", file.Metadata.FileName,
-		"startBlock", file.StartBlock, "endBlock", file.EndBlock, "merged", file.Merged)
-
-	// Check if file has already been merged
-	if file.Merged {
-		log.Warn("File already merged, skipping", "file", file.Metadata.FileName,
-			"startBlock", file.StartBlock, "endBlock", file.EndBlock)
-		return
-	}
-
-	path := filepath.Join(d.incrPath, fmt.Sprintf("incr-%d-%d", file.StartBlock, file.EndBlock))
-	if err := MergeIncrSnapshot(d.db, d.triedb, path); err != nil {
-		log.Error("Failed to merge", "file", file.Metadata.FileName, "error", err)
-		d.errorChan <- err
-		return
-	}
-
-	file.Merged = true
-	d.mu.Lock()
-	d.mergedFiles++
-	d.mu.Unlock()
-
-	log.Info("File merged successfully", "file", file.Metadata.FileName,
-		"progress", fmt.Sprintf("%d/%d", d.mergedFiles, d.totalFiles),
-		"startBlock", file.StartBlock, "endBlock", file.EndBlock)
-
-	// Process other files that may now be ready for merge
-	d.processNextMergeFiles(file)
-}
-
 // mergeWorker handles sequential merging of files
 func (d *IncrDownloader) mergeWorker() {
 	defer d.mergeWG.Done()
@@ -943,12 +862,49 @@ func (d *IncrDownloader) mergeWorker() {
 		case <-ticker.C:
 			// Check if there are files ready for merge
 			d.mergeMutex.Lock()
-			_, exists := d.downloadedFilesMap[d.expectedNextBlockStart]
+			nextFile, exists := d.downloadedFilesMap[d.expectedNextBlockStart]
 			d.mergeMutex.Unlock()
 
 			if exists {
 				// Process the next file in sequence
-				d.trySendNextFileToMerge()
+				log.Info("Processing file for merge", "file", nextFile.Metadata.FileName,
+					"startBlock", nextFile.StartBlock, "endBlock", nextFile.EndBlock)
+
+				// Check if file has already been merged
+				if nextFile.Merged {
+					log.Warn("File already merged, removing from map", "file", nextFile.Metadata.FileName)
+					d.mergeMutex.Lock()
+					delete(d.downloadedFilesMap, d.expectedNextBlockStart)
+					d.mergeMutex.Unlock()
+					d.expectedNextBlockStart = nextFile.EndBlock + 1
+					continue
+				}
+
+				// Remove from map before processing to prevent race conditions
+				d.mergeMutex.Lock()
+				delete(d.downloadedFilesMap, d.expectedNextBlockStart)
+				d.mergeMutex.Unlock()
+
+				// Perform merge operation
+				path := filepath.Join(d.incrPath, fmt.Sprintf("incr-%d-%d", nextFile.StartBlock, nextFile.EndBlock))
+				if err := MergeIncrSnapshot(d.db, d.triedb, path); err != nil {
+					log.Error("Failed to merge", "file", nextFile.Metadata.FileName, "error", err)
+					d.errorChan <- err
+					return
+				}
+
+				nextFile.Merged = true
+				d.mu.Lock()
+				d.mergedFiles++
+				d.mu.Unlock()
+
+				log.Info("File merged successfully", "file", nextFile.Metadata.FileName,
+					"progress", fmt.Sprintf("%d/%d", d.mergedFiles, d.totalFiles),
+					"startBlock", nextFile.StartBlock, "endBlock", nextFile.EndBlock)
+
+				// Update expected next start block
+				d.expectedNextBlockStart = nextFile.EndBlock + 1
+
 			} else {
 				// Check if all files have been processed
 				d.mu.RLock()
@@ -956,7 +912,7 @@ func (d *IncrDownloader) mergeWorker() {
 				mergedCount := d.mergedFiles
 				d.mu.RUnlock()
 
-				if mergedCount >= downloadedCount && downloadedCount > 0 {
+				if mergedCount == downloadedCount && downloadedCount == len(d.files) {
 					log.Info("All files processed, merge worker exiting")
 					return
 				}
