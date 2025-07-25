@@ -269,33 +269,6 @@ func (d *IncrDownloader) Download() error {
 	return nil
 }
 
-// Merge incremental files
-func (d *IncrDownloader) Merge() error {
-	log.Info("Starting merge phase")
-
-	// Start merge worker (single worker for sequential processing)
-	d.mergeWG.Add(1)
-	go d.mergeWorker()
-
-	// // Send files to merge in order
-	// for _, file := range d.files {
-	// 	if file.Extracted {
-	// 		select {
-	// 		case d.mergeChan <- file:
-	// 		case <-d.ctx.Done():
-	// 			return d.ctx.Err()
-	// 		}
-	// 	}
-	// }
-	close(d.mergeChan)
-
-	// Wait for merge to complete
-	d.mergeWG.Wait()
-
-	log.Info("Merge phase completed", "mergedFiles", d.mergedFiles)
-	return nil
-}
-
 // RunConcurrent executes download and merge concurrently
 func (d *IncrDownloader) RunConcurrent() error {
 	if err := d.Prepare(); err != nil {
@@ -990,8 +963,8 @@ func (d *IncrDownloader) mergeWorker() {
 			"progress", fmt.Sprintf("%d/%d", d.mergedFiles, d.totalFiles),
 			"startBlock", file.StartBlock, "endBlock", file.EndBlock)
 
-		// Process other files that may now be ready for merge
-		d.processNextMergeFiles(file)
+		// // Process other files that may now be ready for merge
+		// d.processNextMergeFiles(file)
 	}
 }
 
