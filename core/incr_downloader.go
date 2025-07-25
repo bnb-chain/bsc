@@ -76,7 +76,6 @@ type IncrDownloader struct {
 
 	// Download management
 	downloadChan chan *IncrFileInfo
-	mergeChan    chan *IncrFileInfo
 	progressChan chan *DownloadProgress
 	errorChan    chan error
 
@@ -95,7 +94,7 @@ type IncrDownloader struct {
 
 	// Merge order control
 	expectedNextBlockStart uint64                   // Next expected start block for merge
-	pendingMergeFiles      map[uint64]*IncrFileInfo // Downloaded but pending merge files, key is StartBlock
+	downloadedFilesMap     map[uint64]*IncrFileInfo // Downloaded files ready for merge, key is StartBlock
 	mergeMutex             sync.Mutex               // Protects merge-related state
 }
 
@@ -106,18 +105,17 @@ func NewIncrDownloader(db ethdb.Database, triedb *triedb.Database, remoteURL, in
 	newURL := strings.TrimSuffix(remoteURL, "/")
 
 	downloader := &IncrDownloader{
-		db:                db,
-		triedb:            triedb,
-		remoteURL:         newURL,
-		incrPath:          incrPath,
-		localBlockNum:     localBlockNum,
-		downloadChan:      make(chan *IncrFileInfo, 100),
-		mergeChan:         make(chan *IncrFileInfo, 10),
-		progressChan:      make(chan *DownloadProgress, 100),
-		errorChan:         make(chan error, 10),
-		ctx:               ctx,
-		cancel:            cancel,
-		pendingMergeFiles: make(map[uint64]*IncrFileInfo),
+		db:                 db,
+		triedb:             triedb,
+		remoteURL:          newURL,
+		incrPath:           incrPath,
+		localBlockNum:      localBlockNum,
+		downloadChan:       make(chan *IncrFileInfo, 100),
+		progressChan:       make(chan *DownloadProgress, 100),
+		errorChan:          make(chan error, 10),
+		ctx:                ctx,
+		cancel:             cancel,
+		downloadedFilesMap: make(map[uint64]*IncrFileInfo),
 	}
 
 	return downloader
@@ -291,8 +289,9 @@ func (d *IncrDownloader) RunConcurrent() error {
 	}()
 
 	wg.Wait()
-	log.Info("All downloads completed, closing merge channel")
-	close(d.mergeChan)
+	log.Info("All downloads completed, waiting for merge to complete")
+
+	// Wait for merge worker to complete
 	d.mergeWG.Wait()
 	log.Info("All merges completed")
 
@@ -525,10 +524,10 @@ func (d *IncrDownloader) queueForMerge(file *IncrFileInfo) {
 	d.mergeMutex.Lock()
 	defer d.mergeMutex.Unlock()
 
-	// Check if file is already in pending queue
-	if existingFile, exists := d.pendingMergeFiles[file.StartBlock]; exists {
+	// Check if file is already in downloaded files map
+	if existingFile, exists := d.downloadedFilesMap[file.StartBlock]; exists {
 		if existingFile.Metadata.FileName == file.Metadata.FileName {
-			log.Debug("File already in pending queue, skipping", "file", file.Metadata.FileName, "startBlock", file.StartBlock)
+			log.Debug("File already in downloaded files map, skipping", "file", file.Metadata.FileName, "startBlock", file.StartBlock)
 			return
 		}
 	}
@@ -539,48 +538,42 @@ func (d *IncrDownloader) queueForMerge(file *IncrFileInfo) {
 		return
 	}
 
-	// Add to pending queue
-	d.pendingMergeFiles[file.StartBlock] = file
+	// Add to downloaded files map
+	d.downloadedFilesMap[file.StartBlock] = file
 	log.Debug("File queued for merge", "file", file.Metadata.FileName, "startBlock", file.StartBlock)
-
-	// Try to send the next available file to merge channel (non-blocking)
-	d.trySendNextFileToMerge()
 }
 
 // trySendNextFileToMerge tries to send the next file in sequence to merge channel
 func (d *IncrDownloader) trySendNextFileToMerge() {
 	// Only send one file at a time to ensure sequential merging
 	// Check if the next expected file is available
-	nextFile, exists := d.pendingMergeFiles[d.expectedNextBlockStart]
+	nextFile, exists := d.downloadedFilesMap[d.expectedNextBlockStart]
 	if !exists {
 		return
 	}
 
 	// Check if file has already been merged
 	if nextFile.Merged {
-		log.Warn("File already merged, removing from pending queue", "file", nextFile.Metadata.FileName)
-		delete(d.pendingMergeFiles, d.expectedNextBlockStart)
+		log.Warn("File already merged, removing from downloaded files map", "file", nextFile.Metadata.FileName)
+		delete(d.downloadedFilesMap, d.expectedNextBlockStart)
 		d.expectedNextBlockStart = nextFile.EndBlock + 1
 		// Recursively try to send the next file
 		d.trySendNextFileToMerge()
 		return
 	}
 
-	// Remove from pending queue BEFORE sending to channel to prevent race conditions
-	delete(d.pendingMergeFiles, d.expectedNextBlockStart)
+	// Remove from downloaded files map BEFORE processing to prevent race conditions
+	delete(d.downloadedFilesMap, d.expectedNextBlockStart)
 
-	// Try to send to merge channel (non-blocking)
-	select {
-	case d.mergeChan <- nextFile:
-		log.Info("File sent to merge channel", "file", nextFile.Metadata.FileName,
-			"startBlock", nextFile.StartBlock, "expectedNextBlockStart", d.expectedNextBlockStart)
-		// Update expected next start block for next iteration
-		d.expectedNextBlockStart = nextFile.EndBlock + 1
-	default:
-		// Channel is full, put back in pending queue and reset processing flag
-		d.pendingMergeFiles[d.expectedNextBlockStart] = nextFile
-		log.Info("Merge channel full, file put back in queue", "file", nextFile.Metadata.FileName)
-	}
+	// Process the file directly
+	log.Info("Processing file for merge", "file", nextFile.Metadata.FileName,
+		"startBlock", nextFile.StartBlock, "expectedNextBlockStart", d.expectedNextBlockStart)
+
+	// Update expected next start block for next iteration
+	d.expectedNextBlockStart = nextFile.EndBlock + 1
+
+	// Process the file (this will be handled by merge worker)
+	d.processFile(nextFile)
 }
 
 // processNextMergeFiles processes files that can now be merged after current file is merged
@@ -906,39 +899,73 @@ func (d *IncrDownloader) extractFile(file *IncrFileInfo) error {
 	return nil
 }
 
+// processFile processes a single file for merge
+func (d *IncrDownloader) processFile(file *IncrFileInfo) {
+	log.Info("Processing file for merge", "file", file.Metadata.FileName,
+		"startBlock", file.StartBlock, "endBlock", file.EndBlock, "merged", file.Merged)
+
+	// Check if file has already been merged
+	if file.Merged {
+		log.Warn("File already merged, skipping", "file", file.Metadata.FileName,
+			"startBlock", file.StartBlock, "endBlock", file.EndBlock)
+		return
+	}
+
+	path := filepath.Join(d.incrPath, fmt.Sprintf("incr-%d-%d", file.StartBlock, file.EndBlock))
+	if err := MergeIncrSnapshot(d.db, d.triedb, path); err != nil {
+		log.Error("Failed to merge", "file", file.Metadata.FileName, "error", err)
+		d.errorChan <- err
+		return
+	}
+
+	file.Merged = true
+	d.mu.Lock()
+	d.mergedFiles++
+	d.mu.Unlock()
+
+	log.Info("File merged successfully", "file", file.Metadata.FileName,
+		"progress", fmt.Sprintf("%d/%d", d.mergedFiles, d.totalFiles),
+		"startBlock", file.StartBlock, "endBlock", file.EndBlock)
+
+	// Process other files that may now be ready for merge
+	d.processNextMergeFiles(file)
+}
+
 // mergeWorker handles sequential merging of files
 func (d *IncrDownloader) mergeWorker() {
 	defer d.mergeWG.Done()
 
-	for file := range d.mergeChan {
-		log.Info("Merge worker processing file", "file", file.Metadata.FileName,
-			"startBlock", file.StartBlock, "endBlock", file.EndBlock, "merged", file.Merged)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
 
-		// Check if file has already been merged
-		if file.Merged {
-			log.Warn("File already merged, skipping", "file", file.Metadata.FileName,
-				"startBlock", file.StartBlock, "endBlock", file.EndBlock)
-			continue
-		}
+	for {
+		select {
+		case <-ticker.C:
+			// Check if there are files ready for merge
+			d.mergeMutex.Lock()
+			_, exists := d.downloadedFilesMap[d.expectedNextBlockStart]
+			d.mergeMutex.Unlock()
 
-		path := filepath.Join(d.incrPath, fmt.Sprintf("incr-%d-%d", file.StartBlock, file.EndBlock))
-		if err := MergeIncrSnapshot(d.db, d.triedb, path); err != nil {
-			log.Error("Failed to merge", "file", file.Metadata.FileName, "error", err)
-			d.errorChan <- err
+			if exists {
+				// Process the next file in sequence
+				d.trySendNextFileToMerge()
+			} else {
+				// Check if all files have been processed
+				d.mu.RLock()
+				downloadedCount := d.downloadedFiles
+				mergedCount := d.mergedFiles
+				d.mu.RUnlock()
+
+				if mergedCount >= downloadedCount && downloadedCount > 0 {
+					log.Info("All files processed, merge worker exiting")
+					return
+				}
+			}
+
+		case <-d.ctx.Done():
+			log.Info("Context cancelled, merge worker exiting")
 			return
 		}
-
-		file.Merged = true
-		d.mu.Lock()
-		d.mergedFiles++
-		d.mu.Unlock()
-
-		log.Info("File merged successfully", "file", file.Metadata.FileName,
-			"progress", fmt.Sprintf("%d/%d", d.mergedFiles, d.totalFiles),
-			"startBlock", file.StartBlock, "endBlock", file.EndBlock)
-
-		// Process other files that may now be ready for merge
-		d.processNextMergeFiles(file)
 	}
 }
 
@@ -1012,11 +1039,11 @@ func (d *IncrDownloader) GetPendingMergeStatus() (int, []string) {
 	defer d.mergeMutex.Unlock()
 
 	var fileNames []string
-	for _, file := range d.pendingMergeFiles {
+	for _, file := range d.downloadedFilesMap {
 		fileNames = append(fileNames, file.Metadata.FileName)
 	}
 
-	return len(d.pendingMergeFiles), fileNames
+	return len(d.downloadedFilesMap), fileNames
 }
 
 // GetExpectedNextBlockStart returns the expected next block start for merge
@@ -1037,7 +1064,7 @@ func (d *IncrDownloader) Close() {
 
 	// Clean up pending merge files
 	d.mergeMutex.Lock()
-	d.pendingMergeFiles = make(map[uint64]*IncrFileInfo)
+	d.downloadedFilesMap = make(map[uint64]*IncrFileInfo)
 	d.mergeMutex.Unlock()
 
 	close(d.progressChan)
