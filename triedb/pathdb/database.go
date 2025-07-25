@@ -800,25 +800,6 @@ func (db *Database) IsIncrEnabled() bool {
 
 // MergeIncrState merges incremental state data into local data.
 func (db *Database) MergeIncrState(incrDir string) error {
-	incrChainFreezer, err := rawdb.OpenIncrChainFreezer(incrDir, true)
-	if err != nil {
-		log.Error("Failed to open incremental chain freezer", "error", err)
-		return err
-	}
-	defer incrChainFreezer.Close()
-
-	// TODO: handle lastStateID is 0 case
-	number, _ := incrChainFreezer.Ancients()
-	lastStateID, err := rawdb.ReadIncrChainMapping(incrChainFreezer, number-1)
-	if err != nil {
-		log.Error("Failed to read incremental chain freezer", "error", err)
-		return err
-	}
-	if err = rawdb.ResetStateTableToNewStartPoint(db.freezer, lastStateID); err != nil {
-		log.Error("Failed to reset state freezer with new start point", "error", err, "lastStateID", lastStateID)
-		return err
-	}
-
 	incrStateFreezer, err := rawdb.OpenIncrStateFreezer(incrDir, true)
 	if err != nil {
 		log.Error("Failed to open incremental state freezer", "error", err)
@@ -828,8 +809,18 @@ func (db *Database) MergeIncrState(incrDir string) error {
 
 	incrAncients, _ := incrStateFreezer.Ancients()
 	tail, _ := incrStateFreezer.Tail()
-	count, _ := incrStateFreezer.ItemAmountInAncient()
-	log.Info("Merged incr state freezer info", "ancients", incrAncients, "tail", tail, "count", count)
+	log.Info("Merged incr state freezer info", "ancients", incrAncients, "tail", tail)
+
+	incrStateMeta, err := readIncrMetadata(incrStateFreezer, incrAncients)
+	if err != nil {
+		log.Error("Failed to read incremental chain freezer", "error", err)
+		return err
+	}
+	if err = rawdb.ResetStateTableToNewStartPoint(db.freezer, incrStateMeta.StateIDArray[1]); err != nil {
+		log.Error("Failed to reset state freezer with new start point", "error", err,
+			"lastStateID", incrStateMeta.StateIDArray[1])
+		return err
+	}
 
 	dl := db.tree.bottom()
 	if a, ok := dl.buffer.(*asyncnodebuffer); ok {

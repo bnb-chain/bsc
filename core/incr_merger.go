@@ -93,11 +93,8 @@ func mergeIncrBlock(incrDir string, chainDB ethdb.Database) error {
 		return err
 	}
 
-	// TODO: check block overlap
-	// check block overlap and write incremental data directly into chainFreezer
 	baseHead, _ := chainDB.Ancients()
 	if tail == baseHead && baseHead <= incrAncients {
-		log.Info("There are block data overlap", "incrAncients", incrAncients, "incr_tail", tail, "base_head", baseHead)
 		for number := tail; number < incrAncients-1; number++ {
 			hashBytes, header, body, receipts, td, err := rawdb.ReadIncrBlock(incrChainFreezer, number)
 			if err != nil {

@@ -109,7 +109,6 @@ func NewIncrManager(db *Database, incrDB *rawdb.IncrSnapDB) *incrManager {
 
 	// Initialize async incremental state buffer
 	im.asyncBuffer = newAsyncIncrStateBuffer(im.bufferLimit, defaultFlushBatchSize)
-
 	return im
 }
 
@@ -363,7 +362,6 @@ func (im *incrManager) writeIncrStateData(dl *diffLayer) error {
 	}
 	log.Debug("Committed to incremental state buffer", "id", dl.stateID(), "block", dl.block,
 		"nodes_size", dl.nodes.size, "elapsed", common.PrettyDuration(time.Since(start)))
-
 	return nil
 }
 

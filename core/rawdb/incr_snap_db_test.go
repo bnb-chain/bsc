@@ -329,12 +329,10 @@ func TestGetAllIncrDirs(t *testing.T) {
 				}
 				return
 			}
-
 			if err != nil {
 				t.Fatalf("GetAllIncrDirs() unexpected error = %v", err)
 				return
 			}
-
 			// Verify the result
 			if len(gotDirs) != len(tt.expectedDirs) {
 				t.Fatalf("GetAllIncrDirs() returned %d directories, want %d", len(gotDirs), len(tt.expectedDirs))

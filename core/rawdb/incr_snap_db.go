@@ -143,10 +143,10 @@ func (idb *IncrSnapDB) repair(startBlock uint64) error {
 	}
 	// If one freezer is empty but the other is not, reset the database
 	if stateAncients == 0 || chainAncients == 0 {
-		if err = idb.reset(idb.currentDir, startBlock); err != nil {
+		if err = idb.reset(startBlock); err != nil {
 			return err
 		}
-		log.Warn("Resets current incr snap db and create a new one")
+		log.Warn("Reset current incr snap db and create a new one")
 	}
 	return nil
 }
@@ -503,14 +503,14 @@ func (idb *IncrSnapDB) ResetAllIncr(block uint64) error {
 	idb.lock.RLock()
 	defer idb.lock.RUnlock()
 
-	if err := idb.reset(idb.baseDir, block); err != nil {
+	if err := idb.reset(block); err != nil {
 		return err
 	}
 	return nil
 }
 
 // reset the specified directory and create a new snap db.
-func (idb *IncrSnapDB) reset(dir string, block uint64) error {
+func (idb *IncrSnapDB) reset(block uint64) error {
 	if err := idb.closeCurrentDatabases(); err != nil {
 		return err
 	}
@@ -521,7 +521,7 @@ func (idb *IncrSnapDB) reset(dir string, block uint64) error {
 		return fmt.Errorf("failed to create base directory %s: %v", idb.baseDir, err)
 	}
 
-	newDir := filepath.Join(dir, fmt.Sprintf(incrDirNamePattern, block, block+idb.info.blockLimit-1))
+	newDir := filepath.Join(idb.baseDir, fmt.Sprintf(incrDirNamePattern, block, block+idb.info.blockLimit-1))
 	db, err := newSnapDBWrapper(newDir, &idb.info)
 	if err != nil {
 		return fmt.Errorf("failed to create new snap db wrapper in directory %s: %v", newDir, err)

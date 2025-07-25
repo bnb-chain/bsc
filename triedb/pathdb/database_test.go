@@ -451,7 +451,7 @@ func TestDatabaseRollback(t *testing.T) {
 	// Verify state histories
 	tester := newTester(t, 0, false, 32)
 	bottom := tester.db.tree.bottom()
-	if err := bottom.buffer.flush(tester.db.diskdb, tester.db.freezer, bottom.nodes, bottom.id, true); err != nil {
+	if err := bottom.buffer.flush(tester.db.diskdb, tester.db.freezer, bottom.nodes, bottom.id, true, true); err != nil {
 		t.Fatalf("Failed to force flush: %v", err)
 	}
 	defer tester.release()
@@ -533,7 +533,7 @@ func TestDisable(t *testing.T) {
 
 	tester := newTester(t, 0, false, 32)
 	bottom := tester.db.tree.bottom()
-	if err := bottom.buffer.flush(tester.db.diskdb, tester.db.freezer, nil, bottom.id, true); err != nil {
+	if err := bottom.buffer.flush(tester.db.diskdb, tester.db.freezer, nil, bottom.id, true, true); err != nil {
 		t.Fatalf("Failed to force flush: %v", err)
 	}
 	defer tester.release()

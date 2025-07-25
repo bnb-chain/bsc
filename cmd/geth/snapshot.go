@@ -831,12 +831,31 @@ func mergeIncrSnapshot(ctx *cli.Context) error {
 		log.Error("Failed to get all incremental directories", "err", err)
 		return err
 	}
-	log.Info("Start merging incremental snapshot", "path", path, "incremental snapshot number", len(dirs))
+	for i := 0; i < len(dirs); i++ {
+		prevFile := dirs[i-1]
+		currFile := dirs[i]
 
+		expectedStartBlock := prevFile.EndBlockNum + 1
+		if currFile.StartBlockNum != expectedStartBlock {
+			return fmt.Errorf("file continuity broken: file %s ends at %d, but file %s starts at %d (expected %d)",
+				prevFile.Name, prevFile.EndBlockNum, currFile.Name, currFile.StartBlockNum, expectedStartBlock)
+		}
+	}
+
+	log.Info("Start merging incremental snapshot", "path", path, "incremental snapshot number", len(dirs))
+	startBlock, err := trieDB.GetStartBlock()
+	if err != nil {
+		log.Error("Failed to get start block", "error", err)
+		return err
+	}
 	for _, dir := range dirs {
-		if err = core.MergeIncrSnapshot(chainDB, trieDB, dir.Path); err != nil {
-			log.Error("Failed to merge incremental snapshot", "err", err)
-			return err
+		if dir.StartBlockNum >= startBlock && dir.EndBlockNum > startBlock {
+			if err = core.MergeIncrSnapshot(chainDB, trieDB, dir.Path); err != nil {
+				log.Error("Failed to merge incremental snapshot", "err", err)
+				return err
+			}
+		} else {
+			log.Info("Skip merge incremental snapshot", "dir", dir.Name)
 		}
 	}
 	return nil

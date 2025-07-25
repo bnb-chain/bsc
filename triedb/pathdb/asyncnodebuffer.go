@@ -53,6 +53,7 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 		if err != nil {
 			return err
 		}
+		totalLayers = m.Layers
 		if i == end {
 			lastStateID = m.StateIDArray[1]
 		}

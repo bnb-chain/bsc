@@ -18,6 +18,7 @@ type asyncIncrStateBuffer struct {
 	background   *incrNodeCache
 	isFlushing   atomic.Bool
 	stopFlushing atomic.Bool
+	done         chan struct{}
 }
 
 // newAsyncIncrStateBuffer initializes the async incremental state buffer.
@@ -25,8 +26,47 @@ func newAsyncIncrStateBuffer(limit, batchSize uint64) *asyncIncrStateBuffer {
 	b := &asyncIncrStateBuffer{
 		current:    newIncrNodeCache(limit, batchSize, nil, 0),
 		background: newIncrNodeCache(limit, batchSize, nil, 0),
+		done:       make(chan struct{}),
 	}
+
+	// Start monitoring goroutine
+	go b.monitorCache()
+
 	return b
+}
+
+// monitorCache monitors the cache status every 2 minutes
+func (a *asyncIncrStateBuffer) monitorCache() {
+	ticker := time.NewTicker(2 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			a.printCacheInfo()
+		case <-a.done:
+			log.Debug("Monitor cache stopped due to done signal")
+			return
+		}
+	}
+}
+
+// printCacheInfo prints detailed information about both current and background caches
+func (a *asyncIncrStateBuffer) printCacheInfo() {
+	a.mux.RLock()
+	defer a.mux.RUnlock()
+
+	log.Info("Current Cache Status", "empty", a.current.empty(), "full", a.current.full(),
+		"size", a.current.size(), "layers", a.current.layers, "immutable", atomic.LoadUint64(&a.current.immutable) == 1,
+		"stateIDRange", fmt.Sprintf("%d-%d", a.current.stateIDArray[0], a.current.stateIDArray[1]),
+		"blockNumberRange", fmt.Sprintf("%d-%d", a.current.blockNumberArray[0], a.current.blockNumberArray[1]),
+		"limit", a.current.limit, "batchSize", a.current.batchSize)
+
+	log.Info("Background Cache Status", "empty", a.background.empty(), "full", a.background.full(),
+		"size", a.background.size(), "layers", a.background.layers, "immutable", atomic.LoadUint64(&a.background.immutable) == 1,
+		"stateIDRange", fmt.Sprintf("%d-%d", a.background.stateIDArray[0], a.background.stateIDArray[1]),
+		"blockNumberRange", fmt.Sprintf("%d-%d", a.background.blockNumberArray[0], a.background.blockNumberArray[1]),
+		"limit", a.background.limit, "batchSize", a.background.batchSize)
 }
 
 // commit merges the provided states and trie nodes into the buffer.
@@ -99,7 +139,12 @@ func (a *asyncIncrStateBuffer) flush(incrDB *rawdb.IncrSnapDB, force bool) error
 
 // waitAndStopFlushing waits for ongoing flush operations to complete and stops flushing
 func (a *asyncIncrStateBuffer) waitAndStopFlushing() {
+	// Stop monitoring goroutine immediately using done channel
+	close(a.done)
+
+	// Stop flushing operations
 	a.stopFlushing.Store(true)
+	// Wait for flush operations to complete
 	for a.isFlushing.Load() {
 		time.Sleep(time.Second)
 		log.Warn("Waiting for incremental state buffer flush to complete")

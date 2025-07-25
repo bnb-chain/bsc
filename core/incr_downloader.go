@@ -418,7 +418,7 @@ func (d *IncrDownloader) parseFileInfo(metadata []IncrMetadata) ([]*IncrFileInfo
 		}
 	}
 
-	// Sort new format files by end block
+	// Sort files by end block in ascending order
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].EndBlock < files[j].EndBlock
 	})
@@ -426,7 +426,6 @@ func (d *IncrDownloader) parseFileInfo(metadata []IncrMetadata) ([]*IncrFileInfo
 	if err := d.checkFileContinuity(files); err != nil {
 		return nil, err
 	}
-
 	// filter the block number that matches local data
 	for index, file := range files {
 		if file.StartBlock >= d.localBlockNum && file.EndBlock > d.localBlockNum {
