@@ -285,7 +285,7 @@ func (d *IncrDownloader) RunConcurrent() error {
 			log.Error("Download failed", "error", err)
 			d.errorChan <- err
 		}
-		log.Info("Download goroutine completed")
+		log.Debug("Download goroutine completed")
 	}()
 
 	wg.Wait()
@@ -435,9 +435,7 @@ func (d *IncrDownloader) downloadWorker() {
 		d.downloadedFiles++
 		d.mu.Unlock()
 
-		log.Info("File completed, queuing for merge", "file", file.Metadata.FileName, "downloadedFiles", d.downloadedFiles)
-
-		// Queue file for merge (non-blocking)
+		log.Debug("File completed, queuing for merge", "file", file.Metadata.FileName, "downloadedFiles", d.downloadedFiles)
 		d.queueForMerge(file)
 	}
 
@@ -511,7 +509,7 @@ func (d *IncrDownloader) markFileAsDownloaded(fileName string) {
 	if !found {
 		downloadedFiles = append(downloadedFiles, fileName)
 		d.saveDownloadedFiles(downloadedFiles)
-		log.Info("Marked file as downloaded", "fileName", fileName)
+		log.Debug("Marked file as downloaded", "fileName", fileName)
 	}
 
 	// Remove from downloading files
@@ -846,7 +844,7 @@ func (d *IncrDownloader) extractFile(file *IncrFileInfo) error {
 		}
 	}
 
-	log.Info("File extracted successfully", "file", file.Metadata.FileName, "extractDir", extractDir)
+	log.Debug("File extracted successfully", "file", file.Metadata.FileName, "extractDir", extractDir)
 	return nil
 }
 
@@ -862,21 +860,21 @@ func (d *IncrDownloader) mergeWorker() {
 		case <-ticker.C:
 			// Check if there are files ready for merge
 			d.mergeMutex.Lock()
-			nextFile, exists := d.downloadedFilesMap[d.expectedNextBlockStart]
+			currFile, exists := d.downloadedFilesMap[d.expectedNextBlockStart]
 			d.mergeMutex.Unlock()
 
 			if exists {
 				// Process the next file in sequence
-				log.Info("Processing file for merge", "file", nextFile.Metadata.FileName,
-					"startBlock", nextFile.StartBlock, "endBlock", nextFile.EndBlock)
+				log.Info("Processing file for merge", "file", currFile.Metadata.FileName,
+					"startBlock", currFile.StartBlock, "endBlock", currFile.EndBlock)
 
 				// Check if file has already been merged
-				if nextFile.Merged {
-					log.Warn("File already merged, removing from map", "file", nextFile.Metadata.FileName)
+				if currFile.Merged {
+					log.Warn("File already merged, removing from map", "file", currFile.Metadata.FileName)
 					d.mergeMutex.Lock()
 					delete(d.downloadedFilesMap, d.expectedNextBlockStart)
 					d.mergeMutex.Unlock()
-					d.expectedNextBlockStart = nextFile.EndBlock + 1
+					d.expectedNextBlockStart = currFile.EndBlock + 1
 					continue
 				}
 
@@ -886,25 +884,23 @@ func (d *IncrDownloader) mergeWorker() {
 				d.mergeMutex.Unlock()
 
 				// Perform merge operation
-				path := filepath.Join(d.incrPath, fmt.Sprintf("incr-%d-%d", nextFile.StartBlock, nextFile.EndBlock))
+				path := filepath.Join(d.incrPath, fmt.Sprintf("incr-%d-%d", currFile.StartBlock, currFile.EndBlock))
 				if err := MergeIncrSnapshot(d.db, d.triedb, path); err != nil {
-					log.Error("Failed to merge", "file", nextFile.Metadata.FileName, "error", err)
+					log.Error("Failed to merge", "file", currFile.Metadata.FileName, "error", err)
 					d.errorChan <- err
 					return
 				}
 
-				nextFile.Merged = true
+				currFile.Merged = true
 				d.mu.Lock()
 				d.mergedFiles++
 				d.mu.Unlock()
 
-				log.Info("File merged successfully", "file", nextFile.Metadata.FileName,
-					"progress", fmt.Sprintf("%d/%d", d.mergedFiles, d.totalFiles),
-					"startBlock", nextFile.StartBlock, "endBlock", nextFile.EndBlock)
-
 				// Update expected next start block
-				d.expectedNextBlockStart = nextFile.EndBlock + 1
-
+				d.expectedNextBlockStart = currFile.EndBlock + 1
+				log.Info("File merged successfully", "file", currFile.Metadata.FileName,
+					"progress", fmt.Sprintf("%d/%d", d.mergedFiles, d.totalFiles),
+					"startBlock", currFile.StartBlock, "endBlock", currFile.EndBlock)
 			} else {
 				// Check if all files have been processed
 				d.mu.RLock()

@@ -69,78 +69,6 @@ func MergeIncrSnapshot(chainDB ethdb.Database, trieDB *triedb.Database, incrPath
 	return nil
 }
 
-func MergeIncrSnapshot1(chainDB ethdb.Database, trieDB *triedb.Database, incrPath string, startBlock uint64) error {
-	dirs, err := rawdb.GetAllIncrDirs(incrPath)
-	if err != nil {
-		log.Error("Failed to get all incremental directories", "err", err)
-		return err
-	}
-	log.Info("Start merging incremental snapshot", "path", incrPath, "incremental snapshot number", len(dirs))
-
-	for _, dir := range dirs {
-		var wg sync.WaitGroup
-		errChan := make(chan error, 3)
-
-		// merge incremental state data
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			log.Info("Starting merge incremental state data", "path", dir.Path)
-			if err = trieDB.MergeIncrState(dir.Path); err != nil {
-				log.Error("Failed to merge incremental state data", "path", dir.Path, "err", err)
-				errChan <- fmt.Errorf("failed to merge incremental state data: %v", err)
-			} else {
-				log.Info("Successfully merged incremental state data", "path", dir.Path)
-			}
-		}()
-
-		// merge incremental block data
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			log.Info("Starting merge incremental block data", "path", dir.Path)
-			if err = mergeIncrBlock(dir.Path, chainDB); err != nil {
-				log.Error("Failed to merge incremental block data", "path", dir.Path, "err", err)
-				errChan <- fmt.Errorf("failed to merge incremental block data: %v", err)
-			} else {
-				log.Info("Successfully merged incremental block data", "path", dir.Path)
-			}
-		}()
-
-		// merge contract codes
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			log.Info("Starting merge contract codes", "path", dir.Path)
-			if err = mergeContractCodes(dir.Path, chainDB); err != nil {
-				log.Error("Failed to merge incremental contract codes", "path", dir.Path, "err", err)
-				errChan <- fmt.Errorf("failed to merge incremental contract codes: %v", err)
-			} else {
-				log.Info("Successfully merged contract codes", "path", dir.Path)
-			}
-		}()
-
-		go func() {
-			wg.Wait()
-			close(errChan)
-		}()
-
-		var mergeErrors []error
-		for err = range errChan {
-			mergeErrors = append(mergeErrors, err)
-		}
-		if len(mergeErrors) > 0 {
-			errs := errors.Join(mergeErrors...)
-			log.Error("Parallel merge operations failed", "total_errors", len(mergeErrors), "path", dir.Path)
-			return errs
-		}
-
-		log.Info("All merge operations completed successfully", "path", dir.Path)
-	}
-
-	return nil
-}
-
 func mergeIncrBlock(incrDir string, chainDB ethdb.Database) error {
 	incrChainFreezer, err := rawdb.OpenIncrChainFreezer(incrDir, true)
 	if err != nil {
@@ -195,6 +123,9 @@ func mergeIncrBlock(incrDir string, chainDB ethdb.Database) error {
 
 			blockBatch := chainDB.NewBatch()
 			hash := common.BytesToHash(hashBytes)
+			if number == 1284864 || number == 1284863 {
+				log.Info("WriteCanonicalHash", "hash", hash.String(), "number", number)
+			}
 			rawdb.WriteCanonicalHash(blockBatch, hash, number)
 			rawdb.WriteTdRLP(blockBatch, hash, number, td)
 			rawdb.WriteBodyRLP(blockBatch, hash, number, body)

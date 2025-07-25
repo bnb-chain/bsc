@@ -40,7 +40,7 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 	incrFreezer ethdb.ResettableAncientStore, start, end uint64) error {
 	persistID := rawdb.ReadPersistentStateID(db)
 	log.Info("Ancient db meta info", "persistent_state_id", persistID, "start", start,
-		"end", end, "total_count", end-start)
+		"end", end)
 
 	var (
 		totalLayers, lastStateID uint64
@@ -105,7 +105,7 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 		}
 	}
 
-	log.Info("Force flush async node buffer", "empty", a.empty(), "layers", a.getLayers(),
+	log.Info("Force flush async node buffer", "layers", a.getLayers(),
 		"lastStateID", lastStateID, "totalLayers", totalLayers)
 	if err := a.flush(db, freezer, nil, lastStateID, true); err != nil {
 		log.Error("Failed to force flush history", "error", err)
