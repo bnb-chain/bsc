@@ -53,6 +53,7 @@ type IncrFileInfo struct {
 	Verified   bool
 	Extracted  bool
 	Merged     bool
+	Processing bool
 }
 
 // DownloadProgress represents download progress for a file
@@ -566,6 +567,12 @@ func (d *IncrDownloader) queueForMerge(file *IncrFileInfo) {
 		return
 	}
 
+	// Check if file is already being processed
+	if file.Processing {
+		log.Info("File already being processed, skipping queue", "file", file.Metadata.FileName, "startBlock", file.StartBlock)
+		return
+	}
+
 	// Add to pending queue
 	d.pendingMergeFiles[file.StartBlock] = file
 	log.Debug("File queued for merge", "file", file.Metadata.FileName, "startBlock", file.StartBlock)
@@ -592,8 +599,17 @@ func (d *IncrDownloader) trySendNextFileToMerge() {
 			continue
 		}
 
-		// Remove from pending queue
+		// Check if file is already being processed
+		if nextFile.Processing {
+			log.Info("File already being processed, skipping", "file", nextFile.Metadata.FileName)
+			break
+		}
+
+		// Remove from pending queue BEFORE sending to channel to prevent race conditions
 		delete(d.pendingMergeFiles, d.expectedNextBlockStart)
+
+		// Mark file as processing
+		nextFile.Processing = true
 
 		// Try to send to merge channel (non-blocking)
 		select {
@@ -603,7 +619,8 @@ func (d *IncrDownloader) trySendNextFileToMerge() {
 			// Update expected next start block for next iteration
 			d.expectedNextBlockStart = nextFile.EndBlock + 1
 		default:
-			// Channel is full, put back in pending queue
+			// Channel is full, put back in pending queue and reset processing flag
+			nextFile.Processing = false
 			d.pendingMergeFiles[d.expectedNextBlockStart] = nextFile
 			log.Info("Merge channel full, file put back in queue", "file", nextFile.Metadata.FileName)
 			return
@@ -950,16 +967,21 @@ func (d *IncrDownloader) mergeWorker() {
 		if file.Merged {
 			log.Warn("File already merged, skipping", "file", file.Metadata.FileName,
 				"startBlock", file.StartBlock, "endBlock", file.EndBlock)
+			// Reset processing flag even for already merged files
+			file.Processing = false
 			continue
 		}
 
 		if err := d.mergeFile(file); err != nil {
 			log.Error("Failed to merge", "file", file.Metadata.FileName, "error", err)
 			d.errorChan <- err
+			// Reset processing flag on error
+			file.Processing = false
 			continue
 		}
 
 		file.Merged = true
+		file.Processing = false // Reset processing flag after successful merge
 		d.mu.Lock()
 		d.mergedFiles++
 		d.mu.Unlock()
