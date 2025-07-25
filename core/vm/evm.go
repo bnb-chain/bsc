@@ -548,6 +548,15 @@ func tryGetOptimizedCode(evm *EVM, codeHash common.Hash, rawCode []byte) (bool, 
 	} else {
 		compiler.GenOrLoadOptimizedCode(codeHash, rawCode)
 	}
+	
+	// Metrics: count all contract code lookups
+	evmContractCounter.Inc(1)
+	
+	// Metrics: count optimized contract code lookups
+	if optimized {
+		evmOptimizedContractCounter.Inc(1)
+	}
+	
 	return optimized, code
 }
 

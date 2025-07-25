@@ -251,6 +251,15 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		op = contract.GetOp(pc)
 		operation := in.table[op]
 		cost = operation.constantGas // For tracing
+		
+		// Metrics: count all opcode executions
+		evmOpcodeCounter.Inc(1)
+		
+		// Metrics: count optimized opcode executions (method 1: check opcode range)
+		if op >= 0xb0 && op <= 0xcf {
+			evmOptimizedOpcodeCounter.Inc(1)
+		}
+		
 		// Validate stack
 		if sLen := stack.len(); sLen < operation.minStack {
 			return nil, &ErrStackUnderflow{stackLen: sLen, required: operation.minStack}
