@@ -526,6 +526,7 @@ func (d *IncrDownloader) queueForMerge(file *IncrFileInfo) {
 	d.mergeMutex.Lock()
 	defer d.mergeMutex.Unlock()
 
+	log.Info("Queueing file for merge, only called 7 times", "file", file.Metadata.FileName, "startBlock", file.StartBlock)
 	// Check if file is already in pending queue
 	if existingFile, exists := d.pendingMergeFiles[file.StartBlock]; exists {
 		if existingFile.Metadata.FileName == file.Metadata.FileName {
