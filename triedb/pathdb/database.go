@@ -943,7 +943,15 @@ func (db *Database) loadIncrInfo() (*incrInfo, error) {
 	return info, nil
 }
 
-// alignIncrData aligns incremental data with disk layer
+// max returns the maximum of two uint64 values
+func max(a, b uint64) uint64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// alignIncrData aligns incremental data with disk layer after force kill restart
 func (db *Database) alignIncrData(diskLayerID uint64) error {
 	// Load current incremental data info
 	info, err := db.loadIncrInfo()
@@ -951,35 +959,88 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 		return err
 	}
 
-	if info.allEmpty() {
-		log.Info("All incr data is empty")
-		return nil
+	// Get start block to avoid duplicate data writing
+	startBlock, err := db.GetStartBlock()
+	if err != nil {
+		log.Error("Failed to get start block", "error", err)
+		return err
 	}
 
-	// Calculate final state and block
+	log.Info("Incremental data alignment check", "stateAncients", info.stateAncients,
+		"chainAncients", info.chainAncients, "diskLayerID", diskLayerID, "startBlock", startBlock)
+
+	// if info.allEmpty() {
+	// 	return db.resetIncrDirectory(startBlock)
+	// }
+
+	if info.isEmpty() {
+		return db.resetIncrDirectory(startBlock)
+	}
+
+	// Scenario 3: Both are not empty, need to compare and align
+	log.Info("Both incr chain and state have data, comparing for alignment",
+		"lastChainStateID", info.lastChainStateID,
+		"lastStateID", info.lastStateID,
+		"lastStateBlock", info.lastStateBlock,
+		"chainAncients", info.chainAncients)
+
+	// Find the minimum state ID to ensure consistency
 	var finalStateID, finalBlock uint64
+
 	if info.lastChainStateID < info.lastStateID {
-		// Use chain state as limit
+		// Chain data is more conservative (less data)
 		finalStateID = info.lastChainStateID
 		finalBlock = info.chainAncients - 1
-	} else {
-		// Use state data as limit
+		log.Info("Using chain data as alignment reference",
+			"finalStateID", finalStateID, "finalBlock", finalBlock)
+	} else if info.lastStateID < info.lastChainStateID {
+		// State data is more conservative (less data)
 		finalStateID = info.lastStateID
 		finalBlock = info.lastStateBlock
+		log.Info("Using state data as alignment reference",
+			"finalStateID", finalStateID, "finalBlock", finalBlock)
+	} else {
+		// Both are equal, use either
+		finalStateID = info.lastStateID
+		finalBlock = info.lastStateBlock
+		log.Info("Chain and state data are equal",
+			"finalStateID", finalStateID, "finalBlock", finalBlock)
 	}
 
-	// Validate final state ID
 	if finalStateID < diskLayerID {
-		log.Error("Recorded state id shouldn't be less than disk layer state id",
-			"diskLayerID", diskLayerID, "finalStateID", finalStateID)
-		return errors.New("recorded state id shouldn't be less than disk layer state id")
+		return fmt.Errorf("Final state ID is less than disk layer ID, diskLayerID: %d, finalStateID: %d", diskLayerID, finalStateID)
+	}
+	if finalBlock < startBlock {
+		return fmt.Errorf("Final block is smaller than start block, finalBlock: %d, startBlock: %d", finalBlock, startBlock)
 	}
 
-	// Update incremental manager state
-	log.Warn("Truncate extra data in incremental snapshot", "diskLayerID", diskLayerID,
-		"finalStateID", finalStateID, "finalBlock", finalBlock)
-	db.incr.skipCount = finalStateID - diskLayerID
-	db.incr.endStateID = finalStateID
+	// var effectiveStartBlock uint64
+	// if info.chainAncients > 0 {
+	// 	chainTail, err := info.chainFreezer.Tail()
+	// 	if err != nil {
+	// 		log.Error("Failed to get chain freezer tail", "error", err)
+	// 		return err
+	// 	}
+	// 	effectiveStartBlock = max(startBlock, chainTail)
+	// } else {
+	// 	effectiveStartBlock = startBlock
+	// }
+
+	// log.Info("Effective start block calculation",
+	// 	"startBlock", startBlock,
+	// 	"effectiveStartBlock", effectiveStartBlock,
+	// 	"finalBlock", finalBlock)
+
+	// // Update incremental manager state
+	// log.Info("Aligning incremental data",
+	// 	"alignmentType", alignmentType,
+	// 	"diskLayerID", diskLayerID,
+	// 	"finalStateID", finalStateID,
+	// 	"finalBlock", finalBlock,
+	// 	"effectiveStartBlock", effectiveStartBlock,
+	// 	"skipCount", finalStateID-diskLayerID)
+
+	db.incr.endBlock = finalBlock
 
 	// Truncate incr state freezer
 	if err = db.truncateIncrStateFreezer(info, finalStateID); err != nil {
@@ -991,7 +1052,44 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 		log.Error("Failed to truncate incr chain freezer", "error", err)
 		return err
 	}
-	log.Info("Open incremental db")
+
+	log.Info("Incremental data alignment completed successfully")
+	return nil
+}
+
+// resetIncrDirectory resets the incremental directory when alignment is not possible
+func (db *Database) resetIncrDirectory(startBlock uint64) error {
+	log.Info("Resetting incremental directory")
+
+	// Reset state freezer
+	if db.incr.incrDB.GetStateFreezer() != nil {
+		if err := db.incr.incrDB.GetStateFreezer().Reset(); err != nil {
+			log.Error("Failed to reset incr state freezer", "error", err)
+			return err
+		}
+		log.Info("Reset incr state freezer")
+	}
+
+	// Reset chain freezer
+	if db.incr.incrDB.GetChainFreezer() != nil {
+		if err := db.incr.incrDB.GetChainFreezer().Reset(); err != nil {
+			log.Error("Failed to reset incr chain freezer", "error", err)
+			return err
+		}
+		log.Info("Reset incr chain freezer")
+	}
+
+	start, _, err := db.incr.incrDB.ParseCurrDirBlockNumber()
+	if err != nil {
+		return err
+	}
+	if start > startBlock {
+		// Reset incremental manager state
+		// db.incr.skipCount = start - startBlock
+		db.incr.endBlock = start
+	}
+
+	log.Info("Incremental directory reset completed")
 	return nil
 }
 

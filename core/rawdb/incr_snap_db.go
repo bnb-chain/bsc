@@ -117,9 +117,9 @@ func NewIncrSnapDB(baseDir string, readonly bool, startBlock, blockLimit uint64)
 	}
 	incrDB.switchCond = sync.NewCond(&incrDB.switchMutex)
 
-	if err = incrDB.repair(startBlock); err != nil {
-		return nil, fmt.Errorf("failed to repair incr snap db: %v", err)
-	}
+	// if err = incrDB.repair(); err != nil {
+	// 	return nil, fmt.Errorf("failed to repair incr snap db: %v", err)
+	// }
 
 	log.Info("IncrDB created", "baseDir", baseDir, "currentDir", currentDir, "blockLimit", blockLimit,
 		"blockCount", blockCount, "startBlock", startBlock, "dirStartBlock", dirStartBlock)
@@ -127,7 +127,7 @@ func NewIncrSnapDB(baseDir string, readonly bool, startBlock, blockLimit uint64)
 }
 
 // repair handles empty incremental data.
-func (idb *IncrSnapDB) repair(startBlock uint64) error {
+func (idb *IncrSnapDB) repair() error {
 	stateAncients, err := idb.GetStateFreezer().Ancients()
 	if err != nil {
 		return err
@@ -152,7 +152,7 @@ func (idb *IncrSnapDB) repair(startBlock uint64) error {
 		if err = idb.currSnapDB.chainFreezer.Reset(); err != nil {
 			return err
 		}
-		log.Warn("Reset current incr snap db and create a new one")
+		log.Warn("Reset current incr snap db")
 	}
 	return nil
 }
@@ -538,6 +538,10 @@ func (idb *IncrSnapDB) reset(block uint64) error {
 	idb.currentDir = newDir
 	idb.blockCount = 0
 	return nil
+}
+
+func (idb *IncrSnapDB) ParseCurrDirBlockNumber() (uint64, uint64, error) {
+	return parseDirBlockNumber(idb.currentDir)
 }
 
 // parseDirBlockNumber parses the start and end block number from directory path
