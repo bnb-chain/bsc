@@ -1010,9 +1010,6 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 	if finalStateID < diskLayerID {
 		return fmt.Errorf("Final state ID is less than disk layer ID, diskLayerID: %d, finalStateID: %d", diskLayerID, finalStateID)
 	}
-	if finalBlock < startBlock {
-		return fmt.Errorf("Final block is smaller than start block, finalBlock: %d, startBlock: %d", finalBlock, startBlock)
-	}
 
 	// var effectiveStartBlock uint64
 	// if info.chainAncients > 0 {
