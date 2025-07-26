@@ -189,6 +189,24 @@ The export-preimages command exports hash preimages to a flat file, in exactly
 the expected order for the overlay tree migration.
 `,
 			},
+			{
+				Action:    mergeIncrSnapshot,
+				Name:      "merge-incr-snapshot",
+				Usage:     "Merge the incremental snapshot into local data",
+				ArgsUsage: "",
+				Flags: slices.Concat([]cli.Flag{utils.IncrSnapshotPathFlag},
+					utils.DatabaseFlags),
+				Description: `This command merges multiple incremental snapshots into local data`,
+			},
+			{
+				Action:    downloadIncrSnapshot,
+				Name:      "download-incr-snapshot",
+				Usage:     "Download the incremental snapshots",
+				ArgsUsage: "",
+				Flags: slices.Concat([]cli.Flag{utils.IncrSnapshotPathFlag, utils.RemoteIncrSnapshotURLFlag},
+					utils.DatabaseFlags),
+				Description: `This command is used to download incremental snapshots`,
+			},
 		},
 	}
 )
@@ -764,5 +782,81 @@ func checkAccount(ctx *cli.Context) error {
 		return err
 	}
 	log.Info("Checked the snapshot journalled storage", "time", common.PrettyDuration(time.Since(start)))
+	return nil
+}
+
+func downloadIncrSnapshot(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	chainDB := utils.MakeChainDatabase(ctx, stack, false, false)
+	defer chainDB.Close()
+
+	trieDB := utils.MakeTrieDatabase(ctx, stack, chainDB, false, true, false)
+	defer trieDB.Close()
+
+	var path string
+	if !ctx.IsSet(utils.IncrSnapshotPathFlag.Name) {
+		path = "./in"
+	} else {
+		path = ctx.String(utils.IncrSnapshotPathFlag.Name)
+	}
+
+	url := ctx.String(utils.RemoteIncrSnapshotURLFlag.Name)
+
+	downloader := core.NewIncrDownloader(chainDB, trieDB, url, path, 10)
+	defer downloader.Close()
+	return nil
+}
+
+// mergeIncrSnapshot merges the incremental snapshot into local data.
+func mergeIncrSnapshot(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	chainDB := utils.MakeChainDatabase(ctx, stack, false, false)
+	defer chainDB.Close()
+
+	trieDB := utils.MakeTrieDatabase(ctx, stack, chainDB, false, false, false)
+	defer trieDB.Close()
+
+	if !ctx.IsSet(utils.IncrSnapshotPathFlag.Name) {
+		return errors.New("incremental snapshot path is not set")
+	}
+	path := ctx.String(utils.IncrSnapshotPathFlag.Name)
+
+	// TODO: handle repair for force kill incr snapshot\
+	dirs, err := rawdb.GetAllIncrDirs(path)
+	if err != nil {
+		log.Error("Failed to get all incremental directories", "err", err)
+		return err
+	}
+	for i := 0; i < len(dirs); i++ {
+		prevFile := dirs[i-1]
+		currFile := dirs[i]
+
+		expectedStartBlock := prevFile.EndBlockNum + 1
+		if currFile.StartBlockNum != expectedStartBlock {
+			return fmt.Errorf("file continuity broken: file %s ends at %d, but file %s starts at %d (expected %d)",
+				prevFile.Name, prevFile.EndBlockNum, currFile.Name, currFile.StartBlockNum, expectedStartBlock)
+		}
+	}
+
+	log.Info("Start merging incremental snapshot", "path", path, "incremental snapshot number", len(dirs))
+	startBlock, err := trieDB.GetStartBlock()
+	if err != nil {
+		log.Error("Failed to get start block", "error", err)
+		return err
+	}
+	for _, dir := range dirs {
+		if dir.StartBlockNum >= startBlock && dir.EndBlockNum > startBlock {
+			if err = core.MergeIncrSnapshot(chainDB, trieDB, dir.Path); err != nil {
+				log.Error("Failed to merge incremental snapshot", "err", err)
+				return err
+			}
+		} else {
+			log.Info("Skip merge incremental snapshot", "dir", dir.Name)
+		}
+	}
 	return nil
 }

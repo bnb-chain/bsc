@@ -19,7 +19,9 @@ package pathdb
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
@@ -56,7 +58,7 @@ type trienodebuffer interface {
 
 	// flush persists the in-memory dirty trie node into the disk if the configured
 	// memory threshold is reached. Note, all data must be written atomically.
-	flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, clean *fastcache.Cache, id uint64, force bool) error
+	flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, clean *fastcache.Cache, id uint64, force, validateID bool) error
 
 	// empty returns an indicator if trienodebuffer contains any state transition inside.
 	empty() bool
@@ -305,6 +307,15 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 			oldest = bottom.stateID() - limit + 1 // track the id of history **after truncation**
 		}
 	}
+
+	if dl.db.config.EnableIncrHistory {
+		err := dl.commitIncrData(bottom)
+		if err != nil {
+			log.Error("Failed to commit incremental data after retries", "err", err)
+			return nil, err
+		}
+	}
+
 	// Mark the diskLayer as stale before applying any mutations on top.
 	dl.stale = true
 
@@ -326,7 +337,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	// Merge the trie nodes and flat states of the bottom-most diff layer into the
 	// buffer as the combined layer.
 	combined := dl.buffer.commit(bottom.nodes, bottom.states.stateSet)
-	if err := combined.flush(dl.db.diskdb, dl.db.freezer, dl.nodes, bottom.stateID(), force); err != nil {
+	if err := combined.flush(dl.db.diskdb, dl.db.freezer, dl.nodes, bottom.stateID(), force, true); err != nil {
 		return nil, err
 	}
 	ndl := newDiskLayer(bottom.root, bottom.stateID(), dl.db, dl.nodes, combined)
@@ -416,6 +427,61 @@ func (dl *diskLayer) resetCache() {
 	if dl.nodes != nil {
 		dl.nodes.Reset()
 	}
+}
+
+// commitIncrData attempts to commit incremental data with retry mechanism.
+func (dl *diskLayer) commitIncrData(bottom *diffLayer) error {
+	const (
+		maxRetries = 5
+		baseDelay  = 100 * time.Millisecond
+		maxDelay   = 5 * time.Second
+	)
+
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		err := dl.db.incr.commit(bottom)
+		if err == nil {
+			if attempt > 0 {
+				log.Info("Incremental data commit succeeded after retries",
+					"block", bottom.block, "stateID", bottom.stateID(), "attempts", attempt+1)
+			}
+			return nil
+		}
+		lastErr = err
+
+		// Check if this is a queue full error
+		if strings.Contains(err.Error(), "task queue is full") {
+			// Calculate delay with exponential backoff
+			delay := baseDelay * time.Duration(1<<uint(attempt))
+			if delay > maxDelay {
+				delay = maxDelay
+			}
+
+			// Check if directory switch is in progress
+			switching := dl.db.incr.incrDB.IsSwitching()
+			queueUsage := dl.db.incr.GetQueueUsageRate()
+			log.Warn("Task queue is full, retrying after delay", "block", bottom.block,
+				"stateID", bottom.stateID(), "attempt", attempt+1, "maxRetries", maxRetries, "delay", delay,
+				"switching", switching, "queueUsage", fmt.Sprintf("%.1f%%", queueUsage))
+
+			// If the directory switch is in progress, use longer delay
+			if switching {
+				delay = maxDelay
+				log.Info("Directory switch detected, using longer delay", "delay", delay)
+			}
+			time.Sleep(delay)
+			continue
+		}
+
+		log.Error("Non-recoverable error committing incremental data",
+			"block", bottom.block, "stateID", bottom.stateID(), "err", err)
+		return err
+	}
+
+	log.Error("Failed to commit incremental data after all retries",
+		"block", bottom.block, "stateID", bottom.stateID(), "maxRetries", maxRetries, "finalError", lastErr)
+	dl.db.incr.LogStats()
+	return fmt.Errorf("failed to commit incremental data after %d retries: %w", maxRetries, lastErr)
 }
 
 // hasher is used to compute the sha256 hash of the provided data.

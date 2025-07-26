@@ -130,15 +130,18 @@ func (b *buffer) size() uint64 {
 
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
-func (b *buffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, nodesCache *fastcache.Cache, id uint64, force bool) error {
+func (b *buffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, nodesCache *fastcache.Cache, id uint64, force, validateID bool) error {
 	if !b.full() && !force {
 		return nil
 	}
 
 	// Ensure the target state id is aligned with the internal counter.
-	head := rawdb.ReadPersistentStateID(db)
-	if head+b.layers != id {
-		return fmt.Errorf("buffer layers (%d) cannot be applied on top of persisted state id (%d) to reach requested state id (%d)", b.layers, head, id)
+	if validateID {
+		head := rawdb.ReadPersistentStateID(db)
+		if head+b.layers != id {
+			log.Error("Buffer layers cannot be applied on top of persisted state id to reach requested state id", "layers", b.layers, "head", head, "id", id)
+			return fmt.Errorf("buffer layers (%d) cannot be applied on top of persisted state id (%d) to reach requested state id (%d)", b.layers, head, id)
+		}
 	}
 	// Terminate the state snapshot generation if it's active
 	var (
@@ -167,7 +170,7 @@ func (b *buffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, node
 	commitNodesMeter.Mark(int64(nodes))
 	commitTimeTimer.UpdateSince(start)
 	b.reset()
-	log.Debug("Persisted buffer content", "nodes", nodes, "bytes", common.StorageSize(size), "elapsed", common.PrettyDuration(time.Since(start)))
+	log.Info("Persisted buffer content", "nodes", nodes, "bytes", common.StorageSize(size), "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
 }
 
