@@ -961,16 +961,8 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 
 	if info.isEmpty() {
 		if info.chainAncients != 0 {
-			lastChainStateID, err := rawdb.ReadIncrChainMapping(info.chainFreezer, info.chainAncients-1)
-			if err != nil {
-				return err
-			}
-			// force kill case, always use persistent state id as basic
-			persistID := rawdb.ReadPersistentStateID(db.diskdb)
-			log.Info("qqqq", "lastChainStateID", lastChainStateID, "persistID", persistID)
-			if lastChainStateID > startBlock {
-				// db.incr.skipCount = lastChainStateID - persistID
-				db.incr.endStateID = lastChainStateID
+			if info.chainAncients-1 > startBlock {
+				db.incr.endStateID = info.chainAncients - 1
 			}
 		}
 
