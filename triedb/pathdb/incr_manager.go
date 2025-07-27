@@ -288,8 +288,10 @@ func (im *incrManager) writeIncrData(dl *diffLayer) error {
 	for i := startBlock; i <= dl.block; i++ {
 		// check if this block has state changes, empty block stateID is set 0
 		isEmptyBlock := true
+		currStateID := dl.stateID() - 1
 		if i == dl.block {
 			isEmptyBlock = false
+			currStateID = dl.stateID()
 		}
 
 		if im.incrDB.Full() {
@@ -308,7 +310,7 @@ func (im *incrManager) writeIncrData(dl *diffLayer) error {
 			}
 		}
 
-		if err = im.writeIncrBlock(im.db.diskdb, i, dl.stateID(), isEmptyBlock); err != nil {
+		if err = im.writeIncrBlock(im.db.diskdb, i, currStateID, isEmptyBlock); err != nil {
 			log.Error("Failed to write block data to freezer", "block", i, "stateID", dl.stateID(), "error", err)
 			return err
 		}
