@@ -165,7 +165,7 @@ func (im *incrManager) Stop() {
 	}
 
 	if im.asyncBuffer != nil {
-		if err := im.ForceFlushAllData(); err != nil {
+		if err := im.ForceFlushStateBuffer(); err != nil {
 			log.Crit("Failed to force flush data", "error", err)
 		}
 	}
@@ -532,9 +532,9 @@ func (im *incrManager) writeIncrBlock(reader ethdb.Reader, blockNumber, stateID 
 	return nil
 }
 
-// ForceFlushAllData forces all buffered data in asyncIncrStateBuffer to be written
+// ForceFlushStateBuffer forces all buffered data in asyncIncrStateBuffer to be flushed.
 // This is called before directory switch to ensure data integrity
-func (im *incrManager) ForceFlushAllData() error {
+func (im *incrManager) ForceFlushStateBuffer() error {
 	if im.asyncBuffer == nil {
 		return nil
 	}

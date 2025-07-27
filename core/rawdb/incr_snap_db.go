@@ -17,6 +17,12 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
+// AsyncWriteManager defines the interface for async write manager
+type AsyncWriteManager interface {
+	// ForceFlushStateBuffer forces all buffered incr state data to be flushed before directory switch
+	ForceFlushStateBuffer() error
+}
+
 const (
 	incrDirNameRegexPattern = `^incr-(\d+)-(\d+)$`
 	incrDirNamePattern      = "incr-%d-%d"
@@ -83,97 +89,18 @@ func NewIncrSnapDB(baseDir string, readonly bool, startBlock, blockLimit uint64)
 		return nil, err
 	}
 
-	// var blockCount uint64
-	// // parse the current directory name to get its start block number
-	// dirStartBlock, dirEndBlock, err := parseDirBlockNumber(currentDir)
-	// if err != nil {
-	// 	log.Error("Failed to parse directory start block", "dir", currentDir, "error", err)
-	// 	return nil, err
-	// } else {
-	// 	if startBlock > dirEndBlock+1 {
-	// 		log.Error("Start block is beyond dir end block", "startBlock", startBlock, "dirEndBlock", dirEndBlock)
-	// 		return nil, fmt.Errorf("start block is beyond dir end block, please reset incr dir")
-	// 	}
-	//
-	// 	ancients, err := db.chainFreezer.Ancients()
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// 	log.Info("NewIncrDB", "ancients", ancients, "startBlock", startBlock)
-	// 	if ancients < dirStartBlock {
-	// 		blockCount = 0
-	// 	} else if ancients >= dirStartBlock && ancients <= dirEndBlock {
-	// 		blockCount = ancients - dirStartBlock
-	// 	} else {
-	// 		blockCount = blockLimit
-	// 	}
-	//
-	// 	// if startBlock < dirStartBlock {
-	// 	// 	// startBlock is before this directory range, directory should be empty
-	// 	// 	blockCount = 0
-	// 	// } else if startBlock <= dirEndBlock {
-	// 	// 	// startBlock is within this directory range
-	// 	// 	blockCount = startBlock - dirStartBlock
-	// 	// } else {
-	// 	// 	// startBlock is beyond this directory range, directory should be full
-	// 	// 	blockCount = blockLimit
-	// 	// }
-	// }
-
 	incrDB := &IncrSnapDB{
 		currSnapDB: db,
 		info:       info,
 		baseDir:    baseDir,
 		currentDir: currentDir,
-		// blockCount: blockCount,
-		switching: false,
+		switching:  false,
 	}
 	incrDB.switchCond = sync.NewCond(&incrDB.switchMutex)
-
-	// if err = incrDB.repair(); err != nil {
-	// 	return nil, fmt.Errorf("failed to repair incr snap db: %v", err)
-	// }
 
 	log.Info("New incr snap db", "baseDir", baseDir, "currentDir", currentDir, "blockLimit", blockLimit,
 		"startBlock", startBlock)
 	return incrDB, nil
-}
-
-// SetBlockCount sets the block count
-func (idb *IncrSnapDB) SetBlockCount(blockCount uint64) {
-	log.Info("SetBlockCount", "blockCount", blockCount)
-	idb.blockCount = blockCount
-}
-
-// repair handles empty incremental data.
-func (idb *IncrSnapDB) repair() error {
-	stateAncients, err := idb.GetStateFreezer().Ancients()
-	if err != nil {
-		return err
-	}
-	chainAncients, err := idb.GetChainFreezer().Ancients()
-	if err != nil {
-		return err
-	}
-
-	// If both freezers are empty, no repair needed
-	if stateAncients == 0 && chainAncients == 0 {
-		return nil
-	}
-	// If one freezer is empty but the other is not, reset the database
-	if stateAncients == 0 || chainAncients == 0 {
-		// if err = idb.reset(startBlock); err != nil {
-		// 	return err
-		// }
-		if err = idb.currSnapDB.stateFreezer.Reset(); err != nil {
-			return err
-		}
-		if err = idb.currSnapDB.chainFreezer.Reset(); err != nil {
-			return err
-		}
-		log.Warn("Reset current incr snap db")
-	}
-	return nil
 }
 
 func newSnapDBWrapper(incrDir string, info *incrSnapDBInfo) (*snapDBWrapper, error) {
@@ -212,6 +139,11 @@ func newSnapDBWrapper(incrDir string, info *incrSnapDBInfo) (*snapDBWrapper, err
 		stateFreezer: sFreezer,
 		kvDB:         NewDatabase(db),
 	}, nil
+}
+
+// SetBlockCount sets the block count
+func (idb *IncrSnapDB) SetBlockCount(blockCount uint64) {
+	idb.blockCount = blockCount
 }
 
 // waitForSwitchComplete waits until directory switching is complete
@@ -309,7 +241,7 @@ func (idb *IncrSnapDB) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 }
 
 // switchToNewDirectoryWithAsyncManager performs directory switch with async write manager coordination
-func (idb *IncrSnapDB) switchToNewDirectoryWithAsyncManager(blockNum uint64, asyncManager AsyncWriteManagerInterface) error {
+func (idb *IncrSnapDB) switchToNewDirectoryWithAsyncManager(blockNum uint64, asyncManager AsyncWriteManager) error {
 	log.Info("Starting coordinated directory switch", "blockNum", blockNum)
 
 	// Set switching flag to block new writes
@@ -325,10 +257,9 @@ func (idb *IncrSnapDB) switchToNewDirectoryWithAsyncManager(blockNum uint64, asy
 		idb.switchMutex.Unlock()
 	}()
 
-	// force flush all buffered data in asyncIncrStateBuffer
-	log.Info("Force flushing all buffered incremental state data before directory switch")
-	if err := asyncManager.ForceFlushAllData(); err != nil {
-		log.Error("Failed to force flush buffered data before directory switch", "error", err)
+	log.Info("Force flushing all incr state data before directory switch")
+	if err := asyncManager.ForceFlushStateBuffer(); err != nil {
+		log.Error("Failed to force flush state data before directory switch", "error", err)
 		return fmt.Errorf("failed to force flush buffered data: %v", err)
 	}
 
@@ -438,7 +369,7 @@ func (idb *IncrSnapDB) GetStateFreezer() ethdb.ResettableAncientStore {
 	return nil
 }
 
-// GetKVDB returns the current KV database
+// GetKVDB returns the current kv db
 func (idb *IncrSnapDB) GetKVDB() ethdb.KeyValueStore {
 	idb.lock.RLock()
 	defer idb.lock.RUnlock()
@@ -492,7 +423,7 @@ func (idb *IncrSnapDB) IsSwitching() bool {
 
 // CheckAndInitiateSwitch safely checks if directory switch is needed and initiates it
 // Returns true if switch was initiated, false if not needed or already in progress
-func (idb *IncrSnapDB) CheckAndInitiateSwitch(blockNum uint64, asyncManager AsyncWriteManagerInterface) (bool, error) {
+func (idb *IncrSnapDB) CheckAndInitiateSwitch(blockNum uint64, asyncManager AsyncWriteManager) (bool, error) {
 	// First check without lock (fast path)
 	if idb.IsSwitching() {
 		return false, nil
@@ -661,10 +592,4 @@ func GetAllIncrDirs(baseDir string) ([]IncrDirInfo, error) {
 		return incrDirs[i].StartBlockNum < incrDirs[j].StartBlockNum
 	})
 	return incrDirs, nil
-}
-
-// AsyncWriteManagerInterface defines the interface for async write manager
-type AsyncWriteManagerInterface interface {
-	// ForceFlushAllData forces all buffered data to be written before directory switch
-	ForceFlushAllData() error
 }

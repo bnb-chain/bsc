@@ -969,7 +969,6 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 
 	// Find the minimum state ID to ensure consistency
 	var finalStateID, finalBlock uint64
-
 	if info.lastChainStateID < info.lastStateID {
 		// Chain data is more conservative (less data)
 		finalStateID = info.lastChainStateID
@@ -1143,6 +1142,8 @@ func (db *Database) setBlockCount(startBlock uint64) error {
 		blockCount = db.config.IncrHistory
 	}
 
+	log.Info("SetBlockCount", "blockCount", blockCount, "dirStartBlock", dirStartBlock, "dirEndBlock", dirEndBlock,
+		"chainAncients", chainAncients)
 	db.incr.incrDB.SetBlockCount(blockCount)
 	return nil
 }
