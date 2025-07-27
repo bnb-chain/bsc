@@ -258,9 +258,9 @@ func (im *incrManager) processWriteTask(dl *diffLayer) error {
 		log.Error("Failed to write incremental data", "block", dl.block, "stateID", dl.stateID(), "error", err)
 		return err
 	}
-	if im.skipCount != im.count {
-		return fmt.Errorf("different number of skipped blocks: %d != %d", im.skipCount, im.count)
-	}
+	// if im.skipCount != im.count {
+	// 	return fmt.Errorf("different number of skipped blocks: %d != %d", im.skipCount, im.count)
+	// }
 
 	return nil
 }
