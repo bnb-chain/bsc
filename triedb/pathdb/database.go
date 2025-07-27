@@ -960,7 +960,7 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 		"chainAncients", info.chainAncients, "diskLayerID", diskLayerID, "startBlock", startBlock)
 
 	if info.isEmpty() {
-		return db.resetIncrDirectory(startBlock)
+		return db.resetIncrDirectory(info, startBlock)
 	}
 
 	log.Info("Both incr chain and state have data, comparing for alignment",
@@ -1013,38 +1013,37 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 }
 
 // resetIncrDirectory resets the incremental directory when alignment is not possible
-func (db *Database) resetIncrDirectory(startBlock uint64) error {
+func (db *Database) resetIncrDirectory(info *incrInfo, startBlock uint64) error {
 	log.Info("Resetting incremental directory")
 
-	// Reset state freezer
-	if db.incr.incrDB.GetStateFreezer() != nil {
-		if err := db.incr.incrDB.GetStateFreezer().Reset(); err != nil {
-			log.Error("Failed to reset incr state freezer", "error", err)
-			return err
-		}
-		log.Info("Reset incr state freezer")
-	}
+	// // Reset state freezer
+	// if err := db.incr.incrDB.GetStateFreezer().Reset(); err != nil {
+	// 	log.Error("Failed to reset incr state freezer", "error", err)
+	// 	return err
+	// }
+	// log.Info("Reset incr state freezer")
+	//
+	// if info.chainAncients != 0 {
+	//
+	// }
+	// // Reset chain freezer
+	// if err := db.incr.incrDB.GetChainFreezer().Reset(); err != nil {
+	// 	log.Error("Failed to reset incr chain freezer", "error", err)
+	// 	return err
+	// }
+	// log.Info("Reset incr chain freezer")
 
-	// Reset chain freezer
-	if db.incr.incrDB.GetChainFreezer() != nil {
-		if err := db.incr.incrDB.GetChainFreezer().Reset(); err != nil {
-			log.Error("Failed to reset incr chain freezer", "error", err)
-			return err
-		}
-		log.Info("Reset incr chain freezer")
-	}
+	// start, _, err := db.incr.incrDB.ParseCurrDirBlockNumber()
+	// if err != nil {
+	// 	return err
+	// }
+	// if start > startBlock {
+	// 	// Reset incremental manager state
+	// 	// db.incr.skipCount = start - startBlock
+	// 	db.incr.endBlock = start
+	// }
 
-	start, _, err := db.incr.incrDB.ParseCurrDirBlockNumber()
-	if err != nil {
-		return err
-	}
-	if start > startBlock {
-		// Reset incremental manager state
-		// db.incr.skipCount = start - startBlock
-		db.incr.endBlock = start
-	}
-
-	if err = db.setBlockCount(startBlock); err != nil {
+	if err := db.setBlockCount(startBlock); err != nil {
 		return err
 	}
 	log.Info("Incremental directory reset completed")
