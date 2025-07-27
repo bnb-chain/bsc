@@ -960,7 +960,16 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 		"chainAncients", info.chainAncients, "diskLayerID", diskLayerID, "startBlock", startBlock)
 
 	if info.isEmpty() {
-		return db.resetIncrDirectory(info, startBlock)
+		if info.chainAncients > startBlock {
+			db.incr.skipCount = info.chainAncients - startBlock
+			db.incr.endBlock = info.chainAncients - 1
+		}
+
+		if err = db.setBlockCount(startBlock); err != nil {
+			return err
+		}
+		log.Warn("Incr state may lose some data that will affect the correctness of incr functions")
+		return nil
 	}
 
 	log.Info("Both incr chain and state have data, comparing for alignment",
@@ -970,19 +979,16 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 	// Find the minimum state ID to ensure consistency
 	var finalStateID, finalBlock uint64
 	if info.lastChainStateID < info.lastStateID {
-		// Chain data is more conservative (less data)
 		finalStateID = info.lastChainStateID
 		finalBlock = info.chainAncients - 1
 		log.Info("Using chain data as alignment reference",
 			"finalStateID", finalStateID, "finalBlock", finalBlock)
 	} else if info.lastStateID < info.lastChainStateID {
-		// State data is more conservative (less data)
 		finalStateID = info.lastStateID
 		finalBlock = info.lastStateBlock
 		log.Info("Using state data as alignment reference",
 			"finalStateID", finalStateID, "finalBlock", finalBlock)
 	} else {
-		// Both are equal, use either
 		finalStateID = info.lastStateID
 		finalBlock = info.lastStateBlock
 		log.Info("Chain and state data are equal",
@@ -996,12 +1002,10 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 
 	// Truncate incr state freezer
 	if err = db.truncateIncrStateFreezer(info, finalStateID); err != nil {
-		log.Error("Failed to truncate incr state freezer", "error", err)
 		return err
 	}
 	// Truncate incr chain freezer
 	if err = db.truncateIncrChainFreezer(info, finalBlock); err != nil {
-		log.Error("Failed to truncate incr chain freezer", "error", err)
 		return err
 	}
 
@@ -1009,44 +1013,6 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 		return err
 	}
 	log.Info("Incremental data alignment completed")
-	return nil
-}
-
-// resetIncrDirectory resets the incremental directory when alignment is not possible
-func (db *Database) resetIncrDirectory(info *incrInfo, startBlock uint64) error {
-	log.Info("Resetting incremental directory")
-
-	// // Reset state freezer
-	// if err := db.incr.incrDB.GetStateFreezer().Reset(); err != nil {
-	// 	log.Error("Failed to reset incr state freezer", "error", err)
-	// 	return err
-	// }
-	// log.Info("Reset incr state freezer")
-	//
-	// if info.chainAncients != 0 {
-	//
-	// }
-	// // Reset chain freezer
-	// if err := db.incr.incrDB.GetChainFreezer().Reset(); err != nil {
-	// 	log.Error("Failed to reset incr chain freezer", "error", err)
-	// 	return err
-	// }
-	// log.Info("Reset incr chain freezer")
-
-	// start, _, err := db.incr.incrDB.ParseCurrDirBlockNumber()
-	// if err != nil {
-	// 	return err
-	// }
-	// if start > startBlock {
-	// 	// Reset incremental manager state
-	// 	// db.incr.skipCount = start - startBlock
-	// 	db.incr.endBlock = start
-	// }
-
-	if err := db.setBlockCount(startBlock); err != nil {
-		return err
-	}
-	log.Info("Incremental directory reset completed")
 	return nil
 }
 
