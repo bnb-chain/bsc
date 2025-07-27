@@ -83,50 +83,50 @@ func NewIncrSnapDB(baseDir string, readonly bool, startBlock, blockLimit uint64)
 		return nil, err
 	}
 
-	var blockCount uint64
-	// parse the current directory name to get its start block number
-	dirStartBlock, dirEndBlock, err := parseDirBlockNumber(currentDir)
-	if err != nil {
-		log.Error("Failed to parse directory start block", "dir", currentDir, "error", err)
-		return nil, err
-	} else {
-		if startBlock > dirEndBlock+1 {
-			log.Error("Start block is beyond dir end block", "startBlock", startBlock, "dirEndBlock", dirEndBlock)
-			return nil, fmt.Errorf("start block is beyond dir end block, please reset incr dir")
-		}
-
-		ancients, err := db.chainFreezer.Ancients()
-		if err != nil {
-			return nil, err
-		}
-		log.Info("NewIncrDB", "ancients", ancients, "startBlock", startBlock)
-		if ancients < dirStartBlock {
-			blockCount = 0
-		} else if ancients >= dirStartBlock && ancients <= dirEndBlock {
-			blockCount = ancients - dirStartBlock
-		} else {
-			blockCount = blockLimit
-		}
-
-		// if startBlock < dirStartBlock {
-		// 	// startBlock is before this directory range, directory should be empty
-		// 	blockCount = 0
-		// } else if startBlock <= dirEndBlock {
-		// 	// startBlock is within this directory range
-		// 	blockCount = startBlock - dirStartBlock
-		// } else {
-		// 	// startBlock is beyond this directory range, directory should be full
-		// 	blockCount = blockLimit
-		// }
-	}
+	// var blockCount uint64
+	// // parse the current directory name to get its start block number
+	// dirStartBlock, dirEndBlock, err := parseDirBlockNumber(currentDir)
+	// if err != nil {
+	// 	log.Error("Failed to parse directory start block", "dir", currentDir, "error", err)
+	// 	return nil, err
+	// } else {
+	// 	if startBlock > dirEndBlock+1 {
+	// 		log.Error("Start block is beyond dir end block", "startBlock", startBlock, "dirEndBlock", dirEndBlock)
+	// 		return nil, fmt.Errorf("start block is beyond dir end block, please reset incr dir")
+	// 	}
+	//
+	// 	ancients, err := db.chainFreezer.Ancients()
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	log.Info("NewIncrDB", "ancients", ancients, "startBlock", startBlock)
+	// 	if ancients < dirStartBlock {
+	// 		blockCount = 0
+	// 	} else if ancients >= dirStartBlock && ancients <= dirEndBlock {
+	// 		blockCount = ancients - dirStartBlock
+	// 	} else {
+	// 		blockCount = blockLimit
+	// 	}
+	//
+	// 	// if startBlock < dirStartBlock {
+	// 	// 	// startBlock is before this directory range, directory should be empty
+	// 	// 	blockCount = 0
+	// 	// } else if startBlock <= dirEndBlock {
+	// 	// 	// startBlock is within this directory range
+	// 	// 	blockCount = startBlock - dirStartBlock
+	// 	// } else {
+	// 	// 	// startBlock is beyond this directory range, directory should be full
+	// 	// 	blockCount = blockLimit
+	// 	// }
+	// }
 
 	incrDB := &IncrSnapDB{
 		currSnapDB: db,
 		info:       info,
 		baseDir:    baseDir,
 		currentDir: currentDir,
-		blockCount: blockCount,
-		switching:  false,
+		// blockCount: blockCount,
+		switching: false,
 	}
 	incrDB.switchCond = sync.NewCond(&incrDB.switchMutex)
 
@@ -134,9 +134,14 @@ func NewIncrSnapDB(baseDir string, readonly bool, startBlock, blockLimit uint64)
 	// 	return nil, fmt.Errorf("failed to repair incr snap db: %v", err)
 	// }
 
-	log.Info("IncrDB created", "baseDir", baseDir, "currentDir", currentDir, "blockLimit", blockLimit,
-		"blockCount", blockCount, "startBlock", startBlock, "dirStartBlock", dirStartBlock)
+	log.Info("New incr snap db", "baseDir", baseDir, "currentDir", currentDir, "blockLimit", blockLimit,
+		"startBlock", startBlock)
 	return incrDB, nil
+}
+
+// SetBlockCount sets the block count
+func (idb *IncrSnapDB) SetBlockCount(blockCount uint64) {
+	idb.blockCount = blockCount
 }
 
 // repair handles empty incremental data.
@@ -559,20 +564,19 @@ func (idb *IncrSnapDB) ParseCurrDirBlockNumber() (uint64, uint64, error) {
 
 // parseDirBlockNumber parses the start and end block number from directory path
 func parseDirBlockNumber(dirPath string) (uint64, uint64, error) {
-	dirName := filepath.Base(dirPath)
 	pattern := regexp.MustCompile(incrDirNameRegexPattern)
-	matches := pattern.FindStringSubmatch(dirName)
+	matches := pattern.FindStringSubmatch(dirPath)
 	if len(matches) != 3 {
-		return 0, 0, fmt.Errorf("invalid directory name format: %s", dirName)
+		return 0, 0, fmt.Errorf("invalid directory name format: %s", dirPath)
 	}
 
 	startBlock, err := strconv.ParseUint(matches[1], 10, 64)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to parse start block from directory name %s: %v", dirName, err)
+		return 0, 0, fmt.Errorf("failed to parse start block from directory name %s: %v", dirPath, err)
 	}
 	endBlock, err := strconv.ParseUint(matches[2], 10, 64)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to parse end block from directory name %s: %v", dirName, err)
+		return 0, 0, fmt.Errorf("failed to parse end block from directory name %s: %v", dirPath, err)
 	}
 
 	return startBlock, endBlock, nil
@@ -589,31 +593,22 @@ func findLatestIncrDir(baseDir string, startBlock, blockLimit uint64) (string, e
 		return "", fmt.Errorf("failed to read base directory %s: %v", baseDir, err)
 	}
 
-	newIncrDirPattern := regexp.MustCompile(incrDirNameRegexPattern)
 	var incrDirs []IncrDirInfo
-
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
-		if matches := newIncrDirPattern.FindStringSubmatch(entry.Name()); len(matches) == 3 {
-			startBlockNum, err := strconv.ParseUint(matches[1], 10, 64)
-			if err != nil {
-				log.Warn("Invalid incremental directory name", "dir", entry.Name(), "err", err)
-				continue
-			}
-			endBlockNum, err := strconv.ParseUint(matches[2], 10, 64)
-			if err != nil {
-				log.Warn("Invalid incremental directory name", "dir", entry.Name(), "err", err)
-				continue
-			}
-			incrDirs = append(incrDirs, IncrDirInfo{
-				Name:          entry.Name(),
-				Path:          filepath.Join(baseDir, entry.Name()),
-				StartBlockNum: startBlockNum,
-				EndBlockNum:   endBlockNum,
-			})
+		start, end, err := parseDirBlockNumber(entry.Name())
+		if err != nil {
+			log.Warn("Invalid incremental directory name", "dir", entry.Name(), "err", err)
+			continue
 		}
+		incrDirs = append(incrDirs, IncrDirInfo{
+			Name:          entry.Name(),
+			Path:          filepath.Join(baseDir, entry.Name()),
+			StartBlockNum: start,
+			EndBlockNum:   end,
+		})
 	}
 
 	// If no existing directories found, create the first one
@@ -627,10 +622,10 @@ func findLatestIncrDir(baseDir string, startBlock, blockLimit uint64) (string, e
 	sort.Slice(incrDirs, func(i, j int) bool {
 		return incrDirs[i].StartBlockNum < incrDirs[j].StartBlockNum
 	})
+
 	latestDir := incrDirs[len(incrDirs)-1]
 	log.Info("Found latest incremental directory", "dir", latestDir.Path, "startBlockNum", latestDir.StartBlockNum,
 		"endBlockNum", latestDir.EndBlockNum)
-
 	return latestDir.Path, nil
 }
 
@@ -641,29 +636,22 @@ func GetAllIncrDirs(baseDir string) ([]IncrDirInfo, error) {
 		return nil, fmt.Errorf("failed to read base directory %s: %v", baseDir, err)
 	}
 
-	newIncrDirPattern := regexp.MustCompile(incrDirNameRegexPattern)
 	var incrDirs []IncrDirInfo
-
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
-		if matches := newIncrDirPattern.FindStringSubmatch(entry.Name()); len(matches) == 3 {
-			startBlockNum, err := strconv.ParseUint(matches[1], 10, 64)
-			if err != nil {
-				continue
-			}
-			endBlockNum, err := strconv.ParseUint(matches[2], 10, 64)
-			if err != nil {
-				continue
-			}
-			incrDirs = append(incrDirs, IncrDirInfo{
-				Name:          entry.Name(),
-				Path:          filepath.Join(baseDir, entry.Name()),
-				StartBlockNum: startBlockNum,
-				EndBlockNum:   endBlockNum,
-			})
+		start, end, err := parseDirBlockNumber(entry.Name())
+		if err != nil {
+			log.Warn("Invalid incremental directory name", "dir", entry.Name(), "err", err)
+			continue
 		}
+		incrDirs = append(incrDirs, IncrDirInfo{
+			Name:          entry.Name(),
+			Path:          filepath.Join(baseDir, entry.Name()),
+			StartBlockNum: start,
+			EndBlockNum:   end,
+		})
 	}
 
 	// Sort by block number

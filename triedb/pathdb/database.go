@@ -890,8 +890,7 @@ func (db *Database) loadIncrInfo() (*incrInfo, error) {
 	// Get state freezer info
 	info.stateFreezer = db.incr.incrDB.GetStateFreezer()
 	if info.stateFreezer == nil {
-		log.Crit("Incremental state freezer is nil")
-		return nil, errors.New("incremental state freezer is nil")
+		return nil, errors.New("incr state freezer is nil")
 	}
 
 	var err error
@@ -904,8 +903,7 @@ func (db *Database) loadIncrInfo() (*incrInfo, error) {
 	// Get chain freezer info
 	info.chainFreezer = db.incr.incrDB.GetChainFreezer()
 	if info.chainFreezer == nil {
-		log.Crit("Incremental chain freezer is nil")
-		return nil, errors.New("incremental chain freezer is nil")
+		return nil, errors.New("incr chain freezer is nil")
 	}
 	info.chainAncients, err = info.chainFreezer.Ancients()
 	if err != nil {
@@ -928,7 +926,7 @@ func (db *Database) loadIncrInfo() (*incrInfo, error) {
 			return nil, fmt.Errorf("last incr state history not found: %d", info.stateAncients)
 		}
 		var m incrStateMetadata
-		if err := rlp.DecodeBytes(blob, &m); err != nil {
+		if err = rlp.DecodeBytes(blob, &m); err != nil {
 			log.Error("Failed to decode incr state history", "error", err)
 			return nil, err
 		}
@@ -965,12 +963,9 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 		return db.resetIncrDirectory(startBlock)
 	}
 
-	// Scenario 3: Both are not empty, need to compare and align
 	log.Info("Both incr chain and state have data, comparing for alignment",
-		"lastChainStateID", info.lastChainStateID,
-		"lastStateID", info.lastStateID,
-		"lastStateBlock", info.lastStateBlock,
-		"chainAncients", info.chainAncients)
+		"lastChainStateID", info.lastChainStateID, "lastStateID", info.lastStateID,
+		"lastStateBlock", info.lastStateBlock, "chainAncients", info.chainAncients)
 
 	// Find the minimum state ID to ensure consistency
 	var finalStateID, finalBlock uint64
@@ -1011,6 +1006,9 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 		return err
 	}
 
+	if err = db.setBlockCount(startBlock); err != nil {
+		return err
+	}
 	log.Info("Incremental data alignment completed")
 	return nil
 }
@@ -1115,5 +1113,33 @@ func (db *Database) truncateIncrChainFreezer(info *incrInfo, finalBlock uint64) 
 		log.Warn("Truncated incr chain histories to align with state",
 			"number", pruned, "finalBlock", finalBlock)
 	}
+	return nil
+}
+
+func (db *Database) setBlockCount(startBlock uint64) error {
+	dirStartBlock, dirEndBlock, err := db.incr.incrDB.ParseCurrDirBlockNumber()
+	if err != nil {
+		return err
+	}
+
+	if startBlock > dirEndBlock+1 {
+		return fmt.Errorf("start block [%d] is beyond dir end block [%d], please reset incr dir", startBlock, dirEndBlock)
+	}
+
+	chainAncients, err := db.incr.incrDB.GetChainFreezer().Ancients()
+	if err != nil {
+		return err
+	}
+
+	var blockCount uint64
+	if chainAncients < dirStartBlock {
+		blockCount = 0
+	} else if chainAncients >= dirStartBlock && chainAncients <= dirEndBlock {
+		blockCount = chainAncients - dirStartBlock
+	} else {
+		blockCount = db.config.IncrHistory
+	}
+
+	db.incr.incrDB.SetBlockCount(blockCount)
 	return nil
 }
