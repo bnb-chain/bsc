@@ -95,16 +95,29 @@ func NewIncrSnapDB(baseDir string, readonly bool, startBlock, blockLimit uint64)
 			return nil, fmt.Errorf("start block is beyond dir end block, please reset incr dir")
 		}
 
-		if startBlock < dirStartBlock {
-			// startBlock is before this directory range, directory should be empty
+		ancients, err := db.chainFreezer.Ancients()
+		if err != nil {
+			return nil, err
+		}
+		log.Info("NewIncrDB", "ancients", ancients, "startBlock", startBlock)
+		if ancients < dirStartBlock {
 			blockCount = 0
-		} else if startBlock <= dirEndBlock {
-			// startBlock is within this directory range
-			blockCount = startBlock - dirStartBlock
+		} else if ancients <= dirStartBlock {
+			blockCount = ancients - dirStartBlock - 1
 		} else {
-			// startBlock is beyond this directory range, directory should be full
 			blockCount = blockLimit
 		}
+
+		// if startBlock < dirStartBlock {
+		// 	// startBlock is before this directory range, directory should be empty
+		// 	blockCount = 0
+		// } else if startBlock <= dirEndBlock {
+		// 	// startBlock is within this directory range
+		// 	blockCount = startBlock - dirStartBlock
+		// } else {
+		// 	// startBlock is beyond this directory range, directory should be full
+		// 	blockCount = blockLimit
+		// }
 	}
 
 	incrDB := &IncrSnapDB{

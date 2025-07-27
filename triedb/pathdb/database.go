@@ -943,14 +943,6 @@ func (db *Database) loadIncrInfo() (*incrInfo, error) {
 	return info, nil
 }
 
-// max returns the maximum of two uint64 values
-func max(a, b uint64) uint64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 // alignIncrData aligns incremental data with disk layer after force kill restart
 func (db *Database) alignIncrData(diskLayerID uint64) error {
 	// Load current incremental data info
@@ -968,10 +960,6 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 
 	log.Info("Incremental data alignment check", "stateAncients", info.stateAncients,
 		"chainAncients", info.chainAncients, "diskLayerID", diskLayerID, "startBlock", startBlock)
-
-	// if info.allEmpty() {
-	// 	return db.resetIncrDirectory(startBlock)
-	// }
 
 	if info.isEmpty() {
 		return db.resetIncrDirectory(startBlock)
@@ -1010,33 +998,6 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 	if finalStateID < diskLayerID {
 		return fmt.Errorf("Final state ID is less than disk layer ID, diskLayerID: %d, finalStateID: %d", diskLayerID, finalStateID)
 	}
-
-	// var effectiveStartBlock uint64
-	// if info.chainAncients > 0 {
-	// 	chainTail, err := info.chainFreezer.Tail()
-	// 	if err != nil {
-	// 		log.Error("Failed to get chain freezer tail", "error", err)
-	// 		return err
-	// 	}
-	// 	effectiveStartBlock = max(startBlock, chainTail)
-	// } else {
-	// 	effectiveStartBlock = startBlock
-	// }
-
-	// log.Info("Effective start block calculation",
-	// 	"startBlock", startBlock,
-	// 	"effectiveStartBlock", effectiveStartBlock,
-	// 	"finalBlock", finalBlock)
-
-	// // Update incremental manager state
-	// log.Info("Aligning incremental data",
-	// 	"alignmentType", alignmentType,
-	// 	"diskLayerID", diskLayerID,
-	// 	"finalStateID", finalStateID,
-	// 	"finalBlock", finalBlock,
-	// 	"effectiveStartBlock", effectiveStartBlock,
-	// 	"skipCount", finalStateID-diskLayerID)
-
 	db.incr.endBlock = finalBlock
 
 	// Truncate incr state freezer
@@ -1050,7 +1011,7 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 		return err
 	}
 
-	log.Info("Incremental data alignment completed successfully")
+	log.Info("Incremental data alignment completed")
 	return nil
 }
 
