@@ -102,8 +102,8 @@ func NewIncrSnapDB(baseDir string, readonly bool, startBlock, blockLimit uint64)
 		log.Info("NewIncrDB", "ancients", ancients, "startBlock", startBlock)
 		if ancients < dirStartBlock {
 			blockCount = 0
-		} else if ancients <= dirStartBlock {
-			blockCount = ancients - dirStartBlock - 1
+		} else if ancients >= dirStartBlock && ancients <= dirEndBlock {
+			blockCount = ancients + 1 - dirStartBlock
 		} else {
 			blockCount = blockLimit
 		}
