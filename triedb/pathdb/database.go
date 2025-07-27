@@ -967,6 +967,7 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 			}
 			// force kill case, always use persistent state id as basic
 			persistID := rawdb.ReadPersistentStateID(db.diskdb)
+			log.Info("qqqq", "lastChainStateID", lastChainStateID, "persistID", persistID)
 			if lastChainStateID > startBlock {
 				db.incr.skipCount = lastChainStateID - persistID
 				db.incr.endStateID = lastChainStateID
