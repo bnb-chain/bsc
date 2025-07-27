@@ -565,19 +565,20 @@ func (idb *IncrSnapDB) ParseCurrDirBlockNumber() (uint64, uint64, error) {
 
 // parseDirBlockNumber parses the start and end block number from directory path
 func parseDirBlockNumber(dirPath string) (uint64, uint64, error) {
+	path := filepath.Base(dirPath)
 	pattern := regexp.MustCompile(incrDirNameRegexPattern)
-	matches := pattern.FindStringSubmatch(dirPath)
+	matches := pattern.FindStringSubmatch(path)
 	if len(matches) != 3 {
-		return 0, 0, fmt.Errorf("invalid directory name format: %s", dirPath)
+		return 0, 0, fmt.Errorf("invalid directory name format: %s", path)
 	}
 
 	startBlock, err := strconv.ParseUint(matches[1], 10, 64)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to parse start block from directory name %s: %v", dirPath, err)
+		return 0, 0, fmt.Errorf("failed to parse start block from directory name %s: %v", path, err)
 	}
 	endBlock, err := strconv.ParseUint(matches[2], 10, 64)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to parse end block from directory name %s: %v", dirPath, err)
+		return 0, 0, fmt.Errorf("failed to parse end block from directory name %s: %v", path, err)
 	}
 
 	return startBlock, endBlock, nil
