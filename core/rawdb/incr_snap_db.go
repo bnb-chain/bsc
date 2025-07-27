@@ -75,12 +75,12 @@ func NewIncrSnapDB(baseDir string, readonly bool, startBlock, blockLimit uint64)
 	// Find the latest directory or create the first one
 	currentDir, err := findLatestIncrDir(baseDir, startBlock, blockLimit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find latest incremental directory: %v", err)
+		return nil, err
 	}
 
 	db, err := newSnapDBWrapper(currentDir, &info)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create snap db wrapper: %v", err)
+		return nil, err
 	}
 
 	var blockCount uint64
@@ -103,7 +103,7 @@ func NewIncrSnapDB(baseDir string, readonly bool, startBlock, blockLimit uint64)
 		if ancients < dirStartBlock {
 			blockCount = 0
 		} else if ancients >= dirStartBlock && ancients <= dirEndBlock {
-			blockCount = ancients + 1 - dirStartBlock
+			blockCount = ancients - dirStartBlock
 		} else {
 			blockCount = blockLimit
 		}
