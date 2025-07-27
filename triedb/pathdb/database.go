@@ -961,10 +961,15 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 
 	if info.isEmpty() {
 		if info.chainAncients != 0 {
-			currBlock := info.chainAncients - 1
-			if currBlock > startBlock {
-				db.incr.skipCount = currBlock - startBlock
-				db.incr.endBlock = currBlock
+			lastChainStateID, err := rawdb.ReadIncrChainMapping(info.chainFreezer, info.chainAncients-1)
+			if err != nil {
+				return err
+			}
+			// force kill case, always use persistent state id as basic
+			persistID := rawdb.ReadPersistentStateID(db.diskdb)
+			if lastChainStateID > startBlock {
+				db.incr.skipCount = lastChainStateID - persistID
+				db.incr.endStateID = lastChainStateID
 			}
 		}
 
@@ -1001,8 +1006,8 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 	if finalStateID < diskLayerID {
 		return fmt.Errorf("Final state ID is less than disk layer ID, diskLayerID: %d, finalStateID: %d", diskLayerID, finalStateID)
 	}
-	db.incr.endBlock = finalBlock
-	db.incr.skipCount = finalBlock - startBlock
+	db.incr.endStateID = finalStateID
+	db.incr.skipCount = finalStateID - diskLayerID
 
 	// Truncate incr state freezer
 	if err = db.truncateIncrStateFreezer(info, finalStateID); err != nil {
