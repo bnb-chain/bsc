@@ -1010,7 +1010,7 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 		return err
 	}
 
-	if err = db.setBlockCount(startBlock, info.chainAncients); err != nil {
+	if err = db.setBlockCount(startBlock, finalBlock); err != nil {
 		return err
 	}
 	log.Info("Incremental data alignment completed")
@@ -1084,7 +1084,7 @@ func (db *Database) truncateIncrChainFreezer(info *incrInfo, finalBlock uint64) 
 	return nil
 }
 
-func (db *Database) setBlockCount(startBlock, ancients uint64) error {
+func (db *Database) setBlockCount(startBlock, currBlock uint64) error {
 	dirStartBlock, dirEndBlock, err := db.incr.incrDB.ParseCurrDirBlockNumber()
 	if err != nil {
 		return err
@@ -1095,16 +1095,16 @@ func (db *Database) setBlockCount(startBlock, ancients uint64) error {
 	}
 
 	var blockCount uint64
-	if ancients < dirStartBlock {
+	if currBlock < dirStartBlock {
 		blockCount = 0
-	} else if ancients >= dirStartBlock && ancients <= dirEndBlock {
-		blockCount = ancients - dirStartBlock
+	} else if currBlock >= dirStartBlock && currBlock <= dirEndBlock {
+		blockCount = currBlock - dirStartBlock
 	} else {
 		blockCount = db.config.IncrHistory
 	}
 
 	log.Info("SetBlockCount", "blockCount", blockCount, "dirStartBlock", dirStartBlock, "dirEndBlock", dirEndBlock,
-		"chainAncients", ancients)
+		"currBlock", currBlock)
 	db.incr.incrDB.SetBlockCount(blockCount)
 	return nil
 }
