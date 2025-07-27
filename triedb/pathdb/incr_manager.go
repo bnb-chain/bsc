@@ -72,9 +72,9 @@ type incrManager struct {
 	incrDB      *rawdb.IncrSnapDB
 	chainConfig *params.ChainConfig
 
-	count      uint64
-	skipCount  uint64
-	endStateID uint64
+	count     uint64
+	skipCount uint64
+	endBlock  uint64
 
 	// Async write control
 	writeQueue chan *diffLayer
@@ -244,7 +244,7 @@ func (im *incrManager) worker() {
 
 func (im *incrManager) processWriteTask(dl *diffLayer) error {
 	// skip already written incremental data
-	if dl.stateID() <= im.endStateID {
+	if dl.block <= im.endBlock {
 		im.count++
 		return nil
 	}
