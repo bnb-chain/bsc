@@ -964,12 +964,12 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 			if info.chainAncients-1 > startBlock {
 				db.incr.endStateID = info.chainAncients - 1
 			}
+			log.Warn("Incr state may lose some data that will affect the correctness of incr functions")
 		}
 
 		if err = db.setBlockCount(startBlock); err != nil {
 			return err
 		}
-		log.Warn("Incr state may lose some data that will affect the correctness of incr functions")
 		return nil
 	}
 
