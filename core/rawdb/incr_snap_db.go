@@ -141,6 +141,7 @@ func NewIncrSnapDB(baseDir string, readonly bool, startBlock, blockLimit uint64)
 
 // SetBlockCount sets the block count
 func (idb *IncrSnapDB) SetBlockCount(blockCount uint64) {
+	log.Info("SetBlockCount", "blockCount", blockCount)
 	idb.blockCount = blockCount
 }
 
