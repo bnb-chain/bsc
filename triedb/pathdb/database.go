@@ -1045,6 +1045,9 @@ func (db *Database) resetIncrDirectory(startBlock uint64) error {
 		db.incr.endBlock = start
 	}
 
+	if err = db.setBlockCount(startBlock); err != nil {
+		return err
+	}
 	log.Info("Incremental directory reset completed")
 	return nil
 }
