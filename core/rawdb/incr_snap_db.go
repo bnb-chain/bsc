@@ -283,7 +283,8 @@ func (idb *IncrSnapDB) switchToNewDirectoryWithAsyncManager(blockNum uint64, asy
 		// Record the last block that was actually written to the old chain freezer
 		// ancients represents the count of blocks, so the last written block is ancients - 1
 		idb.lastBlock = ancients - 1
-		log.Info("Recorded old chain freezer state", "lastBlock", idb.lastBlock, "ancients", ancients, "tail", tail, "switchTriggerBlock", blockNum)
+		log.Info("Recorded old chain freezer state", "lastBlock", idb.lastBlock, "ancients", ancients,
+			"tail", tail, "switchTriggerBlock", blockNum)
 	}
 
 	if err := idb.closeCurrentDatabases(); err != nil {

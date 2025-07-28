@@ -73,6 +73,8 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		EnableIncrSnapshots       bool
 		IncrSnapshotPath          string
 		IncrSnapshotBlockInterval uint64
+		IncrSnapshotStateBuffer   uint64
+		IncrSnapshotKeptBlocks    uint64
 		UseRemoteIncrSnapshot     bool
 		RemoteIncrSnapshotURL     string
 	}
@@ -133,6 +135,8 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.EnableIncrSnapshots = c.EnableIncrSnapshots
 	enc.IncrSnapshotPath = c.IncrSnapshotPath
 	enc.IncrSnapshotBlockInterval = c.IncrSnapshotBlockInterval
+	enc.IncrSnapshotStateBuffer = c.IncrSnapshotStateBuffer
+	enc.IncrSnapshotKeptBlocks = c.IncrSnapshotKeptBlocks
 	enc.UseRemoteIncrSnapshot = c.UseRemoteIncrSnapshot
 	enc.RemoteIncrSnapshotURL = c.RemoteIncrSnapshotURL
 	return &enc, nil
@@ -197,6 +201,8 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		EnableIncrSnapshots       *bool
 		IncrSnapshotPath          *string
 		IncrSnapshotBlockInterval *uint64
+		IncrSnapshotStateBuffer   *uint64
+		IncrSnapshotKeptBlocks    *uint64
 		UseRemoteIncrSnapshot     *bool
 		RemoteIncrSnapshotURL     *string
 	}
@@ -371,6 +377,12 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.IncrSnapshotBlockInterval != nil {
 		c.IncrSnapshotBlockInterval = *dec.IncrSnapshotBlockInterval
+	}
+	if dec.IncrSnapshotStateBuffer != nil {
+		c.IncrSnapshotStateBuffer = *dec.IncrSnapshotStateBuffer
+	}
+	if dec.IncrSnapshotKeptBlocks != nil {
+		c.IncrSnapshotKeptBlocks = *dec.IncrSnapshotKeptBlocks
 	}
 	if dec.UseRemoteIncrSnapshot != nil {
 		c.UseRemoteIncrSnapshot = *dec.UseRemoteIncrSnapshot

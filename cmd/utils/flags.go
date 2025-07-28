@@ -1258,7 +1258,19 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 	IncrSnapshotBlockIntervalFlag = &cli.Uint64Flag{
 		Name:     "incr.block-interval",
 		Usage:    "Set how many blocks interval are stored into one incremental snapshot",
-		Value:    100_000,
+		Value:    pathdb.DefaultBlockInterval,
+		Category: flags.StateCategory,
+	}
+	IncrSnapshotStateBufferFlag = &cli.Uint64Flag{
+		Name:     "incr.state-buffer",
+		Usage:    "Set the incr state memory buffer to aggregate MPT trie nodes. The larger the setting, the smaller the incr snapshot size",
+		Value:    pathdb.DefaultIncrStateBufferSize,
+		Category: flags.StateCategory,
+	}
+	IncrSnapshotKeptBlocksFlag = &cli.Uint64Flag{
+		Name:     "incr.kept-blocks",
+		Usage:    "Set how many blocks are kept in incr snapshot. At least is 1024 blocks",
+		Value:    pathdb.DefaultKeptBlocks,
 		Category: flags.StateCategory,
 	}
 	UseRemoteIncrSnapshotFlag = &cli.BoolFlag{
@@ -2373,8 +2385,12 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		}
 		if ctx.IsSet(IncrSnapshotBlockIntervalFlag.Name) {
 			cfg.IncrSnapshotBlockInterval = ctx.Uint64(IncrSnapshotBlockIntervalFlag.Name)
-		} else {
-			cfg.IncrSnapshotBlockInterval = 100000
+		}
+		if ctx.IsSet(IncrSnapshotStateBufferFlag.Name) {
+			cfg.IncrSnapshotStateBuffer = ctx.Uint64(IncrSnapshotStateBufferFlag.Name)
+		}
+		if ctx.IsSet(IncrSnapshotKeptBlocksFlag.Name) {
+			cfg.IncrSnapshotKeptBlocksFlag = ctx.Uint64(IncrSnapshotKeptBlocksFlag.Name)
 		}
 	}
 }

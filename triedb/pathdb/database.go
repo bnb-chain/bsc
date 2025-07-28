@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -126,17 +125,19 @@ type layer interface {
 
 // Config contains the settings for database.
 type Config struct {
-	SyncFlush         bool   // Flag of trienodebuffer sync flush cache to disk
-	StateHistory      uint64 // Number of recent blocks to maintain state history for
-	CleanCacheSize    int    // Maximum memory allowance (in bytes) for caching clean nodes
-	WriteBufferSize   int    // Maximum memory allowance (in bytes) for write buffer
-	ReadOnly          bool   // Flag whether the database is opened in read only mode.
-	NoTries           bool   // Flag whether the database stores tries
-	JournalFilePath   string // The path of journal file
-	JournalFile       bool   // Flag whether store memory diffLayer into file
-	EnableIncrHistory bool   // Flag whether the freezer db stores incremental block and state history
-	IncrHistory       uint64 // Amount of block and state history stored in incremental freezer db
-	IncrHistoryPath   string // The path to store incremental block and chain files
+	SyncFlush       bool   // Flag of trienodebuffer sync flush cache to disk
+	StateHistory    uint64 // Number of recent blocks to maintain state history for
+	CleanCacheSize  int    // Maximum memory allowance (in bytes) for caching clean nodes
+	WriteBufferSize int    // Maximum memory allowance (in bytes) for write buffer
+	ReadOnly        bool   // Flag whether the database is opened in read only mode.
+	NoTries         bool   // Flag whether the database stores tries
+	JournalFilePath string // The path of journal file
+	JournalFile     bool   // Flag whether store memory diffLayer into file
+	EnableIncr      bool   // Flag whether the freezer db stores incr block and state history
+	IncrHistory     uint64 // Amount of block and state history stored in incr freezer db
+	IncrHistoryPath string // The path to store incr block and chain files
+	IncrStateBuffer uint64 // Maximum memory allowance (in bytes) for incr state buffer
+	IncrKeptBlocks  uint64 // Amount of block kept in incr snapshot
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -260,7 +261,7 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 		log.Crit("Failed to repair state history", "err", err)
 	}
 
-	if db.config.EnableIncrHistory {
+	if db.config.EnableIncr {
 		db.checkIncrConfig()
 		if err := db.RepairIncrStore(); err != nil {
 			log.Crit("Failed to repair incremental history", "error", err)
@@ -345,7 +346,13 @@ func (db *Database) checkIncrConfig() {
 		db.config.IncrHistoryPath = filepath.Join(ancientDir, rawdb.IncrementalPath)
 	}
 	if db.config.IncrHistory == 0 {
-		db.config.IncrHistory = math.MaxUint64
+		db.config.IncrHistory = 100000
+	}
+	if db.config.IncrStateBuffer == 0 {
+		db.config.IncrStateBuffer = DefaultIncrStateBufferSize
+	}
+	if db.config.IncrKeptBlocks == 0 {
+		db.config.IncrKeptBlocks = DefaultKeptBlocks
 	}
 }
 
@@ -635,7 +642,7 @@ func (db *Database) Close() error {
 		return nil
 	}
 
-	if db.config.EnableIncrHistory {
+	if db.config.EnableIncr {
 		log.Info("Closing incremental store")
 
 		// Wait for all async write tasks to complete before closing
@@ -795,7 +802,7 @@ func (db *Database) StorageIterator(root common.Hash, account common.Hash, seek 
 
 // IsIncrEnabled returns true if incremental is enabled, otherwise false.
 func (db *Database) IsIncrEnabled() bool {
-	return db.config.EnableIncrHistory
+	return db.config.EnableIncr
 }
 
 // MergeIncrState merges incremental state data into local data.
@@ -862,10 +869,6 @@ func (info *incrInfo) isEmpty() bool {
 	return info.stateAncients == 0 || info.chainAncients == 0
 }
 
-func (info *incrInfo) allEmpty() bool {
-	return info.stateAncients == 0 && info.chainAncients == 0
-}
-
 // initIncrManager initializes the incremental manager
 func (db *Database) initIncrManager() error {
 	block, err := db.GetStartBlock()
@@ -887,23 +890,14 @@ func (db *Database) initIncrManager() error {
 func (db *Database) loadIncrInfo() (*incrInfo, error) {
 	info := &incrInfo{}
 
-	// Get state freezer info
 	info.stateFreezer = db.incr.incrDB.GetStateFreezer()
-	if info.stateFreezer == nil {
-		return nil, errors.New("incr state freezer is nil")
-	}
+	info.chainFreezer = db.incr.incrDB.GetChainFreezer()
 
 	var err error
 	info.stateAncients, err = info.stateFreezer.Ancients()
 	if err != nil {
 		log.Error("Failed to retrieve head of incr state history", "error", err)
 		return nil, err
-	}
-
-	// Get chain freezer info
-	info.chainFreezer = db.incr.incrDB.GetChainFreezer()
-	if info.chainFreezer == nil {
-		return nil, errors.New("incr chain freezer is nil")
 	}
 	info.chainAncients, err = info.chainFreezer.Ancients()
 	if err != nil {
@@ -982,18 +976,12 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 	if info.lastChainStateID < info.lastStateID {
 		finalStateID = info.lastChainStateID
 		finalBlock = info.chainAncients - 1
-		log.Info("Using chain data as alignment reference",
-			"finalStateID", finalStateID, "finalBlock", finalBlock)
 	} else if info.lastStateID < info.lastChainStateID {
 		finalStateID = info.lastStateID
 		finalBlock = info.lastStateBlock
-		log.Info("Using state data as alignment reference",
-			"finalStateID", finalStateID, "finalBlock", finalBlock)
 	} else {
 		finalStateID = info.lastStateID
 		finalBlock = info.lastStateBlock
-		log.Info("Chain and state data are equal",
-			"finalStateID", finalStateID, "finalBlock", finalBlock)
 	}
 
 	if finalStateID < diskLayerID {

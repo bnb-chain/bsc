@@ -317,9 +317,11 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			PathSyncFlush:         config.PathSyncFlush,
 			JournalFilePath:       journalFilePath,
 			JournalFile:           config.JournalFileEnabled,
-			EnableIncrHistory:     config.EnableIncrSnapshots,
+			EnableIncr:            config.EnableIncrSnapshots,
 			IncrHistoryPath:       config.IncrSnapshotPath,
 			IncrHistory:           config.IncrSnapshotBlockInterval,
+			IncrStateBuffer:       config.IncrSnapshotStateBuffer,
+			IncrKeptBlocks:        config.IncrSnapshotBlockInterval,
 			UseRemoteIncrSnapshot: config.UseRemoteIncrSnapshot,
 			RemoteIncrURL:         config.RemoteIncrSnapshotURL,
 		}

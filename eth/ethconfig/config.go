@@ -204,11 +204,13 @@ type Config struct {
 	BlobExtraReserve uint64
 
 	// incremental snapshot config
-	EnableIncrSnapshots       bool
-	IncrSnapshotPath          string
-	IncrSnapshotBlockInterval uint64
-	UseRemoteIncrSnapshot     bool
-	RemoteIncrSnapshotURL     string
+	EnableIncrSnapshots        bool
+	IncrSnapshotPath           string
+	IncrSnapshotBlockInterval  uint64
+	IncrSnapshotStateBuffer    uint64
+	IncrSnapshotKeptBlocksFlag uint64
+	UseRemoteIncrSnapshot      bool
+	RemoteIncrSnapshotURL      string
 }
 
 // CreateConsensusEngine creates a consensus engine for the given chain config.

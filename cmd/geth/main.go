@@ -190,6 +190,8 @@ var (
 		utils.EnableIncrSnapshotFlag,
 		utils.IncrSnapshotPathFlag,
 		utils.IncrSnapshotBlockIntervalFlag,
+		utils.IncrSnapshotStateBufferFlag,
+		utils.IncrSnapshotKeptBlocksFlag,
 		utils.UseRemoteIncrSnapshotFlag,
 		utils.RemoteIncrSnapshotURLFlag,
 		// utils.BeaconApiFlag,

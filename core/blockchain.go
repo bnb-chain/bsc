@@ -171,9 +171,11 @@ type CacheConfig struct {
 	PathSyncFlush         bool          // Whether sync flush the trienodebuffer of pathdb to disk.
 	JournalFilePath       string        // The path to store journal file which is used in pathdb
 	JournalFile           bool          // Whether to use single file to store journal data in pathdb
-	EnableIncrHistory     bool          // Flag whether the freezer db stores incremental block and state history
+	EnableIncr            bool          // Flag whether the freezer db stores incremental block and state history
 	IncrHistoryPath       string        // The path to store incremental block and chain files
 	IncrHistory           uint64        // Amount of block and state history stored in incremental freezer db
+	IncrStateBuffer       uint64        // Maximum memory allowance (in bytes) for incr state buffer
+	IncrKeptBlocks        uint64        // Amount of block kept in incr snapshot
 	UseRemoteIncrSnapshot bool          // Whether to download and merge incremental snapshots
 	RemoteIncrURL         string        // The url to download incremental snapshots
 
@@ -196,15 +198,17 @@ func (c *CacheConfig) triedbConfig(isVerkle bool) *triedb.Config {
 	}
 	if c.StateScheme == rawdb.PathScheme {
 		config.PathDB = &pathdb.Config{
-			SyncFlush:         c.PathSyncFlush,
-			StateHistory:      c.StateHistory,
-			CleanCacheSize:    c.TrieCleanLimit * 1024 * 1024,
-			WriteBufferSize:   c.TrieDirtyLimit * 1024 * 1024,
-			JournalFilePath:   c.JournalFilePath,
-			JournalFile:       c.JournalFile,
-			EnableIncrHistory: c.EnableIncrHistory,
-			IncrHistoryPath:   c.IncrHistoryPath,
-			IncrHistory:       c.IncrHistory,
+			SyncFlush:       c.PathSyncFlush,
+			StateHistory:    c.StateHistory,
+			CleanCacheSize:  c.TrieCleanLimit * 1024 * 1024,
+			WriteBufferSize: c.TrieDirtyLimit * 1024 * 1024,
+			JournalFilePath: c.JournalFilePath,
+			JournalFile:     c.JournalFile,
+			EnableIncr:      c.EnableIncr,
+			IncrHistoryPath: c.IncrHistoryPath,
+			IncrHistory:     c.IncrHistory,
+			IncrStateBuffer: c.IncrStateBuffer,
+			IncrKeptBlocks:  c.IncrKeptBlocks,
 		}
 	}
 	return config

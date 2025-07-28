@@ -18,14 +18,17 @@ import (
 )
 
 const (
-	// Only keep the latest 1024 blocks in incremental chain freezer.
-	keptBlockLimit = 1024
+	// The default kept blocks in incremental chain freezer: 1024.
+	DefaultKeptBlocks = 1024
 
 	// Number of blocks after which to save the parlia snapshot to the database
 	parliaSnapCheckpointInterval = 1024
 
-	// The default memory allowance for incremental state buffer: 15GB
-	defaultIncrBufferSize = 15 * 1024 * 1024 * 1024
+	// The default number of blocks and state history stored in incr freezer db
+	DefaultBlockInterval = 100000
+
+	// The default memory allowance for incremental state buffer: 6GB
+	DefaultIncrStateBufferSize = 6 * 1024 * 1024 * 1024
 
 	// The maximum size of the batch to be flushed into the ancient db: 3GB
 	defaultFlushBatchSize = 3 * 1024 * 1024 * 1024
@@ -87,7 +90,7 @@ type incrManager struct {
 
 	// Async incremental state buffer
 	asyncBuffer *asyncIncrStateBuffer
-	bufferLimit uint64 // Memory limit for buffer (default 20GB)
+	bufferLimit uint64 // Memory limit for buffer
 }
 
 // NewIncrManager creates a new incremental manager with async write capability
@@ -98,7 +101,7 @@ func NewIncrManager(db *Database, incrDB *rawdb.IncrSnapDB) *incrManager {
 		writeQueue:  make(chan *diffLayer, 100),
 		stopChan:    make(chan struct{}),
 		started:     false,
-		bufferLimit: defaultIncrBufferSize,
+		bufferLimit: db.config.IncrStateBuffer,
 	}
 
 	chainConfig, err := rawdb.GetChainConfig(db.diskdb)
@@ -377,8 +380,8 @@ func (im *incrManager) truncateExtraBlock(blockNumber uint64) error {
 	}
 
 	// Only truncate if we have more blocks than the limit and there are actual blocks to truncate
-	if blockNumber-tail >= keptBlockLimit {
-		targetTail := blockNumber - keptBlockLimit + 1
+	if blockNumber-tail >= im.db.config.IncrKeptBlocks {
+		targetTail := blockNumber - im.db.config.IncrKeptBlocks + 1
 		pruned, err := truncateIncrChainFreezerFromTail(incrChainFreezer, targetTail)
 		if err != nil {
 			log.Error("Failed to truncate chain freezer", "target_tail", targetTail, "current_tail", tail,

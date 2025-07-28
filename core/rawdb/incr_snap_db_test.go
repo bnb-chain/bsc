@@ -17,21 +17,21 @@ func TestParseDirBlockNumber(t *testing.T) {
 	}{
 		{
 			name:      "valid directory path",
-			dirPath:   "/path/to/incr_1000_1999",
+			dirPath:   "/path/to/incr-1000-1999",
 			wantStart: 1000,
 			wantEnd:   1999,
 			wantErr:   false,
 		},
 		{
 			name:      "valid directory path with different numbers",
-			dirPath:   "/some/path/incr_5000_5999",
+			dirPath:   "/some/path/incr-5000-5999",
 			wantStart: 5000,
 			wantEnd:   5999,
 			wantErr:   false,
 		},
 		{
 			name:      "valid directory path with single digit",
-			dirPath:   "/test/incr_1_9",
+			dirPath:   "/test/incr-1-9",
 			wantStart: 1,
 			wantEnd:   9,
 			wantErr:   false,
@@ -44,9 +44,9 @@ func TestParseDirBlockNumber(t *testing.T) {
 		},
 		{
 			name:        "invalid directory name with wrong pattern",
-			dirPath:     "/path/to/incr_abc_def",
+			dirPath:     "/path/to/incr-abc-def",
 			wantErr:     true,
-			expectedErr: "invalid directory name format: incr_abc_def",
+			expectedErr: "invalid directory name format: incr-abc-def",
 		},
 		{
 			name:        "invalid directory name with missing parts",
@@ -56,15 +56,15 @@ func TestParseDirBlockNumber(t *testing.T) {
 		},
 		{
 			name:        "invalid start block number",
-			dirPath:     "/path/to/incr_abc_1999",
+			dirPath:     "/path/to/incr_abc-1999",
 			wantErr:     true,
-			expectedErr: "invalid directory name format: incr_abc_1999",
+			expectedErr: "invalid directory name format: incr_abc-1999",
 		},
 		{
 			name:        "invalid end block number",
-			dirPath:     "/path/to/incr_1000_def",
+			dirPath:     "/path/to/incr-1000_def",
 			wantErr:     true,
-			expectedErr: "invalid directory name format: incr_1000_def",
+			expectedErr: "invalid directory name format: incr-1000_def",
 		},
 	}
 
@@ -105,66 +105,66 @@ func TestFindLatestIncrDir(t *testing.T) {
 			setupDirs:   []string{},
 			startBlock:  1000,
 			blockLimit:  1000,
-			expectedDir: "incr_1000_1999",
+			expectedDir: "incr-1000-1999",
 			wantErr:     false,
 		},
 		{
 			name: "existing directories - should return latest",
 			setupDirs: []string{
-				"incr_1000_1999",
-				"incr_2000_2999",
-				"incr_3000_3999",
+				"incr-1000-1999",
+				"incr-2000-2999",
+				"incr-3000-3999",
 			},
 			startBlock:  1000,
 			blockLimit:  1000,
-			expectedDir: "incr_3000_3999",
+			expectedDir: "incr-3000-3999",
 			wantErr:     false,
 		},
 		{
 			name: "existing directories with gaps - should return latest",
 			setupDirs: []string{
-				"incr_1000_1999",
-				"incr_3000_3999",
-				"incr_5000_5999",
+				"incr-1000-1999",
+				"incr-3000-3999",
+				"incr-5000-5999",
 			},
 			startBlock:  1000,
 			blockLimit:  1000,
-			expectedDir: "incr_5000_5999",
+			expectedDir: "incr-5000-5999",
 			wantErr:     false,
 		},
 		{
 			name: "existing directories with invalid names - should ignore invalid ones",
 			setupDirs: []string{
-				"incr_1000_1999",
+				"incr-1000-1999",
 				"invalid_dir",
-				"incr_2000_2999",
+				"incr-2000-2999",
 				"another_invalid",
 			},
 			startBlock:  1000,
 			blockLimit:  1000,
-			expectedDir: "incr_2000_2999",
+			expectedDir: "incr-2000-2999",
 			wantErr:     false,
 		},
 		{
 			name: "existing directories with invalid block numbers - should ignore invalid ones",
 			setupDirs: []string{
-				"incr_1000_1999",
-				"incr_abc_def",
-				"incr_2000_2999",
+				"incr-1000-1999",
+				"incr_abc-def",
+				"incr-2000-2999",
 			},
 			startBlock:  1000,
 			blockLimit:  1000,
-			expectedDir: "incr_2000_2999",
+			expectedDir: "incr-2000-2999",
 			wantErr:     false,
 		},
 		{
 			name: "single existing directory",
 			setupDirs: []string{
-				"incr_1000_1999",
+				"incr-1000-1999",
 			},
 			startBlock:  1000,
 			blockLimit:  1000,
-			expectedDir: "incr_1000_1999",
+			expectedDir: "incr-1000-1999",
 			wantErr:     false,
 		},
 	}
@@ -216,7 +216,7 @@ func TestFindLatestIncrDirWithFiles(t *testing.T) {
 	}
 
 	// Create a valid directory
-	validDir := filepath.Join(tempDir, "incr_1000_1999")
+	validDir := filepath.Join(tempDir, "incr-1000-1999")
 	if err := os.MkdirAll(validDir, 0755); err != nil {
 		t.Fatalf("Failed to create valid directory: %v", err)
 	}
@@ -228,7 +228,7 @@ func TestFindLatestIncrDirWithFiles(t *testing.T) {
 		return
 	}
 
-	expectedDir := filepath.Join(tempDir, "incr_1000_1999")
+	expectedDir := filepath.Join(tempDir, "incr-1000-1999")
 	if gotDir != expectedDir {
 		t.Errorf("findLatestIncrDir() = %v, want %v", gotDir, expectedDir)
 	}
@@ -250,58 +250,58 @@ func TestGetAllIncrDirs(t *testing.T) {
 		{
 			name: "valid incremental directories",
 			setupDirs: []string{
-				"incr_1000_1999",
-				"incr_2000_2999",
-				"incr_3000_3999",
+				"incr-1000-1999",
+				"incr-2000-2999",
+				"incr-3000-3999",
 			},
 			expectedDirs: []IncrDirInfo{
-				{Name: "incr_1000_1999", StartBlockNum: 1000, EndBlockNum: 1999},
-				{Name: "incr_2000_2999", StartBlockNum: 2000, EndBlockNum: 2999},
-				{Name: "incr_3000_3999", StartBlockNum: 3000, EndBlockNum: 3999},
+				{Name: "incr-1000-1999", StartBlockNum: 1000, EndBlockNum: 1999},
+				{Name: "incr-2000-2999", StartBlockNum: 2000, EndBlockNum: 2999},
+				{Name: "incr-3000-3999", StartBlockNum: 3000, EndBlockNum: 3999},
 			},
 			wantErr: false,
 		},
 		{
 			name: "mixed valid and invalid directories",
 			setupDirs: []string{
-				"incr_1000_1999",
+				"incr-1000-1999",
 				"invalid_dir",
-				"incr_2000_2999",
+				"incr-2000-2999",
 				"another_invalid",
-				"incr_3000_3999",
+				"incr-3000-3999",
 			},
 			expectedDirs: []IncrDirInfo{
-				{Name: "incr_1000_1999", StartBlockNum: 1000, EndBlockNum: 1999},
-				{Name: "incr_2000_2999", StartBlockNum: 2000, EndBlockNum: 2999},
-				{Name: "incr_3000_3999", StartBlockNum: 3000, EndBlockNum: 3999},
+				{Name: "incr-1000-1999", StartBlockNum: 1000, EndBlockNum: 1999},
+				{Name: "incr-2000-2999", StartBlockNum: 2000, EndBlockNum: 2999},
+				{Name: "incr-3000-3999", StartBlockNum: 3000, EndBlockNum: 3999},
 			},
 			wantErr: false,
 		},
 		{
 			name: "directories with invalid block numbers",
 			setupDirs: []string{
-				"incr_1000_1999",
+				"incr-1000-1999",
 				"incr_abc_def",
-				"incr_2000_2999",
-				"incr_xyz_123",
+				"incr-2000-2999",
+				"incr-xyz-123",
 			},
 			expectedDirs: []IncrDirInfo{
-				{Name: "incr_1000_1999", StartBlockNum: 1000, EndBlockNum: 1999},
-				{Name: "incr_2000_2999", StartBlockNum: 2000, EndBlockNum: 2999},
+				{Name: "incr-1000-1999", StartBlockNum: 1000, EndBlockNum: 1999},
+				{Name: "incr-2000-2999", StartBlockNum: 2000, EndBlockNum: 2999},
 			},
 			wantErr: false,
 		},
 		{
 			name: "unsorted directories - should return sorted",
 			setupDirs: []string{
-				"incr_3000_3999",
-				"incr_1000_1999",
-				"incr_2000_2999",
+				"incr-3000-3999",
+				"incr-1000-1999",
+				"incr-2000-2999",
 			},
 			expectedDirs: []IncrDirInfo{
-				{Name: "incr_1000_1999", StartBlockNum: 1000, EndBlockNum: 1999},
-				{Name: "incr_2000_2999", StartBlockNum: 2000, EndBlockNum: 2999},
-				{Name: "incr_3000_3999", StartBlockNum: 3000, EndBlockNum: 3999},
+				{Name: "incr-1000-1999", StartBlockNum: 1000, EndBlockNum: 1999},
+				{Name: "incr-2000-2999", StartBlockNum: 2000, EndBlockNum: 2999},
+				{Name: "incr-3000-3999", StartBlockNum: 3000, EndBlockNum: 3999},
 			},
 			wantErr: false,
 		},
@@ -387,7 +387,7 @@ func TestGetAllIncrDirsWithFiles(t *testing.T) {
 	}
 
 	// Create a valid directory
-	validDir := filepath.Join(tempDir, "incr_1000_1999")
+	validDir := filepath.Join(tempDir, "incr-1000-1999")
 	if err := os.MkdirAll(validDir, 0755); err != nil {
 		t.Fatalf("Failed to create valid directory: %v", err)
 	}
@@ -405,8 +405,8 @@ func TestGetAllIncrDirsWithFiles(t *testing.T) {
 	}
 
 	expectedDir := IncrDirInfo{
-		Name:          "incr_1000_1999",
-		Path:          filepath.Join(tempDir, "incr_1000_1999"),
+		Name:          "incr-1000-1999",
+		Path:          filepath.Join(tempDir, "incr-1000-1999"),
 		StartBlockNum: 1000,
 		EndBlockNum:   1999,
 	}
