@@ -2,7 +2,6 @@ package compiler
 
 import (
 	"errors"
-	"math/big"
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -188,7 +187,7 @@ func DoCFGBasedOpcodeFusion(code []byte) ([]byte, error) {
 				break
 			}
 			// Skip data bytes for PUSH instructions
-			skip, steps, _ := calculateSkipSteps(code, int(pc))
+			skip, steps := calculateSkipSteps(code, int(pc))
 			if skip {
 				pc += uint64(steps) + 1 // Add 1 for the opcode byte
 			} else {
@@ -208,7 +207,7 @@ func DoCFGBasedOpcodeFusion(code []byte) ([]byte, error) {
 				break
 			}
 			// Skip data bytes for PUSH instructions
-			skip, steps, _ := calculateSkipSteps(code, int(pc))
+			skip, steps := calculateSkipSteps(code, int(pc))
 			if skip {
 				pc += uint64(steps) + 1 // Add 1 for the opcode byte
 			} else {
@@ -247,7 +246,7 @@ func fuseBlock(code []byte, block BasicBlock) error {
 			i += skipSteps + 1 // Add 1 for the opcode byte
 		} else {
 			// Skip data bytes for PUSH instructions
-			skip, steps, _ := calculateSkipSteps(code, i)
+			skip, steps := calculateSkipSteps(code, i)
 			if skip {
 				i += steps + 1 // Add 1 for the opcode byte
 			} else {
@@ -674,13 +673,13 @@ func getBlockType(block BasicBlock, blocks []BasicBlock, blockIndex int) string 
 	return "others"
 }
 
-func calculateSkipSteps(code []byte, cur int) (skip bool, steps int, param []byte) {
+func calculateSkipSteps(code []byte, cur int) (skip bool, steps int) {
 	inst := ByteCode(code[cur])
 	if inst >= PUSH1 && inst <= PUSH32 {
 		// skip the data.
 		steps = int(inst - PUSH1 + 1)
 		skip = true
-		return skip, steps, code[cur+1 : cur+1+steps]
+		return skip, steps
 	}
 
 	switch inst {
@@ -697,9 +696,9 @@ func calculateSkipSteps(code []byte, cur int) (skip bool, steps int, param []byt
 		steps = 4
 		skip = true
 	default:
-		return false, 0, nil
+		return false, 0
 	}
-	return skip, steps, nil
+	return skip, steps
 }
 
 // BasicBlock represents a sequence of opcodes that can be executed linearly
@@ -715,20 +714,20 @@ type BasicBlock struct {
 }
 
 // BuildJumpTable version 1, only found push jump
-func (b *BasicBlock) BuildJumpTable() {
-	if len(b.Opcodes) > 2 {
-		if ByteCode(b.Opcodes[len(b.Opcodes)-2]) < PUSH0 || ByteCode(b.Opcodes[len(b.Opcodes)-2]) > PUSH32 {
-			return
-		}
-		destPc := big.NewInt(0).SetBytes(b.ImmediateParams[len(b.Opcodes)-2]).Uint64()
-		switch ByteCode(b.Opcodes[len(b.Opcodes)-1]) {
-		case JUMP, JUMPI:
-			b.JumpTarget = &destPc
-		default:
-			return
-		}
-	}
-}
+//func (b *BasicBlock) BuildJumpTable() {
+//	if len(b.Opcodes) > 2 {
+//		if ByteCode(b.Opcodes[len(b.Opcodes)-2]) < PUSH0 || ByteCode(b.Opcodes[len(b.Opcodes)-2]) > PUSH32 {
+//			return
+//		}
+//		destPc := big.NewInt(0).SetBytes(b.ImmediateParams[len(b.Opcodes)-2]).Uint64()
+//		switch ByteCode(b.Opcodes[len(b.Opcodes)-1]) {
+//		case JUMP, JUMPI:
+//			b.JumpTarget = &destPc
+//		default:
+//			return
+//		}
+//	}
+//}
 
 // BuildJumpTableV2 version 2, analyze stack
 func (b *BasicBlock) BuildJumpTableV2() {
@@ -753,7 +752,7 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 		if op == JUMPDEST {
 			jumpDests[pc] = true
 		}
-		skip, steps, _ := calculateSkipSteps(code, int(pc))
+		skip, steps := calculateSkipSteps(code, int(pc))
 		if skip {
 			pc += uint64(steps) + 1 // Add 1 for the opcode byte
 		} else {
@@ -785,7 +784,7 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 		}
 
 		// Determine instruction length
-		skip, steps, param := calculateSkipSteps(code, int(pc))
+		skip, steps := calculateSkipSteps(code, int(pc))
 		instLen := uint64(1)
 		if skip {
 			instLen += uint64(steps)
@@ -797,7 +796,7 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 		}
 		// Add instruction bytes to block
 		currentBlock.Opcodes = append(currentBlock.Opcodes, code[pc:pc+instLen]...)
-		currentBlock.ImmediateParams = append(currentBlock.ImmediateParams, param)
+		//currentBlock.ImmediateParams = append(currentBlock.ImmediateParams, param)
 		pc += instLen
 
 		// If this is a block terminator (other than INVALID since we already handled it), end the block

@@ -265,10 +265,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 				if debug {
 					if in.evm.Config.Tracer.OnGasChange != nil {
-						in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-sPc, tracing.GasChangeCallOpCode)
+						in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-sGas, tracing.GasChangeCallOpCode)
 					}
 					if in.evm.Config.Tracer.OnOpcode != nil {
-						in.evm.Config.Tracer.OnOpcode(pc, byte(Nop), gasCopy, sGas, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
+						in.evm.Config.Tracer.OnOpcode(0, byte(Nop), gasCopy, sGas, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
 						logged = true
 					}
 				}
