@@ -321,7 +321,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			IncrHistoryPath:       config.IncrSnapshotPath,
 			IncrHistory:           config.IncrSnapshotBlockInterval,
 			IncrStateBuffer:       config.IncrSnapshotStateBuffer,
-			IncrKeptBlocks:        config.IncrSnapshotBlockInterval,
+			IncrKeptBlocks:        config.IncrSnapshotKeptBlocks,
 			UseRemoteIncrSnapshot: config.UseRemoteIncrSnapshot,
 			RemoteIncrURL:         config.RemoteIncrSnapshotURL,
 		}

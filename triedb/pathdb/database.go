@@ -1010,7 +1010,7 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 	if err = db.setBlockCount(startBlock, finalBlock); err != nil {
 		return err
 	}
-	log.Info("Incremental data alignment completed")
+	log.Debug("Incremental data alignment completed")
 	return nil
 }
 
