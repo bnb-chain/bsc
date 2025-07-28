@@ -353,7 +353,16 @@ func (db *Database) checkIncrConfig() {
 	}
 	if db.config.IncrKeptBlocks == 0 {
 		db.config.IncrKeptBlocks = DefaultKeptBlocks
+	} else {
+		if db.config.IncrKeptBlocks > db.config.IncrHistory {
+			db.config.IncrKeptBlocks = db.config.IncrHistory
+			log.Warn("IncrKeptBlocks shouldn't be greater than IncrHistory", "IncrHistory", db.config.IncrHistory,
+				"IncrKeptBlocks", db.config.IncrKeptBlocks)
+		}
 	}
+
+	log.Info("Incr snapshot config", "IncrHistoryPath", db.config.IncrHistoryPath, "IncrHistory", db.config.IncrHistory,
+		"IncrStateBuffer", common.StorageSize(db.config.IncrStateBuffer), "IncrKeptBlocks", db.config.IncrKeptBlocks)
 }
 
 // RepairIncrStore init incremental manager and align incr chain and state freezer.
