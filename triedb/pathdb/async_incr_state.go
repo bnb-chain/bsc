@@ -31,43 +31,44 @@ func newAsyncIncrStateBuffer(limit, batchSize uint64) *asyncIncrStateBuffer {
 	}
 
 	// Start monitoring goroutine
-	go b.monitorCache()
+	go b.monitorStateBuffer()
 
 	return b
 }
 
-// monitorCache monitors the cache status every 2 minutes
-func (a *asyncIncrStateBuffer) monitorCache() {
-	ticker := time.NewTicker(2 * time.Minute)
+// monitorStateBuffer monitors the state buffer every 5 minutes
+func (a *asyncIncrStateBuffer) monitorStateBuffer() {
+	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			a.printCacheInfo()
+			a.printBufferInfo()
 		case <-a.done:
-			log.Debug("Monitor cache stopped due to done signal")
+			log.Debug("Monitor buffer stopped due to done signal")
 			return
 		}
 	}
 }
 
 // printCacheInfo prints detailed information about both current and background caches
-func (a *asyncIncrStateBuffer) printCacheInfo() {
+func (a *asyncIncrStateBuffer) printBufferInfo() {
 	a.mux.RLock()
 	defer a.mux.RUnlock()
 
-	log.Info("Current Cache Status", "empty", a.current.empty(), "full", a.current.full(),
+	log.Info("Current buffer Status", "empty", a.current.empty(), "full", a.current.full(),
 		"size", common.StorageSize(a.current.size()), "layers", a.current.layers,
 		"immutable", atomic.LoadUint64(&a.current.immutable) == 1,
 		"stateIDRange", fmt.Sprintf("%d-%d", a.current.stateIDArray[0], a.current.stateIDArray[1]),
 		"blockNumberRange", fmt.Sprintf("%d-%d", a.current.blockNumberArray[0], a.current.blockNumberArray[1]),
 		"limit", common.StorageSize(a.current.limit), "batchSize", common.StorageSize(a.current.batchSize))
 
-	log.Info("Background Cache Status", "empty", a.background.empty(), "full", a.background.full(),
+	log.Info("Background buffer Status", "empty", a.background.empty(), "full", a.background.full(),
 		"size", a.background.size(), "layers", a.background.layers, "immutable", atomic.LoadUint64(&a.background.immutable) == 1,
 		"stateIDRange", fmt.Sprintf("%d-%d", a.background.stateIDArray[0], a.background.stateIDArray[1]),
-		"blockNumberRange", fmt.Sprintf("%d-%d", a.background.blockNumberArray[0], a.background.blockNumberArray[1]))
+		"blockNumberRange", fmt.Sprintf("%d-%d", a.background.blockNumberArray[0], a.background.blockNumberArray[1]),
+		"limit", common.StorageSize(a.current.limit), "batchSize", common.StorageSize(a.current.batchSize))
 }
 
 // commit merges the provided states and trie nodes into the buffer.
@@ -245,7 +246,7 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 
 			if newTotalSize >= c.batchSize {
 				log.Info("Batch size limit reached during node iteration, flushing to ancient db",
-					"newTotalSize", newTotalSize, "batchSize", c.batchSize, "entryCount", len(jn)+1)
+					"newTotalSize", common.StorageSize(newTotalSize), "entryCount", len(jn)+1)
 				if err := c.writeBatchToAncientDB(incrDB, append(jn, entry)); err != nil {
 					return err
 				}
@@ -266,7 +267,7 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 
 		if totalSize >= c.batchSize {
 			log.Info("Batch size limit reached after adding entry, flushing to ancient db",
-				"totalSize", totalSize, "batchSize", c.batchSize, "entryCount", len(jn))
+				"totalSize", common.StorageSize(totalSize), "entryCount", len(jn))
 			if err := c.writeBatchToAncientDB(incrDB, jn); err != nil {
 				return err
 			}
@@ -281,7 +282,7 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 			return err
 		}
 	}
-	log.Info("Flushed incremental state buffer to ancient db", "size", c.nodes.size)
+	log.Info("Flushed incremental state buffer to ancient db", "size", common.StorageSize(c.nodes.size))
 	c.reset()
 	return nil
 }
@@ -316,8 +317,8 @@ func (c *incrNodeCache) writeBatchToAncientDB(incrDB *rawdb.IncrSnapDB, jn []jou
 		return err
 	}
 
-	log.Info("Wrote incremental state batch to ancient db", "incrementalID", incrementalID,
-		"nodeCount", len(jn), "layers", c.layers, "nodesSize", len(encodedBatch), "stateIDArray", c.stateIDArray,
+	log.Info("Wrote incremental state batch to ancient db", "incrementalID", incrementalID, "nodeCount", len(jn),
+		"layers", c.layers, "nodesSize", common.StorageSize(len(encodedBatch)), "stateIDArray", c.stateIDArray,
 		"blockNumberArray", c.blockNumberArray)
 	return nil
 }

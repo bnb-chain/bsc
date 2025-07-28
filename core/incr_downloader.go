@@ -226,12 +226,24 @@ func (d *IncrDownloader) Prepare() error {
 		return err
 	}
 
+	// Parse and filter file info
 	files, err := d.parseFileInfo(metadata)
 	if err != nil {
 		log.Error("Failed to parse file info", "error", err)
 		return err
 	}
 
+	// Process file status and categorize files
+	if err := d.processFileStatus(files); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// processFileStatus processes file status and categorizes files for download and merge
+// toDownload -> downloaded -> toMerge -> merged
+func (d *IncrDownloader) processFileStatus(files []*IncrFileInfo) error {
 	// Load existing file status from database
 	downloadedFiles, err := d.loadDownloadedFiles()
 	if err != nil {
@@ -335,7 +347,6 @@ func (d *IncrDownloader) Prepare() error {
 	d.files = newToDownloadFiles
 	d.totalFiles = len(d.files)
 
-	// Save updated file lists to database
 	if err = d.saveToDownloadFiles(newToDownloadFileNames); err != nil {
 		log.Error("Failed to save to download files", "error", err)
 		return err

@@ -30,12 +30,12 @@ func createTestDB() ethdb.Database {
 func createTestHTTPServer() (*httptest.Server, string) {
 	metadata := []IncrMetadata{
 		{
-			FileName: "test-incr-1000-2000.tar.lz4",
+			FileName: "test-incr-1000-1999.tar.lz4",
 			MD5Sum:   "d41d8cd98f00b204e9800998ecf8427e",
 			Size:     1024,
 		},
 		{
-			FileName: "test-incr-2001-3000.tar.lz4",
+			FileName: "test-incr-2000-2999.tar.lz4",
 			MD5Sum:   "d41d8cd98f00b204e9800998ecf8427e",
 			Size:     2048,
 		},
@@ -80,12 +80,12 @@ func TestIncrDownloader_HTTPDownload(t *testing.T) {
 	// Create test file info
 	file := &IncrFileInfo{
 		Metadata: IncrMetadata{
-			FileName: "test-incr-1000-2000.tar.lz4",
+			FileName: "test-incr-1000-1999.tar.lz4",
 			MD5Sum:   "d41d8cd98f00b204e9800998ecf8427e",
 			Size:     70,
 		},
 		StartBlock: 1000,
-		EndBlock:   2000,
+		EndBlock:   1999,
 		LocalPath:  filepath.Join(tempDir, "test-incr-1000-2000.tar.lz4"),
 	}
 
@@ -139,13 +139,13 @@ func TestIncrDownloader_HTTPDownloadWithRangeSupport(t *testing.T) {
 	// Create test file info
 	file := &IncrFileInfo{
 		Metadata: IncrMetadata{
-			FileName: "test-incr-1000-2000.tar.lz4",
+			FileName: "test-incr-1000-1999.tar.lz4",
 			MD5Sum:   "d41d8cd98f00b204e9800998ecf8427e",
 			Size:     55,
 		},
 		StartBlock: 1000,
-		EndBlock:   2000,
-		LocalPath:  filepath.Join(tempDir, "test-incr-1000-2000.tar.lz4"),
+		EndBlock:   1999,
+		LocalPath:  filepath.Join(tempDir, "test-incr-1000-1999.tar.lz4"),
 	}
 
 	// Test Range-supported download
@@ -185,13 +185,13 @@ func TestIncrDownloader_HTTPDownloadWithoutRangeSupport(t *testing.T) {
 	// Create test file info
 	file := &IncrFileInfo{
 		Metadata: IncrMetadata{
-			FileName: "test-incr-1000-2000.tar.lz4",
+			FileName: "test-incr-1000-1999.tar.lz4",
 			MD5Sum:   "d41d8cd98f00b204e9800998ecf8427e",
 			Size:     1024,
 		},
 		StartBlock: 1000,
-		EndBlock:   2000,
-		LocalPath:  filepath.Join(tempDir, "test-incr-1000-2000.tar.lz4"),
+		EndBlock:   1999,
+		LocalPath:  filepath.Join(tempDir, "test-incr-1000-1999.tar.lz4"),
 	}
 
 	// Test single-threaded download
@@ -228,13 +228,13 @@ func TestIncrDownloader_HTTPDownloadError(t *testing.T) {
 	// Create test file info
 	file := &IncrFileInfo{
 		Metadata: IncrMetadata{
-			FileName: "test-incr-1000-2000.tar.lz4",
+			FileName: "test-incr-1000-1999.tar.lz4",
 			MD5Sum:   "d41d8cd98f00b204e9800998ecf8427e",
 			Size:     1024,
 		},
 		StartBlock: 1000,
-		EndBlock:   2000,
-		LocalPath:  filepath.Join(tempDir, "test-incr-1000-2000.tar.lz4"),
+		EndBlock:   1999,
+		LocalPath:  filepath.Join(tempDir, "test-incr-1000-1999.tar.lz4"),
 	}
 
 	// Test download error
@@ -247,12 +247,12 @@ func TestIncrDownloader_FetchMetadata(t *testing.T) {
 	// Create test metadata
 	metadata := []IncrMetadata{
 		{
-			FileName: "test-incr-1000-2000.tar.lz4",
+			FileName: "test-incr-1000-1999.tar.lz4",
 			MD5Sum:   "d41d8cd98f00b204e9800998ecf8427e",
 			Size:     1024,
 		},
 		{
-			FileName: "test-incr-2001-3000.tar.lz4",
+			FileName: "test-incr-2000-2999.tar.lz4",
 			MD5Sum:   "d41d8cd98f00b204e9800998ecf8427e",
 			Size:     2048,
 		},
@@ -282,7 +282,7 @@ func TestIncrDownloader_FetchMetadata(t *testing.T) {
 	fetchedMetadata, err := downloader.fetchMetadata()
 	require.NoError(t, err)
 	assert.Len(t, fetchedMetadata, 2)
-	assert.Equal(t, "test-incr-1000-2000.tar.lz4", fetchedMetadata[0].FileName)
+	assert.Equal(t, "test-incr-1000-1999.tar.lz4", fetchedMetadata[0].FileName)
 	assert.Equal(t, uint64(1024), fetchedMetadata[0].Size)
 }
 
@@ -561,17 +561,17 @@ func TestIncrDownloader_Prepare(t *testing.T) {
 	// Create test metadata
 	metadata := []IncrMetadata{
 		{
-			FileName: "test-incr-1000-2000.tar.lz4",
+			FileName: "test-incr-1000-1999.tar.lz4",
 			MD5Sum:   "test-md5-1",
 			Size:     1024,
 		},
 		{
-			FileName: "test-incr-2001-3000.tar.lz4",
+			FileName: "test-incr-2000-2999.tar.lz4",
 			MD5Sum:   "test-md5-2",
 			Size:     2048,
 		},
 		{
-			FileName: "test-incr-3001-4000.tar.lz4",
+			FileName: "test-incr-3000-3999.tar.lz4",
 			MD5Sum:   "test-md5-3",
 			Size:     3072,
 		},
@@ -584,9 +584,9 @@ func TestIncrDownloader_Prepare(t *testing.T) {
 	assert.Len(t, files, 3)
 
 	// Verify file list
-	assert.Equal(t, "test-incr-1000-2000.tar.lz4", files[0].Metadata.FileName)
+	assert.Equal(t, "test-incr-1000-1999.tar.lz4", files[0].Metadata.FileName)
 	assert.Equal(t, uint64(1000), files[0].StartBlock)
-	assert.Equal(t, uint64(2000), files[0].EndBlock)
+	assert.Equal(t, uint64(1999), files[0].EndBlock)
 }
 
 func TestIncrDownloader_FileStatusManagement(t *testing.T) {
@@ -646,35 +646,39 @@ func TestIncrDownloader_PrepareWithExistingStatus(t *testing.T) {
 	downloader := NewIncrDownloader(db, trieDB, testURL, tempDir, 1000)
 
 	// Pre-set some file statuses
-	downloader.saveDownloadedFiles([]string{"test-incr-1000-2000.tar.lz4"})
-	downloader.saveMergedFiles([]string{"test-incr-2001-3000.tar.lz4"})
-	downloader.saveToDownloadFiles([]string{"test-incr-3001-4000.tar.lz4"})
-	downloader.saveToMergeFiles([]string{"test-incr-4001-5000.tar.lz4"})
+	err := downloader.saveDownloadedFiles([]string{"test-incr-1000-1999.tar.lz4"})
+	assert.NoError(t, err)
+	err = downloader.saveMergedFiles([]string{"test-incr-2000-2999.tar.lz4"})
+	assert.NoError(t, err)
+	err = downloader.saveToDownloadFiles([]string{"test-incr-3000-3999.tar.lz4"})
+	assert.NoError(t, err)
+	err = downloader.saveToMergeFiles([]string{"test-incr-4000-4999.tar.lz4"})
+	assert.NoError(t, err)
 
 	// Create test metadata
 	metadata := []IncrMetadata{
 		{
-			FileName: "test-incr-1000-2000.tar.lz4", // Downloaded
+			FileName: "test-incr-1000-1999.tar.lz4", // Downloaded
 			MD5Sum:   "test-md5-1",
 			Size:     1024,
 		},
 		{
-			FileName: "test-incr-2001-3000.tar.lz4", // Merged
+			FileName: "test-incr-2000-2999.tar.lz4", // Merged
 			MD5Sum:   "test-md5-2",
 			Size:     2048,
 		},
 		{
-			FileName: "test-incr-3001-4000.tar.lz4", // Currently downloading
+			FileName: "test-incr-3000-3999.tar.lz4", // Currently downloading
 			MD5Sum:   "test-md5-3",
 			Size:     3072,
 		},
 		{
-			FileName: "test-incr-4001-5000.tar.lz4", // Currently merging
+			FileName: "test-incr-4000-4999.tar.lz4", // Currently merging
 			MD5Sum:   "test-md5-4",
 			Size:     4096,
 		},
 		{
-			FileName: "test-incr-5001-6000.tar.lz4", // New file
+			FileName: "test-incr-5000-5999.tar.lz4", // New file
 			MD5Sum:   "test-md5-5",
 			Size:     5120,
 		},
@@ -724,7 +728,7 @@ func TestIncrDownloader_PrepareWithExistingStatus(t *testing.T) {
 
 	// Only new files should be in download queue
 	assert.Len(t, newToDownloadFiles, 1)
-	assert.Equal(t, "test-incr-5001-6000.tar.lz4", newToDownloadFiles[0].Metadata.FileName)
+	assert.Equal(t, "test-incr-5000-5999.tar.lz4", newToDownloadFiles[0].Metadata.FileName)
 }
 
 func TestIncrDownloader_QueueForMerge(t *testing.T) {
@@ -739,13 +743,13 @@ func TestIncrDownloader_QueueForMerge(t *testing.T) {
 	// Create test file
 	file := &IncrFileInfo{
 		Metadata: IncrMetadata{
-			FileName: "test-incr-1000-2000.tar.lz4",
+			FileName: "test-incr-1000-1999.tar.lz4",
 			MD5Sum:   "test-md5",
 			Size:     1024,
 		},
 		StartBlock: 1000,
-		EndBlock:   2000,
-		LocalPath:  filepath.Join(tempDir, "test-incr-1000-2000.tar.lz4"),
+		EndBlock:   1999,
+		LocalPath:  filepath.Join(tempDir, "test-incr-1000-1999.tar.lz4"),
 	}
 
 	// Test adding to merge queue
@@ -791,10 +795,14 @@ func TestIncrDownloader_GetFileStatusStats(t *testing.T) {
 	downloader.mergedFiles = 1
 	downloader.expectedNextBlockStart = 1000
 
-	downloader.saveDownloadedFiles([]string{"file1.tar.lz4", "file2.tar.lz4"})
-	downloader.saveMergedFiles([]string{"file3.tar.lz4"})
-	downloader.saveToDownloadFiles([]string{"file4.tar.lz4"})
-	downloader.saveToMergeFiles([]string{"file5.tar.lz4"})
+	err := downloader.saveDownloadedFiles([]string{"file1.tar.lz4", "file2.tar.lz4"})
+	assert.NoError(t, err)
+	err = downloader.saveMergedFiles([]string{"file3.tar.lz4"})
+	assert.NoError(t, err)
+	err = downloader.saveToDownloadFiles([]string{"file4.tar.lz4"})
+	assert.NoError(t, err)
+	err = downloader.saveToMergeFiles([]string{"file5.tar.lz4"})
+	assert.NoError(t, err)
 
 	// Get statistics
 	stats := downloader.GetFileStatusStats()
@@ -820,17 +828,17 @@ func TestIncrDownloader_ParseFileInfo(t *testing.T) {
 	// Test valid metadata
 	metadata := []IncrMetadata{
 		{
-			FileName: "test-incr-1000-2000.tar.lz4",
+			FileName: "test-incr-1000-1999.tar.lz4",
 			MD5Sum:   "test-md5-1",
 			Size:     1024,
 		},
 		{
-			FileName: "test-incr-2001-3000.tar.lz4",
+			FileName: "test-incr-2000-2999.tar.lz4",
 			MD5Sum:   "test-md5-2",
 			Size:     2048,
 		},
 		{
-			FileName: "test-incr-3001-4000.tar.lz4",
+			FileName: "test-incr-3000-3999.tar.lz4",
 			MD5Sum:   "test-md5-3",
 			Size:     3072,
 		},
@@ -841,10 +849,10 @@ func TestIncrDownloader_ParseFileInfo(t *testing.T) {
 	assert.Len(t, files, 3)
 
 	// Verify file info
-	assert.Equal(t, "test-incr-1000-2000.tar.lz4", files[0].Metadata.FileName)
+	assert.Equal(t, "test-incr-1000-1999.tar.lz4", files[0].Metadata.FileName)
 	assert.Equal(t, uint64(1000), files[0].StartBlock)
-	assert.Equal(t, uint64(2000), files[0].EndBlock)
-	assert.Equal(t, filepath.Join(tempDir, "test-incr-1000-2000.tar.lz4"), files[0].LocalPath)
+	assert.Equal(t, uint64(1999), files[0].EndBlock)
+	assert.Equal(t, filepath.Join(tempDir, "test-incr-1000-1999.tar.lz4"), files[0].LocalPath)
 
 	// Test invalid filename format
 	invalidMetadata := []IncrMetadata{
@@ -871,19 +879,19 @@ func TestIncrDownloader_CheckFileContinuity(t *testing.T) {
 	// Test continuous files
 	continuousFiles := []*IncrFileInfo{
 		{
-			Metadata:   IncrMetadata{FileName: "test-incr-1000-2000.tar.lz4"},
+			Metadata:   IncrMetadata{FileName: "test-incr-1000-1999.tar.lz4"},
 			StartBlock: 1000,
-			EndBlock:   2000,
+			EndBlock:   1999,
 		},
 		{
-			Metadata:   IncrMetadata{FileName: "test-incr-2001-3000.tar.lz4"},
-			StartBlock: 2001,
-			EndBlock:   3000,
+			Metadata:   IncrMetadata{FileName: "test-incr-2000-2999.tar.lz4"},
+			StartBlock: 2000,
+			EndBlock:   2999,
 		},
 		{
-			Metadata:   IncrMetadata{FileName: "test-incr-3001-4000.tar.lz4"},
-			StartBlock: 3001,
-			EndBlock:   4000,
+			Metadata:   IncrMetadata{FileName: "test-incr-3000-3999.tar.lz4"},
+			StartBlock: 3000,
+			EndBlock:   3999,
 		},
 	}
 
@@ -893,13 +901,13 @@ func TestIncrDownloader_CheckFileContinuity(t *testing.T) {
 	// Test discontinuous files
 	discontinuousFiles := []*IncrFileInfo{
 		{
-			Metadata:   IncrMetadata{FileName: "test-incr-1000-2000.tar.lz4"},
+			Metadata:   IncrMetadata{FileName: "test-incr-1000-1999.tar.lz4"},
 			StartBlock: 1000,
-			EndBlock:   2000,
+			EndBlock:   1999,
 		},
 		{
-			Metadata:   IncrMetadata{FileName: "test-incr-2002-3000.tar.lz4"},
-			StartBlock: 2002, // Should be 2001
+			Metadata:   IncrMetadata{FileName: "test-incr-2001-3000.tar.lz4"},
+			StartBlock: 2001, // Should be 2001
 			EndBlock:   3000,
 		},
 	}
@@ -987,7 +995,7 @@ func TestIncrDownloader_Close(t *testing.T) {
 	file := &IncrFileInfo{
 		Metadata:   IncrMetadata{FileName: "test.tar.lz4"},
 		StartBlock: 1000,
-		EndBlock:   2000,
+		EndBlock:   1999,
 	}
 	downloader.downloadedFilesMap[1000] = file
 
@@ -1021,12 +1029,12 @@ func TestIncrDownloader_Integration(t *testing.T) {
 
 	metadata := []IncrMetadata{
 		{
-			FileName: "test-incr-1000-2000.tar.lz4",
+			FileName: "test-incr-1000-1999.tar.lz4",
 			MD5Sum:   "test-md5-1",
 			Size:     1024,
 		},
 		{
-			FileName: "test-incr-2001-3000.tar.lz4",
+			FileName: "test-incr-2000-2999.tar.lz4",
 			MD5Sum:   "test-md5-2",
 			Size:     2048,
 		},
@@ -1070,4 +1078,298 @@ func TestIncrDownloader_Integration(t *testing.T) {
 	toMergeFiles, err = downloader.loadToMergeFiles()
 	require.NoError(t, err)
 	assert.NotContains(t, toMergeFiles, file.Metadata.FileName)
+}
+
+func TestIncrDownloader_ProcessFileStatus(t *testing.T) {
+	db := createTestDB()
+	defer db.Close()
+	trieDB := triedb.NewDatabase(db, nil)
+	defer trieDB.Close()
+
+	tempDir := t.TempDir()
+	downloader := NewIncrDownloader(db, trieDB, testURL, tempDir, 1000)
+
+	// Create test files
+	files := []*IncrFileInfo{
+		{
+			Metadata: IncrMetadata{
+				FileName: "test-incr-1000-1999.tar.lz4",
+				MD5Sum:   "test-md5-1",
+				Size:     1024,
+			},
+			StartBlock: 1000,
+			EndBlock:   1999,
+		},
+		{
+			Metadata: IncrMetadata{
+				FileName: "test-incr-2000-2999.tar.lz4",
+				MD5Sum:   "test-md5-2",
+				Size:     2048,
+			},
+			StartBlock: 2000,
+			EndBlock:   2999,
+		},
+		{
+			Metadata: IncrMetadata{
+				FileName: "test-incr-3000-3999.tar.lz4",
+				MD5Sum:   "test-md5-3",
+				Size:     3072,
+			},
+			StartBlock: 3000,
+			EndBlock:   3999,
+		},
+		{
+			Metadata: IncrMetadata{
+				FileName: "test-incr-4000-4999.tar.lz4",
+				MD5Sum:   "test-md5-4",
+				Size:     4096,
+			},
+			StartBlock: 4000,
+			EndBlock:   4999,
+		},
+	}
+
+	// Test different file status scenarios
+	testCases := []struct {
+		name                    string
+		downloadedFiles         []string
+		mergedFiles             []string
+		toDownloadFiles         []string
+		toMergeFiles            []string
+		expectedToDownloadCount int
+		expectedToMergeCount    int
+		expectedTotalFiles      int
+		expectedNextBlockStart  uint64
+	}{
+		{
+			name:                    "All new files",
+			downloadedFiles:         []string{},
+			mergedFiles:             []string{},
+			toDownloadFiles:         []string{},
+			toMergeFiles:            []string{},
+			expectedToDownloadCount: 4,
+			expectedToMergeCount:    0,
+			expectedTotalFiles:      4,
+			expectedNextBlockStart:  1000,
+		},
+		{
+			name:                    "Some files already downloaded",
+			downloadedFiles:         []string{"test-incr-1000-1999.tar.lz4"},
+			mergedFiles:             []string{},
+			toDownloadFiles:         []string{},
+			toMergeFiles:            []string{},
+			expectedToDownloadCount: 3,
+			expectedToMergeCount:    1,
+			expectedTotalFiles:      3,
+			expectedNextBlockStart:  1000,
+		},
+		{
+			name:                    "Some files already merged",
+			downloadedFiles:         []string{},
+			mergedFiles:             []string{"test-incr-1000-1999.tar.lz4"},
+			toDownloadFiles:         []string{},
+			toMergeFiles:            []string{},
+			expectedToDownloadCount: 3,
+			expectedToMergeCount:    0,
+			expectedTotalFiles:      3,
+			expectedNextBlockStart:  2000,
+		},
+		{
+			name:                    "Some files currently downloading",
+			downloadedFiles:         []string{},
+			mergedFiles:             []string{},
+			toDownloadFiles:         []string{"test-incr-1000-1999.tar.lz4"},
+			toMergeFiles:            []string{},
+			expectedToDownloadCount: 4, // Including the one currently downloading
+			expectedToMergeCount:    0,
+			expectedTotalFiles:      4,
+			expectedNextBlockStart:  1000,
+		},
+		{
+			name:                    "Some files currently merging",
+			downloadedFiles:         []string{},
+			mergedFiles:             []string{},
+			toDownloadFiles:         []string{},
+			toMergeFiles:            []string{"test-incr-1000-1999.tar.lz4"},
+			expectedToDownloadCount: 3,
+			expectedToMergeCount:    1, // Including the one currently merging
+			expectedTotalFiles:      3,
+			expectedNextBlockStart:  1000,
+		},
+		{
+			name:                    "Mixed statuses",
+			downloadedFiles:         []string{"test-incr-2000-2999.tar.lz4"},
+			mergedFiles:             []string{"test-incr-1000-1999.tar.lz4"},
+			toDownloadFiles:         []string{"test-incr-3000-3999.tar.lz4"},
+			toMergeFiles:            []string{},
+			expectedToDownloadCount: 2,
+			expectedToMergeCount:    1,
+			expectedTotalFiles:      2,
+			expectedNextBlockStart:  2000,
+		},
+		{
+			name:                    "All files already merged",
+			downloadedFiles:         []string{},
+			mergedFiles:             []string{"test-incr-1000-1999.tar.lz4", "test-incr-2000-2999.tar.lz4", "test-incr-3000-3999.tar.lz4", "test-incr-4000-4999.tar.lz4"},
+			toDownloadFiles:         []string{},
+			toMergeFiles:            []string{},
+			expectedToDownloadCount: 0,
+			expectedToMergeCount:    0,
+			expectedTotalFiles:      0,
+			expectedNextBlockStart:  0,
+		},
+		{
+			name:                    "All files currently downloading",
+			downloadedFiles:         []string{},
+			mergedFiles:             []string{},
+			toDownloadFiles:         []string{"test-incr-1000-1999.tar.lz4", "test-incr-2000-2999.tar.lz4", "test-incr-3000-3999.tar.lz4", "test-incr-4000-4999.tar.lz4"},
+			toMergeFiles:            []string{},
+			expectedToDownloadCount: 4,
+			expectedToMergeCount:    0,
+			expectedTotalFiles:      4,
+			expectedNextBlockStart:  1000,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Reset downloader state
+			downloader.downloadedFiles = 0
+			downloader.files = nil
+			downloader.totalFiles = 0
+			downloader.downloadedFilesMap = make(map[uint64]*IncrFileInfo)
+			downloader.expectedNextBlockStart = 0
+
+			// Pre-set database state for this test case
+			if len(tc.toDownloadFiles) > 0 {
+				err := downloader.saveToDownloadFiles(tc.toDownloadFiles)
+				require.NoError(t, err)
+			}
+			if len(tc.downloadedFiles) > 0 {
+				err := downloader.saveDownloadedFiles(tc.downloadedFiles)
+				require.NoError(t, err)
+			}
+			if len(tc.toMergeFiles) > 0 {
+				err := downloader.saveToMergeFiles(tc.toMergeFiles)
+				require.NoError(t, err)
+			}
+			if len(tc.mergedFiles) > 0 {
+				err := downloader.saveMergedFiles(tc.mergedFiles)
+				require.NoError(t, err)
+			}
+
+			// Test processFileStatus
+			err := downloader.processFileStatus(files)
+
+			require.NoError(t, err)
+			assert.Len(t, downloader.files, tc.expectedToDownloadCount)
+			assert.Equal(t, tc.expectedTotalFiles, downloader.totalFiles)
+			assert.Equal(t, tc.expectedNextBlockStart, downloader.expectedNextBlockStart)
+
+			// Verify downloaded files map
+			assert.Len(t, downloader.downloadedFilesMap, tc.expectedToMergeCount)
+
+			// Verify database state
+			toDownloadFiles, err := downloader.loadToDownloadFiles()
+			require.NoError(t, err)
+			assert.Len(t, toDownloadFiles, tc.expectedToDownloadCount)
+
+			toMergeFiles, err := downloader.loadToMergeFiles()
+			require.NoError(t, err)
+			assert.Len(t, toMergeFiles, tc.expectedToMergeCount)
+
+			// Verify specific file assignments
+			if tc.expectedToMergeCount > 0 {
+				// Check that files are properly assigned to merge queue
+				for _, file := range downloader.downloadedFilesMap {
+					assert.Contains(t, toMergeFiles, file.Metadata.FileName)
+				}
+			}
+
+			// Clean up database state for next test
+			err = downloader.saveDownloadedFiles([]string{})
+			assert.NoError(t, err)
+			err = downloader.saveMergedFiles([]string{})
+			assert.NoError(t, err)
+			err = downloader.saveToDownloadFiles([]string{})
+			assert.NoError(t, err)
+			err = downloader.saveToMergeFiles([]string{})
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestIncrDownloader_ProcessFileStatus_EmptyFiles(t *testing.T) {
+	db := createTestDB()
+	defer db.Close()
+	trieDB := triedb.NewDatabase(db, nil)
+	defer trieDB.Close()
+
+	tempDir := t.TempDir()
+	downloader := NewIncrDownloader(db, trieDB, testURL, tempDir, 1000)
+
+	// Test with empty files list
+	files := []*IncrFileInfo{}
+	err := downloader.processFileStatus(files)
+	require.NoError(t, err)
+	assert.Len(t, downloader.files, 0)
+	assert.Equal(t, 0, downloader.totalFiles)
+	assert.Equal(t, uint64(0), downloader.expectedNextBlockStart)
+}
+
+func TestIncrDownloader_ProcessFileStatus_BlockOrdering(t *testing.T) {
+	db := createTestDB()
+	defer db.Close()
+	trieDB := triedb.NewDatabase(db, nil)
+	defer trieDB.Close()
+
+	tempDir := t.TempDir()
+	downloader := NewIncrDownloader(db, trieDB, testURL, tempDir, 1000)
+
+	// Create test files with non-sequential block numbers
+	files := []*IncrFileInfo{
+		{
+			Metadata: IncrMetadata{
+				FileName: "test-incr-3000-3999.tar.lz4",
+				MD5Sum:   "test-md5-3",
+				Size:     3072,
+			},
+			StartBlock: 3000,
+			EndBlock:   3999,
+		},
+		{
+			Metadata: IncrMetadata{
+				FileName: "test-incr-1000-1999.tar.lz4",
+				MD5Sum:   "test-md5-1",
+				Size:     1024,
+			},
+			StartBlock: 1000,
+			EndBlock:   1999,
+		},
+		{
+			Metadata: IncrMetadata{
+				FileName: "test-incr-2000-2999.tar.lz4",
+				MD5Sum:   "test-md5-2",
+				Size:     2048,
+			},
+			StartBlock: 2000,
+			EndBlock:   2999,
+		},
+	}
+
+	// Set some files as downloaded
+	err := downloader.saveDownloadedFiles([]string{"test-incr-1000-1999.tar.lz4", "test-incr-2000-2999.tar.lz4"})
+	assert.NoError(t, err)
+
+	// Test processFileStatus
+	err = downloader.processFileStatus(files)
+	require.NoError(t, err)
+
+	// Verify that the earliest block start is used for expectedNextBlockStart
+	assert.Equal(t, uint64(1000), downloader.expectedNextBlockStart)
+
+	// Verify that both downloaded files are in the merge queue
+	assert.Len(t, downloader.downloadedFilesMap, 2)
+	assert.Contains(t, downloader.downloadedFilesMap, uint64(1000))
+	assert.Contains(t, downloader.downloadedFilesMap, uint64(2000))
 }
