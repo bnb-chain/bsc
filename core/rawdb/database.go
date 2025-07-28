@@ -941,13 +941,13 @@ func InspectIncrStore(baseDir string) error {
 		stats       [][]string
 		unaccounted stat
 		info        = incrSnapDBInfo{
-			readonly:     true,
-			namespace:    "eth/db/incremental/",
-			offset:       0,
-			maxTableSize: stateHistoryTableSize,
-			chainTables:  incrChainFreezerNoSnappy,
-			stateTables:  incrStateFreezerNoSnappy,
-			blockLimit:   0,
+			readonly:      true,
+			namespace:     "eth/db/incremental/",
+			offset:        0,
+			maxTableSize:  stateHistoryTableSize,
+			chainTables:   incrChainFreezerNoSnappy,
+			stateTables:   incrStateFreezerNoSnappy,
+			blockInterval: 0,
 		}
 	)
 
