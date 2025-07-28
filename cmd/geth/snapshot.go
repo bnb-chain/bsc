@@ -825,13 +825,22 @@ func mergeIncrSnapshot(ctx *cli.Context) error {
 	}
 	path := ctx.String(utils.IncrSnapshotPathFlag.Name)
 
+	startBlock, err := trieDB.GetStartBlock()
+	if err != nil {
+		log.Error("Failed to get start block", "error", err)
+		return err
+	}
 	// TODO: handle repair for force kill incr snapshot\
 	dirs, err := rawdb.GetAllIncrDirs(path)
 	if err != nil {
 		log.Error("Failed to get all incremental directories", "err", err)
 		return err
 	}
-	for i := 0; i < len(dirs); i++ {
+	if startBlock < dirs[0].StartBlockNum {
+		return fmt.Errorf("local start block %d is lower than incr first start block %d", startBlock, dirs[0].StartBlockNum)
+	}
+
+	for i := 1; i < len(dirs); i++ {
 		prevFile := dirs[i-1]
 		currFile := dirs[i]
 
@@ -843,11 +852,6 @@ func mergeIncrSnapshot(ctx *cli.Context) error {
 	}
 
 	log.Info("Start merging incremental snapshot", "path", path, "incremental snapshot number", len(dirs))
-	startBlock, err := trieDB.GetStartBlock()
-	if err != nil {
-		log.Error("Failed to get start block", "error", err)
-		return err
-	}
 	for _, dir := range dirs {
 		if dir.StartBlockNum >= startBlock && dir.EndBlockNum > startBlock {
 			if err = core.MergeIncrSnapshot(chainDB, trieDB, dir.Path); err != nil {
