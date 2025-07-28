@@ -73,9 +73,10 @@ type Contract struct {
 	IsDeployment bool
 	IsSystemCall bool
 
-	Gas       uint64
-	value     *uint256.Int
-	optimized bool
+	Gas            uint64
+	value          *uint256.Int
+	optimized      bool
+	codeBitmapFunc func(code []byte) bitvec
 }
 
 func (c *Contract) validJumpdest(dest *uint256.Int) bool {
@@ -112,14 +113,14 @@ func (c *Contract) isCode(udest uint64) bool {
 			} else if c.optimized {
 				analysis = compiler.LoadBitvec(c.CodeHash)
 				if analysis == nil {
-					analysis = codeBitmap(c.Code)
+					analysis = c.codeBitmapFunc(c.Code)
 					compiler.StoreBitvec(c.CodeHash, analysis)
 				}
 				c.jumpdests[c.CodeHash] = analysis
 			} else {
 				// Do the analysis and save in parent context
 				// We do not need to store it in c.analysis
-				analysis = codeBitmap(c.Code)
+				analysis = c.codeBitmapFunc(c.Code)
 				c.jumpdests[c.CodeHash] = analysis
 				contractCodeBitmapMissMeter.Mark(1)
 				codeBitmapCache.Add(c.CodeHash, analysis)
@@ -134,7 +135,7 @@ func (c *Contract) isCode(udest uint64) bool {
 	// we don't have to recalculate it for every JUMP instruction in the execution
 	// However, we don't save it within the parent context
 	if c.analysis == nil {
-		c.analysis = codeBitmap(c.Code)
+		c.analysis = c.codeBitmapFunc(c.Code)
 	}
 	return c.analysis.codeSegment(udest)
 }

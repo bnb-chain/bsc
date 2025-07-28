@@ -263,9 +263,9 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				defer ReturnContract(contract)
 				codeHash := evm.resolveCodeHash(addrCopy)
 				contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
-				//runStart := time.Now()
 				if contract.optimized {
 					evm.UseOptInterpreter()
+					contract.codeBitmapFunc = codeBitmapWhitSI
 				} else {
 					evm.UseBaseInterpreter()
 				}
@@ -273,8 +273,6 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				contract.SetCallCode(&addrCopy, codeHash, code)
 				ret, err = evm.interpreter.Run(contract, input, false)
 				gas = contract.Gas
-				//runTime := time.Since(runStart)
-				//interpreterRunTimer.Update(runTime)
 			} else {
 				addrCopy := addr
 				// If the account has no code, we can abort here
@@ -282,13 +280,10 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				contract := GetContract(caller, AccountRef(addrCopy), value, gas)
 				defer ReturnContract(contract)
 
-				//runStart := time.Now()
 				contract.IsSystemCall = isSystemCall(caller)
 				contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), code)
 				ret, err = evm.interpreter.Run(contract, input, false)
 				gas = contract.Gas
-				//runTime := time.Since(runStart)
-				//interpreterRunTimer.Update(runTime)
 			}
 		}
 	}
@@ -356,6 +351,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 
 			if contract.optimized {
 				evm.UseOptInterpreter()
+				contract.codeBitmapFunc = codeBitmapWhitSI
 			} else {
 				evm.UseBaseInterpreter()
 			}
@@ -425,6 +421,7 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 			contract.SetCallCode(&addrCopy, codeHash, code)
 			if contract.optimized {
 				evm.UseOptInterpreter()
+				contract.codeBitmapFunc = codeBitmapWhitSI
 			} else {
 				evm.UseBaseInterpreter()
 			}
@@ -499,6 +496,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 			if contract.optimized {
 				evm.UseOptInterpreter()
+				contract.codeBitmapFunc = codeBitmapWhitSI
 			} else {
 				evm.UseBaseInterpreter()
 			}
@@ -686,6 +684,7 @@ func (evm *EVM) initNewContract(contract *Contract, address common.Address, valu
 	if evm.Config.EnableOpcodeOptimizations {
 		compiler.EnableOptimization()
 		evm.UseOptInterpreter()
+		contract.codeBitmapFunc = codeBitmapWhitSI
 	}
 
 	// Check whether the max code size has been exceeded, assign err if the case.
