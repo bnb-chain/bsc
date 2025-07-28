@@ -1006,17 +1006,16 @@ func TestIncrDownloader_Close(t *testing.T) {
 	assert.Empty(t, downloader.downloadedFilesMap)
 }
 
-// Helper function: create test metadata file
-func createTestMetadataFile(t *testing.T, tempDir string, metadata []IncrMetadata) string {
-	metadataPath := filepath.Join(tempDir, "incr_metadata.json")
-	data, err := json.Marshal(metadata)
-	require.NoError(t, err)
-
-	err = os.WriteFile(metadataPath, data, 0644)
-	require.NoError(t, err)
-
-	return metadataPath
-}
+// func createTestMetadataFile(t *testing.T, tempDir string, metadata []IncrMetadata) string {
+// 	metadataPath := filepath.Join(tempDir, "incr_metadata.json")
+// 	data, err := json.Marshal(metadata)
+// 	require.NoError(t, err)
+//
+// 	err = os.WriteFile(metadataPath, data, 0644)
+// 	require.NoError(t, err)
+//
+// 	return metadataPath
+// }
 
 func TestIncrDownloader_Integration(t *testing.T) {
 	db := createTestDB()

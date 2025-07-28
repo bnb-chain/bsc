@@ -65,12 +65,13 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 		}
 
 		var force bool
-		if nodesSet.size >= defaultFlushBatchSize {
+		if nodesSet.size >= 1*1024*1204*1024 {
 			force = true
-			log.Info("Force flush when merging due to size is too big", "size", common.StorageSize(nodesSet.size))
 		} else {
 			force = false
 		}
+		log.Info("Force flush when merging due to size is too big", "force", force,
+			"size", common.StorageSize(nodesSet.size))
 
 		if err = a.flush(db, freezer, nil, m.StateIDArray[1], force, false); err != nil {
 			log.Error("Failed to flush history", "error", err)

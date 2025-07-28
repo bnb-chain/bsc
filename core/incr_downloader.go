@@ -234,10 +234,9 @@ func (d *IncrDownloader) Prepare() error {
 	}
 
 	// Process file status and categorize files
-	if err := d.processFileStatus(files); err != nil {
+	if err = d.processFileStatus(files); err != nil {
 		return err
 	}
-
 	return nil
 }
 
