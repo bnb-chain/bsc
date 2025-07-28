@@ -2390,7 +2390,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 			cfg.IncrSnapshotStateBuffer = ctx.Uint64(IncrSnapshotStateBufferFlag.Name)
 		}
 		if ctx.IsSet(IncrSnapshotKeptBlocksFlag.Name) {
-			cfg.IncrSnapshotKeptBlocksFlag = ctx.Uint64(IncrSnapshotKeptBlocksFlag.Name)
+			cfg.IncrSnapshotKeptBlocks = ctx.Uint64(IncrSnapshotKeptBlocksFlag.Name)
 		}
 	}
 }
