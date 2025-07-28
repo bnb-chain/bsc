@@ -308,7 +308,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 		}
 	}
 
-	if dl.db.config.EnableIncrHistory {
+	if dl.db.config.EnableIncr {
 		err := dl.commitIncrData(bottom)
 		if err != nil {
 			log.Error("Failed to commit incremental data after retries", "err", err)
@@ -475,9 +475,11 @@ func (dl *diskLayer) commitIncrData(bottom *diffLayer) error {
 
 		log.Error("Non-recoverable error committing incremental data",
 			"block", bottom.block, "stateID", bottom.stateID(), "err", err)
+		incrCommitErrorMeter.Mark(1)
 		return err
 	}
 
+	incrCommitErrorMeter.Mark(1)
 	log.Error("Failed to commit incremental data after all retries",
 		"block", bottom.block, "stateID", bottom.stateID(), "maxRetries", maxRetries, "finalError", lastErr)
 	dl.db.incr.LogStats()

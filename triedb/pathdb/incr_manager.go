@@ -75,9 +75,7 @@ type incrManager struct {
 	incrDB      *rawdb.IncrSnapDB
 	chainConfig *params.ChainConfig
 
-	count     uint64
-	skipCount uint64
-	endBlock  uint64
+	endBlock uint64
 
 	// Async write control
 	writeQueue chan *diffLayer
@@ -232,12 +230,12 @@ func (im *incrManager) worker() {
 			if err != nil {
 				log.Error("Async write task failed", "block", dl.block, "stateID", dl.stateID(),
 					"processingTime", processingTime, "error", err)
+				incrProcessErrorMeter.Mark(1)
 			} else {
 				log.Debug("Task processed successfully", "block", dl.block, "stateID", dl.stateID(), "processingTime", processingTime)
 			}
 
 			im.updateStats(err)
-
 		case <-im.stopChan:
 			log.Debug("Worker stopping")
 			return
@@ -248,7 +246,6 @@ func (im *incrManager) worker() {
 func (im *incrManager) processWriteTask(dl *diffLayer) error {
 	// skip already written incremental data
 	if dl.block <= im.endBlock {
-		im.count++
 		return nil
 	}
 
@@ -261,9 +258,6 @@ func (im *incrManager) processWriteTask(dl *diffLayer) error {
 		log.Error("Failed to write incremental data", "block", dl.block, "stateID", dl.stateID(), "error", err)
 		return err
 	}
-	// if im.skipCount != im.count {
-	// 	return fmt.Errorf("different number of skipped blocks: %d != %d", im.skipCount, im.count)
-	// }
 
 	return nil
 }

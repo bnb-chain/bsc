@@ -232,6 +232,7 @@ func (d *IncrDownloader) Prepare() error {
 		return err
 	}
 
+	// Load existing file status from database
 	downloadedFiles, err := d.loadDownloadedFiles()
 	if err != nil {
 		log.Warn("Failed to load downloaded files list, starting fresh")
@@ -244,7 +245,19 @@ func (d *IncrDownloader) Prepare() error {
 		mergedFiles = []string{}
 	}
 
-	// Create set for quick lookup
+	toDownloadFiles, err := d.loadToDownloadFiles()
+	if err != nil {
+		log.Warn("Failed to load to download files list, starting fresh")
+		toDownloadFiles = []string{}
+	}
+
+	toMergeFiles, err := d.loadToMergeFiles()
+	if err != nil {
+		log.Warn("Failed to load to merge files list, starting fresh")
+		toMergeFiles = []string{}
+	}
+
+	// Create sets for quick lookup
 	downloadedSet := make(map[string]bool)
 	for _, file := range downloadedFiles {
 		downloadedSet[file] = true
@@ -255,40 +268,109 @@ func (d *IncrDownloader) Prepare() error {
 		mergedSet[file] = true
 	}
 
-	// Filter out already downloaded files
-	var toDownloadFiles []*IncrFileInfo
-	var toDownloadFileNames []string
-	for _, file := range files {
-		if downloadedSet[file.Metadata.FileName] {
-			log.Debug("Skipping already downloaded file", "fileName", file.Metadata.FileName)
-			d.downloadedFiles++
-			continue
-		}
-		if mergedSet[file.Metadata.FileName] {
-			log.Debug("Skipping already merged file", "fileName", file.Metadata.FileName)
-			continue
-		}
-		toDownloadFiles = append(toDownloadFiles, file)
-		toDownloadFileNames = append(toDownloadFileNames, file.Metadata.FileName)
+	toDownloadSet := make(map[string]bool)
+	for _, file := range toDownloadFiles {
+		toDownloadSet[file] = true
 	}
 
-	d.files = toDownloadFiles
+	toMergeSet := make(map[string]bool)
+	for _, file := range toMergeFiles {
+		toMergeSet[file] = true
+	}
+
+	// Filter and categorize files based on their current status
+	var newToDownloadFiles []*IncrFileInfo
+	var newToDownloadFileNames []string
+	var newToMergeFiles []*IncrFileInfo
+	var newToMergeFileNames []string
+
+	for _, file := range files {
+		fileName := file.Metadata.FileName
+
+		// Skip already merged files
+		if mergedSet[fileName] {
+			log.Debug("Skipping already merged file", "fileName", fileName)
+			continue
+		}
+
+		// Check if file is already downloaded
+		if downloadedSet[fileName] {
+			log.Debug("File already downloaded, checking merge status", "fileName", fileName)
+			d.downloadedFiles++
+
+			// If downloaded but not merged, add to merge queue
+			if !mergedSet[fileName] {
+				if !toMergeSet[fileName] {
+					newToMergeFiles = append(newToMergeFiles, file)
+					newToMergeFileNames = append(newToMergeFileNames, fileName)
+					log.Debug("Adding downloaded file to merge queue", "fileName", fileName)
+				}
+			}
+			continue
+		}
+
+		// Check if file is currently being downloaded
+		if toDownloadSet[fileName] {
+			log.Debug("File is currently being downloaded, keeping in download queue", "fileName", fileName)
+			newToDownloadFiles = append(newToDownloadFiles, file)
+			newToDownloadFileNames = append(newToDownloadFileNames, fileName)
+			continue
+		}
+
+		// Check if file is currently being merged
+		if toMergeSet[fileName] {
+			log.Debug("File is currently being merged, keeping in merge queue", "fileName", fileName)
+			newToMergeFiles = append(newToMergeFiles, file)
+			newToMergeFileNames = append(newToMergeFileNames, fileName)
+			continue
+		}
+
+		// New file to download
+		log.Debug("Adding new file to download queue", "fileName", fileName)
+		newToDownloadFiles = append(newToDownloadFiles, file)
+		newToDownloadFileNames = append(newToDownloadFileNames, fileName)
+	}
+
+	// Update file lists
+	d.files = newToDownloadFiles
 	d.totalFiles = len(d.files)
-	if err = d.saveToDownloadFiles(toDownloadFileNames); err != nil {
+
+	// Save updated file lists to database
+	if err = d.saveToDownloadFiles(newToDownloadFileNames); err != nil {
 		log.Error("Failed to save to download files", "error", err)
 		return err
 	}
-	log.Info("Filtered files", "totalFiles", d.totalFiles, "downloadedFiles", len(downloadedFiles), "toDownloadFiles", len(toDownloadFiles))
 
-	// Initialize expected next block start for merge ordering
-	if len(d.files) > 0 {
-		d.expectedNextBlockStart = d.files[0].StartBlock
-		log.Info("Initialized expected next block start", "expectedNextBlockStart", d.expectedNextBlockStart)
+	if err = d.saveToMergeFiles(newToMergeFileNames); err != nil {
+		log.Error("Failed to save to merge files", "error", err)
+		return err
 	}
 
-	log.Info("Preparation completed", "totalFiles", d.totalFiles, "firstBlock", d.getFirstBlockNum(),
-		"lastBlock", d.getLastBlockNum())
+	// Initialize downloaded files map with files that are ready for merge
+	for _, file := range newToMergeFiles {
+		d.downloadedFilesMap[file.StartBlock] = file
+		log.Debug("Added file to downloaded files map for merge", "fileName", file.Metadata.FileName, "startBlock", file.StartBlock)
+	}
 
+	// Initialize expected next block start for merge ordering
+	if len(newToMergeFiles) > 0 {
+		// Find the earliest start block among files ready for merge
+		earliestBlock := newToMergeFiles[0].StartBlock
+		for _, file := range newToMergeFiles {
+			if file.StartBlock < earliestBlock {
+				earliestBlock = file.StartBlock
+			}
+		}
+		d.expectedNextBlockStart = earliestBlock
+		log.Info("Initialized expected next block start from existing merge queue", "expectedNextBlockStart", d.expectedNextBlockStart)
+	} else if len(d.files) > 0 {
+		d.expectedNextBlockStart = d.files[0].StartBlock
+		log.Info("Initialized expected next block start from new files", "expectedNextBlockStart", d.expectedNextBlockStart)
+	}
+
+	log.Info("Preparation completed", "totalFiles", d.totalFiles, "downloadedFiles", len(downloadedFiles),
+		"mergedFiles", len(mergedFiles), "toDownloadFiles", len(newToDownloadFileNames),
+		"toMergeFiles", len(newToMergeFileNames), "firstBlock", d.getFirstBlockNum(), "lastBlock", d.getLastBlockNum())
 	return nil
 }
 
@@ -575,6 +657,81 @@ func (d *IncrDownloader) markFileAsDownloaded(fileName string) {
 	d.removeFromToDownload(fileName)
 }
 
+// markFileAsToMerge marks a file as currently to merge
+func (d *IncrDownloader) markFileAsToMerge(fileName string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	toMergeFiles, _ := d.loadToMergeFiles()
+	if toMergeFiles == nil {
+		toMergeFiles = []string{}
+	}
+
+	// Check if already in list
+	found := false
+	for _, file := range toMergeFiles {
+		if file == fileName {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		toMergeFiles = append(toMergeFiles, fileName)
+		d.saveToMergeFiles(toMergeFiles)
+		log.Debug("Marked file as to merge", "fileName", fileName)
+	}
+}
+
+// removeFromToMerge removes a file from to merge list
+func (d *IncrDownloader) removeFromToMerge(fileName string) {
+	toMergeFiles, err := d.loadToMergeFiles()
+	if err != nil {
+		log.Error("Failed to load to merge files", "error", err)
+		return
+	}
+
+	if toMergeFiles != nil {
+		var newToMergeFiles []string
+		for _, file := range toMergeFiles {
+			if file != fileName {
+				newToMergeFiles = append(newToMergeFiles, file)
+			}
+		}
+		d.saveToMergeFiles(newToMergeFiles)
+		log.Debug("Removed file from to merge list", "fileName", fileName)
+	}
+}
+
+// markFileAsMerged marks a file as merged and removes from to merge list
+func (d *IncrDownloader) markFileAsMerged(fileName string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	// Add to merged files
+	mergedFiles, _ := d.loadMergedFiles()
+	if mergedFiles == nil {
+		mergedFiles = []string{}
+	}
+	// Check if already in list
+	found := false
+	for _, file := range mergedFiles {
+		if file == fileName {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		mergedFiles = append(mergedFiles, fileName)
+		d.saveMergedFiles(mergedFiles)
+		log.Debug("Marked file as merged", "fileName", fileName)
+	}
+
+	// Remove from to merge files
+	d.removeFromToMerge(fileName)
+}
+
 // queueForMerge queues a file for merge (non-blocking)
 func (d *IncrDownloader) queueForMerge(file *IncrFileInfo) {
 	d.mergeMutex.Lock()
@@ -596,6 +753,10 @@ func (d *IncrDownloader) queueForMerge(file *IncrFileInfo) {
 
 	// Add to downloaded files map
 	d.downloadedFilesMap[file.StartBlock] = file
+
+	// Mark file as to merge in database
+	d.markFileAsToMerge(file.Metadata.FileName)
+
 	log.Debug("File queued for merge", "file", file.Metadata.FileName, "startBlock", file.StartBlock)
 }
 
@@ -951,6 +1112,8 @@ func (d *IncrDownloader) mergeWorker() {
 				}
 
 				currFile.Merged = true
+				d.markFileAsMerged(currFile.Metadata.FileName)
+
 				d.mu.Lock()
 				d.mergedFiles++
 				d.mu.Unlock()
@@ -993,8 +1156,9 @@ func (d *IncrDownloader) progressMonitor() {
 				"speed", progress.Speed, "status", progress.Status)
 		case <-ticker.C:
 			d.mu.RLock()
+			stats := d.GetFileStatusStats()
 			log.Info("Overall progress", "downloaded", d.downloadedFiles,
-				"merged", d.mergedFiles, "total", d.totalFiles)
+				"merged", d.mergedFiles, "total", d.totalFiles, "stats", stats)
 			d.mu.RUnlock()
 		case <-d.ctx.Done():
 			return
@@ -1296,5 +1460,26 @@ func (d *IncrDownloader) cleanupTempFiles(chunks []*ChunkInfo) {
 		if err := os.Remove(chunk.TempFile); err != nil {
 			log.Warn("Failed to remove temp file", "file", chunk.TempFile, "error", err)
 		}
+	}
+}
+
+// GetFileStatusStats returns current file status statistics
+func (d *IncrDownloader) GetFileStatusStats() map[string]interface{} {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	downloadedFiles, _ := d.loadDownloadedFiles()
+	mergedFiles, _ := d.loadMergedFiles()
+	toDownloadFiles, _ := d.loadToDownloadFiles()
+	toMergeFiles, _ := d.loadToMergeFiles()
+
+	return map[string]interface{}{
+		"totalFiles":             d.totalFiles,
+		"downloadedFiles":        len(downloadedFiles),
+		"mergedFiles":            len(mergedFiles),
+		"toDownloadFiles":        len(toDownloadFiles),
+		"toMergeFiles":           len(toMergeFiles),
+		"downloadedFilesMap":     len(d.downloadedFilesMap),
+		"expectedNextBlockStart": d.expectedNextBlockStart,
 	}
 }
