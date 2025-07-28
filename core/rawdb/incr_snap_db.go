@@ -50,13 +50,13 @@ type snapDBWrapper struct {
 }
 
 type incrSnapDBInfo struct {
-	readonly     bool
-	namespace    string
-	offset       uint64
-	maxTableSize uint32
-	chainTables  map[string]bool
-	stateTables  map[string]bool
-	blockLimit   uint64 // write needs to set it; 0 is used in reading data from incr db
+	readonly      bool
+	namespace     string
+	offset        uint64
+	maxTableSize  uint32
+	chainTables   map[string]bool
+	stateTables   map[string]bool
+	blockInterval uint64 // write needs to set it; 0 is used in reading data from incr db
 }
 
 // IncrDirInfo holds information about an incremental directory
@@ -68,18 +68,18 @@ type IncrDirInfo struct {
 }
 
 // NewIncrSnapDB creates a new incremental snap database
-func NewIncrSnapDB(baseDir string, readonly bool, startBlock, blockLimit uint64) (*IncrSnapDB, error) {
+func NewIncrSnapDB(baseDir string, readonly bool, startBlock, blockInterval uint64) (*IncrSnapDB, error) {
 	info := incrSnapDBInfo{
-		readonly:     readonly,
-		namespace:    "eth/db/incremental/",
-		maxTableSize: stateHistoryTableSize,
-		chainTables:  incrChainFreezerNoSnappy,
-		stateTables:  incrStateFreezerNoSnappy,
-		blockLimit:   blockLimit,
+		readonly:      readonly,
+		namespace:     "eth/db/incremental/",
+		maxTableSize:  stateHistoryTableSize,
+		chainTables:   incrChainFreezerNoSnappy,
+		stateTables:   incrStateFreezerNoSnappy,
+		blockInterval: blockInterval,
 	}
 
 	// Find the latest directory or create the first one
-	currentDir, err := findLatestIncrDir(baseDir, startBlock, blockLimit)
+	currentDir, err := findLatestIncrDir(baseDir, startBlock, blockInterval)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func NewIncrSnapDB(baseDir string, readonly bool, startBlock, blockLimit uint64)
 	}
 	incrDB.switchCond = sync.NewCond(&incrDB.switchMutex)
 
-	log.Info("New incr snap db", "baseDir", baseDir, "currentDir", currentDir, "blockLimit", blockLimit,
+	log.Info("New incr snap db", "baseDir", baseDir, "currentDir", currentDir, "blockInterval", blockInterval,
 		"startBlock", startBlock)
 	return incrDB, nil
 }
@@ -259,7 +259,6 @@ func (idb *IncrSnapDB) switchToNewDirectoryWithAsyncManager(blockNum uint64, asy
 
 	log.Info("Force flushing all incr state data before directory switch")
 	if err := asyncManager.ForceFlushStateBuffer(); err != nil {
-		log.Error("Failed to force flush state data before directory switch", "error", err)
 		return fmt.Errorf("failed to force flush buffered data: %v", err)
 	}
 
@@ -288,14 +287,12 @@ func (idb *IncrSnapDB) switchToNewDirectoryWithAsyncManager(blockNum uint64, asy
 	}
 
 	if err := idb.closeCurrentDatabases(); err != nil {
-		log.Error("Failed to close current databases", "err", err)
 		return err
 	}
 
-	newDir := filepath.Join(idb.baseDir, fmt.Sprintf(incrDirNamePattern, blockNum, blockNum+idb.info.blockLimit-1))
+	newDir := filepath.Join(idb.baseDir, fmt.Sprintf(incrDirNamePattern, blockNum, blockNum+idb.info.blockInterval-1))
 	db, err := newSnapDBWrapper(newDir, &idb.info)
 	if err != nil {
-		log.Error("Failed to create incr snapshot database", "err", err)
 		return fmt.Errorf("failed to create new snap db wrapper in directory %s: %v", newDir, err)
 	}
 
@@ -394,7 +391,7 @@ func (idb *IncrSnapDB) Full() bool {
 	idb.lock.RLock()
 	defer idb.lock.RUnlock()
 
-	return idb.info.blockLimit > 0 && idb.blockCount >= idb.info.blockLimit
+	return idb.info.blockInterval > 0 && idb.blockCount >= idb.info.blockInterval
 }
 
 // Close closes the IncrDB and all underlying databases
@@ -411,7 +408,7 @@ func (idb *IncrSnapDB) GetCurrentStats() (string, uint64) {
 	idb.lock.RLock()
 	defer idb.lock.RUnlock()
 
-	return idb.currentDir, idb.info.blockLimit
+	return idb.currentDir, idb.info.blockInterval
 }
 
 // IsSwitching returns true if directory switching is in progress
@@ -440,7 +437,7 @@ func (idb *IncrSnapDB) CheckAndInitiateSwitch(blockNum uint64, asyncManager Asyn
 
 	// Check limit again with proper lock to ensure consistency
 	idb.lock.RLock()
-	limitReached := idb.info.blockLimit > 0 && idb.blockCount >= idb.info.blockLimit
+	limitReached := idb.info.blockInterval > 0 && idb.blockCount >= idb.info.blockInterval
 	idb.lock.RUnlock()
 
 	if !limitReached {
@@ -479,7 +476,7 @@ func (idb *IncrSnapDB) reset(block uint64) error {
 		return fmt.Errorf("failed to create base directory %s: %v", idb.baseDir, err)
 	}
 
-	newDir := filepath.Join(idb.baseDir, fmt.Sprintf(incrDirNamePattern, block, block+idb.info.blockLimit-1))
+	newDir := filepath.Join(idb.baseDir, fmt.Sprintf(incrDirNamePattern, block, block+idb.info.blockInterval-1))
 	db, err := newSnapDBWrapper(newDir, &idb.info)
 	if err != nil {
 		return fmt.Errorf("failed to create new snap db wrapper in directory %s: %v", newDir, err)
