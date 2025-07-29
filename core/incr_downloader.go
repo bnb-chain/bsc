@@ -1423,6 +1423,7 @@ func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, prog
 	if err != nil {
 		return err
 	}
+	req.Close = true
 
 	// Set range header
 	rangeHeader := fmt.Sprintf("bytes=%d-%d", chunk.Start, chunk.End)
