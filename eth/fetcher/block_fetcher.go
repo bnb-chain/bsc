@@ -935,6 +935,7 @@ func (f *BlockFetcher) importBlocks(op *blockOrHeaderInject) {
 		}
 		// If import succeeded, broadcast the block
 		blockAnnounceOutTimer.UpdateSince(block.ReceivedAt)
+		log.Debug("broadcast block to bal test peer", "number", block.Number(), "hash", hash, "balSize", block.BALSize())
 		go f.broadcastBlock(block, false, true) // send to bal test peer for now, block should include BAL
 
 		// Invoke the testing hook if needed

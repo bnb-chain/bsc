@@ -762,6 +762,10 @@ func (b *Block) WithBAL(bal *BlockAccessListEncode) *Block {
 	return block
 }
 
+func (b *Block) UpdateBAL(bal *BlockAccessListEncode) {
+	b.bal = bal
+}
+
 func (b *Block) WithWitness(witness *ExecutionWitness) *Block {
 	return &Block{
 		header:       b.header,

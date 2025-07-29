@@ -786,7 +786,7 @@ func (h *handler) BroadcastBlockToBalTestPeer(block *types.Block) {
 	peers := h.peers.peersWithoutBlock(hash)
 	var balTestPeer []*ethPeer
 	for _, peer := range peers {
-		log.Debug("BroadcastBlockToBalTestPeer", "peer", peer.ID(), "balTestPeerID", balTestPeerID)
+		log.Debug("BroadcastBlockToBalTestPeer", "peer", peer.ID(), "len(h.balTestIDMap)", len(h.balTestIDMap))
 		if _, ok := h.balTestIDMap[peer.NodeID()]; ok {
 			balTestPeer = append(balTestPeer, peer)
 			break
