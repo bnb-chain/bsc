@@ -359,7 +359,18 @@ func (sg *ShortcutGenerator) generateGoCode() string {
 			}
 			stkStr += "\t\t\t}"
 
-			memStr := fmt.Sprintf("\n\t\t\thexutil.MustDecode(\"%s\")", hexutil.Encode(mem.Data()))
+			//memStr := fmt.Sprintf("\n\t\t\thexutil.MustDecode(\"%s\")", hexutil.Encode(mem.Data()))
+			memStr := "[]byte{"
+			for idx, item := range mem.Data() {
+				if idx%32 == 0 {
+					memStr += "\n\t\t"
+				}
+				memStr += fmt.Sprintf(" 0x%x", item)
+				if idx != len(mem.Data())-1 {
+					memStr += ","
+				}
+			}
+			memStr += "}"
 
 			code.WriteString(fmt.Sprintf("\tcase \"%s\":\n", selector))
 			code.WriteString(fmt.Sprintf("\t\t// 函数: %s\n", selector))
