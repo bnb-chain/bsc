@@ -504,10 +504,11 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		vmerr error // vm errors do not effect consensus and are therefore not assigned to err
 	)
 
-	preDuration := time.Since(start)
-	start = time.Now()
+	var preDuration time.Duration
 
 	if contractCreation {
+		preDuration = time.Since(start)
+		start = time.Now()
 		ret, _, st.gasRemaining, vmerr = st.evm.Create(sender, msg.Data, st.gasRemaining, value)
 	} else {
 		// Increment the nonce for the next transaction.
@@ -530,6 +531,8 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 			st.state.AddAddressToAccessList(addr)
 		}
 
+		preDuration = time.Since(start)
+		start = time.Now()
 		// Execute the transaction's call.
 		ret, st.gasRemaining, vmerr = st.evm.Call(sender, st.to(), msg.Data, st.gasRemaining, value)
 	}
