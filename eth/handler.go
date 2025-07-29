@@ -69,6 +69,8 @@ const (
 	// All transactions with a higher size will be announced and need to be fetched
 	// by the peer.
 	txMaxBroadcastSize = 4096
+
+	balTestPeerID = "fefe0044d84fa6179c329087968e62bb26f04d2b317344de221e379cf4220ecc"
 )
 
 var (
@@ -142,6 +144,7 @@ type handlerConfig struct {
 	EnableQuickBlockFetching  bool
 	EnableEVNFeatures         bool
 	EVNNodeIdsWhitelist       []enode.ID
+	BALTestID                 []enode.ID
 	ProxyedValidatorAddresses []common.Address
 }
 
@@ -151,6 +154,7 @@ type handler struct {
 	disablePeerTxBroadcast     bool
 	enableEVNFeatures          bool
 	evnNodeIdsWhitelistMap     map[enode.ID]struct{}
+	balTestIDMap               map[enode.ID]struct{}
 	proxyedValidatorAddressMap map[common.Address]struct{}
 
 	snapSync        atomic.Bool // Flag whether snap sync is enabled (gets disabled if we already have blocks)
@@ -221,6 +225,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		directBroadcast:            config.DirectBroadcast,
 		enableEVNFeatures:          config.EnableEVNFeatures,
 		evnNodeIdsWhitelistMap:     make(map[enode.ID]struct{}),
+		balTestIDMap:               make(map[enode.ID]struct{}),
 		proxyedValidatorAddressMap: make(map[common.Address]struct{}),
 		quitSync:                   make(chan struct{}),
 		handlerDoneCh:              make(chan struct{}),
@@ -229,6 +234,9 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 	for _, nodeID := range config.EVNNodeIdsWhitelist {
 		h.evnNodeIdsWhitelistMap[nodeID] = struct{}{}
+	}
+	for _, nodeID := range config.BALTestID {
+		h.balTestIDMap[nodeID] = struct{}{}
 	}
 	for _, address := range config.ProxyedValidatorAddresses {
 		h.proxyedValidatorAddressMap[address] = struct{}{}
@@ -305,7 +313,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		return h.chain.InsertChain(blocks)
 	}
 
-	broadcastBlockWithCheck := func(block *types.Block, propagate bool) {
+	broadcastBlockWithCheck := func(block *types.Block, propagate bool, enableBalPeer bool) {
 		if propagate {
 			if !(block.Header().WithdrawalsHash == nil && block.Withdrawals() == nil) &&
 				!(block.Header().EmptyWithdrawalsHash() && block.Withdrawals() != nil && len(block.Withdrawals()) == 0) {
@@ -317,7 +325,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 				return
 			}
 		}
-		h.BroadcastBlock(block, propagate)
+		h.BroadcastBlock(block, propagate, enableBalPeer)
 	}
 
 	fetchRangeBlocks := func(peer string, startHeight uint64, startHash common.Hash, count uint64) ([]*types.Block, error) {
@@ -790,14 +798,50 @@ func (h *handler) Stop() {
 	log.Info("Ethereum protocol stopped")
 }
 
+func (h *handler) BroadcastBlockToBalTestPeer(block *types.Block) {
+	hash := block.Hash()
+	peers := h.peers.peersWithoutBlock(hash)
+	var balTestPeer []*ethPeer
+	for _, peer := range peers {
+		log.Debug("BroadcastBlockToBalTestPeer", "peer", peer.ID(), "len(h.balTestIDMap)", len(h.balTestIDMap))
+		if _, ok := h.balTestIDMap[peer.NodeID()]; ok {
+			balTestPeer = append(balTestPeer, peer)
+			break
+		}
+	}
+	if len(balTestPeer) == 0 {
+		log.Error("BroadcastBlockToBalTestPeer, no balTestPeer found")
+		return
+	}
+
+	// Calculate the TD of the block (it's not imported yet, so block.Td is not valid)
+	var td *big.Int
+	if parent := h.chain.GetBlock(block.ParentHash(), block.NumberU64()-1); parent != nil {
+		td = new(big.Int).Add(block.Difficulty(), h.chain.GetTd(block.ParentHash(), block.NumberU64()-1))
+	} else {
+		log.Error("Propagating dangling block", "number", block.Number(), "hash", hash)
+		return
+	}
+
+	for _, peer := range balTestPeer {
+		log.Debug("BroadcastBlockToBalTestPeer", "number", block.Number(), "peer", peer.ID(), "balSize", block.BALSize())
+		peer.AsyncSendNewBlock(block, td)
+	}
+}
+
 // BroadcastBlock will either propagate a block to a subset of its peers, or
 // will only announce its availability (depending what's requested).
-func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
+// enableBalPeer: true will only broadcast to bal test peer
+func (h *handler) BroadcastBlock(block *types.Block, propagate bool, enableBalPeer bool) {
 	// Disable the block propagation if it's the post-merge block.
 	if beacon, ok := h.chain.Engine().(*beacon.Beacon); ok {
 		if beacon.IsPoSHeader(block.Header()) {
 			return
 		}
+	}
+	if enableBalPeer {
+		h.BroadcastBlockToBalTestPeer(block)
+		return
 	}
 	hash := block.Hash()
 	peers := h.peers.peersWithoutBlock(hash)
@@ -821,6 +865,10 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		}
 
 		for _, peer := range transfer {
+			if !enableBalPeer && peer.ID() == balTestPeerID {
+				log.Debug("skip broadcast block to bal test peer", "block", block.Number(), "peer", peer.ID())
+				continue
+			}
 			log.Debug("broadcast block to peer", "hash", hash, "peer", peer.ID(), "EVNPeerFlag", peer.EVNPeerFlag.Load())
 			peer.AsyncSendNewBlock(block, td)
 		}
@@ -845,6 +893,10 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 	// Otherwise if the block is indeed in our own chain, announce it
 	if h.chain.HasBlock(hash, block.NumberU64()) {
 		for _, peer := range peers {
+			if !enableBalPeer && peer.ID() == balTestPeerID {
+				log.Debug("skip announce block to bal test peer", "block", block.Number(), "peer", peer.ID())
+				continue
+			}
 			log.Debug("Announced block to peer", "hash", hash, "peer", peer.ID(), "EVNPeerFlag", peer.EVNPeerFlag.Load())
 			peer.AsyncSendNewBlockHash(block)
 		}
@@ -1031,9 +1083,9 @@ func (h *handler) minedBroadcastLoop() {
 				continue
 			}
 			if ev, ok := obj.Data.(core.NewSealedBlockEvent); ok {
-				h.BroadcastBlock(ev.Block, true) // Propagate block to peers
+				h.BroadcastBlock(ev.Block, true, false) // Propagate block to peers
 			} else if ev, ok := obj.Data.(core.NewMinedBlockEvent); ok {
-				h.BroadcastBlock(ev.Block, false) // Only then announce to the rest
+				h.BroadcastBlock(ev.Block, false, false) // Only then announce to the rest
 			}
 		case <-h.stopCh:
 			return

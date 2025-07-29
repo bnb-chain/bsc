@@ -183,7 +183,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	}
 	statedb.DumpAccessList(block)
 	bal := statedb.GetBlockAccessList(block)
-	block = block.WithBAL(bal)
+	block.UpdateBAL(bal)
 
 	log.Info("Process", "blockNumber", block.NumberU64(), "GasUsed", block.GasUsed(), "block size(noBal)", block.Size(), "balSize", block.BALSize())
 	return &ProcessResult{
