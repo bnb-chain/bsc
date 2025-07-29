@@ -2752,7 +2752,6 @@ func MakeChain(ctx *cli.Context, stack *node.Node, readonly bool) (*core.BlockCh
 	if vmcfg.EnableOpcodeOptimizations {
 		compiler.EnableOptimization()
 	}
-
 	if ctx.IsSet(VMTraceFlag.Name) {
 		if name := ctx.String(VMTraceFlag.Name); name != "" {
 			config := json.RawMessage(ctx.String(VMTraceJsonConfigFlag.Name))

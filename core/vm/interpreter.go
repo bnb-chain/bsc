@@ -186,6 +186,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	if len(contract.Code) == 0 {
 		return nil, nil
 	}
+
 	var (
 		op          OpCode        // current opcode
 		mem         = NewMemory() // bound memory
@@ -312,12 +313,12 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		if memorySize > 0 {
 			mem.Resize(memorySize)
 		}
+
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
 		if err != nil {
 			break
 		}
-
 		pc++
 	}
 
