@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -63,8 +64,17 @@ func testCtx() *vmContext {
 }
 
 func runTrace(tracer *tracers.Tracer, vmctx *vmContext, chaincfg *params.ChainConfig, contractCode []byte) (json.RawMessage, error) {
+	return runTraceWithOption(tracer, vmctx, chaincfg, contractCode, false)
+}
+
+func runTraceWithOptiEnabled(tracer *tracers.Tracer, vmctx *vmContext, chaincfg *params.ChainConfig, contractCode []byte) (json.RawMessage, error) {
+	return runTraceWithOption(tracer, vmctx, chaincfg, contractCode, true)
+}
+
+func runTraceWithOption(tracer *tracers.Tracer, vmctx *vmContext, chaincfg *params.ChainConfig, contractCode []byte, enableOpti bool) (json.RawMessage, error) {
 	var (
-		evm             = vm.NewEVM(vmctx.blockCtx, &dummyStatedb{}, chaincfg, vm.Config{Tracer: tracer.Hooks})
+		evm = vm.NewEVM(vmctx.blockCtx, &dummyStatedb{}, chaincfg, vm.Config{Tracer: tracer.Hooks,
+			EnableOpcodeOptimizations: enableOpti})
 		gasLimit uint64 = 31000
 		startGas uint64 = 10000
 		value           = uint256.NewInt(0)
@@ -76,6 +86,14 @@ func runTrace(tracer *tracers.Tracer, vmctx *vmContext, chaincfg *params.ChainCo
 	contract.Code = []byte{byte(vm.PUSH1), 0x1, byte(vm.PUSH1), 0x1, 0x0}
 	if contractCode != nil {
 		contract.Code = contractCode
+	}
+
+	if enableOpti {
+		// reset the code also require flush code cache.
+		compiler.DeleteCodeCache(contract.CodeHash)
+		optimized, _ := compiler.GenOrRewriteOptimizedCode(contract.CodeHash, contract.Code)
+		contract.Code = optimized
+		contract.SetOptimizedForTest()
 	}
 
 	tracer.OnTxStart(evm.GetVMContext(), types.NewTx(&types.LegacyTx{Gas: gasLimit, GasPrice: vmctx.txCtx.GasPrice}), contract.Caller())
@@ -165,6 +183,82 @@ func TestTracer(t *testing.T) {
 	} {
 		if have, err := execTracer(tt.code, tt.contract); tt.want != string(have) || tt.fail != err {
 			t.Errorf("testcase %d: expected return value to be \n'%s'\n\tgot\n'%s'\nerror to be\n'%s'\n\tgot\n'%s'\n\tcode: %v", i, tt.want, string(have), tt.fail, err, tt.code)
+		}
+	}
+}
+
+func TestTracerWithOptimization(t *testing.T) {
+	execTracer := func(code string, contract []byte) ([]byte, string) {
+		t.Helper()
+		chainConfig := params.TestChainConfig
+		tracer, err := newJsTracer(code, nil, nil, chainConfig)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ret, err := runTraceWithOptiEnabled(tracer, testCtx(), params.TestChainConfig, contract)
+		if err != nil {
+			return nil, err.Error() // Stringify to allow comparison without nil checks
+		}
+		return ret, ""
+	}
+	for i, tt := range []struct {
+		code     string
+		want     string
+		fail     string
+		contract []byte
+	}{
+		{ // tests that we don't panic on bad arguments to memory access
+			code: "{depths: [], step: function(log) { this.depths.push(log.memory.slice(-1,-2)); }, fault: function() {}, result: function() { return this.depths; }}",
+			want: ``,
+			fail: "tracer accessed out of bound memory: offset -1, end -2 at step (<eval>:1:53(13))    in server-side tracer function 'step'",
+		}, { // tests that we don't panic on bad arguments to stack peeks
+			code: "{depths: [], step: function(log) { this.depths.push(log.stack.peek(-1)); }, fault: function() {}, result: function() { return this.depths; }}",
+			want: ``,
+			fail: "tracer accessed out of bound stack: size 0, index -1 at step (<eval>:1:53(11))    in server-side tracer function 'step'",
+		}, { //  tests that we don't panic on bad arguments to memory getUint
+			code: "{ depths: [], step: function(log, db) { this.depths.push(log.memory.getUint(-64));}, fault: function() {}, result: function() { return this.depths; }}",
+			want: ``,
+			fail: "tracer accessed out of bound memory: available 0, offset -64, size 32 at step (<eval>:1:58(11))    in server-side tracer function 'step'",
+		}, { // tests some general counting
+			code: "{count: 0, step: function() { this.count += 1; }, fault: function() {}, result: function() { return this.count; }}",
+			want: `2`,
+		}, { // tests that depth is reported correctly
+			code: "{depths: [], step: function(log) { this.depths.push(log.stack.length()); }, fault: function() {}, result: function() { return this.depths; }}",
+			want: `[0,2]`,
+		}, { // tests memory length
+			code: "{lengths: [], step: function(log) { this.lengths.push(log.memory.length()); }, fault: function() {}, result: function() { return this.lengths; }}",
+			want: `[0,0]`,
+		}, { // tests to-string of opcodes
+			code: "{opcodes: [], step: function(log) { this.opcodes.push(log.op.toString()); }, fault: function() {}, result: function() { return this.opcodes; }}",
+			want: `["PUSH1PUSH1","STOP"]`,
+		}, { // tests gasUsed
+			code: "{depths: [], step: function() {}, fault: function() {}, result: function(ctx) { return ctx.gasPrice+'.'+ctx.gasUsed; }}",
+			want: `"100000.21006"`,
+		}, {
+			code: "{res: null, step: function(log) {}, fault: function() {}, result: function() { return toWord('0xffaa') }}",
+			want: `{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0,"8":0,"9":0,"10":0,"11":0,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0,"20":0,"21":0,"22":0,"23":0,"24":0,"25":0,"26":0,"27":0,"28":0,"29":0,"30":255,"31":170}`,
+		}, { // test feeding a buffer back into go
+			code: "{res: null, step: function(log) { var address = log.contract.getAddress(); this.res = toAddress(address); }, fault: function() {}, result: function() { return this.res }}",
+			want: `{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0,"8":0,"9":0,"10":0,"11":0,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0}`,
+		}, {
+			code: "{res: null, step: function(log) { var address = '0x0000000000000000000000000000000000000000'; this.res = toAddress(address); }, fault: function() {}, result: function() { return this.res }}",
+			want: `{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0,"8":0,"9":0,"10":0,"11":0,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0}`,
+		}, {
+			code: "{res: null, step: function(log) { var address = Array.prototype.slice.call(log.contract.getAddress()); this.res = toAddress(address); }, fault: function() {}, result: function() { return this.res }}",
+			want: `{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6":0,"7":0,"8":0,"9":0,"10":0,"11":0,"12":0,"13":0,"14":0,"15":0,"16":0,"17":0,"18":0,"19":0}`,
+		}, {
+			code:     "{res: [], step: function(log) { var op = log.op.toString(); if (op === 'MSTORE8' || op === 'STOP') { this.res.push(log.memory.slice(0, 2)) } }, fault: function() {}, result: function() { return this.res }}",
+			want:     `[{"0":0,"1":0},{"0":255,"1":0}]`,
+			contract: []byte{byte(vm.PUSH1), byte(0xff), byte(vm.PUSH1), byte(0x00), byte(vm.MSTORE8), byte(vm.STOP)},
+		}, {
+			code:     "{res: [], step: function(log) { if (log.op.toString() === 'STOP') { this.res.push(log.memory.slice(5, 1025 * 1024)) } }, fault: function() {}, result: function() { return this.res }}",
+			want:     "",
+			fail:     "reached limit for padding memory slice: 1049568 at step (<eval>:1:83(20))    in server-side tracer function 'step'",
+			contract: []byte{byte(vm.PUSH1), byte(0xff), byte(vm.PUSH1), byte(0x00), byte(vm.MSTORE8), byte(vm.STOP)},
+		},
+	} {
+		if have, err := execTracer(tt.code, tt.contract); tt.want != string(have) || tt.fail != err {
+			t.Errorf("testcase %d: expected return value to be '%s' got '%s', error to be '%s' got '%s'\n\tcode: %v", i, tt.want, string(have), tt.fail, err, tt.code)
 		}
 	}
 }
