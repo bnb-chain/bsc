@@ -351,7 +351,7 @@ func (db *Database) checkIncrConfig() {
 	if db.config.IncrStateBuffer == 0 {
 		db.config.IncrStateBuffer = DefaultIncrStateBufferSize
 	}
-	if db.config.IncrKeptBlocks == 0 {
+	if db.config.IncrKeptBlocks < DefaultKeptBlocks {
 		db.config.IncrKeptBlocks = DefaultKeptBlocks
 	} else {
 		if db.config.IncrKeptBlocks > db.config.IncrHistory {

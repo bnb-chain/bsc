@@ -30,8 +30,13 @@ const (
 	// The default memory allowance for incremental state buffer: 6GB
 	DefaultIncrStateBufferSize = 6 * 1024 * 1024 * 1024
 
-	// The maximum size of the batch to be flushed into the ancient db: 3GB
-	defaultFlushBatchSize = 3 * 1024 * 1024 * 1024
+	// The maximum size of the batch to be flushed into the ancient db: 2GB
+	defaultFlushBatchSize = 2 * 1024 * 1024 * 1024
+)
+
+var (
+	configPrefix  = []byte("ethereum-config-")  // config prefix for the db
+	genesisPrefix = []byte("ethereum-genesis-") // genesis state prefix for the db
 )
 
 // writeStats tracks write operation statistics
@@ -123,11 +128,32 @@ func (im *incrManager) Start() {
 		return
 	}
 
+	if err := im.writeGenesisMeta(); err != nil {
+		log.Error("Failed to write genesis meta", "error", err)
+		return
+	}
+
 	im.wg.Add(1)
 	go im.worker()
 
 	im.started = true
 	log.Info("Incremental store async worker started")
+}
+
+func (im *incrManager) writeGenesisMeta() error {
+	stored := rawdb.ReadCanonicalHash(im.db.diskdb, 0)
+	if (stored == common.Hash{}) {
+		return fmt.Errorf("invalid genesis hash in database: %x", stored)
+	}
+	stateSpect := rawdb.ReadGenesisStateSpec(im.db.diskdb, stored)
+	if stateSpect == nil {
+		return fmt.Errorf("genesis state spec is nil in db: %x", stored)
+	}
+
+	incrKV := im.incrDB.GetKVDB()
+	rawdb.WriteChainConfig(incrKV, stored, im.chainConfig)
+	rawdb.WriteGenesisStateSpec(incrKV, stored, stateSpect)
+	return nil
 }
 
 // Stop stops the async write workers and directory switch checker

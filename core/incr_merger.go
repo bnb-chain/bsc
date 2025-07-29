@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"sync"
@@ -44,7 +45,7 @@ func MergeIncrSnapshot(chainDB ethdb.Database, trieDB *triedb.Database, incrPath
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := mergeContractCodes(incrPath, chainDB); err != nil {
+		if err := mergeIncrKV(incrPath, chainDB); err != nil {
 			log.Error("Failed to merge incremental contract codes", "path", incrPath, "err", err)
 			errChan <- fmt.Errorf("failed to merge incremental contract codes: %v", err)
 		}
@@ -146,7 +147,8 @@ func mergeIncrBlock(incrDir string, chainDB ethdb.Database) error {
 	return nil
 }
 
-func mergeContractCodes(incrDir string, chainDB ethdb.Database) error {
+// mergeIncrKV merges incr kv in incr pebble db.
+func mergeIncrKV(incrDir string, chainDB ethdb.Database) error {
 	newDB, err := pebble.New(incrDir, 10, 10, "incremental", true)
 	if err != nil {
 		log.Error("Failed to open pebble to read incremental data", "err", err)
@@ -188,6 +190,11 @@ func mergeContractCodes(incrDir string, chainDB ethdb.Database) error {
 		return err
 	}
 
+	if err = mergeGenesisMeta(chainDB, newDB); err != nil {
+		log.Error("Failed to merge genesis meta data", "err", err)
+		return err
+	}
+
 	log.Info("Complete merging contract codes", "total", codeCount)
 	return nil
 }
@@ -215,5 +222,43 @@ func mergeParliaSnapshots(chainDB ethdb.Database, incrKV *pebble.Database) error
 	}
 
 	log.Info("Completed Parlia snapshots merging", "total_snapshots", count)
+	return nil
+}
+
+// mergeGenesisMeta merges incr metadata into base, if they are different
+func mergeGenesisMeta(chainDB ethdb.Database, incrKV *pebble.Database) error {
+	stored := rawdb.ReadCanonicalHash(chainDB, 0)
+	if (stored == common.Hash{}) {
+		return fmt.Errorf("invalid genesis hash in database: %x", stored)
+	}
+
+	// read base metadata
+	storedChainConfig := rawdb.ReadChainConfig(chainDB, stored)
+	if storedChainConfig == nil {
+		return fmt.Errorf("base chain config in db is nil: %x", stored)
+	}
+	storedStateSpect := rawdb.ReadGenesisStateSpec(chainDB, stored)
+	if storedStateSpect == nil {
+		return fmt.Errorf("base genesis state spec in db is nil: %x", stored)
+	}
+
+	// read incr metadata
+	incrChainConfig := rawdb.ReadChainConfig(incrKV, stored)
+	if incrChainConfig == nil {
+		return fmt.Errorf("incr genesis state spec in db is nil: %x", stored)
+	}
+	incrStateSpect := rawdb.ReadGenesisStateSpec(incrKV, stored)
+	if incrStateSpect == nil {
+		return fmt.Errorf("incr genesis state spec in db is nil: %x", stored)
+	}
+
+	if storedChainConfig != incrChainConfig {
+		log.Info("Update base chain config")
+		rawdb.WriteChainConfig(chainDB, stored, incrChainConfig)
+	}
+	if !bytes.Equal(storedStateSpect, incrStateSpect) {
+		log.Info("Update base state spec")
+		rawdb.WriteGenesisStateSpec(chainDB, stored, incrStateSpect)
+	}
 	return nil
 }

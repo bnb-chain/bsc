@@ -65,7 +65,7 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 		}
 
 		var force bool
-		if nodesSet.size >= 1*1024*1204*1024 {
+		if nodesSet.size >= MaxDirtyBufferSize {
 			force = true
 		} else {
 			force = false
