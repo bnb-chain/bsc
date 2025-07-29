@@ -460,6 +460,7 @@ func (s *StateDB) PreloadStorage(addr common.Address, key common.Hash) {
 	s.GetState(addr, key)
 }
 func (s *StateDB) PreloadAccountTrie(addr common.Address) {
+	defer debug.Handler.StartRegionAuto("StateDB.PreloadAccountTrie")()
 	if s.prefetcher == nil {
 		return
 	}
@@ -471,6 +472,7 @@ func (s *StateDB) PreloadAccountTrie(addr common.Address) {
 }
 
 func (s *StateDB) PreloadStorageTrie(addr common.Address, key common.Hash) {
+	defer debug.Handler.StartRegionAuto("StateDB.PreloadStorageTrie")()
 	if s.prefetcher == nil {
 		return
 	}
