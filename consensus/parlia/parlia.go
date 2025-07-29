@@ -2394,6 +2394,7 @@ func applyMessage(
 		msg.GasLimit,
 		uint256.MustFromBig(msg.Value),
 	)
+
 	if err != nil {
 		log.Error("apply message failed", "msg", string(ret), "err", err)
 	}
