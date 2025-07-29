@@ -311,6 +311,9 @@ func TestEthClient(t *testing.T) {
 		// "AtFunctions": {
 		// 	func(t *testing.T) { testAtFunctions(t, client) },
 		// },
+		"TransactionSender": {
+			func(t *testing.T) { testTransactionSender(t, client) },
+		},
 		"TestSendTransactionConditional": {
 			func(t *testing.T) { testSendTransactionConditional(t, client) },
 		},
@@ -434,6 +437,12 @@ func testTransactionInBlock(t *testing.T, client *rpc.Client) {
 	}
 	if tx.Hash() != testTx2.Hash() {
 		t.Fatalf("unexpected transaction: %v", tx)
+	}
+
+	// Test pending block
+	_, err = ec.BlockByNumber(context.Background(), big.NewInt(int64(rpc.PendingBlockNumber)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -652,9 +661,96 @@ func testSendTransactionConditional(t *testing.T, client *rpc.Client) {
 	if gas != 21000 {
 		t.Fatalf("unexpected gas limit: %v", gas)
 	}
+	// Use HeaderByNumber to get a header for EstimateGasAtBlock and EstimateGasAtBlockHash
+	latestHeader, err := ec.HeaderByNumber(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// EstimateGasAtBlock
+	msg := ethereum.CallMsg{
+		From:  testAddr,
+		To:    &common.Address{},
+		Gas:   21000,
+		Value: big.NewInt(1),
+	}
+	gas, err := ec.EstimateGasAtBlock(context.Background(), msg, latestHeader.Number)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gas != 21000 {
+		t.Fatalf("unexpected gas limit: %v", gas)
+	}
+	// EstimateGasAtBlockHash
+	gas, err = ec.EstimateGasAtBlockHash(context.Background(), msg, latestHeader.Hash())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gas != 21000 {
+		t.Fatalf("unexpected gas limit: %v", gas)
+	}
+
+	// Verify that sender address of pending transaction is saved in cache.
+	pendingBlock, err := ec.BlockByNumber(context.Background(), big.NewInt(int64(rpc.PendingBlockNumber)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// No additional RPC should be required, ensure the server is not asked by
+	// canceling the context.
+	sender, err := ec.TransactionSender(newCanceledContext(), pendingBlock.Transactions()[0], pendingBlock.Hash(), 0)
+	if err != nil {
+		t.Fatal("unable to recover sender:", err)
+	}
+	if sender != testAddr {
+		t.Fatal("wrong sender:", sender)
+	}
 }
 
-func sendTransactionConditional(ec *ethclient.Client) error {
+func testTransactionSender(t *testing.T, client *rpc.Client) {
+	ec := ethclient.NewClient(client)
+	ctx := context.Background()
+
+	// Retrieve testTx1 via RPC.
+	block2, err := ec.HeaderByNumber(ctx, big.NewInt(2))
+	if err != nil {
+		t.Fatal("can't get block 1:", err)
+	}
+	tx1, err := ec.TransactionInBlock(ctx, block2.Hash(), 0)
+	if err != nil {
+		t.Fatal("can't get tx:", err)
+	}
+	if tx1.Hash() != testTx1.Hash() {
+		t.Fatalf("wrong tx hash %v, want %v", tx1.Hash(), testTx1.Hash())
+	}
+
+	// The sender address is cached in tx1, so no additional RPC should be required in
+	// TransactionSender. Ensure the server is not asked by canceling the context here.
+	sender1, err := ec.TransactionSender(newCanceledContext(), tx1, block2.Hash(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sender1 != testAddr {
+		t.Fatal("wrong sender:", sender1)
+	}
+
+	// Now try to get the sender of testTx2, which was not fetched through RPC.
+	// TransactionSender should query the server here.
+	sender2, err := ec.TransactionSender(ctx, testTx2, block2.Hash(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sender2 != testAddr {
+		t.Fatal("wrong sender:", sender2)
+	}
+}
+
+func newCanceledContext() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	<-ctx.Done() // Ensure the close of the Done channel
+	return ctx
+}
+
+func sendTransaction(ec *ethclient.Client) error {
 	chainID, err := ec.ChainID(context.Background())
 	if err != nil {
 		return err
