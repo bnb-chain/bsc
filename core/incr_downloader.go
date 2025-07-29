@@ -136,7 +136,7 @@ func NewIncrDownloader(db ethdb.Database, triedb *triedb.Database, remoteURL, in
 // createHTTPClient creates an HTTP client with optimized connection pool settings
 func createHTTPClient() *http.Client {
 	return &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: 60 * time.Second,
 		Transport: &http.Transport{
 			// Connection pool settings
 			MaxIdleConns:        100,              // Maximum number of idle connections
@@ -151,10 +151,13 @@ func createHTTPClient() *http.Client {
 			TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
 
 			// Response header timeout
-			ResponseHeaderTimeout: 10 * time.Second,
+			ResponseHeaderTimeout: 30 * time.Second,
 
 			// Expect continue timeout
 			ExpectContinueTimeout: 1 * time.Second,
+
+			DisableKeepAlives: false,
+			ForceAttemptHTTP2: false,
 		},
 	}
 }
