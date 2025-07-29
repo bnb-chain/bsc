@@ -26,7 +26,7 @@ import (
 
 const (
 	incrSnapshotNamePattern = `(.*)-incr-(\d+)-(\d+)\.tar\.lz4`
-	maxRetries              = 3
+	maxRetries              = 5
 	baseDelay               = time.Second
 )
 
@@ -1322,9 +1322,6 @@ func (d *IncrDownloader) checkExistingChunks(chunks []*ChunkInfo) {
 
 // downloadChunk downloads a single chunk with retry mechanism
 func (d *IncrDownloader) downloadChunk(url string, chunk *ChunkInfo, progressChan chan<- *ChunkProgress) error {
-	const maxRetries = 3
-	const baseDelay = time.Second
-
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		err := d.downloadChunkAttempt(url, chunk, progressChan)
 		if err == nil {
@@ -1333,12 +1330,12 @@ func (d *IncrDownloader) downloadChunk(url string, chunk *ChunkInfo, progressCha
 		}
 
 		// Log the error for this attempt
-		log.Warn("Chunk download attempt failed", "chunk", chunk.Index, "attempt", attempt,
+		log.Warn("Failed to download chunk", "chunk", chunk.Index, "attempt", attempt,
 			"maxRetries", maxRetries, "error", err)
 
 		// If this is the last attempt, return the error
 		if attempt == maxRetries {
-			return fmt.Errorf("chunk download failed after %d attempts, last error: %w", maxRetries, err)
+			return fmt.Errorf("failed to download chunk after %d attempts, last error: %w", maxRetries, err)
 		}
 
 		// Calculate delay with exponential backoff
