@@ -147,7 +147,7 @@ func mergeIncrBlock(incrDir string, chainDB ethdb.Database) error {
 	return nil
 }
 
-// mergeIncrKV merges incr kv in incr pebble db.
+// mergeIncrKV merges incr kv: contract codes, parlia snapshot, chain config and genesis state spec..
 func mergeIncrKV(incrDir string, chainDB ethdb.Database) error {
 	newDB, err := pebble.New(incrDir, 10, 10, "incremental", true)
 	if err != nil {
@@ -245,11 +245,11 @@ func mergeGenesisMeta(chainDB ethdb.Database, incrKV *pebble.Database) error {
 	// read incr metadata
 	incrChainConfig := rawdb.ReadChainConfig(incrKV, stored)
 	if incrChainConfig == nil {
-		return fmt.Errorf("incr genesis state spec in db is nil: %x", stored)
+		return nil
 	}
 	incrStateSpect := rawdb.ReadGenesisStateSpec(incrKV, stored)
 	if incrStateSpect == nil {
-		return fmt.Errorf("incr genesis state spec in db is nil: %x", stored)
+		return nil
 	}
 
 	if storedChainConfig != incrChainConfig {
