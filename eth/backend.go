@@ -391,6 +391,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		DirectBroadcast:           config.DirectBroadcast,
 		EnableEVNFeatures:         stack.Config().EnableEVNFeatures,
 		EVNNodeIdsWhitelist:       stack.Config().P2P.EVNNodeIdsWhitelist,
+		BALTestID:                 stack.Config().P2P.BALTestID,
 		ProxyedValidatorAddresses: stack.Config().P2P.ProxyedValidatorAddresses,
 		DisablePeerTxBroadcast:    config.DisablePeerTxBroadcast,
 		PeerSet:                   peers,

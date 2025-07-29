@@ -88,6 +88,9 @@ type Config struct {
 	// the list is another choice for non-validator nodes to get block quickly
 	EVNNodeIdsWhitelist []enode.ID `toml:",omitempty"`
 
+	// BALTestID is a list of NodeIDs that are used for BAL test
+	BALTestID []enode.ID `toml:",omitempty"`
+
 	// ProxyedValidatorAddresses is a list of validator addresses that the local node proxies,
 	// it usually used for sentry nodes
 	ProxyedValidatorAddresses []common.Address `toml:",omitempty"`
