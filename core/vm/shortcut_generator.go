@@ -380,6 +380,72 @@ func (sg *ShortcutGenerator) generateGoCode() string {
 
 	code.WriteString("}\n")
 
+	// 生成ShortcutV2方法
+	code.WriteString(fmt.Sprintf("func (s *ShortcutImpl%s) ShortcutV2(\n\tinputs []byte, origin, caller common.Address, value *uint256.Int,\n\tshortcutPc *uint64, gasUsed *uint64, stack *[]uint256.Int, mem *[]byte, lastGasCost *uint64,\n) (expected bool, err error) {\n", strings.ToUpper(sg.contractAddr.Hex()[2:])))
+
+	// 生成函数选择器逻辑
+	if len(sg.selectors) > 0 {
+		code.WriteString("\t// 函数选择器分析\n")
+		code.WriteString("\tif len(inputs) < 4 {\n")
+		code.WriteString("\t\treturn false, nil\n")
+		code.WriteString("\t}\n\n")
+
+		code.WriteString("\tselector := hexutil.Encode(inputs[:4])\n")
+		code.WriteString("\tswitch selector {\n")
+
+		for selector, info := range sg.selectors {
+			if info.SimErr != nil {
+				code.WriteString(fmt.Sprintf("\t\t // case %s has sim error %s \n", selector, info.SimErr.Error()))
+				continue
+			}
+
+			stk, mem := info.Stack, info.Memory
+
+			stkStr := "\n\t\t\t[]uint256.Int{\n"
+			for _, item := range stk {
+				stkStr += fmt.Sprintf("\t\t\t\t{%d, %d, %d, %d}, \n", item[0], item[1], item[2], item[3])
+			}
+			stkStr += "\t\t\t}"
+
+			//memStr := fmt.Sprintf("\n\t\t\thexutil.MustDecode(\"%s\")", hexutil.Encode(mem.Data()))
+			memStr := "[]byte{"
+			for idx, item := range mem.Data() {
+				if idx%32 == 0 {
+					memStr += "\n\t\t"
+				}
+				memStr += fmt.Sprintf(" 0x%x", item)
+				if idx != len(mem.Data())-1 {
+					memStr += ","
+				}
+			}
+			memStr += "}"
+
+			code.WriteString(fmt.Sprintf("\tcase \"%s\":\n", selector))
+			code.WriteString(fmt.Sprintf("\t\t// 函数: %s\n", selector))
+			code.WriteString(fmt.Sprintf("\t\t// 预估Gas消耗: %d\n", info.GasUsed))
+			code.WriteString(fmt.Sprintf("\t\t// 栈操作: %v\n", info.StackOps))
+			code.WriteString(fmt.Sprintf("\t\t// 内存操作: %v\n", info.MemoryOps))
+			code.WriteString(fmt.Sprintf("\t\t// 存储操作: %v\n", info.StorageOps))
+			//code.WriteString(fmt.Sprintf("\t\treturn %d, %d, %s, %s, %d, true, nil\n", info.PC, info.GasUsed, stkStr, memStr, mem.lastGasCost))
+			code.WriteString(fmt.Sprintf("\t\t*shortcutPc = %d\n", info.PC))
+			code.WriteString(fmt.Sprintf("\t\t*gasUsed = %d\n", info.GasUsed))
+			code.WriteString(fmt.Sprintf("\t\t*stack = %s\n", stkStr))
+			code.WriteString(fmt.Sprintf("\t\t*mem = %s\n", memStr))
+			code.WriteString(fmt.Sprintf("\t\t*lastGasCost = %d\n", mem.lastGasCost))
+
+			code.WriteString(fmt.Sprintf("\t\treturn true, nil\n"))
+		}
+
+		code.WriteString("\tdefault:\n")
+		code.WriteString("\t\treturn false, nil\n")
+		code.WriteString("\t}\n")
+	} else {
+		code.WriteString("\t// 未找到函数选择器\n")
+		code.WriteString("\treturn false, nil\n")
+	}
+
+	code.WriteString("}\n")
+
 	return code.String()
 }
 
