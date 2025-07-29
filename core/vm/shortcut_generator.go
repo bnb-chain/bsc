@@ -378,7 +378,7 @@ func (sg *ShortcutGenerator) generateGoCode() string {
 		code.WriteString("\treturn 0, 0, nil, nil, 0, false, nil\n")
 	}
 
-	code.WriteString("}\n")
+	code.WriteString("}\n\n")
 
 	// 生成ShortcutV2方法
 	code.WriteString(fmt.Sprintf("func (s *ShortcutImpl%s) ShortcutV2(\n\tinputs []byte, origin, caller common.Address, value *uint256.Int,\n\tshortcutPc *uint64, gasUsed *uint64, stack *[]uint256.Int, mem *[]byte, lastGasCost *uint64,\n) (expected bool, err error) {\n", strings.ToUpper(sg.contractAddr.Hex()[2:])))

@@ -257,6 +257,7 @@ func (s *ShortcutImpl55D398326F99059FF775485246999027B3197955) Shortcut(inputs [
 		return 0, 0, nil, nil, 0, false, nil
 	}
 }
+
 func (s *ShortcutImpl55D398326F99059FF775485246999027B3197955) ShortcutV2(
 	inputs []byte, origin, caller common.Address, value *uint256.Int,
 	shortcutPc *uint64, gasUsed *uint64, stack *[]uint256.Int, mem *[]byte, lastGasCost *uint64,
