@@ -18,6 +18,7 @@ package rawdb
 
 import (
 	"encoding/binary"
+	"errors"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -27,6 +28,11 @@ import (
 // ReadPreimage retrieves a single preimage of the provided hash.
 func ReadPreimage(db ethdb.KeyValueReader, hash common.Hash) []byte {
 	data, _ := db.Get(preimageKey(hash))
+	if len(data) == 0 {
+		preimageMissCounter.Inc(1)
+	} else {
+		preimageHitsCounter.Inc(1)
+	}
 	return data
 }
 
@@ -38,7 +44,6 @@ func WritePreimages(db ethdb.KeyValueWriter, preimages map[common.Hash][]byte) {
 		}
 	}
 	preimageCounter.Inc(int64(len(preimages)))
-	preimageHitCounter.Inc(int64(len(preimages)))
 }
 
 // ReadCode retrieves the contract code of the provided code hash.
@@ -251,11 +256,41 @@ func ReadStateHistory(db ethdb.AncientReaderOp, id uint64) ([]byte, []byte, []by
 	return meta, accountIndex, storageIndex, accountData, storageData, nil
 }
 
+// ReadStateHistoryList retrieves a list of state histories from database with
+// specific range. Compute the position of state history in freezer by minus one
+// since the id of first state history starts from one(zero for initial state).
+func ReadStateHistoryList(db ethdb.AncientReaderOp, start uint64, count uint64) ([][]byte, [][]byte, [][]byte, [][]byte, [][]byte, error) {
+	metaList, err := db.AncientRange(stateHistoryMeta, start-1, count, 0)
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
+	aIndexList, err := db.AncientRange(stateHistoryAccountIndex, start-1, count, 0)
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
+	sIndexList, err := db.AncientRange(stateHistoryStorageIndex, start-1, count, 0)
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
+	aDataList, err := db.AncientRange(stateHistoryAccountData, start-1, count, 0)
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
+	sDataList, err := db.AncientRange(stateHistoryStorageData, start-1, count, 0)
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
+	if len(metaList) != len(aIndexList) || len(metaList) != len(sIndexList) || len(metaList) != len(aDataList) || len(metaList) != len(sDataList) {
+		return nil, nil, nil, nil, nil, errors.New("state history is corrupted")
+	}
+	return metaList, aIndexList, sIndexList, aDataList, sDataList, nil
+}
+
 // WriteStateHistory writes the provided state history to database. Compute the
 // position of state history in freezer by minus one since the id of first state
 // history starts from one(zero for initial state).
-func WriteStateHistory(db ethdb.AncientWriter, id uint64, meta []byte, accountIndex []byte, storageIndex []byte, accounts []byte, storages []byte) {
-	db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
+func WriteStateHistory(db ethdb.AncientWriter, id uint64, meta []byte, accountIndex []byte, storageIndex []byte, accounts []byte, storages []byte) error {
+	_, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
 		err := op.AppendRaw(stateHistoryMeta, id-1, meta)
 		if err != nil {
 			log.Error("WriteStateHistory failed", "err", err)
@@ -283,4 +318,5 @@ func WriteStateHistory(db ethdb.AncientWriter, id uint64, meta []byte, accountIn
 		}
 		return nil
 	})
+	return err
 }

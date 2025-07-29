@@ -2,7 +2,7 @@
 # with Go source code. If you know what GOPATH is then you probably
 # don't need to bother with make.
 
-.PHONY: geth faucet all test truffle-test lint fmt clean devtools help
+.PHONY: geth evm faucet all test truffle-test lint fmt clean devtools help
 .PHONY: docker
 
 GOBIN = ./build/bin
@@ -21,6 +21,12 @@ geth:
 faucet:
 	$(GORUN) build/ci.go install ./cmd/faucet
 	@echo "Done building faucet"
+
+#? evm: Build evm.
+evm:
+	$(GORUN) build/ci.go install ./cmd/evm
+	@echo "Done building."
+	@echo "Run \"$(GOBIN)/evm\" to launch evm."
 
 #? all: Build all packages and executables.
 all:

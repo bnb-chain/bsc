@@ -31,7 +31,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var freezerTestTableDef = map[string]bool{"test": true}
+var freezerTestTableDef = map[string]freezerTableConfig{"test": {noSnappy: true}}
 
 func TestFreezerModify(t *testing.T) {
 	t.Parallel()
@@ -47,7 +47,7 @@ func TestFreezerModify(t *testing.T) {
 		valuesRLP = append(valuesRLP, iv)
 	}
 
-	tables := map[string]bool{"raw": true, "rlp": false}
+	tables := map[string]freezerTableConfig{"raw": {noSnappy: true}, "rlp": {noSnappy: false}}
 	f, _ := newFreezerForTesting(t, tables)
 	defer f.Close()
 
@@ -111,7 +111,7 @@ func TestFreezerModifyRollback(t *testing.T) {
 	f.Close()
 
 	// Reopen and check that the rolled-back data doesn't reappear.
-	tables := map[string]bool{"test": true}
+	tables := map[string]freezerTableConfig{"test": {noSnappy: true}}
 	f2, err := NewFreezer(dir, "", false, 2049, tables)
 	if err != nil {
 		t.Fatalf("can't reopen freezer after failed ModifyAncients: %v", err)
@@ -249,7 +249,7 @@ func TestFreezerConcurrentModifyTruncate(t *testing.T) {
 }
 
 func TestFreezerReadonlyValidate(t *testing.T) {
-	tables := map[string]bool{"a": true, "b": true}
+	tables := map[string]freezerTableConfig{"a": {noSnappy: true}, "b": {noSnappy: true}}
 	dir := t.TempDir()
 	// Open non-readonly freezer and fill individual tables
 	// with different amount of data.
@@ -285,7 +285,7 @@ func TestFreezerReadonlyValidate(t *testing.T) {
 func TestFreezerConcurrentReadonly(t *testing.T) {
 	t.Parallel()
 
-	tables := map[string]bool{"a": true}
+	tables := map[string]freezerTableConfig{"a": {noSnappy: true}}
 	dir := t.TempDir()
 
 	f, err := NewFreezer(dir, "", false, 2049, tables)
@@ -572,7 +572,7 @@ func appendSameItem(op ethdb.AncientWriteOp, tables []string, i uint64, item []b
 	return nil
 }
 
-func newFreezerForTesting(t *testing.T, tables map[string]bool) (*Freezer, string) {
+func newFreezerForTesting(t *testing.T, tables map[string]freezerTableConfig) (*Freezer, string) {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -596,9 +596,6 @@ func checkAncientCount(t *testing.T, f *Freezer, kind string, n uint64) {
 	// Check at index n-1.
 	if n > 0 {
 		index := n - 1
-		if ok, _ := f.HasAncient(kind, index); !ok {
-			t.Errorf("HasAncient(%q, %d) returned false unexpectedly", kind, index)
-		}
 		if _, err := f.Ancient(kind, index); err != nil {
 			t.Errorf("Ancient(%q, %d) returned unexpected error %q", kind, index, err)
 		}
@@ -606,9 +603,6 @@ func checkAncientCount(t *testing.T, f *Freezer, kind string, n uint64) {
 
 	// Check at index n.
 	index := n
-	if ok, _ := f.HasAncient(kind, index); ok {
-		t.Errorf("HasAncient(%q, %d) returned true unexpectedly", kind, index)
-	}
 	if _, err := f.Ancient(kind, index); err == nil {
 		t.Errorf("Ancient(%q, %d) didn't return expected error", kind, index)
 	} else if err != errOutOfBounds {
@@ -618,7 +612,7 @@ func checkAncientCount(t *testing.T, f *Freezer, kind string, n uint64) {
 
 func TestFreezerCloseSync(t *testing.T) {
 	t.Parallel()
-	f, _ := newFreezerForTesting(t, map[string]bool{"a": true, "b": true})
+	f, _ := newFreezerForTesting(t, map[string]freezerTableConfig{"a": {noSnappy: true}, "b": {noSnappy: true}})
 	defer f.Close()
 
 	// Now, close and sync. This mimics the behaviour if the node is shut down,
@@ -640,17 +634,23 @@ func TestFreezerCloseSync(t *testing.T) {
 
 func TestFreezerSuite(t *testing.T) {
 	ancienttest.TestAncientSuite(t, func(kinds []string) ethdb.AncientStore {
-		tables := make(map[string]bool)
+		tables := make(map[string]freezerTableConfig)
 		for _, kind := range kinds {
-			tables[kind] = true
+			tables[kind] = freezerTableConfig{
+				noSnappy: true,
+				prunable: true,
+			}
 		}
 		f, _ := newFreezerForTesting(t, tables)
 		return f
 	})
 	ancienttest.TestResettableAncientSuite(t, func(kinds []string) ethdb.ResettableAncientStore {
-		tables := make(map[string]bool)
+		tables := make(map[string]freezerTableConfig)
 		for _, kind := range kinds {
-			tables[kind] = true
+			tables[kind] = freezerTableConfig{
+				noSnappy: true,
+				prunable: true,
+			}
 		}
 		f, _ := newResettableFreezer(t.TempDir(), "", false, 2048, tables)
 		return f

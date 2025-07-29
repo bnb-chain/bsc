@@ -24,6 +24,8 @@ import (
 	"net"
 	"os"
 	"path"
+	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -38,13 +40,17 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/history"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/internal/era"
+	"github.com/ethereum/go-ethereum/internal/era/eradl"
+	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -107,7 +113,7 @@ It expects the genesis file as argument.`,
 		Name:      "dumpgenesis",
 		Usage:     "Dumps genesis block JSON configuration to stdout",
 		ArgsUsage: "",
-		Flags:     append([]cli.Flag{utils.DataDirFlag}, utils.NetworkFlags...),
+		Flags:     slices.Concat([]cli.Flag{utils.DataDirFlag}, utils.NetworkFlags),
 		Description: `
 The dumpgenesis command prints the genesis configuration of the network preset
 if one is set.  Otherwise it prints the genesis from the datadir.`,
@@ -118,12 +124,16 @@ if one is set.  Otherwise it prints the genesis from the datadir.`,
 		Usage:     "Import a blockchain file",
 		ArgsUsage: "<filename> (<filename 2> ... <filename N>) ",
 		Flags: slices.Concat([]cli.Flag{
-			utils.CacheFlag,
-			utils.SyncModeFlag,
 			utils.GCModeFlag,
 			utils.SnapshotFlag,
+			utils.CacheFlag,
 			utils.CacheDatabaseFlag,
+			utils.CacheTrieFlag,
 			utils.CacheGCFlag,
+			utils.CacheSnapshotFlag,
+			utils.CacheNoPrefetchFlag,
+			utils.CachePreimagesFlag,
+			utils.NoCompactionFlag,
 			utils.MetricsEnabledFlag,
 			utils.MetricsEnabledExpensiveFlag,
 			utils.MetricsHTTPFlag,
@@ -142,24 +152,29 @@ if one is set.  Otherwise it prints the genesis from the datadir.`,
 			utils.VMTraceFlag,
 			utils.VMTraceJsonConfigFlag,
 			utils.TransactionHistoryFlag,
+			utils.LogHistoryFlag,
+			utils.LogNoHistoryFlag,
+			utils.LogExportCheckpointsFlag,
 			utils.StateHistoryFlag,
-		}, utils.DatabaseFlags),
+		}, utils.DatabaseFlags, debug.Flags),
+		Before: func(ctx *cli.Context) error {
+			flags.MigrateGlobalFlags(ctx)
+			return debug.Setup(ctx)
+		},
 		Description: `
-The import command imports blocks from an RLP-encoded form. The form can be one file
-with several RLP-encoded blocks, or several files can be used.
+The import command allows the import of blocks from an RLP-encoded format. This format can be a single file
+containing multiple RLP-encoded blocks, or multiple files can be given.
 
-If only one file is used, import error will result in failure. If several files are used,
-processing will proceed even if an individual RLP-file import failure occurs.`,
+If only one file is used, an import error will result in the entire import process failing. If
+multiple files are processed, the import process will continue even if an individual RLP file fails
+to import successfully.`,
 	}
 	exportCommand = &cli.Command{
 		Action:    exportChain,
 		Name:      "export",
 		Usage:     "Export blockchain into file",
 		ArgsUsage: "<filename> [<blockNumFirst> <blockNumLast>]",
-		Flags: slices.Concat([]cli.Flag{
-			utils.CacheFlag,
-			utils.SyncModeFlag,
-		}, utils.DatabaseFlags),
+		Flags:     slices.Concat([]cli.Flag{utils.CacheFlag}, utils.DatabaseFlags),
 		Description: `
 Requires a first argument of the file to write to.
 Optional second and third arguments control the first and
@@ -172,12 +187,7 @@ be gzipped.`,
 		Name:      "import-history",
 		Usage:     "Import an Era archive",
 		ArgsUsage: "<dir>",
-		Flags: slices.Concat([]cli.Flag{
-			utils.TxLookupLimitFlag,
-		},
-			utils.DatabaseFlags,
-			utils.NetworkFlags,
-		),
+		Flags:     slices.Concat([]cli.Flag{utils.TxLookupLimitFlag, utils.TransactionHistoryFlag}, utils.DatabaseFlags, utils.NetworkFlags),
 		Description: `
 The import-history command will import blocks and their corresponding receipts
 from Era archives.
@@ -188,7 +198,7 @@ from Era archives.
 		Name:      "export-history",
 		Usage:     "Export blockchain history to Era archives",
 		ArgsUsage: "<dir> <first> <last>",
-		Flags:     slices.Concat(utils.DatabaseFlags),
+		Flags:     utils.DatabaseFlags,
 		Description: `
 The export-history command will export blocks and their corresponding receipts
 into Era archives. Eras are typically packaged in steps of 8192 blocks.
@@ -199,10 +209,7 @@ into Era archives. Eras are typically packaged in steps of 8192 blocks.
 		Name:      "import-preimages",
 		Usage:     "Import the preimage database from an RLP stream",
 		ArgsUsage: "<datafile>",
-		Flags: slices.Concat([]cli.Flag{
-			utils.CacheFlag,
-			utils.SyncModeFlag,
-		}, utils.DatabaseFlags),
+		Flags:     slices.Concat([]cli.Flag{utils.CacheFlag}, utils.DatabaseFlags),
 		Description: `
 The import-preimages command imports hash preimages from an RLP encoded stream.
 It's deprecated, please use "geth db import" instead.
@@ -239,6 +246,54 @@ If you use "dump" command in path mode, please note that it only keeps at most 1
 Therefore, you must specify the blockNumber or blockHash that locates in diffLayer or diskLayer.
 "geth" will print all available blockNumber and related block state root hash, and you can query block hash by block number.
 `,
+	}
+
+	pruneHistoryCommand = &cli.Command{
+		Action:    pruneHistory,
+		Name:      "prune-history",
+		Usage:     "Prune blockchain history (block bodies and receipts) up to the merge block",
+		ArgsUsage: "",
+		Flags:     utils.DatabaseFlags,
+		Description: `
+The prune-history command removes historical block bodies and receipts from the
+blockchain database up to the merge block, while preserving block headers. This
+helps reduce storage requirements for nodes that don't need full historical data.`,
+	}
+
+	downloadEraCommand = &cli.Command{
+		Action:    downloadEra,
+		Name:      "download-era",
+		Usage:     "Fetches era1 files (pre-merge history) from an HTTP endpoint",
+		ArgsUsage: "",
+		Flags: slices.Concat(
+			utils.DatabaseFlags,
+			utils.NetworkFlags,
+			[]cli.Flag{
+				eraBlockFlag,
+				eraEpochFlag,
+				eraAllFlag,
+				eraServerFlag,
+			},
+		),
+	}
+)
+
+var (
+	eraBlockFlag = &cli.StringFlag{
+		Name:  "block",
+		Usage: "Block number to fetch. (can also be a range <start>-<end>)",
+	}
+	eraEpochFlag = &cli.StringFlag{
+		Name:  "epoch",
+		Usage: "Epoch number to fetch (can also be a range <start>-<end>)",
+	}
+	eraAllFlag = &cli.BoolFlag{
+		Name:  "all",
+		Usage: "Download all available era1 files",
+	}
+	eraServerFlag = &cli.StringFlag{
+		Name:  "server",
+		Usage: "era1 server URL",
 	}
 )
 
@@ -292,13 +347,11 @@ func initGenesis(ctx *cli.Context) error {
 		v := ctx.Uint64(utils.OverrideVerkle.Name)
 		overrides.OverrideVerkle = &v
 	}
-	name := "chaindata"
-	chaindb, err := stack.OpenDatabaseWithFreezer(name, 0, 0, ctx.String(utils.AncientFlag.Name), "", false, false)
-	if err != nil {
-		utils.Fatalf("Failed to open database: %v", err)
-	}
+
+	chaindb := utils.MakeChainDatabase(ctx, stack, false, false)
 	defer chaindb.Close()
 
+	name := "chaindata"
 	// if the trie data dir has been set, new trie db with a new state database
 	if ctx.IsSet(utils.MultiDataBaseFlag.Name) {
 		statediskdb, dbErr := stack.OpenDatabaseWithFreezer(name+"/state", 0, 0, "", "", false, false)
@@ -312,9 +365,12 @@ func initGenesis(ctx *cli.Context) error {
 	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false, genesis.IsVerkle())
 	defer triedb.Close()
 
-	_, hash, _, err := core.SetupGenesisBlockWithOverride(chaindb, triedb, genesis, &overrides)
+	_, hash, compatErr, err := core.SetupGenesisBlockWithOverride(chaindb, triedb, genesis, &overrides)
 	if err != nil {
 		utils.Fatalf("Failed to write genesis block: %v", err)
+	}
+	if compatErr != nil {
+		utils.Fatalf("Failed to write chain config: %v", compatErr)
 	}
 	log.Info("Successfully wrote genesis state", "database", name, "hash", hash.String())
 	return nil
@@ -683,7 +739,8 @@ func dumpGenesis(ctx *cli.Context) error {
 
 	// dump whatever already exists in the datadir
 	stack, _ := makeConfigNode(ctx)
-	db, err := stack.OpenDatabase("chaindata", 0, 0, "", true)
+
+	db, err := stack.OpenDatabaseWithOptions("chaindata", node.DatabaseOptions{ReadOnly: true})
 	if err != nil {
 		return err
 	}
@@ -756,6 +813,9 @@ func importChain(ctx *cli.Context) error {
 			if err := utils.ImportChain(chain, arg); err != nil {
 				importErr = err
 				log.Error("Import error", "file", arg, "err", err)
+				if err == utils.ErrImportInterrupted {
+					break
+				}
 			}
 		}
 	}
@@ -875,7 +935,7 @@ func importHistory(ctx *cli.Context) error {
 		network = networks[0]
 	}
 
-	if err := utils.ImportHistory(chain, db, dir, network); err != nil {
+	if err := utils.ImportHistory(chain, dir, network); err != nil {
 		return err
 	}
 	fmt.Printf("Import done in %v\n", time.Since(start))
@@ -1072,4 +1132,139 @@ func dumpAllRootHashInPath(ctx *cli.Context) error {
 func hashish(x string) bool {
 	_, err := strconv.Atoi(x)
 	return err != nil
+}
+
+func pruneHistory(ctx *cli.Context) error {
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	// Open the chain database
+	chain, chaindb := utils.MakeChain(ctx, stack, false)
+	defer chaindb.Close()
+	defer chain.Stop()
+
+	// Determine the prune point. This will be the first PoS block.
+	prunePoint, ok := history.PrunePoints[chain.Genesis().Hash()]
+	if !ok || prunePoint == nil {
+		return errors.New("prune point not found")
+	}
+	var (
+		mergeBlock     = prunePoint.BlockNumber
+		mergeBlockHash = prunePoint.BlockHash.Hex()
+	)
+
+	// Check we're far enough past merge to ensure all data is in freezer
+	currentHeader := chain.CurrentHeader()
+	if currentHeader == nil {
+		return errors.New("current header not found")
+	}
+	if currentHeader.Number.Uint64() < mergeBlock+params.FullImmutabilityThreshold {
+		return fmt.Errorf("chain not far enough past merge block, need %d more blocks",
+			mergeBlock+params.FullImmutabilityThreshold-currentHeader.Number.Uint64())
+	}
+
+	// Double-check the prune block in db has the expected hash.
+	hash := rawdb.ReadCanonicalHash(chaindb, mergeBlock)
+	if hash != common.HexToHash(mergeBlockHash) {
+		return fmt.Errorf("merge block hash mismatch: got %s, want %s", hash.Hex(), mergeBlockHash)
+	}
+
+	log.Info("Starting history pruning", "head", currentHeader.Number, "tail", mergeBlock, "tailHash", mergeBlockHash)
+	start := time.Now()
+	rawdb.PruneTransactionIndex(chaindb, mergeBlock)
+	if _, err := chaindb.TruncateTail(mergeBlock); err != nil {
+		return fmt.Errorf("failed to truncate ancient data: %v", err)
+	}
+	log.Info("History pruning completed", "tail", mergeBlock, "elapsed", common.PrettyDuration(time.Since(start)))
+
+	// TODO(s1na): what if there is a crash between the two prune operations?
+
+	return nil
+}
+
+// downladEra is the era1 file downloader tool.
+func downloadEra(ctx *cli.Context) error {
+	flags.CheckExclusive(ctx, eraBlockFlag, eraEpochFlag, eraAllFlag)
+
+	// Resolve the network.
+	var network = "mainnet"
+	if utils.IsNetworkPreset(ctx) {
+		switch {
+		default:
+			return fmt.Errorf("unsupported network, no known era1 checksums")
+		}
+	}
+
+	// Resolve the destination directory.
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	ancients := stack.ResolveAncient("chaindata", "")
+	dir := filepath.Join(ancients, rawdb.ChainFreezerName, "era")
+	if ctx.IsSet(utils.EraFlag.Name) {
+		dir = filepath.Join(ancients, ctx.String(utils.EraFlag.Name))
+	}
+
+	baseURL := ctx.String(eraServerFlag.Name)
+	if baseURL == "" {
+		return fmt.Errorf("need --%s flag to download", eraServerFlag.Name)
+	}
+
+	l, err := eradl.New(baseURL, network)
+	if err != nil {
+		return err
+	}
+	switch {
+	case ctx.IsSet(eraAllFlag.Name):
+		return l.DownloadAll(dir)
+
+	case ctx.IsSet(eraBlockFlag.Name):
+		s := ctx.String(eraBlockFlag.Name)
+		start, end, ok := parseRange(s)
+		if !ok {
+			return fmt.Errorf("invalid block range: %q", s)
+		}
+		return l.DownloadBlockRange(start, end, dir)
+
+	case ctx.IsSet(eraEpochFlag.Name):
+		s := ctx.String(eraEpochFlag.Name)
+		start, end, ok := parseRange(s)
+		if !ok {
+			return fmt.Errorf("invalid epoch range: %q", s)
+		}
+		return l.DownloadEpochRange(start, end, dir)
+
+	default:
+		return fmt.Errorf("specify one of --%s, --%s, or --%s to download", eraAllFlag.Name, eraBlockFlag.Name, eraEpochFlag.Name)
+	}
+}
+
+func parseRange(s string) (start uint64, end uint64, ok bool) {
+	log.Info("Parsing block range", "input", s)
+	if m, _ := regexp.MatchString("^[0-9]+-[0-9]+$", s); m {
+		s1, s2, _ := strings.Cut(s, "-")
+		start, err := strconv.ParseUint(s1, 10, 64)
+		if err != nil {
+			return 0, 0, false
+		}
+		end, err = strconv.ParseUint(s2, 10, 64)
+		if err != nil {
+			return 0, 0, false
+		}
+		if start > end {
+			return 0, 0, false
+		}
+		log.Info("Parsing block range", "start", start, "end", end)
+		return start, end, true
+	}
+	if m, _ := regexp.MatchString("^[0-9]+$", s); m {
+		start, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			return 0, 0, false
+		}
+		end = start
+		log.Info("Parsing single block range", "block", start)
+		return start, end, true
+	}
+	return 0, 0, false
 }

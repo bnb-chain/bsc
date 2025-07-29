@@ -128,7 +128,7 @@ func (b *BlockGen) addTx(bc *BlockChain, vmConfig vm.Config, tx *types.Transacti
 	}
 	// Merge the tx-local access event into the "block-local" one, in order to collect
 	// all values, so that the witness can be built.
-	if b.statedb.GetTrie().IsVerkle() {
+	if b.statedb.Database().TrieDB().IsVerkle() {
 		b.statedb.AccessEvents().Merge(evm.AccessEvents)
 	}
 	b.txs = append(b.txs, tx)
@@ -350,9 +350,13 @@ func (b *BlockGen) collectRequests(readonly bool) (requests [][]byte) {
 		blockContext := NewEVMBlockContext(b.header, b.cm, &b.header.Coinbase)
 		evm := vm.NewEVM(blockContext, statedb, b.cm.config, vm.Config{})
 		// EIP-7002
-		ProcessWithdrawalQueue(&requests, evm)
+		if err := ProcessWithdrawalQueue(&requests, evm); err != nil {
+			panic(fmt.Sprintf("could not process withdrawal requests: %v", err))
+		}
 		// EIP-7251
-		ProcessConsolidationQueue(&requests, evm)
+		if err := ProcessConsolidationQueue(&requests, evm); err != nil {
+			panic(fmt.Sprintf("could not process consolidation requests: %v", err))
+		}
 	}
 	return requests
 }
@@ -537,6 +541,13 @@ func GenerateVerkleChain(config *params.ChainConfig, parent *types.Block, engine
 		if gen != nil {
 			gen(i, b)
 		}
+
+		requests := b.collectRequests(false)
+		if requests != nil {
+			reqHash := types.CalcRequestsHash(requests)
+			b.header.RequestsHash = &reqHash
+		}
+
 		body := &types.Body{
 			Transactions: b.txs,
 			Uncles:       b.uncles,
@@ -601,7 +612,7 @@ func GenerateVerkleChain(config *params.ChainConfig, parent *types.Block, engine
 
 func GenerateVerkleChainWithGenesis(genesis *Genesis, engine consensus.Engine, n int, gen func(int, *BlockGen)) (common.Hash, ethdb.Database, []*types.Block, []types.Receipts, []*verkle.VerkleProof, []verkle.StateDiff) {
 	db := rawdb.NewMemoryDatabase()
-	cacheConfig := DefaultCacheConfigWithScheme(rawdb.PathScheme)
+	cacheConfig := DefaultConfig().WithStateScheme(rawdb.PathScheme)
 	cacheConfig.SnapshotLimit = 0
 	triedb := triedb.NewDatabase(db, cacheConfig.triedbConfig(true))
 	defer triedb.Close()

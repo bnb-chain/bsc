@@ -101,10 +101,8 @@ type freezerTableBatch struct {
 
 // newBatch creates a new batch for the freezer table.
 func (t *freezerTable) newBatch() *freezerTableBatch {
-	var batch = &freezerTableBatch{
-		t: t,
-	}
-	if !t.noCompression {
+	batch := &freezerTableBatch{t: t}
+	if !t.config.noSnappy {
 		batch.sb = new(snappyBuffer)
 	}
 	batch.reset()

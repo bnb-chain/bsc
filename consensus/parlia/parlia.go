@@ -2152,8 +2152,8 @@ func (p *Parlia) applyTransaction(
 	tracingReceipt.GasUsed = gasUsed
 
 	// Set the receipt logs and create a bloom for filtering
-	tracingReceipt.Logs = state.GetLogs(expectedTx.Hash(), header.Number.Uint64(), header.Hash())
-	tracingReceipt.Bloom = types.CreateBloom(types.Receipts{tracingReceipt})
+	tracingReceipt.Logs = state.GetLogs(expectedTx.Hash(), header.Number.Uint64(), header.Hash(), header.Time)
+	tracingReceipt.Bloom = types.CreateBloom(tracingReceipt)
 	tracingReceipt.BlockHash = header.Hash()
 	tracingReceipt.BlockNumber = header.Number
 	tracingReceipt.TransactionIndex = uint(state.TxIndex())
@@ -2388,7 +2388,7 @@ func applyMessage(
 	state.SetNonce(msg.From, state.GetNonce(msg.From)+1, tracing.NonceChangeEoACall)
 
 	ret, returnGas, err := evm.Call(
-		vm.AccountRef(msg.From),
+		msg.From,
 		*msg.To,
 		msg.Data,
 		msg.GasLimit,

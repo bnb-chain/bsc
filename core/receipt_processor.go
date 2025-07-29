@@ -24,7 +24,7 @@ type ReceiptBloomGenerator struct {
 }
 
 func (p *ReceiptBloomGenerator) Apply(receipt *types.Receipt) {
-	receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
+	receipt.Bloom = types.CreateBloom(receipt)
 }
 
 func NewAsyncReceiptBloomGenerator(txNums int) *AsyncReceiptBloomGenerator {
@@ -47,7 +47,7 @@ func (p *AsyncReceiptBloomGenerator) startWorker() {
 		defer p.wg.Done()
 		for receipt := range p.receipts {
 			if receipt != nil && bytes.Equal(receipt.Bloom[:], types.EmptyBloom[:]) {
-				receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
+				receipt.Bloom = types.CreateBloom(receipt)
 			}
 		}
 	}()
