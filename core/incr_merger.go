@@ -232,16 +232,6 @@ func mergeGenesisMeta(chainDB ethdb.Database, incrKV *pebble.Database) error {
 		return fmt.Errorf("invalid genesis hash in database: %x", stored)
 	}
 
-	// read base metadata
-	storedChainConfig := rawdb.ReadChainConfig(chainDB, stored)
-	if storedChainConfig == nil {
-		return fmt.Errorf("base chain config in db is nil: %x", stored)
-	}
-	storedStateSpect := rawdb.ReadGenesisStateSpec(chainDB, stored)
-	if storedStateSpect == nil {
-		return fmt.Errorf("base genesis state spec in db is nil: %x", stored)
-	}
-
 	// read incr metadata
 	incrChainConfig := rawdb.ReadChainConfig(incrKV, stored)
 	if incrChainConfig == nil {
@@ -250,6 +240,16 @@ func mergeGenesisMeta(chainDB ethdb.Database, incrKV *pebble.Database) error {
 	incrStateSpect := rawdb.ReadGenesisStateSpec(incrKV, stored)
 	if incrStateSpect == nil {
 		return nil
+	}
+
+	// read base metadata
+	storedChainConfig := rawdb.ReadChainConfig(chainDB, stored)
+	if storedChainConfig == nil {
+		return fmt.Errorf("base chain config in db is nil: %x", stored)
+	}
+	storedStateSpect := rawdb.ReadGenesisStateSpec(chainDB, stored)
+	if storedStateSpect == nil {
+		return fmt.Errorf("base genesis state spec in db is nil: %x", stored)
 	}
 
 	if storedChainConfig != incrChainConfig {
