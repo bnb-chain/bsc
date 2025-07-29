@@ -807,7 +807,7 @@ func (h *handler) BroadcastBlockToBalTestPeer(block *types.Block) {
 	}
 
 	for _, peer := range balTestPeer {
-		log.Debug("BroadcastBlockToBalTestPeer", "number", block.Number(), "peer", peer.ID())
+		log.Debug("BroadcastBlockToBalTestPeer", "number", block.Number(), "peer", peer.ID(), "balSize", block.BALSize())
 		peer.AsyncSendNewBlock(block, td)
 	}
 }
