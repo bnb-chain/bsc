@@ -19,13 +19,14 @@ package vm
 import (
 	"fmt"
 
+	"github.com/holiman/uint256"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/opcodeCompiler/shortcut"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/holiman/uint256"
 )
 
 // Config are the configuration options for the Interpreter
@@ -233,10 +234,55 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	}
 
 	// shortcut
+	//if in.evm.Config.EnableInline {
+	//	inliner := shortcut.GetShortcut(contract.Address())
+	//	if inliner != nil {
+	//		sPc, sGas, sStk, sMem, memLastGasCost, expected, err := inliner.Shortcut(input, in.evm.Origin, contract.Caller(), contract.Value())
+	//		if err != nil || !expected {
+	//			//log.Warn("Shortcut unexpected",
+	//			//	"error", err,
+	//			//	"contract", contract.Address(),
+	//			//	"inputs", hex.EncodeToString(input),
+	//			//	"origin", in.evm.Origin,
+	//			//	"caller", contract.Caller(),
+	//			//	"value", contract.Value(),
+	//			//)
+	//		} else {
+	//			if debug {
+	//				// Capture pre-execution values for tracing.
+	//				pcCopy, gasCopy = pc, contract.Gas
+	//			}
+	//
+	//			for _, frame := range sStk {
+	//				callContext.Stack.push(&frame)
+	//			}
+	//			callContext.Memory.store = make([]byte, len(sMem))
+	//			copy(callContext.Memory.store, sMem)
+	//			callContext.Memory.lastGasCost = memLastGasCost
+	//			pc = sPc
+	//			contract.Gas -= sGas
+	//
+	//			if debug {
+	//				if in.evm.Config.Tracer.OnGasChange != nil {
+	//					in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-sGas, tracing.GasChangeCallOpCode)
+	//				}
+	//				if in.evm.Config.Tracer.OnOpcode != nil {
+	//					in.evm.Config.Tracer.OnOpcode(0, byte(Nop), gasCopy, sGas, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
+	//					logged = true
+	//				}
+	//			}
+	//		}
+	//	}
+	//}
+
 	if in.evm.Config.EnableInline {
 		inliner := shortcut.GetShortcut(contract.Address())
+		var gasUsed uint64
 		if inliner != nil {
-			sPc, sGas, sStk, sMem, memLastGasCost, expected, err := inliner.Shortcut(input, in.evm.Origin, contract.Caller(), contract.Value())
+			expected, err := inliner.ShortcutV2(
+				input, in.evm.Origin, contract.Caller(), contract.Value(),
+				&pc, &gasUsed, &stack.data, &mem.store, &mem.lastGasCost,
+			)
 			if err != nil || !expected {
 				//log.Warn("Shortcut unexpected",
 				//	"error", err,
@@ -249,24 +295,17 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			} else {
 				if debug {
 					// Capture pre-execution values for tracing.
-					pcCopy, gasCopy = pc, contract.Gas
+					pcCopy, gasCopy = 0, contract.Gas
 				}
 
-				for _, frame := range sStk {
-					callContext.Stack.push(&frame)
-				}
-				callContext.Memory.store = make([]byte, len(sMem))
-				copy(callContext.Memory.store, sMem)
-				callContext.Memory.lastGasCost = memLastGasCost
-				pc = sPc
-				contract.Gas -= sGas
+				contract.Gas -= gasUsed
 
 				if debug {
 					if in.evm.Config.Tracer.OnGasChange != nil {
-						in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-sGas, tracing.GasChangeCallOpCode)
+						in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-gasUsed, tracing.GasChangeCallOpCode)
 					}
 					if in.evm.Config.Tracer.OnOpcode != nil {
-						in.evm.Config.Tracer.OnOpcode(0, byte(Nop), gasCopy, sGas, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
+						in.evm.Config.Tracer.OnOpcode(0, byte(Nop), gasCopy, gasUsed, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
 						logged = true
 					}
 				}
