@@ -254,7 +254,7 @@ func mergeGenesisMeta(chainDB ethdb.Database, incrKV *pebble.Database) error {
 
 	log.Info("Merging genesis meta data", "stored_chain_config", storedChainConfig,
 		"incrChainConfig", incrChainConfig)
-	if storedChainConfig != incrChainConfig {
+	if *storedChainConfig != *incrChainConfig {
 		log.Info("Update base chain config")
 		rawdb.WriteChainConfig(chainDB, stored, incrChainConfig)
 	}
