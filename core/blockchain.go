@@ -391,6 +391,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	if err != nil {
 		return nil, err
 	}
+	log.Info("Chain config in new blockchain", "LorentzTime", *chainConfig.LorentzTime)
 	systemcontracts.GenesisHash = genesisHash
 	log.Info("Initialised chain configuration", "config", chainConfig)
 	/*

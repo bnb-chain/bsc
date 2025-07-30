@@ -226,6 +226,7 @@ func getGenesisState(db ethdb.Database, blockhash common.Hash) (alloc types.Gene
 	case params.BSCGenesisHash:
 		genesis = DefaultBSCGenesisBlock()
 	case params.ChapelGenesisHash:
+		log.Info("getGenesisState, blockhash is params.ChapelGenesisHash")
 		genesis = DefaultChapelGenesisBlock()
 	}
 	if genesis != nil {
@@ -402,6 +403,8 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *triedb.Database, g
 	// and short circuit if the chain config is not changed.
 	compatErr := storedCfg.CheckCompatible(newCfg, head.Number.Uint64(), head.Time)
 	if compatErr != nil && ((head.Number.Uint64() != 0 && compatErr.RewindToBlock != 0) || (head.Time != 0 && compatErr.RewindToTime != 0)) {
+		log.Info("SetupGenesisBlockWithOverride, compatErr is not nil", "compatErr", compatErr, "head.Number", head.Number.Uint64(), "head.Time", head.Time,
+			"compatErr.RewindToBlock", compatErr.RewindToBlock, "compatErr.RewindToTime", compatErr.RewindToTime)
 		return newCfg, ghash, compatErr, nil
 	}
 	// Don't overwrite if the old is identical to the new. It's useful
@@ -422,17 +425,21 @@ func LoadChainConfig(db ethdb.Database, genesis *Genesis) (*params.ChainConfig, 
 	// chain config corresponds to the canonical chain.
 	stored := rawdb.ReadCanonicalHash(db, 0)
 	if stored != (common.Hash{}) {
+		log.Info("LoadChainConfig, stored is not empty", "stored", stored.String())
 		builtInConf := params.GetBuiltInChainConfig(stored)
 		if builtInConf != nil {
+			log.Info("here")
 			return builtInConf, stored, nil
 		}
 		storedcfg := rawdb.ReadChainConfig(db, stored)
 		if storedcfg != nil {
+			log.Info("here1")
 			return storedcfg, stored, nil
 		}
 	}
 	// Load the config from the provided genesis specification
 	if genesis != nil {
+		log.Info("LoadChainConfig, genesis is not nil", "genesis", genesis.Config)
 		// Reject invalid genesis spec without valid chain config
 		if genesis.Config == nil {
 			return nil, common.Hash{}, errGenesisNoConfig
