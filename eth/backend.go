@@ -216,7 +216,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if config.OverrideLorentz != nil {
 		chainConfig.LorentzTime = config.OverrideLorentz
 		overrides.OverrideLorentz = config.OverrideLorentz
-		log.Info("Override lorentz", "provided", *config.OverrideLorentz)
 	}
 	if config.OverrideMaxwell != nil {
 		chainConfig.MaxwellTime = config.OverrideMaxwell

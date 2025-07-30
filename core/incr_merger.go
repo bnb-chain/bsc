@@ -1,7 +1,6 @@
 package core
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"sync"
@@ -242,7 +241,7 @@ func mergeGenesisMeta(chainDB ethdb.Database, incrKV *pebble.Database) error {
 		return nil
 	}
 
-	// read base metadata
+	// read base metadata·
 	storedChainConfig := rawdb.ReadChainConfig(chainDB, stored)
 	if storedChainConfig == nil {
 		return fmt.Errorf("base chain config in db is nil: %x", stored)
@@ -254,13 +253,13 @@ func mergeGenesisMeta(chainDB ethdb.Database, incrKV *pebble.Database) error {
 
 	log.Info("Merging genesis meta data", "stored_chain_config", storedChainConfig,
 		"incrChainConfig", incrChainConfig)
-	if *storedChainConfig != *incrChainConfig {
-		log.Info("Update base chain config")
-		rawdb.WriteChainConfig(chainDB, stored, incrChainConfig)
-	}
-	if !bytes.Equal(storedStateSpect, incrStateSpect) {
-		log.Info("Update base state spec")
-		rawdb.WriteGenesisStateSpec(chainDB, stored, incrStateSpect)
-	}
+	// if *storedChainConfig != *incrChainConfig {
+	// 	log.Info("Update base chain config")
+	// 	rawdb.WriteChainConfig(chainDB, stored, incrChainConfig)
+	// }
+	// if !bytes.Equal(storedStateSpect, incrStateSpect) {
+	// 	log.Info("Update base state spec")
+	// 	rawdb.WriteGenesisStateSpec(chainDB, stored, incrStateSpect)
+	// }
 	return nil
 }
