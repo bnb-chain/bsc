@@ -4,7 +4,6 @@ import (
 	"archive/tar"
 	"context"
 	"crypto/md5"
-	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -1368,13 +1367,7 @@ func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, prog
 	rangeHeader := fmt.Sprintf("bytes=%d-%d", chunk.Start, chunk.End)
 	req.Header.Set("Range", rangeHeader)
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSHandshakeTimeout: 10 * time.Second,
-			TLSNextProto:        make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
-		},
-	}
-	resp, err := client.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}
