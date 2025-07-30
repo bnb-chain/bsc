@@ -1431,7 +1431,6 @@ func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, prog
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Error("Failed to create request", "error", err)
 		return err
 	}
 	defer resp.Body.Close()
@@ -1469,6 +1468,7 @@ func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, prog
 		n, err := resp.Body.Read(buffer)
 		if n > 0 {
 			if _, writeErr := out.Write(buffer[:n]); writeErr != nil {
+				log.Error("Failed to write to file", "error", writeErr)
 				return writeErr
 			}
 			downloaded += int64(n)
