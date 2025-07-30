@@ -1431,6 +1431,7 @@ func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, prog
 
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Error("Failed to create request", "error", err)
 		return err
 	}
 	defer resp.Body.Close()
