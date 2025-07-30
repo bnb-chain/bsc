@@ -202,7 +202,7 @@ func DoCFGBasedOpcodeFusion(code []byte) ([]byte, error) {
 		// Check if the block contains INVALID opcodes in the original code
 		hasInvalid := false
 		for pc := block.StartPC; pc < block.EndPC && pc < uint64(len(code)); {
-			if ByteCode(code[pc]) == INVALID {
+			if code[pc] == INVALID {
 				hasInvalid = true
 				break
 			}
@@ -264,44 +264,41 @@ func applyFusionPatterns(code []byte, cur int, endPC int) int {
 
 	// Pattern 1: 15-byte pattern
 	if length > cur+15 && cur+15 < endPC {
-		code0 := ByteCode(code[cur+0])
-		code2 := ByteCode(code[cur+2])
-		code3 := ByteCode(code[cur+3])
-		code5 := ByteCode(code[cur+5])
-		code6 := ByteCode(code[cur+6])
-		code7 := ByteCode(code[cur+7])
-		code12 := ByteCode(code[cur+12])
-		code13 := ByteCode(code[cur+13])
+		code0 := code[cur+0]
+		code2 := code[cur+2]
+		code3 := code[cur+3]
+		code5 := code[cur+5]
+		code6 := code[cur+6]
+		code7 := code[cur+7]
+		code12 := code[cur+12]
+		code13 := code[cur+13]
 
 		if code0 == PUSH1 && code2 == CALLDATALOAD && code3 == PUSH1 && code5 == SHR &&
 			code6 == DUP1 && code7 == PUSH4 && code12 == GT && code13 == PUSH2 {
 			op := Push1CalldataloadPush1ShrDup1Push4GtPush2
 			code[cur] = byte(op)
-			code[cur+2] = byte(Nop)
-			code[cur+3] = byte(Nop)
-			code[cur+5] = byte(Nop)
-			code[cur+6] = byte(Nop)
-			code[cur+7] = byte(Nop)
-			code[cur+12] = byte(Nop)
-			code[cur+13] = byte(Nop)
+			// Clear the rest of the pattern
+			for i := 1; i < 15; i++ {
+				code[cur+i] = byte(Nop)
+			}
 			return 15
 		}
 	}
 
 	// Pattern 2: 12-byte pattern
 	if length > cur+12 && cur+12 < endPC {
-		code0 := ByteCode(code[cur+0])
-		code1 := ByteCode(code[cur+1])
-		code3 := ByteCode(code[cur+3])
-		code4 := ByteCode(code[cur+4])
-		code5 := ByteCode(code[cur+5])
-		code6 := ByteCode(code[cur+6])
-		code7 := ByteCode(code[cur+7])
-		code8 := ByteCode(code[cur+8])
-		code9 := ByteCode(code[cur+9])
-		code10 := ByteCode(code[cur+10])
-		code11 := ByteCode(code[cur+11])
-		code12 := ByteCode(code[cur+12])
+		code0 := code[cur+0]
+		code1 := code[cur+1]
+		code3 := code[cur+3]
+		code4 := code[cur+4]
+		code5 := code[cur+5]
+		code6 := code[cur+6]
+		code7 := code[cur+7]
+		code8 := code[cur+8]
+		code9 := code[cur+9]
+		code10 := code[cur+10]
+		code11 := code[cur+11]
+		code12 := code[cur+12]
 
 		if code0 == SWAP1 && code1 == PUSH1 && code3 == DUP1 && code4 == NOT &&
 			code5 == SWAP2 && code6 == ADD && code7 == AND && code8 == DUP2 &&
@@ -325,14 +322,14 @@ func applyFusionPatterns(code []byte, cur int, endPC int) int {
 
 	// Pattern 3: 9-byte pattern
 	if length > cur+9 && cur+9 < endPC {
-		code0 := ByteCode(code[cur+0])
-		code1 := ByteCode(code[cur+1])
-		code2 := ByteCode(code[cur+2])
-		code3 := ByteCode(code[cur+3])
-		code4 := ByteCode(code[cur+4])
-		code5 := ByteCode(code[cur+5])
-		code6 := ByteCode(code[cur+6])
-		code7 := ByteCode(code[cur+7])
+		code0 := code[cur+0]
+		code1 := code[cur+1]
+		code2 := code[cur+2]
+		code3 := code[cur+3]
+		code4 := code[cur+4]
+		code5 := code[cur+5]
+		code6 := code[cur+6]
+		code7 := code[cur+7]
 
 		if code0 == DUP1 && code1 == PUSH4 && code6 == EQ && code7 == PUSH2 {
 			op := Dup1Push4EqPush2
@@ -358,11 +355,11 @@ func applyFusionPatterns(code []byte, cur int, endPC int) int {
 
 	// Pattern 4: 7-byte pattern
 	if length > cur+7 && cur+7 < endPC {
-		code0 := ByteCode(code[cur+0])
-		code2 := ByteCode(code[cur+2])
-		code4 := ByteCode(code[cur+4])
-		code6 := ByteCode(code[cur+6])
-		code7 := ByteCode(code[cur+7])
+		code0 := code[cur+0]
+		code2 := code[cur+2]
+		code4 := code[cur+4]
+		code6 := code[cur+6]
+		code7 := code[cur+7]
 
 		if code0 == PUSH1 && code2 == PUSH1 && code4 == PUSH1 && code6 == SHL && code7 == SUB {
 			op := Push1Push1Push1SHLSub
@@ -377,12 +374,12 @@ func applyFusionPatterns(code []byte, cur int, endPC int) int {
 
 	// Pattern 5: 5-byte pattern
 	if length > cur+5 && cur+5 < endPC {
-		code0 := ByteCode(code[cur+0])
-		code1 := ByteCode(code[cur+1])
-		code2 := ByteCode(code[cur+2])
-		code3 := ByteCode(code[cur+3])
-		code4 := ByteCode(code[cur+4])
-		code5 := ByteCode(code[cur+5])
+		code0 := code[cur+0]
+		code1 := code[cur+1]
+		code2 := code[cur+2]
+		code3 := code[cur+3]
+		code4 := code[cur+4]
+		code5 := code[cur+5]
 
 		if code0 == AND && code1 == DUP2 && code2 == ADD && code3 == SWAP1 && code4 == DUP2 && code5 == LT {
 			op := AndDup2AddSwap1Dup2LT
@@ -418,11 +415,11 @@ func applyFusionPatterns(code []byte, cur int, endPC int) int {
 
 	// Pattern 6: 4-byte pattern
 	if length > cur+4 && cur+4 < endPC {
-		code0 := ByteCode(code[cur+0])
-		code1 := ByteCode(code[cur+1])
-		code2 := ByteCode(code[cur+2])
-		code3 := ByteCode(code[cur+3])
-		code4 := ByteCode(code[cur+4])
+		code0 := code[cur+0]
+		code1 := code[cur+1]
+		code2 := code[cur+2]
+		code3 := code[cur+3]
+		code4 := code[cur+4]
 
 		if code0 == AND && code1 == SWAP1 && code2 == POP && code3 == SWAP2 && code4 == SWAP1 {
 			op := AndSwap1PopSwap2Swap1
@@ -465,10 +462,10 @@ func applyFusionPatterns(code []byte, cur int, endPC int) int {
 
 	// Pattern 7: 3-byte pattern
 	if length > cur+3 && cur+3 < endPC {
-		code0 := ByteCode(code[cur+0])
-		code1 := ByteCode(code[cur+1])
-		code2 := ByteCode(code[cur+2])
-		code3 := ByteCode(code[cur+3])
+		code0 := code[cur+0]
+		code1 := code[cur+1]
+		code2 := code[cur+2]
+		code3 := code[cur+3]
 
 		if code0 == SWAP2 && code1 == SWAP1 && code2 == POP && code3 == JUMP {
 			op := Swap2Swap1PopJump
@@ -538,8 +535,8 @@ func applyFusionPatterns(code []byte, cur int, endPC int) int {
 
 	// Pattern 8: 2-byte pattern
 	if length > cur+2 && cur+2 < endPC {
-		code0 := ByteCode(code[cur+0])
-		code2 := ByteCode(code[cur+2])
+		code0 := code[cur+0]
+		code2 := code[cur+2]
 
 		if code0 == PUSH1 {
 			if code2 == ADD {
@@ -565,8 +562,8 @@ func applyFusionPatterns(code []byte, cur int, endPC int) int {
 
 	// Pattern 9: 1-byte pattern
 	if length > cur+1 && cur+1 < endPC {
-		code0 := ByteCode(code[cur+0])
-		code1 := ByteCode(code[cur+1])
+		code0 := code[cur+0]
+		code1 := code[cur+1]
 
 		if code0 == SWAP1 && code1 == POP {
 			op := Swap1Pop
@@ -641,7 +638,7 @@ func getBlockType(block BasicBlock, blocks []BasicBlock, blockIndex int) string 
 	if blockIndex > 0 {
 		prevBlock := blocks[blockIndex-1]
 		if len(prevBlock.Opcodes) > 0 {
-			lastOp := ByteCode(prevBlock.Opcodes[len(prevBlock.Opcodes)-1])
+			lastOp := prevBlock.Opcodes[len(prevBlock.Opcodes)-1]
 			if lastOp == JUMPI {
 				return "conditional fallthrough"
 			}
@@ -653,7 +650,7 @@ func getBlockType(block BasicBlock, blocks []BasicBlock, blockIndex int) string 
 }
 
 func calculateSkipSteps(code []byte, cur int) (skip bool, steps int) {
-	inst := ByteCode(code[cur])
+	inst := code[cur]
 	if inst >= PUSH1 && inst <= PUSH32 {
 		// skip the data.
 		steps = int(inst - PUSH1 + 1)
@@ -680,8 +677,6 @@ func calculateSkipSteps(code []byte, cur int) (skip bool, steps int) {
 	return skip, steps
 }
 
-// BasicBlock represents a sequence of opcodes that can be executed linearly
-// without any jumps in or out except at the beginning and end.
 type BasicBlock struct {
 	StartPC    uint64  // Program counter where this block starts
 	EndPC      uint64  // Program counter where this block ends (exclusive)
@@ -704,7 +699,7 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 
 	// First pass: identify all JUMPDEST locations
 	for pc < uint64(len(code)) {
-		op := ByteCode(code[pc])
+		op := code[pc]
 		if op == JUMPDEST {
 			jumpDests[pc] = true
 		}
@@ -720,7 +715,7 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 	pc = 0
 	var currentBlock *BasicBlock
 	for pc < uint64(len(code)) {
-		op := ByteCode(code[pc])
+		op := code[pc]
 
 		// Start a new block if we encounter INVALID or if we're at a JUMPDEST
 		if op == INVALID || jumpDests[pc] {
@@ -770,7 +765,7 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 }
 
 // isBlockTerminator checks if an opcode terminates a basic block
-func isBlockTerminator(op ByteCode) bool {
+func isBlockTerminator(op byte) bool {
 	switch op {
 	case STOP, RETURN, REVERT, SELFDESTRUCT:
 		return true
@@ -784,3 +779,214 @@ func isBlockTerminator(op ByteCode) bool {
 		return false
 	}
 }
+
+// Opcode constants for compatibility
+const (
+	STOP            = 0x0
+	ADD             = 0x1
+	MUL             = 0x2
+	SUB             = 0x3
+	DIV             = 0x4
+	SDIV            = 0x5
+	MOD             = 0x6
+	SMOD            = 0x7
+	ADDMOD          = 0x8
+	MULMOD          = 0x9
+	EXP             = 0xa
+	SIGNEXTEND      = 0xb
+	LT              = 0x10
+	GT              = 0x11
+	SLT             = 0x12
+	SGT             = 0x13
+	EQ              = 0x14
+	ISZERO          = 0x15
+	AND             = 0x16
+	OR              = 0x17
+	XOR             = 0x18
+	NOT             = 0x19
+	BYTE            = 0x1a
+	SHL             = 0x1b
+	SHR             = 0x1c
+	SAR             = 0x1d
+	KECCAK256       = 0x20
+	ADDRESS         = 0x30
+	BALANCE         = 0x31
+	ORIGIN          = 0x32
+	CALLER          = 0x33
+	CALLVALUE       = 0x34
+	CALLDATALOAD    = 0x35
+	CALLDATASIZE    = 0x36
+	CALLDATACOPY    = 0x37
+	CODESIZE        = 0x38
+	CODECOPY        = 0x39
+	GASPRICE        = 0x3a
+	EXTCODESIZE     = 0x3b
+	EXTCODECOPY     = 0x3c
+	RETURNDATASIZE  = 0x3d
+	RETURNDATACOPY  = 0x3e
+	EXTCODEHASH     = 0x3f
+	BLOCKHASH       = 0x40
+	COINBASE        = 0x41
+	TIMESTAMP       = 0x42
+	NUMBER          = 0x43
+	DIFFICULTY      = 0x44
+	RANDOM          = 0x44 // Same as DIFFICULTY
+	PREVRANDAO      = 0x44 // Same as DIFFICULTY
+	GASLIMIT        = 0x45
+	CHAINID         = 0x46
+	SELFBALANCE     = 0x47
+	BASEFEE         = 0x48
+	BLOBHASH        = 0x49
+	BLOBBASEFEE     = 0x4a
+	POP             = 0x50
+	MLOAD           = 0x51
+	MSTORE          = 0x52
+	MSTORE8         = 0x53
+	SLOAD           = 0x54
+	SSTORE          = 0x55
+	JUMP            = 0x56
+	JUMPI           = 0x57
+	PC              = 0x58
+	MSIZE           = 0x59
+	GAS             = 0x5a
+	JUMPDEST        = 0x5b
+	TLOAD           = 0x5c
+	TSTORE          = 0x5d
+	MCOPY           = 0x5e
+	PUSH0           = 0x5f
+	PUSH1           = 0x60
+	PUSH2           = 0x61
+	PUSH3           = 0x62
+	PUSH4           = 0x63
+	PUSH5           = 0x64
+	PUSH6           = 0x65
+	PUSH7           = 0x66
+	PUSH8           = 0x67
+	PUSH9           = 0x68
+	PUSH10          = 0x69
+	PUSH11          = 0x6a
+	PUSH12          = 0x6b
+	PUSH13          = 0x6c
+	PUSH14          = 0x6d
+	PUSH15          = 0x6e
+	PUSH16          = 0x6f
+	PUSH17          = 0x70
+	PUSH18          = 0x71
+	PUSH19          = 0x72
+	PUSH20          = 0x73
+	PUSH21          = 0x74
+	PUSH22          = 0x75
+	PUSH23          = 0x76
+	PUSH24          = 0x77
+	PUSH25          = 0x78
+	PUSH26          = 0x79
+	PUSH27          = 0x7a
+	PUSH28          = 0x7b
+	PUSH29          = 0x7c
+	PUSH30          = 0x7d
+	PUSH31          = 0x7e
+	PUSH32          = 0x7f
+	DUP1            = 0x80
+	DUP2            = 0x81
+	DUP3            = 0x82
+	DUP4            = 0x83
+	DUP5            = 0x84
+	DUP6            = 0x85
+	DUP7            = 0x86
+	DUP8            = 0x87
+	DUP9            = 0x88
+	DUP10           = 0x89
+	DUP11           = 0x8a
+	DUP12           = 0x8b
+	DUP13           = 0x8c
+	DUP14           = 0x8d
+	DUP15           = 0x8e
+	DUP16           = 0x8f
+	SWAP1           = 0x90
+	SWAP2           = 0x91
+	SWAP3           = 0x92
+	SWAP4           = 0x93
+	SWAP5           = 0x94
+	SWAP6           = 0x95
+	SWAP7           = 0x96
+	SWAP8           = 0x97
+	SWAP9           = 0x98
+	SWAP10          = 0x99
+	SWAP11          = 0x9a
+	SWAP12          = 0x9b
+	SWAP13          = 0x9c
+	SWAP14          = 0x9d
+	SWAP15          = 0x9e
+	SWAP16          = 0x9f
+	LOG0            = 0xa0
+	LOG1            = 0xa1
+	LOG2            = 0xa2
+	LOG3            = 0xa3
+	LOG4            = 0xa4
+	CREATE          = 0xf0
+	CALL            = 0xf1
+	CALLCODE        = 0xf2
+	RETURN          = 0xf3
+	DELEGATECALL    = 0xf4
+	CREATE2         = 0xf5
+	RETURNDATALOAD  = 0xf7
+	EXTCALL         = 0xf8
+	EXTDELEGATECALL = 0xf9
+	STATICCALL      = 0xfa
+	EXTSTATICCALL   = 0xfb
+	REVERT          = 0xfd
+	INVALID         = 0xfe
+	SELFDESTRUCT    = 0xff
+)
+
+// Super Instruction constants
+const (
+	Nop = 0xb0 + iota
+	AndSwap1PopSwap2Swap1
+	Swap2Swap1PopJump
+	Swap1PopSwap2Swap1
+	PopSwap2Swap1Pop
+	Push2Jump
+	Push2JumpI
+	Push1Push1
+	Push1Add
+	Push1Shl
+	Push1Dup1
+	Swap1Pop
+	PopJump
+	Pop2
+	Swap2Swap1
+	Swap2Pop
+	Dup2LT
+	JumpIfZero
+
+	IsZeroPush2
+	Dup2MStorePush1Add
+	Dup1Push4EqPush2
+	Push1CalldataloadPush1ShrDup1Push4GtPush2
+	Push1Push1Push1SHLSub
+	AndDup2AddSwap1Dup2LT
+	Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT
+	Dup3And
+	Swap2Swap1Dup3SubSwap2Dup3GtPush2
+	Swap1Dup2
+	SHRSHRDup1MulDup1
+	Swap3PopPopPop
+	SubSLTIsZeroPush2
+	Dup11MulDup3SubMulDup1 // 0xcf
+)
+
+// EOF operation constants
+const (
+	RJUMP          = 0xe0
+	RJUMPI         = 0xe1
+	RJUMPV         = 0xe2
+	CALLF          = 0xe3
+	RETF           = 0xe4
+	JUMPF          = 0xe5
+	DUPN           = 0xe6
+	SWAPN          = 0xe7
+	EXCHANGE       = 0xe8
+	EOFCREATE      = 0xec
+	RETURNCONTRACT = 0xee
+)
