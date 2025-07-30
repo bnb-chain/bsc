@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -137,11 +138,11 @@ func createHTTPClient() *http.Client {
 	return &http.Client{
 		Timeout: 60 * time.Second,
 		Transport: &http.Transport{
-			// Connection pool settings
-			MaxIdleConns:        100,              // Maximum number of idle connections
-			MaxIdleConnsPerHost: 10,               // Maximum idle connections per host
-			IdleConnTimeout:     90 * time.Second, // How long to keep idle connections
-			DisableCompression:  true,             // Disable compression to avoid overhead
+			// 更保守的连接池设置
+			MaxIdleConns:        20,
+			MaxIdleConnsPerHost: 2,
+			IdleConnTimeout:     30 * time.Second,
+			DisableCompression:  true, // Disable compression to avoid overhead
 
 			// TLS settings
 			TLSHandshakeTimeout: 10 * time.Second,
@@ -150,13 +151,18 @@ func createHTTPClient() *http.Client {
 			TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
 
 			// Response header timeout
-			ResponseHeaderTimeout: 30 * time.Second,
+			ResponseHeaderTimeout: 60 * time.Second,
 
 			// Expect continue timeout
 			ExpectContinueTimeout: 1 * time.Second,
 
-			DisableKeepAlives: false,
+			DisableKeepAlives: true,
 			ForceAttemptHTTP2: false,
+
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: -1, // 禁用Keep-Alive
+			}).DialContext,
 		},
 	}
 }
@@ -432,7 +438,7 @@ func (d *IncrDownloader) Download() error {
 	}
 
 	// Start download workers
-	numWorkers := 4
+	numWorkers := 2
 	for i := 0; i < numWorkers; i++ {
 		d.downloadWG.Add(1)
 		go d.downloadWorker()
@@ -894,7 +900,7 @@ func (d *IncrDownloader) downloadWithHTTP(file *IncrFileInfo) error {
 	}
 
 	// Calculate chunk size and number of chunks
-	numChunks := 8 // Number of concurrent downloads
+	numChunks := 4
 	chunkSize := int64(totalSize) / int64(numChunks)
 	if chunkSize < 1024*1024 { // Minimum 1MB per chunk
 		chunkSize = 1024 * 1024
