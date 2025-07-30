@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
-
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie/trienode"
@@ -32,6 +32,66 @@ func newAsyncNodeBuffer(limit int, nodes *nodeSet, states *stateSet, layers uint
 		current:    newNodeCache(limit, nodes, states, layers),
 		background: newNodeCache(limit, nil, nil, 0),
 	}
+}
+
+// mergeIncrTrieNodes merges incremental trie nodes into local data.
+func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer ethdb.AncientWriter,
+	incrFreezer ethdb.ResettableAncientStore, start, end uint64) error {
+	persistID := rawdb.ReadPersistentStateID(db)
+	log.Info("Ancient db meta info", "persistent_state_id", persistID, "start", start, "end", end)
+
+	var (
+		totalLayers, lastStateID uint64
+	)
+
+	for i := start; i <= end; i++ {
+		trieNodes, err := readIncrTrieNodes(incrFreezer, i)
+		if err != nil {
+			return err
+		}
+		m, err := readIncrMetadata(incrFreezer, i)
+		if err != nil {
+			return err
+		}
+		totalLayers = m.Layers
+		if i == end {
+			lastStateID = m.StateIDArray[1]
+		}
+
+		nodesSet := newNodeSet(trieNodes)
+		if err = a.current.commit(nodesSet, newStates(nil, nil, false)); err != nil {
+			log.Error("Failed to commit history", "error", err)
+			return err
+		}
+
+		var force bool
+		if nodesSet.size >= MaxDirtyBufferSize {
+			force = true
+		} else {
+			force = false
+		}
+		log.Info("Force flush when merging due to size is too big", "force", force,
+			"size", common.StorageSize(nodesSet.size))
+
+		if err = a.flush(db, freezer, nil, m.StateIDArray[1], force, false); err != nil {
+			log.Error("Failed to flush history", "error", err)
+			return err
+		}
+	}
+
+	log.Info("Force flush async node buffer", "layers", a.getLayers(), "lastStateID", lastStateID,
+		"totalLayers", totalLayers)
+	if err := a.flush(db, freezer, nil, lastStateID, true, false); err != nil {
+		log.Error("Failed to force flush history", "error", err)
+		return err
+	}
+
+	for a.isFlushing.Load() {
+		time.Sleep(time.Second)
+		log.Warn("Waiting background memory table flushed into disk")
+	}
+	log.Info("Finished merging incremental state history", "empty", a.empty(), "layers", a.getLayers())
+	return nil
 }
 
 func (a *asyncnodebuffer) account(hash common.Hash) ([]byte, bool) {
@@ -109,11 +169,12 @@ func (a *asyncnodebuffer) empty() bool {
 
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
-func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, clean *fastcache.Cache, id uint64, force bool) error {
+func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, clean *fastcache.Cache, id uint64, force, validateID bool) error {
 	a.mux.Lock()
 	defer a.mux.Unlock()
 
 	if a.stopFlushing.Load() {
+		log.Info("Stop flushing node buffer")
 		return nil
 	}
 
@@ -125,7 +186,7 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWri
 				continue
 			}
 			atomic.StoreUint64(&a.current.immutable, 1)
-			return a.current.flush(db, freezer, clean, id, true)
+			return a.current.flush(db, freezer, clean, id, true, validateID)
 		}
 	}
 
@@ -140,12 +201,11 @@ func (a *asyncnodebuffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWri
 
 	atomic.StoreUint64(&a.current.immutable, 1)
 	a.current, a.background = a.background, a.current
-
 	a.isFlushing.Store(true)
 	go func(persistID uint64) {
 		defer a.isFlushing.Store(false)
 		for {
-			err := a.background.flush(db, freezer, clean, persistID, true)
+			err := a.background.flush(db, freezer, clean, persistID, true, validateID)
 			if err == nil {
 				log.Debug("Succeed to flush background nodecache to disk", "state_id", persistID)
 				return
@@ -227,11 +287,11 @@ func (nc *nodecache) reset() {
 	nc.buffer.reset()
 }
 
-func (nc *nodecache) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, nodesCache *fastcache.Cache, id uint64, force bool) error {
+func (nc *nodecache) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, nodesCache *fastcache.Cache, id uint64, force, validateID bool) error {
 	if atomic.LoadUint64(&nc.immutable) != 1 {
 		return errFlushMutable
 	}
-	nc.buffer.flush(db, freezer, nodesCache, id, force)
+	nc.buffer.flush(db, freezer, nodesCache, id, force, validateID)
 	atomic.StoreUint64(&nc.immutable, 0)
 	return nil
 }
