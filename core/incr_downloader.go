@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"context"
 	"crypto/md5"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -394,7 +395,7 @@ func (d *IncrDownloader) Download() error {
 	}
 
 	// Start download workers
-	numWorkers := 2
+	numWorkers := 4
 	for i := 0; i < numWorkers; i++ {
 		d.downloadWG.Add(1)
 		go d.downloadWorker()
@@ -852,7 +853,7 @@ func (d *IncrDownloader) downloadWithHTTP(file *IncrFileInfo) error {
 	}
 
 	// Calculate chunk size and number of chunks
-	numChunks := 4
+	numChunks := 8
 	chunkSize := int64(totalSize) / int64(numChunks)
 	if chunkSize < 1024*1024 { // Minimum 1MB per chunk
 		chunkSize = 1024 * 1024
@@ -1367,7 +1368,12 @@ func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, prog
 	rangeHeader := fmt.Sprintf("bytes=%d-%d", chunk.Start, chunk.End)
 	req.Header.Set("Range", rangeHeader)
 
-	client := &http.Client{}
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSHandshakeTimeout: 10 * time.Second,
+			TLSNextProto:        make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
+		},
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
