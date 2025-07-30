@@ -18,6 +18,7 @@ package vm
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/holiman/uint256"
 
@@ -280,6 +281,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	//	[]byte{0x55, 0xD3, 0x98, 0x32, 0x6F, 0x99, 0x05, 0x9F, 0xF7, 0x75, 0x48, 0x52, 0x46, 0x99, 0x90, 0x27, 0xB3, 0x19, 0x79, 0x55},
 	//)
 	// shortcut v2
+	start := time.Now()
 	if in.evm.Config.EnableInline {
 		inliner := shortcut.GetShortcutV2(contract.Address())
 		//inliner := &impl.Impl55D398326F99059FF775485246999027B3197955{}
@@ -318,6 +320,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			}
 		}
 	}
+	in.evm.ShortcutDuration += time.Since(start)
 
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during

@@ -21,6 +21,9 @@ import (
 	"math/big"
 	"sync"
 	"sync/atomic"
+	"time"
+
+	"github.com/holiman/uint256"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
@@ -29,7 +32,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/holiman/uint256"
 )
 
 var EvmPool = sync.Pool{
@@ -124,6 +126,8 @@ type EVM struct {
 	precompiles     map[common.Address]PrecompiledContract
 	optInterpreter  *EVMInterpreter
 	baseInterpreter *EVMInterpreter
+
+	ShortcutDuration time.Duration
 }
 
 // NewEVM constructs an EVM instance with the supplied block context, state
