@@ -604,7 +604,6 @@ func (g *Genesis) Commit(db ethdb.Database, triedb *triedb.Database) (*types.Blo
 	rawdb.WriteHeadBlockHash(db, block.Hash())
 	rawdb.WriteHeadFastBlockHash(db, block.Hash())
 	rawdb.WriteHeadHeaderHash(db, block.Hash())
-	log.Info("Commit genesis block", "block", block.Hash(), "config")
 	rawdb.WriteChainConfig(db, block.Hash(), config)
 	return block, nil
 }

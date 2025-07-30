@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/triedb"
 )
@@ -19,6 +20,10 @@ import (
 func MergeIncrSnapshot(chainDB ethdb.Database, trieDB *triedb.Database, incrPath string) error {
 	var wg sync.WaitGroup
 	errChan := make(chan error, 3)
+
+	if err := updateGenesisMeta(chainDB); err != nil {
+		return err
+	}
 
 	// merge incremental state data
 	wg.Add(1)
@@ -189,7 +194,7 @@ func mergeIncrKV(incrDir string, chainDB ethdb.Database) error {
 		return err
 	}
 
-	if err = mergeGenesisMeta(chainDB, newDB); err != nil {
+	if err = updateGenesisMeta(chainDB); err != nil {
 		log.Error("Failed to merge genesis meta data", "err", err)
 		return err
 	}
@@ -224,42 +229,16 @@ func mergeParliaSnapshots(chainDB ethdb.Database, incrKV *pebble.Database) error
 	return nil
 }
 
-// mergeGenesisMeta merges incr metadata into base, if they are different
-func mergeGenesisMeta(chainDB ethdb.Database, incrKV *pebble.Database) error {
+// updateGenesisMeta updates base snapshot chain config
+func updateGenesisMeta(chainDB ethdb.Database) error {
 	stored := rawdb.ReadCanonicalHash(chainDB, 0)
 	if (stored == common.Hash{}) {
 		return fmt.Errorf("invalid genesis hash in database: %x", stored)
 	}
 
-	// read incr metadata
-	incrChainConfig := rawdb.ReadChainConfig(incrKV, stored)
-	if incrChainConfig == nil {
-		return nil
+	if stored != (common.Hash{}) {
+		builtInConf := params.GetBuiltInChainConfig(stored)
+		rawdb.WriteChainConfig(chainDB, stored, builtInConf)
 	}
-	incrStateSpect := rawdb.ReadGenesisStateSpec(incrKV, stored)
-	if incrStateSpect == nil {
-		return nil
-	}
-
-	// read base metadata·
-	storedChainConfig := rawdb.ReadChainConfig(chainDB, stored)
-	if storedChainConfig == nil {
-		return fmt.Errorf("base chain config in db is nil: %x", stored)
-	}
-	storedStateSpect := rawdb.ReadGenesisStateSpec(chainDB, stored)
-	if storedStateSpect == nil {
-		return fmt.Errorf("base genesis state spec in db is nil: %x", stored)
-	}
-
-	log.Info("Merging genesis meta data", "stored_chain_config", storedChainConfig,
-		"incrChainConfig", incrChainConfig)
-	// if *storedChainConfig != *incrChainConfig {
-	// 	log.Info("Update base chain config")
-	// 	rawdb.WriteChainConfig(chainDB, stored, incrChainConfig)
-	// }
-	// if !bytes.Equal(storedStateSpect, incrStateSpect) {
-	// 	log.Info("Update base state spec")
-	// 	rawdb.WriteGenesisStateSpec(chainDB, stored, incrStateSpect)
-	// }
 	return nil
 }

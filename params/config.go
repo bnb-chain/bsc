@@ -523,7 +523,6 @@ func GetBuiltInChainConfig(ghash common.Hash) *ChainConfig {
 	case BSCGenesisHash:
 		return BSCChainConfig
 	case ChapelGenesisHash:
-		log.Info("GetBuiltInChainConfig, ChapelGenesisHash", "ghash", ghash.String())
 		return ChapelChainConfig
 	case RialtoGenesisHash:
 		return RialtoChainConfig

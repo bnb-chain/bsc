@@ -128,10 +128,10 @@ func (im *incrManager) Start() {
 		return
 	}
 
-	if err := im.writeGenesisMeta(); err != nil {
-		log.Error("Failed to write genesis meta", "error", err)
-		return
-	}
+	// if err := im.writeGenesisMeta(); err != nil {
+	// 	log.Error("Failed to write genesis meta", "error", err)
+	// 	return
+	// }
 
 	im.wg.Add(1)
 	go im.worker()
@@ -140,21 +140,21 @@ func (im *incrManager) Start() {
 	log.Info("Incremental store async worker started")
 }
 
-func (im *incrManager) writeGenesisMeta() error {
-	stored := rawdb.ReadCanonicalHash(im.db.diskdb, 0)
-	if (stored == common.Hash{}) {
-		return fmt.Errorf("invalid genesis hash in database: %x", stored)
-	}
-	stateSpect := rawdb.ReadGenesisStateSpec(im.db.diskdb, stored)
-	if stateSpect == nil {
-		return fmt.Errorf("genesis state spec is nil in db: %x", stored)
-	}
-
-	incrKV := im.incrDB.GetKVDB()
-	rawdb.WriteChainConfig(incrKV, stored, im.chainConfig)
-	rawdb.WriteGenesisStateSpec(incrKV, stored, stateSpect)
-	return nil
-}
+// func (im *incrManager) writeGenesisMeta() error {
+// 	stored := rawdb.ReadCanonicalHash(im.db.diskdb, 0)
+// 	if (stored == common.Hash{}) {
+// 		return fmt.Errorf("invalid genesis hash in database: %x", stored)
+// 	}
+// 	stateSpect := rawdb.ReadGenesisStateSpec(im.db.diskdb, stored)
+// 	if stateSpect == nil {
+// 		return fmt.Errorf("genesis state spec is nil in db: %x", stored)
+// 	}
+//
+// 	incrKV := im.incrDB.GetKVDB()
+// 	rawdb.WriteChainConfig(incrKV, stored, im.chainConfig)
+// 	rawdb.WriteGenesisStateSpec(incrKV, stored, stateSpect)
+// 	return nil
+// }
 
 // Stop stops the async write workers and directory switch checker
 func (im *incrManager) Stop() {
