@@ -401,18 +401,13 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *triedb.Database, g
 
 	// TODO(rjl493456442) better to define the comparator of chain config
 	// and short circuit if the chain config is not changed.
-	log.Info("Setting up genesis block", "storedCfg", storedCfg, "newCfg", newCfg)
 	compatErr := storedCfg.CheckCompatible(newCfg, head.Number.Uint64(), head.Time)
 	if compatErr != nil && ((head.Number.Uint64() != 0 && compatErr.RewindToBlock != 0) || (head.Time != 0 && compatErr.RewindToTime != 0)) {
-		log.Info("SetupGenesisBlockWithOverride, compatErr is not nil", "compatErr", compatErr, "head.Number", head.Number.Uint64(), "head.Time", head.Time,
-			"compatErr.RewindToBlock", compatErr.RewindToBlock, "compatErr.RewindToTime", compatErr.RewindToTime)
-		return newCfg, ghash, compatErr, nil
 	}
 	// Don't overwrite if the old is identical to the new. It's useful
 	// for the scenarios that database is opened in the read-only mode.
 	storedData, _ := json.Marshal(storedCfg)
 	if newData, _ := json.Marshal(newCfg); !bytes.Equal(storedData, newData) {
-		log.Info("SetupGenesisBlockWithOverride WriteChainConfig", "newCfg", newCfg)
 		rawdb.WriteChainConfig(db, ghash, newCfg)
 	}
 	return newCfg, ghash, nil, nil
@@ -427,21 +422,17 @@ func LoadChainConfig(db ethdb.Database, genesis *Genesis) (*params.ChainConfig, 
 	// chain config corresponds to the canonical chain.
 	stored := rawdb.ReadCanonicalHash(db, 0)
 	if stored != (common.Hash{}) {
-		log.Info("LoadChainConfig, stored is not empty", "stored", stored.String())
 		builtInConf := params.GetBuiltInChainConfig(stored)
 		if builtInConf != nil {
-			log.Info("here", "builtInConf", builtInConf)
 			return builtInConf, stored, nil
 		}
 		storedcfg := rawdb.ReadChainConfig(db, stored)
 		if storedcfg != nil {
-			log.Info("here1")
 			return storedcfg, stored, nil
 		}
 	}
 	// Load the config from the provided genesis specification
 	if genesis != nil {
-		log.Info("LoadChainConfig, genesis is not nil", "genesis", genesis.Config)
 		// Reject invalid genesis spec without valid chain config
 		if genesis.Config == nil {
 			return nil, common.Hash{}, errGenesisNoConfig
@@ -466,14 +457,11 @@ func LoadChainConfig(db ethdb.Database, genesis *Genesis) (*params.ChainConfig, 
 func (g *Genesis) chainConfigOrDefault(ghash common.Hash, stored *params.ChainConfig) *params.ChainConfig {
 	conf := params.GetBuiltInChainConfig(ghash)
 	if conf != nil {
-		log.Info("chainConfigOrDefault return built in", "stored", stored.String(), "conf", conf.String())
 		return conf
 	}
 	if g != nil {
-		log.Info("chainConfigOrDefault return custom", "Config", g.Config.String(), "stored", stored.String())
 		return g.Config // it could be a custom config for QA test, just return
 	}
-	log.Info("chainConfigOrDefault return stored", "stored", stored.String())
 	return stored
 }
 

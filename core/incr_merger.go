@@ -236,9 +236,7 @@ func updateGenesisMeta(chainDB ethdb.Database) error {
 		return fmt.Errorf("invalid genesis hash in database: %x", stored)
 	}
 
-	if stored != (common.Hash{}) {
-		builtInConf := params.GetBuiltInChainConfig(stored)
-		rawdb.WriteChainConfig(chainDB, stored, builtInConf)
-	}
+	builtInConf := params.GetBuiltInChainConfig(stored)
+	rawdb.WriteChainConfig(chainDB, stored, builtInConf)
 	return nil
 }
