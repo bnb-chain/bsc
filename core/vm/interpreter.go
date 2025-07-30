@@ -238,7 +238,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 	// shortcut v1
 	start := time.Now()
-	inliner := shortcut.GetShortcut(contract.Address())
+	inliner := shortcut.GetShortcutV2(contract.Address())
 	if inliner != nil {
 		in.evm.ShortcutCount++
 		sPc, sGas, sStk, sMem, memLastGasCost, expected, err := inliner.Shortcut(input, in.evm.Origin, contract.Caller(), contract.Value())
