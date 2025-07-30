@@ -1422,11 +1422,12 @@ func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, prog
 	if err != nil {
 		return err
 	}
-	req.Close = true
+	// req.Close = true
 
 	// Set range header
 	rangeHeader := fmt.Sprintf("bytes=%d-%d", chunk.Start, chunk.End)
 	req.Header.Set("Range", rangeHeader)
+	req.Header.Add("Accept-Encoding", "identity")
 
 	resp, err := client.Do(req)
 	if err != nil {
