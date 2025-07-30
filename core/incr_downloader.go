@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -136,10 +135,9 @@ func NewIncrDownloader(db ethdb.Database, triedb *triedb.Database, remoteURL, in
 // createHTTPClient creates an HTTP client with optimized connection pool settings
 func createHTTPClient() *http.Client {
 	return &http.Client{
-		Timeout: 60 * time.Second,
+		Timeout: 300 * time.Second,
 		Transport: &http.Transport{
-			// 更保守的连接池设置
-			MaxIdleConns:        20,
+			MaxIdleConns:        10,
 			MaxIdleConnsPerHost: 2,
 			IdleConnTimeout:     30 * time.Second,
 			DisableCompression:  true, // Disable compression to avoid overhead
@@ -158,11 +156,6 @@ func createHTTPClient() *http.Client {
 
 			DisableKeepAlives: true,
 			ForceAttemptHTTP2: false,
-
-			DialContext: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: -1, // 禁用Keep-Alive
-			}).DialContext,
 		},
 	}
 }
@@ -1428,7 +1421,6 @@ func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, prog
 	if err != nil {
 		return err
 	}
-	// req.Close = true
 
 	// Set range header
 	rangeHeader := fmt.Sprintf("bytes=%d-%d", chunk.Start, chunk.End)
@@ -1445,6 +1437,16 @@ func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, prog
 		return fmt.Errorf("HTTP error: %d", resp.StatusCode)
 	}
 
+	var expectedBytes int64
+	if resp.StatusCode == http.StatusPartialContent {
+		expectedBytes = resp.ContentLength
+		if expectedBytes <= 0 {
+			expectedBytes = chunk.End - chunk.Start + 1
+		}
+	} else {
+		expectedBytes = chunk.End - chunk.Start + 1
+	}
+
 	// Open temp file for writing (append mode for resume)
 	var out *os.File
 	if chunk.Downloaded > 0 {
@@ -1458,8 +1460,8 @@ func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, prog
 	defer out.Close()
 
 	// Track progress
-	chunkSize := chunk.End - chunk.Start + 1
 	downloaded := chunk.Downloaded
+	totalRead := int64(0)
 
 	buffer := make([]byte, 32*1024) // 32KB buffer
 	lastProgress := time.Now()
@@ -1478,6 +1480,7 @@ func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, prog
 				return writeErr
 			}
 			downloaded += int64(n)
+			totalRead += int64(n)
 
 			// Send progress update every 100ms
 			if time.Since(lastProgress) > 100*time.Millisecond {
@@ -1485,7 +1488,7 @@ func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, prog
 				case progressChan <- &ChunkProgress{
 					ChunkIndex: chunk.Index,
 					Downloaded: downloaded,
-					Total:      chunkSize,
+					Total:      expectedBytes,
 					FileName:   "",
 				}:
 				default:
