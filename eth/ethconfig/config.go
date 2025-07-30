@@ -50,29 +50,30 @@ var FullNodeGPO = gasprice.Config{
 
 // Defaults contains default settings for use on the BSC main net.
 var Defaults = Config{
-	SyncMode:            SnapSync,
-	NetworkId:           0, // enable auto configuration of networkID == chainID
-	TxLookupLimit:       2350000,
-	TransactionHistory:  2350000,
-	BlockHistory:        0,
-	StateHistory:        params.FullImmutabilityThreshold,
-	DatabaseCache:       512,
-	EnableSharedStorage: false,
-	TrieCleanCache:      154,
-	TrieDirtyCache:      256,
-	TrieTimeout:         10 * time.Minute,
-	TriesInMemory:       128,
-	TriesVerifyMode:     core.LocalVerify,
-	SnapshotCache:       102,
-	FilterLogCacheSize:  32,
-	Miner:               minerconfig.DefaultConfig,
-	TxPool:              legacypool.DefaultConfig,
-	BlobPool:            blobpool.DefaultConfig,
-	RPCGasCap:           50000000,
-	RPCEVMTimeout:       5 * time.Second,
-	GPO:                 FullNodeGPO,
-	RPCTxFeeCap:         1,                                         // 1 ether
-	BlobExtraReserve:    params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
+	SyncMode:               SnapSync,
+	NetworkId:              0, // enable auto configuration of networkID == chainID
+	TxLookupLimit:          2350000,
+	TransactionHistory:     2350000,
+	BlockHistory:           0,
+	StateHistory:           params.FullImmutabilityThreshold,
+	DatabaseCache:          512,
+	EnableSharedStorage:    false,
+	TrieCleanCache:         154,
+	TrieDirtyCache:         256,
+	TrieTimeout:            10 * time.Minute,
+	TriesInMemory:          128,
+	TriesVerifyMode:        core.LocalVerify,
+	SnapshotCache:          102,
+	FilterLogCacheSize:     32,
+	Miner:                  minerconfig.DefaultConfig,
+	TxPool:                 legacypool.DefaultConfig,
+	BlobPool:               blobpool.DefaultConfig,
+	RPCGasCap:              50000000,
+	RPCEVMTimeout:          5 * time.Second,
+	GPO:                    FullNodeGPO,
+	RPCTxFeeCap:            1,                                         // 1 ether
+	BlobExtraReserve:       params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
+	EnableOpcodeOptimizing: false,
 }
 
 //go:generate go run github.com/fjl/gencodec -type Config -formats toml -out gen_config.go
@@ -202,6 +203,9 @@ type Config struct {
 
 	// blob setting
 	BlobExtraReserve uint64
+
+	//opcode optimization setting
+	EnableOpcodeOptimizing bool
 }
 
 // CreateConsensusEngine creates a consensus engine for the given chain config.
