@@ -4,7 +4,6 @@ import (
 	"archive/tar"
 	"context"
 	"crypto/md5"
-	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -77,10 +76,6 @@ type IncrDownloader struct {
 	incrPath      string
 	localBlockNum uint64
 
-	// HTTP connection pool
-	httpClient *http.Client
-	poolMutex  sync.RWMutex
-
 	// Download management
 	downloadChan chan *IncrFileInfo
 	progressChan chan *DownloadProgress
@@ -111,16 +106,12 @@ func NewIncrDownloader(db ethdb.Database, triedb *triedb.Database, remoteURL, in
 	// we don't validate the url and assume it's valid
 	newURL := strings.TrimSuffix(remoteURL, "/")
 
-	// Create HTTP client with connection pool
-	httpClient := createHTTPClient()
-
 	downloader := &IncrDownloader{
 		db:                 db,
 		triedb:             triedb,
 		remoteURL:          newURL,
 		incrPath:           incrPath,
 		localBlockNum:      localBlockNum,
-		httpClient:         httpClient,
 		downloadChan:       make(chan *IncrFileInfo, 100),
 		progressChan:       make(chan *DownloadProgress, 100),
 		errorChan:          make(chan error, 10),
@@ -130,34 +121,6 @@ func NewIncrDownloader(db ethdb.Database, triedb *triedb.Database, remoteURL, in
 	}
 
 	return downloader
-}
-
-// createHTTPClient creates an HTTP client with optimized connection pool settings
-func createHTTPClient() *http.Client {
-	return &http.Client{
-		Timeout: 300 * time.Second,
-		Transport: &http.Transport{
-			MaxIdleConns:        10,
-			MaxIdleConnsPerHost: 2,
-			IdleConnTimeout:     30 * time.Second,
-			DisableCompression:  true, // Disable compression to avoid overhead
-
-			// TLS settings
-			TLSHandshakeTimeout: 10 * time.Second,
-
-			// HTTP/2 settings - disable HTTP/2 to avoid stream errors
-			TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
-
-			// Response header timeout
-			ResponseHeaderTimeout: 60 * time.Second,
-
-			// Expect continue timeout
-			ExpectContinueTimeout: 1 * time.Second,
-
-			DisableKeepAlives: true,
-			ForceAttemptHTTP2: false,
-		},
-	}
 }
 
 // saveDownloadedFiles saves list of downloaded files to db
@@ -491,11 +454,7 @@ func (d *IncrDownloader) RunConcurrent() error {
 
 // fetchMetadata downloads and parses metadata file
 func (d *IncrDownloader) fetchMetadata() ([]IncrMetadata, error) {
-	d.poolMutex.RLock()
-	client := d.httpClient
-	d.poolMutex.RUnlock()
-
-	resp, err := client.Get(fmt.Sprintf("%s/incr_metadata.json", d.remoteURL))
+	resp, err := http.Get(fmt.Sprintf("%s/incr_metadata.json", d.remoteURL))
 	if err != nil {
 		return nil, err
 	}
@@ -1266,14 +1225,6 @@ func (d *IncrDownloader) Close() {
 	d.downloadedFilesMap = make(map[uint64]*IncrFileInfo)
 	d.mergeMutex.Unlock()
 
-	// Close HTTP client transport to release connections
-	d.poolMutex.Lock()
-	if transport, ok := d.httpClient.Transport.(*http.Transport); ok {
-		transport.CloseIdleConnections()
-		log.Info("Closed idle HTTP connections")
-	}
-	d.poolMutex.Unlock()
-
 	close(d.progressChan)
 	close(d.errorChan)
 }
@@ -1295,15 +1246,12 @@ func (d *IncrDownloader) getLastBlockNum() uint64 {
 
 // checkRangeSupport checks if server supports range requests
 func (d *IncrDownloader) checkRangeSupport(url string) (bool, int64, error) {
-	d.poolMutex.RLock()
-	client := d.httpClient
-	d.poolMutex.RUnlock()
-
 	req, err := http.NewRequest("HEAD", url, nil)
 	if err != nil {
 		return false, 0, err
 	}
 
+	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return false, 0, err
@@ -1324,10 +1272,7 @@ func (d *IncrDownloader) checkRangeSupport(url string) (bool, int64, error) {
 func (d *IncrDownloader) downloadSingleThreaded(url string, file *IncrFileInfo) error {
 	log.Info("Starting single-threaded download", "file", file.Metadata.FileName)
 
-	d.poolMutex.RLock()
-	client := d.httpClient
-	d.poolMutex.RUnlock()
-
+	client := &http.Client{}
 	resp, err := client.Get(url)
 	if err != nil {
 		return fmt.Errorf("HTTP GET failed: %v", err)
@@ -1413,10 +1358,6 @@ func (d *IncrDownloader) downloadChunk(url string, chunk *ChunkInfo, progressCha
 
 // downloadChunkAttempt performs a single attempt to download a chunk
 func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, progressChan chan<- *ChunkProgress) error {
-	d.poolMutex.RLock()
-	client := d.httpClient
-	d.poolMutex.RUnlock()
-
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err
@@ -1425,8 +1366,8 @@ func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, prog
 	// Set range header
 	rangeHeader := fmt.Sprintf("bytes=%d-%d", chunk.Start, chunk.End)
 	req.Header.Set("Range", rangeHeader)
-	req.Header.Add("Accept-Encoding", "identity")
 
+	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -1435,16 +1376,6 @@ func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, prog
 
 	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP error: %d", resp.StatusCode)
-	}
-
-	var expectedBytes int64
-	if resp.StatusCode == http.StatusPartialContent {
-		expectedBytes = resp.ContentLength
-		if expectedBytes <= 0 {
-			expectedBytes = chunk.End - chunk.Start + 1
-		}
-	} else {
-		expectedBytes = chunk.End - chunk.Start + 1
 	}
 
 	// Open temp file for writing (append mode for resume)
@@ -1460,8 +1391,8 @@ func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, prog
 	defer out.Close()
 
 	// Track progress
+	chunkSize := chunk.End - chunk.Start + 1
 	downloaded := chunk.Downloaded
-	totalRead := int64(0)
 
 	buffer := make([]byte, 32*1024) // 32KB buffer
 	lastProgress := time.Now()
@@ -1480,7 +1411,6 @@ func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, prog
 				return writeErr
 			}
 			downloaded += int64(n)
-			totalRead += int64(n)
 
 			// Send progress update every 100ms
 			if time.Since(lastProgress) > 100*time.Millisecond {
@@ -1488,7 +1418,7 @@ func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, prog
 				case progressChan <- &ChunkProgress{
 					ChunkIndex: chunk.Index,
 					Downloaded: downloaded,
-					Total:      expectedBytes,
+					Total:      chunkSize,
 					FileName:   "",
 				}:
 				default:
@@ -1564,59 +1494,4 @@ func (d *IncrDownloader) GetFileStatusStats() map[string]interface{} {
 		"downloadedFilesMap":     len(d.downloadedFilesMap),
 		"expectedNextBlockStart": d.expectedNextBlockStart,
 	}
-}
-
-// UpdateHTTPClient updates the HTTP client with new configuration
-func (d *IncrDownloader) UpdateHTTPClient(timeout time.Duration, maxIdleConns, maxIdleConnsPerHost int) {
-	d.poolMutex.Lock()
-	defer d.poolMutex.Unlock()
-
-	d.httpClient = &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			MaxIdleConns:          maxIdleConns,
-			MaxIdleConnsPerHost:   maxIdleConnsPerHost,
-			IdleConnTimeout:       90 * time.Second,
-			DisableCompression:    true,
-			TLSHandshakeTimeout:   10 * time.Second,
-			TLSNextProto:          make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
-			ResponseHeaderTimeout: 10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-		},
-	}
-
-	log.Info("HTTP client configuration updated",
-		"timeout", timeout,
-		"maxIdleConns", maxIdleConns,
-		"maxIdleConnsPerHost", maxIdleConnsPerHost)
-}
-
-// GetHTTPClientStats returns current HTTP client statistics
-func (d *IncrDownloader) GetHTTPClientStats() map[string]interface{} {
-	d.poolMutex.RLock()
-	defer d.poolMutex.RUnlock()
-
-	transport, ok := d.httpClient.Transport.(*http.Transport)
-	if !ok {
-		return map[string]interface{}{
-			"error": "Transport is not *http.Transport",
-		}
-	}
-
-	return map[string]interface{}{
-		"maxIdleConns":        transport.MaxIdleConns,
-		"maxIdleConnsPerHost": transport.MaxIdleConnsPerHost,
-		"idleConnTimeout":     transport.IdleConnTimeout,
-		"disableCompression":  transport.DisableCompression,
-		"timeout":             d.httpClient.Timeout,
-	}
-}
-
-// ResetHTTPClient resets the HTTP client to default configuration
-func (d *IncrDownloader) ResetHTTPClient() {
-	d.poolMutex.Lock()
-	defer d.poolMutex.Unlock()
-
-	d.httpClient = createHTTPClient()
-	log.Info("HTTP client reset to default configuration")
 }
