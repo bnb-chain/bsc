@@ -234,7 +234,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}()
 	}
 
-	sPc := uint64(0)
+	sPc_ := uint64(0)
 
 	// shortcut v1
 	start := time.Now()
@@ -273,6 +273,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				}
 			}
 		}
+		sPc_ = sPc
 	}
 	in.evm.ShortcutDuration += time.Since(start)
 
@@ -329,7 +330,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	// the execution of one of the operations or until the done flag is set by the
 	// parent context.
 	for {
-		if pc == sPc && pc != 0 {
+		if pc == sPc_ && pc != 0 {
 			in.evm.ReplacedDuration += time.Since(start)
 		}
 		if debug {
