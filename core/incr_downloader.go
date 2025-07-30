@@ -1492,6 +1492,7 @@ func (d *IncrDownloader) downloadChunkAttempt(url string, chunk *ChunkInfo, prog
 			break
 		}
 		if err != nil {
+			log.Error("Failed to read from response body", "error", err)
 			return err
 		}
 	}
