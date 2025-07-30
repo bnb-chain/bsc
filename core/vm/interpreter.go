@@ -17,13 +17,14 @@
 package vm
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/holiman/uint256"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/core/opcodeCompiler/shortcut"
+	"github.com/ethereum/go-ethereum/core/opcodeCompiler/shortcut/impl"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
@@ -276,8 +277,13 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	//}
 
 	// shortcut v2
-	if in.evm.Config.EnableInline {
-		inliner := shortcut.GetShortcut(contract.Address())
+	if in.evm.Config.EnableInline &&
+		bytes.Equal(
+			contract.Address().Bytes(),
+			[]byte{0x55, 0xD3, 0x98, 0x32, 0x6F, 0x99, 0x05, 0x9F, 0xF7, 0x75, 0x48, 0x52, 0x46, 0x99, 0x90, 0x27, 0xB3, 0x19, 0x79, 0x55},
+		) {
+		//inliner := shortcut.GetShortcut(contract.Address())
+		inliner := &impl.ShortcutImpl55D398326F99059FF775485246999027B3197955{}
 		var gasUsed uint64
 		if inliner != nil {
 			expected, err := inliner.ShortcutV2(

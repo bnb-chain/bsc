@@ -342,7 +342,7 @@ func (sg *ShortcutGenerator) generateGoCode() string {
 		code.WriteString("\t\treturn 0, 0, nil, nil, 0, false, nil\n")
 		code.WriteString("\t}\n\n")
 
-		code.WriteString("\tselector := hexutil.Encode(inputs[:4])\n")
+		code.WriteString("\tselector := inputs[:4]\n")
 		code.WriteString("\tswitch selector {\n")
 
 		for selector, info := range sg.selectors {
@@ -372,7 +372,11 @@ func (sg *ShortcutGenerator) generateGoCode() string {
 			}
 			memStr += "}"
 
-			code.WriteString(fmt.Sprintf("\tcase \"%s\":\n", selector))
+			selectorBts := info.getSelectorBts()
+
+			selectorBtsStr := fmt.Sprintf("[]byte{0x%x, 0x%x, 0x%x, 0x%x}", selectorBts[0], selectorBts[1], selectorBts[2], selectorBts[3])
+
+			code.WriteString(fmt.Sprintf("\tcase %s:\n", selectorBtsStr))
 			code.WriteString(fmt.Sprintf("\t\t// 函数: %s\n", selector))
 			code.WriteString(fmt.Sprintf("\t\t// 预估Gas消耗: %d\n", info.GasUsed))
 			code.WriteString(fmt.Sprintf("\t\t// 栈操作: %v\n", info.StackOps))
@@ -401,7 +405,7 @@ func (sg *ShortcutGenerator) generateGoCode() string {
 		code.WriteString("\t\treturn false, nil\n")
 		code.WriteString("\t}\n\n")
 
-		code.WriteString("\tselector := hexutil.Encode(inputs[:4])\n")
+		code.WriteString("\tselector := inputs[:4]\n")
 		code.WriteString("\tswitch selector {\n")
 
 		for selector, info := range sg.selectors {
@@ -431,7 +435,11 @@ func (sg *ShortcutGenerator) generateGoCode() string {
 			}
 			memStr += "}"
 
-			code.WriteString(fmt.Sprintf("\tcase \"%s\":\n", selector))
+			selectorBts := info.getSelectorBts()
+
+			selectorBtsStr := fmt.Sprintf("[]byte{0x%x, 0x%x, 0x%x, 0x%x}", selectorBts[0], selectorBts[1], selectorBts[2], selectorBts[3])
+
+			code.WriteString(fmt.Sprintf("\tcase %s:\n", selectorBtsStr))
 			code.WriteString(fmt.Sprintf("\t\t// 函数: %s\n", selector))
 			code.WriteString(fmt.Sprintf("\t\t// 预估Gas消耗: %d\n", info.GasUsed))
 			code.WriteString(fmt.Sprintf("\t\t// 栈操作: %v\n", info.StackOps))
