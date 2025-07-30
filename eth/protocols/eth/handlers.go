@@ -318,8 +318,9 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
 	}
 
-	if ann.Block.BAL() != nil {
-		log.Debug("handleNewBlock, BAL", "number", ann.Block.NumberU64(), "hash", ann.Block.Hash(), "balSize", ann.Block.BALSize(), "version", ann.Block.BAL().Version)
+	if ann.Bal != nil {
+		log.Debug("handleNewBlock, BAL", "number", ann.Block.NumberU64(), "hash", ann.Block.Hash(),
+			"version", ann.Bal.Version, "signData", len(ann.Bal.SignData), "accounts", len(ann.Bal.Accounts))
 	} else {
 		log.Debug("handleNewBlock, no BAL", "number", ann.Block.NumberU64(), "hash", ann.Block.Hash(), "balSize", ann.Block.BALSize())
 	}
