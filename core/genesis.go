@@ -401,6 +401,7 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *triedb.Database, g
 
 	// TODO(rjl493456442) better to define the comparator of chain config
 	// and short circuit if the chain config is not changed.
+	log.Info("Setting up genesis block", "storedCfg", storedCfg)
 	compatErr := storedCfg.CheckCompatible(newCfg, head.Number.Uint64(), head.Time)
 	if compatErr != nil && ((head.Number.Uint64() != 0 && compatErr.RewindToBlock != 0) || (head.Time != 0 && compatErr.RewindToTime != 0)) {
 		log.Info("SetupGenesisBlockWithOverride, compatErr is not nil", "compatErr", compatErr, "head.Number", head.Number.Uint64(), "head.Time", head.Time,
@@ -428,7 +429,7 @@ func LoadChainConfig(db ethdb.Database, genesis *Genesis) (*params.ChainConfig, 
 		log.Info("LoadChainConfig, stored is not empty", "stored", stored.String())
 		builtInConf := params.GetBuiltInChainConfig(stored)
 		if builtInConf != nil {
-			log.Info("here")
+			log.Info("here", "builtInConf", builtInConf)
 			return builtInConf, stored, nil
 		}
 		storedcfg := rawdb.ReadChainConfig(db, stored)
@@ -464,11 +465,14 @@ func LoadChainConfig(db ethdb.Database, genesis *Genesis) (*params.ChainConfig, 
 func (g *Genesis) chainConfigOrDefault(ghash common.Hash, stored *params.ChainConfig) *params.ChainConfig {
 	conf := params.GetBuiltInChainConfig(ghash)
 	if conf != nil {
+		log.Info("chainConfigOrDefault return built in", "stored", stored.String(), "conf", conf.String())
 		return conf
 	}
 	if g != nil {
+		log.Info("chainConfigOrDefault return custom", "Config", g.Config.String(), "stored", stored.String())
 		return g.Config // it could be a custom config for QA test, just return
 	}
+	log.Info("chainConfigOrDefault return stored", "stored", stored.String())
 	return stored
 }
 
