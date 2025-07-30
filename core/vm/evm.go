@@ -128,6 +128,7 @@ type EVM struct {
 	baseInterpreter *EVMInterpreter
 
 	ShortcutDuration time.Duration
+	ReplacedDuration time.Duration
 }
 
 // NewEVM constructs an EVM instance with the supplied block context, state

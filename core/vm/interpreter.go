@@ -234,11 +234,64 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}()
 	}
 
+	sPc := uint64(0)
+
 	// shortcut v1
+	start := time.Now()
+	inliner := shortcut.GetShortcut(contract.Address())
+	if inliner != nil {
+		sPc, sGas, sStk, sMem, memLastGasCost, expected, err := inliner.Shortcut(input, in.evm.Origin, contract.Caller(), contract.Value())
+		if err != nil || !expected {
+			//log.Warn("Shortcut unexpected",
+			//	"error", err,
+			//	"contract", contract.Address(),
+			//	"inputs", hex.EncodeToString(input),
+			//	"origin", in.evm.Origin,
+			//	"caller", contract.Caller(),
+			//	"value", contract.Value(),
+			//)
+		} else if in.evm.Config.EnableInline {
+			if debug {
+				// Capture pre-execution values for tracing.
+				pcCopy, gasCopy = pc, contract.Gas
+			}
+
+			stack.data = sStk
+			callContext.Memory.store = sMem
+			callContext.Memory.lastGasCost = memLastGasCost
+			pc = sPc
+			contract.Gas -= sGas
+
+			if debug {
+				if in.evm.Config.Tracer.OnGasChange != nil {
+					in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-sGas, tracing.GasChangeCallOpCode)
+				}
+				if in.evm.Config.Tracer.OnOpcode != nil {
+					in.evm.Config.Tracer.OnOpcode(0, byte(Nop), gasCopy, sGas, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
+					logged = true
+				}
+			}
+		}
+	}
+	in.evm.ShortcutDuration += time.Since(start)
+
+	start = time.Now()
+
+	//bytes.Equal(
+	//	contract.Address().Bytes(),
+	//	[]byte{0x55, 0xD3, 0x98, 0x32, 0x6F, 0x99, 0x05, 0x9F, 0xF7, 0x75, 0x48, 0x52, 0x46, 0x99, 0x90, 0x27, 0xB3, 0x19, 0x79, 0x55},
+	//)
+	// shortcut v2
+	//start := time.Now()
 	//if in.evm.Config.EnableInline {
-	//	inliner := shortcut.GetShortcut(contract.Address())
+	//	inliner := shortcut.GetShortcutV2(contract.Address())
+	//	//inliner := &impl.Impl55D398326F99059FF775485246999027B3197955{}
+	//	var gasUsed uint64
 	//	if inliner != nil {
-	//		sPc, sGas, sStk, sMem, memLastGasCost, expected, err := inliner.Shortcut(input, in.evm.Origin, contract.Caller(), contract.Value())
+	//		expected, err := inliner.ShortcutV2(
+	//			input, in.evm.Origin, contract.Caller(), contract.Value(),
+	//			&pc, &gasUsed, &stack.data, &mem.store, &mem.lastGasCost,
+	//		)
 	//		if err != nil || !expected {
 	//			//log.Warn("Shortcut unexpected",
 	//			//	"error", err,
@@ -251,82 +304,33 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	//		} else {
 	//			if debug {
 	//				// Capture pre-execution values for tracing.
-	//				pcCopy, gasCopy = pc, contract.Gas
+	//				pcCopy, gasCopy = 0, contract.Gas
 	//			}
 	//
-	//			for _, frame := range sStk {
-	//				callContext.Stack.push(&frame)
-	//			}
-	//			callContext.Memory.store = make([]byte, len(sMem))
-	//			copy(callContext.Memory.store, sMem)
-	//			callContext.Memory.lastGasCost = memLastGasCost
-	//			pc = sPc
-	//			contract.Gas -= sGas
+	//			contract.Gas -= gasUsed
 	//
 	//			if debug {
 	//				if in.evm.Config.Tracer.OnGasChange != nil {
-	//					in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-sGas, tracing.GasChangeCallOpCode)
+	//					in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-gasUsed, tracing.GasChangeCallOpCode)
 	//				}
 	//				if in.evm.Config.Tracer.OnOpcode != nil {
-	//					in.evm.Config.Tracer.OnOpcode(0, byte(Nop), gasCopy, sGas, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
+	//					in.evm.Config.Tracer.OnOpcode(0, byte(Nop), gasCopy, gasUsed, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
 	//					logged = true
 	//				}
 	//			}
 	//		}
 	//	}
 	//}
-
-	//bytes.Equal(
-	//	contract.Address().Bytes(),
-	//	[]byte{0x55, 0xD3, 0x98, 0x32, 0x6F, 0x99, 0x05, 0x9F, 0xF7, 0x75, 0x48, 0x52, 0x46, 0x99, 0x90, 0x27, 0xB3, 0x19, 0x79, 0x55},
-	//)
-	// shortcut v2
-	start := time.Now()
-	if in.evm.Config.EnableInline {
-		inliner := shortcut.GetShortcutV2(contract.Address())
-		//inliner := &impl.Impl55D398326F99059FF775485246999027B3197955{}
-		var gasUsed uint64
-		if inliner != nil {
-			expected, err := inliner.ShortcutV2(
-				input, in.evm.Origin, contract.Caller(), contract.Value(),
-				&pc, &gasUsed, &stack.data, &mem.store, &mem.lastGasCost,
-			)
-			if err != nil || !expected {
-				//log.Warn("Shortcut unexpected",
-				//	"error", err,
-				//	"contract", contract.Address(),
-				//	"inputs", hex.EncodeToString(input),
-				//	"origin", in.evm.Origin,
-				//	"caller", contract.Caller(),
-				//	"value", contract.Value(),
-				//)
-			} else {
-				if debug {
-					// Capture pre-execution values for tracing.
-					pcCopy, gasCopy = 0, contract.Gas
-				}
-
-				contract.Gas -= gasUsed
-
-				if debug {
-					if in.evm.Config.Tracer.OnGasChange != nil {
-						in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-gasUsed, tracing.GasChangeCallOpCode)
-					}
-					if in.evm.Config.Tracer.OnOpcode != nil {
-						in.evm.Config.Tracer.OnOpcode(0, byte(Nop), gasCopy, gasUsed, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
-						logged = true
-					}
-				}
-			}
-		}
-	}
-	in.evm.ShortcutDuration += time.Since(start)
+	//in.evm.ShortcutDuration += time.Since(start)
 
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
 	// the execution of one of the operations or until the done flag is set by the
 	// parent context.
 	for {
+		if pc == sPc && pc != 0 {
+			in.evm.ReplacedDuration += time.Since(start)
+		}
 		if debug {
 			// Capture pre-execution values for tracing.
 			logged, pcCopy, gasCopy = false, pc, contract.Gas
