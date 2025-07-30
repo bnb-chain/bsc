@@ -610,6 +610,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		} else {
 			bc.SetHead(compatErr.RewindToBlock)
 		}
+		log.Info("WriteChainConfig in compatErr", "chainConfig", chainConfig)
 		rawdb.WriteChainConfig(db, genesisHash, chainConfig)
 	}
 	// Start tx indexer if it's enabled.

@@ -412,6 +412,7 @@ func SetupGenesisBlockWithOverride(db ethdb.Database, triedb *triedb.Database, g
 	// for the scenarios that database is opened in the read-only mode.
 	storedData, _ := json.Marshal(storedCfg)
 	if newData, _ := json.Marshal(newCfg); !bytes.Equal(storedData, newData) {
+		log.Info("SetupGenesisBlockWithOverride WriteChainConfig", "newCfg", newCfg)
 		rawdb.WriteChainConfig(db, ghash, newCfg)
 	}
 	return newCfg, ghash, nil, nil
@@ -603,6 +604,7 @@ func (g *Genesis) Commit(db ethdb.Database, triedb *triedb.Database) (*types.Blo
 	rawdb.WriteHeadBlockHash(db, block.Hash())
 	rawdb.WriteHeadFastBlockHash(db, block.Hash())
 	rawdb.WriteHeadHeaderHash(db, block.Hash())
+	log.Info("Commit genesis block", "block", block.Hash(), "config")
 	rawdb.WriteChainConfig(db, block.Hash(), config)
 	return block, nil
 }
