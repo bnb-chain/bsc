@@ -240,6 +240,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	start := time.Now()
 	inliner := shortcut.GetShortcut(contract.Address())
 	if inliner != nil {
+		in.evm.ShortcutCount++
 		sPc, sGas, sStk, sMem, memLastGasCost, expected, err := inliner.Shortcut(input, in.evm.Origin, contract.Caller(), contract.Value())
 		if err != nil || !expected {
 			//log.Warn("Shortcut unexpected",

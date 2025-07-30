@@ -129,6 +129,7 @@ type EVM struct {
 
 	ShortcutDuration time.Duration
 	ReplacedDuration time.Duration
+	ShortcutCount    uint64
 }
 
 // NewEVM constructs an EVM instance with the supplied block context, state
