@@ -1,4 +1,4 @@
-package impl
+package shortcut
 
 import (
 	"errors"
@@ -6,22 +6,21 @@ import (
 	"github.com/holiman/uint256"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/opcodeCompiler/shortcut"
 )
 
 func init() {
-	impl := new(ShortcutImpl55D398326F99059FF775485246999027B3197955)
-	shortcut.RegisterShortcut(impl.Contract(), impl)
+	impl := new(Impl55D398326F99059FF775485246999027B3197955)
+	RegisterShortcut(impl.Contract(), impl)
 }
 
-type ShortcutImpl55D398326F99059FF775485246999027B3197955 struct {
+type Impl55D398326F99059FF775485246999027B3197955 struct {
 }
 
-func (s *ShortcutImpl55D398326F99059FF775485246999027B3197955) Contract() common.Address {
+func (s *Impl55D398326F99059FF775485246999027B3197955) Contract() common.Address {
 	return common.HexToAddress("0x55d398326f99059fF775485246999027B3197955")
 }
 
-func (s *ShortcutImpl55D398326F99059FF775485246999027B3197955) Shortcut(inputs []byte, origin, caller common.Address, value *uint256.Int) (shortcutPc uint64, gasUsed uint64, stack []uint256.Int, mem []byte, lastGasCost uint64, expected bool, err error) {
+func (s *Impl55D398326F99059FF775485246999027B3197955) Shortcut(inputs []byte, origin, caller common.Address, value *uint256.Int) (shortcutPc uint64, gasUsed uint64, stack []uint256.Int, mem []byte, lastGasCost uint64, expected bool, err error) {
 	// 入参分析 TODO: 目前还是人工分析，后续想办法自动化生成，还是有点难度的
 	if !value.IsZero() {
 		return 0, 0, nil, nil, 0, false, errors.New("value is not zero")
@@ -297,7 +296,7 @@ func (s *ShortcutImpl55D398326F99059FF775485246999027B3197955) Shortcut(inputs [
 	}
 }
 
-func (s *ShortcutImpl55D398326F99059FF775485246999027B3197955) ShortcutV2(
+func (s *Impl55D398326F99059FF775485246999027B3197955) ShortcutV2(
 	inputs []byte, origin, caller common.Address, value *uint256.Int,
 	shortcutPc *uint64, gasUsed *uint64, stack *[]uint256.Int, mem *[]byte, lastGasCost *uint64,
 ) (expected bool, err error) {

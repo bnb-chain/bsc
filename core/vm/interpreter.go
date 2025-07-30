@@ -282,7 +282,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	// shortcut v2
 	if in.evm.Config.EnableInline {
 		inliner := shortcut.GetShortcutV2(contract.Address())
-		//inliner := &impl.ShortcutImpl55D398326F99059FF775485246999027B3197955{}
+		//inliner := &impl.Impl55D398326F99059FF775485246999027B3197955{}
 		var gasUsed uint64
 		if inliner != nil {
 			expected, err := inliner.ShortcutV2(
