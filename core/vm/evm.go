@@ -27,6 +27,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
+	"github.com/ethereum/go-ethereum/core/opcodeCompiler/shortcut"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -215,6 +216,25 @@ func isSystemCall(caller ContractRef) bool {
 // the necessary steps to create accounts and reverses the state in case of an
 // execution error or failed value transfer.
 func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas uint64, value *uint256.Int) (ret []byte, leftOverGas uint64, err error) {
+	var shortcutResult *shortcut.Result
+	if evm.Config.EnableInline {
+		shortcutResult = &shortcut.Result{
+			Ready: make(chan bool),
+		}
+		if evm.Config.EnableInline {
+			go func() {
+				defer close(shortcutResult.Ready)
+
+				inliner := shortcut.GetShortcut(addr)
+				if inliner != nil {
+					shortcutResult.Pc, shortcutResult.GasUsed,
+						shortcutResult.Stack, shortcutResult.Mem, shortcutResult.LastGasCost,
+						shortcutResult.Expected, shortcutResult.Err = inliner.Shortcut(input, evm.Origin, caller.Address(), value)
+				}
+			}()
+		}
+	}
+
 	// Capture the tracer start/end events in debug mode
 	if evm.Config.Tracer != nil {
 		evm.captureBegin(evm.depth, CALL, caller.Address(), addr, input, gas, value.ToBig())
@@ -277,6 +297,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				}
 				contract.IsSystemCall = isSystemCall(caller)
 				contract.SetCallCode(&addrCopy, codeHash, code)
+				contract.ShortcutResult = shortcutResult
 				ret, err = evm.interpreter.Run(contract, input, false)
 				gas = contract.Gas
 			} else {
@@ -288,6 +309,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 
 				contract.IsSystemCall = isSystemCall(caller)
 				contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), code)
+				contract.ShortcutResult = shortcutResult
 				ret, err = evm.interpreter.Run(contract, input, false)
 				gas = contract.Gas
 			}
@@ -320,6 +342,24 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 // CallCode differs from Call in the sense that it executes the given address'
 // code with the caller as context.
 func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, gas uint64, value *uint256.Int) (ret []byte, leftOverGas uint64, err error) {
+	shortcutResult := &shortcut.Result{
+		Ready: make(chan bool),
+	}
+	if evm.Config.EnableInline {
+		if evm.Config.EnableInline {
+			go func() {
+				defer close(shortcutResult.Ready)
+
+				inliner := shortcut.GetShortcut(addr)
+				if inliner != nil {
+					shortcutResult.Pc, shortcutResult.GasUsed,
+						shortcutResult.Stack, shortcutResult.Mem, shortcutResult.LastGasCost,
+						shortcutResult.Expected, shortcutResult.Err = inliner.Shortcut(input, evm.Origin, caller.Address(), value)
+				}
+			}()
+		}
+	}
+
 	// Invoke tracer hooks that signal entering/exiting a call frame
 	if evm.Config.Tracer != nil {
 		evm.captureBegin(evm.depth, CALLCODE, caller.Address(), addr, input, gas, value.ToBig())
@@ -362,6 +402,8 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 				evm.UseBaseInterpreter()
 			}
 
+			contract.ShortcutResult = shortcutResult
+
 			ret, err = evm.interpreter.Run(contract, input, false)
 			gas = contract.Gas
 		} else {
@@ -372,6 +414,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 			defer ReturnContract(contract)
 
 			contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
+			contract.ShortcutResult = shortcutResult
 			ret, err = evm.interpreter.Run(contract, input, false)
 			gas = contract.Gas
 		}
@@ -395,6 +438,24 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 // DelegateCall differs from CallCode in the sense that it executes the given address'
 // code with the caller as context and the caller is set to the caller of the caller.
 func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []byte, gas uint64) (ret []byte, leftOverGas uint64, err error) {
+	shortcutResult := &shortcut.Result{
+		Ready: make(chan bool),
+	}
+	if evm.Config.EnableInline {
+		if evm.Config.EnableInline {
+			go func() {
+				defer close(shortcutResult.Ready)
+
+				inliner := shortcut.GetShortcut(addr)
+				if inliner != nil {
+					shortcutResult.Pc, shortcutResult.GasUsed,
+						shortcutResult.Stack, shortcutResult.Mem, shortcutResult.LastGasCost,
+						shortcutResult.Expected, shortcutResult.Err = inliner.Shortcut(input, evm.Origin, caller.Address(), value)
+				}
+			}()
+		}
+	}
+
 	// Invoke tracer hooks that signal entering/exiting a call frame
 	if evm.Config.Tracer != nil {
 		// NOTE: caller must, at all times be a contract. It should never happen
@@ -431,6 +492,7 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 			} else {
 				evm.UseBaseInterpreter()
 			}
+			contract.ShortcutResult = shortcutResult
 			ret, err = evm.interpreter.Run(contract, input, false)
 			gas = contract.Gas
 		} else {
@@ -440,6 +502,7 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 			defer ReturnContract(contract)
 
 			contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
+			contract.ShortcutResult = shortcutResult
 			ret, err = evm.interpreter.Run(contract, input, false)
 			gas = contract.Gas
 		}
@@ -461,6 +524,24 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 // Opcodes that attempt to perform such modifications will result in exceptions
 // instead of performing the modifications.
 func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte, gas uint64) (ret []byte, leftOverGas uint64, err error) {
+	shortcutResult := &shortcut.Result{
+		Ready: make(chan bool),
+	}
+	if evm.Config.EnableInline {
+		if evm.Config.EnableInline {
+			go func() {
+				defer close(shortcutResult.Ready)
+
+				inliner := shortcut.GetShortcut(addr)
+				if inliner != nil {
+					shortcutResult.Pc, shortcutResult.GasUsed,
+						shortcutResult.Stack, shortcutResult.Mem, shortcutResult.LastGasCost,
+						shortcutResult.Expected, shortcutResult.Err = inliner.Shortcut(input, evm.Origin, caller.Address(), value)
+				}
+			}()
+		}
+	}
+
 	// Invoke tracer hooks that signal entering/exiting a call frame
 	if evm.Config.Tracer != nil {
 		evm.captureBegin(evm.depth, STATICCALL, caller.Address(), addr, input, gas, nil)
@@ -507,6 +588,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 				evm.UseBaseInterpreter()
 			}
 			contract.SetCallCode(&addrCopy, codeHash, code)
+			contract.ShortcutResult = shortcutResult
 			// When an error was returned by the EVM or when setting the creation code
 			// above we revert to the snapshot and consume any gas remaining. Additionally
 			// when we're in Homestead this also counts for code storage gas errors.
@@ -523,6 +605,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 			defer ReturnContract(contract)
 
 			contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
+			contract.ShortcutResult = shortcutResult
 			// When an error was returned by the EVM or when setting the creation code
 			// above we revert to the snapshot and consume any gas remaining. Additionally
 			// when we're in Homestead this also counts for code storage gas errors.

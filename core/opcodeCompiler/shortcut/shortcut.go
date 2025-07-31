@@ -324,3 +324,15 @@ type Shortcut interface {
 		shortcutPc *uint64, gasUsed *uint64, stack *[]uint256.Int, mem *[]byte, lastGasCost *uint64,
 	) (expected bool, err error)
 }
+
+type Result struct {
+	Pc          uint64
+	GasUsed     uint64
+	Stack       []uint256.Int
+	Mem         []byte
+	LastGasCost uint64
+	Expected    bool
+	Err         error
+
+	Ready chan bool
+}

@@ -17,12 +17,14 @@
 package vm
 
 import (
+	"github.com/holiman/uint256"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
+	"github.com/ethereum/go-ethereum/core/opcodeCompiler/shortcut"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/holiman/uint256"
 )
 
 const codeBitmapCacheSize = 2000
@@ -77,6 +79,8 @@ type Contract struct {
 	value          *uint256.Int
 	optimized      bool
 	codeBitmapFunc func(code []byte) bitvec
+
+	ShortcutResult *shortcut.Result
 }
 
 func (c *Contract) validJumpdest(dest *uint256.Int) bool {

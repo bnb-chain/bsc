@@ -24,7 +24,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/core/opcodeCompiler/shortcut"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
@@ -236,7 +235,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 	sPc_ := uint64(0)
 
-	// shortcut v1
+	start := time.Now()
+
+	//// shortcut v1
 	//start := time.Now()
 	//inliner := shortcut.GetShortcutV2(contract.Address())
 	//if inliner != nil {
@@ -326,37 +327,69 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	//in.evm.ShortcutDuration += time.Since(start)
 
 	// shortcut V3
-	start := time.Now()
-	sPc, sGas, sStk, sMem, memLastGasCost, expected, err := shortcut.DoShortcut(contract.Address(), input, in.evm.Origin, contract.Caller(), contract.Value())
-	if expected {
-		in.evm.ShortcutCount++
-	}
-	if in.evm.Config.EnableInline && err == nil && expected {
-		if debug {
-			// Capture pre-execution values for tracing.
-			pcCopy, gasCopy = pc, contract.Gas
-		}
+	//start := time.Now()
+	//sPc, sGas, sStk, sMem, memLastGasCost, expected, err := shortcut.DoShortcut(contract.Address(), input, in.evm.Origin, contract.Caller(), contract.Value())
+	//if expected {
+	//	in.evm.ShortcutCount++
+	//}
+	//if in.evm.Config.EnableInline && err == nil && expected {
+	//	if debug {
+	//		// Capture pre-execution values for tracing.
+	//		pcCopy, gasCopy = pc, contract.Gas
+	//	}
+	//
+	//	stack.data = sStk
+	//	callContext.Memory.store = sMem
+	//	callContext.Memory.lastGasCost = memLastGasCost
+	//	pc = sPc
+	//	contract.Gas -= sGas
+	//
+	//	if debug {
+	//		if in.evm.Config.Tracer.OnGasChange != nil {
+	//			in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-sGas, tracing.GasChangeCallOpCode)
+	//		}
+	//		if in.evm.Config.Tracer.OnOpcode != nil {
+	//			in.evm.Config.Tracer.OnOpcode(0, byte(Nop), gasCopy, sGas, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
+	//			logged = true
+	//		}
+	//	}
+	//}
+	//sPc_ = sPc
+	//in.evm.ShortcutDuration += time.Since(start)
+	//
+	//start = time.Now()
 
-		stack.data = sStk
-		callContext.Memory.store = sMem
-		callContext.Memory.lastGasCost = memLastGasCost
-		pc = sPc
-		contract.Gas -= sGas
-
-		if debug {
-			if in.evm.Config.Tracer.OnGasChange != nil {
-				in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-sGas, tracing.GasChangeCallOpCode)
+	// shortcut v4
+	shortcutResult := contract.ShortcutResult
+	contract.ShortcutResult = nil
+	if shortcutResult != nil {
+		<-shortcutResult.Ready
+		if shortcutResult.Expected {
+			in.evm.ShortcutCount++
+			if debug {
+				// Capture pre-execution values for tracing.
+				pcCopy, gasCopy = pc, contract.Gas
 			}
-			if in.evm.Config.Tracer.OnOpcode != nil {
-				in.evm.Config.Tracer.OnOpcode(0, byte(Nop), gasCopy, sGas, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
-				logged = true
+
+			var sGas uint64
+
+			pc, sGas, stack.data, mem.store, mem.lastGasCost = shortcutResult.Pc, shortcutResult.GasUsed, shortcutResult.Stack, shortcutResult.Mem, shortcutResult.LastGasCost
+
+			contract.Gas -= sGas
+			
+			if debug {
+				if in.evm.Config.Tracer.OnGasChange != nil {
+					in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-sGas, tracing.GasChangeCallOpCode)
+				}
+				if in.evm.Config.Tracer.OnOpcode != nil {
+					in.evm.Config.Tracer.OnOpcode(0, byte(Nop), gasCopy, sGas, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
+					logged = true
+				}
 			}
 		}
 	}
-	sPc_ = sPc
+
 	in.evm.ShortcutDuration += time.Since(start)
-
-	start = time.Now()
 
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
