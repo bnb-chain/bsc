@@ -812,6 +812,10 @@ func (evm *EVM) GetVMContext() *tracing.VMContext {
 }
 
 func (evm *EVM) Inline(addr common.Address, input []byte, value *uint256.Int) (ret []byte, gasCost uint64, expected bool) {
+	if len(input) < 4 {
+		return nil, 0, false
+	}
+
 	if !bytes.Equal(input[:8], []byte{0x70, 0xa0, 0x82, 0x31}) {
 		return nil, 0, false
 	}
