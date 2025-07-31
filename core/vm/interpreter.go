@@ -38,6 +38,7 @@ type Config struct {
 	ExtraEips                 []int // Additional EIPS that are to be enabled
 	EnableOpcodeOptimizations bool  // Enable opcode optimization
 	EnableInline              bool  // Enable contract inline
+	EnableFullyInline         bool  // Enable contract inline
 
 	StatelessSelfValidation bool // Generate execution witnesses and self-check against them (testing purpose)
 }
@@ -171,6 +172,14 @@ func (in *EVMInterpreter) CopyAndInstallSuperInstruction() {
 // considered a revert-and-consume-all-gas operation except for
 // ErrExecutionReverted which means revert-and-keep-gas-left.
 func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (ret []byte, err error) {
+	if in.evm.Config.EnableFullyInline {
+		ret, gasUsed, expect := in.evm.Inline(contract.Address(), input, contract.value)
+		if expect && contract.Gas > gasUsed {
+			contract.Gas -= gasUsed
+			return ret, nil
+		}
+	}
+
 	// Increment the call depth which is restricted to 1024
 	in.evm.depth++
 	defer func() { in.evm.depth-- }()

@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"bytes"
 	"errors"
 	"math/big"
 	"sync"
@@ -488,6 +489,9 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
 		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.Config.Tracer)
 	} else {
+		if evm.Config.EnableInline {
+
+		}
 		if evm.Config.EnableOpcodeOptimizations {
 			// At this point, we use a copy of address. If we don't, the go compiler will
 			// leak the 'contract' to the outer scope, and make allocation for 'contract'
@@ -803,5 +807,57 @@ func (evm *EVM) GetVMContext() *tracing.VMContext {
 		Random:      evm.Context.Random,
 		BaseFee:     evm.Context.BaseFee,
 		StateDB:     evm.StateDB,
+	}
+}
+
+func (evm *EVM) Inline(addr common.Address, input []byte, value *uint256.Int) (ret []byte, gasCost uint64, expected bool) {
+	if !bytes.Equal(input[:8], []byte{0x70, 0xa0, 0x82, 0x31}) {
+		return nil, 0, false
+	}
+
+	switch string(addr.Bytes()) {
+	case string([]byte{0x55, 0xD3, 0x98, 0x32, 0x6F, 0x99, 0x05, 0x9F, 0xF7, 0x75, 0x48, 0x52, 0x46, 0x99, 0x90, 0x27, 0xB3, 0x19, 0x79, 0x55}):
+		if value != nil && !value.IsZero() {
+			return nil, 0, false
+		}
+		if len(input) < 4+32 {
+			return nil, 0, false
+		}
+
+		query := input[4:36]
+
+		interpreter := evm.interpreter
+
+		if interpreter.hasher == nil {
+			interpreter.hasher = crypto.NewKeccakState()
+		} else {
+			interpreter.hasher.Reset()
+		}
+		interpreter.hasher.Write(query)
+		interpreter.hasher.Read(interpreter.hasherBuf[:])
+
+		evm := interpreter.evm
+		if evm.Config.EnablePreimageRecording {
+			evm.StateDB.AddPreimage(interpreter.hasherBuf, query)
+		}
+
+		slot := interpreter.hasherBuf
+
+		ret := evm.StateDB.GetState(addr, slot).Bytes()
+
+		gasCost = uint64(431)
+
+		if _, slotPresent := evm.StateDB.SlotInAccessList(addr, slot); !slotPresent {
+			// If the caller cannot afford the cost, this change will be rolled back
+			// If he does afford it, we can skip checking the same thing later on, during execution
+			evm.StateDB.AddSlotToAccessList(addr, slot)
+			gasCost += params.ColdSloadCostEIP2929
+		} else {
+			gasCost += params.WarmStorageReadCostEIP2929
+		}
+
+		return ret, gasCost, true
+	default:
+		return nil, 0, false
 	}
 }

@@ -201,8 +201,8 @@ type FunctionSelector struct {
 	SimErr  error
 }
 
-func (f *FunctionSelector) getSelectorBts() [4]byte {
-	return [4]byte(hexutil.MustDecode(f.Selector))
+func (f *FunctionSelector) getSelectorBts() []byte {
+	return hexutil.MustDecode(f.Selector)
 }
 
 // NewShortcutGenerator 创建新的ShortcutGenerator
@@ -520,7 +520,7 @@ var (
 	}
 )
 
-func analyzeCall(addr common.Address, code []byte, selector [4]byte, endPc uint64, block *types.Block) (gasUsed, opsUsed uint64, stack *Stack, mem *Memory, err error) {
+func analyzeCall(addr common.Address, code []byte, input []byte, endPc uint64, block *types.Block) (gasUsed, opsUsed uint64, stack *Stack, mem *Memory, err error) {
 	statedb := MockStateDB{}
 	vmctx := BlockContext{
 		Coinbase:    common.Address{},
@@ -531,7 +531,6 @@ func analyzeCall(addr common.Address, code []byte, selector [4]byte, endPc uint6
 	evm := NewEVM(vmctx, statedb, params.BSCChainConfig, Config{})
 
 	caller := AccountRef(common.Address{})
-	input := selector[:]
 	codeHash := crypto.Keccak256Hash(code)
 
 	initGas := uint64(math.MaxUint64) / 2
@@ -551,7 +550,7 @@ func analyzeCall(addr common.Address, code []byte, selector [4]byte, endPc uint6
 	// when we're in Homestead this also counts for code storage gas errors.
 	gasUsed, opsUsed, stk, mem, err := evm.interpreter.RunUntilPc(contract, input, true, endPc)
 
-	if statedb.touched {
+	if statedb.touched && endPc != 0 {
 		return 0, 0, nil, nil, errors.New("sim err: statedb touched")
 	}
 	return gasUsed, opsUsed, stk, mem, err
@@ -621,7 +620,7 @@ func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly 
 
 	var ops uint64
 	for {
-		if pc == endPc {
+		if pc == endPc && endPc != 0 {
 			break
 		}
 
@@ -636,19 +635,13 @@ func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly 
 		// enough stack items available to perform the operation.
 		op = contract.GetOp(pc)
 
-		if _, found := simOpBlacklist[op]; found {
+		if _, found := simOpBlacklist[op]; found && endPc != 0 {
 			return 0, 0, nil, nil, errors.New(fmt.Sprintf("op %s is not blacklisted", op.String()))
 		}
 
 		operation := in.table[op]
 
-		// disallow storage op
-		switch op {
-		case SLOAD, SSTORE:
-			return 0, 0, nil, nil, errors.New("storage ops are not supported")
-		}
-
-		if operation.dynamicGas != nil {
+		if operation.dynamicGas != nil && endPc != 0 {
 			switch op {
 			case MSTORE:
 				fmt.Println("debug")
@@ -725,7 +718,7 @@ func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly 
 		err = nil // clear stop token error
 	}
 
-	if pc != endPc {
+	if pc != endPc && endPc != 0 {
 		return 0, 0, nil, nil, errors.New("sim err: unexpected end pc")
 	}
 
