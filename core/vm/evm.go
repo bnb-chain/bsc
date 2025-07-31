@@ -450,7 +450,7 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 				if inliner != nil {
 					shortcutResult.Pc, shortcutResult.GasUsed,
 						shortcutResult.Stack, shortcutResult.Mem, shortcutResult.LastGasCost,
-						shortcutResult.Expected, shortcutResult.Err = inliner.Shortcut(input, evm.Origin, caller.Address(), value)
+						shortcutResult.Expected, shortcutResult.Err = inliner.Shortcut(input, evm.Origin, caller.Address(), uint256.NewInt(0))
 				}
 			}()
 		}
@@ -536,7 +536,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 				if inliner != nil {
 					shortcutResult.Pc, shortcutResult.GasUsed,
 						shortcutResult.Stack, shortcutResult.Mem, shortcutResult.LastGasCost,
-						shortcutResult.Expected, shortcutResult.Err = inliner.Shortcut(input, evm.Origin, caller.Address(), value)
+						shortcutResult.Expected, shortcutResult.Err = inliner.Shortcut(input, evm.Origin, caller.Address(), uint256.NewInt(0))
 				}
 			}()
 		}
