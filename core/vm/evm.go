@@ -816,7 +816,7 @@ func (evm *EVM) Inline(addr common.Address, input []byte, value *uint256.Int) (r
 		return nil, 0, false
 	}
 
-	if !bytes.Equal(input[:8], []byte{0x70, 0xa0, 0x82, 0x31}) {
+	if !bytes.Equal(input[:4], []byte{0x70, 0xa0, 0x82, 0x31}) {
 		return nil, 0, false
 	}
 
