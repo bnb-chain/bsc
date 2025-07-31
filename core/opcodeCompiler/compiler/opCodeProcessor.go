@@ -2,10 +2,44 @@ package compiler
 
 import (
 	"errors"
+	"reflect"
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
+
+// GasCalculator interface for calculating gas costs
+type GasCalculator interface {
+	GetConstantGas(op byte) uint64
+}
+
+// JumpTableAdapter adapts a JumpTable to GasCalculator interface
+type JumpTableAdapter struct {
+	JumpTable interface{}
+}
+
+func (jta *JumpTableAdapter) GetConstantGas(op byte) uint64 {
+	// Use reflection to call the JumpTable's GetConstantGas method
+	// This avoids importing the vm package
+	if jta.JumpTable == nil {
+		return 0
+	}
+
+	// Try to call GetConstantGas method via reflection
+	val := reflect.ValueOf(jta.JumpTable)
+	if val.IsValid() && !val.IsNil() {
+		method := val.MethodByName("GetConstantGas")
+		if method.IsValid() {
+			args := []reflect.Value{reflect.ValueOf(op)}
+			results := method.Call(args)
+			if len(results) > 0 {
+				return results[0].Uint()
+			}
+		}
+	}
+	return 0
+}
 
 var (
 	enabled     bool
@@ -40,6 +74,7 @@ type optimizeTask struct {
 	taskType optimizeTaskType
 	hash     common.Hash
 	rawCode  []byte
+	gasCalc  GasCalculator
 }
 
 func init() {
@@ -93,11 +128,11 @@ func StoreBitvec(codeHash common.Hash, bitvec []byte) {
 	codeCache.AddBitvecCache(codeHash, bitvec)
 }
 
-func GenOrLoadOptimizedCode(hash common.Hash, code []byte) {
+func GenOrLoadOptimizedCode(hash common.Hash, code []byte, gasCalc GasCalculator) {
 	if !enabled {
 		return
 	}
-	task := optimizeTask{generate, hash, code}
+	task := optimizeTask{generate, hash, code, gasCalc}
 	taskChannel <- task
 }
 
@@ -112,18 +147,20 @@ func taskProcessor() {
 func handleOptimizationTask(task optimizeTask) {
 	switch task.taskType {
 	case generate:
-		TryGenerateOptimizedCode(task.hash, task.rawCode)
+		TryGenerateOptimizedCode(task.hash, task.rawCode, task.gasCalc)
 	case flush:
 		DeleteCodeCache(task.hash)
 	}
 }
 
 // GenOrRewriteOptimizedCode generate the optimized code and refresh the code cache.
-func GenOrRewriteOptimizedCode(hash common.Hash, code []byte) ([]byte, error) {
+func GenOrRewriteOptimizedCode(hash common.Hash, code []byte, gasCalc GasCalculator) ([]byte, error) {
 	if !enabled {
 		return nil, ErrOptimizedDisabled
 	}
-	processedCode, err := processByteCodes(code)
+
+	// Process byte codes with gas calculation and caching
+	processedCode, err := DoCFGBasedOpcodeFusion(code, gasCalc, hash)
 	if err != nil {
 		return nil, err
 	}
@@ -131,11 +168,11 @@ func GenOrRewriteOptimizedCode(hash common.Hash, code []byte) ([]byte, error) {
 	return processedCode, err
 }
 
-func TryGenerateOptimizedCode(hash common.Hash, code []byte) ([]byte, error) {
+func TryGenerateOptimizedCode(hash common.Hash, code []byte, gasCalc GasCalculator) ([]byte, error) {
 	processedCode := codeCache.GetCachedCode(hash)
 	var err error = nil
 	if len(processedCode) == 0 {
-		processedCode, err = GenOrRewriteOptimizedCode(hash, code)
+		processedCode, err = GenOrRewriteOptimizedCode(hash, code, gasCalc) // Pass nil for gasCalc for now
 	}
 	return processedCode, err
 }
@@ -144,25 +181,28 @@ func DeleteCodeCache(hash common.Hash) {
 	if !enabled {
 		return
 	}
-	// flush in case there are invalid cached code
+	// 清理所有相关cache
 	codeCache.RemoveCachedCode(hash)
+	codeCache.RemoveBlockCache(hash)
 }
 
-func processByteCodes(code []byte) ([]byte, error) {
-	//return doOpcodesProcess(code)
-	return DoCFGBasedOpcodeFusion(code)
+// GetBlockByPC 从cache获取PC对应的BasicBlock
+func GetBlockByPC(codeHash common.Hash, pc uint64) (*BasicBlock, bool) {
+	return codeCache.GetCachedBlock(codeHash, pc)
 }
 
-// Exported version of doCodeFusion for use in benchmarks and external tests
-func DoCodeFusion(code []byte) ([]byte, error) {
-	// return doCodeFusion(code)
-	return DoCFGBasedOpcodeFusion(code)
+// GetBlockStaticGas 获取block的静态gas
+func GetBlockStaticGas(codeHash common.Hash, pc uint64) (uint64, bool) {
+	if block, found := GetBlockByPC(codeHash, pc); found {
+		return block.StaticGas, true
+	}
+	return 0, false
 }
 
 // DoCFGBasedOpcodeFusion performs opcode fusion within basic blocks, skipping blocks of type "others"
-func DoCFGBasedOpcodeFusion(code []byte) ([]byte, error) {
+func DoCFGBasedOpcodeFusion(code []byte, gasCalc GasCalculator, hash common.Hash) ([]byte, error) {
 	// Generate basic blocks
-	blocks := GenerateBasicBlocks(code)
+	blocks := GenerateBasicBlocks(code, gasCalc)
 	if len(blocks) == 0 {
 		return nil, ErrFailPreprocessing
 	}
@@ -187,7 +227,7 @@ func DoCFGBasedOpcodeFusion(code []byte) ([]byte, error) {
 				break
 			}
 			// Skip data bytes for PUSH instructions
-			skip, steps := calculateSkipSteps(code, int(pc))
+			skip, steps := CalculateSkipSteps(code, int(pc))
 			if skip {
 				pc += uint64(steps) + 1 // Add 1 for the opcode byte
 			} else {
@@ -207,7 +247,7 @@ func DoCFGBasedOpcodeFusion(code []byte) ([]byte, error) {
 				break
 			}
 			// Skip data bytes for PUSH instructions
-			skip, steps := calculateSkipSteps(code, int(pc))
+			skip, steps := CalculateSkipSteps(code, int(pc))
 			if skip {
 				pc += uint64(steps) + 1 // Add 1 for the opcode byte
 			} else {
@@ -246,7 +286,7 @@ func fuseBlock(code []byte, block BasicBlock) error {
 			i += skipSteps + 1 // Add 1 for the opcode byte
 		} else {
 			// Skip data bytes for PUSH instructions
-			skip, steps := calculateSkipSteps(code, i)
+			skip, steps := CalculateSkipSteps(code, i)
 			if skip {
 				i += steps + 1 // Add 1 for the opcode byte
 			} else {
@@ -637,12 +677,21 @@ func getBlockType(block BasicBlock, blocks []BasicBlock, blockIndex int) string 
 		return "JumpDest"
 	}
 
-	// Check for conditional fallthrough (previous block ends with JUMPI)
+	// Check for conditional fallthrough (previous block ends with JUMPI or CALL related)
 	if blockIndex > 0 {
 		prevBlock := blocks[blockIndex-1]
 		if len(prevBlock.Opcodes) > 0 {
 			lastOp := ByteCode(prevBlock.Opcodes[len(prevBlock.Opcodes)-1])
-			if lastOp == JUMPI {
+			if lastOp == JUMPI ||
+				lastOp == CALL ||
+				lastOp == CALLCODE ||
+				lastOp == DELEGATECALL ||
+				lastOp == STATICCALL ||
+				lastOp == EXTCALL ||
+				lastOp == EXTDELEGATECALL ||
+				lastOp == EXTSTATICCALL ||
+				lastOp == GAS ||
+				lastOp == SSTORE {
 				return "conditional fallthrough"
 			}
 		}
@@ -652,7 +701,7 @@ func getBlockType(block BasicBlock, blocks []BasicBlock, blockIndex int) string 
 	return "others"
 }
 
-func calculateSkipSteps(code []byte, cur int) (skip bool, steps int) {
+func CalculateSkipSteps(code []byte, cur int) (skip bool, steps int) {
 	inst := ByteCode(code[cur])
 	if inst >= PUSH1 && inst <= PUSH32 {
 		// skip the data.
@@ -688,12 +737,13 @@ type BasicBlock struct {
 	Opcodes    []byte  // The actual opcodes in this block
 	JumpTarget *uint64 // If this block ends with a jump, the target PC
 	IsJumpDest bool    // Whether this block starts with a JUMPDEST
+	StaticGas  uint64  // Pre-calculated static gas cost for this block
 }
 
 // GenerateBasicBlocks takes a byte array of opcodes and returns an array of BasicBlocks.
 // This function parses the opcodes to identify basic blocks - sequences of instructions
 // that can be executed linearly without jumps in the middle.
-func GenerateBasicBlocks(code []byte) []BasicBlock {
+func GenerateBasicBlocks(code []byte, gasCalc GasCalculator) []BasicBlock {
 	if len(code) == 0 {
 		return nil
 	}
@@ -708,7 +758,7 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 		if op == JUMPDEST {
 			jumpDests[pc] = true
 		}
-		skip, steps := calculateSkipSteps(code, int(pc))
+		skip, steps := CalculateSkipSteps(code, int(pc))
 		if skip {
 			pc += uint64(steps) + 1 // Add 1 for the opcode byte
 		} else {
@@ -726,6 +776,8 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 		if op == INVALID || jumpDests[pc] {
 			if currentBlock != nil && len(currentBlock.Opcodes) > 0 {
 				currentBlock.EndPC = pc
+				// Calculate static gas for the completed block
+				currentBlock.StaticGas = calculateBlockStaticGas(currentBlock, gasCalc)
 				blocks = append(blocks, *currentBlock)
 			}
 			currentBlock = &BasicBlock{
@@ -740,7 +792,7 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 		}
 
 		// Determine instruction length
-		skip, steps := calculateSkipSteps(code, int(pc))
+		skip, steps := CalculateSkipSteps(code, int(pc))
 		instLen := uint64(1)
 		if skip {
 			instLen += uint64(steps)
@@ -757,6 +809,8 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 		// If this is a block terminator (other than INVALID since we already handled it), end the block
 		if isBlockTerminator(op) {
 			currentBlock.EndPC = pc
+			// Calculate static gas for the completed block
+			currentBlock.StaticGas = calculateBlockStaticGas(currentBlock, gasCalc)
 			blocks = append(blocks, *currentBlock)
 			currentBlock = nil
 		}
@@ -764,22 +818,90 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 	// If there's a block in progress, add it
 	if currentBlock != nil && len(currentBlock.Opcodes) > 0 {
 		currentBlock.EndPC = pc
+		// Calculate static gas for the last block
+		currentBlock.StaticGas = calculateBlockStaticGas(currentBlock, gasCalc)
 		blocks = append(blocks, *currentBlock)
 	}
+
+	// 构建cache（如果enabled且blocks不为空）
+	if enabled && len(blocks) > 0 {
+		// 计算codeHash
+		codeHash := crypto.Keccak256Hash(code)
+
+		// 构建PC到Block的映射
+		pcToBlock := make(map[uint64]*BasicBlock)
+		totalGas := uint64(0)
+
+		for i := range blocks {
+			block := &blocks[i]
+			totalGas += block.StaticGas // 使用已计算的static gas
+
+			// 为block内的每个PC创建映射
+			for pc := block.StartPC; pc < block.EndPC; pc++ {
+				pcToBlock[pc] = block
+			}
+		}
+
+		// 添加到cache
+		codeCache.AddBlockCache(codeHash, pcToBlock)
+	}
+
 	return blocks
+}
+
+// calculateBlockStaticGas calculates the total static gas cost for a basic block
+func calculateBlockStaticGas(block *BasicBlock, gasCalc GasCalculator) uint64 {
+	totalGas := uint64(0)
+
+	// Use the same logic as GenerateBasicBlocks to parse opcodes correctly
+	code := block.Opcodes
+	pc := uint64(0)
+
+	for pc < uint64(len(code)) {
+		op := ByteCode(code[pc])
+
+		// Use CalculateSkipSteps to parse instructions consistently
+		skip, steps := CalculateSkipSteps(code, int(pc))
+
+		// Calculate gas for the opcode (only for valid opcodes)
+		if op <= 0xff && gasCalc != nil {
+			totalGas += gasCalc.GetConstantGas(byte(op))
+			//log.Error("check get opcode static gas in processor", "op", op, "gasCalc.GetConstantGas(byte(op))", gasCalc.GetConstantGas(byte(op)))
+		}
+
+		// Skip the entire instruction (opcode + data)
+		if skip {
+			pc += uint64(steps) + 1
+		} else {
+			pc++
+		}
+	}
+
+	return totalGas
 }
 
 // isBlockTerminator checks if an opcode terminates a basic block
 func isBlockTerminator(op ByteCode) bool {
 	switch op {
+	// Unconditional terminators or explicit halts
 	case STOP, RETURN, REVERT, SELFDESTRUCT:
 		return true
-	case JUMP, JUMPI:
+
+	// Unconditional / conditional jumps that alter the control-flow within the same contract
+	case JUMP, JUMPI, GAS, SSTORE, RJUMP, RJUMPI, RJUMPV, CALLF, RETF, JUMPF:
 		return true
-	case RJUMP, RJUMPI, RJUMPV:
+
+	// External message calls — these transfer control to another context and therefore
+	// must terminate the current basic block for correct static-gas accounting
+	case CALL, CALLCODE, DELEGATECALL, STATICCALL,
+		EXTCALL, EXTDELEGATECALL, EXTSTATICCALL:
 		return true
-	case CALLF, RETF, JUMPF:
+
+	// Contract creation opcodes have similar control-flow behaviour (external call & potential revert)
+	// so we also treat them as block terminators
+	case CREATE, CREATE2:
 		return true
+
 	default:
 		return false
 	}

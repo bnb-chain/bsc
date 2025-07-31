@@ -2082,13 +2082,17 @@ func (p *Parlia) applyTransaction(
 		}
 		actualTx := (*receivedTxs)[0]
 		if !bytes.Equal(p.signer.Hash(actualTx).Bytes(), expectedHash.Bytes()) {
-			return fmt.Errorf("expected tx hash %v, get %v, nonce %d, to %s, value %s, gas %d, gasPrice %s, data %s", expectedHash.String(), actualTx.Hash().String(),
+			common.SetParliaHashMismatch()
+			log.Error("ExpectedTx calc by", "nonce", nonce, "*msg.To", *msg.To, "msg.Value", msg.Value, "msg.GasLimit", msg.GasLimit, "msg.GasPrice", msg.GasPrice, "msg.Data", hex.EncodeToString(msg.Data))
+			log.Error("ActualTx calc by", "nonce", actualTx.Nonce(), "*msg.To", actualTx.To().String(), "msg.Value", actualTx.Value().String(), "msg.GasLimit", actualTx.Gas(), "msg.GasPrice", actualTx.GasPrice().String(), "msg.Data", hex.EncodeToString(actualTx.Data()))
+			return fmt.Errorf("expected tx hash %v, get %v, nonce %d, to %s, value %s, gas %d, gasPrice %s, data %s, txIndex %v", expectedHash.String(), actualTx.Hash().String(),
 				expectedTx.Nonce(),
 				expectedTx.To().String(),
 				expectedTx.Value().String(),
 				expectedTx.Gas(),
 				expectedTx.GasPrice().String(),
 				hex.EncodeToString(expectedTx.Data()),
+				state.TxIndex(),
 			)
 		}
 		expectedTx = actualTx

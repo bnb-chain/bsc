@@ -1326,3 +1326,11 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 	}
 	return tbl
 }
+
+// GetConstantGas returns the constant gas for the given opcode
+func (jt *JumpTable) GetConstantGas(op byte) uint64 {
+	if jt[op] == nil {
+		return 0
+	}
+	return jt[op].constantGas
+}

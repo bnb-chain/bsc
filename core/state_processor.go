@@ -116,7 +116,13 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)
 
+	prevPool := gp.Gas() // Track remaining gas before first tx in block
 	for i, tx := range block.Transactions() {
+		//Debug helper: stop execution after processing 10 blocks after 50897372
+		//if block.NumberU64() == 50899525 && i == 366 {
+		//	log.Warn("Debug stop reached", "block", block.NumberU64(), "txIndex", i, "txHash", tx.Hash())
+		//	os.Exit(0)
+		//}
 		if isPoSA {
 			if isSystemTx, err := posa.IsSystemTransaction(tx, block.Header()); err != nil {
 				bloomProcessors.Close()
@@ -148,6 +154,15 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		}
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)
+
+		// Debug: log gas usage after each tx for target block
+		if common.IsParliaHashMismatch() || block.NumberU64() == 50899524 { // > 50898068+15 is to allow to for cache to load & enough latency for setHead to work
+			log.Error("Debug tx", "transaction Index", i, "txHash", receipt.TxHash, "gasUsed", receipt.GasUsed)
+			currentPool := gp.Gas()
+			used := prevPool - currentPool
+			log.Info("[TX GAS]", "block", block.NumberU64(), "txIndex", i, "txHash", tx.Hash(), "gasUsed", used, "gasPoolLeft", currentPool)
+			prevPool = currentPool
+		}
 	}
 	bloomProcessors.Close()
 
