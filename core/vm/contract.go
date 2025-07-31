@@ -77,6 +77,10 @@ type Contract struct {
 	value          *uint256.Int
 	optimized      bool
 	codeBitmapFunc func(code []byte) bitvec
+	
+	// BasicBlocks caches the pre-calculated basic blocks with static gas costs
+	// This is computed once per contract and reused across all executions
+	BasicBlocks []BasicBlock
 }
 
 func (c *Contract) validJumpdest(dest *uint256.Int) bool {

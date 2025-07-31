@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/internal/compiler"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -72,5 +73,52 @@ func TestLoopInterrupt(t *testing.T) {
 				t.Errorf("test %d failure: %v", i, err)
 			}
 		}
+	}
+}
+
+func TestBasicBlockGasCalculation(t *testing.T) {
+	// Create a simple test code
+	testCode := []byte{
+		byte(PUSH1), 0x01, // PUSH1 0x01 - gas cost: 3
+		byte(ADD),         // ADD - gas cost: 3
+		byte(STOP),        // STOP - gas cost: 0
+	}
+
+	// Debug: print the test code
+	t.Logf("Test code: %v", testCode)
+	for i, b := range testCode {
+		t.Logf("  Byte[%d]: %d (0x%02x)", i, b, b)
+	}
+
+	// Create a new interpreter
+	evm := &EVM{}
+	interpreter := NewEVMInterpreter(evm)
+
+	// Generate basic blocks
+	blocks := compiler.GenerateBasicBlocks(testCode, interpreter.table)
+
+	// Verify we have at least one block
+	if len(blocks) == 0 {
+		t.Error("No basic blocks generated")
+		return
+	}
+
+	// Debug: print block information
+	for i, block := range blocks {
+		t.Logf("Block %d: StartPC=%d, EndPC=%d, Opcodes=%v, StaticGas=%d", 
+			i, block.StartPC, block.EndPC, block.Opcodes, block.StaticGas)
+		
+		// Debug: print each opcode and its gas cost
+		for j, op := range block.Opcodes {
+			gas := interpreter.table.GetConstantGas(op)
+			t.Logf("  Opcode[%d]: %d (0x%02x), gas=%d", j, op, op, gas)
+		}
+	}
+
+	// Check the first block's gas cost
+	firstBlock := blocks[0]
+	expectedGas := uint64(6) // PUSH1(3) + ADD(3) + STOP(0) = 6
+	if firstBlock.StaticGas != expectedGas {
+		t.Errorf("Expected gas cost %d, got %d", expectedGas, firstBlock.StaticGas)
 	}
 }

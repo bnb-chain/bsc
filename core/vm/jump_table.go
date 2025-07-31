@@ -68,6 +68,17 @@ var (
 // JumpTable contains the EVM opcodes supported at a given fork.
 type JumpTable [256]*operation
 
+// GetConstantGas returns the constant gas cost for the given opcode
+func (jt *JumpTable) GetConstantGas(op byte) uint64 {
+	if int(op) < len(*jt) {
+		operation := (*jt)[op]
+		if operation != nil {
+			return operation.constantGas
+		}
+	}
+	return 0
+}
+
 func validate(jt JumpTable) JumpTable {
 	for i, op := range jt {
 		if op == nil {

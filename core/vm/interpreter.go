@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/internal/compiler"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 )
@@ -187,6 +188,42 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		return nil, nil
 	}
 
+	// Use pre-calculated basic blocks if available, otherwise generate them
+	var blocks []BasicBlock
+	if len(contract.BasicBlocks) > 0 {
+		blocks = contract.BasicBlocks
+	} else {
+		// Create an adapter to make JumpTable implement compiler.GasCalculator
+		gasCalc := &jumpTableGasCalculator{table: in.table}
+		
+		// Generate basic blocks with pre-calculated gas costs
+		compilerBlocks := compiler.GenerateBasicBlocks(contract.Code, gasCalc)
+		
+		// Convert compiler.BasicBlock to vm.BasicBlock
+		blocks = make([]BasicBlock, len(compilerBlocks))
+		for i, cb := range compilerBlocks {
+			blocks[i] = BasicBlock{
+				StartPC:    cb.StartPC,
+				EndPC:      cb.EndPC,
+				Opcodes:    cb.Opcodes,
+				JumpTarget: cb.JumpTarget,
+				IsJumpDest: cb.IsJumpDest,
+				StaticGas:  cb.StaticGas,
+			}
+		}
+		contract.BasicBlocks = blocks // Cache for future use
+	}
+	
+	blockMap := make(map[uint64]*BasicBlock) // PC -> BasicBlock mapping
+	
+	// Create a map for quick lookup of blocks by PC
+	for i := range blocks {
+		block := &blocks[i]
+		for pc := block.StartPC; pc < block.EndPC; pc++ {
+			blockMap[pc] = block
+		}
+	}
+
 	var (
 		op          OpCode        // current opcode
 		mem         = NewMemory() // bound memory
@@ -327,4 +364,13 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	}
 
 	return res, err
+}
+
+// jumpTableGasCalculator adapts JumpTable to implement compiler.GasCalculator
+type jumpTableGasCalculator struct {
+	table *JumpTable
+}
+
+func (jt *jumpTableGasCalculator) GetConstantGas(op byte) uint64 {
+	return jt.table.GetConstantGas(op)
 }
