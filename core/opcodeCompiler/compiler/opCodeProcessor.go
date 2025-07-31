@@ -14,25 +14,6 @@ type JumpTableProvider interface {
 	GetConstantGas(op byte) uint64
 }
 
-// Default gas calculator for compilation time using JumpTableProvider
-type defaultGasCalculator struct {
-	provider JumpTableProvider
-}
-
-func (dgc *defaultGasCalculator) GetConstantGas(op byte) uint64 {
-	return dgc.provider.GetConstantGas(op)
-}
-
-// Global provider instance - will be set by vm package
-var defaultProvider JumpTableProvider
-var defaultGasCalc = &defaultGasCalculator{provider: defaultProvider}
-
-// SetJumpTableProvider allows the vm package to set the JumpTable provider
-func SetJumpTableProvider(provider JumpTableProvider) {
-	defaultProvider = provider
-	defaultGasCalc = &defaultGasCalculator{provider: defaultProvider}
-}
-
 // GasCalculator interface for calculating gas costs
 type GasCalculator interface {
 	GetConstantGas(op byte) uint64
@@ -109,6 +90,14 @@ func LoadOptimizedCode(hash common.Hash) []byte {
 	return processedCode
 }
 
+func LoadBasicBlocks(hash common.Hash) []BasicBlock {
+	if !enabled {
+		return nil
+	}
+	blocks := codeCache.GetCachedBasicBlocks(hash)
+	return blocks
+}
+
 func LoadBitvec(codeHash common.Hash) []byte {
 	if !enabled {
 		return nil
@@ -159,6 +148,14 @@ func GenOrRewriteOptimizedCode(hash common.Hash, code []byte) ([]byte, error) {
 		return nil, err
 	}
 	codeCache.AddCodeCache(hash, processedCode)
+	
+	// Also generate and cache BasicBlocks for gas pre-calculation
+	// Use localJumpTableAdapter with nil jumpTable for basic block generation
+	// since we're only interested in block structure, not actual gas costs
+	simpleGasCalc := &LocalJumpTableAdapter{JumpTable: nil}
+	blocks := GenerateBasicBlocks(code, simpleGasCalc)
+	codeCache.AddBasicBlocksCache(hash, blocks)
+	
 	return processedCode, err
 }
 
@@ -179,20 +176,20 @@ func DeleteCodeCache(hash common.Hash) {
 	codeCache.RemoveCachedCode(hash)
 }
 
-// localJumpTableAdapter adapts a JumpTable to GasCalculator interface
-type localJumpTableAdapter struct {
-	jumpTable interface{}
+// LocalJumpTableAdapter adapts a JumpTable to GasCalculator interface
+type LocalJumpTableAdapter struct {
+	JumpTable interface{}
 }
 
-func (lja *localJumpTableAdapter) GetConstantGas(op byte) uint64 {
+func (lja *LocalJumpTableAdapter) GetConstantGas(op byte) uint64 {
 	// Use reflection to call the JumpTable's GetConstantGas method
 	// This avoids importing the vm package
-	if lja.jumpTable == nil {
+	if lja.JumpTable == nil {
 		return 0
 	}
 	
 	// Try to call GetConstantGas method via reflection
-	val := reflect.ValueOf(lja.jumpTable)
+	val := reflect.ValueOf(lja.JumpTable)
 	if val.IsValid() && !val.IsNil() {
 		method := val.MethodByName("GetConstantGas")
 		if method.IsValid() {
@@ -209,7 +206,7 @@ func (lja *localJumpTableAdapter) GetConstantGas(op byte) uint64 {
 // processByteCodesWithJumpTable processes byte codes with a specific JumpTable
 func processByteCodesWithJumpTable(code []byte, jumpTable interface{}) ([]byte, error) {
 	// Create a provider from the JumpTable
-	provider := &localJumpTableAdapter{jumpTable: jumpTable}
+	provider := &LocalJumpTableAdapter{JumpTable: jumpTable}
 	return DoCFGBasedOpcodeFusion(code, provider)
 }
 
@@ -219,14 +216,16 @@ func DoCodeFusionWithJumpTable(code []byte, jumpTable interface{}) ([]byte, erro
 }
 
 func processByteCodes(code []byte) ([]byte, error) {
-	//return doOpcodesProcess(code)
-	return DoCFGBasedOpcodeFusion(code, defaultGasCalc)
+	// Use LocalJumpTableAdapter with nil jumpTable since we don't need actual gas costs for opcode fusion
+	simpleGasCalc := &LocalJumpTableAdapter{JumpTable: nil}
+	return DoCFGBasedOpcodeFusion(code, simpleGasCalc)
 }
 
 // Exported version of doCodeFusion for use in benchmarks and external tests
 func DoCodeFusion(code []byte) ([]byte, error) {
-	// return doCodeFusion(code)
-	return DoCFGBasedOpcodeFusion(code, defaultGasCalc)
+	// Use LocalJumpTableAdapter with nil jumpTable since we don't need actual gas costs for opcode fusion
+	simpleGasCalc := &LocalJumpTableAdapter{JumpTable: nil}
+	return DoCFGBasedOpcodeFusion(code, simpleGasCalc)
 }
 
 // DoCFGBasedOpcodeFusion performs opcode fusion within basic blocks, skipping blocks of type "others"
