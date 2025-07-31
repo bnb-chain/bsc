@@ -254,8 +254,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			//}
 			pc = sPc
 			contract.Gas -= sGas
-			stack.data = stack_
-			mem.store = mem_
+			stack.data = append(stack.data, stack_...)
+			mem.store = append(mem.store, mem_...)
 			mem.lastGasCost = lastGasUsed
 
 			//if debug {
