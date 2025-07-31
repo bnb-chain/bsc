@@ -18,6 +18,7 @@ package vm
 
 import (
 	"fmt"
+	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
@@ -217,6 +218,16 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	}()
 	contract.Input = input
 
+	// Check if static gas is available for pre-calculation
+	cost = compiler.LoadStaticGas(contract.CodeHash)
+	if cost > 0 {
+		// Use pre-calculated static gas
+		if contract.Gas >= cost {
+			contract.Gas -= cost
+		}
+		// if contract.Gas < cost, meaning there is an error, continue logic to track the exact op for error
+	}
+
 	if debug {
 		defer func() { // this deferred method handles exit-with-error
 			if err == nil {
@@ -251,7 +262,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// enough stack items available to perform the operation.
 		op = contract.GetOp(pc)
 		operation := in.table[op]
-		cost = operation.constantGas // For tracing
 		// Validate stack
 		if sLen := stack.len(); sLen < operation.minStack {
 			return nil, &ErrStackUnderflow{stackLen: sLen, required: operation.minStack}
@@ -259,10 +269,14 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			return nil, &ErrStackOverflow{stackLen: sLen, limit: operation.maxStack}
 		}
 		// for tracing: this gas consumption event is emitted below in the debug section.
-		if contract.Gas < cost {
-			return nil, ErrOutOfGas
-		} else {
-			contract.Gas -= cost
+		// Only charge gas if we haven't already charged the pre-calculated static gas
+		if cost == 0 {
+			cost = operation.constantGas // For tracing
+			if contract.Gas < cost {
+				return nil, ErrOutOfGas
+			} else {
+				contract.Gas -= cost
+			}
 		}
 
 		// All ops with a dynamic memory usage also has a dynamic gas cost.

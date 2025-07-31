@@ -263,7 +263,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				contract := GetContract(caller, AccountRef(addrCopy), value, gas)
 				defer ReturnContract(contract)
 				codeHash := evm.resolveCodeHash(addrCopy)
-				contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
+				contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code, evm.interpreter.table)
 				if contract.optimized {
 					evm.UseOptInterpreter()
 					contract.codeBitmapFunc = codeBitmapWhitSI
@@ -347,7 +347,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 			defer ReturnContract(contract)
 			code := evm.resolveCode(addrCopy)
 			codeHash := evm.resolveCodeHash(addrCopy)
-			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
+			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code, evm.interpreter.table)
 			contract.SetCallCode(&addrCopy, codeHash, code)
 
 			if contract.optimized {
@@ -418,7 +418,7 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 			defer ReturnContract(contract)
 			code := evm.resolveCode(addrCopy)
 			codeHash := evm.resolveCodeHash(addrCopy)
-			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
+			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code, evm.interpreter.table)
 			contract.SetCallCode(&addrCopy, codeHash, code)
 			if contract.optimized {
 				evm.UseOptInterpreter()
@@ -494,7 +494,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 			defer ReturnContract(contract)
 			code := evm.resolveCode(addrCopy)
 			codeHash := evm.resolveCodeHash(addrCopy)
-			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
+			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code, evm.interpreter.table)
 			if contract.optimized {
 				evm.UseOptInterpreter()
 				contract.codeBitmapFunc = codeBitmapWhitSI
@@ -538,7 +538,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 	return ret, gas, err
 }
 
-func tryGetOptimizedCode(evm *EVM, codeHash common.Hash, rawCode []byte) (bool, []byte) {
+func tryGetOptimizedCode(evm *EVM, codeHash common.Hash, rawCode []byte, jumpTable *JumpTable) (bool, []byte) {
 	var code []byte
 	optimized := false
 	code = rawCode
@@ -547,7 +547,10 @@ func tryGetOptimizedCode(evm *EVM, codeHash common.Hash, rawCode []byte) (bool, 
 		code = optCode
 		optimized = true
 	} else {
-		compiler.GenOrLoadOptimizedCode(codeHash, rawCode)
+		// Create a gas calculator from the jump table
+		gasCalc := &compiler.JumpTableAdapter{JumpTable: jumpTable}
+
+		compiler.GenOrLoadOptimizedCode(codeHash, rawCode, gasCalc)
 	}
 	return optimized, code
 }

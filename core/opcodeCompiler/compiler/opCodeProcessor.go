@@ -2,10 +2,43 @@ package compiler
 
 import (
 	"errors"
+	"reflect"
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/common"
 )
+
+// GasCalculator interface for calculating gas costs
+type GasCalculator interface {
+	GetConstantGas(op byte) uint64
+}
+
+// JumpTableAdapter adapts a JumpTable to GasCalculator interface
+type JumpTableAdapter struct {
+	JumpTable interface{}
+}
+
+func (jta *JumpTableAdapter) GetConstantGas(op byte) uint64 {
+	// Use reflection to call the JumpTable's GetConstantGas method
+	// This avoids importing the vm package
+	if jta.JumpTable == nil {
+		return 0
+	}
+
+	// Try to call GetConstantGas method via reflection
+	val := reflect.ValueOf(jta.JumpTable)
+	if val.IsValid() && !val.IsNil() {
+		method := val.MethodByName("GetConstantGas")
+		if method.IsValid() {
+			args := []reflect.Value{reflect.ValueOf(op)}
+			results := method.Call(args)
+			if len(results) > 0 {
+				return results[0].Uint()
+			}
+		}
+	}
+	return 0
+}
 
 var (
 	enabled     bool
@@ -40,6 +73,7 @@ type optimizeTask struct {
 	taskType optimizeTaskType
 	hash     common.Hash
 	rawCode  []byte
+	gasCalc  GasCalculator
 }
 
 func init() {
@@ -86,6 +120,14 @@ func LoadBitvec(codeHash common.Hash) []byte {
 	return bitvec
 }
 
+func LoadStaticGas(hash common.Hash) uint64 {
+	if !enabled {
+		return 0
+	}
+	staticGas := codeCache.GetCachedStaticGas(hash)
+	return staticGas
+}
+
 func StoreBitvec(codeHash common.Hash, bitvec []byte) {
 	if !enabled {
 		return
@@ -93,11 +135,11 @@ func StoreBitvec(codeHash common.Hash, bitvec []byte) {
 	codeCache.AddBitvecCache(codeHash, bitvec)
 }
 
-func GenOrLoadOptimizedCode(hash common.Hash, code []byte) {
+func GenOrLoadOptimizedCode(hash common.Hash, code []byte, gasCalc GasCalculator) {
 	if !enabled {
 		return
 	}
-	task := optimizeTask{generate, hash, code}
+	task := optimizeTask{generate, hash, code, gasCalc}
 	taskChannel <- task
 }
 
@@ -112,18 +154,20 @@ func taskProcessor() {
 func handleOptimizationTask(task optimizeTask) {
 	switch task.taskType {
 	case generate:
-		TryGenerateOptimizedCode(task.hash, task.rawCode)
+		TryGenerateOptimizedCode(task.hash, task.rawCode, task.gasCalc)
 	case flush:
 		DeleteCodeCache(task.hash)
 	}
 }
 
 // GenOrRewriteOptimizedCode generate the optimized code and refresh the code cache.
-func GenOrRewriteOptimizedCode(hash common.Hash, code []byte) ([]byte, error) {
+func GenOrRewriteOptimizedCode(hash common.Hash, code []byte, gasCalc GasCalculator) ([]byte, error) {
 	if !enabled {
 		return nil, ErrOptimizedDisabled
 	}
-	processedCode, err := processByteCodes(code)
+
+	// Process byte codes with gas calculation and caching
+	processedCode, err := DoCFGBasedOpcodeFusion(code, gasCalc, hash)
 	if err != nil {
 		return nil, err
 	}
@@ -131,11 +175,11 @@ func GenOrRewriteOptimizedCode(hash common.Hash, code []byte) ([]byte, error) {
 	return processedCode, err
 }
 
-func TryGenerateOptimizedCode(hash common.Hash, code []byte) ([]byte, error) {
+func TryGenerateOptimizedCode(hash common.Hash, code []byte, gasCalc GasCalculator) ([]byte, error) {
 	processedCode := codeCache.GetCachedCode(hash)
 	var err error = nil
 	if len(processedCode) == 0 {
-		processedCode, err = GenOrRewriteOptimizedCode(hash, code)
+		processedCode, err = GenOrRewriteOptimizedCode(hash, code, gasCalc) // Pass nil for gasCalc for now
 	}
 	return processedCode, err
 }
@@ -148,23 +192,23 @@ func DeleteCodeCache(hash common.Hash) {
 	codeCache.RemoveCachedCode(hash)
 }
 
-func processByteCodes(code []byte) ([]byte, error) {
-	//return doOpcodesProcess(code)
-	return DoCFGBasedOpcodeFusion(code)
-}
-
-// Exported version of doCodeFusion for use in benchmarks and external tests
-func DoCodeFusion(code []byte) ([]byte, error) {
-	// return doCodeFusion(code)
-	return DoCFGBasedOpcodeFusion(code)
-}
-
 // DoCFGBasedOpcodeFusion performs opcode fusion within basic blocks, skipping blocks of type "others"
-func DoCFGBasedOpcodeFusion(code []byte) ([]byte, error) {
+func DoCFGBasedOpcodeFusion(code []byte, gasCalc GasCalculator, hash common.Hash) ([]byte, error) {
 	// Generate basic blocks
-	blocks := GenerateBasicBlocks(code)
+	blocks := GenerateBasicBlocks(code, gasCalc)
 	if len(blocks) == 0 {
 		return nil, ErrFailPreprocessing
+	}
+
+	// Calculate total static gas from all basic blocks and cache it
+	totalStaticGas := uint64(0)
+	for _, block := range blocks {
+		totalStaticGas += block.StaticGas
+	}
+
+	// Cache the static gas if we have a valid hash and gas calculator
+	if hash != (common.Hash{}) && gasCalc != nil {
+		codeCache.AddStaticGasCache(hash, totalStaticGas)
 	}
 
 	// Create a copy of the original code (only after checking for optimized opcodes)
@@ -688,12 +732,13 @@ type BasicBlock struct {
 	Opcodes    []byte  // The actual opcodes in this block
 	JumpTarget *uint64 // If this block ends with a jump, the target PC
 	IsJumpDest bool    // Whether this block starts with a JUMPDEST
+	StaticGas  uint64  // Pre-calculated static gas cost for this block
 }
 
 // GenerateBasicBlocks takes a byte array of opcodes and returns an array of BasicBlocks.
 // This function parses the opcodes to identify basic blocks - sequences of instructions
 // that can be executed linearly without jumps in the middle.
-func GenerateBasicBlocks(code []byte) []BasicBlock {
+func GenerateBasicBlocks(code []byte, gasCalc GasCalculator) []BasicBlock {
 	if len(code) == 0 {
 		return nil
 	}
@@ -726,6 +771,8 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 		if op == INVALID || jumpDests[pc] {
 			if currentBlock != nil && len(currentBlock.Opcodes) > 0 {
 				currentBlock.EndPC = pc
+				// Calculate static gas for the completed block
+				currentBlock.StaticGas = calculateBlockStaticGas(currentBlock, gasCalc)
 				blocks = append(blocks, *currentBlock)
 			}
 			currentBlock = &BasicBlock{
@@ -757,6 +804,8 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 		// If this is a block terminator (other than INVALID since we already handled it), end the block
 		if isBlockTerminator(op) {
 			currentBlock.EndPC = pc
+			// Calculate static gas for the completed block
+			currentBlock.StaticGas = calculateBlockStaticGas(currentBlock, gasCalc)
 			blocks = append(blocks, *currentBlock)
 			currentBlock = nil
 		}
@@ -764,9 +813,40 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 	// If there's a block in progress, add it
 	if currentBlock != nil && len(currentBlock.Opcodes) > 0 {
 		currentBlock.EndPC = pc
+		// Calculate static gas for the last block
+		currentBlock.StaticGas = calculateBlockStaticGas(currentBlock, gasCalc)
 		blocks = append(blocks, *currentBlock)
 	}
 	return blocks
+}
+
+// calculateBlockStaticGas calculates the total static gas cost for a basic block
+func calculateBlockStaticGas(block *BasicBlock, gasCalc GasCalculator) uint64 {
+	totalGas := uint64(0)
+
+	// Iterate through all bytes in the block
+	for i := 0; i < len(block.Opcodes); i++ {
+		op := ByteCode(block.Opcodes[i])
+
+		// Only calculate gas for actual opcodes, not data bytes
+		if op >= PUSH1 && op <= PUSH32 {
+			// This is a PUSH opcode, calculate its gas
+			if gasCalc != nil {
+				totalGas += gasCalc.GetConstantGas(byte(op))
+			}
+			// Skip the data bytes in the next iteration
+			skipBytes := int(op - PUSH1 + 1)
+			i += skipBytes
+		} else if op <= 0xff {
+			// This is a regular opcode, calculate its gas
+			if gasCalc != nil {
+				totalGas += gasCalc.GetConstantGas(byte(op))
+			}
+		}
+		// Data bytes (op > 0xff) are ignored for gas calculation
+	}
+
+	return totalGas
 }
 
 // isBlockTerminator checks if an opcode terminates a basic block
