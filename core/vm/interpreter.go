@@ -237,13 +237,16 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	sPc := uint64(0)
 	sGas := uint64(0)
 	expected := false
+	var stack_ []uint256.Int
+	var mem_ []byte
+	var lastGasUsed uint64
 
 	// shortcut v1
 	start := time.Now()
 	inliner := shortcut.GetShortcutV2(contract.Address())
 	if inliner != nil {
 		in.evm.ShortcutCount++
-		sPc, sGas, stack.data, mem.store, mem.lastGasCost, expected, err = inliner.Shortcut(input, in.evm.Origin, contract.Caller(), contract.Value())
+		sPc, sGas, stack_, mem_, lastGasUsed, expected, err = inliner.Shortcut(input, in.evm.Origin, contract.Caller(), contract.Value())
 		if in.evm.Config.EnableInline && expected {
 			//if debug {
 			//	// Capture pre-execution values for tracing.
@@ -251,6 +254,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			//}
 			pc = sPc
 			contract.Gas -= sGas
+			stack.data = stack_
+			mem.store = mem_
+			mem.lastGasCost = lastGasUsed
 
 			//if debug {
 			//	if in.evm.Config.Tracer.OnGasChange != nil {
