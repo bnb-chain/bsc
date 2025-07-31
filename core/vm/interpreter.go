@@ -242,11 +242,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	var lastGasUsed uint64
 
 	// shortcut v1
-	if in.evm.Config.EnableInline {
-		start := time.Now()
-		inliner := shortcut.GetShortcutV2(contract.Address())
-		if inliner != nil {
-			in.evm.ShortcutCount++
+	start := time.Now()
+	inliner := shortcut.GetShortcutV2(contract.Address())
+	if inliner != nil {
+		in.evm.ShortcutCount++
+		if in.evm.Config.EnableInline {
 			sPc, sGas, stack_, mem_, lastGasUsed, expected, err = inliner.Shortcut(input, in.evm.Origin, contract.Caller(), contract.Value())
 			if expected {
 				if debug {
@@ -270,10 +270,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				}
 			}
 		}
-		in.evm.ShortcutDuration += time.Since(start)
-
-		start = time.Now()
 	}
+	in.evm.ShortcutDuration += time.Since(start)
+
+	start = time.Now()
 
 	//bytes.Equal(
 	//	contract.Address().Bytes(),
