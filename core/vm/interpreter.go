@@ -363,7 +363,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	shortcutResult := contract.ShortcutResult
 	contract.ShortcutResult = nil
 	if shortcutResult != nil {
+		waitStart := time.Now()
 		<-shortcutResult.Ready
+		in.evm.ShortcutWaitDuration += time.Since(waitStart)
 		if shortcutResult.Expected {
 			in.evm.ShortcutCount++
 			if debug {
@@ -376,7 +378,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			pc, sGas, stack.data, mem.store, mem.lastGasCost = shortcutResult.Pc, shortcutResult.GasUsed, shortcutResult.Stack, shortcutResult.Mem, shortcutResult.LastGasCost
 
 			contract.Gas -= sGas
-			
+
 			if debug {
 				if in.evm.Config.Tracer.OnGasChange != nil {
 					in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-sGas, tracing.GasChangeCallOpCode)
