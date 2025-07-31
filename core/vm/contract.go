@@ -77,10 +77,6 @@ type Contract struct {
 	value          *uint256.Int
 	optimized      bool
 	codeBitmapFunc func(code []byte) bitvec
-	
-	// BasicBlocks caches the pre-calculated basic blocks with static gas costs
-	// This is computed once per contract and reused across all executions
-	BasicBlocks []compiler.BasicBlock
 }
 
 func (c *Contract) validJumpdest(dest *uint256.Int) bool {
@@ -212,11 +208,6 @@ func (c *Contract) SetCallCode(addr *common.Address, hash common.Hash, code []by
 	c.Code = code
 	c.CodeHash = hash
 	c.CodeAddr = addr
-	
-	// Try to load cached BasicBlocks for gas pre-calculation
-	if len(code) > 0 {
-		c.BasicBlocks = compiler.LoadBasicBlocks(hash)
-	}
 }
 
 // SetCodeOptionalHash can be used to provide code, but it's optional to provide hash.

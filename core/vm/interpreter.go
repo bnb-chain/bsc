@@ -21,6 +21,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
@@ -232,19 +233,17 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}()
 	}
 
-	// Check if BasicBlocks are available for gas pre-calculation
-	if len(contract.BasicBlocks) > 0 {
-		// Use pre-calculated static gas from BasicBlocks
-		for _, basicBlock := range contract.BasicBlocks {
-			cost += basicBlock.StaticGas
-		}
-		if contract.Gas < cost {
+	// Check if static gas is available for pre-calculation
+	staticGas := compiler.LoadStaticGas(contract.CodeHash)
+	if staticGas > 0 {
+		// Use pre-calculated static gas
+		if contract.Gas < staticGas {
 			costOutOfGasFlag = true
 		} else {
-			contract.Gas -= cost
+			contract.Gas -= staticGas
 		}
 	} else {
-		// BasicBlocks not available, will calculate gas during execution
+		// Static gas not available, will calculate gas during execution
 		costOutOfGasFlag = true
 	}
 

@@ -98,6 +98,14 @@ func LoadBasicBlocks(hash common.Hash) []BasicBlock {
 	return blocks
 }
 
+func LoadStaticGas(hash common.Hash) uint64 {
+	if !enabled {
+		return 0
+	}
+	staticGas := codeCache.GetCachedStaticGas(hash)
+	return staticGas
+}
+
 func LoadBitvec(codeHash common.Hash) []byte {
 	if !enabled {
 		return nil
@@ -149,12 +157,20 @@ func GenOrRewriteOptimizedCode(hash common.Hash, code []byte) ([]byte, error) {
 	}
 	codeCache.AddCodeCache(hash, processedCode)
 	
-	// Also generate and cache BasicBlocks for gas pre-calculation
-	// Use localJumpTableAdapter with nil jumpTable for basic block generation
+	// Calculate total static gas from all basic blocks and cache it
+	// Use LocalJumpTableAdapter with nil jumpTable for basic block generation
 	// since we're only interested in block structure, not actual gas costs
 	simpleGasCalc := &LocalJumpTableAdapter{JumpTable: nil}
 	blocks := GenerateBasicBlocks(code, simpleGasCalc)
-	codeCache.AddBasicBlocksCache(hash, blocks)
+	
+	// Calculate total static gas
+	totalStaticGas := uint64(0)
+	for _, block := range blocks {
+		totalStaticGas += block.StaticGas
+	}
+	
+	// Cache the total static gas
+	codeCache.AddStaticGasCache(hash, totalStaticGas)
 	
 	return processedCode, err
 }
@@ -187,7 +203,7 @@ func (lja *LocalJumpTableAdapter) GetConstantGas(op byte) uint64 {
 	if lja.JumpTable == nil {
 		return 0
 	}
-	
+
 	// Try to call GetConstantGas method via reflection
 	val := reflect.ValueOf(lja.JumpTable)
 	if val.IsValid() && !val.IsNil() {
@@ -234,6 +250,12 @@ func DoCFGBasedOpcodeFusion(code []byte, gasCalc GasCalculator) ([]byte, error) 
 	blocks := GenerateBasicBlocks(code, gasCalc)
 	if len(blocks) == 0 {
 		return nil, ErrFailPreprocessing
+	}
+
+	// Calculate total static gas from all basic blocks
+	totalStaticGas := uint64(0)
+	for _, block := range blocks {
+		totalStaticGas += block.StaticGas
 	}
 
 	// Create a copy of the original code (only after checking for optimized opcodes)

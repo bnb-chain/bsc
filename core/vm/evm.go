@@ -547,17 +547,7 @@ func tryGetOptimizedCode(evm *EVM, codeHash common.Hash, rawCode []byte) (bool, 
 		code = optCode
 		optimized = true
 	} else {
-		// Use runtime JumpTable for optimization
-		processedCode, err := compiler.DoCodeFusionWithJumpTable(rawCode, evm.interpreter.table)
-		if err == nil && len(processedCode) > 0 {
-			code = processedCode
-			optimized = true
-			// Cache the optimized code for future use
-			compiler.GenOrRewriteOptimizedCode(codeHash, processedCode)
-		} else {
-			// Fallback to async optimization with default gas calculator
-			compiler.GenOrLoadOptimizedCode(codeHash, rawCode)
-		}
+		compiler.GenOrLoadOptimizedCode(codeHash, rawCode)
 	}
 	return optimized, code
 }
