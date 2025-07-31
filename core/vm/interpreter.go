@@ -176,7 +176,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		ret, gasUsed, expect := in.evm.Inline(contract.Address(), input, contract.value)
 		if expect && contract.Gas > gasUsed {
 			contract.Gas -= gasUsed
-			in.evm.ShortcutCount++
+			in.evm.FullyInlineCount++
 			return ret, nil
 		}
 	}
