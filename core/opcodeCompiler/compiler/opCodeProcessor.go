@@ -2,10 +2,36 @@ package compiler
 
 import (
 	"errors"
+	"reflect"
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/common"
 )
+
+// JumpTableProvider interface to get JumpTable from vm package
+// This interface allows us to inject the JumpTable without creating circular dependencies
+type JumpTableProvider interface {
+	GetConstantGas(op byte) uint64
+}
+
+// Default gas calculator for compilation time using JumpTableProvider
+type defaultGasCalculator struct {
+	provider JumpTableProvider
+}
+
+func (dgc *defaultGasCalculator) GetConstantGas(op byte) uint64 {
+	return dgc.provider.GetConstantGas(op)
+}
+
+// Global provider instance - will be set by vm package
+var defaultProvider JumpTableProvider
+var defaultGasCalc = &defaultGasCalculator{provider: defaultProvider}
+
+// SetJumpTableProvider allows the vm package to set the JumpTable provider
+func SetJumpTableProvider(provider JumpTableProvider) {
+	defaultProvider = provider
+	defaultGasCalc = &defaultGasCalculator{provider: defaultProvider}
+}
 
 // GasCalculator interface for calculating gas costs
 type GasCalculator interface {
@@ -153,21 +179,60 @@ func DeleteCodeCache(hash common.Hash) {
 	codeCache.RemoveCachedCode(hash)
 }
 
+// localJumpTableAdapter adapts a JumpTable to GasCalculator interface
+type localJumpTableAdapter struct {
+	jumpTable interface{}
+}
+
+func (lja *localJumpTableAdapter) GetConstantGas(op byte) uint64 {
+	// Use reflection to call the JumpTable's GetConstantGas method
+	// This avoids importing the vm package
+	if lja.jumpTable == nil {
+		return 0
+	}
+	
+	// Try to call GetConstantGas method via reflection
+	val := reflect.ValueOf(lja.jumpTable)
+	if val.IsValid() && !val.IsNil() {
+		method := val.MethodByName("GetConstantGas")
+		if method.IsValid() {
+			args := []reflect.Value{reflect.ValueOf(op)}
+			results := method.Call(args)
+			if len(results) > 0 {
+				return results[0].Uint()
+			}
+		}
+	}
+	return 0
+}
+
+// processByteCodesWithJumpTable processes byte codes with a specific JumpTable
+func processByteCodesWithJumpTable(code []byte, jumpTable interface{}) ([]byte, error) {
+	// Create a provider from the JumpTable
+	provider := &localJumpTableAdapter{jumpTable: jumpTable}
+	return DoCFGBasedOpcodeFusion(code, provider)
+}
+
+// DoCodeFusionWithJumpTable performs code fusion with a specific JumpTable
+func DoCodeFusionWithJumpTable(code []byte, jumpTable interface{}) ([]byte, error) {
+	return processByteCodesWithJumpTable(code, jumpTable)
+}
+
 func processByteCodes(code []byte) ([]byte, error) {
 	//return doOpcodesProcess(code)
-	return DoCFGBasedOpcodeFusion(code)
+	return DoCFGBasedOpcodeFusion(code, defaultGasCalc)
 }
 
 // Exported version of doCodeFusion for use in benchmarks and external tests
 func DoCodeFusion(code []byte) ([]byte, error) {
 	// return doCodeFusion(code)
-	return DoCFGBasedOpcodeFusion(code)
+	return DoCFGBasedOpcodeFusion(code, defaultGasCalc)
 }
 
 // DoCFGBasedOpcodeFusion performs opcode fusion within basic blocks, skipping blocks of type "others"
-func DoCFGBasedOpcodeFusion(code []byte) ([]byte, error) {
+func DoCFGBasedOpcodeFusion(code []byte, gasCalc GasCalculator) ([]byte, error) {
 	// Generate basic blocks
-	blocks := GenerateBasicBlocks(code, nil) // Pass nil for now, as gasCalc is not yet available here
+	blocks := GenerateBasicBlocks(code, gasCalc)
 	if len(blocks) == 0 {
 		return nil, ErrFailPreprocessing
 	}
@@ -800,11 +865,11 @@ func isBlockTerminator(op ByteCode) bool {
 // calculateBlockStaticGas calculates the total static gas cost for a basic block
 func calculateBlockStaticGas(block *BasicBlock, gasCalc GasCalculator) uint64 {
 	totalGas := uint64(0)
-	
+
 	// Iterate through all bytes in the block
 	for i := 0; i < len(block.Opcodes); i++ {
 		op := ByteCode(block.Opcodes[i])
-		
+
 		// Only calculate gas for actual opcodes, not data bytes
 		if op >= PUSH1 && op <= PUSH32 {
 			// This is a PUSH opcode, calculate its gas
@@ -822,6 +887,6 @@ func calculateBlockStaticGas(block *BasicBlock, gasCalc GasCalculator) uint64 {
 		}
 		// Data bytes (op > 0xff) are ignored for gas calculation
 	}
-	
+
 	return totalGas
 }

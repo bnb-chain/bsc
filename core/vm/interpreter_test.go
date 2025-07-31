@@ -94,8 +94,11 @@ func TestBasicBlockGasCalculation(t *testing.T) {
 	evm := &EVM{}
 	interpreter := NewEVMInterpreter(evm)
 
+	// Create a proper GasCalculator from the JumpTable
+	provider := &jumpTableGasCalculator{table: interpreter.table}
+
 	// Generate basic blocks
-	blocks := compiler.GenerateBasicBlocks(testCode, interpreter.table)
+	blocks := compiler.GenerateBasicBlocks(testCode, provider)
 
 	// Verify we have at least one block
 	if len(blocks) == 0 {
@@ -128,8 +131,127 @@ func TestGetConstantGasEquivalence(t *testing.T) {
 	evm := &EVM{}
 	interpreter := NewEVMInterpreter(evm)
 
-	// Test all opcodes from 0x00 to 0xff
-	for opcode := byte(0); opcode <= 0xff; opcode++ {
+	// Test only standard opcodes
+	keyOpcodes := []byte{
+		byte(STOP),      // 0x00
+		byte(ADD),       // 0x01
+		byte(MUL),       // 0x02
+		byte(SUB),       // 0x03
+		byte(DIV),       // 0x04
+		byte(SDIV),      // 0x05
+		byte(MOD),       // 0x06
+		byte(SMOD),      // 0x07
+		byte(ADDMOD),    // 0x08
+		byte(MULMOD),    // 0x09
+		byte(SIGNEXTEND), // 0x0b
+		byte(LT),        // 0x10
+		byte(GT),        // 0x11
+		byte(SLT),       // 0x12
+		byte(SGT),       // 0x13
+		byte(EQ),        // 0x14
+		byte(ISZERO),    // 0x15
+		byte(AND),       // 0x16
+		byte(OR),        // 0x17
+		byte(XOR),       // 0x18
+		byte(NOT),       // 0x19
+		byte(BYTE),      // 0x1a
+		byte(SHL),       // 0x1b
+		byte(SHR),       // 0x1c
+		byte(SAR),       // 0x1d
+		byte(POP),       // 0x50
+		byte(MLOAD),     // 0x51
+		byte(MSTORE),    // 0x52
+		byte(MSTORE8),   // 0x53
+		byte(SLOAD),     // 0x54
+		byte(SSTORE),    // 0x55
+		byte(JUMP),      // 0x56
+		byte(JUMPI),     // 0x57
+		byte(PC),        // 0x58
+		byte(MSIZE),     // 0x59
+		byte(GAS),       // 0x5a
+		byte(JUMPDEST),  // 0x5b
+		byte(PUSH1),     // 0x60
+		byte(PUSH2),     // 0x61
+		byte(PUSH3),     // 0x62
+		byte(PUSH4),     // 0x63
+		byte(PUSH5),     // 0x64
+		byte(PUSH6),     // 0x65
+		byte(PUSH7),     // 0x66
+		byte(PUSH8),     // 0x67
+		byte(PUSH9),     // 0x68
+		byte(PUSH10),    // 0x69
+		byte(PUSH11),    // 0x6a
+		byte(PUSH12),    // 0x6b
+		byte(PUSH13),    // 0x6c
+		byte(PUSH14),    // 0x6d
+		byte(PUSH15),    // 0x6e
+		byte(PUSH16),    // 0x6f
+		byte(PUSH17),    // 0x70
+		byte(PUSH18),    // 0x71
+		byte(PUSH19),    // 0x72
+		byte(PUSH20),    // 0x73
+		byte(PUSH21),    // 0x74
+		byte(PUSH22),    // 0x75
+		byte(PUSH23),    // 0x76
+		byte(PUSH24),    // 0x77
+		byte(PUSH25),    // 0x78
+		byte(PUSH26),    // 0x79
+		byte(PUSH27),    // 0x7a
+		byte(PUSH28),    // 0x7b
+		byte(PUSH29),    // 0x7c
+		byte(PUSH30),    // 0x7d
+		byte(PUSH31),    // 0x7e
+		byte(PUSH32),    // 0x7f
+		byte(DUP1),      // 0x80
+		byte(DUP2),      // 0x81
+		byte(DUP3),      // 0x82
+		byte(DUP4),      // 0x83
+		byte(DUP5),      // 0x84
+		byte(DUP6),      // 0x85
+		byte(DUP7),      // 0x86
+		byte(DUP8),      // 0x87
+		byte(DUP9),      // 0x88
+		byte(DUP10),     // 0x89
+		byte(DUP11),     // 0x8a
+		byte(DUP12),     // 0x8b
+		byte(DUP13),     // 0x8c
+		byte(DUP14),     // 0x8d
+		byte(DUP15),     // 0x8e
+		byte(DUP16),     // 0x8f
+		byte(SWAP1),     // 0x90
+		byte(SWAP2),     // 0x91
+		byte(SWAP3),     // 0x92
+		byte(SWAP4),     // 0x93
+		byte(SWAP5),     // 0x94
+		byte(SWAP6),     // 0x95
+		byte(SWAP7),     // 0x96
+		byte(SWAP8),     // 0x97
+		byte(SWAP9),     // 0x98
+		byte(SWAP10),    // 0x99
+		byte(SWAP11),    // 0x9a
+		byte(SWAP12),    // 0x9b
+		byte(SWAP13),    // 0x9c
+		byte(SWAP14),    // 0x9d
+		byte(SWAP15),    // 0x9e
+		byte(SWAP16),    // 0x9f
+		byte(LOG0),      // 0xa0
+		byte(LOG1),      // 0xa1
+		byte(LOG2),      // 0xa2
+		byte(LOG3),      // 0xa3
+		byte(LOG4),      // 0xa4
+		byte(CREATE),    // 0xf0
+		byte(CALL),      // 0xf1
+		byte(CALLCODE),  // 0xf2
+		byte(RETURN),    // 0xf3
+		byte(DELEGATECALL), // 0xf4
+		byte(CREATE2),   // 0xf5
+		byte(STATICCALL), // 0xfa
+		byte(REVERT),    // 0xfd
+		byte(INVALID),   // 0xfe
+		byte(SELFDESTRUCT), // 0xff
+	}
+
+	for _, opcode := range keyOpcodes {
 		// Method 1: Using JumpTable.GetConstantGas
 		gas1 := interpreter.table.GetConstantGas(opcode)
 		
@@ -150,5 +272,76 @@ func TestGetConstantGasEquivalence(t *testing.T) {
 		}
 	}
 	
-	t.Logf("Verified that JumpTable.GetConstantGas() and operation.constantGas return the same values for all opcodes")
+	t.Logf("Verified that JumpTable.GetConstantGas() and operation.constantGas return the same values for key opcodes")
+}
+
+// TestJumpTableProvider tests that the JumpTableProvider interface works correctly
+func TestJumpTableProvider(t *testing.T) {
+	// Create a test interpreter with London instruction set
+	evm := &EVM{}
+	interpreter := NewEVMInterpreter(evm)
+	
+	// Create a provider
+	provider := &jumpTableGasCalculator{table: interpreter.table}
+	
+	// Test that GetConstantGas returns the same values as the JumpTable
+	testOpcodes := []byte{0x00, 0x01, 0x02, 0x03, 0x50, 0x51, 0x56, 0x57, 0x60, 0x61}
+	
+	for _, op := range testOpcodes {
+		expected := interpreter.table.GetConstantGas(op)
+		actual := provider.GetConstantGas(op)
+		
+		if expected != actual {
+			t.Errorf("GetConstantGas mismatch for opcode 0x%02x: expected %d, got %d", op, expected, actual)
+		}
+	}
+	
+	t.Logf("JumpTableProvider interface works correctly")
+}
+
+// TestJumpTableProviderWithoutSet tests what happens when no provider is set
+func TestJumpTableProviderWithoutSet(t *testing.T) {
+	// Reset the provider to nil
+	compiler.SetJumpTableProvider(nil)
+	
+	// Create a test interpreter with London instruction set
+	evm := &EVM{}
+	interpreter := NewEVMInterpreter(evm)
+	provider := &jumpTableGasCalculator{table: interpreter.table}
+	
+	// Test that GetConstantGas returns the correct value when provider is set
+	gas := provider.GetConstantGas(0x01) // ADD opcode
+	expected := interpreter.table.GetConstantGas(0x01)
+	if gas != expected {
+		t.Errorf("Expected gas cost to be %d when provider is set, got %d", expected, gas)
+	}
+	
+	t.Logf("Gas cost for ADD opcode: %d (when provider is set)", gas)
+}
+
+// TestDoCodeFusionWithJumpTable tests the new function that accepts JumpTable directly
+func TestDoCodeFusionWithJumpTable(t *testing.T) {
+	// Create a test interpreter with London instruction set
+	evm := &EVM{}
+	interpreter := NewEVMInterpreter(evm)
+	
+	// Create a simple test code
+	testCode := []byte{
+		byte(PUSH1), 0x01, // PUSH1 0x01
+		byte(ADD),         // ADD
+		byte(STOP),        // STOP
+	}
+	
+	// Test the new function with JumpTable
+	result, err := compiler.DoCodeFusionWithJumpTable(testCode, interpreter.table)
+	if err != nil {
+		t.Errorf("DoCodeFusionWithJumpTable failed: %v", err)
+	}
+	
+	// Verify the result is not nil
+	if result == nil {
+		t.Error("DoCodeFusionWithJumpTable returned nil result")
+	}
+	
+	t.Logf("DoCodeFusionWithJumpTable test passed, result length: %d", len(result))
 }

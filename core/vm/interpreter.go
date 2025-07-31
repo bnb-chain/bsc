@@ -21,6 +21,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
@@ -167,6 +168,16 @@ func (in *EVMInterpreter) CopyAndInstallSuperInstruction() {
 // considered a revert-and-consume-all-gas operation except for
 // ErrExecutionReverted which means revert-and-keep-gas-left.
 func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (ret []byte, err error) {
+	// Set the JumpTable provider for the compiler package
+	provider := &jumpTableGasCalculator{table: in.table}
+	compiler.SetJumpTableProvider(provider)
+
+	// Generate BasicBlocks if not already generated
+	if len(contract.BasicBlocks) == 0 {
+		blocks := compiler.GenerateBasicBlocks(contract.Code, provider)
+		contract.BasicBlocks = blocks
+	}
+
 	// Increment the call depth which is restricted to 1024
 	in.evm.depth++
 	defer func() { in.evm.depth-- }()
@@ -341,4 +352,13 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	}
 
 	return res, err
+}
+
+// jumpTableGasCalculator implements compiler.JumpTableProvider
+type jumpTableGasCalculator struct {
+	table *JumpTable
+}
+
+func (jtgc *jumpTableGasCalculator) GetConstantGas(op byte) uint64 {
+	return jtgc.table.GetConstantGas(op)
 }
