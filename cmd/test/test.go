@@ -34,7 +34,7 @@ func main() {
 		if false {
 			addr_ = addr2
 		}
-		impl := shortcut.GetShortcut(addr_)
+		impl := shortcut.GetShortcutV2(addr_)
 		if impl == nil {
 			continue
 		}

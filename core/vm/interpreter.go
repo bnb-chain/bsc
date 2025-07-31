@@ -234,46 +234,34 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}()
 	}
 
-	sPc_ := uint64(0)
+	sPc := uint64(0)
+	sGas := uint64(0)
+	expected := false
 
 	// shortcut v1
 	start := time.Now()
-	inliner := shortcut.GetShortcut(contract.Address())
+	inliner := shortcut.GetShortcutV2(contract.Address())
 	if inliner != nil {
 		in.evm.ShortcutCount++
-		sPc, sGas, sStk, sMem, memLastGasCost, expected, err := inliner.Shortcut(input, in.evm.Origin, contract.Caller(), contract.Value())
-		if err != nil || !expected {
-			//log.Warn("Shortcut unexpected",
-			//	"error", err,
-			//	"contract", contract.Address(),
-			//	"inputs", hex.EncodeToString(input),
-			//	"origin", in.evm.Origin,
-			//	"caller", contract.Caller(),
-			//	"value", contract.Value(),
-			//)
-		} else if in.evm.Config.EnableInline {
-			if debug {
-				// Capture pre-execution values for tracing.
-				pcCopy, gasCopy = pc, contract.Gas
-			}
-
-			stack.data = sStk
-			callContext.Memory.store = sMem
-			callContext.Memory.lastGasCost = memLastGasCost
+		sPc, sGas, stack.data, mem.store, mem.lastGasCost, expected, err = inliner.Shortcut(input, in.evm.Origin, contract.Caller(), contract.Value())
+		if in.evm.Config.EnableInline && expected {
+			//if debug {
+			//	// Capture pre-execution values for tracing.
+			//	pcCopy, gasCopy = pc, contract.Gas
+			//}
 			pc = sPc
 			contract.Gas -= sGas
 
-			if debug {
-				if in.evm.Config.Tracer.OnGasChange != nil {
-					in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-sGas, tracing.GasChangeCallOpCode)
-				}
-				if in.evm.Config.Tracer.OnOpcode != nil {
-					in.evm.Config.Tracer.OnOpcode(0, byte(Nop), gasCopy, sGas, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
-					logged = true
-				}
-			}
+			//if debug {
+			//	if in.evm.Config.Tracer.OnGasChange != nil {
+			//		in.evm.Config.Tracer.OnGasChange(gasCopy, gasCopy-sGas, tracing.GasChangeCallOpCode)
+			//	}
+			//	if in.evm.Config.Tracer.OnOpcode != nil {
+			//		in.evm.Config.Tracer.OnOpcode(0, byte(Nop), gasCopy, sGas, callContext, in.returnData, in.evm.depth, VMErrorFromErr(err))
+			//		logged = true
+			//	}
+			//}
 		}
-		sPc_ = sPc
 	}
 	in.evm.ShortcutDuration += time.Since(start)
 
@@ -330,7 +318,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	// the execution of one of the operations or until the done flag is set by the
 	// parent context.
 	for {
-		if pc == sPc_ && pc != 0 {
+		if pc == sPc && pc != 0 {
 			in.evm.ReplacedDuration += time.Since(start)
 		}
 		if debug {
