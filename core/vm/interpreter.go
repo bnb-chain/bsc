@@ -377,6 +377,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 			pc, sGas, stack.data, mem.store, mem.lastGasCost = shortcutResult.Pc, shortcutResult.GasUsed, shortcutResult.Stack, shortcutResult.Mem, shortcutResult.LastGasCost
 
+			sPc_ = pc
+
 			contract.Gas -= sGas
 
 			if debug {
