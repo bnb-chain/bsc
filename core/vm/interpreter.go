@@ -23,7 +23,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/internal/compiler"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 )
@@ -188,42 +187,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		return nil, nil
 	}
 
-	// Use pre-calculated basic blocks if available, otherwise generate them
-	var blocks []BasicBlock
-	if len(contract.BasicBlocks) > 0 {
-		blocks = contract.BasicBlocks
-	} else {
-		// Create an adapter to make JumpTable implement compiler.GasCalculator
-		gasCalc := &jumpTableGasCalculator{table: in.table}
-		
-		// Generate basic blocks with pre-calculated gas costs
-		compilerBlocks := compiler.GenerateBasicBlocks(contract.Code, gasCalc)
-		
-		// Convert compiler.BasicBlock to vm.BasicBlock
-		blocks = make([]BasicBlock, len(compilerBlocks))
-		for i, cb := range compilerBlocks {
-			blocks[i] = BasicBlock{
-				StartPC:    cb.StartPC,
-				EndPC:      cb.EndPC,
-				Opcodes:    cb.Opcodes,
-				JumpTarget: cb.JumpTarget,
-				IsJumpDest: cb.IsJumpDest,
-				StaticGas:  cb.StaticGas,
-			}
-		}
-		contract.BasicBlocks = blocks // Cache for future use
-	}
-	
-	blockMap := make(map[uint64]*BasicBlock) // PC -> BasicBlock mapping
-	
-	// Create a map for quick lookup of blocks by PC
-	for i := range blocks {
-		block := &blocks[i]
-		for pc := block.StartPC; pc < block.EndPC; pc++ {
-			blockMap[pc] = block
-		}
-	}
-
 	var (
 		op          OpCode        // current opcode
 		mem         = NewMemory() // bound memory
@@ -236,8 +199,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// For optimisation reason we're using uint64 as the program counter.
 		// It's theoretically possible to go above 2^64. The YP defines the PC
 		// to be uint256. Practically much less so feasible.
-		pc   = uint64(0) // program counter
-		cost uint64
+		pc               = uint64(0) // program counter
+		cost             uint64
+		costOutOfGasFlag bool
 		// copies used by tracer
 		pcCopy  uint64 // needed for the deferred EVMLogger
 		gasCopy uint64 // for EVMLogger to log gas remaining before execution
@@ -267,6 +231,17 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			}
 		}()
 	}
+
+	for _, basicBlock := range contract.BasicBlocks {
+		cost += basicBlock.StaticGas
+	}
+	if contract.Gas < cost {
+		// set flag to true to check in detail by which op the gas is not enough
+		costOutOfGasFlag = true
+	} else {
+		contract.Gas -= cost
+	}
+
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
 	// the execution of one of the operations or until the done flag is set by the
@@ -288,7 +263,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// enough stack items available to perform the operation.
 		op = contract.GetOp(pc)
 		operation := in.table[op]
-		cost = operation.constantGas // For tracing
 		// Validate stack
 		if sLen := stack.len(); sLen < operation.minStack {
 			return nil, &ErrStackUnderflow{stackLen: sLen, required: operation.minStack}
@@ -296,10 +270,13 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			return nil, &ErrStackOverflow{stackLen: sLen, limit: operation.maxStack}
 		}
 		// for tracing: this gas consumption event is emitted below in the debug section.
-		if contract.Gas < cost {
-			return nil, ErrOutOfGas
-		} else {
-			contract.Gas -= cost
+		if costOutOfGasFlag {
+			cost = operation.constantGas // For tracing
+			if contract.Gas < cost {
+				return nil, ErrOutOfGas
+			} else {
+				contract.Gas -= cost
+			}
 		}
 
 		// All ops with a dynamic memory usage also has a dynamic gas cost.
@@ -364,13 +341,4 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	}
 
 	return res, err
-}
-
-// jumpTableGasCalculator adapts JumpTable to implement compiler.GasCalculator
-type jumpTableGasCalculator struct {
-	table *JumpTable
-}
-
-func (jt *jumpTableGasCalculator) GetConstantGas(op byte) uint64 {
-	return jt.table.GetConstantGas(op)
 }

@@ -80,7 +80,7 @@ type Contract struct {
 	
 	// BasicBlocks caches the pre-calculated basic blocks with static gas costs
 	// This is computed once per contract and reused across all executions
-	BasicBlocks []BasicBlock
+	BasicBlocks []compiler.BasicBlock
 }
 
 func (c *Contract) validJumpdest(dest *uint256.Int) bool {

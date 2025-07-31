@@ -24,7 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/internal/compiler"
+	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -121,4 +121,34 @@ func TestBasicBlockGasCalculation(t *testing.T) {
 	if firstBlock.StaticGas != expectedGas {
 		t.Errorf("Expected gas cost %d, got %d", expectedGas, firstBlock.StaticGas)
 	}
+}
+
+func TestGetConstantGasEquivalence(t *testing.T) {
+	// Create a new interpreter
+	evm := &EVM{}
+	interpreter := NewEVMInterpreter(evm)
+
+	// Test all opcodes from 0x00 to 0xff
+	for opcode := byte(0); opcode <= 0xff; opcode++ {
+		// Method 1: Using JumpTable.GetConstantGas
+		gas1 := interpreter.table.GetConstantGas(opcode)
+		
+		// Method 2: Using operation.constantGas
+		op := OpCode(opcode)
+		operation := interpreter.table[op]
+		var gas2 uint64
+		if operation != nil {
+			gas2 = operation.constantGas
+		} else {
+			gas2 = 0
+		}
+		
+		// Compare the results
+		if gas1 != gas2 {
+			t.Errorf("Opcode 0x%02x: GetConstantGas() returned %d, operation.constantGas returned %d", 
+				opcode, gas1, gas2)
+		}
+	}
+	
+	t.Logf("Verified that JumpTable.GetConstantGas() and operation.constantGas return the same values for all opcodes")
 }

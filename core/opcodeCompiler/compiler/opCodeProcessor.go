@@ -7,6 +7,11 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+// GasCalculator interface for calculating gas costs
+type GasCalculator interface {
+	GetConstantGas(op byte) uint64
+}
+
 var (
 	enabled     bool
 	codeCache   *OpCodeCache
@@ -162,7 +167,7 @@ func DoCodeFusion(code []byte) ([]byte, error) {
 // DoCFGBasedOpcodeFusion performs opcode fusion within basic blocks, skipping blocks of type "others"
 func DoCFGBasedOpcodeFusion(code []byte) ([]byte, error) {
 	// Generate basic blocks
-	blocks := GenerateBasicBlocks(code)
+	blocks := GenerateBasicBlocks(code, nil) // Pass nil for now, as gasCalc is not yet available here
 	if len(blocks) == 0 {
 		return nil, ErrFailPreprocessing
 	}
@@ -688,12 +693,13 @@ type BasicBlock struct {
 	Opcodes    []byte  // The actual opcodes in this block
 	JumpTarget *uint64 // If this block ends with a jump, the target PC
 	IsJumpDest bool    // Whether this block starts with a JUMPDEST
+	StaticGas  uint64  // Pre-calculated static gas cost for this block
 }
 
 // GenerateBasicBlocks takes a byte array of opcodes and returns an array of BasicBlocks.
 // This function parses the opcodes to identify basic blocks - sequences of instructions
 // that can be executed linearly without jumps in the middle.
-func GenerateBasicBlocks(code []byte) []BasicBlock {
+func GenerateBasicBlocks(code []byte, gasCalc GasCalculator) []BasicBlock {
 	if len(code) == 0 {
 		return nil
 	}
@@ -726,6 +732,8 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 		if op == INVALID || jumpDests[pc] {
 			if currentBlock != nil && len(currentBlock.Opcodes) > 0 {
 				currentBlock.EndPC = pc
+				// Calculate static gas for the completed block
+				currentBlock.StaticGas = calculateBlockStaticGas(currentBlock, gasCalc)
 				blocks = append(blocks, *currentBlock)
 			}
 			currentBlock = &BasicBlock{
@@ -757,6 +765,8 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 		// If this is a block terminator (other than INVALID since we already handled it), end the block
 		if isBlockTerminator(op) {
 			currentBlock.EndPC = pc
+			// Calculate static gas for the completed block
+			currentBlock.StaticGas = calculateBlockStaticGas(currentBlock, gasCalc)
 			blocks = append(blocks, *currentBlock)
 			currentBlock = nil
 		}
@@ -764,6 +774,8 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 	// If there's a block in progress, add it
 	if currentBlock != nil && len(currentBlock.Opcodes) > 0 {
 		currentBlock.EndPC = pc
+		// Calculate static gas for the last block
+		currentBlock.StaticGas = calculateBlockStaticGas(currentBlock, gasCalc)
 		blocks = append(blocks, *currentBlock)
 	}
 	return blocks
@@ -783,4 +795,33 @@ func isBlockTerminator(op ByteCode) bool {
 	default:
 		return false
 	}
+}
+
+// calculateBlockStaticGas calculates the total static gas cost for a basic block
+func calculateBlockStaticGas(block *BasicBlock, gasCalc GasCalculator) uint64 {
+	totalGas := uint64(0)
+	
+	// Iterate through all bytes in the block
+	for i := 0; i < len(block.Opcodes); i++ {
+		op := ByteCode(block.Opcodes[i])
+		
+		// Only calculate gas for actual opcodes, not data bytes
+		if op >= PUSH1 && op <= PUSH32 {
+			// This is a PUSH opcode, calculate its gas
+			if gasCalc != nil {
+				totalGas += gasCalc.GetConstantGas(byte(op))
+			}
+			// Skip the data bytes in the next iteration
+			skipBytes := int(op - PUSH1 + 1)
+			i += skipBytes
+		} else if op <= 0xff {
+			// This is a regular opcode, calculate its gas
+			if gasCalc != nil {
+				totalGas += gasCalc.GetConstantGas(byte(op))
+			}
+		}
+		// Data bytes (op > 0xff) are ignored for gas calculation
+	}
+	
+	return totalGas
 }
