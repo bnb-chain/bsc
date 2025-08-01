@@ -6,6 +6,7 @@ import (
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // GasCalculator interface for calculating gas costs
@@ -208,6 +209,7 @@ func DoCFGBasedOpcodeFusion(code []byte, gasCalc GasCalculator, hash common.Hash
 
 	// Cache the static gas if we have a valid hash and gas calculator
 	if hash != (common.Hash{}) && gasCalc != nil {
+		log.Debug("Caching static gas", "hash", hash.Hex(), "totalStaticGas", totalStaticGas, "blockCount", len(blocks))
 		codeCache.AddStaticGasCache(hash, totalStaticGas)
 	}
 
@@ -823,29 +825,30 @@ func GenerateBasicBlocks(code []byte, gasCalc GasCalculator) []BasicBlock {
 // calculateBlockStaticGas calculates the total static gas cost for a basic block
 func calculateBlockStaticGas(block *BasicBlock, gasCalc GasCalculator) uint64 {
 	totalGas := uint64(0)
-
-	// Iterate through all bytes in the block
-	for i := 0; i < len(block.Opcodes); i++ {
-		op := ByteCode(block.Opcodes[i])
-
-		// Only calculate gas for actual opcodes, not data bytes
-		if op >= PUSH1 && op <= PUSH32 {
-			// This is a PUSH opcode, calculate its gas
-			if gasCalc != nil {
-				totalGas += gasCalc.GetConstantGas(byte(op))
-			}
-			// Skip the data bytes in the next iteration
-			skipBytes := int(op - PUSH1 + 1)
-			i += skipBytes
-		} else if op <= 0xff {
-			// This is a regular opcode, calculate its gas
-			if gasCalc != nil {
-				totalGas += gasCalc.GetConstantGas(byte(op))
-			}
+	
+	// Use the same logic as GenerateBasicBlocks to parse opcodes correctly
+	code := block.Opcodes
+	pc := uint64(0)
+	
+	for pc < uint64(len(code)) {
+		op := ByteCode(code[pc])
+		
+		// Use calculateSkipSteps to parse instructions consistently
+		skip, steps := calculateSkipSteps(code, int(pc))
+		
+		// Calculate gas for the opcode (only for valid opcodes)
+		if op <= 0xff && gasCalc != nil {
+			totalGas += gasCalc.GetConstantGas(byte(op))
 		}
-		// Data bytes (op > 0xff) are ignored for gas calculation
+		
+		// Skip the entire instruction (opcode + data)
+		if skip {
+			pc += uint64(steps) + 1
+		} else {
+			pc++
+		}
 	}
-
+	
 	return totalGas
 }
 

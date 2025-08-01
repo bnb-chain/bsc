@@ -218,16 +218,17 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	}()
 	contract.Input = input
 
-	// Check if static gas is available for pre-calculation
-	cost = compiler.LoadStaticGas(contract.CodeHash)
-	if cost > 0 {
-		// Use pre-calculated static gas
-		if contract.Gas >= cost {
-			contract.Gas -= cost
-		} else {
-			cost = 0 // if contract.Gas < cost, meaning there is an error, set cost = 0 to continue logic and track the exact op for error
+	if in.evm.Config.EnableOpcodeOptimizations {
+		// Check if static gas is available for pre-calculation
+		cost = compiler.LoadStaticGas(contract.CodeHash)
+		if cost > 0 {
+			// Use pre-calculated static gas
+			if contract.Gas >= cost {
+				contract.Gas -= cost
+			} else {
+				cost = 0 // if contract.Gas < cost, meaning there is an error, set cost = 0 to continue logic and track the exact op for error
+			}
 		}
-
 	}
 
 	if debug {
