@@ -200,8 +200,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// For optimisation reason we're using uint64 as the program counter.
 		// It's theoretically possible to go above 2^64. The YP defines the PC
 		// to be uint256. Practically much less so feasible.
-		pc   = uint64(0) // program counter
-		cost uint64
+		pc                  = uint64(0) // program counter
+		cost                uint64
+		costOpcodeLevelFlag bool
 		// copies used by tracer
 		pcCopy  uint64 // needed for the deferred EVMLogger
 		gasCopy uint64 // for EVMLogger to log gas remaining before execution
@@ -226,7 +227,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			if contract.Gas >= cost {
 				contract.Gas -= cost
 			} else {
-				cost = 0 // if contract.Gas < cost, meaning there is an error, set cost = 0 to continue logic and track the exact op for error
+				costOpcodeLevelFlag = true // if contract.Gas < cost, meaning there is an error, set cost = 0 to continue logic and track the exact op for error
 			}
 		}
 	}
@@ -273,7 +274,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}
 		// for tracing: this gas consumption event is emitted below in the debug section.
 		// Only charge gas if we haven't already charged the pre-calculated static gas
-		if cost == 0 {
+		if cost == 0 || costOpcodeLevelFlag {
 			cost = operation.constantGas // For tracing
 			if contract.Gas < cost {
 				return nil, ErrOutOfGas
