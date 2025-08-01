@@ -24,7 +24,6 @@ import (
 	"math/big"
 	"runtime"
 	"slices"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -56,8 +55,6 @@ import (
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/ethereum/go-ethereum/triedb/hashdb"
 	"github.com/ethereum/go-ethereum/triedb/pathdb"
-	exlru "github.com/hashicorp/golang-lru"
-	"golang.org/x/crypto/sha3"
 )
 
 var (
@@ -114,7 +111,6 @@ var (
 const (
 	bodyCacheLimit      = 256
 	blockCacheLimit     = 256
-	diffLayerCacheLimit = 1024
 	receiptsCacheLimit  = 10000
 	sidecarsCacheLimit  = 1024
 	txLookupCacheLimit  = 1024
@@ -122,9 +118,6 @@ const (
 	maxTimeFutureBlocks = 30
 	maxBeyondBlocks     = 2048
 	prefetchTxNumber    = 100
-
-	diffLayerFreezerRecheckInterval = 3 * time.Second
-	maxDiffForkDist                 = 11 // Maximum allowed backward distance from the chain head
 
 	// BlockChainVersion ensures that an incompatible database forces a resync from scratch.
 	//
@@ -163,6 +156,7 @@ const (
 // CacheConfig contains the configuration values for the trie database
 // and state snapshot these are resident in a blockchain.
 type CacheConfig struct {
+	EnableSharedStorage bool          // Whether to enable shared storage in statedb, improve execute stage performance ~6%.
 	TrieCleanLimit      int           // Memory allowance (MB) to use for caching trie nodes in memory
 	TrieCleanNoPrefetch bool          // Whether to disable heuristic state prefetching for followup blocks
 	TrieDirtyLimit      int           // Memory limit (MB) at which to start flushing dirty trie nodes to disk
@@ -318,13 +312,6 @@ type BlockChain struct {
 	// future blocks are blocks added for later processing
 	futureBlocks *lru.Cache[common.Hash, *types.Block]
 
-	// trusted diff layers
-	diffLayerCache             *exlru.Cache                          // Cache for the diffLayers
-	diffLayerChanCache         *exlru.Cache                          // Cache for the difflayer channel
-	diffQueue                  *prque.Prque[int64, *types.DiffLayer] // A Priority queue to store recent diff layer
-	diffQueueBuffer            chan *types.DiffLayer
-	diffLayerFreezerBlockLimit uint64
-
 	wg            sync.WaitGroup
 	dbWg          sync.WaitGroup
 	quit          chan struct{} // shutdown signal, closed in Stop.
@@ -357,9 +344,6 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			"triesInMemory", cacheConfig.TriesInMemory, "scheme", cacheConfig.StateScheme)
 	}
 
-	diffLayerCache, _ := exlru.New(diffLayerCacheLimit)
-	diffLayerChanCache, _ := exlru.New(diffLayerCacheLimit)
-
 	// Open trie database with provided config
 	enableVerkle, err := EnableVerkleAtGenesis(db, genesis)
 	if err != nil {
@@ -388,29 +372,25 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	*/
 
 	bc := &BlockChain{
-		chainConfig:        chainConfig,
-		cacheConfig:        cacheConfig,
-		db:                 db,
-		triedb:             triedb,
-		triegc:             prque.New[int64, common.Hash](nil),
-		quit:               make(chan struct{}),
-		triesInMemory:      cacheConfig.TriesInMemory,
-		chainmu:            syncx.NewClosableMutex(),
-		bodyCache:          lru.NewCache[common.Hash, *types.Body](bodyCacheLimit),
-		bodyRLPCache:       lru.NewCache[common.Hash, rlp.RawValue](bodyCacheLimit),
-		receiptsCache:      lru.NewCache[common.Hash, []*types.Receipt](receiptsCacheLimit),
-		sidecarsCache:      lru.NewCache[common.Hash, types.BlobSidecars](sidecarsCacheLimit),
-		blockCache:         lru.NewCache[common.Hash, *types.Block](blockCacheLimit),
-		blockStatsCache:    lru.NewCache[common.Hash, *BlockStats](blockCacheLimit),
-		txLookupCache:      lru.NewCache[common.Hash, txLookup](txLookupCacheLimit),
-		futureBlocks:       lru.NewCache[common.Hash, *types.Block](maxFutureBlocks),
-		diffLayerCache:     diffLayerCache,
-		diffLayerChanCache: diffLayerChanCache,
-		engine:             engine,
-		vmConfig:           vmConfig,
-		diffQueue:          prque.New[int64, *types.DiffLayer](nil),
-		diffQueueBuffer:    make(chan *types.DiffLayer),
-		logger:             vmConfig.Tracer,
+		chainConfig:     chainConfig,
+		cacheConfig:     cacheConfig,
+		db:              db,
+		triedb:          triedb,
+		triegc:          prque.New[int64, common.Hash](nil),
+		quit:            make(chan struct{}),
+		triesInMemory:   cacheConfig.TriesInMemory,
+		chainmu:         syncx.NewClosableMutex(),
+		bodyCache:       lru.NewCache[common.Hash, *types.Body](bodyCacheLimit),
+		bodyRLPCache:    lru.NewCache[common.Hash, rlp.RawValue](bodyCacheLimit),
+		receiptsCache:   lru.NewCache[common.Hash, []*types.Receipt](receiptsCacheLimit),
+		sidecarsCache:   lru.NewCache[common.Hash, types.BlobSidecars](sidecarsCacheLimit),
+		blockCache:      lru.NewCache[common.Hash, *types.Block](blockCacheLimit),
+		blockStatsCache: lru.NewCache[common.Hash, *BlockStats](blockCacheLimit),
+		txLookupCache:   lru.NewCache[common.Hash, txLookup](txLookupCacheLimit),
+		futureBlocks:    lru.NewCache[common.Hash, *types.Block](maxFutureBlocks),
+		engine:          engine,
+		vmConfig:        vmConfig,
+		logger:          vmConfig.Tracer,
 	}
 	bc.hc, err = NewHeaderChain(db, chainConfig, engine, bc.insertStopped)
 	if err != nil {
@@ -494,8 +474,8 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		}
 	}
 	// Ensure that a previous crash in SetHead doesn't leave extra ancients
-	if frozen, err := bc.db.BlockStore().ItemAmountInAncient(); err == nil && frozen > 0 {
-		frozen, err = bc.db.BlockStore().Ancients()
+	if frozen, err := bc.db.ItemAmountInAncient(); err == nil && frozen > 0 {
+		frozen, err = bc.db.Ancients()
 		if err != nil {
 			return nil, err
 		}
@@ -584,12 +564,6 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	bc.wg.Add(1)
 	go bc.updateFutureBlocks()
 
-	// Need persist and prune diff layer
-	if bc.db.DiffStore() != nil {
-		bc.wg.Add(1)
-		go bc.trustedDiffLayerLoop()
-	}
-
 	if bc.doubleSignMonitor != nil {
 		bc.wg.Add(1)
 		go bc.startDoubleSignMonitor()
@@ -652,41 +626,6 @@ func (bc *BlockChain) cacheReceipts(hash common.Hash, receipts types.Receipts, b
 	bc.receiptsCache.Add(hash, receipts)
 }
 
-func (bc *BlockChain) cacheDiffLayer(diffLayer *types.DiffLayer, diffLayerCh chan struct{}) {
-	// The difflayer in the system is stored by the map structure,
-	// so it will be out of order.
-	// It must be sorted first and then cached,
-	// otherwise the DiffHash calculated by different nodes will be inconsistent
-	sort.SliceStable(diffLayer.Codes, func(i, j int) bool {
-		return diffLayer.Codes[i].Hash.Hex() < diffLayer.Codes[j].Hash.Hex()
-	})
-	sort.SliceStable(diffLayer.Destructs, func(i, j int) bool {
-		return diffLayer.Destructs[i].Hex() < (diffLayer.Destructs[j].Hex())
-	})
-	sort.SliceStable(diffLayer.Accounts, func(i, j int) bool {
-		return diffLayer.Accounts[i].Account.Hex() < diffLayer.Accounts[j].Account.Hex()
-	})
-	sort.SliceStable(diffLayer.Storages, func(i, j int) bool {
-		return diffLayer.Storages[i].Account.Hex() < diffLayer.Storages[j].Account.Hex()
-	})
-	for index := range diffLayer.Storages {
-		// Sort keys and vals by key.
-		sort.Sort(&diffLayer.Storages[index])
-	}
-
-	if bc.diffLayerCache.Len() >= diffLayerCacheLimit {
-		bc.diffLayerCache.RemoveOldest()
-	}
-
-	bc.diffLayerCache.Add(diffLayer.BlockHash, diffLayer)
-	close(diffLayerCh)
-
-	if bc.db.DiffStore() != nil {
-		// push to priority queue before persisting
-		bc.diffQueueBuffer <- diffLayer
-	}
-}
-
 // empty returns an indicator whether the blockchain is empty.
 // Note, it's a special case that we connect a non-empty ancient
 // database with an empty node, so that we can plugin the ancient
@@ -714,7 +653,7 @@ func (bc *BlockChain) GetJustifiedNumber(header *types.Header) uint64 {
 	return 0
 }
 
-// getFinalizedNumber returns the highest finalized number before the specific block.
+// GetFinalizedNumber returns the highest finalized number before the specific block.
 func (bc *BlockChain) GetFinalizedNumber(header *types.Header) uint64 {
 	if p, ok := bc.engine.(consensus.PoSA); ok {
 		if finalizedHeader := p.GetFinalizedHeader(bc, header); finalizedHeader != nil {
@@ -1011,9 +950,9 @@ func (bc *BlockChain) rewindHead(head *types.Header, root common.Hash) (*types.H
 func (bc *BlockChain) SetFinalized(header *types.Header) {
 	bc.currentFinalBlock.Store(header)
 	if header != nil {
-		rawdb.WriteFinalizedBlockHash(bc.db.BlockStore(), header.Hash())
+		rawdb.WriteFinalizedBlockHash(bc.db, header.Hash())
 	} else {
-		rawdb.WriteFinalizedBlockHash(bc.db.BlockStore(), common.Hash{})
+		rawdb.WriteFinalizedBlockHash(bc.db, common.Hash{})
 	}
 }
 
@@ -1108,7 +1047,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 		// intent afterwards is full block importing, delete the chain segment
 		// between the stateful-block and the sethead target.
 		var wipe bool
-		frozen, _ := bc.db.BlockStore().Ancients()
+		frozen, _ := bc.db.Ancients()
 		if headNumber+1 < frozen {
 			wipe = pivot == nil || headNumber >= *pivot
 		}
@@ -1117,7 +1056,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 	// Rewind the header chain, deleting all block bodies until then
 	delFn := func(db ethdb.KeyValueWriter, hash common.Hash, num uint64) {
 		// Ignore the error here since light client won't hit this path
-		frozen, _ := bc.db.BlockStore().Ancients()
+		frozen, _ := bc.db.Ancients()
 		if num+1 <= frozen {
 			// The chain segment, such as the block header, canonical hash,
 			// body, and receipt, will be removed from the ancient store
@@ -1138,7 +1077,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 	// If SetHead was only called as a chain reparation method, try to skip
 	// touching the header chain altogether, unless the freezer is broken
 	if repair {
-		if target, force := updateFn(bc.db.BlockStore(), bc.CurrentBlock()); force {
+		if target, force := updateFn(bc.db, bc.CurrentBlock()); force {
 			bc.hc.SetHead(target.Number.Uint64(), nil, delFn)
 		}
 	} else {
@@ -1235,7 +1174,7 @@ func (bc *BlockChain) ResetWithGenesisBlock(genesis *types.Block) error {
 	defer bc.chainmu.Unlock()
 
 	// Prepare the genesis block and reinitialise the chain
-	blockBatch := bc.db.BlockStore().NewBatch()
+	blockBatch := bc.db.NewBatch()
 	rawdb.WriteTd(blockBatch, genesis.Hash(), genesis.NumberU64(), genesis.Difficulty())
 	rawdb.WriteBlock(blockBatch, genesis)
 	if err := blockBatch.Write(); err != nil {
@@ -1305,7 +1244,7 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 	go func() {
 		defer bc.dbWg.Done()
 		// Add the block to the canonical chain number scheme and mark as the head
-		blockBatch := bc.db.BlockStore().NewBatch()
+		blockBatch := bc.db.NewBatch()
 		rawdb.WriteCanonicalHash(blockBatch, block.Hash(), block.NumberU64())
 		rawdb.WriteHeadHeaderHash(blockBatch, block.Hash())
 		rawdb.WriteHeadBlockHash(blockBatch, block.Hash())
@@ -1408,7 +1347,7 @@ func (bc *BlockChain) Stop() {
 						} else {
 							rawdb.WriteSafePointBlockNumber(bc.db, recent.NumberU64())
 							once.Do(func() {
-								rawdb.WriteHeadBlockHash(bc.db.BlockStore(), recent.Hash())
+								rawdb.WriteHeadBlockHash(bc.db, recent.Hash())
 							})
 						}
 					}
@@ -1553,7 +1492,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			} else if !reorg {
 				return false
 			}
-			rawdb.WriteHeadFastBlockHash(bc.db.BlockStore(), head.Hash())
+			rawdb.WriteHeadFastBlockHash(bc.db, head.Hash())
 			bc.currentSnapBlock.Store(head.Header())
 			headFastBlockGauge.Update(int64(head.NumberU64()))
 			return true
@@ -1570,9 +1509,9 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 
 		// Ensure genesis is in ancients.
 		if first.NumberU64() == 1 {
-			if frozen, _ := bc.db.BlockStore().Ancients(); frozen == 0 {
+			if frozen, _ := bc.db.Ancients(); frozen == 0 {
 				td := bc.genesisBlock.Difficulty()
-				writeSize, err := rawdb.WriteAncientBlocks(bc.db.BlockStore(), []*types.Block{bc.genesisBlock}, []types.Receipts{nil}, td)
+				writeSize, err := rawdb.WriteAncientBlocks(bc.db, []*types.Block{bc.genesisBlock}, []types.Receipts{nil}, td)
 				if err != nil {
 					log.Error("Error writing genesis to ancients", "err", err)
 					return 0, err
@@ -1590,7 +1529,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 
 		// Write all chain data to ancients.
 		td := bc.GetTd(first.Hash(), first.NumberU64())
-		writeSize, err := rawdb.WriteAncientBlocksWithBlobs(bc.db.BlockStore(), blockChain, receiptChain, td)
+		writeSize, err := rawdb.WriteAncientBlocksWithBlobs(bc.db, blockChain, receiptChain, td)
 		if err != nil {
 			log.Error("Error importing chain data to ancients", "err", err)
 			return 0, err
@@ -1598,7 +1537,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		size += writeSize
 
 		// Sync the ancient store explicitly to ensure all data has been flushed to disk.
-		if err := bc.db.BlockStore().SyncAncient(); err != nil {
+		if err := bc.db.SyncAncient(); err != nil {
 			return 0, err
 		}
 		// Update the current snap block because all block data is now present in DB.
@@ -1606,7 +1545,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		if !updateHead(blockChain[len(blockChain)-1]) {
 			// We end up here if the header chain has reorg'ed, and the blocks/receipts
 			// don't match the canonical chain.
-			if _, err := bc.db.BlockStore().TruncateHead(previousSnapBlock + 1); err != nil {
+			if _, err := bc.db.TruncateHead(previousSnapBlock + 1); err != nil {
 				log.Error("Can't truncate ancient store after failed insert", "err", err)
 			}
 			return 0, errSideChainReceipts
@@ -1614,7 +1553,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 
 		// Delete block data from the main database.
 		var (
-			blockBatch  = bc.db.BlockStore().NewBatch()
+			blockBatch  = bc.db.NewBatch()
 			canonHashes = make(map[common.Hash]struct{}, len(blockChain))
 		)
 		for _, block := range blockChain {
@@ -1626,7 +1565,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			rawdb.DeleteBlockWithoutNumber(blockBatch, block.Hash(), block.NumberU64())
 		}
 		// Delete side chain hash-to-number mappings.
-		for _, nh := range rawdb.ReadAllHashesInRange(bc.db.BlockStore(), first.NumberU64(), last.NumberU64()) {
+		for _, nh := range rawdb.ReadAllHashesInRange(bc.db, first.NumberU64(), last.NumberU64()) {
 			if _, canon := canonHashes[nh.Hash]; !canon {
 				rawdb.DeleteHeader(blockBatch, nh.Hash, nh.Number)
 			}
@@ -1643,7 +1582,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		var (
 			skipPresenceCheck = false
 			batch             = bc.db.NewBatch()
-			blockBatch        = bc.db.BlockStore().NewBatch()
+			blockBatch        = bc.db.NewBatch()
 		)
 		for i, block := range blockChain {
 			// Short circuit insertion if shutting down or processing failed
@@ -1751,7 +1690,7 @@ func (bc *BlockChain) writeBlockWithoutState(block *types.Block, td *big.Int) (e
 	if bc.insertStopped() {
 		return errInsertionInterrupted
 	}
-	blockBatch := bc.db.BlockStore().NewBatch()
+	blockBatch := bc.db.NewBatch()
 	rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), td)
 	rawdb.WriteBlock(blockBatch, block)
 	// if cancun is enabled, here need to write sidecars too
@@ -1797,7 +1736,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	defer wg.Wait()
 	wg.Add(1)
 	go func() {
-		blockBatch := bc.db.BlockStore().NewBatch()
+		blockBatch := bc.db.NewBatch()
 		rawdb.WriteTd(blockBatch, block.Hash(), block.NumberU64(), externTd)
 		rawdb.WriteBlock(blockBatch, block)
 		rawdb.WriteReceipts(blockBatch, block.Hash(), block.NumberU64(), receipts)
@@ -1805,8 +1744,8 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 			rawdb.WriteBlobSidecars(blockBatch, block.Hash(), block.NumberU64(), block.Sidecars())
 		}
-		if bc.db.StateStore() != nil {
-			rawdb.WritePreimages(bc.db.StateStore(), statedb.Preimages())
+		if bc.db.HasSeparateStateStore() {
+			rawdb.WritePreimages(bc.db.GetStateStore(), statedb.Preimages())
 		} else {
 			rawdb.WritePreimages(blockBatch, statedb.Preimages())
 		}
@@ -1823,25 +1762,9 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	}()
 
 	// Commit all cached state changes into underlying memory database.
-	root, diffLayer, err := statedb.Commit(block.NumberU64(), bc.chainConfig.IsEIP158(block.Number()), bc.chainConfig.IsCancun(block.Number(), block.Time()))
+	root, err := statedb.Commit(block.NumberU64(), bc.chainConfig.IsEIP158(block.Number()), bc.chainConfig.IsCancun(block.Number(), block.Time()))
 	if err != nil {
 		return err
-	}
-
-	// Ensure no empty block body
-	if diffLayer != nil && block.Header().TxHash != types.EmptyRootHash {
-		// Filling necessary field
-		diffLayer.Receipts = receipts
-		diffLayer.BlockHash = block.Hash()
-		diffLayer.Number = block.NumberU64()
-
-		diffLayerCh := make(chan struct{})
-		if bc.diffLayerChanCache.Len() >= diffLayerCacheLimit {
-			bc.diffLayerChanCache.RemoveOldest()
-		}
-		bc.diffLayerChanCache.Add(diffLayer.BlockHash, diffLayerCh)
-
-		go bc.cacheDiffLayer(diffLayer, diffLayerCh)
 	}
 
 	// If node is running in path mode, skip explicit gc operation
@@ -2230,7 +2153,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 			// state, but if it's this special case here(skip reexecution) we will lose
 			// the empty receipt entry.
 			if len(block.Transactions()) == 0 {
-				rawdb.WriteReceipts(bc.db.BlockStore(), block.Hash(), block.NumberU64(), nil)
+				rawdb.WriteReceipts(bc.db, block.Hash(), block.NumberU64(), nil)
 			} else {
 				log.Error("Please file an issue, skip known block execution without receipt",
 					"hash", block.Hash(), "number", block.NumberU64())
@@ -2263,6 +2186,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 		if err != nil {
 			return nil, it.index, err
 		}
+		statedb.EnableSharedStorage(bc.cacheConfig.EnableSharedStorage)
+		statedb.SetNeedBadSharedStorage(bc.chainConfig.NeedBadSharedStorage(block.Number()))
 		bc.updateHighestVerifiedHeader(block.Header())
 
 		// If we are past Byzantium, enable prefetching to pull in trie node paths
@@ -2882,7 +2807,7 @@ func (bc *BlockChain) reorg(oldHead *types.Header, newHead *types.Header) error 
 	// transaction indexes, canonical chain indexes which above the head.
 	var (
 		indexesBatch = bc.db.NewBatch()
-		blockBatch   = bc.db.BlockStore().NewBatch()
+		blockBatch   = bc.db.NewBatch()
 	)
 	for _, tx := range types.HashDifference(deletedTxs, rebirthTxs) {
 		rawdb.DeleteTxLookupEntry(indexesBatch, tx)
@@ -2987,81 +2912,6 @@ func (bc *BlockChain) updateFutureBlocks() {
 			bc.procFutureBlocks()
 		case <-bc.quit:
 			return
-		}
-	}
-}
-
-func (bc *BlockChain) trustedDiffLayerLoop() {
-	recheck := time.NewTicker(diffLayerFreezerRecheckInterval)
-	defer func() {
-		recheck.Stop()
-		bc.wg.Done()
-	}()
-	for {
-		select {
-		case diff := <-bc.diffQueueBuffer:
-			bc.diffQueue.Push(diff, -(int64(diff.Number)))
-		case <-bc.quit:
-			// Persist all diffLayers when shutdown, it will introduce redundant storage, but it is acceptable.
-			// If the client been ungracefully shutdown, it will missing all cached diff layers, it is acceptable as well.
-			var batch ethdb.Batch
-			for !bc.diffQueue.Empty() {
-				diffLayer, _ := bc.diffQueue.Pop()
-				if batch == nil {
-					batch = bc.db.DiffStore().NewBatch()
-				}
-				rawdb.WriteDiffLayer(batch, diffLayer.BlockHash, diffLayer)
-				if batch.ValueSize() > ethdb.IdealBatchSize {
-					if err := batch.Write(); err != nil {
-						log.Error("Failed to write diff layer", "err", err)
-						return
-					}
-					batch.Reset()
-				}
-			}
-			if batch != nil {
-				// flush data
-				if err := batch.Write(); err != nil {
-					log.Error("Failed to write diff layer", "err", err)
-					return
-				}
-				batch.Reset()
-			}
-			return
-		case <-recheck.C:
-			currentHeight := bc.CurrentBlock().Number.Uint64()
-			var batch ethdb.Batch
-			for !bc.diffQueue.Empty() {
-				diffLayer, prio := bc.diffQueue.Pop()
-
-				// if the block not old enough
-				if int64(currentHeight)+prio < int64(bc.triesInMemory) {
-					bc.diffQueue.Push(diffLayer, prio)
-					break
-				}
-				canonicalHash := bc.GetCanonicalHash(uint64(-prio))
-				// on the canonical chain
-				if canonicalHash == diffLayer.BlockHash {
-					if batch == nil {
-						batch = bc.db.DiffStore().NewBatch()
-					}
-					rawdb.WriteDiffLayer(batch, diffLayer.BlockHash, diffLayer)
-					staleHash := bc.GetCanonicalHash(uint64(-prio) - bc.diffLayerFreezerBlockLimit)
-					rawdb.DeleteDiffLayer(batch, staleHash)
-				}
-				if batch != nil && batch.ValueSize() > ethdb.IdealBatchSize {
-					if err := batch.Write(); err != nil {
-						panic(fmt.Sprintf("Failed to write diff layer, error %v", err))
-					}
-					batch.Reset()
-				}
-			}
-			if batch != nil {
-				if err := batch.Write(); err != nil {
-					panic(fmt.Sprintf("Failed to write diff layer, error %v", err))
-				}
-				batch.Reset()
-			}
 		}
 	}
 }
@@ -3197,136 +3047,9 @@ func (bc *BlockChain) HeadChain() *HeaderChain {
 
 func (bc *BlockChain) TriesInMemory() uint64 { return bc.triesInMemory }
 
-func EnablePersistDiff(limit uint64) BlockChainOption {
-	return func(chain *BlockChain) (*BlockChain, error) {
-		chain.diffLayerFreezerBlockLimit = limit
-		return chain, nil
-	}
-}
-
-func EnableBlockValidator(chainConfig *params.ChainConfig, mode VerifyMode, peers verifyPeers) BlockChainOption {
-	return func(bc *BlockChain) (*BlockChain, error) {
-		if mode.NeedRemoteVerify() {
-			vm, err := NewVerifyManager(bc, peers, mode == InsecureVerify)
-			if err != nil {
-				return nil, err
-			}
-			go vm.mainLoop()
-			bc.validator = NewBlockValidator(chainConfig, bc, EnableRemoteVerifyManager(vm))
-		}
-		return bc, nil
-	}
-}
-
 func EnableDoubleSignChecker(bc *BlockChain) (*BlockChain, error) {
 	bc.doubleSignMonitor = monitor.NewDoubleSignMonitor()
 	return bc, nil
-}
-
-func (bc *BlockChain) GetVerifyResult(blockNumber uint64, blockHash common.Hash, diffHash common.Hash) *VerifyResult {
-	var res VerifyResult
-	res.BlockNumber = blockNumber
-	res.BlockHash = blockHash
-
-	if blockNumber > bc.CurrentHeader().Number.Uint64()+maxDiffForkDist {
-		res.Status = types.StatusBlockTooNew
-		return &res
-	} else if blockNumber > bc.CurrentHeader().Number.Uint64() {
-		res.Status = types.StatusBlockNewer
-		return &res
-	}
-
-	header := bc.GetHeaderByHash(blockHash)
-	if header == nil {
-		if blockNumber > bc.CurrentHeader().Number.Uint64()-maxDiffForkDist {
-			res.Status = types.StatusPossibleFork
-			return &res
-		}
-
-		res.Status = types.StatusImpossibleFork
-		return &res
-	}
-
-	diff := bc.GetTrustedDiffLayer(blockHash)
-	if diff != nil {
-		if diff.DiffHash.Load() == nil {
-			hash, err := CalculateDiffHash(diff)
-			if err != nil {
-				res.Status = types.StatusUnexpectedError
-				return &res
-			}
-
-			diff.DiffHash.Store(hash)
-		}
-
-		if diffHash != diff.DiffHash.Load().(common.Hash) {
-			res.Status = types.StatusDiffHashMismatch
-			return &res
-		}
-
-		res.Status = types.StatusFullVerified
-		res.Root = header.Root
-		return &res
-	}
-
-	res.Status = types.StatusPartiallyVerified
-	res.Root = header.Root
-	return &res
-}
-
-func (bc *BlockChain) GetTrustedDiffLayer(blockHash common.Hash) *types.DiffLayer {
-	var diff *types.DiffLayer
-	if cached, ok := bc.diffLayerCache.Get(blockHash); ok {
-		diff = cached.(*types.DiffLayer)
-		return diff
-	}
-
-	diffStore := bc.db.DiffStore()
-	if diffStore != nil {
-		diff = rawdb.ReadDiffLayer(diffStore, blockHash)
-	}
-	return diff
-}
-
-func CalculateDiffHash(d *types.DiffLayer) (common.Hash, error) {
-	if d == nil {
-		return common.Hash{}, errors.New("nil diff layer")
-	}
-
-	diff := &types.ExtDiffLayer{
-		BlockHash: d.BlockHash,
-		Receipts:  make([]*types.ReceiptForStorage, 0),
-		Number:    d.Number,
-		Codes:     d.Codes,
-		Destructs: d.Destructs,
-		Accounts:  d.Accounts,
-		Storages:  d.Storages,
-	}
-
-	for index, account := range diff.Accounts {
-		full, err := types.FullAccount(account.Blob)
-		if err != nil {
-			return common.Hash{}, fmt.Errorf("decode full account error: %v", err)
-		}
-		// set account root to empty root
-		full.Root = types.EmptyRootHash
-		diff.Accounts[index].Blob = types.SlimAccountRLP(*full)
-	}
-
-	rawData, err := rlp.EncodeToBytes(diff)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("encode new diff error: %v", err)
-	}
-
-	hasher := sha3.NewLegacyKeccak256()
-	_, err = hasher.Write(rawData)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("hasher write error: %v", err)
-	}
-
-	var hash common.Hash
-	hasher.Sum(hash[:0])
-	return hash, nil
 }
 
 // SetBlockValidatorAndProcessorForTesting sets the current validator and processor.
@@ -3356,4 +3079,32 @@ func (bc *BlockChain) GetBlockStats(hash common.Hash) *BlockStats {
 	n := &BlockStats{}
 	bc.blockStatsCache.Add(hash, n)
 	return n
+}
+
+// PruneBlockHistory prune block history
+func (bc *BlockChain) PruneBlockHistory(blockHistory uint64) error {
+	// if the node try to keep entire chain blocks, just skip
+	// Notice, it will not recover the pruned block history.
+	if blockHistory == 0 {
+		return nil
+	}
+	bestHeight := bc.CurrentHeader().Number.Uint64()
+	if bestHeight <= blockHistory {
+		log.Info("Prune skip, there is nothing to prune", "tail", 0, "best", bestHeight, "history", blockHistory)
+		return nil
+	}
+	pruneHeight := bestHeight - blockHistory
+	ancientHead, err := bc.db.Ancients()
+	if err != nil {
+		return err
+	}
+	if pruneHeight > ancientHead {
+		pruneHeight = ancientHead
+	}
+	old, err := bc.db.TruncateTail(pruneHeight)
+	if err != nil {
+		return err
+	}
+	log.Info("Prune block history successful", "oldtail", old, "tail", pruneHeight, "best", bestHeight, "history", blockHistory)
+	return nil
 }

@@ -97,11 +97,10 @@ type Database struct {
 func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	// Sanitize the config and use the default one if it's not specified.
 	var triediskdb ethdb.Database
-	if diskdb != nil && diskdb.StateStore() != nil {
-		triediskdb = diskdb.StateStore()
-	} else {
-		triediskdb = diskdb
+	if diskdb != nil {
+		triediskdb = diskdb.GetStateStore()
 	}
+
 	dbScheme := rawdb.ReadStateScheme(diskdb)
 	if config == nil {
 		if dbScheme == rawdb.PathScheme {

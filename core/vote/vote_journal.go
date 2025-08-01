@@ -3,9 +3,9 @@ package vote
 import (
 	"encoding/json"
 
-	lru "github.com/hashicorp/golang-lru"
 	"github.com/tidwall/wal"
 
+	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -21,7 +21,7 @@ type VoteJournal struct {
 
 	walLog *wal.Log
 
-	voteDataBuffer *lru.Cache
+	voteDataBuffer *lru.Cache[uint64, *types.VoteData]
 }
 
 var voteJournalErrorCounter = metrics.NewRegisteredCounter("voteJournal/error", nil)
@@ -33,11 +33,6 @@ func NewVoteJournal(filePath string) (*VoteJournal, error) {
 	})
 	if err != nil {
 		log.Error("Failed to open vote journal", "err", err)
-		return nil, err
-	}
-
-	voteDataBuffer, err := lru.New(maxSizeOfRecentEntry)
-	if err != nil {
 		return nil, err
 	}
 
@@ -53,18 +48,18 @@ func NewVoteJournal(filePath string) (*VoteJournal, error) {
 	}
 
 	voteJournal := &VoteJournal{
-		journalPath: filePath,
-		walLog:      walLog,
+		journalPath:    filePath,
+		walLog:         walLog,
+		voteDataBuffer: lru.NewCache[uint64, *types.VoteData](maxSizeOfRecentEntry),
 	}
 
 	// Reload all voteData from journal to lru memory everytime node reboot.
 	for index := firstIndex; index <= lastIndex; index++ {
 		if voteEnvelop, err := voteJournal.ReadVote(index); err == nil && voteEnvelop != nil {
 			voteData := voteEnvelop.Data
-			voteDataBuffer.Add(voteData.TargetNumber, voteData)
+			voteJournal.voteDataBuffer.Add(voteData.TargetNumber, voteData)
 		}
 	}
-	voteJournal.voteDataBuffer = voteDataBuffer
 
 	return voteJournal, nil
 }

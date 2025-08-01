@@ -25,16 +25,15 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		EVNNodeIDsToRemove      []enode.ID
 		EthDiscoveryURLs        []string
 		SnapDiscoveryURLs       []string
-		TrustDiscoveryURLs      []string
 		BscDiscoveryURLs        []string
 		NoPruning               bool
 		NoPrefetch              bool
 		DirectBroadcast         bool
 		DisableSnapProtocol     bool
-		EnableTrustProtocol     bool
 		RangeLimit              bool
 		TxLookupLimit           uint64 `toml:",omitempty"`
 		TransactionHistory      uint64 `toml:",omitempty"`
+		BlockHistory            uint64 `toml:",omitempty"`
 		StateHistory            uint64 `toml:",omitempty"`
 		StateScheme             string `toml:",omitempty"`
 		PathSyncFlush           bool   `toml:",omitempty"`
@@ -45,9 +44,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		DatabaseHandles         int                    `toml:"-"`
 		DatabaseCache           int
 		DatabaseFreezer         string
-		DatabaseDiff            string
-		PersistDiff             bool
-		DiffBlock               uint64
 		PruneAncientData        bool
 		TrieCleanCache          int
 		TrieDirtyCache          int
@@ -84,16 +80,15 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.EVNNodeIDsToRemove = c.EVNNodeIDsToRemove
 	enc.EthDiscoveryURLs = c.EthDiscoveryURLs
 	enc.SnapDiscoveryURLs = c.SnapDiscoveryURLs
-	enc.TrustDiscoveryURLs = c.TrustDiscoveryURLs
 	enc.BscDiscoveryURLs = c.BscDiscoveryURLs
 	enc.NoPruning = c.NoPruning
 	enc.NoPrefetch = c.NoPrefetch
 	enc.DirectBroadcast = c.DirectBroadcast
 	enc.DisableSnapProtocol = c.DisableSnapProtocol
-	enc.EnableTrustProtocol = c.EnableTrustProtocol
 	enc.RangeLimit = c.RangeLimit
 	enc.TxLookupLimit = c.TxLookupLimit
 	enc.TransactionHistory = c.TransactionHistory
+	enc.BlockHistory = c.BlockHistory
 	enc.StateHistory = c.StateHistory
 	enc.StateScheme = c.StateScheme
 	enc.PathSyncFlush = c.PathSyncFlush
@@ -104,9 +99,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.DatabaseHandles = c.DatabaseHandles
 	enc.DatabaseCache = c.DatabaseCache
 	enc.DatabaseFreezer = c.DatabaseFreezer
-	enc.DatabaseDiff = c.DatabaseDiff
-	enc.PersistDiff = c.PersistDiff
-	enc.DiffBlock = c.DiffBlock
 	enc.PruneAncientData = c.PruneAncientData
 	enc.TrieCleanCache = c.TrieCleanCache
 	enc.TrieDirtyCache = c.TrieDirtyCache
@@ -147,16 +139,15 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		EVNNodeIDsToRemove      []enode.ID
 		EthDiscoveryURLs        []string
 		SnapDiscoveryURLs       []string
-		TrustDiscoveryURLs      []string
 		BscDiscoveryURLs        []string
 		NoPruning               *bool
 		NoPrefetch              *bool
 		DirectBroadcast         *bool
 		DisableSnapProtocol     *bool
-		EnableTrustProtocol     *bool
 		RangeLimit              *bool
 		TxLookupLimit           *uint64 `toml:",omitempty"`
 		TransactionHistory      *uint64 `toml:",omitempty"`
+		BlockHistory            *uint64 `toml:",omitempty"`
 		StateHistory            *uint64 `toml:",omitempty"`
 		StateScheme             *string `toml:",omitempty"`
 		PathSyncFlush           *bool   `toml:",omitempty"`
@@ -167,9 +158,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		DatabaseHandles         *int                   `toml:"-"`
 		DatabaseCache           *int
 		DatabaseFreezer         *string
-		DatabaseDiff            *string
-		PersistDiff             *bool
-		DiffBlock               *uint64
 		PruneAncientData        *bool
 		TrieCleanCache          *int
 		TrieDirtyCache          *int
@@ -225,9 +213,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.SnapDiscoveryURLs != nil {
 		c.SnapDiscoveryURLs = dec.SnapDiscoveryURLs
 	}
-	if dec.TrustDiscoveryURLs != nil {
-		c.TrustDiscoveryURLs = dec.TrustDiscoveryURLs
-	}
 	if dec.BscDiscoveryURLs != nil {
 		c.BscDiscoveryURLs = dec.BscDiscoveryURLs
 	}
@@ -243,9 +228,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.DisableSnapProtocol != nil {
 		c.DisableSnapProtocol = *dec.DisableSnapProtocol
 	}
-	if dec.EnableTrustProtocol != nil {
-		c.EnableTrustProtocol = *dec.EnableTrustProtocol
-	}
 	if dec.RangeLimit != nil {
 		c.RangeLimit = *dec.RangeLimit
 	}
@@ -254,6 +236,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.TransactionHistory != nil {
 		c.TransactionHistory = *dec.TransactionHistory
+	}
+	if dec.BlockHistory != nil {
+		c.BlockHistory = *dec.BlockHistory
 	}
 	if dec.StateHistory != nil {
 		c.StateHistory = *dec.StateHistory
@@ -284,15 +269,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.DatabaseFreezer != nil {
 		c.DatabaseFreezer = *dec.DatabaseFreezer
-	}
-	if dec.DatabaseDiff != nil {
-		c.DatabaseDiff = *dec.DatabaseDiff
-	}
-	if dec.PersistDiff != nil {
-		c.PersistDiff = *dec.PersistDiff
-	}
-	if dec.DiffBlock != nil {
-		c.DiffBlock = *dec.DiffBlock
 	}
 	if dec.PruneAncientData != nil {
 		c.PruneAncientData = *dec.PruneAncientData

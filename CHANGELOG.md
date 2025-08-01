@@ -1,4 +1,30 @@
 # Changelog
+## v1.5.18
+### FEATURE
+[\#3158](https://github.com/bnb-chain/bsc/pull/3158) feat: blind bid serves the validator's best interest
+[\#3197](https://github.com/bnb-chain/bsc/pull/3197) feat: enable shared storage pool
+[\#3212](https://github.com/bnb-chain/bsc/pull/3212) p2p: treat all EVN peer as trust node;
+[\#3143](https://github.com/bnb-chain/bsc/pull/3143) miner: change default mev config
+
+### BUGFIX
+[\#3209](https://github.com/bnb-chain/bsc/pull/3209) params: only enable sharedStorage on special blocks
+[\#3201](https://github.com/bnb-chain/bsc/pull/3201) miner: fix metric simulateSpeedGauge
+[\#3204](https://github.com/bnb-chain/bsc/pull/3204) miner: only recommit bids when no error happens
+[\#3187](https://github.com/bnb-chain/bsc/pull/3187) chore: fix duplicated counter
+
+### IMPROVEMENT
+[\#3178](https://github.com/bnb-chain/bsc/pull/3178) CI: all use go1.24 to build
+[\#3210](https://github.com/bnb-chain/bsc/pull/3210) consensus/parlia: warn fast node to update to latest hard fork version
+[\#3175](https://github.com/bnb-chain/bsc/pull/3175) all: use typed lru
+[\#3177](https://github.com/bnb-chain/bsc/pull/3177) deps: update prysm version to v5.3.2
+[\#3193](https://github.com/bnb-chain/bsc/pull/3193) core: warm key TransactionIndexTail by writing
+[\#3146](https://github.com/bnb-chain/bsc/pull/3146) hash: remove caching that was decreasing perf
+[\#3205](https://github.com/bnb-chain/bsc/pull/3205) ethdb: tuning pebble compaction parameter
+[\#3225](https://github.com/bnb-chain/bsc/pull/3225) state: extra check for nano address
+[\#2809](https://github.com/bnb-chain/bsc/pull/2809) refactor: remove outdated prune-block/pruneancient tool, implement it by tail-deletion
+[\#3208](https://github.com/bnb-chain/bsc/pull/3208) ethdb : disable blockstore of multidatabase
+[\#3199](https://github.com/bnb-chain/bsc/pull/3199) all: clear up Verify Node logic
+
 ## v1.5.17
 ### FEATURE
 [\#3141](https://github.com/bnb-chain/bsc/pull/3141) feat: support to disable txindexer;

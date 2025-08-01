@@ -68,7 +68,6 @@ var (
 		utils.NoUSBFlag, // deprecated
 		utils.DirectBroadcastFlag,
 		utils.DisableSnapProtocolFlag,
-		utils.EnableTrustProtocolFlag,
 		utils.RangeLimitFlag,
 		utils.USBFlag,
 		utils.SmartCardDaemonPathFlag,
@@ -108,6 +107,7 @@ var (
 		utils.SnapshotFlag,
 		utils.TxLookupLimitFlag, // deprecated
 		utils.TransactionHistoryFlag,
+		utils.BlockHistoryFlag,
 		utils.StateHistoryFlag,
 		utils.PathDBSyncFlag,
 		utils.JournalFileFlag,
@@ -130,11 +130,10 @@ var (
 		utils.CacheGCFlag,
 		utils.CacheSnapshotFlag,
 		// utils.CacheNoPrefetchFlag,
+		utils.CacheEnableSharedStorageFlag,
 		utils.CachePreimagesFlag,
 		utils.MultiDataBaseFlag,
-		utils.PersistDiffFlag,
-		utils.DiffBlockFlag,
-		utils.PruneAncientDataFlag,
+		utils.PruneAncientDataFlag, // deprecated
 		utils.CacheLogSizeFlag,
 		utils.FDLimitFlag,
 		utils.CryptoKZGFlag,
@@ -177,7 +176,6 @@ var (
 		utils.GpoMaxGasPriceFlag,
 		utils.GpoIgnoreGasPriceFlag,
 		configFileFlag,
-		utils.BlockAmountReserved,
 		utils.CheckSnapshotWithMPT,
 		utils.EnableDoubleSignMonitorFlag,
 		utils.VotingEnabledFlag,

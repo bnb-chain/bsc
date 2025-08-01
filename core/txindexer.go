@@ -101,10 +101,7 @@ func (indexer *txIndexer) run(tail *uint64, head uint64, stop chan struct{}, don
 			// It can happen when chain is rewound to a historical point which
 			// is even lower than the indexes tail, recap the indexing target
 			// to new head to avoid reading non-existent block bodies.
-			end := *tail
-			if end > head+1 {
-				end = head + 1
-			}
+			end := min(*tail, head+1)
 			rawdb.IndexTransactions(indexer.db, 0, end, stop, true)
 		}
 		return
@@ -127,14 +124,30 @@ func (indexer *txIndexer) loop(chain *BlockChain) {
 
 	// Listening to chain events and manipulate the transaction indexes.
 	var (
-		stop     chan struct{}                       // Non-nil if background routine is active.
-		done     chan struct{}                       // Non-nil if background routine is active.
-		lastHead uint64                              // The latest announced chain head (whose tx indexes are assumed created)
-		lastTail = rawdb.ReadTxIndexTail(indexer.db) // The oldest indexed block, nil means nothing indexed
-
-		headCh = make(chan ChainHeadEvent)
-		sub    = chain.SubscribeChainHeadEvent(headCh)
+		stop     chan struct{} // Non-nil if background routine is active.
+		done     chan struct{} // Non-nil if background routine is active.
+		lastHead uint64        // The latest announced chain head (whose tx indexes are assumed created)
+		headCh   = make(chan ChainHeadEvent)
+		sub      = chain.SubscribeChainHeadEvent(headCh)
 	)
+
+	lastTail := rawdb.ReadTxIndexTail(indexer.db)
+	if lastTail != nil {
+		// NOTE: The "TransactionIndexTail" key may exist only in cold SST files.
+		// Without a recent write, the key won't be in the memtable or block cache,
+		// causing every Get to trigger expensive readBlock + CRC checks.
+		//
+		// This dummy write forces the key into the memtable (and later SST),
+		// ensuring future reads are fast (from memory or block cache).
+		batch := indexer.db.NewBatch()
+		rawdb.WriteTxIndexTail(batch, *lastTail)
+
+		if err := batch.Write(); err != nil {
+			log.Crit("Failed to write TransactionIndexTail warm-up", "error", err)
+			return
+		}
+	}
+
 	defer sub.Unsubscribe()
 
 	// Launch the initial processing if chain is not empty (head != genesis).

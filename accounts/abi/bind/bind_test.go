@@ -21,7 +21,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -2075,8 +2074,9 @@ var bindTests = []struct {
 func TestGolangBindings(t *testing.T) {
 	t.Parallel()
 	// Skip the test if no Go command can be found
-	gocmd := runtime.GOROOT() + "/bin/go"
-	if !common.FileExist(gocmd) {
+	goRoot, err := common.GetGoRoot()
+	gocmd := goRoot + "/bin/go"
+	if err != nil || !common.FileExist(gocmd) {
 		t.Skip("go sdk not found for testing")
 	}
 	// Create a temporary workspace for the test suite
@@ -2134,13 +2134,13 @@ func TestGolangBindings(t *testing.T) {
 		t.Fatalf("failed to replace binding test dependency to current source tree: %v\n%s", err, out)
 	}
 
-	replacer = exec.Command(gocmd, "mod", "edit", "-x", "-require", "github.com/tendermint/tendermint@v0.0.0", "-replace", "github.com/tendermint/tendermint=github.com/bnb-chain/tendermint@v0.31.16") // Repo root
+	replacer = exec.Command(gocmd, "mod", "edit", "-x", "-require", "github.com/tendermint/tendermint@v0.0.0", "-replace", "github.com/tendermint/tendermint=github.com/bnb-chain/tendermint@v0.31.17") // Repo root
 	replacer.Dir = pkg
 	if out, err := replacer.CombinedOutput(); err != nil {
 		t.Fatalf("failed to replace tendermint dependency to bnb-chain source: %v\n%s", err, out)
 	}
 
-	replacer = exec.Command(gocmd, "mod", "edit", "-x", "-require", "github.com/cometbft/cometbft@v0.0.0", "-replace", "github.com/cometbft/cometbft=github.com/bnb-chain/greenfield-cometbft@v1.3.1") // Repo root
+	replacer = exec.Command(gocmd, "mod", "edit", "-x", "-require", "github.com/cometbft/cometbft@v0.0.0", "-replace", "github.com/cometbft/cometbft=github.com/bnb-chain/greenfield-cometbft@v1.3.2") // Repo root
 	replacer.Dir = pkg
 	if out, err := replacer.CombinedOutput(); err != nil {
 		t.Fatalf("failed to replace cometbft dependency to bnb-chain source: %v\n%s", err, out)

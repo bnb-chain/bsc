@@ -33,11 +33,11 @@ func (api *DebugAPI) DbGet(key string) (hexutil.Bytes, error) {
 // DbAncient retrieves an ancient binary blob from the append-only immutable files.
 // It is a mapping to the `AncientReaderOp.Ancient` method
 func (api *DebugAPI) DbAncient(kind string, number uint64) (hexutil.Bytes, error) {
-	return api.b.ChainDb().BlockStore().Ancient(kind, number)
+	return api.b.ChainDb().Ancient(kind, number)
 }
 
 // DbAncients returns the ancient item numbers in the ancient store.
 // It is a mapping to the `AncientReaderOp.Ancients` method
 func (api *DebugAPI) DbAncients() (uint64, error) {
-	return api.b.ChainDb().BlockStore().Ancients()
+	return api.b.ChainDb().Ancients()
 }

@@ -159,7 +159,7 @@ func hashAlloc(ga *types.GenesisAlloc, isVerkle bool) (common.Hash, error) {
 			statedb.SetState(addr, key, value)
 		}
 	}
-	root, _, err := statedb.Commit(0, false, false)
+	root, err := statedb.Commit(0, false, false)
 	return root, err
 }
 
@@ -191,7 +191,7 @@ func flushAlloc(ga *types.GenesisAlloc, triedb *triedb.Database) (common.Hash, e
 			statedb.SetState(addr, key, value)
 		}
 	}
-	root, _, err := statedb.Commit(0, false, false)
+	root, err := statedb.Commit(0, false, false)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -585,13 +585,13 @@ func (g *Genesis) Commit(db ethdb.Database, triedb *triedb.Database) (*types.Blo
 		return nil, err
 	}
 	rawdb.WriteGenesisStateSpec(db, block.Hash(), blob)
-	rawdb.WriteTd(db.BlockStore(), block.Hash(), block.NumberU64(), block.Difficulty())
-	rawdb.WriteBlock(db.BlockStore(), block)
-	rawdb.WriteReceipts(db.BlockStore(), block.Hash(), block.NumberU64(), nil)
-	rawdb.WriteCanonicalHash(db.BlockStore(), block.Hash(), block.NumberU64())
-	rawdb.WriteHeadBlockHash(db.BlockStore(), block.Hash())
-	rawdb.WriteHeadFastBlockHash(db.BlockStore(), block.Hash())
-	rawdb.WriteHeadHeaderHash(db.BlockStore(), block.Hash())
+	rawdb.WriteTd(db, block.Hash(), block.NumberU64(), block.Difficulty())
+	rawdb.WriteBlock(db, block)
+	rawdb.WriteReceipts(db, block.Hash(), block.NumberU64(), nil)
+	rawdb.WriteCanonicalHash(db, block.Hash(), block.NumberU64())
+	rawdb.WriteHeadBlockHash(db, block.Hash())
+	rawdb.WriteHeadFastBlockHash(db, block.Hash())
+	rawdb.WriteHeadHeaderHash(db, block.Hash())
 	rawdb.WriteChainConfig(db, block.Hash(), config)
 	return block, nil
 }

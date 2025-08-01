@@ -202,7 +202,7 @@ func makeTx(nonce uint64, gasTipCap uint64, gasFeeCap uint64, blobFeeCap uint64,
 	return types.MustSignNewTx(key, types.LatestSigner(params.MainnetChainConfig), blobtx)
 }
 
-// makeMultiBlobTx is a utility method to construct a ramdom blob tx with
+// makeMultiBlobTx is a utility method to construct a random blob tx with
 // certain number of blobs in its sidecar.
 func makeMultiBlobTx(nonce uint64, gasTipCap uint64, gasFeeCap uint64, blobFeeCap uint64, blobCount int, key *ecdsa.PrivateKey) *types.Transaction {
 	var (

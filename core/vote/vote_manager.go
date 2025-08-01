@@ -295,9 +295,9 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 				log.Error("Failed to get voteData info from LRU cache.")
 				continue
 			}
-			if voteData.(*types.VoteData).SourceNumber > sourceNumber {
+			if voteData.SourceNumber > sourceNumber {
 				log.Debug(fmt.Sprintf("error: cur vote %d-->%d is across the span of other votes %d-->%d",
-					sourceNumber, targetNumber, voteData.(*types.VoteData).SourceNumber, voteData.(*types.VoteData).TargetNumber))
+					sourceNumber, targetNumber, voteData.SourceNumber, voteData.TargetNumber))
 				return false, 0, common.Hash{}
 			}
 		}
@@ -309,9 +309,9 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 				log.Error("Failed to get voteData info from LRU cache.")
 				continue
 			}
-			if voteData.(*types.VoteData).SourceNumber < sourceNumber {
+			if voteData.SourceNumber < sourceNumber {
 				log.Debug(fmt.Sprintf("error: cur vote %d-->%d is within the span of other votes %d-->%d",
-					sourceNumber, targetNumber, voteData.(*types.VoteData).SourceNumber, voteData.(*types.VoteData).TargetNumber))
+					sourceNumber, targetNumber, voteData.SourceNumber, voteData.TargetNumber))
 				return false, 0, common.Hash{}
 			}
 		}

@@ -688,6 +688,29 @@ type BasicBlock struct {
 	Opcodes    []byte  // The actual opcodes in this block
 	JumpTarget *uint64 // If this block ends with a jump, the target PC
 	IsJumpDest bool    // Whether this block starts with a JUMPDEST
+
+	ImmediateParams [][]byte
+}
+
+// BuildJumpTable version 1, only found push jump
+//func (b *BasicBlock) BuildJumpTable() {
+//	if len(b.Opcodes) > 2 {
+//		if ByteCode(b.Opcodes[len(b.Opcodes)-2]) < PUSH0 || ByteCode(b.Opcodes[len(b.Opcodes)-2]) > PUSH32 {
+//			return
+//		}
+//		destPc := big.NewInt(0).SetBytes(b.ImmediateParams[len(b.Opcodes)-2]).Uint64()
+//		switch ByteCode(b.Opcodes[len(b.Opcodes)-1]) {
+//		case JUMP, JUMPI:
+//			b.JumpTarget = &destPc
+//		default:
+//			return
+//		}
+//	}
+//}
+
+// BuildJumpTableV2 version 2, analyze stack
+func (b *BasicBlock) BuildJumpTableV2() {
+	panic("not implemented")
 }
 
 // GenerateBasicBlocks takes a byte array of opcodes and returns an array of BasicBlocks.
@@ -752,6 +775,7 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 		}
 		// Add instruction bytes to block
 		currentBlock.Opcodes = append(currentBlock.Opcodes, code[pc:pc+instLen]...)
+		//currentBlock.ImmediateParams = append(currentBlock.ImmediateParams, param)
 		pc += instLen
 
 		// If this is a block terminator (other than INVALID since we already handled it), end the block
@@ -766,6 +790,12 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 		currentBlock.EndPC = pc
 		blocks = append(blocks, *currentBlock)
 	}
+
+	// Third pass: build jump target
+	//for _, block := range blocks {
+	//	block.BuildJumpTable()
+	//}
+
 	return blocks
 }
 

@@ -91,7 +91,8 @@ func testConsoleLogging(t *testing.T, format string, tStart, tEnd int) {
 		have = censor(have, tStart, tEnd)
 		want = censor(want, tStart, tEnd)
 		if have != want {
-			t.Logf(nicediff([]byte(have), []byte(want)))
+			h, w := nicediff([]byte(have), []byte(want))
+			t.Logf("have vs want:\n%q\n%q\n", h, w)
 			t.Fatalf("format %v, line %d\nhave %v\nwant %v", format, i, have, want)
 		}
 	}
@@ -142,7 +143,8 @@ func TestJsonLogging(t *testing.T) {
 		}
 		if !bytes.Equal(have, want) {
 			// show an intelligent diff
-			t.Logf(nicediff(have, want))
+			h, w := nicediff(have, want)
+			t.Logf("have vs want:\n%q\n%q\n", h, w)
 			t.Errorf("file content wrong")
 		}
 	}
@@ -170,7 +172,7 @@ func TestVmodule(t *testing.T) {
 	checkOutput(1, "log at level error", "log at level warn")  // error should be present at 1, but warn should be missing
 }
 
-func nicediff(have, want []byte) string {
+func nicediff(have, want []byte) (string, string) {
 	var i = 0
 	for ; i < len(have) && i < len(want); i++ {
 		if want[i] != have[i] {
@@ -193,7 +195,7 @@ func nicediff(have, want []byte) string {
 	} else {
 		w = string(want[start:])
 	}
-	return fmt.Sprintf("have vs want:\n%q\n%q\n", h, w)
+	return h, w
 }
 
 func TestFileOut(t *testing.T) {
@@ -211,7 +213,8 @@ func TestFileOut(t *testing.T) {
 	}
 	if !bytes.Equal(have, want) {
 		// show an intelligent diff
-		t.Logf(nicediff(have, want))
+		h, w := nicediff(have, want)
+		t.Logf("have vs want:\n%q\n%q\n", h, w)
 		t.Errorf("file content wrong")
 	}
 }
@@ -231,7 +234,8 @@ func TestRotatingFileOut(t *testing.T) {
 	}
 	if !bytes.Equal(have, want) {
 		// show an intelligent diff
-		t.Logf(nicediff(have, want))
+		h, w := nicediff(have, want)
+		t.Logf("have vs want:\n%q\n%q\n", h, w)
 		t.Errorf("file content wrong")
 	}
 }

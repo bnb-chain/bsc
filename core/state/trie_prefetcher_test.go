@@ -145,7 +145,7 @@ func testVerklePrefetcher(t *testing.T) {
 	state.SetBalance(addr, uint256.NewInt(42), tracing.BalanceChangeUnspecified) // Change the account trie
 	state.SetCode(addr, []byte("hello"))                                         // Change an external metadata
 	state.SetState(addr, skey, sval)                                             // Change the storage trie
-	root, _, _ := state.Commit(0, true, false)
+	root, _ := state.Commit(0, true, false)
 
 	state, _ = New(root, sdb)
 	sRoot := state.GetStorageRoot(addr)
