@@ -227,6 +227,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			if contract.Gas >= cost {
 				contract.Gas -= cost
 			} else {
+				cost = 0 // Reset cost to 0 when gas is insufficient
 				costOpcodeLevelFlag = true // if contract.Gas < cost, meaning there is an error, set cost = 0 to continue logic and track the exact op for error
 			}
 		}
@@ -274,7 +275,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}
 		// for tracing: this gas consumption event is emitted below in the debug section.
 		// Only charge gas if we haven't already charged the pre-calculated static gas
-		if cost == 0 || costOpcodeLevelFlag {
+		if costOpcodeLevelFlag || !in.evm.Config.EnableOpcodeOptimizations {
 			cost = operation.constantGas // For tracing
 			if contract.Gas < cost {
 				return nil, ErrOutOfGas
