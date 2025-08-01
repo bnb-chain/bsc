@@ -490,9 +490,6 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
 		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.Config.Tracer)
 	} else {
-		if evm.Config.EnableInline {
-
-		}
 		if evm.Config.EnableOpcodeOptimizations {
 			// At this point, we use a copy of address. If we don't, the go compiler will
 			// leak the 'contract' to the outer scope, and make allocation for 'contract'

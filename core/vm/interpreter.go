@@ -260,10 +260,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 	// shortcut v1
 	start := time.Now()
-	inliner := shortcut.GetShortcutV2(contract.Address())
-	if inliner != nil {
-		in.evm.ShortcutCount++
-		if in.evm.Config.EnableInline {
+	if in.evm.Config.EnableInline {
+		inliner := shortcut.GetShortcutV2(contract.Address())
+		if inliner != nil {
+			in.evm.ShortcutCount++
 			sPc, sGas, stack_, mem_, lastGasUsed, expected, err = inliner.Shortcut(input, in.evm.Origin, contract.Caller(), contract.Value())
 			if expected {
 				if debug {
@@ -287,6 +287,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				}
 			}
 		}
+	} else if bytes.Equal(contract.Address().Bytes(), []byte{0x55, 0xD3, 0x98, 0x32, 0x6F, 0x99, 0x05, 0x9F, 0xF7, 0x75, 0x48, 0x52, 0x46, 0x99, 0x90, 0x27, 0xB3, 0x19, 0x79, 0x55}) {
+		in.evm.ShortcutCount++
 	}
 	in.evm.ShortcutDuration += time.Since(start)
 
