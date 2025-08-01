@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"bytes"
 	"fmt"
 	"time"
 
@@ -178,6 +179,12 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			contract.Gas -= gasUsed
 			in.evm.FullyInlineCount++
 			return ret, nil
+		}
+	} else {
+		if len(input) >= 4 &&
+			bytes.Equal(contract.Address().Bytes(), []byte{0x55, 0xD3, 0x98, 0x32, 0x6F, 0x99, 0x05, 0x9F, 0xF7, 0x75, 0x48, 0x52, 0x46, 0x99, 0x90, 0x27, 0xB3, 0x19, 0x79, 0x55}) &&
+			bytes.Equal(input[0:4], []byte{0x70, 0xa0, 0x82, 0x31}) {
+			in.evm.FullyInlineCount++
 		}
 	}
 
