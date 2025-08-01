@@ -30,11 +30,14 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/gopool"
+	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/discover/v4wire"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 // Errors
@@ -385,6 +388,12 @@ func (t *UDPv4) RequestENR(n *enode.Node) (*enode.Node, error) {
 	if err := netutil.CheckRelayAddr(addr.Addr(), respN.IPAddr()); err != nil {
 		return nil, fmt.Errorf("invalid IP in response record: %v", err)
 	}
+	var eth struct {
+		ForkID forkid.ID
+		Tail   []rlp.RawValue `rlp:"tail"`
+	}
+	entryErr := respN.Record().Load(enr.WithEntry("eth", &eth))
+	t.log.Info("RequestENR", "req", n, "respN", respN, "eth", eth, "entryErr", entryErr)
 	return respN, nil
 }
 
