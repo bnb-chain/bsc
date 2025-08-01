@@ -224,8 +224,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// Use pre-calculated static gas
 		if contract.Gas >= cost {
 			contract.Gas -= cost
+		} else {
+			cost = 0 // if contract.Gas < cost, meaning there is an error, set cost = 0 to continue logic and track the exact op for error
 		}
-		// if contract.Gas < cost, meaning there is an error, continue logic to track the exact op for error
+
 	}
 
 	if debug {
