@@ -23,6 +23,7 @@ import (
 	"math"
 	"math/big"
 	"slices"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -41,6 +42,10 @@ type ExecutionResult struct {
 	RefundedGas uint64 // Total gas refunded after execution
 	Err         error  // Any error encountered during the execution(listed in core/vm/errors.go)
 	ReturnData  []byte // Returned data from evm(function result or data supplied with revert opcode)
+
+	PreEvmDuration  time.Duration
+	EvmDuration     time.Duration
+	PostEvmDuration time.Duration
 }
 
 // Unwrap returns the internal evm error which allows us for further
@@ -419,6 +424,8 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 	// 5. there is no overflow when calculating intrinsic gas
 	// 6. caller has enough balance to cover asset transfer for **topmost** call
 
+	start := time.Now()
+
 	// Check clauses 1-3, buy gas if everything is correct
 	if err := st.preCheck(); err != nil {
 		return nil, err
@@ -495,7 +502,12 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		ret   []byte
 		vmerr error // vm errors do not effect consensus and are therefore not assigned to err
 	)
+
+	var preDuration time.Duration
+
 	if contractCreation {
+		preDuration = time.Since(start)
+		start = time.Now()
 		ret, _, st.gasRemaining, vmerr = st.evm.Create(sender, msg.Data, st.gasRemaining, value)
 	} else {
 		// Increment the nonce for the next transaction.
@@ -518,9 +530,14 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 			st.state.AddAddressToAccessList(addr)
 		}
 
+		preDuration = time.Since(start)
+		start = time.Now()
 		// Execute the transaction's call.
 		ret, st.gasRemaining, vmerr = st.evm.Call(sender, st.to(), msg.Data, st.gasRemaining, value)
 	}
+
+	evmDuration := time.Since(start)
+	start = time.Now()
 
 	// Compute refund counter, capped to a refund quotient.
 	gasRefund := st.calcRefund()
@@ -567,11 +584,16 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		}
 	}
 
+	postDuration := time.Since(start)
 	return &ExecutionResult{
 		UsedGas:     st.gasUsed(),
 		RefundedGas: gasRefund,
 		Err:         vmerr,
 		ReturnData:  ret,
+
+		PreEvmDuration:  preDuration,
+		EvmDuration:     evmDuration,
+		PostEvmDuration: postDuration,
 	}, nil
 }
 
