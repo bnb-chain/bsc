@@ -178,6 +178,7 @@ func newFilter(config *params.ChainConfig, genesis *types.Block, headfn func() (
 		// In purely block based forks, avoid the sentry spilling into timestapt territory
 		forksByBlock = append(forksByBlock, math.MaxUint64) // Last fork will never be passed
 	}
+	log.Info("newFilter", "forks", forks, "sums", sums)
 	// Create a validator that will filter out incompatible chains
 	return func(id ID) error {
 		// Run the fork checksum validation ruleset:
