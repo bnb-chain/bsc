@@ -351,9 +351,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}
 		pc++
 	}
-	//if contract.CodeHash.String() == "0x84d1cbfc7b7c569181930ce930f0dbe6edb8e8df5631b0a066bd0197d109b9f3" {
-	//	log.Error("totalCost completed!", "totalCost", totalCost)
-	//}
+	if contract.CodeHash.String() == "0x84d1cbfc7b7c569181930ce930f0dbe6edb8e8df5631b0a066bd0197d109b9f3" {
+		log.Error("totalCost completed!", "totalCost", totalCost)
+	}
 
 	if err == errStopToken {
 		err = nil // clear stop token error
