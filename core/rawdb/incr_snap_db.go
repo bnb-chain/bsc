@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -102,10 +101,6 @@ func NewIncrSnapDB(baseDir string, readonly bool, startBlock, blockInterval uint
 		switching:  false,
 	}
 	incrDB.switchCond = sync.NewCond(&incrDB.switchMutex)
-
-	if _, err = incrDB.currSnapDB.kvDB.Get(FirstStateID); strings.Contains(err.Error(), "pebble: not found") {
-		incrDB.WriteFirstStateID(0)
-	}
 
 	log.Info("New incr snap db", "baseDir", baseDir, "currentDir", currentDir, "blockInterval", blockInterval,
 		"startBlock", startBlock)

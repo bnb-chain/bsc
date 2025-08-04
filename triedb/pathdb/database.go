@@ -28,6 +28,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -954,7 +955,11 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 
 	data, err := db.incr.incrDB.GetKVDB().Get(rawdb.FirstStateID)
 	if err != nil {
-		return err
+		if errors.Is(err, pebble.ErrNotFound) {
+			db.incr.incrDB.WriteFirstStateID(diskLayerID)
+		} else {
+			return err
+		}
 	}
 	recordFirstStateID := binary.BigEndian.Uint64(data)
 	// compare recordFirstStateID with persistent state id
