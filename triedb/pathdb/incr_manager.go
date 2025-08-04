@@ -76,8 +76,6 @@ type incrManager struct {
 	incrDB      *rawdb.IncrSnapDB
 	chainConfig *params.ChainConfig
 
-	// used to identify the end block no need to truncate
-	endBlock uint64
 	// used to skip duplicate blocks until end block
 	duplicateEndBlock uint64
 
@@ -397,14 +395,6 @@ func (im *incrManager) writeIncrData(dl *diffLayer) error {
 		}
 	}
 
-	// truncate here to ensure the last block must have state id
-	// if dl.block <= im.endBlock {
-	// 	return nil
-	// }
-	// if err = im.truncateExtraBlock(dl.block); err != nil {
-	// 	log.Error("Failed to truncate incr chain freezer", "blockNumber", dl.block, "error", err)
-	// 	return err
-	// }
 	log.Debug("Incremental block data processing completed", "startBlock", startBlock, "endBlock", dl.block,
 		"totalProcessed", dl.block-startBlock+1)
 	return nil

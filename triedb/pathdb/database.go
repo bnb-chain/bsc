@@ -976,7 +976,7 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 	}
 
 	log.Info("Incremental data alignment check", "stateAncients", info.stateAncients,
-		"chainAncients", info.chainAncients, "diskLayerID", diskLayerID, "startBlock", startBlock)
+		"chainAncients", info.chainAncients, "diskLayerID", diskLayerID, "startBlock", startBlock, "recordFirstStateID", recordFirstStateID)
 
 	if info.isEmpty() {
 		if info.chainAncients == 0 && info.stateAncients == 0 {
@@ -1012,6 +1012,7 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 				return err
 			}
 			db.incr.duplicateEndBlock = start - 1
+			log.Info("recordFirstStateID is bigger", "start", start)
 		}
 
 		if err = info.stateFreezer.Reset(); err != nil {
@@ -1023,8 +1024,6 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 		if err = db.setBlockCount(startBlock, 0); err != nil {
 			return err
 		}
-		// these blocks are already known blocks, no need to truncate them now
-		db.incr.endBlock = info.chainAncients - 1
 		return nil
 	}
 
@@ -1071,7 +1070,7 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 		if err = db.setBlockCount(startBlock, info.lastStateBlock); err != nil {
 			return err
 		}
-		db.incr.endBlock = info.lastStateBlock
+		// db.incr.endBlock = info.lastStateBlock
 		return nil
 	}
 
@@ -1091,7 +1090,6 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 	if finalStateID < diskLayerID {
 		return fmt.Errorf("Final state ID is less than disk layer ID, diskLayerID: %d, finalStateID: %d", diskLayerID, finalStateID)
 	}
-	db.incr.endBlock = finalBlock
 
 	// Truncate incr state freezer
 	if err = db.truncateIncrStateFreezer(info, finalStateID); err != nil {
@@ -1128,9 +1126,9 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 
 	if info.isEmpty() {
 		if info.chainAncients != 0 {
-			if info.chainAncients-1 > startBlock {
-				db.incr.endBlock = info.chainAncients - 1
-			}
+			// if info.chainAncients-1 > startBlock {
+			// 	db.incr.endBlock = info.chainAncients - 1
+			// }
 			log.Warn("Incr state may lose some data that can affect the correctness of incr functions")
 		}
 
@@ -1160,7 +1158,7 @@ func (db *Database) alignIncrData(diskLayerID uint64) error {
 	if finalStateID < diskLayerID {
 		return fmt.Errorf("Final state ID is less than disk layer ID, diskLayerID: %d, finalStateID: %d", diskLayerID, finalStateID)
 	}
-	db.incr.endBlock = finalBlock
+	// db.incr.endBlock = finalBlock
 
 	// Truncate incr state freezer
 	if err = db.truncateIncrStateFreezer(info, finalStateID); err != nil {
