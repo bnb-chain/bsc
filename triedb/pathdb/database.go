@@ -1010,6 +1010,12 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 		return err
 	}
 
+	if recordFirstStateID == 0 {
+		if err = db.setBlockCount(startBlock, info.chainAncients); err != nil {
+			return err
+		}
+	}
+
 	log.Info("Incremental data alignment check", "stateAncients", info.stateAncients,
 		"chainAncients", info.chainAncients, "diskLayerID", diskLayerID, "startBlock", startBlock)
 
