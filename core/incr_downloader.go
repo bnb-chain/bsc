@@ -1190,8 +1190,8 @@ func (pr *progressReader) Read(p []byte) (int, error) {
 	n, err := pr.reader.Read(p)
 	pr.downloaded += uint64(n)
 
-	// Update progress every 1 second
-	if time.Since(pr.lastUpdate) > time.Second {
+	// Update progress every 30 seconds
+	if time.Since(pr.lastUpdate) > (time.Second * 30) {
 		progress := &DownloadProgress{
 			FileName:       pr.filename,
 			TotalSize:      pr.total,

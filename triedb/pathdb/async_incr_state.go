@@ -20,14 +20,16 @@ type asyncIncrStateBuffer struct {
 	isFlushing   atomic.Bool
 	stopFlushing atomic.Bool
 	done         chan struct{}
+	truncateChan chan uint64
 }
 
 // newAsyncIncrStateBuffer initializes the async incremental state buffer.
 func newAsyncIncrStateBuffer(limit, batchSize uint64) *asyncIncrStateBuffer {
 	b := &asyncIncrStateBuffer{
-		current:    newIncrNodeCache(limit, batchSize, nil, 0),
-		background: newIncrNodeCache(limit, batchSize, nil, 0),
-		done:       make(chan struct{}),
+		current:      newIncrNodeCache(limit, batchSize, nil, 0),
+		background:   newIncrNodeCache(limit, batchSize, nil, 0),
+		done:         make(chan struct{}),
+		truncateChan: make(chan uint64, 1),
 	}
 
 	// Start monitoring goroutine
@@ -108,6 +110,7 @@ func (a *asyncIncrStateBuffer) flush(incrDB *rawdb.IncrSnapDB, force bool) error
 				continue
 			}
 			atomic.StoreUint64(&a.current.immutable, 1)
+			// TODO: whether need to get truncate signal here?
 			return a.current.flush(incrDB)
 		}
 	}
@@ -130,6 +133,17 @@ func (a *asyncIncrStateBuffer) flush(incrDB *rawdb.IncrSnapDB, force bool) error
 			err := a.background.flush(incrDB)
 			if err == nil {
 				log.Info("Successfully flushed incremental state buffer to ancient db")
+
+				select {
+				case lastStateID := <-a.background.getTruncateSignal():
+					select {
+					case a.truncateChan <- lastStateID:
+						log.Info("Forwarded truncate signal after background flush", "stateID", lastStateID)
+					default:
+						log.Debug("Truncate channel full, skipping signal")
+					}
+				default:
+				}
 				return
 			}
 			log.Error("Failed to flush incremental state buffer to ancient db", "error", err)
@@ -153,6 +167,11 @@ func (a *asyncIncrStateBuffer) waitAndStopFlushing() {
 	}
 }
 
+// getTruncateSignal returns the truncate signal channel
+func (a *asyncIncrStateBuffer) getTruncateSignal() <-chan uint64 {
+	return a.truncateChan
+}
+
 // incrStateMetadata represents metadata for incremental state storage
 type incrStateMetadata struct {
 	NodeCount        uint64
@@ -164,12 +183,14 @@ type incrStateMetadata struct {
 // incrNodeCache is a specialized cache for incremental trie nodes
 type incrNodeCache struct {
 	nodes            *nodeSet
+	states           *stateSet
 	layers           uint64
 	limit            uint64 // Memory limit in bytes
 	batchSize        uint64 // Maximum flush batch size
 	stateIDArray     [2]uint64
 	blockNumberArray [2]uint64
 	immutable        uint64 // atomic flag: 1 = immutable, 0 = mutable
+	truncateSignal   chan uint64
 }
 
 var emptyArray = [2]uint64{0, 0}
@@ -188,6 +209,7 @@ func newIncrNodeCache(limit, batchSize uint64, nodes *nodeSet, layers uint64) *i
 		stateIDArray:     emptyArray,
 		blockNumberArray: emptyArray,
 		immutable:        0,
+		truncateSignal:   make(chan uint64, 1),
 	}
 }
 
@@ -317,6 +339,13 @@ func (c *incrNodeCache) writeBatchToAncientDB(incrDB *rawdb.IncrSnapDB, jn []jou
 		return err
 	}
 
+	select {
+	case c.truncateSignal <- c.stateIDArray[1]:
+		log.Debug("Sent truncate signal after WriteIncrState", "incrementalID", incrementalID)
+	default:
+		log.Debug("Truncate signal channel full, skipping signal")
+	}
+
 	log.Info("Wrote incremental state batch to ancient db", "incrementalID", incrementalID, "nodeCount", len(jn),
 		"layers", c.layers, "nodesSize", common.StorageSize(len(encodedBatch)), "stateIDArray", c.stateIDArray,
 		"blockNumberArray", c.blockNumberArray)
@@ -345,4 +374,9 @@ func (c *incrNodeCache) reset() {
 	c.layers = 0
 	c.stateIDArray = emptyArray
 	c.blockNumberArray = emptyArray
+}
+
+// getTruncateSignal returns the truncate signal channel
+func (c *incrNodeCache) getTruncateSignal() <-chan uint64 {
+	return c.truncateSignal
 }

@@ -17,6 +17,7 @@
 package pathdb
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -942,6 +943,190 @@ func (db *Database) loadIncrInfo() (*incrInfo, error) {
 	}
 
 	return info, nil
+}
+
+func (db *Database) restartIncrData(diskLayerID uint64) error {
+	// Load current incremental data info
+	info, err := db.loadIncrInfo()
+	if err != nil {
+		return err
+	}
+
+	data, err := db.incr.incrDB.GetKVDB().Get(firstStateID)
+	if err != nil {
+		return err
+	}
+	recordFirstStateID := binary.BigEndian.Uint64(data)
+	// compare recordFirstStateID with persistent state id
+	persistentStateID := rawdb.ReadPersistentStateID(db.diskdb)
+	// var usedStateID uint64
+	// var root common.Hash
+	// if db.tree.len() == 1 {
+	// 	log.Info("Layer tree length is 0, force kill case", "persistentStateID", persistentStateID,
+	// 		"recordFirstStateID", recordFirstStateID, "info.stateAncients", info.stateAncients, "info.lastStateID", info.lastStateID)
+	// 	if info.stateAncients == 0 {
+	// 		if persistentStateID > recordFirstStateID {
+	// 			h, err := readHistory(db.freezer, recordFirstStateID)
+	// 			if err != nil {
+	// 				return err
+	// 			}
+	// 			usedStateID = recordFirstStateID
+	// 			root = h.meta.root
+	// 		} else {
+	// 			root, err = db.hasher(rawdb.ReadAccountTrieNode(db.diskdb, nil))
+	// 			if err != nil {
+	// 				log.Crit("Failed to compute node hash", "err", err)
+	// 			}
+	// 			usedStateID = persistentStateID
+	// 		}
+	// 	} else {
+	// 		if persistentStateID > info.lastStateID {
+	// 			h, err := readHistory(db.freezer, recordFirstStateID)
+	// 			if err != nil {
+	// 				return err
+	// 			}
+	// 			usedStateID = recordFirstStateID
+	// 			root = h.meta.root
+	// 		} else {
+	// 			root, err = db.hasher(rawdb.ReadAccountTrieNode(db.diskdb, nil))
+	// 			if err != nil {
+	// 				log.Crit("Failed to compute node hash", "err", err)
+	// 			}
+	// 			usedStateID = persistentStateID
+	// 		}
+	// 	}
+	// 	if usedStateID != persistentStateID {
+	// 		db.tree = newLayerTree(newDiskLayer(root, usedStateID, db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0)))
+	// 		if err = db.repairHistory(); err != nil {
+	// 			return err
+	// 		}
+	// 	}
+	// }
+
+	// Get start block to avoid duplicate data writing
+	startBlock, err := db.GetStartBlock()
+	if err != nil {
+		log.Error("Failed to get start block", "error", err)
+		return err
+	}
+
+	log.Info("Incremental data alignment check", "stateAncients", info.stateAncients,
+		"chainAncients", info.chainAncients, "diskLayerID", diskLayerID, "startBlock", startBlock)
+
+	if info.isEmpty() {
+		// if info.chainAncients != 0 {}
+
+		if persistentStateID > recordFirstStateID {
+			h, err := readHistory(db.freezer, recordFirstStateID-1)
+			if err != nil {
+				return err
+			}
+			root := h.meta.root
+			log.Info("Empty info", "recordFirstStateID", recordFirstStateID, "block", h.meta.block)
+
+			db.tree = newLayerTree(newDiskLayer(root, recordFirstStateID, db, nil,
+				NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0)))
+			if err = db.repairHistory(); err != nil {
+				return err
+			}
+
+			db.incr.duplicateEndBlock = h.meta.block - 1
+		} else {
+			// use current dir block
+			start, _, err := db.incr.incrDB.ParseCurrDirBlockNumber()
+			if err != nil {
+				return err
+			}
+			db.incr.duplicateEndBlock = start - 1
+		}
+
+		if err = info.stateFreezer.Reset(); err != nil {
+			return err
+		}
+		if err = info.chainFreezer.Reset(); err != nil {
+			return err
+		}
+		if err = db.setBlockCount(startBlock, 0); err != nil {
+			return err
+		}
+		// these blocks are already known blocks, no need to truncate them now
+		db.incr.endBlock = info.chainAncients - 1
+		return nil
+	}
+
+	log.Info("Both incr chain and state have data, comparing for alignment",
+		"lastChainStateID", info.lastChainStateID, "lastStateID", info.lastStateID,
+		"lastStateBlock", info.lastStateBlock, "chainAncients", info.chainAncients)
+
+	// handle force kill with incr state and chain data
+	if info.chainAncients-1 != info.lastStateBlock+1 {
+		log.Info("Force kill with data",
+			"lastChainStateID", info.lastChainStateID, "lastStateID", info.lastStateID,
+			"lastStateBlock", info.lastStateBlock, "chainAncients", info.chainAncients, "diskLayerID", diskLayerID)
+		if persistentStateID > info.lastStateID {
+			h, err := readHistory(db.freezer, info.lastStateID)
+			if err != nil {
+				return err
+			}
+			root := h.meta.root
+			block := h.meta.block
+			if block != info.lastStateBlock {
+				return fmt.Errorf("unequal block", "history block", block, "state block", info.lastStateBlock)
+			}
+
+			db.tree = newLayerTree(newDiskLayer(root, info.lastStateID, db, nil,
+				NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0)))
+			if err = db.repairHistory(); err != nil {
+				return err
+			}
+
+			db.incr.duplicateEndBlock = h.meta.block - 1
+		} else {
+			db.incr.duplicateEndBlock = info.lastStateBlock - 1
+		}
+
+		if err = db.incr.resetIncrChainFreezer(db.diskdb, info.lastStateBlock); err != nil {
+			return err
+		}
+		// handle block start number
+		if err = db.setBlockCount(startBlock, info.lastStateBlock); err != nil {
+			return err
+		}
+		db.incr.endBlock = info.lastStateBlock
+		return nil
+	}
+
+	// Find the minimum state ID to ensure consistency
+	var finalStateID, finalBlock uint64
+	if info.lastChainStateID < info.lastStateID {
+		finalStateID = info.lastChainStateID
+		finalBlock = info.chainAncients - 1
+	} else if info.lastStateID < info.lastChainStateID {
+		finalStateID = info.lastStateID
+		finalBlock = info.lastStateBlock
+	} else {
+		finalStateID = info.lastStateID
+		finalBlock = info.lastStateBlock
+	}
+
+	if finalStateID < diskLayerID {
+		return fmt.Errorf("Final state ID is less than disk layer ID, diskLayerID: %d, finalStateID: %d", diskLayerID, finalStateID)
+	}
+	db.incr.endBlock = finalBlock
+
+	// Truncate incr state freezer
+	if err = db.truncateIncrStateFreezer(info, finalStateID); err != nil {
+		return err
+	}
+	// Truncate incr chain freezer
+	if err = db.truncateIncrChainFreezer(info, finalBlock); err != nil {
+		return err
+	}
+
+	if err = db.setBlockCount(startBlock, finalBlock); err != nil {
+		return err
+	}
+	return nil
 }
 
 // alignIncrData aligns incremental data with disk layer after force kill restart
