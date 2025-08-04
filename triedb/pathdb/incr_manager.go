@@ -209,6 +209,9 @@ func (im *incrManager) truncateIncrChainFreezer() {
 		select {
 		case <-truncateTicker.C:
 			ancients, _ := im.incrDB.GetChainFreezer().Ancients()
+			if ancients == 0 {
+				return
+			}
 			if err := im.truncateExtraBlock(ancients - 1); err != nil {
 				log.Error("Failed to truncate extra block", "block", ancients-1, "error", err)
 				continue
