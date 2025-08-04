@@ -317,6 +317,7 @@ func (im *incrManager) processWriteTask(dl *diffLayer) error {
 		return nil
 	}
 
+	// log.Info("First handle blocks", "block", dl.block, "stateID", dl.stateID(), "duplicateEndBlock", im.duplicateEndBlock)
 	// Write incremental data
 	if err := im.resetIncrChainFreezer(im.db.diskdb, dl.block); err != nil {
 		log.Error("Failed to reset incr chain freezer", "blockNumber", dl.block, "error", err)
@@ -373,7 +374,7 @@ func (im *incrManager) writeIncrData(dl *diffLayer) error {
 			if switched {
 				im.asyncBuffer = newAsyncIncrStateBuffer(im.bufferLimit, defaultFlushBatchSize)
 				// record the first state id in pebble
-				im.incrDB.WriteFirstStateID(dl.stateID())
+				im.incrDB.WriteFirstStateID(dl.stateID() - 1)
 				log.Info("Directory switch completed", "blockNumber", i, "stateID", dl.stateID())
 			}
 
