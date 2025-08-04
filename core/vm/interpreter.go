@@ -201,9 +201,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// For optimisation reason we're using uint64 as the program counter.
 		// It's theoretically possible to go above 2^64. The YP defines the PC
 		// to be uint256. Practically much less so feasible.
-		pc        = uint64(0) // program counter
-		cost      uint64
-		totalCost uint64 // for debug only
+		pc            = uint64(0) // program counter
+		cost          uint64
+		calcTotalCost bool
+		//totalCost     uint64 // for debug only
 		// copies used by tracer
 		pcCopy  uint64 // needed for the deferred EVMLogger
 		gasCopy uint64 // for EVMLogger to log gas remaining before execution
@@ -227,11 +228,13 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// Use pre-calculated static gas
 			if contract.Gas >= cost {
 				contract.Gas -= cost
-				log.Error("[CACHE DEBUG] Static gas", "cost", cost, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+				//log.Error("[CACHE DEBUG] Static gas", "cost", cost, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
 			} else {
-				log.Error("[CACHE DEBUG] Insufficient gas for static", "cost", cost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-				cost = 0 // Reset cost to 0 when gas is insufficient
+				//log.Error("[CACHE DEBUG] Insufficient gas for static", "cost", cost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+				calcTotalCost = true
 			}
+		} else {
+			calcTotalCost = true
 		}
 	}
 
@@ -277,9 +280,12 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}
 		// for tracing: this gas consumption event is emitted below in the debug section.
 		// Only charge gas if we haven't already charged the pre-calculated static gas
-		cost = operation.constantGas // For tracing
-		totalCost += cost
-		if cost == 0 || !in.evm.Config.EnableOpcodeOptimizations {
+		if calcTotalCost || !in.evm.Config.EnableOpcodeOptimizations {
+			cost = operation.constantGas // For tracing
+			//if contract.CodeHash.String() == "0x84d1cbfc7b7c569181930ce930f0dbe6edb8e8df5631b0a066bd0197d109b9f3" {
+			//	totalCost += cost
+			//	log.Error("accumulate totalCost", "totalCost", totalCost, "cost", cost, "op", op.String(), "contract.CodeHash", contract.CodeHash.String())
+			//}
 			if contract.Gas < cost {
 				return nil, ErrOutOfGas
 			} else {
@@ -343,7 +349,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}
 		pc++
 	}
-	log.Error("total cost of contract so far", "totalCost", totalCost, "contract.CodeHash", contract.CodeHash.String())
+	//if contract.CodeHash.String() == "0x84d1cbfc7b7c569181930ce930f0dbe6edb8e8df5631b0a066bd0197d109b9f3" {
+	//	log.Error("totalCost completed!", "totalCost", totalCost)
+	//}
 
 	if err == errStopToken {
 		err = nil // clear stop token error
