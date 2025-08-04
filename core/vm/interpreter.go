@@ -279,7 +279,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// Only charge gas if we haven't already charged the pre-calculated static gas
 		cost = operation.constantGas // For tracing
 		totalCost += cost
-		log.Error("total cost of contract so far", "totalCost", totalCost, "contract.CodeHash", contract.CodeHash.String())
 		if cost == 0 || !in.evm.Config.EnableOpcodeOptimizations {
 			if contract.Gas < cost {
 				return nil, ErrOutOfGas
@@ -344,6 +343,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}
 		pc++
 	}
+	log.Error("total cost of contract so far", "totalCost", totalCost, "contract.CodeHash", contract.CodeHash.String())
 
 	if err == errStopToken {
 		err = nil // clear stop token error
