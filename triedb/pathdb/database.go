@@ -1021,6 +1021,9 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 		if err = info.chainFreezer.Reset(); err != nil {
 			return err
 		}
+		if err = db.incr.resetIncrChainFreezer(db.diskdb, db.incr.duplicateEndBlock+1); err != nil {
+			return err
+		}
 		if err = db.setBlockCount(startBlock, 0); err != nil {
 			return err
 		}

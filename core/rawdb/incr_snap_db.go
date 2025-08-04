@@ -288,18 +288,39 @@ func (idb *IncrSnapDB) switchToNewDirectoryWithAsyncManager(blockNum uint64, asy
 			return err
 		}
 
-		// Record the last block that was actually written to the old chain freezer
-		// ancients represents the count of blocks, so the last written block is ancients - 1
-		idb.lastBlock = ancients - 1
+		// 修复：基于实际写入的最后一个 block 号，而不是基于计数
+		// 计算实际写入的最后一个 block 号
+		var lastWrittenBlock uint64
+		if ancients > 0 {
+			// 从 tail 开始，计算实际写入的最后一个 block 号
+			lastWrittenBlock = tail + ancients - 1
+		} else {
+			lastWrittenBlock = tail - 1
+		}
+
+		idb.lastBlock = lastWrittenBlock
 		log.Info("Recorded old chain freezer state", "lastBlock", idb.lastBlock, "ancients", ancients,
-			"tail", tail, "switchTriggerBlock", blockNum)
+			"tail", tail, "switchTriggerBlock", blockNum, "lastWrittenBlock", lastWrittenBlock)
 	}
 
 	if err := idb.closeCurrentDatabases(); err != nil {
 		return err
 	}
 
-	newDir := filepath.Join(idb.baseDir, fmt.Sprintf(incrDirNamePattern, blockNum, blockNum+idb.info.blockInterval-1))
+	// 修复：确保新目录的起始 block 是上一个目录的结束 block + 1
+	// 而不是使用当前正在处理的 blockNum
+	var newStartBlock uint64
+	if idb.lastBlock > 0 {
+		// 使用上一个目录的结束 block + 1
+		newStartBlock = idb.lastBlock + 1
+		log.Info("Using last block + 1 for new directory", "lastBlock", idb.lastBlock, "newStartBlock", newStartBlock)
+	} else {
+		// 如果没有记录上一个 block，使用当前 blockNum
+		newStartBlock = blockNum
+		log.Info("No last block recorded, using current blockNum", "blockNum", blockNum)
+	}
+
+	newDir := filepath.Join(idb.baseDir, fmt.Sprintf(incrDirNamePattern, newStartBlock, newStartBlock+idb.info.blockInterval-1))
 	db, err := newSnapDBWrapper(newDir, &idb.info)
 	if err != nil {
 		return fmt.Errorf("failed to create new snap db wrapper in directory %s: %v", newDir, err)
@@ -309,7 +330,7 @@ func (idb *IncrSnapDB) switchToNewDirectoryWithAsyncManager(blockNum uint64, asy
 	idb.currentDir = newDir
 	idb.blockCount = 0
 	log.Info("Successfully completed coordinated directory switch", "newDir", newDir,
-		"oldLastBlock", idb.lastBlock, "startBlock", blockNum)
+		"oldLastBlock", idb.lastBlock, "newStartBlock", newStartBlock, "originalBlockNum", blockNum)
 
 	return nil
 }

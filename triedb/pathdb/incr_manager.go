@@ -374,6 +374,7 @@ func (im *incrManager) writeIncrData(dl *diffLayer) error {
 			if switched {
 				im.asyncBuffer = newAsyncIncrStateBuffer(im.bufferLimit, defaultFlushBatchSize)
 				// record the first state id in pebble
+				// TODO: check if this is correct
 				im.incrDB.WriteFirstStateID(dl.stateID() - 1)
 				log.Info("Directory switch completed", "blockNumber", i, "stateID", dl.stateID())
 			}
