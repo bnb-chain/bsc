@@ -18,14 +18,15 @@ package vm
 
 import (
 	"fmt"
-	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
+
+	"github.com/holiman/uint256"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/holiman/uint256"
 )
 
 // Config are the configuration options for the Interpreter
@@ -225,8 +226,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// Use pre-calculated static gas
 			if contract.Gas >= cost {
 				contract.Gas -= cost
+				log.Error("[CACHE DEBUG] Static gas deducted: %d, remaining gas: %d", cost, contract.Gas)
 			} else {
 				cost = 0 // Reset cost to 0 when gas is insufficient
+				log.Error("[CACHE DEBUG] Insufficient gas for static deduction: required=%d, available=%d", cost, contract.Gas)
 			}
 		}
 	}
