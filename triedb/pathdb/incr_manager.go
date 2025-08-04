@@ -35,9 +35,6 @@ const (
 	defaultFlushBatchSize = 2 * 1024 * 1024 * 1024
 )
 
-// firstStateID is used to record the first state id in each incr snapshot
-var firstStateID = []byte("firstStateID")
-
 // writeStats tracks write operation statistics
 type writeStats struct {
 	totalTasks       uint64
@@ -344,14 +341,14 @@ func (im *incrManager) writeIncrData(dl *diffLayer) error {
 				log.Error("Failed to check and switch incremental db", "error", err)
 				return err
 			}
+
 			if switched {
 				im.asyncBuffer = newAsyncIncrStateBuffer(im.bufferLimit, defaultFlushBatchSize)
 				// record the first state id in pebble
-				if err = im.incrDB.GetKVDB().Put(firstStateID, encodeStateID(dl.stateID())); err != nil {
-					return err
-				}
+				im.incrDB.WriteFirstStateID(dl.stateID())
 				log.Info("Directory switch completed", "blockNumber", i, "stateID", dl.stateID())
 			}
+
 			if err = im.resetIncrChainFreezer(im.db.diskdb, i); err != nil {
 				log.Error("Failed to reset incr chain freezer", "blockNumber", i, "error", err)
 				return err
@@ -574,10 +571,7 @@ func (im *incrManager) writeIncrBlock(reader ethdb.Reader, blockNumber, stateID 
 			log.Error("Failed to get parlia snapshot", "error", err)
 			return err
 		}
-		if err = im.incrDB.WriteParliaSnapshot(blockHash, blob); err != nil {
-			log.Error("Failed to write parlia snapshot into incremental snapshot", "error", err)
-			return err
-		}
+		im.incrDB.WriteParliaSnapshot(blockHash, blob)
 		log.Debug("Writing parlia snapshot into incremental", "blockNumber", blockNumber)
 	}
 

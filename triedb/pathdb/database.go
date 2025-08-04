@@ -952,7 +952,7 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 		return err
 	}
 
-	data, err := db.incr.incrDB.GetKVDB().Get(firstStateID)
+	data, err := db.incr.incrDB.GetKVDB().Get(rawdb.FirstStateID)
 	if err != nil {
 		return err
 	}

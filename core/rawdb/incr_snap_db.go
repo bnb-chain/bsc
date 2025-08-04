@@ -1,6 +1,7 @@
 package rawdb
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,6 +29,9 @@ const (
 	incrDirNameRegexPattern = `^incr-(\d+)-(\d+)$`
 	incrDirNamePattern      = "incr-%d-%d"
 )
+
+// FirstStateID is used to record the first state id in each incr snapshot
+var FirstStateID = []byte("firstStateID")
 
 type IncrSnapDB struct {
 	currSnapDB *snapDBWrapper
@@ -97,6 +102,10 @@ func NewIncrSnapDB(baseDir string, readonly bool, startBlock, blockInterval uint
 		switching:  false,
 	}
 	incrDB.switchCond = sync.NewCond(&incrDB.switchMutex)
+
+	if _, err = incrDB.currSnapDB.kvDB.Get(FirstStateID); strings.Contains(err.Error(), "pebble: not found") {
+		incrDB.WriteFirstStateID(0)
+	}
 
 	log.Info("New incr snap db", "baseDir", baseDir, "currentDir", currentDir, "blockInterval", blockInterval,
 		"startBlock", startBlock)
@@ -173,11 +182,6 @@ func (idb *IncrSnapDB) waitForSwitchComplete() {
 	log.Error("Timeout waiting for directory switch to complete")
 }
 
-// WaitForSwitchComplete waits until directory switching is complete (public version)
-func (idb *IncrSnapDB) WaitForSwitchComplete() {
-	idb.waitForSwitchComplete()
-}
-
 // WriteIncrBlockData writes incremental block data and checks if directory switch is needed
 func (idb *IncrSnapDB) WriteIncrBlockData(number, id uint64, hash, header, body, receipts, td, sidecars []byte,
 	isEmptyBlock, isCancun bool) error {
@@ -223,14 +227,13 @@ func (idb *IncrSnapDB) WriteIncrContractCodes(codes map[common.Address]ContractC
 }
 
 // WriteParliaSnapshot stores parlia snapshot into pebble.
-func (idb *IncrSnapDB) WriteParliaSnapshot(hash common.Hash, blob []byte) error {
+func (idb *IncrSnapDB) WriteParliaSnapshot(hash common.Hash, blob []byte) {
 	idb.lock.Lock()
 	defer idb.lock.Unlock()
 
 	if err := idb.currSnapDB.kvDB.Put(append(ParliaSnapshotPrefix, hash[:]...), blob); err != nil {
-		return fmt.Errorf("failed to write parlia snapshot: %w", err)
+		log.Crit("Failed to write parlia snapshot", "error", err)
 	}
-	return nil
 }
 
 func (idb *IncrSnapDB) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
@@ -238,6 +241,17 @@ func (idb *IncrSnapDB) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	defer idb.lock.Unlock()
 
 	return idb.currSnapDB.kvDB.NewIterator(prefix, start)
+}
+
+func (idb *IncrSnapDB) WriteFirstStateID(id uint64) {
+	idb.lock.Lock()
+	defer idb.lock.Unlock()
+
+	enc := make([]byte, 8)
+	binary.BigEndian.PutUint64(enc, id)
+	if err := idb.currSnapDB.kvDB.Put(FirstStateID, enc); err != nil {
+		log.Crit("Failed to write first state ID", "id", id, "error", err)
+	}
 }
 
 // switchToNewDirectoryWithAsyncManager performs directory switch with async write manager coordination
@@ -401,14 +415,6 @@ func (idb *IncrSnapDB) Close() error {
 
 	log.Info("Closing IncrDB", "currentDir", idb.currentDir)
 	return idb.closeCurrentDatabases()
-}
-
-// GetCurrentStats returns current statistics
-func (idb *IncrSnapDB) GetCurrentStats() (string, uint64) {
-	idb.lock.RLock()
-	defer idb.lock.RUnlock()
-
-	return idb.currentDir, idb.info.blockInterval
 }
 
 // IsSwitching returns true if directory switching is in progress
