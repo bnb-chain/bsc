@@ -374,7 +374,6 @@ func (im *incrManager) writeIncrData(dl *diffLayer) error {
 			if switched {
 				im.asyncBuffer = newAsyncIncrStateBuffer(im.bufferLimit, defaultFlushBatchSize)
 				// record the first state id in pebble
-				// TODO: check if this is correct
 				im.incrDB.WriteFirstStateID(dl.stateID() - 1)
 				log.Info("Directory switch completed", "blockNumber", i, "stateID", dl.stateID())
 			}
@@ -445,7 +444,11 @@ func (im *incrManager) truncateExtraBlock(blockNumber uint64) error {
 		log.Error("Failed to get incr chain freezer tail", "error", err)
 		return err
 	}
+	if tail == 0 {
+		return nil
+	}
 
+	// log.Info("truncateExtraBlock", "blockNumber", blockNumber, "tail", tail)
 	// Only truncate if we have more blocks than the limit and there are actual blocks to truncate
 	if blockNumber-tail >= im.db.config.IncrKeptBlocks {
 		targetTail := blockNumber - im.db.config.IncrKeptBlocks + 1
