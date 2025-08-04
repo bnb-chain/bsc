@@ -402,7 +402,7 @@ func (db *Database) RepairIncrStore() error {
 	}
 
 	// Align incremental data with disk layer
-	return db.alignIncrData(diskLayerID)
+	return db.restartIncrData(diskLayerID)
 }
 
 func (db *Database) GetStartBlock() (uint64, error) {
