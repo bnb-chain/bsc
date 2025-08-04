@@ -825,22 +825,23 @@ func GenerateBasicBlocks(code []byte, gasCalc GasCalculator) []BasicBlock {
 // calculateBlockStaticGas calculates the total static gas cost for a basic block
 func calculateBlockStaticGas(block *BasicBlock, gasCalc GasCalculator) uint64 {
 	totalGas := uint64(0)
-	
+
 	// Use the same logic as GenerateBasicBlocks to parse opcodes correctly
 	code := block.Opcodes
 	pc := uint64(0)
-	
+
 	for pc < uint64(len(code)) {
 		op := ByteCode(code[pc])
-		
+
 		// Use calculateSkipSteps to parse instructions consistently
 		skip, steps := calculateSkipSteps(code, int(pc))
-		
+
 		// Calculate gas for the opcode (only for valid opcodes)
 		if op <= 0xff && gasCalc != nil {
 			totalGas += gasCalc.GetConstantGas(byte(op))
+			log.Error("check get opcode static gas in processor", "op", op, "gasCalc.GetConstantGas(byte(op))", gasCalc.GetConstantGas(byte(op)))
 		}
-		
+
 		// Skip the entire instruction (opcode + data)
 		if skip {
 			pc += uint64(steps) + 1
@@ -848,7 +849,7 @@ func calculateBlockStaticGas(block *BasicBlock, gasCalc GasCalculator) uint64 {
 			pc++
 		}
 	}
-	
+
 	return totalGas
 }
 
