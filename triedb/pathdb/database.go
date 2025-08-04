@@ -953,15 +953,18 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 		return err
 	}
 
+	var recordFirstStateID uint64
 	data, err := db.incr.incrDB.GetKVDB().Get(rawdb.FirstStateID)
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			db.incr.incrDB.WriteFirstStateID(diskLayerID)
+			recordFirstStateID = diskLayerID
 		} else {
 			return err
 		}
+	} else {
+		recordFirstStateID = binary.BigEndian.Uint64(data)
 	}
-	recordFirstStateID := binary.BigEndian.Uint64(data)
 	// compare recordFirstStateID with persistent state id
 	persistentStateID := rawdb.ReadPersistentStateID(db.diskdb)
 	// var usedStateID uint64
@@ -1015,19 +1018,16 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 		return err
 	}
 
-	if recordFirstStateID == 0 {
-		if err = db.setBlockCount(startBlock, info.chainAncients); err != nil {
-			return err
-		}
-		return nil
-	}
-
 	log.Info("Incremental data alignment check", "stateAncients", info.stateAncients,
 		"chainAncients", info.chainAncients, "diskLayerID", diskLayerID, "startBlock", startBlock)
 
 	if info.isEmpty() {
-		// if info.chainAncients != 0 {}
-
+		if info.chainAncients == 0 && info.stateAncients == 0 {
+			if err = db.setBlockCount(startBlock, 0); err != nil {
+				return err
+			}
+			return nil
+		}
 		if persistentStateID > recordFirstStateID {
 			h, err := readHistory(db.freezer, recordFirstStateID-1)
 			if err != nil {
