@@ -1038,8 +1038,13 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 
 			db.tree = newLayerTree(newDiskLayer(root, recordFirstStateID, db, nil,
 				NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0)))
-			if err = db.repairHistory(); err != nil {
-				return err
+			id := db.tree.bottom().stateID()
+			pruned, err := truncateFromHead(db.diskdb, db.freezer, id)
+			if err != nil {
+				log.Crit("Failed to truncate extra state histories", "err", err)
+			}
+			if pruned != 0 {
+				log.Warn("Truncated extra state histories", "number", pruned)
 			}
 
 			db.incr.duplicateEndBlock = h.meta.block - 1
@@ -1071,7 +1076,7 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 		"lastStateBlock", info.lastStateBlock, "chainAncients", info.chainAncients)
 
 	// handle force kill with incr state and chain data
-	if info.chainAncients-1 != info.lastStateBlock+1 {
+	if info.chainAncients-1 != info.lastStateBlock {
 		log.Info("Force kill with data",
 			"lastChainStateID", info.lastChainStateID, "lastStateID", info.lastStateID,
 			"lastStateBlock", info.lastStateBlock, "chainAncients", info.chainAncients, "diskLayerID", diskLayerID)
@@ -1088,8 +1093,13 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 
 			db.tree = newLayerTree(newDiskLayer(root, info.lastStateID, db, nil,
 				NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0)))
-			if err = db.repairHistory(); err != nil {
-				return err
+			id := db.tree.bottom().stateID()
+			pruned, err := truncateFromHead(db.diskdb, db.freezer, id)
+			if err != nil {
+				log.Crit("Failed to truncate extra state histories", "err", err)
+			}
+			if pruned != 0 {
+				log.Warn("Truncated extra state histories", "number", pruned)
 			}
 
 			db.incr.duplicateEndBlock = h.meta.block - 1
