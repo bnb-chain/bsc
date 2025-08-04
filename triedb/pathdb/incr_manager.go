@@ -131,7 +131,10 @@ func (im *incrManager) Start() {
 	go im.worker()
 
 	im.wg.Add(1)
-	go im.truncateSignalListener()
+	go im.truncateStateFreezer()
+
+	im.wg.Add(1)
+	go im.truncateIncrChainFreezer()
 
 	im.started = true
 	log.Info("Incremental store async worker started")
@@ -182,8 +185,8 @@ func (im *incrManager) Stop() {
 	im.LogStats()
 }
 
-// truncateSignalListener listens for truncate signals and executes truncation
-func (im *incrManager) truncateSignalListener() {
+// truncateStateFreezer listens for truncate state freezer signals and executes truncation
+func (im *incrManager) truncateStateFreezer() {
 	defer im.wg.Done()
 
 	for {
@@ -193,6 +196,26 @@ func (im *incrManager) truncateSignalListener() {
 			return
 		case stateID := <-im.asyncBuffer.getTruncateSignal():
 			im.handleTruncateSignal(stateID)
+		}
+	}
+}
+
+func (im *incrManager) truncateIncrChainFreezer() {
+	truncateTicker := time.NewTicker(time.Second * 3)
+	defer truncateTicker.Stop()
+	defer im.wg.Done()
+
+	for {
+		select {
+		case <-truncateTicker.C:
+			ancients, _ := im.incrDB.GetChainFreezer().Ancients()
+			if err := im.truncateExtraBlock(ancients - 1); err != nil {
+				log.Error("Failed to truncate extra block", "block", ancients-1, "error", err)
+				continue
+			}
+		case <-im.stopChan:
+			log.Info("Stopping incremental chain freezer truncation task")
+			return
 		}
 	}
 }
@@ -336,6 +359,10 @@ func (im *incrManager) writeIncrData(dl *diffLayer) error {
 		}
 
 		if im.incrDB.Full() {
+			if err = im.truncateExtraBlock(i - 1); err != nil {
+				log.Error("Failed to truncate incr chain freezer", "blockNumber", i-1, "error", err)
+				return err
+			}
 			switched, err := im.incrDB.CheckAndInitiateSwitch(i, im)
 			if err != nil {
 				log.Error("Failed to check and switch incremental db", "error", err)
@@ -368,13 +395,13 @@ func (im *incrManager) writeIncrData(dl *diffLayer) error {
 	}
 
 	// truncate here to ensure the last block must have state id
-	if dl.block <= im.endBlock {
-		return nil
-	}
-	if err = im.truncateExtraBlock(dl.block); err != nil {
-		log.Error("Failed to truncate incr chain freezer", "blockNumber", dl.block, "error", err)
-		return err
-	}
+	// if dl.block <= im.endBlock {
+	// 	return nil
+	// }
+	// if err = im.truncateExtraBlock(dl.block); err != nil {
+	// 	log.Error("Failed to truncate incr chain freezer", "blockNumber", dl.block, "error", err)
+	// 	return err
+	// }
 	log.Debug("Incremental block data processing completed", "startBlock", startBlock, "endBlock", dl.block,
 		"totalProcessed", dl.block-startBlock+1)
 	return nil

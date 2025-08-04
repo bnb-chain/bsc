@@ -967,49 +967,6 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 	}
 	// compare recordFirstStateID with persistent state id
 	persistentStateID := rawdb.ReadPersistentStateID(db.diskdb)
-	// var usedStateID uint64
-	// var root common.Hash
-	// if db.tree.len() == 1 {
-	// 	log.Info("Layer tree length is 0, force kill case", "persistentStateID", persistentStateID,
-	// 		"recordFirstStateID", recordFirstStateID, "info.stateAncients", info.stateAncients, "info.lastStateID", info.lastStateID)
-	// 	if info.stateAncients == 0 {
-	// 		if persistentStateID > recordFirstStateID {
-	// 			h, err := readHistory(db.freezer, recordFirstStateID)
-	// 			if err != nil {
-	// 				return err
-	// 			}
-	// 			usedStateID = recordFirstStateID
-	// 			root = h.meta.root
-	// 		} else {
-	// 			root, err = db.hasher(rawdb.ReadAccountTrieNode(db.diskdb, nil))
-	// 			if err != nil {
-	// 				log.Crit("Failed to compute node hash", "err", err)
-	// 			}
-	// 			usedStateID = persistentStateID
-	// 		}
-	// 	} else {
-	// 		if persistentStateID > info.lastStateID {
-	// 			h, err := readHistory(db.freezer, recordFirstStateID)
-	// 			if err != nil {
-	// 				return err
-	// 			}
-	// 			usedStateID = recordFirstStateID
-	// 			root = h.meta.root
-	// 		} else {
-	// 			root, err = db.hasher(rawdb.ReadAccountTrieNode(db.diskdb, nil))
-	// 			if err != nil {
-	// 				log.Crit("Failed to compute node hash", "err", err)
-	// 			}
-	// 			usedStateID = persistentStateID
-	// 		}
-	// 	}
-	// 	if usedStateID != persistentStateID {
-	// 		db.tree = newLayerTree(newDiskLayer(root, usedStateID, db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0)))
-	// 		if err = db.repairHistory(); err != nil {
-	// 			return err
-	// 		}
-	// 	}
-	// }
 
 	// Get start block to avoid duplicate data writing
 	startBlock, err := db.GetStartBlock()
