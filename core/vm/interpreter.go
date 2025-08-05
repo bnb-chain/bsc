@@ -246,11 +246,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			contract.Gas -= in.evm.TxContext.AccessEvents.CodeChunksRangeGas(contractAddr, pc, 1, uint64(len(contract.Code)), false)
 		}
 
-		// 优化版本：只在跳转后或首次执行时检查block边界
-		if in.evm.Config.EnableOpcodeOptimizations {
+		if in.evm.Config.EnableOpcodeOptimizations && !calcTotalCost {
 			// 只在以下情况检查block边界：
 			// 1. 当前block为空（首次执行）
-			// 3. PC超出了当前block范围
+			// 2. PC超出了当前block范围
 			if currentBlock == nil || pc >= nextBlockPC {
 				if block, found := compiler.GetBlockByPC(contract.CodeHash, pc); found {
 					currentBlock = block
