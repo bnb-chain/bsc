@@ -8,9 +8,7 @@ import (
 type OpCodeCache struct {
 	optimizedCodeCache *lru.Cache[common.Hash, []byte]
 	bitvecCache        *lru.Cache[common.Hash, []byte]
-	// 新增：BasicBlock cache和总gas cache
-	blockCache    *lru.Cache[common.Hash, map[uint64]*BasicBlock]
-	totalGasCache *lru.Cache[common.Hash, uint64]
+	blockCache         *lru.Cache[common.Hash, map[uint64]*BasicBlock]
 }
 
 func (c *OpCodeCache) GetCachedBitvec(codeHash common.Hash) []byte {
