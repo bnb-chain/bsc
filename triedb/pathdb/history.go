@@ -704,6 +704,9 @@ func truncateIncrChainFreezerFromTail(store ethdb.AncientStore, ntail uint64) (i
 	if err != nil {
 		return 0, err
 	}
+	if ohead == otail {
+		return 0, nil
+	}
 	// Ensure that the truncation target falls within the specified range.
 	if otail > ntail || ntail > ohead {
 		return 0, fmt.Errorf("out of range, tail: %d, head: %d, target: %d", otail, ohead, ntail)

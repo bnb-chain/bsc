@@ -1,7 +1,6 @@
 package pathdb
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
@@ -129,10 +128,7 @@ func (im *incrManager) Start() {
 	go im.worker()
 
 	im.wg.Add(1)
-	go im.truncateStateFreezer()
-
-	im.wg.Add(1)
-	go im.truncateIncrChainFreezer()
+	go im.handleTruncateSignal()
 
 	im.started = true
 	log.Info("Incremental store async worker started")
@@ -154,8 +150,7 @@ func (im *incrManager) Stop() {
 	shutdownComplete := make(chan struct{})
 
 	go func() {
-		// Drain queue first
-		im.DrainQueue()
+		im.drainQueue()
 
 		// Stop workers
 		close(im.stopChan)
@@ -183,22 +178,8 @@ func (im *incrManager) Stop() {
 	im.LogStats()
 }
 
-// truncateStateFreezer listens for truncate state freezer signals and executes truncation
-func (im *incrManager) truncateStateFreezer() {
-	defer im.wg.Done()
-
-	for {
-		select {
-		case <-im.stopChan:
-			log.Debug("Truncate signal listener stopped")
-			return
-		case stateID := <-im.asyncBuffer.getTruncateSignal():
-			im.handleTruncateSignal(stateID)
-		}
-	}
-}
-
-func (im *incrManager) truncateIncrChainFreezer() {
+// handleTruncateSignal accept truncate state freezer and incr chain freezer signal.
+func (im *incrManager) handleTruncateSignal() {
 	truncateTicker := time.NewTicker(time.Second * 3)
 	defer truncateTicker.Stop()
 	defer im.wg.Done()
@@ -214,33 +195,15 @@ func (im *incrManager) truncateIncrChainFreezer() {
 				log.Error("Failed to truncate extra block", "block", ancients-1, "error", err)
 				continue
 			}
+
+		case stateID := <-im.asyncBuffer.getTruncateSignal():
+			im.truncateStateFreezer(stateID)
+
 		case <-im.stopChan:
-			log.Info("Stopping incremental chain freezer truncation task")
+			log.Debug("Truncate signal listener stopped")
 			return
 		}
 	}
-}
-
-// handleTruncateSignal handles the truncate signal to truncate state history
-func (im *incrManager) handleTruncateSignal(stateID uint64) {
-	tail, err := im.db.freezer.Tail()
-	if err != nil {
-		return
-	}
-	limit := im.db.config.StateHistory
-	if limit == 0 || stateID-tail <= limit {
-		log.Info("No truncation needed", "stateID", stateID, "tail", tail, "limit", limit)
-		return
-	}
-
-	go func() {
-		pruned, err := truncateFromTail(im.db.diskdb, im.db.freezer, stateID-1)
-		if err != nil {
-			log.Error("Failed to truncate from tail", "error", err, "target", stateID)
-			return
-		}
-		log.Info("Successfully truncated state history", "pruned_items", pruned, "target_tail", stateID)
-	}()
 }
 
 // commit submits an async write task
@@ -317,7 +280,6 @@ func (im *incrManager) processWriteTask(dl *diffLayer) error {
 		return nil
 	}
 
-	// log.Info("First handle blocks", "block", dl.block, "stateID", dl.stateID(), "duplicateEndBlock", im.duplicateEndBlock)
 	// Write incremental data
 	if err := im.resetIncrChainFreezer(im.db.diskdb, dl.block); err != nil {
 		log.Error("Failed to reset incr chain freezer", "blockNumber", dl.block, "error", err)
@@ -448,14 +410,13 @@ func (im *incrManager) truncateExtraBlock(blockNumber uint64) error {
 		return nil
 	}
 
-	// log.Info("truncateExtraBlock", "blockNumber", blockNumber, "tail", tail)
 	// Only truncate if we have more blocks than the limit and there are actual blocks to truncate
 	if blockNumber-tail >= im.db.config.IncrKeptBlocks {
 		targetTail := blockNumber - im.db.config.IncrKeptBlocks + 1
 		pruned, err := truncateIncrChainFreezerFromTail(incrChainFreezer, targetTail)
 		if err != nil {
 			log.Error("Failed to truncate chain freezer", "target_tail", targetTail, "current_tail", tail,
-				"error", err)
+				"blockNumber", blockNumber, "error", err)
 			return err
 		}
 
@@ -482,8 +443,8 @@ func (im *incrManager) updateStats(err error) {
 	}
 }
 
-// DrainQueue waits for all pending tasks to be processed
-func (im *incrManager) DrainQueue() {
+// drainQueue waits for all pending tasks to be processed
+func (im *incrManager) drainQueue() {
 	for {
 		queueLen := im.GetQueueLength()
 		if queueLen == 0 {
@@ -629,6 +590,28 @@ func (im *incrManager) ForceFlushStateBuffer() error {
 	return nil
 }
 
+// truncateStateFreezer truncate state history by flushed stateID.
+func (im *incrManager) truncateStateFreezer(stateID uint64) {
+	tail, err := im.db.freezer.Tail()
+	if err != nil {
+		return
+	}
+	limit := im.db.config.StateHistory
+	if limit == 0 || stateID-tail <= limit {
+		log.Info("No truncation needed", "stateID", stateID, "tail", tail, "limit", limit)
+		return
+	}
+
+	go func() {
+		pruned, err := truncateFromTail(im.db.diskdb, im.db.freezer, stateID-1)
+		if err != nil {
+			log.Error("Failed to truncate from tail", "error", err, "target", stateID)
+			return
+		}
+		log.Info("Successfully truncated state history", "pruned_items", pruned, "target_tail", stateID)
+	}()
+}
+
 // readIncrMetadata reads incremental metadata.
 func readIncrMetadata(reader ethdb.AncientReader, id uint64) (*incrStateMetadata, error) {
 	blob := rawdb.ReadIncrStateHistoryMeta(reader, id)
@@ -675,11 +658,4 @@ func flattenTrieNodes(jn []journalNodes) map[common.Hash]map[string]*trienode.No
 		nodes[entry.Owner] = subset
 	}
 	return nodes
-}
-
-// encodeStateID encodes a block state id as big endian uint64
-func encodeStateID(id uint64) []byte {
-	enc := make([]byte, 8)
-	binary.BigEndian.PutUint64(enc, id)
-	return enc
 }

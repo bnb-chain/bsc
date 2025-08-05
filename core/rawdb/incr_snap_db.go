@@ -266,7 +266,7 @@ func (idb *IncrSnapDB) switchToNewDirectoryWithAsyncManager(blockNum uint64, asy
 		idb.switchMutex.Unlock()
 	}()
 
-	log.Info("Force flushing all incr state data before directory switch", "count", idb.blockCount)
+	log.Info("Force flushing all incr state data before directory switch")
 	if err := asyncManager.ForceFlushStateBuffer(); err != nil {
 		return fmt.Errorf("failed to force flush buffered data: %v", err)
 	}
