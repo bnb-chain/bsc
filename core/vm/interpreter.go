@@ -293,7 +293,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		if contract.CodeHash.String() == "0x84d1cbfc7b7c569181930ce930f0dbe6edb8e8df5631b0a066bd0197d109b9f3" {
 			totalCost += cost
 			costCounter++
-			log.Error("accumulate totalCost", "totalCost", totalCost, "cost", cost, "op", op.String(), "costCounter", costCounter, "contract.CodeHash", contract.CodeHash.String(), "pc", pc)
+			log.Error("accumulate totalCost", "totalCost", totalCost, "cost", cost, "op", op.String(), "costCounter", costCounter, "fallback", calcTotalCost, "contract.CodeHash", contract.CodeHash.String(), "pc", pc)
 		}
 		if calcTotalCost || !in.evm.Config.EnableOpcodeOptimizations {
 
@@ -362,7 +362,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	}
 
 	if contract.CodeHash.String() == "0x84d1cbfc7b7c569181930ce930f0dbe6edb8e8df5631b0a066bd0197d109b9f3" {
-		log.Error("totalCost completed!", "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas, "contract.CodeHash", contract.CodeHash.String())
+		log.Error("totalCost completed!", "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas, "fallback", calcTotalCost, "contract.CodeHash", contract.CodeHash.String())
 	}
 
 	// 新增：记录实际使用的block gas
