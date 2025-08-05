@@ -194,11 +194,11 @@ func (idb *IncrSnapDB) WriteIncrBlockData(number, id uint64, hash, header, body,
 }
 
 // WriteIncrState writes incremental state data
-func (idb *IncrSnapDB) WriteIncrState(id uint64, meta, trieNodes []byte) error {
+func (idb *IncrSnapDB) WriteIncrState(id uint64, meta, trieNodes, states []byte) error {
 	idb.lock.Lock()
 	defer idb.lock.Unlock()
 
-	if err := WriteIncrState(idb.currSnapDB.stateFreezer, id, meta, trieNodes); err != nil {
+	if err := WriteIncrState(idb.currSnapDB.stateFreezer, id, meta, trieNodes, states); err != nil {
 		return fmt.Errorf("failed to write incr state: %w", err)
 	}
 	return nil

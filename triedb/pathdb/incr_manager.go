@@ -643,6 +643,35 @@ func readIncrTrieNodes(reader ethdb.AncientReader, id uint64) (map[common.Hash]m
 	return flattenTrieNodes(decodedTrieNodes), nil
 }
 
+func readIncrStatesData(reader ethdb.AncientReader, id uint64) (*stateSet, error) {
+	data, err := rawdb.ReadIncrStatesData(reader, id)
+	if err != nil {
+		log.Error("Failed to read incr states data", "id", id, "error", err)
+		return nil, err
+	}
+
+	var s statesData
+	if err = rlp.DecodeBytes(data, &s); err != nil {
+		log.Error("Failed to decode incr states data", "id", id, "error", err)
+		return nil, err
+	}
+
+	accountSet := make(map[common.Hash][]byte)
+	for i := 0; i < len(s.Acc.AddrHashes); i++ {
+		accountSet[s.Acc.AddrHashes[i]] = s.Acc.Accounts[i]
+	}
+
+	storageSet := make(map[common.Hash]map[common.Hash][]byte)
+	for _, entry := range s.Storages {
+		storageSet[entry.AddrHash] = make(map[common.Hash][]byte, len(entry.Keys))
+		for i := 0; i < len(entry.Keys); i++ {
+			storageSet[entry.AddrHash][entry.Keys[i]] = entry.Vals[i]
+		}
+	}
+
+	return newStates(accountSet, storageSet, s.RawStorageKey), nil
+}
+
 // flattenTrieNodes returns a two-dimensional map for internal nodes.
 func flattenTrieNodes(jn []journalNodes) map[common.Hash]map[string]*trienode.Node {
 	nodes := make(map[common.Hash]map[string]*trienode.Node)

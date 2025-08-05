@@ -48,10 +48,10 @@ func ReadIncrStateTrieNodes(db ethdb.AncientReaderOp, id uint64) ([]byte, error)
 	return blob, nil
 }
 
-// ReadIncrStateData retrieves the states corresponding to the specified
+// ReadIncrStatesData retrieves the states corresponding to the specified
 // state history. Compute the position of state history in freezer by minus one
 // since the id of first state history starts from one(zero for initial state).
-func ReadIncrStateData(db ethdb.AncientReaderOp, id uint64) ([]byte, error) {
+func ReadIncrStatesData(db ethdb.AncientReaderOp, id uint64) ([]byte, error) {
 	blob, err := db.Ancient(incrStateHistoryStatesData, id-1)
 	if err != nil {
 		return nil, err

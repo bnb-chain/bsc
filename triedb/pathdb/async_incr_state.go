@@ -60,14 +60,17 @@ func (a *asyncIncrStateBuffer) printBufferInfo() {
 	defer a.mux.RUnlock()
 
 	log.Info("Current buffer Status", "empty", a.current.empty(), "full", a.current.full(),
-		"size", common.StorageSize(a.current.size()), "layers", a.current.layers,
+		"totalSize", common.StorageSize(a.current.size()), "nodesSize", common.StorageSize(a.current.nodes.size),
+		"statesSize", common.StorageSize(a.current.states.size), "layers", a.current.layers,
 		"immutable", atomic.LoadUint64(&a.current.immutable) == 1,
 		"stateIDRange", fmt.Sprintf("%d-%d", a.current.stateIDArray[0], a.current.stateIDArray[1]),
 		"blockNumberRange", fmt.Sprintf("%d-%d", a.current.blockNumberArray[0], a.current.blockNumberArray[1]),
 		"limit", common.StorageSize(a.current.limit), "batchSize", common.StorageSize(a.current.batchSize))
 
 	log.Info("Background buffer Status", "empty", a.background.empty(), "full", a.background.full(),
-		"size", a.background.size(), "layers", a.background.layers, "immutable", atomic.LoadUint64(&a.background.immutable) == 1,
+		"totalSize", common.StorageSize(a.background.size()), "nodesSize", common.StorageSize(a.background.nodes.size),
+		"statesSize", common.StorageSize(a.background.states.size), "layers", a.background.layers,
+		"immutable", atomic.LoadUint64(&a.background.immutable) == 1,
 		"stateIDRange", fmt.Sprintf("%d-%d", a.background.stateIDArray[0], a.background.stateIDArray[1]),
 		"blockNumberRange", fmt.Sprintf("%d-%d", a.background.blockNumberArray[0], a.background.blockNumberArray[1]),
 		"limit", common.StorageSize(a.current.limit), "batchSize", common.StorageSize(a.current.batchSize))
@@ -160,6 +163,7 @@ func (a *asyncIncrStateBuffer) waitAndStopFlushing() {
 
 	// Stop flushing operations
 	a.stopFlushing.Store(true)
+
 	// Wait for flush operations to complete
 	for a.isFlushing.Load() {
 		time.Sleep(time.Second)
@@ -175,6 +179,7 @@ func (a *asyncIncrStateBuffer) getTruncateSignal() <-chan uint64 {
 // incrStateMetadata represents metadata for incremental state storage
 type incrStateMetadata struct {
 	NodeCount        uint64
+	StateCount       uint64
 	Layers           uint64
 	StateIDArray     [2]uint64
 	BlockNumberArray [2]uint64
@@ -239,6 +244,36 @@ func (c *incrNodeBuffer) flush(incrDB *rawdb.IncrSnapDB) error {
 	}
 	atomic.StoreUint64(&c.immutable, 0)
 	return nil
+}
+
+func (c *incrNodeBuffer) flushStates() statesData {
+	var acc accounts
+	for addrHash, blob := range c.states.accountData {
+		acc.AddrHashes = append(acc.AddrHashes, addrHash)
+		acc.Accounts = append(acc.Accounts, blob)
+	}
+
+	storages := make([]storage, 0, len(c.states.storageData))
+	for addrHash, slots := range c.states.storageData {
+		keys := make([]common.Hash, 0, len(slots))
+		vals := make([][]byte, 0, len(slots))
+		for key, val := range slots {
+			keys = append(keys, key)
+			vals = append(vals, val)
+		}
+		storages = append(storages, storage{
+			AddrHash: addrHash,
+			Keys:     keys,
+			Vals:     vals,
+		})
+	}
+
+	s := statesData{
+		RawStorageKey: c.states.rawStorageKey,
+		Acc:           acc,
+		Storages:      storages,
+	}
+	return s
 }
 
 func (c *incrNodeBuffer) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
@@ -325,7 +360,7 @@ func (c *incrNodeBuffer) writeBatchToAncientDB(incrDB *rawdb.IncrSnapDB, jn []jo
 		return fmt.Errorf("failed to RLP encode metadata: %v", err)
 	}
 
-	if err = incrDB.WriteIncrState(incrementalID, metaBytes, encodedBatch); err != nil {
+	if err = incrDB.WriteIncrState(incrementalID, metaBytes, encodedBatch, nil); err != nil {
 		log.Error("Failed to write incremental state", "error", err, "ancients", ancients,
 			"incrementalID", incrementalID)
 		return err
@@ -349,11 +384,13 @@ func (c *incrNodeBuffer) empty() bool {
 	return c.layers == 0
 }
 
+// TODO: whether need to add states size here?
 // full returns true if the cache exceeds the memory limit
 func (c *incrNodeBuffer) full() bool {
 	return c.size() > c.limit
 }
 
+// TODO: whether need to add states size here?
 // size returns the approximate memory size of the cache
 func (c *incrNodeBuffer) size() uint64 {
 	return c.nodes.size
@@ -363,6 +400,7 @@ func (c *incrNodeBuffer) size() uint64 {
 func (c *incrNodeBuffer) reset() {
 	atomic.StoreUint64(&c.immutable, 0)
 	c.nodes.reset()
+	c.states.reset()
 	c.layers = 0
 	c.stateIDArray = emptyArray
 	c.blockNumberArray = emptyArray
