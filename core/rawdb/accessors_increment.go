@@ -29,9 +29,9 @@ func WriteIncrState(db ethdb.AncientWriter, id uint64, meta, trieNodes, states [
 		if err := op.AppendRaw(incrStateHistoryTrieNodesData, id-1, trieNodes); err != nil {
 			return err
 		}
-		if err := op.AppendRaw(incrStateHistoryStatesData, id-1, states); err != nil {
-			return err
-		}
+		// if err := op.AppendRaw(incrStateHistoryStatesData, id-1, states); err != nil {
+		// 	return err
+		// }
 		return nil
 	})
 	return err
