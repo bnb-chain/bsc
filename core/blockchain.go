@@ -1581,7 +1581,6 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 	writeLive := func(blockChain types.Blocks, receiptChain []types.Receipts) (int, error) {
 		var (
 			skipPresenceCheck = false
-			batch             = bc.db.NewBatch()
 			blockBatch        = bc.db.NewBatch()
 		)
 		for i, block := range blockChain {
@@ -1615,13 +1614,6 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			// Write everything belongs to the blocks into the database. So that
 			// we can ensure all components of body is completed(body, receipts)
 			// except transaction indexes(will be created once sync is finished).
-			if batch.ValueSize() >= ethdb.IdealBatchSize {
-				if err := batch.Write(); err != nil {
-					return 0, err
-				}
-				size += int64(batch.ValueSize())
-				batch.Reset()
-			}
 			if blockBatch.ValueSize() >= ethdb.IdealBatchSize {
 				if err := blockBatch.Write(); err != nil {
 					return 0, err
@@ -1634,12 +1626,6 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 		// Write everything belongs to the blocks into the database. So that
 		// we can ensure all components of body is completed(body, receipts,
 		// tx indexes)
-		if batch.ValueSize() > 0 {
-			size += int64(batch.ValueSize())
-			if err := batch.Write(); err != nil {
-				return 0, err
-			}
-		}
 		if blockBatch.ValueSize() > 0 {
 			size += int64(blockBatch.ValueSize())
 			if err := blockBatch.Write(); err != nil {
