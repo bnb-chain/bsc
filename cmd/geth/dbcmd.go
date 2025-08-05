@@ -1499,10 +1499,6 @@ func inspectIncrSnapshot(ctx *cli.Context) error {
 }
 
 func inspectAncient(ctx *cli.Context) error {
-	if !ctx.IsSet(utils.AncientFlag.Name) {
-		return errors.New("increment snapshot path is not set")
-	}
-
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
