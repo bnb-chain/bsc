@@ -169,19 +169,11 @@ func (in *EVMInterpreter) CopyAndInstallSuperInstruction() {
 // considered a revert-and-consume-all-gas operation except for
 // ErrExecutionReverted which means revert-and-keep-gas-left.
 func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (ret []byte, err error) {
-	// Increment the call depth which is restricted to 1024
-	in.evm.depth++
-	defer func() { in.evm.depth-- }()
-
-	// Make sure the readOnly is only set if we aren't in readOnly yet.
-	// This also makes sure that the readOnly flag isn't removed for child calls.
-	if readOnly && !in.readOnly {
-		in.readOnly = true
-		defer func() { in.readOnly = false }()
-	}
-
-	// Reset the previous call's return data. It's unimportant to preserve the old buffer
-	// as every returning call will return new data anyway.
+	in.readOnly = readOnly
+	// Reset the previous call's return data. It's unimportant to a reset *this*
+	// call, but because if this call is returned to and the next one does not
+	// have ReturnDataSize, which will zero it. So we do the cleanup so that
+	// we can do a (hopefully) meaningful comparison.
 	in.returnData = nil
 
 	// Don't bother with the execution if there's no code.
@@ -204,14 +196,15 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		pc            = uint64(0) // program counter
 		cost          uint64
 		calcTotalCost bool
-		totalCost     uint64 // for debug only
-		costCounter   int
 		// copies used by tracer
-		pcCopy  uint64 // needed for the deferred EVMLogger
-		gasCopy uint64 // for EVMLogger to log gas remaining before execution
-		logged  bool   // deferred EVMLogger should ignore already logged steps
-		res     []byte // result of the opcode execution function
-		debug   = in.evm.Config.Tracer != nil
+		pcCopy           uint64 // needed for the deferred EVMLogger
+		gasCopy          uint64 // for EVMLogger to log gas remaining before execution
+		logged           bool   // deferred EVMLogger should ignore already logged steps
+		res              []byte // result of the opcode execution function
+		debug            = in.evm.Config.Tracer != nil
+		usedBlocks       = make(map[uint64]bool) // 记录已使用的block的StartPC
+		comsumedBlockGas uint64                  // 实际使用的block的static gas总和
+		currentBlock     *compiler.BasicBlock    // 当前block（缓存）
 	)
 	// Don't move this deferred function, it's placed before the OnOpcode-deferred method,
 	// so that it gets executed _after_: the OnOpcode needs the stacks before
@@ -221,23 +214,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		mem.Free()
 	}()
 	contract.Input = input
-
-	if in.evm.Config.EnableOpcodeOptimizations {
-		// Check if static gas is available for pre-calculation
-		cost = compiler.LoadStaticGas(contract.CodeHash)
-		if cost > 0 {
-			// Use pre-calculated static gas
-			if contract.Gas >= cost {
-				contract.Gas -= cost
-				//log.Error("[CACHE DEBUG] Static gas", "cost", cost, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-			} else {
-				//log.Error("[CACHE DEBUG] Insufficient gas for static", "cost", cost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-				calcTotalCost = true
-			}
-		} else {
-			calcTotalCost = true
-		}
-	}
 
 	if debug {
 		defer func() { // this deferred method handles exit-with-error
@@ -269,6 +245,34 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			contract.Gas -= in.evm.TxContext.AccessEvents.CodeChunksRangeGas(contractAddr, pc, 1, uint64(len(contract.Code)), false)
 		}
 
+		// 优化版本：只在block边界处调用GetBlockByPC
+		if in.evm.Config.EnableOpcodeOptimizations {
+			// 只在以下情况调用GetBlockByPC：
+			// 1. 当前block为空（首次）
+			// 2. PC超出了当前block范围
+			// 3. PC小于当前block起始位置（异常情况）
+			if currentBlock == nil || pc < currentBlock.StartPC || pc >= currentBlock.EndPC {
+				if block, found := compiler.GetBlockByPC(contract.CodeHash, pc); found {
+					currentBlock = block
+					if !usedBlocks[block.StartPC] {
+						usedBlocks[block.StartPC] = true
+						if contract.Gas >= block.StaticGas {
+							contract.Gas -= block.StaticGas
+							comsumedBlockGas += block.StaticGas
+							//log.Error("[CACHE DEBUG] Static gas", "cost", cost, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+						} else {
+							//log.Error("[CACHE DEBUG] Insufficient gas for static", "cost", cost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+							calcTotalCost = true
+							contract.Gas += comsumedBlockGas
+						}
+					}
+				} else {
+					calcTotalCost = true // if one or more block not found in cache, need cal detail
+					contract.Gas += comsumedBlockGas
+				}
+			}
+		}
+
 		// Get the operation from the jump table and validate the stack to ensure there are
 		// enough stack items available to perform the operation.
 		op = contract.GetOp(pc)
@@ -281,13 +285,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}
 		// for tracing: this gas consumption event is emitted below in the debug section.
 		// Only charge gas if we haven't already charged the pre-calculated static gas
-		cost = operation.constantGas // For tracing
-		if contract.CodeHash.String() == "0x84d1cbfc7b7c569181930ce930f0dbe6edb8e8df5631b0a066bd0197d109b9f3" {
-			totalCost += cost
-			costCounter++
-			log.Error("accumulate totalCost", "totalCost", totalCost, "cost", cost, "op", op.String(), "costCounter", costCounter, "contract.CodeHash", contract.CodeHash.String())
-		}
 		if calcTotalCost || !in.evm.Config.EnableOpcodeOptimizations {
+			cost = operation.constantGas // For tracing
 			if contract.Gas < cost {
 				return nil, ErrOutOfGas
 			} else {
@@ -351,9 +350,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}
 		pc++
 	}
-	if contract.CodeHash.String() == "0x84d1cbfc7b7c569181930ce930f0dbe6edb8e8df5631b0a066bd0197d109b9f3" {
-		log.Error("totalCost completed!", "totalCost", totalCost)
-	}
+
+	// 新增：记录实际使用的block gas
+	//if in.evm.Config.EnableOpcodeOptimizations && comsumedBlockGas > 0 {
+	//	log.Error("[BLOCK CACHE DEBUG] Execution completed", "usedBlocks", len(usedBlocks), "comsumedBlockGas", comsumedBlockGas, "contract.CodeHash", contract.CodeHash.String())
+	//}
 
 	if err == errStopToken {
 		err = nil // clear stop token error

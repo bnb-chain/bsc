@@ -8,7 +8,9 @@ import (
 type OpCodeCache struct {
 	optimizedCodeCache *lru.Cache[common.Hash, []byte]
 	bitvecCache        *lru.Cache[common.Hash, []byte]
-	staticGasCache     *lru.Cache[common.Hash, uint64]
+	// 新增：BasicBlock cache和总gas cache
+	blockCache    *lru.Cache[common.Hash, map[uint64]*BasicBlock]
+	totalGasCache *lru.Cache[common.Hash, uint64]
 }
 
 func (c *OpCodeCache) GetCachedBitvec(codeHash common.Hash) []byte {
@@ -22,7 +24,6 @@ func (c *OpCodeCache) AddBitvecCache(codeHash common.Hash, bitvec []byte) {
 
 func (c *OpCodeCache) RemoveCachedCode(hash common.Hash) {
 	c.optimizedCodeCache.Remove(hash)
-	c.staticGasCache.Remove(hash)
 }
 
 func (c *OpCodeCache) GetCachedCode(hash common.Hash) []byte {
@@ -34,13 +35,30 @@ func (c *OpCodeCache) AddCodeCache(hash common.Hash, optimizedCode []byte) {
 	c.optimizedCodeCache.Add(hash, optimizedCode)
 }
 
-func (c *OpCodeCache) GetCachedStaticGas(hash common.Hash) uint64 {
-	staticGas, _ := c.staticGasCache.Get(hash)
-	return staticGas
+// 新增：BasicBlock cache相关方法
+func (c *OpCodeCache) AddBlockCache(codeHash common.Hash, pcToBlock map[uint64]*BasicBlock) {
+	c.blockCache.Add(codeHash, pcToBlock)
 }
 
-func (c *OpCodeCache) AddStaticGasCache(hash common.Hash, staticGas uint64) {
-	c.staticGasCache.Add(hash, staticGas)
+func (c *OpCodeCache) GetCachedBlock(codeHash common.Hash, pc uint64) (*BasicBlock, bool) {
+	pcToBlock, exists := c.blockCache.Get(codeHash)
+	if !exists {
+		return nil, false
+	}
+
+	if block, found := pcToBlock[pc]; found {
+		return block, true
+	}
+	return nil, false
+}
+
+func (c *OpCodeCache) IsBlockCached(codeHash common.Hash) bool {
+	_, exists := c.blockCache.Get(codeHash)
+	return exists
+}
+
+func (c *OpCodeCache) RemoveBlockCache(codeHash common.Hash) {
+	c.blockCache.Remove(codeHash)
 }
 
 var opcodeCache *OpCodeCache
@@ -48,14 +66,14 @@ var opcodeCache *OpCodeCache
 const (
 	optimizedCodeCacheCap = 1024 * 1024
 	bitvecCacheCap        = 1024 * 1024
-	staticGasCacheCap     = 1024 * 1024
+	blockCacheCap         = 1024 * 1024
 )
 
 func init() {
 	opcodeCache = &OpCodeCache{
 		optimizedCodeCache: lru.NewCache[common.Hash, []byte](optimizedCodeCacheCap),
 		bitvecCache:        lru.NewCache[common.Hash, []byte](bitvecCacheCap),
-		staticGasCache:     lru.NewCache[common.Hash, uint64](staticGasCacheCap),
+		blockCache:         lru.NewCache[common.Hash, map[uint64]*BasicBlock](blockCacheCap),
 	}
 }
 

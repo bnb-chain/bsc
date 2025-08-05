@@ -6,7 +6,7 @@ import (
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // GasCalculator interface for calculating gas costs
@@ -121,14 +121,6 @@ func LoadBitvec(codeHash common.Hash) []byte {
 	return bitvec
 }
 
-func LoadStaticGas(hash common.Hash) uint64 {
-	if !enabled {
-		return 0
-	}
-	staticGas := codeCache.GetCachedStaticGas(hash)
-	return staticGas
-}
-
 func StoreBitvec(codeHash common.Hash, bitvec []byte) {
 	if !enabled {
 		return
@@ -189,8 +181,22 @@ func DeleteCodeCache(hash common.Hash) {
 	if !enabled {
 		return
 	}
-	// flush in case there are invalid cached code
+	// 清理所有相关cache
 	codeCache.RemoveCachedCode(hash)
+	codeCache.RemoveBlockCache(hash)
+}
+
+// GetBlockByPC 从cache获取PC对应的BasicBlock
+func GetBlockByPC(codeHash common.Hash, pc uint64) (*BasicBlock, bool) {
+	return codeCache.GetCachedBlock(codeHash, pc)
+}
+
+// GetBlockStaticGas 获取block的静态gas
+func GetBlockStaticGas(codeHash common.Hash, pc uint64) (uint64, bool) {
+	if block, found := GetBlockByPC(codeHash, pc); found {
+		return block.StaticGas, true
+	}
+	return 0, false
 }
 
 // DoCFGBasedOpcodeFusion performs opcode fusion within basic blocks, skipping blocks of type "others"
@@ -199,18 +205,6 @@ func DoCFGBasedOpcodeFusion(code []byte, gasCalc GasCalculator, hash common.Hash
 	blocks := GenerateBasicBlocks(code, gasCalc)
 	if len(blocks) == 0 {
 		return nil, ErrFailPreprocessing
-	}
-
-	// Calculate total static gas from all basic blocks and cache it
-	totalStaticGas := uint64(0)
-	for _, block := range blocks {
-		totalStaticGas += block.StaticGas
-	}
-
-	// Cache the static gas if we have a valid hash and gas calculator
-	if hash != (common.Hash{}) && gasCalc != nil {
-		log.Debug("Caching static gas", "hash", hash.Hex(), "totalStaticGas", totalStaticGas, "blockCount", len(blocks))
-		codeCache.AddStaticGasCache(hash, totalStaticGas)
 	}
 
 	// Create a copy of the original code (only after checking for optimized opcodes)
@@ -819,6 +813,30 @@ func GenerateBasicBlocks(code []byte, gasCalc GasCalculator) []BasicBlock {
 		currentBlock.StaticGas = calculateBlockStaticGas(currentBlock, gasCalc)
 		blocks = append(blocks, *currentBlock)
 	}
+
+	// 构建cache（如果enabled且blocks不为空）
+	if enabled && len(blocks) > 0 {
+		// 计算codeHash
+		codeHash := crypto.Keccak256Hash(code)
+
+		// 构建PC到Block的映射
+		pcToBlock := make(map[uint64]*BasicBlock)
+		totalGas := uint64(0)
+
+		for i := range blocks {
+			block := &blocks[i]
+			totalGas += block.StaticGas // 使用已计算的static gas
+
+			// 为block内的每个PC创建映射
+			for pc := block.StartPC; pc < block.EndPC; pc++ {
+				pcToBlock[pc] = block
+			}
+		}
+
+		// 添加到cache
+		codeCache.AddBlockCache(codeHash, pcToBlock)
+	}
+
 	return blocks
 }
 
@@ -839,7 +857,7 @@ func calculateBlockStaticGas(block *BasicBlock, gasCalc GasCalculator) uint64 {
 		// Calculate gas for the opcode (only for valid opcodes)
 		if op <= 0xff && gasCalc != nil {
 			totalGas += gasCalc.GetConstantGas(byte(op))
-			log.Error("check get opcode static gas in processor", "op", op, "gasCalc.GetConstantGas(byte(op))", gasCalc.GetConstantGas(byte(op)))
+			//log.Error("check get opcode static gas in processor", "op", op, "gasCalc.GetConstantGas(byte(op))", gasCalc.GetConstantGas(byte(op)))
 		}
 
 		// Skip the entire instruction (opcode + data)
