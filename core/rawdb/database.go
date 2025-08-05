@@ -42,6 +42,7 @@ type freezerdb struct {
 
 	ethdb.AncientFreezer
 	stateStore ethdb.Database
+	snapStore  ethdb.KeyValueStore
 }
 
 func (frdb *freezerdb) StateStoreReader() ethdb.Reader {
@@ -71,6 +72,11 @@ func (frdb *freezerdb) Close() error {
 			errs = append(errs, err)
 		}
 	}
+	if frdb.HasSeparateSnapStore() {
+		if err := frdb.GetSnapStore().Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	if len(errs) != 0 {
 		return fmt.Errorf("%v", errs)
 	}
@@ -93,6 +99,24 @@ func (frdb *freezerdb) GetStateStore() ethdb.Database {
 
 func (frdb *freezerdb) HasSeparateStateStore() bool {
 	return frdb.stateStore != nil
+}
+
+func (frdb *freezerdb) SetSnapStore(snapStore ethdb.KeyValueStore) {
+	if frdb.snapStore != nil {
+		frdb.snapStore.Close()
+	}
+	frdb.snapStore = snapStore
+}
+
+func (frdb *freezerdb) GetSnapStore() ethdb.KeyValueStore {
+	if frdb.snapStore != nil {
+		return frdb.snapStore
+	}
+	return frdb.KeyValueStore
+}
+
+func (frdb *freezerdb) HasSeparateSnapStore() bool {
+	return frdb.snapStore != nil
 }
 
 // Freeze is a helper method used for external testing to trigger and block until
@@ -122,6 +146,7 @@ func (frdb *freezerdb) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint6
 type nofreezedb struct {
 	ethdb.KeyValueStore
 	stateStore ethdb.Database
+	snapStore  ethdb.KeyValueStore
 }
 
 // HasAncient returns an error as we don't have a backing chain freezer.
@@ -211,6 +236,24 @@ func (db *nofreezedb) StateStoreReader() ethdb.Reader {
 	return db
 }
 
+func (db *nofreezedb) SetSnapStore(snapStore ethdb.KeyValueStore) {
+	if db.snapStore != nil {
+		db.snapStore.Close()
+	}
+	db.snapStore = snapStore
+}
+
+func (db *nofreezedb) GetSnapStore() ethdb.KeyValueStore {
+	if db.snapStore != nil {
+		return db.snapStore
+	}
+	return db.KeyValueStore
+}
+
+func (db *nofreezedb) HasSeparateSnapStore() bool {
+	return db.snapStore != nil
+}
+
 func (db *nofreezedb) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {
 	// Unlike other ancient-related methods, this method does not return
 	// errNotSupported when invoked.
@@ -248,6 +291,8 @@ func NewDatabase(db ethdb.KeyValueStore) ethdb.Database {
 
 type emptyfreezedb struct {
 	ethdb.KeyValueStore
+	stateStore ethdb.Database
+	snapStore  ethdb.KeyValueStore
 }
 
 // HasAncient returns nil for pruned db that we don't have a backing chain freezer.
@@ -315,10 +360,13 @@ func (db *emptyfreezedb) SyncAncient() error {
 	return nil
 }
 
-func (db *emptyfreezedb) GetStateStore() ethdb.Database      { return db }
-func (db *emptyfreezedb) SetStateStore(state ethdb.Database) {}
-func (db *emptyfreezedb) StateStoreReader() ethdb.Reader     { return db }
-func (db *emptyfreezedb) HasSeparateStateStore() bool        { return false }
+func (db *emptyfreezedb) GetStateStore() ethdb.Database              { return db }
+func (db *emptyfreezedb) SetStateStore(state ethdb.Database)         {}
+func (db *emptyfreezedb) StateStoreReader() ethdb.Reader             { return db }
+func (db *emptyfreezedb) HasSeparateStateStore() bool                { return false }
+func (db *emptyfreezedb) GetSnapStore() ethdb.KeyValueStore          { return db.KeyValueStore }
+func (db *emptyfreezedb) SetSnapStore(snapStore ethdb.KeyValueStore) {}
+func (db *emptyfreezedb) HasSeparateSnapStore() bool                 { return false }
 func (db *emptyfreezedb) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {
 	return nil
 }
@@ -651,6 +699,12 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		defer trieIter.Release()
 	}
 
+	var snapdbIter ethdb.Iterator
+	if db.HasSeparateSnapStore() {
+		snapdbIter = db.GetSnapStore().NewIterator(keyPrefix, nil)
+		defer snapdbIter.Release()
+	}
+
 	var (
 		count  int64
 		start  = time.Now()
@@ -837,6 +891,46 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			}
 		}
 		log.Info("Inspecting separate state database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
+	}
+	// inspect separate snapshot db
+	if snapdbIter != nil {
+		count = 0
+		logged = time.Now()
+		for snapdbIter.Next() {
+			var (
+				key   = snapdbIter.Key()
+				value = snapdbIter.Value()
+				size  = common.StorageSize(len(key) + len(value))
+			)
+			total += size
+
+			switch {
+			case bytes.HasPrefix(key, SnapshotAccountPrefix) && len(key) == (len(SnapshotAccountPrefix)+common.HashLength):
+				accountSnaps.Add(size)
+			case bytes.HasPrefix(key, SnapshotStoragePrefix) && len(key) == (len(SnapshotStoragePrefix)+2*common.HashLength):
+				storageSnaps.Add(size)
+			default:
+				var accounted bool
+				for _, meta := range [][]byte{
+					SnapshotRootKey, snapshotJournalKey, snapshotGeneratorKey, snapshotRecoveryKey, snapshotSyncStatusKey,
+				} {
+					if bytes.Equal(key, meta) {
+						metadata.Add(size)
+						accounted = true
+						break
+					}
+				}
+				if !accounted {
+					unaccounted.Add(size)
+				}
+			}
+			count++
+			if count%1000 == 0 && time.Since(logged) > 8*time.Second {
+				log.Info("Inspecting separate snapshot database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
+				logged = time.Now()
+			}
+		}
+		log.Info("Inspecting separate snapshot database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
 	}
 	// Display the database statistic of key-value store.
 	stats := [][]string{

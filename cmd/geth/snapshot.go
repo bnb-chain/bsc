@@ -298,7 +298,7 @@ func verifyState(ctx *cli.Context) error {
 		NoBuild:    true,
 		AsyncBuild: false,
 	}
-	snaptree, err := snapshot.New(snapConfig, chaindb, triedb, headBlock.Root(), 128, false)
+	snaptree, err := snapshot.New(snapConfig, chaindb.GetSnapStore(), triedb, headBlock.Root(), 128, false)
 	if err != nil {
 		log.Error("Failed to open snapshot tree", "err", err)
 		return err
@@ -631,7 +631,7 @@ func dumpState(ctx *cli.Context) error {
 		AsyncBuild: false,
 	}
 	triesInMemory := ctx.Uint64(utils.TriesInMemoryFlag.Name)
-	snaptree, err := snapshot.New(snapConfig, db, triedb, root, int(triesInMemory), false)
+	snaptree, err := snapshot.New(snapConfig, db.GetSnapStore(), triedb, root, int(triesInMemory), false)
 	if err != nil {
 		return err
 	}
@@ -728,7 +728,7 @@ func snapshotExportPreimages(ctx *cli.Context) error {
 		NoBuild:    true,
 		AsyncBuild: false,
 	}
-	snaptree, err := snapshot.New(snapConfig, chaindb, triedb, root, 128, false)
+	snaptree, err := snapshot.New(snapConfig, chaindb.GetSnapStore(), triedb, root, 128, false)
 	if err != nil {
 		return err
 	}

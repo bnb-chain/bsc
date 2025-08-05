@@ -306,6 +306,11 @@ func initGenesis(ctx *cli.Context) error {
 			utils.Fatalf("Failed to open separate trie database: %v", dbErr)
 		}
 		chaindb.SetStateStore(statediskdb)
+		snapdb, err := stack.OpenDatabase("chaindata/snapshot", 0, 0, "", false, true)
+		if err != nil {
+			utils.Fatalf("Failed to open separate snapshot database: %v", err)
+		}
+		chaindb.SetSnapStore(snapdb)
 		log.Warn("Multi-database is an experimental feature")
 	}
 
@@ -683,7 +688,7 @@ func dumpGenesis(ctx *cli.Context) error {
 
 	// dump whatever already exists in the datadir
 	stack, _ := makeConfigNode(ctx)
-	db, err := stack.OpenDatabase("chaindata", 0, 0, "", true)
+	db, err := stack.OpenDatabase("chaindata", 0, 0, "", true, false)
 	if err != nil {
 		return err
 	}

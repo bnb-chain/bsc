@@ -233,6 +233,18 @@ func (t *table) HasSeparateStateStore() bool {
 	return false
 }
 
+func (t *table) SetSnapStore(state ethdb.KeyValueStore) {
+	panic("not implement")
+}
+
+func (t *table) GetSnapStore() ethdb.KeyValueStore {
+	return nil
+}
+
+func (t *table) HasSeparateSnapStore() bool {
+	return false
+}
+
 func (t *table) StateStoreReader() ethdb.Reader {
 	return nil
 }

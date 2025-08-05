@@ -98,6 +98,18 @@ func (db *Database) HasSeparateStateStore() bool {
 	panic("not supported")
 }
 
+func (db *Database) SetSnapStore(state ethdb.KeyValueStore) {
+	panic("not supported")
+}
+
+func (db *Database) GetSnapStore() ethdb.KeyValueStore {
+	panic("not supported")
+}
+
+func (db *Database) HasSeparateSnapStore() bool {
+	panic("not supported")
+}
+
 func (db *Database) StateStoreReader() ethdb.Reader {
 	return db
 }
