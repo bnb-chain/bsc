@@ -323,7 +323,7 @@ of ancientStore, will also displays the reserved number of blocks in ancientStor
 	inspectAncientCmd = &cli.Command{
 		Action:      inspectAncient,
 		Name:        "inspect-ancient",
-		Flags:       []cli.Flag{utils.DataDirFlag},
+		Flags:       slices.Concat([]cli.Flag{utils.DataDirFlag}, utils.DatabaseFlags),
 		Usage:       "Inspect the ancient data of full snapshot information",
 		Description: `This command reads the ancient data of full snapshot information`,
 	}
