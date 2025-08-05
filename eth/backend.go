@@ -336,6 +336,23 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		bcOps = append(bcOps, core.EnableDoubleSignChecker)
 	}
 
+	// Add separate snapshot database if MultiDB is enabled and snapshot subdirectory exists
+	hasState, hasSnapshot := stack.CheckMultiDataBaseConfig()
+	if hasState && hasSnapshot {
+		// Create snapshot database using Node's high-level OpenDatabase method
+		cache := config.DatabaseCache * config.DatabaseHandles / 100
+		handles := config.DatabaseHandles * 90 / 100 // Use 90% of handles for snapshot DB
+
+		snapshotDb, err := stack.OpenDatabase("chaindata/snapshot", cache, handles, "eth/db/snapshot/", false)
+		if err != nil {
+			log.Error("Failed to open separate snapshot database", "err", err)
+		} else {
+			// Database interface embeds KeyValueStore, so we can pass it directly
+			bcOps = append(bcOps, core.WithSnapshotDB(snapshotDb))
+			log.Info("Using separate snapshot database", "path", stack.ResolvePath("chaindata/snapshot"))
+		}
+	}
+
 	peers := newPeerSet()
 	// TODO (MariusVanDerWijden) get rid of shouldPreserve in a follow-up PR
 	shouldPreserve := func(header *types.Header) bool {

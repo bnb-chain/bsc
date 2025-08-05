@@ -846,15 +846,28 @@ func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient,
 
 // CheckIfMultiDataBase check the state and block subdirectory of db, if subdirectory exists, return true
 func (n *Node) CheckIfMultiDataBase() bool {
-	stateExist := true
+	hasState, _ := n.CheckMultiDataBaseConfig()
+	return hasState
+}
 
+// CheckIfSnapshotDB check if separate snapshot subdirectory exists
+func (n *Node) CheckIfSnapshotDB() bool {
+	_, hasSnapshot := n.CheckMultiDataBaseConfig()
+	return hasSnapshot
+}
+
+// CheckMultiDataBaseConfig returns the MultiDB configuration status
+// Returns (hasState, hasSnapshot) indicating which separate databases exist
+func (n *Node) CheckMultiDataBaseConfig() (bool, bool) {
 	separateStateDir := filepath.Join(n.ResolvePath("chaindata"), "state")
-	fileInfo, stateErr := os.Stat(separateStateDir)
-	if os.IsNotExist(stateErr) || !fileInfo.IsDir() {
-		stateExist = false
-	}
+	stateInfo, stateErr := os.Stat(separateStateDir)
+	hasState := stateErr == nil && stateInfo.IsDir()
 
-	return stateExist
+	separateSnapshotDir := filepath.Join(n.ResolvePath("chaindata"), "snapshot")
+	snapshotInfo, snapshotErr := os.Stat(separateSnapshotDir)
+	hasSnapshot := snapshotErr == nil && snapshotInfo.IsDir()
+
+	return hasState, hasSnapshot
 }
 
 // ResolvePath returns the absolute path of a resource in the instance directory.

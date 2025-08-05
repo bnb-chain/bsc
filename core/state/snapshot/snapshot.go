@@ -194,15 +194,35 @@ type Tree struct {
 //   - otherwise, the entire snapshot is considered invalid and will be recreated on
 //     a background thread.
 func New(config Config, diskdb ethdb.KeyValueStore, triedb *triedb.Database, root common.Hash, cap int, withoutTrie bool) (*Tree, error) {
+	return NewWithSnapshotDB(config, diskdb, nil, triedb, root, cap, withoutTrie)
+}
+
+// NewWithSnapshotDB creates a new snapshot tree with an optional separate snapshot database.
+// Parameters:
+//   - maindb: the main blockchain database (used for snapshot data if snapshotdb is nil)
+//   - snapshotdb: optional separate database for snapshot data (nil means use maindb)
+//   - triedb: trie database for reconstruction
+//   - root, cap, withoutTrie: same as New function
+func NewWithSnapshotDB(config Config, maindb ethdb.KeyValueStore, snapshotdb ethdb.KeyValueStore, triedb *triedb.Database, root common.Hash, cap int, withoutTrie bool) (*Tree, error) {
+	// Determine which database to use for snapshot data storage
+	var snapStorageDB ethdb.KeyValueStore
+	if snapshotdb != nil {
+		// Use separate snapshot database if provided
+		snapStorageDB = snapshotdb
+	} else {
+		// Fallback to main blockchain database for snapshot data
+		snapStorageDB = maindb
+	}
+
 	snap := &Tree{
 		config:   config,
-		diskdb:   diskdb,
+		diskdb:   snapStorageDB, // diskdb field stores the database used for snapshot data
 		triedb:   triedb,
 		capLimit: cap,
 		layers:   make(map[common.Hash]snapshot),
 	}
 	// Attempt to load a previously persisted snapshot and rebuild one if failed
-	head, disabled, err := loadSnapshot(diskdb, triedb, root, config.CacheSize, config.Recovery, config.NoBuild, withoutTrie)
+	head, disabled, err := loadSnapshot(snapStorageDB, triedb, root, config.CacheSize, config.Recovery, config.NoBuild, withoutTrie)
 	if disabled {
 		log.Warn("Snapshot maintenance disabled (syncing)")
 		return snap, nil
@@ -224,7 +244,12 @@ func New(config Config, diskdb ethdb.KeyValueStore, triedb *triedb.Database, roo
 		snap.layers[head.Root()] = head
 		head = head.Parent()
 	}
-	log.Info("Snapshot loaded", "diskRoot", snap.diskRoot(), "root", root)
+
+	if snapshotdb != nil {
+		log.Info("Snapshot loaded with separate database", "diskRoot", snap.diskRoot(), "root", root)
+	} else {
+		log.Info("Snapshot loaded", "diskRoot", snap.diskRoot(), "root", root)
+	}
 	return snap, nil
 }
 
