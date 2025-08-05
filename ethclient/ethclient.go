@@ -261,7 +261,7 @@ func (ec *Client) FinalizedHeader(ctx context.Context, verifiedValidatorNum int6
 	return head, err
 }
 
-// GetFinalizedBlock returns the requested finalized block.
+// FinalizedBlock returns the requested finalized block.
 func (ec *Client) FinalizedBlock(ctx context.Context, verifiedValidatorNum int64, fullTx bool) (*types.Block, error) {
 	return ec.getBlock(ctx, "eth_getFinalizedBlock", verifiedValidatorNum, fullTx)
 }
