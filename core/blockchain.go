@@ -907,7 +907,8 @@ func (bc *BlockChain) rewindPathHead(head *types.Header, root common.Hash) (*typ
 		start  = time.Now() // Timestamp the rewinding is restarted
 		logged = time.Now() // Timestamp last progress log was printed
 	)
-	log.Info("Enter rewindPathHead", "number", head.Number, "hash", head.Hash(), "root", head.Root, "beyondRoot", beyondRoot)
+	log.Info("Enter rewindPathHead", "number", head.Number, "hash", head.Hash(), "head root", head.Root,
+		"beyondRoot", beyondRoot, "root", root)
 	// Rewind the head block tag until an available state is found.
 	for {
 		logger := log.Trace
@@ -1038,6 +1039,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 			}
 
 			var newHeadBlock *types.Header
+			log.Info("updateFn", "number", header.Number.Uint64(), "hash", header.Hash(), "root", root.String())
 			newHeadBlock, rootNumber = bc.rewindHead(header, root)
 			rawdb.WriteHeadBlockHash(db, newHeadBlock.Hash())
 

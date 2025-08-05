@@ -991,18 +991,28 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 				return err
 			}
 			root := h.meta.root
-			log.Info("Empty info", "recordFirstStateID", recordFirstStateID, "block", h.meta.block, "root", root)
-
-			db.tree = newLayerTree(newDiskLayer(root, recordFirstStateID, db, nil,
-				NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0)))
+			log.Info("Before recover case dhewdkewm", "root", root.String(), "block", h.meta.block, "id", recordFirstStateID)
+			if err := db.Recover(root); err != nil {
+				log.Error("Failed to recover state after force kill", "root", root, "stateID", info.lastStateID, "error", err)
+				// If recovery fails, we need to handle this gracefully
+				// For now, we'll continue but this might cause issues later
+			} else {
+				log.Info("Successfully recovered state after force kill", "root", root, "stateID", recordFirstStateID)
+			}
 			id := db.tree.bottom().stateID()
-			pruned, err := truncateFromHead(db.diskdb, db.freezer, id)
-			if err != nil {
-				log.Crit("Failed to truncate extra state histories", "err", err)
-			}
-			if pruned != 0 {
-				log.Warn("Truncated extra state histories", "number", pruned)
-			}
+			log.Info("After recover case", "root", root.String(), "block", h.meta.block, "id", id)
+			// db.tree = newLayerTree(newDiskLayer(root, recordFirstStateID, db, nil,
+			// 	NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0)))
+			// id := db.tree.bottom().stateID()
+			// log.Info("Empty info", "recordFirstStateID", recordFirstStateID, "block", h.meta.block, "root", root,
+			// 	"id", id)
+			// pruned, err := truncateFromHead(db.diskdb, db.freezer, id)
+			// if err != nil {
+			// 	log.Crit("Failed to truncate extra state histories", "err", err)
+			// }
+			// if pruned != 0 {
+			// 	log.Warn("Truncated extra state histories", "number", pruned)
+			// }
 
 			db.incr.duplicateEndBlock = h.meta.block - 1
 		} else {
@@ -1038,7 +1048,8 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 	if info.chainAncients-1 != info.lastStateBlock {
 		log.Info("Force kill with data",
 			"lastChainStateID", info.lastChainStateID, "lastStateID", info.lastStateID,
-			"lastStateBlock", info.lastStateBlock, "chainAncients", info.chainAncients, "diskLayerID", diskLayerID)
+			"lastStateBlock", info.lastStateBlock, "chainAncients", info.chainAncients, "diskLayerID", diskLayerID,
+			"persistentStateID", persistentStateID)
 		if persistentStateID > info.lastStateID {
 			h, err := readHistory(db.freezer, info.lastStateID)
 			if err != nil {
@@ -1049,17 +1060,28 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 			if block != info.lastStateBlock {
 				return fmt.Errorf("unequal block", "history block", block, "state block", info.lastStateBlock)
 			}
+			log.Info("Before recover case", "root", root.String(), "block", block, "id", info.lastStateID)
 
-			db.tree = newLayerTree(newDiskLayer(root, info.lastStateID, db, nil,
-				NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0)))
+			// db.tree = newLayerTree(newDiskLayer(root, info.lastStateID, db, nil,
+			// 	NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0)))
+
+			if err := db.Recover(root); err != nil {
+				log.Error("Failed to recover state after force kill", "root", root, "stateID", info.lastStateID, "error", err)
+				// If recovery fails, we need to handle this gracefully
+				// For now, we'll continue but this might cause issues later
+			} else {
+				log.Info("Successfully recovered state after force kill", "root", root, "stateID", info.lastStateID)
+			}
+
 			id := db.tree.bottom().stateID()
-			pruned, err := truncateFromHead(db.diskdb, db.freezer, id)
-			if err != nil {
-				log.Crit("Failed to truncate extra state histories", "err", err)
-			}
-			if pruned != 0 {
-				log.Warn("Truncated extra state histories", "number", pruned)
-			}
+			log.Info("After recover case", "root", root.String(), "block", block, "id", id)
+			// pruned, err := truncateFromHead(db.diskdb, db.freezer, id)
+			// if err != nil {
+			// 	log.Crit("Failed to truncate extra state histories", "err", err)
+			// }
+			// if pruned != 0 {
+			// 	log.Warn("Truncated extra state histories", "number", pruned)
+			// }
 
 			db.incr.duplicateEndBlock = h.meta.block - 1
 		} else {

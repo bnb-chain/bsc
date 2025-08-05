@@ -376,7 +376,7 @@ func (bc *BlockChain) HasState(hash common.Hash) bool {
 		return found
 	}
 	_, err := bc.statedb.OpenTrie(hash)
-	log.Info("Check HasState in OpenTrie", "root", hash, "err", err)
+	// log.Info("Check HasState in OpenTrie", "root", hash, "err", err)
 	return err == nil
 }
 
