@@ -336,7 +336,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		if p.bscExt == nil {
 			return nil, fmt.Errorf("peer does not support bsc protocol, peer: %v", p.ID())
 		}
-		if p.bscExt.Version() != bsc.Bsc2 {
+		if p.bscExt.Version() < bsc.Bsc2 {
 			return nil, fmt.Errorf("remote peer does not support the required Bsc2 protocol version, peer: %v", p.ID())
 		}
 		res, err := p.bscExt.RequestBlocksByRange(startHeight, startHash, count)
@@ -463,12 +463,15 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		peer.Log().Error("Snapshot extension barrier failed", "err", err)
 		return err
 	}
-	bsc, err := h.peers.waitBscExtension(peer)
+	bscExt, err := h.peers.waitBscExtension(peer)
 	if err != nil {
 		peer.Log().Error("Bsc extension barrier failed", "err", err)
 		return err
 	}
-
+	if bscExt != nil && bscExt.Version() == bsc.Bsc3 {
+		peer.CanHandleBAL.Store(true)
+		log.Debug("runEthPeer", "bscExt.Version", bscExt.Version(), "CanHandleBAL", peer.CanHandleBAL.Load())
+	}
 	// Execute the Ethereum handshake
 	var (
 		head   = h.chain.CurrentHeader()
@@ -518,7 +521,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	}
 
 	// Register the peer locally
-	if err := h.peers.registerPeer(peer, snap, bsc); err != nil {
+	if err := h.peers.registerPeer(peer, snap, bscExt); err != nil {
 		peer.Log().Error("Ethereum peer registration failed", "err", err)
 		return err
 	}

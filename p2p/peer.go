@@ -128,7 +128,8 @@ type Peer struct {
 
 	// it indicates the peer is in the validator network, it will directly broadcast when miner/sentry broadcast mined block,
 	// and won't broadcast any txs between EVN peers.
-	EVNPeerFlag atomic.Bool
+	EVNPeerFlag  atomic.Bool
+	CanHandleBAL atomic.Bool
 }
 
 // NewPeer returns a peer for testing purposes.
