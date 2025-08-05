@@ -2305,10 +2305,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 		}
 		bc.updateHighestVerifiedHeader(block.Header())
 
-		// TODO: add BAL to the block
-		// throwawayBAL := statedb.CopyDoPrefetch()
-		// bc.prefetcher.PrefetchBAL(block, throwawayBAL, interruptCh)
-
 		// The traced section of block import.
 		start := time.Now()
 		res, err := bc.processBlock(parent.Root, block, setHead, makeWitness && len(chain) == 1)

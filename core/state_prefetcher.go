@@ -183,10 +183,10 @@ func (p *statePrefetcher) PrefetchBALSnapshot(balPrefetch *types.BlockAccessList
 func (p *statePrefetcher) PrefetchBALTrie(balPrefetch *types.BlockAccessListPrefetch, block *types.Block, statedb *state.StateDB, interruptCh <-chan struct{}) {
 	for txIndex, txAccessList := range balPrefetch.AccessListItems {
 		for accAddr, storageItems := range txAccessList.Accounts {
-			log.Info("PrefetchBAL", "txIndex", txIndex, "accAddr", accAddr)
+			log.Debug("PrefetchBAL", "txIndex", txIndex, "accAddr", accAddr)
 			statedb.PreloadAccountTrie(accAddr)
 			for _, storageItem := range storageItems {
-				log.Info("PrefetchBAL", "txIndex", txIndex, "accAddr", accAddr, "storageItem", storageItem.Key, "dirty", storageItem.Dirty)
+				log.Debug("PrefetchBAL", "txIndex", txIndex, "accAddr", accAddr, "storageItem", storageItem.Key, "dirty", storageItem.Dirty)
 				if storageItem.Dirty {
 					statedb.PreloadStorageTrie(accAddr, storageItem.Key)
 				}

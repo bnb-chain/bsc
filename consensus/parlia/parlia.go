@@ -1777,7 +1777,7 @@ func (p *Parlia) SignBAL(blockAccessList *types.BlockAccessListEncode) error {
 }
 
 func (p *Parlia) VerifyBAL(signer common.Address, bal *types.BlockAccessListEncode) error {
-	log.Info("VerifyBAL skip for test env")
+	log.Debug("VerifyBAL skip for test env")
 	return nil
 	if len(bal.SignData) != 65 {
 		return errors.New("invalid BAL signature")
