@@ -378,10 +378,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			contract.Gas -= cost
 		}
 
-		if op == CREATE || op == CREATE2 || op == CALL || op == STATICCALL || op == DELEGATECALL || op == CALLCODE {
-			log.Error("debug op cost", "op", op.String(), "cost", cost)
-		}
-
 		// All ops with a dynamic memory usage also has a dynamic gas cost.
 		var memorySize uint64
 		if operation.dynamicGas != nil {
@@ -414,10 +410,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				return nil, ErrOutOfGas
 			} else {
 				contract.Gas -= dynamicCost
-			}
-
-			if op == CREATE || op == CREATE2 || op == CALL || op == STATICCALL || op == DELEGATECALL || op == CALLCODE {
-				log.Error("debug op cost", "op", op.String(), "cost dynamic", dynamicCost)
 			}
 		}
 
