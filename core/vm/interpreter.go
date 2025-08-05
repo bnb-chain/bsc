@@ -218,6 +218,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		mem.Free()
 	}()
 	contract.Input = input
+	if contract.CodeHash.String() == "0x84d1cbfc7b7c569181930ce930f0dbe6edb8e8df5631b0a066bd0197d109b9f3" {
+		log.Error("contract entry gas", "contract.Gas", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+	}
 
 	if debug {
 		defer func() { // this deferred method handles exit-with-error
@@ -263,9 +266,13 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 						if contract.Gas >= block.StaticGas {
 							contract.Gas -= block.StaticGas
 							comsumedBlockGas += block.StaticGas
-							log.Error("[CACHE DEBUG] Static gas", "block.StaticGas", block.StaticGas, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String(), "block.StartPC", block.StartPC, "block.EndPC", block.EndPC)
+							if contract.CodeHash.String() == "0x84d1cbfc7b7c569181930ce930f0dbe6edb8e8df5631b0a066bd0197d109b9f3" {
+								log.Error("[CACHE DEBUG] Static gas", "block.StaticGas", block.StaticGas, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String(), "block.StartPC", block.StartPC, "block.EndPC", block.EndPC)
+							}
 						} else {
-							log.Error("[CACHE DEBUG] Insufficient gas for static", "block.StaticGas", block.StaticGas, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+							if contract.CodeHash.String() == "0x84d1cbfc7b7c569181930ce930f0dbe6edb8e8df5631b0a066bd0197d109b9f3" {
+								log.Error("[CACHE DEBUG] Insufficient gas for static", "block.StaticGas", block.StaticGas, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+							}
 							calcTotalCost = true
 							contract.Gas += comsumedBlockGas
 						}
@@ -362,7 +369,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	}
 
 	if contract.CodeHash.String() == "0x84d1cbfc7b7c569181930ce930f0dbe6edb8e8df5631b0a066bd0197d109b9f3" {
-		log.Error("totalCost completed!", "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas, "fallback", calcTotalCost, "contract.CodeHash", contract.CodeHash.String())
+		log.Error("totalCost completed!", "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas, "fallback", calcTotalCost, "contract.Gas", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
 	}
 
 	// 新增：记录实际使用的block gas
