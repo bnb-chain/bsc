@@ -108,7 +108,7 @@ var additionIncrTables = []string{ChainFreezerHeaderTable, ChainFreezerHashTable
 var incrStateFreezerNoSnappy = map[string]bool{
 	incrStateHistoryMeta:          true,
 	incrStateHistoryTrieNodesData: false,
-	incrStateHistoryStatesData:    false,
+	// incrStateHistoryStatesData:    false,
 }
 
 // The list of identifiers of ancient stores.
