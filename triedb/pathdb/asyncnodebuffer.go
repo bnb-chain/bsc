@@ -45,10 +45,14 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 	)
 
 	for i := start; i <= end; i++ {
-		trieNodes, err := readIncrTrieNodes(incrFreezer, i)
+		nodes, err := readIncrTrieNodes(incrFreezer, i)
 		if err != nil {
 			return err
 		}
+		// states, err := readIncrStatesData(incrFreezer, i)
+		// if err != nil {
+		// 	return err
+		// }
 		m, err := readIncrMetadata(incrFreezer, i)
 		if err != nil {
 			return err
@@ -58,20 +62,19 @@ func (a *asyncnodebuffer) mergeIncrTrieNodes(db ethdb.KeyValueStore, freezer eth
 			lastStateID = m.StateIDArray[1]
 		}
 
-		nodesSet := newNodeSet(trieNodes)
-		if err = a.current.commit(nodesSet, newStates(nil, nil, false)); err != nil {
+		if err = a.current.commit(nodes, newStates(nil, nil, false)); err != nil {
 			log.Error("Failed to commit history", "error", err)
 			return err
 		}
 
 		var force bool
-		if nodesSet.size >= MaxDirtyBufferSize {
+		if nodes.size >= MaxDirtyBufferSize {
 			force = true
 		} else {
 			force = false
 		}
 		log.Info("Force flush when merging due to size is too big", "force", force,
-			"size", common.StorageSize(nodesSet.size))
+			"size", common.StorageSize(nodes.size))
 
 		if err = a.flush(db, freezer, nil, m.StateIDArray[1], force, false); err != nil {
 			log.Error("Failed to flush history", "error", err)

@@ -627,7 +627,7 @@ func readIncrMetadata(reader ethdb.AncientReader, id uint64) (*incrStateMetadata
 	return &m, nil
 }
 
-func readIncrTrieNodes(reader ethdb.AncientReader, id uint64) (map[common.Hash]map[string]*trienode.Node, error) {
+func readIncrTrieNodes(reader ethdb.AncientReader, id uint64) (*nodeSet, error) {
 	data, err := rawdb.ReadIncrStateTrieNodes(reader, id)
 	if err != nil {
 		log.Error("Failed to read incremental trie nodes", "id", id, "error", err)
@@ -640,7 +640,7 @@ func readIncrTrieNodes(reader ethdb.AncientReader, id uint64) (map[common.Hash]m
 		return nil, err
 	}
 
-	return flattenTrieNodes(decodedTrieNodes), nil
+	return newNodeSet(flattenTrieNodes(decodedTrieNodes)), nil
 }
 
 func readIncrStatesData(reader ethdb.AncientReader, id uint64) (*stateSet, error) {
