@@ -986,7 +986,7 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 			return nil
 		}
 		if persistentStateID > recordFirstStateID {
-			h, err := readHistory(db.freezer, recordFirstStateID-1)
+			h, err := readHistory(db.freezer, recordFirstStateID)
 			if err != nil {
 				return err
 			}
