@@ -991,7 +991,7 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 				return err
 			}
 			root := h.meta.root
-			log.Info("Empty info", "recordFirstStateID", recordFirstStateID, "block", h.meta.block)
+			log.Info("Empty info", "recordFirstStateID", recordFirstStateID, "block", h.meta.block, "root", root)
 
 			db.tree = newLayerTree(newDiskLayer(root, recordFirstStateID, db, nil,
 				NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0)))

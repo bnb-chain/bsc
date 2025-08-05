@@ -95,6 +95,7 @@ Remove blockchain and state databases`,
 			dbTrieDeleteCmd,
 			dbInspectHistoryCmd,
 			incrInspectCmd,
+			inspectAncientCmd,
 		},
 	}
 	dbInspectCmd = &cli.Command{
@@ -318,6 +319,13 @@ of ancientStore, will also displays the reserved number of blocks in ancientStor
 		Flags:       []cli.Flag{utils.IncrSnapshotPathFlag},
 		Usage:       "Inspect the incremental snapshot information",
 		Description: `This command reads and displays incremental store information`,
+	}
+	inspectAncientCmd = &cli.Command{
+		Action:      inspectAncient,
+		Name:        "inspect-ancient",
+		Flags:       []cli.Flag{utils.DataDirFlag},
+		Usage:       "Inspect the ancient data of full snapshot information",
+		Description: `This command reads the ancient data of full snapshot information`,
 	}
 )
 
@@ -1485,6 +1493,22 @@ func inspectIncrSnapshot(ctx *cli.Context) error {
 	}
 	baseDir := ctx.String(utils.IncrSnapshotPathFlag.Name)
 	if err := rawdb.InspectIncrStore(baseDir); err != nil {
+		return err
+	}
+	return nil
+}
+
+func inspectAncient(ctx *cli.Context) error {
+	if !ctx.IsSet(utils.AncientFlag.Name) {
+		return errors.New("increment snapshot path is not set")
+	}
+
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	defer db.Close()
+	if err := rawdb.InspectAncients(db); err != nil {
 		return err
 	}
 	return nil

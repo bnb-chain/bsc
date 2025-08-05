@@ -372,9 +372,11 @@ func (bc *BlockChain) HasState(hash common.Hash) bool {
 			log.Warn("Check HasState in NoTries mode failed", "root", hash, "err", err)
 			return false
 		}
+		log.Info("Check HasState in NoTries mode", "root", hash, "found", found)
 		return found
 	}
 	_, err := bc.statedb.OpenTrie(hash)
+	log.Info("Check HasState in OpenTrie", "root", hash, "err", err)
 	return err == nil
 }
 

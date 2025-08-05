@@ -266,6 +266,7 @@ func (tree *layerTree) front() common.Hash {
 
 	chain := make(map[common.Hash][]common.Hash)
 	var base common.Hash
+	log.Info("front", "layer tree length", len(tree.layers))
 	for _, layer := range tree.layers {
 		switch dl := layer.(type) {
 		case *diskLayer:
@@ -274,6 +275,7 @@ func (tree *layerTree) front() common.Hash {
 				return base
 			}
 			base = dl.rootHash()
+			log.Info("pathdb top disklayer", "disk_root", dl.root.String())
 		case *diffLayer:
 			if _, ok := chain[dl.parentLayer().rootHash()]; !ok {
 				chain[dl.parentLayer().rootHash()] = make([]common.Hash, 0)

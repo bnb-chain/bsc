@@ -477,17 +477,19 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			var diskRoot common.Hash
 			if bc.cacheConfig.SnapshotLimit > 0 {
 				diskRoot = rawdb.ReadSnapshotRoot(bc.db)
-				log.Debug("Head state missing, ReadSnapshotRoot", "snap root", diskRoot)
+				log.Info("Head state missing, ReadSnapshotRoot", "snap root", diskRoot)
 			}
 			if bc.triedb.Scheme() == rawdb.PathScheme && !bc.NoTries() {
 				recoverable, _ := bc.triedb.Recoverable(diskRoot)
+				log.Info("Recoverable disk root", "recoverable", recoverable, "diskRoot", diskRoot)
 				if !bc.HasState(diskRoot) && !recoverable {
 					diskRoot = bc.triedb.Head()
+					log.Info("Use triedb head", "diskRoot", diskRoot)
 				}
-				log.Debug("Head state missing, check recoverable", "disk root", diskRoot, "recoverable", recoverable)
+				log.Info("Head state missing, check recoverable", "disk root", diskRoot, "recoverable", recoverable)
 			}
 			if diskRoot != (common.Hash{}) {
-				log.Warn("Head state missing, repairing", "number", head.Number, "hash", head.Hash(), "diskRoot", diskRoot)
+				log.Warn("Head state missing, repairing 111", "number", head.Number, "hash", head.Hash(), "diskRoot", diskRoot)
 
 				snapDisk, err := bc.setHeadBeyondRoot(head.Number.Uint64(), 0, diskRoot, true)
 				if err != nil {
@@ -905,6 +907,7 @@ func (bc *BlockChain) rewindPathHead(head *types.Header, root common.Hash) (*typ
 		start  = time.Now() // Timestamp the rewinding is restarted
 		logged = time.Now() // Timestamp last progress log was printed
 	)
+	log.Info("Enter rewindPathHead", "number", head.Number, "hash", head.Hash(), "root", head.Root, "beyondRoot", beyondRoot)
 	// Rewind the head block tag until an available state is found.
 	for {
 		logger := log.Trace
@@ -928,6 +931,7 @@ func (bc *BlockChain) rewindPathHead(head *types.Header, root common.Hash) (*typ
 		// Check if the associated state is available or recoverable if
 		// the requested root has already been crossed.
 		if beyondRoot && (bc.HasState(head.Root) || bc.stateRecoverable(head.Root)) {
+			log.Info("Break rewind path head", "number", head.Number, "hash", head.Hash(), "root", head.Root)
 			break
 		}
 		// If pivot block is reached, return the genesis block as the
