@@ -205,6 +205,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		usedBlocks       = make(map[uint64]bool) // 记录已使用的block的StartPC
 		comsumedBlockGas uint64                  // 实际使用的block的static gas总和
 		currentBlock     *compiler.BasicBlock    // 当前block（缓存）
+		nextBlockPC      uint64                  // 下一个block的起始PC（用于边界检测）
 	)
 	// Don't move this deferred function, it's placed before the OnOpcode-deferred method,
 	// so that it gets executed _after_: the OnOpcode needs the stacks before
@@ -243,34 +244,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// associated costs.
 			contractAddr := contract.Address()
 			contract.Gas -= in.evm.TxContext.AccessEvents.CodeChunksRangeGas(contractAddr, pc, 1, uint64(len(contract.Code)), false)
-		}
-
-		// 优化版本：只在block边界处调用GetBlockByPC
-		if in.evm.Config.EnableOpcodeOptimizations {
-			// 只在以下情况调用GetBlockByPC：
-			// 1. 当前block为空（首次）
-			// 2. PC超出了当前block范围
-			// 3. PC小于当前block起始位置（异常情况）
-			if currentBlock == nil || pc < currentBlock.StartPC || pc >= currentBlock.EndPC {
-				if block, found := compiler.GetBlockByPC(contract.CodeHash, pc); found {
-					currentBlock = block
-					if !usedBlocks[block.StartPC] {
-						usedBlocks[block.StartPC] = true
-						if contract.Gas >= block.StaticGas {
-							contract.Gas -= block.StaticGas
-							comsumedBlockGas += block.StaticGas
-							//log.Error("[CACHE DEBUG] Static gas", "cost", cost, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-						} else {
-							//log.Error("[CACHE DEBUG] Insufficient gas for static", "cost", cost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-							calcTotalCost = true
-							contract.Gas += comsumedBlockGas
-						}
-					}
-				} else {
-					calcTotalCost = true // if one or more block not found in cache, need cal detail
-					contract.Gas += comsumedBlockGas
-				}
-			}
 		}
 
 		// Get the operation from the jump table and validate the stack to ensure there are
@@ -349,6 +322,36 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			break
 		}
 		pc++
+		
+		// 优化版本：只在跳转后或首次执行时检查block边界
+		if in.evm.Config.EnableOpcodeOptimizations {
+			// 只在以下情况检查block边界：
+			// 1. 当前block为空（首次执行）
+			// 2. 刚执行了跳转指令（pc可能已经改变）
+			// 3. PC超出了当前block范围
+			if currentBlock == nil || pc >= nextBlockPC {
+				if block, found := compiler.GetBlockByPC(contract.CodeHash, pc); found {
+					currentBlock = block
+					// 计算下一个block的起始PC（如果存在）
+					nextBlockPC = block.EndPC
+					if !usedBlocks[block.StartPC] {
+						usedBlocks[block.StartPC] = true
+						if contract.Gas >= block.StaticGas {
+							contract.Gas -= block.StaticGas
+							comsumedBlockGas += block.StaticGas
+							//log.Error("[CACHE DEBUG] Static gas", "cost", cost, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+						} else {
+							//log.Error("[CACHE DEBUG] Insufficient gas for static", "cost", cost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+							calcTotalCost = true
+							contract.Gas += comsumedBlockGas
+						}
+					}
+				} else {
+					calcTotalCost = true // if one or more block not found in cache, need cal detail
+					contract.Gas += comsumedBlockGas
+				}
+			}
+		}
 	}
 
 	// 新增：记录实际使用的block gas
