@@ -15,8 +15,8 @@ import (
 // asyncIncrStateBuffer writes the incremental state trie nodes into incr state db.
 type asyncIncrStateBuffer struct {
 	mux          sync.RWMutex
-	current      *incrNodeCache
-	background   *incrNodeCache
+	current      *incrNodeBuffer
+	background   *incrNodeBuffer
 	isFlushing   atomic.Bool
 	stopFlushing atomic.Bool
 	done         chan struct{}
@@ -26,8 +26,8 @@ type asyncIncrStateBuffer struct {
 // newAsyncIncrStateBuffer initializes the async incremental state buffer.
 func newAsyncIncrStateBuffer(limit, batchSize uint64) *asyncIncrStateBuffer {
 	b := &asyncIncrStateBuffer{
-		current:      newIncrNodeCache(limit, batchSize, nil, 0),
-		background:   newIncrNodeCache(limit, batchSize, nil, 0),
+		current:      newIncrNodeBuffer(limit, batchSize, nil, nil, 0),
+		background:   newIncrNodeBuffer(limit, batchSize, nil, nil, 0),
 		done:         make(chan struct{}),
 		truncateChan: make(chan uint64, 1),
 	}
@@ -54,7 +54,7 @@ func (a *asyncIncrStateBuffer) monitorStateBuffer() {
 	}
 }
 
-// printCacheInfo prints detailed information about both current and background caches
+// printBufferInfo prints detailed info about both current and background buffer
 func (a *asyncIncrStateBuffer) printBufferInfo() {
 	a.mux.RLock()
 	defer a.mux.RUnlock()
@@ -74,11 +74,11 @@ func (a *asyncIncrStateBuffer) printBufferInfo() {
 }
 
 // commit merges the provided states and trie nodes into the buffer.
-func (a *asyncIncrStateBuffer) commit(nodes *nodeSet, stateID, blockNumber uint64) *asyncIncrStateBuffer {
+func (a *asyncIncrStateBuffer) commit(nodes *nodeSet, states *stateSet, stateID, blockNumber uint64) *asyncIncrStateBuffer {
 	a.mux.Lock()
 	defer a.mux.Unlock()
 
-	err := a.current.commit(nodes, stateID, blockNumber)
+	err := a.current.commit(nodes, states, stateID, blockNumber)
 	if err != nil {
 		log.Crit("Failed to commit nodes to async incremental state buffer", "error", err)
 	}
@@ -180,12 +180,9 @@ type incrStateMetadata struct {
 	BlockNumberArray [2]uint64
 }
 
-// incrNodeCache is a specialized cache for incremental trie nodes
-type incrNodeCache struct {
-	nodes            *nodeSet
-	states           *stateSet
-	layers           uint64
-	limit            uint64 // Memory limit in bytes
+// incrNodeBuffer is a specialized buffer for incremental trie nodes
+type incrNodeBuffer struct {
+	*buffer
 	batchSize        uint64 // Maximum flush batch size
 	stateIDArray     [2]uint64
 	blockNumberArray [2]uint64
@@ -195,16 +192,14 @@ type incrNodeCache struct {
 
 var emptyArray = [2]uint64{0, 0}
 
-// newIncrNodeCache creates a new incremental node cache
-func newIncrNodeCache(limit, batchSize uint64, nodes *nodeSet, layers uint64) *incrNodeCache {
+// newIncrNodeBuffer creates a new incremental node buffer
+func newIncrNodeBuffer(limit, batchSize uint64, nodes *nodeSet, states *stateSet, layers uint64) *incrNodeBuffer {
 	if nodes == nil {
 		nodes = newNodeSet(nil)
 	}
 
-	return &incrNodeCache{
-		nodes:            nodes,
-		layers:           layers,
-		limit:            limit,
+	return &incrNodeBuffer{
+		buffer:           newBuffer(int(limit), nodes, states, layers),
 		batchSize:        batchSize,
 		stateIDArray:     emptyArray,
 		blockNumberArray: emptyArray,
@@ -213,15 +208,13 @@ func newIncrNodeCache(limit, batchSize uint64, nodes *nodeSet, layers uint64) *i
 	}
 }
 
-// commit adds nodes and states to the cache
-func (c *incrNodeCache) commit(nodes *nodeSet, stateID, blockNumber uint64) error {
+// commit adds nodes and states to the buffer
+func (c *incrNodeBuffer) commit(nodes *nodeSet, states *stateSet, stateID, blockNumber uint64) error {
 	if atomic.LoadUint64(&c.immutable) == 1 {
 		return fmt.Errorf("cannot commit to immutable cache")
 	}
 
-	if nodes != nil {
-		c.nodes.merge(nodes)
-	}
+	c.buffer.commit(nodes, states)
 	if c.stateIDArray[0] == 0 && c.stateIDArray[1] == 0 {
 		c.stateIDArray[0] = stateID
 		c.stateIDArray[1] = stateID
@@ -231,13 +224,12 @@ func (c *incrNodeCache) commit(nodes *nodeSet, stateID, blockNumber uint64) erro
 		c.stateIDArray[1] = stateID
 		c.blockNumberArray[1] = blockNumber
 	}
-	c.layers++
 
 	return nil
 }
 
-// flush writes the immutable cache to the incremental state db.
-func (c *incrNodeCache) flush(incrDB *rawdb.IncrSnapDB) error {
+// flush writes the immutable buffer to the incremental state db.
+func (c *incrNodeBuffer) flush(incrDB *rawdb.IncrSnapDB) error {
 	if atomic.LoadUint64(&c.immutable) != 1 {
 		return fmt.Errorf("cannot flush mutable cache")
 	}
@@ -249,7 +241,7 @@ func (c *incrNodeCache) flush(incrDB *rawdb.IncrSnapDB) error {
 	return nil
 }
 
-func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
+func (c *incrNodeBuffer) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 	jn := make([]journalNodes, 0, len(c.nodes.nodes))
 	totalSize := uint64(0)
 
@@ -310,7 +302,7 @@ func (c *incrNodeCache) flushToAncientDB(incrDB *rawdb.IncrSnapDB) error {
 }
 
 // writeBatchToAncientDB writes a batch of trie nodes to the incremental state db.
-func (c *incrNodeCache) writeBatchToAncientDB(incrDB *rawdb.IncrSnapDB, jn []journalNodes) error {
+func (c *incrNodeBuffer) writeBatchToAncientDB(incrDB *rawdb.IncrSnapDB, jn []journalNodes) error {
 	if len(jn) == 0 {
 		return nil
 	}
@@ -353,22 +345,22 @@ func (c *incrNodeCache) writeBatchToAncientDB(incrDB *rawdb.IncrSnapDB, jn []jou
 }
 
 // empty returns true if the cache is empty
-func (c *incrNodeCache) empty() bool {
+func (c *incrNodeBuffer) empty() bool {
 	return c.layers == 0
 }
 
 // full returns true if the cache exceeds the memory limit
-func (c *incrNodeCache) full() bool {
+func (c *incrNodeBuffer) full() bool {
 	return c.size() > c.limit
 }
 
 // size returns the approximate memory size of the cache
-func (c *incrNodeCache) size() uint64 {
+func (c *incrNodeBuffer) size() uint64 {
 	return c.nodes.size
 }
 
 // reset clears the cache
-func (c *incrNodeCache) reset() {
+func (c *incrNodeBuffer) reset() {
 	atomic.StoreUint64(&c.immutable, 0)
 	c.nodes.reset()
 	c.layers = 0
@@ -377,6 +369,6 @@ func (c *incrNodeCache) reset() {
 }
 
 // getTruncateSignal returns the truncate signal channel
-func (c *incrNodeCache) getTruncateSignal() <-chan uint64 {
+func (c *incrNodeBuffer) getTruncateSignal() <-chan uint64 {
 	return c.truncateSignal
 }

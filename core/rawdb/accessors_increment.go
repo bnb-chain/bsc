@@ -21,12 +21,15 @@ type ContractCode struct {
 // WriteIncrState writes the provided state data into the database.
 // Compute the position of state history in freezer by minus one since the id of first state
 // history starts from one(zero for initial state).
-func WriteIncrState(db ethdb.AncientWriter, id uint64, meta, trieNodes []byte) error {
+func WriteIncrState(db ethdb.AncientWriter, id uint64, meta, trieNodes, states []byte) error {
 	_, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
 		if err := op.AppendRaw(incrStateHistoryMeta, id-1, meta); err != nil {
 			return err
 		}
 		if err := op.AppendRaw(incrStateHistoryTrieNodesData, id-1, trieNodes); err != nil {
+			return err
+		}
+		if err := op.AppendRaw(incrStateHistoryStatesData, id-1, states); err != nil {
 			return err
 		}
 		return nil
@@ -39,6 +42,17 @@ func WriteIncrState(db ethdb.AncientWriter, id uint64, meta, trieNodes []byte) e
 // since the id of first state history starts from one(zero for initial state).
 func ReadIncrStateTrieNodes(db ethdb.AncientReaderOp, id uint64) ([]byte, error) {
 	blob, err := db.Ancient(incrStateHistoryTrieNodesData, id-1)
+	if err != nil {
+		return nil, err
+	}
+	return blob, nil
+}
+
+// ReadIncrStateData retrieves the states corresponding to the specified
+// state history. Compute the position of state history in freezer by minus one
+// since the id of first state history starts from one(zero for initial state).
+func ReadIncrStateData(db ethdb.AncientReaderOp, id uint64) ([]byte, error) {
+	blob, err := db.Ancient(incrStateHistoryStatesData, id-1)
 	if err != nil {
 		return nil, err
 	}

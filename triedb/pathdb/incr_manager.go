@@ -128,7 +128,7 @@ func (im *incrManager) Start() {
 	go im.worker()
 
 	im.wg.Add(1)
-	go im.handleTruncateSignal()
+	go im.listenTruncateSignal()
 
 	im.started = true
 	log.Info("Incremental store async worker started")
@@ -178,8 +178,8 @@ func (im *incrManager) Stop() {
 	im.LogStats()
 }
 
-// handleTruncateSignal accept truncate state freezer and incr chain freezer signal.
-func (im *incrManager) handleTruncateSignal() {
+// listenTruncateSignal listens truncate state freezer and incr chain freezer signal.
+func (im *incrManager) listenTruncateSignal() {
 	truncateTicker := time.NewTicker(time.Second * 3)
 	defer truncateTicker.Stop()
 	defer im.wg.Done()
@@ -389,7 +389,7 @@ func (im *incrManager) writeIncrStateData(dl *diffLayer) error {
 
 	start := time.Now()
 	// Commit to async buffer instead of direct write
-	im.asyncBuffer.commit(dl.nodes, dl.stateID(), dl.block)
+	im.asyncBuffer.commit(dl.nodes, dl.states.stateSet, dl.stateID(), dl.block)
 	if err := im.asyncBuffer.flush(im.incrDB, false); err != nil {
 		return fmt.Errorf("failed to flush async incremental state buffer: %v", err)
 	}

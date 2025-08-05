@@ -89,6 +89,7 @@ const (
 	// indicates the name of the freezer incremental state history table.
 	incrStateHistoryMeta          = "incrhistory.meta"
 	incrStateHistoryTrieNodesData = "trienodes.data"
+	incrStateHistoryStatesData    = "states.data"
 )
 
 // stateFreezerNoSnappy configures whether compression is disabled for the state freezer.
@@ -107,6 +108,7 @@ var additionIncrTables = []string{ChainFreezerHeaderTable, ChainFreezerHashTable
 var incrStateFreezerNoSnappy = map[string]bool{
 	incrStateHistoryMeta:          true,
 	incrStateHistoryTrieNodesData: false,
+	incrStateHistoryStatesData:    false,
 }
 
 // The list of identifiers of ancient stores.

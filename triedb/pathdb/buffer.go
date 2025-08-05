@@ -130,7 +130,7 @@ func (b *buffer) size() uint64 {
 
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
-func (b *buffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, nodesCache *fastcache.Cache, id uint64, force, validateID bool) error {
+func (b *buffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, progress []byte, nodesCache, statesCache *fastcache.Cache, id uint64, force, validateID bool) error {
 	if !b.full() && !force {
 		return nil
 	}
@@ -159,6 +159,7 @@ func (b *buffer) flush(db ethdb.KeyValueStore, freezer ethdb.AncientWriter, node
 		}
 	}
 	nodes := b.nodes.write(batch, nodesCache)
+	accounts, slots := b.states.write(batch, progress, statesCache)
 	rawdb.WritePersistentStateID(batch, id)
 
 	// Flush all mutations in a single batch
