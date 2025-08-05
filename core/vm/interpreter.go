@@ -35,6 +35,8 @@ type Config struct {
 	ExtraEips               []int // Additional EIPS that are to be enabled
 
 	StatelessSelfValidation bool // Generate execution witnesses and self-check against them (testing purpose)
+
+	EnableFullyInline bool
 }
 
 // ScopeContext contains the things that are per-call, such as stack and memory,
@@ -161,6 +163,14 @@ func NewEVMInterpreter(evm *EVM) *EVMInterpreter {
 // considered a revert-and-consume-all-gas operation except for
 // ErrExecutionReverted which means revert-and-keep-gas-left.
 func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (ret []byte, err error) {
+	if in.evm.Config.EnableFullyInline {
+		ret, gasUsed, expect := in.evm.Inline(contract, input, contract.value)
+		if expect && contract.Gas > gasUsed {
+			contract.Gas -= gasUsed
+			in.evm.FullyInlineCount++
+			return ret, nil
+		}
+	}
 	// Increment the call depth which is restricted to 1024
 	in.evm.depth++
 	defer func() { in.evm.depth-- }()

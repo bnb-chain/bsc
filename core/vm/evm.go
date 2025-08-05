@@ -18,6 +18,7 @@ package vm
 
 import (
 	"errors"
+	"github.com/ethereum/go-ethereum/log"
 	"math/big"
 	"sync"
 	"sync/atomic"
@@ -122,6 +123,8 @@ type EVM struct {
 	callGasTemp uint64
 	// precompiles holds the precompiled contracts for the current epoch
 	precompiles map[common.Address]PrecompiledContract
+
+	FullyInlineCount int
 }
 
 // NewEVM constructs an EVM instance with the supplied block context, state
@@ -137,6 +140,7 @@ func NewEVM(blockCtx BlockContext, statedb StateDB, chainConfig *params.ChainCon
 		chainRules:  chainConfig.Rules(blockCtx.BlockNumber, blockCtx.Random != nil, blockCtx.Time),
 	}
 	evm.precompiles = activePrecompiledContracts(evm.chainRules)
+	evm.Config.EnableFullyInline = true
 	evm.interpreter = NewEVMInterpreter(evm)
 
 	return evm
@@ -657,4 +661,190 @@ func (evm *EVM) GetVMContext() *tracing.VMContext {
 		BaseFee:     evm.Context.BaseFee,
 		StateDB:     evm.StateDB,
 	}
+}
+
+func (evm *EVM) Inline(contract *Contract, input []byte, value *uint256.Int) (ret []byte, gasCost uint64, expected bool) {
+	if contract.self.Address() != common.HexToAddress("0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c") {
+		return nil, 0, false
+	}
+	log.Info("DEBUG", "INLINE Contract", contract.self.Address())
+	if len(input) < 4 {
+		return nil, 0, false
+	}
+
+	sig := input[:4]
+	if len(sig) == 4 && sig[0] == 0x70 && sig[1] == 0xa0 && sig[2] == 0x82 && sig[3] == 0x31 {
+		return evm.wbnbBalanceOf(contract.Address(), input, value)
+	} else if len(sig) == 4 && sig[0] == 0xa9 && sig[1] == 0x05 && sig[2] == 0x9c && sig[3] == 0xbb {
+		return evm.wbnbTransfer(contract, input, value)
+	} else {
+		return nil, 0, false
+	}
+}
+
+func (evm *EVM) wbnbBalanceOf(addr common.Address, input []byte, value *uint256.Int) (ret []byte, gasCost uint64, expected bool) {
+	if value != nil && !value.IsZero() {
+		return nil, 0, false
+	}
+	if len(input) < 4+32 {
+		return nil, 0, false
+	}
+
+	query := append(input[4:36],
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x3,
+	)
+
+	interpreter := evm.interpreter
+
+	if interpreter.hasher == nil {
+		interpreter.hasher = crypto.NewKeccakState()
+	} else {
+		interpreter.hasher.Reset()
+	}
+	interpreter.hasher.Write(query)
+	interpreter.hasher.Read(interpreter.hasherBuf[:])
+
+	if evm.Config.EnablePreimageRecording {
+		evm.StateDB.AddPreimage(interpreter.hasherBuf, query)
+	}
+
+	slot := interpreter.hasherBuf
+
+	ret = evm.StateDB.GetState(addr, slot).Bytes()
+
+	gasCost = uint64(431)
+
+	if _, slotPresent := evm.StateDB.SlotInAccessList(addr, slot); !slotPresent {
+		// If the caller cannot afford the cost, this change will be rolled back
+		// If he does afford it, we can skip checking the same thing later on, during execution
+		evm.StateDB.AddSlotToAccessList(addr, slot)
+		gasCost += params.ColdSloadCostEIP2929
+	} else {
+		gasCost += params.WarmStorageReadCostEIP2929
+	}
+
+	return ret, gasCost, true
+}
+
+func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.Int) (ret []byte, gasCost uint64, expected bool) {
+	if value != nil && !value.IsZero() {
+		return nil, 0, false
+	}
+	if len(input) < 4+32+32 {
+		return nil, 0, false
+	}
+
+	receiver := getData(input, 4, 32)
+	amount := uint256.NewInt(0)
+	amount.SetBytes(getData(input, 36, 32))
+
+	// Calculate sender storage slot (msg.sender + slot 3)
+	senderQuery := append(contract.CallerAddress.Bytes(),
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x3,
+	)
+
+	if evm.interpreter.hasher == nil {
+		evm.interpreter.hasher = crypto.NewKeccakState()
+	} else {
+		evm.interpreter.hasher.Reset()
+	}
+	evm.interpreter.hasher.Write(senderQuery)
+	evm.interpreter.hasher.Read(evm.interpreter.hasherBuf[:])
+
+	if evm.Config.EnablePreimageRecording {
+		evm.StateDB.AddPreimage(evm.interpreter.hasherBuf, senderQuery)
+	}
+	senderSlot := evm.interpreter.hasherBuf
+
+	// Check sender balance
+	senderBalance := uint256.NewInt(0)
+	val := evm.StateDB.GetState(contract.Address(), senderSlot)
+	senderBalance.SetBytes(val.Bytes())
+	if senderBalance.Lt(amount) {
+		return nil, 0, false
+	}
+
+	gasCost = uint64(431)
+
+	// Add gas cost for sender slot access
+	if _, slotPresent := evm.StateDB.SlotInAccessList(contract.Address(), senderSlot); !slotPresent {
+		evm.StateDB.AddSlotToAccessList(contract.Address(), senderSlot)
+		gasCost += params.ColdSloadCostEIP2929
+	} else {
+		gasCost += params.WarmStorageReadCostEIP2929
+	}
+
+	// Calculate receiver storage slot (receiver + slot 3)
+	receiverQuery := append(receiver,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x3,
+	)
+
+	evm.interpreter.hasher.Reset()
+	evm.interpreter.hasher.Write(receiverQuery)
+	evm.interpreter.hasher.Read(evm.interpreter.hasherBuf[:])
+
+	if evm.Config.EnablePreimageRecording {
+		evm.StateDB.AddPreimage(evm.interpreter.hasherBuf, receiverQuery)
+	}
+	receiverSlot := evm.interpreter.hasherBuf
+
+	// Get receiver balance
+	receiverBalance := uint256.NewInt(0)
+	val = evm.StateDB.GetState(contract.Address(), receiverSlot)
+	receiverBalance.SetBytes(val.Bytes())
+
+	// Add gas cost for receiver slot access
+	if _, slotPresent := evm.StateDB.SlotInAccessList(contract.Address(), receiverSlot); !slotPresent {
+		evm.StateDB.AddSlotToAccessList(contract.Address(), receiverSlot)
+		gasCost += params.ColdSloadCostEIP2929
+	} else {
+		gasCost += params.WarmStorageReadCostEIP2929
+	}
+
+	// Update balances
+	newSenderBalance := uint256.NewInt(0)
+	newSenderBalance.Sub(senderBalance, amount)
+
+	newReceiverBalance := uint256.NewInt(0)
+	newReceiverBalance.Add(receiverBalance, amount)
+
+	// Store new balances
+	evm.StateDB.SetState(contract.Address(), senderSlot, common.Hash(newSenderBalance.Bytes32()))
+	evm.StateDB.SetState(contract.Address(), receiverSlot, common.Hash(newReceiverBalance.Bytes32()))
+
+	// Add storage gas costs
+	gasCost += params.NetSstoreDirtyGas * 2 // Two storage writes
+
+	// Emit Transfer event
+	// Transfer(address indexed from, address indexed to, uint256 value)
+	// Event signature: keccak256("Transfer(address,address,uint256)")
+	topics := []common.Hash{
+		common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"), // Transfer event signature
+		common.BytesToHash(contract.CallerAddress.Bytes()),                                     // from (indexed)
+		common.BytesToHash(receiver),                                                           // to (indexed)
+	}
+
+	// Event data: amount (not indexed)
+	data := common.LeftPadBytes(amount.Bytes(), 32)
+
+	evm.StateDB.AddLog(&types.Log{
+		Address: contract.Address(),
+		Topics:  topics,
+		Data:    data,
+	})
+
+	// Return true (success)
+	ret = common.LeftPadBytes([]byte{0x1}, 32)
+
+	return ret, gasCost, true
+
 }
