@@ -18,6 +18,7 @@ package vm
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/holiman/uint256"
 
@@ -262,7 +263,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 						if contract.Gas >= block.StaticGas {
 							contract.Gas -= block.StaticGas
 							comsumedBlockGas += block.StaticGas
-							log.Error("[CACHE DEBUG] Static gas", "block.StaticGas", block.StaticGas, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+							log.Error("[CACHE DEBUG] Static gas", "block.StaticGas", block.StaticGas, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String(), "block.StartPC", block.StartPC, "block.EndPC", block.EndPC)
 						} else {
 							log.Error("[CACHE DEBUG] Insufficient gas for static", "block.StaticGas", block.StaticGas, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
 							calcTotalCost = true
@@ -292,7 +293,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		if contract.CodeHash.String() == "0x84d1cbfc7b7c569181930ce930f0dbe6edb8e8df5631b0a066bd0197d109b9f3" {
 			totalCost += cost
 			costCounter++
-			log.Error("accumulate totalCost", "totalCost", totalCost, "cost", cost, "op", op.String(), "costCounter", costCounter, "contract.CodeHash", contract.CodeHash.String())
+			log.Error("accumulate totalCost", "totalCost", totalCost, "cost", cost, "op", op.String(), "costCounter", costCounter, "contract.CodeHash", contract.CodeHash.String(), "pc", pc)
 		}
 		if calcTotalCost || !in.evm.Config.EnableOpcodeOptimizations {
 
@@ -361,7 +362,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	}
 
 	if contract.CodeHash.String() == "0x84d1cbfc7b7c569181930ce930f0dbe6edb8e8df5631b0a066bd0197d109b9f3" {
-		log.Error("totalCost completed!", "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas)
+		log.Error("totalCost completed!", "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas, "contract.CodeHash", contract.CodeHash.String())
 	}
 
 	// 新增：记录实际使用的block gas
@@ -372,6 +373,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	if err == errStopToken {
 		err = nil // clear stop token error
 	}
+
+	time.Sleep(time.Millisecond * 100)
 
 	return res, err
 }
