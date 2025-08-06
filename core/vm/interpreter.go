@@ -300,6 +300,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		if calcTotalCost || !in.evm.Config.EnableOpcodeOptimizations {
 
 			if contract.Gas < cost {
+				if contract.CodeHash.String() == "0x60e4bcb14447615ab7c14fda2c2d70ca4191570e8841c75618e627c8f72662f8" {
+					log.Error("Out of gas", "pc", pc, "required", cost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+				}
 				return nil, ErrOutOfGas
 			} else {
 				contract.Gas -= cost
@@ -335,6 +338,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			}
 			// for tracing: this gas consumption event is emitted below in the debug section.
 			if contract.Gas < dynamicCost {
+				if contract.CodeHash.String() == "0x60e4bcb14447615ab7c14fda2c2d70ca4191570e8841c75618e627c8f72662f8" {
+					log.Error("Out of dynamic gas", "pc", pc, "required", dynamicCost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+				}
 				return nil, ErrOutOfGas
 			} else {
 				contract.Gas -= dynamicCost
@@ -358,6 +364,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
 		if err != nil {
+			if contract.CodeHash.String() == "0x60e4bcb14447615ab7c14fda2c2d70ca4191570e8841c75618e627c8f72662f8" {
+				log.Error("Execution stopped due to error", "pc", pc, "op", op.String(), "err", err, "contract.CodeHash", contract.CodeHash.String(), "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas)
+			}
 			break
 		}
 		pc++
@@ -373,6 +382,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	//}
 
 	if err == errStopToken {
+		if contract.CodeHash.String() == "0x60e4bcb14447615ab7c14fda2c2d70ca4191570e8841c75618e627c8f72662f8" {
+			log.Error("Execution stopped by stop token", "pc", pc, "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas, "contract.CodeHash", contract.CodeHash.String())
+		}
 		err = nil // clear stop token error
 	}
 
