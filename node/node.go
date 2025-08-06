@@ -797,6 +797,28 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 		return nil, err
 	}
 
+	// Check if a separate snapshot database should be opened
+	_, hasSnapshot := n.CheckMultiDataBaseConfig()
+	if hasSnapshot {
+		// Allocate resources for the snapshot database
+		cache := config.DatabaseCache * config.DatabaseHandles / 100
+		handles := config.DatabaseHandles * 90 / 100
+
+		// Open the snapshot database as a pure key-value store
+		snapshotDb, err := n.OpenDatabase(name+"/snapshot", cache, handles, "eth/db/snapdata/", readonly)
+		if err != nil {
+			log.Error("Failed to open separate snapshot database", "err", err)
+		} else {
+			// Set the snapshot store
+			if snapStore, ok := chainDB.(ethdb.SnapStore); ok {
+				snapStore.SetSnapStore(snapshotDb)
+				log.Info("Using separate snapshot database", "path", n.ResolvePath(name+"/snapshot"))
+			} else {
+				log.Error("chainDB does not implement SnapStore interface")
+			}
+		}
+	}
+
 	if isMultiDatabase {
 		// Allocate half of the  handles and chainDbCache to this separate state data database
 		stateDiskDb, err = n.OpenDatabaseWithFreezer(name+"/state", stateDbCache, stateDbHandles, "", "eth/db/statedata/", readonly, false)

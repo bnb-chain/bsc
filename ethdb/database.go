@@ -218,6 +218,12 @@ type StateStore interface {
 	HasSeparateStateStore() bool
 }
 
+type SnapStore interface {
+	SetSnapStore(state KeyValueStore)
+	GetSnapStore() KeyValueStore
+	HasSeparateSnapStore() bool
+}
+
 // ResettableAncientStore extends the AncientStore interface by adding a Reset method.
 type ResettableAncientStore interface {
 	AncientStore

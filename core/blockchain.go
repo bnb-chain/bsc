@@ -224,14 +224,6 @@ func DefaultCacheConfigWithScheme(scheme string) *CacheConfig {
 
 type BlockChainOption func(*BlockChain) (*BlockChain, error)
 
-// WithSnapshotDB returns a BlockChain option that sets a separate snapshot database.
-func WithSnapshotDB(snapshotdb ethdb.KeyValueStore) BlockChainOption {
-	return func(bc *BlockChain) (*BlockChain, error) {
-		bc.snapshotdb = snapshotdb
-		return bc, nil
-	}
-}
-
 // txLookup is wrapper over transaction lookup along with the corresponding
 // transaction object.
 
@@ -274,7 +266,6 @@ type BlockChain struct {
 	cacheConfig *CacheConfig        // Cache configuration for pruning
 
 	db            ethdb.Database                   // Low level persistent database to store final content in
-	snapshotdb    ethdb.KeyValueStore              // Separate snapshot database, nil if not used
 	snaps         *snapshot.Tree                   // Snapshot tree for fast trie leaf access
 	triegc        *prque.Prque[int64, common.Hash] // Priority queue mapping block numbers to tries to gc
 	gcproc        time.Duration                    // Accumulates canonical block processing for trie dumping
@@ -557,12 +548,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			NoBuild:    bc.cacheConfig.SnapshotNoBuild,
 			AsyncBuild: !bc.cacheConfig.SnapshotWait,
 		}
-		// Use separate snapshot database if available, otherwise fallback to main database
-		if bc.snapshotdb != nil {
-			bc.snaps, _ = snapshot.NewWithSnapshotDB(snapconfig, bc.db, bc.snapshotdb, bc.triedb, head.Root, int(bc.cacheConfig.TriesInMemory), bc.NoTries())
-		} else {
-			bc.snaps, _ = snapshot.New(snapconfig, bc.db, bc.triedb, head.Root, int(bc.cacheConfig.TriesInMemory), bc.NoTries())
-		}
+		bc.snaps, _ = snapshot.New(snapconfig, bc.db, bc.triedb, head.Root, int(bc.cacheConfig.TriesInMemory), bc.NoTries())
 
 		// Re-initialize the state database with snapshot
 		bc.statedb = state.NewDatabase(bc.triedb, bc.snaps)
@@ -1009,12 +995,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 						NoBuild:    bc.cacheConfig.SnapshotNoBuild,
 						AsyncBuild: !bc.cacheConfig.SnapshotWait,
 					}
-					// Use separate snapshot database if available, otherwise fallback to main database
-					if bc.snapshotdb != nil {
-						bc.snaps, _ = snapshot.NewWithSnapshotDB(snapconfig, bc.db, bc.snapshotdb, bc.triedb, header.Root, int(bc.cacheConfig.TriesInMemory), bc.NoTries())
-					} else {
-						bc.snaps, _ = snapshot.New(snapconfig, bc.db, bc.triedb, header.Root, int(bc.cacheConfig.TriesInMemory), bc.NoTries())
-					}
+					bc.snaps, _ = snapshot.New(snapconfig, bc.db, bc.triedb, header.Root, int(bc.cacheConfig.TriesInMemory), bc.NoTries())
 				}
 				defer func() { bc.snaps = nil }()
 			}
