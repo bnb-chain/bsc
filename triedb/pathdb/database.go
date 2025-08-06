@@ -990,31 +990,16 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 			if err != nil {
 				return err
 			}
-			root := h.meta.root
-			log.Info("Before recover case dhewdkewm", "root", root.String(), "block", h.meta.block, "id", recordFirstStateID)
-			if err := db.Recover(root); err != nil {
-				log.Error("Failed to recover state after force kill", "root", root, "stateID", info.lastStateID, "error", err)
-				// If recovery fails, we need to handle this gracefully
-				// For now, we'll continue but this might cause issues later
+			log.Info("Before recover case dhewdkewm", "root", h.meta.root.String(), "block", h.meta.block, "id", recordFirstStateID)
+			if err = db.Recover(h.meta.root); err != nil {
+				log.Error("Failed to recover state after force kill", "root", h.meta.root, "stateID", info.lastStateID, "error", err)
 			} else {
-				log.Info("Successfully recovered state after force kill", "root", root, "stateID", recordFirstStateID)
+				log.Info("Successfully recovered state after force kill", "root", h.meta.root, "stateID", recordFirstStateID)
 			}
 			id := db.tree.bottom().stateID()
-			log.Info("After recover case", "root", root.String(), "block", h.meta.block, "id", id)
-			// db.tree = newLayerTree(newDiskLayer(root, recordFirstStateID, db, nil,
-			// 	NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0)))
-			// id := db.tree.bottom().stateID()
-			// log.Info("Empty info", "recordFirstStateID", recordFirstStateID, "block", h.meta.block, "root", root,
-			// 	"id", id)
-			// pruned, err := truncateFromHead(db.diskdb, db.freezer, id)
-			// if err != nil {
-			// 	log.Crit("Failed to truncate extra state histories", "err", err)
-			// }
-			// if pruned != 0 {
-			// 	log.Warn("Truncated extra state histories", "number", pruned)
-			// }
+			log.Info("After recover case", "root", h.meta.root.String(), "block", h.meta.block, "id", id)
 
-			db.incr.duplicateEndBlock = h.meta.block - 1
+			db.incr.duplicateEndBlock = h.meta.block
 		} else {
 			// use current dir block
 			start, _, err := db.incr.incrDB.ParseCurrDirBlockNumber()
@@ -1055,35 +1040,21 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 			if err != nil {
 				return err
 			}
-			root := h.meta.root
-			block := h.meta.block
-			if block != info.lastStateBlock {
-				return fmt.Errorf("unequal block", "history block", block, "state block", info.lastStateBlock)
+			if h.meta.block != info.lastStateBlock {
+				return fmt.Errorf("unequal block", "history block", h.meta.block, "state block", info.lastStateBlock)
 			}
-			log.Info("Before recover case", "root", root.String(), "block", block, "id", info.lastStateID)
+			log.Info("Before recover case", "root", h.meta.root.String(), "block", h.meta.block, "id", info.lastStateID)
 
-			// db.tree = newLayerTree(newDiskLayer(root, info.lastStateID, db, nil,
-			// 	NewTrieNodeBuffer(db.config.SyncFlush, db.config.WriteBufferSize, nil, nil, 0)))
-
-			if err := db.Recover(root); err != nil {
-				log.Error("Failed to recover state after force kill", "root", root, "stateID", info.lastStateID, "error", err)
-				// If recovery fails, we need to handle this gracefully
-				// For now, we'll continue but this might cause issues later
+			if err = db.Recover(h.meta.root); err != nil {
+				log.Error("Failed to recover state after force kill", "root", h.meta.root, "stateID", info.lastStateID, "error", err)
 			} else {
-				log.Info("Successfully recovered state after force kill", "root", root, "stateID", info.lastStateID)
+				log.Info("Successfully recovered state after force kill", "root", h.meta.root, "stateID", info.lastStateID)
 			}
 
 			id := db.tree.bottom().stateID()
-			log.Info("After recover case", "root", root.String(), "block", block, "id", id)
-			// pruned, err := truncateFromHead(db.diskdb, db.freezer, id)
-			// if err != nil {
-			// 	log.Crit("Failed to truncate extra state histories", "err", err)
-			// }
-			// if pruned != 0 {
-			// 	log.Warn("Truncated extra state histories", "number", pruned)
-			// }
+			log.Info("After recover case", "root", h.meta.root.String(), "block", h.meta.block, "id", id)
 
-			db.incr.duplicateEndBlock = h.meta.block - 1
+			db.incr.duplicateEndBlock = h.meta.block
 		} else {
 			db.incr.duplicateEndBlock = info.lastStateBlock - 1
 		}
@@ -1091,11 +1062,9 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 		if err = db.incr.resetIncrChainFreezer(db.diskdb, info.lastStateBlock); err != nil {
 			return err
 		}
-		// handle block start number
 		if err = db.setBlockCount(startBlock, info.lastStateBlock); err != nil {
 			return err
 		}
-		// db.incr.endBlock = info.lastStateBlock
 		return nil
 	}
 

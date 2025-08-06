@@ -199,10 +199,6 @@ var emptyArray = [2]uint64{0, 0}
 
 // newIncrNodeBuffer creates a new incremental node buffer
 func newIncrNodeBuffer(limit, batchSize uint64, nodes *nodeSet, states *stateSet, layers uint64) *incrNodeBuffer {
-	if nodes == nil {
-		nodes = newNodeSet(nil)
-	}
-
 	return &incrNodeBuffer{
 		buffer:           newBuffer(int(limit), nodes, states, layers),
 		batchSize:        batchSize,
@@ -219,7 +215,7 @@ func (c *incrNodeBuffer) commit(nodes *nodeSet, states *stateSet, stateID, block
 		return fmt.Errorf("cannot commit to immutable cache")
 	}
 
-	c.buffer.commit(nodes, states)
+	c.buffer.commit(nodes, nil)
 	if c.stateIDArray[0] == 0 && c.stateIDArray[1] == 0 {
 		c.stateIDArray[0] = stateID
 		c.stateIDArray[1] = stateID
