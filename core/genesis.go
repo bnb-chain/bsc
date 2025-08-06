@@ -226,7 +226,6 @@ func getGenesisState(db ethdb.Database, blockhash common.Hash) (alloc types.Gene
 	case params.BSCGenesisHash:
 		genesis = DefaultBSCGenesisBlock()
 	case params.ChapelGenesisHash:
-		log.Info("getGenesisState, blockhash is params.ChapelGenesisHash")
 		genesis = DefaultChapelGenesisBlock()
 	}
 	if genesis != nil {

@@ -419,11 +419,6 @@ func (s *stateSet) decode(r *rlp.Stream) error {
 	return nil
 }
 
-// write flushes state mutations into the provided database batch as a whole.
-func (s *stateSet) write(batch ethdb.Batch, genMarker []byte, clean *fastcache.Cache) (int, int) {
-	return writeStates(batch, genMarker, s.accountData, s.storageData, clean)
-}
-
 // reset clears all cached state data, including any optional sorted lists that
 // may have been generated.
 func (s *stateSet) reset() {

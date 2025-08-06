@@ -584,6 +584,8 @@ func (im *incrManager) ForceFlushStateBuffer() error {
 		return fmt.Errorf("failed to force flush all buffered data: %v", err)
 	}
 
+	im.asyncBuffer.waitAndStopFlushing()
+
 	// Get the last stateID from the buffer
 	stateID := im.asyncBuffer.getFlushedStateID()
 	if stateID > 0 {

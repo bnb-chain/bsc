@@ -1031,16 +1031,14 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 
 	// handle force kill with incr state and chain data
 	if info.chainAncients-1 != info.lastStateBlock {
-		log.Info("Force kill with data", "lastChainStateID", info.lastChainStateID, "lastStateID", info.lastStateID,
-			"lastStateBlock", info.lastStateBlock, "chainAncients", info.chainAncients, "diskLayerID", diskLayerID,
-			"persistentStateID", persistentStateID)
+		log.Info("Force kill with data")
 		if persistentStateID > info.lastStateID {
 			h, err := readHistory(db.freezer, info.lastStateID)
 			if err != nil {
 				return err
 			}
 			if h.meta.block != info.lastStateBlock {
-				return fmt.Errorf("unequal block", "history block", h.meta.block, "state block", info.lastStateBlock)
+				return fmt.Errorf("history block [%d] is unequal to incr recorded block [%d]", h.meta.block, info.lastStateBlock)
 			}
 			log.Info("Before recover case", "root", h.meta.root.String(), "block", h.meta.block, "id", info.lastStateID)
 
@@ -1055,7 +1053,7 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 
 			db.incr.duplicateEndBlock = h.meta.block
 		} else {
-			db.incr.duplicateEndBlock = info.lastStateBlock - 1
+			db.incr.duplicateEndBlock = info.lastStateBlock
 		}
 
 		if err = info.chainFreezer.Reset(); err != nil {
@@ -1099,76 +1097,6 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 	if err = db.setBlockCount(startBlock, finalBlock); err != nil {
 		return err
 	}
-	return nil
-}
-
-// alignIncrData aligns incremental data with disk layer after force kill restart
-func (db *Database) alignIncrData(diskLayerID uint64) error {
-	// Load current incremental data info
-	info, err := db.loadIncrInfo()
-	if err != nil {
-		return err
-	}
-
-	// Get start block to avoid duplicate data writing
-	startBlock, err := db.GetStartBlock()
-	if err != nil {
-		log.Error("Failed to get start block", "error", err)
-		return err
-	}
-
-	log.Info("Incremental data alignment check", "stateAncients", info.stateAncients,
-		"chainAncients", info.chainAncients, "diskLayerID", diskLayerID, "startBlock", startBlock)
-
-	if info.isEmpty() {
-		if info.chainAncients != 0 {
-			// if info.chainAncients-1 > startBlock {
-			// 	db.incr.endBlock = info.chainAncients - 1
-			// }
-			log.Warn("Incr state may lose some data that can affect the correctness of incr functions")
-		}
-
-		if err = db.setBlockCount(startBlock, info.chainAncients); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	log.Info("Both incr chain and state have data, comparing for alignment",
-		"lastChainStateID", info.lastChainStateID, "lastStateID", info.lastStateID,
-		"lastStateBlock", info.lastStateBlock, "chainAncients", info.chainAncients)
-
-	// Find the minimum state ID to ensure consistency
-	var finalStateID, finalBlock uint64
-	if info.lastChainStateID < info.lastStateID {
-		finalStateID = info.lastChainStateID
-		finalBlock = info.chainAncients - 1
-	} else if info.lastStateID < info.lastChainStateID {
-		finalStateID = info.lastStateID
-		finalBlock = info.lastStateBlock
-	} else {
-		finalStateID = info.lastStateID
-		finalBlock = info.lastStateBlock
-	}
-
-	if finalStateID < diskLayerID {
-		return fmt.Errorf("Final state ID is less than disk layer ID, diskLayerID: %d, finalStateID: %d", diskLayerID, finalStateID)
-	}
-	// db.incr.endBlock = finalBlock
-
-	// Truncate incr state freezer
-	if err = db.truncateIncrStateFreezer(info, finalStateID); err != nil {
-		return err
-	}
-	// Truncate incr chain freezer
-	if err = db.truncateIncrChainFreezer(info, finalBlock); err != nil {
-		return err
-	}
-
-	if err = db.setBlockCount(startBlock, finalBlock); err != nil {
-		return err
-	}
-	log.Debug("Incremental data alignment completed")
 	return nil
 }
 

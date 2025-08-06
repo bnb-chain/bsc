@@ -437,7 +437,6 @@ func (f *Freezer) validate() error {
 			}
 			continue
 		}
-
 		if head != table.items.Load() {
 			return fmt.Errorf("freezer tables %s and %s have differing head: %d != %d", kind, name, table.items.Load(), head)
 		}

@@ -198,15 +198,6 @@ the expected order for the overlay tree migration.
 					utils.DatabaseFlags),
 				Description: `This command merges multiple incremental snapshots into local data`,
 			},
-			{
-				Action:    downloadIncrSnapshot,
-				Name:      "download-incr-snapshot",
-				Usage:     "Download the incremental snapshots",
-				ArgsUsage: "",
-				Flags: slices.Concat([]cli.Flag{utils.IncrSnapshotPathFlag, utils.RemoteIncrSnapshotURLFlag},
-					utils.DatabaseFlags),
-				Description: `This command is used to download incremental snapshots`,
-			},
 		},
 	}
 )
@@ -785,30 +776,6 @@ func checkAccount(ctx *cli.Context) error {
 	return nil
 }
 
-func downloadIncrSnapshot(ctx *cli.Context) error {
-	stack, _ := makeConfigNode(ctx)
-	defer stack.Close()
-
-	chainDB := utils.MakeChainDatabase(ctx, stack, false, false)
-	defer chainDB.Close()
-
-	trieDB := utils.MakeTrieDatabase(ctx, stack, chainDB, false, true, false)
-	defer trieDB.Close()
-
-	var path string
-	if !ctx.IsSet(utils.IncrSnapshotPathFlag.Name) {
-		path = "./in"
-	} else {
-		path = ctx.String(utils.IncrSnapshotPathFlag.Name)
-	}
-
-	url := ctx.String(utils.RemoteIncrSnapshotURLFlag.Name)
-
-	downloader := core.NewIncrDownloader(chainDB, trieDB, url, path, 10)
-	defer downloader.Close()
-	return nil
-}
-
 // mergeIncrSnapshot merges the incremental snapshot into local data.
 func mergeIncrSnapshot(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
@@ -830,7 +797,7 @@ func mergeIncrSnapshot(ctx *cli.Context) error {
 		log.Error("Failed to get start block", "error", err)
 		return err
 	}
-	// TODO: handle repair for force kill incr snapshot\
+	// TODO: handle repair for force kill incr snapshot
 	dirs, err := rawdb.GetAllIncrDirs(path)
 	if err != nil {
 		log.Error("Failed to get all incremental directories", "err", err)
