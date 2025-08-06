@@ -30,7 +30,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/discover"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
 )
@@ -130,11 +129,11 @@ func main() {
 			listenerAddr = natAddr
 		}
 	}
-	eth, err := discover.GetEthRecord(*networkFilter)
+	ethEntry, err := discover.GetEthEntry(*networkFilter)
 	if err != nil {
 		utils.Fatalf("-network: %v", err)
 	}
-	ln.Set(enr.WithEntry("eth", &eth))
+	ln.Set(ethEntry)
 	printNotice(&nodeKey.PublicKey, *listenerAddr)
 	cfg := discover.Config{
 		PrivateKey:     nodeKey,

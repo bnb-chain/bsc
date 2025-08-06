@@ -72,7 +72,7 @@ func ParseEthFilter(chain string) (NodeFilterFunc, error) {
 	return f, nil
 }
 
-func GetEthRecord(chain string) (enr.Entry, error) {
+func GetEthEntry(chain string) (enr.Entry, error) {
 	var eth struct {
 		ForkID forkid.ID
 		Tail   []rlp.RawValue `rlp:"tail"`
