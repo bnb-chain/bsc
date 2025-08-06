@@ -715,16 +715,17 @@ func (evm *EVM) wbnbBalanceOf(addr common.Address, input []byte, value *uint256.
 
 	ret = evm.StateDB.GetState(addr, slot).Bytes()
 
-	gasCost = uint64(431)
+	gasCost = uint64(434)
 
-	if _, slotPresent := evm.StateDB.SlotInAccessList(addr, slot); !slotPresent {
-		// If the caller cannot afford the cost, this change will be rolled back
-		// If he does afford it, we can skip checking the same thing later on, during execution
-		evm.StateDB.AddSlotToAccessList(addr, slot)
-		gasCost += params.ColdSloadCostEIP2929
-	} else {
-		gasCost += params.WarmStorageReadCostEIP2929
-	}
+	//if _, slotPresent := evm.StateDB.SlotInAccessList(addr, slot); !slotPresent {
+	//	// If the caller cannot afford the cost, this change will be rolled back
+	//	// If he does afford it, we can skip checking the same thing later on, during execution
+	//	evm.StateDB.AddSlotToAccessList(addr, slot)
+	//	gasCost += params.ColdSloadCostEIP2929
+	//} else {
+	//	gasCost += params.WarmStorageReadCostEIP2929
+	//}
+	gasCost += evm.CalcSloadGasByBlockNumber(addr, slot, evm.Context.BlockNumber.Uint64())
 
 	return ret, gasCost, true
 }
@@ -770,15 +771,10 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 		return nil, 0, false
 	}
 
-	gasCost = uint64(431)
+	gasCost = uint64(434)
 
 	// Add gas cost for sender slot access
-	if _, slotPresent := evm.StateDB.SlotInAccessList(contract.Address(), senderSlot); !slotPresent {
-		evm.StateDB.AddSlotToAccessList(contract.Address(), senderSlot)
-		gasCost += params.ColdSloadCostEIP2929
-	} else {
-		gasCost += params.WarmStorageReadCostEIP2929
-	}
+	gasCost += evm.CalcSloadGasByBlockNumber(contract.Address(), senderSlot, evm.Context.BlockNumber.Uint64())
 
 	// Calculate receiver storage slot (receiver + slot 3)
 	receiverQuery := append(receiver,
@@ -803,12 +799,7 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	receiverBalance.SetBytes(val.Bytes())
 
 	// Add gas cost for receiver slot access
-	if _, slotPresent := evm.StateDB.SlotInAccessList(contract.Address(), receiverSlot); !slotPresent {
-		evm.StateDB.AddSlotToAccessList(contract.Address(), receiverSlot)
-		gasCost += params.ColdSloadCostEIP2929
-	} else {
-		gasCost += params.WarmStorageReadCostEIP2929
-	}
+	gasCost += evm.CalcSloadGasByBlockNumber(contract.Address(), receiverSlot, evm.Context.BlockNumber.Uint64())
 
 	// Update balances
 	newSenderBalance := uint256.NewInt(0)
@@ -844,7 +835,29 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 
 	// Return true (success)
 	ret = common.LeftPadBytes([]byte{0x1}, 32)
-
 	return ret, gasCost, true
+}
 
+func (evm *EVM) CalcSloadGasByBlockNumber(
+	addr common.Address,
+	slot common.Hash,
+	blockNumber uint64,
+) uint64 {
+	gasCost := uint64(64)
+	switch {
+	case blockNumber >= evm.chainConfig.BerlinBlock.Uint64():
+		if _, slotPresent := evm.StateDB.SlotInAccessList(addr, slot); !slotPresent {
+			evm.StateDB.AddSlotToAccessList(addr, slot)
+			gasCost += params.ColdSloadCostEIP2929
+		} else {
+			gasCost += params.WarmStorageReadCostEIP2929
+		}
+
+	case blockNumber >= evm.chainConfig.IstanbulBlock.Uint64():
+		return 800
+
+	default:
+		return 200
+	}
+	return gasCost
 }
