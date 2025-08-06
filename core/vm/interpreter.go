@@ -205,10 +205,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		logged           bool   // deferred EVMLogger should ignore already logged steps
 		res              []byte // result of the opcode execution function
 		debug            = in.evm.Config.Tracer != nil
-		usedBlocks       = make(map[uint64]bool) // 记录已使用的block的StartPC
-		comsumedBlockGas uint64                  // 实际使用的block的static gas总和
-		currentBlock     *compiler.BasicBlock    // 当前block（缓存）
-		nextBlockPC      uint64                  // 下一个block的起始PC（用于边界检测）
+		comsumedBlockGas uint64               // 实际使用的block的static gas总和
+		currentBlock     *compiler.BasicBlock // 当前block（缓存）
+		nextBlockPC      uint64               // 下一个block的起始PC（用于边界检测）
 	)
 	// Don't move this deferred function, it's placed before the OnOpcode-deferred method,
 	// so that it gets executed _after_: the OnOpcode needs the stacks before
@@ -261,21 +260,18 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 					currentBlock = block
 					// 计算下一个block的起始PC（如果存在）
 					nextBlockPC = block.EndPC
-					if !usedBlocks[block.StartPC] {
-						usedBlocks[block.StartPC] = true
-						if contract.Gas >= block.StaticGas {
-							contract.Gas -= block.StaticGas
-							comsumedBlockGas += block.StaticGas
-							if contract.CodeHash.String() == "0x84d1cbfc7b7c569181930ce930f0dbe6edb8e8df5631b0a066bd0197d109b9f3" {
-								log.Error("[CACHE DEBUG] Static gas", "block.StaticGas", block.StaticGas, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String(), "block.StartPC", block.StartPC, "block.EndPC", block.EndPC)
-							}
-						} else {
-							if contract.CodeHash.String() == "0x84d1cbfc7b7c569181930ce930f0dbe6edb8e8df5631b0a066bd0197d109b9f3" {
-								log.Error("[CACHE DEBUG] Insufficient gas for static", "block.StaticGas", block.StaticGas, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-							}
-							calcTotalCost = true
-							contract.Gas += comsumedBlockGas
+					if contract.Gas >= block.StaticGas {
+						contract.Gas -= block.StaticGas
+						comsumedBlockGas += block.StaticGas
+						if contract.CodeHash.String() == "0x84d1cbfc7b7c569181930ce930f0dbe6edb8e8df5631b0a066bd0197d109b9f3" {
+							log.Error("[CACHE DEBUG] Static gas", "block.StaticGas", block.StaticGas, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String(), "block.StartPC", block.StartPC, "block.EndPC", block.EndPC)
 						}
+					} else {
+						if contract.CodeHash.String() == "0x84d1cbfc7b7c569181930ce930f0dbe6edb8e8df5631b0a066bd0197d109b9f3" {
+							log.Error("[CACHE DEBUG] Insufficient gas for static", "block.StaticGas", block.StaticGas, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+						}
+						calcTotalCost = true
+						contract.Gas += comsumedBlockGas
 					}
 				} else {
 					calcTotalCost = true // if one or more block not found in cache, need cal detail
