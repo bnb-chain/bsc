@@ -1771,7 +1771,7 @@ func testRepairWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme s
 	if err != nil {
 		t.Fatalf("Failed to create persistent key-value database: %v", err)
 	}
-	db, err := rawdb.NewDatabaseWithFreezer(pdb, ancient, "", false, false, false, false, false)
+	db, err := rawdb.NewDatabaseWithFreezer(pdb, ancient, "", false, false, false)
 	if err != nil {
 		t.Fatalf("Failed to create persistent freezer database: %v", err)
 	}
@@ -1802,7 +1802,7 @@ func testRepairWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme s
 	if err = db.SetupFreezerEnv(&ethdb.FreezerEnv{
 		ChainCfg:         gspec.Config,
 		BlobExtraReserve: params.DefaultExtraReserveForBlobRequests,
-	}); err != nil {
+	}, 0); err != nil {
 		t.Fatalf("Failed to create chain: %v", err)
 	}
 	chain, err := NewBlockChain(db, config, gspec, nil, engine, vm.Config{}, nil, nil)
@@ -1865,7 +1865,7 @@ func testRepairWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme s
 	if err != nil {
 		t.Fatalf("Failed to reopen persistent key-value database: %v", err)
 	}
-	db, err = rawdb.NewDatabaseWithFreezer(pdb, ancient, "", false, false, false, false, false)
+	db, err = rawdb.NewDatabaseWithFreezer(pdb, ancient, "", false, false, false)
 	if err != nil {
 		t.Fatalf("Failed to reopen persistent freezer database: %v", err)
 	}
@@ -1930,7 +1930,7 @@ func testIssue23496(t *testing.T, scheme string) {
 	if err != nil {
 		t.Fatalf("Failed to create persistent key-value database: %v", err)
 	}
-	db, err := rawdb.NewDatabaseWithFreezer(pdb, ancient, "", false, false, false, false, false)
+	db, err := rawdb.NewDatabaseWithFreezer(pdb, ancient, "", false, false, false)
 	if err != nil {
 		t.Fatalf("Failed to create persistent freezer database: %v", err)
 	}
@@ -1988,7 +1988,7 @@ func testIssue23496(t *testing.T, scheme string) {
 	if err != nil {
 		t.Fatalf("Failed to reopen persistent key-value database: %v", err)
 	}
-	db, err = rawdb.NewDatabaseWithFreezer(pdb, ancient, "", false, false, false, false, false)
+	db, err = rawdb.NewDatabaseWithFreezer(pdb, ancient, "", false, false, false)
 	if err != nil {
 		t.Fatalf("Failed to reopen persistent freezer database: %v", err)
 	}

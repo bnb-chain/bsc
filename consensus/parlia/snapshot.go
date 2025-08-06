@@ -25,9 +25,8 @@ import (
 	"math"
 	"sort"
 
-	lru "github.com/hashicorp/golang-lru"
-
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -40,7 +39,7 @@ import (
 type Snapshot struct {
 	config   *params.ParliaConfig // Consensus engine parameters to fine tune behavior
 	ethAPI   *ethapi.BlockChainAPI
-	sigCache *lru.ARCCache // Cache of recent block signatures to speed up ecrecover
+	sigCache *lru.Cache[common.Hash, common.Address] // Cache of recent block signatures to speed up ecrecover
 
 	Number           uint64                            `json:"number"`                // Block number where the snapshot was created
 	Hash             common.Hash                       `json:"hash"`                  // Block hash where the snapshot was created
@@ -63,7 +62,7 @@ type ValidatorInfo struct {
 // the genesis block.
 func newSnapshot(
 	config *params.ParliaConfig,
-	sigCache *lru.ARCCache,
+	sigCache *lru.Cache[common.Hash, common.Address],
 	number uint64,
 	hash common.Hash,
 	validators []common.Address,
@@ -112,7 +111,7 @@ func (s validatorsAscending) Less(i, j int) bool { return bytes.Compare(s[i][:],
 func (s validatorsAscending) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 // loadSnapshot loads an existing snapshot from the database.
-func loadSnapshot(config *params.ParliaConfig, sigCache *lru.ARCCache, db ethdb.Database, hash common.Hash, ethAPI *ethapi.BlockChainAPI) (*Snapshot, error) {
+func loadSnapshot(config *params.ParliaConfig, sigCache *lru.Cache[common.Hash, common.Address], db ethdb.Database, hash common.Hash, ethAPI *ethapi.BlockChainAPI) (*Snapshot, error) {
 	blob, err := db.Get(append([]byte("parlia-"), hash[:]...))
 	if err != nil {
 		return nil, err

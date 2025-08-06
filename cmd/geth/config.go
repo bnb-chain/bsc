@@ -193,6 +193,15 @@ func makeConfigNode(ctx *cli.Context) (*node.Node, gethConfig) {
 	}
 	applyMetricConfig(ctx, &cfg)
 
+	// do some post loading config logic
+	if cfg.Eth.PruneAncientData {
+		if cfg.Eth.SyncMode != ethconfig.FullSync {
+			log.Warn("pruneancient parameter can only be used with syncmode=full, force to full sync")
+			cfg.Eth.SyncMode = ethconfig.FullSync
+		}
+		cfg.Eth.BlockHistory = params.FullImmutabilityThreshold
+	}
+
 	return stack, cfg
 }
 

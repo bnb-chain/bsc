@@ -80,15 +80,6 @@ func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common
 	return bid.Hash(), nil
 }
 
-func (miner *Miner) BestPackedBlockReward(parentHash common.Hash) *big.Int {
-	bidRuntime := miner.bidSimulator.GetBestBid(parentHash)
-	if bidRuntime == nil {
-		return big.NewInt(0)
-	}
-
-	return bidRuntime.packedBlockReward
-}
-
 func (miner *Miner) MevParams() *types.MevParams {
 	builderFeeCeil, ok := big.NewInt(0).SetString(*miner.worker.config.Mev.BuilderFeeCeil, 10)
 	if !ok {

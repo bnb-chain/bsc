@@ -45,7 +45,6 @@ type Database struct {
 	lock sync.RWMutex
 
 	stateStore ethdb.Database
-	blockStore ethdb.Database
 }
 
 func (db *Database) ModifyAncients(f func(ethdb.AncientWriteOp) error) (int64, error) {
@@ -299,13 +298,6 @@ func (db *Database) StateStoreReader() ethdb.Reader {
 		return db
 	}
 	return db.stateStore
-}
-
-func (db *Database) BlockStoreReader() ethdb.Reader {
-	if db.blockStore == nil {
-		return db
-	}
-	return db.blockStore
 }
 
 // keyvalue is a key-value tuple tagged with a deletion field to allow creating

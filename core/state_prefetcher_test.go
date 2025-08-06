@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"runtime/pprof"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -138,11 +139,5 @@ func matchesLabel(sample *profile.Sample, key, expectedValue string) bool {
 		return false
 	}
 
-	for _, value := range values {
-		if value == expectedValue {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(values, expectedValue)
 }
