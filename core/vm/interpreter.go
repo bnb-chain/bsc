@@ -255,7 +255,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// 只在以下情况检查block边界：
 			// 1. 当前block为空（首次执行）
 			// 2. PC超出了当前block范围（向前或向后）
-			if currentBlock == nil || pc >= nextBlockPC || pc < currentBlock.StartPC {
+			if currentBlock == nil || pc >= nextBlockPC || pc <= currentBlock.StartPC {
 				if block, found := compiler.GetBlockByPC(contract.CodeHash, pc); found {
 					currentBlock = block
 					// 计算下一个block的起始PC（如果存在）
