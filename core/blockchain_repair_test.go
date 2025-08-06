@@ -1797,7 +1797,7 @@ func testRepairWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme s
 		option.SnapshotLimit = 256
 		option.SnapshotWait = true
 	}
-	config.TriesInMemory = 128
+	option.TriesInMemory = 128
 
 	if err = db.SetupFreezerEnv(&ethdb.FreezerEnv{
 		ChainCfg:         gspec.Config,

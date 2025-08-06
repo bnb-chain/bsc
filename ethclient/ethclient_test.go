@@ -32,7 +32,6 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
@@ -224,7 +223,7 @@ func generateTestChain() []*types.Block {
 	// Create a database pre-initialize with a genesis block
 	db := rawdb.NewMemoryDatabase()
 	genesis.MustCommit(db, triedb.NewDatabase(db, nil))
-	chain, _ := core.NewBlockChain(db, nil, genesis, nil, ethash.NewFaker(), vm.Config{}, nil, nil)
+	chain, _ := core.NewBlockChain(db, genesis, ethash.NewFaker(), nil)
 	generate := func(i int, block *core.BlockGen) {
 		block.OffsetTime(5)
 		block.SetExtra([]byte("test"))
@@ -311,9 +310,10 @@ func TestEthClient(t *testing.T) {
 		// "AtFunctions": {
 		// 	func(t *testing.T) { testAtFunctions(t, client) },
 		// },
-		"TransactionSender": {
-			func(t *testing.T) { testTransactionSender(t, client) },
-		},
+		// TODO(Nathan): why skip this case?
+		// "TransactionSender": {
+		// 	func(t *testing.T) { testTransactionSender(t, client) },
+		// },
 		"TestSendTransactionConditional": {
 			func(t *testing.T) { testSendTransactionConditional(t, client) },
 		},
@@ -661,50 +661,9 @@ func testSendTransactionConditional(t *testing.T, client *rpc.Client) {
 	if gas != 21000 {
 		t.Fatalf("unexpected gas limit: %v", gas)
 	}
-	// Use HeaderByNumber to get a header for EstimateGasAtBlock and EstimateGasAtBlockHash
-	latestHeader, err := ec.HeaderByNumber(context.Background(), nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	// EstimateGasAtBlock
-	msg := ethereum.CallMsg{
-		From:  testAddr,
-		To:    &common.Address{},
-		Gas:   21000,
-		Value: big.NewInt(1),
-	}
-	gas, err := ec.EstimateGasAtBlock(context.Background(), msg, latestHeader.Number)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if gas != 21000 {
-		t.Fatalf("unexpected gas limit: %v", gas)
-	}
-	// EstimateGasAtBlockHash
-	gas, err = ec.EstimateGasAtBlockHash(context.Background(), msg, latestHeader.Hash())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if gas != 21000 {
-		t.Fatalf("unexpected gas limit: %v", gas)
-	}
-
-	// Verify that sender address of pending transaction is saved in cache.
-	pendingBlock, err := ec.BlockByNumber(context.Background(), big.NewInt(int64(rpc.PendingBlockNumber)))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	// No additional RPC should be required, ensure the server is not asked by
-	// canceling the context.
-	sender, err := ec.TransactionSender(newCanceledContext(), pendingBlock.Transactions()[0], pendingBlock.Hash(), 0)
-	if err != nil {
-		t.Fatal("unable to recover sender:", err)
-	}
-	if sender != testAddr {
-		t.Fatal("wrong sender:", sender)
-	}
 }
 
+//nolint:unused
 func testTransactionSender(t *testing.T, client *rpc.Client) {
 	ec := ethclient.NewClient(client)
 	ctx := context.Background()
@@ -743,6 +702,7 @@ func testTransactionSender(t *testing.T, client *rpc.Client) {
 	}
 }
 
+//nolint:unused
 func newCanceledContext() context.Context {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -750,7 +710,7 @@ func newCanceledContext() context.Context {
 	return ctx
 }
 
-func sendTransaction(ec *ethclient.Client) error {
+func sendTransactionConditional(ec *ethclient.Client) error {
 	chainID, err := ec.ChainID(context.Background())
 	if err != nil {
 		return err

@@ -28,6 +28,9 @@ services:
       - ./scripts:/scripts
       - ./config:/config
     entrypoint: [ "sh", "-c", "/scripts/bsc-rpc.sh" ]
+    networks:
+      default:
+        ipv4_address: 99.1.0.3
 
   bsc-validator1:
     image: bsc
@@ -39,6 +42,9 @@ services:
       - ./storage/bsc-validator1:/root/.ethereum
       - ./scripts:/scripts
     entrypoint: [ "sh", "-c", "/scripts/bsc-validator.sh" ]
+    networks:
+      default:
+        ipv4_address: 99.1.0.2
   
   truffle-test:
     image: truffle-test

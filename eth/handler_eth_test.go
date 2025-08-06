@@ -27,7 +27,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
@@ -626,7 +625,7 @@ func testBroadcastBlock(t *testing.T, peers, bcasts int) {
 		// Wait a bit for the above handlers to start
 		time.Sleep(100 * time.Millisecond)
 
-		if err := sinkPeer.Handshake(1, td, genesis.Hash(), genesis.Hash(), forkid.NewIDWithChain(source.chain), forkid.NewFilter(source.chain), nil); err != nil {
+		if err := sinkPeer.Handshake(1, source.chain, eth.BlockRangeUpdatePacket{}, td, nil); err != nil {
 			t.Fatalf("failed to run protocol handshake")
 		}
 		go eth.Handle(sink, sinkPeer)
@@ -698,7 +697,7 @@ func testBroadcastMalformedBlock(t *testing.T, protocol uint) {
 		genesis = source.chain.Genesis()
 		td      = source.chain.GetTd(genesis.Hash(), genesis.NumberU64())
 	)
-	if err := sink.Handshake(1, td, genesis.Hash(), genesis.Hash(), forkid.NewIDWithChain(source.chain), forkid.NewFilter(source.chain), nil); err != nil {
+	if err := sink.Handshake(1, source.chain, eth.BlockRangeUpdatePacket{}, td, nil); err != nil {
 		t.Fatalf("failed to run protocol handshake")
 	}
 	// After the handshake completes, the source handler should stream the sink
@@ -743,7 +742,6 @@ func TestOptionMaxPeersPerIP(t *testing.T) {
 	handler := newTestHandler()
 	defer handler.close()
 	var (
-		genesis       = handler.chain.Genesis()
 		head          = handler.chain.CurrentBlock()
 		td            = handler.chain.GetTd(head.Hash(), head.Number.Uint64())
 		wg            = sync.WaitGroup{}
@@ -800,7 +798,7 @@ func TestOptionMaxPeersPerIP(t *testing.T) {
 			t.Errorf("current num is %d, maxPeersPerIP is %d, but failed:%s", num, maxPeersPerIP, err)
 		}(tryNum)
 
-		if err := src.Handshake(1, td, head.Hash(), genesis.Hash(), forkid.NewIDWithChain(handler.chain), forkid.NewFilter(handler.chain), nil); err != nil {
+		if err := src.Handshake(1, handler.chain, eth.BlockRangeUpdatePacket{}, td, nil); err != nil {
 			t.Fatalf("failed to run protocol handshake")
 		}
 		// make sure runEthPeer execute one by one.

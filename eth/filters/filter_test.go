@@ -470,7 +470,7 @@ func TestRangeLogs(t *testing.T) {
 	newFilter := func(begin, end int64) {
 		testCase++
 		event = 0
-		filter = sys.NewRangeFilter(begin, end, addresses, nil)
+		filter = sys.NewRangeFilter(begin, end, addresses, nil, false)
 		filter.rangeLogsTestHook = make(chan rangeLogsTestEvent)
 		go func(filter *Filter) {
 			filter.Logs(context.Background())

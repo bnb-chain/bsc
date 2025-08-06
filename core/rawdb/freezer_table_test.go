@@ -1377,7 +1377,7 @@ func TestResetItems(t *testing.T) {
 	fname := fmt.Sprintf("truncate-tail-%d", rand.Uint64())
 
 	// Fill table
-	f, err := newTable(os.TempDir(), fname, rm, wm, sg, 40, true, false)
+	f, err := newTable(os.TempDir(), fname, rm, wm, sg, 40, freezerTableConfig{noSnappy: true, prunable: true}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1421,7 +1421,7 @@ func TestResetItems(t *testing.T) {
 
 	// Reopen the table, the deletion information should be persisted as well
 	f.Close()
-	f, err = newTable(os.TempDir(), fname, rm, wm, sg, 40, true, false)
+	f, err = newTable(os.TempDir(), fname, rm, wm, sg, 40, freezerTableConfig{noSnappy: true, prunable: true}, false)
 	if err != nil {
 		t.Fatal(err)
 	}

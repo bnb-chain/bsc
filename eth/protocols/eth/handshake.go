@@ -70,13 +70,50 @@ func (p *Peer) handshake68(networkID uint64, chain *core.BlockChain, td *big.Int
 	}()
 	var status StatusPacket68 // safe to read after two values have been received from errc
 	go func() {
-		errc <- p.readStatus68(networkID, &status, genesis.Hash(), forkFilter, extension)
+		errc <- p.readStatus68(networkID, &status, genesis.Hash(), forkFilter)
 	}()
+	if err := waitForHandshake(errc, p); err != nil {
+		return err
+	}
+	p.td, p.head = status.TD, status.Head
+	// TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
+	// larger, it will still fit within 100 bits
+	if tdlen := p.td.BitLen(); tdlen > 100 {
+		return fmt.Errorf("too large total difficulty: bitlen %d", tdlen)
+	}
 
-	return waitForHandshake(errc, p)
+	var upgradeStatus UpgradeStatusPacket // safe to read after two values have been received from errc
+	if extension == nil {
+		extension = &UpgradeStatusExtension{}
+	}
+	extensionRaw, err := extension.Encode()
+	if err != nil {
+		return err
+	}
+	gopool.Submit(func() {
+		errc <- p2p.Send(p.rw, UpgradeStatusMsg, &UpgradeStatusPacket{
+			Extension: extensionRaw,
+		})
+	})
+	gopool.Submit(func() {
+		errc <- p.readUpgradeStatus(&upgradeStatus)
+	})
+	if err := waitForHandshake(errc, p); err != nil {
+		return err
+	}
+	extension, err = upgradeStatus.GetExtension()
+	if err != nil {
+		return err
+	}
+	p.statusExtension = extension
+	if p.statusExtension.DisablePeerTxBroadcast {
+		p.Log().Debug("peer does not need broadcast txs, closing broadcast routines")
+		p.CloseTxBroadcast()
+	}
+	return nil
 }
 
-func (p *Peer) readStatus68(networkID uint64, status *StatusPacket68, genesis common.Hash, forkFilter forkid.Filter, extension *UpgradeStatusExtension) error {
+func (p *Peer) readStatus68(networkID uint64, status *StatusPacket68, genesis common.Hash, forkFilter forkid.Filter) error {
 	if err := p.readStatusMsg(status); err != nil {
 		return err
 	}
@@ -91,55 +128,6 @@ func (p *Peer) readStatus68(networkID uint64, status *StatusPacket68, genesis co
 	}
 	if err := forkFilter(status.ForkID); err != nil {
 		return fmt.Errorf("%w: %v", errForkIDRejected, err)
-	}
-	p.td, p.head = status.TD, status.Head
-
-	var upgradeStatus UpgradeStatusPacket // safe to read after two values have been received from errc
-	if extension == nil {
-		extension = &UpgradeStatusExtension{}
-	}
-	extensionRaw, err := extension.Encode()
-	if err != nil {
-		return err
-	}
-
-	errc := make(chan error, 2)
-	gopool.Submit(func() {
-		errc <- p2p.Send(p.rw, UpgradeStatusMsg, &UpgradeStatusPacket{
-			Extension: extensionRaw,
-		})
-	})
-	gopool.Submit(func() {
-		errc <- p.readUpgradeStatus(&upgradeStatus)
-	})
-	timeout := time.NewTimer(handshakeTimeout)
-	defer timeout.Stop()
-	for i := 0; i < 2; i++ {
-		select {
-		case err := <-errc:
-			if err != nil {
-				return err
-			}
-		case <-timeout.C:
-			return p2p.DiscReadTimeout
-		}
-	}
-
-	extension, err = upgradeStatus.GetExtension()
-	if err != nil {
-		return err
-	}
-	p.statusExtension = extension
-
-	if p.statusExtension.DisablePeerTxBroadcast {
-		p.Log().Debug("peer does not need broadcast txs, closing broadcast routines")
-		p.CloseTxBroadcast()
-	}
-
-	// TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
-	// larger, it will still fit within 100 bits
-	if tdlen := p.td.BitLen(); tdlen > 100 {
-		return fmt.Errorf("too large total difficulty: bitlen %d", tdlen)
 	}
 	return nil
 }

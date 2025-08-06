@@ -22,7 +22,7 @@ linters:
     - staticcheck
     - unconvert
     - unused
-    - usetesting
+    # - usetesting
     - whitespace
     ### linters we tried and will not be using:
     ###

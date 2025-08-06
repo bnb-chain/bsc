@@ -122,15 +122,6 @@ func testSetupGenesis(t *testing.T, scheme string) {
 			wantErr: &GenesisMismatchError{Stored: customghash, New: params.ChapelGenesisHash},
 		},
 		{
-			name: "custom block in DB, genesis == hoodi",
-			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, *params.ConfigCompatError, error) {
-				tdb := triedb.NewDatabase(db, newDbConfig(scheme))
-				customg.Commit(db, tdb)
-				return SetupGenesisBlock(db, tdb, DefaultHoodiGenesisBlock())
-			},
-			wantErr: &GenesisMismatchError{Stored: customghash, New: params.HoodiGenesisHash},
-		},
-		{
 			name: "compatible config in DB",
 			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, *params.ConfigCompatError, error) {
 				tdb := triedb.NewDatabase(db, newDbConfig(scheme))

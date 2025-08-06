@@ -40,7 +40,7 @@ const ProtocolName = "eth"
 
 // ProtocolVersions are the supported versions of the `eth` protocol (first
 // is primary).
-var ProtocolVersions = []uint{ETH69, ETH68}
+var ProtocolVersions = []uint{ /*ETH69,*/ ETH68} // ETH69 is disabled in bsc
 
 // protocolLengths are the number of implemented message corresponding to
 // different protocol versions.

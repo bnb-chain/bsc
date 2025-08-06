@@ -570,12 +570,22 @@ func (b *bidSimulator) clearLoop() {
 		b.simBidMu.Unlock()
 	}
 
-	for head := range b.chainHeadCh {
-		if !b.isRunning() {
-			continue
-		}
+	for {
+		select {
+		case head := <-b.chainHeadCh:
+			if !b.isRunning() {
+				continue
+			}
 
-		clearFn(head.Header.ParentHash, head.Header.Number.Uint64())
+			clearFn(head.Header.ParentHash, head.Header.Number.Uint64())
+
+		// System stopped
+		case <-b.exitCh:
+			return
+
+		case <-b.chainHeadSub.Err():
+			return
+		}
 	}
 }
 

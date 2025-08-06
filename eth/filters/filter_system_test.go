@@ -659,7 +659,7 @@ func TestVoteSubscription(t *testing.T) {
 
 	var (
 		db           = rawdb.NewMemoryDatabase()
-		backend, sys = newTestFilterSystem(t, db, Config{Timeout: 5 * time.Minute})
+		backend, sys = newTestFilterSystem(db, Config{Timeout: 5 * time.Minute})
 		api          = NewFilterAPI(sys, false)
 		votes        = []*types.VoteEnvelope{
 			&types.VoteEnvelope{

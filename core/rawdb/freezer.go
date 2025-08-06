@@ -357,7 +357,10 @@ func (f *Freezer) TruncateTail(tail uint64) (uint64, error) {
 	if old >= tail {
 		return old, nil
 	}
-	for _, table := range f.tables {
+	for kind, table := range f.tables {
+		if slices.Contains(additionTables, kind) && EmptyTable(table) {
+			continue
+		}
 		if table.config.prunable {
 			if err := table.truncateTail(tail); err != nil {
 				return 0, err

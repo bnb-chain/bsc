@@ -163,9 +163,6 @@ func (tree *layerTree) add(root common.Hash, parentRoot common.Hash, block uint6
 	}
 	l := parent.update(root, parent.stateID()+1, block, newNodeSet(nodes.Flatten()), states)
 
-	// Before adding layertree, update the hash cache.
-	l.cache.Add(l)
-
 	tree.lock.Lock()
 	defer tree.lock.Unlock()
 

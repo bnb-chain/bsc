@@ -117,7 +117,7 @@ func TestGeneratePOSChain(t *testing.T) {
 	})
 
 	// Import the chain. This runs all block validation rules.
-	blockchain, _ := NewBlockChain(db, gspec, engine, nil)
+	blockchain, _ := NewBlockChain(db, gspec, beacon.NewFaker(), nil)
 	defer blockchain.Stop()
 
 	if i, err := blockchain.InsertChain(genchain); err != nil {

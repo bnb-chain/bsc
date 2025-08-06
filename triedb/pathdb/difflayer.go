@@ -22,114 +22,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/trie/trienode"
 )
-
-type RefTrieNode struct {
-	refCount uint32
-	node     *trienode.Node
-}
-
-type HashNodeCache struct {
-	lock  sync.RWMutex
-	cache map[common.Hash]*RefTrieNode
-}
-
-func (h *HashNodeCache) length() int {
-	if h == nil {
-		return 0
-	}
-	h.lock.RLock()
-	defer h.lock.RUnlock()
-	return len(h.cache)
-}
-
-func (h *HashNodeCache) set(hash common.Hash, node *trienode.Node) {
-	if h == nil {
-		return
-	}
-	h.lock.Lock()
-	defer h.lock.Unlock()
-	if n, ok := h.cache[hash]; ok {
-		n.refCount++
-	} else {
-		h.cache[hash] = &RefTrieNode{1, node}
-	}
-}
-
-func (h *HashNodeCache) Get(hash common.Hash) *trienode.Node {
-	if h == nil {
-		return nil
-	}
-	h.lock.RLock()
-	defer h.lock.RUnlock()
-	if n, ok := h.cache[hash]; ok {
-		return n.node
-	}
-	return nil
-}
-
-func (h *HashNodeCache) del(hash common.Hash) {
-	if h == nil {
-		return
-	}
-	h.lock.Lock()
-	defer h.lock.Unlock()
-	n, ok := h.cache[hash]
-	if !ok {
-		return
-	}
-	if n.refCount > 0 {
-		n.refCount--
-	}
-	if n.refCount == 0 {
-		delete(h.cache, hash)
-	}
-}
-
-func (h *HashNodeCache) Add(ly layer) {
-	if h == nil {
-		return
-	}
-	dl, ok := ly.(*diffLayer)
-	if !ok {
-		return
-	}
-	beforeAdd := h.length()
-	for _, node := range dl.nodes.accountNodes {
-		h.set(node.Hash, node)
-	}
-	for _, subset := range dl.nodes.storageNodes {
-		for _, node := range subset {
-			h.set(node.Hash, node)
-		}
-	}
-	diffHashCacheLengthGauge.Update(int64(h.length()))
-	log.Debug("Add difflayer to hash map", "root", ly.rootHash(), "block_number", dl.block, "map_len", h.length(), "add_delta", h.length()-beforeAdd)
-}
-
-func (h *HashNodeCache) Remove(ly layer) {
-	if h == nil {
-		return
-	}
-	dl, ok := ly.(*diffLayer)
-	if !ok {
-		return
-	}
-	go func() {
-		beforeDel := h.length()
-		for _, node := range dl.nodes.accountNodes {
-			h.del(node.Hash)
-		}
-		for _, subset := range dl.nodes.storageNodes {
-			for _, node := range subset {
-				h.del(node.Hash)
-			}
-		}
-		diffHashCacheLengthGauge.Update(int64(h.length()))
-		log.Debug("Remove difflayer from hash map", "root", ly.rootHash(), "block_number", dl.block, "map_len", h.length(), "del_delta", beforeDel-h.length())
-	}()
-}
 
 // diffLayer represents a collection of modifications made to the in-memory tries
 // along with associated state changes after running a block on top.
@@ -143,10 +36,7 @@ type diffLayer struct {
 	block  uint64              // Associated block number
 	nodes  *nodeSet            // Cached trie nodes indexed by owner and path
 	states *StateSetWithOrigin // Associated state changes along with origin value
-	cache  *HashNodeCache      // trienode cache by hash key. cache is immutable, but cache's item can be add/del.
 
-	// mutables
-	origin *diskLayer   // The current difflayer corresponds to the underlying disklayer and is updated during cap.
 	parent layer        // Parent layer modified by this one, never nil, **can be changed**
 	lock   sync.RWMutex // Lock used to protect parent
 }
@@ -162,35 +52,10 @@ func newDiffLayer(parent layer, root common.Hash, id uint64, block uint64, nodes
 		states: states,
 	}
 
-	switch l := parent.(type) {
-	case *diskLayer:
-		dl.origin = l
-		dl.cache = &HashNodeCache{
-			cache: make(map[common.Hash]*RefTrieNode),
-		}
-	case *diffLayer:
-		dl.origin = l.originDiskLayer()
-		dl.cache = l.cache
-	default:
-		panic("unknown parent type")
-	}
-
 	dirtyNodeWriteMeter.Mark(int64(nodes.size))
 	dirtyStateWriteMeter.Mark(int64(states.size))
 	log.Debug("Created new diff layer", "id", id, "block", block, "nodesize", common.StorageSize(nodes.size), "statesize", common.StorageSize(states.size))
 	return dl
-}
-
-func (dl *diffLayer) originDiskLayer() *diskLayer {
-	dl.lock.RLock()
-	defer dl.lock.RUnlock()
-	return dl.origin
-}
-
-func (dl *diffLayer) updateOriginDiskLayer(persistLayer *diskLayer) {
-	dl.lock.Lock()
-	defer dl.lock.Unlock()
-	dl.origin = persistLayer
 }
 
 // rootHash implements the layer interface, returning the root hash of
@@ -215,42 +80,7 @@ func (dl *diffLayer) parentLayer() layer {
 
 // node implements the layer interface, retrieving the trie node blob with the
 // provided node information. No error will be returned if the node is not found.
-// The hash parameter can access the cache to speed up access.
-func (dl *diffLayer) node(owner common.Hash, path []byte, hash common.Hash, depth int) ([]byte, common.Hash, *nodeLoc, error) {
-	if hash != (common.Hash{}) {
-		if n := dl.cache.Get(hash); n != nil {
-			// The query from the hash map is fastpath,
-			// avoiding recursive query of 128 difflayers.
-			diffHashCacheHitMeter.Mark(1)
-			diffHashCacheReadMeter.Mark(int64(len(n.Blob)))
-			return n.Blob, n.Hash, &nodeLoc{loc: locDiffLayer, depth: depth}, nil
-		}
-	}
-
-	diffHashCacheMissMeter.Mark(1)
-	persistLayer := dl.originDiskLayer()
-	if hash != (common.Hash{}) && persistLayer != nil {
-		blob, rhash, nloc, err := persistLayer.node(owner, path, hash, depth+1)
-		if err != nil || rhash != hash {
-			// This is a bad case with a very low probability.
-			// r/w the difflayer cache and r/w the disklayer are not in the same lock,
-			// so in extreme cases, both reading the difflayer cache and reading the disklayer may fail, eg, disklayer is stale.
-			// In this case, fallback to the original 128-layer recursive difflayer query path.
-			diffHashCacheSlowPathMeter.Mark(1)
-			log.Debug("Retry difflayer due to query origin failed",
-				"owner", owner, "path", path, "query_hash", hash.String(), "return_hash", rhash.String(), "error", err)
-			return dl.intervalNode(owner, path, hash, 0)
-		} else { // This is the fastpath.
-			return blob, rhash, nloc, nil
-		}
-	}
-	diffHashCacheSlowPathMeter.Mark(1)
-	log.Debug("Retry difflayer due to origin is nil or hash is empty",
-		"owner", owner, "path", path, "query_hash", hash.String(), "disk_layer_is_empty", persistLayer == nil)
-	return dl.intervalNode(owner, path, hash, 0)
-}
-
-func (dl *diffLayer) intervalNode(owner common.Hash, path []byte, hash common.Hash, depth int) ([]byte, common.Hash, *nodeLoc, error) {
+func (dl *diffLayer) node(owner common.Hash, path []byte, depth int) ([]byte, common.Hash, *nodeLoc, error) {
 	// Hold the lock, ensure the parent won't be changed during the
 	// state accessing.
 	dl.lock.RLock()
@@ -264,11 +94,7 @@ func (dl *diffLayer) intervalNode(owner common.Hash, path []byte, hash common.Ha
 		return n.Blob, n.Hash, &nodeLoc{loc: locDiffLayer, depth: depth}, nil
 	}
 	// Trie node unknown to this layer, resolve from parent
-	if diff, ok := dl.parent.(*diffLayer); ok {
-		return diff.intervalNode(owner, path, hash, depth+1)
-	}
-	// Failed to resolve through diff layers, fallback to disk layer
-	return dl.parent.node(owner, path, hash, depth+1)
+	return dl.parent.node(owner, path, depth+1)
 }
 
 // account directly retrieves the account RLP associated with a particular

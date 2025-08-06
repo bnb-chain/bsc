@@ -467,10 +467,6 @@ func TestDatabaseRollback(t *testing.T) {
 
 	// Verify state histories
 	tester := newTester(t, 0, false, 32, false)
-	bottom := tester.db.tree.bottom()
-	if err := bottom.buffer.flush(tester.db.diskdb, tester.db.freezer, bottom.nodes, bottom.id, true); err != nil {
-		t.Fatalf("Failed to force flush: %v", err)
-	}
 	defer tester.release()
 
 	if err := tester.verifyHistory(); err != nil {
@@ -549,10 +545,6 @@ func TestDisable(t *testing.T) {
 	}()
 
 	tester := newTester(t, 0, false, 32, false)
-	bottom := tester.db.tree.bottom()
-	if err := bottom.buffer.flush(tester.db.diskdb, tester.db.freezer, nil, bottom.id, true); err != nil {
-		t.Fatalf("Failed to force flush: %v", err)
-	}
 	defer tester.release()
 
 	stored := crypto.Keccak256Hash(rawdb.ReadAccountTrieNode(tester.db.diskdb, nil))

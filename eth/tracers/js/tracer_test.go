@@ -286,7 +286,7 @@ func TestEnterExit(t *testing.T) {
 	scope := &vm.ScopeContext{
 		Contract: vm.GetContract(common.Address{}, common.Address{}, uint256.NewInt(0), 0, nil),
 	}
-	defer vm.ReturnContract(scope.contract)
+	defer vm.ReturnContract(scope.Contract)
 
 	tracer.OnEnter(1, byte(vm.CALL), scope.Contract.Caller(), scope.Contract.Address(), []byte{}, 1000, new(big.Int))
 	tracer.OnExit(1, []byte{}, 400, nil, false)

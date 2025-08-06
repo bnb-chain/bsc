@@ -354,7 +354,7 @@ func (evm *EVM) DelegateCall(originCaller common.Address, caller common.Address,
 		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.Config.Tracer)
 	} else {
 		// Initialise a new contract and make initialise the delegate values
-		contract := GetContract(originCaller, caller, nil, gas, evm.jumpDests)
+		contract := GetContract(originCaller, caller, value, gas, evm.jumpDests)
 		defer ReturnContract(contract)
 
 		contract.SetCallCode(evm.resolveCodeHash(addr), evm.resolveCode(addr))

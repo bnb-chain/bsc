@@ -641,7 +641,7 @@ func TestHandleNewBlock(t *testing.T) {
 		}
 	}
 
-	backend := newTestBackendWithGenerator(maxBodiesServe+15, true, gen)
+	backend := newTestBackendWithGenerator(maxBodiesServe+15, true, false, gen)
 	defer backend.close()
 
 	peer, _ := newTestPeer("peer", ETH68, backend)

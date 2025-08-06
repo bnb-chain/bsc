@@ -84,7 +84,7 @@ type layer interface {
 	//
 	// Note, no error will be returned if the requested node is not found in database.
 	// Note, the hash parameter can access the diff-layer flat cache to speed up access.
-	node(owner common.Hash, path []byte, hash common.Hash, depth int) ([]byte, common.Hash, *nodeLoc, error)
+	node(owner common.Hash, path []byte, depth int) ([]byte, common.Hash, *nodeLoc, error)
 
 	// account directly retrieves the account RLP associated with a particular
 	// hash in the slim data format. An error will be returned if the read

@@ -69,9 +69,9 @@ func (s *Suite) EthTests() []utesting.Test {
 		// status
 		{Name: "Status", Fn: s.TestStatus},
 		{Name: "MaliciousHandshake", Fn: s.TestMaliciousHandshake},
-		{Name: "BlockRangeUpdateExpired", Fn: s.TestBlockRangeUpdateHistoryExp},
-		{Name: "BlockRangeUpdateFuture", Fn: s.TestBlockRangeUpdateFuture},
-		{Name: "BlockRangeUpdateInvalid", Fn: s.TestBlockRangeUpdateInvalid},
+		// {Name: "BlockRangeUpdateExpired", Fn: s.TestBlockRangeUpdateHistoryExp},
+		// {Name: "BlockRangeUpdateFuture", Fn: s.TestBlockRangeUpdateFuture},
+		// {Name: "BlockRangeUpdateInvalid", Fn: s.TestBlockRangeUpdateInvalid},
 		// get block headers
 		{Name: "GetBlockHeaders", Fn: s.TestGetBlockHeaders},
 		{Name: "GetNonexistentBlockHeaders", Fn: s.TestGetNonexistentBlockHeaders},
@@ -424,7 +424,7 @@ func (s *Suite) TestGetReceipts(t *utesting.T) {
 		t.Fatalf("could not write to connection: %v", err)
 	}
 	// Wait for response.
-	resp := new(eth.ReceiptsPacket[*eth.ReceiptList69])
+	resp := new(eth.ReceiptsPacket[*eth.ReceiptList68])
 	if err := conn.ReadMsg(ethProto, eth.ReceiptsMsg, &resp); err != nil {
 		t.Fatalf("error reading block bodies msg: %v", err)
 	}

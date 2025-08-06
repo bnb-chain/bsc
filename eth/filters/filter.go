@@ -19,6 +19,7 @@ package filters
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"math/big"
 	"slices"
@@ -31,6 +32,8 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
 )
+
+const maxFilterBlockRange = 5000
 
 // Filter can be used to retrieve and filter logs.
 type Filter struct {
@@ -143,6 +146,9 @@ func (f *Filter) Logs(ctx context.Context) ([]*types.Log, error) {
 	end, err := resolveSpecial(f.end)
 	if err != nil {
 		return nil, err
+	}
+	if f.rangeLimit && (end-begin) > maxFilterBlockRange {
+		return nil, fmt.Errorf("exceed maximum block range: %d", maxFilterBlockRange)
 	}
 	return f.rangeLogs(ctx, begin, end)
 }

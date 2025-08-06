@@ -40,7 +40,7 @@ const (
 func runMinimalGeth(t *testing.T, args ...string) *testgeth {
 	// --holesky to make the 'writing genesis to disk' faster (no accounts)
 	// --syncmode=full to avoid allocating fast sync bloom
-	allArgs := []string{"--chapel", "--authrpc.port", "0", "--syncmode=full", "--port", "0",
+	allArgs := []string{"--chapel", "--syncmode=full", "--port", "0",
 		"--nat", "none", "--nodiscover", "--maxpeers", "0", "--cache", "64",
 		"--datadir.minfreedisk", "0"}
 	return runGeth(t, append(allArgs, args...)...)

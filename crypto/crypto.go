@@ -52,11 +52,6 @@ var (
 
 var errInvalidPubkey = errors.New("invalid secp256k1 public key")
 
-var keccakState256Pool = sync.Pool{
-	New: func() interface{} {
-		return sha3.NewLegacyKeccak256().(KeccakState)
-	}}
-
 // EllipticCurve contains curve operations.
 type EllipticCurve interface {
 	elliptic.Curve

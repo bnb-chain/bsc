@@ -31,7 +31,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var freezerTestTableDef = map[string]freezerTableConfig{"test": {noSnappy: true}}
+var (
+	freezerTestTableDef = map[string]freezerTableConfig{"test": {noSnappy: true}}
+	o1o2TableDef        = map[string]freezerTableConfig{"o1": {noSnappy: true, prunable: true}, "o2": {noSnappy: true, prunable: true}}
+	o1o2a1TableDef      = map[string]freezerTableConfig{"o1": {noSnappy: true, prunable: true}, "o2": {noSnappy: true, prunable: true}, "a1": {noSnappy: true, prunable: true}}
+)
 
 func TestFreezerModify(t *testing.T) {
 	t.Parallel()
@@ -337,7 +341,7 @@ func TestFreezer_AdditionTables(t *testing.T) {
 	dir := t.TempDir()
 	// Open non-readonly freezer and fill individual tables
 	// with different amount of data.
-	f, err := NewFreezer(dir, "", false, 2049, map[string]bool{"o1": true, "o2": true})
+	f, err := NewFreezer(dir, "", false, 2049, o1o2TableDef)
 	if err != nil {
 		t.Fatal("can't open freezer", err)
 	}
@@ -363,11 +367,11 @@ func TestFreezer_AdditionTables(t *testing.T) {
 
 	// check read only
 	additionTables = []string{"a1"}
-	f, err = NewFreezer(dir, "", true, 2049, map[string]bool{"o1": true, "o2": true, "a1": true})
+	f, err = NewFreezer(dir, "", true, 2049, o1o2a1TableDef)
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 
-	f, err = NewFreezer(dir, "", false, 2049, map[string]bool{"o1": true, "o2": true, "a1": true})
+	f, err = NewFreezer(dir, "", false, 2049, o1o2a1TableDef)
 	require.NoError(t, err)
 	frozen, _ := f.Ancients()
 	require.NoError(t, f.ResetTable("a1", frozen, true))
@@ -410,7 +414,7 @@ func TestFreezer_AdditionTables(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	// reopen and read
-	f, err = NewFreezer(dir, "", true, 2049, map[string]bool{"o1": true, "o2": true, "a1": true})
+	f, err = NewFreezer(dir, "", true, 2049, o1o2a1TableDef)
 	require.NoError(t, err)
 
 	// recheck additional table boundary
@@ -427,7 +431,7 @@ func TestFreezer_AdditionTables(t *testing.T) {
 
 func TestFreezer_ResetTailMeta_WithAdditionTable(t *testing.T) {
 	dir := t.TempDir()
-	f, err := NewFreezer(dir, "", false, 2049, map[string]bool{"o1": true, "o2": true})
+	f, err := NewFreezer(dir, "", false, 2049, o1o2TableDef)
 	if err != nil {
 		t.Fatal("can't open freezer", err)
 	}
@@ -452,7 +456,7 @@ func TestFreezer_ResetTailMeta_WithAdditionTable(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	additionTables = []string{"a1"}
-	f, err = NewFreezer(dir, "", false, 2049, map[string]bool{"o1": true, "o2": true, "a1": true})
+	f, err = NewFreezer(dir, "", false, 2049, o1o2a1TableDef)
 	require.NoError(t, err)
 	frozen, _ := f.Ancients()
 	require.NoError(t, f.ResetTable("a1", frozen, true))
@@ -476,7 +480,7 @@ func TestFreezer_ResetTailMeta_WithAdditionTable(t *testing.T) {
 	f.Close()
 
 	// check items
-	f, err = NewFreezer(dir, "", false, 2049, map[string]bool{"o1": true, "o2": true, "a1": true})
+	f, err = NewFreezer(dir, "", false, 2049, o1o2a1TableDef)
 	require.NoError(t, err)
 	_, err = f.Ancient("o1", 0)
 	require.Error(t, err)
@@ -502,7 +506,7 @@ func TestFreezer_ResetTailMeta_WithAdditionTable(t *testing.T) {
 
 func TestFreezer_ResetTailMeta_EmptyTable(t *testing.T) {
 	dir := t.TempDir()
-	f, err := NewFreezer(dir, "", false, 2049, map[string]bool{"o1": true, "o2": true})
+	f, err := NewFreezer(dir, "", false, 2049, o1o2TableDef)
 	if err != nil {
 		t.Fatal("can't open freezer", err)
 	}
@@ -512,7 +516,7 @@ func TestFreezer_ResetTailMeta_EmptyTable(t *testing.T) {
 
 	// try to append the ancient
 	additionTables = []string{"a1"}
-	f, err = NewFreezer(dir, "", false, 2049, map[string]bool{"o1": true, "o2": true, "a1": true})
+	f, err = NewFreezer(dir, "", false, 2049, o1o2a1TableDef)
 	require.NoError(t, err)
 	var item = make([]byte, 1024)
 	_, err = f.ModifyAncients(func(op ethdb.AncientWriteOp) error {
@@ -533,7 +537,7 @@ func TestFreezer_ResetTailMeta_EmptyTable(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 
-	f, err = NewFreezer(dir, "", false, 2049, map[string]bool{"o1": true, "o2": true, "a1": true})
+	f, err = NewFreezer(dir, "", false, 2049, o1o2a1TableDef)
 	require.NoError(t, err)
 	frozen, _ := f.Ancients()
 	require.NoError(t, f.ResetTable("a1", frozen, true))

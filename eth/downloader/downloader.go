@@ -179,6 +179,9 @@ type BlockChain interface {
 	// CurrentHeader retrieves the head header from the local chain.
 	CurrentHeader() *types.Header
 
+	// InsertHeaderChain inserts a batch of headers into the local chain.
+	InsertHeaderChain([]*types.Header) (int, error)
+
 	// GetTd returns the total difficulty of a local block.
 	GetTd(common.Hash, uint64) *big.Int
 
@@ -1120,6 +1123,16 @@ func (d *Downloader) fetchHeaders(p *peerConnection, from uint64, head uint64) e
 		// If we received a skeleton batch, resolve internals concurrently
 		var progressed bool
 		if skeleton {
+			filled, hashset, proced, err := d.fillHeaderSkeleton(from, headers)
+			if err != nil {
+				p.log.Debug("Skeleton chain invalid", "err", err)
+				return fmt.Errorf("%w: %v", errInvalidChain, err)
+			}
+			headers = filled[proced:]
+			hashes = hashset[proced:]
+
+			progressed = proced > 0
+			from += uint64(proced)
 		} else {
 			// A malicious node might withhold advertised headers indefinitely
 			if n := len(headers); n < MaxHeaderFetch && headers[n-1].Number.Uint64() < head {
@@ -1184,6 +1197,30 @@ func (d *Downloader) fetchHeaders(p *peerConnection, from uint64, head uint64) e
 			pivoting = true
 		}
 	}
+}
+
+// fillHeaderSkeleton concurrently retrieves headers from all our available peers
+// and maps them to the provided skeleton header chain.
+//
+// Any partial results from the beginning of the skeleton is (if possible) forwarded
+// immediately to the header processor to keep the rest of the pipeline full even
+// in the case of header stalls.
+//
+// The method returns the entire filled skeleton and also the number of headers
+// already forwarded for processing.
+func (d *Downloader) fillHeaderSkeleton(from uint64, skeleton []*types.Header) ([]*types.Header, []common.Hash, int, error) {
+	log.Debug("Filling up skeleton", "from", from)
+	d.queue.ScheduleSkeleton(from, skeleton)
+
+	err := d.concurrentFetch((*headerQueue)(d), false)
+	if err != nil {
+		log.Debug("Skeleton fill failed", "err", err)
+	}
+	filled, hashes, proced := d.queue.RetrieveHeaders()
+	if err == nil {
+		log.Debug("Skeleton fill succeeded", "filled", len(filled), "processed", proced)
+	}
+	return filled, hashes, proced, err
 }
 
 // fetchBodies iteratively downloads the scheduled block bodies, taking any
@@ -1304,6 +1341,21 @@ func (d *Downloader) processHeaders(origin uint64, td, ttd *big.Int, beaconMode 
 						return fmt.Errorf("%w: %v", errInvalidChain, err)
 					}
 					log.Debug("Inserted headers before cutoff", "number", chunkHeaders[cutoff-1].Number, "hash", chunkHashes[cutoff-1])
+					chunkHeaders = chunkHeaders[cutoff:]
+					chunkHashes = chunkHashes[cutoff:]
+				}
+				// TODO(Nathan): no need to `InsertHeaderChain` by design, but will fail without this, why?
+				// In case of header only syncing, validate the chunk immediately
+				if mode == ethconfig.SnapSync {
+					// Although the received headers might be all valid, a legacy
+					// PoW/PoA sync must not accept post-merge headers. Make sure
+					// that any transition is rejected at this point.
+					if len(chunkHeaders) > 0 {
+						if n, err := d.blockchain.InsertHeaderChain(chunkHeaders); err != nil {
+							log.Warn("Invalid header encountered", "number", chunkHeaders[n].Number, "hash", chunkHashes[n], "parent", chunkHeaders[n].ParentHash, "err", err)
+							return fmt.Errorf("%w: %v", errInvalidChain, err)
+						}
+					}
 				}
 				// If we've reached the allowed number of pending headers, stall a bit
 				for d.queue.PendingBodies() >= maxQueuedHeaders || d.queue.PendingReceipts() >= maxQueuedHeaders {
@@ -1319,10 +1371,6 @@ func (d *Downloader) processHeaders(origin uint64, td, ttd *big.Int, beaconMode 
 				//
 				// Skip the bodies/receipts retrieval scheduling before the cutoff in snap
 				// sync if chain pruning is configured.
-				if mode == ethconfig.SnapSync && cutoff != 0 {
-					chunkHeaders = chunkHeaders[cutoff:]
-					chunkHashes = chunkHashes[cutoff:]
-				}
 				if len(chunkHeaders) > 0 {
 					scheduled = true
 					if d.queue.Schedule(chunkHeaders, chunkHashes, origin+uint64(cutoff)) != len(chunkHeaders) {
