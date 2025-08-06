@@ -581,12 +581,11 @@ func (im *incrManager) ForceFlushStateBuffer() error {
 
 	// Force flush all data
 	if err := im.asyncBuffer.flush(im.incrDB, true); err != nil {
-		log.Error("Failed to force flush all buffered data", "error", err)
 		return fmt.Errorf("failed to force flush all buffered data: %v", err)
 	}
 
 	// Get the last stateID from the buffer
-	stateID := im.asyncBuffer.current.stateIDArray[1]
+	stateID := im.asyncBuffer.getFlushedStateID()
 	if stateID > 0 {
 		if err := im.truncateStateFreezer(stateID); err != nil {
 			log.Error("Failed to truncate state freezer", "stateID", stateID, "error", err)

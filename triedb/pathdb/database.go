@@ -1031,8 +1031,7 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 
 	// handle force kill with incr state and chain data
 	if info.chainAncients-1 != info.lastStateBlock {
-		log.Info("Force kill with data",
-			"lastChainStateID", info.lastChainStateID, "lastStateID", info.lastStateID,
+		log.Info("Force kill with data", "lastChainStateID", info.lastChainStateID, "lastStateID", info.lastStateID,
 			"lastStateBlock", info.lastStateBlock, "chainAncients", info.chainAncients, "diskLayerID", diskLayerID,
 			"persistentStateID", persistentStateID)
 		if persistentStateID > info.lastStateID {
@@ -1059,6 +1058,9 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 			db.incr.duplicateEndBlock = info.lastStateBlock - 1
 		}
 
+		if err = info.chainFreezer.Reset(); err != nil {
+			return err
+		}
 		if err = db.incr.resetIncrChainFreezer(db.diskdb, info.lastStateBlock); err != nil {
 			return err
 		}

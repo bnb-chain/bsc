@@ -14,13 +14,14 @@ import (
 
 // asyncIncrStateBuffer writes the incremental state trie nodes into incr state db.
 type asyncIncrStateBuffer struct {
-	mux          sync.RWMutex
-	current      *incrNodeBuffer
-	background   *incrNodeBuffer
-	isFlushing   atomic.Bool
-	stopFlushing atomic.Bool
-	done         chan struct{}
-	truncateChan chan uint64
+	mux            sync.RWMutex
+	current        *incrNodeBuffer
+	background     *incrNodeBuffer
+	isFlushing     atomic.Bool
+	stopFlushing   atomic.Bool
+	done           chan struct{}
+	truncateChan   chan uint64
+	flushedStateID atomic.Uint64
 }
 
 // newAsyncIncrStateBuffer initializes the async incremental state buffer.
@@ -96,6 +97,10 @@ func (a *asyncIncrStateBuffer) empty() bool {
 	return a.current.empty() && a.background.empty()
 }
 
+func (a *asyncIncrStateBuffer) getFlushedStateID() uint64 {
+	return a.flushedStateID.Load()
+}
+
 // flush persists the in-memory trie nodes to ancient db if the memory threshold is reached.
 func (a *asyncIncrStateBuffer) flush(incrDB *rawdb.IncrSnapDB, force bool) error {
 	a.mux.Lock()
@@ -113,6 +118,7 @@ func (a *asyncIncrStateBuffer) flush(incrDB *rawdb.IncrSnapDB, force bool) error
 				continue
 			}
 			atomic.StoreUint64(&a.current.immutable, 1)
+			a.flushedStateID.Store(a.current.stateIDArray[1])
 			return a.current.flush(incrDB)
 		}
 	}
