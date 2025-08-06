@@ -386,18 +386,10 @@ func (c *incrNodeBuffer) writeBatchToAncientDB(incrDB *rawdb.IncrSnapDB, jn []jo
 	return nil
 }
 
-// TODO: whether need to add states size here?
-// full returns true if the cache exceeds the memory limit
-func (c *incrNodeBuffer) full() bool {
-	return c.size() > c.limit
-}
-
-// reset clears the cache
-func (c *incrNodeBuffer) reset() {
+// resetIncrBuffer
+func (c *incrNodeBuffer) resetIncrBuffer() {
 	atomic.StoreUint64(&c.immutable, 0)
-	c.nodes.reset()
-	c.states.reset()
-	c.layers = 0
+	c.reset()
 	c.stateIDArray = emptyArray
 	c.blockNumberArray = emptyArray
 }
