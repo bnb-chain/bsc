@@ -36,7 +36,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
 )
 
@@ -513,16 +512,11 @@ func (tab *Table) filterNode(n *enode.Node) bool {
 	if tab.enrFilter == nil {
 		return false
 	}
-	node, err := tab.net.RequestENR(n)
-	if err != nil {
+	if node, err := tab.net.RequestENR(n); err != nil {
 		// If the ENR request fails, we assume the node is not valid, and try to add it to the table next time.
 		tab.log.Trace("ENR request failed", "id", n.ID(), "ipAddr", n.IPAddr(), "updPort", n.UDP(), "err", err)
 		return true
-	}
-	var eth enr.EthRecord
-	entryErr := node.Record().Load(enr.WithEntry("eth", &eth))
-	tab.log.Trace("filterNode ENR record", "id", n.ID(), "ipAddr", n.IPAddr(), "updPort", n.UDP(), "eth", eth, "entryErr", entryErr)
-	if !tab.enrFilter(node.Record()) {
+	} else if !tab.enrFilter(node.Record()) {
 		tab.log.Trace("ENR record filter out", "id", n.ID(), "ipAddr", n.IPAddr(), "updPort", n.UDP())
 		return true
 	}

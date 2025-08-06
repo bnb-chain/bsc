@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 // UDPConn is a network connection on which discovery can operate.
@@ -59,7 +60,10 @@ func ParseEthFilter(chain string) (NodeFilterFunc, error) {
 	}
 
 	f := func(r *enr.Record) bool {
-		var eth enr.EthRecord
+		var eth struct {
+			ForkID forkid.ID
+			Tail   []rlp.RawValue `rlp:"tail"`
+		}
 		if r.Load(enr.WithEntry("eth", &eth)) != nil {
 			return false
 		}
@@ -68,17 +72,20 @@ func ParseEthFilter(chain string) (NodeFilterFunc, error) {
 	return f, nil
 }
 
-func GetEthRecord(chain string) (enr.EthRecord, error) {
-	var eth enr.EthRecord
+func GetEthRecord(chain string) (enr.Entry, error) {
+	var eth struct {
+		ForkID forkid.ID
+		Tail   []rlp.RawValue `rlp:"tail"`
+	}
 	switch chain {
 	case "bsc":
 		eth.ForkID = forkid.NewID(params.BSCChainConfig, core.DefaultBSCGenesisBlock().ToBlock(), uint64(0), uint64(0))
 	case "chapel":
 		eth.ForkID = forkid.NewID(params.ChapelChainConfig, core.DefaultChapelGenesisBlock().ToBlock(), uint64(0), uint64(0))
 	default:
-		return eth, fmt.Errorf("unknown network %q", chain)
+		return nil, fmt.Errorf("unknown network %q", chain)
 	}
-	return eth, nil
+	return enr.WithEntry("eth", &eth), nil
 }
 
 // Config holds settings for the discovery listener.

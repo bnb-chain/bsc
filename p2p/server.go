@@ -43,6 +43,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -501,7 +502,10 @@ func (srv *Server) setupDiscovery() error {
 			if srv.forkFilter == nil {
 				return true
 			}
-			var eth enr.EthRecord
+			var eth struct {
+				ForkID forkid.ID
+				Tail   []rlp.RawValue `rlp:"tail"`
+			}
 			if r.Load(enr.WithEntry("eth", &eth)) != nil {
 				return false
 			}

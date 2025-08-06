@@ -40,7 +40,6 @@ import (
 	"io"
 	"sort"
 
-	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -333,9 +332,4 @@ func (r *Record) encode(sig []byte) (raw []byte, err error) {
 		return nil, errTooBig
 	}
 	return raw, nil
-}
-
-type EthRecord struct {
-	ForkID forkid.ID
-	Tail   []rlp.RawValue `rlp:"tail"`
 }

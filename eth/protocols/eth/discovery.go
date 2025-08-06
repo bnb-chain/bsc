@@ -21,7 +21,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -60,11 +59,6 @@ func StartENRUpdater(chain *core.BlockChain, ln *enode.LocalNode) {
 }
 
 func StartENRFilter(chain *core.BlockChain, p2p *p2p.Server) {
-	// fill eth entry to local node
-	var eth enr.EthRecord
-	head := chain.CurrentHeader()
-	eth.ForkID = forkid.NewID(chain.Config(), chain.Genesis(), head.Number.Uint64(), head.Time)
-	p2p.LocalNode().Set(enr.WithEntry("eth", &eth))
 	forkFilter := forkid.NewFilter(chain)
 	p2p.SetFilter(forkFilter)
 }
