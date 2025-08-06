@@ -270,7 +270,7 @@ func (sg *ShortcutGenerator) analyzeOpcodes() error {
 	}, nil, nil, trie.NewStackTrie(nil))
 
 	for _, selector := range sg.selectors {
-		gas, _, stk, mem, err := analyzeCall(sg.contractAddr, sg.opcodes, selector.getSelectorBts(), selector.PC, block)
+		gas, _, stk, mem, _, err := analyzeCall(sg.contractAddr, sg.opcodes, selector.getSelectorBts(), selector.PC, block)
 		if err != nil {
 			selector.SimErr = err
 		} else {
@@ -520,7 +520,8 @@ var (
 	}
 )
 
-func analyzeCall(addr common.Address, code []byte, input []byte, endPc uint64, block *types.Block) (gasUsed, opsUsed uint64, stack *Stack, mem *Memory, err error) {
+func analyzeCall(addr common.Address, code []byte, input []byte, endPc uint64, block *types.Block) (gasUsed, opsUsed uint64, stack *Stack, mem *Memory, dynamicOps map[uint64]OpCode, err error) {
+	//dynamicOps = make(map[uint64]OpCode)
 	statedb := MockStateDB{}
 	vmctx := BlockContext{
 		Coinbase:    common.Address{},
@@ -548,16 +549,17 @@ func analyzeCall(addr common.Address, code []byte, input []byte, endPc uint64, b
 	// When an error was returned by the EVM or when setting the creation code
 	// above we revert to the snapshot and consume any gas remaining. Additionally
 	// when we're in Homestead this also counts for code storage gas errors.
-	gasUsed, opsUsed, stk, mem, err := evm.interpreter.RunUntilPc(contract, input, true, endPc)
+	gasUsed, opsUsed, stk, mem, dynamicOps, err := evm.interpreter.RunUntilPc(contract, input, true, endPc)
 
 	if statedb.touched && endPc != 0 {
-		return 0, 0, nil, nil, errors.New("sim err: statedb touched")
+		return 0, 0, nil, nil, dynamicOps, errors.New("sim err: statedb touched")
 	}
-	return gasUsed, opsUsed, stk, mem, err
+	return gasUsed, opsUsed, stk, mem, dynamicOps, err
 }
 
-func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly bool, endPc uint64) (gasUsed, opsUsed uint64, stack_ *Stack, mem_ *Memory, err error) {
+func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly bool, endPc uint64) (gasUsed, opsUsed uint64, stack_ *Stack, mem_ *Memory, dynamicOps map[uint64]OpCode, err error) {
 	// Increment the call depth which is restricted to 1024
+	dynamicOps = make(map[uint64]OpCode)
 	in.evm.depth++
 	defer func() { in.evm.depth-- }()
 
@@ -574,7 +576,7 @@ func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly 
 
 	// Don't bother with the execution if there's no code.
 	if len(contract.Code) == 0 {
-		return 0, 0, nil, nil, errors.New("code is empty")
+		return 0, 0, nil, nil, dynamicOps, errors.New("code is empty")
 	}
 
 	var (
@@ -636,7 +638,7 @@ func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly 
 		op = contract.GetOp(pc)
 
 		if _, found := simOpBlacklist[op]; found && endPc != 0 {
-			return 0, 0, nil, nil, errors.New(fmt.Sprintf("op %s is not blacklisted", op.String()))
+			return 0, 0, nil, nil, dynamicOps, errors.New(fmt.Sprintf("op %s is not blacklisted", op.String()))
 		}
 
 		operation := in.table[op]
@@ -646,20 +648,20 @@ func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly 
 			case MSTORE:
 				fmt.Println("debug")
 			default:
-				return 0, 0, nil, nil, errors.New("dynamic gas is not supported")
+				return 0, 0, nil, nil, dynamicOps, errors.New("dynamic gas is not supported")
 			}
 		}
 
 		cost = operation.constantGas // For tracing
 		// Validate stack
 		if sLen := stack.len(); sLen < operation.minStack {
-			return 0, 0, nil, nil, &ErrStackUnderflow{stackLen: sLen, required: operation.minStack}
+			return 0, 0, nil, nil, dynamicOps, &ErrStackUnderflow{stackLen: sLen, required: operation.minStack}
 		} else if sLen > operation.maxStack {
-			return 0, 0, nil, nil, &ErrStackOverflow{stackLen: sLen, limit: operation.maxStack}
+			return 0, 0, nil, nil, dynamicOps, &ErrStackOverflow{stackLen: sLen, limit: operation.maxStack}
 		}
 		// for tracing: this gas consumption event is emitted below in the debug section.
 		if contract.Gas < cost {
-			return 0, 0, nil, nil, ErrOutOfGas
+			return 0, 0, nil, nil, dynamicOps, ErrOutOfGas
 		} else {
 			contract.Gas -= cost
 		}
@@ -667,6 +669,7 @@ func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly 
 		// All ops with a dynamic memory usage also has a dynamic gas cost.
 		var memorySize uint64
 		if operation.dynamicGas != nil {
+			dynamicOps[pc] = op
 			// calculate the new memory size and expand the memory to fit
 			// the operation
 			// Memory check needs to be done prior to evaluating the dynamic gas portion,
@@ -674,12 +677,12 @@ func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly 
 			if operation.memorySize != nil {
 				memSize, overflow := operation.memorySize(stack)
 				if overflow {
-					return 0, 0, nil, nil, ErrGasUintOverflow
+					return 0, 0, nil, nil, dynamicOps, ErrGasUintOverflow
 				}
 				// memory is expanded in words of 32 bytes. Gas
 				// is also calculated in words.
 				if memorySize, overflow = eth_math.SafeMul(toWordSize(memSize), 32); overflow {
-					return 0, 0, nil, nil, ErrGasUintOverflow
+					return 0, 0, nil, nil, dynamicOps, ErrGasUintOverflow
 				}
 			}
 			// Consume the gas and return an error if not enough gas is available.
@@ -689,11 +692,11 @@ func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly 
 			dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
 			cost += dynamicCost // for tracing
 			if err != nil {
-				return 0, 0, nil, nil, fmt.Errorf("%w: %v", ErrOutOfGas, err)
+				return 0, 0, nil, nil, dynamicOps, fmt.Errorf("%w: %v", ErrOutOfGas, err)
 			}
 			// for tracing: this gas consumption event is emitted below in the debug section.
 			if contract.Gas < dynamicCost {
-				return 0, 0, nil, nil, ErrOutOfGas
+				return 0, 0, nil, nil, dynamicOps, ErrOutOfGas
 			} else {
 				contract.Gas -= dynamicCost
 			}
@@ -719,8 +722,8 @@ func (in *EVMInterpreter) RunUntilPc(contract *Contract, input []byte, readOnly 
 	}
 
 	if pc != endPc && endPc != 0 {
-		return 0, 0, nil, nil, errors.New("sim err: unexpected end pc")
+		return 0, 0, nil, nil, dynamicOps, errors.New("sim err: unexpected end pc")
 	}
 
-	return totalCost, ops, stack, mem, err
+	return totalCost, ops, stack, mem, dynamicOps, err
 }
