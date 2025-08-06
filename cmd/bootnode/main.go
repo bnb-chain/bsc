@@ -36,7 +36,6 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
 )
 
 func main() {
@@ -134,11 +133,7 @@ func main() {
 			listenerAddr = natAddr
 		}
 	}
-
-	var eth struct {
-		ForkID forkid.ID
-		Tail   []rlp.RawValue `rlp:"tail"`
-	}
+	var eth enr.EthRecord
 	eth.ForkID = forkid.NewID(params.BSCChainConfig, core.DefaultBSCGenesisBlock().ToBlock(), uint64(0), uint64(0))
 	ln.Set(enr.WithEntry("eth", &eth))
 	printNotice(&nodeKey.PublicKey, *listenerAddr)

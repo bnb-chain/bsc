@@ -43,7 +43,6 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
-	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -496,18 +495,18 @@ func (srv *Server) setupDiscovery() error {
 	}
 
 	// ENR filter function
-	f := func(r *enr.Record) bool {
-		if srv.forkFilter == nil {
-			return true
+	var f discover.NodeFilterFunc
+	if srv.Config.EnableENRFilter {
+		f = func(r *enr.Record) bool {
+			if srv.forkFilter == nil {
+				return true
+			}
+			var eth enr.EthRecord
+			if r.Load(enr.WithEntry("eth", &eth)) != nil {
+				return false
+			}
+			return srv.forkFilter(eth.ForkID) == nil
 		}
-		var eth struct {
-			ForkID forkid.ID
-			Tail   []rlp.RawValue `rlp:"tail"`
-		}
-		if r.Load(enr.WithEntry("eth", &eth)) != nil {
-			return false
-		}
-		return srv.forkFilter(eth.ForkID) == nil
 	}
 
 	var (

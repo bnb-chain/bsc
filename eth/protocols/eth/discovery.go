@@ -61,10 +61,7 @@ func StartENRUpdater(chain *core.BlockChain, ln *enode.LocalNode) {
 
 func StartENRFilter(chain *core.BlockChain, p2p *p2p.Server) {
 	// fill eth entry to local node
-	var eth struct {
-		ForkID forkid.ID
-		Tail   []rlp.RawValue `rlp:"tail"`
-	}
+	var eth enr.EthRecord
 	head := chain.CurrentHeader()
 	eth.ForkID = forkid.NewID(chain.Config(), chain.Genesis(), head.Number.Uint64(), head.Time)
 	p2p.LocalNode().Set(enr.WithEntry("eth", &eth))

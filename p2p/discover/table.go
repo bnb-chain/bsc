@@ -33,13 +33,11 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
-	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -521,10 +519,7 @@ func (tab *Table) filterNode(n *enode.Node) bool {
 		tab.log.Trace("ENR request failed", "id", n.ID(), "ipAddr", n.IPAddr(), "updPort", n.UDP(), "err", err)
 		return true
 	}
-	var eth struct {
-		ForkID forkid.ID
-		Tail   []rlp.RawValue `rlp:"tail"`
-	}
+	var eth enr.EthRecord
 	entryErr := node.Record().Load(enr.WithEntry("eth", &eth))
 	tab.log.Trace("filterNode ENR record", "id", n.ID(), "ipAddr", n.IPAddr(), "updPort", n.UDP(), "eth", eth, "entryErr", entryErr)
 	if !tab.enrFilter(node.Record()) {
@@ -569,7 +564,6 @@ func (tab *Table) handleAddNode(req addNodeOp) bool {
 	}
 
 	if tab.filterNode(req.node) {
-		tab.log.Trace("ENR record filter failed", "id", req.node.ID(), "ipAddr", req.node.IPAddr(), "updPort", req.node.UDP())
 		return false
 	}
 

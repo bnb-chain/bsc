@@ -35,7 +35,6 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
 )
 
 // UDPConn is a network connection on which discovery can operate.
@@ -60,10 +59,7 @@ func ParseEthFilter(chain string) (NodeFilterFunc, error) {
 	}
 
 	f := func(r *enr.Record) bool {
-		var eth struct {
-			ForkID forkid.ID
-			Tail   []rlp.RawValue `rlp:"tail"`
-		}
+		var eth enr.EthRecord
 		if r.Load(enr.WithEntry("eth", &eth)) != nil {
 			return false
 		}
