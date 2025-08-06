@@ -26,8 +26,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/discover"
@@ -35,7 +33,6 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
-	"github.com/ethereum/go-ethereum/params"
 )
 
 func main() {
@@ -133,8 +130,10 @@ func main() {
 			listenerAddr = natAddr
 		}
 	}
-	var eth enr.EthRecord
-	eth.ForkID = forkid.NewID(params.BSCChainConfig, core.DefaultBSCGenesisBlock().ToBlock(), uint64(0), uint64(0))
+	eth, err := discover.GetEthRecord(*networkFilter)
+	if err != nil {
+		utils.Fatalf("-network: %v", err)
+	}
 	ln.Set(enr.WithEntry("eth", &eth))
 	printNotice(&nodeKey.PublicKey, *listenerAddr)
 	cfg := discover.Config{

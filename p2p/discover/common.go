@@ -68,6 +68,19 @@ func ParseEthFilter(chain string) (NodeFilterFunc, error) {
 	return f, nil
 }
 
+func GetEthRecord(chain string) (enr.EthRecord, error) {
+	var eth enr.EthRecord
+	switch chain {
+	case "bsc":
+		eth.ForkID = forkid.NewID(params.BSCChainConfig, core.DefaultBSCGenesisBlock().ToBlock(), uint64(0), uint64(0))
+	case "chapel":
+		eth.ForkID = forkid.NewID(params.ChapelChainConfig, core.DefaultChapelGenesisBlock().ToBlock(), uint64(0), uint64(0))
+	default:
+		return eth, fmt.Errorf("unknown network %q", chain)
+	}
+	return eth, nil
+}
+
 // Config holds settings for the discovery listener.
 type Config struct {
 	// These settings are required and configure the UDP listener:
