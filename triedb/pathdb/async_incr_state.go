@@ -113,22 +113,7 @@ func (a *asyncIncrStateBuffer) flush(incrDB *rawdb.IncrSnapDB, force bool) error
 				continue
 			}
 			atomic.StoreUint64(&a.current.immutable, 1)
-			// TODO: whether need to get truncate signal here?
-			err := a.current.flush(incrDB)
-			if err != nil {
-				return err
-			}
-			select {
-			case lastStateID := <-a.current.getTruncateSignal():
-				select {
-				case a.truncateChan <- lastStateID:
-					log.Info("Forwarded truncate signal after forcing flush current", "stateID", lastStateID)
-				default:
-					log.Debug("Truncate channel full, skipping signal")
-				}
-			default:
-			}
-			return nil
+			return a.current.flush(incrDB)
 		}
 	}
 
@@ -150,17 +135,7 @@ func (a *asyncIncrStateBuffer) flush(incrDB *rawdb.IncrSnapDB, force bool) error
 			err := a.background.flush(incrDB)
 			if err == nil {
 				log.Info("Successfully flushed incremental state buffer to ancient db")
-
-				select {
-				case lastStateID := <-a.background.getTruncateSignal():
-					select {
-					case a.truncateChan <- lastStateID:
-						log.Info("Forwarded truncate signal after background flush", "stateID", lastStateID)
-					default:
-						log.Debug("Truncate channel full, skipping signal")
-					}
-				default:
-				}
+				a.forwardTruncateSignal(a.background)
 				return
 			}
 			log.Error("Failed to flush incremental state buffer to ancient db", "error", err)
@@ -188,6 +163,20 @@ func (a *asyncIncrStateBuffer) waitAndStopFlushing() {
 // getTruncateSignal returns the truncate signal channel
 func (a *asyncIncrStateBuffer) getTruncateSignal() <-chan uint64 {
 	return a.truncateChan
+}
+
+// forwardTruncateSignal forwards truncate signal from buffer to truncate channel
+func (a *asyncIncrStateBuffer) forwardTruncateSignal(buffer *incrNodeBuffer) {
+	select {
+	case lastStateID := <-buffer.getTruncateSignal():
+		select {
+		case a.truncateChan <- lastStateID:
+			log.Info("Forwarded truncate signal", "stateID", lastStateID)
+		default:
+			log.Debug("Truncate channel full, skipping signal")
+		}
+	default:
+	}
 }
 
 // incrStateMetadata represents metadata for incremental state storage

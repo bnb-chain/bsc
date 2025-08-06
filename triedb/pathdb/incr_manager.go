@@ -192,12 +192,13 @@ func (im *incrManager) listenTruncateSignal() {
 				return
 			}
 			if err := im.truncateExtraBlock(ancients - 1); err != nil {
-				log.Error("Failed to truncate extra block", "block", ancients-1, "error", err)
 				continue
 			}
 
 		case stateID := <-im.asyncBuffer.getTruncateSignal():
-			im.truncateStateFreezer(stateID)
+			if err := im.truncateStateFreezer(stateID); err != nil {
+				continue
+			}
 
 		case <-im.stopChan:
 			log.Debug("Truncate signal listener stopped")
@@ -584,37 +585,38 @@ func (im *incrManager) ForceFlushStateBuffer() error {
 		return fmt.Errorf("failed to force flush all buffered data: %v", err)
 	}
 
-	// Wait for the flush to complete
-	im.asyncBuffer.waitAndStopFlushing()
-	log.Info("Successfully force flushed all buffered incremental state data")
-
-	select {
-	case stateID := <-im.asyncBuffer.getTruncateSignal():
-		im.truncateStateFreezer(stateID)
+	// Get the last stateID from the buffer
+	stateID := im.asyncBuffer.current.stateIDArray[1]
+	if stateID > 0 {
+		if err := im.truncateStateFreezer(stateID); err != nil {
+			log.Error("Failed to truncate state freezer", "stateID", stateID, "error", err)
+			return err
+		}
+		log.Info("Processed truncation after force flush", "stateID", stateID)
 	}
+
 	return nil
 }
 
 // truncateStateFreezer truncate state history by flushed stateID.
-func (im *incrManager) truncateStateFreezer(stateID uint64) {
+func (im *incrManager) truncateStateFreezer(stateID uint64) error {
 	tail, err := im.db.freezer.Tail()
 	if err != nil {
-		return
+		return nil
 	}
 	limit := im.db.config.StateHistory
 	if limit == 0 || stateID-tail <= limit {
 		log.Info("No truncation needed", "stateID", stateID, "tail", tail, "limit", limit)
-		return
+		return nil
 	}
 
-	go func() {
-		pruned, err := truncateFromTail(im.db.diskdb, im.db.freezer, stateID-1)
-		if err != nil {
-			log.Error("Failed to truncate from tail", "error", err, "target", stateID)
-			return
-		}
-		log.Info("Successfully truncated state history", "pruned_items", pruned, "target_tail", stateID)
-	}()
+	pruned, err := truncateFromTail(im.db.diskdb, im.db.freezer, stateID-1)
+	if err != nil {
+		log.Error("Failed to truncate from tail", "error", err, "target", stateID)
+		return err
+	}
+	log.Info("Successfully truncated state history", "pruned_items", pruned, "target_tail", stateID)
+	return nil
 }
 
 // readIncrMetadata reads incremental metadata.
