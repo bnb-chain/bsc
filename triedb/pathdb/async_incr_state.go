@@ -14,14 +14,16 @@ import (
 
 // asyncIncrStateBuffer writes the incremental state trie nodes into incr state db.
 type asyncIncrStateBuffer struct {
-	mux            sync.RWMutex
-	current        *incrNodeBuffer
-	background     *incrNodeBuffer
-	isFlushing     atomic.Bool
-	stopFlushing   atomic.Bool
-	done           chan struct{}
+	mux        sync.RWMutex
+	current    *incrNodeBuffer
+	background *incrNodeBuffer
+
 	truncateChan   chan uint64
 	flushedStateID atomic.Uint64
+
+	isFlushing   atomic.Bool
+	stopFlushing atomic.Bool
+	done         chan struct{}
 }
 
 // newAsyncIncrStateBuffer initializes the async incremental state buffer.

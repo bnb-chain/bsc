@@ -403,7 +403,7 @@ func (db *Database) RepairIncrStore() error {
 	}
 
 	// Align incremental data with disk layer
-	return db.restartIncrData(diskLayerID)
+	return db.alignIncrData(diskLayerID)
 }
 
 func (db *Database) GetStartBlock() (uint64, error) {
@@ -946,7 +946,7 @@ func (db *Database) loadIncrInfo() (*incrInfo, error) {
 	return info, nil
 }
 
-func (db *Database) restartIncrData(diskLayerID uint64) error {
+func (db *Database) alignIncrData(diskLayerID uint64) error {
 	// Load current incremental data info
 	info, err := db.loadIncrInfo()
 	if err != nil {
@@ -965,8 +965,6 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 	} else {
 		recordFirstStateID = binary.BigEndian.Uint64(data)
 	}
-	// compare recordFirstStateID with persistent state id
-	persistentStateID := rawdb.ReadPersistentStateID(db.diskdb)
 
 	// Get start block to avoid duplicate data writing
 	startBlock, err := db.GetStartBlock()
@@ -985,7 +983,7 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 			}
 			return nil
 		}
-		if persistentStateID > recordFirstStateID {
+		if diskLayerID > recordFirstStateID {
 			h, err := readHistory(db.freezer, recordFirstStateID)
 			if err != nil {
 				return err
@@ -1032,7 +1030,7 @@ func (db *Database) restartIncrData(diskLayerID uint64) error {
 	// handle force kill with incr state and chain data
 	if info.chainAncients-1 != info.lastStateBlock {
 		log.Info("Force kill with data")
-		if persistentStateID > info.lastStateID {
+		if diskLayerID > info.lastStateID {
 			h, err := readHistory(db.freezer, info.lastStateID)
 			if err != nil {
 				return err
