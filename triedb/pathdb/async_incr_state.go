@@ -108,13 +108,27 @@ func (a *asyncIncrStateBuffer) flush(incrDB *rawdb.IncrSnapDB, force bool) error
 	if force {
 		for {
 			if atomic.LoadUint64(&a.background.immutable) == 1 {
-				log.Info("Waiting background incremental state buffer flushed to disk for forcing flush")
+				log.Info("Waiting background incr state buffer flushed to disk for forcing flush")
 				time.Sleep(time.Duration(DefaultBackgroundFlushInterval) * time.Second)
 				continue
 			}
 			atomic.StoreUint64(&a.current.immutable, 1)
 			// TODO: whether need to get truncate signal here?
-			return a.current.flush(incrDB)
+			err := a.current.flush(incrDB)
+			if err != nil {
+				return err
+			}
+			select {
+			case lastStateID := <-a.current.getTruncateSignal():
+				select {
+				case a.truncateChan <- lastStateID:
+					log.Info("Forwarded truncate signal after forcing flush current", "stateID", lastStateID)
+				default:
+					log.Debug("Truncate channel full, skipping signal")
+				}
+			default:
+			}
+			return nil
 		}
 	}
 
@@ -215,7 +229,7 @@ func (c *incrNodeBuffer) commit(nodes *nodeSet, states *stateSet, stateID, block
 		return fmt.Errorf("cannot commit to immutable cache")
 	}
 
-	c.buffer.commit(nodes, nil)
+	c.buffer.commitNodes(nodes, states)
 	if c.stateIDArray[0] == 0 && c.stateIDArray[1] == 0 {
 		c.stateIDArray[0] = stateID
 		c.stateIDArray[1] = stateID

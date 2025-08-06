@@ -79,6 +79,14 @@ func (b *buffer) commit(nodes *nodeSet, states *stateSet) trienodebuffer {
 	return b
 }
 
+// commitNodes merges the provided trie nodes into the buffer.
+func (b *buffer) commitNodes(nodes *nodeSet, states *stateSet) trienodebuffer {
+	b.layers++
+	b.nodes.merge(nodes)
+	// b.states.merge(states)
+	return b
+}
+
 // revertTo is the reverse operation of commit. It also merges the provided states
 // and trie nodes into the buffer. The key difference is that the provided state
 // set should reverse the changes made by the most recent state transition.

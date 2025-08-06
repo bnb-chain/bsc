@@ -587,6 +587,11 @@ func (im *incrManager) ForceFlushStateBuffer() error {
 	// Wait for the flush to complete
 	im.asyncBuffer.waitAndStopFlushing()
 	log.Info("Successfully force flushed all buffered incremental state data")
+
+	select {
+	case stateID := <-im.asyncBuffer.getTruncateSignal():
+		im.truncateStateFreezer(stateID)
+	}
 	return nil
 }
 
