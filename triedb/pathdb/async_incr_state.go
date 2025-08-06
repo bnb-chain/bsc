@@ -98,7 +98,9 @@ func (a *asyncIncrStateBuffer) empty() bool {
 }
 
 func (a *asyncIncrStateBuffer) getFlushedStateID() uint64 {
-	return a.flushedStateID.Load()
+	old := a.flushedStateID.Load()
+	a.flushedStateID.Store(0)
+	return old
 }
 
 // flush persists the in-memory trie nodes to ancient db if the memory threshold is reached.
@@ -384,21 +386,10 @@ func (c *incrNodeBuffer) writeBatchToAncientDB(incrDB *rawdb.IncrSnapDB, jn []jo
 	return nil
 }
 
-// empty returns true if the cache is empty
-func (c *incrNodeBuffer) empty() bool {
-	return c.layers == 0
-}
-
 // TODO: whether need to add states size here?
 // full returns true if the cache exceeds the memory limit
 func (c *incrNodeBuffer) full() bool {
 	return c.size() > c.limit
-}
-
-// TODO: whether need to add states size here?
-// size returns the approximate memory size of the cache
-func (c *incrNodeBuffer) size() uint64 {
-	return c.nodes.size
 }
 
 // reset clears the cache
