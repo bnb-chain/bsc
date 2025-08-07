@@ -603,12 +603,6 @@ var (
 		Usage:    "Disable heuristic state prefetch during block import (less CPU and disk IO, more time waiting for data)",
 		Category: flags.PerfCategory,
 	}
-	CacheEnableSharedStorageFlag = &cli.BoolFlag{
-		Name:     "cache.enablesharedpool",
-		Usage:    "Enable shared storage pool cache in statedb, default is false",
-		Value:    false,
-		Category: flags.PerfCategory,
-	}
 	CachePreimagesFlag = &cli.BoolFlag{
 		Name:     "cache.preimages",
 		Usage:    "Enable recording the SHA3/keccak preimages of trie keys",
@@ -2134,12 +2128,6 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(CacheFlag.Name) || ctx.IsSet(CacheSnapshotFlag.Name) {
 		cfg.SnapshotCache = ctx.Int(CacheFlag.Name) * ctx.Int(CacheSnapshotFlag.Name) / 100
 	}
-	if ctx.IsSet(CacheEnableSharedStorageFlag.Name) {
-		cfg.EnableSharedStorage = true
-		log.Info("Enabled shared storage pool cache")
-	} else {
-		log.Info("Disabled shared storage pool cache")
-	}
 	if ctx.IsSet(CacheLogSizeFlag.Name) {
 		cfg.FilterLogCacheSize = ctx.Int(CacheLogSizeFlag.Name)
 	}
@@ -2265,7 +2253,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 			}
 			// Check if we have an already initialized chain and fall back to
 			// that if so. Otherwise, we need to generate a new genesis spec.
-			chaindb := MakeChainDatabase(ctx, stack, readonly, false)
+			chaindb := MakeChainDatabase(ctx, stack, readonly)
 			if rawdb.ReadCanonicalHash(chaindb, 0) != (common.Hash{}) {
 				// signal fallback to preexisting chain on disk
 				cfg.Genesis = nil
@@ -2571,7 +2559,7 @@ func SplitTagsFlag(tagsFlag string) map[string]string {
 }
 
 // MakeChainDatabase opens a database using the flags passed to the client and will hard crash if it fails.
-func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFreeze bool) ethdb.Database {
+func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.Database {
 	var (
 		cache   = ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) / 100
 		handles = MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name))
@@ -2594,12 +2582,11 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 			AncientsDirectory: ctx.String(AncientFlag.Name),
 			MetricsNamespace:  "eth/db/chaindata/",
 			EraDirectory:      ctx.String(EraFlag.Name),
-			DisableFreeze:     disableFreeze,
 		}
 		chainDb, err = stack.OpenDatabaseWithOptions("chaindata", options)
 		// set the separate state database
 		if stack.CheckIfMultiDataBase() && err == nil {
-			stateDiskDb := MakeStateDataBase(ctx, stack, readonly, false)
+			stateDiskDb := MakeStateDataBase(ctx, stack, readonly)
 			chainDb.SetStateStore(stateDiskDb)
 		}
 	}
@@ -2610,10 +2597,10 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 }
 
 // MakeStateDataBase open a separate state database using the flags passed to the client and will hard crash if it fails.
-func MakeStateDataBase(ctx *cli.Context, stack *node.Node, readonly, disableFreeze bool) ethdb.Database {
+func MakeStateDataBase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.Database {
 	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) / 100
 	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name)) * 90 / 100
-	statediskdb, err := stack.OpenDatabaseWithFreezer("chaindata/state", cache, handles, "", "", readonly, disableFreeze)
+	statediskdb, err := stack.OpenDatabaseWithFreezer("chaindata/state", cache, handles, "", "", readonly)
 	if err != nil {
 		Fatalf("Failed to open separate trie database: %v", err)
 	}
@@ -2637,7 +2624,7 @@ func tryMakeReadOnlyDatabase(ctx *cli.Context, stack *node.Node) ethdb.Database 
 	if !common.FileExist(stack.ResolvePath("chaindata")) || ctx.Bool(PruneAncientDataFlag.Name) {
 		readonly = false
 	}
-	return MakeChainDatabase(ctx, stack, readonly, false)
+	return MakeChainDatabase(ctx, stack, readonly)
 }
 
 func IsNetworkPreset(ctx *cli.Context) bool {
@@ -2691,7 +2678,7 @@ func MakeGenesis(ctx *cli.Context) *core.Genesis {
 func MakeChain(ctx *cli.Context, stack *node.Node, readonly bool) (*core.BlockChain, ethdb.Database) {
 	var (
 		gspec   = MakeGenesis(ctx)
-		chainDb = MakeChainDatabase(ctx, stack, readonly, false)
+		chainDb = MakeChainDatabase(ctx, stack, readonly)
 	)
 	config, genesisHash, err := core.LoadChainConfig(chainDb, gspec)
 	if err != nil {

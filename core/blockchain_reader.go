@@ -479,7 +479,6 @@ func (bc *BlockChain) StateAt(root common.Hash) (*state.StateDB, error) {
 	if err != nil {
 		return nil, err
 	}
-	stateDb.EnableSharedStorage(bc.cfg.EnableSharedStorage)
 
 	// If there's no trie and the specified snapshot is not available, getting
 	// any state will by default return nil.

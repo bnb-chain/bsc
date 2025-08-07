@@ -19,7 +19,6 @@ package vm
 import (
 	"errors"
 	"math/big"
-	"sync"
 	"sync/atomic"
 
 	"github.com/holiman/uint256"
@@ -31,12 +30,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 )
-
-var EvmPool = sync.Pool{
-	New: func() interface{} {
-		return &EVM{}
-	},
-}
 
 type (
 	// CanTransferFunc is the signature of a transfer guard function

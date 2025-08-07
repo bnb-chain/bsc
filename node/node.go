@@ -804,14 +804,14 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 		stateDbHandles = config.DatabaseHandles - chainDataHandles
 	}
 
-	chainDB, err := n.OpenDatabaseWithFreezer(name, chainDbCache, chainDataHandles, config.DatabaseFreezer, namespace, readonly, false)
+	chainDB, err := n.OpenDatabaseWithFreezer(name, chainDbCache, chainDataHandles, config.DatabaseFreezer, namespace, readonly)
 	if err != nil {
 		return nil, err
 	}
 
 	if isMultiDatabase {
 		// Allocate half of the  handles and chainDbCache to this separate state data database
-		stateDiskDb, err = n.OpenDatabaseWithFreezer(name+"/state", stateDbCache, stateDbHandles, "", "eth/db/statedata/", readonly, false)
+		stateDiskDb, err = n.OpenDatabaseWithFreezer(name+"/state", stateDbCache, stateDbHandles, "", "eth/db/statedata/", readonly)
 		if err != nil {
 			return nil, err
 		}
@@ -827,14 +827,13 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 // creates one if no previous can be found) from within the node's data directory.
 // If the node has no data directory, an in-memory database is returned.
 // Deprecated: use OpenDatabaseWithOptions instead.
-func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient string, namespace string, readonly bool, disableFreeze bool) (ethdb.Database, error) {
+func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient string, namespace string, readonly bool) (ethdb.Database, error) {
 	return n.OpenDatabaseWithOptions(name, DatabaseOptions{
 		AncientsDirectory: n.ResolveAncient(name, ancient),
 		MetricsNamespace:  namespace,
 		Cache:             cache,
 		Handles:           handles,
 		ReadOnly:          readonly,
-		DisableFreeze:     disableFreeze,
 	})
 }
 

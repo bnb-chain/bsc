@@ -248,6 +248,7 @@ Therefore, you must specify the blockNumber or blockHash that locates in diffLay
 `,
 	}
 
+	//nolint:unused
 	pruneHistoryCommand = &cli.Command{
 		Action:    pruneHistory,
 		Name:      "prune-history",
@@ -348,13 +349,13 @@ func initGenesis(ctx *cli.Context) error {
 		overrides.OverrideVerkle = &v
 	}
 
-	chaindb := utils.MakeChainDatabase(ctx, stack, false, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, false)
 	defer chaindb.Close()
 
 	name := "chaindata"
 	// if the trie data dir has been set, new trie db with a new state database
 	if ctx.IsSet(utils.MultiDataBaseFlag.Name) {
-		statediskdb, dbErr := stack.OpenDatabaseWithFreezer(name+"/state", 0, 0, "", "", false, false)
+		statediskdb, dbErr := stack.OpenDatabaseWithFreezer(name+"/state", 0, 0, "", "", false)
 		if dbErr != nil {
 			utils.Fatalf("Failed to open separate trie database: %v", dbErr)
 		}
@@ -748,7 +749,7 @@ func dumpGenesis(ctx *cli.Context) error {
 
 	// set the separate state & block database
 	if stack.CheckIfMultiDataBase() && err == nil {
-		stateDiskDb := utils.MakeStateDataBase(ctx, stack, true, false)
+		stateDiskDb := utils.MakeStateDataBase(ctx, stack, true)
 		db.SetStateStore(stateDiskDb)
 	}
 
@@ -989,7 +990,7 @@ func importPreimages(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, false, false)
+	db := utils.MakeChainDatabase(ctx, stack, false)
 	defer db.Close()
 	start := time.Now()
 
@@ -1082,7 +1083,7 @@ func dump(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	db := utils.MakeChainDatabase(ctx, stack, true)
 	defer db.Close()
 
 	conf, root, err := parseDumpConfig(ctx, stack, db)
@@ -1108,7 +1109,7 @@ func dump(ctx *cli.Context) error {
 func dumpAllRootHashInPath(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
-	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	db := utils.MakeChainDatabase(ctx, stack, true)
 	defer db.Close()
 	triedb := triedb.NewDatabase(db, &triedb.Config{PathDB: utils.PathDBConfigAddJournalFilePath(stack, pathdb.ReadOnly)})
 	defer triedb.Close()
@@ -1134,6 +1135,7 @@ func hashish(x string) bool {
 	return err != nil
 }
 
+//nolint:unused
 func pruneHistory(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()

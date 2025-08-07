@@ -771,7 +771,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	if len(bidRuntime.bid.Txs) > prefetchTxNumber {
 		var interrupt atomic.Bool
 		defer interrupt.Store(true) // terminate the prefetch at the end
-		// TODO(Nathan): use ReadersWithCacheStats
+		// TODO(Nathan): use ReadersWithCacheStats to accelerate
 		throwaway := bidRuntime.env.state.CopyDoPrefetch()
 		// Disable tracing for prefetcher executions.
 		vmCfg := *b.chain.GetVMConfig()

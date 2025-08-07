@@ -40,7 +40,6 @@ type DatabaseOptions struct {
 	Handles          int    // number of files to be open simultaneously
 	ReadOnly         bool   // if true, no writes can be performed
 
-	DisableFreeze bool
 	MultiDataBase bool
 }
 
@@ -65,7 +64,6 @@ func openDatabase(o internalOpenOptions) (ethdb.Database, error) {
 		Era:              o.EraDirectory,
 		MetricsNamespace: o.MetricsNamespace,
 		ReadOnly:         o.ReadOnly,
-		DisableFreeze:    o.DisableFreeze,
 		MultiDatabase:    o.MultiDataBase,
 	}
 	frdb, err := rawdb.Open(kvdb, opts)

@@ -178,12 +178,11 @@ const (
 
 // BlockChainConfig contains the configuration of the BlockChain object.
 type BlockChainConfig struct {
-	EnableSharedStorage bool   // Whether to enable shared storage in statedb, improve execute stage performance ~6%.
-	TriesInMemory       uint64 // How many tries keeps in memory
-	NoTries             bool   // Insecure settings. Do not have any tries in databases if enabled.
-	PathSyncFlush       bool   // Whether sync flush the trienodebuffer of pathdb to disk.
-	JournalFilePath     string
-	JournalFile         bool
+	TriesInMemory   uint64 // How many tries keeps in memory
+	NoTries         bool   // Insecure settings. Do not have any tries in databases if enabled.
+	PathSyncFlush   bool   // Whether sync flush the trienodebuffer of pathdb to disk.
+	JournalFilePath string
+	JournalFile     bool
 
 	// Trie database related options
 	TrieCleanLimit   int           // Memory allowance (MB) to use for caching trie nodes in memory
@@ -229,7 +228,7 @@ func DefaultConfig() *BlockChainConfig {
 		StateScheme:      rawdb.HashScheme,
 		SnapshotLimit:    256,
 		SnapshotWait:     true,
-		ChainHistoryMode: history.KeepAll,
+		ChainHistoryMode: history.KeepAll, // only `history.KeepAll` supported for bsc
 		// Transaction indexing is disabled by default.
 		// This is appropriate for most unit tests.
 		TxLookupLimit: -1,
@@ -1138,7 +1137,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 		if currentBlock := bc.CurrentBlock(); currentBlock != nil && header.Number.Uint64() <= currentBlock.Number.Uint64() {
 			// load bc.snaps for the judge `HasState`
 			if bc.NoTries() {
-				if bc.cfg.SnapshotLimit > 0 {
+				if bc.cfg.SnapshotLimit > 0 && bc.triedb.Scheme() == rawdb.HashScheme {
 					snapconfig := snapshot.Config{
 						CacheSize:  bc.cfg.SnapshotLimit,
 						NoBuild:    bc.cfg.SnapshotNoBuild,

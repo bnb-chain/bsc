@@ -114,7 +114,6 @@ type StateDB struct {
 	// if needBadSharedStorage = true, try read from sharedPool firstly, compatible with old erroneous data(https://forum.bnbchain.org/t/about-the-hertzfix/2400).
 	// else read from sharedPool which is not in stateObjectsDestruct.
 	needBadSharedStorage bool
-	writeOnSharedStorage bool         // Write to the shared origin storage of a stateObject while reading from the underlying storage layer.
 	storagePool          *StoragePool // sharedPool to store L1 originStorage of stateObjects
 
 	// DB error.
@@ -214,15 +213,8 @@ func NewWithReader(root common.Hash, db Database, reader Reader) (*StateDB, erro
 	return sdb, nil
 }
 
-func (s *StateDB) EnableSharedStorage(enableSharedStorage bool) {
-	s.writeOnSharedStorage = enableSharedStorage
-}
-
 func (s *StateDB) SetNeedBadSharedStorage(needBadSharedStorage bool) {
 	s.needBadSharedStorage = needBadSharedStorage
-	if needBadSharedStorage {
-		s.writeOnSharedStorage = true
-	}
 }
 
 // In mining mode, we will try multi-fillTransactions to get the most profitable one.
@@ -766,15 +758,15 @@ func (s *StateDB) CopyDoPrefetch() *StateDB {
 func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 	// Copy all the basic fields, initialize the memory ones
 	state := &StateDB{
-		db:                   s.db,
-		reader:               s.reader,
+		db:     s.db,
+		reader: s.reader,
+		// expectedRoot: s.expectedRoot,
 		originalRoot:         s.originalRoot,
 		stateObjects:         make(map[common.Address]*stateObject, len(s.stateObjects)),
 		stateObjectsDestruct: make(map[common.Address]*stateObject, len(s.stateObjectsDestruct)),
 		mutations:            make(map[common.Address]*mutation, len(s.mutations)),
 		dbErr:                s.dbErr,
 		needBadSharedStorage: s.needBadSharedStorage,
-		writeOnSharedStorage: s.writeOnSharedStorage,
 		storagePool:          s.storagePool,
 		refund:               s.refund,
 		thash:                s.thash,

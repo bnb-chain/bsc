@@ -18,6 +18,7 @@ package core
 
 import (
 	"bytes"
+	"runtime"
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -28,7 +29,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const prefetchThread = 3
+const prefetchMiningThread = 3
 const checkInterval = 10
 
 // statePrefetcher is a basic Prefetcher that executes transactions from a block
@@ -58,7 +59,7 @@ func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *type
 		workers errgroup.Group
 		reader  = statedb.Reader()
 	)
-	workers.SetLimit(max(1, prefetchThread))
+	workers.SetLimit(max(1, 3*runtime.NumCPU()/5)) // Aggressively run the prefetching
 
 	// Iterate over and process the individual transactions
 	for i, tx := range transactions {
@@ -134,8 +135,8 @@ func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *type
 func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr **types.Transaction) {
 	var signer = types.MakeSigner(p.config, header.Number, header.Time)
 
-	txCh := make(chan *types.Transaction, 2*prefetchThread)
-	for i := 0; i < prefetchThread; i++ {
+	txCh := make(chan *types.Transaction, 2*prefetchMiningThread)
+	for i := 0; i < prefetchMiningThread; i++ {
 		go func(startCh <-chan *types.Transaction, stopCh <-chan struct{}) {
 			newStatedb := statedb.CopyDoPrefetch()
 			evm := vm.NewEVM(NewEVMBlockContext(header, p.chain, nil), newStatedb, p.config, cfg)
