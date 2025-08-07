@@ -219,7 +219,9 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 			err    error
 		)
 
-		if false { // use finalized block as the chain freeze indicator was used for multiDatabase feature, to be activated (Nathan)
+		// TODO(Nathan): use finalized block as the chain freeze indicator, to be activated
+		useFinalizedForFreeze := false
+		if useFinalizedForFreeze {
 			threshold, err = f.freezeThreshold(nfdb)
 			if err != nil {
 				backoff = true
