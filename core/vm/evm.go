@@ -813,7 +813,12 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	evm.StateDB.SetState(contract.Address(), receiverSlot, common.Hash(newReceiverBalance.Bytes32()))
 
 	// Add storage gas costs
-	gasCost += params.NetSstoreDirtyGas * 2 // Two storage writes
+	senderSetGas, senderRefund := evm.CalcSstoreGasByBlockNumber(contract.Address(), senderSlot, newSenderBalance.ToBig())
+	receiverSetGas, receiverRefund := evm.CalcSstoreGasByBlockNumber(contract.Address(), receiverSlot, newReceiverBalance.ToBig())
+	gasCost += senderSetGas
+	gasCost += receiverSetGas
+	evm.StateDB.AddRefund(senderRefund)
+	evm.StateDB.AddRefund(receiverRefund)
 
 	// Emit Transfer event
 	// Transfer(address indexed from, address indexed to, uint256 value)
@@ -860,4 +865,71 @@ func (evm *EVM) CalcSloadGasByBlockNumber(
 		return 200
 	}
 	return gasCost
+}
+
+func (evm *EVM) CalcSstoreGasByBlockNumber(
+	addr common.Address,
+	slot common.Hash,
+	newValue *big.Int,
+) (gasUsed uint64, refund uint64) {
+
+	// Frontier & Homestead: 简单两档
+	if evm.Context.BlockNumber.Uint64() < evm.chainConfig.IstanbulBlock.Uint64() {
+		current := evm.StateDB.GetState(addr, slot)
+		if current == (common.Hash{}) && newValue.Sign() != 0 {
+			return params.SstoreSetGas, 0 // 0->非0
+		}
+		if current != (common.Hash{}) && newValue.Sign() == 0 {
+			return params.SstoreClearGas, params.SstoreRefundGas // 非0->0
+		}
+		return params.SstoreResetGas, 0 // 非0->非0
+	}
+
+	// EIP-2200 (Istanbul 及之后)
+	current := evm.StateDB.GetState(addr, slot)
+	original := evm.StateDB.GetCommittedState(addr, slot)
+	currentBig := new(big.Int).SetBytes(current[:])
+
+	var gas uint64
+	var gasRefund int64
+
+	if currentBig.Cmp(newValue) == 0 {
+		// 新值 == 旧值
+		gas = params.SloadGasEIP2200
+	} else {
+		if original.Cmp(current) == 0 {
+			// 旧值 == 原值
+			if original.Big().Sign() == 0 {
+				gas = params.SstoreSetGas // 0 -> 非0
+			} else {
+				gas = params.SstoreResetGas // 非0 -> X
+				if newValue.Sign() == 0 {
+					gasRefund += int64(params.SstoreRefundGas) // 非0 -> 0
+				}
+			}
+		} else {
+			// 旧值 != 原值
+			gas = params.SloadGasEIP2200
+			if original.Big().Sign() != 0 {
+				if currentBig.Sign() == 0 {
+					gasRefund -= int64(params.SstoreRefundGas)
+				} else if newValue.Sign() == 0 {
+					gasRefund += int64(params.SstoreRefundGas)
+				}
+			}
+			if original.Big().Sign() == 0 && newValue.Sign() != 0 {
+				gasRefund -= int64(params.SstoreRefundGas)
+			}
+		}
+	}
+
+	// Berlin (EIP-2929) 冷/热访问加费
+	if evm.Context.BlockNumber.Uint64() >= evm.chainConfig.BerlinBlock.Uint64() {
+		if _, slotPresent := evm.StateDB.SlotInAccessList(addr, slot); !slotPresent {
+			evm.StateDB.AddSlotToAccessList(addr, slot)
+			gas += 2100
+		}
+	}
+
+	return gas, uint64(gasRefund)
 }
