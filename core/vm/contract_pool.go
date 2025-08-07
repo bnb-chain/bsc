@@ -29,6 +29,7 @@ func GetContract(caller ContractRef, object ContractRef, value *uint256.Int, gas
 	contract.Input = nil
 	contract.IsDeployment = false
 	contract.IsSystemCall = false
+	contract.codeBitmapFunc = codeBitmap
 	if parent, ok := caller.(*Contract); ok {
 		// Reuse JUMPDEST analysis from parent context if available.
 		contract.jumpdests = parent.jumpdests
