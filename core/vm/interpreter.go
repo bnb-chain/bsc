@@ -219,7 +219,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		comsumedBlockGas uint64               // 实际使用的block的static gas总和
 		currentBlock     *compiler.BasicBlock // 当前block（缓存）
 		nextBlockPC      uint64               // 下一个block的起始PC（用于边界检测）
-		continueOnError  bool                 // 当遇到错误时是否继续执行直到下一个basic block
 	)
 	// Don't move this deferred function, it's placed before the OnOpcode-deferred method,
 	// so that it gets executed _after_: the OnOpcode needs the stacks before
@@ -229,9 +228,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		mem.Free()
 	}()
 	contract.Input = input
-	if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" {
-		log.Error("contract entry gas", "contract.Gas", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-	}
+	//if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" {
+	log.Error("contract entry gas", "contract.Gas", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+	//}
 
 	if debug {
 		defer func() { // this deferred method handles exit-with-error
@@ -268,9 +267,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// 1. 当前block为空（首次执行）
 			// 2. PC超出了当前block范围（向前或向后）
 			if currentBlock == nil || pc >= nextBlockPC || pc <= currentBlock.StartPC {
-				if continueOnError {
-					break
-				}
 				if block, found := compiler.GetBlockByPC(contract.CodeHash, pc); found {
 					currentBlock = block
 					// 计算下一个block的起始PC（如果存在）
@@ -388,15 +384,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				log.Error("Execution stopped due to error", "pc", pc, "op", op.String(), "err", err, "contract.CodeHash", contract.CodeHash.String(), "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas)
 			}
 
-			if in.evm.Config.EnableOpcodeOptimizations && !calcTotalCost && contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" && pc == 15066 && op.String() == "SSTORE" {
-				continueOnError = true
-				log.Error("[DEBUG] Setting continueOnError flag", "pc", pc, "op", op.String(), "contract.CodeHash", contract.CodeHash.String())
-			}
-
 			// 如果启用了优化模式且使用了 block gas 预扣除，需要返还未执行部分的 gas
-			if in.evm.Config.EnableOpcodeOptimizations && !calcTotalCost {
-				in.refundUnusedBlockGas(contract, pc, currentBlock, calcTotalCost, &comsumedBlockGas)
-			}
+			in.refundUnusedBlockGas(contract, pc, currentBlock, calcTotalCost, &comsumedBlockGas)
 		}
 		pc++
 	}
@@ -419,23 +408,29 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	return res, err
 }
 
-// calculateUnusedBlockGas calculates the gas cost for opcodes from startPC to endPC (exclusive)
-func (in *EVMInterpreter) calculateUnusedBlockGas(contract *Contract, startPC, endPC uint64) uint64 {
-	if startPC >= endPC {
+// recalcUsedBlockGas recalculates the actual gas used from startPC to currentPC and adjusts contract.Gas accordingly
+func (in *EVMInterpreter) recalcUsedBlockGas(contract *Contract, startPC, currentPC uint64, currentBlock *compiler.BasicBlock) uint64 {
+	if startPC >= currentPC || currentBlock == nil {
 		return 0
 	}
 
-	// Extract the opcodes for the unused portion
-	// We need to ensure we don't cut instructions in the middle
-	var opcodes []byte
-	pc := startPC
-	totalUnusedGas := uint64(0)
-
-	if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" {
-		log.Error("[DEBUG] calculateUnusedBlockGas", "startPC", startPC, "endPC", endPC, "contract.CodeHash", contract.CodeHash.String())
+	// Step 1: Add back the pre-deducted static gas for the current block
+	if currentBlock.StaticGas > 0 {
+		contract.Gas += currentBlock.StaticGas
+		if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" {
+			log.Error("[DEBUG] recalcUsedBlockGas: Added back static gas", "staticGas", currentBlock.StaticGas, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+		}
 	}
 
-	for pc < endPC && pc < uint64(len(contract.Code)) {
+	// Step 2: Calculate the actual gas used from startPC to currentPC
+	pc := startPC
+	totalUsedGas := uint64(0)
+
+	if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" {
+		log.Error("[DEBUG] recalcUsedBlockGas", "startPC", startPC, "currentPC", currentPC, "contract.CodeHash", contract.CodeHash.String())
+	}
+
+	for pc < currentPC && pc < uint64(len(contract.Code)) {
 		// Calculate instruction length and skip to next opcode
 		skip, steps := compiler.CalculateSkipSteps(contract.Code, int(pc))
 		var instLen uint64
@@ -445,11 +440,11 @@ func (in *EVMInterpreter) calculateUnusedBlockGas(contract *Contract, startPC, e
 			instLen = 1
 		}
 
-		// Ensure we don't go beyond the endPC or code length
-		if pc+instLen > endPC {
-			// If the instruction would extend beyond endPC, we can't include it
+		// Ensure we don't go beyond the currentPC or code length
+		if pc+instLen > currentPC {
+			// If the instruction would extend beyond currentPC, we can't include it
 			if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" {
-				log.Error("[DEBUG] Instruction extends beyond endPC", "pc", pc, "instLen", instLen, "endPC", endPC)
+				log.Error("[DEBUG] Instruction extends beyond currentPC", "pc", pc, "instLen", instLen, "currentPC", currentPC)
 			}
 			break
 		}
@@ -461,9 +456,6 @@ func (in *EVMInterpreter) calculateUnusedBlockGas(contract *Contract, startPC, e
 			break
 		}
 
-		// Add the instruction bytes
-		opcodes = append(opcodes, contract.Code[pc:pc+instLen]...)
-
 		// Calculate gas for this instruction - use the same method as totalCost
 		if pc < uint64(len(contract.Code)) {
 			op := contract.Code[pc]
@@ -472,10 +464,10 @@ func (in *EVMInterpreter) calculateUnusedBlockGas(contract *Contract, startPC, e
 				operation := in.table[OpCode(op)]
 				if operation != nil {
 					gas := operation.constantGas
-					totalUnusedGas += gas
+					totalUsedGas += gas
 					// 打印每个 opcode 的详细信息
 					if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" {
-						log.Error("[DEBUG] Unused instruction gas", "pc", pc, "op", op, "opName", OpCode(op).String(), "gas", gas, "totalUnusedGas", totalUnusedGas)
+						log.Error("[DEBUG] Used instruction gas", "pc", pc, "op", op, "opName", OpCode(op).String(), "gas", gas, "totalUsedGas", totalUsedGas)
 					}
 				}
 			}
@@ -484,23 +476,31 @@ func (in *EVMInterpreter) calculateUnusedBlockGas(contract *Contract, startPC, e
 		pc += instLen
 	}
 
-	if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" {
-		log.Error("[DEBUG] calculateUnusedBlockGas result", "startPC", startPC, "endPC", endPC, "totalUnusedGas", totalUnusedGas, "contract.CodeHash", contract.CodeHash.String())
+	// Step 3: Deduct the actual used gas from contract.Gas
+	if totalUsedGas > 0 {
+		contract.Gas -= totalUsedGas
+		if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" {
+			log.Error("[DEBUG] recalcUsedBlockGas: Deducted actual used gas", "totalUsedGas", totalUsedGas, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+		}
 	}
 
-	// Return the manually calculated gas to ensure consistency with totalCost
-	return totalUnusedGas
+	if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" {
+		log.Error("[DEBUG] recalcUsedBlockGas result", "startPC", startPC, "currentPC", currentPC, "totalUsedGas", totalUsedGas, "contract.CodeHash", contract.CodeHash.String())
+	}
+
+	// Return the actual used gas for reference
+	return totalUsedGas
 }
 
 // refundUnusedBlockGas refunds unused block gas when optimization is enabled
 func (in *EVMInterpreter) refundUnusedBlockGas(contract *Contract, pc uint64, currentBlock *compiler.BasicBlock, calcTotalCost bool, comsumedBlockGas *uint64) {
 	if in.evm.Config.EnableOpcodeOptimizations && !calcTotalCost && currentBlock != nil {
-		refundGas := in.calculateUnusedBlockGas(contract, pc+1, currentBlock.EndPC)
-		if refundGas > 0 {
-			contract.Gas += refundGas
-			*comsumedBlockGas -= refundGas
+		// Use the new recalcUsedBlockGas function instead of calculateUnusedBlockGas
+		actualUsedGas := in.recalcUsedBlockGas(contract, currentBlock.StartPC, pc+1, currentBlock)
+		if actualUsedGas > 0 {
+			*comsumedBlockGas = actualUsedGas // Update the consumed block gas to reflect actual usage
 			if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" {
-				log.Error("Refunded unused block gas", "refundGas", refundGas, "remaining", contract.Gas, "comsumedBlockGas", *comsumedBlockGas, "contract.CodeHash", contract.CodeHash.String())
+				log.Error("Recalculated used block gas", "actualUsedGas", actualUsedGas, "remaining", contract.Gas, "comsumedBlockGas", *comsumedBlockGas, "contract.CodeHash", contract.CodeHash.String())
 			}
 		}
 	}
