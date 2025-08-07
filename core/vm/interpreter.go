@@ -430,10 +430,10 @@ func (in *EVMInterpreter) calculateUsedBlockGas(contract *Contract, startPC, end
 func (in *EVMInterpreter) refundUnusedBlockGas(contract *Contract, pc uint64, currentBlock *compiler.BasicBlock, calcTotalCost bool, consumedBlockGas *uint64) {
 	if in.evm.Config.EnableOpcodeOptimizations && !calcTotalCost && currentBlock != nil {
 		actualUsedGas := in.calculateUsedBlockGas(contract, currentBlock.StartPC, pc)
-		// refund contract.Gas with pre-reduced consumedBlockGas, and deduct actualUsedGas
-		contract.Gas += *consumedBlockGas
-		contract.Gas -= actualUsedGas
-		*consumedBlockGas = actualUsedGas
+		// refund contract.Gas with usedGasDiff, and reduce usedGasDiff from consumedBlockGas
+		usedGasDiff := currentBlock.StaticGas - actualUsedGas
+		contract.Gas += usedGasDiff
+		*consumedBlockGas -= usedGasDiff
 		if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" {
 			log.Error("Refunded unused block gas", "actualUsedGas", actualUsedGas, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
 		}
