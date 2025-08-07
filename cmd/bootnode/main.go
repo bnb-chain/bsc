@@ -129,7 +129,11 @@ func main() {
 			listenerAddr = natAddr
 		}
 	}
-
+	ethEntry, err := discover.GetEthEntry(*networkFilter)
+	if err != nil {
+		utils.Fatalf("-network: %v", err)
+	}
+	ln.Set(ethEntry)
 	printNotice(&nodeKey.PublicKey, *listenerAddr)
 	cfg := discover.Config{
 		PrivateKey:     nodeKey,
