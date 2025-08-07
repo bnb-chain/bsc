@@ -64,8 +64,6 @@ type chainFreezer struct {
 	freezeEnv    atomic.Value
 	blockHistory atomic.Uint64
 	waitEnvTimes int
-
-	multiDatabase bool
 }
 
 // newChainFreezer initializes the freezer for ancient chain segment.
@@ -74,7 +72,7 @@ type chainFreezer struct {
 //     state freezer (e.g. dev mode).
 //   - if non-empty directory is given, initializes the regular file-based
 //     state freezer.
-func newChainFreezer(datadir string, namespace string, readonly bool, multiDatabase bool) (*chainFreezer, error) {
+func newChainFreezer(datadir string, namespace string, readonly bool) (*chainFreezer, error) {
 	var (
 		err     error
 		freezer ethdb.AncientStore
@@ -88,10 +86,9 @@ func newChainFreezer(datadir string, namespace string, readonly bool, multiDatab
 		return nil, err
 	}
 	cf := chainFreezer{
-		AncientStore:  freezer,
-		quit:          make(chan struct{}),
-		trigger:       make(chan chan struct{}),
-		multiDatabase: multiDatabase,
+		AncientStore: freezer,
+		quit:         make(chan struct{}),
+		trigger:      make(chan chan struct{}),
 	}
 	// After enabling pruneAncient, the ancient data is not retained. In some specific scenarios where it is
 	// necessary to roll back to blocks prior to the finalized block, it is mandatory to keep the most recent 90,000 blocks in the database to ensure proper functionality and rollback capability.
@@ -222,8 +219,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 			err    error
 		)
 
-		// use finalized block as the chain freeze indicator was used for multiDatabase feature, if multiDatabase is false, keep 9W blocks in db
-		if f.multiDatabase {
+		if false { // use finalized block as the chain freeze indicator was used for multiDatabase feature, to be activated (Nathan)
 			threshold, err = f.freezeThreshold(nfdb)
 			if err != nil {
 				backoff = true

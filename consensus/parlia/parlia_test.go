@@ -641,7 +641,7 @@ var (
 
 func TestParlia_applyTransactionTracing(t *testing.T) {
 	frdir := t.TempDir()
-	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false, false, false)
+	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false, false)
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend")
 	}

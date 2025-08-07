@@ -379,7 +379,7 @@ func resolveChainFreezerDir(ancient string) string {
 // value data store with a freezer moving immutable chain segments into cold
 // storage. The passed ancient indicates the path of root ancient directory
 // where the chain freezer can be opened.
-func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace string, readonly, disableFreeze, multiDatabase bool) (ethdb.Database, error) {
+func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace string, readonly, disableFreeze bool) (ethdb.Database, error) {
 	// Create the idle freezer instance. If the given ancient directory is empty,
 	// in-memory chain freezer is used (e.g. dev mode); otherwise the regular
 	// file-based freezer is created.
@@ -398,7 +398,7 @@ func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace st
 	}
 
 	// Create the idle freezer instance
-	frdb, err := newChainFreezer(chainFreezerDir, namespace, readonly, multiDatabase)
+	frdb, err := newChainFreezer(chainFreezerDir, namespace, readonly)
 
 	// We are creating the freezerdb here because the validation logic for db and freezer below requires certain interfaces
 	// that need a database type. Therefore, we are pre-creating it for subsequent use.
