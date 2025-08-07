@@ -396,16 +396,16 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	return res, err
 }
 
-// calculateUnusedBlockGas calculates the gas cost for opcodes from startPC to endPC (exclusive)
-func (in *EVMInterpreter) calculateUnusedBlockGas(contract *Contract, startPC, endPC uint64) uint64 {
-	if startPC >= endPC {
+// calculateUsedBlockGas calculates the gas cost for opcodes from startPC to endPC (inclusive)
+func (in *EVMInterpreter) calculateUsedBlockGas(contract *Contract, startPC, endPC uint64) uint64 {
+	if startPC > endPC {
 		return 0
 	}
 
 	totalGas := uint64(0)
 	pc := startPC
 
-	for pc < endPC && pc < uint64(len(contract.Code)) {
+	for pc <= endPC {
 		op := contract.GetOp(pc)
 		operation := in.table[op]
 
@@ -427,15 +427,15 @@ func (in *EVMInterpreter) calculateUnusedBlockGas(contract *Contract, startPC, e
 }
 
 // refundUnusedBlockGas refunds unused block gas when optimization is enabled
-func (in *EVMInterpreter) refundUnusedBlockGas(contract *Contract, pc uint64, currentBlock *compiler.BasicBlock, calcTotalCost bool, comsumedBlockGas *uint64) {
+func (in *EVMInterpreter) refundUnusedBlockGas(contract *Contract, pc uint64, currentBlock *compiler.BasicBlock, calcTotalCost bool, consumedBlockGas *uint64) {
 	if in.evm.Config.EnableOpcodeOptimizations && !calcTotalCost && currentBlock != nil {
-		refundGas := in.calculateUnusedBlockGas(contract, pc+1, currentBlock.EndPC)
-		if refundGas > 0 {
-			contract.Gas += refundGas
-			*comsumedBlockGas -= refundGas
-			if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" {
-				log.Error("Refunded unused block gas", "refundGas", refundGas, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-			}
+		actualUsedGas := in.calculateUsedBlockGas(contract, currentBlock.StartPC, pc)
+		// refund contract.Gas with pre-reduced consumedBlockGas, and deduct actualUsedGas
+		contract.Gas += *consumedBlockGas
+		contract.Gas -= actualUsedGas
+		*consumedBlockGas = actualUsedGas
+		if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" {
+			log.Error("Refunded unused block gas", "actualUsedGas", actualUsedGas, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
 		}
 	}
 }
