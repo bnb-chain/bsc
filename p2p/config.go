@@ -77,6 +77,8 @@ type Config struct {
 	BootstrapNodesV5 []*enode.Node `toml:",omitempty"`
 
 	// EnableENRFilter enables the ENR filter for the discovery protocol.
+	// TODO(galaio): add a switch with a default value of false has been added to avoid compatibility issues.
+	// After the node version is upgraded for a while, it can be set to true by default.
 	EnableENRFilter bool `toml:",omitempty"`
 
 	// Static nodes are used as pre-configured connections which are always
