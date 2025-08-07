@@ -755,13 +755,12 @@ func (n *Node) OpenDatabase(name string, cache, handles int, namespace string, r
 		db = rawdb.NewMemoryDatabase()
 	} else {
 		db, err = openDatabase(openOptions{
-			Type:          n.config.DBEngine,
-			Directory:     n.ResolvePath(name),
-			Namespace:     namespace,
-			Cache:         cache,
-			Handles:       handles,
-			ReadOnly:      readonly,
-			MultiDataBase: n.CheckIfMultiDataBase(),
+			Type:      n.config.DBEngine,
+			Directory: n.ResolvePath(name),
+			Namespace: namespace,
+			Cache:     cache,
+			Handles:   handles,
+			ReadOnly:  readonly,
 		})
 	}
 	if err == nil {
@@ -825,7 +824,7 @@ func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient,
 	var db ethdb.Database
 	var err error
 	if n.config.DataDir == "" {
-		db, err = rawdb.NewDatabaseWithFreezer(memorydb.New(), "", namespace, readonly, disableFreeze, false)
+		db, err = rawdb.NewDatabaseWithFreezer(memorydb.New(), "", namespace, readonly, disableFreeze)
 	} else {
 		db, err = openDatabase(openOptions{
 			Type:              n.config.DBEngine,
