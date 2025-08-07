@@ -291,11 +291,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// for tracing: this gas consumption event is emitted below in the debug section.
 		// Only charge gas if we haven't already charged the pre-calculated static gas
 		cost = operation.constantGas // For tracing todo: move into if
-		if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" {
-			totalCost += cost
-			costCounter++
-			log.Error("accumulate totalCost", "totalCost", totalCost, "cost", cost, "op", op.String(), "costCounter", costCounter, "fallback", calcTotalCost, "contract.CodeHash", contract.CodeHash.String(), "pc", pc)
-		}
+		//if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" {
+		totalCost += cost
+		costCounter++
+		//log.Error("accumulate totalCost", "totalCost", totalCost, "cost", cost, "op", op.String(), "costCounter", costCounter, "fallback", calcTotalCost, "contract.CodeHash", contract.CodeHash.String(), "pc", pc)
+		//}
 		if calcTotalCost || !in.evm.Config.EnableOpcodeOptimizations {
 
 			if contract.Gas < cost {
@@ -378,7 +378,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		pc++
 	}
 
-	if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" && (((totalCost != comsumedBlockGas) && !calcTotalCost) || (comsumedBlockGas != 0 && calcTotalCost)) {
+	if ((totalCost != comsumedBlockGas) && !calcTotalCost) || (comsumedBlockGas != 0 && calcTotalCost) {
 		log.Error("totalCost completed! totalCost diff comsumedBlockGas", "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas, "fallback", calcTotalCost, "contract.Gas", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
 	}
 
@@ -434,8 +434,6 @@ func (in *EVMInterpreter) refundUnusedBlockGas(contract *Contract, pc uint64, cu
 		usedGasDiff := currentBlock.StaticGas - actualUsedGas
 		contract.Gas += usedGasDiff
 		*consumedBlockGas -= usedGasDiff
-		if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" {
-			log.Error("Refunded unused block gas", "actualUsedGas", actualUsedGas, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-		}
+		log.Error("Refunded unused block gas", "actualUsedGas", actualUsedGas, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
 	}
 }
