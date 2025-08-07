@@ -18,15 +18,13 @@ package vm
 
 import (
 	"fmt"
-	"github.com/holiman/uint256"
-	"time"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/holiman/uint256"
 )
 
 // Config are the configuration options for the Interpreter
@@ -293,8 +291,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// Only charge gas if we haven't already charged the pre-calculated static gas
 		cost = operation.constantGas // For tracing todo: move into if
 		//if contract.CodeHash.String() == "0x60e4bcb14447615ab7c14fda2c2d70ca4191570e8841c75618e627c8f72662f8" {
-		//	totalCost += cost
-		//	costCounter++
+		totalCost += cost
+		//costCounter++
 		//	log.Error("accumulate totalCost", "totalCost", totalCost, "cost", cost, "op", op.String(), "costCounter", costCounter, "fallback", calcTotalCost, "contract.CodeHash", contract.CodeHash.String(), "pc", pc)
 		//}
 		if calcTotalCost || !in.evm.Config.EnableOpcodeOptimizations {
@@ -392,7 +390,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		err = nil // clear stop token error
 	}
 
-	time.Sleep(time.Millisecond * 100)
+	//time.Sleep(time.Millisecond * 100)
 
 	return res, err
 }
