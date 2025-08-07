@@ -117,7 +117,7 @@ const (
 	maxFutureBlocks     = 256
 	maxTimeFutureBlocks = 30
 	maxBeyondBlocks     = 2048
-	prefetchTxNumber    = 100
+	prefetchTxNumber    = 50
 
 	// BlockChainVersion ensures that an incompatible database forces a resync from scratch.
 	//
