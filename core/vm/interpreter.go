@@ -388,14 +388,13 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				log.Error("Execution stopped due to error", "pc", pc, "op", op.String(), "err", err, "contract.CodeHash", contract.CodeHash.String(), "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas)
 			}
 
-			// 如果启用了优化模式且使用了 block gas 预扣除，需要返还未执行部分的 gas
-			in.refundUnusedBlockGas(contract, pc, currentBlock, calcTotalCost, &comsumedBlockGas)
-
-			continueOnError = true
-			if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" {
+			if contract.CodeHash.String() == "0x2fae98d1a1dfe083310b0bd2298f7a5719dea6c90a26f1de04a70aca772ed730" && pc == 15066 && op.String() == "SSTORE" {
+				continueOnError = true
 				log.Error("[DEBUG] Setting continueOnError flag", "pc", pc, "op", op.String(), "contract.CodeHash", contract.CodeHash.String())
 			}
 
+			// 如果启用了优化模式且使用了 block gas 预扣除，需要返还未执行部分的 gas
+			in.refundUnusedBlockGas(contract, pc, currentBlock, calcTotalCost, &comsumedBlockGas)
 		}
 		pc++
 	}
