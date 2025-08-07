@@ -227,7 +227,7 @@ func DoCFGBasedOpcodeFusion(code []byte, gasCalc GasCalculator, hash common.Hash
 				break
 			}
 			// Skip data bytes for PUSH instructions
-			skip, steps := calculateSkipSteps(code, int(pc))
+			skip, steps := CalculateSkipSteps(code, int(pc))
 			if skip {
 				pc += uint64(steps) + 1 // Add 1 for the opcode byte
 			} else {
@@ -247,7 +247,7 @@ func DoCFGBasedOpcodeFusion(code []byte, gasCalc GasCalculator, hash common.Hash
 				break
 			}
 			// Skip data bytes for PUSH instructions
-			skip, steps := calculateSkipSteps(code, int(pc))
+			skip, steps := CalculateSkipSteps(code, int(pc))
 			if skip {
 				pc += uint64(steps) + 1 // Add 1 for the opcode byte
 			} else {
@@ -286,7 +286,7 @@ func fuseBlock(code []byte, block BasicBlock) error {
 			i += skipSteps + 1 // Add 1 for the opcode byte
 		} else {
 			// Skip data bytes for PUSH instructions
-			skip, steps := calculateSkipSteps(code, i)
+			skip, steps := CalculateSkipSteps(code, i)
 			if skip {
 				i += steps + 1 // Add 1 for the opcode byte
 			} else {
@@ -692,7 +692,7 @@ func getBlockType(block BasicBlock, blocks []BasicBlock, blockIndex int) string 
 	return "others"
 }
 
-func calculateSkipSteps(code []byte, cur int) (skip bool, steps int) {
+func CalculateSkipSteps(code []byte, cur int) (skip bool, steps int) {
 	inst := ByteCode(code[cur])
 	if inst >= PUSH1 && inst <= PUSH32 {
 		// skip the data.
@@ -749,7 +749,7 @@ func GenerateBasicBlocks(code []byte, gasCalc GasCalculator) []BasicBlock {
 		if op == JUMPDEST {
 			jumpDests[pc] = true
 		}
-		skip, steps := calculateSkipSteps(code, int(pc))
+		skip, steps := CalculateSkipSteps(code, int(pc))
 		if skip {
 			pc += uint64(steps) + 1 // Add 1 for the opcode byte
 		} else {
@@ -783,7 +783,7 @@ func GenerateBasicBlocks(code []byte, gasCalc GasCalculator) []BasicBlock {
 		}
 
 		// Determine instruction length
-		skip, steps := calculateSkipSteps(code, int(pc))
+		skip, steps := CalculateSkipSteps(code, int(pc))
 		instLen := uint64(1)
 		if skip {
 			instLen += uint64(steps)
@@ -851,8 +851,8 @@ func calculateBlockStaticGas(block *BasicBlock, gasCalc GasCalculator) uint64 {
 	for pc < uint64(len(code)) {
 		op := ByteCode(code[pc])
 
-		// Use calculateSkipSteps to parse instructions consistently
-		skip, steps := calculateSkipSteps(code, int(pc))
+		// Use CalculateSkipSteps to parse instructions consistently
+		skip, steps := CalculateSkipSteps(code, int(pc))
 
 		// Calculate gas for the opcode (only for valid opcodes)
 		if op <= 0xff && gasCalc != nil {
