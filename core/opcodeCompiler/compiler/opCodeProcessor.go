@@ -768,7 +768,7 @@ func GenerateBasicBlocks(code []byte, gasCalc GasCalculator) []BasicBlock {
 			if currentBlock != nil && len(currentBlock.Opcodes) > 0 {
 				currentBlock.EndPC = pc
 				// Calculate static gas for the completed block
-				currentBlock.StaticGas = CalculateBlockStaticGas(currentBlock, gasCalc)
+				currentBlock.StaticGas = calculateBlockStaticGas(currentBlock, gasCalc)
 				blocks = append(blocks, *currentBlock)
 			}
 			currentBlock = &BasicBlock{
@@ -801,7 +801,7 @@ func GenerateBasicBlocks(code []byte, gasCalc GasCalculator) []BasicBlock {
 		if isBlockTerminator(op) {
 			currentBlock.EndPC = pc
 			// Calculate static gas for the completed block
-			currentBlock.StaticGas = CalculateBlockStaticGas(currentBlock, gasCalc)
+			currentBlock.StaticGas = calculateBlockStaticGas(currentBlock, gasCalc)
 			blocks = append(blocks, *currentBlock)
 			currentBlock = nil
 		}
@@ -810,7 +810,7 @@ func GenerateBasicBlocks(code []byte, gasCalc GasCalculator) []BasicBlock {
 	if currentBlock != nil && len(currentBlock.Opcodes) > 0 {
 		currentBlock.EndPC = pc
 		// Calculate static gas for the last block
-		currentBlock.StaticGas = CalculateBlockStaticGas(currentBlock, gasCalc)
+		currentBlock.StaticGas = calculateBlockStaticGas(currentBlock, gasCalc)
 		blocks = append(blocks, *currentBlock)
 	}
 
@@ -840,8 +840,8 @@ func GenerateBasicBlocks(code []byte, gasCalc GasCalculator) []BasicBlock {
 	return blocks
 }
 
-// CalculateBlockStaticGas calculates the total static gas cost for a basic block
-func CalculateBlockStaticGas(block *BasicBlock, gasCalc GasCalculator) uint64 {
+// calculateBlockStaticGas calculates the total static gas cost for a basic block
+func calculateBlockStaticGas(block *BasicBlock, gasCalc GasCalculator) uint64 {
 	totalGas := uint64(0)
 
 	// Use the same logic as GenerateBasicBlocks to parse opcodes correctly
