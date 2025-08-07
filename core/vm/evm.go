@@ -674,9 +674,17 @@ func (evm *EVM) Inline(contract *Contract, input []byte, value *uint256.Int) (re
 
 	sig := input[:4]
 	if len(sig) == 4 && sig[0] == 0x70 && sig[1] == 0xa0 && sig[2] == 0x82 && sig[3] == 0x31 {
-		return evm.wbnbBalanceOf(contract.Address(), input, value)
+		ret, gasCost, expected = evm.wbnbBalanceOf(contract.Address(), input, value)
+		if evm.StateDB.TxIndex() == 47 {
+			log.Info("DEBUG", "gasCost", gasCost, "method", "balanceOf")
+		}
+		return
 	} else if len(sig) == 4 && sig[0] == 0xa9 && sig[1] == 0x05 && sig[2] == 0x9c && sig[3] == 0xbb {
-		return evm.wbnbTransfer(contract, input, value)
+		ret, gasCost, expected = evm.wbnbTransfer(contract, input, value)
+		if evm.StateDB.TxIndex() == 47 {
+			log.Info("DEBUG", "gasCost", gasCost, "method", "transfer")
+		}
+		return
 	} else {
 		return nil, 0, false
 	}
@@ -813,12 +821,10 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	evm.StateDB.SetState(contract.Address(), receiverSlot, common.Hash(newReceiverBalance.Bytes32()))
 
 	// Add storage gas costs
-	senderSetGas, senderRefund := evm.CalcSstoreGasByBlockNumber(contract.Address(), senderSlot, newSenderBalance.ToBig())
-	receiverSetGas, receiverRefund := evm.CalcSstoreGasByBlockNumber(contract.Address(), receiverSlot, newReceiverBalance.ToBig())
+	senderSetGas := evm.gasSStoreBSC(contract, senderSlot, newSenderBalance.Bytes32())
+	receiverSetGas := evm.gasSStoreBSC(contract, receiverSlot, newReceiverBalance.Bytes32())
 	gasCost += senderSetGas
 	gasCost += receiverSetGas
-	evm.StateDB.AddRefund(senderRefund)
-	evm.StateDB.AddRefund(receiverRefund)
 
 	// Emit Transfer event
 	// Transfer(address indexed from, address indexed to, uint256 value)
@@ -867,69 +873,39 @@ func (evm *EVM) CalcSloadGasByBlockNumber(
 	return gasCost
 }
 
-func (evm *EVM) CalcSstoreGasByBlockNumber(
-	addr common.Address,
-	slot common.Hash,
-	newValue *big.Int,
-) (gasUsed uint64, refund uint64) {
+func (evm *EVM) gasSStoreBSC(contract *Contract, key, newValue common.Hash) uint64 {
+	// 获取当前存储值和原始值（SLOAD）
+	currentValue := evm.StateDB.GetState(contract.Address(), key)
+	originalValue := evm.StateDB.GetCommittedState(contract.Address(), key)
 
-	// Frontier & Homestead: 简单两档
-	if evm.Context.BlockNumber.Uint64() < evm.chainConfig.IstanbulBlock.Uint64() {
-		current := evm.StateDB.GetState(addr, slot)
-		if current == (common.Hash{}) && newValue.Sign() != 0 {
-			return params.SstoreSetGas, 0 // 0->非0
-		}
-		if current != (common.Hash{}) && newValue.Sign() == 0 {
-			return params.SstoreClearGas, params.SstoreRefundGas // 非0->0
-		}
-		return params.SstoreResetGas, 0 // 非0->非0
+	// 相同则是 SSTORE no-op，消耗较低
+	if currentValue == newValue {
+		return 800 // 800 gas
 	}
 
-	// EIP-2200 (Istanbul 及之后)
-	current := evm.StateDB.GetState(addr, slot)
-	original := evm.StateDB.GetCommittedState(addr, slot)
-	currentBig := new(big.Int).SetBytes(current[:])
-
-	var gas uint64
-	var gasRefund int64
-
-	if currentBig.Cmp(newValue) == 0 {
-		// 新值 == 旧值
-		gas = params.SloadGasEIP2200
-	} else {
-		if original.Cmp(current) == 0 {
-			// 旧值 == 原值
-			if original.Big().Sign() == 0 {
-				gas = params.SstoreSetGas // 0 -> 非0
-			} else {
-				gas = params.SstoreResetGas // 非0 -> X
-				if newValue.Sign() == 0 {
-					gasRefund += int64(params.SstoreRefundGas) // 非0 -> 0
-				}
-			}
-		} else {
-			// 旧值 != 原值
-			gas = params.SloadGasEIP2200
-			if original.Big().Sign() != 0 {
-				if currentBig.Sign() == 0 {
-					gasRefund -= int64(params.SstoreRefundGas)
-				} else if newValue.Sign() == 0 {
-					gasRefund += int64(params.SstoreRefundGas)
-				}
-			}
-			if original.Big().Sign() == 0 && newValue.Sign() != 0 {
-				gasRefund -= int64(params.SstoreRefundGas)
-			}
+	// 判断是否使用 EIP-2200（9180000 高度之后）
+	if evm.Context.BlockNumber.Uint64() < 9180000 {
+		// 旧规则（不区分原始值），固定消耗 5000 或 20000
+		if currentValue == (common.Hash{}) && newValue != (common.Hash{}) {
+			return params.SstoreSetGas // 20000 gas
 		}
+		return params.SstoreResetGas // 5000 gas
 	}
 
-	// Berlin (EIP-2929) 冷/热访问加费
-	if evm.Context.BlockNumber.Uint64() >= evm.chainConfig.BerlinBlock.Uint64() {
-		if _, slotPresent := evm.StateDB.SlotInAccessList(addr, slot); !slotPresent {
-			evm.StateDB.AddSlotToAccessList(addr, slot)
-			gas += 2100
+	// 新规则（EIP-2200）
+	if originalValue == currentValue {
+		if originalValue == (common.Hash{}) {
+			// 0 -> non-zero
+			return params.SstoreSetGasEIP2200 // 20000 gas
 		}
+		if newValue == (common.Hash{}) {
+			// non-zero -> 0
+			return 5000 // 5000 gas + refund
+		}
+		// non-zero -> non-zero
+		return params.SstoreResetGasEIP2200 // 5000 gas
 	}
 
-	return gas, uint64(gasRefund)
+	// 如果 original != current，则说明之前已经被 SSTORE 修改过，属于 "dirty slot"
+	return 800 // 800 gas
 }
