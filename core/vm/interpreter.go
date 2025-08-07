@@ -103,6 +103,19 @@ type EVMInterpreter struct {
 	returnData []byte // Last CALL's return data for subsequent reuse
 }
 
+// JumpTableGasCalculator implements compiler.GasCalculator interface
+type JumpTableGasCalculator struct {
+	table *JumpTable
+}
+
+// GetConstantGas returns the constant gas cost for the given opcode
+func (jtgc *JumpTableGasCalculator) GetConstantGas(op byte) uint64 {
+	if op <= 0xff && jtgc.table[op] != nil {
+		return jtgc.table[op].constantGas
+	}
+	return 0
+}
+
 // NewEVMInterpreter returns a new instance of the Interpreter.
 func NewEVMInterpreter(evm *EVM) *EVMInterpreter {
 	// If jump table was not initialised we set the default one.
@@ -402,28 +415,45 @@ func (in *EVMInterpreter) calculateUnusedBlockGas(contract *Contract, startPC, e
 		return 0
 	}
 
-	totalGas := uint64(0)
+	// Extract the opcodes for the unused portion
+	// We need to ensure we don't cut instructions in the middle
+	var opcodes []byte
 	pc := startPC
-
 	for pc < endPC && pc < uint64(len(contract.Code)) {
-		op := contract.GetOp(pc)
-		operation := in.table[op]
-
-		// Add static gas for this opcode (only if operation exists)
-		if operation != nil {
-			totalGas += operation.constantGas
-		}
-
 		// Calculate instruction length and skip to next opcode
 		skip, steps := compiler.CalculateSkipSteps(contract.Code, int(pc))
+		var instLen uint64
 		if skip {
-			pc += uint64(steps) + 1
+			instLen = uint64(steps) + 1
 		} else {
-			pc++
+			instLen = 1
 		}
+
+		// Ensure we don't go beyond the endPC or code length
+		if pc+instLen > endPC {
+			instLen = endPC - pc
+		}
+		if pc+instLen > uint64(len(contract.Code)) {
+			instLen = uint64(len(contract.Code)) - pc
+		}
+
+		// Add the instruction bytes
+		opcodes = append(opcodes, contract.Code[pc:pc+instLen]...)
+		pc += instLen
 	}
 
-	return totalGas
+	// Create a temporary BasicBlock for the unused portion
+	unusedBlock := &compiler.BasicBlock{
+		StartPC: startPC,
+		EndPC:   endPC,
+		Opcodes: opcodes,
+	}
+
+	// Create a gas calculator for the current jump table
+	gasCalc := &JumpTableGasCalculator{table: in.table}
+
+	// Use the existing CalculateBlockStaticGas function
+	return compiler.CalculateBlockStaticGas(unusedBlock, gasCalc)
 }
 
 // refundUnusedBlockGas refunds unused block gas when optimization is enabled
