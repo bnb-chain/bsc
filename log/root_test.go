@@ -4,8 +4,8 @@ import (
 	"testing"
 )
 
-// SetDefault should properly set the default logger when custom loggers are
-// provided.
+// TestSetDefaultCustomLogger should properly set the default logger when
+// custom loggers are provided.
 func TestSetDefaultCustomLogger(t *testing.T) {
 	type customLogger struct {
 		Logger // Implement the Logger interface
