@@ -1486,11 +1486,6 @@ func opAndDup2AddSwap1Dup2LT(pc *uint64, interpreter *EVMInterpreter, scope *Sco
 // SWAP1 PUSH1 DUP1 NOT SWAP2 ADD AND DUP2 ADD SWAP1 DUP2 LT
 func opSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
 	codeLen := uint64(len(scope.Contract.Code))
-	
-	// Check if stack has enough elements for swap1
-	if scope.Stack.len() < 2 {
-		return nil, &ErrStackUnderflow{stackLen: scope.Stack.len(), required: 2}
-	}
 	scope.Stack.swap1()
 
 	*pc += 2
@@ -1502,11 +1497,6 @@ func opSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(pc *uint64, interpreter *E
 	scope.Stack.dup(1)
 	x := scope.Stack.peek()
 	x.Not(x)
-	
-	// Check if stack has enough elements for swap2
-	if scope.Stack.len() < 3 {
-		return nil, &ErrStackUnderflow{stackLen: scope.Stack.len(), required: 3}
-	}
 	scope.Stack.swap2()
 	a, b := scope.Stack.pop(), scope.Stack.pop()
 	b.Add(&a, &b)
@@ -1514,11 +1504,6 @@ func opSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(pc *uint64, interpreter *E
 	c.And(&b, c)
 	e := scope.Stack.Back(1)
 	c.Add(e, c)
-	
-	// Check if stack has enough elements for the second swap1
-	if scope.Stack.len() < 2 {
-		return nil, &ErrStackUnderflow{stackLen: scope.Stack.len(), required: 2}
-	}
 	scope.Stack.swap1()
 	g, h := *c, scope.Stack.peek()
 	if g.Lt(h) {
