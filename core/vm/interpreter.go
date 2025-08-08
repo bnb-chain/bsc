@@ -415,13 +415,103 @@ func (in *EVMInterpreter) calculateUsedBlockGas(contract *Contract, startPC, end
 			log.Error("accumulate refund totalGas", "totalGas", totalGas, "cost", operation.constantGas, "op", op.String(), "contract.CodeHash", contract.CodeHash.String(), "pc", pc)
 		}
 
-		// Calculate instruction length and skip to next opcode
-		skip, steps := compiler.CalculateSkipSteps(contract.Code, int(pc))
-		if skip {
+		// Prefer compiler's skip for PUSH 和部分已覆盖的超指令
+		if skip, steps := compiler.CalculateSkipSteps(contract.Code, int(pc)); skip {
 			pc += uint64(steps) + 1
-		} else {
-			pc++
+			continue
 		}
+
+		// 未被 CalculateSkipSteps 覆盖的指令：对齐 Run() 中各超指令的 PC 前进规则
+		switch op {
+        // 已覆盖但为完整性列出：
+		// 超指令与自定义：步进与 instructions.go 中一致（内部自增 + 解释器循环自增）
+		case Nop:
+			pc += 1 // opNop: 仅解释器自增
+			continue
+        case AndSwap1PopSwap2Swap1:
+            pc += 5 // *pc += 4 + 解释器自增
+            continue
+        case Swap1PopSwap2Swap1:
+            pc += 4 // *pc += 3 + 解释器自增
+            continue
+        case PopSwap2Swap1Pop:
+            pc += 4 // *pc += 3 + 解释器自增
+            continue
+        // 带跳转的超指令（无法在静态重放中解析跳转目的地），交由前置 CalculateSkipSteps 处理其立即数，
+        // 此处不做专门跳转模拟（以保持线性扫描）。
+		case Swap2Pop:
+			pc += 2 // *pc += 1，然后解释器 +1
+			continue
+		case Swap2Swap1:
+			pc += 2
+			continue
+		case Swap1Pop:
+			pc += 2
+			continue
+		case Pop2:
+			pc += 2
+			continue
+		case Dup2LT:
+			pc += 2
+			continue
+		case Push1Add:
+			pc += 3 // *pc +=1(读取立即数) + *pc +=1(指令消耗) + 解释器+1
+			continue
+		case Push1Shl:
+			pc += 3
+			continue
+		case Push1Dup1:
+			pc += 3
+			continue
+		case Push1Push1:
+			pc += 4 // *pc +=3 + 解释器+1
+			continue
+		case IsZeroPush2:
+			pc += 4 // *pc +=1 + push2(*pc +=2) + 解释器+1
+			continue
+		case Dup2MStorePush1Add:
+			pc += 5 // *pc +=3 + *pc +=1(读取PUSH1立即数) + 解释器+1
+			continue
+        case Dup1Push4EqPush2:
+            pc += 9 // +1 (dup1) +4 (push4) +1 (eq) +2 (push2) +1 (解释器)
+            continue
+        case Push1CalldataloadPush1ShrDup1Push4GtPush2:
+            pc += 16 // 1+3+2+1+5+1+2 +1(解释器)
+            continue
+        case Push1Push1Push1SHLSub:
+            pc += 8 // 1+2+2+2 +1(解释器)
+            continue
+        case AndDup2AddSwap1Dup2LT:
+            pc += 6 // *pc +=5 +1(解释器)
+            continue
+        case Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT:
+            pc += 11 // *pc +=10 +1(解释器)
+            continue
+        case Dup3And:
+            pc += 2 // *pc +=1 +1(解释器)
+            continue
+        case Swap2Swap1Dup3SubSwap2Dup3GtPush2:
+            pc += 10 // *pc +=7 +2(push2) +1(解释器)
+            continue
+        case Swap1Dup2:
+            pc += 2 // *pc +=1 +1(解释器)
+            continue
+        case SHRSHRDup1MulDup1:
+            pc += 5 // *pc +=4 +1(解释器)
+            continue
+        case Swap3PopPopPop:
+            pc += 4 // *pc +=3 +1(解释器)
+            continue
+        case SubSLTIsZeroPush2:
+            pc += 6 // *pc +=3 +2(push2) +1(解释器)
+            continue
+        case Dup11MulDup3SubMulDup1:
+            pc += 6 // *pc +=5 +1(解释器)
+            continue
+		}
+
+		// 默认：单字节指令
+		pc++
 	}
 
 	return totalGas
