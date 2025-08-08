@@ -196,7 +196,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		cost          uint64
 		calcTotalCost bool
 		totalCost     uint64 // for debug only
-		costCounter   int
+		//costCounter   int
 		// copies used by tracer
 		pcCopy           uint64 // needed for the deferred EVMLogger
 		gasCopy          uint64 // for EVMLogger to log gas remaining before execution
@@ -291,11 +291,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// for tracing: this gas consumption event is emitted below in the debug section.
 		// Only charge gas if we haven't already charged the pre-calculated static gas
 		cost = operation.constantGas // For tracing todo: move into if
-		if contract.CodeHash.String() == "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6" {
-			totalCost += cost
-			costCounter++
-			log.Error("accumulate totalCost", "totalCost", totalCost, "cost", cost, "op", op.String(), "costCounter", costCounter, "fallback", calcTotalCost, "contract.CodeHash", contract.CodeHash.String(), "pc", pc)
-		}
+		//if contract.CodeHash.String() == "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6" {
+		totalCost += cost
+		//costCounter++
+		//log.Error("accumulate totalCost", "totalCost", totalCost, "cost", cost, "op", op.String(), "costCounter", costCounter, "fallback", calcTotalCost, "contract.CodeHash", contract.CodeHash.String(), "pc", pc)
+		//}
 		if calcTotalCost || !in.evm.Config.EnableOpcodeOptimizations {
 
 			if contract.Gas < cost {
@@ -378,7 +378,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		pc++
 	}
 
-	if contract.CodeHash.String() == "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6" && (((totalCost != comsumedBlockGas) && !calcTotalCost) || (comsumedBlockGas != 0 && calcTotalCost)) {
+	if ((totalCost != comsumedBlockGas) && !calcTotalCost) || (comsumedBlockGas != 0 && calcTotalCost) {
 		log.Error("totalCost completed! totalCost diff comsumedBlockGas", "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas, "fallback", calcTotalCost, "contract.Gas", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
 	}
 
@@ -423,22 +423,22 @@ func (in *EVMInterpreter) calculateUsedBlockGas(contract *Contract, startPC, end
 
 		// 未被 CalculateSkipSteps 覆盖的指令：对齐 Run() 中各超指令的 PC 前进规则
 		switch op {
-        // 已覆盖但为完整性列出：
+		// 已覆盖但为完整性列出：
 		// 超指令与自定义：步进与 instructions.go 中一致（内部自增 + 解释器循环自增）
 		case Nop:
 			pc += 1 // opNop: 仅解释器自增
 			continue
-        case AndSwap1PopSwap2Swap1:
-            pc += 5 // *pc += 4 + 解释器自增
-            continue
-        case Swap1PopSwap2Swap1:
-            pc += 4 // *pc += 3 + 解释器自增
-            continue
-        case PopSwap2Swap1Pop:
-            pc += 4 // *pc += 3 + 解释器自增
-            continue
-        // 带跳转的超指令（无法在静态重放中解析跳转目的地），交由前置 CalculateSkipSteps 处理其立即数，
-        // 此处不做专门跳转模拟（以保持线性扫描）。
+		case AndSwap1PopSwap2Swap1:
+			pc += 5 // *pc += 4 + 解释器自增
+			continue
+		case Swap1PopSwap2Swap1:
+			pc += 4 // *pc += 3 + 解释器自增
+			continue
+		case PopSwap2Swap1Pop:
+			pc += 4 // *pc += 3 + 解释器自增
+			continue
+			// 带跳转的超指令（无法在静态重放中解析跳转目的地），交由前置 CalculateSkipSteps 处理其立即数，
+			// 此处不做专门跳转模拟（以保持线性扫描）。
 		case Swap2Pop:
 			pc += 2 // *pc += 1，然后解释器 +1
 			continue
@@ -472,42 +472,42 @@ func (in *EVMInterpreter) calculateUsedBlockGas(contract *Contract, startPC, end
 		case Dup2MStorePush1Add:
 			pc += 5 // *pc +=3 + *pc +=1(读取PUSH1立即数) + 解释器+1
 			continue
-        case Dup1Push4EqPush2:
-            pc += 9 // +1 (dup1) +4 (push4) +1 (eq) +2 (push2) +1 (解释器)
-            continue
-        case Push1CalldataloadPush1ShrDup1Push4GtPush2:
-            pc += 16 // 1+3+2+1+5+1+2 +1(解释器)
-            continue
-        case Push1Push1Push1SHLSub:
-            pc += 8 // 1+2+2+2 +1(解释器)
-            continue
-        case AndDup2AddSwap1Dup2LT:
-            pc += 6 // *pc +=5 +1(解释器)
-            continue
-        case Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT:
-            pc += 11 // *pc +=10 +1(解释器)
-            continue
-        case Dup3And:
-            pc += 2 // *pc +=1 +1(解释器)
-            continue
-        case Swap2Swap1Dup3SubSwap2Dup3GtPush2:
-            pc += 10 // *pc +=7 +2(push2) +1(解释器)
-            continue
-        case Swap1Dup2:
-            pc += 2 // *pc +=1 +1(解释器)
-            continue
-        case SHRSHRDup1MulDup1:
-            pc += 5 // *pc +=4 +1(解释器)
-            continue
-        case Swap3PopPopPop:
-            pc += 4 // *pc +=3 +1(解释器)
-            continue
-        case SubSLTIsZeroPush2:
-            pc += 6 // *pc +=3 +2(push2) +1(解释器)
-            continue
-        case Dup11MulDup3SubMulDup1:
-            pc += 6 // *pc +=5 +1(解释器)
-            continue
+		case Dup1Push4EqPush2:
+			pc += 9 // +1 (dup1) +4 (push4) +1 (eq) +2 (push2) +1 (解释器)
+			continue
+		case Push1CalldataloadPush1ShrDup1Push4GtPush2:
+			pc += 16 // 1+3+2+1+5+1+2 +1(解释器)
+			continue
+		case Push1Push1Push1SHLSub:
+			pc += 8 // 1+2+2+2 +1(解释器)
+			continue
+		case AndDup2AddSwap1Dup2LT:
+			pc += 6 // *pc +=5 +1(解释器)
+			continue
+		case Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT:
+			pc += 11 // *pc +=10 +1(解释器)
+			continue
+		case Dup3And:
+			pc += 2 // *pc +=1 +1(解释器)
+			continue
+		case Swap2Swap1Dup3SubSwap2Dup3GtPush2:
+			pc += 10 // *pc +=7 +2(push2) +1(解释器)
+			continue
+		case Swap1Dup2:
+			pc += 2 // *pc +=1 +1(解释器)
+			continue
+		case SHRSHRDup1MulDup1:
+			pc += 5 // *pc +=4 +1(解释器)
+			continue
+		case Swap3PopPopPop:
+			pc += 4 // *pc +=3 +1(解释器)
+			continue
+		case SubSLTIsZeroPush2:
+			pc += 6 // *pc +=3 +2(push2) +1(解释器)
+			continue
+		case Dup11MulDup3SubMulDup1:
+			pc += 6 // *pc +=5 +1(解释器)
+			continue
 		}
 
 		// 默认：单字节指令
@@ -525,6 +525,6 @@ func (in *EVMInterpreter) refundUnusedBlockGas(contract *Contract, pc uint64, cu
 		usedGasDiff := currentBlock.StaticGas - actualUsedGas
 		contract.Gas += usedGasDiff
 		*consumedBlockGas -= usedGasDiff
-		log.Error("Refunded unused block gas", "actualUsedGas", actualUsedGas, "remaining", contract.Gas, "usedGasDiff", usedGasDiff, "contract.CodeHash", contract.CodeHash.String())
+		//log.Error("Refunded unused block gas", "actualUsedGas", actualUsedGas, "remaining", contract.Gas, "usedGasDiff", usedGasDiff, "contract.CodeHash", contract.CodeHash.String())
 	}
 }
