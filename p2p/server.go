@@ -497,18 +497,21 @@ func (srv *Server) setupDiscovery() error {
 	}
 
 	// ENR filter function
-	f := func(r *enr.Record) bool {
-		if srv.forkFilter == nil {
-			return true
+	var f discover.NodeFilterFunc
+	if srv.Config.EnableENRFilter {
+		f = func(r *enr.Record) bool {
+			if srv.forkFilter == nil {
+				return true
+			}
+			var eth struct {
+				ForkID forkid.ID
+				Tail   []rlp.RawValue `rlp:"tail"`
+			}
+			if r.Load(enr.WithEntry("eth", &eth)) != nil {
+				return false
+			}
+			return srv.forkFilter(eth.ForkID) == nil
 		}
-		var eth struct {
-			ForkID forkid.ID
-			Tail   []rlp.RawValue `rlp:"tail"`
-		}
-		if r.Load(enr.WithEntry("eth", &eth)) != nil {
-			return true
-		}
-		return srv.forkFilter(eth.ForkID) == nil
 	}
 
 	var (

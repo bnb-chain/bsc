@@ -419,7 +419,7 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 	}
 
 	// Create the idle freezer instance
-	frdb, err := newChainFreezer(chainFreezerDir, opts.Era, opts.MetricsNamespace, opts.ReadOnly, opts.MultiDatabase)
+	frdb, err := newChainFreezer(chainFreezerDir, opts.Era, opts.MetricsNamespace, opts.ReadOnly)
 
 	// We are creating the freezerdb here because the validation logic for db and freezer below requires certain interfaces
 	// that need a database type. Therefore, we are pre-creating it for subsequent use.

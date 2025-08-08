@@ -31,7 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-const prefetchTxNumber = 100
+const prefetchTxNumber = 50
 
 var (
 	bidPreCheckTimer     = metrics.NewRegisteredTimer("bid/preCheck", nil)
