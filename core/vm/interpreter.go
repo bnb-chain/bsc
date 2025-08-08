@@ -367,17 +367,28 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
 		if err != nil {
+			// 如果启用了优化模式且使用了 block gas 预扣除，需要返还未执行部分的 gas
+			in.refundUnusedBlockGas(contract, pc, currentBlock, calcTotalCost, &comsumedBlockGas)
 			if err != errStopToken {
 				log.Error("Execution stopped due to error", "pc", pc, "op", op.String(), "err", err, "contract.CodeHash", contract.CodeHash.String(), "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas)
-				// 如果启用了优化模式且使用了 block gas 预扣除，需要返还未执行部分的 gas
-				in.refundUnusedBlockGas(contract, pc, currentBlock, calcTotalCost, &comsumedBlockGas)
 			}
 			break
 		}
-		pc++
-	}
+		    pc++
+   }
 
-	//if ((totalCost != comsumedBlockGas) && !calcTotalCost) || (comsumedBlockGas != 0 && calcTotalCost) {
+   // 成功路径：如果优化开启且仍在预扣模式，需要根据最终 pc 退回未用静态 gas
+   if in.evm.Config.EnableOpcodeOptimizations && !calcTotalCost && currentBlock != nil {
+       var lastPC uint64
+       if pc > 0 {
+           lastPC = pc - 1
+       } else {
+           lastPC = 0
+       }
+       in.refundUnusedBlockGas(contract, lastPC, currentBlock, calcTotalCost, &comsumedBlockGas)
+   }
+
+   //if ((totalCost != comsumedBlockGas) && !calcTotalCost) || (comsumedBlockGas != 0 && calcTotalCost) {
 	//log.Error("totalCost completed! totalCost diff comsumedBlockGas", "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas, "fallback", calcTotalCost, "contract.Gas", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
 	//}
 
