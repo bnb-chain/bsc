@@ -25,7 +25,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
-	"time"
 )
 
 // Config are the configuration options for the Interpreter
@@ -215,9 +214,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		mem.Free()
 	}()
 	contract.Input = input
-	if contract.CodeHash.String() == "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6" {
-		log.Error("contract entry gas", "contract.Gas", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-	}
+	//if contract.CodeHash.String() == "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6" {
+	//	log.Error("contract entry gas", "contract.Gas", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+	//}
 
 	if debug {
 		defer func() { // this deferred method handles exit-with-error
@@ -261,13 +260,13 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 					if contract.Gas >= block.StaticGas {
 						contract.Gas -= block.StaticGas
 						comsumedBlockGas += block.StaticGas
-						if contract.CodeHash.String() == "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6" {
-							log.Error("[CACHE DEBUG] Static gas", "block.StaticGas", block.StaticGas, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String(), "block.StartPC", block.StartPC, "block.EndPC", block.EndPC)
-						}
+						//if contract.CodeHash.String() == "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6" {
+						//	log.Error("[CACHE DEBUG] Static gas", "block.StaticGas", block.StaticGas, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String(), "block.StartPC", block.StartPC, "block.EndPC", block.EndPC)
+						//}
 					} else {
-						if contract.CodeHash.String() == "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6" {
-							log.Error("[CACHE DEBUG] Insufficient gas for static", "block.StaticGas", block.StaticGas, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-						}
+						//if contract.CodeHash.String() == "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6" {
+						//	log.Error("[CACHE DEBUG] Insufficient gas for static", "block.StaticGas", block.StaticGas, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+						//}
 						calcTotalCost = true
 						contract.Gas += comsumedBlockGas
 					}
@@ -391,7 +390,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		err = nil // clear stop token error
 	}
 
-	time.Sleep(time.Millisecond * 100)
+	//time.Sleep(time.Millisecond * 100)
 
 	return res, err
 }
@@ -412,7 +411,7 @@ func (in *EVMInterpreter) calculateUsedBlockGas(contract *Contract, startPC, end
 		// Add static gas for this opcode (only if operation exists)
 		if operation != nil {
 			totalGas += operation.constantGas
-			log.Error("accumulate refund totalGas", "totalGas", totalGas, "cost", operation.constantGas, "op", op.String(), "contract.CodeHash", contract.CodeHash.String(), "pc", pc)
+			//log.Error("accumulate refund totalGas", "totalGas", totalGas, "cost", operation.constantGas, "op", op.String(), "contract.CodeHash", contract.CodeHash.String(), "pc", pc)
 		}
 
 		// Prefer compiler's skip for PUSH 和部分已覆盖的超指令
