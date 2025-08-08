@@ -114,6 +114,22 @@ func (db *Database) StateStoreReader() ethdb.Reader {
 	return db
 }
 
+func (db *Database) IndexStoreReader() ethdb.KeyValueReader {
+	return db
+}
+
+func (db *Database) GetTxIndexStore() ethdb.KeyValueStore {
+	return db
+}
+
+func (db *Database) SetTxIndexStore(store ethdb.KeyValueStore) {
+	// No-op for remote database
+}
+
+func (db *Database) HasSeparateTxIndexStore() bool {
+	return false
+}
+
 func (db *Database) ReadAncients(fn func(op ethdb.AncientReaderOp) error) (err error) {
 	return fn(db)
 }

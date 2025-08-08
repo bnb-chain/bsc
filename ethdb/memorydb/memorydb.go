@@ -294,10 +294,26 @@ func (db *Database) Len() int {
 }
 
 func (db *Database) StateStoreReader() ethdb.Reader {
-	if db.stateStore == nil {
-		return db
+	if db.stateStore != nil {
+		return db.stateStore
 	}
-	return db.stateStore
+	return db
+}
+
+func (db *Database) IndexStoreReader() ethdb.KeyValueReader {
+	return db
+}
+
+func (db *Database) GetTxIndexStore() ethdb.KeyValueStore {
+	return db
+}
+
+func (db *Database) SetTxIndexStore(store ethdb.KeyValueStore) {
+	// No-op for memory database
+}
+
+func (db *Database) HasSeparateTxIndexStore() bool {
+	return false
 }
 
 // keyvalue is a key-value tuple tagged with a deletion field to allow creating

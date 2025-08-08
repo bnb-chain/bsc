@@ -195,12 +195,19 @@ type StateStoreReader interface {
 	StateStoreReader() Reader
 }
 
+// IndexStoreReader wraps the IndexStoreReader method.
+// It provides a read-only view over the transaction index store which is a pure key-value store.
+type IndexStoreReader interface {
+	IndexStoreReader() KeyValueReader
+}
+
 // Reader contains the methods required to read data from both key-value as well as
 // immutable ancient data.
 type Reader interface {
 	KeyValueReader
 	AncientReader
 	StateStoreReader
+	IndexStoreReader
 }
 
 // AncientStore contains all the methods required to allow handling different
@@ -224,6 +231,12 @@ type SnapStore interface {
 	HasSeparateSnapStore() bool
 }
 
+type TxIndexStore interface {
+	SetTxIndexStore(state KeyValueStore)
+	GetTxIndexStore() KeyValueStore
+	HasSeparateTxIndexStore() bool
+}
+
 // ResettableAncientStore extends the AncientStore interface by adding a Reset method.
 type ResettableAncientStore interface {
 	AncientStore
@@ -238,6 +251,8 @@ type Database interface {
 	StateStore
 	StateStoreReader
 	SnapStore
+	TxIndexStore
+	IndexStoreReader
 	AncientFreezer
 
 	KeyValueStore

@@ -1258,7 +1258,7 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 	go func() {
 		defer bc.dbWg.Done()
 
-		batch := bc.db.NewBatch()
+		batch := bc.db.GetTxIndexStore().NewBatch()
 		rawdb.WriteTxLookupEntriesByBlock(batch, block)
 
 		// Flush the whole batch into the disk, exit the node if failed

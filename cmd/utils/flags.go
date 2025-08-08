@@ -2593,6 +2593,9 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 
 			snapDiskDb := MakeSnapDataBase(ctx, stack, readonly)
 			chainDb.SetSnapStore(snapDiskDb)
+
+			indexDiskDb := MakeTxIndexDatabase(ctx, stack, readonly)
+			chainDb.SetTxIndexStore(indexDiskDb)
 		}
 	}
 	if err != nil {
@@ -2623,6 +2626,17 @@ func MakeSnapDataBase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.K
 	}
 
 	return snapdb
+}
+
+// MakeTxIndexDatabase opens a separate tx index database using the flags passed to the client and will hard crash if it fails.
+func MakeTxIndexDatabase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.KeyValueStore {
+	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) * node.IndexDbResourcePercentage / 100
+	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name)) * node.IndexDbResourcePercentage / 100
+	indexdb, err := stack.OpenDatabase("chaindata/txindex", cache, handles, "eth/db/txindex/", readonly, true)
+	if err != nil {
+		Fatalf("Failed to open separate tx index database: %v", err)
+	}
+	return indexdb
 }
 
 func PathDBConfigAddJournalFilePath(stack *node.Node, config *pathdb.Config) *pathdb.Config {

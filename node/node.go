@@ -75,12 +75,14 @@ const (
 	initializingState = iota
 	runningState
 	closedState
-	// ChainDbResourcePercentage is estimated from on-disk size proportions of metadata,index data and block data.
-	ChainDbResourcePercentage = 26
+	// ChainDbResourcePercentage is estimated from on-disk size proportions of metadata and block data.
+	ChainDbResourcePercentage = 7
 	// SnapDbResourcePercentage is estimated from on-disk size proportions of snapshot data.
 	SnapDbResourcePercentage = 24
 	// StateStoreResourcePercentage is estimated from on-disk size proportions of trie data.
 	StateStoreResourcePercentage = 50
+	// IndexDbResourcePercentage is estimated from on-disk size proportions of transaction index data.
+	IndexDbResourcePercentage = 19
 )
 
 const StateDBNamespace = "eth/db/statedata/"
@@ -795,6 +797,7 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 		chainDbCache                 = config.DatabaseCache
 		stateDbCache, stateDbHandles int
 		snapDbCache, snapDbHandles   int
+		indexDbCache, indexDbHandles int
 	)
 
 	isMultiDatabase := n.CheckIfMultiDataBase()
@@ -809,8 +812,11 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 		snapDbCache = int(float64(config.DatabaseCache) * SnapDbResourcePercentage / 100)
 		snapDbHandles = int(float64(config.DatabaseHandles) * SnapDbResourcePercentage / 100)
 
-		stateDbCache = config.DatabaseCache - chainDbCache - snapDbCache
-		stateDbHandles = config.DatabaseHandles - chainDataHandles - snapDbHandles
+		indexDbCache = int(float64(config.DatabaseCache) * IndexDbResourcePercentage / 100)
+		indexDbHandles = int(float64(config.DatabaseHandles) * IndexDbResourcePercentage / 100)
+
+		stateDbCache = config.DatabaseCache - chainDbCache - snapDbCache - indexDbCache
+		stateDbHandles = config.DatabaseHandles - chainDataHandles - snapDbHandles - indexDbHandles
 	}
 
 	chainDB, err := n.OpenDatabaseWithFreezer(name, chainDbCache, chainDataHandles, config.DatabaseFreezer, namespace, readonly, false)
@@ -835,6 +841,14 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 		}
 
 		chainDB.SetSnapStore(snapshotDb)
+
+		// Open the tx index database as a pure key-value store
+		indexDb, err := n.OpenDatabase(name+"/txindex", indexDbCache, indexDbHandles, "eth/db/txindex/", readonly, true)
+		if err != nil {
+			log.Error("Failed to open separate tx index database", "err", err)
+			return nil, err
+		}
+		chainDB.SetTxIndexStore(indexDb)
 	}
 
 	return chainDB, nil
@@ -883,16 +897,20 @@ func (n *Node) CheckIfMultiDataBase() bool {
 
 	separateSnapshotDir := filepath.Join(n.ResolvePath("chaindata"), "snapshot")
 	snapshotInfo, snapshotErr := os.Stat(separateSnapshotDir)
-	hasSnapshot := snapshotErr == nil && snapshotInfo.IsDir()
+	hasSnapshotDB := snapshotErr == nil && snapshotInfo.IsDir()
 
-	// Both must exist together or neither should exist
-	if hasState && hasSnapshot {
+	separateIndexDir := filepath.Join(n.ResolvePath("chaindata"), "txindex")
+	indexInfo, indexErr := os.Stat(separateIndexDir)
+	hasIndexDB := indexErr == nil && indexInfo.IsDir()
+
+	// All three must exist together or none should exist
+	if hasState && hasSnapshotDB && hasIndexDB {
 		return true
-	} else if !hasState && !hasSnapshot {
-		return false
-	} else {
-		panic("data corruption! missing snap or state dir.")
 	}
+	if !hasState && !hasSnapshotDB && !hasIndexDB {
+		return false
+	}
+	panic("data corruption! missing state, snapshot or txindex dir.")
 }
 
 // ResolvePath returns the absolute path of a resource in the instance directory.
