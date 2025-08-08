@@ -20,22 +20,15 @@ package params
 // aren't necessarily consensus related.
 
 const (
-	// BloomBitsBlocks is the number of blocks a single bloom bit section vector
-	// contains on the server side.
-	BloomBitsBlocks uint64 = 4096
-
-	// BloomConfirms is the number of confirmation blocks before a bloom section is
-	// considered probably final and its rotated bits are calculated.
-	BloomConfirms = 256
-
 	// StableStateThreshold is the reserve number of block state save to disk before delete ancientdb
 	StableStateThreshold uint64 = 128
-)
 
-var (
 	// FullImmutabilityThreshold is the number of blocks after which a chain segment is
 	// considered immutable (i.e. soft finality). It is used by the downloader as a
 	// hard limit against deep ancestors, by the blockchain against deep reorgs, by
 	// the freezer as the cutoff threshold and by clique as the snapshot trust limit.
+)
+
+var (
 	FullImmutabilityThreshold uint64 = 360_000
 )

@@ -128,7 +128,7 @@ func (cs *chainSyncer) loop() {
 			// Disable all insertion on the blockchain. This needs to happen before
 			// terminating the downloader because the downloader waits for blockchain
 			// inserts, and these can take a long time to finish.
-			cs.handler.chain.StopInsert()
+			cs.handler.chain.InterruptInsert(true)
 			cs.handler.downloader.Terminate()
 			if cs.doneCh != nil {
 				<-cs.doneCh

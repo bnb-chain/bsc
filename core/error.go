@@ -29,8 +29,6 @@ var (
 	// ErrNoGenesis is returned when there is no Genesis Block.
 	ErrNoGenesis = errors.New("genesis not found in chain")
 
-	errSideChainReceipts = errors.New("side blocks can't be accepted as ancient chain data")
-
 	// ErrAncestorHasNotBeenVerified is returned when block - 11 has not been verified by the remote verifier.
 	ErrAncestorHasNotBeenVerified = errors.New("block ancestor has not been verified")
 

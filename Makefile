@@ -2,7 +2,7 @@
 # with Go source code. If you know what GOPATH is then you probably
 # don't need to bother with make.
 
-.PHONY: geth faucet all test truffle-test lint fmt clean devtools help
+.PHONY: geth evm faucet all test truffle-test lint fmt clean devtools help
 .PHONY: docker
 
 GOBIN = ./build/bin
@@ -22,6 +22,12 @@ faucet:
 	$(GORUN) build/ci.go install ./cmd/faucet
 	@echo "Done building faucet"
 
+#? evm: Build evm.
+evm:
+	$(GORUN) build/ci.go install ./cmd/evm
+	@echo "Done building."
+	@echo "Run \"$(GOBIN)/evm\" to launch evm."
+
 #? all: Build all packages and executables.
 all:
 	$(GORUN) build/ci.go install
@@ -32,12 +38,14 @@ test: all
 
 #? truffle-test: Run the integration test.
 truffle-test:
+	rm -rf ./tests/truffle/storage/bsc-validator1
+	rm -rf ./tests/truffle/storage/bsc-rpc
 	docker build . -f ./docker/Dockerfile --target bsc -t bsc
 	docker build . -f ./docker/Dockerfile --target bsc-genesis -t bsc-genesis
 	docker build . -f ./docker/Dockerfile.truffle -t truffle-test
 	docker compose -f ./tests/truffle/docker-compose.yml up genesis
 	docker compose -f ./tests/truffle/docker-compose.yml up -d bsc-rpc bsc-validator1
-	sleep 30
+	sleep 60
 	docker compose -f ./tests/truffle/docker-compose.yml up --exit-code-from truffle-test truffle-test
 	docker compose -f ./tests/truffle/docker-compose.yml down
 

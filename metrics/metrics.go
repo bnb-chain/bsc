@@ -35,6 +35,7 @@ func Enabled() bool {
 // the program, before any metrics collection will happen.
 func Enable() {
 	metricsEnabled = true
+	startMeterTickerLoop()
 }
 
 // EnabledExpensive is checked by functions that are deemed 'expensive'.

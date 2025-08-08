@@ -17,18 +17,25 @@
 package core
 
 import (
+	"bytes"
+	"runtime"
+	"sync/atomic"
+
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
+	"golang.org/x/sync/errgroup"
 )
 
-const prefetchThread = 3
+const prefetchMiningThread = 3
 const checkInterval = 10
 
-// statePrefetcher is a basic Prefetcher, which blindly executes a block on top
-// of an arbitrary state with the goal of prefetching potentially useful state
-// data from disk before the main block processor start executing.
+// statePrefetcher is a basic Prefetcher that executes transactions from a block
+// on top of the parent state, aiming to prefetch potentially useful state data
+// from disk. Transactions are executed in parallel to fully leverage the
+// SSD's read performance.
 type statePrefetcher struct {
 	config *params.ChainConfig // Chain configuration options
 	chain  *HeaderChain        // Canonical block chain
@@ -45,51 +52,81 @@ func NewStatePrefetcher(config *params.ChainConfig, chain *HeaderChain) *statePr
 // Prefetch processes the state changes according to the Ethereum rules by running
 // the transaction messages using the statedb, but any changes are discarded. The
 // only goal is to warm the state caches.
-func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg *vm.Config, interruptCh <-chan struct{}) {
+func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interrupt *atomic.Bool) {
 	var (
-		signer = types.MakeSigner(p.config, header.Number, header.Time)
+		fails   atomic.Int64
+		signer  = types.MakeSigner(p.config, header.Number, header.Time)
+		workers errgroup.Group
+		reader  = statedb.Reader()
 	)
-	txChan := make(chan int, prefetchThread)
+	workers.SetLimit(max(1, 3*runtime.NumCPU()/5)) // Aggressively run the prefetching
 
-	for i := 0; i < prefetchThread; i++ {
-		go func() {
-			newStatedb := statedb.CopyDoPrefetch()
-			gaspool := new(GasPool).AddGas(gasLimit)
-			evm := vm.NewEVM(NewEVMBlockContext(header, p.chain, nil), newStatedb, p.config, *cfg)
-			// Iterate over and process the individual transactions
-			for {
-				select {
-				case txIndex := <-txChan:
-					tx := transactions[txIndex]
-					// Convert the transaction into an executable message and pre-cache its sender
-					msg, err := TransactionToMessage(tx, signer, header.BaseFee)
-					if err != nil {
-						return // Also invalid block, bail out
-					}
-					// Disable the nonce check
-					msg.SkipNonceChecks = true
+	// Iterate over and process the individual transactions
+	for i, tx := range transactions {
+		stateCpy := statedb.CopyDoPrefetch() // closure
+		workers.Go(func() error {
+			// If block precaching was interrupted, abort
+			if interrupt != nil && interrupt.Load() {
+				return nil
+			}
+			// Preload the touched accounts and storage slots in advance
+			sender, err := types.Sender(signer, tx)
+			if err != nil {
+				fails.Add(1)
+				return nil
+			}
+			reader.Account(sender)
 
-					newStatedb.SetTxContext(tx.Hash(), txIndex)
-					// We attempt to apply a transaction. The goal is not to execute
-					// the transaction successfully, rather to warm up touched data slots.
-					ApplyMessage(evm, msg, gaspool)
+			if tx.To() != nil {
+				account, _ := reader.Account(*tx.To())
 
-				case <-interruptCh:
-					// If block precaching was interrupted, abort
-					return
+				// Preload the contract code if the destination has non-empty code
+				if account != nil && !bytes.Equal(account.CodeHash, types.EmptyCodeHash.Bytes()) {
+					reader.Code(*tx.To(), common.BytesToHash(account.CodeHash))
 				}
 			}
-		}()
-	}
+			for _, list := range tx.AccessList() {
+				reader.Account(list.Address)
+				if len(list.StorageKeys) > 0 {
+					for _, slot := range list.StorageKeys {
+						reader.Storage(list.Address, slot)
+					}
+				}
+			}
+			// Execute the message to preload the implicit touched states
+			evm := vm.NewEVM(NewEVMBlockContext(header, p.chain, nil), stateCpy, p.config, cfg)
 
-	// it should be in a separate goroutine, to avoid blocking the critical path.
-	for i := 0; i < len(transactions); i++ {
-		select {
-		case txChan <- i:
-		case <-interruptCh:
-			return
-		}
+			// Convert the transaction into an executable message and pre-cache its sender
+			msg, err := TransactionToMessage(tx, signer, header.BaseFee)
+			if err != nil {
+				fails.Add(1)
+				return nil // Also invalid block, bail out
+			}
+			// Disable the nonce check
+			msg.SkipNonceChecks = true
+
+			stateCpy.SetTxContext(tx.Hash(), i)
+
+			// We attempt to apply a transaction. The goal is not to execute
+			// the transaction successfully, rather to warm up touched data slots.
+			if _, err := ApplyMessage(evm, msg, new(GasPool).AddGas(gasLimit)); err != nil {
+				fails.Add(1)
+				return nil // Ugh, something went horribly wrong, bail out
+			}
+			// Pre-load trie nodes for the intermediate root.
+			//
+			// This operation incurs significant memory allocations due to
+			// trie hashing and node decoding. TODO(rjl493456442): investigate
+			// ways to mitigate this overhead.
+			stateCpy.IntermediateRoot(true)
+			return nil
+		})
 	}
+	workers.Wait()
+
+	blockPrefetchTxsValidMeter.Mark(int64(len(transactions)) - fails.Load())
+	blockPrefetchTxsInvalidMeter.Mark(fails.Load())
+	return
 }
 
 // PrefetchMining processes the state changes according to the Ethereum rules by running
@@ -98,8 +135,8 @@ func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *type
 func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr **types.Transaction) {
 	var signer = types.MakeSigner(p.config, header.Number, header.Time)
 
-	txCh := make(chan *types.Transaction, 2*prefetchThread)
-	for i := 0; i < prefetchThread; i++ {
+	txCh := make(chan *types.Transaction, 2*prefetchMiningThread)
+	for i := 0; i < prefetchMiningThread; i++ {
 		go func(startCh <-chan *types.Transaction, stopCh <-chan struct{}) {
 			newStatedb := statedb.CopyDoPrefetch()
 			evm := vm.NewEVM(NewEVMBlockContext(header, p.chain, nil), newStatedb, p.config, cfg)

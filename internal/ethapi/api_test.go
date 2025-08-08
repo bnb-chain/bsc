@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -47,7 +48,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/bloombits"
+	"github.com/ethereum/go-ethereum/core/filtermaps"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -443,21 +444,16 @@ type testBackend struct {
 }
 
 func newTestBackend(t *testing.T, n int, gspec *core.Genesis, engine consensus.Engine, generator func(i int, b *core.BlockGen)) *testBackend {
-	var (
-		cacheConfig = &core.CacheConfig{
-			TrieCleanLimit:    256,
-			TrieDirtyLimit:    256,
-			TrieTimeLimit:     5 * time.Minute,
-			SnapshotLimit:     0,
-			TrieDirtyDisabled: true, // Archive mode
-		}
-	)
+	options := core.DefaultConfig().WithArchive(true)
+	options.TxLookupLimit = 0 // index all txs
+
 	accman, acc := newTestAccountManager(t)
 	gspec.Alloc[acc.Address] = types.Account{Balance: big.NewInt(params.Ether)}
+
 	// Generate blocks for testing
 	db, blocks, _ := core.GenerateChainWithGenesis(gspec, engine, n, generator)
-	txlookupLimit := uint64(0)
-	chain, err := core.NewBlockChain(db, cacheConfig, gspec, nil, engine, vm.Config{}, nil, &txlookupLimit)
+
+	chain, err := core.NewBlockChain(db, gspec, engine, options)
 	if err != nil {
 		t.Fatalf("failed to create tester chain: %v", err)
 	}
@@ -474,7 +470,9 @@ func (b *testBackend) setPendingBlock(block *types.Block) {
 	b.pending = block
 }
 
-func (b testBackend) SyncProgress() ethereum.SyncProgress { return ethereum.SyncProgress{} }
+func (b testBackend) SyncProgress(ctx context.Context) ethereum.SyncProgress {
+	return ethereum.SyncProgress{}
+}
 func (b testBackend) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
 	return big.NewInt(0), nil
 }
@@ -527,8 +525,12 @@ func (b testBackend) BlockByNumber(ctx context.Context, number rpc.BlockNumber) 
 	if number == rpc.PendingBlockNumber {
 		return b.pending, nil
 	}
+	if number == rpc.EarliestBlockNumber {
+		number = 0
+	}
 	return b.chain.GetBlockByNumber(uint64(number)), nil
 }
+
 func (b testBackend) BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
 	return b.chain.GetBlockByHash(hash), nil
 }
@@ -613,9 +615,15 @@ func (b testBackend) SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.Su
 func (b testBackend) SendTx(ctx context.Context, signedTx *types.Transaction) error {
 	panic("implement me")
 }
-func (b testBackend) GetTransaction(ctx context.Context, txHash common.Hash) (bool, *types.Transaction, common.Hash, uint64, uint64, error) {
-	tx, blockHash, blockNumber, index := rawdb.ReadTransaction(b.db, txHash)
-	return true, tx, blockHash, blockNumber, index, nil
+func (b testBackend) GetCanonicalTransaction(txHash common.Hash) (bool, *types.Transaction, common.Hash, uint64, uint64) {
+	tx, blockHash, blockNumber, index := rawdb.ReadCanonicalTransaction(b.db, txHash)
+	return tx != nil, tx, blockHash, blockNumber, index
+}
+func (b testBackend) GetCanonicalReceipt(tx *types.Transaction, blockHash common.Hash, blockNumber, blockIndex uint64) (*types.Receipt, error) {
+	return b.chain.GetCanonicalReceipt(tx, blockHash, blockNumber, blockIndex)
+}
+func (b testBackend) TxIndexDone() bool {
+	return true
 }
 func (b testBackend) GetPoolTransactions() (types.Transactions, error)         { panic("implement me") }
 func (b testBackend) GetPoolTransaction(txHash common.Hash) *types.Transaction { panic("implement me") }
@@ -647,10 +655,6 @@ func (b testBackend) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscripti
 func (b testBackend) SubscribePendingLogsEvent(ch chan<- []*types.Log) event.Subscription {
 	panic("implement me")
 }
-func (b testBackend) BloomStatus() (uint64, uint64) { panic("implement me") }
-func (b testBackend) ServiceFilter(ctx context.Context, session *bloombits.MatcherSession) {
-	panic("implement me")
-}
 
 func (b *testBackend) MevRunning() bool                       { return false }
 func (b *testBackend) HasBuilder(builder common.Address) bool { return false }
@@ -665,6 +669,18 @@ func (b *testBackend) SendBid(ctx context.Context, bid *types.BidArgs) (common.H
 	panic("implement me")
 }
 func (b *testBackend) MinerInTurn() bool { return false }
+
+func (b testBackend) CurrentView() *filtermaps.ChainView {
+	panic("implement me")
+}
+func (b testBackend) NewMatcherBackend() filtermaps.MatcherBackend {
+	panic("implement me")
+}
+
+func (b testBackend) HistoryPruningCutoff() uint64 {
+	bn, _ := b.chain.HistoryPruningCutoff()
+	return bn
+}
 
 func TestEstimateGas(t *testing.T) {
 	t.Parallel()
@@ -1230,6 +1246,24 @@ func TestCall(t *testing.T) {
 				},
 			},
 			want: "0x0000000000000000000000000000000000000000000000000000000000000000",
+		},
+		{
+			name:        "unsupported block override beaconRoot",
+			blockNumber: rpc.LatestBlockNumber,
+			call:        TransactionArgs{},
+			blockOverrides: override.BlockOverrides{
+				BeaconRoot: &common.Hash{0, 1, 2},
+			},
+			expectErr: errors.New(`block override "beaconRoot" is not supported for this RPC method`),
+		},
+		{
+			name:        "unsupported block override withdrawals",
+			blockNumber: rpc.LatestBlockNumber,
+			call:        TransactionArgs{},
+			blockOverrides: override.BlockOverrides{
+				Withdrawals: &types.Withdrawals{},
+			},
+			expectErr: errors.New(`block override "withdrawals" is not supported for this RPC method`),
 		},
 	}
 	for _, tc := range testSuite {
@@ -2403,6 +2437,172 @@ func TestSimulateV1(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSimulateV1ChainLinkage(t *testing.T) {
+	var (
+		acc          = newTestAccount()
+		sender       = acc.addr
+		contractAddr = common.Address{0xaa, 0xaa}
+		recipient    = common.Address{0xbb, 0xbb}
+		gspec        = &core.Genesis{
+			Config: params.MergedTestChainConfig,
+			Alloc: types.GenesisAlloc{
+				sender:       {Balance: big.NewInt(params.Ether)},
+				contractAddr: {Code: common.Hex2Bytes("5f35405f8114600f575f5260205ff35b5f80fd")},
+			},
+		}
+		signer = types.LatestSigner(params.MergedTestChainConfig)
+	)
+	backend := newTestBackend(t, 1, gspec, beacon.New(ethash.NewFaker()), func(i int, b *core.BlockGen) {
+		tx := types.MustSignNewTx(acc.key, signer, &types.LegacyTx{
+			Nonce:    uint64(i),
+			GasPrice: b.BaseFee(),
+			Gas:      params.TxGas,
+			To:       &recipient,
+			Value:    big.NewInt(500),
+		})
+		b.AddTx(tx)
+	})
+
+	ctx := context.Background()
+	stateDB, baseHeader, err := backend.StateAndHeaderByNumberOrHash(ctx, rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber))
+	if err != nil {
+		t.Fatalf("failed to get state and header: %v", err)
+	}
+
+	sim := &simulator{
+		b:              backend,
+		state:          stateDB,
+		base:           baseHeader,
+		chainConfig:    backend.ChainConfig(),
+		gp:             new(core.GasPool).AddGas(math.MaxUint64),
+		traceTransfers: false,
+		validate:       false,
+		fullTx:         false,
+	}
+
+	var (
+		call1 = TransactionArgs{
+			From:  &sender,
+			To:    &recipient,
+			Value: (*hexutil.Big)(big.NewInt(1000)),
+		}
+		call2 = TransactionArgs{
+			From:  &sender,
+			To:    &recipient,
+			Value: (*hexutil.Big)(big.NewInt(2000)),
+		}
+		call3a = TransactionArgs{
+			From:  &sender,
+			To:    &contractAddr,
+			Input: uint256ToBytes(uint256.NewInt(baseHeader.Number.Uint64() + 1)),
+			Gas:   newUint64(1000000),
+		}
+		call3b = TransactionArgs{
+			From:  &sender,
+			To:    &contractAddr,
+			Input: uint256ToBytes(uint256.NewInt(baseHeader.Number.Uint64() + 2)),
+			Gas:   newUint64(1000000),
+		}
+		blocks = []simBlock{
+			{Calls: []TransactionArgs{call1}},
+			{Calls: []TransactionArgs{call2}},
+			{Calls: []TransactionArgs{call3a, call3b}},
+		}
+	)
+
+	results, err := sim.execute(ctx, blocks)
+	if err != nil {
+		t.Fatalf("simulation execution failed: %v", err)
+	}
+	require.Equal(t, 3, len(results), "expected 3 simulated blocks")
+
+	// Check linkages of simulated blocks:
+	// Verify that block2's parent hash equals block1's hash.
+	block1 := results[0].Block
+	block2 := results[1].Block
+	block3 := results[2].Block
+	require.Equal(t, block1.ParentHash(), baseHeader.Hash(), "parent hash of block1 should equal hash of base block")
+	require.Equal(t, block1.Hash(), block2.Header().ParentHash, "parent hash of block2 should equal hash of block1")
+	require.Equal(t, block2.Hash(), block3.Header().ParentHash, "parent hash of block3 should equal hash of block2")
+
+	// In block3, two calls were executed to our contract.
+	// The first call in block3 should return the blockhash for block1 (i.e. block1.Hash()),
+	// whereas the second call should return the blockhash for block2 (i.e. block2.Hash()).
+	require.Equal(t, block1.Hash().Bytes(), []byte(results[2].Calls[0].ReturnValue), "returned blockhash for block1 does not match")
+	require.Equal(t, block2.Hash().Bytes(), []byte(results[2].Calls[1].ReturnValue), "returned blockhash for block2 does not match")
+}
+
+func TestSimulateV1TxSender(t *testing.T) {
+	var (
+		sender    = common.Address{0xaa, 0xaa}
+		sender2   = common.Address{0xaa, 0xab}
+		sender3   = common.Address{0xaa, 0xac}
+		recipient = common.Address{0xbb, 0xbb}
+		gspec     = &core.Genesis{
+			Config: params.MergedTestChainConfig,
+			Alloc: types.GenesisAlloc{
+				sender:  {Balance: big.NewInt(params.Ether)},
+				sender2: {Balance: big.NewInt(params.Ether)},
+				sender3: {Balance: big.NewInt(params.Ether)},
+			},
+		}
+		ctx = context.Background()
+	)
+	backend := newTestBackend(t, 0, gspec, beacon.New(ethash.NewFaker()), func(i int, b *core.BlockGen) {})
+	stateDB, baseHeader, err := backend.StateAndHeaderByNumberOrHash(ctx, rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber))
+	if err != nil {
+		t.Fatalf("failed to get state and header: %v", err)
+	}
+
+	sim := &simulator{
+		b:              backend,
+		state:          stateDB,
+		base:           baseHeader,
+		chainConfig:    backend.ChainConfig(),
+		gp:             new(core.GasPool).AddGas(math.MaxUint64),
+		traceTransfers: false,
+		validate:       false,
+		fullTx:         true,
+	}
+
+	results, err := sim.execute(ctx, []simBlock{
+		{Calls: []TransactionArgs{
+			{From: &sender, To: &recipient, Value: (*hexutil.Big)(big.NewInt(1000))},
+			{From: &sender2, To: &recipient, Value: (*hexutil.Big)(big.NewInt(2000))},
+			{From: &sender3, To: &recipient, Value: (*hexutil.Big)(big.NewInt(3000))},
+		}},
+		{Calls: []TransactionArgs{
+			{From: &sender2, To: &recipient, Value: (*hexutil.Big)(big.NewInt(4000))},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("simulation execution failed: %v", err)
+	}
+	require.Len(t, results, 2, "expected 2 simulated blocks")
+	require.Len(t, results[0].Block.Transactions(), 3, "expected 3 transaction in simulated block")
+	require.Len(t, results[1].Block.Transactions(), 1, "expected 1 transaction in 2nd simulated block")
+	enc, err := json.Marshal(results)
+	if err != nil {
+		t.Fatalf("failed to marshal results: %v", err)
+	}
+	type resultType struct {
+		Transactions []struct {
+			From common.Address `json:"from"`
+		}
+	}
+	var summary []resultType
+	if err := json.Unmarshal(enc, &summary); err != nil {
+		t.Fatalf("failed to unmarshal results: %v", err)
+	}
+	require.Len(t, summary, 2, "expected 2 simulated blocks")
+	require.Len(t, summary[0].Transactions, 3, "expected 3 transaction in simulated block")
+	require.Equal(t, sender, summary[0].Transactions[0].From, "sender address mismatch")
+	require.Equal(t, sender2, summary[0].Transactions[1].From, "sender address mismatch")
+	require.Equal(t, sender3, summary[0].Transactions[2].From, "sender address mismatch")
+	require.Len(t, summary[1].Transactions, 1, "expected 1 transaction in simulated block")
+	require.Equal(t, sender2, summary[1].Transactions[0].From, "sender address mismatch")
 }
 
 func TestSignTransaction(t *testing.T) {

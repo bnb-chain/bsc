@@ -19,10 +19,12 @@ package eth
 import (
 	"bytes"
 	rand2 "crypto/rand"
+	"crypto/sha256"
 	"io"
 	"math"
 	"math/big"
 	"math/rand"
+	"os"
 	"testing"
 	"time"
 
@@ -33,9 +35,9 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/txpool"
+	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
@@ -68,12 +70,12 @@ type testBackend struct {
 
 // newTestBackend creates an empty chain and wraps it into a mock backend.
 func newTestBackend(blocks int) *testBackend {
-	return newTestBackendWithGenerator(blocks, false, nil)
+	return newTestBackendWithGenerator(blocks, false, false, nil)
 }
 
 // newTestBackendWithGenerator creates a chain with a number of explicitly defined blocks and
 // wraps it into a mock backend.
-func newTestBackendWithGenerator(blocks int, shanghai bool, generator func(int, *core.BlockGen)) *testBackend {
+func newTestBackendWithGenerator(blocks int, shanghai bool, cancun bool, generator func(int, *core.BlockGen)) *testBackend {
 	var (
 		// Create a database pre-initialize with a genesis block
 		db                      = rawdb.NewMemoryDatabase()
@@ -106,11 +108,23 @@ func newTestBackendWithGenerator(blocks int, shanghai bool, generator func(int, 
 		engine = beacon.NewFaker()
 	}
 
-	gspec := &core.Genesis{
-		Config: config,
-		Alloc:  types.GenesisAlloc{testAddr: {Balance: big.NewInt(100_000_000_000_000_000)}},
+	if cancun {
+		config.CancunTime = u64(0)
+		config.BlobScheduleConfig = &params.BlobScheduleConfig{
+			Cancun: &params.BlobConfig{
+				Target:         3,
+				Max:            6,
+				UpdateFraction: params.DefaultCancunBlobConfig.UpdateFraction,
+			},
+		}
 	}
-	chain, _ := core.NewBlockChain(db, nil, gspec, nil, engine, vm.Config{}, nil, nil)
+
+	gspec := &core.Genesis{
+		Config:     config,
+		Alloc:      types.GenesisAlloc{testAddr: {Balance: big.NewInt(100_000_000_000_000_000)}},
+		Difficulty: common.Big0,
+	}
+	chain, _ := core.NewBlockChain(db, gspec, engine, nil)
 
 	_, bs, _ := core.GenerateChainWithGenesis(gspec, engine, blocks, generator)
 	if _, err := chain.InsertChain(bs); err != nil {
@@ -122,8 +136,12 @@ func newTestBackendWithGenerator(blocks int, shanghai bool, generator func(int, 
 	txconfig := legacypool.DefaultConfig
 	txconfig.Journal = "" // Don't litter the disk with test journals
 
-	pool := legacypool.New(txconfig, chain)
-	txpool, _ := txpool.New(txconfig.PriceLimit, chain, []txpool.SubPool{pool})
+	storage, _ := os.MkdirTemp("", "blobpool-")
+	defer os.RemoveAll(storage)
+
+	blobPool := blobpool.New(blobpool.Config{Datadir: storage}, chain, nil)
+	legacyPool := legacypool.New(txconfig, chain)
+	txpool, _ := txpool.New(txconfig.PriceLimit, chain, []txpool.SubPool{legacyPool, blobPool})
 
 	return &testBackend{
 		db:     db,
@@ -386,7 +404,7 @@ func testGetBlockBodies(t *testing.T, protocol uint) {
 		}
 	}
 
-	backend := newTestBackendWithGenerator(maxBodiesServe+15, true, gen)
+	backend := newTestBackendWithGenerator(maxBodiesServe+15, true, false, gen)
 	defer backend.close()
 
 	peer, _ := newTestPeer("peer", protocol, backend)
@@ -506,7 +524,7 @@ func testGetBlockReceipts(t *testing.T, protocol uint) {
 		}
 	}
 	// Assemble the test environment
-	backend := newTestBackendWithGenerator(4, false, generator)
+	backend := newTestBackendWithGenerator(4, false, false, generator)
 	defer backend.close()
 
 	peer, _ := newTestPeer("peer", protocol, backend)
@@ -515,22 +533,23 @@ func testGetBlockReceipts(t *testing.T, protocol uint) {
 	// Collect the hashes to request, and the response to expect
 	var (
 		hashes   []common.Hash
-		receipts [][]*types.Receipt
+		receipts []*ReceiptList68
 	)
 	for i := uint64(0); i <= backend.chain.CurrentBlock().Number.Uint64(); i++ {
 		block := backend.chain.GetBlockByNumber(i)
-
 		hashes = append(hashes, block.Hash())
-		receipts = append(receipts, backend.chain.GetReceiptsByHash(block.Hash()))
+		trs := backend.chain.GetReceiptsByHash(block.Hash())
+		receipts = append(receipts, NewReceiptList68(trs))
 	}
+
 	// Send the hash request and verify the response
 	p2p.Send(peer.app, GetReceiptsMsg, &GetReceiptsPacket{
 		RequestId:          123,
 		GetReceiptsRequest: hashes,
 	})
-	if err := p2p.ExpectMsg(peer.app, ReceiptsMsg, &ReceiptsPacket{
-		RequestId:        123,
-		ReceiptsResponse: receipts,
+	if err := p2p.ExpectMsg(peer.app, ReceiptsMsg, &ReceiptsPacket[*ReceiptList68]{
+		RequestId: 123,
+		List:      receipts,
 	}); err != nil {
 		t.Errorf("receipts mismatch: %v", err)
 	}
@@ -583,7 +602,7 @@ func setup() (*testBackend, *testPeer) {
 			block.SetExtra([]byte("yeehaw"))
 		}
 	}
-	backend := newTestBackendWithGenerator(maxBodiesServe+15, true, gen)
+	backend := newTestBackendWithGenerator(maxBodiesServe+15, true, false, gen)
 	peer, _ := newTestPeer("peer", ETH68, backend)
 	// Discard all messages
 	go func() {
@@ -598,10 +617,10 @@ func setup() (*testBackend, *testPeer) {
 }
 
 func FuzzEthProtocolHandlers(f *testing.F) {
-	handlers := eth68
+	handlers := eth69
 	backend, peer := setup()
 	f.Fuzz(func(t *testing.T, code byte, msg []byte) {
-		handler := handlers[uint64(code)%protocolLengths[ETH68]]
+		handler := handlers[uint64(code)%protocolLengths[ETH69]]
 		if handler == nil {
 			return
 		}
@@ -622,7 +641,7 @@ func TestHandleNewBlock(t *testing.T) {
 		}
 	}
 
-	backend := newTestBackendWithGenerator(maxBodiesServe+15, true, gen)
+	backend := newTestBackendWithGenerator(maxBodiesServe+15, true, false, gen)
 	defer backend.close()
 
 	peer, _ := newTestPeer("peer", ETH68, backend)
@@ -755,4 +774,81 @@ func makeBlkBlobs(n, nPerTx int) []*types.BlobTxSidecar {
 		}
 	}
 	return ret
+}
+
+func TestGetPooledTransaction(t *testing.T) {
+	t.Run("blobTx", func(t *testing.T) {
+		testGetPooledTransaction(t, true)
+	})
+	t.Run("legacyTx", func(t *testing.T) {
+		testGetPooledTransaction(t, false)
+	})
+}
+
+func testGetPooledTransaction(t *testing.T, blobTx bool) {
+	var (
+		emptyBlob          = kzg4844.Blob{}
+		emptyBlobs         = []kzg4844.Blob{emptyBlob}
+		emptyBlobCommit, _ = kzg4844.BlobToCommitment(&emptyBlob)
+		emptyBlobProof, _  = kzg4844.ComputeBlobProof(&emptyBlob, emptyBlobCommit)
+		emptyBlobHash      = kzg4844.CalcBlobHashV1(sha256.New(), &emptyBlobCommit)
+	)
+	backend := newTestBackendWithGenerator(0, true, true, nil)
+	defer backend.close()
+
+	peer, _ := newTestPeer("peer", ETH68, backend)
+	defer peer.close()
+
+	var (
+		tx     *types.Transaction
+		err    error
+		signer = types.NewCancunSigner(params.TestChainConfig.ChainID)
+	)
+	if blobTx {
+		tx, err = types.SignNewTx(testKey, signer, &types.BlobTx{
+			ChainID:    uint256.MustFromBig(params.TestChainConfig.ChainID),
+			Nonce:      0,
+			GasTipCap:  uint256.NewInt(20_000_000_000),
+			GasFeeCap:  uint256.NewInt(21_000_000_000),
+			Gas:        21000,
+			To:         testAddr,
+			BlobHashes: []common.Hash{emptyBlobHash},
+			BlobFeeCap: uint256.MustFromBig(common.Big1),
+			Sidecar: &types.BlobTxSidecar{
+				Blobs:       emptyBlobs,
+				Commitments: []kzg4844.Commitment{emptyBlobCommit},
+				Proofs:      []kzg4844.Proof{emptyBlobProof},
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		tx, err = types.SignTx(
+			types.NewTransaction(0, testAddr, big.NewInt(10_000), params.TxGas, big.NewInt(1_000_000_000), nil),
+			signer,
+			testKey,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	errs := backend.txpool.Add([]*types.Transaction{tx}, true)
+	for _, err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Send the hash request and verify the response
+	p2p.Send(peer.app, GetPooledTransactionsMsg, GetPooledTransactionsPacket{
+		RequestId:                    123,
+		GetPooledTransactionsRequest: []common.Hash{tx.Hash()},
+	})
+	if err := p2p.ExpectMsg(peer.app, PooledTransactionsMsg, PooledTransactionsPacket{
+		RequestId:                  123,
+		PooledTransactionsResponse: []*types.Transaction{tx},
+	}); err != nil {
+		t.Errorf("pooled transaction mismatch: %v", err)
+	}
 }

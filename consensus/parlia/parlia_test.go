@@ -658,7 +658,7 @@ func TestParlia_applyTransactionTracing(t *testing.T) {
 	mockEngine := &mockParlia{}
 	genesisBlock := gspec.MustCommit(db, trieDB)
 
-	chain, _ := core.NewBlockChain(db, nil, gspec, nil, mockEngine, vm.Config{}, nil, nil)
+	chain, _ := core.NewBlockChain(db, gspec, mockEngine, nil)
 	signer := types.LatestSigner(config)
 
 	bs, _ := core.GenerateChain(config, genesisBlock, mockEngine, db, 1, func(i int, gen *core.BlockGen) {

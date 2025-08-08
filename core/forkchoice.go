@@ -54,24 +54,17 @@ type ChainReader interface {
 type ForkChoice struct {
 	chain ChainReader
 	rand  *mrand.Rand
-
-	// preserve is a helper function used in td fork choice.
-	// Miners will prefer to choose the local mined block if the
-	// local td is equal to the extern one. It can be nil for light
-	// client
-	preserve func(header *types.Header) bool
 }
 
-func NewForkChoice(chainReader ChainReader, preserve func(header *types.Header) bool) *ForkChoice {
+func NewForkChoice(chainReader ChainReader) *ForkChoice {
 	// Seed a fast but crypto originating random generator
 	seed, err := crand.Int(crand.Reader, big.NewInt(math.MaxInt64))
 	if err != nil {
 		log.Crit("Failed to initialize random seed", "err", err)
 	}
 	return &ForkChoice{
-		chain:    chainReader,
-		rand:     mrand.New(mrand.NewSource(seed.Int64())),
-		preserve: preserve,
+		chain: chainReader,
+		rand:  mrand.New(mrand.NewSource(seed.Int64())),
 	}
 }
 
@@ -116,11 +109,7 @@ func (f *ForkChoice) ReorgNeeded(current *types.Header, extern *types.Header) (b
 	if externNum < localNum {
 		reorg = true
 	} else if externNum == localNum {
-		var currentPreserve, externPreserve bool
-		if f.preserve != nil {
-			currentPreserve, externPreserve = f.preserve(current), f.preserve(extern)
-		}
-		choiceRules := func() bool {
+		reorg = func() bool {
 			if extern.Time == current.Time {
 				doubleSign := (extern.Coinbase == current.Coinbase)
 				if doubleSign {
@@ -131,8 +120,7 @@ func (f *ForkChoice) ReorgNeeded(current *types.Header, extern *types.Header) (b
 			} else {
 				return extern.Time < current.Time
 			}
-		}
-		reorg = !currentPreserve && (externPreserve || choiceRules())
+		}()
 	}
 	return reorg, nil
 }

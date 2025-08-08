@@ -41,7 +41,6 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/event"
@@ -150,7 +149,7 @@ func testVotePool(t *testing.T, isValidRules bool) {
 
 	mux := new(event.TypeMux)
 	db := rawdb.NewMemoryDatabase()
-	chain, _ := core.NewBlockChain(db, nil, genesis, nil, ethash.NewFullFaker(), vm.Config{}, nil, nil)
+	chain, _ := core.NewBlockChain(db, genesis, ethash.NewFullFaker(), nil)
 
 	var mockEngine consensus.PoSA
 	if isValidRules {

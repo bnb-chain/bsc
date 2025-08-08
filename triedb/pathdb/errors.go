@@ -40,17 +40,12 @@ var (
 	// a destination without associated state history available.
 	errStateUnrecoverable = errors.New("state is unrecoverable")
 
-	// errWriteImmutable is returned if write to background immutable nodecache
-	// under asyncnodebuffer
-	errWriteImmutable = errors.New("write immutable nodecache")
+	// errNotCoveredYet is returned from data accessors if the underlying snapshot
+	// is being generated currently and the requested data item is not yet in the
+	// range of accounts covered.
+	errNotCoveredYet = errors.New("not covered yet")
 
-	// errFlushMutable is returned if flush the background mutable nodecache
-	// to disk, under asyncnodebuffer
-	errFlushMutable = errors.New("flush mutable nodecache")
-
-	// errIncompatibleMerge is returned when merge node cache occurs error.
-	errIncompatibleMerge = errors.New("incompatible nodecache merge")
-
-	// errRevertImmutable is returned if revert the background immutable nodecache
-	errRevertImmutable = errors.New("revert immutable nodecache")
+	// errNotConstructed is returned if the callers want to iterate the snapshot
+	// while the generation is not finished yet.
+	errNotConstructed = errors.New("snapshot is not constructed")
 )

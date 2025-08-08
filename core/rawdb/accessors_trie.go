@@ -18,7 +18,6 @@ package rawdb
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -45,25 +44,6 @@ const HashScheme = "hash"
 // on extra state diffs to survive deep reorg.
 const PathScheme = "path"
 
-// hasher is used to compute the sha256 hash of the provided data.
-type hasher struct{ sha crypto.KeccakState }
-
-var hasherPool = sync.Pool{
-	New: func() interface{} { return &hasher{sha: crypto.NewKeccakState()} },
-}
-
-func newHasher() *hasher {
-	return hasherPool.Get().(*hasher)
-}
-
-func (h *hasher) hash(data []byte) common.Hash {
-	return crypto.HashData(h.sha, data)
-}
-
-func (h *hasher) release() {
-	hasherPool.Put(h)
-}
-
 // ReadAccountTrieNodeAndHash retrieves the account trie node and the associated node
 // hash with the specified node path.
 func ReadAccountTrieNodeAndHash(db ethdb.KeyValueReader, path []byte) ([]byte, common.Hash) {
@@ -71,9 +51,7 @@ func ReadAccountTrieNodeAndHash(db ethdb.KeyValueReader, path []byte) ([]byte, c
 	if err != nil {
 		return nil, common.Hash{}
 	}
-	h := newHasher()
-	defer h.release()
-	return data, h.hash(data)
+	return data, crypto.Keccak256Hash(data)
 }
 
 // ReadAccountTrieNode retrieves the account trie node with the specified node path.
@@ -113,9 +91,7 @@ func ReadStorageTrieNodeAndHash(db ethdb.KeyValueReader, accountHash common.Hash
 	if err != nil {
 		return nil, common.Hash{}
 	}
-	h := newHasher()
-	defer h.release()
-	return data, h.hash(data)
+	return data, crypto.Keccak256Hash(data)
 }
 
 // ReadStorageTrieNode retrieves the storage trie node with the specified node path.
@@ -194,9 +170,7 @@ func HasTrieNode(db ethdb.KeyValueReader, owner common.Hash, path []byte, hash c
 		if len(blob) == 0 {
 			return false
 		}
-		h := newHasher()
-		defer h.release()
-		return h.hash(blob) == hash // exists but not match
+		return crypto.Keccak256Hash(blob) == hash // exists but not match
 	default:
 		panic(fmt.Sprintf("Unknown scheme %v", scheme))
 	}
@@ -218,9 +192,7 @@ func ReadTrieNode(db ethdb.KeyValueReader, owner common.Hash, path []byte, hash 
 		if len(blob) == 0 {
 			return nil
 		}
-		h := newHasher()
-		defer h.release()
-		if h.hash(blob) != hash {
+		if crypto.Keccak256Hash(blob) != hash {
 			return nil // exists but not match
 		}
 		return blob
