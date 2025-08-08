@@ -732,6 +732,7 @@ func (h *handler) Start(maxPeers int, maxPeersPerIP int) {
 	h.minedBlockSub = h.eventMux.Subscribe(core.NewMinedBlockEvent{}, core.NewSealedBlockEvent{})
 	go h.minedBroadcastLoop()
 
+	// broadcast block range
 	h.wg.Add(1)
 	h.blockRange = newBlockRangeState(h.chain, h.eventMux)
 	go h.blockRangeLoop(h.blockRange)
@@ -1131,13 +1132,6 @@ func newBlockRangeState(chain *core.BlockChain, typeMux *event.TypeMux) *blockRa
 func (h *handler) blockRangeLoop(st *blockRangeState) {
 	defer h.wg.Done()
 
-	// broadcast block range
-	// TODO(Nathan): enable blockRangeLoop when eth69 enabled
-	eth69Enabled := false
-	if !eth69Enabled {
-		return
-	}
-
 	for {
 		select {
 		case ev := <-st.syncSub.Chan():
@@ -1219,6 +1213,12 @@ func (st *blockRangeState) update(chain *core.BlockChain, latest *types.Header) 
 // However, there is a special case: if the range would move back, i.e. due to SetHead, we
 // want to send it immediately.
 func (st *blockRangeState) shouldSend() bool {
+	// TODO(Nathan): enable blockRangeLoop when eth69 enabled
+	eth69Enabled := false
+	if !eth69Enabled {
+		return false
+	}
+
 	next := st.next.Load()
 	return next.LatestBlock < st.prev.LatestBlock ||
 		next.LatestBlock-st.prev.LatestBlock >= 32
