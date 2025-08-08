@@ -199,7 +199,7 @@ func pruneState(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	chaindb := utils.MakeChainDatabase(ctx, stack, false, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, false)
 	defer chaindb.Close()
 
 	prunerconfig := pruner.Config{
@@ -264,7 +264,7 @@ func pruneAllState(ctx *cli.Context) error {
 		g = cfg.Eth.Genesis
 	}
 
-	chaindb := utils.MakeChainDatabase(ctx, stack, false, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, false)
 	defer chaindb.Close()
 	pruner, err := pruner.NewAllPruner(chaindb)
 	if err != nil {
@@ -282,7 +282,7 @@ func verifyState(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, true)
 	defer chaindb.Close()
 	headBlock := rawdb.ReadHeadBlock(chaindb)
 	if headBlock == nil {
@@ -339,7 +339,7 @@ func checkDanglingStorage(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	db := utils.MakeChainDatabase(ctx, stack, true)
 	defer db.Close()
 	return snapshot.CheckDanglingStorage(db)
 }
@@ -351,7 +351,7 @@ func traverseState(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, true)
 	defer chaindb.Close()
 
 	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false)
@@ -460,7 +460,7 @@ func traverseRawState(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, true)
 	defer chaindb.Close()
 
 	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false)
@@ -623,7 +623,7 @@ func dumpState(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	db := utils.MakeChainDatabase(ctx, stack, true)
 	defer db.Close()
 
 	conf, root, err := parseDumpConfig(ctx, stack, db)
@@ -711,7 +711,7 @@ func snapshotExportPreimages(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, true)
 	defer chaindb.Close()
 
 	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false)
@@ -766,7 +766,7 @@ func checkAccount(ctx *cli.Context) error {
 	}
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
-	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, true)
 	defer chaindb.Close()
 	start := time.Now()
 	log.Info("Checking difflayer journal", "address", addr, "hash", hash)

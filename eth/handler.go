@@ -732,7 +732,6 @@ func (h *handler) Start(maxPeers int, maxPeersPerIP int) {
 	h.minedBlockSub = h.eventMux.Subscribe(core.NewMinedBlockEvent{}, core.NewSealedBlockEvent{})
 	go h.minedBroadcastLoop()
 
-	// broadcast block range
 	h.wg.Add(1)
 	h.blockRange = newBlockRangeState(h.chain, h.eventMux)
 	go h.blockRangeLoop(h.blockRange)
@@ -1131,6 +1130,13 @@ func newBlockRangeState(chain *core.BlockChain, typeMux *event.TypeMux) *blockRa
 // about imported blocks.
 func (h *handler) blockRangeLoop(st *blockRangeState) {
 	defer h.wg.Done()
+
+	// broadcast block range
+	// TODO(Nathan): enable blockRangeLoop when eth69 enabled
+	eth69Enabled := false
+	if !eth69Enabled {
+		return
+	}
 
 	for {
 		select {

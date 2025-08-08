@@ -108,7 +108,7 @@ var (
 		utils.TxLookupLimitFlag, // deprecated
 		utils.TransactionHistoryFlag,
 		utils.BlockHistoryFlag,
-		// utils.ChainHistoryFlag,
+		// utils.ChainHistoryFlag, // disabled in bsc
 		utils.LogHistoryFlag,
 		utils.LogNoHistoryFlag,
 		utils.LogExportCheckpointsFlag,
@@ -127,7 +127,6 @@ var (
 		utils.CacheGCFlag,
 		utils.CacheSnapshotFlag,
 		// utils.CacheNoPrefetchFlag,
-		utils.CacheEnableSharedStorageFlag,
 		utils.CachePreimagesFlag,
 		utils.MultiDataBaseFlag,
 		utils.PruneAncientDataFlag, // deprecated
@@ -267,7 +266,7 @@ func init() {
 		dumpCommand,
 		dumpGenesisCommand,
 		dumpRootHashCommand,
-		pruneHistoryCommand,
+		// pruneHistoryCommand, // disabled in bsc
 		downloadEraCommand,
 		// See accountcmd.go:
 		accountCommand,

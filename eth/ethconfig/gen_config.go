@@ -51,7 +51,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		DatabaseFreezer         string
 		DatabaseEra             string
 		PruneAncientData        bool
-		EnableSharedStorage     bool
 		TrieCleanCache          int
 		TrieDirtyCache          int
 		TrieTimeout             time.Duration
@@ -112,7 +111,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.DatabaseFreezer = c.DatabaseFreezer
 	enc.DatabaseEra = c.DatabaseEra
 	enc.PruneAncientData = c.PruneAncientData
-	enc.EnableSharedStorage = c.EnableSharedStorage
 	enc.TrieCleanCache = c.TrieCleanCache
 	enc.TrieDirtyCache = c.TrieDirtyCache
 	enc.TrieTimeout = c.TrieTimeout
@@ -177,7 +175,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		DatabaseFreezer         *string
 		DatabaseEra             *string
 		PruneAncientData        *bool
-		EnableSharedStorage     *bool
 		TrieCleanCache          *int
 		TrieDirtyCache          *int
 		TrieTimeout             *time.Duration
@@ -306,9 +303,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.PruneAncientData != nil {
 		c.PruneAncientData = *dec.PruneAncientData
-	}
-	if dec.EnableSharedStorage != nil {
-		c.EnableSharedStorage = *dec.EnableSharedStorage
 	}
 	if dec.TrieCleanCache != nil {
 		c.TrieCleanCache = *dec.TrieCleanCache

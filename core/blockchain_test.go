@@ -4152,7 +4152,7 @@ func TestParliaBlobFeeReward(t *testing.T) {
 
 	// Have N headers in the freezer
 	frdir := t.TempDir()
-	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false, false, false)
+	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false, false)
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend")
 	}

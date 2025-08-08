@@ -37,6 +37,8 @@ type epochCheckpoint struct {
 	FirstIndex  uint64 // first log value index of the given block
 }
 
+// TODO(Nathan): need add checkpoints for bsc mainnet and chapel, otherwise it will go wrong for pruned nodes.
+//
 //go:embed checkpoints_mainnet.json
 var checkpointsMainnetJSON []byte
 

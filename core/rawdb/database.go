@@ -381,12 +381,11 @@ func resolveChainEraDir(chainFreezerDir string, era string) string {
 // can be opened.
 //
 // Deprecated: use Open.
-func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace string, readonly, disableFreeze, multiDatabase bool) (ethdb.Database, error) {
+func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace string, readonly, multiDatabase bool) (ethdb.Database, error) {
 	return Open(db, OpenOptions{
 		Ancient:          ancient,
 		MetricsNamespace: namespace,
 		ReadOnly:         readonly,
-		DisableFreeze:    disableFreeze,
 		MultiDatabase:    multiDatabase,
 	})
 }
@@ -397,7 +396,6 @@ type OpenOptions struct {
 	Era              string // era files directory
 	MetricsNamespace string // prefix added to freezer metric names
 	ReadOnly         bool
-	DisableFreeze    bool
 	MultiDatabase    bool
 }
 
@@ -421,7 +419,7 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 	}
 
 	// Create the idle freezer instance
-	frdb, err := newChainFreezer(chainFreezerDir, opts.Era, opts.MetricsNamespace, opts.ReadOnly, opts.MultiDatabase)
+	frdb, err := newChainFreezer(chainFreezerDir, opts.Era, opts.MetricsNamespace, opts.ReadOnly)
 
 	// We are creating the freezerdb here because the validation logic for db and freezer below requires certain interfaces
 	// that need a database type. Therefore, we are pre-creating it for subsequent use.
@@ -521,7 +519,7 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 	}
 
 	// Freezer is consistent with the key-value database, permit combining the two
-	if !opts.DisableFreeze && !opts.ReadOnly {
+	if !opts.ReadOnly {
 		frdb.wg.Add(1)
 		go func() {
 			frdb.freeze(db, false)

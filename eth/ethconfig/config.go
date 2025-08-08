@@ -51,30 +51,29 @@ var FullNodeGPO = gasprice.Config{
 
 // Defaults contains default settings for use on the BSC main net.
 var Defaults = Config{
-	HistoryMode:         history.KeepAll,
-	SyncMode:            SnapSync,
-	NetworkId:           0, // enable auto configuration of networkID == chainID
-	TxLookupLimit:       2350000,
-	TransactionHistory:  2350000,
-	BlockHistory:        0,
-	StateHistory:        params.FullImmutabilityThreshold,
-	DatabaseCache:       512,
-	EnableSharedStorage: false,
-	TrieCleanCache:      154,
-	TrieDirtyCache:      256,
-	TrieTimeout:         10 * time.Minute,
-	TriesInMemory:       128,
-	TriesVerifyMode:     core.LocalVerify,
-	SnapshotCache:       102,
-	FilterLogCacheSize:  32,
-	Miner:               minerconfig.DefaultConfig,
-	TxPool:              legacypool.DefaultConfig,
-	BlobPool:            blobpool.DefaultConfig,
-	RPCGasCap:           50000000,
-	RPCEVMTimeout:       5 * time.Second,
-	GPO:                 FullNodeGPO,
-	RPCTxFeeCap:         1,                                         // 1 ether
-	BlobExtraReserve:    params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
+	HistoryMode:        history.KeepAll,
+	SyncMode:           SnapSync,
+	NetworkId:          0, // enable auto configuration of networkID == chainID
+	TxLookupLimit:      2350000,
+	TransactionHistory: 2350000,
+	BlockHistory:       0,
+	StateHistory:       params.FullImmutabilityThreshold,
+	DatabaseCache:      512,
+	TrieCleanCache:     154,
+	TrieDirtyCache:     256,
+	TrieTimeout:        10 * time.Minute,
+	TriesInMemory:      128,
+	TriesVerifyMode:    core.LocalVerify,
+	SnapshotCache:      102,
+	FilterLogCacheSize: 32,
+	Miner:              minerconfig.DefaultConfig,
+	TxPool:             legacypool.DefaultConfig,
+	BlobPool:           blobpool.DefaultConfig,
+	RPCGasCap:          50000000,
+	RPCEVMTimeout:      5 * time.Second,
+	GPO:                FullNodeGPO,
+	RPCTxFeeCap:        1,                                         // 1 ether
+	BlobExtraReserve:   params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
 }
 
 //go:generate go run github.com/fjl/gencodec -type Config -formats toml -out gen_config.go
@@ -155,15 +154,14 @@ type Config struct {
 	// if restart without the pruneancient flag, the ancient data will start with the previous point that
 	// the oldest unpruned block number.
 	// !!Deprecated: use 'BlockHistory' instead.
-	PruneAncientData    bool
-	EnableSharedStorage bool
-	TrieCleanCache      int
-	TrieDirtyCache      int
-	TrieTimeout         time.Duration
-	SnapshotCache       int
-	TriesInMemory       uint64
-	TriesVerifyMode     core.VerifyMode
-	Preimages           bool
+	PruneAncientData bool
+	TrieCleanCache   int
+	TrieDirtyCache   int
+	TrieTimeout      time.Duration
+	SnapshotCache    int
+	TriesInMemory    uint64
+	TriesVerifyMode  core.VerifyMode
+	Preimages        bool
 
 	// This is the number of blocks for which logs will be cached in the filter system.
 	FilterLogCacheSize int
