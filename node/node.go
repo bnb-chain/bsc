@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
+	"github.com/ethereum/go-ethereum/ethdb/shardingdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -911,6 +912,116 @@ func (n *Node) CheckIfMultiDataBase() bool {
 		return false
 	}
 	panic("data corruption! missing state, snapshot or txindex dir.")
+}
+
+func (n *Node) OpenMultiDB(name string, cache, handles int, ancient, namespace string, readonly, disableFreeze bool) (ethdb.Database, error) {
+	// Open the separated state database if the state directory exists
+	// Resource allocation rules:
+	// 1) Allocate a fixed percentage of memory for chainDb based on chainDbMemoryPercentage & chainDbHandlesPercentage.
+	// 2) Allocate the remaining resources to stateDb.
+	if err := n.config.Storage.SnanityCheck(); err != nil {
+		return nil, err
+	}
+	n.config.Storage.SetDefaultPath(n.config.DataDir)
+	c, h := n.config.Storage.ChainDBCache(cache, handles)
+	chainDB, err := n.OpenDatabaseWithFreezer(name, c, h, ancient, namespace, readonly, disableFreeze)
+	if err != nil {
+		return nil, err
+	}
+
+	c, h = n.config.Storage.IndexDBCache(cache, handles)
+	indexDB, err := openKeyValueDatabase(openOptions{
+		Type:      n.config.Storage.IndexDB.DBType,
+		Directory: n.config.Storage.IndexDB.DBPath,
+		Namespace: n.config.Storage.IndexDB.Namespace,
+		Cache:     c,
+		Handles:   h,
+		ReadOnly:  readonly,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	c, h = n.config.Storage.SnapDBCache(cache, handles)
+	snapDB, err := rawdb.NewSnapDB(n.config.Storage.SnapDB, c, h, readonly)
+	if err != nil {
+		return nil, err
+	}
+
+	c, h = n.config.Storage.TrieDBCache(cache, handles)
+	trieDB, err := rawdb.NewTrieDB(n.config.Storage.TrieDB, c, h, readonly, false)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Warn("Multi-database is an experimental feature")
+	multiDB := rawdb.NewMultiDatabase(chainDB, indexDB, snapDB, trieDB)
+	return multiDB, nil
+}
+
+func (n *Node) OpenTrieDBWithFreezer(cfg *rawdb.TrieDBConfig, cache, handles int, readonly, disableFreeze bool) (ethdb.Database, error) {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+	if n.state == closedState {
+		return nil, ErrNodeStopped
+	}
+	var (
+		db  ethdb.Database
+		err error
+	)
+	db, err = rawdb.NewTrieDB(cfg, cache, handles, readonly, disableFreeze)
+	if err == nil {
+		db = n.wrapDatabase(db)
+	}
+	return db, err
+}
+
+func (n *Node) OpenSnapDB(cfg *shardingdb.Config, cache, handles int, readonly bool) (ethdb.Database, error) {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+	if n.state == closedState {
+		return nil, ErrNodeStopped
+	}
+	var (
+		db  ethdb.Database
+		err error
+	)
+	db, err = rawdb.NewSnapDB(cfg, cache, handles, readonly)
+	if err == nil {
+		db = n.wrapDatabase(db)
+	}
+	return db, err
+}
+
+// CheckIfMultiDataBase check the state and block subdirectory of db, if subdirectory exists, return true
+func (n *Node) CheckIfMultiDataBase() bool {
+	// multidb format v2: chaindata/state
+	//stateExist := true
+	//separateStateDir := filepath.Join(n.ResolvePath("chaindata"), "state")
+	//fileInfo, stateErr := os.Stat(separateStateDir)
+	//if os.IsNotExist(stateErr) || !fileInfo.IsDir() {
+	//	stateExist = false
+	//}
+	//return stateExist
+
+	// multidb format v3
+	indexDir := filepath.Join(n.ResolvePath("chaindata"), "index")
+	fileInfo, indexErr := os.Stat(indexDir)
+	if os.IsNotExist(indexErr) || !fileInfo.IsDir() {
+		return false
+	}
+	trieDir := filepath.Join(n.ResolvePath("chaindata"), "trie")
+	fileInfo, trieErr := os.Stat(trieDir)
+	if os.IsNotExist(trieErr) || !fileInfo.IsDir() {
+		return false
+	}
+	snapDir := filepath.Join(n.ResolvePath("chaindata"), "snap")
+	fileInfo, snapErr := os.Stat(snapDir)
+	if os.IsNotExist(snapErr) || !fileInfo.IsDir() {
+		return false
+	}
+
+	return true
 }
 
 // ResolvePath returns the absolute path of a resource in the instance directory.

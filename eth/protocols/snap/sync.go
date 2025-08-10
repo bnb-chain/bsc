@@ -756,7 +756,7 @@ func (s *Syncer) Sync(root common.Hash, cancel chan struct{}) error {
 func (s *Syncer) loadSyncStatus() {
 	var progress SyncProgress
 
-	stateDiskDB := s.db.GetStateStore()
+	stateDiskDB := s.db.SnapDB()
 	if status := rawdb.ReadSnapshotSyncStatus(s.db); status != nil {
 		if err := json.Unmarshal(status, &progress); err != nil {
 			log.Error("Failed to decode snap sync status", "err", err)
@@ -1924,7 +1924,7 @@ func (s *Syncer) processAccountResponse(res *accountResponse) {
 				}
 				// Mark the healing tag if storage root node is inconsistent, or
 				// it's non-existent due to storage chunking.
-				if !rawdb.HasTrieNode(s.db.StateStoreReader(), res.hashes[i], nil, account.Root, s.scheme) {
+				if !rawdb.HasTrieNode(s.db.TrieDB(), res.hashes[i], nil, account.Root, s.scheme) {
 					res.task.needHeal[i] = true
 				}
 			} else {
@@ -2043,13 +2043,13 @@ func (s *Syncer) processStorageResponse(res *storageResponse) {
 
 	var usingMultDatabase bool
 	batch := ethdb.HookedBatch{
-		Batch: s.db.GetStateStore().NewBatch(),
+		Batch: s.db.SnapDB().NewBatch(),
 		OnPut: func(key []byte, value []byte) {
 			s.storageBytes += common.StorageSize(len(key) + len(value))
 		},
 	}
 	var snapBatch ethdb.HookedBatch
-	if s.db.HasSeparateStateStore() {
+	if s.db.MultiDB() {
 		usingMultDatabase = true
 		snapBatch = ethdb.HookedBatch{
 			Batch: s.db.NewBatch(),
@@ -2129,7 +2129,7 @@ func (s *Syncer) processStorageResponse(res *storageResponse) {
 					}
 					// Our first task is the one that was just filled by this response.
 					batch := ethdb.HookedBatch{
-						Batch: s.db.GetStateStore().NewBatch(),
+						Batch: s.db.SnapDB().NewBatch(),
 						OnPut: func(key []byte, value []byte) {
 							s.storageBytes += common.StorageSize(len(key) + len(value))
 						},
@@ -2151,7 +2151,7 @@ func (s *Syncer) processStorageResponse(res *storageResponse) {
 					})
 					for r.Next() {
 						batch := ethdb.HookedBatch{
-							Batch: s.db.GetStateStore().NewBatch(),
+							Batch: s.db.SnapDB().NewBatch(),
 							OnPut: func(key []byte, value []byte) {
 								s.storageBytes += common.StorageSize(len(key) + len(value))
 							},
@@ -2255,7 +2255,7 @@ func (s *Syncer) processStorageResponse(res *storageResponse) {
 			// If the chunk's root is an overflown but full delivery,
 			// clear the heal request.
 			accountHash := res.accounts[len(res.accounts)-1]
-			if root == res.subTask.root && rawdb.HasTrieNode(s.db.StateStoreReader(), accountHash, nil, root, s.scheme) {
+			if root == res.subTask.root && rawdb.HasTrieNode(s.db.TrieDB(), accountHash, nil, root, s.scheme) {
 				for i, account := range res.mainTask.res.hashes {
 					if account == accountHash {
 						res.mainTask.needHeal[i] = false
@@ -2380,8 +2380,8 @@ func (s *Syncer) commitHealer(force bool) {
 	batch := s.db.NewBatch()
 	var stateBatch ethdb.Batch
 	var err error
-	if s.db.HasSeparateStateStore() {
-		stateBatch = s.db.GetStateStore().NewBatch()
+	if s.db.MultiDB() {
+		stateBatch = s.db.SnapDB().NewBatch()
 		err = s.healer.scheduler.Commit(batch, stateBatch)
 	} else {
 		err = s.healer.scheduler.Commit(batch, nil)
@@ -2392,7 +2392,7 @@ func (s *Syncer) commitHealer(force bool) {
 	if err := batch.Write(); err != nil {
 		log.Crit("Failed to persist healing data", "err", err)
 	}
-	if s.db.HasSeparateStateStore() {
+	if s.db.MultiDB() {
 		if err := stateBatch.Write(); err != nil {
 			log.Crit("Failed to persist healing data", "err", err)
 		}

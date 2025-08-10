@@ -293,17 +293,11 @@ func initGenesis(ctx *cli.Context) error {
 		overrides.OverrideVerkle = &v
 	}
 	name := "chaindata"
-	chaindb, err := stack.OpenDatabaseWithFreezer(name, 0, 0, ctx.String(utils.AncientFlag.Name), "", false, false)
-	if err != nil {
-		utils.Fatalf("Failed to open database: %v", err)
-	}
-	defer chaindb.Close()
-
-	// if the trie data dir has been set, new trie db with a new state database
-	if ctx.IsSet(utils.MultiDataBaseFlag.Name) {
-		statediskdb, dbErr := stack.OpenDatabaseWithFreezer(name+"/state", 0, 0, "", "", false, false)
-		if dbErr != nil {
-			utils.Fatalf("Failed to open separate trie database: %v", dbErr)
+	var chaindb ethdb.Database
+	if !ctx.IsSet(utils.MultiDataBaseFlag.Name) {
+		chaindb, err = stack.OpenDatabaseWithFreezer(name, 0, 0, ctx.String(utils.AncientFlag.Name), "", false, false)
+		if err != nil {
+			utils.Fatalf("Failed to open database: %v", err)
 		}
 		chaindb.SetStateStore(statediskdb)
 		snapDB, err := stack.OpenDatabase("chaindata/snapshot", 0, 0, "", false, true)
@@ -320,6 +314,7 @@ func initGenesis(ctx *cli.Context) error {
 		log.Warn("Multi-database is an experimental feature")
 	}
 
+	// TODO(galaio): add new trie db...
 	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false, genesis.IsVerkle())
 	defer triedb.Close()
 
@@ -702,6 +697,7 @@ func dumpGenesis(ctx *cli.Context) error {
 
 	// set the separate state & block database
 	if stack.CheckIfMultiDataBase() && err == nil {
+		// TODO(galaio): add new trie db...
 		stateDiskDb := utils.MakeStateDataBase(ctx, stack, true, false)
 		db.SetStateStore(stateDiskDb)
 	}

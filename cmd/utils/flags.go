@@ -2605,6 +2605,7 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 }
 
 // MakeStateDataBase open a separate state database using the flags passed to the client and will hard crash if it fails.
+// useless?
 func MakeStateDataBase(ctx *cli.Context, stack *node.Node, readonly, disableFreeze bool) ethdb.Database {
 	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) * node.StateStoreResourcePercentage / 100
 	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name)) * node.StateStoreResourcePercentage / 100

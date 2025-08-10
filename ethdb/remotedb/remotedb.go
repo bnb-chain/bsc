@@ -32,6 +32,26 @@ type Database struct {
 	remote *rpc.Client
 }
 
+func (db *Database) MultiDB() bool {
+	return false
+}
+
+func (db *Database) ChainDB() ethdb.Database {
+	return db
+}
+
+func (db *Database) IndexDB() ethdb.Database {
+	panic("not supported")
+}
+
+func (db *Database) SnapDB() ethdb.Database {
+	panic("not supported")
+}
+
+func (db *Database) TrieDB() ethdb.Database {
+	panic("not supported")
+}
+
 func (db *Database) Has(key []byte) (bool, error) {
 	if _, err := db.Get(key); err != nil {
 		return false, nil

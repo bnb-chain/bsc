@@ -22,6 +22,8 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/ethdb/shardingdb"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -80,6 +82,40 @@ var DefaultConfig = Config{
 	Instance: 1,
 	LogConfig: &LogConfig{
 		TimeFormat: &DefaultTimeFormat,
+	},
+	Storage: &rawdb.StorageConfig{
+		ChainDB: &rawdb.ChainDBConfig{
+			KVDBConfig: rawdb.KVDBConfig{
+				DBType:     "pebble",
+				CacheRatio: 10, // 10% of the total db cache, total cache is 100%
+			},
+		},
+		IndexDB: &rawdb.KVDBConfig{
+			DBType:     "pebble",
+			CacheRatio: 10,
+		},
+		TrieDB: &rawdb.TrieDBConfig{
+			Config: shardingdb.Config{
+				DBType:         "pebble",
+				CacheRatio:     40,
+				Namespace:      "trie",
+				EnableSharding: true,
+				ShardNum:       8,
+				Shards: []shardingdb.ShardConfig{
+					{Indexes: "0-7"},
+				},
+			},
+		},
+		SnapDB: &shardingdb.Config{
+			DBType:         "pebble",
+			CacheRatio:     40,
+			Namespace:      "snap",
+			EnableSharding: true,
+			ShardNum:       8,
+			Shards: []shardingdb.ShardConfig{
+				{Indexes: "0-7"},
+			},
+		},
 	},
 }
 

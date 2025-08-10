@@ -140,8 +140,8 @@ func (p *Pruner) PruneAll(genesis *core.Genesis) error {
 
 func (p *Pruner) pruneAll(maindb ethdb.Database, g *core.Genesis) error {
 	var pruneDB ethdb.Database
-	if maindb != nil && maindb.HasSeparateStateStore() {
-		pruneDB = maindb.GetStateStore()
+	if maindb != nil && maindb.MultiDB() {
+		pruneDB = maindb.TrieDB()
 	} else {
 		pruneDB = maindb
 	}
@@ -236,8 +236,8 @@ func prune(snaptree *snapshot.Tree, root common.Hash, maindb ethdb.Database, sta
 	// dangling node is the state root is super low. So the dangling nodes in
 	// theory will never ever be visited again.
 	var pruneDB ethdb.Database
-	if maindb != nil && maindb.HasSeparateStateStore() {
-		pruneDB = maindb.GetStateStore()
+	if maindb != nil && maindb.MultiDB() {
+		pruneDB = maindb.TrieDB()
 	} else {
 		pruneDB = maindb
 	}
@@ -386,8 +386,8 @@ func (p *Pruner) Prune(root common.Hash) error {
 	}
 	// if the separated state db has been set, use this db to prune data
 	var trienodedb ethdb.Database
-	if p.db != nil && p.db.HasSeparateStateStore() {
-		trienodedb = p.db.GetStateStore()
+	if p.db != nil && p.db.MultiDB() {
+		trienodedb = p.db.TrieDB()
 	} else {
 		trienodedb = p.db
 	}

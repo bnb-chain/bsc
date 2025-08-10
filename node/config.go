@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -253,6 +254,9 @@ type Config struct {
 	DBEngine string `toml:",omitempty"`
 
 	Instance int `toml:",omitempty"`
+
+	// Storage is the storage engine to use for the database.
+	Storage *rawdb.StorageConfig `toml:",omitempty"`
 }
 
 // IPCEndpoint resolves an IPC endpoint based on a configured value, taking into

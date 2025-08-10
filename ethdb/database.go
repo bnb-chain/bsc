@@ -245,6 +245,21 @@ type ResettableAncientStore interface {
 	Reset() error
 }
 
+// Sharding is the interface for sharding the database.
+type ShardingDB interface {
+	ShardNum() int
+	Shard(key []byte) KeyValueStore
+	ShardIndex(key []byte) int
+}
+
+type MultiDatabase interface {
+	MultiDB() bool
+	ChainDB() Database
+	IndexDB() Database
+	SnapDB() Database
+	TrieDB() Database
+}
+
 // Database contains all the methods required by the high level database to not
 // only access the key-value data store but also the ancient chain store.
 type Database interface {

@@ -27,6 +27,26 @@ type table struct {
 	prefix string
 }
 
+func (t *table) MultiDB() bool {
+	return false
+}
+
+func (t *table) ChainDB() ethdb.Database {
+	return t.db
+}
+
+func (t *table) IndexDB() ethdb.Database {
+	return t.db
+}
+
+func (t *table) SnapDB() ethdb.Database {
+	return t.db
+}
+
+func (t *table) TrieDB() ethdb.Database {
+	return t.db
+}
+
 // NewTable returns a database object that prefixes all keys with a given string.
 func NewTable(db ethdb.Database, prefix string) ethdb.Database {
 	return &table{
