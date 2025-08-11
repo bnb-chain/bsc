@@ -782,7 +782,11 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	gasCost = uint64(434)
 
 	// Add gas cost for sender slot access
-	gasCost += evm.CalcSloadGasByBlockNumber(contract.Address(), senderSlot, evm.Context.BlockNumber.Uint64())
+	sloadGasCost := evm.CalcSloadGasByBlockNumber(contract.Address(), senderSlot, evm.Context.BlockNumber.Uint64())
+	if evm.StateDB.TxIndex() == 47 {
+		log.Info("DEBUG", "sload gas cost", sloadGasCost)
+	}
+	gasCost += sloadGasCost
 
 	// Calculate receiver storage slot (receiver + slot 3)
 	receiverQuery := append(receiver,
@@ -807,7 +811,11 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	receiverBalance.SetBytes(val.Bytes())
 
 	// Add gas cost for receiver slot access
-	gasCost += evm.CalcSloadGasByBlockNumber(contract.Address(), receiverSlot, evm.Context.BlockNumber.Uint64())
+	sloadGasCost = evm.CalcSloadGasByBlockNumber(contract.Address(), receiverSlot, evm.Context.BlockNumber.Uint64())
+	if evm.StateDB.TxIndex() == 47 {
+		log.Info("DEBUG", "sload gas cost", sloadGasCost)
+	}
+	gasCost += sloadGasCost
 
 	// Update balances
 	newSenderBalance := uint256.NewInt(0)
@@ -825,6 +833,10 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	receiverSetGas := evm.gasSStoreBSC(contract, receiverSlot, newReceiverBalance.Bytes32())
 	gasCost += senderSetGas
 	gasCost += receiverSetGas
+	if evm.StateDB.TxIndex() == 47 {
+		log.Info("DEBUG", "sstore sender gas cost", senderSetGas)
+		log.Info("DEBUG", "sstore receiver gas cost", receiverSetGas)
+	}
 
 	// Emit Transfer event
 	// Transfer(address indexed from, address indexed to, uint256 value)
@@ -877,6 +889,10 @@ func (evm *EVM) gasSStoreBSC(contract *Contract, key, newValue common.Hash) uint
 	stack := &Stack{}
 	stack.push(uint256.NewInt(newValue.Big().Uint64()))
 	stack.push(uint256.NewInt(key.Big().Uint64()))
+	if evm.chainRules.IsIstanbul {
+		gasCost, _ := gasSStoreEIP2200(evm, contract, stack, nil, 0)
+		return gasCost
+	}
 	gasCost, _ := gasSStore(evm, contract, stack, nil, 0)
 	return gasCost
 }
