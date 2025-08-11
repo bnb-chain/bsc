@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
@@ -333,21 +334,40 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// cost is explicitly set so that the capture state defer method can get the proper cost
 			var dynamicCost uint64
 			dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
-			cost += dynamicCost // for tracing
+			// 如果首次尝试因静态预扣导致 OOG，则退回未用静态 gas 后重试一次
 			if err != nil {
-				in.refundUnusedBlockGas(contract, pc, currentBlock, calcTotalCost, &comsumedBlockGas)
-				return nil, fmt.Errorf("%w: %v", ErrOutOfGas, err)
+				if errors.Is(err, ErrOutOfGas) && in.evm.Config.EnableOpcodeOptimizations && !calcTotalCost && currentBlock != nil {
+					in.refundUnusedBlockGas(contract, pc, currentBlock, calcTotalCost, &comsumedBlockGas)
+					// Retry once
+					dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
+				}
+				if err != nil {
+					// 仍然 OOG 或其他错误
+					return nil, fmt.Errorf("%w: %v", ErrOutOfGas, err)
+				}
 			}
+			cost += dynamicCost // for tracing
 			// for tracing: this gas consumption event is emitted below in the debug section.
 			if contract.Gas < dynamicCost {
-				if contract.CodeHash.String() == "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6" {
-					log.Error("Out of dynamic gas", "pc", pc, "required", dynamicCost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+				// 二次确认：若仍在预扣模式，先退回当前块未用静态 gas 再判断
+				if in.evm.Config.EnableOpcodeOptimizations && !calcTotalCost && currentBlock != nil {
+					in.refundUnusedBlockGas(contract, pc, currentBlock, calcTotalCost, &comsumedBlockGas)
+					// 再次检查余额
+					if contract.Gas < dynamicCost {
+						if contract.CodeHash.String() == "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6" {
+							log.Error("Out of dynamic gas after refund", "pc", pc, "required", dynamicCost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+						}
+						return nil, ErrOutOfGas
+					}
+				} else {
+					if contract.CodeHash.String() == "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6" {
+						log.Error("Out of dynamic gas", "pc", pc, "required", dynamicCost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+					}
+					in.refundUnusedBlockGas(contract, pc, currentBlock, calcTotalCost, &comsumedBlockGas)
+					return nil, ErrOutOfGas
 				}
-				in.refundUnusedBlockGas(contract, pc, currentBlock, calcTotalCost, &comsumedBlockGas)
-				return nil, ErrOutOfGas
-			} else {
-				contract.Gas -= dynamicCost
 			}
+			contract.Gas -= dynamicCost
 		}
 
 		// Do tracing before potential memory expansion
@@ -374,21 +394,21 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			}
 			break
 		}
-		    pc++
-   }
+		pc++
+	}
 
-   // 成功路径：如果优化开启且仍在预扣模式，需要根据最终 pc 退回未用静态 gas
-   if in.evm.Config.EnableOpcodeOptimizations && !calcTotalCost && currentBlock != nil {
-       var lastPC uint64
-       if pc > 0 {
-           lastPC = pc - 1
-       } else {
-           lastPC = 0
-       }
-       in.refundUnusedBlockGas(contract, lastPC, currentBlock, calcTotalCost, &comsumedBlockGas)
-   }
+	// 成功路径：如果优化开启且仍在预扣模式，需要根据最终 pc 退回未用静态 gas
+	if in.evm.Config.EnableOpcodeOptimizations && !calcTotalCost && currentBlock != nil {
+		var lastPC uint64
+		if pc > 0 {
+			lastPC = pc - 1
+		} else {
+			lastPC = 0
+		}
+		in.refundUnusedBlockGas(contract, lastPC, currentBlock, calcTotalCost, &comsumedBlockGas)
+	}
 
-   //if ((totalCost != comsumedBlockGas) && !calcTotalCost) || (comsumedBlockGas != 0 && calcTotalCost) {
+	//if ((totalCost != comsumedBlockGas) && !calcTotalCost) || (comsumedBlockGas != 0 && calcTotalCost) {
 	//log.Error("totalCost completed! totalCost diff comsumedBlockGas", "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas, "fallback", calcTotalCost, "contract.Gas", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
 	//}
 
