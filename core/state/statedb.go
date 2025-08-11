@@ -114,7 +114,6 @@ type StateDB struct {
 	// if needBadSharedStorage = true, try read from sharedPool firstly, compatible with old erroneous data(https://forum.bnbchain.org/t/about-the-hertzfix/2400).
 	// else read from sharedPool which is not in stateObjectsDestruct.
 	needBadSharedStorage bool
-	storagePool          *StoragePool // sharedPool to store L1 originStorage of stateObjects
 
 	// DB error.
 	// State objects are used by the consensus core and VM which are
@@ -170,16 +169,6 @@ type StateDB struct {
 	StorageLoaded  int          // Number of storage slots retrieved from the database during the state transition
 	StorageUpdated atomic.Int64 // Number of storage slots updated during the state transition
 	StorageDeleted atomic.Int64 // Number of storage slots deleted during the state transition
-}
-
-// NewWithSharedPool creates a new state with sharedStorge on layer 1.5
-func NewWithSharedPool(root common.Hash, db Database) (*StateDB, error) {
-	statedb, err := New(root, db)
-	if err != nil {
-		return nil, err
-	}
-	statedb.storagePool = NewStoragePool()
-	return statedb, nil
 }
 
 // New creates a new state from a given trie.
@@ -767,7 +756,6 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 		mutations:            make(map[common.Address]*mutation, len(s.mutations)),
 		dbErr:                s.dbErr,
 		needBadSharedStorage: s.needBadSharedStorage,
-		storagePool:          s.storagePool,
 		refund:               s.refund,
 		thash:                s.thash,
 		txIndex:              s.txIndex,
@@ -1597,10 +1585,6 @@ func (s *StateDB) SlotInAccessList(addr common.Address, slot common.Hash) (addre
 		return false, false
 	}
 	return s.accessList.Contains(addr, slot)
-}
-
-func (s *StateDB) GetStorage(address common.Address) *sync.Map {
-	return s.storagePool.getStorage(address)
 }
 
 func (s *StateDB) GetSnap() snapshot.Snapshot {

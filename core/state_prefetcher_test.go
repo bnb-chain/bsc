@@ -58,7 +58,7 @@ func TestPrefetchLeaking(t *testing.T) {
 
 	block := blocks[0]
 	parent := archive.GetHeader(block.ParentHash(), block.NumberU64()-1)
-	statedb, _ := state.NewWithSharedPool(parent.Root, archive.statedb)
+	statedb, _ := state.New(parent.Root, archive.statedb)
 	var inter atomic.Bool
 
 	Track(ctx, t, func(ctx context.Context) {
