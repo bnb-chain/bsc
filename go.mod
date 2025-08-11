@@ -63,7 +63,7 @@ require (
 	github.com/protolambda/zrnt v0.32.2
 	github.com/protolambda/ztyp v0.2.2
 	github.com/prysmaticlabs/prysm/v5 v5.3.2
-	github.com/rs/cors v1.8.2
+	github.com/rs/cors v1.11.1
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/status-im/keycard-go v0.2.0
 	github.com/stretchr/testify v1.10.0
