@@ -208,11 +208,19 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		comsumedBlockGas uint64               // 实际使用的block的static gas总和
 		currentBlock     *compiler.BasicBlock // 当前block（缓存）
 		nextBlockPC      uint64               // 下一个block的起始PC（用于边界检测）
+		totalDynamicGas  uint64               // 本次调用累积的动态gas
 	)
 	// Don't move this deferred function, it's placed before the OnOpcode-deferred method,
 	// so that it gets executed _after_: the OnOpcode needs the stacks before
 	// they are returned to the pools
 	defer func() {
+		// 调试日志：汇总静态/动态 gas
+		if in.evm.Context.BlockNumber.Uint64() == 50897362 {
+			log.Info("[RUN EXIT]", "block", in.evm.Context.BlockNumber, "txIndex", in.evm.StateDB.TxIndex(),
+				"staticCost", totalCost, "staticCost same", totalCost == comsumedBlockGas, "dynamicCost", totalDynamicGas, "sum", totalCost+totalDynamicGas,
+				"fallback", calcTotalCost, "contract", contract.Address())
+		}
+
 		if in.evm.Context.BlockNumber.Uint64() == 50897362 && ((totalCost != comsumedBlockGas) && !calcTotalCost) || (comsumedBlockGas != 0 && calcTotalCost) {
 			log.Error("totalCost completed! totalCost diff comsumedBlockGas", "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas, "fallback", calcTotalCost, "contract.Gas", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
 		}
@@ -351,6 +359,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				}
 			}
 			cost += dynamicCost // for tracing
+			totalDynamicGas += dynamicCost
 			// for tracing: this gas consumption event is emitted below in the debug section.
 			if contract.Gas < dynamicCost {
 				// 二次确认：若仍在预扣模式，先退回当前块未用静态 gas 再判断

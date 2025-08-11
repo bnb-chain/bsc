@@ -118,6 +118,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)
 
+	prevPool := gp.Gas() // Track remaining gas before first tx in block
 	for i, tx := range block.Transactions() {
 		// Debug helper: stop execution after processing tx index >=290 in block 50897362
 		if block.NumberU64() == 50897362 && uint64(i) >= 290 {
@@ -155,6 +156,14 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		}
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)
+
+		// Debug: log gas usage after each tx for target block
+		if block.NumberU64() == 50897362 {
+			currentPool := gp.Gas()
+			used := prevPool - currentPool
+			log.Info("[TX GAS]", "block", block.NumberU64(), "txIndex", i, "txHash", tx.Hash(), "gasUsed", used, "gasPoolLeft", currentPool)
+			prevPool = currentPool
+		}
 	}
 	bloomProcessors.Close()
 
