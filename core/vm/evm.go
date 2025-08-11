@@ -934,6 +934,7 @@ func (evm *EVM) gasSStoreBSC(contract *Contract, key, newValue common.Hash) uint
 	stack := &Stack{}
 	stack.push(uint256.NewInt(newValue.Big().Uint64()))
 	stack.push(uint256.NewInt(key.Big().Uint64()))
+	log.Info("DEBUG", "key", key.String(), "value", newValue.String())
 	if evm.chainRules.IsIstanbul {
 		gasCost, _ := gasSStoreEIP2200(evm, contract, stack, nil, 0)
 		return gasCost
