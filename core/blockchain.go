@@ -839,7 +839,10 @@ func (bc *BlockChain) initializeHistoryPruning(latest uint64) error {
 
 	switch bc.cfg.ChainHistoryMode {
 	case history.KeepAll:
-		if freezerTail == 0 {
+		// TODO(Nathan): BSC currently supports `history.blocks`, but enabling history pruning
+		// will cause startup failures. Temporarily disable history pruning until fixed.
+		enableHistoryPruning := false
+		if enableHistoryPruning && freezerTail == 0 {
 			return nil
 		}
 		// The database was pruned somehow, so we need to figure out if it's a known
