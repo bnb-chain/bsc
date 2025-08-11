@@ -790,7 +790,7 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 		return nil, 0, false
 	}
 
-	gasCost = uint64(434)
+	gasCost = uint64(1006)
 	if contract.Gas < gasCost {
 		return nil, 0, false
 	}
@@ -804,11 +804,11 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	if evm.StateDB.TxIndex() == 47 {
 		log.Info("DEBUG", "sload gas cost", sloadGasCost)
 	}
-	if contract.Gas < sloadGasCost {
+	if contract.Gas < sloadGasCost*2 {
 		return nil, gasCost, false
 	}
-	gasCost += sloadGasCost
-	contract.Gas -= sloadGasCost
+	gasCost += sloadGasCost * 2
+	contract.Gas -= sloadGasCost * 2
 	if evm.StateDB.TxIndex() == 47 {
 		log.Info("DEBUG", "contract.Gas", contract.Gas)
 	}
@@ -883,6 +883,15 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 		log.Info("DEBUG", "sstore receiver gas cost", receiverSetGas)
 	}
 
+	if contract.Gas < 1756 {
+		return nil, gasCost, false
+	}
+	gasCost += 1756
+	contract.Gas -= 1756
+	if evm.StateDB.TxIndex() == 47 {
+		log.Info("DEBUG", "contract.Gas", contract.Gas)
+	}
+
 	// Emit Transfer event
 	// Transfer(address indexed from, address indexed to, uint256 value)
 	// Event signature: keccak256("Transfer(address,address,uint256)")
@@ -932,9 +941,9 @@ func (evm *EVM) CalcSloadGasByBlockNumber(
 
 func (evm *EVM) gasSStoreBSC(contract *Contract, key, newValue common.Hash) uint64 {
 	stack := &Stack{}
-	stack.push(uint256.NewInt(newValue.Big().Uint64()))
-	stack.push(uint256.NewInt(key.Big().Uint64()))
-	log.Info("DEBUG", "key", key.String(), "value", newValue.String())
+	stack.push(uint256.MustFromHex(newValue.Hex()))
+	stack.push(uint256.MustFromHex(key.Hex()))
+	log.Info("DEBUG", "key", key.Hex(), "value", newValue.Hex())
 	if evm.chainRules.IsIstanbul {
 		gasCost, _ := gasSStoreEIP2200(evm, contract, stack, nil, 0)
 		return gasCost
