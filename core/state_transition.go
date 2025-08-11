@@ -31,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -295,6 +296,13 @@ func (st *stateTransition) buyGas() error {
 		return fmt.Errorf("%w: address %v have %v want %v", ErrInsufficientFunds, st.msg.From.Hex(), have, want)
 	}
 	if err := st.gp.SubGas(st.msg.GasLimit); err != nil {
+		log.Error("buyGas failed (block gas pool reached limit)",
+			"block", st.evm.Context.BlockNumber,
+			"txIndex", st.state.TxIndex(),
+			"txGasLimit", st.msg.GasLimit,
+			"gasPoolLeft", st.gp.Gas(),
+			"from", st.msg.From,
+		)
 		return err
 	}
 
@@ -406,7 +414,7 @@ func (st *stateTransition) preCheck() error {
 // execute will transition the state by applying the current message and
 // returning the evm execution result with following fields.
 //
-//   - used gas: total gas used (including gas being refunded)
+//   - used gas: total gas used (including gas refunds)
 //   - returndata: the returned data from evm
 //   - concrete execution error: various EVM errors which abort the execution, e.g.
 //     ErrOutOfGas, ErrExecutionReverted

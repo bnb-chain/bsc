@@ -168,6 +168,8 @@ func (in *EVMInterpreter) CopyAndInstallSuperInstruction() {
 // considered a revert-and-consume-all-gas operation except for
 // ErrExecutionReverted which means revert-and-keep-gas-left.
 func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (ret []byte, err error) {
+	// 记录进入 Run 的基本信息，便于匹配区块 / 交易
+	log.Info("[RUN ENTER]", "block", in.evm.Context.BlockNumber, "txIndex", in.evm.StateDB.TxIndex(), "contract", contract.Address(), "codeHash", contract.CodeHash, "initialGas", contract.Gas)
 	in.readOnly = readOnly
 	// Reset the previous call's return data. It's unimportant to a reset *this*
 	// call, but because if this call is returned to and the next one does not
@@ -211,7 +213,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	// so that it gets executed _after_: the OnOpcode needs the stacks before
 	// they are returned to the pools
 	defer func() {
-		log.Error("totalCost completed! totalCost diff comsumedBlockGas", "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas, "fallback", calcTotalCost, "contract.Gas", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+		if in.evm.Context.BlockNumber.Uint64() == 50897362 && ((totalCost != comsumedBlockGas) && !calcTotalCost) || (comsumedBlockGas != 0 && calcTotalCost) {
+			log.Error("totalCost completed! totalCost diff comsumedBlockGas", "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas, "fallback", calcTotalCost, "contract.Gas", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+		}
 		returnStack(stack)
 		mem.Free()
 	}()

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math/big"
 	"time"
+	"os"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -118,6 +119,11 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	systemTxs := make([]*types.Transaction, 0, 2)
 
 	for i, tx := range block.Transactions() {
+		// Debug helper: stop execution after processing tx index >=290 in block 50897362
+		if block.NumberU64() == 50897362 && uint64(i) >= 290 {
+			log.Warn("Debug stop reached", "block", block.NumberU64(), "txIndex", i, "txHash", tx.Hash())
+			os.Exit(0)
+		}
 		if isPoSA {
 			if isSystemTx, err := posa.IsSystemTransaction(tx, block.Header()); err != nil {
 				bloomProcessors.Close()
