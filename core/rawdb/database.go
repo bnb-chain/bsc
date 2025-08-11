@@ -348,9 +348,6 @@ func NewDatabase(db ethdb.KeyValueStore) ethdb.Database {
 
 type emptyfreezedb struct {
 	ethdb.KeyValueStore
-	stateStore   ethdb.Database
-	snapStore    ethdb.KeyValueStore
-	txIndexStore ethdb.KeyValueStore
 }
 
 // HasAncient returns nil for pruned db that we don't have a backing chain freezer.
