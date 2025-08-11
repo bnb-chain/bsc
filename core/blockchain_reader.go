@@ -320,46 +320,33 @@ func (bc *BlockChain) GetTransactionLookup(hash common.Hash) (*rawdb.LegacyTxLoo
 	if item, exist := bc.txLookupCache.Get(hash); exist {
 		return item.lookup, item.transaction, nil
 	}
-	// Resolve block number via lookup store (ReadTxLookupEntry will route to index store)
-	blockNumberPtr := rawdb.ReadTxLookupEntry(bc.db, hash)
-	if blockNumberPtr == nil {
-		// Fallback to previous logic: determine whether indexing is done to decide error form
+	tx, blockHash, blockNumber, txIndex := rawdb.ReadTransaction(bc.db, hash)
+	if tx == nil {
 		progress, err := bc.TxIndexProgress()
 		if err != nil {
+			// No error is returned if the transaction indexing progress is unreachable
+			// due to unexpected internal errors. In such cases, it is impossible to
+			// determine whether the transaction does not exist or has simply not been
+			// indexed yet without a progress marker.
+			//
+			// In such scenarios, the transaction is treated as unreachable, though
+			// this is clearly an unintended and unexpected situation.
 			return nil, nil, nil
 		}
+		// The transaction indexing is not finished yet, returning an
+		// error to explicitly indicate it.
 		if !progress.Done() {
 			return nil, nil, errors.New("transaction indexing still in progress")
 		}
+		// The transaction is already indexed, the transaction is either
+		// not existent or not in the range of index, returning null.
 		return nil, nil, nil
 	}
-	blockNumber := *blockNumberPtr
-	// Read canonical hash and body from the chain DB
-	blockHash := rawdb.ReadCanonicalHash(bc.db, blockNumber)
-	if blockHash == (common.Hash{}) {
-		return nil, nil, nil
+	lookup := &rawdb.LegacyTxLookupEntry{
+		BlockHash:  blockHash,
+		BlockIndex: blockNumber,
+		Index:      txIndex,
 	}
-	body := rawdb.ReadBody(bc.db, blockHash, blockNumber)
-	if body == nil {
-		log.Error("Transaction referenced missing", "number", blockNumber, "hash", blockHash)
-		return nil, nil, nil
-	}
-	var (
-		tx      *types.Transaction
-		txIndex uint64
-	)
-	for i, t := range body.Transactions {
-		if t.Hash() == hash {
-			tx = t
-			txIndex = uint64(i)
-			break
-		}
-	}
-	if tx == nil {
-		log.Error("Transaction not found", "number", blockNumber, "hash", blockHash, "txhash", hash)
-		return nil, nil, nil
-	}
-	lookup := &rawdb.LegacyTxLookupEntry{BlockHash: blockHash, BlockIndex: blockNumber, Index: txIndex}
 	bc.txLookupCache.Add(hash, txLookup{
 		lookup:      lookup,
 		transaction: tx,
