@@ -667,14 +667,13 @@ func (evm *EVM) Inline(contract *Contract, input []byte, value *uint256.Int) (re
 	if contract.self.Address() != common.HexToAddress("0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c") {
 		return nil, 0, false
 	}
-	log.Info("DEBUG", "INLINE Contract", contract.self.Address())
 	if len(input) < 4 {
 		return nil, 0, false
 	}
 
 	sig := input[:4]
 	if len(sig) == 4 && sig[0] == 0x70 && sig[1] == 0xa0 && sig[2] == 0x82 && sig[3] == 0x31 {
-		ret, gasCost, expected = evm.wbnbBalanceOf(contract.Address(), input, value)
+		ret, gasCost, expected = evm.wbnbBalanceOf(contract, input, value)
 		if evm.StateDB.TxIndex() == 47 {
 			log.Info("DEBUG", "gasCost", gasCost, "method", "balanceOf")
 		}
@@ -690,7 +689,7 @@ func (evm *EVM) Inline(contract *Contract, input []byte, value *uint256.Int) (re
 	}
 }
 
-func (evm *EVM) wbnbBalanceOf(addr common.Address, input []byte, value *uint256.Int) (ret []byte, gasCost uint64, expected bool) {
+func (evm *EVM) wbnbBalanceOf(contract *Contract, input []byte, value *uint256.Int) (ret []byte, gasCost uint64, expected bool) {
 	if value != nil && !value.IsZero() {
 		return nil, 0, false
 	}
@@ -721,9 +720,13 @@ func (evm *EVM) wbnbBalanceOf(addr common.Address, input []byte, value *uint256.
 
 	slot := interpreter.hasherBuf
 
-	ret = evm.StateDB.GetState(addr, slot).Bytes()
+	ret = evm.StateDB.GetState(contract.Address(), slot).Bytes()
 
 	gasCost = uint64(434)
+	if contract.Gas < gasCost {
+		return nil, 0, false
+	}
+	contract.Gas -= gasCost
 
 	//if _, slotPresent := evm.StateDB.SlotInAccessList(addr, slot); !slotPresent {
 	//	// If the caller cannot afford the cost, this change will be rolled back
@@ -733,12 +736,20 @@ func (evm *EVM) wbnbBalanceOf(addr common.Address, input []byte, value *uint256.
 	//} else {
 	//	gasCost += params.WarmStorageReadCostEIP2929
 	//}
-	gasCost += evm.CalcSloadGasByBlockNumber(addr, slot, evm.Context.BlockNumber.Uint64())
+	sloadGasUsed := evm.CalcSloadGasByBlockNumber(contract.Address(), slot, evm.Context.BlockNumber.Uint64())
+	if contract.Gas < sloadGasUsed {
+		return nil, gasCost, false
+	}
+	contract.Gas -= sloadGasUsed
+	gasCost += sloadGasUsed
 
 	return ret, gasCost, true
 }
 
 func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.Int) (ret []byte, gasCost uint64, expected bool) {
+	if evm.StateDB.TxIndex() == 47 {
+		log.Info("DEBUG", "contract.Gas", contract.Gas)
+	}
 	if value != nil && !value.IsZero() {
 		return nil, 0, false
 	}
@@ -780,13 +791,27 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	}
 
 	gasCost = uint64(434)
+	if contract.Gas < gasCost {
+		return nil, 0, false
+	}
+	contract.Gas -= gasCost
+	if evm.StateDB.TxIndex() == 47 {
+		log.Info("DEBUG", "contract.Gas", contract.Gas)
+	}
 
 	// Add gas cost for sender slot access
 	sloadGasCost := evm.CalcSloadGasByBlockNumber(contract.Address(), senderSlot, evm.Context.BlockNumber.Uint64())
 	if evm.StateDB.TxIndex() == 47 {
 		log.Info("DEBUG", "sload gas cost", sloadGasCost)
 	}
+	if contract.Gas < sloadGasCost {
+		return nil, gasCost, false
+	}
 	gasCost += sloadGasCost
+	contract.Gas -= sloadGasCost
+	if evm.StateDB.TxIndex() == 47 {
+		log.Info("DEBUG", "contract.Gas", contract.Gas)
+	}
 
 	// Calculate receiver storage slot (receiver + slot 3)
 	receiverQuery := append(receiver,
@@ -815,7 +840,14 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	if evm.StateDB.TxIndex() == 47 {
 		log.Info("DEBUG", "sload gas cost", sloadGasCost)
 	}
+	if contract.Gas < sloadGasCost {
+		return nil, gasCost, false
+	}
 	gasCost += sloadGasCost
+	contract.Gas -= sloadGasCost
+	if evm.StateDB.TxIndex() == 47 {
+		log.Info("DEBUG", "contract.Gas", contract.Gas)
+	}
 
 	// Update balances
 	newSenderBalance := uint256.NewInt(0)
@@ -825,14 +857,27 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	newReceiverBalance.Add(receiverBalance, amount)
 
 	// Store new balances
+	senderSetGas := evm.gasSStoreBSC(contract, senderSlot, newSenderBalance.Bytes32())
+	if contract.Gas < senderSetGas {
+		return nil, gasCost, false
+	}
+	gasCost += senderSetGas
+	contract.Gas -= senderSetGas
+	if evm.StateDB.TxIndex() == 47 {
+		log.Info("DEBUG", "contract.Gas", contract.Gas)
+	}
 	evm.StateDB.SetState(contract.Address(), senderSlot, common.Hash(newSenderBalance.Bytes32()))
+	receiverSetGas := evm.gasSStoreBSC(contract, receiverSlot, newReceiverBalance.Bytes32())
+	if contract.Gas < receiverSetGas {
+		return nil, gasCost, false
+	}
+	gasCost += receiverSetGas
+	contract.Gas -= receiverSetGas
+	if evm.StateDB.TxIndex() == 47 {
+		log.Info("DEBUG", "contract.Gas", contract.Gas)
+	}
 	evm.StateDB.SetState(contract.Address(), receiverSlot, common.Hash(newReceiverBalance.Bytes32()))
 
-	// Add storage gas costs
-	senderSetGas := evm.gasSStoreBSC(contract, senderSlot, newSenderBalance.Bytes32())
-	receiverSetGas := evm.gasSStoreBSC(contract, receiverSlot, newReceiverBalance.Bytes32())
-	gasCost += senderSetGas
-	gasCost += receiverSetGas
 	if evm.StateDB.TxIndex() == 47 {
 		log.Info("DEBUG", "sstore sender gas cost", senderSetGas)
 		log.Info("DEBUG", "sstore receiver gas cost", receiverSetGas)
