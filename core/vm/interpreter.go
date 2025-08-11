@@ -168,13 +168,21 @@ func (in *EVMInterpreter) CopyAndInstallSuperInstruction() {
 // considered a revert-and-consume-all-gas operation except for
 // ErrExecutionReverted which means revert-and-keep-gas-left.
 func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (ret []byte, err error) {
+	// Increment the call depth which is restricted to 1024
+	in.evm.depth++
+	defer func() { in.evm.depth-- }()
+
+	// Make sure the readOnly is only set if we aren't in readOnly yet.
+	// This also makes sure that the readOnly flag isn't removed for child calls.
+	if readOnly && !in.readOnly {
+		in.readOnly = true
+		defer func() { in.readOnly = false }()
+	}
+
+	// Reset the previous call's return data. It's unimportant to preserve the old buffer
+	// as every returning call will return new data anyway.
 	// 记录进入 Run 的基本信息，便于匹配区块 / 交易
 	log.Info("[RUN ENTER]", "block", in.evm.Context.BlockNumber, "txIndex", in.evm.StateDB.TxIndex(), "contract", contract.Address(), "codeHash", contract.CodeHash, "initialGas", contract.Gas)
-	in.readOnly = readOnly
-	// Reset the previous call's return data. It's unimportant to a reset *this*
-	// call, but because if this call is returned to and the next one does not
-	// have ReturnDataSize, which will zero it. So we do the cleanup so that
-	// we can do a (hopefully) meaningful comparison.
 	in.returnData = nil
 
 	// Don't bother with the execution if there's no code.
@@ -309,7 +317,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		//costCounter++
 		//log.Error("accumulate totalCost", "totalCost", totalCost, "cost", cost, "op", op.String(), "costCounter", costCounter, "fallback", calcTotalCost, "contract.CodeHash", contract.CodeHash.String(), "pc", pc)
 		//}
-		if calcTotalCost || !in.evm.Config.EnableOpcodeOptimizations {
+		if (calcTotalCost && in.evm.Config.EnableOpcodeOptimizations) || !in.evm.Config.EnableOpcodeOptimizations {
 
 			if contract.Gas < cost {
 				if contract.CodeHash.String() == "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6" {
