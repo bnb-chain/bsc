@@ -401,16 +401,17 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		pc++
 	}
 
-	// 成功路径：如果优化开启且仍在预扣模式，需要根据最终 pc 退回未用静态 gas
-	if in.evm.Config.EnableOpcodeOptimizations && !calcTotalCost && currentBlock != nil {
-		var lastPC uint64
-		if pc > 0 {
-			lastPC = pc - 1
-		} else {
-			lastPC = 0
-		}
-		in.refundUnusedBlockGas(contract, lastPC, currentBlock, calcTotalCost, &comsumedBlockGas)
-	}
+	//todo: see if can unify refundUnusedBlockGas all in one place
+	//// 成功路径：如果优化开启且仍在预扣模式，需要根据最终 pc 退回未用静态 gas
+	//if in.evm.Config.EnableOpcodeOptimizations && !calcTotalCost && currentBlock != nil {
+	//	var lastPC uint64
+	//	if pc > 0 {
+	//		lastPC = pc - 1
+	//	} else {
+	//		lastPC = 0
+	//	}
+	//	in.refundUnusedBlockGas(contract, lastPC, currentBlock, calcTotalCost, &comsumedBlockGas)
+	//}
 
 	//if ((totalCost != comsumedBlockGas) && !calcTotalCost) || (comsumedBlockGas != 0 && calcTotalCost) {
 	//log.Error("totalCost completed! totalCost diff comsumedBlockGas", "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas, "fallback", calcTotalCost, "contract.Gas", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
