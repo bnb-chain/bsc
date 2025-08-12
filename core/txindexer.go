@@ -262,7 +262,7 @@ func (indexer *txIndexer) loop(chain *BlockChain) {
 
 	// Validate the transaction indexes and repair if necessary
 	head := indexer.head.Load()
-	// indexer.repair(head)
+	indexer.repair(head)
 
 	// Launch the initial processing if chain is not empty (head != genesis).
 	// This step is useful in these scenarios that chain has no progress.
