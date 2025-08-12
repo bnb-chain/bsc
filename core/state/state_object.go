@@ -186,9 +186,11 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 
 	if s.db.needBadSharedStorage {
 		// keep compatible with old erroneous data(https://forum.bnbchain.org/t/about-the-hertzfix/2400).
-		if value, err := s.db.reader.Storage(s.address, key); err == nil {
-			s.originStorage[key] = value
-			return value
+		if readerWithCacheStats, ok := s.db.reader.(*readerWithCacheStats); ok {
+			if value, cached, err := readerWithCacheStats.readerWithCache.storage(s.address, key); err == nil && cached {
+				s.originStorage[key] = value
+				return value
+			}
 		}
 	}
 
