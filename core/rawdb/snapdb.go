@@ -10,7 +10,7 @@ type SnapShardingDB struct {
 	shardingdb.Database
 }
 
-func NewSnapDB(cfg *shardingdb.Config, cache int, handles int, readonly bool) (*SnapShardingDB, error) {
+func NewSnapShardingDB(cfg *shardingdb.Config, cache int, handles int, readonly bool) (*SnapShardingDB, error) {
 	db, err := shardingdb.New(cfg, cache, handles, readonly)
 	if err != nil {
 		return nil, err

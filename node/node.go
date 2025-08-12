@@ -875,6 +875,7 @@ func (n *Node) CheckIfMultiDataBase() bool {
 		}
 		panic("data corruption! missing state, snapshot or txindex dir.")
 	}
+
 	stateInfo, stateErr := os.Stat(n.config.Storage.TrieDB.DBPath)
 	hasState := stateErr == nil && stateInfo.IsDir()
 
@@ -899,8 +900,8 @@ func (n *Node) SetMultiDBs(chainDB ethdb.Database, name string, cache, handles i
 	snapDbCache, snapDbHandles := n.config.Storage.SnapDBCache(cache, handles)
 	indexDbCache, indexDbHandles := n.config.Storage.IndexDBCache(cache, handles)
 
+	log.Warn("Multi-database is an experimental feature")
 	if !n.config.EnableSharding {
-		log.Warn("Multi-database is an experimental feature")
 		// Allocate half of the  handles and chainDbCache to this separate state data database
 		stateDiskDb, err := n.OpenDatabaseWithFreezer(name+"/state", stateDbCache, stateDbHandles, "", "eth/db/statedata/", readonly, false)
 		if err != nil {
@@ -927,14 +928,13 @@ func (n *Node) SetMultiDBs(chainDB ethdb.Database, name string, cache, handles i
 		return nil
 	}
 
-	// init sharding dbs
-	stateDB, err := rawdb.NewTrieDB(n.config.Storage.TrieDB, stateDbCache, stateDbHandles, readonly, disableFreeze)
+	stateDB, err := rawdb.NewTrieShardingDB(n.config.Storage.TrieDB, stateDbCache, stateDbHandles, readonly, disableFreeze)
 	if err != nil {
 		return err
 	}
 	chainDB.SetStateStore(stateDB)
 
-	snapDB, err := rawdb.NewSnapDB(n.config.Storage.SnapDB, snapDbCache, snapDbHandles, readonly)
+	snapDB, err := rawdb.NewSnapShardingDB(n.config.Storage.SnapDB, snapDbCache, snapDbHandles, readonly)
 	if err != nil {
 		return err
 	}
@@ -952,7 +952,6 @@ func (n *Node) SetMultiDBs(chainDB ethdb.Database, name string, cache, handles i
 		return err
 	}
 	chainDB.SetTxIndexStore(indexDB)
-	log.Warn("Multi-database is an experimental feature")
 	return nil
 }
 

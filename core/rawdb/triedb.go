@@ -122,7 +122,7 @@ func (db *TrieShardingDB) ResetTable(kind string, startAt uint64, onlyEmpty bool
 	panic("not supported")
 }
 
-func NewTrieDB(cfg *TrieDBConfig, cache int, handles int, readonly, disableFreeze bool) (*TrieShardingDB, error) {
+func NewTrieShardingDB(cfg *TrieDBConfig, cache int, handles int, readonly, disableFreeze bool) (*TrieShardingDB, error) {
 	db, err := shardingdb.New(&cfg.Config, cache, handles, readonly)
 	if err != nil {
 		return nil, err
