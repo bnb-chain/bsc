@@ -182,7 +182,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	// Reset the previous call's return data. It's unimportant to preserve the old buffer
 	// as every returning call will return new data anyway.
 	// 记录进入 Run 的基本信息，便于匹配区块 / 交易
-	log.Info("[RUN ENTER]", "block", in.evm.Context.BlockNumber, "txIndex", in.evm.StateDB.TxIndex(), "contract", contract.Address(), "codeHash", contract.CodeHash, "initialGas", contract.Gas)
+	log.Error("[RUN ENTER]", "block", in.evm.Context.BlockNumber, "txIndex", in.evm.StateDB.TxIndex(), "contract", contract.Address(), "codeHash", contract.CodeHash, "initialGas", contract.Gas)
 	in.returnData = nil
 
 	// Don't bother with the execution if there's no code.
@@ -227,13 +227,13 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	// they are returned to the pools
 	defer func() {
 		// 调试日志（仅开发阶段）
-		// log.Info("[RUN EXIT]", "block", in.evm.Context.BlockNumber,
-		//     "txIdx", in.evm.StateDB.TxIndex(),
-		//     "opcodeStatic", totalCost,
-		//     "cacheStatic", debugStaticGas,
-		//     "equal", totalCost == debugStaticGas,
-		//     "dynamic", totalDynamicGas,
-		//     "fallback", !blockChargeActive)
+		log.Error("[RUN EXIT]", "block", in.evm.Context.BlockNumber,
+			"txIdx", in.evm.StateDB.TxIndex(),
+			"opcodeStatic", totalCost,
+			"cacheStatic", debugStaticGas,
+			"equal", totalCost == debugStaticGas,
+			"dynamic", totalDynamicGas,
+			"fallback", !blockChargeActive)
 		returnStack(stack)
 		mem.Free()
 	}()
@@ -283,7 +283,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 					nextBlockPC = block.EndPC
 					if contract.Gas >= block.StaticGas {
 						contract.Gas -= block.StaticGas
-						log.Trace("[BLOCK-CACHE] hit", "codeHash", contract.CodeHash, "startPC", block.StartPC, "staticGas", block.StaticGas)
+						//log.Error("[BLOCK-CACHE] hit", "codeHash", contract.CodeHash, "startPC", block.StartPC, "staticGas", block.StaticGas)
 						debugStaticGas += block.StaticGas
 					} else {
 						// gas 不足以支付下一个 block：退回当前 block 未用部分并停用预扣
@@ -293,7 +293,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 						}
 						blockChargeActive = false
 						currentBlock = nil
-						log.Warn("[BLOCK-CACHE] fallback", "codeHash", contract.CodeHash, "pc", pc, "reason", "gasInsufficient")
+						//log.Error("[BLOCK-CACHE] fallback", "codeHash", contract.CodeHash, "pc", pc, "reason", "gasInsufficient")
 					}
 				} else {
 					// cache 缺失：同样退回并停用预扣
@@ -303,7 +303,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 					}
 					blockChargeActive = false
 					currentBlock = nil
-					log.Warn("[BLOCK-CACHE] fallback", "codeHash", contract.CodeHash, "pc", pc, "reason", "cacheMissing")
+					//log.Error("[BLOCK-CACHE] fallback", "codeHash", contract.CodeHash, "pc", pc, "reason", "cacheMissing")
 				}
 			}
 		}
@@ -371,7 +371,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 					// Disable static gas precharge for the rest of this execution
 					blockChargeActive = false
 					currentBlock = nil
-					log.Warn("[BLOCK-CACHE] fallback", "codeHash", contract.CodeHash, "pc", pc, "reason", "dynamicOOG")
+					log.Error("[BLOCK-CACHE] fallback", "codeHash", contract.CodeHash, "pc", pc, "reason", "dynamicOOG")
 					// Retry once
 					dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
 				}
