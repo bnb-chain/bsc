@@ -376,12 +376,11 @@ func resolveChainEraDir(chainFreezerDir string, era string) string {
 // can be opened.
 //
 // Deprecated: use Open.
-func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace string, readonly, multiDatabase bool) (ethdb.Database, error) {
+func NewDatabaseWithFreezer(db ethdb.KeyValueStore, ancient string, namespace string, readonly bool) (ethdb.Database, error) {
 	return Open(db, OpenOptions{
 		Ancient:          ancient,
 		MetricsNamespace: namespace,
 		ReadOnly:         readonly,
-		MultiDatabase:    multiDatabase,
 	})
 }
 
@@ -391,7 +390,6 @@ type OpenOptions struct {
 	Era              string // era files directory
 	MetricsNamespace string // prefix added to freezer metric names
 	ReadOnly         bool
-	MultiDatabase    bool
 }
 
 // Open creates a high-level database wrapper for the given key-value store.
