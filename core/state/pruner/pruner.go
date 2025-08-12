@@ -96,7 +96,7 @@ func NewPruner(db ethdb.Database, config Config, triesInMemory uint64) (*Pruner,
 		NoBuild:    true,
 		AsyncBuild: false,
 	}
-	snaptree, err := snapshot.New(snapconfig, db, triedb, headBlock.Root(), int(triesInMemory), false)
+	snaptree, err := snapshot.New(snapconfig, db.GetSnapStore(), triedb, headBlock.Root(), int(triesInMemory), false)
 	if err != nil {
 		return nil, err // The relevant snapshot(s) might not exist
 	}
@@ -391,7 +391,7 @@ func RecoverPruning(datadir string, db ethdb.Database, triesInMemory uint64) err
 	}
 	// Offline pruning is only supported in legacy hash based scheme.
 	triedb := triedb.NewDatabase(db, triedb.HashDefaults)
-	snaptree, err := snapshot.New(snapconfig, db, triedb, headBlock.Root(), int(triesInMemory), false)
+	snaptree, err := snapshot.New(snapconfig, db.GetSnapStore(), triedb, headBlock.Root(), int(triesInMemory), false)
 	if err != nil {
 		return err // The relevant snapshot(s) might not exist
 	}

@@ -35,10 +35,11 @@ type DatabaseOptions struct {
 	// ancient/chain or a directory specified via an absolute path.
 	EraDirectory string
 
-	MetricsNamespace string // the namespace for database relevant metrics
-	Cache            int    // the capacity(in megabytes) of the data caching
-	Handles          int    // number of files to be open simultaneously
-	ReadOnly         bool   // if true, no writes can be performed
+	MetricsNamespace   string // the namespace for database relevant metrics
+	Cache              int    // the capacity(in megabytes) of the data caching
+	Handles            int    // number of files to be open simultaneously
+	ReadOnly           bool   // if true, no writes can be performed
+	isKeyValueDataBase bool
 }
 
 type internalOpenOptions struct {

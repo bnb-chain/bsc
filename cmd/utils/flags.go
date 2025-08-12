@@ -2587,6 +2587,12 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.
 		if stack.CheckIfMultiDataBase() && err == nil {
 			stateDiskDb := MakeStateDataBase(ctx, stack, readonly)
 			chainDb.SetStateStore(stateDiskDb)
+
+			snapDiskDb := MakeSnapDataBase(ctx, stack, readonly)
+			chainDb.SetSnapStore(snapDiskDb)
+
+			indexDiskDb := MakeTxIndexDatabase(ctx, stack, readonly)
+			chainDb.SetTxIndexStore(indexDiskDb)
 		}
 	}
 	if err != nil {
@@ -2597,13 +2603,37 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.
 
 // MakeStateDataBase open a separate state database using the flags passed to the client and will hard crash if it fails.
 func MakeStateDataBase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.Database {
-	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) / 100
-	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name)) * 90 / 100
+	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) * node.StateStoreResourcePercentage / 100
+	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name)) * node.StateStoreResourcePercentage / 100
 	statediskdb, err := stack.OpenDatabaseWithFreezer("chaindata/state", cache, handles, "", "", readonly)
 	if err != nil {
 		Fatalf("Failed to open separate trie database: %v", err)
 	}
+
 	return statediskdb
+}
+
+// MakeSnapDataBase opens a separate snapshot database using the flags passed to the client and will hard crash if it fails.
+func MakeSnapDataBase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.KeyValueStore {
+	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) * node.SnapDbResourcePercentage / 100
+	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name)) * node.SnapDbResourcePercentage / 100
+	snapdb, err := stack.OpenDatabase("chaindata/snapshot", cache, handles, "eth/db/snapdata/", readonly, true)
+	if err != nil {
+		Fatalf("Failed to open separate snapshot database: %v", err)
+	}
+
+	return snapdb
+}
+
+// MakeTxIndexDatabase opens a separate tx index database using the flags passed to the client and will hard crash if it fails.
+func MakeTxIndexDatabase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.KeyValueStore {
+	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) * node.IndexDbResourcePercentage / 100
+	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name)) * node.IndexDbResourcePercentage / 100
+	indexdb, err := stack.OpenDatabase("chaindata/txindex", cache, handles, "eth/db/txindex/", readonly, true)
+	if err != nil {
+		Fatalf("Failed to open separate tx index database: %v", err)
+	}
+	return indexdb
 }
 
 func PathDBConfigAddJournalFilePath(stack *node.Node, config *pathdb.Config) *pathdb.Config {
