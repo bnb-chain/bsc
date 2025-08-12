@@ -927,7 +927,7 @@ func (s *Syncer) saveSyncStatus() {
 	if err != nil {
 		panic(err) // This can only fail during implementation
 	}
-	rawdb.WriteSnapshotSyncStatus(s.db, status)
+	rawdb.WriteSnapshotSyncStatus(s.db.GetSnapStore(), status)
 }
 
 // Progress returns the snap sync status statistics.
