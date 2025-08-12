@@ -24,9 +24,12 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -39,6 +42,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/ethdb/leveldb"
+	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
@@ -94,6 +99,7 @@ Remove blockchain and state databases`,
 			dbTrieGetCmd,
 			dbTrieDeleteCmd,
 			dbInspectHistoryCmd,
+			dbMigrateCmd,
 		},
 	}
 	dbInspectCmd = &cli.Command{
@@ -310,6 +316,30 @@ of ancientStore, will also displays the reserved number of blocks in ancientStor
 			},
 		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Description: "This command queries the history of the account or storage slot within the specified block range",
+	}
+	dbMigrateCmd = &cli.Command{
+		Action:    migrateDatabase,
+		Name:      "migrate",
+		Usage:     "Migrate single database to multi-database format (in-place)",
+		ArgsUsage: "",
+		Flags: slices.Concat([]cli.Flag{
+			utils.DataDirFlag,
+			utils.SyncModeFlag,
+			utils.CacheFlag,
+			utils.CacheDatabaseFlag,
+		}, utils.NetworkFlags),
+		Description: `This command migrates a single chaindb database to multi-database format IN-PLACE.
+The source database will be read from --datadir/chaindata directory, and data will be split into:
+  - chaindata/           - chain and metadata (remaining)
+  - chaindata/state      - state trie data
+  - chaindata/snapshot   - snapshot data
+  - chaindata/txindex    - transaction index data
+
+Usage examples:
+  geth --datadir /data/ethereum db migrate
+  geth --datadir ~/.ethereum db migrate
+
+WARNING: This operation may take a very long time to finish for large databases (2TB+).`,
 	}
 )
 
@@ -1485,4 +1515,578 @@ func inspectHistory(ctx *cli.Context) error {
 		return inspectAccount(triedb, start, end, address, ctx.Bool("raw"))
 	}
 	return inspectStorage(triedb, start, end, address, slot, ctx.Bool("raw"))
+}
+
+// migrateDatabase migrates a single database to multi-database format
+func migrateDatabase(ctx *cli.Context) error {
+	if ctx.NArg() != 0 {
+		return fmt.Errorf("no arguments expected")
+	}
+
+	cacheSize := ctx.Int(utils.CacheFlag.Name)
+	cacheDB := ctx.Int(utils.CacheDatabaseFlag.Name)
+
+	// Create source stack using standard geth configuration (handles --datadir)
+	sourceStack, _ := makeConfigNode(ctx)
+	defer sourceStack.Close()
+
+	// Get source database path
+	sourceChainDataPath := sourceStack.ResolvePath("chaindata")
+
+	log.Info("Starting in-place database migration", "source", sourceChainDataPath)
+
+	// Open source database for read/write (NOT readonly) without using the
+	// Node helper to avoid auto-opening separate state/snapshot/txindex DBs.
+	// We only need the hot key-value store for in-place extraction & deletion.
+	sourceDB, err := openTargetDatabase(sourceChainDataPath, cacheSize*cacheDB*7/100, 64)
+	if err != nil {
+		return fmt.Errorf("failed to open source chain database: %v", err)
+	}
+	defer sourceDB.Close()
+
+	// Create target directory structure (separate databases within source chaindata)
+	targetStatePath := filepath.Join(sourceChainDataPath, "state")
+	targetSnapshotPath := filepath.Join(sourceChainDataPath, "snapshot")
+	targetTxIndexPath := filepath.Join(sourceChainDataPath, "txindex")
+
+	for _, dir := range []string{targetStatePath, targetSnapshotPath, targetTxIndexPath} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("failed to create directory %s: %v", dir, err)
+		}
+	}
+
+	// Create target databases for extracted data
+	// State database with freezer
+	stateDB, err := openTargetDatabaseWithFreezer(targetStatePath, cacheSize*cacheDB*50/100, 128)
+	if err != nil {
+		return fmt.Errorf("failed to create target state database: %v", err)
+	}
+	defer stateDB.Close()
+
+	// Snapshot database
+	snapDB, err := openTargetDatabase(targetSnapshotPath, cacheSize*cacheDB*24/100, 32)
+	if err != nil {
+		return fmt.Errorf("failed to create target snapshot database: %v", err)
+	}
+	defer snapDB.Close()
+
+	// TxIndex database
+	indexDB, err := openTargetDatabase(targetTxIndexPath, cacheSize*cacheDB*15/100, 32)
+	if err != nil {
+		return fmt.Errorf("failed to create target txindex database: %v", err)
+	}
+	defer indexDB.Close()
+
+	// Get additional flags
+	limit := ctx.Int("limit")
+	verbose := ctx.Bool("debug-verbose")
+
+	if limit > 0 {
+		log.Info("Running in test mode with limited entries", "limit", limit)
+	}
+
+	// Start in-place migration
+	return performInPlaceMigration(sourceDB, stateDB, snapDB, indexDB, limit, verbose)
+}
+
+// openTargetDatabase creates a key-value database at the specified path
+func openTargetDatabase(dbPath string, cache, handles int) (ethdb.Database, error) {
+	// Determine database type from the path or default to pebble
+	dbType := rawdb.PreexistingDatabase(dbPath)
+	if dbType == "" {
+		dbType = rawdb.DBPebble // Default to pebble
+	}
+
+	var kvdb ethdb.KeyValueStore
+	var err error
+
+	if dbType == rawdb.DBPebble {
+		kvdb, err = pebble.New(dbPath, cache, handles, "", false)
+	} else {
+		kvdb, err = leveldb.New(dbPath, cache, handles, "", false)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Wrap with rawdb to get full ethdb.Database interface
+	return rawdb.NewDatabase(kvdb), nil
+}
+
+// openTargetDatabaseWithFreezer creates a database with freezer support
+func openTargetDatabaseWithFreezer(dbPath string, cache, handles int) (ethdb.Database, error) {
+	// Determine database type from the path or default to pebble
+	dbType := rawdb.PreexistingDatabase(dbPath)
+	if dbType == "" {
+		dbType = rawdb.DBPebble // Default to pebble
+	}
+
+	var kvdb ethdb.KeyValueStore
+	var err error
+
+	if dbType == rawdb.DBPebble {
+		kvdb, err = pebble.New(dbPath, cache, handles, "", false)
+	} else {
+		kvdb, err = leveldb.New(dbPath, cache, handles, "", false)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Add freezer support directly to the key-value store
+	ancientPath := filepath.Join(dbPath, "ancient")
+	return rawdb.NewDatabaseWithFreezer(kvdb, ancientPath, "eth/db/statedata/", false, false, false)
+}
+
+// KeyValuePair represents a key-value pair with its target database type
+type KeyValuePair struct {
+	Key      []byte
+	Value    []byte
+	TargetDB string
+}
+
+// MigrationStats holds thread-safe migration statistics
+type MigrationStats struct {
+	total      int64
+	chain      int64
+	state      int64
+	snapshot   int64
+	txindex    int64
+	chainBytes int64
+	stateBytes int64
+	snapBytes  int64
+	indexBytes int64
+	startTime  time.Time
+}
+
+// Add atomically increments counters
+func (s *MigrationStats) Add(targetDB string, keySize, valueSize int) {
+	atomic.AddInt64(&s.total, 1)
+	dataSize := int64(keySize + valueSize)
+
+	switch targetDB {
+	case "chain":
+		atomic.AddInt64(&s.chain, 1)
+		atomic.AddInt64(&s.chainBytes, dataSize)
+	case "state":
+		atomic.AddInt64(&s.state, 1)
+		atomic.AddInt64(&s.stateBytes, dataSize)
+	case "snapshot":
+		atomic.AddInt64(&s.snapshot, 1)
+		atomic.AddInt64(&s.snapBytes, dataSize)
+	case "txindex":
+		atomic.AddInt64(&s.txindex, 1)
+		atomic.AddInt64(&s.indexBytes, dataSize)
+	}
+}
+
+// Get returns current counter values atomically
+func (s *MigrationStats) Get() (int64, int64, int64, int64, int64) {
+	return atomic.LoadInt64(&s.total),
+		atomic.LoadInt64(&s.chain),
+		atomic.LoadInt64(&s.state),
+		atomic.LoadInt64(&s.snapshot),
+		atomic.LoadInt64(&s.txindex)
+}
+
+// GetBytes returns current byte counter values atomically
+func (s *MigrationStats) GetBytes() (int64, int64, int64, int64) {
+	return atomic.LoadInt64(&s.chainBytes),
+		atomic.LoadInt64(&s.stateBytes),
+		atomic.LoadInt64(&s.snapBytes),
+		atomic.LoadInt64(&s.indexBytes)
+}
+
+// performMigration performs multi-threaded data migration
+func performMigration(sourceDB, chainDB, stateDB, snapDB, indexDB ethdb.Database) error {
+	numWorkers := runtime.NumCPU() * 2 // Use 2x CPU cores for workers
+	if numWorkers > 16 {
+		numWorkers = 16 // Cap at 16 workers to avoid too much overhead
+	}
+
+	kvChannel := make(chan KeyValuePair, numWorkers*1000) // Buffered channel
+	var wg sync.WaitGroup
+	stats := &MigrationStats{startTime: time.Now()}
+
+	log.Info("Starting multi-threaded data migration", "workers", numWorkers)
+
+	// Start worker goroutines
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go migrationWorker(i, kvChannel, chainDB, stateDB, snapDB, indexDB, stats, &wg)
+	}
+
+	// Progress monitoring goroutine
+	stopProgress := make(chan struct{})
+	go progressMonitor(stats, stopProgress)
+
+	// Read data from source database and send to channel
+	it := sourceDB.NewIterator(nil, nil)
+	defer it.Release()
+
+	for it.Next() {
+		// Create copies of key and value since iterator reuses underlying memory
+		key := make([]byte, len(it.Key()))
+		value := make([]byte, len(it.Value()))
+		copy(key, it.Key())
+		copy(value, it.Value())
+
+		targetDB := categorizeDataByKey(key, value)
+
+		select {
+		case kvChannel <- KeyValuePair{Key: key, Value: value, TargetDB: targetDB}:
+		case <-time.After(10 * time.Second):
+			log.Warn("Channel send timeout - workers may be overloaded")
+		}
+	}
+
+	// Check for iterator errors
+	if err := it.Error(); err != nil {
+		close(kvChannel)
+		close(stopProgress)
+		return fmt.Errorf("iterator error: %v", err)
+	}
+
+	// Signal workers to finish
+	close(kvChannel)
+
+	// Wait for all workers to complete
+	wg.Wait()
+	close(stopProgress)
+
+	total, chain, state, snapshot, txindex := stats.Get()
+	log.Info("Migration completed",
+		"total", total,
+		"chain", chain,
+		"state", state,
+		"snapshot", snapshot,
+		"txindex", txindex,
+		"elapsed", common.PrettyDuration(time.Since(stats.startTime)))
+
+	return nil
+}
+
+// migrationWorker processes key-value pairs and writes them to appropriate databases
+func migrationWorker(id int, kvChannel <-chan KeyValuePair, chainDB, stateDB, snapDB, indexDB ethdb.Database, stats *MigrationStats, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	const batchSize = 2000
+
+	// Create batches for each database
+	chainBatch := chainDB.NewBatch()
+	stateBatch := stateDB.NewBatch()
+	snapBatch := snapDB.NewBatch()
+	indexBatch := indexDB.NewBatch()
+
+	batchCount := 0
+
+	// Flush function for all batches
+	flushBatches := func() error {
+		if chainBatch.ValueSize() > 0 {
+			if err := chainBatch.Write(); err != nil {
+				return fmt.Errorf("worker %d: failed to write chain batch: %v", id, err)
+			}
+			chainBatch.Reset()
+		}
+		if stateBatch.ValueSize() > 0 {
+			if err := stateBatch.Write(); err != nil {
+				return fmt.Errorf("worker %d: failed to write state batch: %v", id, err)
+			}
+			stateBatch.Reset()
+		}
+		if snapBatch.ValueSize() > 0 {
+			if err := snapBatch.Write(); err != nil {
+				return fmt.Errorf("worker %d: failed to write snapshot batch: %v", id, err)
+			}
+			snapBatch.Reset()
+		}
+		if indexBatch.ValueSize() > 0 {
+			if err := indexBatch.Write(); err != nil {
+				return fmt.Errorf("worker %d: failed to write txindex batch: %v", id, err)
+			}
+			indexBatch.Reset()
+		}
+		return nil
+	}
+
+	defer func() {
+		if err := flushBatches(); err != nil {
+			log.Error("Failed to flush final batches", "worker", id, "err", err)
+		}
+	}()
+
+	for kv := range kvChannel {
+		// Add to appropriate batch
+		var err error
+		switch kv.TargetDB {
+		case "state":
+			err = stateBatch.Put(kv.Key, kv.Value)
+		case "snapshot":
+			err = snapBatch.Put(kv.Key, kv.Value)
+		case "txindex":
+			err = indexBatch.Put(kv.Key, kv.Value)
+		default: // chain data
+			err = chainBatch.Put(kv.Key, kv.Value)
+		}
+
+		if err != nil {
+			log.Error("Failed to add to batch", "worker", id, "target", kv.TargetDB, "err", err)
+			continue
+		}
+
+		stats.Add(kv.TargetDB, len(kv.Key), len(kv.Value))
+		batchCount++
+
+		// Flush batches when they get large enough
+		if batchCount >= batchSize {
+			if err := flushBatches(); err != nil {
+				log.Error("Failed to flush batches", "worker", id, "err", err)
+			}
+			batchCount = 0
+		}
+	}
+}
+
+// progressMonitor logs migration progress periodically
+func progressMonitor(stats *MigrationStats, stop <-chan struct{}) {
+	ticker := time.NewTicker(8 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			total, chain, state, snapshot, txindex := stats.Get()
+			log.Info("Migration progress",
+				"total", total,
+				"chain", chain,
+				"state", state,
+				"snapshot", snapshot,
+				"txindex", txindex,
+				"elapsed", common.PrettyDuration(time.Since(stats.startTime)),
+				"rate", fmt.Sprintf("%.1f items/s", float64(total)/time.Since(stats.startTime).Seconds()))
+		case <-stop:
+			return
+		}
+	}
+}
+
+// isTrieKey determines if a key-value pair belongs to trie data that should go to state database
+// Logic reference from user's code
+func isTrieKey(key, value []byte) bool {
+	switch {
+	case rawdb.IsLegacyTrieNode(key, value):
+		return true
+	case bytes.HasPrefix(key, []byte("L")) && len(key) == (1+common.HashLength): // stateIDPrefix
+		return true
+	case rawdb.IsAccountTrieNode(key):
+		return true
+	case rawdb.IsStorageTrieNode(key):
+		return true
+	case bytes.HasPrefix(key, rawdb.PreimagePrefix) && len(key) == (len(rawdb.PreimagePrefix)+common.HashLength):
+		return true
+	case bytes.HasPrefix(key, rawdb.ChtTablePrefix) ||
+		bytes.HasPrefix(key, rawdb.ChtIndexTablePrefix) ||
+		bytes.HasPrefix(key, rawdb.ChtPrefix): // Canonical hash trie
+		return true
+	case bytes.HasPrefix(key, rawdb.BloomTrieTablePrefix) ||
+		bytes.HasPrefix(key, rawdb.BloomTrieIndexPrefix) ||
+		bytes.HasPrefix(key, rawdb.BloomTriePrefix): // Bloomtrie sub
+		return true
+	default:
+		// Check specific metadata keys
+		keyStr := string(key)
+		if keyStr == "TrieSync" || keyStr == "TrieJournal" || keyStr == "LastStateID" {
+			return true
+		}
+	}
+	return false
+}
+
+// categorizeDataByKey categorizes database entries based on key prefixes
+// Returns the target database name: "state", "snapshot", "txindex", or "chain"
+func categorizeDataByKey(key, value []byte) string {
+	// State trie data - use the comprehensive trie key logic
+	if isTrieKey(key, value) {
+		return "state"
+	}
+
+	// Snapshot data - account snapshots
+	if bytes.HasPrefix(key, rawdb.SnapshotAccountPrefix) && len(key) == (len(rawdb.SnapshotAccountPrefix)+common.HashLength) {
+		return "snapshot"
+	}
+	// Snapshot data - storage snapshots
+	if bytes.HasPrefix(key, rawdb.SnapshotStoragePrefix) && len(key) == (len(rawdb.SnapshotStoragePrefix)+2*common.HashLength) {
+		return "snapshot"
+	}
+
+	// Snapshot metadata keys
+	keyStr := string(key)
+	snapshotMetadataKeys := []string{
+		"SnapshotRoot", "SnapshotJournal", "SnapshotGenerator",
+		"SnapshotRecovery", "SnapshotSyncStatus",
+	}
+	for _, metaKey := range snapshotMetadataKeys {
+		if keyStr == metaKey {
+			return "snapshot"
+		}
+	}
+
+	// Transaction index data
+	if bytes.HasPrefix(key, []byte("l")) && len(key) == (1+common.HashLength) { // txLookupPrefix
+		return "txindex"
+	}
+
+	// Transaction index metadata
+	txIndexMetadataKeys := []string{
+		"TransactionIndexTail",       // txIndexTailKey - tracks the oldest indexed block
+		"FastTransactionLookupLimit", // fastTxLookupLimitKey - deprecated but kept for completeness
+	}
+	for _, metaKey := range txIndexMetadataKeys {
+		if keyStr == metaKey {
+			return "txindex"
+		}
+	}
+
+	// Everything else goes to chain database
+	return "chain"
+}
+
+// performInPlaceMigration performs in-place data migration by extracting data from source DB
+func performInPlaceMigration(sourceDB, stateDB, snapDB, indexDB ethdb.Database, limit int, verbose bool) error {
+	stats := &MigrationStats{startTime: time.Now()}
+
+	log.Info("Starting in-place data migration")
+
+	// Progress monitoring goroutine
+	stopProgress := make(chan struct{})
+	go progressMonitor(stats, stopProgress)
+
+	// Extract state data
+	if err := extractDataByCategory(sourceDB, stateDB, "state", stats, limit, verbose); err != nil {
+		close(stopProgress)
+		return fmt.Errorf("failed to extract state data: %v", err)
+	}
+
+	// Extract snapshot data
+	if err := extractDataByCategory(sourceDB, snapDB, "snapshot", stats, limit, verbose); err != nil {
+		close(stopProgress)
+		return fmt.Errorf("failed to extract snapshot data: %v", err)
+	}
+
+	// Extract txindex data
+	if err := extractDataByCategory(sourceDB, indexDB, "txindex", stats, limit, verbose); err != nil {
+		close(stopProgress)
+		return fmt.Errorf("failed to extract txindex data: %v", err)
+	}
+
+	close(stopProgress)
+
+	total, chain, state, snapshot, txindex := stats.Get()
+	chainBytes, stateBytes, snapBytes, indexBytes := stats.GetBytes()
+	elapsed := time.Since(stats.startTime)
+
+	log.Info("In-place migration completed",
+		"total", total,
+		"chain", chain,
+		"state", state,
+		"snapshot", snapshot,
+		"txindex", txindex,
+		"elapsed", common.PrettyDuration(elapsed))
+
+	log.Info("Final data sizes",
+		"chainMB", chainBytes/(1024*1024),
+		"stateMB", stateBytes/(1024*1024),
+		"snapMB", snapBytes/(1024*1024),
+		"indexMB", indexBytes/(1024*1024),
+		"totalExtractedMB", (stateBytes+snapBytes+indexBytes)/(1024*1024))
+
+	return nil
+}
+
+// extractDataByCategory extracts data of a specific category from source DB to target DB and deletes from source
+func extractDataByCategory(sourceDB, targetDB ethdb.Database, category string, stats *MigrationStats, limit int, verbose bool) error {
+	log.Info("Extracting data category", "category", category)
+
+	// Create batches for target DB and source deletion
+	targetBatch := targetDB.NewBatch()
+	deleteBatch := sourceDB.NewBatch()
+
+	// Iterate through source database
+	it := sourceDB.NewIterator(nil, nil)
+	defer it.Release()
+
+	extracted := 0
+	for it.Next() {
+		// Create copies of key and value since iterator reuses underlying memory
+		key := make([]byte, len(it.Key()))
+		value := make([]byte, len(it.Value()))
+		copy(key, it.Key())
+		copy(value, it.Value())
+
+		targetDB := categorizeDataByKey(key, value)
+
+		// Only process data that matches our target category
+		if targetDB != category {
+			continue
+		}
+
+		// Add to target database
+		if err := targetBatch.Put(key, value); err != nil {
+			return fmt.Errorf("failed to add key to target batch: %v", err)
+		}
+
+		// Mark for deletion from source database
+		if err := deleteBatch.Delete(key); err != nil {
+			return fmt.Errorf("failed to add key to delete batch: %v", err)
+		}
+
+		stats.Add(category, len(key), len(value))
+		extracted++
+
+		// Flush batches when they reach ideal size
+		if targetBatch.ValueSize() >= ethdb.IdealBatchSize {
+			if err := targetBatch.Write(); err != nil {
+				return fmt.Errorf("failed to write target batch: %v", err)
+			}
+			targetBatch.Reset()
+
+			if err := deleteBatch.Write(); err != nil {
+				return fmt.Errorf("failed to write delete batch: %v", err)
+			}
+			deleteBatch.Reset()
+
+			if verbose {
+				log.Info("Batch flushed", "category", category, "extracted", extracted, "batchSize", ethdb.IdealBatchSize/(1024*1024), "MB")
+			}
+		}
+
+		// Check limit for test mode
+		if limit > 0 && extracted >= limit {
+			log.Info("Reached test limit for category", "category", category, "limit", limit)
+			break
+		}
+	}
+
+	// Check for iterator errors
+	if err := it.Error(); err != nil {
+		return fmt.Errorf("iterator error: %v", err)
+	}
+
+	// Flush remaining data
+	if targetBatch.ValueSize() > 0 {
+		if err := targetBatch.Write(); err != nil {
+			return fmt.Errorf("failed to write final target batch: %v", err)
+		}
+	}
+
+	if deleteBatch.ValueSize() > 0 {
+		if err := deleteBatch.Write(); err != nil {
+			return fmt.Errorf("failed to write final delete batch: %v", err)
+		}
+	}
+
+	log.Info("Data extraction completed", "category", category, "extracted", extracted)
+	return nil
 }
