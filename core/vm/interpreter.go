@@ -321,11 +321,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// for tracing: this gas consumption event is emitted below in the debug section.
 		// Only charge gas if we haven't already charged the pre-calculated static gas
 		cost = operation.constantGas // For tracing todo: move into if
-		//if contract.CodeHash.String() == "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6" {
 		totalCost += cost
-		//costCounter++
-		//log.Error("accumulate totalCost", "totalCost", totalCost, "cost", cost, "op", op.String(), "costCounter", costCounter, "fallback", calcTotalCost, "contract.CodeHash", contract.CodeHash.String(), "pc", pc)
-		//}
+		// 仅在目标区块和交易索引时打印调试日志
+		if in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184 {
+			log.Error("accumulate totalCost", "totalCost", totalCost, "cost", cost, "op", op.String(), "pc", pc)
+		}
 		if !blockChargeActive {
 
 			if contract.Gas < cost {
@@ -477,7 +477,9 @@ func (in *EVMInterpreter) calculateUsedBlockGas(contract *Contract, startPC, end
 		// Add static gas for this opcode (only if operation exists)
 		if operation != nil {
 			totalGas += operation.constantGas
-			//log.Error("accumulate refund totalGas", "totalGas", totalGas, "cost", operation.constantGas, "op", op.String(), "contract.CodeHash", contract.CodeHash.String(), "pc", pc)
+			if in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184 {
+				log.Error("accumulate refund totalGas", "totalGas", totalGas, "cost", operation.constantGas, "op", op.String(), "pc", pc)
+			}
 		}
 
 		// Prefer compiler's skip for PUSH 和部分已覆盖的超指令
@@ -538,7 +540,7 @@ func (in *EVMInterpreter) calculateUsedBlockGas(contract *Contract, startPC, end
 			pc += 5 // *pc +=3 + *pc +=1(读取PUSH1立即数) + 解释器+1
 			continue
 		case Dup1Push4EqPush2:
-			pc += 9 // +1 (dup1) +4 (push4) +1 (eq) +2 (push2) +1 (解释器)
+			pc += 10 // +1(dup1) +4(push4) +1(eq) +2(push2) +1(解释器) +1(loop increment)
 			continue
 		case Push1CalldataloadPush1ShrDup1Push4GtPush2:
 			pc += 16 // 1+3+2+1+5+1+2 +1(解释器)
