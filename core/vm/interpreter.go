@@ -164,8 +164,14 @@ func NewEVMInterpreter(evm *EVM) *EVMInterpreter {
 // ErrExecutionReverted which means revert-and-keep-gas-left.
 func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (ret []byte, err error) {
 	if in.evm.Config.EnableFullyInline {
+		if in.evm.StateDB.TxIndex() == 558 {
+			log.Info("DEBUG", "contract.Gas", contract.Gas)
+		}
 		ret, _, expect := in.evm.Inline(contract, input, contract.value)
 		if expect {
+			if in.evm.StateDB.TxIndex() == 558 {
+				log.Info("DEBUG", "contract.Gas", contract.Gas)
+			}
 			in.evm.FullyInlineCount++
 			return ret, nil
 		}

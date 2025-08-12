@@ -18,10 +18,11 @@ package vm
 
 import (
 	"errors"
-	"github.com/ethereum/go-ethereum/log"
 	"math/big"
 	"sync"
 	"sync/atomic"
+
+	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/holiman/uint256"
 
@@ -674,15 +675,9 @@ func (evm *EVM) Inline(contract *Contract, input []byte, value *uint256.Int) (re
 	sig := input[:4]
 	if len(sig) == 4 && sig[0] == 0x70 && sig[1] == 0xa0 && sig[2] == 0x82 && sig[3] == 0x31 {
 		ret, gasCost, expected = evm.wbnbBalanceOf(contract, input, value)
-		if evm.StateDB.TxIndex() == 47 {
-			log.Info("DEBUG", "gasCost", gasCost, "method", "balanceOf")
-		}
 		return
 	} else if len(sig) == 4 && sig[0] == 0xa9 && sig[1] == 0x05 && sig[2] == 0x9c && sig[3] == 0xbb {
 		ret, gasCost, expected = evm.wbnbTransfer(contract, input, value)
-		if evm.StateDB.TxIndex() == 47 {
-			log.Info("DEBUG", "gasCost", gasCost, "method", "transfer")
-		}
 		return
 	} else {
 		return nil, 0, false
@@ -941,8 +936,10 @@ func (evm *EVM) CalcSloadGasByBlockNumber(
 
 func (evm *EVM) gasSStoreBSC(contract *Contract, key, newValue common.Hash) uint64 {
 	stack := &Stack{}
-	stack.push(uint256.MustFromHex(newValue.Hex()))
-	stack.push(uint256.MustFromHex(key.Hex()))
+	uint256Value, _ := uint256.FromBig(newValue.Big())
+	uint256Key, _ := uint256.FromBig(key.Big())
+	stack.push(uint256Value)
+	stack.push(uint256Key)
 	log.Info("DEBUG", "key", key.Hex(), "value", newValue.Hex())
 	if evm.chainRules.IsIstanbul {
 		gasCost, _ := gasSStoreEIP2200(evm, contract, stack, nil, 0)
