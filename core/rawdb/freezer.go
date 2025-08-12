@@ -415,6 +415,7 @@ func (f *Freezer) validate() error {
 			if head != table.items.Load() {
 				return fmt.Errorf("freezer table %s has a differing head: %d != %d", kind, table.items.Load(), head)
 			}
+			// TODO(Jacksen): This error might be unexpected.
 			if prunedTail != nil && *prunedTail > table.itemHidden.Load() {
 				return fmt.Errorf("freezer table %s has differing tail: %d != %d", kind, table.itemHidden.Load(), *prunedTail)
 			}
@@ -425,10 +426,12 @@ func (f *Freezer) validate() error {
 			return fmt.Errorf("freezer table %s has a differing head: %d != %d", kind, table.items.Load(), head)
 		}
 		if !table.config.prunable {
+			// TODO(Nathan): In BSC's prune feature, `table.itemHidden.Load() != 0` may return true.
+			//
 			// non-prunable tables have to start at 0
-			if table.itemHidden.Load() != 0 {
-				return fmt.Errorf("non-prunable freezer table '%s' has a non-zero tail: %d", kind, table.itemHidden.Load())
-			}
+			// if table.itemHidden.Load() != 0 {
+			// 	return fmt.Errorf("non-prunable freezer table '%s' has a non-zero tail: %d", kind, table.itemHidden.Load())
+			// }
 		} else {
 			// prunable tables have to have the same length
 			if prunedTail == nil {
@@ -493,10 +496,12 @@ func (f *Freezer) repair() error {
 			return err
 		}
 		if !table.config.prunable {
+			// TODO(Nathan): In BSC's prune feature, `table.itemHidden.Load() != 0` may return true.
+			//
 			// non-prunable tables have to start at 0
-			if table.itemHidden.Load() != 0 {
-				panic(fmt.Sprintf("non-prunable freezer table %s has non-zero tail: %v", kind, table.itemHidden.Load()))
-			}
+			// if table.itemHidden.Load() != 0 {
+			// 	panic(fmt.Sprintf("non-prunable freezer table %s has non-zero tail: %v", kind, table.itemHidden.Load()))
+			// }
 		} else {
 			// prunable tables have to have the same length
 			if err := table.truncateTail(prunedTail); err != nil {
