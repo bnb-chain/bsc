@@ -591,9 +591,9 @@ func (s *Sync) children(req *nodeRequest, object node) ([]*nodeRequest, error) {
 				// the performance impact negligible.
 				var exists bool
 				if owner == (common.Hash{}) {
-					exists = rawdb.HasAccountTrieNode(s.database.TrieDB(), append(inner, key[:i]...))
+					exists = rawdb.HasAccountTrieNode(s.database.StateStoreReader(), append(inner, key[:i]...))
 				} else {
-					exists = rawdb.HasStorageTrieNode(s.database.TrieDB(), owner, append(inner, key[:i]...))
+					exists = rawdb.HasStorageTrieNode(s.database.StateStoreReader(), owner, append(inner, key[:i]...))
 				}
 				if exists {
 					s.membatch.delNode(owner, append(inner, key[:i]...))
@@ -732,14 +732,14 @@ func (s *Sync) commitCodeRequest(req *codeRequest) error {
 func (s *Sync) hasNode(owner common.Hash, path []byte, hash common.Hash) (exists bool, inconsistent bool) {
 	// If node is running with hash scheme, check the presence with node hash.
 	if s.scheme == rawdb.HashScheme {
-		return rawdb.HasLegacyTrieNode(s.database.TrieDB(), hash), false
+		return rawdb.HasLegacyTrieNode(s.database.StateStoreReader(), hash), false
 	}
 	// If node is running with path scheme, check the presence with node path.
 	var blob []byte
 	if owner == (common.Hash{}) {
-		blob = rawdb.ReadAccountTrieNode(s.database.TrieDB(), path)
+		blob = rawdb.ReadAccountTrieNode(s.database.StateStoreReader(), path)
 	} else {
-		blob = rawdb.ReadStorageTrieNode(s.database.TrieDB(), owner, path)
+		blob = rawdb.ReadStorageTrieNode(s.database.StateStoreReader(), owner, path)
 	}
 	h := newBlobHasher()
 	defer h.release()

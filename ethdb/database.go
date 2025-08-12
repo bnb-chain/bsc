@@ -245,7 +245,7 @@ type ResettableAncientStore interface {
 	Reset() error
 }
 
-// Sharding is the interface for sharding the database.
+// ShardingDB is the interface for sharding the database.
 type ShardingDB interface {
 	ShardNum() int
 	Shard(key []byte) KeyValueStore

@@ -160,6 +160,7 @@ type Database struct {
 }
 
 // New creates a new sharding database
+// TODO(galaio): Correct the config and print the log using the number of stored shards
 func New(cfg *Config, cache int, handles int, readonly bool) (*Database, error) {
 	if err := cfg.SanityCheck(); err != nil {
 		return nil, err

@@ -271,16 +271,16 @@ func DeleteTrieNode(db ethdb.KeyValueWriter, owner common.Hash, path []byte, has
 // if the state is not present in database.
 func ReadStateScheme(db ethdb.Database) string {
 	// Check if state in path-based scheme is present.
-	if HasAccountTrieNode(db.TrieDB(), nil) {
+	if HasAccountTrieNode(db.GetStateStore(), nil) {
 		return PathScheme
 	}
 	// The root node might be deleted during the initial snap sync, check
 	// the persistent state id then.
-	if id := ReadPersistentStateID(db.TrieDB()); id != 0 {
+	if id := ReadPersistentStateID(db.GetStateStore()); id != 0 {
 		return PathScheme
 	}
 	// Check if verkle state in path-based scheme is present.
-	vdb := NewTable(db, string(VerklePrefix))
+	vdb := NewTable(db.GetStateStore(), string(VerklePrefix))
 	if HasAccountTrieNode(vdb, nil) {
 		return PathScheme
 	}
@@ -296,7 +296,7 @@ func ReadStateScheme(db ethdb.Database) string {
 	if header == nil {
 		return "" // empty datadir
 	}
-	if !HasLegacyTrieNode(db.TrieDB(), header.Root) {
+	if !HasLegacyTrieNode(db.GetStateStore(), header.Root) {
 		return "" // no state in disk
 	}
 	return HashScheme

@@ -14,23 +14,47 @@ type TrieDB struct {
 	ancientDir string
 }
 
-func (db *TrieDB) MultiDB() bool {
+func (db *TrieDB) SetStateStore(state ethdb.Database) {
+	panic("not supported")
+}
+
+func (db *TrieDB) GetStateStore() ethdb.Database {
+	panic("not supported")
+}
+
+func (db *TrieDB) HasSeparateStateStore() bool {
 	return false
 }
 
-func (db *TrieDB) ChainDB() ethdb.Database {
+func (db *TrieDB) StateStoreReader() ethdb.Reader {
 	panic("not supported")
 }
 
-func (db *TrieDB) IndexDB() ethdb.Database {
+func (db *TrieDB) SetSnapStore(state ethdb.KeyValueStore) {
 	panic("not supported")
 }
 
-func (db *TrieDB) SnapDB() ethdb.Database {
+func (db *TrieDB) GetSnapStore() ethdb.KeyValueStore {
 	panic("not supported")
 }
 
-func (db *TrieDB) TrieDB() ethdb.Database {
+func (db *TrieDB) HasSeparateSnapStore() bool {
+	return false
+}
+
+func (db *TrieDB) SetTxIndexStore(state ethdb.KeyValueStore) {
+	panic("not supported")
+}
+
+func (db *TrieDB) GetTxIndexStore() ethdb.KeyValueStore {
+	panic("not supported")
+}
+
+func (db *TrieDB) HasSeparateTxIndexStore() bool {
+	panic("not supported")
+}
+
+func (db *TrieDB) IndexStoreReader() ethdb.KeyValueReader {
 	panic("not supported")
 }
 

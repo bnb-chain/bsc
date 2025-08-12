@@ -98,7 +98,7 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	// Sanitize the config and use the default one if it's not specified.
 	var triediskdb ethdb.Database
 	if diskdb != nil {
-		triediskdb = diskdb.TrieDB()
+		triediskdb = diskdb.GetStateStore()
 	}
 
 	dbScheme := rawdb.ReadStateScheme(diskdb)
@@ -137,12 +137,12 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	 * 3. Last, use the default scheme, namely hash scheme
 	 */
 	if config.HashDB != nil {
-		if rawdb.ReadStateScheme(triediskdb) == rawdb.PathScheme {
+		if rawdb.ReadStateScheme(diskdb) == rawdb.PathScheme {
 			log.Warn("Incompatible state scheme", "old", rawdb.PathScheme, "new", rawdb.HashScheme)
 		}
 		db.backend = hashdb.New(triediskdb, config.HashDB)
 	} else if config.PathDB != nil {
-		if rawdb.ReadStateScheme(triediskdb) == rawdb.HashScheme {
+		if rawdb.ReadStateScheme(diskdb) == rawdb.HashScheme {
 			log.Warn("Incompatible state scheme", "old", rawdb.HashScheme, "new", rawdb.PathScheme)
 		}
 		db.backend = pathdb.New(triediskdb, config.PathDB, config.IsVerkle)

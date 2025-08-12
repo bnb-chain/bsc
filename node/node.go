@@ -37,7 +37,6 @@ import (
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
-	"github.com/ethereum/go-ethereum/ethdb/shardingdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -76,14 +75,6 @@ const (
 	initializingState = iota
 	runningState
 	closedState
-	// ChainDbResourcePercentage is estimated from on-disk size proportions of metadata and block data.
-	ChainDbResourcePercentage = 7
-	// SnapDbResourcePercentage is estimated from on-disk size proportions of snapshot data.
-	SnapDbResourcePercentage = 24
-	// StateStoreResourcePercentage is estimated from on-disk size proportions of trie data.
-	StateStoreResourcePercentage = 50
-	// IndexDbResourcePercentage is estimated from on-disk size proportions of transaction index data.
-	IndexDbResourcePercentage = 19
 )
 
 const StateDBNamespace = "eth/db/statedata/"
@@ -166,6 +157,12 @@ func New(conf *Config) (*Node, error) {
 
 	// Register built-in APIs.
 	node.rpcAPIs = append(node.rpcAPIs, node.apis()...)
+
+	// check storage config, and init default path
+	if err := node.config.Storage.SnanityCheck(); err != nil {
+		return nil, err
+	}
+	node.config.Storage.SetDefaultPath(node.config.DataDir)
 
 	// Acquire the instance directory lock.
 	if err := node.openDataDir(); err != nil {
@@ -792,13 +789,9 @@ func (n *Node) OpenDatabase(name string, cache, handles int, namespace string, r
 
 func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool, config *ethconfig.Config) (ethdb.Database, error) {
 	var (
-		err                          error
-		stateDiskDb                  ethdb.Database
-		chainDataHandles             = config.DatabaseHandles
-		chainDbCache                 = config.DatabaseCache
-		stateDbCache, stateDbHandles int
-		snapDbCache, snapDbHandles   int
-		indexDbCache, indexDbHandles int
+		err              error
+		chainDataHandles = config.DatabaseHandles
+		chainDbCache     = config.DatabaseCache
 	)
 
 	isMultiDatabase := n.CheckIfMultiDataBase()
@@ -807,17 +800,8 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 		// Resource allocation rules:
 		// 1) Allocate a fixed percentage of memory for chainDb based on chainDbMemoryPercentage & chainDbHandlesPercentage.
 		// 2) Allocate the remaining resources to stateDb.
-		chainDbCache = int(float64(config.DatabaseCache) * ChainDbResourcePercentage / 100)
-		chainDataHandles = int(float64(config.DatabaseHandles) * ChainDbResourcePercentage / 100)
-
-		snapDbCache = int(float64(config.DatabaseCache) * SnapDbResourcePercentage / 100)
-		snapDbHandles = int(float64(config.DatabaseHandles) * SnapDbResourcePercentage / 100)
-
-		indexDbCache = int(float64(config.DatabaseCache) * IndexDbResourcePercentage / 100)
-		indexDbHandles = int(float64(config.DatabaseHandles) * IndexDbResourcePercentage / 100)
-
-		stateDbCache = config.DatabaseCache - chainDbCache - snapDbCache - indexDbCache
-		stateDbHandles = config.DatabaseHandles - chainDataHandles - snapDbHandles - indexDbHandles
+		chainDbCache = int(float64(config.DatabaseCache*n.config.Storage.ChainDB.CacheRatio) / 100)
+		chainDataHandles = int(float64(config.DatabaseHandles*n.config.Storage.ChainDB.CacheRatio) / 100)
 	}
 
 	chainDB, err := n.OpenDatabaseWithFreezer(name, chainDbCache, chainDataHandles, config.DatabaseFreezer, namespace, readonly, false)
@@ -826,30 +810,7 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 	}
 
 	if isMultiDatabase {
-		log.Warn("Multi-database is an experimental feature")
-		// Allocate half of the  handles and chainDbCache to this separate state data database
-		stateDiskDb, err = n.OpenDatabaseWithFreezer(name+"/state", stateDbCache, stateDbHandles, "", "eth/db/statedata/", readonly, false)
-		if err != nil {
-			return nil, err
-		}
-
-		chainDB.SetStateStore(stateDiskDb)
-		// Open the snapshot database as a pure key-value store
-		snapshotDb, err := n.OpenDatabase(name+"/snapshot", snapDbCache, snapDbHandles, "eth/db/snapdata/", readonly, true)
-		if err != nil {
-			log.Error("Failed to open separate snapshot database", "err", err)
-			return nil, err
-		}
-
-		chainDB.SetSnapStore(snapshotDb)
-
-		// Open the tx index database as a pure key-value store
-		indexDb, err := n.OpenDatabase(name+"/txindex", indexDbCache, indexDbHandles, "eth/db/txindex/", readonly, true)
-		if err != nil {
-			log.Error("Failed to open separate tx index database", "err", err)
-			return nil, err
-		}
-		chainDB.SetTxIndexStore(indexDb)
+		n.AttachMultiDBs(chainDB, config.DatabaseCache, config.DatabaseHandles, readonly, false)
 	}
 
 	return chainDB, nil
@@ -892,16 +853,13 @@ func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient,
 // Both directories must exist together or neither should exist
 // If only one exists, it indicates data corruption
 func (n *Node) CheckIfMultiDataBase() bool {
-	separateStateDir := filepath.Join(n.ResolvePath("chaindata"), "state")
-	stateInfo, stateErr := os.Stat(separateStateDir)
+	stateInfo, stateErr := os.Stat(n.config.Storage.TrieDB.DBPath)
 	hasState := stateErr == nil && stateInfo.IsDir()
 
-	separateSnapshotDir := filepath.Join(n.ResolvePath("chaindata"), "snapshot")
-	snapshotInfo, snapshotErr := os.Stat(separateSnapshotDir)
+	snapshotInfo, snapshotErr := os.Stat(n.config.Storage.SnapDB.DBPath)
 	hasSnapshotDB := snapshotErr == nil && snapshotInfo.IsDir()
 
-	separateIndexDir := filepath.Join(n.ResolvePath("chaindata"), "txindex")
-	indexInfo, indexErr := os.Stat(separateIndexDir)
+	indexInfo, indexErr := os.Stat(n.config.Storage.IndexDB.DBPath)
 	hasIndexDB := indexErr == nil && indexInfo.IsDir()
 
 	// All three must exist together or none should exist
@@ -914,20 +872,20 @@ func (n *Node) CheckIfMultiDataBase() bool {
 	panic("data corruption! missing state, snapshot or txindex dir.")
 }
 
-func (n *Node) OpenMultiDB(name string, cache, handles int, ancient, namespace string, readonly, disableFreeze bool) (ethdb.Database, error) {
-	// Open the separated state database if the state directory exists
-	// Resource allocation rules:
-	// 1) Allocate a fixed percentage of memory for chainDb based on chainDbMemoryPercentage & chainDbHandlesPercentage.
-	// 2) Allocate the remaining resources to stateDb.
-	if err := n.config.Storage.SnanityCheck(); err != nil {
-		return nil, err
-	}
-	n.config.Storage.SetDefaultPath(n.config.DataDir)
-	c, h := n.config.Storage.ChainDBCache(cache, handles)
-	chainDB, err := n.OpenDatabaseWithFreezer(name, c, h, ancient, namespace, readonly, disableFreeze)
+func (n *Node) AttachMultiDBs(chaindb ethdb.Database, cache, handles int, readonly, disableFreeze bool) error {
+	c, h := n.config.Storage.TrieDBCache(cache, handles)
+	stateDB, err := rawdb.NewTrieDB(n.config.Storage.TrieDB, c, h, readonly, disableFreeze)
 	if err != nil {
-		return nil, err
+		return err
 	}
+	chaindb.SetStateStore(stateDB)
+
+	c, h = n.config.Storage.SnapDBCache(cache, handles)
+	snapDB, err := rawdb.NewSnapDB(n.config.Storage.SnapDB, c, h, readonly)
+	if err != nil {
+		return err
+	}
+	chaindb.SetSnapStore(snapDB)
 
 	c, h = n.config.Storage.IndexDBCache(cache, handles)
 	indexDB, err := openKeyValueDatabase(openOptions{
@@ -939,89 +897,11 @@ func (n *Node) OpenMultiDB(name string, cache, handles int, ancient, namespace s
 		ReadOnly:  readonly,
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
-
-	c, h = n.config.Storage.SnapDBCache(cache, handles)
-	snapDB, err := rawdb.NewSnapDB(n.config.Storage.SnapDB, c, h, readonly)
-	if err != nil {
-		return nil, err
-	}
-
-	c, h = n.config.Storage.TrieDBCache(cache, handles)
-	trieDB, err := rawdb.NewTrieDB(n.config.Storage.TrieDB, c, h, readonly, false)
-	if err != nil {
-		return nil, err
-	}
-
+	chaindb.SetTxIndexStore(indexDB)
 	log.Warn("Multi-database is an experimental feature")
-	multiDB := rawdb.NewMultiDatabase(chainDB, indexDB, snapDB, trieDB)
-	return multiDB, nil
-}
-
-func (n *Node) OpenTrieDBWithFreezer(cfg *rawdb.TrieDBConfig, cache, handles int, readonly, disableFreeze bool) (ethdb.Database, error) {
-	n.lock.Lock()
-	defer n.lock.Unlock()
-	if n.state == closedState {
-		return nil, ErrNodeStopped
-	}
-	var (
-		db  ethdb.Database
-		err error
-	)
-	db, err = rawdb.NewTrieDB(cfg, cache, handles, readonly, disableFreeze)
-	if err == nil {
-		db = n.wrapDatabase(db)
-	}
-	return db, err
-}
-
-func (n *Node) OpenSnapDB(cfg *shardingdb.Config, cache, handles int, readonly bool) (ethdb.Database, error) {
-	n.lock.Lock()
-	defer n.lock.Unlock()
-	if n.state == closedState {
-		return nil, ErrNodeStopped
-	}
-	var (
-		db  ethdb.Database
-		err error
-	)
-	db, err = rawdb.NewSnapDB(cfg, cache, handles, readonly)
-	if err == nil {
-		db = n.wrapDatabase(db)
-	}
-	return db, err
-}
-
-// CheckIfMultiDataBase check the state and block subdirectory of db, if subdirectory exists, return true
-func (n *Node) CheckIfMultiDataBase() bool {
-	// multidb format v2: chaindata/state
-	//stateExist := true
-	//separateStateDir := filepath.Join(n.ResolvePath("chaindata"), "state")
-	//fileInfo, stateErr := os.Stat(separateStateDir)
-	//if os.IsNotExist(stateErr) || !fileInfo.IsDir() {
-	//	stateExist = false
-	//}
-	//return stateExist
-
-	// multidb format v3
-	indexDir := filepath.Join(n.ResolvePath("chaindata"), "index")
-	fileInfo, indexErr := os.Stat(indexDir)
-	if os.IsNotExist(indexErr) || !fileInfo.IsDir() {
-		return false
-	}
-	trieDir := filepath.Join(n.ResolvePath("chaindata"), "trie")
-	fileInfo, trieErr := os.Stat(trieDir)
-	if os.IsNotExist(trieErr) || !fileInfo.IsDir() {
-		return false
-	}
-	snapDir := filepath.Join(n.ResolvePath("chaindata"), "snap")
-	fileInfo, snapErr := os.Stat(snapDir)
-	if os.IsNotExist(snapErr) || !fileInfo.IsDir() {
-		return false
-	}
-
-	return true
+	return nil
 }
 
 // ResolvePath returns the absolute path of a resource in the instance directory.

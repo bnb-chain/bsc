@@ -46,26 +46,6 @@ type freezerdb struct {
 	txIndexStore ethdb.KeyValueStore
 }
 
-func (frdb *freezerdb) MultiDB() bool {
-	return false
-}
-
-func (frdb *freezerdb) ChainDB() ethdb.Database {
-	return frdb
-}
-
-func (frdb *freezerdb) IndexDB() ethdb.Database {
-	return frdb
-}
-
-func (frdb *freezerdb) SnapDB() ethdb.Database {
-	return frdb
-}
-
-func (frdb *freezerdb) TrieDB() ethdb.Database {
-	return frdb
-}
-
 func (frdb *freezerdb) StateStoreReader() ethdb.Reader {
 	if frdb.stateStore == nil {
 		return frdb
@@ -199,26 +179,6 @@ type nofreezedb struct {
 	stateStore   ethdb.Database
 	snapStore    ethdb.KeyValueStore
 	txIndexStore ethdb.KeyValueStore
-}
-
-func (db *nofreezedb) MultiDB() bool {
-	return false
-}
-
-func (db *nofreezedb) ChainDB() ethdb.Database {
-	return db
-}
-
-func (db *nofreezedb) IndexDB() ethdb.Database {
-	return db
-}
-
-func (db *nofreezedb) SnapDB() ethdb.Database {
-	return db
-}
-
-func (db *nofreezedb) TrieDB() ethdb.Database {
-	return db
 }
 
 // HasAncient returns an error as we don't have a backing chain freezer.
@@ -388,26 +348,6 @@ func NewDatabase(db ethdb.KeyValueStore) ethdb.Database {
 
 type emptyfreezedb struct {
 	ethdb.KeyValueStore
-}
-
-func (db *emptyfreezedb) MultiDB() bool {
-	return false
-}
-
-func (db *emptyfreezedb) ChainDB() ethdb.Database {
-	return db
-}
-
-func (db *emptyfreezedb) IndexDB() ethdb.Database {
-	return db
-}
-
-func (db *emptyfreezedb) SnapDB() ethdb.Database {
-	return db
-}
-
-func (db *emptyfreezedb) TrieDB() ethdb.Database {
-	return db
 }
 
 // HasAncient returns nil for pruned db that we don't have a backing chain freezer.
@@ -813,9 +753,8 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 	defer it.Release()
 
 	var trieIter ethdb.Iterator
-	if db.MultiDB() {
-		// TODO(galaio): add other db inspect
-		trieIter = db.TrieDB().NewIterator(keyPrefix, nil)
+	if db.HasSeparateStateStore() {
+		trieIter = db.GetStateStore().NewIterator(keyPrefix, nil)
 		defer trieIter.Release()
 	}
 
@@ -1131,7 +1070,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 
 	// inspect ancient state in separate trie db if exist
 	if trieIter != nil {
-		stateAncients, err := inspectFreezers(db.TrieDB())
+		stateAncients, err := inspectFreezers(db.GetStateStore())
 		if err != nil {
 			return err
 		}
