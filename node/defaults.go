@@ -87,17 +87,17 @@ var DefaultConfig = Config{
 		ChainDB: &rawdb.ChainDBConfig{
 			KVDBConfig: rawdb.KVDBConfig{
 				DBType:     "pebble",
-				CacheRatio: 7, // 7% of the total db cache, total cache is 100%
+				CacheRatio: ChainDbResourcePercentage, // total cache is 100%
 			},
 		},
 		IndexDB: &rawdb.KVDBConfig{
 			DBType:     "pebble",
-			CacheRatio: 19,
+			CacheRatio: IndexDbResourcePercentage,
 		},
 		TrieDB: &rawdb.TrieDBConfig{
 			Config: shardingdb.Config{
 				DBType:         "pebble",
-				CacheRatio:     50,
+				CacheRatio:     StateStoreResourcePercentage,
 				Namespace:      "trie",
 				EnableSharding: true,
 				ShardNum:       8,
@@ -108,7 +108,7 @@ var DefaultConfig = Config{
 		},
 		SnapDB: &shardingdb.Config{
 			DBType:         "pebble",
-			CacheRatio:     24,
+			CacheRatio:     SnapDbResourcePercentage,
 			Namespace:      "snap",
 			EnableSharding: true,
 			ShardNum:       8,

@@ -75,6 +75,14 @@ const (
 	initializingState = iota
 	runningState
 	closedState
+	// ChainDbResourcePercentage is estimated from on-disk size proportions of metadata and block data.
+	ChainDbResourcePercentage = 7
+	// SnapDbResourcePercentage is estimated from on-disk size proportions of snapshot data.
+	SnapDbResourcePercentage = 24
+	// StateStoreResourcePercentage is estimated from on-disk size proportions of trie data.
+	StateStoreResourcePercentage = 50
+	// IndexDbResourcePercentage is estimated from on-disk size proportions of transaction index data.
+	IndexDbResourcePercentage = 19
 )
 
 const StateDBNamespace = "eth/db/statedata/"
@@ -900,8 +908,8 @@ func (n *Node) SetMultiDBs(chainDB ethdb.Database, name string, cache, handles i
 	snapDbCache, snapDbHandles := n.config.Storage.SnapDBCache(cache, handles)
 	indexDbCache, indexDbHandles := n.config.Storage.IndexDBCache(cache, handles)
 
-	log.Warn("Multi-database is an experimental feature")
 	if !n.config.EnableSharding {
+		log.Warn("Multi-database is an experimental feature")
 		// Allocate half of the  handles and chainDbCache to this separate state data database
 		stateDiskDb, err := n.OpenDatabaseWithFreezer(name+"/state", stateDbCache, stateDbHandles, "", "eth/db/statedata/", readonly, false)
 		if err != nil {
@@ -928,6 +936,7 @@ func (n *Node) SetMultiDBs(chainDB ethdb.Database, name string, cache, handles i
 		return nil
 	}
 
+	log.Warn("Multi-database & state sharding is an experimental feature")
 	stateDB, err := rawdb.NewTrieShardingDB(n.config.Storage.TrieDB, stateDbCache, stateDbHandles, readonly, disableFreeze)
 	if err != nil {
 		return err
