@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/log"
 	"math"
 	"math/big"
 	"slices"
@@ -409,6 +410,9 @@ func (st *stateTransition) preCheck() error {
 // However if any consensus issue encountered, return the error directly with
 // nil evm execution result.
 func (st *stateTransition) execute() (*ExecutionResult, error) {
+	if st.evm.StateDB.TxIndex() == 558 {
+		log.Info("DEBUG", "initialGas", st.gasRemaining, "initialGas", st.initialGas)
+	}
 	// First check this message satisfies all consensus rules before
 	// applying the message. The rules include these clauses
 	//
@@ -463,7 +467,9 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		t.OnGasChange(st.gasRemaining, st.gasRemaining-gas, tracing.GasChangeTxIntrinsicGas)
 	}
 	st.gasRemaining -= gas
-
+	if st.evm.StateDB.TxIndex() == 558 {
+		log.Info("DEBUG", "initialGas", st.gasRemaining, "initialGas", st.initialGas)
+	}
 	if rules.IsEIP4762 {
 		st.evm.AccessEvents.AddTxOrigin(msg.From)
 
@@ -490,7 +496,9 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 	// - prepare accessList(post-berlin)
 	// - reset transient storage(eip 1153)
 	st.state.Prepare(rules, msg.From, st.evm.Context.Coinbase, msg.To, vm.ActivePrecompiles(rules), msg.AccessList)
-
+	if st.evm.StateDB.TxIndex() == 558 {
+		log.Info("DEBUG", "initialGas", st.gasRemaining, "initialGas", st.initialGas)
+	}
 	var (
 		ret   []byte
 		vmerr error // vm errors do not effect consensus and are therefore not assigned to err
@@ -520,6 +528,9 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 
 		// Execute the transaction's call.
 		ret, st.gasRemaining, vmerr = st.evm.Call(sender, st.to(), msg.Data, st.gasRemaining, value)
+	}
+	if st.evm.StateDB.TxIndex() == 558 {
+		log.Info("DEBUG", "initialGas", st.gasRemaining, "initialGas", st.initialGas)
 	}
 
 	// Compute refund counter, capped to a refund quotient.

@@ -22,8 +22,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/ethereum/go-ethereum/log"
-
 	"github.com/holiman/uint256"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -742,9 +740,6 @@ func (evm *EVM) wbnbBalanceOf(contract *Contract, input []byte, value *uint256.I
 }
 
 func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.Int) (ret []byte, gasCost uint64, expected bool) {
-	if evm.StateDB.TxIndex() == 47 {
-		log.Info("DEBUG", "contract.Gas", contract.Gas)
-	}
 	if value != nil && !value.IsZero() {
 		return nil, 0, false
 	}
@@ -790,23 +785,14 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 		return nil, 0, false
 	}
 	contract.Gas -= gasCost
-	if evm.StateDB.TxIndex() == 47 {
-		log.Info("DEBUG", "contract.Gas", contract.Gas)
-	}
 
 	// Add gas cost for sender slot access
 	sloadGasCost := evm.CalcSloadGasByBlockNumber(contract.Address(), senderSlot, evm.Context.BlockNumber.Uint64())
-	if evm.StateDB.TxIndex() == 47 {
-		log.Info("DEBUG", "sload gas cost", sloadGasCost)
-	}
 	if contract.Gas < sloadGasCost*2 {
 		return nil, gasCost, false
 	}
 	gasCost += sloadGasCost * 2
 	contract.Gas -= sloadGasCost * 2
-	if evm.StateDB.TxIndex() == 47 {
-		log.Info("DEBUG", "contract.Gas", contract.Gas)
-	}
 
 	// Calculate receiver storage slot (receiver + slot 3)
 	receiverQuery := append(receiver,
@@ -832,17 +818,11 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 
 	// Add gas cost for receiver slot access
 	sloadGasCost = evm.CalcSloadGasByBlockNumber(contract.Address(), receiverSlot, evm.Context.BlockNumber.Uint64())
-	if evm.StateDB.TxIndex() == 47 {
-		log.Info("DEBUG", "sload gas cost", sloadGasCost)
-	}
 	if contract.Gas < sloadGasCost {
 		return nil, gasCost, false
 	}
 	gasCost += sloadGasCost
 	contract.Gas -= sloadGasCost
-	if evm.StateDB.TxIndex() == 47 {
-		log.Info("DEBUG", "contract.Gas", contract.Gas)
-	}
 
 	// Update balances
 	newSenderBalance := uint256.NewInt(0)
@@ -858,9 +838,6 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	}
 	gasCost += senderSetGas
 	contract.Gas -= senderSetGas
-	if evm.StateDB.TxIndex() == 47 {
-		log.Info("DEBUG", "contract.Gas", contract.Gas)
-	}
 	evm.StateDB.SetState(contract.Address(), senderSlot, common.Hash(newSenderBalance.Bytes32()))
 	receiverSetGas := evm.gasSStoreBSC(contract, receiverSlot, newReceiverBalance.Bytes32())
 	if contract.Gas < receiverSetGas {
@@ -868,25 +845,13 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	}
 	gasCost += receiverSetGas
 	contract.Gas -= receiverSetGas
-	if evm.StateDB.TxIndex() == 47 {
-		log.Info("DEBUG", "contract.Gas", contract.Gas)
-	}
 	evm.StateDB.SetState(contract.Address(), receiverSlot, common.Hash(newReceiverBalance.Bytes32()))
-
-	if evm.StateDB.TxIndex() == 47 {
-		log.Info("DEBUG", "sstore sender gas cost", senderSetGas)
-		log.Info("DEBUG", "sstore receiver gas cost", receiverSetGas)
-	}
 
 	if contract.Gas < 1756 {
 		return nil, gasCost, false
 	}
 	gasCost += 1756
 	contract.Gas -= 1756
-	if evm.StateDB.TxIndex() == 47 {
-		log.Info("DEBUG", "contract.Gas", contract.Gas)
-	}
-
 	// Emit Transfer event
 	// Transfer(address indexed from, address indexed to, uint256 value)
 	// Event signature: keccak256("Transfer(address,address,uint256)")
@@ -940,7 +905,6 @@ func (evm *EVM) gasSStoreBSC(contract *Contract, key, newValue common.Hash) uint
 	uint256Key, _ := uint256.FromBig(key.Big())
 	stack.push(uint256Value)
 	stack.push(uint256Key)
-	log.Info("DEBUG", "key", key.Hex(), "value", newValue.Hex())
 	if evm.chainRules.IsIstanbul {
 		gasCost, _ := gasSStoreEIP2200(evm, contract, stack, nil, 0)
 		return gasCost
