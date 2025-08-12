@@ -595,9 +595,10 @@ func dbStats(ctx *cli.Context) error {
 	defer db.Close()
 
 	showDBStats(db)
-	if db.HasSeparateStateStore() {
-		fmt.Println("show stats of state store")
+	if stack.CheckIfMultiDataBase() {
+		fmt.Println("show stats of StateStore and SnapStore")
 		showDBStats(db.GetStateStore())
+		showDBStats(db.GetSnapStore())
 	}
 
 	return nil
@@ -614,8 +615,10 @@ func dbCompact(ctx *cli.Context) error {
 	showDBStats(db)
 
 	if stack.CheckIfMultiDataBase() {
-		fmt.Println("show stats of state store")
+		fmt.Println("show stats of StatStore and SnapStore")
 		showDBStats(db.GetStateStore())
+		showDBStats(db.GetSnapStore())
+		showDBStats(db.GetTxIndexStore())
 	}
 
 	log.Info("Triggering compaction")
@@ -626,7 +629,15 @@ func dbCompact(ctx *cli.Context) error {
 
 	if stack.CheckIfMultiDataBase() {
 		if err := db.GetStateStore().Compact(nil, nil); err != nil {
-			log.Error("Compact err", "error", err)
+			log.Error("Statestore Compact err", "error", err)
+			return err
+		}
+		if err := db.GetSnapStore().Compact(nil, nil); err != nil {
+			log.Error("Snapstore Compact err", "error", err)
+			return err
+		}
+		if err := db.GetTxIndexStore().Compact(nil, nil); err != nil {
+			log.Error("IndexStore Compact err", "error", err)
 			return err
 		}
 	}
@@ -634,8 +645,12 @@ func dbCompact(ctx *cli.Context) error {
 	log.Info("Stats after compaction")
 	showDBStats(db)
 	if stack.CheckIfMultiDataBase() {
-		fmt.Println("show stats of state store after compaction")
+		log.Info("show stats of state store after compaction")
 		showDBStats(db.GetStateStore())
+		log.Info("show stats of snapshot store after compaction")
+		showDBStats(db.GetSnapStore())
+		log.Info("show stats of index store after compaction")
+		showDBStats(db.GetTxIndexStore())
 	}
 	return nil
 }

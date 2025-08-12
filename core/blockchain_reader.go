@@ -426,7 +426,7 @@ func (bc *BlockChain) HasState(hash common.Hash) bool {
 			return bc.snaps.Snapshot(hash) != nil
 		}
 		// snaps is nil when the blockchain creates
-		found, err := snapshot.PreCheckSnapshot(bc.db, hash)
+		found, err := snapshot.PreCheckSnapshot(bc.db.GetSnapStore(), hash)
 		if err != nil {
 			log.Warn("Check HasState in NoTries mode failed", "root", hash, "err", err)
 			return false
