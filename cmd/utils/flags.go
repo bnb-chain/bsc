@@ -103,6 +103,11 @@ var (
 			"Users can copy this state directory to another directory or disk, and then create a symbolic link to the state directory under the chaindata",
 		Category: flags.EthCategory,
 	}
+	EnableShardingFlag = &cli.BoolFlag{
+		Name:     "enablesharding",
+		Usage:    "Enable sharding db in snap & trie db",
+		Category: flags.EthCategory,
+	}
 	DirectBroadcastFlag = &cli.BoolFlag{
 		Name:     "directbroadcast",
 		Usage:    "Enable directly broadcast mined block to all peers",
@@ -1754,6 +1759,11 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	if ctx.IsSet(LogDebugFlag.Name) {
 		log.Warn("log.debug flag is deprecated")
 	}
+
+	// TODO(galaio): add dedicated sharding flag, may delete later
+	if ctx.IsSet(EnableShardingFlag.Name) {
+		cfg.EnableSharding = true
+	}
 }
 
 func setSmartCard(ctx *cli.Context, cfg *node.Config) {
@@ -2597,7 +2607,7 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly, disableFree
 		chainDb, err = stack.OpenDatabaseWithFreezer("chaindata", chainDBCache, chainDBHandles, ctx.String(AncientFlag.Name), "", readonly, disableFreeze)
 		// set the separate state database
 		if stack.CheckIfMultiDataBase() && err == nil {
-			stack.AttachMultiDBs(chainDb, cache, handles, readonly, disableFreeze)
+			stack.SetMultiDBs(chainDb, "chaindata", cache, handles, readonly, disableFreeze)
 		}
 	}
 	if err != nil {

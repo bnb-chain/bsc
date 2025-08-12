@@ -756,7 +756,7 @@ func (s *Syncer) Sync(root common.Hash, cancel chan struct{}) error {
 func (s *Syncer) loadSyncStatus() {
 	var progress SyncProgress
 
-	stateDiskDB := s.db.GetSnapStore()
+	stateDiskDB := s.db.GetStateStore()
 	if status := rawdb.ReadSnapshotSyncStatus(s.db); status != nil {
 		if err := json.Unmarshal(status, &progress); err != nil {
 			log.Error("Failed to decode snap sync status", "err", err)
@@ -2043,7 +2043,7 @@ func (s *Syncer) processStorageResponse(res *storageResponse) {
 
 	var usingMultDatabase bool
 	batch := ethdb.HookedBatch{
-		Batch: s.db.GetSnapStore().NewBatch(),
+		Batch: s.db.GetStateStore().NewBatch(),
 		OnPut: func(key []byte, value []byte) {
 			s.storageBytes += common.StorageSize(len(key) + len(value))
 		},
@@ -2129,7 +2129,7 @@ func (s *Syncer) processStorageResponse(res *storageResponse) {
 					}
 					// Our first task is the one that was just filled by this response.
 					batch := ethdb.HookedBatch{
-						Batch: s.db.GetSnapStore().NewBatch(),
+						Batch: s.db.GetStateStore().NewBatch(),
 						OnPut: func(key []byte, value []byte) {
 							s.storageBytes += common.StorageSize(len(key) + len(value))
 						},
@@ -2151,7 +2151,7 @@ func (s *Syncer) processStorageResponse(res *storageResponse) {
 					})
 					for r.Next() {
 						batch := ethdb.HookedBatch{
-							Batch: s.db.GetSnapStore().NewBatch(),
+							Batch: s.db.GetStateStore().NewBatch(),
 							OnPut: func(key []byte, value []byte) {
 								s.storageBytes += common.StorageSize(len(key) + len(value))
 							},
@@ -2381,7 +2381,7 @@ func (s *Syncer) commitHealer(force bool) {
 	var stateBatch ethdb.Batch
 	var err error
 	if s.db.HasSeparateStateStore() {
-		stateBatch = s.db.GetSnapStore().NewBatch()
+		stateBatch = s.db.GetStateStore().NewBatch()
 		err = s.healer.scheduler.Commit(batch, stateBatch)
 	} else {
 		err = s.healer.scheduler.Commit(batch, nil)

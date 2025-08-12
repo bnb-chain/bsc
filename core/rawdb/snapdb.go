@@ -6,25 +6,25 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb/shardingdb"
 )
 
-type SnapDB struct {
+type SnapShardingDB struct {
 	shardingdb.Database
 }
 
-func NewSnapDB(cfg *shardingdb.Config, cache int, handles int, readonly bool) (*SnapDB, error) {
+func NewSnapDB(cfg *shardingdb.Config, cache int, handles int, readonly bool) (*SnapShardingDB, error) {
 	db, err := shardingdb.New(cfg, cache, handles, readonly)
 	if err != nil {
 		return nil, err
 	}
-	return &SnapDB{Database: *db}, nil
+	return &SnapShardingDB{Database: *db}, nil
 }
 
-func (db *SnapDB) Close() error {
+func (db *SnapShardingDB) Close() error {
 	return db.Database.Close()
 }
 
 // ShardIndex returns the shard index of the given key
 // it accepts account snapshot key, storage snapshot key, and state root key
-func (db *SnapDB) ShardIndex(key []byte) int {
+func (db *SnapShardingDB) ShardIndex(key []byte) int {
 	// SnapshotAccountPrefix + account hash -> account trie value
 	if bytes.HasPrefix(key, SnapshotAccountPrefix) {
 		if len(key) < 2 {

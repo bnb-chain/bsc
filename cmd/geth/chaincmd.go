@@ -67,6 +67,7 @@ var (
 			utils.OverrideFermi,
 			utils.OverrideVerkle,
 			utils.MultiDataBaseFlag,
+			utils.EnableShardingFlag,
 		}, utils.DatabaseFlags),
 		Description: `
 The init command initializes a new genesis block and definition for the network.
@@ -301,7 +302,7 @@ func initGenesis(ctx *cli.Context) error {
 
 	// if the trie data dir has been set, new trie db with a new state database
 	if ctx.IsSet(utils.MultiDataBaseFlag.Name) {
-		stack.AttachMultiDBs(chaindb, 0, 0, false, false)
+		stack.SetMultiDBs(chaindb, name, 0, 0, false, false)
 	}
 
 	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false, genesis.IsVerkle())
@@ -686,7 +687,7 @@ func dumpGenesis(ctx *cli.Context) error {
 
 	// set the separate state & block database
 	if stack.CheckIfMultiDataBase() && err == nil {
-		stack.AttachMultiDBs(db, 0, 0, true, false)
+		stack.SetMultiDBs(db, "chaindata", 0, 0, true, false)
 	}
 
 	genesis, err = core.ReadGenesis(db)

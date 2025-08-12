@@ -9,120 +9,120 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb/shardingdb"
 )
 
-type TrieDB struct {
+type TrieShardingDB struct {
 	shardingdb.Database
 	ancientDir string
 }
 
-func (db *TrieDB) SetStateStore(state ethdb.Database) {
+func (db *TrieShardingDB) SetStateStore(state ethdb.Database) {
 	panic("not supported")
 }
 
-func (db *TrieDB) GetStateStore() ethdb.Database {
+func (db *TrieShardingDB) GetStateStore() ethdb.Database {
 	panic("not supported")
 }
 
-func (db *TrieDB) HasSeparateStateStore() bool {
+func (db *TrieShardingDB) HasSeparateStateStore() bool {
 	return false
 }
 
-func (db *TrieDB) StateStoreReader() ethdb.Reader {
+func (db *TrieShardingDB) StateStoreReader() ethdb.Reader {
 	panic("not supported")
 }
 
-func (db *TrieDB) SetSnapStore(state ethdb.KeyValueStore) {
+func (db *TrieShardingDB) SetSnapStore(state ethdb.KeyValueStore) {
 	panic("not supported")
 }
 
-func (db *TrieDB) GetSnapStore() ethdb.KeyValueStore {
+func (db *TrieShardingDB) GetSnapStore() ethdb.KeyValueStore {
 	panic("not supported")
 }
 
-func (db *TrieDB) HasSeparateSnapStore() bool {
+func (db *TrieShardingDB) HasSeparateSnapStore() bool {
 	return false
 }
 
-func (db *TrieDB) SetTxIndexStore(state ethdb.KeyValueStore) {
+func (db *TrieShardingDB) SetTxIndexStore(state ethdb.KeyValueStore) {
 	panic("not supported")
 }
 
-func (db *TrieDB) GetTxIndexStore() ethdb.KeyValueStore {
+func (db *TrieShardingDB) GetTxIndexStore() ethdb.KeyValueStore {
 	panic("not supported")
 }
 
-func (db *TrieDB) HasSeparateTxIndexStore() bool {
+func (db *TrieShardingDB) HasSeparateTxIndexStore() bool {
 	panic("not supported")
 }
 
-func (db *TrieDB) IndexStoreReader() ethdb.KeyValueReader {
+func (db *TrieShardingDB) IndexStoreReader() ethdb.KeyValueReader {
 	panic("not supported")
 }
 
-func (db *TrieDB) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
+func (db *TrieShardingDB) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
 	panic("not supported")
 }
 
-func (db *TrieDB) HasAncient(kind string, number uint64) (bool, error) {
+func (db *TrieShardingDB) HasAncient(kind string, number uint64) (bool, error) {
 	panic("not supported")
 }
 
-func (db *TrieDB) Ancient(kind string, number uint64) ([]byte, error) {
+func (db *TrieShardingDB) Ancient(kind string, number uint64) ([]byte, error) {
 	panic("not supported")
 }
 
-func (db *TrieDB) AncientRange(kind string, start, count, maxBytes uint64) ([][]byte, error) {
+func (db *TrieShardingDB) AncientRange(kind string, start, count, maxBytes uint64) ([][]byte, error) {
 	panic("not supported")
 }
 
-func (db *TrieDB) Ancients() (uint64, error) {
+func (db *TrieShardingDB) Ancients() (uint64, error) {
 	panic("not supported")
 }
 
-func (db *TrieDB) Tail() (uint64, error) {
+func (db *TrieShardingDB) Tail() (uint64, error) {
 	panic("not supported")
 }
 
-func (db *TrieDB) AncientSize(kind string) (uint64, error) {
+func (db *TrieShardingDB) AncientSize(kind string) (uint64, error) {
 	panic("not supported")
 }
 
-func (db *TrieDB) ItemAmountInAncient() (uint64, error) {
+func (db *TrieShardingDB) ItemAmountInAncient() (uint64, error) {
 	panic("not supported")
 }
 
-func (db *TrieDB) AncientOffSet() uint64 {
+func (db *TrieShardingDB) AncientOffSet() uint64 {
 	panic("not supported")
 }
 
-func (db *TrieDB) ReadAncients(fn func(ethdb.AncientReaderOp) error) (err error) {
+func (db *TrieShardingDB) ReadAncients(fn func(ethdb.AncientReaderOp) error) (err error) {
 	panic("not supported")
 }
 
-func (db *TrieDB) ModifyAncients(f func(ethdb.AncientWriteOp) error) (int64, error) {
+func (db *TrieShardingDB) ModifyAncients(f func(ethdb.AncientWriteOp) error) (int64, error) {
 	panic("not supported")
 }
 
-func (db *TrieDB) SyncAncient() error {
+func (db *TrieShardingDB) SyncAncient() error {
 	panic("not supported")
 }
 
-func (db *TrieDB) TruncateHead(n uint64) (uint64, error) {
+func (db *TrieShardingDB) TruncateHead(n uint64) (uint64, error) {
 	panic("not supported")
 }
 
-func (db *TrieDB) TruncateTail(n uint64) (uint64, error) {
+func (db *TrieShardingDB) TruncateTail(n uint64) (uint64, error) {
 	panic("not supported")
 }
 
-func (db *TrieDB) TruncateTableTail(kind string, tail uint64) (uint64, error) {
+func (db *TrieShardingDB) TruncateTableTail(kind string, tail uint64) (uint64, error) {
 	panic("not supported")
 }
 
-func (db *TrieDB) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
+func (db *TrieShardingDB) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
 	panic("not supported")
 }
 
-func NewTrieDB(cfg *TrieDBConfig, cache int, handles int, readonly, disableFreeze bool) (*TrieDB, error) {
+func NewTrieDB(cfg *TrieDBConfig, cache int, handles int, readonly, disableFreeze bool) (*TrieShardingDB, error) {
 	db, err := shardingdb.New(&cfg.Config, cache, handles, readonly)
 	if err != nil {
 		return nil, err
@@ -131,16 +131,16 @@ func NewTrieDB(cfg *TrieDBConfig, cache int, handles int, readonly, disableFreez
 	if disableFreeze {
 		ancientDir = ""
 	}
-	return &TrieDB{Database: *db, ancientDir: ancientDir}, nil
+	return &TrieShardingDB{Database: *db, ancientDir: ancientDir}, nil
 }
 
-func (db *TrieDB) Close() error {
+func (db *TrieShardingDB) Close() error {
 	return db.Database.Close()
 }
 
 // ShardIndex returns the shard index of the given key
 // it accepts account trie key, storage trie key, and state root key
-func (db *TrieDB) ShardIndex(key []byte) int {
+func (db *TrieShardingDB) ShardIndex(key []byte) int {
 	// TrieNodeAccountPrefix + hexPath -> trie node
 	if bytes.HasPrefix(key, TrieNodeAccountPrefix) {
 		if len(key) < 2 {
@@ -167,7 +167,7 @@ func (db *TrieDB) ShardIndex(key []byte) int {
 	return 0
 }
 
-func (db *TrieDB) AncientDatadir() (string, error) {
+func (db *TrieShardingDB) AncientDatadir() (string, error) {
 	if db.ancientDir == "" {
 		return "", errors.New("disableFreeze in trieDB")
 	}

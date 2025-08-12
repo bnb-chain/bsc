@@ -257,6 +257,8 @@ type Config struct {
 
 	// Storage is the storage engine to use for the database.
 	Storage *rawdb.StorageConfig `toml:",omitempty"`
+
+	EnableSharding bool `toml:",omitempty"`
 }
 
 // IPCEndpoint resolves an IPC endpoint based on a configured value, taking into

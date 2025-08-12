@@ -810,7 +810,7 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 	}
 
 	if isMultiDatabase {
-		n.AttachMultiDBs(chainDB, config.DatabaseCache, config.DatabaseHandles, readonly, false)
+		n.SetMultiDBs(chainDB, name, config.DatabaseCache, config.DatabaseHandles, readonly, false)
 	}
 
 	return chainDB, nil
@@ -853,6 +853,28 @@ func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient,
 // Both directories must exist together or neither should exist
 // If only one exists, it indicates data corruption
 func (n *Node) CheckIfMultiDataBase() bool {
+	if !n.config.EnableSharding {
+		separateStateDir := filepath.Join(n.ResolvePath("chaindata"), "state")
+		stateInfo, stateErr := os.Stat(separateStateDir)
+		hasState := stateErr == nil && stateInfo.IsDir()
+
+		separateSnapshotDir := filepath.Join(n.ResolvePath("chaindata"), "snapshot")
+		snapshotInfo, snapshotErr := os.Stat(separateSnapshotDir)
+		hasSnapshotDB := snapshotErr == nil && snapshotInfo.IsDir()
+
+		separateIndexDir := filepath.Join(n.ResolvePath("chaindata"), "txindex")
+		indexInfo, indexErr := os.Stat(separateIndexDir)
+		hasIndexDB := indexErr == nil && indexInfo.IsDir()
+
+		// All three must exist together or none should exist
+		if hasState && hasSnapshotDB && hasIndexDB {
+			return true
+		}
+		if !hasState && !hasSnapshotDB && !hasIndexDB {
+			return false
+		}
+		panic("data corruption! missing state, snapshot or txindex dir.")
+	}
 	stateInfo, stateErr := os.Stat(n.config.Storage.TrieDB.DBPath)
 	hasState := stateErr == nil && stateInfo.IsDir()
 
@@ -872,34 +894,64 @@ func (n *Node) CheckIfMultiDataBase() bool {
 	panic("data corruption! missing state, snapshot or txindex dir.")
 }
 
-func (n *Node) AttachMultiDBs(chaindb ethdb.Database, cache, handles int, readonly, disableFreeze bool) error {
-	c, h := n.config.Storage.TrieDBCache(cache, handles)
-	stateDB, err := rawdb.NewTrieDB(n.config.Storage.TrieDB, c, h, readonly, disableFreeze)
+func (n *Node) SetMultiDBs(chainDB ethdb.Database, name string, cache, handles int, readonly, disableFreeze bool) error {
+	stateDbCache, stateDbHandles := n.config.Storage.TrieDBCache(cache, handles)
+	snapDbCache, snapDbHandles := n.config.Storage.SnapDBCache(cache, handles)
+	indexDbCache, indexDbHandles := n.config.Storage.IndexDBCache(cache, handles)
+
+	if !n.config.EnableSharding {
+		log.Warn("Multi-database is an experimental feature")
+		// Allocate half of the  handles and chainDbCache to this separate state data database
+		stateDiskDb, err := n.OpenDatabaseWithFreezer(name+"/state", stateDbCache, stateDbHandles, "", "eth/db/statedata/", readonly, false)
+		if err != nil {
+			return err
+		}
+
+		chainDB.SetStateStore(stateDiskDb)
+		// Open the snapshot database as a pure key-value store
+		snapshotDb, err := n.OpenDatabase(name+"/snapshot", snapDbCache, snapDbHandles, "eth/db/snapdata/", readonly, true)
+		if err != nil {
+			log.Error("Failed to open separate snapshot database", "err", err)
+			return err
+		}
+
+		chainDB.SetSnapStore(snapshotDb)
+
+		// Open the tx index database as a pure key-value store
+		indexDb, err := n.OpenDatabase(name+"/txindex", indexDbCache, indexDbHandles, "eth/db/txindex/", readonly, true)
+		if err != nil {
+			log.Error("Failed to open separate tx index database", "err", err)
+			return err
+		}
+		chainDB.SetTxIndexStore(indexDb)
+		return nil
+	}
+
+	// init sharding dbs
+	stateDB, err := rawdb.NewTrieDB(n.config.Storage.TrieDB, stateDbCache, stateDbHandles, readonly, disableFreeze)
 	if err != nil {
 		return err
 	}
-	chaindb.SetStateStore(stateDB)
+	chainDB.SetStateStore(stateDB)
 
-	c, h = n.config.Storage.SnapDBCache(cache, handles)
-	snapDB, err := rawdb.NewSnapDB(n.config.Storage.SnapDB, c, h, readonly)
+	snapDB, err := rawdb.NewSnapDB(n.config.Storage.SnapDB, snapDbCache, snapDbHandles, readonly)
 	if err != nil {
 		return err
 	}
-	chaindb.SetSnapStore(snapDB)
+	chainDB.SetSnapStore(snapDB)
 
-	c, h = n.config.Storage.IndexDBCache(cache, handles)
 	indexDB, err := openKeyValueDatabase(openOptions{
 		Type:      n.config.Storage.IndexDB.DBType,
 		Directory: n.config.Storage.IndexDB.DBPath,
 		Namespace: n.config.Storage.IndexDB.Namespace,
-		Cache:     c,
-		Handles:   h,
+		Cache:     indexDbCache,
+		Handles:   indexDbHandles,
 		ReadOnly:  readonly,
 	})
 	if err != nil {
 		return err
 	}
-	chaindb.SetTxIndexStore(indexDB)
+	chainDB.SetTxIndexStore(indexDB)
 	log.Warn("Multi-database is an experimental feature")
 	return nil
 }
