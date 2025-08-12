@@ -21,6 +21,8 @@ const (
 	DBTypeMemory  = "memorydb"
 )
 
+type ShardIndexFunc func(key []byte, shardNum int) int
+
 // Config is the configuration of the sharding db
 type Config struct {
 	CacheRatio     int    // the cache ratio of the db, it will be evenly distributed to all shards
@@ -154,14 +156,18 @@ type ShardConfig struct {
 
 // Database is the sharding database
 type Database struct {
-	cfg       *Config
-	shardCfgs []ShardConfig // the final config of each shard
-	shards    []ethdb.KeyValueStore
+	cfg            *Config
+	shardCfgs      []ShardConfig // the final config of each shard
+	shards         []ethdb.KeyValueStore
+	shardIndexFunc ShardIndexFunc
 }
 
 // New creates a new sharding database
 // TODO(galaio): Correct the config and print the log using the number of stored shards
-func New(cfg *Config, cache int, handles int, readonly bool) (*Database, error) {
+func New(cfg *Config, cache int, handles int, readonly bool, f ShardIndexFunc) (*Database, error) {
+	if f == nil {
+		return nil, fmt.Errorf("shardIndexFunc is not set")
+	}
 	if err := cfg.SanityCheck(); err != nil {
 		return nil, err
 	}
@@ -196,9 +202,10 @@ func New(cfg *Config, cache int, handles int, readonly bool) (*Database, error) 
 	}
 
 	return &Database{
-		cfg:       cfg,
-		shardCfgs: shardCfgs,
-		shards:    shards,
+		cfg:            cfg,
+		shardCfgs:      shardCfgs,
+		shards:         shards,
+		shardIndexFunc: f,
 	}, nil
 }
 
@@ -212,15 +219,7 @@ func (db *Database) Close() error {
 
 // Shard returns the shard for a given key
 func (db *Database) Shard(key []byte) ethdb.KeyValueStore {
-	return db.shards[db.ShardIndex(key)]
-}
-
-// ShardIndex returns the index of the shard for a given key
-func (db *Database) ShardIndex(key []byte) int {
-	if len(key) == 0 {
-		return 0
-	}
-	return int(key[0]) % len(db.shards)
+	return db.shards[db.shardIndexFunc(key, db.ShardNum())]
 }
 
 // ShardNum returns the number of shards
@@ -311,7 +310,7 @@ func (b *shardingBatch) ensure(idx int) ethdb.Batch {
 
 // Put inserts the value for a given key
 func (b *shardingBatch) Put(key []byte, value []byte) error {
-	idx := b.parent.ShardIndex(key)
+	idx := b.parent.shardIndexFunc(key, b.parent.ShardNum())
 	if err := b.ensure(idx).Put(key, value); err != nil {
 		return err
 	}
@@ -321,7 +320,7 @@ func (b *shardingBatch) Put(key []byte, value []byte) error {
 
 // Delete removes the value for a given key
 func (b *shardingBatch) Delete(key []byte) error {
-	idx := b.parent.ShardIndex(key)
+	idx := b.parent.shardIndexFunc(key, b.parent.ShardNum())
 	if err := b.ensure(idx).Delete(key); err != nil {
 		return err
 	}

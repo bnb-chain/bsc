@@ -123,7 +123,7 @@ func (db *TrieShardingDB) ResetTable(kind string, startAt uint64, onlyEmpty bool
 }
 
 func NewTrieShardingDB(cfg *TrieDBConfig, cache int, handles int, readonly, disableFreeze bool) (*TrieShardingDB, error) {
-	db, err := shardingdb.New(&cfg.Config, cache, handles, readonly)
+	db, err := shardingdb.New(&cfg.Config, cache, handles, readonly, ShardIndexInTrieDB)
 	if err != nil {
 		return nil, err
 	}
@@ -138,38 +138,38 @@ func (db *TrieShardingDB) Close() error {
 	return db.Database.Close()
 }
 
-// ShardIndex returns the shard index of the given key
+func (db *TrieShardingDB) AncientDatadir() (string, error) {
+	if db.ancientDir == "" {
+		return "", errors.New("disableFreeze in trieDB")
+	}
+	return db.ancientDir, nil
+}
+
+// ShardIndexInTrieDB returns the shard index of the given key
 // it accepts account trie key, storage trie key, and state root key
-func (db *TrieShardingDB) ShardIndex(key []byte) int {
+func ShardIndexInTrieDB(key []byte, shardNum int) int {
 	// TrieNodeAccountPrefix + hexPath -> trie node
 	if bytes.HasPrefix(key, TrieNodeAccountPrefix) {
 		if len(key) < 2 {
 			return 0
 		}
-		return int(key[1]>>4) % db.ShardNum()
+		return int(key[1]>>4) % shardNum
 	}
 	// TrieNodeStoragePrefix + accountHash + hexPath -> trie node
 	if bytes.HasPrefix(key, TrieNodeStoragePrefix) {
 		if len(key) < 34 {
 			return 0
 		}
-		return int(key[33]>>4) % db.ShardNum()
+		return int(key[33]>>4) % shardNum
 	}
 	// CodePrefix + code hash -> account code
 	if bytes.HasPrefix(key, CodePrefix) {
 		if len(key) < 2 {
 			return 0
 		}
-		return int(key[1]>>4) % db.ShardNum()
+		return int(key[1]>>4) % shardNum
 	}
 	// some metadata, journal save in shard0
 	// such as persistentStateIDKey, trieJournalKey, stateIDPrefix, etc.
 	return 0
-}
-
-func (db *TrieShardingDB) AncientDatadir() (string, error) {
-	if db.ancientDir == "" {
-		return "", errors.New("disableFreeze in trieDB")
-	}
-	return db.ancientDir, nil
 }

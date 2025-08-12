@@ -12,6 +12,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func testShardIndexFunc(key []byte, shardNum int) int {
+	if len(key) == 0 {
+		return 0
+	}
+	return int(key[0]) % shardNum
+}
+
 func TestParseShardIndexes(t *testing.T) {
 	tests := []struct {
 		src      string
@@ -125,7 +132,7 @@ func TestShardingDB_BasicSharding(t *testing.T) {
 			{Indexes: "0-7"},
 		},
 	}
-	db, err := New(cfg, 1024, 1024, false)
+	db, err := New(cfg, 1024, 1024, false, testShardIndexFunc)
 	assert.NoError(t, err, "New(%v) = %v", cfg, err)
 	assert.Equal(t, db.ShardNum(), 8)
 	assert.Equal(t, db.shards[0], db.Shard([]byte{0}))
@@ -141,8 +148,9 @@ func createMemoryShardingDB(shardCount int) *Database {
 		shards[i] = memorydb.New()
 	}
 	return &Database{
-		cfg:    &Config{ShardNum: shardCount},
-		shards: shards,
+		cfg:            &Config{ShardNum: shardCount},
+		shards:         shards,
+		shardIndexFunc: testShardIndexFunc,
 	}
 }
 
@@ -187,13 +195,13 @@ func TestShardingDatabase_ShardRouting(t *testing.T) {
 
 	for i, key := range keys {
 		expectedShard := i % 4
-		actualShard := db.ShardIndex(key)
+		actualShard := db.shardIndexFunc(key, db.ShardNum())
 		assert.Equal(t, expectedShard, actualShard, "key %x should route to shard %d, got %d", key, expectedShard, actualShard)
 	}
 
 	// Test empty key routes to shard 0
-	assert.Equal(t, 0, db.ShardIndex([]byte{}))
-	assert.Equal(t, 0, db.ShardIndex(nil))
+	assert.Equal(t, 0, db.shardIndexFunc([]byte{}, db.ShardNum()))
+	assert.Equal(t, 0, db.shardIndexFunc(nil, db.ShardNum()))
 }
 
 func TestShardingBatch_BasicOperations(t *testing.T) {
