@@ -202,36 +202,38 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// For optimisation reason we're using uint64 as the program counter.
 		// It's theoretically possible to go above 2^64. The YP defines the PC
 		// to be uint256. Practically much less so feasible.
-		pc            = uint64(0) // program counter
-		cost          uint64
-		calcTotalCost bool
-		totalCost     uint64 // for debug only
+		pc                = uint64(0) // program counter
+		cost              uint64
+		blockChargeActive bool   // static gas precharge mode flag
+		totalCost         uint64 // for debug only
 		//costCounter   int
 		// copies used by tracer
-		pcCopy           uint64 // needed for the deferred EVMLogger
-		gasCopy          uint64 // for EVMLogger to log gas remaining before execution
-		logged           bool   // deferred EVMLogger should ignore already logged steps
-		res              []byte // result of the opcode execution function
-		debug            = in.evm.Config.Tracer != nil
-		comsumedBlockGas uint64               // 实际使用的block的static gas总和
-		currentBlock     *compiler.BasicBlock // 当前block（缓存）
-		nextBlockPC      uint64               // 下一个block的起始PC（用于边界检测）
-		totalDynamicGas  uint64               // 本次调用累积的动态gas
+		pcCopy          uint64 // needed for the deferred EVMLogger
+		gasCopy         uint64 // for EVMLogger to log gas remaining before execution
+		logged          bool   // deferred EVMLogger should ignore already logged steps
+		res             []byte // result of the opcode execution function
+		debug           = in.evm.Config.Tracer != nil
+		currentBlock    *compiler.BasicBlock // 当前block（缓存）
+		nextBlockPC     uint64               // 下一个block的起始PC（用于边界检测）
+		totalDynamicGas uint64               // 本次调用累积的动态gas
+		debugStaticGas  uint64               // 仅调试：累计已预扣的静态gas（扣减退款后）
 	)
+
+	// initialise blockChargeActive to whether opcode optimizations are enabled
+	blockChargeActive = in.evm.Config.EnableOpcodeOptimizations
+
 	// Don't move this deferred function, it's placed before the OnOpcode-deferred method,
 	// so that it gets executed _after_: the OnOpcode needs the stacks before
 	// they are returned to the pools
 	defer func() {
-		// 调试日志：汇总静态/动态 gas
-		if in.evm.Context.BlockNumber.Uint64() == 50897362 {
-			log.Info("[RUN EXIT]", "block", in.evm.Context.BlockNumber, "txIndex", in.evm.StateDB.TxIndex(),
-				"staticCost", totalCost, "staticCost same", totalCost == comsumedBlockGas, "dynamicCost", totalDynamicGas, "sum", totalCost+totalDynamicGas,
-				"fallback", calcTotalCost, "contract", contract.Address())
-		}
-
-		if in.evm.Context.BlockNumber.Uint64() == 50897362 && ((totalCost != comsumedBlockGas) && !calcTotalCost) || (comsumedBlockGas != 0 && calcTotalCost) {
-			log.Error("totalCost completed! totalCost diff comsumedBlockGas", "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas, "fallback", calcTotalCost, "contract.Gas", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-		}
+		// 调试日志（仅开发阶段）
+		// log.Info("[RUN EXIT]", "block", in.evm.Context.BlockNumber,
+		//     "txIdx", in.evm.StateDB.TxIndex(),
+		//     "opcodeStatic", totalCost,
+		//     "cacheStatic", debugStaticGas,
+		//     "equal", totalCost == debugStaticGas,
+		//     "dynamic", totalDynamicGas,
+		//     "fallback", !blockChargeActive)
 		returnStack(stack)
 		mem.Free()
 	}()
@@ -270,7 +272,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			contract.Gas -= in.evm.TxContext.AccessEvents.CodeChunksRangeGas(contractAddr, pc, 1, uint64(len(contract.Code)), false)
 		}
 
-		if in.evm.Config.EnableOpcodeOptimizations && !calcTotalCost {
+		if in.evm.Config.EnableOpcodeOptimizations && !blockChargeActive {
 			// 只在以下情况检查block边界：
 			// 1. 当前block为空（首次执行）
 			// 2. PC超出了当前block范围（向前或向后）
@@ -281,20 +283,27 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 					nextBlockPC = block.EndPC
 					if contract.Gas >= block.StaticGas {
 						contract.Gas -= block.StaticGas
-						comsumedBlockGas += block.StaticGas
-						//if contract.CodeHash.String() == "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6" {
-						//	log.Error("[CACHE DEBUG] Static gas", "block.StaticGas", block.StaticGas, "remaining", contract.Gas, "contract.CodeHash", contract.CodeHash.String(), "block.StartPC", block.StartPC, "block.EndPC", block.EndPC)
-						//}
+						log.Trace("[BLOCK-CACHE] hit", "codeHash", contract.CodeHash, "startPC", block.StartPC, "staticGas", block.StaticGas)
+						debugStaticGas += block.StaticGas
 					} else {
-						//if contract.CodeHash.String() == "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6" {
-						//	log.Error("[CACHE DEBUG] Insufficient gas for static", "block.StaticGas", block.StaticGas, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-						//}
-						calcTotalCost = true
-						contract.Gas += comsumedBlockGas
+						// gas 不足以支付下一个 block：退回当前 block 未用部分并停用预扣
+						if currentBlock != nil {
+							diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
+							debugStaticGas -= diff
+						}
+						blockChargeActive = false
+						currentBlock = nil
+						log.Warn("[BLOCK-CACHE] fallback", "codeHash", contract.CodeHash, "pc", pc, "reason", "gasInsufficient")
 					}
 				} else {
-					calcTotalCost = true // if one or more block not found in cache, need cal detail
-					contract.Gas += comsumedBlockGas
+					// cache 缺失：同样退回并停用预扣
+					if currentBlock != nil {
+						diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
+						debugStaticGas -= diff
+					}
+					blockChargeActive = false
+					currentBlock = nil
+					log.Warn("[BLOCK-CACHE] fallback", "codeHash", contract.CodeHash, "pc", pc, "reason", "cacheMissing")
 				}
 			}
 		}
@@ -317,12 +326,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		//costCounter++
 		//log.Error("accumulate totalCost", "totalCost", totalCost, "cost", cost, "op", op.String(), "costCounter", costCounter, "fallback", calcTotalCost, "contract.CodeHash", contract.CodeHash.String(), "pc", pc)
 		//}
-		if (calcTotalCost && in.evm.Config.EnableOpcodeOptimizations) || !in.evm.Config.EnableOpcodeOptimizations {
+		if !blockChargeActive {
 
 			if contract.Gas < cost {
-				if contract.CodeHash.String() == "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6" {
-					log.Error("Out of gas", "pc", pc, "required", cost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-				}
+				log.Error("Out of gas", "pc", pc, "required", cost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
 				return nil, ErrOutOfGas
 			} else {
 				contract.Gas -= cost
@@ -339,13 +346,15 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			if operation.memorySize != nil {
 				memSize, overflow := operation.memorySize(stack)
 				if overflow {
-					in.refundUnusedBlockGas(contract, pc, currentBlock, calcTotalCost, &comsumedBlockGas)
+					diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
+					debugStaticGas -= diff
 					return nil, ErrGasUintOverflow
 				}
 				// memory is expanded in words of 32 bytes. Gas
 				// is also calculated in words.
 				if memorySize, overflow = math.SafeMul(toWordSize(memSize), 32); overflow {
-					in.refundUnusedBlockGas(contract, pc, currentBlock, calcTotalCost, &comsumedBlockGas)
+					diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
+					debugStaticGas -= diff
 					return nil, ErrGasUintOverflow
 				}
 			}
@@ -356,8 +365,13 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
 			// 如果首次尝试因静态预扣导致 OOG，则退回未用静态 gas 后重试一次
 			if err != nil {
-				if errors.Is(err, ErrOutOfGas) && in.evm.Config.EnableOpcodeOptimizations && !calcTotalCost && currentBlock != nil {
-					in.refundUnusedBlockGas(contract, pc, currentBlock, calcTotalCost, &comsumedBlockGas)
+				if errors.Is(err, ErrOutOfGas) && in.evm.Config.EnableOpcodeOptimizations && blockChargeActive && currentBlock != nil {
+					diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
+					debugStaticGas -= diff
+					// Disable static gas precharge for the rest of this execution
+					blockChargeActive = false
+					currentBlock = nil
+					log.Warn("[BLOCK-CACHE] fallback", "codeHash", contract.CodeHash, "pc", pc, "reason", "dynamicOOG")
 					// Retry once
 					dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
 				}
@@ -371,20 +385,18 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// for tracing: this gas consumption event is emitted below in the debug section.
 			if contract.Gas < dynamicCost {
 				// 二次确认：若仍在预扣模式，先退回当前块未用静态 gas 再判断
-				if in.evm.Config.EnableOpcodeOptimizations && !calcTotalCost && currentBlock != nil {
-					in.refundUnusedBlockGas(contract, pc, currentBlock, calcTotalCost, &comsumedBlockGas)
+				if in.evm.Config.EnableOpcodeOptimizations && blockChargeActive && currentBlock != nil {
+					diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
+					debugStaticGas -= diff
 					// 再次检查余额
 					if contract.Gas < dynamicCost {
-						if contract.CodeHash.String() == "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6" {
-							log.Error("Out of dynamic gas after refund", "pc", pc, "required", dynamicCost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-						}
+						log.Error("Out of dynamic gas after refund", "pc", pc, "required", dynamicCost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
 						return nil, ErrOutOfGas
 					}
 				} else {
-					if contract.CodeHash.String() == "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6" {
-						log.Error("Out of dynamic gas", "pc", pc, "required", dynamicCost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-					}
-					in.refundUnusedBlockGas(contract, pc, currentBlock, calcTotalCost, &comsumedBlockGas)
+					log.Error("Out of dynamic gas", "pc", pc, "required", dynamicCost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+					diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
+					debugStaticGas -= diff
 					return nil, ErrOutOfGas
 				}
 			}
@@ -409,9 +421,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		res, err = operation.execute(&pc, in, callContext)
 		if err != nil {
 			// 如果启用了优化模式且使用了 block gas 预扣除，需要返还未执行部分的 gas
-			in.refundUnusedBlockGas(contract, pc, currentBlock, calcTotalCost, &comsumedBlockGas)
+			diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
+			debugStaticGas -= diff
 			if err != errStopToken {
-				log.Error("Execution stopped due to error", "pc", pc, "op", op.String(), "err", err, "contract.CodeHash", contract.CodeHash.String(), "totalCost", totalCost, "comsumedBlockGas", comsumedBlockGas)
+				log.Error("Execution stopped due to error", "pc", pc, "op", op.String(), "err", err, "contract.CodeHash", contract.CodeHash.String())
 			}
 			break
 		}
@@ -420,14 +433,14 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 	//todo: see if can unify refundUnusedBlockGas all in one place
 	//// 成功路径：如果优化开启且仍在预扣模式，需要根据最终 pc 退回未用静态 gas
-	//if in.evm.Config.EnableOpcodeOptimizations && !calcTotalCost && currentBlock != nil {
+	//if in.evm.Config.EnableOpcodeOptimizations && !blockChargeActive && currentBlock != nil {
 	//	var lastPC uint64
 	//	if pc > 0 {
 	//		lastPC = pc - 1
 	//	} else {
 	//		lastPC = 0
 	//	}
-	//	in.refundUnusedBlockGas(contract, lastPC, currentBlock, calcTotalCost, &comsumedBlockGas)
+	//	in.refundUnusedBlockGas(contract, lastPC, currentBlock, blockChargeActive, &comsumedBlockGas)
 	//}
 
 	//if ((totalCost != comsumedBlockGas) && !calcTotalCost) || (comsumedBlockGas != 0 && calcTotalCost) {
@@ -570,13 +583,17 @@ func (in *EVMInterpreter) calculateUsedBlockGas(contract *Contract, startPC, end
 }
 
 // refundUnusedBlockGas refunds unused block gas when optimization is enabled
-func (in *EVMInterpreter) refundUnusedBlockGas(contract *Contract, pc uint64, currentBlock *compiler.BasicBlock, calcTotalCost bool, consumedBlockGas *uint64) {
-	if in.evm.Config.EnableOpcodeOptimizations && !calcTotalCost && currentBlock != nil {
-		actualUsedGas := in.calculateUsedBlockGas(contract, currentBlock.StartPC, pc)
-		// refund contract.Gas with usedGasDiff, and reduce usedGasDiff from consumedBlockGas
-		usedGasDiff := currentBlock.StaticGas - actualUsedGas
-		contract.Gas += usedGasDiff
-		*consumedBlockGas -= usedGasDiff
-		//log.Error("Refunded unused block gas", "actualUsedGas", actualUsedGas, "remaining", contract.Gas, "usedGasDiff", usedGasDiff, "contract.CodeHash", contract.CodeHash.String())
+func (in *EVMInterpreter) refundUnusedBlockGas(contract *Contract, pc uint64, currentBlock *compiler.BasicBlock) uint64 {
+	if currentBlock == nil {
+		return 0
 	}
+
+	actualUsedGas := in.calculateUsedBlockGas(contract, currentBlock.StartPC, pc)
+	if actualUsedGas >= currentBlock.StaticGas {
+		return 0
+	}
+
+	usedGasDiff := currentBlock.StaticGas - actualUsedGas
+	contract.Gas += usedGasDiff
+	return usedGasDiff
 }
