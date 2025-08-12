@@ -249,11 +249,6 @@ type emptyfreezedb struct {
 	ethdb.KeyValueStore
 }
 
-// HasAncient returns nil for pruned db that we don't have a backing chain freezer.
-func (db *emptyfreezedb) HasAncient(kind string, number uint64) (bool, error) {
-	return false, nil
-}
-
 // Ancient returns nil for pruned db that we don't have a backing chain freezer.
 func (db *emptyfreezedb) Ancient(kind string, number uint64) ([]byte, error) {
 	return nil, nil

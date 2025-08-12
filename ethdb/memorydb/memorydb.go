@@ -79,11 +79,6 @@ func (db *Database) ResetTable(kind string, startAt uint64, onlyEmpty bool) erro
 	panic("implement me")
 }
 
-func (db *Database) HasAncient(kind string, number uint64) (bool, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
 func (db *Database) Ancient(kind string, number uint64) ([]byte, error) {
 	//TODO implement me
 	panic("implement me")

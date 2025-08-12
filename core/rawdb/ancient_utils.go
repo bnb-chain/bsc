@@ -174,7 +174,7 @@ func ResetStateFreezerTableOffset(ancient string, virtualTail uint64) error {
 	path, tables := filepath.Join(ancient, MerkleStateFreezerName), stateFreezerTableConfigs
 
 	for name, config := range tables {
-		log.Info("Handle table", "name", name, "config", config)
+		log.Info("Handle table", "name", name, "disableSnappy", config.noSnappy, "prunable", config.prunable)
 		table, err := newTable(path, name, metrics.NewInactiveMeter(), metrics.NewInactiveMeter(), metrics.NewGauge(), freezerTableSize, config, false)
 		if err != nil {
 			log.Error("New table failed", "error", err)
