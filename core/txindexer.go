@@ -113,7 +113,7 @@ func (indexer *txIndexer) run(head uint64, stop chan struct{}, done chan struct{
 	// The tail flag is not existent, it means the node is just initialized
 	// and all blocks in the chain (part of them may from ancient store) are
 	// not indexed yet, index the chain according to the configured limit.
-	tail := rawdb.ReadTxIndexTail(indexer.db)
+	tail := rawdb.ReadTxIndexTail(indexer.db.IndexStoreReader())
 	if tail == nil {
 		// Determine the first block for transaction indexing, taking the
 		// configured cutoff point into account.
@@ -241,7 +241,7 @@ func (indexer *txIndexer) loop(chain *BlockChain) {
 		sub    = chain.SubscribeChainHeadEvent(headCh)
 	)
 
-	lastTail := rawdb.ReadTxIndexTail(indexer.db)
+	lastTail := rawdb.ReadTxIndexTail(indexer.db.IndexStoreReader())
 	if lastTail != nil {
 		// NOTE: The "TransactionIndexTail" key may exist only in cold SST files.
 		// Without a recent write, the key won't be in the memtable or block cache,
@@ -249,13 +249,7 @@ func (indexer *txIndexer) loop(chain *BlockChain) {
 		//
 		// This dummy write forces the key into the memtable (and later SST),
 		// ensuring future reads are fast (from memory or block cache).
-		batch := indexer.db.NewBatch()
-		rawdb.WriteTxIndexTail(batch, *lastTail)
-
-		if err := batch.Write(); err != nil {
-			log.Crit("Failed to write TransactionIndexTail warm-up", "error", err)
-			return
-		}
+		rawdb.WriteTxIndexTail(indexer.db.GetTxIndexStore(), *lastTail)
 	}
 
 	defer sub.Unsubscribe()
@@ -284,7 +278,7 @@ func (indexer *txIndexer) loop(chain *BlockChain) {
 		case <-done:
 			stop = nil
 			done = nil
-			indexer.tail.Store(rawdb.ReadTxIndexTail(indexer.db))
+			indexer.tail.Store(rawdb.ReadTxIndexTail(indexer.db.IndexStoreReader()))
 
 		case ch := <-indexer.term:
 			if stop != nil {

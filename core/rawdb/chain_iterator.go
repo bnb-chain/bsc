@@ -195,10 +195,10 @@ func indexTransactions(db ethdb.Database, from uint64, to uint64, interrupt chan
 		return
 	}
 	var (
-		hashesCh = iterateTransactions(db, from, to, true, interrupt)
-		batch    = db.NewBatch()
-		start    = time.Now()
-		logged   = start.Add(-7 * time.Second)
+		hashesCh   = iterateTransactions(db, from, to, true, interrupt)
+		indexBatch ethdb.Batch
+		start      = time.Now()
+		logged     = start.Add(-7 * time.Second)
 
 		// Since we iterate in reverse, we expect the first number to come
 		// in to be [to-1]. Therefore, setting lastNum to means that the
@@ -207,6 +207,8 @@ func indexTransactions(db ethdb.Database, from uint64, to uint64, interrupt chan
 		queue       = prque.New[int64, *blockTxHashes](nil)
 		blocks, txs = 0, 0 // for stats reporting
 	)
+
+	indexBatch = db.GetTxIndexStore().NewBatch()
 	for chanDelivery := range hashesCh {
 		// Push the delivery into the queue and process contiguous ranges.
 		// Since we iterate in reverse, so lower numbers have lower prio, and
@@ -224,17 +226,17 @@ func indexTransactions(db ethdb.Database, from uint64, to uint64, interrupt chan
 			// Next block available, pop it off and index it
 			delivery := queue.PopItem()
 			lastNum = delivery.number
-			WriteTxLookupEntries(batch, delivery.number, delivery.hashes)
+			WriteTxLookupEntries(indexBatch, delivery.number, delivery.hashes)
 			blocks++
 			txs += len(delivery.hashes)
 			// If enough data was accumulated in memory or we're at the last block, dump to disk
-			if batch.ValueSize() > ethdb.IdealBatchSize {
-				WriteTxIndexTail(batch, lastNum) // Also write the tail here
-				if err := batch.Write(); err != nil {
+			if indexBatch.ValueSize() > ethdb.IdealBatchSize {
+				WriteTxIndexTail(db.GetTxIndexStore(), lastNum)
+				if err := indexBatch.Write(); err != nil {
 					log.Crit("Failed writing batch to db", "error", err)
 					return
 				}
-				batch.Reset()
+				indexBatch.Reset()
 			}
 			// If we've spent too much time already, notify the user of what we're doing
 			if time.Since(logged) > 8*time.Second {
@@ -246,8 +248,8 @@ func indexTransactions(db ethdb.Database, from uint64, to uint64, interrupt chan
 	// Flush the new indexing tail and the last committed data. It can also happen
 	// that the last batch is empty because nothing to index, but the tail has to
 	// be flushed anyway.
-	WriteTxIndexTail(batch, lastNum)
-	if err := batch.Write(); err != nil {
+	WriteTxIndexTail(db.GetTxIndexStore(), lastNum)
+	if err := indexBatch.Write(); err != nil {
 		log.Crit("Failed writing batch to db", "error", err)
 		return
 	}
@@ -294,10 +296,10 @@ func unindexTransactions(db ethdb.Database, from uint64, to uint64, interrupt ch
 		return
 	}
 	var (
-		hashesCh = iterateTransactions(db, from, to, false, interrupt)
-		batch    = db.NewBatch()
-		start    = time.Now()
-		logged   = start.Add(-7 * time.Second)
+		hashesCh   = iterateTransactions(db, from, to, false, interrupt)
+		indexBatch ethdb.Batch
+		start      = time.Now()
+		logged     = start.Add(-7 * time.Second)
 
 		// we expect the first number to come in to be [from]. Therefore, setting
 		// nextNum to from means that the queue gap-evaluation will work correctly
@@ -305,6 +307,7 @@ func unindexTransactions(db ethdb.Database, from uint64, to uint64, interrupt ch
 		queue       = prque.New[int64, *blockTxHashes](nil)
 		blocks, txs = 0, 0 // for stats reporting
 	)
+	indexBatch = db.GetTxIndexStore().NewBatch()
 	// Otherwise spin up the concurrent iterator and unindexer
 	for delivery := range hashesCh {
 		// Push the delivery into the queue and process contiguous ranges.
@@ -320,7 +323,7 @@ func unindexTransactions(db ethdb.Database, from uint64, to uint64, interrupt ch
 			}
 			delivery := queue.PopItem()
 			nextNum = delivery.number + 1
-			DeleteTxLookupEntries(batch, delivery.hashes)
+			DeleteTxLookupEntries(indexBatch, delivery.hashes)
 			txs += len(delivery.hashes)
 			blocks++
 
@@ -328,25 +331,23 @@ func unindexTransactions(db ethdb.Database, from uint64, to uint64, interrupt ch
 			// A batch counts the size of deletion as '1', so we need to flush more
 			// often than that.
 			if blocks%1000 == 0 {
-				WriteTxIndexTail(batch, nextNum)
-				if err := batch.Write(); err != nil {
+				WriteTxIndexTail(db.GetTxIndexStore(), nextNum)
+				if err := indexBatch.Write(); err != nil {
 					log.Crit("Failed writing batch to db", "error", err)
 					return
 				}
-				batch.Reset()
+				indexBatch.Reset()
 			}
 			// If we've spent too much time already, notify the user of what we're doing
 			if time.Since(logged) > 8*time.Second {
-				log.Info("Unindexing transactions", "blocks", blocks, "txs", txs, "total", to-from, "elapsed", common.PrettyDuration(time.Since(start)))
+				log.Info("Unindexing transactions", "blocks", blocks, "txs", txs, "tail", nextNum, "total", to-from, "elapsed", common.PrettyDuration(time.Since(start)))
 				logged = time.Now()
 			}
 		}
 	}
-	// Flush the new indexing tail and the last committed data. It can also happen
-	// that the last batch is empty because nothing to unindex, but the tail has to
-	// be flushed anyway.
-	WriteTxIndexTail(batch, nextNum)
-	if err := batch.Write(); err != nil {
+	// Flush the final tail update and any remaining changes
+	WriteTxIndexTail(db.GetTxIndexStore(), nextNum)
+	if err := indexBatch.Write(); err != nil {
 		log.Crit("Failed writing batch to db", "error", err)
 		return
 	}
@@ -356,9 +357,9 @@ func unindexTransactions(db ethdb.Database, from uint64, to uint64, interrupt ch
 	}
 	select {
 	case <-interrupt:
-		logger("Transaction unindexing interrupted", "blocks", blocks, "txs", txs, "tail", to, "elapsed", common.PrettyDuration(time.Since(start)))
+		logger("Transaction unindexing interrupted", "blocks", blocks, "txs", txs, "tail", nextNum, "elapsed", common.PrettyDuration(time.Since(start)))
 	default:
-		logger("Unindexed transactions", "blocks", blocks, "txs", txs, "tail", to, "elapsed", common.PrettyDuration(time.Since(start)))
+		logger("Unindexed transactions", "blocks", blocks, "txs", txs, "tail", nextNum, "elapsed", common.PrettyDuration(time.Since(start)))
 	}
 }
 
