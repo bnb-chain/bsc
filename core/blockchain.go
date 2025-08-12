@@ -1843,7 +1843,6 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	// Calculate the total difficulty of the block
 	ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
 	if ptd == nil {
-		statedb.StopPrefetcher()
 		return consensus.ErrUnknownAncestor
 	}
 	// Make sure no inconsistent state is leaked during insertion
@@ -2512,7 +2511,6 @@ func (bc *BlockChain) processBlock(parentRoot common.Hash, block *types.Block, s
 	res, err := bc.processor.Process(block, statedb, bc.cfg.VmConfig)
 	if err != nil {
 		bc.reportBlock(block, res, err)
-		statedb.StopPrefetcher()
 		return nil, err
 	}
 	ptime := time.Since(pstart)
@@ -2521,7 +2519,6 @@ func (bc *BlockChain) processBlock(parentRoot common.Hash, block *types.Block, s
 	vstart := time.Now()
 	if err := bc.validator.ValidateState(block, statedb, res, false); err != nil {
 		bc.reportBlock(block, res, err)
-		statedb.StopPrefetcher()
 		return nil, err
 	}
 	vtime := time.Since(vstart)
