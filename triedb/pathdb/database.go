@@ -284,7 +284,7 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 		log.Crit("Failed to repair state history", "err", err)
 	}
 	// Disable database in case node is still in the initial state sync stage.
-	if rawdb.ReadSnapSyncStatusFlag(db.diskdb) == rawdb.StateSyncRunning && !db.readOnly {
+	if rawdb.ReadSnapSyncStatusFlag(db.snapdb) == rawdb.StateSyncRunning && !db.readOnly {
 		if err := db.Disable(); err != nil {
 			log.Crit("Failed to disable database", "err", err) // impossible to happen
 		}
@@ -494,7 +494,7 @@ func (db *Database) Disable() error {
 	disk.markStale()
 
 	// Write the initial sync flag to persist it across restarts.
-	rawdb.WriteSnapSyncStatusFlag(db.diskdb, rawdb.StateSyncRunning)
+	rawdb.WriteSnapSyncStatusFlag(db.snapdb, rawdb.StateSyncRunning)
 	log.Info("Disabled trie database due to state sync")
 	return nil
 }
@@ -547,7 +547,7 @@ func (db *Database) Enable(root common.Hash) error {
 	}
 	// Re-enable the database as the final step.
 	db.waitSync = false
-	rawdb.WriteSnapSyncStatusFlag(db.diskdb, rawdb.StateSyncFinished)
+	rawdb.WriteSnapSyncStatusFlag(db.snapdb, rawdb.StateSyncFinished)
 
 	// Re-construct a new disk layer backed by persistent state
 	// and schedule the state snapshot generation if it's permitted.
