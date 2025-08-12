@@ -162,7 +162,7 @@ func New(conf *Config) (*Node, error) {
 	if err := node.config.Storage.SnanityCheck(); err != nil {
 		return nil, err
 	}
-	node.config.Storage.SetDefaultPath(node.config.DataDir)
+	node.config.Storage.SetDefaultPath(node.config.instanceDir())
 
 	// Acquire the instance directory lock.
 	if err := node.openDataDir(); err != nil {

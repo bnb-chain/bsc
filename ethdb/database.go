@@ -252,6 +252,7 @@ type ShardingDB interface {
 	ShardIndex(key []byte) int
 }
 
+// TODO(galaio): use new MultiDatabase interface later
 type MultiDatabase interface {
 	MultiDB() bool
 	ChainDB() Database
