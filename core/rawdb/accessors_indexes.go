@@ -31,7 +31,8 @@ import (
 // ReadTxLookupEntry retrieves the positional metadata associated with a transaction
 // hash to allow retrieving the transaction or receipt by hash.
 func ReadTxLookupEntry(db ethdb.Reader, hash common.Hash) *uint64 {
-	data, _ := db.Get(txLookupKey(hash))
+	// Read lookup from the tx index KV (separate store if configured, otherwise main KV)
+	data, _ := db.IndexStoreReader().Get(txLookupKey(hash))
 	if len(data) == 0 {
 		return nil
 	}

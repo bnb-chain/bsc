@@ -548,7 +548,8 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			NoBuild:    bc.cacheConfig.SnapshotNoBuild,
 			AsyncBuild: !bc.cacheConfig.SnapshotWait,
 		}
-		bc.snaps, _ = snapshot.New(snapconfig, bc.db, bc.triedb, head.Root, int(bc.cacheConfig.TriesInMemory), bc.NoTries())
+
+		bc.snaps, _ = snapshot.New(snapconfig, bc.db.GetSnapStore(), bc.triedb, head.Root, int(bc.cacheConfig.TriesInMemory), bc.NoTries())
 
 		// Re-initialize the state database with snapshot
 		bc.statedb = state.NewDatabase(bc.triedb, bc.snaps)
@@ -1257,7 +1258,7 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 	go func() {
 		defer bc.dbWg.Done()
 
-		batch := bc.db.NewBatch()
+		batch := bc.db.GetTxIndexStore().NewBatch()
 		rawdb.WriteTxLookupEntriesByBlock(batch, block)
 
 		// Flush the whole batch into the disk, exit the node if failed

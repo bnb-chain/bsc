@@ -131,7 +131,7 @@ func (indexer *txIndexer) loop(chain *BlockChain) {
 		sub      = chain.SubscribeChainHeadEvent(headCh)
 	)
 
-	lastTail := rawdb.ReadTxIndexTail(indexer.db)
+	lastTail := rawdb.ReadTxIndexTail(indexer.db.IndexStoreReader())
 	if lastTail != nil {
 		// NOTE: The "TransactionIndexTail" key may exist only in cold SST files.
 		// Without a recent write, the key won't be in the memtable or block cache,
@@ -139,13 +139,7 @@ func (indexer *txIndexer) loop(chain *BlockChain) {
 		//
 		// This dummy write forces the key into the memtable (and later SST),
 		// ensuring future reads are fast (from memory or block cache).
-		batch := indexer.db.NewBatch()
-		rawdb.WriteTxIndexTail(batch, *lastTail)
-
-		if err := batch.Write(); err != nil {
-			log.Crit("Failed to write TransactionIndexTail warm-up", "error", err)
-			return
-		}
+		rawdb.WriteTxIndexTail(indexer.db.GetTxIndexStore(), *lastTail)
 	}
 
 	defer sub.Unsubscribe()
@@ -156,7 +150,7 @@ func (indexer *txIndexer) loop(chain *BlockChain) {
 		stop = make(chan struct{})
 		done = make(chan struct{})
 		lastHead = head.Number().Uint64()
-		go indexer.run(rawdb.ReadTxIndexTail(indexer.db), head.NumberU64(), stop, done)
+		go indexer.run(rawdb.ReadTxIndexTail(indexer.db.IndexStoreReader()), head.NumberU64(), stop, done)
 	}
 	for {
 		select {
@@ -164,13 +158,13 @@ func (indexer *txIndexer) loop(chain *BlockChain) {
 			if done == nil {
 				stop = make(chan struct{})
 				done = make(chan struct{})
-				go indexer.run(rawdb.ReadTxIndexTail(indexer.db), head.Header.Number.Uint64(), stop, done)
+				go indexer.run(rawdb.ReadTxIndexTail(indexer.db.IndexStoreReader()), head.Header.Number.Uint64(), stop, done)
 			}
 			lastHead = head.Header.Number.Uint64()
 		case <-done:
 			stop = nil
 			done = nil
-			lastTail = rawdb.ReadTxIndexTail(indexer.db)
+			lastTail = rawdb.ReadTxIndexTail(indexer.db.IndexStoreReader())
 		case ch := <-indexer.progress:
 			ch <- indexer.report(lastHead, lastTail)
 		case ch := <-indexer.term:

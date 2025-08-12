@@ -41,7 +41,9 @@ type freezerdb struct {
 	ancientRoot string
 
 	ethdb.AncientFreezer
-	stateStore ethdb.Database
+	stateStore   ethdb.Database
+	snapStore    ethdb.KeyValueStore
+	txIndexStore ethdb.KeyValueStore
 }
 
 func (frdb *freezerdb) StateStoreReader() ethdb.Reader {
@@ -49,6 +51,13 @@ func (frdb *freezerdb) StateStoreReader() ethdb.Reader {
 		return frdb
 	}
 	return frdb.stateStore
+}
+
+func (frdb *freezerdb) IndexStoreReader() ethdb.KeyValueReader {
+	if frdb.txIndexStore != nil {
+		return frdb.txIndexStore
+	}
+	return frdb.KeyValueStore
 }
 
 // AncientDatadir returns the path of root ancient directory.
@@ -68,6 +77,16 @@ func (frdb *freezerdb) Close() error {
 	}
 	if frdb.HasSeparateStateStore() {
 		if err := frdb.GetStateStore().Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if frdb.HasSeparateSnapStore() {
+		if err := frdb.GetSnapStore().Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if frdb.HasSeparateTxIndexStore() {
+		if err := frdb.GetTxIndexStore().Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -93,6 +112,42 @@ func (frdb *freezerdb) GetStateStore() ethdb.Database {
 
 func (frdb *freezerdb) HasSeparateStateStore() bool {
 	return frdb.stateStore != nil
+}
+
+func (frdb *freezerdb) SetSnapStore(snapStore ethdb.KeyValueStore) {
+	if frdb.snapStore != nil {
+		frdb.snapStore.Close()
+	}
+	frdb.snapStore = snapStore
+}
+
+func (frdb *freezerdb) GetSnapStore() ethdb.KeyValueStore {
+	if frdb.snapStore != nil {
+		return frdb.snapStore
+	}
+	return frdb.KeyValueStore
+}
+
+func (frdb *freezerdb) HasSeparateSnapStore() bool {
+	return frdb.snapStore != nil
+}
+
+func (frdb *freezerdb) SetTxIndexStore(store ethdb.KeyValueStore) {
+	if frdb.txIndexStore != nil {
+		frdb.txIndexStore.Close()
+	}
+	frdb.txIndexStore = store
+}
+
+func (frdb *freezerdb) GetTxIndexStore() ethdb.KeyValueStore {
+	if frdb.txIndexStore != nil {
+		return frdb.txIndexStore
+	}
+	return frdb.KeyValueStore
+}
+
+func (frdb *freezerdb) HasSeparateTxIndexStore() bool {
+	return frdb.txIndexStore != nil
 }
 
 // Freeze is a helper method used for external testing to trigger and block until
@@ -121,7 +176,9 @@ func (frdb *freezerdb) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint6
 // nofreezedb is a database wrapper that disables freezer data retrievals.
 type nofreezedb struct {
 	ethdb.KeyValueStore
-	stateStore ethdb.Database
+	stateStore   ethdb.Database
+	snapStore    ethdb.KeyValueStore
+	txIndexStore ethdb.KeyValueStore
 }
 
 // HasAncient returns an error as we don't have a backing chain freezer.
@@ -209,6 +266,49 @@ func (db *nofreezedb) StateStoreReader() ethdb.Reader {
 		return db.stateStore
 	}
 	return db
+}
+
+func (db *nofreezedb) IndexStoreReader() ethdb.KeyValueReader {
+	if db.txIndexStore != nil {
+		return db.txIndexStore
+	}
+	return db.KeyValueStore
+}
+
+func (db *nofreezedb) SetSnapStore(snapStore ethdb.KeyValueStore) {
+	if db.snapStore != nil {
+		db.snapStore.Close()
+	}
+	db.snapStore = snapStore
+}
+
+func (db *nofreezedb) GetSnapStore() ethdb.KeyValueStore {
+	if db.snapStore != nil {
+		return db.snapStore
+	}
+	return db.KeyValueStore
+}
+
+func (db *nofreezedb) HasSeparateSnapStore() bool {
+	return db.snapStore != nil
+}
+
+func (db *nofreezedb) SetTxIndexStore(store ethdb.KeyValueStore) {
+	if db.txIndexStore != nil {
+		db.txIndexStore.Close()
+	}
+	db.txIndexStore = store
+}
+
+func (db *nofreezedb) GetTxIndexStore() ethdb.KeyValueStore {
+	if db.txIndexStore != nil {
+		return db.txIndexStore
+	}
+	return db.KeyValueStore
+}
+
+func (db *nofreezedb) HasSeparateTxIndexStore() bool {
+	return db.txIndexStore != nil
 }
 
 func (db *nofreezedb) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {
@@ -315,10 +415,17 @@ func (db *emptyfreezedb) SyncAncient() error {
 	return nil
 }
 
-func (db *emptyfreezedb) GetStateStore() ethdb.Database      { return db }
-func (db *emptyfreezedb) SetStateStore(state ethdb.Database) {}
-func (db *emptyfreezedb) StateStoreReader() ethdb.Reader     { return db }
-func (db *emptyfreezedb) HasSeparateStateStore() bool        { return false }
+func (db *emptyfreezedb) GetStateStore() ethdb.Database              { return db }
+func (db *emptyfreezedb) SetStateStore(state ethdb.Database)         {}
+func (db *emptyfreezedb) StateStoreReader() ethdb.Reader             { return db }
+func (db *emptyfreezedb) HasSeparateStateStore() bool                { return false }
+func (db *emptyfreezedb) GetSnapStore() ethdb.KeyValueStore          { return db.KeyValueStore }
+func (db *emptyfreezedb) SetSnapStore(snapStore ethdb.KeyValueStore) {}
+func (db *emptyfreezedb) HasSeparateSnapStore() bool                 { return false }
+func (db *emptyfreezedb) GetTxIndexStore() ethdb.KeyValueStore       { return db.KeyValueStore }
+func (db *emptyfreezedb) SetTxIndexStore(store ethdb.KeyValueStore)  {}
+func (db *emptyfreezedb) HasSeparateTxIndexStore() bool              { return false }
+func (db *emptyfreezedb) IndexStoreReader() ethdb.KeyValueReader     { return db.KeyValueStore }
 func (db *emptyfreezedb) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {
 	return nil
 }
@@ -651,6 +758,18 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		defer trieIter.Release()
 	}
 
+	var snapDbIter ethdb.Iterator
+	if db.HasSeparateSnapStore() {
+		snapDbIter = db.GetSnapStore().NewIterator(keyPrefix, nil)
+		defer snapDbIter.Release()
+	}
+
+	var txIndexDbIter ethdb.Iterator
+	if db.HasSeparateTxIndexStore() {
+		txIndexDbIter = db.GetTxIndexStore().NewIterator(keyPrefix, nil)
+		defer txIndexDbIter.Release()
+	}
+
 	var (
 		count  int64
 		start  = time.Now()
@@ -837,6 +956,73 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			}
 		}
 		log.Info("Inspecting separate state database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
+	}
+	// inspect separate snapshot db
+	if snapDbIter != nil {
+		count = 0
+		logged = time.Now()
+		for snapDbIter.Next() {
+			var (
+				key   = snapDbIter.Key()
+				value = snapDbIter.Value()
+				size  = common.StorageSize(len(key) + len(value))
+			)
+			total += size
+
+			switch {
+			case bytes.HasPrefix(key, SnapshotAccountPrefix) && len(key) == (len(SnapshotAccountPrefix)+common.HashLength):
+				accountSnaps.Add(size)
+			case bytes.HasPrefix(key, SnapshotStoragePrefix) && len(key) == (len(SnapshotStoragePrefix)+2*common.HashLength):
+				storageSnaps.Add(size)
+			default:
+				var accounted bool
+				for _, meta := range [][]byte{
+					SnapshotRootKey, snapshotJournalKey, snapshotGeneratorKey, snapshotRecoveryKey, snapshotSyncStatusKey,
+				} {
+					if bytes.Equal(key, meta) {
+						metadata.Add(size)
+						accounted = true
+						break
+					}
+				}
+				if !accounted {
+					unaccounted.Add(size)
+				}
+			}
+			count++
+			if count%1000 == 0 && time.Since(logged) > 8*time.Second {
+				log.Info("Inspecting separate snapshot database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
+				logged = time.Now()
+			}
+		}
+		log.Info("Inspecting separate snapshot database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
+	}
+
+	// inspect separate txindex db
+	if txIndexDbIter != nil {
+		count = 0
+		logged = time.Now()
+		for txIndexDbIter.Next() {
+			var (
+				key   = txIndexDbIter.Key()
+				value = txIndexDbIter.Value()
+				size  = common.StorageSize(len(key) + len(value))
+			)
+			total += size
+
+			switch {
+			case bytes.HasPrefix(key, txLookupPrefix) && len(key) == (len(txLookupPrefix)+common.HashLength):
+				txLookups.Add(size)
+			default:
+				unaccounted.Add(size)
+			}
+			count++
+			if count%1000 == 0 && time.Since(logged) > 8*time.Second {
+				log.Info("Inspecting separate txindex database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
+				logged = time.Now()
+			}
+		}
+		log.Info("Inspecting separate txindex database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
 	}
 	// Display the database statistic of key-value store.
 	stats := [][]string{
