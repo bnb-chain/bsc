@@ -252,7 +252,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		overrides.OverrideVerkle = config.OverrideVerkle
 	}
 
-	// startup ancient freeze
+	// startup ancient freezer
 	freezeDb := chainDb
 	if err = freezeDb.SetupFreezerEnv(&ethdb.FreezerEnv{
 		ChainCfg:         chainConfig,
