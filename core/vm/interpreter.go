@@ -482,11 +482,9 @@ func (in *EVMInterpreter) calculateUsedBlockGas(contract *Contract, startPC, end
 			}
 		}
 
-		// 显式跳过 PUSH1..PUSH32 指令后面的立即数字节，避免依赖 CalculateSkipSteps
-		if op >= PUSH1 && op <= PUSH32 {
-			// op-PUSH1 得到立即数字节数偏移 (0..31)，再加 1 表示 opcode 自身
-			pc += uint64(op-PUSH1) + 1 // 跳过立即数
-			pc++                      // 跳过当前 opcode
+		// Prefer compiler's skip for PUSH 和部分已覆盖的超指令
+		if skip, steps := compiler.CalculateSkipSteps(contract.Code, int(pc)); skip {
+			pc += uint64(steps) + 1
 			continue
 		}
 
