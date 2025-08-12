@@ -550,7 +550,7 @@ func (in *EVMInterpreter) calculateUsedBlockGas(contract *Contract, startPC, end
 			pc += 6 // *pc +=5 +1(解释器)
 			continue
 		case Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT:
-			pc += 11 // *pc +=10 +1(解释器)
+			pc += 13 // *pc +=12 +1(解释器)
 			continue
 		case Dup3And:
 			pc += 2 // *pc +=1 +1(解释器)
