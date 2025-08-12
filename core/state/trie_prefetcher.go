@@ -44,6 +44,10 @@ type prefetchMsg struct {
 	keys  [][]byte
 }
 
+// TODO(Nathan): The triePrefetcher causes many differences from geth, especially for stateless mode.
+// This implementation supports parallelism within a single account, but we might consider
+// implementing this feature based on geth's original implementation.
+//
 // triePrefetcher is an active prefetcher, which receives accounts or storage
 // items and does trie-loading of them. The goal is to get as much useful content
 // into the caches as possible.
