@@ -338,8 +338,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 							actualRefund = currentBlock.StaticGas - actualUsedGas
 						}
 						delta := int64(actualRefund) - int64(expectedRefund)
-						// 仅保留“部分执行”的条目（该块应退款）。范围：该合约的所有 basic block
-						if executedStatic > 0 && expectedRefund > 0 {
+                        // 放宽：任何边界只要存在差异就打印，便于捕获 delta=13 的块
+                        if delta != 0 {
 							log.Error("[CROSS-CHECK]", "startPC", currentBlock.StartPC, "pcExit", pc,
 								"executedStatic", executedStatic, "staticGas", currentBlock.StaticGas,
 								"expectedRefund", expectedRefund, "actualUsedGas", actualUsedGas,
