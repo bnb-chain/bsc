@@ -310,6 +310,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				// 如果提前跳出了旧 block（而非完整执行到 EndPC），则应当存在未执行静态 gas。
 				// 我们仅打印提示，不改变任何状态或退款，以尽量减少日志和不影响行为。
 				if currentBlock != nil {
+					// 专门为目标 block 打印 END 标记，便于按片段对齐（即使无需退款也打印）
+					if in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184 && currentBlock.StartPC == 1165 && contract.CodeHash.String() == "0x97a48aa4c129657440dafdacd4c836389734d28cc4a0ca7403e68da660a74a59" {
+						log.Error("[BLOCK 1165 END]", "pcExit", pc, "codeHash", contract.CodeHash)
+					}
 					executedStatic := uint64(0)
 					if totalCost >= blockEnterTotalCost {
 						executedStatic = totalCost - blockEnterTotalCost
