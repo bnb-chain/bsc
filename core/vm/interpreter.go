@@ -338,13 +338,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 							actualRefund = currentBlock.StaticGas - actualUsedGas
 						}
 						delta := int64(actualRefund) - int64(expectedRefund)
-                        // 放开：只要该块应退款（expectedRefund>0）就打印，便于全面捕获
-                        if expectedRefund > 0 {
-							log.Error("[CROSS-CHECK]", "startPC", currentBlock.StartPC, "pcExit", pc,
-								"executedStatic", executedStatic, "staticGas", currentBlock.StaticGas,
-								"expectedRefund", expectedRefund, "actualUsedGas", actualUsedGas,
-								"actualRefund", actualRefund, "delta", delta, "codeHash", contract.CodeHash)
-						}
+                        // 放开：所有边界都打印，便于全面捕获
+                        log.Error("[CROSS-CHECK]", "startPC", currentBlock.StartPC, "pcExit", pc,
+                            "executedStatic", executedStatic, "staticGas", currentBlock.StaticGas,
+                            "expectedRefund", expectedRefund, "actualUsedGas", actualUsedGas,
+                            "actualRefund", actualRefund, "delta", delta, "codeHash", contract.CodeHash)
 					}
 					if expectedRefund > 0 && in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184 {
 						log.Error("[BOUNDARY CHECK]", "startPC", currentBlock.StartPC, "pcExit", pc,
