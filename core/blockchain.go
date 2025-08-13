@@ -256,7 +256,6 @@ func (cfg BlockChainConfig) WithNoAsyncFlush(on bool) *BlockChainConfig {
 // triedbConfig derives the configures for trie database.
 func (cfg *BlockChainConfig) triedbConfig(isVerkle bool) *triedb.Config {
 	config := &triedb.Config{
-		Cache:     cfg.TrieCleanLimit,
 		Preimages: cfg.Preimages,
 		NoTries:   cfg.NoTries,
 		IsVerkle:  isVerkle,

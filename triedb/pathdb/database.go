@@ -45,11 +45,11 @@ const (
 	// defaultStateCleanSize is the default memory allowance of clean state cache.
 	defaultStateCleanSize = 16 * 1024 * 1024
 
-	// MaxDirtyBufferSize is the maximum memory allowance of node buffer.
+	// maxBufferSize is the maximum memory allowance of node buffer.
 	// Too large buffer will cause the system to pause for a long
 	// time when write happens. Also, the largest batch that pebble can
 	// support is 4GB, node will panic if batch size exceeds this limit.
-	MaxDirtyBufferSize = 256 * 1024 * 1024
+	maxBufferSize = 256 * 1024 * 1024
 
 	// defaultBufferSize is the default memory allowance of node buffer
 	// that aggregates the writes from above until it's flushed into the
@@ -57,10 +57,6 @@ const (
 	// Do not increase the buffer size arbitrarily, otherwise the system
 	// pause time will increase when the database writes happen.
 	defaultBufferSize = 64 * 1024 * 1024
-
-	// DefaultBackgroundFlushInterval defines the default the wait interval
-	// that background node cache flush disk.
-	DefaultBackgroundFlushInterval = 3
 )
 
 type JournalType int
@@ -75,6 +71,10 @@ var (
 	maxDiffLayers = 128
 )
 
+func MaxDirtyBufferSize() int {
+	return maxBufferSize
+}
+
 // layer is the interface implemented by all state layers which includes some
 // public methods and some additional methods for internal usage.
 type layer interface {
@@ -82,8 +82,9 @@ type layer interface {
 	// if the read operation exits abnormally. Specifically, if the layer is
 	// already stale.
 	//
-	// Note, no error will be returned if the requested node is not found in database.
-	// Note, the hash parameter can access the diff-layer flat cache to speed up access.
+	// Note:
+	// - the returned node is not a copy, please don't modify it.
+	// - no error will be returned if the requested node is not found in database.
 	node(owner common.Hash, path []byte, depth int) ([]byte, common.Hash, *nodeLoc, error)
 
 	// account directly retrieves the account RLP associated with a particular
@@ -148,9 +149,9 @@ type Config struct {
 // unreasonable or unworkable.
 func (c *Config) sanitize() *Config {
 	conf := *c
-	if conf.WriteBufferSize > MaxDirtyBufferSize {
-		log.Warn("Sanitizing invalid node buffer size", "provided", common.StorageSize(conf.WriteBufferSize), "updated", common.StorageSize(MaxDirtyBufferSize))
-		conf.WriteBufferSize = MaxDirtyBufferSize
+	if conf.WriteBufferSize > maxBufferSize {
+		log.Warn("Sanitizing invalid node buffer size", "provided", common.StorageSize(conf.WriteBufferSize), "updated", common.StorageSize(maxBufferSize))
+		conf.WriteBufferSize = maxBufferSize
 	}
 	return &conf
 }

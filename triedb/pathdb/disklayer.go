@@ -454,7 +454,6 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 		}
 		log.Debug("Pruned state history", "items", pruned, "tailid", oldest)
 	}
-
 	return ndl, nil
 }
 
@@ -556,7 +555,7 @@ func (dl *diskLayer) size() (common.StorageSize, common.StorageSize) {
 	if dl.stale {
 		return 0, 0
 	}
-	dirtyNodes, dirtyimmutableNodes := dl.buffer.getSize()
+	dirtyNodes, dirtyimmutableNodes := dl.buffer.size(), 0
 	return common.StorageSize(dirtyNodes), common.StorageSize(dirtyimmutableNodes)
 }
 

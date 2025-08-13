@@ -461,7 +461,6 @@ func inspectTrie(ctx *cli.Context) error {
 		if dbScheme == rawdb.PathScheme {
 			config = &triedb.Config{
 				PathDB: utils.PathDBConfigAddJournalFilePath(stack, pathdb.ReadOnly),
-				Cache:  0,
 			}
 		} else if dbScheme == rawdb.HashScheme {
 			config = triedb.HashDefaults

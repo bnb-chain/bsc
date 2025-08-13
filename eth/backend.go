@@ -194,13 +194,13 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		}
 		config.TrieDirtyCache = 0
 	}
-	if config.StateScheme == rawdb.PathScheme && config.TrieDirtyCache > pathdb.MaxDirtyBufferSize/1024/1024 {
+	if config.StateScheme == rawdb.PathScheme && config.TrieDirtyCache > pathdb.MaxDirtyBufferSize()/1024/1024 {
 		log.Info("Capped dirty cache size", "provided", common.StorageSize(config.TrieDirtyCache)*1024*1024,
-			"adjusted", common.StorageSize(pathdb.MaxDirtyBufferSize))
+			"adjusted", common.StorageSize(pathdb.MaxDirtyBufferSize()))
 		log.Info("Clean cache size", "provided", common.StorageSize(config.TrieCleanCache)*1024*1024,
-			"adjusted", common.StorageSize(config.TrieCleanCache+config.TrieDirtyCache-pathdb.MaxDirtyBufferSize/1024/1024)*1024*1024)
-		config.TrieCleanCache += config.TrieDirtyCache - pathdb.MaxDirtyBufferSize/1024/1024
-		config.TrieDirtyCache = pathdb.MaxDirtyBufferSize / 1024 / 1024
+			"adjusted", common.StorageSize(config.TrieCleanCache+config.TrieDirtyCache-pathdb.MaxDirtyBufferSize()/1024/1024)*1024*1024)
+		config.TrieCleanCache += config.TrieDirtyCache - pathdb.MaxDirtyBufferSize()/1024/1024
+		config.TrieDirtyCache = pathdb.MaxDirtyBufferSize() / 1024 / 1024
 	}
 	log.Info("Allocated memory caches",
 		"state_scheme", config.StateScheme,

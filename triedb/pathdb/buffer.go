@@ -103,13 +103,7 @@ func (b *buffer) revertTo(db ethdb.KeyValueReader, nodes map[common.Hash]map[str
 		return nil
 	}
 	b.nodes.revertTo(db, nodes)
-	// TODO(galaio): In order to be compatible with the legacy version, a temporary empty check is added,
-	// which may affect the reading result of pbss as flatReader, see: flatReader.Account()
-	// it could be removed in the future
-	// Caution: there is also a panic issue with non-empty states when rewinding the chain again, but it is a very low possibility with finality.
-	if len(b.states.accountData) != 0 || len(b.states.storageData) != 0 {
-		b.states.revertTo(accounts, storages)
-	}
+	b.states.revertTo(accounts, storages)
 	return nil
 }
 
@@ -212,23 +206,4 @@ func (b *buffer) waitFlush() error {
 	}
 	<-b.done
 	return b.flushErr
-}
-
-// getAllNodesAndStates return the trie nodes and states cached in nodebuffer.
-func (b *buffer) getAllNodesAndStates() (*nodeSet, *stateSet) {
-	return b.nodes, b.states
-}
-
-func (b *buffer) getStates() *stateSet {
-	return b.states
-}
-
-// getLayers return the size of cached difflayers.
-func (b *buffer) getLayers() uint64 {
-	return b.layers
-}
-
-// getSize return the nodebuffer used size.
-func (b *buffer) getSize() (uint64, uint64) {
-	return b.size(), 0
 }

@@ -32,9 +32,8 @@ import (
 
 // Config defines all necessary options for database.
 type Config struct {
-	Preimages bool // Flag whether the preimage of node key is recorded
-	Cache     int
 	NoTries   bool
+	Preimages bool           // Flag whether the preimage of node key is recorded
 	IsVerkle  bool           // Flag whether the db is holding a verkle tree
 	HashDB    *hashdb.Config // Configs for hash-based scheme
 	PathDB    *pathdb.Config // Configs for experimental path-based scheme

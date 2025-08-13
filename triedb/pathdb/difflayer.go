@@ -51,7 +51,6 @@ func newDiffLayer(parent layer, root common.Hash, id uint64, block uint64, nodes
 		nodes:  nodes,
 		states: states,
 	}
-
 	dirtyNodeWriteMeter.Mark(int64(nodes.size))
 	dirtyStateWriteMeter.Mark(int64(states.size))
 	log.Debug("Created new diff layer", "id", id, "block", block, "nodesize", common.StorageSize(nodes.size), "statesize", common.StorageSize(states.size))
@@ -85,6 +84,7 @@ func (dl *diffLayer) node(owner common.Hash, path []byte, depth int) ([]byte, co
 	// state accessing.
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
+
 	// If the trie node is known locally, return it
 	n, ok := dl.nodes.node(owner, path)
 	if ok {

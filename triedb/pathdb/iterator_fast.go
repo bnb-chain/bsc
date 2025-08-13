@@ -98,7 +98,7 @@ func newFastIterator(db *Database, root common.Hash, account common.Hash, seek c
 						if dl.stale {
 							return nil, errSnapshotStale
 						}
-						return dl.buffer.getStates().mustAccount(hash)
+						return dl.buffer.states.mustAccount(hash)
 					}),
 					priority: depth,
 				})
@@ -140,7 +140,7 @@ func newFastIterator(db *Database, root common.Hash, account common.Hash, seek c
 						if dl.stale {
 							return nil, errSnapshotStale
 						}
-						return dl.buffer.getStates().mustStorage(addrHash, slotHash)
+						return dl.buffer.states.mustStorage(addrHash, slotHash)
 					}),
 					priority: depth,
 				})
