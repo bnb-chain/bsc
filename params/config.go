@@ -1625,6 +1625,12 @@ func (c *ChainConfig) Timestamp(fork forks.Fork) *uint64 {
 	switch {
 	case fork == forks.Osaka:
 		return c.OsakaTime
+	case fork == forks.Fermi:
+		return c.FermiTime
+	case fork == forks.Maxwell:
+		return c.MaxwellTime
+	case fork == forks.Lorentz:
+		return c.LorentzTime
 	case fork == forks.Prague:
 		return c.PragueTime
 	case fork == forks.Cancun:

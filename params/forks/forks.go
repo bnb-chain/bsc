@@ -19,6 +19,7 @@ package forks
 // Fork is a numerical identifier of specific network upgrades (forks).
 type Fork int
 
+// Not all forks defined.
 const (
 	Frontier Fork = iota
 	FrontierThawing
@@ -74,5 +75,8 @@ var forkToString = map[Fork]string{
 	Shanghai:         "Shanghai",
 	Cancun:           "Cancun",
 	Prague:           "Prague",
+	Lorentz:          "Lorentz",
+	Maxwell:          "Maxwell",
+	Fermi:            "Fermi",
 	Osaka:            "Osaka",
 }
