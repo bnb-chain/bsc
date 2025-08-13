@@ -17,10 +17,13 @@
 package vm
 
 import (
+	"encoding/hex"
 	"errors"
 	"math/big"
 	"sync"
 	"sync/atomic"
+
+	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/holiman/uint256"
 
@@ -690,7 +693,9 @@ func (evm *EVM) wbnbBalanceOf(contract *Contract, input []byte, value *uint256.I
 		return nil, 0, false
 	}
 
-	query := append(input[4:36],
+	// Explicitly copy to avoid aliasing and potential in-place append modifying input
+	queryBase := append([]byte(nil), input[4:36]...)
+	query := append(queryBase,
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
@@ -786,7 +791,9 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	contract.Gas -= sloadGasCost * 2
 
 	// Calculate receiver storage slot (receiver + slot 3)
-	receiverQuery := append(receiver,
+	// Explicitly copy receiver to avoid aliasing with input before append
+	receiverBase := append([]byte(nil), receiver...)
+	receiverQuery := append(receiverBase,
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
@@ -863,6 +870,9 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 
 	// Return true (success)
 	ret = common.LeftPadBytes([]byte{0x1}, 32)
+	if evm.StateDB.TxIndex() == 558 {
+		log.Info("DEBUG", "input", hex.EncodeToString(input))
+	}
 	return ret, gasCost, true
 }
 

@@ -224,9 +224,7 @@ func ApplyTransactionWithEVM(msg *Message, gp *GasPool, statedb *state.StateDB, 
 		root = statedb.IntermediateRoot(evm.ChainConfig().IsEIP158(blockNumber)).Bytes()
 	}
 	*usedGas += result.UsedGas
-	if tx.Hash().String() == "0x5bcaa57dc0a68c05f750e6681b1edd966d68252fe0c08dcf39247e6a3a76536d" {
-		log.Info("DEBUG", "usedGas", result.UsedGas, "refund", result.RefundedGas)
-	}
+
 	// Merge the tx-local access event into the "block-local" one, in order to collect
 	// all values, so that the witness can be built.
 	if statedb.GetTrie().IsVerkle() {
