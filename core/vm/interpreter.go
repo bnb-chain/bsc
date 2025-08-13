@@ -217,6 +217,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		nextBlockPC     uint64               // 下一个block的起始PC（用于边界检测）
 		totalDynamicGas uint64               // 本次调用累积的动态gas
 		debugStaticGas  uint64               // 仅调试：累计已预扣的静态gas（扣减退款后）
+		blockEnterTotalCost uint64           // 进入当前block时，真实累计的静态gas（用于退款校验）
 	)
 
 	// initialise blockChargeActive to whether opcode optimizations are enabled
@@ -273,6 +274,30 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}
 
 		if in.evm.Config.EnableOpcodeOptimizations && blockChargeActive {
+			// 本地帮助函数：在退款前，基于真实执行路径计算“应退多少”，并与实际退款做对比日志
+			logBlockRefund := func(reason string) uint64 {
+				if currentBlock == nil {
+					return 0
+				}
+				// 真实已执行的静态gas = 到当前时刻的累计静态gas - 进入该block时的累计静态gas
+				executedStatic := uint64(0)
+				if totalCost >= blockEnterTotalCost {
+					executedStatic = totalCost - blockEnterTotalCost
+				}
+				expectedRefund := uint64(0)
+				if currentBlock.StaticGas > executedStatic {
+					expectedRefund = currentBlock.StaticGas - executedStatic
+				}
+				actualRefund := in.refundUnusedBlockGas(contract, pc, currentBlock)
+				// 仅在目标区块/交易且存在差异时打印
+				if in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184 && expectedRefund != actualRefund {
+					log.Error("[REFUND CHECK]", "reason", reason, "startPC", currentBlock.StartPC, "pcExit", pc,
+						"staticGas", currentBlock.StaticGas, "executedStatic", executedStatic,
+						"expectedRefund", expectedRefund, "actualRefund", actualRefund,
+						"delta", int64(actualRefund)-int64(expectedRefund), "codeHash", contract.CodeHash)
+				}
+				return actualRefund
+			}
 			// 只在以下情况检查block边界：
 			// 1. 当前block为空（首次执行）
 			// 2. PC超出了当前block范围（向前或向后）
@@ -285,10 +310,12 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 						contract.Gas -= block.StaticGas
 						//log.Error("[BLOCK-CACHE] hit", "codeHash", contract.CodeHash, "startPC", block.StartPC, "staticGas", block.StaticGas)
 						debugStaticGas += block.StaticGas
+						// 记录进入该block时的真实累计静态gas
+						blockEnterTotalCost = totalCost
 					} else {
 						// gas 不足以支付下一个 block：退回当前 block 未用部分并停用预扣
 						if currentBlock != nil {
-							diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
+							diff := logBlockRefund("gasInsufficient")
 							debugStaticGas -= diff
 						}
 						blockChargeActive = false
@@ -298,7 +325,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				} else {
 					// cache 缺失：同样退回并停用预扣
 					if currentBlock != nil {
-						diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
+						diff := logBlockRefund("cacheMissing")
 						debugStaticGas -= diff
 					}
 					blockChargeActive = false
@@ -343,17 +370,26 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// the operation
 			// Memory check needs to be done prior to evaluating the dynamic gas portion,
 			// to detect calculation overflows
-			if operation.memorySize != nil {
+				if operation.memorySize != nil {
 				memSize, overflow := operation.memorySize(stack)
 				if overflow {
-					diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
+						diff := func() uint64 {
+							// 局部调用，以避免在 blockChargeActive=false 时创建多余闭包
+							if in.evm.Config.EnableOpcodeOptimizations && blockChargeActive {
+								// 使用带校验日志的退款
+								// 这里无法直接访问 logBlockRefund，因其定义在上层作用域且仅在 blockChargeActive 分支内
+								// 因此退回到原退款函数以保证不改变行为
+								return in.refundUnusedBlockGas(contract, pc, currentBlock)
+							}
+							return in.refundUnusedBlockGas(contract, pc, currentBlock)
+						}()
 					debugStaticGas -= diff
 					return nil, ErrGasUintOverflow
 				}
 				// memory is expanded in words of 32 bytes. Gas
 				// is also calculated in words.
 				if memorySize, overflow = math.SafeMul(toWordSize(memSize), 32); overflow {
-					diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
+						diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
 					debugStaticGas -= diff
 					return nil, ErrGasUintOverflow
 				}
