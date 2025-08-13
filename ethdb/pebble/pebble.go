@@ -46,8 +46,6 @@ const (
 	// compaction, io and pause stats to report to the user.
 	metricsGatheringInterval = 3 * time.Second
 
-	// numLevels is the level number of pebble sst files
-	numLevels = 7
 	// degradationWarnInterval specifies how often warning should be printed if the
 	// leveldb database cannot keep up with requested writes.
 	degradationWarnInterval = time.Minute
@@ -187,6 +185,7 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 		handles = minHandles
 	}
 	logger := log.New("database", file)
+	logger.Info("Allocated cache and file handles", "cache", common.StorageSize(cache*1024*1024), "handles", handles)
 
 	// The max memtable size is limited by the uint32 offsets stored in
 	// internal/arenaskl.node, DeferredBatchOp, and flushableBatchEntry.
@@ -217,9 +216,7 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 	if memTableSize >= maxMemTableSize {
 		memTableSize = maxMemTableSize - 1
 	}
-
-	logger.Info("Allocated cache and file handles", "cache", common.StorageSize(cache*1024*1024),
-		"handles", handles, "memory table", common.StorageSize(memTableSize))
+	logger.Info("Allocated memory table size", "memory table", common.StorageSize(memTableSize))
 
 	db := &Database{
 		fn:       file,
@@ -233,6 +230,7 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 		// Note that enabling async writes means recent data may be lost in the event of an
 		// application-level panic (writes will also be lost on a machine-level failure,
 		// of course). Geth is expected to handle recovery from an unclean shutdown.
+		// TODO(Nathan): turn back to pebble.NoSync to improve performance
 		// writeOptions: pebble.NoSync,
 		writeOptions: pebble.Sync,
 	}
@@ -260,15 +258,15 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 
 		// Per-level options. Options for at least one level must be specified. The
 		// options for the last level are used for all subsequent levels.
-		// Levels: []pebble.LevelOptions{
-		// 	{TargetFileSize: 2 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-		// 	{TargetFileSize: 4 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-		// 	{TargetFileSize: 8 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-		// 	{TargetFileSize: 16 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-		// 	{TargetFileSize: 32 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-		// 	{TargetFileSize: 64 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-		// 	{TargetFileSize: 128 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
-		// },
+		Levels: []pebble.LevelOptions{
+			{TargetFileSize: 2 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
+			{TargetFileSize: 4 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
+			{TargetFileSize: 8 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
+			{TargetFileSize: 16 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
+			{TargetFileSize: 32 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
+			{TargetFileSize: 64 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
+			{TargetFileSize: 128 * 1024 * 1024, FilterPolicy: bloom.FilterPolicy(10)},
+		},
 		ReadOnly: readonly,
 		EventListener: &pebble.EventListener{
 			CompactionBegin: db.onCompactionBegin,
@@ -276,7 +274,6 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 			WriteStallBegin: db.onWriteStallBegin,
 			WriteStallEnd:   db.onWriteStallEnd,
 		},
-		Levels: make([]pebble.LevelOptions, numLevels),
 		Logger: panicLogger{}, // TODO(karalabe): Delete when this is upstreamed in Pebble
 
 		// Pebble is configured to use asynchronous write mode, meaning write operations
@@ -304,11 +301,7 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 		l := &opt.Levels[i]
 		l.BlockSize = 32 << 10       // 32 KB
 		l.IndexBlockSize = 256 << 10 // 256 KB
-		l.FilterPolicy = bloom.FilterPolicy(10)
 		l.FilterType = pebble.TableFilter
-		if i > 0 {
-			l.TargetFileSize = opt.Levels[i-1].TargetFileSize * 2
-		}
 		l.EnsureDefaults()
 	}
 
