@@ -133,6 +133,7 @@ type AncientReaderOp interface {
 	// AncientSize returns the ancient size of the specified category.
 	AncientSize(kind string) (uint64, error)
 
+	//TODO(Nathan): remove ItemAmountInAncient and AncientOffSet
 	// ItemAmountInAncient returns the actual length of current ancientDB.
 	ItemAmountInAncient() (uint64, error)
 
