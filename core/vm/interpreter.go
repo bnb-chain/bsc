@@ -296,6 +296,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 						"expectedRefund", expectedRefund, "actualRefund", actualRefund,
 						"delta", int64(actualRefund)-int64(expectedRefund), "codeHash", contract.CodeHash)
 				}
+				// 在目标 block/交易与指定 basic block 打印 END 标记，便于切片
+				if in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184 && currentBlock.StartPC == 1165 && contract.CodeHash.String() == "0x97a48aa4c129657440dafdacd4c836389734d28cc4a0ca7403e68da660a74a59" {
+					log.Error("[BLOCK 1165 END]", "pcExit", pc, "codeHash", contract.CodeHash)
+				}
 				return actualRefund
 			}
 			// 只在以下情况检查block边界：
@@ -324,6 +328,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 					currentBlock = block
 					// 计算下一个block的起始PC（如果存在）
 					nextBlockPC = block.EndPC
+					// 在目标 block/交易且命中指定 basic block 时打印 START 标记
+					if in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184 && block.StartPC == 1165 && contract.CodeHash.String() == "0x97a48aa4c129657440dafdacd4c836389734d28cc4a0ca7403e68da660a74a59" {
+						log.Error("[BLOCK 1165 START]", "startPC", block.StartPC, "codeHash", contract.CodeHash)
+					}
 					if contract.Gas >= block.StaticGas {
 						contract.Gas -= block.StaticGas
 						//log.Error("[BLOCK-CACHE] hit", "codeHash", contract.CodeHash, "startPC", block.StartPC, "staticGas", block.StaticGas)
@@ -367,10 +375,13 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// Only charge gas if we haven't already charged the pre-calculated static gas
 		cost = operation.constantGas // For tracing todo: move into if
 		totalCost += cost
-		// 仅在目标区块和交易索引时打印调试日志
-		//if in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184 {
-		//	log.Error("accumulate totalCost", "totalCost", totalCost, "cost", cost, "op", op.String(), "pc", pc)
-		//}
+		// 仅在目标区块/交易、指定合约与指定 basic block(StartPC=1165)内打印，低噪声对齐 opcode
+		if in.evm.Context.BlockNumber.Uint64() == 50897362 &&
+			in.evm.StateDB.TxIndex() == 184 &&
+			contract.CodeHash.String() == "0x97a48aa4c129657440dafdacd4c836389734d28cc4a0ca7403e68da660a74a59" &&
+			currentBlock != nil && currentBlock.StartPC == 1165 {
+			log.Error("accumulate totalCost", "totalCost", totalCost, "cost", cost, "op", op.String(), "pc", pc)
+		}
 		if !blockChargeActive {
 
 			if contract.Gas < cost {
