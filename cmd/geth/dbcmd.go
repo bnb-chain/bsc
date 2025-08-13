@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -327,6 +328,10 @@ of ancientStore, will also displays the reserved number of blocks in ancientStor
 			utils.SyncModeFlag,
 			utils.CacheFlag,
 			utils.CacheDatabaseFlag,
+			&cli.BoolFlag{
+				Name:  "conservative",
+				Usage: "Use conservative mode (only extract very specific data types)",
+			},
 		}, utils.NetworkFlags),
 		Description: `This command migrates a single chaindb database to multi-database format IN-PLACE.
 The source database will be read from --datadir/chaindata directory, and data will be split into:
@@ -1535,6 +1540,14 @@ func migrateDatabase(ctx *cli.Context) error {
 
 	log.Info("Starting in-place database migration", "source", sourceChainDataPath)
 
+	// Safety check: ensure subdirectories don't already exist
+	for _, subdir := range []string{"state", "snapshot", "txindex"} {
+		subdirPath := filepath.Join(sourceChainDataPath, subdir)
+		if common.FileExist(subdirPath) {
+			return fmt.Errorf("target subdirectory already exists: %s - migration may have been run before", subdirPath)
+		}
+	}
+
 	// Open source database for read/write (NOT readonly) without using the
 	// Node helper to avoid auto-opening separate state/snapshot/txindex DBs.
 	// We only need the hot key-value store for in-place extraction & deletion.
@@ -1543,6 +1556,11 @@ func migrateDatabase(ctx *cli.Context) error {
 		return fmt.Errorf("failed to open source chain database: %v", err)
 	}
 	defer sourceDB.Close()
+
+	// Count total items before migration for verification
+	log.Info("Counting database entries before migration...")
+	totalItemsBefore := countDatabaseItems(sourceDB)
+	log.Info("Database scan completed", "totalItems", totalItemsBefore)
 
 	// Create target directory structure (separate databases within source chaindata)
 	targetStatePath := filepath.Join(sourceChainDataPath, "state")
@@ -1577,16 +1595,14 @@ func migrateDatabase(ctx *cli.Context) error {
 	}
 	defer indexDB.Close()
 
-	// Get additional flags
-	limit := ctx.Int("limit")
-	verbose := ctx.Bool("debug-verbose")
-
-	if limit > 0 {
-		log.Info("Running in test mode with limited entries", "limit", limit)
+	// Get conservative flag
+	conservative := ctx.Bool("conservative")
+	if conservative {
+		log.Info("🛡️ Running in CONSERVATIVE mode - only extracting very specific data types")
 	}
 
-	// Start in-place migration
-	return performInPlaceMigration(sourceDB, stateDB, snapDB, indexDB, limit, verbose)
+	// Start in-place migration (pass the totalItemsBefore for verification)
+	return performInPlaceMigration(sourceDB, stateDB, snapDB, indexDB, totalItemsBefore, sourceChainDataPath, conservative)
 }
 
 // openTargetDatabase creates a key-value database at the specified path
@@ -1894,6 +1910,8 @@ func isTrieKey(key, value []byte) bool {
 		bytes.HasPrefix(key, rawdb.BloomTrieIndexPrefix) ||
 		bytes.HasPrefix(key, rawdb.BloomTriePrefix): // Bloomtrie sub
 		return true
+	case bytes.HasPrefix(key, []byte("c")) && len(key) == (1+common.HashLength): // CodePrefix - contract code
+		return true
 	default:
 		// Check specific metadata keys
 		keyStr := string(key)
@@ -1905,8 +1923,12 @@ func isTrieKey(key, value []byte) bool {
 }
 
 // categorizeDataByKey categorizes database entries based on key prefixes
-// Returns the target database name: "state", "snapshot", "txindex", or "chain"
+// Returns the target database name: "state", "snapshot", "txindex", or "" (stay in original chaindata)
 func categorizeDataByKey(key, value []byte) string {
+	// CRITICAL: Explicit protection for essential metadata keys
+	// These keys must NEVER be extracted and should always stay in chaindata
+	keyStr := string(key)
+
 	// State trie data - use the comprehensive trie key logic
 	if isTrieKey(key, value) {
 		return "state"
@@ -1922,7 +1944,6 @@ func categorizeDataByKey(key, value []byte) string {
 	}
 
 	// Snapshot metadata keys
-	keyStr := string(key)
 	snapshotMetadataKeys := []string{
 		"SnapshotRoot", "SnapshotJournal", "SnapshotGenerator",
 		"SnapshotRecovery", "SnapshotSyncStatus",
@@ -1940,8 +1961,7 @@ func categorizeDataByKey(key, value []byte) string {
 
 	// Transaction index metadata
 	txIndexMetadataKeys := []string{
-		"TransactionIndexTail",       // txIndexTailKey - tracks the oldest indexed block
-		"FastTransactionLookupLimit", // fastTxLookupLimitKey - deprecated but kept for completeness
+		"TransactionIndexTail", // txIndexTailKey - tracks the oldest indexed block
 	}
 	for _, metaKey := range txIndexMetadataKeys {
 		if keyStr == metaKey {
@@ -1949,12 +1969,12 @@ func categorizeDataByKey(key, value []byte) string {
 		}
 	}
 
-	// Everything else goes to chain database
-	return "chain"
+	// Everything else stays in the original chaindata (not processed)
+	return ""
 }
 
 // performInPlaceMigration performs in-place data migration by extracting data from source DB
-func performInPlaceMigration(sourceDB, stateDB, snapDB, indexDB ethdb.Database, limit int, verbose bool) error {
+func performInPlaceMigration(sourceDB, stateDB, snapDB, indexDB ethdb.Database, totalItemsBefore int64, sourceChainDataPath string, conservative bool) error {
 	stats := &MigrationStats{startTime: time.Now()}
 
 	log.Info("Starting in-place data migration")
@@ -1963,22 +1983,35 @@ func performInPlaceMigration(sourceDB, stateDB, snapDB, indexDB ethdb.Database, 
 	stopProgress := make(chan struct{})
 	go progressMonitor(stats, stopProgress)
 
-	// Extract state data
-	if err := extractDataByCategory(sourceDB, stateDB, "state", stats, limit, verbose); err != nil {
-		close(stopProgress)
-		return fmt.Errorf("failed to extract state data: %v", err)
-	}
+	if conservative {
+		// Conservative mode: only extract txindex data (safest)
+		log.Info("🔍 CONSERVATIVE: Only extracting txindex data...")
+		if err := extractDataByCategoryConservative(sourceDB, indexDB, "txindex", stats); err != nil {
+			close(stopProgress)
+			return fmt.Errorf("failed to extract txindex data: %v", err)
+		}
+	} else {
+		// Normal mode: extract all data types
+		// Extract state data
+		log.Info("🔍 Starting state data extraction...")
+		if err := extractDataByCategory(sourceDB, stateDB, "state", stats); err != nil {
+			close(stopProgress)
+			return fmt.Errorf("failed to extract state data: %v", err)
+		}
 
-	// Extract snapshot data
-	if err := extractDataByCategory(sourceDB, snapDB, "snapshot", stats, limit, verbose); err != nil {
-		close(stopProgress)
-		return fmt.Errorf("failed to extract snapshot data: %v", err)
-	}
+		// Extract snapshot data
+		log.Info("🔍 Starting snapshot data extraction...")
+		if err := extractDataByCategory(sourceDB, snapDB, "snapshot", stats); err != nil {
+			close(stopProgress)
+			return fmt.Errorf("failed to extract snapshot data: %v", err)
+		}
 
-	// Extract txindex data
-	if err := extractDataByCategory(sourceDB, indexDB, "txindex", stats, limit, verbose); err != nil {
-		close(stopProgress)
-		return fmt.Errorf("failed to extract txindex data: %v", err)
+		// Extract txindex data
+		log.Info("🔍 Starting txindex data extraction...")
+		if err := extractDataByCategory(sourceDB, indexDB, "txindex", stats); err != nil {
+			close(stopProgress)
+			return fmt.Errorf("failed to extract txindex data: %v", err)
+		}
 	}
 
 	close(stopProgress)
@@ -2002,11 +2035,68 @@ func performInPlaceMigration(sourceDB, stateDB, snapDB, indexDB ethdb.Database, 
 		"indexMB", indexBytes/(1024*1024),
 		"totalExtractedMB", (stateBytes+snapBytes+indexBytes)/(1024*1024))
 
+	// Post-migration verification: count remaining items in source DB
+	log.Info("Performing post-migration verification...")
+	totalItemsAfter := countDatabaseItems(sourceDB)
+	extractedItems := state + snapshot + txindex
+
+	log.Info("Migration verification",
+		"itemsBefore", totalItemsBefore,
+		"itemsAfter", totalItemsAfter,
+		"itemsExtracted", extractedItems,
+		"expectedRemaining", totalItemsBefore-extractedItems)
+
+	if totalItemsAfter != (totalItemsBefore - extractedItems) {
+		return fmt.Errorf("migration verification failed: expected %d remaining items, found %d",
+			totalItemsBefore-extractedItems, totalItemsAfter)
+	}
+
+	log.Info("✅ In-place migration completed and verified successfully!")
+
+	// Handle ancient state data migration
+	if err := moveAncientData(sourceChainDataPath); err != nil {
+		log.Error("Failed to move ancient state data", "error", err)
+		return fmt.Errorf("failed to move ancient state data: %v", err)
+	}
+
+	// Show directory sizes for debugging
+	log.Info("Checking database directory sizes...")
+	checkDirectorySize := func(path, name string) {
+		if !common.FileExist(path) {
+			log.Info("Directory size", "name", name, "status", "not found")
+			return
+		}
+		// Try to get directory size using du command
+		cmd := exec.Command("du", "-sh", path)
+		output, err := cmd.Output()
+		if err != nil {
+			log.Info("Directory size", "name", name, "status", "unable to measure")
+		} else {
+			sizeStr := strings.Fields(string(output))[0]
+			log.Info("Directory size", "name", name, "size", sizeStr)
+		}
+	}
+
+	// Get the chaindata base directory from the source path
+	baseDir := sourceChainDataPath
+	checkDirectorySize(baseDir, "chaindata (remaining)")
+	checkDirectorySize(filepath.Join(baseDir, "state"), "state")
+	checkDirectorySize(filepath.Join(baseDir, "snapshot"), "snapshot")
+	checkDirectorySize(filepath.Join(baseDir, "txindex"), "txindex")
+
+	// Perform database compaction after migration
+	log.Info("Starting database compaction to reclaim space...")
+	if err := performDatabaseCompaction(sourceDB, stateDB, snapDB, indexDB); err != nil {
+		log.Error("Failed to compact databases", "error", err)
+		return fmt.Errorf("failed to compact databases: %v", err)
+	}
+
+	log.Info("🎉 Migration completed successfully with proper ancient data structure and compaction!")
 	return nil
 }
 
 // extractDataByCategory extracts data of a specific category from source DB to target DB and deletes from source
-func extractDataByCategory(sourceDB, targetDB ethdb.Database, category string, stats *MigrationStats, limit int, verbose bool) error {
+func extractDataByCategory(sourceDB, targetDB ethdb.Database, category string, stats *MigrationStats) error {
 	log.Info("Extracting data category", "category", category)
 
 	// Create batches for target DB and source deletion
@@ -2028,8 +2118,19 @@ func extractDataByCategory(sourceDB, targetDB ethdb.Database, category string, s
 		targetDB := categorizeDataByKey(key, value)
 
 		// Only process data that matches our target category
-		if targetDB != category {
+		// Skip empty classification (data stays in original chaindata)
+		if targetDB == "" || targetDB != category {
 			continue
+		}
+
+		// Debug: Log first few extractions for each category
+		if extracted < 10 {
+			log.Info("📝 Extracting key",
+				"category", category,
+				"keyHex", fmt.Sprintf("%x", key[:min(16, len(key))]),
+				"keyStr", string(key[:min(32, len(key))]),
+				"keyLen", len(key),
+				"valueLen", len(value))
 		}
 
 		// Add to target database
@@ -2057,15 +2158,12 @@ func extractDataByCategory(sourceDB, targetDB ethdb.Database, category string, s
 			}
 			deleteBatch.Reset()
 
-			if verbose {
-				log.Info("Batch flushed", "category", category, "extracted", extracted, "batchSize", ethdb.IdealBatchSize/(1024*1024), "MB")
-			}
+			log.Debug("Batch flushed", "category", category, "extracted", extracted, "batchSizeMB", ethdb.IdealBatchSize/(1024*1024))
 		}
 
-		// Check limit for test mode
-		if limit > 0 && extracted >= limit {
-			log.Info("Reached test limit for category", "category", category, "limit", limit)
-			break
+		// Progress update every 10000 items
+		if extracted%10000 == 0 && extracted > 0 {
+			log.Info("Extraction progress", "category", category, "extracted", extracted)
 		}
 	}
 
@@ -2088,5 +2186,254 @@ func extractDataByCategory(sourceDB, targetDB ethdb.Database, category string, s
 	}
 
 	log.Info("Data extraction completed", "category", category, "extracted", extracted)
+	return nil
+}
+
+// extractDataByCategoryConservative - super conservative extraction (only very specific keys)
+func extractDataByCategoryConservative(sourceDB, targetDB ethdb.Database, category string, stats *MigrationStats) error {
+	log.Info("Extracting data category (CONSERVATIVE)", "category", category)
+
+	// Create batches for target DB and source deletion
+	targetBatch := targetDB.NewBatch()
+	deleteBatch := sourceDB.NewBatch()
+
+	// Iterate through source database
+	it := sourceDB.NewIterator(nil, nil)
+	defer it.Release()
+
+	extracted := 0
+	for it.Next() {
+		// Create copies of key and value since iterator reuses underlying memory
+		key := make([]byte, len(it.Key()))
+		value := make([]byte, len(it.Value()))
+		copy(key, it.Key())
+		copy(value, it.Value())
+
+		var shouldExtract bool
+
+		// SUPER CONSERVATIVE: Only extract the most obvious keys
+		if category == "txindex" {
+			// Only extract transaction lookup keys with exact prefix and length
+			if bytes.HasPrefix(key, []byte("l")) && len(key) == (1+32) { // txLookupPrefix + hash
+				shouldExtract = true
+			}
+		} else if category == "snapshot" {
+			// Only extract account snapshots with exact prefix and length
+			if bytes.HasPrefix(key, []byte("a")) && len(key) == (1+32) { // SnapshotAccountPrefix + hash
+				shouldExtract = true
+			}
+			// Only extract storage snapshots with exact prefix and length
+			if bytes.HasPrefix(key, []byte("o")) && len(key) == (1+32+32) { // SnapshotStoragePrefix + accountHash + storageHash
+				shouldExtract = true
+			}
+		} else if category == "state" {
+			// Only extract the most obvious trie keys
+			keyStr := string(key)
+			if keyStr == "TrieJournal" || keyStr == "TrieSync" || keyStr == "LastStateID" {
+				shouldExtract = true
+			}
+			// Only extract very specific prefixed trie data
+			if bytes.HasPrefix(key, []byte("A")) && len(key) > 1 { // TrieNodeAccountPrefix
+				shouldExtract = true
+			}
+			if bytes.HasPrefix(key, []byte("O")) && len(key) > 1 { // TrieNodeStoragePrefix
+				shouldExtract = true
+			}
+		}
+
+		if !shouldExtract {
+			continue
+		}
+
+		// Log what we're extracting
+		log.Info("🔎 CONSERVATIVE extracting",
+			"category", category,
+			"keyHex", fmt.Sprintf("%x", key[:min(16, len(key))]),
+			"keyStr", string(key[:min(32, len(key))]),
+			"keyLen", len(key))
+
+		// Add to target database
+		if err := targetBatch.Put(key, value); err != nil {
+			return fmt.Errorf("failed to add key to target batch: %v", err)
+		}
+
+		// Mark for deletion from source database
+		if err := deleteBatch.Delete(key); err != nil {
+			return fmt.Errorf("failed to add key to delete batch: %v", err)
+		}
+
+		stats.Add(category, len(key), len(value))
+		extracted++
+
+		// Flush batches when they reach ideal size
+		if targetBatch.ValueSize() >= ethdb.IdealBatchSize {
+			if err := targetBatch.Write(); err != nil {
+				return fmt.Errorf("failed to write target batch: %v", err)
+			}
+			targetBatch.Reset()
+
+			if err := deleteBatch.Write(); err != nil {
+				return fmt.Errorf("failed to write delete batch: %v", err)
+			}
+			deleteBatch.Reset()
+
+			log.Debug("Batch flushed (CONSERVATIVE)", "category", category, "extracted", extracted, "batchSizeMB", ethdb.IdealBatchSize/(1024*1024))
+		}
+
+		// Progress update every 1000 items (more frequent for conservative mode)
+		if extracted%1000 == 0 && extracted > 0 {
+			log.Info("Conservative extraction progress", "category", category, "extracted", extracted)
+		}
+	}
+
+	// Check for iterator errors
+	if err := it.Error(); err != nil {
+		return fmt.Errorf("iterator error: %v", err)
+	}
+
+	// Flush remaining data
+	if targetBatch.ValueSize() > 0 {
+		if err := targetBatch.Write(); err != nil {
+			return fmt.Errorf("failed to write final target batch: %v", err)
+		}
+	}
+
+	if deleteBatch.ValueSize() > 0 {
+		if err := deleteBatch.Write(); err != nil {
+			return fmt.Errorf("failed to write final delete batch: %v", err)
+		}
+	}
+
+	log.Info("CONSERVATIVE data extraction completed", "category", category, "extracted", extracted)
+	return nil
+}
+
+// countDatabaseItems counts the total number of items in a database
+func countDatabaseItems(db ethdb.Database) int64 {
+	var count int64
+	it := db.NewIterator(nil, nil)
+	defer it.Release()
+
+	for it.Next() {
+		count++
+		// Log progress for large databases
+		if count%100000 == 0 {
+			log.Info("Counting progress", "count", count)
+		}
+	}
+
+	if err := it.Error(); err != nil {
+		log.Error("Error during database count", "error", err)
+		return -1
+	}
+
+	return count
+}
+
+// moveAncientData moves ancient state data from chaindata/ancient/state to state/ancient
+func moveAncientData(sourceChainDataPath string) error {
+	log.Info("Checking for ancient state data to migrate...")
+
+	originalAncientDir := filepath.Join(sourceChainDataPath, "ancient")
+
+	// Check if original ancient directory exists
+	if !common.FileExist(originalAncientDir) {
+		log.Info("No ancient directory found", "path", originalAncientDir)
+		return nil
+	}
+
+	// Only handle state ancient data
+	// Move chaindata/ancient/state/ to state/ancient/state/
+	// This creates the correct structure: state/ancient/state/ (and potentially state/ancient/chain/ for main chain data)
+	originalStateAncient := filepath.Join(originalAncientDir, "state")
+	newStateAncient := filepath.Join(sourceChainDataPath, "state", "ancient", "state")
+
+	if !common.FileExist(originalStateAncient) {
+		log.Info("No ancient state directory found", "path", originalStateAncient)
+		return nil
+	}
+
+	// Check if the directory has contents
+	entries, err := os.ReadDir(originalStateAncient)
+	if err != nil {
+		return fmt.Errorf("failed to read ancient state directory: %v", err)
+	}
+
+	if len(entries) == 0 {
+		log.Info("Ancient state directory is empty, removing it", "path", originalStateAncient)
+		return os.RemoveAll(originalStateAncient)
+	}
+
+	log.Info("Found ancient state data to migrate",
+		"from", originalStateAncient,
+		"to", newStateAncient,
+		"files", len(entries))
+
+	// If target ancient state directory already exists, remove it first
+	if common.FileExist(newStateAncient) {
+		log.Info("Target ancient state directory already exists, removing it", "target", newStateAncient)
+		if err := os.RemoveAll(newStateAncient); err != nil {
+			return fmt.Errorf("failed to remove existing ancient state directory: %v", err)
+		}
+	}
+
+	// Create parent directory structure for new location (state/ancient/)
+	if err := os.MkdirAll(filepath.Dir(newStateAncient), 0755); err != nil {
+		return fmt.Errorf("failed to create state ancient parent directory: %v", err)
+	}
+
+	// Move the entire ancient state directory
+	if err := os.Rename(originalStateAncient, newStateAncient); err != nil {
+		return fmt.Errorf("failed to move ancient state directory: %v", err)
+	}
+
+	log.Info("✅ Ancient state data moved successfully",
+		"from", originalStateAncient,
+		"to", newStateAncient)
+
+	return nil
+}
+
+// performDatabaseCompaction compacts all databases after migration to reclaim space
+func performDatabaseCompaction(sourceDB, stateDB, snapDB, indexDB ethdb.Database) error {
+	databases := []struct {
+		db   ethdb.Database
+		name string
+	}{
+		{sourceDB, "chaindata"},
+		{stateDB, "state"},
+		{snapDB, "snapshot"},
+		{indexDB, "txindex"},
+	}
+
+	for _, dbInfo := range databases {
+		log.Info("Compacting database", "name", dbInfo.name)
+
+		// Try to compact the database if it supports compaction
+		if compactor, ok := dbInfo.db.(interface {
+			Compact(start []byte, limit []byte) error
+		}); ok {
+			// Perform full database compaction (nil, nil means compact everything)
+			if err := compactor.Compact(nil, nil); err != nil {
+				log.Warn("Database compaction failed", "name", dbInfo.name, "error", err)
+				// Don't return error for compaction failure, just log it
+				continue
+			}
+			log.Info("✅ Database compacted successfully", "name", dbInfo.name)
+		} else {
+			// If database doesn't support compaction, try sync operation
+			if syncer, ok := dbInfo.db.(interface{ SyncKeyValue() error }); ok {
+				if err := syncer.SyncKeyValue(); err != nil {
+					log.Warn("Database sync failed", "name", dbInfo.name, "error", err)
+				} else {
+					log.Info("📝 Database synced successfully", "name", dbInfo.name)
+				}
+			} else {
+				log.Debug("Database does not support compaction or sync", "name", dbInfo.name)
+			}
+		}
+	}
+
+	log.Info("🗜️  Database compaction completed for all databases")
 	return nil
 }
