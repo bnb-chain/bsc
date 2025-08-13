@@ -158,6 +158,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 		// Debug: log gas usage after each tx for target block
 		if block.NumberU64() == 50897362 {
+			log.Error("Debug tx", "transaction Index", i, "txHash", receipt.TxHash, "gasUsed", receipt.GasUsed)
 			currentPool := gp.Gas()
 			used := prevPool - currentPool
 			log.Info("[TX GAS]", "block", block.NumberU64(), "txIndex", i, "txHash", tx.Hash(), "gasUsed", used, "gasPoolLeft", currentPool)

@@ -575,13 +575,36 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 	fee.Mul(fee, effectiveTipU256)
 	// consensus engine is parlia
 	if st.evm.ChainConfig().Parlia != nil {
+		// 仅在特定区块打印，严格围绕 AddBalance 前后各打一条日志
+		doDebug := st.evm.Context.BlockNumber.Uint64() == 50897362
+		var balanceBefore uint256.Int
+		if doDebug {
+			balanceBefore = *st.state.GetBalance(consensus.SystemAddress)
+			log.Error("[FEE DEBUG] before", "txIdx", st.state.TxIndex(), "gasUsed", st.gasUsed(), "effectiveTip", effectiveTip, "feeThisTx", fee, "balanceBefore", &balanceBefore)
+		}
 		st.state.AddBalance(consensus.SystemAddress, fee, tracing.BalanceIncreaseRewardTransactionFee)
+		if doDebug {
+			balanceAfter := st.state.GetBalance(consensus.SystemAddress)
+			delta := new(uint256.Int).Sub(balanceAfter, &balanceBefore)
+			log.Error("[FEE DEBUG] after", "txIdx", st.state.TxIndex(), "balanceAfter", balanceAfter, "delta", delta)
+		}
 		// add extra blob fee reward
 		if rules.IsCancun {
+			var balanceBeforeBlob uint256.Int
 			blobFee := new(big.Int).SetUint64(st.blobGasUsed())
 			blobFee.Mul(blobFee, st.evm.Context.BlobBaseFee)
 			blobFeeU256, _ := uint256.FromBig(blobFee)
+			if doDebug {
+				balanceBeforeBlob = *st.state.GetBalance(consensus.SystemAddress)
+				log.Error("[BLOB FEE DEBUG] before", "txIdx", st.state.TxIndex(), "blobGasUsed", st.blobGasUsed(), "blobBaseFee", st.evm.Context.BlobBaseFee, "blobFeeThisTx", blobFeeU256, "balanceBefore", balanceBeforeBlob)
+
+			}
 			st.state.AddBalance(consensus.SystemAddress, blobFeeU256, tracing.BalanceIncreaseRewardTransactionFee)
+			if doDebug {
+				balanceAfterBlob := st.state.GetBalance(consensus.SystemAddress)
+				deltaBlob := new(uint256.Int).Sub(balanceAfterBlob, &balanceBeforeBlob)
+				log.Error("[BLOB FEE DEBUG] after", "txIdx", st.state.TxIndex(), "balanceAfter", balanceAfterBlob, "delta", deltaBlob)
+			}
 		}
 	} else {
 		st.state.AddBalance(st.evm.Context.Coinbase, fee, tracing.BalanceIncreaseRewardTransactionFee)

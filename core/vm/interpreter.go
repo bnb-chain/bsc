@@ -208,16 +208,16 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		totalCost         uint64 // for debug only
 		//costCounter   int
 		// copies used by tracer
-		pcCopy          uint64 // needed for the deferred EVMLogger
-		gasCopy         uint64 // for EVMLogger to log gas remaining before execution
-		logged          bool   // deferred EVMLogger should ignore already logged steps
-		res             []byte // result of the opcode execution function
-		debug           = in.evm.Config.Tracer != nil
-		currentBlock    *compiler.BasicBlock // 当前block（缓存）
-		nextBlockPC     uint64               // 下一个block的起始PC（用于边界检测）
-		totalDynamicGas uint64               // 本次调用累积的动态gas
-		debugStaticGas  uint64               // 仅调试：累计已预扣的静态gas（扣减退款后）
-		blockEnterTotalCost uint64           // 进入当前block时，真实累计的静态gas（用于退款校验）
+		pcCopy              uint64 // needed for the deferred EVMLogger
+		gasCopy             uint64 // for EVMLogger to log gas remaining before execution
+		logged              bool   // deferred EVMLogger should ignore already logged steps
+		res                 []byte // result of the opcode execution function
+		debug               = in.evm.Config.Tracer != nil
+		currentBlock        *compiler.BasicBlock // 当前block（缓存）
+		nextBlockPC         uint64               // 下一个block的起始PC（用于边界检测）
+		totalDynamicGas     uint64               // 本次调用累积的动态gas
+		debugStaticGas      uint64               // 仅调试：累计已预扣的静态gas（扣减退款后）
+		blockEnterTotalCost uint64               // 进入当前block时，真实累计的静态gas（用于退款校验）
 	)
 
 	// initialise blockChargeActive to whether opcode optimizations are enabled
@@ -302,6 +302,24 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// 1. 当前block为空（首次执行）
 			// 2. PC超出了当前block范围（向前或向后）
 			if currentBlock == nil || pc >= nextBlockPC || pc <= currentBlock.StartPC {
+				// 在切换到新 block 之前，若存在旧 block，基于真实执行路径做一次边界校验：
+				// 如果提前跳出了旧 block（而非完整执行到 EndPC），则应当存在未执行静态 gas。
+				// 我们仅打印提示，不改变任何状态或退款，以尽量减少日志和不影响行为。
+				if currentBlock != nil {
+					executedStatic := uint64(0)
+					if totalCost >= blockEnterTotalCost {
+						executedStatic = totalCost - blockEnterTotalCost
+					}
+					expectedRefund := uint64(0)
+					if currentBlock.StaticGas > executedStatic {
+						expectedRefund = currentBlock.StaticGas - executedStatic
+					}
+					if expectedRefund > 0 && in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184 {
+						log.Error("[BOUNDARY CHECK]", "startPC", currentBlock.StartPC, "pcExit", pc,
+							"staticGas", currentBlock.StaticGas, "executedStatic", executedStatic,
+							"missingRefund", expectedRefund, "codeHash", contract.CodeHash)
+					}
+				}
 				if block, found := compiler.GetBlockByPC(contract.CodeHash, pc); found {
 					currentBlock = block
 					// 计算下一个block的起始PC（如果存在）
@@ -350,9 +368,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		cost = operation.constantGas // For tracing todo: move into if
 		totalCost += cost
 		// 仅在目标区块和交易索引时打印调试日志
-		if in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184 {
-			log.Error("accumulate totalCost", "totalCost", totalCost, "cost", cost, "op", op.String(), "pc", pc)
-		}
+		//if in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184 {
+		//	log.Error("accumulate totalCost", "totalCost", totalCost, "cost", cost, "op", op.String(), "pc", pc)
+		//}
 		if !blockChargeActive {
 
 			if contract.Gas < cost {
@@ -370,26 +388,26 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// the operation
 			// Memory check needs to be done prior to evaluating the dynamic gas portion,
 			// to detect calculation overflows
-				if operation.memorySize != nil {
+			if operation.memorySize != nil {
 				memSize, overflow := operation.memorySize(stack)
 				if overflow {
-						diff := func() uint64 {
-							// 局部调用，以避免在 blockChargeActive=false 时创建多余闭包
-							if in.evm.Config.EnableOpcodeOptimizations && blockChargeActive {
-								// 使用带校验日志的退款
-								// 这里无法直接访问 logBlockRefund，因其定义在上层作用域且仅在 blockChargeActive 分支内
-								// 因此退回到原退款函数以保证不改变行为
-								return in.refundUnusedBlockGas(contract, pc, currentBlock)
-							}
+					diff := func() uint64 {
+						// 局部调用，以避免在 blockChargeActive=false 时创建多余闭包
+						if in.evm.Config.EnableOpcodeOptimizations && blockChargeActive {
+							// 使用带校验日志的退款
+							// 这里无法直接访问 logBlockRefund，因其定义在上层作用域且仅在 blockChargeActive 分支内
+							// 因此退回到原退款函数以保证不改变行为
 							return in.refundUnusedBlockGas(contract, pc, currentBlock)
-						}()
+						}
+						return in.refundUnusedBlockGas(contract, pc, currentBlock)
+					}()
 					debugStaticGas -= diff
 					return nil, ErrGasUintOverflow
 				}
 				// memory is expanded in words of 32 bytes. Gas
 				// is also calculated in words.
 				if memorySize, overflow = math.SafeMul(toWordSize(memSize), 32); overflow {
-						diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
+					diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
 					debugStaticGas -= diff
 					return nil, ErrGasUintOverflow
 				}
@@ -513,9 +531,9 @@ func (in *EVMInterpreter) calculateUsedBlockGas(contract *Contract, startPC, end
 		// Add static gas for this opcode (only if operation exists)
 		if operation != nil {
 			totalGas += operation.constantGas
-			if in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184 {
-				log.Error("accumulate refund totalGas", "totalGas", totalGas, "cost", operation.constantGas, "op", op.String(), "pc", pc)
-			}
+			//if in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184 {
+			//	log.Error("accumulate refund totalGas", "totalGas", totalGas, "cost", operation.constantGas, "op", op.String(), "pc", pc)
+			//}
 		}
 
 		// 遇到控制流转移或终止类指令，代表本 block 的执行在此处终止。
