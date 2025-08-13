@@ -622,6 +622,7 @@ func dbStats(ctx *cli.Context) error {
 		fmt.Println("show stats of StateStore and SnapStore")
 		showDBStats(db.GetStateStore())
 		showDBStats(db.GetSnapStore())
+		showDBStats(db.GetTxIndexStore())
 	}
 
 	return nil

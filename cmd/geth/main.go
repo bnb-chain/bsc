@@ -133,6 +133,7 @@ var (
 		utils.CacheEnableSharedStorageFlag,
 		utils.CachePreimagesFlag,
 		utils.MultiDataBaseFlag,
+		utils.EnableShardingFlag,
 		utils.PruneAncientDataFlag, // deprecated
 		utils.CacheLogSizeFlag,
 		utils.FDLimitFlag,

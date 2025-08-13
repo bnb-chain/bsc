@@ -166,6 +166,12 @@ func New(conf *Config) (*Node, error) {
 	// Register built-in APIs.
 	node.rpcAPIs = append(node.rpcAPIs, node.apis()...)
 
+	// check storage config, and init default path
+	if err := node.config.Storage.SnanityCheck(); err != nil {
+		return nil, err
+	}
+	node.config.Storage.SetDefaultPath(node.config.instanceDir())
+
 	// Acquire the instance directory lock.
 	if err := node.openDataDir(); err != nil {
 		return nil, err
@@ -791,13 +797,9 @@ func (n *Node) OpenDatabase(name string, cache, handles int, namespace string, r
 
 func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool, config *ethconfig.Config) (ethdb.Database, error) {
 	var (
-		err                          error
-		stateDiskDb                  ethdb.Database
-		chainDataHandles             = config.DatabaseHandles
-		chainDbCache                 = config.DatabaseCache
-		stateDbCache, stateDbHandles int
-		snapDbCache, snapDbHandles   int
-		indexDbCache, indexDbHandles int
+		err              error
+		chainDataHandles = config.DatabaseHandles
+		chainDbCache     = config.DatabaseCache
 	)
 
 	isMultiDatabase := n.CheckIfMultiDataBase()
@@ -806,17 +808,8 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 		// Resource allocation rules:
 		// 1) Allocate a fixed percentage of memory for chainDb based on chainDbMemoryPercentage & chainDbHandlesPercentage.
 		// 2) Allocate the remaining resources to stateDb.
-		chainDbCache = int(float64(config.DatabaseCache) * ChainDbResourcePercentage / 100)
-		chainDataHandles = int(float64(config.DatabaseHandles) * ChainDbResourcePercentage / 100)
-
-		snapDbCache = int(float64(config.DatabaseCache) * SnapDbResourcePercentage / 100)
-		snapDbHandles = int(float64(config.DatabaseHandles) * SnapDbResourcePercentage / 100)
-
-		indexDbCache = int(float64(config.DatabaseCache) * IndexDbResourcePercentage / 100)
-		indexDbHandles = int(float64(config.DatabaseHandles) * IndexDbResourcePercentage / 100)
-
-		stateDbCache = config.DatabaseCache - chainDbCache - snapDbCache - indexDbCache
-		stateDbHandles = config.DatabaseHandles - chainDataHandles - snapDbHandles - indexDbHandles
+		chainDbCache = int(float64(config.DatabaseCache*n.config.Storage.ChainDB.CacheRatio) / 100)
+		chainDataHandles = int(float64(config.DatabaseHandles*n.config.Storage.ChainDB.CacheRatio) / 100)
 	}
 
 	chainDB, err := n.OpenDatabaseWithFreezer(name, chainDbCache, chainDataHandles, config.DatabaseFreezer, namespace, readonly, false)
@@ -825,30 +818,7 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 	}
 
 	if isMultiDatabase {
-		log.Warn("Multi-database is an experimental feature")
-		// Allocate half of the  handles and chainDbCache to this separate state data database
-		stateDiskDb, err = n.OpenDatabaseWithFreezer(name+"/state", stateDbCache, stateDbHandles, "", "eth/db/statedata/", readonly, false)
-		if err != nil {
-			return nil, err
-		}
-
-		chainDB.SetStateStore(stateDiskDb)
-		// Open the snapshot database as a pure key-value store
-		snapshotDb, err := n.OpenDatabase(name+"/snapshot", snapDbCache, snapDbHandles, "eth/db/snapdata/", readonly, true)
-		if err != nil {
-			log.Error("Failed to open separate snapshot database", "err", err)
-			return nil, err
-		}
-
-		chainDB.SetSnapStore(snapshotDb)
-
-		// Open the tx index database as a pure key-value store
-		indexDb, err := n.OpenDatabase(name+"/txindex", indexDbCache, indexDbHandles, "eth/db/txindex/", readonly, true)
-		if err != nil {
-			log.Error("Failed to open separate tx index database", "err", err)
-			return nil, err
-		}
-		chainDB.SetTxIndexStore(indexDb)
+		n.SetMultiDBs(chainDB, name, config.DatabaseCache, config.DatabaseHandles, readonly, false)
 	}
 
 	return chainDB, nil
@@ -891,16 +861,36 @@ func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient,
 // Both directories must exist together or neither should exist
 // If only one exists, it indicates data corruption
 func (n *Node) CheckIfMultiDataBase() bool {
-	separateStateDir := filepath.Join(n.ResolvePath("chaindata"), "state")
-	stateInfo, stateErr := os.Stat(separateStateDir)
+	if !n.config.EnableSharding {
+		separateStateDir := filepath.Join(n.ResolvePath("chaindata"), "state")
+		stateInfo, stateErr := os.Stat(separateStateDir)
+		hasState := stateErr == nil && stateInfo.IsDir()
+
+		separateSnapshotDir := filepath.Join(n.ResolvePath("chaindata"), "snapshot")
+		snapshotInfo, snapshotErr := os.Stat(separateSnapshotDir)
+		hasSnapshotDB := snapshotErr == nil && snapshotInfo.IsDir()
+
+		separateIndexDir := filepath.Join(n.ResolvePath("chaindata"), "txindex")
+		indexInfo, indexErr := os.Stat(separateIndexDir)
+		hasIndexDB := indexErr == nil && indexInfo.IsDir()
+
+		// All three must exist together or none should exist
+		if hasState && hasSnapshotDB && hasIndexDB {
+			return true
+		}
+		if !hasState && !hasSnapshotDB && !hasIndexDB {
+			return false
+		}
+		panic("data corruption! missing state, snapshot or txindex dir.")
+	}
+
+	stateInfo, stateErr := os.Stat(n.config.Storage.TrieDB.DBPath)
 	hasState := stateErr == nil && stateInfo.IsDir()
 
-	separateSnapshotDir := filepath.Join(n.ResolvePath("chaindata"), "snapshot")
-	snapshotInfo, snapshotErr := os.Stat(separateSnapshotDir)
+	snapshotInfo, snapshotErr := os.Stat(n.config.Storage.SnapDB.DBPath)
 	hasSnapshotDB := snapshotErr == nil && snapshotInfo.IsDir()
 
-	separateIndexDir := filepath.Join(n.ResolvePath("chaindata"), "txindex")
-	indexInfo, indexErr := os.Stat(separateIndexDir)
+	indexInfo, indexErr := os.Stat(n.config.Storage.IndexDB.DBPath)
 	hasIndexDB := indexErr == nil && indexInfo.IsDir()
 
 	// All three must exist together or none should exist
@@ -911,6 +901,67 @@ func (n *Node) CheckIfMultiDataBase() bool {
 		return false
 	}
 	panic("data corruption! missing state, snapshot or txindex dir.")
+}
+
+func (n *Node) SetMultiDBs(chainDB ethdb.Database, name string, cache, handles int, readonly, disableFreeze bool) error {
+	stateDbCache, stateDbHandles := n.config.Storage.TrieDBCache(cache, handles)
+	snapDbCache, snapDbHandles := n.config.Storage.SnapDBCache(cache, handles)
+	indexDbCache, indexDbHandles := n.config.Storage.IndexDBCache(cache, handles)
+
+	if !n.config.EnableSharding {
+		log.Warn("Multi-database is an experimental feature")
+		// Allocate half of the  handles and chainDbCache to this separate state data database
+		stateDiskDb, err := n.OpenDatabaseWithFreezer(name+"/state", stateDbCache, stateDbHandles, "", "eth/db/statedata/", readonly, false)
+		if err != nil {
+			return err
+		}
+
+		chainDB.SetStateStore(stateDiskDb)
+		// Open the snapshot database as a pure key-value store
+		snapshotDb, err := n.OpenDatabase(name+"/snapshot", snapDbCache, snapDbHandles, "eth/db/snapdata/", readonly, true)
+		if err != nil {
+			log.Error("Failed to open separate snapshot database", "err", err)
+			return err
+		}
+
+		chainDB.SetSnapStore(snapshotDb)
+
+		// Open the tx index database as a pure key-value store
+		indexDb, err := n.OpenDatabase(name+"/txindex", indexDbCache, indexDbHandles, "eth/db/txindex/", readonly, true)
+		if err != nil {
+			log.Error("Failed to open separate tx index database", "err", err)
+			return err
+		}
+		chainDB.SetTxIndexStore(indexDb)
+		return nil
+	}
+
+	log.Warn("Multi-database & state sharding is an experimental feature")
+	stateDB, err := rawdb.NewTrieShardingDB(n.config.Storage.TrieDB, stateDbCache, stateDbHandles, readonly, disableFreeze)
+	if err != nil {
+		return err
+	}
+	chainDB.SetStateStore(stateDB)
+
+	snapDB, err := rawdb.NewSnapShardingDB(n.config.Storage.SnapDB, snapDbCache, snapDbHandles, readonly)
+	if err != nil {
+		return err
+	}
+	chainDB.SetSnapStore(snapDB)
+
+	indexDB, err := openKeyValueDatabase(openOptions{
+		Type:      n.config.Storage.IndexDB.DBType,
+		Directory: n.config.Storage.IndexDB.DBPath,
+		Namespace: n.config.Storage.IndexDB.Namespace,
+		Cache:     indexDbCache,
+		Handles:   indexDbHandles,
+		ReadOnly:  readonly,
+	})
+	if err != nil {
+		return err
+	}
+	chainDB.SetTxIndexStore(indexDB)
+	return nil
 }
 
 // ResolvePath returns the absolute path of a resource in the instance directory.

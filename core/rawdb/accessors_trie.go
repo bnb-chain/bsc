@@ -280,7 +280,7 @@ func ReadStateScheme(db ethdb.Database) string {
 		return PathScheme
 	}
 	// Check if verkle state in path-based scheme is present.
-	vdb := NewTable(db, string(VerklePrefix))
+	vdb := NewTable(db.GetStateStore(), string(VerklePrefix))
 	if HasAccountTrieNode(vdb, nil) {
 		return PathScheme
 	}
