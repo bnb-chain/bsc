@@ -322,13 +322,16 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 					if currentBlock.StaticGas > executedStatic {
 						expectedRefund = currentBlock.StaticGas - executedStatic
 					}
-					// 仅计算，不退款：以当前 pc 作为跨出点，使用 endPC=pc-1 限定在旧块内
-					if in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184 && currentBlock.StartPC == 1165 && contract.CodeHash.String() == "0x97a48aa4c129657440dafdacd4c836389734d28cc4a0ca7403e68da660a74a59" {
+					// 仅计算，不退款：以当前 pc 作为跨出点，endPC=min(pc-1, currentBlock.EndPC-1)，限定在旧块内
+					if in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184 && contract.CodeHash.String() == "0x97a48aa4c129657440dafdacd4c836389734d28cc4a0ca7403e68da660a74a59" {
 						var endPC uint64
 						if pc > 0 {
 							endPC = pc - 1
 						} else {
 							endPC = 0
+						}
+						if currentBlock.EndPC > 0 && endPC >= currentBlock.EndPC {
+							endPC = currentBlock.EndPC - 1
 						}
 						actualUsedGas := in.calculateUsedBlockGas(contract, currentBlock.StartPC, endPC)
 						actualRefund := uint64(0)
@@ -336,10 +339,13 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 							actualRefund = currentBlock.StaticGas - actualUsedGas
 						}
 						delta := int64(actualRefund) - int64(expectedRefund)
-						log.Error("[1165 CROSS-CHECK]", "startPC", currentBlock.StartPC, "pcExit", pc,
-							"executedStatic", executedStatic, "staticGas", currentBlock.StaticGas,
-							"expectedRefund", expectedRefund, "actualUsedGas", actualUsedGas,
-							"actualRefund", actualRefund, "delta", delta, "codeHash", contract.CodeHash)
+						// 扩大捕捉范围：同一合约，任何 basic block 只要存在差异就打印
+						if delta != 0 {
+							log.Error("[CROSS-CHECK]", "startPC", currentBlock.StartPC, "pcExit", pc,
+								"executedStatic", executedStatic, "staticGas", currentBlock.StaticGas,
+								"expectedRefund", expectedRefund, "actualUsedGas", actualUsedGas,
+								"actualRefund", actualRefund, "delta", delta, "codeHash", contract.CodeHash)
+						}
 					}
 					if expectedRefund > 0 && in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184 {
 						log.Error("[BOUNDARY CHECK]", "startPC", currentBlock.StartPC, "pcExit", pc,
