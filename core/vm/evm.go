@@ -17,9 +17,7 @@
 package vm
 
 import (
-	"encoding/hex"
 	"errors"
-	"github.com/ethereum/go-ethereum/log"
 	"math/big"
 	"sync"
 	"sync/atomic"
@@ -188,9 +186,6 @@ func isSystemCall(caller ContractRef) bool {
 // the necessary steps to create accounts and reverses the state in case of an
 // execution error or failed value transfer.
 func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas uint64, value *uint256.Int) (ret []byte, leftOverGas uint64, err error) {
-	if evm.StateDB.TxIndex() == 558 {
-		log.Info("DEBUG", "input", hex.EncodeToString(input))
-	}
 	// Capture the tracer start/end events in debug mode
 	if evm.Config.Tracer != nil {
 		evm.captureBegin(evm.depth, CALL, caller.Address(), addr, input, gas, value.ToBig())
@@ -218,9 +213,6 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				return nil, 0, ErrOutOfGas
 			}
 			gas -= wgas
-			if evm.StateDB.TxIndex() == 558 {
-				log.Info("DEBUG GAS1", "gas", gas)
-			}
 		}
 
 		if !isPrecompile && evm.chainRules.IsEIP158 && value.IsZero() {
@@ -233,9 +225,6 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 
 	if isPrecompile {
 		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.Config.Tracer)
-		if evm.StateDB.TxIndex() == 558 {
-			log.Info("DEBUG GAS2", "gas", gas)
-		}
 	} else {
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
@@ -253,9 +242,6 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 			contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), code)
 			ret, err = evm.interpreter.Run(contract, input, false)
 			gas = contract.Gas
-			if evm.StateDB.TxIndex() == 558 {
-				log.Info("DEBUG GAS3", "gas", gas)
-			}
 		}
 	}
 	// When an error was returned by the EVM or when setting the creation code
@@ -734,15 +720,6 @@ func (evm *EVM) wbnbBalanceOf(contract *Contract, input []byte, value *uint256.I
 		return nil, 0, false
 	}
 	contract.Gas -= gasCost
-
-	//if _, slotPresent := evm.StateDB.SlotInAccessList(addr, slot); !slotPresent {
-	//	// If the caller cannot afford the cost, this change will be rolled back
-	//	// If he does afford it, we can skip checking the same thing later on, during execution
-	//	evm.StateDB.AddSlotToAccessList(addr, slot)
-	//	gasCost += params.ColdSloadCostEIP2929
-	//} else {
-	//	gasCost += params.WarmStorageReadCostEIP2929
-	//}
 	sloadGasUsed := evm.CalcSloadGasByBlockNumber(contract.Address(), slot, evm.Context.BlockNumber.Uint64())
 	if contract.Gas < sloadGasUsed {
 		return nil, gasCost, false
@@ -754,15 +731,10 @@ func (evm *EVM) wbnbBalanceOf(contract *Contract, input []byte, value *uint256.I
 }
 
 func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.Int) (ret []byte, gasCost uint64, expected bool) {
-	if evm.StateDB.TxIndex() == 558 {
-		log.Info("DEBUG", "input", hex.EncodeToString(input))
-	}
 	if value != nil && !value.IsZero() {
-		log.Info("DEBUG1006", "value", value.String())
 		return nil, 0, false
 	}
 	if len(input) < 4+32+32 {
-		log.Info("DEBUG1006", "input", string(input))
 		return nil, 0, false
 	}
 
@@ -796,13 +768,11 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	val := evm.StateDB.GetState(contract.Address(), senderSlot)
 	senderBalance.SetBytes(val.Bytes())
 	if senderBalance.Lt(amount) {
-		log.Info("DEBUG1006", "senderBalance", senderBalance, "amount", amount)
 		return nil, 0, false
 	}
 
 	gasCost = uint64(1006)
 	if contract.Gas < gasCost {
-		log.Info("DEBUG1006", "contract.Gas", contract.Gas)
 		return nil, 0, false
 	}
 	contract.Gas -= gasCost
@@ -810,7 +780,6 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	// Add gas cost for sender slot access
 	sloadGasCost := evm.CalcSloadGasByBlockNumber(contract.Address(), senderSlot, evm.Context.BlockNumber.Uint64())
 	if contract.Gas < sloadGasCost*2 {
-		log.Info("DEBUG", "contract.Gas", contract.Gas, "sloadGasCost", sloadGasCost)
 		return nil, gasCost, false
 	}
 	gasCost += sloadGasCost * 2
@@ -841,7 +810,6 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	// Add gas cost for receiver slot access
 	sloadGasCost = evm.CalcSloadGasByBlockNumber(contract.Address(), receiverSlot, evm.Context.BlockNumber.Uint64())
 	if contract.Gas < sloadGasCost {
-		log.Info("DEBUG1", "contract.Gas", contract.Gas, "sloadGasCost", sloadGasCost)
 		return nil, gasCost, false
 	}
 	gasCost += sloadGasCost
@@ -857,7 +825,6 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	// Store new balances
 	senderSetGas := evm.gasSStoreBSC(contract, senderSlot, newSenderBalance.Bytes32())
 	if contract.Gas < senderSetGas {
-		log.Info("DEBUG", "contract.Gas", contract.Gas, "senderSetGas", senderSetGas)
 		return nil, gasCost, false
 	}
 	gasCost += senderSetGas
@@ -865,7 +832,6 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	evm.StateDB.SetState(contract.Address(), senderSlot, common.Hash(newSenderBalance.Bytes32()))
 	receiverSetGas := evm.gasSStoreBSC(contract, receiverSlot, newReceiverBalance.Bytes32())
 	if contract.Gas < receiverSetGas {
-		log.Info("DEBUG", "contract.Gas", contract.Gas, "receiverSetGas", receiverSetGas)
 		return nil, gasCost, false
 	}
 	gasCost += receiverSetGas
@@ -873,7 +839,6 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	evm.StateDB.SetState(contract.Address(), receiverSlot, common.Hash(newReceiverBalance.Bytes32()))
 
 	if contract.Gas < 1756 {
-		log.Info("DEBUG1756", "contract.Gas", contract.Gas)
 		return nil, gasCost, false
 	}
 	gasCost += 1756
