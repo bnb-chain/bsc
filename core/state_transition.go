@@ -18,6 +18,7 @@ package core
 
 import (
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/log"
@@ -411,7 +412,7 @@ func (st *stateTransition) preCheck() error {
 // nil evm execution result.
 func (st *stateTransition) execute() (*ExecutionResult, error) {
 	if st.evm.StateDB.TxIndex() == 558 {
-		log.Info("DEBUG", "initialGas", st.gasRemaining, "initialGas", st.initialGas)
+		log.Info("DEBUG1", "initialGas", st.gasRemaining, "initialGas", st.initialGas)
 	}
 	// First check this message satisfies all consensus rules before
 	// applying the message. The rules include these clauses
@@ -468,7 +469,7 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 	}
 	st.gasRemaining -= gas
 	if st.evm.StateDB.TxIndex() == 558 {
-		log.Info("DEBUG", "initialGas", st.gasRemaining, "initialGas", st.initialGas)
+		log.Info("DEBUG2", "initialGas", st.gasRemaining, "initialGas", st.initialGas, "input", hex.EncodeToString(msg.Data))
 	}
 	if rules.IsEIP4762 {
 		st.evm.AccessEvents.AddTxOrigin(msg.From)
@@ -497,7 +498,7 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 	// - reset transient storage(eip 1153)
 	st.state.Prepare(rules, msg.From, st.evm.Context.Coinbase, msg.To, vm.ActivePrecompiles(rules), msg.AccessList)
 	if st.evm.StateDB.TxIndex() == 558 {
-		log.Info("DEBUG", "initialGas", st.gasRemaining, "initialGas", st.initialGas)
+		log.Info("DEBUG3", "initialGas", st.gasRemaining, "initialGas", st.initialGas, "input", hex.EncodeToString(msg.Data))
 	}
 	var (
 		ret   []byte
@@ -530,7 +531,7 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		ret, st.gasRemaining, vmerr = st.evm.Call(sender, st.to(), msg.Data, st.gasRemaining, value)
 	}
 	if st.evm.StateDB.TxIndex() == 558 {
-		log.Info("DEBUG", "initialGas", st.gasRemaining, "initialGas", st.initialGas)
+		log.Info("DEBUG4", "initialGas", st.gasRemaining, "initialGas", st.initialGas)
 	}
 
 	// Compute refund counter, capped to a refund quotient.

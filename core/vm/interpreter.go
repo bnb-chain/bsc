@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"encoding/hex"
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -163,9 +164,10 @@ func NewEVMInterpreter(evm *EVM) *EVMInterpreter {
 // considered a revert-and-consume-all-gas operation except for
 // ErrExecutionReverted which means revert-and-keep-gas-left.
 func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (ret []byte, err error) {
+	tempContract := contract
 	if in.evm.Config.EnableFullyInline {
 		if in.evm.StateDB.TxIndex() == 558 {
-			log.Info("DEBUG", "contract.Gas", contract.Gas)
+			log.Info("DEBUG", "contract.Gas", contract.Gas, "input", hex.EncodeToString(input))
 		}
 		ret, _, expect := in.evm.Inline(contract, input, contract.value)
 		if expect {
@@ -176,6 +178,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			return ret, nil
 		}
 	}
+	contract = tempContract
 	// Increment the call depth which is restricted to 1024
 	in.evm.depth++
 	defer func() { in.evm.depth-- }()
