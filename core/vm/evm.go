@@ -142,7 +142,6 @@ func NewEVM(blockCtx BlockContext, statedb StateDB, chainConfig *params.ChainCon
 		chainRules:  chainConfig.Rules(blockCtx.BlockNumber, blockCtx.Random != nil, blockCtx.Time),
 	}
 	evm.precompiles = activePrecompiledContracts(evm.chainRules)
-	evm.Config.EnableFullyInline = true
 	evm.interpreter = NewEVMInterpreter(evm)
 
 	return evm
