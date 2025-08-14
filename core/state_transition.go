@@ -23,6 +23,7 @@ import (
 	"math"
 	"math/big"
 	"slices"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -41,6 +42,8 @@ type ExecutionResult struct {
 	RefundedGas uint64 // Total gas refunded after execution
 	Err         error  // Any error encountered during the execution(listed in core/vm/errors.go)
 	ReturnData  []byte // Returned data from evm(function result or data supplied with revert opcode)
+
+	EvmDuration time.Duration
 }
 
 // Unwrap returns the internal evm error which allows us for further
@@ -493,6 +496,8 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		ret   []byte
 		vmerr error // vm errors do not effect consensus and are therefore not assigned to err
 	)
+	var start time.Time
+	var evmDuration time.Duration
 	if contractCreation {
 		ret, _, st.gasRemaining, vmerr = st.evm.Create(sender, msg.Data, st.gasRemaining, value)
 	} else {
@@ -515,9 +520,10 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		if addr, ok := types.ParseDelegation(st.state.GetCode(*msg.To)); ok {
 			st.state.AddAddressToAccessList(addr)
 		}
-
+		start = time.Now()
 		// Execute the transaction's call.
 		ret, st.gasRemaining, vmerr = st.evm.Call(sender, st.to(), msg.Data, st.gasRemaining, value)
+		evmDuration = time.Since(start)
 	}
 
 	// Compute refund counter, capped to a refund quotient.
@@ -570,6 +576,7 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		RefundedGas: gasRefund,
 		Err:         vmerr,
 		ReturnData:  ret,
+		EvmDuration: evmDuration,
 	}, nil
 }
 
