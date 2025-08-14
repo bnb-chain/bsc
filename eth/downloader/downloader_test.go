@@ -19,7 +19,6 @@ package downloader
 import (
 	"fmt"
 	"math/big"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,7 +31,6 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 	"github.com/ethereum/go-ethereum/event"
@@ -44,7 +42,6 @@ import (
 
 // downloadTester is a test simulator for mocking out local block chain.
 type downloadTester struct {
-	freezer    string
 	chain      *core.BlockChain
 	downloader *Downloader
 
@@ -59,8 +56,7 @@ func newTester(t *testing.T) *downloadTester {
 
 // newTesterWithNotification creates a new downloader test mocker.
 func newTesterWithNotification(t *testing.T, success func()) *downloadTester {
-	freezer := t.TempDir()
-	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), freezer, "", false, false)
+	db, err := rawdb.Open(rawdb.NewMemoryDatabase(), rawdb.OpenOptions{})
 	if err != nil {
 		panic(err)
 	}
@@ -72,14 +68,13 @@ func newTesterWithNotification(t *testing.T, success func()) *downloadTester {
 		Alloc:   types.GenesisAlloc{testAddress: {Balance: big.NewInt(1000000000000000)}},
 		BaseFee: big.NewInt(params.InitialBaseFee),
 	}
-	chain, err := core.NewBlockChain(db, nil, gspec, nil, ethash.NewFaker(), vm.Config{}, nil, nil)
+	chain, err := core.NewBlockChain(db, gspec, ethash.NewFaker(), nil)
 	if err != nil {
 		panic(err)
 	}
 	tester := &downloadTester{
-		freezer: freezer,
-		chain:   chain,
-		peers:   make(map[string]*downloadTesterPeer),
+		chain: chain,
+		peers: make(map[string]*downloadTesterPeer),
 	}
 	tester.downloader = New(db, new(event.TypeMux), tester.chain, tester.dropPeer, success)
 	return tester
@@ -90,8 +85,6 @@ func newTesterWithNotification(t *testing.T, success func()) *downloadTester {
 func (dl *downloadTester) terminate() {
 	dl.downloader.Terminate()
 	dl.chain.Stop()
-
-	os.RemoveAll(dl.freezer)
 }
 
 // sync starts synchronizing with a remote peer, blocking until it completes.
@@ -304,23 +297,24 @@ func (dlp *downloadTesterPeer) RequestBodies(hashes []common.Hash, sink chan *et
 // peer in the download tester. The returned function can be used to retrieve
 // batches of block receipts from the particularly requested peer.
 func (dlp *downloadTesterPeer) RequestReceipts(hashes []common.Hash, sink chan *eth.Response) (*eth.Request, error) {
-	blobs := eth.ServiceGetReceiptsQuery(dlp.chain, hashes)
+	blobs := eth.ServiceGetReceiptsQuery68(dlp.chain, hashes)
 
-	receipts := make([][]*types.Receipt, len(blobs))
+	receipts := make([]types.Receipts, len(blobs))
 	for i, blob := range blobs {
 		rlp.DecodeBytes(blob, &receipts[i])
 	}
 	hasher := trie.NewStackTrie(nil)
 	hashes = make([]common.Hash, len(receipts))
 	for i, receipt := range receipts {
-		hashes[i] = types.DeriveSha(types.Receipts(receipt), hasher)
+		hashes[i] = types.DeriveSha(receipt, hasher)
 	}
 	req := &eth.Request{
 		Peer: dlp.id,
 	}
+	resp := eth.ReceiptsRLPResponse(types.EncodeBlockReceiptLists(receipts))
 	res := &eth.Response{
 		Req:  req,
-		Res:  (*eth.ReceiptsResponse)(&receipts),
+		Res:  &resp,
 		Meta: hashes,
 		Time: 1,
 		Done: make(chan error, 1), // Ignore the returned status

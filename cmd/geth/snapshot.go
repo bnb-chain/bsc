@@ -199,7 +199,7 @@ func pruneState(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	chaindb := utils.MakeChainDatabase(ctx, stack, false, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, false)
 	defer chaindb.Close()
 
 	prunerconfig := pruner.Config{
@@ -264,7 +264,7 @@ func pruneAllState(ctx *cli.Context) error {
 		g = cfg.Eth.Genesis
 	}
 
-	chaindb := utils.MakeChainDatabase(ctx, stack, false, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, false)
 	defer chaindb.Close()
 	pruner, err := pruner.NewAllPruner(chaindb)
 	if err != nil {
@@ -282,7 +282,7 @@ func verifyState(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, true)
 	defer chaindb.Close()
 	headBlock := rawdb.ReadHeadBlock(chaindb)
 	if headBlock == nil {
@@ -292,22 +292,10 @@ func verifyState(ctx *cli.Context) error {
 	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false)
 	defer triedb.Close()
 
-	snapConfig := snapshot.Config{
-		CacheSize:  256,
-		Recovery:   false,
-		NoBuild:    true,
-		AsyncBuild: false,
-	}
-	snaptree, err := snapshot.New(snapConfig, chaindb, triedb, headBlock.Root(), 128, false)
-	if err != nil {
-		log.Error("Failed to open snapshot tree", "err", err)
-		return err
-	}
-	if ctx.NArg() > 1 {
-		log.Error("Too many arguments given")
-		return errors.New("too many arguments")
-	}
-	var root = headBlock.Root()
+	var (
+		err  error
+		root = headBlock.Root()
+	)
 	if ctx.NArg() == 1 {
 		root, err = parseRoot(ctx.Args().First())
 		if err != nil {
@@ -315,12 +303,34 @@ func verifyState(ctx *cli.Context) error {
 			return err
 		}
 	}
-	if err := snaptree.Verify(root); err != nil {
-		log.Error("Failed to verify state", "root", root, "err", err)
-		return err
+	if triedb.Scheme() == rawdb.PathScheme {
+		if err := triedb.VerifyState(root); err != nil {
+			log.Error("Failed to verify state", "root", root, "err", err)
+			return err
+		}
+		log.Info("Verified the state", "root", root)
+
+		// TODO(rjl493456442) implement dangling checks in pathdb.
+		return nil
+	} else {
+		snapConfig := snapshot.Config{
+			CacheSize:  256,
+			Recovery:   false,
+			NoBuild:    true,
+			AsyncBuild: false,
+		}
+		snaptree, err := snapshot.New(snapConfig, chaindb, triedb, headBlock.Root(), 128, false)
+		if err != nil {
+			log.Error("Failed to open snapshot tree", "err", err)
+			return err
+		}
+		if err := snaptree.Verify(root); err != nil {
+			log.Error("Failed to verify state", "root", root, "err", err)
+			return err
+		}
+		log.Info("Verified the state", "root", root)
+		return snapshot.CheckDanglingStorage(chaindb)
 	}
-	log.Info("Verified the state", "root", root)
-	return snapshot.CheckDanglingStorage(chaindb)
 }
 
 // checkDanglingStorage iterates the snap storage data, and verifies that all
@@ -329,7 +339,7 @@ func checkDanglingStorage(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	db := utils.MakeChainDatabase(ctx, stack, true)
 	defer db.Close()
 	return snapshot.CheckDanglingStorage(db)
 }
@@ -341,7 +351,7 @@ func traverseState(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, true)
 	defer chaindb.Close()
 
 	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false)
@@ -450,7 +460,7 @@ func traverseRawState(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, true)
 	defer chaindb.Close()
 
 	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false)
@@ -613,7 +623,7 @@ func dumpState(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	db := utils.MakeChainDatabase(ctx, stack, true, false)
+	db := utils.MakeChainDatabase(ctx, stack, true)
 	defer db.Close()
 
 	conf, root, err := parseDumpConfig(ctx, stack, db)
@@ -701,7 +711,7 @@ func snapshotExportPreimages(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
-	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, true)
 	defer chaindb.Close()
 
 	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false)
@@ -756,7 +766,7 @@ func checkAccount(ctx *cli.Context) error {
 	}
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
-	chaindb := utils.MakeChainDatabase(ctx, stack, true, false)
+	chaindb := utils.MakeChainDatabase(ctx, stack, true)
 	defer chaindb.Close()
 	start := time.Now()
 	log.Info("Checking difflayer journal", "address", addr, "hash", hash)

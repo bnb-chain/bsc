@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/history"
 	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
@@ -50,29 +51,29 @@ var FullNodeGPO = gasprice.Config{
 
 // Defaults contains default settings for use on the BSC main net.
 var Defaults = Config{
-	SyncMode:            SnapSync,
-	NetworkId:           0, // enable auto configuration of networkID == chainID
-	TxLookupLimit:       2350000,
-	TransactionHistory:  2350000,
-	BlockHistory:        0,
-	StateHistory:        params.FullImmutabilityThreshold,
-	DatabaseCache:       512,
-	EnableSharedStorage: false,
-	TrieCleanCache:      154,
-	TrieDirtyCache:      256,
-	TrieTimeout:         10 * time.Minute,
-	TriesInMemory:       128,
-	TriesVerifyMode:     core.LocalVerify,
-	SnapshotCache:       102,
-	FilterLogCacheSize:  32,
-	Miner:               minerconfig.DefaultConfig,
-	TxPool:              legacypool.DefaultConfig,
-	BlobPool:            blobpool.DefaultConfig,
-	RPCGasCap:           50000000,
-	RPCEVMTimeout:       5 * time.Second,
-	GPO:                 FullNodeGPO,
-	RPCTxFeeCap:         1,                                         // 1 ether
-	BlobExtraReserve:    params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
+	HistoryMode:        history.KeepAll,
+	SyncMode:           SnapSync,
+	NetworkId:          0, // enable auto configuration of networkID == chainID
+	TxLookupLimit:      2350000,
+	TransactionHistory: 2350000,
+	BlockHistory:       0,
+	StateHistory:       params.FullImmutabilityThreshold,
+	DatabaseCache:      512,
+	TrieCleanCache:     154,
+	TrieDirtyCache:     256,
+	TrieTimeout:        10 * time.Minute,
+	TriesInMemory:      128,
+	TriesVerifyMode:    core.LocalVerify,
+	SnapshotCache:      102,
+	FilterLogCacheSize: 32,
+	Miner:              minerconfig.DefaultConfig,
+	TxPool:             legacypool.DefaultConfig,
+	BlobPool:           blobpool.DefaultConfig,
+	RPCGasCap:          50000000,
+	RPCEVMTimeout:      5 * time.Second,
+	GPO:                FullNodeGPO,
+	RPCTxFeeCap:        1,                                         // 1 ether
+	BlobExtraReserve:   params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
 }
 
 //go:generate go run github.com/fjl/gencodec -type Config -formats toml -out gen_config.go
@@ -97,6 +98,9 @@ type Config struct {
 	DisablePeerTxBroadcast bool
 	EVNNodeIDsToAdd        []enode.ID
 	EVNNodeIDsToRemove     []enode.ID
+	// HistoryMode configures chain history retention.
+	HistoryMode history.HistoryMode
+
 	// This can be set to list of enrtree:// URLs which will be queried for
 	// nodes to connect to.
 	EthDiscoveryURLs  []string
@@ -114,9 +118,13 @@ type Config struct {
 	// Deprecated: use 'TransactionHistory' instead.
 	TxLookupLimit uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
 
-	TransactionHistory uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
-	BlockHistory       uint64 `toml:",omitempty"` // The maximum number of blocks from head whose block body/header/receipt/diff/hash are reserved.
-	StateHistory       uint64 `toml:",omitempty"` // The maximum number of blocks from head whose state histories are reserved.
+	TransactionHistory   uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
+	BlockHistory         uint64 `toml:",omitempty"` // The maximum number of blocks from head whose block body/header/receipt/diff/hash are reserved.
+	LogHistory           uint64 `toml:",omitempty"` // The maximum number of blocks from head where a log search index is maintained.
+	LogNoHistory         bool   `toml:",omitempty"` // No log search index is maintained.
+	LogExportCheckpoints string // export log index checkpoints to file
+	StateHistory         uint64 `toml:",omitempty"` // The maximum number of blocks from head whose state histories are reserved.
+
 	// State scheme represents the scheme used to store ethereum states and trie
 	// nodes on top. It can be 'hash', 'path', or none which means use the scheme
 	// consistent with persistent state.
@@ -136,6 +144,8 @@ type Config struct {
 	DatabaseHandles    int  `toml:"-"`
 	DatabaseCache      int
 	DatabaseFreezer    string
+	DatabaseEra        string
+
 	// PruneAncientData is an optional config and disabled by default, and usually you do not need it.
 	// When this flag is enabled, only keep the latest 9w blocks' data, the older blocks' data will be
 	// pruned instead of being dumped to freezerdb, the pruned data includes CanonicalHash, Header, Block,
@@ -145,15 +155,13 @@ type Config struct {
 	// the oldest unpruned block number.
 	// !!Deprecated: use 'BlockHistory' instead.
 	PruneAncientData bool
-
-	EnableSharedStorage bool
-	TrieCleanCache      int
-	TrieDirtyCache      int
-	TrieTimeout         time.Duration
-	SnapshotCache       int
-	TriesInMemory       uint64
-	TriesVerifyMode     core.VerifyMode
-	Preimages           bool
+	TrieCleanCache   int
+	TrieDirtyCache   int
+	TrieTimeout      time.Duration
+	SnapshotCache    int
+	TriesInMemory    uint64
+	TriesVerifyMode  core.VerifyMode
+	Preimages        bool
 
 	// This is the number of blocks for which logs will be cached in the filter system.
 	FilterLogCacheSize int
@@ -181,7 +189,7 @@ type Config struct {
 	// RPCEVMTimeout is the global timeout for eth-call.
 	RPCEVMTimeout time.Duration
 
-	// RPCTxFeeCap is the global transaction fee(price * gaslimit) cap for
+	// RPCTxFeeCap is the global transaction fee (price * gas limit) cap for
 	// send-transaction variants. The unit is ether.
 	RPCTxFeeCap float64
 
@@ -196,6 +204,9 @@ type Config struct {
 
 	// OverrideFermi (TODO: remove after the fork)
 	OverrideFermi *uint64 `toml:",omitempty"`
+
+	// OverrideOsaka (TODO: remove after the fork)
+	OverrideOsaka *uint64 `toml:",omitempty"`
 
 	// OverrideVerkle (TODO: remove after the fork)
 	OverrideVerkle *uint64 `toml:",omitempty"`

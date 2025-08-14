@@ -84,9 +84,8 @@ type StateDB struct {
 	db             Database
 	prefetcherLock sync.Mutex
 	prefetcher     *triePrefetcher
-	trie           Trie
-	noTrie         bool
 	reader         Reader
+	trie           Trie // it's resolved on first access
 
 	// originalRoot is the pre-state root, before any changes were made.
 	// It will be updated when the Commit is called.
@@ -115,8 +114,6 @@ type StateDB struct {
 	// if needBadSharedStorage = true, try read from sharedPool firstly, compatible with old erroneous data(https://forum.bnbchain.org/t/about-the-hertzfix/2400).
 	// else read from sharedPool which is not in stateObjectsDestruct.
 	needBadSharedStorage bool
-	writeOnSharedStorage bool         // Write to the shared origin storage of a stateObject while reading from the underlying storage layer.
-	storagePool          *StoragePool // sharedPool to store L1 originStorage of stateObjects
 
 	// DB error.
 	// State objects are used by the consensus core and VM which are
@@ -174,31 +171,20 @@ type StateDB struct {
 	StorageDeleted atomic.Int64 // Number of storage slots deleted during the state transition
 }
 
-// NewWithSharedPool creates a new state with sharedStorge on layer 1.5
-func NewWithSharedPool(root common.Hash, db Database) (*StateDB, error) {
-	statedb, err := New(root, db)
-	if err != nil {
-		return nil, err
-	}
-	statedb.storagePool = NewStoragePool()
-	return statedb, nil
-}
-
 // New creates a new state from a given trie.
 func New(root common.Hash, db Database) (*StateDB, error) {
-	tr, err := db.OpenTrie(root)
-	if err != nil {
-		return nil, err
-	}
-	_, noTrie := tr.(*trie.EmptyTrie)
 	reader, err := db.Reader(root)
 	if err != nil {
 		return nil, err
 	}
+	return NewWithReader(root, db, reader)
+}
+
+// NewWithReader creates a new state for the specified state root. Unlike New,
+// this function accepts an additional Reader which is bound to the given root.
+func NewWithReader(root common.Hash, db Database, reader Reader) (*StateDB, error) {
 	sdb := &StateDB{
 		db:                   db,
-		trie:                 tr,
-		noTrie:               noTrie,
 		originalRoot:         root,
 		reader:               reader,
 		stateObjects:         make(map[common.Address]*stateObject, defaultNumOfSlots),
@@ -216,15 +202,8 @@ func New(root common.Hash, db Database) (*StateDB, error) {
 	return sdb, nil
 }
 
-func (s *StateDB) EnableSharedStorage(enableSharedStorage bool) {
-	s.writeOnSharedStorage = enableSharedStorage
-}
-
 func (s *StateDB) SetNeedBadSharedStorage(needBadSharedStorage bool) {
 	s.needBadSharedStorage = needBadSharedStorage
-	if needBadSharedStorage {
-		s.writeOnSharedStorage = true
-	}
 }
 
 // In mining mode, we will try multi-fillTransactions to get the most profitable one.
@@ -250,7 +229,7 @@ func (s *StateDB) TransferPrefetcher(prev *StateDB) {
 // state trie concurrently while the state is mutated so that when we reach the
 // commit phase, most of the needed data is already hot.
 func (s *StateDB) StartPrefetcher(namespace string, witness *stateless.Witness) {
-	if s.noTrie {
+	if s.db.NoTries() {
 		return
 	}
 
@@ -278,7 +257,7 @@ func (s *StateDB) StartPrefetcher(namespace string, witness *stateless.Witness) 
 // StopPrefetcher terminates a running prefetcher and reports any leftover stats
 // from the gathered metrics.
 func (s *StateDB) StopPrefetcher() {
-	if s.noTrie {
+	if s.db.NoTries() {
 		return
 	}
 	s.prefetcherLock.Lock()
@@ -287,35 +266,6 @@ func (s *StateDB) StopPrefetcher() {
 		s.prefetcher = nil
 	}
 	s.prefetcherLock.Unlock()
-}
-
-func (s *StateDB) TriePrefetchInAdvance(block *types.Block, signer types.Signer) {
-	// s is a temporary throw away StateDB, s.prefetcher won't be resetted to nil
-	// so no need to add lock for s.prefetcher
-	prefetcher := s.prefetcher
-	if prefetcher == nil {
-		return
-	}
-	accounts := make(map[common.Address]struct{}, block.Transactions().Len()<<1)
-	for _, tx := range block.Transactions() {
-		from, err := types.Sender(signer, tx)
-		if err != nil {
-			// invalid block, skip prefetch
-			return
-		}
-		accounts[from] = struct{}{}
-		if tx.To() != nil {
-			accounts[*tx.To()] = struct{}{}
-		}
-	}
-	addressesToPrefetch := make([]common.Address, 0, len(accounts))
-	for addr := range accounts {
-		addressesToPrefetch = append(addressesToPrefetch, addr) // Copy needed for closure
-	}
-
-	if len(addressesToPrefetch) > 0 {
-		prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, addressesToPrefetch, nil, false)
-	}
 }
 
 // Mark that the block is processed by diff layer
@@ -336,7 +286,7 @@ func (s *StateDB) setError(err error) {
 }
 
 func (s *StateDB) NoTrie() bool {
-	return s.noTrie
+	return s.db.NoTries()
 }
 
 // Error returns the memorized database failure occurred earlier.
@@ -356,11 +306,12 @@ func (s *StateDB) AddLog(log *types.Log) {
 
 // GetLogs returns the logs matching the specified transaction hash, and annotates
 // them with the given blockNumber and blockHash.
-func (s *StateDB) GetLogs(hash common.Hash, blockNumber uint64, blockHash common.Hash) []*types.Log {
+func (s *StateDB) GetLogs(hash common.Hash, blockNumber uint64, blockHash common.Hash, blockTime uint64) []*types.Log {
 	logs := s.logs[hash]
 	for _, l := range logs {
 		l.BlockNumber = blockNumber
 		l.BlockHash = blockHash
+		l.BlockTimestamp = blockTime
 	}
 	return logs
 }
@@ -402,7 +353,7 @@ func (s *StateDB) SubRefund(gas uint64) {
 }
 
 // Exist reports whether the given account address exists in the state.
-// Notably this also returns true for self-destructed accounts.
+// Notably this also returns true for self-destructed accounts within the current transaction.
 func (s *StateDB) Exist(addr common.Address) bool {
 	return s.getStateObject(addr) != nil
 }
@@ -508,6 +459,12 @@ func (s *StateDB) GetCommittedState(addr common.Address, hash common.Hash) commo
 // Database retrieves the low level database supporting the lower level trie ops.
 func (s *StateDB) Database() Database {
 	return s.db
+}
+
+// Reader retrieves the low level database reader supporting the
+// lower level operations.
+func (s *StateDB) Reader() Reader {
+	return s.reader
 }
 
 func (s *StateDB) HasSelfDestructed(addr common.Address) bool {
@@ -667,14 +624,13 @@ func (s *StateDB) GetTransientState(addr common.Address, key common.Hash) common
 
 // updateStateObject writes the given object to the trie.
 func (s *StateDB) updateStateObject(obj *stateObject) {
-	if s.noTrie {
+	if s.db.NoTries() {
 		return
 	}
 
 	// Encode the account and update the account trie
-	addr := obj.Address()
-	if err := s.trie.UpdateAccount(addr, &obj.data, len(obj.code)); err != nil {
-		s.setError(fmt.Errorf("updateStateObject (%x) error: %v", addr[:], err))
+	if err := s.trie.UpdateAccount(obj.Address(), &obj.data, len(obj.code)); err != nil {
+		s.setError(fmt.Errorf("updateStateObject (%x) error: %v", obj.Address(), err))
 	}
 	if obj.dirtyCode {
 		s.trie.UpdateContractCode(obj.Address(), common.BytesToHash(obj.CodeHash()), obj.code)
@@ -683,7 +639,7 @@ func (s *StateDB) updateStateObject(obj *stateObject) {
 
 // deleteStateObject removes the given object from the state trie.
 func (s *StateDB) deleteStateObject(addr common.Address) {
-	if s.noTrie {
+	if s.db.NoTries() {
 		return
 	}
 
@@ -790,22 +746,16 @@ func (s *StateDB) CopyDoPrefetch() *StateDB {
 // otherwise, just do inactive copy trie prefetcher.
 func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 	// Copy all the basic fields, initialize the memory ones
-	reader, _ := s.db.Reader(s.originalRoot) // impossible to fail
 	state := &StateDB{
-		db:   s.db,
-		trie: mustCopyTrie(s.trie),
-		// noTrie:s.noTrie,
-		reader: reader,
-		// expectedRoot:         s.expectedRoot,
-		originalRoot: s.originalRoot,
-		// fullProcessed:        s.fullProcessed,
-		stateObjects:         make(map[common.Address]*stateObject, len(s.journal.dirties)),
+		db:     s.db,
+		reader: s.reader,
+		// expectedRoot: s.expectedRoot,
+		originalRoot:         s.originalRoot,
+		stateObjects:         make(map[common.Address]*stateObject, len(s.stateObjects)),
 		stateObjectsDestruct: make(map[common.Address]*stateObject, len(s.stateObjectsDestruct)),
 		mutations:            make(map[common.Address]*mutation, len(s.mutations)),
 		dbErr:                s.dbErr,
 		needBadSharedStorage: s.needBadSharedStorage,
-		writeOnSharedStorage: s.writeOnSharedStorage,
-		storagePool:          s.storagePool,
 		refund:               s.refund,
 		thash:                s.thash,
 		txIndex:              s.txIndex,
@@ -815,6 +765,9 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 
 		transientStorage: s.transientStorage.Copy(),
 		journal:          s.journal.copy(),
+	}
+	if s.trie != nil {
+		state.trie = mustCopyTrie(s.trie)
 	}
 	if s.witness != nil {
 		state.witness = s.witness.Copy()
@@ -928,6 +881,20 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	// Finalise all the dirty storage states and write them into the tries
 	s.Finalise(deleteEmptyObjects)
 
+	// Initialize the trie if it's not constructed yet. If the prefetch
+	// is enabled, the trie constructed below will be replaced by the
+	// prefetched one.
+	//
+	// This operation must be done before state object storage hashing,
+	// as it assumes the main trie is already loaded.
+	if s.trie == nil {
+		tr, err := s.db.OpenTrie(s.originalRoot)
+		if err != nil {
+			s.setError(err)
+			return common.Hash{}
+		}
+		s.trie = tr
+	}
 	// If there was a trie prefetcher operating, terminate it async so that the
 	// individual storage tries can be updated as soon as the disk load finishes.
 	if s.prefetcher != nil {
@@ -1088,7 +1055,7 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 		s.witness.AddState(s.trie.Witness())
 	}
 
-	if s.noTrie {
+	if s.db.NoTries() {
 		return s.expectedRoot
 	} else {
 		return hash
@@ -1241,7 +1208,6 @@ func (s *StateDB) deleteStorage(addr common.Address, addrHash common.Hash, root 
 func (s *StateDB) handleDestruction(noStorageWiping bool) (map[common.Hash]*accountDelete, []*trienode.NodeSet, error) {
 	var (
 		nodes   []*trienode.NodeSet
-		buf     = crypto.NewKeccakState()
 		deletes = make(map[common.Hash]*accountDelete)
 	)
 	for addr, prevObj := range s.stateObjectsDestruct {
@@ -1256,7 +1222,7 @@ func (s *StateDB) handleDestruction(noStorageWiping bool) (map[common.Hash]*acco
 			continue
 		}
 		// The account was existent, it can be either case (c) or (d).
-		addrHash := crypto.HashData(buf, addr.Bytes())
+		addrHash := crypto.Keccak256Hash(addr.Bytes())
 		op := &accountDelete{
 			address: addr,
 			origin:  types.SlimAccountRLP(*prev),
@@ -1373,7 +1339,7 @@ func (s *StateDB) commit(deleteEmptyObjects bool, noStorageWiping bool) (*stateU
 	// Obviously it's not an end of the world issue, just something the original
 	// code didn't anticipate for.
 	workers.Go(func() error {
-		if s.noTrie {
+		if s.db.NoTries() {
 			root = s.expectedRoot
 			return nil
 		}
@@ -1497,7 +1463,7 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 			}
 		}
 		// If trie database is enabled, commit the state update as a new layer
-		if db := s.db.TrieDB(); db != nil && !s.noTrie {
+		if db := s.db.TrieDB(); db != nil && !s.db.NoTries() {
 			start := time.Now()
 			if err := db.Update(ret.root, ret.originRoot, block, ret.nodes, ret.stateSet()); err != nil {
 				return nil, err
@@ -1619,10 +1585,6 @@ func (s *StateDB) SlotInAccessList(addr common.Address, slot common.Hash) (addre
 		return false, false
 	}
 	return s.accessList.Contains(addr, slot)
-}
-
-func (s *StateDB) GetStorage(address common.Address) *sync.Map {
-	return s.storagePool.getStorage(address)
 }
 
 func (s *StateDB) GetSnap() snapshot.Snapshot {

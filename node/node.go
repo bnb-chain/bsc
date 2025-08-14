@@ -740,33 +740,46 @@ func (n *Node) EventMux() *event.TypeMux {
 }
 
 // OpenDatabase opens an existing database with the given name (or creates one if no
-// previous can be found) from within the node's instance directory. If the node is
-// ephemeral, a memory database is returned.
-func (n *Node) OpenDatabase(name string, cache, handles int, namespace string, readonly bool) (ethdb.Database, error) {
+// previous can be found) from within the node's instance directory. If the node has no
+// data directory, an in-memory database is returned.
+func (n *Node) OpenDatabaseWithOptions(name string, opt DatabaseOptions) (ethdb.Database, error) {
 	n.lock.Lock()
 	defer n.lock.Unlock()
 	if n.state == closedState {
 		return nil, ErrNodeStopped
 	}
-
 	var db ethdb.Database
 	var err error
 	if n.config.DataDir == "" {
-		db = rawdb.NewMemoryDatabase()
+		db, _ = rawdb.Open(memorydb.New(), rawdb.OpenOptions{
+			MetricsNamespace: opt.MetricsNamespace,
+			ReadOnly:         opt.ReadOnly,
+		})
 	} else {
-		db, err = openDatabase(openOptions{
-			Type:      n.config.DBEngine,
-			Directory: n.ResolvePath(name),
-			Namespace: namespace,
-			Cache:     cache,
-			Handles:   handles,
-			ReadOnly:  readonly,
+		opt.AncientsDirectory = n.ResolveAncient(name, opt.AncientsDirectory)
+		db, err = openDatabase(internalOpenOptions{
+			directory:       n.ResolvePath(name),
+			dbEngine:        n.config.DBEngine,
+			DatabaseOptions: opt,
 		})
 	}
 	if err == nil {
 		db = n.wrapDatabase(db)
 	}
 	return db, err
+}
+
+// OpenDatabase opens an existing database with the given name (or creates one if no
+// previous can be found) from within the node's instance directory.
+// If the node has no data directory, an in-memory database is returned.
+// Deprecated: use OpenDatabaseWithOptions instead.
+func (n *Node) OpenDatabase(name string, cache, handles int, namespace string, readonly bool) (ethdb.Database, error) {
+	return n.OpenDatabaseWithOptions(name, DatabaseOptions{
+		MetricsNamespace: namespace,
+		Cache:            cache,
+		Handles:          handles,
+		ReadOnly:         readonly,
+	})
 }
 
 func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool, config *ethconfig.Config) (ethdb.Database, error) {
@@ -791,14 +804,14 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 		stateDbHandles = config.DatabaseHandles - chainDataHandles
 	}
 
-	chainDB, err := n.OpenDatabaseWithFreezer(name, chainDbCache, chainDataHandles, config.DatabaseFreezer, namespace, readonly, false)
+	chainDB, err := n.OpenDatabaseWithFreezer(name, chainDbCache, chainDataHandles, config.DatabaseFreezer, namespace, readonly)
 	if err != nil {
 		return nil, err
 	}
 
 	if isMultiDatabase {
 		// Allocate half of the  handles and chainDbCache to this separate state data database
-		stateDiskDb, err = n.OpenDatabaseWithFreezer(name+"/state", stateDbCache, stateDbHandles, "", "eth/db/statedata/", readonly, false)
+		stateDiskDb, err = n.OpenDatabaseWithFreezer(name+"/state", stateDbCache, stateDbHandles, "", "eth/db/statedata/", readonly)
 		if err != nil {
 			return nil, err
 		}
@@ -811,36 +824,17 @@ func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool
 }
 
 // OpenDatabaseWithFreezer opens an existing database with the given name (or
-// creates one if no previous can be found) from within the node's data directory,
-// also attaching a chain freezer to it that moves ancient chain data from the
-// database to immutable append-only files. If the node is an ephemeral one, a
-// memory database is returned.
-func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient, namespace string, readonly, disableFreeze bool) (ethdb.Database, error) {
-	n.lock.Lock()
-	defer n.lock.Unlock()
-	if n.state == closedState {
-		return nil, ErrNodeStopped
-	}
-	var db ethdb.Database
-	var err error
-	if n.config.DataDir == "" {
-		db, err = rawdb.NewDatabaseWithFreezer(memorydb.New(), "", namespace, readonly, disableFreeze)
-	} else {
-		db, err = openDatabase(openOptions{
-			Type:              n.config.DBEngine,
-			Directory:         n.ResolvePath(name),
-			AncientsDirectory: n.ResolveAncient(name, ancient),
-			Namespace:         namespace,
-			Cache:             cache,
-			Handles:           handles,
-			ReadOnly:          readonly,
-			DisableFreeze:     disableFreeze,
-		})
-	}
-	if err == nil {
-		db = n.wrapDatabase(db)
-	}
-	return db, err
+// creates one if no previous can be found) from within the node's data directory.
+// If the node has no data directory, an in-memory database is returned.
+// Deprecated: use OpenDatabaseWithOptions instead.
+func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient string, namespace string, readonly bool) (ethdb.Database, error) {
+	return n.OpenDatabaseWithOptions(name, DatabaseOptions{
+		AncientsDirectory: n.ResolveAncient(name, ancient),
+		MetricsNamespace:  namespace,
+		Cache:             cache,
+		Handles:           handles,
+		ReadOnly:          readonly,
+	})
 }
 
 // CheckIfMultiDataBase check the state and block subdirectory of db, if subdirectory exists, return true

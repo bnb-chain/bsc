@@ -280,6 +280,7 @@ func (hc *HeaderChain) WriteHeaders(headers []*types.Header) (int, error) {
 
 // writeHeadersAndSetHead writes a batch of block headers and applies the last
 // header as the chain head if the fork choicer says it's ok to update the chain.
+//
 // Note: This method is not concurrent-safe with inserting blocks simultaneously
 // into the chain, as side effects caused by reorganisations cannot be emulated
 // without the real blocks. Hence, writing headers directly should only be done
@@ -323,12 +324,14 @@ func (hc *HeaderChain) writeHeadersAndSetHead(headers []*types.Header, forker *F
 	return result, nil
 }
 
+// ValidateHeaderChain verifies that the supplied header chain is contiguous
+// and conforms to consensus rules.
 func (hc *HeaderChain) ValidateHeaderChain(chain []*types.Header) (int, error) {
 	// Do a sanity check that the provided chain is actually ordered and linked
 	for i := 1; i < len(chain); i++ {
 		if chain[i].Number.Uint64() != chain[i-1].Number.Uint64()+1 {
-			hash := chain[i].Hash()
-			parentHash := chain[i-1].Hash()
+			hash, parentHash := chain[i].Hash(), chain[i-1].Hash()
+
 			// Chain broke ancestry, log a message (programming error) and skip insertion
 			log.Error("Non contiguous header insert", "number", chain[i].Number, "hash", hash,
 				"parent", chain[i].ParentHash, "prevnumber", chain[i-1].Number, "prevhash", parentHash)
@@ -353,7 +356,6 @@ func (hc *HeaderChain) ValidateHeaderChain(chain []*types.Header) (int, error) {
 			return i, err
 		}
 	}
-
 	return 0, nil
 }
 
@@ -630,7 +632,7 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 	}
 	var (
 		parentHash common.Hash
-		blockBatch = hc.chainDb.NewBatch()
+		batch      = hc.chainDb.NewBatch()
 		origin     = true
 	)
 	done := func(header *types.Header) bool {
@@ -700,18 +702,18 @@ func (hc *HeaderChain) setHead(headBlock uint64, headTime uint64, updateFn Updat
 				// If the block is in the chain freezer, then this delete operation
 				// is actually ineffective.
 				if delFn != nil {
-					delFn(blockBatch, hash, num)
+					delFn(batch, hash, num)
 				}
 				// Remove the hash->number mapping along with the header itself
-				rawdb.DeleteHeader(blockBatch, hash, num)
-				rawdb.DeleteTd(blockBatch, hash, num)
+				rawdb.DeleteHeader(batch, hash, num)
+				rawdb.DeleteTd(batch, hash, num)
 			}
 			// Remove the number->hash mapping
-			rawdb.DeleteCanonicalHash(blockBatch, num)
+			rawdb.DeleteCanonicalHash(batch, num)
 		}
 	}
 	// Flush all accumulated deletions.
-	if err := blockBatch.Write(); err != nil {
+	if err := batch.Write(); err != nil {
 		log.Crit("Failed to commit batch in setHead", "err", err)
 	}
 	// Explicitly flush the pending writes in the key-value store to disk, ensuring

@@ -281,8 +281,8 @@ func (s *hookedStateDB) AddLog(log *types.Log) {
 	}
 }
 
-func (s *hookedStateDB) GetLogs(hash common.Hash, blockNumber uint64, blockHash common.Hash) []*types.Log {
-	return s.inner.GetLogs(hash, blockNumber, blockHash)
+func (s *hookedStateDB) GetLogs(hash common.Hash, blockNumber uint64, blockHash common.Hash, blockTime uint64) []*types.Log {
+	return s.inner.GetLogs(hash, blockNumber, blockHash, blockTime)
 }
 
 func (s *hookedStateDB) Finalise(deleteEmptyObjects bool) {

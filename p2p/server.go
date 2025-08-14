@@ -49,11 +49,6 @@ import (
 const (
 	defaultDialTimeout = 15 * time.Second
 
-	// This is the fairness knob for the discovery mixer. When looking for peers, we'll
-	// wait this long for a single source of candidates before moving on and trying other
-	// sources.
-	discmixTimeout = 5 * time.Second
-
 	// Connectivity defaults.
 	defaultMaxPendingPeers = 50
 	defaultDialRatio       = 3
@@ -70,14 +65,18 @@ const (
 )
 
 var (
-	errServerStopped       = errors.New("server stopped")
-	errEncHandshakeError   = errors.New("rlpx enc error")
-	errProtoHandshakeError = errors.New("rlpx proto error")
+	errServerStopped     = errors.New("server stopped")
+	errEncHandshakeError = errors.New("rlpx enc error")
 
 	// magicEnodeID is a special enode ID that can be used to disconnect all peers
 	// enode://1dd9d65c4552b5eb43d5ad55a2ee3f56c6cbc1c64a5c8d659f51fcd51bace24351232b8d7821617d2b29b54b81cdefb9b3e9c37d7fd5f63270bcc9e1a6f6a439
 	magicEnodeID = enode.ID{52, 49, 195, 147, 158, 30, 226, 166, 52, 94, 151, 106, 130, 52, 249, 135, 1, 82, 214, 72, 121, 243, 11, 194, 114, 160, 116, 246, 133, 158, 117, 232}
 )
+
+type protoHandshakeError struct{ err error }
+
+func (e *protoHandshakeError) Error() string { return fmt.Sprintf("rlpx proto error: %v", e.err) }
+func (e *protoHandshakeError) Unwrap() error { return e.err }
 
 // Server manages all peer connections.
 type Server struct {
@@ -484,7 +483,9 @@ func (srv *Server) setupLocalNode() error {
 }
 
 func (srv *Server) setupDiscovery() error {
-	srv.discmix = enode.NewFairMix(discmixTimeout)
+	// Set up the discovery source mixer. Here, we don't care about the
+	// fairness of the mix, it's just for putting the
+	srv.discmix = enode.NewFairMix(0)
 
 	// Don't listen on UDP endpoint if DHT is disabled.
 	if srv.NoDiscovery {
@@ -539,7 +540,6 @@ func (srv *Server) setupDiscovery() error {
 			return err
 		}
 		srv.discv4 = ntab
-		srv.discmix.AddSource(ntab.RandomNodes())
 	}
 	if srv.Config.DiscoveryV5 {
 		cfg := discover.Config{
@@ -563,13 +563,26 @@ func (srv *Server) setupDiscovery() error {
 			added[proto.Name] = true
 		}
 	}
+
+	// Set up default non-protocol-specific discovery feeds if no protocol
+	// has configured discovery.
+	if len(added) == 0 {
+		if srv.discv4 != nil {
+			it := srv.discv4.RandomNodes()
+			srv.discmix.AddSource(enode.WithSourceName("discv4-default", it))
+		}
+		if srv.discv5 != nil {
+			it := srv.discv5.RandomNodes()
+			srv.discmix.AddSource(enode.WithSourceName("discv5-default", it))
+		}
+	}
 	return nil
 }
 
 func (srv *Server) setupDialScheduler() {
 	config := dialConfig{
 		self:           srv.localnode.ID(),
-		maxDialPeers:   srv.maxDialedConns(),
+		maxDialPeers:   srv.MaxDialedConns(),
 		maxActiveDials: srv.MaxPendingPeers,
 		log:            srv.Logger,
 		netRestrict:    srv.NetRestrict,
@@ -588,15 +601,15 @@ func (srv *Server) setupDialScheduler() {
 	}
 }
 
-func (srv *Server) maxInboundConns() int {
-	return srv.MaxPeers - srv.maxDialedConns()
+func (srv *Server) MaxInboundConns() int {
+	return srv.MaxPeers - srv.MaxDialedConns()
 }
 
 func (srv *Server) SetFilter(f forkid.Filter) {
 	srv.forkFilter = f
 }
 
-func (srv *Server) maxDialedConns() (limit int) {
+func (srv *Server) MaxDialedConns() (limit int) {
 	if srv.NoDial {
 		return len(srv.StaticNodes)
 	}
@@ -807,7 +820,7 @@ func (srv *Server) postHandshakeChecks(peers map[enode.ID]*Peer, inboundCount in
 	switch {
 	case !c.is(trustedConn) && len(peers) >= srv.MaxPeers:
 		return DiscTooManyPeers
-	case !c.is(trustedConn) && c.is(inboundConn) && inboundCount >= srv.maxInboundConns():
+	case !c.is(trustedConn) && c.is(inboundConn) && inboundCount >= srv.MaxInboundConns():
 		return DiscTooManyPeers
 	case peers[c.node.ID()] != nil:
 		return DiscAlreadyConnected
@@ -994,7 +1007,7 @@ func (srv *Server) setupConn(c *conn, dialDest *enode.Node) error {
 	phs, err := c.doProtoHandshake(srv.ourHandshake)
 	if err != nil {
 		clog.Trace("Failed p2p handshake", "err", err)
-		return fmt.Errorf("%w: %v", errProtoHandshakeError, err)
+		return &protoHandshakeError{err: err}
 	}
 	if id := c.node.ID(); !bytes.Equal(crypto.Keccak256(phs.ID), id[:]) {
 		clog.Trace("Wrong devp2p handshake identity", "phsid", hex.EncodeToString(phs.ID))

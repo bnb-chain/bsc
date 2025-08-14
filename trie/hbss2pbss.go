@@ -17,6 +17,9 @@ import (
 	"github.com/ethereum/go-ethereum/trie/trienode"
 )
 
+func (n *fullNode) copy() *fullNode   { copy := *n; return &copy }
+func (n *shortNode) copy() *shortNode { copy := *n; return &copy }
+
 type Hbss2Pbss struct {
 	trie            *Trie // traverse trie
 	db              Database
