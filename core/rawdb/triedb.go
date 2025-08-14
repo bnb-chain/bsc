@@ -153,21 +153,21 @@ func ShardIndexInTrieDB(key []byte, shardNum int) int {
 		if len(key) < 2 {
 			return 0
 		}
-		return int(key[1]>>4) % shardNum
+		return int(key[1]) % shardNum
 	}
 	// TrieNodeStoragePrefix + accountHash + hexPath -> trie node
 	if bytes.HasPrefix(key, TrieNodeStoragePrefix) {
 		if len(key) < 34 {
 			return 0
 		}
-		return int(key[33]>>4) % shardNum
+		return int(key[33]) % shardNum
 	}
 	// CodePrefix + code hash -> account code
 	if bytes.HasPrefix(key, CodePrefix) {
 		if len(key) < 2 {
 			return 0
 		}
-		return int(key[1]>>4) % shardNum
+		return int(key[1]) % shardNum
 	}
 	// some metadata, journal save in shard0
 	// such as persistentStateIDKey, trieJournalKey, stateIDPrefix, etc.
