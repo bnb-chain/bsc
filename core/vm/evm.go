@@ -666,23 +666,33 @@ func (evm *EVM) GetVMContext() *tracing.VMContext {
 }
 
 func (evm *EVM) Inline(contract *Contract, input []byte, value *uint256.Int) (ret []byte, gasCost uint64, expected bool) {
-	if contract.self.Address() != common.HexToAddress("0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c") {
-		return nil, 0, false
-	}
 	if len(input) < 4 {
 		return nil, 0, false
 	}
 
 	sig := input[:4]
-	if len(sig) == 4 && sig[0] == 0x70 && sig[1] == 0xa0 && sig[2] == 0x82 && sig[3] == 0x31 {
-		ret, gasCost, expected = evm.wbnbBalanceOf(contract, input, value)
-		return
-	} else if len(sig) == 4 && sig[0] == 0xa9 && sig[1] == 0x05 && sig[2] == 0x9c && sig[3] == 0xbb {
-		ret, gasCost, expected = evm.wbnbTransfer(contract, input, value)
-		return
-	} else {
+	switch contract.self.Address() {
+	case common.HexToAddress("0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c"):
+		if len(sig) == 4 && sig[0] == 0x70 && sig[1] == 0xa0 && sig[2] == 0x82 && sig[3] == 0x31 {
+			ret, gasCost, expected = evm.wbnbBalanceOf(contract, input, value)
+			return
+		} else if len(sig) == 4 && sig[0] == 0xa9 && sig[1] == 0x05 && sig[2] == 0x9c && sig[3] == 0xbb {
+			ret, gasCost, expected = evm.wbnbTransfer(contract, input, value)
+			return
+		} else {
+			return nil, 0, false
+		}
+	case common.HexToAddress("0x55D398326F99059FF775485246999027B3197955"):
+		if len(sig) == 4 && sig[0] == 0x70 && sig[1] == 0xa0 && sig[2] == 0x82 && sig[3] == 0x31 {
+			ret, gasCost, expected = evm.usdtBalanceOf(contract, input, value)
+			return
+		} else {
+			return nil, 0, false
+		}
+	default:
 		return nil, 0, false
 	}
+
 }
 
 func (evm *EVM) wbnbBalanceOf(contract *Contract, input []byte, value *uint256.Int) (ret []byte, gasCost uint64, expected bool) {
@@ -912,4 +922,62 @@ func (evm *EVM) gasSStoreBSC(contract *Contract, key, newValue common.Hash) uint
 	}
 	gasCost, _ := gasSStore(evm, contract, stack, nil, 0)
 	return gasCost
+}
+
+func (evm *EVM) usdtBalanceOf(contract *Contract, input []byte, value *uint256.Int) (ret []byte, gasCost uint64, expected bool) {
+	if value != nil && !value.IsZero() {
+		return nil, 0, false
+	}
+	if len(input) < 4+32 {
+		return nil, 0, false
+	}
+
+	query := append(input[4:36],
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1,
+	)
+
+	interpreter := evm.interpreter
+
+	if interpreter.hasher == nil {
+		interpreter.hasher = crypto.NewKeccakState()
+	} else {
+		interpreter.hasher.Reset()
+	}
+	interpreter.hasher.Write(query)
+	interpreter.hasher.Read(interpreter.hasherBuf[:])
+
+	if evm.Config.EnablePreimageRecording {
+		evm.StateDB.AddPreimage(interpreter.hasherBuf, query)
+	}
+
+	slot := interpreter.hasherBuf
+
+	ret = evm.StateDB.GetState(contract.Address(), slot).Bytes()
+
+	gasCost = uint64(431)
+	if contract.Gas < gasCost {
+		return nil, 0, false
+	}
+	contract.Gas -= gasCost
+
+	var sloadGas uint64
+	if _, slotPresent := evm.StateDB.SlotInAccessList(contract.Address(), slot); !slotPresent {
+		// If the caller cannot afford the cost, this change will be rolled back
+		// If he does afford it, we can skip checking the same thing later on, during execution
+		evm.StateDB.AddSlotToAccessList(contract.Address(), slot)
+		sloadGas = params.ColdSloadCostEIP2929
+	} else {
+		sloadGas = params.WarmStorageReadCostEIP2929
+	}
+
+	if contract.Gas < sloadGas {
+		return nil, gasCost, false
+	}
+	gasCost += sloadGas
+	contract.Gas -= sloadGas
+
+	return ret, gasCost, true
 }
