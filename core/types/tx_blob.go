@@ -21,6 +21,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"slices"
 
@@ -61,6 +62,56 @@ type BlobTxSidecar struct {
 	Blobs       []kzg4844.Blob       `json:"blobs"`       // Blobs needed by the blob pool
 	Commitments []kzg4844.Commitment `json:"commitments"` // Commitments needed by the blob pool
 	Proofs      []kzg4844.Proof      `json:"proofs"`      // Proofs needed by the blob pool
+}
+
+type blobTxSidecarV0 struct {
+	Blobs       []kzg4844.Blob
+	Commitments []kzg4844.Commitment
+	Proofs      []kzg4844.Proof
+}
+
+func (sc *BlobTxSidecar) EncodeRLP(w io.Writer) error {
+	switch sc.Version {
+	case 0:
+		return rlp.Encode(w, &blobTxSidecarV0{
+			Blobs:       sc.Blobs,
+			Commitments: sc.Commitments,
+			Proofs:      sc.Proofs,
+		})
+	case 1:
+		return rlp.Encode(w, sc)
+	default:
+		return fmt.Errorf("unsupported sidecar version %d", sc.Version)
+	}
+}
+
+func (sc *BlobTxSidecar) DecodeRLP(s *rlp.Stream) error {
+	kind, _, err := s.Kind()
+	if err != nil {
+		return err
+	}
+
+	if kind == rlp.List {
+		// v0
+		var payload blobTxSidecarV0
+		if err := s.Decode(&payload); err != nil {
+			return err
+		}
+		sc.Version = 0
+		sc.Blobs = payload.Blobs
+		sc.Commitments = payload.Commitments
+		sc.Proofs = payload.Proofs
+		return nil
+	}
+
+	// v1+
+	if err := s.Decode(sc); err != nil {
+		return err
+	}
+	if sc.Version != 1 {
+		return fmt.Errorf("unsupported blob tx version %d", sc.Version)
+	}
+	return nil
 }
 
 // BlobHashes computes the blob hashes of the given blobs.

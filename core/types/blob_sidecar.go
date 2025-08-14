@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -36,6 +37,46 @@ type BlobSidecar struct {
 	BlockHash   common.Hash `json:"blockHash"`
 	TxIndex     uint64      `json:"transactionIndex"`
 	TxHash      common.Hash `json:"transactionHash"`
+}
+
+func (s *BlobSidecar) EncodeRLP(w io.Writer) error {
+	// First, encode the embedded BlobTxSidecar
+	if err := s.BlobTxSidecar.EncodeRLP(w); err != nil {
+		return err
+	}
+
+	// Then encode the remaining fields
+	return rlp.Encode(w, struct {
+		BlockNumber *big.Int
+		BlockHash   common.Hash
+		TxIndex     uint64
+		TxHash      common.Hash
+	}{
+		s.BlockNumber,
+		s.BlockHash,
+		s.TxIndex,
+		s.TxHash,
+	})
+}
+
+func (s *BlobSidecar) DecodeRLP(stream *rlp.Stream) error {
+	// First, decode the embedded BlobTxSidecar
+	if err := s.BlobTxSidecar.DecodeRLP(stream); err != nil {
+		return err
+	}
+
+	// Then decode the remaining fields
+	return stream.Decode(&struct {
+		BlockNumber *big.Int
+		BlockHash   common.Hash
+		TxIndex     uint64
+		TxHash      common.Hash
+	}{
+		s.BlockNumber,
+		s.BlockHash,
+		s.TxIndex,
+		s.TxHash,
+	})
 }
 
 func NewBlobSidecarFromTx(tx *Transaction) *BlobSidecar {
