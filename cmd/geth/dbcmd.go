@@ -41,6 +41,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/leveldb"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
@@ -338,6 +339,7 @@ The source database will be read from --datadir/chaindata directory, and data wi
 Usage examples:
   geth --datadir /data/ethereum db migrate
   geth --datadir ~/.ethereum db migrate
+  geth --datadir ~/.ethereum --config /data/ethereum/config.toml --enablesharding db migrate
 
 WARNING: This operation may take a very long time to finish for large databases (2TB+).`,
 	}
@@ -1526,6 +1528,11 @@ func migrateDatabase(ctx *cli.Context) error {
 	cacheSize := ctx.Int(utils.CacheFlag.Name)
 	cacheDB := ctx.Int(utils.CacheDatabaseFlag.Name)
 
+	enablesharding := ctx.Bool(utils.EnableShardingFlag.Name)
+	if enablesharding {
+		log.Info("migrateDatabase with enabling sharding database")
+		return migrateDBWithSharding(ctx)
+	}
 	// Create source stack using standard geth configuration (handles --datadir)
 	sourceStack, _ := makeConfigNode(ctx)
 	defer sourceStack.Close()
@@ -1739,14 +1746,6 @@ func isTrieKey(key, value []byte) bool {
 	case rawdb.IsStorageTrieNode(key):
 		return true
 	case bytes.HasPrefix(key, rawdb.PreimagePrefix) && len(key) == (len(rawdb.PreimagePrefix)+common.HashLength):
-		return true
-	case bytes.HasPrefix(key, rawdb.ChtTablePrefix) ||
-		bytes.HasPrefix(key, rawdb.ChtIndexTablePrefix) ||
-		bytes.HasPrefix(key, rawdb.ChtPrefix): // Canonical hash trie
-		return true
-	case bytes.HasPrefix(key, rawdb.BloomTrieTablePrefix) ||
-		bytes.HasPrefix(key, rawdb.BloomTrieIndexPrefix) ||
-		bytes.HasPrefix(key, rawdb.BloomTriePrefix): // Bloomtrie sub
 		return true
 	case bytes.HasPrefix(key, []byte("c")) && len(key) == (1+common.HashLength): // CodePrefix - contract code
 		return true
@@ -2320,5 +2319,180 @@ func performDatabaseCompaction(sourceDB, stateDB, snapDB, indexDB ethdb.Database
 	}
 
 	log.Info("🗜️  Database compaction completed for all databases")
+	return nil
+}
+
+func migrateDBWithSharding(ctx *cli.Context) error {
+	stack, cfg := makeConfigNode(ctx)
+	chainDB, err := stack.OpenAndMergeDatabase(eth.ChainData, eth.ChainDBNamespace, false, &cfg.Eth)
+	if err != nil {
+		return fmt.Errorf("failed to open and merge database: %v", err)
+	}
+	log.Info("open and merge database", "chaindata", eth.ChainData, "isMultiDB", stack.CheckIfMultiDataBase())
+	defer chainDB.Close()
+
+	if stack.CheckIfMultiDataBase() {
+		return fmt.Errorf("there is already multidbs set, cannot migrate again")
+	}
+
+	// just set multidbs, and then migrate in place
+	log.Info("setting multidbs...", "datadir", stack.DataDir(), "config", stack.Config().Storage)
+	stack.SetMultiDBs(chainDB, eth.ChainData, cfg.Eth.DatabaseCache, cfg.Eth.DatabaseHandles, false, false)
+
+	// traverse all the keys in the chaindb, and then migrate in place
+	log.Info("traversing and migrating with sharding...")
+	if err := traverseAndMigrateWithSharding(chainDB); err != nil {
+		return fmt.Errorf("failed to traverse and migrate with sharding: %v", err)
+	}
+
+	// move state ancient data
+	srcStateAncient, err := chainDB.AncientDatadir()
+	if err != nil {
+		return fmt.Errorf("failed to get state ancient directory: %v", err)
+	}
+	srcStateAncient = filepath.Join(srcStateAncient, rawdb.MerkleStateFreezerName)
+	if _, err := os.Stat(srcStateAncient); err != nil {
+		log.Info("no state ancient data to migrate", "path", srcStateAncient)
+		return nil
+	}
+	dstStateAncient, err := chainDB.GetStateStore().AncientDatadir()
+	if err != nil {
+		return fmt.Errorf("failed to get state ancient directory: %v", err)
+	}
+	if err := os.MkdirAll(dstStateAncient, 0755); err != nil {
+		return fmt.Errorf("failed to create state ancient directory: %v", err)
+	}
+	dstStateAncient = filepath.Join(dstStateAncient, rawdb.MerkleStateFreezerName)
+	log.Info("moving state ancient data...", "src", srcStateAncient, "dst", dstStateAncient)
+	if err := os.Rename(srcStateAncient, dstStateAncient); err != nil {
+		return fmt.Errorf("failed to move state ancient directory: %v", err)
+	}
+
+	// compact the database
+	log.Info("compacting chaindb...")
+	if err := chainDB.Compact(nil, nil); err != nil {
+		return fmt.Errorf("failed to compact chaindb: %v", err)
+	}
+	log.Info("compacting statedb...")
+	if err := chainDB.GetStateStore().Compact(nil, nil); err != nil {
+		return fmt.Errorf("failed to compact statedb: %v", err)
+	}
+	log.Info("compacting snapdb...")
+	if err := chainDB.GetSnapStore().Compact(nil, nil); err != nil {
+		return fmt.Errorf("failed to compact snapdb: %v", err)
+	}
+	log.Info("compacting indexdb...")
+	if err := chainDB.GetTxIndexStore().Compact(nil, nil); err != nil {
+		return fmt.Errorf("failed to compact indexdb: %v", err)
+	}
+
+	return nil
+}
+
+type stat struct {
+	size  common.StorageSize
+	count uint64
+}
+
+func (s *stat) Add(size int) {
+	s.size += common.StorageSize(size)
+	s.count++
+}
+
+func traverseAndMigrateWithSharding(chainDB ethdb.Database) error {
+	it := chainDB.NewIterator(nil, nil)
+	defer it.Release()
+
+	var (
+		chainBatch = chainDB.NewBatch()
+		stateBatch = chainDB.GetStateStore().NewBatch()
+		snapBatch  = chainDB.GetSnapStore().NewBatch()
+		indexBatch = chainDB.GetTxIndexStore().NewBatch()
+		batchSize  = 0
+		chainStat  = &stat{}
+		stateStat  = &stat{}
+		snapStat   = &stat{}
+		indexStat  = &stat{}
+	)
+	for it.Next() {
+		key := make([]byte, len(it.Key()))
+		value := make([]byte, len(it.Value()))
+		copy(key, it.Key())
+		copy(value, it.Value())
+		kvSize := len(key) + len(value)
+		batchSize += kvSize
+		chainStat.Add(kvSize)
+
+		// put the key into the state, snap, or index database and delete from chaindb
+		category := categorizeDataByKey(key, value)
+		switch category {
+		case "state":
+			stateBatch.Put(key, value)
+			chainBatch.Delete(key)
+			stateStat.Add(kvSize)
+		case "snapshot":
+			snapBatch.Put(key, value)
+			chainBatch.Delete(key)
+			snapStat.Add(kvSize)
+		case "txindex":
+			indexBatch.Put(key, value)
+			chainBatch.Delete(key)
+			indexStat.Add(kvSize)
+		}
+
+		// flush the batch if it's too large
+		if batchSize >= 256*1024*1024 {
+			log.Info("flushing kvs...", "chain count", chainStat.count, "chain size", chainStat.size,
+				"state count", stateStat.count, "state size", stateStat.size, "snap count", snapStat.count,
+				"snap size", snapStat.size, "index count", indexStat.count, "index size", indexStat.size)
+			if err := stateBatch.Write(); err != nil {
+				return fmt.Errorf("failed to write state batch: %v", err)
+			}
+			if err := snapBatch.Write(); err != nil {
+				return fmt.Errorf("failed to write snap batch: %v", err)
+			}
+			if err := indexBatch.Write(); err != nil {
+				return fmt.Errorf("failed to write index batch: %v", err)
+			}
+			// save first, then delete
+			if err := chainBatch.Write(); err != nil {
+				return fmt.Errorf("failed to write chain batch: %v", err)
+			}
+			chainBatch.Reset()
+			stateBatch.Reset()
+			snapBatch.Reset()
+			indexBatch.Reset()
+			batchSize = 0
+		}
+	}
+
+	// flush the remaining kvs
+	if batchSize > 0 {
+		log.Info("flushing leftover kvs...", "chain count", chainStat.count, "chain size", chainStat.size,
+			"state count", stateStat.count, "state size", stateStat.size, "snap count", snapStat.count,
+			"snap size", snapStat.size, "index count", indexStat.count, "index size", indexStat.size)
+		if err := stateBatch.Write(); err != nil {
+			return fmt.Errorf("failed to write state batch: %v", err)
+		}
+		if err := snapBatch.Write(); err != nil {
+			return fmt.Errorf("failed to write snap batch: %v", err)
+		}
+		if err := indexBatch.Write(); err != nil {
+			return fmt.Errorf("failed to write index batch: %v", err)
+		}
+		// save first, then delete
+		if err := chainBatch.Write(); err != nil {
+			return fmt.Errorf("failed to write chain batch: %v", err)
+		}
+		chainBatch.Reset()
+		stateBatch.Reset()
+		snapBatch.Reset()
+		indexBatch.Reset()
+		batchSize = 0
+	}
+
+	log.Info("migration completed", "chain count", chainStat.count, "chain size", chainStat.size,
+		"state count", stateStat.count, "state size", stateStat.size, "snap count", snapStat.count,
+		"snap size", snapStat.size, "index count", indexStat.count, "index size", indexStat.size)
 	return nil
 }

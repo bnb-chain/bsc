@@ -30,14 +30,14 @@ func ShardIndexInSnapDB(key []byte, shardNum int) int {
 		if len(key) < 2 {
 			return 0
 		}
-		return int(key[1]>>4) % shardNum
+		return int(key[1]) % shardNum
 	}
 	// SnapshotStoragePrefix + account hash + storage hash -> storage trie value
 	if bytes.HasPrefix(key, SnapshotStoragePrefix) {
 		if len(key) < 34 {
 			return 0
 		}
-		return int(key[33]>>4) % shardNum
+		return int(key[33]) % shardNum
 	}
 	// some metadata, journal save in shard0
 	// such as snapshotDisabledKey, SnapshotRootKey, snapshotGeneratorKey, snapshotJournalKey, etc.
