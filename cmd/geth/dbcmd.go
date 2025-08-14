@@ -25,7 +25,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -328,10 +327,6 @@ of ancientStore, will also displays the reserved number of blocks in ancientStor
 			utils.SyncModeFlag,
 			utils.CacheFlag,
 			utils.CacheDatabaseFlag,
-			&cli.BoolFlag{
-				Name:  "conservative",
-				Usage: "Use conservative mode (only extract very specific data types)",
-			},
 		}, utils.NetworkFlags),
 		Description: `This command migrates a single chaindb database to multi-database format IN-PLACE.
 The source database will be read from --datadir/chaindata directory, and data will be split into:
@@ -1595,14 +1590,8 @@ func migrateDatabase(ctx *cli.Context) error {
 	}
 	defer indexDB.Close()
 
-	// Get conservative flag
-	conservative := ctx.Bool("conservative")
-	if conservative {
-		log.Info("🛡️ Running in CONSERVATIVE mode - only extracting very specific data types")
-	}
-
 	// Start in-place migration (pass the totalItemsBefore for verification)
-	return performInPlaceMigration(sourceDB, stateDB, snapDB, indexDB, totalItemsBefore, sourceChainDataPath, conservative)
+	return performInPlaceMigration(sourceDB, stateDB, snapDB, indexDB, totalItemsBefore, sourceChainDataPath)
 }
 
 // openTargetDatabase creates a key-value database at the specified path
@@ -1656,12 +1645,7 @@ func openTargetDatabaseWithFreezer(dbPath string, cache, handles int) (ethdb.Dat
 	return rawdb.NewDatabaseWithFreezer(kvdb, ancientPath, "eth/db/statedata/", false, false, false)
 }
 
-// KeyValuePair represents a key-value pair with its target database type
-type KeyValuePair struct {
-	Key      []byte
-	Value    []byte
-	TargetDB string
-}
+
 
 // MigrationStats holds thread-safe migration statistics
 type MigrationStats struct {
@@ -1715,155 +1699,9 @@ func (s *MigrationStats) GetBytes() (int64, int64, int64, int64) {
 		atomic.LoadInt64(&s.indexBytes)
 }
 
-// performMigration performs multi-threaded data migration
-func performMigration(sourceDB, chainDB, stateDB, snapDB, indexDB ethdb.Database) error {
-	numWorkers := runtime.NumCPU() * 2 // Use 2x CPU cores for workers
-	if numWorkers > 16 {
-		numWorkers = 16 // Cap at 16 workers to avoid too much overhead
-	}
 
-	kvChannel := make(chan KeyValuePair, numWorkers*1000) // Buffered channel
-	var wg sync.WaitGroup
-	stats := &MigrationStats{startTime: time.Now()}
 
-	log.Info("Starting multi-threaded data migration", "workers", numWorkers)
 
-	// Start worker goroutines
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go migrationWorker(i, kvChannel, chainDB, stateDB, snapDB, indexDB, stats, &wg)
-	}
-
-	// Progress monitoring goroutine
-	stopProgress := make(chan struct{})
-	go progressMonitor(stats, stopProgress)
-
-	// Read data from source database and send to channel
-	it := sourceDB.NewIterator(nil, nil)
-	defer it.Release()
-
-	for it.Next() {
-		// Create copies of key and value since iterator reuses underlying memory
-		key := make([]byte, len(it.Key()))
-		value := make([]byte, len(it.Value()))
-		copy(key, it.Key())
-		copy(value, it.Value())
-
-		targetDB := categorizeDataByKey(key, value)
-
-		select {
-		case kvChannel <- KeyValuePair{Key: key, Value: value, TargetDB: targetDB}:
-		case <-time.After(10 * time.Second):
-			log.Warn("Channel send timeout - workers may be overloaded")
-		}
-	}
-
-	// Check for iterator errors
-	if err := it.Error(); err != nil {
-		close(kvChannel)
-		close(stopProgress)
-		return fmt.Errorf("iterator error: %v", err)
-	}
-
-	// Signal workers to finish
-	close(kvChannel)
-
-	// Wait for all workers to complete
-	wg.Wait()
-	close(stopProgress)
-
-	total, chain, state, snapshot, txindex := stats.Get()
-	log.Info("Migration completed",
-		"total", total,
-		"chain", chain,
-		"state", state,
-		"snapshot", snapshot,
-		"txindex", txindex,
-		"elapsed", common.PrettyDuration(time.Since(stats.startTime)))
-
-	return nil
-}
-
-// migrationWorker processes key-value pairs and writes them to appropriate databases
-func migrationWorker(id int, kvChannel <-chan KeyValuePair, chainDB, stateDB, snapDB, indexDB ethdb.Database, stats *MigrationStats, wg *sync.WaitGroup) {
-	defer wg.Done()
-
-	const batchSize = 2000
-
-	// Create batches for each database
-	chainBatch := chainDB.NewBatch()
-	stateBatch := stateDB.NewBatch()
-	snapBatch := snapDB.NewBatch()
-	indexBatch := indexDB.NewBatch()
-
-	batchCount := 0
-
-	// Flush function for all batches
-	flushBatches := func() error {
-		if chainBatch.ValueSize() > 0 {
-			if err := chainBatch.Write(); err != nil {
-				return fmt.Errorf("worker %d: failed to write chain batch: %v", id, err)
-			}
-			chainBatch.Reset()
-		}
-		if stateBatch.ValueSize() > 0 {
-			if err := stateBatch.Write(); err != nil {
-				return fmt.Errorf("worker %d: failed to write state batch: %v", id, err)
-			}
-			stateBatch.Reset()
-		}
-		if snapBatch.ValueSize() > 0 {
-			if err := snapBatch.Write(); err != nil {
-				return fmt.Errorf("worker %d: failed to write snapshot batch: %v", id, err)
-			}
-			snapBatch.Reset()
-		}
-		if indexBatch.ValueSize() > 0 {
-			if err := indexBatch.Write(); err != nil {
-				return fmt.Errorf("worker %d: failed to write txindex batch: %v", id, err)
-			}
-			indexBatch.Reset()
-		}
-		return nil
-	}
-
-	defer func() {
-		if err := flushBatches(); err != nil {
-			log.Error("Failed to flush final batches", "worker", id, "err", err)
-		}
-	}()
-
-	for kv := range kvChannel {
-		// Add to appropriate batch
-		var err error
-		switch kv.TargetDB {
-		case "state":
-			err = stateBatch.Put(kv.Key, kv.Value)
-		case "snapshot":
-			err = snapBatch.Put(kv.Key, kv.Value)
-		case "txindex":
-			err = indexBatch.Put(kv.Key, kv.Value)
-		default: // chain data
-			err = chainBatch.Put(kv.Key, kv.Value)
-		}
-
-		if err != nil {
-			log.Error("Failed to add to batch", "worker", id, "target", kv.TargetDB, "err", err)
-			continue
-		}
-
-		stats.Add(kv.TargetDB, len(kv.Key), len(kv.Value))
-		batchCount++
-
-		// Flush batches when they get large enough
-		if batchCount >= batchSize {
-			if err := flushBatches(); err != nil {
-				log.Error("Failed to flush batches", "worker", id, "err", err)
-			}
-			batchCount = 0
-		}
-	}
-}
 
 // progressMonitor logs migration progress periodically
 func progressMonitor(stats *MigrationStats, stop <-chan struct{}) {
@@ -1974,7 +1812,7 @@ func categorizeDataByKey(key, value []byte) string {
 }
 
 // performInPlaceMigration performs in-place data migration by extracting data from source DB
-func performInPlaceMigration(sourceDB, stateDB, snapDB, indexDB ethdb.Database, totalItemsBefore int64, sourceChainDataPath string, conservative bool) error {
+func performInPlaceMigration(sourceDB, stateDB, snapDB, indexDB ethdb.Database, totalItemsBefore int64, sourceChainDataPath string) error {
 	stats := &MigrationStats{startTime: time.Now()}
 
 	log.Info("Starting in-place data migration")
@@ -1983,35 +1821,11 @@ func performInPlaceMigration(sourceDB, stateDB, snapDB, indexDB ethdb.Database, 
 	stopProgress := make(chan struct{})
 	go progressMonitor(stats, stopProgress)
 
-	if conservative {
-		// Conservative mode: only extract txindex data (safest)
-		log.Info("🔍 CONSERVATIVE: Only extracting txindex data...")
-		if err := extractDataByCategoryConservative(sourceDB, indexDB, "txindex", stats); err != nil {
-			close(stopProgress)
-			return fmt.Errorf("failed to extract txindex data: %v", err)
-		}
-	} else {
-		// Normal mode: extract all data types
-		// Extract state data
-		log.Info("🔍 Starting state data extraction...")
-		if err := extractDataByCategory(sourceDB, stateDB, "state", stats); err != nil {
-			close(stopProgress)
-			return fmt.Errorf("failed to extract state data: %v", err)
-		}
-
-		// Extract snapshot data
-		log.Info("🔍 Starting snapshot data extraction...")
-		if err := extractDataByCategory(sourceDB, snapDB, "snapshot", stats); err != nil {
-			close(stopProgress)
-			return fmt.Errorf("failed to extract snapshot data: %v", err)
-		}
-
-		// Extract txindex data
-		log.Info("🔍 Starting txindex data extraction...")
-		if err := extractDataByCategory(sourceDB, indexDB, "txindex", stats); err != nil {
-			close(stopProgress)
-			return fmt.Errorf("failed to extract txindex data: %v", err)
-		}
+	// Extract all data in single pass
+	log.Info("🔍 Starting single-pass data extraction...")
+	if err := extractAllDataInOnePass(sourceDB, stateDB, snapDB, indexDB, stats); err != nil {
+		close(stopProgress)
+		return fmt.Errorf("failed to extract data: %v", err)
 	}
 
 	close(stopProgress)
@@ -2095,19 +1909,89 @@ func performInPlaceMigration(sourceDB, stateDB, snapDB, indexDB ethdb.Database, 
 	return nil
 }
 
-// extractDataByCategory extracts data of a specific category from source DB to target DB and deletes from source
-func extractDataByCategory(sourceDB, targetDB ethdb.Database, category string, stats *MigrationStats) error {
-	log.Info("Extracting data category", "category", category)
+// CategorizedData represents a key-value pair with its target category
+type CategorizedData struct {
+	Key      []byte
+	Value    []byte
+	Category string
+}
 
-	// Create batches for target DB and source deletion
-	targetBatch := targetDB.NewBatch()
-	deleteBatch := sourceDB.NewBatch()
+// extractAllDataInOnePass extracts all data types using multi-threaded async processing
+func extractAllDataInOnePass(sourceDB, stateDB, snapDB, indexDB ethdb.Database, stats *MigrationStats) error {
+	log.Info("🚀 Starting multi-threaded async data extraction",
+		"architecture", "1 reader + 6 writers (2×state,2×snapshot,2×txindex) + 1 deleter = 8 threads")
 
-	// Iterate through source database
+	// Channel buffer sizes - balance memory usage vs throughput
+	const channelBufferSize = 10000
+
+	// Create channels for communication between goroutines
+	stateChannel := make(chan CategorizedData, channelBufferSize)
+	snapChannel := make(chan CategorizedData, channelBufferSize)
+	indexChannel := make(chan CategorizedData, channelBufferSize)
+	deleteChannel := make(chan []byte, channelBufferSize)
+
+	// Error channels to collect errors from goroutines
+	errorChannel := make(chan error, 8) // reader + 6 writers (2 per type) + 1 deleter = 8 threads
+
+	// WaitGroup to coordinate all goroutines
+	var wg sync.WaitGroup
+
+	// Start async writer goroutines (2 threads per database type for better performance)
+	log.Info("🚀 Starting async writer goroutines (2 threads per database type)...")
+
+	// State database writers (2 threads)
+	for i := 0; i < 2; i++ {
+		writerID := i + 1
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			if err := asyncDatabaseWriter(fmt.Sprintf("state-%d", id), stateDB, stateChannel, stats); err != nil {
+				errorChannel <- fmt.Errorf("state writer %d error: %v", id, err)
+			}
+		}(writerID)
+	}
+
+	// Snapshot database writers (2 threads)
+	for i := 0; i < 2; i++ {
+		writerID := i + 1
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			if err := asyncDatabaseWriter(fmt.Sprintf("snapshot-%d", id), snapDB, snapChannel, stats); err != nil {
+				errorChannel <- fmt.Errorf("snapshot writer %d error: %v", id, err)
+			}
+		}(writerID)
+	}
+
+	// Transaction index database writers (2 threads)
+	for i := 0; i < 2; i++ {
+		writerID := i + 1
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			if err := asyncDatabaseWriter(fmt.Sprintf("txindex-%d", id), indexDB, indexChannel, stats); err != nil {
+				errorChannel <- fmt.Errorf("txindex writer %d error: %v", id, err)
+			}
+		}(writerID)
+	}
+
+	// Source database deleter
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := asyncDatabaseDeleter(sourceDB, deleteChannel); err != nil {
+			errorChannel <- fmt.Errorf("deleter error: %v", err)
+		}
+	}()
+
+	// Main reader goroutine - process source database
+	log.Info("📖 Starting main reader thread with 7 async workers (6 writers + 1 deleter)...")
+	processed := 0
+	extracted := 0
+
 	it := sourceDB.NewIterator(nil, nil)
 	defer it.Release()
 
-	extracted := 0
 	for it.Next() {
 		// Create copies of key and value since iterator reuses underlying memory
 		key := make([]byte, len(it.Key()))
@@ -2115,17 +1999,71 @@ func extractDataByCategory(sourceDB, targetDB ethdb.Database, category string, s
 		copy(key, it.Key())
 		copy(value, it.Value())
 
-		targetDB := categorizeDataByKey(key, value)
+		processed++
 
-		// Only process data that matches our target category
-		// Skip empty classification (data stays in original chaindata)
-		if targetDB == "" || targetDB != category {
+		// Determine the category for this key-value pair
+		category := categorizeDataByKey(key, value)
+
+		// Skip if it should stay in original chaindata
+		if category == "" {
 			continue
 		}
 
-		// Debug: Log first few extractions for each category
-		if extracted < 10 {
-			log.Info("📝 Extracting key",
+		extracted++
+
+		// Create data package
+		data := CategorizedData{
+			Key:      key,
+			Value:    value,
+			Category: category,
+		}
+
+		// Route to correct writer channel based on category
+		switch category {
+		case "state":
+			select {
+			case stateChannel <- data:
+				// Successfully sent to state channel, now send key to delete channel
+				select {
+				case deleteChannel <- key:
+				case err := <-errorChannel:
+					return err
+				}
+			case err := <-errorChannel:
+				return err
+			}
+		case "snapshot":
+			select {
+			case snapChannel <- data:
+				// Successfully sent to snapshot channel, now send key to delete channel
+				select {
+				case deleteChannel <- key:
+				case err := <-errorChannel:
+					return err
+				}
+			case err := <-errorChannel:
+				return err
+			}
+		case "txindex":
+			select {
+			case indexChannel <- data:
+				// Successfully sent to txindex channel, now send key to delete channel
+				select {
+				case deleteChannel <- key:
+				case err := <-errorChannel:
+					return err
+				}
+			case err := <-errorChannel:
+				return err
+			}
+		default:
+			log.Warn("Unknown category in async processing", "category", category, "keyHex", fmt.Sprintf("%x", key[:min(16, len(key))]))
+			continue
+		}
+
+		// Debug: Log first few extractions
+		if extracted <= 30 {
+			log.Info("📝 Queuing data for async processing",
 				"category", category,
 				"keyHex", fmt.Sprintf("%x", key[:min(16, len(key))]),
 				"keyStr", string(key[:min(32, len(key))]),
@@ -2133,37 +2071,9 @@ func extractDataByCategory(sourceDB, targetDB ethdb.Database, category string, s
 				"valueLen", len(value))
 		}
 
-		// Add to target database
-		if err := targetBatch.Put(key, value); err != nil {
-			return fmt.Errorf("failed to add key to target batch: %v", err)
-		}
-
-		// Mark for deletion from source database
-		if err := deleteBatch.Delete(key); err != nil {
-			return fmt.Errorf("failed to add key to delete batch: %v", err)
-		}
-
-		stats.Add(category, len(key), len(value))
-		extracted++
-
-		// Flush batches when they reach ideal size
-		if targetBatch.ValueSize() >= ethdb.IdealBatchSize {
-			if err := targetBatch.Write(); err != nil {
-				return fmt.Errorf("failed to write target batch: %v", err)
-			}
-			targetBatch.Reset()
-
-			if err := deleteBatch.Write(); err != nil {
-				return fmt.Errorf("failed to write delete batch: %v", err)
-			}
-			deleteBatch.Reset()
-
-			log.Debug("Batch flushed", "category", category, "extracted", extracted, "batchSizeMB", ethdb.IdealBatchSize/(1024*1024))
-		}
-
 		// Progress update every 10000 items
-		if extracted%10000 == 0 && extracted > 0 {
-			log.Info("Extraction progress", "category", category, "extracted", extracted)
+		if processed%10000 == 0 && processed > 0 {
+			log.Info("Reader progress", "processed", processed, "extracted", extracted)
 		}
 	}
 
@@ -2172,139 +2082,114 @@ func extractDataByCategory(sourceDB, targetDB ethdb.Database, category string, s
 		return fmt.Errorf("iterator error: %v", err)
 	}
 
-	// Flush remaining data
-	if targetBatch.ValueSize() > 0 {
-		if err := targetBatch.Write(); err != nil {
-			return fmt.Errorf("failed to write final target batch: %v", err)
+	log.Info("📖 Reader completed, closing channels...", "processed", processed, "extracted", extracted)
+
+	// Close channels to signal completion to worker goroutines
+	close(stateChannel)
+	close(snapChannel)
+	close(indexChannel)
+	close(deleteChannel)
+
+	// Wait for all goroutines to complete
+	log.Info("⏳ Waiting for all async workers to complete...")
+	wg.Wait()
+
+	// Check for any errors from worker goroutines
+	close(errorChannel)
+	for err := range errorChannel {
+		if err != nil {
+			return err
 		}
 	}
 
-	if deleteBatch.ValueSize() > 0 {
-		if err := deleteBatch.Write(); err != nil {
-			return fmt.Errorf("failed to write final delete batch: %v", err)
-		}
-	}
-
-	log.Info("Data extraction completed", "category", category, "extracted", extracted)
+	log.Info("✅ Multi-threaded async data extraction completed",
+		"totalProcessed", processed,
+		"totalExtracted", extracted,
+		"threadsUsed", "8 (1 reader + 6 writers + 1 deleter)")
 	return nil
 }
 
-// extractDataByCategoryConservative - super conservative extraction (only very specific keys)
-func extractDataByCategoryConservative(sourceDB, targetDB ethdb.Database, category string, stats *MigrationStats) error {
-	log.Info("Extracting data category (CONSERVATIVE)", "category", category)
+// asyncDatabaseWriter handles async database writing for a specific category
+func asyncDatabaseWriter(category string, targetDB ethdb.Database, dataChannel <-chan CategorizedData, stats *MigrationStats) error {
+	log.Info("🖊️ Starting async writer", "category", category)
 
-	// Create batches for target DB and source deletion
-	targetBatch := targetDB.NewBatch()
+	batch := targetDB.NewBatch()
+	processed := 0
+
+	for data := range dataChannel {
+		// Add to batch
+		if err := batch.Put(data.Key, data.Value); err != nil {
+			return fmt.Errorf("failed to add key to %s batch: %v", category, err)
+		}
+
+		// Update statistics
+		stats.Add(data.Category, len(data.Key), len(data.Value))
+		processed++
+
+		// Flush batch when it reaches ideal size
+		if batch.ValueSize() >= ethdb.IdealBatchSize {
+			if err := batch.Write(); err != nil {
+				return fmt.Errorf("failed to write %s batch: %v", category, err)
+			}
+			batch.Reset()
+			log.Debug("Async batch flushed", "category", category, "processed", processed, "batchSizeMB", ethdb.IdealBatchSize/(1024*1024))
+		}
+
+		// Progress update every 2500 items (more frequent due to multiple writers per type)
+		if processed%2500 == 0 && processed > 0 {
+			log.Info("Async writer progress", "writer", category, "processed", processed)
+		}
+	}
+
+	// Final flush of remaining batch
+	if batch.ValueSize() > 0 {
+		if err := batch.Write(); err != nil {
+			return fmt.Errorf("failed to write final %s batch: %v", category, err)
+		}
+	}
+
+	log.Info("✅ Async writer completed", "category", category, "totalProcessed", processed)
+	return nil
+}
+
+// asyncDatabaseDeleter handles async deletion of keys from source database
+func asyncDatabaseDeleter(sourceDB ethdb.Database, deleteChannel <-chan []byte) error {
+	log.Info("🗑️ Starting async deleter")
+
 	deleteBatch := sourceDB.NewBatch()
+	deleted := 0
 
-	// Iterate through source database
-	it := sourceDB.NewIterator(nil, nil)
-	defer it.Release()
-
-	extracted := 0
-	for it.Next() {
-		// Create copies of key and value since iterator reuses underlying memory
-		key := make([]byte, len(it.Key()))
-		value := make([]byte, len(it.Value()))
-		copy(key, it.Key())
-		copy(value, it.Value())
-
-		var shouldExtract bool
-
-		// SUPER CONSERVATIVE: Only extract the most obvious keys
-		if category == "txindex" {
-			// Only extract transaction lookup keys with exact prefix and length
-			if bytes.HasPrefix(key, []byte("l")) && len(key) == (1+32) { // txLookupPrefix + hash
-				shouldExtract = true
-			}
-		} else if category == "snapshot" {
-			// Only extract account snapshots with exact prefix and length
-			if bytes.HasPrefix(key, []byte("a")) && len(key) == (1+32) { // SnapshotAccountPrefix + hash
-				shouldExtract = true
-			}
-			// Only extract storage snapshots with exact prefix and length
-			if bytes.HasPrefix(key, []byte("o")) && len(key) == (1+32+32) { // SnapshotStoragePrefix + accountHash + storageHash
-				shouldExtract = true
-			}
-		} else if category == "state" {
-			// Only extract the most obvious trie keys
-			keyStr := string(key)
-			if keyStr == "TrieJournal" || keyStr == "TrieSync" || keyStr == "LastStateID" {
-				shouldExtract = true
-			}
-			// Only extract very specific prefixed trie data
-			if bytes.HasPrefix(key, []byte("A")) && len(key) > 1 { // TrieNodeAccountPrefix
-				shouldExtract = true
-			}
-			if bytes.HasPrefix(key, []byte("O")) && len(key) > 1 { // TrieNodeStoragePrefix
-				shouldExtract = true
-			}
-		}
-
-		if !shouldExtract {
-			continue
-		}
-
-		// Log what we're extracting
-		log.Info("🔎 CONSERVATIVE extracting",
-			"category", category,
-			"keyHex", fmt.Sprintf("%x", key[:min(16, len(key))]),
-			"keyStr", string(key[:min(32, len(key))]),
-			"keyLen", len(key))
-
-		// Add to target database
-		if err := targetBatch.Put(key, value); err != nil {
-			return fmt.Errorf("failed to add key to target batch: %v", err)
-		}
-
-		// Mark for deletion from source database
+	for key := range deleteChannel {
+		// Add to delete batch
 		if err := deleteBatch.Delete(key); err != nil {
 			return fmt.Errorf("failed to add key to delete batch: %v", err)
 		}
 
-		stats.Add(category, len(key), len(value))
-		extracted++
+		deleted++
 
-		// Flush batches when they reach ideal size
-		if targetBatch.ValueSize() >= ethdb.IdealBatchSize {
-			if err := targetBatch.Write(); err != nil {
-				return fmt.Errorf("failed to write target batch: %v", err)
-			}
-			targetBatch.Reset()
-
+		// Flush delete batch when it reaches ideal size
+		if deleteBatch.ValueSize() >= ethdb.IdealBatchSize {
 			if err := deleteBatch.Write(); err != nil {
 				return fmt.Errorf("failed to write delete batch: %v", err)
 			}
 			deleteBatch.Reset()
-
-			log.Debug("Batch flushed (CONSERVATIVE)", "category", category, "extracted", extracted, "batchSizeMB", ethdb.IdealBatchSize/(1024*1024))
+			log.Debug("Delete batch flushed", "deleted", deleted, "batchSizeMB", ethdb.IdealBatchSize/(1024*1024))
 		}
 
-		// Progress update every 1000 items (more frequent for conservative mode)
-		if extracted%1000 == 0 && extracted > 0 {
-			log.Info("Conservative extraction progress", "category", category, "extracted", extracted)
-		}
-	}
-
-	// Check for iterator errors
-	if err := it.Error(); err != nil {
-		return fmt.Errorf("iterator error: %v", err)
-	}
-
-	// Flush remaining data
-	if targetBatch.ValueSize() > 0 {
-		if err := targetBatch.Write(); err != nil {
-			return fmt.Errorf("failed to write final target batch: %v", err)
+		// Progress update every 10000 items
+		if deleted%10000 == 0 && deleted > 0 {
+			log.Info("Async deleter progress", "deleted", deleted)
 		}
 	}
 
+	// Final flush of remaining delete batch
 	if deleteBatch.ValueSize() > 0 {
 		if err := deleteBatch.Write(); err != nil {
 			return fmt.Errorf("failed to write final delete batch: %v", err)
 		}
 	}
 
-	log.Info("CONSERVATIVE data extraction completed", "category", category, "extracted", extracted)
+	log.Info("✅ Async deleter completed", "totalDeleted", deleted)
 	return nil
 }
 
