@@ -222,6 +222,11 @@ func (db *Database) Shard(key []byte) ethdb.KeyValueStore {
 	return db.shards[db.shardIndexFunc(key, db.ShardNum())]
 }
 
+// ShardByIndex returns the shard for a given index
+func (db *Database) ShardByIndex(index int) ethdb.KeyValueStore {
+	return db.shards[index]
+}
+
 // ShardNum returns the number of shards
 func (db *Database) ShardNum() int {
 	return len(db.shards)

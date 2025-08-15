@@ -564,8 +564,44 @@ func inspect(ctx *cli.Context) error {
 
 	db := utils.MakeChainDatabase(ctx, stack, true, false)
 	defer db.Close()
+	fmt.Println("Inspecting chain database...")
+	if err := rawdb.InspectDatabase(db, prefix, start); err != nil {
+		return err
+	}
+	if stack.CheckIfMultiDataBase() {
+		fmt.Println("Inspecting state database...")
+		if err := inspectShardingDB(db.GetStateStore(), prefix, start); err != nil {
+			return err
+		}
+		fmt.Println("Inspecting snap database...")
+		if err := inspectShardingDB(rawdb.NewDatabase(db.GetSnapStore()), prefix, start); err != nil {
+			return err
+		}
+		fmt.Println("Inspecting index database...")
+		if err := rawdb.InspectDatabase(rawdb.NewDatabase(db.GetTxIndexStore()), prefix, start); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
-	return rawdb.InspectDatabase(db, prefix, start)
+func inspectShardingDB(db ethdb.Database, prefix, start []byte) error {
+	// inspect totoal first
+	if err := rawdb.InspectDatabase(db, prefix, start); err != nil {
+		return err
+	}
+	shardingDB, ok := db.(ethdb.ShardingDB)
+	if !ok {
+		return nil
+	}
+	shardNum := shardingDB.ShardNum()
+	for i := 0; i < shardNum; i++ {
+		fmt.Println("Inspecting the shard", i)
+		if err := rawdb.InspectDatabase(rawdb.NewDatabase(shardingDB.ShardByIndex(i)), prefix, start); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ancientInspect(ctx *cli.Context) error {
@@ -1652,8 +1688,6 @@ func openTargetDatabaseWithFreezer(dbPath string, cache, handles int) (ethdb.Dat
 	return rawdb.NewDatabaseWithFreezer(kvdb, ancientPath, "eth/db/statedata/", false, false, false)
 }
 
-
-
 // MigrationStats holds thread-safe migration statistics
 type MigrationStats struct {
 	total      int64
@@ -1705,10 +1739,6 @@ func (s *MigrationStats) GetBytes() (int64, int64, int64, int64) {
 		atomic.LoadInt64(&s.snapBytes),
 		atomic.LoadInt64(&s.indexBytes)
 }
-
-
-
-
 
 // progressMonitor logs migration progress periodically
 func progressMonitor(stats *MigrationStats, stop <-chan struct{}) {

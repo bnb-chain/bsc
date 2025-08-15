@@ -752,24 +752,6 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 	it := db.NewIterator(keyPrefix, keyStart)
 	defer it.Release()
 
-	var trieIter ethdb.Iterator
-	if db.HasSeparateStateStore() {
-		trieIter = db.GetStateStore().NewIterator(keyPrefix, nil)
-		defer trieIter.Release()
-	}
-
-	var snapDbIter ethdb.Iterator
-	if db.HasSeparateSnapStore() {
-		snapDbIter = db.GetSnapStore().NewIterator(keyPrefix, nil)
-		defer snapDbIter.Release()
-	}
-
-	var txIndexDbIter ethdb.Iterator
-	if db.HasSeparateTxIndexStore() {
-		txIndexDbIter = db.GetTxIndexStore().NewIterator(keyPrefix, nil)
-		defer txIndexDbIter.Release()
-	}
-
 	var (
 		count  int64
 		start  = time.Now()
@@ -914,116 +896,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			logged = time.Now()
 		}
 	}
-	// inspect separate trie db
-	if trieIter != nil {
-		count = 0
-		logged = time.Now()
-		for trieIter.Next() {
-			var (
-				key   = trieIter.Key()
-				value = trieIter.Value()
-				size  = common.StorageSize(len(key) + len(value))
-			)
-			total += size
 
-			switch {
-			case IsLegacyTrieNode(key, value):
-				legacyTries.Add(size)
-			case bytes.HasPrefix(key, stateIDPrefix) && len(key) == len(stateIDPrefix)+common.HashLength:
-				stateLookups.Add(size)
-			case IsAccountTrieNode(key):
-				accountTries.Add(size)
-			case IsStorageTrieNode(key):
-				storageTries.Add(size)
-			default:
-				var accounted bool
-				for _, meta := range [][]byte{
-					fastTrieProgressKey, persistentStateIDKey, trieJournalKey, snapSyncStatusFlagKey} {
-					if bytes.Equal(key, meta) {
-						metadata.Add(size)
-						accounted = true
-						break
-					}
-				}
-				if !accounted {
-					unaccounted.Add(size)
-				}
-			}
-			count++
-			if count%1000 == 0 && time.Since(logged) > 8*time.Second {
-				log.Info("Inspecting separate state database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
-				logged = time.Now()
-			}
-		}
-		log.Info("Inspecting separate state database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
-	}
-	// inspect separate snapshot db
-	if snapDbIter != nil {
-		count = 0
-		logged = time.Now()
-		for snapDbIter.Next() {
-			var (
-				key   = snapDbIter.Key()
-				value = snapDbIter.Value()
-				size  = common.StorageSize(len(key) + len(value))
-			)
-			total += size
-
-			switch {
-			case bytes.HasPrefix(key, SnapshotAccountPrefix) && len(key) == (len(SnapshotAccountPrefix)+common.HashLength):
-				accountSnaps.Add(size)
-			case bytes.HasPrefix(key, SnapshotStoragePrefix) && len(key) == (len(SnapshotStoragePrefix)+2*common.HashLength):
-				storageSnaps.Add(size)
-			default:
-				var accounted bool
-				for _, meta := range [][]byte{
-					SnapshotRootKey, snapshotJournalKey, snapshotGeneratorKey, snapshotRecoveryKey, snapshotSyncStatusKey,
-				} {
-					if bytes.Equal(key, meta) {
-						metadata.Add(size)
-						accounted = true
-						break
-					}
-				}
-				if !accounted {
-					unaccounted.Add(size)
-				}
-			}
-			count++
-			if count%1000 == 0 && time.Since(logged) > 8*time.Second {
-				log.Info("Inspecting separate snapshot database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
-				logged = time.Now()
-			}
-		}
-		log.Info("Inspecting separate snapshot database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
-	}
-
-	// inspect separate txindex db
-	if txIndexDbIter != nil {
-		count = 0
-		logged = time.Now()
-		for txIndexDbIter.Next() {
-			var (
-				key   = txIndexDbIter.Key()
-				value = txIndexDbIter.Value()
-				size  = common.StorageSize(len(key) + len(value))
-			)
-			total += size
-
-			switch {
-			case bytes.HasPrefix(key, txLookupPrefix) && len(key) == (len(txLookupPrefix)+common.HashLength):
-				txLookups.Add(size)
-			default:
-				unaccounted.Add(size)
-			}
-			count++
-			if count%1000 == 0 && time.Since(logged) > 8*time.Second {
-				log.Info("Inspecting separate txindex database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
-				logged = time.Now()
-			}
-		}
-		log.Info("Inspecting separate txindex database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
-	}
 	// Display the database statistic of key-value store.
 	stats := [][]string{
 		{"Key-Value store", "Headers", headers.Size(), headers.Count()},
@@ -1068,31 +941,17 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		total += ancient.size()
 	}
 
-	// inspect ancient state in separate trie db if exist
-	if trieIter != nil {
-		stateAncients, err := inspectFreezers(db.GetStateStore())
-		if err != nil {
-			return err
-		}
-		for _, ancient := range stateAncients {
-			for _, table := range ancient.sizes {
-				if ancient.name == "chain" {
-					break
-				}
-				stats = append(stats, []string{
-					fmt.Sprintf("Ancient store (%s)", strings.Title(ancient.name)),
-					strings.Title(table.name),
-					table.size.String(),
-					fmt.Sprintf("%d", ancient.count()),
-				})
-			}
-			total += ancient.size()
-		}
-	}
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Database", "Category", "Size", "Items"})
 	table.SetFooter([]string{"", "Total", total.String(), " "})
-	table.AppendBulk(stats)
+	// only print count > 0
+	validStats := [][]string{}
+	for _, stat := range stats {
+		if stat[3] != "0" && stat[3] != "" {
+			validStats = append(validStats, stat)
+		}
+	}
+	table.AppendBulk(validStats)
 	table.Render()
 
 	if unaccounted.size > 0 {
