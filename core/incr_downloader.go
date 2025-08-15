@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/triedb"
@@ -1115,8 +1116,26 @@ func (d *IncrDownloader) mergeWorker() {
 				delete(d.downloadedFilesMap, d.expectedNextBlockStart)
 				d.mergeMutex.Unlock()
 
+				// Check if this is the last incr snapshot
+				d.mu.RLock()
+				isLastSnapshot := (d.mergedFiles + 1) == len(d.files)
+				d.mu.RUnlock()
+
 				// Perform merge operation
 				path := filepath.Join(d.incrPath, fmt.Sprintf("incr-%d-%d", currFile.StartBlock, currFile.EndBlock))
+				if isLastSnapshot {
+					log.Info("This is the last incremental snapshot, performing final cleanup and optimization")
+					ok, err := rawdb.CheckIncrSnapshotComplete(path)
+					if err != nil {
+						log.Error("Failed to check last incr snapshot complete", "err", err)
+						d.errorChan <- err
+						return
+					}
+					if !ok {
+						log.Warn("Skip last incr snapshot due to data is incomplete")
+						return
+					}
+				}
 				if err := MergeIncrSnapshot(d.db, d.triedb, path); err != nil {
 					log.Error("Failed to merge", "file", currFile.Metadata.FileName, "error", err)
 					d.errorChan <- err

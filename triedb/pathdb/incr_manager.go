@@ -623,21 +623,6 @@ func (im *incrManager) truncateStateFreezer(stateID uint64) error {
 	return nil
 }
 
-// readIncrMetadata reads incremental metadata.
-func readIncrMetadata(reader ethdb.AncientReader, id uint64) (*incrStateMetadata, error) {
-	blob := rawdb.ReadIncrStateHistoryMeta(reader, id)
-	if len(blob) == 0 {
-		return nil, fmt.Errorf("state history not found %d", id)
-	}
-
-	var m incrStateMetadata
-	if err := rlp.DecodeBytes(blob, &m); err != nil {
-		log.Error("Failed to decode incremental trie nodes", "id", id, "error", err)
-		return nil, err
-	}
-	return &m, nil
-}
-
 func readIncrTrieNodes(reader ethdb.AncientReader, id uint64) (*nodeSet, error) {
 	data, err := rawdb.ReadIncrStateTrieNodes(reader, id)
 	if err != nil {

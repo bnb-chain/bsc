@@ -208,16 +208,16 @@ func (b *buffer) waitFlush() error {
 	return b.flushErr
 }
 
-// flushIncrSnapshot persists incr trei nodes and states to disk.
-func (b *buffer) flushIncrSnapshot(root common.Hash, db ethdb.KeyValueStore, freezer ethdb.AncientWriter, progress []byte, id uint64) {
+// flushIncrSnapshot persists incr trie nodes and states to disk.
+func (b *buffer) flushIncrSnapshot(root common.Hash, db ethdb.KeyValueStore, freezer ethdb.AncientWriter, progress []byte,
+	id uint64) error {
 	var (
 		start = time.Now()
 		batch = db.NewBatchWithSize((b.nodes.dbsize() + b.states.dbsize()) * 11 / 10) // extra 10% for potential pebble internal stuff
 	)
 	if freezer != nil {
 		if err := freezer.SyncAncient(); err != nil {
-			b.flushErr = err
-			return
+			return err
 		}
 	}
 	var nodes, accs, slots int
@@ -233,11 +233,11 @@ func (b *buffer) flushIncrSnapshot(root common.Hash, db ethdb.KeyValueStore, fre
 	// Flush all mutations in a single batch
 	size := batch.ValueSize()
 	if err := batch.Write(); err != nil {
-		b.flushErr = err
-		return
+		return err
 	}
 
 	b.reset()
 	log.Info("Persisted buffer content", "nodes", nodes, "accounts", accs, "slots", slots,
 		"bytes", common.StorageSize(size), "elapsed", common.PrettyDuration(time.Since(start)))
+	return nil
 }

@@ -807,7 +807,6 @@ func mergeIncrSnapshot(ctx *cli.Context) error {
 		log.Error("Failed to get start block", "error", err)
 		return err
 	}
-	// TODO: handle repair for force kill incr snapshot
 	dirs, err := rawdb.GetAllIncrDirs(path)
 	if err != nil {
 		log.Error("Failed to get all incremental directories", "err", err)
@@ -829,7 +828,19 @@ func mergeIncrSnapshot(ctx *cli.Context) error {
 	}
 
 	log.Info("Start merging incremental snapshot", "path", path, "incremental snapshot number", len(dirs))
-	for _, dir := range dirs {
+	for i, dir := range dirs {
+		if i == len(dirs)-1 {
+			ok, err := rawdb.CheckIncrSnapshotComplete(path)
+			if err != nil {
+				log.Error("Failed to check last incr snapshot complete", "err", err)
+				return err
+			}
+			if !ok {
+				log.Warn("Skip last incr snapshot due to data is incomplete")
+				continue
+			}
+		}
+
 		if dir.StartBlockNum >= startBlock && dir.EndBlockNum > startBlock {
 			if err = core.MergeIncrSnapshot(chainDB, trieDB, dir.Path); err != nil {
 				log.Error("Failed to merge incremental snapshot", "err", err)

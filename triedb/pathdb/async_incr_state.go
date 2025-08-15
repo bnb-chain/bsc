@@ -190,17 +190,6 @@ func (a *asyncIncrStateBuffer) forwardTruncateSignal(buffer *incrNodeBuffer) {
 	}
 }
 
-// incrStateMetadata represents metadata for incremental state storage
-type incrStateMetadata struct {
-	Root             common.Hash
-	HasStates        bool
-	NodeCount        uint64
-	StateCount       uint64
-	Layers           uint64
-	StateIDArray     [2]uint64
-	BlockNumberArray [2]uint64
-}
-
 // incrNodeBuffer is a specialized buffer for incremental trie nodes
 type incrNodeBuffer struct {
 	*buffer
@@ -440,7 +429,7 @@ func (c *incrNodeBuffer) writeTrieNodesToAncientDB(incrDB *rawdb.IncrSnapDB, jn 
 	if err != nil {
 		return fmt.Errorf("failed to RLP encode trie node batch: %v", err)
 	}
-	m := incrStateMetadata{
+	m := rawdb.IncrStateMetadata{
 		Root:             c.root,
 		HasStates:        false,
 		NodeCount:        uint64(len(jn)),
@@ -481,7 +470,7 @@ func (c *incrNodeBuffer) writeStatesToAncientDB(incrDB *rawdb.IncrSnapDB, s stat
 	if err != nil {
 		return fmt.Errorf("failed to RLP encode trie node batch: %v", err)
 	}
-	m := incrStateMetadata{
+	m := rawdb.IncrStateMetadata{
 		Root:             c.root,
 		HasStates:        true,
 		NodeCount:        0,

@@ -698,9 +698,9 @@ func (dl *diskLayer) mergeIncrNodesWithStates(db ethdb.KeyValueStore, freezer et
 	log.Info("Ancient db meta info", "persistent_state_id", persistID, "start", start, "end", end)
 
 	for i := start; i <= end; i++ {
-		m, err := readIncrMetadata(incrFreezer, i)
-		if err != nil {
-			return err
+		m := rawdb.ReadIncrStateHistoryMeta(incrFreezer, i)
+		if m == nil {
+			return fmt.Errorf("not found incr state history meta: %d", i)
 		}
 		var combined *buffer
 		if !m.HasStates {
@@ -717,10 +717,9 @@ func (dl *diskLayer) mergeIncrNodesWithStates(db ethdb.KeyValueStore, freezer et
 			combined = dl.buffer.commit(newNodeSet(nil), states)
 		}
 
-		combined.flushIncrSnapshot(m.Root, db, freezer, nil, m.StateIDArray[1])
-		// if err = dl.buffer.waitFlush(); err != nil {
-		// 	return err
-		// }
+		if err := combined.flushIncrSnapshot(m.Root, db, freezer, nil, m.StateIDArray[1]); err != nil {
+			return err
+		}
 		log.Info("Flush incr nodes and states", "layers", m.Layers, "root", m.Root, "hasStates", m.HasStates)
 	}
 

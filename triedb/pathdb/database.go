@@ -36,7 +36,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-verkle"
 )
@@ -985,8 +984,8 @@ func (db *Database) MergeIncrState(incrDir string) error {
 	tail, _ := incrStateFreezer.Tail()
 	log.Info("Merged incr state freezer info", "ancients", incrAncients, "tail", tail)
 
-	incrStateMeta, err := readIncrMetadata(incrStateFreezer, incrAncients)
-	if err != nil {
+	incrStateMeta := rawdb.ReadIncrStateHistoryMeta(incrStateFreezer, incrAncients)
+	if incrStateMeta == nil {
 		log.Error("Failed to read incremental chain freezer", "error", err)
 		return err
 	}
@@ -1079,18 +1078,13 @@ func (db *Database) loadIncrInfo() (*incrInfo, error) {
 		}
 
 		// Read last state metadata
-		blob := rawdb.ReadIncrStateHistoryMeta(info.stateFreezer, info.stateAncients)
-		if len(blob) == 0 {
+		metadata := rawdb.ReadIncrStateHistoryMeta(info.stateFreezer, info.stateAncients)
+		if metadata == nil {
 			return nil, fmt.Errorf("last incr state history not found: %d", info.stateAncients)
 		}
-		var m incrStateMetadata
-		if err = rlp.DecodeBytes(blob, &m); err != nil {
-			log.Error("Failed to decode incr state history", "error", err)
-			return nil, err
-		}
 
-		info.lastStateID = m.StateIDArray[1]
-		info.lastStateBlock = m.BlockNumberArray[1]
+		info.lastStateID = metadata.StateIDArray[1]
+		info.lastStateBlock = metadata.BlockNumberArray[1]
 		log.Info("Incr data info", "lastChainStateID", info.lastChainStateID,
 			"lastStateID", info.lastStateID, "lastChainBlock", info.chainAncients-1,
 			"lastStateBlock", info.lastStateBlock)
@@ -1258,18 +1252,12 @@ func (db *Database) truncateIncrStateFreezer(info *incrInfo, finalStateID uint64
 	// Find the correct truncate position if needed
 	if info.lastChainStateID < info.lastStateID {
 		for index := info.stateAncients; index >= 1; index-- {
-			blob := rawdb.ReadIncrStateHistoryMeta(info.stateFreezer, index)
-			if len(blob) == 0 {
+			metadata := rawdb.ReadIncrStateHistoryMeta(info.stateFreezer, index)
+			if metadata == nil {
 				return fmt.Errorf("incr state history not found: %d", index)
 			}
 
-			var m incrStateMetadata
-			if err := rlp.DecodeBytes(blob, &m); err != nil {
-				log.Error("Failed to decode incr state history", "error", err)
-				return err
-			}
-
-			if finalStateID >= m.StateIDArray[0] && finalStateID <= m.StateIDArray[1] {
+			if finalStateID >= metadata.StateIDArray[0] && finalStateID <= metadata.StateIDArray[1] {
 				truncatePos = index
 				break
 			}
@@ -1341,51 +1329,4 @@ func (db *Database) setBlockCount(startBlock, currBlock uint64) error {
 		"currBlock", currBlock)
 	db.incr.incrDB.SetBlockCount(blockCount)
 	return nil
-}
-
-// CheckIncrSnapshot check the incr snapshot is force kill or graceful kill
-// True is graceful kill, false is force kill.
-func (db *Database) CheckIncrSnapshot(incrDir string) (bool, error) {
-	chainFreezer, err := rawdb.OpenIncrChainFreezer(incrDir, true)
-	if err != nil {
-		return false, err
-	}
-
-	stateFreezer, err := rawdb.OpenIncrStateFreezer(incrDir, true)
-	if err != nil {
-		return false, err
-	}
-
-	chainAncients, err := chainFreezer.Ancients()
-	if err != nil {
-		return false, err
-	}
-	if chainAncients == 0 {
-		return false, nil
-	}
-
-	stateAncients, err := stateFreezer.Ancients()
-	if err != nil {
-		return false, err
-	}
-	if stateAncients == 0 {
-		return false, nil
-	}
-
-	// Read last state metadata
-	blob := rawdb.ReadIncrStateHistoryMeta(stateFreezer, stateAncients)
-	if len(blob) == 0 {
-		return false, fmt.Errorf("last incr state history not found: %d", stateAncients)
-	}
-	var m incrStateMetadata
-	if err = rlp.DecodeBytes(blob, &m); err != nil {
-		log.Error("Failed to decode incr state history", "error", err)
-		return false, err
-	}
-
-	log.Info("CheckIncrSnapshot", "chainAncients", chainAncients-1, "BlockNumberArray", m.BlockNumberArray)
-	if chainAncients-1 != m.BlockNumberArray[1] {
-		return false, nil
-	}
-	return true, nil
 }

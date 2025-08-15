@@ -3,6 +3,7 @@ package rawdb
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -16,6 +17,17 @@ import (
 type ContractCode struct {
 	Hash common.Hash // hash is the cryptographic hash of the contract code.
 	Blob []byte      // blob is the binary representation of the contract code.
+}
+
+// IncrStateMetadata represents metadata for incremental state data.
+type IncrStateMetadata struct {
+	Root             common.Hash
+	HasStates        bool
+	NodeCount        uint64
+	StateCount       uint64
+	Layers           uint64
+	StateIDArray     [2]uint64
+	BlockNumberArray [2]uint64
 }
 
 // WriteIncrState writes the provided state data into the database.
@@ -78,34 +90,6 @@ func ReadIncrStatesData(db ethdb.AncientReaderOp, id uint64) ([]byte, error) {
 	return blob, nil
 }
 
-// WriteBlockData writes the provided block data to the database.
-func WriteBlockData(db ethdb.AncientWriter, number uint64, hash, header, body, receipts, td, sidecars []byte, isCancun bool) error {
-	_, err := db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
-		if err := op.AppendRaw(ChainFreezerHashTable, number, hash); err != nil {
-			return err
-		}
-		if err := op.AppendRaw(ChainFreezerHeaderTable, number, header); err != nil {
-			return err
-		}
-		if err := op.AppendRaw(ChainFreezerBodiesTable, number, body); err != nil {
-			return err
-		}
-		if err := op.AppendRaw(ChainFreezerReceiptTable, number, receipts); err != nil {
-			return err
-		}
-		if err := op.AppendRaw(ChainFreezerDifficultyTable, number, td); err != nil {
-			return err
-		}
-		if isCancun {
-			if err := op.AppendRaw(ChainFreezerBlobSidecarTable, number, sidecars); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	return err
-}
-
 // WriteIncrBlockData writes the provided block data to the database.
 func WriteIncrBlockData(db ethdb.AncientWriter, number, stateID uint64, hash, header, body, receipts, td, sidecars []byte,
 	isEmptyBlock, isCancun bool) error {
@@ -145,27 +129,22 @@ func WriteIncrBlockData(db ethdb.AncientWriter, number, stateID uint64, hash, he
 func ReadIncrBlock(db ethdb.AncientReaderOp, number uint64) ([]byte, []byte, []byte, []byte, []byte, error) {
 	hashBytes, err := ReadIncrChainHash(db, number)
 	if err != nil {
-		log.Error("Failed to read increment chain hash", "error", err)
 		return nil, nil, nil, nil, nil, err
 	}
 	header, err := ReadIncrChainHeader(db, number)
 	if err != nil {
-		log.Error("Failed to read increment chain header", "error", err)
 		return nil, nil, nil, nil, nil, err
 	}
 	body, err := ReadIncrChainBodies(db, number)
 	if err != nil {
-		log.Error("Failed to read increment chain bodies", "error", err)
 		return nil, nil, nil, nil, nil, err
 	}
 	receipts, err := ReadIncrChainReceipts(db, number)
 	if err != nil {
-		log.Error("Failed to read increment chain receipts", "error", err)
 		return nil, nil, nil, nil, nil, err
 	}
 	td, err := ReadIncrChainDifficulty(db, number)
 	if err != nil {
-		log.Error("Failed to read increment chain difficulty", "error", err)
 		return nil, nil, nil, nil, nil, err
 	}
 	return hashBytes, header, body, receipts, td, nil
@@ -185,6 +164,7 @@ func FinalizeIncrementalMerge(db ethdb.Database, incrChainFreezer ethdb.AncientR
 	var h types.Header
 	if err = rlp.DecodeBytes(header, &h); err != nil {
 		log.Error("Failed to decode header", "block", number, "error", err)
+		return err
 	}
 	isCancunActive := chainConfig.IsCancun(h.Number, h.Time)
 
@@ -289,12 +269,17 @@ func ReadIncrChainMapping(db ethdb.AncientReaderOp, number uint64) (uint64, erro
 // ReadIncrStateHistoryMeta retrieves the incremental metadata corresponding to the
 // specified state history. Compute the position of state history in freezer by minus
 // one since the id of first state history starts from one(zero for initial state).
-func ReadIncrStateHistoryMeta(db ethdb.AncientReaderOp, id uint64) []byte {
+func ReadIncrStateHistoryMeta(db ethdb.AncientReaderOp, id uint64) *IncrStateMetadata {
 	blob, err := db.Ancient(incrStateHistoryMeta, id-1)
 	if err != nil {
 		return nil
 	}
-	return blob
+	m := new(IncrStateMetadata)
+	if err = rlp.DecodeBytes(blob, m); err != nil {
+		log.Error("Failed to decode incr state history", "error", err)
+		return nil
+	}
+	return m
 }
 
 // ResetEmptyIncrChainTable resets the empty incremental chain table to the new start point.
@@ -394,6 +379,48 @@ func GetChainConfig(db ethdb.Reader) (*params.ChainConfig, error) {
 	}
 
 	return chainConfig, nil
+}
+
+// CheckIncrSnapshotComplete check the incr snapshot is complete for force kill or graceful kill
+// True is graceful kill, false is force kill.
+func CheckIncrSnapshotComplete(incrDir string) (bool, error) {
+	cf, err := OpenIncrChainFreezer(incrDir, true)
+	if err != nil {
+		return false, err
+	}
+
+	sf, err := OpenIncrStateFreezer(incrDir, true)
+	if err != nil {
+		return false, err
+	}
+
+	chainAncients, err := cf.Ancients()
+	if err != nil {
+		return false, err
+	}
+	if chainAncients == 0 {
+		return false, nil
+	}
+
+	stateAncients, err := sf.Ancients()
+	if err != nil {
+		return false, err
+	}
+	if stateAncients == 0 {
+		return false, nil
+	}
+
+	// Read last state metadata
+	m := ReadIncrStateHistoryMeta(sf, stateAncients)
+	if m == nil {
+		return false, fmt.Errorf("last incr state history not found: %d", stateAncients)
+	}
+
+	log.Info("CheckIncrSnapshot", "chainAncients", chainAncients-1, "BlockNumberArray", m.BlockNumberArray)
+	if chainAncients-1 != m.BlockNumberArray[1] {
+		return false, nil
+	}
+	return true, nil
 }
 
 func boolToBytes(b bool) []byte {
