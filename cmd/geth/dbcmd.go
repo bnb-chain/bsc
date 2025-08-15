@@ -596,8 +596,8 @@ func inspectShardingDB(db ethdb.Database, prefix, start []byte) error {
 	}
 	shardNum := shardingDB.ShardNum()
 	for i := 0; i < shardNum; i++ {
-		fmt.Println("Inspecting shard", i)
-		if err := rawdb.InspectDatabase(rawdb.NewDatabase(shardingDB.Shard(prefix)), prefix, start); err != nil {
+		fmt.Println("Inspecting the shard", i)
+		if err := rawdb.InspectDatabase(rawdb.NewDatabase(shardingDB.ShardByIndex(i)), prefix, start); err != nil {
 			return err
 		}
 	}
