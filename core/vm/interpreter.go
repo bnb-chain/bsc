@@ -26,7 +26,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
-	"strings"
 )
 
 // Config are the configuration options for the Interpreter
@@ -218,7 +217,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		logged            bool   // deferred EVMLogger should ignore already logged steps
 		res               []byte // result of the opcode execution function
 		debug             = in.evm.Config.Tracer != nil
-		lastExecPC        uint64 // 上一次成功执行完的 opcode 字节索引
 		currentBlock      *compiler.BasicBlock // 当前block（缓存）
 		nextBlockPC       uint64               // 下一个block的起始PC（用于边界检测）
 		totalDynamicGas   uint64               // 本次调用累积的动态gas
@@ -361,7 +359,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// Get the operation from the jump table and validate the stack to ensure there are
 		// enough stack items available to perform the operation.
 		op = contract.GetOp(pc)
-		curPC := pc  // 记录本轮 opcode 起始位置，用于成功后写入 lastExecPC
 		operation := in.table[op]
 		// Validate stack
 		if sLen := stack.len(); sLen < operation.minStack {
@@ -377,24 +374,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		if !blockChargeActive {
 
 			if contract.Gas < cost {
-				// 如果是 super-instruction，拆解细粒度执行
-				if handled, ferr := in.tryFallbackForSuperInstruction(&pc, op, callContext, contract); handled {
-					// fallback 已执行部分子指令后 pc 已更新，此时再按最新 pc 退款并关闭预扣
-					if in.evm.Config.EnableOpcodeOptimizations && blockChargeActive && currentBlock != nil {
-						diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
-						debugStaticGas -= diff
-						blockChargeActive = false
-						currentBlock = nil
-					}
-					if ferr != nil {
-						return nil, ferr
-					}
-					return nil, ErrOutOfGas
-				}
 				log.Error("Out of gas", "pc", pc, "required", cost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
 				return nil, ErrOutOfGas
 			} else {
-				// 正常扣除常量 gas
 				contract.Gas -= cost
 			}
 		}
@@ -438,7 +420,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// 如果首次尝试因静态预扣导致 OOG，则退回未用静态 gas 后重试一次
 			if err != nil {
 				if errors.Is(err, ErrOutOfGas) && in.evm.Config.EnableOpcodeOptimizations && blockChargeActive && currentBlock != nil {
-					// 不在这里退款，只关闭预扣；真正退款将在 fallback 之后统一处理
+					diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
+					debugStaticGas -= diff
+					// Disable static gas precharge for the rest of this execution
 					blockChargeActive = false
 					currentBlock = nil
 					log.Error("[BLOCK-CACHE] fallback", "codeHash", contract.CodeHash, "pc", pc, "reason", "dynamicOOG")
@@ -454,29 +438,21 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			totalDynamicGas += dynamicCost
 			// for tracing: this gas consumption event is emitted below in the debug section.
 			if contract.Gas < dynamicCost {
-				// 若仍在预扣模式，先退回余下静态 gas 并关闭
-				// 尝试拆解超指令
-				if handled, ferr := in.tryFallbackForSuperInstruction(&pc, op, callContext, contract); handled {
-					if in.evm.Config.EnableOpcodeOptimizations && blockChargeActive && currentBlock != nil {
-						diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
-						debugStaticGas -= diff
-						blockChargeActive = false
-						currentBlock = nil
-					}
-					if ferr != nil {
-						return nil, ferr
-					}
-					return nil, ErrOutOfGas
-				}
-				// 非超指令或未处理：此时再退回未用静态 gas
+				// 二次确认：若仍在预扣模式，先退回当前块未用静态 gas 再判断
 				if in.evm.Config.EnableOpcodeOptimizations && blockChargeActive && currentBlock != nil {
 					diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
 					debugStaticGas -= diff
-					blockChargeActive = false
-					currentBlock = nil
+					// 再次检查余额
+					if contract.Gas < dynamicCost {
+						log.Error("Out of dynamic gas after refund", "pc", pc, "required", dynamicCost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+						return nil, ErrOutOfGas
+					}
+				} else {
+					log.Error("Out of dynamic gas", "pc", pc, "required", dynamicCost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+					diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
+					debugStaticGas -= diff
+					return nil, ErrOutOfGas
 				}
-				log.Error("Out of dynamic gas", "pc", pc, "required", dynamicCost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-				return nil, ErrOutOfGas
 			} else {
 				contract.Gas -= dynamicCost
 			}
@@ -507,7 +483,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		res, err = operation.execute(&pc, in, callContext)
 		if err != nil {
 			// 如果启用了优化模式且使用了 block gas 预扣除，需要返还未执行部分的 gas
-			diff := in.refundUnusedBlockGas(contract, lastExecPC, currentBlock)
+			diff := in.refundUnusedBlockGas(contract, pc, currentBlock)
 			debugStaticGas -= diff
 			if err != errStopToken {
 				log.Error("Execution stopped due to error", "pc", pc, "op", op.String(), "err", err, "contract.CodeHash", contract.CodeHash.String())
@@ -515,7 +491,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			break
 		}
 		pc++
-		lastExecPC = curPC // 标记本条已成功
 	}
 
 	//todo: see if can unify refundUnusedBlockGas all in one place
@@ -550,12 +525,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 // calculateUsedBlockGas calculates the gas cost for opcodes from startPC to endPC (inclusive)
 func (in *EVMInterpreter) calculateUsedBlockGas(contract *Contract, startPC, endPC uint64) uint64 {
-	// 传入的 endPC 来自主循环中的当前 pc，通常指向“即将执行/尚未成功执行”的字节。
-	// 为了只统计“已成功执行的最后一条指令”，当 endPC>startPC 时，将其回退 1 字节。
-	if endPC > startPC {
-		endPC -= 1
-	}
-
 	if startPC > endPC {
 		return 0
 	}
@@ -703,169 +672,4 @@ func (in *EVMInterpreter) refundUnusedBlockGas(contract *Contract, pc uint64, cu
 	usedGasDiff := currentBlock.StaticGas - actualUsedGas
 	contract.Gas += usedGasDiff
 	return usedGasDiff
-}
-
-// superInstructionMap maps super-instruction opcodes to the slice of ordinary opcodes
-// they were fused from.  The mapping comes from the fusion patterns implemented in
-// core/opcodeCompiler/compiler/opCodeProcessor.go (applyFusionPatterns).  When that file
-// is updated with new fusion rules, this map should be kept in sync.
-var superInstructionMap = map[OpCode][]OpCode{
-	AndSwap1PopSwap2Swap1: {AND, SWAP1, POP, SWAP2, SWAP1},
-	Swap2Swap1PopJump:     {SWAP2, SWAP1, POP, JUMP},
-	Swap1PopSwap2Swap1:    {SWAP1, POP, SWAP2, SWAP1},
-	PopSwap2Swap1Pop:      {POP, SWAP2, SWAP1, POP},
-	Push2Jump:             {PUSH2, JUMP}, // PUSH2 embeds 2-byte immediate
-	Push2JumpI:            {PUSH2, JUMPI},
-	Push1Push1:            {PUSH1, PUSH1},
-	Push1Add:              {PUSH1, ADD},
-	Push1Shl:              {PUSH1, SHL},
-	Push1Dup1:             {PUSH1, DUP1},
-	Swap1Pop:              {SWAP1, POP},
-	PopJump:               {POP, JUMP},
-	Pop2:                  {POP, POP},
-	Swap2Swap1:            {SWAP2, SWAP1},
-	Swap2Pop:              {SWAP2, POP},
-	Dup2LT:                {DUP2, LT},
-	JumpIfZero:            {ISZERO, PUSH2, JUMPI}, // PUSH2 embeds 2-byte immediate
-	IsZeroPush2:           {ISZERO, PUSH2},
-	Dup2MStorePush1Add:    {DUP2, MSTORE, PUSH1, ADD},
-	Dup1Push4EqPush2:      {DUP1, PUSH4, EQ, PUSH2},
-	Push1CalldataloadPush1ShrDup1Push4GtPush2:      {PUSH1, CALLDATALOAD, PUSH1, SHR, DUP1, PUSH4, GT, PUSH2},
-	Push1Push1Push1SHLSub:                          {PUSH1, PUSH1, PUSH1, SHL, SUB},
-	AndDup2AddSwap1Dup2LT:                          {AND, DUP2, ADD, SWAP1, DUP2, LT},
-	Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT: {SWAP1, PUSH1, DUP1, NOT, SWAP2, ADD, AND, DUP2, ADD, SWAP1, DUP2, LT},
-	Dup3And:                           {DUP3, AND},
-	Swap2Swap1Dup3SubSwap2Dup3GtPush2: {SWAP2, SWAP1, DUP3, SUB, SWAP2, DUP3, GT, PUSH2},
-	Swap1Dup2:                         {SWAP1, DUP2},
-	SHRSHRDup1MulDup1:                 {SHR, SHR, DUP1, MUL, DUP1},
-	Swap3PopPopPop:                    {SWAP3, POP, POP, POP},
-	SubSLTIsZeroPush2:                 {SUB, SLT, ISZERO, PUSH2},
-	Dup11MulDup3SubMulDup1:            {DUP11, MUL, DUP3, SUB, MUL, DUP1},
-}
-
-// DecomposeSuperInstruction returns the underlying opcode sequence of a fused
-// super-instruction.  If the provided opcode is not a super-instruction (or is
-// unknown), the second return value will be false.
-func DecomposeSuperInstruction(op OpCode) ([]OpCode, bool) {
-	seq, ok := superInstructionMap[op]
-	return seq, ok
-}
-
-// DecomposeSuperInstructionByName works like DecomposeSuperInstruction but takes the
-// textual name (case-insensitive) instead of the opcode constant.
-func DecomposeSuperInstructionByName(name string) ([]OpCode, bool) {
-	op := StringToOp(strings.ToUpper(name))
-	return DecomposeSuperInstruction(op)
-}
-
-// executeSingleOpcode executes a single ordinary opcode (not a super-instruction)
-// in isolation. It performs the same gas-accounting rules as the main interpreter
-// loop but *does not* deal with static-gas block-cache logic – it assumes that
-// optimisation has been disabled for the fallback path.
-//
-// pc is passed by pointer because both the opcode implementation (*operation.execute*)
-// *and* the caller of this helper need to keep advancing it, mimicking the behaviour
-// of the main interpreter loop (execute increments internally, then the loop adds 1).
-// After this call returns successfully, pc will point to the **opcode byte** of the
-// *next* EVM instruction to execute.
-func (in *EVMInterpreter) executeSingleOpcode(pc *uint64, op OpCode, scope *ScopeContext, contract *Contract) error {
-	operation := in.table[op]
-	// debug-only: same condition as lowNoise in Run()
-	debugLowNoise := in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184
-	if debugLowNoise {
-		log.Error("[FALLBACK-EXEC] begin", "pc", *pc, "op", op.String(), "gasBefore", contract.Gas)
-	}
-
-	// 1. Constant gas
-	cost := operation.constantGas
-	if contract.Gas < cost {
-		if debugLowNoise {
-			log.Error("[FALLBACK-EXEC] OOG-constant", "op", op.String(), "required", cost, "available", contract.Gas)
-		}
-		return ErrOutOfGas
-	}
-	contract.Gas -= cost
-
-	// 2. Memory size & dynamic gas (if any)
-	var memorySize uint64
-	if operation.memorySize != nil {
-		memSize, overflow := operation.memorySize(scope.Stack)
-		if overflow {
-			return ErrGasUintOverflow
-		}
-		if memSize != 0 {
-			if memorySize, overflow = math.SafeMul(toWordSize(memSize), 32); overflow {
-				return ErrGasUintOverflow
-			}
-		}
-	}
-	var dynamicCost uint64
-	var err error
-	if operation.dynamicGas != nil {
-		dynamicCost, err = operation.dynamicGas(in.evm, contract, scope.Stack, scope.Memory, memorySize)
-		if err != nil {
-			if debugLowNoise {
-				log.Error("[FALLBACK-EXEC] dynamicGas err", "op", op.String(), "err", err)
-			}
-			return err
-		}
-		if contract.Gas < dynamicCost {
-			if debugLowNoise {
-				log.Error("[FALLBACK-EXEC] OOG-dynamic", "op", op.String(), "required", dynamicCost, "available", contract.Gas)
-			}
-			return ErrOutOfGas
-		}
-		contract.Gas -= dynamicCost
-	}
-
-	// 3. Resize memory if needed
-	if memorySize > 0 {
-		scope.Memory.Resize(memorySize)
-	}
-
-	// 4. Execute opcode logic
-	if _, err := operation.execute(pc, in, scope); err != nil {
-		if debugLowNoise {
-			log.Error("[FALLBACK-EXEC] exec err", "op", op.String(), "err", err)
-		}
-		return err
-	}
-
-	// 5. Final pc increment (mirrors main loop behaviour)
-	*pc += 1
-	if debugLowNoise {
-		log.Error("[FALLBACK-EXEC] ok", "nextPC", *pc, "gasAfter", contract.Gas)
-	}
-	return nil
-}
-
-// tryFallbackForSuperInstruction attempts to decompose the super-instruction `op`
-// located at `pc` and execute its component opcodes one by one. It returns (handled, err):
-//
-//	handled==true  – we recognised the opcode as a super-instruction and attempted execution
-//	err==nil       – full sequence executed successfully (interpreter should continue main loop)
-//	err!=nil       – execution aborted (typically out-of-gas). The interpreter should propagate the error.
-func (in *EVMInterpreter) tryFallbackForSuperInstruction(pc *uint64, op OpCode, scope *ScopeContext, contract *Contract) (bool, error) {
-	seq, ok := DecomposeSuperInstruction(op)
-	if !ok {
-		return false, nil // not a super-instruction
-	}
-	debugLowNoise := in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184
-	if debugLowNoise {
-		log.Error("[FALLBACK] start", "super", op.String(), "pc", *pc, "gasBefore", contract.Gas)
-	}
-
-	// Execute each underlying opcode until one fails.
-	for _, basic := range seq {
-		if err := in.executeSingleOpcode(pc, basic, scope, contract); err != nil {
-			if debugLowNoise {
-				log.Error("[FALLBACK] abort", "basic", basic.String(), "err", err, "gasLeft", contract.Gas)
-			}
-			return true, err // handled, but failed during execution
-		}
-	}
-	if debugLowNoise {
-		log.Error("[FALLBACK] completed", "super", op.String(), "gasLeft", contract.Gas)
-	}
-	return true, nil // handled and all succeeded
 }
