@@ -185,7 +185,13 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	// 记录进入 Run 的基本信息（仅目标区块/交易，降低噪音）
 	lowNoise := in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184
 	if lowNoise {
-		log.Error("[RUN ENTER]", "block", in.evm.Context.BlockNumber, "txIndex", in.evm.StateDB.TxIndex(), "contract", contract.Address(), "codeHash", contract.CodeHash, "initialGas", contract.Gas)
+		log.Error("[RUN ENTER]", "block", in.evm.Context.BlockNumber,
+			"txIndex", in.evm.StateDB.TxIndex(),
+			"contract", contract.Address(),
+			"codeHash", contract.CodeHash,
+			"contractGasEnter", contract.Gas,
+			"enableOpt", in.evm.Config.EnableOpcodeOptimizations,
+			"depth", in.evm.depth)
 	}
 	in.returnData = nil
 
@@ -242,14 +248,18 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				"equal", totalCost == debugStaticGas,
 				"dynamic", totalDynamicGas,
 				"chunkGas", chunkGasChargedTotal,
-				"gasBefore", initialGasThisRun,
-				"gasAfter", contract.Gas,
+				"contractGasEnter", initialGasThisRun,
+				"contractGasExit", contract.Gas,
 				"gasConsumed", func() uint64 {
 					if contract.Gas <= initialGasThisRun {
 						return initialGasThisRun - contract.Gas
 					}
 					return 0
 				}(),
+				"contract", contract.Address(),
+				"codeHash", contract.CodeHash,
+				"depth", in.evm.depth,
+				"enableOpt", in.evm.Config.EnableOpcodeOptimizations,
 				"fallback", !blockChargeActive)
 		}
 		returnStack(stack)
@@ -698,7 +708,15 @@ func (in *EVMInterpreter) refundUnusedBlockGas(contract *Contract, pc uint64, cu
 	}
 
 	usedGasDiff := currentBlock.StaticGas - actualUsedGas
+	// Debug log: show refund calculation for low-noise target tx
+	debugLowNoise := in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184
+	if debugLowNoise {
+		log.Error("[REFUND]", "blockStart", currentBlock.StartPC, "pc", pc, "staticGas", currentBlock.StaticGas, "actualUsed", actualUsedGas, "refund", usedGasDiff, "gasBeforeRefund", contract.Gas)
+	}
 	contract.Gas += usedGasDiff
+	if debugLowNoise {
+		log.Error("[REFUND]", "gasAfterRefund", contract.Gas)
+	}
 	return usedGasDiff
 }
 
