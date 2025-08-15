@@ -335,11 +335,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 					// 降噪：移除 BOUNDARY CHECK 输出
 				}
 				if block, found := compiler.GetBlockByPC(contract.CodeHash, pc); found {
-					currentBlock = block
-					// 计算下一个block的起始PC（如果存在）
-					nextBlockPC = block.EndPC
-					// 降噪：移除 START 标记
+					// 先确认余额是否足够支付 staticGas
 					if contract.Gas >= block.StaticGas {
+						// 扣费
 						contract.Gas -= block.StaticGas
 						if lowNoise {
 							// 构造该 basic-block 的 opcode 序列，形如 [PUSH1, 0x01, JUMPI]
@@ -360,18 +358,19 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 							opcodeSeq := "[" + strings.Join(parts, ", ") + "]"
 							log.Error("[BLOCK PRECHARGE]", "blockStart", block.StartPC, "staticGas", block.StaticGas, "depth", in.evm.depth, "enableOpt", in.evm.Config.EnableOpcodeOptimizations, "gasAfterDeduct", contract.Gas, "opcodeSeq", opcodeSeq)
 						}
-						//log.Error("[BLOCK-CACHE] hit", "codeHash", contract.CodeHash, "startPC", block.StartPC, "staticGas", block.StaticGas)
 						debugStaticGas += block.StaticGas
-						// 降噪：不再记录进入 block 时的累计静态 gas
+						// 扣费成功后，再正式切换 currentBlock
+						currentBlock = block
+						nextBlockPC = block.EndPC
 					} else {
-						// gas 不足以支付下一个 block：退回当前 block 未用部分并停用预扣
+						// 现阶段在basicBlock 一定在最后转跳的基础上不会出问题，但可以先留着向前兼容
+						// 余额不足 → 若旧块存在则退款，然后停用 block 预扣
 						if currentBlock != nil {
 							diff := logBlockRefund("gasInsufficient")
 							debugStaticGas -= diff
 						}
 						blockChargeActive = false
 						currentBlock = nil
-						//log.Error("[BLOCK-CACHE] fallback", "codeHash", contract.CodeHash, "pc", pc, "reason", "gasInsufficient")
 					}
 				} else {
 					// cache 缺失：同样退回并停用预扣
