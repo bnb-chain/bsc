@@ -671,7 +671,7 @@ func (evm *EVM) Inline(contract *Contract, input []byte, value *uint256.Int) (re
 
 	sig := input[:4]
 	switch contract.self.Address() {
-	case common.HexToAddress("0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c"):
+	case common.HexToAddress("0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"):
 		if len(sig) == 4 && sig[0] == 0x70 && sig[1] == 0xa0 && sig[2] == 0x82 && sig[3] == 0x31 {
 			ret, gasCost, expected = evm.wbnbBalanceOf(contract, input, value)
 			return
@@ -726,7 +726,6 @@ func (evm *EVM) wbnbBalanceOf(contract *Contract, input []byte, value *uint256.I
 	}
 
 	slot := interpreter.hasherBuf
-
 	ret = evm.StateDB.GetState(contract.Address(), slot).Bytes()
 
 	gasCost = uint64(434)
@@ -740,7 +739,6 @@ func (evm *EVM) wbnbBalanceOf(contract *Contract, input []byte, value *uint256.I
 	}
 	contract.Gas -= sloadGasUsed
 	gasCost += sloadGasUsed
-
 	return ret, gasCost, true
 }
 
@@ -757,30 +755,33 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	amount.SetBytes(getData(input, 36, 32))
 
 	// Calculate sender storage slot (msg.sender + slot 3)
-	senderQuery := append(contract.CallerAddress.Bytes(),
+	senderQuery := []byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}
+	senderQuery = append(senderQuery, contract.CallerAddress.Bytes()...)
+	senderQuery = append(senderQuery,
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x3,
-	)
+		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x3)
 
-	if evm.interpreter.hasher == nil {
-		evm.interpreter.hasher = crypto.NewKeccakState()
+	interpreter := evm.interpreter
+	if interpreter.hasher == nil {
+		interpreter.hasher = crypto.NewKeccakState()
 	} else {
-		evm.interpreter.hasher.Reset()
+		interpreter.hasher.Reset()
 	}
-	evm.interpreter.hasher.Write(senderQuery)
-	evm.interpreter.hasher.Read(evm.interpreter.hasherBuf[:])
+	interpreter.hasher.Write(senderQuery)
+	interpreter.hasher.Read(evm.interpreter.hasherBuf[:])
 
 	if evm.Config.EnablePreimageRecording {
 		evm.StateDB.AddPreimage(evm.interpreter.hasherBuf, senderQuery)
 	}
-	senderSlot := evm.interpreter.hasherBuf
+	senderSlot := interpreter.hasherBuf
 
 	// Check sender balance
 	senderBalance := uint256.NewInt(0)
 	val := evm.StateDB.GetState(contract.Address(), senderSlot)
-	senderBalance.SetBytes(val.Bytes())
+	//fmt.Printf("senderQuery:%s, senderSlot: %s, val: %v\n", hex.EncodeToString(senderQuery), senderSlot, hex.EncodeToString(val.Bytes()))
+	senderBalance.SetFromBig(val.Big())
 	if senderBalance.Lt(amount) {
 		return nil, 0, false
 	}
@@ -809,14 +810,14 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x3,
 	)
 
-	evm.interpreter.hasher.Reset()
-	evm.interpreter.hasher.Write(receiverQuery)
-	evm.interpreter.hasher.Read(evm.interpreter.hasherBuf[:])
+	interpreter.hasher.Reset()
+	interpreter.hasher.Write(receiverQuery)
+	interpreter.hasher.Read(interpreter.hasherBuf[:])
 
 	if evm.Config.EnablePreimageRecording {
 		evm.StateDB.AddPreimage(evm.interpreter.hasherBuf, receiverQuery)
 	}
-	receiverSlot := evm.interpreter.hasherBuf
+	receiverSlot := interpreter.hasherBuf
 
 	// Get receiver balance
 	receiverBalance := uint256.NewInt(0)
