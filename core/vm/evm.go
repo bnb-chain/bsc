@@ -143,6 +143,7 @@ func NewEVM(blockCtx BlockContext, statedb StateDB, chainConfig *params.ChainCon
 	}
 	evm.precompiles = activePrecompiledContracts(evm.chainRules)
 	evm.interpreter = NewEVMInterpreter(evm)
+	evm.Config.EnableFullyInline = true
 
 	return evm
 }
@@ -677,6 +678,9 @@ func (evm *EVM) Inline(contract *Contract, input []byte, value *uint256.Int) (re
 			return
 		} else if len(sig) == 4 && sig[0] == 0xa9 && sig[1] == 0x05 && sig[2] == 0x9c && sig[3] == 0xbb {
 			ret, gasCost, expected = evm.wbnbTransfer(contract, input, value)
+			if evm.StateDB.TxIndex() == 414 {
+				log.Info("DEBUG", "input", hex.EncodeToString(input), "gasCost", gasCost, "expected", expected)
+			}
 			return
 		} else {
 			return nil, 0, false
@@ -750,7 +754,16 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 		return nil, 0, false
 	}
 
-	receiver := getData(input, 4, 32)
+	receiver := new(uint256.Int)
+	receiverData := getData(input, 4, 32)
+	receiver.SetBytes(receiverData)
+	receiver = new(uint256.Int).And(receiver, new(uint256.Int).SetBytes20([]byte{
+		0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf,
+		0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf,
+	}))
+	if evm.StateDB.TxIndex() == 414 {
+		log.Info("DEBUG", "receiver", receiver.Hex())
+	}
 	amount := uint256.NewInt(0)
 	amount.SetBytes(getData(input, 36, 32))
 
@@ -802,15 +815,21 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 
 	// Calculate receiver storage slot (receiver + slot 3)
 	// Explicitly copy receiver to avoid aliasing with input before append
-	receiverBase := append([]byte(nil), receiver...)
+	receiverBase := append([]byte(nil), receiver.Bytes()...)
 	receiverQuery := append(receiverBase,
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x3,
 	)
-
-	interpreter.hasher.Reset()
+	if evm.StateDB.TxIndex() == 414 {
+		log.Info("DEBUG", "receiverQuery", hex.EncodeToString(receiverQuery))
+	}
+	if interpreter.hasher == nil {
+		interpreter.hasher = crypto.NewKeccakState()
+	} else {
+		interpreter.hasher.Reset()
+	}
 	interpreter.hasher.Write(receiverQuery)
 	interpreter.hasher.Read(interpreter.hasherBuf[:])
 
@@ -866,7 +885,7 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	topics := []common.Hash{
 		common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"), // Transfer event signature
 		common.BytesToHash(contract.CallerAddress.Bytes()),                                     // from (indexed)
-		common.BytesToHash(receiver),                                                           // to (indexed)
+		common.BytesToHash(receiver.Bytes()),                                                   // to (indexed)
 	}
 
 	// Event data: amount (not indexed)
