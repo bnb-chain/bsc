@@ -82,8 +82,17 @@ func inspect(name string, order map[string]bool, reader ethdb.AncientReader) (fr
 
 // inspectFreezers inspects all freezers registered in the system.
 func inspectFreezers(db ethdb.Database) ([]freezerInfo, error) {
+	ancientDir, err := db.AncientDatadir()
+	if err != nil {
+		log.Warn("the database has no ancient data, skip", "error", err)
+		return nil, nil
+	}
 	var infos []freezerInfo
 	for _, freezer := range freezers {
+		if _, err := os.Stat(filepath.Join(ancientDir, freezer)); err != nil {
+			log.Warn("no target ancient data, skip", "ancientDir", ancientDir, "freezer", freezer, "error", err)
+			continue
+		}
 		switch freezer {
 		case ChainFreezerName:
 			info, err := inspect(ChainFreezerName, chainFreezerNoSnappy, db)
@@ -93,14 +102,10 @@ func inspectFreezers(db ethdb.Database) ([]freezerInfo, error) {
 			infos = append(infos, info)
 
 		case MerkleStateFreezerName, VerkleStateFreezerName:
-			if db.HasSeparateStateStore() {
-				continue
-			}
 			datadir, err := db.AncientDatadir()
 			if err != nil {
 				return nil, err
 			}
-
 			// TODO(Nathan): handle VerkleStateFreezerName
 			file, err := os.Open(filepath.Join(datadir, MerkleStateFreezerName))
 			if err != nil {
