@@ -119,7 +119,7 @@ func (a *asyncIncrStateBuffer) flush(incrDB *rawdb.IncrSnapDB, force bool) error
 		for {
 			if atomic.LoadUint64(&a.background.immutable) == 1 {
 				log.Info("Waiting background incr state buffer flushed to disk for forcing flush")
-				time.Sleep(time.Duration(DefaultBackgroundFlushInterval) * time.Second)
+				time.Sleep(3 * time.Second)
 				continue
 			}
 			atomic.StoreUint64(&a.current.immutable, 1)
