@@ -330,15 +330,28 @@ func (s *stateSet) updateSize(delta int) {
 	s.size = 0
 }
 
+type statesData struct {
+	RawStorageKey bool
+	Acc           accounts
+	Storages      []storage
+}
+
+type accounts struct {
+	AddrHashes []common.Hash
+	Accounts   [][]byte
+}
+
+type storage struct {
+	AddrHash common.Hash
+	Keys     []common.Hash
+	Vals     [][]byte
+}
+
 // encode serializes the content of state set into the provided writer.
 func (s *stateSet) encode(w io.Writer) error {
 	// Encode accounts
 	if err := rlp.Encode(w, s.rawStorageKey); err != nil {
 		return err
-	}
-	type accounts struct {
-		AddrHashes []common.Hash
-		Accounts   [][]byte
 	}
 	var enc accounts
 	for addrHash, blob := range s.accountData {
@@ -349,12 +362,7 @@ func (s *stateSet) encode(w io.Writer) error {
 		return err
 	}
 	// Encode storages
-	type Storage struct {
-		AddrHash common.Hash
-		Keys     []common.Hash
-		Vals     [][]byte
-	}
-	storages := make([]Storage, 0, len(s.storageData))
+	storages := make([]storage, 0, len(s.storageData))
 	for addrHash, slots := range s.storageData {
 		keys := make([]common.Hash, 0, len(slots))
 		vals := make([][]byte, 0, len(slots))
@@ -362,7 +370,7 @@ func (s *stateSet) encode(w io.Writer) error {
 			keys = append(keys, key)
 			vals = append(vals, val)
 		}
-		storages = append(storages, Storage{
+		storages = append(storages, storage{
 			AddrHash: addrHash,
 			Keys:     keys,
 			Vals:     vals,
@@ -375,10 +383,6 @@ func (s *stateSet) encode(w io.Writer) error {
 func (s *stateSet) decode(r *rlp.Stream) error {
 	if err := r.Decode(&s.rawStorageKey); err != nil {
 		return fmt.Errorf("load diff raw storage key flag: %v", err)
-	}
-	type accounts struct {
-		AddrHashes []common.Hash
-		Accounts   [][]byte
 	}
 	var (
 		dec        accounts
@@ -393,11 +397,6 @@ func (s *stateSet) decode(r *rlp.Stream) error {
 	s.accountData = accountSet
 
 	// Decode storages
-	type storage struct {
-		AddrHash common.Hash
-		Keys     []common.Hash
-		Vals     [][]byte
-	}
 	var (
 		storages   []storage
 		storageSet = make(map[common.Hash]map[common.Hash][]byte)
