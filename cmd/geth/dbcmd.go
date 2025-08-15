@@ -570,15 +570,34 @@ func inspect(ctx *cli.Context) error {
 	}
 	if stack.CheckIfMultiDataBase() {
 		fmt.Println("Inspecting state database...")
-		if err := rawdb.InspectDatabase(db.GetStateStore(), prefix, start); err != nil {
+		if err := inspectShardingDB(db.GetStateStore(), prefix, start); err != nil {
 			return err
 		}
 		fmt.Println("Inspecting snap database...")
-		if err := rawdb.InspectDatabase(rawdb.NewDatabase(db.GetSnapStore()), prefix, start); err != nil {
+		if err := inspectShardingDB(rawdb.NewDatabase(db.GetSnapStore()), prefix, start); err != nil {
 			return err
 		}
 		fmt.Println("Inspecting index database...")
 		if err := rawdb.InspectDatabase(rawdb.NewDatabase(db.GetTxIndexStore()), prefix, start); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func inspectShardingDB(db ethdb.Database, prefix, start []byte) error {
+	// inspect totoal first
+	if err := rawdb.InspectDatabase(db, prefix, start); err != nil {
+		return err
+	}
+	shardingDB, ok := db.(ethdb.ShardingDB)
+	if !ok {
+		return nil
+	}
+	shardNum := shardingDB.ShardNum()
+	for i := 0; i < shardNum; i++ {
+		fmt.Println("Inspecting shard", i)
+		if err := rawdb.InspectDatabase(rawdb.NewDatabase(shardingDB.Shard(prefix)), prefix, start); err != nil {
 			return err
 		}
 	}
