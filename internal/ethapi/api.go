@@ -1064,7 +1064,6 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 
 	// Retry once if snapshot error
 	if derr != nil && errors.Is(derr, snapshot.ErrSnapshotStale) {
-		log.Info("eth_call snapshot error, retrying", "to", args.To, "from", args.From, "err", derr)
 
 		select {
 		case <-time.After(100 * time.Millisecond):
