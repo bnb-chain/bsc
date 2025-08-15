@@ -341,6 +341,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 					// 降噪：移除 START 标记
 					if contract.Gas >= block.StaticGas {
 						contract.Gas -= block.StaticGas
+						if lowNoise {
+							log.Error("[BLOCK PRECHARGE]", "blockStart", block.StartPC, "staticGas", block.StaticGas, "depth", in.evm.depth, "enableOpt", in.evm.Config.EnableOpcodeOptimizations, "gasAfterDeduct", contract.Gas)
+						}
 						//log.Error("[BLOCK-CACHE] hit", "codeHash", contract.CodeHash, "startPC", block.StartPC, "staticGas", block.StaticGas)
 						debugStaticGas += block.StaticGas
 						// 降噪：不再记录进入 block 时的累计静态 gas
