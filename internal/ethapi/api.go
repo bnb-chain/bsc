@@ -26,6 +26,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/core/state/snapshot"
+
 	"github.com/davecgh/go-spew/spew"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -1053,18 +1055,6 @@ func applyMessageWithEVM(ctx context.Context, evm *vm.EVM, msg *core.Message, ti
 func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *override.StateOverride, blockOverrides *override.BlockOverrides, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
 
-	// Log basic eth_call context
-	log.Info("eth_call begin",
-		"to", func() any {
-			if args.To != nil {
-				return args.To
-			}
-			return nil
-		}(),
-		"from", args.From,
-		"block", blockNrOrHash,
-	)
-
 	state, header, err := b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
 	if state == nil || err != nil {
 		return nil, err
@@ -1073,7 +1063,7 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 	res, derr := doCall(ctx, b, args, state, header, overrides, blockOverrides, timeout, globalGasCap)
 
 	// Retry once if snapshot error
-	if derr != nil && (strings.Contains(derr.Error(), "snapshot stale") || strings.Contains(derr.Error(), "not covered yet")) {
+	if derr != nil && errors.Is(derr, snapshot.ErrSnapshotStale) {
 		log.Info("eth_call snapshot error, retrying", "to", args.To, "from", args.From, "err", derr)
 
 		select {
@@ -1088,9 +1078,6 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 		}
 
 		res, derr = doCall(ctx, b, args, state, header, overrides, blockOverrides, timeout, globalGasCap)
-		if derr == nil {
-			log.Info("eth_call succeeded after retry", "to", args.To, "from", args.From)
-		}
 	}
 
 	return res, derr
