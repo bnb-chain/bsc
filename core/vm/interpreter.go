@@ -297,7 +297,16 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// if the PC ends up in a new "chunk" of verkleized code, charge the
 			// associated costs.
 			contractAddr := contract.Address()
-			contract.Gas -= in.evm.TxContext.AccessEvents.CodeChunksRangeGas(contractAddr, pc, 1, uint64(len(contract.Code)), false)
+			{
+				gasDelta := in.evm.TxContext.AccessEvents.CodeChunksRangeGas(contractAddr, pc, 1, uint64(len(contract.Code)), false)
+				if gasDelta > 0 {
+					before := contract.Gas
+					contract.Gas -= gasDelta
+					if lowNoise {
+						log.Error("[GAS]", "action", "CodeChunkCharge", "pc", pc, "delta", -int64(gasDelta), "before", before, "after", contract.Gas, "depth", in.evm.depth)
+					}
+				}
+			}
 		}
 
 		if in.evm.Config.EnableOpcodeOptimizations && blockChargeActive {
@@ -338,7 +347,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 					// 先确认余额是否足够支付 staticGas
 					if contract.Gas >= block.StaticGas {
 						// 扣费
+						beforeGas := contract.Gas
 						contract.Gas -= block.StaticGas
+						if lowNoise {
+							log.Error("[GAS]", "action", "BlockPrechargeDeduct", "blockStart", block.StartPC, "delta", -int64(block.StaticGas), "before", beforeGas, "after", contract.Gas, "depth", in.evm.depth)
+						}
 						if lowNoise {
 							// 构造该 basic-block 的 opcode 序列，形如 [PUSH1, 0x01, JUMPI]
 							var parts []string
@@ -406,7 +419,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				log.Error("Out of gas", "pc", pc, "required", cost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
 				return nil, ErrOutOfGas
 			} else {
+				beforeGas := contract.Gas
 				contract.Gas -= cost
+				if lowNoise {
+					log.Error("[GAS]", "action", "ConstGas", "pc", pc, "delta", -int64(cost), "before", beforeGas, "after", contract.Gas, "depth", in.evm.depth)
+				}
 			}
 		}
 
@@ -483,7 +500,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 					return nil, ErrOutOfGas
 				}
 			} else {
+				beforeGas := contract.Gas
 				contract.Gas -= dynamicCost
+				if lowNoise {
+					log.Error("[GAS]", "action", "DynamicGas", "pc", pc, "delta", -int64(dynamicCost), "before", beforeGas, "after", contract.Gas, "depth", in.evm.depth)
+				}
 			}
 		}
 
@@ -731,9 +752,10 @@ func (in *EVMInterpreter) refundUnusedBlockGas(contract *Contract, pc uint64, cu
 	if debugLowNoise {
 		log.Error("[REFUND]", "blockStart", currentBlock.StartPC, "pc", pc, "staticGas", currentBlock.StaticGas, "actualUsed", actualUsedGas, "refund", usedGasDiff, "gasBeforeRefund", contract.Gas)
 	}
+	beforeGas := contract.Gas
 	contract.Gas += usedGasDiff
 	if debugLowNoise {
-		log.Error("[REFUND]", "gasAfterRefund", contract.Gas)
+		log.Error("[GAS]", "action", "Refund", "blockStart", currentBlock.StartPC, "delta", int64(usedGasDiff), "before", beforeGas, "after", contract.Gas, "depth", in.evm.depth)
 	}
 	return usedGasDiff
 }
