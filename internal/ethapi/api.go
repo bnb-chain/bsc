@@ -1053,11 +1053,47 @@ func applyMessageWithEVM(ctx context.Context, evm *vm.EVM, msg *core.Message, ti
 func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *override.StateOverride, blockOverrides *override.BlockOverrides, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
 
+	// Log basic eth_call context
+	log.Info("eth_call begin",
+		"to", func() any {
+			if args.To != nil {
+				return args.To
+			}
+			return nil
+		}(),
+		"from", args.From,
+		"block", blockNrOrHash,
+	)
+
 	state, header, err := b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
 	if state == nil || err != nil {
 		return nil, err
 	}
-	return doCall(ctx, b, args, state, header, overrides, blockOverrides, timeout, globalGasCap)
+
+	res, derr := doCall(ctx, b, args, state, header, overrides, blockOverrides, timeout, globalGasCap)
+
+	// Retry once if snapshot error
+	if derr != nil && (strings.Contains(derr.Error(), "snapshot stale") || strings.Contains(derr.Error(), "not covered yet")) {
+		log.Info("eth_call snapshot error, retrying", "to", args.To, "from", args.From, "err", derr)
+
+		select {
+		case <-time.After(100 * time.Millisecond):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+
+		state, header, err = b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+		if state == nil || err != nil {
+			return nil, err
+		}
+
+		res, derr = doCall(ctx, b, args, state, header, overrides, blockOverrides, timeout, globalGasCap)
+		if derr == nil {
+			log.Info("eth_call succeeded after retry", "to", args.To, "from", args.From)
+		}
+	}
+
+	return res, derr
 }
 
 // Call executes the given transaction on the state for the given block number.
