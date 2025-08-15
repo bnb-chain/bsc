@@ -342,7 +342,23 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 					if contract.Gas >= block.StaticGas {
 						contract.Gas -= block.StaticGas
 						if lowNoise {
-							log.Error("[BLOCK PRECHARGE]", "blockStart", block.StartPC, "staticGas", block.StaticGas, "depth", in.evm.depth, "enableOpt", in.evm.Config.EnableOpcodeOptimizations, "gasAfterDeduct", contract.Gas)
+							// 构造该 basic-block 的 opcode 序列，形如 [PUSH1, 0x01, JUMPI]
+							var parts []string
+							codeBytes := block.Opcodes
+							for i := 0; i < len(codeBytes); {
+								op := OpCode(codeBytes[i])
+								parts = append(parts, op.String())
+								i++
+								if op >= PUSH1 && op <= PUSH32 {
+									dataLen := int(op - PUSH1 + 1)
+									for j := 0; j < dataLen && i+j < len(codeBytes); j++ {
+										parts = append(parts, fmt.Sprintf("0x%02x", codeBytes[i+j]))
+									}
+									i += dataLen
+								}
+							}
+							opcodeSeq := "[" + strings.Join(parts, ", ") + "]"
+							log.Error("[BLOCK PRECHARGE]", "blockStart", block.StartPC, "staticGas", block.StaticGas, "depth", in.evm.depth, "enableOpt", in.evm.Config.EnableOpcodeOptimizations, "gasAfterDeduct", contract.Gas, "opcodeSeq", opcodeSeq)
 						}
 						//log.Error("[BLOCK-CACHE] hit", "codeHash", contract.CodeHash, "startPC", block.StartPC, "staticGas", block.StaticGas)
 						debugStaticGas += block.StaticGas
