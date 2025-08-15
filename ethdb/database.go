@@ -249,7 +249,7 @@ type ResettableAncientStore interface {
 type ShardingDB interface {
 	ShardNum() int
 	Shard(key []byte) KeyValueStore
-	ShardIndex(key []byte) int
+	ShardByIndex(index int) KeyValueStore
 }
 
 // TODO(galaio): use new MultiDatabase interface later
