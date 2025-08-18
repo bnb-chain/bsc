@@ -22,7 +22,6 @@ func (bits *bitmap) isBitSet(pos uint64) bool {
 
 type MIRBasicBlock struct {
 	blockNum       uint
-	size           uint
 	firstPC        uint
 	lastPC         uint
 	parentsBitmap  *bitmap
@@ -34,11 +33,7 @@ type MIRBasicBlock struct {
 }
 
 func (b *MIRBasicBlock) Size() uint {
-	return b.size
-}
-
-func (b *MIRBasicBlock) SetSize(size uint) {
-	b.size = size
+	return uint(len(b.instructions))
 }
 
 func (b *MIRBasicBlock) FirstPC() uint {

@@ -262,9 +262,12 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 						targetPC = binary.BigEndian.Uint64(mir.oprands[0].payload[len(mir.oprands[0].payload)-8:])
 					}
 					if targetPC < uint64(len(code)) {
-						newBB := c.createBB(uint(targetPC), curBB)
-						curBB.SetChildren([]*MIRBasicBlock{newBB})
-						unprcessedBBs.Push(newBB)
+						targetBB := c.createBB(uint(targetPC), curBB)
+						curBB.SetChildren([]*MIRBasicBlock{targetBB})
+						fallthroughBB := c.createBB(uint(i+1), curBB)
+						curBB.SetChildren([]*MIRBasicBlock{targetBB, fallthroughBB})
+						unprcessedBBs.Push(targetBB)
+						unprcessedBBs.Push(fallthroughBB)
 						return nil
 					}
 				}
@@ -294,17 +297,18 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			}
 			return nil
 		case JUMPDEST:
-			mir = curBB.CreateVoidMIR(MirJUMPDEST)
-			if mir != nil {
-				curBB.appendMIR(mir)
-			}
 			// If we hit a JUMPDEST, we should create a new basic block
 			// unless this is the first instruction
-			if i > 0 {
+			if curBB.Size() > 0 {
 				newBB := c.createBB(uint(i), curBB)
 				curBB.SetChildren([]*MIRBasicBlock{newBB})
 				unprcessedBBs.Push(newBB)
 				return nil
+			}
+
+			mir = curBB.CreateVoidMIR(MirJUMPDEST)
+			if mir != nil {
+				curBB.appendMIR(mir)
 			}
 		case PC:
 			mir = curBB.CreateBlockInfoMIR(MirPC, valueStack)
