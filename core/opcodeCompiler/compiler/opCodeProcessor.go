@@ -677,19 +677,12 @@ func getBlockType(block BasicBlock, blocks []BasicBlock, blockIndex int) string 
 		return "JumpDest"
 	}
 
-	// Check for conditional fallthrough (previous block ends with JUMPI or CALL related)
+	// Check for conditional fallthrough (previous block ends with JUMPI)
 	if blockIndex > 0 {
 		prevBlock := blocks[blockIndex-1]
 		if len(prevBlock.Opcodes) > 0 {
 			lastOp := ByteCode(prevBlock.Opcodes[len(prevBlock.Opcodes)-1])
-			if lastOp == JUMPI ||
-				lastOp == CALL ||
-				lastOp == CALLCODE ||
-				lastOp == DELEGATECALL ||
-				lastOp == STATICCALL ||
-				lastOp == EXTCALL ||
-				lastOp == EXTDELEGATECALL ||
-				lastOp == EXTSTATICCALL {
+			if lastOp == JUMPI {
 				return "conditional fallthrough"
 			}
 		}
