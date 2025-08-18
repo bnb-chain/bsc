@@ -66,4 +66,7 @@ var (
 	diffHashCacheMissMeter     = metrics.NewRegisteredMeter("pathdb/difflayer/hashcache/miss", nil)
 	diffHashCacheSlowPathMeter = metrics.NewRegisteredMeter("pathdb/difflayer/hashcache/slowpath", nil)
 	diffHashCacheLengthGauge   = metrics.NewRegisteredGauge("pathdb/difflayer/hashcache/size", nil)
+
+	accountReadTimer = metrics.NewRegisteredTimer("pathdb/accountRead", nil)
+	storageReadTimer = metrics.NewRegisteredTimer("pathdb/storageRead", nil)
 )
