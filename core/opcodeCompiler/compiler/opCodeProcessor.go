@@ -874,14 +874,25 @@ func calculateBlockStaticGas(block *BasicBlock, gasCalc GasCalculator) uint64 {
 // isBlockTerminator checks if an opcode terminates a basic block
 func isBlockTerminator(op ByteCode) bool {
 	switch op {
+	// Unconditional terminators or explicit halts
 	case STOP, RETURN, REVERT, SELFDESTRUCT:
 		return true
-	case JUMP, JUMPI:
+
+	// Unconditional / conditional jumps that alter the control-flow within the same contract
+	case JUMP, JUMPI, RJUMP, RJUMPI, RJUMPV, CALLF, RETF, JUMPF:
 		return true
-	case RJUMP, RJUMPI, RJUMPV:
+
+	// External message calls — these transfer control to another context and therefore
+	// must terminate the current basic block for correct static-gas accounting
+	case CALL, CALLCODE, DELEGATECALL, STATICCALL,
+		EXTCALL, EXTDELEGATECALL, EXTSTATICCALL:
 		return true
-	case CALLF, RETF, JUMPF:
+
+	// Contract creation opcodes have similar control-flow behaviour (external call & potential revert)
+	// so we also treat them as block terminators
+	case CREATE, CREATE2:
 		return true
+
 	default:
 		return false
 	}
