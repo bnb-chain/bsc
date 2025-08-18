@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
@@ -27,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 )
 
@@ -187,10 +189,17 @@ func (dl *diskLayer) node(owner common.Hash, path []byte, hash common.Hash, dept
 	}
 	// Try to retrieve the trie node from the disk.
 	var blob []byte
+	start := time.Now()
 	if owner == (common.Hash{}) {
 		blob = rawdb.ReadAccountTrieNode(dl.db.diskdb, path)
+		if metrics.EnabledExpensive() {
+			accountReadTimer.UpdateSince(start)
+		}
 	} else {
 		blob = rawdb.ReadStorageTrieNode(dl.db.diskdb, owner, path)
+		if metrics.EnabledExpensive() {
+			storageReadTimer.UpdateSince(start)
+		}
 	}
 	if dl.nodes != nil && len(blob) > 0 {
 		dl.nodes.Set(key, blob)

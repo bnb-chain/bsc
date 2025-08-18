@@ -170,6 +170,7 @@ type StateDB struct {
 	TrieDBCommits   time.Duration
 	SnapshotWrite   time.Duration
 	TrieDBWrite     time.Duration
+	TotalCommits    time.Duration
 
 	AccountLoaded  int          // Number of accounts retrieved from the database during the state transition
 	AccountUpdated int          // Number of accounts updated during the state transition
@@ -1436,6 +1437,9 @@ func (s *StateDB) commit(deleteEmptyObjects bool, noStorageWiping bool) (*stateU
 	// Wait for everything to finish and update the metrics
 	if err := workers.Wait(); err != nil {
 		return nil, err
+	}
+	if metrics.EnabledExpensive() {
+		s.TotalCommits = time.Since(start) // overwrite with the longest storage commit runtime
 	}
 	accountReadMeters.Mark(int64(s.AccountLoaded))
 	storageReadMeters.Mark(int64(s.StorageLoaded))
