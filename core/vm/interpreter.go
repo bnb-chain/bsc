@@ -184,7 +184,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	// as every returning call will return new data anyway.
 	// 记录进入 Run 的基本信息（仅目标区块/交易，降低噪音）
 	lowNoise := in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184
-	isTargetFrame := lowNoise && (in.evm.depth <= 3) // 追踪前3层调用
+	// 基于[RUN ENTER/EXIT]分析，26 gas差异确认发生在depth=1内部
+	// 因此只需要追踪depth=1的详细信息即可找到root cause
+	isTargetFrame := lowNoise && (in.evm.depth == 1) // 精确追踪: 只追踪depth=1
 	if lowNoise {
 		log.Error("[RUN ENTER]", "block", in.evm.Context.BlockNumber,
 			"txIndex", in.evm.StateDB.TxIndex(),
@@ -590,7 +592,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			txTotalCost := totalCost + totalDynamicGas + chunkGasChargedTotal
 			log.Error("[OP]", "pc", pc, "op", op.String(), "static", cost, "dynamicTotal", totalDynamicGas, "chunkTotal", chunkGasChargedTotal, "txTotalCost", txTotalCost)
 		}
-		
+
 		// 特别追踪可能影响gas的关键操作
 		if isTargetFrame && (op == CALL || op == DELEGATECALL || op == STATICCALL || op == CREATE || op == CREATE2) {
 			log.Error("[FRAME_GAS]", "action", "KeyOperation", "depth", in.evm.depth, "pc", pc, "op", op.String(), "staticCost", cost, "gasAfter", contract.Gas, "enableOpt", in.evm.Config.EnableOpcodeOptimizations)
@@ -826,7 +828,7 @@ func (in *EVMInterpreter) refundUnusedBlockGas(contract *Contract, pc uint64, cu
 		log.Error("[GAS]", "action", "Refund", "blockStart", currentBlock.StartPC, "delta", int64(usedGasDiff), "before", beforeGas, "after", contract.Gas, "depth", in.evm.depth)
 	}
 	// 追踪关键帧的退款操作
-	isTargetFrameRefund := debugLowNoise && (in.evm.depth <= 3)
+	isTargetFrameRefund := debugLowNoise && (in.evm.depth == 1)
 	if debugLowNoise && usedGasDiff > 0 && isTargetFrameRefund {
 		// 注意：退款意味着实际消耗的 gas 比预扣的少，所以这里显示的是实际净消耗
 		log.Error("[FRAME_GAS]", "action", "Refund", "depth", in.evm.depth, "blockStart", currentBlock.StartPC, "actualUsed", actualUsedGas, "staticGas", currentBlock.StaticGas, "refund", usedGasDiff, "netConsumption", currentBlock.StaticGas-usedGasDiff, "before", beforeGas, "after", contract.Gas, "enableOpt", true)
