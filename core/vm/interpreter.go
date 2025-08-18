@@ -184,6 +184,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	// as every returning call will return new data anyway.
 	// 记录进入 Run 的基本信息（仅目标区块/交易，降低噪音）
 	lowNoise := in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184
+	isTargetFrame := lowNoise && (in.evm.depth <= 3) // 追踪前3层调用
 	if lowNoise {
 		log.Error("[RUN ENTER]", "block", in.evm.Context.BlockNumber,
 			"txIndex", in.evm.StateDB.TxIndex(),
@@ -218,6 +219,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		totalCost            uint64 // for debug only
 		chunkGasChargedTotal uint64 // total EIP-4762 chunk gas charged (deducted from contract.Gas but not in opcode static totals)
 		//costCounter   int
+		frameGasAccumulator uint64 // 当前帧的累积 gas 消耗
 		// copies used by tracer
 		pcCopy            uint64 // needed for the deferred EVMLogger
 		gasCopy           uint64 // for EVMLogger to log gas remaining before execution
@@ -261,6 +263,12 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				"depth", in.evm.depth,
 				"enableOpt", in.evm.Config.EnableOpcodeOptimizations,
 				"fallback", !blockChargeActive)
+
+			// 关键帧的总结日志
+			if isTargetFrame {
+				gasUsed := initialGasThisRun - contract.Gas
+				log.Error("[FRAME_SUMMARY]", "depth", in.evm.depth, "contractGasEnter", initialGasThisRun, "contractGasExit", contract.Gas, "gasUsed", gasUsed, "opcodeStatic", totalCost, "cacheStatic", debugStaticGas, "dynamic", totalDynamicGas, "accumulator", frameGasAccumulator, "enableOpt", in.evm.Config.EnableOpcodeOptimizations, "fallback", !blockChargeActive)
+			}
 		}
 		returnStack(stack)
 		mem.Free()
@@ -352,6 +360,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 						if lowNoise {
 							log.Error("[GAS]", "action", "BlockPrechargeDeduct", "blockStart", block.StartPC, "delta", -int64(block.StaticGas), "before", beforeGas, "after", contract.Gas, "depth", in.evm.depth)
 						}
+						// 追踪关键帧的详细 gas 消耗
+						if isTargetFrame {
+							frameGasAccumulator += block.StaticGas
+							log.Error("[FRAME_GAS]", "action", "BlockPrecharge", "depth", in.evm.depth, "pc", pc, "blockStart", block.StartPC, "blockEnd", block.EndPC, "staticGas", block.StaticGas, "before", beforeGas, "after", contract.Gas, "accumulator", frameGasAccumulator, "enableOpt", in.evm.Config.EnableOpcodeOptimizations)
+						}
 						if lowNoise {
 							// 构造该 basic-block 的 opcode 序列，形如 [PUSH1, 0x01, JUMPI]
 							var parts []string
@@ -433,6 +446,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				contract.Gas -= cost
 				if lowNoise {
 					log.Error("[GAS]", "action", "ConstGas", "pc", pc, "delta", -int64(cost), "before", beforeGas, "after", contract.Gas, "depth", in.evm.depth)
+				}
+				// 追踪关键帧的详细 gas 消耗
+				if isTargetFrame {
+					frameGasAccumulator += cost
+					log.Error("[FRAME_GAS]", "action", "ConstGas", "depth", in.evm.depth, "pc", pc, "op", op.String(), "cost", cost, "before", beforeGas, "after", contract.Gas, "accumulator", frameGasAccumulator, "enableOpt", in.evm.Config.EnableOpcodeOptimizations)
 				}
 			}
 		}
@@ -544,6 +562,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				if lowNoise {
 					log.Error("[GAS]", "action", "DynamicGas", "pc", pc, "delta", -int64(dynamicCost), "before", beforeGas, "after", contract.Gas, "depth", in.evm.depth)
 				}
+				// 追踪关键帧的详细 gas 消耗
+				if isTargetFrame {
+					frameGasAccumulator += dynamicCost
+					log.Error("[FRAME_GAS]", "action", "DynamicGas", "depth", in.evm.depth, "pc", pc, "op", op.String(), "cost", dynamicCost, "before", beforeGas, "after", contract.Gas, "accumulator", frameGasAccumulator, "enableOpt", in.evm.Config.EnableOpcodeOptimizations)
+				}
 			}
 		}
 
@@ -566,6 +589,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// tx 级累计成本（静态累计 + 动态累计 + chunk 累计），便于直观看到到此为止的总成本
 			txTotalCost := totalCost + totalDynamicGas + chunkGasChargedTotal
 			log.Error("[OP]", "pc", pc, "op", op.String(), "static", cost, "dynamicTotal", totalDynamicGas, "chunkTotal", chunkGasChargedTotal, "txTotalCost", txTotalCost)
+		}
+		
+		// 特别追踪可能影响gas的关键操作
+		if isTargetFrame && (op == CALL || op == DELEGATECALL || op == STATICCALL || op == CREATE || op == CREATE2) {
+			log.Error("[FRAME_GAS]", "action", "KeyOperation", "depth", in.evm.depth, "pc", pc, "op", op.String(), "staticCost", cost, "gasAfter", contract.Gas, "enableOpt", in.evm.Config.EnableOpcodeOptimizations)
 		}
 
 		// execute the operation
@@ -796,6 +824,12 @@ func (in *EVMInterpreter) refundUnusedBlockGas(contract *Contract, pc uint64, cu
 	contract.Gas += usedGasDiff
 	if debugLowNoise {
 		log.Error("[GAS]", "action", "Refund", "blockStart", currentBlock.StartPC, "delta", int64(usedGasDiff), "before", beforeGas, "after", contract.Gas, "depth", in.evm.depth)
+	}
+	// 追踪关键帧的退款操作
+	isTargetFrameRefund := debugLowNoise && (in.evm.depth <= 3)
+	if debugLowNoise && usedGasDiff > 0 && isTargetFrameRefund {
+		// 注意：退款意味着实际消耗的 gas 比预扣的少，所以这里显示的是实际净消耗
+		log.Error("[FRAME_GAS]", "action", "Refund", "depth", in.evm.depth, "blockStart", currentBlock.StartPC, "actualUsed", actualUsedGas, "staticGas", currentBlock.StaticGas, "refund", usedGasDiff, "netConsumption", currentBlock.StaticGas-usedGasDiff, "before", beforeGas, "after", contract.Gas, "enableOpt", true)
 	}
 	return usedGasDiff
 }
