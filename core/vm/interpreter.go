@@ -186,7 +186,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	lowNoise := in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184
 	// 基于[RUN ENTER/EXIT]分析，26 gas差异确认发生在depth=1内部
 	// 因此只需要追踪depth=1的详细信息即可找到root cause
-	isTargetFrame := lowNoise && (in.evm.depth == 1) // 精确追踪: 只追踪depth=1
+	isTargetFrame := lowNoise && (in.evm.depth == 2) // 精确追踪: 只追踪depth=1
 	if lowNoise {
 		log.Error("[RUN ENTER]", "block", in.evm.Context.BlockNumber,
 			"txIndex", in.evm.StateDB.TxIndex(),
@@ -828,7 +828,7 @@ func (in *EVMInterpreter) refundUnusedBlockGas(contract *Contract, pc uint64, cu
 		log.Error("[GAS]", "action", "Refund", "blockStart", currentBlock.StartPC, "delta", int64(usedGasDiff), "before", beforeGas, "after", contract.Gas, "depth", in.evm.depth)
 	}
 	// 追踪关键帧的退款操作
-	isTargetFrameRefund := debugLowNoise && (in.evm.depth == 1)
+	isTargetFrameRefund := debugLowNoise && (in.evm.depth == 2)
 	if debugLowNoise && usedGasDiff > 0 && isTargetFrameRefund {
 		// 注意：退款意味着实际消耗的 gas 比预扣的少，所以这里显示的是实际净消耗
 		log.Error("[FRAME_GAS]", "action", "Refund", "depth", in.evm.depth, "blockStart", currentBlock.StartPC, "actualUsed", actualUsedGas, "staticGas", currentBlock.StaticGas, "refund", usedGasDiff, "netConsumption", currentBlock.StaticGas-usedGasDiff, "before", beforeGas, "after", contract.Gas, "enableOpt", true)
