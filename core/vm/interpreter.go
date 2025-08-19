@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
@@ -298,11 +299,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		if !blockChargeActive {
 
 			if contract.Gas < cost {
-				in.refundUnusedBlockGas(contract, pc, currentBlock)
 				// 如果是超指令，尝试拆分执行，尽量与 disable-path 失败情况对齐，如果不是超指令，不需要做任何事
 				if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
-					contract.Gas += operation.constantGas
-					currentBlock = nil // prevent duplicate refunds for the same block
+					// refund all pre-reduced basic block gas until before this pc (so pc-1)
+					in.refundUnusedBlockGas(contract, pc-1, currentBlock)
 					if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
 						// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
 						continue
@@ -326,9 +326,15 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				memSize, overflow := operation.memorySize(stack)
 				if overflow {
 					if blockChargeActive {
-						in.refundUnusedBlockGas(contract, pc, currentBlock)
-						blockChargeActive = false
-						currentBlock = nil
+						if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
+							in.refundUnusedBlockGas(contract, pc-1, currentBlock)
+							if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
+								// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
+								continue
+							}
+						} else {
+							in.refundUnusedBlockGas(contract, pc, currentBlock)
+						}
 					}
 					return nil, ErrGasUintOverflow
 				}
@@ -336,9 +342,15 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				// is also calculated in words.
 				if memorySize, overflow = math.SafeMul(toWordSize(memSize), 32); overflow {
 					if blockChargeActive {
-						in.refundUnusedBlockGas(contract, pc, currentBlock)
-						blockChargeActive = false
-						currentBlock = nil
+						if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
+							in.refundUnusedBlockGas(contract, pc-1, currentBlock)
+							if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
+								// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
+								continue
+							}
+						} else {
+							in.refundUnusedBlockGas(contract, pc, currentBlock)
+						}
 					}
 					return nil, ErrGasUintOverflow
 				}
@@ -350,35 +362,66 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
 			// 如果首次尝试因静态预扣导致 OOG，则退回未用静态 gas 后重试一次
 			if err != nil {
-				if blockChargeActive {
-					blockChargeActive = false
+				if errors.Is(err, ErrOutOfGas) && blockChargeActive && currentBlock != nil {
 					in.refundUnusedBlockGas(contract, pc, currentBlock)
+					blockChargeActive = false
+					currentBlock = nil
+					log.Error("[BLOCK-CACHE] fallback", "codeHash", contract.CodeHash, "pc", pc, "reason", "dynamicOOG")
+					// Retry once
+					dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
+				}
+				if err != nil {
+					// 若仍然 OOG ，尝试对 super-instruction 做 fallback
 					if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
-						contract.Gas += operation.constantGas
-						currentBlock = nil // prevent duplicate refunds for the same block
-						if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
-							// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
-							continue
+						if !blockChargeActive { // 常量费已单独扣过，需要先退回
+							contract.Gas += operation.constantGas
+						}
+						if err2 := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err2 == nil {
+							continue // fallback 成功，回到主循环
 						}
 					}
+					// 仍然失败，返回原错误
+					return nil, fmt.Errorf("%w: %v", ErrOutOfGas, err)
 				}
 			}
 			cost += dynamicCost // for tracing
 			totalDynamicGas += dynamicCost
 			// for tracing: this gas consumption event is emitted below in the debug section.
 			if contract.Gas < dynamicCost {
-				if blockChargeActive {
-					blockChargeActive = false
+				// 二次确认：若仍在预扣模式，先退回当前块未用静态 gas 再判断
+				if blockChargeActive && currentBlock != nil {
 					in.refundUnusedBlockGas(contract, pc, currentBlock)
+					// 再次检查余额
+					if contract.Gas < dynamicCost {
+						log.Error("Out of dynamic gas after refund", "pc", pc, "required", dynamicCost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+						in.refundUnusedBlockGas(contract, pc, currentBlock)
+						// 尝试 fallback 拆分执行
+						if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
+							if !blockChargeActive {
+								contract.Gas += operation.constantGas
+							}
+							if err2 := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err2 == nil {
+								continue
+							}
+						}
+						return nil, ErrOutOfGas
+					}
+				} else {
+					log.Error("Out of dynamic gas", "pc", pc, "required", dynamicCost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+					in.refundUnusedBlockGas(contract, pc, currentBlock)
+					// 尝试 fallback 拆分执行
 					if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
-						contract.Gas += operation.constantGas
-						currentBlock = nil // prevent duplicate refunds for the same block
-						if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
-							// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
+						if !blockChargeActive {
+							contract.Gas += operation.constantGas
+						}
+						if err2 := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err2 == nil {
 							continue
 						}
 					}
+					return nil, ErrOutOfGas
 				}
+			} else {
+				contract.Gas -= dynamicCost
 			}
 		}
 
@@ -399,10 +442,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
 		if err != nil {
-			if blockChargeActive {
-				blockChargeActive = false
-				in.refundUnusedBlockGas(contract, pc, currentBlock)
-			}
+			// 如果启用了优化模式且使用了 block gas 预扣除，需要返还未执行部分的 gas
+			in.refundUnusedBlockGas(contract, pc, currentBlock)
 			break
 		}
 		pc++
@@ -552,11 +593,7 @@ func (in *EVMInterpreter) refundUnusedBlockGas(contract *Contract, pc uint64, cu
 	if currentBlock == nil {
 		return 0
 	}
-	// 防御：若传入的 pc 落在 currentBlock.StartPC 之前（例如调用方使用 pc-1，且 pc 位于块首），
-	// 为避免将整块静态费全部退回而导致双重退款，这里将 pc 夹到块起点。
-	if pc < currentBlock.StartPC {
-		pc = currentBlock.StartPC
-	}
+
 	var actualUsedGas uint64
 	actualUsedGas = in.calculateUsedBlockGas(contract, currentBlock.StartPC, pc)
 	if actualUsedGas >= currentBlock.StaticGas {
@@ -640,13 +677,6 @@ func (in *EVMInterpreter) executeSingleOpcode(pc *uint64, op OpCode, contract *C
 	operation := in.table[op]
 	if operation == nil {
 		return fmt.Errorf("unknown opcode %02x", op)
-	}
-
-	// --- Stack size validation (mirrors main run loop) ---
-	if sLen := stack.len(); sLen < operation.minStack {
-		return &ErrStackUnderflow{stackLen: sLen, required: operation.minStack}
-	} else if sLen > operation.maxStack {
-		return &ErrStackOverflow{stackLen: sLen, limit: operation.maxStack}
 	}
 
 	// -------- 常量费检查 --------
