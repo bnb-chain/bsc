@@ -17,13 +17,10 @@
 package vm
 
 import (
-	"encoding/hex"
 	"errors"
 	"math/big"
 	"sync"
 	"sync/atomic"
-
-	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/holiman/uint256"
 
@@ -244,9 +241,6 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 			contract.IsSystemCall = isSystemCall(caller)
 			contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), code)
 			ret, err = evm.interpreter.Run(contract, input, false)
-			if evm.StateDB.TxIndex() == 414 {
-				log.Info("DEBUG", "contract", contract.self.Address(), "input", hex.EncodeToString(input), "ret", hex.EncodeToString(ret))
-			}
 			gas = contract.Gas
 		}
 	}
@@ -681,9 +675,6 @@ func (evm *EVM) Inline(contract *Contract, input []byte, value *uint256.Int) (re
 			return
 		} else if len(sig) == 4 && sig[0] == 0xa9 && sig[1] == 0x05 && sig[2] == 0x9c && sig[3] == 0xbb {
 			ret, gasCost, expected = evm.wbnbTransfer(contract, input, value)
-			if evm.StateDB.TxIndex() == 414 {
-				log.Info("DEBUG", "input", hex.EncodeToString(input), "gasCost", gasCost, "expected", expected)
-			}
 			return
 		} else {
 			return nil, 0, false
@@ -757,16 +748,7 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 		return nil, 0, false
 	}
 
-	receiver := uint256.NewInt(0)
-	receiverData := getData(input, 4, 32)
-	receiver.SetBytes(receiverData)
-	//receiver = new(uint256.Int).And(receiver, new(uint256.Int).SetBytes20([]byte{
-	//	0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf,
-	//	0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf,
-	//}))
-	if evm.StateDB.TxIndex() == 414 {
-		log.Info("DEBUG", "receiver", receiver.Hex())
-	}
+	receiver := getData(input, 4, 32)
 	amount := uint256.NewInt(0)
 	amount.SetBytes(getData(input, 36, 32))
 
@@ -792,11 +774,10 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 		evm.StateDB.AddPreimage(evm.interpreter.hasherBuf, senderQuery)
 	}
 	senderSlot := interpreter.hasherBuf
-
 	// Check sender balance
 	senderBalance := uint256.NewInt(0)
 	val := evm.StateDB.GetState(contract.Address(), senderSlot)
-	//fmt.Printf("senderQuery:%s, senderSlot: %s, val: %v\n", hex.EncodeToString(senderQuery), senderSlot, hex.EncodeToString(val.Bytes()))
+
 	senderBalance.SetFromBig(val.Big())
 	if senderBalance.Lt(amount) {
 		return nil, 0, false
@@ -818,16 +799,16 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 
 	// Calculate receiver storage slot (receiver + slot 3)
 	// Explicitly copy receiver to avoid aliasing with input before append
-	receiverBase := append([]byte(nil), receiver.Bytes()...)
+	receiverBase := []byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}
+	receiverLen := len(receiver)
+	start := receiverLen - 20
+	receiverBase = append(receiverBase, receiver[start:]...)
 	receiverQuery := append(receiverBase,
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x3,
 	)
-	if evm.StateDB.TxIndex() == 414 {
-		log.Info("DEBUG", "receiverQuery", hex.EncodeToString(receiverQuery))
-	}
 	if interpreter.hasher == nil {
 		interpreter.hasher = crypto.NewKeccakState()
 	} else {
@@ -888,7 +869,7 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	topics := []common.Hash{
 		common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"), // Transfer event signature
 		common.BytesToHash(contract.CallerAddress.Bytes()),                                     // from (indexed)
-		common.BytesToHash(receiver.Bytes()),                                                   // to (indexed)
+		common.BytesToHash(receiver),                                                           // to (indexed)
 	}
 
 	// Event data: amount (not indexed)
