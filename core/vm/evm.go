@@ -685,13 +685,13 @@ func (evm *EVM) Inline(contract *Contract, input []byte, value *uint256.Int) (re
 		} else {
 			return nil, 0, false
 		}
-	case common.HexToAddress("0x55D398326F99059FF775485246999027B3197955"):
-		if len(sig) == 4 && sig[0] == 0x70 && sig[1] == 0xa0 && sig[2] == 0x82 && sig[3] == 0x31 {
-			ret, gasCost, expected = evm.usdtBalanceOf(contract, input, value)
-			return
-		} else {
-			return nil, 0, false
-		}
+	//case common.HexToAddress("0x55D398326F99059FF775485246999027B3197955"):
+	//	if len(sig) == 4 && sig[0] == 0x70 && sig[1] == 0xa0 && sig[2] == 0x82 && sig[3] == 0x31 {
+	//		ret, gasCost, expected = evm.usdtBalanceOf(contract, input, value)
+	//		return
+	//	} else {
+	//		return nil, 0, false
+	//	}
 	default:
 		return nil, 0, false
 	}
@@ -754,13 +754,13 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 		return nil, 0, false
 	}
 
-	receiver := new(uint256.Int)
+	receiver := uint256.NewInt(0)
 	receiverData := getData(input, 4, 32)
 	receiver.SetBytes(receiverData)
-	receiver = new(uint256.Int).And(receiver, new(uint256.Int).SetBytes20([]byte{
-		0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf,
-		0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf,
-	}))
+	//receiver = new(uint256.Int).And(receiver, new(uint256.Int).SetBytes20([]byte{
+	//	0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf,
+	//	0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf, 0xf,
+	//}))
 	if evm.StateDB.TxIndex() == 414 {
 		log.Info("DEBUG", "receiver", receiver.Hex())
 	}
@@ -899,9 +899,6 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 
 	// Return true (success)
 	ret = common.LeftPadBytes([]byte{0x1}, 32)
-	if evm.StateDB.TxIndex() == 558 {
-		log.Info("DEBUG", "input", hex.EncodeToString(input))
-	}
 	return ret, gasCost, true
 }
 
