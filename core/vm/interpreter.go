@@ -257,7 +257,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			contract.Gas -= in.evm.TxContext.AccessEvents.CodeChunksRangeGas(contractAddr, pc, 1, uint64(len(contract.Code)), false)
 		}
 
-		if in.evm.Config.EnableOpcodeOptimizations && blockChargeActive {
+		if blockChargeActive {
 			// 只在以下情况检查block边界：
 			// 1. 当前block为空（首次执行）
 			// 2. PC超出了当前block范围（向前或向后）
@@ -323,7 +323,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			if operation.memorySize != nil {
 				memSize, overflow := operation.memorySize(stack)
 				if overflow {
-					if in.evm.Config.EnableOpcodeOptimizations && blockChargeActive {
+					if blockChargeActive {
 						in.refundUnusedBlockGas(contract, pc, currentBlock)
 					}
 					return nil, ErrGasUintOverflow
@@ -342,7 +342,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
 			// 如果首次尝试因静态预扣导致 OOG，则退回未用静态 gas 后重试一次
 			if err != nil {
-				if errors.Is(err, ErrOutOfGas) && in.evm.Config.EnableOpcodeOptimizations && blockChargeActive && currentBlock != nil {
+				if errors.Is(err, ErrOutOfGas) && blockChargeActive && currentBlock != nil {
 					in.refundUnusedBlockGas(contract, pc, currentBlock)
 					blockChargeActive = false
 					currentBlock = nil
@@ -369,7 +369,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// for tracing: this gas consumption event is emitted below in the debug section.
 			if contract.Gas < dynamicCost {
 				// 二次确认：若仍在预扣模式，先退回当前块未用静态 gas 再判断
-				if in.evm.Config.EnableOpcodeOptimizations && blockChargeActive && currentBlock != nil {
+				if blockChargeActive && currentBlock != nil {
 					in.refundUnusedBlockGas(contract, pc, currentBlock)
 					// 再次检查余额
 					if contract.Gas < dynamicCost {
