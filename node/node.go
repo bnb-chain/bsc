@@ -78,11 +78,11 @@ const (
 	// ChainDbResourcePercentage is estimated from on-disk size proportions of metadata and block data.
 	ChainDbResourcePercentage = 7
 	// SnapDbResourcePercentage is estimated from on-disk size proportions of snapshot data.
-	SnapDbResourcePercentage = 24
+	SnapDbResourcePercentage = 36
 	// StateStoreResourcePercentage is estimated from on-disk size proportions of trie data.
 	StateStoreResourcePercentage = 50
 	// IndexDbResourcePercentage is estimated from on-disk size proportions of transaction index data.
-	IndexDbResourcePercentage = 19
+	IndexDbResourcePercentage = 7
 )
 
 const StateDBNamespace = "eth/db/statedata/"
