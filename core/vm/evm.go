@@ -858,22 +858,30 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	contract.Gas -= receiverSetGas
 	evm.StateDB.SetState(contract.Address(), receiverSlot, common.Hash(newReceiverBalance.Bytes32()))
 
-	if contract.Gas < 1756 {
+	// Prepare event data and topics, then charge correct LOG3 gas
+	// Event data: amount (not indexed)
+	data := common.LeftPadBytes(amount.Bytes(), 32)
+
+	// Calculate LOG3 gas dynamically
+	logGas := params.LogGas + params.LogTopicGas*3 + params.LogDataGas*uint64(len(data))
+	if contract.Gas < logGas {
 		return nil, gasCost, false
 	}
-	gasCost += 1756
-	contract.Gas -= 1756
+	gasCost += logGas
+	contract.Gas -= logGas
+
 	// Emit Transfer event
 	// Transfer(address indexed from, address indexed to, uint256 value)
 	// Event signature: keccak256("Transfer(address,address,uint256)")
+	toAddr20 := receiver
+	if len(receiver) > 20 {
+		toAddr20 = receiver[len(receiver)-20:]
+	}
 	topics := []common.Hash{
 		common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"), // Transfer event signature
 		common.BytesToHash(contract.CallerAddress.Bytes()),                                     // from (indexed)
-		common.BytesToHash(receiver),                                                           // to (indexed)
+		common.BytesToHash(toAddr20),                                                           // to (indexed)
 	}
-
-	// Event data: amount (not indexed)
-	data := common.LeftPadBytes(amount.Bytes(), 32)
 
 	evm.StateDB.AddLog(&types.Log{
 		Address: contract.Address(),
