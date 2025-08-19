@@ -26,6 +26,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/core/state/snapshot"
+
 	"github.com/davecgh/go-spew/spew"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -1057,7 +1059,26 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 	if state == nil || err != nil {
 		return nil, err
 	}
-	return doCall(ctx, b, args, state, header, overrides, blockOverrides, timeout, globalGasCap)
+
+	res, derr := doCall(ctx, b, args, state, header, overrides, blockOverrides, timeout, globalGasCap)
+
+	// Retry once if snapshot error
+	if derr != nil && errors.Is(derr, snapshot.ErrSnapshotStale) {
+		select {
+		case <-time.After(100 * time.Millisecond):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+
+		state, header, err = b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+		if state == nil || err != nil {
+			return nil, err
+		}
+
+		res, derr = doCall(ctx, b, args, state, header, overrides, blockOverrides, timeout, globalGasCap)
+	}
+
+	return res, derr
 }
 
 // Call executes the given transaction on the state for the given block number.
