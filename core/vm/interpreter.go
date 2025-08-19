@@ -299,8 +299,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		if !blockChargeActive {
 
 			if contract.Gas < cost {
-				// 如果是超指令，尝试拆分执行，尽量与 disable-path 对齐
+				// 如果是超指令，尝试拆分执行，尽量与 disable-path 失败情况对齐，如果不是超指令，不需要做任何事
 				if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
+					// refund all pre-reduced basic block gas until before this pc (so pc-1)
+					in.refundUnusedBlockGas(contract, pc-1, currentBlock)
 					if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
 						// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
 						continue
@@ -324,14 +326,32 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				memSize, overflow := operation.memorySize(stack)
 				if overflow {
 					if blockChargeActive {
-						in.refundUnusedBlockGas(contract, pc, currentBlock)
+						if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
+							in.refundUnusedBlockGas(contract, pc-1, currentBlock)
+							if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
+								// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
+								continue
+							}
+						} else {
+							in.refundUnusedBlockGas(contract, pc, currentBlock)
+						}
 					}
 					return nil, ErrGasUintOverflow
 				}
 				// memory is expanded in words of 32 bytes. Gas
 				// is also calculated in words.
 				if memorySize, overflow = math.SafeMul(toWordSize(memSize), 32); overflow {
-					in.refundUnusedBlockGas(contract, pc, currentBlock)
+					if blockChargeActive {
+						if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
+							in.refundUnusedBlockGas(contract, pc-1, currentBlock)
+							if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
+								// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
+								continue
+							}
+						} else {
+							in.refundUnusedBlockGas(contract, pc, currentBlock)
+						}
+					}
 					return nil, ErrGasUintOverflow
 				}
 			}
@@ -568,62 +588,35 @@ func (in *EVMInterpreter) calculateUsedBlockGas(contract *Contract, startPC, end
 	return totalGas
 }
 
-// refundUnusedBlockGas refunds unused block gas when optimization is enabled
+// refundUnusedBlockGas refunds unused block gas when optimization is enabled and current op not superinstruction
 func (in *EVMInterpreter) refundUnusedBlockGas(contract *Contract, pc uint64, currentBlock *compiler.BasicBlock) uint64 {
 	if currentBlock == nil {
 		return 0
 	}
-	var actualUsedGas uint64
-	op := contract.GetOp(pc)
-	//todo: check if duplicate logic
-	_, isSuper := DecomposeSuperInstruction(op)
-	if isSuper {
-		allowedGas := contract.Gas + currentBlock.StaticGas //refund pre-deducted gas
-		pc = currentBlock.StartPC
-		for pc < currentBlock.EndPC {
-			basicBlockPc := pc - currentBlock.StartPC
-			op := OpCode(currentBlock.Opcodes[basicBlockPc])
-			operation := in.table[op]
 
-			// Add static gas for this opcode (only if operation exists)
-			if operation != nil {
-				if allowedGas >= operation.constantGas { // if gas is enough, we can process on reduce
-					allowedGas -= operation.constantGas
-					actualUsedGas += operation.constantGas
-				} else {
-					break
-				}
-			}
-			if skip, steps := compiler.CalculateSkipSteps(currentBlock.Opcodes, int(basicBlockPc)); skip {
-				pc += uint64(steps) + 1
-				continue
-			}
-			pc++
-		}
-	} else {
-		actualUsedGas = in.calculateUsedBlockGas(contract, currentBlock.StartPC, pc)
-		if actualUsedGas >= currentBlock.StaticGas {
-			return 0
-		}
+	var actualUsedGas uint64
+	actualUsedGas = in.calculateUsedBlockGas(contract, currentBlock.StartPC, pc)
+	if actualUsedGas >= currentBlock.StaticGas {
+		return 0
 	}
 
 	usedGasDiff := currentBlock.StaticGas - actualUsedGas
 	// Debug log: show refund calculation for low-noise target tx
-	debugLowNoise := in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184
-	if debugLowNoise {
-		log.Error("[REFUND]", "blockStart", currentBlock.StartPC, "pc", pc, "staticGas", currentBlock.StaticGas, "actualUsed", actualUsedGas, "refund", usedGasDiff, "gasBeforeRefund", contract.Gas)
-	}
-	beforeGas := contract.Gas
+	//debugLowNoise := in.evm.Context.BlockNumber.Uint64() == 50897362 && in.evm.StateDB.TxIndex() == 184
+	//if debugLowNoise {
+	//	log.Error("[REFUND]", "blockStart", currentBlock.StartPC, "pc", pc, "staticGas", currentBlock.StaticGas, "actualUsed", actualUsedGas, "refund", usedGasDiff, "gasBeforeRefund", contract.Gas)
+	//}
+	//beforeGas := contract.Gas
 	contract.Gas += usedGasDiff
-	if debugLowNoise {
-		log.Error("[GAS]", "action", "Refund", "blockStart", currentBlock.StartPC, "delta", int64(usedGasDiff), "before", beforeGas, "after", contract.Gas, "depth", in.evm.depth)
-	}
+	//if debugLowNoise {
+	//	log.Error("[GAS]", "action", "Refund", "blockStart", currentBlock.StartPC, "delta", int64(usedGasDiff), "before", beforeGas, "after", contract.Gas, "depth", in.evm.depth)
+	//}
 	// 追踪关键帧的退款操作
-	isTargetFrameRefund := debugLowNoise && (in.evm.depth == 2)
-	if debugLowNoise && usedGasDiff > 0 && isTargetFrameRefund {
-		// 注意：退款意味着实际消耗的 gas 比预扣的少，所以这里显示的是实际净消耗
-		log.Error("[FRAME_GAS]", "action", "Refund", "depth", in.evm.depth, "blockStart", currentBlock.StartPC, "actualUsed", actualUsedGas, "staticGas", currentBlock.StaticGas, "refund", usedGasDiff, "netConsumption", currentBlock.StaticGas-usedGasDiff, "before", beforeGas, "after", contract.Gas, "enableOpt", true)
-	}
+	//isTargetFrameRefund := debugLowNoise && (in.evm.depth == 2)
+	//if debugLowNoise && usedGasDiff > 0 && isTargetFrameRefund {
+	//	// 注意：退款意味着实际消耗的 gas 比预扣的少，所以这里显示的是实际净消耗
+	//	log.Error("[FRAME_GAS]", "action", "Refund", "depth", in.evm.depth, "blockStart", currentBlock.StartPC, "actualUsed", actualUsedGas, "staticGas", currentBlock.StaticGas, "refund", usedGasDiff, "netConsumption", currentBlock.StaticGas-usedGasDiff, "before", beforeGas, "after", contract.Gas, "enableOpt", true)
+	//}
 	return usedGasDiff
 }
 
