@@ -244,6 +244,9 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 			contract.IsSystemCall = isSystemCall(caller)
 			contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), code)
 			ret, err = evm.interpreter.Run(contract, input, false)
+			if evm.StateDB.TxIndex() == 414 {
+				log.Info("DEBUG", "contract", contract.self.Address(), "input", hex.EncodeToString(input), "ret", hex.EncodeToString(ret))
+			}
 			gas = contract.Gas
 		}
 	}

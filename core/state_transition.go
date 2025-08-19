@@ -18,8 +18,10 @@ package core
 
 import (
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/log"
 	"math"
 	"math/big"
 	"slices"
@@ -522,6 +524,9 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		}
 		start = time.Now()
 		// Execute the transaction's call.
+		if st.evm.StateDB.TxIndex() == 414 {
+			log.Info("DEBUG", "input", hex.EncodeToString(msg.Data), "to", st.to())
+		}
 		ret, st.gasRemaining, vmerr = st.evm.Call(sender, st.to(), msg.Data, st.gasRemaining, value)
 		evmDuration = time.Since(start)
 	}

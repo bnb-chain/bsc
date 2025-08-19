@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"encoding/hex"
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -166,6 +167,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	tempContract := contract
 	if in.evm.Config.EnableFullyInline {
 		ret, _, expect := in.evm.Inline(contract, input, contract.value)
+		if in.evm.StateDB.TxIndex() == 414 {
+			log.Info("DEBUG", "contract", contract.self.Address(), "input", hex.EncodeToString(input), "expect", expect)
+		}
 		if expect {
 			in.evm.FullyInlineCount++
 			return ret, nil
