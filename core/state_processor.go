@@ -17,6 +17,7 @@
 package core
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -146,6 +147,10 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		if err != nil {
 			bloomProcessors.Close()
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
+		}
+		log.Info("DEBUG", "tx hash", receipt.TxHash)
+		for _, l := range receipt.Logs {
+			log.Info("DEBUG", "topic", l.Topics, "data", hex.EncodeToString(l.Data), "address", l.Address)
 		}
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)

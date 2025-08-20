@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"bytes"
 	"errors"
 	"math/big"
 	"sync"
@@ -788,6 +789,10 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	}
 	contract.Gas -= gasCost
 
+	// Update balances
+	newSenderBalance := uint256.NewInt(0)
+	newSenderBalance.Sub(senderBalance, amount)
+
 	// Add gas cost for sender slot access
 	sloadGasCost := evm.CalcSloadGasByBlockNumber(contract.Address(), senderSlot, evm.Context.BlockNumber.Uint64())
 	if contract.Gas < sloadGasCost*2 {
@@ -796,12 +801,26 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	gasCost += sloadGasCost * 2
 	contract.Gas -= sloadGasCost * 2
 
+	// Store new balances
+	senderSetGas := evm.gasSStoreBSC(contract, senderSlot, newSenderBalance.Bytes32())
+	if contract.Gas < senderSetGas {
+		return nil, gasCost, false
+	}
+	gasCost += senderSetGas
+	contract.Gas -= senderSetGas
+	evm.StateDB.SetState(contract.Address(), senderSlot, common.Hash(newSenderBalance.Bytes32()))
+
 	// Calculate receiver storage slot (receiver + slot 3)
 	// Explicitly copy receiver to avoid aliasing with input before append
 	receiverBase := []byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}
-	receiverLen := len(receiver)
-	start := receiverLen - 20
-	receiverBase = append(receiverBase, receiver[start:]...)
+	toAddr20 := receiver
+	if len(receiver) > 20 {
+		toAddr20 = receiver[len(receiver)-20:]
+	}
+	if bytes.Equal(toAddr20, make([]byte, 20)) {
+		return nil, 0, false
+	}
+	receiverBase = append(receiverBase, toAddr20...)
 	receiverQuery := append(receiverBase,
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
 		0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
@@ -820,7 +839,9 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 		evm.StateDB.AddPreimage(evm.interpreter.hasherBuf, receiverQuery)
 	}
 	receiverSlot := interpreter.hasherBuf
-
+	if receiverSlot == senderSlot {
+		return nil, 0, false
+	}
 	// Get receiver balance
 	receiverBalance := uint256.NewInt(0)
 	val = evm.StateDB.GetState(contract.Address(), receiverSlot)
@@ -834,21 +855,8 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	gasCost += sloadGasCost
 	contract.Gas -= sloadGasCost
 
-	// Update balances
-	newSenderBalance := uint256.NewInt(0)
-	newSenderBalance.Sub(senderBalance, amount)
-
 	newReceiverBalance := uint256.NewInt(0)
 	newReceiverBalance.Add(receiverBalance, amount)
-
-	// Store new balances
-	senderSetGas := evm.gasSStoreBSC(contract, senderSlot, newSenderBalance.Bytes32())
-	if contract.Gas < senderSetGas {
-		return nil, gasCost, false
-	}
-	gasCost += senderSetGas
-	contract.Gas -= senderSetGas
-	evm.StateDB.SetState(contract.Address(), senderSlot, common.Hash(newSenderBalance.Bytes32()))
 	receiverSetGas := evm.gasSStoreBSC(contract, receiverSlot, newReceiverBalance.Bytes32())
 	if contract.Gas < receiverSetGas {
 		return nil, gasCost, false
@@ -872,10 +880,6 @@ func (evm *EVM) wbnbTransfer(contract *Contract, input []byte, value *uint256.In
 	// Emit Transfer event
 	// Transfer(address indexed from, address indexed to, uint256 value)
 	// Event signature: keccak256("Transfer(address,address,uint256)")
-	toAddr20 := receiver
-	if len(receiver) > 20 {
-		toAddr20 = receiver[len(receiver)-20:]
-	}
 	topics := []common.Hash{
 		common.HexToHash("0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"), // Transfer event signature
 		common.BytesToHash(contract.CallerAddress.Bytes()),                                     // from (indexed)
