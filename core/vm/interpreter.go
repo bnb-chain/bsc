@@ -388,38 +388,18 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			totalDynamicGas += dynamicCost
 			// for tracing: this gas consumption event is emitted below in the debug section.
 			if contract.Gas < dynamicCost {
-				// 二次确认：若仍在预扣模式，先退回当前块未用静态 gas 再判断
-				if blockChargeActive && currentBlock != nil {
-					in.refundUnusedBlockGas(contract, pc, currentBlock)
-					// 再次检查余额
-					if contract.Gas < dynamicCost {
-						log.Error("Out of dynamic gas after refund", "pc", pc, "required", dynamicCost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-						in.refundUnusedBlockGas(contract, pc, currentBlock)
-						// 尝试 fallback 拆分执行
-						if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
-							if !blockChargeActive {
-								contract.Gas += operation.constantGas
-							}
-							if err2 := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err2 == nil {
-								continue
-							}
-						}
-						return nil, ErrOutOfGas
-					}
-				} else {
-					log.Error("Out of dynamic gas", "pc", pc, "required", dynamicCost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-					in.refundUnusedBlockGas(contract, pc, currentBlock)
-					// 尝试 fallback 拆分执行
+				if blockChargeActive {
 					if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
-						if !blockChargeActive {
-							contract.Gas += operation.constantGas
-						}
-						if err2 := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err2 == nil {
+						in.refundUnusedBlockGas(contract, pc-1, currentBlock)
+						if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
+							// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
 							continue
 						}
+					} else {
+						in.refundUnusedBlockGas(contract, pc, currentBlock)
 					}
-					return nil, ErrOutOfGas
 				}
+				return nil, ErrOutOfGas
 			} else {
 				contract.Gas -= dynamicCost
 			}
