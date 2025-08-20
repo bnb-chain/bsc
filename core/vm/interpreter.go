@@ -422,8 +422,17 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
 		if err != nil {
-			// 如果启用了优化模式且使用了 block gas 预扣除，需要返还未执行部分的 gas
-			in.refundUnusedBlockGas(contract, pc, currentBlock)
+			if blockChargeActive {
+				if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
+					in.refundUnusedBlockGas(contract, pc-1, currentBlock)
+					if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
+						// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
+						continue
+					}
+				} else {
+					in.refundUnusedBlockGas(contract, pc, currentBlock)
+				}
+			}
 			break
 		}
 		pc++
