@@ -304,6 +304,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 					in.refundUnusedBlockGas(contract, pc-1, currentBlock)
 					if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
 						// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
+						blockChargeActive = false
+						currentBlock = nil
 						continue
 					}
 				}
@@ -329,6 +331,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 							in.refundUnusedBlockGas(contract, pc-1, currentBlock)
 							if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
 								// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
+								blockChargeActive = false
+								currentBlock = nil
 								continue
 							}
 						} else {
@@ -345,6 +349,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 							in.refundUnusedBlockGas(contract, pc-1, currentBlock)
 							if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
 								// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
+								blockChargeActive = false
+								currentBlock = nil
 								continue
 							}
 						} else {
@@ -366,6 +372,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 						in.refundUnusedBlockGas(contract, pc-1, currentBlock)
 						if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
 							// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
+							blockChargeActive = false
+							currentBlock = nil
 							continue
 						}
 					} else {
@@ -383,6 +391,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 						in.refundUnusedBlockGas(contract, pc-1, currentBlock)
 						if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
 							// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
+							blockChargeActive = false
+							currentBlock = nil
 							continue
 						}
 					} else {
@@ -417,6 +427,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 					in.refundUnusedBlockGas(contract, pc-1, currentBlock)
 					if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
 						// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
+						blockChargeActive = false
+						currentBlock = nil
 						continue
 					}
 				} else {
