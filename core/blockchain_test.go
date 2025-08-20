@@ -3020,7 +3020,7 @@ func testDeleteRecreateSlotsAcrossManyBlocks(t *testing.T, scheme string) {
 			e.exist = false
 			e.values = nil
 		}
-		// t.Logf("block %d; adding destruct\n", e.blocknum)
+		//t.Logf("block %d; adding destruct\n", e.blocknum)
 		return tx
 	}
 	var newResurrect = func(e *expectation, b *BlockGen) *types.Transaction {
@@ -3031,7 +3031,7 @@ func testDeleteRecreateSlotsAcrossManyBlocks(t *testing.T, scheme string) {
 			e.exist = true
 			e.values = map[int]int{3: e.blocknum + 1, 4: 4}
 		}
-		// t.Logf("block %d; adding resurrect\n", e.blocknum)
+		//t.Logf("block %d; adding resurrect\n", e.blocknum)
 		return tx
 	}
 
@@ -3061,8 +3061,8 @@ func testDeleteRecreateSlotsAcrossManyBlocks(t *testing.T, scheme string) {
 	// Import the canonical chain
 	options := DefaultConfig().WithStateScheme(scheme)
 	options.VmConfig = vm.Config{
-		// Debug:  true,
-		// Tracer: vm.NewJSONLogger(nil, os.Stdout),
+		//Debug:  true,
+		//Tracer: vm.NewJSONLogger(nil, os.Stdout),
 	}
 	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, engine, options)
 	if err != nil {
@@ -3201,8 +3201,8 @@ func testInitThenFailCreateContract(t *testing.T, scheme string) {
 	// Import the canonical chain
 	options := DefaultConfig().WithStateScheme(scheme)
 	options.VmConfig = vm.Config{
-		// Debug:  true,
-		// Tracer: vm.NewJSONLogger(nil, os.Stdout),
+		//Debug:  true,
+		//Tracer: vm.NewJSONLogger(nil, os.Stdout),
 	}
 	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, engine, options)
 	if err != nil {
@@ -4558,6 +4558,9 @@ func testInsertChainWithCutoff1(t *testing.T) {
 	})
 }
 
+// TODO(sysvm): need fix when pruned sync enabled
+//
+//nolint:unused
 func testInsertChainWithCutoff(t *testing.T, cutoff uint64, ancientLimit uint64, genesis *Genesis, blocks []*types.Block, receipts []types.Receipts) {
 	// log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelDebug, true)))
 
