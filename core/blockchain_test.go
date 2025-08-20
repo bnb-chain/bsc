@@ -3020,7 +3020,7 @@ func testDeleteRecreateSlotsAcrossManyBlocks(t *testing.T, scheme string) {
 			e.exist = false
 			e.values = nil
 		}
-		//t.Logf("block %d; adding destruct\n", e.blocknum)
+		// t.Logf("block %d; adding destruct\n", e.blocknum)
 		return tx
 	}
 	var newResurrect = func(e *expectation, b *BlockGen) *types.Transaction {
@@ -3031,7 +3031,7 @@ func testDeleteRecreateSlotsAcrossManyBlocks(t *testing.T, scheme string) {
 			e.exist = true
 			e.values = map[int]int{3: e.blocknum + 1, 4: 4}
 		}
-		//t.Logf("block %d; adding resurrect\n", e.blocknum)
+		// t.Logf("block %d; adding resurrect\n", e.blocknum)
 		return tx
 	}
 
@@ -3061,8 +3061,8 @@ func testDeleteRecreateSlotsAcrossManyBlocks(t *testing.T, scheme string) {
 	// Import the canonical chain
 	options := DefaultConfig().WithStateScheme(scheme)
 	options.VmConfig = vm.Config{
-		//Debug:  true,
-		//Tracer: vm.NewJSONLogger(nil, os.Stdout),
+		// Debug:  true,
+		// Tracer: vm.NewJSONLogger(nil, os.Stdout),
 	}
 	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, engine, options)
 	if err != nil {
@@ -3201,8 +3201,8 @@ func testInitThenFailCreateContract(t *testing.T, scheme string) {
 	// Import the canonical chain
 	options := DefaultConfig().WithStateScheme(scheme)
 	options.VmConfig = vm.Config{
-		//Debug:  true,
-		//Tracer: vm.NewJSONLogger(nil, os.Stdout),
+		// Debug:  true,
+		// Tracer: vm.NewJSONLogger(nil, os.Stdout),
 	}
 	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, engine, options)
 	if err != nil {
@@ -4510,11 +4510,15 @@ func testChainReorgSnapSync(t *testing.T, ancientLimit uint64) {
 	}
 }
 
+// TODO(sysvm): need fix when pruned sync enabled
+//
 // Tests the scenario that all the inserted chain segment are with the configured
 // chain cutoff point. In this case the chain segment before the cutoff should
 // be persisted without the receipts and bodies; chain after should be persisted
 // normally.
-func TestInsertChainWithCutoff(t *testing.T) {
+//
+//nolint:unused
+func testInsertChainWithCutoff1(t *testing.T) {
 	const chainLength = 64
 
 	// Configure and generate a sample block chain

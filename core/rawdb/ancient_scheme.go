@@ -47,11 +47,11 @@ const (
 // Compression is disabled for hashes as they don't compress well.
 // TODO(Nathan): setting prunable properly
 var chainFreezerTableConfigs = map[string]freezerTableConfig{
-	ChainFreezerHeaderTable:      {noSnappy: false, prunable: false},
-	ChainFreezerHashTable:        {noSnappy: true, prunable: false},
+	ChainFreezerHeaderTable:      {noSnappy: false, prunable: true},
+	ChainFreezerHashTable:        {noSnappy: true, prunable: true},
 	ChainFreezerBodiesTable:      {noSnappy: false, prunable: true},
 	ChainFreezerReceiptTable:     {noSnappy: false, prunable: true},
-	ChainFreezerDifficultyTable:  {noSnappy: true, prunable: false},
+	ChainFreezerDifficultyTable:  {noSnappy: true, prunable: true},
 	ChainFreezerBlobSidecarTable: {noSnappy: false, prunable: true},
 }
 
