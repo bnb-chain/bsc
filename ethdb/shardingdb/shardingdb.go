@@ -6,9 +6,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 
 	"github.com/ethereum/go-ethereum/ethdb"
 
@@ -19,7 +22,27 @@ const (
 	DBTypePebble  = "pebble"
 	DBTypeLeveldb = "leveldb"
 	DBTypeMemory  = "memorydb"
+
+	// minShardCache is the minimum amount of memory in megabytes to allocate to each shard
+	minShardCache = 16
+	// minShardHandles is the minimum number of file handles to allocate to each shard
+	minShardHandles = 16
+	// maxAtomicCommitRetries is the maximum number of retry attempts for atomic commit
+	maxAtomicCommitRetries = 3
+	// atomicCommitRetryDelay is the base delay duration between retry attempts
+	atomicCommitRetryDelay = 10 * time.Millisecond
 )
+
+var (
+	// shardBatchRetryMeter measures the number of retry attempts in atomic commits
+	shardBatchRetryMeter = metrics.NewRegisteredMeter("ethdb/shardingdb/batch/retry", nil)
+)
+
+// shardCommitResult contains the result of a shard commit operation
+type shardCommitResult struct {
+	batch ethdb.Batch
+	err   error
+}
 
 type ShardIndexFunc func(key []byte, shardNum int) int
 
@@ -179,6 +202,14 @@ func New(cfg *Config, cache int, handles int, readonly bool, f ShardIndexFunc) (
 
 	shardCache := cache / len(shardCfgs)
 	shardHandles := handles / len(shardCfgs)
+
+	// Ensure each shard gets at least the minimum cache and handles
+	if shardCache < minShardCache {
+		shardCache = minShardCache
+	}
+	if shardHandles < minShardHandles {
+		shardHandles = minShardHandles
+	}
 	shards := make([]ethdb.KeyValueStore, len(shardCfgs))
 	for i, shardCfg := range shardCfgs {
 		switch cfg.DBType {
@@ -330,30 +361,69 @@ func (b *shardingBatch) Delete(key []byte) error {
 
 func (b *shardingBatch) ValueSize() int { return b.size }
 
-// Write writes all the batches in parallel
+// Write writes all the batches using atomic commit with retry logic
 // It returns the first error if any
 func (b *shardingBatch) Write() error {
-	wg := sync.WaitGroup{}
-	errs := make(chan error, len(b.batches))
-	for _, batch := range b.batches {
-		if batch == nil {
-			continue
+	return b.atomicCommit()
+}
+
+// atomicCommit executes writes to all shards atomically with retry logic
+// If any shard fails, it retries with delay and eventually panic
+func (b *shardingBatch) atomicCommit() error {
+	pendingBatches := b.batches
+	attempts := 0
+
+	for len(pendingBatches) > 0 && attempts < maxAtomicCommitRetries {
+		// Add delay before retry (except first attempt)
+		if attempts > 0 {
+			shardBatchRetryMeter.Mark(1)
+			delay := time.Duration(attempts) * atomicCommitRetryDelay
+			time.Sleep(delay)
 		}
-		wg.Add(1)
-		go func(inner ethdb.Batch) {
-			defer wg.Done()
-			if err := inner.Write(); err != nil {
-				errs <- err
+
+		// Execute all pending writes in parallel
+		var wg sync.WaitGroup
+		resultChan := make(chan shardCommitResult, len(pendingBatches))
+
+		for _, batch := range pendingBatches {
+			if batch != nil {
+				wg.Add(1)
+				go func(b ethdb.Batch) {
+					defer wg.Done()
+					resultChan <- shardCommitResult{
+						batch: b,
+						err:   b.Write(),
+					}
+				}(batch)
 			}
-		}(batch)
+		}
+
+		wg.Wait()
+		close(resultChan)
+
+		// Collect failed batches for next retry
+		var nextBatches []ethdb.Batch
+		for result := range resultChan {
+			if result.err != nil {
+				log.Warn("Shard batch write failed", "error", result.err)
+				nextBatches = append(nextBatches, result.batch)
+			}
+		}
+
+		if len(nextBatches) == 0 {
+			return nil // All succeeded
+		}
+
+		pendingBatches = nextBatches
+		attempts++
 	}
-	wg.Wait()
-	select {
-	case err := <-errs:
-		return err
-	default:
-		return nil
+
+	// If we reach here, all retries failed
+	if len(pendingBatches) > 0 {
+		log.Crit("atomicCommit failed after all retries", "failedShards", len(pendingBatches))
 	}
+
+	return nil
 }
 
 // Reset resets all the batches
