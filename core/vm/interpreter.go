@@ -17,7 +17,6 @@
 package vm
 
 import (
-	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
@@ -362,27 +361,18 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
 			// 如果首次尝试因静态预扣导致 OOG，则退回未用静态 gas 后重试一次
 			if err != nil {
-				if errors.Is(err, ErrOutOfGas) && blockChargeActive && currentBlock != nil {
-					in.refundUnusedBlockGas(contract, pc, currentBlock)
-					blockChargeActive = false
-					currentBlock = nil
-					log.Error("[BLOCK-CACHE] fallback", "codeHash", contract.CodeHash, "pc", pc, "reason", "dynamicOOG")
-					// Retry once
-					dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
-				}
-				if err != nil {
-					// 若仍然 OOG ，尝试对 super-instruction 做 fallback
+				if blockChargeActive {
 					if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
-						if !blockChargeActive { // 常量费已单独扣过，需要先退回
-							contract.Gas += operation.constantGas
+						in.refundUnusedBlockGas(contract, pc-1, currentBlock)
+						if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
+							// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
+							continue
 						}
-						if err2 := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err2 == nil {
-							continue // fallback 成功，回到主循环
-						}
+					} else {
+						in.refundUnusedBlockGas(contract, pc, currentBlock)
 					}
-					// 仍然失败，返回原错误
-					return nil, fmt.Errorf("%w: %v", ErrOutOfGas, err)
 				}
+				return nil, fmt.Errorf("%w: %v", ErrOutOfGas, err)
 			}
 			cost += dynamicCost // for tracing
 			totalDynamicGas += dynamicCost
