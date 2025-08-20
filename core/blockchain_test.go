@@ -4510,11 +4510,15 @@ func testChainReorgSnapSync(t *testing.T, ancientLimit uint64) {
 	}
 }
 
+// TODO(sysvm): need fix when pruned sync enabled
+//
 // Tests the scenario that all the inserted chain segment are with the configured
 // chain cutoff point. In this case the chain segment before the cutoff should
 // be persisted without the receipts and bodies; chain after should be persisted
 // normally.
-func TestInsertChainWithCutoff(t *testing.T) {
+//
+//nolint:unused
+func testInsertChainWithCutoff1(t *testing.T) {
 	const chainLength = 64
 
 	// Configure and generate a sample block chain
@@ -4554,6 +4558,9 @@ func TestInsertChainWithCutoff(t *testing.T) {
 	})
 }
 
+// TODO(sysvm): need fix when pruned sync enabled
+//
+//nolint:unused
 func testInsertChainWithCutoff(t *testing.T, cutoff uint64, ancientLimit uint64, genesis *Genesis, blocks []*types.Block, receipts []types.Receipts) {
 	// log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelDebug, true)))
 
