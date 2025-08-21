@@ -28,6 +28,56 @@ import (
 )
 
 // Params defines the basic parameters of the log index structure.
+//
+// Core parameter constraints and dependencies:
+//
+// 1. logMapHeight
+//   - Number of rows per map (2^logMapHeight).
+//   - Should be >= logValuesPerMap to avoid infinite layer expansion.
+//
+// 2. logMapWidth
+//   - Width of each row in bits (2^logMapWidth).
+//   - Must be a multiple of 8 to ensure byte alignment.
+//   - Must be divisible by baseRowGroupSize for row grouping.
+//
+// 3. logMapsPerEpoch
+//   - Number of maps per epoch (2^logMapsPerEpoch).
+//   - Determines how many maps are rendered in each epoch.
+//
+// 4. logValuesPerMap
+//   - Number of log values per map (2^logValuesPerMap).
+//   - Should be <= logMapHeight to prevent unbounded layer iteration.
+//
+// 5. baseRowGroupSize
+//   - Number of base row entries grouped into a single database entry.
+//   - Must divide 2^logMapWidth to allow proper row partitioning.
+//
+// 6. baseRowLengthRatio
+//   - Ratio of base row length growth per layer.
+//   - Combined with logLayerDiff to determine max row length per layer.
+//
+// 7. logLayerDiff
+//   - Logarithmic growth factor per layer (base 2).
+//   - Must be <= logMapHeight to prevent layer index from exceeding row count.
+//
+// Notes:
+//   - Violating these constraints can cause infinite loops, out-of-bounds errors,
+//     or misaligned row storage.
+//   - When adjusting parameters for testing, ensure all constraints above are respected.
+//
+// Example: MiniSafeParams (safe minimal setup for testing filtermaps)
+//
+//	var MiniSafeParams = Params{
+//	    logMapHeight:       5,  // 2^5 = 32 rows per map, moderate height
+//	    logMapWidth:        8,  // must be multiple of 8, 2^8 = 256 bits per row
+//	    logMapsPerEpoch:    1,  // one map per epoch, simple
+//	    logValuesPerMap:    5,  // 32 values per map
+//	    baseRowGroupSize:   8,  // divides 1<<logMapWidth (256/8 = 32 groups per row)
+//	    baseRowLengthRatio: 2,  // controls row capacity growth per layer
+//	    logLayerDiff:       2,  // layer growth factor, <= logMapHeight
+//	}
+//
+// Params defines the basic parameters of the log index structure.
 type Params struct {
 	logMapHeight    uint // The number of bits required to represent the map height
 	logMapWidth     uint // The number of bits required to represent the map width

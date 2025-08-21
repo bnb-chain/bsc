@@ -862,11 +862,17 @@ func (s *Ethereum) updateFilterMapsHeads() {
 			head = newHead
 			chainView := s.newChainView(head)
 			historyCutoff, _ := s.blockchain.HistoryPruningCutoff()
-			var finalBlock uint64
+			var finalBlock, currentBlock int64
 			if fb := s.blockchain.CurrentFinalBlock(); fb != nil {
-				finalBlock = fb.Number.Uint64()
+				finalBlock = fb.Number.Int64()
 			}
-			s.filterMaps.SetTarget(chainView, historyCutoff, finalBlock)
+			if cb := s.blockchain.CurrentBlock(); cb != nil {
+				currentBlock = cb.Number.Int64()
+			}
+
+			// TODO(Nathan): use BlockChainAPI.getFinalizedNumber instead?
+			finalBlock = max(finalBlock, currentBlock-16*21) // turnlength:16, validatorNum:21
+			s.filterMaps.SetTarget(chainView, historyCutoff, uint64(finalBlock))
 		}
 	}
 	setHead(s.blockchain.CurrentBlock())
