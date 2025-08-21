@@ -576,7 +576,7 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 	// consensus engine is parlia
 	if st.evm.ChainConfig().Parlia != nil {
 		// 仅在特定区块打印，严格围绕 AddBalance 前后各打一条日志
-		doDebug := st.evm.Context.BlockNumber.Uint64() == 50897372
+		doDebug := st.evm.Context.BlockNumber.Uint64() == 50897371
 		var balanceBefore uint256.Int
 		if doDebug {
 			balanceBefore = *st.state.GetBalance(consensus.SystemAddress)
