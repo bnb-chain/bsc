@@ -157,7 +157,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		receipts = append(receipts, receipt)
 
 		// Debug: log gas usage after each tx for target block
-		if block.NumberU64() == 50897371 {
+		if block.NumberU64() == 50897371 || block.NumberU64() == 50897381 {
 			log.Error("Debug tx", "transaction Index", i, "txHash", receipt.TxHash, "gasUsed", receipt.GasUsed)
 			currentPool := gp.Gas()
 			used := prevPool - currentPool
@@ -279,7 +279,7 @@ func MakeReceipt(evm *vm.EVM, result *ExecutionResult, statedb *state.StateDB, b
 	for _, receiptProcessor := range receiptProcessors {
 		receiptProcessor.Apply(receipt)
 	}
-	if blockNumber.Uint64() == 50897371 {
+	if blockNumber.Uint64() == 50897371 || blockNumber.Uint64() == 50897381 {
 		// ===== DEBUG RECEIPT DUMP (compare opt-on/off) =====
 		{
 			shortHash := func(h common.Hash) string { return h.String()[:10] }
