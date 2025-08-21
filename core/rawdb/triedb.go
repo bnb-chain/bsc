@@ -1,7 +1,6 @@
 package rawdb
 
 import (
-	"bytes"
 	"errors"
 
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -148,22 +147,25 @@ func (db *TrieShardingDB) AncientDatadir() (string, error) {
 // ShardIndexInTrieDB returns the shard index of the given key
 // it accepts account trie key, storage trie key, and state root key
 func ShardIndexInTrieDB(key []byte, shardNum int) int {
+	if len(key) < 1 {
+		return 0
+	}
 	// TrieNodeAccountPrefix + hexPath -> trie node
-	if bytes.HasPrefix(key, TrieNodeAccountPrefix) {
+	if TrieNodeAccountPrefix[0] == key[0] {
 		if len(key) < 2 {
 			return 0
 		}
 		return int(key[1]) % shardNum
 	}
 	// TrieNodeStoragePrefix + accountHash + hexPath -> trie node
-	if bytes.HasPrefix(key, TrieNodeStoragePrefix) {
+	if TrieNodeStoragePrefix[0] == key[0] {
 		if len(key) < 34 {
 			return 0
 		}
 		return int(key[33]) % shardNum
 	}
 	// CodePrefix + code hash -> account code
-	if bytes.HasPrefix(key, CodePrefix) {
+	if CodePrefix[0] == key[0] {
 		if len(key) < 2 {
 			return 0
 		}

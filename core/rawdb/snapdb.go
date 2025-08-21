@@ -1,8 +1,6 @@
 package rawdb
 
 import (
-	"bytes"
-
 	"github.com/ethereum/go-ethereum/ethdb/shardingdb"
 )
 
@@ -25,15 +23,18 @@ func (db *SnapShardingDB) Close() error {
 // ShardIndex returns the shard index of the given key
 // it accepts account snapshot key, storage snapshot key, and state root key
 func ShardIndexInSnapDB(key []byte, shardNum int) int {
+	if len(key) < 1 {
+		return 0
+	}
 	// SnapshotAccountPrefix + account hash -> account trie value
-	if bytes.HasPrefix(key, SnapshotAccountPrefix) {
+	if SnapshotAccountPrefix[0] == key[0] {
 		if len(key) < 2 {
 			return 0
 		}
 		return int(key[1]) % shardNum
 	}
 	// SnapshotStoragePrefix + account hash + storage hash -> storage trie value
-	if bytes.HasPrefix(key, SnapshotStoragePrefix) {
+	if SnapshotStoragePrefix[0] == key[0] {
 		if len(key) < 34 {
 			return 0
 		}
