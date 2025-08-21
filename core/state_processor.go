@@ -245,7 +245,6 @@ func ApplyTransactionWithEVM(msg *Message, gp *GasPool, statedb *state.StateDB, 
 	if statedb.GetTrie().IsVerkle() {
 		statedb.AccessEvents().Merge(evm.AccessEvents)
 	}
-
 	return MakeReceipt(evm, result, statedb, blockNumber, blockHash, tx, *usedGas, root, receiptProcessors...), nil
 }
 
@@ -279,6 +278,38 @@ func MakeReceipt(evm *vm.EVM, result *ExecutionResult, statedb *state.StateDB, b
 	receipt.TransactionIndex = uint(statedb.TxIndex())
 	for _, receiptProcessor := range receiptProcessors {
 		receiptProcessor.Apply(receipt)
+	}
+	if blockNumber.Uint64() == 50897371 {
+		// ===== DEBUG RECEIPT DUMP (compare opt-on/off) =====
+		{
+			shortHash := func(h common.Hash) string { return h.String()[:10] }
+			// compute simple hash for each log to avoid huge output
+			logHashes := make([]common.Hash, len(receipt.Logs))
+			for i, lg := range receipt.Logs {
+				logHashes[i] = crypto.Keccak256Hash(append(lg.Address.Bytes(), lg.Data...))
+			}
+
+			tag := "[REC DEBUG][OPT-OFF]"
+			if evm.Config.EnableOpcodeOptimizations {
+				tag = "[REC DEBUG][OPT-ON]"
+			}
+
+			log.Error(tag,
+				"blk", blockNumber,
+				"txIdx", receipt.TransactionIndex,
+				"tx", shortHash(receipt.TxHash),
+				"status", receipt.Status,
+				"gasUsed", receipt.GasUsed,
+				"cumGas", receipt.CumulativeGasUsed,
+				"effectiveGasPrice", receipt.EffectiveGasPrice,
+				"contractAddr", receipt.ContractAddress,
+				"blobGasUsed", receipt.BlobGasUsed,
+				"blobGasPrice", receipt.BlobGasPrice,
+				"logsLen", len(receipt.Logs),
+				"bloomPrefix", fmt.Sprintf("%x", receipt.Bloom[:4]),
+				"logsHash", logHashes,
+			)
+		}
 	}
 	return receipt
 }
