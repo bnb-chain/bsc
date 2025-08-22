@@ -123,6 +123,7 @@ var (
 		utils.BloomFilterSizeFlag,
 		utils.TriesInMemoryFlag,
 		utils.CacheFlag,
+		utils.DBCacheFlag,
 		utils.CacheDatabaseFlag,
 		utils.CacheTrieFlag,
 		utils.CacheTrieJournalFlag,   // deprecated

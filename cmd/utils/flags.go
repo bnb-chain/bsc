@@ -551,6 +551,12 @@ var (
 		Value:    40,
 		Category: flags.PerfCategory,
 	}
+	DBCacheFlag = &cli.IntFlag{
+		Name:     "dbcache",
+		Usage:    "A standalone cache for the database, the larger value will be used compared to the cache.database",
+		Value:    4096,
+		Category: flags.PerfCategory,
+	}
 	CacheTrieFlag = &cli.IntFlag{
 		Name:     "cache.trie",
 		Usage:    "Percentage of cache memory allowance to use for trie caching (default = 15% full mode, 30% archive mode)",
@@ -2041,6 +2047,11 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.IsSet(CacheFlag.Name) || ctx.IsSet(CacheDatabaseFlag.Name) {
 		cfg.DatabaseCache = ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) / 100
+	}
+	// if the dbflags is set, use the larger value
+	if ctx.IsSet(DBCacheFlag.Name) && ctx.Int(DBCacheFlag.Name) > cfg.DatabaseCache {
+		cfg.DatabaseCache = ctx.Int(DBCacheFlag.Name)
+		log.Info("enabled DBCacheFlag", "DatabaseCache", cfg.DatabaseCache)
 	}
 	cfg.DatabaseHandles = MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name))
 	if ctx.IsSet(AncientFlag.Name) {
