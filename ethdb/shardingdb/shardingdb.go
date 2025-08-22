@@ -219,6 +219,9 @@ func (db *Database) Close() error {
 
 // Shard returns the shard for a given key
 func (db *Database) Shard(key []byte) ethdb.KeyValueStore {
+	if db.ShardNum() == 1 {
+		return db.shards[0]
+	}
 	return db.shards[db.shardIndexFunc(key, db.ShardNum())]
 }
 

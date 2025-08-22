@@ -903,6 +903,7 @@ func (n *Node) CheckIfMultiDataBase() bool {
 	panic("data corruption! missing state, snapshot or txindex dir.")
 }
 
+// TODO(galaio): add error handling for each database open
 func (n *Node) SetMultiDBs(chainDB ethdb.Database, name string, cache, handles int, readonly, disableFreeze bool) error {
 	stateDbCache, stateDbHandles := n.config.Storage.TrieDBCache(cache, handles)
 	snapDbCache, snapDbHandles := n.config.Storage.SnapDBCache(cache, handles)
@@ -939,12 +940,14 @@ func (n *Node) SetMultiDBs(chainDB ethdb.Database, name string, cache, handles i
 	log.Warn("Multi-database & state sharding is an experimental feature")
 	stateDB, err := rawdb.NewTrieShardingDB(n.config.Storage.TrieDB, stateDbCache, stateDbHandles, readonly, disableFreeze)
 	if err != nil {
+		log.Error("Failed to open state sharding database", "err", err)
 		return err
 	}
 	chainDB.SetStateStore(stateDB)
 
 	snapDB, err := rawdb.NewSnapShardingDB(n.config.Storage.SnapDB, snapDbCache, snapDbHandles, readonly)
 	if err != nil {
+		log.Error("Failed to open snap sharding database", "err", err)
 		return err
 	}
 	chainDB.SetSnapStore(snapDB)
@@ -958,6 +961,7 @@ func (n *Node) SetMultiDBs(chainDB ethdb.Database, name string, cache, handles i
 		ReadOnly:  readonly,
 	})
 	if err != nil {
+		log.Error("Failed to open index database", "err", err)
 		return err
 	}
 	chainDB.SetTxIndexStore(indexDB)
