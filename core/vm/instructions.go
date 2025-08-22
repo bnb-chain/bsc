@@ -17,12 +17,14 @@
 package vm
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -30,6 +32,14 @@ import (
 func opAdd(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
 	x, y := scope.Stack.pop(), scope.Stack.peek()
 	y.Add(&x, y)
+
+	// targeted debug
+	if interpreter.evm.Context.BlockNumber.Uint64() == 50897371 && interpreter.evm.StateDB.TxIndex() == 93 {
+		if *pc == 7754 {
+			log.Info("[ADD DBG]", "opt", interpreter.evm.Config.EnableOpcodeOptimizations,
+				"pc", *pc, "x", x.ToBig().String(), "y", y.ToBig().String(), "res", x.ToBig().String())
+		}
+	}
 	return nil, nil
 }
 
@@ -150,6 +160,13 @@ func opIszero(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]b
 func opAnd(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
 	x, y := scope.Stack.pop(), scope.Stack.peek()
 	y.And(&x, y)
+
+	if interpreter.evm.Context.BlockNumber.Uint64() == 50897371 && interpreter.evm.StateDB.TxIndex() == 93 {
+		if *pc == 7752 {
+			log.Info("[AND DBG]", "opt", interpreter.evm.Config.EnableOpcodeOptimizations,
+				"pc", *pc, "x", x.ToBig().String(), "y", y.ToBig().String(), "res", x.ToBig().String())
+		}
+	}
 	return nil, nil
 }
 
@@ -505,18 +522,63 @@ func opPop(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte
 func opMload(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
 	v := scope.Stack.peek()
 	offset := v.Uint64()
+
+	// Deep debug for divergence case: inspect memory before it is loaded
+	if interpreter.evm.Context.BlockNumber.Uint64() == 50897371 && interpreter.evm.StateDB.TxIndex() == 93 {
+		if *pc == 7751 || *pc == 7755 || *pc == 7759 {
+			pre := make([]byte, 32)
+			copy(pre, scope.Memory.GetPtr(offset, 32))
+			log.Info("[MEMREAD DBG]", "opt", interpreter.evm.Config.EnableOpcodeOptimizations,
+				"pc", *pc, "offset", offset, "data", common.Bytes2Hex(pre))
+		}
+	}
+
 	v.SetBytes(scope.Memory.GetPtr(offset, 32))
 	return nil, nil
 }
 
 func opMstore(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
 	mStart, val := scope.Stack.pop2()
+
+	// targeted deep debug for the divergence case
+	if interpreter.evm.Context.BlockNumber.Uint64() == 50897371 && interpreter.evm.StateDB.TxIndex() == 93 {
+		if *pc >= 7760 && *pc <= 7780 {
+			off := mStart.Uint64()
+			preBytes := make([]byte, 32)
+			copy(preBytes, scope.Memory.GetPtr(off, 32))
+			log.Info("[MEM DBG]", "opt", interpreter.evm.Config.EnableOpcodeOptimizations,
+				"phase", "before", "pc", *pc, "mstart", off,
+				"value", val.ToBig().String(), "pre", common.Bytes2Hex(preBytes))
+			scope.Memory.Set32(off, &val)
+			postBytes := scope.Memory.GetPtr(off, 32)
+			log.Info("[MEM DBG]", "opt", interpreter.evm.Config.EnableOpcodeOptimizations,
+				"phase", "after", "pc", *pc, "mstart", off,
+				"post", common.Bytes2Hex(postBytes))
+			return nil, nil
+		}
+	}
+
 	scope.Memory.Set32(mStart.Uint64(), &val)
 	return nil, nil
 }
 
 func opMstore8(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
 	off, val := scope.Stack.pop2()
+
+	if interpreter.evm.Context.BlockNumber.Uint64() == 50897371 && interpreter.evm.StateDB.TxIndex() == 93 {
+		if *pc >= 7760 && *pc <= 7780 {
+			offset := off.Uint64()
+			pre := scope.Memory.store[offset]
+			log.Info("[MEM8 DBG]", "opt", interpreter.evm.Config.EnableOpcodeOptimizations,
+				"phase", "before", "pc", *pc, "offset", offset, "value", val.Uint64(), "preByte", pre)
+			scope.Memory.store[offset] = byte(val.Uint64())
+			post := scope.Memory.store[offset]
+			log.Info("[MEM8 DBG]", "opt", interpreter.evm.Config.EnableOpcodeOptimizations,
+				"phase", "after", "pc", *pc, "offset", offset, "postByte", post)
+			return nil, nil
+		}
+	}
+
 	scope.Memory.store[off.Uint64()] = byte(val.Uint64())
 	return nil, nil
 }
@@ -947,14 +1009,40 @@ func makeLog(size int) executionFunc {
 		}
 
 		d := scope.Memory.GetCopy(mStart.Uint64(), mSize.Uint64())
-		interpreter.evm.StateDB.AddLog(&types.Log{
+		l := &types.Log{
 			Address: scope.Contract.Address(),
 			Topics:  topics,
 			Data:    d,
 			// This is a non-consensus field, but assigned here because
 			// core/state doesn't know the current block number.
 			BlockNumber: interpreter.evm.Context.BlockNumber.Uint64(),
-		})
+		}
+		// Debug: print log components for specific problematic tx
+		if interpreter.evm.Config.EnableOpcodeOptimizations || !interpreter.evm.Config.EnableOpcodeOptimizations { // always log but tag
+			if interpreter.evm.Context.BlockNumber.Uint64() == 50897371 && interpreter.evm.StateDB.TxIndex() == 93 {
+				log.Info("[LOG MEM]",
+					"opt", interpreter.evm.Config.EnableOpcodeOptimizations,
+					"pc", *pc,
+					"addr", l.Address,
+					"topics", l.Topics,
+					"dataHex", fmt.Sprintf("%x", l.Data))
+			}
+		}
+		// Debug: inspect stack and opcode for mismatch investigation
+		if interpreter.evm.Context.BlockNumber.Uint64() == 50897371 && interpreter.evm.StateDB.TxIndex() == 93 && *pc == 7779 {
+			top0 := scope.Stack.Back(0).String()
+			top1 := scope.Stack.Back(1).String()
+			top2 := scope.Stack.Back(2).String()
+			var codeByte byte
+			if int(*pc) < len(scope.Contract.Code) {
+				codeByte = scope.Contract.Code[*pc]
+			}
+			log.Info("[LOG STACK]", "opt", interpreter.evm.Config.EnableOpcodeOptimizations,
+				"pc", *pc,
+				"stackTop3", []string{top0, top1, top2},
+				"opcode", fmt.Sprintf("0x%02x", codeByte))
+		}
+		interpreter.evm.StateDB.AddLog(l)
 
 		return nil, nil
 	}

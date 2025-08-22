@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"encoding/hex"
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
@@ -405,6 +406,20 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			}
 		}
 
+		// Detailed step trace for problematic tx
+		if in.evm.Context.BlockNumber.Uint64() == 50897371 && in.evm.StateDB.TxIndex() == 93 {
+			if pc >= 7750 && pc <= 7800 { // roughly covers the block containing pc 7779
+				top := "<empty>"
+				if stack.len() > 0 {
+					top = stack.Back(0).String()
+				}
+				log.Info("[STEP DBG]", "opt", in.evm.Config.EnableOpcodeOptimizations,
+					"pc", pc,
+					"op", op.String(),
+					"stackTop", top)
+			}
+		}
+
 		// Do tracing before potential memory expansion
 		if debug {
 			if in.evm.Config.Tracer.OnGasChange != nil {
@@ -438,6 +453,18 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			break
 		}
 		pc++
+		// Extra debug for receipt mismatch investigation
+		if in.evm.Context.BlockNumber.Uint64() == 50897371 && in.evm.StateDB.TxIndex() == 93 && pc == 7779 {
+			if blk, ok := compiler.GetBlockByPC(contract.CodeHash, pc); ok {
+				// calculate offset within block
+				offset := pc - blk.StartPC
+				hexBlock := hex.EncodeToString(blk.Opcodes)
+				hexCode := hex.EncodeToString(contract.Code[blk.StartPC:blk.EndPC])
+				log.Info("[BB OPCODES]", "opt", in.evm.Config.EnableOpcodeOptimizations,
+					"pc", pc, "offset", offset, "blkStart", blk.StartPC,
+					"blockOpcodes", hexBlock, "codeSlice", hexCode)
+			}
+		}
 	}
 
 	if err == errStopToken {

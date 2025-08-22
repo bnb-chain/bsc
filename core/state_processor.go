@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const largeTxGasLimit = 10000000 // 10M Gas, to measure the execution time of large tx
@@ -282,11 +283,11 @@ func MakeReceipt(evm *vm.EVM, result *ExecutionResult, statedb *state.StateDB, b
 	if blockNumber.Uint64() == 50897371 || blockNumber.Uint64() == 50897381 {
 		// ===== DEBUG RECEIPT DUMP (compare opt-on/off) =====
 		{
-			shortHash := func(h common.Hash) string { return h.String()[:10] }
-			// compute simple hash for each log to avoid huge output
-			logHashes := make([]common.Hash, len(receipt.Logs))
-			for i, lg := range receipt.Logs {
-				logHashes[i] = crypto.Keccak256Hash(append(lg.Address.Bytes(), lg.Data...))
+			short := func(h common.Hash) string { return h.String()[:10] }
+			// hash entire RLP-encoded Logs for full coverage
+			logsHash := func(lgs []*types.Log) common.Hash {
+				enc, _ := rlp.EncodeToBytes(lgs)
+				return crypto.Keccak256Hash(enc)
 			}
 
 			tag := "[REC DEBUG][OPT-OFF]"
@@ -294,21 +295,37 @@ func MakeReceipt(evm *vm.EVM, result *ExecutionResult, statedb *state.StateDB, b
 				tag = "[REC DEBUG][OPT-ON]"
 			}
 
-			log.Error(tag,
+			log.Info(tag,
 				"blk", blockNumber,
 				"txIdx", receipt.TransactionIndex,
-				"tx", shortHash(receipt.TxHash),
+				"txHash", short(receipt.TxHash),
+
+				// core gas fields
 				"status", receipt.Status,
 				"gasUsed", receipt.GasUsed,
 				"cumGas", receipt.CumulativeGasUsed,
-				"effectiveGasPrice", receipt.EffectiveGasPrice,
-				"contractAddr", receipt.ContractAddress,
+
+				// london / blob
+				"effGasPrice", receipt.EffectiveGasPrice,
 				"blobGasUsed", receipt.BlobGasUsed,
 				"blobGasPrice", receipt.BlobGasPrice,
+
+				// addresses / extensions
+				"contractAddr", receipt.ContractAddress,
+				"postStateLen", len(receipt.PostState),
+
+				// logs / bloom
 				"logsLen", len(receipt.Logs),
-				"bloomPrefix", fmt.Sprintf("%x", receipt.Bloom[:4]),
-				"logsHash", logHashes,
+				"bloomFirst4B", fmt.Sprintf("%x", receipt.Bloom[:4]),
+				"logsHash", logsHash(receipt.Logs),
 			)
+		}
+		// Detailed dump for known problematic tx
+		if blockNumber.Uint64() == 50897371 && receipt.TransactionIndex == 93 {
+			for i, lg := range receipt.Logs {
+				log.Info("[LOG DETAIL]", "blk", blockNumber, "txIdx", 93, "logIdx", i,
+					"addr", lg.Address, "topics", lg.Topics, "data", fmt.Sprintf("%x", lg.Data))
+			}
 		}
 	}
 	return receipt
