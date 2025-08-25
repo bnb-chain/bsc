@@ -297,8 +297,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		operation := in.table[op]
 		// Validate stack
 		if sLen := stack.len(); sLen < operation.minStack {
+			log.Error("stake underflow", "pc", pc, "op", op.String(), "required stack", operation.minStack, "available stack", sLen, "contract.CodeHash", contract.CodeHash.String())
 			return nil, &ErrStackUnderflow{stackLen: sLen, required: operation.minStack}
 		} else if sLen > operation.maxStack {
+			log.Error("stake overflow", "pc", pc, "op", op.String(), "limit stack", operation.minStack, "available stack", sLen, "contract.CodeHash", contract.CodeHash.String())
 			return nil, &ErrStackOverflow{stackLen: sLen, limit: operation.maxStack}
 		}
 		// for tracing: this gas consumption event is emitted below in the debug section.
@@ -306,7 +308,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		cost = operation.constantGas // For tracing todo: move into if
 		totalCost += cost
 		// New debug line: print opcode, pc and its static gas each step
-		log.Error("[OP STATIC]", "pc", pc, "opcode", op.String(), "staticGas", cost, "totalCost", totalCost)
+		if in.evm.Context.BlockNumber.Uint64() == 50897372 && in.evm.StateDB.TxIndex() == 291 {
+			log.Error("[OP STATIC]", "pc", pc, "opcode", op.String(), "staticGas", cost, "totalCost", totalCost)
+		}
 		// 暂不打印，改为在动态 gas 处理后统一输出（保证包含 dynamic 与 chunk 等影响后的净消耗）
 		if !blockChargeActive {
 
@@ -352,6 +356,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 							in.refundUnusedBlockGas(contract, pc, currentBlock)
 						}
 					}
+					log.Error("gas uint overflow", "pc", pc, "op", op.String(), "contract.CodeHash", contract.CodeHash.String())
 					return nil, ErrGasUintOverflow
 				}
 				// memory is expanded in words of 32 bytes. Gas
@@ -370,6 +375,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 							in.refundUnusedBlockGas(contract, pc, currentBlock)
 						}
 					}
+					log.Error("gas uint overflow", "pc", pc, "op", op.String(), "contract.CodeHash", contract.CodeHash.String())
 					return nil, ErrGasUintOverflow
 				}
 			}
@@ -393,6 +399,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 						in.refundUnusedBlockGas(contract, pc, currentBlock)
 					}
 				}
+				log.Error("operation.dynamicGas error", "pc", pc, "op", op.String(), "cost", cost, "totalCost", totalCost, "contract.CodeHash", contract.CodeHash.String())
 				return nil, fmt.Errorf("%w: %v", ErrOutOfGas, err)
 			}
 			cost += dynamicCost // for tracing
@@ -412,6 +419,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 						in.refundUnusedBlockGas(contract, pc, currentBlock)
 					}
 				}
+				log.Error("dynamic out of gas", "pc", pc, "op", op.String(), "cost", cost, "totalCost", totalCost, "contract.Gas", contract.Gas, "dynamicCost", dynamicCost, "contract.CodeHash", contract.CodeHash.String())
 				return nil, ErrOutOfGas
 			} else {
 				contract.Gas -= dynamicCost
@@ -435,6 +443,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
 		if err != nil {
+			log.Error("execute error", "pc", pc, "op", op.String(), "cost", cost, "totalCost", totalCost, "contract.Gas", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
 			if blockChargeActive {
 				if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
 					in.refundUnusedBlockGas(contract, pc-1, currentBlock)
