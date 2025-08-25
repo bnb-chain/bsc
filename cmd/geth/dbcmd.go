@@ -2515,9 +2515,9 @@ func shuffleValue(originalValue []byte) []byte {
 	return newValue
 }
 
-// performExpandMigration performs the actual data migration with key/value transformation
+// performExpandMigration performs the actual data migration with key/value transformation using async multi-threading
 func performExpandMigration(sourceDB, chainDB, stateDB, snapDB, indexDB ethdb.Database, version byte) error {
-	log.Info("Starting expand migration with data transformation", "version", version)
+	log.Info("Starting expand migration with data transformation using async multi-threading", "version", version)
 
 	stats := &MigrationStats{startTime: time.Now()}
 
@@ -2525,87 +2525,17 @@ func performExpandMigration(sourceDB, chainDB, stateDB, snapDB, indexDB ethdb.Da
 	stopProgress := make(chan struct{})
 	go progressMonitor(stats, stopProgress)
 
-	// Process all data from source database
-	it := sourceDB.NewIterator(nil, nil)
-	defer it.Release()
-
-	// Batch operations for better performance
-	chainBatch := chainDB.NewBatch()
-	stateBatch := stateDB.NewBatch()
-	snapBatch := snapDB.NewBatch()
-	indexBatch := indexDB.NewBatch()
-
-	processed := 0
-	batchSize := 0
-	const maxBatchSize = 256 * 1024 * 1024 // 256MB
-
-	for it.Next() {
-		// Create copies of key and value
-		originalKey := make([]byte, len(it.Key()))
-		originalValue := make([]byte, len(it.Value()))
-		copy(originalKey, it.Key())
-		copy(originalValue, it.Value())
-
-		processed++
-
-		// Generate new key and value
-		newKey := generateNewKey(originalKey, version)
-		newValue := shuffleValue(originalValue)
-
-		// Determine target database
-		category := categorizeDataByKey(originalKey, originalValue)
-
-		kvSize := len(newKey) + len(newValue)
-		batchSize += kvSize
-
-		switch category {
-		case "state":
-			stateBatch.Put(newKey, newValue)
-			stats.Add("state", len(newKey), len(newValue))
-		case "snapshot":
-			snapBatch.Put(newKey, newValue)
-			stats.Add("snapshot", len(newKey), len(newValue))
-		case "txindex":
-			indexBatch.Put(newKey, newValue)
-			stats.Add("txindex", len(newKey), len(newValue))
-		default:
-			// Everything else goes to chain database
-			chainBatch.Put(newKey, newValue)
-			stats.Add("chain", len(newKey), len(newValue))
-		}
-
-		// Flush batches when they get too large
-		if batchSize >= maxBatchSize {
-			if err := flushAllBatches(chainBatch, stateBatch, snapBatch, indexBatch); err != nil {
-				close(stopProgress)
-				return err
-			}
-			batchSize = 0
-
-			log.Info("Batch flushed", "processed", processed)
-		}
-
-		// Progress logging
-		if processed%10000 == 0 && processed > 0 {
-			log.Info("Expand migration progress", "processed", processed)
-		}
-	}
-
-	// Final flush
-	if batchSize > 0 {
-		if err := flushAllBatches(chainBatch, stateBatch, snapBatch, indexBatch); err != nil {
-			close(stopProgress)
-			return err
-		}
+	// Extract all data using async multi-threading
+	log.Info("🚀 Starting multi-threaded async data extraction and transformation...")
+	if err := extractAllDataInOnePassExpand(sourceDB, chainDB, stateDB, snapDB, indexDB, stats, version); err != nil {
+		close(stopProgress)
+		return fmt.Errorf("failed to extract data: %v", err)
 	}
 
 	close(stopProgress)
 
-	if err := it.Error(); err != nil {
-		return fmt.Errorf("iterator error: %v", err)
-	}
-
 	total, chain, state, snapshot, txindex := stats.Get()
+	chainBytes, stateBytes, snapBytes, indexBytes := stats.GetBytes()
 	elapsed := time.Since(stats.startTime)
 
 	log.Info("Expand migration completed",
@@ -2617,6 +2547,204 @@ func performExpandMigration(sourceDB, chainDB, stateDB, snapDB, indexDB ethdb.Da
 		"elapsed", common.PrettyDuration(elapsed),
 		"version", version)
 
+	log.Info("Final data sizes",
+		"chainMB", chainBytes/(1024*1024),
+		"stateMB", stateBytes/(1024*1024),
+		"snapMB", snapBytes/(1024*1024),
+		"indexMB", indexBytes/(1024*1024),
+		"totalMB", (chainBytes+stateBytes+snapBytes+indexBytes)/(1024*1024))
+
+	return nil
+}
+
+// extractAllDataInOnePassExpand extracts all data types using multi-threaded async processing with key/value transformation
+func extractAllDataInOnePassExpand(sourceDB, chainDB, stateDB, snapDB, indexDB ethdb.Database, stats *MigrationStats, version byte) error {
+	log.Info("🚀 Starting multi-threaded async data extraction with transformation",
+		"architecture", "1 reader + 8 writers (2×chain,2×state,2×snapshot,2×txindex) = 9 threads",
+		"version", version)
+
+	// Channel buffer sizes - balance memory usage vs throughput
+	const channelBufferSize = 10000
+
+	// Create channels for communication between goroutines
+	chainChannel := make(chan CategorizedData, channelBufferSize)
+	stateChannel := make(chan CategorizedData, channelBufferSize)
+	snapChannel := make(chan CategorizedData, channelBufferSize)
+	indexChannel := make(chan CategorizedData, channelBufferSize)
+
+	// Error channels to collect errors from goroutines
+	errorChannel := make(chan error, 8) // 8 writers
+
+	// WaitGroup to coordinate all goroutines
+	var wg sync.WaitGroup
+
+	// Start async writer goroutines (2 threads per database type for better performance)
+	log.Info("🚀 Starting async writer goroutines (2 threads per database type)...")
+
+	// Chain database writers (2 threads)
+	for i := 0; i < 2; i++ {
+		writerID := i + 1
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			if err := asyncDatabaseWriter(fmt.Sprintf("chain-%d", id), chainDB, chainChannel, stats); err != nil {
+				errorChannel <- fmt.Errorf("chain writer %d error: %v", id, err)
+			}
+		}(writerID)
+	}
+
+	// State database writers (2 threads)
+	for i := 0; i < 2; i++ {
+		writerID := i + 1
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			if err := asyncDatabaseWriter(fmt.Sprintf("state-%d", id), stateDB, stateChannel, stats); err != nil {
+				errorChannel <- fmt.Errorf("state writer %d error: %v", id, err)
+			}
+		}(writerID)
+	}
+
+	// Snapshot database writers (2 threads)
+	for i := 0; i < 2; i++ {
+		writerID := i + 1
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			if err := asyncDatabaseWriter(fmt.Sprintf("snapshot-%d", id), snapDB, snapChannel, stats); err != nil {
+				errorChannel <- fmt.Errorf("snapshot writer %d error: %v", id, err)
+			}
+		}(writerID)
+	}
+
+	// Transaction index database writers (2 threads)
+	for i := 0; i < 2; i++ {
+		writerID := i + 1
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			if err := asyncDatabaseWriter(fmt.Sprintf("txindex-%d", id), indexDB, indexChannel, stats); err != nil {
+				errorChannel <- fmt.Errorf("txindex writer %d error: %v", id, err)
+			}
+		}(writerID)
+	}
+
+	// Main reader goroutine - process source database with transformation
+	log.Info("📖 Starting main reader thread with 8 async writers...")
+	processed := 0
+	skipped := 0
+
+	it := sourceDB.NewIterator(nil, nil)
+	defer it.Release()
+
+	for it.Next() {
+		// Create copies of key and value since iterator reuses underlying memory
+		originalKey := make([]byte, len(it.Key()))
+		originalValue := make([]byte, len(it.Value()))
+		copy(originalKey, it.Key())
+		copy(originalValue, it.Value())
+
+		processed++
+
+		// Generate new key and value
+		newKey := generateNewKey(originalKey, version)
+
+		// Skip if new key is the same as original key
+		if bytes.Equal(newKey, originalKey) {
+			skipped++
+			continue
+		}
+
+		newValue := shuffleValue(originalValue)
+
+		// Determine the category for this key-value pair based on original key
+		category := categorizeDataByKey(originalKey, originalValue)
+
+		// Create transformed data package
+		data := CategorizedData{
+			Key:      newKey,
+			Value:    newValue,
+			Category: category,
+		}
+
+		// Route to correct writer channel based on category
+		switch category {
+		case "state":
+			select {
+			case stateChannel <- data:
+			case err := <-errorChannel:
+				return err
+			}
+		case "snapshot":
+			select {
+			case snapChannel <- data:
+			case err := <-errorChannel:
+				return err
+			}
+		case "txindex":
+			select {
+			case indexChannel <- data:
+			case err := <-errorChannel:
+				return err
+			}
+		default:
+			// Everything else goes to chain database
+			data.Category = "chain" // Update category for stats
+			select {
+			case chainChannel <- data:
+			case err := <-errorChannel:
+				return err
+			}
+		}
+
+		// Debug: Log first few transformations
+		if processed <= 30 && skipped < 10 {
+			log.Info("📝 Queuing transformed data for async processing",
+				"category", category,
+				"originalKeyHex", fmt.Sprintf("%x", originalKey[:min(16, len(originalKey))]),
+				"newKeyHex", fmt.Sprintf("%x", newKey[:min(16, len(newKey))]),
+				"keyLen", len(newKey),
+				"valueLen", len(newValue),
+				"version", version)
+		}
+
+		// Progress update every 10000 items
+		if processed%10000 == 0 && processed > 0 {
+			log.Info("Reader progress", "processed", processed, "skipped", skipped)
+		}
+	}
+
+	// Check for iterator errors
+	if err := it.Error(); err != nil {
+		return fmt.Errorf("iterator error: %v", err)
+	}
+
+	log.Info("📖 Reader completed, closing channels...", "processed", processed, "skipped", skipped)
+
+	// Close channels to signal completion to worker goroutines
+	close(chainChannel)
+	close(stateChannel)
+	close(snapChannel)
+	close(indexChannel)
+
+	// Wait for all goroutines to complete
+	log.Info("⏳ Waiting for all async writers to complete...")
+	wg.Wait()
+
+	// Check for any errors from worker goroutines
+	close(errorChannel)
+	for err := range errorChannel {
+		if err != nil {
+			return err
+		}
+	}
+
+	log.Info("✅ Multi-threaded async data extraction with transformation completed",
+		"totalProcessed", processed,
+		"totalSkipped", skipped,
+		"totalTransformed", processed-skipped,
+		"threadsUsed", "9 (1 reader + 8 writers)",
+		"version", version)
 	return nil
 }
 
