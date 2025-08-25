@@ -391,6 +391,12 @@ var (
 		Value:    ethconfig.Defaults.BlockHistory,
 		Category: flags.BlockHistoryCategory,
 	}
+	FreezerBatchLimitFlag = &cli.Uint64Flag{
+		Name:     "freezer.batchlimit",
+		Usage:    "The maximum number of blocks to freeze in one batch",
+		Value:    100,
+		Category: flags.BlockHistoryCategory,
+	}
 	ChainHistoryFlag = &cli.StringFlag{
 		Name:     "history.chain",
 		Usage:    `Blockchain history retention ("all" or "postmerge")`,
@@ -2019,6 +2025,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(PruneAncientDataFlag.Name) {
 		log.Warn(fmt.Sprintf("Option --%s is deprecated. Please using --%s in the future", PruneAncientDataFlag.Name, BlockHistoryFlag.Name))
 		cfg.PruneAncientData = ctx.Bool(PruneAncientDataFlag.Name)
+	}
+	if ctx.IsSet(FreezerBatchLimitFlag.Name) {
+		cfg.FreezerBatchLimit = ctx.Uint64(FreezerBatchLimitFlag.Name)
 	}
 	if ctx.IsSet(EraFlag.Name) {
 		cfg.DatabaseEra = ctx.String(EraFlag.Name)

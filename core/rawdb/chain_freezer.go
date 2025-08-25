@@ -38,12 +38,14 @@ const (
 	// chain progression that might permit new blocks to be frozen into immutable
 	// storage.
 	freezerRecheckInterval = time.Minute
+)
 
+var (
 	// freezerBatchLimit is the maximum number of blocks to freeze in one batch
 	// before doing an fsync and deleting it from the key-value store.
 	// TODO(galaio): For BSC, the 0.75 interval and freezing of 30,000 blocks will seriously affect performance.
 	// It is temporarily adjusted to 100, and improves the freezing performance later.
-	freezerBatchLimit = 100
+	freezerBatchLimit uint64 = 100
 )
 
 var (
@@ -596,6 +598,10 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 }
 
 func (f *chainFreezer) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
+	if env.BatchLimit > freezerBatchLimit {
+		log.Info("Freezer batch limit is set to", "new", env.BatchLimit, "old", freezerBatchLimit)
+		freezerBatchLimit = env.BatchLimit
+	}
 	f.freezeEnv.Store(env)
 	f.blockHistory.Store(blockHistory)
 	return nil
