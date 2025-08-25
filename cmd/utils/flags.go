@@ -134,6 +134,11 @@ var (
 		Value:    node.DefaultConfig.DBEngine,
 		Category: flags.EthCategory,
 	}
+	ExpandModeFlag = &cli.BoolFlag{
+		Name:     "expandmode",
+		Usage:    "Enable expand mode for migration: write data to target database instead of in-place migration",
+		Category: flags.EthCategory,
+	}
 	AncientFlag = &flags.DirectoryFlag{
 		Name:     "datadir.ancient",
 		Usage:    "Root directory for ancient data (default = inside chaindata)",

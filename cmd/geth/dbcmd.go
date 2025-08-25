@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -321,26 +322,32 @@ of ancientStore, will also displays the reserved number of blocks in ancientStor
 	dbMigrateCmd = &cli.Command{
 		Action:    migrateDatabase,
 		Name:      "migrate",
-		Usage:     "Migrate single database to multi-database format (in-place)",
-		ArgsUsage: "",
+		Usage:     "Migrate single database to multi-database format (in-place or expand mode)",
+		ArgsUsage: "[target-datadir] [version]",
 		Flags: slices.Concat([]cli.Flag{
 			utils.DataDirFlag,
 			utils.SyncModeFlag,
 			utils.CacheFlag,
 			utils.CacheDatabaseFlag,
+			utils.ExpandModeFlag,
 		}, utils.NetworkFlags),
-		Description: `This command migrates a single chaindb database to multi-database format IN-PLACE.
+		Description: `This command migrates a single chaindb database to multi-database format.
+
+Two modes available:
+1. IN-PLACE mode (default): Migrates data within the same datadir
+2. EXPAND mode (--expandmode): Writes transformed data to target datadir
+
 The source database will be read from --datadir/chaindata directory, and data will be split into:
   - chaindata/           - chain and metadata (remaining)
   - chaindata/state      - state trie data
   - chaindata/snapshot   - snapshot data
   - chaindata/txindex    - transaction index data
-
+ 
 Usage examples:
-  geth --datadir /data/ethereum db migrate
-  geth --datadir ~/.ethereum db migrate
-  geth --datadir ~/.ethereum --config /data/ethereum/config.toml --enablesharding db migrate
-
+  geth --datadir /data/ethereum db migrate                           # In-place migration
+  geth --datadir /data/ethereum --expandmode db migrate /target/dir  # Expand mode with version=1
+  geth --datadir /data/ethereum --expandmode db migrate /target/dir 5  # Expand mode with version=5
+ 
 WARNING: This operation may take a very long time to finish for large databases (2TB+).`,
 	}
 )
@@ -1557,8 +1564,42 @@ func inspectHistory(ctx *cli.Context) error {
 
 // migrateDatabase migrates a single database to multi-database format
 func migrateDatabase(ctx *cli.Context) error {
-	if ctx.NArg() != 0 {
-		return fmt.Errorf("no arguments expected")
+	var (
+		targetDataDir string
+		version       byte = 1 // default version
+	)
+
+	// Parse arguments based on expand mode
+	expandMode := ctx.Bool(utils.ExpandModeFlag.Name)
+
+	if expandMode {
+		// Expand mode: expect [target-datadir] [version]
+		if ctx.NArg() < 1 {
+			return fmt.Errorf("expand mode requires target data directory argument")
+		}
+		if ctx.NArg() > 2 {
+			return fmt.Errorf("too many arguments: expected [target-datadir] [version]")
+		}
+
+		targetDataDir = ctx.Args().Get(0)
+		if targetDataDir == "" {
+			return fmt.Errorf("target data directory cannot be empty")
+		}
+
+		// Parse optional version
+		if ctx.NArg() >= 2 {
+			versionArg := ctx.Args().Get(1)
+			if versionVal, err := strconv.ParseUint(versionArg, 10, 8); err != nil {
+				return fmt.Errorf("failed to parse 'version' as number: %v", err)
+			} else {
+				version = byte(versionVal)
+			}
+		}
+	} else {
+		// In-place mode: no arguments expected
+		if ctx.NArg() != 0 {
+			return fmt.Errorf("in-place mode expects no arguments")
+		}
 	}
 
 	cacheSize := ctx.Int(utils.CacheFlag.Name)
@@ -1566,8 +1607,18 @@ func migrateDatabase(ctx *cli.Context) error {
 
 	enablesharding := ctx.Bool(utils.EnableShardingFlag.Name)
 	if enablesharding {
-		log.Info("migrateDatabase with enabling sharding database")
-		return migrateDBWithSharding(ctx)
+		if expandMode {
+			log.Info("migrateDatabase with enabling sharding database in expand mode", "targetDir", targetDataDir, "version", version)
+			return migrateDBWithShardingExpandMode(ctx, targetDataDir, version)
+		} else {
+			log.Info("migrateDatabase with enabling sharding database")
+			return migrateDBWithSharding(ctx)
+		}
+	}
+
+	if expandMode {
+		log.Info("migrateDatabase in expand mode", "targetDir", targetDataDir, "version", version)
+		return migrateDBExpandMode(ctx, targetDataDir, version, cacheSize, cacheDB)
 	}
 	// Create source stack using standard geth configuration (handles --datadir)
 	sourceStack, _ := makeConfigNode(ctx)
@@ -2349,6 +2400,246 @@ func performDatabaseCompaction(sourceDB, stateDB, snapDB, indexDB ethdb.Database
 	}
 
 	log.Info("🗜️  Database compaction completed for all databases")
+	return nil
+}
+
+// migrateDBExpandMode migrates database in expand mode (write to target database with key/value transformation)
+func migrateDBExpandMode(ctx *cli.Context, targetDataDir string, version byte, cacheSize, cacheDB int) error {
+	// Create source stack using standard geth configuration (handles --datadir)
+	sourceStack, _ := makeConfigNode(ctx)
+	defer sourceStack.Close()
+
+	// Get source database path
+	sourceChainDataPath := sourceStack.ResolvePath("chaindata")
+
+	log.Info("Starting database migration in expand mode",
+		"source", sourceChainDataPath,
+		"target", targetDataDir,
+		"version", version)
+
+	// Open source database for reading
+	sourceDB, err := openTargetDatabase(sourceChainDataPath, cacheSize*cacheDB*7/100, 64)
+	if err != nil {
+		return fmt.Errorf("failed to open source chain database: %v", err)
+	}
+	defer sourceDB.Close()
+
+	// Create target directory structure
+	targetChainDataPath := filepath.Join(targetDataDir, "chaindata")
+	targetStatePath := filepath.Join(targetChainDataPath, "state")
+	targetSnapshotPath := filepath.Join(targetChainDataPath, "snapshot")
+	targetTxIndexPath := filepath.Join(targetChainDataPath, "txindex")
+
+	for _, dir := range []string{targetChainDataPath, targetStatePath, targetSnapshotPath, targetTxIndexPath} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("failed to create directory %s: %v", dir, err)
+		}
+	}
+
+	// Create target databases
+	chainDB, err := openTargetDatabase(targetChainDataPath, cacheSize*cacheDB*11/100, 64)
+	if err != nil {
+		return fmt.Errorf("failed to create target chain database: %v", err)
+	}
+	defer chainDB.Close()
+
+	stateDB, err := openTargetDatabaseWithFreezer(targetStatePath, cacheSize*cacheDB*50/100, 128)
+	if err != nil {
+		return fmt.Errorf("failed to create target state database: %v", err)
+	}
+	defer stateDB.Close()
+
+	snapDB, err := openTargetDatabase(targetSnapshotPath, cacheSize*cacheDB*24/100, 32)
+	if err != nil {
+		return fmt.Errorf("failed to create target snapshot database: %v", err)
+	}
+	defer snapDB.Close()
+
+	indexDB, err := openTargetDatabase(targetTxIndexPath, cacheSize*cacheDB*15/100, 32)
+	if err != nil {
+		return fmt.Errorf("failed to create target txindex database: %v", err)
+	}
+	defer indexDB.Close()
+
+	// Start expand migration
+	return performExpandMigration(sourceDB, chainDB, stateDB, snapDB, indexDB, version)
+}
+
+// migrateDBWithShardingExpandMode migrates database with sharding in expand mode
+func migrateDBWithShardingExpandMode(ctx *cli.Context, targetDataDir string, version byte) error {
+	// TODO: Implement sharding expand mode
+	return fmt.Errorf("sharding expand mode not yet implemented")
+}
+
+// Helper function to generate new key with configurable suffix (reused from database.go)
+func generateNewKey(originalKey []byte, suffix byte) []byte {
+	if len(originalKey) <= 2 {
+		return originalKey
+	}
+
+	newKey := make([]byte, len(originalKey))
+
+	// Keep prefix same as original
+	newKey[0] = originalKey[0]
+
+	// Set suffix from flag
+	newKey[len(newKey)-1] = suffix
+
+	// Fill middle part with random data
+	if len(originalKey) > 2 {
+		randomBytes := make([]byte, len(originalKey)-2)
+		for i := range randomBytes {
+			randomBytes[i] = byte(rand.Intn(256))
+		}
+		copy(newKey[1:len(newKey)-1], randomBytes)
+	}
+
+	return newKey
+}
+
+// Helper function to shuffle value (reused from database.go)
+func shuffleValue(originalValue []byte) []byte {
+	if len(originalValue) <= 1 {
+		return originalValue
+	}
+
+	newValue := make([]byte, len(originalValue))
+	copy(newValue, originalValue)
+
+	// Simple shuffle algorithm
+	for i := len(newValue) - 1; i > 0; i-- {
+		j := rand.Intn(i + 1)
+		newValue[i], newValue[j] = newValue[j], newValue[i]
+	}
+
+	return newValue
+}
+
+// performExpandMigration performs the actual data migration with key/value transformation
+func performExpandMigration(sourceDB, chainDB, stateDB, snapDB, indexDB ethdb.Database, version byte) error {
+	log.Info("Starting expand migration with data transformation", "version", version)
+
+	stats := &MigrationStats{startTime: time.Now()}
+
+	// Progress monitoring
+	stopProgress := make(chan struct{})
+	go progressMonitor(stats, stopProgress)
+
+	// Process all data from source database
+	it := sourceDB.NewIterator(nil, nil)
+	defer it.Release()
+
+	// Batch operations for better performance
+	chainBatch := chainDB.NewBatch()
+	stateBatch := stateDB.NewBatch()
+	snapBatch := snapDB.NewBatch()
+	indexBatch := indexDB.NewBatch()
+
+	processed := 0
+	batchSize := 0
+	const maxBatchSize = 256 * 1024 * 1024 // 256MB
+
+	for it.Next() {
+		// Create copies of key and value
+		originalKey := make([]byte, len(it.Key()))
+		originalValue := make([]byte, len(it.Value()))
+		copy(originalKey, it.Key())
+		copy(originalValue, it.Value())
+
+		processed++
+
+		// Generate new key and value
+		newKey := generateNewKey(originalKey, version)
+		newValue := shuffleValue(originalValue)
+
+		// Determine target database
+		category := categorizeDataByKey(originalKey, originalValue)
+
+		kvSize := len(newKey) + len(newValue)
+		batchSize += kvSize
+
+		switch category {
+		case "state":
+			stateBatch.Put(newKey, newValue)
+			stats.Add("state", len(newKey), len(newValue))
+		case "snapshot":
+			snapBatch.Put(newKey, newValue)
+			stats.Add("snapshot", len(newKey), len(newValue))
+		case "txindex":
+			indexBatch.Put(newKey, newValue)
+			stats.Add("txindex", len(newKey), len(newValue))
+		default:
+			// Everything else goes to chain database
+			chainBatch.Put(newKey, newValue)
+			stats.Add("chain", len(newKey), len(newValue))
+		}
+
+		// Flush batches when they get too large
+		if batchSize >= maxBatchSize {
+			if err := flushAllBatches(chainBatch, stateBatch, snapBatch, indexBatch); err != nil {
+				close(stopProgress)
+				return err
+			}
+			batchSize = 0
+
+			log.Info("Batch flushed", "processed", processed)
+		}
+
+		// Progress logging
+		if processed%10000 == 0 && processed > 0 {
+			log.Info("Expand migration progress", "processed", processed)
+		}
+	}
+
+	// Final flush
+	if batchSize > 0 {
+		if err := flushAllBatches(chainBatch, stateBatch, snapBatch, indexBatch); err != nil {
+			close(stopProgress)
+			return err
+		}
+	}
+
+	close(stopProgress)
+
+	if err := it.Error(); err != nil {
+		return fmt.Errorf("iterator error: %v", err)
+	}
+
+	total, chain, state, snapshot, txindex := stats.Get()
+	elapsed := time.Since(stats.startTime)
+
+	log.Info("Expand migration completed",
+		"total", total,
+		"chain", chain,
+		"state", state,
+		"snapshot", snapshot,
+		"txindex", txindex,
+		"elapsed", common.PrettyDuration(elapsed),
+		"version", version)
+
+	return nil
+}
+
+// flushAllBatches flushes all database batches
+func flushAllBatches(chainBatch, stateBatch, snapBatch, indexBatch ethdb.Batch) error {
+	if err := chainBatch.Write(); err != nil {
+		return fmt.Errorf("failed to write chain batch: %v", err)
+	}
+	if err := stateBatch.Write(); err != nil {
+		return fmt.Errorf("failed to write state batch: %v", err)
+	}
+	if err := snapBatch.Write(); err != nil {
+		return fmt.Errorf("failed to write snapshot batch: %v", err)
+	}
+	if err := indexBatch.Write(); err != nil {
+		return fmt.Errorf("failed to write index batch: %v", err)
+	}
+
+	chainBatch.Reset()
+	stateBatch.Reset()
+	snapBatch.Reset()
+	indexBatch.Reset()
+
 	return nil
 }
 
