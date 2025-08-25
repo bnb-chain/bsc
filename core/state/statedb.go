@@ -92,7 +92,9 @@ type StateDB struct {
 	originalRoot common.Hash
 	expectedRoot common.Hash // The state root in the block header
 
-	fullProcessed bool
+	// if needBadSharedStorage = true, try read from sharedPool firstly, compatible with old erroneous data(https://forum.bnbchain.org/t/about-the-hertzfix/2400).
+	// else read from sharedPool which is not in stateObjectsDestruct.
+	needBadSharedStorage bool
 
 	// This map holds 'live' objects, which will get modified while
 	// processing a state transition.
@@ -110,10 +112,6 @@ type StateDB struct {
 	// can be merged into a single one which is equivalent from database's
 	// perspective. This map is populated at the transaction boundaries.
 	mutations map[common.Address]*mutation
-
-	// if needBadSharedStorage = true, try read from sharedPool firstly, compatible with old erroneous data(https://forum.bnbchain.org/t/about-the-hertzfix/2400).
-	// else read from sharedPool which is not in stateObjectsDestruct.
-	needBadSharedStorage bool
 
 	// DB error.
 	// State objects are used by the consensus core and VM which are
@@ -151,8 +149,6 @@ type StateDB struct {
 	witness *stateless.Witness // TODO(Nathan): more define the relation with `noTrie`
 
 	// Measurements gathered during execution for debugging purposes
-	// MetricsMux should be used in more places, but will affect on performance, so following meteration is not accurate
-	MetricsMux      sync.Mutex
 	AccountReads    time.Duration
 	AccountHashes   time.Duration
 	AccountUpdates  time.Duration
@@ -271,11 +267,6 @@ func (s *StateDB) StopPrefetcher() {
 // Mark that the block is processed by diff layer
 func (s *StateDB) SetExpectedStateRoot(root common.Hash) {
 	s.expectedRoot = root
-}
-
-// Mark that the block is full processed
-func (s *StateDB) MarkFullProcessed() {
-	s.fullProcessed = true
 }
 
 // setError remembers the first non-nil error it is called with.
@@ -408,14 +399,6 @@ func (s *StateDB) GetCode(addr common.Address) []byte {
 		return stateObject.Code()
 	}
 	return nil
-}
-
-func (s *StateDB) GetRoot(addr common.Address) common.Hash {
-	stateObject := s.getStateObject(addr)
-	if stateObject != nil {
-		return stateObject.data.Root
-	}
-	return common.Hash{}
 }
 
 func (s *StateDB) GetCodeSize(addr common.Address) int {
@@ -763,6 +746,13 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 		logSize:              s.logSize,
 		preimages:            maps.Clone(s.preimages),
 
+		// Do we need to copy the access list and transient storage?
+		// In practice: No. At the start of a transaction, these two lists are empty.
+		// In practice, we only ever copy state _between_ transactions/blocks, never
+		// in the middle of a transaction. However, it doesn't cost us much to copy
+		// empty lists, so we do it anyway to not blow up if we ever decide copy them
+		// in the middle of a transaction.
+		accessList:       s.accessList.Copy(),
 		transientStorage: s.transientStorage.Copy(),
 		journal:          s.journal.copy(),
 	}
@@ -771,15 +761,6 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 	}
 	if s.witness != nil {
 		state.witness = s.witness.Copy()
-	}
-	// Do we need to copy the access list and transient storage?
-	// In practice: No. At the start of a transaction, these two lists are empty.
-	// In practice, we only ever copy state _between_ transactions/blocks, never
-	// in the middle of a transaction. However, it doesn't cost us much to copy
-	// empty lists, so we do it anyway to not blow up if we ever decide copy them
-	// in the middle of a transaction.
-	if s.accessList != nil {
-		state.accessList = s.accessList.Copy()
 	}
 	if s.accessEvents != nil {
 		state.accessEvents = s.accessEvents.Copy()
@@ -908,7 +889,6 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 		start   time.Time
 		workers errgroup.Group
 	)
-
 	if metrics.EnabledExpensive() {
 		start = time.Now()
 	}
@@ -985,7 +965,6 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	// Don't check prefetcher if verkle trie has been used. In the context of verkle,
 	// only a single trie is used for state hashing. Replacing a non-nil verkle tree
 	// here could result in losing uncommitted changes from storage.
-
 	if metrics.EnabledExpensive() {
 		start = time.Now()
 	}
@@ -995,13 +974,6 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 		} else {
 			s.trie = trie
 		}
-	}
-	if s.trie == nil {
-		tr, err := s.db.OpenTrie(s.originalRoot)
-		if err != nil {
-			panic(fmt.Sprintf("failed to open trie tree %s", s.originalRoot))
-		}
-		s.trie = tr
 	}
 	// Perform updates before deletions.  This prevents resolution of unnecessary trie nodes
 	// in circumstances similar to the following:
@@ -1072,7 +1044,7 @@ func (s *StateDB) SetTxContext(thash common.Hash, ti int) {
 
 // StateDB.Prepare is not called before processing a system transaction, call ClearAccessList instead.
 func (s *StateDB) ClearAccessList() {
-	s.accessList = nil
+	s.accessList = newAccessList()
 }
 
 func (s *StateDB) clearJournalAndRefund() {
@@ -1346,7 +1318,7 @@ func (s *StateDB) commit(deleteEmptyObjects bool, noStorageWiping bool) (*stateU
 		// Write the account trie changes, measuring the amount of wasted time
 		newroot, set := s.trie.Commit(true)
 		root = newroot
-		if s.fullProcessed && s.expectedRoot != root {
+		if (s.expectedRoot != common.Hash{}) && (s.expectedRoot != root) {
 			log.Error("Invalid merkle root", "remote", s.expectedRoot, "local", root)
 			return fmt.Errorf("invalid merkle root (remote: %x local: %x)", s.expectedRoot, root)
 		}
@@ -1545,9 +1517,6 @@ func (s *StateDB) Prepare(rules params.Rules, sender, coinbase common.Address, d
 
 // AddAddressToAccessList adds the given address to the access list
 func (s *StateDB) AddAddressToAccessList(addr common.Address) {
-	if s.accessList == nil {
-		s.accessList = newAccessList()
-	}
 	if s.accessList.AddAddress(addr) {
 		s.journal.accessListAddAccount(addr)
 	}
@@ -1555,9 +1524,6 @@ func (s *StateDB) AddAddressToAccessList(addr common.Address) {
 
 // AddSlotToAccessList adds the given (address, slot)-tuple to the access list
 func (s *StateDB) AddSlotToAccessList(addr common.Address, slot common.Hash) {
-	if s.accessList == nil {
-		s.accessList = newAccessList()
-	}
 	addrMod, slotMod := s.accessList.AddSlot(addr, slot)
 	if addrMod {
 		// In practice, this should not happen, since there is no way to enter the
@@ -1573,17 +1539,11 @@ func (s *StateDB) AddSlotToAccessList(addr common.Address, slot common.Hash) {
 
 // AddressInAccessList returns true if the given address is in the access list.
 func (s *StateDB) AddressInAccessList(addr common.Address) bool {
-	if s.accessList == nil {
-		return false
-	}
 	return s.accessList.ContainsAddress(addr)
 }
 
 // SlotInAccessList returns true if the given (address, slot)-tuple is in the access list.
 func (s *StateDB) SlotInAccessList(addr common.Address, slot common.Hash) (addressPresent bool, slotPresent bool) {
-	if s.accessList == nil {
-		return false, false
-	}
 	return s.accessList.Contains(addr, slot)
 }
 
