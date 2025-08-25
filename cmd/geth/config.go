@@ -176,8 +176,11 @@ func loadBaseConfig(ctx *cli.Context) gethConfig {
 }
 
 // makeConfigNode loads geth configuration and creates a blank node instance.
-func makeConfigNode(ctx *cli.Context) (*node.Node, gethConfig) {
+func makeConfigNode(ctx *cli.Context, datadir ...string) (*node.Node, gethConfig) {
 	cfg := loadBaseConfig(ctx)
+	if len(datadir) > 0 {
+		cfg.Node.DataDir = datadir[0]
+	}
 	stack, err := node.New(&cfg.Node)
 	if err != nil {
 		utils.Fatalf("Failed to create the protocol stack: %v", err)

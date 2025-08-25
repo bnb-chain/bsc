@@ -2774,8 +2774,9 @@ func flushAllBatches(chainBatch, stateBatch, snapBatch, indexBatch ethdb.Batch) 
 	return nil
 }
 
-func initMultiDBs(ctx *cli.Context, forceCreate bool) (ethdb.Database, error) {
-	stack, cfg := makeConfigNode(ctx)
+func initMultiDBs(ctx *cli.Context, datadir string, forceCreate bool) (ethdb.Database, error) {
+	log.Info("initializing multi dbs...", "datadir", datadir, "forceCreate", forceCreate)
+	stack, cfg := makeConfigNode(ctx, datadir)
 	chainDB, err := stack.OpenAndMergeDatabase(eth.ChainData, eth.ChainDBNamespace, false, &cfg.Eth)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open and merge database: %v", err)
@@ -2796,7 +2797,7 @@ func initMultiDBs(ctx *cli.Context, forceCreate bool) (ethdb.Database, error) {
 }
 
 func migrateDBWithSharding(ctx *cli.Context) error {
-	chainDB, err := initMultiDBs(ctx, true)
+	chainDB, err := initMultiDBs(ctx, "", true)
 	if err != nil {
 		return fmt.Errorf("failed to init multidbs: %v", err)
 	}
@@ -2962,15 +2963,17 @@ func traverseAndMigrateWithSharding(chainDB ethdb.Database) error {
 // migrateDBWithShardingExpandMode migrates database with sharding in expand mode
 func migrateDBWithShardingExpandMode(ctx *cli.Context, targetDataDir string, version byte) error {
 	// src is a single db, read all the kvs and then write to the target db
-	srcChainDB, err := initMultiDBs(ctx, false)
+	srcChainDB, err := initMultiDBs(ctx, "", false)
 	if err != nil {
 		return fmt.Errorf("failed to init source chaindb: %v", err)
 	}
-	ctx.Set(utils.DataDirFlag.Name, targetDataDir)
-	dstChainDB, err := initMultiDBs(ctx, false)
+	defer srcChainDB.Close()
+
+	dstChainDB, err := initMultiDBs(ctx, targetDataDir, false)
 	if err != nil {
 		return fmt.Errorf("failed to init target chaindb: %v", err)
 	}
+	defer dstChainDB.Close()
 
 	it := srcChainDB.NewIterator(nil, nil)
 	defer it.Release()
