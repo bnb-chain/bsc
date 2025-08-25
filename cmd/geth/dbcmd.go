@@ -335,7 +335,7 @@ of ancientStore, will also displays the reserved number of blocks in ancientStor
 
 Two modes available:
 1. IN-PLACE mode (default): Migrates data within the same datadir
-2. EXPAND mode (--expandmode): Writes transformed data to target datadir
+2. EXPAND mode (--expandmode): Writes transformed data to existing target multi-database
 
 The source database will be read from --datadir/chaindata directory, and data will be split into:
   - chaindata/           - chain and metadata (remaining)
@@ -345,8 +345,13 @@ The source database will be read from --datadir/chaindata directory, and data wi
  
 Usage examples:
   geth --datadir /data/ethereum db migrate                           # In-place migration
-  geth --datadir /data/ethereum --expandmode db migrate /target/dir  # Expand mode with version=1
-  geth --datadir /data/ethereum --expandmode db migrate /target/dir 5  # Expand mode with version=5
+  geth --datadir /source/ethereum --expandmode db migrate /target/ethereum  # Expand mode with version=1
+  geth --datadir /source/ethereum --expandmode db migrate /target/ethereum 5  # Expand mode with version=5
+ 
+EXPAND mode requirements:
+  - Target directory must already contain a migrated multi-database structure
+  - Target should have: chaindata/, chaindata/state/, chaindata/snapshot/, chaindata/txindex/
+  - Use regular migrate mode first to prepare the target database structure
  
 WARNING: This operation may take a very long time to finish for large databases (2TB+).`,
 	}
@@ -2424,40 +2429,42 @@ func migrateDBExpandMode(ctx *cli.Context, targetDataDir string, version byte, c
 	}
 	defer sourceDB.Close()
 
-	// Create target directory structure
+	// Open existing target database (already migrated with multi-database structure)
 	targetChainDataPath := filepath.Join(targetDataDir, "chaindata")
+
+	// Verify target database structure exists
 	targetStatePath := filepath.Join(targetChainDataPath, "state")
 	targetSnapshotPath := filepath.Join(targetChainDataPath, "snapshot")
 	targetTxIndexPath := filepath.Join(targetChainDataPath, "txindex")
 
 	for _, dir := range []string{targetChainDataPath, targetStatePath, targetSnapshotPath, targetTxIndexPath} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("failed to create directory %s: %v", dir, err)
+		if !common.FileExist(dir) {
+			return fmt.Errorf("target database directory does not exist: %s (target should be a migrated multi-database)", dir)
 		}
 	}
 
-	// Create target databases
+	// Open existing target databases (panic if failed)
 	chainDB, err := openTargetDatabase(targetChainDataPath, cacheSize*cacheDB*11/100, 64)
 	if err != nil {
-		return fmt.Errorf("failed to create target chain database: %v", err)
+		panic(fmt.Sprintf("failed to open target chain database: %v", err))
 	}
 	defer chainDB.Close()
 
 	stateDB, err := openTargetDatabaseWithFreezer(targetStatePath, cacheSize*cacheDB*50/100, 128)
 	if err != nil {
-		return fmt.Errorf("failed to create target state database: %v", err)
+		panic(fmt.Sprintf("failed to open target state database: %v", err))
 	}
 	defer stateDB.Close()
 
 	snapDB, err := openTargetDatabase(targetSnapshotPath, cacheSize*cacheDB*24/100, 32)
 	if err != nil {
-		return fmt.Errorf("failed to create target snapshot database: %v", err)
+		panic(fmt.Sprintf("failed to open target snapshot database: %v", err))
 	}
 	defer snapDB.Close()
 
 	indexDB, err := openTargetDatabase(targetTxIndexPath, cacheSize*cacheDB*15/100, 32)
 	if err != nil {
-		return fmt.Errorf("failed to create target txindex database: %v", err)
+		panic(fmt.Sprintf("failed to open target txindex database: %v", err))
 	}
 	defer indexDB.Close()
 
