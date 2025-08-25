@@ -130,6 +130,7 @@ var (
 		utils.CachePreimagesFlag,
 		utils.MultiDataBaseFlag,
 		utils.PruneAncientDataFlag, // deprecated
+		utils.FreezerBatchLimitFlag,
 		utils.CacheLogSizeFlag,
 		utils.FDLimitFlag,
 		utils.CryptoKZGFlag,
