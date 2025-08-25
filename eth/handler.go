@@ -395,7 +395,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 func (h *handler) protoTracker() {
 	defer h.wg.Done()
 
-	if h.enableEVNFeatures {
+	if h.enableEVNFeatures && h.synced.Load() {
 		h.peers.enableEVNFeatures(h.queryValidatorNodeIDsMap(), h.evnNodeIdsWhitelistMap)
 	}
 	updateTicker := time.NewTicker(10 * time.Second)
@@ -408,7 +408,7 @@ func (h *handler) protoTracker() {
 		case <-h.handlerDoneCh:
 			active--
 		case <-updateTicker.C:
-			if h.enableEVNFeatures {
+			if h.enableEVNFeatures && h.synced.Load() {
 				// add onchain validator p2p node list later, it will enable the direct broadcast + no tx broadcast feature
 				// here check & enable peer broadcast features periodically, and it's a simple way to handle the peer change and the list change scenarios.
 				h.peers.enableEVNFeatures(h.queryValidatorNodeIDsMap(), h.evnNodeIdsWhitelistMap)
