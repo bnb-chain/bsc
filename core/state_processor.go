@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -119,11 +120,11 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 	prevPool := gp.Gas() // Track remaining gas before first tx in block
 	for i, tx := range block.Transactions() {
-		// Debug helper: stop execution after processing tx index >=290 in block 50897362
-		//if block.NumberU64() == 50897371 && uint64(i) >= 347 && p.config.EnableVerkleAtGenesis {
-		//	log.Warn("Debug stop reached", "block", block.NumberU64(), "txIndex", i, "txHash", tx.Hash())
-		//	os.Exit(0)
-		//}
+		//Debug helper: stop execution after processing tx index >=290 in block 50897362
+		if block.NumberU64() == 50897372 && uint64(i) >= 305 && p.config.EnableVerkleAtGenesis {
+			log.Warn("Debug stop reached", "block", block.NumberU64(), "txIndex", i, "txHash", tx.Hash())
+			os.Exit(0)
+		}
 		if isPoSA {
 			if isSystemTx, err := posa.IsSystemTransaction(tx, block.Header()); err != nil {
 				bloomProcessors.Close()
@@ -157,7 +158,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		receipts = append(receipts, receipt)
 
 		// Debug: log gas usage after each tx for target block
-		if block.NumberU64() == 50897371 || block.NumberU64() == 50897381 {
+		if block.NumberU64() == 50897372 {
 			log.Error("Debug tx", "transaction Index", i, "txHash", receipt.TxHash, "gasUsed", receipt.GasUsed)
 			currentPool := gp.Gas()
 			used := prevPool - currentPool
@@ -279,7 +280,7 @@ func MakeReceipt(evm *vm.EVM, result *ExecutionResult, statedb *state.StateDB, b
 	for _, receiptProcessor := range receiptProcessors {
 		receiptProcessor.Apply(receipt)
 	}
-	if blockNumber.Uint64() == 50897371 || blockNumber.Uint64() == 50897381 {
+	if blockNumber.Uint64() == 50897372 {
 		// ===== DEBUG RECEIPT DUMP (compare opt-on/off) =====
 		{
 			shortHash := func(h common.Hash) string { return h.String()[:10] }
