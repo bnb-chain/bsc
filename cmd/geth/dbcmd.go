@@ -47,6 +47,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb/leveldb"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/triedb"
@@ -1600,6 +1601,8 @@ func migrateDatabase(ctx *cli.Context) error {
 				version = byte(versionVal)
 			}
 		}
+		os.Setenv("GODEBUG", "randseednop=0")
+		rand.Seed(int64(version))
 	} else {
 		// In-place mode: no arguments expected
 		if ctx.NArg() != 0 {
@@ -1614,11 +1617,18 @@ func migrateDatabase(ctx *cli.Context) error {
 	if enablesharding {
 		if expandMode {
 			log.Info("migrateDatabase with enabling sharding database in expand mode", "targetDir", targetDataDir, "version", version)
-			return migrateDBWithShardingExpandMode(ctx, targetDataDir, version)
+			if err := migrateDBWithShardingExpandMode(ctx, targetDataDir, version); err != nil {
+				log.Error("failed to migrate database with sharding database in expand mode", "error", err)
+				return err
+			}
 		} else {
 			log.Info("migrateDatabase with enabling sharding database")
-			return migrateDBWithSharding(ctx)
+			if err := migrateDBWithSharding(ctx); err != nil {
+				log.Error("failed to migrate database with sharding database", "error", err)
+				return err
+			}
 		}
+		return nil
 	}
 
 	if expandMode {
@@ -2472,12 +2482,6 @@ func migrateDBExpandMode(ctx *cli.Context, targetDataDir string, version byte, c
 	return performExpandMigration(sourceDB, chainDB, stateDB, snapDB, indexDB, version)
 }
 
-// migrateDBWithShardingExpandMode migrates database with sharding in expand mode
-func migrateDBWithShardingExpandMode(ctx *cli.Context, targetDataDir string, version byte) error {
-	// TODO: Implement sharding expand mode
-	return fmt.Errorf("sharding expand mode not yet implemented")
-}
-
 // Helper function to generate new key with configurable suffix (reused from database.go)
 func generateNewKey(originalKey []byte, suffix byte) []byte {
 	if len(originalKey) <= 2 {
@@ -2778,22 +2782,56 @@ func flushAllBatches(chainBatch, stateBatch, snapBatch, indexBatch ethdb.Batch) 
 	return nil
 }
 
-func migrateDBWithSharding(ctx *cli.Context) error {
-	stack, cfg := makeConfigNode(ctx)
+func initMultiDBs(stack *node.Node, cfg gethConfig, forceCreate bool) (ethdb.Database, error) {
+	log.Info("initializing multi dbs...", "forceCreate", forceCreate)
 	chainDB, err := stack.OpenAndMergeDatabase(eth.ChainData, eth.ChainDBNamespace, false, &cfg.Eth)
 	if err != nil {
-		return fmt.Errorf("failed to open and merge database: %v", err)
+		return nil, fmt.Errorf("failed to open and merge database: %v", err)
+	}
+	isMultiDB := stack.CheckIfMultiDataBase()
+	log.Info("open and merge database", "chaindata", eth.ChainData, "isMultiDB", isMultiDB)
+	if forceCreate {
+		if isMultiDB {
+			defer chainDB.Close()
+			return nil, fmt.Errorf("there is already multidbs set, cannot migrate again")
+		}
+		// just set multidbs, and then migrate in place
+		log.Info("setting multidbs...", "datadir", stack.DataDir(), "config", stack.Config().Storage)
+		stack.SetMultiDBs(chainDB, eth.ChainData, cfg.Eth.DatabaseCache, cfg.Eth.DatabaseHandles, false, false)
+	}
+
+	return chainDB, nil
+}
+
+func initMultiDBsWithDataDir(srcStack *node.Node, cfg gethConfig, datadir string) (ethdb.Database, error) {
+	log.Info("initializing multi dbs with data dir...", "datadir", datadir)
+
+	nodeCfg := *srcStack.Config()
+	nodeCfg.DataDir = datadir
+	nodeCfg.Storage.ChainDB.DBPath = ""
+	nodeCfg.Storage.SnapDB.DBPath = ""
+	nodeCfg.Storage.IndexDB.DBPath = ""
+	nodeCfg.Storage.TrieDB.DBPath = ""
+
+	stack, err := node.New(&nodeCfg)
+	if err != nil {
+		log.Error("Failed to create the protocol stack", "error", err)
+		return nil, err
+	}
+	chainDB, err := stack.OpenAndMergeDatabase(eth.ChainData, eth.ChainDBNamespace, false, &cfg.Eth)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open and merge database: %v", err)
 	}
 	log.Info("open and merge database", "chaindata", eth.ChainData, "isMultiDB", stack.CheckIfMultiDataBase())
-	defer chainDB.Close()
+	return chainDB, nil
+}
 
-	if stack.CheckIfMultiDataBase() {
-		return fmt.Errorf("there is already multidbs set, cannot migrate again")
+func migrateDBWithSharding(ctx *cli.Context) error {
+	stack, cfg := makeConfigNode(ctx)
+	chainDB, err := initMultiDBs(stack, cfg, true)
+	if err != nil {
+		return fmt.Errorf("failed to init multidbs: %v", err)
 	}
-
-	// just set multidbs, and then migrate in place
-	log.Info("setting multidbs...", "datadir", stack.DataDir(), "config", stack.Config().Storage)
-	stack.SetMultiDBs(chainDB, eth.ChainData, cfg.Eth.DatabaseCache, cfg.Eth.DatabaseHandles, false, false)
 
 	// traverse all the keys in the chaindb, and then migrate in place
 	log.Info("traversing and migrating with sharding...")
@@ -2950,5 +2988,144 @@ func traverseAndMigrateWithSharding(chainDB ethdb.Database) error {
 	log.Info("migration completed", "chain count", chainStat.count, "chain size", chainStat.size,
 		"state count", stateStat.count, "state size", stateStat.size, "snap count", snapStat.count,
 		"snap size", snapStat.size, "index count", indexStat.count, "index size", indexStat.size)
+	return nil
+}
+
+// migrateDBWithShardingExpandMode migrates database with sharding in expand mode
+func migrateDBWithShardingExpandMode(ctx *cli.Context, targetDataDir string, version byte) error {
+	// src is a single db, read all the kvs and then write to the target db
+	stack, cfg := makeConfigNode(ctx)
+	srcChainDB, err := initMultiDBs(stack, cfg, false)
+	if err != nil {
+		return fmt.Errorf("failed to init source chaindb: %v", err)
+	}
+	defer srcChainDB.Close()
+
+	dstChainDB, err := initMultiDBsWithDataDir(stack, cfg, targetDataDir)
+	if err != nil {
+		return fmt.Errorf("failed to init target chaindb: %v", err)
+	}
+	defer dstChainDB.Close()
+
+	it := srcChainDB.NewIterator(nil, nil)
+	defer it.Release()
+
+	var (
+		chainBatch = dstChainDB.NewBatch()
+		stateBatch = dstChainDB.GetStateStore().NewBatch()
+		snapBatch  = dstChainDB.GetSnapStore().NewBatch()
+		indexBatch = dstChainDB.GetTxIndexStore().NewBatch()
+		batchSize  = 0
+		srcStat    = &stat{}
+		chainStat  = &stat{}
+		stateStat  = &stat{}
+		snapStat   = &stat{}
+		indexStat  = &stat{}
+	)
+	for it.Next() {
+		key := make([]byte, len(it.Key()))
+		value := make([]byte, len(it.Value()))
+		copy(key, it.Key())
+		copy(value, it.Value())
+
+		// regenerate the new key and value
+		key = generateNewKey(key, version)
+		value = shuffleValue(value)
+		kvSize := len(key) + len(value)
+		batchSize += kvSize
+		srcStat.Add(kvSize)
+
+		// put the key into the state, snap, or index database and delete from chaindb
+		category := categorizeDataByKey(key, value)
+		switch category {
+		case "state":
+			stateBatch.Put(key, value)
+			stateStat.Add(kvSize)
+		case "snapshot":
+			snapBatch.Put(key, value)
+			snapStat.Add(kvSize)
+		case "txindex":
+			indexBatch.Put(key, value)
+			indexStat.Add(kvSize)
+		default:
+			chainBatch.Put(key, value)
+			chainStat.Add(kvSize)
+		}
+
+		// flush the batch if it's too large
+		if batchSize >= 256*1024*1024 {
+			log.Info("flushing kvs...", "src count", srcStat.count, "src size", srcStat.size,
+				"chain count", chainStat.count, "chain size", chainStat.size,
+				"state count", stateStat.count, "state size", stateStat.size, "snap count", snapStat.count,
+				"snap size", snapStat.size, "index count", indexStat.count, "index size", indexStat.size)
+			if err := stateBatch.Write(); err != nil {
+				return fmt.Errorf("failed to write state batch: %v", err)
+			}
+			if err := snapBatch.Write(); err != nil {
+				return fmt.Errorf("failed to write snap batch: %v", err)
+			}
+			if err := indexBatch.Write(); err != nil {
+				return fmt.Errorf("failed to write index batch: %v", err)
+			}
+			// save first, then delete
+			if err := chainBatch.Write(); err != nil {
+				return fmt.Errorf("failed to write chain batch: %v", err)
+			}
+			chainBatch.Reset()
+			stateBatch.Reset()
+			snapBatch.Reset()
+			indexBatch.Reset()
+			batchSize = 0
+		}
+	}
+
+	// flush the remaining kvs
+	if batchSize > 0 {
+		log.Info("flushing leftover kvs...", "src count", srcStat.count, "src size", srcStat.size,
+			"chain count", chainStat.count, "chain size", chainStat.size,
+			"state count", stateStat.count, "state size", stateStat.size, "snap count", snapStat.count,
+			"snap size", snapStat.size, "index count", indexStat.count, "index size", indexStat.size)
+		if err := stateBatch.Write(); err != nil {
+			return fmt.Errorf("failed to write state batch: %v", err)
+		}
+		if err := snapBatch.Write(); err != nil {
+			return fmt.Errorf("failed to write snap batch: %v", err)
+		}
+		if err := indexBatch.Write(); err != nil {
+			return fmt.Errorf("failed to write index batch: %v", err)
+		}
+		// save first, then delete
+		if err := chainBatch.Write(); err != nil {
+			return fmt.Errorf("failed to write chain batch: %v", err)
+		}
+		chainBatch.Reset()
+		stateBatch.Reset()
+		snapBatch.Reset()
+		indexBatch.Reset()
+		batchSize = 0
+	}
+
+	log.Info("migration completed", "src count", srcStat.count, "src size", srcStat.size,
+		"chain count", chainStat.count, "chain size", chainStat.size,
+		"state count", stateStat.count, "state size", stateStat.size, "snap count", snapStat.count,
+		"snap size", snapStat.size, "index count", indexStat.count, "index size", indexStat.size)
+
+	// compact the database
+	log.Info("compacting chaindb...")
+	if err := dstChainDB.Compact(nil, nil); err != nil {
+		return fmt.Errorf("failed to compact chaindb: %v", err)
+	}
+	log.Info("compacting statedb...")
+	if err := dstChainDB.GetStateStore().Compact(nil, nil); err != nil {
+		return fmt.Errorf("failed to compact statedb: %v", err)
+	}
+	log.Info("compacting snapdb...")
+	if err := dstChainDB.GetSnapStore().Compact(nil, nil); err != nil {
+		return fmt.Errorf("failed to compact snapdb: %v", err)
+	}
+	log.Info("compacting indexdb...")
+	if err := dstChainDB.GetTxIndexStore().Compact(nil, nil); err != nil {
+		return fmt.Errorf("failed to compact indexdb: %v", err)
+	}
 	return nil
 }
