@@ -172,6 +172,17 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	in.evm.depth++
 	defer func() { in.evm.depth-- }()
 
+	// Frame enter log
+	if in.evm.Context.BlockNumber.Uint64() == 50897372 && in.evm.StateDB.TxIndex() == 291 {
+		depthNow := in.evm.depth
+
+		log.Error("[FRAME ENTER]", "depth", depthNow, "gas", contract.Gas, "codeHash", contract.CodeHash.String())
+		// Frame exit log
+		defer func() {
+			log.Error("[FRAME EXIT]", "depth", depthNow, "gas", contract.Gas, "codeHash", contract.CodeHash.String())
+		}()
+	}
+
 	// Make sure the readOnly is only set if we aren't in readOnly yet.
 	// This also makes sure that the readOnly flag isn't removed for child calls.
 	if readOnly && !in.readOnly {

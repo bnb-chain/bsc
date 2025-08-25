@@ -121,7 +121,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	prevPool := gp.Gas() // Track remaining gas before first tx in block
 	for i, tx := range block.Transactions() {
 		//Debug helper: stop execution after processing tx index >=290 in block 50897362
-		if block.NumberU64() == 50897372 && uint64(i) >= 305 && p.config.EnableVerkleAtGenesis {
+		if block.NumberU64() == 50897372 && uint64(i) >= 304 && p.config.EnableVerkleAtGenesis {
 			log.Warn("Debug stop reached", "block", block.NumberU64(), "txIndex", i, "txHash", tx.Hash())
 			os.Exit(0)
 		}
@@ -280,38 +280,38 @@ func MakeReceipt(evm *vm.EVM, result *ExecutionResult, statedb *state.StateDB, b
 	for _, receiptProcessor := range receiptProcessors {
 		receiptProcessor.Apply(receipt)
 	}
-	if blockNumber.Uint64() == 50897372 {
-		// ===== DEBUG RECEIPT DUMP (compare opt-on/off) =====
-		{
-			shortHash := func(h common.Hash) string { return h.String()[:10] }
-			// compute simple hash for each log to avoid huge output
-			logHashes := make([]common.Hash, len(receipt.Logs))
-			for i, lg := range receipt.Logs {
-				logHashes[i] = crypto.Keccak256Hash(append(lg.Address.Bytes(), lg.Data...))
-			}
-
-			tag := "[REC DEBUG][OPT-OFF]"
-			if evm.Config.EnableOpcodeOptimizations {
-				tag = "[REC DEBUG][OPT-ON]"
-			}
-
-			log.Error(tag,
-				"blk", blockNumber,
-				"txIdx", receipt.TransactionIndex,
-				"tx", shortHash(receipt.TxHash),
-				"status", receipt.Status,
-				"gasUsed", receipt.GasUsed,
-				"cumGas", receipt.CumulativeGasUsed,
-				"effectiveGasPrice", receipt.EffectiveGasPrice,
-				"contractAddr", receipt.ContractAddress,
-				"blobGasUsed", receipt.BlobGasUsed,
-				"blobGasPrice", receipt.BlobGasPrice,
-				"logsLen", len(receipt.Logs),
-				"bloomPrefix", fmt.Sprintf("%x", receipt.Bloom[:4]),
-				"logsHash", logHashes,
-			)
-		}
-	}
+	//if blockNumber.Uint64() == 50897372 {
+	//	// ===== DEBUG RECEIPT DUMP (compare opt-on/off) =====
+	//	{
+	//		shortHash := func(h common.Hash) string { return h.String()[:10] }
+	//		// compute simple hash for each log to avoid huge output
+	//		logHashes := make([]common.Hash, len(receipt.Logs))
+	//		for i, lg := range receipt.Logs {
+	//			logHashes[i] = crypto.Keccak256Hash(append(lg.Address.Bytes(), lg.Data...))
+	//		}
+	//
+	//		tag := "[REC DEBUG][OPT-OFF]"
+	//		if evm.Config.EnableOpcodeOptimizations {
+	//			tag = "[REC DEBUG][OPT-ON]"
+	//		}
+	//
+	//		log.Error(tag,
+	//			"blk", blockNumber,
+	//			"txIdx", receipt.TransactionIndex,
+	//			"tx", shortHash(receipt.TxHash),
+	//			"status", receipt.Status,
+	//			"gasUsed", receipt.GasUsed,
+	//			"cumGas", receipt.CumulativeGasUsed,
+	//			"effectiveGasPrice", receipt.EffectiveGasPrice,
+	//			"contractAddr", receipt.ContractAddress,
+	//			"blobGasUsed", receipt.BlobGasUsed,
+	//			"blobGasPrice", receipt.BlobGasPrice,
+	//			"logsLen", len(receipt.Logs),
+	//			"bloomPrefix", fmt.Sprintf("%x", receipt.Bloom[:4]),
+	//			"logsHash", logHashes,
+	//		)
+	//	}
+	//}
 	return receipt
 }
 
