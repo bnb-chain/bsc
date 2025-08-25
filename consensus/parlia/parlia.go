@@ -2345,7 +2345,7 @@ func (p *Parlia) checkNanoBlackList(state vm.StateDB, header *types.Header) erro
 
 func (p *Parlia) detectNewVersionWithFork(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB) {
 	// Ignore blocks that are considered too old
-	const maxBlockReceiveDelay = 3 * time.Second
+	const maxBlockReceiveDelay = 10 * time.Second
 	blockTime := time.UnixMilli(int64(header.MilliTimestamp()))
 	if time.Since(blockTime) > maxBlockReceiveDelay {
 		return
