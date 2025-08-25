@@ -305,6 +305,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// Only charge gas if we haven't already charged the pre-calculated static gas
 		cost = operation.constantGas // For tracing todo: move into if
 		totalCost += cost
+		// New debug line: print opcode, pc and its static gas each step
+		log.Error("[OP STATIC]", "pc", pc, "opcode", op.String(), "staticGas", cost, "totalCost", totalCost)
 		// 暂不打印，改为在动态 gas 处理后统一输出（保证包含 dynamic 与 chunk 等影响后的净消耗）
 		if !blockChargeActive {
 
