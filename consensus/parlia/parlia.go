@@ -1357,19 +1357,8 @@ func (p *Parlia) EstimateGasReservedForSystemTxs(chain consensus.ChainHeaderRead
 func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, txs *[]*types.Transaction,
 	uncles []*types.Header, _ []*types.Withdrawal, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
 	// warn if not in majority fork
-	number := header.Number.Uint64()
-	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
-	if err != nil {
-		return err
-	}
-	nextForkHash := forkid.NextForkHash(p.chainConfig, p.genesisHash, chain.GenesisHeader().Time, number, header.Time)
-	if !snap.isMajorityFork(hex.EncodeToString(nextForkHash[:])) {
-		logger := log.Debug
-		if state.NoTrie() {
-			logger = log.Warn
-		}
-		logger("there is a possible fork, and your client is not the majority. Please check...", "nextForkHash", hex.EncodeToString(nextForkHash[:]))
-	}
+	p.detectNewVersionWithFork(chain, header, state)
+
 	// If the block is an epoch end block, verify the validator list
 	// The verification can only be done when the state is ready, it can't be done in VerifyHeader.
 	if err := p.verifyValidators(chain, header); err != nil {
@@ -1407,6 +1396,10 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		}
 	}
 	if header.Difficulty.Cmp(diffInTurn) != 0 {
+		snap, err := p.snapshot(chain, header.Number.Uint64()-1, header.ParentHash, nil)
+		if err != nil {
+			return err
+		}
 		spoiledVal := snap.inturnValidator()
 		signedRecently := false
 		if p.chainConfig.IsPlato(header.Number) {
@@ -2348,6 +2341,31 @@ func (p *Parlia) checkNanoBlackList(state vm.StateDB, header *types.Header) erro
 		}
 	}
 	return nil
+}
+
+func (p *Parlia) detectNewVersionWithFork(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB) {
+	// Ignore blocks that are considered too old
+	const maxBlockReceiveDelay = 10 * time.Second
+	blockTime := time.UnixMilli(int64(header.MilliTimestamp()))
+	if time.Since(blockTime) > maxBlockReceiveDelay {
+		return
+	}
+
+	// If the fork is not a majority, log a warning or debug message
+	number := header.Number.Uint64()
+	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
+	if err != nil {
+		return
+	}
+	nextForkHash := forkid.NextForkHash(p.chainConfig, p.genesisHash, chain.GenesisHeader().Time, number, header.Time)
+	forkHashHex := hex.EncodeToString(nextForkHash[:])
+	if !snap.isMajorityFork(forkHashHex) {
+		logFn := log.Debug
+		if state.NoTrie() {
+			logFn = log.Warn
+		}
+		logFn("possible fork detected: client is not in majority", "nextForkHash", forkHashHex)
+	}
 }
 
 // chain context
