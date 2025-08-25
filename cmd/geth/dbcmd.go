@@ -1600,6 +1600,8 @@ func migrateDatabase(ctx *cli.Context) error {
 				version = byte(versionVal)
 			}
 		}
+		os.Setenv("GODEBUG", "randseednop=0")
+		rand.Seed(int64(version))
 	} else {
 		// In-place mode: no arguments expected
 		if ctx.NArg() != 0 {
