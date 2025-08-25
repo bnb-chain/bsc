@@ -526,11 +526,9 @@ func (in *EVMInterpreter) calculateUsedBlockGas(contract *Contract, startPC, end
 		// 退款只应计算到“真实执行到的最后一条指令”为止，
 		// 因此在累计完本条指令的静态 gas 后立即停止扫描。
 		switch op {
-		case JUMP, JUMPI, STOP, RETURN, REVERT, INVALID,
+		case JUMP, STOP, RETURN, REVERT, INVALID,
 			Swap2Swap1PopJump, // SWAP2SWAP1POPJUMP - 超指令，内部包含跳转
-			Push2JumpI,        // PUSH2JUMPI - 超指令，内部包含条件跳转
-			PopJump,           // POPJUMP    - 超指令，内部包含跳转
-			JumpIfZero:        // JUMPIFZERO - 超指令，内部包含条件跳转
+			PopJump:           // POPJUMP    - 超指令，内部包含跳转
 			return totalGas
 		}
 
