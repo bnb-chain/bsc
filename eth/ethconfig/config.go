@@ -155,8 +155,6 @@ type Config struct {
 	// the oldest unpruned block number.
 	// !!Deprecated: use 'BlockHistory' instead.
 	PruneAncientData bool
-	// FreezerBatchLimit is the maximum number of blocks to freeze in one batch
-	FreezerBatchLimit uint64
 
 	TrieCleanCache  int
 	TrieDirtyCache  int

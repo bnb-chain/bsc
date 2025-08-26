@@ -2020,9 +2020,6 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		log.Warn(fmt.Sprintf("Option --%s is deprecated. Please using --%s in the future", PruneAncientDataFlag.Name, BlockHistoryFlag.Name))
 		cfg.PruneAncientData = ctx.Bool(PruneAncientDataFlag.Name)
 	}
-	if !ctx.Bool(MiningEnabledFlag.Name) {
-		cfg.FreezerBatchLimit = rawdb.MaxFreezerBatchLimit
-	}
 	if ctx.IsSet(EraFlag.Name) {
 		cfg.DatabaseEra = ctx.String(EraFlag.Name)
 	}

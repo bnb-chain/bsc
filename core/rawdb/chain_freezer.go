@@ -38,15 +38,17 @@ const (
 	// chain progression that might permit new blocks to be frozen into immutable
 	// storage.
 	freezerRecheckInterval = time.Minute
-	MaxFreezerBatchLimit   = 30000
+
+	// TODO(galaio): For BSC, the 0.75 interval and freezing of 30,000 blocks will seriously affect performance.
+	// It is temporarily adjusted to 100, and improves the freezing performance later.
+	SlowFreezerBatchLimit = 100
+	SlowdownFreezeWindow  = 24 * time.Hour
 )
 
 var (
 	// freezerBatchLimit is the maximum number of blocks to freeze in one batch
 	// before doing an fsync and deleting it from the key-value store.
-	// TODO(galaio): For BSC, the 0.75 interval and freezing of 30,000 blocks will seriously affect performance.
-	// It is temporarily adjusted to 100, and improves the freezing performance later.
-	freezerBatchLimit uint64 = 100
+	freezerBatchLimit uint64 = 30000
 )
 
 var (
@@ -271,6 +273,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 				backoff = true
 				continue
 			}
+			trySlowdownFreeze(head)
 
 			first = frozen
 			last = threshold
@@ -310,6 +313,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 				backoff = true
 				continue
 			}
+			trySlowdownFreeze(head)
 			first, _ = f.Ancients()
 			last = *number - threshold
 			if last-first > freezerBatchLimit {
@@ -599,10 +603,6 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 }
 
 func (f *chainFreezer) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
-	if env.BatchLimit > freezerBatchLimit {
-		log.Info("Freezer batch limit is set to", "new", env.BatchLimit, "old", freezerBatchLimit)
-		freezerBatchLimit = env.BatchLimit
-	}
 	f.freezeEnv.Store(env)
 	f.blockHistory.Store(blockHistory)
 	return nil
@@ -741,4 +741,12 @@ func (f *chainFreezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) e
 
 func (f *chainFreezer) SyncAncient() error {
 	return f.ancients.SyncAncient()
+}
+
+func trySlowdownFreeze(head *types.Header) {
+	if time.Since(time.Unix(int64(head.Time), 0)) > SlowdownFreezeWindow {
+		return
+	}
+	log.Info("Freezer need to slow down", "number", head.Number, "time", head.Time, "new", freezerBatchLimit)
+	freezerBatchLimit = SlowFreezerBatchLimit
 }
