@@ -38,6 +38,7 @@ const (
 	// chain progression that might permit new blocks to be frozen into immutable
 	// storage.
 	freezerRecheckInterval = time.Minute
+	MaxFreezerBatchLimit   = 30000
 )
 
 var (
