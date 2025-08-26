@@ -705,8 +705,14 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 	} else {
 		if prevEnv == nil {
 			state.StartPrefetcher("miner", nil)
-		} else {
+		} else if prevEnv.header.Number.Uint64() == header.Number.Uint64() {
 			state.TransferPrefetcher(prevEnv.state)
+		} else {
+			// in some corner case, new block was just imported and preEnv was for the previous block
+			// in this case, the prefetcher can not be transferred
+			log.Debug("new block was just imported, start prefetcher from scratch",
+				"prev number", prevEnv.header.Number.Uint64(), "cur number", header.Number.Uint64())
+			state.StartPrefetcher("miner", nil)
 		}
 	}
 
