@@ -747,6 +747,9 @@ func trySlowdownFreeze(head *types.Header) {
 	if time.Since(time.Unix(int64(head.Time), 0)) > SlowdownFreezeWindow {
 		return
 	}
-	log.Info("Freezer need to slow down", "number", head.Number, "time", head.Time, "new", freezerBatchLimit)
+	if freezerBatchLimit == SlowFreezerBatchLimit {
+		return
+	}
+	log.Info("Freezer need to slow down", "number", head.Number, "time", head.Time, "new", SlowFreezerBatchLimit)
 	freezerBatchLimit = SlowFreezerBatchLimit
 }

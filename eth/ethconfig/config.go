@@ -155,14 +155,13 @@ type Config struct {
 	// the oldest unpruned block number.
 	// !!Deprecated: use 'BlockHistory' instead.
 	PruneAncientData bool
-
-	TrieCleanCache  int
-	TrieDirtyCache  int
-	TrieTimeout     time.Duration
-	SnapshotCache   int
-	TriesInMemory   uint64
-	TriesVerifyMode core.VerifyMode
-	Preimages       bool
+	TrieCleanCache   int
+	TrieDirtyCache   int
+	TrieTimeout      time.Duration
+	SnapshotCache    int
+	TriesInMemory    uint64
+	TriesVerifyMode  core.VerifyMode
+	Preimages        bool
 
 	// This is the number of blocks for which logs will be cached in the filter system.
 	FilterLogCacheSize int
