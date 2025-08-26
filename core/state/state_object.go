@@ -40,7 +40,7 @@ func (s Storage) Copy() Storage {
 	return maps.Clone(s)
 }
 
-// StateObject represents an Ethereum account which is being modified.
+// stateObject represents an Ethereum account which is being modified.
 //
 // The usage pattern is as follows:
 // - First you need to obtain a state object.
@@ -98,7 +98,6 @@ func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *s
 	if acct == nil {
 		acct = types.NewEmptyStateAccount()
 	}
-
 	return &stateObject{
 		db:                 db,
 		address:            address,
@@ -106,8 +105,8 @@ func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *s
 		origin:             origin,
 		data:               *acct,
 		originStorage:      make(Storage),
-		pendingStorage:     make(Storage),
 		dirtyStorage:       make(Storage),
+		pendingStorage:     make(Storage),
 		uncommittedStorage: make(Storage),
 	}
 }

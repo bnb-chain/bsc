@@ -40,7 +40,7 @@ func TxOptsCheck(o types.TransactionOpts, blockNumber uint64, timeStamp uint64, 
 func TxOptsCheckStorage(o types.TransactionOpts, statedb *state.StateDB) error {
 	for address, accountStorage := range o.KnownAccounts {
 		if accountStorage.StorageRoot != nil {
-			rootHash := statedb.GetRoot(address)
+			rootHash := statedb.GetStorageRoot(address)
 			if rootHash != *accountStorage.StorageRoot {
 				return errors.New("storage root hash condition not met")
 			}
