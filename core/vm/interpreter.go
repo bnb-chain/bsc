@@ -279,6 +279,20 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 						// 扣费成功后，再正式切换 currentBlock
 						currentBlock = block
 						nextBlockPC = block.EndPC
+						log.Error("[BASIC BLOCK START]",
+							"pc", pc,
+							"blockStart", currentBlock.StartPC,
+							"blockEnd", currentBlock.EndPC,
+							"staticGas", currentBlock.StaticGas,
+							"gasAfterDeduction", contract.Gas,
+							"depth", in.evm.depth,
+							"codeHash", contract.CodeHash.String(),
+							"contractAddr", contract.Address().String(),
+							"codeSize", len(contract.Code),
+							"blockOpcodes", formatBlockOpcodes(currentBlock.Opcodes),
+							"opcodeCount", len(currentBlock.Opcodes),
+							"nextBlockPC", nextBlockPC,
+							"enableOpt", blockChargeActive)
 					} else {
 						blockChargeActive = false
 						currentBlock = nil
@@ -781,4 +795,29 @@ func (in *EVMInterpreter) tryFallbackForSuperInstruction(pc *uint64, seq []OpCod
 		log.Error("[FALLBACK-EXEC]", "ok", true, "nextPC", *pc, "gasAfter", contract.Gas)
 	}
 	return nil
+}
+
+func formatBlockOpcodes(opcodes []byte) string {
+	if len(opcodes) == 0 {
+		return "[]"
+	}
+
+	var result []string
+	i := 0
+
+	for i < len(opcodes) {
+		opByte := opcodes[i]
+		op := OpCode(opByte)
+		result = append(result, op.String())
+
+		// 跳过PUSH指令的立即数
+		if op >= PUSH1 && op <= PUSH32 {
+			pushSize := int(op - PUSH1 + 1)
+			i += pushSize // 跳过立即数字节
+		}
+
+		i++
+	}
+
+	return "[" + strings.Join(result, ", ") + "]"
 }
