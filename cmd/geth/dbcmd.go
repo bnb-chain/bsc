@@ -2630,7 +2630,7 @@ func extractAllDataInOnePassExpand(sourceDB, chainDB, stateDB, snapDB, indexDB e
 		"version", version)
 
 	// Channel buffer sizes - balance memory usage vs throughput
-	const channelBufferSize = 20000 // Increased buffer for more threads
+	const channelBufferSize = 1000 // Reduced to prevent OOM
 
 	// Create channels for communication between goroutines
 	chainChannel := make(chan CategorizedData, channelBufferSize)
@@ -2659,8 +2659,8 @@ func extractAllDataInOnePassExpand(sourceDB, chainDB, stateDB, snapDB, indexDB e
 		}(writerID)
 	}
 
-	// State database writers (4 threads)
-	for i := 0; i < 10; i++ {
+	// State database writers (6 threads)
+	for i := 0; i < 6; i++ {
 		writerID := i + 1
 		wg.Add(1)
 		go func(id int) {
@@ -2672,7 +2672,7 @@ func extractAllDataInOnePassExpand(sourceDB, chainDB, stateDB, snapDB, indexDB e
 	}
 
 	// Snapshot database writers (6 threads - snapshot data is largest)
-	for i := 0; i < 8; i++ {
+	for i := 0; i < 6; i++ {
 		writerID := i + 1
 		wg.Add(1)
 		go func(id int) {
@@ -2684,7 +2684,7 @@ func extractAllDataInOnePassExpand(sourceDB, chainDB, stateDB, snapDB, indexDB e
 	}
 
 	// Transaction index database writers (4 threads)
-	for i := 0; i < 8; i++ {
+	for i := 0; i < 4; i++ {
 		writerID := i + 1
 		wg.Add(1)
 		go func(id int) {
@@ -2850,7 +2850,7 @@ func extractMultiDBToMultiDBExpand(sourceDB, targetChainDB, targetStateDB, targe
 		"version", version)
 
 	// Channel buffer sizes
-	const channelBufferSize = 20000
+	const channelBufferSize = 6000 // Reduced to prevent OOM
 
 	// Create channels for communication between goroutines
 	chainChannel := make(chan CategorizedData, channelBufferSize)
@@ -2880,7 +2880,7 @@ func extractMultiDBToMultiDBExpand(sourceDB, targetChainDB, targetStateDB, targe
 	}
 
 	// State database writers (4 threads)
-	for i := 0; i < 8; i++ {
+	for i := 0; i < 10; i++ {
 		writerID := i + 1
 		wg.Add(1)
 		go func(id int) {
@@ -2892,7 +2892,7 @@ func extractMultiDBToMultiDBExpand(sourceDB, targetChainDB, targetStateDB, targe
 	}
 
 	// Snapshot database writers (6 threads - snapshot data is largest)
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 5; i++ {
 		writerID := i + 1
 		wg.Add(1)
 		go func(id int) {
