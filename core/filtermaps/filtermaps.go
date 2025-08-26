@@ -400,6 +400,15 @@ func (f *FilterMaps) init() error {
 	if initBlockNumber < f.historyCutoff {
 		return errors.New("cannot start indexing before history cutoff point")
 	}
+	if initBlockNumber < f.targetView.headNumber {
+		// genesis block still exists even after pruning
+		if initBlockNumber == 0 {
+			initBlockNumber = 1
+		}
+		if f.indexedView.chain.GetCanonicalHash(initBlockNumber) == (common.Hash{}) {
+			return fmt.Errorf("cannot start indexing: blockNumber=%d is pruned", initBlockNumber)
+		}
+	}
 	batch := f.db.NewBatch()
 	for epoch := range bestLen {
 		cp := checkpoints[bestIdx][epoch]
