@@ -2630,7 +2630,7 @@ func extractAllDataInOnePassExpand(sourceDB, chainDB, stateDB, snapDB, indexDB e
 		"version", version)
 
 	// Channel buffer sizes - balance memory usage vs throughput
-	const channelBufferSize = 1000 // Reduced to prevent OOM
+	const channelBufferSize = 8000 // Increased for better throughput
 
 	// Create channels for communication between goroutines
 	chainChannel := make(chan CategorizedData, channelBufferSize)
@@ -2659,8 +2659,8 @@ func extractAllDataInOnePassExpand(sourceDB, chainDB, stateDB, snapDB, indexDB e
 		}(writerID)
 	}
 
-	// State database writers (6 threads)
-	for i := 0; i < 6; i++ {
+	// State database writers (20 threads - state is the slowest)
+	for i := 0; i < 20; i++ {
 		writerID := i + 1
 		wg.Add(1)
 		go func(id int) {
@@ -2671,8 +2671,8 @@ func extractAllDataInOnePassExpand(sourceDB, chainDB, stateDB, snapDB, indexDB e
 		}(writerID)
 	}
 
-	// Snapshot database writers (6 threads - snapshot data is largest)
-	for i := 0; i < 6; i++ {
+	// Snapshot database writers (15 threads - snapshot data is largest)
+	for i := 0; i < 15; i++ {
 		writerID := i + 1
 		wg.Add(1)
 		go func(id int) {
@@ -2683,8 +2683,8 @@ func extractAllDataInOnePassExpand(sourceDB, chainDB, stateDB, snapDB, indexDB e
 		}(writerID)
 	}
 
-	// Transaction index database writers (4 threads)
-	for i := 0; i < 4; i++ {
+	// Transaction index database writers (10 threads)
+	for i := 0; i < 10; i++ {
 		writerID := i + 1
 		wg.Add(1)
 		go func(id int) {
@@ -2846,11 +2846,11 @@ func extractAllDataInOnePassExpand(sourceDB, chainDB, stateDB, snapDB, indexDB e
 // extractMultiDBToMultiDBExpand extracts data from multi-database to multi-database with transformation
 func extractMultiDBToMultiDBExpand(sourceDB, targetChainDB, targetStateDB, targetSnapDB, targetIndexDB ethdb.Database, stats *MigrationStats, version byte) error {
 	log.Info("🚀 Starting parallel multi-database to multi-database extraction with transformation",
-		"architecture", "4 parallel scanners + 18 writers (4×chain,4×state,6×snapshot,4×txindex) = 22 threads",
+		"architecture", "4 parallel scanners + 53 writers (8×chain,20×state,15×snapshot,10×txindex) = 57 threads",
 		"version", version)
 
 	// Channel buffer sizes
-	const channelBufferSize = 6000 // Reduced to prevent OOM
+	const channelBufferSize = 15000 // Increased for high-throughput writing
 
 	// Create channels for communication between goroutines
 	chainChannel := make(chan CategorizedData, channelBufferSize)
@@ -2859,16 +2859,16 @@ func extractMultiDBToMultiDBExpand(sourceDB, targetChainDB, targetStateDB, targe
 	indexChannel := make(chan CategorizedData, channelBufferSize)
 
 	// Error channels to collect errors from goroutines
-	errorChannel := make(chan error, 22) // 4 readers + 18 writers
+	errorChannel := make(chan error, 57) // 4 readers + 53 writers
 
 	// WaitGroup to coordinate all goroutines
 	var wg sync.WaitGroup
 
-	// Start async writer goroutines (same as before)
-	log.Info("🚀 Starting async writer goroutines (4×chain,4×state,6×snapshot,4×txindex)...")
+	// Start async writer goroutines (massively increased for write throughput)
+	log.Info("🚀 Starting async writer goroutines (8×chain,20×state,15×snapshot,10×txindex)...")
 
-	// Chain database writers (4 threads)
-	for i := 0; i < 3; i++ {
+	// Chain database writers (8 threads)
+	for i := 0; i < 8; i++ {
 		writerID := i + 1
 		wg.Add(1)
 		go func(id int) {
