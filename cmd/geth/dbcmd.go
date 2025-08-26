@@ -2630,7 +2630,7 @@ func extractAllDataInOnePassExpand(sourceDB, chainDB, stateDB, snapDB, indexDB e
 		"version", version)
 
 	// Channel buffer sizes - balance memory usage vs throughput
-	const channelBufferSize = 8000 // Increased for better throughput
+	const channelBufferSize = 11000 // Increased for better throughput
 
 	// Create channels for communication between goroutines
 	chainChannel := make(chan CategorizedData, channelBufferSize)
@@ -2648,7 +2648,7 @@ func extractAllDataInOnePassExpand(sourceDB, chainDB, stateDB, snapDB, indexDB e
 	log.Info("🚀 Starting async writer goroutines (4×chain,4×state,6×snapshot,4×txindex)...")
 
 	// Chain database writers (4 threads)
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 5; i++ {
 		writerID := i + 1
 		wg.Add(1)
 		go func(id int) {
@@ -2684,7 +2684,7 @@ func extractAllDataInOnePassExpand(sourceDB, chainDB, stateDB, snapDB, indexDB e
 	}
 
 	// Transaction index database writers (10 threads)
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 11; i++ {
 		writerID := i + 1
 		wg.Add(1)
 		go func(id int) {
