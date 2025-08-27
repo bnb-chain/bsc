@@ -488,8 +488,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
 		if err != nil {
-			if blockChargeActive && err != errStopToken {
+			//for debug only
+			if err != errStopToken && !(op == REVERT && err == ErrExecutionReverted) {
 				log.Error("execute error", "pc", pc, "op", op.String(), "cost", cost, "totalCost", totalCost, "contract.Gas", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+			}
+			if blockChargeActive && isPreDeductedGasRelated(err, op) {
 				in.refundUnusedBlockGas(contract, pc-1, currentBlock)
 				if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
 					log.Error("error encounters during superinstruction", "op", op.String())
@@ -823,4 +826,11 @@ func formatBlockOpcodes(opcodes []byte) string {
 	}
 
 	return "[" + strings.Join(result, ", ") + "]"
+}
+
+func isPreDeductedGasRelated(err error, op OpCode) bool {
+	return err == ErrOutOfGas ||
+		err == ErrCodeStoreOutOfGas ||
+		err == ErrInsufficientBalance ||
+		err == ErrGasUintOverflow
 }
