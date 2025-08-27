@@ -540,11 +540,7 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 		}
 	}
 	// Ensure that a previous crash in SetHead doesn't leave extra ancients
-	if frozen, err := bc.db.ItemAmountInAncient(); err == nil && frozen > 0 {
-		frozen, err = bc.db.Ancients()
-		if err != nil {
-			return nil, err
-		}
+	if frozen, err := bc.db.Ancients(); err == nil && frozen > 0 {
 		var (
 			needRewind bool
 			low        uint64

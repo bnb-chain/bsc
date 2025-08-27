@@ -104,16 +104,6 @@ func (db *Database) AncientSize(kind string) (uint64, error) {
 	panic("implement me")
 }
 
-func (db *Database) ItemAmountInAncient() (uint64, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (db *Database) AncientOffSet() uint64 {
-	//TODO implement me
-	panic("implement me")
-}
-
 func (db *Database) ReadAncients(fn func(ethdb.AncientReaderOp) error) (err error) {
 	//TODO implement me
 	panic("implement me")

@@ -697,16 +697,6 @@ func (f *chainFreezer) Ancients() (uint64, error) {
 	return f.ancients.Ancients()
 }
 
-// ItemAmountInAncient returns the actual length of current ancientDB.
-func (f *chainFreezer) ItemAmountInAncient() (uint64, error) {
-	return f.ancients.ItemAmountInAncient()
-}
-
-// AncientOffSet returns the offset of current ancientDB.
-func (f *chainFreezer) AncientOffSet() uint64 {
-	return f.ancients.AncientOffSet()
-}
-
 func (f *chainFreezer) Tail() (uint64, error) {
 	return f.ancients.Tail()
 }

@@ -143,11 +143,6 @@ func (db *nofreezedb) Ancients() (uint64, error) {
 	return 0, errNotSupported
 }
 
-// ItemAmountInAncient returns an error as we don't have a backing chain freezer.
-func (db *nofreezedb) ItemAmountInAncient() (uint64, error) {
-	return 0, errNotSupported
-}
-
 // Tail returns an error as we don't have a backing chain freezer.
 func (db *nofreezedb) Tail() (uint64, error) {
 	return 0, errNotSupported
@@ -226,10 +221,6 @@ func (db *nofreezedb) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) 
 	return fn(db)
 }
 
-func (db *nofreezedb) AncientOffSet() uint64 {
-	return 0
-}
-
 // AncientDatadir returns an error as we don't have a backing chain freezer.
 func (db *nofreezedb) AncientDatadir() (string, error) {
 	return "", errNotSupported
@@ -261,11 +252,6 @@ func (db *emptyfreezedb) AncientRange(kind string, start, max, maxByteSize uint6
 
 // Ancients returns nil for pruned db that we don't have a backing chain freezer.
 func (db *emptyfreezedb) Ancients() (uint64, error) {
-	return 0, nil
-}
-
-// ItemAmountInAncient returns nil for pruned db that we don't have a backing chain freezer.
-func (db *emptyfreezedb) ItemAmountInAncient() (uint64, error) {
 	return 0, nil
 }
 
@@ -316,7 +302,6 @@ func (db *emptyfreezedb) HasSeparateStateStore() bool        { return false }
 func (db *emptyfreezedb) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {
 	return nil
 }
-func (db *emptyfreezedb) AncientOffSet() uint64 { return 0 }
 
 // AncientDatadir returns nil for pruned db that we don't have a backing chain freezer.
 func (db *emptyfreezedb) AncientDatadir() (string, error) {

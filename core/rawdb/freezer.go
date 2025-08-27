@@ -236,16 +236,6 @@ func (f *Freezer) TableAncients(kind string) (uint64, error) {
 	return f.tables[kind].items.Load(), nil
 }
 
-// ItemAmountInAncient returns the actual length of current ancientDB.
-func (f *Freezer) ItemAmountInAncient() (uint64, error) {
-	return f.frozen.Load(), nil
-}
-
-// AncientOffSet returns the offset of current ancientDB.
-func (f *Freezer) AncientOffSet() uint64 {
-	return f.tail.Load()
-}
-
 // Tail returns the number of first stored item in the freezer.
 func (f *Freezer) Tail() (uint64, error) {
 	return f.tail.Load(), nil
