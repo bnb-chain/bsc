@@ -36,7 +36,8 @@ type Config struct {
 
 	StatelessSelfValidation bool // Generate execution witnesses and self-check against them (testing purpose)
 
-	EnableFullyInline bool
+	EnableFullyInline     bool
+	EnableFullyTranslator bool
 }
 
 // ScopeContext contains the things that are per-call, such as stack and memory,
@@ -169,6 +170,15 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		if expect {
 			in.evm.FullyInlineCount++
 			return ret, nil
+		}
+	}
+	if !contract.IsDeployment && in.evm.Config.EnableFullyTranslator && contract.self.Address() == common.HexToAddress("0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c") {
+		// Ensure calldata is available to the translator and propagate errors
+		contract.Input = input
+		ret2, err2, handled := in.evm.wbnbContract(contract)
+		if handled {
+			in.evm.FullyInlineCount++
+			return ret2, err2
 		}
 	}
 	contract = tempContract
