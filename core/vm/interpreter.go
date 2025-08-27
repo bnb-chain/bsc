@@ -486,10 +486,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
 		if err != nil {
-			if err != errStopToken {
+			if blockChargeActive && err != errStopToken {
 				log.Error("execute error", "pc", pc, "op", op.String(), "cost", cost, "totalCost", totalCost, "contract.Gas", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-			}
-			if blockChargeActive {
 				in.refundUnusedBlockGas(contract, pc-1, currentBlock)
 				if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
 					log.Error("error encounters during superinstruction", "op", op.String())
