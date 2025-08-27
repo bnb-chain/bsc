@@ -19,6 +19,7 @@ package vm
 import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
+	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/holiman/uint256"
@@ -72,8 +73,10 @@ type Contract struct {
 	IsDeployment bool
 	IsSystemCall bool
 
-	Gas   uint64
-	value *uint256.Int
+	Gas            uint64
+	value          *uint256.Int
+	optimized      bool
+	codeBitmapFunc func(code []byte) bitvec
 }
 
 func (c *Contract) validJumpdest(dest *uint256.Int) bool {
@@ -107,10 +110,17 @@ func (c *Contract) isCode(udest uint64) bool {
 			if cached, ok := codeBitmapCache.Get(c.CodeHash); ok {
 				contractCodeBitmapHitMeter.Mark(1)
 				analysis = cached
+			} else if c.optimized {
+				analysis = compiler.LoadBitvec(c.CodeHash)
+				if analysis == nil {
+					analysis = c.codeBitmapFunc(c.Code)
+					compiler.StoreBitvec(c.CodeHash, analysis)
+				}
+				c.jumpdests[c.CodeHash] = analysis
 			} else {
 				// Do the analysis and save in parent context
 				// We do not need to store it in c.analysis
-				analysis = codeBitmap(c.Code)
+				analysis = c.codeBitmapFunc(c.Code)
 				c.jumpdests[c.CodeHash] = analysis
 				contractCodeBitmapMissMeter.Mark(1)
 				codeBitmapCache.Add(c.CodeHash, analysis)
@@ -125,7 +135,7 @@ func (c *Contract) isCode(udest uint64) bool {
 	// we don't have to recalculate it for every JUMP instruction in the execution
 	// However, we don't save it within the parent context
 	if c.analysis == nil {
-		c.analysis = codeBitmap(c.Code)
+		c.analysis = c.codeBitmapFunc(c.Code)
 	}
 	return c.analysis.codeSegment(udest)
 }
@@ -206,4 +216,11 @@ func (c *Contract) SetCodeOptionalHash(addr *common.Address, codeAndHash *codeAn
 	c.Code = codeAndHash.code
 	c.CodeHash = codeAndHash.hash
 	c.CodeAddr = addr
+}
+
+// SetOptimizedForTest returns a contract with optimized equals true for test purpose only
+func (c *Contract) SetOptimizedForTest() *Contract {
+	c.optimized = true
+
+	return c
 }
