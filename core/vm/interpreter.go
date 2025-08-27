@@ -216,14 +216,16 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		blockChargeActive bool   // static gas precharge mode flag
 		totalCost         uint64 // for debug only
 		// copies used by tracer
-		pcCopy          uint64 // needed for the deferred EVMLogger
-		gasCopy         uint64 // for EVMLogger to log gas remaining before execution
-		logged          bool   // deferred EVMLogger should ignore already logged steps
-		res             []byte // result of the opcode execution function
-		debug           = in.evm.Config.Tracer != nil
-		currentBlock    *compiler.BasicBlock // 当前block（缓存）
-		nextBlockPC     uint64               // 下一个block的起始PC（用于边界检测）
-		totalDynamicGas uint64               // 本次调用累积的动态gas
+		pcCopy               uint64 // needed for the deferred EVMLogger
+		gasCopy              uint64 // for EVMLogger to log gas remaining before execution
+		logged               bool   // deferred EVMLogger should ignore already logged steps
+		res                  []byte // result of the opcode execution function
+		debug                = in.evm.Config.Tracer != nil
+		currentBlock         *compiler.BasicBlock // 当前block（缓存）
+		nextBlockPC          uint64               // 下一个block的起始PC（用于边界检测）
+		totalDynamicGas      uint64               // 本次调用累积的动态gas
+		retryDynamicGasCache = make(map[string]uint64)
+		isRetryMode          bool // flag to indicate if we're in retry mode for cache optimization
 	)
 	// initialise blockChargeActive to whether opcode optimizations are enabled
 	blockChargeActive = in.evm.Config.EnableOpcodeOptimizations
@@ -440,11 +442,25 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				log.Error("operation.dynamicGas error", "pc", pc, "op", op.String(), "cost", cost, "totalCost", totalCost, "contract.CodeHash", contract.CodeHash.String(), "contract.Gas", contract.Gas, "err", err.Error())
 				return nil, fmt.Errorf("%w: %v", ErrOutOfGas, err)
 			}
+
+			// Only check cache when in retry mode to avoid performance impact during normal execution
+			if isRetryMode {
+				cacheKey := makeRetryGasKey(contract, pc, op)
+				if cachedDynamicCost, isRetry := retryDynamicGasCache[cacheKey]; isRetry {
+					dynamicCost = cachedDynamicCost
+					delete(retryDynamicGasCache, cacheKey)
+					log.Error("used cache dynamic cost, clean up", "pc", pc, "op", op.String(), dynamicCost, "dynamicCost")
+				}
+			}
+
 			cost += dynamicCost // for tracing
 			totalDynamicGas += dynamicCost
 			// for tracing: this gas consumption event is emitted below in the debug section.
 			if contract.Gas < dynamicCost {
 				if blockChargeActive {
+					cacheKey := makeRetryGasKey(contract, pc, op)
+					retryDynamicGasCache[cacheKey] = dynamicCost
+					isRetryMode = true // Set retry mode before entering retry
 					in.refundUnusedBlockGas(contract, pc-1, currentBlock)
 					if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
 						log.Error("error encounters during superinstruction", "op", op.String())
@@ -468,6 +484,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				return nil, ErrOutOfGas
 			} else {
 				contract.Gas -= dynamicCost
+				// Reset retry mode on successful gas consumption
+				isRetryMode = false
 			}
 		}
 
@@ -514,6 +532,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			}
 			break
 		}
+		// Reset retry mode at the end of each loop iteration for clean state
+		isRetryMode = false
 		pc++
 	}
 
@@ -833,4 +853,8 @@ func isPreDeductedGasRelated(err error, op OpCode) bool {
 		err == ErrCodeStoreOutOfGas ||
 		err == ErrInsufficientBalance ||
 		err == ErrGasUintOverflow
+}
+
+func makeRetryGasKey(contract *Contract, pc uint64, op OpCode) string {
+	return fmt.Sprintf("%s_%d_%s", contract.CodeHash.Hex(), pc, op.String())
 }
