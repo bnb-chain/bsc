@@ -872,19 +872,8 @@ func opStaticCall(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) 
 }
 
 func opReturn(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	log.Error("[OPRETURN ENTRY]", "pc", *pc, "stackLen", scope.Stack.len())
-
-	// 立即检查栈状态，如果不足2个元素就直接返回错误，不要pop
-	if scope.Stack.len() < 2 {
-		log.Error("[OPRETURN EARLY EXIT]", "pc", *pc, "stackLen", scope.Stack.len())
-		return nil, &ErrStackUnderflow{stackLen: scope.Stack.len(), required: 2}
-	}
-
 	offset, size := scope.Stack.pop2()
-	log.Error("[OPRETURN AFTER POP]", "pc", *pc, "stackLen", scope.Stack.len(), "offset", offset.String(), "size", size.String())
-
 	ret := scope.Memory.GetCopy(offset.Uint64(), size.Uint64())
-	log.Error("[OPRETURN END]", "pc", *pc, "stackLen", scope.Stack.len())
 
 	return ret, errStopToken
 }

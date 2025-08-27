@@ -279,7 +279,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 						// 扣费成功后，再正式切换 currentBlock
 						currentBlock = block
 						nextBlockPC = block.EndPC
-						if in.evm.Context.BlockNumber.Uint64() == 50897372 && in.evm.StateDB.TxIndex() == 70 {
+						if in.evm.Context.BlockNumber.Uint64() == 50897402 && in.evm.StateDB.TxIndex() == 0 {
 							log.Error("[BASIC BLOCK START]",
 								"pc", pc,
 								"blockStart", currentBlock.StartPC,
