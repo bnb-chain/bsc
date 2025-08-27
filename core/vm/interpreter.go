@@ -369,7 +369,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 								continue
 							}
 						} else {
-							log.Error("overflow error encounters during normal instruction", "op", op.String())
+							log.Error("overflow error encounters during normal instruction", "pc", pc, "op", op.String(), "cost", cost, "totalCost", totalCost, "contract.CodeHash", contract.CodeHash.String(), "contract.Gas", contract.Gas)
 							blockChargeActive = false
 							currentBlock = nil
 							continue
@@ -395,7 +395,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 								continue
 							}
 						} else {
-							log.Error("overflow error encounters during normal instruction", "op", op.String())
+							log.Error("overflow error encounters during normal instruction", "pc", pc, "op", op.String(), "cost", cost, "totalCost", totalCost, "contract.CodeHash", contract.CodeHash.String(), "contract.Gas", contract.Gas)
 							blockChargeActive = false
 							currentBlock = nil
 							continue
@@ -426,6 +426,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 							continue
 						}
 					} else {
+						log.Error("operation.dynamicGas error with normal opcode", "pc", pc, "op", op.String(), "cost", cost, "totalCost", totalCost, "contract.CodeHash", contract.CodeHash.String(), "contract.Gas", contract.Gas, "err", err.Error())
 						blockChargeActive = false
 						currentBlock = nil
 						continue
@@ -452,6 +453,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 							continue
 						}
 					} else {
+						log.Error("Dynamic gas insufficient", "pc", pc, "op", op.String(), "stackLen", stack.len(), "dynamicCost", dynamicCost, "contract.Gas", contract.Gas)
 						blockChargeActive = false
 						currentBlock = nil
 						continue
@@ -498,6 +500,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 						continue
 					}
 				} else {
+					log.Error("Execute error retry", "pc", pc, "op", op.String(), "stackLen", stack.len(), "err", err.Error())
 					blockChargeActive = false
 					currentBlock = nil
 					continue

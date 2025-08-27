@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"github.com/ethereum/go-ethereum/log"
 	"math"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -574,11 +575,13 @@ func opPc(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte,
 }
 
 func opMsize(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	log.Error("[opMsize ENTRY]", "pc", *pc, "scope.Memory.Len()", scope.Memory.Len(), "scope.Contract.Gas", scope.Contract.Gas)
 	scope.Stack.push(new(uint256.Int).SetUint64(uint64(scope.Memory.Len())))
 	return nil, nil
 }
 
 func opGas(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	log.Error("[OPGAS ENTRY]", "pc", *pc, "scope.Contract.Gas", scope.Contract.Gas)
 	scope.Stack.push(new(uint256.Int).SetUint64(scope.Contract.Gas))
 	return nil, nil
 }
@@ -869,8 +872,19 @@ func opStaticCall(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) 
 }
 
 func opReturn(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	log.Error("[OPRETURN ENTRY]", "pc", *pc, "stackLen", scope.Stack.len())
+
+	// 立即检查栈状态，如果不足2个元素就直接返回错误，不要pop
+	if scope.Stack.len() < 2 {
+		log.Error("[OPRETURN EARLY EXIT]", "pc", *pc, "stackLen", scope.Stack.len())
+		return nil, &ErrStackUnderflow{stackLen: scope.Stack.len(), required: 2}
+	}
+
 	offset, size := scope.Stack.pop2()
+	log.Error("[OPRETURN AFTER POP]", "pc", *pc, "stackLen", scope.Stack.len(), "offset", offset.String(), "size", size.String())
+
 	ret := scope.Memory.GetCopy(offset.Uint64(), size.Uint64())
+	log.Error("[OPRETURN END]", "pc", *pc, "stackLen", scope.Stack.len())
 
 	return ret, errStopToken
 }
