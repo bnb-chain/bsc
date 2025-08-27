@@ -17,7 +17,6 @@
 package vm
 
 import (
-	"github.com/ethereum/go-ethereum/log"
 	"math"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -575,13 +574,13 @@ func opPc(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte,
 }
 
 func opMsize(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	log.Error("[opMsize ENTRY]", "pc", *pc, "scope.Memory.Len()", scope.Memory.Len(), "scope.Contract.Gas", scope.Contract.Gas)
+	//log.Error("[opMsize ENTRY]", "pc", *pc, "scope.Memory.Len()", scope.Memory.Len(), "scope.Contract.Gas", scope.Contract.Gas)
 	scope.Stack.push(new(uint256.Int).SetUint64(uint64(scope.Memory.Len())))
 	return nil, nil
 }
 
 func opGas(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	log.Error("[OPGAS ENTRY]", "pc", *pc, "scope.Contract.Gas", scope.Contract.Gas)
+	//log.Error("[OPGAS ENTRY]", "pc", *pc, "scope.Contract.Gas", scope.Contract.Gas)
 	scope.Stack.push(new(uint256.Int).SetUint64(scope.Contract.Gas))
 	return nil, nil
 }
