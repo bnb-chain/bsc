@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/metrics"
@@ -41,7 +40,7 @@ func (s Storage) Copy() Storage {
 	return maps.Clone(s)
 }
 
-// StateObject represents an Ethereum account which is being modified.
+// stateObject represents an Ethereum account which is being modified.
 //
 // The usage pattern is as follows:
 // - First you need to obtain a state object.
@@ -58,10 +57,9 @@ type stateObject struct {
 	trie Trie   // storage trie, which becomes non-nil on first access
 	code []byte // contract bytecode, which gets set when code is loaded
 
-	sharedOriginStorage *sync.Map // Point to the entry of the stateObject in sharedPool
-	originStorage       Storage   // Storage entries that have been accessed within the current block
-	dirtyStorage        Storage   // Storage entries that have been modified within the current transaction
-	pendingStorage      Storage   // Storage entries that have been modified within the current block
+	originStorage  Storage // Storage entries that have been accessed within the current block
+	dirtyStorage   Storage // Storage entries that have been modified within the current transaction
+	pendingStorage Storage // Storage entries that have been modified within the current block
 
 	// uncommittedStorage tracks a set of storage entries that have been modified
 	// but not yet committed since the "last commit operation", along with their
@@ -100,23 +98,16 @@ func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *s
 	if acct == nil {
 		acct = types.NewEmptyStateAccount()
 	}
-	var storageMap *sync.Map
-	// Check whether the storage exist in pool, new originStorage if not exist
-	if db != nil && db.storagePool != nil {
-		storageMap = db.GetStorage(address)
-	}
-
 	return &stateObject{
-		db:                  db,
-		address:             address,
-		addrHash:            crypto.Keccak256Hash(address[:]),
-		origin:              origin,
-		data:                *acct,
-		sharedOriginStorage: storageMap,
-		originStorage:       make(Storage),
-		pendingStorage:      make(Storage),
-		dirtyStorage:        make(Storage),
-		uncommittedStorage:  make(Storage),
+		db:                 db,
+		address:            address,
+		addrHash:           crypto.Keccak256Hash(address[:]),
+		origin:             origin,
+		data:               *acct,
+		originStorage:      make(Storage),
+		dirtyStorage:       make(Storage),
+		pendingStorage:     make(Storage),
+		uncommittedStorage: make(Storage),
 	}
 }
 
@@ -135,6 +126,7 @@ func (s *stateObject) touch() {
 // subsequent reads to expand the same trie instead of reloading from disk.
 func (s *stateObject) getTrie() (Trie, error) {
 	if s.trie == nil {
+		// Assumes the primary account trie is already loaded
 		tr, err := s.db.db.OpenStorageTrie(s.db.originalRoot, s.address, s.data.Root, s.db.trie)
 		if err != nil {
 			return nil, err
@@ -159,26 +151,6 @@ func (s *stateObject) getPrefetchedTrie() Trie {
 	}
 	// Attempt to retrieve the trie from the prefetcher
 	return s.db.prefetcher.trie(s.addrHash, s.data.Root)
-}
-
-func (s *stateObject) tryGetFromSharedPool(key common.Hash) (common.Hash, bool) {
-	// if L1 cache miss, try to get it from shared pool
-	if s.sharedOriginStorage != nil {
-		val, ok := s.sharedOriginStorage.Load(key)
-		if !ok {
-			return common.Hash{}, false
-		}
-		storage := val.(common.Hash)
-		return storage, true
-	}
-	return common.Hash{}, false
-}
-
-func (s *stateObject) setOriginStorage(key common.Hash, value common.Hash) {
-	if s.db.writeOnSharedStorage && s.sharedOriginStorage != nil {
-		s.sharedOriginStorage.Store(key, value)
-	}
-	s.originStorage[key] = value
 }
 
 // GetState retrieves a value from the committed account storage trie.
@@ -213,9 +185,11 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 
 	if s.db.needBadSharedStorage {
 		// keep compatible with old erroneous data(https://forum.bnbchain.org/t/about-the-hertzfix/2400).
-		if value, cached := s.tryGetFromSharedPool(key); cached {
-			s.originStorage[key] = value
-			return value
+		if readerWithCacheStats, ok := s.db.reader.(*readerWithCacheStats); ok {
+			if value, cached, err := readerWithCacheStats.readerWithCache.storage(s.address, key); err == nil && cached {
+				s.originStorage[key] = value
+				return value
+			}
 		}
 	}
 
@@ -229,12 +203,6 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 		s.originStorage[key] = common.Hash{} // track the empty slot as origin value
 		return common.Hash{}
 	}
-
-	if value, cached := s.tryGetFromSharedPool(key); cached {
-		s.originStorage[key] = value
-		return value
-	}
-
 	s.db.StorageLoaded++
 
 	var start time.Time
@@ -256,7 +224,7 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 			log.Error("Failed to prefetch storage slot", "addr", s.address, "key", key, "err", err)
 		}
 	}
-	s.setOriginStorage(key, value)
+	s.originStorage[key] = value
 	return value
 }
 
@@ -437,7 +405,6 @@ func (s *stateObject) updateRoot() {
 // fulfills the storage diffs into the given accountUpdate struct.
 func (s *stateObject) commitStorage(op *accountUpdate) {
 	var (
-		buf    = crypto.NewKeccakState()
 		encode = func(val common.Hash) []byte {
 			if val == (common.Hash{}) {
 				return nil
@@ -454,7 +421,7 @@ func (s *stateObject) commitStorage(op *accountUpdate) {
 		if val == s.originStorage[key] {
 			continue
 		}
-		hash := crypto.HashData(buf, key[:])
+		hash := crypto.Keccak256Hash(key[:])
 		if op.storages == nil {
 			op.storages = make(map[common.Hash][]byte)
 		}

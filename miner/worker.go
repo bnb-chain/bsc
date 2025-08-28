@@ -40,6 +40,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -704,8 +705,14 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 	} else {
 		if prevEnv == nil {
 			state.StartPrefetcher("miner", nil)
-		} else {
+		} else if prevEnv.header.Number.Uint64() == header.Number.Uint64() {
 			state.TransferPrefetcher(prevEnv.state)
+		} else {
+			// in some corner case, new block was just imported and preEnv was for the previous block
+			// in this case, the prefetcher can not be transferred
+			log.Debug("new block was just imported, start prefetcher from scratch",
+				"prev number", prevEnv.header.Number.Uint64(), "cur number", header.Number.Uint64())
+			state.StartPrefetcher("miner", nil)
 		}
 	}
 
@@ -923,6 +930,24 @@ LOOP:
 			txs.Pop()
 			continue
 		}
+
+		// Make sure all transactions after osaka have cell proofs
+		if w.chainConfig.IsOsaka(env.header.Number, env.header.Time) {
+			if sidecar := tx.BlobTxSidecar(); sidecar != nil {
+				if sidecar.Version == 0 {
+					log.Info("Including blob tx with v0 sidecar, recomputing proofs", "hash", ltx.Hash)
+					sidecar.Proofs = make([]kzg4844.Proof, 0, len(sidecar.Blobs)*kzg4844.CellProofsPerBlob)
+					for _, blob := range sidecar.Blobs {
+						cellProofs, err := kzg4844.ComputeCellProofs(&blob)
+						if err != nil {
+							panic(err)
+						}
+						sidecar.Proofs = append(sidecar.Proofs, cellProofs...)
+					}
+				}
+			}
+		}
+
 		// Error may be ignored here. The error has already been checked
 		// during transaction acceptance in the transaction pool.
 		from, _ := types.Sender(env.signer, tx)
@@ -1200,9 +1225,13 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 			return &newPayloadResult{err: err}
 		}
 		// EIP-7002
-		core.ProcessWithdrawalQueue(&requests, work.evm)
+		if err := core.ProcessWithdrawalQueue(&requests, work.evm); err != nil {
+			return &newPayloadResult{err: err}
+		}
 		// EIP-7251 consolidations
-		core.ProcessConsolidationQueue(&requests, work.evm)
+		if err := core.ProcessConsolidationQueue(&requests, work.evm); err != nil {
+			return &newPayloadResult{err: err}
+		}
 	}
 	if requests != nil {
 		reqHash := types.CalcRequestsHash(requests)

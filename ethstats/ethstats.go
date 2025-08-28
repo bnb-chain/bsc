@@ -68,7 +68,7 @@ type backend interface {
 	HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*types.Header, error)
 	GetTd(ctx context.Context, hash common.Hash) *big.Int
 	Stats() (pending int, queued int)
-	SyncProgress() ethereum.SyncProgress
+	SyncProgress(ctx context.Context) ethereum.SyncProgress
 }
 
 // fullNodeBackend encompasses the functionality necessary for a full node
@@ -785,7 +785,7 @@ func (s *Service) reportStats(conn *connWrapper) error {
 			mining = miningBackend.Miner().Mining()
 		}
 
-		sync := fullBackend.SyncProgress()
+		sync := fullBackend.SyncProgress(context.Background())
 		syncing = !sync.Done()
 
 		price, _ := fullBackend.SuggestGasTipCap(context.Background())
@@ -794,7 +794,7 @@ func (s *Service) reportStats(conn *connWrapper) error {
 			gasprice += int(basefee.Uint64())
 		}
 	} else {
-		sync := s.backend.SyncProgress()
+		sync := s.backend.SyncProgress(context.Background())
 		syncing = !sync.Done()
 	}
 	// Assemble the node stats and send it to the server

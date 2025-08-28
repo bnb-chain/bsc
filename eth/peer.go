@@ -19,6 +19,7 @@ package eth
 import (
 	"net"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
@@ -28,6 +29,13 @@ import (
 // about a connected peer.
 type ethPeerInfo struct {
 	Version uint `json:"version"` // Ethereum protocol version negotiated
+	*peerBlockRange
+}
+
+type peerBlockRange struct {
+	Earliest   uint64      `json:"earliestBlock"`
+	Latest     uint64      `json:"latestBlock"`
+	LatestHash common.Hash `json:"latestBlockHash"`
 }
 
 // ethPeer is a wrapper around eth.Peer to maintain a few extra metadata.
@@ -39,9 +47,15 @@ type ethPeer struct {
 
 // info gathers and returns some `eth` protocol metadata known about a peer.
 func (p *ethPeer) info() *ethPeerInfo {
-	return &ethPeerInfo{
-		Version: p.Version(),
+	info := &ethPeerInfo{Version: p.Version()}
+	if br := p.BlockRange(); br != nil {
+		info.peerBlockRange = &peerBlockRange{
+			Earliest:   br.EarliestBlock,
+			Latest:     br.LatestBlock,
+			LatestHash: br.LatestBlockHash,
+		}
 	}
+	return info
 }
 
 func (p *ethPeer) remoteAddr() net.Addr {

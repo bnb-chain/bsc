@@ -152,7 +152,7 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 	// For valid blocks this should always validate to true.
 	validateFuns := []func() error{
 		func() error {
-			rbloom := types.CreateBloom(res.Receipts)
+			rbloom := types.MergeBloom(res.Receipts)
 			if rbloom != header.Bloom {
 				return fmt.Errorf("invalid bloom (remote: %x  local: %x)", header.Bloom, rbloom)
 			}

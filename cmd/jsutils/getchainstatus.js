@@ -9,6 +9,8 @@ program.option("--num <Num>", "validator num", 21);
 program.option("--turnLength <Num>", "the consecutive block length", 8);
 program.option("--topNum <Num>", "top num of address to be displayed", 20);
 program.option("--blockNum <Num>", "block num", 0);
+program.option("--stepLength <Num>", "step length", 115200);
+program.option("--stepNum <Num>", "step num", 1);
 program.option("--gasUsedThreshold <Num>", "gas used threshold", 5000000);
 program.option("-h, --help", "");
 
@@ -28,20 +30,22 @@ function printUsage() {
     console.log("  GetMevStatus: get mev blocks of a block range");
     console.log("  GetLargeTxs: get large txs of a block range");
     console.log("\nOptions:");
-    console.log("  --rpc       specify the url of RPC endpoint");
-    console.log("              mainnet: https://bsc-mainnet.nodereal.io/v1/e2d346d33d304b069bb4111aa1ff2868");
-    console.log("              testnet: https://bsc-testnet-dataseed.bnbchain.org");
-    console.log("  --startNum  the start block number");
-    console.log("  --endNum    the end block number");
-    console.log("  --miner     the miner address");
-    console.log("  --num       the number of blocks to be checked");
-    console.log("  --topNum    the topNum of blocks to be checked");
-    console.log("  --blockNum  the block number to be checked");
+    console.log("  --rpc        specify the url of RPC endpoint");
+    console.log("               mainnet: https://bsc-mainnet.nodereal.io/v1/cc07638d01a64904a662599433827378");
+    console.log("               testnet: https://bsc-testnet.nodereal.io/v1/cc07638d01a64904a662599433827378");
+    console.log("  --startNum   the start block number");
+    console.log("  --endNum     the end block number");
+    console.log("  --miner      the miner address");
+    console.log("  --num        the number of blocks to be checked");
+    console.log("  --topNum     the topNum of blocks to be checked");
+    console.log("  --blockNum   the block number to be checked");
+    console.log("  --stepLength the size of block num for each step, default: 115200(1 day)");
+    console.log("  --stepNum    the step num, default: 1");
     console.log("\nExample:");
     console.log("  node getchainstatus.js GetMaxTxCountInBlockRange --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000005");
     console.log("  node getchainstatus.js GetBinaryVersion --rpc https://bsc-testnet-dataseed.bnbchain.org --num 21 --turnLength 8");
     console.log("  node getchainstatus.js GetTopAddr --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010 --topNum 10");
-    console.log("  node getchainstatus.js GetSlashCount --rpc https://bsc-testnet-dataseed.bnbchain.org --blockNum 40000001"); // default: latest block
+    console.log("  node getchainstatus.js GetSlashCount --rpc https://bsc-testnet-dataseed.bnbchain.org --blockNum 40000001 --stepNum 1 --stepLength 115200"); // default: latest block
     console.log("  node getchainstatus.js GetPerformanceData --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010");
     console.log("  node getchainstatus.js GetBlobTxs --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010");
     console.log("  node getchainstatus.js GetFaucetStatus --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010");
@@ -202,6 +206,7 @@ const validatorMap = new Map([
     ['0x28D70c3756d4939DCBdEB3f0fFF5B4B36E6e327F', [ 'OmegaV'   , '0x1875ADAe6aaAED32A87DbcD2eEbf076EA86caA35', '0xb8db8ca018a14d843b560d8fabde98c3d47ad6ceea9d510d3357e2ff687acf19f9431aa180b17222a3a9328238297a1a']],
     ['0x6a5470a3B7959ab064d6815e349eD4aE2dE5210d', ['Skynet10k' , '0xDD1fD7C74BaCCA08e1b88a24199F19aB1b1b9cE4', '0x81f13afdbd6976d9784a05619405df430314e2707050b32f29ae683b9ef89d285d1a227df3e31ac147016c4c7533be70']],
     ['0xce6cCa0DE7b3EB3fd0CcE4bc38cceF473166e4f4', ['Infinity'  , '0xc8A6Bfe0834FB99340a0Df253d79B7CaE25053b8', '0xa40f553889e9de6b4fe8005a06d7335fa061ae51ef5ba2b0c4ea477fcaa8f6de1650e318cf59824462b1831a725488da']],
+    ['0xa7deE0bCAEb78849Ec4aD4e2f48688D2e9f2315B', ['KrakV'     , '0x6563AA29C30d9f80968c2fb7DFFed092a03FBdeD', '0x848ffc9a3fac00d9fbaebcb63f2b7c0a4747d9ffecd4b484073ad03d91584cb51af29870c1c8421b757f4f6fae813288']],
 ]);
 
 const builderMap = new Map([
@@ -373,6 +378,8 @@ async function getTopAddr() {
 // node getchainstatus.js GetSlashCount \
 //      --rpc https://bsc-testnet-dataseed.bnbchain.org \
 //      --blockNum(optional): the block num which is based for the slash state, default: latest block
+//      --stepLength(optional): the step of the block num, default: 115200, 115200 blocks ~= 1 day
+//      --stepNum(optional): the step num, default: 1, only show the current slash count
 async function getValidatorMoniker(consensusAddr, blockNum) {
     const minerInfo = validatorMap.get(consensusAddr);
     if (minerInfo) {
@@ -394,15 +401,15 @@ async function getOperatorAddress(consensusAddr, blockNum) {
     return opAddr;
 }
 
-async function getSlashCount() {
-    let blockNum = ethers.getNumber(program.blockNum);
+async function getSlashCountAtHeight(num) {
+    let blockNum = ethers.getNumber(num);
     if (blockNum === 0) {
         blockNum = await provider.getBlockNumber();
     }
     let slashScale = await validatorSet.maintainSlashScale({ blockTag: blockNum });
     let maxElected = await stakeHub.maxElectedValidators({ blockTag: blockNum });
-    const maintainThreshold = BigInt(50); // governable, hardcode to avoid one RPC call
-    const felonyThreshold = BigInt(150); // governable, hardcode to avoid one RPC call
+    const maintainThreshold = BigInt(150); // governable, hardcode to avoid one RPC call
+    const felonyThreshold = BigInt(600); // governable, hardcode to avoid one RPC call
 
     let block = await provider.getBlock(blockNum);
     console.log("At block", blockNum, "time", block.date);
@@ -432,6 +439,24 @@ async function getSlashCount() {
     console.log("Total slash count", totalSlash);
 }
 
+async function getSlashCount() {
+    let blockNum = ethers.getNumber(program.blockNum);
+    if (blockNum === 0) {
+        blockNum = await provider.getBlockNumber();
+    }
+    let stepLength = ethers.getNumber(program.stepLength);
+    if (stepLength === 0) {
+        stepLength = 115200;
+    }
+    let stepNum = ethers.getNumber(program.stepNum);
+    if (stepNum === 0) {
+        stepNum = 1;
+    }
+    for (let i = 0; i < stepNum; i++) {
+        await getSlashCountAtHeight(blockNum);
+        blockNum = blockNum - stepLength;
+    }
+}
 // 5.cmd: "getPerformanceData", usage:
 // node getchainstatus.js getPerformanceData \
 //      --rpc https://bsc-testnet-dataseed.bnbchain.org \

@@ -1,4 +1,36 @@
 # Changelog
+## v1.6.0
+v1.6.0-alpha is a preview release for upstream code sync, it catches up with [go-ethereum release [v1.16.1]](https://github.com/ethereum/go-ethereum/releases/tag/v1.16.1) and also inlcude several bug fix.
+
+#### Code Sync
+- [upstream: merge geth-v1.16.1](https://github.com/bnb-chain/bsc/pull/3261)
+
+Key changes from the code sync include:
+- Archive Mode: Added history indexing and RPC querying interface
+- Enhanced Log Filtering: Introduced Filtermap as a faster replacement for bloombit-based log queries
+- Log Timestamps: Added timestamp metadata to derived event logs
+- Performance Optimizations: Multiple improvements to enhance overall performance
+- Code Refactoring: Major cleanup and improvements to components including:
+  - PBSS snapshot system
+  - Blockchain configuration
+  - EVM internals
+  - Removal of EOF (Ethereum Object Format) code
+
+#### BUGFIX
+- [core/filtermaps: stop indexing if target block is pruned](https://github.com/bnb-chain/bsc/pull/3316)
+- [freezer: slow down freeze when live sync](https://github.com/bnb-chain/bsc/pull/3310)
+- [worker: fix a trie prefetch corner case](https://github.com/bnb-chain/bsc/pull/3314)
+- [consensus/parlia: ignore client version warning when in history sync](https://github.com/bnb-chain/bsc/pull/3308)
+- [fix: only enable EVN feature after node get synced](https://github.com/bnb-chain/bsc/pull/3309)
+- [core/fitermaps: fix final block logic](https://github.com/bnb-chain/bsc/pull/3300)
+- [fix: set all chain tables to be prunable](https://github.com/bnb-chain/bsc/pull/3294)
+- [api.go: add retry for snapshots stale error](https://github.com/bnb-chain/bsc/pull/3290)
+- [core/types: disable EIP-7594 in BSC](https://github.com/bnb-chain/bsc/pull/3291)
+
+#### Others
+- [docs: update readme for release types](https://github.com/bnb-chain/bsc/pull/3315)
+- [prefetch: lower prefetch threshold from 100 to 50](https://github.com/bnb-chain/bsc/pull/3274)
+
 ## v1.5.19
 ### BUGFIX
 [\#3251](https://github.com/bnb-chain/bsc/pull/3251) freezer: change freeze batch size
