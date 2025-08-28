@@ -157,7 +157,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		receipts = append(receipts, receipt)
 
 		// Debug: log gas usage after each tx for target block
-		if block.NumberU64() == 50898068 { // > 50898068+15 is to allow to for cache to load & enough latency for setHead to work
+		if common.IsParliaHashMismatch() { // > 50898068+15 is to allow to for cache to load & enough latency for setHead to work
 			log.Error("Debug tx", "transaction Index", i, "txHash", receipt.TxHash, "gasUsed", receipt.GasUsed)
 			currentPool := gp.Gas()
 			used := prevPool - currentPool
