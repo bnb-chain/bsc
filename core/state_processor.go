@@ -120,7 +120,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	prevPool := gp.Gas() // Track remaining gas before first tx in block
 	for i, tx := range block.Transactions() {
 		//Debug helper: stop execution after processing 10 blocks after 50897372
-		//if block.NumberU64() == 50897496 {
+		//if block.NumberU64() == 50898088 {
 		//	log.Warn("Debug stop reached", "block", block.NumberU64(), "txIndex", i, "txHash", tx.Hash())
 		//	os.Exit(0)
 		//}
@@ -157,13 +157,13 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		receipts = append(receipts, receipt)
 
 		// Debug: log gas usage after each tx for target block
-		if block.NumberU64() == 50897486 {
-			log.Error("Debug tx", "transaction Index", i, "txHash", receipt.TxHash, "gasUsed", receipt.GasUsed)
-			currentPool := gp.Gas()
-			used := prevPool - currentPool
-			log.Info("[TX GAS]", "block", block.NumberU64(), "txIndex", i, "txHash", tx.Hash(), "gasUsed", used, "gasPoolLeft", currentPool)
-			prevPool = currentPool
-		}
+		//if block.NumberU64() == 50898068 {
+		log.Error("Debug tx", "transaction Index", i, "txHash", receipt.TxHash, "gasUsed", receipt.GasUsed)
+		currentPool := gp.Gas()
+		used := prevPool - currentPool
+		log.Info("[TX GAS]", "block", block.NumberU64(), "txIndex", i, "txHash", tx.Hash(), "gasUsed", used, "gasPoolLeft", currentPool)
+		prevPool = currentPool
+		//}
 	}
 	bloomProcessors.Close()
 
