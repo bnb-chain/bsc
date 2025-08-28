@@ -690,7 +690,8 @@ func getBlockType(block BasicBlock, blocks []BasicBlock, blockIndex int) string 
 				lastOp == EXTCALL ||
 				lastOp == EXTDELEGATECALL ||
 				lastOp == EXTSTATICCALL ||
-				lastOp == GAS {
+				lastOp == GAS ||
+				lastOp == SSTORE {
 				return "conditional fallthrough"
 			}
 		}
@@ -887,7 +888,7 @@ func isBlockTerminator(op ByteCode) bool {
 		return true
 
 	// Unconditional / conditional jumps that alter the control-flow within the same contract
-	case JUMP, JUMPI, GAS, RJUMP, RJUMPI, RJUMPV, CALLF, RETF, JUMPF:
+	case JUMP, JUMPI, GAS, SSTORE, RJUMP, RJUMPI, RJUMPV, CALLF, RETF, JUMPF:
 		return true
 
 	// External message calls — these transfer control to another context and therefore

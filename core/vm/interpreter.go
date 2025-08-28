@@ -216,16 +216,14 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		blockChargeActive bool   // static gas precharge mode flag
 		totalCost         uint64 // for debug only
 		// copies used by tracer
-		pcCopy               uint64 // needed for the deferred EVMLogger
-		gasCopy              uint64 // for EVMLogger to log gas remaining before execution
-		logged               bool   // deferred EVMLogger should ignore already logged steps
-		res                  []byte // result of the opcode execution function
-		debug                = in.evm.Config.Tracer != nil
-		currentBlock         *compiler.BasicBlock // 当前block（缓存）
-		nextBlockPC          uint64               // 下一个block的起始PC（用于边界检测）
-		totalDynamicGas      uint64               // 本次调用累积的动态gas
-		retryDynamicGasCache = make(map[string]uint64)
-		isRetryMode          bool // flag to indicate if we're in retry mode for cache optimization
+		pcCopy          uint64 // needed for the deferred EVMLogger
+		gasCopy         uint64 // for EVMLogger to log gas remaining before execution
+		logged          bool   // deferred EVMLogger should ignore already logged steps
+		res             []byte // result of the opcode execution function
+		debug           = in.evm.Config.Tracer != nil
+		currentBlock    *compiler.BasicBlock // 当前block（缓存）
+		nextBlockPC     uint64               // 下一个block的起始PC（用于边界检测）
+		totalDynamicGas uint64               // 本次调用累积的动态gas
 	)
 	// initialise blockChargeActive to whether opcode optimizations are enabled
 	blockChargeActive = in.evm.Config.EnableOpcodeOptimizations
@@ -362,53 +360,13 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			if operation.memorySize != nil {
 				memSize, overflow := operation.memorySize(stack)
 				if overflow {
-					if blockChargeActive {
-						in.refundUnusedBlockGas(contract, pc-1, currentBlock)
-						if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
-							log.Error("overflow error encounters during superinstruction", "op", op.String())
-							if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
-								// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
-								blockChargeActive = false
-								currentBlock = nil
-								continue
-							}
-						} else {
-							log.Error("overflow error encounters during normal instruction", "pc", pc, "op", op.String(), "cost", cost, "totalCost", totalCost, "contract.CodeHash", contract.CodeHash.String(), "contract.Gas", contract.Gas)
-							blockChargeActive = false
-							currentBlock = nil
-							continue
-						}
-						// when fallback has error
-						blockChargeActive = false
-						currentBlock = nil
-					}
-					log.Error("gas uint overflow", "pc", pc, "op", op.String(), "contract.CodeHash", contract.CodeHash.String())
+					log.Error("stack gas uint overflow", "pc", pc, "op", op.String(), "contract.CodeHash", contract.CodeHash.String())
 					return nil, ErrGasUintOverflow
 				}
 				// memory is expanded in words of 32 bytes. Gas
 				// is also calculated in words.
 				if memorySize, overflow = math.SafeMul(toWordSize(memSize), 32); overflow {
-					if blockChargeActive {
-						in.refundUnusedBlockGas(contract, pc-1, currentBlock)
-						if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
-							log.Error("overflow error encounters during superinstruction", "op", op.String())
-							if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
-								// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
-								blockChargeActive = false
-								currentBlock = nil
-								continue
-							}
-						} else {
-							log.Error("overflow error encounters during normal instruction", "pc", pc, "op", op.String(), "cost", cost, "totalCost", totalCost, "contract.CodeHash", contract.CodeHash.String(), "contract.Gas", contract.Gas)
-							blockChargeActive = false
-							currentBlock = nil
-							continue
-						}
-						// when fallback has error
-						blockChargeActive = false
-						currentBlock = nil
-					}
-					log.Error("gas uint overflow", "pc", pc, "op", op.String(), "contract.CodeHash", contract.CodeHash.String())
+					log.Error("memory gas uint overflow", "pc", pc, "op", op.String(), "contract.CodeHash", contract.CodeHash.String())
 					return nil, ErrGasUintOverflow
 				}
 			}
@@ -419,38 +377,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
 			// 如果首次尝试因静态预扣导致 OOG，则退回未用静态 gas 后重试一次
 			if err != nil {
-				if blockChargeActive {
-					in.refundUnusedBlockGas(contract, pc-1, currentBlock)
-					if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
-						log.Error("error encounters during superinstruction", "op", op.String())
-						if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
-							// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
-							blockChargeActive = false
-							currentBlock = nil
-							continue
-						}
-					} else {
-						log.Error("operation.dynamicGas error with normal opcode", "pc", pc, "op", op.String(), "cost", cost, "totalCost", totalCost, "contract.CodeHash", contract.CodeHash.String(), "contract.Gas", contract.Gas, "err", err.Error())
-						blockChargeActive = false
-						currentBlock = nil
-						continue
-					}
-					// when fallback has error
-					blockChargeActive = false
-					currentBlock = nil
-				}
 				log.Error("operation.dynamicGas error", "pc", pc, "op", op.String(), "cost", cost, "totalCost", totalCost, "contract.CodeHash", contract.CodeHash.String(), "contract.Gas", contract.Gas, "err", err.Error())
 				return nil, fmt.Errorf("%w: %v", ErrOutOfGas, err)
-			}
-
-			// Only check cache when in retry mode to avoid performance impact during normal execution
-			if isRetryMode {
-				cacheKey := makeRetryGasKey(contract, pc, op)
-				if cachedDynamicCost, isRetry := retryDynamicGasCache[cacheKey]; isRetry {
-					dynamicCost = cachedDynamicCost
-					delete(retryDynamicGasCache, cacheKey)
-					log.Error("used cache dynamic cost, clean up", "pc", pc, "op", op.String(), dynamicCost, "dynamicCost")
-				}
 			}
 
 			cost += dynamicCost // for tracing
@@ -458,34 +386,33 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// for tracing: this gas consumption event is emitted below in the debug section.
 			if contract.Gas < dynamicCost {
 				if blockChargeActive {
-					cacheKey := makeRetryGasKey(contract, pc, op)
-					retryDynamicGasCache[cacheKey] = dynamicCost
-					isRetryMode = true // Set retry mode before entering retry
 					in.refundUnusedBlockGas(contract, pc-1, currentBlock)
 					if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
-						log.Error("error encounters during superinstruction", "op", op.String())
+						log.Error("error encounters during superinstruction", "op", op.String(), "dynamicCost", dynamicCost)
 						if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
 							// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
 							blockChargeActive = false
 							currentBlock = nil
 							continue
+						} else {
+							return nil, err
 						}
-					} else {
-						log.Error("Dynamic gas insufficient", "pc", pc, "op", op.String(), "stackLen", stack.len(), "dynamicCost", dynamicCost, "contract.Gas", contract.Gas)
-						blockChargeActive = false
-						currentBlock = nil
-						continue
+					} else { // if is normal opcode
+						log.Error("Dynamic gas insufficient", "pc", pc, "op", op.String(), "dynamicCost", dynamicCost)
+						contract.Gas -= operation.constantGas
+						if contract.Gas < dynamicCost {
+							return nil, ErrOutOfGas
+						} else {
+							contract.Gas -= dynamicCost
+						}
 					}
-					// when fallback has error
 					blockChargeActive = false
 					currentBlock = nil
+				} else {
+					return nil, ErrOutOfGas
 				}
-				log.Error("dynamic out of gas", "pc", pc, "op", op.String(), "cost", cost, "totalCost", totalCost, "contract.Gas", contract.Gas, "dynamicCost", dynamicCost, "contract.CodeHash", contract.CodeHash.String())
-				return nil, ErrOutOfGas
 			} else {
 				contract.Gas -= dynamicCost
-				// Reset retry mode on successful gas consumption
-				isRetryMode = false
 			}
 		}
 
@@ -506,34 +433,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
 		if err != nil {
-			//for debug only
-			if err != errStopToken && !(op == REVERT && err == ErrExecutionReverted) {
-				log.Error("execute error", "pc", pc, "op", op.String(), "cost", cost, "totalCost", totalCost, "contract.Gas", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
-			}
-			if blockChargeActive && isPreDeductedGasRelated(err, op) {
-				in.refundUnusedBlockGas(contract, pc-1, currentBlock)
-				if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
-					log.Error("error encounters during superinstruction", "op", op.String())
-					if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
-						// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
-						blockChargeActive = false
-						currentBlock = nil
-						continue
-					}
-				} else {
-					log.Error("Execute error retry", "pc", pc, "op", op.String(), "stackLen", stack.len(), "err", err.Error())
-					blockChargeActive = false
-					currentBlock = nil
-					continue
-				}
-				// when fallback has error
-				blockChargeActive = false
-				currentBlock = nil
-			}
 			break
 		}
 		// Reset retry mode at the end of each loop iteration for clean state
-		isRetryMode = false
 		pc++
 	}
 
@@ -846,15 +748,4 @@ func formatBlockOpcodes(opcodes []byte) string {
 	}
 
 	return "[" + strings.Join(result, ", ") + "]"
-}
-
-func isPreDeductedGasRelated(err error, op OpCode) bool {
-	return err == ErrOutOfGas ||
-		err == ErrCodeStoreOutOfGas ||
-		err == ErrInsufficientBalance ||
-		err == ErrGasUintOverflow
-}
-
-func makeRetryGasKey(contract *Contract, pc uint64, op OpCode) string {
-	return fmt.Sprintf("%s_%d_%s", contract.CodeHash.Hex(), pc, op.String())
 }
