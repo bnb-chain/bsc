@@ -279,7 +279,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 						// 扣费成功后，再正式切换 currentBlock
 						currentBlock = block
 						nextBlockPC = block.EndPC
-						if common.IsParliaHashMismatch() {
+						if common.IsParliaHashMismatch() || in.evm.Context.BlockNumber.Uint64() == 50899525 {
 							log.Error("[BASIC BLOCK START]",
 								"pc", pc,
 								"blockStart", currentBlock.StartPC,
@@ -324,7 +324,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		cost = operation.constantGas // For tracing todo: move into if
 		totalCost += cost
 		// New debug line: print opcode, pc and its static gas each step
-		if common.IsParliaHashMismatch() {
+		if common.IsParliaHashMismatch() || in.evm.Context.BlockNumber.Uint64() == 50899525 {
 			log.Error("[OP STATIC]", "pc", pc, "opcode", op.String(), "staticGas", cost, "totalCost", totalCost, "contract.Gas", contract.Gas, "stackLen", stack.len())
 		}
 		// 暂不打印，改为在动态 gas 处理后统一输出（保证包含 dynamic 与 chunk 等影响后的净消耗）
