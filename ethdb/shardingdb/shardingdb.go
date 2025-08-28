@@ -83,7 +83,7 @@ func (c *Config) parseShards() ([]ShardConfig, error) {
 			}
 			// the index is useless later, so ignore it
 			shards[index] = ShardConfig{
-				DBPath: filepath.Join(path, fmt.Sprintf("shard%04d", index)),
+				DBPath: filepath.Join(path, ShardSuffix(index)),
 			}
 		}
 	}
@@ -144,6 +144,10 @@ func parseShardIndexes(src string, shardNum int) ([]int, error) {
 	return ret, nil
 }
 
+func ShardSuffix(index int) string {
+	return fmt.Sprintf("shard%04d", index)
+}
+
 // ShardConfig is the configuration of a shard
 type ShardConfig struct {
 	// the specific root path of the shard
@@ -181,15 +185,16 @@ func New(cfg *Config, cache int, handles int, readonly bool, f ShardIndexFunc) (
 	shardHandles := handles / len(shardCfgs)
 	shards := make([]ethdb.KeyValueStore, len(shardCfgs))
 	for i, shardCfg := range shardCfgs {
+		namespace := fmt.Sprintf("%s%s/", cfg.Namespace, ShardSuffix(i))
 		switch cfg.DBType {
 		case DBTypePebble:
-			db, err := pebble.New(shardCfg.DBPath, shardCache, shardHandles, cfg.Namespace, readonly)
+			db, err := pebble.New(shardCfg.DBPath, shardCache, shardHandles, namespace, readonly)
 			if err != nil {
 				return nil, err
 			}
 			shards[i] = db
 		case DBTypeLeveldb:
-			db, err := leveldb.New(shardCfg.DBPath, shardCache, shardHandles, cfg.Namespace, readonly)
+			db, err := leveldb.New(shardCfg.DBPath, shardCache, shardHandles, namespace, readonly)
 			if err != nil {
 				return nil, err
 			}
