@@ -157,13 +157,13 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		receipts = append(receipts, receipt)
 
 		// Debug: log gas usage after each tx for target block
-		//if block.NumberU64() == 50898068 {
-		log.Error("Debug tx", "transaction Index", i, "txHash", receipt.TxHash, "gasUsed", receipt.GasUsed)
-		currentPool := gp.Gas()
-		used := prevPool - currentPool
-		log.Info("[TX GAS]", "block", block.NumberU64(), "txIndex", i, "txHash", tx.Hash(), "gasUsed", used, "gasPoolLeft", currentPool)
-		prevPool = currentPool
-		//}
+		if block.NumberU64() == 50898068 || block.NumberU64() > 50898068+15 { // > 50898068+15 is to allow to for cache to load & enough latency for setHead to work
+			log.Error("Debug tx", "transaction Index", i, "txHash", receipt.TxHash, "gasUsed", receipt.GasUsed)
+			currentPool := gp.Gas()
+			used := prevPool - currentPool
+			log.Info("[TX GAS]", "block", block.NumberU64(), "txIndex", i, "txHash", tx.Hash(), "gasUsed", used, "gasPoolLeft", currentPool)
+			prevPool = currentPool
+		}
 	}
 	bloomProcessors.Close()
 
