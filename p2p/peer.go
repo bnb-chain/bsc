@@ -396,7 +396,7 @@ func (p *Peer) pingLoop() {
 					normalPeerLatencyStat.Update(time.Duration(latency))
 				}
 				if latency > slowPeerLatencyThreshold {
-					log.Warn("find a too slow peer", "id", p.ID(), "peer", p.RemoteAddr(), "latency", latency)
+					log.Debug("find a too slow peer", "id", p.ID(), "peer", p.RemoteAddr(), "latency", latency)
 				}
 			}
 		case <-p.closed:
