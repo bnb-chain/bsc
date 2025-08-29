@@ -313,10 +313,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		operation := in.table[op]
 		// Validate stack
 		if sLen := stack.len(); sLen < operation.minStack {
-			log.Error("stake underflow", "pc", pc, "op", op.String(), "required stack", operation.minStack, "available stack", sLen, "contract.CodeHash", contract.CodeHash.String())
+			//log.Error("stake underflow", "pc", pc, "op", op.String(), "required stack", operation.minStack, "available stack", sLen, "contract.CodeHash", contract.CodeHash.String())
 			return nil, &ErrStackUnderflow{stackLen: sLen, required: operation.minStack}
 		} else if sLen > operation.maxStack {
-			log.Error("stake overflow", "pc", pc, "op", op.String(), "limit stack", operation.minStack, "available stack", sLen, "contract.CodeHash", contract.CodeHash.String())
+			//log.Error("stake overflow", "pc", pc, "op", op.String(), "limit stack", operation.minStack, "available stack", sLen, "contract.CodeHash", contract.CodeHash.String())
 			return nil, &ErrStackOverflow{stackLen: sLen, limit: operation.maxStack}
 		}
 		// for tracing: this gas consumption event is emitted below in the debug section.
@@ -333,7 +333,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			if contract.Gas < cost {
 				// 如果是超指令，尝试拆分执行，尽量与 disable-path 失败情况对齐，如果不是超指令，不需要做任何事
 				if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
-					log.Error("static gas not enough encounters during superinstruction", "op", op.String())
+					//log.Error("static gas not enough encounters during superinstruction", "op", op.String())
 					// refund all pre-reduced basic block gas until before this pc (so pc-1)
 					in.refundUnusedBlockGas(contract, pc-1, currentBlock)
 					if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
@@ -343,7 +343,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 						continue
 					}
 				}
-				log.Error("Out of gas", "pc", pc, "required", cost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
+				//log.Error("Out of gas", "pc", pc, "required", cost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
 				return nil, ErrOutOfGas
 			} else {
 				contract.Gas -= cost
@@ -360,13 +360,13 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			if operation.memorySize != nil {
 				memSize, overflow := operation.memorySize(stack)
 				if overflow {
-					log.Error("stack gas uint overflow", "pc", pc, "op", op.String(), "contract.CodeHash", contract.CodeHash.String())
+					//log.Error("stack gas uint overflow", "pc", pc, "op", op.String(), "contract.CodeHash", contract.CodeHash.String())
 					return nil, ErrGasUintOverflow
 				}
 				// memory is expanded in words of 32 bytes. Gas
 				// is also calculated in words.
 				if memorySize, overflow = math.SafeMul(toWordSize(memSize), 32); overflow {
-					log.Error("memory gas uint overflow", "pc", pc, "op", op.String(), "contract.CodeHash", contract.CodeHash.String())
+					//log.Error("memory gas uint overflow", "pc", pc, "op", op.String(), "contract.CodeHash", contract.CodeHash.String())
 					return nil, ErrGasUintOverflow
 				}
 			}
@@ -377,7 +377,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
 			// 如果首次尝试因静态预扣导致 OOG，则退回未用静态 gas 后重试一次
 			if err != nil {
-				log.Error("operation.dynamicGas error", "pc", pc, "op", op.String(), "cost", cost, "totalCost", totalCost, "contract.CodeHash", contract.CodeHash.String(), "contract.Gas", contract.Gas, "err", err.Error())
+				//log.Error("operation.dynamicGas error", "pc", pc, "op", op.String(), "cost", cost, "totalCost", totalCost, "contract.CodeHash", contract.CodeHash.String(), "contract.Gas", contract.Gas, "err", err.Error())
 				return nil, fmt.Errorf("%w: %v", ErrOutOfGas, err)
 			}
 
@@ -388,7 +388,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				if blockChargeActive {
 					in.refundUnusedBlockGas(contract, pc-1, currentBlock)
 					if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
-						log.Error("error encounters during superinstruction", "op", op.String(), "dynamicCost", dynamicCost)
+						//log.Error("error encounters during superinstruction", "op", op.String(), "dynamicCost", dynamicCost)
 						if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
 							// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
 							blockChargeActive = false
@@ -398,7 +398,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 							return nil, err
 						}
 					} else { // if is normal opcode
-						log.Error("Dynamic gas insufficient", "pc", pc, "op", op.String(), "dynamicCost", dynamicCost)
+						//log.Error("Dynamic gas insufficient", "pc", pc, "op", op.String(), "dynamicCost", dynamicCost)
 						contract.Gas -= operation.constantGas
 						if contract.Gas < dynamicCost {
 							return nil, ErrOutOfGas
@@ -710,17 +710,17 @@ func (in *EVMInterpreter) executeSingleOpcode(pc *uint64, op OpCode, contract *C
 // tryFallbackForSuperInstruction 将超指令拆分为普通指令并依次执行，直到真正耗尽 gas 或全部成功。
 // 返回 nil 表示已成功执行到超指令末尾或中途 OOG（并已正确更新 pc / gas），上层应继续主循环。
 func (in *EVMInterpreter) tryFallbackForSuperInstruction(pc *uint64, seq []OpCode, contract *Contract, stack *Stack, mem *Memory, callCtx *ScopeContext) error {
-	startPC := *pc
+	//startPC := *pc
 
-	log.Error("[FALLBACK]", "start", startPC, "seqLen", len(seq))
+	//log.Error("[FALLBACK]", "start", startPC, "seqLen", len(seq))
 
 	for _, sub := range seq {
-		log.Error("[FALLBACK-EXEC]", "pc", *pc, "op", sub.String(), "gasBefore", contract.Gas)
+		//log.Error("[FALLBACK-EXEC]", "pc", *pc, "op", sub.String(), "gasBefore", contract.Gas)
 		if err := in.executeSingleOpcode(pc, sub, contract, stack, mem, callCtx); err != nil {
-			log.Error("[FALLBACK-EXEC]", "op", sub.String(), "err", err, "gasLeft", contract.Gas)
+			//log.Error("[FALLBACK-EXEC]", "op", sub.String(), "err", err, "gasLeft", contract.Gas)
 			return err // OutOfGas 或其他错误，上层会如常处理
 		}
-		log.Error("[FALLBACK-EXEC]", "ok", true, "nextPC", *pc, "gasAfter", contract.Gas)
+		//log.Error("[FALLBACK-EXEC]", "ok", true, "nextPC", *pc, "gasAfter", contract.Gas)
 	}
 	return nil
 }
