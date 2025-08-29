@@ -274,7 +274,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			if currentBlock == nil || pc >= nextBlockPC || pc <= currentBlock.StartPC {
 				if block, found := compiler.GetBlockByPC(contract.CodeHash, pc); found {
 					// 先确认余额是否足够支付 staticGas
-					if contract.Gas >= block.StaticGas {
+					if contract.Gas >= block.StaticGas && block.StaticGas != 0 {
 						contract.Gas -= block.StaticGas
 						// 扣费成功后，再正式切换 currentBlock
 						currentBlock = block
