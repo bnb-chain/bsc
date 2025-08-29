@@ -114,6 +114,12 @@ var (
 		Category: traceCategory,
 	}
 
+	// Vm flags.
+	VMOpcodeOptimizeFlag = &cli.BoolFlag{
+		Name:  "vm.opcode.optimize",
+		Usage: "enable opcode optimization",
+	}
+
 	// Deprecated flags.
 	DebugFlag = &cli.BoolFlag{
 		Name:     "debug",
