@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"os"
 	"runtime"
 	"slices"
 	"sync"
@@ -328,6 +329,8 @@ type BlockChain struct {
 	// monitor
 	doubleSignMonitor *monitor.DoubleSignMonitor
 	logger            *tracing.Hooks
+
+	badBlockCount int64 // 坏块计数器
 }
 
 // NewBlockChain returns a fully initialised block chain using information
@@ -2987,6 +2990,14 @@ func (bc *BlockChain) reportBlock(block *types.Block, res *ProcessResult, err er
 	}
 	rawdb.WriteBadBlock(bc.db, block)
 	log.Error(summarizeBadBlock(block, receipts, bc.Config(), err))
+	count := atomic.AddInt64(&bc.badBlockCount, 1)
+
+	if count >= 2 {
+		log.Error("Second bad block encountered, exiting...",
+			"blockNumber", block.NumberU64(),
+			"totalBadBlocks", count)
+		os.Exit(0)
+	}
 }
 
 // summarizeBadBlock returns a string summarizing the bad block and other
