@@ -182,6 +182,7 @@ var (
 		utils.LogDebugFlag,
 		utils.LogBacktraceAtFlag,
 		utils.BlobExtraReserveFlag,
+		utils.VMOpcodeOptimizeFlag,
 		// utils.BeaconApiFlag,
 		// utils.BeaconApiHeaderFlag,
 		// utils.BeaconThresholdFlag,
