@@ -637,21 +637,12 @@ func getBlockType(block BasicBlock, blocks []BasicBlock, blockIndex int) string 
 		return "JumpDest"
 	}
 
-	// Check for conditional fallthrough (previous block ends with JUMPI or CALL related)
+	// Check for conditional fallthrough (previous block ends with JUMPI)
 	if blockIndex > 0 {
 		prevBlock := blocks[blockIndex-1]
 		if len(prevBlock.Opcodes) > 0 {
 			lastOp := ByteCode(prevBlock.Opcodes[len(prevBlock.Opcodes)-1])
-			if lastOp == JUMPI ||
-				lastOp == CALL ||
-				lastOp == CALLCODE ||
-				lastOp == DELEGATECALL ||
-				lastOp == STATICCALL ||
-				lastOp == EXTCALL ||
-				lastOp == EXTDELEGATECALL ||
-				lastOp == EXTSTATICCALL ||
-				lastOp == GAS ||
-				lastOp == SSTORE {
+			if lastOp == JUMPI {
 				return "conditional fallthrough"
 			}
 		}
@@ -781,20 +772,13 @@ func GenerateBasicBlocks(code []byte) []BasicBlock {
 // isBlockTerminator checks if an opcode terminates a basic block
 func isBlockTerminator(op ByteCode) bool {
 	switch op {
-	// Unconditional terminators or explicit halts
 	case STOP, RETURN, REVERT, SELFDESTRUCT:
 		return true
-	// Unconditional / conditional jumps that alter the control-flow within the same contract
-	case JUMP, JUMPI, GAS, SSTORE, RJUMP, RJUMPI, RJUMPV, CALLF, RETF, JUMPF:
+	case JUMP, JUMPI:
 		return true
-	// External message calls — these transfer control to another context and therefore
-	// must terminate the current basic block for correct static-gas accounting
-	case CALL, CALLCODE, DELEGATECALL, STATICCALL,
-		EXTCALL, EXTDELEGATECALL, EXTSTATICCALL:
+	case RJUMP, RJUMPI, RJUMPV:
 		return true
-	// Contract creation opcodes have similar control-flow behaviour (external call & potential revert)
-	// so we also treat them as block terminators
-	case CREATE, CREATE2:
+	case CALLF, RETF, JUMPF:
 		return true
 	default:
 		return false
