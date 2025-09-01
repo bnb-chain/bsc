@@ -264,6 +264,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}
 		// for tracing: this gas consumption event is emitted below in the debug section.
 		if contract.Gas < cost {
+			if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
+				err = in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext)
+				return nil, err
+			}
 			return nil, ErrOutOfGas
 		} else {
 			contract.Gas -= cost
@@ -298,6 +302,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			}
 			// for tracing: this gas consumption event is emitted below in the debug section.
 			if contract.Gas < dynamicCost {
+				contract.Gas += operation.constantGas // restore deducted constant gas first
+				if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
+					err = in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext)
+					return nil, err
+				}
 				return nil, ErrOutOfGas
 			} else {
 				contract.Gas -= dynamicCost
