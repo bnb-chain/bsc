@@ -22,6 +22,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"maps"
 	"math/big"
 	"reflect"
 	"slices"
@@ -347,6 +348,16 @@ func (b *BlockAccessListRecord) AddStorage(addr common.Address, key common.Hash,
 		storageItem := b.Accounts[addr].StorageItems[key]
 		storageItem.Dirty = dirty
 		b.Accounts[addr].StorageItems[key] = storageItem
+	}
+}
+
+func (b *BlockAccessListRecord) Copy() *BlockAccessListRecord {
+	if b == nil {
+		return nil
+	}
+	return &BlockAccessListRecord{
+		Version:  b.Version,
+		Accounts: maps.Clone(b.Accounts),
 	}
 }
 

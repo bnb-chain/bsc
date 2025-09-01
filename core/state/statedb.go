@@ -464,7 +464,6 @@ func (s *StateDB) GetCodeHash(addr common.Address) common.Hash {
 // GetState retrieves the value associated with the specific key.
 func (s *StateDB) GetState(addr common.Address, hash common.Hash) common.Hash {
 	stateObject := s.getStateObject(addr)
-	// add to block access list
 	if stateObject != nil {
 		s.blockAccessList.AddStorage(addr, hash, uint32(s.txIndex), false)
 		return stateObject.GetState(hash)
@@ -549,7 +548,6 @@ func (s *StateDB) SetCode(addr common.Address, code []byte) (prev []byte) {
 }
 
 func (s *StateDB) SetState(addr common.Address, key, value common.Hash) common.Hash {
-	// add to block access list
 	s.blockAccessList.AddStorage(addr, key, uint32(s.txIndex), true)
 	if stateObject := s.getOrNewStateObject(addr); stateObject != nil {
 		return stateObject.SetState(key, value)
@@ -766,10 +764,11 @@ func (s *StateDB) Copy() *StateDB {
 	return s.copyInternal(false)
 }
 
-func (s *StateDB) TransferBAL(target *StateDB) {
-	target.blockAccessList = s.blockAccessList
-	s.blockAccessList = nil
-}
+// during mining phase, there would be env copy,
+// func (s *StateDB) TransferBAL(target *StateDB) {
+// 	target.blockAccessList = s.blockAccessList
+// 	s.blockAccessList = nil
+// }
 
 // It is mainly for state prefetcher to do trie prefetch right now.
 func (s *StateDB) CopyDoPrefetch() *StateDB {
@@ -804,7 +803,7 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 		// empty lists, so we do it anyway to not blow up if we ever decide copy them
 		// in the middle of a transaction.
 		accessList:       s.accessList.Copy(),
-		blockAccessList:  nil, // s.blockAccessList,
+		blockAccessList:  s.blockAccessList.Copy(),
 		transientStorage: s.transientStorage.Copy(),
 		journal:          s.journal.copy(),
 	}

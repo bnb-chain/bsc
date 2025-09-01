@@ -121,7 +121,7 @@ func (env *environment) copy() *environment {
 		receipts:  copyReceipts(env.receipts),
 		committed: env.committed,
 	}
-	env.state.TransferBAL(cpy.state)
+	// env.state.TransferBAL(cpy.state)
 	if env.gasPool != nil {
 		gasPool := *env.gasPool
 		cpy.gasPool = &gasPool

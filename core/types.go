@@ -50,7 +50,7 @@ type Prefetcher interface {
 	// PrefetchMining used for pre-caching transaction signatures and state trie nodes. Only used for mining stage.
 	PrefetchMining(txs TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr **types.Transaction)
 	// prefetch based on block access list
-	PrefetchBAL(block *types.Block, statedb *state.StateDB, interruptCh <-chan struct{})
+	PrefetchBAL(block *types.Block, statedb *state.StateDB, interrupt *atomic.Bool)
 }
 
 // Processor is an interface for processing blocks using a given initial state.

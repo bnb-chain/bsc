@@ -2304,7 +2304,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 		}
 		bc.updateHighestVerifiedHeader(block.Header())
-
 		// The traced section of block import.
 		start := time.Now()
 		res, err := bc.processBlock(parent.Root, block, setHead, makeWitness && len(chain) == 1)
@@ -2418,7 +2417,7 @@ func (bc *BlockChain) processBlock(parentRoot common.Hash, block *types.Block, s
 	defer interrupt.Store(true) // terminate the prefetch at the end
 
 	needBadSharedStorage := bc.chainConfig.NeedBadSharedStorage(block.Number())
-	needPrefetch := needBadSharedStorage || (!bc.cfg.NoPrefetch && len(block.Transactions()) >= prefetchTxNumber)
+	needPrefetch := needBadSharedStorage || (!bc.cfg.NoPrefetch && len(block.Transactions()) >= prefetchTxNumber) || block.BAL() != nil
 	if !needPrefetch {
 		statedb, err = state.New(parentRoot, bc.statedb)
 		if err != nil {
@@ -2460,7 +2459,12 @@ func (bc *BlockChain) processBlock(parentRoot common.Hash, block *types.Block, s
 			// Disable tracing for prefetcher executions.
 			vmCfg := bc.cfg.VmConfig
 			vmCfg.Tracer = nil
-			bc.prefetcher.Prefetch(block.Transactions(), block.Header(), block.GasLimit(), throwaway, vmCfg, &interrupt)
+			if block.BAL() != nil {
+				bc.prefetcher.PrefetchBAL(block, throwaway, &interrupt)
+			} else {
+				bc.prefetcher.Prefetch(block.Transactions(), block.Header(), block.GasLimit(), throwaway, vmCfg, &interrupt)
+			}
+			// bc.prefetcher.Prefetch(block.Transactions(), block.Header(), block.GasLimit(), throwaway, vmCfg, &interrupt)
 
 			blockPrefetchExecuteTimer.Update(time.Since(start))
 			if interrupt.Load() {
