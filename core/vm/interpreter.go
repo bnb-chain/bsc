@@ -295,6 +295,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// cost is explicitly set so that the capture state defer method can get the proper cost
 			// cost is explicitly set so that the capture state defer method can get the proper cost
 			var dynamicCost uint64
+			memLastGasCost := mem.lastGasCost
 			dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
 			cost += dynamicCost // for tracing
 			if err != nil {
@@ -303,6 +304,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// for tracing: this gas consumption event is emitted below in the debug section.
 			if contract.Gas < dynamicCost {
 				contract.Gas += operation.constantGas // restore deducted constant gas first
+				mem.lastGasCost = memLastGasCost
 				if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
 					err = in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext)
 					return nil, err
