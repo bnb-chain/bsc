@@ -215,6 +215,9 @@ type BlockChainConfig struct {
 	// If the value is zero, all transactions of the entire chain will be indexed.
 	// If the value is -1, indexing is disabled.
 	TxLookupLimit int64
+
+	// EnableBAL enables the block access list feature
+	EnableBAL bool
 }
 
 // DefaultConfig returns the default config.

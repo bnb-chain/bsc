@@ -104,6 +104,9 @@ type Config struct {
 	// EnableQuickBlockFetching indicates whether to fetch new blocks using new messages.
 	EnableQuickBlockFetching bool `toml:",omitempty"`
 
+	// EnableBAL enables the block access list feature
+	EnableBAL bool `toml:",omitempty"`
+
 	// RangeLimit enable 5000 blocks limit when handle range query
 	RangeLimit bool `toml:",omitempty"`
 

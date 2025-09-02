@@ -193,13 +193,20 @@ func NewWithReader(root common.Hash, db Database, reader Reader) (*StateDB, erro
 		preimages:            make(map[common.Hash][]byte),
 		journal:              newJournal(),
 		accessList:           newAccessList(),
-		blockAccessList:      &types.BlockAccessListRecord{Accounts: make(map[common.Address]types.AccountAccessListRecord)},
+		blockAccessList:      nil,
 		transientStorage:     newTransientStorage(),
 	}
 	if db.TrieDB().IsVerkle() {
 		sdb.accessEvents = NewAccessEvents(db.PointCache())
 	}
 	return sdb, nil
+}
+
+func (s *StateDB) InitBlockAccessList() {
+	if s.blockAccessList != nil {
+		log.Warn("prepareBAL blockAccessList is not nil")
+	}
+	s.blockAccessList = &types.BlockAccessListRecord{Accounts: make(map[common.Address]types.AccountAccessListRecord)}
 }
 
 func (s *StateDB) SetNeedBadSharedStorage(needBadSharedStorage bool) {

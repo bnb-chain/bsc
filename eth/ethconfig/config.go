@@ -111,6 +111,7 @@ type Config struct {
 	NoPruning  bool // Whether to disable pruning and flush everything to disk
 	NoPrefetch bool // Whether to disable prefetching and only load state on demand
 
+	EnableBAL           bool
 	DirectBroadcast     bool
 	DisableSnapProtocol bool // Whether disable snap protocol
 	RangeLimit          bool
