@@ -143,8 +143,8 @@ type handlerConfig struct {
 	PeerSet                   *peerSet
 	EnableQuickBlockFetching  bool
 	EnableEVNFeatures         bool
+	EnableBAL                 bool
 	EVNNodeIdsWhitelist       []enode.ID
-	BALTestID                 []enode.ID
 	ProxyedValidatorAddresses []common.Address
 }
 
@@ -153,6 +153,7 @@ type handler struct {
 	networkID                  uint64
 	disablePeerTxBroadcast     bool
 	enableEVNFeatures          bool
+	enableBAL                  bool
 	evnNodeIdsWhitelistMap     map[enode.ID]struct{}
 	balTestIDMap               map[enode.ID]struct{}
 	proxyedValidatorAddressMap map[common.Address]struct{}
@@ -224,6 +225,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		requiredBlocks:             config.RequiredBlocks,
 		directBroadcast:            config.DirectBroadcast,
 		enableEVNFeatures:          config.EnableEVNFeatures,
+		enableBAL:                  config.EnableBAL,
 		evnNodeIdsWhitelistMap:     make(map[enode.ID]struct{}),
 		balTestIDMap:               make(map[enode.ID]struct{}),
 		proxyedValidatorAddressMap: make(map[common.Address]struct{}),
@@ -234,9 +236,6 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 	for _, nodeID := range config.EVNNodeIdsWhitelist {
 		h.evnNodeIdsWhitelistMap[nodeID] = struct{}{}
-	}
-	for _, nodeID := range config.BALTestID {
-		h.balTestIDMap[nodeID] = struct{}{}
 	}
 	for _, address := range config.ProxyedValidatorAddresses {
 		h.proxyedValidatorAddressMap[address] = struct{}{}
@@ -801,19 +800,21 @@ func (h *handler) Stop() {
 	log.Info("Ethereum protocol stopped")
 }
 
-func (h *handler) BroadcastBlockToBalTestPeer(block *types.Block) {
+func (h *handler) BroadcastBlockWithBAL(block *types.Block) {
 	hash := block.Hash()
 	peers := h.peers.peersWithoutBlock(hash)
-	var balTestPeer []*ethPeer
+	var balPeer []*ethPeer
 	for _, peer := range peers {
-		log.Debug("BroadcastBlockToBalTestPeer", "peer", peer.ID(), "len(h.balTestIDMap)", len(h.balTestIDMap))
-		if _, ok := h.balTestIDMap[peer.NodeID()]; ok {
-			balTestPeer = append(balTestPeer, peer)
+		log.Debug("BroadcastBlockWithBAL", "peer", peer.ID(), "CanHandleBAL", peer.CanHandleBAL.Load())
+		if peer.CanHandleBAL.Load() {
+			balPeer = append(balPeer, peer)
 			break
+		} else {
+			log.Warn("BroadcastBlockWithBAL, skip peer", "peer", peer.ID(), "CanHandleBAL", peer.CanHandleBAL.Load())
 		}
 	}
-	if len(balTestPeer) == 0 {
-		log.Error("BroadcastBlockToBalTestPeer, no balTestPeer found")
+	if len(balPeer) == 0 {
+		log.Info("BroadcastBlockWithBAL, no balPeer found")
 		return
 	}
 
@@ -826,8 +827,8 @@ func (h *handler) BroadcastBlockToBalTestPeer(block *types.Block) {
 		return
 	}
 
-	for _, peer := range balTestPeer {
-		log.Debug("BroadcastBlockToBalTestPeer", "number", block.Number(), "peer", peer.ID(), "balSize", block.BALSize())
+	for _, peer := range balPeer {
+		log.Debug("BroadcastBlockWithBAL", "number", block.Number(), "peer", peer.ID(), "balSize", block.BALSize())
 		peer.AsyncSendNewBlock(block, td)
 	}
 }
@@ -835,15 +836,16 @@ func (h *handler) BroadcastBlockToBalTestPeer(block *types.Block) {
 // BroadcastBlock will either propagate a block to a subset of its peers, or
 // will only announce its availability (depending what's requested).
 // enableBalPeer: true will only broadcast to bal test peer
-func (h *handler) BroadcastBlock(block *types.Block, propagate bool, enableBalPeer bool) {
+func (h *handler) BroadcastBlock(block *types.Block, propagate bool, blockImported bool) {
 	// Disable the block propagation if it's the post-merge block.
 	if beacon, ok := h.chain.Engine().(*beacon.Beacon); ok {
 		if beacon.IsPoSHeader(block.Header()) {
 			return
 		}
 	}
-	if enableBalPeer {
-		h.BroadcastBlockToBalTestPeer(block)
+	// blockImported means the block is imported successfully, so we need to broadcast to bal test peer
+	if h.enableBAL && blockImported {
+		h.BroadcastBlockWithBAL(block)
 		return
 	}
 	hash := block.Hash()
@@ -868,7 +870,8 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool, enableBalPe
 		}
 
 		for _, peer := range transfer {
-			if !enableBalPeer && peer.ID() == balTestPeerID {
+			// if enableBAL is true, broadcast the block to remote peer after block imported, to get the BAL data.
+			if h.enableBAL && peer.CanHandleBAL.Load() {
 				log.Debug("skip broadcast block to bal test peer", "block", block.Number(), "peer", peer.ID())
 				continue
 			}
@@ -896,7 +899,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool, enableBalPe
 	// Otherwise if the block is indeed in our own chain, announce it
 	if h.chain.HasBlock(hash, block.NumberU64()) {
 		for _, peer := range peers {
-			if !enableBalPeer && peer.ID() == balTestPeerID {
+			if h.enableBAL && peer.ID() == balTestPeerID {
 				log.Debug("skip announce block to bal test peer", "block", block.Number(), "peer", peer.ID())
 				continue
 			}
