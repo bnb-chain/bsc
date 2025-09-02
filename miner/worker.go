@@ -705,14 +705,8 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 	} else {
 		if prevEnv == nil {
 			state.StartPrefetcher("miner", nil)
-		} else if prevEnv.header.Number.Uint64() == header.Number.Uint64() {
-			state.TransferPrefetcher(prevEnv.state)
 		} else {
-			// in some corner case, new block was just imported and preEnv was for the previous block
-			// in this case, the prefetcher can not be transferred
-			log.Debug("new block was just imported, start prefetcher from scratch",
-				"prev number", prevEnv.header.Number.Uint64(), "cur number", header.Number.Uint64())
-			state.StartPrefetcher("miner", nil)
+			state.TransferPrefetcher(prevEnv.state)
 		}
 	}
 
@@ -1285,6 +1279,7 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 	// validator can try several times to get the most profitable block,
 	// as long as the timestamp is not reached.
 	workList := make([]*environment, 0, 10)
+	parentHash := w.chain.CurrentBlock().Hash()
 	var prevWork *environment
 	// workList clean up
 	defer func() {
@@ -1300,9 +1295,10 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 LOOP:
 	for {
 		work, err := w.prepareWork(&generateParams{
-			timestamp: uint64(timestamp),
-			coinbase:  coinbase,
-			prevWork:  prevWork,
+			timestamp:  uint64(timestamp),
+			parentHash: parentHash,
+			coinbase:   coinbase,
+			prevWork:   prevWork,
 		}, false)
 		if err != nil {
 			return
@@ -1508,6 +1504,10 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 			interval()
 		}
 		fees := env.state.GetBalance(consensus.SystemAddress).ToBig()
+		if len(env.txs) != env.tcount {
+			log.Warn("Invalid work commit: it may have already been committed", "number", env.header.Number.Uint64())
+			return nil
+		}
 		feesInEther := new(big.Float).Quo(new(big.Float).SetInt(fees), big.NewFloat(params.Ether))
 		// Withdrawals are set to nil here, because this is only called in PoW.
 		finalizeStart := time.Now()
@@ -1536,7 +1536,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		select {
 		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
 			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
-				"txs", env.tcount, "blobs", env.blobs, "gas", block.GasUsed(), "fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
+				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
 
 		case <-w.exitCh:
 			log.Info("Worker has exited")
