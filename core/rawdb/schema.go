@@ -143,6 +143,8 @@ var (
 
 	BlockBlobSidecarsPrefix = []byte("blobs")
 
+	BlockBALPrefix = []byte("bal") // blockBALPrefix + blockNumber (uint64 big endian) + blockHash -> block access list
+
 	// new log index
 	filterMapsPrefix         = "fm-"
 	filterMapsRangeKey       = []byte(filterMapsPrefix + "R")
@@ -156,7 +158,6 @@ var (
 	preimageCounter     = metrics.NewRegisteredCounter("db/preimage/total", nil)
 	preimageHitsCounter = metrics.NewRegisteredCounter("db/preimage/hits", nil)
 	preimageMissCounter = metrics.NewRegisteredCounter("db/preimage/miss", nil)
-	BlockBALPrefix      = []byte("bal")
 )
 
 // LegacyTxLookupEntry is the legacy TxLookupEntry definition with some unnecessary

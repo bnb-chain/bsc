@@ -971,7 +971,6 @@ LOOP:
 			coalescedLogs = append(coalescedLogs, logs...)
 			env.tcount++
 			txs.Shift()
-			// update the BAL metedata
 
 		default:
 			// Transaction is regarded as invalid, drop all consecutive transactions from
