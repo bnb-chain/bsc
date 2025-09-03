@@ -94,7 +94,7 @@ var (
 type environment struct {
 	signer   types.Signer
 	state    *state.StateDB // apply state changes here
-	tcount   int            // tx count in cycle
+	tcount   int            // count of non-system transactions in cycle
 	gasPool  *core.GasPool  // available gas used to pack transactions
 	coinbase common.Address
 	evm      *vm.EVM
