@@ -1505,7 +1505,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		}
 		fees := env.state.GetBalance(consensus.SystemAddress).ToBig()
 		if len(env.txs) != env.tcount {
-			log.Warn("Invalid work commit: it may have already been committed", "number", env.header.Number.Uint64())
+			log.Warn("Invalid work commit: possibly already committed, now including system txs", "number", env.header.Number.Uint64())
 			return nil
 		}
 		feesInEther := new(big.Float).Quo(new(big.Float).SetInt(fees), big.NewFloat(params.Ether))
