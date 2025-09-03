@@ -1503,14 +1503,14 @@ func (w *worker) inTurn() bool {
 // the deep copy first.
 func (w *worker) commit(env *environment, interval func(), update bool, start time.Time) error {
 	if w.isRunning() {
-		if interval != nil {
-			interval()
-		}
-		fees := env.state.GetBalance(consensus.SystemAddress).ToBig()
 		if env.committed {
 			log.Warn("Invalid work commit: already committed", "number", env.header.Number.Uint64())
 			return nil
 		}
+		if interval != nil {
+			interval()
+		}
+		fees := env.state.GetBalance(consensus.SystemAddress).ToBig()
 		feesInEther := new(big.Float).Quo(new(big.Float).SetInt(fees), big.NewFloat(params.Ether))
 		// Withdrawals are set to nil here, because this is only called in PoW.
 		finalizeStart := time.Now()
