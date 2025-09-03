@@ -69,8 +69,6 @@ const (
 	// All transactions with a higher size will be announced and need to be fetched
 	// by the peer.
 	txMaxBroadcastSize = 4096
-
-	balTestPeerID = "fefe0044d84fa6179c329087968e62bb26f04d2b317344de221e379cf4220ecc"
 )
 
 var (
@@ -155,7 +153,6 @@ type handler struct {
 	enableEVNFeatures          bool
 	enableBAL                  bool
 	evnNodeIdsWhitelistMap     map[enode.ID]struct{}
-	balTestIDMap               map[enode.ID]struct{}
 	proxyedValidatorAddressMap map[common.Address]struct{}
 
 	snapSync        atomic.Bool // Flag whether snap sync is enabled (gets disabled if we already have blocks)
@@ -227,7 +224,6 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		enableEVNFeatures:          config.EnableEVNFeatures,
 		enableBAL:                  config.EnableBAL,
 		evnNodeIdsWhitelistMap:     make(map[enode.ID]struct{}),
-		balTestIDMap:               make(map[enode.ID]struct{}),
 		proxyedValidatorAddressMap: make(map[common.Address]struct{}),
 		quitSync:                   make(chan struct{}),
 		handlerDoneCh:              make(chan struct{}),
@@ -312,7 +308,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		return h.chain.InsertChain(blocks)
 	}
 
-	broadcastBlockWithCheck := func(block *types.Block, propagate bool, enableBalPeer bool) {
+	broadcastBlockWithCheck := func(block *types.Block, propagate bool, blockImported bool) {
 		if propagate {
 			if !(block.Header().WithdrawalsHash == nil && block.Withdrawals() == nil) &&
 				!(block.Header().EmptyWithdrawalsHash() && block.Withdrawals() != nil && len(block.Withdrawals()) == 0) {
@@ -324,7 +320,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 				return
 			}
 		}
-		h.BroadcastBlock(block, propagate, enableBalPeer)
+		h.BroadcastBlock(block, propagate, blockImported)
 	}
 
 	fetchRangeBlocks := func(peer string, startHeight uint64, startHash common.Hash, count uint64) ([]*types.Block, error) {
@@ -835,7 +831,7 @@ func (h *handler) BroadcastBlockWithBAL(block *types.Block) {
 
 // BroadcastBlock will either propagate a block to a subset of its peers, or
 // will only announce its availability (depending what's requested).
-// enableBalPeer: true will only broadcast to bal test peer
+// blockImported: true will only broadcast to bal peer after block imported if enableBAL is true
 func (h *handler) BroadcastBlock(block *types.Block, propagate bool, blockImported bool) {
 	// Disable the block propagation if it's the post-merge block.
 	if beacon, ok := h.chain.Engine().(*beacon.Beacon); ok {
@@ -899,8 +895,8 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool, blockImport
 	// Otherwise if the block is indeed in our own chain, announce it
 	if h.chain.HasBlock(hash, block.NumberU64()) {
 		for _, peer := range peers {
-			if h.enableBAL && peer.ID() == balTestPeerID {
-				log.Debug("skip announce block to bal test peer", "block", block.Number(), "peer", peer.ID())
+			if h.enableBAL && !blockImported {
+				log.Debug("skip announce block to bal peer", "block", block.Number(), "peer", peer.ID())
 				continue
 			}
 			log.Debug("Announced block to peer", "hash", hash, "peer", peer.ID(), "EVNPeerFlag", peer.EVNPeerFlag.Load())

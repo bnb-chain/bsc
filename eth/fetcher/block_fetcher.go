@@ -91,7 +91,7 @@ type bodyRequesterFn func([]common.Hash, chan *eth.Response) (*eth.Request, erro
 type headerVerifierFn func(header *types.Header) error
 
 // blockBroadcasterFn is a callback type for broadcasting a block to connected peers.
-type blockBroadcasterFn func(block *types.Block, propagate bool, enableBalPeer bool)
+type blockBroadcasterFn func(block *types.Block, propagate bool, blockImported bool)
 
 // chainHeightFn is a callback type to retrieve the current chain height.
 type chainHeightFn func() uint64
@@ -936,7 +936,7 @@ func (f *BlockFetcher) importBlocks(op *blockOrHeaderInject) {
 		// If import succeeded, broadcast the block
 		blockAnnounceOutTimer.UpdateSince(block.ReceivedAt)
 		log.Debug("broadcast block to bal test peer", "number", block.Number(), "hash", hash, "balSize", block.BALSize())
-		go f.broadcastBlock(block, false, true) // send to bal test peer for now, block should include BAL
+		go f.broadcastBlock(block, false, true) // send to bal peer for now, block should include BAL
 
 		// Invoke the testing hook if needed
 		if f.importedHook != nil {
