@@ -106,17 +106,20 @@ type environment struct {
 	blobs    int
 
 	witness *stateless.Witness
+
+	committed bool
 }
 
 // copy creates a deep copy of environment.
 func (env *environment) copy() *environment {
 	cpy := &environment{
-		signer:   env.signer,
-		state:    env.state.Copy(),
-		tcount:   env.tcount,
-		coinbase: env.coinbase,
-		header:   types.CopyHeader(env.header),
-		receipts: copyReceipts(env.receipts),
+		signer:    env.signer,
+		state:     env.state.Copy(),
+		tcount:    env.tcount,
+		coinbase:  env.coinbase,
+		header:    types.CopyHeader(env.header),
+		receipts:  copyReceipts(env.receipts),
+		committed: env.committed,
 	}
 	if env.gasPool != nil {
 		gasPool := *env.gasPool
@@ -1504,8 +1507,8 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 			interval()
 		}
 		fees := env.state.GetBalance(consensus.SystemAddress).ToBig()
-		if len(env.txs) != env.tcount {
-			log.Warn("Invalid work commit: possibly already committed, now including system txs", "number", env.header.Number.Uint64())
+		if env.committed {
+			log.Warn("Invalid work commit: already committed", "number", env.header.Number.Uint64())
 			return nil
 		}
 		feesInEther := new(big.Float).Quo(new(big.Float).SetInt(fees), big.NewFloat(params.Ether))
@@ -1516,6 +1519,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 			body.Withdrawals = make([]*types.Withdrawal, 0)
 		}
 		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(env.header), env.state, &body, env.receipts, nil)
+		env.committed = true
 		if err != nil {
 			return err
 		}
