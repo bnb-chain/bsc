@@ -230,9 +230,7 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 		// Note that enabling async writes means recent data may be lost in the event of an
 		// application-level panic (writes will also be lost on a machine-level failure,
 		// of course). Geth is expected to handle recovery from an unclean shutdown.
-		// TODO(Nathan): turn back to pebble.NoSync to improve performance
-		// writeOptions: pebble.NoSync,
-		writeOptions: pebble.Sync,
+		writeOptions: pebble.NoSync,
 	}
 	opt := &pebble.Options{
 		// Pebble has a single combined cache area and the write
