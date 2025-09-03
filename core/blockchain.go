@@ -1398,7 +1398,6 @@ func (bc *BlockChain) ExportN(w io.Writer, first uint64, last uint64) error {
 func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 	var dbWg sync.WaitGroup
 	dbWg.Add(2)
-	defer dbWg.Wait()
 	go func() {
 		defer dbWg.Done()
 		// Add the block to the canonical chain number scheme and mark as the head
@@ -1423,6 +1422,7 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 			log.Crit("Failed to update chain indexes in chain db", "err", err)
 		}
 	}()
+	dbWg.Wait()
 
 	// Update all in-memory chain markers in the last step
 	bc.hc.SetCurrentHeader(block.Header())

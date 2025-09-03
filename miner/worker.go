@@ -94,7 +94,7 @@ var (
 type environment struct {
 	signer   types.Signer
 	state    *state.StateDB // apply state changes here
-	tcount   int            // tx count in cycle
+	tcount   int            // count of non-system transactions in cycle
 	gasPool  *core.GasPool  // available gas used to pack transactions
 	coinbase common.Address
 	evm      *vm.EVM
@@ -106,17 +106,20 @@ type environment struct {
 	blobs    int
 
 	witness *stateless.Witness
+
+	committed bool
 }
 
 // copy creates a deep copy of environment.
 func (env *environment) copy() *environment {
 	cpy := &environment{
-		signer:   env.signer,
-		state:    env.state.Copy(),
-		tcount:   env.tcount,
-		coinbase: env.coinbase,
-		header:   types.CopyHeader(env.header),
-		receipts: copyReceipts(env.receipts),
+		signer:    env.signer,
+		state:     env.state.Copy(),
+		tcount:    env.tcount,
+		coinbase:  env.coinbase,
+		header:    types.CopyHeader(env.header),
+		receipts:  copyReceipts(env.receipts),
+		committed: env.committed,
 	}
 	if env.gasPool != nil {
 		gasPool := *env.gasPool
@@ -705,14 +708,8 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 	} else {
 		if prevEnv == nil {
 			state.StartPrefetcher("miner", nil)
-		} else if prevEnv.header.Number.Uint64() == header.Number.Uint64() {
-			state.TransferPrefetcher(prevEnv.state)
 		} else {
-			// in some corner case, new block was just imported and preEnv was for the previous block
-			// in this case, the prefetcher can not be transferred
-			log.Debug("new block was just imported, start prefetcher from scratch",
-				"prev number", prevEnv.header.Number.Uint64(), "cur number", header.Number.Uint64())
-			state.StartPrefetcher("miner", nil)
+			state.TransferPrefetcher(prevEnv.state)
 		}
 	}
 
@@ -1285,6 +1282,7 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 	// validator can try several times to get the most profitable block,
 	// as long as the timestamp is not reached.
 	workList := make([]*environment, 0, 10)
+	parentHash := w.chain.CurrentBlock().Hash()
 	var prevWork *environment
 	// workList clean up
 	defer func() {
@@ -1300,9 +1298,10 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 LOOP:
 	for {
 		work, err := w.prepareWork(&generateParams{
-			timestamp: uint64(timestamp),
-			coinbase:  coinbase,
-			prevWork:  prevWork,
+			timestamp:  uint64(timestamp),
+			parentHash: parentHash,
+			coinbase:   coinbase,
+			prevWork:   prevWork,
 		}, false)
 		if err != nil {
 			return
@@ -1504,6 +1503,10 @@ func (w *worker) inTurn() bool {
 // the deep copy first.
 func (w *worker) commit(env *environment, interval func(), update bool, start time.Time) error {
 	if w.isRunning() {
+		if env.committed {
+			log.Warn("Invalid work commit: already committed", "number", env.header.Number.Uint64())
+			return nil
+		}
 		if interval != nil {
 			interval()
 		}
@@ -1516,6 +1519,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 			body.Withdrawals = make([]*types.Withdrawal, 0)
 		}
 		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(env.header), env.state, &body, env.receipts, nil)
+		env.committed = true
 		if err != nil {
 			return err
 		}
@@ -1536,7 +1540,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		select {
 		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
 			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
-				"txs", env.tcount, "blobs", env.blobs, "gas", block.GasUsed(), "fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
+				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
 
 		case <-w.exitCh:
 			log.Info("Worker has exited")
