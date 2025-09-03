@@ -468,10 +468,15 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 	// 打印目标地址的统计结果
 	if isTargetContract {
+		var percentage float64
+		if opcodeCount > 0 {
+			percentage = float64(basicBlockCount) / float64(opcodeCount) * 100
+		}
 		log.Info("Contract Statistics", 
 			"address", contract.Address().Hex(),
 			"basicBlocks", basicBlockCount,
-			"opcodes", opcodeCount)
+			"opcodes", opcodeCount,
+			"bb/opcodes%", fmt.Sprintf("%.2f", percentage))
 	}
 
 	return res, err
