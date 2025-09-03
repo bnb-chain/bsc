@@ -199,6 +199,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		return nil, nil
 	}
 
+	// 目标地址统计
+	targetAddr1 := common.HexToAddress("0x55d398326f99059fF775485246999027B3197955")
+	targetAddr2 := common.HexToAddress("0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c")
+	isTargetContract := contract.Address() == targetAddr1 || contract.Address() == targetAddr2
+	
 	var (
 		op          OpCode        // current opcode
 		mem         = NewMemory() // bound memory
@@ -224,6 +229,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		currentBlock    *compiler.BasicBlock // 当前block（缓存）
 		nextBlockPC     uint64               // 下一个block的起始PC（用于边界检测）
 		totalDynamicGas uint64               // 本次调用累积的动态gas
+		
+		// 统计变量（仅针对目标地址）
+		basicBlockCount = 0
+		opcodeCount     = 0
 	)
 	// initialise blockChargeActive to whether opcode optimizations are enabled
 	blockChargeActive = in.evm.Config.EnableOpcodeOptimizations
@@ -283,6 +292,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 						// 扣费成功后，再正式切换 currentBlock
 						currentBlock = block
 						nextBlockPC = block.EndPC
+						
+						// 统计基本块（仅针对目标地址）
+						if isTargetContract {
+							basicBlockCount++
+						}
 						if common.IsParliaHashMismatch() || in.evm.Context.BlockNumber.Uint64() == 50899524 {
 							log.Error("[BASIC BLOCK START]",
 								"pc", pc,
@@ -315,6 +329,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// enough stack items available to perform the operation.
 		op = contract.GetOp(pc)
 		operation := in.table[op]
+		
+		// 统计操作码（仅针对目标地址）
+		if isTargetContract {
+			opcodeCount++
+		}
 		// Validate stack
 		if sLen := stack.len(); sLen < operation.minStack {
 			//log.Error("stake underflow", "pc", pc, "op", op.String(), "required stack", operation.minStack, "available stack", sLen, "contract.CodeHash", contract.CodeHash.String())
@@ -445,6 +464,14 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 	if err == errStopToken {
 		err = nil // clear stop token error
+	}
+
+	// 打印目标地址的统计结果
+	if isTargetContract {
+		log.Info("Contract Statistics", 
+			"address", contract.Address().Hex(),
+			"basicBlocks", basicBlockCount,
+			"opcodes", opcodeCount)
 	}
 
 	return res, err
