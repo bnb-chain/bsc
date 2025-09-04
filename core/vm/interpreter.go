@@ -18,14 +18,15 @@ package vm
 
 import (
 	"fmt"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
+
 	"github.com/holiman/uint256"
-	"strings"
 )
 
 // Config are the configuration options for the Interpreter
@@ -172,17 +173,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	in.evm.depth++
 	defer func() { in.evm.depth-- }()
 
-	// Frame enter log
-	if in.evm.Context.BlockNumber.Uint64() == 50897372 && in.evm.StateDB.TxIndex() == 291 {
-		depthNow := in.evm.depth
-
-		log.Error("[FRAME ENTER]", "depth", depthNow, "gas", contract.Gas, "codeHash", contract.CodeHash.String())
-		// Frame exit log
-		defer func() {
-			log.Error("[FRAME EXIT]", "depth", depthNow, "gas", contract.Gas, "codeHash", contract.CodeHash.String())
-		}()
-	}
-
 	// Make sure the readOnly is only set if we aren't in readOnly yet.
 	// This also makes sure that the readOnly flag isn't removed for child calls.
 	if readOnly && !in.readOnly {
@@ -211,19 +201,18 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// For optimisation reason we're using uint64 as the program counter.
 		// It's theoretically possible to go above 2^64. The YP defines the PC
 		// to be uint256. Practically much less so feasible.
-		pc                = uint64(0) // program counter
-		cost              uint64
-		blockChargeActive bool   // static gas precharge mode flag
-		totalCost         uint64 // for debug only
+		pc   = uint64(0) // program counter
+		cost uint64
 		// copies used by tracer
-		pcCopy          uint64 // needed for the deferred EVMLogger
-		gasCopy         uint64 // for EVMLogger to log gas remaining before execution
-		logged          bool   // deferred EVMLogger should ignore already logged steps
-		res             []byte // result of the opcode execution function
-		debug           = in.evm.Config.Tracer != nil
-		currentBlock    *compiler.BasicBlock // 当前block（缓存）
-		nextBlockPC     uint64               // 下一个block的起始PC（用于边界检测）
-		totalDynamicGas uint64               // 本次调用累积的动态gas
+		pcCopy  uint64 // needed for the deferred EVMLogger
+		gasCopy uint64 // for EVMLogger to log gas remaining before execution
+		logged  bool   // deferred EVMLogger should ignore already logged steps
+		res     []byte // result of the opcode execution function
+		debug   = in.evm.Config.Tracer != nil
+
+		blockChargeActive bool                 // static gas precharge mode flag
+		currentBlock      *compiler.BasicBlock // 当前block（缓存）
+		nextBlockPC       uint64               // 下一个block的起始PC（用于边界检测）
 	)
 	// initialise blockChargeActive to whether opcode optimizations are enabled
 	blockChargeActive = in.evm.Config.EnableOpcodeOptimizations
@@ -283,22 +272,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 						// 扣费成功后，再正式切换 currentBlock
 						currentBlock = block
 						nextBlockPC = block.EndPC
-						if common.IsParliaHashMismatch() || in.evm.Context.BlockNumber.Uint64() == 50899524 {
-							log.Error("[BASIC BLOCK START]",
-								"pc", pc,
-								"blockStart", currentBlock.StartPC,
-								"blockEnd", currentBlock.EndPC,
-								"staticGas", currentBlock.StaticGas,
-								"gasAfterDeduction", contract.Gas,
-								"depth", in.evm.depth,
-								"codeHash", contract.CodeHash.String(),
-								"contractAddr", contract.Address().String(),
-								"codeSize", len(contract.Code),
-								"blockOpcodes", formatBlockOpcodes(currentBlock.Opcodes),
-								"opcodeCount", len(currentBlock.Opcodes),
-								"nextBlockPC", nextBlockPC,
-								"enableOpt", blockChargeActive)
-						}
 					} else {
 						blockChargeActive = false
 						currentBlock = nil
@@ -315,29 +288,18 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// enough stack items available to perform the operation.
 		op = contract.GetOp(pc)
 		operation := in.table[op]
+		cost = operation.constantGas // For tracing
 		// Validate stack
 		if sLen := stack.len(); sLen < operation.minStack {
-			//log.Error("stake underflow", "pc", pc, "op", op.String(), "required stack", operation.minStack, "available stack", sLen, "contract.CodeHash", contract.CodeHash.String())
 			return nil, &ErrStackUnderflow{stackLen: sLen, required: operation.minStack}
 		} else if sLen > operation.maxStack {
-			//log.Error("stake overflow", "pc", pc, "op", op.String(), "limit stack", operation.minStack, "available stack", sLen, "contract.CodeHash", contract.CodeHash.String())
 			return nil, &ErrStackOverflow{stackLen: sLen, limit: operation.maxStack}
 		}
-		// for tracing: this gas consumption event is emitted below in the debug section.
 		// Only charge gas if we haven't already charged the pre-calculated static gas
-		cost = operation.constantGas // For tracing todo: move into if
-		totalCost += cost
-		// New debug line: print opcode, pc and its static gas each step
-		if common.IsParliaHashMismatch() || in.evm.Context.BlockNumber.Uint64() == 50899524 {
-			log.Error("[OP STATIC]", "pc", pc, "opcode", op.String(), "staticGas", cost, "totalCost", totalCost, "contract.Gas", contract.Gas, "stackLen", stack.len())
-		}
-		// 暂不打印，改为在动态 gas 处理后统一输出（保证包含 dynamic 与 chunk 等影响后的净消耗）
 		if !blockChargeActive {
-
 			if contract.Gas < cost {
 				// 如果是超指令，尝试拆分执行，尽量与 disable-path 失败情况对齐，如果不是超指令，不需要做任何事
 				if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
-					//log.Error("static gas not enough encounters during superinstruction", "op", op.String())
 					// refund all pre-reduced basic block gas until before this pc (so pc-1)
 					in.refundUnusedBlockGas(contract, pc-1, currentBlock)
 					if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
@@ -347,7 +309,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 						continue
 					}
 				}
-				//log.Error("Out of gas", "pc", pc, "required", cost, "available", contract.Gas, "contract.CodeHash", contract.CodeHash.String())
 				return nil, ErrOutOfGas
 			} else {
 				contract.Gas -= cost
@@ -364,13 +325,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			if operation.memorySize != nil {
 				memSize, overflow := operation.memorySize(stack)
 				if overflow {
-					//log.Error("stack gas uint overflow", "pc", pc, "op", op.String(), "contract.CodeHash", contract.CodeHash.String())
 					return nil, ErrGasUintOverflow
 				}
 				// memory is expanded in words of 32 bytes. Gas
 				// is also calculated in words.
 				if memorySize, overflow = math.SafeMul(toWordSize(memSize), 32); overflow {
-					//log.Error("memory gas uint overflow", "pc", pc, "op", op.String(), "contract.CodeHash", contract.CodeHash.String())
 					return nil, ErrGasUintOverflow
 				}
 			}
@@ -379,20 +338,16 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// cost is explicitly set so that the capture state defer method can get the proper cost
 			var dynamicCost uint64
 			dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
-			// 如果首次尝试因静态预扣导致 OOG，则退回未用静态 gas 后重试一次
+			cost += dynamicCost // for tracing
 			if err != nil {
-				//log.Error("operation.dynamicGas error", "pc", pc, "op", op.String(), "cost", cost, "totalCost", totalCost, "contract.CodeHash", contract.CodeHash.String(), "contract.Gas", contract.Gas, "err", err.Error())
 				return nil, fmt.Errorf("%w: %v", ErrOutOfGas, err)
 			}
 
-			cost += dynamicCost // for tracing
-			totalDynamicGas += dynamicCost
 			// for tracing: this gas consumption event is emitted below in the debug section.
 			if contract.Gas < dynamicCost {
 				if blockChargeActive {
 					in.refundUnusedBlockGas(contract, pc-1, currentBlock)
 					if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
-						//log.Error("error encounters during superinstruction", "op", op.String(), "dynamicCost", dynamicCost)
 						if err := in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext); err == nil {
 							// fallback 成功执行到真正 OOG 或全部跑完，继续主循环
 							blockChargeActive = false
@@ -402,7 +357,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 							return nil, err
 						}
 					} else { // if is normal opcode
-						//log.Error("Dynamic gas insufficient", "pc", pc, "op", op.String(), "dynamicCost", dynamicCost)
 						contract.Gas -= operation.constantGas
 						if contract.Gas < dynamicCost {
 							return nil, ErrOutOfGas
@@ -439,7 +393,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		if err != nil {
 			break
 		}
-		// Reset retry mode at the end of each loop iteration for clean state
 		pc++
 	}
 
@@ -467,18 +420,6 @@ func (in *EVMInterpreter) calculateUsedBlockGas(contract *Contract, startPC, end
 		if operation != nil {
 			totalGas += operation.constantGas
 		}
-
-		//// 遇到控制流转移或终止类指令，代表本 block 的执行在此处终止。
-		//// 退款只应计算到“真实执行到的最后一条指令”为止，
-		//// 因此在累计完本条指令的静态 gas 后立即停止扫描。
-		//switch op {
-		//case JUMP, JUMPI, STOP, RETURN, REVERT, INVALID,
-		//	Swap2Swap1PopJump, // SWAP2SWAP1POPJUMP - 超指令，内部包含跳转
-		//	Push2JumpI,        // PUSH2JUMPI - 超指令，内部包含条件跳转
-		//	PopJump,           // POPJUMP    - 超指令，内部包含跳转
-		//	JumpIfZero:        // JUMPIFZERO - 超指令，内部包含条件跳转
-		//	return totalGas
-		//}
 
 		// Prefer compiler's skip for PUSH 和部分已覆盖的超指令
 		if skip, steps := compiler.CalculateSkipSteps(contract.Code, int(pc)); skip {
@@ -595,22 +536,8 @@ func (in *EVMInterpreter) refundUnusedBlockGas(contract *Contract, pc uint64, cu
 	}
 
 	usedGasDiff := currentBlock.StaticGas - actualUsedGas
-	// Debug log: show refund calculation for low-noise target tx
-	debugLowNoise := in.evm.Context.BlockNumber.Uint64() == 50897382 && in.evm.StateDB.TxIndex() == 319
-	if debugLowNoise {
-		log.Error("[REFUND]", "blockStart", currentBlock.StartPC, "pc", pc, "staticGas", currentBlock.StaticGas, "actualUsed", actualUsedGas, "refund", usedGasDiff, "gasBeforeRefund", contract.Gas)
-	}
-	beforeGas := contract.Gas
 	contract.Gas += usedGasDiff
-	if debugLowNoise {
-		log.Error("[GAS]", "action", "Refund", "blockStart", currentBlock.StartPC, "delta", int64(usedGasDiff), "before", beforeGas, "after", contract.Gas, "depth", in.evm.depth)
-	}
-	// 追踪关键帧的退款操作
-	isTargetFrameRefund := debugLowNoise && (in.evm.depth == 2)
-	if debugLowNoise && usedGasDiff > 0 && isTargetFrameRefund {
-		// 注意：退款意味着实际消耗的 gas 比预扣的少，所以这里显示的是实际净消耗
-		log.Error("[FRAME_GAS]", "action", "Refund", "depth", in.evm.depth, "blockStart", currentBlock.StartPC, "actualUsed", actualUsedGas, "staticGas", currentBlock.StaticGas, "refund", usedGasDiff, "netConsumption", currentBlock.StaticGas-usedGasDiff, "before", beforeGas, "after", contract.Gas, "enableOpt", true)
-	}
+
 	return usedGasDiff
 }
 
@@ -660,13 +587,6 @@ func DecomposeSuperInstruction(op OpCode) ([]OpCode, bool) {
 	return seq, ok
 }
 
-// DecomposeSuperInstructionByName works like DecomposeSuperInstruction but takes the
-// textual name (case-insensitive) instead of the opcode constant.
-func DecomposeSuperInstructionByName(name string) ([]OpCode, bool) {
-	op := StringToOp(strings.ToUpper(name))
-	return DecomposeSuperInstruction(op)
-}
-
 func (in *EVMInterpreter) executeSingleOpcode(pc *uint64, op OpCode, contract *Contract, stack *Stack, mem *Memory, callCtx *ScopeContext) error {
 	operation := in.table[op]
 	if operation == nil {
@@ -714,42 +634,11 @@ func (in *EVMInterpreter) executeSingleOpcode(pc *uint64, op OpCode, contract *C
 // tryFallbackForSuperInstruction 将超指令拆分为普通指令并依次执行，直到真正耗尽 gas 或全部成功。
 // 返回 nil 表示已成功执行到超指令末尾或中途 OOG（并已正确更新 pc / gas），上层应继续主循环。
 func (in *EVMInterpreter) tryFallbackForSuperInstruction(pc *uint64, seq []OpCode, contract *Contract, stack *Stack, mem *Memory, callCtx *ScopeContext) error {
-	//startPC := *pc
-
-	//log.Error("[FALLBACK]", "start", startPC, "seqLen", len(seq))
 
 	for _, sub := range seq {
-		//log.Error("[FALLBACK-EXEC]", "pc", *pc, "op", sub.String(), "gasBefore", contract.Gas)
 		if err := in.executeSingleOpcode(pc, sub, contract, stack, mem, callCtx); err != nil {
-			//log.Error("[FALLBACK-EXEC]", "op", sub.String(), "err", err, "gasLeft", contract.Gas)
 			return err // OutOfGas 或其他错误，上层会如常处理
 		}
-		//log.Error("[FALLBACK-EXEC]", "ok", true, "nextPC", *pc, "gasAfter", contract.Gas)
 	}
 	return nil
-}
-
-func formatBlockOpcodes(opcodes []byte) string {
-	if len(opcodes) == 0 {
-		return "[]"
-	}
-
-	var result []string
-	i := 0
-
-	for i < len(opcodes) {
-		opByte := opcodes[i]
-		op := OpCode(opByte)
-		result = append(result, op.String())
-
-		// 跳过PUSH指令的立即数
-		if op >= PUSH1 && op <= PUSH32 {
-			pushSize := int(op - PUSH1 + 1)
-			i += pushSize // 跳过立即数字节
-		}
-
-		i++
-	}
-
-	return "[" + strings.Join(result, ", ") + "]"
 }

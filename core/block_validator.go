@@ -19,7 +19,6 @@ package core
 import (
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -147,7 +146,6 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 	}
 	header := block.Header()
 	if block.GasUsed() != res.GasUsed {
-		common.SetParliaHashMismatch()
 		return fmt.Errorf("invalid gas used (remote: %d local: %d)", block.GasUsed(), res.GasUsed)
 	}
 	// Validate the received block's bloom with the one derived from the generated receipts.

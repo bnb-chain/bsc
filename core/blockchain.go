@@ -23,7 +23,6 @@ import (
 	"io"
 	"math"
 	"math/big"
-	"os"
 	"runtime"
 	"slices"
 	"sort"
@@ -394,8 +393,6 @@ type BlockChain struct {
 
 	// monitor
 	doubleSignMonitor *monitor.DoubleSignMonitor
-
-	badBlockCount int64 // 坏块计数器
 }
 
 // NewBlockChain returns a fully initialised block chain using information
@@ -3168,14 +3165,6 @@ func (bc *BlockChain) reportBlock(block *types.Block, res *ProcessResult, err er
 	}
 	rawdb.WriteBadBlock(bc.db, block)
 	log.Error(summarizeBadBlock(block, receipts, bc.Config(), err))
-	count := atomic.AddInt64(&bc.badBlockCount, 1)
-
-	if count >= 2 {
-		log.Error("Second bad block encountered, exiting...",
-			"blockNumber", block.NumberU64(),
-			"totalBadBlocks", count)
-		os.Exit(0)
-	}
 }
 
 // logForkReadiness will write a log when a future fork is scheduled, but not
