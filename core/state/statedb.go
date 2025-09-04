@@ -276,7 +276,7 @@ func (s *StateDB) setError(err error) {
 	}
 }
 
-func (s *StateDB) NoTrie() bool {
+func (s *StateDB) NoTries() bool {
 	return s.db.NoTries()
 }
 
@@ -1277,6 +1277,9 @@ func (s *StateDB) commit(deleteEmptyObjects bool, noStorageWiping bool) (*stateU
 				storageTrieNodesUpdated += updates
 				storageTrieNodesDeleted += deletes
 			}
+			if s.NoTries() {
+				return nil
+			}
 			return nodes.Merge(set)
 		}
 	)
@@ -1435,7 +1438,8 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 			}
 		}
 		// If trie database is enabled, commit the state update as a new layer
-		if db := s.db.TrieDB(); db != nil && !s.db.NoTries() {
+		needUpdate := !s.db.NoTries() || s.db.TrieDB().IsSnapshotBuilt()
+		if db := s.db.TrieDB(); db != nil && needUpdate {
 			start := time.Now()
 			if err := db.Update(ret.root, ret.originRoot, block, ret.nodes, ret.stateSet()); err != nil {
 				return nil, err

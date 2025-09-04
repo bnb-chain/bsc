@@ -269,8 +269,8 @@ func (s *hookedStateDB) SelfDestruct6780(address common.Address) (uint256.Int, b
 	return prev, changed
 }
 
-func (s *hookedStateDB) NoTrie() bool {
-	return s.inner.NoTrie()
+func (s *hookedStateDB) NoTries() bool {
+	return s.inner.NoTries()
 }
 
 func (s *hookedStateDB) AddLog(log *types.Log) {

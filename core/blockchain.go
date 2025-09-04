@@ -662,10 +662,19 @@ func (bc *BlockChain) cacheReceipts(hash common.Hash, receipts types.Receipts, b
 	bc.receiptsCache.Add(hash, receipts)
 }
 
+func (bc *BlockChain) needSeparatedSnapshot() bool {
+	if bc.cfg.StateScheme != rawdb.PathScheme {
+		return true
+	}
+	if bc.NoTries() && !bc.triedb.IsSnapshotBuilt() {
+		return true
+	}
+	return false
+}
+
 func (bc *BlockChain) setupSnapshot() {
-	// Short circuit if the chain is established with path scheme, as the
-	// state snapshot has been integrated into path database natively.
-	if bc.cfg.StateScheme == rawdb.PathScheme {
+	// Short circuit if separated snapshot need
+	if !bc.needSeparatedSnapshot() {
 		return
 	}
 	// Load any existing snapshot, regenerating it if loading failed
@@ -1139,7 +1148,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 		if currentBlock := bc.CurrentBlock(); currentBlock != nil && header.Number.Uint64() <= currentBlock.Number.Uint64() {
 			// load bc.snaps for the judge `HasState`
 			if bc.NoTries() {
-				if bc.cfg.SnapshotLimit > 0 && bc.triedb.Scheme() == rawdb.HashScheme {
+				if bc.cfg.SnapshotLimit > 0 && bc.needSeparatedSnapshot() {
 					snapconfig := snapshot.Config{
 						CacheSize:  bc.cfg.SnapshotLimit,
 						NoBuild:    bc.cfg.SnapshotNoBuild,

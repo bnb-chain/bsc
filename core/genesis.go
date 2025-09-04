@@ -168,7 +168,11 @@ func hashAlloc(ga *types.GenesisAlloc, isVerkle bool) (common.Hash, error) {
 func flushAlloc(ga *types.GenesisAlloc, triedb *triedb.Database) (common.Hash, error) {
 	triedbConfig := triedb.Config()
 	if triedbConfig != nil {
+		origin := triedbConfig.NoTries
 		triedbConfig.NoTries = false
+		defer func() {
+			triedbConfig.NoTries = origin
+		}()
 	}
 
 	emptyRoot := types.EmptyRootHash

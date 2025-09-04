@@ -77,6 +77,9 @@ type backend interface {
 	// to disk. Report specifies whether logs will be displayed in info level.
 	Commit(root common.Hash, report bool) error
 
+	// IsSnapshotBuilt reports whether the snapshot generator has completed building.
+	IsSnapshotBuilt() bool
+
 	// Close closes the trie database backend and releases all held resources.
 	Close() error
 }
@@ -182,6 +185,11 @@ func (db *Database) HistoricReader(root common.Hash) (*pathdb.HistoricalStateRea
 		return nil, errors.New("not supported")
 	}
 	return pdb.HistoricReader(root)
+}
+
+// IsSnapshotBuilt reports whether the snapshot generator has completed building.
+func (db *Database) IsSnapshotBuilt() bool {
+	return db.backend.IsSnapshotBuilt()
 }
 
 // Update performs a state transition by committing dirty nodes contained in the

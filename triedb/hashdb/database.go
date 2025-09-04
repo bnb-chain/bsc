@@ -532,6 +532,11 @@ func (c *cleaner) Delete(key []byte) error {
 	panic("not implemented")
 }
 
+// IsSnapshotBuilt reports whether the snapshot generator has completed building.
+func (db *Database) IsSnapshotBuilt() bool {
+	return false
+}
+
 // Update inserts the dirty nodes in provided nodeset into database and link the
 // account trie with multiple storage tries if necessary.
 func (db *Database) Update(root common.Hash, parent common.Hash, block uint64, nodes *trienode.MergedNodeSet) error {

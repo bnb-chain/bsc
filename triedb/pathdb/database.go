@@ -288,7 +288,7 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 		log.Crit("Failed to setup the generator", "err", err)
 	}
 	// TODO (rjl493456442) disable the background indexing in read-only mode
-	if db.freezer != nil && db.config.EnableStateIndexing {
+	if db.freezer != nil && db.config.EnableStateIndexing && !db.config.NoTries {
 		db.indexer = newHistoryIndexer(db.diskdb, db.freezer, db.tree.bottom().stateID())
 		log.Info("Enabled state history indexing")
 	}
@@ -415,6 +415,15 @@ func (db *Database) setStateGenerator() error {
 		<-dl.generator.done
 	}
 	return nil
+}
+
+// IsSnapshotBuilt reports whether the snapshot generator has completed building.
+func (db *Database) IsSnapshotBuilt() bool {
+	generator, _, err := loadGenerator(db.diskdb, db.hasher)
+	if err != nil || generator == nil {
+		return false
+	}
+	return generator.Done
 }
 
 // Update adds a new layer into the tree, if that can be linked to an existing
