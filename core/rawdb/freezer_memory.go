@@ -270,22 +270,6 @@ func (f *MemoryFreezer) Ancients() (uint64, error) {
 	return f.items, nil
 }
 
-// ItemAmountInAncient returns the actual length of current freezer.
-func (f *MemoryFreezer) ItemAmountInAncient() (uint64, error) {
-	f.lock.RLock()
-	defer f.lock.RUnlock()
-
-	return f.items, nil
-}
-
-// Ancients returns the ancient item numbers in the freezer.
-func (f *MemoryFreezer) AncientOffSet() uint64 {
-	f.lock.RLock()
-	defer f.lock.RUnlock()
-
-	return f.tail
-}
-
 // Tail returns the number of first stored item in the freezer.
 // This number can also be interpreted as the total deleted item numbers.
 func (f *MemoryFreezer) Tail() (uint64, error) {

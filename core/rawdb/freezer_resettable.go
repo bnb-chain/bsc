@@ -159,22 +159,6 @@ func (f *resettableFreezer) ReadAncients(fn func(ethdb.AncientReaderOp) error) (
 	return f.freezer.ReadAncients(fn)
 }
 
-// ItemAmountInAncient returns the actual length of current ancientDB.
-func (f *resettableFreezer) ItemAmountInAncient() (uint64, error) {
-	f.lock.RLock()
-	defer f.lock.RUnlock()
-
-	return f.freezer.ItemAmountInAncient()
-}
-
-// AncientOffSet returns the offset of current ancientDB.
-func (f *resettableFreezer) AncientOffSet() uint64 {
-	f.lock.RLock()
-	defer f.lock.RUnlock()
-
-	return f.freezer.AncientOffSet()
-}
-
 // ModifyAncients runs the given write operation.
 func (f *resettableFreezer) ModifyAncients(fn func(ethdb.AncientWriteOp) error) (writeSize int64, err error) {
 	f.lock.RLock()
