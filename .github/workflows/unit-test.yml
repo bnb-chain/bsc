@@ -1,15 +1,15 @@
 name: Unit Test
 
-on:
-  push:
-    branches: 
-      - master
-      - develop
+on: pull_request
+  # push:
+  #   branches: 
+  #     - master
+  #     - develop
 
-  pull_request:
-    branches:
-      - master
-      - develop
+  # pull_request:
+  #   branches:
+  #     - master
+  #     - develop
 
 jobs:
   unit-test:
