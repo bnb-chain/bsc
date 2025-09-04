@@ -75,3 +75,13 @@ type StateAccessor struct {
 	reads  []*AccessRecord
 	writes []*AccessRecord
 }
+
+// recordStateLoad records a storage read for the given key.
+func (a *StateAccessor) recordStateLoad(key Value) {
+	a.reads = append(a.reads, &AccessRecord{contract: nil, offset: key})
+}
+
+// recordStateStore records a storage write for the given key and value.
+func (a *StateAccessor) recordStateStore(key Value, value Value) {
+	a.writes = append(a.writes, &AccessRecord{contract: nil, offset: key, Value: value})
+}

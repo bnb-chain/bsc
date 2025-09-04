@@ -74,7 +74,6 @@ const (
 
 // 0x50 range - 'storage' and execution.
 const (
-	MirPOP      MirOperation = 0x50
 	MirMLOAD    MirOperation = 0x51
 	MirMSTORE   MirOperation = 0x52
 	MirMSTORE8  MirOperation = 0x53
@@ -91,41 +90,7 @@ const (
 	MirMCOPY    MirOperation = 0x5e
 )
 
-// 0x60 range - push
-const (
-	MirPUSH0  MirOperation = 0x5f
-	MirPUSH1  MirOperation = 0x60
-	MirPUSH2  MirOperation = 0x61
-	MirPUSH3  MirOperation = 0x62
-	MirPUSH4  MirOperation = 0x63
-	MirPUSH5  MirOperation = 0x64
-	MirPUSH6  MirOperation = 0x65
-	MirPUSH7  MirOperation = 0x66
-	MirPUSH8  MirOperation = 0x67
-	MirPUSH9  MirOperation = 0x68
-	MirPUSH10 MirOperation = 0x69
-	MirPUSH11 MirOperation = 0x6a
-	MirPUSH12 MirOperation = 0x6b
-	MirPUSH13 MirOperation = 0x6c
-	MirPUSH14 MirOperation = 0x6d
-	MirPUSH15 MirOperation = 0x6e
-	MirPUSH16 MirOperation = 0x6f
-	MirPUSH17 MirOperation = 0x70
-	MirPUSH18 MirOperation = 0x71
-	MirPUSH19 MirOperation = 0x72
-	MirPUSH20 MirOperation = 0x73
-	MirPUSH21 MirOperation = 0x74
-	MirPUSH22 MirOperation = 0x75
-	MirPUSH23 MirOperation = 0x76
-	MirPUSH24 MirOperation = 0x77
-	MirPUSH25 MirOperation = 0x78
-	MirPUSH26 MirOperation = 0x79
-	MirPUSH27 MirOperation = 0x7a
-	MirPUSH28 MirOperation = 0x7b
-	MirPUSH29 MirOperation = 0x7c
-	MirPUSH30 MirOperation = 0x7d
-	MirPUSH31 MirOperation = 0x7e
-)
+// 0x60 range - push (removed; handled by stack during MIR generation)
 
 // 0x80 range - stack operations
 const (

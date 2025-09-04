@@ -106,6 +106,24 @@ func (b *MIRBasicBlock) CreateBinOpMIR(op MirOperation, stack *ValueStack) (mir 
 func (b *MIRBasicBlock) CreateBinOpMIRWithMA(op MirOperation, stack *ValueStack, accessor *MemoryAccessor) *MIR {
 	opnd2 := stack.pop()
 	opnd1 := stack.pop()
+
+	// Record memory reads when applicable
+	if accessor != nil {
+		switch op {
+		case MirKECCAK256:
+			// opnd1: offset, opnd2: size
+			accessor.recordLoad(opnd1, opnd2)
+		}
+	}
+
+	// Peephole with memory knowledge, e.g., KECCAK256 over known bytes
+	if accessor != nil && op == MirKECCAK256 {
+		if doPeepHole(op, &opnd1, &opnd2, stack, accessor) {
+			mir := newNopMIR(op, []*Value{&opnd1, &opnd2})
+			return b.appendMIR(mir)
+		}
+	}
+
 	mir := newBinaryOpMIR(op, &opnd1, &opnd2, stack)
 	stack.push(mir.Result())
 	return b.appendMIR(mir)
@@ -182,6 +200,41 @@ func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
 func (b *MIRBasicBlock) CreateMemoryOpMIR(op MirOperation, stack *ValueStack, accessor *MemoryAccessor) *MIR {
 	mir := new(MIR)
 	mir.op = op
+
+	// Common sizes
+	size32 := newValue(Konst, nil, nil, []byte{0x20})
+	size1 := newValue(Konst, nil, nil, []byte{0x01})
+
+	switch op {
+	case MirMLOAD:
+		// pops: offset
+		offset := stack.pop()
+		if accessor != nil {
+			accessor.recordLoad(offset, *size32)
+		}
+		mir.oprands = []*Value{&offset, size32}
+	case MirMSTORE:
+		// pops: value, offset
+		value := stack.pop()
+		offset := stack.pop()
+		if accessor != nil {
+			accessor.recordStore(offset, *size32, value)
+		}
+		mir.oprands = []*Value{&offset, size32, &value}
+	case MirMSTORE8:
+		// pops: value, offset
+		value := stack.pop()
+		offset := stack.pop()
+		if accessor != nil {
+			accessor.recordStore(offset, *size1, value)
+		}
+		mir.oprands = []*Value{&offset, size1, &value}
+	case MirMSIZE:
+		// no memory access recorded
+	default:
+		// leave unmodified for other memory ops
+	}
+
 	stack.push(mir.Result())
 	return b.appendMIR(mir)
 }
@@ -189,6 +242,38 @@ func (b *MIRBasicBlock) CreateMemoryOpMIR(op MirOperation, stack *ValueStack, ac
 func (b *MIRBasicBlock) CreateStorageOpMIR(op MirOperation, stack *ValueStack, accessor *StateAccessor) *MIR {
 	mir := new(MIR)
 	mir.op = op
+
+	switch op {
+	case MirSLOAD:
+		key := stack.pop()
+		if accessor != nil {
+			accessor.recordStateLoad(key)
+		}
+		mir.oprands = []*Value{&key}
+	case MirSSTORE:
+		value := stack.pop()
+		key := stack.pop()
+		if accessor != nil {
+			accessor.recordStateStore(key, value)
+		}
+		mir.oprands = []*Value{&key, &value}
+	case MirTLOAD:
+		key := stack.pop()
+		if accessor != nil {
+			accessor.recordStateLoad(key)
+		}
+		mir.oprands = []*Value{&key}
+	case MirTSTORE:
+		value := stack.pop()
+		key := stack.pop()
+		if accessor != nil {
+			accessor.recordStateStore(key, value)
+		}
+		mir.oprands = []*Value{&key, &value}
+	default:
+		// no-op
+	}
+
 	stack.push(mir.Result())
 	return b.appendMIR(mir)
 }
@@ -236,11 +321,8 @@ func (b *MIRBasicBlock) CreateLogMIR(op MirOperation, stack *ValueStack) *MIR {
 }
 
 func (b *MIRBasicBlock) CreatePushMIR(n int, value []byte, stack *ValueStack) *MIR {
-	mir := new(MIR)
-	mir.op = MirOperation(byte(MirPUSH0) + byte(n)) // MirPUSH0 = 0x5f, MirPUSH1 = 0x60, etc.
-	mir.oprands = []*Value{newValue(Konst, nil, nil, value)}
-	stack.push(mir.Result())
-	return b.appendMIR(mir)
+	stack.push(newValue(Konst, nil, nil, value))
+	return nil
 }
 
 func (bb *MIRBasicBlock) GetNextOp() *MIR {

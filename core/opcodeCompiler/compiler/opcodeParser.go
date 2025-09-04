@@ -240,7 +240,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 		case BASEFEE:
 			mir = curBB.CreateBlockOpMIR(MirBASEFEE, valueStack)
 		case POP:
-			mir = curBB.CreateStackOpMIR(MirPOP, valueStack)
+			_ = valueStack.pop()
+			mir = nil
 		case MLOAD:
 			mir = curBB.CreateMemoryOpMIR(MirMLOAD, valueStack, memoryAccessor)
 		case MSTORE:
@@ -296,6 +297,15 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 				}
 			}
 			return nil
+		case RJUMP:
+			mir = curBB.CreateJumpMIR(MirRJUMP, valueStack, nil)
+			return nil
+		case RJUMPI:
+			mir = curBB.CreateJumpMIR(MirRJUMPI, valueStack, nil)
+			return nil
+		case RJUMPV:
+			mir = curBB.CreateJumpMIR(MirRJUMPV, valueStack, nil)
+			return nil
 		case JUMPDEST:
 			// If we hit a JUMPDEST, we should create a new basic block
 			// unless this is the first instruction
@@ -332,9 +342,13 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			mir = new(MIR)
 			mir.op = MirMCOPY
 			mir.oprands = []*Value{&dest, &src, &length}
+			if memoryAccessor != nil {
+				memoryAccessor.recordLoad(src, length)
+				memoryAccessor.recordStore(dest, length, Value{kind: Variable})
+			}
 			valueStack.push(mir.Result())
 		case PUSH0:
-			mir = curBB.CreatePushMIR(0, []byte{}, valueStack)
+			_ = curBB.CreatePushMIR(0, []byte{}, valueStack)
 		case LOG0:
 			mir = curBB.CreateLogMIR(MirLOG0, valueStack)
 		case LOG1:
@@ -353,7 +367,17 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			mir = new(MIR)
 			mir.op = MirCREATE
 			mir.oprands = []*Value{&value, &offset, &size}
+			if memoryAccessor != nil {
+				memoryAccessor.recordLoad(offset, size)
+			}
 			valueStack.push(mir.Result())
+			if mir != nil {
+				curBB.appendMIR(mir)
+			}
+			fallthroughBB := c.createBB(uint(i+1), curBB)
+			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
+			unprcessedBBs.Push(fallthroughBB)
+			return nil
 		case CREATE2:
 			// CREATE2 takes 4 operands: value, offset, size, salt
 			salt := valueStack.pop()
@@ -363,7 +387,17 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			mir = new(MIR)
 			mir.op = MirCREATE2
 			mir.oprands = []*Value{&value, &offset, &size, &salt}
+			if memoryAccessor != nil {
+				memoryAccessor.recordLoad(offset, size)
+			}
 			valueStack.push(mir.Result())
+			if mir != nil {
+				curBB.appendMIR(mir)
+			}
+			fallthroughBB := c.createBB(uint(i+1), curBB)
+			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
+			unprcessedBBs.Push(fallthroughBB)
+			return nil
 		case CALL:
 			// CALL takes 7 operands: gas, addr, value, inOffset, inSize, outOffset, outSize
 			outSize := valueStack.pop()
@@ -376,7 +410,18 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			mir = new(MIR)
 			mir.op = MirCALL
 			mir.oprands = []*Value{&gas, &addr, &value, &inOffset, &inSize, &outOffset, &outSize}
+			if memoryAccessor != nil {
+				memoryAccessor.recordLoad(inOffset, inSize)
+				memoryAccessor.recordStore(outOffset, outSize, Value{kind: Variable})
+			}
 			valueStack.push(mir.Result())
+			if mir != nil {
+				curBB.appendMIR(mir)
+			}
+			fallthroughBB := c.createBB(uint(i+1), curBB)
+			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
+			unprcessedBBs.Push(fallthroughBB)
+			return nil
 		case CALLCODE:
 			// CALLCODE takes same operands as CALL
 			outSize := valueStack.pop()
@@ -389,7 +434,18 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			mir = new(MIR)
 			mir.op = MirCALLCODE
 			mir.oprands = []*Value{&gas, &addr, &value, &inOffset, &inSize, &outOffset, &outSize}
+			if memoryAccessor != nil {
+				memoryAccessor.recordLoad(inOffset, inSize)
+				memoryAccessor.recordStore(outOffset, outSize, Value{kind: Variable})
+			}
 			valueStack.push(mir.Result())
+			if mir != nil {
+				curBB.appendMIR(mir)
+			}
+			fallthroughBB := c.createBB(uint(i+1), curBB)
+			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
+			unprcessedBBs.Push(fallthroughBB)
+			return nil
 		case RETURN:
 			// RETURN takes 2 operands: offset, size
 			size := valueStack.pop()
@@ -397,6 +453,13 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			mir = new(MIR)
 			mir.op = MirRETURN
 			mir.oprands = []*Value{&offset, &size}
+			if memoryAccessor != nil {
+				memoryAccessor.recordLoad(offset, size)
+			}
+			if mir != nil {
+				curBB.appendMIR(mir)
+			}
+			return nil
 		case DELEGATECALL:
 			// DELEGATECALL takes 6 operands: gas, addr, inOffset, inSize, outOffset, outSize
 			outSize := valueStack.pop()
@@ -408,7 +471,18 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			mir = new(MIR)
 			mir.op = MirDELEGATECALL
 			mir.oprands = []*Value{&gas, &addr, &inOffset, &inSize, &outOffset, &outSize}
+			if memoryAccessor != nil {
+				memoryAccessor.recordLoad(inOffset, inSize)
+				memoryAccessor.recordStore(outOffset, outSize, Value{kind: Variable})
+			}
 			valueStack.push(mir.Result())
+			if mir != nil {
+				curBB.appendMIR(mir)
+			}
+			fallthroughBB := c.createBB(uint(i+1), curBB)
+			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
+			unprcessedBBs.Push(fallthroughBB)
+			return nil
 		case STATICCALL:
 			// STATICCALL takes 6 operands: gas, addr, inOffset, inSize, outOffset, outSize
 			outSize := valueStack.pop()
@@ -420,7 +494,18 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			mir = new(MIR)
 			mir.op = MirSTATICCALL
 			mir.oprands = []*Value{&gas, &addr, &inOffset, &inSize, &outOffset, &outSize}
+			if memoryAccessor != nil {
+				memoryAccessor.recordLoad(inOffset, inSize)
+				memoryAccessor.recordStore(outOffset, outSize, Value{kind: Variable})
+			}
 			valueStack.push(mir.Result())
+			if mir != nil {
+				curBB.appendMIR(mir)
+			}
+			fallthroughBB := c.createBB(uint(i+1), curBB)
+			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
+			unprcessedBBs.Push(fallthroughBB)
+			return nil
 		case REVERT:
 			// REVERT takes 2 operands: offset, size
 			size := valueStack.pop()
@@ -428,14 +513,29 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			mir = new(MIR)
 			mir.op = MirREVERT
 			mir.oprands = []*Value{&offset, &size}
+			if memoryAccessor != nil {
+				memoryAccessor.recordLoad(offset, size)
+			}
+			if mir != nil {
+				curBB.appendMIR(mir)
+			}
+			return nil
 		case INVALID:
 			mir = curBB.CreateVoidMIR(MirINVALID)
+			if mir != nil {
+				curBB.appendMIR(mir)
+			}
+			return nil
 		case SELFDESTRUCT:
 			// SELFDESTRUCT takes 1 operand: address
 			addr := valueStack.pop()
 			mir = new(MIR)
 			mir.op = MirSELFDESTRUCT
 			mir.oprands = []*Value{&addr}
+			if mir != nil {
+				curBB.appendMIR(mir)
+			}
+			return nil
 		// Stack operations - DUP1 to DUP16
 		case DUP1:
 			mir = curBB.CreateStackOpMIR(MirDUP1, valueStack)
@@ -511,12 +611,6 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			mir = curBB.CreateBlockInfoMIR(MirDATASIZE, valueStack)
 		case DATACOPY:
 			mir = curBB.CreateBlockInfoMIR(MirDATACOPY, valueStack)
-		case RJUMP:
-			mir = curBB.CreateJumpMIR(MirRJUMP, valueStack, nil)
-		case RJUMPI:
-			mir = curBB.CreateJumpMIR(MirRJUMPI, valueStack, nil)
-		case RJUMPV:
-			mir = curBB.CreateJumpMIR(MirRJUMPV, valueStack, nil)
 		case CALLF:
 			// CALLF takes 2 operands: gas, function_id
 			functionID := valueStack.pop()
@@ -525,10 +619,19 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			mir.op = MirCALLF
 			mir.oprands = []*Value{&gas, &functionID}
 			valueStack.push(mir.Result())
+			if mir != nil {
+				curBB.appendMIR(mir)
+			}
+			fallthroughBB := c.createBB(uint(i+1), curBB)
+			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
+			unprcessedBBs.Push(fallthroughBB)
+			return nil
 		case RETF:
 			mir = curBB.CreateVoidMIR(MirRETF)
+			return nil
 		case JUMPF:
 			mir = curBB.CreateJumpMIR(MirJUMPF, valueStack, nil)
+			return nil
 		case DUPN:
 			mir = curBB.CreateStackOpMIR(MirDUPN, valueStack)
 		case SWAPN:
@@ -545,6 +648,13 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			mir.op = MirEOFCREATE
 			mir.oprands = []*Value{&value, &codeOffset, &codeSize, &salt}
 			valueStack.push(mir.Result())
+			if mir != nil {
+				curBB.appendMIR(mir)
+			}
+			fallthroughBB := c.createBB(uint(i+1), curBB)
+			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
+			unprcessedBBs.Push(fallthroughBB)
+			return nil
 		case RETURNCONTRACT:
 			mir = curBB.CreateVoidMIR(MirRETURNCONTRACT)
 		// Additional opcodes
@@ -562,7 +672,18 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			mir = new(MIR)
 			mir.op = MirEXTCALL
 			mir.oprands = []*Value{&gas, &addr, &value, &inOffset, &inSize, &outOffset, &outSize}
+			if memoryAccessor != nil {
+				memoryAccessor.recordLoad(inOffset, inSize)
+				memoryAccessor.recordStore(outOffset, outSize, Value{kind: Variable})
+			}
 			valueStack.push(mir.Result())
+			if mir != nil {
+				curBB.appendMIR(mir)
+			}
+			fallthroughBB := c.createBB(uint(i+1), curBB)
+			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
+			unprcessedBBs.Push(fallthroughBB)
+			return nil
 		case EXTDELEGATECALL:
 			// EXTDELEGATECALL takes 6 operands: gas, addr, inOffset, inSize, outOffset, outSize
 			outSize := valueStack.pop()
@@ -574,7 +695,18 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			mir = new(MIR)
 			mir.op = MirEXTDELEGATECALL
 			mir.oprands = []*Value{&gas, &addr, &inOffset, &inSize, &outOffset, &outSize}
+			if memoryAccessor != nil {
+				memoryAccessor.recordLoad(inOffset, inSize)
+				memoryAccessor.recordStore(outOffset, outSize, Value{kind: Variable})
+			}
 			valueStack.push(mir.Result())
+			if mir != nil {
+				curBB.appendMIR(mir)
+			}
+			fallthroughBB := c.createBB(uint(i+1), curBB)
+			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
+			unprcessedBBs.Push(fallthroughBB)
+			return nil
 		case EXTSTATICCALL:
 			// EXTSTATICCALL takes 6 operands: gas, addr, inOffset, inSize, outOffset, outSize
 			outSize := valueStack.pop()
@@ -586,7 +718,18 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			mir = new(MIR)
 			mir.op = MirEXTSTATICCALL
 			mir.oprands = []*Value{&gas, &addr, &inOffset, &inSize, &outOffset, &outSize}
+			if memoryAccessor != nil {
+				memoryAccessor.recordLoad(inOffset, inSize)
+				memoryAccessor.recordStore(outOffset, outSize, Value{kind: Variable})
+			}
 			valueStack.push(mir.Result())
+			if mir != nil {
+				curBB.appendMIR(mir)
+			}
+			fallthroughBB := c.createBB(uint(i+1), curBB)
+			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
+			unprcessedBBs.Push(fallthroughBB)
+			return nil
 		default:
 			return fmt.Errorf("unknown opcode: %v", op)
 		}
