@@ -343,6 +343,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		for i, item := range res {
 			block := types.NewBlockWithHeader(item.Header).WithBody(types.Body{Transactions: item.Txs, Uncles: item.Uncles})
 			block = block.WithSidecars(item.Sidecars)
+			block = block.WithBAL(item.BAL)
 			block.ReceivedAt = time.Now()
 			block.ReceivedFrom = p.ID()
 			if err := block.SanityCheck(); err != nil {
@@ -827,7 +828,8 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		}
 
 		for _, peer := range transfer {
-			log.Debug("broadcast block to peer", "hash", hash, "peer", peer.ID(), "EVNPeerFlag", peer.EVNPeerFlag.Load())
+			log.Debug("broadcast block to peer", "hash", hash, "peer", peer.ID(),
+				"EVNPeerFlag", peer.EVNPeerFlag.Load(), "CanHandleBAL", peer.CanHandleBAL.Load())
 			peer.AsyncSendNewBlock(block, td)
 		}
 
@@ -840,7 +842,8 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 				}
 			}
 			for _, peer := range morePeers {
-				log.Debug("broadcast block to extra peer", "hash", hash, "peer", peer.ID(), "EVNPeerFlag", peer.EVNPeerFlag.Load())
+				log.Debug("broadcast block to extra peer", "hash", hash, "peer", peer.ID(),
+					"EVNPeerFlag", peer.EVNPeerFlag.Load(), "CanHandleBAL", peer.CanHandleBAL.Load())
 				peer.AsyncSendNewBlock(block, td)
 			}
 		}
@@ -851,7 +854,8 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 	// Otherwise if the block is indeed in our own chain, announce it
 	if h.chain.HasBlock(hash, block.NumberU64()) {
 		for _, peer := range peers {
-			log.Debug("Announced block to peer", "hash", hash, "peer", peer.ID(), "EVNPeerFlag", peer.EVNPeerFlag.Load())
+			log.Debug("Announced block to peer", "hash", hash, "peer", peer.ID(),
+				"EVNPeerFlag", peer.EVNPeerFlag.Load(), "CanHandleBAL", peer.CanHandleBAL.Load())
 			peer.AsyncSendNewBlockHash(block)
 		}
 		log.Debug("Announced block", "hash", hash, "recipients", len(peers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))

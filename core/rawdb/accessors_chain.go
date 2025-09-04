@@ -933,6 +933,27 @@ func DeleteBlobSidecars(db ethdb.KeyValueWriter, hash common.Hash, number uint64
 	}
 }
 
+// ReadBALRLP retrieves all the block access list belonging to a block in RLP encoding.
+func ReadBALRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.RawValue {
+	// BAL is only in kv DB, will not be put into ancient DB
+	data, _ := db.Get(blockBALKey(number, hash))
+	return data
+}
+
+// ReadBAL retrieves the block access list belonging to a block.
+func ReadBAL(db ethdb.Reader, hash common.Hash, number uint64) *types.BlockAccessListEncode {
+	data := ReadBALRLP(db, hash, number)
+	if len(data) == 0 {
+		return nil
+	}
+	var ret *types.BlockAccessListEncode
+	if err := rlp.DecodeBytes(data, ret); err != nil {
+		log.Error("Invalid blob array RLP", "hash", hash, "err", err)
+		return nil
+	}
+	return ret
+}
+
 func WriteBAL(db ethdb.KeyValueWriter, hash common.Hash, number uint64, bal *types.BlockAccessListEncode) {
 	data, err := rlp.EncodeToBytes(bal)
 	if err != nil {

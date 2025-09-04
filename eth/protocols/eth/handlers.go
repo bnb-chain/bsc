@@ -377,10 +377,11 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 	}
 
 	if ann.Bal != nil {
-		log.Debug("handleNewBlock, BAL", "number", ann.Block.NumberU64(), "hash", ann.Block.Hash(),
-			"version", ann.Bal.Version, "signData", len(ann.Bal.SignData), "accounts", len(ann.Bal.Accounts))
+		log.Debug("handleNewBlock, BAL", "number", ann.Block.NumberU64(), "hash", ann.Block.Hash(), "peer", peer.ID(),
+			"version", ann.Bal.Version, "signData", len(ann.Bal.SignData), "accounts", len(ann.Bal.Accounts), "balSize", ann.Block.BALSize())
 	} else {
-		log.Debug("handleNewBlock, no BAL", "number", ann.Block.NumberU64(), "hash", ann.Block.Hash(), "balSize", ann.Block.BALSize())
+		log.Debug("handleNewBlock, no BAL", "number", ann.Block.NumberU64(), "hash", ann.Block.Hash(), "peer", peer.ID(),
+			"txNum", len(ann.Block.Transactions()), "balSize", ann.Block.BALSize())
 	}
 	// Now that we have our packet, perform operations using the interface methods
 	if err := ann.sanityCheck(); err != nil {

@@ -85,8 +85,9 @@ type BlockData struct {
 	Header      *types.Header
 	Txs         []*types.Transaction
 	Uncles      []*types.Header
-	Withdrawals []*types.Withdrawal `rlp:"optional"`
-	Sidecars    types.BlobSidecars  `rlp:"optional"`
+	Withdrawals []*types.Withdrawal          `rlp:"optional"`
+	Sidecars    types.BlobSidecars           `rlp:"optional"`
+	BAL         *types.BlockAccessListEncode `rlp:"optional"`
 }
 
 // NewBlockData creates a new BlockData object from a block
@@ -97,6 +98,7 @@ func NewBlockData(block *types.Block) *BlockData {
 		Uncles:      block.Uncles(),
 		Withdrawals: block.Withdrawals(),
 		Sidecars:    block.Sidecars(),
+		BAL:         block.BAL(),
 	}
 }
 
