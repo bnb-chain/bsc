@@ -308,7 +308,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		return h.chain.InsertChain(blocks)
 	}
 
-	broadcastBlockWithCheck := func(block *types.Block, propagate bool, blockImported bool) {
+	broadcastBlockWithCheck := func(block *types.Block, propagate bool) {
 		if propagate {
 			if !(block.Header().WithdrawalsHash == nil && block.Withdrawals() == nil) &&
 				!(block.Header().EmptyWithdrawalsHash() && block.Withdrawals() != nil && len(block.Withdrawals()) == 0) {
@@ -320,7 +320,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 				return
 			}
 		}
-		h.BroadcastBlock(block, propagate, blockImported)
+		h.BroadcastBlock(block, propagate)
 	}
 
 	fetchRangeBlocks := func(peer string, startHeight uint64, startHash common.Hash, count uint64) ([]*types.Block, error) {
@@ -796,53 +796,15 @@ func (h *handler) Stop() {
 	log.Info("Ethereum protocol stopped")
 }
 
-func (h *handler) BroadcastBlockWithBAL(block *types.Block) {
-	hash := block.Hash()
-	peers := h.peers.peersWithoutBlock(hash)
-	var balPeer []*ethPeer
-	for _, peer := range peers {
-		log.Debug("BroadcastBlockWithBAL", "peer", peer.ID(), "CanHandleBAL", peer.CanHandleBAL.Load())
-		if peer.CanHandleBAL.Load() {
-			balPeer = append(balPeer, peer)
-			break
-		} else {
-			log.Warn("BroadcastBlockWithBAL, skip peer", "peer", peer.ID(), "CanHandleBAL", peer.CanHandleBAL.Load())
-		}
-	}
-	if len(balPeer) == 0 {
-		log.Info("BroadcastBlockWithBAL, no balPeer found")
-		return
-	}
-
-	// Calculate the TD of the block (it's not imported yet, so block.Td is not valid)
-	var td *big.Int
-	if parent := h.chain.GetBlock(block.ParentHash(), block.NumberU64()-1); parent != nil {
-		td = new(big.Int).Add(block.Difficulty(), h.chain.GetTd(block.ParentHash(), block.NumberU64()-1))
-	} else {
-		log.Error("Propagating dangling block", "number", block.Number(), "hash", hash)
-		return
-	}
-
-	for _, peer := range balPeer {
-		log.Debug("BroadcastBlockWithBAL", "number", block.Number(), "peer", peer.ID(), "balSize", block.BALSize())
-		peer.AsyncSendNewBlock(block, td)
-	}
-}
-
 // BroadcastBlock will either propagate a block to a subset of its peers, or
 // will only announce its availability (depending what's requested).
 // blockImported: true will only broadcast to bal peer after block imported if enableBAL is true
-func (h *handler) BroadcastBlock(block *types.Block, propagate bool, blockImported bool) {
+func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 	// Disable the block propagation if it's the post-merge block.
 	if beacon, ok := h.chain.Engine().(*beacon.Beacon); ok {
 		if beacon.IsPoSHeader(block.Header()) {
 			return
 		}
-	}
-	// blockImported means the block is imported successfully, so we need to broadcast to bal test peer
-	if h.enableBAL && blockImported {
-		h.BroadcastBlockWithBAL(block)
-		return
 	}
 	hash := block.Hash()
 	peers := h.peers.peersWithoutBlock(hash)
@@ -895,10 +857,6 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool, blockImport
 	// Otherwise if the block is indeed in our own chain, announce it
 	if h.chain.HasBlock(hash, block.NumberU64()) {
 		for _, peer := range peers {
-			if h.enableBAL && !blockImported {
-				log.Debug("skip announce block to bal peer", "block", block.Number(), "peer", peer.ID())
-				continue
-			}
 			log.Debug("Announced block to peer", "hash", hash, "peer", peer.ID(), "EVNPeerFlag", peer.EVNPeerFlag.Load())
 			peer.AsyncSendNewBlockHash(block)
 		}
@@ -1085,9 +1043,9 @@ func (h *handler) minedBroadcastLoop() {
 				continue
 			}
 			if ev, ok := obj.Data.(core.NewSealedBlockEvent); ok {
-				h.BroadcastBlock(ev.Block, true, false) // Propagate block to peers
+				h.BroadcastBlock(ev.Block, true) // Propagate block to peers
 			} else if ev, ok := obj.Data.(core.NewMinedBlockEvent); ok {
-				h.BroadcastBlock(ev.Block, false, false) // Only then announce to the rest
+				h.BroadcastBlock(ev.Block, false) // Only then announce to the rest
 			}
 		case <-h.stopCh:
 			return

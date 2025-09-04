@@ -260,7 +260,7 @@ func (h *handler) doSync(op *chainSyncOp) error {
 		// degenerate connectivity, but it should be healthy for the mainnet too to
 		// more reliably update peers or the local TD state.
 		if block := h.chain.GetBlock(head.Hash(), head.Number.Uint64()); block != nil {
-			h.BroadcastBlock(block, false, true)
+			h.BroadcastBlock(block, false)
 		}
 	}
 	return nil
