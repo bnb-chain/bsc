@@ -410,6 +410,7 @@ type shardingIterator struct {
 	iters     []ethdb.Iterator
 	cache     iterItem
 	iterIndex int
+	lock      sync.RWMutex
 }
 
 // iterItem is a key-value pair
@@ -431,21 +432,23 @@ func newIterItem(key []byte, val []byte) iterItem {
 // Next advances the iterator to the next key/value pair.
 // It returns false if the iterator is exhausted.
 func (m *shardingIterator) Next() bool {
-	if m.iterIndex >= len(m.iters) {
-		return false
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	for m.iterIndex < len(m.iters) {
+		iter := m.iters[m.iterIndex]
+		if iter.Next() {
+			m.cache = newIterItem(iter.Key(), iter.Value())
+			return true
+		}
+		m.iterIndex++
 	}
-
-	iter := m.iters[m.iterIndex]
-	if iter.Next() {
-		m.cache = newIterItem(iter.Key(), iter.Value())
-		return true
-	}
-	m.iterIndex++
-	return m.Next()
+	return false
 }
 
 // Error returns the first error if any
 func (m *shardingIterator) Error() error {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
 	for _, it := range m.iters {
 		if it == nil {
 			continue
@@ -459,16 +462,22 @@ func (m *shardingIterator) Error() error {
 
 // Key returns the current key
 func (m *shardingIterator) Key() []byte {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
 	return m.cache.key
 }
 
 // Value returns the current value
 func (m *shardingIterator) Value() []byte {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
 	return m.cache.val
 }
 
 // Release releases the iterator
 func (m *shardingIterator) Release() {
+	m.lock.Lock()
+	defer m.lock.Unlock()
 	for _, it := range m.iters {
 		if it != nil {
 			it.Release()
@@ -477,7 +486,7 @@ func (m *shardingIterator) Release() {
 }
 
 // NewIterator creates a new iterator
-// Note: the iterator is not thread-safe, so it's not safe to use it in multiple goroutines
+// Note: the iterator is thread-safe for concurrent read access (Key, Value, Error)
 // Note: the sharding iterator will not return ordered key-value pairs
 func (db *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	iters := make([]ethdb.Iterator, len(db.shards))
