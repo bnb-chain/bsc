@@ -798,7 +798,6 @@ func (h *handler) Stop() {
 
 // BroadcastBlock will either propagate a block to a subset of its peers, or
 // will only announce its availability (depending what's requested).
-// blockImported: true will only broadcast to bal peer after block imported if enableBAL is true
 func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 	// Disable the block propagation if it's the post-merge block.
 	if beacon, ok := h.chain.Engine().(*beacon.Beacon); ok {
@@ -828,11 +827,6 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		}
 
 		for _, peer := range transfer {
-			// if enableBAL is true, broadcast the block to remote peer after block imported, to get the BAL data.
-			if h.enableBAL && peer.CanHandleBAL.Load() {
-				log.Debug("skip broadcast block to bal test peer", "block", block.Number(), "peer", peer.ID())
-				continue
-			}
 			log.Debug("broadcast block to peer", "hash", hash, "peer", peer.ID(), "EVNPeerFlag", peer.EVNPeerFlag.Load())
 			peer.AsyncSendNewBlock(block, td)
 		}

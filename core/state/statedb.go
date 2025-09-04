@@ -771,12 +771,6 @@ func (s *StateDB) Copy() *StateDB {
 	return s.copyInternal(false)
 }
 
-// during mining phase, there would be env copy,
-// func (s *StateDB) TransferBAL(target *StateDB) {
-// 	target.blockAccessList = s.blockAccessList
-// 	s.blockAccessList = nil
-// }
-
 // It is mainly for state prefetcher to do trie prefetch right now.
 func (s *StateDB) CopyDoPrefetch() *StateDB {
 	return s.copyInternal(true)
@@ -1676,7 +1670,7 @@ func (s *StateDB) DumpAccessList(block *types.Block) {
 		"accountCount", accountCount, "storageCount", storageCount, "dirtyStorageCount", dirtyStorageCount)
 }
 
-// GetBlockAccessList: convert BlockAccessListRecord to BlockAccessListEncode and encode it with rlp
+// GetBlockAccessList: convert BlockAccessListRecord to BlockAccessListEncode
 func (s *StateDB) GetBlockAccessList(block *types.Block) *types.BlockAccessListEncode {
 	if s.blockAccessList == nil {
 		return nil
@@ -1699,11 +1693,5 @@ func (s *StateDB) GetBlockAccessList(block *types.Block) *types.BlockAccessListE
 		blockAccessList.Accounts = append(blockAccessList.Accounts, accountAccessList)
 	}
 
-	// encoded, err := rlp.EncodeToBytes(blockAccessList)
-	// if err != nil {
-	// 	return nil
-	// }
-	// log.Debug("GetBlockAccessList", "blockNumber", block.NumberU64(), "GasUsed", block.GasUsed(),
-	//	"encoded.length", len(blockAccessList), "encoded", hex.EncodeToString(blockAccessList))
 	return &blockAccessList
 }

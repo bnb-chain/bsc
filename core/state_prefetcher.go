@@ -212,8 +212,6 @@ func (p *statePrefetcher) PrefetchBAL(block *types.Block, statedb *state.StateDB
 		return
 	}
 	transactions := block.Transactions()
-
-	// bal := statedb.GetBlockAccessList(block)
 	blockAccessList := block.BAL()
 
 	// get index sorted block access list, each transaction has a list of accounts, each account has a list of storage items
