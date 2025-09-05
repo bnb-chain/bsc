@@ -509,7 +509,7 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 			// Note it's unnecessary in path mode which always keep trie data and
 			// state data consistent.
 			var diskRoot common.Hash
-			if bc.cfg.SnapshotLimit > 0 && bc.cfg.StateScheme == rawdb.HashScheme {
+			if bc.cfg.SnapshotLimit > 0 && bc.triedb.NeedSeparatedSnapshot() {
 				diskRoot = rawdb.ReadSnapshotRoot(bc.db)
 				log.Debug("Head state missing, ReadSnapshotRoot", "snap root", diskRoot)
 			}
@@ -662,19 +662,9 @@ func (bc *BlockChain) cacheReceipts(hash common.Hash, receipts types.Receipts, b
 	bc.receiptsCache.Add(hash, receipts)
 }
 
-func (bc *BlockChain) needSeparatedSnapshot() bool {
-	if bc.cfg.StateScheme != rawdb.PathScheme {
-		return true
-	}
-	if bc.NoTries() && !bc.triedb.IsSnapshotBuilt() {
-		return true
-	}
-	return false
-}
-
 func (bc *BlockChain) setupSnapshot() {
 	// Short circuit if separated snapshot need
-	if !bc.needSeparatedSnapshot() {
+	if !bc.triedb.NeedSeparatedSnapshot() {
 		return
 	}
 	// Load any existing snapshot, regenerating it if loading failed
@@ -1148,7 +1138,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 		if currentBlock := bc.CurrentBlock(); currentBlock != nil && header.Number.Uint64() <= currentBlock.Number.Uint64() {
 			// load bc.snaps for the judge `HasState`
 			if bc.NoTries() {
-				if bc.cfg.SnapshotLimit > 0 && bc.needSeparatedSnapshot() {
+				if bc.cfg.SnapshotLimit > 0 && bc.triedb.NeedSeparatedSnapshot() {
 					snapconfig := snapshot.Config{
 						CacheSize:  bc.cfg.SnapshotLimit,
 						NoBuild:    bc.cfg.SnapshotNoBuild,

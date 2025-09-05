@@ -178,10 +178,10 @@ func NewDatabaseForTesting() *CachingDB {
 func (db *CachingDB) Reader(stateRoot common.Hash) (Reader, error) {
 	var readers []StateReader
 
-	// Configure the state reader using the standalone snapshot in hash mode.
+	// TODO(Nathan): Configure the state reader using the standalone snapshot in hash mode.
 	// This reader offers improved performance but is optional and only
 	// partially useful if the snapshot is not fully generated.
-	if db.TrieDB().Scheme() == rawdb.HashScheme && db.snap != nil {
+	if db.snap != nil {
 		snap := db.snap.Snapshot(stateRoot)
 		if snap != nil {
 			readers = append(readers, newFlatReader(snap))
@@ -191,7 +191,7 @@ func (db *CachingDB) Reader(stateRoot common.Hash) (Reader, error) {
 	// This reader offers improved performance but is optional and only
 	// partially useful if the snapshot data in path database is not
 	// fully generated.
-	if db.TrieDB().Scheme() == rawdb.PathScheme {
+	if !db.TrieDB().NeedSeparatedSnapshot() && db.TrieDB().Scheme() == rawdb.PathScheme {
 		reader, err := db.triedb.StateReader(stateRoot)
 		if err == nil {
 			readers = append(readers, newFlatReader(reader))

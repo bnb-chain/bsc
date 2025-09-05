@@ -532,9 +532,9 @@ func (c *cleaner) Delete(key []byte) error {
 	panic("not implemented")
 }
 
-// IsSnapshotBuilt reports whether the snapshot generator has completed building.
-func (db *Database) IsSnapshotBuilt() bool {
-	return false
+// NeedSeparatedSnapshot reports whether a standalone snapshot generator is needed.
+func (db *Database) NeedSeparatedSnapshot() bool {
+	return true
 }
 
 // Update inserts the dirty nodes in provided nodeset into database and link the
