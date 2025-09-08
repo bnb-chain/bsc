@@ -187,6 +187,7 @@ func (db *Database) HistoricReader(root common.Hash) (*pathdb.HistoricalStateRea
 	return pdb.HistoricReader(root)
 }
 
+// TODO(Nathan): remove this after integrated snapshot used for a long time
 // NeedSeparatedSnapshot reports whether a standalone snapshot generator is needed.
 func (db *Database) NeedSeparatedSnapshot() bool {
 	return db.backend.NeedSeparatedSnapshot()

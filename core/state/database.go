@@ -178,7 +178,7 @@ func NewDatabaseForTesting() *CachingDB {
 func (db *CachingDB) Reader(stateRoot common.Hash) (Reader, error) {
 	var readers []StateReader
 
-	// TODO(Nathan): Configure the state reader using the standalone snapshot in hash mode.
+	// Configure the state reader using the standalone snapshot in hash mode.
 	// This reader offers improved performance but is optional and only
 	// partially useful if the snapshot is not fully generated.
 	if db.TrieDB().NeedSeparatedSnapshot() && db.snap != nil {
