@@ -23,7 +23,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
@@ -285,7 +284,7 @@ func ServiceGetAccountRangeQuery(chain *core.BlockChain, req *GetAccountRangePac
 	// Temporary solution: using the snapshot interface for both cases.
 	// This can be removed once the hash scheme is deprecated.
 	var it snapshot.AccountIterator
-	if chain.TrieDB().Scheme() == rawdb.HashScheme {
+	if chain.TrieDB().NeedSeparatedSnapshot() {
 		// The snapshot is assumed to be available in hash mode if
 		// the SNAP protocol is enabled.
 		it, err = chain.Snapshots().AccountIterator(req.Root, req.Origin)
@@ -377,7 +376,7 @@ func ServiceGetStorageRangesQuery(chain *core.BlockChain, req *GetStorageRangesP
 		)
 		// Temporary solution: using the snapshot interface for both cases.
 		// This can be removed once the hash scheme is deprecated.
-		if chain.TrieDB().Scheme() == rawdb.HashScheme {
+		if chain.TrieDB().NeedSeparatedSnapshot() {
 			// The snapshot is assumed to be available in hash mode if
 			// the SNAP protocol is enabled.
 			it, err = chain.Snapshots().StorageIterator(req.Root, account, origin)

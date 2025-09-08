@@ -33,7 +33,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/monitor"
-	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -262,7 +261,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		}
 	}
 	// If snap sync is requested but snapshots are disabled, fail loudly
-	if h.snapSync.Load() && (config.Chain.Snapshots() == nil && config.Chain.TrieDB().Scheme() == rawdb.HashScheme) {
+	if h.snapSync.Load() && (config.Chain.Snapshots() == nil && config.Chain.TrieDB().NeedSeparatedSnapshot()) {
 		return nil, errors.New("snap sync not supported with snapshots disabled")
 	}
 	// Construct the downloader (long sync)
