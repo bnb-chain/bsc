@@ -184,12 +184,6 @@ func (db *Database) HistoricReader(root common.Hash) (*pathdb.HistoricalStateRea
 	return pdb.HistoricReader(root)
 }
 
-// TODO(Nathan): remove this after integrated snapshot used for a long time
-// NeedSeparatedSnapshot reports whether a standalone snapshot generator is needed.
-func (db *Database) NeedSeparatedSnapshot() bool {
-	return db.Scheme() == rawdb.HashScheme || db.config.NoTries
-}
-
 // Update performs a state transition by committing dirty nodes contained in the
 // given set in order to update state from the specified parent to the specified
 // root. The held pre-images accumulated up to this point will be flushed in case

@@ -184,6 +184,11 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
+	noTries := config.TriesVerifyMode != core.LocalVerify
+	if noTries && config.StateScheme != rawdb.HashScheme {
+		config.StateScheme = rawdb.HashScheme
+		log.Info("Using hash-based state scheme since tries are disabled")
+	}
 
 	if config.StateScheme == rawdb.HashScheme && config.NoPruning && config.TrieDirtyCache > 0 {
 		if config.SnapshotCache > 0 {
@@ -322,7 +327,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			TrieDirtyLimit:   config.TrieDirtyCache,
 			ArchiveMode:      config.NoPruning,
 			TrieTimeLimit:    config.TrieTimeout,
-			NoTries:          config.TriesVerifyMode != core.LocalVerify,
+			NoTries:          noTries,
 			SnapshotLimit:    config.SnapshotCache,
 			TriesInMemory:    config.TriesInMemory,
 			Preimages:        config.Preimages,

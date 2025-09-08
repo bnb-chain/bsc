@@ -181,7 +181,7 @@ func (db *CachingDB) Reader(stateRoot common.Hash) (Reader, error) {
 	// Configure the state reader using the standalone snapshot in hash mode.
 	// This reader offers improved performance but is optional and only
 	// partially useful if the snapshot is not fully generated.
-	if db.TrieDB().NeedSeparatedSnapshot() && db.snap != nil {
+	if db.TrieDB().Scheme() == rawdb.HashScheme && db.snap != nil {
 		snap := db.snap.Snapshot(stateRoot)
 		if snap != nil {
 			readers = append(readers, newFlatReader(snap))
@@ -191,7 +191,7 @@ func (db *CachingDB) Reader(stateRoot common.Hash) (Reader, error) {
 	// This reader offers improved performance but is optional and only
 	// partially useful if the snapshot data in path database is not
 	// fully generated.
-	if db.TrieDB().Scheme() == rawdb.PathScheme && !db.NoTries() {
+	if db.TrieDB().Scheme() == rawdb.PathScheme {
 		reader, err := db.triedb.StateReader(stateRoot)
 		if err == nil {
 			readers = append(readers, newFlatReader(reader))
