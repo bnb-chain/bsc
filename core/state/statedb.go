@@ -1438,7 +1438,8 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 			}
 		}
 		// If trie database is enabled, commit the state update as a new layer
-		if db := s.db.TrieDB(); db != nil && !s.db.TrieDB().NeedSeparatedSnapshot() {
+		needUpdate := !s.db.NoTries() || !s.db.TrieDB().NeedSeparatedSnapshot()
+		if db := s.db.TrieDB(); db != nil && needUpdate {
 			start := time.Now()
 			if err := db.Update(ret.root, ret.originRoot, block, ret.nodes, ret.stateSet()); err != nil {
 				return nil, err
