@@ -103,7 +103,7 @@ func newFastIterator(db *Database, root common.Hash, account common.Hash, seek c
 					priority: depth,
 				})
 				fi.iterators = append(fi.iterators, &weightedIterator{
-					it:       newDiskAccountIterator(dl.db.diskdb, seek),
+					it:       newDiskAccountIterator(dl.db.snapdb, seek),
 					priority: depth + 1,
 				})
 			case *diffLayer:
