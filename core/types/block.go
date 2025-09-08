@@ -275,21 +275,21 @@ func (b *BlockAccessListPrefetch) Update(aclEncode *AccountAccessListEncode) {
 		return
 	}
 	accAddr := aclEncode.Address
-	b.PerpareTxAccount(aclEncode.TxIndex, accAddr)
+	b.PrepareTxAccount(aclEncode.TxIndex, accAddr)
 	for _, storageItem := range aclEncode.StorageItems {
 		b.PrepareTxStorage(accAddr, storageItem)
 	}
 }
 
 func (b *BlockAccessListPrefetch) PrepareTxStorage(accAddr common.Address, storageItem StorageAccessItem) {
-	b.PerpareTxAccount(storageItem.TxIndex, accAddr)
+	b.PrepareTxAccount(storageItem.TxIndex, accAddr)
 	txAccessList := b.AccessListItems[storageItem.TxIndex]
 	txAccessList.Accounts[accAddr] = append(txAccessList.Accounts[accAddr], StorageAccessItemPrefetch{
 		Dirty: storageItem.Dirty,
 		Key:   storageItem.Key,
 	})
 }
-func (b *BlockAccessListPrefetch) PerpareTxAccount(txIndex uint32, addr common.Address) {
+func (b *BlockAccessListPrefetch) PrepareTxAccount(txIndex uint32, addr common.Address) {
 	// create the tx access list if not exists
 	if _, ok := b.AccessListItems[txIndex]; !ok {
 		b.AccessListItems[txIndex] = TxAccessListPrefetch{
@@ -313,7 +313,7 @@ type BlockAccessListRecord struct {
 	Accounts map[common.Address]AccountAccessListRecord
 }
 
-func (b *BlockAccessListRecord) AddAcccount(addr common.Address, txIndex uint32) {
+func (b *BlockAccessListRecord) AddAccount(addr common.Address, txIndex uint32) {
 	if b == nil {
 		return
 	}

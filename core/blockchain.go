@@ -2469,7 +2469,6 @@ func (bc *BlockChain) processBlock(parentRoot common.Hash, block *types.Block, s
 			} else {
 				bc.prefetcher.Prefetch(block.Transactions(), block.Header(), block.GasLimit(), throwaway, vmCfg, &interrupt)
 			}
-			// bc.prefetcher.Prefetch(block.Transactions(), block.Header(), block.GasLimit(), throwaway, vmCfg, &interrupt)
 
 			blockPrefetchExecuteTimer.Update(time.Since(start))
 			if interrupt.Load() {

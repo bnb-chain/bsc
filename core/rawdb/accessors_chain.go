@@ -946,12 +946,12 @@ func ReadBAL(db ethdb.Reader, hash common.Hash, number uint64) *types.BlockAcces
 	if len(data) == 0 {
 		return nil
 	}
-	var ret *types.BlockAccessListEncode
-	if err := rlp.DecodeBytes(data, ret); err != nil {
+	var ret types.BlockAccessListEncode
+	if err := rlp.DecodeBytes(data, &ret); err != nil {
 		log.Error("Invalid blob array RLP", "hash", hash, "err", err)
 		return nil
 	}
-	return ret
+	return &ret
 }
 
 func WriteBAL(db ethdb.KeyValueWriter, hash common.Hash, number uint64, bal *types.BlockAccessListEncode) {
