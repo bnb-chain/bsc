@@ -807,7 +807,6 @@ func (g *generator) generate(ctx *generatorContext) {
 	// Note even there is nothing to commit, persist the
 	// generator anyway to mark the snapshot is complete.
 	journalProgress(ctx.batch, nil, g.stats)
-	rawdb.WriteSnapshotIntegrated(ctx.batch)
 	if err := ctx.batch.Write(); err != nil {
 		log.Error("Failed to flush batch", "err", err)
 		abort = <-g.abort

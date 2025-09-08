@@ -142,23 +142,6 @@ func WritePersistentStateID(db ethdb.KeyValueWriter, number uint64) {
 	}
 }
 
-func ReadSnapshotIntegrated(db ethdb.KeyValueReader) bool {
-	disabled, _ := db.Has(snapshotIntegratedKey)
-	return disabled
-}
-
-func WriteSnapshotIntegrated(db ethdb.KeyValueWriter) {
-	if err := db.Put(snapshotIntegratedKey, []byte("42")); err != nil {
-		log.Crit("Failed to store snapshot integrated flag", "err", err)
-	}
-}
-
-func DeleteSnapshotIntegrated(db ethdb.KeyValueWriter) {
-	if err := db.Delete(snapshotIntegratedKey); err != nil {
-		log.Crit("Failed to remove snapshot integrated flag", "err", err)
-	}
-}
-
 // ReadTrieJournal retrieves the serialized in-memory trie nodes of layers saved at
 // the last shutdown.
 func ReadTrieJournal(db ethdb.KeyValueReader) []byte {
