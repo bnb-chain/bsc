@@ -77,9 +77,6 @@ type backend interface {
 	// to disk. Report specifies whether logs will be displayed in info level.
 	Commit(root common.Hash, report bool) error
 
-	// NeedSeparatedSnapshot reports whether a standalone snapshot generator is needed.
-	NeedSeparatedSnapshot() bool
-
 	// Close closes the trie database backend and releases all held resources.
 	Close() error
 }
@@ -190,7 +187,7 @@ func (db *Database) HistoricReader(root common.Hash) (*pathdb.HistoricalStateRea
 // TODO(Nathan): remove this after integrated snapshot used for a long time
 // NeedSeparatedSnapshot reports whether a standalone snapshot generator is needed.
 func (db *Database) NeedSeparatedSnapshot() bool {
-	return db.backend.NeedSeparatedSnapshot()
+	return db.Scheme() == rawdb.HashScheme || db.config.NoTries
 }
 
 // Update performs a state transition by committing dirty nodes contained in the

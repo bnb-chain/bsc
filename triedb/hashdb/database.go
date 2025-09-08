@@ -532,11 +532,6 @@ func (c *cleaner) Delete(key []byte) error {
 	panic("not implemented")
 }
 
-// NeedSeparatedSnapshot reports whether a standalone snapshot generator is needed.
-func (db *Database) NeedSeparatedSnapshot() bool {
-	return true
-}
-
 // Update inserts the dirty nodes in provided nodeset into database and link the
 // account trie with multiple storage tries if necessary.
 func (db *Database) Update(root common.Hash, parent common.Hash, block uint64, nodes *trienode.MergedNodeSet) error {

@@ -417,11 +417,6 @@ func (db *Database) setStateGenerator() error {
 	return nil
 }
 
-// NeedSeparatedSnapshot reports whether a standalone snapshot generator is needed.
-func (db *Database) NeedSeparatedSnapshot() bool {
-	return db.config.NoTries
-}
-
 // Update adds a new layer into the tree, if that can be linked to an existing
 // old parent. It is disallowed to insert a disk layer (the origin of all). Apart
 // from that this function will flatten the extra diff layers at bottom into disk
