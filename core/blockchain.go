@@ -510,7 +510,7 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 			// state data consistent.
 			var diskRoot common.Hash
 			if bc.cfg.SnapshotLimit > 0 && bc.cfg.StateScheme == rawdb.HashScheme {
-				diskRoot = rawdb.ReadSnapshotRoot(bc.db)
+				diskRoot = rawdb.ReadSnapshotRoot(bc.db.GetSnapStore())
 				log.Debug("Head state missing, ReadSnapshotRoot", "snap root", diskRoot)
 			}
 			if bc.triedb.Scheme() == rawdb.PathScheme && !bc.NoTries() {

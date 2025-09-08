@@ -355,22 +355,10 @@ func initGenesis(ctx *cli.Context) error {
 	name := "chaindata"
 	// if the trie data dir has been set, new trie db with a new state database
 	if ctx.IsSet(utils.MultiDataBaseFlag.Name) {
-		statediskdb, dbErr := stack.OpenDatabaseWithFreezer(name+"/state", 0, 0, "", "", false)
-		if dbErr != nil {
-			utils.Fatalf("Failed to open separate trie database: %v", dbErr)
-		}
-		chaindb.SetStateStore(statediskdb)
-		snapDB, err := stack.OpenDatabase("chaindata/snapshot", 0, 0, "", false, true)
+		err = stack.SetMultiDBs(chaindb, name, 0, 0, false)
 		if err != nil {
-			utils.Fatalf("Failed to open separate snapshot database: %v", err)
+			utils.Fatalf("Failed to init multi-database: %v", err)
 		}
-		chaindb.SetSnapStore(snapDB)
-
-		txIndexDB, err := stack.OpenDatabase("chaindata/txindex", 0, 0, "", false, true)
-		if err != nil {
-			utils.Fatalf("Failed to open separate snapshot database: %v", err)
-		}
-		chaindb.SetTxIndexStore(txIndexDB)
 		log.Warn("Multi-database is an experimental feature")
 	}
 

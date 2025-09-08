@@ -132,7 +132,7 @@ func (b *buffer) size() uint64 {
 
 // flush persists the in-memory dirty trie node into the disk if the configured
 // memory threshold is reached. Note, all data must be written atomically.
-func (b *buffer) flush(root common.Hash, db ethdb.KeyValueStore, freezer ethdb.AncientWriter, progress []byte, nodesCache, statesCache *fastcache.Cache, id uint64, postFlush func()) {
+func (b *buffer) flush(root common.Hash, db ethdb.Database, separateSnapDB ethdb.KeyValueStore, freezer ethdb.AncientWriter, progress []byte, nodesCache, statesCache *fastcache.Cache, id uint64, isMultiDb bool, postFlush func()) {
 	if b.done != nil {
 		panic("duplicated flush operation")
 	}
@@ -157,9 +157,20 @@ func (b *buffer) flush(root common.Hash, db ethdb.KeyValueStore, freezer ethdb.A
 
 		// Terminate the state snapshot generation if it's active
 		var (
-			start = time.Now()
-			batch = db.NewBatchWithSize((b.nodes.dbsize() + b.states.dbsize()) * 11 / 10) // extra 10% for potential pebble internal stuff
+			start           = time.Now()
+			trieBatch       ethdb.Batch // extra 10% for potential pebble internal stuff
+			snapBatch       ethdb.Batch
+			nodes           int
+			accounts, slots int
+			size, snapSize  int
 		)
+
+		if isMultiDb {
+			snapBatch = separateSnapDB.NewBatchWithSize(b.states.dbsize() * 11 / 10)
+			trieBatch = db.NewBatchWithSize(b.nodes.dbsize() * 11 / 10)
+		} else {
+			trieBatch = db.NewBatchWithSize((b.nodes.dbsize() + b.states.dbsize()) * 11 / 10)
+		}
 		// Explicitly sync the state freezer to ensure all written data is persisted to disk
 		// before updating the key-value store.
 		//
@@ -171,18 +182,45 @@ func (b *buffer) flush(root common.Hash, db ethdb.KeyValueStore, freezer ethdb.A
 				return
 			}
 		}
-		nodes := b.nodes.write(batch, nodesCache)
-		accounts, slots := b.states.write(batch, progress, statesCache)
-		rawdb.WritePersistentStateID(batch, id)
-		rawdb.WriteSnapshotRoot(batch, root)
 
-		// Flush all mutations in a single batch
-		size := batch.ValueSize()
-		if err := batch.Write(); err != nil {
-			b.flushErr = err
-			return
+		// Execute flush operations based on database configuration
+		if snapBatch == nil {
+			// Single database mode: sequential write
+			nodes = b.nodes.write(trieBatch, nodesCache)
+			accounts, slots = b.states.write(trieBatch, progress, statesCache)
+			rawdb.WritePersistentStateID(trieBatch, id)
+			rawdb.WriteSnapshotRoot(trieBatch, root)
+
+			size = trieBatch.ValueSize()
+			if err := trieBatch.Write(); err != nil {
+				b.flushErr = err
+				return
+			}
+		} else {
+			// Multi database mode: sequential processing for data consistency
+			log.Info("multidb flush - sequential processing for consistency")
+
+			// Trie batch processing
+			nodes = b.nodes.write(trieBatch, nodesCache)
+			rawdb.WritePersistentStateID(trieBatch, id)
+			size = trieBatch.ValueSize()
+			if err := trieBatch.Write(); err != nil {
+				b.flushErr = err
+				return
+			}
+
+			// Snapshot batch processing
+			accounts, slots = b.states.write(snapBatch, progress, statesCache)
+			rawdb.WriteSnapshotRoot(snapBatch, root)
+			snapSize = snapBatch.ValueSize()
+			if err := snapBatch.Write(); err != nil {
+				b.flushErr = err
+				return
+			}
 		}
-		commitBytesMeter.Mark(int64(size))
+
+		// Record performance metrics (unified for both paths)
+		commitBytesMeter.Mark(int64(size + snapSize))
 		commitNodesMeter.Mark(int64(nodes))
 		commitAccountsMeter.Mark(int64(accounts))
 		commitStoragesMeter.Mark(int64(slots))
