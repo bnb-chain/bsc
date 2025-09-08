@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	cmath "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -857,4 +858,495 @@ func (c *mockParlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, head
 
 func (c *mockParlia) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, parent *types.Header) *big.Int {
 	return big.NewInt(1)
+}
+
+func TestSignBAL(t *testing.T) {
+	// Setup test environment
+	key, _ := crypto.GenerateKey()
+	addr := crypto.PubkeyToAddress(key.PublicKey)
+
+	// Create mock signing function that succeeds
+	mockSignFn := func(account accounts.Account, mimeType string, data []byte) ([]byte, error) {
+		if account.Address != addr {
+			return nil, fmt.Errorf("wrong address")
+		}
+		if mimeType != accounts.MimetypeParlia {
+			return nil, fmt.Errorf("wrong mime type")
+		}
+		// Return a dummy 65-byte signature
+		sig := make([]byte, 65)
+		copy(sig, []byte("test_signature_data_for_testing_purposes_123456789012345678901234"))
+		return sig, nil
+	}
+
+	// Create Parlia instance
+	parlia := &Parlia{
+		val:    addr,
+		signFn: mockSignFn,
+	}
+
+	tests := []struct {
+		name          string
+		bal           *types.BlockAccessListEncode
+		expectedError bool
+		signFn        SignerFn
+		description   string
+	}{
+		{
+			name: "successful signing",
+			bal: &types.BlockAccessListEncode{
+				Version:  0,
+				SignData: make([]byte, 65),
+				Accounts: []types.AccountAccessListEncode{
+					{
+						Address: common.HexToAddress("0x1234567890123456789012345678901234567890"),
+						StorageItems: []types.StorageAccessItem{
+							{Key: common.HexToHash("0x01"), TxIndex: 0, Dirty: false},
+						},
+					},
+				},
+			},
+			expectedError: false,
+			signFn:        mockSignFn,
+			description:   "Should successfully sign a valid BlockAccessListEncode",
+		},
+		{
+			name: "signing function error",
+			bal: &types.BlockAccessListEncode{
+				Version:  0,
+				SignData: make([]byte, 65),
+				Accounts: []types.AccountAccessListEncode{},
+			},
+			expectedError: true,
+			signFn: func(account accounts.Account, mimeType string, data []byte) ([]byte, error) {
+				return nil, fmt.Errorf("signing failed")
+			},
+			description: "Should return error when signing function fails",
+		},
+		{
+			name: "empty accounts list",
+			bal: &types.BlockAccessListEncode{
+				Version:  0,
+				SignData: make([]byte, 65),
+				Accounts: []types.AccountAccessListEncode{},
+			},
+			expectedError: false,
+			signFn:        mockSignFn,
+			description:   "Should successfully sign even with empty accounts list",
+		},
+		{
+			name: "multiple accounts",
+			bal: &types.BlockAccessListEncode{
+				Version:  2,
+				SignData: make([]byte, 65),
+				Accounts: []types.AccountAccessListEncode{
+					{
+						Address: common.HexToAddress("0x1111111111111111111111111111111111111111"),
+						StorageItems: []types.StorageAccessItem{
+							{Key: common.HexToHash("0x01"), TxIndex: 0, Dirty: false},
+							{Key: common.HexToHash("0x02"), TxIndex: 1, Dirty: true},
+						},
+					},
+					{
+						Address: common.HexToAddress("0x2222222222222222222222222222222222222222"),
+						StorageItems: []types.StorageAccessItem{
+							{Key: common.HexToHash("0x03"), TxIndex: 2, Dirty: false},
+						},
+					},
+				},
+			},
+			expectedError: false,
+			signFn:        mockSignFn,
+			description:   "Should successfully sign with multiple accounts",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set up Parlia with the test signing function
+			parlia.signFn = tt.signFn
+
+			// Call SignBAL
+			err := parlia.SignBAL(tt.bal)
+
+			// Check results
+			if tt.expectedError {
+				if err == nil {
+					t.Errorf("Expected error but got none. %s", tt.description)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %v. %s", err, tt.description)
+				}
+				// Verify signature was copied to SignData
+				if tt.bal != nil && len(tt.bal.SignData) != 65 {
+					t.Errorf("Expected SignData to be 65 bytes, got %d", len(tt.bal.SignData))
+				}
+				// Verify signature content (for successful cases)
+				if tt.bal != nil && !tt.expectedError {
+					expectedSig := "test_signature_data_for_testing_purposes_123456789012345678901234"
+					if string(tt.bal.SignData[:len(expectedSig)]) != expectedSig {
+						t.Errorf("SignData was not properly set")
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestVerifyBAL(t *testing.T) {
+	// Setup test environment
+	key, _ := crypto.GenerateKey()
+	addr := crypto.PubkeyToAddress(key.PublicKey)
+
+	// Helper function to create a properly signed BAL
+	createSignedBAL := func(version uint32, accounts []types.AccountAccessListEncode) *types.BlockAccessListEncode {
+		bal := &types.BlockAccessListEncode{
+			Version:  version,
+			SignData: make([]byte, 65),
+			Accounts: accounts,
+		}
+
+		// RLP encode the data
+		data, _ := rlp.EncodeToBytes([]interface{}{bal.Version, bal.Accounts})
+
+		// Create signature using the test key
+		hash := crypto.Keccak256(data)
+		sig, _ := crypto.Sign(hash, key)
+		copy(bal.SignData, sig)
+
+		return bal
+	}
+
+	// Create a Parlia instance
+	parlia := &Parlia{}
+
+	tests := []struct {
+		name          string
+		signer        common.Address
+		bal           *types.BlockAccessListEncode
+		expectedError bool
+		description   string
+	}{
+		{
+			name:   "valid signature verification",
+			signer: addr,
+			bal: createSignedBAL(0, []types.AccountAccessListEncode{
+				{
+					Address: common.HexToAddress("0x1234567890123456789012345678901234567890"),
+					StorageItems: []types.StorageAccessItem{
+						{Key: common.HexToHash("0x01"), TxIndex: 0, Dirty: false},
+					},
+				},
+			}),
+			expectedError: false,
+			description:   "Should successfully verify a properly signed BAL",
+		},
+		{
+			name:   "invalid version",
+			signer: addr,
+			bal: createSignedBAL(1, []types.AccountAccessListEncode{
+				{
+					Address: common.HexToAddress("0x1234567890123456789012345678901234567890"),
+					StorageItems: []types.StorageAccessItem{
+						{Key: common.HexToHash("0x01"), TxIndex: 0, Dirty: false},
+					},
+				},
+			}),
+			expectedError: true,
+			description:   "Should fail when version is invalid",
+		},
+		{
+			name:   "invalid signature length - too short",
+			signer: addr,
+			bal: &types.BlockAccessListEncode{
+				Version:  0,
+				SignData: make([]byte, 64), // Wrong length
+				Accounts: []types.AccountAccessListEncode{},
+			},
+			expectedError: true,
+			description:   "Should fail when signature is too short",
+		},
+		{
+			name:   "invalid signature length - too long",
+			signer: addr,
+			bal: &types.BlockAccessListEncode{
+				Version:  0,
+				SignData: make([]byte, 66), // Wrong length
+				Accounts: []types.AccountAccessListEncode{},
+			},
+			expectedError: true,
+			description:   "Should fail when signature is too long",
+		},
+		{
+			name:   "empty signature",
+			signer: addr,
+			bal: &types.BlockAccessListEncode{
+				Version:  0,
+				SignData: []byte{}, // Empty signature
+				Accounts: []types.AccountAccessListEncode{},
+			},
+			expectedError: true,
+			description:   "Should fail with empty signature",
+		},
+		{
+			name:   "signer mismatch",
+			signer: common.HexToAddress("0x9999999999999999999999999999999999999999"), // Wrong signer
+			bal: createSignedBAL(0, []types.AccountAccessListEncode{
+				{
+					Address: common.HexToAddress("0x1234567890123456789012345678901234567890"),
+					StorageItems: []types.StorageAccessItem{
+						{Key: common.HexToHash("0x01"), TxIndex: 0, Dirty: false},
+					},
+				},
+			}),
+			expectedError: true,
+			description:   "Should fail when signer address doesn't match recovered address",
+		},
+		{
+			name:   "corrupted signature",
+			signer: addr,
+			bal: func() *types.BlockAccessListEncode {
+				bal := createSignedBAL(0, []types.AccountAccessListEncode{})
+				// Corrupt the signature
+				bal.SignData[0] = ^bal.SignData[0]
+				return bal
+			}(),
+			expectedError: true,
+			description:   "Should fail with corrupted signature",
+		},
+		{
+			name:          "empty accounts list",
+			signer:        addr,
+			bal:           createSignedBAL(0, []types.AccountAccessListEncode{}),
+			expectedError: false,
+			description:   "Should successfully verify BAL with empty accounts",
+		},
+		{
+			name:   "multiple accounts",
+			signer: addr,
+			bal: createSignedBAL(0, []types.AccountAccessListEncode{
+				{
+					Address: common.HexToAddress("0x1111111111111111111111111111111111111111"),
+					StorageItems: []types.StorageAccessItem{
+						{Key: common.HexToHash("0x01"), TxIndex: 0, Dirty: false},
+						{Key: common.HexToHash("0x02"), TxIndex: 1, Dirty: true},
+					},
+				},
+				{
+					Address: common.HexToAddress("0x2222222222222222222222222222222222222222"),
+					StorageItems: []types.StorageAccessItem{
+						{Key: common.HexToHash("0x03"), TxIndex: 2, Dirty: false},
+					},
+				},
+			}),
+			expectedError: false,
+			description:   "Should successfully verify BAL with multiple accounts",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := parlia.VerifyBAL(tt.signer, tt.bal)
+
+			if tt.expectedError {
+				if err == nil {
+					t.Errorf("Expected error but got none. %s", tt.description)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %v. %s", err, tt.description)
+				}
+			}
+		})
+	}
+}
+
+func TestVerifyBAL_EdgeCases(t *testing.T) {
+	// Test with different key to ensure proper signature verification
+	key1, _ := crypto.GenerateKey()
+	key2, _ := crypto.GenerateKey()
+	addr1 := crypto.PubkeyToAddress(key1.PublicKey)
+	addr2 := crypto.PubkeyToAddress(key2.PublicKey)
+
+	parlia := &Parlia{}
+
+	// Create BAL signed with key1
+	bal := &types.BlockAccessListEncode{
+		Version:  0,
+		SignData: make([]byte, 65),
+		Accounts: []types.AccountAccessListEncode{
+			{
+				Address: common.HexToAddress("0x1234567890123456789012345678901234567890"),
+				StorageItems: []types.StorageAccessItem{
+					{Key: common.HexToHash("0x01"), TxIndex: 0, Dirty: false},
+				},
+			},
+		},
+	}
+
+	// Sign with key1
+	data, _ := rlp.EncodeToBytes([]interface{}{bal.Version, bal.Accounts})
+	hash := crypto.Keccak256(data)
+	sig, _ := crypto.Sign(hash, key1)
+	copy(bal.SignData, sig)
+
+	// Should succeed with addr1
+	err := parlia.VerifyBAL(addr1, bal)
+	if err != nil {
+		t.Errorf("Verification with correct signer failed: %v", err)
+	}
+
+	// Should fail with addr2 (different key)
+	err = parlia.VerifyBAL(addr2, bal)
+	if err == nil {
+		t.Error("Expected verification to fail with different signer address")
+	}
+}
+
+func TestVerifyBAL_TooLargeData(t *testing.T) {
+	// Test with large amount of data to ensure RLP encoding works correctly
+	key, _ := crypto.GenerateKey()
+	addr := crypto.PubkeyToAddress(key.PublicKey)
+	parlia := &Parlia{}
+
+	// Create BAL with many accounts
+	accounts := make([]types.AccountAccessListEncode, 20000)
+	for i := 0; i < 20000; i++ {
+		accounts[i] = types.AccountAccessListEncode{
+			Address: common.BigToAddress(big.NewInt(int64(i))),
+			StorageItems: []types.StorageAccessItem{
+				{Key: common.BigToHash(big.NewInt(int64(i))), TxIndex: uint32(i), Dirty: i%2 == 0},
+				{Key: common.BigToHash(big.NewInt(int64(i + 1000))), TxIndex: uint32(i + 1), Dirty: i%3 == 0},
+			},
+		}
+	}
+
+	bal := &types.BlockAccessListEncode{
+		Version:  0,
+		SignData: make([]byte, 65),
+		Accounts: accounts,
+	}
+
+	// Sign the large data
+	data, err := rlp.EncodeToBytes([]interface{}{bal.Version, bal.Accounts})
+	if err != nil {
+		t.Fatalf("Failed to RLP encode large data: %v", err)
+	}
+
+	hash := crypto.Keccak256(data)
+	sig, err := crypto.Sign(hash, key)
+	if err != nil {
+		t.Fatalf("Failed to sign large data: %v", err)
+	}
+	copy(bal.SignData, sig)
+
+	// Verify the signature
+	err = parlia.VerifyBAL(addr, bal)
+	if err.Error() != "data is too large" {
+		t.Errorf("Failed to verify BAL with large data: %v", err)
+	}
+}
+
+func TestSignBAL_VerifyBAL_Integration(t *testing.T) {
+	// Test complete sign-verify cycle
+	key, _ := crypto.GenerateKey()
+	addr := crypto.PubkeyToAddress(key.PublicKey)
+
+	// Create mock signing function
+	mockSignFn := func(account accounts.Account, mimeType string, data []byte) ([]byte, error) {
+		if account.Address != addr {
+			return nil, fmt.Errorf("wrong address")
+		}
+		if mimeType != accounts.MimetypeParlia {
+			return nil, fmt.Errorf("wrong mime type")
+		}
+		// Use the actual private key to sign
+		hash := crypto.Keccak256(data)
+		return crypto.Sign(hash, key)
+	}
+
+	parlia := &Parlia{
+		val:    addr,
+		signFn: mockSignFn,
+	}
+
+	testCases := []struct {
+		name     string
+		version  uint32
+		accounts []types.AccountAccessListEncode
+	}{
+		{
+			name:     "empty accounts",
+			version:  0,
+			accounts: []types.AccountAccessListEncode{},
+		},
+		{
+			name:    "single account",
+			version: 0,
+			accounts: []types.AccountAccessListEncode{
+				{
+					Address: common.HexToAddress("0x1234567890123456789012345678901234567890"),
+					StorageItems: []types.StorageAccessItem{
+						{Key: common.HexToHash("0x01"), TxIndex: 0, Dirty: false},
+						{Key: common.HexToHash("0x02"), TxIndex: 1, Dirty: true},
+					},
+				},
+			},
+		},
+		{
+			name:    "multiple accounts",
+			version: 0,
+			accounts: []types.AccountAccessListEncode{
+				{
+					Address: common.HexToAddress("0x1111111111111111111111111111111111111111"),
+					StorageItems: []types.StorageAccessItem{
+						{Key: common.HexToHash("0x01"), TxIndex: 0, Dirty: false},
+					},
+				},
+				{
+					Address: common.HexToAddress("0x2222222222222222222222222222222222222222"),
+					StorageItems: []types.StorageAccessItem{
+						{Key: common.HexToHash("0x02"), TxIndex: 1, Dirty: true},
+						{Key: common.HexToHash("0x03"), TxIndex: 2, Dirty: false},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create BAL
+			bal := &types.BlockAccessListEncode{
+				Version:  tc.version,
+				SignData: make([]byte, 65),
+				Accounts: tc.accounts,
+			}
+
+			// Sign the BAL
+			err := parlia.SignBAL(bal)
+			if err != nil {
+				t.Fatalf("SignBAL failed: %v", err)
+			}
+
+			// Verify signature length
+			if len(bal.SignData) != 65 {
+				t.Errorf("Expected SignData to be 65 bytes, got %d", len(bal.SignData))
+			}
+
+			// Verify the BAL with correct signer
+			err = parlia.VerifyBAL(addr, bal)
+			if err != nil {
+				t.Errorf("VerifyBAL failed with correct signer: %v", err)
+			}
+
+			// Verify should fail with wrong signer
+			wrongSigner := common.HexToAddress("0x9999999999999999999999999999999999999999")
+			err = parlia.VerifyBAL(wrongSigner, bal)
+			if err == nil {
+				t.Error("VerifyBAL should fail with wrong signer address")
+			}
+		})
+	}
 }
