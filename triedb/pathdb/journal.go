@@ -234,7 +234,7 @@ type journalGenerator struct {
 }
 
 // loadGenerator loads the state generation progress marker from the database.
-func loadGenerator(db ethdb.KeyValueReader, hash nodeHasher) (*journalGenerator, common.Hash, error) {
+func loadGenerator(db ethdb.KeyValueReader, snapdb ethdb.KeyValueReader, hash nodeHasher) (*journalGenerator, common.Hash, error) {
 	trieRoot, err := hash(rawdb.ReadAccountTrieNode(db, nil))
 	if err != nil {
 		return nil, common.Hash{}, err
@@ -258,7 +258,7 @@ func loadGenerator(db ethdb.KeyValueReader, hash nodeHasher) (*journalGenerator,
 	// with each other, both in the legacy state snapshot and the path database.
 	// Therefore, if the SnapshotRoot does not match the trie root,
 	// the entire generator is considered stale and must be discarded.
-	stateRoot := rawdb.ReadSnapshotRoot(db)
+	stateRoot := rawdb.ReadSnapshotRoot(snapdb)
 	if trieRoot != stateRoot {
 		log.Info("State snapshot is not consistent", "trie", trieRoot, "state", stateRoot)
 		return nil, trieRoot, nil
