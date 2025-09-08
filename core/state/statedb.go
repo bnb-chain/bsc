@@ -1670,8 +1670,8 @@ func (s *StateDB) DumpAccessList(block *types.Block) {
 		"accountCount", accountCount, "storageCount", storageCount, "dirtyStorageCount", dirtyStorageCount)
 }
 
-// GetBlockAccessList: convert BlockAccessListRecord to BlockAccessListEncode
-func (s *StateDB) GetBlockAccessList(block *types.Block) *types.BlockAccessListEncode {
+// GetEncodedBlockAccessList: convert BlockAccessListRecord to BlockAccessListEncode
+func (s *StateDB) GetEncodedBlockAccessList(block *types.Block) *types.BlockAccessListEncode {
 	if s.blockAccessList == nil {
 		return nil
 	}

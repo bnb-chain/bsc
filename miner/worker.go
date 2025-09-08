@@ -1535,7 +1535,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		env := env.copy()
 
 		block = block.WithSidecars(env.sidecars)
-		bal := env.state.GetBlockAccessList(block)
+		bal := env.state.GetEncodedBlockAccessList(block)
 		if bal != nil && w.engine.SignBAL(bal) == nil {
 			block = block.WithBAL(bal)
 		}
