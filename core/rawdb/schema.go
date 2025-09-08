@@ -52,6 +52,9 @@ var (
 	// fastTrieProgressKey tracks the number of trie entries imported during fast sync.
 	fastTrieProgressKey = []byte("TrieSync")
 
+	// snapshotIntegratedKey indicate whether the snapshot has been integrated into triedb.
+	snapshotIntegratedKey = []byte("SnapshotIntegrated")
+
 	// snapshotDisabledKey flags that the snapshot should not be maintained due to initial sync.
 	snapshotDisabledKey = []byte("SnapshotDisabled")
 

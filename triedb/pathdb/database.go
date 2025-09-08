@@ -419,15 +419,7 @@ func (db *Database) setStateGenerator() error {
 
 // NeedSeparatedSnapshot reports whether a standalone snapshot generator is needed.
 func (db *Database) NeedSeparatedSnapshot() bool {
-	isSnapshotBuilt := func() bool {
-		generator, _, err := loadGenerator(db.diskdb, db.hasher)
-		if err != nil || generator == nil {
-			return false
-		}
-		return generator.Done
-	}
-
-	return db.config.NoTries && !isSnapshotBuilt()
+	return db.config.NoTries && !rawdb.ReadSnapshotIntegrated(db.diskdb)
 }
 
 // Update adds a new layer into the tree, if that can be linked to an existing
