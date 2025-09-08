@@ -191,7 +191,7 @@ func (db *CachingDB) Reader(stateRoot common.Hash) (Reader, error) {
 	// This reader offers improved performance but is optional and only
 	// partially useful if the snapshot data in path database is not
 	// fully generated.
-	if db.TrieDB().Scheme() == rawdb.PathScheme && !db.TrieDB().NeedSeparatedSnapshot() {
+	if db.TrieDB().Scheme() == rawdb.PathScheme && !db.NoTries() {
 		reader, err := db.triedb.StateReader(stateRoot)
 		if err == nil {
 			readers = append(readers, newFlatReader(reader))

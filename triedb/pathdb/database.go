@@ -288,7 +288,7 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 		log.Crit("Failed to setup the generator", "err", err)
 	}
 	// TODO (rjl493456442) disable the background indexing in read-only mode
-	if db.freezer != nil && db.config.EnableStateIndexing && !db.config.NoTries {
+	if db.freezer != nil && db.config.EnableStateIndexing {
 		db.indexer = newHistoryIndexer(db.diskdb, db.freezer, db.tree.bottom().stateID())
 		log.Info("Enabled state history indexing")
 	}
