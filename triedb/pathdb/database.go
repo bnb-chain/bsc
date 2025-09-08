@@ -140,7 +140,6 @@ type Config struct {
 	NoAsyncFlush      bool // Flag whether the background buffer flushing is allowed
 	NoAsyncGeneration bool // Flag whether the background generation is allowed
 
-	NoTries         bool
 	JournalFilePath string
 	JournalFile     bool
 }
@@ -303,9 +302,6 @@ func New(diskdb ethdb.Database, config *Config, isVerkle bool) *Database {
 // repairHistory truncates leftover state history objects, which may occur due
 // to an unclean shutdown or other unexpected reasons.
 func (db *Database) repairHistory() error {
-	if db.config.NoTries {
-		return nil
-	}
 	// Open the freezer for state history. This mechanism ensures that
 	// only one database instance can be opened at a time to prevent
 	// accidental mutation.
