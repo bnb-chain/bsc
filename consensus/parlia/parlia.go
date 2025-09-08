@@ -1766,6 +1766,11 @@ func (p *Parlia) SignBAL(blockAccessList *types.BlockAccessListEncode) error {
 		return errors.New("encode to bytes failed")
 	}
 
+	if len(data) > int(params.MaxBALSize) {
+		log.Error("data is too large", "dataSize", len(data), "maxSize", params.MaxBALSize)
+		return errors.New("data is too large")
+	}
+
 	sig, err := signFn(accounts.Account{Address: val}, accounts.MimetypeParlia, data)
 	if err != nil {
 		log.Error("Sign for the block header failed when sealing", "err", err)
@@ -1777,14 +1782,26 @@ func (p *Parlia) SignBAL(blockAccessList *types.BlockAccessListEncode) error {
 }
 
 func (p *Parlia) VerifyBAL(signer common.Address, bal *types.BlockAccessListEncode) error {
+	if bal.Version != 0 {
+		log.Error("invalid BAL version", "version", bal.Version)
+		return errors.New("invalid BAL version")
+	}
+
 	if len(bal.SignData) != 65 {
+		log.Error("invalid BAL signature", "signatureSize", len(bal.SignData))
 		return errors.New("invalid BAL signature")
 	}
 
 	// Recover the public key and the Ethereum address
 	data, err := rlp.EncodeToBytes([]interface{}{bal.Version, bal.Accounts})
 	if err != nil {
+		log.Error("encode to bytes failed", "err", err)
 		return errors.New("encode to bytes failed")
+	}
+
+	if len(data) > int(params.MaxBALSize) {
+		log.Error("data is too large", "dataSize", len(data), "maxSize", params.MaxBALSize)
+		return errors.New("data is too large")
 	}
 
 	pubkey, err := crypto.Ecrecover(crypto.Keccak256(data), bal.SignData)
@@ -1795,6 +1812,7 @@ func (p *Parlia) VerifyBAL(signer common.Address, bal *types.BlockAccessListEnco
 	copy(pubkeyAddr[:], crypto.Keccak256(pubkey[1:])[12:])
 
 	if signer != pubkeyAddr {
+		log.Error("signer mismatch", "signer", signer, "pubkeyAddr", pubkeyAddr)
 		return errors.New("signer mismatch")
 	}
 
