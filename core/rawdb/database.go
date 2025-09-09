@@ -433,7 +433,7 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 	// If the genesis hash is empty, we have a new key-value store, so nothing to
 	// validate in this method. If, however, the genesis hash is not nil, compare
 	// it to the freezer content.
-	// Only to check the followings when offset/ancientTail equal to 0, otherwise the block number
+	// Only to check the following when offset/ancientTail equal to 0, otherwise the block number
 	// in ancientdb did not start with 0, no genesis block in ancientdb as well.
 	ancientTail, err := frdb.Tail()
 	if err != nil {
@@ -1041,7 +1041,7 @@ func ReadChainMetadata(db ethdb.Reader) [][]string {
 // is periodically called and if it returns an error then SafeDeleteRange
 // stops and also returns that error. The callback is not called if native
 // range delete is used or there are a small number of keys only. The bool
-// argument passed to the callback is true if enrties have actually been
+// argument passed to the callback is true if entries have actually been
 // deleted already.
 func SafeDeleteRange(db ethdb.KeyValueStore, start, end []byte, hashScheme bool, stopCallback func(bool) bool) error {
 	if !hashScheme {
