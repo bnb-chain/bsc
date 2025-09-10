@@ -457,7 +457,7 @@ func inspectTrie(ctx *cli.Context) error {
 			headerHash := rawdb.ReadHeadHeaderHash(db)
 			blockNumber = *(rawdb.ReadHeaderNumber(db, headerHash))
 		} else if ctx.Args().Get(0) == "snapshot" {
-			trieRootHash = rawdb.ReadSnapshotRoot(db)
+			trieRootHash = rawdb.ReadSnapshotRoot(db.GetSnapStore())
 			blockNumber = math.MaxUint64
 		} else {
 			var err error
