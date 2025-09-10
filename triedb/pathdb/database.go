@@ -234,7 +234,7 @@ type Database struct {
 
 	config    *Config                      // Configuration for database
 	diskdb    ethdb.Database               // Persistent storage for matured trie nodes
-	snapdb    ethdb.KeyValueStore          // Persistent storage for snapshot flat data
+	snapdb    ethdb.KeyValueStore          // Persistent storage for snapshot data
 	tree      *layerTree                   // The group for all known layers
 	freezer   ethdb.ResettableAncientStore // Freezer for storing trie histories, nil possible in tests
 	lock      sync.RWMutex                 // Lock to prevent mutations from happening at the same time
@@ -525,8 +525,13 @@ func (db *Database) Enable(root common.Hash) error {
 	// reset the persistent state id back to zero.
 	batch := db.diskdb.NewBatch()
 	db.DeleteTrieJournal(batch)
-	rawdb.DeleteSnapshotRoot(batch)
 	rawdb.WritePersistentStateID(batch, 0)
+	if db.isMultiDB {
+		// SnapshotRoot store in snap db if multidb enabled
+		rawdb.DeleteSnapshotRoot(db.snapdb)
+	} else {
+		rawdb.DeleteSnapshotRoot(batch)
+	}
 	if err := batch.Write(); err != nil {
 		return err
 	}
