@@ -243,7 +243,48 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 		//      blocks being retained. If the node is forcefully killed, it may fail to repair
 		//      itself during restart.
 		useFinalizedForFreeze := false
-		if !useFinalizedForFreeze {
+		if useFinalizedForFreeze {
+			threshold, err = f.freezeThreshold(nfdb)
+			if err != nil {
+				backoff = true
+				log.Debug("Current full block not old enough to freeze", "err", err)
+				continue
+			}
+			frozen, _ := f.Ancients() // no error will occur, safe to ignore
+
+			// Short circuit if the blocks below threshold are already frozen.
+			if frozen != 0 && frozen-1 >= threshold {
+				backoff = true
+				log.Debug("Ancient blocks frozen already", "threshold", threshold, "frozen", frozen)
+				continue
+			}
+
+			hash = ReadHeadBlockHash(nfdb)
+			if hash == (common.Hash{}) {
+				log.Debug("Current full block hash unavailable") // new chain, empty database
+				backoff = true
+				continue
+			}
+			number = ReadHeaderNumber(nfdb, hash)
+			if number == nil {
+				log.Error("Current full block number unavailable", "hash", hash)
+				backoff = true
+				continue
+			}
+			head = ReadHeader(nfdb, hash, *number)
+			if head == nil {
+				log.Error("Current full block unavailable", "number", *number, "hash", hash)
+				backoff = true
+				continue
+			}
+			trySlowdownFreeze(head)
+
+			first = frozen
+			last = threshold
+			if last-first+1 > freezerBatchLimit {
+				last = freezerBatchLimit + first - 1
+			}
+		} else {
 			// Retrieve the freezing threshold.
 			hash = ReadHeadBlockHash(nfdb)
 			if hash == (common.Hash{}) {
