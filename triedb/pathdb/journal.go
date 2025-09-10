@@ -234,13 +234,15 @@ type journalGenerator struct {
 }
 
 // loadGenerator loads the state generation progress marker from the database.
-func loadGenerator(db ethdb.KeyValueReader, snapdb ethdb.KeyValueReader, hash nodeHasher) (*journalGenerator, common.Hash, error) {
-	trieRoot, err := hash(rawdb.ReadAccountTrieNode(db, nil))
+// By default, triedb and snapdb point to the same pathdb disk database.
+// In multi-DB mode, pass a dedicated snapshot database for snapdb.
+func loadGenerator(triedb ethdb.KeyValueReader, snapdb ethdb.KeyValueReader, hash nodeHasher) (*journalGenerator, common.Hash, error) {
+	trieRoot, err := hash(rawdb.ReadAccountTrieNode(triedb, nil))
 	if err != nil {
 		return nil, common.Hash{}, err
 	}
 	// State generation progress marker is lost, rebuild it
-	blob := rawdb.ReadSnapshotGenerator(db)
+	blob := rawdb.ReadSnapshotGenerator(snapdb)
 	if len(blob) == 0 {
 		log.Info("State snapshot generator is not found")
 		return nil, trieRoot, nil
