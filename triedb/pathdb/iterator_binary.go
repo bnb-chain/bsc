@@ -137,7 +137,7 @@ func (dl *diskLayer) initBinaryStorageIterator(account common.Hash, seek common.
 		// is constructed, no matter the referenced disk layer is stale or not
 		// later.
 		a: newDiffStorageIterator(account, seek, storageList, nil),
-		b: newDiskStorageIterator(dl.db.diskdb, account, seek),
+		b: newDiskStorageIterator(dl.db.snapdb, account, seek),
 	}
 	l.aDone = !l.a.Next()
 	l.bDone = !l.b.Next()
