@@ -32,6 +32,7 @@ type Database interface {
 }
 
 const TopN = 3
+const DEFAULT_TRIEDBCACHE_SIZE = 1024 * 1024 * 1024
 
 type Inspector struct {
 	trie           *Trie // traverse trie
