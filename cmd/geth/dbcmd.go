@@ -78,22 +78,21 @@ Remove blockchain and state databases`,
 			dbCompactCmd,
 			dbGetCmd,
 			dbDeleteCmd,
-			dbDeleteTrieStateCmd,
-			dbInspectTrieCmd,
 			dbPutCmd,
 			dbGetSlotsCmd,
 			dbDumpFreezerIndex,
 			dbImportCmd,
 			dbExportCmd,
 			dbMetadataCmd,
-			ancientInspectCmd,
-			// no legacy stored receipts for bsc
-			// dbMigrateFreezerCmd,
 			dbCheckStateContentCmd,
-			dbHbss2PbssCmd,
+			dbInspectHistoryCmd,
+
+			// only defined in bsc
+			dbInspectTrieCmd,
 			dbTrieGetCmd,
 			dbTrieDeleteCmd,
-			dbInspectHistoryCmd,
+			dbDeleteTrieStateCmd,
+			ancientInspectCmd,
 		},
 	}
 	dbInspectCmd = &cli.Command{
@@ -124,19 +123,6 @@ Remove blockchain and state databases`,
 		Description: `This command iterates the entire database for 32-byte keys, looking for rlp-encoded trie nodes.
 For each trie node encountered, it checks that the key corresponds to the keccak256(value). If this is not true, this indicates
 a data corruption.`,
-	}
-	dbHbss2PbssCmd = &cli.Command{
-		Action:    hbss2pbss,
-		Name:      "hbss-to-pbss",
-		ArgsUsage: "<jobnum (optional)>",
-		Flags: []cli.Flag{
-			utils.DataDirFlag,
-			utils.SyncModeFlag,
-			utils.ForceFlag,
-			utils.AncientFlag,
-		},
-		Usage:       "Convert Hash-Base to Path-Base trie node.",
-		Description: `This command iterates the entire trie node database and convert the hash-base node to path-base node.`,
 	}
 	dbTrieGetCmd = &cli.Command{
 		Action:    dbTrieGet,
@@ -1198,112 +1184,6 @@ func showMetaData(ctx *cli.Context) error {
 	table.SetHeader([]string{"Field", "Value"})
 	table.AppendBulk(data)
 	table.Render()
-	return nil
-}
-
-func hbss2pbss(ctx *cli.Context) error {
-	if ctx.NArg() > 1 {
-		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
-	}
-
-	var jobnum uint64
-	var err error
-	if ctx.NArg() == 1 {
-		jobnum, err = strconv.ParseUint(ctx.Args().Get(0), 10, 64)
-		if err != nil {
-			return fmt.Errorf("failed to Parse jobnum, Args[1]: %v, err: %v", ctx.Args().Get(1), err)
-		}
-	} else {
-		// by default
-		jobnum = 1000
-	}
-
-	force := ctx.Bool(utils.ForceFlag.Name)
-
-	stack, _ := makeConfigNode(ctx)
-	defer stack.Close()
-
-	db := utils.MakeChainDatabase(ctx, stack, false)
-	db.SyncAncient()
-	defer db.Close()
-
-	// convert hbss trie node to pbss trie node
-	var lastStateID uint64
-	lastStateID = rawdb.ReadPersistentStateID(db.GetStateStore())
-	if lastStateID == 0 || force {
-		config := triedb.HashDefaults
-		triedb := triedb.NewDatabase(db, config)
-		triedb.Cap(0)
-		log.Info("hbss2pbss triedb", "scheme", triedb.Scheme())
-		defer triedb.Close()
-
-		headerHash := rawdb.ReadHeadHeaderHash(db)
-		blockNumber := rawdb.ReadHeaderNumber(db, headerHash)
-		if blockNumber == nil {
-			log.Error("read header number failed.")
-			return fmt.Errorf("read header number failed")
-		}
-
-		log.Info("hbss2pbss converting", "HeaderHash: ", headerHash.String(), ", blockNumber: ", *blockNumber)
-
-		var headerBlockHash common.Hash
-		var trieRootHash common.Hash
-
-		if *blockNumber != math.MaxUint64 {
-			headerBlockHash = rawdb.ReadCanonicalHash(db, *blockNumber)
-			if headerBlockHash == (common.Hash{}) {
-				return errors.New("ReadHeadBlockHash empty hash")
-			}
-			blockHeader := rawdb.ReadHeader(db, headerBlockHash, *blockNumber)
-			trieRootHash = blockHeader.Root
-			fmt.Println("Canonical Hash: ", headerBlockHash.String(), ", TrieRootHash: ", trieRootHash.String())
-		}
-		if (trieRootHash == common.Hash{}) {
-			log.Error("Empty root hash")
-			return errors.New("Empty root hash.")
-		}
-
-		id := trie.StateTrieID(trieRootHash)
-		theTrie, err := trie.New(id, triedb)
-		if err != nil {
-			log.Error("fail to new trie tree", "err", err, "rootHash", err, trieRootHash.String())
-			return err
-		}
-
-		h2p, err := trie.NewHbss2Pbss(theTrie, triedb, trieRootHash, *blockNumber, jobnum)
-		if err != nil {
-			log.Error("fail to new hash2pbss", "err", err, "rootHash", err, trieRootHash.String())
-			return err
-		}
-		h2p.Run()
-	} else {
-		log.Info("Convert hbss to pbss success. Nothing to do.")
-	}
-
-	lastStateID = rawdb.ReadPersistentStateID(db.GetStateStore())
-
-	if lastStateID == 0 {
-		log.Error("Convert hbss to pbss trie node error. The last state id is still 0")
-	}
-
-	var ancient string
-	if db.HasSeparateStateStore() {
-		dirName := filepath.Join(stack.ResolvePath("chaindata"), "state")
-		ancient = filepath.Join(dirName, "ancient")
-	} else {
-		ancient = stack.ResolveAncient("chaindata", ctx.String(utils.AncientFlag.Name))
-	}
-	err = rawdb.ResetStateFreezerTableOffset(ancient, lastStateID)
-	if err != nil {
-		log.Error("Reset state freezer table offset failed", "error", err)
-		return err
-	}
-	// prune hbss trie node
-	err = rawdb.PruneHashTrieNodeInDataBase(db.GetStateStore())
-	if err != nil {
-		log.Error("Prune Hash trie node in database failed", "error", err)
-		return err
-	}
 	return nil
 }
 
