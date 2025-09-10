@@ -151,7 +151,7 @@ func newTable(path string, name string, readMeter, writeMeter *metrics.Meter, si
 		meta  *os.File
 	)
 	if readonly {
-		// Will fail if table doesn't exist
+		// Will fail if table index file or meta file is not existent
 		index, err = openFreezerFileForReadOnly(filepath.Join(path, idxName))
 		if err != nil {
 			return nil, err

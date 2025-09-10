@@ -141,7 +141,7 @@ func (f *chainFreezer) Close() error {
 
 // readHeadNumber returns the number of chain head block. 0 is returned if the
 // block is unknown or not available yet.
-func (f *chainFreezer) readHeadNumber(db ethdb.Reader) uint64 {
+func (f *chainFreezer) readHeadNumber(db ethdb.KeyValueReader) uint64 {
 	hash := ReadHeadBlockHash(db)
 	if hash == (common.Hash{}) {
 		log.Error("Head block is not reachable")
@@ -157,7 +157,7 @@ func (f *chainFreezer) readHeadNumber(db ethdb.Reader) uint64 {
 
 // readFinalizedNumber returns the number of finalized block. 0 is returned
 // if the block is unknown or not available yet.
-func (f *chainFreezer) readFinalizedNumber(db ethdb.Reader) uint64 {
+func (f *chainFreezer) readFinalizedNumber(db ethdb.KeyValueReader) uint64 {
 	hash := ReadFinalizedBlockHash(db)
 	if hash == (common.Hash{}) {
 		return 0
@@ -172,7 +172,7 @@ func (f *chainFreezer) readFinalizedNumber(db ethdb.Reader) uint64 {
 
 // freezeThreshold returns the threshold for chain freezing. It's determined
 // by formula: max(finality, HEAD-params.FullImmutabilityThreshold).
-func (f *chainFreezer) freezeThreshold(db ethdb.Reader) (uint64, error) {
+func (f *chainFreezer) freezeThreshold(db ethdb.KeyValueReader) (uint64, error) {
 	var (
 		head      = f.readHeadNumber(db)
 		final     = f.readFinalizedNumber(db)
@@ -237,50 +237,13 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 			err    error
 		)
 
-		// TODO(Nathan): use finalized block as the chain freeze indicator, to be activated
+		// BSC does not use the finalized block as the freeze indicator, for two reasons:
+		//   1. To retain double-signed blocks in recent days.
+		//   2. In pruneancient mode, frozen blocks are pruned away, which may result in too few
+		//      blocks being retained. If the node is forcefully killed, it may fail to repair
+		//      itself during restart.
 		useFinalizedForFreeze := false
-		if useFinalizedForFreeze {
-			threshold, err = f.freezeThreshold(nfdb)
-			if err != nil {
-				backoff = true
-				log.Debug("Current full block not old enough to freeze", "err", err)
-				continue
-			}
-			frozen, _ := f.Ancients() // no error will occur, safe to ignore
-
-			// Short circuit if the blocks below threshold are already frozen.
-			if frozen != 0 && frozen-1 >= threshold {
-				backoff = true
-				log.Debug("Ancient blocks frozen already", "threshold", threshold, "frozen", frozen)
-				continue
-			}
-
-			hash = ReadHeadBlockHash(nfdb)
-			if hash == (common.Hash{}) {
-				log.Debug("Current full block hash unavailable") // new chain, empty database
-				backoff = true
-				continue
-			}
-			number = ReadHeaderNumber(nfdb, hash)
-			if number == nil {
-				log.Error("Current full block number unavailable", "hash", hash)
-				backoff = true
-				continue
-			}
-			head = ReadHeader(nfdb, hash, *number)
-			if head == nil {
-				log.Error("Current full block unavailable", "number", *number, "hash", hash)
-				backoff = true
-				continue
-			}
-			trySlowdownFreeze(head)
-
-			first = frozen
-			last = threshold
-			if last-first+1 > freezerBatchLimit {
-				last = freezerBatchLimit + first - 1
-			}
-		} else {
+		if !useFinalizedForFreeze {
 			// Retrieve the freezing threshold.
 			hash = ReadHeadBlockHash(nfdb)
 			if hash == (common.Hash{}) {
@@ -538,9 +501,9 @@ func (f *chainFreezer) freezeRange(nfdb *nofreezedb, number, limit uint64) (hash
 	if number > limit {
 		return nil, nil
 	}
+	hashes = make([]common.Hash, 0, limit-number+1)
 
 	env, _ := f.freezeEnv.Load().(*ethdb.FreezerEnv)
-	hashes = make([]common.Hash, 0, limit-number+1)
 	_, err = f.ModifyAncients(func(op ethdb.AncientWriteOp) error {
 		for ; number <= limit; number++ {
 			// Retrieve all the components of the canonical block.

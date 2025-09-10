@@ -617,8 +617,7 @@ func TestWriteAncientHeaderChain(t *testing.T) {
 		ReceiptHash: types.EmptyReceiptsHash,
 	})
 	// Write and verify the header in the database
-	ptd := new(big.Int)
-	WriteAncientHeaderChain(db, headers, ptd)
+	WriteAncientHeaderChain(db, headers, new(big.Int))
 
 	for _, header := range headers {
 		if blob := ReadHeaderRLP(db, header.Hash(), header.Number.Uint64()); len(blob) == 0 {

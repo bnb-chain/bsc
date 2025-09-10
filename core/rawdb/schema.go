@@ -88,9 +88,6 @@ var (
 	// database.
 	fastTxLookupLimitKey = []byte("FastTransactionLookupLimit")
 
-	//LastSafePointBlockKey tracks the block number for block state that write disk
-	LastSafePointBlockKey = []byte("LastSafePointBlockNumber")
-
 	// badBlockKey tracks the list of bad blocks seen by local
 	badBlockKey = []byte("InvalidBlock")
 

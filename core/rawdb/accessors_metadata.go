@@ -18,7 +18,6 @@ package rawdb
 
 import (
 	"encoding/json"
-	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -31,7 +30,6 @@ import (
 // FreezerType enumerator
 const (
 	EntireFreezerType uint64 = iota // classic ancient type
-	PruneFreezerType                // prune ancient type
 )
 
 // ReadDatabaseVersion retrieves the version number of the database.
@@ -192,21 +190,5 @@ func ReadTransitionStatus(db ethdb.KeyValueReader) []byte {
 func WriteTransitionStatus(db ethdb.KeyValueWriter, data []byte) {
 	if err := db.Put(transitionStatusKey, data); err != nil {
 		log.Crit("Failed to store the eth2 transition status", "err", err)
-	}
-}
-
-// ReadSafePointBlockNumber return the number of block that roothash save to disk
-func ReadSafePointBlockNumber(db ethdb.KeyValueReader) uint64 {
-	num, _ := db.Get(LastSafePointBlockKey)
-	if num == nil {
-		return 0
-	}
-	return new(big.Int).SetBytes(num).Uint64()
-}
-
-// WriteSafePointBlockNumber write the number of block that roothash save to disk
-func WriteSafePointBlockNumber(db ethdb.KeyValueWriter, number uint64) {
-	if err := db.Put(LastSafePointBlockKey, new(big.Int).SetUint64(number).Bytes()); err != nil {
-		log.Crit("Failed to store safe point of block number", "err", err)
 	}
 }
