@@ -203,7 +203,11 @@ func AsyncFilter(it Iterator, check AsyncFilterFunc, workers int) Iterator {
 			nodeSource := f.it.NodeSource()
 
 			// check the node async, in a separate goroutine
-			<-f.slots
+			select {
+			case <-ctx.Done():
+				return
+			case <-f.slots:
+			}
 			go func() {
 				if nn := check(ctx, node); nn != nil {
 					item := iteratorItem{nn, nodeSource}
