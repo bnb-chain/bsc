@@ -533,18 +533,37 @@ func (dl *diskLayer) revert(h *history) (*diskLayer, error) {
 	var snapBatch ethdb.Batch
 	// The separate snapshot db need to be flush with independent batch
 	if dl.db.isMultiDB {
-		// Multi-database mode: write to separate databases sequentially to ensure consistency
-		writeNodes(batch, nodes, dl.nodes)
-		rawdb.WritePersistentStateID(batch, dl.id-1)
-		if err := batch.Write(); err != nil {
-			log.Crit("Failed to write trie nodes", "err", err)
-		}
+		var wg sync.WaitGroup
+		var trieErr, snapErr error
 
-		snapBatch = dl.db.snapdb.NewBatch()
-		writeStates(snapBatch, progress, accounts, storages, dl.states)
-		rawdb.WriteSnapshotRoot(snapBatch, h.meta.parent)
-		if err := snapBatch.Write(); err != nil {
-			log.Crit("Failed to write states to snapshot db", "err", err)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			writeNodes(batch, nodes, dl.nodes)
+			rawdb.WritePersistentStateID(batch, dl.id-1)
+			if err := batch.Write(); err != nil {
+				trieErr = err
+			}
+		}()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			snapBatch = dl.db.snapdb.NewBatch()
+			writeStates(snapBatch, progress, accounts, storages, dl.states)
+			rawdb.WriteSnapshotRoot(snapBatch, h.meta.parent)
+			if err := snapBatch.Write(); err != nil {
+				snapErr = err
+			}
+		}()
+
+		wg.Wait()
+		
+		if trieErr != nil {
+			log.Crit("Failed to write trie nodes", "err", trieErr)
+		}
+		if snapErr != nil {
+			log.Crit("Failed to write states to snapshot db", "err", snapErr)
 		}
 	} else {
 		writeNodes(batch, nodes, dl.nodes)
