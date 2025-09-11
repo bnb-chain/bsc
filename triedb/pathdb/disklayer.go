@@ -28,6 +28,14 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
+)
+
+var (
+	// Flush latency metrics
+	diskFlushTimer = metrics.NewRegisteredResettingTimer("pathdb/flush/disk", nil)
+	trieFlushTimer = metrics.NewRegisteredResettingTimer("pathdb/flush/trie", nil)
+	snapFlushTimer = metrics.NewRegisteredResettingTimer("pathdb/flush/snap", nil)
 )
 
 // diskLayer is a low level persistent layer built on top of a key-value store.
@@ -532,6 +540,7 @@ func (dl *diskLayer) revert(h *history) (*diskLayer, error) {
 
 	var snapBatch ethdb.Batch
 	// The separate snapshot db need to be flush with independent batch
+	flushStart := time.Now()
 	if dl.db.isMultiDB {
 		var wg sync.WaitGroup
 		var trieErr, snapErr error
@@ -539,26 +548,30 @@ func (dl *diskLayer) revert(h *history) (*diskLayer, error) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			trieStart := time.Now()
 			writeNodes(batch, nodes, dl.nodes)
 			rawdb.WritePersistentStateID(batch, dl.id-1)
 			if err := batch.Write(); err != nil {
 				trieErr = err
 			}
+			trieFlushTimer.UpdateSince(trieStart)
 		}()
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			snapStart := time.Now()
 			snapBatch = dl.db.snapdb.NewBatch()
 			writeStates(snapBatch, progress, accounts, storages, dl.states)
 			rawdb.WriteSnapshotRoot(snapBatch, h.meta.parent)
 			if err := snapBatch.Write(); err != nil {
 				snapErr = err
 			}
+			snapFlushTimer.UpdateSince(snapStart)
 		}()
 
 		wg.Wait()
-		
+
 		if trieErr != nil {
 			log.Crit("Failed to write trie nodes", "err", trieErr)
 		}
@@ -575,6 +588,7 @@ func (dl *diskLayer) revert(h *history) (*diskLayer, error) {
 			log.Crit("Failed to write states", "err", err)
 		}
 	}
+	diskFlushTimer.UpdateSince(flushStart)
 	// Link the generator and resume generation if the snapshot is not yet
 	// fully completed.
 	ndl := newDiskLayer(h.meta.parent, dl.id-1, dl.db, dl.nodes, dl.states, dl.buffer, dl.frozen)
