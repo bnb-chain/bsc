@@ -121,13 +121,13 @@ func (env *environment) copy() *environment {
 		receipts:  copyReceipts(env.receipts),
 		committed: env.committed,
 	}
+	cpy.state.TransferBlockAccessList(env.state)
 	if env.gasPool != nil {
 		gasPool := *env.gasPool
 		cpy.gasPool = &gasPool
 	}
 	cpy.txs = make([]*types.Transaction, len(env.txs))
 	copy(cpy.txs, env.txs)
-
 	if env.sidecars != nil {
 		cpy.sidecars = make(types.BlobSidecars, len(env.sidecars))
 		copy(cpy.sidecars, env.sidecars)

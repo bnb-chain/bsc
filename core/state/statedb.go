@@ -776,6 +776,14 @@ func (s *StateDB) CopyDoPrefetch() *StateDB {
 	return s.copyInternal(true)
 }
 
+func (s *StateDB) TransferBlockAccessList(prev *StateDB) {
+	if prev == nil {
+		return
+	}
+	s.blockAccessList = prev.blockAccessList
+	prev.blockAccessList = nil
+}
+
 // If doPrefetch is true, it tries to reuse the prefetcher, the copied StateDB will do active trie prefetch.
 // otherwise, just do inactive copy trie prefetcher.
 func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
@@ -804,7 +812,7 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 		// empty lists, so we do it anyway to not blow up if we ever decide copy them
 		// in the middle of a transaction.
 		accessList:       s.accessList.Copy(),
-		blockAccessList:  s.blockAccessList.Copy(),
+		blockAccessList:  nil,
 		transientStorage: s.transientStorage.Copy(),
 		journal:          s.journal.copy(),
 	}
