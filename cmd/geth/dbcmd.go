@@ -744,8 +744,15 @@ func dbGet(ctx *cli.Context) error {
 		return err
 	}
 	opDb := db
-	if stack.CheckIfMultiDataBase() && rawdb.DataTypeByKey(key) == rawdb.StateDataType {
-		opDb = db.GetStateStore()
+	if stack.CheckIfMultiDataBase() {
+		switch categorizeDataByKey(key, nil) {
+		case "state":
+			opDb = db.GetStateStore()
+		case "snapshot":
+			opDb = rawdb.NewDatabase(db.GetSnapStore())
+		case "txindex":
+			opDb = rawdb.NewDatabase(db.GetTxIndexStore())
+		}
 	}
 
 	data, err := opDb.Get(key)
@@ -905,8 +912,15 @@ func dbDelete(ctx *cli.Context) error {
 		return err
 	}
 	opDb := db
-	if opDb.HasSeparateStateStore() && rawdb.DataTypeByKey(key) == rawdb.StateDataType {
-		opDb = db.GetStateStore()
+	if stack.CheckIfMultiDataBase() {
+		switch categorizeDataByKey(key, nil) {
+		case "state":
+			opDb = db.GetStateStore()
+		case "snapshot":
+			opDb = rawdb.NewDatabase(db.GetSnapStore())
+		case "txindex":
+			opDb = rawdb.NewDatabase(db.GetTxIndexStore())
+		}
 	}
 
 	data, err := opDb.Get(key)
@@ -1025,8 +1039,15 @@ func dbPut(ctx *cli.Context) error {
 	}
 
 	opDb := db
-	if db.HasSeparateStateStore() && rawdb.DataTypeByKey(key) == rawdb.StateDataType {
-		opDb = db.GetStateStore()
+	if stack.CheckIfMultiDataBase() {
+		switch categorizeDataByKey(key, nil) {
+		case "state":
+			opDb = db.GetStateStore()
+		case "snapshot":
+			opDb = rawdb.NewDatabase(db.GetSnapStore())
+		case "txindex":
+			opDb = rawdb.NewDatabase(db.GetTxIndexStore())
+		}
 	}
 
 	data, err = opDb.Get(key)
