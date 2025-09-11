@@ -2361,7 +2361,7 @@ func (p *Parlia) detectNewVersionWithFork(chain consensus.ChainHeaderReader, hea
 	forkHashHex := hex.EncodeToString(nextForkHash[:])
 	if !snap.isMajorityFork(forkHashHex) {
 		logFn := log.Debug
-		if state.NoTrie() {
+		if state.NoTries() {
 			logFn = log.Warn
 		}
 		logFn("possible fork detected: client is not in majority", "nextForkHash", forkHashHex)

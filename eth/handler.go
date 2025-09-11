@@ -233,7 +233,8 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	for _, address := range config.ProxyedValidatorAddresses {
 		h.proxyedValidatorAddressMap[address] = struct{}{}
 	}
-	if config.Sync == ethconfig.FullSync {
+	if h.chain.NoTries() {
+	} else if config.Sync == ethconfig.FullSync {
 		// The database seems empty as the current block is the genesis. Yet the snap
 		// block is ahead, so snap sync was enabled for this node at a certain point.
 		// The scenarios where this can happen is
@@ -246,7 +247,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		if fullBlock.Number.Uint64() == 0 && snapBlock.Number.Uint64() > 0 {
 			h.snapSync.Store(true)
 			log.Warn("Switch sync mode from full sync to snap sync", "reason", "snap sync incomplete")
-		} else if !h.chain.NoTries() && !h.chain.HasState(fullBlock.Root) {
+		} else if !h.chain.HasState(fullBlock.Root) {
 			h.snapSync.Store(true)
 			log.Warn("Switch sync mode from full sync to snap sync", "reason", "head state missing")
 		}

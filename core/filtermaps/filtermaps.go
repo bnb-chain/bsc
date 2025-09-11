@@ -287,6 +287,10 @@ func (f *FilterMaps) Start() {
 			log.Error("Could not load head filter map snapshot", "error", err)
 		}
 	}
+	if f.indexedView == nil {
+		log.Error("FilterMaps fail to Start, restart maybe ok!")
+		return
+	}
 	f.closeWg.Add(2)
 	go f.removeBloomBits()
 	go f.indexerLoop()
