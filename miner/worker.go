@@ -665,7 +665,6 @@ func (w *worker) resultLoop() {
 			}
 
 			// Commit block and state to database.
-			task.state.SetExpectedStateRoot(block.Root())
 			start := time.Now()
 			status, err := w.chain.WriteBlockAndSetHead(block, receipts, logs, task.state, w.mux)
 			if status != core.CanonStatTy {

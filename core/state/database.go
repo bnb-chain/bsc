@@ -150,7 +150,6 @@ type Trie interface {
 type CachingDB struct {
 	disk          ethdb.KeyValueStore
 	triedb        *triedb.Database
-	noTries       bool
 	snap          *snapshot.Tree
 	codeCache     *lru.SizeConstrainedCache[common.Hash, []byte]
 	codeSizeCache *lru.Cache[common.Hash, int]
@@ -159,12 +158,9 @@ type CachingDB struct {
 
 // NewDatabase creates a state database with the provided data sources.
 func NewDatabase(triedb *triedb.Database, snap *snapshot.Tree) *CachingDB {
-	noTries := triedb != nil && triedb.Config() != nil && triedb.Config().NoTries
-
 	return &CachingDB{
 		disk:          triedb.Disk(),
 		triedb:        triedb,
-		noTries:       noTries,
 		snap:          snap,
 		codeCache:     lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
 		codeSizeCache: lru.NewCache[common.Hash, int](codeSizeCacheSize),
@@ -232,7 +228,7 @@ func (db *CachingDB) ReadersWithCacheStats(stateRoot common.Hash) (ReaderWithSta
 
 // OpenTrie opens the main account trie at a specific root hash.
 func (db *CachingDB) OpenTrie(root common.Hash) (Trie, error) {
-	if db.noTries {
+	if db.NoTries() {
 		return trie.NewEmptyTrie(), nil
 	}
 	if db.triedb.IsVerkle() {
@@ -247,7 +243,7 @@ func (db *CachingDB) OpenTrie(root common.Hash) (Trie, error) {
 
 // OpenStorageTrie opens the storage trie of an account.
 func (db *CachingDB) OpenStorageTrie(stateRoot common.Hash, address common.Address, root common.Hash, self Trie) (Trie, error) {
-	if db.noTries {
+	if db.NoTries() {
 		return trie.NewEmptyTrie(), nil
 	}
 
@@ -265,7 +261,7 @@ func (db *CachingDB) OpenStorageTrie(stateRoot common.Hash, address common.Addre
 }
 
 func (db *CachingDB) NoTries() bool {
-	return db.noTries
+	return db.triedb != nil && db.triedb.Config() != nil && db.triedb.Config().NoTries
 }
 
 // ContractCodeWithPrefix retrieves a particular contract's code. If the

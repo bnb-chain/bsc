@@ -117,9 +117,6 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 			config.HashDB = hashdb.Defaults
 		}
 	}
-	if config.PathDB != nil && config.NoTries {
-		config.PathDB.NoTries = true
-	}
 	var preimages *preimageStore
 	if config.Preimages {
 		preimages = newPreimageStore(triediskdb)

@@ -117,7 +117,7 @@ func (d iterativeDump) OnRoot(root common.Hash) {
 // The state iterator is still trie-based and can be converted to snapshot-based
 // once the state snapshot is fully integrated into database. TODO(rjl493456442).
 func (s *StateDB) DumpToCollector(c DumpCollector, conf *DumpConfig) (nextKey []byte) {
-	if s.NoTrie() { // TODO(Nathan): remove after converted to snapshot-based
+	if s.NoTries() { // TODO(Nathan): remove after converted to snapshot-based
 		return nil
 	}
 
