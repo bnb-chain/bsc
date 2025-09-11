@@ -2460,12 +2460,14 @@ func (bc *BlockChain) processBlock(parentRoot common.Hash, block *types.Block, s
 			storageCacheMissMeter.Mark(stats.StorageMiss)
 		}()
 
+		interruptChan := make(chan struct{})
+		defer close(interruptChan)
 		go func(start time.Time, throwaway *state.StateDB, block *types.Block) {
 			// Disable tracing for prefetcher executions.
 			vmCfg := bc.cfg.VmConfig
 			vmCfg.Tracer = nil
 			if block.BAL() != nil {
-				bc.prefetcher.PrefetchBAL(block, throwaway, &interrupt)
+				bc.prefetcher.PrefetchBAL(block, throwaway, interruptChan)
 			} else {
 				bc.prefetcher.Prefetch(block.Transactions(), block.Header(), block.GasLimit(), throwaway, vmCfg, &interrupt)
 			}

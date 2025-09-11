@@ -31,7 +31,8 @@ import (
 )
 
 const prefetchMiningThread = 3
-const prefetchThreadBAL = 8
+const prefetchThreadBALSnapshot = 8
+const prefetchThreadBALTrie = 8
 const checkInterval = 10
 
 // statePrefetcher is a basic Prefetcher that executes transactions from a block
@@ -131,28 +132,32 @@ func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *type
 	return
 }
 
-func (p *statePrefetcher) PrefetchBALSnapshot(balPrefetch *types.BlockAccessListPrefetch, block *types.Block, txSize int, statedb *state.StateDB, interrupt *atomic.Bool) {
-	accChan := make(chan common.Address, prefetchThreadBAL)
+func (p *statePrefetcher) PrefetchBALSnapshot(balPrefetch *types.BlockAccessListPrefetch, block *types.Block, txSize int, statedb *state.StateDB, interruptChan <-chan struct{}) {
+	accChan := make(chan struct {
+		txIndex uint32
+		accAddr common.Address
+	}, prefetchThreadBALSnapshot)
+
 	keyChan := make(chan struct {
+		txIndex uint32
 		accAddr common.Address
 		key     common.Hash
-	}, prefetchThreadBAL)
+	}, prefetchThreadBALSnapshot)
 
 	// prefetch snapshot cache
-	for i := 0; i < prefetchThreadBAL; i++ {
+	for i := 0; i < prefetchThreadBALSnapshot; i++ {
 		go func() {
 			newStatedb := statedb.CopyDoPrefetch()
 			for {
-				// If block precaching was interrupted, abort
-				if interrupt != nil && interrupt.Load() {
-					return
-				}
 				select {
 				case accAddr := <-accChan:
-					newStatedb.PreloadAccount(accAddr)
+					log.Debug("PrefetchBALSnapshot", "txIndex", accAddr.txIndex, "accAddr", accAddr.accAddr)
+					newStatedb.PreloadAccount(accAddr.accAddr)
 				case item := <-keyChan:
+					log.Debug("PrefetchBALSnapshot", "txIndex", item.txIndex, "accAddr", item.accAddr, "key", item.key)
 					newStatedb.PreloadStorage(item.accAddr, item.key)
-				default:
+				case <-interruptChan:
+					return
 				}
 			}
 		}()
@@ -161,53 +166,86 @@ func (p *statePrefetcher) PrefetchBALSnapshot(balPrefetch *types.BlockAccessList
 		txAccessList := balPrefetch.AccessListItems[uint32(txIndex)]
 		for accAddr, storageItems := range txAccessList.Accounts {
 			select {
-			case accChan <- accAddr:
-			default:
-			}
-			// If block precaching was interrupted, abort
-			if interrupt != nil && interrupt.Load() {
+			case accChan <- struct {
+				txIndex uint32
+				accAddr common.Address
+			}{
+				txIndex: uint32(txIndex),
+				accAddr: accAddr,
+			}:
+			case <-interruptChan:
 				return
 			}
 			for _, storageItem := range storageItems {
 				select {
 				case keyChan <- struct {
+					txIndex uint32
 					accAddr common.Address
 					key     common.Hash
 				}{
+					txIndex: uint32(txIndex),
 					accAddr: accAddr,
 					key:     storageItem.Key,
 				}:
-				default:
-				}
-				// If block precaching was interrupted, abort
-				if interrupt != nil && interrupt.Load() {
+				case <-interruptChan:
 					return
 				}
 			}
 		}
 	}
+	log.Debug("PrefetchBALSnapshot dispatch finished")
 }
 
-func (p *statePrefetcher) PrefetchBALTrie(balPrefetch *types.BlockAccessListPrefetch, block *types.Block, statedb *state.StateDB, interrupt *atomic.Bool) {
+func (p *statePrefetcher) PrefetchBALTrie(balPrefetch *types.BlockAccessListPrefetch, block *types.Block, statedb *state.StateDB, interruptChan <-chan struct{}) {
+	accItemsChan := make(chan struct {
+		txIndex uint32
+		accAddr common.Address
+		items   []types.StorageAccessItemPrefetch
+	}, prefetchThreadBALTrie)
+
+	for i := 0; i < prefetchThreadBALTrie; i++ {
+		go func() {
+			newStatedb := statedb.CopyDoPrefetch()
+			for {
+				select {
+				case accItem := <-accItemsChan:
+					newStatedb.PreloadAccountTrie(accItem.accAddr)
+					log.Debug("PrefetchBALTrie", "txIndex", accItem.txIndex, "accAddr", accItem.accAddr)
+					for _, storageItem := range accItem.items {
+						if storageItem.Dirty {
+							log.Debug("PrefetchBALTrie", "txIndex", accItem.txIndex, "accAddr", accItem.accAddr, "storageItem", storageItem.Key, "dirty", storageItem.Dirty)
+							statedb.PreloadStorageTrie(accItem.accAddr, storageItem.Key)
+						}
+					}
+				case <-interruptChan:
+					return
+				}
+			}
+		}()
+	}
+
 	for txIndex, txAccessList := range balPrefetch.AccessListItems {
 		for accAddr, storageItems := range txAccessList.Accounts {
-			// If block precaching was interrupted, abort
-			if interrupt != nil && interrupt.Load() {
+			select {
+			case accItemsChan <- struct {
+				txIndex uint32
+				accAddr common.Address
+				items   []types.StorageAccessItemPrefetch
+			}{
+				txIndex: txIndex,
+				accAddr: accAddr,
+				items:   storageItems,
+			}:
+			case <-interruptChan:
+				log.Warn("PrefetchBALTrie interrupted")
 				return
-			}
-			log.Debug("PrefetchBAL", "txIndex", txIndex, "accAddr", accAddr)
-			statedb.PreloadAccountTrie(accAddr)
-			for _, storageItem := range storageItems {
-				log.Debug("PrefetchBAL", "txIndex", txIndex, "accAddr", accAddr, "storageItem", storageItem.Key, "dirty", storageItem.Dirty)
-				if storageItem.Dirty {
-					statedb.PreloadStorageTrie(accAddr, storageItem.Key)
-				}
 			}
 		}
 	}
+	log.Debug("PrefetchBALTrie dispatch finished")
 }
 
-func (p *statePrefetcher) PrefetchBAL(block *types.Block, statedb *state.StateDB, interrupt *atomic.Bool) {
+func (p *statePrefetcher) PrefetchBAL(block *types.Block, statedb *state.StateDB, interruptChan <-chan struct{}) {
 	if block.BAL() == nil {
 		return
 	}
@@ -229,10 +267,10 @@ func (p *statePrefetcher) PrefetchBAL(block *types.Block, statedb *state.StateDB
 	}
 
 	// prefetch snapshot cache
-	go p.PrefetchBALSnapshot(&balPrefetch, block, len(transactions), statedb, interrupt)
+	go p.PrefetchBALSnapshot(&balPrefetch, block, len(transactions), statedb, interruptChan)
 
 	// prefetch MPT trie node cache
-	go p.PrefetchBALTrie(&balPrefetch, block, statedb, interrupt)
+	go p.PrefetchBALTrie(&balPrefetch, block, statedb, interruptChan)
 }
 
 // PrefetchMining processes the state changes according to the Ethereum rules by running
