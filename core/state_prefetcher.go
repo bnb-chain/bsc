@@ -31,7 +31,7 @@ import (
 )
 
 const prefetchMiningThread = 3
-const prefetchThreadBAL = 3
+const prefetchThreadBAL = 8
 const checkInterval = 10
 
 // statePrefetcher is a basic Prefetcher that executes transactions from a block
