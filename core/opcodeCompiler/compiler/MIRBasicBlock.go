@@ -17,7 +17,7 @@ func (bits bitmap) setN(flag uint16, pos uint64) {
 
 // checks if the position is in a code segment.
 func (bits *bitmap) isBitSet(pos uint64) bool {
-	return (((*bits)[pos/8] >> (pos % 8)) & 1) == 0
+	return (((*bits)[pos/8] >> (pos % 8)) & 1) == 1
 }
 
 type MIRBasicBlock struct {
@@ -123,8 +123,10 @@ func (b *MIRBasicBlock) CreateBinOpMIRWithMA(op MirOperation, stack *ValueStack,
 			return b.appendMIR(mir)
 		}
 	}
-
 	mir := newBinaryOpMIR(op, &opnd1, &opnd2, stack)
+	opnd1.use = append(opnd1.use, mir)
+	opnd2.use = append(opnd2.use, mir)
+
 	stack.push(mir.Result())
 	return b.appendMIR(mir)
 }
@@ -281,6 +283,95 @@ func (b *MIRBasicBlock) CreateStorageOpMIR(op MirOperation, stack *ValueStack, a
 func (b *MIRBasicBlock) CreateBlockInfoMIR(op MirOperation, stack *ValueStack) *MIR {
 	mir := new(MIR)
 	mir.op = op
+
+	// Populate operands based on the specific block/tx info operation
+	switch op {
+	// No-operand producers
+	case MirADDRESS, MirORIGIN, MirCALLER, MirCALLVALUE,
+		MirCALLDATASIZE, MirCODESIZE, MirGASPRICE,
+		MirRETURNDATASIZE, MirPC, MirGAS,
+		MirDATASIZE, MirBLOBBASEFEE:
+		// No stack pops; just produce a result
+
+	case MirBALANCE:
+		// pops: address
+		addr := stack.pop()
+		mir.oprands = []*Value{&addr}
+
+	case MirCALLDATALOAD:
+		// pops: offset
+		offset := stack.pop()
+		mir.oprands = []*Value{&offset}
+
+	case MirCALLDATACOPY:
+		// pops: dest, offset, size
+		size := stack.pop()
+		offset := stack.pop()
+		dest := stack.pop()
+		mir.oprands = []*Value{&dest, &offset, &size}
+
+	case MirCODECOPY:
+		// pops: dest, offset, size
+		size := stack.pop()
+		offset := stack.pop()
+		dest := stack.pop()
+		mir.oprands = []*Value{&dest, &offset, &size}
+
+	case MirEXTCODESIZE:
+		// pops: address
+		addr := stack.pop()
+		mir.oprands = []*Value{&addr}
+
+	case MirEXTCODECOPY:
+		// pops: address, dest, offset, size
+		size := stack.pop()
+		offset := stack.pop()
+		dest := stack.pop()
+		addr := stack.pop()
+		mir.oprands = []*Value{&addr, &dest, &offset, &size}
+
+	case MirRETURNDATACOPY:
+		// pops: dest, offset, size
+		size := stack.pop()
+		offset := stack.pop()
+		dest := stack.pop()
+		mir.oprands = []*Value{&dest, &offset, &size}
+
+	case MirEXTCODEHASH:
+		// pops: address
+		addr := stack.pop()
+		mir.oprands = []*Value{&addr}
+
+	// EOF data operations
+	case MirDATALOAD:
+		// pops: offset
+		offset := stack.pop()
+		mir.oprands = []*Value{&offset}
+
+	case MirDATALOADN:
+		// Immediate-indexed load in EOF; not modeled via stack here
+
+	case MirDATACOPY:
+		// pops: dest, offset, size
+		size := stack.pop()
+		offset := stack.pop()
+		dest := stack.pop()
+		mir.oprands = []*Value{&dest, &offset, &size}
+
+	case MirRETURNDATALOAD:
+		// pops: offset
+		offset := stack.pop()
+		mir.oprands = []*Value{&offset}
+
+	case MirBLOBHASH:
+		// pops: index
+		index := stack.pop()
+		mir.oprands = []*Value{&index}
+
+	default:
+		// leave operands empty for any not explicitly handled
+	}
+
 	stack.push(mir.Result())
 	return b.appendMIR(mir)
 }
@@ -288,6 +379,11 @@ func (b *MIRBasicBlock) CreateBlockInfoMIR(op MirOperation, stack *ValueStack) *
 func (b *MIRBasicBlock) CreateBlockOpMIR(op MirOperation, stack *ValueStack) *MIR {
 	mir := new(MIR)
 	mir.op = op
+	// Only MirBLOCKHASH consumes one stack operand (block number). Others are producers.
+	if op == MirBLOCKHASH {
+		blk := stack.pop()
+		mir.oprands = []*Value{&blk}
+	}
 	stack.push(mir.Result())
 	return b.appendMIR(mir)
 }

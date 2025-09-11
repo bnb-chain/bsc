@@ -40,6 +40,7 @@ func newUnaryOpMIR(operation MirOperation, opnd *Value, stack *ValueStack) *MIR 
 	}
 	mir := new(MIR)
 	mir.op = operation
+	opnd.use = append(opnd.use, mir)
 	mir.oprands = []*Value{opnd}
 	return mir
 }
@@ -50,6 +51,8 @@ func newBinaryOpMIR(operation MirOperation, opnd1 *Value, opnd2 *Value, stack *V
 	}
 	mir := new(MIR)
 	mir.op = operation
+	opnd1.use = append(opnd1.use, mir)
+	opnd2.use = append(opnd2.use, mir)
 	mir.oprands = []*Value{opnd1, opnd2}
 	return mir
 }

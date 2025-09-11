@@ -124,11 +124,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			if i+size >= len(code) {
 				return fmt.Errorf("invalid PUSH operation at position %d", i)
 			}
-			// Create PUSH MIR
-			if mir := curBB.CreatePushMIR(size, code[i+1:i+1+size], valueStack); mir != nil {
-				curBB.appendMIR(mir)
-			}
-			i += size // Skip the data bytes
+			_ = curBB.CreatePushMIR(size, code[i+1:i+1+size], valueStack)
+			i += size
 			continue
 		}
 
@@ -137,6 +134,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 		switch op {
 		case STOP:
 			mir = curBB.CreateVoidMIR(MirSTOP)
+			curBB.SetLastPC(uint(i))
+			return nil
 		case ADD:
 			mir = curBB.CreateBinOpMIR(MirADD, valueStack)
 		case MUL:
@@ -221,7 +220,7 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			mir = curBB.CreateBlockInfoMIR(MirRETURNDATACOPY, valueStack)
 		case EXTCODEHASH:
 			mir = curBB.CreateBlockInfoMIR(MirEXTCODEHASH, valueStack)
-		case BLOCKHASH:
+		case BLOCKHASH: 
 			mir = curBB.CreateBlockOpMIR(MirBLOCKHASH, valueStack)
 		case COINBASE:
 			mir = curBB.CreateBlockOpMIR(MirCOINBASE, valueStack)
@@ -266,7 +265,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 						targetBB := c.createBB(uint(targetPC), curBB)
 						curBB.SetChildren([]*MIRBasicBlock{targetBB})
 						fallthroughBB := c.createBB(uint(i+1), curBB)
-						curBB.SetChildren([]*MIRBasicBlock{targetBB, fallthroughBB})
+						// fallthroughBB is not the children of curBB
+						// curBB.SetChildren([]*MIRBasicBlock{targetBB, fallthroughBB})
 						unprcessedBBs.Push(targetBB)
 						unprcessedBBs.Push(fallthroughBB)
 						return nil
@@ -298,14 +298,17 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			}
 			return nil
 		case RJUMP:
-			mir = curBB.CreateJumpMIR(MirRJUMP, valueStack, nil)
-			return nil
+			// mir = curBB.CreateJumpMIR(MirRJUMP, valueStack, nil)
+			// return nil
+			panic("not implemented")
 		case RJUMPI:
-			mir = curBB.CreateJumpMIR(MirRJUMPI, valueStack, nil)
-			return nil
+			// mir = curBB.CreateJumpMIR(MirRJUMPI, valueStack, nil)
+			// return nil
+			panic("not implemented")
 		case RJUMPV:
-			mir = curBB.CreateJumpMIR(MirRJUMPV, valueStack, nil)
-			return nil
+			// mir = curBB.CreateJumpMIR(MirRJUMPV, valueStack, nil)
+			// return nil
+			panic("not implemented")
 		case JUMPDEST:
 			// If we hit a JUMPDEST, we should create a new basic block
 			// unless this is the first instruction
