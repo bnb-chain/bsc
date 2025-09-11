@@ -19,6 +19,7 @@ package pathdb
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
@@ -184,8 +185,7 @@ func (b *buffer) flush(root common.Hash, db ethdb.Database, separateSnapDB ethdb
 		}
 
 		// Execute flush operations based on database configuration
-		if snapBatch == nil {
-			// Single database mode: sequential write
+		if !isMultiDb {
 			nodes = b.nodes.write(trieBatch, nodesCache)
 			accounts, slots = b.states.write(trieBatch, progress, statesCache)
 			rawdb.WritePersistentStateID(trieBatch, id)
@@ -197,24 +197,41 @@ func (b *buffer) flush(root common.Hash, db ethdb.Database, separateSnapDB ethdb
 				return
 			}
 		} else {
-			// Multi database mode: sequential processing for data consistency
-			log.Info("multidb flush - sequential processing for consistency")
+			log.Info("multidb concurrent flushing")
+			var wg sync.WaitGroup
+			var trieErr, snapErr error
 
-			// Trie batch processing
-			nodes = b.nodes.write(trieBatch, nodesCache)
-			rawdb.WritePersistentStateID(trieBatch, id)
-			size = trieBatch.ValueSize()
-			if err := trieBatch.Write(); err != nil {
-				b.flushErr = err
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				nodes = b.nodes.write(trieBatch, nodesCache)
+				rawdb.WritePersistentStateID(trieBatch, id)
+				size = trieBatch.ValueSize()
+				if err := trieBatch.Write(); err != nil {
+					trieErr = err
+				}
+			}()
+
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				accounts, slots = b.states.write(snapBatch, progress, statesCache)
+				rawdb.WriteSnapshotRoot(snapBatch, root)
+				snapSize = snapBatch.ValueSize()
+				if err := snapBatch.Write(); err != nil {
+					snapErr = err
+				}
+			}()
+
+			wg.Wait()
+
+			// Check for errors
+			if trieErr != nil {
+				b.flushErr = trieErr
 				return
 			}
-
-			// Snapshot batch processing
-			accounts, slots = b.states.write(snapBatch, progress, statesCache)
-			rawdb.WriteSnapshotRoot(snapBatch, root)
-			snapSize = snapBatch.ValueSize()
-			if err := snapBatch.Write(); err != nil {
-				b.flushErr = err
+			if snapErr != nil {
+				b.flushErr = snapErr
 				return
 			}
 		}
