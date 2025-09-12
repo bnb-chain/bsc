@@ -22,14 +22,11 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -41,10 +38,10 @@ import (
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/ethdb/leveldb"
-	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/triedb"
@@ -427,7 +424,7 @@ func inspectTrie(ctx *cli.Context) error {
 			headerHash := rawdb.ReadHeadHeaderHash(db)
 			blockNumber = *(rawdb.ReadHeaderNumber(db, headerHash))
 		} else if ctx.Args().Get(0) == "snapshot" {
-			trieRootHash = rawdb.ReadSnapshotRoot(db)
+			trieRootHash = rawdb.ReadSnapshotRoot(db.GetSnapStore())
 			blockNumber = math.MaxUint64
 		} else {
 			var err error
@@ -526,8 +523,25 @@ func inspect(ctx *cli.Context) error {
 
 	db := utils.MakeChainDatabase(ctx, stack, true)
 	defer db.Close()
-
-	return rawdb.InspectDatabase(db, prefix, start)
+	fmt.Println("Inspecting chain database...")
+	if err := rawdb.InspectDatabase(db, prefix, start); err != nil {
+		return err
+	}
+	if stack.CheckIfMultiDataBase() {
+		fmt.Println("Inspecting state database...")
+		if err := rawdb.InspectDatabase(db.GetStateStore(), prefix, start); err != nil {
+			return err
+		}
+		fmt.Println("Inspecting snap database...")
+		if err := rawdb.InspectDatabase(rawdb.NewDatabase(db.GetSnapStore()), prefix, start); err != nil {
+			return err
+		}
+		fmt.Println("Inspecting index database...")
+		if err := rawdb.InspectDatabase(rawdb.NewDatabase(db.GetTxIndexStore()), prefix, start); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ancientInspect(ctx *cli.Context) error {
@@ -536,7 +550,14 @@ func ancientInspect(ctx *cli.Context) error {
 
 	db := utils.MakeChainDatabase(ctx, stack, true)
 	defer db.Close()
-	return rawdb.AncientInspect(db)
+	if err := rawdb.AncientInspect(db); err != nil {
+		return err
+	}
+
+	if stack.CheckIfMultiDataBase() {
+		return rawdb.AncientInspect(db.GetStateStore())
+	}
+	return nil
 }
 
 func checkStateContent(ctx *cli.Context) error {
@@ -616,6 +637,7 @@ func dbStats(ctx *cli.Context) error {
 		fmt.Println("show stats of StateStore and SnapStore")
 		showDBStats(db.GetStateStore())
 		showDBStats(db.GetSnapStore())
+		showDBStats(db.GetTxIndexStore())
 	}
 
 	return nil
@@ -689,8 +711,15 @@ func dbGet(ctx *cli.Context) error {
 		return err
 	}
 	opDb := db
-	if stack.CheckIfMultiDataBase() && rawdb.DataTypeByKey(key) == rawdb.StateDataType {
-		opDb = db.GetStateStore()
+	if stack.CheckIfMultiDataBase() {
+		switch categorizeDataByKey(key, nil) {
+		case "state":
+			opDb = db.GetStateStore()
+		case "snapshot":
+			opDb = rawdb.NewDatabase(db.GetSnapStore())
+		case "txindex":
+			opDb = rawdb.NewDatabase(db.GetTxIndexStore())
+		}
 	}
 
 	data, err := opDb.Get(key)
@@ -850,8 +879,15 @@ func dbDelete(ctx *cli.Context) error {
 		return err
 	}
 	opDb := db
-	if opDb.HasSeparateStateStore() && rawdb.DataTypeByKey(key) == rawdb.StateDataType {
-		opDb = db.GetStateStore()
+	if stack.CheckIfMultiDataBase() {
+		switch categorizeDataByKey(key, nil) {
+		case "state":
+			opDb = db.GetStateStore()
+		case "snapshot":
+			opDb = rawdb.NewDatabase(db.GetSnapStore())
+		case "txindex":
+			opDb = rawdb.NewDatabase(db.GetTxIndexStore())
+		}
 	}
 
 	data, err := opDb.Get(key)
@@ -970,8 +1006,15 @@ func dbPut(ctx *cli.Context) error {
 	}
 
 	opDb := db
-	if db.HasSeparateStateStore() && rawdb.DataTypeByKey(key) == rawdb.StateDataType {
-		opDb = db.GetStateStore()
+	if stack.CheckIfMultiDataBase() {
+		switch categorizeDataByKey(key, nil) {
+		case "state":
+			opDb = db.GetStateStore()
+		case "snapshot":
+			opDb = rawdb.NewDatabase(db.GetSnapStore())
+		case "txindex":
+			opDb = rawdb.NewDatabase(db.GetTxIndexStore())
+		}
 	}
 
 	data, err = opDb.Get(key)
@@ -1376,181 +1419,60 @@ func inspectHistory(ctx *cli.Context) error {
 
 // migrateDatabase migrates a single database to multi-database format
 func migrateDatabase(ctx *cli.Context) error {
-	if ctx.NArg() != 0 {
-		return fmt.Errorf("no arguments expected")
-	}
-
-	cacheSize := ctx.Int(utils.CacheFlag.Name)
-	cacheDB := ctx.Int(utils.CacheDatabaseFlag.Name)
-
-	// Create source stack using standard geth configuration (handles --datadir)
-	sourceStack, _ := makeConfigNode(ctx)
-	defer sourceStack.Close()
-
-	// Get source database path
-	sourceChainDataPath := sourceStack.ResolvePath("chaindata")
-
-	log.Info("Starting in-place database migration", "source", sourceChainDataPath)
-
-	// Open source database for read/write (NOT readonly) without using the
-	// Node helper to avoid auto-opening separate state/snapshot/txindex DBs.
-	// We only need the hot key-value store for in-place extraction & deletion.
-	sourceDB, err := openTargetDatabase(sourceChainDataPath, cacheSize*cacheDB*7/100, 64)
+	stack, cfg := makeConfigNode(ctx)
+	chainDB, err := initMultiDBs(stack, cfg, true)
 	if err != nil {
-		return fmt.Errorf("failed to open source chain database: %v", err)
-	}
-	defer sourceDB.Close()
-
-	// Create target directory structure (separate databases within source chaindata)
-	targetStatePath := filepath.Join(sourceChainDataPath, "state")
-	targetSnapshotPath := filepath.Join(sourceChainDataPath, "snapshot")
-	targetTxIndexPath := filepath.Join(sourceChainDataPath, "txindex")
-
-	for _, dir := range []string{targetStatePath, targetSnapshotPath, targetTxIndexPath} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("failed to create directory %s: %v", dir, err)
-		}
+		return fmt.Errorf("failed to init multidbs: %v", err)
 	}
 
-	// Create target databases for extracted data
-	// State database with freezer
-	stateKVDB, err := pebble.New(targetStatePath, cacheSize*cacheDB*50/100, 128, "", false)
+	// traverse all the keys in the chaindb, and then migrate in place
+	log.Info("traversing and migrating...")
+	if err := traverseAndMigrate(chainDB); err != nil {
+		return fmt.Errorf("failed to traverse and migrate: %v", err)
+	}
+
+	// move state ancient data
+	srcStateAncient, err := chainDB.AncientDatadir()
 	if err != nil {
-		return fmt.Errorf("failed to create state key-value database: %v", err)
+		return fmt.Errorf("failed to get state ancient directory: %v", err)
 	}
-	ancientPath := filepath.Join(targetStatePath, "ancient")
-	stateDB, err := rawdb.NewDatabaseWithFreezer(stateKVDB, ancientPath, "eth/db/statedata/", false)
+	srcStateAncient = filepath.Join(srcStateAncient, rawdb.MerkleStateFreezerName)
+	if _, err := os.Stat(srcStateAncient); err != nil {
+		log.Info("no state ancient data to migrate", "path", srcStateAncient)
+		return nil
+	}
+	dstStateAncient, err := chainDB.GetStateStore().AncientDatadir()
 	if err != nil {
-		stateKVDB.Close()
-		return fmt.Errorf("failed to create target state database: %v", err)
+		return fmt.Errorf("failed to get state ancient directory: %v", err)
 	}
-	defer stateDB.Close()
-
-	// Snapshot database
-	snapDB, err := openTargetDatabase(targetSnapshotPath, cacheSize*cacheDB*24/100, 32)
-	if err != nil {
-		return fmt.Errorf("failed to create target snapshot database: %v", err)
+	if err := os.MkdirAll(dstStateAncient, 0755); err != nil {
+		return fmt.Errorf("failed to create state ancient directory: %v", err)
 	}
-	defer snapDB.Close()
-
-	// TxIndex database
-	indexDB, err := openTargetDatabase(targetTxIndexPath, cacheSize*cacheDB*15/100, 32)
-	if err != nil {
-		return fmt.Errorf("failed to create target txindex database: %v", err)
-	}
-	defer indexDB.Close()
-
-	// Note: limit and verbose flags are no longer used in the new implementation
-
-	// Start in-place migration
-	return performInPlaceMigration(sourceDB, stateDB, snapDB, indexDB, sourceChainDataPath)
-}
-
-// openTargetDatabase creates a key-value database at the specified path
-func openTargetDatabase(dbPath string, cache, handles int) (ethdb.Database, error) {
-	// Determine database type from the path or default to pebble
-	dbType := rawdb.PreexistingDatabase(dbPath)
-	if dbType == "" {
-		dbType = rawdb.DBPebble // Default to pebble
+	dstStateAncient = filepath.Join(dstStateAncient, rawdb.MerkleStateFreezerName)
+	log.Info("moving state ancient data...", "src", srcStateAncient, "dst", dstStateAncient)
+	if err := os.Rename(srcStateAncient, dstStateAncient); err != nil {
+		return fmt.Errorf("failed to move state ancient directory: %v", err)
 	}
 
-	var kvdb ethdb.KeyValueStore
-	var err error
-
-	if dbType == rawdb.DBPebble {
-		kvdb, err = pebble.New(dbPath, cache, handles, "", false)
-	} else {
-		kvdb, err = leveldb.New(dbPath, cache, handles, "", false)
+	// compact the database
+	log.Info("compacting chaindb...")
+	if err := chainDB.Compact(nil, nil); err != nil {
+		return fmt.Errorf("failed to compact chaindb: %v", err)
+	}
+	log.Info("compacting statedb...")
+	if err := chainDB.GetStateStore().Compact(nil, nil); err != nil {
+		return fmt.Errorf("failed to compact statedb: %v", err)
+	}
+	log.Info("compacting snapdb...")
+	if err := chainDB.GetSnapStore().Compact(nil, nil); err != nil {
+		return fmt.Errorf("failed to compact snapdb: %v", err)
+	}
+	log.Info("compacting indexdb...")
+	if err := chainDB.GetTxIndexStore().Compact(nil, nil); err != nil {
+		return fmt.Errorf("failed to compact indexdb: %v", err)
 	}
 
-	if err != nil {
-		return nil, err
-	}
-
-	// Wrap with rawdb to get full ethdb.Database interface
-	return rawdb.NewDatabase(kvdb), nil
-}
-
-// KeyValuePair represents a key-value pair with its target database type
-type KeyValuePair struct {
-	Key      []byte
-	Value    []byte
-	TargetDB string
-}
-
-// MigrationStats holds thread-safe migration statistics
-type MigrationStats struct {
-	total      int64
-	chain      int64
-	state      int64
-	snapshot   int64
-	txindex    int64
-	chainBytes int64
-	stateBytes int64
-	snapBytes  int64
-	indexBytes int64
-	startTime  time.Time
-}
-
-// Add atomically increments counters
-func (s *MigrationStats) Add(targetDB string, keySize, valueSize int) {
-	atomic.AddInt64(&s.total, 1)
-	dataSize := int64(keySize + valueSize)
-
-	switch targetDB {
-	case "chain":
-		atomic.AddInt64(&s.chain, 1)
-		atomic.AddInt64(&s.chainBytes, dataSize)
-	case "state":
-		atomic.AddInt64(&s.state, 1)
-		atomic.AddInt64(&s.stateBytes, dataSize)
-	case "snapshot":
-		atomic.AddInt64(&s.snapshot, 1)
-		atomic.AddInt64(&s.snapBytes, dataSize)
-	case "txindex":
-		atomic.AddInt64(&s.txindex, 1)
-		atomic.AddInt64(&s.indexBytes, dataSize)
-	}
-}
-
-// Get returns current counter values atomically
-func (s *MigrationStats) Get() (int64, int64, int64, int64, int64) {
-	return atomic.LoadInt64(&s.total),
-		atomic.LoadInt64(&s.chain),
-		atomic.LoadInt64(&s.state),
-		atomic.LoadInt64(&s.snapshot),
-		atomic.LoadInt64(&s.txindex)
-}
-
-// GetBytes returns current byte counter values atomically
-func (s *MigrationStats) GetBytes() (int64, int64, int64, int64) {
-	return atomic.LoadInt64(&s.chainBytes),
-		atomic.LoadInt64(&s.stateBytes),
-		atomic.LoadInt64(&s.snapBytes),
-		atomic.LoadInt64(&s.indexBytes)
-}
-
-// progressMonitor logs migration progress periodically
-func progressMonitor(stats *MigrationStats, stop <-chan struct{}) {
-	ticker := time.NewTicker(8 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			total, chain, state, snapshot, txindex := stats.Get()
-			log.Info("Migration progress",
-				"total", total,
-				"chain", chain,
-				"state", state,
-				"snapshot", snapshot,
-				"txindex", txindex,
-				"elapsed", common.PrettyDuration(time.Since(stats.startTime)),
-				"rate", fmt.Sprintf("%.1f items/s", float64(total)/time.Since(stats.startTime).Seconds()))
-		case <-stop:
-			return
-		}
-	}
+	return nil
 }
 
 // isTrieKey determines if a key-value pair belongs to trie data that should go to state database
@@ -1567,7 +1489,8 @@ func isTrieKey(key, value []byte) bool {
 		return true
 	case bytes.HasPrefix(key, rawdb.PreimagePrefix) && len(key) == (len(rawdb.PreimagePrefix)+common.HashLength):
 		return true
-	// Skip CHT and BloomTrie checks as these constants may not be available
+	case bytes.HasPrefix(key, []byte("c")) && len(key) == (1+common.HashLength): // CodePrefix - contract code
+		return true
 	default:
 		// Check specific metadata keys
 		keyStr := string(key)
@@ -1590,9 +1513,13 @@ func categorizeDataByKey(key, value []byte) string {
 	if bytes.HasPrefix(key, rawdb.SnapshotAccountPrefix) && len(key) == (len(rawdb.SnapshotAccountPrefix)+common.HashLength) {
 		return "snapshot"
 	}
+	// Snapshot data - storage snapshots
+	if bytes.HasPrefix(key, rawdb.SnapshotStoragePrefix) && len(key) == (len(rawdb.SnapshotStoragePrefix)+2*common.HashLength) {
+		return "snapshot"
+	}
 
-	// Snapshot metadata keys
 	keyStr := string(key)
+	// Snapshot metadata keys
 	snapshotMetadataKeys := []string{
 		"SnapshotRoot", "SnapshotJournal", "SnapshotGenerator",
 		"SnapshotRecovery", "SnapshotSyncStatus", "SnapSyncStatus",
@@ -1618,177 +1545,63 @@ func categorizeDataByKey(key, value []byte) string {
 			return "txindex"
 		}
 	}
-
 	// Everything else goes to chain database
 	return "chain"
 }
 
-// performInPlaceMigration performs in-place data migration by extracting data from source DB
-func performInPlaceMigration(sourceDB, stateDB, snapDB, indexDB ethdb.Database, sourceChainDataPath string) error {
-	stats := &MigrationStats{startTime: time.Now()}
-
-	log.Info("Starting in-place data migration")
-
-	// Progress monitoring goroutine
-	stopProgress := make(chan struct{})
-	go progressMonitor(stats, stopProgress)
-
-	// Extract all data in single pass
-	if err := extractAllDataInOnePass(sourceDB, sourceDB, stateDB, snapDB, indexDB, stats); err != nil {
-		close(stopProgress)
-		return fmt.Errorf("failed to extract data: %v", err)
+func initMultiDBs(stack *node.Node, cfg gethConfig, forceCreate bool) (ethdb.Database, error) {
+	log.Info("initializing multi dbs...", "forceCreate", forceCreate)
+	chainDB, err := stack.OpenAndMergeDatabase(eth.ChainData, eth.ChainDBNamespace, false, &cfg.Eth)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open and merge database: %v", err)
 	}
-
-	close(stopProgress)
-
-	total, chain, state, snapshot, txindex := stats.Get()
-	chainBytes, stateBytes, snapBytes, indexBytes := stats.GetBytes()
-	elapsed := time.Since(stats.startTime)
-
-	log.Info("In-place migration completed",
-		"total", total,
-		"chain", chain,
-		"state", state,
-		"snapshot", snapshot,
-		"txindex", txindex,
-		"elapsed", common.PrettyDuration(elapsed))
-
-	log.Info("Final data sizes",
-		"chainMB", chainBytes/(1024*1024),
-		"stateMB", stateBytes/(1024*1024),
-		"snapMB", snapBytes/(1024*1024),
-		"indexMB", indexBytes/(1024*1024),
-		"totalExtractedMB", (stateBytes+snapBytes+indexBytes)/(1024*1024))
-
-	log.Info("✅ In-place migration completed successfully!")
-
-	// Handle ancient state data migration
-	if err := moveAncientData(sourceChainDataPath); err != nil {
-		log.Error("Failed to move ancient state data", "error", err)
-		return fmt.Errorf("failed to move ancient state data: %v", err)
-	}
-
-	// Show directory sizes for debugging
-	log.Info("Checking database directory sizes...")
-	checkDirectorySize := func(path, name string) {
-		if !common.FileExist(path) {
-			log.Info("Directory size", "name", name, "status", "not found")
-			return
+	isMultiDB := stack.CheckIfMultiDataBase()
+	log.Info("open and merge database", "chaindata", eth.ChainData, "isMultiDB", isMultiDB)
+	if forceCreate {
+		if isMultiDB {
+			defer chainDB.Close()
+			return nil, fmt.Errorf("there is already multidbs set, cannot migrate again")
 		}
-		// Try to get directory size using du command
-		cmd := exec.Command("du", "-sh", path)
-		output, err := cmd.Output()
-		if err != nil {
-			log.Info("Directory size", "name", name, "status", "unable to measure")
-		} else {
-			sizeStr := strings.Fields(string(output))[0]
-			log.Info("Directory size", "name", name, "size", sizeStr)
-		}
+		// just set multidbs, and then migrate in place
+		stack.SetMultiDBs(chainDB, eth.ChainData, cfg.Eth.DatabaseCache, cfg.Eth.DatabaseHandles, false)
 	}
 
-	// Get the chaindata base directory from the source path
-	baseDir := sourceChainDataPath
-	checkDirectorySize(baseDir, "chaindata (remaining)")
-	checkDirectorySize(filepath.Join(baseDir, "state"), "state")
-	checkDirectorySize(filepath.Join(baseDir, "snapshot"), "snapshot")
-	checkDirectorySize(filepath.Join(baseDir, "txindex"), "txindex")
-
-	if err := performDatabaseCompaction(sourceDB, stateDB, snapDB, indexDB); err != nil {
-		log.Error("Failed to compact databases", "error", err)
-		return fmt.Errorf("failed to compact databases: %v", err)
-	}
-
-	log.Info("Migration completed successfully with proper ancient data structure and compaction!")
-	return nil
+	return chainDB, nil
 }
 
-// CategorizedData represents a key-value pair with its target category
-type CategorizedData struct {
-	Key      []byte
-	Value    []byte
-	Category string
-}
-
-// stat stores sizes and count for a parameter (copied from core/rawdb)
 type stat struct {
 	size  common.StorageSize
-	count int64
+	count uint64
 }
 
-// Add size to the stat and increase the counter by 1
 func (s *stat) Add(size int) {
 	s.size += common.StorageSize(size)
 	s.count++
 }
 
-// BatchWriteRequest represents a batch write request for async processing
-type BatchWriteRequest struct {
-	BatchType string
-	Batch     ethdb.Batch
+func (s *stat) String() string {
+	return fmt.Sprintf("%s|%d", s.size, s.count)
 }
 
-// Create channels and synchronization structures for async processing
-const (
-	threadPoolSize    = 40
-	channelBufferSize = 50
-)
-
-// extractAllDataInOnePass extracts all data types using multi-threaded async processing
-func extractAllDataInOnePass(sourceDB, chainDB, stateDB, snapDB, indexDB ethdb.Database, stats *MigrationStats) error {
-	log.Info("🚀 Starting multi-threaded async data extraction",
-		"architecture", "1 reader + 50 unified writers = 51 threads")
-
-	// Create unified channel for all write requests
-	writeRequestChannel := make(chan BatchWriteRequest, channelBufferSize)
-
-	// Error channels to collect errors from goroutines
-	errorChannel := make(chan error, threadPoolSize+1) // threadPoolSize writers + 1 reader
-
-	// WaitGroup to coordinate all goroutines
-	var wg sync.WaitGroup
-
-	// Error handling for async writes
-	var writeError atomic.Value // stores first write error
-
-	// Start 40 unified async writer goroutines using thread pool
-	log.Info("🚀 Starting async writer goroutines", "threadCount", threadPoolSize)
-	for i := 0; i < threadPoolSize; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for req := range writeRequestChannel {
-				if err := req.Batch.Write(); err != nil {
-					// Store first error and continue processing to avoid deadlock
-					writeError.CompareAndSwap(nil, fmt.Errorf("failed to write %s batch: %v", req.BatchType, err))
-					errorChannel <- err
-					continue
-				}
-				req.Batch.Reset()
-			}
-		}()
-	}
-
-	// Main reader goroutine - process source database
-	log.Info("📖 Starting main reader thread with unified async writers...")
+func traverseAndMigrate(chainDB ethdb.Database) error {
+	it := chainDB.NewIterator(nil, nil)
+	defer it.Release()
 
 	var (
 		chainBatch = chainDB.NewBatch()
-		stateBatch = stateDB.NewBatch()
-		snapBatch  = snapDB.NewBatch()
-		indexBatch = indexDB.NewBatch()
+		stateBatch = chainDB.GetStateStore().NewBatch() // fallback for non-X/Y keys
+		snapBatch  = chainDB.GetSnapStore().NewBatch()
+		indexBatch = chainDB.GetTxIndexStore().NewBatch()
 		batchSize  = 0
 		chainStat  = &stat{}
 		stateStat  = &stat{}
 		snapStat   = &stat{}
 		indexStat  = &stat{}
+		start      = time.Now()
+		logged     = time.Now()
 	)
 
-	it := sourceDB.NewIterator(nil, nil)
-	defer it.Release()
-
-	processedCount := 0
 	for it.Next() {
-		processedCount++
 		key := make([]byte, len(it.Key()))
 		value := make([]byte, len(it.Value()))
 		copy(key, it.Key())
@@ -1804,177 +1617,79 @@ func extractAllDataInOnePass(sourceDB, chainDB, stateDB, snapDB, indexDB ethdb.D
 			stateBatch.Put(key, value)
 			chainBatch.Delete(key)
 			stateStat.Add(kvSize)
-			stats.Add(category, len(key), len(value))
 		case "snapshot":
 			snapBatch.Put(key, value)
 			chainBatch.Delete(key)
 			snapStat.Add(kvSize)
-			stats.Add(category, len(key), len(value))
 		case "txindex":
-			// indexBatch.Put(key, value)
+			indexBatch.Put(key, value)
 			chainBatch.Delete(key)
 			indexStat.Add(kvSize)
-			stats.Add(category, len(key), len(value))
 		}
 
-		// flush the batch if it's too large
-		if batchSize >= 256*1024*1024 {
-			log.Info("sending batches to async thread pool...", "chain count", chainStat.count, "chain size", chainStat.size,
-				"state count", stateStat.count, "state size", stateStat.size, "snap count", snapStat.count,
-				"snap size", snapStat.size, "index count", indexStat.count, "index size", indexStat.size)
-
-			// Send other batches to async writers
-			if stateBatch.ValueSize() > 0 {
-				select {
-				case writeRequestChannel <- BatchWriteRequest{BatchType: "state", Batch: stateBatch}:
-					stateBatch = stateDB.NewBatch()
-				case err := <-errorChannel:
-					return fmt.Errorf("async write error during state batch processing: %v", err)
-				}
-			}
-
-			if snapBatch.ValueSize() > 0 {
-				select {
-				case writeRequestChannel <- BatchWriteRequest{BatchType: "snap", Batch: snapBatch}:
-					snapBatch = snapDB.NewBatch()
-				case err := <-errorChannel:
-					return fmt.Errorf("async write error during snap batch processing: %v", err)
-				}
-			}
-
-			if indexBatch.ValueSize() > 0 {
-				select {
-				case writeRequestChannel <- BatchWriteRequest{BatchType: "index", Batch: indexBatch}:
-					indexBatch = indexDB.NewBatch()
-				case err := <-errorChannel:
-					return fmt.Errorf("async write error during index batch processing: %v", err)
-				}
-			}
-
-			// save first, then delete
+		if batchSize >= ethdb.IdealBatchSize {
 			if chainBatch.ValueSize() > 0 {
-				select {
-				case writeRequestChannel <- BatchWriteRequest{BatchType: "chain", Batch: chainBatch}:
-					chainBatch = chainDB.NewBatch()
-				case err := <-errorChannel:
-					return fmt.Errorf("async write error during chain batch processing: %v", err)
+				if err := chainBatch.Write(); err != nil {
+					return fmt.Errorf("chain batch write failed: %v", err)
 				}
+				chainBatch.Reset()
 			}
-
+			if stateBatch.ValueSize() > 0 {
+				if err := stateBatch.Write(); err != nil {
+					return fmt.Errorf("state batch write err: %v", err)
+				}
+				stateBatch.Reset()
+			}
+			if snapBatch.ValueSize() > 0 {
+				if err := snapBatch.Write(); err != nil {
+					return fmt.Errorf("snap batch write err: %v", err)
+				}
+				snapBatch.Reset()
+			}
+			if indexBatch.ValueSize() > 0 {
+				if err := indexBatch.Write(); err != nil {
+					return fmt.Errorf("index batch write err: %v", err)
+				}
+				indexBatch.Reset()
+			}
 			batchSize = 0
 		}
-		// Check for errors periodically
-		select {
-		case err := <-errorChannel:
-			return fmt.Errorf("async write error during processing: %v", err)
-		default:
-			// Continue processing
+		if time.Since(logged) > 8*time.Second {
+			log.Info("migrate report", "chain", chainStat, "state", stateStat, "snap", snapStat,
+				"index", indexStat, "elapsed", common.PrettyDuration(time.Since(start)))
+			logged = time.Now()
 		}
-	}
-
-	// Check for iterator errors
-	if err := it.Error(); err != nil {
-		return fmt.Errorf("iterator error: %v", err)
 	}
 
 	// flush the remaining kvs
 	if batchSize > 0 {
-		log.Info("sending remaining batches to async thread pool...", "chain count", chainStat.count, "chain size", chainStat.size,
-			"state count", stateStat.count, "state size", stateStat.size, "snap count", snapStat.count,
-			"snap size", snapStat.size, "index count", indexStat.count, "index size", indexStat.size)
-
-		// Send remaining batches to async writers
+		if chainBatch.ValueSize() > 0 {
+			if err := chainBatch.Write(); err != nil {
+				return fmt.Errorf("chain batch write failed: %v", err)
+			}
+			chainBatch.Reset()
+		}
 		if stateBatch.ValueSize() > 0 {
-			writeRequestChannel <- BatchWriteRequest{BatchType: "state", Batch: stateBatch}
+			if err := stateBatch.Write(); err != nil {
+				return fmt.Errorf("state batch write err: %v", err)
+			}
+			stateBatch.Reset()
 		}
 		if snapBatch.ValueSize() > 0 {
-			writeRequestChannel <- BatchWriteRequest{BatchType: "snap", Batch: snapBatch}
+			if err := snapBatch.Write(); err != nil {
+				return fmt.Errorf("snap batch write err: %v", err)
+			}
+			snapBatch.Reset()
 		}
 		if indexBatch.ValueSize() > 0 {
-			writeRequestChannel <- BatchWriteRequest{BatchType: "index", Batch: indexBatch}
+			if err := indexBatch.Write(); err != nil {
+				return fmt.Errorf("index batch write err: %v", err)
+			}
+			indexBatch.Reset()
 		}
-		if chainBatch.ValueSize() > 0 {
-			writeRequestChannel <- BatchWriteRequest{BatchType: "chain", Batch: chainBatch}
-		}
+		batchSize = 0
 	}
-
-	// Close channels to signal completion to worker goroutines
-	close(writeRequestChannel)
-
-	// Wait for all goroutines to complete
-	log.Info("⏳ Waiting for all async workers to complete...")
-	wg.Wait()
-
-	// Check for any errors from worker goroutines
-	close(errorChannel)
-	for err := range errorChannel {
-		if err != nil {
-			return err
-		}
-	}
-
-	log.Info("✅ Multi-threaded async data extraction completed",
-		"chain count", chainStat.count, "chain size", chainStat.size,
-		"state count", stateStat.count, "state size", stateStat.size, "snap count", snapStat.count,
-		"snap size", snapStat.size, "index count", indexStat.count, "index size", indexStat.size,
-		"threadsUsed", fmt.Sprintf("%d (1 reader + %d unified writers)", threadPoolSize+1, threadPoolSize))
-	return nil
-}
-
-// performDatabaseCompaction compacts all databases after migration to reclaim space
-func performDatabaseCompaction(sourceDB, stateDB, snapDB, indexDB ethdb.Database) error {
-	databases := []struct {
-		db   ethdb.Database
-		name string
-	}{
-		{sourceDB, "chaindata"},
-		{stateDB, "state"},
-		{snapDB, "snapshot"},
-		{indexDB, "txindex"},
-	}
-
-	for _, dbInfo := range databases {
-		log.Info("Compacting database", "name", dbInfo.name)
-
-		// Perform full database compaction (nil, nil means compact everything)
-		if err := dbInfo.db.Compact(nil, nil); err != nil {
-			log.Warn("Database compaction failed", "name", dbInfo.name, "error", err)
-			// Don't return error for compaction failure, just log it
-			continue
-		}
-		log.Info("✅ Database compacted successfully", "name", dbInfo.name)
-	}
-
-	log.Info("🗜️  Database compaction completed for all databases")
-	return nil
-}
-
-// moveAncientData handles moving ancient state data to proper location
-func moveAncientData(sourceChainDataPath string) error {
-	// Check if ancient directory exists in source chaindata
-	sourceAncientPath := filepath.Join(sourceChainDataPath, "ancient")
-	if !common.FileExist(sourceAncientPath) {
-		log.Info("No ancient data found in source", "path", sourceAncientPath)
-		return nil
-	}
-
-	// Target ancient path should be in state directory
-	targetStatePath := filepath.Join(sourceChainDataPath, "state")
-	targetAncientPath := filepath.Join(targetStatePath, "ancient")
-
-	// Check if target ancient already exists
-	if common.FileExist(targetAncientPath) {
-		log.Info("Ancient data already exists in target", "path", targetAncientPath)
-		return nil
-	}
-
-	log.Info("Moving ancient data", "from", sourceAncientPath, "to", targetAncientPath)
-
-	// Move ancient directory
-	if err := os.Rename(sourceAncientPath, targetAncientPath); err != nil {
-		return fmt.Errorf("failed to move ancient data: %v", err)
-	}
-
-	log.Info("✅ Ancient data moved successfully")
+	log.Info("migrate completed", "chain", chainStat, "state", stateStat, "snap", snapStat,
+		"index", indexStat, "elapsed", common.PrettyDuration(time.Since(start)))
 	return nil
 }
