@@ -1037,7 +1037,7 @@ func (t *freezerTable) retrieveItems(start, count, maxBytes uint64) ([]byte, []i
 	// Ensure the start is written, not deleted from the tail, and that the
 	// caller actually wants something
 	if items <= start || hidden > start || count == 0 {
-		log.Info("retrieveItems out of bounds", "table name", t.name, "items", items, "hidden", hidden, "start", start, "count", count)
+		log.Debug("retrieveItems out of bounds", "table name", t.name, "items", items, "hidden", hidden, "start", start, "count", count)
 		return nil, nil, errOutOfBounds
 	}
 	if start+count > items {
