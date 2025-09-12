@@ -1499,7 +1499,6 @@ func (bc *BlockChain) Stop() {
 						if err := triedb.Commit(recent.Root(), true); err != nil {
 							log.Error("Failed to commit recent state trie", "err", err)
 						} else {
-							rawdb.WriteSafePointBlockNumber(bc.db, recent.NumberU64())
 							once.Do(func() {
 								rawdb.WriteHeadBlockHash(bc.db, recent.Hash())
 							})
@@ -1510,8 +1509,6 @@ func (bc *BlockChain) Stop() {
 						log.Info("Writing snapshot state to disk", "root", snapBase)
 						if err := triedb.Commit(snapBase, true); err != nil {
 							log.Error("Failed to commit recent state trie", "err", err)
-						} else {
-							rawdb.WriteSafePointBlockNumber(bc.db, bc.CurrentBlock().Number.Uint64())
 						}
 					}
 					for !bc.triegc.Empty() {
@@ -1937,7 +1934,6 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 				}
 				// Flush an entire trie and restart the counters
 				bc.triedb.Commit(header.Root, true)
-				rawdb.WriteSafePointBlockNumber(bc.db, chosen)
 				bc.lastWrite = chosen
 				bc.gcproc = 0
 			}
