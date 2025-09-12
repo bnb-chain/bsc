@@ -495,7 +495,6 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 			// freezer.
 		}
 	}
-
 	// Freezer is consistent with the key-value database, permit combining the two
 	if !opts.ReadOnly {
 		frdb.wg.Add(1)
@@ -689,8 +688,6 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			bodies.Add(size)
 		case bytes.HasPrefix(key, blockReceiptsPrefix) && len(key) == (len(blockReceiptsPrefix)+8+common.HashLength):
 			receipts.Add(size)
-		case IsLegacyTrieNode(key, it.Value()):
-			legacyTries.Add(size)
 		case bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerTDSuffix):
 			tds.Add(size)
 		case bytes.HasPrefix(key, BlockBlobSidecarsPrefix):
@@ -699,6 +696,8 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			numHashPairings.Add(size)
 		case bytes.HasPrefix(key, headerNumberPrefix) && len(key) == (len(headerNumberPrefix)+common.HashLength):
 			hashNumPairings.Add(size)
+		case IsLegacyTrieNode(key, it.Value()):
+			legacyTries.Add(size)
 		case bytes.HasPrefix(key, stateIDPrefix) && len(key) == len(stateIDPrefix)+common.HashLength:
 			stateLookups.Add(size)
 		case IsAccountTrieNode(key):
@@ -971,7 +970,7 @@ var knownMetadataKeys = [][]byte{
 }
 
 // printChainMetadata prints out chain metadata to stderr.
-func printChainMetadata(db ethdb.Reader) {
+func printChainMetadata(db ethdb.KeyValueStore) {
 	fmt.Fprintf(os.Stderr, "Chain metadata\n")
 	for _, v := range ReadChainMetadata(db) {
 		fmt.Fprintf(os.Stderr, "  %s\n", strings.Join(v, ": "))
@@ -982,7 +981,7 @@ func printChainMetadata(db ethdb.Reader) {
 // ReadChainMetadata returns a set of key/value pairs that contains information
 // about the database chain status. This can be used for diagnostic purposes
 // when investigating the state of the node.
-func ReadChainMetadata(db ethdb.Reader) [][]string {
+func ReadChainMetadata(db ethdb.KeyValueStore) [][]string {
 	pp := func(val *uint64) string {
 		if val == nil {
 			return "<nil>"

@@ -45,7 +45,6 @@ const (
 
 // chainFreezerTableConfigs configures the settings for tables in the chain freezer.
 // Compression is disabled for hashes as they don't compress well.
-// TODO(Nathan): setting prunable properly
 var chainFreezerTableConfigs = map[string]freezerTableConfig{
 	ChainFreezerHeaderTable:      {noSnappy: false, prunable: true},
 	ChainFreezerHashTable:        {noSnappy: true, prunable: true},
@@ -54,14 +53,13 @@ var chainFreezerTableConfigs = map[string]freezerTableConfig{
 	ChainFreezerDifficultyTable:  {noSnappy: true, prunable: true},
 	ChainFreezerBlobSidecarTable: {noSnappy: false, prunable: true},
 }
+var additionTables = []string{ChainFreezerBlobSidecarTable}
 
 // freezerTableConfig contains the settings for a freezer table.
 type freezerTableConfig struct {
 	noSnappy bool // disables item compression
 	prunable bool // true for tables that can be pruned by TruncateTail
 }
-
-var additionTables = []string{ChainFreezerBlobSidecarTable}
 
 const (
 	// stateHistoryTableSize defines the maximum size of freezer data files.
