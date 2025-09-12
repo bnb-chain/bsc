@@ -141,7 +141,7 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPa
 	if sidecars != nil {
 		block = block.WithSidecars(sidecars)
 	}
-	if packet.Bal != nil && h.chain.Engine().VerifyBAL(block.Header().Coinbase, packet.Bal) == nil {
+	if packet.Bal != nil && h.chain.Engine().VerifyBAL(block, packet.Bal) == nil {
 		block = block.WithBAL(packet.Bal)
 	}
 

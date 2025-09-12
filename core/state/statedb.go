@@ -1686,6 +1686,8 @@ func (s *StateDB) GetEncodedBlockAccessList(block *types.Block) *types.BlockAcce
 	// encode block access list to rlp to propagate with the block
 	blockAccessList := types.BlockAccessListEncode{
 		Version:  0,
+		Number:   block.NumberU64(),
+		Hash:     block.Hash(),
 		SignData: make([]byte, 65),
 		Accounts: make([]types.AccountAccessListEncode, 0),
 	}

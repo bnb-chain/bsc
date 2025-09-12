@@ -496,7 +496,7 @@ func (beacon *Beacon) SignBAL(blockAccessList *types.BlockAccessListEncode) erro
 }
 
 // VerifyBAL verifies the BAL of the block
-func (beacon *Beacon) VerifyBAL(signer common.Address, bal *types.BlockAccessListEncode) error {
+func (beacon *Beacon) VerifyBAL(block *types.Block, bal *types.BlockAccessListEncode) error {
 	return nil
 }
 

@@ -792,6 +792,6 @@ func (c *Clique) SignBAL(bal *types.BlockAccessListEncode) error {
 	return nil
 }
 
-func (c *Clique) VerifyBAL(signer common.Address, bal *types.BlockAccessListEncode) error {
+func (c *Clique) VerifyBAL(block *types.Block, bal *types.BlockAccessListEncode) error {
 	return nil
 }

@@ -1760,7 +1760,7 @@ func (p *Parlia) SignBAL(blockAccessList *types.BlockAccessListEncode) error {
 	val, signFn := p.val, p.signFn
 	p.lock.RUnlock()
 
-	data, err := rlp.EncodeToBytes([]interface{}{blockAccessList.Version, blockAccessList.Accounts})
+	data, err := rlp.EncodeToBytes([]interface{}{blockAccessList.Version, blockAccessList.Number, blockAccessList.Hash, blockAccessList.Accounts})
 	if err != nil {
 		log.Error("Encode to bytes failed when sealing", "err", err)
 		return errors.New("encode to bytes failed")
@@ -1781,10 +1781,18 @@ func (p *Parlia) SignBAL(blockAccessList *types.BlockAccessListEncode) error {
 	return nil
 }
 
-func (p *Parlia) VerifyBAL(signer common.Address, bal *types.BlockAccessListEncode) error {
+func (p *Parlia) VerifyBAL(block *types.Block, bal *types.BlockAccessListEncode) error {
 	if bal.Version != 0 {
 		log.Error("invalid BAL version", "version", bal.Version)
 		return errors.New("invalid BAL version")
+	}
+	if bal.Number != block.NumberU64() {
+		log.Error("invalid BAL number", "number", bal.Number, "blockNumber", block.NumberU64())
+		return errors.New("invalid BAL number")
+	}
+	if bal.Hash != block.Hash() {
+		log.Error("invalid BAL hash", "hash", bal.Hash, "blockHash", block.Hash())
+		return errors.New("invalid BAL hash")
 	}
 
 	if len(bal.SignData) != 65 {
@@ -1793,7 +1801,7 @@ func (p *Parlia) VerifyBAL(signer common.Address, bal *types.BlockAccessListEnco
 	}
 
 	// Recover the public key and the Ethereum address
-	data, err := rlp.EncodeToBytes([]interface{}{bal.Version, bal.Accounts})
+	data, err := rlp.EncodeToBytes([]interface{}{bal.Version, bal.Number, bal.Hash, bal.Accounts})
 	if err != nil {
 		log.Error("encode to bytes failed", "err", err)
 		return errors.New("encode to bytes failed")
@@ -1811,6 +1819,7 @@ func (p *Parlia) VerifyBAL(signer common.Address, bal *types.BlockAccessListEnco
 	var pubkeyAddr common.Address
 	copy(pubkeyAddr[:], crypto.Keccak256(pubkey[1:])[12:])
 
+	signer := block.Header().Coinbase
 	if signer != pubkeyAddr {
 		log.Error("signer mismatch", "signer", signer, "pubkeyAddr", pubkeyAddr)
 		return errors.New("signer mismatch")

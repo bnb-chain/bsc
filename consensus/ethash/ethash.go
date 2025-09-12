@@ -20,7 +20,6 @@ package ethash
 import (
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -82,6 +81,6 @@ func (ethash *Ethash) SignBAL(bal *types.BlockAccessListEncode) error {
 	return nil
 }
 
-func (ethash *Ethash) VerifyBAL(signer common.Address, bal *types.BlockAccessListEncode) error {
+func (ethash *Ethash) VerifyBAL(block *types.Block, bal *types.BlockAccessListEncode) error {
 	return nil
 }

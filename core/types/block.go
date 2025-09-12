@@ -250,8 +250,10 @@ type AccountAccessListEncode struct {
 }
 
 type BlockAccessListEncode struct {
-	Version  uint32 // Version of the access list format
-	SignData []byte // sign data for BAL
+	Version  uint32      // Version of the access list format
+	Number   uint64      // number of the block that the BAL is for
+	Hash     common.Hash // hash of the block that the BAL is for
+	SignData []byte      // sign data for BAL
 	Accounts []AccountAccessListEncode
 }
 

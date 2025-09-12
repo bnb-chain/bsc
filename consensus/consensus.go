@@ -140,7 +140,7 @@ type Engine interface {
 	SignBAL(blockAccessList *types.BlockAccessListEncode) error
 
 	// VerifyBAL verifies the BAL of the block
-	VerifyBAL(signer common.Address, bal *types.BlockAccessListEncode) error
+	VerifyBAL(block *types.Block, bal *types.BlockAccessListEncode) error
 
 	// CalcDifficulty is the difficulty adjustment algorithm. It returns the difficulty
 	// that a new block should have.
