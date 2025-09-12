@@ -1,4 +1,23 @@
 # Changelog
+## v1.6.1
+v1.6.1-alpha is a preview release, which fixes several issues of the v1.6.0-alpha, it is more reliable than v1.6.0-alpha, so mark it as beta stage.
+
+### FEATURE
+NA
+
+### BUGFIX
+[\#3336](https://github.com/bnb-chain/bsc/pull/3336) miner: avoid to commit a bid twice
+[\#3347](https://github.com/bnb-chain/bsc/pull/3347) fix: discovery AyncFilter deadlock on shutdown
+[\#3340](https://github.com/bnb-chain/bsc/pull/3340) core: rework fast node
+
+### IMPROVEMENT
+[\#3337](https://github.com/bnb-chain/bsc/pull/3337) eth/pebble: use NoSync as write mode
+[\#3332](https://github.com/bnb-chain/bsc/pull/3332) FilterMap: update bsc checkpoint file
+[\#3324](https://github.com/bnb-chain/bsc/pull/3324) eth/downloader: remove InsertHeaderChain to improve sync speed
+[\#3319](https://github.com/bnb-chain/bsc/pull/3319) core/rawdb: remove func AncientOffSet and ItemAmountInAncient
+[\#3346](https://github.com/bnb-chain/bsc/pull/3346) cmd/geth: remove subcmd hbss2pbss and insecure-prune-all
+[\#3354](https://github.com/bnb-chain/bsc/pull/3354) freezer: add debug log for out of bounds access
+
 ## v1.6.0
 v1.6.0-alpha is a preview release for upstream code sync, it catches up with [go-ethereum release [v1.16.1]](https://github.com/ethereum/go-ethereum/releases/tag/v1.16.1) and also inlcude several bug fix.
 
