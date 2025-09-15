@@ -664,6 +664,13 @@ func (w *worker) resultLoop() {
 				w.recentMinedBlocks.Add(block.NumberU64(), []common.Hash{block.ParentHash()})
 			}
 
+			// add BAL to the block
+			bal := task.state.GetEncodedBlockAccessList(block)
+			if bal != nil && w.engine.SignBAL(bal) == nil {
+				block = block.WithBAL(bal)
+			}
+			task.state.DumpAccessList(block)
+
 			// Commit block and state to database.
 			start := time.Now()
 			status, err := w.chain.WriteBlockAndSetHead(block, receipts, logs, task.state, w.mux)
@@ -680,7 +687,7 @@ func (w *worker) resultLoop() {
 			stats.SendBlockTime.Store(time.Now().UnixMilli())
 			stats.StartMiningTime.Store(task.miningStartAt.UnixMilli())
 			log.Info("Successfully seal and write new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
-				"balSize", block.BALSize(), "elapsed", common.PrettyDuration(time.Since(task.createdAt)))
+				"block size(noBal)", block.Size(), "balSize", block.BALSize(), "elapsed", common.PrettyDuration(time.Since(task.createdAt)))
 			w.mux.Post(core.NewMinedBlockEvent{Block: block})
 
 		case <-w.exitCh:
@@ -1535,12 +1542,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		env := env.copy()
 
 		block = block.WithSidecars(env.sidecars)
-		bal := env.state.GetEncodedBlockAccessList(block)
-		if bal != nil && w.engine.SignBAL(bal) == nil {
-			block = block.WithBAL(bal)
-		}
-		env.state.DumpAccessList(block)
-		log.Info("worker Commit", "blockNumber", block.NumberU64(), "GasUsed", block.GasUsed(), "block size(noBal)", block.Size(), "balSize", block.BALSize())
+
 		select {
 		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
 			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),

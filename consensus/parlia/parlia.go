@@ -1786,14 +1786,6 @@ func (p *Parlia) VerifyBAL(block *types.Block, bal *types.BlockAccessListEncode)
 		log.Error("invalid BAL version", "version", bal.Version)
 		return errors.New("invalid BAL version")
 	}
-	if bal.Number != block.NumberU64() {
-		log.Error("invalid BAL number", "number", bal.Number, "blockNumber", block.NumberU64())
-		return errors.New("invalid BAL number")
-	}
-	if bal.Hash != block.Hash() {
-		log.Error("invalid BAL hash", "hash", bal.Hash, "blockHash", block.Hash())
-		return errors.New("invalid BAL hash")
-	}
 
 	if len(bal.SignData) != 65 {
 		log.Error("invalid BAL signature", "signatureSize", len(bal.SignData))
@@ -1801,7 +1793,7 @@ func (p *Parlia) VerifyBAL(block *types.Block, bal *types.BlockAccessListEncode)
 	}
 
 	// Recover the public key and the Ethereum address
-	data, err := rlp.EncodeToBytes([]interface{}{bal.Version, bal.Number, bal.Hash, bal.Accounts})
+	data, err := rlp.EncodeToBytes([]interface{}{bal.Version, block.Number(), block.Hash(), bal.Accounts})
 	if err != nil {
 		log.Error("encode to bytes failed", "err", err)
 		return errors.New("encode to bytes failed")
@@ -1821,7 +1813,7 @@ func (p *Parlia) VerifyBAL(block *types.Block, bal *types.BlockAccessListEncode)
 
 	signer := block.Header().Coinbase
 	if signer != pubkeyAddr {
-		log.Error("signer mismatch", "signer", signer, "pubkeyAddr", pubkeyAddr)
+		log.Error("BAL signer mismatch", "signer", signer, "pubkeyAddr", pubkeyAddr, "bal.Number", bal.Number, "bal.Hash", bal.Hash)
 		return errors.New("signer mismatch")
 	}
 
