@@ -524,20 +524,20 @@ func inspect(ctx *cli.Context) error {
 	db := utils.MakeChainDatabase(ctx, stack, true)
 	defer db.Close()
 	fmt.Println("Inspecting chain database...")
-	if err := rawdb.InspectDatabase(db, prefix, start); err != nil {
+	if err := rawdb.InspectDatabase(db, prefix, start, true); err != nil {
 		return err
 	}
 	if stack.CheckIfMultiDataBase() {
 		fmt.Println("Inspecting state database...")
-		if err := rawdb.InspectDatabase(db.GetStateStore(), prefix, start); err != nil {
+		if err := rawdb.InspectDatabase(db.GetStateStore(), prefix, start, true); err != nil {
 			return err
 		}
 		fmt.Println("Inspecting snap database...")
-		if err := rawdb.InspectDatabase(rawdb.NewDatabase(db.GetSnapStore()), prefix, start); err != nil {
+		if err := rawdb.InspectDatabase(rawdb.NewDatabase(db.GetSnapStore()), prefix, start, false); err != nil {
 			return err
 		}
 		fmt.Println("Inspecting index database...")
-		if err := rawdb.InspectDatabase(rawdb.NewDatabase(db.GetTxIndexStore()), prefix, start); err != nil {
+		if err := rawdb.InspectDatabase(rawdb.NewDatabase(db.GetTxIndexStore()), prefix, start, false); err != nil {
 			return err
 		}
 	}

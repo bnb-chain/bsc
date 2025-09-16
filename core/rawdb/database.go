@@ -724,7 +724,7 @@ func DataTypeByKey(key []byte) DataType {
 
 // InspectDatabase traverses the entire database and checks the size
 // of all different categories of data.
-func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
+func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte, hasFreezers bool) error {
 	it := db.NewIterator(keyPrefix, keyStart)
 	defer it.Release()
 
@@ -910,23 +910,25 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		{"Key-Value store", "Parlia snapshots", parliaSnaps.Size(), parliaSnaps.Count()},
 		{"Key-Value store", "Singleton metadata", metadata.Size(), metadata.Count()},
 	}
-	// Inspect all registered append-only file store then.
-	ancients, err := inspectFreezers(db)
-	if err != nil {
-		return err
-	}
-	for _, ancient := range ancients {
-		for _, table := range ancient.sizes {
-			stats = append(stats, []string{
-				fmt.Sprintf("Ancient store (%s)", strings.Title(ancient.name)),
-				strings.Title(table.name),
-				table.size.String(),
-				fmt.Sprintf("%d", ancient.count()),
-			})
-		}
-		total += ancient.size()
-	}
 
+	if hasFreezers {
+		// Inspect all registered append-only file store then.
+		ancients, err := inspectFreezers(db)
+		if err != nil {
+			return err
+		}
+		for _, ancient := range ancients {
+			for _, table := range ancient.sizes {
+				stats = append(stats, []string{
+					fmt.Sprintf("Ancient store (%s)", strings.Title(ancient.name)),
+					strings.Title(table.name),
+					table.size.String(),
+					fmt.Sprintf("%d", ancient.count()),
+				})
+			}
+			total += ancient.size()
+		}
+	}
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Database", "Category", "Size", "Items"})
 	table.SetFooter([]string{"", "Total", total.String(), " "})
