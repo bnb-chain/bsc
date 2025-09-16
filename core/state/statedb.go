@@ -787,17 +787,6 @@ func (s *StateDB) StateForPrefetch() *StateDB {
 	return state
 }
 
-// Copy creates a deep, independent copy of the state.
-// Snapshots of the copied state cannot be applied to the copy.
-func (s *StateDB) Copy() *StateDB {
-	return s.copyInternal(false)
-}
-
-// It is mainly for state prefetcher to do trie prefetch right now.
-func (s *StateDB) CopyDoPrefetch() *StateDB {
-	return s.copyInternal(true)
-}
-
 func (s *StateDB) TransferBlockAccessList(prev *StateDB) {
 	if prev == nil {
 		return
@@ -806,20 +795,20 @@ func (s *StateDB) TransferBlockAccessList(prev *StateDB) {
 	prev.blockAccessList = nil
 }
 
-// If doPrefetch is true, it tries to reuse the prefetcher, the copied StateDB will do active trie prefetch.
-// otherwise, just do inactive copy trie prefetcher.
-func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
+// Copy creates a deep, independent copy of the state.
+// Snapshots of the copied state cannot be applied to the copy.
+func (s *StateDB) Copy() *StateDB {
 	// Copy all the basic fields, initialize the memory ones
 	state := &StateDB{
-		db:     s.db,
-		reader: s.reader,
-		// expectedRoot: s.expectedRoot,
+		db:                   s.db,
+		reader:               s.reader,
 		originalRoot:         s.originalRoot,
+		expectedRoot:         s.expectedRoot,
+		needBadSharedStorage: s.needBadSharedStorage,
 		stateObjects:         make(map[common.Address]*stateObject, len(s.stateObjects)),
 		stateObjectsDestruct: make(map[common.Address]*stateObject, len(s.stateObjectsDestruct)),
 		mutations:            make(map[common.Address]*mutation, len(s.mutations)),
 		dbErr:                s.dbErr,
-		needBadSharedStorage: s.needBadSharedStorage,
 		refund:               s.refund,
 		thash:                s.thash,
 		txIndex:              s.txIndex,
@@ -867,14 +856,6 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 			*cpy[i] = *l
 		}
 		state.logs[hash] = cpy
-	}
-
-	state.prefetcher = s.prefetcher
-	if s.prefetcher != nil && !doPrefetch {
-		// If there's a prefetcher running, make an inactive copy of it that can
-		// only access data but does not actively preload (since the user will not
-		// know that they need to explicitly terminate an active copy).
-		state.prefetcher = state.prefetcher.copy()
 	}
 	return state
 }
