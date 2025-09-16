@@ -158,7 +158,7 @@ func (indexer *txIndexer) run(head uint64, stop chan struct{}, done chan struct{
 // * The index tail is below the configured cutoff, but it is not empty.
 func (indexer *txIndexer) repair(head uint64) {
 	// If the transactions haven't been indexed yet, nothing to repair
-	tail := rawdb.ReadTxIndexTail(indexer.db)
+	tail := rawdb.ReadTxIndexTail(indexer.db.IndexStoreReader())
 	if tail == nil {
 		return
 	}
@@ -171,8 +171,8 @@ func (indexer *txIndexer) repair(head uint64) {
 		// potentially leaving dangling indexes in the database.
 		// However, this is considered acceptable.
 		indexer.tail.Store(nil)
-		rawdb.DeleteTxIndexTail(indexer.db)
-		rawdb.DeleteAllTxLookupEntries(indexer.db, nil)
+		rawdb.DeleteTxIndexTail(indexer.db.GetTxIndexStore())
+		rawdb.DeleteAllTxLookupEntries(indexer.db.GetTxIndexStore(), nil)
 		log.Warn("Purge transaction indexes", "head", head, "tail", *tail)
 		return
 	}
@@ -192,8 +192,8 @@ func (indexer *txIndexer) repair(head uint64) {
 		// index namespace might be slow and expensive, but we
 		// have no choice.
 		indexer.tail.Store(nil)
-		rawdb.DeleteTxIndexTail(indexer.db)
-		rawdb.DeleteAllTxLookupEntries(indexer.db, nil)
+		rawdb.DeleteTxIndexTail(indexer.db.GetTxIndexStore())
+		rawdb.DeleteAllTxLookupEntries(indexer.db.GetTxIndexStore(), nil)
 		log.Warn("Purge transaction indexes", "head", head, "cutoff", indexer.cutoff)
 		return
 	}
@@ -206,8 +206,8 @@ func (indexer *txIndexer) repair(head uint64) {
 		// potentially leaving dangling indexes in the database.
 		// However, this is considered acceptable.
 		indexer.tail.Store(&indexer.cutoff)
-		rawdb.WriteTxIndexTail(indexer.db, indexer.cutoff)
-		rawdb.DeleteAllTxLookupEntries(indexer.db, func(txhash common.Hash, blob []byte) bool {
+		rawdb.WriteTxIndexTail(indexer.db.GetTxIndexStore(), indexer.cutoff)
+		rawdb.DeleteAllTxLookupEntries(indexer.db.GetTxIndexStore(), func(txhash common.Hash, blob []byte) bool {
 			n := rawdb.DecodeTxLookupEntry(blob, indexer.db)
 			return n != nil && *n < indexer.cutoff
 		})
