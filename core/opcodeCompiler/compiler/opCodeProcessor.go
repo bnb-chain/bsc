@@ -78,6 +78,11 @@ func EnableOpcodeParse() {
 	opcodeParseEnabled = true
 }
 
+// IsOpcodeParseEnabled returns whether opcode parsing (MIR optimization) is enabled
+func IsOpcodeParseEnabled() bool {
+	return opcodeParseEnabled
+}
+
 func LoadOptimizedCode(hash common.Hash) []byte {
 	if !enabled {
 		return nil
@@ -152,6 +157,26 @@ func GenOrRewriteOptimizedCode(hash common.Hash, code []byte) ([]byte, error) {
 		// Original path - only superinstruction optimization
 		processedCode, err = processByteCodes(code)
 	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	codeCache.AddCodeCache(hash, processedCode)
+	return processedCode, err
+}
+
+// GenOrRewriteOptimizedCodeWithoutMIR generates optimized code using only superinstruction optimization (no MIR)
+func GenOrRewriteOptimizedCodeWithoutMIR(hash common.Hash, code []byte) ([]byte, error) {
+	if !enabled {
+		return nil, ErrOptimizedDisabled
+	}
+
+	var processedCode []byte
+	var err error
+
+	// Only use superinstruction optimization, skip MIR optimization
+	processedCode, err = processByteCodes(code)
 
 	if err != nil {
 		return nil, err

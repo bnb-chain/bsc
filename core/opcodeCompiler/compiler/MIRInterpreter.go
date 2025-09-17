@@ -43,6 +43,11 @@ func NewMIRInterpreter(env *MIRExecutionEnv) *MIRInterpreter {
 	return &MIRInterpreter{env: env, memory: env.Memory, results: make(map[*MIR]*uint256.Int)}
 }
 
+// GetEnv returns the execution environment
+func (it *MIRInterpreter) GetEnv() *MIRExecutionEnv {
+	return it.env
+}
+
 // RunMIR executes all instructions in the given basic block list sequentially.
 // For now, control-flow is assumed to be linear within a basic block.
 func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {

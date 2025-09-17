@@ -76,6 +76,10 @@ type Contract struct {
 	Gas       uint64
 	value     *uint256.Int
 	optimized bool
+	
+	// MIR-related fields
+	mirCFG    interface{}  // MIR Control Flow Graph for this contract (using interface{} to avoid import cycle)
+	hasMIR    bool         // Whether this contract has MIR representation
 }
 
 func (c *Contract) validJumpdest(dest *uint256.Int) bool {
@@ -222,4 +226,22 @@ func (c *Contract) SetOptimizedForTest() *Contract {
 	c.optimized = true
 
 	return c
+}
+
+// MIR-related methods
+
+// HasMIRCode returns true if this contract has MIR representation
+func (c *Contract) HasMIRCode() bool {
+	return c.hasMIR && c.mirCFG != nil
+}
+
+// GetMIRCFG returns the MIR Control Flow Graph for this contract
+func (c *Contract) GetMIRCFG() interface{} {
+	return c.mirCFG
+}
+
+// SetMIRCFG sets the MIR Control Flow Graph for this contract
+func (c *Contract) SetMIRCFG(cfg interface{}) {
+	c.mirCFG = cfg
+	c.hasMIR = (cfg != nil)
 }
