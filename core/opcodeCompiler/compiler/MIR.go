@@ -5,6 +5,107 @@ import (
 	"github.com/holiman/uint256"
 )
 
+// OptimizationPhase defines which types of instructions can be optimized
+type OptimizationPhase int
+
+const (
+	PhaseBasicMath    OptimizationPhase = 1  // Phase 1: Pure math and comparison operations
+	PhasePeepHole3Ops OptimizationPhase = 2  // Phase 2: Three-operand peephole optimizations (ADDMOD, MULMOD)
+	PhaseStackOps     OptimizationPhase = 3  // Phase 3: Stack operations (DUP, SWAP)
+	PhaseMemoryOps    OptimizationPhase = 4  // Phase 4: Memory and storage operations
+)
+
+// Current optimization phase - can be configured
+var currentOptimizationPhase OptimizationPhase = PhaseBasicMath
+
+// getOptimizableOps returns the set of operations that can be optimized in the current phase
+func getOptimizableOps() map[MirOperation]bool {
+	optimizableOps := make(map[MirOperation]bool)
+	
+	// Phase 1: Pure math and comparison operations - always safe to optimize
+	if currentOptimizationPhase >= PhaseBasicMath {
+		// Arithmetic operations (0x01-0x0b) - excluding 3-operand operations
+		mathOps := []MirOperation{
+			MirADD, MirMUL, MirSUB, MirDIV, MirSDIV, MirMOD, MirSMOD,
+			MirEXP, MirSIGNEXT,
+		}
+		for _, op := range mathOps {
+			optimizableOps[op] = true
+		}
+		
+		// Comparison operations (0x10-0x1d)
+		comparisonOps := []MirOperation{
+			MirLT, MirGT, MirSLT, MirSGT, MirEQ, MirISZERO,
+		}
+		for _, op := range comparisonOps {
+			optimizableOps[op] = true
+		}
+		
+		// Bitwise operations (0x16-0x1d)
+		bitwiseOps := []MirOperation{
+			MirAND, MirOR, MirXOR, MirNOT, MirBYTE, MirSHL, MirSHR, MirSAR,
+		}
+		for _, op := range bitwiseOps {
+			optimizableOps[op] = true
+		}
+		
+		// Cryptographic operations
+		optimizableOps[MirKECCAK256] = true
+	}
+	
+	// Phase 2: Three-operand peephole optimizations
+	if currentOptimizationPhase >= PhasePeepHole3Ops {
+		// Operations requiring 3 operands
+		threeOpOps := []MirOperation{
+			MirADDMOD, MirMULMOD,
+		}
+		for _, op := range threeOpOps {
+			optimizableOps[op] = true
+		}
+	}
+	
+	// Phase 3: Stack operations
+	if currentOptimizationPhase >= PhaseStackOps {
+		// DUP operations (0x80-0x8f)
+		for i := MirDUP1; i <= MirDUP16; i++ {
+			optimizableOps[i] = true
+		}
+		// SWAP operations (0x90-0x9f)
+		for i := MirSWAP1; i <= MirSWAP16; i++ {
+			optimizableOps[i] = true
+		}
+	}
+	
+	// Phase 4: Memory and storage operations
+	if currentOptimizationPhase >= PhaseMemoryOps {
+		memoryOps := []MirOperation{
+			MirMLOAD, MirMSTORE, MirMSTORE8, MirMSIZE,
+			MirSLOAD, MirSSTORE, MirTLOAD, MirTSTORE,
+		}
+		for _, op := range memoryOps {
+			optimizableOps[op] = true
+		}
+	}
+	
+	return optimizableOps
+}
+
+// isOptimizable checks if a MIR operation can be optimized in the current phase
+func isOptimizable(op MirOperation) bool {
+	optimizableOps := getOptimizableOps()
+	return optimizableOps[op]
+}
+
+// SetOptimizationPhase sets the current optimization phase
+func SetOptimizationPhase(phase OptimizationPhase) {
+	currentOptimizationPhase = phase
+}
+
+// GetOptimizationPhase returns the current optimization phase
+func GetOptimizationPhase() OptimizationPhase {
+	return currentOptimizationPhase
+}
+
 // MIR is register based intermediate representation
 type MIR struct {
 	op      MirOperation
@@ -57,6 +158,64 @@ func newBinaryOpMIR(operation MirOperation, opnd1 *Value, opnd2 *Value, stack *V
 	return mir
 }
 
+// newTernaryOpMIR creates a MIR instruction for 3-operand operations
+func newTernaryOpMIR(operation MirOperation, opnd1 *Value, opnd2 *Value, opnd3 *Value, stack *ValueStack) *MIR {
+	mir := new(MIR)
+	mir.op = operation
+	opnd1.use = append(opnd1.use, mir)
+	opnd2.use = append(opnd2.use, mir)
+	opnd3.use = append(opnd3.use, mir)
+	mir.oprands = []*Value{opnd1, opnd2, opnd3}
+	return mir
+}
+
+// doPeepHole3Ops performs peephole optimizations for 3-operand operations
+func doPeepHole3Ops(operation MirOperation, opnd1 *Value, opnd2 *Value, opnd3 *Value, stack *ValueStack, memoryAccessor *MemoryAccessor) bool {
+	if opnd1 == nil || opnd2 == nil || opnd3 == nil {
+		return false
+	}
+	
+	// Only optimize if all operands are constants
+	if opnd1.kind != Konst || opnd2.kind != Konst || opnd3.kind != Konst {
+		return false
+	}
+	
+	// Check if this operation is optimizable in current phase
+	if !isOptimizable(operation) {
+		return false
+	}
+	
+	optimized := false
+	val1 := uint256.NewInt(0).SetBytes(opnd1.payload)
+	val2 := uint256.NewInt(0).SetBytes(opnd2.payload)
+	val3 := uint256.NewInt(0).SetBytes(opnd3.payload)
+	
+	switch operation {
+	case MirADDMOD:
+		// ADDMOD: (val1 + val2) % val3
+		if !val3.IsZero() { // Avoid division by zero
+			temp := uint256.NewInt(0).Add(val1, val2)
+			val1 = temp.Mod(temp, val3)
+			optimized = true
+		}
+	case MirMULMOD:
+		// MULMOD: (val1 * val2) % val3
+		if !val3.IsZero() { // Avoid division by zero
+			temp := uint256.NewInt(0).Mul(val1, val2)
+			val1 = temp.Mod(temp, val3)
+			optimized = true
+		}
+	}
+	
+	if optimized && val1 != nil {
+		// Create a new constant value with the optimized result
+		newVal := newValue(Konst, nil, nil, val1.Bytes())
+		stack.push(newVal)
+	}
+	
+	return optimized
+}
+
 func doPeepHole(operation MirOperation, opnd1 *Value, opnd2 *Value, stack *ValueStack, memoryAccessoraccessor *MemoryAccessor) bool {
 	optimized := true
 	var val1 *uint256.Int
@@ -72,7 +231,7 @@ func doPeepHole(operation MirOperation, opnd1 *Value, opnd2 *Value, stack *Value
 				if isZero {
 					val1.SetOne()
 				} else {
-					val1.Clear()
+					val1.SetUint64(0)
 				}
 			}
 		} else if opnd2.kind == Konst {
@@ -101,35 +260,35 @@ func doPeepHole(operation MirOperation, opnd1 *Value, opnd2 *Value, stack *Value
 				if isLt {
 					val1.SetOne()
 				} else {
-					val1.Clear()
+					val1.SetUint64(0)
 				}
 			case MirGT:
 				isGt := val1.Gt(val2)
 				if isGt {
 					val1.SetOne()
 				} else {
-					val1.Clear()
+					val1.SetUint64(0)
 				}
 			case MirSLT:
 				isSlt := val1.Slt(val2)
 				if isSlt {
 					val1.SetOne()
 				} else {
-					val1.Clear()
+					val1.SetUint64(0)
 				}
 			case MirSGT:
 				isSgt := val1.Sgt(val2)
 				if isSgt {
 					val1.SetOne()
 				} else {
-					val1.Clear()
+					val1.SetUint64(0)
 				}
 			case MirEQ:
 				isEq := val1.Eq(val2)
 				if isEq {
 					val1.SetOne()
 				} else {
-					val1.Clear()
+					val1.SetUint64(0)
 				}
 			case MirAND:
 				val1 = val1.And(val1, val2)
@@ -184,4 +343,38 @@ func mirTryLoadFromMemory(offset *uint256.Int, size *uint256.Int, mAccessor *Mem
 	// This is a simplified version - in a full implementation, you would
 	// check if the memory location has been written to and return the value
 	return Value{kind: Variable}
+}
+
+// constantToPushBytecode converts a constant value to PUSH bytecode
+func constantToPushBytecode(payload []byte) []byte {
+	if len(payload) == 0 {
+		return []byte{byte(PUSH1), 0x00}
+	}
+	
+	// Remove leading zeros
+	trimmed := trimLeadingZeros(payload)
+	if len(trimmed) == 0 {
+		return []byte{byte(PUSH1), 0x00}
+	}
+	
+	// Determine appropriate PUSH instruction
+	pushSize := len(trimmed)
+	if pushSize > 32 {
+		pushSize = 32 // Maximum PUSH32
+	}
+	
+	result := []byte{byte(PUSH1) + byte(pushSize-1)}
+	result = append(result, trimmed[:pushSize]...)
+	
+	return result
+}
+
+// trimLeadingZeros removes leading zero bytes from a byte slice
+func trimLeadingZeros(data []byte) []byte {
+	for i, b := range data {
+		if b != 0 {
+			return data[i:]
+		}
+	}
+	return []byte{}
 }

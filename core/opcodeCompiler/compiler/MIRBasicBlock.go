@@ -91,7 +91,13 @@ func (b *MIRBasicBlock) appendMIR(mir *MIR) *MIR {
 func (b *MIRBasicBlock) CreateUnaryOpMIR(op MirOperation, stack *ValueStack) (mir *MIR) {
 	opnd1 := stack.pop()
 	mir = newUnaryOpMIR(op, &opnd1, stack)
-	stack.push(mir.Result())
+	
+	// Only push result if the operation wasn't optimized away (MirNOP)
+	if mir.op != MirNOP {
+		stack.push(mir.Result())
+	}
+	// If mir.op == MirNOP, doPeepHole already pushed the optimized constant to stack
+	
 	return b.appendMIR(mir)
 }
 
@@ -99,7 +105,38 @@ func (b *MIRBasicBlock) CreateBinOpMIR(op MirOperation, stack *ValueStack) (mir 
 	opnd2 := stack.pop()
 	opnd1 := stack.pop()
 	mir = newBinaryOpMIR(op, &opnd1, &opnd2, stack)
-	stack.push(mir.Result())
+	
+	// Only push result if the operation wasn't optimized away (MirNOP)
+	if mir.op != MirNOP {
+		stack.push(mir.Result())
+	}
+	// If mir.op == MirNOP, doPeepHole already pushed the optimized constant to stack
+	
+	return b.appendMIR(mir)
+}
+
+// CreateTernaryOpMIR creates a MIR instruction for 3-operand operations like ADDMOD, MULMOD
+func (b *MIRBasicBlock) CreateTernaryOpMIR(op MirOperation, stack *ValueStack) (mir *MIR) {
+	opnd3 := stack.pop() // Modulus (third operand)
+	opnd2 := stack.pop() // Second operand
+	opnd1 := stack.pop() // First operand
+	
+	// Try peephole optimization for 3-operand operations
+	if doPeepHole3Ops(op, &opnd1, &opnd2, &opnd3, stack, nil) {
+		// Operation was optimized away, create a NOP MIR for tracking
+		mir = newNopMIR(op, []*Value{&opnd1, &opnd2, &opnd3})
+		return b.appendMIR(mir)
+	}
+	
+	// Create regular ternary operation MIR
+	mir = newTernaryOpMIR(op, &opnd1, &opnd2, &opnd3, stack)
+	
+	// Only push result if the operation wasn't optimized away (MirNOP)
+	if mir.op != MirNOP {
+		stack.push(mir.Result())
+	}
+	// If mir.op == MirNOP, doPeepHole3Ops already pushed the optimized constant to stack
+	
 	return b.appendMIR(mir)
 }
 

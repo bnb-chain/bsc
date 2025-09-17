@@ -101,6 +101,39 @@ func parseOpCode(hash common.Hash, code []byte) error {
 	return nil
 }
 
+// parseOpCodeWithOptimization parses opcodes and returns optimized bytecode if possible
+func parseOpCodeWithOptimization(hash common.Hash, code []byte) ([]byte, error) {
+	cfg := NewCFG(hash, code)
+
+	// memoryAccessor is instance local at runtime
+	var memoryAccessor *MemoryAccessor = cfg.getMemoryAccessor()
+	// stateAccessor is global but we analyze it in processor granularity
+	var stateAccessor *StateAccessor = cfg.getStateAccessor()
+
+	entryBB := cfg.createEntryBB()
+	startBB := cfg.createBB(0, entryBB)
+	valueStack := ValueStack{}
+	// generate CFG.
+	unprcessedBBs := MIRBasicBlockStack{}
+	unprcessedBBs.Push(startBB)
+
+	for unprcessedBBs.Size() != 0 {
+		curBB := unprcessedBBs.Pop()
+		err := cfg.buildBasicBlock(curBB, &valueStack, memoryAccessor, stateAccessor, &unprcessedBBs)
+		if err != nil {
+			log.Error(err.Error())
+		}
+	}
+
+	// Generate optimized bytecode from MIR
+	optimizedBytecode, err := generateOptimizedBytecodeFromMIR(cfg, &valueStack, code)
+	if err != nil {
+		return nil, err
+	}
+
+	return optimizedBytecode, nil
+}
+
 func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memoryAccessor *MemoryAccessor, stateAccessor *StateAccessor, unprcessedBBs *MIRBasicBlockStack) error {
 	// Get the raw code from the CFG
 	code := c.rawCode
@@ -125,7 +158,7 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 				return fmt.Errorf("invalid PUSH operation at position %d", i)
 			}
 			_ = curBB.CreatePushMIR(size, code[i+1:i+1+size], valueStack)
-			i += size
+			i += size + 1  // +1 for the opcode itself
 			continue
 		}
 
@@ -151,9 +184,9 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 		case SMOD:
 			mir = curBB.CreateBinOpMIR(MirSMOD, valueStack)
 		case ADDMOD:
-			mir = curBB.CreateBinOpMIR(MirADDMOD, valueStack)
+			mir = curBB.CreateTernaryOpMIR(MirADDMOD, valueStack)
 		case MULMOD:
-			mir = curBB.CreateBinOpMIR(MirMULMOD, valueStack)
+			mir = curBB.CreateTernaryOpMIR(MirMULMOD, valueStack)
 		case EXP:
 			mir = curBB.CreateBinOpMIR(MirEXP, valueStack)
 		case SIGNEXTEND:
@@ -742,5 +775,131 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 		}
 		i++
 	}
+	return nil
+}
+
+// generateOptimizedBytecodeFromMIR generates optimized bytecode by combining MIR optimizations with original code
+func generateOptimizedBytecodeFromMIR(cfg *CFG, finalStack *ValueStack, originalCode []byte) ([]byte, error) {
+	var result []byte
+	
+	// Step 1: Convert optimized constants from finalStack to PUSH instructions
+	stackBytes := convertStackToBytecode(finalStack)
+	if len(stackBytes) > 0 {
+		result = append(result, stackBytes...)
+		// If we have optimized results, we can potentially replace the original code
+		if len(stackBytes) < len(originalCode) {
+			return result, nil
+		}
+	}
+	
+	// Step 2: If no significant optimization occurred, fall back to original code
+	// but still try to apply any local optimizations from basic blocks
+	originalIndex := 0
+	
+	// Process each basic block
+	for _, bb := range cfg.basicBlocks {
+		if bb == nil {
+			continue
+		}
+		
+		// Check if this basic block has optimized instructions
+		hasOptimizations := false
+		for _, mir := range bb.instructions {
+			if mir != nil && mir.op == MirNOP && len(mir.meta) > 0 {
+				hasOptimizations = true
+				break
+			}
+		}
+		
+		if hasOptimizations {
+			// Skip original instructions that were optimized
+			originalIndex = int(bb.lastPC) + 1
+		} else {
+			// Copy original instructions for this block
+			blockEnd := int(bb.lastPC) + 1
+			if blockEnd > len(originalCode) {
+				blockEnd = len(originalCode)
+			}
+			if originalIndex < blockEnd {
+				result = append(result, originalCode[originalIndex:blockEnd]...)
+				originalIndex = blockEnd
+			}
+		}
+	}
+	
+	// Add any remaining original instructions
+	if originalIndex < len(originalCode) {
+		result = append(result, originalCode[originalIndex:]...)
+	}
+	
+	return result, nil
+}
+
+
+// extractOptimizedConstants extracts optimized constant values and converts them to PUSH instructions
+func extractOptimizedConstants(bb *MIRBasicBlock) []byte {
+	var result []byte
+	
+	// Look for NOP instructions that represent optimized constants
+	for _, mir := range bb.instructions {
+		if mir == nil {
+			continue
+		}
+		
+		if mir.op == MirNOP && len(mir.meta) > 0 {
+			// This is an optimized instruction - check if it produced a constant
+			originalOp := MirOperation(mir.meta[0])
+			
+			// If this was an arithmetic operation that got optimized to a constant,
+			// we need to generate the appropriate PUSH instruction
+			if isOptimizable(originalOp) {
+				// The constant value should be available in the operands or through peephole optimization
+				// For now, we'll handle the most common case of simple arithmetic
+				constantBytes := extractConstantFromOptimizedMIR(mir)
+				if len(constantBytes) > 0 {
+					pushBytes := constantToPushBytecode(constantBytes)
+					result = append(result, pushBytes...)
+				}
+			}
+		}
+	}
+	
+	return result
+}
+
+// convertStackToBytecode converts optimized constants from ValueStack to PUSH bytecode
+func convertStackToBytecode(stack *ValueStack) []byte {
+	var result []byte
+	
+	if stack == nil || stack.size() == 0 {
+		return result
+	}
+	
+	// Process all constant values in the stack
+	for i := 0; i < stack.size(); i++ {
+		value := stack.data[i]
+		if value.kind == Konst && len(value.payload) > 0 {
+			// Convert constant to PUSH instruction
+			pushBytes := constantToPushBytecode(value.payload)
+			result = append(result, pushBytes...)
+		}
+	}
+	
+	return result
+}
+
+// extractConstantFromOptimizedMIR extracts the constant value from an optimized MIR instruction
+func extractConstantFromOptimizedMIR(mir *MIR) []byte {
+	// This is a simplified implementation
+	// In a full implementation, you would track the constant values through the optimization process
+	
+	if len(mir.oprands) > 0 {
+		for _, operand := range mir.oprands {
+			if operand.kind == Konst && len(operand.payload) > 0 {
+				return operand.payload
+			}
+		}
+	}
+	
 	return nil
 }

@@ -131,13 +131,30 @@ func GenOrRewriteOptimizedCode(hash common.Hash, code []byte) ([]byte, error) {
 	if !enabled {
 		return nil, ErrOptimizedDisabled
 	}
+	
+	var processedCode []byte
+	var err error
+	
+	// Step 1: Apply MIR-based optimizations first
 	if opcodeParseEnabled {
-		doOpcodesParse(hash, code)
+		mirOptimizedCode, mirErr := parseOpCodeWithOptimization(hash, code)
+		if mirErr == nil && len(mirOptimizedCode) > 0 {
+			// Use MIR-optimized code as input for superinstruction optimization
+			processedCode, err = processByteCodes(mirOptimizedCode)
+		} else {
+			// Fallback to original code if MIR optimization fails
+			doOpcodesParse(hash, code)
+			processedCode, err = processByteCodes(code)
+		}
+	} else {
+		// Original path - only superinstruction optimization
+		processedCode, err = processByteCodes(code)
 	}
-	processedCode, err := processByteCodes(code)
+	
 	if err != nil {
 		return nil, err
 	}
+	
 	codeCache.AddCodeCache(hash, processedCode)
 	return processedCode, err
 }
