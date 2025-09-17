@@ -54,6 +54,7 @@ func (c *CFG) createEntryBB() *MIRBasicBlock {
 // createBB create a normal bb.
 func (c *CFG) createBB(pc uint, parent *MIRBasicBlock) *MIRBasicBlock {
 	bb := NewMIRBasicBlock(c.basicBlockCount, pc, parent)
+	c.basicBlocks = append(c.basicBlocks, bb)
 	c.basicBlockCount++
 	return bb
 }
@@ -782,57 +783,94 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 func generateOptimizedBytecodeFromMIR(cfg *CFG, finalStack *ValueStack, originalCode []byte) ([]byte, error) {
 	var result []byte
 	
-	// Step 1: Convert optimized constants from finalStack to PUSH instructions
-	stackBytes := convertStackToBytecode(finalStack)
-	if len(stackBytes) > 0 {
-		result = append(result, stackBytes...)
-		// If we have optimized results, we can potentially replace the original code
-		if len(stackBytes) < len(originalCode) {
-			return result, nil
-		}
-	}
+	// Check if we have any optimized stack operations
+	hasStackOptimizations := false
+	optimizedInstructions := make(map[uint]bool)
 	
-	// Step 2: If no significant optimization occurred, fall back to original code
-	// but still try to apply any local optimizations from basic blocks
-	originalIndex := 0
-	
-	// Process each basic block
 	for _, bb := range cfg.basicBlocks {
 		if bb == nil {
 			continue
 		}
-		
-		// Check if this basic block has optimized instructions
-		hasOptimizations := false
 		for _, mir := range bb.instructions {
-			if mir != nil && mir.op == MirNOP && len(mir.meta) > 0 {
-				hasOptimizations = true
-				break
+			if mir == nil {
+				continue
+			}
+			
+			// Check for optimized stack operations (marked as NOP)
+			if mir.op == MirNOP && len(mir.oprands) > 0 {
+				// This was an optimized instruction, mark its original PC
+				if mir.pc != nil {
+					optimizedInstructions[*mir.pc] = true
+				}
+				
+				// Check if it was a stack operation
+				if len(mir.meta) > 0 {
+					// Check the original operation type from metadata
+					hasStackOptimizations = true
+				}
+			}
+		}
+	}
+	
+	// Strategy 1: If only math optimizations, use final stack
+	if !hasStackOptimizations {
+		stackBytes := convertStackToBytecode(finalStack)
+		if len(stackBytes) > 0 && len(stackBytes) < len(originalCode) {
+			return stackBytes, nil
+		}
+	}
+	
+	// Strategy 1.5: For stack optimizations, also try final stack approach
+	if hasStackOptimizations {
+		stackBytes := convertStackToBytecode(finalStack)
+		if len(stackBytes) > 0 {
+			// For stack operations, we might want to use the final stack
+			// even if it's not smaller, because it represents the optimized state
+			return stackBytes, nil
+		}
+	}
+	
+	// Strategy 2: For stack optimizations, remove optimized instructions from original code
+	if hasStackOptimizations {
+		result = make([]byte, 0, len(originalCode))
+		i := 0
+		
+		for i < len(originalCode) {
+			// Check if this instruction was optimized away
+			if optimizedInstructions[uint(i)] {
+				// Skip the optimized instruction
+				opcode := originalCode[i]
+				if opcode >= byte(PUSH1) && opcode <= byte(PUSH32) {
+					// Skip PUSH instruction and its data
+					pushSize := int(opcode - byte(PUSH1) + 1)
+					i += pushSize + 1
+				} else {
+					// Skip single-byte instruction
+					i++
+				}
+				continue
+			}
+			
+			// Keep the original instruction
+			opcode := originalCode[i]
+			result = append(result, opcode)
+			i++
+			
+			// Handle PUSH instruction data
+			if opcode >= byte(PUSH1) && opcode <= byte(PUSH32) {
+				pushSize := int(opcode - byte(PUSH1) + 1)
+				if i+pushSize <= len(originalCode) {
+					result = append(result, originalCode[i:i+pushSize]...)
+					i += pushSize
+				}
 			}
 		}
 		
-		if hasOptimizations {
-			// Skip original instructions that were optimized
-			originalIndex = int(bb.lastPC) + 1
-		} else {
-			// Copy original instructions for this block
-			blockEnd := int(bb.lastPC) + 1
-			if blockEnd > len(originalCode) {
-				blockEnd = len(originalCode)
-			}
-			if originalIndex < blockEnd {
-				result = append(result, originalCode[originalIndex:blockEnd]...)
-				originalIndex = blockEnd
-			}
-		}
+		return result, nil
 	}
 	
-	// Add any remaining original instructions
-	if originalIndex < len(originalCode) {
-		result = append(result, originalCode[originalIndex:]...)
-	}
-	
-	return result, nil
+	// Fallback: return original code
+	return originalCode, nil
 }
 
 

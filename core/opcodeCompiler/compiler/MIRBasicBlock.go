@@ -216,6 +216,19 @@ func (s *MIRBasicBlockStack) Size() int {
 }
 
 func (b *MIRBasicBlock) CreateStackOpMIR(op MirOperation, stack *ValueStack) *MIR {
+	// For DUP operations
+	if op >= MirDUP1 && op <= MirDUP16 {
+		n := int(op - MirDUP1 + 1) // DUP1 = 1, DUP2 = 2, etc.
+		return b.CreateDupMIR(n, stack)
+	}
+	
+	// For SWAP operations  
+	if op >= MirSWAP1 && op <= MirSWAP16 {
+		n := int(op - MirSWAP1 + 1) // SWAP1 = 1, SWAP2 = 2, etc.
+		return b.CreateSwapMIR(n, stack)
+	}
+	
+	// Fallback for other stack operations
 	mir := new(MIR)
 	mir.op = op
 	stack.push(mir.Result())
@@ -223,16 +236,82 @@ func (b *MIRBasicBlock) CreateStackOpMIR(op MirOperation, stack *ValueStack) *MI
 }
 
 func (b *MIRBasicBlock) CreateDupMIR(n int, stack *ValueStack) *MIR {
+	// DUPn duplicates the nth stack item (1-indexed) to the top
+	// Stack before: [..., item_n, ..., item_2, item_1]
+	// Stack after:  [..., item_n, ..., item_2, item_1, item_n]
+	
+	if stack.size() < n {
+		// Not enough items on stack - create non-optimized MIR
+		mir := new(MIR)
+		mir.op = MirOperation(0x80 + byte(n-1))
+		stack.push(mir.Result())
+		return b.appendMIR(mir)
+	}
+	
+	// Get the value to duplicate (n-1 because stack is 0-indexed from top)
+	dupValue := stack.peek(n - 1)
+	
+	// Check if we can optimize this DUP operation
+	if isOptimizable(MirOperation(0x80 + byte(n-1))) && dupValue.kind == Konst {
+		// If the value to duplicate is a constant, we can optimize
+		// by directly pushing the constant value
+		optimizedValue := newValue(Konst, nil, nil, dupValue.payload)
+		stack.push(optimizedValue)
+		
+		// Create a NOP MIR to mark this optimization
+		mir := newNopMIR(MirOperation(0x80 + byte(n-1)), []*Value{dupValue})
+		return b.appendMIR(mir)
+	}
+	
+	// For non-constant values, perform the actual duplication
+	duplicatedValue := *dupValue // Copy the value
+	stack.push(&duplicatedValue)
+	
+	// Create MIR instruction with the source value as operand
 	mir := new(MIR)
-	mir.op = MirOperation(0x80 + byte(n-1)) // MirDUP1 = 0x80, MirDUP2 = 0x81, etc.
-	stack.push(mir.Result())
+	mir.op = MirOperation(0x80 + byte(n-1))
+	mir.oprands = []*Value{dupValue}
+	dupValue.use = append(dupValue.use, mir)
+	
 	return b.appendMIR(mir)
 }
 
 func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
+	// SWAPn swaps the top stack item with the nth stack item (1-indexed)
+	// Stack before: [..., item_n+1, item_n, ..., item_2, item_1]
+	// Stack after:  [..., item_n+1, item_1, ..., item_2, item_n]
+	
+	if stack.size() <= n {
+		// Not enough items on stack - create non-optimized MIR
+		mir := new(MIR)
+		mir.op = MirOperation(0x90 + byte(n-1))
+		return b.appendMIR(mir)
+	}
+	
+	// Check if we can optimize this SWAP operation
+	topValue := stack.peek(0)     // item_1 (top of stack)
+	swapValue := stack.peek(n)    // item_n+1 (the item to swap with)
+	
+	if isOptimizable(MirOperation(0x90 + byte(n-1))) && 
+	   topValue.kind == Konst && swapValue.kind == Konst {
+		// Both values are constants, we can optimize by directly swapping
+		stack.swap(0, n)
+		
+		// Create a NOP MIR to mark this optimization
+		mir := newNopMIR(MirOperation(0x90 + byte(n-1)), []*Value{topValue, swapValue})
+		return b.appendMIR(mir)
+	}
+	
+	// For non-constant values, perform the actual swap
+	stack.swap(0, n)
+	
+	// Create MIR instruction with both values as operands
 	mir := new(MIR)
-	mir.op = MirOperation(0x90 + byte(n-1)) // MirSWAP1 = 0x90, MirSWAP2 = 0x91, etc.
-	stack.push(mir.Result())
+	mir.op = MirOperation(0x90 + byte(n-1))
+	mir.oprands = []*Value{topValue, swapValue}
+	topValue.use = append(topValue.use, mir)
+	swapValue.use = append(swapValue.use, mir)
+	
 	return b.appendMIR(mir)
 }
 

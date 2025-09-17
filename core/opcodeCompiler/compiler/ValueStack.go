@@ -41,6 +41,28 @@ func (s *ValueStack) size() int {
 	return len(s.data)
 }
 
+// peek returns a pointer to the nth item from the top of the stack (0-indexed)
+// peek(0) returns the top item, peek(1) returns the second item, etc.
+func (s *ValueStack) peek(n int) *Value {
+	if n < 0 || n >= len(s.data) {
+		return nil
+	}
+	// Stack grows from left to right, so top is at the end
+	index := len(s.data) - 1 - n
+	return &s.data[index]
+}
+
+// swap exchanges the items at positions i and j from the top of the stack (0-indexed)
+func (s *ValueStack) swap(i, j int) {
+	if i < 0 || i >= len(s.data) || j < 0 || j >= len(s.data) {
+		return
+	}
+	// Convert to actual array indices
+	indexI := len(s.data) - 1 - i
+	indexJ := len(s.data) - 1 - j
+	s.data[indexI], s.data[indexJ] = s.data[indexJ], s.data[indexI]
+}
+
 func newValue(kind ValueKind, def *MIR, use *MIR, payload []byte) *Value {
 	value := new(Value)
 	value.kind = kind

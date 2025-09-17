@@ -111,6 +111,7 @@ type MIR struct {
 	op      MirOperation
 	oprands []*Value
 	meta    []byte
+	pc      *uint // Program counter of the original instruction (optional)
 }
 
 func (m *MIR) Result() *Value {
@@ -132,6 +133,13 @@ func newNopMIR(operation MirOperation, original_opnds []*Value) *MIR {
 	mir.op = MirNOP
 	mir.oprands = original_opnds
 	mir.meta = []byte{byte(operation)}
+	return mir
+}
+
+// newNopMIRWithPC creates a NOP MIR with program counter information
+func newNopMIRWithPC(operation MirOperation, original_opnds []*Value, pc uint) *MIR {
+	mir := newNopMIR(operation, original_opnds)
+	mir.pc = &pc
 	return mir
 }
 
