@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"errors"
+	"fmt"
 	"runtime"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -144,15 +145,17 @@ func GenOrRewriteOptimizedCode(hash common.Hash, code []byte) ([]byte, error) {
 
 	// Step 1: Apply MIR-based optimizations first
 	if opcodeParseEnabled {
-		mirOptimizedCode, mirErr := parseOpCodeWithOptimization(hash, code)
-		if mirErr == nil && len(mirOptimizedCode) > 0 {
-			// Use MIR-optimized code as input for superinstruction optimization
-			processedCode, err = processByteCodes(mirOptimizedCode)
-		} else {
-			// Fallback to original code if MIR optimization fails
-			doOpcodesParse(hash, code)
-			processedCode, err = processByteCodes(code)
+		mirOptimizedCode, mirErr := doOpcodesParse(hash, code)
+		if mirErr != nil {
+			// MIR optimization failed - return error directly to verify MIR is working
+			return nil, fmt.Errorf("MIR optimization failed: %v", mirErr)
 		}
+		if len(mirOptimizedCode) == 0 {
+			// MIR optimization produced no output - return error
+			return nil, fmt.Errorf("MIR optimization produced no output")
+		}
+		// Use MIR-optimized code as input for superinstruction optimization
+		processedCode, err = processByteCodes(mirOptimizedCode)
 	} else {
 		// Original path - only superinstruction optimization
 		processedCode, err = processByteCodes(code)

@@ -64,70 +64,20 @@ func (c *CFG) reachEndBB() {
 	// TODO - zlin:  check the child is backward only.
 }
 
-func doOpcodesParse(hash common.Hash, code []byte) error {
-	return buildCFG(hash, code)
-}
-
-func buildCFG(hash common.Hash, code []byte) error {
+func doOpcodesParse(hash common.Hash, code []byte) ([]byte, error) {
 	if len(code) == 0 {
 		log.Warn("Can not build CFG with nil codes\n")
-		return ErrFailPreprocessing
-	}
-	return parseOpCode(hash, code)
-}
-
-func parseOpCode(hash common.Hash, code []byte) error {
-	cfg := NewCFG(hash, code)
-
-	// memoryAccessor is instance local at runtime
-	var memoryAccessor *MemoryAccessor = cfg.getMemoryAccessor()
-	// stateAccessor is global but we analyze it in processor granularity
-	var stateAccessor *StateAccessor = cfg.getStateAccessor()
-
-	entryBB := cfg.createEntryBB()
-	startBB := cfg.createBB(0, entryBB)
-	valueStack := ValueStack{}
-	// generate CFG.
-	unprcessedBBs := MIRBasicBlockStack{}
-	unprcessedBBs.Push(startBB)
-
-	for unprcessedBBs.Size() != 0 {
-		curBB := unprcessedBBs.Pop()
-		err := cfg.buildBasicBlock(curBB, &valueStack, memoryAccessor, stateAccessor, &unprcessedBBs)
-		if err != nil {
-			log.Error(err.Error())
-		}
+		return nil, ErrFailPreprocessing
 	}
 
-	return nil
-}
-
-// parseOpCodeWithOptimization parses opcodes and returns optimized bytecode if possible
-func parseOpCodeWithOptimization(hash common.Hash, code []byte) ([]byte, error) {
-	cfg := NewCFG(hash, code)
-
-	// memoryAccessor is instance local at runtime
-	var memoryAccessor *MemoryAccessor = cfg.getMemoryAccessor()
-	// stateAccessor is global but we analyze it in processor granularity
-	var stateAccessor *StateAccessor = cfg.getStateAccessor()
-
-	entryBB := cfg.createEntryBB()
-	startBB := cfg.createBB(0, entryBB)
-	valueStack := ValueStack{}
-	// generate CFG.
-	unprcessedBBs := MIRBasicBlockStack{}
-	unprcessedBBs.Push(startBB)
-
-	for unprcessedBBs.Size() != 0 {
-		curBB := unprcessedBBs.Pop()
-		err := cfg.buildBasicBlock(curBB, &valueStack, memoryAccessor, stateAccessor, &unprcessedBBs)
-		if err != nil {
-			log.Error(err.Error())
-		}
+	// Build CFG and get both cfg and valueStack
+	cfg, valueStack, err := buildCFGInternal(hash, code)
+	if err != nil {
+		return nil, err
 	}
 
 	// Use MIRInterpreter to execute and optimize the MIR instructions
-	optimizedBytecode, err := executeAndOptimizeMIR(cfg, &valueStack, code)
+	optimizedBytecode, err := executeAndOptimizeMIR(cfg, valueStack, code)
 	if err != nil {
 		return nil, err
 	}
@@ -135,14 +85,42 @@ func parseOpCodeWithOptimization(hash common.Hash, code []byte) ([]byte, error) 
 	return optimizedBytecode, nil
 }
 
+// buildCFGInternal builds CFG and returns both CFG and final valueStack
+func buildCFGInternal(hash common.Hash, code []byte) (*CFG, *ValueStack, error) {
+	cfg := NewCFG(hash, code)
+
+	// memoryAccessor is instance local at runtime
+	var memoryAccessor *MemoryAccessor = cfg.getMemoryAccessor()
+	// stateAccessor is global but we analyze it in processor granularity
+	var stateAccessor *StateAccessor = cfg.getStateAccessor()
+
+	entryBB := cfg.createEntryBB()
+	startBB := cfg.createBB(0, entryBB)
+	valueStack := ValueStack{}
+	// generate CFG.
+	unprcessedBBs := MIRBasicBlockStack{}
+	unprcessedBBs.Push(startBB)
+
+	for unprcessedBBs.Size() != 0 {
+		curBB := unprcessedBBs.Pop()
+		err := cfg.buildBasicBlock(curBB, &valueStack, memoryAccessor, stateAccessor, &unprcessedBBs)
+		if err != nil {
+			log.Error(err.Error())
+			return nil, nil, err
+		}
+	}
+
+	return cfg, &valueStack, nil
+}
+
 // GenerateMIRCFG generates a MIR Control Flow Graph for the given bytecode
 func GenerateMIRCFG(hash common.Hash, code []byte) (*CFG, error) {
 	if len(code) == 0 {
 		return nil, fmt.Errorf("empty code")
 	}
-	
+
 	cfg := NewCFG(hash, code)
-	
+
 	// memoryAccessor is instance local at runtime
 	var memoryAccessor *MemoryAccessor = cfg.getMemoryAccessor()
 	// stateAccessor is global but we analyze it in processor granularity
@@ -163,7 +141,7 @@ func GenerateMIRCFG(hash common.Hash, code []byte) (*CFG, error) {
 			return nil, err
 		}
 	}
-	
+
 	return cfg, nil
 }
 
@@ -172,68 +150,124 @@ func (c *CFG) GetBasicBlocks() []*MIRBasicBlock {
 	return c.basicBlocks
 }
 
-// executeAndOptimizeMIR uses MIRInterpreter to simulate execution and optimize MIR instructions
+// executeAndOptimizeMIR uses MIRInterpreter to actually execute MIR instructions and generate optimized bytecode
 func executeAndOptimizeMIR(cfg *CFG, finalStack *ValueStack, originalCode []byte) ([]byte, error) {
-	// Create MIR execution environment for simulation
+	// Create MIR execution environment
 	env := &MIRExecutionEnv{
 		Memory:  make([]byte, 0, 1024),
 		Storage: make(map[[32]byte][32]byte),
-		// Set some default values for simulation
+		// Set some default values for execution
 		BlockNumber: 1,
 		Timestamp:   1000000,
 		ChainID:     1,
 		GasPrice:    1000000000,
 	}
-	
+
 	// Create MIR interpreter
 	interpreter := NewMIRInterpreter(env)
-	
-	// Step 1: Use MIRInterpreter to validate and simulate MIR execution
-	// This helps us understand the actual execution flow and identify optimization opportunities
-	var simulationSuccessful bool = true
-	
+
+	// Step 1: Execute MIR instructions and collect results
+	var executionResults [][]byte
+	var hasOptimizedInstructions bool
+
 	for _, bb := range cfg.basicBlocks {
 		if bb == nil || len(bb.instructions) == 0 {
 			continue
 		}
-		
-		// Create a copy of the basic block for simulation
-		// We don't want to modify the original
-		simulationBB := &MIRBasicBlock{
-			instructions: make([]*MIR, len(bb.instructions)),
+
+		// Check if this basic block contains optimized instructions (NOP operations)
+		for _, mir := range bb.instructions {
+			if mir != nil && mir.op == MirNOP {
+				hasOptimizedInstructions = true
+				break
+			}
 		}
-		copy(simulationBB.instructions, bb.instructions)
-		
-		// Try to simulate execution of this basic block
-		_, err := interpreter.RunMIR(simulationBB)
+
+		// Execute the basic block directly (no copying needed)
+		result, err := interpreter.RunMIR(bb)
 		if err != nil {
-			// Simulation failed - this is expected for many cases
-			// (e.g., when we have incomplete context)
-			simulationSuccessful = false
-			break
+			// Don't fallback - report MIR execution error directly
+			return nil, fmt.Errorf("MIR execution failed for basic block: %v", err)
+		}
+
+		if len(result) > 0 {
+			executionResults = append(executionResults, result)
 		}
 	}
-	
-	// Step 2: Apply MIR-level optimizations based on simulation results
-	// For now, we'll enhance the existing peephole optimizations with MIR interpreter insights
-	optimizedStack := optimizeMIRWithInterpreter(cfg, finalStack, interpreter, simulationSuccessful)
-	
-	// Step 3: Generate optimized bytecode
-	return generateOptimizedBytecodeFromMIR(cfg, optimizedStack, originalCode)
+
+	// Step 2: Generate bytecode based on execution results
+	if len(executionResults) > 0 {
+		// If we have execution results, use them
+		return generateBytecodeFromExecutionResults(executionResults, interpreter)
+	}
+
+	// Step 3: If no execution results, but we have optimizations, use the optimized stack
+	if hasOptimizedInstructions || finalStack.size() > 0 {
+		return generateOptimizedBytecodeFromStack(finalStack, cfg, originalCode)
+	}
+
+	// Step 4: No execution results and no optimizations - this indicates a problem
+	return nil, fmt.Errorf("MIR execution completed but produced no results and no optimizations were found")
 }
 
-// optimizeMIRWithInterpreter applies MIR optimizations using insights from MIRInterpreter
-func optimizeMIRWithInterpreter(cfg *CFG, stack *ValueStack, interpreter *MIRInterpreter, simulationOK bool) *ValueStack {
-	// If simulation was successful, we can apply more aggressive optimizations
-	if simulationOK {
-		// Use MIRInterpreter's results to enhance optimization
-		// For now, we'll keep the existing stack but mark it as "interpreter-validated"
-		return stack
+// generateBytecodeFromExecutionResults generates bytecode from MIRInterpreter execution results
+func generateBytecodeFromExecutionResults(results [][]byte, interpreter *MIRInterpreter) ([]byte, error) {
+	// For now, we'll use the interpreter's final state to generate bytecode
+	// This is a simplified implementation - in a full system, you'd want to
+	// track the execution state more carefully
+
+	if len(results) == 0 {
+		return nil, nil
 	}
-	
-	// If simulation failed, fall back to conservative optimizations
-	// This is the current behavior - use the existing stack
-	return stack
+
+	// If we have a single result (most common case for simple arithmetic),
+	// convert it to a PUSH instruction
+	if len(results) == 1 {
+		result := results[0]
+		if len(result) > 0 {
+			return constantToPushBytecode(result), nil
+		}
+	}
+
+	// For multiple results, concatenate them as separate PUSH instructions
+	var bytecode []byte
+	for _, result := range results {
+		if len(result) > 0 {
+			pushBytes := constantToPushBytecode(result)
+			bytecode = append(bytecode, pushBytes...)
+		}
+	}
+
+	return bytecode, nil
+}
+
+// generateOptimizedBytecodeFromStack generates bytecode from the optimized ValueStack
+func generateOptimizedBytecodeFromStack(stack *ValueStack, cfg *CFG, originalCode []byte) ([]byte, error) {
+	// This is essentially the same as convertStackToBytecode but with more context
+	if stack == nil || stack.size() == 0 {
+		// If no optimized values, try the original generateOptimizedBytecodeFromMIR approach
+		return generateOptimizedBytecodeFromMIR(cfg, stack, originalCode)
+	}
+
+	var result []byte
+
+	// Process all constant values in the stack
+	for i := 0; i < stack.size(); i++ {
+		value := stack.data[i]
+		if value.kind == Konst && len(value.payload) > 0 {
+			// Convert constant to PUSH instruction
+			pushBytes := constantToPushBytecode(value.payload)
+			result = append(result, pushBytes...)
+		}
+	}
+
+	// If we generated bytecode and it's more efficient, use it
+	if len(result) > 0 && len(result) < len(originalCode) {
+		return result, nil
+	}
+
+	// Otherwise fall back to the mixed approach
+	return generateOptimizedBytecodeFromMIR(cfg, stack, originalCode)
 }
 
 func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memoryAccessor *MemoryAccessor, stateAccessor *StateAccessor, unprcessedBBs *MIRBasicBlockStack) error {
@@ -260,7 +294,7 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 				return fmt.Errorf("invalid PUSH operation at position %d", i)
 			}
 			_ = curBB.CreatePushMIR(size, code[i+1:i+1+size], valueStack)
-			i += size + 1  // +1 for the opcode itself
+			i += size + 1 // +1 for the opcode itself
 			continue
 		}
 
@@ -355,7 +389,7 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			mir = curBB.CreateBlockInfoMIR(MirRETURNDATACOPY, valueStack)
 		case EXTCODEHASH:
 			mir = curBB.CreateBlockInfoMIR(MirEXTCODEHASH, valueStack)
-		case BLOCKHASH: 
+		case BLOCKHASH:
 			mir = curBB.CreateBlockOpMIR(MirBLOCKHASH, valueStack)
 		case COINBASE:
 			mir = curBB.CreateBlockOpMIR(MirCOINBASE, valueStack)
@@ -883,11 +917,11 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 // generateOptimizedBytecodeFromMIR generates optimized bytecode by combining MIR optimizations with original code
 func generateOptimizedBytecodeFromMIR(cfg *CFG, finalStack *ValueStack, originalCode []byte) ([]byte, error) {
 	var result []byte
-	
+
 	// Check if we have any optimized stack operations
 	hasStackOptimizations := false
 	optimizedInstructions := make(map[uint]bool)
-	
+
 	for _, bb := range cfg.basicBlocks {
 		if bb == nil {
 			continue
@@ -896,14 +930,14 @@ func generateOptimizedBytecodeFromMIR(cfg *CFG, finalStack *ValueStack, original
 			if mir == nil {
 				continue
 			}
-			
+
 			// Check for optimized stack operations (marked as NOP)
 			if mir.op == MirNOP && len(mir.oprands) > 0 {
 				// This was an optimized instruction, mark its original PC
 				if mir.pc != nil {
 					optimizedInstructions[*mir.pc] = true
 				}
-				
+
 				// Check if it was a stack operation
 				if len(mir.meta) > 0 {
 					// Check the original operation type from metadata
@@ -912,7 +946,7 @@ func generateOptimizedBytecodeFromMIR(cfg *CFG, finalStack *ValueStack, original
 			}
 		}
 	}
-	
+
 	// Strategy 1: If only math optimizations, use final stack
 	if !hasStackOptimizations {
 		stackBytes := convertStackToBytecode(finalStack)
@@ -920,7 +954,7 @@ func generateOptimizedBytecodeFromMIR(cfg *CFG, finalStack *ValueStack, original
 			return stackBytes, nil
 		}
 	}
-	
+
 	// Strategy 1.5: For stack optimizations, also try final stack approach
 	if hasStackOptimizations {
 		stackBytes := convertStackToBytecode(finalStack)
@@ -930,12 +964,12 @@ func generateOptimizedBytecodeFromMIR(cfg *CFG, finalStack *ValueStack, original
 			return stackBytes, nil
 		}
 	}
-	
+
 	// Strategy 2: For stack optimizations, remove optimized instructions from original code
 	if hasStackOptimizations {
 		result = make([]byte, 0, len(originalCode))
 		i := 0
-		
+
 		for i < len(originalCode) {
 			// Check if this instruction was optimized away
 			if optimizedInstructions[uint(i)] {
@@ -951,12 +985,12 @@ func generateOptimizedBytecodeFromMIR(cfg *CFG, finalStack *ValueStack, original
 				}
 				continue
 			}
-			
+
 			// Keep the original instruction
 			opcode := originalCode[i]
 			result = append(result, opcode)
 			i++
-			
+
 			// Handle PUSH instruction data
 			if opcode >= byte(PUSH1) && opcode <= byte(PUSH32) {
 				pushSize := int(opcode - byte(PUSH1) + 1)
@@ -966,29 +1000,28 @@ func generateOptimizedBytecodeFromMIR(cfg *CFG, finalStack *ValueStack, original
 				}
 			}
 		}
-		
+
 		return result, nil
 	}
-	
+
 	// Fallback: return original code
 	return originalCode, nil
 }
 
-
 // extractOptimizedConstants extracts optimized constant values and converts them to PUSH instructions
 func extractOptimizedConstants(bb *MIRBasicBlock) []byte {
 	var result []byte
-	
+
 	// Look for NOP instructions that represent optimized constants
 	for _, mir := range bb.instructions {
 		if mir == nil {
 			continue
 		}
-		
+
 		if mir.op == MirNOP && len(mir.meta) > 0 {
 			// This is an optimized instruction - check if it produced a constant
 			originalOp := MirOperation(mir.meta[0])
-			
+
 			// If this was an arithmetic operation that got optimized to a constant,
 			// we need to generate the appropriate PUSH instruction
 			if isOptimizable(originalOp) {
@@ -1002,18 +1035,18 @@ func extractOptimizedConstants(bb *MIRBasicBlock) []byte {
 			}
 		}
 	}
-	
+
 	return result
 }
 
 // convertStackToBytecode converts optimized constants from ValueStack to PUSH bytecode
 func convertStackToBytecode(stack *ValueStack) []byte {
 	var result []byte
-	
+
 	if stack == nil || stack.size() == 0 {
 		return result
 	}
-	
+
 	// Process all constant values in the stack
 	for i := 0; i < stack.size(); i++ {
 		value := stack.data[i]
@@ -1023,7 +1056,7 @@ func convertStackToBytecode(stack *ValueStack) []byte {
 			result = append(result, pushBytes...)
 		}
 	}
-	
+
 	return result
 }
 
@@ -1031,7 +1064,7 @@ func convertStackToBytecode(stack *ValueStack) []byte {
 func extractConstantFromOptimizedMIR(mir *MIR) []byte {
 	// This is a simplified implementation
 	// In a full implementation, you would track the constant values through the optimization process
-	
+
 	if len(mir.oprands) > 0 {
 		for _, operand := range mir.oprands {
 			if operand.kind == Konst && len(operand.payload) > 0 {
@@ -1039,6 +1072,6 @@ func extractConstantFromOptimizedMIR(mir *MIR) []byte {
 			}
 		}
 	}
-	
+
 	return nil
 }

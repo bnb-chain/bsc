@@ -12,7 +12,7 @@ func TestOpcodeParse(t *testing.T) {
 	testCode := []byte{0x60, 0x01, 0x01, 0x00}
 
 	// Test that parsing doesn't crash
-	err := doOpcodesParse(common.Hash{}, testCode)
+	_, err := doOpcodesParse(common.Hash{}, testCode)
 	if err != nil {
 		t.Logf("Opcode parsing completed with error (expected for simple test): %v", err)
 	} else {
@@ -64,7 +64,7 @@ func TestNewlyImplementedOpcodes(t *testing.T) {
 	}
 
 	// Test that parsing doesn't crash with new opcodes
-	err := doOpcodesParse(common.Hash{}, testCode)
+	_, err := doOpcodesParse(common.Hash{}, testCode)
 	if err != nil {
 		t.Logf("Opcode parsing completed with error (expected for simple test): %v", err)
 	} else {
@@ -95,7 +95,7 @@ func TestEOFOperations(t *testing.T) {
 	}
 
 	// Test that parsing doesn't crash with EOF opcodes
-	err := doOpcodesParse(common.Hash{}, testCode)
+	_, err := doOpcodesParse(common.Hash{}, testCode)
 	if err != nil {
 		t.Logf("EOF opcode parsing completed with error (expected for simple test): %v", err)
 	} else {

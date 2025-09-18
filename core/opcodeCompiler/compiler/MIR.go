@@ -217,7 +217,12 @@ func doPeepHole3Ops(operation MirOperation, opnd1 *Value, opnd2 *Value, opnd3 *V
 	
 	if optimized && val1 != nil {
 		// Create a new constant value with the optimized result
-		newVal := newValue(Konst, nil, nil, val1.Bytes())
+		payload := val1.Bytes()
+		// Handle special case where Bytes() returns empty slice for zero
+		if len(payload) == 0 && val1.IsZero() {
+			payload = []byte{0x00}
+		}
+		newVal := newValue(Konst, nil, nil, payload)
 		stack.push(newVal)
 	}
 	
@@ -340,7 +345,12 @@ func doPeepHole(operation MirOperation, opnd1 *Value, opnd2 *Value, stack *Value
 
 	if optimized && val1 != nil {
 		// Create a new constant value with the optimized result
-		newVal := newValue(Konst, nil, nil, val1.Bytes())
+		payload := val1.Bytes()
+		// Handle special case where Bytes() returns empty slice for zero
+		if len(payload) == 0 && val1.IsZero() {
+			payload = []byte{0x00}
+		}
+		newVal := newValue(Konst, nil, nil, payload)
 		stack.push(newVal)
 	}
 

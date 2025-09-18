@@ -90,6 +90,43 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		MirLT, MirGT, MirSLT, MirSGT, MirEQ, MirAND, MirOR, MirXOR,
 		MirBYTE, MirSHL, MirSHR, MirSAR:
 		return it.execArithmetic(m)
+	
+	// Three-operand arithmetic
+	case MirADDMOD:
+		if len(m.oprands) < 3 {
+			return fmt.Errorf("ADDMOD missing operands")
+		}
+		val1 := it.evalValue(m.oprands[0])
+		val2 := it.evalValue(m.oprands[1])
+		val3 := it.evalValue(m.oprands[2])
+		
+		if val3.IsZero() {
+			// EVM returns 0 for division by zero
+			it.setResult(m, uint256.NewInt(0))
+		} else {
+			temp := uint256.NewInt(0).Add(val1, val2)
+			result := temp.Mod(temp, val3)
+			it.setResult(m, result)
+		}
+		return nil
+		
+	case MirMULMOD:
+		if len(m.oprands) < 3 {
+			return fmt.Errorf("MULMOD missing operands")
+		}
+		val1 := it.evalValue(m.oprands[0])
+		val2 := it.evalValue(m.oprands[1])
+		val3 := it.evalValue(m.oprands[2])
+		
+		if val3.IsZero() {
+			// EVM returns 0 for division by zero
+			it.setResult(m, uint256.NewInt(0))
+		} else {
+			temp := uint256.NewInt(0).Mul(val1, val2)
+			result := temp.Mod(temp, val3)
+			it.setResult(m, result)
+		}
+		return nil
 
 	case MirISZERO:
 		if len(m.oprands) < 1 {
