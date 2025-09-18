@@ -152,9 +152,22 @@ func (voteManager *VoteManager) loop() {
 			}
 
 			curHead := cHead.Header
+			voteTarget := curHead
+			if p, ok := voteManager.engine.(*parlia.Parlia); ok {
+				var err error
+				voteTarget, err = p.VoteTarget(voteManager.chain, curHead)
+				if err != nil {
+					log.Debug("Get VoteTarget", "err", err)
+					continue
+				}
+				if voteTarget == nil {
+					log.Debug("skip voting", "blockNumber", curHead.Number.Uint64())
+					continue
+				}
+			}
 
-			// Check if cur validator is within the validatorSet at curHead
-			if !voteManager.engine.IsActiveValidatorAt(voteManager.chain, curHead,
+			// Check if cur validator is within the validatorSet at voteTarget
+			if !voteManager.engine.IsActiveValidatorAt(voteManager.chain, voteTarget,
 				func(bLSPublicKey *types.BLSPublicKey) bool {
 					return bytes.Equal(voteManager.signer.PubKey[:], bLSPublicKey[:])
 				}) {
@@ -164,16 +177,16 @@ func (voteManager *VoteManager) loop() {
 
 			// Vote for curBlockHeader block.
 			vote := &types.VoteData{
-				TargetNumber: curHead.Number.Uint64(),
-				TargetHash:   curHead.Hash(),
+				TargetNumber: voteTarget.Number.Uint64(),
+				TargetHash:   voteTarget.Hash(),
 			}
 			voteMessage := &types.VoteEnvelope{
 				Data: vote,
 			}
 
 			// Put Vote into journal and VotesPool if we are active validator and allow to sign it.
-			if ok, sourceNumber, sourceHash := voteManager.UnderRules(curHead); ok {
-				log.Debug("curHead is underRules for voting")
+			if ok, sourceNumber, sourceHash := voteManager.UnderRules(curHead, voteTarget); ok {
+				log.Debug("voteTarget is underRules for voting")
 				if sourceHash == (common.Hash{}) {
 					log.Debug("sourceHash is empty")
 					continue
@@ -209,7 +222,7 @@ func (voteManager *VoteManager) loop() {
 
 				log.Debug("vote manager produced vote", "votedBlockNumber", voteMessage.Data.TargetNumber, "votedBlockHash", voteMessage.Data.TargetHash, "voteMessageHash", voteMessage.Hash())
 				voteManager.pool.PutVote(voteMessage)
-				voteManager.chain.GetBlockStats(curHead.Hash()).SendVoteTime.Store(time.Now().UnixMilli())
+				voteManager.chain.GetBlockStats(voteTarget.Hash()).SendVoteTime.Store(time.Now().UnixMilli())
 				votesManagerCounter.Inc(1)
 			}
 
@@ -267,15 +280,14 @@ func (voteManager *VoteManager) loop() {
 // UnderRules checks if the produced header under the following rules:
 // A validator must not publish two distinct votes for the same height. (Rule 1)
 // A validator must not vote within the span of its other votes . (Rule 2)
-// Validators always vote for their canonical chain’s latest block. (Rule 3)
-func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, common.Hash) {
-	sourceNumber, sourceHash, err := voteManager.engine.GetJustifiedNumberAndHash(voteManager.chain, []*types.Header{header})
+func (voteManager *VoteManager) UnderRules(curHeader, targetHeader *types.Header) (bool, uint64, common.Hash) {
+	sourceNumber, sourceHash, err := voteManager.engine.GetJustifiedNumberAndHash(voteManager.chain, []*types.Header{curHeader})
 	if err != nil {
-		log.Error("failed to get the highest justified number and hash at cur header", "curHeader's BlockNumber", header.Number, "curHeader's BlockHash", header.Hash())
+		log.Error("failed to get the highest justified number and hash at cur header", "curHeader's BlockNumber", curHeader.Number, "curHeader's BlockHash", curHeader.Hash())
 		return false, 0, common.Hash{}
 	}
 
-	targetNumber := header.Number.Uint64()
+	targetNumber := targetHeader.Number.Uint64()
 
 	voteDataBuffer := voteManager.journal.voteDataBuffer
 	//Rule 1:  A validator must not publish two distinct votes for the same height.
@@ -318,8 +330,6 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 		}
 	}
 
-	// Rule 3: Validators always vote for their canonical chain’s latest block.
-	// Since the header subscribed to is the canonical chain, so this rule is satisfied by default.
-	log.Debug("All three rules check passed")
+	log.Debug("All two rules check passed")
 	return true, sourceNumber, sourceHash
 }

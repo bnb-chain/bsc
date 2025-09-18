@@ -335,11 +335,6 @@ func (v *MockValidator) Produce(attestation uint64) (*MockBlock, error) {
 }
 
 func (v *MockValidator) Vote(block *MockBlock) bool {
-	// Rule 3: The block should be the latest block of canonical chain
-	if block != v.head {
-		return false
-	}
-
 	// Rule 1: No double vote
 	if _, ok := v.voteRecords[block.blockNumber]; ok {
 		return false

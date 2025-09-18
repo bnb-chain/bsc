@@ -438,6 +438,15 @@ func getVoteAttestationFromHeader(header *types.Header, chainConfig *params.Chai
 	return &attestation, nil
 }
 
+// getVoteAttestation returns the vote attestation extracted from the header's extra field if exists.
+func (p *Parlia) getVoteAttestation(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) (*types.VoteAttestation, error) {
+	epochLength, err := p.epochLength(chain, header, parents)
+	if err != nil {
+		return nil, err
+	}
+	return getVoteAttestationFromHeader(header, chain.Config(), epochLength)
+}
+
 // getParent returns the parent of a given block.
 func (p *Parlia) getParent(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) (*types.Header, error) {
 	var parent *types.Header
@@ -465,11 +474,7 @@ func trimParents(parents []*types.Header) []*types.Header {
 // verifyVoteAttestation checks whether the vote attestation in the header is valid.
 func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) error {
 	// === Step 1: Extract attestation ===
-	epochLength, err := p.epochLength(chain, header, parents)
-	if err != nil {
-		return err
-	}
-	attestation, err := getVoteAttestationFromHeader(header, chain.Config(), epochLength)
+	attestation, err := p.getVoteAttestation(chain, header, parents)
 	if err != nil {
 		return err
 	}
@@ -1291,11 +1296,7 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 		if head == nil {
 			return fmt.Errorf("header is nil at height %d", height)
 		}
-		epochLength, err := p.epochLength(chain, head, nil)
-		if err != nil {
-			return err
-		}
-		voteAttestation, err := getVoteAttestationFromHeader(head, chain.Config(), epochLength)
+		voteAttestation, err := p.getVoteAttestation(chain, head, nil)
 		if err != nil {
 			return err
 		}
@@ -1632,7 +1633,12 @@ func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteE
 		return errors.New("unexpected error when getting the highest justified number and hash")
 	}
 	if vote.Data.SourceNumber != justifiedBlockNumber || vote.Data.SourceHash != justifiedBlockHash {
-		return errors.New("vote source block mismatch")
+		// It's possible the local chain hasn't reached the justified parent of the target header yet
+		// due to slight lag (mini lagging). In that case, allow the vote if it points to
+		// the parent of the target header.
+		if vote.Data.SourceNumber+1 != targetNumber || vote.Data.SourceHash != header.ParentHash {
+			return errors.New("vote source block mismatch")
+		}
 	}
 
 	number := header.Number.Uint64()
@@ -2416,6 +2422,81 @@ func (p *Parlia) BlockInterval(chain consensus.ChainHeaderReader, header *types.
 		return defaultBlockInterval, err
 	}
 	return snap.BlockInterval, nil
+}
+
+func (p *Parlia) loadAttestations(chain consensus.ChainHeaderReader, hdr *types.Header) (att, patt *types.VoteAttestation, err error) {
+	att, err = p.getVoteAttestation(chain, hdr, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	parent := chain.GetHeaderByHash(hdr.ParentHash)
+	if parent == nil {
+		return nil, nil, errUnknownBlock
+	}
+
+	patt, err = p.getVoteAttestation(chain, parent, nil)
+	return
+}
+
+func (p *Parlia) skipVoting(chain consensus.ChainHeaderReader, curHead *types.Header) bool {
+	if p.GetAncestorGenerationDepth(curHead) != 3 {
+		return false
+	}
+
+	att, patt, err := p.loadAttestations(chain, curHead)
+	if err != nil {
+		return false
+	}
+
+	if att == nil && patt != nil {
+		latestJustified, _, err := p.GetJustifiedNumberAndHash(chain, []*types.Header{curHead})
+		if err != nil {
+			return false
+		}
+		return latestJustified+2 != curHead.Number.Uint64()
+	}
+
+	return false
+}
+
+// VoteTarget determines which block a validator should vote for.
+// Returns nil if no vote is needed. (Refer BEP-590)
+func (p *Parlia) VoteTarget(chain consensus.ChainHeaderReader, curHead *types.Header) (*types.Header, error) {
+	if p.GetAncestorGenerationDepth(curHead) != 3 {
+		return curHead, nil
+	}
+
+	// --- Rule 1: Skip voting ---
+	if p.skipVoting(chain, curHead) {
+		return nil, nil
+	}
+
+	// --- Rule 2: Vote for latestJustified + 1 ---
+	att, parentAtt, err := p.loadAttestations(chain, curHead)
+	if err != nil {
+		return nil, err
+	}
+	if att != nil && parentAtt == nil {
+		latestJustified, _, err := p.GetJustifiedNumberAndHash(chain, []*types.Header{curHead})
+		if err != nil {
+			return nil, err
+		}
+		target := chain.GetHeaderByNumber(latestJustified + 1)
+		if target != nil && p.skipVoting(chain, target) {
+			latestFinalized := p.GetFinalizedHeader(chain, curHead)
+			needAdvanceFinalized := latestFinalized != nil &&
+				latestFinalized.Number.Uint64()+1 != latestJustified
+			canAssemble := latestJustified+2 >= curHead.Number.Uint64()
+
+			if needAdvanceFinalized && canAssemble {
+				return target, nil
+			}
+		}
+	}
+
+	// --- Rule 3: Vote for current head as fallback ---
+	return curHead, nil
 }
 
 func (p *Parlia) NextProposalBlock(chain consensus.ChainHeaderReader, header *types.Header, proposer common.Address) (uint64, uint64, error) {
