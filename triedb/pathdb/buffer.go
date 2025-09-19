@@ -197,7 +197,6 @@ func (b *buffer) flush(root common.Hash, db ethdb.Database, separateSnapDB ethdb
 				return
 			}
 		} else {
-			log.Info("multidb concurrent flushing")
 			var wg sync.WaitGroup
 			var trieErr, snapErr error
 
