@@ -19,6 +19,7 @@ package minerconfig
 
 import (
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -86,6 +87,50 @@ var DefaultConfig = Config{
 type BuilderConfig struct {
 	Address common.Address
 	URL     string
+	Name    string `toml:",omitempty"` // Builder name, if empty will use domain suffix from URL
+}
+
+// GetBuilderName returns the builder name for this config
+// If Name is set, use it; otherwise extract from URL domain
+func (bc *BuilderConfig) GetBuilderName() string {
+	if bc.Name != "" {
+		return bc.Name
+	}
+	if bc.URL != "" {
+		return extractDomainSuffix(bc.URL)
+	}
+	// If no URL, return address as string
+	return bc.Address.Hex()
+}
+
+// extractDomainSuffix extracts the domain suffix from a URL
+// e.g., "https://tokyo.builder.blockrazor.io" -> "blockrazor"
+func extractDomainSuffix(url string) string {
+	// Remove protocol
+	if idx := strings.Index(url, "://"); idx != -1 {
+		url = url[idx+3:]
+	}
+
+	// Remove port if present
+	if idx := strings.Index(url, ":"); idx != -1 {
+		url = url[:idx]
+	}
+
+	// Remove path
+	if idx := strings.Index(url, "/"); idx != -1 {
+		url = url[:idx]
+	}
+
+	// Split by dots
+	parts := strings.Split(url, ".")
+
+	// If length >= 2, return the second to last part
+	if len(parts) >= 2 {
+		return parts[len(parts)-2]
+	}
+
+	// For invalid formats, return the original URL
+	return url
 }
 
 type MevConfig struct {
@@ -98,6 +143,17 @@ type MevConfig struct {
 	BidSimulationLeftOver *time.Duration  `toml:",omitempty"`
 	NoInterruptLeftOver   *time.Duration  `toml:",omitempty"`
 	MaxBidsPerBuilder     *uint32         `toml:",omitempty"` // Maximum number of bids allowed per builder per block
+}
+
+// GetBuilderName returns the builder name for the given address
+func (mc *MevConfig) GetBuilderName(builder common.Address) string {
+	for _, builderConfig := range mc.Builders {
+		if builderConfig.Address == builder {
+			return builderConfig.GetBuilderName()
+		}
+	}
+	// If no mapping found, return the address as string
+	return builder.Hex()
 }
 
 var DefaultMevConfig = MevConfig{
