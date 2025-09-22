@@ -596,8 +596,8 @@ func tryGetOptimizedCodeWithMIR(evm *EVM, codeHash common.Hash, rawCode []byte, 
 		code = optCode
 		optimized = true
 	} else {
-		// Generate superinstruction-optimized code (without MIR)
-		optCode, err := compiler.GenOrRewriteOptimizedCodeWithoutMIR(codeHash, rawCode)
+		// Generate optimized code (with MIR if available)
+		optCode, err := compiler.GenOrRewriteOptimizedCode(codeHash, rawCode)
 		if err == nil && len(optCode) != 0 {
 			code = optCode
 			optimized = true
