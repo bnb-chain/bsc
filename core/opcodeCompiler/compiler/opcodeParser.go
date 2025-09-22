@@ -433,7 +433,6 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 		case JUMP:
 			mir = curBB.CreateJumpMIR(MirJUMP, valueStack, nil)
 			if mir != nil {
-				curBB.appendMIR(mir)
 				// Create a new basic block for the jump target
 				if len(mir.oprands) > 0 && mir.oprands[0].payload != nil {
 					targetPC := uint64(0)
@@ -456,7 +455,6 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 		case JUMPI:
 			mir = curBB.CreateJumpMIR(MirJUMPI, valueStack, nil)
 			if mir != nil {
-				curBB.appendMIR(mir)
 				// Create new basic blocks for both true and false paths
 				if len(mir.oprands) > 0 && mir.oprands[0].payload != nil {
 					targetPC := uint64(0)
@@ -499,9 +497,6 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			}
 
 			mir = curBB.CreateVoidMIR(MirJUMPDEST)
-			if mir != nil {
-				curBB.appendMIR(mir)
-			}
 		case PC:
 			mir = curBB.CreateBlockInfoMIR(MirPC, valueStack)
 		case MSIZE:
@@ -529,6 +524,9 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 				memoryAccessor.recordStore(dest, length, Value{kind: Variable})
 			}
 			valueStack.push(mir.Result())
+			if mir != nil {
+				curBB.appendMIR(mir)
+			}
 		case PUSH0:
 			_ = curBB.CreatePushMIR(0, []byte{}, valueStack)
 		case LOG0:
@@ -916,9 +914,6 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			return fmt.Errorf("unknown opcode: %v", op)
 		}
 
-		if mir != nil {
-			curBB.appendMIR(mir)
-		}
 		i++
 	}
 	return nil
