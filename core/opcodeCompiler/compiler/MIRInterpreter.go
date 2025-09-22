@@ -27,6 +27,17 @@ type MIRExecutionEnv struct {
 	BaseFee     uint64
 	SelfBalance uint64
 	ReturnData  []byte
+
+	// Runtime linkage hooks to EVM components (provided by adapter at runtime)
+	// If these are nil, interpreter falls back to internal simulated state.
+	SLoadFunc      func(key [32]byte) [32]byte
+	SStoreFunc     func(key [32]byte, value [32]byte)
+	GetBalanceFunc func(addr [20]byte) *uint256.Int
+
+	// Address context (optional, provided by adapter)
+	Self   [20]byte
+	Caller [20]byte
+	Origin [20]byte
 }
 
 // MIRInterpreter executes MIR instructions and produces values.
@@ -206,6 +217,59 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		key := it.evalValue(m.oprands[0])
 		val := it.evalValue(m.oprands[1])
 		it.sstore(key, val)
+		return nil
+
+	// Env queries
+	case MirADDRESS:
+		b := make([]byte, 32)
+		copy(b[12:], it.env.Self[:])
+		it.setResult(m, uint256.NewInt(0).SetBytes(b))
+		return nil
+	case MirCALLER:
+		b := make([]byte, 32)
+		copy(b[12:], it.env.Caller[:])
+		it.setResult(m, uint256.NewInt(0).SetBytes(b))
+		return nil
+	case MirORIGIN:
+		b := make([]byte, 32)
+		copy(b[12:], it.env.Origin[:])
+		it.setResult(m, uint256.NewInt(0).SetBytes(b))
+		return nil
+	case MirGASPRICE:
+		it.setResult(m, uint256.NewInt(it.env.GasPrice))
+		return nil
+	case MirSELFBALANCE:
+		if it.env.GetBalanceFunc != nil {
+			it.setResult(m, it.env.GetBalanceFunc(it.env.Self))
+		} else {
+			it.setResult(m, uint256.NewInt(it.env.SelfBalance))
+		}
+		return nil
+	case MirCHAINID:
+		it.setResult(m, uint256.NewInt(it.env.ChainID))
+		return nil
+	case MirTIMESTAMP:
+		it.setResult(m, uint256.NewInt(it.env.Timestamp))
+		return nil
+	case MirNUMBER:
+		it.setResult(m, uint256.NewInt(it.env.BlockNumber))
+		return nil
+	case MirBASEFEE:
+		it.setResult(m, uint256.NewInt(it.env.BaseFee))
+		return nil
+	case MirBALANCE:
+		if len(m.oprands) < 1 {
+			return fmt.Errorf("BALANCE missing operand")
+		}
+		addrVal := it.evalValue(m.oprands[0])
+		addrBytes := addrVal.Bytes32()
+		var a20 [20]byte
+		copy(a20[:], addrBytes[12:])
+		if it.env.GetBalanceFunc != nil {
+			it.setResult(m, it.env.GetBalanceFunc(a20))
+		} else {
+			it.setResult(m, uint256.NewInt(0))
+		}
 		return nil
 
 	// Calldata / returndata
@@ -509,11 +573,17 @@ func (it *MIRInterpreter) returnDataCopy(dest, off, sz *uint256.Int) {
 }
 
 func (it *MIRInterpreter) sload(key *uint256.Int) *uint256.Int {
+	// Prefer runtime hook if provided
+	var k [32]byte
+	copy(k[:], key.Bytes())
+	if it.env.SLoadFunc != nil {
+		v := it.env.SLoadFunc(k)
+		return uint256.NewInt(0).SetBytes(v[:])
+	}
+	// Fallback to internal simulated map
 	if it.env.Storage == nil {
 		it.env.Storage = make(map[[32]byte][32]byte)
 	}
-	var k [32]byte
-	copy(k[:], key.Bytes())
 	val, ok := it.env.Storage[k]
 	if !ok {
 		return uint256.NewInt(0)
@@ -522,13 +592,19 @@ func (it *MIRInterpreter) sload(key *uint256.Int) *uint256.Int {
 }
 
 func (it *MIRInterpreter) sstore(key, val *uint256.Int) {
-	if it.env.Storage == nil {
-		it.env.Storage = make(map[[32]byte][32]byte)
-	}
 	var k [32]byte
 	var v [32]byte
 	copy(k[:], key.Bytes())
 	bytes := val.Bytes()
 	copy(v[32-len(bytes):], bytes)
+	// Prefer runtime hook if provided
+	if it.env.SStoreFunc != nil {
+		it.env.SStoreFunc(k, v)
+		return
+	}
+	// Fallback to internal simulated map
+	if it.env.Storage == nil {
+		it.env.Storage = make(map[[32]byte][32]byte)
+	}
 	it.env.Storage[k] = v
 }
