@@ -87,7 +87,6 @@ Remove blockchain and state databases`,
 			dbExportCmd,
 			dbMetadataCmd,
 			dbCheckStateContentCmd,
-			dbInspectHistoryCmd,
 
 			// only defined in bsc
 			dbInspectTrieCmd,
