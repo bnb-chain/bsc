@@ -369,8 +369,8 @@ var (
 	}
 	JournalFileFlag = &cli.BoolFlag{
 		Name:     "journalfile",
-		Usage:    "Enable using journal file to store the TrieJournal instead of KVDB in pbss (default = false)",
-		Value:    false,
+		Usage:    "Enable using journal file to store the TrieJournal instead of KVDB in pbss (default = true)",
+		Value:    true,
 		Category: flags.StateCategory,
 	}
 	StateHistoryFlag = &cli.Uint64Flag{
@@ -2078,9 +2078,8 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(PathDBSyncFlag.Name) {
 		cfg.PathSyncFlush = true
 	}
-	if ctx.IsSet(JournalFileFlag.Name) {
-		cfg.JournalFileEnabled = true
-	}
+
+	cfg.JournalFileEnabled = ctx.Bool(JournalFileFlag.Name)
 
 	if ctx.String(GCModeFlag.Name) == "archive" {
 		if cfg.TransactionHistory != 0 {
