@@ -37,8 +37,6 @@ type epochCheckpoint struct {
 	FirstIndex  uint64 // first log value index of the given block
 }
 
-// TODO(Nathan): need add checkpoints for bsc mainnet and chapel, otherwise it will go wrong for pruned nodes.
-//
 //go:embed checkpoints_mainnet.json
 var checkpointsMainnetJSON []byte
 
@@ -51,6 +49,12 @@ var checkpointsHoleskyJSON []byte
 //go:embed checkpoints_hoodi.json
 var checkpointsHoodiJSON []byte
 
+//go:embed checkpoints_bsc_chapel.json
+var checkpointsBSCChapelJSON []byte
+
+//go:embed checkpoints_bsc_mainnet.json
+var checkpointsBSCMainnetJSON []byte
+
 // checkpoints lists sets of checkpoints for multiple chains. The matching
 // checkpoint set is autodetected by the indexer once the canonical chain is
 // known.
@@ -59,6 +63,8 @@ var checkpoints = []checkpointList{
 	decodeCheckpoints(checkpointsSepoliaJSON),
 	decodeCheckpoints(checkpointsHoleskyJSON),
 	decodeCheckpoints(checkpointsHoodiJSON),
+	decodeCheckpoints(checkpointsBSCChapelJSON),
+	decodeCheckpoints(checkpointsBSCMainnetJSON),
 }
 
 func decodeCheckpoints(encoded []byte) (result checkpointList) {

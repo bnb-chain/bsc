@@ -484,7 +484,7 @@ func (bc *BlockChain) StateAt(root common.Hash) (*state.StateDB, error) {
 	// any state will by default return nil.
 	// Instead of that, it will be more useful to return an error to indicate
 	// the state is not available.
-	if stateDb.NoTrie() && stateDb.GetSnap() == nil {
+	if stateDb.NoTries() && stateDb.GetSnap() == nil {
 		return nil, errors.New("state is not available")
 	}
 

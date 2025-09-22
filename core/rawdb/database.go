@@ -143,11 +143,6 @@ func (db *nofreezedb) Ancients() (uint64, error) {
 	return 0, errNotSupported
 }
 
-// ItemAmountInAncient returns an error as we don't have a backing chain freezer.
-func (db *nofreezedb) ItemAmountInAncient() (uint64, error) {
-	return 0, errNotSupported
-}
-
 // Tail returns an error as we don't have a backing chain freezer.
 func (db *nofreezedb) Tail() (uint64, error) {
 	return 0, errNotSupported
@@ -226,10 +221,6 @@ func (db *nofreezedb) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) 
 	return fn(db)
 }
 
-func (db *nofreezedb) AncientOffSet() uint64 {
-	return 0
-}
-
 // AncientDatadir returns an error as we don't have a backing chain freezer.
 func (db *nofreezedb) AncientDatadir() (string, error) {
 	return "", errNotSupported
@@ -261,11 +252,6 @@ func (db *emptyfreezedb) AncientRange(kind string, start, max, maxByteSize uint6
 
 // Ancients returns nil for pruned db that we don't have a backing chain freezer.
 func (db *emptyfreezedb) Ancients() (uint64, error) {
-	return 0, nil
-}
-
-// ItemAmountInAncient returns nil for pruned db that we don't have a backing chain freezer.
-func (db *emptyfreezedb) ItemAmountInAncient() (uint64, error) {
 	return 0, nil
 }
 
@@ -316,7 +302,6 @@ func (db *emptyfreezedb) HasSeparateStateStore() bool        { return false }
 func (db *emptyfreezedb) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {
 	return nil
 }
-func (db *emptyfreezedb) AncientOffSet() uint64 { return 0 }
 
 // AncientDatadir returns nil for pruned db that we don't have a backing chain freezer.
 func (db *emptyfreezedb) AncientDatadir() (string, error) {
@@ -448,7 +433,7 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 	// If the genesis hash is empty, we have a new key-value store, so nothing to
 	// validate in this method. If, however, the genesis hash is not nil, compare
 	// it to the freezer content.
-	// Only to check the followings when offset/ancientTail equal to 0, otherwise the block number
+	// Only to check the following when offset/ancientTail equal to 0, otherwise the block number
 	// in ancientdb did not start with 0, no genesis block in ancientdb as well.
 	ancientTail, err := frdb.Tail()
 	if err != nil {
@@ -510,7 +495,6 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 			// freezer.
 		}
 	}
-
 	// Freezer is consistent with the key-value database, permit combining the two
 	if !opts.ReadOnly {
 		frdb.wg.Add(1)
@@ -599,28 +583,6 @@ func AncientInspect(db ethdb.Database) error {
 	table.AppendBulk(stats)
 	table.Render()
 
-	return nil
-}
-
-func PruneHashTrieNodeInDataBase(db ethdb.Database) error {
-	it := db.NewIterator([]byte{}, []byte{})
-	defer it.Release()
-
-	total_num := 0
-	for it.Next() {
-		var key = it.Key()
-		switch {
-		case IsLegacyTrieNode(key, it.Value()):
-			db.Delete(key)
-			total_num++
-			if total_num%100000 == 0 {
-				log.Info("Pruning hash-base state trie nodes", "Complete progress: ", total_num)
-			}
-		default:
-			continue
-		}
-	}
-	log.Info("Pruning hash-base state trie nodes", "Complete progress", total_num)
 	return nil
 }
 
@@ -726,8 +688,6 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			bodies.Add(size)
 		case bytes.HasPrefix(key, blockReceiptsPrefix) && len(key) == (len(blockReceiptsPrefix)+8+common.HashLength):
 			receipts.Add(size)
-		case IsLegacyTrieNode(key, it.Value()):
-			legacyTries.Add(size)
 		case bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerTDSuffix):
 			tds.Add(size)
 		case bytes.HasPrefix(key, BlockBlobSidecarsPrefix):
@@ -736,6 +696,8 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			numHashPairings.Add(size)
 		case bytes.HasPrefix(key, headerNumberPrefix) && len(key) == (len(headerNumberPrefix)+common.HashLength):
 			hashNumPairings.Add(size)
+		case IsLegacyTrieNode(key, it.Value()):
+			legacyTries.Add(size)
 		case bytes.HasPrefix(key, stateIDPrefix) && len(key) == len(stateIDPrefix)+common.HashLength:
 			stateLookups.Add(size)
 		case IsAccountTrieNode(key):
@@ -1008,7 +970,7 @@ var knownMetadataKeys = [][]byte{
 }
 
 // printChainMetadata prints out chain metadata to stderr.
-func printChainMetadata(db ethdb.Reader) {
+func printChainMetadata(db ethdb.KeyValueStore) {
 	fmt.Fprintf(os.Stderr, "Chain metadata\n")
 	for _, v := range ReadChainMetadata(db) {
 		fmt.Fprintf(os.Stderr, "  %s\n", strings.Join(v, ": "))
@@ -1019,7 +981,7 @@ func printChainMetadata(db ethdb.Reader) {
 // ReadChainMetadata returns a set of key/value pairs that contains information
 // about the database chain status. This can be used for diagnostic purposes
 // when investigating the state of the node.
-func ReadChainMetadata(db ethdb.Reader) [][]string {
+func ReadChainMetadata(db ethdb.KeyValueStore) [][]string {
 	pp := func(val *uint64) string {
 		if val == nil {
 			return "<nil>"
@@ -1056,7 +1018,7 @@ func ReadChainMetadata(db ethdb.Reader) [][]string {
 // is periodically called and if it returns an error then SafeDeleteRange
 // stops and also returns that error. The callback is not called if native
 // range delete is used or there are a small number of keys only. The bool
-// argument passed to the callback is true if enrties have actually been
+// argument passed to the callback is true if entries have actually been
 // deleted already.
 func SafeDeleteRange(db ethdb.KeyValueStore, start, end []byte, hashScheme bool, stopCallback func(bool) bool) error {
 	if !hashScheme {

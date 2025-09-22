@@ -276,7 +276,7 @@ func (s *StateDB) setError(err error) {
 	}
 }
 
-func (s *StateDB) NoTrie() bool {
+func (s *StateDB) NoTries() bool {
 	return s.db.NoTries()
 }
 
@@ -1276,6 +1276,9 @@ func (s *StateDB) commit(deleteEmptyObjects bool, noStorageWiping bool) (*stateU
 			} else {
 				storageTrieNodesUpdated += updates
 				storageTrieNodesDeleted += deletes
+			}
+			if s.NoTries() {
+				return nil
 			}
 			return nodes.Merge(set)
 		}

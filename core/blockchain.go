@@ -540,11 +540,7 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 		}
 	}
 	// Ensure that a previous crash in SetHead doesn't leave extra ancients
-	if frozen, err := bc.db.ItemAmountInAncient(); err == nil && frozen > 0 {
-		frozen, err = bc.db.Ancients()
-		if err != nil {
-			return nil, err
-		}
+	if frozen, err := bc.db.Ancients(); err == nil && frozen > 0 {
 		var (
 			needRewind bool
 			low        uint64
@@ -1398,7 +1394,6 @@ func (bc *BlockChain) ExportN(w io.Writer, first uint64, last uint64) error {
 func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 	var dbWg sync.WaitGroup
 	dbWg.Add(2)
-	defer dbWg.Wait()
 	go func() {
 		defer dbWg.Done()
 		// Add the block to the canonical chain number scheme and mark as the head
@@ -1423,6 +1418,7 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 			log.Crit("Failed to update chain indexes in chain db", "err", err)
 		}
 	}()
+	dbWg.Wait()
 
 	// Update all in-memory chain markers in the last step
 	bc.hc.SetCurrentHeader(block.Header())
@@ -1503,7 +1499,6 @@ func (bc *BlockChain) Stop() {
 						if err := triedb.Commit(recent.Root(), true); err != nil {
 							log.Error("Failed to commit recent state trie", "err", err)
 						} else {
-							rawdb.WriteSafePointBlockNumber(bc.db, recent.NumberU64())
 							once.Do(func() {
 								rawdb.WriteHeadBlockHash(bc.db, recent.Hash())
 							})
@@ -1514,8 +1509,6 @@ func (bc *BlockChain) Stop() {
 						log.Info("Writing snapshot state to disk", "root", snapBase)
 						if err := triedb.Commit(snapBase, true); err != nil {
 							log.Error("Failed to commit recent state trie", "err", err)
-						} else {
-							rawdb.WriteSafePointBlockNumber(bc.db, bc.CurrentBlock().Number.Uint64())
 						}
 					}
 					for !bc.triegc.Empty() {
@@ -1941,7 +1934,6 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 				}
 				// Flush an entire trie and restart the counters
 				bc.triedb.Commit(header.Root, true)
-				rawdb.WriteSafePointBlockNumber(bc.db, chosen)
 				bc.lastWrite = chosen
 				bc.gcproc = 0
 			}

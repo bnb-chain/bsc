@@ -138,7 +138,7 @@ func testChainSyncWithBlobs(t *testing.T, mode downloader.SyncMode, preCancunBlk
 	// Sync up the two handlers via both `eth` and `snap`
 	caps := []p2p.Cap{{Name: "eth", Version: ethVer}, {Name: "snap", Version: snapVer}}
 
-	emptyPipeEth, fullPipeEth := p2p.MsgPipe()
+	emptyPipeEth, fullPipeEth := p2p.MsgPipe(true)
 	defer emptyPipeEth.Close()
 	defer fullPipeEth.Close()
 
@@ -154,7 +154,7 @@ func testChainSyncWithBlobs(t *testing.T, mode downloader.SyncMode, preCancunBlk
 		return eth.Handle((*ethHandler)(full.handler), peer)
 	})
 
-	emptyPipeSnap, fullPipeSnap := p2p.MsgPipe()
+	emptyPipeSnap, fullPipeSnap := p2p.MsgPipe(true)
 	defer emptyPipeSnap.Close()
 	defer fullPipeSnap.Close()
 

@@ -36,7 +36,7 @@ import (
 // injects into the database the block hash->number mappings.
 func InitDatabaseFromFreezer(db ethdb.Database) {
 	// If we can't access the freezer or it's empty, abort
-	frozen, err := db.ItemAmountInAncient()
+	frozen, err := db.Ancients()
 	if err != nil || frozen == 0 {
 		return
 	}
@@ -45,8 +45,8 @@ func InitDatabaseFromFreezer(db ethdb.Database) {
 		start  = time.Now()
 		logged = start.Add(-7 * time.Second) // Unindex during import is fast, don't double log
 		hash   common.Hash
-		offset = db.AncientOffSet()
 	)
+	offset, _ := db.Tail()
 	for i := uint64(0) + offset; i < frozen+offset; i++ {
 		// We read 100K hashes at a time, for a total of 3.2M
 		count := uint64(100_000)
@@ -101,7 +101,7 @@ func iterateTransactions(db ethdb.Database, from uint64, to uint64, reverse bool
 		number uint64
 		rlp    rlp.RawValue
 	}
-	if offset := db.AncientOffSet(); offset > from {
+	if offset, _ := db.Tail(); offset > from {
 		from = offset
 	}
 	if to <= from {
@@ -188,7 +188,7 @@ func iterateTransactions(db ethdb.Database, from uint64, to uint64, reverse bool
 // signal received.
 func indexTransactions(db ethdb.Database, from uint64, to uint64, interrupt chan struct{}, hook func(uint64) bool, report bool) {
 	// short circuit for invalid range
-	if offset := db.AncientOffSet(); offset > from {
+	if offset, _ := db.Tail(); offset > from {
 		from = offset
 	}
 	if from >= to {
@@ -287,7 +287,7 @@ func indexTransactionsForTesting(db ethdb.Database, from uint64, to uint64, inte
 // signal received.
 func unindexTransactions(db ethdb.Database, from uint64, to uint64, interrupt chan struct{}, hook func(uint64) bool, report bool) {
 	// short circuit for invalid range
-	if offset := db.AncientOffSet(); offset > from {
+	if offset, _ := db.Tail(); offset > from {
 		from = offset
 	}
 	if from >= to {
