@@ -170,10 +170,15 @@ func executeAndOptimizeMIR(cfg *CFG, finalStack *ValueStack, originalCode []byte
 	var executionResults [][]byte
 	var hasOptimizedInstructions bool
 
+	log.Info("Starting MIR interpreter execution", "totalBlocks", len(cfg.basicBlocks))
+
 	for _, bb := range cfg.basicBlocks {
 		if bb == nil || len(bb.instructions) == 0 {
 			continue
 		}
+
+		// 添加基本块执行日志
+		log.Debug("Executing basic block", "blockNum", bb.blockNum, "firstPC", bb.firstPC, "instructions", len(bb.instructions))
 
 		// Check if this basic block contains optimized instructions (NOP operations)
 		for _, mir := range bb.instructions {
@@ -192,8 +197,13 @@ func executeAndOptimizeMIR(cfg *CFG, finalStack *ValueStack, originalCode []byte
 
 		if len(result) > 0 {
 			executionResults = append(executionResults, result)
+			// 添加执行结果日志
+			log.Debug("Basic block execution completed", "blockNum", bb.blockNum, "resultSize", len(result))
 		}
 	}
+
+	// 在循环结束后添加
+	log.Info("MIR interpreter execution completed", "executedBlocks", len(executionResults), "hasOptimizations", hasOptimizedInstructions)
 
 	// Step 2: Generate bytecode based on execution results
 	if len(executionResults) > 0 {

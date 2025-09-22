@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 )
 
@@ -69,6 +70,9 @@ func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
 			}
 		}
 	}
+
+	// 添加基本块完成执行的日志
+	log.Debug("MIRInterpreter: Block execution completed", "blockNum", block.blockNum, "returnDataSize", len(it.returndata), "instructions", block.instructions)
 	return it.returndata, nil
 }
 
@@ -90,7 +94,7 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		MirLT, MirGT, MirSLT, MirSGT, MirEQ, MirAND, MirOR, MirXOR,
 		MirBYTE, MirSHL, MirSHR, MirSAR:
 		return it.execArithmetic(m)
-	
+
 	// Three-operand arithmetic
 	case MirADDMOD:
 		if len(m.oprands) < 3 {
@@ -99,7 +103,7 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		val1 := it.evalValue(m.oprands[0])
 		val2 := it.evalValue(m.oprands[1])
 		val3 := it.evalValue(m.oprands[2])
-		
+
 		if val3.IsZero() {
 			// EVM returns 0 for division by zero
 			it.setResult(m, uint256.NewInt(0))
@@ -109,7 +113,7 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 			it.setResult(m, result)
 		}
 		return nil
-		
+
 	case MirMULMOD:
 		if len(m.oprands) < 3 {
 			return fmt.Errorf("MULMOD missing operands")
@@ -117,7 +121,7 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		val1 := it.evalValue(m.oprands[0])
 		val2 := it.evalValue(m.oprands[1])
 		val3 := it.evalValue(m.oprands[2])
-		
+
 		if val3.IsZero() {
 			// EVM returns 0 for division by zero
 			it.setResult(m, uint256.NewInt(0))
