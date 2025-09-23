@@ -12,6 +12,7 @@ import (
 const (
 	Bsc1 = 1
 	Bsc2 = 2
+	Bsc3 = 3 // to BAL process
 )
 
 // ProtocolName is the official short name of the `bsc` protocol used during
@@ -20,11 +21,11 @@ const ProtocolName = "bsc"
 
 // ProtocolVersions are the supported versions of the `bsc` protocol (first
 // is primary).
-var ProtocolVersions = []uint{Bsc1, Bsc2}
+var ProtocolVersions = []uint{Bsc1, Bsc2, Bsc3}
 
 // protocolLengths are the number of implemented message corresponding to
 // different protocol versions.
-var protocolLengths = map[uint]uint64{Bsc1: 2, Bsc2: 4}
+var protocolLengths = map[uint]uint64{Bsc1: 2, Bsc2: 4, Bsc3: 4}
 
 // maxMessageSize is the maximum cap on the size of a protocol message.
 const maxMessageSize = 10 * 1024 * 1024
@@ -84,8 +85,9 @@ type BlockData struct {
 	Header      *types.Header
 	Txs         []*types.Transaction
 	Uncles      []*types.Header
-	Withdrawals []*types.Withdrawal `rlp:"optional"`
-	Sidecars    types.BlobSidecars  `rlp:"optional"`
+	Withdrawals []*types.Withdrawal          `rlp:"optional"`
+	Sidecars    types.BlobSidecars           `rlp:"optional"`
+	BAL         *types.BlockAccessListEncode `rlp:"optional"`
 }
 
 // NewBlockData creates a new BlockData object from a block
@@ -96,6 +98,7 @@ func NewBlockData(block *types.Block) *BlockData {
 		Uncles:      block.Uncles(),
 		Withdrawals: block.Withdrawals(),
 		Sidecars:    block.Sidecars(),
+		BAL:         block.BAL(),
 	}
 }
 

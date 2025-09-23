@@ -121,13 +121,13 @@ func (env *environment) copy() *environment {
 		receipts:  copyReceipts(env.receipts),
 		committed: env.committed,
 	}
+	cpy.state.TransferBlockAccessList(env.state)
 	if env.gasPool != nil {
 		gasPool := *env.gasPool
 		cpy.gasPool = &gasPool
 	}
 	cpy.txs = make([]*types.Transaction, len(env.txs))
 	copy(cpy.txs, env.txs)
-
 	if env.sidecars != nil {
 		cpy.sidecars = make(types.BlobSidecars, len(env.sidecars))
 		copy(cpy.sidecars, env.sidecars)
@@ -664,6 +664,13 @@ func (w *worker) resultLoop() {
 				w.recentMinedBlocks.Add(block.NumberU64(), []common.Hash{block.ParentHash()})
 			}
 
+			// add BAL to the block
+			bal := task.state.GetEncodedBlockAccessList(block)
+			if bal != nil && w.engine.SignBAL(bal) == nil {
+				block = block.WithBAL(bal)
+			}
+			task.state.DumpAccessList(block)
+
 			// Commit block and state to database.
 			start := time.Now()
 			status, err := w.chain.WriteBlockAndSetHead(block, receipts, logs, task.state, w.mux)
@@ -680,7 +687,7 @@ func (w *worker) resultLoop() {
 			stats.SendBlockTime.Store(time.Now().UnixMilli())
 			stats.StartMiningTime.Store(task.miningStartAt.UnixMilli())
 			log.Info("Successfully seal and write new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
-				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
+				"block size(noBal)", block.Size(), "balSize", block.BALSize(), "elapsed", common.PrettyDuration(time.Since(task.createdAt)))
 			w.mux.Post(core.NewMinedBlockEvent{Block: block})
 
 		case <-w.exitCh:

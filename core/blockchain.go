@@ -215,6 +215,9 @@ type BlockChainConfig struct {
 	// If the value is zero, all transactions of the entire chain will be indexed.
 	// If the value is -1, indexing is disabled.
 	TxLookupLimit int64
+
+	// EnableBAL enables the block access list feature
+	EnableBAL bool
 }
 
 // DefaultConfig returns the default config.
@@ -1222,6 +1225,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 			rawdb.DeleteReceipts(db, hash, num)
 			rawdb.DeleteTd(db, hash, num)
 			rawdb.DeleteBlobSidecars(db, hash, num)
+			rawdb.DeleteBAL(db, hash, num)
 		}
 		// Todo(rjl493456442) txlookup, log index, etc
 	}
@@ -1736,6 +1740,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 				rawdb.WriteBlobSidecars(batch, block.Hash(), block.NumberU64(), block.Sidecars())
 			}
+			rawdb.WriteBAL(batch, block.Hash(), block.NumberU64(), block.BAL())
 
 			// Write everything belongs to the blocks into the database. So that
 			// we can ensure all components of body is completed(body, receipts)
@@ -1814,6 +1819,7 @@ func (bc *BlockChain) writeBlockWithoutState(block *types.Block, td *big.Int) (e
 	if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 		rawdb.WriteBlobSidecars(blockBatch, block.Hash(), block.NumberU64(), block.Sidecars())
 	}
+	rawdb.WriteBAL(blockBatch, block.Hash(), block.NumberU64(), block.BAL())
 	if err := blockBatch.Write(); err != nil {
 		log.Crit("Failed to write block into disk", "err", err)
 	}
@@ -1860,6 +1866,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 			rawdb.WriteBlobSidecars(blockBatch, block.Hash(), block.NumberU64(), block.Sidecars())
 		}
+		rawdb.WriteBAL(blockBatch, block.Hash(), block.NumberU64(), block.BAL())
 		if bc.db.HasSeparateStateStore() {
 			rawdb.WritePreimages(bc.db.GetStateStore(), statedb.Preimages())
 		} else {
@@ -2415,7 +2422,7 @@ func (bc *BlockChain) processBlock(parentRoot common.Hash, block *types.Block, s
 	defer interrupt.Store(true) // terminate the prefetch at the end
 
 	needBadSharedStorage := bc.chainConfig.NeedBadSharedStorage(block.Number())
-	needPrefetch := needBadSharedStorage || (!bc.cfg.NoPrefetch && len(block.Transactions()) >= prefetchTxNumber)
+	needPrefetch := needBadSharedStorage || (!bc.cfg.NoPrefetch && len(block.Transactions()) >= prefetchTxNumber) || block.BAL() != nil
 	if !needPrefetch {
 		statedb, err = state.New(parentRoot, bc.statedb)
 		if err != nil {
@@ -2453,11 +2460,17 @@ func (bc *BlockChain) processBlock(parentRoot common.Hash, block *types.Block, s
 			storageCacheMissMeter.Mark(stats.StorageMiss)
 		}()
 
+		interruptChan := make(chan struct{})
+		defer close(interruptChan)
 		go func(start time.Time, throwaway *state.StateDB, block *types.Block) {
 			// Disable tracing for prefetcher executions.
 			vmCfg := bc.cfg.VmConfig
 			vmCfg.Tracer = nil
-			bc.prefetcher.Prefetch(block.Transactions(), block.Header(), block.GasLimit(), throwaway, vmCfg, &interrupt)
+			if block.BAL() != nil {
+				bc.prefetcher.PrefetchBAL(block, throwaway, interruptChan)
+			} else {
+				bc.prefetcher.Prefetch(block.Transactions(), block.Header(), block.GasLimit(), throwaway, vmCfg, &interrupt)
+			}
 
 			blockPrefetchExecuteTimer.Update(time.Since(start))
 			if interrupt.Load() {
