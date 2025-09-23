@@ -609,7 +609,9 @@ func (s *stateObject) setCode(codeHash common.Hash, code []byte) {
 	s.code = code
 	s.data.CodeHash = codeHash[:]
 	s.dirtyCode = true
+	// Trigger async optimization for both superinstruction and MIR
 	compiler.GenOrLoadOptimizedCode(codeHash, s.code)
+	compiler.GenOrLoadMIRCFG(codeHash, s.code)
 }
 
 func (s *stateObject) SetNonce(nonce uint64) {
