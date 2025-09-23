@@ -1,5 +1,9 @@
 package compiler
 
+import (
+	"github.com/holiman/uint256"
+)
+
 type ValueKind int
 
 const (
@@ -14,6 +18,7 @@ type Value struct {
 	def     *MIR
 	use     []*MIR
 	payload []byte
+	u       *uint256.Int // pre-decoded constant value (for Konst)
 }
 
 type ValueStack struct {
@@ -71,6 +76,14 @@ func newValue(kind ValueKind, def *MIR, use *MIR, payload []byte) *Value {
 		value.use = []*MIR{use}
 	}
 	value.payload = payload
+	if kind == Konst {
+		// Pre-decode constant to avoid per-op decoding and cache lookups
+		if len(payload) == 0 {
+			value.u = uint256.NewInt(0)
+		} else {
+			value.u = uint256.NewInt(0).SetBytes(payload)
+		}
+	}
 	return value
 }
 

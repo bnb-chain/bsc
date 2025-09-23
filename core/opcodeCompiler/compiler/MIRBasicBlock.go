@@ -1,5 +1,9 @@
 package compiler
 
+import (
+	"github.com/holiman/uint256"
+)
+
 // bitmap is a bit map which maps basicblock in to a bit
 type bitmap []byte
 
@@ -90,6 +94,32 @@ func (b *MIRBasicBlock) CreateVoidMIR(op MirOperation) (mir *MIR) {
 
 func (b *MIRBasicBlock) appendMIR(mir *MIR) *MIR {
 	mir.idx = len(b.instructions)
+	// Pre-encode operand info to avoid runtime eval costs
+	if len(mir.oprands) > 0 {
+		mir.opKinds = make([]byte, len(mir.oprands))
+		mir.opConst = make([]*uint256.Int, len(mir.oprands))
+		mir.opDefIdx = make([]int, len(mir.oprands))
+		for i, v := range mir.oprands {
+			if v == nil {
+				mir.opKinds[i] = 2
+				continue
+			}
+			switch v.kind {
+			case Konst:
+				mir.opKinds[i] = 0
+				mir.opConst[i] = v.u
+			case Variable, Arguments:
+				mir.opKinds[i] = 1
+				if v.def != nil {
+					mir.opDefIdx[i] = v.def.idx
+				} else {
+					mir.opDefIdx[i] = -1
+				}
+			default:
+				mir.opKinds[i] = 2
+			}
+		}
+	}
 	b.instructions = append(b.instructions, mir)
 	return mir
 }

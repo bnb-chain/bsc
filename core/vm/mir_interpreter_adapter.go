@@ -31,6 +31,25 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 		env.BaseFee = evm.Context.BaseFee.Uint64()
 	}
 
+	// Install runtime linkage hooks once; they read dynamic data from env/evm
+	env.SLoadFunc = func(key [32]byte) [32]byte {
+		// Use current contract address from env.Self
+		addr := common.BytesToAddress(env.Self[:])
+		return evm.StateDB.GetState(addr, common.BytesToHash(key[:]))
+	}
+	env.SStoreFunc = func(key [32]byte, value [32]byte) {
+		addr := common.BytesToAddress(env.Self[:])
+		evm.StateDB.SetState(addr, common.BytesToHash(key[:]), common.BytesToHash(value[:]))
+	}
+	env.GetBalanceFunc = func(addr20 [20]byte) *uint256.Int {
+		addr := common.BytesToAddress(addr20[:])
+		b := evm.StateDB.GetBalance(addr)
+		if b == nil {
+			return uint256.NewInt(0)
+		}
+		return new(uint256.Int).Set(b)
+	}
+
 	mirInterpreter := compiler.NewMIRInterpreter(env)
 
 	return &MIRInterpreterAdapter{
@@ -89,48 +108,21 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 	env.Calldata = input
 
 	// Set address context
-	var self20, caller20, origin20 [20]byte
-	copy(self20[:], contract.Address().Bytes())
-	copy(caller20[:], contract.Caller().Bytes())
-	copy(origin20[:], adapter.evm.TxContext.Origin.Bytes())
-	env.Self = self20
-	env.Caller = caller20
-	env.Origin = origin20
+	{
+		addr := contract.Address()
+		caller := contract.Caller()
+		origin := adapter.evm.TxContext.Origin
+		copy(env.Self[:], addr[:])
+		copy(env.Caller[:], caller[:])
+		copy(env.Origin[:], origin[:])
+	}
 
 	// Set contract balance from StateDB
-	{
-		bal := adapter.evm.StateDB.GetBalance(contract.Address())
-		if bal != nil {
-			env.SelfBalance = bal.Uint64()
-		} else {
-			env.SelfBalance = 0
-		}
-	}
+	// SelfBalance is read lazily via GetBalanceFunc when needed
 
 	// Set gas price from transaction context
 	if adapter.evm.TxContext.GasPrice != nil {
 		env.GasPrice = adapter.evm.TxContext.GasPrice.Uint64()
-	}
-
-	// Link storage hooks to StateDB
-	env.SLoadFunc = func(key [32]byte) [32]byte {
-		addr := contract.Address()
-		val := adapter.evm.StateDB.GetState(addr, common.BytesToHash(key[:]))
-		return val
-	}
-	env.SStoreFunc = func(key [32]byte, value [32]byte) {
-		addr := contract.Address()
-		adapter.evm.StateDB.SetState(addr, common.BytesToHash(key[:]), common.BytesToHash(value[:]))
-	}
-
-	// Balance query
-	env.GetBalanceFunc = func(addr20 [20]byte) *uint256.Int {
-		addr := common.BytesToAddress(addr20[:])
-		b := adapter.evm.StateDB.GetBalance(addr)
-		if b == nil {
-			return uint256.NewInt(0)
-		}
-		return new(uint256.Int).Set(b)
 	}
 }
 

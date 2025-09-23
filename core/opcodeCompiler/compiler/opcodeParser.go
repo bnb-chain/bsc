@@ -175,12 +175,15 @@ func (c *CFG) GetBasicBlocks() []*MIRBasicBlock {
 	return c.basicBlocks
 }
 
+<<<<<<< HEAD
 // executeAndOptimizeMIR function removed - compilation-time MIR execution is no longer needed
 // Runtime MIR execution is handled by MIRInterpreterAdapter using cached CFGs
 
 // Compilation-time bytecode generation functions removed
 // MIR CFGs are now cached and executed directly by MIRInterpreterAdapter at runtime
 
+=======
+>>>>>>> cb10d967a (refine and performance)
 func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memoryAccessor *MemoryAccessor, stateAccessor *StateAccessor, unprcessedBBs *MIRBasicBlockStack) error {
 	// Get the raw code from the CFG
 	code := c.rawCode
@@ -817,167 +820,5 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 
 		i++
 	}
-	return nil
-}
-
-// generateOptimizedBytecodeFromMIR generates optimized bytecode by combining MIR optimizations with original code
-func generateOptimizedBytecodeFromMIR(cfg *CFG, finalStack *ValueStack, originalCode []byte) ([]byte, error) {
-	var result []byte
-
-	// Check if we have any optimized stack operations
-	hasStackOptimizations := false
-	optimizedInstructions := make(map[uint]bool)
-
-	for _, bb := range cfg.basicBlocks {
-		if bb == nil {
-			continue
-		}
-		for _, mir := range bb.instructions {
-			if mir == nil {
-				continue
-			}
-
-			// Check for optimized stack operations (marked as NOP)
-			if mir.op == MirNOP && len(mir.oprands) > 0 {
-				// This was an optimized instruction, mark its original PC
-				if mir.pc != nil {
-					optimizedInstructions[*mir.pc] = true
-				}
-
-				// Check if it was a stack operation
-				if len(mir.meta) > 0 {
-					// Check the original operation type from metadata
-					hasStackOptimizations = true
-				}
-			}
-		}
-	}
-
-	// Strategy 1: If only math optimizations, use final stack
-	if !hasStackOptimizations {
-		stackBytes := convertStackToBytecode(finalStack)
-		if len(stackBytes) > 0 && len(stackBytes) < len(originalCode) {
-			return stackBytes, nil
-		}
-	}
-
-	// Strategy 1.5: For stack optimizations, also try final stack approach
-	if hasStackOptimizations {
-		stackBytes := convertStackToBytecode(finalStack)
-		if len(stackBytes) > 0 {
-			// For stack operations, we might want to use the final stack
-			// even if it's not smaller, because it represents the optimized state
-			return stackBytes, nil
-		}
-	}
-
-	// Strategy 2: For stack optimizations, remove optimized instructions from original code
-	if hasStackOptimizations {
-		result = make([]byte, 0, len(originalCode))
-		i := 0
-
-		for i < len(originalCode) {
-			// Check if this instruction was optimized away
-			if optimizedInstructions[uint(i)] {
-				// Skip the optimized instruction
-				opcode := originalCode[i]
-				if opcode >= byte(PUSH1) && opcode <= byte(PUSH32) {
-					// Skip PUSH instruction and its data
-					pushSize := int(opcode - byte(PUSH1) + 1)
-					i += pushSize + 1
-				} else {
-					// Skip single-byte instruction
-					i++
-				}
-				continue
-			}
-
-			// Keep the original instruction
-			opcode := originalCode[i]
-			result = append(result, opcode)
-			i++
-
-			// Handle PUSH instruction data
-			if opcode >= byte(PUSH1) && opcode <= byte(PUSH32) {
-				pushSize := int(opcode - byte(PUSH1) + 1)
-				if i+pushSize <= len(originalCode) {
-					result = append(result, originalCode[i:i+pushSize]...)
-					i += pushSize
-				}
-			}
-		}
-
-		return result, nil
-	}
-
-	// Fallback: return original code
-	return originalCode, nil
-}
-
-// extractOptimizedConstants extracts optimized constant values and converts them to PUSH instructions
-func extractOptimizedConstants(bb *MIRBasicBlock) []byte {
-	var result []byte
-
-	// Look for NOP instructions that represent optimized constants
-	for _, mir := range bb.instructions {
-		if mir == nil {
-			continue
-		}
-
-		if mir.op == MirNOP && len(mir.meta) > 0 {
-			// This is an optimized instruction - check if it produced a constant
-			originalOp := MirOperation(mir.meta[0])
-
-			// If this was an arithmetic operation that got optimized to a constant,
-			// we need to generate the appropriate PUSH instruction
-			if isOptimizable(originalOp) {
-				// The constant value should be available in the operands or through peephole optimization
-				// For now, we'll handle the most common case of simple arithmetic
-				constantBytes := extractConstantFromOptimizedMIR(mir)
-				if len(constantBytes) > 0 {
-					pushBytes := constantToPushBytecode(constantBytes)
-					result = append(result, pushBytes...)
-				}
-			}
-		}
-	}
-
-	return result
-}
-
-// convertStackToBytecode converts optimized constants from ValueStack to PUSH bytecode
-func convertStackToBytecode(stack *ValueStack) []byte {
-	var result []byte
-
-	if stack == nil || stack.size() == 0 {
-		return result
-	}
-
-	// Process all constant values in the stack
-	for i := 0; i < stack.size(); i++ {
-		value := stack.data[i]
-		if value.kind == Konst && len(value.payload) > 0 {
-			// Convert constant to PUSH instruction
-			pushBytes := constantToPushBytecode(value.payload)
-			result = append(result, pushBytes...)
-		}
-	}
-
-	return result
-}
-
-// extractConstantFromOptimizedMIR extracts the constant value from an optimized MIR instruction
-func extractConstantFromOptimizedMIR(mir *MIR) []byte {
-	// This is a simplified implementation
-	// In a full implementation, you would track the constant values through the optimization process
-
-	if len(mir.oprands) > 0 {
-		for _, operand := range mir.oprands {
-			if operand.kind == Konst && len(operand.payload) > 0 {
-				return operand.payload
-			}
-		}
-	}
-
 	return nil
 }

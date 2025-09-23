@@ -126,6 +126,8 @@ type EVM struct {
 	optInterpreter  *EVMInterpreter
 	baseInterpreter *EVMInterpreter
 	mirInterpreter  *MIRInterpreterAdapter
+	// cache MIR CFGs per code hash to avoid regenerating each call
+	mirCFGCache sync.Map // key: common.Hash, value: interface{} (compiler.CFG)
 }
 
 // NewEVM constructs an EVM instance with the supplied block context, state
@@ -579,13 +581,16 @@ func tryGetOptimizedCodeWithMIR(evm *EVM, codeHash common.Hash, rawCode []byte, 
 
 	// Check if MIR optimization is enabled
 	if evm.Config.EnableOpcodeOptimizations && evm.mirInterpreter != nil && compiler.IsOpcodeParseEnabled() {
-		// MIR path: Try to load cached MIR CFG first
-		cachedCFG := compiler.LoadMIRCFG(codeHash)
-		if cachedCFG != nil {
-			contract.SetMIRCFG(cachedCFG)
-			// When using MIR interpreter, we don't need superinstruction-optimized bytecode
-			// MIR interpreter will execute the MIR instructions directly
-			return false, rawCode // Return original code, MIR interpreter will handle optimization
+		// Try global compiler MIR CFG cache first
+		if cfg := compiler.LoadMIRCFG(codeHash); cfg != nil {
+			contract.SetMIRCFG(cfg)
+			return false, rawCode
+		}
+		// As a fallback (should be warmed at processing time), try generating here
+		if cfg, err := compiler.GenerateMIRCFG(codeHash, rawCode); err == nil && cfg != nil {
+			compiler.StoreMIRCFG(codeHash, cfg)
+			contract.SetMIRCFG(cfg)
+			return false, rawCode
 		}
 
 		// If no cached CFG, try to generate synchronously as fallback
