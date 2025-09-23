@@ -45,14 +45,29 @@ type MIRInterpreter struct {
 	env        *MIRExecutionEnv
 	memory     []byte
 	returndata []byte
-	results    map[*MIR]*uint256.Int
+	results    []*uint256.Int
+	// scratch pool and caches to reduce allocations
+	tmpA       *uint256.Int
+	tmpB       *uint256.Int
+	tmpC       *uint256.Int
+	zeroConst  *uint256.Int
+	constCache map[string]*uint256.Int
 }
 
 func NewMIRInterpreter(env *MIRExecutionEnv) *MIRInterpreter {
 	if env.Memory == nil {
 		env.Memory = make([]byte, 0)
 	}
-	return &MIRInterpreter{env: env, memory: env.Memory, results: make(map[*MIR]*uint256.Int)}
+	return &MIRInterpreter{
+		env:        env,
+		memory:     env.Memory,
+		results:    nil,
+		tmpA:       uint256.NewInt(0),
+		tmpB:       uint256.NewInt(0),
+		tmpC:       uint256.NewInt(0),
+		zeroConst:  uint256.NewInt(0),
+		constCache: make(map[string]*uint256.Int, 64),
+	}
 }
 
 // GetEnv returns the execution environment
@@ -63,6 +78,10 @@ func (it *MIRInterpreter) GetEnv() *MIRExecutionEnv {
 // RunMIR executes all instructions in the given basic block list sequentially.
 // For now, control-flow is assumed to be linear within a basic block.
 func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
+	if block == nil || len(block.instructions) == 0 {
+		return it.returndata, nil
+	}
+	it.results = make([]*uint256.Int, len(block.instructions))
 	for block.pos = 0; ; {
 		ins := block.GetNextOp()
 		if ins == nil {
@@ -117,11 +136,12 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 
 		if val3.IsZero() {
 			// EVM returns 0 for division by zero
-			it.setResult(m, uint256.NewInt(0))
+			it.setResult(m, it.zeroConst)
 		} else {
-			temp := uint256.NewInt(0).Add(val1, val2)
-			result := temp.Mod(temp, val3)
-			it.setResult(m, result)
+			// tmpA = val1 + val2; tmpA %= val3
+			it.tmpA.Clear().Add(val1, val2)
+			it.tmpA.Mod(it.tmpA, val3)
+			it.setResult(m, it.tmpA)
 		}
 		return nil
 
@@ -135,11 +155,12 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 
 		if val3.IsZero() {
 			// EVM returns 0 for division by zero
-			it.setResult(m, uint256.NewInt(0))
+			it.setResult(m, it.zeroConst)
 		} else {
-			temp := uint256.NewInt(0).Mul(val1, val2)
-			result := temp.Mod(temp, val3)
-			it.setResult(m, result)
+			// tmpA = val1 * val2; tmpA %= val3
+			it.tmpA.Clear().Mul(val1, val2)
+			it.tmpA.Mod(it.tmpA, val3)
+			it.setResult(m, it.tmpA)
 		}
 		return nil
 
@@ -149,9 +170,9 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		}
 		v1 := it.evalValue(m.oprands[0])
 		if v1.IsZero() {
-			it.setResult(m, uint256.NewInt(1))
+			it.setResult(m, it.tmpA.Clear().SetOne())
 		} else {
-			it.setResult(m, uint256.NewInt(0))
+			it.setResult(m, it.zeroConst)
 		}
 		return nil
 	case MirNOT:
@@ -159,7 +180,7 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 			return fmt.Errorf("NOT missing operand")
 		}
 		v1 := it.evalValue(m.oprands[0])
-		it.setResult(m, uint256.NewInt(0).Not(v1))
+		it.setResult(m, it.tmpA.Clear().Not(v1))
 		return nil
 
 	// Memory
@@ -171,7 +192,7 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		off := it.evalValue(m.oprands[0])
 		// size := it.evalValue(m.oprands[1]) // 32
 		b := it.readMem32(off)
-		it.setResult(m, uint256.NewInt(0).SetBytes(b))
+		it.setResult(m, it.tmpA.Clear().SetBytes(b))
 		return nil
 	case MirMSTORE:
 		// operands: offset, size(ignored; assume 32), value
@@ -223,7 +244,7 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 	case MirADDRESS:
 		b := make([]byte, 32)
 		copy(b[12:], it.env.Self[:])
-		it.setResult(m, uint256.NewInt(0).SetBytes(b))
+		it.setResult(m, it.tmpA.Clear().SetBytes(b))
 		return nil
 	case MirCALLER:
 		b := make([]byte, 32)
@@ -282,7 +303,7 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		it.setResult(m, uint256.NewInt(0).SetBytes(b))
 		return nil
 	case MirCALLDATASIZE:
-		it.setResult(m, uint256.NewInt(uint64(len(it.env.Calldata))))
+		it.setResult(m, it.tmpA.Clear().SetUint64(uint64(len(it.env.Calldata))))
 		return nil
 	case MirCALLDATACOPY:
 		// operands: dest, offset, size
@@ -295,7 +316,7 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		it.calldataCopy(dest, off, sz)
 		return nil
 	case MirRETURNDATASIZE:
-		it.setResult(m, uint256.NewInt(uint64(len(it.returndata))))
+		it.setResult(m, it.tmpA.Clear().SetUint64(uint64(len(it.returndata))))
 		return nil
 	case MirRETURNDATALOAD:
 		if len(m.oprands) < 1 {
@@ -303,7 +324,7 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		}
 		off := it.evalValue(m.oprands[0])
 		b := it.readReturnData32(off)
-		it.setResult(m, uint256.NewInt(0).SetBytes(b))
+		it.setResult(m, it.tmpA.Clear().SetBytes(b))
 		return nil
 	case MirRETURNDATACOPY:
 		if len(m.oprands) < 3 {
@@ -324,7 +345,7 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		sz := it.evalValue(m.oprands[1])
 		b := it.readMem(off, sz)
 		h := crypto.Keccak256(b)
-		it.setResult(m, uint256.NewInt(0).SetBytes(h))
+		it.setResult(m, it.tmpA.Clear().SetBytes(h))
 		return nil
 
 	// System returns
@@ -360,65 +381,65 @@ func (it *MIRInterpreter) execArithmetic(m *MIR) error {
 	var out *uint256.Int
 	switch m.op {
 	case MirADD:
-		out = uint256.NewInt(0).Add(a, b)
+		out = it.tmpA.Clear().Add(a, b)
 	case MirMUL:
-		out = uint256.NewInt(0).Mul(a, b)
+		out = it.tmpA.Clear().Mul(a, b)
 	case MirSUB:
-		out = uint256.NewInt(0).Sub(a, b)
+		out = it.tmpA.Clear().Sub(a, b)
 	case MirDIV:
-		out = uint256.NewInt(0).Div(a, b)
+		out = it.tmpA.Clear().Div(a, b)
 	case MirSDIV:
-		out = uint256.NewInt(0).SDiv(a, b)
+		out = it.tmpA.Clear().SDiv(a, b)
 	case MirMOD:
-		out = uint256.NewInt(0).Mod(a, b)
+		out = it.tmpA.Clear().Mod(a, b)
 	case MirSMOD:
-		out = uint256.NewInt(0).SMod(a, b)
+		out = it.tmpA.Clear().SMod(a, b)
 	case MirEXP:
-		out = uint256.NewInt(0).Exp(a, b)
+		out = it.tmpA.Clear().Exp(a, b)
 	case MirLT:
 		if a.Lt(b) {
-			out = uint256.NewInt(1)
+			out = it.tmpA.Clear().SetOne()
 		} else {
-			out = uint256.NewInt(0)
+			out = it.zeroConst
 		}
 	case MirGT:
 		if a.Gt(b) {
-			out = uint256.NewInt(1)
+			out = it.tmpA.Clear().SetOne()
 		} else {
-			out = uint256.NewInt(0)
+			out = it.zeroConst
 		}
 	case MirSLT:
 		if a.Slt(b) {
-			out = uint256.NewInt(1)
+			out = it.tmpA.Clear().SetOne()
 		} else {
-			out = uint256.NewInt(0)
+			out = it.zeroConst
 		}
 	case MirSGT:
 		if a.Sgt(b) {
-			out = uint256.NewInt(1)
+			out = it.tmpA.Clear().SetOne()
 		} else {
-			out = uint256.NewInt(0)
+			out = it.zeroConst
 		}
 	case MirEQ:
 		if a.Eq(b) {
-			out = uint256.NewInt(1)
+			out = it.tmpA.Clear().SetOne()
 		} else {
-			out = uint256.NewInt(0)
+			out = it.zeroConst
 		}
 	case MirAND:
-		out = uint256.NewInt(0).And(a, b)
+		out = it.tmpA.Clear().And(a, b)
 	case MirOR:
-		out = uint256.NewInt(0).Or(a, b)
+		out = it.tmpA.Clear().Or(a, b)
 	case MirXOR:
-		out = uint256.NewInt(0).Xor(a, b)
+		out = it.tmpA.Clear().Xor(a, b)
 	case MirBYTE:
 		out = a.Byte(b)
 	case MirSHL:
-		out = uint256.NewInt(0).Lsh(a, uint(b.Uint64()))
+		out = it.tmpA.Clear().Lsh(a, uint(b.Uint64()))
 	case MirSHR:
-		out = uint256.NewInt(0).Rsh(a, uint(b.Uint64()))
+		out = it.tmpA.Clear().Rsh(a, uint(b.Uint64()))
 	case MirSAR:
-		out = uint256.NewInt(0).SRsh(a, uint(b.Uint64()))
+		out = it.tmpA.Clear().SRsh(a, uint(b.Uint64()))
 	default:
 		return fmt.Errorf("unexpected arithmetic op: 0x%x", byte(m.op))
 	}
@@ -432,10 +453,20 @@ func (it *MIRInterpreter) evalValue(v *Value) *uint256.Int {
 	}
 	switch v.kind {
 	case Konst:
-		return uint256.NewInt(0).SetBytes(v.payload)
+		// Cache constants by payload to avoid new allocations
+		if len(v.payload) == 0 {
+			return it.zeroConst
+		}
+		key := string(v.payload)
+		if cached, ok := it.constCache[key]; ok {
+			return cached
+		}
+		val := uint256.NewInt(0).SetBytes(v.payload)
+		it.constCache[key] = val
+		return val
 	case Variable, Arguments:
-		if v.def != nil {
-			if r, ok := it.results[v.def]; ok {
+		if v.def != nil && v.def.idx >= 0 && v.def.idx < len(it.results) {
+			if r := it.results[v.def.idx]; r != nil {
 				return r
 			}
 		}
@@ -449,7 +480,12 @@ func (it *MIRInterpreter) setResult(m *MIR, val *uint256.Int) {
 	if m == nil || val == nil {
 		return
 	}
-	it.results[m] = new(uint256.Int).Set(val)
+	if m.idx >= 0 && m.idx < len(it.results) {
+		if it.results[m.idx] == nil {
+			it.results[m.idx] = new(uint256.Int)
+		}
+		it.results[m.idx].Set(val)
+	}
 }
 
 func (it *MIRInterpreter) ensureMemSize(size uint64) {

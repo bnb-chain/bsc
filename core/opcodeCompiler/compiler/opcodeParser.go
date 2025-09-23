@@ -64,6 +64,80 @@ func (c *CFG) reachEndBB() {
 	// TODO - zlin:  check the child is backward only.
 }
 
+func doOpcodesParse(hash common.Hash, code []byte) ([]byte, error) {
+	if len(code) == 0 {
+		log.Warn("Can not build CFG with nil codes\n")
+		return nil, ErrFailPreprocessing
+	}
+
+	// Build CFG and get both cfg and valueStack
+	cfg, _, err := buildCFGInternal(hash, code)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build MIR byte stream directly from CFG (optimizedBytecode == MIR instructions)
+	optimizedBytecode := generateMIRByteStream(cfg)
+
+	// Defensive: if no MIR could be produced, return original code
+	if len(optimizedBytecode) == 0 {
+		log.Debug("MIR stream empty, falling back to original", "codeLen", len(code))
+		return code, nil
+	}
+
+	return optimizedBytecode, nil
+}
+
+// generateMIRByteStream flattens the MIR CFG into a simple byte stream of MIR opcodes
+// Note: operands are not encoded; this stream is intended as a lightweight MIR indicator/carrying format
+func generateMIRByteStream(cfg *CFG) []byte {
+	if cfg == nil || len(cfg.basicBlocks) == 0 {
+		return nil
+	}
+	// Pre-size roughly to original code length
+	stream := make([]byte, 0, len(cfg.rawCode))
+	for _, bb := range cfg.basicBlocks {
+		if bb == nil || len(bb.instructions) == 0 {
+			continue
+		}
+		for _, mir := range bb.instructions {
+			if mir == nil {
+				continue
+			}
+			stream = append(stream, byte(mir.op))
+		}
+	}
+	return stream
+}
+
+// buildCFGInternal builds CFG and returns both CFG and final valueStack
+func buildCFGInternal(hash common.Hash, code []byte) (*CFG, *ValueStack, error) {
+	cfg := NewCFG(hash, code)
+
+	// memoryAccessor is instance local at runtime
+	var memoryAccessor *MemoryAccessor = cfg.getMemoryAccessor()
+	// stateAccessor is global but we analyze it in processor granularity
+	var stateAccessor *StateAccessor = cfg.getStateAccessor()
+
+	entryBB := cfg.createEntryBB()
+	startBB := cfg.createBB(0, entryBB)
+	valueStack := ValueStack{}
+	// generate CFG.
+	unprcessedBBs := MIRBasicBlockStack{}
+	unprcessedBBs.Push(startBB)
+
+	for unprcessedBBs.Size() != 0 {
+		curBB := unprcessedBBs.Pop()
+		err := cfg.buildBasicBlock(curBB, &valueStack, memoryAccessor, stateAccessor, &unprcessedBBs)
+		if err != nil {
+			log.Error(err.Error())
+			return nil, nil, err
+		}
+	}
+
+	return cfg, &valueStack, nil
+}
+
 // GenerateMIRCFG generates a MIR Control Flow Graph for the given bytecode
 func GenerateMIRCFG(hash common.Hash, code []byte) (*CFG, error) {
 	if len(code) == 0 {
@@ -454,9 +528,9 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			unprcessedBBs.Push(fallthroughBB)
 			return nil
 		case RETURN:
-			// RETURN takes 2 operands: offset, size
-			size := valueStack.pop()
+			// RETURN takes 2 operands: offset (top), size
 			offset := valueStack.pop()
+			size := valueStack.pop()
 			mir = new(MIR)
 			mir.op = MirRETURN
 			mir.oprands = []*Value{&offset, &size}

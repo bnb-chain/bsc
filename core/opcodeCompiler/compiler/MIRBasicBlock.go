@@ -36,6 +36,11 @@ func (b *MIRBasicBlock) Size() uint {
 	return uint(len(b.instructions))
 }
 
+// Instructions returns the MIR instructions within this basic block
+func (b *MIRBasicBlock) Instructions() []*MIR {
+	return b.instructions
+}
+
 func (b *MIRBasicBlock) FirstPC() uint {
 	return b.firstPC
 }
@@ -84,6 +89,7 @@ func (b *MIRBasicBlock) CreateVoidMIR(op MirOperation) (mir *MIR) {
 }
 
 func (b *MIRBasicBlock) appendMIR(mir *MIR) *MIR {
+	mir.idx = len(b.instructions)
 	b.instructions = append(b.instructions, mir)
 	return mir
 }
@@ -91,13 +97,13 @@ func (b *MIRBasicBlock) appendMIR(mir *MIR) *MIR {
 func (b *MIRBasicBlock) CreateUnaryOpMIR(op MirOperation, stack *ValueStack) (mir *MIR) {
 	opnd1 := stack.pop()
 	mir = newUnaryOpMIR(op, &opnd1, stack)
-	
+
 	// Only push result if the operation wasn't optimized away (MirNOP)
 	if mir.op != MirNOP {
 		stack.push(mir.Result())
 	}
 	// If mir.op == MirNOP, doPeepHole already pushed the optimized constant to stack
-	
+
 	return b.appendMIR(mir)
 }
 
@@ -105,13 +111,13 @@ func (b *MIRBasicBlock) CreateBinOpMIR(op MirOperation, stack *ValueStack) (mir 
 	opnd2 := stack.pop()
 	opnd1 := stack.pop()
 	mir = newBinaryOpMIR(op, &opnd1, &opnd2, stack)
-	
+
 	// Only push result if the operation wasn't optimized away (MirNOP)
 	if mir.op != MirNOP {
 		stack.push(mir.Result())
 	}
 	// If mir.op == MirNOP, doPeepHole already pushed the optimized constant to stack
-	
+
 	return b.appendMIR(mir)
 }
 
@@ -120,23 +126,23 @@ func (b *MIRBasicBlock) CreateTernaryOpMIR(op MirOperation, stack *ValueStack) (
 	opnd3 := stack.pop() // Modulus (third operand)
 	opnd2 := stack.pop() // Second operand
 	opnd1 := stack.pop() // First operand
-	
+
 	// Try peephole optimization for 3-operand operations
 	if doPeepHole3Ops(op, &opnd1, &opnd2, &opnd3, stack, nil) {
 		// Operation was optimized away, create a NOP MIR for tracking
 		mir = newNopMIR(op, []*Value{&opnd1, &opnd2, &opnd3})
 		return b.appendMIR(mir)
 	}
-	
+
 	// Create regular ternary operation MIR
 	mir = newTernaryOpMIR(op, &opnd1, &opnd2, &opnd3, stack)
-	
+
 	// Only push result if the operation wasn't optimized away (MirNOP)
 	if mir.op != MirNOP {
 		stack.push(mir.Result())
 	}
 	// If mir.op == MirNOP, doPeepHole3Ops already pushed the optimized constant to stack
-	
+
 	return b.appendMIR(mir)
 }
 
@@ -221,13 +227,13 @@ func (b *MIRBasicBlock) CreateStackOpMIR(op MirOperation, stack *ValueStack) *MI
 		n := int(op - MirDUP1 + 1) // DUP1 = 1, DUP2 = 2, etc.
 		return b.CreateDupMIR(n, stack)
 	}
-	
-	// For SWAP operations  
+
+	// For SWAP operations
 	if op >= MirSWAP1 && op <= MirSWAP16 {
 		n := int(op - MirSWAP1 + 1) // SWAP1 = 1, SWAP2 = 2, etc.
 		return b.CreateSwapMIR(n, stack)
 	}
-	
+
 	// Fallback for other stack operations
 	mir := new(MIR)
 	mir.op = op
@@ -239,7 +245,7 @@ func (b *MIRBasicBlock) CreateDupMIR(n int, stack *ValueStack) *MIR {
 	// DUPn duplicates the nth stack item (1-indexed) to the top
 	// Stack before: [..., item_n, ..., item_2, item_1]
 	// Stack after:  [..., item_n, ..., item_2, item_1, item_n]
-	
+
 	if stack.size() < n {
 		// Not enough items on stack - create non-optimized MIR
 		mir := new(MIR)
@@ -247,32 +253,32 @@ func (b *MIRBasicBlock) CreateDupMIR(n int, stack *ValueStack) *MIR {
 		stack.push(mir.Result())
 		return b.appendMIR(mir)
 	}
-	
+
 	// Get the value to duplicate (n-1 because stack is 0-indexed from top)
 	dupValue := stack.peek(n - 1)
-	
+
 	// Check if we can optimize this DUP operation
-	if isOptimizable(MirOperation(0x80 + byte(n-1))) && dupValue.kind == Konst {
+	if isOptimizable(MirOperation(0x80+byte(n-1))) && dupValue.kind == Konst {
 		// If the value to duplicate is a constant, we can optimize
 		// by directly pushing the constant value
 		optimizedValue := newValue(Konst, nil, nil, dupValue.payload)
 		stack.push(optimizedValue)
-		
+
 		// Create a NOP MIR to mark this optimization
-		mir := newNopMIR(MirOperation(0x80 + byte(n-1)), []*Value{dupValue})
+		mir := newNopMIR(MirOperation(0x80+byte(n-1)), []*Value{dupValue})
 		return b.appendMIR(mir)
 	}
-	
+
 	// For non-constant values, perform the actual duplication
 	duplicatedValue := *dupValue // Copy the value
 	stack.push(&duplicatedValue)
-	
+
 	// Create MIR instruction with the source value as operand
 	mir := new(MIR)
 	mir.op = MirOperation(0x80 + byte(n-1))
 	mir.oprands = []*Value{dupValue}
 	dupValue.use = append(dupValue.use, mir)
-	
+
 	return b.appendMIR(mir)
 }
 
@@ -280,38 +286,38 @@ func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
 	// SWAPn swaps the top stack item with the nth stack item (1-indexed)
 	// Stack before: [..., item_n+1, item_n, ..., item_2, item_1]
 	// Stack after:  [..., item_n+1, item_1, ..., item_2, item_n]
-	
+
 	if stack.size() <= n {
 		// Not enough items on stack - create non-optimized MIR
 		mir := new(MIR)
 		mir.op = MirOperation(0x90 + byte(n-1))
 		return b.appendMIR(mir)
 	}
-	
+
 	// Check if we can optimize this SWAP operation
-	topValue := stack.peek(0)     // item_1 (top of stack)
-	swapValue := stack.peek(n)    // item_n+1 (the item to swap with)
-	
-	if isOptimizable(MirOperation(0x90 + byte(n-1))) && 
-	   topValue.kind == Konst && swapValue.kind == Konst {
+	topValue := stack.peek(0)  // item_1 (top of stack)
+	swapValue := stack.peek(n) // item_n+1 (the item to swap with)
+
+	if isOptimizable(MirOperation(0x90+byte(n-1))) &&
+		topValue.kind == Konst && swapValue.kind == Konst {
 		// Both values are constants, we can optimize by directly swapping
 		stack.swap(0, n)
-		
+
 		// Create a NOP MIR to mark this optimization
-		mir := newNopMIR(MirOperation(0x90 + byte(n-1)), []*Value{topValue, swapValue})
+		mir := newNopMIR(MirOperation(0x90+byte(n-1)), []*Value{topValue, swapValue})
 		return b.appendMIR(mir)
 	}
-	
+
 	// For non-constant values, perform the actual swap
 	stack.swap(0, n)
-	
+
 	// Create MIR instruction with both values as operands
 	mir := new(MIR)
 	mir.op = MirOperation(0x90 + byte(n-1))
 	mir.oprands = []*Value{topValue, swapValue}
 	topValue.use = append(topValue.use, mir)
 	swapValue.use = append(swapValue.use, mir)
-	
+
 	return b.appendMIR(mir)
 }
 
@@ -332,17 +338,17 @@ func (b *MIRBasicBlock) CreateMemoryOpMIR(op MirOperation, stack *ValueStack, ac
 		}
 		mir.oprands = []*Value{&offset, size32}
 	case MirMSTORE:
-		// pops: value, offset
-		value := stack.pop()
+		// pops: offset (top), value
 		offset := stack.pop()
+		value := stack.pop()
 		if accessor != nil {
 			accessor.recordStore(offset, *size32, value)
 		}
 		mir.oprands = []*Value{&offset, size32, &value}
 	case MirMSTORE8:
-		// pops: value, offset
-		value := stack.pop()
+		// pops: offset (top), value
 		offset := stack.pop()
+		value := stack.pop()
 		if accessor != nil {
 			accessor.recordStore(offset, *size1, value)
 		}

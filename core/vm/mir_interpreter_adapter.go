@@ -72,8 +72,10 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 			return adapter.evm.Interpreter().Run(contract, input, readOnly)
 		}
 
-		// The last result becomes the return value
-		ret = result
+		// If this block produced return data, stop and return it immediately
+		if len(result) > 0 {
+			return result, nil
+		}
 	}
 
 	return ret, nil
@@ -95,9 +97,14 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 	env.Caller = caller20
 	env.Origin = origin20
 
-	// Set contract balance if available
-	if contract.Value() != nil {
-		env.SelfBalance = contract.Value().Uint64()
+	// Set contract balance from StateDB
+	{
+		bal := adapter.evm.StateDB.GetBalance(contract.Address())
+		if bal != nil {
+			env.SelfBalance = bal.Uint64()
+		} else {
+			env.SelfBalance = 0
+		}
 	}
 
 	// Set gas price from transaction context

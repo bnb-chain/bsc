@@ -9,10 +9,10 @@ import (
 type OptimizationPhase int
 
 const (
-	PhaseBasicMath    OptimizationPhase = 1  // Phase 1: Pure math and comparison operations
-	PhasePeepHole3Ops OptimizationPhase = 2  // Phase 2: Three-operand peephole optimizations (ADDMOD, MULMOD)
-	PhaseStackOps     OptimizationPhase = 3  // Phase 3: Stack operations (DUP, SWAP)
-	PhaseMemoryOps    OptimizationPhase = 4  // Phase 4: Memory and storage operations
+	PhaseBasicMath    OptimizationPhase = 1 // Phase 1: Pure math and comparison operations
+	PhasePeepHole3Ops OptimizationPhase = 2 // Phase 2: Three-operand peephole optimizations (ADDMOD, MULMOD)
+	PhaseStackOps     OptimizationPhase = 3 // Phase 3: Stack operations (DUP, SWAP)
+	PhaseMemoryOps    OptimizationPhase = 4 // Phase 4: Memory and storage operations
 )
 
 // Current optimization phase - can be configured
@@ -21,7 +21,7 @@ var currentOptimizationPhase OptimizationPhase = PhaseBasicMath
 // getOptimizableOps returns the set of operations that can be optimized in the current phase
 func getOptimizableOps() map[MirOperation]bool {
 	optimizableOps := make(map[MirOperation]bool)
-	
+
 	// Phase 1: Pure math and comparison operations - always safe to optimize
 	if currentOptimizationPhase >= PhaseBasicMath {
 		// Arithmetic operations (0x01-0x0b) - excluding 3-operand operations
@@ -32,7 +32,7 @@ func getOptimizableOps() map[MirOperation]bool {
 		for _, op := range mathOps {
 			optimizableOps[op] = true
 		}
-		
+
 		// Comparison operations (0x10-0x1d)
 		comparisonOps := []MirOperation{
 			MirLT, MirGT, MirSLT, MirSGT, MirEQ, MirISZERO,
@@ -40,7 +40,7 @@ func getOptimizableOps() map[MirOperation]bool {
 		for _, op := range comparisonOps {
 			optimizableOps[op] = true
 		}
-		
+
 		// Bitwise operations (0x16-0x1d)
 		bitwiseOps := []MirOperation{
 			MirAND, MirOR, MirXOR, MirNOT, MirBYTE, MirSHL, MirSHR, MirSAR,
@@ -48,11 +48,11 @@ func getOptimizableOps() map[MirOperation]bool {
 		for _, op := range bitwiseOps {
 			optimizableOps[op] = true
 		}
-		
+
 		// Cryptographic operations
 		optimizableOps[MirKECCAK256] = true
 	}
-	
+
 	// Phase 2: Three-operand peephole optimizations
 	if currentOptimizationPhase >= PhasePeepHole3Ops {
 		// Operations requiring 3 operands
@@ -63,7 +63,7 @@ func getOptimizableOps() map[MirOperation]bool {
 			optimizableOps[op] = true
 		}
 	}
-	
+
 	// Phase 3: Stack operations
 	if currentOptimizationPhase >= PhaseStackOps {
 		// DUP operations (0x80-0x8f)
@@ -75,7 +75,7 @@ func getOptimizableOps() map[MirOperation]bool {
 			optimizableOps[i] = true
 		}
 	}
-	
+
 	// Phase 4: Memory and storage operations
 	if currentOptimizationPhase >= PhaseMemoryOps {
 		memoryOps := []MirOperation{
@@ -86,7 +86,7 @@ func getOptimizableOps() map[MirOperation]bool {
 			optimizableOps[op] = true
 		}
 	}
-	
+
 	return optimizableOps
 }
 
@@ -112,7 +112,11 @@ type MIR struct {
 	oprands []*Value
 	meta    []byte
 	pc      *uint // Program counter of the original instruction (optional)
+	idx     int   // Index within its basic block, set by appendMIR
 }
+
+// Op returns the MIR operation code
+func (m *MIR) Op() MirOperation { return m.op }
 
 func (m *MIR) Result() *Value {
 	if m.op == MirNOP {
@@ -182,22 +186,22 @@ func doPeepHole3Ops(operation MirOperation, opnd1 *Value, opnd2 *Value, opnd3 *V
 	if opnd1 == nil || opnd2 == nil || opnd3 == nil {
 		return false
 	}
-	
+
 	// Only optimize if all operands are constants
 	if opnd1.kind != Konst || opnd2.kind != Konst || opnd3.kind != Konst {
 		return false
 	}
-	
+
 	// Check if this operation is optimizable in current phase
 	if !isOptimizable(operation) {
 		return false
 	}
-	
+
 	optimized := false
 	val1 := uint256.NewInt(0).SetBytes(opnd1.payload)
 	val2 := uint256.NewInt(0).SetBytes(opnd2.payload)
 	val3 := uint256.NewInt(0).SetBytes(opnd3.payload)
-	
+
 	switch operation {
 	case MirADDMOD:
 		// ADDMOD: (val1 + val2) % val3
@@ -214,7 +218,7 @@ func doPeepHole3Ops(operation MirOperation, opnd1 *Value, opnd2 *Value, opnd3 *V
 			optimized = true
 		}
 	}
-	
+
 	if optimized && val1 != nil {
 		// Create a new constant value with the optimized result
 		payload := val1.Bytes()
@@ -225,7 +229,7 @@ func doPeepHole3Ops(operation MirOperation, opnd1 *Value, opnd2 *Value, opnd3 *V
 		newVal := newValue(Konst, nil, nil, payload)
 		stack.push(newVal)
 	}
-	
+
 	return optimized
 }
 
@@ -368,22 +372,22 @@ func constantToPushBytecode(payload []byte) []byte {
 	if len(payload) == 0 {
 		return []byte{byte(PUSH1), 0x00}
 	}
-	
+
 	// Remove leading zeros
 	trimmed := trimLeadingZeros(payload)
 	if len(trimmed) == 0 {
 		return []byte{byte(PUSH1), 0x00}
 	}
-	
+
 	// Determine appropriate PUSH instruction
 	pushSize := len(trimmed)
 	if pushSize > 32 {
 		pushSize = 32 // Maximum PUSH32
 	}
-	
+
 	result := []byte{byte(PUSH1) + byte(pushSize-1)}
 	result = append(result, trimmed[:pushSize]...)
-	
+
 	return result
 }
 
