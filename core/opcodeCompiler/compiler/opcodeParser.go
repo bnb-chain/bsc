@@ -175,15 +175,8 @@ func (c *CFG) GetBasicBlocks() []*MIRBasicBlock {
 	return c.basicBlocks
 }
 
-<<<<<<< HEAD
-// executeAndOptimizeMIR function removed - compilation-time MIR execution is no longer needed
-// Runtime MIR execution is handled by MIRInterpreterAdapter using cached CFGs
-
 // Compilation-time bytecode generation functions removed
 // MIR CFGs are now cached and executed directly by MIRInterpreterAdapter at runtime
-
-=======
->>>>>>> cb10d967a (refine and performance)
 func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memoryAccessor *MemoryAccessor, stateAccessor *StateAccessor, unprcessedBBs *MIRBasicBlockStack) error {
 	// Get the raw code from the CFG
 	code := c.rawCode

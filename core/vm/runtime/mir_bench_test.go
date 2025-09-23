@@ -33,6 +33,51 @@ var addMulReturn = []byte{
 	byte(compiler.RETURN),
 }
 
+// Storage write/read and return: SSTORE 0x00 <- 0x01; SLOAD 0x00; RETURN 32 bytes
+var storageStoreLoadReturn = []byte{
+	byte(compiler.PUSH1), 0x00, // key
+	byte(compiler.PUSH1), 0x01, // value
+	byte(compiler.SSTORE),
+	byte(compiler.PUSH1), 0x00, // key
+	byte(compiler.SLOAD),
+	byte(compiler.PUSH1), 0x00, // offset
+	byte(compiler.MSTORE),
+	byte(compiler.PUSH1), 0x20, // size
+	byte(compiler.PUSH1), 0x00, // offset
+	byte(compiler.RETURN),
+}
+
+// Keccak over memory[0..32] with constant 0x2a; return the 32-byte hash
+var keccakMemReturn = []byte{
+	byte(compiler.PUSH1), 0x2a, // value
+	byte(compiler.PUSH1), 0x00, // offset
+	byte(compiler.MSTORE),
+	byte(compiler.PUSH1), 0x20, // size
+	byte(compiler.PUSH1), 0x00, // offset
+	byte(compiler.KECCAK256),
+	byte(compiler.PUSH1), 0x00, // store hash at 0
+	byte(compiler.MSTORE),
+	byte(compiler.PUSH1), 0x20,
+	byte(compiler.PUSH1), 0x00,
+	byte(compiler.RETURN),
+}
+
+// Copy calldata to memory, keccak it, return 32-byte hash
+var calldataKeccakReturn = []byte{
+	byte(compiler.PUSH1), 0x00, // dest
+	byte(compiler.PUSH1), 0x00, // offset
+	byte(compiler.CALLDATASIZE),
+	byte(compiler.CALLDATACOPY),
+	byte(compiler.CALLDATASIZE), // size
+	byte(compiler.PUSH1), 0x00,  // offset
+	byte(compiler.KECCAK256),
+	byte(compiler.PUSH1), 0x00, // store at 0
+	byte(compiler.MSTORE),
+	byte(compiler.PUSH1), 0x20,
+	byte(compiler.PUSH1), 0x00,
+	byte(compiler.RETURN),
+}
+
 func BenchmarkMIRVsEVM_AddMul(b *testing.B) {
 	// Dump MIR ops for visibility (not part of timing)
 	if cfg, err := compiler.GenerateMIRCFG(common.Hash{}, simpleAddMul); err == nil && cfg != nil {
@@ -173,6 +218,218 @@ func BenchmarkMIRVsEVM_AddMulReturn(b *testing.B) {
 			if err != nil {
 				b.Fatalf("mir call err: %v", err)
 			}
+		}
+	})
+}
+
+func BenchmarkMIRVsEVM_Storage(b *testing.B) {
+	cfgBase := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true}}
+
+	b.Run("EVM_Base_Storage", func(b *testing.B) {
+		if cfgBase.State == nil {
+			cfgBase.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		evm := runtime.NewEnv(cfgBase)
+		address := common.BytesToAddress([]byte("contract_storage"))
+		sender := vm.AccountRef(cfgBase.Origin)
+		evm.StateDB.CreateAccount(address)
+		evm.StateDB.SetCode(address, storageStoreLoadReturn)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _, err := evm.Call(sender, address, nil, cfgBase.GasLimit, uint256.MustFromBig(cfgBase.Value))
+			if err != nil {
+				b.Fatalf("base storage err: %v", err)
+			}
+		}
+	})
+
+	b.Run("MIR_Interpreter_Storage", func(b *testing.B) {
+		compiler.EnableOpcodeParse()
+		if cfgMIR.State == nil {
+			cfgMIR.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		evm := runtime.NewEnv(cfgMIR)
+		address := common.BytesToAddress([]byte("contract_storage"))
+		sender := vm.AccountRef(cfgMIR.Origin)
+		evm.StateDB.CreateAccount(address)
+		evm.StateDB.SetCode(address, storageStoreLoadReturn)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _, err := evm.Call(sender, address, nil, cfgMIR.GasLimit, uint256.MustFromBig(cfgMIR.Value))
+			if err != nil {
+				b.Fatalf("mir storage err: %v", err)
+			}
+		}
+	})
+}
+
+func BenchmarkMIRVsEVM_Keccak(b *testing.B) {
+	cfgBase := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true}}
+
+	b.Run("EVM_Base_Keccak", func(b *testing.B) {
+		if cfgBase.State == nil {
+			cfgBase.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		evm := runtime.NewEnv(cfgBase)
+		address := common.BytesToAddress([]byte("contract_keccak"))
+		sender := vm.AccountRef(cfgBase.Origin)
+		evm.StateDB.CreateAccount(address)
+		evm.StateDB.SetCode(address, keccakMemReturn)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _, err := evm.Call(sender, address, nil, cfgBase.GasLimit, uint256.MustFromBig(cfgBase.Value))
+			if err != nil {
+				b.Fatalf("base keccak err: %v", err)
+			}
+		}
+	})
+
+	b.Run("MIR_Interpreter_Keccak", func(b *testing.B) {
+		compiler.EnableOpcodeParse()
+		if cfgMIR.State == nil {
+			cfgMIR.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		evm := runtime.NewEnv(cfgMIR)
+		address := common.BytesToAddress([]byte("contract_keccak"))
+		sender := vm.AccountRef(cfgMIR.Origin)
+		evm.StateDB.CreateAccount(address)
+		evm.StateDB.SetCode(address, keccakMemReturn)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _, err := evm.Call(sender, address, nil, cfgMIR.GasLimit, uint256.MustFromBig(cfgMIR.Value))
+			if err != nil {
+				b.Fatalf("mir keccak err: %v", err)
+			}
+		}
+	})
+}
+
+func BenchmarkMIRVsEVM_CalldataKeccak(b *testing.B) {
+	cfgBase := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true}}
+	input := make([]byte, 96)
+	for i := range input {
+		input[i] = byte(i)
+	}
+
+	b.Run("EVM_Base_CalldataKeccak", func(b *testing.B) {
+		if cfgBase.State == nil {
+			cfgBase.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		evm := runtime.NewEnv(cfgBase)
+		address := common.BytesToAddress([]byte("contract_calldata"))
+		sender := vm.AccountRef(cfgBase.Origin)
+		evm.StateDB.CreateAccount(address)
+		evm.StateDB.SetCode(address, calldataKeccakReturn)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _, err := evm.Call(sender, address, input, cfgBase.GasLimit, uint256.MustFromBig(cfgBase.Value))
+			if err != nil {
+				b.Fatalf("base calldata err: %v", err)
+			}
+		}
+	})
+
+	b.Run("MIR_Interpreter_CalldataKeccak", func(b *testing.B) {
+		compiler.EnableOpcodeParse()
+		if cfgMIR.State == nil {
+			cfgMIR.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		evm := runtime.NewEnv(cfgMIR)
+		address := common.BytesToAddress([]byte("contract_calldata"))
+		sender := vm.AccountRef(cfgMIR.Origin)
+		evm.StateDB.CreateAccount(address)
+		evm.StateDB.SetCode(address, calldataKeccakReturn)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, _, err := evm.Call(sender, address, input, cfgMIR.GasLimit, uint256.MustFromBig(cfgMIR.Value))
+			if err != nil {
+				b.Fatalf("mir calldata err: %v", err)
+			}
+		}
+	})
+}
+
+func TestMIRVsEVM_Functional(t *testing.T) {
+	// Base and MIR configs
+	base := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true}}
+	compiler.EnableOpcodeParse()
+
+	// helper to run code and return output
+	run := func(cfg *runtime.Config, code []byte, input []byte, addrLabel string) ([]byte, error) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		evm := runtime.NewEnv(cfg)
+		address := common.BytesToAddress([]byte(addrLabel))
+		sender := vm.AccountRef(cfg.Origin)
+		evm.StateDB.CreateAccount(address)
+		evm.StateDB.SetCode(address, code)
+		ret, _, err := evm.Call(sender, address, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+
+	// cases: addMulReturn, storageStoreLoadReturn, keccakMemReturn, calldataKeccakReturn
+	t.Run("addMulReturn", func(t *testing.T) {
+		rb, err := run(base, addMulReturn, nil, "addr_am")
+		if err != nil {
+			t.Fatalf("base err: %v", err)
+		}
+		rm, err := run(mir, addMulReturn, nil, "addr_am")
+		if err != nil {
+			t.Fatalf("mir err: %v", err)
+		}
+		if string(rb) != string(rm) {
+			t.Fatalf("mismatch: base %x mir %x", rb, rm)
+		}
+	})
+
+	t.Run("storage", func(t *testing.T) {
+		rb, err := run(base, storageStoreLoadReturn, nil, "addr_st")
+		if err != nil {
+			t.Fatalf("base err: %v", err)
+		}
+		rm, err := run(mir, storageStoreLoadReturn, nil, "addr_st")
+		if err != nil {
+			t.Fatalf("mir err: %v", err)
+		}
+		if string(rb) != string(rm) {
+			t.Fatalf("mismatch: base %x mir %x", rb, rm)
+		}
+	})
+
+	t.Run("keccak", func(t *testing.T) {
+		rb, err := run(base, keccakMemReturn, nil, "addr_km")
+		if err != nil {
+			t.Fatalf("base err: %v", err)
+		}
+		rm, err := run(mir, keccakMemReturn, nil, "addr_km")
+		if err != nil {
+			t.Fatalf("mir err: %v", err)
+		}
+		if string(rb) != string(rm) {
+			t.Fatalf("mismatch: base %x mir %x", rb, rm)
+		}
+	})
+
+	t.Run("calldata_keccak", func(t *testing.T) {
+		input := make([]byte, 96)
+		for i := range input {
+			input[i] = byte(i)
+		}
+		rb, err := run(base, calldataKeccakReturn, input, "addr_ck")
+		if err != nil {
+			t.Fatalf("base err: %v", err)
+		}
+		rm, err := run(mir, calldataKeccakReturn, input, "addr_ck")
+		if err != nil {
+			t.Fatalf("mir err: %v", err)
+		}
+		if string(rb) != string(rm) {
+			t.Fatalf("mismatch: base %x mir %x", rb, rm)
 		}
 	})
 }

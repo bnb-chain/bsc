@@ -184,17 +184,26 @@ func (b *MIRBasicBlock) CreateBinOpMIRWithMA(op MirOperation, stack *ValueStack,
 	if accessor != nil {
 		switch op {
 		case MirKECCAK256:
-			// opnd1: offset, opnd2: size
-			accessor.recordLoad(opnd1, opnd2)
+			// For KECCAK256, operands are [offset, size]
+			accessor.recordLoad(opnd2, opnd1)
 		}
 	}
 
 	// Peephole with memory knowledge, e.g., KECCAK256 over known bytes
 	if accessor != nil && op == MirKECCAK256 {
-		if doPeepHole(op, &opnd1, &opnd2, stack, accessor) {
+		// Ensure operand order [offset, size]
+		if doPeepHole(op, &opnd2, &opnd1, stack, accessor) {
 			mir := newNopMIR(op, []*Value{&opnd1, &opnd2})
 			return b.appendMIR(mir)
 		}
+	}
+	// For KECCAK256 ensure operands are [offset, size]
+	if op == MirKECCAK256 {
+		mir := newBinaryOpMIR(op, &opnd2, &opnd1, stack)
+		opnd2.use = append(opnd2.use, mir)
+		opnd1.use = append(opnd1.use, mir)
+		stack.push(mir.Result())
+		return b.appendMIR(mir)
 	}
 	mir := newBinaryOpMIR(op, &opnd1, &opnd2, stack)
 	opnd1.use = append(opnd1.use, mir)

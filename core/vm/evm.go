@@ -586,14 +586,8 @@ func tryGetOptimizedCodeWithMIR(evm *EVM, codeHash common.Hash, rawCode []byte, 
 			contract.SetMIRCFG(cfg)
 			return false, rawCode
 		}
-		// As a fallback (should be warmed at processing time), try generating here
-		if cfg, err := compiler.GenerateMIRCFG(codeHash, rawCode); err == nil && cfg != nil {
-			compiler.StoreMIRCFG(codeHash, cfg)
-			contract.SetMIRCFG(cfg)
-			return false, rawCode
-		}
 
-		// If no cached CFG, try to generate synchronously as fallback
+		// If no cached CFG, try to generate-and-cache synchronously as fallback
 		cfg, err := compiler.TryGenerateMIRCFG(codeHash, rawCode)
 		if err == nil && cfg != nil {
 			contract.SetMIRCFG(cfg)
