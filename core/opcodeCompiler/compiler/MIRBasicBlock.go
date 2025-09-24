@@ -184,21 +184,24 @@ func (b *MIRBasicBlock) CreateBinOpMIRWithMA(op MirOperation, stack *ValueStack,
 	if accessor != nil {
 		switch op {
 		case MirKECCAK256:
-			// For KECCAK256, operands are [offset, size]
+			// For KECCAK256, operands are [offset, size] where
+			// stack before pops is [..., size, offset(top)] so
+			// opnd2 = offset, opnd1 = size
 			accessor.recordLoad(opnd2, opnd1)
 		}
 	}
 
 	// Peephole with memory knowledge, e.g., KECCAK256 over known bytes
 	if accessor != nil && op == MirKECCAK256 {
-		// Ensure operand order [offset, size]
+		// Ensure operand order [offset, size] -> (opnd2, opnd1)
 		if doPeepHole(op, &opnd2, &opnd1, stack, accessor) {
-			mir := newNopMIR(op, []*Value{&opnd1, &opnd2})
+			mir := newNopMIR(op, []*Value{&opnd2, &opnd1})
 			return b.appendMIR(mir)
 		}
 	}
 	// For KECCAK256 ensure operands are [offset, size]
 	if op == MirKECCAK256 {
+		// operands: [offset, size] -> (opnd2, opnd1)
 		mir := newBinaryOpMIR(op, &opnd2, &opnd1, stack)
 		opnd2.use = append(opnd2.use, mir)
 		opnd1.use = append(opnd1.use, mir)
@@ -381,7 +384,16 @@ func (b *MIRBasicBlock) CreateMemoryOpMIR(op MirOperation, stack *ValueStack, ac
 		offset := stack.pop()
 		value := stack.pop()
 		if accessor != nil {
-			accessor.recordStore(offset, *size32, value)
+			// Record the actual 32-byte memory representation for constants
+			if value.kind == Konst {
+				padded := make([]byte, 32)
+				if len(value.payload) > 0 {
+					copy(padded[32-len(value.payload):], value.payload)
+				}
+				accessor.recordStore(offset, *size32, Value{kind: Konst, payload: padded, u: uint256.NewInt(0).SetBytes(padded)})
+			} else {
+				accessor.recordStore(offset, *size32, value)
+			}
 		}
 		mir.oprands = []*Value{&offset, size32, &value}
 	case MirMSTORE8:
@@ -389,7 +401,16 @@ func (b *MIRBasicBlock) CreateMemoryOpMIR(op MirOperation, stack *ValueStack, ac
 		offset := stack.pop()
 		value := stack.pop()
 		if accessor != nil {
-			accessor.recordStore(offset, *size1, value)
+			// Record only the lowest byte for MSTORE8 if constant
+			if value.kind == Konst {
+				b := byte(0)
+				if len(value.payload) > 0 {
+					b = value.payload[len(value.payload)-1]
+				}
+				accessor.recordStore(offset, *size1, Value{kind: Konst, payload: []byte{b}, u: uint256.NewInt(0).SetUint64(uint64(b))})
+			} else {
+				accessor.recordStore(offset, *size1, value)
+			}
 		}
 		mir.oprands = []*Value{&offset, size1, &value}
 	case MirMSIZE:
@@ -398,7 +419,11 @@ func (b *MIRBasicBlock) CreateMemoryOpMIR(op MirOperation, stack *ValueStack, ac
 		// leave unmodified for other memory ops
 	}
 
-	stack.push(mir.Result())
+	// Only push result for producing ops
+	switch op {
+	case MirMLOAD, MirMSIZE:
+		stack.push(mir.Result())
+	}
 	return b.appendMIR(mir)
 }
 
@@ -414,8 +439,9 @@ func (b *MIRBasicBlock) CreateStorageOpMIR(op MirOperation, stack *ValueStack, a
 		}
 		mir.oprands = []*Value{&key}
 	case MirSSTORE:
-		value := stack.pop()
+		// EVM pops key (top) then value
 		key := stack.pop()
+		value := stack.pop()
 		if accessor != nil {
 			accessor.recordStateStore(key, value)
 		}

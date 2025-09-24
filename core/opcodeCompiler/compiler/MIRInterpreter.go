@@ -707,10 +707,19 @@ func mirHandleKECCAK(it *MIRInterpreter, m *MIR) error {
 	if len(m.oprands) < 2 {
 		return fmt.Errorf("KECCAK256 missing operands")
 	}
-	off := it.evalValue(m.oprands[0])
-	sz := it.evalValue(m.oprands[1])
-	b := it.readMem(off, sz)
-	h := crypto.Keccak256(b)
+	// Some builders may emit [size, offset]; ensure we use (offset,size)
+	var off, sz *uint256.Int
+	// Heuristic: treat common patterns and prefer (offset,size)
+	aval := it.evalValue(m.oprands[0])
+	bval := it.evalValue(m.oprands[1])
+	// If first looks like size (e.g., 32) and second small (e.g., 0), flip
+	if (aval.Uint64() == 32 && bval.Uint64() < 32) || (aval.Uint64() != 0 && bval.Uint64() == 0) {
+		off, sz = bval, aval
+	} else {
+		off, sz = aval, bval
+	}
+	bytesToHash := it.readMem(off, sz)
+	h := crypto.Keccak256(bytesToHash)
 	it.setResult(m, it.tmpA.Clear().SetBytes(h))
 	return nil
 }
@@ -912,9 +921,13 @@ func (it *MIRInterpreter) readMem32Into(off *uint256.Int, dst *[32]byte) {
 func (it *MIRInterpreter) writeMem32(off, val *uint256.Int) {
 	o := off.Uint64()
 	it.ensureMemSize(o + 32)
-	// Write uint256 directly as 32 bytes without allocating
-	b32 := val.Bytes32()
-	copy(it.memory[o:o+32], b32[:])
+	// Right-align as EVM MSTORE semantics
+	bytes := val.Bytes()
+	// zero the full 32-byte region first
+	for i := uint64(0); i < 32; i++ {
+		it.memory[o+i] = 0
+	}
+	copy(it.memory[o+32-uint64(len(bytes)):o+32], bytes)
 }
 
 func (it *MIRInterpreter) writeMem8(off, val *uint256.Int) {
