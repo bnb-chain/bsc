@@ -199,7 +199,7 @@ func (b *buffer) flush(root common.Hash, db ethdb.Database, separateSnapDB ethdb
 		} else {
 			var wg sync.WaitGroup
 			var trieErr, snapErr error
-
+			// Write snapshot and trie data concurrently in separate goroutines.
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -212,6 +212,7 @@ func (b *buffer) flush(root common.Hash, db ethdb.Database, separateSnapDB ethdb
 			}()
 
 			wg.Add(1)
+			// TODO(flywukong) the split increases the risk of unintended snapshot regeneration on partial failure. Make the writes atomic.
 			go func() {
 				defer wg.Done()
 				accounts, slots = b.states.write(snapBatch, progress, statesCache)

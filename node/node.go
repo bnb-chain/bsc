@@ -76,13 +76,13 @@ const (
 	runningState
 	closedState
 	// ChainDbResourcePercentage is estimated from on-disk size proportions of metadata and block data.
-	ChainDbResourcePercentage = 7
+	ChainDbResourcePercentage = 5
 	// SnapDbResourcePercentage is estimated from on-disk size proportions of snapshot data.
-	SnapDbResourcePercentage = 36
+	SnapDbResourcePercentage = 30
 	// StateStoreResourcePercentage is estimated from on-disk size proportions of trie data.
-	StateStoreResourcePercentage = 50
-	// IndexDbResourcePercentage is estimated from on-disk size proportions of transaction index data.
-	IndexDbResourcePercentage = 7
+	StateStoreResourcePercentage = 60
+	// IndexDbResourcePercentage is lower because it is rarely accessed.
+	IndexDbResourcePercentage = 5
 )
 
 const StateDBNamespace = "eth/db/statedata/"
