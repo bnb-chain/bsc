@@ -212,7 +212,7 @@ func (b *buffer) flush(root common.Hash, db ethdb.Database, separateSnapDB ethdb
 			}()
 
 			wg.Add(1)
-			// TODO(flywukong) the split increases the risk of unintended snapshot regeneration on partial failure. Make the writes atomic.
+			// TODO(flywukong) WritePersistentStateID and WriteSnapshotRoot in two separate writings increases the risk of unintended snapshot regeneration.
 			go func() {
 				defer wg.Done()
 				accounts, slots = b.states.write(snapBatch, progress, statesCache)
