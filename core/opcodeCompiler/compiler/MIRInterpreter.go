@@ -885,6 +885,26 @@ func (it *MIRInterpreter) setResult(m *MIR, val *uint256.Int) {
 	}
 }
 
+// MemoryCap returns the capacity of the internal memory buffer
+func (it *MIRInterpreter) MemoryCap() int {
+	return cap(it.memory)
+}
+
+// TruncateMemory resets the logical length of interpreter memory to zero,
+// preserving the underlying capacity for reuse.
+func (it *MIRInterpreter) TruncateMemory() {
+	if it.memory != nil {
+		it.memory = it.memory[:0]
+	}
+}
+
+// ResetReturnData clears the return data buffer without reallocating.
+func (it *MIRInterpreter) ResetReturnData() {
+	if it.returndata != nil {
+		it.returndata = it.returndata[:0]
+	}
+}
+
 func (it *MIRInterpreter) ensureMemSize(size uint64) {
 	if uint64(len(it.memory)) < size {
 		// Grow geometrically to reduce reallocations

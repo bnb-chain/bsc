@@ -1,7 +1,6 @@
 package compiler
 
 import (
-	"encoding/binary"
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -19,6 +18,9 @@ type CFG struct {
 	basicBlockCount uint
 	memoryAccessor  *MemoryAccessor
 	stateAccessor   *StateAccessor
+	// Fast lookup helpers, built on demand
+	selectorIndex map[uint32]*MIRBasicBlock // 4-byte selector -> entry basic block
+	pcToBlock     map[uint]*MIRBasicBlock   // bytecode PC -> basic block
 }
 
 func NewCFG(hash common.Hash, code []byte) (c *CFG) {
@@ -27,6 +29,8 @@ func NewCFG(hash common.Hash, code []byte) (c *CFG) {
 	c.rawCode = code
 	c.basicBlocks = []*MIRBasicBlock{}
 	c.basicBlockCount = 0
+	c.selectorIndex = nil
+	c.pcToBlock = make(map[uint]*MIRBasicBlock)
 	return c
 }
 
@@ -53,89 +57,26 @@ func (c *CFG) createEntryBB() *MIRBasicBlock {
 
 // createBB create a normal bb.
 func (c *CFG) createBB(pc uint, parent *MIRBasicBlock) *MIRBasicBlock {
+	if c.pcToBlock != nil {
+		if existing, ok := c.pcToBlock[pc]; ok {
+			if parent != nil {
+				existing.SetParents([]*MIRBasicBlock{parent})
+			}
+			return existing
+		}
+	}
 	bb := NewMIRBasicBlock(c.basicBlockCount, pc, parent)
 	c.basicBlocks = append(c.basicBlocks, bb)
 	c.basicBlockCount++
+	if c.pcToBlock != nil {
+		c.pcToBlock[pc] = bb
+	}
 	return bb
 }
 
 func (c *CFG) reachEndBB() {
 	// reach the end of BasicBlock.
 	// TODO - zlin:  check the child is backward only.
-}
-
-func doOpcodesParse(hash common.Hash, code []byte) ([]byte, error) {
-	if len(code) == 0 {
-		log.Warn("Can not build CFG with nil codes\n")
-		return nil, ErrFailPreprocessing
-	}
-
-	// Build CFG and get both cfg and valueStack
-	cfg, _, err := buildCFGInternal(hash, code)
-	if err != nil {
-		return nil, err
-	}
-
-	// Build MIR byte stream directly from CFG (optimizedBytecode == MIR instructions)
-	optimizedBytecode := generateMIRByteStream(cfg)
-
-	// Defensive: if no MIR could be produced, return original code
-	if len(optimizedBytecode) == 0 {
-		log.Debug("MIR stream empty, falling back to original", "codeLen", len(code))
-		return code, nil
-	}
-
-	return optimizedBytecode, nil
-}
-
-// generateMIRByteStream flattens the MIR CFG into a simple byte stream of MIR opcodes
-// Note: operands are not encoded; this stream is intended as a lightweight MIR indicator/carrying format
-func generateMIRByteStream(cfg *CFG) []byte {
-	if cfg == nil || len(cfg.basicBlocks) == 0 {
-		return nil
-	}
-	// Pre-size roughly to original code length
-	stream := make([]byte, 0, len(cfg.rawCode))
-	for _, bb := range cfg.basicBlocks {
-		if bb == nil || len(bb.instructions) == 0 {
-			continue
-		}
-		for _, mir := range bb.instructions {
-			if mir == nil {
-				continue
-			}
-			stream = append(stream, byte(mir.op))
-		}
-	}
-	return stream
-}
-
-// buildCFGInternal builds CFG and returns both CFG and final valueStack
-func buildCFGInternal(hash common.Hash, code []byte) (*CFG, *ValueStack, error) {
-	cfg := NewCFG(hash, code)
-
-	// memoryAccessor is instance local at runtime
-	var memoryAccessor *MemoryAccessor = cfg.getMemoryAccessor()
-	// stateAccessor is global but we analyze it in processor granularity
-	var stateAccessor *StateAccessor = cfg.getStateAccessor()
-
-	entryBB := cfg.createEntryBB()
-	startBB := cfg.createBB(0, entryBB)
-	valueStack := ValueStack{}
-	// generate CFG.
-	unprcessedBBs := MIRBasicBlockStack{}
-	unprcessedBBs.Push(startBB)
-
-	for unprcessedBBs.Size() != 0 {
-		curBB := unprcessedBBs.Pop()
-		err := cfg.buildBasicBlock(curBB, &valueStack, memoryAccessor, stateAccessor, &unprcessedBBs)
-		if err != nil {
-			log.Error(err.Error())
-			return nil, nil, err
-		}
-	}
-
-	return cfg, &valueStack, nil
 }
 
 // GenerateMIRCFG generates a MIR Control Flow Graph for the given bytecode
@@ -158,8 +99,20 @@ func GenerateMIRCFG(hash common.Hash, code []byte) (*CFG, error) {
 	unprcessedBBs := MIRBasicBlockStack{}
 	unprcessedBBs.Push(startBB)
 
+	// Guard against pathological CFG explosions in large contracts
+	const maxBasicBlocks = 4000
+	processed := 0
+
 	for unprcessedBBs.Size() != 0 {
+		if processed >= maxBasicBlocks {
+			log.Warn("MIR CFG build budget reached", "blocks", processed)
+			break
+		}
 		curBB := unprcessedBBs.Pop()
+		if curBB == nil {
+			continue
+		}
+		processed++
 		err := cfg.buildBasicBlock(curBB, &valueStack, memoryAccessor, stateAccessor, &unprcessedBBs)
 		if err != nil {
 			log.Error(err.Error())
@@ -173,6 +126,65 @@ func GenerateMIRCFG(hash common.Hash, code []byte) (*CFG, error) {
 // GetBasicBlocks returns the basic blocks in this CFG
 func (c *CFG) GetBasicBlocks() []*MIRBasicBlock {
 	return c.basicBlocks
+}
+
+// buildPCIndex builds a map from PC to basic block for quick lookups.
+func (c *CFG) buildPCIndex() {
+	if c.pcToBlock != nil {
+		return
+	}
+	m := make(map[uint]*MIRBasicBlock, len(c.basicBlocks))
+	for _, bb := range c.basicBlocks {
+		if bb == nil {
+			continue
+		}
+		m[bb.FirstPC()] = bb
+	}
+	c.pcToBlock = m
+}
+
+// EnsureSelectorIndexBuilt scans raw bytecode for PUSH4 <selector> and a nearby
+// PUSH2 <offset>, then maps selector to the basic block at that offset.
+func (c *CFG) EnsureSelectorIndexBuilt() {
+	if c.selectorIndex != nil {
+		return
+	}
+	c.buildPCIndex()
+	idx := make(map[uint32]*MIRBasicBlock)
+	code := c.rawCode
+	for i := 0; i+7 < len(code); i++ {
+		if code[i] == 0x63 { // PUSH4
+			sel := uint32(code[i+1])<<24 | uint32(code[i+2])<<16 | uint32(code[i+3])<<8 | uint32(code[i+4])
+			for j := i + 5; j < i+12 && j+2 < len(code); j++ {
+				if code[j] == 0x61 { // PUSH2
+					off := (uint(code[j+1]) << 8) | uint(code[j+2])
+					if bb, ok := c.pcToBlock[uint(off)]; ok {
+						if _, exists := idx[sel]; !exists {
+							idx[sel] = bb
+						}
+					}
+					break
+				}
+			}
+		}
+	}
+	c.selectorIndex = idx
+}
+
+// EntryIndexForSelector returns the index within basicBlocks for a selector if known, else -1.
+func (c *CFG) EntryIndexForSelector(selector uint32) int {
+	c.EnsureSelectorIndexBuilt()
+	if c.selectorIndex == nil {
+		return -1
+	}
+	if bb, ok := c.selectorIndex[selector]; ok {
+		for i, b := range c.basicBlocks {
+			if b == bb {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 // Compilation-time bytecode generation functions removed
@@ -332,18 +344,25 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			if mir != nil {
 				// Create a new basic block for the jump target
 				if len(mir.oprands) > 0 && mir.oprands[0].payload != nil {
-					targetPC := uint64(0)
-					if len(mir.oprands[0].payload) >= 8 {
-						targetPC = binary.BigEndian.Uint64(mir.oprands[0].payload[len(mir.oprands[0].payload)-8:])
+					// Interpret payload as big-endian integer of arbitrary length
+					var targetPC uint64
+					for _, b := range mir.oprands[0].payload {
+						targetPC = (targetPC << 8) | uint64(b)
 					}
 					if targetPC < uint64(len(code)) {
+						// Determine existence before creation to avoid reprocessing
+						_, targetExists := c.pcToBlock[uint(targetPC)]
 						targetBB := c.createBB(uint(targetPC), curBB)
+						// Only target is a child of current block for unconditional JUMP
 						curBB.SetChildren([]*MIRBasicBlock{targetBB})
-						fallthroughBB := c.createBB(uint(i+1), curBB)
-						// fallthroughBB is not the children of curBB
-						// curBB.SetChildren([]*MIRBasicBlock{targetBB, fallthroughBB})
-						unprcessedBBs.Push(targetBB)
-						unprcessedBBs.Push(fallthroughBB)
+						// Optionally register fallthrough block at i+1 but do not enqueue or link
+						if _, ok := c.pcToBlock[uint(i+1)]; !ok {
+							_ = c.createBB(uint(i+1), nil)
+						}
+						// Enqueue only target if newly created
+						if !targetExists {
+							unprcessedBBs.Push(targetBB)
+						}
 						return nil
 					}
 				}
@@ -352,20 +371,27 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 		case JUMPI:
 			mir = curBB.CreateJumpMIR(MirJUMPI, valueStack, nil)
 			if mir != nil {
-				// Create new basic blocks for both true and false paths
+				// Create new basic blocks for both true (target) and false (fallthrough) paths
 				if len(mir.oprands) > 0 && mir.oprands[0].payload != nil {
-					targetPC := uint64(0)
-					if len(mir.oprands[0].payload) >= 8 {
-						targetPC = binary.BigEndian.Uint64(mir.oprands[0].payload[len(mir.oprands[0].payload)-8:])
+					// Interpret payload as big-endian integer of arbitrary length
+					var targetPC uint64
+					for _, b := range mir.oprands[0].payload {
+						targetPC = (targetPC << 8) | uint64(b)
 					}
 					if targetPC < uint64(len(code)) {
-						// Create block for the jump target
+						// Determine existence before creation to avoid reprocessing
+						_, targetExists := c.pcToBlock[uint(targetPC)]
+						_, fallExists := c.pcToBlock[uint(i+1)]
+						// Create blocks for target and fallthrough
 						targetBB := c.createBB(uint(targetPC), curBB)
-						// Create block for the fall-through path
 						fallthroughBB := c.createBB(uint(i+1), curBB)
 						curBB.SetChildren([]*MIRBasicBlock{targetBB, fallthroughBB})
-						unprcessedBBs.Push(targetBB)
-						unprcessedBBs.Push(fallthroughBB)
+						if !targetExists {
+							unprcessedBBs.Push(targetBB)
+						}
+						if !fallExists {
+							unprcessedBBs.Push(fallthroughBB)
+						}
 						return nil
 					}
 				}
@@ -808,7 +834,17 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			unprcessedBBs.Push(fallthroughBB)
 			return nil
 		default:
-			return fmt.Errorf("unknown opcode: %v", op)
+			// Tolerate customized/fused opcodes (0xb0-0xcf) by treating them as NOPs
+			if op >= 0xb0 && op <= 0xcf {
+				_ = curBB.CreateVoidMIR(MirNOP)
+				// continue scanning
+				break
+			}
+			// For any other unknown opcode, terminate the current basic block
+			// as if hitting INVALID (unreachable metadata/data regions)
+			_ = curBB.CreateVoidMIR(MirINVALID)
+			curBB.SetLastPC(uint(i))
+			return nil
 		}
 
 		i++

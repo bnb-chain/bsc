@@ -78,8 +78,22 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 	// Set up MIR execution environment with contract-specific data
 	adapter.setupExecutionEnvironment(contract, input)
 
-	// Execute each basic block in sequence
-	// For now, we assume linear execution (no complex control flow)
+	// If calldata contains a 4-byte selector, try direct dispatch to the entry basic block
+	// to avoid scanning all basic blocks for real-world contracts with large dispatch tables.
+	if len(input) >= 4 {
+		selector := uint32(input[0])<<24 | uint32(input[1])<<16 | uint32(input[2])<<8 | uint32(input[3])
+		if idx := cfg.EntryIndexForSelector(selector); idx >= 0 {
+			bb := cfg.GetBasicBlocks()[idx]
+			if bb != nil && bb.Size() > 0 {
+				result, err := adapter.mirInterpreter.RunMIR(bb)
+				if err == nil && len(result) > 0 {
+					return result, nil
+				}
+			}
+		}
+	}
+
+	// Fallback: execute each basic block sequentially (linear flow assumption)
 	for _, bb := range cfg.GetBasicBlocks() {
 		if bb == nil || bb.Size() == 0 {
 			continue
@@ -106,6 +120,17 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 
 	// Set calldata
 	env.Calldata = input
+
+	// Reset interpreter transient state to avoid per-call allocations
+	// Reuse memory backing store by truncating length to zero
+	if adapter.mirInterpreter != nil {
+		// Reset memory view
+		if adapter.mirInterpreter.MemoryCap() > 0 {
+			adapter.mirInterpreter.TruncateMemory()
+		}
+		// Reset return data
+		adapter.mirInterpreter.ResetReturnData()
+	}
 
 	// Set address context
 	{

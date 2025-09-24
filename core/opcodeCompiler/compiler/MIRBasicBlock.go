@@ -7,21 +7,35 @@ import (
 // bitmap is a bit map which maps basicblock in to a bit
 type bitmap []byte
 
-func (bits bitmap) set1(pos uint64) {
-	bits[pos/8] |= 1 << (pos % 8)
+func (bits *bitmap) ensure(pos uint64) {
+	need := int(pos/8) + 1
+	if need <= len(*bits) {
+		return
+	}
+	*bits = append(*bits, make([]byte, need-len(*bits))...)
 }
 
-func (bits bitmap) setN(flag uint16, pos uint64) {
+func (bits *bitmap) set1(pos uint64) {
+	bits.ensure(pos)
+	(*bits)[pos/8] |= 1 << (pos % 8)
+}
+
+func (bits *bitmap) setN(flag uint16, pos uint64) {
+	bits.ensure(pos + 8)
 	a := flag << (pos % 8)
-	bits[pos/8] |= byte(a)
+	(*bits)[pos/8] |= byte(a)
 	if b := byte(a >> 8); b != 0 {
-		bits[pos/8+1] = b
+		(*bits)[pos/8+1] = b
 	}
 }
 
 // checks if the position is in a code segment.
 func (bits *bitmap) isBitSet(pos uint64) bool {
-	return (((*bits)[pos/8] >> (pos % 8)) & 1) == 1
+	idx := int(pos / 8)
+	if idx >= len(*bits) {
+		return false
+	}
+	return (((*bits)[idx] >> (pos % 8)) & 1) == 1
 }
 
 type MIRBasicBlock struct {
@@ -578,7 +592,24 @@ func (b *MIRBasicBlock) CreateBlockOpMIR(op MirOperation, stack *ValueStack) *MI
 func (b *MIRBasicBlock) CreateJumpMIR(op MirOperation, stack *ValueStack, bbStack *MIRBasicBlockStack) *MIR {
 	mir := new(MIR)
 	mir.op = op
-	stack.push(mir.Result())
+
+	// EVM semantics:
+	// - JUMP consumes 1 operand: destination
+	// - JUMPI consumes 2 operands: destination and condition
+	// Stack top holds the last pushed item; pop order reflects that.
+	switch op {
+	case MirJUMP:
+		dest := stack.pop()
+		mir.oprands = []*Value{&dest}
+	case MirJUMPI:
+		dest := stack.pop()
+		cond := stack.pop()
+		mir.oprands = []*Value{&dest, &cond}
+	default:
+		// Other jump-like ops not implemented here
+	}
+
+	// JUMP/JUMPI do not produce a stack value; do not push a result
 	return b.appendMIR(mir)
 }
 
