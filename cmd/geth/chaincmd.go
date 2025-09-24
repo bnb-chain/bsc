@@ -748,8 +748,7 @@ func dumpGenesis(ctx *cli.Context) error {
 
 	// set the separate state & block database
 	if stack.CheckIfMultiDataBase() && err == nil {
-		stateDiskDb := utils.MakeStateDataBase(ctx, stack, true)
-		db.SetStateStore(stateDiskDb)
+		stack.SetMultiDBs(db, "chaindata", 0, 0, true)
 	}
 
 	genesis, err = core.ReadGenesis(db)

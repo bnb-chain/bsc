@@ -2595,53 +2595,6 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.
 	return chainDb
 }
 
-// MakeStateDataBase open a separate state database using the flags passed to the client and will hard crash if it fails.
-func MakeStateDataBase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.Database {
-	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) * node.StateStoreResourcePercentage / 100
-	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name)) * node.StateStoreResourcePercentage / 100
-	statediskdb, err := stack.OpenDatabaseWithFreezer("chaindata/state", cache, handles, "", "", readonly)
-	if err != nil {
-		Fatalf("Failed to open separate trie database: %v", err)
-	}
-
-	return statediskdb
-}
-
-// MakeSnapDataBase opens a separate snapshot database using the flags passed to the client and will hard crash if it fails.
-func MakeSnapDataBase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.KeyValueStore {
-	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) * node.SnapDbResourcePercentage / 100
-	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name)) * node.SnapDbResourcePercentage / 100
-	snapdb, err := stack.OpenDatabaseWithOptions("chaindata/snapshot", node.DatabaseOptions{
-		Cache:            cache,
-		Handles:          handles,
-		MetricsNamespace: "eth/db/snapdata/",
-		ReadOnly:         readonly,
-		IsKeyValueDb:     true,
-	})
-	if err != nil {
-		Fatalf("Failed to open separate snapshot database: %v", err)
-	}
-
-	return snapdb
-}
-
-// MakeTxIndexDatabase opens a separate tx index database using the flags passed to the client and will hard crash if it fails.
-func MakeTxIndexDatabase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.KeyValueStore {
-	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) * node.IndexDbResourcePercentage / 100
-	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name)) * node.IndexDbResourcePercentage / 100
-	indexdb, err := stack.OpenDatabaseWithOptions("chaindata/txindex", node.DatabaseOptions{
-		Cache:            cache,
-		Handles:          handles,
-		MetricsNamespace: "eth/db/txindex/",
-		ReadOnly:         readonly,
-		IsKeyValueDb:     true,
-	})
-	if err != nil {
-		Fatalf("Failed to open separate tx index database: %v", err)
-	}
-	return indexdb
-}
-
 func PathDBConfigAddJournalFilePath(stack *node.Node, config *pathdb.Config) *pathdb.Config {
 	path := fmt.Sprintf("%s/%s", stack.ResolvePath("chaindata"), eth.JournalFileName)
 	config.JournalFilePath = path
