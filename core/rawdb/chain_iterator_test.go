@@ -160,7 +160,7 @@ func TestIndexTransactions(t *testing.T) {
 			if i == 0 {
 				continue
 			}
-			number := ReadTxLookupEntry(chainDB.IndexStoreReader(), txs[i-1].Hash())
+			number := ReadTxLookupEntry(chainDB, txs[i-1].Hash())
 			if exist && number == nil {
 				t.Fatalf("Transaction index %d missing", i)
 			}
