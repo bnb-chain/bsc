@@ -1686,7 +1686,6 @@ func traverseAndMigrate(chainDB ethdb.Database) error {
 			}
 			indexBatch.Reset()
 		}
-		batchSize = 0
 	}
 	log.Info("migrate completed", "chain", chainStat, "state", stateStat, "snap", snapStat,
 		"index", indexStat, "elapsed", common.PrettyDuration(time.Since(start)))
