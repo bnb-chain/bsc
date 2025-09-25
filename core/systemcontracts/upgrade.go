@@ -1023,13 +1023,12 @@ func init() {
 		},
 	}
 
-	// TODO(Nathan): update the Url once contracts merged into master branch for fermi hardfork
 	fermiUpgrade[mainNet] = &Upgrade{
 		UpgradeName: "fermi",
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(StakeHubContract),
-				CommitUrl:    "https://github.com/allformless/bsc-genesis-contract/commit/62a516e06b73cff04a3f46a615c5d804753a2d29",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/34618f607f8356cf147dde6a69fae150bd53d5bf",
 				Code:         fermi.MainnetStakeHubContract,
 			},
 		},
@@ -1040,7 +1039,7 @@ func init() {
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(StakeHubContract),
-				CommitUrl:    "https://github.com/allformless/bsc-genesis-contract/commit/62a516e06b73cff04a3f46a615c5d804753a2d29",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/34618f607f8356cf147dde6a69fae150bd53d5bf",
 				Code:         fermi.ChapelStakeHubContract,
 			},
 		},
@@ -1051,7 +1050,7 @@ func init() {
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(StakeHubContract),
-				CommitUrl:    "https://github.com/allformless/bsc-genesis-contract/commit/62a516e06b73cff04a3f46a615c5d804753a2d29",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/34618f607f8356cf147dde6a69fae150bd53d5bf",
 				Code:         fermi.RialtoStakeHubContract,
 			},
 		},
