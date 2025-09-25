@@ -449,7 +449,7 @@ func (api *FilterAPI) TransactionReceipts(ctx context.Context, filter *Transacti
 
 	receiptsSub := api.events.SubscribeTransactionReceipts(txHashes, matchedReceipts)
 
-	go func() {
+	gopool.Submit(func() {
 		defer receiptsSub.Unsubscribe()
 
 		signer := types.LatestSigner(api.sys.backend.ChainConfig())
@@ -478,7 +478,7 @@ func (api *FilterAPI) TransactionReceipts(ctx context.Context, filter *Transacti
 				return
 			}
 		}
-	}()
+	})
 
 	return rpcSub, nil
 }
