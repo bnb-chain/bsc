@@ -114,9 +114,10 @@ type MIR struct {
 	pc      *uint // Program counter of the original instruction (optional)
 	idx     int   // Index within its basic block, set by appendMIR
 	// Pre-encoded operand info to avoid runtime eval
-	opKinds  []byte         // 0=const,1=def,2=fallback
-	opConst  []*uint256.Int // if const
-	opDefIdx []int          // if def (index into results slice)
+	opKinds       []byte         // 0=const,1=def,2=fallback
+	opConst       []*uint256.Int // if const
+	opDefIdx      []int          // if def (index into results slice)
+	genStackDepth int            // stack depth at generation time (for debugging/dumps)
 }
 
 // Op returns the MIR operation code
@@ -128,6 +129,9 @@ func (m *MIR) Result() *Value {
 	}
 	return newValue(Variable, m, nil, nil)
 }
+
+// GenStackDepth reports the stack depth at MIR generation time (if recorded)
+func (m *MIR) GenStackDepth() int { return m.genStackDepth }
 
 func newVoidMIR(operation MirOperation) *MIR {
 	mir := new(MIR)

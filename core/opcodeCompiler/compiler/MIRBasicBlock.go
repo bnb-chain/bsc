@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 )
 
@@ -42,6 +43,7 @@ type MIRBasicBlock struct {
 	blockNum       uint
 	firstPC        uint
 	lastPC         uint
+	initDepth      int
 	parentsBitmap  *bitmap
 	childrenBitmap *bitmap
 	parents        []*MIRBasicBlock
@@ -73,6 +75,20 @@ func (b *MIRBasicBlock) LastPC() uint {
 
 func (b *MIRBasicBlock) SetLastPC(lastPC uint) {
 	b.lastPC = lastPC
+}
+
+func (b *MIRBasicBlock) InitDepth() int {
+	return b.initDepth
+}
+
+func (b *MIRBasicBlock) SetInitDepth(d int) {
+	b.initDepth = d
+}
+
+func (b *MIRBasicBlock) SetInitDepthMax(d int) {
+	if d > b.initDepth {
+		b.initDepth = d
+	}
 }
 
 func (b *MIRBasicBlock) Parents() []*MIRBasicBlock {
@@ -134,6 +150,12 @@ func (b *MIRBasicBlock) appendMIR(mir *MIR) *MIR {
 			}
 		}
 	}
+	// Record generation-time stack depth for debugging/dumps
+	// Note: this uses the current stack size after any pushes done above callers.
+	mir.genStackDepth = 0
+	// Best-effort: if the basic block is appending after a push, ValueStack.size()
+	// will include it; otherwise it reflects post-pop size. Good enough for traces.
+	// We cannot read stack here without passing it, so we leave as 0 and set in callers that have the stack.
 	b.instructions = append(b.instructions, mir)
 	return mir
 }
@@ -148,7 +170,11 @@ func (b *MIRBasicBlock) CreateUnaryOpMIR(op MirOperation, stack *ValueStack) (mi
 	}
 	// If mir.op == MirNOP, doPeepHole already pushed the optimized constant to stack
 
-	return b.appendMIR(mir)
+	mir = b.appendMIR(mir)
+	mir.genStackDepth = stack.size()
+	opName := mir.op.String()
+	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	return mir
 }
 
 func (b *MIRBasicBlock) CreateBinOpMIR(op MirOperation, stack *ValueStack) (mir *MIR) {
@@ -162,7 +188,11 @@ func (b *MIRBasicBlock) CreateBinOpMIR(op MirOperation, stack *ValueStack) (mir 
 	}
 	// If mir.op == MirNOP, doPeepHole already pushed the optimized constant to stack
 
-	return b.appendMIR(mir)
+	mir = b.appendMIR(mir)
+	mir.genStackDepth = stack.size()
+	opName := mir.op.String()
+	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	return mir
 }
 
 // CreateTernaryOpMIR creates a MIR instruction for 3-operand operations like ADDMOD, MULMOD
@@ -175,7 +205,11 @@ func (b *MIRBasicBlock) CreateTernaryOpMIR(op MirOperation, stack *ValueStack) (
 	if doPeepHole3Ops(op, &opnd1, &opnd2, &opnd3, stack, nil) {
 		// Operation was optimized away, create a NOP MIR for tracking
 		mir = newNopMIR(op, []*Value{&opnd1, &opnd2, &opnd3})
-		return b.appendMIR(mir)
+		mir = b.appendMIR(mir)
+		mir.genStackDepth = stack.size()
+		opName := mir.op.String()
+		log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+		return mir
 	}
 
 	// Create regular ternary operation MIR
@@ -187,7 +221,11 @@ func (b *MIRBasicBlock) CreateTernaryOpMIR(op MirOperation, stack *ValueStack) (
 	}
 	// If mir.op == MirNOP, doPeepHole3Ops already pushed the optimized constant to stack
 
-	return b.appendMIR(mir)
+	mir = b.appendMIR(mir)
+	mir.genStackDepth = stack.size()
+	opName := mir.op.String()
+	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	return mir
 }
 
 func (b *MIRBasicBlock) CreateBinOpMIRWithMA(op MirOperation, stack *ValueStack, accessor *MemoryAccessor) *MIR {
@@ -210,7 +248,11 @@ func (b *MIRBasicBlock) CreateBinOpMIRWithMA(op MirOperation, stack *ValueStack,
 		// Ensure operand order [offset, size] -> (opnd2, opnd1)
 		if doPeepHole(op, &opnd2, &opnd1, stack, accessor) {
 			mir := newNopMIR(op, []*Value{&opnd2, &opnd1})
-			return b.appendMIR(mir)
+			mir = b.appendMIR(mir)
+			mir.genStackDepth = stack.size()
+			opName := mir.op.String()
+			log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+			return mir
 		}
 	}
 	// For KECCAK256 ensure operands are [offset, size]
@@ -220,14 +262,21 @@ func (b *MIRBasicBlock) CreateBinOpMIRWithMA(op MirOperation, stack *ValueStack,
 		opnd2.use = append(opnd2.use, mir)
 		opnd1.use = append(opnd1.use, mir)
 		stack.push(mir.Result())
-		return b.appendMIR(mir)
+		mir = b.appendMIR(mir)
+		mir.genStackDepth = stack.size()
+		opName := mir.op.String()
+		log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+		return mir
 	}
 	mir := newBinaryOpMIR(op, &opnd1, &opnd2, stack)
 	opnd1.use = append(opnd1.use, mir)
 	opnd2.use = append(opnd2.use, mir)
 
 	stack.push(mir.Result())
-	return b.appendMIR(mir)
+	mir = b.appendMIR(mir)
+	opName := mir.op.String()
+	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	return mir
 }
 
 func (b *MIRBasicBlock) newMemoryLoadMIR(offset *Value, size *Value, accessor *MemoryAccessor, stack *ValueStack) *MIR {
@@ -235,7 +284,10 @@ func (b *MIRBasicBlock) newMemoryLoadMIR(offset *Value, size *Value, accessor *M
 	mir.op = MirMLOAD
 	mir.oprands = []*Value{offset, size}
 	stack.push(mir.Result())
-	return b.appendMIR(mir)
+	mir = b.appendMIR(mir)
+	opName := mir.op.String()
+	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	return mir
 }
 
 func (b *MIRBasicBlock) newKeccakMIR(data *Value, stack *ValueStack) *MIR {
@@ -243,13 +295,17 @@ func (b *MIRBasicBlock) newKeccakMIR(data *Value, stack *ValueStack) *MIR {
 	mir.op = MirKECCAK256
 	mir.oprands = []*Value{data}
 	stack.push(mir.Result())
-	return b.appendMIR(mir)
+	mir = b.appendMIR(mir)
+	opName := mir.op.String()
+	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	return mir
 }
 
 func NewMIRBasicBlock(blockNum, pc uint, parent *MIRBasicBlock) *MIRBasicBlock {
 	bb := new(MIRBasicBlock)
 	bb.blockNum = blockNum
 	bb.firstPC = pc
+	bb.initDepth = 0
 	bb.parentsBitmap = &bitmap{0}  // Initialize with at least 1 byte
 	bb.childrenBitmap = &bitmap{0} // Initialize with at least 1 byte
 	bb.instructions = []*MIR{}
@@ -303,11 +359,12 @@ func (b *MIRBasicBlock) CreateDupMIR(n int, stack *ValueStack) *MIR {
 	// Stack after:  [..., item_n, ..., item_2, item_1, item_n]
 
 	if stack.size() < n {
-		// Not enough items on stack - create non-optimized MIR
-		mir := new(MIR)
-		mir.op = MirOperation(0x80 + byte(n-1))
-		stack.push(mir.Result())
-		return b.appendMIR(mir)
+		// Not enough items on stack - emit a NOP marker and do not mutate stack
+		mir := newNopMIR(MirOperation(0x80+byte(n-1)), nil)
+		mir = b.appendMIR(mir)
+		opName := mir.op.String()
+		log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+		return mir
 	}
 
 	// Get the value to duplicate (n-1 because stack is 0-indexed from top)
@@ -315,27 +372,28 @@ func (b *MIRBasicBlock) CreateDupMIR(n int, stack *ValueStack) *MIR {
 
 	// Check if we can optimize this DUP operation
 	if isOptimizable(MirOperation(0x80+byte(n-1))) && dupValue.kind == Konst {
-		// If the value to duplicate is a constant, we can optimize
-		// by directly pushing the constant value
+		// If the value to duplicate is a constant, duplicate by pushing same constant
 		optimizedValue := newValue(Konst, nil, nil, dupValue.payload)
 		stack.push(optimizedValue)
-
 		// Create a NOP MIR to mark this optimization
 		mir := newNopMIR(MirOperation(0x80+byte(n-1)), []*Value{dupValue})
-		return b.appendMIR(mir)
+		mir = b.appendMIR(mir)
+		mir.genStackDepth = stack.size()
+		opName := mir.op.String()
+		log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+		return mir
 	}
 
-	// For non-constant values, perform the actual duplication
+	// For non-constant values, perform the actual duplication on the stack
 	duplicatedValue := *dupValue // Copy the value
 	stack.push(&duplicatedValue)
 
-	// Create MIR instruction with the source value as operand
-	mir := new(MIR)
-	mir.op = MirOperation(0x80 + byte(n-1))
-	mir.oprands = []*Value{dupValue}
-	dupValue.use = append(dupValue.use, mir)
-
-	return b.appendMIR(mir)
+	// Emit a NOP MIR carrying the original DUP opcode and source for tracking
+	mir := newNopMIR(MirOperation(0x80+byte(n-1)), []*Value{dupValue})
+	mir = b.appendMIR(mir)
+	opName := mir.op.String()
+	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	return mir
 }
 
 func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
@@ -344,10 +402,12 @@ func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
 	// Stack after:  [..., item_n+1, item_1, ..., item_2, item_n]
 
 	if stack.size() <= n {
-		// Not enough items on stack - create non-optimized MIR
-		mir := new(MIR)
-		mir.op = MirOperation(0x90 + byte(n-1))
-		return b.appendMIR(mir)
+		// Not enough items on stack - emit a NOP marker and do not mutate stack
+		mir := newNopMIR(MirOperation(0x90+byte(n-1)), nil)
+		mir = b.appendMIR(mir)
+		opName := mir.op.String()
+		log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+		return mir
 	}
 
 	// Check if we can optimize this SWAP operation
@@ -356,25 +416,26 @@ func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
 
 	if isOptimizable(MirOperation(0x90+byte(n-1))) &&
 		topValue.kind == Konst && swapValue.kind == Konst {
-		// Both values are constants, we can optimize by directly swapping
+		// Both values are constants, just swap in stack
 		stack.swap(0, n)
-
-		// Create a NOP MIR to mark this optimization
+		// Emit NOP marker for tracking
 		mir := newNopMIR(MirOperation(0x90+byte(n-1)), []*Value{topValue, swapValue})
-		return b.appendMIR(mir)
+		mir = b.appendMIR(mir)
+		mir.genStackDepth = stack.size()
+		opName := mir.op.String()
+		log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+		return mir
 	}
 
-	// For non-constant values, perform the actual swap
+	// For non-constant values, perform the actual swap on the stack
 	stack.swap(0, n)
-
-	// Create MIR instruction with both values as operands
-	mir := new(MIR)
-	mir.op = MirOperation(0x90 + byte(n-1))
-	mir.oprands = []*Value{topValue, swapValue}
-	topValue.use = append(topValue.use, mir)
-	swapValue.use = append(swapValue.use, mir)
-
-	return b.appendMIR(mir)
+	// Emit a NOP MIR carrying the original SWAP opcode and operands
+	mir := newNopMIR(MirOperation(0x90+byte(n-1)), []*Value{topValue, swapValue})
+	mir = b.appendMIR(mir)
+	mir.genStackDepth = stack.size()
+	opName := mir.op.String()
+	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	return mir
 }
 
 func (b *MIRBasicBlock) CreateMemoryOpMIR(op MirOperation, stack *ValueStack, accessor *MemoryAccessor) *MIR {
@@ -438,7 +499,11 @@ func (b *MIRBasicBlock) CreateMemoryOpMIR(op MirOperation, stack *ValueStack, ac
 	case MirMLOAD, MirMSIZE:
 		stack.push(mir.Result())
 	}
-	return b.appendMIR(mir)
+	mir = b.appendMIR(mir)
+	mir.genStackDepth = stack.size()
+	opName := mir.op.String()
+	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	return mir
 }
 
 func (b *MIRBasicBlock) CreateStorageOpMIR(op MirOperation, stack *ValueStack, accessor *StateAccessor) *MIR {
@@ -478,7 +543,11 @@ func (b *MIRBasicBlock) CreateStorageOpMIR(op MirOperation, stack *ValueStack, a
 	}
 
 	stack.push(mir.Result())
-	return b.appendMIR(mir)
+	mir = b.appendMIR(mir)
+	mir.genStackDepth = stack.size()
+	opName := mir.op.String()
+	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	return mir
 }
 
 func (b *MIRBasicBlock) CreateBlockInfoMIR(op MirOperation, stack *ValueStack) *MIR {
@@ -574,7 +643,11 @@ func (b *MIRBasicBlock) CreateBlockInfoMIR(op MirOperation, stack *ValueStack) *
 	}
 
 	stack.push(mir.Result())
-	return b.appendMIR(mir)
+	mir = b.appendMIR(mir)
+	mir.genStackDepth = stack.size()
+	opName := mir.op.String()
+	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	return mir
 }
 
 func (b *MIRBasicBlock) CreateBlockOpMIR(op MirOperation, stack *ValueStack) *MIR {
@@ -586,7 +659,10 @@ func (b *MIRBasicBlock) CreateBlockOpMIR(op MirOperation, stack *ValueStack) *MI
 		mir.oprands = []*Value{&blk}
 	}
 	stack.push(mir.Result())
-	return b.appendMIR(mir)
+	mir = b.appendMIR(mir)
+	opName := mir.op.String()
+	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	return mir
 }
 
 func (b *MIRBasicBlock) CreateJumpMIR(op MirOperation, stack *ValueStack, bbStack *MIRBasicBlockStack) *MIR {
@@ -610,28 +686,40 @@ func (b *MIRBasicBlock) CreateJumpMIR(op MirOperation, stack *ValueStack, bbStac
 	}
 
 	// JUMP/JUMPI do not produce a stack value; do not push a result
-	return b.appendMIR(mir)
+	mir = b.appendMIR(mir)
+	opName := mir.op.String()
+	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	return mir
 }
 
 func (b *MIRBasicBlock) CreateControlFlowMIR(op MirOperation, stack *ValueStack) *MIR {
 	mir := new(MIR)
 	mir.op = op
 	stack.push(mir.Result())
-	return b.appendMIR(mir)
+	mir = b.appendMIR(mir)
+	opName := mir.op.String()
+	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	return mir
 }
 
 func (b *MIRBasicBlock) CreateSystemOpMIR(op MirOperation, stack *ValueStack) *MIR {
 	mir := new(MIR)
 	mir.op = op
 	stack.push(mir.Result())
-	return b.appendMIR(mir)
+	mir = b.appendMIR(mir)
+	opName := mir.op.String()
+	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	return mir
 }
 
 func (b *MIRBasicBlock) CreateLogMIR(op MirOperation, stack *ValueStack) *MIR {
 	mir := new(MIR)
 	mir.op = op
 	stack.push(mir.Result())
-	return b.appendMIR(mir)
+	mir = b.appendMIR(mir)
+	opName := mir.op.String()
+	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	return mir
 }
 
 func (b *MIRBasicBlock) CreatePushMIR(n int, value []byte, stack *ValueStack) *MIR {

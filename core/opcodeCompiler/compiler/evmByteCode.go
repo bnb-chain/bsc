@@ -1,9 +1,256 @@
 package compiler
 
+import "fmt"
+
 // This is copied from vm/opcodes.go.
 
 // ByteCode is an EVM ByteCode
 type ByteCode byte
+
+func (b ByteCode) byteCodeToString() string {
+	switch b {
+	// 0x00 arithmetic
+	case STOP:
+		return "STOP"
+	case ADD:
+		return "ADD"
+	case MUL:
+		return "MUL"
+	case SUB:
+		return "SUB"
+	case DIV:
+		return "DIV"
+	case SDIV:
+		return "SDIV"
+	case MOD:
+		return "MOD"
+	case SMOD:
+		return "SMOD"
+	case ADDMOD:
+		return "ADDMOD"
+	case MULMOD:
+		return "MULMOD"
+	case EXP:
+		return "EXP"
+	case SIGNEXTEND:
+		return "SIGNEXTEND"
+	}
+	// 0x10 comparisons
+	switch b {
+	case LT:
+		return "LT"
+	case GT:
+		return "GT"
+	case SLT:
+		return "SLT"
+	case SGT:
+		return "SGT"
+	case EQ:
+		return "EQ"
+	case ISZERO:
+		return "ISZERO"
+	case AND:
+		return "AND"
+	case OR:
+		return "OR"
+	case XOR:
+		return "XOR"
+	case NOT:
+		return "NOT"
+	case BYTE:
+		return "BYTE"
+	case SHL:
+		return "SHL"
+	case SHR:
+		return "SHR"
+	case SAR:
+		return "SAR"
+	}
+	// 0x20 crypto
+	if b == KECCAK256 {
+		return "KECCAK256"
+	}
+	// 0x30 state
+	switch b {
+	case ADDRESS:
+		return "ADDRESS"
+	case BALANCE:
+		return "BALANCE"
+	case ORIGIN:
+		return "ORIGIN"
+	case CALLER:
+		return "CALLER"
+	case CALLVALUE:
+		return "CALLVALUE"
+	case CALLDATALOAD:
+		return "CALLDATALOAD"
+	case CALLDATASIZE:
+		return "CALLDATASIZE"
+	case CALLDATACOPY:
+		return "CALLDATACOPY"
+	case CODESIZE:
+		return "CODESIZE"
+	case CODECOPY:
+		return "CODECOPY"
+	case GASPRICE:
+		return "GASPRICE"
+	case EXTCODESIZE:
+		return "EXTCODESIZE"
+	case EXTCODECOPY:
+		return "EXTCODECOPY"
+	case RETURNDATASIZE:
+		return "RETURNDATASIZE"
+	case RETURNDATACOPY:
+		return "RETURNDATACOPY"
+	case EXTCODEHASH:
+		return "EXTCODEHASH"
+	}
+	// 0x40 block
+	switch b {
+	case BLOCKHASH:
+		return "BLOCKHASH"
+	case COINBASE:
+		return "COINBASE"
+	case TIMESTAMP:
+		return "TIMESTAMP"
+	case NUMBER:
+		return "NUMBER"
+	case DIFFICULTY:
+		return "DIFFICULTY"
+	case GASLIMIT:
+		return "GASLIMIT"
+	case CHAINID:
+		return "CHAINID"
+	case SELFBALANCE:
+		return "SELFBALANCE"
+	case BASEFEE:
+		return "BASEFEE"
+	case BLOBHASH:
+		return "BLOBHASH"
+	case BLOBBASEFEE:
+		return "BLOBBASEFEE"
+	}
+	// 0x50 range
+	switch b {
+	case POP:
+		return "POP"
+	case MLOAD:
+		return "MLOAD"
+	case MSTORE:
+		return "MSTORE"
+	case MSTORE8:
+		return "MSTORE8"
+	case SLOAD:
+		return "SLOAD"
+	case SSTORE:
+		return "SSTORE"
+	case JUMP:
+		return "JUMP"
+	case JUMPI:
+		return "JUMPI"
+	case PC:
+		return "PC"
+	case MSIZE:
+		return "MSIZE"
+	case GAS:
+		return "GAS"
+	case JUMPDEST:
+		return "JUMPDEST"
+	case TLOAD:
+		return "TLOAD"
+	case TSTORE:
+		return "TSTORE"
+	case MCOPY:
+		return "MCOPY"
+	case PUSH0:
+		return "PUSH0"
+	}
+	// 0x60 pushes
+	if b >= PUSH1 && b <= PUSH32 {
+		return fmt.Sprintf("PUSH%d", int(b-PUSH1)+1)
+	}
+	// 0x80 dups
+	if b >= DUP1 && b <= DUP16 {
+		return fmt.Sprintf("DUP%d", int(b-DUP1)+1)
+	}
+	// 0x90 swaps
+	if b >= SWAP1 && b <= SWAP16 {
+		return fmt.Sprintf("SWAP%d", int(b-SWAP1)+1)
+	}
+	// 0xa0 logs
+	if b >= LOG0 && b <= LOG4 {
+		return fmt.Sprintf("LOG%d", int(b-LOG0))
+	}
+	// 0xd0 EOF data
+	switch b {
+	case DATALOAD:
+		return "DATALOAD"
+	case DATALOADN:
+		return "DATALOADN"
+	case DATASIZE:
+		return "DATASIZE"
+	case DATACOPY:
+		return "DATACOPY"
+	}
+	// 0xe0 EOF control
+	switch b {
+	case RJUMP:
+		return "RJUMP"
+	case RJUMPI:
+		return "RJUMPI"
+	case RJUMPV:
+		return "RJUMPV"
+	case CALLF:
+		return "CALLF"
+	case RETF:
+		return "RETF"
+	case JUMPF:
+		return "JUMPF"
+	case DUPN:
+		return "DUPN"
+	case SWAPN:
+		return "SWAPN"
+	case EXCHANGE:
+		return "EXCHANGE"
+	case EOFCREATE:
+		return "EOFCREATE"
+	case RETURNCONTRACT:
+		return "RETURNCONTRACT"
+	}
+	// 0xf0 system
+	switch b {
+	case CREATE:
+		return "CREATE"
+	case CALL:
+		return "CALL"
+	case CALLCODE:
+		return "CALLCODE"
+	case RETURN:
+		return "RETURN"
+	case DELEGATECALL:
+		return "DELEGATECALL"
+	case CREATE2:
+		return "CREATE2"
+	case RETURNDATALOAD:
+		return "RETURNDATALOAD"
+	case EXTCALL:
+		return "EXTCALL"
+	case EXTDELEGATECALL:
+		return "EXTDELEGATECALL"
+	case STATICCALL:
+		return "STATICCALL"
+	case EXTSTATICCALL:
+		return "EXTSTATICCALL"
+	case REVERT:
+		return "REVERT"
+	case INVALID:
+		return "INVALID"
+	case SELFDESTRUCT:
+		return "SELFDESTRUCT"
+	}
+	// Fallback for custom/fused and unknown
+	return fmt.Sprintf("0x%02x", byte(b))
+}
 
 // 0x0 range - arithmetic ops.
 const (

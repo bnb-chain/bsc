@@ -203,8 +203,14 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 	}
 
 	// Process each byte in the code starting from firstPC
+	// Maintain a local depth counter to validate DUP/SWAP semantics without
+	// relying on MIR-level stack mutations (which can be optimized to NOPs).
+	depth := curBB.InitDepth()
+	depthKnown := false
 	for i < len(code) {
 		op := ByteCode(code[i])
+		eopName := op.byteCodeToString()
+		log.Warn("MIR parse", "offset ", i, " - evm op", eopName, "stack", valueStack.size())
 
 		// Handle PUSH operations
 		if op >= PUSH1 && op <= PUSH32 {
@@ -213,6 +219,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 				return fmt.Errorf("invalid PUSH operation at position %d", i)
 			}
 			_ = curBB.CreatePushMIR(size, code[i+1:i+1+size], valueStack)
+			depth++
+			depthKnown = true
 			i += size + 1 // +1 for the opcode itself
 			continue
 		}
@@ -226,121 +234,314 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			return nil
 		case ADD:
 			mir = curBB.CreateBinOpMIR(MirADD, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case MUL:
 			mir = curBB.CreateBinOpMIR(MirMUL, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case SUB:
 			mir = curBB.CreateBinOpMIR(MirSUB, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case DIV:
 			mir = curBB.CreateBinOpMIR(MirDIV, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case SDIV:
 			mir = curBB.CreateBinOpMIR(MirSDIV, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case MOD:
 			mir = curBB.CreateBinOpMIR(MirMOD, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case SMOD:
 			mir = curBB.CreateBinOpMIR(MirSMOD, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case ADDMOD:
 			mir = curBB.CreateTernaryOpMIR(MirADDMOD, valueStack)
+			if depth >= 3 {
+				depth -= 2
+			} else {
+				depth = 0
+			}
 		case MULMOD:
 			mir = curBB.CreateTernaryOpMIR(MirMULMOD, valueStack)
+			if depth >= 3 {
+				depth -= 2
+			} else {
+				depth = 0
+			}
 		case EXP:
 			mir = curBB.CreateBinOpMIR(MirEXP, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case SIGNEXTEND:
 			mir = curBB.CreateBinOpMIR(MirSIGNEXT, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case LT:
 			mir = curBB.CreateBinOpMIR(MirLT, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case GT:
 			mir = curBB.CreateBinOpMIR(MirGT, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case SLT:
 			mir = curBB.CreateBinOpMIR(MirSLT, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case SGT:
 			mir = curBB.CreateBinOpMIR(MirSGT, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case EQ:
 			mir = curBB.CreateBinOpMIR(MirEQ, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case ISZERO:
 			mir = curBB.CreateUnaryOpMIR(MirISZERO, valueStack)
 		case AND:
 			mir = curBB.CreateBinOpMIR(MirAND, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case OR:
 			mir = curBB.CreateBinOpMIR(MirOR, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case XOR:
 			mir = curBB.CreateBinOpMIR(MirXOR, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case NOT:
 			mir = curBB.CreateUnaryOpMIR(MirNOT, valueStack)
 		case BYTE:
 			mir = curBB.CreateBinOpMIR(MirBYTE, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case SHL:
 			mir = curBB.CreateBinOpMIR(MirSHL, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case SHR:
 			mir = curBB.CreateBinOpMIR(MirSHR, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case SAR:
 			mir = curBB.CreateBinOpMIR(MirSAR, valueStack)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case KECCAK256:
 			mir = curBB.CreateBinOpMIRWithMA(MirKECCAK256, valueStack, memoryAccessor)
+			if depth >= 2 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case ADDRESS:
 			mir = curBB.CreateBlockInfoMIR(MirADDRESS, valueStack)
+			depth++
+			depthKnown = true
 		case BALANCE:
 			mir = curBB.CreateBlockInfoMIR(MirBALANCE, valueStack)
 		case ORIGIN:
 			mir = curBB.CreateBlockInfoMIR(MirORIGIN, valueStack)
+			depth++
+			depthKnown = true
 		case CALLER:
 			mir = curBB.CreateBlockInfoMIR(MirCALLER, valueStack)
+			depth++
+			depthKnown = true
 		case CALLVALUE:
 			mir = curBB.CreateBlockInfoMIR(MirCALLVALUE, valueStack)
+			depth++
+			depthKnown = true
 		case CALLDATALOAD:
 			mir = curBB.CreateBlockInfoMIR(MirCALLDATALOAD, valueStack)
 		case CALLDATASIZE:
 			mir = curBB.CreateBlockInfoMIR(MirCALLDATASIZE, valueStack)
+			depth++
+			depthKnown = true
 		case CALLDATACOPY:
 			mir = curBB.CreateBlockInfoMIR(MirCALLDATACOPY, valueStack)
+			if depth >= 3 {
+				depth -= 3
+			} else {
+				depth = 0
+			}
 		case CODESIZE:
 			mir = curBB.CreateBlockInfoMIR(MirCODESIZE, valueStack)
+			depth++
+			depthKnown = true
 		case CODECOPY:
 			mir = curBB.CreateBlockInfoMIR(MirCODECOPY, valueStack)
+			if depth >= 3 {
+				depth -= 3
+			} else {
+				depth = 0
+			}
 		case GASPRICE:
 			mir = curBB.CreateBlockInfoMIR(MirGASPRICE, valueStack)
+			depth++
+			depthKnown = true
 		case EXTCODESIZE:
 			mir = curBB.CreateBlockInfoMIR(MirEXTCODESIZE, valueStack)
 		case EXTCODECOPY:
 			mir = curBB.CreateBlockInfoMIR(MirEXTCODECOPY, valueStack)
+			if depth >= 4 {
+				depth -= 4
+			} else {
+				depth = 0
+			}
 		case RETURNDATASIZE:
 			mir = curBB.CreateBlockInfoMIR(MirRETURNDATASIZE, valueStack)
+			depth++
+			depthKnown = true
 		case RETURNDATACOPY:
 			mir = curBB.CreateBlockInfoMIR(MirRETURNDATACOPY, valueStack)
+			if depth >= 3 {
+				depth -= 3
+			} else {
+				depth = 0
+			}
 		case EXTCODEHASH:
 			mir = curBB.CreateBlockInfoMIR(MirEXTCODEHASH, valueStack)
 		case BLOCKHASH:
 			mir = curBB.CreateBlockOpMIR(MirBLOCKHASH, valueStack)
 		case COINBASE:
 			mir = curBB.CreateBlockOpMIR(MirCOINBASE, valueStack)
+			depth++
+			depthKnown = true
 		case TIMESTAMP:
 			mir = curBB.CreateBlockOpMIR(MirTIMESTAMP, valueStack)
+			depth++
+			depthKnown = true
 		case NUMBER:
 			mir = curBB.CreateBlockOpMIR(MirNUMBER, valueStack)
+			depth++
+			depthKnown = true
 		case DIFFICULTY:
 			mir = curBB.CreateBlockOpMIR(MirDIFFICULTY, valueStack)
+			depth++
+			depthKnown = true
 		case GASLIMIT:
 			mir = curBB.CreateBlockOpMIR(MirGASLIMIT, valueStack)
+			depth++
 		case CHAINID:
 			mir = curBB.CreateBlockOpMIR(MirCHAINID, valueStack)
+			depth++
 		case SELFBALANCE:
 			mir = curBB.CreateBlockOpMIR(MirSELFBALANCE, valueStack)
+			depth++
 		case BASEFEE:
 			mir = curBB.CreateBlockOpMIR(MirBASEFEE, valueStack)
+			depth++
 		case POP:
 			_ = valueStack.pop()
 			mir = nil
+			if depth > 0 {
+				depth--
+			} else {
+				depth = 0
+			}
 		case MLOAD:
 			mir = curBB.CreateMemoryOpMIR(MirMLOAD, valueStack, memoryAccessor)
 		case MSTORE:
 			mir = curBB.CreateMemoryOpMIR(MirMSTORE, valueStack, memoryAccessor)
+			if depth >= 2 {
+				depth -= 2
+			} else {
+				depth = 0
+			}
 		case MSTORE8:
 			mir = curBB.CreateMemoryOpMIR(MirMSTORE8, valueStack, memoryAccessor)
+			if depth >= 2 {
+				depth -= 2
+			} else {
+				depth = 0
+			}
 		case SLOAD:
 			mir = curBB.CreateStorageOpMIR(MirSLOAD, valueStack, stateAccessor)
 		case SSTORE:
 			mir = curBB.CreateStorageOpMIR(MirSSTORE, valueStack, stateAccessor)
+			if depth >= 2 {
+				depth -= 2
+			} else {
+				depth = 0
+			}
 		case JUMP:
 			mir = curBB.CreateJumpMIR(MirJUMP, valueStack, nil)
+			if depth >= 1 {
+				depth--
+			} else {
+				depth = 0
+			}
 			if mir != nil {
 				// Create a new basic block for the jump target
 				if len(mir.oprands) > 0 && mir.oprands[0].payload != nil {
@@ -353,11 +554,17 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 						// Determine existence before creation to avoid reprocessing
 						_, targetExists := c.pcToBlock[uint(targetPC)]
 						targetBB := c.createBB(uint(targetPC), curBB)
+						targetBB.SetInitDepthMax(depth)
 						// Only target is a child of current block for unconditional JUMP
 						curBB.SetChildren([]*MIRBasicBlock{targetBB})
 						// Optionally register fallthrough block at i+1 but do not enqueue or link
 						if _, ok := c.pcToBlock[uint(i+1)]; !ok {
-							_ = c.createBB(uint(i+1), nil)
+							fall := c.createBB(uint(i+1), nil)
+							fall.SetInitDepthMax(depth)
+						} else {
+							if fall, ok2 := c.pcToBlock[uint(i+1)]; ok2 {
+								fall.SetInitDepthMax(depth)
+							}
 						}
 						// Enqueue only target if newly created
 						if !targetExists {
@@ -370,6 +577,11 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			return nil
 		case JUMPI:
 			mir = curBB.CreateJumpMIR(MirJUMPI, valueStack, nil)
+			if depth >= 2 {
+				depth -= 2
+			} else {
+				depth = 0
+			}
 			if mir != nil {
 				// Create new basic blocks for both true (target) and false (fallthrough) paths
 				if len(mir.oprands) > 0 && mir.oprands[0].payload != nil {
@@ -385,6 +597,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 						// Create blocks for target and fallthrough
 						targetBB := c.createBB(uint(targetPC), curBB)
 						fallthroughBB := c.createBB(uint(i+1), curBB)
+						targetBB.SetInitDepthMax(depth)
+						fallthroughBB.SetInitDepthMax(depth)
 						curBB.SetChildren([]*MIRBasicBlock{targetBB, fallthroughBB})
 						if !targetExists {
 							unprcessedBBs.Push(targetBB)
@@ -414,6 +628,7 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			// unless this is the first instruction
 			if curBB.Size() > 0 {
 				newBB := c.createBB(uint(i), curBB)
+				newBB.SetInitDepth(depth)
 				curBB.SetChildren([]*MIRBasicBlock{newBB})
 				unprcessedBBs.Push(newBB)
 				return nil
@@ -422,18 +637,27 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			mir = curBB.CreateVoidMIR(MirJUMPDEST)
 		case PC:
 			mir = curBB.CreateBlockInfoMIR(MirPC, valueStack)
+			depth++
 		case MSIZE:
 			mir = curBB.CreateMemoryOpMIR(MirMSIZE, valueStack, memoryAccessor)
+			depth++
 		case GAS:
 			mir = curBB.CreateBlockInfoMIR(MirGAS, valueStack)
+			depth++
 		case BLOBHASH:
 			mir = curBB.CreateBlockInfoMIR(MirBLOBHASH, valueStack)
 		case BLOBBASEFEE:
 			mir = curBB.CreateBlockInfoMIR(MirBLOBBASEFEE, valueStack)
+			depth++
 		case TLOAD:
 			mir = curBB.CreateStorageOpMIR(MirTLOAD, valueStack, stateAccessor)
 		case TSTORE:
 			mir = curBB.CreateStorageOpMIR(MirTSTORE, valueStack, stateAccessor)
+			if depth >= 2 {
+				depth -= 2
+			} else {
+				depth = 0
+			}
 		case MCOPY:
 			// MCOPY takes 3 operands: dest, src, length
 			length := valueStack.pop()
@@ -450,18 +674,49 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			if mir != nil {
 				curBB.appendMIR(mir)
 			}
+			if depth >= 3 {
+				depth -= 3
+			} else {
+				depth = 0
+			}
 		case PUSH0:
 			_ = curBB.CreatePushMIR(0, []byte{}, valueStack)
+			depth++
 		case LOG0:
 			mir = curBB.CreateLogMIR(MirLOG0, valueStack)
+			if depth >= 2 {
+				depth -= 2
+			} else {
+				depth = 0
+			}
 		case LOG1:
 			mir = curBB.CreateLogMIR(MirLOG1, valueStack)
+			if depth >= 3 {
+				depth -= 3
+			} else {
+				depth = 0
+			}
 		case LOG2:
 			mir = curBB.CreateLogMIR(MirLOG2, valueStack)
+			if depth >= 4 {
+				depth -= 4
+			} else {
+				depth = 0
+			}
 		case LOG3:
 			mir = curBB.CreateLogMIR(MirLOG3, valueStack)
+			if depth >= 5 {
+				depth -= 5
+			} else {
+				depth = 0
+			}
 		case LOG4:
 			mir = curBB.CreateLogMIR(MirLOG4, valueStack)
+			if depth >= 6 {
+				depth -= 6
+			} else {
+				depth = 0
+			}
 		case CREATE:
 			// CREATE takes 3 operands: value, offset, size
 			size := valueStack.pop()
@@ -480,6 +735,11 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			fallthroughBB := c.createBB(uint(i+1), curBB)
 			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
 			unprcessedBBs.Push(fallthroughBB)
+			if depth >= 3 {
+				depth = depth - 3 + 1
+			} else {
+				depth = 1
+			}
 			return nil
 		case CREATE2:
 			// CREATE2 takes 4 operands: value, offset, size, salt
@@ -500,6 +760,11 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			fallthroughBB := c.createBB(uint(i+1), curBB)
 			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
 			unprcessedBBs.Push(fallthroughBB)
+			if depth >= 4 {
+				depth = depth - 4 + 1
+			} else {
+				depth = 1
+			}
 			return nil
 		case CALL:
 			// CALL takes 7 operands: gas, addr, value, inOffset, inSize, outOffset, outSize
@@ -524,6 +789,11 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			fallthroughBB := c.createBB(uint(i+1), curBB)
 			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
 			unprcessedBBs.Push(fallthroughBB)
+			if depth >= 7 {
+				depth = depth - 7 + 1
+			} else {
+				depth = 1
+			}
 			return nil
 		case CALLCODE:
 			// CALLCODE takes same operands as CALL
@@ -548,6 +818,11 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			fallthroughBB := c.createBB(uint(i+1), curBB)
 			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
 			unprcessedBBs.Push(fallthroughBB)
+			if depth >= 7 {
+				depth = depth - 7 + 1
+			} else {
+				depth = 1
+			}
 			return nil
 		case RETURN:
 			// RETURN takes 2 operands: offset (top), size
@@ -561,6 +836,11 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			}
 			if mir != nil {
 				curBB.appendMIR(mir)
+			}
+			if depth >= 2 {
+				depth -= 2
+			} else {
+				depth = 0
 			}
 			return nil
 		case DELEGATECALL:
@@ -585,6 +865,11 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			fallthroughBB := c.createBB(uint(i+1), curBB)
 			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
 			unprcessedBBs.Push(fallthroughBB)
+			if depth >= 6 {
+				depth = depth - 6 + 1
+			} else {
+				depth = 1
+			}
 			return nil
 		case STATICCALL:
 			// STATICCALL takes 6 operands: gas, addr, inOffset, inSize, outOffset, outSize
@@ -608,6 +893,11 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			fallthroughBB := c.createBB(uint(i+1), curBB)
 			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
 			unprcessedBBs.Push(fallthroughBB)
+			if depth >= 6 {
+				depth = depth - 6 + 1
+			} else {
+				depth = 1
+			}
 			return nil
 		case REVERT:
 			// REVERT takes 2 operands: offset, size
@@ -621,6 +911,11 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			}
 			if mir != nil {
 				curBB.appendMIR(mir)
+			}
+			if depth >= 2 {
+				depth -= 2
+			} else {
+				depth = 0
 			}
 			return nil
 		case INVALID:
@@ -639,72 +934,23 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 				curBB.appendMIR(mir)
 			}
 			return nil
-		// Stack operations - DUP1 to DUP16
-		case DUP1:
-			mir = curBB.CreateStackOpMIR(MirDUP1, valueStack)
-		case DUP2:
-			mir = curBB.CreateStackOpMIR(MirDUP2, valueStack)
-		case DUP3:
-			mir = curBB.CreateStackOpMIR(MirDUP3, valueStack)
-		case DUP4:
-			mir = curBB.CreateStackOpMIR(MirDUP4, valueStack)
-		case DUP5:
-			mir = curBB.CreateStackOpMIR(MirDUP5, valueStack)
-		case DUP6:
-			mir = curBB.CreateStackOpMIR(MirDUP6, valueStack)
-		case DUP7:
-			mir = curBB.CreateStackOpMIR(MirDUP7, valueStack)
-		case DUP8:
-			mir = curBB.CreateStackOpMIR(MirDUP8, valueStack)
-		case DUP9:
-			mir = curBB.CreateStackOpMIR(MirDUP9, valueStack)
-		case DUP10:
-			mir = curBB.CreateStackOpMIR(MirDUP10, valueStack)
-		case DUP11:
-			mir = curBB.CreateStackOpMIR(MirDUP11, valueStack)
-		case DUP12:
-			mir = curBB.CreateStackOpMIR(MirDUP12, valueStack)
-		case DUP13:
-			mir = curBB.CreateStackOpMIR(MirDUP13, valueStack)
-		case DUP14:
-			mir = curBB.CreateStackOpMIR(MirDUP14, valueStack)
-		case DUP15:
-			mir = curBB.CreateStackOpMIR(MirDUP15, valueStack)
-		case DUP16:
-			mir = curBB.CreateStackOpMIR(MirDUP16, valueStack)
-		// Stack operations - SWAP1 to SWAP16
-		case SWAP1:
-			mir = curBB.CreateStackOpMIR(MirSWAP1, valueStack)
-		case SWAP2:
-			mir = curBB.CreateStackOpMIR(MirSWAP2, valueStack)
-		case SWAP3:
-			mir = curBB.CreateStackOpMIR(MirSWAP3, valueStack)
-		case SWAP4:
-			mir = curBB.CreateStackOpMIR(MirSWAP4, valueStack)
-		case SWAP5:
-			mir = curBB.CreateStackOpMIR(MirSWAP5, valueStack)
-		case SWAP6:
-			mir = curBB.CreateStackOpMIR(MirSWAP6, valueStack)
-		case SWAP7:
-			mir = curBB.CreateStackOpMIR(MirSWAP7, valueStack)
-		case SWAP8:
-			mir = curBB.CreateStackOpMIR(MirSWAP8, valueStack)
-		case SWAP9:
-			mir = curBB.CreateStackOpMIR(MirSWAP9, valueStack)
-		case SWAP10:
-			mir = curBB.CreateStackOpMIR(MirSWAP10, valueStack)
-		case SWAP11:
-			mir = curBB.CreateStackOpMIR(MirSWAP11, valueStack)
-		case SWAP12:
-			mir = curBB.CreateStackOpMIR(MirSWAP12, valueStack)
-		case SWAP13:
-			mir = curBB.CreateStackOpMIR(MirSWAP13, valueStack)
-		case SWAP14:
-			mir = curBB.CreateStackOpMIR(MirSWAP14, valueStack)
-		case SWAP15:
-			mir = curBB.CreateStackOpMIR(MirSWAP15, valueStack)
-		case SWAP16:
-			mir = curBB.CreateStackOpMIR(MirSWAP16, valueStack)
+			// Stack operations - DUP1 to DUP16 (fail CFG build if stack too shallow)
+		case DUP1, DUP2, DUP3, DUP4, DUP5, DUP6, DUP7, DUP8, DUP9, DUP10, DUP11, DUP12, DUP13, DUP14, DUP15, DUP16:
+			n := int(op - DUP1 + 1)
+			if depthKnown && depth < n {
+				log.Warn("MIR DUP depth underflow - emitting NOP", "need", n, "have", depth, "pc", i, "bbFirst", curBB.firstPC, "bbInit", curBB.InitDepth())
+			}
+			mir = curBB.CreateStackOpMIR(MirOperation(0x80+byte(n-1)), valueStack)
+			if depth >= n {
+				depth++
+			}
+		// Stack operations - SWAP1 to SWAP16 (fail CFG build if stack too shallow)
+		case SWAP1, SWAP2, SWAP3, SWAP4, SWAP5, SWAP6, SWAP7, SWAP8, SWAP9, SWAP10, SWAP11, SWAP12, SWAP13, SWAP14, SWAP15, SWAP16:
+			n := int(op - SWAP1 + 1)
+			if depthKnown && depth <= n {
+				log.Warn("MIR SWAP depth underflow - emitting NOP", "need", n+1, "have", depth, "pc", i, "bbFirst", curBB.firstPC, "bbInit", curBB.InitDepth())
+			}
+			mir = curBB.CreateStackOpMIR(MirOperation(0x90+byte(n-1)), valueStack)
 		// EOF operations
 		case DATALOAD:
 			mir = curBB.CreateBlockInfoMIR(MirDATALOAD, valueStack)
@@ -725,7 +971,14 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			if mir != nil {
 				curBB.appendMIR(mir)
 			}
+			// Depth: pop2 push1
+			if depth >= 2 {
+				depth = depth - 2 + 1
+			} else {
+				depth = 1
+			}
 			fallthroughBB := c.createBB(uint(i+1), curBB)
+			fallthroughBB.SetInitDepth(depth)
 			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
 			unprcessedBBs.Push(fallthroughBB)
 			return nil
@@ -754,7 +1007,14 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			if mir != nil {
 				curBB.appendMIR(mir)
 			}
+			// Depth: pop4 push1
+			if depth >= 4 {
+				depth = depth - 4 + 1
+			} else {
+				depth = 1
+			}
 			fallthroughBB := c.createBB(uint(i+1), curBB)
+			fallthroughBB.SetInitDepth(depth)
 			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
 			unprcessedBBs.Push(fallthroughBB)
 			return nil
@@ -845,6 +1105,12 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			_ = curBB.CreateVoidMIR(MirINVALID)
 			curBB.SetLastPC(uint(i))
 			return nil
+		}
+
+		// Record source pc on generated MIR (best-effort; some early-return paths set it earlier or remain nil)
+		if mir != nil {
+			pcCopy := uint(i)
+			mir.pc = &pcCopy
 		}
 
 		i++

@@ -1,8 +1,12 @@
 package vm
 
 import (
+	"bytes"
+	"fmt"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 )
 
@@ -10,10 +14,14 @@ import (
 type MIRInterpreterAdapter struct {
 	evm            *EVM
 	mirInterpreter *compiler.MIRInterpreter
+	currentSelf    common.Address
 }
 
 // NewMIRInterpreterAdapter creates a new MIR interpreter adapter for EVM
 func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
+	// Create adapter early so closures can reference cached fields
+	adapter := &MIRInterpreterAdapter{evm: evm}
+
 	// Create MIR execution environment from EVM context
 	env := &compiler.MIRExecutionEnv{
 		Memory:      make([]byte, 0, 1024),
@@ -33,13 +41,11 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 
 	// Install runtime linkage hooks once; they read dynamic data from env/evm
 	env.SLoadFunc = func(key [32]byte) [32]byte {
-		// Use current contract address from env.Self
-		addr := common.BytesToAddress(env.Self[:])
-		return evm.StateDB.GetState(addr, common.BytesToHash(key[:]))
+		// Use cached currentSelf to avoid per-access address conversions
+		return evm.StateDB.GetState(adapter.currentSelf, common.BytesToHash(key[:]))
 	}
 	env.SStoreFunc = func(key [32]byte, value [32]byte) {
-		addr := common.BytesToAddress(env.Self[:])
-		evm.StateDB.SetState(addr, common.BytesToHash(key[:]), common.BytesToHash(value[:]))
+		evm.StateDB.SetState(adapter.currentSelf, common.BytesToHash(key[:]), common.BytesToHash(value[:]))
 	}
 	env.GetBalanceFunc = func(addr20 [20]byte) *uint256.Int {
 		addr := common.BytesToAddress(addr20[:])
@@ -50,12 +56,8 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 		return new(uint256.Int).Set(b)
 	}
 
-	mirInterpreter := compiler.NewMIRInterpreter(env)
-
-	return &MIRInterpreterAdapter{
-		evm:            evm,
-		mirInterpreter: mirInterpreter,
-	}
+	adapter.mirInterpreter = compiler.NewMIRInterpreter(env)
+	return adapter
 }
 
 // Run executes the contract using MIR interpreter
@@ -67,11 +69,22 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 		return adapter.evm.Interpreter().Run(contract, input, readOnly)
 	}
 
+	// Pre-flight fork gating: if the bytecode contains opcodes not enabled at the current fork,
+	// mirror EVM behavior by returning invalid opcode errors instead of running MIR.
+	rules := adapter.evm.chainRules
+	code := contract.Code
+	if !rules.IsConstantinople {
+		if bytes.IndexByte(code, byte(SHR)) >= 0 || bytes.IndexByte(code, byte(SHL)) >= 0 || bytes.IndexByte(code, byte(SAR)) >= 0 {
+			return nil, fmt.Errorf("invalid opcode: SHR")
+		}
+	}
+
 	// Get the MIR CFG from the contract (type assertion)
 	cfgInterface := contract.GetMIRCFG()
 	cfg, ok := cfgInterface.(*compiler.CFG)
 	if !ok || cfg == nil {
 		// Fallback if no valid MIR CFG available
+		log.Error("MIR fallback: invalid CFG, using EVM interpreter", "addr", contract.Address(), "codehash", contract.CodeHash)
 		return adapter.evm.Interpreter().Run(contract, input, readOnly)
 	}
 
@@ -85,33 +98,27 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 		if idx := cfg.EntryIndexForSelector(selector); idx >= 0 {
 			bb := cfg.GetBasicBlocks()[idx]
 			if bb != nil && bb.Size() > 0 {
+				// Execute only the entry block; if no return, fallback to EVM to preserve parity
 				result, err := adapter.mirInterpreter.RunMIR(bb)
-				if err == nil && len(result) > 0 {
-					return result, nil
+				if len(result) > 0 {
+					// Return MIR result even if it's a REVERT (err != nil) to preserve semantics
+					return result, err
 				}
 			}
 		}
 	}
 
-	// Fallback: execute each basic block sequentially (linear flow assumption)
-	for _, bb := range cfg.GetBasicBlocks() {
-		if bb == nil || bb.Size() == 0 {
-			continue
-		}
-
-		result, err := adapter.mirInterpreter.RunMIR(bb)
-		if err != nil {
-			// Handle MIR execution errors - fallback to regular interpreter
-			return adapter.evm.Interpreter().Run(contract, input, readOnly)
-		}
-
-		// If this block produced return data, stop and return it immediately
-		if len(result) > 0 {
-			return result, nil
+	// No selector: execute the first basic block only
+	bbs := cfg.GetBasicBlocks()
+	if len(bbs) > 0 && bbs[0] != nil && bbs[0].Size() > 0 {
+		result, err := adapter.mirInterpreter.RunMIR(bbs[0])
+		if len(result) > 0 || err != nil {
+			return result, err
 		}
 	}
-
-	return ret, nil
+	// If nothing returned from the entry, fallback to EVM to preserve semantics
+	log.Error("MIR fallback: entry block produced no result, using EVM interpreter", "addr", contract.Address())
+	return adapter.evm.Interpreter().Run(contract, input, readOnly)
 }
 
 // setupExecutionEnvironment configures the MIR interpreter with contract-specific data
@@ -137,18 +144,35 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 		addr := contract.Address()
 		caller := contract.Caller()
 		origin := adapter.evm.TxContext.Origin
+		adapter.currentSelf = addr
 		copy(env.Self[:], addr[:])
 		copy(env.Caller[:], caller[:])
 		copy(env.Origin[:], origin[:])
 	}
 
-	// Set contract balance from StateDB
-	// SelfBalance is read lazily via GetBalanceFunc when needed
-
 	// Set gas price from transaction context
 	if adapter.evm.TxContext.GasPrice != nil {
 		env.GasPrice = adapter.evm.TxContext.GasPrice.Uint64()
 	}
+
+	// Set call value for CALLVALUE op
+	if contract != nil && contract.Value() != nil {
+		// MIR will clone when reading
+		env.CallValue = contract.Value()
+	} else {
+		env.CallValue = uint256.NewInt(0)
+	}
+
+	// Do not override any tracer set by tests; leave as-is.
+
+	// Set fork flags from chain rules
+	rules := adapter.evm.chainRules
+	env.IsByzantium = rules.IsByzantium
+	env.IsConstantinople = rules.IsConstantinople
+	env.IsIstanbul = rules.IsIstanbul
+	env.IsLondon = rules.IsLondon
+	// Optionally extend with newer flags if MIR grows support for those ops
+	// No-op if not referenced in interpreter.
 }
 
 // CanRun checks if this adapter can run the given contract

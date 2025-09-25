@@ -28,6 +28,15 @@ type MIRExecutionEnv struct {
 	SelfBalance uint64
 	ReturnData  []byte
 
+	// Call context
+	CallValue *uint256.Int
+
+	// Fork flags (set by adapter from EVM chain rules)
+	IsByzantium      bool
+	IsConstantinople bool
+	IsIstanbul       bool
+	IsLondon         bool
+
 	// Runtime linkage hooks to EVM components (provided by adapter at runtime)
 	// If these are nil, interpreter falls back to internal simulated state.
 	SLoadFunc      func(key [32]byte) [32]byte
@@ -54,7 +63,13 @@ type MIRInterpreter struct {
 	zeroConst  *uint256.Int
 	constCache map[string]*uint256.Int
 	scratch32  [32]byte
+	// tracer is invoked on each MIR instruction execution if set
+	tracer func(MirOperation)
 }
+
+// mirGlobalTracer is an optional global tracer invoked for each MIR instruction.
+// Tests may set this to observe execution without reaching into internal fields.
+var mirGlobalTracer func(MirOperation)
 
 // Optional fast dispatch table for hot MIR operations
 var mirHandlers [256]func(*MIRInterpreter, *MIR) error
@@ -108,7 +123,18 @@ func NewMIRInterpreter(env *MIRExecutionEnv) *MIRInterpreter {
 		tmpC:       uint256.NewInt(0),
 		zeroConst:  uint256.NewInt(0),
 		constCache: make(map[string]*uint256.Int, 64),
+		tracer:     mirGlobalTracer,
 	}
+}
+
+// SetTracer sets a per-instruction tracer callback. It is not thread-safe.
+func (it *MIRInterpreter) SetTracer(cb func(MirOperation)) {
+	it.tracer = cb
+}
+
+// SetGlobalMIRTracer sets a process-wide tracer that new MIR interpreters will inherit.
+func SetGlobalMIRTracer(cb func(MirOperation)) {
+	mirGlobalTracer = cb
 }
 
 // GetEnv returns the execution environment
@@ -125,11 +151,18 @@ func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
 	// Reuse results backing storage to avoid per-run allocations
 	if it.resultsCap < len(block.instructions) {
 		it.results = make([]*uint256.Int, len(block.instructions))
+		for i := 0; i < len(block.instructions); i++ {
+			it.results[i] = new(uint256.Int)
+		}
 		it.resultsCap = len(block.instructions)
 	} else {
-		// Zero only the portion we will use
+		// Ensure slots exist and clear them for reuse
 		for i := 0; i < len(block.instructions); i++ {
-			it.results[i] = nil
+			if it.results[i] == nil {
+				it.results[i] = new(uint256.Int)
+			} else {
+				it.results[i].Clear()
+			}
 		}
 	}
 	// iterate by index to reduce overhead
@@ -164,6 +197,9 @@ var (
 func (it *MIRInterpreter) exec(m *MIR) error {
 	// Try fast handler if available
 	if h := mirHandlers[byte(m.op)]; h != nil {
+		if it.tracer != nil {
+			it.tracer(m.op)
+		}
 		return h(it, m)
 	}
 	switch m.op {
@@ -292,26 +328,43 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		it.sstore(key, val)
 		return nil
 
-	// Env queries
+		// Env queries
 	case MirADDRESS:
-		b := make([]byte, 32)
-		copy(b[12:], it.env.Self[:])
-		it.setResult(m, it.tmpA.Clear().SetBytes(b))
+		// Fill scratch32 to avoid allocating
+		for i := range it.scratch32 {
+			it.scratch32[i] = 0
+		}
+		copy(it.scratch32[12:], it.env.Self[:])
+		it.setResult(m, it.tmpA.Clear().SetBytes(it.scratch32[:]))
 		return nil
 	case MirCALLER:
-		b := make([]byte, 32)
-		copy(b[12:], it.env.Caller[:])
-		it.setResult(m, uint256.NewInt(0).SetBytes(b))
+		for i := range it.scratch32 {
+			it.scratch32[i] = 0
+		}
+		copy(it.scratch32[12:], it.env.Caller[:])
+		it.setResult(m, it.tmpA.Clear().SetBytes(it.scratch32[:]))
 		return nil
 	case MirORIGIN:
-		b := make([]byte, 32)
-		copy(b[12:], it.env.Origin[:])
-		it.setResult(m, uint256.NewInt(0).SetBytes(b))
+		for i := range it.scratch32 {
+			it.scratch32[i] = 0
+		}
+		copy(it.scratch32[12:], it.env.Origin[:])
+		it.setResult(m, it.tmpA.Clear().SetBytes(it.scratch32[:]))
 		return nil
 	case MirGASPRICE:
 		it.setResult(m, uint256.NewInt(it.env.GasPrice))
 		return nil
+	case MirCALLVALUE:
+		if it.env.CallValue != nil {
+			it.setResult(m, new(uint256.Int).Set(it.env.CallValue))
+		} else {
+			it.setResult(m, it.zeroConst)
+		}
+		return nil
 	case MirSELFBALANCE:
+		if !it.env.IsIstanbul {
+			return fmt.Errorf("invalid opcode: SELFBALANCE")
+		}
 		if it.env.GetBalanceFunc != nil {
 			it.setResult(m, it.env.GetBalanceFunc(it.env.Self))
 		} else {
@@ -319,6 +372,9 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		}
 		return nil
 	case MirCHAINID:
+		if !it.env.IsIstanbul {
+			return fmt.Errorf("invalid opcode: CHAINID")
+		}
 		it.setResult(m, uint256.NewInt(it.env.ChainID))
 		return nil
 	case MirTIMESTAMP:
@@ -328,6 +384,9 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		it.setResult(m, uint256.NewInt(it.env.BlockNumber))
 		return nil
 	case MirBASEFEE:
+		if !it.env.IsLondon {
+			return fmt.Errorf("invalid opcode: BASEFEE")
+		}
 		it.setResult(m, uint256.NewInt(it.env.BaseFee))
 		return nil
 	case MirBALANCE:
@@ -368,9 +427,15 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		it.calldataCopy(dest, off, sz)
 		return nil
 	case MirRETURNDATASIZE:
+		if !it.env.IsByzantium {
+			return fmt.Errorf("invalid opcode: RETURNDATASIZE")
+		}
 		it.setResult(m, it.tmpA.Clear().SetUint64(uint64(len(it.returndata))))
 		return nil
 	case MirRETURNDATALOAD:
+		if !it.env.IsByzantium {
+			return fmt.Errorf("invalid opcode: RETURNDATALOAD")
+		}
 		if len(m.oprands) < 1 {
 			return fmt.Errorf("RETURNDATALOAD missing offset")
 		}
@@ -379,6 +444,9 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		it.setResult(m, it.tmpA.Clear().SetBytes(it.scratch32[:]))
 		return nil
 	case MirRETURNDATACOPY:
+		if !it.env.IsByzantium {
+			return fmt.Errorf("invalid opcode: RETURNDATACOPY")
+		}
 		if len(m.oprands) < 3 {
 			return fmt.Errorf("RETURNDATACOPY missing operands")
 		}
@@ -410,6 +478,9 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		it.returndata = append([]byte(nil), it.readMem(off, sz)...)
 		return errRETURN
 	case MirREVERT:
+		if !it.env.IsByzantium {
+			return fmt.Errorf("invalid opcode: REVERT")
+		}
 		if len(m.oprands) < 2 {
 			return fmt.Errorf("REVERT missing operands")
 		}
@@ -417,6 +488,39 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		sz := it.evalValue(m.oprands[1])
 		it.returndata = append([]byte(nil), it.readMem(off, sz)...)
 		return errREVERT
+
+	// Control flow (handled at CFG/adapter level). Treat as no-ops here.
+	case MirJUMP:
+		return nil
+	case MirJUMPI:
+		return nil
+	case MirJUMPDEST:
+		return nil
+	case MirEXTCODEHASH:
+		if !it.env.IsConstantinople {
+			return fmt.Errorf("invalid opcode: EXTCODEHASH")
+		}
+		return fmt.Errorf("MIR op not implemented: EXTCODEHASH")
+	case MirCREATE2:
+		if !it.env.IsConstantinople {
+			return fmt.Errorf("invalid opcode: CREATE2")
+		}
+		return fmt.Errorf("MIR op not implemented: CREATE2")
+
+	// Stack ops: DUPn and SWAPn
+	case MirDUP1, MirDUP2, MirDUP3, MirDUP4, MirDUP5, MirDUP6, MirDUP7, MirDUP8,
+		MirDUP9, MirDUP10, MirDUP11, MirDUP12, MirDUP13, MirDUP14, MirDUP15, MirDUP16:
+		// For MIR, DUP has a single operand pointing to the value to duplicate
+		if len(m.oprands) < 1 {
+			return fmt.Errorf("DUP missing operand")
+		}
+		v := it.evalValue(m.oprands[0])
+		it.setResult(m, it.tmpA.Clear().Set(v))
+		return nil
+	case MirSWAP1, MirSWAP2, MirSWAP3, MirSWAP4, MirSWAP5, MirSWAP6, MirSWAP7, MirSWAP8,
+		MirSWAP9, MirSWAP10, MirSWAP11, MirSWAP12, MirSWAP13, MirSWAP14, MirSWAP15, MirSWAP16:
+		// SWAP is modeled in MIR generation by reordering value uses; execution-time no-op
+		return nil
 	default:
 		// Many ops are not yet implemented for simulation
 		return fmt.Errorf("MIR op not implemented: 0x%x", byte(m.op))
@@ -718,7 +822,7 @@ func mirHandleKECCAK(it *MIRInterpreter, m *MIR) error {
 	} else {
 		off, sz = aval, bval
 	}
-	bytesToHash := it.readMem(off, sz)
+	bytesToHash := it.readMemView(off, sz)
 	h := crypto.Keccak256(bytesToHash)
 	it.setResult(m, it.tmpA.Clear().SetBytes(h))
 	return nil
@@ -839,10 +943,19 @@ func (it *MIRInterpreter) execArithmetic(m *MIR) error {
 	case MirBYTE:
 		out = a.Byte(b)
 	case MirSHL:
+		if !it.env.IsConstantinople {
+			return fmt.Errorf("invalid opcode: SHL")
+		}
 		out = it.tmpA.Clear().Lsh(a, uint(b.Uint64()))
 	case MirSHR:
+		if !it.env.IsConstantinople {
+			return fmt.Errorf("invalid opcode: SHR")
+		}
 		out = it.tmpA.Clear().Rsh(a, uint(b.Uint64()))
 	case MirSAR:
+		if !it.env.IsConstantinople {
+			return fmt.Errorf("invalid opcode: SAR")
+		}
 		out = it.tmpA.Clear().SRsh(a, uint(b.Uint64()))
 	default:
 		return fmt.Errorf("unexpected arithmetic op: 0x%x", byte(m.op))
@@ -926,6 +1039,15 @@ func (it *MIRInterpreter) readMem(off, sz *uint256.Int) []byte {
 	s := sz.Uint64()
 	it.ensureMemSize(o + s)
 	return append([]byte(nil), it.memory[o:o+s]...)
+}
+
+// readMemView returns a view (subslice) of the internal memory without allocating.
+// The returned slice is only valid until the next memory growth.
+func (it *MIRInterpreter) readMemView(off, sz *uint256.Int) []byte {
+	o := off.Uint64()
+	s := sz.Uint64()
+	it.ensureMemSize(o + s)
+	return it.memory[o : o+s]
 }
 
 func (it *MIRInterpreter) readMem32(off *uint256.Int) []byte {
@@ -1091,7 +1213,7 @@ func (it *MIRInterpreter) sload(key *uint256.Int) *uint256.Int {
 	copy(k[:], key.Bytes())
 	if it.env.SLoadFunc != nil {
 		v := it.env.SLoadFunc(k)
-		return uint256.NewInt(0).SetBytes(v[:])
+		return it.tmpB.Clear().SetBytes(v[:])
 	}
 	// Fallback to internal simulated map
 	if it.env.Storage == nil {
@@ -1099,9 +1221,9 @@ func (it *MIRInterpreter) sload(key *uint256.Int) *uint256.Int {
 	}
 	val, ok := it.env.Storage[k]
 	if !ok {
-		return uint256.NewInt(0)
+		return it.zeroConst
 	}
-	return uint256.NewInt(0).SetBytes(val[:])
+	return it.tmpB.Clear().SetBytes(val[:])
 }
 
 func (it *MIRInterpreter) sstore(key, val *uint256.Int) {

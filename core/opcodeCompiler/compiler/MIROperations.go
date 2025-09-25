@@ -1,5 +1,7 @@
 package compiler
 
+import "fmt"
+
 type MirOperation byte
 
 const (
@@ -31,6 +33,217 @@ const (
 	MirSHR    MirOperation = 0x1c // SHR reg0, reg1, reg2
 	MirSAR    MirOperation = 0x1d // SAR reg0, reg1, reg2
 )
+
+// String returns a human-readable name for the MIR operation
+func (op MirOperation) String() string {
+	switch op {
+	case MirSTOP:
+		return "MirSTOP"
+	case MirADD:
+		return "MirADD"
+	case MirMUL:
+		return "MirMUL"
+	case MirSUB:
+		return "MirSUB"
+	case MirDIV:
+		return "MirDIV"
+	case MirSDIV:
+		return "MirSDIV"
+	case MirMOD:
+		return "MirMOD"
+	case MirSMOD:
+		return "MirSMOD"
+	case MirADDMOD:
+		return "MirADDMOD"
+	case MirMULMOD:
+		return "MirMULMOD"
+	case MirEXP:
+		return "MirEXP"
+	case MirSIGNEXT:
+		return "MirSIGNEXT"
+	case MirLT:
+		return "MirLT"
+	case MirGT:
+		return "MirGT"
+	case MirSLT:
+		return "MirSLT"
+	case MirSGT:
+		return "MirSGT"
+	case MirEQ:
+		return "MirEQ"
+	case MirISZERO:
+		return "MirISZERO"
+	case MirAND:
+		return "MirAND"
+	case MirOR:
+		return "MirOR"
+	case MirXOR:
+		return "MirXOR"
+	case MirNOT:
+		return "MirNOT"
+	case MirBYTE:
+		return "MirBYTE"
+	case MirSHL:
+		return "MirSHL"
+	case MirSHR:
+		return "MirSHR"
+	case MirSAR:
+		return "MirSAR"
+	case MirKECCAK256:
+		return "MirKECCAK256"
+	case MirADDRESS:
+		return "MirADDRESS"
+	case MirBALANCE:
+		return "MirBALANCE"
+	case MirORIGIN:
+		return "MirORIGIN"
+	case MirCALLER:
+		return "MirCALLER"
+	case MirCALLVALUE:
+		return "MirCALLVALUE"
+	case MirCALLDATALOAD:
+		return "MirCALLDATALOAD"
+	case MirCALLDATASIZE:
+		return "MirCALLDATASIZE"
+	case MirCALLDATACOPY:
+		return "MirCALLDATACOPY"
+	case MirCODESIZE:
+		return "MirCODESIZE"
+	case MirCODECOPY:
+		return "MirCODECOPY"
+	case MirGASPRICE:
+		return "MirGASPRICE"
+	case MirEXTCODESIZE:
+		return "MirEXTCODESIZE"
+	case MirEXTCODECOPY:
+		return "MirEXTCODECOPY"
+	case MirRETURNDATASIZE:
+		return "MirRETURNDATASIZE"
+	case MirRETURNDATACOPY:
+		return "MirRETURNDATACOPY"
+	case MirEXTCODEHASH:
+		return "MirEXTCODEHASH"
+	case MirBLOCKHASH:
+		return "MirBLOCKHASH"
+	case MirCOINBASE:
+		return "MirCOINBASE"
+	case MirTIMESTAMP:
+		return "MirTIMESTAMP"
+	case MirNUMBER:
+		return "MirNUMBER"
+	case MirDIFFICULTY:
+		return "MirDIFFICULTY"
+	case MirGASLIMIT:
+		return "MirGASLIMIT"
+	case MirCHAINID:
+		return "MirCHAINID"
+	case MirSELFBALANCE:
+		return "MirSELFBALANCE"
+	case MirBASEFEE:
+		return "MirBASEFEE"
+	case MirBLOBHASH:
+		return "MirBLOBHASH"
+	case MirBLOBBASEFEE:
+		return "MirBLOBBASEFEE"
+	case MirMLOAD:
+		return "MirMLOAD"
+	case MirMSTORE:
+		return "MirMSTORE"
+	case MirMSTORE8:
+		return "MirMSTORE8"
+	case MirSLOAD:
+		return "MirSLOAD"
+	case MirSSTORE:
+		return "MirSSTORE"
+	case MirJUMP:
+		return "MirJUMP"
+	case MirJUMPI:
+		return "MirJUMPI"
+	case MirPC:
+		return "MirPC"
+	case MirMSIZE:
+		return "MirMSIZE"
+	case MirGAS:
+		return "MirGAS"
+	case MirJUMPDEST:
+		return "MirJUMPDEST"
+	case MirTLOAD:
+		return "MirTLOAD"
+	case MirTSTORE:
+		return "MirTSTORE"
+	case MirMCOPY:
+		return "MirMCOPY"
+	case MirNOP:
+		return "MirNOP"
+	case MirLOG0:
+		return "MirLOG0"
+	case MirLOG1:
+		return "MirLOG1"
+	case MirLOG2:
+		return "MirLOG2"
+	case MirLOG3:
+		return "MirLOG3"
+	case MirLOG4:
+		return "MirLOG4"
+	case MirCREATE:
+		return "MirCREATE"
+	case MirCALL:
+		return "MirCALL"
+	case MirCALLCODE:
+		return "MirCALLCODE"
+	case MirRETURN:
+		return "MirRETURN"
+	case MirDELEGATECALL:
+		return "MirDELEGATECALL"
+	case MirCREATE2:
+		return "MirCREATE2"
+	case MirSTATICCALL:
+		return "MirSTATICCALL"
+	case MirREVERT:
+		return "MirREVERT"
+	case MirRETURNDATALOAD:
+		return "MirRETURNDATALOAD"
+	case MirINVALID:
+		return "MirINVALID"
+	case MirSELFDESTRUCT:
+		return "MirSELFDESTRUCT"
+	case MirDATALOAD:
+		return "MirDATALOAD"
+	case MirDATALOADN:
+		return "MirDATALOADN"
+	case MirDATASIZE:
+		return "MirDATASIZE"
+	case MirDATACOPY:
+		return "MirDATACOPY"
+	case MirRJUMP:
+		return "MirRJUMP"
+	case MirRJUMPI:
+		return "MirRJUMPI"
+	case MirRJUMPV:
+		return "MirRJUMPV"
+	case MirCALLF:
+		return "MirCALLF"
+	case MirRETF:
+		return "MirRETF"
+	case MirJUMPF:
+		return "MirJUMPF"
+	case MirDUPN:
+		return "MirDUPN"
+	case MirSWAPN:
+		return "MirSWAPN"
+	case MirEXCHANGE:
+		return "MirEXCHANGE"
+	case MirEOFCREATE:
+		return "MirEOFCREATE"
+	case MirRETURNCONTRACT:
+		return "MirRETURNCONTRACT"
+	// MirEXTCALL and MirEXTDELEGATECALL share numeric values with system ops; handled as fallback
+	case MirEXTSTATICCALL:
+		return "MirEXTSTATICCALL"
+	default:
+		return fmt.Sprintf("Mir(0x%02x)", byte(op))
+	}
+}
 
 // 0x20 range - crypto.
 const (
