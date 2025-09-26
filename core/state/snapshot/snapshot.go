@@ -224,6 +224,7 @@ func New(config Config, diskdb ethdb.KeyValueStore, triedb *triedb.Database, roo
 		snap.layers[head.Root()] = head
 		head = head.Parent()
 	}
+
 	log.Info("Snapshot loaded", "diskRoot", snap.diskRoot(), "root", root)
 	return snap, nil
 }

@@ -513,7 +513,7 @@ type Syncer struct {
 // NewSyncer creates a new snapshot syncer to download the Ethereum state over the
 // snap protocol.
 func NewSyncer(db ethdb.Database, scheme string) *Syncer {
-	return &Syncer{
+	syncer := &Syncer{
 		db:     db,
 		scheme: scheme,
 
@@ -537,10 +537,17 @@ func NewSyncer(db ethdb.Database, scheme string) *Syncer {
 		trienodeHealReqs:     make(map[uint64]*trienodeHealRequest),
 		bytecodeHealReqs:     make(map[uint64]*bytecodeHealRequest),
 		trienodeHealThrottle: maxTrienodeHealThrottle, // Tune downward instead of insta-filling with junk
-		stateWriter:          db.NewBatch(),
 
 		extProgress: new(SyncProgress),
 	}
+
+	if syncer.db.HasSeparateSnapStore() {
+		syncer.stateWriter = db.GetSnapStore().NewBatch()
+	} else {
+		syncer.stateWriter = db.NewBatch()
+	}
+
+	return syncer
 }
 
 // Register injects a new data source into the syncer's peerset.
@@ -920,7 +927,7 @@ func (s *Syncer) saveSyncStatus() {
 	if err != nil {
 		panic(err) // This can only fail during implementation
 	}
-	rawdb.WriteSnapshotSyncStatus(s.db, status)
+	rawdb.WriteSnapshotSyncStatus(s.db.GetSnapStore(), status)
 }
 
 // Progress returns the snap sync status statistics.
@@ -1905,7 +1912,7 @@ func (s *Syncer) processAccountResponse(res *accountResponse) {
 	for i, account := range res.accounts {
 		// Check if the account is a contract with an unknown code
 		if !bytes.Equal(account.CodeHash, types.EmptyCodeHash.Bytes()) {
-			if !rawdb.HasCodeWithPrefix(s.db, common.BytesToHash(account.CodeHash)) {
+			if !rawdb.HasCodeWithPrefix(s.db.StateStoreReader(), common.BytesToHash(account.CodeHash)) {
 				res.task.codeTasks[common.BytesToHash(account.CodeHash)] = struct{}{}
 				res.task.needCode[i] = true
 				res.task.pend++
@@ -2049,10 +2056,10 @@ func (s *Syncer) processStorageResponse(res *storageResponse) {
 		},
 	}
 	var snapBatch ethdb.HookedBatch
-	if s.db.HasSeparateStateStore() {
+	if s.db.HasSeparateStateStore() && s.db.HasSeparateSnapStore() {
 		usingMultDatabase = true
 		snapBatch = ethdb.HookedBatch{
-			Batch: s.db.NewBatch(),
+			Batch: s.db.GetSnapStore().NewBatch(),
 			OnPut: func(key []byte, value []byte) {
 				s.storageBytes += common.StorageSize(len(key) + len(value))
 			},

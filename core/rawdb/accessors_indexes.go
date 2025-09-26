@@ -33,7 +33,7 @@ import (
 )
 
 // DecodeTxLookupEntry decodes the supplied tx lookup data.
-func DecodeTxLookupEntry(data []byte, db ethdb.Reader) *uint64 {
+func DecodeTxLookupEntry(data []byte, db ethdb.KeyValueReader) *uint64 {
 	// Database v6 tx lookup just stores the block number
 	if len(data) < common.HashLength {
 		number := new(big.Int).SetBytes(data).Uint64()
@@ -55,7 +55,7 @@ func DecodeTxLookupEntry(data []byte, db ethdb.Reader) *uint64 {
 // ReadTxLookupEntry retrieves the positional metadata associated with a transaction
 // hash to allow retrieving the transaction or receipt by hash.
 func ReadTxLookupEntry(db ethdb.Reader, hash common.Hash) *uint64 {
-	data, _ := db.Get(txLookupKey(hash))
+	data, _ := db.IndexStoreReader().Get(txLookupKey(hash))
 	if len(data) == 0 {
 		return nil
 	}

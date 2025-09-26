@@ -364,7 +364,7 @@ func traverseState(ctx *cli.Context) error {
 			}
 		}
 		if !bytes.Equal(acc.CodeHash, types.EmptyCodeHash.Bytes()) {
-			if !rawdb.HasCode(chaindb, common.BytesToHash(acc.CodeHash)) {
+			if !rawdb.HasCode(chaindb.StateStoreReader(), common.BytesToHash(acc.CodeHash)) {
 				log.Error("Code is missing", "hash", common.BytesToHash(acc.CodeHash))
 				return errors.New("missing code")
 			}
@@ -522,7 +522,7 @@ func traverseRawState(ctx *cli.Context) error {
 				}
 			}
 			if !bytes.Equal(acc.CodeHash, types.EmptyCodeHash.Bytes()) {
-				if !rawdb.HasCode(chaindb, common.BytesToHash(acc.CodeHash)) {
+				if !rawdb.HasCode(chaindb.StateStoreReader(), common.BytesToHash(acc.CodeHash)) {
 					log.Error("Code is missing", "account", common.BytesToHash(accIter.LeafKey()))
 					return errors.New("missing code")
 				}
@@ -572,7 +572,7 @@ func dumpState(ctx *cli.Context) error {
 		AsyncBuild: false,
 	}
 	triesInMemory := ctx.Uint64(utils.TriesInMemoryFlag.Name)
-	snaptree, err := snapshot.New(snapConfig, db, triedb, root, int(triesInMemory), false)
+	snaptree, err := snapshot.New(snapConfig, db.GetSnapStore(), triedb, root, int(triesInMemory), false)
 	if err != nil {
 		return err
 	}
@@ -605,7 +605,7 @@ func dumpState(ctx *cli.Context) error {
 			AddressHash: accIt.Hash().Bytes(),
 		}
 		if !conf.SkipCode && !bytes.Equal(account.CodeHash, types.EmptyCodeHash.Bytes()) {
-			da.Code = rawdb.ReadCode(db, common.BytesToHash(account.CodeHash))
+			da.Code = rawdb.ReadCode(db.StateStoreReader(), common.BytesToHash(account.CodeHash))
 		}
 		if !conf.SkipStorage {
 			da.Storage = make(map[common.Hash]string)
@@ -669,7 +669,7 @@ func snapshotExportPreimages(ctx *cli.Context) error {
 		NoBuild:    true,
 		AsyncBuild: false,
 	}
-	snaptree, err := snapshot.New(snapConfig, chaindb, triedb, root, 128, false)
+	snaptree, err := snapshot.New(snapConfig, chaindb.GetSnapStore(), triedb, root, 128, false)
 	if err != nil {
 		return err
 	}
