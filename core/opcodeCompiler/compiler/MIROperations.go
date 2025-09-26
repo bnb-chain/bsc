@@ -37,6 +37,8 @@ const (
 // String returns a human-readable name for the MIR operation
 func (op MirOperation) String() string {
 	switch op {
+	case MirPHI:
+		return "MirPHI"
 	case MirSTOP:
 		return "MirSTOP"
 	case MirADD:
@@ -391,6 +393,8 @@ const (
 
 // Additional opcodes
 const (
+	// Reserve a distinct opcode for SSA Phi nodes. Value chosen to avoid existing assignments.
+	MirPHI             MirOperation = 0xfa
 	MirEXTCALL         MirOperation = 0xf8
 	MirEXTDELEGATECALL MirOperation = 0xf9
 	MirEXTSTATICCALL   MirOperation = 0xfb

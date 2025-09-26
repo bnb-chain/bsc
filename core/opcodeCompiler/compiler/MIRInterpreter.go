@@ -76,6 +76,7 @@ var mirHandlers [256]func(*MIRInterpreter, *MIR) error
 
 func init() {
 	mirHandlers[byte(MirSTOP)] = mirHandleSTOP
+	mirHandlers[byte(MirPHI)] = mirHandlePHI
 	mirHandlers[byte(MirRETURN)] = mirHandleRETURN
 	mirHandlers[byte(MirMLOAD)] = mirHandleMLOAD
 	mirHandlers[byte(MirADD)] = mirHandleADD
@@ -204,6 +205,16 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 	}
 	switch m.op {
 	case MirNOP:
+		return nil
+	case MirPHI:
+		// Evaluate first available incoming as a simple strategy; more advanced selection
+		// would consider predecessor edge, but adapter runs single blocks only for now.
+		if len(m.oprands) == 0 {
+			it.setResult(m, it.zeroConst)
+			return nil
+		}
+		v := it.evalValue(m.oprands[0])
+		it.setResult(m, v)
 		return nil
 	case MirSTOP:
 		return errSTOP
@@ -541,6 +552,17 @@ func mirHandleRETURN(it *MIRInterpreter, m *MIR) error {
 	// Avoid two allocations by using a single copy into a fresh buffer
 	it.returndata = it.readMemCopy(off, sz)
 	return errRETURN
+}
+
+// mirHandlePHI sets the result to the first available incoming value.
+func mirHandlePHI(it *MIRInterpreter, m *MIR) error {
+	if len(m.oprands) == 0 {
+		it.setResult(m, it.zeroConst)
+		return nil
+	}
+	v := it.evalValue(m.oprands[0])
+	it.setResult(m, v)
+	return nil
 }
 
 func mirHandleMLOAD(it *MIRInterpreter, m *MIR) error {

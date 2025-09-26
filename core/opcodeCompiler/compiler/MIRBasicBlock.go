@@ -50,6 +50,10 @@ type MIRBasicBlock struct {
 	children       []*MIRBasicBlock
 	instructions   []*MIR
 	pos            int
+	// SSA-like stack modeling
+	entryStack     []Value
+	exitStack      []Value
+	incomingStacks map[*MIRBasicBlock][]Value
 }
 
 func (b *MIRBasicBlock) Size() uint {
@@ -309,6 +313,9 @@ func NewMIRBasicBlock(blockNum, pc uint, parent *MIRBasicBlock) *MIRBasicBlock {
 	bb.parentsBitmap = &bitmap{0}  // Initialize with at least 1 byte
 	bb.childrenBitmap = &bitmap{0} // Initialize with at least 1 byte
 	bb.instructions = []*MIR{}
+	bb.entryStack = nil
+	bb.exitStack = nil
+	bb.incomingStacks = make(map[*MIRBasicBlock][]Value)
 	if parent != nil {
 		bb.SetParents([]*MIRBasicBlock{parent})
 	}
@@ -437,6 +444,59 @@ func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
 	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
 	return mir
 }
+
+// CreatePhiMIR creates a PHI node merging incoming stack values.
+func (b *MIRBasicBlock) CreatePhiMIR(ops []*Value, stack *ValueStack) *MIR {
+	mir := new(MIR)
+	mir.op = MirPHI
+	mir.oprands = ops
+	stack.push(mir.Result())
+	return b.appendMIR(mir)
+}
+
+// AddIncomingStack records a parent's exit stack as an incoming stack for this block.
+func (b *MIRBasicBlock) AddIncomingStack(parent *MIRBasicBlock, values []Value) {
+	if parent == nil || values == nil {
+		return
+	}
+	// Copy to decouple from caller mutations
+	copied := make([]Value, len(values))
+	copy(copied, values)
+	b.incomingStacks[parent] = copied
+}
+
+// IncomingStacks returns the recorded incoming stacks by parent.
+func (b *MIRBasicBlock) IncomingStacks() map[*MIRBasicBlock][]Value {
+	return b.incomingStacks
+}
+
+// SetExitStack records the block's exit stack snapshot.
+func (b *MIRBasicBlock) SetExitStack(values []Value) {
+	if values == nil {
+		b.exitStack = nil
+		return
+	}
+	copied := make([]Value, len(values))
+	copy(copied, values)
+	b.exitStack = copied
+}
+
+// ExitStack returns the block's exit stack snapshot.
+func (b *MIRBasicBlock) ExitStack() []Value { return b.exitStack }
+
+// SetEntryStack sets the precomputed entry stack snapshot.
+func (b *MIRBasicBlock) SetEntryStack(values []Value) {
+	if values == nil {
+		b.entryStack = nil
+		return
+	}
+	copied := make([]Value, len(values))
+	copy(copied, values)
+	b.entryStack = copied
+}
+
+// EntryStack returns the block's entry stack snapshot.
+func (b *MIRBasicBlock) EntryStack() []Value { return b.entryStack }
 
 func (b *MIRBasicBlock) CreateMemoryOpMIR(op MirOperation, stack *ValueStack, accessor *MemoryAccessor) *MIR {
 	mir := new(MIR)

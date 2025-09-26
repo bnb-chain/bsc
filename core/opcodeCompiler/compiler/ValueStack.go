@@ -88,6 +88,26 @@ func newValue(kind ValueKind, def *MIR, use *MIR, payload []byte) *Value {
 }
 
 // IsConst returns true if the value is a constant
+
+// clone returns a deep copy of the stack values slice.
+func (s *ValueStack) clone() []Value {
+	if len(s.data) == 0 {
+		return nil
+	}
+	out := make([]Value, len(s.data))
+	copy(out, s.data)
+	return out
+}
+
+// resetTo replaces the current stack with the provided snapshot.
+func (s *ValueStack) resetTo(snapshot []Value) {
+	if snapshot == nil {
+		s.data = s.data[:0]
+		return
+	}
+	s.data = make([]Value, len(snapshot))
+	copy(s.data, snapshot)
+}
 func (v *Value) IsConst() bool {
 	return v.kind == Konst
 }

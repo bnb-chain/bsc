@@ -113,6 +113,21 @@ func GenerateMIRCFG(hash common.Hash, code []byte) (*CFG, error) {
 			continue
 		}
 		processed++
+		// Seed entry stack for this block. If it has recorded entry snapshot, use it; else, if it
+		// has exactly one parent with an exit snapshot, inherit it; if multiple parents, ensure
+		// PHI nodes are materialized in buildBasicBlock.
+		if es := curBB.EntryStack(); es != nil {
+			valueStack.resetTo(es)
+		} else if len(curBB.Parents()) == 1 {
+			if ps := curBB.Parents()[0].ExitStack(); ps != nil {
+				valueStack.resetTo(ps)
+			} else {
+				valueStack.resetTo(nil)
+			}
+		} else {
+			// No known entry; clear stack to start fresh and let PHI creation fill in
+			valueStack.resetTo(nil)
+		}
 		err := cfg.buildBasicBlock(curBB, &valueStack, memoryAccessor, stateAccessor, &unprcessedBBs)
 		if err != nil {
 			log.Error(err.Error())
@@ -207,6 +222,46 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 	// relying on MIR-level stack mutations (which can be optimized to NOPs).
 	depth := curBB.InitDepth()
 	depthKnown := false
+
+	// If this block has multiple parents and recorded incoming stacks, insert PHI nodes to form a unified
+	// entry stack and seed the current stack accordingly.
+	if len(curBB.Parents()) > 1 && len(curBB.IncomingStacks()) > 0 {
+		// Determine the maximum stack height among incoming paths
+		maxH := 0
+		for _, st := range curBB.IncomingStacks() {
+			if l := len(st); l > maxH {
+				maxH = l
+			}
+		}
+		// Build PHIs from top to bottom so stack order is preserved
+		tmp := ValueStack{}
+		for i := 0; i < maxH; i++ {
+			// Collect ith from top across parents if available
+			var ops []*Value
+			for _, p := range curBB.Parents() {
+				st := curBB.IncomingStacks()[p]
+				if st != nil && len(st) > i {
+					// stack top is end; index from top
+					v := st[len(st)-1-i]
+					vv := v // copy
+					ops = append(ops, &vv)
+				} else {
+					// missing value -> unknown placeholder
+					ops = append(ops, newValue(Unknown, nil, nil, nil))
+				}
+			}
+			_ = curBB.CreatePhiMIR(ops, &tmp)
+		}
+		// tmp now has maxH values pushed in top-down creation order; assign as entry
+		curBB.SetEntryStack(tmp.clone())
+		valueStack.resetTo(curBB.EntryStack())
+		depth = len(curBB.EntryStack())
+		depthKnown = true
+	} else if es := curBB.EntryStack(); es != nil {
+		valueStack.resetTo(es)
+		depth = len(es)
+		depthKnown = true
+	}
 	for i < len(code) {
 		op := ByteCode(code[i])
 		eopName := op.byteCodeToString()
@@ -557,6 +612,9 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 						targetBB.SetInitDepthMax(depth)
 						// Only target is a child of current block for unconditional JUMP
 						curBB.SetChildren([]*MIRBasicBlock{targetBB})
+						// Record exit stack for current block and pass as incoming to target
+						curBB.SetExitStack(valueStack.clone())
+						targetBB.AddIncomingStack(curBB, curBB.ExitStack())
 						// Optionally register fallthrough block at i+1 but do not enqueue or link
 						if _, ok := c.pcToBlock[uint(i+1)]; !ok {
 							fall := c.createBB(uint(i+1), nil)
@@ -600,6 +658,10 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 						targetBB.SetInitDepthMax(depth)
 						fallthroughBB.SetInitDepthMax(depth)
 						curBB.SetChildren([]*MIRBasicBlock{targetBB, fallthroughBB})
+						// Record exit stack and add as incoming to both successors
+						curBB.SetExitStack(valueStack.clone())
+						targetBB.AddIncomingStack(curBB, curBB.ExitStack())
+						fallthroughBB.AddIncomingStack(curBB, curBB.ExitStack())
 						if !targetExists {
 							unprcessedBBs.Push(targetBB)
 						}
@@ -630,6 +692,9 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 				newBB := c.createBB(uint(i), curBB)
 				newBB.SetInitDepth(depth)
 				curBB.SetChildren([]*MIRBasicBlock{newBB})
+				// Record exit stack and feed as incoming to fallthrough
+				curBB.SetExitStack(valueStack.clone())
+				newBB.AddIncomingStack(curBB, curBB.ExitStack())
 				unprcessedBBs.Push(newBB)
 				return nil
 			}
@@ -735,6 +800,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			fallthroughBB := c.createBB(uint(i+1), curBB)
 			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
 			unprcessedBBs.Push(fallthroughBB)
+			curBB.SetExitStack(valueStack.clone())
+			fallthroughBB.AddIncomingStack(curBB, curBB.ExitStack())
 			if depth >= 3 {
 				depth = depth - 3 + 1
 			} else {
@@ -760,6 +827,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			fallthroughBB := c.createBB(uint(i+1), curBB)
 			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
 			unprcessedBBs.Push(fallthroughBB)
+			curBB.SetExitStack(valueStack.clone())
+			fallthroughBB.AddIncomingStack(curBB, curBB.ExitStack())
 			if depth >= 4 {
 				depth = depth - 4 + 1
 			} else {
@@ -789,6 +858,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			fallthroughBB := c.createBB(uint(i+1), curBB)
 			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
 			unprcessedBBs.Push(fallthroughBB)
+			curBB.SetExitStack(valueStack.clone())
+			fallthroughBB.AddIncomingStack(curBB, curBB.ExitStack())
 			if depth >= 7 {
 				depth = depth - 7 + 1
 			} else {
