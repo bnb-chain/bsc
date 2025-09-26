@@ -495,7 +495,7 @@ func (bc *BlockChain) StateAt(root common.Hash) (*state.StateDB, error) {
 // Live states are not available and won't be served, please use `State`
 // or `StateAt` instead.
 func (bc *BlockChain) HistoricState(root common.Hash) (*state.StateDB, error) {
-	return state.New(root, state.NewHistoricDatabase(bc.db, bc.triedb))
+	return state.New(root, state.NewHistoricDatabase(bc.db.GetStateStore(), bc.triedb))
 }
 
 // Config retrieves the chain's fork configuration.
