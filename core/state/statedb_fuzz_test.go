@@ -202,7 +202,7 @@ func (test *stateTest) run() bool {
 			Recovery:   false,
 			NoBuild:    false,
 			AsyncBuild: false,
-		}, disk, tdb, types.EmptyRootHash, 128, false)
+		}, disk.GetSnapStore(), tdb, types.EmptyRootHash, 128, false)
 	}
 	for i, actions := range test.actions {
 		root := types.EmptyRootHash

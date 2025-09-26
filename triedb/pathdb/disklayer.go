@@ -26,7 +26,16 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
+)
+
+var (
+	// Flush latency metrics
+	diskFlushTimer = metrics.NewRegisteredResettingTimer("pathdb/flush/disk", nil)
+	trieFlushTimer = metrics.NewRegisteredResettingTimer("pathdb/flush/trie", nil)
+	snapFlushTimer = metrics.NewRegisteredResettingTimer("pathdb/flush/snap", nil)
 )
 
 // diskLayer is a low level persistent layer built on top of a key-value store.
@@ -218,7 +227,8 @@ func (dl *diskLayer) account(hash common.Hash, depth int) ([]byte, error) {
 		cleanStateMissMeter.Mark(1)
 	}
 	// Try to retrieve the account from the disk.
-	blob := rawdb.ReadAccountSnapshot(dl.db.diskdb, hash)
+	blob :=
+		rawdb.ReadAccountSnapshot(dl.db.snapdb, hash)
 
 	// Store the resolved data in the clean cache. The background buffer flusher
 	// may also write to the clean cache concurrently, but two writers cannot
@@ -296,7 +306,7 @@ func (dl *diskLayer) storage(accountHash, storageHash common.Hash, depth int) ([
 		cleanStateMissMeter.Mark(1)
 	}
 	// Try to retrieve the account from the disk
-	blob := rawdb.ReadStorageSnapshot(dl.db.diskdb, accountHash, storageHash)
+	blob := rawdb.ReadStorageSnapshot(dl.db.snapdb, accountHash, storageHash)
 
 	// Store the resolved data in the clean cache. The background buffer flusher
 	// may also write to the clean cache concurrently, but two writers cannot
@@ -418,7 +428,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 
 		// Freeze the live buffer and schedule background flushing
 		dl.frozen = combined
-		dl.frozen.flush(bottom.root, dl.db.diskdb, dl.db.freezer, progress, dl.nodes, dl.states, bottom.stateID(), func() {
+		dl.frozen.flush(bottom.root, dl.db.diskdb, dl.db.snapdb, dl.db.freezer, progress, dl.nodes, dl.states, bottom.stateID(), dl.db.isMultiDB, func() {
 			// Resume the background generation if it's not completed yet.
 			// The generator is assumed to be available if the progress is
 			// not nil.
@@ -527,15 +537,58 @@ func (dl *diskLayer) revert(h *history) (*diskLayer, error) {
 		progress = dl.generator.progressMarker()
 	}
 	batch := dl.db.diskdb.NewBatch()
-	writeNodes(batch, nodes, dl.nodes)
 
-	// Provide the original values of modified accounts and storages for revert
-	writeStates(batch, progress, accounts, storages, dl.states)
-	rawdb.WritePersistentStateID(batch, dl.id-1)
-	rawdb.WriteSnapshotRoot(batch, h.meta.parent)
-	if err := batch.Write(); err != nil {
-		log.Crit("Failed to write states", "err", err)
+	var snapBatch ethdb.Batch
+	// The separate snapshot db need to be flush with independent batch
+	flushStart := time.Now()
+	if dl.db.isMultiDB {
+		var wg sync.WaitGroup
+		var trieErr, snapErr error
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			trieStart := time.Now()
+			writeNodes(batch, nodes, dl.nodes)
+			rawdb.WritePersistentStateID(batch, dl.id-1)
+			if err := batch.Write(); err != nil {
+				trieErr = err
+			}
+			trieFlushTimer.UpdateSince(trieStart)
+		}()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			snapStart := time.Now()
+			snapBatch = dl.db.snapdb.NewBatch()
+			writeStates(snapBatch, progress, accounts, storages, dl.states)
+			rawdb.WriteSnapshotRoot(snapBatch, h.meta.parent)
+			if err := snapBatch.Write(); err != nil {
+				snapErr = err
+			}
+			snapFlushTimer.UpdateSince(snapStart)
+		}()
+
+		wg.Wait()
+
+		if trieErr != nil {
+			log.Crit("Failed to write trie nodes", "err", trieErr)
+		}
+		if snapErr != nil {
+			log.Crit("Failed to write states to snapshot db", "err", snapErr)
+		}
+	} else {
+		writeNodes(batch, nodes, dl.nodes)
+		// Provide the original values of modified accounts and storages for revert
+		writeStates(batch, progress, accounts, storages, dl.states)
+		rawdb.WritePersistentStateID(batch, dl.id-1)
+		rawdb.WriteSnapshotRoot(batch, h.meta.parent)
+		if err := batch.Write(); err != nil {
+			log.Crit("Failed to write states", "err", err)
+		}
 	}
+	diskFlushTimer.UpdateSince(flushStart)
 	// Link the generator and resume generation if the snapshot is not yet
 	// fully completed.
 	ndl := newDiskLayer(h.meta.parent, dl.id-1, dl.db, dl.nodes, dl.states, dl.buffer, dl.frozen)
