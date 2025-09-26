@@ -140,6 +140,10 @@ func (voteManager *VoteManager) loop() {
 				log.Debug("skip voting because mining is disabled, continue")
 				continue
 			}
+			parliaEngine, ok := voteManager.engine.(*parlia.Parlia)
+			if !ok {
+				continue
+			}
 			blockCountSinceMining++
 			if blockCountSinceMining <= blocksNumberSinceMining {
 				log.Debug("skip voting", "blockCountSinceMining", blockCountSinceMining, "blocksNumberSinceMining", blocksNumberSinceMining)
@@ -150,21 +154,7 @@ func (voteManager *VoteManager) loop() {
 				log.Debug("cHead.Header is nil, continue")
 				continue
 			}
-
 			curHead := cHead.Header
-			if p, ok := voteManager.engine.(*parlia.Parlia); ok {
-				// Approximately equal to the block interval of next block, except for the switch block.
-				blockInterval, err := p.BlockInterval(voteManager.chain, curHead)
-				if err != nil {
-					log.Debug("failed to get BlockInterval when voting")
-				}
-				nextBlockMinedTime := time.UnixMilli(int64((curHead.MilliTimestamp() + blockInterval)))
-				timeForBroadcast := 50 * time.Millisecond // enough to broadcast a vote
-				if time.Now().Add(timeForBroadcast).After(nextBlockMinedTime) {
-					log.Warn("too late to vote", "Head.Time(Second)", curHead.Time, "Now(Millisecond)", time.Now().UnixMilli())
-					continue
-				}
-			}
 
 			// Check if cur validator is within the validatorSet at curHead
 			if !voteManager.engine.IsActiveValidatorAt(voteManager.chain, curHead,
@@ -175,18 +165,29 @@ func (voteManager *VoteManager) loop() {
 				continue
 			}
 
+			voteTarget, err := parliaEngine.VoteTarget(voteManager.chain, curHead)
+			if err != nil {
+				log.Debug("Get VoteTarget", "err", err)
+				continue
+			}
+
+			if voteTarget == nil {
+				log.Debug("skip voting: justified not far behind & no attestation in curHead", "blockNumber", curHead.Number.Uint64())
+				continue
+			}
+
 			// Vote for curBlockHeader block.
 			vote := &types.VoteData{
-				TargetNumber: curHead.Number.Uint64(),
-				TargetHash:   curHead.Hash(),
+				TargetNumber: voteTarget.Number.Uint64(),
+				TargetHash:   voteTarget.Hash(),
 			}
 			voteMessage := &types.VoteEnvelope{
 				Data: vote,
 			}
 
 			// Put Vote into journal and VotesPool if we are active validator and allow to sign it.
-			if ok, sourceNumber, sourceHash := voteManager.UnderRules(curHead); ok {
-				log.Debug("curHead is underRules for voting")
+			if ok, sourceNumber, sourceHash := voteManager.UnderRules(voteTarget); ok {
+				log.Debug("voteTarget is underRules for voting")
 				if sourceHash == (common.Hash{}) {
 					log.Debug("sourceHash is empty")
 					continue
@@ -208,7 +209,7 @@ func (voteManager *VoteManager) loop() {
 
 				log.Debug("vote manager produced vote", "votedBlockNumber", voteMessage.Data.TargetNumber, "votedBlockHash", voteMessage.Data.TargetHash, "voteMessageHash", voteMessage.Hash())
 				voteManager.pool.PutVote(voteMessage)
-				voteManager.chain.GetBlockStats(curHead.Hash()).SendVoteTime.Store(time.Now().UnixMilli())
+				voteManager.chain.GetBlockStats(voteTarget.Hash()).SendVoteTime.Store(time.Now().UnixMilli())
 				votesManagerCounter.Inc(1)
 			}
 
@@ -266,7 +267,6 @@ func (voteManager *VoteManager) loop() {
 // UnderRules checks if the produced header under the following rules:
 // A validator must not publish two distinct votes for the same height. (Rule 1)
 // A validator must not vote within the span of its other votes . (Rule 2)
-// Validators always vote for their canonical chain’s latest block. (Rule 3)
 func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, common.Hash) {
 	sourceNumber, sourceHash, err := voteManager.engine.GetJustifiedNumberAndHash(voteManager.chain, []*types.Header{header})
 	if err != nil {
@@ -317,8 +317,6 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 		}
 	}
 
-	// Rule 3: Validators always vote for their canonical chain’s latest block.
-	// Since the header subscribed to is the canonical chain, so this rule is satisfied by default.
-	log.Debug("All three rules check passed")
+	log.Debug("All two rules check passed")
 	return true, sourceNumber, sourceHash
 }
