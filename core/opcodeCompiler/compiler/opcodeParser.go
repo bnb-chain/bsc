@@ -99,20 +99,30 @@ func GenerateMIRCFG(hash common.Hash, code []byte) (*CFG, error) {
 	unprcessedBBs := MIRBasicBlockStack{}
 	unprcessedBBs.Push(startBB)
 
-	// Guard against pathological CFG explosions in large contracts
-	const maxBasicBlocks = 4000
-	processed := 0
+	// Guard against pathological CFG explosions in large contracts.
+	// Adapt the budget to the contract size: set to raw bytecode length.
+	// This keeps analysis proportional to program size and avoids premature truncation.
+	maxBasicBlocks := len(code)
+	if maxBasicBlocks <= 0 {
+		maxBasicBlocks = 1
+	}
+	processedUnique := 0
 
 	for unprcessedBBs.Size() != 0 {
-		if processed >= maxBasicBlocks {
-			log.Warn("MIR CFG build budget reached", "blocks", processed)
+		if processedUnique >= maxBasicBlocks {
+			log.Warn("MIR CFG build budget reached", "blocks", processedUnique)
 			break
 		}
 		curBB := unprcessedBBs.Pop()
 		if curBB == nil {
 			continue
 		}
-		processed++
+		// Avoid duplicate queue entries
+		curBB.queued = false
+		// Track unique blocks processed
+		if !curBB.built {
+			processedUnique++
+		}
 		// Seed entry stack for this block. If it has recorded entry snapshot, use it; else, if it
 		// has exactly one parent with an exit snapshot, inherit it; if multiple parents, ensure
 		// PHI nodes are materialized in buildBasicBlock.
@@ -128,10 +138,19 @@ func GenerateMIRCFG(hash common.Hash, code []byte) (*CFG, error) {
 			// No known entry; clear stack to start fresh and let PHI creation fill in
 			valueStack.resetTo(nil)
 		}
-		err := cfg.buildBasicBlock(curBB, &valueStack, memoryAccessor, stateAccessor, &unprcessedBBs)
-		if err != nil {
-			log.Error(err.Error())
-			return nil, err
+		// Only rebuild if entry height changed or block wasn't built before
+		currentEntryH := -1
+		if es := curBB.EntryStack(); es != nil {
+			currentEntryH = len(es)
+		}
+		if !curBB.built || curBB.lastEntryHeight != currentEntryH {
+			err := cfg.buildBasicBlock(curBB, &valueStack, memoryAccessor, stateAccessor, &unprcessedBBs)
+			if err != nil {
+				log.Error(err.Error())
+				return nil, err
+			}
+			curBB.built = true
+			curBB.lastEntryHeight = currentEntryH
 		}
 	}
 
@@ -261,11 +280,15 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 		valueStack.resetTo(es)
 		depth = len(es)
 		depthKnown = true
+	} else if len(curBB.Parents()) == 1 {
+		// Single-parent path with inherited stack seeded by the caller.
+		// Align local depth tracker with the actual entry stack to avoid
+		// spurious DUP/SWAP underflow warnings and ensure exact EVM parity.
+		depth = valueStack.size()
+		depthKnown = true
 	}
 	for i < len(code) {
 		op := ByteCode(code[i])
-		eopName := op.byteCodeToString()
-		log.Warn("MIR parse", "offset ", i, " - evm op", eopName, "stack", valueStack.size())
 
 		// Handle PUSH operations
 		if op >= PUSH1 && op <= PUSH32 {
@@ -606,8 +629,17 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 						targetPC = (targetPC << 8) | uint64(b)
 					}
 					if targetPC < uint64(len(code)) {
-						// Determine existence before creation to avoid reprocessing
-						_, targetExists := c.pcToBlock[uint(targetPC)]
+						// Determine existence and whether this edge is newly added
+						var hadParentBefore bool
+						existingBB, targetExists := c.pcToBlock[uint(targetPC)]
+						if targetExists && existingBB != nil {
+							for _, p := range existingBB.Parents() {
+								if p == curBB {
+									hadParentBefore = true
+									break
+								}
+							}
+						}
 						targetBB := c.createBB(uint(targetPC), curBB)
 						targetBB.SetInitDepthMax(depth)
 						// Only target is a child of current block for unconditional JUMP
@@ -624,9 +656,18 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 								fall.SetInitDepthMax(depth)
 							}
 						}
-						// Enqueue only target if newly created
-						if !targetExists {
-							unprcessedBBs.Push(targetBB)
+						// Enqueue target if newly created, or if it existed but just gained a new parent
+						if !targetExists || (targetExists && !hadParentBefore) {
+							// Rebuild only if entry height changed to avoid churn
+							newEntryH := depth
+							if targetBB.EntryStack() != nil {
+								newEntryH = len(targetBB.EntryStack())
+							}
+							if !targetBB.queued && targetBB.lastEntryHeight != newEntryH {
+								targetBB.queued = true
+								targetBB.lastEntryHeight = newEntryH
+								unprcessedBBs.Push(targetBB)
+							}
 						}
 						return nil
 					}
@@ -649,9 +690,27 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 						targetPC = (targetPC << 8) | uint64(b)
 					}
 					if targetPC < uint64(len(code)) {
-						// Determine existence before creation to avoid reprocessing
-						_, targetExists := c.pcToBlock[uint(targetPC)]
-						_, fallExists := c.pcToBlock[uint(i+1)]
+						// Determine existence and whether either edge is newly added
+						var hadTargetParentBefore bool
+						var hadFallParentBefore bool
+						existingTarget, targetExists := c.pcToBlock[uint(targetPC)]
+						if targetExists && existingTarget != nil {
+							for _, p := range existingTarget.Parents() {
+								if p == curBB {
+									hadTargetParentBefore = true
+									break
+								}
+							}
+						}
+						existingFall, fallExists := c.pcToBlock[uint(i+1)]
+						if fallExists && existingFall != nil {
+							for _, p := range existingFall.Parents() {
+								if p == curBB {
+									hadFallParentBefore = true
+									break
+								}
+							}
+						}
 						// Create blocks for target and fallthrough
 						targetBB := c.createBB(uint(targetPC), curBB)
 						fallthroughBB := c.createBB(uint(i+1), curBB)
@@ -662,11 +721,27 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 						curBB.SetExitStack(valueStack.clone())
 						targetBB.AddIncomingStack(curBB, curBB.ExitStack())
 						fallthroughBB.AddIncomingStack(curBB, curBB.ExitStack())
-						if !targetExists {
-							unprcessedBBs.Push(targetBB)
+						if !targetExists || (targetExists && !hadTargetParentBefore) {
+							newEntryH := depth
+							if targetBB.EntryStack() != nil {
+								newEntryH = len(targetBB.EntryStack())
+							}
+							if !targetBB.queued && targetBB.lastEntryHeight != newEntryH {
+								targetBB.queued = true
+								targetBB.lastEntryHeight = newEntryH
+								unprcessedBBs.Push(targetBB)
+							}
 						}
-						if !fallExists {
-							unprcessedBBs.Push(fallthroughBB)
+						if !fallExists || (fallExists && !hadFallParentBefore) {
+							newEntryHF := depth
+							if fallthroughBB.EntryStack() != nil {
+								newEntryHF = len(fallthroughBB.EntryStack())
+							}
+							if !fallthroughBB.queued && fallthroughBB.lastEntryHeight != newEntryHF {
+								fallthroughBB.queued = true
+								fallthroughBB.lastEntryHeight = newEntryHF
+								unprcessedBBs.Push(fallthroughBB)
+							}
 						}
 						return nil
 					}

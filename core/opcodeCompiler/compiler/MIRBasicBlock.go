@@ -1,7 +1,6 @@
 package compiler
 
 import (
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 )
 
@@ -54,6 +53,10 @@ type MIRBasicBlock struct {
 	entryStack     []Value
 	exitStack      []Value
 	incomingStacks map[*MIRBasicBlock][]Value
+	// Build bookkeeping
+	built           bool // set true after first successful build
+	queued          bool // true if currently enqueued for (re)build
+	lastEntryHeight int  // last known/assumed entry stack height used to build (-1 if unknown)
 }
 
 func (b *MIRBasicBlock) Size() uint {
@@ -176,8 +179,7 @@ func (b *MIRBasicBlock) CreateUnaryOpMIR(op MirOperation, stack *ValueStack) (mi
 
 	mir = b.appendMIR(mir)
 	mir.genStackDepth = stack.size()
-	opName := mir.op.String()
-	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	// noisy generation logging removed
 	return mir
 }
 
@@ -194,8 +196,7 @@ func (b *MIRBasicBlock) CreateBinOpMIR(op MirOperation, stack *ValueStack) (mir 
 
 	mir = b.appendMIR(mir)
 	mir.genStackDepth = stack.size()
-	opName := mir.op.String()
-	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	// noisy generation logging removed
 	return mir
 }
 
@@ -211,8 +212,7 @@ func (b *MIRBasicBlock) CreateTernaryOpMIR(op MirOperation, stack *ValueStack) (
 		mir = newNopMIR(op, []*Value{&opnd1, &opnd2, &opnd3})
 		mir = b.appendMIR(mir)
 		mir.genStackDepth = stack.size()
-		opName := mir.op.String()
-		log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+		// noisy generation logging removed
 		return mir
 	}
 
@@ -227,8 +227,7 @@ func (b *MIRBasicBlock) CreateTernaryOpMIR(op MirOperation, stack *ValueStack) (
 
 	mir = b.appendMIR(mir)
 	mir.genStackDepth = stack.size()
-	opName := mir.op.String()
-	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	// noisy generation logging removed
 	return mir
 }
 
@@ -254,8 +253,7 @@ func (b *MIRBasicBlock) CreateBinOpMIRWithMA(op MirOperation, stack *ValueStack,
 			mir := newNopMIR(op, []*Value{&opnd2, &opnd1})
 			mir = b.appendMIR(mir)
 			mir.genStackDepth = stack.size()
-			opName := mir.op.String()
-			log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+			// noisy generation logging removed
 			return mir
 		}
 	}
@@ -268,8 +266,7 @@ func (b *MIRBasicBlock) CreateBinOpMIRWithMA(op MirOperation, stack *ValueStack,
 		stack.push(mir.Result())
 		mir = b.appendMIR(mir)
 		mir.genStackDepth = stack.size()
-		opName := mir.op.String()
-		log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+		// noisy generation logging removed
 		return mir
 	}
 	mir := newBinaryOpMIR(op, &opnd1, &opnd2, stack)
@@ -278,8 +275,7 @@ func (b *MIRBasicBlock) CreateBinOpMIRWithMA(op MirOperation, stack *ValueStack,
 
 	stack.push(mir.Result())
 	mir = b.appendMIR(mir)
-	opName := mir.op.String()
-	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	// noisy generation logging removed
 	return mir
 }
 
@@ -289,8 +285,7 @@ func (b *MIRBasicBlock) newMemoryLoadMIR(offset *Value, size *Value, accessor *M
 	mir.oprands = []*Value{offset, size}
 	stack.push(mir.Result())
 	mir = b.appendMIR(mir)
-	opName := mir.op.String()
-	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	// noisy generation logging removed
 	return mir
 }
 
@@ -300,8 +295,7 @@ func (b *MIRBasicBlock) newKeccakMIR(data *Value, stack *ValueStack) *MIR {
 	mir.oprands = []*Value{data}
 	stack.push(mir.Result())
 	mir = b.appendMIR(mir)
-	opName := mir.op.String()
-	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	// noisy generation logging removed
 	return mir
 }
 
@@ -316,6 +310,9 @@ func NewMIRBasicBlock(blockNum, pc uint, parent *MIRBasicBlock) *MIRBasicBlock {
 	bb.entryStack = nil
 	bb.exitStack = nil
 	bb.incomingStacks = make(map[*MIRBasicBlock][]Value)
+	bb.built = false
+	bb.queued = false
+	bb.lastEntryHeight = -1
 	if parent != nil {
 		bb.SetParents([]*MIRBasicBlock{parent})
 	}
@@ -369,8 +366,7 @@ func (b *MIRBasicBlock) CreateDupMIR(n int, stack *ValueStack) *MIR {
 		// Not enough items on stack - emit a NOP marker and do not mutate stack
 		mir := newNopMIR(MirOperation(0x80+byte(n-1)), nil)
 		mir = b.appendMIR(mir)
-		opName := mir.op.String()
-		log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+		// noisy generation logging removed
 		return mir
 	}
 
@@ -386,8 +382,7 @@ func (b *MIRBasicBlock) CreateDupMIR(n int, stack *ValueStack) *MIR {
 		mir := newNopMIR(MirOperation(0x80+byte(n-1)), []*Value{dupValue})
 		mir = b.appendMIR(mir)
 		mir.genStackDepth = stack.size()
-		opName := mir.op.String()
-		log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+		// noisy generation logging removed
 		return mir
 	}
 
@@ -398,8 +393,7 @@ func (b *MIRBasicBlock) CreateDupMIR(n int, stack *ValueStack) *MIR {
 	// Emit a NOP MIR carrying the original DUP opcode and source for tracking
 	mir := newNopMIR(MirOperation(0x80+byte(n-1)), []*Value{dupValue})
 	mir = b.appendMIR(mir)
-	opName := mir.op.String()
-	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	// noisy generation logging removed
 	return mir
 }
 
@@ -412,8 +406,7 @@ func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
 		// Not enough items on stack - emit a NOP marker and do not mutate stack
 		mir := newNopMIR(MirOperation(0x90+byte(n-1)), nil)
 		mir = b.appendMIR(mir)
-		opName := mir.op.String()
-		log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+		// noisy generation logging removed
 		return mir
 	}
 
@@ -429,8 +422,7 @@ func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
 		mir := newNopMIR(MirOperation(0x90+byte(n-1)), []*Value{topValue, swapValue})
 		mir = b.appendMIR(mir)
 		mir.genStackDepth = stack.size()
-		opName := mir.op.String()
-		log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+		// noisy generation logging removed
 		return mir
 	}
 
@@ -440,8 +432,7 @@ func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
 	mir := newNopMIR(MirOperation(0x90+byte(n-1)), []*Value{topValue, swapValue})
 	mir = b.appendMIR(mir)
 	mir.genStackDepth = stack.size()
-	opName := mir.op.String()
-	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	// noisy generation logging removed
 	return mir
 }
 
@@ -561,8 +552,7 @@ func (b *MIRBasicBlock) CreateMemoryOpMIR(op MirOperation, stack *ValueStack, ac
 	}
 	mir = b.appendMIR(mir)
 	mir.genStackDepth = stack.size()
-	opName := mir.op.String()
-	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	// noisy generation logging removed
 	return mir
 }
 
@@ -605,8 +595,7 @@ func (b *MIRBasicBlock) CreateStorageOpMIR(op MirOperation, stack *ValueStack, a
 	stack.push(mir.Result())
 	mir = b.appendMIR(mir)
 	mir.genStackDepth = stack.size()
-	opName := mir.op.String()
-	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	// noisy generation logging removed
 	return mir
 }
 
@@ -705,8 +694,7 @@ func (b *MIRBasicBlock) CreateBlockInfoMIR(op MirOperation, stack *ValueStack) *
 	stack.push(mir.Result())
 	mir = b.appendMIR(mir)
 	mir.genStackDepth = stack.size()
-	opName := mir.op.String()
-	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	// noisy generation logging removed
 	return mir
 }
 
@@ -720,8 +708,7 @@ func (b *MIRBasicBlock) CreateBlockOpMIR(op MirOperation, stack *ValueStack) *MI
 	}
 	stack.push(mir.Result())
 	mir = b.appendMIR(mir)
-	opName := mir.op.String()
-	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	// noisy generation logging removed
 	return mir
 }
 
@@ -747,8 +734,7 @@ func (b *MIRBasicBlock) CreateJumpMIR(op MirOperation, stack *ValueStack, bbStac
 
 	// JUMP/JUMPI do not produce a stack value; do not push a result
 	mir = b.appendMIR(mir)
-	opName := mir.op.String()
-	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	// noisy generation logging removed
 	return mir
 }
 
@@ -757,8 +743,7 @@ func (b *MIRBasicBlock) CreateControlFlowMIR(op MirOperation, stack *ValueStack)
 	mir.op = op
 	stack.push(mir.Result())
 	mir = b.appendMIR(mir)
-	opName := mir.op.String()
-	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	// noisy generation logging removed
 	return mir
 }
 
@@ -767,8 +752,7 @@ func (b *MIRBasicBlock) CreateSystemOpMIR(op MirOperation, stack *ValueStack) *M
 	mir.op = op
 	stack.push(mir.Result())
 	mir = b.appendMIR(mir)
-	opName := mir.op.String()
-	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	// noisy generation logging removed
 	return mir
 }
 
@@ -777,8 +761,7 @@ func (b *MIRBasicBlock) CreateLogMIR(op MirOperation, stack *ValueStack) *MIR {
 	mir.op = op
 	stack.push(mir.Result())
 	mir = b.appendMIR(mir)
-	opName := mir.op.String()
-	log.Warn("MIR gen", "bb", b.blockNum, "op", opName, "stack", stack.size())
+	// noisy generation logging removed
 	return mir
 }
 

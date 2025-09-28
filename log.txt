@@ -1,0 +1,172 @@
+=== RUN   TestUSDT_Transfer_EVMvsMIR
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=0 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=2 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=4 op=MSTORE
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=5 op=CALLVALUE
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=6 op=DUP1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=7 op=ISZERO
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=8 op=PUSH2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=11 op=JUMPI
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=16 op=JUMPDEST
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=17 op=POP
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=18 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=20 op=CALLDATASIZE
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=21 op=LT
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=22 op=PUSH2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=25 op=JUMPI
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=26 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=28 op=CALLDATALOAD
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=29 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=31 op=SHR
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=32 op=DUP1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=33 op=PUSH4
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=38 op=GT
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=39 op=PUSH2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=42 op=JUMPI
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=43 op=DUP1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=44 op=PUSH4
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=49 op=GT
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=50 op=PUSH2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=53 op=JUMPI
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=54 op=DUP1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=55 op=PUSH4
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=60 op=EQ
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=61 op=PUSH2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=64 op=JUMPI
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=858 op=JUMPDEST
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=859 op=PUSH2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=862 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=864 op=DUP1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=865 op=CALLDATASIZE
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=866 op=SUB
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=867 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=869 op=DUP2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=870 op=LT
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=871 op=ISZERO
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=872 op=PUSH2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=875 op=JUMPI
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=880 op=JUMPDEST
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=881 op=POP
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=882 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=884 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=886 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=888 op=SHL
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=889 op=SUB
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=890 op=DUP2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=891 op=CALLDATALOAD
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=892 op=AND
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=893 op=SWAP1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=894 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=896 op=ADD
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=897 op=CALLDATALOAD
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=898 op=PUSH2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=901 op=JUMP
+    mir_real_bench_test.go:679: rb: 
+WARN [09-28|16:47:46.824] MIR DUP depth underflow - emitting NOP   need=6 have=3 pc=2283 bbFirst=2279 bbInit=4
+WARN [09-28|16:47:46.824] MIR SWAP depth underflow - emitting NOP  need=3 have=2 pc=2286 bbFirst=2279 bbInit=4
+WARN [09-28|16:47:46.824] MIR SWAP depth underflow - emitting NOP  need=4 have=3 pc=2321 bbFirst=2279 bbInit=4
+WARN [09-28|16:47:46.824] MIR DUP depth underflow - emitting NOP   need=6 have=3 pc=2283 bbFirst=2279 bbInit=4
+WARN [09-28|16:47:46.824] MIR SWAP depth underflow - emitting NOP  need=3 have=2 pc=2286 bbFirst=2279 bbInit=4
+WARN [09-28|16:47:46.824] MIR SWAP depth underflow - emitting NOP  need=4 have=3 pc=2321 bbFirst=2279 bbInit=4
+WARN [09-28|16:47:46.824] MIR DUP depth underflow - emitting NOP   need=6 have=2 pc=2085 bbFirst=2046 bbInit=2
+WARN [09-28|16:47:46.824] MIR DUP depth underflow - emitting NOP   need=6 have=2 pc=2085 bbFirst=2046 bbInit=2
+WARN [09-28|16:47:46.824] MIR SWAP depth underflow - emitting NOP  need=2 have=1 pc=2071 bbFirst=2026 bbInit=4
+WARN [09-28|16:47:46.824] MIR SWAP depth underflow - emitting NOP  need=2 have=1 pc=2073 bbFirst=2026 bbInit=4
+WARN [09-28|16:47:46.824] MIR DUP depth underflow - emitting NOP   need=2 have=1 pc=2074 bbFirst=2026 bbInit=4
+WARN [09-28|16:47:46.824] MIR SWAP depth underflow - emitting NOP  need=2 have=1 pc=2075 bbFirst=2026 bbInit=4
+WARN [09-28|16:47:46.824] MIR SWAP depth underflow - emitting NOP  need=2 have=0 pc=2080 bbFirst=2026 bbInit=4
+WARN [09-28|16:47:46.824] MIR SWAP depth underflow - emitting NOP  need=2 have=1 pc=2071 bbFirst=2026 bbInit=4
+WARN [09-28|16:47:46.824] MIR SWAP depth underflow - emitting NOP  need=2 have=1 pc=2073 bbFirst=2026 bbInit=4
+WARN [09-28|16:47:46.824] MIR DUP depth underflow - emitting NOP   need=2 have=1 pc=2074 bbFirst=2026 bbInit=4
+WARN [09-28|16:47:46.824] MIR SWAP depth underflow - emitting NOP  need=2 have=1 pc=2075 bbFirst=2026 bbInit=4
+WARN [09-28|16:47:46.824] MIR SWAP depth underflow - emitting NOP  need=2 have=0 pc=2080 bbFirst=2026 bbInit=4
+WARN [09-28|16:47:46.824] MIR DUP depth underflow - emitting NOP   need=2 have=0 pc=1840 bbFirst=1834 bbInit=3
+WARN [09-28|16:47:46.824] MIR DUP depth underflow - emitting NOP   need=2 have=0 pc=1840 bbFirst=1834 bbInit=3
+WARN [09-28|16:47:46.824] MIR SWAP depth underflow - emitting NOP  need=2 have=0 pc=1148 bbFirst=1142 bbInit=3
+WARN [09-28|16:47:46.824] MIR SWAP depth underflow - emitting NOP  need=2 have=0 pc=1150 bbFirst=1142 bbInit=3
+WARN [09-28|16:47:46.824] MIR SWAP depth underflow - emitting NOP  need=2 have=0 pc=1148 bbFirst=1142 bbInit=3
+WARN [09-28|16:47:46.824] MIR SWAP depth underflow - emitting NOP  need=2 have=0 pc=1150 bbFirst=1142 bbInit=3
+WARN [09-28|16:47:46.825] MIR DUP depth underflow - emitting NOP   need=3 have=2 pc=2441 bbFirst=2440 bbInit=3
+WARN [09-28|16:47:46.825] MIR DUP depth underflow - emitting NOP   need=2 have=1 pc=2445 bbFirst=2440 bbInit=3
+WARN [09-28|16:47:46.825] MIR DUP depth underflow - emitting NOP   need=1 have=0 pc=2450 bbFirst=2440 bbInit=3
+WARN [09-28|16:47:46.825] MIR SWAP depth underflow - emitting NOP  need=3 have=2 pc=2456 bbFirst=2440 bbInit=3
+WARN [09-28|16:47:46.825] MIR DUP depth underflow - emitting NOP   need=3 have=2 pc=2441 bbFirst=2440 bbInit=3
+WARN [09-28|16:47:46.825] MIR DUP depth underflow - emitting NOP   need=2 have=1 pc=2445 bbFirst=2440 bbInit=3
+WARN [09-28|16:47:46.825] MIR DUP depth underflow - emitting NOP   need=1 have=0 pc=2450 bbFirst=2440 bbInit=3
+WARN [09-28|16:47:46.825] MIR SWAP depth underflow - emitting NOP  need=3 have=0 pc=2461 bbFirst=2440 bbInit=3
+WARN [09-28|16:47:46.825] MIR SWAP depth underflow - emitting NOP  need=3 have=2 pc=2456 bbFirst=2440 bbInit=3
+WARN [09-28|16:47:46.825] MIR SWAP depth underflow - emitting NOP  need=3 have=0 pc=2461 bbFirst=2440 bbInit=3
+WARN [09-28|16:47:46.825] MIR SWAP depth underflow - emitting NOP  need=3 have=2 pc=2468 bbFirst=2440 bbInit=3
+WARN [09-28|16:47:46.825] MIR SWAP depth underflow - emitting NOP  need=3 have=2 pc=2468 bbFirst=2440 bbInit=3
+WARN [09-28|16:47:46.825] MIR SWAP depth underflow - emitting NOP  need=2 have=1 pc=2470 bbFirst=2440 bbInit=3
+WARN [09-28|16:47:46.825] MIR SWAP depth underflow - emitting NOP  need=2 have=1 pc=2470 bbFirst=2440 bbInit=3
+    mir_real_bench_test.go:673: MIR exec: 0x14
+    mir_real_bench_test.go:661: MIR exec: MirMSTORE
+    mir_real_bench_test.go:635: MIR exec: MirISZERO
+ERROR[09-28|16:47:46.825] MIR fallback: entry block produced no result, using EVM interpreter addr=0x0000000000757364745F7472616e736665725f6d
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=0 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=2 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=4 op=MSTORE
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=5 op=CALLVALUE
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=6 op=DUP1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=7 op=ISZERO
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=8 op=PUSH2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=11 op=JUMPI
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=16 op=JUMPDEST
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=17 op=POP
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=18 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=20 op=CALLDATASIZE
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=21 op=LT
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=22 op=PUSH2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=25 op=JUMPI
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=26 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=28 op=CALLDATALOAD
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=29 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=31 op=SHR
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=32 op=DUP1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=33 op=PUSH4
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=38 op=GT
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=39 op=PUSH2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=42 op=JUMPI
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=43 op=DUP1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=44 op=PUSH4
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=49 op=GT
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=50 op=PUSH2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=53 op=JUMPI
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=54 op=DUP1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=55 op=PUSH4
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=60 op=EQ
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=61 op=PUSH2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=64 op=JUMPI
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=858 op=JUMPDEST
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=859 op=PUSH2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=862 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=864 op=DUP1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=865 op=CALLDATASIZE
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=866 op=SUB
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=867 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=869 op=DUP2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=870 op=LT
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=871 op=ISZERO
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=872 op=PUSH2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=875 op=JUMPI
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=880 op=JUMPDEST
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=881 op=POP
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=882 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=884 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=886 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=888 op=SHL
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=889 op=SUB
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=890 op=DUP2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=891 op=CALLDATALOAD
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=892 op=AND
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=893 op=SWAP1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=894 op=PUSH1
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=896 op=ADD
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=897 op=CALLDATALOAD
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=898 op=PUSH2
+    mir_real_bench_test.go:609: EVM-tracer opcode pc=901 op=JUMP
+    mir_real_bench_test.go:681: rm: 
+--- PASS: TestUSDT_Transfer_EVMvsMIR (0.00s)
+PASS
+ok  	github.com/ethereum/go-ethereum/core/vm/runtime	0.926s

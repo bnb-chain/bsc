@@ -606,7 +606,7 @@ func TestUSDT_Transfer_EVMvsMIR(t *testing.T) {
 	// Define EVM and MIR tracers (execution-time)
 	evmTracer := &tracing.Hooks{
 		OnOpcode: func(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
-			t.Logf("EVM opcode pc=%d op=%s", pc, vm.OpCode(opcode))
+			t.Logf("EVM-tracer opcode pc=%d op=%s", pc, vm.OpCode(opcode))
 		},
 	}
 	mirTracer := func(op compiler.MirOperation) {
