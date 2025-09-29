@@ -96,7 +96,13 @@ func (s *StructLog) ErrorString() string {
 
 // WriteTo writes the human-readable log data into the supplied writer.
 func (s *StructLog) WriteTo(writer io.Writer) {
+	// Print base line with opcode, pc, gas and cost
 	fmt.Fprintf(writer, "%-16spc=%08d gas=%v cost=%v", s.Op, s.Pc, s.Gas, s.GasCost)
+	// If stack is captured, also print post-execution stack size (derived)
+	if s.Stack != nil {
+		after := vm.NextStackSize(s.Op, len(s.Stack))
+		fmt.Fprintf(writer, " stack_after=%d", after)
+	}
 	if s.Err != nil {
 		fmt.Fprintf(writer, " ERROR: %v", s.Err)
 	}

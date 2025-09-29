@@ -171,7 +171,7 @@ func mirTaskProcessor() {
 func handleMIROptimizationTask(task mirOptimizeTask) {
 	switch task.taskType {
 	case generateMIR:
-		TryGenerateMIRCFG(task.hash, task.rawCode)
+		// TryGenerateMIRCFG(task.hash, task.rawCode)
 	case flushMIR:
 		DeleteMIRCFGCache(task.hash)
 	}

@@ -124,6 +124,18 @@ func (l *jsonLogger) OnOpcode(pc uint64, op byte, gas, cost uint64, scope tracin
 	if l.cfg.EnableReturnData {
 		log.ReturnData = rData
 	}
+	// Enrich JSON with derived stack size after execution for convenience.
+	// This is computed from pre-op stack snapshot and opcode semantics.
+	if !l.cfg.DisableStack {
+		after := vm.NextStackSize(vm.OpCode(op), len(stack))
+		// We can't alter the generated JSON struct without schema changes;
+		// include as an extra field by wrapping in a map to preserve compatibility.
+		l.encoder.Encode(struct {
+			StructLog
+			StackAfter int `json:"stackAfter"`
+		}{StructLog: log, StackAfter: after})
+		return
+	}
 	l.encoder.Encode(log)
 }
 

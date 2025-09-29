@@ -606,7 +606,22 @@ func TestUSDT_Transfer_EVMvsMIR(t *testing.T) {
 	// Define EVM and MIR tracers (execution-time)
 	evmTracer := &tracing.Hooks{
 		OnOpcode: func(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
-			t.Logf("EVM-tracer opcode pc=%d op=%s", pc, vm.OpCode(opcode))
+			op := vm.OpCode(opcode)
+			if op >= vm.PUSH1 && op <= vm.PUSH32 {
+				sz := int(op - vm.PUSH1 + 1)
+				start := int(pc) + 1
+				end := start + sz
+				if start >= 0 && end <= len(code) {
+					imm := code[start:end]
+					before := len(scope.StackData())
+					after := vm.NextStackSize(op, before)
+					t.Logf("EVM-tracer opcode pc=%d op=%s imm=0x%x stack_after=%d", pc, op, imm, after)
+					return
+				}
+			}
+			before := len(scope.StackData())
+			after := vm.NextStackSize(op, before)
+			t.Logf("EVM-tracer opcode pc=%d op=%s stack_after=%d", pc, op, after)
 		},
 	}
 	mirTracer := func(op compiler.MirOperation) {
@@ -685,6 +700,28 @@ func TestUSDT_Transfer_EVMvsMIR(t *testing.T) {
 	}
 	if string(rb) != string(rm) {
 		t.Fatalf("transfer: return mismatch base=%x mir=%x", rb, rm)
+	}
+
+	// Print full EVM opcodes (including PUSH data) of the USDT contract
+	fullCode, derr := hex.DecodeString(usdtHex[2:])
+	if derr != nil {
+		t.Fatalf("decode USDT hex: %v", derr)
+	}
+	for pc := 0; pc < len(fullCode); {
+		op := vm.OpCode(fullCode[pc])
+		if op >= vm.PUSH1 && op <= vm.PUSH32 {
+			n := int(op - vm.PUSH1 + 1)
+			if pc+1+n <= len(fullCode) {
+				data := fullCode[pc+1 : pc+1+n]
+				t.Logf("pc=%d op=%-8s (0x%02x) data=0x%x", pc, op.String(), byte(op), data)
+			} else {
+				t.Logf("pc=%d op=%-8s (0x%02x) data=<truncated>", pc, op.String(), byte(op))
+			}
+			pc += 1 + n
+			continue
+		}
+		t.Logf("pc=%d op=%-8s (0x%02x)", pc, op.String(), byte(op))
+		pc++
 	}
 
 }

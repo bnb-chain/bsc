@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 )
 
@@ -285,6 +286,7 @@ func (b *MIRBasicBlock) newMemoryLoadMIR(offset *Value, size *Value, accessor *M
 	mir.oprands = []*Value{offset, size}
 	stack.push(mir.Result())
 	mir = b.appendMIR(mir)
+	mir.genStackDepth = stack.size()
 	// noisy generation logging removed
 	return mir
 }
@@ -295,6 +297,7 @@ func (b *MIRBasicBlock) newKeccakMIR(data *Value, stack *ValueStack) *MIR {
 	mir.oprands = []*Value{data}
 	stack.push(mir.Result())
 	mir = b.appendMIR(mir)
+	mir.genStackDepth = stack.size()
 	// noisy generation logging removed
 	return mir
 }
@@ -354,7 +357,9 @@ func (b *MIRBasicBlock) CreateStackOpMIR(op MirOperation, stack *ValueStack) *MI
 	mir := new(MIR)
 	mir.op = op
 	stack.push(mir.Result())
-	return b.appendMIR(mir)
+	mir = b.appendMIR(mir)
+	mir.genStackDepth = stack.size()
+	return mir
 }
 
 func (b *MIRBasicBlock) CreateDupMIR(n int, stack *ValueStack) *MIR {
@@ -366,7 +371,9 @@ func (b *MIRBasicBlock) CreateDupMIR(n int, stack *ValueStack) *MIR {
 		// Not enough items on stack - emit a NOP marker and do not mutate stack
 		mir := newNopMIR(MirOperation(0x80+byte(n-1)), nil)
 		mir = b.appendMIR(mir)
+		mir.genStackDepth = stack.size()
 		// noisy generation logging removed
+		log.Error("Not enough items on stack for DUP - emitting NOP", "n", n, "stack size", stack.size())
 		return mir
 	}
 
@@ -393,6 +400,8 @@ func (b *MIRBasicBlock) CreateDupMIR(n int, stack *ValueStack) *MIR {
 	// Emit a NOP MIR carrying the original DUP opcode and source for tracking
 	mir := newNopMIR(MirOperation(0x80+byte(n-1)), []*Value{dupValue})
 	mir = b.appendMIR(mir)
+	// Record generation-time stack depth after performing the DUP
+	mir.genStackDepth = stack.size()
 	// noisy generation logging removed
 	return mir
 }
@@ -406,7 +415,9 @@ func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
 		// Not enough items on stack - emit a NOP marker and do not mutate stack
 		mir := newNopMIR(MirOperation(0x90+byte(n-1)), nil)
 		mir = b.appendMIR(mir)
+		mir.genStackDepth = stack.size()
 		// noisy generation logging removed
+		log.Error("Not enough items on stack for SWAP - emitting NOP", "n", n, "stack size", stack.size())
 		return mir
 	}
 
@@ -442,7 +453,9 @@ func (b *MIRBasicBlock) CreatePhiMIR(ops []*Value, stack *ValueStack) *MIR {
 	mir.op = MirPHI
 	mir.oprands = ops
 	stack.push(mir.Result())
-	return b.appendMIR(mir)
+	mir = b.appendMIR(mir)
+	mir.genStackDepth = stack.size()
+	return mir
 }
 
 // AddIncomingStack records a parent's exit stack as an incoming stack for this block.
@@ -708,6 +721,7 @@ func (b *MIRBasicBlock) CreateBlockOpMIR(op MirOperation, stack *ValueStack) *MI
 	}
 	stack.push(mir.Result())
 	mir = b.appendMIR(mir)
+	mir.genStackDepth = stack.size()
 	// noisy generation logging removed
 	return mir
 }
@@ -734,6 +748,7 @@ func (b *MIRBasicBlock) CreateJumpMIR(op MirOperation, stack *ValueStack, bbStac
 
 	// JUMP/JUMPI do not produce a stack value; do not push a result
 	mir = b.appendMIR(mir)
+	mir.genStackDepth = stack.size()
 	// noisy generation logging removed
 	return mir
 }
@@ -743,6 +758,7 @@ func (b *MIRBasicBlock) CreateControlFlowMIR(op MirOperation, stack *ValueStack)
 	mir.op = op
 	stack.push(mir.Result())
 	mir = b.appendMIR(mir)
+	mir.genStackDepth = stack.size()
 	// noisy generation logging removed
 	return mir
 }
@@ -752,6 +768,7 @@ func (b *MIRBasicBlock) CreateSystemOpMIR(op MirOperation, stack *ValueStack) *M
 	mir.op = op
 	stack.push(mir.Result())
 	mir = b.appendMIR(mir)
+	mir.genStackDepth = stack.size()
 	// noisy generation logging removed
 	return mir
 }
@@ -761,6 +778,7 @@ func (b *MIRBasicBlock) CreateLogMIR(op MirOperation, stack *ValueStack) *MIR {
 	mir.op = op
 	stack.push(mir.Result())
 	mir = b.appendMIR(mir)
+	mir.genStackDepth = stack.size()
 	// noisy generation logging removed
 	return mir
 }

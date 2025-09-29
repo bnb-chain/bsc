@@ -2,10 +2,180 @@ package compiler
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 )
+
+// debugDumpBB logs a basic block and its MIR instructions for diagnostics.
+func debugDumpBB(prefix string, bb *MIRBasicBlock) {
+	if bb == nil {
+		return
+	}
+	entryH := -1
+	if bb.entryStack != nil {
+		entryH = len(bb.entryStack)
+	}
+	log.Warn("MIR BB", "where", prefix, "num", bb.blockNum, "firstPC", bb.firstPC, "lastPC", bb.lastPC, "initDepth", bb.initDepth, "entryH", entryH, "parents.len", len(bb.parents))
+	ins := bb.Instructions()
+	for i, m := range ins {
+		if m == nil {
+			continue
+		}
+		log.Warn("  MIR op", "idx", i, "op", m.Op().String(), "genStack", m.GenStackDepth())
+	}
+}
+
+// debugFormatValue renders a Value in a compact debug form.
+func debugFormatValue(v *Value) string {
+	if v == nil {
+		return "nil"
+	}
+	switch v.kind {
+	case Konst:
+		if v.u != nil {
+			return fmt.Sprintf("const:0x%x", v.u.Bytes())
+		}
+		return fmt.Sprintf("const:0x%x", v.payload)
+	case Arguments:
+		return "arg"
+	case Variable:
+		if v.def != nil {
+			return fmt.Sprintf("var:def@%d", v.def.idx)
+		}
+		return "var"
+	default:
+		return "unknown"
+	}
+}
+
+// debugDumpMIR logs one MIR with its operands rendered as stack values.
+func debugDumpMIR(m *MIR) {
+	if m == nil {
+		return
+	}
+	ops := ""
+	if len(m.oprands) > 0 {
+		for i, v := range m.oprands {
+			if i != 0 {
+				ops += ", "
+			}
+			ops += debugFormatValue(v)
+		}
+	}
+	// best-effort decode of EVM opcode stored in meta for NOP markers, etc.
+	evm := ""
+	if len(m.meta) > 0 {
+		evm = ByteCode(m.meta[0]).byteCodeToString()
+	}
+	// pc if known
+	var pc interface{} = nil
+	if m.pc != nil {
+		pc = *m.pc
+	}
+	if ops == "" {
+		if evm == "" {
+			log.Warn("  MIR op", "idx", m.idx, "op", m.Op().String(), "pc", pc, "genStack", m.GenStackDepth())
+		} else {
+			log.Warn("  MIR op", "idx", m.idx, "op", m.Op().String(), "pc", pc, "evm", evm, "genStack", m.GenStackDepth())
+		}
+	} else {
+		if evm == "" {
+			log.Warn("  MIR op", "idx", m.idx, "op", m.Op().String(), "pc", pc, "genStack", m.GenStackDepth(), "ops", ops)
+		} else {
+			log.Warn("  MIR op", "idx", m.idx, "op", m.Op().String(), "pc", pc, "evm", evm, "genStack", m.GenStackDepth(), "ops", ops)
+		}
+	}
+}
+
+// debugDumpBBFull logs a BB header and all MIRs with operand stack values.
+func debugDumpBBFull(where string, bb *MIRBasicBlock) {
+	if bb == nil {
+		return
+	}
+	entryH := -1
+	if bb.entryStack != nil {
+		entryH = len(bb.entryStack)
+	}
+	log.Warn("MIR BB", "where", where, "num", bb.blockNum, "firstPC", bb.firstPC, "lastPC", bb.lastPC, "initDepth", bb.initDepth, "entryH", entryH, "parents", len(bb.parents))
+	for _, m := range bb.Instructions() {
+		debugDumpMIR(m)
+	}
+}
+
+// debugDumpParents logs all parents of a basic block with their MIR instructions.
+func debugDumpParents(bb *MIRBasicBlock) {
+	if bb == nil {
+		return
+	}
+	for idx, p := range bb.Parents() {
+		label := fmt.Sprintf("parent[%d]", idx)
+		debugDumpBB(label, p)
+	}
+}
+
+// debugDumpAncestors recursively dumps all ancestors (grandparents to the beginning), avoiding cycles.
+func debugDumpAncestors(bb *MIRBasicBlock, visited map[*MIRBasicBlock]bool, root uint) {
+	if bb == nil {
+		return
+	}
+	// Depth-first traversal of ancestors back to the beginning
+	for _, p := range bb.Parents() {
+		if !visited[p] {
+			visited[p] = true
+			debugDumpAncestors(p, visited, bb.blockNum)
+			debugDumpBB(fmt.Sprintf("ancestor of %d", bb.blockNum), p)
+		}
+	}
+}
+
+// debugDumpAncestryDOT builds a DOT graph for the ancestry of bb and returns it.
+func debugDumpAncestryDOT(bb *MIRBasicBlock) string {
+	if bb == nil {
+		return ""
+	}
+	// Collect nodes and edges with DFS
+	visited := make(map[*MIRBasicBlock]bool)
+	nodes := make(map[*MIRBasicBlock]bool)
+	edges := [][2]*MIRBasicBlock{}
+	var dfs func(*MIRBasicBlock)
+	dfs = func(x *MIRBasicBlock) {
+		if x == nil || visited[x] {
+			return
+		}
+		visited[x] = true
+		nodes[x] = true
+		for _, p := range x.Parents() {
+			edges = append(edges, [2]*MIRBasicBlock{p, x})
+			dfs(p)
+			nodes[p] = true
+		}
+	}
+	dfs(bb)
+	// Build DOT
+	buf := "digraph MIR_Ancestry {\n  rankdir=TB; node [shape=box, fontname=Courier];\n"
+	for n := range nodes {
+		label := fmt.Sprintf("BB%d\\nPC:%d..%d\\nparents:%d\\nins:%d", n.blockNum, n.firstPC, n.lastPC, len(n.parents), len(n.Instructions()))
+		buf += fmt.Sprintf("  \"BB_%d\" [label=\"%s\"];\n", n.blockNum, label)
+	}
+	for _, e := range edges {
+		buf += fmt.Sprintf("  \"BB_%d\" -> \"BB_%d\";\n", e[0].blockNum, e[1].blockNum)
+	}
+	buf += "}\n"
+	return buf
+}
+
+// debugWriteDOTIfRequested writes DOT to a temp file if MIR_DUMP_DOT=1
+func debugWriteDOTIfRequested(dot string, tag string) {
+	if dot == "" || os.Getenv("MIR_DUMP_DOT") != "1" {
+		return
+	}
+	name := fmt.Sprintf("mir_ancestry_%s_%d.dot", tag, os.Getpid())
+	path := os.TempDir() + string(os.PathSeparator) + name
+	_ = os.WriteFile(path, []byte(dot), 0644)
+	log.Warn("MIR DOT written", "path", path)
+}
 
 // CFG is the IR record the control flow of the contract.
 // It records not only the control flow info but also the state and memory accesses.
@@ -153,7 +323,16 @@ func GenerateMIRCFG(hash common.Hash, code []byte) (*CFG, error) {
 			curBB.lastEntryHeight = currentEntryH
 		}
 	}
-
+	log.Warn("===================CFG DUMP=============================")
+	// Dump all basic blocks and their MIR instructions (with operands) for debugging
+	for i, bb := range cfg.basicBlocks {
+		if bb == nil {
+			continue
+		}
+		where := fmt.Sprintf("bb[%d]", i)
+		debugDumpBBFull(where, bb)
+	}
+	log.Warn("===================CFG DUMP END=============================")
 	return cfg, nil
 }
 
@@ -775,6 +954,10 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			}
 
 			mir = curBB.CreateVoidMIR(MirJUMPDEST)
+			// Ensure generation-time stack depth reflects current entry depth
+			if mir != nil {
+				mir.genStackDepth = valueStack.size()
+			}
 		case PC:
 			mir = curBB.CreateBlockInfoMIR(MirPC, valueStack)
 			depth++
@@ -1084,17 +1267,26 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 		case DUP1, DUP2, DUP3, DUP4, DUP5, DUP6, DUP7, DUP8, DUP9, DUP10, DUP11, DUP12, DUP13, DUP14, DUP15, DUP16:
 			n := int(op - DUP1 + 1)
 			if depthKnown && depth < n {
-				log.Warn("MIR DUP depth underflow - emitting NOP", "need", n, "have", depth, "pc", i, "bbFirst", curBB.firstPC, "bbInit", curBB.InitDepth())
+				log.Warn("MIR DUP depth underflow - emitting NOP", "need", n, "have", depth, "pc", i, "bb", curBB.blockNum, "bbFirst", curBB.firstPC, "bbInit", curBB.InitDepth())
+				// Debug dump current BB and ancestors to diagnose
+				debugDumpBB("current", curBB)
+				debugDumpAncestors(curBB, make(map[*MIRBasicBlock]bool), curBB.blockNum)
+				debugWriteDOTIfRequested(debugDumpAncestryDOT(curBB), "dup")
+				log.Warn("----------- MIR DUP depth underflow---------------------")
 			}
 			mir = curBB.CreateStackOpMIR(MirOperation(0x80+byte(n-1)), valueStack)
 			if depth >= n {
 				depth++
 			}
-		// Stack operations - SWAP1 to SWAP16 (fail CFG build if stack too shallow)
+			// Stack operations - SWAP1 to SWAP16 (fail CFG build if stack too shallow)
 		case SWAP1, SWAP2, SWAP3, SWAP4, SWAP5, SWAP6, SWAP7, SWAP8, SWAP9, SWAP10, SWAP11, SWAP12, SWAP13, SWAP14, SWAP15, SWAP16:
 			n := int(op - SWAP1 + 1)
 			if depthKnown && depth <= n {
-				log.Warn("MIR SWAP depth underflow - emitting NOP", "need", n+1, "have", depth, "pc", i, "bbFirst", curBB.firstPC, "bbInit", curBB.InitDepth())
+				log.Warn("MIR SWAP depth underflow - emitting NOP", "need", n+1, "have", depth, "pc", i, "bb", curBB.blockNum, "bbFirst", curBB.firstPC, "bbInit", curBB.InitDepth())
+				// Debug dump current BB and ancestors to diagnose
+				debugDumpBB("current", curBB)
+				debugDumpAncestors(curBB, make(map[*MIRBasicBlock]bool), curBB.blockNum)
+				debugWriteDOTIfRequested(debugDumpAncestryDOT(curBB), "swap")
 			}
 			mir = curBB.CreateStackOpMIR(MirOperation(0x90+byte(n-1)), valueStack)
 		// EOF operations
