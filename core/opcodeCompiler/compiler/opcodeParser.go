@@ -468,6 +468,9 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 	}
 	for i < len(code) {
 		op := ByteCode(code[i])
+		// Record EVM location for MIR mapping
+		currentEVMBuildPC = uint(i)
+		currentEVMBuildOp = byte(op)
 
 		// Handle PUSH operations
 		if op >= PUSH1 && op <= PUSH32 {
@@ -808,6 +811,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 						targetPC = (targetPC << 8) | uint64(b)
 					}
 					if targetPC < uint64(len(code)) {
+						// Check JUMPDEST at targetPC
+						isJumpdest := ByteCode(code[targetPC]) == JUMPDEST
 						// Determine existence and whether this edge is newly added
 						var hadParentBefore bool
 						existingBB, targetExists := c.pcToBlock[uint(targetPC)]
@@ -819,8 +824,19 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 								}
 							}
 						}
-						targetBB := c.createBB(uint(targetPC), curBB)
-						targetBB.SetInitDepthMax(depth)
+						var targetBB *MIRBasicBlock
+						if isJumpdest {
+							targetBB = c.createBB(uint(targetPC), curBB)
+							targetBB.SetInitDepthMax(depth)
+						} else {
+							// Create error BB at targetPC and fill with error MIR
+							targetBB = c.createBB(uint(targetPC), curBB)
+							targetBB.SetInitDepthMax(depth)
+							errM := targetBB.CreateVoidMIR(MirERRJUMPDEST)
+							if errM != nil {
+								errM.meta = []byte{code[targetPC]}
+							}
+						}
 						// Only target is a child of current block for unconditional JUMP
 						curBB.SetChildren([]*MIRBasicBlock{targetBB})
 						// Record exit stack for current block and pass as incoming to target
@@ -869,6 +885,7 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 						targetPC = (targetPC << 8) | uint64(b)
 					}
 					if targetPC < uint64(len(code)) {
+						isJumpdest := ByteCode(code[targetPC]) == JUMPDEST
 						// Determine existence and whether either edge is newly added
 						var hadTargetParentBefore bool
 						var hadFallParentBefore bool
@@ -891,7 +908,18 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 							}
 						}
 						// Create blocks for target and fallthrough
-						targetBB := c.createBB(uint(targetPC), curBB)
+						var targetBB *MIRBasicBlock
+						if isJumpdest {
+							targetBB = c.createBB(uint(targetPC), curBB)
+							targetBB.SetInitDepthMax(depth)
+						} else {
+							targetBB = c.createBB(uint(targetPC), curBB)
+							targetBB.SetInitDepthMax(depth)
+							errM := targetBB.CreateVoidMIR(MirERRJUMPDEST)
+							if errM != nil {
+								errM.meta = []byte{code[targetPC]}
+							}
+						}
 						fallthroughBB := c.createBB(uint(i+1), curBB)
 						targetBB.SetInitDepthMax(depth)
 						fallthroughBB.SetInitDepthMax(depth)

@@ -113,6 +113,9 @@ type MIR struct {
 	meta    []byte
 	pc      *uint // Program counter of the original instruction (optional)
 	idx     int   // Index within its basic block, set by appendMIR
+	// EVM mapping metadata (set during CFG build)
+	evmPC uint // byte offset of the originating EVM opcode
+	evmOp byte // originating EVM opcode byte value
 	// Pre-encoded operand info to avoid runtime eval
 	opKinds       []byte         // 0=const,1=def,2=fallback
 	opConst       []*uint256.Int // if const
@@ -132,6 +135,12 @@ func (m *MIR) Result() *Value {
 
 // GenStackDepth reports the stack depth at MIR generation time (if recorded)
 func (m *MIR) GenStackDepth() int { return m.genStackDepth }
+
+// EvmPC returns the byte offset of the corresponding EVM opcode
+func (m *MIR) EvmPC() uint { return m.evmPC }
+
+// EvmOp returns the corresponding EVM opcode byte
+func (m *MIR) EvmOp() byte { return m.evmOp }
 
 func newVoidMIR(operation MirOperation) *MIR {
 	mir := new(MIR)
@@ -154,6 +163,11 @@ func newNopMIRWithPC(operation MirOperation, original_opnds []*Value, pc uint) *
 	mir.pc = &pc
 	return mir
 }
+
+// Package-local variables used during CFG build to annotate MIR with EVM mapping.
+// These are set in opcodeParser.buildBasicBlock before each MIR creation.
+var currentEVMBuildPC uint
+var currentEVMBuildOp byte
 
 func newUnaryOpMIR(operation MirOperation, opnd *Value, stack *ValueStack) *MIR {
 	if doPeepHole(operation, opnd, nil, stack, nil) {

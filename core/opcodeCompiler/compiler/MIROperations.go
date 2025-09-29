@@ -242,6 +242,8 @@ func (op MirOperation) String() string {
 	// MirEXTCALL and MirEXTDELEGATECALL share numeric values with system ops; handled as fallback
 	case MirEXTSTATICCALL:
 		return "MirEXTSTATICCALL"
+	case MirERRJUMPDEST:
+		return "MirERRJUMPDEST"
 	default:
 		return fmt.Sprintf("Mir(0x%02x)", byte(op))
 	}
@@ -370,6 +372,11 @@ const (
 	MirRETURNDATALOAD MirOperation = 0xf8
 	MirINVALID        MirOperation = 0xf9
 	MirSELFDESTRUCT   MirOperation = 0xff
+)
+
+// Dedicated error op for invalid jump destination blocks
+const (
+	MirERRJUMPDEST MirOperation = 0xfd
 )
 
 // EOF operations

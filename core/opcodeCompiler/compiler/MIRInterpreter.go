@@ -43,6 +43,14 @@ type MIRExecutionEnv struct {
 	SStoreFunc     func(key [32]byte, value [32]byte)
 	GetBalanceFunc func(addr [20]byte) *uint256.Int
 
+	// CheckJumpdest validates whether a given absolute PC is a valid JUMPDEST and not in push-data
+	// Signature: func(pc uint64) bool
+	CheckJumpdest func(pc uint64) bool
+
+	// ResolveBB maps an absolute PC to a MIR basic block in the CFG
+	// Signature: func(pc uint64) *MIRBasicBlock
+	ResolveBB func(pc uint64) *MIRBasicBlock
+
 	// Address context (optional, provided by adapter)
 	Self   [20]byte
 	Caller [20]byte
@@ -64,12 +72,16 @@ type MIRInterpreter struct {
 	constCache map[string]*uint256.Int
 	scratch32  [32]byte
 	// tracer is invoked on each MIR instruction execution if set
-	tracer func(MirOperation)
+	tracer   func(MirOperation)
+	tracerEx func(*MIR)
+	// next basic block to transfer to on jumps (set by MirJUMP/MirJUMPI)
+	nextBB *MIRBasicBlock
 }
 
 // mirGlobalTracer is an optional global tracer invoked for each MIR instruction.
 // Tests may set this to observe execution without reaching into internal fields.
 var mirGlobalTracer func(MirOperation)
+var mirGlobalTracerEx func(*MIR)
 
 // Optional fast dispatch table for hot MIR operations
 var mirHandlers [256]func(*MIRInterpreter, *MIR) error
@@ -125,6 +137,7 @@ func NewMIRInterpreter(env *MIRExecutionEnv) *MIRInterpreter {
 		zeroConst:  uint256.NewInt(0),
 		constCache: make(map[string]*uint256.Int, 64),
 		tracer:     mirGlobalTracer,
+		tracerEx:   mirGlobalTracerEx,
 	}
 }
 
@@ -133,9 +146,20 @@ func (it *MIRInterpreter) SetTracer(cb func(MirOperation)) {
 	it.tracer = cb
 }
 
+// SetTracerExtended sets a per-instruction tracer that receives the full MIR, including mapping metadata.
+// It is not thread-safe.
+func (it *MIRInterpreter) SetTracerExtended(cb func(*MIR)) {
+	it.tracerEx = cb
+}
+
 // SetGlobalMIRTracer sets a process-wide tracer that new MIR interpreters will inherit.
 func SetGlobalMIRTracer(cb func(MirOperation)) {
 	mirGlobalTracer = cb
+}
+
+// SetGlobalMIRTracerExtended sets a process-wide tracer that receives the full MIR.
+func SetGlobalMIRTracerExtended(cb func(*MIR)) {
+	mirGlobalTracerEx = cb
 }
 
 // GetEnv returns the execution environment
@@ -185,7 +209,60 @@ func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
 	}
 
 	// 添加基本块完成执行的日志
-	log.Debug("MIRInterpreter: Block execution completed", "blockNum", block.blockNum, "returnDataSize", len(it.returndata), "instructions", block.instructions)
+	log.Warn("MIRInterpreter: Block execution completed", "blockNum", block.blockNum, "returnDataSize", len(it.returndata), "instructions", block.instructions)
+	return it.returndata, nil
+}
+
+// RunCFGWithResolver sets up a resolver backed by the given CFG and runs from entry block
+func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]byte, error) {
+	if it.env != nil && it.env.ResolveBB == nil && cfg != nil {
+		// Build a lightweight resolver using cfg.pcToBlock
+		it.env.ResolveBB = func(pc uint64) *MIRBasicBlock {
+			if cfg == nil || cfg.pcToBlock == nil {
+				return nil
+			}
+			if bb, ok := cfg.pcToBlock[uint(pc)]; ok {
+				return bb
+			}
+			return nil
+		}
+	}
+	// Follow control flow starting at entry; loop jumping between blocks
+	bb := entry
+	for bb != nil {
+		it.nextBB = nil
+		_, err := it.RunMIR(bb)
+		if err == nil {
+			if it.nextBB == nil {
+				// Fall through: if this block has exactly one child, continue into it
+				children := bb.Children()
+				if len(children) == 1 && children[0] != nil {
+					// Guard against self-loop fallthrough to avoid infinite loop
+					if children[0] == bb {
+						return it.returndata, nil
+					}
+					bb = children[0]
+					continue
+				}
+				return it.returndata, nil
+			}
+			bb = it.nextBB
+			continue
+		}
+		switch err {
+		case errJUMP:
+			bb = it.nextBB
+			continue
+		case errSTOP:
+			return it.returndata, nil
+		case errRETURN:
+			return it.returndata, nil
+		case errREVERT:
+			return it.returndata, err
+		default:
+			return nil, err
+		}
+	}
 	return it.returndata, nil
 }
 
@@ -193,15 +270,24 @@ var (
 	errSTOP   = errors.New("STOP")
 	errRETURN = errors.New("RETURN")
 	errREVERT = errors.New("REVERT")
+	errJUMP   = errors.New("JUMP")
 )
 
 func (it *MIRInterpreter) exec(m *MIR) error {
 	// Try fast handler if available
 	if h := mirHandlers[byte(m.op)]; h != nil {
-		if it.tracer != nil {
+		if it.tracerEx != nil {
+			it.tracerEx(m)
+		} else if it.tracer != nil {
 			it.tracer(m.op)
 		}
 		return h(it, m)
+	}
+	// Ensure tracer is invoked for every MIR op even when no fast handler exists
+	if it.tracerEx != nil {
+		it.tracerEx(m)
+	} else if it.tracer != nil {
+		it.tracer(m.op)
 	}
 	switch m.op {
 	case MirNOP:
@@ -502,11 +588,49 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 
 	// Control flow (handled at CFG/adapter level). Treat as no-ops here.
 	case MirJUMP:
+		// If env can validate/resolve jumpdest, do it here to mirror EVM behavior
+		if it.env != nil && it.env.CheckJumpdest != nil && it.env.ResolveBB != nil {
+			if len(m.oprands) < 1 {
+				return fmt.Errorf("JUMP missing destination")
+			}
+			dest := it.evalValue(m.oprands[0])
+			udest, _ := dest.Uint64WithOverflow()
+			if !it.env.CheckJumpdest(udest) {
+				return fmt.Errorf("invalid jump destination")
+			}
+			// Resolve and schedule transfer
+			it.nextBB = it.env.ResolveBB(udest)
+			if it.nextBB == nil {
+				return fmt.Errorf("unresolvable jump target")
+			}
+			return errJUMP
+		}
 		return nil
 	case MirJUMPI:
+		// If env can validate/resolve jumpdest, do it here only when condition != 0
+		if it.env != nil && it.env.CheckJumpdest != nil && it.env.ResolveBB != nil {
+			if len(m.oprands) < 2 {
+				return fmt.Errorf("JUMPI missing operands")
+			}
+			dest := it.evalValue(m.oprands[0])
+			cond := it.evalValue(m.oprands[1])
+			if !cond.IsZero() {
+				udest, _ := dest.Uint64WithOverflow()
+				if !it.env.CheckJumpdest(udest) {
+					return fmt.Errorf("invalid jump destination")
+				}
+				it.nextBB = it.env.ResolveBB(udest)
+				if it.nextBB == nil {
+					return fmt.Errorf("unresolvable jump target")
+				}
+				return errJUMP
+			}
+		}
 		return nil
 	case MirJUMPDEST:
 		return nil
+	case MirERRJUMPDEST:
+		return fmt.Errorf("invalid jump destination")
 	case MirEXTCODEHASH:
 		if !it.env.IsConstantinople {
 			return fmt.Errorf("invalid opcode: EXTCODEHASH")

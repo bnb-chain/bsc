@@ -132,6 +132,9 @@ func (b *MIRBasicBlock) CreateVoidMIR(op MirOperation) (mir *MIR) {
 
 func (b *MIRBasicBlock) appendMIR(mir *MIR) *MIR {
 	mir.idx = len(b.instructions)
+	// Attach EVM mapping captured by the CFG builder
+	mir.evmPC = currentEVMBuildPC
+	mir.evmOp = currentEVMBuildOp
 	// Pre-encode operand info to avoid runtime eval costs
 	if len(mir.oprands) > 0 {
 		mir.opKinds = make([]byte, len(mir.oprands))

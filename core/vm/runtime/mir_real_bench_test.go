@@ -625,68 +625,7 @@ func TestUSDT_Transfer_EVMvsMIR(t *testing.T) {
 		},
 	}
 	mirTracer := func(op compiler.MirOperation) {
-		switch op {
-		case compiler.MirADD:
-			t.Log("MIR exec: MirADD")
-		case compiler.MirMUL:
-			t.Log("MIR exec: MirMUL")
-		case compiler.MirSUB:
-			t.Log("MIR exec: MirSUB")
-		case compiler.MirDIV:
-			t.Log("MIR exec: MirDIV")
-		case compiler.MirSDIV:
-			t.Log("MIR exec: MirSDIV")
-		case compiler.MirMOD:
-			t.Log("MIR exec: MirMOD")
-		case compiler.MirSMOD:
-			t.Log("MIR exec: MirSMOD")
-		case compiler.MirADDMOD:
-			t.Log("MIR exec: MirADDMOD")
-		case compiler.MirMULMOD:
-			t.Log("MIR exec: MirMULMOD")
-		case compiler.MirEXP:
-			t.Log("MIR exec: MirEXP")
-		case compiler.MirISZERO:
-			t.Log("MIR exec: MirISZERO")
-		case compiler.MirAND:
-			t.Log("MIR exec: MirAND")
-		case compiler.MirOR:
-			t.Log("MIR exec: MirOR")
-		case compiler.MirXOR:
-			t.Log("MIR exec: MirXOR")
-		case compiler.MirBYTE:
-			t.Log("MIR exec: MirBYTE")
-		case compiler.MirSHL:
-			t.Log("MIR exec: MirSHL")
-		case compiler.MirSHR:
-			t.Log("MIR exec: MirSHR")
-		case compiler.MirSAR:
-			t.Log("MIR exec: MirSAR")
-		case compiler.MirKECCAK256:
-			t.Log("MIR exec: MirKECCAK256")
-		case compiler.MirCALLDATALOAD:
-			t.Log("MIR exec: MirCALLDATALOAD")
-		case compiler.MirCALLDATASIZE:
-			t.Log("MIR exec: MirCALLDATASIZE")
-		case compiler.MirCALLDATACOPY:
-			t.Log("MIR exec: MirCALLDATACOPY")
-		case compiler.MirMLOAD:
-			t.Log("MIR exec: MirMLOAD")
-		case compiler.MirMSTORE:
-			t.Log("MIR exec: MirMSTORE")
-		case compiler.MirMSTORE8:
-			t.Log("MIR exec: MirMSTORE8")
-		case compiler.MirSLOAD:
-			t.Log("MIR exec: MirSLOAD")
-		case compiler.MirSSTORE:
-			t.Log("MIR exec: MirSSTORE")
-		case compiler.MirRETURN:
-			t.Log("MIR exec: MirRETURN")
-		case compiler.MirREVERT:
-			t.Log("MIR exec: MirREVERT")
-		default:
-			t.Logf("MIR exec: 0x%x", byte(op))
-		}
+		t.Logf("MIR exec: %s (0x%02x)", op.String(), byte(op))
 	}
 
 	// Execute on both interpreters ONCE, with tracers attached

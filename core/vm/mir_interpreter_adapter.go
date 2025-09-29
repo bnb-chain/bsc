@@ -91,27 +91,12 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 	// Set up MIR execution environment with contract-specific data
 	adapter.setupExecutionEnvironment(contract, input)
 
-	// If calldata contains a 4-byte selector, try direct dispatch to the entry basic block
-	// to avoid scanning all basic blocks for real-world contracts with large dispatch tables.
-	if len(input) >= 4 {
-		selector := uint32(input[0])<<24 | uint32(input[1])<<16 | uint32(input[2])<<8 | uint32(input[3])
-		if idx := cfg.EntryIndexForSelector(selector); idx >= 0 {
-			bb := cfg.GetBasicBlocks()[idx]
-			if bb != nil && bb.Size() > 0 {
-				// Execute only the entry block; if no return, fallback to EVM to preserve parity
-				result, err := adapter.mirInterpreter.RunMIR(bb)
-				if len(result) > 0 {
-					// Return MIR result even if it's a REVERT (err != nil) to preserve semantics
-					return result, err
-				}
-			}
-		}
-	}
+	// Selector-based direct dispatch is disabled; always fall back to default entry.
 
 	// No selector: execute the first basic block only
 	bbs := cfg.GetBasicBlocks()
 	if len(bbs) > 0 && bbs[0] != nil && bbs[0].Size() > 0 {
-		result, err := adapter.mirInterpreter.RunMIR(bbs[0])
+		result, err := adapter.mirInterpreter.RunCFGWithResolver(cfg, bbs[0])
 		if len(result) > 0 || err != nil {
 			return result, err
 		}
@@ -173,6 +158,18 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 	env.IsLondon = rules.IsLondon
 	// Optionally extend with newer flags if MIR grows support for those ops
 	// No-op if not referenced in interpreter.
+
+	// Install jumpdest checker using EVM contract helpers
+	env.CheckJumpdest = func(pc uint64) bool {
+		// Must be within bounds and at a JUMPDEST and code segment
+		if pc >= uint64(len(contract.Code)) {
+			return false
+		}
+		if OpCode(contract.Code[pc]) != JUMPDEST {
+			return false
+		}
+		return contract.isCode(pc)
+	}
 }
 
 // CanRun checks if this adapter can run the given contract
