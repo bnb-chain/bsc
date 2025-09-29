@@ -74,19 +74,21 @@ func debugDumpMIR(m *MIR) {
 	if m.pc != nil {
 		pc = *m.pc
 	}
-	if ops == "" {
-		if evm == "" {
-			log.Warn("  MIR op", "idx", m.idx, "op", m.Op().String(), "pc", pc, "genStack", m.GenStackDepth())
-		} else {
-			log.Warn("  MIR op", "idx", m.idx, "op", m.Op().String(), "pc", pc, "evm", evm, "genStack", m.GenStackDepth())
-		}
-	} else {
-		if evm == "" {
-			log.Warn("  MIR op", "idx", m.idx, "op", m.Op().String(), "pc", pc, "genStack", m.GenStackDepth(), "ops", ops)
-		} else {
-			log.Warn("  MIR op", "idx", m.idx, "op", m.Op().String(), "pc", pc, "evm", evm, "genStack", m.GenStackDepth(), "ops", ops)
-		}
+	// Include PHI stack slot and EVM mapping if available
+	fields := []interface{}{"idx", m.idx, "op", m.Op().String(), "pc", pc, "genStack", m.GenStackDepth()}
+	if m.phiStackIndex > 0 || (m.op == MirPHI && m.phiStackIndex == 0) {
+		fields = append(fields, "phiSlot", m.phiStackIndex)
 	}
+	if m.evmOp != 0 || m.evmPC != 0 {
+		fields = append(fields, "evm_pc", m.evmPC, "evm_op", fmt.Sprintf("0x%02x", m.evmOp))
+	}
+	if evm != "" {
+		fields = append(fields, "evm", evm)
+	}
+	if ops != "" {
+		fields = append(fields, "ops", ops)
+	}
+	log.Warn("  MIR op", fields...)
 }
 
 // debugDumpBBFull logs a BB header and all MIRs with operand stack values.
@@ -448,7 +450,24 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 					ops = append(ops, newValue(Unknown, nil, nil, nil))
 				}
 			}
-			_ = curBB.CreatePhiMIR(ops, &tmp)
+			// If a PHI for this slot already exists, merge new operands and reuse it
+			var existing *MIR
+			for _, m := range curBB.Instructions() {
+				if m != nil && m.op == MirPHI && (m.phiStackIndex == i || (m.phiStackIndex == 0 && i == 0)) {
+					existing = m
+					break
+				}
+			}
+			if existing != nil {
+				// Merge incoming operands and push existing result to seed the temp stack
+				existing.oprands = append(existing.oprands, ops...)
+				tmp.push(existing.Result())
+			} else {
+				phi := curBB.CreatePhiMIR(ops, &tmp)
+				if phi != nil {
+					phi.phiStackIndex = i
+				}
+			}
 		}
 		// tmp now has maxH values pushed in top-down creation order; assign as entry
 		curBB.SetEntryStack(tmp.clone())
