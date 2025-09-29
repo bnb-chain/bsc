@@ -513,7 +513,7 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 	match := false
 	ancestor := parent
 	ancestorParents := trimParents(parents)
-	for range p.getAncestorGenerationDepth(header) {
+	for range p.GetAncestorGenerationDepth(header) {
 		if targetNumber == ancestor.Number.Uint64() && targetHash == ancestor.Hash() {
 			match = true
 			break
@@ -1067,7 +1067,7 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 		targetHeader           = parent
 		targetHeaderParentSnap *Snapshot
 	)
-	for range p.getAncestorGenerationDepth(header) {
+	for range p.GetAncestorGenerationDepth(header) {
 		snap, err := p.snapshot(chain, targetHeader.Number.Uint64()-1, targetHeader.ParentHash, nil)
 		if err != nil {
 			return err
@@ -2407,7 +2407,7 @@ func (p *Parlia) detectNewVersionWithFork(chain consensus.ChainHeaderReader, hea
 }
 
 // TODO(Nathan): use kAncestorGenerationDepth directly instead of this func once Fermi hardfork passed
-func (p *Parlia) getAncestorGenerationDepth(header *types.Header) uint64 {
+func (p *Parlia) GetAncestorGenerationDepth(header *types.Header) uint64 {
 	if p.chainConfig.IsFermi(header.Number, header.Time) {
 		return kAncestorGenerationDepth
 	}
