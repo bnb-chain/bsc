@@ -158,10 +158,10 @@ func (voteManager *VoteManager) loop() {
 				if err != nil {
 					log.Debug("failed to get BlockInterval when voting")
 				}
-				nextBlockMinedTime := time.UnixMilli(int64((curHead.MilliTimestamp() + blockInterval)))
-				timeForBroadcast := 50 * time.Millisecond // enough to broadcast a vote
-				if time.Now().Add(timeForBroadcast).After(nextBlockMinedTime) {
-					log.Warn("too late to vote", "Head.Time(Second)", curHead.Time, "Now(Millisecond)", time.Now().UnixMilli())
+				voteAssembledTime := time.UnixMilli(int64((curHead.MilliTimestamp() + p.GetAncestorGenerationDepth(curHead)*blockInterval)))
+				timeForBroadcast := 50 * time.Millisecond // enough to broadcast a vote in the same region
+				if time.Now().Add(timeForBroadcast).After(voteAssembledTime) {
+					log.Warn("too late to vote", "Head.Time(Millisecond)", curHead.MilliTimestamp(), "Now(Millisecond)", time.Now().UnixMilli())
 					continue
 				}
 			}

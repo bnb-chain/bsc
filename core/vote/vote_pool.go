@@ -345,7 +345,7 @@ func (pool *VotePool) GetVotes() []*types.VoteEnvelope {
 	return votesRes
 }
 
-func (pool *VotePool) FetchVoteByBlockHash(blockHash common.Hash) []*types.VoteEnvelope {
+func (pool *VotePool) FetchVotesByBlockHash(blockHash common.Hash) []*types.VoteEnvelope {
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
 	if _, ok := pool.curVotes[blockHash]; ok {
