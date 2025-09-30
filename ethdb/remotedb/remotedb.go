@@ -87,8 +87,36 @@ func (db *Database) HasSeparateStateStore() bool {
 	panic("not supported")
 }
 
+func (db *Database) SetSnapStore(state ethdb.KeyValueStore) {
+	panic("not supported")
+}
+
+func (db *Database) GetSnapStore() ethdb.KeyValueStore {
+	panic("not supported")
+}
+
+func (db *Database) HasSeparateSnapStore() bool {
+	panic("not supported")
+}
+
 func (db *Database) StateStoreReader() ethdb.Reader {
 	return db
+}
+
+func (db *Database) IndexStoreReader() ethdb.KeyValueReader {
+	return db
+}
+
+func (db *Database) GetTxIndexStore() ethdb.KeyValueStore {
+	return db
+}
+
+func (db *Database) SetTxIndexStore(store ethdb.KeyValueStore) {
+	// No-op for remote database
+}
+
+func (db *Database) HasSeparateTxIndexStore() bool {
+	return false
 }
 
 func (db *Database) ReadAncients(fn func(op ethdb.AncientReaderOp) error) (err error) {

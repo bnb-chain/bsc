@@ -226,8 +226,36 @@ func (t *table) HasSeparateStateStore() bool {
 	return false
 }
 
-func (t *table) StateStoreReader() ethdb.Reader {
+func (t *table) SetSnapStore(state ethdb.KeyValueStore) {
+	panic("not implement")
+}
+
+func (t *table) GetSnapStore() ethdb.KeyValueStore {
 	return nil
+}
+
+func (t *table) HasSeparateSnapStore() bool {
+	return false
+}
+
+func (t *table) StateStoreReader() ethdb.Reader {
+	return t.db.StateStoreReader()
+}
+
+func (t *table) IndexStoreReader() ethdb.KeyValueReader {
+	return t.db.IndexStoreReader()
+}
+
+func (t *table) SetTxIndexStore(store ethdb.KeyValueStore) {
+	panic("not implement")
+}
+
+func (t *table) GetTxIndexStore() ethdb.KeyValueStore {
+	return nil
+}
+
+func (t *table) HasSeparateTxIndexStore() bool {
+	return false
 }
 
 // NewBatchWithSize creates a write-only database batch with pre-allocated buffer.
