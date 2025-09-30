@@ -1758,6 +1758,71 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	return nil
 }
 
+func (p *Parlia) SignBAL(blockAccessList *types.BlockAccessListEncode) error {
+	p.lock.RLock()
+	val, signFn := p.val, p.signFn
+	p.lock.RUnlock()
+
+	data, err := rlp.EncodeToBytes([]interface{}{blockAccessList.Version, blockAccessList.Number, blockAccessList.Hash, blockAccessList.Accounts})
+	if err != nil {
+		log.Error("Encode to bytes failed when sealing", "err", err)
+		return errors.New("encode to bytes failed")
+	}
+
+	if len(data) > int(params.MaxBALSize) {
+		log.Error("data is too large", "dataSize", len(data), "maxSize", params.MaxBALSize)
+		return errors.New("data is too large")
+	}
+
+	sig, err := signFn(accounts.Account{Address: val}, accounts.MimetypeParlia, data)
+	if err != nil {
+		log.Error("Sign for the block header failed when sealing", "err", err)
+		return errors.New("sign for the block header failed")
+	}
+
+	copy(blockAccessList.SignData, sig)
+	return nil
+}
+
+func (p *Parlia) VerifyBAL(block *types.Block, bal *types.BlockAccessListEncode) error {
+	if bal.Version != 0 {
+		log.Error("invalid BAL version", "version", bal.Version)
+		return errors.New("invalid BAL version")
+	}
+
+	if len(bal.SignData) != 65 {
+		log.Error("invalid BAL signature", "signatureSize", len(bal.SignData))
+		return errors.New("invalid BAL signature")
+	}
+
+	// Recover the public key and the Ethereum address
+	data, err := rlp.EncodeToBytes([]interface{}{bal.Version, block.Number(), block.Hash(), bal.Accounts})
+	if err != nil {
+		log.Error("encode to bytes failed", "err", err)
+		return errors.New("encode to bytes failed")
+	}
+
+	if len(data) > int(params.MaxBALSize) {
+		log.Error("data is too large", "dataSize", len(data), "maxSize", params.MaxBALSize)
+		return errors.New("data is too large")
+	}
+
+	pubkey, err := crypto.Ecrecover(crypto.Keccak256(data), bal.SignData)
+	if err != nil {
+		return err
+	}
+	var pubkeyAddr common.Address
+	copy(pubkeyAddr[:], crypto.Keccak256(pubkey[1:])[12:])
+
+	signer := block.Header().Coinbase
+	if signer != pubkeyAddr {
+		log.Error("BAL signer mismatch", "signer", signer, "pubkeyAddr", pubkeyAddr, "bal.Number", bal.Number, "bal.Hash", bal.Hash)
+		return errors.New("signer mismatch")
+	}
+
+	return nil
+}
+
 func (p *Parlia) shouldWaitForCurrentBlockProcess(chain consensus.ChainHeaderReader, header *types.Header, snap *Snapshot) bool {
 	if header.Difficulty.Cmp(diffInTurn) == 0 {
 		return false

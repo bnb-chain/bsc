@@ -141,6 +141,9 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPa
 	if sidecars != nil {
 		block = block.WithSidecars(sidecars)
 	}
+	if packet.Bal != nil && h.chain.Engine().VerifyBAL(block, packet.Bal) == nil {
+		block = block.WithBAL(packet.Bal)
+	}
 
 	// Schedule the block for import
 	log.Debug("handleBlockBroadcast", "peer", peer.ID(), "block", block.Number(), "hash", block.Hash())
