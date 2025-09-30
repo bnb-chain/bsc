@@ -35,3 +35,6 @@ jobs:
       uses: sonatype-nexus-community/nancy-github-action@main
       with:
         nancyCommand: sleuth --loud
+      env:
+    	OSSINDEX_USERNAME: ${{ secrets.OSSINDEX_USERNAME }}
+    	OSSINDEX_TOKEN: ${{ secrets.OSSINDEX_TOKEN }}
