@@ -39,6 +39,7 @@ type DatabaseOptions struct {
 	Cache            int    // the capacity(in megabytes) of the data caching
 	Handles          int    // number of files to be open simultaneously
 	ReadOnly         bool   // if true, no writes can be performed
+	IsKeyValueDb     bool   // if true, open as pure key-value database without ancients
 }
 
 type internalOpenOptions struct {
