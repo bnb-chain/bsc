@@ -1,37 +1,47 @@
 name: Go Nancy
 
 on:
-    # Scan changed files in PRs (diff-aware scanning):
-    pull_request: {}
-    # Scan on-demand through GitHub Actions interface:
-    workflow_dispatch: {}
-    # Scan mainline branches and report all findings:
-    push:
-      branches: ["master", "develop"]
+  pull_request_target:
+    branches: ["master", "develop"]
+    types: [opened, synchronize, reopened]
 
 jobs:
   build:
     strategy:
-        matrix:
-          go-version: [1.24.x]
-          os: [ubuntu-latest]
+      matrix:
+        go-version: [1.24.x]
+        os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
+
     steps:
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v2
+      - name: Checkout base repo safely
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
-    - name: Set up Go 1.x in order to write go.list file
-      uses: actions/setup-go@v2
-      with:
-        go-version: ${{ matrix.go-version }}
-    
-    - name: Go mod tidy
-      run: go mod tidy
 
-    - name: WriteGoList
-      run:  go list -json -deps ./... > go.list
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
 
-    - name: Nancy
-      uses: sonatype-nexus-community/nancy-github-action@main
-      with:
-        nancyCommand: sleuth --loud
+      - name: Install Nancy
+        run: |
+          curl -sSL -o nancy https://github.com/sonatype-nexus-community/nancy/releases/download/v1.0.52/nancy-v1.0.52-linux-amd64
+          chmod +x nancy
+          sudo mv nancy /usr/local/bin/
+          file /usr/local/bin/nancy
+
+      - name: Configure OSS Index
+        run: |
+          mkdir -p $HOME/.ossindex
+          cat > $HOME/.ossindex/config.json <<EOF
+          {
+            "username": "${{ secrets.OSSINDEX_USERNAME }}",
+            "token": "${{ secrets.OSSINDEX_TOKEN }}"
+          }
+          EOF
+
+      - name: Nancy Scan
+        run: |
+          go list -json -deps ./... | nancy sleuth --loud
