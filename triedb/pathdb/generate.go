@@ -92,10 +92,11 @@ type generator struct {
 	noBuild bool // Flag indicating whether snapshot generation is permitted
 	running bool // Flag indicating whether the background generation is running
 
-	db    ethdb.KeyValueStore // Key-value store containing the snapshot data
-	stats *generatorStats     // Generation statistics used throughout the entire life cycle
-	abort chan chan struct{}  // Notification channel to abort generating the snapshot in this layer
-	done  chan struct{}       // Notification channel when generation is done
+	db         ethdb.KeyValueStore // Key-value store containing the snapshot data
+	triediskdb ethdb.KeyValueStore // Key-value store containing the trie data
+	stats      *generatorStats     // Generation statistics used throughout the entire life cycle
+	abort      chan chan struct{}  // Notification channel to abort generating the snapshot in this layer
+	done       chan struct{}       // Notification channel when generation is done
 
 	progress []byte       // Progress marker of the state generation, nil means it's completed
 	lock     sync.RWMutex // Lock which protects the progress, only generator can mutate the progress
@@ -109,17 +110,18 @@ type generator struct {
 // progress indicates the starting position for resuming snapshot generation.
 // It must be provided even if generation is not allowed; otherwise, uncovered
 // states may be exposed for serving.
-func newGenerator(db ethdb.KeyValueStore, noBuild bool, progress []byte, stats *generatorStats) *generator {
+func newGenerator(snapdb ethdb.KeyValueStore, triedb ethdb.KeyValueStore, noBuild bool, progress []byte, stats *generatorStats) *generator {
 	if stats == nil {
 		stats = &generatorStats{start: time.Now()}
 	}
 	return &generator{
-		noBuild:  noBuild,
-		progress: progress,
-		db:       db,
-		stats:    stats,
-		abort:    make(chan chan struct{}),
-		done:     make(chan struct{}),
+		noBuild:    noBuild,
+		progress:   progress,
+		db:         snapdb,
+		triediskdb: triedb,
+		stats:      stats,
+		abort:      make(chan chan struct{}),
+		done:       make(chan struct{}),
 	}
 }
 
@@ -187,7 +189,8 @@ func generateSnapshot(triedb *Database, root common.Hash, noBuild bool) *diskLay
 		genMarker = []byte{} // Initialized but empty!
 	)
 	dl := newDiskLayer(root, 0, triedb, nil, nil, newBuffer(triedb.config.WriteBufferSize, nil, nil, 0), nil)
-	dl.setGenerator(newGenerator(triedb.diskdb, noBuild, genMarker, stats))
+	// snapshot need to be generated in the snapshot db
+	dl.setGenerator(newGenerator(triedb.snapdb, triedb.diskdb, noBuild, genMarker, stats))
 
 	if !noBuild {
 		dl.generator.run(root)
@@ -359,7 +362,7 @@ func (g *generator) proveRange(ctx *generatorContext, trieId *trie.ID, prefix []
 		return &proofResult{keys: keys, vals: vals}, nil
 	}
 	// Snap state is chunked, generate edge proofs for verification.
-	tr, err := trie.New(trieId, &diskStore{db: g.db})
+	tr, err := trie.New(trieId, &diskStore{db: g.triediskdb})
 	if err != nil {
 		log.Info("Trie missing, snapshotting paused", "state", ctx.root, "kind", kind, "root", trieId.Root)
 		return nil, errMissingTrie
@@ -481,7 +484,7 @@ func (g *generator) generateRange(ctx *generatorContext, trieId *trie.ID, prefix
 	// if it's already opened with some nodes resolved.
 	tr := result.tr
 	if tr == nil {
-		tr, err = trie.New(trieId, &diskStore{db: g.db})
+		tr, err = trie.New(trieId, &diskStore{db: g.triediskdb})
 		if err != nil {
 			log.Info("Trie missing, snapshotting paused", "state", ctx.root, "kind", kind, "root", trieId.Root)
 			return false, nil, errMissingTrie

@@ -426,7 +426,7 @@ func (bc *BlockChain) HasState(hash common.Hash) bool {
 			return bc.snaps.Snapshot(hash) != nil
 		}
 		// snaps is nil when the blockchain creates
-		found, err := snapshot.PreCheckSnapshot(bc.db, hash)
+		found, err := snapshot.PreCheckSnapshot(bc.db.GetSnapStore(), hash)
 		if err != nil {
 			log.Warn("Check HasState in NoTries mode failed", "root", hash, "err", err)
 			return false
@@ -495,7 +495,7 @@ func (bc *BlockChain) StateAt(root common.Hash) (*state.StateDB, error) {
 // Live states are not available and won't be served, please use `State`
 // or `StateAt` instead.
 func (bc *BlockChain) HistoricState(root common.Hash) (*state.StateDB, error) {
-	return state.New(root, state.NewHistoricDatabase(bc.db, bc.triedb))
+	return state.New(root, state.NewHistoricDatabase(bc.db.GetStateStore(), bc.triedb))
 }
 
 // Config retrieves the chain's fork configuration.

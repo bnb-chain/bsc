@@ -510,7 +510,7 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 			// state data consistent.
 			var diskRoot common.Hash
 			if bc.cfg.SnapshotLimit > 0 && bc.cfg.StateScheme == rawdb.HashScheme {
-				diskRoot = rawdb.ReadSnapshotRoot(bc.db)
+				diskRoot = rawdb.ReadSnapshotRoot(bc.db.GetSnapStore())
 				log.Debug("Head state missing, ReadSnapshotRoot", "snap root", diskRoot)
 			}
 			if bc.triedb.Scheme() == rawdb.PathScheme && !bc.NoTries() {
@@ -1410,7 +1410,7 @@ func (bc *BlockChain) writeHeadBlock(block *types.Block) {
 	go func() {
 		defer dbWg.Done()
 
-		batch := bc.db.NewBatch()
+		batch := bc.db.GetTxIndexStore().NewBatch()
 		rawdb.WriteTxLookupEntriesByBlock(batch, block)
 
 		// Flush the whole batch into the disk, exit the node if failed

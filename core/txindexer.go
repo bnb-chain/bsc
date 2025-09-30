@@ -113,7 +113,7 @@ func (indexer *txIndexer) run(head uint64, stop chan struct{}, done chan struct{
 	// The tail flag is not existent, it means the node is just initialized
 	// and all blocks in the chain (part of them may from ancient store) are
 	// not indexed yet, index the chain according to the configured limit.
-	tail := rawdb.ReadTxIndexTail(indexer.db)
+	tail := rawdb.ReadTxIndexTail(indexer.db.IndexStoreReader())
 	if tail == nil {
 		// Determine the first block for transaction indexing, taking the
 		// configured cutoff point into account.
@@ -158,7 +158,7 @@ func (indexer *txIndexer) run(head uint64, stop chan struct{}, done chan struct{
 // * The index tail is below the configured cutoff, but it is not empty.
 func (indexer *txIndexer) repair(head uint64) {
 	// If the transactions haven't been indexed yet, nothing to repair
-	tail := rawdb.ReadTxIndexTail(indexer.db)
+	tail := rawdb.ReadTxIndexTail(indexer.db.IndexStoreReader())
 	if tail == nil {
 		return
 	}
@@ -171,8 +171,8 @@ func (indexer *txIndexer) repair(head uint64) {
 		// potentially leaving dangling indexes in the database.
 		// However, this is considered acceptable.
 		indexer.tail.Store(nil)
-		rawdb.DeleteTxIndexTail(indexer.db)
-		rawdb.DeleteAllTxLookupEntries(indexer.db, nil)
+		rawdb.DeleteTxIndexTail(indexer.db.GetTxIndexStore())
+		rawdb.DeleteAllTxLookupEntries(indexer.db.GetTxIndexStore(), nil)
 		log.Warn("Purge transaction indexes", "head", head, "tail", *tail)
 		return
 	}
@@ -192,8 +192,8 @@ func (indexer *txIndexer) repair(head uint64) {
 		// index namespace might be slow and expensive, but we
 		// have no choice.
 		indexer.tail.Store(nil)
-		rawdb.DeleteTxIndexTail(indexer.db)
-		rawdb.DeleteAllTxLookupEntries(indexer.db, nil)
+		rawdb.DeleteTxIndexTail(indexer.db.GetTxIndexStore())
+		rawdb.DeleteAllTxLookupEntries(indexer.db.GetTxIndexStore(), nil)
 		log.Warn("Purge transaction indexes", "head", head, "cutoff", indexer.cutoff)
 		return
 	}
@@ -206,8 +206,8 @@ func (indexer *txIndexer) repair(head uint64) {
 		// potentially leaving dangling indexes in the database.
 		// However, this is considered acceptable.
 		indexer.tail.Store(&indexer.cutoff)
-		rawdb.WriteTxIndexTail(indexer.db, indexer.cutoff)
-		rawdb.DeleteAllTxLookupEntries(indexer.db, func(txhash common.Hash, blob []byte) bool {
+		rawdb.WriteTxIndexTail(indexer.db.GetTxIndexStore(), indexer.cutoff)
+		rawdb.DeleteAllTxLookupEntries(indexer.db.GetTxIndexStore(), func(txhash common.Hash, blob []byte) bool {
 			n := rawdb.DecodeTxLookupEntry(blob, indexer.db)
 			return n != nil && *n < indexer.cutoff
 		})
@@ -241,7 +241,7 @@ func (indexer *txIndexer) loop(chain *BlockChain) {
 		sub    = chain.SubscribeChainHeadEvent(headCh)
 	)
 
-	lastTail := rawdb.ReadTxIndexTail(indexer.db)
+	lastTail := rawdb.ReadTxIndexTail(indexer.db.IndexStoreReader())
 	if lastTail != nil {
 		// NOTE: The "TransactionIndexTail" key may exist only in cold SST files.
 		// Without a recent write, the key won't be in the memtable or block cache,
@@ -249,13 +249,7 @@ func (indexer *txIndexer) loop(chain *BlockChain) {
 		//
 		// This dummy write forces the key into the memtable (and later SST),
 		// ensuring future reads are fast (from memory or block cache).
-		batch := indexer.db.NewBatch()
-		rawdb.WriteTxIndexTail(batch, *lastTail)
-
-		if err := batch.Write(); err != nil {
-			log.Crit("Failed to write TransactionIndexTail warm-up", "error", err)
-			return
-		}
+		rawdb.WriteTxIndexTail(indexer.db.GetTxIndexStore(), *lastTail)
 	}
 
 	defer sub.Unsubscribe()
@@ -284,7 +278,7 @@ func (indexer *txIndexer) loop(chain *BlockChain) {
 		case <-done:
 			stop = nil
 			done = nil
-			indexer.tail.Store(rawdb.ReadTxIndexTail(indexer.db))
+			indexer.tail.Store(rawdb.ReadTxIndexTail(indexer.db.IndexStoreReader()))
 
 		case ch := <-indexer.term:
 			if stop != nil {

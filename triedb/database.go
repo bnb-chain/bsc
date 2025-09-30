@@ -121,8 +121,9 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	if config.Preimages {
 		preimages = newPreimageStore(triediskdb)
 	}
+
 	db := &Database{
-		disk:      diskdb,
+		disk:      triediskdb,
 		config:    config,
 		preimages: preimages,
 	}
@@ -140,12 +141,13 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 		if rawdb.ReadStateScheme(triediskdb) == rawdb.HashScheme {
 			log.Warn("Incompatible state scheme", "old", rawdb.HashScheme, "new", rawdb.PathScheme)
 		}
-		db.backend = pathdb.New(triediskdb, config.PathDB, config.IsVerkle)
+		// The new pathdb implementation needs to support both trie and snap storage
+		db.backend = pathdb.New(diskdb, config.PathDB, config.IsVerkle)
 	} else if strings.Compare(dbScheme, rawdb.PathScheme) == 0 {
 		if config.PathDB == nil {
 			config.PathDB = pathdb.Defaults
 		}
-		db.backend = pathdb.New(triediskdb, config.PathDB, config.IsVerkle)
+		db.backend = pathdb.New(diskdb, config.PathDB, config.IsVerkle)
 	} else {
 		if config.HashDB == nil {
 			config.HashDB = hashdb.Defaults

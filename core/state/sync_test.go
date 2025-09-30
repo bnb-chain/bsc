@@ -740,7 +740,7 @@ func testIncompleteStateSync(t *testing.T, scheme string) {
 		} else {
 			t.Logf("has code: %v", node)
 		}
-		rawdb.DeleteCode(dstDb, node)
+		rawdb.DeleteCode(dstDb.GetStateStore(), node)
 		if err := checkStateConsistency(dstDb, ndb.Scheme(), srcRoot); err == nil {
 			t.Errorf("trie inconsistency not caught, missing: %x", node)
 		}

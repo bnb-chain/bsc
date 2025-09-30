@@ -38,8 +38,10 @@ import (
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/triedb"
@@ -85,7 +87,6 @@ Remove blockchain and state databases`,
 			dbExportCmd,
 			dbMetadataCmd,
 			dbCheckStateContentCmd,
-			dbInspectHistoryCmd,
 
 			// only defined in bsc
 			dbInspectTrieCmd,
@@ -93,6 +94,8 @@ Remove blockchain and state databases`,
 			dbTrieDeleteCmd,
 			dbDeleteTrieStateCmd,
 			ancientInspectCmd,
+			dbInspectHistoryCmd,
+			dbMigrateCmd,
 		},
 	}
 	dbInspectCmd = &cli.Command{
@@ -275,6 +278,30 @@ of ancientStore, will also displays the reserved number of blocks in ancientStor
 		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Description: "This command queries the history of the account or storage slot within the specified block range",
 	}
+	dbMigrateCmd = &cli.Command{
+		Action:    migrateDatabase,
+		Name:      "migrate",
+		Usage:     "Migrate single database to multi-database format (in-place)",
+		ArgsUsage: "",
+		Flags: slices.Concat([]cli.Flag{
+			utils.DataDirFlag,
+			utils.SyncModeFlag,
+			utils.CacheFlag,
+			utils.CacheDatabaseFlag,
+		}, utils.NetworkFlags),
+		Description: `This command migrates a single chaindb database to multi-database format IN-PLACE.
+The source database will be read from --datadir/chaindata directory, and data will be split into:
+  - chaindata/           - chain and metadata (remaining)
+  - chaindata/state      - state trie data
+  - chaindata/snapshot   - snapshot data
+  - chaindata/txindex    - transaction index data
+ 
+Usage examples:
+  geth --datadir /data/ethereum db migrate
+  geth --datadir ~/.ethereum db migrate
+ 
+WARNING: This operation may take a very long time to finish for large databases (2TB+).`,
+	}
 )
 
 func removeDB(ctx *cli.Context) error {
@@ -396,7 +423,7 @@ func inspectTrie(ctx *cli.Context) error {
 			headerHash := rawdb.ReadHeadHeaderHash(db)
 			blockNumber = *(rawdb.ReadHeaderNumber(db, headerHash))
 		} else if ctx.Args().Get(0) == "snapshot" {
-			trieRootHash = rawdb.ReadSnapshotRoot(db)
+			trieRootHash = rawdb.ReadSnapshotRoot(db.GetSnapStore())
 			blockNumber = math.MaxUint64
 		} else {
 			var err error
@@ -495,8 +522,25 @@ func inspect(ctx *cli.Context) error {
 
 	db := utils.MakeChainDatabase(ctx, stack, true)
 	defer db.Close()
-
-	return rawdb.InspectDatabase(db, prefix, start)
+	fmt.Println("Inspecting chain database...")
+	if err := rawdb.InspectDatabase(db, prefix, start, true); err != nil {
+		return err
+	}
+	if stack.CheckIfMultiDataBase() {
+		fmt.Println("Inspecting state database...")
+		if err := rawdb.InspectDatabase(db.GetStateStore(), prefix, start, true); err != nil {
+			return err
+		}
+		fmt.Println("Inspecting snap database...")
+		if err := rawdb.InspectDatabase(rawdb.NewDatabase(db.GetSnapStore()), prefix, start, false); err != nil {
+			return err
+		}
+		fmt.Println("Inspecting index database...")
+		if err := rawdb.InspectDatabase(rawdb.NewDatabase(db.GetTxIndexStore()), prefix, start, false); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ancientInspect(ctx *cli.Context) error {
@@ -505,7 +549,14 @@ func ancientInspect(ctx *cli.Context) error {
 
 	db := utils.MakeChainDatabase(ctx, stack, true)
 	defer db.Close()
-	return rawdb.AncientInspect(db)
+	if err := rawdb.AncientInspect(db); err != nil {
+		return err
+	}
+
+	if stack.CheckIfMultiDataBase() {
+		return rawdb.AncientInspect(db.GetStateStore())
+	}
+	return nil
 }
 
 func checkStateContent(ctx *cli.Context) error {
@@ -581,9 +632,11 @@ func dbStats(ctx *cli.Context) error {
 	defer db.Close()
 
 	showDBStats(db)
-	if db.HasSeparateStateStore() {
-		fmt.Println("show stats of state store")
+	if stack.CheckIfMultiDataBase() {
+		fmt.Println("show stats of StateStore and SnapStore")
 		showDBStats(db.GetStateStore())
+		showDBStats(db.GetSnapStore())
+		showDBStats(db.GetTxIndexStore())
 	}
 
 	return nil
@@ -600,8 +653,10 @@ func dbCompact(ctx *cli.Context) error {
 	showDBStats(db)
 
 	if stack.CheckIfMultiDataBase() {
-		fmt.Println("show stats of state store")
+		fmt.Println("show stats of StatStore and SnapStore")
 		showDBStats(db.GetStateStore())
+		showDBStats(db.GetSnapStore())
+		showDBStats(db.GetTxIndexStore())
 	}
 
 	log.Info("Triggering compaction")
@@ -612,7 +667,15 @@ func dbCompact(ctx *cli.Context) error {
 
 	if stack.CheckIfMultiDataBase() {
 		if err := db.GetStateStore().Compact(nil, nil); err != nil {
-			log.Error("Compact err", "error", err)
+			log.Error("Statestore Compact err", "error", err)
+			return err
+		}
+		if err := db.GetSnapStore().Compact(nil, nil); err != nil {
+			log.Error("Snapstore Compact err", "error", err)
+			return err
+		}
+		if err := db.GetTxIndexStore().Compact(nil, nil); err != nil {
+			log.Error("IndexStore Compact err", "error", err)
 			return err
 		}
 	}
@@ -620,8 +683,12 @@ func dbCompact(ctx *cli.Context) error {
 	log.Info("Stats after compaction")
 	showDBStats(db)
 	if stack.CheckIfMultiDataBase() {
-		fmt.Println("show stats of state store after compaction")
+		log.Info("show stats of state store after compaction")
 		showDBStats(db.GetStateStore())
+		log.Info("show stats of snapshot store after compaction")
+		showDBStats(db.GetSnapStore())
+		log.Info("show stats of index store after compaction")
+		showDBStats(db.GetTxIndexStore())
 	}
 	return nil
 }
@@ -643,8 +710,15 @@ func dbGet(ctx *cli.Context) error {
 		return err
 	}
 	opDb := db
-	if stack.CheckIfMultiDataBase() && rawdb.DataTypeByKey(key) == rawdb.StateDataType {
-		opDb = db.GetStateStore()
+	if stack.CheckIfMultiDataBase() {
+		switch categorizeDataByKey(key, nil) {
+		case "state":
+			opDb = db.GetStateStore()
+		case "snapshot":
+			opDb = rawdb.NewDatabase(db.GetSnapStore())
+		case "txindex":
+			opDb = rawdb.NewDatabase(db.GetTxIndexStore())
+		}
 	}
 
 	data, err := opDb.Get(key)
@@ -804,8 +878,15 @@ func dbDelete(ctx *cli.Context) error {
 		return err
 	}
 	opDb := db
-	if opDb.HasSeparateStateStore() && rawdb.DataTypeByKey(key) == rawdb.StateDataType {
-		opDb = db.GetStateStore()
+	if stack.CheckIfMultiDataBase() {
+		switch categorizeDataByKey(key, nil) {
+		case "state":
+			opDb = db.GetStateStore()
+		case "snapshot":
+			opDb = rawdb.NewDatabase(db.GetSnapStore())
+		case "txindex":
+			opDb = rawdb.NewDatabase(db.GetTxIndexStore())
+		}
 	}
 
 	data, err := opDb.Get(key)
@@ -924,8 +1005,15 @@ func dbPut(ctx *cli.Context) error {
 	}
 
 	opDb := db
-	if db.HasSeparateStateStore() && rawdb.DataTypeByKey(key) == rawdb.StateDataType {
-		opDb = db.GetStateStore()
+	if stack.CheckIfMultiDataBase() {
+		switch categorizeDataByKey(key, nil) {
+		case "state":
+			opDb = db.GetStateStore()
+		case "snapshot":
+			opDb = rawdb.NewDatabase(db.GetSnapStore())
+		case "txindex":
+			opDb = rawdb.NewDatabase(db.GetTxIndexStore())
+		}
 	}
 
 	data, err = opDb.Get(key)
@@ -1326,4 +1414,280 @@ func inspectHistory(ctx *cli.Context) error {
 		return inspectAccount(triedb, start, end, address, ctx.Bool("raw"))
 	}
 	return inspectStorage(triedb, start, end, address, slot, ctx.Bool("raw"))
+}
+
+// migrateDatabase migrates a single database to multi-database format
+func migrateDatabase(ctx *cli.Context) error {
+	stack, cfg := makeConfigNode(ctx)
+	chainDB, err := initMultiDBs(stack, cfg, true)
+	if err != nil {
+		return fmt.Errorf("failed to init multidbs: %v", err)
+	}
+
+	// traverse all the keys in the chaindb, and then migrate in place
+	log.Info("traversing and migrating...")
+	if err := traverseAndMigrate(chainDB); err != nil {
+		return fmt.Errorf("failed to traverse and migrate: %v", err)
+	}
+
+	// move state ancient data
+	srcStateAncient, err := chainDB.AncientDatadir()
+	if err != nil {
+		return fmt.Errorf("failed to get state ancient directory: %v", err)
+	}
+	srcStateAncient = filepath.Join(srcStateAncient, rawdb.MerkleStateFreezerName)
+	if _, err := os.Stat(srcStateAncient); err != nil {
+		log.Info("no state ancient data to migrate", "path", srcStateAncient)
+		return nil
+	}
+	dstStateAncient, err := chainDB.GetStateStore().AncientDatadir()
+	if err != nil {
+		return fmt.Errorf("failed to get state ancient directory: %v", err)
+	}
+	if err := os.MkdirAll(dstStateAncient, 0755); err != nil {
+		return fmt.Errorf("failed to create state ancient directory: %v", err)
+	}
+	dstStateAncient = filepath.Join(dstStateAncient, rawdb.MerkleStateFreezerName)
+	log.Info("moving state ancient data...", "src", srcStateAncient, "dst", dstStateAncient)
+	if err := os.Rename(srcStateAncient, dstStateAncient); err != nil {
+		return fmt.Errorf("failed to move state ancient directory: %v", err)
+	}
+
+	// compact the database
+	log.Info("compacting chaindb...")
+	if err := chainDB.Compact(nil, nil); err != nil {
+		return fmt.Errorf("failed to compact chaindb: %v", err)
+	}
+	log.Info("compacting statedb...")
+	if err := chainDB.GetStateStore().Compact(nil, nil); err != nil {
+		return fmt.Errorf("failed to compact statedb: %v", err)
+	}
+	log.Info("compacting snapdb...")
+	if err := chainDB.GetSnapStore().Compact(nil, nil); err != nil {
+		return fmt.Errorf("failed to compact snapdb: %v", err)
+	}
+	log.Info("compacting indexdb...")
+	if err := chainDB.GetTxIndexStore().Compact(nil, nil); err != nil {
+		return fmt.Errorf("failed to compact indexdb: %v", err)
+	}
+
+	return nil
+}
+
+// isTrieKey determines if a key-value pair belongs to trie data that should go to state database
+// Logic reference from user's code
+func isTrieKey(key, value []byte) bool {
+	switch {
+	case rawdb.IsLegacyTrieNode(key, value):
+		return true
+	case bytes.HasPrefix(key, []byte("L")) && len(key) == (1+common.HashLength): // stateIDPrefix
+		return true
+	case rawdb.IsAccountTrieNode(key):
+		return true
+	case rawdb.IsStorageTrieNode(key):
+		return true
+	case bytes.HasPrefix(key, rawdb.PreimagePrefix) && len(key) == (len(rawdb.PreimagePrefix)+common.HashLength):
+		return true
+	case bytes.HasPrefix(key, []byte("c")) && len(key) == (1+common.HashLength): // CodePrefix - contract code
+		return true
+	default:
+		// Check specific metadata keys
+		keyStr := string(key)
+		if keyStr == "TrieSync" || keyStr == "TrieJournal" || keyStr == "LastStateID" {
+			return true
+		}
+	}
+	return false
+}
+
+// categorizeDataByKey categorizes database entries based on key prefixes
+// Returns the target database name: "state", "snapshot", "txindex", or "chain"
+func categorizeDataByKey(key, value []byte) string {
+	// State trie data - use the comprehensive trie key logic
+	if isTrieKey(key, value) {
+		return "state"
+	}
+
+	// Snapshot data - account snapshots
+	if bytes.HasPrefix(key, rawdb.SnapshotAccountPrefix) && len(key) == (len(rawdb.SnapshotAccountPrefix)+common.HashLength) {
+		return "snapshot"
+	}
+	// Snapshot data - storage snapshots
+	if bytes.HasPrefix(key, rawdb.SnapshotStoragePrefix) && len(key) == (len(rawdb.SnapshotStoragePrefix)+2*common.HashLength) {
+		return "snapshot"
+	}
+
+	keyStr := string(key)
+	// Snapshot metadata keys
+	snapshotMetadataKeys := []string{
+		"SnapshotRoot", "SnapshotJournal", "SnapshotGenerator",
+		"SnapshotRecovery", "SnapshotSyncStatus", "SnapSyncStatus",
+	}
+	for _, metaKey := range snapshotMetadataKeys {
+		if keyStr == metaKey {
+			return "snapshot"
+		}
+	}
+
+	// Transaction index data
+	if bytes.HasPrefix(key, []byte("l")) && len(key) == (1+common.HashLength) { // txLookupPrefix
+		return "txindex"
+	}
+
+	// Transaction index metadata
+	txIndexMetadataKeys := []string{
+		"TransactionIndexTail",       // txIndexTailKey - tracks the oldest indexed block
+		"FastTransactionLookupLimit", // fastTxLookupLimitKey - deprecated but kept for completeness
+	}
+	for _, metaKey := range txIndexMetadataKeys {
+		if keyStr == metaKey {
+			return "txindex"
+		}
+	}
+	// Everything else goes to chain database
+	return "chain"
+}
+
+func initMultiDBs(stack *node.Node, cfg gethConfig, forceCreate bool) (ethdb.Database, error) {
+	log.Info("initializing multi dbs...", "forceCreate", forceCreate)
+	chainDB, err := stack.OpenAndMergeDatabase(eth.ChainData, eth.ChainDBNamespace, false, &cfg.Eth)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open and merge database: %v", err)
+	}
+	isMultiDB := stack.CheckIfMultiDataBase()
+	log.Info("open and merge database", "chaindata", eth.ChainData, "isMultiDB", isMultiDB)
+	if forceCreate {
+		if isMultiDB {
+			defer chainDB.Close()
+			return nil, fmt.Errorf("there is already multidbs set, cannot migrate again")
+		}
+		// just set multidbs, and then migrate in place
+		stack.SetMultiDBs(chainDB, eth.ChainData, cfg.Eth.DatabaseCache, cfg.Eth.DatabaseHandles, false)
+	}
+
+	return chainDB, nil
+}
+
+type stat struct {
+	size  common.StorageSize
+	count uint64
+}
+
+func (s *stat) Add(size int) {
+	s.size += common.StorageSize(size)
+	s.count++
+}
+
+func (s *stat) String() string {
+	return fmt.Sprintf("%s|%d", s.size, s.count)
+}
+
+func traverseAndMigrate(chainDB ethdb.Database) error {
+	it := chainDB.NewIterator(nil, nil)
+	defer it.Release()
+
+	var (
+		chainBatch = chainDB.NewBatch()
+		stateBatch = chainDB.GetStateStore().NewBatch() // fallback for non-X/Y keys
+		snapBatch  = chainDB.GetSnapStore().NewBatch()
+		indexBatch = chainDB.GetTxIndexStore().NewBatch()
+		batchSize  = 0
+		chainStat  = &stat{}
+		stateStat  = &stat{}
+		snapStat   = &stat{}
+		indexStat  = &stat{}
+		start      = time.Now()
+		logged     = time.Now()
+	)
+
+	for it.Next() {
+		key := make([]byte, len(it.Key()))
+		value := make([]byte, len(it.Value()))
+		copy(key, it.Key())
+		copy(value, it.Value())
+		kvSize := len(key) + len(value)
+		batchSize += kvSize
+		chainStat.Add(kvSize)
+
+		// put the key into the state, snap, or index database and delete from chaindb
+		category := categorizeDataByKey(key, value)
+		switch category {
+		case "state":
+			stateBatch.Put(key, value)
+			chainBatch.Delete(key)
+			stateStat.Add(kvSize)
+		case "snapshot":
+			snapBatch.Put(key, value)
+			chainBatch.Delete(key)
+			snapStat.Add(kvSize)
+		case "txindex":
+			indexBatch.Put(key, value)
+			chainBatch.Delete(key)
+			indexStat.Add(kvSize)
+		}
+
+		if batchSize >= ethdb.IdealBatchSize {
+			if chainBatch.ValueSize() > 0 {
+				if err := chainBatch.Write(); err != nil {
+					return fmt.Errorf("chain batch write failed: %v", err)
+				}
+				chainBatch.Reset()
+			}
+			if stateBatch.ValueSize() > 0 {
+				if err := stateBatch.Write(); err != nil {
+					return fmt.Errorf("state batch write err: %v", err)
+				}
+				stateBatch.Reset()
+			}
+			if snapBatch.ValueSize() > 0 {
+				if err := snapBatch.Write(); err != nil {
+					return fmt.Errorf("snap batch write err: %v", err)
+				}
+				snapBatch.Reset()
+			}
+			if indexBatch.ValueSize() > 0 {
+				if err := indexBatch.Write(); err != nil {
+					return fmt.Errorf("index batch write err: %v", err)
+				}
+				indexBatch.Reset()
+			}
+			batchSize = 0
+		}
+		if time.Since(logged) > 8*time.Second {
+			log.Info("migrate report", "chain", chainStat, "state", stateStat, "snap", snapStat,
+				"index", indexStat, "elapsed", common.PrettyDuration(time.Since(start)))
+			logged = time.Now()
+		}
+	}
+
+	// flush the remaining kvs
+	if batchSize > 0 {
+		if chainBatch.ValueSize() > 0 {
+			if err := chainBatch.Write(); err != nil {
+				return fmt.Errorf("chain batch write failed: %v", err)
+			}
+			chainBatch.Reset()
+		}
+		if stateBatch.ValueSize() > 0 {
+			if err := stateBatch.Write(); err != nil {
+				return fmt.Errorf("state batch write err: %v", err)
+			}
+			stateBatch.Reset()
+		}
+		if snapBatch.ValueSize() > 0 {
+			if err := snapBatch.Write(); err != nil {
+				return fmt.Errorf("snap batch write err: %v", err)
+			}
+			snapBatch.Reset()
+		}
+		if indexBatch.ValueSize() > 0 {
+			if err := indexBatch.Write(); err != nil {
+				return fmt.Errorf("index batch write err: %v", err)
+			}
+			indexBatch.Reset()
+		}
+	}
+	log.Info("migrate completed", "chain", chainStat, "state", stateStat, "snap", snapStat,
+		"index", indexStat, "elapsed", common.PrettyDuration(time.Since(start)))
+	return nil
 }

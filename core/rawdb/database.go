@@ -45,7 +45,10 @@ type freezerdb struct {
 	readOnly    bool
 	ancientRoot string
 
-	stateStore ethdb.Database
+	ethdb.AncientFreezer
+	stateStore   ethdb.Database
+	snapStore    ethdb.KeyValueStore
+	txIndexStore ethdb.KeyValueStore
 }
 
 func (frdb *freezerdb) StateStoreReader() ethdb.Reader {
@@ -53,6 +56,13 @@ func (frdb *freezerdb) StateStoreReader() ethdb.Reader {
 		return frdb
 	}
 	return frdb.stateStore
+}
+
+func (frdb *freezerdb) IndexStoreReader() ethdb.KeyValueReader {
+	if frdb.txIndexStore != nil {
+		return frdb.txIndexStore
+	}
+	return frdb.KeyValueStore
 }
 
 // AncientDatadir returns the path of root ancient directory.
@@ -72,6 +82,16 @@ func (frdb *freezerdb) Close() error {
 	}
 	if frdb.HasSeparateStateStore() {
 		if err := frdb.GetStateStore().Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if frdb.HasSeparateSnapStore() {
+		if err := frdb.GetSnapStore().Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if frdb.HasSeparateTxIndexStore() {
+		if err := frdb.GetTxIndexStore().Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -97,6 +117,42 @@ func (frdb *freezerdb) GetStateStore() ethdb.Database {
 
 func (frdb *freezerdb) HasSeparateStateStore() bool {
 	return frdb.stateStore != nil
+}
+
+func (frdb *freezerdb) SetSnapStore(snapStore ethdb.KeyValueStore) {
+	if frdb.snapStore != nil {
+		frdb.snapStore.Close()
+	}
+	frdb.snapStore = snapStore
+}
+
+func (frdb *freezerdb) GetSnapStore() ethdb.KeyValueStore {
+	if frdb.snapStore != nil {
+		return frdb.snapStore
+	}
+	return frdb.KeyValueStore
+}
+
+func (frdb *freezerdb) HasSeparateSnapStore() bool {
+	return frdb.snapStore != nil
+}
+
+func (frdb *freezerdb) SetTxIndexStore(store ethdb.KeyValueStore) {
+	if frdb.txIndexStore != nil {
+		frdb.txIndexStore.Close()
+	}
+	frdb.txIndexStore = store
+}
+
+func (frdb *freezerdb) GetTxIndexStore() ethdb.KeyValueStore {
+	if frdb.txIndexStore != nil {
+		return frdb.txIndexStore
+	}
+	return frdb.KeyValueStore
+}
+
+func (frdb *freezerdb) HasSeparateTxIndexStore() bool {
+	return frdb.txIndexStore != nil
 }
 
 // Freeze is a helper method used for external testing to trigger and block until
@@ -125,7 +181,9 @@ func (frdb *freezerdb) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint6
 // nofreezedb is a database wrapper that disables freezer data retrievals.
 type nofreezedb struct {
 	ethdb.KeyValueStore
-	stateStore ethdb.Database
+	stateStore   ethdb.Database
+	snapStore    ethdb.KeyValueStore
+	txIndexStore ethdb.KeyValueStore
 }
 
 // Ancient returns an error as we don't have a backing chain freezer.
@@ -203,6 +261,49 @@ func (db *nofreezedb) StateStoreReader() ethdb.Reader {
 		return db.stateStore
 	}
 	return db
+}
+
+func (db *nofreezedb) IndexStoreReader() ethdb.KeyValueReader {
+	if db.txIndexStore != nil {
+		return db.txIndexStore
+	}
+	return db.KeyValueStore
+}
+
+func (db *nofreezedb) SetSnapStore(snapStore ethdb.KeyValueStore) {
+	if db.snapStore != nil {
+		db.snapStore.Close()
+	}
+	db.snapStore = snapStore
+}
+
+func (db *nofreezedb) GetSnapStore() ethdb.KeyValueStore {
+	if db.snapStore != nil {
+		return db.snapStore
+	}
+	return db.KeyValueStore
+}
+
+func (db *nofreezedb) HasSeparateSnapStore() bool {
+	return db.snapStore != nil
+}
+
+func (db *nofreezedb) SetTxIndexStore(store ethdb.KeyValueStore) {
+	if db.txIndexStore != nil {
+		db.txIndexStore.Close()
+	}
+	db.txIndexStore = store
+}
+
+func (db *nofreezedb) GetTxIndexStore() ethdb.KeyValueStore {
+	if db.txIndexStore != nil {
+		return db.txIndexStore
+	}
+	return db.KeyValueStore
+}
+
+func (db *nofreezedb) HasSeparateTxIndexStore() bool {
+	return db.txIndexStore != nil
 }
 
 func (db *nofreezedb) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {
@@ -295,10 +396,17 @@ func (db *emptyfreezedb) SyncAncient() error {
 	return nil
 }
 
-func (db *emptyfreezedb) GetStateStore() ethdb.Database      { return db }
-func (db *emptyfreezedb) SetStateStore(state ethdb.Database) {}
-func (db *emptyfreezedb) StateStoreReader() ethdb.Reader     { return db }
-func (db *emptyfreezedb) HasSeparateStateStore() bool        { return false }
+func (db *emptyfreezedb) GetStateStore() ethdb.Database              { return db }
+func (db *emptyfreezedb) SetStateStore(state ethdb.Database)         {}
+func (db *emptyfreezedb) StateStoreReader() ethdb.Reader             { return db }
+func (db *emptyfreezedb) HasSeparateStateStore() bool                { return false }
+func (db *emptyfreezedb) GetSnapStore() ethdb.KeyValueStore          { return db.KeyValueStore }
+func (db *emptyfreezedb) SetSnapStore(snapStore ethdb.KeyValueStore) {}
+func (db *emptyfreezedb) HasSeparateSnapStore() bool                 { return false }
+func (db *emptyfreezedb) GetTxIndexStore() ethdb.KeyValueStore       { return db.KeyValueStore }
+func (db *emptyfreezedb) SetTxIndexStore(store ethdb.KeyValueStore)  {}
+func (db *emptyfreezedb) HasSeparateTxIndexStore() bool              { return false }
+func (db *emptyfreezedb) IndexStoreReader() ethdb.KeyValueReader     { return db.KeyValueStore }
 func (db *emptyfreezedb) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {
 	return nil
 }
@@ -616,15 +724,9 @@ func DataTypeByKey(key []byte) DataType {
 
 // InspectDatabase traverses the entire database and checks the size
 // of all different categories of data.
-func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
+func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte, hasFreezers bool) error {
 	it := db.NewIterator(keyPrefix, keyStart)
 	defer it.Release()
-
-	var trieIter ethdb.Iterator
-	if db.HasSeparateStateStore() {
-		trieIter = db.GetStateStore().NewIterator(keyPrefix, nil)
-		defer trieIter.Release()
-	}
 
 	var (
 		count  int64
@@ -778,49 +880,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			logged = time.Now()
 		}
 	}
-	// inspect separate trie db
-	if trieIter != nil {
-		count = 0
-		logged = time.Now()
-		for trieIter.Next() {
-			var (
-				key   = trieIter.Key()
-				value = trieIter.Value()
-				size  = common.StorageSize(len(key) + len(value))
-			)
-			total += size
 
-			switch {
-			case IsLegacyTrieNode(key, value):
-				legacyTries.Add(size)
-			case bytes.HasPrefix(key, stateIDPrefix) && len(key) == len(stateIDPrefix)+common.HashLength:
-				stateLookups.Add(size)
-			case IsAccountTrieNode(key):
-				accountTries.Add(size)
-			case IsStorageTrieNode(key):
-				storageTries.Add(size)
-			default:
-				var accounted bool
-				for _, meta := range [][]byte{
-					fastTrieProgressKey, persistentStateIDKey, trieJournalKey, snapSyncStatusFlagKey} {
-					if bytes.Equal(key, meta) {
-						metadata.Add(size)
-						accounted = true
-						break
-					}
-				}
-				if !accounted {
-					unaccounted.Add(size)
-				}
-			}
-			count++
-			if count%1000 == 0 && time.Since(logged) > 8*time.Second {
-				log.Info("Inspecting separate state database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
-				logged = time.Now()
-			}
-		}
-		log.Info("Inspecting separate state database", "count", count, "elapsed", common.PrettyDuration(time.Since(start)))
-	}
 	// Display the database statistic of key-value store.
 	stats := [][]string{
 		{"Key-Value store", "Headers", headers.Size(), headers.Count()},
@@ -850,34 +910,15 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		{"Key-Value store", "Parlia snapshots", parliaSnaps.Size(), parliaSnaps.Count()},
 		{"Key-Value store", "Singleton metadata", metadata.Size(), metadata.Count()},
 	}
-	// Inspect all registered append-only file store then.
-	ancients, err := inspectFreezers(db)
-	if err != nil {
-		return err
-	}
-	for _, ancient := range ancients {
-		for _, table := range ancient.sizes {
-			stats = append(stats, []string{
-				fmt.Sprintf("Ancient store (%s)", strings.Title(ancient.name)),
-				strings.Title(table.name),
-				table.size.String(),
-				fmt.Sprintf("%d", ancient.count()),
-			})
-		}
-		total += ancient.size()
-	}
 
-	// inspect ancient state in separate trie db if exist
-	if trieIter != nil {
-		stateAncients, err := inspectFreezers(db.GetStateStore())
+	if hasFreezers {
+		// Inspect all registered append-only file store then.
+		ancients, err := inspectFreezers(db)
 		if err != nil {
 			return err
 		}
-		for _, ancient := range stateAncients {
+		for _, ancient := range ancients {
 			for _, table := range ancient.sizes {
-				if ancient.name == "chain" {
-					break
-				}
 				stats = append(stats, []string{
 					fmt.Sprintf("Ancient store (%s)", strings.Title(ancient.name)),
 					strings.Title(table.name),
@@ -891,7 +932,14 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Database", "Category", "Size", "Items"})
 	table.SetFooter([]string{"", "Total", total.String(), " "})
-	table.AppendBulk(stats)
+	// only print count > 0
+	validStats := [][]string{}
+	for _, s := range stats {
+		if s[3] != "0" && s[3] != "" {
+			validStats = append(validStats, s)
+		}
+	}
+	table.AppendBulk(validStats)
 	table.Render()
 
 	if unaccounted.size > 0 {
