@@ -630,6 +630,13 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 	case MirJUMPDEST:
 		return nil
 	case MirERRJUMPDEST:
+		// If auxiliary MIR exists (encoded in meta or attached), interpret as the original EVM op to fetch context
+		// For now, treat as an error after tracing
+		if it.tracerEx != nil {
+			it.tracerEx(m)
+		} else if it.tracer != nil {
+			it.tracer(m.op)
+		}
 		return fmt.Errorf("invalid jump destination")
 	case MirEXTCODEHASH:
 		if !it.env.IsConstantinople {

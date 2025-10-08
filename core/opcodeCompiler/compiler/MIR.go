@@ -116,6 +116,8 @@ type MIR struct {
 	// EVM mapping metadata (set during CFG build)
 	evmPC uint // byte offset of the originating EVM opcode
 	evmOp byte // originating EVM opcode byte value
+	// Optional auxiliary MIR attached for diagnostics (e.g., original EVM op at invalid jump target)
+	aux *MIR
 	// For PHI nodes only: the stack slot index this PHI represents (0 = top of stack)
 	phiStackIndex int
 	// Pre-encoded operand info to avoid runtime eval
@@ -146,6 +148,9 @@ func (m *MIR) EvmOp() byte { return m.evmOp }
 
 // PhiStackIndex returns the stack slot index for PHI nodes (0=top). -1 if not set.
 func (m *MIR) PhiStackIndex() int { return m.phiStackIndex }
+
+// Aux returns the optional auxiliary MIR attached for diagnostics
+func (m *MIR) Aux() *MIR { return m.aux }
 
 func newVoidMIR(operation MirOperation) *MIR {
 	mir := new(MIR)

@@ -423,6 +423,23 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 	depth := curBB.InitDepth()
 	depthKnown := false
 
+	// If this block begins at a JUMPDEST, emit the MirJUMPDEST first, then place PHIs after it.
+	// This preserves the invariant that PHIs do not precede JUMPDEST and avoids PHI-only blocks.
+	if i < len(code) {
+		entryOp := ByteCode(code[i])
+		if entryOp == JUMPDEST {
+			// Record EVM mapping for JUMPDEST and emit it as the first instruction in the block
+			currentEVMBuildPC = uint(i)
+			currentEVMBuildOp = byte(entryOp)
+			mir := curBB.CreateVoidMIR(MirJUMPDEST)
+			if mir != nil {
+				mir.genStackDepth = valueStack.size()
+			}
+			// Advance past JUMPDEST so PHIs (if any) are appended after it and we don't re-emit it below
+			i++
+		}
+	}
+
 	// If this block has multiple parents and recorded incoming stacks, insert PHI nodes to form a unified
 	// entry stack and seed the current stack accordingly.
 	if len(curBB.Parents()) > 1 && len(curBB.IncomingStacks()) > 0 {
@@ -848,13 +865,15 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 							targetBB = c.createBB(uint(targetPC), curBB)
 							targetBB.SetInitDepthMax(depth)
 						} else {
-							// Create error BB at targetPC and fill with error MIR
-							targetBB = c.createBB(uint(targetPC), curBB)
-							targetBB.SetInitDepthMax(depth)
-							errM := targetBB.CreateVoidMIR(MirERRJUMPDEST)
+							// Do not create a new BB; model error at current block as an ErrJumpdest MIR
+							errM := curBB.CreateVoidMIR(MirERRJUMPDEST)
 							if errM != nil {
+								// Encode offending opcode
 								errM.meta = []byte{code[targetPC]}
 							}
+							// No further edges added from this invalid jump
+							curBB.SetExitStack(valueStack.clone())
+							return nil
 						}
 						// Only target is a child of current block for unconditional JUMP
 						curBB.SetChildren([]*MIRBasicBlock{targetBB})
@@ -932,12 +951,29 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 							targetBB = c.createBB(uint(targetPC), curBB)
 							targetBB.SetInitDepthMax(depth)
 						} else {
-							targetBB = c.createBB(uint(targetPC), curBB)
-							targetBB.SetInitDepthMax(depth)
-							errM := targetBB.CreateVoidMIR(MirERRJUMPDEST)
+							// Model invalid target as ErrJumpdest in current block and do not create target BB
+							errM := curBB.CreateVoidMIR(MirERRJUMPDEST)
 							if errM != nil {
 								errM.meta = []byte{code[targetPC]}
 							}
+							// Still create fallthrough block
+							fallthroughBB := c.createBB(uint(i+1), curBB)
+							fallthroughBB.SetInitDepthMax(depth)
+							curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
+							curBB.SetExitStack(valueStack.clone())
+							fallthroughBB.AddIncomingStack(curBB, curBB.ExitStack())
+							if !fallExists || (fallExists && !hadFallParentBefore) {
+								newEntryHF := depth
+								if fallthroughBB.EntryStack() != nil {
+									newEntryHF = len(fallthroughBB.EntryStack())
+								}
+								if !fallthroughBB.queued && fallthroughBB.lastEntryHeight != newEntryHF {
+									fallthroughBB.queued = true
+									fallthroughBB.lastEntryHeight = newEntryHF
+									unprcessedBBs.Push(fallthroughBB)
+								}
+							}
+							return nil
 						}
 						fallthroughBB := c.createBB(uint(i+1), curBB)
 						targetBB.SetInitDepthMax(depth)
@@ -1276,9 +1312,9 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			}
 			return nil
 		case REVERT:
-			// REVERT takes 2 operands: offset, size
-			size := valueStack.pop()
+			// REVERT takes 2 operands: offset, size (pop offset first, then size)
 			offset := valueStack.pop()
+			size := valueStack.pop()
 			mir = new(MIR)
 			mir.op = MirREVERT
 			mir.oprands = []*Value{&offset, &size}
@@ -1293,6 +1329,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			} else {
 				depth = 0
 			}
+			// REVERT terminates the current basic block with no children
+			curBB.SetChildren(nil)
 			return nil
 		case INVALID:
 			mir = curBB.CreateVoidMIR(MirINVALID)
