@@ -35,9 +35,7 @@ var (
 	// Extra time for finalizing and committing blocks (excludes writing to disk).
 	defaultDelayLeftOver         = 25 * time.Millisecond
 	defaultBidSimulationLeftOver = 30 * time.Millisecond
-	// Bid simulation throughput on mainnet is ~400–700 Mgas/s.
 	// For estimation, assume 500 Mgas/s:
-	//
 	//	(100M gas / 500 Mgas/s) * 1000 ms + 10 ms buffer + defaultDelayLeftOver ≈ 235 ms.
 	defaultNoInterruptLeftOver = 235 * time.Millisecond
 )
