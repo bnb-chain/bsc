@@ -108,17 +108,11 @@ func (in *EVMInterpreter) executeSingleOpcode(pc *uint64, op OpCode, contract *C
 // tryFallbackForSuperInstruction break down superinstruction to normal opcode and execute in sequence, until gas deplete or succeed
 // return nil show successful execution of si or OOG in the middle (and updated pc/gas), shall continue in main loop
 func (in *EVMInterpreter) tryFallbackForSuperInstruction(pc *uint64, seq []OpCode, contract *Contract, stack *Stack, mem *Memory, callCtx *ScopeContext) error {
-	startPC := *pc
-
-	log.Error("[FALLBACK]", "start", startPC, "seqLen", len(seq))
-
 	for _, sub := range seq {
-		log.Error("[FALLBACK-EXEC]", "pc", *pc, "op", sub.String(), "gasBefore", contract.Gas)
 		if err := in.executeSingleOpcode(pc, sub, contract, stack, mem, callCtx); err != nil {
 			log.Error("[FALLBACK-EXEC]", "op", sub.String(), "err", err, "gasLeft", contract.Gas)
 			return err // OutOfGas or other errors, will let upper level handle
 		}
-		log.Error("[FALLBACK-EXEC]", "ok", true, "nextPC", *pc, "gasAfter", contract.Gas)
 	}
 	return nil
 }
