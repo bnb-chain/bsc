@@ -473,10 +473,6 @@ func (db *Database) checkIncrConfig() {
 
 // repairIncrStore init incremental manager and align incr chain and state freezer.
 func (db *Database) repairIncrStore() error {
-	if db.config.NoTries {
-		return nil
-	}
-
 	if err := db.initIncrManager(); err != nil {
 		log.Error("Failed to initialize incr manager", "error", err)
 		return err
