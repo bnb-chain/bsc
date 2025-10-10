@@ -1,6 +1,8 @@
 package compiler
 
 import (
+	"fmt"
+
 	"github.com/holiman/uint256"
 )
 
@@ -141,4 +143,31 @@ func (v *Value) Equal(other *Value) bool {
 		return true
 	}
 	return v.def == other.def // fallback for non-const
+}
+
+// DebugString renders a compact, human-friendly string for tracing operand values.
+func (v *Value) DebugString() string {
+	if v == nil {
+		return "nil"
+	}
+	switch v.kind {
+	case Konst:
+		if v.u != nil {
+			return "const:0x" + v.u.Hex()
+		}
+		// Fallback to payload if pre-decoded not present
+		if len(v.payload) == 0 {
+			return "const:0x0"
+		}
+		return "const:0x" + uint256.NewInt(0).SetBytes(v.payload).Hex()
+	case Arguments:
+		return "arg"
+	case Variable:
+		if v.def != nil {
+			return fmt.Sprintf("var@%d", v.def.idx)
+		}
+		return "var"
+	default:
+		return "unknown"
+	}
 }

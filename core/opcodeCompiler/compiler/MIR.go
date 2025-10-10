@@ -152,6 +152,47 @@ func (m *MIR) PhiStackIndex() int { return m.phiStackIndex }
 // Aux returns the optional auxiliary MIR attached for diagnostics
 func (m *MIR) Aux() *MIR { return m.aux }
 
+// Operands returns the operands of this MIR instruction.
+// The returned slice should be treated as read-only by callers.
+func (m *MIR) Operands() []*Value { return m.oprands }
+
+// OperandDebugStrings returns a best-effort human-readable rendering of operands
+// suitable for logging/tracing.
+func (m *MIR) OperandDebugStrings() []string {
+	if len(m.oprands) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(m.oprands))
+	for _, v := range m.oprands {
+		if v == nil {
+			out = append(out, "nil")
+			continue
+		}
+		switch v.kind {
+		case Konst:
+			if v.u != nil {
+				out = append(out, "const:0x"+v.u.Hex())
+			} else if len(v.payload) == 0 {
+				out = append(out, "const:0x0")
+			} else {
+				out = append(out, "const:0x"+uint256.NewInt(0).SetBytes(v.payload).Hex())
+			}
+		case Arguments:
+			out = append(out, "arg")
+		case Variable:
+			if v.def != nil {
+				// include def index without fmt to avoid extra import
+				out = append(out, "var")
+			} else {
+				out = append(out, "var")
+			}
+		default:
+			out = append(out, "unknown")
+		}
+	}
+	return out
+}
+
 func newVoidMIR(operation MirOperation) *MIR {
 	mir := new(MIR)
 	mir.op = operation

@@ -630,7 +630,7 @@ func TestUSDT_Transfer_EVMvsMIR(t *testing.T) {
 
 	// Also install extended MIR tracer to print mapping to EVM opcode and pc
 	compiler.SetGlobalMIRTracerExtended(func(m *compiler.MIR) {
-		t.Logf("MIR exec: %s evm_pc=%d evm_op=0x%02x", m.Op().String(), m.EvmPC(), m.EvmOp())
+		t.Logf("MIR exec: %s evm_pc=%d evm_op=0x%02x ops=%v", m.Op().String(), m.EvmPC(), m.EvmOp(), m.OperandDebugStrings())
 	})
 	defer compiler.SetGlobalMIRTracerExtended(nil)
 

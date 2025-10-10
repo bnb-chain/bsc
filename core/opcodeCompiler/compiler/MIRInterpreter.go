@@ -234,15 +234,29 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 		_, err := it.RunMIR(bb)
 		if err == nil {
 			if it.nextBB == nil {
-				// Fall through: if this block has exactly one child, continue into it
+				// Fall through handling
 				children := bb.Children()
-				if len(children) == 1 && children[0] != nil {
-					// Guard against self-loop fallthrough to avoid infinite loop
-					if children[0] == bb {
-						return it.returndata, nil
+				if len(children) >= 1 && children[0] != nil {
+					// Single-successor fallthrough
+					if len(children) == 1 {
+						if children[0] == bb {
+							log.Warn("MIR: self-loop fallthrough detected; rerunning block", "blockNum", bb.blockNum)
+							bb = children[0]
+							continue
+						}
+						bb = children[0]
+						continue
 					}
-					bb = children[0]
-					continue
+					// Conditional branch (e.g., JUMPI): if no jump taken, use fallthrough child (index 1)
+					if len(children) >= 2 && children[1] != nil {
+						if children[1] == bb {
+							log.Warn("MIR: self-loop conditional fallthrough detected; rerunning block", "blockNum", bb.blockNum)
+							bb = children[1]
+							continue
+						}
+						bb = children[1]
+						continue
+					}
 				}
 				return it.returndata, nil
 			}
@@ -508,9 +522,11 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		}
 		off := it.evalValue(m.oprands[0])
 		it.readCalldata32Into(off, &it.scratch32)
+		log.Warn("MIR CALLDATALOAD", "calldata", fmt.Sprintf("%x", it.env.Calldata), "off", off, "scratch32", fmt.Sprintf("%x", it.scratch32))
 		it.setResult(m, it.tmpA.Clear().SetBytes(it.scratch32[:]))
 		return nil
 	case MirCALLDATASIZE:
+
 		it.setResult(m, it.tmpA.Clear().SetUint64(uint64(len(it.env.Calldata))))
 		return nil
 	case MirCALLDATACOPY:
@@ -765,6 +781,7 @@ func mirHandleSUB(it *MIRInterpreter, m *MIR) error {
 	if err != nil {
 		return err
 	}
+	// EVM: top - next => a - b
 	it.setResult(m, it.tmpA.Clear().Sub(a, b))
 	return nil
 }
@@ -797,7 +814,8 @@ func mirHandleSHL(it *MIRInterpreter, m *MIR) error {
 	if err != nil {
 		return err
 	}
-	it.setResult(m, it.tmpA.Clear().Lsh(a, uint(b.Uint64())))
+	// EVM: value is left (b), shift amount is right (a)
+	it.setResult(m, it.tmpA.Clear().Lsh(b, uint(a.Uint64())))
 	return nil
 }
 func mirHandleSHR(it *MIRInterpreter, m *MIR) error {
@@ -805,7 +823,7 @@ func mirHandleSHR(it *MIRInterpreter, m *MIR) error {
 	if err != nil {
 		return err
 	}
-	it.setResult(m, it.tmpA.Clear().Rsh(a, uint(b.Uint64())))
+	it.setResult(m, it.tmpA.Clear().Rsh(b, uint(a.Uint64())))
 	return nil
 }
 func mirHandleSAR(it *MIRInterpreter, m *MIR) error {
@@ -813,7 +831,7 @@ func mirHandleSAR(it *MIRInterpreter, m *MIR) error {
 	if err != nil {
 		return err
 	}
-	it.setResult(m, it.tmpA.Clear().SRsh(a, uint(b.Uint64())))
+	it.setResult(m, it.tmpA.Clear().SRsh(b, uint(a.Uint64())))
 	return nil
 }
 func mirHandleEQ(it *MIRInterpreter, m *MIR) error {
@@ -830,9 +848,11 @@ func mirHandleEQ(it *MIRInterpreter, m *MIR) error {
 }
 func mirHandleLT(it *MIRInterpreter, m *MIR) error {
 	a, b, err := mirLoadAB(it, m)
+	log.Warn("MIR LT", "a", a, "< b", b)
 	if err != nil {
 		return err
 	}
+	// With operand order (a=top/right, b=next/left), LT tests a < b
 	if a.Lt(b) {
 		it.setResult(m, it.tmpA.Clear().SetOne())
 	} else {
@@ -842,9 +862,11 @@ func mirHandleLT(it *MIRInterpreter, m *MIR) error {
 }
 func mirHandleGT(it *MIRInterpreter, m *MIR) error {
 	a, b, err := mirLoadAB(it, m)
+	log.Warn("MIR GT", "a", a, "> b", b)
 	if err != nil {
 		return err
 	}
+	// GT tests a > b
 	if a.Gt(b) {
 		it.setResult(m, it.tmpA.Clear().SetOne())
 	} else {
@@ -857,6 +879,7 @@ func mirHandleSLT(it *MIRInterpreter, m *MIR) error {
 	if err != nil {
 		return err
 	}
+	// Signed compare: a < b
 	if a.Slt(b) {
 		it.setResult(m, it.tmpA.Clear().SetOne())
 	} else {
@@ -869,6 +892,7 @@ func mirHandleSGT(it *MIRInterpreter, m *MIR) error {
 	if err != nil {
 		return err
 	}
+	// Signed compare: a > b
 	if a.Sgt(b) {
 		it.setResult(m, it.tmpA.Clear().SetOne())
 	} else {
@@ -909,6 +933,7 @@ func mirHandleMCOPY(it *MIRInterpreter, m *MIR) error {
 }
 
 func mirHandleCALLDATASIZE(it *MIRInterpreter, m *MIR) error {
+	log.Warn("MIR CALLDATASIZE", "calldata", it.env.Calldata, "size", len(it.env.Calldata))
 	it.setResult(m, it.tmpA.Clear().SetUint64(uint64(len(it.env.Calldata))))
 	return nil
 }
@@ -956,6 +981,7 @@ func mirHandleEXP(it *MIRInterpreter, m *MIR) error {
 	if err != nil {
 		return err
 	}
+	// EVM EXP: base is top (a), exponent is next (b)
 	it.setResult(m, it.tmpA.Clear().Exp(a, b))
 	return nil
 }
@@ -987,6 +1013,7 @@ func mirHandleCALLDATALOAD(it *MIRInterpreter, m *MIR) error {
 	}
 	off := it.evalValue(m.oprands[0])
 	it.readCalldata32Into(off, &it.scratch32)
+	log.Warn("MIR CALLDATALOAD", "calldata", fmt.Sprintf("%x", it.env.Calldata), "off", off, "scratch32", fmt.Sprintf("%x", it.scratch32))
 	it.setResult(m, it.tmpA.Clear().SetBytes(it.scratch32[:]))
 	return nil
 }
@@ -1028,7 +1055,8 @@ func mirHandleBYTE(it *MIRInterpreter, m *MIR) error {
 	if err != nil {
 		return err
 	}
-	it.setResult(m, a.Byte(b))
+	// EVM BYTE: index (right=a), value (left=b)
+	it.setResult(m, b.Byte(a))
 	return nil
 }
 
@@ -1046,6 +1074,7 @@ func (it *MIRInterpreter) execArithmetic(m *MIR) error {
 	case MirMUL:
 		out = it.tmpA.Clear().Mul(a, b)
 	case MirSUB:
+		// EVM: top - next => a - b
 		out = it.tmpA.Clear().Sub(a, b)
 	case MirDIV:
 		out = it.tmpA.Clear().Div(a, b)
@@ -1056,8 +1085,10 @@ func (it *MIRInterpreter) execArithmetic(m *MIR) error {
 	case MirSMOD:
 		out = it.tmpA.Clear().SMod(a, b)
 	case MirEXP:
+		// EVM EXP: base is top (a), exponent is next (b) => a^b
 		out = it.tmpA.Clear().Exp(a, b)
 	case MirLT:
+		// test a < b (right < left)
 		if a.Lt(b) {
 			out = it.tmpA.Clear().SetOne()
 		} else {
@@ -1094,22 +1125,23 @@ func (it *MIRInterpreter) execArithmetic(m *MIR) error {
 	case MirXOR:
 		out = it.tmpA.Clear().Xor(a, b)
 	case MirBYTE:
-		out = a.Byte(b)
+		// value (left=b).BYTE(index right=a)
+		out = b.Byte(a)
 	case MirSHL:
 		if !it.env.IsConstantinople {
 			return fmt.Errorf("invalid opcode: SHL")
 		}
-		out = it.tmpA.Clear().Lsh(a, uint(b.Uint64()))
+		out = it.tmpA.Clear().Lsh(b, uint(a.Uint64()))
 	case MirSHR:
 		if !it.env.IsConstantinople {
 			return fmt.Errorf("invalid opcode: SHR")
 		}
-		out = it.tmpA.Clear().Rsh(a, uint(b.Uint64()))
+		out = it.tmpA.Clear().Rsh(b, uint(a.Uint64()))
 	case MirSAR:
 		if !it.env.IsConstantinople {
 			return fmt.Errorf("invalid opcode: SAR")
 		}
-		out = it.tmpA.Clear().SRsh(a, uint(b.Uint64()))
+		out = it.tmpA.Clear().SRsh(b, uint(a.Uint64()))
 	default:
 		return fmt.Errorf("unexpected arithmetic op: 0x%x", byte(m.op))
 	}

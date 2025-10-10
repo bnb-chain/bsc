@@ -188,8 +188,8 @@ func (b *MIRBasicBlock) CreateUnaryOpMIR(op MirOperation, stack *ValueStack) (mi
 }
 
 func (b *MIRBasicBlock) CreateBinOpMIR(op MirOperation, stack *ValueStack) (mir *MIR) {
-	opnd2 := stack.pop()
 	opnd1 := stack.pop()
+	opnd2 := stack.pop()
 	mir = newBinaryOpMIR(op, &opnd1, &opnd2, stack)
 
 	// Only push result if the operation wasn't optimized away (MirNOP)
@@ -206,22 +206,24 @@ func (b *MIRBasicBlock) CreateBinOpMIR(op MirOperation, stack *ValueStack) (mir 
 
 // CreateTernaryOpMIR creates a MIR instruction for 3-operand operations like ADDMOD, MULMOD
 func (b *MIRBasicBlock) CreateTernaryOpMIR(op MirOperation, stack *ValueStack) (mir *MIR) {
-	opnd3 := stack.pop() // Modulus (third operand)
-	opnd2 := stack.pop() // Second operand
-	opnd1 := stack.pop() // First operand
+	// EVM stack before ternary ops like ADDMOD/MULMOD: [..., third, second, first(top)]
+	// Pop order: first(top) -> second -> third
+	opndA := stack.pop() // first (top)
+	opndB := stack.pop() // second
+	opndC := stack.pop() // third (e.g., modulus)
 
 	// Try peephole optimization for 3-operand operations
-	if doPeepHole3Ops(op, &opnd1, &opnd2, &opnd3, stack, nil) {
+	if doPeepHole3Ops(op, &opndA, &opndB, &opndC, stack, nil) {
 		// Operation was optimized away, create a NOP MIR for tracking
-		mir = newNopMIR(op, []*Value{&opnd1, &opnd2, &opnd3})
+		mir = newNopMIR(op, []*Value{&opndA, &opndB, &opndC})
 		mir = b.appendMIR(mir)
 		mir.genStackDepth = stack.size()
 		// noisy generation logging removed
 		return mir
 	}
 
-	// Create regular ternary operation MIR
-	mir = newTernaryOpMIR(op, &opnd1, &opnd2, &opnd3, stack)
+	// Create regular ternary operation MIR in (first, second, third) order
+	mir = newTernaryOpMIR(op, &opndA, &opndB, &opndC, stack)
 
 	// Only push result if the operation wasn't optimized away (MirNOP)
 	if mir.op != MirNOP {
