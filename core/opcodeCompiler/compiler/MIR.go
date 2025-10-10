@@ -228,6 +228,11 @@ func newUnaryOpMIR(operation MirOperation, opnd *Value, stack *ValueStack) *MIR 
 	mir.op = operation
 	opnd.use = append(opnd.use, mir)
 	mir.oprands = []*Value{opnd}
+	// If the operand is a live-in from a parent BB, tag the defining MIR as global at build time
+	if opnd != nil && opnd.liveIn && opnd.def != nil {
+		// No direct global table here; interpreter will use globalResults by def pointer.
+		// We preserve liveIn on Value to signal cross-BB origin to later passes if needed.
+	}
 	return mir
 }
 
@@ -240,6 +245,9 @@ func newBinaryOpMIR(operation MirOperation, opnd1 *Value, opnd2 *Value, stack *V
 	opnd1.use = append(opnd1.use, mir)
 	opnd2.use = append(opnd2.use, mir)
 	mir.oprands = []*Value{opnd1, opnd2}
+	if (opnd1 != nil && opnd1.liveIn && opnd1.def != nil) || (opnd2 != nil && opnd2.liveIn && opnd2.def != nil) {
+		// Marker only; interpreter resolves by def pointer.
+	}
 	return mir
 }
 

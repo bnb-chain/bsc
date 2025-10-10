@@ -54,6 +54,8 @@ type MIRBasicBlock struct {
 	entryStack     []Value
 	exitStack      []Value
 	incomingStacks map[*MIRBasicBlock][]Value
+	// Precomputed live-outs: definitions (MIR) whose values are live at block exit
+	liveOutDefs []*MIR
 	// Build bookkeeping
 	built           bool // set true after first successful build
 	queued          bool // true if currently enqueued for (re)build
@@ -483,11 +485,25 @@ func (b *MIRBasicBlock) IncomingStacks() map[*MIRBasicBlock][]Value {
 func (b *MIRBasicBlock) SetExitStack(values []Value) {
 	if values == nil {
 		b.exitStack = nil
+		b.liveOutDefs = nil
 		return
 	}
 	copied := make([]Value, len(values))
 	copy(copied, values)
 	b.exitStack = copied
+	// Recompute liveOutDefs from exit stack: collect defs for variable values
+	if len(values) == 0 {
+		b.liveOutDefs = nil
+		return
+	}
+	defs := make([]*MIR, 0, len(values))
+	for i := range values {
+		v := values[i]
+		if v.kind == Variable && v.def != nil {
+			defs = append(defs, v.def)
+		}
+	}
+	b.liveOutDefs = defs
 }
 
 // ExitStack returns the block's exit stack snapshot.
@@ -506,6 +522,9 @@ func (b *MIRBasicBlock) SetEntryStack(values []Value) {
 
 // EntryStack returns the block's entry stack snapshot.
 func (b *MIRBasicBlock) EntryStack() []Value { return b.entryStack }
+
+// LiveOutDefs returns the MIR definitions that are live at block exit.
+func (b *MIRBasicBlock) LiveOutDefs() []*MIR { return b.liveOutDefs }
 
 func (b *MIRBasicBlock) CreateMemoryOpMIR(op MirOperation, stack *ValueStack, accessor *MemoryAccessor) *MIR {
 	mir := new(MIR)

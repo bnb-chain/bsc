@@ -76,6 +76,12 @@ type MIRInterpreter struct {
 	tracerEx func(*MIR)
 	// next basic block to transfer to on jumps (set by MirJUMP/MirJUMPI)
 	nextBB *MIRBasicBlock
+	// current and previous basic blocks for PHI resolution and cross-BB dataflow
+	currentBB *MIRBasicBlock
+	prevBB    *MIRBasicBlock
+	// globalResults holds values produced by MIR instructions across basic blocks
+	// keyed by the defining *MIR so operands that reference defs from other blocks can resolve
+	globalResults map[*MIR]*uint256.Int
 }
 
 // mirGlobalTracer is an optional global tracer invoked for each MIR instruction.
@@ -128,16 +134,17 @@ func NewMIRInterpreter(env *MIRExecutionEnv) *MIRInterpreter {
 		env.Memory = make([]byte, 0)
 	}
 	return &MIRInterpreter{
-		env:        env,
-		memory:     env.Memory,
-		results:    nil,
-		tmpA:       uint256.NewInt(0),
-		tmpB:       uint256.NewInt(0),
-		tmpC:       uint256.NewInt(0),
-		zeroConst:  uint256.NewInt(0),
-		constCache: make(map[string]*uint256.Int, 64),
-		tracer:     mirGlobalTracer,
-		tracerEx:   mirGlobalTracerEx,
+		env:           env,
+		memory:        env.Memory,
+		results:       nil,
+		tmpA:          uint256.NewInt(0),
+		tmpB:          uint256.NewInt(0),
+		tmpC:          uint256.NewInt(0),
+		zeroConst:     uint256.NewInt(0),
+		constCache:    make(map[string]*uint256.Int, 64),
+		tracer:        mirGlobalTracer,
+		tracerEx:      mirGlobalTracerEx,
+		globalResults: make(map[*MIR]*uint256.Int, 128),
 	}
 }
 
@@ -173,6 +180,8 @@ func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
 	if block == nil || len(block.instructions) == 0 {
 		return it.returndata, nil
 	}
+	// Track current block for PHI resolution
+	it.currentBB = block
 	// Reuse results backing storage to avoid per-run allocations
 	if it.resultsCap < len(block.instructions) {
 		it.results = make([]*uint256.Int, len(block.instructions))
@@ -210,6 +219,21 @@ func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
 
 	// 添加基本块完成执行的日志
 	log.Warn("MIRInterpreter: Block execution completed", "blockNum", block.blockNum, "returnDataSize", len(it.returndata), "instructions", block.instructions)
+	// Publish only precomputed live-outs to the cross-BB map
+	if it.globalResults != nil {
+		if defs := block.LiveOutDefs(); len(defs) > 0 {
+			for _, def := range defs {
+				if def == nil || def.idx < 0 || def.idx >= len(it.results) {
+					continue
+				}
+				if r := it.results[def.idx]; r != nil {
+					it.globalResults[def] = new(uint256.Int).Set(r)
+				}
+			}
+		}
+	}
+	// Record last executed block for successor PHI selection
+	it.prevBB = block
 	return it.returndata, nil
 }
 
@@ -307,13 +331,22 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 	case MirNOP:
 		return nil
 	case MirPHI:
-		// Evaluate first available incoming as a simple strategy; more advanced selection
-		// would consider predecessor edge, but adapter runs single blocks only for now.
+		// Select operand based on actual predecessor block when available; fallback to first.
 		if len(m.oprands) == 0 {
 			it.setResult(m, it.zeroConst)
 			return nil
 		}
-		v := it.evalValue(m.oprands[0])
+		selected := 0
+		if it.currentBB != nil && it.prevBB != nil {
+			parents := it.currentBB.Parents()
+			for i := 0; i < len(parents) && i < len(m.oprands); i++ {
+				if parents[i] == it.prevBB {
+					selected = i
+					break
+				}
+			}
+		}
+		v := it.evalValue(m.oprands[selected])
 		it.setResult(m, v)
 		return nil
 	case MirSTOP:
@@ -619,6 +652,8 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 			if it.nextBB == nil {
 				return fmt.Errorf("unresolvable jump target")
 			}
+			// Preserve predecessor for PHI resolution in the successor
+			it.prevBB = it.currentBB
 			return errJUMP
 		}
 		return nil
@@ -639,6 +674,8 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 				if it.nextBB == nil {
 					return fmt.Errorf("unresolvable jump target")
 				}
+				// Preserve predecessor for PHI resolution in the successor
+				it.prevBB = it.currentBB
 				return errJUMP
 			}
 		}
@@ -668,7 +705,8 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 	// Stack ops: DUPn and SWAPn
 	case MirDUP1, MirDUP2, MirDUP3, MirDUP4, MirDUP5, MirDUP6, MirDUP7, MirDUP8,
 		MirDUP9, MirDUP10, MirDUP11, MirDUP12, MirDUP13, MirDUP14, MirDUP15, MirDUP16:
-		// For MIR, DUP has a single operand pointing to the value to duplicate
+		// For MIR, DUP may be optimized to MirNOP during build.
+		// When materialized here, explicitly copy the operand value.
 		if len(m.oprands) < 1 {
 			return fmt.Errorf("DUP missing operand")
 		}
@@ -1160,9 +1198,18 @@ func (it *MIRInterpreter) evalValue(v *Value) *uint256.Int {
 		}
 		return it.zeroConst
 	case Variable, Arguments:
-		if v.def != nil && v.def.idx >= 0 && v.def.idx < len(it.results) {
-			if r := it.results[v.def.idx]; r != nil {
-				return r
+		// Prefer local per-block result if available
+		if v.def != nil {
+			if v.def.idx >= 0 && v.def.idx < len(it.results) {
+				if r := it.results[v.def.idx]; r != nil {
+					return r
+				}
+			}
+			// Fallback to cross-block map for defs from other basic blocks
+			if it.globalResults != nil {
+				if r, ok := it.globalResults[v.def]; ok && r != nil {
+					return r
+				}
 			}
 		}
 		return uint256.NewInt(0)

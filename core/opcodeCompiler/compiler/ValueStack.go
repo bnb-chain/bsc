@@ -21,6 +21,9 @@ type Value struct {
 	use     []*MIR
 	payload []byte
 	u       *uint256.Int // pre-decoded constant value (for Konst)
+	// liveIn marks that this Value originated from a parent basic block and
+	// is considered a cross-BB live-in for the current block during CFG build.
+	liveIn bool
 }
 
 type ValueStack struct {
@@ -109,6 +112,13 @@ func (s *ValueStack) resetTo(snapshot []Value) {
 	}
 	s.data = make([]Value, len(snapshot))
 	copy(s.data, snapshot)
+}
+
+// markAllLiveIn marks all current values on the stack as live-ins.
+func (s *ValueStack) markAllLiveIn() {
+	for i := range s.data {
+		s.data[i].liveIn = true
+	}
 }
 func (v *Value) IsConst() bool {
 	return v.kind == Konst

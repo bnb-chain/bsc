@@ -300,9 +300,12 @@ func GenerateMIRCFG(hash common.Hash, code []byte) (*CFG, error) {
 		// PHI nodes are materialized in buildBasicBlock.
 		if es := curBB.EntryStack(); es != nil {
 			valueStack.resetTo(es)
+			// Entry snapshot is a logical copy; not a parent live-in set.
 		} else if len(curBB.Parents()) == 1 {
 			if ps := curBB.Parents()[0].ExitStack(); ps != nil {
 				valueStack.resetTo(ps)
+				// Mark inherited parent values as live-ins for this block
+				valueStack.markAllLiveIn()
 			} else {
 				valueStack.resetTo(nil)
 			}
