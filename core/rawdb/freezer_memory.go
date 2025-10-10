@@ -416,12 +416,16 @@ func (f *MemoryFreezer) Reset() error {
 }
 
 func (f *MemoryFreezer) TruncateTableTail(kind string, tail uint64) (uint64, error) {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
 func (f *MemoryFreezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
-	//TODO implement me
+	// TODO implement me
+	panic("not supported")
+}
+
+func (f *MemoryFreezer) ResetTableForIncr(kind string, startAt uint64, onlyEmpty bool) error {
 	panic("not supported")
 }
 

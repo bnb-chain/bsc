@@ -60,11 +60,10 @@ type BlobTxSidecar struct {
 	// NOTE(BSC): PeerDAS support (EIP-7594) is disabled.
 	// Only sidecar Version = 0 (EIP-4844 legacy proofs) is supported for now.
 	// See upstream PR: https://github.com/ethereum/go-ethereum/pull/31791
-	Version byte `json:"version" rlp:"-"` // Sidecar version
-
-	Blobs       []kzg4844.Blob       `json:"blobs"`       // Blobs needed by the blob pool
-	Commitments []kzg4844.Commitment `json:"commitments"` // Commitments needed by the blob pool
-	Proofs      []kzg4844.Proof      `json:"proofs"`      // Proofs needed by the blob pool
+	Version     byte                 `json:"version" rlp:"-"` // Sidecar version
+	Blobs       []kzg4844.Blob       `json:"blobs"`           // Blobs needed by the blob pool
+	Commitments []kzg4844.Commitment `json:"commitments"`     // Commitments needed by the blob pool
+	Proofs      []kzg4844.Proof      `json:"proofs"`          // Proofs needed by the blob pool
 }
 
 // BlobHashes computes the blob hashes of the given blobs.
