@@ -1096,3 +1096,233 @@ func copyJumpTable(source *JumpTable) *JumpTable {
 	}
 	return &dest
 }
+
+func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
+	// super instructions
+	tbl[Nop] = &operation{
+		execute:     opNop,
+		constantGas: 0,
+		minStack:    minStack(0, 0),
+		maxStack:    maxStack(0, 0),
+	}
+
+	tbl[AndSwap1PopSwap2Swap1] = &operation{
+		execute:     opAndSwap1PopSwap2Swap1,
+		constantGas: 4*GasFastestStep + GasQuickStep,
+		minStack:    minStack(2, 0),
+		maxStack:    maxStack(2, 0),
+	}
+
+	tbl[Swap2Swap1PopJump] = &operation{
+		execute:     opSwap2Swap1PopJump,
+		constantGas: 2*GasFastestStep + GasQuickStep + GasMidStep,
+		minStack:    minStack(3, 3),
+		maxStack:    maxStack(3, 3),
+	}
+
+	tbl[Swap1PopSwap2Swap1] = &operation{
+		execute:     opSwap1PopSwap2Swap1,
+		constantGas: 3*GasFastestStep + GasQuickStep,
+		minStack:    minStack(4, 4),
+		maxStack:    maxStack(4, 4),
+	}
+
+	tbl[PopSwap2Swap1Pop] = &operation{
+		execute:     opPopSwap2Swap1Pop,
+		constantGas: 2*GasFastestStep + 2*GasQuickStep,
+		minStack:    minStack(4, 4),
+		maxStack:    maxStack(4, 4),
+	}
+
+	tbl[Push2Jump] = &operation{
+		execute:     opPush2Jump,
+		constantGas: GasFastestStep + GasMidStep,
+		minStack:    minStack(0, 0),
+		maxStack:    maxStack(0, 0),
+	}
+
+	tbl[Push2JumpI] = &operation{
+		execute:     opPush2JumpI,
+		constantGas: GasFastestStep + GasSlowStep,
+		minStack:    minStack(1, 0),
+		maxStack:    maxStack(1, 0),
+	}
+
+	tbl[Push1Push1] = &operation{
+		execute:     opPush1Push1,
+		constantGas: 2 * GasFastestStep,
+		minStack:    minStack(0, 2),
+		maxStack:    maxStack(0, 2),
+	}
+
+	tbl[Push1Add] = &operation{
+		execute:     opPush1Add,
+		constantGas: 2 * GasFastestStep,
+		minStack:    minStack(1, 1),
+		maxStack:    maxStack(1, 1),
+	}
+
+	tbl[Push1Shl] = &operation{
+		execute:     opPush1Shl,
+		constantGas: 2 * GasFastestStep,
+		minStack:    minStack(1, 1),
+		maxStack:    maxStack(1, 1),
+	}
+
+	tbl[Push1Dup1] = &operation{
+		execute:     opPush1Dup1,
+		constantGas: 2 * GasFastestStep,
+		minStack:    minStack(0, 2),
+		maxStack:    maxStack(0, 2),
+	}
+
+	tbl[Swap1Pop] = &operation{
+		execute:     opSwap1Pop,
+		constantGas: GasFastestStep + GasQuickStep,
+		minStack:    minStack(1, 0),
+		maxStack:    maxStack(1, 0),
+	}
+
+	tbl[PopJump] = &operation{
+		execute:     opPopJump,
+		constantGas: GasQuickStep + GasMidStep,
+		minStack:    minStack(1, 0),
+		maxStack:    maxStack(1, 0),
+	}
+
+	tbl[Pop2] = &operation{
+		execute:     opPop2,
+		constantGas: 2 * GasQuickStep,
+		minStack:    minStack(2, 0),
+		maxStack:    maxStack(2, 0),
+	}
+
+	tbl[Swap2Swap1] = &operation{
+		execute:     opSwap2Swap1,
+		constantGas: 2 * GasFastestStep,
+		minStack:    minStack(3, 3),
+		maxStack:    maxStack(3, 3),
+	}
+
+	tbl[Swap2Pop] = &operation{
+		execute:     opSwap2Pop,
+		constantGas: GasFastestStep + GasQuickStep,
+		minStack:    minStack(3, 2),
+		maxStack:    maxStack(3, 2),
+	}
+
+	tbl[Dup2LT] = &operation{
+		execute:     opDup2LT,
+		constantGas: 2 * GasFastestStep,
+		minStack:    minStack(2, 2),
+		maxStack:    maxStack(2, 2),
+	}
+
+	tbl[JumpIfZero] = &operation{
+		execute:     opJumpIfZero,
+		constantGas: 2*GasFastestStep + GasSlowStep,
+		minStack:    minStack(1, 0),
+		maxStack:    maxStack(1, 0),
+	}
+
+	tbl[IsZeroPush2] = &operation{
+		execute:     opIsZeroPush2,
+		constantGas: GasFastestStep + GasFastestStep,
+		minStack:    minStack(1, 1),
+		maxStack:    maxStack(1, 1),
+	}
+
+	tbl[Dup2MStorePush1Add] = &operation{
+		execute:     opDup2MStorePush1Add,
+		constantGas: 4 * GasFastestStep,
+		dynamicGas:  gasMStore,
+		minStack:    minStack(2, 1),
+		maxStack:    maxStack(2, 1),
+		memorySize:  memoryDup2MStorePush1Add,
+	}
+
+	tbl[Dup1Push4EqPush2] = &operation{
+		execute:     opDup1Push4EqPush2,
+		constantGas: GasFastestStep + GasFastestStep + GasFastestStep + GasFastestStep,
+		minStack:    minStack(1, 2),
+		maxStack:    maxStack(1, 2),
+	}
+
+	tbl[Push1CalldataloadPush1ShrDup1Push4GtPush2] = &operation{
+		execute:     opPush1CalldataloadPush1ShrDup1Push4GtPush2,
+		constantGas: 8 * GasFastestStep,
+		minStack:    minStack(0, 5),
+		maxStack:    maxStack(0, 5),
+	}
+
+	tbl[Push1Push1Push1SHLSub] = &operation{
+		execute:     opPush1Push1Push1SHLSub,
+		constantGas: 5 * GasFastestStep,
+		minStack:    minStack(0, 3),
+		maxStack:    maxStack(0, 3),
+	}
+
+	tbl[AndDup2AddSwap1Dup2LT] = &operation{
+		execute:     opAndDup2AddSwap1Dup2LT,
+		constantGas: 6 * GasFastestStep,
+		minStack:    minStack(0, 3),
+		maxStack:    maxStack(0, 3),
+	}
+
+	tbl[Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT] = &operation{
+		execute:     opSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT,
+		constantGas: 12 * GasFastestStep,
+		minStack:    minStack(1, 4),
+		maxStack:    maxStack(1, 4),
+	}
+
+	tbl[Dup3And] = &operation{
+		execute:     opDup3And,
+		constantGas: 2 * GasFastestStep,
+		minStack:    minStack(3, 0),
+		maxStack:    maxStack(0, 0),
+	}
+
+	tbl[Swap2Swap1Dup3SubSwap2Dup3GtPush2] = &operation{
+		execute:     opSwap2Swap1Dup3SubSwap2Dup3GtPush2,
+		constantGas: 8 * GasFastestStep,
+		minStack:    minStack(3, 0),
+		maxStack:    maxStack(0, 2),
+	}
+
+	tbl[Swap1Dup2] = &operation{
+		execute:     opSwap1Dup2,
+		constantGas: 2 * GasFastestStep,
+		minStack:    minStack(2, 0),
+		maxStack:    maxStack(0, 1),
+	}
+
+	tbl[SHRSHRDup1MulDup1] = &operation{
+		execute:     opSHRSHRDup1MulDup1,
+		constantGas: 4*GasFastestStep + GasFastStep,
+		minStack:    minStack(3, 0),
+		maxStack:    maxStack(0, 1),
+	}
+
+	tbl[Swap3PopPopPop] = &operation{
+		execute:     opSwap3PopPopPop,
+		constantGas: GasFastestStep + 3*GasQuickStep,
+		minStack:    minStack(4, 0),
+		maxStack:    maxStack(0, 0),
+	}
+
+	tbl[SubSLTIsZeroPush2] = &operation{
+		execute:     opSubSLTIsZeroPush2,
+		constantGas: 4 * GasFastestStep,
+		minStack:    minStack(3, 0),
+		maxStack:    maxStack(0, 1),
+	}
+
+	tbl[Dup11MulDup3SubMulDup1] = &operation{
+		execute:     opDup11MulDup3SubMulDup1,
+		constantGas: 4*GasFastestStep + 2*GasFastStep,
+		minStack:    minStack(11, 0),
+		maxStack:    maxStack(0, 1),
+	}
+	return tbl
+}
