@@ -112,6 +112,7 @@ type Config struct {
 	NoPruning  bool // Whether to disable pruning and flush everything to disk
 	NoPrefetch bool // Whether to disable prefetching and only load state on demand
 
+	EnableBAL           bool
 	DirectBroadcast     bool
 	DisableSnapProtocol bool // Whether disable snap protocol
 	RangeLimit          bool
@@ -217,6 +218,14 @@ type Config struct {
 
 	//opcode optimization setting
 	EnableOpcodeOptimizing bool
+	// incremental snapshot config
+	EnableIncrSnapshots       bool
+	IncrSnapshotPath          string
+	IncrSnapshotBlockInterval uint64
+	IncrSnapshotStateBuffer   uint64
+	IncrSnapshotKeptBlocks    uint64
+	UseRemoteIncrSnapshot     bool
+	RemoteIncrSnapshotURL     string
 }
 
 // CreateConsensusEngine creates a consensus engine for the given chain config.

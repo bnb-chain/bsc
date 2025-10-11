@@ -58,6 +58,7 @@ require (
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/panjf2000/ants/v2 v2.4.5
 	github.com/peterh/liner v1.2.0
+	github.com/pierrec/lz4/v4 v4.1.22
 	github.com/pion/stun/v2 v2.0.0
 	github.com/pkg/errors v0.9.1
 	github.com/protolambda/bls12-381-util v0.1.0

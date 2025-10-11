@@ -76,3 +76,11 @@ func (ethash *Ethash) Close() error {
 func (ethash *Ethash) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
 	panic("ethash (pow) sealing not supported any more")
 }
+
+func (ethash *Ethash) SignBAL(bal *types.BlockAccessListEncode) error {
+	return nil
+}
+
+func (ethash *Ethash) VerifyBAL(block *types.Block, bal *types.BlockAccessListEncode) error {
+	return nil
+}

@@ -1,6 +1,21 @@
 # Changelog
+
+## v1.6.2
+### FEATURE
+[\#3363](https://github.com/bnb-chain/bsc/pull/3363) websocket: add transactionReceipts for receipts notification
+[\#3367](https://github.com/bnb-chain/bsc/pull/3367) BEP-619: Short Block Interval Phase Three: 0.45 Seconds
+[\#3368](https://github.com/bnb-chain/bsc/pull/3368) BEP-590: Extended Voting Rules for Fast Finality Stability
+[\#3374](https://github.com/bnb-chain/bsc/pull/3374) Implement BEP-592: Non-Consensus Based Block-Level Access List
+[\#3372](https://github.com/bnb-chain/bsc/pull/3372) core/systemcontracts: define fermiUpgrade
+
+### BUGFIX
+[\#3373](https://github.com/bnb-chain/bsc/pull/3373) ethapi: reject oversize storage keys before hex decode
+
+### IMPROVEMENT
+NA
+
 ## v1.6.1
-v1.6.1-alpha is a preview release, which fixes several issues of the v1.6.0-alpha, it is more reliable than v1.6.0-alpha, so mark it as beta stage.
+v1.6.1-beta is a preview release, which fixes several issues of the v1.6.0-alpha, it is more reliable than v1.6.0-alpha, so mark it as beta stage.
 
 ### FEATURE
 NA
