@@ -32,6 +32,7 @@ func GetContract(caller common.Address, address common.Address, value *uint256.I
 	if jumpDests == nil {
 		jumpDests = make(map[common.Hash]bitvec)
 	}
+	contract.codeBitmapFunc = codeBitmap
 	contract.jumpdests = jumpDests
 	contract.analysis = nil
 
