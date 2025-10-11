@@ -35,6 +35,7 @@ func GetContract(caller ContractRef, object ContractRef, value *uint256.Int, gas
 	} else {
 		contract.jumpdests = make(map[common.Hash]bitvec)
 	}
+	contract.codeBitmapFunc = codeBitmap
 	contract.analysis = nil
 
 	return contract
