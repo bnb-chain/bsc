@@ -133,6 +133,7 @@ func opSgt(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte
 
 func opEq(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
 	x, y := scope.Stack.pop(), scope.Stack.peek()
+	log.Warn("EVM EQ", "x", x, "==y", y)
 	if x.Eq(y) {
 		y.SetOne()
 	} else {

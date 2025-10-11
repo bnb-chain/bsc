@@ -42,6 +42,7 @@ func debugFormatValue(v *Value) string {
 		return "arg"
 	case Variable:
 		if v.def != nil {
+			// include defining MIR idx; block number is dumped alongside in debugDumpBBFull
 			return fmt.Sprintf("var:def@%d", v.def.idx)
 		}
 		return "var"

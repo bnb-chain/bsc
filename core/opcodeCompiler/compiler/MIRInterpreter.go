@@ -222,12 +222,25 @@ func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
 	// Publish only precomputed live-outs to the cross-BB map
 	if it.globalResults != nil {
 		if defs := block.LiveOutDefs(); len(defs) > 0 {
+			// Build a set of defs defined in this block to avoid overwriting foreign defs
+			inBlock := make(map[*MIR]bool, len(block.instructions))
+			for _, inst := range block.instructions {
+				if inst != nil {
+					inBlock[inst] = true
+				}
+			}
 			for _, def := range defs {
-				if def == nil || def.idx < 0 || def.idx >= len(it.results) {
+				if def == nil {
 					continue
 				}
-				if r := it.results[def.idx]; r != nil {
-					it.globalResults[def] = new(uint256.Int).Set(r)
+				// Only publish values for defs produced in this block
+				if !inBlock[def] {
+					continue
+				}
+				if def.idx >= 0 && def.idx < len(it.results) {
+					if r := it.results[def.idx]; r != nil {
+						it.globalResults[def] = new(uint256.Int).Set(r)
+					}
 				}
 			}
 		}
@@ -765,32 +778,26 @@ func mirLoadAB(it *MIRInterpreter, m *MIR) (a, b *uint256.Int, err error) {
 	if len(m.oprands) < 2 {
 		return nil, nil, fmt.Errorf("missing operands")
 	}
+	if m.evmPC == 60 {
+		log.Warn("MIR MLOAD", "oprands1", m.oprands[0], "oprands2", m.oprands[1],
+			"it.results", it.results)
+	}
 	// Use pre-encoded operand info if available
 	if len(m.opKinds) >= 2 {
-		// first operand
-		switch m.opKinds[0] {
-		case 0:
+		// For constants, use pre-decoded value; otherwise resolve via evalValue
+		if m.opKinds[0] == 0 {
 			a = m.opConst[0]
-		case 1:
-			idx := m.opDefIdx[0]
-			if idx >= 0 && idx < len(it.results) {
-				a = it.results[idx]
-			}
 		}
 		if a == nil {
 			a = it.evalValue(m.oprands[0])
 		}
-		// second operand
-		switch m.opKinds[1] {
-		case 0:
+		if m.opKinds[1] == 0 {
 			b = m.opConst[1]
-		case 1:
-			idx := m.opDefIdx[1]
-			if idx >= 0 && idx < len(it.results) {
-				b = it.results[idx]
-			}
 		}
 		if b == nil {
+			if m.evmPC == 60 {
+				log.Warn("MIR MLOAD", "oprands2", m.oprands[1], "from globalResults", it.globalResults[m.oprands[1].def])
+			}
 			b = it.evalValue(m.oprands[1])
 		}
 		return a, b, nil
@@ -874,6 +881,7 @@ func mirHandleSAR(it *MIRInterpreter, m *MIR) error {
 }
 func mirHandleEQ(it *MIRInterpreter, m *MIR) error {
 	a, b, err := mirLoadAB(it, m)
+	log.Warn("MIR EQ", "a", a, "==b", b)
 	if err != nil {
 		return err
 	}
@@ -1198,14 +1206,22 @@ func (it *MIRInterpreter) evalValue(v *Value) *uint256.Int {
 		}
 		return it.zeroConst
 	case Variable, Arguments:
-		// Prefer local per-block result if available
+		// If this value is marked as live-in from a parent, prefer global cross-BB map first
 		if v.def != nil {
+			if v.liveIn {
+				if it.globalResults != nil {
+					if r, ok := it.globalResults[v.def]; ok && r != nil {
+						return r
+					}
+				}
+			}
+			// Then try local per-block result
 			if v.def.idx >= 0 && v.def.idx < len(it.results) {
 				if r := it.results[v.def.idx]; r != nil {
 					return r
 				}
 			}
-			// Fallback to cross-block map for defs from other basic blocks
+			// Finally, fallback to global map for non-live-in cross-BB defs
 			if it.globalResults != nil {
 				if r, ok := it.globalResults[v.def]; ok && r != nil {
 					return r
