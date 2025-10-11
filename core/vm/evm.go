@@ -282,7 +282,7 @@ func (evm *EVM) Call(caller common.Address, addr common.Address, input []byte, g
 					evm.UseBaseInterpreter()
 				}
 				contract.IsSystemCall = isSystemCall(caller)
-				contract.SetCallCode(&addrCopy, codeHash, code)
+				contract.SetCallCode(codeHash, code)
 				ret, err = evm.interpreter.Run(contract, input, false)
 				gas = contract.Gas
 			} else {
@@ -293,7 +293,7 @@ func (evm *EVM) Call(caller common.Address, addr common.Address, input []byte, g
 				defer ReturnContract(contract)
 
 				contract.IsSystemCall = isSystemCall(caller)
-				contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), code)
+				contract.SetCallCode(evm.resolveCodeHash(addrCopy), code)
 				ret, err = evm.interpreter.Run(contract, input, false)
 				gas = contract.Gas
 			}
@@ -359,7 +359,7 @@ func (evm *EVM) CallCode(caller common.Address, addr common.Address, input []byt
 			code := evm.resolveCode(addrCopy)
 			codeHash := evm.resolveCodeHash(addrCopy)
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
-			contract.SetCallCode(&addrCopy, codeHash, code)
+			contract.SetCallCode(codeHash, code)
 
 			if contract.optimized {
 				evm.UseOptInterpreter()
@@ -377,7 +377,7 @@ func (evm *EVM) CallCode(caller common.Address, addr common.Address, input []byt
 			contract := GetContract(caller, caller, value, gas, evm.jumpDests)
 			defer ReturnContract(contract)
 
-			contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
+			contract.SetCallCode(evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
 			ret, err = evm.interpreter.Run(contract, input, false)
 			gas = contract.Gas
 		}
@@ -426,7 +426,7 @@ func (evm *EVM) DelegateCall(originCaller common.Address, caller common.Address,
 			code := evm.resolveCode(addrCopy)
 			codeHash := evm.resolveCodeHash(addrCopy)
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
-			contract.SetCallCode(&addrCopy, codeHash, code)
+			contract.SetCallCode(codeHash, code)
 			if contract.optimized {
 				evm.UseOptInterpreter()
 				contract.codeBitmapFunc = codeBitmapWhitSI
@@ -441,7 +441,7 @@ func (evm *EVM) DelegateCall(originCaller common.Address, caller common.Address,
 			contract := GetContract(originCaller, caller, value, gas, evm.jumpDests)
 			defer ReturnContract(contract)
 
-			contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
+			contract.SetCallCode(evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
 			ret, err = evm.interpreter.Run(contract, input, false)
 			gas = contract.Gas
 		}
@@ -508,7 +508,7 @@ func (evm *EVM) StaticCall(caller common.Address, addr common.Address, input []b
 			} else {
 				evm.UseBaseInterpreter()
 			}
-			contract.SetCallCode(&addrCopy, codeHash, code)
+			contract.SetCallCode(codeHash, code)
 			// When an error was returned by the EVM or when setting the creation code
 			// above we revert to the snapshot and consume any gas remaining. Additionally
 			// when we're in Homestead this also counts for code storage gas errors.
@@ -524,7 +524,7 @@ func (evm *EVM) StaticCall(caller common.Address, addr common.Address, input []b
 			contract := GetContract(caller, addr, new(uint256.Int), gas, evm.jumpDests)
 			defer ReturnContract(contract)
 
-			contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
+			contract.SetCallCode(evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
 			// When an error was returned by the EVM or when setting the creation code
 			// above we revert to the snapshot and consume any gas remaining. Additionally
 			// when we're in Homestead this also counts for code storage gas errors.
@@ -649,7 +649,7 @@ func (evm *EVM) create(caller common.Address, code []byte, gas uint64, value *ui
 
 	// Explicitly set the code to a null hash to prevent caching of jump analysis
 	// for the initialization code.
-	contract.SetCallCode(&common.Address{}, common.Hash{}, code)
+	contract.SetCallCode(common.Hash{}, code)
 	contract.IsDeployment = true
 
 	ret, err = evm.initNewContract(contract, address)

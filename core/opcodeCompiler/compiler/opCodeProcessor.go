@@ -18,7 +18,7 @@ var (
 	ErrOptimizedDisabled = errors.New("opcode optimization is disabled")
 )
 
-const taskChannelSize = 1024 * 1024
+const taskChannelSize = 128 * 1024
 
 const (
 	generate optimizeTaskType = 1
