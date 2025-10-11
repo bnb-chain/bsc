@@ -84,6 +84,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		IncrSnapshotKeptBlocks    uint64
 		UseRemoteIncrSnapshot     bool
 		RemoteIncrSnapshotURL     string
+		EnableOpcodeOptimizing    bool
 	}
 	var enc Config
 	enc.Genesis = c.Genesis
@@ -145,6 +146,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.OverrideOsaka = c.OverrideOsaka
 	enc.OverrideVerkle = c.OverrideVerkle
 	enc.BlobExtraReserve = c.BlobExtraReserve
+	enc.EnableOpcodeOptimizing = c.EnableOpcodeOptimizing
 	enc.EnableIncrSnapshots = c.EnableIncrSnapshots
 	enc.IncrSnapshotPath = c.IncrSnapshotPath
 	enc.IncrSnapshotBlockInterval = c.IncrSnapshotBlockInterval
@@ -224,6 +226,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		IncrSnapshotKeptBlocks    *uint64
 		UseRemoteIncrSnapshot     *bool
 		RemoteIncrSnapshotURL     *string
+		EnableOpcodeOptimizing    *bool
 	}
 	var dec Config
 	if err := unmarshal(&dec); err != nil {
@@ -405,6 +408,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.BlobExtraReserve != nil {
 		c.BlobExtraReserve = *dec.BlobExtraReserve
+	}
+	if dec.EnableOpcodeOptimizing != nil {
+		c.EnableOpcodeOptimizing = *dec.EnableOpcodeOptimizing
 	}
 	if dec.EnableIncrSnapshots != nil {
 		c.EnableIncrSnapshots = *dec.EnableIncrSnapshots

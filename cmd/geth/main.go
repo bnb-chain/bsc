@@ -183,6 +183,7 @@ var (
 		utils.LogDebugFlag,
 		utils.LogBacktraceAtFlag,
 		utils.BlobExtraReserveFlag,
+		utils.VMOpcodeOptimizeFlag,
 		utils.EnableIncrSnapshotFlag,
 		utils.IncrSnapshotPathFlag,
 		utils.IncrSnapshotBlockIntervalFlag,
