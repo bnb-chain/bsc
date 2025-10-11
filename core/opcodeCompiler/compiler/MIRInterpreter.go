@@ -647,6 +647,65 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		sz := it.evalValue(m.oprands[1])
 		it.returndata = append([]byte(nil), it.readMem(off, sz)...)
 		return errREVERT
+	case MirCALL:
+		// operands: gas, addr, value, inOffset, inSize, outOffset, outSize
+		if len(m.oprands) < 7 {
+			return fmt.Errorf("CALL missing operands")
+		}
+		inOff := it.evalValue(m.oprands[3])
+		inSz := it.evalValue(m.oprands[4])
+		outOff := it.evalValue(m.oprands[5])
+		outSz := it.evalValue(m.oprands[6])
+		// Default stub: no actual external execution; clear and set empty return data
+		_ = it.readMem(inOff, inSz) // read to mimic access; ignored
+		it.returndata = it.returndata[:0]
+		// Copy (empty) returndata to out buffer (zero-fill)
+		it.returnDataCopy(outOff, uint256.NewInt(0), outSz)
+		// Success = 1
+		it.setResult(m, it.tmpA.Clear().SetOne())
+		return nil
+	case MirCALLCODE:
+		// operands: gas, addr, value, inOffset, inSize, outOffset, outSize
+		if len(m.oprands) < 7 {
+			return fmt.Errorf("CALLCODE missing operands")
+		}
+		inOff := it.evalValue(m.oprands[3])
+		inSz := it.evalValue(m.oprands[4])
+		outOff := it.evalValue(m.oprands[5])
+		outSz := it.evalValue(m.oprands[6])
+		_ = it.readMem(inOff, inSz)
+		it.returndata = it.returndata[:0]
+		it.returnDataCopy(outOff, uint256.NewInt(0), outSz)
+		it.setResult(m, it.tmpA.Clear().SetOne())
+		return nil
+	case MirDELEGATECALL:
+		// operands: gas, addr, inOffset, inSize, outOffset, outSize
+		if len(m.oprands) < 6 {
+			return fmt.Errorf("DELEGATECALL missing operands")
+		}
+		inOff := it.evalValue(m.oprands[2])
+		inSz := it.evalValue(m.oprands[3])
+		outOff := it.evalValue(m.oprands[4])
+		outSz := it.evalValue(m.oprands[5])
+		_ = it.readMem(inOff, inSz)
+		it.returndata = it.returndata[:0]
+		it.returnDataCopy(outOff, uint256.NewInt(0), outSz)
+		it.setResult(m, it.tmpA.Clear().SetOne())
+		return nil
+	case MirSTATICCALL:
+		// operands: gas, addr, inOffset, inSize, outOffset, outSize
+		if len(m.oprands) < 6 {
+			return fmt.Errorf("STATICCALL missing operands")
+		}
+		inOff := it.evalValue(m.oprands[2])
+		inSz := it.evalValue(m.oprands[3])
+		outOff := it.evalValue(m.oprands[4])
+		outSz := it.evalValue(m.oprands[5])
+		_ = it.readMem(inOff, inSz)
+		it.returndata = it.returndata[:0]
+		it.returnDataCopy(outOff, uint256.NewInt(0), outSz)
+		it.setResult(m, it.tmpA.Clear().SetOne())
+		return nil
 
 	// Control flow (handled at CFG/adapter level). Treat as no-ops here.
 	case MirJUMP:
