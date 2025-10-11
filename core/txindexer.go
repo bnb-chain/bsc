@@ -235,8 +235,8 @@ func (indexer *txIndexer) loop(chain *BlockChain) {
 
 	// Listening to chain events and manipulate the transaction indexes.
 	var (
-		stop   chan struct{} // Non-nil if background routine is active
-		done   chan struct{} // Non-nil if background routine is active
+		stop   chan struct{} // Non-nil if background routine is active.
+		done   chan struct{} // Non-nil if background routine is active.
 		headCh = make(chan ChainHeadEvent)
 		sub    = chain.SubscribeChainHeadEvent(headCh)
 	)
