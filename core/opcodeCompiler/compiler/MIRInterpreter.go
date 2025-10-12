@@ -28,8 +28,26 @@ type MIRExecutionEnv struct {
 	SelfBalance uint64
 	ReturnData  []byte
 
+	// Code accessors (optional, provided by adapter)
+	Code        []byte
+	ExtCodeSize func(addr [20]byte) uint64
+	ExtCodeCopy func(addr [20]byte, codeOffset uint64, dest []byte)
+	LogFunc     func(addr [20]byte, topics [][32]byte, data []byte)
+
 	// Call context
 	CallValue *uint256.Int
+
+	// Additional block info (optional)
+	GasLimit      uint64
+	Difficulty    uint64
+	BlockHashFunc func(num uint64) [32]byte
+	Coinbase      [20]byte
+
+	// Optional helpers for additional opcodes
+	ExtCodeHash  func(addr [20]byte) [32]byte
+	GasLeft      func() uint64
+	BlobBaseFee  uint64
+	BlobHashFunc func(index uint64) [32]byte
 
 	// Fork flags (set by adapter from EVM chain rules)
 	IsByzantium      bool
@@ -71,6 +89,8 @@ type MIRInterpreter struct {
 	zeroConst  *uint256.Int
 	constCache map[string]*uint256.Int
 	scratch32  [32]byte
+	// transientStorage is an in-memory map used to emulate TLOAD/TSTORE (EIP-1153)
+	transientStorage map[[32]byte][32]byte
 	// tracer is invoked on each MIR instruction execution if set
 	tracer   func(MirOperation)
 	tracerEx func(*MIR)
@@ -134,17 +154,18 @@ func NewMIRInterpreter(env *MIRExecutionEnv) *MIRInterpreter {
 		env.Memory = make([]byte, 0)
 	}
 	return &MIRInterpreter{
-		env:           env,
-		memory:        env.Memory,
-		results:       nil,
-		tmpA:          uint256.NewInt(0),
-		tmpB:          uint256.NewInt(0),
-		tmpC:          uint256.NewInt(0),
-		zeroConst:     uint256.NewInt(0),
-		constCache:    make(map[string]*uint256.Int, 64),
-		tracer:        mirGlobalTracer,
-		tracerEx:      mirGlobalTracerEx,
-		globalResults: make(map[*MIR]*uint256.Int, 128),
+		env:              env,
+		memory:           env.Memory,
+		results:          nil,
+		tmpA:             uint256.NewInt(0),
+		tmpB:             uint256.NewInt(0),
+		tmpC:             uint256.NewInt(0),
+		zeroConst:        uint256.NewInt(0),
+		constCache:       make(map[string]*uint256.Int, 64),
+		tracer:           mirGlobalTracer,
+		tracerEx:         mirGlobalTracerEx,
+		globalResults:    make(map[*MIR]*uint256.Int, 128),
+		transientStorage: make(map[[32]byte][32]byte),
 	}
 }
 
@@ -439,6 +460,10 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		it.readMem32Into(off, &it.scratch32)
 		it.setResult(m, it.tmpA.Clear().SetBytes(it.scratch32[:]))
 		return nil
+	case MirMSIZE:
+		// Return current logical memory size (length of internal buffer)
+		it.setResult(m, it.tmpA.Clear().SetUint64(uint64(len(it.memory))))
+		return nil
 	case MirMSTORE:
 		// operands: offset, size(ignored; assume 32), value
 		if len(m.oprands) < 3 {
@@ -494,6 +519,112 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		copy(it.scratch32[12:], it.env.Self[:])
 		it.setResult(m, it.tmpA.Clear().SetBytes(it.scratch32[:]))
 		return nil
+	case MirPC:
+		// Return the EVM PC captured in MIR metadata if available
+		it.setResult(m, it.tmpA.Clear().SetUint64(uint64(m.evmPC)))
+		return nil
+	case MirCODESIZE:
+		// Return length of current contract code if available
+		if it.env != nil && it.env.Code != nil {
+			it.setResult(m, it.tmpA.Clear().SetUint64(uint64(len(it.env.Code))))
+		} else {
+			it.setResult(m, it.zeroConst)
+		}
+		return nil
+	case MirCODECOPY:
+		// operands: dest, offset, size
+		if len(m.oprands) < 3 {
+			return fmt.Errorf("CODECOPY missing operands")
+		}
+		dest := it.evalValue(m.oprands[0])
+		off := it.evalValue(m.oprands[1])
+		sz := it.evalValue(m.oprands[2])
+		// Copy from env.Code if present; else zero-fill
+		if it.env != nil && it.env.Code != nil {
+			d := dest.Uint64()
+			o := off.Uint64()
+			s := sz.Uint64()
+			it.ensureMemSize(d + s)
+			var i uint64
+			for i = 0; i < s; i++ {
+				idx := o + i
+				var b byte = 0
+				if idx < uint64(len(it.env.Code)) {
+					b = it.env.Code[idx]
+				}
+				it.memory[d+i] = b
+			}
+		} else {
+			it.ensureMemSize(dest.Uint64() + sz.Uint64())
+			for i := uint64(0); i < sz.Uint64(); i++ {
+				it.memory[dest.Uint64()+i] = 0
+			}
+		}
+		return nil
+	case MirEXTCODESIZE:
+		// Return size via env hook if available
+		if len(m.oprands) < 1 {
+			return fmt.Errorf("EXTCODESIZE missing operand")
+		}
+		addrVal := it.evalValue(m.oprands[0]).Bytes32()
+		var a20 [20]byte
+		copy(a20[:], addrVal[12:])
+		if it.env != nil && it.env.ExtCodeSize != nil {
+			sz := it.env.ExtCodeSize(a20)
+			it.setResult(m, it.tmpA.Clear().SetUint64(sz))
+		} else {
+			it.setResult(m, it.zeroConst)
+		}
+		return nil
+	case MirEXTCODECOPY:
+		// operands: address, dest, offset, size
+		if len(m.oprands) < 4 {
+			return fmt.Errorf("EXTCODECOPY missing operands")
+		}
+		addrVal := it.evalValue(m.oprands[0]).Bytes32()
+		var a20 [20]byte
+		copy(a20[:], addrVal[12:])
+		dest := it.evalValue(m.oprands[1])
+		off := it.evalValue(m.oprands[2])
+		sz := it.evalValue(m.oprands[3])
+		d := dest.Uint64()
+		s := sz.Uint64()
+		it.ensureMemSize(d + s)
+		buf := make([]byte, s)
+		if it.env != nil && it.env.ExtCodeCopy != nil {
+			it.env.ExtCodeCopy(a20, off.Uint64(), buf)
+		} else {
+			for i := range buf {
+				buf[i] = 0
+			}
+		}
+		copy(it.memory[d:d+s], buf)
+		return nil
+	case MirBLOCKHASH:
+		if len(m.oprands) < 1 {
+			return fmt.Errorf("BLOCKHASH missing operand")
+		}
+		num := it.evalValue(m.oprands[0]).Uint64()
+		if it.env != nil && it.env.BlockHashFunc != nil {
+			h := it.env.BlockHashFunc(num)
+			it.setResult(m, it.tmpA.Clear().SetBytes(h[:]))
+		} else {
+			it.setResult(m, it.zeroConst)
+		}
+		return nil
+	case MirCOINBASE:
+		for i := range it.scratch32 {
+			it.scratch32[i] = 0
+		}
+		copy(it.scratch32[12:], it.env.Coinbase[:])
+		it.setResult(m, it.tmpA.Clear().SetBytes(it.scratch32[:]))
+		return nil
+	case MirDIFFICULTY:
+		it.setResult(m, it.tmpA.Clear().SetUint64(it.env.Difficulty))
+		return nil
+	case MirGASLIMIT:
+		it.setResult(m, it.tmpA.Clear().SetUint64(it.env.GasLimit))
+		return nil
 	case MirCALLER:
 		for i := range it.scratch32 {
 			it.scratch32[i] = 0
@@ -544,7 +675,29 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		if !it.env.IsLondon {
 			return fmt.Errorf("invalid opcode: BASEFEE")
 		}
-		it.setResult(m, uint256.NewInt(it.env.BaseFee))
+		it.setResult(m, it.tmpA.Clear().SetUint64(uint64(it.env.BaseFee)))
+		return nil
+	case MirBLOBHASH:
+		if len(m.oprands) < 1 {
+			return fmt.Errorf("BLOBHASH missing operand")
+		}
+		idx := it.evalValue(m.oprands[0]).Uint64()
+		if it.env != nil && it.env.BlobHashFunc != nil {
+			h := it.env.BlobHashFunc(idx)
+			it.setResult(m, it.tmpA.Clear().SetBytes(h[:]))
+		} else {
+			it.setResult(m, it.zeroConst)
+		}
+		return nil
+	case MirBLOBBASEFEE:
+		it.setResult(m, it.tmpA.Clear().SetUint64(it.env.BlobBaseFee))
+		return nil
+	case MirGAS:
+		if it.env != nil && it.env.GasLeft != nil {
+			it.setResult(m, it.tmpA.Clear().SetUint64(it.env.GasLeft()))
+		} else {
+			it.setResult(m, it.zeroConst)
+		}
 		return nil
 	case MirBALANCE:
 		if len(m.oprands) < 1 {
@@ -614,6 +767,36 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		sz := it.evalValue(m.oprands[2])
 		it.returnDataCopy(dest, off, sz)
 		return nil
+	case MirTLOAD:
+		// transient storage load (EIP-1153)
+		if len(m.oprands) < 1 {
+			return fmt.Errorf("TLOAD missing key")
+		}
+		key := it.evalValue(m.oprands[0]).Bytes32()
+		var k [32]byte
+		copy(k[:], key[:])
+		if it.transientStorage == nil {
+			it.transientStorage = make(map[[32]byte][32]byte)
+		}
+		val := it.transientStorage[k]
+		it.setResult(m, it.tmpA.Clear().SetBytes(val[:]))
+		return nil
+	case MirTSTORE:
+		if len(m.oprands) < 2 {
+			return fmt.Errorf("TSTORE missing operands")
+		}
+		key := it.evalValue(m.oprands[0]).Bytes32()
+		val := it.evalValue(m.oprands[1])
+		var k [32]byte
+		var v [32]byte
+		copy(k[:], key[:])
+		bytes := val.Bytes()
+		copy(v[32-len(bytes):], bytes)
+		if it.transientStorage == nil {
+			it.transientStorage = make(map[[32]byte][32]byte)
+		}
+		it.transientStorage[k] = v
+		return nil
 
 	// Hashing (placeholder: full keccak over memory slice)
 	case MirKECCAK256:
@@ -625,6 +808,31 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		b := it.readMem(off, sz)
 		h := crypto.Keccak256(b)
 		it.setResult(m, it.tmpA.Clear().SetBytes(h))
+		return nil
+	case MirLOG0, MirLOG1, MirLOG2, MirLOG3, MirLOG4:
+		// logs: dataOffset, dataSize, and 0..4 topics
+		if it.env == nil || it.env.LogFunc == nil {
+			return nil
+		}
+		numTopics := int(m.op - MirLOG0)
+		// MIR builder pushed result placeholder; operands are implicit via stack in EVM.
+		// Here, read memory and topics from oprands if present else no-op.
+		// Fallback: if no explicit operands encoded, skip.
+		if len(m.oprands) < 2 {
+			return nil
+		}
+		dataOff := it.evalValue(m.oprands[0])
+		dataSz := it.evalValue(m.oprands[1])
+		data := it.readMem(dataOff, dataSz)
+		// collect topics (each is 32 bytes in value form)
+		topics := make([][32]byte, 0, numTopics)
+		for i := 0; i < numTopics && 2+i < len(m.oprands); i++ {
+			v := it.evalValue(m.oprands[2+i]).Bytes32()
+			var t [32]byte
+			copy(t[:], v[:])
+			topics = append(topics, t)
+		}
+		it.env.LogFunc(it.env.Self, topics, data)
 		return nil
 
 	// System returns
@@ -706,6 +914,22 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		it.returnDataCopy(outOff, uint256.NewInt(0), outSz)
 		it.setResult(m, it.tmpA.Clear().SetOne())
 		return nil
+	case MirCREATE:
+		// operands: value, offset, size
+		if len(m.oprands) < 3 {
+			return fmt.Errorf("CREATE missing operands")
+		}
+		// For now, stub: return zero address on failure, success=1 not returned for CREATE (returns address)
+		for i := range it.scratch32 {
+			it.scratch32[i] = 0
+		}
+		it.setResult(m, it.tmpA.Clear().SetBytes(it.scratch32[:]))
+		return nil
+	case MirSELFDESTRUCT:
+		// Stub: just stop
+		return errSTOP
+	case MirINVALID:
+		return fmt.Errorf("invalid opcode")
 
 	// Control flow (handled at CFG/adapter level). Treat as no-ops here.
 	case MirJUMP:
@@ -767,12 +991,34 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		if !it.env.IsConstantinople {
 			return fmt.Errorf("invalid opcode: EXTCODEHASH")
 		}
-		return fmt.Errorf("MIR op not implemented: EXTCODEHASH")
+		if len(m.oprands) < 1 {
+			return fmt.Errorf("EXTCODEHASH missing operand")
+		}
+		addrVal := it.evalValue(m.oprands[0]).Bytes32()
+		var a20 [20]byte
+		copy(a20[:], addrVal[12:])
+		if it.env != nil && it.env.ExtCodeHash != nil {
+			h := it.env.ExtCodeHash(a20)
+			it.setResult(m, it.tmpA.Clear().SetBytes(h[:]))
+		} else {
+			for i := range it.scratch32 {
+				it.scratch32[i] = 0
+			}
+			it.setResult(m, it.tmpA.Clear().SetBytes(it.scratch32[:]))
+		}
+		return nil
 	case MirCREATE2:
 		if !it.env.IsConstantinople {
 			return fmt.Errorf("invalid opcode: CREATE2")
 		}
-		return fmt.Errorf("MIR op not implemented: CREATE2")
+		if len(m.oprands) < 4 {
+			return fmt.Errorf("CREATE2 missing operands")
+		}
+		for i := range it.scratch32 {
+			it.scratch32[i] = 0
+		}
+		it.setResult(m, it.tmpA.Clear().SetBytes(it.scratch32[:]))
+		return nil
 
 	// Stack ops: DUPn and SWAPn
 	case MirDUP1, MirDUP2, MirDUP3, MirDUP4, MirDUP5, MirDUP6, MirDUP7, MirDUP8,
@@ -1192,6 +1438,27 @@ func (it *MIRInterpreter) execArithmetic(m *MIR) error {
 	case MirEXP:
 		// EVM EXP: base is top (a), exponent is next (b) => a^b
 		out = it.tmpA.Clear().Exp(a, b)
+	case MirSIGNEXT:
+		// Sign-extend byte at index a in value b
+		idx := a.Uint64()
+		if idx >= 32 {
+			out = it.tmpA.Clear().Set(b)
+			break
+		}
+		// Compute shift to align target byte to MSB of 32-byte word
+		shift := (31 - idx) * 8
+		// Mask for bits up through the target byte
+		lowerMask := new(uint256.Int).Sub(new(uint256.Int).Lsh(uint256.NewInt(1), uint(shift+8)), uint256.NewInt(1))
+		// Extract the target byte
+		byteVal := new(uint256.Int).And(new(uint256.Int).Rsh(new(uint256.Int).Set(b), uint(shift)), uint256.NewInt(0xff))
+		if byteVal.Uint64()&0x80 != 0 {
+			// Negative: set bits above target byte to 1
+			upperMask := new(uint256.Int).Not(lowerMask)
+			out = it.tmpA.Clear().Or(new(uint256.Int).And(b, lowerMask), upperMask)
+		} else {
+			// Positive: clear bits above target byte
+			out = it.tmpA.Clear().And(b, lowerMask)
+		}
 	case MirLT:
 		// test a < b (right < left)
 		if a.Lt(b) {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
+	coretypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 )
@@ -148,7 +149,94 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 		env.CallValue = uint256.NewInt(0)
 	}
 
+	// Provide code for CODE* ops
+	env.Code = contract.Code
+
+	// External code accessors
+	env.ExtCodeSize = func(addr [20]byte) uint64 {
+		a := common.BytesToAddress(addr[:])
+		// Best-effort: return bytecode length from state
+		code := adapter.evm.StateDB.GetCode(a)
+		if code == nil {
+			return 0
+		}
+		return uint64(len(code))
+	}
+	env.ExtCodeCopy = func(addr [20]byte, codeOffset uint64, dest []byte) {
+		a := common.BytesToAddress(addr[:])
+		code := adapter.evm.StateDB.GetCode(a)
+		if code == nil {
+			for i := range dest {
+				dest[i] = 0
+			}
+			return
+		}
+		for i := uint64(0); i < uint64(len(dest)); i++ {
+			idx := codeOffset + i
+			if idx < uint64(len(code)) {
+				dest[i] = code[idx]
+			} else {
+				dest[i] = 0
+			}
+		}
+	}
+
+	// Log function to route logs back into EVM
+	env.LogFunc = func(addr [20]byte, topics [][32]byte, data []byte) {
+		a := common.BytesToAddress(addr[:])
+		// Convert topics to common.Hash slice
+		hashes := make([]common.Hash, len(topics))
+		for i := range topics {
+			hashes[i] = common.BytesToHash(topics[i][:])
+		}
+
+		// EXTCODEHASH via StateDB
+		env.ExtCodeHash = func(addr [20]byte) [32]byte {
+			a := common.BytesToAddress(addr[:])
+			h := adapter.evm.StateDB.GetCodeHash(a)
+			var out [32]byte
+			copy(out[:], h[:])
+			return out
+		}
+
+		// GAS left is not directly exposed here; leave nil to signal unavailability
+
+		// Blob fields (EIP-4844): base fee and blob hashes
+		if adapter.evm.Context.BlobBaseFee != nil {
+			env.BlobBaseFee = adapter.evm.Context.BlobBaseFee.Uint64()
+		}
+		env.BlobHashFunc = func(index uint64) [32]byte {
+			if index < uint64(len(adapter.evm.TxContext.BlobHashes)) {
+				h := adapter.evm.TxContext.BlobHashes[index]
+				var out [32]byte
+				copy(out[:], h[:])
+				return out
+			}
+			return [32]byte{}
+		}
+		adapter.evm.StateDB.AddLog(&coretypes.Log{
+			Address:     a,
+			Topics:      hashes,
+			Data:        append([]byte(nil), data...),
+			BlockNumber: adapter.evm.Context.BlockNumber.Uint64(),
+		})
+	}
+
 	// Do not override any tracer set by tests; leave as-is.
+
+	// Block info
+	env.GasLimit = adapter.evm.Context.GasLimit
+	if adapter.evm.Context.Difficulty != nil {
+		env.Difficulty = adapter.evm.Context.Difficulty.Uint64()
+	}
+	copy(env.Coinbase[:], adapter.evm.Context.Coinbase[:])
+	env.BlockHashFunc = func(num uint64) [32]byte {
+		// Use Context.GetHash if available; else return zero
+		h := adapter.evm.Context.GetHash(num)
+		var out [32]byte
+		copy(out[:], h[:])
+		return out
+	}
 
 	// Set fork flags from chain rules
 	rules := adapter.evm.chainRules
