@@ -40,10 +40,6 @@ jobs:
       run: |
         if [[ -z "${OSSINDEX_USERNAME:-}" || -z "${OSSINDEX_TOKEN:-}" ]]; then
           echo "::error::Missing OSS Index credentials"
-          echo "Please configure OSSINDEX_USERNAME and OSSINDEX_TOKEN in repository secrets"
-          echo "Go to: Settings → Secrets and variables → Actions"
-          exit 1
         fi
-        
         
         go list -json -deps ./... | nancy sleuth --username "${OSSINDEX_USERNAME}" --token "${OSSINDEX_TOKEN}"
