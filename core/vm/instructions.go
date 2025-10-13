@@ -37,6 +37,7 @@ func opAdd(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte
 
 func opSub(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
 	x, y := scope.Stack.pop(), scope.Stack.peek()
+	log.Warn("EVM SUB", "x", x, "- y", y)
 	y.Sub(&x, y)
 	return nil, nil
 }
@@ -113,6 +114,7 @@ func opGt(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte,
 
 func opSlt(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
 	x, y := scope.Stack.pop(), scope.Stack.peek()
+	log.Warn("EVM SLT", "x", x, "< y", y)
 	if x.Slt(y) {
 		y.SetOne()
 	} else {
@@ -297,6 +299,7 @@ func opCallDataLoad(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext
 }
 
 func opCallDataSize(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
+	log.Warn("EVM CallDataSize", "input", scope.Contract.Input, "size", len(scope.Contract.Input))
 	scope.Stack.push(new(uint256.Int).SetUint64(uint64(len(scope.Contract.Input))))
 	return nil, nil
 }

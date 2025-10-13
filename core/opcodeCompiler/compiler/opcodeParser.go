@@ -320,6 +320,9 @@ func GenerateMIRCFG(hash common.Hash, code []byte) (*CFG, error) {
 			currentEntryH = len(es)
 		}
 		if !curBB.built || curBB.lastEntryHeight != currentEntryH {
+			// Clear any previously generated MIR for this block to avoid duplications when
+			// the entry stack height has changed and we need to rebuild.
+			curBB.ResetForRebuild(true)
 			err := cfg.buildBasicBlock(curBB, &valueStack, memoryAccessor, stateAccessor, &unprcessedBBs)
 			if err != nil {
 				log.Error(err.Error())
@@ -454,9 +457,9 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 				maxH = l
 			}
 		}
-		// Build PHIs from top to bottom so stack order is preserved
+		// Build PHIs from bottom to top so the last pushed corresponds to top-of-stack
 		tmp := ValueStack{}
-		for i := 0; i < maxH; i++ {
+		for i := maxH - 1; i >= 0; i-- {
 			// Collect ith from top across parents if available
 			var ops []*Value
 			for _, p := range curBB.Parents() {
@@ -490,7 +493,7 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 				}
 			}
 		}
-		// tmp now has maxH values pushed in top-down creation order; assign as entry
+		// tmp now has values bottom-to-top; assign as entry
 		curBB.SetEntryStack(tmp.clone())
 		valueStack.resetTo(curBB.EntryStack())
 		depth = len(curBB.EntryStack())

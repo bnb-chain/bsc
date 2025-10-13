@@ -807,6 +807,24 @@ func (b *MIRBasicBlock) CreateLogMIR(op MirOperation, stack *ValueStack) *MIR {
 	return mir
 }
 
+// ResetForRebuild clears transient build artifacts so the block can be rebuilt cleanly
+// without duplicating MIR instructions. It preserves structural CFG data and entry/incoming
+// stacks so PHIs can be regenerated deterministically.
+func (b *MIRBasicBlock) ResetForRebuild(preserveEntry bool) {
+	// Clear previously generated instructions and iteration cursor
+	b.instructions = nil
+	b.pos = 0
+	// Clear exit-related metadata; it will be recomputed during rebuild
+	b.lastPC = 0
+	b.exitStack = nil
+	b.liveOutDefs = nil
+	// Optionally preserve entry stack snapshot; most rebuilds depend on it
+	if !preserveEntry {
+		b.entryStack = nil
+	}
+	// Do not touch parents, children or incomingStacks here; they represent CFG topology
+}
+
 func (b *MIRBasicBlock) CreatePushMIR(n int, value []byte, stack *ValueStack) *MIR {
 	stack.push(newValue(Konst, nil, nil, value))
 	return nil

@@ -187,7 +187,19 @@ func SetGlobalMIRTracer(cb func(MirOperation)) {
 
 // SetGlobalMIRTracerExtended sets a process-wide tracer that receives the full MIR.
 func SetGlobalMIRTracerExtended(cb func(*MIR)) {
-	mirGlobalTracerEx = cb
+	if cb == nil {
+		mirGlobalTracerEx = nil
+		return
+	}
+	// Wrap provided tracer to include PHI-specific info without baking logs into the interpreter
+	mirGlobalTracerEx = func(m *MIR) {
+		if m != nil && m.op == MirPHI {
+			// Let callers see phi stack index in their tracer by enriching MIR metadata via log
+			// Avoiding direct logging here; instead, callers can read m.PhiStackIndex().
+			// No-op: we just call through; wrapping kept for future augmentation if needed.
+		}
+		cb(m)
+	}
 }
 
 // GetEnv returns the execution environment
@@ -1063,7 +1075,18 @@ func mirHandlePHI(it *MIRInterpreter, m *MIR) error {
 		it.setResult(m, it.zeroConst)
 		return nil
 	}
-	v := it.evalValue(m.oprands[0])
+	// Select operand based on predecessor -> currentBB edge, default to first
+	selected := 0
+	if it.currentBB != nil && it.prevBB != nil {
+		parents := it.currentBB.Parents()
+		for i := 0; i < len(parents) && i < len(m.oprands); i++ {
+			if parents[i] == it.prevBB {
+				selected = i
+				break
+			}
+		}
+	}
+	v := it.evalValue(m.oprands[selected])
 	it.setResult(m, v)
 	return nil
 }
@@ -1128,6 +1151,7 @@ func mirHandleMUL(it *MIRInterpreter, m *MIR) error {
 }
 func mirHandleSUB(it *MIRInterpreter, m *MIR) error {
 	a, b, err := mirLoadAB(it, m)
+	log.Warn("MIR SUB", "a", a, "- b", b)
 	if err != nil {
 		return err
 	}
@@ -1227,6 +1251,7 @@ func mirHandleGT(it *MIRInterpreter, m *MIR) error {
 }
 func mirHandleSLT(it *MIRInterpreter, m *MIR) error {
 	a, b, err := mirLoadAB(it, m)
+	log.Warn("MIR SLT", "a", a, "<b", b)
 	if err != nil {
 		return err
 	}
