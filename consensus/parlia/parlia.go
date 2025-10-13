@@ -86,7 +86,7 @@ const (
 	// `finalityRewardInterval` should be smaller than `inMemorySnapshots`, otherwise, it will result in excessive computation.
 	finalityRewardInterval = 200
 
-	kAncestorGenerationDepth = 2
+	kAncestorGenerationDepth = 3
 )
 
 var (
