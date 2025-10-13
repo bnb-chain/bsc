@@ -56,7 +56,7 @@ func HashFiles(files []string) (map[string][32]byte, error) {
 func HashFolder(folder string, exlude []string) (map[string][32]byte, error) {
 	res := make(map[string][32]byte)
 	err := filepath.WalkDir(folder, func(path string, d os.DirEntry, _ error) error {
-		// Skip anything that's exluded or not a regular file
+		// Skip anything that's excluded or not a regular file
 		for _, skip := range exlude {
 			if strings.HasPrefix(path, filepath.FromSlash(skip)) {
 				return filepath.SkipDir
