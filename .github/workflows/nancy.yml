@@ -1,8 +1,9 @@
 name: Go Nancy
 
 on:
-    # Scan changed files in PRs (diff-aware scanning):
-    pull_request: {}
+    # Scan changed files in PRs from same repository only:
+    pull_request:
+      types: [opened, synchronize, reopened]
     # Scan on-demand through GitHub Actions interface:
     workflow_dispatch: {}
     # Scan mainline branches and report all findings:
@@ -11,6 +12,7 @@ on:
 
 jobs:
   build:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     strategy:
         matrix:
           go-version: [1.24.x]
