@@ -207,14 +207,16 @@ func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.C
 	}
 
 	// Headers with bad attestation are accepted before Plato upgrade,
-	// but Attestation of snapshot is only updated when the target block is direct parent of the header
-	targetNumber := attestation.Data.TargetNumber
-	targetHash := attestation.Data.TargetHash
-	if targetHash != header.ParentHash || targetNumber+1 != header.Number.Uint64() {
-		log.Warn("updateAttestation failed", "error", fmt.Errorf("invalid attestation, target mismatch, expected block: %d, hash: %s; real block: %d, hash: %s",
-			header.Number.Uint64()-1, header.ParentHash, targetNumber, targetHash))
-		updateAttestationErrorCounter.Inc(1)
-		return
+	// but Attestation of snapshot is only updated when the target block is direct parent of the header before Fermi upgrade
+	if !chainConfig.IsFermi(header.Number, header.Time) {
+		targetNumber := attestation.Data.TargetNumber
+		targetHash := attestation.Data.TargetHash
+		if targetHash != header.ParentHash || targetNumber+1 != header.Number.Uint64() {
+			log.Warn("updateAttestation failed", "error", fmt.Errorf("invalid attestation, target mismatch, expected block: %d, hash: %s; real block: %d, hash: %s",
+				header.Number.Uint64()-1, header.ParentHash, targetNumber, targetHash))
+			updateAttestationErrorCounter.Inc(1)
+			return
+		}
 	}
 
 	// Update attestation

@@ -1103,7 +1103,7 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 	// Validate vote data consistency
 	for _, vote := range votes {
 		if vote.Data.Hash() != attestation.Data.Hash() {
-			return fmt.Errorf("vote check error, expected: %v, real: %v", attestation.Data, vote)
+			return fmt.Errorf("vote check error, expected: %v, real: %v", attestation.Data, vote.Data)
 		}
 	}
 	// Prepare aggregated vote signature
@@ -1754,7 +1754,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 		if err != nil {
 			/* If the vote attestation can't be assembled successfully, the blockchain won't get
 			   fast finalized, but it can be tolerated, so just report this error here. */
-			log.Error("Assemble vote attestation failed when sealing", "err", err)
+			log.Debug("Assemble vote attestation failed when sealing", "err", err)
 		}
 
 		// Sign all the things!
