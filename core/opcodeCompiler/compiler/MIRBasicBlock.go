@@ -483,6 +483,7 @@ func (b *MIRBasicBlock) IncomingStacks() map[*MIRBasicBlock][]Value {
 
 // SetExitStack records the block's exit stack snapshot.
 func (b *MIRBasicBlock) SetExitStack(values []Value) {
+	log.Warn("MIR SetExitStack", "block", b.blockNum, "size", len(values))
 	if values == nil {
 		b.exitStack = nil
 		b.liveOutDefs = nil
@@ -499,11 +500,13 @@ func (b *MIRBasicBlock) SetExitStack(values []Value) {
 	defs := make([]*MIR, 0, len(values))
 	for i := range values {
 		v := values[i]
+		log.Warn("MIR SetExitStack", "block", b.blockNum, "value", v, "kind", v.kind)
 		if v.kind == Variable && v.def != nil {
 			defs = append(defs, v.def)
 		}
 	}
 	b.liveOutDefs = defs
+	log.Warn("MIR SetExitStack", "block", b.blockNum, "size", len(defs))
 }
 
 // ExitStack returns the block's exit stack snapshot.

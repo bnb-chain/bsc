@@ -467,7 +467,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 				if st != nil && len(st) > i {
 					// stack top is end; index from top
 					v := st[len(st)-1-i]
-					vv := v // copy
+					vv := v          // copy
+					vv.liveIn = true // mark incoming as live-in so interpreter prefers globalResults
 					ops = append(ops, &vv)
 				} else {
 					// missing value -> unknown placeholder
@@ -840,6 +841,7 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			}
 		case JUMP:
 			mir = curBB.CreateJumpMIR(MirJUMP, valueStack, nil)
+			log.Warn("MIR JUMP", "pc", i, "valueStack", valueStack, "stackSize", valueStack.size())
 			if depth >= 1 {
 				depth--
 			} else {
@@ -1013,6 +1015,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 							}
 						}
 						return nil
+					} else {
+						log.Error("MIR JUMP invalid", "mir", mir)
 					}
 				}
 			}
