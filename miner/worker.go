@@ -1323,6 +1323,25 @@ LOOP:
 			log.Debug("Not enough time for commitWork")
 			break
 		} else {
+			if !w.inTurn() && len(workList) == 1 {
+				if parliaEngine, ok := w.engine.(*parlia.Parlia); ok {
+					// When mining out of turn, continuous access to the txpool and trie database
+					// may cause lock contention, slowing down transaction insertion and block importing.
+					// Applying a backoff delay mitigates this issue and significantly reduces CPU usage.
+					if blockInterval, err := parliaEngine.BlockInterval(w.chain, w.chain.CurrentBlock()); err == nil {
+						beforeSealing := time.Until(time.UnixMilli(int64(work.header.MilliTimestamp())))
+						if wait := beforeSealing - time.Duration(blockInterval)*time.Millisecond; wait > 0 {
+							log.Debug("Applying backoff before mining", "block", work.header.Number, "waiting(ms)", wait.Milliseconds())
+							select {
+							case <-time.After(wait):
+							case <-interruptCh:
+								log.Debug("CommitWork interrupted: new block imported or resubmission triggered", "block", work.header.Number)
+								return
+							}
+						}
+					}
+				}
+			}
 			log.Debug("commitWork stopTimer", "block", work.header.Number,
 				"header time", time.UnixMilli(int64(work.header.MilliTimestamp())),
 				"commit delay", *delay, "DelayLeftOver", w.config.DelayLeftOver)

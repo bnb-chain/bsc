@@ -1677,12 +1677,20 @@ func (p *Parlia) Authorize(val common.Address, signFn SignerFn, signTxFn SignerT
 
 // Argument leftOver is the time reserved for block finalize(calculate root, distribute income...)
 func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header, leftOver *time.Duration) *time.Duration {
-	number := header.Number.Uint64()
-	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
+	snap, err := p.snapshot(chain, header.Number.Uint64()-1, header.ParentHash, nil)
 	if err != nil {
 		return nil
 	}
+
 	delay := p.delayForRamanujanFork(snap, header)
+	// The blocking time should be no more than half of period when snap.TurnLength == 1
+	timeForMining := time.Duration(snap.BlockInterval) * time.Millisecond / 2
+	if !snap.lastBlockInOneTurn(header.Number.Uint64()) {
+		timeForMining = time.Duration(snap.BlockInterval) * time.Millisecond
+	}
+	if delay > timeForMining {
+		delay = timeForMining
+	}
 
 	if *leftOver >= time.Duration(snap.BlockInterval)*time.Millisecond {
 		// ignore invalid leftOver
@@ -1694,14 +1702,6 @@ func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header, leftOv
 		delay = delay - *leftOver
 	}
 
-	// The blocking time should be no more than half of period when snap.TurnLength == 1
-	timeForMining := time.Duration(snap.BlockInterval) * time.Millisecond / 2
-	if !snap.lastBlockInOneTurn(header.Number.Uint64()) {
-		timeForMining = time.Duration(snap.BlockInterval) * time.Millisecond
-	}
-	if delay > timeForMining {
-		delay = timeForMining
-	}
 	return &delay
 }
 
