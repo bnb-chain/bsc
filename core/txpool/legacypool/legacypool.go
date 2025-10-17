@@ -573,8 +573,9 @@ func (pool *LegacyPool) Pending(filter txpool.PendingFilter) map[common.Address]
 	if filter.OnlyBlobTxs {
 		return nil
 	}
-	pool.mu.RLock()
-	defer pool.mu.RUnlock()
+	// NOTE: Must use write-lock as SortedMap may have concurrent access
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
 
 	// Convert the new uint256.Int types to the old big.Int ones used by the legacy pool
 	var (
