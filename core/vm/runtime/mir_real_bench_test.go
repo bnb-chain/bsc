@@ -615,13 +615,13 @@ func TestUSDT_Transfer_EVMvsMIR(t *testing.T) {
 					imm := code[start:end]
 					before := len(scope.StackData())
 					after := vm.NextStackSize(op, before)
-					t.Logf("EVM-tracer opcode pc=%d op=%s imm=0x%x stack_after=%d", pc, op, imm, after)
+					t.Logf("EVM-tracer opcode pc=%d op=%s imm=0x%x stack_after=%d scope.StackData=%v", pc, op, imm, after, scope.StackData())
 					return
 				}
 			}
 			before := len(scope.StackData())
 			after := vm.NextStackSize(op, before)
-			t.Logf("EVM-tracer opcode pc=%d op=%s stack_after=%d", pc, op, after)
+			t.Logf("EVM-tracer opcode pc=%d op=%s stack_after=%d scope.StackData=%v", pc, op, after, scope.StackData())
 		},
 	}
 	mirTracer := func(op compiler.MirOperation) {

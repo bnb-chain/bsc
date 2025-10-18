@@ -810,6 +810,69 @@ func (b *MIRBasicBlock) CreateLogMIR(op MirOperation, stack *ValueStack) *MIR {
 	return mir
 }
 
+// stacksEqual reports whether two Value slices are equal element-wise using Value semantics.
+// Constants are compared by numeric value, variables by stable def identity (op, evmPC, phiSlot).
+func stacksEqual(a, b []Value) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		va := &a[i]
+		vb := &b[i]
+		if !equalValueForFlow(va, vb) {
+			return false
+		}
+	}
+	return true
+}
+
+// equalValueForFlow compares two Values with stable criteria across rebuilds.
+// - Konst: compare numeric equality (uint256)
+// - Variable: if both have defs, compare def.op, def.evmPC and def.phiStackIndex; else require both nil
+// - Arguments/Unknown: equal if kinds match
+func equalValueForFlow(a, b *Value) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	if a.kind != b.kind {
+		return false
+	}
+	switch a.kind {
+	case Konst:
+		// Compare numeric value
+		var av, bv *uint256.Int
+		if a.u != nil {
+			av = a.u
+		} else {
+			av = uint256.NewInt(0).SetBytes(a.payload)
+		}
+		if b.u != nil {
+			bv = b.u
+		} else {
+			bv = uint256.NewInt(0).SetBytes(b.payload)
+		}
+		return av != nil && bv != nil && av.Eq(bv)
+	case Variable:
+		if a.def == nil || b.def == nil {
+			return a.def == nil && b.def == nil
+		}
+		if a.def.op != b.def.op {
+			return false
+		}
+		if a.def.evmPC != b.def.evmPC {
+			return false
+		}
+		if a.def.phiStackIndex != b.def.phiStackIndex {
+			return false
+		}
+		return true
+	case Arguments, Unknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // ResetForRebuild clears transient build artifacts so the block can be rebuilt cleanly
 // without duplicating MIR instructions. It preserves structural CFG data and entry/incoming
 // stacks so PHIs can be regenerated deterministically.

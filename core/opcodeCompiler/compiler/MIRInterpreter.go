@@ -264,8 +264,9 @@ func (it *MIRInterpreter) publishLiveOut(block *MIRBasicBlock) {
 	if it == nil || block == nil || it.globalResults == nil {
 		return
 	}
-	log.Warn("MIR publishLiveOut", "block", block.blockNum, "size", len(block.instructions))
+
 	defs := block.LiveOutDefs()
+	log.Warn("MIR publishLiveOut", "block", block.blockNum, "size", len(block.instructions), "defs", defs, "it.results", it.results, "block.exitStack", block.ExitStack())
 	if len(defs) == 0 {
 		log.Warn("MIR publishLiveOut: no live outs", "block", block.blockNum)
 		return
@@ -276,6 +277,20 @@ func (it *MIRInterpreter) publishLiveOut(block *MIRBasicBlock) {
 			inBlock[inst] = true
 		}
 	}
+	// Backfill ancestor defs referenced at exit if missing in globals
+	exitVals := block.ExitStack()
+	for i := range exitVals {
+		v := &exitVals[i]
+		if v != nil && v.kind == Variable && v.def != nil && !inBlock[v.def] {
+			if _, ok := it.globalResults[v.def]; !ok {
+				val := it.evalValue(v)
+				if val != nil {
+					it.globalResults[v.def] = new(uint256.Int).Set(val)
+					log.Warn("MIR publishLiveOut: backfilled ancestor def", "evm_pc", v.def.evmPC, "mir_idx", v.def.idx, "value", val)
+				}
+			}
+		}
+	}
 	for _, def := range defs {
 		if def == nil || !inBlock[def] {
 			continue
@@ -283,12 +298,10 @@ func (it *MIRInterpreter) publishLiveOut(block *MIRBasicBlock) {
 		if def.idx >= 0 && def.idx < len(it.results) {
 			if r := it.results[def.idx]; r != nil {
 				it.globalResults[def] = new(uint256.Int).Set(r)
-				if def.evmPC != 0 {
-					log.Warn("MIR publishLiveOut: def published", "evm_pc", def.evmPC,
-						"mir_idx", def.idx, "value", r, "def", def)
-					if def.evmPC == 725 {
-						log.Warn("=== MIR publishLiveOut", "it.globalResults", it.globalResults)
-					}
+				log.Warn("MIR publishLiveOut: def published", "evm_pc", def.evmPC,
+					"mir_idx", def.idx, "value", r, "def", def)
+				if def.evmPC == 725 {
+					log.Warn("=== MIR publishLiveOut", "it.globalResults", it.globalResults)
 				}
 			}
 		}
@@ -1097,7 +1110,7 @@ func mirHandlePHI(it *MIRInterpreter, m *MIR) error {
 	// If we can, take the exact value from the immediate predecessor's exit stack
 	if it.prevBB != nil {
 		exit := it.prevBB.ExitStack()
-		if m.evmPC == 5802 {
+		if m.evmPC == 5351 {
 			log.Warn("<<<<<<<MIR PHI", "exitStack", exit, "phiStackIndex", m.phiStackIndex)
 			log.Warn("<<<<<<<MIR PHI", "exitStack size", len(exit))
 			log.Warn("<<<<<<<MIR PHI", "it.results", it.results)
@@ -1125,7 +1138,7 @@ func mirHandlePHI(it *MIRInterpreter, m *MIR) error {
 				}
 				val := it.evalValue(&src)
 				it.setResult(m, val)
-				if m.evmPC == 5802 {
+				if m.evmPC == 5351 {
 					if src.def != nil {
 						log.Warn(">>>>>>>MIR PHI", "phiStackIndex", m.phiStackIndex, "src pc", src.def.evmPC, "val", val)
 					} else {
@@ -1629,7 +1642,7 @@ func (it *MIRInterpreter) evalValue(v *Value) *uint256.Int {
 	case Variable, Arguments:
 		// If this value is marked as live-in from a parent, prefer global cross-BB map first
 		if v.def != nil {
-			if v.def.evmPC == 725 {
+			if v.def.evmPC == 5378 {
 				log.Warn("<<<<<<<MIR evalValue", "v", v, "v.def", v.def)
 			}
 			if v.liveIn {
@@ -1642,7 +1655,7 @@ func (it *MIRInterpreter) evalValue(v *Value) *uint256.Int {
 			// Then try local per-block result
 			if v.def.idx >= 0 && v.def.idx < len(it.results) {
 				if r := it.results[v.def.idx]; r != nil {
-					if v.def.evmPC == 725 {
+					if v.def.evmPC == 5378 {
 						log.Warn("<<<<<<<MIR evalValue", "it.results", it.results)
 					}
 					return r
