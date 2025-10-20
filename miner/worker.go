@@ -82,6 +82,9 @@ var (
 	writeBlockTimer    = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
 
+	pendingPlainTxsTimer = metrics.NewRegisteredTimer("worker/pendingPlainTxs", nil)
+	pendingBlobTxsTimer  = metrics.NewRegisteredTimer("worker/pendingBlobTxs", nil)
+
 	errBlockInterruptedByNewHead   = errors.New("new head arrived while building block")
 	errBlockInterruptedByRecommit  = errors.New("recommit interrupt while building block")
 	errBlockInterruptedByTimeout   = errors.New("timeout while building block")
@@ -1132,11 +1135,16 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 	if env.header.ExcessBlobGas != nil {
 		filter.BlobFee = uint256.MustFromBig(eip4844.CalcBlobFee(w.chainConfig, env.header))
 	}
+
 	filter.OnlyPlainTxs, filter.OnlyBlobTxs = true, false
+	plainTxsStart := time.Now()
 	pendingPlainTxs := w.eth.TxPool().Pending(filter)
+	pendingPlainTxsTimer.UpdateSince(plainTxsStart)
 
 	filter.OnlyPlainTxs, filter.OnlyBlobTxs = false, true
+	blobTxsStart := time.Now()
 	pendingBlobTxs := w.eth.TxPool().Pending(filter)
+	pendingBlobTxsTimer.UpdateSince(blobTxsStart)
 
 	if bidTxs != nil {
 		filterBidTxs := func(commonTxs map[common.Address][]*txpool.LazyTransaction) {
