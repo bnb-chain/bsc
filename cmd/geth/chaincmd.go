@@ -548,7 +548,7 @@ func initNetwork(ctx *cli.Context) error {
 	// add more feature configs
 	if enableSentryNode {
 		for i := 0; i < len(sentryConfigs); i++ {
-			sentryConfigs[i].Node.P2P.ProxyedValidatorAddresses = accounts[i]
+			sentryConfigs[i].Node.P2P.ProxyedValidatorAddresses = accounts
 		}
 	}
 	if ctx.Bool(utils.InitEVNValidatorWhitelist.Name) {
@@ -563,7 +563,8 @@ func initNetwork(ctx *cli.Context) error {
 	}
 	if enableSentryNode && ctx.Bool(utils.InitEVNSentryWhitelist.Name) {
 		for i := 0; i < len(sentryConfigs); i++ {
-			sentryConfigs[i].Node.P2P.EVNNodeIdsWhitelist = sentryNodeIDs
+			sentryConfigs[i].Node.P2P.EVNNodeIdsWhitelist = append([]enode.ID{}, sentryNodeIDs...)
+			sentryConfigs[i].Node.P2P.EVNNodeIdsWhitelist[i] = nodeIDs[i]
 		}
 	}
 	if enableSentryNode && ctx.Bool(utils.InitEVNSentryRegister.Name) {
@@ -655,13 +656,13 @@ func createAndSaveFullNodeConfigs(ctx *cli.Context, inGenesisFile *os.File, base
 	return configs, enodes, nil
 }
 
-func createConfigs(base gethConfig, initDir string, prefix string, ips []string, ports []int, extraEnodes []*enode.Node, connectOneExtraEnodes bool, staticConnect bool) ([]gethConfig, []*enode.Node, [][]common.Address, error) {
+func createConfigs(base gethConfig, initDir string, prefix string, ips []string, ports []int, extraEnodes []*enode.Node, connectOneExtraEnodes bool, staticConnect bool) ([]gethConfig, []*enode.Node, []common.Address, error) {
 	if len(ips) != len(ports) {
 		return nil, nil, nil, errors.New("mismatch of size and length of ports")
 	}
 	size := len(ips)
 	enodes := make([]*enode.Node, size)
-	accounts := make([][]common.Address, size)
+	accounts := make([]common.Address, size)
 	for i := 0; i < size; i++ {
 		nodeConfig := base.Node
 		nodeConfig.DataDir = path.Join(initDir, fmt.Sprintf("%s%d", prefix, i))
@@ -672,7 +673,9 @@ func createConfigs(base gethConfig, initDir string, prefix string, ips []string,
 		if err := setAccountManagerBackends(stack.Config(), stack.AccountManager(), stack.KeyStoreDir()); err != nil {
 			utils.Fatalf("Failed to set account manager backends: %v", err)
 		}
-		accounts[i] = stack.AccountManager().Accounts()
+		if len(stack.AccountManager().Accounts()) > 0 {
+			accounts[i] = stack.AccountManager().Accounts()[0]
+		}
 		pk := stack.Config().NodeKey()
 		enodes[i] = enode.NewV4(&pk.PublicKey, net.ParseIP(ips[i]), ports[i], ports[i])
 	}
