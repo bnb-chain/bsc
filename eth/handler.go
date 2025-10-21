@@ -1014,9 +1014,16 @@ func (h *handler) BroadcastVote(vote *types.VoteEnvelope) {
 	headBlock := h.chain.CurrentBlock()
 	currentTD := h.chain.GetTd(headBlock.Hash(), headBlock.Number.Uint64())
 	for _, peer := range peers {
+		if peer.bscExt == nil {
+			continue
+		}
+		if peer.EVNPeerFlag.Load() {
+			voteMap[peer] = vote
+			continue
+		}
 		_, peerTD := peer.Head()
 		deltaTD := new(big.Int).Abs(new(big.Int).Sub(currentTD, peerTD))
-		if deltaTD.Cmp(big.NewInt(deltaTdThreshold)) < 1 && peer.bscExt != nil {
+		if deltaTD.Cmp(big.NewInt(deltaTdThreshold)) <= 0 {
 			voteMap[peer] = vote
 		}
 	}
