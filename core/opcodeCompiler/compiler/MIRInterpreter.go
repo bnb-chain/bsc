@@ -127,6 +127,8 @@ func init() {
 	mirHandlers[byte(MirSTOP)] = mirHandleSTOP
 	mirHandlers[byte(MirPHI)] = mirHandlePHI
 	mirHandlers[byte(MirRETURN)] = mirHandleRETURN
+	mirHandlers[byte(MirJUMP)] = mirHandleJUMP
+	mirHandlers[byte(MirJUMPI)] = mirHandleJUMPI
 	mirHandlers[byte(MirMLOAD)] = mirHandleMLOAD
 	mirHandlers[byte(MirADD)] = mirHandleADD
 	mirHandlers[byte(MirMUL)] = mirHandleMUL
@@ -996,190 +998,11 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 	case MirINVALID:
 		return fmt.Errorf("invalid opcode")
 
-	// Control flow (handled at CFG/adapter level). Treat as no-ops here.
+		// Control flow (handled at CFG/adapter level). Treat as no-ops here.
 	case MirJUMP:
-		// If env can validate/resolve jumpdest, do it here to mirror EVM behavior
-		if it.env != nil && it.env.CheckJumpdest != nil && it.env.ResolveBB != nil {
-			if len(m.oprands) < 1 {
-				return fmt.Errorf("JUMP missing destination")
-			}
-			// Debug operand and recent stack before evaluation
-			if it.currentBB != nil {
-				log.Warn("MIR JUMP runtime stack", "from_block", it.currentBB.blockNum, "from_evm_pc", m.evmPC, "liveOuts", it.currentBB.LiveOutDefs())
-			}
-			if m.oprands[0] != nil {
-				v := m.oprands[0]
-				if v.def != nil {
-					log.Warn("MIR JUMP operand", "from_block", it.currentBB.blockNum, "from_evm_pc", m.evmPC, "op_kind", v.kind, "liveIn", v.liveIn, "def_evm_pc", v.def.evmPC, "def_idx", v.def.idx)
-				} else {
-					log.Warn("MIR JUMP operand", "from_block", it.currentBB.blockNum, "from_evm_pc", m.evmPC, "op_kind", v.kind, "liveIn", v.liveIn, "def", nil)
-				}
-			}
-			// Special-case: if the destination is a PHI result, resolve only via predecessor-sensitive caches.
-			var dest *uint256.Int
-			if opv := m.oprands[0]; opv != nil && opv.def != nil && opv.def.op == MirPHI {
-				// First try predecessor-sensitive cached PHI result
-				if it.phiResults != nil {
-					if preds, ok := it.phiResults[opv.def]; ok {
-						if it.prevBB != nil {
-							if v := preds[it.prevBB]; v != nil {
-								dest = new(uint256.Int).Set(v)
-							}
-						}
-						if dest == nil {
-							if last := it.phiLastPred[opv.def]; last != nil {
-								if v := preds[last]; v != nil {
-									dest = new(uint256.Int).Set(v)
-								}
-							}
-						}
-					}
-				}
-				// Signature-based cache fallback if pointer identities differ
-				if dest == nil && opv.def.evmPC != 0 {
-					if bypc := it.phiResultsBySig[uint64(opv.def.evmPC)]; bypc != nil {
-						if preds := bypc[opv.def.idx]; preds != nil {
-							if it.prevBB != nil {
-								if v := preds[it.prevBB]; v != nil {
-									dest = new(uint256.Int).Set(v)
-								}
-							}
-							if dest == nil {
-								if lastm := it.phiLastPredBySig[uint64(opv.def.evmPC)]; lastm != nil {
-									if last := lastm[opv.def.idx]; last != nil {
-										if v := preds[last]; v != nil {
-											dest = new(uint256.Int).Set(v)
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-				// If PHI still unresolved, do not guess: request fallback
-				if dest == nil {
-					log.Error("MIR JUMP cannot resolve PHI-derived dest - requesting EVM fallback", "from_evm_pc", m.evmPC)
-					return ErrMIRFallback
-				}
-			}
-			if dest == nil {
-				dest = it.evalValue(m.oprands[0])
-			}
-			log.Warn("MIR JUMP eval dest value", "from_block", it.currentBB.blockNum, "from_evm_pc", m.evmPC, "dest", dest)
-			udest, _ := dest.Uint64WithOverflow()
-			log.Warn("MIR JUMP eval", "from_block", it.currentBB.blockNum, "from_evm_pc", m.evmPC, "dest_pc", udest)
-			if !it.env.CheckJumpdest(udest) {
-				// Strict: no heuristic resolution. Signal fallback to stock interpreter.
-				log.Error("MIR JUMP invalid jumpdest - requesting EVM fallback", "from_evm_pc", m.evmPC, "dest_pc", udest)
-				return ErrMIRFallback
-			}
-			// Cache resolved PHI-based destination to stabilize later uses across blocks
-			if opv := m.oprands[0]; opv != nil && opv.kind == Variable && opv.def != nil {
-				if it.globalResults != nil {
-					it.globalResults[opv.def] = new(uint256.Int).Set(dest)
-				}
-				// Signature cache as well
-				if opv.def.evmPC != 0 {
-					if it.globalResultsBySig[uint64(opv.def.evmPC)] == nil {
-						it.globalResultsBySig[uint64(opv.def.evmPC)] = make(map[int]*uint256.Int)
-					}
-					it.globalResultsBySig[uint64(opv.def.evmPC)][opv.def.idx] = new(uint256.Int).Set(dest)
-				}
-			}
-			// Resolve and schedule transfer
-			it.nextBB = it.env.ResolveBB(udest)
-			if it.nextBB == nil {
-				log.Warn("MIR JUMP unresolvable target", "pc", udest)
-				return fmt.Errorf("unresolvable jump target")
-			}
-			// Before transferring, publish this block's live-out results so successor PHIs can read them
-			log.Warn("MIR publish before JUMP", "from_block", it.currentBB.blockNum, "from_evm_pc", m.evmPC, "to_pc", udest)
-			it.publishLiveOut(it.currentBB)
-			// Preserve predecessor for PHI resolution in the successor
-			it.prevBB = it.currentBB
-			return errJUMP
-		}
-		log.Warn("MIR JUMP skipped - env/hooks not set", "hasEnv", it.env != nil, "hasCheck", it.env != nil && it.env.CheckJumpdest != nil, "hasResolve", it.env != nil && it.env.ResolveBB != nil)
-		return nil
+		return mirHandleJUMP(it, m)
 	case MirJUMPI:
-		// If env can validate/resolve jumpdest, do it here only when condition != 0
-		if it.env != nil && it.env.CheckJumpdest != nil && it.env.ResolveBB != nil {
-			if len(m.oprands) < 2 {
-				return fmt.Errorf("JUMPI missing operands")
-			}
-			// Resolve destination similar to MirJUMP, using only predecessor-sensitive PHI caches
-			var dest *uint256.Int
-			if opv := m.oprands[0]; opv != nil && opv.def != nil && opv.def.op == MirPHI {
-				if it.phiResults != nil {
-					if preds, ok := it.phiResults[opv.def]; ok {
-						if last := it.phiLastPred[opv.def]; last != nil {
-							if v := preds[last]; v != nil {
-								dest = new(uint256.Int).Set(v)
-							}
-						}
-						if dest == nil && it.prevBB != nil {
-							if v := preds[it.prevBB]; v != nil {
-								dest = new(uint256.Int).Set(v)
-							}
-						}
-					}
-				}
-				if dest == nil && opv.def.evmPC != 0 {
-					if bypc := it.phiResultsBySig[uint64(opv.def.evmPC)]; bypc != nil {
-						if preds := bypc[opv.def.idx]; preds != nil {
-							if it.prevBB != nil {
-								if v := preds[it.prevBB]; v != nil {
-									dest = new(uint256.Int).Set(v)
-								}
-							}
-							if dest == nil {
-								if lastm := it.phiLastPredBySig[uint64(opv.def.evmPC)]; lastm != nil {
-									if last := lastm[opv.def.idx]; last != nil {
-										if v := preds[last]; v != nil {
-											dest = new(uint256.Int).Set(v)
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-			if dest == nil {
-				// If operand is PHI and cannot be resolved, do not guess
-				if opv := m.oprands[0]; opv != nil && opv.def != nil && opv.def.op == MirPHI {
-					// Evaluate condition first to avoid unnecessary fallback on untaken branch
-					cond := it.evalValue(m.oprands[1])
-					if !cond.IsZero() {
-						log.Error("MIR JUMPI cannot resolve PHI-derived dest - requesting EVM fallback", "from_evm_pc", m.evmPC)
-						return ErrMIRFallback
-					}
-					// condition is zero, don't jump
-				} else {
-					dest = it.evalValue(m.oprands[0])
-				}
-			}
-			cond := it.evalValue(m.oprands[1])
-			if !cond.IsZero() {
-				udest, _ := dest.Uint64WithOverflow()
-				if !it.env.CheckJumpdest(udest) {
-					// Strict consistency with MirJUMP: request EVM fallback
-					log.Error("MIR JUMPI invalid jumpdest - requesting EVM fallback", "from_evm_pc", m.evmPC, "dest_pc", udest)
-					return ErrMIRFallback
-				}
-				it.nextBB = it.env.ResolveBB(udest)
-				if it.nextBB == nil {
-					return fmt.Errorf("unresolvable jump target")
-				}
-				// Before transferring, publish this block's live-out results so successor PHIs can read them
-				log.Warn("MIR publish before JUMPI", "from_block", it.currentBB.blockNum, "from_evm_pc", m.evmPC, "to_pc", udest)
-				it.publishLiveOut(it.currentBB)
-				// Preserve predecessor for PHI resolution in the successor
-				it.prevBB = it.currentBB
-				return errJUMP
-			}
-		}
-		return nil
+		return mirHandleJUMPI(it, m)
 	case MirJUMPDEST:
 		return nil
 	case MirERRJUMPDEST:
@@ -1261,25 +1084,59 @@ func mirHandleRETURN(it *MIRInterpreter, m *MIR) error {
 	return errRETURN
 }
 
+func mirHandleJUMP(it *MIRInterpreter, m *MIR) error {
+	if it.env == nil || it.env.CheckJumpdest == nil || it.env.ResolveBB == nil {
+		return nil
+	}
+	if len(m.oprands) < 1 {
+		return fmt.Errorf("JUMP missing destination")
+	}
+	dest, ok := it.resolveJumpDestValue(m.oprands[0])
+	if !ok {
+		log.Error("MIR JUMP cannot resolve PHI-derived dest - requesting EVM fallback", "from_evm_pc", m.evmPC)
+		return ErrMIRFallback
+	}
+	udest, _ := dest.Uint64WithOverflow()
+	// Cache resolved PHI-based destination to stabilize later uses across blocks
+	if opv := m.oprands[0]; opv != nil && opv.kind == Variable && opv.def != nil {
+		if it.globalResults != nil {
+			it.globalResults[opv.def] = new(uint256.Int).Set(dest)
+		}
+		if opv.def.evmPC != 0 {
+			if it.globalResultsBySig[uint64(opv.def.evmPC)] == nil {
+				it.globalResultsBySig[uint64(opv.def.evmPC)] = make(map[int]*uint256.Int)
+			}
+			it.globalResultsBySig[uint64(opv.def.evmPC)][opv.def.idx] = new(uint256.Int).Set(dest)
+		}
+	}
+	return it.scheduleJump(udest, m)
+}
+
+func mirHandleJUMPI(it *MIRInterpreter, m *MIR) error {
+	if it.env == nil || it.env.CheckJumpdest == nil || it.env.ResolveBB == nil {
+		return nil
+	}
+	if len(m.oprands) < 2 {
+		return fmt.Errorf("JUMPI missing operands")
+	}
+	cond := it.evalValue(m.oprands[1])
+	if cond.IsZero() {
+		return nil
+	}
+	dest, ok := it.resolveJumpDestValue(m.oprands[0])
+	if !ok {
+		log.Error("MIR JUMPI cannot resolve PHI-derived dest - requesting EVM fallback", "from_evm_pc", m.evmPC)
+		return ErrMIRFallback
+	}
+	udest, _ := dest.Uint64WithOverflow()
+	return it.scheduleJump(udest, m)
+}
+
 // mirHandlePHI sets the result to the first available incoming value.
 func mirHandlePHI(it *MIRInterpreter, m *MIR) error {
 	// If we can, take the exact value from the immediate predecessor's exit stack
 	if it.prevBB != nil {
 		exit := it.prevBB.ExitStack()
-		if m.evmPC == 5351 {
-			log.Warn("<<<<<<<MIR PHI", "exitStack", exit, "phiStackIndex", m.phiStackIndex)
-			log.Warn("<<<<<<<MIR PHI", "exitStack size", len(exit))
-			log.Warn("<<<<<<<MIR PHI", "it.results", it.results)
-			log.Warn("<<<<<<<MIR PHI", "== it.globalResults", it.globalResults)
-			for _, v := range exit {
-				if v.kind != Konst && v.def != nil {
-					log.Warn("=== MIR PHI", "value", v, "def", v.def, "evmPC", v.def.evmPC,
-						"exitStackIndex", v.def.idx)
-				} else {
-					log.Warn("=== MIR PHI", "value", v, "kind", v.kind)
-				}
-			}
-		}
 		if exit != nil && m.phiStackIndex >= 0 {
 			idxFromTop := m.phiStackIndex
 			if idxFromTop < len(exit) {
@@ -1875,9 +1732,6 @@ func (it *MIRInterpreter) evalValue(v *Value) *uint256.Int {
 					}
 				}
 			}
-			if v.def.evmPC == 5378 {
-				log.Warn("<<<<<<<MIR evalValue", "v", v, "v.def", v.def)
-			}
 			if v.liveIn {
 				if it.globalResults != nil {
 					if r, ok := it.globalResults[v.def]; ok && r != nil {
@@ -1888,9 +1742,6 @@ func (it *MIRInterpreter) evalValue(v *Value) *uint256.Int {
 			// Then try local per-block result
 			if v.def.idx >= 0 && v.def.idx < len(it.results) {
 				if r := it.results[v.def.idx]; r != nil {
-					if v.def.evmPC == 5378 {
-						log.Warn("<<<<<<<MIR evalValue", "it.results", it.results)
-					}
 					return r
 				}
 			}
@@ -2104,6 +1955,148 @@ func (it *MIRInterpreter) readReturnData32Into(off *uint256.Int, dst *[32]byte) 
 		return
 	}
 	copy(dst[:], it.returndata[o:end])
+}
+
+// resolveJumpDestValue resolves a potential PHI-derived destination value using
+// predecessor-sensitive caches. It returns (value, true) when resolved. If the
+// operand is not PHI, it falls back to evalValue. If the operand is PHI and no
+// cache matches, it returns (nil, false) to signal unknown.
+func (it *MIRInterpreter) resolveJumpDestValue(op *Value) (*uint256.Int, bool) {
+	if op == nil {
+		return nil, false
+	}
+	// Constant fast path (no allocations)
+	if op.kind == Konst {
+		if op.u != nil {
+			return op.u, true
+		}
+		// Fallback if u is nil: evaluate once
+		return it.evalValue(op), true
+	}
+	if op.def != nil && op.def.op == MirPHI {
+		// Try exact predecessor cache
+		if it.phiResults != nil {
+			if preds, ok := it.phiResults[op.def]; ok {
+				if it.prevBB != nil {
+					if v := preds[it.prevBB]; v != nil {
+						return v, true
+					}
+				}
+				if last := it.phiLastPred[op.def]; last != nil {
+					if v := preds[last]; v != nil {
+						return v, true
+					}
+				}
+			}
+		}
+		// Signature-based fallback
+		if op.def.evmPC != 0 {
+			if bypc := it.phiResultsBySig[uint64(op.def.evmPC)]; bypc != nil {
+				if preds := bypc[op.def.idx]; preds != nil {
+					if it.prevBB != nil {
+						if v := preds[it.prevBB]; v != nil {
+							return v, true
+						}
+					}
+					if lastm := it.phiLastPredBySig[uint64(op.def.evmPC)]; lastm != nil {
+						if last := lastm[op.def.idx]; last != nil {
+							if v := preds[last]; v != nil {
+								return v, true
+							}
+						}
+					}
+				}
+			}
+		}
+		// Unresolved PHI
+		return nil, false
+	}
+	// Not a PHI; just evaluate
+	return it.evalValue(op), true
+}
+
+// resolveJumpDestUint64 mirrors resolveJumpDestValue but returns a uint64
+// destination directly, avoiding intermediate allocations.
+func (it *MIRInterpreter) resolveJumpDestUint64(op *Value) (uint64, bool) {
+	if op == nil {
+		return 0, false
+	}
+	// Constant fast path
+	if op.kind == Konst {
+		if op.u != nil {
+			u, _ := op.u.Uint64WithOverflow()
+			return u, true
+		}
+		v := it.evalValue(op)
+		if v == nil {
+			return 0, false
+		}
+		u, _ := v.Uint64WithOverflow()
+		return u, true
+	}
+	// PHI-aware path uses the cached pointer but only extracts uint64
+	if op.def != nil && op.def.op == MirPHI {
+		if it.phiResults != nil {
+			if preds, ok := it.phiResults[op.def]; ok {
+				if it.prevBB != nil {
+					if v := preds[it.prevBB]; v != nil {
+						u, _ := v.Uint64WithOverflow()
+						return u, true
+					}
+				}
+				if last := it.phiLastPred[op.def]; last != nil {
+					if v := preds[last]; v != nil {
+						u, _ := v.Uint64WithOverflow()
+						return u, true
+					}
+				}
+			}
+		}
+		if op.def.evmPC != 0 {
+			if bypc := it.phiResultsBySig[uint64(op.def.evmPC)]; bypc != nil {
+				if preds := bypc[op.def.idx]; preds != nil {
+					if it.prevBB != nil {
+						if v := preds[it.prevBB]; v != nil {
+							u, _ := v.Uint64WithOverflow()
+							return u, true
+						}
+					}
+					if lastm := it.phiLastPredBySig[uint64(op.def.evmPC)]; lastm != nil {
+						if last := lastm[op.def.idx]; last != nil {
+							if v := preds[last]; v != nil {
+								u, _ := v.Uint64WithOverflow()
+								return u, true
+							}
+						}
+					}
+				}
+			}
+		}
+		return 0, false
+	}
+	v := it.evalValue(op)
+	if v == nil {
+		return 0, false
+	}
+	u, _ := v.Uint64WithOverflow()
+	return u, true
+}
+
+// scheduleJump validates and schedules a control transfer to udest.
+// It publishes current block live-outs and records predecessor for PHIs.
+func (it *MIRInterpreter) scheduleJump(udest uint64, m *MIR) error {
+	if it.env == nil || it.env.CheckJumpdest == nil || it.env.ResolveBB == nil {
+		return fmt.Errorf("jump environment not initialized")
+	}
+	// Resolve directly; if it doesn't map to a BB, treat as invalid target
+	it.nextBB = it.env.ResolveBB(udest)
+	if it.nextBB == nil {
+		log.Error("MIR jump invalid jumpdest - requesting EVM fallback", "from_evm_pc", m.evmPC, "dest_pc", udest)
+		return fmt.Errorf("unresolvable jump target")
+	}
+	it.publishLiveOut(it.currentBB)
+	it.prevBB = it.currentBB
+	return errJUMP
 }
 
 func (it *MIRInterpreter) returnDataCopy(dest, off, sz *uint256.Int) {

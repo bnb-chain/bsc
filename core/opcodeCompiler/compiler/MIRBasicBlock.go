@@ -434,20 +434,7 @@ func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
 	topValue := stack.peek(0)  // item_1 (top of stack)
 	swapValue := stack.peek(n) // item_n+1 (the item to swap with)
 	// Diagnostics: before swap snapshot
-	if topValue != nil {
-		if topValue.def != nil {
-			log.Warn("MIR SWAP before", "bb", b.blockNum, "firstPC", b.firstPC, "n", n, "top", topValue.DebugString(), "top_def_pc", topValue.def.evmPC, "top_def_idx", topValue.def.idx)
-		} else {
-			log.Warn("MIR SWAP before", "bb", b.blockNum, "firstPC", b.firstPC, "n", n, "top", topValue.DebugString())
-		}
-	}
-	if swapValue != nil {
-		if swapValue.def != nil {
-			log.Warn("MIR SWAP before", "bb", b.blockNum, "firstPC", b.firstPC, "n", n, "nth", swapValue.DebugString(), "nth_def_pc", swapValue.def.evmPC, "nth_def_idx", swapValue.def.idx)
-		} else {
-			log.Warn("MIR SWAP before", "bb", b.blockNum, "firstPC", b.firstPC, "n", n, "nth", swapValue.DebugString())
-		}
-	}
+	// removed verbose SWAP diagnostics
 
 	if isOptimizable(MirOperation(0x90+byte(n-1))) &&
 		topValue.kind == Konst && swapValue.kind == Konst {
@@ -464,22 +451,7 @@ func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
 	// For non-constant values, perform the actual swap on the stack
 	stack.swap(0, n)
 	// Diagnostics: after swap snapshot
-	afterTop := stack.peek(0)
-	afterNth := stack.peek(n)
-	if afterTop != nil {
-		if afterTop.def != nil {
-			log.Warn("MIR SWAP after", "bb", b.blockNum, "firstPC", b.firstPC, "n", n, "top", afterTop.DebugString(), "top_def_pc", afterTop.def.evmPC, "top_def_idx", afterTop.def.idx)
-		} else {
-			log.Warn("MIR SWAP after", "bb", b.blockNum, "firstPC", b.firstPC, "n", n, "top", afterTop.DebugString())
-		}
-	}
-	if afterNth != nil {
-		if afterNth.def != nil {
-			log.Warn("MIR SWAP after", "bb", b.blockNum, "firstPC", b.firstPC, "n", n, "nth", afterNth.DebugString(), "nth_def_pc", afterNth.def.evmPC, "nth_def_idx", afterNth.def.idx)
-		} else {
-			log.Warn("MIR SWAP after", "bb", b.blockNum, "firstPC", b.firstPC, "n", n, "nth", afterNth.DebugString())
-		}
-	}
+	// removed verbose SWAP diagnostics
 	// Emit a NOP MIR carrying the original SWAP opcode and operands
 	mir := newNopMIR(MirOperation(0x90+byte(n-1)), []*Value{topValue, swapValue})
 	mir = b.appendMIR(mir)
@@ -517,7 +489,6 @@ func (b *MIRBasicBlock) IncomingStacks() map[*MIRBasicBlock][]Value {
 
 // SetExitStack records the block's exit stack snapshot.
 func (b *MIRBasicBlock) SetExitStack(values []Value) {
-	log.Warn("MIR SetExitStack", "block", b.blockNum, "size", len(values))
 	if values == nil {
 		b.exitStack = nil
 		b.liveOutDefs = nil
@@ -534,13 +505,11 @@ func (b *MIRBasicBlock) SetExitStack(values []Value) {
 	defs := make([]*MIR, 0, len(values))
 	for i := range values {
 		v := values[i]
-		log.Warn("MIR SetExitStack", "block", b.blockNum, "value", v, "kind", v.kind)
 		if v.kind == Variable && v.def != nil {
 			defs = append(defs, v.def)
 		}
 	}
 	b.liveOutDefs = defs
-	log.Warn("MIR SetExitStack", "block", b.blockNum, "size", len(defs))
 }
 
 // ExitStack returns the block's exit stack snapshot.

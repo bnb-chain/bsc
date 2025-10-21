@@ -651,29 +651,31 @@ func TestUSDT_Transfer_EVMvsMIR(t *testing.T) {
 	if string(rb) != string(rm) {
 		t.Fatalf("transfer: return mismatch base=%x mir=%x", rb, rm)
 	}
+	/*
+	   // Print full EVM opcodes (including PUSH data) of the USDT contract
+	   fullCode, derr := hex.DecodeString(usdtHex[2:])
 
-	// Print full EVM opcodes (including PUSH data) of the USDT contract
-	fullCode, derr := hex.DecodeString(usdtHex[2:])
-	if derr != nil {
-		t.Fatalf("decode USDT hex: %v", derr)
-	}
-	for pc := 0; pc < len(fullCode); {
-		op := vm.OpCode(fullCode[pc])
-		if op >= vm.PUSH1 && op <= vm.PUSH32 {
-			n := int(op - vm.PUSH1 + 1)
-			if pc+1+n <= len(fullCode) {
-				data := fullCode[pc+1 : pc+1+n]
-				t.Logf("pc=%d op=%-8s (0x%02x) data=0x%x", pc, op.String(), byte(op), data)
-			} else {
-				t.Logf("pc=%d op=%-8s (0x%02x) data=<truncated>", pc, op.String(), byte(op))
-			}
-			pc += 1 + n
-			continue
-		}
-		t.Logf("pc=%d op=%-8s (0x%02x)", pc, op.String(), byte(op))
-		pc++
-	}
+	   	if derr != nil {
+	   		t.Fatalf("decode USDT hex: %v", derr)
+	   	}
 
+	   	for pc := 0; pc < len(fullCode); {
+	   		op := vm.OpCode(fullCode[pc])
+	   		if op >= vm.PUSH1 && op <= vm.PUSH32 {
+	   			n := int(op - vm.PUSH1 + 1)
+	   			if pc+1+n <= len(fullCode) {
+	   				data := fullCode[pc+1 : pc+1+n]
+	   				t.Logf("pc=%d op=%-8s (0x%02x) data=0x%x", pc, op.String(), byte(op), data)
+	   			} else {
+	   				t.Logf("pc=%d op=%-8s (0x%02x) data=<truncated>", pc, op.String(), byte(op))
+	   			}
+	   			pc += 1 + n
+	   			continue
+	   		}
+	   		t.Logf("pc=%d op=%-8s (0x%02x)", pc, op.String(), byte(op))
+	   		pc++
+	   	}
+	*/
 }
 
 // TestUSDT_StackAroundDup6 prints a window of opcodes and an approximate
