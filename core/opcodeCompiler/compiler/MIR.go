@@ -397,11 +397,16 @@ func doPeepHole(operation MirOperation, opnd1 *Value, opnd2 *Value, stack *Value
 			case MirBYTE:
 				val1 = val1.Byte(val2)
 			case MirSHL:
-				val1 = val1.Lsh(val1, uint(val2.Uint64()))
+				// EVM SHL semantics: result = value << shift
+				// Stack order: [ ... shift, value ] (top-first pop order)
+				// opnd1 = shift, opnd2 = value
+				val1 = val2.Lsh(val2, uint(val1.Uint64()))
 			case MirSHR:
-				val1 = val1.Rsh(val1, uint(val2.Uint64()))
+				// Logical right shift: result = value >> shift
+				val1 = val2.Rsh(val2, uint(val1.Uint64()))
 			case MirSAR:
-				val1 = val1.SRsh(val1, uint(val2.Uint64()))
+				// Arithmetic right shift: result = value >>> shift (sign-propagating)
+				val1 = val2.SRsh(val2, uint(val1.Uint64()))
 			case MirKECCAK256:
 				// KECCAK256 takes offset (val1) and size (val2) as operands
 				// Check if the memory range is known and can be loaded

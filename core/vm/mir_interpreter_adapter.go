@@ -98,8 +98,16 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 	bbs := cfg.GetBasicBlocks()
 	if len(bbs) > 0 && bbs[0] != nil && bbs[0].Size() > 0 {
 		result, err := adapter.mirInterpreter.RunCFGWithResolver(cfg, bbs[0])
-		if len(result) > 0 || err != nil {
+		if err != nil {
+			if err == compiler.ErrMIRFallback {
+				log.Error("MIR fallback requested by interpreter, using EVM interpreter", "addr", contract.Address(), "pc", 0)
+				return adapter.evm.Interpreter().Run(contract, input, readOnly)
+			}
+			// Preserve returndata on error (e.g., REVERT) to match EVM semantics
 			return result, err
+		}
+		if len(result) > 0 {
+			return result, nil
 		}
 	}
 	// If nothing returned from the entry, fallback to EVM to preserve semantics

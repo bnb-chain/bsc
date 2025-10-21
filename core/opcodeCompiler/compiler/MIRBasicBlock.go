@@ -349,12 +349,20 @@ func (b *MIRBasicBlock) CreateStackOpMIR(op MirOperation, stack *ValueStack) *MI
 	// For DUP operations
 	if op >= MirDUP1 && op <= MirDUP16 {
 		n := int(op - MirDUP1 + 1) // DUP1 = 1, DUP2 = 2, etc.
+		// Diagnostics: stack size before DUP
+		if stack.size() < n {
+			log.Warn("MIR DUP depth underflow - emitting NOP", "need", n, "have", stack.size(), "bb", b.blockNum, "bbFirst", b.firstPC)
+		}
 		return b.CreateDupMIR(n, stack)
 	}
 
 	// For SWAP operations
 	if op >= MirSWAP1 && op <= MirSWAP16 {
 		n := int(op - MirSWAP1 + 1) // SWAP1 = 1, SWAP2 = 2, etc.
+		// Diagnostics: stack size before SWAP
+		if stack.size() <= n {
+			log.Warn("MIR SWAP depth underflow - emitting NOP", "need", n+1, "have", stack.size(), "bb", b.blockNum, "bbFirst", b.firstPC)
+		}
 		return b.CreateSwapMIR(n, stack)
 	}
 
@@ -373,12 +381,10 @@ func (b *MIRBasicBlock) CreateDupMIR(n int, stack *ValueStack) *MIR {
 	// Stack after:  [..., item_n, ..., item_2, item_1, item_n]
 
 	if stack.size() < n {
-		// Not enough items on stack - emit a NOP marker and do not mutate stack
+		// Diagnostics already emitted by caller; still emit NOP and do not mutate stack
 		mir := newNopMIR(MirOperation(0x80+byte(n-1)), nil)
 		mir = b.appendMIR(mir)
 		mir.genStackDepth = stack.size()
-		// noisy generation logging removed
-		log.Error("Not enough items on stack for DUP - emitting NOP", "n", n, "stack size", stack.size())
 		return mir
 	}
 
@@ -417,18 +423,31 @@ func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
 	// Stack after:  [..., item_n+1, item_1, ..., item_2, item_n]
 
 	if stack.size() <= n {
-		// Not enough items on stack - emit a NOP marker and do not mutate stack
+		// Diagnostics already emitted by caller; still emit NOP and do not mutate stack
 		mir := newNopMIR(MirOperation(0x90+byte(n-1)), nil)
 		mir = b.appendMIR(mir)
 		mir.genStackDepth = stack.size()
-		// noisy generation logging removed
-		log.Error("Not enough items on stack for SWAP - emitting NOP", "n", n, "stack size", stack.size())
 		return mir
 	}
 
 	// Check if we can optimize this SWAP operation
 	topValue := stack.peek(0)  // item_1 (top of stack)
 	swapValue := stack.peek(n) // item_n+1 (the item to swap with)
+	// Diagnostics: before swap snapshot
+	if topValue != nil {
+		if topValue.def != nil {
+			log.Warn("MIR SWAP before", "bb", b.blockNum, "firstPC", b.firstPC, "n", n, "top", topValue.DebugString(), "top_def_pc", topValue.def.evmPC, "top_def_idx", topValue.def.idx)
+		} else {
+			log.Warn("MIR SWAP before", "bb", b.blockNum, "firstPC", b.firstPC, "n", n, "top", topValue.DebugString())
+		}
+	}
+	if swapValue != nil {
+		if swapValue.def != nil {
+			log.Warn("MIR SWAP before", "bb", b.blockNum, "firstPC", b.firstPC, "n", n, "nth", swapValue.DebugString(), "nth_def_pc", swapValue.def.evmPC, "nth_def_idx", swapValue.def.idx)
+		} else {
+			log.Warn("MIR SWAP before", "bb", b.blockNum, "firstPC", b.firstPC, "n", n, "nth", swapValue.DebugString())
+		}
+	}
 
 	if isOptimizable(MirOperation(0x90+byte(n-1))) &&
 		topValue.kind == Konst && swapValue.kind == Konst {
@@ -444,6 +463,23 @@ func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
 
 	// For non-constant values, perform the actual swap on the stack
 	stack.swap(0, n)
+	// Diagnostics: after swap snapshot
+	afterTop := stack.peek(0)
+	afterNth := stack.peek(n)
+	if afterTop != nil {
+		if afterTop.def != nil {
+			log.Warn("MIR SWAP after", "bb", b.blockNum, "firstPC", b.firstPC, "n", n, "top", afterTop.DebugString(), "top_def_pc", afterTop.def.evmPC, "top_def_idx", afterTop.def.idx)
+		} else {
+			log.Warn("MIR SWAP after", "bb", b.blockNum, "firstPC", b.firstPC, "n", n, "top", afterTop.DebugString())
+		}
+	}
+	if afterNth != nil {
+		if afterNth.def != nil {
+			log.Warn("MIR SWAP after", "bb", b.blockNum, "firstPC", b.firstPC, "n", n, "nth", afterNth.DebugString(), "nth_def_pc", afterNth.def.evmPC, "nth_def_idx", afterNth.def.idx)
+		} else {
+			log.Warn("MIR SWAP after", "bb", b.blockNum, "firstPC", b.firstPC, "n", n, "nth", afterNth.DebugString())
+		}
+	}
 	// Emit a NOP MIR carrying the original SWAP opcode and operands
 	mir := newNopMIR(MirOperation(0x90+byte(n-1)), []*Value{topValue, swapValue})
 	mir = b.appendMIR(mir)
@@ -759,6 +795,26 @@ func (b *MIRBasicBlock) CreateJumpMIR(op MirOperation, stack *ValueStack, bbStac
 	// - JUMP consumes 1 operand: destination
 	// - JUMPI consumes 2 operands: destination and condition
 	// Stack top holds the last pushed item; pop order reflects that.
+	// Diagnostics: snapshot top 8 stack items before consuming jump operands
+	{
+		sz := stack.size()
+		max := sz
+		if max > 8 {
+			max = 8
+		}
+		for i := 0; i < max; i++ {
+			v := stack.peek(i)
+			if v == nil {
+				continue
+			}
+			if v.def != nil {
+				log.Warn("MIR JUMP stack", "bb", b.blockNum, "firstPC", b.firstPC, "idxFromTop", i, "val", v.DebugString(), "def_evm_pc", v.def.evmPC, "def_idx", v.def.idx)
+			} else {
+				log.Warn("MIR JUMP stack", "bb", b.blockNum, "firstPC", b.firstPC, "idxFromTop", i, "val", v.DebugString())
+			}
+		}
+	}
+
 	switch op {
 	case MirJUMP:
 		dest := stack.pop()
