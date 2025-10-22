@@ -144,6 +144,7 @@ type handlerConfig struct {
 	EnableBAL                 bool
 	EVNNodeIdsWhitelist       []enode.ID
 	ProxyedValidatorAddresses []common.Address
+	ProxyedNodeIds            []enode.ID
 }
 
 type handler struct {
@@ -154,6 +155,7 @@ type handler struct {
 	enableBAL                  bool
 	evnNodeIdsWhitelistMap     map[enode.ID]struct{}
 	proxyedValidatorAddressMap map[common.Address]struct{}
+	proxyedNodeIdsMap          map[enode.ID]struct{}
 
 	snapSync        atomic.Bool // Flag whether snap sync is enabled (gets disabled if we already have blocks)
 	synced          atomic.Bool // Flag whether we're considered synchronised (enables transaction processing)
@@ -225,6 +227,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		enableBAL:                  config.EnableBAL,
 		evnNodeIdsWhitelistMap:     make(map[enode.ID]struct{}),
 		proxyedValidatorAddressMap: make(map[common.Address]struct{}),
+		proxyedNodeIdsMap:          make(map[enode.ID]struct{}),
 		quitSync:                   make(chan struct{}),
 		handlerDoneCh:              make(chan struct{}),
 		handlerStartCh:             make(chan struct{}),
@@ -235,6 +238,9 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 	for _, address := range config.ProxyedValidatorAddresses {
 		h.proxyedValidatorAddressMap[address] = struct{}{}
+	}
+	for _, nodeID := range config.ProxyedNodeIds {
+		h.proxyedNodeIdsMap[nodeID] = struct{}{}
 	}
 	if h.chain.NoTries() {
 	} else if config.Sync == ethconfig.FullSync {
@@ -400,6 +406,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 func (h *handler) protoTracker() {
 	defer h.wg.Done()
 
+	h.peers.setProxyedPeers(h.proxyedNodeIdsMap)
 	if h.enableEVNFeatures && h.synced.Load() {
 		h.peers.enableEVNFeatures(h.queryValidatorNodeIDsMap(), h.evnNodeIdsWhitelistMap)
 	}
@@ -413,6 +420,7 @@ func (h *handler) protoTracker() {
 		case <-h.handlerDoneCh:
 			active--
 		case <-updateTicker.C:
+			h.peers.setProxyedPeers(h.proxyedNodeIdsMap)
 			if h.enableEVNFeatures && h.synced.Load() {
 				// add onchain validator p2p node list later, it will enable the direct broadcast + no tx broadcast feature
 				// here check & enable peer broadcast features periodically, and it's a simple way to handle the peer change and the list change scenarios.
@@ -819,36 +827,67 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 			log.Error("Propagating dangling block", "number", block.Number(), "hash", hash)
 			return
 		}
-		// Send the block to a subset of our peers
-		var transfer []*ethPeer
-		if h.directBroadcast {
-			transfer = peers[:]
-		} else {
-			transfer = peers[:int(math.Sqrt(float64(len(peers))))]
+
+		// Broadcast the block to peers based on broadcast strategy.
+		totalPeers := len(peers)
+
+		// Step 1: Select target peers for initial broadcast.
+		limit := totalPeers
+		if !h.directBroadcast {
+			limit = int(math.Sqrt(float64(totalPeers)))
 		}
 
-		for _, peer := range transfer {
-			log.Debug("broadcast block to peer", "hash", hash, "peer", peer.ID(),
-				"EVNPeerFlag", peer.EVNPeerFlag.Load(), "CanHandleBAL", peer.CanHandleBAL.Load())
+		// Step 2: Broadcast to selected peers.
+		transferPeersCnt := limit
+		for _, peer := range peers[:limit] {
+			log.Debug("Broadcast block to peer",
+				"hash", hash, "peer", peer.ID(),
+				"EVNPeerFlag", peer.EVNPeerFlag.Load(),
+				"CanHandleBAL", peer.CanHandleBAL.Load(),
+			)
 			peer.AsyncSendNewBlock(block, td)
 		}
 
-		// check if the block should be broadcast to more peers in EVN
-		var morePeers []*ethPeer
-		if h.needFullBroadcastInEVN(block) {
-			for i := len(transfer); i < len(peers); i++ {
-				if peers[i].EVNPeerFlag.Load() {
-					morePeers = append(morePeers, peers[i])
+		// Step 3: Handle proxyed peers.
+		proxyedPeersCnt := 0
+		if len(h.proxyedNodeIdsMap) > 0 {
+			for _, peer := range peers[limit:] {
+				if peer.ProxyedPeerFlag.Load() {
+					log.Debug("Broadcast block to proxyed peer",
+						"hash", hash, "peer", peer.ID(),
+						"EVNPeerFlag", peer.EVNPeerFlag.Load(),
+						"CanHandleBAL", peer.CanHandleBAL.Load(),
+					)
+					peer.AsyncSendNewBlock(block, td)
+					proxyedPeersCnt++
 				}
-			}
-			for _, peer := range morePeers {
-				log.Debug("broadcast block to extra peer", "hash", hash, "peer", peer.ID(),
-					"EVNPeerFlag", peer.EVNPeerFlag.Load(), "CanHandleBAL", peer.CanHandleBAL.Load())
-				peer.AsyncSendNewBlock(block, td)
 			}
 		}
 
-		log.Debug("Propagated block", "hash", hash, "recipients", len(transfer), "extra", len(morePeers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
+		// Step 4: Handle EVN peers if full broadcast is required.
+		evnPeersCnt := 0
+		if h.needFullBroadcastInEVN(block) {
+			for _, peer := range peers[limit:] {
+				if !peer.ProxyedPeerFlag.Load() && peer.EVNPeerFlag.Load() {
+					log.Debug("Broadcast block to EVN peer",
+						"hash", hash, "peer", peer.ID(),
+						"EVNPeerFlag", peer.EVNPeerFlag.Load(),
+						"CanHandleBAL", peer.CanHandleBAL.Load(),
+					)
+					peer.AsyncSendNewBlock(block, td)
+					evnPeersCnt++
+				}
+			}
+		}
+
+		// Step 5: Log summary.
+		log.Debug("Propagated block",
+			"hash", hash,
+			"recipients", transferPeersCnt,
+			"proxyed", proxyedPeersCnt,
+			"evn", evnPeersCnt,
+			"duration", common.PrettyDuration(time.Since(block.ReceivedAt)),
+		)
 		return
 	}
 	// Otherwise if the block is indeed in our own chain, announce it
@@ -958,7 +997,8 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 				hasher.Write(from.Bytes())
 
 				hasher.Read(hash)
-				if new(big.Int).Mod(new(big.Int).SetBytes(hash), total).Cmp(direct) < 0 {
+				if peer.ProxyedPeerFlag.Load() ||
+					new(big.Int).Mod(new(big.Int).SetBytes(hash), total).Cmp(direct) < 0 {
 					broadcast = true
 				}
 			}
@@ -1017,7 +1057,7 @@ func (h *handler) BroadcastVote(vote *types.VoteEnvelope) {
 		if peer.bscExt == nil {
 			continue
 		}
-		if peer.EVNPeerFlag.Load() {
+		if peer.ProxyedPeerFlag.Load() || peer.EVNPeerFlag.Load() {
 			voteMap[peer] = vote
 			continue
 		}

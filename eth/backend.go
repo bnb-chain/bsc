@@ -442,6 +442,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		EnableBAL:                 config.EnableBAL,
 		EVNNodeIdsWhitelist:       stack.Config().P2P.EVNNodeIdsWhitelist,
 		ProxyedValidatorAddresses: stack.Config().P2P.ProxyedValidatorAddresses,
+		ProxyedNodeIds:            stack.Config().P2P.ProxyedNodeIds,
 		DisablePeerTxBroadcast:    config.DisablePeerTxBroadcast,
 		PeerSet:                   newPeerSet(),
 		EnableQuickBlockFetching:  stack.Config().EnableQuickBlockFetching,

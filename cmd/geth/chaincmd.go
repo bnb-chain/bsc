@@ -548,7 +548,8 @@ func initNetwork(ctx *cli.Context) error {
 	// add more feature configs
 	if enableSentryNode {
 		for i := 0; i < len(sentryConfigs); i++ {
-			sentryConfigs[i].Node.P2P.ProxyedValidatorAddresses = accounts
+			sentryConfigs[i].Node.P2P.ProxyedValidatorAddresses = accounts[i]
+			sentryConfigs[i].Node.P2P.ProxyedNodeIds = []enode.ID{nodeIDs[i]}
 		}
 	}
 	if ctx.Bool(utils.InitEVNValidatorWhitelist.Name) {
@@ -563,8 +564,7 @@ func initNetwork(ctx *cli.Context) error {
 	}
 	if enableSentryNode && ctx.Bool(utils.InitEVNSentryWhitelist.Name) {
 		for i := 0; i < len(sentryConfigs); i++ {
-			sentryConfigs[i].Node.P2P.EVNNodeIdsWhitelist = append([]enode.ID{}, sentryNodeIDs...)
-			sentryConfigs[i].Node.P2P.EVNNodeIdsWhitelist[i] = nodeIDs[i]
+			sentryConfigs[i].Node.P2P.EVNNodeIdsWhitelist = sentryNodeIDs
 		}
 	}
 	if enableSentryNode && ctx.Bool(utils.InitEVNSentryRegister.Name) {
@@ -588,13 +588,13 @@ func initNetwork(ctx *cli.Context) error {
 	}
 
 	if ctx.Int(utils.InitFullNodeSize.Name) > 0 {
-		var extraEnodes []*enode.Node
+		extraEnodes := enodes
+		extraNodeIDs := nodeIDs
 		if enableSentryNode {
 			extraEnodes = sentryEnodes
-		} else {
-			extraEnodes = enodes
+			extraNodeIDs = sentryNodeIDs
 		}
-		_, _, err := createAndSaveFullNodeConfigs(ctx, inGenesisFile, config, initDir, extraEnodes)
+		_, _, err := createAndSaveFullNodeConfigs(ctx, inGenesisFile, config, initDir, extraEnodes, extraNodeIDs)
 		if err != nil {
 			utils.Fatalf("Failed to create full node configs: %v", err)
 		}
@@ -625,7 +625,7 @@ func createSentryNodeConfigs(ctx *cli.Context, baseConfig gethConfig, initDir st
 	return configs, enodes, nil
 }
 
-func createAndSaveFullNodeConfigs(ctx *cli.Context, inGenesisFile *os.File, baseConfig gethConfig, initDir string, extraEnodes []*enode.Node) ([]gethConfig, []*enode.Node, error) {
+func createAndSaveFullNodeConfigs(ctx *cli.Context, inGenesisFile *os.File, baseConfig gethConfig, initDir string, extraEnodes []*enode.Node, proxyedNodeIds []enode.ID) ([]gethConfig, []*enode.Node, error) {
 	size := ctx.Int(utils.InitFullNodeSize.Name)
 	if size <= 0 {
 		utils.Fatalf("size should be greater than 0")
@@ -648,6 +648,7 @@ func createAndSaveFullNodeConfigs(ctx *cli.Context, inGenesisFile *os.File, base
 
 	// write configs
 	for i := 0; i < len(configs); i++ {
+		configs[i].Node.P2P.ProxyedNodeIds = proxyedNodeIds // for broadcasting txs directly
 		err := writeConfig(inGenesisFile, configs[i], path.Join(initDir, fmt.Sprintf("fullnode%d", i)))
 		if err != nil {
 			utils.Fatalf("Failed to write config: %v", err)
@@ -656,13 +657,13 @@ func createAndSaveFullNodeConfigs(ctx *cli.Context, inGenesisFile *os.File, base
 	return configs, enodes, nil
 }
 
-func createConfigs(base gethConfig, initDir string, prefix string, ips []string, ports []int, extraEnodes []*enode.Node, connectOneExtraEnodes bool, staticConnect bool) ([]gethConfig, []*enode.Node, []common.Address, error) {
+func createConfigs(base gethConfig, initDir string, prefix string, ips []string, ports []int, extraEnodes []*enode.Node, connectOneExtraEnodes bool, staticConnect bool) ([]gethConfig, []*enode.Node, [][]common.Address, error) {
 	if len(ips) != len(ports) {
 		return nil, nil, nil, errors.New("mismatch of size and length of ports")
 	}
 	size := len(ips)
 	enodes := make([]*enode.Node, size)
-	accounts := make([]common.Address, size)
+	accounts := make([][]common.Address, size)
 	for i := 0; i < size; i++ {
 		nodeConfig := base.Node
 		nodeConfig.DataDir = path.Join(initDir, fmt.Sprintf("%s%d", prefix, i))
@@ -673,9 +674,7 @@ func createConfigs(base gethConfig, initDir string, prefix string, ips []string,
 		if err := setAccountManagerBackends(stack.Config(), stack.AccountManager(), stack.KeyStoreDir()); err != nil {
 			utils.Fatalf("Failed to set account manager backends: %v", err)
 		}
-		if len(stack.AccountManager().Accounts()) > 0 {
-			accounts[i] = stack.AccountManager().Accounts()[0]
-		}
+		accounts[i] = stack.AccountManager().Accounts()
 		pk := stack.Config().NodeKey()
 		enodes[i] = enode.NewV4(&pk.PublicKey, net.ParseIP(ips[i]), ports[i], ports[i])
 	}
