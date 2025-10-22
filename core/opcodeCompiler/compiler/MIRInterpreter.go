@@ -233,23 +233,34 @@ func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
 	}
 	// Track current block for PHI resolution
 	it.currentBB = block
-	// Reuse results backing storage to avoid per-run allocations
-	if it.resultsCap < len(block.instructions) {
-		it.results = make([]*uint256.Int, len(block.instructions))
-		for i := 0; i < len(block.instructions); i++ {
-			it.results[i] = new(uint256.Int)
-		}
-		it.resultsCap = len(block.instructions)
-	} else {
-		// Ensure slots exist and clear them for reuse
-		for i := 0; i < len(block.instructions); i++ {
-			if it.results[i] == nil {
-				it.results[i] = new(uint256.Int)
-			} else {
-				it.results[i].Clear()
+	// Fast path: if the block contains only NOPs and a terminal STOP, skip the exec loop.
+	// This is common for trivially folded sequences like PUSH/PUSH/ADD/MUL -> NOPs + STOP.
+	{
+		onlyNopsAndStop := true
+		hasStop := false
+		instrs := block.instructions
+		for i := 0; i < len(instrs); i++ {
+			ins := instrs[i]
+			if ins == nil {
+				continue
+			}
+			switch ins.op {
+			case MirNOP, MirJUMPDEST:
+				// ignore
+			case MirSTOP:
+				hasStop = true
+			default:
+				// any other operation requires execution
+				onlyNopsAndStop = false
+				break
 			}
 		}
+		if onlyNopsAndStop && hasStop {
+			return it.returndata, nil
+		}
 	}
+	// Avoid per-run clearing of results to reduce overhead for trivial blocks;
+	// results slots are allocated lazily on first write via setResult.
 	// iterate by index to reduce overhead
 	block.pos = 0
 	for i := 0; i < len(block.instructions); i++ {
@@ -269,7 +280,7 @@ func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
 	}
 
 	// 添加基本块完成执行的日志
-	log.Warn("MIRInterpreter: Block execution completed", "blockNum", block.blockNum, "returnDataSize", len(it.returndata), "instructions", block.instructions)
+	//log.Warn("MIRInterpreter: Block execution completed", "blockNum", block.blockNum, "returnDataSize", len(it.returndata), "instructions", block.instructions)
 	// Publish live-outs for successor PHIs
 	it.publishLiveOut(block)
 	// Record last executed block for successor PHI selection
@@ -284,7 +295,7 @@ func (it *MIRInterpreter) publishLiveOut(block *MIRBasicBlock) {
 	}
 
 	defs := block.LiveOutDefs()
-	log.Warn("MIR publishLiveOut", "block", block.blockNum, "size", len(block.instructions), "defs", defs, "it.results", it.results, "block.exitStack", block.ExitStack())
+	//log.Warn("MIR publishLiveOut", "block", block.blockNum, "size", len(block.instructions), "defs", defs, "it.results", it.results, "block.exitStack", block.ExitStack())
 	if len(defs) == 0 {
 		log.Warn("MIR publishLiveOut: no live outs", "block", block.blockNum)
 		return
@@ -304,7 +315,7 @@ func (it *MIRInterpreter) publishLiveOut(block *MIRBasicBlock) {
 				val := it.evalValue(v)
 				if val != nil {
 					it.globalResults[v.def] = new(uint256.Int).Set(val)
-					log.Warn("MIR publishLiveOut: backfilled ancestor def", "evm_pc", v.def.evmPC, "mir_idx", v.def.idx, "value", val)
+					//log.Warn("MIR publishLiveOut: backfilled ancestor def", "evm_pc", v.def.evmPC, "mir_idx", v.def.idx, "value", val)
 				}
 			}
 		}
@@ -316,11 +327,6 @@ func (it *MIRInterpreter) publishLiveOut(block *MIRBasicBlock) {
 		if def.idx >= 0 && def.idx < len(it.results) {
 			if r := it.results[def.idx]; r != nil {
 				it.globalResults[def] = new(uint256.Int).Set(r)
-				log.Warn("MIR publishLiveOut: def published", "evm_pc", def.evmPC,
-					"mir_idx", def.idx, "value", r, "def", def)
-				if def.evmPC == 725 {
-					log.Warn("=== MIR publishLiveOut", "it.globalResults", it.globalResults)
-				}
 			}
 		}
 	}
@@ -353,7 +359,7 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 					// Single-successor fallthrough
 					if len(children) == 1 {
 						// Publish on fallthrough, too
-						log.Warn("MIR publish before fallthrough", "from_block", bb.blockNum)
+						//log.Warn("MIR publish before fallthrough", "from_block", bb.blockNum)
 						it.publishLiveOut(bb)
 						// Preserve predecessor for successor PHI resolution on fallthrough
 						it.prevBB = bb
@@ -367,7 +373,7 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 					}
 					// Conditional branch (e.g., JUMPI): if no jump taken, use fallthrough child (index 1)
 					if len(children) >= 2 && children[1] != nil {
-						log.Warn("MIR publish before cond fallthrough", "from_block", bb.blockNum)
+						//log.Warn("MIR publish before cond fallthrough", "from_block", bb.blockNum)
 						it.publishLiveOut(bb)
 						// Preserve predecessor for successor PHI resolution on conditional fallthrough
 						it.prevBB = bb
@@ -788,7 +794,7 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		}
 		off := it.evalValue(m.oprands[0])
 		it.readCalldata32Into(off, &it.scratch32)
-		log.Warn("MIR CALLDATALOAD", "calldata", fmt.Sprintf("%x", it.env.Calldata), "off", off, "scratch32", fmt.Sprintf("%x", it.scratch32))
+		//log.Warn("MIR CALLDATALOAD", "calldata", fmt.Sprintf("%x", it.env.Calldata), "off", off, "scratch32", fmt.Sprintf("%x", it.scratch32))
 		it.setResult(m, it.tmpA.Clear().SetBytes(it.scratch32[:]))
 		return nil
 	case MirCALLDATASIZE:
@@ -1282,7 +1288,7 @@ func mirHandleMUL(it *MIRInterpreter, m *MIR) error {
 }
 func mirHandleSUB(it *MIRInterpreter, m *MIR) error {
 	a, b, err := mirLoadAB(it, m)
-	log.Warn("MIR SUB", "a", a, "- b", b)
+	//log.Warn("MIR SUB", "a", a, "- b", b)
 	if err != nil {
 		return err
 	}
@@ -1341,7 +1347,7 @@ func mirHandleSAR(it *MIRInterpreter, m *MIR) error {
 }
 func mirHandleEQ(it *MIRInterpreter, m *MIR) error {
 	a, b, err := mirLoadAB(it, m)
-	log.Warn("MIR EQ", "a", a, "==b", b)
+	//log.Warn("MIR EQ", "a", a, "==b", b)
 	if err != nil {
 		return err
 	}
@@ -1354,7 +1360,7 @@ func mirHandleEQ(it *MIRInterpreter, m *MIR) error {
 }
 func mirHandleLT(it *MIRInterpreter, m *MIR) error {
 	a, b, err := mirLoadAB(it, m)
-	log.Warn("MIR LT", "a", a, "< b", b)
+	//log.Warn("MIR LT", "a", a, "< b", b)
 	if err != nil {
 		return err
 	}
@@ -1368,7 +1374,7 @@ func mirHandleLT(it *MIRInterpreter, m *MIR) error {
 }
 func mirHandleGT(it *MIRInterpreter, m *MIR) error {
 	a, b, err := mirLoadAB(it, m)
-	log.Warn("MIR GT", "a", a, "> b", b)
+	//log.Warn("MIR GT", "a", a, "> b", b)
 	if err != nil {
 		return err
 	}
@@ -1382,7 +1388,7 @@ func mirHandleGT(it *MIRInterpreter, m *MIR) error {
 }
 func mirHandleSLT(it *MIRInterpreter, m *MIR) error {
 	a, b, err := mirLoadAB(it, m)
-	log.Warn("MIR SLT", "a", a, "<b", b)
+	//log.Warn("MIR SLT", "a", a, "<b", b)
 	if err != nil {
 		return err
 	}
@@ -1440,7 +1446,7 @@ func mirHandleMCOPY(it *MIRInterpreter, m *MIR) error {
 }
 
 func mirHandleCALLDATASIZE(it *MIRInterpreter, m *MIR) error {
-	log.Warn("MIR CALLDATASIZE", "calldata", it.env.Calldata, "size", len(it.env.Calldata))
+	//log.Warn("MIR CALLDATASIZE", "calldata", it.env.Calldata, "size", len(it.env.Calldata))
 	it.setResult(m, it.tmpA.Clear().SetUint64(uint64(len(it.env.Calldata))))
 	return nil
 }
@@ -1762,12 +1768,24 @@ func (it *MIRInterpreter) setResult(m *MIR, val *uint256.Int) {
 	if m == nil || val == nil {
 		return
 	}
-	if m.idx >= 0 && m.idx < len(it.results) {
-		if it.results[m.idx] == nil {
-			it.results[m.idx] = new(uint256.Int)
-		}
-		it.results[m.idx].Set(val)
+	if m.idx < 0 {
+		return
 	}
+	// Ensure results slice can hold index m.idx
+	if m.idx >= len(it.results) {
+		// Grow to m.idx+1, preserving existing entries
+		newLen := m.idx + 1
+		grown := make([]*uint256.Int, newLen)
+		copy(grown, it.results)
+		it.results = grown
+		if it.resultsCap < newLen {
+			it.resultsCap = newLen
+		}
+	}
+	if it.results[m.idx] == nil {
+		it.results[m.idx] = new(uint256.Int)
+	}
+	it.results[m.idx].Set(val)
 }
 
 // MemoryCap returns the capacity of the internal memory buffer

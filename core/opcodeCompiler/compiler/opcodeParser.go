@@ -387,16 +387,7 @@ func GenerateMIRCFG(hash common.Hash, code []byte) (*CFG, error) {
 			}
 		}
 	}
-	log.Warn("===================CFG DUMP=============================")
-	// Dump all basic blocks and their MIR instructions (with operands) for debugging
-	for i, bb := range cfg.basicBlocks {
-		if bb == nil {
-			continue
-		}
-		where := fmt.Sprintf("bb[%d]", i)
-		debugDumpBBFull(where, bb)
-	}
-	log.Warn("===================CFG DUMP END=============================")
+	// Debug dump disabled to reduce noise in benchmarks
 	return cfg, nil
 }
 
