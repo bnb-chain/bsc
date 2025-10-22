@@ -106,9 +106,10 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 			// Preserve returndata on error (e.g., REVERT) to match EVM semantics
 			return result, err
 		}
-		if len(result) > 0 {
-			return result, nil
-		}
+		// If MIR executed without error, return whatever returndata was produced.
+		// An empty result (e.g., STOP) should not trigger fallback; mirror EVM semantics
+		// where a STOP simply returns empty bytes.
+		return result, nil
 	}
 	// If nothing returned from the entry, fallback to EVM to preserve semantics
 	log.Error("MIR fallback: entry block produced no result, using EVM interpreter", "addr", contract.Address())
