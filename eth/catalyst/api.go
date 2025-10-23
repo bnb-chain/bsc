@@ -96,12 +96,14 @@ var caps = []string{
 	"engine_getPayloadV3",
 	"engine_getPayloadV4",
 	"engine_getPayloadV5",
+	"engine_getPayloadV6",
 	"engine_getBlobsV1",
 	"engine_getBlobsV2",
 	"engine_newPayloadV1",
 	"engine_newPayloadV2",
 	"engine_newPayloadV3",
 	"engine_newPayloadV4",
+	"engine_newPayloadV5",
 	"engine_newPayloadWithWitnessV1",
 	"engine_newPayloadWithWitnessV2",
 	"engine_newPayloadWithWitnessV3",
@@ -120,10 +122,13 @@ var caps = []string{
 var (
 	// Number of blobs requested via getBlobsV2
 	getBlobsRequestedCounter = metrics.NewRegisteredCounter("engine/getblobs/requested", nil)
+
 	// Number of blobs requested via getBlobsV2 that are present in the blobpool
 	getBlobsAvailableCounter = metrics.NewRegisteredCounter("engine/getblobs/available", nil)
+
 	// Number of times getBlobsV2 responded with “hit”
 	getBlobsV2RequestHit = metrics.NewRegisteredCounter("engine/getblobs/hit", nil)
+
 	// Number of times getBlobsV2 responded with “miss”
 	getBlobsV2RequestMiss = metrics.NewRegisteredCounter("engine/getblobs/miss", nil)
 )
@@ -384,7 +389,6 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 			log.Warn("Safe block not in canonical chain")
 			return engine.STATUS_INVALID, engine.InvalidForkChoiceState.With(errors.New("safe block not in canonical chain"))
 		}
-		// Set the safe block
 		// api.eth.BlockChain().SetSafe(safeBlock.Header())
 	}
 	// If payload generation was requested, create a new block to be potentially
@@ -459,13 +463,21 @@ func (api *ConsensusAPI) GetPayloadV1(payloadID engine.PayloadID) (*engine.Execu
 
 // GetPayloadV2 returns a cached payload by id.
 func (api *ConsensusAPI) GetPayloadV2(payloadID engine.PayloadID) (*engine.ExecutionPayloadEnvelope, error) {
+	// executionPayload: ExecutionPayloadV1 | ExecutionPayloadV2 where:
+	//
+	// - ExecutionPayloadV1 MUST be returned if the payload timestamp is lower
+	//   than the Shanghai timestamp
+	//
+	// - ExecutionPayloadV2 MUST be returned if the payload timestamp is greater
+	//   or equal to the Shanghai timestamp
 	if !payloadID.Is(engine.PayloadV1, engine.PayloadV2) {
 		return nil, engine.UnsupportedFork
 	}
 	return api.getPayload(payloadID, false)
 }
 
-// GetPayloadV3 returns a cached payload by id.
+// GetPayloadV3 returns a cached payload by id. This endpoint should only
+// be used for the Cancun fork.
 func (api *ConsensusAPI) GetPayloadV3(payloadID engine.PayloadID) (*engine.ExecutionPayloadEnvelope, error) {
 	if !payloadID.Is(engine.PayloadV3) {
 		return nil, engine.UnsupportedFork
@@ -473,7 +485,8 @@ func (api *ConsensusAPI) GetPayloadV3(payloadID engine.PayloadID) (*engine.Execu
 	return api.getPayload(payloadID, false)
 }
 
-// GetPayloadV4 returns a cached payload by id.
+// GetPayloadV4 returns a cached payload by id. This endpoint should only
+// be used for the Prague fork.
 func (api *ConsensusAPI) GetPayloadV4(payloadID engine.PayloadID) (*engine.ExecutionPayloadEnvelope, error) {
 	if !payloadID.Is(engine.PayloadV3) {
 		return nil, engine.UnsupportedFork
@@ -481,9 +494,21 @@ func (api *ConsensusAPI) GetPayloadV4(payloadID engine.PayloadID) (*engine.Execu
 	return api.getPayload(payloadID, false)
 }
 
-// GetPayloadV5 returns a cached payload by id.
+// GetPayloadV5 returns a cached payload by id. This endpoint should only
+// be used after the Osaka fork.
+//
+// This method follows the same specification as engine_getPayloadV4 with
+// changes of returning BlobsBundleV2 with BlobSidecar version 1.
 func (api *ConsensusAPI) GetPayloadV5(payloadID engine.PayloadID) (*engine.ExecutionPayloadEnvelope, error) {
 	if !payloadID.Is(engine.PayloadV3) {
+		return nil, engine.UnsupportedFork
+	}
+	return api.getPayload(payloadID, false)
+}
+
+// GetPayloadV6 returns a cached payload by id.
+func (api *ConsensusAPI) GetPayloadV6(payloadID engine.PayloadID) (*engine.ExecutionPayloadEnvelope, error) {
+	if !payloadID.Is(engine.PayloadV4) {
 		return nil, engine.UnsupportedFork
 	}
 	return api.getPayload(payloadID, false)
@@ -499,7 +524,33 @@ func (api *ConsensusAPI) getPayload(payloadID engine.PayloadID, full bool) (*eng
 }
 
 // GetBlobsV1 returns a blob from the transaction pool.
+//
+// Specification:
+//
+// Given an array of blob versioned hashes client software MUST respond with an
+// array of BlobAndProofV1 objects with matching versioned hashes, respecting the
+// order of versioned hashes in the input array.
+//
+// Client software MUST place responses in the order given in the request, using
+// null for any missing blobs. For instance:
+//
+// if the request is [A_versioned_hash, B_versioned_hash, C_versioned_hash] and
+// client software has data for blobs A and C, but doesn't have data for B, the
+// response MUST be [A, null, C].
+//
+// Client software MUST support request sizes of at least 128 blob versioned hashes.
+// The client MUST return -38004: Too large request error if the number of requested
+// blobs is too large.
+//
+// Client software MAY return an array of all null entries if syncing or otherwise
+// unable to serve blob pool data.
 func (api *ConsensusAPI) GetBlobsV1(hashes []common.Hash) ([]*engine.BlobAndProofV1, error) {
+	// Reject the request if Osaka has been activated.
+	// follow https://github.com/ethereum/execution-apis/blob/main/src/engine/osaka.md#cancun-api
+	head := api.eth.BlockChain().CurrentHeader()
+	if !api.checkFork(head.Time, forks.Cancun, forks.Prague) {
+		return nil, unsupportedForkErr("engine_getBlobsV1 is only available at Cancun/Prague fork")
+	}
 	if len(hashes) > 128 {
 		return nil, engine.TooLargeRequest.With(fmt.Errorf("requested blob count too large: %v", len(hashes)))
 	}
@@ -532,7 +583,35 @@ func (api *ConsensusAPI) GetBlobsV1(hashes []common.Hash) ([]*engine.BlobAndProo
 }
 
 // GetBlobsV2 returns a blob from the transaction pool.
+//
+// Specification:
+// Refer to the specification for engine_getBlobsV1 with changes of the following:
+//
+// Given an array of blob versioned hashes client software MUST respond with an
+// array of BlobAndProofV2 objects with matching versioned hashes, respecting
+// the order of versioned hashes in the input array.
+//
+// Client software MUST return null in case of any missing or older version blobs.
+// For instance,
+//
+//   - if the request is [A_versioned_hash, B_versioned_hash, C_versioned_hash] and
+//     client software has data for blobs A and C, but doesn't have data for B, the
+//     response MUST be null.
+//
+//   - if the request is [A_versioned_hash_for_blob_with_blob_proof], the response
+//     MUST be null as well.
+//
+// Client software MUST support request sizes of at least 128 blob versioned
+// hashes. The client MUST return -38004: Too large request error if the number
+// of requested blobs is too large.
+//
+// Client software MUST return null if syncing or otherwise unable to serve
+// blob pool data.
 func (api *ConsensusAPI) GetBlobsV2(hashes []common.Hash) ([]*engine.BlobAndProofV2, error) {
+	head := api.eth.BlockChain().CurrentHeader()
+	if api.config().LatestFork(head.Time) < forks.Osaka {
+		return nil, unsupportedForkErr("engine_getBlobsV2 is not available before Osaka fork")
+	}
 	if len(hashes) > 128 {
 		return nil, engine.TooLargeRequest.With(fmt.Errorf("requested blob count too large: %v", len(hashes)))
 	}
@@ -540,6 +619,7 @@ func (api *ConsensusAPI) GetBlobsV2(hashes []common.Hash) ([]*engine.BlobAndProo
 	available := api.eth.BlobTxPool().AvailableBlobs(hashes)
 	getBlobsRequestedCounter.Inc(int64(len(hashes)))
 	getBlobsAvailableCounter.Inc(int64(available))
+
 	// Optimization: check first if all blobs are available, if not, return empty response
 	if available != len(hashes) {
 		getBlobsV2RequestMiss.Inc(1)
@@ -663,6 +743,33 @@ func (api *ConsensusAPI) NewPayloadV4(params engine.ExecutableData, versionedHas
 		return invalidStatus, paramsErr("nil executionRequests post-prague")
 	case !api.checkFork(params.Timestamp, forks.Prague, forks.Osaka):
 		return invalidStatus, unsupportedForkErr("newPayloadV4 must only be called for prague payloads")
+	}
+	requests := convertRequests(executionRequests)
+	if err := validateRequests(requests); err != nil {
+		return engine.PayloadStatusV1{Status: engine.INVALID}, engine.InvalidParams.With(err)
+	}
+	return api.newPayload(params, versionedHashes, beaconRoot, requests, false)
+}
+
+// NewPayloadV5 creates an Eth1 block, inserts it in the chain, and returns the status of the chain.
+func (api *ConsensusAPI) NewPayloadV5(params engine.ExecutableData, versionedHashes []common.Hash, beaconRoot *common.Hash, executionRequests []hexutil.Bytes) (engine.PayloadStatusV1, error) {
+	switch {
+	case params.Withdrawals == nil:
+		return invalidStatus, paramsErr("nil withdrawals post-shanghai")
+	case params.ExcessBlobGas == nil:
+		return invalidStatus, paramsErr("nil excessBlobGas post-cancun")
+	case params.BlobGasUsed == nil:
+		return invalidStatus, paramsErr("nil blobGasUsed post-cancun")
+	case versionedHashes == nil:
+		return invalidStatus, paramsErr("nil versionedHashes post-cancun")
+	case beaconRoot == nil:
+		return invalidStatus, paramsErr("nil beaconRoot post-cancun")
+	case executionRequests == nil:
+		return invalidStatus, paramsErr("nil executionRequests post-prague")
+	case params.BlockAccessList == nil:
+		return invalidStatus, paramsErr("nil block access list post-amsterdam")
+	case !api.checkFork(params.Timestamp, forks.Prague, forks.Osaka):
+		return invalidStatus, unsupportedForkErr("newPayloadV5 must only be called for amsterdam payloads")
 	}
 	requests := convertRequests(executionRequests)
 	if err := validateRequests(requests); err != nil {
@@ -838,6 +945,16 @@ func (api *ConsensusAPI) delayPayloadImport(block *types.Block) engine.PayloadSt
 		log.Warn("Ignoring payload while snap syncing", "number", block.NumberU64(), "hash", block.Hash(), "reason", err)
 	}
 	return engine.PayloadStatusV1{Status: engine.SYNCING}
+}
+
+// setInvalidAncestor is a callback for the downloader to notify us if a bad block
+// is encountered during the async sync.
+func (api *ConsensusAPI) setInvalidAncestor(invalid *types.Header, origin *types.Header) {
+	api.invalidLock.Lock()
+	defer api.invalidLock.Unlock()
+
+	api.invalidTipsets[origin.Hash()] = invalid
+	api.invalidBlocksHits[invalid.Hash()]++
 }
 
 // checkInvalidAncestor checks whether the specified chain end links to a known

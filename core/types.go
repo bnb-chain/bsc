@@ -32,7 +32,7 @@ type Validator interface {
 	ValidateBody(block *types.Block) error
 
 	// ValidateState validates the given statedb and optionally the process result.
-	ValidateState(block *types.Block, state *state.StateDB, res *ProcessResult, stateless bool) error
+	ValidateState(block *types.Block, state state.BlockProcessingDB, res *ProcessResult, validateState, stateless bool) error
 }
 
 type TransactionsByPriceAndNonce interface {
@@ -46,11 +46,9 @@ type Prefetcher interface {
 	// Prefetch processes the state changes according to the Ethereum rules by running
 	// the transaction messages using the statedb, but any changes are discarded. The
 	// only goal is to warm the state caches.
-	Prefetch(transactions types.Transactions, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interrupt *atomic.Bool)
+	Prefetch(transactions types.Transactions, header *types.Header, gasLimit uint64, statedb state.BlockProcessingDB, cfg vm.Config, interrupt *atomic.Bool)
 	// PrefetchMining used for pre-caching transaction signatures and state trie nodes. Only used for mining stage.
-	PrefetchMining(txs TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr **types.Transaction)
-	// prefetch based on block access list
-	PrefetchBAL(block *types.Block, statedb *state.StateDB, interruptChan <-chan struct{})
+	PrefetchMining(txs TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, statedb state.BlockProcessingDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr **types.Transaction)
 }
 
 // Processor is an interface for processing blocks using a given initial state.
@@ -58,7 +56,7 @@ type Processor interface {
 	// Process processes the state changes according to the Ethereum rules by running
 	// the transaction messages using the statedb and applying any rewards to both
 	// the processor (coinbase) and any included uncles.
-	Process(block *types.Block, statedb *state.StateDB, cfg vm.Config) (*ProcessResult, error)
+	Process(block *types.Block, statedb state.BlockProcessingDB, cfg vm.Config) (*ProcessResult, error)
 }
 
 // ProcessResult contains the values computed by Process.
@@ -67,4 +65,5 @@ type ProcessResult struct {
 	Requests [][]byte
 	Logs     []*types.Log
 	GasUsed  uint64
+	Error    error
 }

@@ -34,6 +34,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-verkle"
 )
@@ -232,124 +233,8 @@ func (h *Header) EmptyWithdrawalsHash() bool {
 type Body struct {
 	Transactions []*Transaction
 	Uncles       []*Header
-	Withdrawals  []*Withdrawal `rlp:"optional"`
-}
-
-// StorageAccessItem is a single storage key that is accessed in a block.
-type StorageAccessItem struct {
-	TxIndex uint32 // index of the first transaction in the block that accessed the storage
-	Dirty   bool   // true if the storage was modified in the block, false if it was read only
-	Key     common.Hash
-}
-
-// AccountAccessListEncode & BlockAccessListEncode are for BAL serialization.
-type AccountAccessListEncode struct {
-	TxIndex      uint32 // index of the first transaction in the block that accessed the account
-	Address      common.Address
-	StorageItems []StorageAccessItem
-}
-
-type BlockAccessListEncode struct {
-	Version  uint32      // Version of the access list format
-	Number   uint64      // number of the block that the BAL is for
-	Hash     common.Hash // hash of the block that the BAL is for
-	SignData []byte      // sign data for BAL
-	Accounts []AccountAccessListEncode
-}
-
-// TxAccessListPrefetch & BlockAccessListPrefetch are for BAL prefetch
-type StorageAccessItemPrefetch struct {
-	Dirty bool
-	Key   common.Hash
-}
-
-type TxAccessListPrefetch struct {
-	Accounts map[common.Address][]StorageAccessItemPrefetch
-}
-
-type BlockAccessListPrefetch struct {
-	AccessListItems map[uint32]TxAccessListPrefetch
-}
-
-func (b *BlockAccessListPrefetch) Update(aclEncode *AccountAccessListEncode) {
-	if aclEncode == nil {
-		return
-	}
-	accAddr := aclEncode.Address
-	b.PrepareTxAccount(aclEncode.TxIndex, accAddr)
-	for _, storageItem := range aclEncode.StorageItems {
-		b.PrepareTxStorage(accAddr, storageItem)
-	}
-}
-
-func (b *BlockAccessListPrefetch) PrepareTxStorage(accAddr common.Address, storageItem StorageAccessItem) {
-	b.PrepareTxAccount(storageItem.TxIndex, accAddr)
-	txAccessList := b.AccessListItems[storageItem.TxIndex]
-	txAccessList.Accounts[accAddr] = append(txAccessList.Accounts[accAddr], StorageAccessItemPrefetch{
-		Dirty: storageItem.Dirty,
-		Key:   storageItem.Key,
-	})
-}
-func (b *BlockAccessListPrefetch) PrepareTxAccount(txIndex uint32, addr common.Address) {
-	// create the tx access list if not exists
-	if _, ok := b.AccessListItems[txIndex]; !ok {
-		b.AccessListItems[txIndex] = TxAccessListPrefetch{
-			Accounts: make(map[common.Address][]StorageAccessItemPrefetch),
-		}
-	}
-	// create the account access list if not exists
-	if _, ok := b.AccessListItems[txIndex].Accounts[addr]; !ok {
-		b.AccessListItems[txIndex].Accounts[addr] = make([]StorageAccessItemPrefetch, 0)
-	}
-}
-
-// BlockAccessListRecord & BlockAccessListRecord are used to record access list during tx execution.
-type AccountAccessListRecord struct {
-	TxIndex      uint32 // index of the first transaction in the block that accessed the account
-	StorageItems map[common.Hash]StorageAccessItem
-}
-
-type BlockAccessListRecord struct {
-	Version  uint32 // Version of the access list format
-	Accounts map[common.Address]AccountAccessListRecord
-}
-
-func (b *BlockAccessListRecord) AddAccount(addr common.Address, txIndex uint32) {
-	if b == nil {
-		return
-	}
-
-	if _, ok := b.Accounts[addr]; !ok {
-		b.Accounts[addr] = AccountAccessListRecord{
-			TxIndex:      txIndex,
-			StorageItems: make(map[common.Hash]StorageAccessItem),
-		}
-	}
-}
-
-func (b *BlockAccessListRecord) AddStorage(addr common.Address, key common.Hash, txIndex uint32, dirty bool) {
-	if b == nil {
-		return
-	}
-
-	if _, ok := b.Accounts[addr]; !ok {
-		b.Accounts[addr] = AccountAccessListRecord{
-			TxIndex:      txIndex,
-			StorageItems: make(map[common.Hash]StorageAccessItem),
-		}
-	}
-
-	if _, ok := b.Accounts[addr].StorageItems[key]; !ok {
-		b.Accounts[addr].StorageItems[key] = StorageAccessItem{
-			TxIndex: txIndex,
-			Dirty:   dirty,
-			Key:     key,
-		}
-	} else {
-		storageItem := b.Accounts[addr].StorageItems[key]
-		storageItem.Dirty = dirty
-		b.Accounts[addr].StorageItems[key] = storageItem
-	}
+	Withdrawals  []*Withdrawal          `rlp:"optional"`
+	AccessList   *BlockAccessListEncode `rlp:"optional,nil"`
 }
 
 // Block represents an Ethereum block.
@@ -393,8 +278,8 @@ type Block struct {
 	sidecars BlobSidecars
 
 	// bal provides block access list
-	bal     *BlockAccessListEncode
-	balSize atomic.Uint64
+	accessList     *BlockAccessListEncode
+	accessListSize atomic.Uint64
 }
 
 // "external" block encoding. used for eth protocol, etc.
@@ -402,7 +287,8 @@ type extblock struct {
 	Header      *Header
 	Txs         []*Transaction
 	Uncles      []*Header
-	Withdrawals []*Withdrawal `rlp:"optional"`
+	Withdrawals []*Withdrawal          `rlp:"optional"`
+	AccessList  *BlockAccessListEncode `rlp:"optional"`
 }
 
 // NewBlock creates a new block. The input data is copied, changes to header and to the
@@ -463,6 +349,10 @@ func NewBlock(header *Header, body *Body, receipts []*Receipt, hasher TrieHasher
 		b.withdrawals = slices.Clone(withdrawals)
 	}
 
+	if body.AccessList != nil {
+		b.accessList = body.AccessList
+	}
+
 	return b
 }
 
@@ -507,12 +397,17 @@ func CopyHeader(h *Header) *Header {
 
 // DecodeRLP decodes a block from RLP.
 func (b *Block) DecodeRLP(s *rlp.Stream) error {
-	var eb extblock
+	var (
+		eb extblock
+	)
 	_, size, _ := s.Kind()
 	if err := s.Decode(&eb); err != nil {
+		fmt.Println("error here")
 		return err
 	}
-	b.header, b.uncles, b.transactions, b.withdrawals = eb.Header, eb.Uncles, eb.Txs, eb.Withdrawals
+	b.header, b.uncles, b.transactions, b.withdrawals, b.accessList = eb.Header, eb.Uncles, eb.Txs, eb.Withdrawals, eb.AccessList
+
+	// TODO: ensure that BAL is accounted for in size
 	b.size.Store(rlp.ListSize(size))
 	return nil
 }
@@ -524,21 +419,23 @@ func (b *Block) EncodeRLP(w io.Writer) error {
 		Txs:         b.transactions,
 		Uncles:      b.uncles,
 		Withdrawals: b.withdrawals,
+		AccessList:  b.accessList,
 	})
 }
 
 // Body returns the non-header content of the block.
 // Note the returned data is not an independent copy.
 func (b *Block) Body() *Body {
-	return &Body{b.transactions, b.uncles, b.withdrawals}
+	return &Body{b.transactions, b.uncles, b.withdrawals, b.accessList}
 }
 
 // Accessors for body data. These do not return a copy because the content
 // of the body slices does not affect the cached hash/size in block.
 
-func (b *Block) Uncles() []*Header          { return b.uncles }
-func (b *Block) Transactions() Transactions { return b.transactions }
-func (b *Block) Withdrawals() Withdrawals   { return b.withdrawals }
+func (b *Block) Uncles() []*Header                  { return b.uncles }
+func (b *Block) Transactions() Transactions         { return b.transactions }
+func (b *Block) Withdrawals() Withdrawals           { return b.withdrawals }
+func (b *Block) AccessList() *BlockAccessListEncode { return b.accessList }
 
 func (b *Block) Transaction(hash common.Hash) *Transaction {
 	for _, transaction := range b.transactions {
@@ -617,16 +514,16 @@ func (b *Block) Size() uint64 {
 	return uint64(c)
 }
 
-func (b *Block) BALSize() uint64 {
-	if b.bal == nil {
+func (b *Block) AccessListSize() uint64 {
+	if b.accessList == nil {
 		return 0
 	}
-	if size := b.balSize.Load(); size > 0 {
+	if size := b.accessListSize.Load(); size > 0 {
 		return size
 	}
 	c := writeCounter(0)
-	rlp.Encode(&c, b.bal)
-	b.balSize.Store(uint64(c))
+	rlp.Encode(&c, b.accessList)
+	b.accessListSize.Store(uint64(c))
 	return uint64(c)
 }
 
@@ -640,10 +537,6 @@ func (b *Block) SanityCheck() error {
 
 func (b *Block) Sidecars() BlobSidecars {
 	return b.sidecars
-}
-
-func (b *Block) BAL() *BlockAccessListEncode {
-	return b.bal
 }
 
 func (b *Block) CleanSidecars() {
@@ -701,7 +594,6 @@ func (b *Block) WithSeal(header *Header) *Block {
 		withdrawals:  b.withdrawals,
 		witness:      b.witness,
 		sidecars:     b.sidecars,
-		bal:          b.bal,
 	}
 }
 
@@ -715,7 +607,10 @@ func (b *Block) WithBody(body Body) *Block {
 		withdrawals:  slices.Clone(body.Withdrawals),
 		witness:      b.witness,
 		sidecars:     b.sidecars,
-		bal:          b.bal,
+	}
+	if body.AccessList != nil {
+		balCopy := body.AccessList.Copy()
+		block.accessList = balCopy
 	}
 	for i := range body.Uncles {
 		block.uncles[i] = CopyHeader(body.Uncles[i])
@@ -731,12 +626,25 @@ func (b *Block) WithWithdrawals(withdrawals []*Withdrawal) *Block {
 		uncles:       b.uncles,
 		witness:      b.witness,
 		sidecars:     b.sidecars,
-		bal:          b.bal,
 	}
 	if withdrawals != nil {
 		block.withdrawals = make([]*Withdrawal, len(withdrawals))
 		copy(block.withdrawals, withdrawals)
 	}
+	return block
+}
+
+// WithAccessList returns a block containing the given access list.
+func (b *Block) WithAccessList(accessList *BlockAccessListEncode) *Block {
+	block := &Block{
+		header:       b.header,
+		transactions: b.transactions,
+		uncles:       b.uncles,
+		withdrawals:  b.withdrawals,
+		witness:      b.witness,
+		sidecars:     b.sidecars,
+	}
+	block.accessList = accessList
 	return block
 }
 
@@ -748,7 +656,6 @@ func (b *Block) WithSidecars(sidecars BlobSidecars) *Block {
 		uncles:       b.uncles,
 		withdrawals:  b.withdrawals,
 		witness:      b.witness,
-		bal:          b.bal,
 	}
 	if sidecars != nil {
 		block.sidecars = make(BlobSidecars, len(sidecars))
@@ -757,29 +664,13 @@ func (b *Block) WithSidecars(sidecars BlobSidecars) *Block {
 	return block
 }
 
-func (b *Block) WithBAL(bal *BlockAccessListEncode) *Block {
-	block := &Block{
-		header:       b.header,
-		transactions: b.transactions,
-		uncles:       b.uncles,
-		withdrawals:  b.withdrawals,
-		witness:      b.witness,
-		sidecars:     b.sidecars,
-	}
-	block.bal = bal
-	return block
-}
-
-func (b *Block) UpdateBAL(bal *BlockAccessListEncode) {
-	b.bal = bal
-}
-
 func (b *Block) WithWitness(witness *ExecutionWitness) *Block {
 	return &Block{
 		header:       b.header,
 		transactions: b.transactions,
 		uncles:       b.uncles,
 		withdrawals:  b.withdrawals,
+		accessList:   b.accessList,
 		witness:      witness,
 		sidecars:     b.sidecars,
 	}
@@ -859,5 +750,24 @@ func EncodeSigHeader(w io.Writer, header *Header, chainId *big.Int) {
 	err := rlp.Encode(w, toEncode)
 	if err != nil {
 		panic("can't encode: " + err.Error())
+	}
+}
+
+type BlockAccessListEncode struct {
+	Version    uint32               // Version of the access list format
+	Number     uint64               // number of the block that the BAL is for
+	Hash       common.Hash          // hash of the block that the BAL is for
+	SignData   []byte               // sign data for BAL
+	AccessList *bal.BlockAccessList // encoded access list
+}
+
+func (b *BlockAccessListEncode) Copy() *BlockAccessListEncode {
+	accessListCopy := b.AccessList.Copy()
+	return &BlockAccessListEncode{
+		Version:    b.Version,
+		Number:     b.Number,
+		Hash:       b.Hash,
+		SignData:   b.SignData,
+		AccessList: &accessListCopy,
 	}
 }

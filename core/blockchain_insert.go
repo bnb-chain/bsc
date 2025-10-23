@@ -62,7 +62,7 @@ func (st *insertStats) report(chain []*types.Block, index int, snapDiffItems, sn
 		context := []interface{}{
 			"number", end.Number(), "hash", end.Hash(), "miner", end.Coinbase(),
 			"blocks", st.processed, "txs", txs, "blobs", blobs, "mgas", float64(st.usedGas) / 1000000,
-			"elapsed", common.PrettyDuration(elapsed), "mgasps", mgasps, "BAL", end.BAL() != nil,
+			"elapsed", common.PrettyDuration(elapsed), "mgasps", mgasps,
 		}
 		blockInsertMgaspsGauge.Update(int64(mgasps))
 		if timestamp := time.Unix(int64(end.Time()), 0); time.Since(timestamp) > time.Minute {

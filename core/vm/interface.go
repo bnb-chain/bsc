@@ -22,6 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/stateless"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/holiman/uint256"
@@ -35,7 +36,6 @@ type StateDB interface {
 	SubBalance(common.Address, *uint256.Int, tracing.BalanceChangeReason) uint256.Int
 	AddBalance(common.Address, *uint256.Int, tracing.BalanceChangeReason) uint256.Int
 	GetBalance(common.Address) *uint256.Int
-	SetBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason)
 
 	GetNonce(common.Address) uint64
 	SetNonce(common.Address, uint64, tracing.NonceChangeReason)
@@ -44,14 +44,14 @@ type StateDB interface {
 	GetCode(common.Address) []byte
 
 	// SetCode sets the new code for the address, and returns the previous code, if any.
-	SetCode(common.Address, []byte) []byte
+	SetCode(common.Address, []byte, tracing.CodeChangeReason) []byte
 	GetCodeSize(common.Address) int
 
 	AddRefund(uint64)
 	SubRefund(uint64)
 	GetRefund() uint64
 
-	GetCommittedState(common.Address, common.Hash) common.Hash
+	GetStateAndCommittedState(common.Address, common.Hash) (common.Hash, common.Hash)
 	GetState(common.Address, common.Hash) common.Hash
 	SetState(common.Address, common.Hash, common.Hash) common.Hash
 	GetStorageRoot(addr common.Address) common.Hash
@@ -84,7 +84,6 @@ type StateDB interface {
 	// AddSlotToAccessList adds the given (address,slot) to the access list. This operation is safe to perform
 	// even if the feature/fork is not active yet
 	AddSlotToAccessList(addr common.Address, slot common.Hash)
-	ClearAccessList()
 
 	// PointCache returns the point cache used in computations
 	PointCache() *utils.PointCache
@@ -96,8 +95,6 @@ type StateDB interface {
 	RevertToSnapshot(int)
 	Snapshot() int
 
-	NoTries() bool
-
 	AddLog(*types.Log)
 	GetLogs(hash common.Hash, blockNumber uint64, blockHash common.Hash, blockTime uint64) []*types.Log
 	AddPreimage(common.Hash, []byte)
@@ -107,8 +104,6 @@ type StateDB interface {
 	AccessEvents() *state.AccessEvents
 
 	// Finalise must be invoked at the end of a transaction
-	Finalise(bool)
+	Finalise(bool) (*bal.StateDiff, *bal.StateAccesses)
 	IntermediateRoot(deleteEmptyObjects bool) common.Hash
-
-	IsAddressInMutations(addr common.Address) bool
 }

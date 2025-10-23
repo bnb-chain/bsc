@@ -523,7 +523,7 @@ func (ethash *Ethash) Finalize(chain consensus.ChainHeaderReader, header *types.
 
 // FinalizeAndAssemble implements consensus.Engine, accumulating the block and
 // uncle rewards, setting the final state and assembling the block.
-func (ethash *Ethash) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
+func (ethash *Ethash) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state state.BlockProcessingDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
 	if len(body.Withdrawals) > 0 {
 		return nil, nil, errors.New("ethash does not support withdrawals")
 	}
@@ -608,4 +608,12 @@ func accumulateRewards(config *params.ChainConfig, stateDB vm.StateDB, header *t
 		reward.Add(reward, r)
 	}
 	stateDB.AddBalance(header.Coinbase, reward, tracing.BalanceIncreaseRewardMineBlock)
+}
+
+func (ethash *Ethash) SignBAL(blockAccessList *types.BlockAccessListEncode) error {
+	return nil
+}
+
+func (ethash *Ethash) VerifyBAL(block *types.Block, blockAccessList *types.BlockAccessListEncode) error {
+	return nil
 }

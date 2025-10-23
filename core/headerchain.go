@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
@@ -70,6 +71,16 @@ type HeaderChain struct {
 
 	procInterrupt func() bool
 	engine        consensus.Engine
+}
+
+// SignBlockAccessList implements consensus.ChainHeaderReader.
+func (hc *HeaderChain) SignBlockAccessList(blockAccessList *bal.BlockAccessList) error {
+	return nil
+}
+
+// VerifyBlockAccessList implements consensus.ChainHeaderReader.
+func (hc *HeaderChain) VerifyBlockAccessList(block *types.Block, bal *bal.BlockAccessList) error {
+	return nil
 }
 
 // NewHeaderChain creates a new HeaderChain structure. ProcInterrupt points

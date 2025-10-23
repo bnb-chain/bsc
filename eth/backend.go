@@ -270,6 +270,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if networkID == 0 {
 		networkID = chainConfig.ChainID.Uint64()
 	}
+	if config.ExperimentalBAL {
+		chainConfig.EnableBAL = true
+	}
 
 	// Assemble the Ethereum object.
 	eth := &Ethereum{
@@ -324,7 +327,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		options = &core.BlockChainConfig{
 			TrieCleanLimit:        config.TrieCleanCache,
 			NoPrefetch:            config.NoPrefetch,
-			EnableBAL:             config.EnableBAL,
 			TrieDirtyLimit:        config.TrieDirtyCache,
 			ArchiveMode:           config.NoPruning,
 			TrieTimeLimit:         config.TrieTimeout,
@@ -350,6 +352,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				EnablePreimageRecording:   config.EnablePreimageRecording,
 				EnableOpcodeOptimizations: config.EnableOpcodeOptimizing,
 			},
+			EnableBAL: config.ExperimentalBAL,
 		}
 	)
 	if config.DisableTxIndexer {
@@ -439,7 +442,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		RequiredBlocks:            config.RequiredBlocks,
 		DirectBroadcast:           config.DirectBroadcast,
 		EnableEVNFeatures:         stack.Config().EnableEVNFeatures,
-		EnableBAL:                 config.EnableBAL,
 		EVNNodeIdsWhitelist:       stack.Config().P2P.EVNNodeIdsWhitelist,
 		ProxyedValidatorAddresses: stack.Config().P2P.ProxyedValidatorAddresses,
 		DisablePeerTxBroadcast:    config.DisablePeerTxBroadcast,

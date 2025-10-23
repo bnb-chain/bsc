@@ -74,14 +74,14 @@ func (obj *Header) EncodeRLP(_w io.Writer) error {
 			w.WriteUint64((*obj.ExcessBlobGas))
 		}
 	}
-	if _tmp5 || _tmp6 {
+	if _tmp5 || _tmp6  {
 		if obj.ParentBeaconRoot == nil {
 			w.Write([]byte{0x80})
 		} else {
 			w.WriteBytes(obj.ParentBeaconRoot[:])
 		}
 	}
-	if _tmp6 {
+	if _tmp6{
 		if obj.RequestsHash == nil {
 			w.Write([]byte{0x80})
 		} else {

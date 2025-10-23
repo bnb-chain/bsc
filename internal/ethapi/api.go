@@ -830,7 +830,7 @@ func (diff *StateOverride) Apply(statedb *state.StateDB, precompiles vm.Precompi
 		}
 		// Override account(contract) code.
 		if account.Code != nil {
-			statedb.SetCode(addr, *account.Code)
+			statedb.SetCode(addr, *account.Code, tracing.CodeChangeUnspecified)
 		}
 		// Override account balance.
 		if account.Balance != nil {
@@ -1271,6 +1271,9 @@ func RPCMarshalBlock(block *types.Block, inclTx bool, fullTx bool, config *param
 	if block.Withdrawals() != nil {
 		fields["withdrawals"] = block.Withdrawals()
 	}
+	if block.Body().AccessList != nil {
+		fields["accessList"] = block.Body().AccessList
+	}
 	return fields
 }
 
@@ -1577,7 +1580,7 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		log.Trace("Creating access list", "input", accessList)
 
 		// Copy the original db so we don't modify it
-		statedb := db.Copy()
+		statedb := db.Copy().(*state.StateDB)
 		// Set the accesslist to the last al
 		args.AccessList = &accessList
 		msg := args.ToMessage(header.BaseFee, true, true)

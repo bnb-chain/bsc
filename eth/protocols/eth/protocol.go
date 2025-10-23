@@ -22,6 +22,8 @@ import (
 	"io"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/core/types/bal"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -231,10 +233,10 @@ type BlockHeadersRLPPacket struct {
 
 // NewBlockPacket is the network packet for the block propagation message.
 type NewBlockPacket struct {
-	Block    *types.Block
-	TD       *big.Int
-	Sidecars types.BlobSidecars           `rlp:"optional"`
-	Bal      *types.BlockAccessListEncode `rlp:"optional"`
+	Block           *types.Block
+	TD              *big.Int
+	Sidecars        types.BlobSidecars           `rlp:"optional"`
+	BlockAccessList *types.BlockAccessListEncode `rlp:"optional"`
 }
 
 // sanityCheck verifies that the values are reasonable, as a DoS protection
@@ -242,7 +244,7 @@ func (request *NewBlockPacket) sanityCheck() error {
 	if err := request.Block.SanityCheck(); err != nil {
 		return err
 	}
-	//TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
+	// TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
 	// larger, it will still fit within 100 bits
 	if tdlen := request.TD.BitLen(); tdlen > 100 {
 		return fmt.Errorf("too large block TD: bitlen %d", tdlen)
@@ -295,21 +297,23 @@ type BlockBody struct {
 	Uncles       []*types.Header      // Uncles contained within a block
 	Withdrawals  []*types.Withdrawal  `rlp:"optional"` // Withdrawals contained within a block
 	Sidecars     types.BlobSidecars   `rlp:"optional"` // Sidecars contained within a block
+	AccessList   *bal.BlockAccessList `rlp:"optional"`
 }
 
 // Unpack retrieves the transactions and uncles from the range packet and returns
 // them in a split flat format that's more consistent with the internal data structures.
-func (p *BlockBodiesResponse) Unpack() ([][]*types.Transaction, [][]*types.Header, [][]*types.Withdrawal, []types.BlobSidecars) {
+func (p *BlockBodiesResponse) Unpack() ([][]*types.Transaction, [][]*types.Header, [][]*types.Withdrawal, []types.BlobSidecars, []*bal.BlockAccessList) {
 	var (
 		txset         = make([][]*types.Transaction, len(*p))
 		uncleset      = make([][]*types.Header, len(*p))
 		withdrawalset = make([][]*types.Withdrawal, len(*p))
 		sidecarset    = make([]types.BlobSidecars, len(*p))
+		accessListSet = make([]*bal.BlockAccessList, len(*p))
 	)
 	for i, body := range *p {
-		txset[i], uncleset[i], withdrawalset[i], sidecarset[i] = body.Transactions, body.Uncles, body.Withdrawals, body.Sidecars
+		txset[i], uncleset[i], withdrawalset[i], sidecarset[i], accessListSet[i] = body.Transactions, body.Uncles, body.Withdrawals, body.Sidecars, body.AccessList
 	}
-	return txset, uncleset, withdrawalset, sidecarset
+	return txset, uncleset, withdrawalset, sidecarset, accessListSet
 }
 
 // GetReceiptsRequest represents a block receipts query.

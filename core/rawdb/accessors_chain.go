@@ -1043,7 +1043,6 @@ func DeleteBlock(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
 	DeleteBody(db, hash, number)
 	DeleteTd(db, hash, number)
 	DeleteBlobSidecars(db, hash, number) // it is safe to delete non-exist blob
-	DeleteBAL(db, hash, number)
 }
 
 // DeleteBlockWithoutNumber removes all block data associated with a hash, except
@@ -1054,7 +1053,6 @@ func DeleteBlockWithoutNumber(db ethdb.KeyValueWriter, hash common.Hash, number 
 	DeleteBody(db, hash, number)
 	DeleteTd(db, hash, number)
 	DeleteBlobSidecars(db, hash, number)
-	DeleteBAL(db, hash, number)
 }
 
 const badBlockToKeep = 10

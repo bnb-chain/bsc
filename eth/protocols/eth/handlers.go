@@ -376,13 +376,6 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
 	}
 
-	if ann.Bal != nil {
-		log.Debug("handleNewBlock, BAL", "number", ann.Block.NumberU64(), "hash", ann.Block.Hash(), "peer", peer.ID(),
-			"version", ann.Bal.Version, "signData", len(ann.Bal.SignData), "accounts", len(ann.Bal.Accounts), "balSize", ann.Block.BALSize())
-	} else {
-		log.Debug("handleNewBlock, no BAL", "number", ann.Block.NumberU64(), "hash", ann.Block.Hash(), "peer", peer.ID(),
-			"txNum", len(ann.Block.Transactions()), "balSize", ann.Block.BALSize())
-	}
 	// Now that we have our packet, perform operations using the interface methods
 	if err := ann.sanityCheck(); err != nil {
 		return err
@@ -436,6 +429,7 @@ func handleBlockBodies(backend Backend, msg Decoder, peer *Peer) error {
 			txsHashes        = make([]common.Hash, len(res.BlockBodiesResponse))
 			uncleHashes      = make([]common.Hash, len(res.BlockBodiesResponse))
 			withdrawalHashes = make([]common.Hash, len(res.BlockBodiesResponse))
+			accessListHashes = make([]common.Hash, len(res.BlockBodiesResponse))
 		)
 		hasher := trie.NewStackTrie(nil)
 		for i, body := range res.BlockBodiesResponse {
@@ -444,8 +438,11 @@ func handleBlockBodies(backend Backend, msg Decoder, peer *Peer) error {
 			if body.Withdrawals != nil {
 				withdrawalHashes[i] = types.DeriveSha(types.Withdrawals(body.Withdrawals), hasher)
 			}
+			if body.AccessList != nil {
+				accessListHashes[i] = body.AccessList.Hash()
+			}
 		}
-		return [][]common.Hash{txsHashes, uncleHashes, withdrawalHashes}
+		return [][]common.Hash{txsHashes, uncleHashes, withdrawalHashes, accessListHashes}
 	}
 	return peer.dispatchResponse(&Response{
 		id:   res.RequestId,

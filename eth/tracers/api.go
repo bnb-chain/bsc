@@ -426,7 +426,7 @@ func (api *API) traceChain(start, end *types.Block, config *TraceConfig, closed 
 			// Send the block over to the concurrent tracers (if not in the fast-forward phase)
 			txs := next.Transactions()
 			select {
-			case taskCh <- &blockTraceTask{statedb: statedb.Copy(), parent: block, block: next, release: release, results: make([]*txTraceResult, len(txs))}:
+			case taskCh <- &blockTraceTask{statedb: statedb.Copy().(*state.StateDB), parent: block, block: next, release: release, results: make([]*txTraceResult, len(txs))}:
 			case <-closed:
 				tracker.releaseState(number, release)
 				return
@@ -789,7 +789,7 @@ txloop:
 		}
 
 		// Send the trace task over for execution
-		task := &txTraceTask{statedb: statedb.Copy(), index: i, isSystemTx: !beforeSystemTx}
+		task := &txTraceTask{statedb: statedb.Copy().(*state.StateDB), index: i, isSystemTx: !beforeSystemTx}
 		select {
 		case <-ctx.Done():
 			failed = ctx.Err()
@@ -845,10 +845,6 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 		return nil, err
 	}
 	defer release()
-
-	// upgrade built-in system contract before normal txs if Feynman is not enabled
-	systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, true)
-
 	// Retrieve the tracing configurations, or use default values
 	var (
 		logConfig logger.Config
@@ -1009,21 +1005,13 @@ func (api *API) TraceTransaction(ctx context.Context, hash common.Hash, config *
 	if err != nil {
 		return nil, err
 	}
-
-	var isSystemTx bool
-	if posa, ok := api.backend.Engine().(consensus.PoSA); ok {
-		if isSystem, _ := posa.IsSystemTransaction(tx, block.Header()); isSystem {
-			isSystemTx = true
-		}
-	}
-
 	txctx := &Context{
 		BlockHash:   blockHash,
 		BlockNumber: block.Number(),
 		TxIndex:     int(index),
 		TxHash:      hash,
 	}
-	return api.traceTx(ctx, tx, msg, txctx, vmctx, statedb, config, isSystemTx, nil)
+	return api.traceTx(ctx, tx, msg, txctx, vmctx, statedb, config, false, nil)
 }
 
 // TraceCall lets you trace a given eth_call. It collects the structured logs
@@ -1075,15 +1063,6 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 		return nil, err
 	}
 	defer release()
-
-	// upgrade built-in system contract before tracing if Feynman is not enabled
-	if block.NumberU64() > 0 {
-		parent, err := api.blockByNumberAndHash(ctx, rpc.BlockNumber(block.NumberU64()-1), block.ParentHash())
-		if err != nil {
-			return nil, err
-		}
-		systemcontracts.TryUpdateBuildInSystemContract(api.backend.ChainConfig(), block.Number(), parent.Time(), block.Time(), statedb, true)
-	}
 
 	h := block.Header()
 	blockContext := core.NewEVMBlockContext(h, api.chainContext(ctx), nil)
@@ -1192,7 +1171,7 @@ func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *cor
 
 	// Call Prepare to clear out the statedb access list
 	statedb.SetTxContext(txctx.TxHash, txctx.TxIndex)
-	_, err = core.ApplyTransactionWithEVM(message, new(core.GasPool).AddGas(message.GasLimit), statedb, vmctx.BlockNumber, txctx.BlockHash, vmctx.Time, tx, &usedGas, evm)
+	_, _, _, err = core.ApplyTransactionWithEVM(message, new(core.GasPool).AddGas(message.GasLimit), statedb, vmctx.BlockNumber, txctx.BlockHash, vmctx.Time, tx, &usedGas, evm)
 	if err != nil {
 		return nil, fmt.Errorf("tracing failed: %w", err)
 	}
