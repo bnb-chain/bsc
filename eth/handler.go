@@ -997,8 +997,7 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 				hasher.Write(from.Bytes())
 
 				hasher.Read(hash)
-				if peer.ProxyedPeerFlag.Load() ||
-					new(big.Int).Mod(new(big.Int).SetBytes(hash), total).Cmp(direct) < 0 {
+				if new(big.Int).Mod(new(big.Int).SetBytes(hash), total).Cmp(direct) < 0 {
 					broadcast = true
 				}
 			}
