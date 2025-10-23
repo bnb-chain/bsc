@@ -343,7 +343,7 @@ func (ps *peerSet) setProxyedPeers(proxyedNodeIdsMap map[enode.ID]struct{}) {
 			proxyedPeerCnt++
 		}
 	}
-	log.Info("setProxyedPeers", "total", len(peers), "proxyedPeerCnt", proxyedPeerCnt)
+	log.Debug("setProxyedPeers", "total", len(peers), "proxyedPeerCnt", proxyedPeerCnt)
 }
 
 // enableEVNFeatures enables the given features for the given peers.
