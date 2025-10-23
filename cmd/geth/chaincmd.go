@@ -521,7 +521,6 @@ func initNetwork(ctx *cli.Context) error {
 		sentryEnodes          []*enode.Node
 		sentryNodeIDs         []enode.ID
 		connectOneExtraEnodes bool
-		staticConnect         bool
 	)
 	if enableSentryNode {
 		sentryConfigs, sentryEnodes, err = createSentryNodeConfigs(ctx, config, initDir)
@@ -533,10 +532,9 @@ func initNetwork(ctx *cli.Context) error {
 			sentryNodeIDs[i] = sentryEnodes[i].ID()
 		}
 		connectOneExtraEnodes = true
-		staticConnect = true
 	}
 
-	configs, enodes, accounts, err := createConfigs(config, initDir, "node", ips, ports, sentryEnodes, connectOneExtraEnodes, staticConnect)
+	configs, enodes, accounts, err := createConfigs(config, initDir, "node", ips, ports, sentryEnodes, connectOneExtraEnodes, true)
 	if err != nil {
 		utils.Fatalf("Failed to create node configs: %v", err)
 	}
