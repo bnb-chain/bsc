@@ -564,7 +564,8 @@ func initNetwork(ctx *cli.Context) error {
 	}
 	if enableSentryNode && ctx.Bool(utils.InitEVNSentryWhitelist.Name) {
 		for i := 0; i < len(sentryConfigs); i++ {
-			sentryConfigs[i].Node.P2P.EVNNodeIdsWhitelist = sentryNodeIDs
+			sentryConfigs[i].Node.P2P.EVNNodeIdsWhitelist = append([]enode.ID{}, sentryNodeIDs...)
+			sentryConfigs[i].Node.P2P.EVNNodeIdsWhitelist[i] = nodeIDs[i]
 		}
 	}
 	if enableSentryNode && ctx.Bool(utils.InitEVNSentryRegister.Name) {
@@ -589,12 +590,10 @@ func initNetwork(ctx *cli.Context) error {
 
 	if ctx.Int(utils.InitFullNodeSize.Name) > 0 {
 		extraEnodes := enodes
-		extraNodeIDs := nodeIDs
 		if enableSentryNode {
 			extraEnodes = sentryEnodes
-			extraNodeIDs = sentryNodeIDs
 		}
-		_, _, err := createAndSaveFullNodeConfigs(ctx, inGenesisFile, config, initDir, extraEnodes, extraNodeIDs)
+		_, _, err := createAndSaveFullNodeConfigs(ctx, inGenesisFile, config, initDir, extraEnodes)
 		if err != nil {
 			utils.Fatalf("Failed to create full node configs: %v", err)
 		}
@@ -625,7 +624,7 @@ func createSentryNodeConfigs(ctx *cli.Context, baseConfig gethConfig, initDir st
 	return configs, enodes, nil
 }
 
-func createAndSaveFullNodeConfigs(ctx *cli.Context, inGenesisFile *os.File, baseConfig gethConfig, initDir string, extraEnodes []*enode.Node, proxyedNodeIds []enode.ID) ([]gethConfig, []*enode.Node, error) {
+func createAndSaveFullNodeConfigs(ctx *cli.Context, inGenesisFile *os.File, baseConfig gethConfig, initDir string, extraEnodes []*enode.Node) ([]gethConfig, []*enode.Node, error) {
 	size := ctx.Int(utils.InitFullNodeSize.Name)
 	if size <= 0 {
 		utils.Fatalf("size should be greater than 0")
@@ -648,7 +647,6 @@ func createAndSaveFullNodeConfigs(ctx *cli.Context, inGenesisFile *os.File, base
 
 	// write configs
 	for i := 0; i < len(configs); i++ {
-		configs[i].Node.P2P.ProxyedNodeIds = proxyedNodeIds // for broadcasting txs directly
 		err := writeConfig(inGenesisFile, configs[i], path.Join(initDir, fmt.Sprintf("fullnode%d", i)))
 		if err != nil {
 			utils.Fatalf("Failed to write config: %v", err)
