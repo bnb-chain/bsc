@@ -178,17 +178,10 @@ func (miner *Miner) TryWaitProposalDoneWhenStopping() {
 	miner.worker.tryWaitProposalDoneWhenStopping()
 }
 
-// Pending returns the currently pending block and associated receipts, logs
+// Pending returns the latest block and associated receipts, logs
 // and statedb. The returned values can be nil in case the pending block is
 // not initialized.
 func (miner *Miner) Pending() (*types.Block, types.Receipts, *state.StateDB) {
-	if miner.worker.isRunning() {
-		pendingBlock, pendingReceipts, pendingState := miner.worker.pending()
-		if pendingState != nil && pendingBlock != nil {
-			return pendingBlock, pendingReceipts, pendingState
-		}
-	}
-	// fallback to latest block
 	block := miner.worker.chain.CurrentBlock()
 	if block == nil {
 		return nil, nil, nil

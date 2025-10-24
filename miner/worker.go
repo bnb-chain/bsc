@@ -46,7 +46,6 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/trie"
 )
 
 const (
@@ -111,33 +110,6 @@ type environment struct {
 	witness *stateless.Witness
 
 	committed bool
-}
-
-// copy creates a deep copy of environment.
-func (env *environment) copy() *environment {
-	cpy := &environment{
-		signer:    env.signer,
-		state:     env.state.Copy(),
-		tcount:    env.tcount,
-		coinbase:  env.coinbase,
-		header:    types.CopyHeader(env.header),
-		receipts:  copyReceipts(env.receipts),
-		committed: env.committed,
-	}
-	cpy.state.TransferBlockAccessList(env.state)
-	if env.gasPool != nil {
-		gasPool := *env.gasPool
-		cpy.gasPool = &gasPool
-	}
-	cpy.txs = make([]*types.Transaction, len(env.txs))
-	copy(cpy.txs, env.txs)
-	if env.sidecars != nil {
-		cpy.sidecars = make(types.BlobSidecars, len(env.sidecars))
-		copy(cpy.sidecars, env.sidecars)
-		cpy.blobs = env.blobs
-	}
-
-	return cpy
 }
 
 // discard terminates the background prefetcher go-routine. It should
@@ -238,11 +210,6 @@ type worker struct {
 
 	pendingMu    sync.RWMutex
 	pendingTasks map[common.Hash]*task
-
-	snapshotMu       sync.RWMutex // The lock used to protect the snapshots below
-	snapshotBlock    *types.Block
-	snapshotReceipts types.Receipts
-	snapshotState    *state.StateDB
 
 	// atomic status counters
 	running atomic.Bool // The indicator whether the consensus engine is running or not.
@@ -373,17 +340,6 @@ func (w *worker) setPrioAddresses(prio []common.Address) {
 	w.confMu.Lock()
 	defer w.confMu.Unlock()
 	w.prio = prio
-}
-
-// Pending returns the currently pending block, associated receipts and statedb.
-// The returned values can be nil in case the pending block is not initialized.
-func (w *worker) pending() (*types.Block, types.Receipts, *state.StateDB) {
-	w.snapshotMu.RLock()
-	defer w.snapshotMu.RUnlock()
-	if w.snapshotState == nil {
-		return nil, nil, nil
-	}
-	return w.snapshotBlock, w.snapshotReceipts, w.snapshotState.Copy()
 }
 
 // start sets the running status as 1 and triggers new work submitting.
@@ -734,25 +690,6 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 	// Keep track of transactions which return errors so they can be removed
 	env.tcount = 0
 	return env, nil
-}
-
-// updateSnapshot updates pending snapshot block, receipts and state.
-func (w *worker) updateSnapshot(env *environment) {
-	w.snapshotMu.Lock()
-	defer w.snapshotMu.Unlock()
-
-	body := types.Body{Transactions: env.txs}
-	if env.header.EmptyWithdrawalsHash() {
-		body.Withdrawals = make([]*types.Withdrawal, 0)
-	}
-	w.snapshotBlock = types.NewBlock(
-		env.header,
-		&body,
-		env.receipts,
-		trie.NewStackTrie(nil),
-	)
-	w.snapshotReceipts = copyReceipts(env.receipts)
-	w.snapshotState = env.state.Copy()
 }
 
 func (w *worker) commitTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) ([]*types.Log, error) {
@@ -1514,7 +1451,7 @@ LOOP:
 		}
 	}
 
-	w.commit(bestWork, w.fullTaskHook, true, start)
+	w.commit(bestWork, w.fullTaskHook, start)
 
 	// Swap out the old work with the new one, terminating any leftover
 	// prefetcher processes in the mean time and starting a new one.
@@ -1532,9 +1469,7 @@ func (w *worker) inTurn() bool {
 
 // commit runs any post-transaction state modifications, assembles the final block
 // and commits new work if consensus engine is running.
-// Note the assumption is held that the mutation is allowed to the passed env, do
-// the deep copy first.
-func (w *worker) commit(env *environment, interval func(), update bool, start time.Time) error {
+func (w *worker) commit(env *environment, interval func(), start time.Time) error {
 	if w.isRunning() {
 		if env.committed {
 			log.Warn("Invalid work commit: already committed", "number", env.header.Number.Uint64())
@@ -1564,10 +1499,6 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		if w.chainConfig.IsCancun(env.header.Number, env.header.Time) && env.sidecars == nil {
 			env.sidecars = make(types.BlobSidecars, 0)
 		}
-		// Create a local environment copy, avoid the data race with snapshot state.
-		// https://github.com/ethereum/go-ethereum/issues/24299
-		env := env.copy()
-
 		block = block.WithSidecars(env.sidecars)
 
 		select {
@@ -1578,9 +1509,6 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		case <-w.exitCh:
 			log.Info("Worker has exited")
 		}
-	}
-	if update {
-		w.updateSnapshot(env)
 	}
 	return nil
 }
@@ -1636,16 +1564,6 @@ func (w *worker) tryWaitProposalDoneWhenStopping() {
 	log.Info("The miner will propose in later, waiting for the proposal to be done",
 		"currentBlock", currentBlock, "nextProposalStart", startBlock, "nextProposalEnd", endBlock, "waitTime", waitSecs)
 	time.Sleep(time.Duration(waitSecs) * time.Second)
-}
-
-// copyReceipts makes a deep copy of the given receipts.
-func copyReceipts(receipts []*types.Receipt) []*types.Receipt {
-	result := make([]*types.Receipt, len(receipts))
-	for i, l := range receipts {
-		cpy := *l
-		result[i] = &cpy
-	}
-	return result
 }
 
 // signalToErr converts the interruption signal to a concrete error type for return.
