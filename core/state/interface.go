@@ -106,4 +106,6 @@ type BlockProcessingDB interface {
 	// prefetch
 	StopPrefetcher()
 	StartPrefetcher(namespace string, witness *stateless.Witness)
+
+	IsAddressInMutations(addr common.Address) bool
 }

@@ -308,3 +308,7 @@ func (a *hookedStateDB) Database() Database {
 func (a *hookedStateDB) GetTrie() Trie {
 	return a.inner.GetTrie()
 }
+
+func (a *hookedStateDB) IsAddressInMutations(addr common.Address) bool {
+	return a.inner.IsAddressInMutations(addr)
+}

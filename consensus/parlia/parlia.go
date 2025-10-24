@@ -2438,7 +2438,7 @@ func (p *Parlia) checkNanoBlackList(state vm.StateDB, header *types.Header) erro
 	if p.chainConfig.IsNano(header.Number) {
 		for _, blackListAddr := range types.NanoBlackList {
 			// Check if the address exists in state (as a proxy for mutations)
-			if state.Exist(blackListAddr) {
+			if state.IsAddressInMutations(blackListAddr) {
 				log.Error("blacklisted address found", "address", blackListAddr)
 				return fmt.Errorf("block contains blacklisted address: %s", blackListAddr.Hex())
 			}

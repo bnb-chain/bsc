@@ -227,4 +227,8 @@ func (s *AccessListCreationDB) Copy() BlockProcessingDB {
 	return &AccessListCreationDB{s.idx, s.inner.Copy(), s.accessList.Copy()}
 }
 
+func (s *AccessListCreationDB) IsAddressInMutations(addr common.Address) bool {
+	return s.inner.IsAddressInMutations(addr)
+}
+
 var _ BlockProcessingDB = &AccessListCreationDB{}
