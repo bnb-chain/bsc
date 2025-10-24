@@ -2646,6 +2646,9 @@ func (bc *BlockChain) ProcessBlock(parentRoot common.Hash, block *types.Block, s
 			existingBody = block.Body()
 			accessList := sdb.(*state.AccessListCreationDB).ConstructedBlockAccessList().ToEncodingObj()
 			existingBody.AccessList = &types.BlockAccessListEncode{
+				Version:    0,
+				Number:     block.NumberU64(),
+				Hash:       accessList.Hash(),
 				AccessList: accessList,
 			}
 			block = block.WithBody(*existingBody)
