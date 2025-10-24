@@ -521,7 +521,6 @@ func initNetwork(ctx *cli.Context) error {
 		sentryEnodes          []*enode.Node
 		sentryNodeIDs         []enode.ID
 		connectOneExtraEnodes bool
-		staticConnect         bool
 	)
 	if enableSentryNode {
 		sentryConfigs, sentryEnodes, err = createSentryNodeConfigs(ctx, config, initDir)
@@ -533,10 +532,9 @@ func initNetwork(ctx *cli.Context) error {
 			sentryNodeIDs[i] = sentryEnodes[i].ID()
 		}
 		connectOneExtraEnodes = true
-		staticConnect = true
 	}
 
-	configs, enodes, accounts, err := createConfigs(config, initDir, "node", ips, ports, sentryEnodes, connectOneExtraEnodes, staticConnect)
+	configs, enodes, accounts, err := createConfigs(config, initDir, "node", ips, ports, sentryEnodes, connectOneExtraEnodes, true)
 	if err != nil {
 		utils.Fatalf("Failed to create node configs: %v", err)
 	}
@@ -548,7 +546,8 @@ func initNetwork(ctx *cli.Context) error {
 	// add more feature configs
 	if enableSentryNode {
 		for i := 0; i < len(sentryConfigs); i++ {
-			sentryConfigs[i].Node.P2P.ProxyedValidatorAddresses = accounts
+			sentryConfigs[i].Node.P2P.ProxyedValidatorAddresses = accounts[i]
+			sentryConfigs[i].Node.P2P.ProxyedNodeIds = []enode.ID{nodeIDs[i]}
 		}
 	}
 	if ctx.Bool(utils.InitEVNValidatorWhitelist.Name) {
@@ -588,11 +587,9 @@ func initNetwork(ctx *cli.Context) error {
 	}
 
 	if ctx.Int(utils.InitFullNodeSize.Name) > 0 {
-		var extraEnodes []*enode.Node
+		extraEnodes := enodes
 		if enableSentryNode {
 			extraEnodes = sentryEnodes
-		} else {
-			extraEnodes = enodes
 		}
 		_, _, err := createAndSaveFullNodeConfigs(ctx, inGenesisFile, config, initDir, extraEnodes)
 		if err != nil {
@@ -656,13 +653,13 @@ func createAndSaveFullNodeConfigs(ctx *cli.Context, inGenesisFile *os.File, base
 	return configs, enodes, nil
 }
 
-func createConfigs(base gethConfig, initDir string, prefix string, ips []string, ports []int, extraEnodes []*enode.Node, connectOneExtraEnodes bool, staticConnect bool) ([]gethConfig, []*enode.Node, []common.Address, error) {
+func createConfigs(base gethConfig, initDir string, prefix string, ips []string, ports []int, extraEnodes []*enode.Node, connectOneExtraEnodes bool, staticConnect bool) ([]gethConfig, []*enode.Node, [][]common.Address, error) {
 	if len(ips) != len(ports) {
 		return nil, nil, nil, errors.New("mismatch of size and length of ports")
 	}
 	size := len(ips)
 	enodes := make([]*enode.Node, size)
-	accounts := make([]common.Address, size)
+	accounts := make([][]common.Address, size)
 	for i := 0; i < size; i++ {
 		nodeConfig := base.Node
 		nodeConfig.DataDir = path.Join(initDir, fmt.Sprintf("%s%d", prefix, i))
@@ -673,9 +670,7 @@ func createConfigs(base gethConfig, initDir string, prefix string, ips []string,
 		if err := setAccountManagerBackends(stack.Config(), stack.AccountManager(), stack.KeyStoreDir()); err != nil {
 			utils.Fatalf("Failed to set account manager backends: %v", err)
 		}
-		if len(stack.AccountManager().Accounts()) > 0 {
-			accounts[i] = stack.AccountManager().Accounts()[0]
-		}
+		accounts[i] = stack.AccountManager().Accounts()
 		pk := stack.Config().NodeKey()
 		enodes[i] = enode.NewV4(&pk.PublicKey, net.ParseIP(ips[i]), ports[i], ports[i])
 	}

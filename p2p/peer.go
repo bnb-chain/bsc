@@ -130,6 +130,9 @@ type Peer struct {
 	// and won't broadcast any txs between EVN peers.
 	EVNPeerFlag atomic.Bool
 
+	// Indicates whether this peer is proxyed.
+	ProxyedPeerFlag atomic.Bool
+
 	// it indicates the peer can handle BAL(block access list) packet
 	CanHandleBAL atomic.Bool
 }
@@ -648,7 +651,7 @@ func (p *Peer) Info() *PeerInfo {
 	info.Network.RemoteAddress = p.RemoteAddr().String()
 	info.Network.Inbound = p.rw.is(inboundConn)
 	// After Maxwell, we treat all EVN peers as trusted
-	info.Network.Trusted = p.rw.is(trustedConn) || p.EVNPeerFlag.Load()
+	info.Network.Trusted = p.rw.is(trustedConn) || p.EVNPeerFlag.Load() || p.ProxyedPeerFlag.Load()
 	info.Network.Static = p.rw.is(staticDialedConn)
 
 	// Gather all the running protocol infos

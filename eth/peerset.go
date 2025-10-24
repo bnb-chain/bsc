@@ -328,6 +328,24 @@ func (ps *peerSet) peer(id string) *ethPeer {
 	return ps.peers[id]
 }
 
+func (ps *peerSet) setProxyedPeers(proxyedNodeIdsMap map[enode.ID]struct{}) {
+	ps.lock.RLock()
+	peers := make([]*ethPeer, 0, len(ps.peers))
+	for _, peer := range ps.peers {
+		peers = append(peers, peer)
+	}
+	ps.lock.RUnlock()
+
+	proxyedPeerCnt := 0
+	for _, peer := range peers {
+		if _, ok := proxyedNodeIdsMap[peer.NodeID()]; ok {
+			peer.ProxyedPeerFlag.Store(true)
+			proxyedPeerCnt++
+		}
+	}
+	log.Debug("setProxyedPeers", "total", len(peers), "proxyedPeerCnt", proxyedPeerCnt)
+}
+
 // enableEVNFeatures enables the given features for the given peers.
 func (ps *peerSet) enableEVNFeatures(validatorNodeIDsMap map[common.Address][]enode.ID, evnWhitelistMap map[enode.ID]struct{}) {
 	// clone current all peers, and update the validatorNodeIDsMap

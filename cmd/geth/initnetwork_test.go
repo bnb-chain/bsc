@@ -91,18 +91,18 @@ func verifyConfigFileRemoteHosts(t *testing.T, config *gethConfig, ipStr string,
 		t.Fatalf("expected ListenAddr to be %s but it is %s instead", expectedListenAddr, config.Node.P2P.ListenAddr)
 	}
 
-	bootnodes := config.Node.P2P.BootstrapNodes
+	staticnodes := config.Node.P2P.StaticNodes
 
 	// 3. check correctness of peers' hosts
 	for j := 0; j < i; j++ {
-		ip := bootnodes[j].IP().String()
+		ip := staticnodes[j].IP().String()
 		if ip != ips[j] {
 			t.Fatalf("expected IP of bootnode to be %s but found %s instead", ips[j], ip)
 		}
 	}
 
 	for j := i + 1; j < size; j++ {
-		ip := bootnodes[j-1].IP().String()
+		ip := staticnodes[j-1].IP().String()
 		if ip != ips[j] {
 			t.Fatalf("expected IP of bootnode to be %s but found %s instead", ips[j-1], ip)
 		}
@@ -110,8 +110,8 @@ func verifyConfigFileRemoteHosts(t *testing.T, config *gethConfig, ipStr string,
 
 	// 4. check correctness of peer port numbers
 	for j := 0; j < size-1; j++ {
-		if bootnodes[j].UDP() != basePort {
-			t.Fatalf("expected bootnode port at position %d to be %d but got %d instead", j, basePort, bootnodes[j].UDP())
+		if staticnodes[j].UDP() != basePort {
+			t.Fatalf("expected bootnode port at position %d to be %d but got %d instead", j, basePort, staticnodes[j].UDP())
 		}
 	}
 }
@@ -123,11 +123,11 @@ func verifyConfigFileLocalhost(t *testing.T, config *gethConfig, i int, basePort
 		t.Fatalf("expected ListenAddr to be %s but it is %s instead", expectedListenAddr, config.Node.P2P.ListenAddr)
 	}
 
-	bootnodes := config.Node.P2P.BootstrapNodes
+	staticnodes := config.Node.P2P.StaticNodes
 	// 2. check correctness of peers' hosts
 	localhost := "127.0.0.1"
 	for j := 0; j < size-1; j++ {
-		ip := bootnodes[j].IP().String()
+		ip := staticnodes[j].IP().String()
 		if ip != localhost {
 			t.Fatalf("expected IP of bootnode to be %s but found %s instead", localhost, ip)
 		}
@@ -135,13 +135,13 @@ func verifyConfigFileLocalhost(t *testing.T, config *gethConfig, i int, basePort
 
 	// 3. check correctness of peer port numbers
 	for j := 0; j < i; j++ {
-		if bootnodes[j].UDP() != basePort+j {
-			t.Fatalf("expected bootnode port at position %d to be %d but got %d instead", j, basePort+j, bootnodes[j].UDP())
+		if staticnodes[j].UDP() != basePort+j {
+			t.Fatalf("expected bootnode port at position %d to be %d but got %d instead", j, basePort+j, staticnodes[j].UDP())
 		}
 	}
 	for j := i + 1; j < size; j++ {
-		if bootnodes[j-1].UDP() != basePort+j {
-			t.Fatalf("expected bootnode port at position %d to be %d but got %d instead", j-1, basePort+j, bootnodes[j-1].UDP())
+		if staticnodes[j-1].UDP() != basePort+j {
+			t.Fatalf("expected bootnode port at position %d to be %d but got %d instead", j-1, basePort+j, staticnodes[j-1].UDP())
 		}
 	}
 }
