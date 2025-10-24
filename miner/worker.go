@@ -67,8 +67,8 @@ const (
 	// staleThreshold is the maximum depth of the acceptable stale block.
 	staleThreshold = 11
 
-	// the current 4 mining loops could have asynchronous risk of mining block with
-	// save height, keep recently mined blocks to avoid double sign for safety,
+	// the current mining loops could have asynchronous risk of mining block with
+	// same height, keep recently mined blocks to avoid double sign for safety,
 	recentMinedCacheLimit = 20
 )
 
@@ -79,9 +79,8 @@ var (
 	bestBidGasUsedGauge  = metrics.NewRegisteredGauge("worker/bestBidGasUsed", nil)  // MGas
 	bestWorkGasUsedGauge = metrics.NewRegisteredGauge("worker/bestWorkGasUsed", nil) // MGas
 
-	writeBlockTimer    = metrics.NewRegisteredTimer("worker/writeblock", nil)
-	finalizeBlockTimer = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
-
+	writeBlockTimer      = metrics.NewRegisteredTimer("worker/writeblock", nil)
+	finalizeBlockTimer   = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
 	pendingPlainTxsTimer = metrics.NewRegisteredTimer("worker/pendingPlainTxs", nil)
 	pendingBlobTxsTimer  = metrics.NewRegisteredTimer("worker/pendingBlobTxs", nil)
 
@@ -152,11 +151,11 @@ func (env *environment) discard() {
 
 // task contains all information for consensus engine sealing and result submitting.
 type task struct {
-	receipts  []*types.Receipt
-	state     *state.StateDB
-	block     *types.Block
-	createdAt time.Time
+	receipts []*types.Receipt
+	state    *state.StateDB
+	block    *types.Block
 
+	createdAt     time.Time
 	miningStartAt time.Time
 }
 
@@ -250,17 +249,17 @@ type worker struct {
 
 	// recommit is the time interval to re-create sealing work or to re-build
 	// payload in proof-of-stake stage.
-	recommit time.Duration
+	recommit          time.Duration
+	recentMinedBlocks *lru.Cache[uint64, []common.Hash]
 
 	// Test hooks
-	newTaskHook       func(*task)                        // Method to call upon receiving a new sealing task.
-	skipSealHook      func(*task) bool                   // Method to decide whether skipping the sealing.
-	fullTaskHook      func()                             // Method to call before pushing the full sealing task.
-	resubmitHook      func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
-	recentMinedBlocks *lru.Cache[uint64, []common.Hash]
+	newTaskHook  func(*task)                        // Method to call upon receiving a new sealing task.
+	skipSealHook func(*task) bool                   // Method to decide whether skipping the sealing.
+	fullTaskHook func()                             // Method to call before pushing the full sealing task.
+	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
 }
 
-func newWorker(config *minerconfig.Config, engine consensus.Engine, eth Backend, mux *event.TypeMux, init bool) *worker {
+func newWorker(config *minerconfig.Config, engine consensus.Engine, eth Backend, mux *event.TypeMux) *worker {
 	chainConfig := eth.BlockChain().Config()
 	worker := &worker{
 		prefetcher:         core.NewStatePrefetcher(chainConfig, eth.BlockChain().HeadChain()),
@@ -292,10 +291,6 @@ func newWorker(config *minerconfig.Config, engine consensus.Engine, eth Backend,
 	if worker.config.Recommit != nil && *worker.config.Recommit > minRecommitInterval {
 		recommit = *worker.config.Recommit
 	}
-	if recommit < minRecommitInterval {
-		log.Warn("Sanitizing miner recommit interval", "provided", recommit, "updated", minRecommitInterval)
-		recommit = minRecommitInterval
-	}
 	worker.recommit = recommit
 
 	worker.wg.Add(4)
@@ -303,11 +298,6 @@ func newWorker(config *minerconfig.Config, engine consensus.Engine, eth Backend,
 	go worker.newWorkLoop(recommit)
 	go worker.resultLoop()
 	go worker.taskLoop()
-
-	// Submit first work to initialize pending state.
-	if init {
-		worker.startCh <- struct{}{}
-	}
 
 	return worker
 }
@@ -689,7 +679,7 @@ func (w *worker) resultLoop() {
 			stats := w.chain.GetBlockStats(block.Hash())
 			stats.SendBlockTime.Store(time.Now().UnixMilli())
 			stats.StartMiningTime.Store(task.miningStartAt.UnixMilli())
-			log.Info("Successfully seal and write new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
+			log.Info("Successfully seal and write new block", "number", block.Number(), "hash", hash, "time", block.Header().MilliTimestamp(), "sealhash", sealhash,
 				"block size(noBal)", block.Size(), "balSize", block.BALSize(), "elapsed", common.PrettyDuration(time.Since(task.createdAt)))
 			w.mux.Post(core.NewMinedBlockEvent{Block: block})
 
