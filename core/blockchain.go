@@ -2587,6 +2587,7 @@ func (bc *BlockChain) ProcessBlock(parentRoot common.Hash, block *types.Block, s
 	var resWithMetrics *ProcessResultWithMetrics
 	var ptime, vtime time.Duration
 	if block.Body().AccessList != nil {
+		log.Info("parallel process block with bal", "block", block.Number(), "hash", block.Hash())
 		if block.NumberU64() == 0 {
 			return nil, fmt.Errorf("genesis block cannot have a block access list")
 		}
@@ -2614,6 +2615,7 @@ func (bc *BlockChain) ProcessBlock(parentRoot common.Hash, block *types.Block, s
 		res = resWithMetrics.ProcessResult
 		vtime = time.Since(vstart)
 	} else {
+		log.Info("process block", "block", block.Number(), "hash", block.Hash())
 		statedb.SetExpectedStateRoot(block.Root())
 		statedb.SetNeedBadSharedStorage(needBadSharedStorage)
 		var sdb state.BlockProcessingDB = statedb

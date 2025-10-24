@@ -144,11 +144,12 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPa
 	if packet.BlockAccessList != nil {
 		if h.chain.Engine().VerifyBAL(block, packet.BlockAccessList) == nil {
 			block = block.WithAccessList(packet.BlockAccessList)
+			log.Info("block with BAL", "block", block, "hash", block.Hash(), "peer", peer.ID())
 		} else {
 			log.Error("invalid BAL", "block", block.Number(), "hash", block.Hash(), "peer", peer.ID())
 		}
 	} else {
-		log.Info("no BAL", "block", block.Number(), "hash", block.Hash(), "peer", peer.ID())
+		log.Info("block without BAL", "block", block.Number(), "hash", block.Hash(), "peer", peer.ID())
 	}
 
 	// Schedule the block for import
