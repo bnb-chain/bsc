@@ -746,12 +746,18 @@ func (s *StateDB) getStateObject(addr common.Address) *stateObject {
 		return nil
 	}
 
+	if addr.Cmp(common.HexToAddress("0xFd6042Df3D74ce9959922FeC559d7995F3933c55")) == 0 {
+		log.Info("get state object for 0xFd6042Df3D74ce9959922FeC559d7995F3933c55")
+	}
 	// if we are executing against a block access list, construct the account
 	// state at the current tx index by applying the access-list diff on top
 	// of the prestate value for the account.
 	if s.blockAccessList != nil && s.balIndex != 0 && s.blockAccessList.isModified(addr) {
 		acct := s.blockAccessList.readAccount(s, addr, s.balIndex-1)
 		if acct != nil {
+			if addr.Cmp(common.HexToAddress("0xFd6042Df3D74ce9959922FeC559d7995F3933c55")) == 0 {
+				log.Info("set state object of block access list for 0xFd6042Df3D74ce9959922FeC559d7995F3933c55")
+			}
 			s.setStateObject(acct)
 			return acct
 		}
@@ -787,6 +793,9 @@ func (s *StateDB) getStateObject(addr common.Address) *stateObject {
 	}
 	// Insert into the live set
 	obj := newObject(s, addr, acct)
+	if addr.Cmp(common.HexToAddress("0xFd6042Df3D74ce9959922FeC559d7995F3933c55")) == 0 {
+		log.Info("set state object for 0xFd6042Df3D74ce9959922FeC559d7995F3933c55")
+	}
 	s.setStateObject(obj)
 	return obj
 }
