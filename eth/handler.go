@@ -383,16 +383,16 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 	addTxs := func(peer string, txs []*types.Transaction) []error {
 		errors := h.txpool.Add(txs, false)
-		if h.peerBlacklist != nil && peer != "" && len(txs) > 0 {
-			successCount := 0
-			if len(errors) == 0 {
-				successCount = len(txs)
-			} else if len(errors) == len(txs) {
-				for _, err := range errors {
-					if err == nil || errors.Is(err, txpool.ErrAlreadyKnown) {
-						successCount++
+			if h.peerBlacklist != nil && peer != "" && len(txs) > 0 {
+				successCount := 0
+				if len(errors) == 0 {
+					successCount = len(txs)
+				} else if len(errors) == len(txs) {
+					for _, err := range errors {
+						if err == nil || err == txpool.ErrAlreadyKnown {
+							successCount++
+						}
 					}
-				}
 			} else {
 				// Fallback in unexpected scenarios, assume successful to avoid penalizing peers unfairly.
 				successCount = len(txs)
