@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"golang.org/x/sync/errgroup"
 )
@@ -206,6 +207,7 @@ func (p *ParallelStateProcessor) resultHandler(block *types.Block, preTxStateRea
 					if res.err != nil {
 						execErr = res.err
 					} else {
+						log.Info("sub gas", "gas used", res.receipt.GasUsed, "gas limit", gp.Gas(), "block", block.Number(), "hash", block.Hash(), "gaspool", gp.String())
 						if err := gp.SubGas(res.receipt.GasUsed); err != nil {
 							execErr = err
 						} else {
