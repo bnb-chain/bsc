@@ -463,7 +463,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 
 	if bscExt != nil && bscExt.Version() == bsc.Bsc3 {
 		peer.CanHandleBAL.Store(true)
-		log.Debug("runEthPeer", "bscExt.Version", bscExt.Version(), "CanHandleBAL", peer.CanHandleBAL.Load())
+		log.Info("runEthPeer", "bscExt.Version", bscExt.Version(), "CanHandleBAL", peer.CanHandleBAL.Load())
 	}
 
 	// Execute the Ethereum handshake
