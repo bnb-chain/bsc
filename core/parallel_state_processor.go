@@ -185,9 +185,14 @@ type txExecResult struct {
 	stateReads *bal.StateAccesses
 }
 
+type txExecRequest struct {
+	idx int
+	tx  *types.Transaction
+}
+
 // resultHandler polls until all transactions have finished executing and the
 // state root calculation is complete. The result is emitted on resCh.
-func (p *ParallelStateProcessor) resultHandler(block *types.Block, preTxStateReads *bal.StateAccesses, postTxState *state.StateDB, tExecStart time.Time, txResCh <-chan txExecResult, stateRootCalcResCh <-chan stateRootCalculationResult, resCh chan *ProcessResultWithMetrics, cfg vm.Config) {
+func (p *ParallelStateProcessor) resultHandler(block *types.Block, txCount int, preTxStateReads *bal.StateAccesses, postTxState *state.StateDB, tExecStart time.Time, txResCh <-chan txExecResult, stateRootCalcResCh <-chan stateRootCalculationResult, resCh chan *ProcessResultWithMetrics, cfg vm.Config) {
 	// 1. if the block has transactions, receive the execution results from all of them and return an error on resCh if any txs err'd
 	// 2. once all txs are executed, compute the post-tx state transition and produce the ProcessResult sending it on resCh (or an error if the post-tx state didn't match what is reported in the BAL)
 	var receipts []*types.Receipt
@@ -198,7 +203,7 @@ func (p *ParallelStateProcessor) resultHandler(block *types.Block, preTxStateRea
 
 	allReads := make(bal.StateAccesses)
 	allReads.Merge(*preTxStateReads)
-	if len(block.Transactions()) > 0 {
+	if txCount > 0 {
 	loop:
 		for {
 			select {
@@ -217,7 +222,7 @@ func (p *ParallelStateProcessor) resultHandler(block *types.Block, preTxStateRea
 					}
 				}
 				numTxComplete++
-				if numTxComplete == len(block.Transactions()) {
+				if numTxComplete == txCount {
 					break loop
 				}
 			}
@@ -368,19 +373,38 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 	// the post-tx state transition is verified by resultHandler
 	postTxState := statedb.Copy().(*state.StateDB)
 
+	posa, isPoSA := p.chain.engine.(consensus.PoSA)
+	execJobs := make([]txExecRequest, 0, len(block.Transactions()))
+	var systemTxCount int
+	for i, tx := range block.Transactions() {
+		if isPoSA {
+			isSystemTx, err := posa.IsSystemTransaction(tx, header)
+			if err != nil {
+				return nil, fmt.Errorf("could not check if tx is system tx [%v]: %w", tx.Hash().Hex(), err)
+			}
+			if isSystemTx {
+				systemTxCount++
+				continue
+			}
+		}
+		if p.config.IsCancun(block.Number(), block.Time()) && systemTxCount > 0 {
+			return nil, fmt.Errorf("normal tx %d [%v] after systemTx", i, tx.Hash().Hex())
+		}
+		execJobs = append(execJobs, txExecRequest{idx: i, tx: tx})
+	}
+
 	tPreprocess = time.Since(pStart)
 
 	// execute transactions and state root calculation in parallel
 
 	tExecStart = time.Now()
-	go p.resultHandler(block, &preTxStateReads, postTxState, tExecStart, txResCh, rootCalcResultCh, resCh, cfg)
+	go p.resultHandler(block, len(execJobs), &preTxStateReads, postTxState, tExecStart, txResCh, rootCalcResultCh, resCh, cfg)
 	var workers errgroup.Group
 	startingState := statedb.Copy()
-	for i, tx := range block.Transactions() {
-		tx := tx
-		i := i
+	for _, job := range execJobs {
+		job := job
 		workers.Go(func() error {
-			res := p.execTx(block, tx, i, startingState.Copy().(*state.StateDB), signer)
+			res := p.execTx(block, job.tx, job.idx, startingState.Copy().(*state.StateDB), signer)
 			txResCh <- *res
 			return nil
 		})
