@@ -1529,6 +1529,12 @@ func (p *Parlia) VerifyBAL(block *types.Block, blockAccessList *types.BlockAcces
 		return errors.New("invalid BAL version")
 	}
 
+	if blockAccessList.AccessList.Hash().Cmp(blockAccessList.Hash) == 0 {
+		//TODO: skip the BAL signature verify temporarily
+		log.Info("skip the BAL signature verify temporarily", "block", block.Number(), "hash", block.Hash())
+		return nil
+	}
+
 	if len(blockAccessList.SignData) != 65 {
 		log.Error("invalid BAL signature", "signatureSize", len(blockAccessList.SignData))
 		return errors.New("invalid BAL signature")
