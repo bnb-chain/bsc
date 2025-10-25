@@ -416,6 +416,9 @@ func (b *backendMock) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscript
 func (b *backendMock) SubscribeRemovedLogsEvent(ch chan<- core.RemovedLogsEvent) event.Subscription {
 	return nil
 }
+func (b *backendMock) SimulateTransaction(context.Context, *types.Transaction) (*types.Receipt, error) {
+	return nil, nil
+}
 
 func (b *backendMock) Engine() consensus.Engine { return nil }
 

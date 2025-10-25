@@ -104,6 +104,7 @@ type Backend interface {
 	SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscription
 	SubscribeFinalizedHeaderEvent(ch chan<- core.FinalizedHeaderEvent) event.Subscription
 	SubscribeNewVoteEvent(chan<- core.NewVoteEvent) event.Subscription
+	SimulateTransaction(ctx context.Context, tx *types.Transaction) (*types.Receipt, error)
 
 	// MevRunning return true if mev is running
 	MevRunning() bool
