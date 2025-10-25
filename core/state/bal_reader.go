@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -183,12 +184,16 @@ func (r *BALReader) ValidateStateReads(allReads bal.StateAccesses) error {
 			}
 		}
 
-		expectedReads := r.accesses[addr].StorageReads
-		if len(reads) != len(expectedReads) {
+		access, exist := r.accesses[addr]
+		if !exist {
+			log.Error("account not found in BAL", "block", r.block.Number(), "addr", addr.Hex())
+			return fmt.Errorf("account %x not found in BAL", addr)
+		}
+		if len(reads) != len(access.StorageReads) {
 			return fmt.Errorf("mismatch between the number of computed reads and number of expected reads")
 		}
 
-		for _, slot := range expectedReads {
+		for _, slot := range access.StorageReads {
 			if _, ok := reads[slot]; !ok {
 				return fmt.Errorf("expected read is missing from BAL")
 			}
@@ -367,13 +372,23 @@ func (r *BALReader) ValidateStateDiff(idx int, computedDiff *bal.StateDiff) erro
 		if !ok {
 			return fmt.Errorf("BAL contained account %x which wasn't present in computed state diff", addr)
 		}
-
 		if !state.Eq(computedAccountDiff) {
+			log.Error("State diff mismatch",
+				"block", r.block.Number(),
+				"idx", idx,
+				"addr", addr.Hex(),
+				"balState", fmt.Sprintf("%+v", state),
+				"computedState", fmt.Sprintf("%+v", computedAccountDiff))
 			return fmt.Errorf("difference between computed state diff and BAL entry for account %x", addr)
 		}
 	}
 
 	if len(balChanges.Mutations) != len(computedDiff.Mutations) {
+		log.Error("Account count mismatch",
+			"block", r.block.Number(),
+			"idx", idx,
+			"balCount", len(balChanges.Mutations),
+			"computedCount", len(computedDiff.Mutations))
 		return fmt.Errorf("computed state diff contained mutated accounts which weren't reported in BAL")
 	}
 
