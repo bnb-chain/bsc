@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
@@ -415,6 +416,66 @@ func (b *EthAPIBackend) TxPoolContentFrom(addr common.Address) ([]*types.Transac
 
 func (b *EthAPIBackend) TxPool() *txpool.TxPool {
 	return b.eth.txPool
+}
+
+func (b *EthAPIBackend) SimulateTransaction(ctx context.Context, tx *types.Transaction) (*types.Receipt, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	var (
+		header *types.Header
+		state  *state.StateDB
+		err    error
+	)
+
+	if pendingBlock, _, pendingState := b.eth.miner.Pending(); pendingBlock != nil && pendingState != nil {
+		header = types.CopyHeader(pendingBlock.Header())
+		state = pendingState.Copy()
+	} else {
+		latest := b.eth.blockchain.CurrentBlock()
+		if latest == nil {
+			return nil, errors.New("no latest block available")
+		}
+		header = types.CopyHeader(latest)
+		header.Number = new(big.Int).Add(header.Number, big.NewInt(1))
+		header.ParentHash = latest.Hash()
+		header.Time = header.Time + 1
+		if latest.BaseFee != nil {
+			header.BaseFee = eip1559.CalcBaseFee(b.eth.blockchain.Config(), latest)
+		}
+		state, err = b.eth.blockchain.StateAt(latest.Root)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if state == nil {
+		return nil, errors.New("state unavailable for simulation")
+	}
+
+	chainConfig := b.eth.blockchain.Config()
+	signer := types.MakeSigner(chainConfig, header.Number, header.Time)
+	msg, err := core.TransactionToMessage(tx, signer, header.BaseFee)
+	if err != nil {
+		return nil, err
+	}
+
+	gasPool := new(core.GasPool)
+	gasPool.AddGas(header.GasLimit)
+
+	blockCtx := core.NewEVMBlockContext(header, b.eth.blockchain, nil)
+	evm := vm.NewEVM(blockCtx, state, chainConfig, vm.Config{})
+	evm.SetTxContext(core.NewEVMTxContext(msg))
+	state.SetTxContext(tx.Hash(), 0)
+
+	usedGas := uint64(0)
+	receipt, err := core.ApplyTransactionWithEVM(msg, gasPool, state, header.Number, common.Hash{}, header.Time, tx, &usedGas, evm)
+	if err != nil {
+		return nil, err
+	}
+	return receipt, nil
 }
 
 func (b *EthAPIBackend) SubscribeNewTxsEvent(ch chan<- core.NewTxsEvent) event.Subscription {

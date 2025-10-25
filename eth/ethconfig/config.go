@@ -74,6 +74,20 @@ var Defaults = Config{
 	GPO:                FullNodeGPO,
 	RPCTxFeeCap:        1,                                         // 1 ether
 	BlobExtraReserve:   params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
+	PeerBlacklist: PeerBlacklistConfig{
+		Enabled:          false,
+		SuccessThreshold: 0.2,
+		MinimumSamples:   100,
+		Persistence:      "peer-blacklist.json",
+	},
+}
+
+// PeerBlacklistConfig describes how peers should be evaluated and persisted for blacklisting.
+type PeerBlacklistConfig struct {
+	Enabled          bool    // Enable peer auto-blacklisting based on tx success ratio
+	SuccessThreshold float64 // Minimum tx acceptance ratio before peer is blacklisted
+	MinimumSamples   uint64  // Minimum number of txs evaluated before blacklisting is considered
+	Persistence      string  // Relative path of the blacklist persistence file
 }
 
 //go:generate go run github.com/fjl/gencodec -type Config -formats toml -out gen_config.go
@@ -98,6 +112,7 @@ type Config struct {
 	DisablePeerTxBroadcast bool
 	EVNNodeIDsToAdd        []enode.ID
 	EVNNodeIDsToRemove     []enode.ID
+	PeerBlacklist          PeerBlacklistConfig
 	// HistoryMode configures chain history retention.
 	HistoryMode history.HistoryMode
 

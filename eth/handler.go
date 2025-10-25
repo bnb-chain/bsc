@@ -143,6 +143,7 @@ type handlerConfig struct {
 	EnableEVNFeatures         bool
 	EVNNodeIdsWhitelist       []enode.ID
 	ProxyedValidatorAddresses []common.Address
+	PeerBlacklist             peerBlacklistConfig
 }
 
 type handler struct {
@@ -185,6 +186,7 @@ type handler struct {
 	voteMonitorSub event.Subscription
 
 	requiredBlocks map[uint64]common.Hash
+	peerBlacklist  *txPeerBlacklist
 
 	// channels for fetcher, syncer, txsyncLoop
 	quitSync chan struct{}
@@ -232,6 +234,14 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 	for _, address := range config.ProxyedValidatorAddresses {
 		h.proxyedValidatorAddressMap[address] = struct{}{}
+	}
+	if bl, err := newTxPeerBlacklist(config.PeerBlacklist); err != nil {
+		return nil, err
+	} else {
+		h.peerBlacklist = bl
+		if bl != nil {
+			log.Info("Loaded peer blacklist", "entries", len(bl.list()))
+		}
 	}
 	if h.chain.NoTries() {
 	} else if config.Sync == ethconfig.FullSync {
@@ -373,6 +383,24 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 	addTxs := func(peer string, txs []*types.Transaction) []error {
 		errors := h.txpool.Add(txs, false)
+		if h.peerBlacklist != nil && peer != "" && len(txs) > 0 {
+			successCount := 0
+			if len(errors) == 0 {
+				successCount = len(txs)
+			} else if len(errors) == len(txs) {
+				for _, err := range errors {
+					if err == nil || errors.Is(err, txpool.ErrAlreadyKnown) {
+						successCount++
+					}
+				}
+			} else {
+				// Fallback in unexpected scenarios, assume successful to avoid penalizing peers unfairly.
+				successCount = len(txs)
+			}
+			if h.peerBlacklist.record(peer, successCount, len(txs)) {
+				h.removePeer(peer)
+			}
+		}
 		for _, err := range errors {
 			if err == txpool.ErrInBlackList {
 				accountBlacklistPeerCounter.Inc(1)
@@ -447,6 +475,11 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		return p2p.DiscQuitting
 	}
 	defer h.decHandlers()
+
+	if h.peerBlacklist != nil && h.peerBlacklist.isBlacklisted(peer.ID()) {
+		peer.Log().Info("Rejecting connection from blacklisted peer", "peer", peer.ID())
+		return p2p.DiscUselessPeer
+	}
 
 	// If the peer has a `snap` extension, wait for it to connect so we can have
 	// a uniform initialization/teardown mechanism

@@ -418,6 +418,26 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 	// Permit the downloader to use the trie cache allowance during fast sync
 	cacheLimit := options.TrieCleanLimit + options.TrieDirtyLimit + options.SnapshotLimit
+	blacklistCfg := peerBlacklistConfig{}
+	if config.PeerBlacklist.Enabled {
+		path := config.PeerBlacklist.Persistence
+		if path == "" {
+			path = ethconfig.Defaults.PeerBlacklist.Persistence
+		}
+		blacklistCfg = peerBlacklistConfig{
+			Enabled:          true,
+			SuccessThreshold: config.PeerBlacklist.SuccessThreshold,
+			MinimumSamples:   config.PeerBlacklist.MinimumSamples,
+			Path:             stack.ResolvePath(path),
+		}
+		if blacklistCfg.SuccessThreshold <= 0 || blacklistCfg.SuccessThreshold >= 1 {
+			blacklistCfg.SuccessThreshold = ethconfig.Defaults.PeerBlacklist.SuccessThreshold
+		}
+		if blacklistCfg.MinimumSamples == 0 {
+			blacklistCfg.MinimumSamples = ethconfig.Defaults.PeerBlacklist.MinimumSamples
+		}
+	}
+
 	if eth.handler, err = newHandler(&handlerConfig{
 		NodeID:                    eth.p2pServer.Self().ID(),
 		Database:                  chainDb,
@@ -435,6 +455,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		DisablePeerTxBroadcast:    config.DisablePeerTxBroadcast,
 		PeerSet:                   newPeerSet(),
 		EnableQuickBlockFetching:  stack.Config().EnableQuickBlockFetching,
+		PeerBlacklist:             blacklistCfg,
 	}); err != nil {
 		return nil, err
 	}
