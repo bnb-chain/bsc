@@ -421,12 +421,12 @@ func (b *EthAPIBackend) TxPool() *txpool.TxPool {
 }
 
 func (b *EthAPIBackend) SimulateTransaction(ctx context.Context, tx *types.Transaction) (*types.Receipt, error) {
-	select {
-	case <-ctx.Done():
-		log.Warn("SimulateTransaction Done", ctx.Err())
-		return nil, ctx.Err()
-	default:
-	}
+	// select {
+	// case <-ctx.Done():
+	// 	log.Warn("SimulateTransaction Done", ctx.Err())
+	// 	return nil, ctx.Err()
+	// default:
+	// }
 
 	var (
 		header *types.Header
