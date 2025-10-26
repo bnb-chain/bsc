@@ -45,6 +45,8 @@ func BenchmarkMIRVsEVM_USDT(b *testing.B) {
 	zeroAddress := make([]byte, 32)
 	oneUint := make([]byte, 32)
 	oneUint[31] = 1
+	anotherAddress := make([]byte, 32)
+	anotherAddress[31] = 0x01
 
 	methods := []struct {
 		name     string
@@ -59,6 +61,9 @@ func BenchmarkMIRVsEVM_USDT(b *testing.B) {
 		{"allowance", []byte{0x39, 0x50, 0x93, 0x51}, [][]byte{zeroAddress, zeroAddress}},
 		{"approve", []byte{0x09, 0x5e, 0xa7, 0xb3}, [][]byte{zeroAddress, oneUint}},
 		{"transfer", []byte{0xa9, 0x05, 0x9c, 0xbb}, [][]byte{zeroAddress, oneUint}},
+		// Additional common ERC20 methods/selectors
+		{"transferFrom", []byte{0x23, 0xb8, 0x72, 0xdd}, [][]byte{zeroAddress, anotherAddress, oneUint}},
+		{"allowance_std", []byte{0xdd, 0x62, 0xed, 0x3e}, [][]byte{zeroAddress, anotherAddress}},
 	}
 
 	for _, m := range methods {
@@ -119,6 +124,8 @@ func BenchmarkMIRVsEVM_WBNB(b *testing.B) {
 	zeroAddress := make([]byte, 32)
 	oneUint := make([]byte, 32)
 	oneUint[31] = 1
+	anotherAddress := make([]byte, 32)
+	anotherAddress[31] = 0x01
 
 	methods := []struct {
 		name     string
@@ -507,6 +514,8 @@ func TestUSDT_MIRVsEVM_Parity(t *testing.T) {
 	zeroAddress := make([]byte, 32)
 	oneUint := make([]byte, 32)
 	oneUint[31] = 1
+	anotherAddress := make([]byte, 32)
+	anotherAddress[31] = 0x01
 
 	methods := []struct {
 		name     string
@@ -521,6 +530,8 @@ func TestUSDT_MIRVsEVM_Parity(t *testing.T) {
 		{"allowance", []byte{0x39, 0x50, 0x93, 0x51}, [][]byte{zeroAddress, zeroAddress}},
 		{"approve", []byte{0x09, 0x5e, 0xa7, 0xb3}, [][]byte{zeroAddress, oneUint}},
 		{"transfer", []byte{0xa9, 0x05, 0x9c, 0xbb}, [][]byte{zeroAddress, oneUint}},
+		{"transferFrom", []byte{0x23, 0xb8, 0x72, 0xdd}, [][]byte{zeroAddress, anotherAddress, oneUint}},
+		{"allowance_std", []byte{0xdd, 0x62, 0xed, 0x3e}, [][]byte{zeroAddress, anotherAddress}},
 	}
 
 	// Helper: create env and run
@@ -543,8 +554,26 @@ func TestUSDT_MIRVsEVM_Parity(t *testing.T) {
 			input = append(input, arg...)
 		}
 
+		// Capture exit PCs
+		lastBasePC := -1
+		evmTracer := &tracing.Hooks{OnOpcode: func(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+			lastBasePC = int(pc)
+		}}
+		base.EVMConfig.Tracer = evmTracer
+
+		lastMirPC := -1
+		compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
+			if mm != nil {
+				lastMirPC = int(mm.EvmPC())
+			}
+		})
+
 		rb, errB := run(base, "usdt_parity_b", input)
+		// Clear EVM tracer for base
+		base.EVMConfig.Tracer = nil
 		rm, errM := run(mir, "usdt_parity_m", input)
+		// Clear MIR tracer
+		compiler.SetGlobalMIRTracerExtended(nil)
 
 		// Compare success/failure and return data
 		if (errB != nil) != (errM != nil) {
@@ -553,6 +582,131 @@ func TestUSDT_MIRVsEVM_Parity(t *testing.T) {
 		if string(rb) != string(rm) {
 			t.Fatalf("%s: return mismatch base=%x mir=%x", m.name, rb, rm)
 		}
+		if lastBasePC != lastMirPC {
+			t.Fatalf("%s: exit PC mismatch base=%d mir=%d", m.name, lastBasePC, lastMirPC)
+		}
+	}
+}
+
+// TestUSDT_MIR_Strict_ListFailures enables MIR strict mode (no fallback) and
+// lists any selectors that fail or mismatch versus base EVM.
+func TestUSDT_MIR_Strict_ListFailures(t *testing.T) {
+	code, err := hex.DecodeString(usdtHex[2:])
+	if err != nil {
+		t.Fatalf("decode USDT hex: %v", err)
+	}
+
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+
+	zeroAddress := make([]byte, 32)
+	oneUint := make([]byte, 32)
+	oneUint[31] = 1
+
+	methods := []struct {
+		name     string
+		selector []byte
+		args     [][]byte
+	}{
+		{"name", []byte{0x06, 0xfd, 0xde, 0x03}, nil},
+		{"symbol", []byte{0x95, 0xd8, 0x9b, 0x41}, nil},
+		{"decimals", []byte{0x31, 0x3c, 0xe5, 0x67}, nil},
+		{"totalSupply", []byte{0x18, 0x16, 0x0d, 0xdd}, nil},
+		{"balanceOf", []byte{0x70, 0xa0, 0x82, 0x31}, [][]byte{zeroAddress}},
+		{"allowance", []byte{0x39, 0x50, 0x93, 0x51}, [][]byte{zeroAddress, zeroAddress}},
+		{"approve", []byte{0x09, 0x5e, 0xa7, 0xb3}, [][]byte{zeroAddress, oneUint}},
+		{"transfer", []byte{0xa9, 0x05, 0x9c, 0xbb}, [][]byte{zeroAddress, oneUint}},
+	}
+
+	run := func(cfg *runtime.Config, label string, input []byte) ([]byte, error) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		evm := runtime.NewEnv(cfg)
+		address := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		evm.StateDB.CreateAccount(address)
+		evm.StateDB.SetCode(address, code)
+		ret, _, err := evm.Call(sender, address, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+
+	var fails []string
+	for _, m := range methods {
+		input := append([]byte{}, m.selector...)
+		for _, arg := range m.args {
+			input = append(input, arg...)
+		}
+		rb, errB := run(base, "usdt_strict_b", input)
+		rm, errM := run(mir, "usdt_strict_m", input)
+		if (errB != nil) != (errM != nil) || string(rb) != string(rm) {
+			fails = append(fails, m.name)
+		}
+	}
+	if len(fails) > 0 {
+		t.Fatalf("USDT strict-mode mismatches: %v", fails)
+	}
+}
+
+// TestWBNB_MIR_Strict_ListFailures runs a small suite for WBNB under strict mode.
+func TestWBNB_MIR_Strict_ListFailures(t *testing.T) {
+	code, err := hex.DecodeString(wbnbHex[2:])
+	if err != nil {
+		t.Fatalf("decode WBNB hex: %v", err)
+	}
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+
+	zeroAddress := make([]byte, 32)
+	oneUint := make([]byte, 32)
+	oneUint[31] = 1
+
+	methods := []struct {
+		name     string
+		selector []byte
+		args     [][]byte
+	}{
+		{"name", []byte{0x06, 0xfd, 0xde, 0x03}, nil},
+		{"symbol", []byte{0x95, 0xd8, 0x9b, 0x41}, nil},
+		{"decimals", []byte{0x31, 0x3c, 0xe5, 0x67}, nil},
+		{"totalSupply", []byte{0x18, 0x16, 0x0d, 0xdd}, nil},
+		{"balanceOf", []byte{0x70, 0xa0, 0x82, 0x31}, [][]byte{zeroAddress}},
+		{"allowance", []byte{0x39, 0x50, 0x93, 0x51}, [][]byte{zeroAddress, zeroAddress}},
+		{"approve", []byte{0x09, 0x5e, 0xa7, 0xb3}, [][]byte{zeroAddress, oneUint}},
+		{"transfer", []byte{0xa9, 0x05, 0x9c, 0xbb}, [][]byte{zeroAddress, oneUint}},
+	}
+
+	run := func(cfg *runtime.Config, label string, input []byte) ([]byte, error) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		evm := runtime.NewEnv(cfg)
+		address := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		evm.StateDB.CreateAccount(address)
+		evm.StateDB.SetCode(address, code)
+		ret, _, err := evm.Call(sender, address, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+
+	var fails []string
+	for _, m := range methods {
+		input := append([]byte{}, m.selector...)
+		for _, arg := range m.args {
+			input = append(input, arg...)
+		}
+		rb, errB := run(base, "wbnb_strict_b", input)
+		rm, errM := run(mir, "wbnb_strict_m", input)
+		if (errB != nil) != (errM != nil) || string(rb) != string(rm) {
+			fails = append(fails, m.name)
+		}
+	}
+	if len(fails) > 0 {
+		t.Fatalf("WBNB strict-mode mismatches: %v", fails)
 	}
 }
 
@@ -676,6 +830,210 @@ func TestUSDT_Transfer_EVMvsMIR(t *testing.T) {
 	   		pc++
 	   	}
 	*/
+}
+
+// TestUSDT_MIR_Strict_Debug_Allowance: run allowance under strict mode with rich tracing.
+func TestUSDT_MIR_Strict_Debug_Allowance(t *testing.T) {
+	code, err := hex.DecodeString(usdtHex[2:])
+	if err != nil {
+		t.Fatalf("decode USDT hex: %v", err)
+	}
+
+	// Post-London rules
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+
+	// allowace(owner, spender)
+	zero := make([]byte, 32)
+	selector := []byte{0x39, 0x50, 0x93, 0x51}
+	input := append([]byte{}, selector...)
+	input = append(input, zero...)
+	input = append(input, zero...)
+
+	// Tracers: log JUMP/JUMPI destinations and early dispatch
+	evmTracer := &tracing.Hooks{
+		OnOpcode: func(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+			op := vm.OpCode(opcode)
+			if op == vm.JUMP || op == vm.JUMPI || pc < 900 { // capture early dispatch region
+				stack := append([]uint256.Int(nil), scope.StackData()...)
+				t.Logf("EVM pc=%d op=%s stackTop=%v depth=%d", pc, op.String(), func() interface{} {
+					if len(stack) > 0 {
+						return &stack[len(stack)-1]
+					}
+					return nil
+				}(), depth)
+			}
+		},
+	}
+	compiler.SetGlobalMIRTracerExtended(func(m *compiler.MIR) {
+		if m != nil {
+			t.Logf("MIR exec: %s evm_pc=%d evm_op=0x%02x ops=%v", m.Op().String(), m.EvmPC(), m.EvmOp(), m.OperandDebugStrings())
+		}
+	})
+	defer compiler.SetGlobalMIRTracerExtended(nil)
+
+	// Helper
+	run := func(cfg *runtime.Config, label string, tracer *tracing.Hooks) ([]byte, error) {
+		if tracer != nil {
+			cfg.EVMConfig.Tracer = tracer
+		}
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		evm := runtime.NewEnv(cfg)
+		addr := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		evm.StateDB.CreateAccount(addr)
+		evm.StateDB.SetCode(addr, code)
+		ret, _, err := evm.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+
+	rb, errB := run(base, "usdt_allow_b", evmTracer)
+	t.Logf("EVM ret: %x err: %v", rb, errB)
+	rm, errM := run(mir, "usdt_allow_m", evmTracer)
+	t.Logf("MIR ret: %x err: %v", rm, errM)
+}
+
+// TestUSDT_MIR_Strict_Debug_Approve: run approve under strict mode with rich tracing.
+func TestUSDT_MIR_Strict_Debug_Approve(t *testing.T) {
+	code, err := hex.DecodeString(usdtHex[2:])
+	if err != nil {
+		t.Fatalf("decode USDT hex: %v", err)
+	}
+
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+
+	// approve(spender, amount)
+	zero := make([]byte, 32)
+	one := make([]byte, 32)
+	one[31] = 1
+	selector := []byte{0x09, 0x5e, 0xa7, 0xb3}
+	input := append([]byte{}, selector...)
+	input = append(input, zero...)
+	input = append(input, one...)
+
+	evmTracer := &tracing.Hooks{
+		OnOpcode: func(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+			op := vm.OpCode(opcode)
+			if op == vm.JUMP || op == vm.JUMPI || pc < 900 {
+				stack := append([]uint256.Int(nil), scope.StackData()...)
+				t.Logf("EVM pc=%d op=%s stackTop=%v depth=%d", pc, op.String(), func() interface{} {
+					if len(stack) > 0 {
+						return &stack[len(stack)-1]
+					}
+					return nil
+				}(), depth)
+			}
+		},
+	}
+	compiler.SetGlobalMIRTracerExtended(func(m *compiler.MIR) {
+		if m != nil {
+			evmOp := vm.OpCode(m.EvmOp())
+			t.Logf("MIR exec: %s evm_pc=%d evm_op=%s(0x%02x) ops=%v", m.Op().String(), m.EvmPC(), evmOp.String(), byte(evmOp), m.OperandDebugStrings())
+		}
+	})
+	defer compiler.SetGlobalMIRTracerExtended(nil)
+
+	run := func(cfg *runtime.Config, label string, tracer *tracing.Hooks) ([]byte, error) {
+		if tracer != nil {
+			cfg.EVMConfig.Tracer = tracer
+		}
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		evm := runtime.NewEnv(cfg)
+		addr := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		evm.StateDB.CreateAccount(addr)
+		evm.StateDB.SetCode(addr, code)
+		ret, _, err := evm.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+
+	rb, errB := run(base, "usdt_approve_b", evmTracer)
+	t.Logf("EVM ret: %x err: %v", rb, errB)
+	rm, errM := run(mir, "usdt_approve_m", evmTracer)
+	t.Logf("MIR ret: %x err: %v", rm, errM)
+}
+
+// TestUSDT_Strict_Parity_Allowance runs allowance once under strict mode and
+// asserts parity with base EVM (error and returndata).
+func TestUSDT_Strict_Parity_Allowance(t *testing.T) {
+	code, err := hex.DecodeString(usdtHex[2:])
+	if err != nil {
+		t.Fatalf("decode USDT hex: %v", err)
+	}
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+	zero := make([]byte, 32)
+	input := append([]byte{0x39, 0x50, 0x93, 0x51}, zero...)
+	input = append(input, zero...)
+	run := func(cfg *runtime.Config, label string) ([]byte, error) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		evm := runtime.NewEnv(cfg)
+		addr := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		evm.StateDB.CreateAccount(addr)
+		evm.StateDB.SetCode(addr, code)
+		ret, _, err := evm.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+	rb, eb := run(base, "usdt_allow_par_b")
+	rm, em := run(mir, "usdt_allow_par_m")
+	if (eb != nil) != (em != nil) {
+		t.Fatalf("allowance: error mismatch base=%v mir=%v", eb, em)
+	}
+	if string(rb) != string(rm) {
+		t.Fatalf("allowance: return mismatch base=%x mir=%x", rb, rm)
+	}
+}
+
+// TestUSDT_Strict_Parity_Approve runs approve once under strict mode and
+// asserts parity with base EVM (error and returndata).
+func TestUSDT_Strict_Parity_Approve(t *testing.T) {
+	code, err := hex.DecodeString(usdtHex[2:])
+	if err != nil {
+		t.Fatalf("decode USDT hex: %v", err)
+	}
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+	zero := make([]byte, 32)
+	one := make([]byte, 32)
+	one[31] = 1
+	input := append([]byte{0x09, 0x5e, 0xa7, 0xb3}, zero...)
+	input = append(input, one...)
+	run := func(cfg *runtime.Config, label string) ([]byte, error) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		evm := runtime.NewEnv(cfg)
+		addr := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		evm.StateDB.CreateAccount(addr)
+		evm.StateDB.SetCode(addr, code)
+		ret, _, err := evm.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+	rb, eb := run(base, "usdt_appr_par_b")
+	rm, em := run(mir, "usdt_appr_par_m")
+	if (eb != nil) != (em != nil) {
+		t.Fatalf("approve: error mismatch base=%v mir=%v", eb, em)
+	}
+	if string(rb) != string(rm) {
+		t.Fatalf("approve: return mismatch base=%x mir=%x", rb, rm)
+	}
 }
 
 // TestUSDT_StackAroundDup6 prints a window of opcodes and an approximate

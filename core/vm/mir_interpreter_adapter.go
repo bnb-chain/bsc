@@ -100,8 +100,12 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 		result, err := adapter.mirInterpreter.RunCFGWithResolver(cfg, bbs[0])
 		if err != nil {
 			if err == compiler.ErrMIRFallback {
+				if adapter.evm.Config.MIRStrictNoFallback {
+					// Strict mode: do not fallback; surface the error for debugging.
+					return nil, fmt.Errorf("MIR strict mode: no fallback (reason=%w)", err)
+				}
 				log.Error("MIR fallback requested by interpreter, using EVM interpreter", "addr", contract.Address(), "pc", 0)
-				return adapter.evm.Interpreter().Run(contract, input, readOnly)
+				return adapter.evm.baseInterpreter.Run(contract, input, readOnly)
 			}
 			// Preserve returndata on error (e.g., REVERT) to match EVM semantics
 			return result, err
@@ -112,6 +116,9 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 		return result, nil
 	}
 	// If nothing returned from the entry, fallback to EVM to preserve semantics
+	if adapter.evm.Config.MIRStrictNoFallback {
+		return nil, fmt.Errorf("MIR strict mode: entry block produced no result")
+	}
 	log.Error("MIR fallback: entry block produced no result, using EVM interpreter", "addr", contract.Address())
 	return adapter.evm.Interpreter().Run(contract, input, readOnly)
 }

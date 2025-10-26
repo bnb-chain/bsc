@@ -1,6 +1,8 @@
 package compiler
 
 import (
+	"runtime/debug"
+
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 )
@@ -332,6 +334,10 @@ type MIRBasicBlockStack struct {
 }
 
 func (s *MIRBasicBlockStack) Push(ptr *MIRBasicBlock) {
+	if ptr.firstPC == 371 {
+		log.Warn("MIRBasicBlockStack Push", "BB", ptr.blockNum, "firstPC", ptr.firstPC, "parents count", len(ptr.parents))
+		debug.PrintStack()
+	}
 	s.data = append(s.data, ptr)
 }
 

@@ -1107,12 +1107,26 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 							targetBB.SetParents([]*MIRBasicBlock{curBB})
 							targetBB.AddIncomingStack(curBB, curBB.ExitStack())
 							log.Warn("MIR JUMP targetBB", "curBB", curBB.blockNum, "curBB.firstPC", curBB.firstPC, "targetBB.firstPC", targetBB.firstPC, "targetBBPC", targetBB.FirstPC(), "targetBBLastPC", targetBB.LastPC())
+							// Ensure the linear fallthrough block (i+1) is created and queued for processing,
+							// so its pc is mapped even if no edge comes from this JUMP (useful for future targets).
 							if _, ok := c.pcToBlock[uint(i+1)]; !ok {
 								fall := c.createBB(uint(i+1), nil)
 								fall.SetInitDepthMax(depth)
+								if !fall.queued {
+									fall.queued = true
+									log.Warn("==buildBasicBlock== MIR JUMP fallthrough BB queued", "curbb", curBB.blockNum, "curBB.firstPC", curBB.firstPC,
+										"targetbb", fall.blockNum, "targetbbfirstpc", fall.firstPC, "targetBBPC", fall.FirstPC(), "targetBBLastPC", fall.LastPC())
+									unprcessedBBs.Push(fall)
+								}
 							} else {
 								if fall, ok2 := c.pcToBlock[uint(i+1)]; ok2 {
 									fall.SetInitDepthMax(depth)
+									if !fall.queued {
+										fall.queued = true
+										log.Warn("==buildBasicBlock== MIR JUMP fallthrough BB queued", "curbb", curBB.blockNum, "curBB.firstPC", curBB.firstPC,
+											"targetbb", fall.blockNum, "targetbbfirstpc", fall.firstPC, "targetBBPC", fall.FirstPC(), "targetBBLastPC", fall.LastPC())
+										unprcessedBBs.Push(fall)
+									}
 								}
 							}
 							if !targetExists || (targetExists && !hadParentBefore) {

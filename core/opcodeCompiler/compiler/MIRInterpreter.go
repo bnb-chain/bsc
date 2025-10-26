@@ -228,6 +228,7 @@ func (it *MIRInterpreter) GetEnv() *MIRExecutionEnv {
 // RunMIR executes all instructions in the given basic block list sequentially.
 // For now, control-flow is assumed to be linear within a basic block.
 func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
+	log.Warn("MIR RunMIR: block", "block", block.blockNum, "instructions", len(block.instructions))
 	if block == nil || len(block.instructions) == 0 {
 		return it.returndata, nil
 	}
@@ -338,11 +339,14 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 		// Build a lightweight resolver using cfg.pcToBlock
 		it.env.ResolveBB = func(pc uint64) *MIRBasicBlock {
 			if cfg == nil || cfg.pcToBlock == nil {
+				log.Warn("MIR RunCFGWithResolver: cfg or pcToBlock is nil", "pc", pc)
 				return nil
 			}
 			if bb, ok := cfg.pcToBlock[uint(pc)]; ok {
+				log.Warn("MIR RunCFGWithResolver: found bb", "pc", pc, "bb", bb.blockNum)
 				return bb
 			}
+			log.Warn("MIR RunCFGWithResolver: not found bb", "pc", pc)
 			return nil
 		}
 	}
@@ -1103,6 +1107,12 @@ func mirHandleJUMP(it *MIRInterpreter, m *MIR) error {
 		return ErrMIRFallback
 	}
 	udest, _ := dest.Uint64WithOverflow()
+	if m.evmPC == 5842 {
+		log.Warn("MIR JUMP", "oprands0", m.oprands[0], "dest", dest, "udest", udest, "it.globalResults", it.globalResults)
+		if m.oprands[0].def != nil {
+			log.Warn("MIR JUMP", "oprands0.def", m.oprands[0].def, "evmPC", m.oprands[0].def.evmPC, "idx", m.oprands[0].def.idx)
+		}
+	}
 	// Cache resolved PHI-based destination to stabilize later uses across blocks
 	if opv := m.oprands[0]; opv != nil && opv.kind == Variable && opv.def != nil {
 		if it.globalResults != nil {
@@ -2027,6 +2037,12 @@ func (it *MIRInterpreter) resolveJumpDestValue(op *Value) (*uint256.Int, bool) {
 			}
 		}
 		// Unresolved PHI
+		// As a last resort, evaluate the operand directly. This mirrors EVM's
+		// dynamic jump semantics where the destination is taken from the top of
+		// stack even if we lack an exact predecessor mapping.
+		if v := it.evalValue(op); v != nil {
+			return v, true
+		}
 		return nil, false
 	}
 	// Not a PHI; just evaluate
@@ -2106,10 +2122,15 @@ func (it *MIRInterpreter) scheduleJump(udest uint64, m *MIR) error {
 	if it.env == nil || it.env.CheckJumpdest == nil || it.env.ResolveBB == nil {
 		return fmt.Errorf("jump environment not initialized")
 	}
-	// Resolve directly; if it doesn't map to a BB, treat as invalid target
+	// First, enforce EVM byte-level rule: target must be a valid JUMPDEST and not in push-data
+	if !it.env.CheckJumpdest(udest) {
+		log.Error("MIR jump invalid jumpdest - mirroring EVM error", "from_evm_pc", m.evmPC, "dest_pc", udest)
+		return fmt.Errorf("invalid jump destination")
+	}
+	// Then resolve to a basic block in the CFG
 	it.nextBB = it.env.ResolveBB(udest)
 	if it.nextBB == nil {
-		log.Error("MIR jump invalid jumpdest - requesting EVM fallback", "from_evm_pc", m.evmPC, "dest_pc", udest)
+		log.Error("MIR jump target not mapped in CFG", "from_evm_pc", m.evmPC, "dest_pc", udest)
 		return fmt.Errorf("unresolvable jump target")
 	}
 	it.publishLiveOut(it.currentBB)

@@ -1,6 +1,8 @@
 package compiler
 
 import (
+	"fmt"
+
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
 )
@@ -181,10 +183,11 @@ func (m *MIR) OperandDebugStrings() []string {
 			out = append(out, "arg")
 		case Variable:
 			if v.def != nil {
-				// include def index without fmt to avoid extra import
-				out = append(out, "var")
+				out = append(out, "var-")
+				out = append(out, fmt.Sprintf("def@%d", v.def.idx))
+				out = append(out, fmt.Sprintf("def: evm_pc=%d evm_op=0x%x", v.def.evmPC, v.def.evmOp))
 			} else {
-				out = append(out, "var")
+				out = append(out, "var-no-def")
 			}
 		default:
 			out = append(out, "unknown")

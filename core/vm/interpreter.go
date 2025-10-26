@@ -18,6 +18,7 @@ package vm
 
 import (
 	"fmt"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -33,6 +34,9 @@ type Config struct {
 	EnablePreimageRecording   bool  // Enables recording of SHA3/keccak preimages
 	ExtraEips                 []int // Additional EIPS that are to be enabled
 	EnableOpcodeOptimizations bool  // Enable opcode optimization
+	// When true, do not fallback to the stock EVM interpreter if MIR encounters
+	// any issue and requests fallback. Instead, propagate the MIR error to caller.
+	MIRStrictNoFallback bool
 
 	StatelessSelfValidation bool // Generate execution witnesses and self-check against them (testing purpose)
 }
