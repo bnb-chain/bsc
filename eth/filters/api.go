@@ -190,13 +190,13 @@ func (api *FilterAPI) NewPendingTransactions(ctx context.Context, fullTx *bool) 
 				latest := api.sys.backend.CurrentHeader()
 				for _, tx := range txs {
 					log.Warn("check pending hash", tx.Hash())
-					receipt, err := api.sys.backend.SimulateTransaction(ctx, tx)
-					if err != nil || receipt == nil || receipt.Status != types.ReceiptStatusSuccessful {
-						log.Warn("check pending hash fail", tx.Hash(), err)
-						continue
-					}
+					// receipt, err := api.sys.backend.SimulateTransaction(ctx, tx)
+					// if err != nil || receipt == nil || receipt.Status != types.ReceiptStatusSuccessful {
+					// 	log.Warn("check pending hash fail", tx.Hash(), err)
+					// 	continue
+					// }
 					if fullTx != nil && *fullTx {
-						rpcTx := ethapi.NewRPCPendingTransaction(tx, latest, chainConfig, receipt.Logs)
+						rpcTx := ethapi.NewRPCPendingTransaction(tx, latest, chainConfig, nil) //receipt.Logs
 						notifier.Notify(rpcSub.ID, rpcTx)
 					} else {
 						notifier.Notify(rpcSub.ID, tx.Hash())
