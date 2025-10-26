@@ -46,6 +46,8 @@ import (
 	"github.com/ethereum/go-ethereum/miner"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
+
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // EthAPIBackend implements ethapi.Backend and tracers.Backend for full nodes
@@ -421,6 +423,7 @@ func (b *EthAPIBackend) TxPool() *txpool.TxPool {
 func (b *EthAPIBackend) SimulateTransaction(ctx context.Context, tx *types.Transaction) (*types.Receipt, error) {
 	select {
 	case <-ctx.Done():
+		log.Warn("SimulateTransaction Done", ctx.Err())
 		return nil, ctx.Err()
 	default:
 	}
@@ -448,6 +451,7 @@ func (b *EthAPIBackend) SimulateTransaction(ctx context.Context, tx *types.Trans
 		}
 		state, err = b.eth.blockchain.StateAt(latest.Root)
 		if err != nil {
+			log.Warn("SimulateTransaction StateAt error", err)
 			return nil, err
 		}
 	}
@@ -459,6 +463,7 @@ func (b *EthAPIBackend) SimulateTransaction(ctx context.Context, tx *types.Trans
 	signer := types.MakeSigner(chainConfig, header.Number, header.Time)
 	msg, err := core.TransactionToMessage(tx, signer, header.BaseFee)
 	if err != nil {
+		log.Warn("SimulateTransaction TransactionToMessage error", err)
 		return nil, err
 	}
 
@@ -473,6 +478,7 @@ func (b *EthAPIBackend) SimulateTransaction(ctx context.Context, tx *types.Trans
 	usedGas := uint64(0)
 	receipt, err := core.ApplyTransactionWithEVM(msg, gasPool, state, header.Number, common.Hash{}, header.Time, tx, &usedGas, evm)
 	if err != nil {
+		log.Warn("SimulateTransaction ApplyTransactionWithEVM error", err)
 		return nil, err
 	}
 	return receipt, nil
