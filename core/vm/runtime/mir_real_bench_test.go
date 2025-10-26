@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/core/vm/runtime"
+	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	ethlog "github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
@@ -988,13 +989,32 @@ func TestUSDT_Strict_Parity_Allowance(t *testing.T) {
 		ret, _, err := evm.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
 		return ret, err
 	}
+	lastBasePC := -1
+	// EVM trace for approve case just to capture last PC
+	evnTracerApprove := &tracing.Hooks{OnOpcode: func(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+		lastBasePC = int(pc)
+	}}
+	lastMirPC := -1
+	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
+		if mm != nil {
+			evmOp := vm.OpCode(mm.EvmOp())
+			fmt.Printf("MIR evm_pc=%d mir_op=%s evm_op=%s(0x%02x) ops=%v\n", mm.EvmPC(), mm.Op().String(), evmOp.String(), byte(evmOp), mm.OperandDebugStrings())
+			lastMirPC = int(mm.EvmPC())
+		}
+	})
+	defer compiler.SetGlobalMIRTracerExtended(nil)
+	base.EVMConfig.Tracer = evnTracerApprove
 	rb, eb := run(base, "usdt_allow_par_b")
+	base.EVMConfig.Tracer = nil
 	rm, em := run(mir, "usdt_allow_par_m")
 	if (eb != nil) != (em != nil) {
 		t.Fatalf("allowance: error mismatch base=%v mir=%v", eb, em)
 	}
 	if string(rb) != string(rm) {
 		t.Fatalf("allowance: return mismatch base=%x mir=%x", rb, rm)
+	}
+	if lastBasePC != lastMirPC {
+		t.Fatalf("allowance: exit PC mismatch base=%d mir=%d", lastBasePC, lastMirPC)
 	}
 }
 
@@ -1026,7 +1046,20 @@ func TestUSDT_Strict_Parity_Approve(t *testing.T) {
 		ret, _, err := evm.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
 		return ret, err
 	}
+	lastBasePC := -1
+	lastMirPC := -1
+	evnTracer := &tracing.Hooks{OnOpcode: func(pc uint64, _ byte, _ uint64, _ uint64, _ tracing.OpContext, _ []byte, _ int, _ error) {
+		lastBasePC = int(pc)
+	}}
+	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
+		if mm != nil {
+			lastMirPC = int(mm.EvmPC())
+		}
+	})
+	defer compiler.SetGlobalMIRTracerExtended(nil)
+	base.EVMConfig.Tracer = evnTracer
 	rb, eb := run(base, "usdt_appr_par_b")
+	base.EVMConfig.Tracer = nil
 	rm, em := run(mir, "usdt_appr_par_m")
 	if (eb != nil) != (em != nil) {
 		t.Fatalf("approve: error mismatch base=%v mir=%v", eb, em)
@@ -1034,7 +1067,698 @@ func TestUSDT_Strict_Parity_Approve(t *testing.T) {
 	if string(rb) != string(rm) {
 		t.Fatalf("approve: return mismatch base=%x mir=%x", rb, rm)
 	}
+	if lastBasePC != lastMirPC {
+		t.Fatalf("approve: exit PC mismatch base=%d mir=%d", lastBasePC, lastMirPC)
+	}
 }
+
+// Individual strict-mode parity tests for USDT selectors
+func TestUSDT_Strict_Parity_Name(t *testing.T) {
+	code, err := hex.DecodeString(usdtHex[2:])
+	if err != nil {
+		t.Fatalf("decode USDT hex: %v", err)
+	}
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+	input := []byte{0x06, 0xfd, 0xde, 0x03}
+	run := func(cfg *runtime.Config, label string) ([]byte, error) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		ev := runtime.NewEnv(cfg)
+		addr := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		ev.StateDB.CreateAccount(addr)
+		ev.StateDB.SetCode(addr, code)
+		ret, _, err := ev.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+	lastBasePC := -1
+	lastMirPC := -1
+	evnTracer := &tracing.Hooks{OnOpcode: func(pc uint64, _ byte, _ uint64, _ uint64, _ tracing.OpContext, _ []byte, _ int, _ error) {
+		lastBasePC = int(pc)
+	}}
+	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
+		if mm != nil {
+			lastMirPC = int(mm.EvmPC())
+		}
+	})
+	defer compiler.SetGlobalMIRTracerExtended(nil)
+	base.EVMConfig.Tracer = evnTracer
+	rb, eb := run(base, "usdt_name_b")
+	base.EVMConfig.Tracer = nil
+	rm, em := run(mir, "usdt_name_m")
+	if (eb != nil) != (em != nil) {
+		t.Fatalf("name: error mismatch base=%v mir=%v", eb, em)
+	}
+	if string(rb) != string(rm) {
+		t.Fatalf("name: return mismatch base=%x mir=%x", rb, rm)
+	}
+	if lastBasePC != lastMirPC {
+		t.Fatalf("name: exit PC mismatch base=%d mir=%d", lastBasePC, lastMirPC)
+	}
+}
+
+func TestUSDT_Strict_Parity_Symbol(t *testing.T) {
+	code, err := hex.DecodeString(usdtHex[2:])
+	if err != nil {
+		t.Fatalf("decode USDT hex: %v", err)
+	}
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+	input := []byte{0x95, 0xd8, 0x9b, 0x41}
+	run := func(cfg *runtime.Config, label string) ([]byte, error) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		ev := runtime.NewEnv(cfg)
+		addr := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		ev.StateDB.CreateAccount(addr)
+		ev.StateDB.SetCode(addr, code)
+		ret, _, err := ev.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+	lastBasePC := -1
+	lastMirPC := -1
+	evnTracer := &tracing.Hooks{OnOpcode: func(pc uint64, _ byte, _ uint64, _ uint64, _ tracing.OpContext, _ []byte, _ int, _ error) {
+		lastBasePC = int(pc)
+	}}
+	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
+		if mm != nil {
+			lastMirPC = int(mm.EvmPC())
+		}
+	})
+	defer compiler.SetGlobalMIRTracerExtended(nil)
+	base.EVMConfig.Tracer = evnTracer
+	rb, eb := run(base, "usdt_symbol_b")
+	base.EVMConfig.Tracer = nil
+	rm, em := run(mir, "usdt_symbol_m")
+	if (eb != nil) != (em != nil) {
+		t.Fatalf("symbol: error mismatch base=%v mir=%v", eb, em)
+	}
+	if string(rb) != string(rm) {
+		t.Fatalf("symbol: return mismatch base=%x mir=%x", rb, rm)
+	}
+	if lastBasePC != lastMirPC {
+		t.Fatalf("symbol: exit PC mismatch base=%d mir=%d", lastBasePC, lastMirPC)
+	}
+}
+
+func TestUSDT_Strict_Parity_Decimals(t *testing.T) {
+	code, err := hex.DecodeString(usdtHex[2:])
+	if err != nil {
+		t.Fatalf("decode USDT hex: %v", err)
+	}
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+	input := []byte{0x31, 0x3c, 0xe5, 0x67}
+	run := func(cfg *runtime.Config, label string) ([]byte, error) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		ev := runtime.NewEnv(cfg)
+		addr := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		ev.StateDB.CreateAccount(addr)
+		ev.StateDB.SetCode(addr, code)
+		ret, _, err := ev.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+	lastBasePC := -1
+	lastMirPC := -1
+	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
+		if mm != nil {
+			lastMirPC = int(mm.EvmPC())
+		}
+	})
+	defer compiler.SetGlobalMIRTracerExtended(nil)
+	base.EVMConfig.Tracer = nil
+	rb, eb := run(base, "usdt_decimals_b")
+	base.EVMConfig.Tracer = nil
+	rm, em := run(mir, "usdt_decimals_m")
+	if (eb != nil) != (em != nil) {
+		t.Fatalf("decimals: error mismatch base=%v mir=%v", eb, em)
+	}
+	if string(rb) != string(rm) {
+		t.Fatalf("decimals: return mismatch base=%x mir=%x", rb, rm)
+	}
+	if lastBasePC != lastMirPC {
+		t.Fatalf("decimals: exit PC mismatch base=%d mir=%d", lastBasePC, lastMirPC)
+	}
+}
+
+func TestUSDT_Strict_Parity_TotalSupply(t *testing.T) {
+	code, err := hex.DecodeString(usdtHex[2:])
+	if err != nil {
+		t.Fatalf("decode USDT hex: %v", err)
+	}
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+	input := []byte{0x18, 0x16, 0x0d, 0xdd}
+	run := func(cfg *runtime.Config, label string) ([]byte, error) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		ev := runtime.NewEnv(cfg)
+		addr := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		ev.StateDB.CreateAccount(addr)
+		ev.StateDB.SetCode(addr, code)
+		ret, _, err := ev.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+	lastBasePC := -1
+	evnTracer := &tracing.Hooks{OnOpcode: func(pc uint64, _ byte, _ uint64, _ uint64, _ tracing.OpContext, _ []byte, _ int, _ error) {
+		lastBasePC = int(pc)
+	}}
+	lastMirPC := -1
+	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
+		if mm != nil {
+			lastMirPC = int(mm.EvmPC())
+		}
+	})
+	defer compiler.SetGlobalMIRTracerExtended(nil)
+	base.EVMConfig.Tracer = evnTracer
+	rb, eb := run(base, "usdt_total_b")
+	base.EVMConfig.Tracer = nil
+	rm, em := run(mir, "usdt_total_m")
+	if (eb != nil) != (em != nil) {
+		t.Fatalf("totalSupply: error mismatch base=%v mir=%v", eb, em)
+	}
+	if string(rb) != string(rm) {
+		t.Fatalf("totalSupply: return mismatch base=%x mir=%x", rb, rm)
+	}
+	if lastBasePC != lastMirPC {
+		t.Fatalf("totalSupply: exit PC mismatch base=%d mir=%d", lastBasePC, lastMirPC)
+	}
+}
+
+func TestUSDT_Strict_Parity_BalanceOf(t *testing.T) {
+	code, err := hex.DecodeString(usdtHex[2:])
+	if err != nil {
+		t.Fatalf("decode USDT hex: %v", err)
+	}
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+	zero := make([]byte, 32)
+	input := append([]byte{0x70, 0xa0, 0x82, 0x31}, zero...)
+	run := func(cfg *runtime.Config, label string) ([]byte, error) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		ev := runtime.NewEnv(cfg)
+		addr := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		ev.StateDB.CreateAccount(addr)
+		ev.StateDB.SetCode(addr, code)
+		ret, _, err := ev.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+	lastBasePC := -1
+	lastMirPC := -1
+	evnTracer := &tracing.Hooks{OnOpcode: func(pc uint64, _ byte, _ uint64, _ uint64, _ tracing.OpContext, _ []byte, _ int, _ error) {
+		lastBasePC = int(pc)
+	}}
+	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
+		if mm != nil {
+			lastMirPC = int(mm.EvmPC())
+		}
+	})
+	defer compiler.SetGlobalMIRTracerExtended(nil)
+	base.EVMConfig.Tracer = evnTracer
+	rb, eb := run(base, "usdt_bal_b")
+	base.EVMConfig.Tracer = nil
+	rm, em := run(mir, "usdt_bal_m")
+	if (eb != nil) != (em != nil) {
+		t.Fatalf("balanceOf: error mismatch base=%v mir=%v", eb, em)
+	}
+	if string(rb) != string(rm) {
+		t.Fatalf("balanceOf: return mismatch base=%x mir=%x", rb, rm)
+	}
+	if lastBasePC != lastMirPC {
+		t.Fatalf("balanceOf: exit PC mismatch base=%d mir=%d", lastBasePC, lastMirPC)
+	}
+}
+
+func TestUSDT_Strict_Parity_Transfer(t *testing.T) {
+	code, err := hex.DecodeString(usdtHex[2:])
+	if err != nil {
+		t.Fatalf("decode USDT hex: %v", err)
+	}
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+	zero := make([]byte, 32)
+	one := make([]byte, 32)
+	one[31] = 1
+	input := append([]byte{0xa9, 0x05, 0x9c, 0xbb}, zero...)
+	input = append(input, one...)
+	run := func(cfg *runtime.Config, label string) ([]byte, error) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		ev := runtime.NewEnv(cfg)
+		addr := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		ev.StateDB.CreateAccount(addr)
+		ev.StateDB.SetCode(addr, code)
+		ret, _, err := ev.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+	lastBasePC := -1
+	lastMirPC := -1
+	evnTracer := &tracing.Hooks{OnOpcode: func(pc uint64, _ byte, _ uint64, _ uint64, _ tracing.OpContext, _ []byte, _ int, _ error) {
+		lastBasePC = int(pc)
+	}}
+	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
+		if mm != nil {
+			lastMirPC = int(mm.EvmPC())
+		}
+	})
+	defer compiler.SetGlobalMIRTracerExtended(nil)
+	base.EVMConfig.Tracer = evnTracer
+	rb, eb := run(base, "usdt_xfer_b")
+	base.EVMConfig.Tracer = nil
+	rm, em := run(mir, "usdt_xfer_m")
+	if (eb != nil) != (em != nil) {
+		t.Fatalf("transfer: error mismatch base=%v mir=%v", eb, em)
+	}
+	if string(rb) != string(rm) {
+		t.Fatalf("transfer: return mismatch base=%x mir=%x", rb, rm)
+	}
+	if lastBasePC != lastMirPC {
+		t.Fatalf("transfer: exit PC mismatch base=%d mir=%d", lastBasePC, lastMirPC)
+	}
+}
+
+// Individual strict-mode parity tests for WBNB selectors
+func TestWBNB_Strict_Parity_Name(t *testing.T) {
+	code, err := hex.DecodeString(wbnbHex[2:])
+	if err != nil {
+		t.Fatalf("decode WBNB hex: %v", err)
+	}
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+	input := []byte{0x06, 0xfd, 0xde, 0x03}
+	run := func(cfg *runtime.Config, label string) ([]byte, error) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		ev := runtime.NewEnv(cfg)
+		addr := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		ev.StateDB.CreateAccount(addr)
+		ev.StateDB.SetCode(addr, code)
+		ret, _, err := ev.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+	lastBasePC := -1
+	lastMirPC := -1
+	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
+		if mm != nil {
+			lastMirPC = int(mm.EvmPC())
+		}
+	})
+	defer compiler.SetGlobalMIRTracerExtended(nil)
+	base.EVMConfig.Tracer = nil
+	rb, eb := run(base, "wbnb_name_b")
+	base.EVMConfig.Tracer = nil
+	rm, em := run(mir, "wbnb_name_m")
+	if (eb != nil) != (em != nil) {
+		t.Fatalf("name: error mismatch base=%v mir=%v", eb, em)
+	}
+	if string(rb) != string(rm) {
+		t.Fatalf("name: return mismatch base=%x mir=%x", rb, rm)
+	}
+	if lastBasePC != lastMirPC {
+		t.Fatalf("name: exit PC mismatch base=%d mir=%d", lastBasePC, lastMirPC)
+	}
+}
+
+func TestWBNB_Strict_Parity_Symbol(t *testing.T) {
+	code, err := hex.DecodeString(wbnbHex[2:])
+	if err != nil {
+		t.Fatalf("decode WBNB hex: %v", err)
+	}
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+	input := []byte{0x95, 0xd8, 0x9b, 0x41}
+	run := func(cfg *runtime.Config, label string) ([]byte, error) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		ev := runtime.NewEnv(cfg)
+		addr := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		ev.StateDB.CreateAccount(addr)
+		ev.StateDB.SetCode(addr, code)
+		ret, _, err := ev.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+	lastBasePC := -1
+	evnTracer := &tracing.Hooks{OnOpcode: func(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+		lastBasePC = int(pc)
+	}}
+	lastMirPC := -1
+	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
+		if mm != nil {
+			lastMirPC = int(mm.EvmPC())
+		}
+	})
+	defer compiler.SetGlobalMIRTracerExtended(nil)
+	// Prefer JSON logger to ensure opcode steps print regardless of test verbosity
+	jsonTracer := logger.NewJSONLogger(&logger.Config{}, os.Stdout)
+	base.EVMConfig.Tracer = jsonTracer
+	rb, eb := run(base, "wbnb_symbol_b")
+	base.EVMConfig.Tracer = nil
+	rm, em := run(mir, "wbnb_symbol_m")
+	if (eb != nil) != (em != nil) {
+		t.Fatalf("symbol: error mismatch base=%v mir=%v", eb, em)
+	}
+	if string(rb) != string(rm) {
+		t.Fatalf("symbol: return mismatch base=%x mir=%x", rb, rm)
+	}
+	if lastBasePC != lastMirPC {
+		t.Fatalf("symbol: exit PC mismatch base=%d mir=%d", lastBasePC, lastMirPC)
+	}
+}
+
+func TestWBNB_Strict_Parity_Decimals(t *testing.T) {
+	code, err := hex.DecodeString(wbnbHex[2:])
+	if err != nil {
+		t.Fatalf("decode WBNB hex: %v", err)
+	}
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+	input := []byte{0x31, 0x3c, 0xe5, 0x67}
+	run := func(cfg *runtime.Config, label string) ([]byte, error) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		ev := runtime.NewEnv(cfg)
+		addr := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		ev.StateDB.CreateAccount(addr)
+		ev.StateDB.SetCode(addr, code)
+		ret, _, err := ev.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+	lastBasePC := -1
+	evnTracer := &tracing.Hooks{OnOpcode: func(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+		lastBasePC = int(pc)
+	}}
+	lastMirPC := -1
+	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
+		if mm != nil {
+			lastMirPC = int(mm.EvmPC())
+		}
+	})
+	defer compiler.SetGlobalMIRTracerExtended(nil)
+	base.EVMConfig.Tracer = evnTracer
+	rb, eb := run(base, "wbnb_decimals_b")
+	base.EVMConfig.Tracer = nil
+	rm, em := run(mir, "wbnb_decimals_m")
+	if (eb != nil) != (em != nil) {
+		t.Fatalf("decimals: error mismatch base=%v mir=%v", eb, em)
+	}
+	if string(rb) != string(rm) {
+		t.Fatalf("decimals: return mismatch base=%x mir=%x", rb, rm)
+	}
+	if lastBasePC != lastMirPC {
+		t.Fatalf("decimals: exit PC mismatch base=%d mir=%d", lastBasePC, lastMirPC)
+	}
+}
+
+func TestWBNB_Strict_Parity_TotalSupply(t *testing.T) {
+	code, err := hex.DecodeString(wbnbHex[2:])
+	if err != nil {
+		t.Fatalf("decode WBNB hex: %v", err)
+	}
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+	input := []byte{0x18, 0x16, 0x0d, 0xdd}
+	run := func(cfg *runtime.Config, label string) ([]byte, error) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		ev := runtime.NewEnv(cfg)
+		addr := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		ev.StateDB.CreateAccount(addr)
+		ev.StateDB.SetCode(addr, code)
+		ret, _, err := ev.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+	lastBasePC := -1
+	evnTracer := &tracing.Hooks{OnOpcode: func(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+		lastBasePC = int(pc)
+	}}
+	lastMirPC := -1
+	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
+		if mm != nil {
+			lastMirPC = int(mm.EvmPC())
+		}
+	})
+	defer compiler.SetGlobalMIRTracerExtended(nil)
+	base.EVMConfig.Tracer = evnTracer
+	rb, eb := run(base, "wbnb_total_b")
+	base.EVMConfig.Tracer = nil
+	rm, em := run(mir, "wbnb_total_m")
+	if (eb != nil) != (em != nil) {
+		t.Fatalf("totalSupply: error mismatch base=%v mir=%v", eb, em)
+	}
+	if string(rb) != string(rm) {
+		t.Fatalf("totalSupply: return mismatch base=%x mir=%x", rb, rm)
+	}
+	if lastBasePC != lastMirPC {
+		t.Fatalf("totalSupply: exit PC mismatch base=%d mir=%d", lastBasePC, lastMirPC)
+	}
+}
+
+func TestWBNB_Strict_Parity_BalanceOf(t *testing.T) {
+	code, err := hex.DecodeString(wbnbHex[2:])
+	if err != nil {
+		t.Fatalf("decode WBNB hex: %v", err)
+	}
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+	zero := make([]byte, 32)
+	input := append([]byte{0x70, 0xa0, 0x82, 0x31}, zero...)
+	run := func(cfg *runtime.Config, label string) ([]byte, error) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		ev := runtime.NewEnv(cfg)
+		addr := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		ev.StateDB.CreateAccount(addr)
+		ev.StateDB.SetCode(addr, code)
+		ret, _, err := ev.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+	lastBasePC := -1
+	evnTracer := &tracing.Hooks{OnOpcode: func(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+		lastBasePC = int(pc)
+	}}
+	lastMirPC := -1
+	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
+		if mm != nil {
+			lastMirPC = int(mm.EvmPC())
+		}
+	})
+	defer compiler.SetGlobalMIRTracerExtended(nil)
+	base.EVMConfig.Tracer = evnTracer
+	rb, eb := run(base, "wbnb_bal_b")
+	base.EVMConfig.Tracer = nil
+	rm, em := run(mir, "wbnb_bal_m")
+	if (eb != nil) != (em != nil) {
+		t.Fatalf("balanceOf: error mismatch base=%v mir=%v", eb, em)
+	}
+	if string(rb) != string(rm) {
+		t.Fatalf("balanceOf: return mismatch base=%x mir=%x", rb, rm)
+	}
+	if lastBasePC != lastMirPC {
+		t.Fatalf("balanceOf: exit PC mismatch base=%d mir=%d", lastBasePC, lastMirPC)
+	}
+}
+
+func TestWBNB_Strict_Parity_Allowance(t *testing.T) {
+	code, err := hex.DecodeString(wbnbHex[2:])
+	if err != nil {
+		t.Fatalf("decode WBNB hex: %v", err)
+	}
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+	zero := make([]byte, 32)
+	input := append([]byte{0x39, 0x50, 0x93, 0x51}, zero...)
+	input = append(input, zero...)
+	run := func(cfg *runtime.Config, label string) ([]byte, error) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		ev := runtime.NewEnv(cfg)
+		addr := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		ev.StateDB.CreateAccount(addr)
+		ev.StateDB.SetCode(addr, code)
+		ret, _, err := ev.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+	lastBasePC := -1
+	evnTracer := &tracing.Hooks{OnOpcode: func(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+		lastBasePC = int(pc)
+	}}
+	lastMirPC := -1
+	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
+		if mm != nil {
+			lastMirPC = int(mm.EvmPC())
+		}
+	})
+	defer compiler.SetGlobalMIRTracerExtended(nil)
+	base.EVMConfig.Tracer = evnTracer
+	rb, eb := run(base, "wbnb_allow_b")
+	base.EVMConfig.Tracer = nil
+	rm, em := run(mir, "wbnb_allow_m")
+	if (eb != nil) != (em != nil) {
+		t.Fatalf("allowance: error mismatch base=%v mir=%v", eb, em)
+	}
+	if string(rb) != string(rm) {
+		t.Fatalf("allowance: return mismatch base=%x mir=%x", rb, rm)
+	}
+	if lastBasePC != lastMirPC {
+		t.Fatalf("allowance: exit PC mismatch base=%d mir=%d", lastBasePC, lastMirPC)
+	}
+}
+
+func TestWBNB_Strict_Parity_Approve(t *testing.T) {
+	code, err := hex.DecodeString(wbnbHex[2:])
+	if err != nil {
+		t.Fatalf("decode WBNB hex: %v", err)
+	}
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+	zero := make([]byte, 32)
+	one := make([]byte, 32)
+	one[31] = 1
+	input := append([]byte{0x09, 0x5e, 0xa7, 0xb3}, zero...)
+	input = append(input, one...)
+	run := func(cfg *runtime.Config, label string) ([]byte, error) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		ev := runtime.NewEnv(cfg)
+		addr := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		ev.StateDB.CreateAccount(addr)
+		ev.StateDB.SetCode(addr, code)
+		ret, _, err := ev.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+	lastBasePC := -1
+	evnTracer := &tracing.Hooks{OnOpcode: func(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+		lastBasePC = int(pc)
+	}}
+	lastMirPC := -1
+	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
+		if mm != nil {
+			lastMirPC = int(mm.EvmPC())
+		}
+	})
+	defer compiler.SetGlobalMIRTracerExtended(nil)
+	base.EVMConfig.Tracer = evnTracer
+	rb, eb := run(base, "wbnb_appr_b")
+	base.EVMConfig.Tracer = nil
+	rm, em := run(mir, "wbnb_appr_m")
+	if (eb != nil) != (em != nil) {
+		t.Fatalf("approve: error mismatch base=%v mir=%v", eb, em)
+	}
+	if string(rb) != string(rm) {
+		t.Fatalf("approve: return mismatch base=%x mir=%x", rb, rm)
+	}
+	if lastBasePC != lastMirPC {
+		t.Fatalf("approve: exit PC mismatch base=%d mir=%d", lastBasePC, lastMirPC)
+	}
+}
+
+func TestWBNB_Strict_Parity_Transfer(t *testing.T) {
+	code, err := hex.DecodeString(wbnbHex[2:])
+	if err != nil {
+		t.Fatalf("decode WBNB hex: %v", err)
+	}
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+	zero := make([]byte, 32)
+	one := make([]byte, 32)
+	one[31] = 1
+	input := append([]byte{0xa9, 0x05, 0x9c, 0xbb}, zero...)
+	input = append(input, one...)
+	run := func(cfg *runtime.Config, label string) ([]byte, error) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		ev := runtime.NewEnv(cfg)
+		addr := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		ev.StateDB.CreateAccount(addr)
+		ev.StateDB.SetCode(addr, code)
+		ret, _, err := ev.Call(sender, addr, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		return ret, err
+	}
+	lastBasePC := -1
+	evnTracer := &tracing.Hooks{OnOpcode: func(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+		lastBasePC = int(pc)
+	}}
+	lastMirPC := -1
+	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
+		if mm != nil {
+			lastMirPC = int(mm.EvmPC())
+		}
+	})
+	defer compiler.SetGlobalMIRTracerExtended(nil)
+	base.EVMConfig.Tracer = evnTracer
+	rb, eb := run(base, "wbnb_xfer_b")
+	base.EVMConfig.Tracer = nil
+	rm, em := run(mir, "wbnb_xfer_m")
+	if (eb != nil) != (em != nil) {
+		t.Fatalf("transfer: error mismatch base=%v mir=%v", eb, em)
+	}
+	if string(rb) != string(rm) {
+		t.Fatalf("transfer: return mismatch base=%x mir=%x", rb, rm)
+	}
+	if lastBasePC != lastMirPC {
+		t.Fatalf("transfer: exit PC mismatch base=%d mir=%d", lastBasePC, lastMirPC)
+	}
+}
+
+// end strict-mode parity tests
 
 // TestUSDT_StackAroundDup6 prints a window of opcodes and an approximate
 // stack depth trace around the failing pc to diagnose insufficient depth.
@@ -1112,7 +1836,7 @@ func TestUSDT_StackAroundDup6(t *testing.T) {
 					depth = 0
 				}
 			case vm.SLOAD:
-				if depth >= 1 { /* pop1 push1 -> no change */
+				if depth >= 1 { // pop1 push1 -> no change
 				}
 			case vm.JUMP:
 				if depth >= 1 {
