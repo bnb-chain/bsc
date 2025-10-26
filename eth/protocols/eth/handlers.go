@@ -495,6 +495,7 @@ func handleNewPooledTransactionHashes(backend Backend, msg Decoder, peer *Peer) 
 	// Schedule all the unknown hashes for retrieval
 	for _, hash := range ann.Hashes {
 		peer.markTransaction(hash)
+		log.Warn("handleNewPooledTransactionHashes ", hash)
 	}
 	return backend.Handle(peer, ann)
 }
@@ -548,6 +549,8 @@ func handleTransactions(backend Backend, msg Decoder, peer *Peer) error {
 			return fmt.Errorf("Transactions: transaction %d is nil", i)
 		}
 		peer.markTransaction(tx.Hash())
+
+		log.Warn("handleTransactions ", tx.Hash())
 	}
 	return backend.Handle(peer, &txs)
 }
@@ -568,6 +571,8 @@ func handlePooledTransactions(backend Backend, msg Decoder, peer *Peer) error {
 			return fmt.Errorf("PooledTransactions: transaction %d is nil", i)
 		}
 		peer.markTransaction(tx.Hash())
+
+		log.Warn("handlePooledTransactions ", tx.Hash())
 	}
 	requestTracker.Fulfil(peer.id, peer.version, PooledTransactionsMsg, txs.RequestId)
 
