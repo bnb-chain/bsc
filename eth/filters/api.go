@@ -189,10 +189,10 @@ func (api *FilterAPI) NewPendingTransactions(ctx context.Context, fullTx *bool) 
 				// TODO(rjl493456442) Send a batch of tx hashes in one notification
 				latest := api.sys.backend.CurrentHeader()
 				for _, tx := range txs {
-					log.warn("check pending hash", tx.Hash())
+					log.Warn("check pending hash", tx.Hash())
 					receipt, err := api.sys.backend.SimulateTransaction(ctx, tx)
 					if err != nil || receipt == nil || receipt.Status != types.ReceiptStatusSuccessful {
-						log.warn("check pending hash fail", tx.Hash())
+						log.Warn("check pending hash fail", tx.Hash())
 						continue
 					}
 					if fullTx != nil && *fullTx {
