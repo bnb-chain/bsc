@@ -192,7 +192,7 @@ func (api *FilterAPI) NewPendingTransactions(ctx context.Context, fullTx *bool) 
 					log.Warn("check pending hash", tx.Hash())
 					receipt, err := api.sys.backend.SimulateTransaction(ctx, tx)
 					if err != nil || receipt == nil || receipt.Status != types.ReceiptStatusSuccessful {
-						log.Warn("check pending hash fail", tx.Hash())
+						log.Warn("check pending hash fail", tx.Hash(), err)
 						continue
 					}
 					if fullTx != nil && *fullTx {
