@@ -75,7 +75,7 @@ var Defaults = Config{
 	RPCTxFeeCap:        1,                                         // 1 ether
 	BlobExtraReserve:   params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
 	PeerBlacklist: PeerBlacklistConfig{
-		Enabled:          true
+		Enabled:          true,
 		SuccessThreshold: 0.2,
 		MinimumSamples:   100,
 		Persistence:      "peer-blacklist.json",
