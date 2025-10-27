@@ -182,9 +182,6 @@ type worker struct {
 	prio        []common.Address // A list of senders to prioritize
 	chain       *core.BlockChain
 
-	// Feeds
-	pendingLogsFeed event.Feed
-
 	// Subscriptions
 	mux          *event.TypeMux
 	chainHeadCh  chan core.ChainHeadEvent
@@ -760,7 +757,6 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 		}
 	}
 
-	var coalescedLogs []*types.Log
 	// initialize bloom processors
 	processorCapacity := 100
 	if plainTxs.CurrentSize() < processorCapacity {
@@ -905,7 +901,7 @@ LOOP:
 		// Start executing the transaction
 		env.state.SetTxContext(tx.Hash(), env.tcount)
 
-		logs, err := w.commitTransaction(env, tx, bloomProcessors)
+		_, err := w.commitTransaction(env, tx, bloomProcessors)
 		switch {
 		case errors.Is(err, core.ErrNonceTooLow):
 			// New head notification data race between the transaction pool and miner, shift
@@ -913,8 +909,7 @@ LOOP:
 			txs.Shift()
 
 		case errors.Is(err, nil):
-			// Everything ok, collect the logs and shift in the next transaction from the same account
-			coalescedLogs = append(coalescedLogs, logs...)
+			// Everything ok, shift in the next transaction from the same account
 			env.tcount++
 			txs.Shift()
 
@@ -925,21 +920,7 @@ LOOP:
 			txs.Pop()
 		}
 	}
-	if !w.isRunning() && len(coalescedLogs) > 0 {
-		// We don't push the pendingLogsEvent while we are sealing. The reason is that
-		// when we are sealing, the worker will regenerate a sealing block every 3 seconds.
-		// In order to avoid pushing the repeated pendingLog, we disable the pending log pushing.
 
-		// make a copy, the state caches the logs and these logs get "upgraded" from pending to mined
-		// logs by filling in the block hash when the block was mined by the local miner. This can
-		// cause a race condition if a log was "upgraded" before the PendingLogsEvent is processed.
-		cpy := make([]*types.Log, len(coalescedLogs))
-		for i, l := range coalescedLogs {
-			cpy[i] = new(types.Log)
-			*cpy[i] = *l
-		}
-		w.pendingLogsFeed.Send(cpy)
-	}
 	return signalToErr(signal)
 }
 
