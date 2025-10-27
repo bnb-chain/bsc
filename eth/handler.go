@@ -22,6 +22,7 @@ import (
 	"maps"
 	"math"
 	"math/big"
+	"sort"
 	"slices"
 	"strings"
 	"sync"
@@ -188,6 +189,9 @@ type handler struct {
 	requiredBlocks map[uint64]common.Hash
 	peerBlacklist  *txPeerBlacklist
 
+	peerStatsLock sync.RWMutex
+	peerTxCounts  map[string]uint64
+
 	// channels for fetcher, syncer, txsyncLoop
 	quitSync chan struct{}
 	stopCh   chan struct{}
@@ -219,6 +223,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		chain:                      config.Chain,
 		peers:                      config.PeerSet,
 		peersPerIP:                 make(map[string]int),
+		peerTxCounts:               make(map[string]uint64),
 		requiredBlocks:             config.RequiredBlocks,
 		directBroadcast:            config.DirectBroadcast,
 		enableEVNFeatures:          config.EnableEVNFeatures,
@@ -383,16 +388,19 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 	addTxs := func(peer string, txs []*types.Transaction) []error {
 		errors := h.txpool.Add(txs, false)
-			if h.peerBlacklist != nil && peer != "" && len(txs) > 0 {
-				successCount := 0
-				if len(errors) == 0 {
-					successCount = len(txs)
-				} else if len(errors) == len(txs) {
-					for _, err := range errors {
-						if err == nil || err == txpool.ErrAlreadyKnown {
-							successCount++
-						}
+		if peer != "" {
+			h.incrementPeerTxCount(peer, len(txs))
+		}
+		if h.peerBlacklist != nil && peer != "" && len(txs) > 0 {
+			successCount := 0
+			if len(errors) == 0 {
+				successCount = len(txs)
+			} else if len(errors) == len(txs) {
+				for _, err := range errors {
+					if err == nil || err == txpool.ErrAlreadyKnown {
+						successCount++
 					}
+				}
 			} else {
 				// Fallback in unexpected scenarios, assume successful to avoid penalizing peers unfairly.
 				successCount = len(txs)
@@ -418,6 +426,90 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	h.txFetcher = fetcher.NewTxFetcher(h.txpool.Has, addTxs, fetchTx, h.removePeer)
 	h.chainSync = newChainSyncer(h)
 	return h, nil
+}
+
+func (h *handler) resetPeerTxCount(id string) {
+	if h == nil {
+		return
+	}
+	h.peerStatsLock.Lock()
+	h.peerTxCounts[id] = 0
+	h.peerStatsLock.Unlock()
+}
+
+func (h *handler) clearPeerTxCount(id string) {
+	if h == nil {
+		return
+	}
+	h.peerStatsLock.Lock()
+	delete(h.peerTxCounts, id)
+	h.peerStatsLock.Unlock()
+}
+
+func (h *handler) incrementPeerTxCount(id string, delta int) {
+	if h == nil || delta <= 0 {
+		return
+	}
+	h.peerStatsLock.Lock()
+	h.peerTxCounts[id] += uint64(delta)
+	h.peerStatsLock.Unlock()
+}
+
+func (h *handler) getPeerTxCount(id string) uint64 {
+	h.peerStatsLock.RLock()
+	defer h.peerStatsLock.RUnlock()
+	return h.peerTxCounts[id]
+}
+
+func (h *handler) dropWorstPeers(exempt map[string]struct{}, limit int) bool {
+	if h == nil || limit <= 0 {
+		return false
+	}
+	peers := h.peers.list()
+	type candidate struct {
+		id      string
+		txCount uint64
+	}
+	candidates := make([]candidate, 0, len(peers))
+	for _, p := range peers {
+		if p == nil || p.Peer == nil {
+			continue
+		}
+		id := p.ID()
+		if exempt != nil {
+			if _, skip := exempt[id]; skip {
+				continue
+			}
+		}
+		info := p.Peer.Info()
+		if info != nil && info.Network.Trusted {
+			continue
+		}
+		candidates = append(candidates, candidate{id: id, txCount: h.getPeerTxCount(id)})
+	}
+	if len(candidates) == 0 {
+		return false
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].txCount == candidates[j].txCount {
+			return candidates[i].id < candidates[j].id
+		}
+		return candidates[i].txCount < candidates[j].txCount
+	})
+	dropped := 0
+	for _, cand := range candidates {
+		log.Info("Dropping peer with low pending activity", "peer", cand.id, "txCount", cand.txCount)
+		h.clearPeerTxCount(cand.id)
+		if h.peerBlacklist != nil {
+			h.peerBlacklist.blacklist(cand.id, 0)
+		}
+		h.removePeer(cand.id)
+		dropped++
+		if dropped >= limit {
+			break
+		}
+	}
+	return dropped > 0
 }
 
 // protoTracker tracks the number of active protocol handlers.
@@ -519,7 +611,13 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	// Ignore maxPeers if this is a trusted peer
 	peerInfo := peer.Peer.Info()
 	if !peerInfo.Network.Trusted {
-		if reject || h.peers.len() >= h.maxPeers {
+		if h.peers.len() >= h.maxPeers {
+			exempt := map[string]struct{}{peer.ID(): {}}
+			if !h.dropWorstPeers(exempt, 5) {
+				return p2p.DiscTooManyPeers
+			}
+		}
+		if reject {
 			return p2p.DiscTooManyPeers
 		}
 	}
@@ -547,6 +645,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		peer.Log().Error("Ethereum peer registration failed", "err", err)
 		return err
 	}
+	h.resetPeerTxCount(peer.ID())
 	peer.Log().Debug("Ethereum peer connected", "name", peer.Name(), "peers.len", h.peers.len())
 	defer h.unregisterPeer(peer.ID())
 
@@ -697,6 +796,7 @@ func (h *handler) unregisterPeer(id string) {
 		logger.Warn("Ethereum peer removal failed", "err", errPeerNotRegistered)
 		return
 	}
+	h.clearPeerTxCount(id)
 	// Remove the `eth` peer if it exists
 	logger.Debug("Removing Ethereum peer", "snap", peer.snapExt != nil)
 

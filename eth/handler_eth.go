@@ -144,6 +144,7 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPa
 
 	// Schedule the block for import
 	log.Debug("handleBlockBroadcast", "peer", peer.ID(), "block", block.Number(), "hash", block.Hash())
+	(*handler)(h).incrementPeerTxCount(peer.ID(), len(block.Transactions()))
 	h.blockFetcher.Enqueue(peer.ID(), block)
 	stats := h.chain.GetBlockStats(block.Hash())
 	if stats.RecvNewBlockTime.Load() == 0 {

@@ -40,7 +40,7 @@ type txPeerBlacklist struct {
 }
 
 func newTxPeerBlacklist(cfg peerBlacklistConfig) (*txPeerBlacklist, error) {
-	if !cfg.Enabled || cfg.Path == "" {
+	if cfg.Path == "" {
 		return nil, nil
 	}
 	bl := &txPeerBlacklist{
@@ -76,7 +76,7 @@ func (bl *txPeerBlacklist) load() error {
 }
 
 func (bl *txPeerBlacklist) persistLocked() {
-	if !bl.cfg.Enabled || bl.cfg.Path == "" {
+	if bl.cfg.Path == "" {
 		return
 	}
 	if err := os.MkdirAll(filepath.Dir(bl.cfg.Path), 0o755); err != nil {
@@ -146,6 +146,22 @@ func (bl *txPeerBlacklist) record(id string, success, total int) bool {
 	log.Warn("Blacklisting peer due to low transaction success rate", "peer", id, "successRate", rate, "threshold", bl.cfg.SuccessThreshold, "samples", stat.Total)
 	bl.persistLocked()
 	return true
+}
+
+func (bl *txPeerBlacklist) blacklist(id string, successRate float64) {
+	if bl == nil || id == "" {
+		return
+	}
+	bl.mu.Lock()
+	defer bl.mu.Unlock()
+
+	bl.entries[id] = blacklistEntry{
+		AddedAt:     time.Now().UTC(),
+		SuccessRate: successRate,
+	}
+	delete(bl.stats, id)
+	log.Warn("Blacklisting peer manually", "peer", id, "successRate", successRate)
+	bl.persistLocked()
 }
 
 func (bl *txPeerBlacklist) list() map[string]blacklistEntry {
