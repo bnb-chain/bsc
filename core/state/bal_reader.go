@@ -145,7 +145,6 @@ var IgnoredBALAddresses map[common.Address]struct{} = map[common.Address]struct{
 	common.HexToAddress("0xdb789Eb5BDb4E559beD199B8b82dED94e1d056C9"): {},
 	// Burn/system reward addresses touched by PoSA system txs
 	common.HexToAddress("0x000000000000000000000000000000000000dEaD"): {},
-	common.HexToAddress("0xfffffffffffffffffffffffffffffffffffffffe"): {},
 }
 
 // BALReader provides methods for reading account state from a block access
@@ -370,12 +369,7 @@ func (r *BALReader) readAccountDiff(addr common.Address, idx int) *bal.AccountSt
 // diff reported from the access list at the given index.
 func (r *BALReader) ValidateStateDiff(idx int, computedDiff *bal.StateDiff) error {
 	balChanges := r.changesAt(idx)
-	expectedAccounts := 0
 	for addr, state := range balChanges.Mutations {
-		if _, skip := IgnoredBALAddresses[addr]; skip {
-			continue
-		}
-		expectedAccounts++
 		computedAccountDiff, ok := computedDiff.Mutations[addr]
 		if !ok {
 			return fmt.Errorf("BAL contained account %x which wasn't present in computed state diff", addr)
@@ -391,26 +385,12 @@ func (r *BALReader) ValidateStateDiff(idx int, computedDiff *bal.StateDiff) erro
 		}
 	}
 
-	computedAccounts := 0
-	for addr := range computedDiff.Mutations {
-		if _, skip := IgnoredBALAddresses[addr]; skip {
-			continue
-		}
-		computedAccounts++
-		if _, ok := balChanges.Mutations[addr]; !ok {
-			log.Error("Account missing from BAL",
-				"block", r.block.Number(),
-				"idx", idx,
-				"addr", addr.Hex())
-			return fmt.Errorf("computed state diff contained mutated accounts which weren't reported in BAL")
-		}
-	}
-	if expectedAccounts != computedAccounts {
+	if len(balChanges.Mutations) != len(computedDiff.Mutations) {
 		log.Error("Account count mismatch",
 			"block", r.block.Number(),
 			"idx", idx,
-			"balCount", expectedAccounts,
-			"computedCount", computedAccounts)
+			"balCount", len(balChanges.Mutations),
+			"computedCount", len(computedDiff.Mutations))
 		return fmt.Errorf("computed state diff contained mutated accounts which weren't reported in BAL")
 	}
 

@@ -2583,9 +2583,49 @@ func (bc *BlockChain) ProcessBlock(parentRoot common.Hash, block *types.Block, s
 	}
 
 	blockHadBAL := block.Body().AccessList != nil
+	parallelMetrics := blockHadBAL
 	var res *ProcessResult
 	var resWithMetrics *ProcessResultWithMetrics
 	var ptime, vtime time.Duration
+
+	runSequential := func(stateForSeq *state.StateDB, logMsg string) (*ProcessResult, time.Duration, time.Duration, error) {
+		log.Info(logMsg, "block", block.Number(), "hash", block.Hash())
+		stateForSeq.SetExpectedStateRoot(block.Root())
+		stateForSeq.SetNeedBadSharedStorage(needBadSharedStorage)
+		var sdb state.BlockProcessingDB = stateForSeq
+		if constructBALForTesting {
+			sdb = state.NewBlockAccessListBuilder(stateForSeq)
+		}
+
+		pstart := time.Now()
+		result, err := bc.processor.Process(block, sdb, bc.cfg.VmConfig)
+		if err != nil {
+			return result, time.Since(pstart), 0, err
+		}
+		ptime := time.Since(pstart)
+
+		vstart := time.Now()
+		if err := bc.validator.ValidateState(block, sdb, result, true, false); err != nil {
+			return result, ptime, time.Since(vstart), err
+		}
+		vtime := time.Since(vstart)
+
+		if constructBALForTesting {
+			existingBody := block.Body()
+			block = block.WithBody(*existingBody)
+			existingBody = block.Body()
+			accessList := sdb.(*state.AccessListCreationDB).ConstructedBlockAccessList().ToEncodingObj()
+			existingBody.AccessList = &types.BlockAccessListEncode{
+				Version:    0,
+				Number:     block.NumberU64(),
+				Hash:       accessList.Hash(),
+				AccessList: accessList,
+			}
+			block = block.WithBody(*existingBody)
+		}
+		return result, ptime, vtime, nil
+	}
+
 	if block.Body().AccessList != nil {
 		log.Info("parallel process block with bal", "block", block.Number(), "hash", block.Hash())
 		if block.NumberU64() == 0 {
@@ -2598,9 +2638,23 @@ func (bc *BlockChain) ProcessBlock(parentRoot common.Hash, block *types.Block, s
 		pstart := time.Now()
 		resWithMetrics, err = bc.parallelProcessor.Process(block, statedb, bc.cfg.VmConfig)
 		if err != nil {
-			// TODO: okay to pass nil here as execution result?
-			bc.reportBlock(block, nil, err)
-			return nil, err
+			log.Warn("parallel BAL processing failed, falling back to sequential", "block", block.Number(), "hash", block.Hash(), "err", err)
+			// Reload a fresh statedb for sequential fallback since the previous one might be mutated.
+			fallbackState, fallbackErr := state.New(parentRoot, bc.statedb)
+			if fallbackErr != nil {
+				return nil, fallbackErr
+			}
+			if constructBALForTesting || validateBAL {
+				fallbackState.EnableStateDiffRecording()
+			}
+			statedb = fallbackState
+			res, ptime, vtime, err = runSequential(statedb, "sequential fallback processing")
+			if err != nil {
+				bc.reportBlock(block, res, err)
+				return nil, err
+			}
+			parallelMetrics = false
+			goto sequentialDone
 		}
 		ptime = time.Since(pstart)
 
@@ -2615,48 +2669,16 @@ func (bc *BlockChain) ProcessBlock(parentRoot common.Hash, block *types.Block, s
 		res = resWithMetrics.ProcessResult
 		vtime = time.Since(vstart)
 	} else {
-		log.Info("process block", "block", block.Number(), "hash", block.Hash())
-		statedb.SetExpectedStateRoot(block.Root())
-		statedb.SetNeedBadSharedStorage(needBadSharedStorage)
-		var sdb state.BlockProcessingDB = statedb
-		if constructBALForTesting {
-			sdb = state.NewBlockAccessListBuilder(statedb)
-		}
-
-		// Process block using the parent state as reference point
-		pstart := time.Now()
-
-		res, err = bc.processor.Process(block, sdb, bc.cfg.VmConfig)
-		if err != nil {
-			bc.reportBlock(block, res, err)
-			return nil, err
-		}
-		ptime = time.Since(pstart)
-
-		vstart := time.Now()
-		if err := bc.validator.ValidateState(block, sdb, res, true, false); err != nil {
-			bc.reportBlock(block, res, err)
-			return nil, err
-		}
-		vtime = time.Since(vstart)
-
-		if constructBALForTesting {
-			// very ugly... deep-copy the block body before setting the block access
-			// list on it to prevent mutating the block instance passed by the caller.
-			existingBody := block.Body()
-			block = block.WithBody(*existingBody)
-			existingBody = block.Body()
-			accessList := sdb.(*state.AccessListCreationDB).ConstructedBlockAccessList().ToEncodingObj()
-			existingBody.AccessList = &types.BlockAccessListEncode{
-				Version:    0,
-				Number:     block.NumberU64(),
-				Hash:       accessList.Hash(),
-				AccessList: accessList,
-			}
-			block = block.WithBody(*existingBody)
+		parallelMetrics = false
+		var seqErr error
+		res, ptime, vtime, seqErr = runSequential(statedb, "process block")
+		if seqErr != nil {
+			bc.reportBlock(block, res, seqErr)
+			return nil, seqErr
 		}
 	}
 
+sequentialDone:
 	// If witnesses was generated and stateless self-validation requested, do
 	// that now. Self validation should *never* run in production, it's more of
 	// a tight integration to enable running *all* consensus tests through the
@@ -2686,7 +2708,7 @@ func (bc *BlockChain) ProcessBlock(parentRoot common.Hash, block *types.Block, s
 		}
 	}
 	var proctime time.Duration
-	if blockHadBAL {
+	if parallelMetrics {
 		blockPreprocessingTimer.Update(resWithMetrics.PreProcessTime)
 		blockPrestateLoadTimer.Update(resWithMetrics.PrestateLoadTime)
 		txExecutionTimer.Update(resWithMetrics.ExecTime)

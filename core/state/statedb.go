@@ -998,7 +998,7 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) (mutations *bal.StateDiff, a
 				if len(accountPost.StorageWrites) > 0 {
 					// remove all the written slots from the accessedState
 					if _, ok := s.stateAccesses[obj.address]; ok {
-						for slot, _ := range accountPost.StorageWrites {
+						for slot := range accountPost.StorageWrites {
 							delete(s.stateAccesses[obj.address], slot)
 						}
 					}

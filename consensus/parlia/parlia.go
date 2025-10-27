@@ -2204,6 +2204,11 @@ func (p *Parlia) applyTransaction(
 		// move to next
 		*receivedTxs = (*receivedTxs)[1:]
 	}
+	if indexer, ok := state.(interface {
+		SetAccessListIndex(int)
+	}); ok {
+		indexer.SetAccessListIndex(len(*txs) + 1)
+	}
 	state.SetTxContext(expectedTx.Hash(), len(*txs))
 
 	// Create a new context to be used in the EVM environment
