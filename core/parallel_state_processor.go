@@ -268,7 +268,7 @@ func (p *ParallelStateProcessor) calcAndVerifyRoot(preState *state.StateDB, bloc
 	}
 
 	if root != block.Root() {
-		res.err = fmt.Errorf("state root mismatch. local: %x. remote: %x", root, block.Root())
+		res.err = fmt.Errorf("state root mismatch. local: %x. remote: %x, db error: %v", root, block.Root(), preState.Error())
 	}
 	resCh <- res
 }
