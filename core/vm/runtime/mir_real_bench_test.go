@@ -1193,13 +1193,16 @@ func TestUSDT_Strict_Parity_Decimals(t *testing.T) {
 	}
 	lastBasePC := -1
 	lastMirPC := -1
+	evnTracer := &tracing.Hooks{OnOpcode: func(pc uint64, _ byte, _ uint64, _ uint64, _ tracing.OpContext, _ []byte, _ int, _ error) {
+		lastBasePC = int(pc)
+	}}
 	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
 		if mm != nil {
 			lastMirPC = int(mm.EvmPC())
 		}
 	})
 	defer compiler.SetGlobalMIRTracerExtended(nil)
-	base.EVMConfig.Tracer = nil
+	base.EVMConfig.Tracer = evnTracer
 	rb, eb := run(base, "usdt_decimals_b")
 	base.EVMConfig.Tracer = nil
 	rm, em := run(mir, "usdt_decimals_m")
@@ -1388,13 +1391,16 @@ func TestWBNB_Strict_Parity_Name(t *testing.T) {
 	}
 	lastBasePC := -1
 	lastMirPC := -1
+	evnTracer := &tracing.Hooks{OnOpcode: func(pc uint64, _ byte, _ uint64, _ uint64, _ tracing.OpContext, _ []byte, _ int, _ error) {
+		lastBasePC = int(pc)
+	}}
 	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
 		if mm != nil {
 			lastMirPC = int(mm.EvmPC())
 		}
 	})
 	defer compiler.SetGlobalMIRTracerExtended(nil)
-	base.EVMConfig.Tracer = nil
+	base.EVMConfig.Tracer = evnTracer
 	rb, eb := run(base, "wbnb_name_b")
 	base.EVMConfig.Tracer = nil
 	rm, em := run(mir, "wbnb_name_m")
@@ -1630,13 +1636,15 @@ func TestWBNB_Strict_Parity_Allowance(t *testing.T) {
 	}
 	lastBasePC := -1
 	evnTracer := &tracing.Hooks{OnOpcode: func(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
-		t.Fatal("WBNB_Strict_Parity_Allowance: evnTracer", "pc", pc, "opcode", vm.OpCode(opcode).String())
+		// Non-fatal log to observe execution without aborting the test
+		t.Logf("WBNB_Strict_Parity_Allowance: evnTracer pc=%d opcode=%s", pc, vm.OpCode(opcode).String())
 		lastBasePC = int(pc)
 	}}
 	lastMirPC := -1
 	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
 		if mm != nil {
-			t.Fatal("WBNB_Strict_Parity_Allowance: mirTracer", "pc", mm.EvmPC(), "opcode", mm.Op().String(), "evmOp", mm.EvmOp(), "ops", mm.OperandDebugStrings())
+			// Non-fatal log for MIR execution
+			t.Logf("WBNB_Strict_Parity_Allowance: mirTracer pc=%d opcode=%s evmOp=0x%02x ops=%v", mm.EvmPC(), mm.Op().String(), mm.EvmOp(), mm.OperandDebugStrings())
 			lastMirPC = int(mm.EvmPC())
 		}
 	})
