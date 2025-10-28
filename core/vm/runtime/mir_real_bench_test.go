@@ -16,7 +16,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/core/vm/runtime"
-	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	ethlog "github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
@@ -992,6 +991,7 @@ func TestUSDT_Strict_Parity_Allowance(t *testing.T) {
 	lastBasePC := -1
 	// EVM trace for approve case just to capture last PC
 	evnTracerApprove := &tracing.Hooks{OnOpcode: func(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+		fmt.Printf("EVM pc=%d op=%s\n", pc, vm.OpCode(opcode).String())
 		lastBasePC = int(pc)
 	}}
 	lastMirPC := -1
@@ -1443,8 +1443,8 @@ func TestWBNB_Strict_Parity_Symbol(t *testing.T) {
 	})
 	defer compiler.SetGlobalMIRTracerExtended(nil)
 	// Prefer JSON logger to ensure opcode steps print regardless of test verbosity
-	jsonTracer := logger.NewJSONLogger(&logger.Config{}, os.Stdout)
-	base.EVMConfig.Tracer = jsonTracer
+	// jsonTracer := logger.NewJSONLogger(&logger.Config{}, os.Stdout)
+	base.EVMConfig.Tracer = evnTracer
 	rb, eb := run(base, "wbnb_symbol_b")
 	base.EVMConfig.Tracer = nil
 	rm, em := run(mir, "wbnb_symbol_m")
@@ -1630,11 +1630,13 @@ func TestWBNB_Strict_Parity_Allowance(t *testing.T) {
 	}
 	lastBasePC := -1
 	evnTracer := &tracing.Hooks{OnOpcode: func(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+		t.Fatal("WBNB_Strict_Parity_Allowance: evnTracer", "pc", pc, "opcode", vm.OpCode(opcode).String())
 		lastBasePC = int(pc)
 	}}
 	lastMirPC := -1
 	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
 		if mm != nil {
+			t.Fatal("WBNB_Strict_Parity_Allowance: mirTracer", "pc", mm.EvmPC(), "opcode", mm.Op().String(), "evmOp", mm.EvmOp(), "ops", mm.OperandDebugStrings())
 			lastMirPC = int(mm.EvmPC())
 		}
 	})

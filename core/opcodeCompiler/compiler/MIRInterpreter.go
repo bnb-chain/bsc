@@ -275,6 +275,7 @@ func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
 			case errREVERT:
 				return it.returndata, err
 			default:
+				log.Warn("RunMIR return nil", "err", err)
 				return nil, err
 			}
 		}
@@ -356,6 +357,7 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 		it.nextBB = nil
 		_, err := it.RunMIR(bb)
 		if err == nil {
+			log.Warn("MIR RunCFGWithResolver: run mir success", "bb", bb.blockNum, "firstPC", bb.firstPC, "lastPC", bb.lastPC, "it.nextBB", it.nextBB)
 			if it.nextBB == nil {
 				// Fall through handling
 				children := bb.Children()
@@ -1125,7 +1127,7 @@ func mirHandleJUMP(it *MIRInterpreter, m *MIR) error {
 			it.globalResultsBySig[uint64(opv.def.evmPC)][opv.def.idx] = new(uint256.Int).Set(dest)
 		}
 	}
-	return it.scheduleJump(udest, m)
+	return it.scheduleJump(udest, m, false)
 }
 
 func mirHandleJUMPI(it *MIRInterpreter, m *MIR) error {
@@ -1137,7 +1139,11 @@ func mirHandleJUMPI(it *MIRInterpreter, m *MIR) error {
 	}
 	cond := it.evalValue(m.oprands[1])
 	if cond.IsZero() {
-		return nil
+		// fallthrough
+		dest := m.evmPC + 1
+		udest := uint64(dest)
+		log.Warn("mir exec JUMPI", "cond", cond, "dest", dest, "udest", udest)
+		return it.scheduleJump(udest, m, true)
 	}
 	dest, ok := it.resolveJumpDestValue(m.oprands[0])
 	if !ok {
@@ -1145,7 +1151,7 @@ func mirHandleJUMPI(it *MIRInterpreter, m *MIR) error {
 		return ErrMIRFallback
 	}
 	udest, _ := dest.Uint64WithOverflow()
-	return it.scheduleJump(udest, m)
+	return it.scheduleJump(udest, m, false)
 }
 
 // mirHandlePHI sets the result to the first available incoming value.
@@ -2118,14 +2124,16 @@ func (it *MIRInterpreter) resolveJumpDestUint64(op *Value) (uint64, bool) {
 
 // scheduleJump validates and schedules a control transfer to udest.
 // It publishes current block live-outs and records predecessor for PHIs.
-func (it *MIRInterpreter) scheduleJump(udest uint64, m *MIR) error {
+func (it *MIRInterpreter) scheduleJump(udest uint64, m *MIR, isFallthrough bool) error {
 	if it.env == nil || it.env.CheckJumpdest == nil || it.env.ResolveBB == nil {
 		return fmt.Errorf("jump environment not initialized")
 	}
 	// First, enforce EVM byte-level rule: target must be a valid JUMPDEST and not in push-data
-	if !it.env.CheckJumpdest(udest) {
-		log.Error("MIR jump invalid jumpdest - mirroring EVM error", "from_evm_pc", m.evmPC, "dest_pc", udest)
-		return fmt.Errorf("invalid jump destination")
+	if !isFallthrough {
+		if !it.env.CheckJumpdest(udest) {
+			log.Error("MIR jump invalid jumpdest - mirroring EVM error", "from_evm_pc", m.evmPC, "dest_pc", udest)
+			return fmt.Errorf("invalid jump destination")
+		}
 	}
 	// Then resolve to a basic block in the CFG
 	it.nextBB = it.env.ResolveBB(udest)
