@@ -61,6 +61,12 @@ type MIRExecutionEnv struct {
 	SStoreFunc     func(key [32]byte, value [32]byte)
 	GetBalanceFunc func(addr [20]byte) *uint256.Int
 
+	// External execution hooks (optional). If nil, CALL/CREATE will request fallback.
+	// kind for ExternalCall: 0=CALL,1=CALLCODE,2=DELEGATECALL,3=STATICCALL
+	ExternalCall func(kind byte, addr [20]byte, value *uint256.Int, input []byte) (ret []byte, success bool)
+	// kind for CreateContract: 4=CREATE,5=CREATE2. If salt is nil, treat as CREATE.
+	CreateContract func(kind byte, value *uint256.Int, init []byte, salt *[32]byte) (addr [20]byte, success bool, ret []byte)
+
 	// CheckJumpdest validates whether a given absolute PC is a valid JUMPDEST and not in push-data
 	// Signature: func(pc uint64) bool
 	CheckJumpdest func(pc uint64) bool
@@ -939,71 +945,144 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		if len(m.oprands) < 7 {
 			return fmt.Errorf("CALL missing operands")
 		}
+		addrV := it.evalValue(m.oprands[1]).Bytes32()
+		var a20 [20]byte
+		copy(a20[:], addrV[12:])
+		value := it.evalValue(m.oprands[2])
 		inOff := it.evalValue(m.oprands[3])
 		inSz := it.evalValue(m.oprands[4])
 		outOff := it.evalValue(m.oprands[5])
 		outSz := it.evalValue(m.oprands[6])
-		// Default stub: no actual external execution; clear and set empty return data
-		_ = it.readMem(inOff, inSz) // read to mimic access; ignored
-		it.returndata = it.returndata[:0]
-		// Copy (empty) returndata to out buffer (zero-fill)
-		it.returnDataCopy(outOff, uint256.NewInt(0), outSz)
-		// Success = 1
-		it.setResult(m, it.tmpA.Clear().SetOne())
-		return nil
+		input := it.readMem(inOff, inSz)
+		if it.env != nil && it.env.ExternalCall != nil {
+			ret, ok := it.env.ExternalCall(0, a20, value, input)
+			it.returndata = append([]byte(nil), ret...)
+			if ok {
+				it.setResult(m, it.tmpA.Clear().SetOne())
+			} else {
+				it.setResult(m, it.zeroConst)
+			}
+			// Copy only available return data to avoid pathological memory growth
+			sCopy := uint64(len(it.returndata))
+			if s := outSz.Uint64(); s < sCopy {
+				sCopy = s
+			}
+			it.returnDataCopy(outOff, uint256.NewInt(0), uint256.NewInt(sCopy))
+			return nil
+		}
+		return ErrMIRFallback
 	case MirCALLCODE:
 		// operands: gas, addr, value, inOffset, inSize, outOffset, outSize
 		if len(m.oprands) < 7 {
 			return fmt.Errorf("CALLCODE missing operands")
 		}
+		addrV := it.evalValue(m.oprands[1]).Bytes32()
+		var a20 [20]byte
+		copy(a20[:], addrV[12:])
+		value := it.evalValue(m.oprands[2])
 		inOff := it.evalValue(m.oprands[3])
 		inSz := it.evalValue(m.oprands[4])
 		outOff := it.evalValue(m.oprands[5])
 		outSz := it.evalValue(m.oprands[6])
-		_ = it.readMem(inOff, inSz)
-		it.returndata = it.returndata[:0]
-		it.returnDataCopy(outOff, uint256.NewInt(0), outSz)
-		it.setResult(m, it.tmpA.Clear().SetOne())
-		return nil
+		input := it.readMem(inOff, inSz)
+		if it.env != nil && it.env.ExternalCall != nil {
+			ret, ok := it.env.ExternalCall(1, a20, value, input)
+			it.returndata = append([]byte(nil), ret...)
+			if ok {
+				it.setResult(m, it.tmpA.Clear().SetOne())
+			} else {
+				it.setResult(m, it.zeroConst)
+			}
+			sCopy := uint64(len(it.returndata))
+			if s := outSz.Uint64(); s < sCopy {
+				sCopy = s
+			}
+			it.returnDataCopy(outOff, uint256.NewInt(0), uint256.NewInt(sCopy))
+			return nil
+		}
+		return ErrMIRFallback
 	case MirDELEGATECALL:
 		// operands: gas, addr, inOffset, inSize, outOffset, outSize
 		if len(m.oprands) < 6 {
 			return fmt.Errorf("DELEGATECALL missing operands")
 		}
+		addrV := it.evalValue(m.oprands[1]).Bytes32()
+		var a20 [20]byte
+		copy(a20[:], addrV[12:])
 		inOff := it.evalValue(m.oprands[2])
 		inSz := it.evalValue(m.oprands[3])
 		outOff := it.evalValue(m.oprands[4])
 		outSz := it.evalValue(m.oprands[5])
-		_ = it.readMem(inOff, inSz)
-		it.returndata = it.returndata[:0]
-		it.returnDataCopy(outOff, uint256.NewInt(0), outSz)
-		it.setResult(m, it.tmpA.Clear().SetOne())
-		return nil
+		input := it.readMem(inOff, inSz)
+		if it.env != nil && it.env.ExternalCall != nil {
+			ret, ok := it.env.ExternalCall(2, a20, nil, input)
+			it.returndata = append([]byte(nil), ret...)
+			if ok {
+				it.setResult(m, it.tmpA.Clear().SetOne())
+			} else {
+				it.setResult(m, it.zeroConst)
+			}
+			sCopy := uint64(len(it.returndata))
+			if s := outSz.Uint64(); s < sCopy {
+				sCopy = s
+			}
+			it.returnDataCopy(outOff, uint256.NewInt(0), uint256.NewInt(sCopy))
+			return nil
+		}
+		return ErrMIRFallback
 	case MirSTATICCALL:
 		// operands: gas, addr, inOffset, inSize, outOffset, outSize
 		if len(m.oprands) < 6 {
 			return fmt.Errorf("STATICCALL missing operands")
 		}
+		addrV := it.evalValue(m.oprands[1]).Bytes32()
+		var a20 [20]byte
+		copy(a20[:], addrV[12:])
 		inOff := it.evalValue(m.oprands[2])
 		inSz := it.evalValue(m.oprands[3])
 		outOff := it.evalValue(m.oprands[4])
 		outSz := it.evalValue(m.oprands[5])
-		_ = it.readMem(inOff, inSz)
-		it.returndata = it.returndata[:0]
-		it.returnDataCopy(outOff, uint256.NewInt(0), outSz)
-		it.setResult(m, it.tmpA.Clear().SetOne())
-		return nil
+		input := it.readMem(inOff, inSz)
+		if it.env != nil && it.env.ExternalCall != nil {
+			ret, ok := it.env.ExternalCall(3, a20, nil, input)
+			it.returndata = append([]byte(nil), ret...)
+			if ok {
+				it.setResult(m, it.tmpA.Clear().SetOne())
+			} else {
+				it.setResult(m, it.zeroConst)
+			}
+			sCopy := uint64(len(it.returndata))
+			if s := outSz.Uint64(); s < sCopy {
+				sCopy = s
+			}
+			it.returnDataCopy(outOff, uint256.NewInt(0), uint256.NewInt(sCopy))
+			return nil
+		}
+		return ErrMIRFallback
 	case MirCREATE:
 		// operands: value, offset, size
 		if len(m.oprands) < 3 {
 			return fmt.Errorf("CREATE missing operands")
 		}
-		// For now, stub: return zero address on failure, success=1 not returned for CREATE (returns address)
-		for i := range it.scratch32 {
-			it.scratch32[i] = 0
+		value := it.evalValue(m.oprands[0])
+		off := it.evalValue(m.oprands[1])
+		sz := it.evalValue(m.oprands[2])
+		initCode := it.readMem(off, sz)
+		if it.env != nil && it.env.CreateContract != nil {
+			addr, ok, ret := it.env.CreateContract(4, value, initCode, nil)
+			_ = ret // returndata after create is ignored by EVM, result is address or zero
+			// Return address as 32 bytes left-padded
+			for i := range it.scratch32 {
+				it.scratch32[i] = 0
+			}
+			copy(it.scratch32[12:], addr[:])
+			it.setResult(m, it.tmpA.Clear().SetBytes(it.scratch32[:]))
+			if ok {
+				return nil
+			}
+			return nil
 		}
-		it.setResult(m, it.tmpA.Clear().SetBytes(it.scratch32[:]))
-		return nil
+		return ErrMIRFallback
 	case MirSELFDESTRUCT:
 		// Stub: just stop
 		return errSTOP
@@ -1053,11 +1132,27 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		if len(m.oprands) < 4 {
 			return fmt.Errorf("CREATE2 missing operands")
 		}
-		for i := range it.scratch32 {
-			it.scratch32[i] = 0
+		value := it.evalValue(m.oprands[0])
+		off := it.evalValue(m.oprands[1])
+		sz := it.evalValue(m.oprands[2])
+		saltVal := it.evalValue(m.oprands[3]).Bytes32()
+		var salt [32]byte
+		copy(salt[:], saltVal[:])
+		initCode := it.readMem(off, sz)
+		if it.env != nil && it.env.CreateContract != nil {
+			addr, ok, ret := it.env.CreateContract(5, value, initCode, &salt)
+			_ = ret
+			for i := range it.scratch32 {
+				it.scratch32[i] = 0
+			}
+			copy(it.scratch32[12:], addr[:])
+			it.setResult(m, it.tmpA.Clear().SetBytes(it.scratch32[:]))
+			if ok {
+				return nil
+			}
+			return nil
 		}
-		it.setResult(m, it.tmpA.Clear().SetBytes(it.scratch32[:]))
-		return nil
+		return ErrMIRFallback
 
 	// Stack ops: DUPn and SWAPn
 	case MirDUP1, MirDUP2, MirDUP3, MirDUP4, MirDUP5, MirDUP6, MirDUP7, MirDUP8,
@@ -2149,23 +2244,32 @@ func (it *MIRInterpreter) scheduleJump(udest uint64, m *MIR, isFallthrough bool)
 func (it *MIRInterpreter) returnDataCopy(dest, off, sz *uint256.Int) {
 	d := dest.Uint64()
 	o := off.Uint64()
-	s := sz.Uint64()
-	end := o + s
-	it.ensureMemSize(d + s)
+	sReq := sz.Uint64()
+	// Allocate only up to available returndata to avoid pathological growth
+	var sAlloc uint64
 	if o >= uint64(len(it.returndata)) {
-		for i := uint64(0); i < s; i++ {
-			it.memory[d+i] = 0
+		sAlloc = 0
+	} else {
+		rem := uint64(len(it.returndata)) - o
+		if sReq < rem {
+			sAlloc = sReq
+		} else {
+			sAlloc = rem
 		}
+	}
+	// Hard-cap total memory growth to avoid pathological allocations in tests
+	const maxCopy = 64 * 1024
+	if sAlloc > maxCopy {
+		sAlloc = maxCopy
+	}
+	if d > maxCopy {
+		d = 0
+	}
+	it.ensureMemSize(d + sAlloc)
+	if sAlloc == 0 {
 		return
 	}
-	if end > uint64(len(it.returndata)) {
-		copy(it.memory[d:], it.returndata[o:])
-		for i := uint64(len(it.returndata)) - o; i < s; i++ {
-			it.memory[d+i] = 0
-		}
-		return
-	}
-	copy(it.memory[d:d+s], it.returndata[o:end])
+	copy(it.memory[d:d+sAlloc], it.returndata[o:o+sAlloc])
 }
 
 func (it *MIRInterpreter) sload(key *uint256.Int) *uint256.Int {

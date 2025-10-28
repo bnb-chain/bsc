@@ -238,6 +238,63 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 		})
 	}
 
+	// Wire external execution to stock EVM for CALL-family ops
+	env.ExternalCall = func(kind byte, addr20 [20]byte, value *uint256.Int, callInput []byte) (ret []byte, success bool) {
+		to := common.BytesToAddress(addr20[:])
+		// Heuristic: use current frame gas as upper bound. Gas accounting is handled by stock EVM.
+		gas := contract.Gas
+		var (
+			out      []byte
+			leftover uint64
+			err      error
+		)
+		switch kind {
+		case 0: // CALL
+			out, leftover, err = adapter.evm.Call(contract, to, callInput, gas, value)
+		case 1: // CALLCODE
+			out, leftover, err = adapter.evm.CallCode(contract, to, callInput, gas, value)
+		case 2: // DELEGATECALL
+			out, leftover, err = adapter.evm.DelegateCall(contract, to, callInput, gas)
+		case 3: // STATICCALL
+			out, leftover, err = adapter.evm.StaticCall(contract, to, callInput, gas)
+		default:
+			return nil, false
+		}
+		_ = leftover
+		if err != nil {
+			return out, false
+		}
+		return out, true
+	}
+
+	// Wire CREATE and CREATE2 to stock EVM
+	env.CreateContract = func(kind byte, value *uint256.Int, init []byte, salt *[32]byte) (addr [20]byte, success bool, ret []byte) {
+		gas := contract.Gas
+		var (
+			out      []byte
+			newAddr  common.Address
+			leftover uint64
+			err      error
+		)
+		if kind == 4 { // CREATE
+			out, newAddr, leftover, err = adapter.evm.Create(contract, init, gas, value)
+		} else { // CREATE2
+			var saltU *uint256.Int
+			if salt != nil {
+				saltU = new(uint256.Int).SetBytes(salt[:])
+			} else {
+				saltU = uint256.NewInt(0)
+			}
+			out, newAddr, leftover, err = adapter.evm.Create2(contract, init, gas, value, saltU)
+		}
+		copy(addr[:], newAddr[:])
+		_ = leftover
+		if err != nil {
+			return addr, false, out
+		}
+		return addr, true, out
+	}
+
 	// Do not override any tracer set by tests; leave as-is.
 
 	// Block info

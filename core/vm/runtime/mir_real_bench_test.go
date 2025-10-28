@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/core/vm/program"
 	"github.com/ethereum/go-ethereum/core/vm/runtime"
 	ethlog "github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
@@ -573,7 +574,7 @@ func TestUSDT_MIRVsEVM_Parity(t *testing.T) {
 		base.EVMConfig.Tracer = nil
 		rm, errM := run(mir, "usdt_parity_m", input)
 		// Clear MIR tracer
-		compiler.SetGlobalMIRTracerExtended(nil)
+		compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {})
 
 		// Compare success/failure and return data
 		if (errB != nil) != (errM != nil) {
@@ -1240,16 +1241,15 @@ func TestUSDT_Strict_Parity_TotalSupply(t *testing.T) {
 		return ret, err
 	}
 	lastBasePC := -1
+	lastMirPC := -1
 	evnTracer := &tracing.Hooks{OnOpcode: func(pc uint64, _ byte, _ uint64, _ uint64, _ tracing.OpContext, _ []byte, _ int, _ error) {
 		lastBasePC = int(pc)
 	}}
-	lastMirPC := -1
 	compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
 		if mm != nil {
 			lastMirPC = int(mm.EvmPC())
 		}
 	})
-	defer compiler.SetGlobalMIRTracerExtended(nil)
 	base.EVMConfig.Tracer = evnTracer
 	rb, eb := run(base, "usdt_total_b")
 	base.EVMConfig.Tracer = nil
@@ -1895,5 +1895,174 @@ func TestUSDT_StackAroundDup6(t *testing.T) {
 			}
 		}
 		pc++
+	}
+}
+
+// TestUSDT_Proxy_Call_Parity builds a small caller contract which performs a CALL
+// into the USDT implementation code and compares MIR vs EVM parity through the call boundary.
+func TestUSDT_Proxy_Call_Parity(t *testing.T) {
+	implCode, err := hex.DecodeString(usdtHex[2:])
+	if err != nil {
+		t.Fatalf("decode USDT hex: %v", err)
+	}
+
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+
+	// Build a simple caller which:
+	// - stores the input selector+args into memory
+	// - CALLs into the USDT implementation address
+	// - returns the returndata
+	usdtSelector := []byte{0x95, 0xd8, 0x9b, 0x41} // symbol()
+	p := program.New()
+	p.Mstore(usdtSelector, 0)
+	implAddr := common.BytesToAddress([]byte("usdt_impl_addr"))
+	// CALL(gas=GAS, addr=implAddr, value=0, inOffset=0, inSize=len(selector), outOffset=0, outSize=64)
+	p.Call(nil, implAddr.Bytes(), 0, 0, len(usdtSelector), 0, 64)
+	// Drop success flag
+	p.Op(vm.POP)
+	// Copy returndata into memory [0:size]
+	p.Push(0)               // dest
+	p.Push(0)               // offset
+	p.Op(vm.RETURNDATASIZE) // size
+	p.Op(vm.RETURNDATACOPY)
+	// Return memory [0:size]
+	p.Op(vm.RETURNDATASIZE)
+	p.Push(0)
+	p.Op(vm.RETURN)
+	callerCode := p.Bytes()
+
+	run := func(cfg *runtime.Config, label string) ([]byte, error, int) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		ev := runtime.NewEnv(cfg)
+		impl := common.BytesToAddress([]byte("usdt_impl_addr"))
+		caller := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		ev.StateDB.CreateAccount(impl)
+		ev.StateDB.SetCode(impl, implCode)
+		ev.StateDB.CreateAccount(caller)
+		ev.StateDB.SetCode(caller, callerCode)
+		lastPC := -1
+		cfg.EVMConfig.Tracer = &tracing.Hooks{OnOpcode: func(pc uint64, _ byte, _ uint64, _ uint64, _ tracing.OpContext, _ []byte, _ int, _ error) {
+			lastPC = int(pc)
+		}}
+		ret, _, err := ev.Call(sender, caller, nil, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		cfg.EVMConfig.Tracer = nil
+		return ret, err, lastPC
+	}
+
+	rb, eb, basePC := run(base, "usdt_proxy_call_b")
+	rm, em, mirPC := run(mir, "usdt_proxy_call_m")
+	if (eb != nil) != (em != nil) {
+		t.Fatalf("proxy call: error mismatch base=%v mir=%v", eb, em)
+	}
+	if string(rb) != string(rm) {
+		t.Fatalf("proxy call: return mismatch base=%x mir=%x", rb, rm)
+	}
+	if basePC != mirPC {
+		t.Fatalf("proxy call: exit PC mismatch base=%d mir=%d", basePC, mirPC)
+	}
+}
+
+// TestUSDC_BSC_Proxy_Parity_NoArgs runs a minimal proxy (via DELEGATECALL) against the
+// on-chain USDC implementation bytecode provided via env USDC_IMPL_HEX, and compares
+// MIR vs EVM for no-arg ERC20 selectors.
+func TestUSDC_BSC_Proxy_Parity_NoArgs(t *testing.T) {
+	implHex := strings.TrimSpace(os.Getenv("USDC_IMPL_HEX"))
+	if implHex == "" {
+		t.Skip("set USDC_IMPL_HEX with the BSC USDC implementation runtime bytecode (0x-prefixed)")
+	}
+	if strings.HasPrefix(implHex, "0x") {
+		implHex = implHex[2:]
+	}
+	implCode, err := hex.DecodeString(implHex)
+	if err != nil {
+		t.Fatalf("decode USDC hex: %v", err)
+	}
+
+	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	compiler.EnableOpcodeParse()
+
+	// Build a tiny proxy that:
+	// - copies calldata to memory
+	// - DELEGATECALLs into impl with (inOffset=0, inSize=calldatasize, outOffset=0, outSize=4096)
+	// - returns returndata
+	p := program.New()
+	// calldata -> mem[0:sz]
+	p.Push(0)             // dest
+	p.Push(0)             // offset
+	p.Op(vm.CALLDATASIZE) // size
+	p.Op(vm.CALLDATACOPY)
+	// delegatecall
+	p.Push(4096)          // outSize
+	p.Push(0)             // outOffset
+	p.Op(vm.CALLDATASIZE) // inSize
+	p.Push(0)             // inOffset
+	implAddr := common.BytesToAddress([]byte("usdc_impl_addr"))
+	p.Push(implAddr.Bytes())
+	p.Op(vm.GAS)
+	p.Op(vm.DELEGATECALL)
+	// drop success, copy and return returndata
+	p.Op(vm.POP)
+	p.Push(0)               // dest
+	p.Push(0)               // offset
+	p.Op(vm.RETURNDATASIZE) // size
+	p.Op(vm.RETURNDATACOPY)
+	p.Op(vm.RETURNDATASIZE)
+	p.Push(0)
+	p.Op(vm.RETURN)
+	proxyCode := p.Bytes()
+
+	tests := []struct {
+		name     string
+		selector []byte
+	}{
+		{"name", []byte{0x06, 0xfd, 0xde, 0x03}},
+		{"symbol", []byte{0x95, 0xd8, 0x9b, 0x41}},
+		{"decimals", []byte{0x31, 0x3c, 0xe5, 0x67}},
+		{"totalSupply", []byte{0x18, 0x16, 0x0d, 0xdd}},
+	}
+
+	run := func(cfg *runtime.Config, label string, input []byte) ([]byte, error, int) {
+		if cfg.State == nil {
+			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		}
+		ev := runtime.NewEnv(cfg)
+		impl := common.BytesToAddress([]byte("usdc_impl_addr"))
+		proxy := common.BytesToAddress([]byte(label))
+		sender := vm.AccountRef(cfg.Origin)
+		ev.StateDB.CreateAccount(impl)
+		ev.StateDB.SetCode(impl, implCode)
+		ev.StateDB.CreateAccount(proxy)
+		ev.StateDB.SetCode(proxy, proxyCode)
+		lastPC := -1
+		cfg.EVMConfig.Tracer = &tracing.Hooks{OnOpcode: func(pc uint64, _ byte, _ uint64, _ uint64, _ tracing.OpContext, _ []byte, _ int, _ error) {
+			lastPC = int(pc)
+		}}
+		ret, _, err := ev.Call(sender, proxy, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
+		cfg.EVMConfig.Tracer = nil
+		return ret, err, lastPC
+	}
+
+	for _, tc := range tests {
+		compiler.SetGlobalMIRTracerExtended(nil)
+
+		rb, eb, basePC := run(base, "usdc_proxy_b", tc.selector)
+		rm, em, mirPC := run(mir, "usdc_proxy_m", tc.selector)
+		if (eb != nil) != (em != nil) {
+			t.Fatalf("%s: error mismatch base=%v mir=%v", tc.name, eb, em)
+		}
+		if string(rb) != string(rm) {
+			t.Fatalf("%s: return mismatch base=%x mir=%x", tc.name, rb, rm)
+		}
+		if basePC != mirPC {
+			t.Fatalf("%s: exit PC mismatch base=%d mir=%d", tc.name, basePC, mirPC)
+		}
 	}
 }
