@@ -169,7 +169,7 @@ func (p *ParallelStateProcessor) prepareExecResult(block *types.Block, allStateR
 			Receipts: receipts,
 			Requests: requests,
 			Logs:     allLogs,
-			GasUsed:  cumulativeGasUsed,
+			GasUsed:  usedGas,
 		},
 		PostProcessTime: tPostprocess,
 		ExecTime:        tExec,
