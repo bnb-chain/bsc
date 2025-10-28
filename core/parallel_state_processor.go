@@ -387,6 +387,7 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 	// compute the post-tx state prestate (before applying final block system calls and eip-4895 withdrawals)
 	// the post-tx state transition is verified by resultHandler
 	postTxState := statedb.Copy().(*state.StateDB)
+	postTxState.SetAccessListIndex(len(block.Transactions()))
 
 	posa, isPoSA := p.chain.engine.(consensus.PoSA)
 	execJobs := make([]txExecRequest, 0, len(block.Transactions()))
