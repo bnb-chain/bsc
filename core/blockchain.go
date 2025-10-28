@@ -2636,6 +2636,8 @@ func (bc *BlockChain) ProcessBlock(parentRoot common.Hash, block *types.Block, s
 		// testing BALs in pre-Amsterdam blocks.
 		// Process block using the parent state as reference point
 		pstart := time.Now()
+		statedb.SetExpectedStateRoot(block.Root())
+		statedb.SetNeedBadSharedStorage(needBadSharedStorage)
 		resWithMetrics, err = bc.parallelProcessor.Process(block, statedb, bc.cfg.VmConfig)
 		if err != nil {
 			log.Warn("parallel BAL processing failed, falling back to sequential", "block", block.Number(), "hash", block.Hash(), "err", err)
