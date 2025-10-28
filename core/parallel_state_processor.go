@@ -92,7 +92,7 @@ func (p *ParallelStateProcessor) prepareExecResult(block *types.Block, allStateR
 	computedAccesses := make(bal.StateAccesses)
 
 	// Read requests if Prague is enabled.
-	if p.config.IsPrague(block.Number(), block.Time()) {
+	if p.config.IsPrague(block.Number(), block.Time()) && p.chain.config.Parlia == nil {
 		requests = [][]byte{}
 		// EIP-6110
 		if err := ParseDepositLogs(&requests, allLogs, p.config); err != nil {
