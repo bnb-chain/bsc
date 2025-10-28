@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -142,8 +143,20 @@ func (p *ParallelStateProcessor) prepareExecResult(block *types.Block, allStateR
 		commonTxs = append(commonTxs, tx)
 	}
 
+	log.Info("Before Finalize",
+		"cumulativeGasUsed", cumulativeGasUsed,
+		"receipts", len(receipts),
+		"commonTxs", len(commonTxs),
+		"systemTxs", len(systemTxs),
+		"block", block.Number())
+
 	var usedGas uint64 = cumulativeGasUsed
 	p.chain.engine.Finalize(p.chain, header, tracingStateDB, &commonTxs, block.Uncles(), block.Withdrawals(), (*[]*types.Receipt)(&receipts), &systemTxs, &usedGas, cfg.Tracer)
+
+	log.Info("After Finalize",
+		"usedGas", usedGas,
+		"receipts", len(receipts),
+		"block", block.Number())
 	// invoke Finalise so that withdrawals are accounted for in the state diff
 	finalDiff, finalAccesses := postTxState.Finalise(true)
 	computedDiff.Merge(finalDiff)
@@ -203,6 +216,7 @@ func (p *ParallelStateProcessor) resultHandler(block *types.Block, txCount int, 
 
 	allReads := make(bal.StateAccesses)
 	allReads.Merge(*preTxStateReads)
+	allMutations := make([]*bal.StateDiff, 0)
 	if txCount > 0 {
 	loop:
 		for {
@@ -218,6 +232,7 @@ func (p *ParallelStateProcessor) resultHandler(block *types.Block, txCount int, 
 						} else {
 							receipts = append(receipts, res.receipt)
 							allReads.Merge(*res.stateReads)
+							allMutations = append(allMutations, res.mutations)
 						}
 					}
 				}
@@ -231,6 +246,26 @@ func (p *ParallelStateProcessor) resultHandler(block *types.Block, txCount int, 
 		if execErr != nil {
 			resCh <- &ProcessResultWithMetrics{ProcessResult: &ProcessResult{Error: execErr}}
 			return
+		}
+	}
+
+	for _, mutations := range allMutations {
+		for addr, acctState := range mutations.Mutations {
+			// 应用状态变化
+			if acctState.Balance != nil {
+				postTxState.SetBalance(addr, acctState.Balance, tracing.BalanceChangeUnspecified)
+			}
+			if acctState.Nonce != nil {
+				postTxState.SetNonce(addr, *acctState.Nonce, tracing.NonceChangeUnspecified)
+			}
+			if acctState.Code != nil {
+				postTxState.SetCode(addr, acctState.Code, tracing.CodeChangeUnspecified)
+			}
+			if acctState.StorageWrites != nil {
+				for key, value := range acctState.StorageWrites {
+					postTxState.SetState(addr, key, value)
+				}
+			}
 		}
 	}
 
