@@ -776,7 +776,12 @@ func (s *StateDB) StateForPrefetch() *StateDB {
 	if readerWithCacheStats, ok := s.reader.(*readerWithCacheStats); ok {
 		reader = newReaderWithCacheStats(readerWithCacheStats.readerWithCache)
 	}
-	state, _ := NewWithReader(s.originalRoot, s.db, reader)
+	state, err := NewWithReader(s.originalRoot, s.db, reader)
+	if err != nil {
+		log.Error("Failed to create StateDB for prefetch", "err", err)
+		return nil
+	}
+
 	return state
 }
 

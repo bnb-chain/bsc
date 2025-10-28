@@ -496,7 +496,7 @@ func (bc *BlockChain) StateAt(root common.Hash) (*state.StateDB, error) {
 		return nil, errors.New("state is not available")
 	}
 
-	return stateDb, err
+	return stateDb, nil
 }
 
 // StateWithCacheAt returns a new mutable state with cache based on a particular point in time.
@@ -521,7 +521,7 @@ func (bc *BlockChain) StateWithCacheAt(root common.Hash) (*state.StateDB, error)
 		return nil, errors.New("state is not available")
 	}
 
-	return stateDb, err
+	return stateDb, nil
 }
 
 // HistoricState returns a historic state specified by the given root.
