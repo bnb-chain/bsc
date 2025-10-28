@@ -10,7 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -89,7 +88,7 @@ func (p *ParallelStateProcessor) prepareExecResult(block *types.Block, allStateR
 		allLogs = append(allLogs, receipt.Logs...)
 	}
 
-	computedDiff := &bal.StateDiff{make(map[common.Address]*bal.AccountState)}
+	computedDiff := &bal.StateDiff{Mutations: make(map[common.Address]*bal.AccountState)}
 	computedAccesses := make(bal.StateAccesses)
 
 	// Read requests if Prague is enabled.
@@ -249,26 +248,6 @@ func (p *ParallelStateProcessor) resultHandler(block *types.Block, txCount int, 
 		}
 	}
 
-	for _, mutations := range allMutations {
-		for addr, acctState := range mutations.Mutations {
-			// 应用状态变化
-			if acctState.Balance != nil {
-				postTxState.SetBalance(addr, acctState.Balance, tracing.BalanceChangeUnspecified)
-			}
-			if acctState.Nonce != nil {
-				postTxState.SetNonce(addr, *acctState.Nonce, tracing.NonceChangeUnspecified)
-			}
-			if acctState.Code != nil {
-				postTxState.SetCode(addr, acctState.Code, tracing.CodeChangeUnspecified)
-			}
-			if acctState.StorageWrites != nil {
-				for key, value := range acctState.StorageWrites {
-					postTxState.SetState(addr, key, value)
-				}
-			}
-		}
-	}
-
 	execResults := p.prepareExecResult(block, &allReads, tExecStart, postTxState, receipts, cfg)
 	rootCalcRes := <-stateRootCalcResCh
 
@@ -376,6 +355,7 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 	)
 	alReader := state.NewBALReader(block, statedb)
 	statedb.SetBlockAccessList(alReader)
+	startingState := statedb.Copy()
 
 	// Apply pre-execution system calls.
 	var tracingStateDB = vm.StateDB(statedb)
@@ -435,7 +415,6 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 	tExecStart = time.Now()
 	go p.resultHandler(block, len(execJobs), &preTxStateReads, postTxState, tExecStart, txResCh, rootCalcResultCh, resCh, cfg)
 	var workers errgroup.Group
-	startingState := statedb.Copy()
 	for _, job := range execJobs {
 		job := job
 		workers.Go(func() error {
