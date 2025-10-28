@@ -67,7 +67,7 @@ func New(eth Backend, config *minerconfig.Config, mux *event.TypeMux, engine con
 		exitCh:  make(chan struct{}),
 		startCh: make(chan struct{}),
 		stopCh:  make(chan struct{}),
-		worker:  newWorker(config, engine, eth, mux, false),
+		worker:  newWorker(config, engine, eth, mux),
 	}
 
 	miner.bidSimulator = newBidSimulator(&config.Mev, config.DelayLeftOver, config.GasPrice, eth, eth.BlockChain().Config(), engine, miner.worker)
