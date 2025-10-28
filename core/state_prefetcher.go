@@ -277,7 +277,10 @@ func (p *statePrefetcher) PrefetchBAL(block *types.Block, statedb *state.StateDB
 // the transaction messages using the statedb, but any changes are discarded. The
 // only goal is to warm the state caches. Only used for mining stage.
 func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr **types.Transaction) {
-	var signer = types.MakeSigner(p.config, header.Number, header.Time)
+	var (
+		signer = types.MakeSigner(p.config, header.Number, header.Time)
+		reader = statedb.Reader()
+	)
 
 	txCh := make(chan *types.Transaction, 2*prefetchMiningThread)
 	for i := 0; i < prefetchMiningThread; i++ {
@@ -289,6 +292,29 @@ func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header
 			for {
 				select {
 				case tx := <-startCh:
+					// Preload the touched accounts and storage slots in advance
+					sender, err := types.Sender(signer, tx)
+					if err == nil {
+						reader.Account(sender)
+					}
+
+					if tx.To() != nil {
+						account, _ := reader.Account(*tx.To())
+
+						// Preload the contract code if the destination has non-empty code
+						if account != nil && !bytes.Equal(account.CodeHash, types.EmptyCodeHash.Bytes()) {
+							reader.Code(*tx.To(), common.BytesToHash(account.CodeHash))
+						}
+					}
+					for _, list := range tx.AccessList() {
+						reader.Account(list.Address)
+						if len(list.StorageKeys) > 0 {
+							for _, slot := range list.StorageKeys {
+								reader.Storage(list.Address, slot)
+							}
+						}
+					}
+
 					// Convert the transaction into an executable message and pre-cache its sender
 					msg, err := TransactionToMessage(tx, signer, header.BaseFee)
 					if err != nil {

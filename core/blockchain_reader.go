@@ -499,6 +499,31 @@ func (bc *BlockChain) StateAt(root common.Hash) (*state.StateDB, error) {
 	return stateDb, err
 }
 
+// StateWithCacheAt returns a new mutable state with cache based on a particular point in time.
+func (bc *BlockChain) StateWithCacheAt(root common.Hash) (*state.StateDB, error) {
+	_, process, err := bc.statedb.ReadersWithCacheStats(root)
+	if err != nil {
+		return nil, err
+	}
+	stateDb, err := state.NewWithReader(root, bc.statedb, process)
+	if bc.cfg.EnableBAL {
+		stateDb.InitBlockAccessList()
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// If there's no trie and the specified snapshot is not available, getting
+	// any state will by default return nil.
+	// Instead of that, it will be more useful to return an error to indicate
+	// the state is not available.
+	if stateDb.NoTries() && stateDb.GetSnap() == nil {
+		return nil, errors.New("state is not available")
+	}
+
+	return stateDb, err
+}
+
 // HistoricState returns a historic state specified by the given root.
 // Live states are not available and won't be served, please use `State`
 // or `StateAt` instead.
