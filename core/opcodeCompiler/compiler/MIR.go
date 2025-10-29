@@ -398,7 +398,7 @@ func doPeepHole(operation MirOperation, opnd1 *Value, opnd2 *Value, stack *Value
 			case MirXOR:
 				val1 = val1.Xor(val1, val2)
 			case MirBYTE:
-				val1 = val1.Byte(val2)
+				val1 = val2.Byte(val1)
 			case MirSHL:
 				// EVM SHL semantics: result = value << shift
 				// Stack order: [ ... shift, value ] (top-first pop order)

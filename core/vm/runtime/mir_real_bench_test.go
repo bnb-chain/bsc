@@ -24,7 +24,11 @@ import (
 
 // Configure logger to emit warnings/errors to stdout during tests so MIR fallback logs are visible
 func init() {
-	h := ethlog.NewTerminalHandlerWithLevel(os.Stdout, ethlog.LevelWarn, false)
+	lvl := ethlog.LevelCrit
+	if os.Getenv("MIR_DEBUG") == "1" || os.Getenv("COMPILER_DEBUG") == "1" {
+		lvl = ethlog.LevelWarn
+	}
+	h := ethlog.NewTerminalHandlerWithLevel(os.Stdout, lvl, false)
 	ethlog.SetDefault(ethlog.NewLogger(h))
 }
 
@@ -714,6 +718,7 @@ func TestWBNB_MIR_Strict_ListFailures(t *testing.T) {
 // TestUSDT_Transfer_EVMvsMIR runs only the ERC20 transfer selector against
 // the USDT runtime bytecode and compares EVM vs MIR outputs and error parity.
 func TestUSDT_Transfer_EVMvsMIR(t *testing.T) {
+
 	// Decode USDT runtime bytecode
 	code, err := hex.DecodeString(usdtHex[2:])
 	if err != nil {

@@ -9,6 +9,8 @@ import (
 	"github.com/holiman/uint256"
 )
 
+// logging shim is defined in debug_flags.go
+
 // MIRExecutionEnv contains minimal execution context required by the interpreter.
 // It is intentionally small; we can expand as more MIROperations are wired.
 type MIRExecutionEnv struct {
@@ -1679,8 +1681,9 @@ func mirHandleBYTE(it *MIRInterpreter, m *MIR) error {
 	if err != nil {
 		return err
 	}
-	// EVM BYTE: index (right=a), value (left=b)
-	it.setResult(m, b.Byte(a))
+
+	a = b.Byte(a)
+	it.setResult(m, a)
 	return nil
 }
 
@@ -1770,7 +1773,8 @@ func (it *MIRInterpreter) execArithmetic(m *MIR) error {
 	case MirXOR:
 		out = it.tmpA.Clear().Xor(a, b)
 	case MirBYTE:
-		// value (left=b).BYTE(index right=a)
+		// Adjust for big-endian indexing expected by EVM BYTE
+		// EVM BYTE: operands arrive as [value, index] in our MIR
 		out = b.Byte(a)
 	case MirSHL:
 		if !it.env.IsConstantinople {

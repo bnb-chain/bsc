@@ -8,10 +8,12 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/core/vm/runtime"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 )
 
 // encodePush returns opcode bytes for the minimal PUSH to push the given big-endian value.
@@ -46,7 +48,8 @@ func buildTwoOpProgram(a []byte, b []byte, op byte) []byte {
 }
 
 func runCodeReturn(code []byte, enableMIR bool) ([]byte, error) {
-	cfg := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: enableMIR}}
+	compatBlock := new(big.Int).Set(params.MainnetChainConfig.LondonBlock)
+	cfg := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: enableMIR}}
 	compiler.EnableOpcodeParse()
 	if cfg.State == nil {
 		cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
@@ -56,7 +59,27 @@ func runCodeReturn(code []byte, enableMIR bool) ([]byte, error) {
 	sender := vm.AccountRef(cfg.Origin)
 	evm.StateDB.CreateAccount(addr)
 	evm.StateDB.SetCode(addr, code)
-	ret, _, err := evm.Call(sender, addr, nil, cfg.GasLimit, nil)
+	ret, _, err := evm.Call(sender, addr, nil, cfg.GasLimit, uint256.NewInt(0))
+	return ret, err
+}
+
+// runCodeReturnWithTracer is a variant that installs an EVM opcode tracer
+func runCodeReturnWithTracer(code []byte, enableMIR bool, tracer *tracing.Hooks) ([]byte, error) {
+	compatBlock := new(big.Int).Set(params.MainnetChainConfig.LondonBlock)
+	cfg := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: enableMIR}}
+	compiler.EnableOpcodeParse()
+	if cfg.State == nil {
+		cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+	}
+	if tracer != nil {
+		cfg.EVMConfig.Tracer = tracer
+	}
+	evm := runtime.NewEnv(cfg)
+	addr := common.BytesToAddress([]byte("mir_semantics"))
+	sender := vm.AccountRef(cfg.Origin)
+	evm.StateDB.CreateAccount(addr)
+	evm.StateDB.SetCode(addr, code)
+	ret, _, err := evm.Call(sender, addr, nil, cfg.GasLimit, uint256.NewInt(0))
 	return ret, err
 }
 
@@ -164,6 +187,13 @@ func TestMIRMatchesEVM_UnaryOps(t *testing.T) {
 
 // BYTE test: PUSH value; PUSH th; BYTE; store+return
 func TestMIRMatchesEVM_Byte(t *testing.T) {
+	// Enable MIR extended tracer to observe MIR execution for BYTE cases
+	compiler.SetGlobalMIRTracerExtended(func(m *compiler.MIR) {
+		if m != nil {
+			t.Logf("MIR tracer: evm_pc=%d op=%s evm_op=0x%02x ops=%v", m.EvmPC(), m.Op().String(), m.EvmOp(), m.OperandDebugStrings())
+		}
+	})
+	defer compiler.SetGlobalMIRTracerExtended(nil)
 	build := func(val []byte, th byte) []byte {
 		code := make([]byte, 0, 64)
 		code = append(code, encodePush(val)...)
@@ -187,11 +217,28 @@ func TestMIRMatchesEVM_Byte(t *testing.T) {
 	}
 	for _, c := range cases {
 		code := build(c.val, c.th)
-		rb, errB := runCodeReturn(code, false)
+		// EVM tracer to observe base interpreter
+		evmTracer := &tracing.Hooks{OnOpcode: func(pc uint64, opcode byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+			op := vm.OpCode(opcode)
+			if op >= vm.PUSH1 && op <= vm.PUSH32 {
+				n := int(op - vm.PUSH1 + 1)
+				start := int(pc) + 1
+				end := start + n
+				if start >= 0 && end <= len(code) {
+					imm := code[start:end]
+					t.Logf("EVM tracer: pc=%d op=%s imm=0x%x depth=%d", pc, op.String(), imm, depth)
+				} else {
+					t.Logf("EVM tracer: pc=%d op=%s depth=%d", pc, op.String(), depth)
+				}
+			} else {
+				t.Logf("EVM tracer: pc=%d op=%s depth=%d", pc, op.String(), depth)
+			}
+		}}
+		rb, errB := runCodeReturnWithTracer(code, false, evmTracer)
 		if errB != nil {
 			t.Fatalf("BYTE EVM: %v", errB)
 		}
-		rm, errM := runCodeReturn(code, true)
+		rm, errM := runCodeReturnWithTracer(code, true, evmTracer)
 		if errM != nil {
 			t.Fatalf("BYTE MIR: %v", errM)
 		}
