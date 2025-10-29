@@ -151,12 +151,13 @@ func (p *ParallelStateProcessor) prepareExecResult(block *types.Block, allStateR
 
 	var usedGas uint64 = cumulativeGasUsed
 	err := p.chain.engine.Finalize(p.chain, header, tracingStateDB, &commonTxs, block.Uncles(), block.Withdrawals(), (*[]*types.Receipt)(&receipts), &systemTxs, &usedGas, cfg.Tracer)
-
+	if err != nil {
+		log.Error("Finalize failed", "error", err.Error())
+	}
 	log.Info("After Finalize",
 		"usedGas", usedGas,
 		"receipts", len(receipts),
-		"block", block.Number(),
-		"error", err.Error())
+		"block", block.Number())
 	// invoke Finalise so that withdrawals are accounted for in the state diff
 	finalDiff, finalAccesses := postTxState.Finalise(true)
 	computedDiff.Merge(finalDiff)
