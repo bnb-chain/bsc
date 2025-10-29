@@ -11,7 +11,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types/bal"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -137,15 +136,7 @@ func (s *BALReader) initMutatedObjFromDiff(db *StateDB, addr common.Address, a *
 	return obj
 }
 
-var IgnoredBALAddresses map[common.Address]struct{} = map[common.Address]struct{}{
-	params.SystemAddress: {},
-	// Nano block list
-	common.HexToAddress("0x489A8756C18C0b8B24EC2a2b9FF3D4d447F79BEc"): {},
-	common.HexToAddress("0xFd6042Df3D74ce9959922FeC559d7995F3933c55"): {},
-	common.HexToAddress("0xdb789Eb5BDb4E559beD199B8b82dED94e1d056C9"): {},
-	// Burn/system reward addresses touched by PoSA system txs
-	common.HexToAddress("0x000000000000000000000000000000000000dEaD"): {},
-}
+var IgnoredBALAddresses map[common.Address]struct{} = map[common.Address]struct{}{}
 
 // BALReader provides methods for reading account state from a block access
 // list.  State values returned from the Reader methods must not be modified.

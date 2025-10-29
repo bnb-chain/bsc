@@ -150,12 +150,13 @@ func (p *ParallelStateProcessor) prepareExecResult(block *types.Block, allStateR
 		"block", block.Number())
 
 	var usedGas uint64 = cumulativeGasUsed
-	p.chain.engine.Finalize(p.chain, header, tracingStateDB, &commonTxs, block.Uncles(), block.Withdrawals(), (*[]*types.Receipt)(&receipts), &systemTxs, &usedGas, cfg.Tracer)
+	err := p.chain.engine.Finalize(p.chain, header, tracingStateDB, &commonTxs, block.Uncles(), block.Withdrawals(), (*[]*types.Receipt)(&receipts), &systemTxs, &usedGas, cfg.Tracer)
 
 	log.Info("After Finalize",
 		"usedGas", usedGas,
 		"receipts", len(receipts),
-		"block", block.Number())
+		"block", block.Number(),
+		"error", err.Error())
 	// invoke Finalise so that withdrawals are accounted for in the state diff
 	finalDiff, finalAccesses := postTxState.Finalise(true)
 	computedDiff.Merge(finalDiff)
@@ -386,7 +387,7 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 
 	// compute the post-tx state prestate (before applying final block system calls and eip-4895 withdrawals)
 	// the post-tx state transition is verified by resultHandler
-	postTxState := statedb.Copy().(*state.StateDB)
+	postTxState := startingState.Copy().(*state.StateDB)
 	postTxState.SetAccessListIndex(len(block.Transactions()))
 
 	posa, isPoSA := p.chain.engine.(consensus.PoSA)
