@@ -84,7 +84,6 @@ func (p *ParallelStateProcessor) prepareExecResult(block *types.Block, allStateR
 				ProcessResult: &ProcessResult{Error: fmt.Errorf("gas limit exceeded")},
 			}
 		}
-		log.Info("parallel state process", "gas used", receipt.GasUsed, "gas limit", header.GasLimit, "block", block.Number(), "hash", receipt.TxHash.String(), "cumulativeGasUsed", cumulativeGasUsed)
 	}
 
 	computedDiff := &bal.StateDiff{Mutations: make(map[common.Address]*bal.AccountState)}
@@ -400,7 +399,7 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 		execJobs = append(execJobs, txExecRequest{idx: i, tx: tx})
 	}
 
-	postTxState.SetAccessListIndex(len(block.Transactions()) - systemTxCount)
+	postTxState.SetAccessListIndex(len(block.Transactions()))
 	tPreprocess = time.Since(pStart)
 
 	// execute transactions and state root calculation in parallel
