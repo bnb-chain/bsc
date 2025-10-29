@@ -61,7 +61,6 @@ func (p *ParallelStateProcessor) prepareExecResult(block *types.Block, allStateR
 	tPostprocessStart := time.Now()
 	header := block.Header()
 
-	postTxState.SetAccessListIndex(len(block.Transactions()) + 1)
 	var tracingStateDB = vm.StateDB(postTxState)
 	if hooks := p.vmCfg.Tracer; hooks != nil {
 		tracingStateDB = state.NewHookedState(postTxState, hooks)
@@ -389,7 +388,6 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 	// compute the post-tx state prestate (before applying final block system calls and eip-4895 withdrawals)
 	// the post-tx state transition is verified by resultHandler
 	postTxState := startingState.Copy().(*state.StateDB)
-	postTxState.SetAccessListIndex(len(block.Transactions()))
 
 	posa, isPoSA := p.chain.engine.(consensus.PoSA)
 	execJobs := make([]txExecRequest, 0, len(block.Transactions()))
@@ -411,6 +409,7 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 		execJobs = append(execJobs, txExecRequest{idx: i, tx: tx})
 	}
 
+	postTxState.SetAccessListIndex(len(block.Transactions()) - systemTxCount)
 	tPreprocess = time.Since(pStart)
 
 	// execute transactions and state root calculation in parallel
