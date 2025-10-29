@@ -149,7 +149,7 @@ func (bl *txPeerBlacklist) record(id string, success, total int) bool {
 }
 
 func (bl *txPeerBlacklist) blacklist(id string, successRate float64) {
-	if bl == nil || id == "" {
+	if bl == nil || id == "" || !bl.cfg.Enabled {
 		return
 	}
 	bl.mu.Lock()

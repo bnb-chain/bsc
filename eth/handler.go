@@ -282,7 +282,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		return nil, errors.New("snap sync not supported with snapshots disabled")
 	}
 	// Construct the downloader (long sync)
-	h.downloader = downloader.New(config.Database, h.eventMux, h.chain, h.removePeer, nil)
+	h.downloader = downloader.New(config.Database, h.eventMux, h.chain, h.dropPeer, nil)
 
 	// Construct the fetcher (short sync)
 	validator := func(header *types.Header) error {
@@ -377,7 +377,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 
 	h.blockFetcher = fetcher.NewBlockFetcher(h.chain.GetBlockByHash, validator, broadcastBlockWithCheck,
-		heighter, finalizeHeighter, inserter, h.removePeer, fetchRangeBlocks)
+		heighter, finalizeHeighter, inserter, h.dropPeer, fetchRangeBlocks)
 
 	fetchTx := func(peer string, hashes []common.Hash) error {
 		p := h.peers.peer(peer)
@@ -423,7 +423,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		}
 		return errors
 	}
-	h.txFetcher = fetcher.NewTxFetcher(h.txpool.Has, addTxs, fetchTx, h.removePeer)
+	h.txFetcher = fetcher.NewTxFetcher(h.txpool.Has, addTxs, fetchTx, h.dropPeer)
 	h.chainSync = newChainSyncer(h)
 	return h, nil
 }
@@ -499,17 +499,24 @@ func (h *handler) dropWorstPeers(exempt map[string]struct{}, limit int) bool {
 	dropped := 0
 	for _, cand := range candidates {
 		log.Info("Dropping peer with low pending activity", "peer", cand.id, "txCount", cand.txCount)
-		h.clearPeerTxCount(cand.id)
-		if h.peerBlacklist != nil {
-			h.peerBlacklist.blacklist(cand.id, 0)
-		}
-		h.removePeer(cand.id)
+		h.dropPeer(cand.id)
 		dropped++
 		if dropped >= limit {
 			break
 		}
 	}
 	return dropped > 0
+}
+
+func (h *handler) dropPeer(id string) {
+	if id == "" {
+		return
+	}
+	h.clearPeerTxCount(id)
+	if h.peerBlacklist != nil {
+		h.peerBlacklist.blacklist(id, 0)
+	}
+	h.removePeer(id)
 }
 
 // protoTracker tracks the number of active protocol handlers.
