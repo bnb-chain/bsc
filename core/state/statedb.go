@@ -782,6 +782,8 @@ func (s *StateDB) StateForPrefetch() *StateDB {
 		return nil
 	}
 
+	state.prefetcher = s.prefetcher
+
 	return state
 }
 
