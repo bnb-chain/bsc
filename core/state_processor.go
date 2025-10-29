@@ -188,8 +188,17 @@ func (p *StateProcessor) Process(block *types.Block, statedb state.BlockProcessi
 	if err != nil {
 		return nil, err
 	}
-	for _, receipt := range receipts {
+	for i, receipt := range receipts {
 		allLogs = append(allLogs, receipt.Logs...)
+		for j, l := range receipt.Logs {
+			log.Info("parallel log",
+				"block", block.Number(),
+				"receiptIdx", i,
+				"logIdx", j,
+				"address", l.Address.Hex(),
+				"topics", fmt.Sprintf("%v", l.Topics),
+				"dataLen", len(l.Data))
+		}
 	}
 
 	// if we are building access list, manually call finalise here to ensure

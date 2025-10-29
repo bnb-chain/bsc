@@ -84,7 +84,7 @@ func (p *ParallelStateProcessor) prepareExecResult(block *types.Block, allStateR
 				ProcessResult: &ProcessResult{Error: fmt.Errorf("gas limit exceeded")},
 			}
 		}
-		allLogs = append(allLogs, receipt.Logs...)
+		log.Info("parallel state process", "gas used", receipt.GasUsed, "gas limit", header.GasLimit, "block", block.Number(), "hash", receipt.TxHash.String(), "cumulativeGasUsed", cumulativeGasUsed)
 	}
 
 	computedDiff := &bal.StateDiff{Mutations: make(map[common.Address]*bal.AccountState)}
@@ -141,22 +141,11 @@ func (p *ParallelStateProcessor) prepareExecResult(block *types.Block, allStateR
 		commonTxs = append(commonTxs, tx)
 	}
 
-	log.Info("Before Finalize",
-		"cumulativeGasUsed", cumulativeGasUsed,
-		"receipts", len(receipts),
-		"commonTxs", len(commonTxs),
-		"systemTxs", len(systemTxs),
-		"block", block.Number())
-
 	var usedGas uint64 = cumulativeGasUsed
 	err := p.chain.engine.Finalize(p.chain, header, tracingStateDB, &commonTxs, block.Uncles(), block.Withdrawals(), (*[]*types.Receipt)(&receipts), &systemTxs, &usedGas, cfg.Tracer)
 	if err != nil {
 		log.Error("Finalize failed", "error", err.Error())
 	}
-	log.Info("After Finalize",
-		"usedGas", usedGas,
-		"receipts", len(receipts),
-		"block", block.Number())
 	// invoke Finalise so that withdrawals are accounted for in the state diff
 	finalDiff, finalAccesses := postTxState.Finalise(true)
 	computedDiff.Merge(finalDiff)
@@ -176,6 +165,10 @@ func (p *ParallelStateProcessor) prepareExecResult(block *types.Block, allStateR
 	}
 
 	tPostprocess := time.Since(tPostprocessStart)
+
+	for _, receipt := range receipts {
+		allLogs = append(allLogs, receipt.Logs...)
+	}
 
 	return &ProcessResultWithMetrics{
 		ProcessResult: &ProcessResult{
@@ -216,7 +209,6 @@ func (p *ParallelStateProcessor) resultHandler(block *types.Block, txCount int, 
 
 	allReads := make(bal.StateAccesses)
 	allReads.Merge(*preTxStateReads)
-	allMutations := make([]*bal.StateDiff, 0)
 	if txCount > 0 {
 	loop:
 		for {
@@ -226,13 +218,11 @@ func (p *ParallelStateProcessor) resultHandler(block *types.Block, txCount int, 
 					if res.err != nil {
 						execErr = res.err
 					} else {
-						log.Info("sub gas", "gas used", res.receipt.GasUsed, "gas limit", gp.Gas(), "block", block.Number(), "hash", block.Hash(), "gaspool", gp.String())
 						if err := gp.SubGas(res.receipt.GasUsed); err != nil {
 							execErr = err
 						} else {
 							receipts = append(receipts, res.receipt)
 							allReads.Merge(*res.stateReads)
-							allMutations = append(allMutations, res.mutations)
 						}
 					}
 				}
@@ -322,6 +312,7 @@ func (p *ParallelStateProcessor) execTx(block *types.Block, tx *types.Transactio
 		return &txExecResult{err: err}
 	}
 
+	receipt.Bloom = types.CreateBloom(receipt)
 	return &txExecResult{
 		idx:        idx,
 		receipt:    receipt,
@@ -434,5 +425,6 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 	}
 	res.PreProcessTime = tPreprocess
 	//	res.PreProcessLoadTime = tPreprocessLoad
+	log.Info("parallel state process success", "block", block.Number(), "hash", block.Hash().String(), "receipts", len(res.ProcessResult.Receipts), "logs", len(res.ProcessResult.Logs))
 	return res, nil
 }
