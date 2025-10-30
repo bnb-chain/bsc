@@ -765,6 +765,28 @@ func (s *StateDB) CreateContract(addr common.Address) {
 	}
 }
 
+// StateForPrefetch creates a mirrored StateDB instance that shares the same
+// underlying state reader and cache as the current one. It is typically used
+// for state prefetching.
+//
+// Note: If the reader implements readerWithCacheStats, a new wrapper is created
+// to maintain independent cache statistics while reusing the same cache source.
+func (s *StateDB) StateForPrefetch() *StateDB {
+	reader := s.reader
+	if readerWithCacheStats, ok := s.reader.(*readerWithCacheStats); ok {
+		reader = newReaderWithCacheStats(readerWithCacheStats.readerWithCache)
+	}
+	state, err := NewWithReader(s.originalRoot, s.db, reader)
+	if err != nil {
+		log.Error("Failed to create StateDB for prefetch", "err", err)
+		return nil
+	}
+
+	state.prefetcher = s.prefetcher
+
+	return state
+}
+
 // Copy creates a deep, independent copy of the state.
 // Snapshots of the copied state cannot be applied to the copy.
 func (s *StateDB) Copy() *StateDB {
