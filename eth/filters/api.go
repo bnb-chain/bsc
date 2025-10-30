@@ -176,6 +176,10 @@ func (api *FilterAPI) NewPendingTransactions(ctx context.Context, fullTx *bool) 
 	rpcSub := notifier.CreateSubscription()
 
 	gopool.Submit(func() {
+		const maxSeenPending = 200000
+		seen := make(map[common.Hash]struct{}, maxSeenPending)
+		seenOrder := make([]common.Hash, 0, maxSeenPending)
+
 		txs := make(chan []*types.Transaction, 128)
 		pendingTxSub := api.events.SubscribePendingTxs(txs)
 		defer pendingTxSub.Unsubscribe()
@@ -189,17 +193,26 @@ func (api *FilterAPI) NewPendingTransactions(ctx context.Context, fullTx *bool) 
 				// TODO(rjl493456442) Send a batch of tx hashes in one notification
 				latest := api.sys.backend.CurrentHeader()
 				for _, tx := range txs {
-					// log.Warn("check pending hash", tx.Hash())
+					hash := tx.Hash()
+					if _, exists := seen[hash]; exists {
+						continue
+					}
+					seen[hash] = struct{}{}
+					seenOrder = append(seenOrder, hash)
+					if len(seen) > maxSeenPending && len(seenOrder) > 0 {
+						oldest := seenOrder[0]
+						seenOrder = seenOrder[1:]
+						delete(seen, oldest)
+					}
 					receipt, err := api.sys.backend.SimulateTransaction(ctx, tx)
 					if err != nil || receipt == nil || receipt.Status != types.ReceiptStatusSuccessful {
-						// log.Warn("check pending hash fail", tx.Hash(), err)
 						continue
 					}
 					if fullTx != nil && *fullTx {
 						rpcTx := ethapi.NewRPCPendingTransaction(tx, latest, chainConfig, receipt.Logs)
 						notifier.Notify(rpcSub.ID, rpcTx)
 					} else {
-						notifier.Notify(rpcSub.ID, tx.Hash())
+						notifier.Notify(rpcSub.ID, hash)
 					}
 				}
 			case <-rpcSub.Err():
