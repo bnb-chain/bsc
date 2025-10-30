@@ -192,9 +192,18 @@ func (api *FilterAPI) NewPendingTransactions(ctx context.Context, fullTx *bool) 
 				// To keep the original behaviour, send a single tx hash in one notification.
 				// TODO(rjl493456442) Send a batch of tx hashes in one notification
 				latest := api.sys.backend.CurrentHeader()
+				batchSeen := make(map[common.Hash]struct{}, len(txs))
 				for _, tx := range txs {
 					hash := tx.Hash()
+					if _, ok := batchSeen[hash]; ok {
+						continue
+					}
+					batchSeen[hash] = struct{}{}
 					if _, exists := seen[hash]; exists {
+						continue
+					}
+					receipt, err := api.sys.backend.SimulateTransaction(ctx, tx)
+					if err != nil || receipt == nil || receipt.Status != types.ReceiptStatusSuccessful {
 						continue
 					}
 					seen[hash] = struct{}{}
@@ -203,10 +212,6 @@ func (api *FilterAPI) NewPendingTransactions(ctx context.Context, fullTx *bool) 
 						oldest := seenOrder[0]
 						seenOrder = seenOrder[1:]
 						delete(seen, oldest)
-					}
-					receipt, err := api.sys.backend.SimulateTransaction(ctx, tx)
-					if err != nil || receipt == nil || receipt.Status != types.ReceiptStatusSuccessful {
-						continue
 					}
 					if fullTx != nil && *fullTx {
 						rpcTx := ethapi.NewRPCPendingTransaction(tx, latest, chainConfig, receipt.Logs)
