@@ -937,9 +937,9 @@ func (f *BlockFetcher) importBlocks(op *blockOrHeaderInject) {
 		blockAfterImport := f.getBlock(block.Hash())
 		if blockAfterImport != nil && blockAfterImport.AccessList() != nil {
 			block = blockAfterImport
-			log.Info("broadcast block with BAL", "block", block, "hash", block.Hash(), "peer", peer)
+			log.Debug("broadcast block with BAL", "block", block, "hash", block.Hash(), "peer", peer)
 		} else {
-			log.Info("broadcast block without BAL", "block", block, "hash", block.Hash(), "peer", peer)
+			log.Debug("broadcast block without BAL", "block", block, "hash", block.Hash(), "peer", peer)
 		}
 
 		// If import succeeded, broadcast the block

@@ -2627,7 +2627,6 @@ func (bc *BlockChain) ProcessBlock(parentRoot common.Hash, block *types.Block, s
 	}
 
 	if block.Body().AccessList != nil {
-		log.Info("parallel process block with bal", "block", block.Number(), "hash", block.Hash())
 		if block.NumberU64() == 0 {
 			return nil, fmt.Errorf("genesis block cannot have a block access list")
 		}

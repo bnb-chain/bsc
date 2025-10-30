@@ -424,6 +424,5 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 	}
 	res.PreProcessTime = tPreprocess
 	//	res.PreProcessLoadTime = tPreprocessLoad
-	log.Info("parallel state process success", "block", block.Number(), "hash", block.Hash().String(), "receipts", len(res.ProcessResult.Receipts), "logs", len(res.ProcessResult.Logs))
 	return res, nil
 }
