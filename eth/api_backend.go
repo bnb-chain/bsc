@@ -478,7 +478,7 @@ func (b *EthAPIBackend) SimulateTransaction(ctx context.Context, tx *types.Trans
 	usedGas := uint64(0)
 	receipt, err := core.ApplyTransactionWithEVM(msg, gasPool, state, header.Number, common.Hash{}, header.Time, tx, &usedGas, evm)
 	if err != nil {
-		log.Info("SimulateTransaction ApplyTransactionWithEVM error", err)
+		log.debug("SimulateTransaction ApplyTransactionWithEVM error", err)
 		return nil, err
 	}
 	return receipt, nil
