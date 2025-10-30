@@ -399,7 +399,7 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 		execJobs = append(execJobs, txExecRequest{idx: i, tx: tx})
 	}
 
-	postTxState.SetAccessListIndex(len(block.Transactions()))
+	postTxState.SetAccessListIndex(len(block.Transactions()) - systemTxCount + 1)
 	tPreprocess = time.Since(pStart)
 
 	// execute transactions and state root calculation in parallel
