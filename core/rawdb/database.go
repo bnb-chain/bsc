@@ -1099,7 +1099,7 @@ func DeleteTrieState(db ethdb.Database) error {
 	return nil
 }
 
-// This is the list of known 'metadata' keys stored in the databasse.
+// This is the list of known 'metadata' keys stored in the database.
 var knownMetadataKeys = [][]byte{
 	databaseVersionKey, headHeaderKey, headBlockKey, headFastBlockKey, headFinalizedBlockKey,
 	lastPivotKey, fastTrieProgressKey, snapshotDisabledKey, SnapshotRootKey, snapshotJournalKey,
