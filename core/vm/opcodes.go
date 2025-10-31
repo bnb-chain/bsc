@@ -211,6 +211,48 @@ const (
 	LOG4
 )
 
+// 0xb0 range - customized instructions.
+const (
+	Nop OpCode = 0xb0 + iota
+	AndSwap1PopSwap2Swap1
+	Swap2Swap1PopJump
+	Swap1PopSwap2Swap1
+	PopSwap2Swap1Pop
+	Push2Jump
+	Push2JumpI
+	Push1Push1
+	Push1Add
+	Push1Shl
+	Push1Dup1
+	Swap1Pop
+	PopJump
+	Pop2
+	Swap2Swap1
+	Swap2Pop
+	Dup2LT
+	JumpIfZero // 0xc1
+
+	IsZeroPush2
+	Dup2MStorePush1Add
+	Dup1Push4EqPush2
+	Push1CalldataloadPush1ShrDup1Push4GtPush2
+	Push1Push1Push1SHLSub
+	AndDup2AddSwap1Dup2LT
+	Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT
+	Dup3And
+	Swap2Swap1Dup3SubSwap2Dup3GtPush2
+	Swap1Dup2
+	SHRSHRDup1MulDup1
+	Swap3PopPopPop
+	SubSLTIsZeroPush2
+	Dup11MulDup3SubMulDup1 // 0xcf
+	//Swap3Swap2PopPop
+	//Push8Dup3GtORPush2
+	//Dup2AddSwap1Push2Swap2Swap1Push2
+	//Swap4Swap3PopPopPop
+	//Swap2AddAndDup2Add
+)
+
 // 0xd0 range - eof operations.
 const (
 	DATALOAD  OpCode = 0xd0
@@ -413,6 +455,40 @@ var opCodeToString = [256]string{
 	LOG2: "LOG2",
 	LOG3: "LOG3",
 	LOG4: "LOG4",
+
+	// 0xb0 range.
+	Nop:                   "NOP",
+	AndSwap1PopSwap2Swap1: "ANDSWAP1POPSWAP2SWAP1",
+	Swap2Swap1PopJump:     "SWAP2SWAP1POPJUMP",
+	Swap1PopSwap2Swap1:    "SWAP1POPSWAP2SWAP1",
+	PopSwap2Swap1Pop:      "POPSWAP2SWAP1POP",
+	Push2Jump:             "PUSH2JUMP",
+	Push2JumpI:            "PUSH2JUMPI",
+	Push1Push1:            "PUSH1PUSH1",
+	Push1Add:              "PUSH1ADD",
+	Push1Shl:              "PUSH1SHL",
+	Push1Dup1:             "PUSH1DUP1",
+	Swap1Pop:              "SWAP1POP",
+	PopJump:               "POPJUMP",
+	Pop2:                  "POP2",
+	Swap2Swap1:            "SWAP2SWAP1",
+	Swap2Pop:              "SWAP2POP",
+	Dup2LT:                "DUP2LT",
+	JumpIfZero:            "JUMPIFZERO",
+	IsZeroPush2:           "ISZEROPUSH2",
+	Dup2MStorePush1Add:    "DUP2MSTOREPUSH1ADD",
+	Dup1Push4EqPush2:      "DUP1PUSH4EQPUSH2",
+	Push1CalldataloadPush1ShrDup1Push4GtPush2:      "PUSH1CALLDATALOADPUSH1SHRDUP1PUSH4GTPUSH2",
+	Push1Push1Push1SHLSub:                          "PUSH1PUSH1PUSH1SHLSUB",
+	AndDup2AddSwap1Dup2LT:                          "ANDDUP2ADDSWAP1DUP2LT",
+	Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT: "SWAP1PUSH1DUP1NOTSWAP2ADDANDDUP2ADDSWAP1DUP2LT",
+	Dup3And:                           "DUP3AND",
+	Swap2Swap1Dup3SubSwap2Dup3GtPush2: "SWAP2SWAP1DUP3SUBSWAP2DUP3GTPUSH2",
+	Swap1Dup2:                         "SWAP1DUP2",
+	SHRSHRDup1MulDup1:                 "SHRSHRDUP1MULDUP1",
+	Swap3PopPopPop:                    "SWAP3POPPOPPOP",
+	SubSLTIsZeroPush2:                 "SUBSLTISZEROPUSH2",
+	Dup11MulDup3SubMulDup1:            "DUP11MULDUP3SUBMULDUP1",
 
 	// 0xd range - eof ops.
 	DATALOAD:  "DATALOAD",
@@ -628,6 +704,39 @@ var stringToOp = map[string]OpCode{
 	"REVERT":          REVERT,
 	"INVALID":         INVALID,
 	"SELFDESTRUCT":    SELFDESTRUCT,
+
+	"NOP":                   Nop,
+	"ANDSWAP1POPSWAP2SWAP1": AndSwap1PopSwap2Swap1,
+	"SWAP2SWAP1POPJUMP":     Swap2Swap1PopJump,
+	"SWAP1POPSWAP2SWAP1":    Swap1PopSwap2Swap1,
+	"POPSWAP2SWAP1POP":      PopSwap2Swap1Pop,
+	"PUSH2JUMP":             Push2Jump,
+	"PUSH2JUMPI":            Push2JumpI,
+	"PUSH1PUSH1":            Push1Push1,
+	"PUSH1ADD":              Push1Add,
+	"PUSH1SHL":              Push1Shl,
+	"PUSH1DUP1":             Push1Dup1,
+	"SWAP1POP":              Swap1Pop,
+	"POPJUMP":               PopJump,
+	"POP2":                  Pop2,
+	"SWAP2SWAP1":            Swap2Swap1,
+	"SWAP2POP":              Swap2Pop,
+	"DUP2LT":                Dup2LT,
+	"JUMPIFZERO":            JumpIfZero,
+	"ISZEROPUSH2":           IsZeroPush2,
+	"DUP2MSTOREPUSH1ADD":    Dup2MStorePush1Add,
+	"DUP1PUSH4EQPUSH2":      Dup1Push4EqPush2,
+	"PUSH1CALLDATALOADPUSH1SHRDUP1PUSH4GTPUSH2":      Push1CalldataloadPush1ShrDup1Push4GtPush2,
+	"PUSH1PUSH1PUSH1SHLSUB":                          Push1Push1Push1SHLSub,
+	"ANDDUP2ADDSWAP1DUP2LT":                          AndDup2AddSwap1Dup2LT,
+	"SWAP1PUSH1DUP1NOTSWAP2ADDANDDUP2ADDSWAP1DUP2LT": Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT,
+	"DUP3AND":                           Dup3And,
+	"SWAP2SWAP1DUP3SUBSWAP2DUP3GTPUSH2": Swap2Swap1Dup3SubSwap2Dup3GtPush2,
+	"SWAP1DUP2":                         Swap1Dup2,
+	"SHRSHRDUP1MULDUP1":                 SHRSHRDup1MulDup1,
+	"SWAP3POPPOPPOP":                    Swap3PopPopPop,
+	"SUBSLTISZEROPUSH2":                 SubSLTIsZeroPush2,
+	"DUP11MULDUP3SUBMULDUP1":            Dup11MulDup3SubMulDup1,
 }
 
 // StringToOp finds the opcode whose name is stored in `str`.

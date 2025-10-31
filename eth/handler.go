@@ -63,7 +63,7 @@ const (
 	voteChanSize = 256
 
 	// deltaTdThreshold is the threshold of TD difference for peers to broadcast votes.
-	deltaTdThreshold = 20
+	deltaTdThreshold = 1000
 
 	// txMaxBroadcastSize is the max size of a transaction that will be broadcasted.
 	// All transactions with a higher size will be announced and need to be fetched
@@ -141,8 +141,10 @@ type handlerConfig struct {
 	PeerSet                   *peerSet
 	EnableQuickBlockFetching  bool
 	EnableEVNFeatures         bool
+	EnableBAL                 bool
 	EVNNodeIdsWhitelist       []enode.ID
 	ProxyedValidatorAddresses []common.Address
+	ProxyedNodeIds            []enode.ID
 }
 
 type handler struct {
@@ -150,8 +152,10 @@ type handler struct {
 	networkID                  uint64
 	disablePeerTxBroadcast     bool
 	enableEVNFeatures          bool
+	enableBAL                  bool
 	evnNodeIdsWhitelistMap     map[enode.ID]struct{}
 	proxyedValidatorAddressMap map[common.Address]struct{}
+	proxyedNodeIdsMap          map[enode.ID]struct{}
 
 	snapSync        atomic.Bool // Flag whether snap sync is enabled (gets disabled if we already have blocks)
 	synced          atomic.Bool // Flag whether we're considered synchronised (enables transaction processing)
@@ -220,8 +224,10 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		requiredBlocks:             config.RequiredBlocks,
 		directBroadcast:            config.DirectBroadcast,
 		enableEVNFeatures:          config.EnableEVNFeatures,
+		enableBAL:                  config.EnableBAL,
 		evnNodeIdsWhitelistMap:     make(map[enode.ID]struct{}),
 		proxyedValidatorAddressMap: make(map[common.Address]struct{}),
+		proxyedNodeIdsMap:          make(map[enode.ID]struct{}),
 		quitSync:                   make(chan struct{}),
 		handlerDoneCh:              make(chan struct{}),
 		handlerStartCh:             make(chan struct{}),
@@ -232,6 +238,9 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 	for _, address := range config.ProxyedValidatorAddresses {
 		h.proxyedValidatorAddressMap[address] = struct{}{}
+	}
+	for _, nodeID := range config.ProxyedNodeIds {
+		h.proxyedNodeIdsMap[nodeID] = struct{}{}
 	}
 	if h.chain.NoTries() {
 	} else if config.Sync == ethconfig.FullSync {
@@ -328,7 +337,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		if p.bscExt == nil {
 			return nil, fmt.Errorf("peer does not support bsc protocol, peer: %v", p.ID())
 		}
-		if p.bscExt.Version() != bsc.Bsc2 {
+		if p.bscExt.Version() < bsc.Bsc2 {
 			return nil, fmt.Errorf("remote peer does not support the required Bsc2 protocol version, peer: %v", p.ID())
 		}
 		res, err := p.bscExt.RequestBlocksByRange(startHeight, startHash, count)
@@ -340,6 +349,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		for i, item := range res {
 			block := types.NewBlockWithHeader(item.Header).WithBody(types.Body{Transactions: item.Txs, Uncles: item.Uncles})
 			block = block.WithSidecars(item.Sidecars)
+			block = block.WithBAL(item.BAL)
 			block.ReceivedAt = time.Now()
 			block.ReceivedFrom = p.ID()
 			if err := block.SanityCheck(); err != nil {
@@ -396,6 +406,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 func (h *handler) protoTracker() {
 	defer h.wg.Done()
 
+	h.peers.setProxyedPeers(h.proxyedNodeIdsMap)
 	if h.enableEVNFeatures && h.synced.Load() {
 		h.peers.enableEVNFeatures(h.queryValidatorNodeIDsMap(), h.evnNodeIdsWhitelistMap)
 	}
@@ -409,6 +420,7 @@ func (h *handler) protoTracker() {
 		case <-h.handlerDoneCh:
 			active--
 		case <-updateTicker.C:
+			h.peers.setProxyedPeers(h.proxyedNodeIdsMap)
 			if h.enableEVNFeatures && h.synced.Load() {
 				// add onchain validator p2p node list later, it will enable the direct broadcast + no tx broadcast feature
 				// here check & enable peer broadcast features periodically, and it's a simple way to handle the peer change and the list change scenarios.
@@ -455,12 +467,15 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		peer.Log().Error("Snapshot extension barrier failed", "err", err)
 		return err
 	}
-	bsc, err := h.peers.waitBscExtension(peer)
+	bscExt, err := h.peers.waitBscExtension(peer)
 	if err != nil {
 		peer.Log().Error("Bsc extension barrier failed", "err", err)
 		return err
 	}
-
+	if bscExt != nil && bscExt.Version() == bsc.Bsc3 {
+		peer.CanHandleBAL.Store(true)
+		log.Debug("runEthPeer", "bscExt.Version", bscExt.Version(), "CanHandleBAL", peer.CanHandleBAL.Load())
+	}
 	// Execute the Ethereum handshake
 	var (
 		head   = h.chain.CurrentHeader()
@@ -510,7 +525,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	}
 
 	// Register the peer locally
-	if err := h.peers.registerPeer(peer, snap, bsc); err != nil {
+	if err := h.peers.registerPeer(peer, snap, bscExt); err != nil {
 		peer.Log().Error("Ethereum peer registration failed", "err", err)
 		return err
 	}
@@ -812,40 +827,74 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 			log.Error("Propagating dangling block", "number", block.Number(), "hash", hash)
 			return
 		}
-		// Send the block to a subset of our peers
-		var transfer []*ethPeer
-		if h.directBroadcast {
-			transfer = peers[:]
-		} else {
-			transfer = peers[:int(math.Sqrt(float64(len(peers))))]
+
+		// Broadcast the block to peers based on broadcast strategy.
+		totalPeers := len(peers)
+
+		// Step 1: Select target peers for initial broadcast.
+		limit := totalPeers
+		if !h.directBroadcast {
+			limit = int(math.Sqrt(float64(totalPeers)))
 		}
 
-		for _, peer := range transfer {
-			log.Debug("broadcast block to peer", "hash", hash, "peer", peer.ID(), "EVNPeerFlag", peer.EVNPeerFlag.Load())
+		// Step 2: Broadcast to selected peers.
+		transferPeersCnt := limit
+		for _, peer := range peers[:limit] {
+			log.Debug("Broadcast block to peer",
+				"hash", hash, "peer", peer.ID(),
+				"EVNPeerFlag", peer.EVNPeerFlag.Load(),
+				"CanHandleBAL", peer.CanHandleBAL.Load(),
+			)
 			peer.AsyncSendNewBlock(block, td)
 		}
 
-		// check if the block should be broadcast to more peers in EVN
-		var morePeers []*ethPeer
-		if h.needFullBroadcastInEVN(block) {
-			for i := len(transfer); i < len(peers); i++ {
-				if peers[i].EVNPeerFlag.Load() {
-					morePeers = append(morePeers, peers[i])
+		// Step 3: Handle proxyed peers.
+		proxyedPeersCnt := 0
+		if len(h.proxyedNodeIdsMap) > 0 {
+			for _, peer := range peers[limit:] {
+				if peer.ProxyedPeerFlag.Load() {
+					log.Debug("Broadcast block to proxyed peer",
+						"hash", hash, "peer", peer.ID(),
+						"EVNPeerFlag", peer.EVNPeerFlag.Load(),
+						"CanHandleBAL", peer.CanHandleBAL.Load(),
+					)
+					peer.AsyncSendNewBlock(block, td)
+					proxyedPeersCnt++
 				}
-			}
-			for _, peer := range morePeers {
-				log.Debug("broadcast block to extra peer", "hash", hash, "peer", peer.ID(), "EVNPeerFlag", peer.EVNPeerFlag.Load())
-				peer.AsyncSendNewBlock(block, td)
 			}
 		}
 
-		log.Debug("Propagated block", "hash", hash, "recipients", len(transfer), "extra", len(morePeers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
+		// Step 4: Handle EVN peers if full broadcast is required.
+		evnPeersCnt := 0
+		if h.needFullBroadcastInEVN(block) {
+			for _, peer := range peers[limit:] {
+				if !peer.ProxyedPeerFlag.Load() && peer.EVNPeerFlag.Load() {
+					log.Debug("Broadcast block to EVN peer",
+						"hash", hash, "peer", peer.ID(),
+						"EVNPeerFlag", peer.EVNPeerFlag.Load(),
+						"CanHandleBAL", peer.CanHandleBAL.Load(),
+					)
+					peer.AsyncSendNewBlock(block, td)
+					evnPeersCnt++
+				}
+			}
+		}
+
+		// Step 5: Log summary.
+		log.Debug("Propagated block",
+			"hash", hash,
+			"recipients", transferPeersCnt,
+			"proxyed", proxyedPeersCnt,
+			"evn", evnPeersCnt,
+			"duration", common.PrettyDuration(time.Since(block.ReceivedAt)),
+		)
 		return
 	}
 	// Otherwise if the block is indeed in our own chain, announce it
 	if h.chain.HasBlock(hash, block.NumberU64()) {
 		for _, peer := range peers {
-			log.Debug("Announced block to peer", "hash", hash, "peer", peer.ID(), "EVNPeerFlag", peer.EVNPeerFlag.Load())
+			log.Debug("Announced block to peer", "hash", hash, "peer", peer.ID(),
+				"EVNPeerFlag", peer.EVNPeerFlag.Load(), "CanHandleBAL", peer.CanHandleBAL.Load())
 			peer.AsyncSendNewBlockHash(block)
 		}
 		log.Debug("Announced block", "hash", hash, "recipients", len(peers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))
@@ -1004,9 +1053,16 @@ func (h *handler) BroadcastVote(vote *types.VoteEnvelope) {
 	headBlock := h.chain.CurrentBlock()
 	currentTD := h.chain.GetTd(headBlock.Hash(), headBlock.Number.Uint64())
 	for _, peer := range peers {
+		if peer.bscExt == nil {
+			continue
+		}
+		if peer.ProxyedPeerFlag.Load() || peer.EVNPeerFlag.Load() {
+			voteMap[peer] = vote
+			continue
+		}
 		_, peerTD := peer.Head()
 		deltaTD := new(big.Int).Abs(new(big.Int).Sub(currentTD, peerTD))
-		if deltaTD.Cmp(big.NewInt(deltaTdThreshold)) < 1 && peer.bscExt != nil {
+		if deltaTD.Cmp(big.NewInt(deltaTdThreshold)) <= 0 {
 			voteMap[peer] = vote
 		}
 	}

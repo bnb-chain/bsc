@@ -192,10 +192,10 @@ const (
 )
 
 var (
-	// maxwellBlockInterval                      = 0.75
+	// fermiBlockInterval                        = 0.45
 	MinTimeDurationForBlobRequests     uint64 = uint64(float64(24*3600) * 18.2)                        // it keeps blob data available for 18.2 days in local
-	MinBlocksForBlobRequests           uint64 = uint64(float64(MinTimeDurationForBlobRequests) / 0.75) // ref: https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-524.md#421-change-table.
-	DefaultExtraReserveForBlobRequests uint64 = uint64(24 * 3600 / 0.75)                               // it adds more time for expired blobs for some request cases, like expiry blob when remote peer is syncing, default 1 day.
+	MinBlocksForBlobRequests           uint64 = uint64(float64(MinTimeDurationForBlobRequests) / 0.45) // ref: https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-524.md#421-change-table.
+	DefaultExtraReserveForBlobRequests uint64 = uint64(24 * 3600 / 0.45)                               // it adds more time for expired blobs for some request cases, like expiry blob when remote peer is syncing, default 1 day.
 
 	BreatheBlockInterval uint64 = 24 * 3600 // Controls the interval for updateValidatorSetV2
 

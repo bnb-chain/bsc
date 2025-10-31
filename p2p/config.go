@@ -98,6 +98,10 @@ type Config struct {
 	// it usually used for sentry nodes
 	ProxyedValidatorAddresses []common.Address `toml:",omitempty"`
 
+	// ProxyedNodeIds lists node IDs that receive direct broadcasts of blocks and votes,
+	// excluding transactions, to prevent delays in block and vote propagation.
+	ProxyedNodeIds []enode.ID `toml:",omitempty"`
+
 	// Connectivity can be restricted to certain IP networks.
 	// If this option is set to a non-nil value, only hosts which match one of the
 	// IP networks contained in the list are considered.

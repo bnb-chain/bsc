@@ -652,9 +652,6 @@ func (b testBackend) SubscribeRemovedLogsEvent(ch chan<- core.RemovedLogsEvent) 
 func (b testBackend) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscription {
 	panic("implement me")
 }
-func (b testBackend) SubscribePendingLogsEvent(ch chan<- []*types.Log) event.Subscription {
-	panic("implement me")
-}
 
 func (b *testBackend) MevRunning() bool                       { return false }
 func (b *testBackend) HasBuilder(builder common.Address) bool { return false }

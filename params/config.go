@@ -272,7 +272,7 @@ var (
 		PragueTime:          newUint64(1740452880), // 2025-02-25 03:08:00 AM UTC
 		LorentzTime:         newUint64(1744097580), // 2025-04-08 07:33:00 AM UTC
 		MaxwellTime:         newUint64(1748243100), // 2025-05-26 07:05:00 AM UTC
-		FermiTime:           nil,
+		FermiTime:           newUint64(1762741500), // 2025-11-10 02:25:00 AM UTC
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{

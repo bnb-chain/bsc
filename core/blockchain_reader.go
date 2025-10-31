@@ -203,6 +203,11 @@ func (bc *BlockChain) GetBlock(hash common.Hash, number uint64) *types.Block {
 	}
 	sidecars := rawdb.ReadBlobSidecars(bc.db, hash, number)
 	block = block.WithSidecars(sidecars)
+
+	bal := rawdb.ReadBAL(bc.db, hash, number)
+	if bal != nil {
+		block = block.WithBAL(bal)
+	}
 	// Cache the found block for next time and return
 	bc.blockCache.Add(block.Hash(), block)
 	return block
@@ -476,6 +481,9 @@ func (bc *BlockChain) State() (*state.StateDB, error) {
 // StateAt returns a new mutable state based on a particular point in time.
 func (bc *BlockChain) StateAt(root common.Hash) (*state.StateDB, error) {
 	stateDb, err := state.New(root, bc.statedb)
+	if bc.cfg.EnableBAL {
+		stateDb.InitBlockAccessList()
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -488,7 +496,32 @@ func (bc *BlockChain) StateAt(root common.Hash) (*state.StateDB, error) {
 		return nil, errors.New("state is not available")
 	}
 
-	return stateDb, err
+	return stateDb, nil
+}
+
+// StateWithCacheAt returns a new mutable state with cache based on a particular point in time.
+func (bc *BlockChain) StateWithCacheAt(root common.Hash) (*state.StateDB, error) {
+	_, process, err := bc.statedb.ReadersWithCacheStats(root)
+	if err != nil {
+		return nil, err
+	}
+	stateDb, err := state.NewWithReader(root, bc.statedb, process)
+	if bc.cfg.EnableBAL {
+		stateDb.InitBlockAccessList()
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// If there's no trie and the specified snapshot is not available, getting
+	// any state will by default return nil.
+	// Instead of that, it will be more useful to return an error to indicate
+	// the state is not available.
+	if stateDb.NoTries() && stateDb.GetSnap() == nil {
+		return nil, errors.New("state is not available")
+	}
+
+	return stateDb, nil
 }
 
 // HistoricState returns a historic state specified by the given root.

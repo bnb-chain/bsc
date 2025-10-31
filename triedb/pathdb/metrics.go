@@ -81,6 +81,9 @@ var (
 
 	historicalAccountReadTimer = metrics.NewRegisteredResettingTimer("pathdb/history/account/reads", nil)
 	historicalStorageReadTimer = metrics.NewRegisteredResettingTimer("pathdb/history/storage/reads", nil)
+
+	incrProcessErrorMeter = metrics.NewRegisteredMeter("pathdb/incr/process/error", nil)
+	incrCommitErrorMeter  = metrics.NewRegisteredMeter("pathdb/incr/commit/error", nil)
 )
 
 // Metrics in generation

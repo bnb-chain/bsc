@@ -178,11 +178,18 @@ const (
 
 // BlockChainConfig contains the configuration of the BlockChain object.
 type BlockChainConfig struct {
-	TriesInMemory   uint64 // How many tries keeps in memory
-	NoTries         bool   // Insecure settings. Do not have any tries in databases if enabled.
-	PathSyncFlush   bool   // Whether sync flush the trienodebuffer of pathdb to disk.
-	JournalFilePath string
-	JournalFile     bool
+	TriesInMemory         uint64 // How many tries keeps in memory
+	NoTries               bool   // Insecure settings. Do not have any tries in databases if enabled.
+	PathSyncFlush         bool   // Whether sync flush the trienodebuffer of pathdb to disk.
+	JournalFilePath       string // The path to store journal file which is used in pathdb
+	JournalFile           bool   // Whether to use single file to store journal data in pathdb
+	EnableIncr            bool   // Flag whether the freezer db stores incremental block and state history
+	IncrHistoryPath       string // The path to store incremental block and chain files
+	IncrHistory           uint64 // Amount of block and state history stored in incremental freezer db
+	IncrStateBuffer       uint64 // Maximum memory allowance (in bytes) for incr state buffer
+	IncrKeptBlocks        uint64 // Amount of block kept in incr snapshot
+	UseRemoteIncrSnapshot bool   // Whether to download and merge incremental snapshots
+	RemoteIncrURL         string // The url to download incremental snapshots
 
 	// Trie database related options
 	TrieCleanLimit   int           // Memory allowance (MB) to use for caching trie nodes in memory
@@ -215,6 +222,9 @@ type BlockChainConfig struct {
 	// If the value is zero, all transactions of the entire chain will be indexed.
 	// If the value is -1, indexing is disabled.
 	TxLookupLimit int64
+
+	// EnableBAL enables the block access list feature
+	EnableBAL bool
 }
 
 // DefaultConfig returns the default config.
@@ -269,6 +279,11 @@ func (cfg *BlockChainConfig) triedbConfig(isVerkle bool) *triedb.Config {
 		config.PathDB = &pathdb.Config{
 			JournalFilePath: cfg.JournalFilePath,
 			JournalFile:     cfg.JournalFile,
+			EnableIncr:      cfg.EnableIncr,
+			IncrHistoryPath: cfg.IncrHistoryPath,
+			IncrHistory:     cfg.IncrHistory,
+			IncrStateBuffer: cfg.IncrStateBuffer,
+			IncrKeptBlocks:  cfg.IncrKeptBlocks,
 
 			StateHistory:        cfg.StateHistory,
 			EnableStateIndexing: cfg.ArchiveMode,
@@ -412,7 +427,27 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 	if err != nil {
 		return nil, err
 	}
-	triedb := triedb.NewDatabase(db, cfg.triedbConfig(enableVerkle))
+	trieConfig := cfg.triedbConfig(enableVerkle)
+	if cfg.UseRemoteIncrSnapshot && cfg.StateScheme == rawdb.PathScheme {
+		trieConfig.PathDB.MergeIncr = true
+	}
+	triedb := triedb.NewDatabase(db, trieConfig)
+
+	if cfg.UseRemoteIncrSnapshot {
+		log.Info("Download the incremental snapshot", "remote incr url", cfg.RemoteIncrURL)
+		startBlock, err := triedb.GetStartBlock()
+		if err != nil {
+			log.Error("Failed to get start block", "error", err)
+			return nil, err
+		}
+		downloader := NewIncrDownloader(db, triedb, cfg.RemoteIncrURL, cfg.IncrHistoryPath, startBlock)
+		if err = downloader.RunConcurrent(); err != nil {
+			log.Error("Failed to download and merge incremental snapshot", "error", err)
+			return nil, err
+		}
+		log.Info("Download and merge incr snapshots successfully")
+		triedb.SetStateGenerator()
+	}
 
 	// Write the supplied genesis to the database if it has not been initialized
 	// yet. The corresponding chain config will be returned, either from the
@@ -1222,6 +1257,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 			rawdb.DeleteReceipts(db, hash, num)
 			rawdb.DeleteTd(db, hash, num)
 			rawdb.DeleteBlobSidecars(db, hash, num)
+			rawdb.DeleteBAL(db, hash, num)
 		}
 		// Todo(rjl493456442) txlookup, log index, etc
 	}
@@ -1736,6 +1772,7 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 				rawdb.WriteBlobSidecars(batch, block.Hash(), block.NumberU64(), block.Sidecars())
 			}
+			rawdb.WriteBAL(batch, block.Hash(), block.NumberU64(), block.BAL())
 
 			// Write everything belongs to the blocks into the database. So that
 			// we can ensure all components of body is completed(body, receipts)
@@ -1814,6 +1851,7 @@ func (bc *BlockChain) writeBlockWithoutState(block *types.Block, td *big.Int) (e
 	if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 		rawdb.WriteBlobSidecars(blockBatch, block.Hash(), block.NumberU64(), block.Sidecars())
 	}
+	rawdb.WriteBAL(blockBatch, block.Hash(), block.NumberU64(), block.BAL())
 	if err := blockBatch.Write(); err != nil {
 		log.Crit("Failed to write block into disk", "err", err)
 	}
@@ -1860,6 +1898,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 			rawdb.WriteBlobSidecars(blockBatch, block.Hash(), block.NumberU64(), block.Sidecars())
 		}
+		rawdb.WriteBAL(blockBatch, block.Hash(), block.NumberU64(), block.BAL())
 		if bc.db.HasSeparateStateStore() {
 			rawdb.WritePreimages(bc.db.GetStateStore(), statedb.Preimages())
 		} else {
@@ -2009,7 +2048,12 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 	bc.futureBlocks.Remove(block.Hash())
 
 	if status == CanonStatTy {
-		bc.chainFeed.Send(ChainEvent{Header: block.Header()})
+		bc.chainFeed.Send(ChainEvent{
+			Header:       block.Header(),
+			Receipts:     receipts,
+			Transactions: block.Transactions(),
+		})
+
 		if len(logs) > 0 {
 			bc.logsFeed.Send(logs)
 		}
@@ -2415,7 +2459,7 @@ func (bc *BlockChain) processBlock(parentRoot common.Hash, block *types.Block, s
 	defer interrupt.Store(true) // terminate the prefetch at the end
 
 	needBadSharedStorage := bc.chainConfig.NeedBadSharedStorage(block.Number())
-	needPrefetch := needBadSharedStorage || (!bc.cfg.NoPrefetch && len(block.Transactions()) >= prefetchTxNumber)
+	needPrefetch := needBadSharedStorage || (!bc.cfg.NoPrefetch && len(block.Transactions()) >= prefetchTxNumber) || block.BAL() != nil
 	if !needPrefetch {
 		statedb, err = state.New(parentRoot, bc.statedb)
 		if err != nil {
@@ -2453,11 +2497,17 @@ func (bc *BlockChain) processBlock(parentRoot common.Hash, block *types.Block, s
 			storageCacheMissMeter.Mark(stats.StorageMiss)
 		}()
 
+		interruptChan := make(chan struct{})
+		defer close(interruptChan)
 		go func(start time.Time, throwaway *state.StateDB, block *types.Block) {
 			// Disable tracing for prefetcher executions.
 			vmCfg := bc.cfg.VmConfig
 			vmCfg.Tracer = nil
-			bc.prefetcher.Prefetch(block.Transactions(), block.Header(), block.GasLimit(), throwaway, vmCfg, &interrupt)
+			if block.BAL() != nil {
+				bc.prefetcher.PrefetchBAL(block, throwaway, interruptChan)
+			} else {
+				bc.prefetcher.Prefetch(block.Transactions(), block.Header(), block.GasLimit(), throwaway, vmCfg, &interrupt)
+			}
 
 			blockPrefetchExecuteTimer.Update(time.Since(start))
 			if interrupt.Load() {
@@ -2800,6 +2850,13 @@ func (bc *BlockChain) recoverAncestors(block *types.Block, makeWitness bool) (co
 // collectLogs collects the logs that were generated or removed during the
 // processing of a block. These logs are later announced as deleted or reborn.
 func (bc *BlockChain) collectLogs(b *types.Block, removed bool) []*types.Log {
+	_, logs := bc.collectReceiptsAndLogs(b, removed)
+	return logs
+}
+
+// collectReceiptsAndLogs retrieves receipts from the database and returns both receipts and logs.
+// This avoids duplicate database reads when both are needed.
+func (bc *BlockChain) collectReceiptsAndLogs(b *types.Block, removed bool) ([]*types.Receipt, []*types.Log) {
 	var blobGasPrice *big.Int
 	if b.ExcessBlobGas() != nil {
 		blobGasPrice = eip4844.CalcBlobFee(bc.chainConfig, b.Header())
@@ -2817,7 +2874,7 @@ func (bc *BlockChain) collectLogs(b *types.Block, removed bool) []*types.Log {
 			logs = append(logs, log)
 		}
 	}
-	return logs
+	return receipts, logs
 }
 
 // reorg takes two blocks, an old chain and a new chain and will reconstruct the
@@ -3052,8 +3109,12 @@ func (bc *BlockChain) SetCanonical(head *types.Block) (common.Hash, error) {
 	bc.writeHeadBlock(head)
 
 	// Emit events
-	logs := bc.collectLogs(head, false)
-	bc.chainFeed.Send(ChainEvent{Header: head.Header()})
+	receipts, logs := bc.collectReceiptsAndLogs(head, false)
+	bc.chainFeed.Send(ChainEvent{
+		Header:       head.Header(),
+		Receipts:     receipts,
+		Transactions: head.Transactions(),
+	})
 	if len(logs) > 0 {
 		bc.logsFeed.Send(logs)
 	}

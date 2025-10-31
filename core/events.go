@@ -42,7 +42,9 @@ type NewVoteEvent struct{ Vote *types.VoteEnvelope }
 type FinalizedHeaderEvent struct{ Header *types.Header }
 
 type ChainEvent struct {
-	Header *types.Header
+	Header       *types.Header
+	Receipts     []*types.Receipt
+	Transactions []*types.Transaction
 }
 
 type ChainHeadEvent struct {

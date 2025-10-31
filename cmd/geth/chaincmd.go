@@ -363,7 +363,7 @@ func initGenesis(ctx *cli.Context) error {
 		log.Warn("Multi-database is an experimental feature")
 	}
 
-	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false, genesis.IsVerkle())
+	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false, genesis.IsVerkle(), false)
 	defer triedb.Close()
 
 	_, hash, compatErr, err := core.SetupGenesisBlockWithOverride(chaindb, triedb, genesis, &overrides)
@@ -521,7 +521,6 @@ func initNetwork(ctx *cli.Context) error {
 		sentryEnodes          []*enode.Node
 		sentryNodeIDs         []enode.ID
 		connectOneExtraEnodes bool
-		staticConnect         bool
 	)
 	if enableSentryNode {
 		sentryConfigs, sentryEnodes, err = createSentryNodeConfigs(ctx, config, initDir)
@@ -533,10 +532,9 @@ func initNetwork(ctx *cli.Context) error {
 			sentryNodeIDs[i] = sentryEnodes[i].ID()
 		}
 		connectOneExtraEnodes = true
-		staticConnect = true
 	}
 
-	configs, enodes, accounts, err := createConfigs(config, initDir, "node", ips, ports, sentryEnodes, connectOneExtraEnodes, staticConnect)
+	configs, enodes, accounts, err := createConfigs(config, initDir, "node", ips, ports, sentryEnodes, connectOneExtraEnodes, true)
 	if err != nil {
 		utils.Fatalf("Failed to create node configs: %v", err)
 	}
@@ -549,6 +547,7 @@ func initNetwork(ctx *cli.Context) error {
 	if enableSentryNode {
 		for i := 0; i < len(sentryConfigs); i++ {
 			sentryConfigs[i].Node.P2P.ProxyedValidatorAddresses = accounts[i]
+			sentryConfigs[i].Node.P2P.ProxyedNodeIds = []enode.ID{nodeIDs[i]}
 		}
 	}
 	if ctx.Bool(utils.InitEVNValidatorWhitelist.Name) {
@@ -563,7 +562,8 @@ func initNetwork(ctx *cli.Context) error {
 	}
 	if enableSentryNode && ctx.Bool(utils.InitEVNSentryWhitelist.Name) {
 		for i := 0; i < len(sentryConfigs); i++ {
-			sentryConfigs[i].Node.P2P.EVNNodeIdsWhitelist = sentryNodeIDs
+			sentryConfigs[i].Node.P2P.EVNNodeIdsWhitelist = append([]enode.ID{}, sentryNodeIDs...)
+			sentryConfigs[i].Node.P2P.EVNNodeIdsWhitelist[i] = nodeIDs[i]
 		}
 	}
 	if enableSentryNode && ctx.Bool(utils.InitEVNSentryRegister.Name) {
@@ -587,11 +587,9 @@ func initNetwork(ctx *cli.Context) error {
 	}
 
 	if ctx.Int(utils.InitFullNodeSize.Name) > 0 {
-		var extraEnodes []*enode.Node
+		extraEnodes := enodes
 		if enableSentryNode {
 			extraEnodes = sentryEnodes
-		} else {
-			extraEnodes = enodes
 		}
 		_, _, err := createAndSaveFullNodeConfigs(ctx, inGenesisFile, config, initDir, extraEnodes)
 		if err != nil {
@@ -1091,7 +1089,7 @@ func dump(ctx *cli.Context) error {
 		return err
 	}
 	defer db.Close()
-	triedb := utils.MakeTrieDatabase(ctx, stack, db, true, true, false) // always enable preimage lookup
+	triedb := utils.MakeTrieDatabase(ctx, stack, db, true, true, false, false) // always enable preimage lookup
 	defer triedb.Close()
 
 	state, err := state.New(root, state.NewDatabase(triedb, nil))

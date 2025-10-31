@@ -1,6 +1,32 @@
 # Changelog
+
+## v1.6.2
+### FEATURE
+[\#3363](https://github.com/bnb-chain/bsc/pull/3363) websocket: add transactionReceipts for receipts notification
+[\#3367](https://github.com/bnb-chain/bsc/pull/3367) BEP-619: Short Block Interval Phase Three: 0.45 Seconds
+[\#3368](https://github.com/bnb-chain/bsc/pull/3368) BEP-590: Extended Voting Rules for Fast Finality Stability
+[\#3374](https://github.com/bnb-chain/bsc/pull/3374) Implement BEP-592: Non-Consensus Based Block-Level Access List
+[\#3372](https://github.com/bnb-chain/bsc/pull/3372) core/systemcontracts: define fermiUpgrade
+[\#3390](https://github.com/bnb-chain/bsc/pull/3390) feat: implement incremental snapshot
+[\#3395](https://github.com/bnb-chain/bsc/pull/3395) feat: EVM execution opcode level optimization
+[\#3400](https://github.com/bnb-chain/bsc/pull/3400) consensus/parlia: set kAncestorGenerationDepth to 3 in BEP-590
+[\#3397](https://github.com/bnb-chain/bsc/pull/3397) consensus/parlia: fix updateAttestation&improve assembleVoteAttestation
+[\#0000](https://github.com/bnb-chain/bsc/pull/0000) p2p: define ProxyedNodeIds in Config #3417
+
+### BUGFIX
+[\#3373](https://github.com/bnb-chain/bsc/pull/3373) ethapi: reject oversize storage keys before hex decode
+
+### IMPROVEMENT
+[\#3388](https://github.com/bnb-chain/bsc/pull/3388) miner/minerconfig: update config to adapt 100M gaslimit
+[\#3404](https://github.com/bnb-chain/bsc/pull/3404) miner: validator not inturn backoff before mining
+[\#3407](https://github.com/bnb-chain/bsc/pull/3407) fix: change lock to read lock in legacy pool
+[\#3415](https://github.com/bnb-chain/bsc/pull/3415) eth: broadcast votes to evn peers regardless of deltaTdThreshold
+[\#3416](https://github.com/bnb-chain/bsc/pull/3416) cmd/geth: improve config for sentry nodes when init network
+[\#3419](https://github.com/bnb-chain/bsc/pull/3419) miner: use latest block as pending block for simplicity
+[\#3426](https://github.com/bnb-chain/bsc/pull/3426) eth: increase the delta td threshold to broadcast votes
+
 ## v1.6.1
-v1.6.1-alpha is a preview release, which fixes several issues of the v1.6.0-alpha, it is more reliable than v1.6.0-alpha, so mark it as beta stage.
+v1.6.1-beta is a preview release, which fixes several issues of the v1.6.0-alpha, it is more reliable than v1.6.0-alpha, so mark it as beta stage.
 
 ### FEATURE
 NA
