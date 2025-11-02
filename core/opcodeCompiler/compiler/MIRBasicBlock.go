@@ -181,10 +181,12 @@ func (b *MIRBasicBlock) CreateUnaryOpMIR(op MirOperation, stack *ValueStack) (mi
 		stack.push(mir.Result())
 	}
 	// If mir.op == MirNOP, doPeepHole already pushed the optimized constant to stack
-
+	if mir.op == MirNOP {
+		// Do not emit runtime MIR for NOP; gas is accounted via block aggregation
+		return nil
+	}
 	mir = b.appendMIR(mir)
 	mir.genStackDepth = stack.size()
-	// noisy generation logging removed
 	return mir
 }
 
@@ -215,12 +217,8 @@ func (b *MIRBasicBlock) CreateTernaryOpMIR(op MirOperation, stack *ValueStack) (
 
 	// Try peephole optimization for 3-operand operations
 	if doPeepHole3Ops(op, &opndA, &opndB, &opndC, stack, nil) {
-		// Operation was optimized away, create a NOP MIR for tracking
-		mir = newNopMIR(op, []*Value{&opndA, &opndB, &opndC})
-		mir = b.appendMIR(mir)
-		mir.genStackDepth = stack.size()
-		// noisy generation logging removed
-		return mir
+		// Optimized away; do not emit MirNOP
+		return nil
 	}
 
 	// Create regular ternary operation MIR in (first, second, third) order
@@ -234,7 +232,6 @@ func (b *MIRBasicBlock) CreateTernaryOpMIR(op MirOperation, stack *ValueStack) (
 
 	mir = b.appendMIR(mir)
 	mir.genStackDepth = stack.size()
-	// noisy generation logging removed
 	return mir
 }
 
@@ -257,11 +254,8 @@ func (b *MIRBasicBlock) CreateBinOpMIRWithMA(op MirOperation, stack *ValueStack,
 	if accessor != nil && op == MirKECCAK256 {
 		// Ensure operand order [offset, size] -> (opnd2, opnd1)
 		if doPeepHole(op, &opnd2, &opnd1, stack, accessor) {
-			mir := newNopMIR(op, []*Value{&opnd2, &opnd1})
-			mir = b.appendMIR(mir)
-			mir.genStackDepth = stack.size()
-			// noisy generation logging removed
-			return mir
+			// Optimized away; do not emit MirNOP
+			return nil
 		}
 	}
 	// For KECCAK256 ensure operands are [offset, size]
@@ -273,7 +267,6 @@ func (b *MIRBasicBlock) CreateBinOpMIRWithMA(op MirOperation, stack *ValueStack,
 		stack.push(mir.Result())
 		mir = b.appendMIR(mir)
 		mir.genStackDepth = stack.size()
-		// noisy generation logging removed
 		return mir
 	}
 	mir := newBinaryOpMIR(op, &opnd1, &opnd2, stack)
@@ -381,11 +374,8 @@ func (b *MIRBasicBlock) CreateDupMIR(n int, stack *ValueStack) *MIR {
 	// Stack after:  [..., item_n, ..., item_2, item_1, item_n]
 
 	if stack.size() < n {
-		// Diagnostics already emitted by caller; still emit NOP and do not mutate stack
-		mir := newNopMIR(MirOperation(0x80+byte(n-1)), nil)
-		mir = b.appendMIR(mir)
-		mir.genStackDepth = stack.size()
-		return mir
+		// Depth underflow: no-op emission
+		return nil
 	}
 
 	// Get the value to duplicate (n-1 because stack is 0-indexed from top)
@@ -396,25 +386,15 @@ func (b *MIRBasicBlock) CreateDupMIR(n int, stack *ValueStack) *MIR {
 		// If the value to duplicate is a constant, duplicate by pushing same constant
 		optimizedValue := newValue(Konst, nil, nil, dupValue.payload)
 		stack.push(optimizedValue)
-		// Create a NOP MIR to mark this optimization
-		mir := newNopMIR(MirOperation(0x80+byte(n-1)), []*Value{dupValue})
-		mir = b.appendMIR(mir)
-		mir.genStackDepth = stack.size()
-		// noisy generation logging removed
-		return mir
+		return nil
 	}
 
 	// For non-constant values, perform the actual duplication on the stack
 	duplicatedValue := *dupValue // Copy the value
 	stack.push(&duplicatedValue)
 
-	// Emit a NOP MIR carrying the original DUP opcode and source for tracking
-	mir := newNopMIR(MirOperation(0x80+byte(n-1)), []*Value{dupValue})
-	mir = b.appendMIR(mir)
-	// Record generation-time stack depth after performing the DUP
-	mir.genStackDepth = stack.size()
-	// noisy generation logging removed
-	return mir
+	// No MIR emission for DUP; stack effect has been applied
+	return nil
 }
 
 func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
@@ -423,11 +403,8 @@ func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
 	// Stack after:  [..., item_n+1, item_1, ..., item_2, item_n]
 
 	if stack.size() <= n {
-		// Diagnostics already emitted by caller; still emit NOP and do not mutate stack
-		mir := newNopMIR(MirOperation(0x90+byte(n-1)), nil)
-		mir = b.appendMIR(mir)
-		mir.genStackDepth = stack.size()
-		return mir
+		// Depth underflow: no-op emission
+		return nil
 	}
 
 	// Check if we can optimize this SWAP operation
@@ -440,24 +417,14 @@ func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
 		topValue.kind == Konst && swapValue.kind == Konst {
 		// Both values are constants, just swap in stack
 		stack.swap(0, n)
-		// Emit NOP marker for tracking
-		mir := newNopMIR(MirOperation(0x90+byte(n-1)), []*Value{topValue, swapValue})
-		mir = b.appendMIR(mir)
-		mir.genStackDepth = stack.size()
-		// noisy generation logging removed
-		return mir
+		return nil
 	}
 
 	// For non-constant values, perform the actual swap on the stack
 	stack.swap(0, n)
-	// Diagnostics: after swap snapshot
-	// removed verbose SWAP diagnostics
-	// Emit a NOP MIR carrying the original SWAP opcode and operands
-	mir := newNopMIR(MirOperation(0x90+byte(n-1)), []*Value{topValue, swapValue})
-	mir = b.appendMIR(mir)
-	mir.genStackDepth = stack.size()
-	// noisy generation logging removed
-	return mir
+	// Diagnostics: after swap snapshot removed
+	// No MIR emission for SWAP; effect applied on stack
+	return nil
 }
 
 // CreatePhiMIR creates a PHI node merging incoming stack values.
