@@ -446,6 +446,11 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 	if it.beforeOp != nil {
 		// Build a lightweight context with evaluated operands when useful and an estimated memory size
 		ctx := &MIRPreOpContext{M: m, EvmOp: m.evmOp}
+		// Mark block entry for the first instruction in the current basic block
+		if m != nil && m.idx == 0 {
+			ctx.IsBlockEntry = true
+			ctx.Block = it.currentBB
+		}
 		// Evaluate operands into concrete values, preserving order
 		if len(m.oprands) > 0 {
 			ops := make([]*uint256.Int, 0, len(m.oprands))

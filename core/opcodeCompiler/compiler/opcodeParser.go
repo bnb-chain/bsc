@@ -647,10 +647,6 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 	}
 	for i < len(code) {
 		op := ByteCode(code[i])
-		// Map this EVM pc to the owning basic block for runtime lookups
-		if c.pcToBlock != nil {
-			c.pcToBlock[uint(i)] = curBB
-		}
 		// Count original EVM opcodes for static gas accounting
 		if curBB.evmOpCounts != nil {
 			curBB.evmOpCounts[byte(op)]++
@@ -951,7 +947,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			depth++
 		case POP:
 			_ = valueStack.pop()
-			mir = nil
+			// Emit NOP to account for POP base gas (CreateVoidMIR already appends)
+			mir = curBB.CreateVoidMIR(MirNOP)
 			if depth > 0 {
 				depth--
 			} else {

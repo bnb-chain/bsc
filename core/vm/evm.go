@@ -594,22 +594,19 @@ func tryGetOptimizedCodeWithMIR(evm *EVM, codeHash common.Hash, rawCode []byte, 
 			return false, rawCode
 		}
 	}
-	/*
-		// Superinstruction path: Traditional bytecode optimization
-		// First try to load cached optimized code
-		optCode := compiler.LoadOptimizedCode(codeHash)
-		if len(optCode) != 0 {
+	// Superinstruction path: fall back to traditional bytecode optimization if no MIR CFG
+	optCode := compiler.LoadOptimizedCode(codeHash)
+	if len(optCode) != 0 {
+		code = optCode
+		optimized = true
+	} else {
+		// Generate optimized code (superinstruction only, MIR already attempted above)
+		optCode, err := compiler.GenOrRewriteOptimizedCode(codeHash, rawCode)
+		if err == nil && len(optCode) != 0 {
 			code = optCode
 			optimized = true
-		} else {
-			// Generate optimized code (superinstruction only, MIR already attempted above)
-			optCode, err := compiler.GenOrRewriteOptimizedCode(codeHash, rawCode)
-			if err == nil && len(optCode) != 0 {
-				code = optCode
-				optimized = true
-			}
 		}
-	*/
+	}
 	return optimized, code
 }
 

@@ -421,15 +421,22 @@ func (b *MIRBasicBlock) CreateDupMIR(n int, stack *ValueStack) *MIR {
 		// If the value to duplicate is a constant, duplicate by pushing same constant
 		optimizedValue := newValue(Konst, nil, nil, dupValue.payload)
 		stack.push(optimizedValue)
-		return nil
+		// Emit NOP to account for DUP base gas
+		mir := new(MIR)
+		mir.op = MirNOP
+		b.appendMIR(mir)
+		return mir
 	}
 
 	// For non-constant values, perform the actual duplication on the stack
 	duplicatedValue := *dupValue // Copy the value
 	stack.push(&duplicatedValue)
 
-	// No MIR emission for DUP; stack effect has been applied
-	return nil
+	// Emit NOP to account for DUP base gas
+	mir := new(MIR)
+	mir.op = MirNOP
+	b.appendMIR(mir)
+	return mir
 }
 
 func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
@@ -452,14 +459,21 @@ func (b *MIRBasicBlock) CreateSwapMIR(n int, stack *ValueStack) *MIR {
 		topValue.kind == Konst && swapValue.kind == Konst {
 		// Both values are constants, just swap in stack
 		stack.swap(0, n)
-		return nil
+		// Emit NOP to account for SWAP base gas
+		mir := new(MIR)
+		mir.op = MirNOP
+		b.appendMIR(mir)
+		return mir
 	}
 
 	// For non-constant values, perform the actual swap on the stack
 	stack.swap(0, n)
 	// Diagnostics: after swap snapshot removed
-	// No MIR emission for SWAP; effect applied on stack
-	return nil
+	// Emit NOP to account for SWAP base gas
+	mir := new(MIR)
+	mir.op = MirNOP
+	b.appendMIR(mir)
+	return mir
 }
 
 // CreatePhiMIR creates a PHI node merging incoming stack values.
@@ -918,7 +932,13 @@ func (b *MIRBasicBlock) ResetForRebuild(preserveEntry bool) {
 
 func (b *MIRBasicBlock) CreatePushMIR(n int, value []byte, stack *ValueStack) *MIR {
 	stack.push(newValue(Konst, nil, nil, value))
-	return nil
+	// Emit a NOP to account for base gas of the PUSH opcode at runtime
+	mir := new(MIR)
+	mir.op = MirNOP
+	if mir != nil {
+		b.appendMIR(mir)
+	}
+	return mir
 }
 
 func (bb *MIRBasicBlock) GetNextOp() *MIR {

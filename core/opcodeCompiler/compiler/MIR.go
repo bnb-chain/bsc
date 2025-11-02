@@ -137,6 +137,10 @@ type MIRPreOpContext struct {
 	EvmOp      byte
 	Operands   []*uint256.Int
 	MemorySize uint64
+	// IsBlockEntry is true for the first MIR instruction of the current basic block
+	IsBlockEntry bool
+	// Block is the current MIR basic block when IsBlockEntry is true
+	Block *MIRBasicBlock
 }
 
 // Op returns the MIR operation code
