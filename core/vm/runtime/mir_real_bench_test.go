@@ -166,6 +166,7 @@ func BenchmarkMIRVsEVM_WBNB(b *testing.B) {
 				evm.StateDB.CreateAccount(address)
 				evm.StateDB.SetCode(address, code)
 
+				b.ReportAllocs()
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					_, _, _ = evm.Call(sender, address, input, cfgBase.GasLimit, uint256.MustFromBig(cfgBase.Value))
@@ -186,6 +187,7 @@ func BenchmarkMIRVsEVM_WBNB(b *testing.B) {
 				evm.StateDB.CreateAccount(address)
 				evm.StateDB.SetCode(address, code)
 
+				b.ReportAllocs()
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					_, _, _ = evm.Call(sender, address, input, cfgMIR.GasLimit, uint256.MustFromBig(cfgMIR.Value))

@@ -79,20 +79,6 @@ var calldataKeccakReturn = []byte{
 }
 
 func BenchmarkMIRVsEVM_AddMul(b *testing.B) {
-	// Dump MIR ops for visibility (not part of timing)
-	if cfg, err := compiler.GenerateMIRCFG(common.Hash{}, simpleAddMul); err == nil && cfg != nil {
-		ops := make([]byte, 0)
-		for _, bb := range cfg.GetBasicBlocks() {
-			for _, mir := range bb.Instructions() {
-				if mir != nil {
-					ops = append(ops, byte(mir.Op()))
-				}
-			}
-		}
-		if len(ops) > 0 {
-			b.Logf("MIR ops for simpleAddMul: % x", ops)
-		}
-	}
 	// Base EVM interpreter
 	cfgBase := &runtime.Config{
 		ChainConfig: params.MainnetChainConfig,

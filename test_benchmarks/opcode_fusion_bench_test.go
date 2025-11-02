@@ -358,81 +358,7 @@ func BenchmarkOpCodeFusionPerformance(b *testing.B) {
 		b.Fatalf("doCodeFusion failed: %v", err)
 	}
 
-	// Print original and fused code comparison
-	fmt.Printf("\n=== Original Code  ===\n")
-	for i := 0; i < len(code); i++ {
-		if i%16 == 0 {
-			fmt.Printf("\n%04x: ", i)
-		}
-		fmt.Printf("%02x ", code[i])
-	}
-
-	// Print human-readable opcode names for original code
-	fmt.Printf("\n\n=== Original Code (Human Readable) ===\n")
-	for i := 0; i < len(code); {
-		opcodeName := getOpcodeName(code[i])
-		fmt.Printf("0x%04x: %s (0x%02x)", i, opcodeName, code[i])
-
-		// Handle PUSH opcodes - show the data
-		if code[i] >= 0x60 && code[i] <= 0x7f { // PUSH1 to PUSH32
-			n := int(code[i] - 0x60 + 1)
-			if i+1+n <= len(code) {
-				fmt.Printf(" [data: ")
-				for j := 1; j <= n; j++ {
-					if j > 1 {
-						fmt.Printf(" ")
-					}
-					fmt.Printf("0x%02x", code[i+j])
-				}
-				fmt.Printf("]")
-			}
-		}
-		fmt.Printf("\n")
-		i++
-
-		// Skip data bytes for PUSH opcodes
-		if code[i-1] >= 0x60 && code[i-1] <= 0x7f {
-			n := int(code[i-1] - 0x60 + 1)
-			i += n
-		}
-	}
-	fmt.Printf("\n\n=== Fused Code ===\n")
-	for i := 0; i < len(fusedCode); i++ {
-		if i%16 == 0 {
-			fmt.Printf("\n%04x: ", i)
-		}
-		fmt.Printf("%02x ", fusedCode[i])
-	}
-
-	// Print human-readable opcode names for fused code
-	fmt.Printf("\n\n=== Fused Code (Human Readable) ===\n")
-	for i := 0; i < len(fusedCode); {
-		opcodeName := getOpcodeName(fusedCode[i])
-		fmt.Printf("0x%04x: %s (0x%02x)", i, opcodeName, fusedCode[i])
-
-		// Handle PUSH opcodes - show the data
-		if fusedCode[i] >= 0x60 && fusedCode[i] <= 0x7f { // PUSH1 to PUSH32
-			n := int(fusedCode[i] - 0x60 + 1)
-			if i+1+n <= len(fusedCode) {
-				fmt.Printf(" [data: ")
-				for j := 1; j <= n; j++ {
-					if j > 1 {
-						fmt.Printf(" ")
-					}
-					fmt.Printf("0x%02x", fusedCode[i+j])
-				}
-				fmt.Printf("]")
-			}
-		}
-		fmt.Printf("\n")
-		i++
-
-		// Skip data bytes for PUSH opcodes
-		if fusedCode[i-1] >= 0x60 && fusedCode[i-1] <= 0x7f {
-			n := int(fusedCode[i-1] - 0x60 + 1)
-			i += n
-		}
-	}
+	// Omit verbose disassembly and code dumps during benchmarks
 
 	// Create tracers for execution tracing
 	//originalTracer := NewBytecodeTracer()
@@ -529,8 +455,7 @@ func BenchmarkOpCodeFusionWithUSDTContract(b *testing.B) {
 	// Apply fusion to get optimized code
 	fusedCode, err := compiler.DoCodeFusion(append([]byte{}, realCode...))
 	if err != nil {
-		// If fusion fails (e.g., code already contains optimized opcodes), use original code
-		fmt.Printf("doCodeFusion failed: %v, using original code for fused tests\n", err)
+		// If fusion fails (e.g., code already contains optimized opcodes), use original code silently
 		fusedCode = realCode
 	}
 	_ = fusedCode // Use the variable to avoid unused variable warning
@@ -668,8 +593,7 @@ func BenchmarkOpCodeFusionWithWBNBContract(b *testing.B) {
 	// Apply fusion to get optimized code
 	fusedCode, err := compiler.DoCodeFusion(append([]byte{}, realCode...))
 	if err != nil {
-		// If fusion fails (e.g., code already contains optimized opcodes), use original code
-		fmt.Printf("doCodeFusion failed: %v, using original code for fused tests\n", err)
+		// If fusion fails (e.g., code already contains optimized opcodes), use original code silently
 		fusedCode = realCode
 	}
 	_ = fusedCode // Use the variable to avoid unused variable warning
