@@ -129,6 +129,16 @@ type MIR struct {
 	genStackDepth int            // stack depth at generation time (for debugging/dumps)
 }
 
+// MIRPreOpContext carries pre-execution information for metering hooks.
+// Operands contains evaluated operand values in MIR operand order.
+// MemorySize, if non-zero, is the requested memory size in bytes for the op.
+type MIRPreOpContext struct {
+	M          *MIR
+	EvmOp      byte
+	Operands   []*uint256.Int
+	MemorySize uint64
+}
+
 // Op returns the MIR operation code
 func (m *MIR) Op() MirOperation { return m.op }
 

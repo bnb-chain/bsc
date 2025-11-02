@@ -122,7 +122,7 @@ type MIRInterpreter struct {
 	// globalResultsBySig[evmPC][idx] = value
 	globalResultsBySig map[uint64]map[int]*uint256.Int
 	// Optional pre-execution hook for each MIR instruction (e.g., gas accounting)
-	beforeOp func(*MIR) error
+	beforeOp func(*MIRPreOpContext) error
 }
 
 // mirGlobalTracer is an optional global tracer invoked for each MIR instruction.
@@ -211,7 +211,7 @@ func (it *MIRInterpreter) SetTracerExtended(cb func(*MIR)) {
 // SetBeforeOpHook sets a callback invoked before executing each MIR instruction.
 // If the callback returns a non-nil error, execution of the current instruction is aborted
 // and the error is propagated to the caller.
-func (it *MIRInterpreter) SetBeforeOpHook(cb func(*MIR) error) {
+func (it *MIRInterpreter) SetBeforeOpHook(cb func(*MIRPreOpContext) error) {
 	it.beforeOp = cb
 }
 
@@ -444,7 +444,137 @@ var (
 func (it *MIRInterpreter) exec(m *MIR) error {
 	// Allow embedding runtimes (e.g., adapter) to run pre-op logic such as gas metering
 	if it.beforeOp != nil {
-		if err := it.beforeOp(m); err != nil {
+		// Build a lightweight context with evaluated operands when useful and an estimated memory size
+		ctx := &MIRPreOpContext{M: m, EvmOp: m.evmOp}
+		// Evaluate operands into concrete values, preserving order
+		if len(m.oprands) > 0 {
+			ops := make([]*uint256.Int, 0, len(m.oprands))
+			for i := 0; i < len(m.oprands); i++ {
+				v := it.evalValue(m.oprands[i])
+				if v == nil {
+					ops = append(ops, uint256.NewInt(0))
+					continue
+				}
+				ops = append(ops, new(uint256.Int).Set(v))
+			}
+			ctx.Operands = ops
+		}
+		// Compute a requested memory size for common memory-affecting ops
+		switch m.op {
+		case MirMLOAD:
+			if len(ctx.Operands) >= 1 {
+				off := ctx.Operands[0].Uint64()
+				ctx.MemorySize = off + 32
+			}
+		case MirMSTORE:
+			if len(ctx.Operands) >= 1 {
+				off := ctx.Operands[0].Uint64()
+				ctx.MemorySize = off + 32
+			}
+		case MirMSTORE8:
+			if len(ctx.Operands) >= 1 {
+				off := ctx.Operands[0].Uint64()
+				ctx.MemorySize = off + 1
+			}
+		case MirMCOPY:
+			if len(ctx.Operands) >= 3 {
+				dst := ctx.Operands[0].Uint64()
+				src := ctx.Operands[1].Uint64()
+				ln := ctx.Operands[2].Uint64()
+				a := dst + ln
+				b := src + ln
+				if a > b {
+					ctx.MemorySize = a
+				} else {
+					ctx.MemorySize = b
+				}
+			}
+		case MirCALLDATACOPY, MirCODECOPY, MirRETURNDATACOPY:
+			if len(ctx.Operands) >= 3 {
+				dst := ctx.Operands[0].Uint64()
+				ln := ctx.Operands[2].Uint64()
+				ctx.MemorySize = dst + ln
+			}
+		case MirEXTCODECOPY:
+			if len(ctx.Operands) >= 4 {
+				dst := ctx.Operands[1].Uint64()
+				ln := ctx.Operands[3].Uint64()
+				ctx.MemorySize = dst + ln
+			}
+		case MirKECCAK256:
+			if len(ctx.Operands) >= 2 {
+				off := ctx.Operands[0].Uint64()
+				ln := ctx.Operands[1].Uint64()
+				ctx.MemorySize = off + ln
+			}
+		case MirRETURN, MirREVERT:
+			if len(ctx.Operands) >= 2 {
+				off := ctx.Operands[0].Uint64()
+				ln := ctx.Operands[1].Uint64()
+				ctx.MemorySize = off + ln
+			}
+		case MirLOG0, MirLOG1, MirLOG2, MirLOG3, MirLOG4:
+			if len(ctx.Operands) >= 2 {
+				off := ctx.Operands[0].Uint64()
+				ln := ctx.Operands[1].Uint64()
+				ctx.MemorySize = off + ln
+			}
+		case MirCALL:
+			if len(ctx.Operands) >= 7 {
+				inOff := ctx.Operands[3].Uint64()
+				inSz := ctx.Operands[4].Uint64()
+				outOff := ctx.Operands[5].Uint64()
+				outSz := ctx.Operands[6].Uint64()
+				a := inOff + inSz
+				b := outOff + outSz
+				if a > b {
+					ctx.MemorySize = a
+				} else {
+					ctx.MemorySize = b
+				}
+			}
+		case MirCALLCODE:
+			if len(ctx.Operands) >= 7 {
+				inOff := ctx.Operands[3].Uint64()
+				inSz := ctx.Operands[4].Uint64()
+				outOff := ctx.Operands[5].Uint64()
+				outSz := ctx.Operands[6].Uint64()
+				a := inOff + inSz
+				b := outOff + outSz
+				if a > b {
+					ctx.MemorySize = a
+				} else {
+					ctx.MemorySize = b
+				}
+			}
+		case MirDELEGATECALL, MirSTATICCALL:
+			if len(ctx.Operands) >= 6 {
+				inOff := ctx.Operands[2].Uint64()
+				inSz := ctx.Operands[3].Uint64()
+				outOff := ctx.Operands[4].Uint64()
+				outSz := ctx.Operands[5].Uint64()
+				a := inOff + inSz
+				b := outOff + outSz
+				if a > b {
+					ctx.MemorySize = a
+				} else {
+					ctx.MemorySize = b
+				}
+			}
+		case MirCREATE:
+			if len(ctx.Operands) >= 3 {
+				off := ctx.Operands[1].Uint64()
+				ln := ctx.Operands[2].Uint64()
+				ctx.MemorySize = off + ln
+			}
+		case MirCREATE2:
+			if len(ctx.Operands) >= 3 {
+				off := ctx.Operands[1].Uint64()
+				ln := ctx.Operands[2].Uint64()
+				ctx.MemorySize = off + ln
+			}
+		}
+		if err := it.beforeOp(ctx); err != nil {
 			return err
 		}
 	}

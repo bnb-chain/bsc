@@ -6,8 +6,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	coretypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -17,6 +19,7 @@ type MIRInterpreterAdapter struct {
 	mirInterpreter *compiler.MIRInterpreter
 	currentSelf    common.Address
 	table          *JumpTable
+	memShadow      *Memory
 }
 
 // NewMIRInterpreterAdapter creates a new MIR interpreter adapter for EVM
@@ -90,6 +93,8 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 	default:
 		adapter.table = &frontierInstructionSet
 	}
+	// Initialize a shadow memory for dynamic memory gas accounting
+	adapter.memShadow = NewMemory()
 	return adapter
 }
 
@@ -132,10 +137,11 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 
 	// Install a pre-op hook to charge constant gas per opcode and any eliminated-op constants per block entry
 	var curBlock *compiler.MIRBasicBlock
-	adapter.mirInterpreter.SetBeforeOpHook(func(m *compiler.MIR) error {
-		if m == nil {
+	adapter.mirInterpreter.SetBeforeOpHook(func(ctx *compiler.MIRPreOpContext) error {
+		if ctx == nil || ctx.M == nil {
 			return nil
 		}
+		m := ctx.M
 		// Resolve the owning basic block for this EVM pc
 		if cfg != nil {
 			if bb := cfg.BlockByPC(uint(m.EvmPC())); bb != nil {
@@ -168,7 +174,7 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 			}
 		}
 		// Charge constant gas for this emitted opcode
-		op := OpCode(m.EvmOp())
+		op := OpCode(ctx.EvmOp)
 		if adapter.table != nil && (*adapter.table)[op] != nil {
 			constGas := (*adapter.table)[op].constantGas
 			if constGas > 0 {
@@ -176,6 +182,314 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 					return ErrOutOfGas
 				}
 				contract.Gas -= constGas
+			}
+		}
+		// Dynamic gas metering
+		// Ensure shadow memory reflects prior expansions
+		if adapter.memShadow == nil {
+			adapter.memShadow = NewMemory()
+		}
+		// Helper: resize shadow memory after charging
+		resizeShadow := func(sz uint64) {
+			if sz > 0 {
+				adapter.memShadow.Resize(sz)
+			}
+		}
+		// Helper: toWordSize
+		toWord := func(x uint64) uint64 { return (x + 31) / 32 }
+		switch op {
+		case SLOAD:
+			// EIP-2929 SLOAD dynamic gas
+			if adapter.evm.chainRules.IsBerlin {
+				if len(ctx.Operands) >= 1 {
+					st := newstack()
+					st.push(new(uint256.Int).Set(ctx.Operands[0])) // peek -> slot
+					gas, err := gasSLoadEIP2929(adapter.evm, contract, st, adapter.memShadow, 0)
+					if err != nil {
+						return err
+					}
+					if contract.Gas < gas {
+						return ErrOutOfGas
+					}
+					contract.Gas -= gas
+				}
+			}
+		case BALANCE, EXTCODESIZE, EXTCODEHASH:
+			// EIP-2929 account warm/cold surcharge
+			if adapter.evm.chainRules.IsBerlin {
+				if len(ctx.Operands) >= 1 {
+					st := newstack()
+					st.push(new(uint256.Int).Set(ctx.Operands[0])) // peek -> address
+					gas, err := gasEip2929AccountCheck(adapter.evm, contract, st, adapter.memShadow, 0)
+					if err != nil {
+						return err
+					}
+					if gas > 0 {
+						if contract.Gas < gas {
+							return ErrOutOfGas
+						}
+						contract.Gas -= gas
+					}
+				}
+			}
+		case EXP:
+			// Dynamic gas based on exponent byte length
+			if len(ctx.Operands) >= 2 {
+				exp := ctx.Operands[1]
+				expBytes := uint64((exp.BitLen() + 7) / 8)
+				perByte := params.ExpByteFrontier
+				if adapter.evm.chainRules.IsEIP158 {
+					perByte = params.ExpByteEIP158
+				}
+				add := params.ExpGas + perByte*expBytes
+				if contract.Gas < add {
+					return ErrOutOfGas
+				}
+				contract.Gas -= add
+			}
+		case MLOAD, MSTORE, MSTORE8, RETURN, REVERT, CREATE, CREATE2:
+			if ctx.MemorySize > 0 {
+				gas, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
+				if err != nil {
+					return err
+				}
+				if contract.Gas < gas {
+					return ErrOutOfGas
+				}
+				contract.Gas -= gas
+				// EIP-3860 initcode per-word gas for CREATE/CREATE2
+				if op == CREATE || op == CREATE2 {
+					// operands: value, offset, size, (salt)
+					if len(ctx.Operands) >= 3 {
+						size := ctx.Operands[2].Uint64()
+						if size > params.MaxInitCodeSize {
+							return fmt.Errorf("%w: size %d", ErrMaxInitCodeSizeExceeded, size)
+						}
+						more := params.InitCodeWordGas * toWord(size)
+						if contract.Gas < more {
+							return ErrOutOfGas
+						}
+						contract.Gas -= more
+					}
+				}
+				resizeShadow(ctx.MemorySize)
+			}
+		case CALLDATACOPY, CODECOPY, RETURNDATACOPY:
+			if ctx.MemorySize > 0 {
+				gas, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
+				if err != nil {
+					return err
+				}
+				// copy gas per word: size is operand[2]
+				var size uint64
+				if len(ctx.Operands) >= 3 {
+					size = ctx.Operands[2].Uint64()
+				}
+				copyGas := toWord(size) * params.CopyGas
+				add := gas + copyGas
+				if contract.Gas < add {
+					return ErrOutOfGas
+				}
+				contract.Gas -= add
+				resizeShadow(ctx.MemorySize)
+			}
+		case EXTCODECOPY:
+			if ctx.MemorySize > 0 {
+				gas, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
+				if err != nil {
+					return err
+				}
+				var size uint64
+				if len(ctx.Operands) >= 4 {
+					size = ctx.Operands[3].Uint64()
+				}
+				copyGas := toWord(size) * params.CopyGas
+				add := gas + copyGas
+				if contract.Gas < add {
+					return ErrOutOfGas
+				}
+				contract.Gas -= add
+				resizeShadow(ctx.MemorySize)
+			}
+			// EIP-2929 cold-warm surcharge for EXTCODECOPY
+			if adapter.evm.chainRules.IsBerlin {
+				if len(ctx.Operands) >= 1 {
+					st := newstack()
+					st.push(new(uint256.Int).Set(ctx.Operands[0])) // address
+					gas, err := gasEip2929AccountCheck(adapter.evm, contract, st, adapter.memShadow, 0)
+					if err != nil {
+						return err
+					}
+					if gas > 0 {
+						if contract.Gas < gas {
+							return ErrOutOfGas
+						}
+						contract.Gas -= gas
+					}
+				}
+			}
+		case MCOPY:
+			if ctx.MemorySize > 0 {
+				gas, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
+				if err != nil {
+					return err
+				}
+				var size uint64
+				if len(ctx.Operands) >= 3 {
+					size = ctx.Operands[2].Uint64()
+				}
+				copyGas := toWord(size) * params.CopyGas
+				add := gas + copyGas
+				if contract.Gas < add {
+					return ErrOutOfGas
+				}
+				contract.Gas -= add
+				resizeShadow(ctx.MemorySize)
+			}
+		case KECCAK256:
+			if ctx.MemorySize > 0 {
+				gas, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
+				if err != nil {
+					return err
+				}
+				var size uint64
+				if len(ctx.Operands) >= 2 {
+					size = ctx.Operands[1].Uint64()
+				}
+				wordGas := toWord(size) * params.Keccak256WordGas
+				add := gas + wordGas
+				if contract.Gas < add {
+					return ErrOutOfGas
+				}
+				contract.Gas -= add
+				resizeShadow(ctx.MemorySize)
+			}
+		case LOG0, LOG1, LOG2, LOG3, LOG4:
+			if ctx.MemorySize > 0 {
+				gas, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
+				if err != nil {
+					return err
+				}
+				// Topics and data costs
+				n := int(op - LOG0)
+				add := gas + uint64(n)*params.LogTopicGas
+				var size uint64
+				if len(ctx.Operands) >= 2 {
+					size = ctx.Operands[1].Uint64()
+				}
+				// LogDataGas is per byte
+				add += size * params.LogDataGas
+				if contract.Gas < add {
+					return ErrOutOfGas
+				}
+				contract.Gas -= add
+				resizeShadow(ctx.MemorySize)
+			}
+		case SELFDESTRUCT:
+			// Charge dynamic gas according to fork rules
+			var gas uint64
+			var err error
+			if adapter.evm.chainRules.IsLondon {
+				gas, err = gasSelfdestructEIP3529(adapter.evm, contract, newstack(), adapter.memShadow, 0)
+			} else if adapter.evm.chainRules.IsBerlin {
+				gas, err = gasSelfdestructEIP2929(adapter.evm, contract, newstack(), adapter.memShadow, 0)
+			}
+			if err != nil {
+				return err
+			}
+			if gas > 0 {
+				if contract.Gas < gas {
+					return ErrOutOfGas
+				}
+				contract.Gas -= gas
+			}
+		case SSTORE:
+			// Build a tiny stack where Back(0)=key, Back(1)=value per gasSStore contract
+			if len(ctx.Operands) >= 2 {
+				st := newstack()
+				// push value then key so Back(0)=key, Back(1)=value
+				st.push(new(uint256.Int).Set(ctx.Operands[1]))
+				st.push(new(uint256.Int).Set(ctx.Operands[0]))
+				gas, err := gasSStore(adapter.evm, contract, st, adapter.memShadow, 0)
+				if err != nil {
+					return err
+				}
+				if contract.Gas < gas {
+					return ErrOutOfGas
+				}
+				contract.Gas -= gas
+			}
+		case CALL, CALLCODE, DELEGATECALL, STATICCALL:
+			// Use vm gas calculators to set evm.callGasTemp and deduct dynamic gas
+			// Build stack so Back(0)=requestedGas, Back(1)=addr, Back(2)=value (if present)
+			st := newstack()
+			// Ensure ctx.Operands length checks per variant
+			switch op {
+			case CALL, CALLCODE:
+				if len(ctx.Operands) < 7 {
+					return nil
+				}
+				reqGas := new(uint256.Int).Set(ctx.Operands[0])
+				addr := new(uint256.Int)
+				// address at operands[1]
+				addr.Set(ctx.Operands[1])
+				val := new(uint256.Int).Set(ctx.Operands[2])
+				st.push(val)    // Back(2)
+				st.push(addr)   // Back(1)
+				st.push(reqGas) // Back(0)
+				var dyn uint64
+				var err error
+				if adapter.evm.chainRules.IsBerlin {
+					if op == CALL {
+						dyn, err = gasCallEIP2929(adapter.evm, contract, st, adapter.memShadow, ctx.MemorySize)
+					} else {
+						dyn, err = gasCallCodeEIP2929(adapter.evm, contract, st, adapter.memShadow, ctx.MemorySize)
+					}
+				} else {
+					if op == CALL {
+						dyn, err = gasCall(adapter.evm, contract, st, adapter.memShadow, ctx.MemorySize)
+					} else {
+						dyn, err = gasCallCode(adapter.evm, contract, st, adapter.memShadow, ctx.MemorySize)
+					}
+				}
+				if err != nil {
+					return err
+				}
+				if contract.Gas < dyn {
+					return ErrOutOfGas
+				}
+				contract.Gas -= dyn
+				resizeShadow(ctx.MemorySize)
+			case DELEGATECALL, STATICCALL:
+				if len(ctx.Operands) < 6 {
+					return nil
+				}
+				st := newstack()
+				reqGas := new(uint256.Int).Set(ctx.Operands[0])
+				st.push(reqGas) // Back(0)
+				var dyn uint64
+				var err error
+				if adapter.evm.chainRules.IsBerlin {
+					if op == DELEGATECALL {
+						dyn, err = gasDelegateCallEIP2929(adapter.evm, contract, st, adapter.memShadow, ctx.MemorySize)
+					} else {
+						dyn, err = gasStaticCallEIP2929(adapter.evm, contract, st, adapter.memShadow, ctx.MemorySize)
+					}
+				} else {
+					if op == DELEGATECALL {
+						dyn, err = gasDelegateCall(adapter.evm, contract, st, adapter.memShadow, ctx.MemorySize)
+					} else {
+						dyn, err = gasStaticCall(adapter.evm, contract, st, adapter.memShadow, ctx.MemorySize)
+					}
+				}
+				if err != nil {
+					return err
+				}
+				if contract.Gas < dyn {
+					return ErrOutOfGas
+				}
+				contract.Gas -= dyn
+				resizeShadow(ctx.MemorySize)
 			}
 		}
 		return nil
@@ -330,8 +644,11 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 	// Wire external execution to stock EVM for CALL-family ops
 	env.ExternalCall = func(kind byte, addr20 [20]byte, value *uint256.Int, callInput []byte) (ret []byte, success bool) {
 		to := common.BytesToAddress(addr20[:])
-		// Heuristic: use current frame gas as upper bound. Gas accounting is handled by stock EVM.
-		gas := contract.Gas
+		// Use computed callGasTemp (set during pre-op hook) and apply stipend if value transferred
+		gas := adapter.evm.callGasTemp
+		if (kind == 0 || kind == 1) && value != nil && !value.IsZero() {
+			gas += params.CallStipend
+		}
 		var (
 			out      []byte
 			leftover uint64
@@ -349,7 +666,8 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 		default:
 			return nil, false
 		}
-		_ = leftover
+		// Refund leftover like stock interpreter
+		contract.RefundGas(leftover, adapter.evm.Config.Tracer, tracing.GasChangeCallLeftOverRefunded)
 		if err != nil {
 			return out, false
 		}
@@ -359,6 +677,10 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 	// Wire CREATE and CREATE2 to stock EVM
 	env.CreateContract = func(kind byte, value *uint256.Int, init []byte, salt *[32]byte) (addr [20]byte, success bool, ret []byte) {
 		gas := contract.Gas
+		// Apply EIP-150: parent gas reduction by 1/64 before passing to child
+		gas -= gas / 64
+		// Deduct from parent before call, matching opCreate/opCreate2
+		contract.UseGas(gas, adapter.evm.Config.Tracer, tracing.GasChangeCallContractCreation)
 		var (
 			out      []byte
 			newAddr  common.Address
@@ -377,7 +699,8 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 			out, newAddr, leftover, err = adapter.evm.Create2(contract, init, gas, value, saltU)
 		}
 		copy(addr[:], newAddr[:])
-		_ = leftover
+		// Refund leftover like stock interpreter
+		contract.RefundGas(leftover, adapter.evm.Config.Tracer, tracing.GasChangeCallLeftOverRefunded)
 		if err != nil {
 			return addr, false, out
 		}
