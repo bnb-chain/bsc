@@ -16,6 +16,7 @@ type MIRInterpreterAdapter struct {
 	evm            *EVM
 	mirInterpreter *compiler.MIRInterpreter
 	currentSelf    common.Address
+	table          *JumpTable
 }
 
 // NewMIRInterpreterAdapter creates a new MIR interpreter adapter for EVM
@@ -58,6 +59,37 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 	}
 
 	adapter.mirInterpreter = compiler.NewMIRInterpreter(env)
+	// Build a jump table matching current chain rules for gas accounting
+	switch {
+	case evm.chainRules.IsVerkle:
+		adapter.table = &verkleInstructionSet
+	case evm.chainRules.IsPrague:
+		adapter.table = &pragueInstructionSet
+	case evm.chainRules.IsCancun:
+		adapter.table = &cancunInstructionSet
+	case evm.chainRules.IsShanghai:
+		adapter.table = &shanghaiInstructionSet
+	case evm.chainRules.IsMerge:
+		adapter.table = &mergeInstructionSet
+	case evm.chainRules.IsLondon:
+		adapter.table = &londonInstructionSet
+	case evm.chainRules.IsBerlin:
+		adapter.table = &berlinInstructionSet
+	case evm.chainRules.IsIstanbul:
+		adapter.table = &istanbulInstructionSet
+	case evm.chainRules.IsConstantinople:
+		adapter.table = &constantinopleInstructionSet
+	case evm.chainRules.IsByzantium:
+		adapter.table = &byzantiumInstructionSet
+	case evm.chainRules.IsEIP158:
+		adapter.table = &spuriousDragonInstructionSet
+	case evm.chainRules.IsEIP150:
+		adapter.table = &tangerineWhistleInstructionSet
+	case evm.chainRules.IsHomestead:
+		adapter.table = &homesteadInstructionSet
+	default:
+		adapter.table = &frontierInstructionSet
+	}
 	return adapter
 }
 
@@ -91,6 +123,63 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 
 	// Set up MIR execution environment with contract-specific data
 	adapter.setupExecutionEnvironment(contract, input)
+
+	// Wire gas left getter so MirGAS can read it if needed
+	if adapter.mirInterpreter != nil && adapter.mirInterpreter.GetEnv() != nil {
+		env := adapter.mirInterpreter.GetEnv()
+		env.GasLeft = func() uint64 { return contract.Gas }
+	}
+
+	// Install a pre-op hook to charge constant gas per opcode and any eliminated-op constants per block entry
+	var curBlock *compiler.MIRBasicBlock
+	adapter.mirInterpreter.SetBeforeOpHook(func(m *compiler.MIR) error {
+		if m == nil {
+			return nil
+		}
+		// Resolve the owning basic block for this EVM pc
+		if cfg != nil {
+			if bb := cfg.BlockByPC(uint(m.EvmPC())); bb != nil {
+				if curBlock != bb {
+					// On block entry, charge constant gas for eliminated ops: (total - emitted) * const
+					evmCounts := bb.EVMOpCounts()
+					emittedCounts := bb.EmittedOpCounts()
+					var elimGas uint64
+					for i := 0; i < 256; i++ {
+						cnt := evmCounts[byte(i)]
+						emitted := emittedCounts[byte(i)]
+						if cnt > emitted {
+							op := OpCode(byte(i))
+							if adapter.table != nil && (*adapter.table)[op] != nil {
+								constGas := (*adapter.table)[op].constantGas
+								if constGas > 0 {
+									elimGas += constGas * uint64(cnt-emitted)
+								}
+							}
+						}
+					}
+					if elimGas > 0 {
+						if contract.Gas < elimGas {
+							return ErrOutOfGas
+						}
+						contract.Gas -= elimGas
+					}
+					curBlock = bb
+				}
+			}
+		}
+		// Charge constant gas for this emitted opcode
+		op := OpCode(m.EvmOp())
+		if adapter.table != nil && (*adapter.table)[op] != nil {
+			constGas := (*adapter.table)[op].constantGas
+			if constGas > 0 {
+				if contract.Gas < constGas {
+					return ErrOutOfGas
+				}
+				contract.Gas -= constGas
+			}
+		}
+		return nil
+	})
 
 	// Selector-based direct dispatch is disabled; always fall back to default entry.
 

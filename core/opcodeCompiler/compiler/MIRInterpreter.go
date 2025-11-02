@@ -121,6 +121,8 @@ type MIRInterpreter struct {
 	phiLastPredBySig map[uint64]map[int]*MIRBasicBlock
 	// globalResultsBySig[evmPC][idx] = value
 	globalResultsBySig map[uint64]map[int]*uint256.Int
+	// Optional pre-execution hook for each MIR instruction (e.g., gas accounting)
+	beforeOp func(*MIR) error
 }
 
 // mirGlobalTracer is an optional global tracer invoked for each MIR instruction.
@@ -204,6 +206,13 @@ func (it *MIRInterpreter) SetTracer(cb func(MirOperation)) {
 // It is not thread-safe.
 func (it *MIRInterpreter) SetTracerExtended(cb func(*MIR)) {
 	it.tracerEx = cb
+}
+
+// SetBeforeOpHook sets a callback invoked before executing each MIR instruction.
+// If the callback returns a non-nil error, execution of the current instruction is aborted
+// and the error is propagated to the caller.
+func (it *MIRInterpreter) SetBeforeOpHook(cb func(*MIR) error) {
+	it.beforeOp = cb
 }
 
 // SetGlobalMIRTracer sets a process-wide tracer that new MIR interpreters will inherit.
@@ -433,6 +442,12 @@ var (
 )
 
 func (it *MIRInterpreter) exec(m *MIR) error {
+	// Allow embedding runtimes (e.g., adapter) to run pre-op logic such as gas metering
+	if it.beforeOp != nil {
+		if err := it.beforeOp(m); err != nil {
+			return err
+		}
+	}
 	// Try fast handler if available
 	if h := mirHandlers[byte(m.op)]; h != nil {
 		if it.tracerEx != nil {

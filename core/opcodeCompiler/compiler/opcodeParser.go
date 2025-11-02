@@ -216,6 +216,14 @@ func NewCFG(hash common.Hash, code []byte) (c *CFG) {
 	return c
 }
 
+// BlockByPC returns the basic block that owns the given EVM program counter, if known.
+func (c *CFG) BlockByPC(pc uint) *MIRBasicBlock {
+	if c == nil || c.pcToBlock == nil {
+		return nil
+	}
+	return c.pcToBlock[pc]
+}
+
 func (c *CFG) getMemoryAccessor() *MemoryAccessor {
 	if c.memoryAccessor == nil {
 		c.memoryAccessor = new(MemoryAccessor)
@@ -639,6 +647,14 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 	}
 	for i < len(code) {
 		op := ByteCode(code[i])
+		// Map this EVM pc to the owning basic block for runtime lookups
+		if c.pcToBlock != nil {
+			c.pcToBlock[uint(i)] = curBB
+		}
+		// Count original EVM opcodes for static gas accounting
+		if curBB.evmOpCounts != nil {
+			curBB.evmOpCounts[byte(op)]++
+		}
 		// Record EVM location for MIR mapping
 		currentEVMBuildPC = uint(i)
 		currentEVMBuildOp = byte(op)

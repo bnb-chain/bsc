@@ -50,6 +50,11 @@ type MIRBasicBlock struct {
 	children       []*MIRBasicBlock
 	instructions   []*MIR
 	pos            int
+	// EVM opcode accounting for gas parity
+	// evmOpCounts counts every original EVM opcode encountered while building this block
+	// emittedOpCounts counts only those opcodes for which a MIR instruction was emitted
+	evmOpCounts     map[byte]uint32
+	emittedOpCounts map[byte]uint32
 	// SSA-like stack modeling
 	entryStack     []Value
 	exitStack      []Value
@@ -68,6 +73,30 @@ func (b *MIRBasicBlock) Size() uint {
 // Instructions returns the MIR instructions within this basic block
 func (b *MIRBasicBlock) Instructions() []*MIR {
 	return b.instructions
+}
+
+// EVMOpCounts returns a copy of the opcode counts encountered while building this block.
+func (b *MIRBasicBlock) EVMOpCounts() map[byte]uint32 {
+	if b == nil || b.evmOpCounts == nil {
+		return nil
+	}
+	out := make(map[byte]uint32, len(b.evmOpCounts))
+	for k, v := range b.evmOpCounts {
+		out[k] = v
+	}
+	return out
+}
+
+// EmittedOpCounts returns a copy of the opcode counts that resulted in MIR emission.
+func (b *MIRBasicBlock) EmittedOpCounts() map[byte]uint32 {
+	if b == nil || b.emittedOpCounts == nil {
+		return nil
+	}
+	out := make(map[byte]uint32, len(b.emittedOpCounts))
+	for k, v := range b.emittedOpCounts {
+		out[k] = v
+	}
+	return out
 }
 
 func (b *MIRBasicBlock) FirstPC() uint {
@@ -136,6 +165,10 @@ func (b *MIRBasicBlock) appendMIR(mir *MIR) *MIR {
 	// Attach EVM mapping captured by the CFG builder
 	mir.evmPC = currentEVMBuildPC
 	mir.evmOp = currentEVMBuildOp
+	// Record that we emitted a MIR for this originating EVM opcode
+	if b.emittedOpCounts != nil {
+		b.emittedOpCounts[currentEVMBuildOp]++
+	}
 	// Pre-encode operand info to avoid runtime eval costs
 	if len(mir.oprands) > 0 {
 		mir.opKinds = make([]byte, len(mir.oprands))
@@ -309,6 +342,8 @@ func NewMIRBasicBlock(blockNum, pc uint, parent *MIRBasicBlock) *MIRBasicBlock {
 	bb.parentsBitmap = &bitmap{0}  // Initialize with at least 1 byte
 	bb.childrenBitmap = &bitmap{0} // Initialize with at least 1 byte
 	bb.instructions = []*MIR{}
+	bb.evmOpCounts = make(map[byte]uint32)
+	bb.emittedOpCounts = make(map[byte]uint32)
 	bb.entryStack = nil
 	bb.exitStack = nil
 	bb.incomingStacks = make(map[*MIRBasicBlock][]Value)
