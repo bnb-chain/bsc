@@ -38,7 +38,7 @@ const usdtHex = "0x608060405234801561001057600080fd5b50600436106101425760003560e
 func BenchmarkMIRVsEVM_USDT(b *testing.B) {
 	// Base and MIR configs
 	cfgBase := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true}}
+	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}}
 	compiler.EnableOpcodeParse()
 
 	// decode bytecode
@@ -119,7 +119,7 @@ const wbnbHex = "0x6060604052600436106100af576000357c010000000000000000000000000
 func BenchmarkMIRVsEVM_WBNB(b *testing.B) {
 	only := strings.ToUpper(os.Getenv("ONLY"))
 	cfgBase := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true}}
+	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}}
 	compiler.EnableOpcodeParse()
 
 	code, err := hex.DecodeString(wbnbHex[2:])
@@ -514,7 +514,7 @@ func TestUSDT_MIRVsEVM_Parity(t *testing.T) {
 	// Use BSC chain config at/after London so SHR/SHL/SAR and others are enabled
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}}
 	compiler.EnableOpcodeParse()
 
 	// Prepare simple args (zero address, 1)
@@ -730,7 +730,7 @@ func TestUSDT_Transfer_EVMvsMIR(t *testing.T) {
 	// Base and MIR configs
 	// Use a post-Constantinople/London block so SHR and friends are enabled and MIR can execute
 	base := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(15000000), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(15000000), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true}}
+	mir := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(15000000), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}}
 	compiler.EnableOpcodeParse()
 
 	// Prepare transfer(to, amount)

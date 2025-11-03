@@ -48,7 +48,7 @@ func TestMIRParity_USDT_Basic(t *testing.T) {
 	// Use BSC config at/after London to match benches and opcode availability
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	baseCfg := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mirCfg := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true}}
+	mirCfg := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}}
 
 	// Prepare states
 	baseCfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
@@ -134,7 +134,7 @@ func TestMIRParity_WBNB_Basic(t *testing.T) {
 
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	baseCfg := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mirCfg := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true}}
+	mirCfg := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}}
 
 	baseCfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	mirCfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
@@ -200,7 +200,7 @@ func TestMIRParity_Tiny(t *testing.T) {
 
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	baseCfg := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 1_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mirCfg := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 1_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true}}
+	mirCfg := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 1_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}}
 
 	baseCfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	mirCfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
@@ -247,7 +247,7 @@ func TestMIRGasTrace_USDT_Decimals(t *testing.T) {
 	}
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	baseCfg := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mirCfg := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true}}
+	mirCfg := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}}
 
 	// Input: decimals()
 	input := []byte{0x31, 0x3c, 0xe5, 0x67}

@@ -153,6 +153,11 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 		// Charge constant gas for this emitted opcode
 		// Determine originating EVM opcode for this MIR
 		evmOp := OpCode(ctx.EvmOp)
+		// Emit tracer OnOpcode before charging to maintain step-count parity
+		if adapter.evm != nil && adapter.evm.Config.Tracer != nil && adapter.evm.Config.Tracer.OnOpcode != nil {
+			scope := &ScopeContext{Memory: adapter.memShadow, Stack: nil, Contract: contract}
+			adapter.evm.Config.Tracer.OnOpcode(uint64(ctx.M.EvmPC()), byte(evmOp), contract.Gas, 0, scope, nil, adapter.evm.depth, nil)
+		}
 		// Charge per-op constant gas for the originating EVM opcode, but skip PHI (compiler artifact)
 		if ctx.M.Op() != compiler.MirPHI {
 			if adapter.table != nil && (*adapter.table)[evmOp] != nil {

@@ -211,7 +211,13 @@ func (b *MIRBasicBlock) CreateUnaryOpMIR(op MirOperation, stack *ValueStack) (mi
 
 	// Only push result if the operation wasn't optimized away (MirNOP)
 	if mir.op != MirNOP {
-		stack.push(mir.Result())
+		// Only push for producer ops; copy ops do not produce a stack item
+		switch op {
+		case MirCALLDATACOPY, MirCODECOPY, MirEXTCODECOPY, MirRETURNDATACOPY, MirDATACOPY:
+			// no push
+		default:
+			stack.push(mir.Result())
+		}
 	}
 	// If mir.op == MirNOP, doPeepHole already pushed the optimized constant to stack
 	if mir.op == MirNOP {
@@ -283,14 +289,8 @@ func (b *MIRBasicBlock) CreateBinOpMIRWithMA(op MirOperation, stack *ValueStack,
 		}
 	}
 
-	// Peephole with memory knowledge, e.g., KECCAK256 over known bytes
-	if accessor != nil && op == MirKECCAK256 {
-		// Ensure operand order [offset, size] -> (opnd2, opnd1)
-		if doPeepHole(op, &opnd2, &opnd1, stack, accessor) {
-			// Optimized away; do not emit MirNOP
-			return nil
-		}
-	}
+	// Disable KECCAK256 peephole for correctness with dynamic calldata-driven inputs
+	// (kept for future re-enable once proven fully safe across call paths)
 	// For KECCAK256 ensure operands are [offset, size]
 	if op == MirKECCAK256 {
 		// operands: [offset, size] -> (opnd2, opnd1)
@@ -682,17 +682,17 @@ func (b *MIRBasicBlock) CreateBlockInfoMIR(op MirOperation, stack *ValueStack) *
 		mir.oprands = []*Value{&offset}
 
 	case MirCALLDATACOPY:
-		// pops: dest, offset, size
-		size := stack.pop()
-		offset := stack.pop()
+		// pops (EVM order): dest(memOffset), offset(dataOffset), size(length)
 		dest := stack.pop()
+		offset := stack.pop()
+		size := stack.pop()
 		mir.oprands = []*Value{&dest, &offset, &size}
 
 	case MirCODECOPY:
-		// pops: dest, offset, size
-		size := stack.pop()
-		offset := stack.pop()
+		// pops (EVM order): dest(memOffset), offset(codeOffset), size(length)
 		dest := stack.pop()
+		offset := stack.pop()
+		size := stack.pop()
 		mir.oprands = []*Value{&dest, &offset, &size}
 
 	case MirEXTCODESIZE:
@@ -709,10 +709,10 @@ func (b *MIRBasicBlock) CreateBlockInfoMIR(op MirOperation, stack *ValueStack) *
 		mir.oprands = []*Value{&addr, &dest, &offset, &size}
 
 	case MirRETURNDATACOPY:
-		// pops: dest, offset, size
-		size := stack.pop()
-		offset := stack.pop()
+		// pops (EVM order): dest(memOffset), offset(returnDataOffset), size(length)
 		dest := stack.pop()
+		offset := stack.pop()
+		size := stack.pop()
 		mir.oprands = []*Value{&dest, &offset, &size}
 
 	case MirEXTCODEHASH:

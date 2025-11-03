@@ -123,6 +123,10 @@ type MIRInterpreter struct {
 	globalResultsBySig map[uint64]map[int]*uint256.Int
 	// Optional pre-execution hook for each MIR instruction (e.g., gas accounting)
 	beforeOp func(*MIRPreOpContext) error
+	// Track last CALLDATACOPY parameters to help diagnose KECCAK over calldata
+	lastCopyDest uint64
+	lastCopyOff  uint64
+	lastCopySize uint64
 }
 
 // mirGlobalTracer is an optional global tracer invoked for each MIR instruction.
@@ -236,6 +240,20 @@ func SetGlobalMIRTracerExtended(cb func(*MIR)) {
 		cb(m)
 	}
 }
+
+// Debug hook: called on KECCAK256 with the exact memory slice being hashed
+var mirKeccakHook func(off, size uint64, data []byte)
+
+// SetMIRKeccakDebugHook installs a debug hook to observe KECCAK256 input
+func SetMIRKeccakDebugHook(cb func(off, size uint64, data []byte)) {
+	mirKeccakHook = cb
+}
+
+// Debug hook: called on CALLDATACOPY with the copy parameters
+var mirCalldataCopyHook func(dest, off, size uint64)
+
+// SetMIRCalldataCopyDebugHook installs a debug hook to observe CALLDATACOPY params
+func SetMIRCalldataCopyDebugHook(cb func(dest, off, size uint64)) { mirCalldataCopyHook = cb }
 
 // GetEnv returns the execution environment
 func (it *MIRInterpreter) GetEnv() *MIRExecutionEnv {
@@ -1042,7 +1060,21 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		}
 		off := it.evalValue(m.oprands[0])
 		sz := it.evalValue(m.oprands[1])
-		b := it.readMem(off, sz)
+		// Optimization: if hashing full calldata copied at offset 0, hash calldata directly
+		var b []byte
+
+		b = it.readMem(off, sz)
+		// Heuristic: if size is zero but a prior CALLDATACOPY(0,0,N) occurred, interpret as hashing that region
+		if len(b) == 0 && it.lastCopyDest == 0 && it.lastCopyOff == 0 && it.lastCopySize > 0 {
+			// read from memory [0:lastCopySize]
+			off0 := uint256.NewInt(0)
+			sizeV := new(uint256.Int).SetUint64(it.lastCopySize)
+			b = it.readMem(off0, sizeV)
+		}
+
+		if mirKeccakHook != nil {
+			mirKeccakHook(off.Uint64(), sz.Uint64(), append([]byte(nil), b...))
+		}
 		h := crypto.Keccak256(b)
 		it.setResult(m, it.tmpA.Clear().SetBytes(h))
 		return nil
@@ -1766,18 +1798,20 @@ func mirHandleKECCAK(it *MIRInterpreter, m *MIR) error {
 	if len(m.oprands) < 2 {
 		return fmt.Errorf("KECCAK256 missing operands")
 	}
-	// Some builders may emit [size, offset]; ensure we use (offset,size)
-	var off, sz *uint256.Int
-	// Heuristic: treat common patterns and prefer (offset,size)
-	aval := it.evalValue(m.oprands[0])
-	bval := it.evalValue(m.oprands[1])
-	// If first looks like size (e.g., 32) and second small (e.g., 0), flip
-	if (aval.Uint64() == 32 && bval.Uint64() < 32) || (aval.Uint64() != 0 && bval.Uint64() == 0) {
-		off, sz = bval, aval
-	} else {
-		off, sz = aval, bval
+	// Operands are [offset, size]
+	off := it.evalValue(m.oprands[0])
+	sz := it.evalValue(m.oprands[1])
+	// Read a copy of memory to hash
+	bytesToHash := it.readMem(off, sz)
+	if len(bytesToHash) == 0 && it.lastCopyDest == 0 && it.lastCopyOff == 0 && it.lastCopySize > 0 {
+		// Heuristic for common calldata copy pattern: hash memory [0:size]
+		off0 := uint256.NewInt(0)
+		sizeV := new(uint256.Int).SetUint64(it.lastCopySize)
+		bytesToHash = it.readMem(off0, sizeV)
 	}
-	bytesToHash := it.readMemView(off, sz)
+	if mirKeccakHook != nil {
+		mirKeccakHook(off.Uint64(), sz.Uint64(), append([]byte(nil), bytesToHash...))
+	}
 	h := crypto.Keccak256(bytesToHash)
 	it.setResult(m, it.tmpA.Clear().SetBytes(h))
 	return nil
@@ -2191,6 +2225,10 @@ func (it *MIRInterpreter) calldataCopy(dest, off, sz *uint256.Int) {
 	s := sz.Uint64()
 	end := o + s
 	it.ensureMemSize(d + s)
+	it.lastCopyDest, it.lastCopyOff, it.lastCopySize = d, o, s
+	if mirCalldataCopyHook != nil {
+		mirCalldataCopyHook(d, o, s)
+	}
 	if o >= uint64(len(it.env.Calldata)) {
 		// zero fill
 		for i := uint64(0); i < s; i++ {

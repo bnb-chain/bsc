@@ -1,15 +1,20 @@
 package runtime_test
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
+
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/core/vm/runtime"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -67,6 +72,7 @@ var calldataKeccakReturn = []byte{
 	byte(compiler.PUSH1), 0x00, // dest
 	byte(compiler.PUSH1), 0x00, // offset
 	byte(compiler.CALLDATASIZE),
+	byte(compiler.SWAP2), // reorder to [dest(top), offset, size]
 	byte(compiler.CALLDATACOPY),
 	byte(compiler.CALLDATASIZE), // size
 	byte(compiler.PUSH1), 0x00,  // offset
@@ -167,7 +173,7 @@ func BenchmarkMIRVsEVM_AddMulReturn(b *testing.B) {
 		Origin:      common.Address{},
 		BlockNumber: big.NewInt(1),
 		Value:       big.NewInt(0),
-		EVMConfig:   vm.Config{EnableOpcodeOptimizations: true},
+		EVMConfig:   vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true},
 	}
 
 	b.Run("EVM_Base_Return", func(b *testing.B) {
@@ -210,7 +216,7 @@ func BenchmarkMIRVsEVM_AddMulReturn(b *testing.B) {
 
 func BenchmarkMIRVsEVM_Storage(b *testing.B) {
 	cfgBase := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true}}
+	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}}
 
 	b.Run("EVM_Base_Storage", func(b *testing.B) {
 		if cfgBase.State == nil {
@@ -252,7 +258,7 @@ func BenchmarkMIRVsEVM_Storage(b *testing.B) {
 
 func BenchmarkMIRVsEVM_Keccak(b *testing.B) {
 	cfgBase := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true}}
+	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}}
 
 	b.Run("EVM_Base_Keccak", func(b *testing.B) {
 		if cfgBase.State == nil {
@@ -294,7 +300,7 @@ func BenchmarkMIRVsEVM_Keccak(b *testing.B) {
 
 func BenchmarkMIRVsEVM_CalldataKeccak(b *testing.B) {
 	cfgBase := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true}}
+	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}}
 	input := make([]byte, 96)
 	for i := range input {
 		input[i] = byte(i)
@@ -341,7 +347,7 @@ func BenchmarkMIRVsEVM_CalldataKeccak(b *testing.B) {
 func TestMIRVsEVM_Functional(t *testing.T) {
 	// Base and MIR configs
 	base := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true}}
+	mir := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true, MIRStrictNoFallback: true}}
 	compiler.EnableOpcodeParse()
 
 	// helper to run code and return output
@@ -406,7 +412,76 @@ func TestMIRVsEVM_Functional(t *testing.T) {
 		for i := range input {
 			input[i] = byte(i)
 		}
-		rb, err := run(base, calldataKeccakReturn, input, "addr_ck")
+		// capture MIR keccak input for debugging and assert MIR executed
+		var mirKeccakSlice []byte
+		var lastCopy [3]uint64
+		compiler.SetMIRCalldataCopyDebugHook(func(dest, off, size uint64) { lastCopy = [3]uint64{dest, off, size} })
+		sawMIR := false
+		compiler.SetGlobalMIRTracerExtended(func(m *compiler.MIR) {
+			if m != nil {
+				sawMIR = true
+			}
+		})
+		compiler.SetMIRKeccakDebugHook(func(off, size uint64, data []byte) {
+			// Only capture the first one
+			if mirKeccakSlice == nil {
+				mirKeccakSlice = append([]byte(nil), data...)
+			}
+		})
+		// Ensure MIR CFG is regenerated for this bytecode
+		compiler.DeleteMIRCFGCache(crypto.Keccak256Hash(calldataKeccakReturn))
+		// Attach base tracer to capture KECCAK inputs
+		var baseOff, baseSize uint64
+		var baseSlice []byte
+		var baseHash []byte
+		// capture last 32 opcode events with stack top snapshot
+		var events []string
+		var baseCallInputLen int
+		var lastWasKeccak bool
+		baseTrace := &tracing.Hooks{OnOpcode: func(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
+			if vm.OpCode(op) == vm.KECCAK256 {
+				stack := scope.StackData()
+				if len(stack) >= 2 {
+					// Pre-op: top-of-stack is offset, next is size
+					off := stack[len(stack)-1].Uint64()
+					size := stack[len(stack)-2].Uint64()
+					baseOff, baseSize = off, size
+					lastWasKeccak = true
+					if ci := scope.CallInput(); ci != nil {
+						baseCallInputLen = len(ci)
+					}
+				}
+			} else if lastWasKeccak {
+				// One step after KECCAK, memory should be expanded; capture now
+				mem := scope.MemoryData()
+				if baseOff+baseSize <= uint64(len(mem)) {
+					baseSlice = append([]byte(nil), mem[baseOff:baseOff+baseSize]...)
+					baseHash = crypto.Keccak256(baseSlice)
+				}
+				lastWasKeccak = false
+			}
+			// stack snapshot (top 4)
+			sd := scope.StackData()
+			top := ""
+			for i := 0; i < 4 && i < len(sd); i++ {
+				v := sd[len(sd)-1-i]
+				top += fmt.Sprintf("[%d]=%s ", i, v.String())
+			}
+			ev := fmt.Sprintf("pc=%d op=%s depth=%d top=%s", pc, vm.OpCode(op).String(), depth, top)
+			events = append(events, ev)
+			if len(events) > 32 {
+				events = events[len(events)-32:]
+			}
+		}}
+		// Recreate env with tracer
+		baseTr := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false, Tracer: baseTrace}}
+		baseTr.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		evmBase := runtime.NewEnv(baseTr)
+		addrBase := common.BytesToAddress([]byte("addr_ck_b"))
+		sender := vm.AccountRef(baseTr.Origin)
+		evmBase.StateDB.CreateAccount(addrBase)
+		evmBase.StateDB.SetCode(addrBase, calldataKeccakReturn)
+		rb, _, err := evmBase.Call(sender, addrBase, input, baseTr.GasLimit, uint256.MustFromBig(baseTr.Value))
 		if err != nil {
 			t.Fatalf("base err: %v", err)
 		}
@@ -414,9 +489,17 @@ func TestMIRVsEVM_Functional(t *testing.T) {
 		if err != nil {
 			t.Fatalf("mir err: %v", err)
 		}
-		if string(rb) != string(rm) {
-			t.Fatalf("mismatch: base %x mir %x", rb, rm)
+		// If mismatch, log the MIR keccak input to help diagnose
+		if !sawMIR {
+			t.Fatalf("MIR path not executed for calldata_keccak")
 		}
+		exp := crypto.Keccak256(input)
+		if string(rb) != string(exp) || string(rm) != string(exp) {
+			t.Fatalf("unexpected: base %x mir %x exp %x (base_off=%d base_size=%d base_hash=%x base_slice=%x base_callinput_len=%d | last_copy dest=%d off=%d size=%d mir_keccak_input=%x)\nbase last ops:\n%s", rb, rm, exp, baseOff, baseSize, baseHash, baseSlice, baseCallInputLen, lastCopy[0], lastCopy[1], lastCopy[2], mirKeccakSlice, strings.Join(events, "\n"))
+		}
+		compiler.SetGlobalMIRTracerExtended(nil)
+		compiler.SetMIRKeccakDebugHook(nil)
+		compiler.SetMIRCalldataCopyDebugHook(nil)
 	})
 }
 

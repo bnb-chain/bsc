@@ -34,6 +34,12 @@ type Config struct {
 	EnablePreimageRecording   bool  // Enables recording of SHA3/keccak preimages
 	ExtraEips                 []int // Additional EIPS that are to be enabled
 	EnableOpcodeOptimizations bool  // Enable opcode optimization
+	// EnableMIR controls whether the MIR interpreter is preferred when a MIR CFG is available.
+	// Default: true when opcode optimizations are enabled.
+	EnableMIR bool
+	// EnableMIRInitcode controls whether contract creation initcode executes via MIR (when MIR CFG available).
+	// Default: false, as initcode runs once and affects deployed code.
+	EnableMIRInitcode bool
 	// When true, do not fallback to the stock EVM interpreter if MIR encounters
 	// any issue and requests fallback. Instead, propagate the MIR error to caller.
 	MIRStrictNoFallback bool
