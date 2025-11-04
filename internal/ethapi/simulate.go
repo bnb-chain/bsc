@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/trie"
 	"math/big"
 	"time"
 
@@ -371,7 +372,7 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 	}
 	blockBody := &types.Body{Transactions: txes, Withdrawals: *block.BlockOverrides.Withdrawals}
 	chainHeadReader := &simChainHeadReader{ctx, sim.b}
-	b, _, err := sim.b.Engine().FinalizeAndAssemble(chainHeadReader, header, sim.state, blockBody, receipts, nil)
+	b, err := sim.FinalizeAndAssemble(chainHeadReader, header, sim.state, blockBody, receipts)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -525,6 +526,17 @@ func (sim *simulator) makeHeaders(blocks []simBlock) ([]*types.Header, error) {
 
 func (sim *simulator) newSimulatedChainContext(ctx context.Context, headers []*types.Header) *ChainContext {
 	return NewChainContext(ctx, &simBackend{base: sim.base, b: sim.b, headers: headers})
+}
+
+func (sim *simulator) FinalizeAndAssemble(chain *simChainHeadReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, error) {
+	header.Root = sim.state.IntermediateRoot(true)
+	if sim.chainConfig.IsShanghai(header.Number, header.Time) {
+		if body.Withdrawals == nil {
+			body.Withdrawals = make([]*types.Withdrawal, 0)
+		}
+	}
+	block := types.NewBlock(header, body, receipts, trie.NewStackTrie(nil))
+	return block, nil
 }
 
 type simBackend struct {
