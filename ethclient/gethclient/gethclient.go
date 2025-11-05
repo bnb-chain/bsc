@@ -227,6 +227,22 @@ func (ec *Client) TraceTransaction(ctx context.Context, hash common.Hash, config
 	return result, nil
 }
 
+// TraceTransactionSequence executes a slice of signed transactions sequentially on the same
+// base state and returns the trace result for each transaction.
+func (ec *Client) TraceTransactionSequence(ctx context.Context, blockNrOrHash *rpc.BlockNumberOrHash, txs []hexutil.Bytes, config *tracers.TraceConfig) ([]any, error) {
+	var (
+		result []any
+		block  interface{}
+	)
+	if blockNrOrHash != nil {
+		block = blockNrOrHash
+	}
+	if err := ec.c.CallContext(ctx, &result, "debug_traceTransactionSequence", block, txs, config); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 func toBlockNumArg(number *big.Int) string {
 	if number == nil {
 		return "latest"

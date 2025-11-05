@@ -109,6 +109,7 @@ This document provides a comprehensive list of JSON-RPC API methods supported. E
 | debug_traceBlockByHash(...)                     | `BlockHash`, `TraceConfig`                       |
 | debug_traceBlockByNumber(...)                   | `BlockNumber\|Tag`, `TraceConfig`                |
 | debug_traceTransaction(...)                     | `TxHash`, `TraceConfig`                          |
+| debug_traceTransactionSequence(...)             | `BlockNumber\|Tag\|Hash`, `[]TxRlp`, `TraceConfig` |
 | debug_traceCall(...)                            | `TxCallObject`, `BlockNumber\|Tag`, `TraceConfig`|
 |                                                 |                                                  |
 | **Transaction Pool API**                        |                                                  |

@@ -385,6 +385,12 @@ web3._extend({
 			inputFormatter: [null, null]
 		}),
 		new web3._extend.Method({
+			name: 'traceTransactionSequence',
+			call: 'debug_traceTransactionSequence',
+			params: 3,
+			inputFormatter: [null, null, null]
+		}),
+		new web3._extend.Method({
 			name: 'traceCall',
 			call: 'debug_traceCall',
 			params: 3,
