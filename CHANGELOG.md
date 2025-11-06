@@ -1,4 +1,16 @@
 # Changelog
+## v1.6.3
+### FEATURE
+NA
+
+### BUGFIX
+[\#3429](https://github.com/bnb-chain/bsc/pull/3429) build(deps): bump github.com/consensys/gnark-crypto
+[\#3433](https://github.com/bnb-chain/bsc/pull/3433) internal/ethapi: fix eth_simulateV1
+[\#3431](https://github.com/bnb-chain/bsc/pull/3431) eth/tracers: fix crasher in TraceCall with BlockOverrides
+
+### IMPROVEMENT
+[\#3436](https://github.com/bnb-chain/bsc/pull/3436) revert: revert the nano check in parlia
+[\#3435](https://github.com/bnb-chain/bsc/pull/3435) eth: fix stuck when handleBlockBroadcast
 
 ## v1.6.2
 ### FEATURE
