@@ -1416,9 +1416,6 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 
 	systemcontracts.TryUpdateBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state, false)
 
-	if err := p.checkNanoBlackList(state, header); err != nil {
-		return err
-	}
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
 		err := p.initializeFeynmanContract(state, header, cx, txs, receipts, systemTxs, usedGas, false, tracer)
 		if err != nil {
@@ -1517,10 +1514,6 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	}
 
 	systemcontracts.TryUpdateBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state, false)
-
-	if err := p.checkNanoBlackList(state, header); err != nil {
-		return nil, nil, err
-	}
 
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
 		err := p.initializeFeynmanContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer)
@@ -2432,18 +2425,6 @@ func (p *Parlia) NextProposalBlock(chain consensus.ChainHeaderReader, header *ty
 	}
 
 	return snap.nextProposalBlock(proposer)
-}
-
-func (p *Parlia) checkNanoBlackList(state vm.StateDB, header *types.Header) error {
-	if p.chainConfig.IsNano(header.Number) {
-		for _, blackListAddr := range types.NanoBlackList {
-			if state.IsAddressInMutations(blackListAddr) {
-				log.Error("blacklisted address found", "address", blackListAddr)
-				return fmt.Errorf("block contains blacklisted address: %s", blackListAddr.Hex())
-			}
-		}
-	}
-	return nil
 }
 
 func (p *Parlia) detectNewVersionWithFork(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB) {
