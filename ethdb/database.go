@@ -171,6 +171,8 @@ type AncientWriter interface {
 
 	// ResetTable will reset certain table with new start point
 	ResetTable(kind string, startAt uint64, onlyEmpty bool) error
+
+	ResetTableForIncr(kind string, startAt uint64, onlyEmpty bool) error
 }
 
 type FreezerEnv struct {
@@ -182,6 +184,10 @@ type FreezerEnv struct {
 type AncientFreezer interface {
 	// SetupFreezerEnv provides params.ChainConfig for checking hark forks, like isCancun.
 	SetupFreezerEnv(env *FreezerEnv, blockHistory uint64) error
+
+	// CleanBlock cleans block data in pebble and chain freezer.
+	// WARN: it's only used in the incremental snapshot situation.
+	CleanBlock(kvStore KeyValueStore, start uint64) error
 }
 
 // AncientWriteOp is given to the function argument of ModifyAncients.

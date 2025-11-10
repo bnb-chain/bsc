@@ -129,6 +129,33 @@ func inspectFreezers(db ethdb.Database) ([]freezerInfo, error) {
 	return infos, nil
 }
 
+func inspectIncrFreezers(db *snapDBWrapper) ([]freezerInfo, error) {
+	var infos []freezerInfo
+	for _, freezer := range freezers {
+		switch freezer {
+		case ChainFreezerName:
+			info, err := inspect(ChainFreezerName, incrChainFreezerTableConfigs, db.chainFreezer)
+			if err != nil {
+				return nil, err
+			}
+			infos = append(infos, info)
+
+		case MerkleStateFreezerName:
+			info, err := inspect(freezer, incrStateFreezerTableConfigs, db.stateFreezer)
+			if err != nil {
+				return nil, err
+			}
+			infos = append(infos, info)
+		case VerkleStateFreezerName:
+			continue
+
+		default:
+			return nil, fmt.Errorf("unknown freezer, supported ones: %v", freezers)
+		}
+	}
+	return infos, nil
+}
+
 // InspectFreezerTable dumps out the index of a specific freezer table. The passed
 // ancient indicates the path of root ancient directory where the chain freezer can
 // be opened. Start and end specify the range for dumping out indexes.

@@ -19,6 +19,7 @@ package pathdb
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -362,6 +364,15 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 			}
 		}
 	}
+
+	if dl.db.config.EnableIncr {
+		err := dl.commitIncrData(bottom)
+		if err != nil {
+			log.Error("Failed to commit incremental data after retries", "err", err)
+			return nil, err
+		}
+	}
+
 	// Mark the diskLayer as stale before applying any mutations on top.
 	dl.stale = true
 
@@ -447,7 +458,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	}
 	// To remove outdated history objects from the end, we set the 'tail' parameter
 	// to 'oldest-1' due to the offset between the freezer index and the history ID.
-	if overflow {
+	if overflow && !dl.db.config.EnableIncr {
 		pruned, err := truncateFromTail(ndl.db.diskdb, ndl.db.freezer, oldest-1)
 		if err != nil {
 			return nil, err
@@ -620,5 +631,98 @@ func (dl *diskLayer) terminate() error {
 	if dl.generator != nil {
 		dl.generator.stop()
 	}
+	return nil
+}
+
+// commitIncrData attempts to commit incremental data with retry mechanism.
+func (dl *diskLayer) commitIncrData(bottom *diffLayer) error {
+	const (
+		maxRetries = 5
+		baseDelay  = 100 * time.Millisecond
+		maxDelay   = 5 * time.Second
+	)
+
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		err := dl.db.incr.commit(bottom)
+		if err == nil {
+			if attempt > 0 {
+				log.Info("Incremental data commit succeeded after retries",
+					"block", bottom.block, "stateID", bottom.stateID(), "attempts", attempt+1)
+			}
+			return nil
+		}
+		lastErr = err
+
+		// Check if this is a queue full error
+		if strings.Contains(err.Error(), "task queue is full") {
+			// Calculate delay with exponential backoff
+			delay := baseDelay * time.Duration(1<<uint(attempt))
+			if delay > maxDelay {
+				delay = maxDelay
+			}
+
+			// Check if directory switch is in progress
+			switching := dl.db.incr.incrDB.IsSwitching()
+			queueUsage := dl.db.incr.GetQueueUsageRate()
+			log.Warn("Task queue is full, retrying after delay", "block", bottom.block,
+				"stateID", bottom.stateID(), "attempt", attempt+1, "maxRetries", maxRetries, "delay", delay,
+				"switching", switching, "queueUsage", fmt.Sprintf("%.1f%%", queueUsage))
+
+			// If the directory switch is in progress, use longer delay
+			if switching {
+				delay = maxDelay
+				log.Info("Directory switch detected, using longer delay", "delay", delay)
+			}
+			time.Sleep(delay)
+			continue
+		}
+
+		log.Error("Non-recoverable error committing incremental data",
+			"block", bottom.block, "stateID", bottom.stateID(), "err", err)
+		incrCommitErrorMeter.Mark(1)
+		return err
+	}
+
+	incrCommitErrorMeter.Mark(1)
+	log.Error("Failed to commit incremental data after all retries",
+		"block", bottom.block, "stateID", bottom.stateID(), "maxRetries", maxRetries, "finalError", lastErr)
+	dl.db.incr.LogStats()
+	return fmt.Errorf("failed to commit incremental data after %d retries: %w", maxRetries, lastErr)
+}
+
+// mergeIncrNodesWithStates merges incr trie nodes and states into local data.
+func (dl *diskLayer) mergeIncrNodesWithStates(db ethdb.KeyValueStore, freezer ethdb.AncientWriter,
+	incrFreezer ethdb.ResettableAncientStore, start, end uint64) error {
+	persistID := rawdb.ReadPersistentStateID(db)
+	log.Info("Ancient db meta info", "persistent_state_id", persistID, "start", start, "end", end)
+
+	for i := start; i <= end; i++ {
+		m := rawdb.ReadIncrStateHistoryMeta(incrFreezer, i)
+		if m == nil {
+			return fmt.Errorf("not found incr state history meta: %d", i)
+		}
+		var combined *buffer
+		if !m.HasStates {
+			nodes, err := readIncrTrieNodes(incrFreezer, i)
+			if err != nil {
+				return err
+			}
+			combined = dl.buffer.commit(nodes, newStates(nil, nil, false))
+		} else {
+			states, err := readIncrStatesData(incrFreezer, i)
+			if err != nil {
+				return err
+			}
+			combined = dl.buffer.commit(newNodeSet(nil), states)
+		}
+
+		if err := combined.flushIncrSnapshot(m.Root, db, freezer, nil, m.StateIDArray[1]); err != nil {
+			return err
+		}
+		log.Info("Flush incr nodes and states", "layers", m.Layers, "root", m.Root, "hasStates", m.HasStates)
+	}
+
+	log.Info("Finished merging incremental state history")
 	return nil
 }

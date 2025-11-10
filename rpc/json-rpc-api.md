@@ -43,9 +43,9 @@ This document provides a comprehensive list of JSON-RPC API methods supported. E
 | eth_getTransactionByHash(...)                   | `TxHash`                                         |
 | eth_getRawTransactionByHash(...)                | `TxHash`                                         |
 | eth_getTransactionByBlockHashAndIndex(...)      | `BlockHash`, `Integer`                           |
-| eth_retRawTransactionByBlockHashAndIndex(...)   | `BlockHash`, `Integer`                           |
+| eth_getRawTransactionByBlockHashAndIndex(...)   | `BlockHash`, `Integer`                           |
 | eth_getTransactionByBlockNumberAndIndex(...)    | `BlockNumber\|Tag`, `Integer`                    |
-| eth_retRawTransactionByBlockNumberAndIndex(...) | `BlockNumber\|Tag`, `Integer`                    |
+| eth_getRawTransactionByBlockNumberAndIndex(...) | `BlockNumber\|Tag`, `Integer`                    |
 | eth_getTransactionReceipt(...)                  | `TxHash`                                         |
 | eth_getBlockReceipts(...)                       | `BlockNumber\|Tag`                               |
 |                                                 |                                                  |

@@ -25,11 +25,14 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"golang.org/x/sync/errgroup"
 )
 
 const prefetchMiningThread = 3
+const prefetchThreadBALSnapshot = 8
+const prefetchThreadBALTrie = 8
 const checkInterval = 10
 
 // statePrefetcher is a basic Prefetcher that executes transactions from a block
@@ -129,11 +132,158 @@ func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *type
 	return
 }
 
+func (p *statePrefetcher) PrefetchBALSnapshot(balPrefetch *types.BlockAccessListPrefetch, block *types.Block, txSize int, statedb *state.StateDB, interruptChan <-chan struct{}) {
+	accChan := make(chan struct {
+		txIndex uint32
+		accAddr common.Address
+	}, prefetchThreadBALSnapshot)
+
+	keyChan := make(chan struct {
+		txIndex uint32
+		accAddr common.Address
+		key     common.Hash
+	}, prefetchThreadBALSnapshot)
+
+	// prefetch snapshot cache
+	for i := 0; i < prefetchThreadBALSnapshot; i++ {
+		go func() {
+			newStatedb := statedb.CopyDoPrefetch()
+			for {
+				select {
+				case accAddr := <-accChan:
+					log.Debug("PrefetchBALSnapshot", "txIndex", accAddr.txIndex, "accAddr", accAddr.accAddr)
+					newStatedb.PreloadAccount(accAddr.accAddr)
+				case item := <-keyChan:
+					log.Debug("PrefetchBALSnapshot", "txIndex", item.txIndex, "accAddr", item.accAddr, "key", item.key)
+					newStatedb.PreloadStorage(item.accAddr, item.key)
+				case <-interruptChan:
+					return
+				}
+			}
+		}()
+	}
+	for txIndex := 0; txIndex < txSize; txIndex++ {
+		txAccessList := balPrefetch.AccessListItems[uint32(txIndex)]
+		for accAddr, storageItems := range txAccessList.Accounts {
+			select {
+			case accChan <- struct {
+				txIndex uint32
+				accAddr common.Address
+			}{
+				txIndex: uint32(txIndex),
+				accAddr: accAddr,
+			}:
+			case <-interruptChan:
+				return
+			}
+			for _, storageItem := range storageItems {
+				select {
+				case keyChan <- struct {
+					txIndex uint32
+					accAddr common.Address
+					key     common.Hash
+				}{
+					txIndex: uint32(txIndex),
+					accAddr: accAddr,
+					key:     storageItem.Key,
+				}:
+				case <-interruptChan:
+					return
+				}
+			}
+		}
+	}
+	log.Debug("PrefetchBALSnapshot dispatch finished")
+}
+
+func (p *statePrefetcher) PrefetchBALTrie(balPrefetch *types.BlockAccessListPrefetch, block *types.Block, statedb *state.StateDB, interruptChan <-chan struct{}) {
+	accItemsChan := make(chan struct {
+		txIndex uint32
+		accAddr common.Address
+		items   []types.StorageAccessItemPrefetch
+	}, prefetchThreadBALTrie)
+
+	for i := 0; i < prefetchThreadBALTrie; i++ {
+		go func() {
+			newStatedb := statedb.CopyDoPrefetch()
+			for {
+				select {
+				case accItem := <-accItemsChan:
+					newStatedb.PreloadAccountTrie(accItem.accAddr)
+					log.Debug("PrefetchBALTrie", "txIndex", accItem.txIndex, "accAddr", accItem.accAddr)
+					for _, storageItem := range accItem.items {
+						if storageItem.Dirty {
+							log.Debug("PrefetchBALTrie", "txIndex", accItem.txIndex, "accAddr", accItem.accAddr, "storageItem", storageItem.Key, "dirty", storageItem.Dirty)
+							statedb.PreloadStorageTrie(accItem.accAddr, storageItem.Key)
+						}
+					}
+				case <-interruptChan:
+					return
+				}
+			}
+		}()
+	}
+
+	for txIndex, txAccessList := range balPrefetch.AccessListItems {
+		for accAddr, storageItems := range txAccessList.Accounts {
+			select {
+			case accItemsChan <- struct {
+				txIndex uint32
+				accAddr common.Address
+				items   []types.StorageAccessItemPrefetch
+			}{
+				txIndex: txIndex,
+				accAddr: accAddr,
+				items:   storageItems,
+			}:
+			case <-interruptChan:
+				log.Warn("PrefetchBALTrie interrupted")
+				return
+			}
+		}
+	}
+	log.Debug("PrefetchBALTrie dispatch finished")
+}
+
+func (p *statePrefetcher) PrefetchBAL(block *types.Block, statedb *state.StateDB, interruptChan <-chan struct{}) {
+	if block.BAL() == nil {
+		return
+	}
+	transactions := block.Transactions()
+	blockAccessList := block.BAL()
+
+	// get index sorted block access list, each transaction has a list of accounts, each account has a list of storage items
+	// txIndex 0:
+	// 			 account1: storage1_1, storage1_2, storage1_3
+	// 			 account2: storage2_1, storage2_2, storage2_3
+	// txIndex 1:
+	// 			 account3: storage3_1, storage3_2, storage3_3
+	// ...
+	balPrefetch := types.BlockAccessListPrefetch{
+		AccessListItems: make(map[uint32]types.TxAccessListPrefetch),
+	}
+	for _, account := range blockAccessList.Accounts {
+		balPrefetch.Update(&account)
+	}
+
+	// prefetch snapshot cache
+	go p.PrefetchBALSnapshot(&balPrefetch, block, len(transactions), statedb, interruptChan)
+
+	// prefetch MPT trie node cache
+	go p.PrefetchBALTrie(&balPrefetch, block, statedb, interruptChan)
+}
+
 // PrefetchMining processes the state changes according to the Ethereum rules by running
 // the transaction messages using the statedb, but any changes are discarded. The
 // only goal is to warm the state caches. Only used for mining stage.
 func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr **types.Transaction) {
-	var signer = types.MakeSigner(p.config, header.Number, header.Time)
+	if statedb == nil {
+		return
+	}
+	var (
+		reader = statedb.Reader()
+		signer = types.MakeSigner(p.config, header.Number, header.Time)
+	)
 
 	txCh := make(chan *types.Transaction, 2*prefetchMiningThread)
 	for i := 0; i < prefetchMiningThread; i++ {
@@ -145,6 +295,29 @@ func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header
 			for {
 				select {
 				case tx := <-startCh:
+					// Preload the touched accounts and storage slots in advance
+					sender, err := types.Sender(signer, tx)
+					if err == nil {
+						reader.Account(sender)
+					}
+
+					if tx.To() != nil {
+						account, _ := reader.Account(*tx.To())
+
+						// Preload the contract code if the destination has non-empty code
+						if account != nil && !bytes.Equal(account.CodeHash, types.EmptyCodeHash.Bytes()) {
+							reader.Code(*tx.To(), common.BytesToHash(account.CodeHash))
+						}
+					}
+					for _, list := range tx.AccessList() {
+						reader.Account(list.Address)
+						if len(list.StorageKeys) > 0 {
+							for _, slot := range list.StorageKeys {
+								reader.Storage(list.Address, slot)
+							}
+						}
+					}
+
 					// Convert the transaction into an executable message and pre-cache its sender
 					msg, err := TransactionToMessage(tx, signer, header.BaseFee)
 					if err != nil {

@@ -111,3 +111,7 @@ func memoryRevert(stack *Stack) (uint64, bool) {
 func memoryLog(stack *Stack) (uint64, bool) {
 	return calcMemSize64(stack.Back(0), stack.Back(1))
 }
+
+func memoryDup2MStorePush1Add(stack *Stack) (uint64, bool) {
+	return calcMemSize64WithUint(stack.Back(1), 32)
+}

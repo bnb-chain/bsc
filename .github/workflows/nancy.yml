@@ -1,8 +1,9 @@
 name: Go Nancy
 
 on:
-    # Scan changed files in PRs (diff-aware scanning):
-    pull_request: {}
+    # Scan changed files in PRs from same repository only:
+    pull_request:
+      types: [opened, synchronize, reopened]
     # Scan on-demand through GitHub Actions interface:
     workflow_dispatch: {}
     # Scan mainline branches and report all findings:
@@ -11,6 +12,7 @@ on:
 
 jobs:
   build:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     strategy:
         matrix:
           go-version: [1.24.x]
@@ -18,20 +20,28 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - name: Check out code into the Go module directory
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 
     - name: Set up Go 1.x in order to write go.list file
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v4
       with:
         go-version: ${{ matrix.go-version }}
     
-    - name: Go mod tidy
-      run: go mod tidy
+    - name: Install Nancy
+      run: |
+        curl -sSL -o nancy https://github.com/sonatype-nexus-community/nancy/releases/download/v1.0.52/nancy-v1.0.52-linux-amd64
+        chmod +x nancy
+        sudo mv nancy /usr/local/bin/
+        file /usr/local/bin/nancy
 
-    - name: WriteGoList
-      run:  go list -json -deps ./... > go.list
-
-    - name: Nancy
-      uses: sonatype-nexus-community/nancy-github-action@main
-      with:
-        nancyCommand: sleuth --loud
+    - name: Nancy Security Scan
+      shell: bash
+      env:
+        OSSINDEX_USERNAME: ${{ secrets.OSSINDEX_USERNAME }}
+        OSSINDEX_TOKEN: ${{ secrets.OSSINDEX_TOKEN }}
+      run: |
+        if [[ -z "${OSSINDEX_USERNAME:-}" || -z "${OSSINDEX_TOKEN:-}" ]]; then
+          echo "::error::Missing OSS Index credentials"
+        fi
+        
+        go list -json -deps ./... | nancy sleuth --username "${OSSINDEX_USERNAME}" --token "${OSSINDEX_TOKEN}"

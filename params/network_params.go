@@ -22,6 +22,9 @@ package params
 const (
 	// StableStateThreshold is the reserve number of block state save to disk before delete ancientdb
 	StableStateThreshold uint64 = 128
+
+	// MaxBALSize is the maximum bytes of the rlp encoded block access list: 1MB
+	MaxBALSize uint64 = 1048576
 )
 
 var (
@@ -29,5 +32,5 @@ var (
 	// considered immutable (i.e. soft finality). It is used by the downloader as a
 	// hard limit against deep ancestors, by the blockchain against deep reorgs, by
 	// the freezer as the cutoff threshold and by clique as the snapshot trust limit.
-	FullImmutabilityThreshold uint64 = 360_000
+	FullImmutabilityThreshold uint64 = 600_000
 )

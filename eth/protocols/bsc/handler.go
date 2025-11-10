@@ -166,15 +166,17 @@ func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 		return fmt.Errorf("msg %v, cannot get start block: %v, %v", GetBlocksByRangeMsg, req.StartBlockHeight, req.StartBlockHash)
 	}
 	blocks = append(blocks, NewBlockData(block))
+	balSize := block.BALSize()
 	for i := uint64(1); i < req.Count; i++ {
 		block = backend.Chain().GetBlockByHash(block.ParentHash())
 		if block == nil {
 			break
 		}
+		balSize += block.BALSize()
 		blocks = append(blocks, NewBlockData(block))
 	}
 
-	log.Debug("reply GetBlocksByRange msg", "from", peer.id, "req", req.Count, "blocks", len(blocks))
+	log.Debug("reply GetBlocksByRange msg", "from", peer.id, "req", req.Count, "blocks", len(blocks), "balSize", balSize)
 	return p2p.Send(peer.rw, BlocksByRangeMsg, &BlocksByRangePacket{
 		RequestId: req.RequestId,
 		Blocks:    blocks,

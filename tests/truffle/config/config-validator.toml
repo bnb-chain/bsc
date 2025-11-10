@@ -11,7 +11,7 @@ TrieTimeout = 6000000000
 EnablePreimageRecording = false
 
 [Eth.Miner]
-GasCeil = 75000000
+GasCeil = 100000000
 GasPrice = 100000000
 
 [Eth.GPO]

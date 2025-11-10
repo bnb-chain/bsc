@@ -418,6 +418,18 @@ func WriteHeader(db ethdb.KeyValueWriter, header *types.Header) {
 	}
 }
 
+// WriteHeaderRLP stores a RLP encoded block header into the database and also stores the
+// hash-to-number mapping.
+func WriteHeaderRLP(db ethdb.KeyValueWriter, hash common.Hash, number uint64, header rlp.RawValue) {
+	// Write the hash -> number mapping
+	WriteHeaderNumber(db, hash, number)
+
+	key := headerKey(number, hash)
+	if err := db.Put(key, header); err != nil {
+		log.Crit("Failed to store header", "err", err)
+	}
+}
+
 // DeleteHeader removes all block header data associated with a hash.
 func DeleteHeader(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
 	deleteHeaderWithoutNumber(db, hash, number)
@@ -572,6 +584,13 @@ func WriteTd(db ethdb.KeyValueWriter, hash common.Hash, number uint64, td *big.I
 		log.Crit("Failed to RLP encode block total difficulty", "err", err)
 	}
 	if err := db.Put(headerTDKey(number, hash), data); err != nil {
+		log.Crit("Failed to store block total difficulty", "err", err)
+	}
+}
+
+// WriteTd stores the rlp encoded total difficulty of a block into the database.
+func WriteTdRLP(db ethdb.KeyValueWriter, hash common.Hash, number uint64, td rlp.RawValue) {
+	if err := db.Put(headerTDKey(number, hash), td); err != nil {
 		log.Crit("Failed to store block total difficulty", "err", err)
 	}
 }
@@ -913,6 +932,14 @@ func ReadBlobSidecars(db ethdb.Reader, hash common.Hash, number uint64) types.Bl
 	return ret
 }
 
+// WriteBlobSidecarsRLP stores all the RLP encoded transaction blobs belonging to a block.
+// It could input nil for empty blobs.
+func WriteBlobSidecarsRLP(db ethdb.KeyValueWriter, hash common.Hash, number uint64, blobs rlp.RawValue) {
+	if err := db.Put(blockBlobSidecarsKey(number, hash), blobs); err != nil {
+		log.Crit("Failed to store block blobs", "err", err)
+	}
+}
+
 // WriteBlobSidecars stores all the transaction blobs belonging to a block.
 // It could input nil for empty blobs.
 func WriteBlobSidecars(db ethdb.KeyValueWriter, hash common.Hash, number uint64, blobs types.BlobSidecars) {
@@ -930,6 +957,47 @@ func WriteBlobSidecars(db ethdb.KeyValueWriter, hash common.Hash, number uint64,
 func DeleteBlobSidecars(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
 	if err := db.Delete(blockBlobSidecarsKey(number, hash)); err != nil {
 		log.Crit("Failed to delete block blobs", "err", err)
+	}
+}
+
+// ReadBALRLP retrieves all the block access list belonging to a block in RLP encoding.
+func ReadBALRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.RawValue {
+	// BAL is only in kv DB, will not be put into ancient DB
+	data, _ := db.Get(blockBALKey(number, hash))
+	return data
+}
+
+// ReadBAL retrieves the block access list belonging to a block.
+func ReadBAL(db ethdb.Reader, hash common.Hash, number uint64) *types.BlockAccessListEncode {
+	data := ReadBALRLP(db, hash, number)
+	if len(data) == 0 {
+		return nil
+	}
+	var ret types.BlockAccessListEncode
+	if err := rlp.DecodeBytes(data, &ret); err != nil {
+		log.Error("Invalid BAL RLP", "hash", hash, "err", err)
+		return nil
+	}
+	return &ret
+}
+
+func WriteBAL(db ethdb.KeyValueWriter, hash common.Hash, number uint64, bal *types.BlockAccessListEncode) {
+	if bal == nil {
+		return
+	}
+	data, err := rlp.EncodeToBytes(bal)
+	if err != nil {
+		log.Crit("Failed to encode block BAL", "err", err)
+	}
+
+	if err := db.Put(blockBALKey(number, hash), data); err != nil {
+		log.Crit("Failed to store block BAL", "err", err)
+	}
+}
+
+func DeleteBAL(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
+	if err := db.Delete(blockBALKey(number, hash)); err != nil {
+		log.Crit("Failed to delete block BAL", "err", err)
 	}
 }
 
@@ -975,6 +1043,7 @@ func DeleteBlock(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
 	DeleteBody(db, hash, number)
 	DeleteTd(db, hash, number)
 	DeleteBlobSidecars(db, hash, number) // it is safe to delete non-exist blob
+	DeleteBAL(db, hash, number)
 }
 
 // DeleteBlockWithoutNumber removes all block data associated with a hash, except
@@ -985,6 +1054,7 @@ func DeleteBlockWithoutNumber(db ethdb.KeyValueWriter, hash common.Hash, number 
 	DeleteBody(db, hash, number)
 	DeleteTd(db, hash, number)
 	DeleteBlobSidecars(db, hash, number)
+	DeleteBAL(db, hash, number)
 }
 
 const badBlockToKeep = 10
