@@ -285,10 +285,10 @@ func (s *hookedStateDB) GetLogs(hash common.Hash, blockNumber uint64, blockHash 
 	return s.inner.GetLogs(hash, blockNumber, blockHash, blockTime)
 }
 
-func (s *hookedStateDB) Finalise(deleteEmptyObjects bool) {
+func (s *hookedStateDB) Finalise(deleteEmptyObjects bool) error {
 	defer s.inner.Finalise(deleteEmptyObjects)
 	if s.hooks.OnBalanceChange == nil {
-		return
+		return nil
 	}
 	for addr := range s.inner.journal.dirties {
 		obj := s.inner.stateObjects[addr]
@@ -299,6 +299,7 @@ func (s *hookedStateDB) Finalise(deleteEmptyObjects bool) {
 			}
 		}
 	}
+	return nil
 }
 
 func (s *hookedStateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {

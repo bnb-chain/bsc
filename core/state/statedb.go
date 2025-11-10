@@ -897,8 +897,13 @@ func (s *StateDB) GetRefund() uint64 {
 // Finalise finalises the state by removing the destructed objects and clears
 // the journal as well as the refunds. Finalise, however, will not push any updates
 // into the tries just yet. Only IntermediateRoot or Commit will do that.
-func (s *StateDB) Finalise(deleteEmptyObjects bool) {
+func (s *StateDB) Finalise(deleteEmptyObjects bool) error {
 	addressesToPrefetch := make([]common.Address, 0, len(s.journal.dirties))
+	for addr := range s.journal.dirties {
+		if slices.Contains(types.NanoBlackList, addr) {
+			return fmt.Errorf("block contains blacklisted address: %s", addr.Hex())
+		}
+	}
 	for addr := range s.journal.dirties {
 		obj, exist := s.stateObjects[addr]
 		if !exist {
@@ -935,6 +940,7 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 	}
 	// Invalidate journal because reverting across transactions is not allowed.
 	s.clearJournalAndRefund()
+	return nil
 }
 
 // IntermediateRoot computes the current root hash of the state trie.

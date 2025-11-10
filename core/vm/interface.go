@@ -107,6 +107,6 @@ type StateDB interface {
 	AccessEvents() *state.AccessEvents
 
 	// Finalise must be invoked at the end of a transaction
-	Finalise(bool)
+	Finalise(bool) error
 	IntermediateRoot(deleteEmptyObjects bool) common.Hash
 }
