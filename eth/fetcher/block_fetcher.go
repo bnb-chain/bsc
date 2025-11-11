@@ -226,7 +226,7 @@ func NewBlockFetcher(getBlock blockRetrievalFn, verifyHeader headerVerifierFn, b
 		inject:               make(chan *blockOrHeaderInject),
 		headerFilter:         make(chan chan *headerFilterTask),
 		bodyFilter:           make(chan chan *bodyFilterTask),
-		quickBlockFetchingCh: make(chan *BlockFetchingEntry),
+		quickBlockFetchingCh: make(chan *BlockFetchingEntry, 100),
 		done:                 make(chan common.Hash),
 		quit:                 make(chan struct{}),
 		requeue:              make(chan *blockOrHeaderInject),
