@@ -3,10 +3,10 @@ package compiler
 import (
 	"errors"
 	"fmt"
-
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
+	"os"
 )
 
 // logging shim is defined in debug_flags.go
@@ -61,11 +61,13 @@ type MIRExecutionEnv struct {
 	// If these are nil, interpreter falls back to internal simulated state.
 	SLoadFunc      func(key [32]byte) [32]byte
 	SStoreFunc     func(key [32]byte, value [32]byte)
+	TLoadFunc      func(key [32]byte) [32]byte
+	TStoreFunc     func(key [32]byte, value [32]byte)
 	GetBalanceFunc func(addr [20]byte) *uint256.Int
 
 	// External execution hooks (optional). If nil, CALL/CREATE will request fallback.
 	// kind for ExternalCall: 0=CALL,1=CALLCODE,2=DELEGATECALL,3=STATICCALL
-	ExternalCall func(kind byte, addr [20]byte, value *uint256.Int, input []byte) (ret []byte, success bool)
+	ExternalCall func(kind byte, addr [20]byte, value *uint256.Int, input []byte, gas uint64) (ret []byte, success bool)
 	// kind for CreateContract: 4=CREATE,5=CREATE2. If salt is nil, treat as CREATE.
 	CreateContract func(kind byte, value *uint256.Int, init []byte, salt *[32]byte) (addr [20]byte, success bool, ret []byte)
 
@@ -219,6 +221,11 @@ func (it *MIRInterpreter) SetBeforeOpHook(cb func(*MIRPreOpContext) error) {
 	it.beforeOp = cb
 }
 
+// GetBeforeOpHook returns the current beforeOp hook
+func (it *MIRInterpreter) GetBeforeOpHook() func(*MIRPreOpContext) error {
+	return it.beforeOp
+}
+
 // SetGlobalMIRTracer sets a process-wide tracer that new MIR interpreters will inherit.
 func SetGlobalMIRTracer(cb func(MirOperation)) {
 	mirGlobalTracer = cb
@@ -326,12 +333,14 @@ func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
 }
 
 // publishLiveOut writes this block's live-out def values into the global map
+// and updates the block's exitStack with runtime values for loop scenarios
 func (it *MIRInterpreter) publishLiveOut(block *MIRBasicBlock) {
 	if it == nil || block == nil || it.globalResults == nil {
 		return
 	}
 
 	defs := block.LiveOutDefs()
+
 	//log.Warn("MIR publishLiveOut", "block", block.blockNum, "size", len(block.instructions), "defs", defs, "it.results", it.results, "block.exitStack", block.ExitStack())
 	if len(defs) == 0 {
 		log.Warn("MIR publishLiveOut: no live outs", "block", block.blockNum)
@@ -343,27 +352,58 @@ func (it *MIRInterpreter) publishLiveOut(block *MIRBasicBlock) {
 			inBlock[inst] = true
 		}
 	}
-	// Backfill ancestor defs referenced at exit if missing in globals
-	exitVals := block.ExitStack()
-	for i := range exitVals {
-		v := &exitVals[i]
-		if v != nil && v.kind == Variable && v.def != nil && !inBlock[v.def] {
-			if _, ok := it.globalResults[v.def]; !ok {
-				val := it.evalValue(v)
-				if val != nil {
-					it.globalResults[v.def] = new(uint256.Int).Set(val)
-					//log.Warn("MIR publishLiveOut: backfilled ancestor def", "evm_pc", v.def.evmPC, "mir_idx", v.def.idx, "value", val)
-				}
-			}
-		}
-	}
+
+	// **FIX**: Update globalResultsBySig for defs produced in this block
+	// This is critical for loops: ensure PHI nodes in the next iteration
+	// read the updated values from globalResultsBySig
+	// PURE APPROACH 1: Only use signature-based cache (evmPC, idx)
 	for _, def := range defs {
 		if def == nil || !inBlock[def] {
 			continue
 		}
 		if def.idx >= 0 && def.idx < len(it.results) {
 			if r := it.results[def.idx]; r != nil {
+				// Update signature-based cache (uses evmPC+idx as key)
+				if def.evmPC != 0 {
+					if it.globalResultsBySig[uint64(def.evmPC)] == nil {
+						it.globalResultsBySig[uint64(def.evmPC)] = make(map[int]*uint256.Int)
+					}
+					it.globalResultsBySig[uint64(def.evmPC)][def.idx] = new(uint256.Int).Set(r)
+
+					// DEBUG: Log cache update
+					fmt.Fprintf(os.Stderr, "📝 Updated globalResultsBySig for block %d: def.evmPC=%d def.idx=%d value=%v\n",
+						block.blockNum, def.evmPC, def.idx, r)
+				}
+
+				// Also update pointer-based cache for mirHandleJUMP compatibility
 				it.globalResults[def] = new(uint256.Int).Set(r)
+			}
+		}
+	}
+
+	// Backfill ancestor defs referenced at exit if missing in globals
+	exitVals := block.ExitStack()
+	for i := range exitVals {
+		v := &exitVals[i]
+		if v != nil && v.kind == Variable && v.def != nil && !inBlock[v.def] {
+			// Check signature-based cache
+			var hasInSigCache bool
+			if v.def.evmPC != 0 {
+				if byPC := it.globalResultsBySig[uint64(v.def.evmPC)]; byPC != nil {
+					_, hasInSigCache = byPC[v.def.idx]
+				}
+			}
+
+			if !hasInSigCache {
+				val := it.evalValue(v)
+				if val != nil && v.def.evmPC != 0 {
+					if it.globalResultsBySig[uint64(v.def.evmPC)] == nil {
+						it.globalResultsBySig[uint64(v.def.evmPC)] = make(map[int]*uint256.Int)
+					}
+					it.globalResultsBySig[uint64(v.def.evmPC)][v.def.idx] = new(uint256.Int).Set(val)
+					// Also update pointer cache for compatibility
+					it.globalResults[v.def] = new(uint256.Int).Set(val)
+				}
 			}
 		}
 	}
@@ -393,6 +433,16 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 		_, err := it.RunMIR(bb)
 		if err == nil {
 			log.Warn("MIR RunCFGWithResolver: run mir success", "bb", bb.blockNum, "firstPC", bb.firstPC, "lastPC", bb.lastPC, "it.nextBB", it.nextBB)
+			// Safety check: if block ended with terminal instruction (RETURN/REVERT/STOP), don't fallthrough
+			if len(bb.instructions) > 0 {
+				lastInstr := bb.instructions[len(bb.instructions)-1]
+				if lastInstr != nil {
+					switch lastInstr.op {
+					case MirRETURN, MirREVERT, MirSTOP, MirSELFDESTRUCT:
+						return it.returndata, nil
+					}
+				}
+			}
 			if it.nextBB == nil {
 				// Fall through handling
 				children := bb.Children()
@@ -458,6 +508,11 @@ var (
 	// when MIR cannot safely continue (e.g., invalid jump destination resolution).
 	ErrMIRFallback = errors.New("MIR_FALLBACK")
 )
+
+// GetErrREVERT returns the errREVERT error for external packages to check
+func GetErrREVERT() error {
+	return errREVERT
+}
 
 func (it *MIRInterpreter) exec(m *MIR) error {
 	// Allow embedding runtimes (e.g., adapter) to run pre-op logic such as gas metering
@@ -1027,9 +1082,16 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		if len(m.oprands) < 1 {
 			return fmt.Errorf("TLOAD missing key")
 		}
-		key := it.evalValue(m.oprands[0]).Bytes32()
+		key := it.evalValue(m.oprands[0])
 		var k [32]byte
-		copy(k[:], key[:])
+		keyBytes := key.Bytes()
+		copy(k[32-len(keyBytes):], keyBytes) // Fix: right-align key bytes like sload
+		if it.env.TLoadFunc != nil {
+			v := it.env.TLoadFunc(k)
+			it.setResult(m, it.tmpB.Clear().SetBytes(v[:]))
+			return nil
+		}
+		// Fallback to internal simulated transient storage
 		if it.transientStorage == nil {
 			it.transientStorage = make(map[[32]byte][32]byte)
 		}
@@ -1040,13 +1102,19 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		if len(m.oprands) < 2 {
 			return fmt.Errorf("TSTORE missing operands")
 		}
-		key := it.evalValue(m.oprands[0]).Bytes32()
+		key := it.evalValue(m.oprands[0])
 		val := it.evalValue(m.oprands[1])
 		var k [32]byte
 		var v [32]byte
-		copy(k[:], key[:])
-		bytes := val.Bytes()
-		copy(v[32-len(bytes):], bytes)
+		keyBytes := key.Bytes()
+		copy(k[32-len(keyBytes):], keyBytes) // Fix: right-align key bytes
+		valBytes := val.Bytes()
+		copy(v[32-len(valBytes):], valBytes) // Fix: right-align value bytes
+		if it.env.TStoreFunc != nil {
+			it.env.TStoreFunc(k, v)
+			return nil
+		}
+		// Fallback to internal simulated transient storage
 		if it.transientStorage == nil {
 			it.transientStorage = make(map[[32]byte][32]byte)
 		}
@@ -1139,7 +1207,8 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		outSz := it.evalValue(m.oprands[6])
 		input := it.readMem(inOff, inSz)
 		if it.env != nil && it.env.ExternalCall != nil {
-			ret, ok := it.env.ExternalCall(0, a20, value, input)
+			gasValue := it.evalValue(m.oprands[0]).Uint64()
+			ret, ok := it.env.ExternalCall(0, a20, value, input, gasValue)
 			it.returndata = append([]byte(nil), ret...)
 			if ok {
 				it.setResult(m, it.tmpA.Clear().SetOne())
@@ -1170,7 +1239,8 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		outSz := it.evalValue(m.oprands[6])
 		input := it.readMem(inOff, inSz)
 		if it.env != nil && it.env.ExternalCall != nil {
-			ret, ok := it.env.ExternalCall(1, a20, value, input)
+			gasValue := it.evalValue(m.oprands[0]).Uint64()
+			ret, ok := it.env.ExternalCall(1, a20, value, input, gasValue)
 			it.returndata = append([]byte(nil), ret...)
 			if ok {
 				it.setResult(m, it.tmpA.Clear().SetOne())
@@ -1199,7 +1269,8 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		outSz := it.evalValue(m.oprands[5])
 		input := it.readMem(inOff, inSz)
 		if it.env != nil && it.env.ExternalCall != nil {
-			ret, ok := it.env.ExternalCall(2, a20, nil, input)
+			gasValue := it.evalValue(m.oprands[0]).Uint64()
+			ret, ok := it.env.ExternalCall(2, a20, nil, input, gasValue)
 			it.returndata = append([]byte(nil), ret...)
 			if ok {
 				it.setResult(m, it.tmpA.Clear().SetOne())
@@ -1228,7 +1299,8 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		outSz := it.evalValue(m.oprands[5])
 		input := it.readMem(inOff, inSz)
 		if it.env != nil && it.env.ExternalCall != nil {
-			ret, ok := it.env.ExternalCall(3, a20, nil, input)
+			gasValue := it.evalValue(m.oprands[0]).Uint64()
+			ret, ok := it.env.ExternalCall(3, a20, nil, input, gasValue)
 			it.returndata = append([]byte(nil), ret...)
 			if ok {
 				it.setResult(m, it.tmpA.Clear().SetOne())
@@ -1417,11 +1489,12 @@ func mirHandleJUMPI(it *MIRInterpreter, m *MIR) error {
 		return fmt.Errorf("JUMPI missing operands")
 	}
 	cond := it.evalValue(m.oprands[1])
+
 	if cond.IsZero() {
 		// fallthrough
 		dest := m.evmPC + 1
 		udest := uint64(dest)
-		log.Warn("mir exec JUMPI", "cond", cond, "dest", dest, "udest", udest)
+		fmt.Fprintf(os.Stderr, "🔁 JUMPI taking FALLTHROUGH (cond=0) dest_pc=%d\n", udest)
 		return it.scheduleJump(udest, m, true)
 	}
 	dest, ok := it.resolveJumpDestValue(m.oprands[0])
@@ -1430,6 +1503,7 @@ func mirHandleJUMPI(it *MIRInterpreter, m *MIR) error {
 		return ErrMIRFallback
 	}
 	udest, _ := dest.Uint64WithOverflow()
+	fmt.Fprintf(os.Stderr, "🔁 JUMPI taking JUMP (cond≠0) dest_pc=%d\n", udest)
 	return it.scheduleJump(udest, m, false)
 }
 
@@ -1445,12 +1519,14 @@ func mirHandlePHI(it *MIRInterpreter, m *MIR) error {
 				src := exit[len(exit)-1-idxFromTop]
 				// Mark as live-in to force evalValue to consult cross-BB results first
 				src.liveIn = true
-				if m.phiStackIndex == 1 {
-					log.Warn("<<<<<<<MIR PHI", "src", src, "kind", src.kind, "&src.def", &src.def,
-						"exitIndex", len(exit)-1-idxFromTop)
-					log.Warn("<<<<<<<MIR PHI", "it.globalResults", it.globalResults)
-				}
+
+				// DEBUG: Always log PHI resolution in loops
+				fmt.Fprintf(os.Stderr, "🔄 PHI evmPC=%d idx=%d phiStackIndex=%d prevBB=%d currentBB=%d exitStack_len=%d\n",
+					m.evmPC, m.idx, m.phiStackIndex, it.prevBB.blockNum, it.currentBB.blockNum, len(exit))
+
 				val := it.evalValue(&src)
+				fmt.Fprintf(os.Stderr, "🔄 PHI resolved value=%v\n", val)
+
 				it.setResult(m, val)
 				// Record PHI result with predecessor sensitivity for future uses
 				if m != nil {
@@ -1583,7 +1659,11 @@ func mirHandleMUL(it *MIRInterpreter, m *MIR) error {
 }
 func mirHandleSUB(it *MIRInterpreter, m *MIR) error {
 	a, b, err := mirLoadAB(it, m)
-	//log.Warn("MIR SUB", "a", a, "- b", b)
+	// DEBUG: Log SUB operations to track counter
+	if err == nil {
+		result := new(uint256.Int).Sub(a, b)
+		fmt.Fprintf(os.Stderr, "➖ SUB evmPC=%d a=%v b=%v result=%v\n", m.evmPC, a, b, result)
+	}
 	if err != nil {
 		return err
 	}
@@ -1843,11 +1923,18 @@ func mirHandleISZERO(it *MIRInterpreter, m *MIR) error {
 		return fmt.Errorf("ISZERO missing operand")
 	}
 	v := it.evalValue(m.oprands[0])
+
+	// DEBUG: Log ISZERO to track loop exit condition
+	var result uint64
 	if v.IsZero() {
+		result = 1
 		it.setResult(m, it.tmpA.Clear().SetOne())
 	} else {
+		result = 0
 		it.setResult(m, it.zeroConst)
 	}
+	fmt.Fprintf(os.Stderr, "❓ ISZERO evmPC=%d input=%v result=%d\n", m.evmPC, v, result)
+
 	return nil
 }
 
@@ -2038,8 +2125,28 @@ func (it *MIRInterpreter) evalValue(v *Value) *uint256.Int {
 				}
 			}
 			if v.liveIn {
+				// PURE APPROACH 1: Always use signature-based cache (evmPC, idx)
+				// This is simpler, more maintainable, and absolutely correct for loops
+				if v.def.evmPC != 0 {
+					if byPC := it.globalResultsBySig[uint64(v.def.evmPC)]; byPC != nil {
+						if val, ok := byPC[v.def.idx]; ok && val != nil {
+							// DEBUG: Log read
+							if v.def.evmPC == 6 {
+								fmt.Fprintf(os.Stderr, "📖 evalValue liveIn from globalResultsBySig: def.evmPC=%d def.idx=%d value=%v\n",
+									v.def.evmPC, v.def.idx, val)
+							}
+							return val
+						}
+					}
+				}
+
+				// Fallback to pointer-based cache for compatibility (mirHandleJUMP uses it)
 				if it.globalResults != nil {
 					if r, ok := it.globalResults[v.def]; ok && r != nil {
+						if v.def.evmPC == 6 {
+							fmt.Fprintf(os.Stderr, "📖 evalValue liveIn from globalResults (fallback): def.evmPC=%d def.idx=%d value=%v\n",
+								v.def.evmPC, v.def.idx, r)
+						}
 						return r
 					}
 				}
@@ -2117,7 +2224,7 @@ func (it *MIRInterpreter) ensureMemSize(size uint64) {
 		for newCap < size {
 			newCap *= 2
 		}
-		newMem := make([]byte, newCap)
+		newMem := make([]byte, size, newCap)
 		copy(newMem, it.memory)
 		it.memory = newMem
 	}
@@ -2467,7 +2574,8 @@ func (it *MIRInterpreter) returnDataCopy(dest, off, sz *uint256.Int) {
 func (it *MIRInterpreter) sload(key *uint256.Int) *uint256.Int {
 	// Prefer runtime hook if provided
 	var k [32]byte
-	copy(k[:], key.Bytes())
+	keyBytes := key.Bytes()
+	copy(k[32-len(keyBytes):], keyBytes) // Fix: right-align key bytes like sstore
 	if it.env.SLoadFunc != nil {
 		v := it.env.SLoadFunc(k)
 		return it.tmpB.Clear().SetBytes(v[:])
@@ -2486,9 +2594,10 @@ func (it *MIRInterpreter) sload(key *uint256.Int) *uint256.Int {
 func (it *MIRInterpreter) sstore(key, val *uint256.Int) {
 	var k [32]byte
 	var v [32]byte
-	copy(k[:], key.Bytes())
-	bytes := val.Bytes()
-	copy(v[32-len(bytes):], bytes)
+	keyBytes := key.Bytes()
+	copy(k[32-len(keyBytes):], keyBytes)
+	valBytes := val.Bytes()
+	copy(v[32-len(valBytes):], valBytes)
 	// Prefer runtime hook if provided
 	if it.env.SStoreFunc != nil {
 		it.env.SStoreFunc(k, v)

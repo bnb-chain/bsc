@@ -61,6 +61,14 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 	env.SStoreFunc = func(key [32]byte, value [32]byte) {
 		evm.StateDB.SetState(adapter.currentSelf, common.BytesToHash(key[:]), common.BytesToHash(value[:]))
 	}
+	env.TLoadFunc = func(key [32]byte) [32]byte {
+		// Transient storage (EIP-1153)
+		return evm.StateDB.GetTransientState(adapter.currentSelf, common.BytesToHash(key[:]))
+	}
+	env.TStoreFunc = func(key [32]byte, value [32]byte) {
+		// Transient storage (EIP-1153)
+		evm.StateDB.SetTransientState(adapter.currentSelf, common.BytesToHash(key[:]), common.BytesToHash(value[:]))
+	}
 	env.GetBalanceFunc = func(addr20 [20]byte) *uint256.Int {
 		addr := common.BytesToAddress(addr20[:])
 		b := evm.StateDB.GetBalance(addr)
@@ -135,12 +143,42 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 		return adapter.evm.Interpreter().Run(contract, input, readOnly)
 	}
 
+	// Save current env state before modifying it (for nested calls)
+	env := adapter.mirInterpreter.GetEnv()
+	if env == nil {
+		return nil, fmt.Errorf("MIR interpreter env is nil")
+	}
+	oldSelf := env.Self
+	oldCaller := env.Caller
+	oldOrigin := env.Origin
+	oldCallValue := env.CallValue
+	oldCalldata := env.Calldata
+	oldCode := env.Code
+	oldCurrentSelf := adapter.currentSelf
+
+	// Restore env after execution
+	defer func() {
+		env.Self = oldSelf
+		env.Caller = oldCaller
+		env.Origin = oldOrigin
+		env.CallValue = oldCallValue
+		env.Calldata = oldCalldata
+		env.Code = oldCode
+		adapter.currentSelf = oldCurrentSelf
+	}()
+
+	// Save and restore memShadow to prevent pollution across nested calls
+	oldMemShadow := adapter.memShadow
+	adapter.memShadow = NewMemory() // Each contract gets its own memory shadow
+	defer func() {
+		adapter.memShadow = oldMemShadow
+	}()
+
 	// Set up MIR execution environment with contract-specific data
 	adapter.setupExecutionEnvironment(contract, input)
 
 	// Wire gas left getter so MirGAS can read it if needed
 	if adapter.mirInterpreter != nil && adapter.mirInterpreter.GetEnv() != nil {
-		env := adapter.mirInterpreter.GetEnv()
 		env.GasLeft = func() uint64 { return contract.Gas }
 	}
 
@@ -250,18 +288,30 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 					}
 					return err
 				}
-				if contract.Gas < gas {
-					return ErrOutOfGas
+			if contract.Gas < gas {
+				return ErrOutOfGas
+			}
+			contract.Gas -= gas
+				// CREATE2: Always charge Keccak256WordGas for salt hashing (Constantinople feature)
+				if evmOp == CREATE2 {
+					if len(ctx.Operands) >= 3 {
+						size := ctx.Operands[2].Uint64()
+						keccak256Gas := toWord(size) * params.Keccak256WordGas
+						if contract.Gas < keccak256Gas {
+							return ErrOutOfGas
+						}
+						contract.Gas -= keccak256Gas
+					}
 				}
-				contract.Gas -= gas
-				// EIP-3860 initcode per-word gas for CREATE/CREATE2
-				if evmOp == CREATE || evmOp == CREATE2 {
+				// EIP-3860 initcode per-word gas for CREATE/CREATE2 (only if Shanghai is active)
+				if (evmOp == CREATE || evmOp == CREATE2) && adapter.evm.chainRules.IsShanghai {
 					// operands: value, offset, size, (salt)
 					if len(ctx.Operands) >= 3 {
 						size := ctx.Operands[2].Uint64()
 						if size > params.MaxInitCodeSize {
 							return fmt.Errorf("%w: size %d", ErrMaxInitCodeSizeExceeded, size)
 						}
+						// EIP-3860: InitCodeWordGas for both CREATE and CREATE2
 						more := params.InitCodeWordGas * toWord(size)
 						if contract.Gas < more {
 							return ErrOutOfGas
@@ -392,7 +442,7 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 				}
 				// Topics and data costs
 				n := int(evmOp - LOG0)
-				add := gas + uint64(n)*params.LogTopicGas
+				add := gas + params.LogGas + uint64(n)*params.LogTopicGas
 				var size uint64
 				if len(ctx.Operands) >= 2 {
 					size = ctx.Operands[1].Uint64()
@@ -409,10 +459,16 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 			// Charge dynamic gas according to fork rules
 			var gas uint64
 			var err error
+			if len(ctx.Operands) < 1 {
+				return fmt.Errorf("SELFDESTRUCT missing operand")
+			}
+			st := newstack()
+			beneficiaryAddr := new(uint256.Int).Set(ctx.Operands[0])
+			st.push(beneficiaryAddr) // Push beneficiary address onto stack for gas calculation
 			if adapter.evm.chainRules.IsLondon {
-				gas, err = gasSelfdestructEIP3529(adapter.evm, contract, newstack(), adapter.memShadow, 0)
+				gas, err = gasSelfdestructEIP3529(adapter.evm, contract, st, adapter.memShadow, 0)
 			} else if adapter.evm.chainRules.IsBerlin {
-				gas, err = gasSelfdestructEIP2929(adapter.evm, contract, newstack(), adapter.memShadow, 0)
+				gas, err = gasSelfdestructEIP2929(adapter.evm, contract, st, adapter.memShadow, 0)
 			}
 			if err != nil {
 				return err
@@ -430,7 +486,16 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 				// push value then key so Back(0)=key, Back(1)=value
 				st.push(new(uint256.Int).Set(ctx.Operands[1]))
 				st.push(new(uint256.Int).Set(ctx.Operands[0]))
-				gas, err := gasSStore(adapter.evm, contract, st, adapter.memShadow, 0)
+				// Use EIP-2929/3529 gas functions for Berlin/London
+				var gas uint64
+				var err error
+				if adapter.evm.chainRules.IsLondon {
+					gas, err = gasSStoreEIP3529(adapter.evm, contract, st, adapter.memShadow, 0)
+				} else if adapter.evm.chainRules.IsBerlin {
+					gas, err = gasSStoreEIP2929(adapter.evm, contract, st, adapter.memShadow, 0)
+				} else {
+					gas, err = gasSStore(adapter.evm, contract, st, adapter.memShadow, 0)
+				}
 				if err != nil {
 					if errors.Is(err, ErrGasUintOverflow) {
 					} else {
@@ -489,7 +554,9 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 				}
 				st := newstack()
 				reqGas := new(uint256.Int).Set(ctx.Operands[0])
-				st.push(reqGas) // Back(0)
+				addr := new(uint256.Int).Set(ctx.Operands[1])
+				st.push(addr)   // Back(1) - address
+				st.push(reqGas) // Back(0) - requested gas
 				var dyn uint64
 				var err error
 				if adapter.evm.chainRules.IsBerlin {
@@ -521,6 +588,15 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 		}
 		return nil
 	}
+	// Save current beforeOp hook to restore after this execution
+	oldHook := adapter.mirInterpreter.GetBeforeOpHook()
+	defer func() {
+		// Restore previous hook after execution
+		if oldHook != nil {
+			adapter.mirInterpreter.SetBeforeOpHook(oldHook)
+		}
+	}()
+
 	adapter.mirInterpreter.SetBeforeOpHook(func(ctx *compiler.MIRPreOpContext) error {
 		err := innerHook(ctx)
 		if err != nil && errors.Is(err, ErrGasUintOverflow) {
@@ -543,6 +619,10 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 				}
 				log.Error("MIR fallback requested by interpreter, using EVM interpreter", "addr", contract.Address(), "pc", 0)
 				return adapter.evm.baseInterpreter.Run(contract, input, readOnly)
+			}
+			// Map compiler.errREVERT to vm.ErrExecutionReverted to preserve gas
+			if errors.Is(err, compiler.GetErrREVERT()) {
+				return result, ErrExecutionReverted
 			}
 			// Preserve returndata on error (e.g., REVERT) to match EVM semantics
 			return result, err
@@ -642,31 +722,6 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 		for i := range topics {
 			hashes[i] = common.BytesToHash(topics[i][:])
 		}
-
-		// EXTCODEHASH via StateDB
-		env.ExtCodeHash = func(addr [20]byte) [32]byte {
-			a := common.BytesToAddress(addr[:])
-			h := adapter.evm.StateDB.GetCodeHash(a)
-			var out [32]byte
-			copy(out[:], h[:])
-			return out
-		}
-
-		// GAS left is not directly exposed here; leave nil to signal unavailability
-
-		// Blob fields (EIP-4844): base fee and blob hashes
-		if adapter.evm.Context.BlobBaseFee != nil {
-			env.BlobBaseFee = adapter.evm.Context.BlobBaseFee.Uint64()
-		}
-		env.BlobHashFunc = func(index uint64) [32]byte {
-			if index < uint64(len(adapter.evm.TxContext.BlobHashes)) {
-				h := adapter.evm.TxContext.BlobHashes[index]
-				var out [32]byte
-				copy(out[:], h[:])
-				return out
-			}
-			return [32]byte{}
-		}
 		adapter.evm.StateDB.AddLog(&coretypes.Log{
 			Address:     a,
 			Topics:      hashes,
@@ -675,10 +730,33 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 		})
 	}
 
+	// EXTCODEHASH via StateDB
+	env.ExtCodeHash = func(addr [20]byte) [32]byte {
+		a := common.BytesToAddress(addr[:])
+		h := adapter.evm.StateDB.GetCodeHash(a)
+		var out [32]byte
+		copy(out[:], h[:])
+		return out
+	}
+
+	// Blob fields (EIP-4844): base fee and blob hashes
+	if adapter.evm.Context.BlobBaseFee != nil {
+		env.BlobBaseFee = adapter.evm.Context.BlobBaseFee.Uint64()
+	}
+	env.BlobHashFunc = func(index uint64) [32]byte {
+		if index < uint64(len(adapter.evm.TxContext.BlobHashes)) {
+			h := adapter.evm.TxContext.BlobHashes[index]
+			var out [32]byte
+			copy(out[:], h[:])
+			return out
+		}
+		return [32]byte{}
+	}
+
 	// Wire external execution to stock EVM for CALL-family ops
-	env.ExternalCall = func(kind byte, addr20 [20]byte, value *uint256.Int, callInput []byte) (ret []byte, success bool) {
+	env.ExternalCall = func(kind byte, addr20 [20]byte, value *uint256.Int, callInput []byte, requestedGas uint64) (ret []byte, success bool) {
 		to := common.BytesToAddress(addr20[:])
-		// Use computed callGasTemp (set during pre-op hook) and apply stipend if value transferred
+		// Use callGasTemp set by beforeOp hook (gas calculation already done)
 		gas := adapter.evm.callGasTemp
 		if (kind == 0 || kind == 1) && value != nil && !value.IsZero() {
 			gas += params.CallStipend
@@ -714,7 +792,12 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 		// Apply EIP-150: parent gas reduction by 1/64 before passing to child
 		gas -= gas / 64
 		// Deduct from parent before call, matching opCreate/opCreate2
-		contract.UseGas(gas, adapter.evm.Config.Tracer, tracing.GasChangeCallContractCreation)
+		// Use correct tracing reason for CREATE vs CREATE2
+		tracingReason := tracing.GasChangeCallContractCreation
+		if kind == 5 { // CREATE2
+			tracingReason = tracing.GasChangeCallContractCreation2
+		}
+		contract.UseGas(gas, adapter.evm.Config.Tracer, tracingReason)
 		var (
 			out      []byte
 			newAddr  common.Address

@@ -1702,9 +1702,10 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			}
 		case CREATE:
 			// CREATE takes 3 operands: value, offset, size
-			size := valueStack.pop()
-			offset := valueStack.pop()
+			// EVM stack layout (top to bottom): value, offset, size
 			value := valueStack.pop()
+			offset := valueStack.pop()
+			size := valueStack.pop()
 			mir = new(MIR)
 			mir.op = MirCREATE
 			mir.oprands = []*Value{&value, &offset, &size}
@@ -1729,10 +1730,11 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			return nil
 		case CREATE2:
 			// CREATE2 takes 4 operands: value, offset, size, salt
-			salt := valueStack.pop()
-			size := valueStack.pop()
-			offset := valueStack.pop()
+			// EVM stack layout (top to bottom): value, offset, size, salt
 			value := valueStack.pop()
+			offset := valueStack.pop()
+			size := valueStack.pop()
+			salt := valueStack.pop()
 			mir = new(MIR)
 			mir.op = MirCREATE2
 			mir.oprands = []*Value{&value, &offset, &size, &salt}
@@ -1757,13 +1759,14 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			return nil
 		case CALL:
 			// CALL takes 7 operands: gas, addr, value, inOffset, inSize, outOffset, outSize
-			outSize := valueStack.pop()
-			outOffset := valueStack.pop()
-			inSize := valueStack.pop()
-			inOffset := valueStack.pop()
-			value := valueStack.pop()
-			addr := valueStack.pop()
+			// Pop from stack top to bottom (LIFO): gas is on top
 			gas := valueStack.pop()
+			addr := valueStack.pop()
+			value := valueStack.pop()
+			inOffset := valueStack.pop()
+			inSize := valueStack.pop()
+			outOffset := valueStack.pop()
+			outSize := valueStack.pop()
 			mir = new(MIR)
 			mir.op = MirCALL
 			mir.oprands = []*Value{&gas, &addr, &value, &inOffset, &inSize, &outOffset, &outSize}
@@ -1789,13 +1792,14 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			return nil
 		case CALLCODE:
 			// CALLCODE takes same operands as CALL
-			outSize := valueStack.pop()
-			outOffset := valueStack.pop()
-			inSize := valueStack.pop()
-			inOffset := valueStack.pop()
-			value := valueStack.pop()
-			addr := valueStack.pop()
+			// Pop from stack top to bottom (LIFO): gas is on top
 			gas := valueStack.pop()
+			addr := valueStack.pop()
+			value := valueStack.pop()
+			inOffset := valueStack.pop()
+			inSize := valueStack.pop()
+			outOffset := valueStack.pop()
+			outSize := valueStack.pop()
 			mir = new(MIR)
 			mir.op = MirCALLCODE
 			mir.oprands = []*Value{&gas, &addr, &value, &inOffset, &inSize, &outOffset, &outSize}
@@ -1811,6 +1815,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
 			log.Warn("MIR CALLCODE targetBB queued", "curbb", curBB.blockNum, "targetbb", fallthroughBB.blockNum, "targetbbfirstpc", fallthroughBB.firstPC, "targetBBPC", fallthroughBB.FirstPC(), "targetBBLastPC", fallthroughBB.LastPC())
 			unprcessedBBs.Push(fallthroughBB)
+			curBB.SetExitStack(valueStack.clone())
+			fallthroughBB.AddIncomingStack(curBB, curBB.ExitStack())
 			if depth >= 7 {
 				depth = depth - 7 + 1
 			} else {
@@ -1838,12 +1844,13 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			return nil
 		case DELEGATECALL:
 			// DELEGATECALL takes 6 operands: gas, addr, inOffset, inSize, outOffset, outSize
-			outSize := valueStack.pop()
-			outOffset := valueStack.pop()
-			inSize := valueStack.pop()
-			inOffset := valueStack.pop()
-			addr := valueStack.pop()
+			// Pop from stack top to bottom (LIFO): gas is on top
 			gas := valueStack.pop()
+			addr := valueStack.pop()
+			inOffset := valueStack.pop()
+			inSize := valueStack.pop()
+			outOffset := valueStack.pop()
+			outSize := valueStack.pop()
 			mir = new(MIR)
 			mir.op = MirDELEGATECALL
 			mir.oprands = []*Value{&gas, &addr, &inOffset, &inSize, &outOffset, &outSize}
@@ -1859,6 +1866,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
 			log.Warn("MIR DELEGATECALL targetBB queued", "curbb", curBB.blockNum, "targetbb", fallthroughBB.blockNum, "targetbbfirstpc", fallthroughBB.firstPC, "targetBBPC", fallthroughBB.FirstPC(), "targetBBLastPC", fallthroughBB.LastPC())
 			unprcessedBBs.Push(fallthroughBB)
+			curBB.SetExitStack(valueStack.clone())
+			fallthroughBB.AddIncomingStack(curBB, curBB.ExitStack())
 			if depth >= 6 {
 				depth = depth - 6 + 1
 			} else {
@@ -1867,12 +1876,13 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			return nil
 		case STATICCALL:
 			// STATICCALL takes 6 operands: gas, addr, inOffset, inSize, outOffset, outSize
-			outSize := valueStack.pop()
-			outOffset := valueStack.pop()
-			inSize := valueStack.pop()
-			inOffset := valueStack.pop()
-			addr := valueStack.pop()
+			// Pop from stack top to bottom (LIFO): gas is on top
 			gas := valueStack.pop()
+			addr := valueStack.pop()
+			inOffset := valueStack.pop()
+			inSize := valueStack.pop()
+			outOffset := valueStack.pop()
+			outSize := valueStack.pop()
 			mir = new(MIR)
 			mir.op = MirSTATICCALL
 			mir.oprands = []*Value{&gas, &addr, &inOffset, &inSize, &outOffset, &outSize}
@@ -1888,6 +1898,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
 			log.Warn("MIR STATICCALL targetBB queued", "curbb", curBB.blockNum, "targetbb", fallthroughBB.blockNum, "targetbbfirstpc", fallthroughBB.firstPC, "targetBBPC", fallthroughBB.FirstPC(), "targetBBLastPC", fallthroughBB.LastPC())
 			unprcessedBBs.Push(fallthroughBB)
+			curBB.SetExitStack(valueStack.clone())
+			fallthroughBB.AddIncomingStack(curBB, curBB.ExitStack())
 			if depth >= 6 {
 				depth = depth - 6 + 1
 			} else {
@@ -1988,6 +2000,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
 			log.Warn("MIR CALLF targetBB queued", "curbb", curBB.blockNum, "targetbb", fallthroughBB.blockNum, "targetbbfirstpc", fallthroughBB.firstPC, "targetBBPC", fallthroughBB.FirstPC(), "targetBBLastPC", fallthroughBB.LastPC())
 			unprcessedBBs.Push(fallthroughBB)
+			curBB.SetExitStack(valueStack.clone())
+			fallthroughBB.AddIncomingStack(curBB, curBB.ExitStack())
 			return nil
 		case RETF:
 			mir = curBB.CreateVoidMIR(MirRETF)
@@ -2025,6 +2039,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
 			log.Warn("MIR EOFCREATE targetBB queued", "curbb", curBB.blockNum, "targetbb", fallthroughBB.blockNum, "targetbbfirstpc", fallthroughBB.firstPC, "targetBBPC", fallthroughBB.FirstPC(), "targetBBLastPC", fallthroughBB.LastPC())
 			unprcessedBBs.Push(fallthroughBB)
+			curBB.SetExitStack(valueStack.clone())
+			fallthroughBB.AddIncomingStack(curBB, curBB.ExitStack())
 			return nil
 		case RETURNCONTRACT:
 			mir = curBB.CreateVoidMIR(MirRETURNCONTRACT)
@@ -2055,6 +2071,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
 			log.Warn("MIR EXTCALL targetBB queued", "curbb", curBB.blockNum, "targetbb", fallthroughBB.blockNum, "targetbbfirstpc", fallthroughBB.firstPC, "targetBBPC", fallthroughBB.FirstPC(), "targetBBLastPC", fallthroughBB.LastPC())
 			unprcessedBBs.Push(fallthroughBB)
+			curBB.SetExitStack(valueStack.clone())
+			fallthroughBB.AddIncomingStack(curBB, curBB.ExitStack())
 			return nil
 		case EXTDELEGATECALL:
 			// EXTDELEGATECALL takes 6 operands: gas, addr, inOffset, inSize, outOffset, outSize
@@ -2079,6 +2097,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
 			log.Warn("MIR EXTDELEGATECALL targetBB queued", "curbb", curBB.blockNum, "targetbb", fallthroughBB.blockNum, "targetbbfirstpc", fallthroughBB.firstPC, "targetBBPC", fallthroughBB.FirstPC(), "targetBBLastPC", fallthroughBB.LastPC())
 			unprcessedBBs.Push(fallthroughBB)
+			curBB.SetExitStack(valueStack.clone())
+			fallthroughBB.AddIncomingStack(curBB, curBB.ExitStack())
 			return nil
 		case EXTSTATICCALL:
 			// EXTSTATICCALL takes 6 operands: gas, addr, inOffset, inSize, outOffset, outSize
@@ -2103,6 +2123,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
 			log.Warn("MIR EXTSTATICCALL targetBB queued", "curbb", curBB.blockNum, "targetbb", fallthroughBB.blockNum, "targetbbfirstpc", fallthroughBB.firstPC, "targetBBPC", fallthroughBB.FirstPC(), "targetBBLastPC", fallthroughBB.LastPC())
 			unprcessedBBs.Push(fallthroughBB)
+			curBB.SetExitStack(valueStack.clone())
+			fallthroughBB.AddIncomingStack(curBB, curBB.ExitStack())
 			return nil
 		default:
 			// Tolerate customized/fused opcodes (0xb0-0xcf) by treating them as NOPs

@@ -220,10 +220,7 @@ func (b *MIRBasicBlock) CreateUnaryOpMIR(op MirOperation, stack *ValueStack) (mi
 		}
 	}
 	// If mir.op == MirNOP, doPeepHole already pushed the optimized constant to stack
-	if mir.op == MirNOP {
-		// Do not emit runtime MIR for NOP; gas is accounted via block aggregation
-		return nil
-	}
+	// Still emit the NOP so that runtime gas accounting can charge for the original opcode
 	mir = b.appendMIR(mir)
 	mir.genStackDepth = stack.size()
 	return mir
@@ -641,8 +638,9 @@ func (b *MIRBasicBlock) CreateStorageOpMIR(op MirOperation, stack *ValueStack, a
 		}
 		mir.oprands = []*Value{&key}
 	case MirTSTORE:
-		value := stack.pop()
+		// EVM pops key (top) then value, same as SSTORE
 		key := stack.pop()
+		value := stack.pop()
 		if accessor != nil {
 			accessor.recordStateStore(key, value)
 		}
@@ -701,11 +699,12 @@ func (b *MIRBasicBlock) CreateBlockInfoMIR(op MirOperation, stack *ValueStack) *
 		mir.oprands = []*Value{&addr}
 
 	case MirEXTCODECOPY:
-		// pops: address, dest, offset, size
-		size := stack.pop()
-		offset := stack.pop()
-		dest := stack.pop()
+		// EVM stack (top to bottom): address, destOffset, offset, size
+		// Pop order: address (first/top), dest, offset, size (last/bottom)
 		addr := stack.pop()
+		dest := stack.pop()
+		offset := stack.pop()
+		size := stack.pop()
 		mir.oprands = []*Value{&addr, &dest, &offset, &size}
 
 	case MirRETURNDATACOPY:
@@ -839,15 +838,32 @@ func (b *MIRBasicBlock) CreateSystemOpMIR(op MirOperation, stack *ValueStack) *M
 	return mir
 }
 
-func (b *MIRBasicBlock) CreateLogMIR(op MirOperation, stack *ValueStack) *MIR {
-	mir := new(MIR)
-	mir.op = op
-	stack.push(mir.Result())
-	mir = b.appendMIR(mir)
-	mir.genStackDepth = stack.size()
-	// noisy generation logging removed
-	return mir
-}
+	func (b *MIRBasicBlock) CreateLogMIR(op MirOperation, stack *ValueStack) *MIR {
+		mir := new(MIR)
+		mir.op = op
+		
+		// Calculate number of topics based on LOG operation
+		numTopics := int(op - MirLOG0)
+		
+		// EVM pops in order: dataOffset, dataSize, topic1, topic2, ..., topicN
+		// (stack top has dataOffset, then dataSize, then topics)
+		// Total operands: 2 (offset+size) + numTopics
+		totalOperands := 2 + numTopics
+		
+		// Pop all values - they come in the right order!
+		operands := make([]*Value, totalOperands)
+		for i := 0; i < totalOperands; i++ {
+			val := stack.pop()
+			operands[i] = &val
+		}
+		mir.oprands = operands
+		
+		stack.push(mir.Result())
+		mir = b.appendMIR(mir)
+		mir.genStackDepth = stack.size()
+		// noisy generation logging removed
+		return mir
+	}
 
 // stacksEqual reports whether two Value slices are equal element-wise using Value semantics.
 // Constants are compared by numeric value, variables by stable def identity (op, evmPC, phiSlot).
