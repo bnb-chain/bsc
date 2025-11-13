@@ -226,11 +226,13 @@ var (
 		LorentzTime:         newUint64(1745903100), // 2025-04-29 05:05:00 AM UTC
 		MaxwellTime:         newUint64(1751250600), // 2025-06-30 02:30:00 AM UTC
 		FermiTime:           nil,
+		OsakaTime:           nil,
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfigBSC,
+			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
 	}
 
@@ -273,11 +275,13 @@ var (
 		LorentzTime:         newUint64(1744097580), // 2025-04-08 07:33:00 AM UTC
 		MaxwellTime:         newUint64(1748243100), // 2025-05-26 07:05:00 AM UTC
 		FermiTime:           newUint64(1762741500), // 2025-11-10 02:25:00 AM UTC
+		OsakaTime:           nil,
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfigBSC,
+			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
 	}
 
@@ -322,11 +326,13 @@ var (
 		MaxwellTime:         newUint64(0),
 		// TODO: set them to `0` when passed on the mainnet
 		FermiTime: nil,
+		OsakaTime: nil,
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
 			Cancun: DefaultCancunBlobConfig,
 			Prague: DefaultPragueBlobConfigBSC,
+			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
 	}
 
@@ -592,6 +598,7 @@ var (
 	}
 
 	DefaultPragueBlobConfigBSC = DefaultCancunBlobConfig
+	DefaultOsakaBlobConfigBSC  = DefaultCancunBlobConfig
 )
 
 // NetworkNames are user friendly names to use in the chain spec banner.
@@ -645,10 +652,10 @@ type ChainConfig struct {
 	BohrTime       *uint64 `json:"bohrTime,omitempty"`       // Bohr switch time (nil = no fork, 0 = already on bohr)
 	PascalTime     *uint64 `json:"pascalTime,omitempty"`     // Pascal switch time (nil = no fork, 0 = already on pascal)
 	PragueTime     *uint64 `json:"pragueTime,omitempty"`     // Prague switch time (nil = no fork, 0 = already on prague)
-	OsakaTime      *uint64 `json:"osakaTime,omitempty"`      // Osaka switch time (nil = no fork, 0 = already on osaka)
 	LorentzTime    *uint64 `json:"lorentzTime,omitempty"`    // Lorentz switch time (nil = no fork, 0 = already on lorentz)
 	MaxwellTime    *uint64 `json:"maxwellTime,omitempty"`    // Maxwell switch time (nil = no fork, 0 = already on maxwell)
 	FermiTime      *uint64 `json:"fermiTime,omitempty"`      // Fermi switch time (nil = no fork, 0 = already on fermi)
+	OsakaTime      *uint64 `json:"osakaTime,omitempty"`      // Osaka switch time (nil = no fork, 0 = already on osaka)
 	VerkleTime     *uint64 `json:"verkleTime,omitempty"`     // Verkle switch time (nil = no fork, 0 = already on verkle)
 
 	// TerminalTotalDifficulty is the amount of total difficulty reached by
@@ -825,9 +832,14 @@ func (c *ChainConfig) String() string {
 		FermiTime = big.NewInt(0).SetUint64(*c.FermiTime)
 	}
 
+	var OsakaTime *big.Int
+	if c.OsakaTime != nil {
+		OsakaTime = big.NewInt(0).SetUint64(*c.OsakaTime)
+	}
+
 	return fmt.Sprintf("{ChainID: %v, Engine: %v, Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, "+
 		"MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Hertzfix: %v, "+
-		"ShanghaiTime: %v, KeplerTime: %v, FeynmanTime: %v, FeynmanFixTime: %v, CancunTime: %v, HaberTime: %v, HaberFixTime: %v, BohrTime: %v, PascalTime: %v, PragueTime: %v, LorentzTime: %v, MaxwellTime: %v, FermiTime: %v}",
+		"ShanghaiTime: %v, KeplerTime: %v, FeynmanTime: %v, FeynmanFixTime: %v, CancunTime: %v, HaberTime: %v, HaberFixTime: %v, BohrTime: %v, PascalTime: %v, PragueTime: %v, LorentzTime: %v, MaxwellTime: %v, FermiTime: %v, OsakaTime: %v}",
 		c.ChainID,
 		engine,
 		c.HomesteadBlock,
@@ -873,6 +885,7 @@ func (c *ChainConfig) String() string {
 		LorentzTime,
 		MaxwellTime,
 		FermiTime,
+		OsakaTime,
 	)
 }
 
@@ -1278,6 +1291,15 @@ func (c *ChainConfig) IsOsaka(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.OsakaTime, time)
 }
 
+// IsOnOsaka eturns whether currentBlockTime is either equal to the Osaka fork time or greater firstly.
+func (c *ChainConfig) IsOnOsaka(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	lastBlockNumber := new(big.Int)
+	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
+		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+	}
+	return !c.IsOsaka(lastBlockNumber, lastBlockTime) && c.IsOsaka(currentBlockNumber, currentBlockTime)
+}
+
 // IsVerkle returns whether time is either equal to the Verkle fork time or greater.
 func (c *ChainConfig) IsVerkle(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.VerkleTime, time)
@@ -1360,10 +1382,10 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "bohrTime", timestamp: c.BohrTime},
 		{name: "pascalTime", timestamp: c.PascalTime},
 		{name: "pragueTime", timestamp: c.PragueTime},
-		{name: "osakaTime", timestamp: c.OsakaTime, optional: true},
 		{name: "lorentzTime", timestamp: c.LorentzTime},
 		{name: "maxwellTime", timestamp: c.MaxwellTime},
 		{name: "fermiTime", timestamp: c.FermiTime},
+		{name: "osakaTime", timestamp: c.OsakaTime},
 		{name: "verkleTime", timestamp: c.VerkleTime, optional: true},
 	} {
 		if lastFork.name != "" {
@@ -1565,9 +1587,6 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	if isForkTimestampIncompatible(c.PragueTime, newcfg.PragueTime, headTimestamp) {
 		return newTimestampCompatError("Prague fork timestamp", c.PragueTime, newcfg.PragueTime)
 	}
-	if isForkTimestampIncompatible(c.OsakaTime, newcfg.OsakaTime, headTimestamp) {
-		return newTimestampCompatError("Osaka fork timestamp", c.OsakaTime, newcfg.OsakaTime)
-	}
 	if isForkTimestampIncompatible(c.LorentzTime, newcfg.LorentzTime, headTimestamp) {
 		return newTimestampCompatError("Lorentz fork timestamp", c.LorentzTime, newcfg.LorentzTime)
 	}
@@ -1576,6 +1595,9 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	}
 	if isForkTimestampIncompatible(c.FermiTime, newcfg.FermiTime, headTimestamp) {
 		return newTimestampCompatError("FermiTime fork timestamp", c.FermiTime, newcfg.FermiTime)
+	}
+	if isForkTimestampIncompatible(c.OsakaTime, newcfg.OsakaTime, headTimestamp) {
+		return newTimestampCompatError("Osaka fork timestamp", c.OsakaTime, newcfg.OsakaTime)
 	}
 	if isForkTimestampIncompatible(c.VerkleTime, newcfg.VerkleTime, headTimestamp) {
 		return newTimestampCompatError("Verkle fork timestamp", c.VerkleTime, newcfg.VerkleTime)
