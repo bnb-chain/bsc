@@ -44,6 +44,14 @@ type Client struct {
 	c *rpc.Client
 }
 
+// PendingTxFirstSeenResult is returned by debug_pendingTxFirstSeen debug RPC.
+type PendingTxFirstSeenResult struct {
+	TxHash      common.Hash `json:"txHash"`
+	FirstSeen   int64       `json:"firstSeen"`
+	PeerID      string      `json:"peerId,omitempty"`
+	PeerAddress string      `json:"peerAddress,omitempty"`
+}
+
 // New creates a client that uses the given RPC client.
 func New(c *rpc.Client) *Client {
 	return &Client{c}
@@ -204,6 +212,15 @@ func (ec *Client) GetNodeInfo(ctx context.Context) (*p2p.NodeInfo, error) {
 	var result p2p.NodeInfo
 	err := ec.c.CallContext(ctx, &result, "admin_nodeInfo")
 	return &result, err
+}
+
+// PendingTxFirstSeen returns the first-seen time and peer info for a pending transaction.
+func (ec *Client) PendingTxFirstSeen(ctx context.Context, hash common.Hash) (*PendingTxFirstSeenResult, error) {
+	var result PendingTxFirstSeenResult
+	if err := ec.c.CallContext(ctx, &result, "debug_pendingTxFirstSeen", hash); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
 // SubscribeFullPendingTransactions subscribes to new pending transactions.
