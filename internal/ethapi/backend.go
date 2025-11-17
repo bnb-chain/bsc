@@ -89,6 +89,8 @@ type Backend interface {
 	TxPoolContentFrom(addr common.Address) ([]*types.Transaction, []*types.Transaction)
 	SubscribeNewTxsEvent(chan<- core.NewTxsEvent) event.Subscription
 
+	GetPendingTxFirstSeen(hash common.Hash) (int64, string, string, bool)
+
 	ChainConfig() *params.ChainConfig
 	Engine() consensus.Engine
 	// CurrentValidators return the list of validator at the latest block

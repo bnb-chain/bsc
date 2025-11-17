@@ -81,6 +81,7 @@ var Defaults = Config{
 		MinimumSamples:   100,
 		Persistence:      "peer-blacklist.json",
 	},
+	PendingTxLogPath: "pending-peer-stats.log",
 }
 
 // PeerBlacklistConfig describes how peers should be evaluated and persisted for blacklisting.
@@ -114,6 +115,9 @@ type Config struct {
 	EVNNodeIDsToAdd        []enode.ID
 	EVNNodeIDsToRemove     []enode.ID
 	PeerBlacklist          PeerBlacklistConfig
+	// PendingTxLogPath is the path of the append-only log file to write top peers
+	// who first deliver pending transactions.
+	PendingTxLogPath string `toml:",omitempty"`
 	// HistoryMode configures chain history retention.
 	HistoryMode history.HistoryMode
 

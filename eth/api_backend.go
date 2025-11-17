@@ -341,7 +341,11 @@ func (b *EthAPIBackend) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscri
 }
 
 func (b *EthAPIBackend) SendTx(ctx context.Context, signedTx *types.Transaction) error {
-	err := b.eth.txPool.Add([]*types.Transaction{signedTx}, false)[0]
+	errs := b.eth.txPool.Add([]*types.Transaction{signedTx}, false)
+	if b.eth.handler != nil {
+		b.eth.handler.recordPendingTxs("", []*types.Transaction{signedTx}, errs)
+	}
+	err := errs[0]
 
 	// If the local transaction tracker is not configured, returns whatever
 	// returned from the txpool.
@@ -377,6 +381,17 @@ func (b *EthAPIBackend) GetPoolTransactions() (types.Transactions, error) {
 
 func (b *EthAPIBackend) GetPoolTransaction(hash common.Hash) *types.Transaction {
 	return b.eth.txPool.Get(hash)
+}
+
+func (b *EthAPIBackend) GetPendingTxFirstSeen(hash common.Hash) (int64, string, string, bool) {
+	if b.eth.handler == nil {
+		return 0, "", "", false
+	}
+	rec, ok := b.eth.handler.getPendingTxFirstSeen(hash)
+	if !ok {
+		return 0, "", "", false
+	}
+	return rec.FirstSeen, rec.PeerID, rec.PeerAddress, true
 }
 
 // GetCanonicalTransaction retrieves the lookup along with the transaction itself

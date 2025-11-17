@@ -199,6 +199,11 @@ web3._extend({
 			params: 1
 		}),
 		new web3._extend.Method({
+			name: 'pendingTxFirstSeen',
+			call: 'debug_pendingTxFirstSeen',
+			params: 1
+		}),
+		new web3._extend.Method({
 			name: 'setHead',
 			call: 'debug_setHead',
 			params: 1

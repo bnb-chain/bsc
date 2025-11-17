@@ -404,6 +404,9 @@ func (b *backendMock) GetPoolTransaction(txHash common.Hash) *types.Transaction 
 func (b *backendMock) GetPoolNonce(ctx context.Context, addr common.Address) (uint64, error) {
 	return 0, nil
 }
+func (b *backendMock) GetPendingTxFirstSeen(hash common.Hash) (int64, string, string, bool) {
+	return 0, "", "", false
+}
 func (b *backendMock) Stats() (pending int, queued int) { return 0, 0 }
 func (b *backendMock) TxPoolContent() (map[common.Address][]*types.Transaction, map[common.Address][]*types.Transaction) {
 	return nil, nil

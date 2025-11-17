@@ -637,6 +637,9 @@ func (b testBackend) TxPoolContent() (map[common.Address][]*types.Transaction, m
 func (b testBackend) TxPoolContentFrom(addr common.Address) ([]*types.Transaction, []*types.Transaction) {
 	panic("implement me")
 }
+func (b testBackend) GetPendingTxFirstSeen(hash common.Hash) (int64, string, string, bool) {
+	return 0, "", "", false
+}
 func (b testBackend) SubscribeNewTxsEvent(events chan<- core.NewTxsEvent) event.Subscription {
 	panic("implement me")
 }

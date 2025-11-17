@@ -25,6 +25,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		EVNNodeIDsToAdd           []enode.ID
 		EVNNodeIDsToRemove        []enode.ID
 		PeerBlacklist             PeerBlacklistConfig
+		PendingTxLogPath          string `toml:",omitempty"`
 		HistoryMode               history.HistoryMode
 		EthDiscoveryURLs          []string
 		SnapDiscoveryURLs         []string
@@ -95,6 +96,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.EVNNodeIDsToAdd = c.EVNNodeIDsToAdd
 	enc.EVNNodeIDsToRemove = c.EVNNodeIDsToRemove
 	enc.PeerBlacklist = c.PeerBlacklist
+	enc.PendingTxLogPath = c.PendingTxLogPath
 	enc.HistoryMode = c.HistoryMode
 	enc.EthDiscoveryURLs = c.EthDiscoveryURLs
 	enc.SnapDiscoveryURLs = c.SnapDiscoveryURLs
@@ -169,6 +171,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		EVNNodeIDsToAdd           []enode.ID
 		EVNNodeIDsToRemove        []enode.ID
 		PeerBlacklist             *PeerBlacklistConfig
+		PendingTxLogPath          *string `toml:",omitempty"`
 		HistoryMode               *history.HistoryMode
 		EthDiscoveryURLs          []string
 		SnapDiscoveryURLs         []string
@@ -255,6 +258,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.PeerBlacklist != nil {
 		c.PeerBlacklist = *dec.PeerBlacklist
+	}
+	if dec.PendingTxLogPath != nil {
+		c.PendingTxLogPath = *dec.PendingTxLogPath
 	}
 	if dec.HistoryMode != nil {
 		c.HistoryMode = *dec.HistoryMode

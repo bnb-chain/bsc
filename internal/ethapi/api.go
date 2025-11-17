@@ -2241,6 +2241,13 @@ type DebugAPI struct {
 	b Backend
 }
 
+type PendingTxFirstSeenResult struct {
+	TxHash      common.Hash `json:"txHash"`
+	FirstSeen   int64       `json:"firstSeen"`
+	PeerID      string      `json:"peerId,omitempty"`
+	PeerAddress string      `json:"peerAddress,omitempty"`
+}
+
 // NewDebugAPI creates a new instance of DebugAPI.
 func NewDebugAPI(b Backend) *DebugAPI {
 	return &DebugAPI{b: b}
@@ -2375,6 +2382,19 @@ func (api *DebugAPI) SetHead(number hexutil.Uint64) error {
 	}
 	api.b.SetHead(uint64(number))
 	return nil
+}
+
+func (api *DebugAPI) PendingTxFirstSeen(ctx context.Context, hash common.Hash) (*PendingTxFirstSeenResult, error) {
+	firstSeen, peerID, peerAddr, ok := api.b.GetPendingTxFirstSeen(hash)
+	if !ok {
+		return nil, fmt.Errorf("pending tx %s not found", hash.Hex())
+	}
+	return &PendingTxFirstSeenResult{
+		TxHash:      hash,
+		FirstSeen:   firstSeen,
+		PeerID:      peerID,
+		PeerAddress: peerAddr,
+	}, nil
 }
 
 // NetAPI offers network related RPC methods

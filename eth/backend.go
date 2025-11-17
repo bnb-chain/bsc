@@ -447,6 +447,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		}
 	}
 
+	pendingLogPath := config.PendingTxLogPath
+	if pendingLogPath == "" {
+		pendingLogPath = ethconfig.Defaults.PendingTxLogPath
+	}
+	pendingLogPath = stack.ResolvePath(pendingLogPath)
+
 	if eth.handler, err = newHandler(&handlerConfig{
 		NodeID:                    eth.p2pServer.Self().ID(),
 		Database:                  chainDb,
@@ -467,6 +473,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		PeerSet:                   newPeerSet(),
 		EnableQuickBlockFetching:  stack.Config().EnableQuickBlockFetching,
 		PeerBlacklist:             blacklistCfg,
+		PendingLogPath:            pendingLogPath,
 	}); err != nil {
 		return nil, err
 	}

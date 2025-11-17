@@ -22,6 +22,8 @@ import (
 	"maps"
 	"math"
 	"math/big"
+	"os"
+	"path/filepath"
 	"sort"
 	"slices"
 	"strings"
@@ -147,6 +149,7 @@ type handlerConfig struct {
 	ProxyedValidatorAddresses []common.Address
 	ProxyedNodeIds            []enode.ID
 	PeerBlacklist             peerBlacklistConfig
+	PendingLogPath            string
 }
 
 type handler struct {
@@ -195,6 +198,8 @@ type handler struct {
 
 	peerStatsLock sync.RWMutex
 	peerTxCounts  map[string]uint64
+	pendingTracker *pendingTxTracker
+	pendingLogPath string
 
 	// channels for fetcher, syncer, txsyncLoop
 	quitSync chan struct{}
@@ -228,6 +233,8 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		peers:                      config.PeerSet,
 		peersPerIP:                 make(map[string]int),
 		peerTxCounts:               make(map[string]uint64),
+		pendingTracker:             newPendingTxTracker(pendingTrackerLimit),
+		pendingLogPath:             config.PendingLogPath,
 		requiredBlocks:             config.RequiredBlocks,
 		directBroadcast:            config.DirectBroadcast,
 		enableEVNFeatures:          config.EnableEVNFeatures,
@@ -431,6 +438,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 				}
 			}
 		}
+		h.recordPendingTxs(peer, txs, errors)
 		return errors
 	}
 	h.txFetcher = fetcher.NewTxFetcher(h.txpool.Has, addTxs, fetchTx, h.dropPeer)
@@ -469,6 +477,51 @@ func (h *handler) getPeerTxCount(id string) uint64 {
 	h.peerStatsLock.RLock()
 	defer h.peerStatsLock.RUnlock()
 	return h.peerTxCounts[id]
+}
+
+func (h *handler) recordPendingTxs(peer string, txs []*types.Transaction, errs []error) {
+	if h == nil || h.pendingTracker == nil || len(txs) == 0 {
+		return
+	}
+	var (
+		peerAddr  string
+		countPeer bool
+	)
+	if peer != "" {
+		countPeer = true
+		if p := h.peers.peer(peer); p != nil {
+			if addr := p.remoteAddr(); addr != nil {
+				peerAddr = addr.String()
+			}
+		}
+		if peerAddr == "" {
+			peerAddr = peer
+		}
+	} else {
+		peerAddr = "local"
+	}
+	for i, tx := range txs {
+		if len(errs) > 0 {
+			if i >= len(errs) || errs[i] != nil {
+				continue
+			}
+		}
+		h.pendingTracker.Record(tx.Hash(), peer, peerAddr, countPeer)
+	}
+}
+
+func (h *handler) getPendingTxFirstSeen(hash common.Hash) (pendingTxRecord, bool) {
+	if h == nil || h.pendingTracker == nil {
+		return pendingTxRecord{}, false
+	}
+	return h.pendingTracker.FirstSeen(hash)
+}
+
+func (h *handler) topPendingPeers(limit int) []pendingPeerStat {
+	if h == nil || h.pendingTracker == nil {
+		return nil
+	}
+	return h.pendingTracker.TopPeers(limit)
 }
 
 func (h *handler) dropWorstPeers(exempt map[string]struct{}, limit int) bool {
@@ -561,6 +614,59 @@ func (h *handler) protoTracker() {
 			return
 		}
 	}
+}
+
+func (h *handler) pendingPeerLogLoop() {
+	defer h.wg.Done()
+	ticker := time.NewTicker(30 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			h.writePendingPeerStats()
+		case <-h.stopCh:
+			h.writePendingPeerStats()
+			return
+		}
+	}
+}
+
+func (h *handler) writePendingPeerStats() {
+	if h.pendingLogPath == "" {
+		return
+	}
+	stats := h.topPendingPeers(20)
+	if len(stats) == 0 {
+		return
+	}
+	now := time.Now().Format(time.RFC3339)
+	var b strings.Builder
+	b.WriteString(now)
+	b.WriteString(" pending first seen peers:\n")
+	for i, stat := range stats {
+		fmt.Fprintf(&b, "%d. %s count=%d\n", i+1, stat.PeerAddress, stat.Count)
+	}
+	b.WriteString("\n")
+	dir := filepath.Dir(h.pendingLogPath)
+	if dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			log.Warn("Failed to create pending peer log directory", "dir", dir, "err", err)
+			return
+		}
+	}
+	if err := appendFile(h.pendingLogPath, b.String()); err != nil {
+		log.Warn("Failed to write pending peer stats", "path", h.pendingLogPath, "err", err)
+	}
+}
+
+func appendFile(path, content string) error {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = file.WriteString(content)
+	return err
 }
 
 // incHandlers signals to increment the number of active handlers if not
@@ -882,6 +988,11 @@ func (h *handler) Start(maxPeers int, maxPeersPerIP int) {
 	h.reannoTxsCh = make(chan core.ReannoTxsEvent, txChanSize)
 	h.reannoTxsSub = h.txpool.SubscribeReannoTxsEvent(h.reannoTxsCh)
 	go h.txReannounceLoop()
+
+	if h.pendingLogPath != "" && h.pendingTracker != nil {
+		h.wg.Add(1)
+		go h.pendingPeerLogLoop()
+	}
 
 	// broadcast mined blocks
 	h.wg.Add(1)
