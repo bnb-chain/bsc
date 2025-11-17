@@ -152,19 +152,6 @@ func (voteManager *VoteManager) loop() {
 			}
 
 			curHead := cHead.Header
-			if p, ok := voteManager.engine.(*parlia.Parlia); ok {
-				// Approximately equal to the block interval of next block, except for the switch block.
-				blockInterval, err := p.BlockInterval(voteManager.chain, curHead)
-				if err != nil {
-					log.Debug("failed to get BlockInterval when voting")
-				}
-				voteAssembledTime := time.UnixMilli(int64((curHead.MilliTimestamp() + p.GetAncestorGenerationDepth(curHead)*blockInterval)))
-				timeForBroadcast := 50 * time.Millisecond // enough to broadcast a vote in the same region
-				if time.Now().Add(timeForBroadcast).After(voteAssembledTime) {
-					log.Warn("too late to vote", "Head.Time(Millisecond)", curHead.MilliTimestamp(), "Now(Millisecond)", time.Now().UnixMilli())
-					continue
-				}
-			}
 
 			// Check if cur validator is within the validatorSet at curHead
 			if !voteManager.engine.IsActiveValidatorAt(voteManager.chain, curHead,
@@ -190,6 +177,20 @@ func (voteManager *VoteManager) loop() {
 				if sourceHash == (common.Hash{}) {
 					log.Debug("sourceHash is empty")
 					continue
+				}
+
+				if p, ok := voteManager.engine.(*parlia.Parlia); ok {
+					// Approximately equal to the block interval of next block, except for the switch block.
+					blockInterval, err := p.BlockInterval(voteManager.chain, curHead)
+					if err != nil {
+						log.Debug("failed to get BlockInterval when voting")
+					}
+					voteAssembledTime := time.UnixMilli(int64((curHead.MilliTimestamp() + p.GetAncestorGenerationDepth(curHead)*blockInterval)))
+					timeForBroadcast := 50 * time.Millisecond // enough to broadcast a vote in the same region
+					if time.Now().Add(timeForBroadcast).After(voteAssembledTime) {
+						log.Warn("too late to vote", "Head.Time(Millisecond)", curHead.MilliTimestamp(), "Now(Millisecond)", time.Now().UnixMilli())
+						continue
+					}
 				}
 
 				voteMessage.Data.SourceNumber = sourceNumber
