@@ -1072,7 +1072,7 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 		if err != nil {
 			return err
 		}
-		votes = p.VotePool.FetchVotesByBlockHash(targetHeader.Hash())
+		votes = p.VotePool.FetchVotesByBlockHash(targetHeader.Hash(), justifiedBlockNumber)
 		quorum := cmath.CeilDiv(len(snap.Validators)*2, 3)
 		if len(votes) >= quorum {
 			targetHeaderParentSnap = snap
