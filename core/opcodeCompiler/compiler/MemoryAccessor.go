@@ -62,6 +62,83 @@ func (a *MemoryAccessor) tryGetRecord(offset *uint256.Int, size *uint256.Int) (V
 		}
 	}
 
+	// Attempt to assemble a constant range from prior writes (e.g., MSTORE8 sequences)
+	// Only attempt for exact 32-byte requests with constant offset
+	if size != nil && offset != nil && size.Eq(uint256.NewInt(32)) && offset.IsUint64() {
+		base := offset.Uint64()
+		// Track which bytes are known
+		known := make([]bool, 32)
+		out := make([]byte, 32)
+		// Apply writes in order (program order), later writes may overwrite earlier ones
+		for _, w := range a.writes {
+			if !w.offset.IsConst() || !w.size.IsConst() || w.Value.kind != Konst {
+				continue
+			}
+			wOff := uint256.NewInt(0).SetBytes(w.offset.payload)
+			wSz := uint256.NewInt(0).SetBytes(w.size.payload)
+			if !wOff.IsUint64() || !wSz.IsUint64() {
+				continue
+			}
+			wo := wOff.Uint64()
+			ws := wSz.Uint64()
+			// Fast paths for 1 and 32 byte writes
+			if ws == 0 {
+				continue
+			}
+			// Compute overlap between [wo, wo+ws) and [base, base+32)
+			endW := wo + ws
+			endT := base + 32
+			if endW <= base || wo >= endT {
+				continue
+			}
+			start := wo
+			if start < base {
+				start = base
+			}
+			end := endW
+			if end > endT {
+				end = endT
+			}
+			// Copy overlapped bytes from write payload
+			// For 32-byte payloads, w.Value.payload is right-aligned already
+			for pos := start; pos < end; pos++ {
+				idx := int(pos - base)
+				// Source index within write payload
+				if ws == 1 {
+					// Single byte write (MSTORE8): payload[0] is the stored byte
+					out[idx] = w.Value.payload[0]
+					known[idx] = true
+				} else if ws == 32 {
+					// 32-byte write: payload length should be 32
+					// Map pos into payload index
+					pIdx := int(32 - (endW - pos))
+					if pIdx >= 0 && pIdx < len(w.Value.payload) {
+						out[idx] = w.Value.payload[pIdx]
+						known[idx] = true
+					}
+				} else if len(w.Value.payload) >= int(ws) {
+					// Generic case: copy byte-wise
+					pIdx := int(pos - wo)
+					if pIdx >= 0 && pIdx < len(w.Value.payload) {
+						out[idx] = w.Value.payload[pIdx]
+						known[idx] = true
+					}
+				}
+			}
+		}
+		// Verify full coverage
+		allKnown := true
+		for i := 0; i < 32; i++ {
+			if !known[i] {
+				allKnown = false
+				break
+			}
+		}
+		if allKnown {
+			return Value{kind: Konst, payload: out, u: uint256.NewInt(0).SetBytes(out)}, true
+		}
+	}
+
 	return Value{}, false
 }
 

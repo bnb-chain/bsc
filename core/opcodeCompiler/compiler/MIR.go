@@ -110,11 +110,11 @@ func GetOptimizationPhase() OptimizationPhase {
 
 // MIR is register based intermediate representation
 type MIR struct {
-	op      MirOperation
-	oprands []*Value
-	meta    []byte
-	pc      *uint // Program counter of the original instruction (optional)
-	idx     int   // Index within its basic block, set by appendMIR
+	op       MirOperation
+	operands []*Value
+	meta     []byte
+	pc       *uint // Program counter of the original instruction (optional)
+	idx      int   // Index within its basic block, set by appendMIR
 	// EVM mapping metadata (set during CFG build)
 	evmPC uint // byte offset of the originating EVM opcode
 	evmOp byte // originating EVM opcode byte value
@@ -137,6 +137,8 @@ type MIRPreOpContext struct {
 	EvmOp      byte
 	Operands   []*uint256.Int
 	MemorySize uint64
+	// Length is the region length for memory ops when known (e.g., KECCAK256)
+	Length uint64
 	// IsBlockEntry is true for the first MIR instruction of the current basic block
 	IsBlockEntry bool
 	// Block is the current MIR basic block when IsBlockEntry is true
@@ -170,16 +172,16 @@ func (m *MIR) Aux() *MIR { return m.aux }
 
 // Operands returns the operands of this MIR instruction.
 // The returned slice should be treated as read-only by callers.
-func (m *MIR) Operands() []*Value { return m.oprands }
+func (m *MIR) Operands() []*Value { return m.operands }
 
 // OperandDebugStrings returns a best-effort human-readable rendering of operands
 // suitable for logging/tracing.
 func (m *MIR) OperandDebugStrings() []string {
-	if len(m.oprands) == 0 {
+	if len(m.operands) == 0 {
 		return nil
 	}
-	out := make([]string, 0, len(m.oprands))
-	for _, v := range m.oprands {
+	out := make([]string, 0, len(m.operands))
+	for _, v := range m.operands {
 		if v == nil {
 			out = append(out, "nil")
 			continue
@@ -213,14 +215,16 @@ func (m *MIR) OperandDebugStrings() []string {
 func newVoidMIR(operation MirOperation) *MIR {
 	mir := new(MIR)
 	mir.op = operation
-	mir.oprands = nil
+	mir.operands = nil
+	// no deprecated alias
 	return mir
 }
 
 func newNopMIR(operation MirOperation, original_opnds []*Value) *MIR {
 	mir := new(MIR)
 	mir.op = MirNOP
-	mir.oprands = original_opnds
+	mir.operands = original_opnds
+	// no deprecated alias
 	mir.meta = []byte{byte(operation)}
 	return mir
 }
@@ -244,7 +248,8 @@ func newUnaryOpMIR(operation MirOperation, opnd *Value, stack *ValueStack) *MIR 
 	mir := new(MIR)
 	mir.op = operation
 	opnd.use = append(opnd.use, mir)
-	mir.oprands = []*Value{opnd}
+	mir.operands = []*Value{opnd}
+	// no deprecated alias
 	// If the operand is a live-in from a parent BB, tag the defining MIR as global at build time
 	if opnd != nil && opnd.liveIn && opnd.def != nil {
 		// No direct global table here; interpreter will use globalResults by def pointer.
@@ -261,7 +266,8 @@ func newBinaryOpMIR(operation MirOperation, opnd1 *Value, opnd2 *Value, stack *V
 	mir.op = operation
 	opnd1.use = append(opnd1.use, mir)
 	opnd2.use = append(opnd2.use, mir)
-	mir.oprands = []*Value{opnd1, opnd2}
+	mir.operands = []*Value{opnd1, opnd2}
+	// no deprecated alias
 	if (opnd1 != nil && opnd1.liveIn && opnd1.def != nil) || (opnd2 != nil && opnd2.liveIn && opnd2.def != nil) {
 		// Marker only; interpreter resolves by def pointer.
 	}
@@ -275,7 +281,8 @@ func newTernaryOpMIR(operation MirOperation, opnd1 *Value, opnd2 *Value, opnd3 *
 	opnd1.use = append(opnd1.use, mir)
 	opnd2.use = append(opnd2.use, mir)
 	opnd3.use = append(opnd3.use, mir)
-	mir.oprands = []*Value{opnd1, opnd2, opnd3}
+	mir.operands = []*Value{opnd1, opnd2, opnd3}
+	// no deprecated alias
 	return mir
 }
 
@@ -435,6 +442,7 @@ func doPeepHole(operation MirOperation, opnd1 *Value, opnd2 *Value, stack *Value
 						hash := crypto.Keccak256(memData.payload)
 						val1 = uint256.NewInt(0).SetBytes(hash)
 					} else {
+						// Disable single-constant peephole identities
 						optimized = false
 					}
 				} else {
@@ -502,4 +510,30 @@ func trimLeadingZeros(data []byte) []byte {
 		}
 	}
 	return []byte{}
+}
+
+// bytesEqual compares two byte slices for equality without allocations.
+func bytesEqual(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// isAllOnes reports whether payload is a 32-byte slice of 0xff bytes.
+func isAllOnes(payload []byte) bool {
+	if len(payload) != 32 {
+		return false
+	}
+	for i := 0; i < 32; i++ {
+		if payload[i] != 0xff {
+			return false
+		}
+	}
+	return true
 }

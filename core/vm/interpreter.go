@@ -18,6 +18,7 @@ package vm
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
@@ -109,6 +110,16 @@ type EVMInterpreter struct {
 
 	readOnly   bool   // Whether to throw on stateful modifications
 	returnData []byte // Last CALL's return data for subsequent reuse
+}
+
+// evmTimingHook, when set (testing only), receives per-op timing split between
+// gas calculation and opcode execution. Disabled by default.
+var evmTimingHook func(pc uint64, op byte, gasDur time.Duration, execDur time.Duration)
+
+// SetEVMTimingHook installs a callback to observe gas vs execution time in the
+// stock interpreter (testing only). Pass nil to disable.
+func SetEVMTimingHook(cb func(pc uint64, op byte, gasDur time.Duration, execDur time.Duration)) {
+	evmTimingHook = cb
 }
 
 // NewEVMInterpreter returns a new instance of the Interpreter.
@@ -276,7 +287,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 		// All ops with a dynamic memory usage also has a dynamic gas cost.
 		var memorySize uint64
+		var gasStart time.Time
 		if operation.dynamicGas != nil {
+			if evmTimingHook != nil {
+				gasStart = time.Now()
+			}
 			// calculate the new memory size and expand the memory to fit
 			// the operation
 			// Memory check needs to be done prior to evaluating the dynamic gas portion,
@@ -307,6 +322,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			} else {
 				contract.Gas -= dynamicCost
 			}
+			if evmTimingHook != nil {
+				evmTimingHook(pc, byte(op), time.Since(gasStart), 0)
+			}
 		}
 
 		// Do tracing before potential memory expansion
@@ -324,7 +342,14 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}
 
 		// execute the operation
+		var execStart time.Time
+		if evmTimingHook != nil {
+			execStart = time.Now()
+		}
 		res, err = operation.execute(&pc, in, callContext)
+		if evmTimingHook != nil {
+			evmTimingHook(pc, byte(op), 0, time.Since(execStart))
+		}
 		if err != nil {
 			break
 		}

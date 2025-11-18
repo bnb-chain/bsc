@@ -60,10 +60,20 @@ func TestMIRParity_USDT_Basic(t *testing.T) {
 			input = append(input, a...)
 		}
 
+		// Optional detailed gas trace for decimals case
+		var baseTrace, mirTrace [][3]uint64 // pc, op, gasLeft
+		if m.name == "decimals" {
+			vm.SetMIRGasProbe(func(pc uint64, op byte, gasLeft uint64) {
+				mirTrace = append(mirTrace, [3]uint64{pc, uint64(op), gasLeft})
+			})
+		}
 		// Base EVM run with tracer to capture exit PC
 		var baseLastPC uint64
 		baseCfg.EVMConfig.Tracer = &tracing.Hooks{OnOpcode: func(pc uint64, op byte, gas, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
 			baseLastPC = pc
+			if m.name == "decimals" {
+				baseTrace = append(baseTrace, [3]uint64{pc, uint64(op), gas})
+			}
 		}}
 		baseEnv := runtime.NewEnv(baseCfg)
 		baseAddr := common.BytesToAddress([]byte("contract_usdt_base"))
@@ -101,6 +111,20 @@ func TestMIRParity_USDT_Basic(t *testing.T) {
 			t.Fatalf("ret mismatch for %s\nbase: %x\n mir: %x", m.name, baseRet, mirRet)
 		}
 		if baseGasLeft != mirGasLeft {
+			// If we captured traces, print first divergence to aid debugging
+			if len(baseTrace) > 0 && len(mirTrace) > 0 {
+				max := len(baseTrace)
+				if len(mirTrace) < max {
+					max = len(mirTrace)
+				}
+				for i := 0; i < max; i++ {
+					b := baseTrace[i]
+					mr := mirTrace[i]
+					if b[0] != mr[0] || b[2] != mr[2] || b[1] != mr[1] {
+						t.Fatalf("gas diverged at step %d pc base=%d mir=%d op base=0x%x mir=0x%x gas base=%d mir=%d", i, b[0], mr[0], b[1], mr[1], b[2], mr[2])
+					}
+				}
+			}
 			t.Fatalf("gas mismatch for %s: base %d != mir %d", m.name, baseGasLeft, mirGasLeft)
 		}
 		if baseLastPC != mirLastPC {
