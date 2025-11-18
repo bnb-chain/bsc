@@ -511,8 +511,19 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 func makeExtraData(extra []byte) []byte {
 	if len(extra) == 0 {
 		// create default extradata
+		// For version >= 1.6.4, include commit id (8 characters)
+		commitID := ""
+		if gethversion.Major > 1 || (gethversion.Major == 1 && gethversion.Minor > 6) ||
+			(gethversion.Major == 1 && gethversion.Minor == 6 && gethversion.Patch >= 4) {
+			git, ok := version.VCS()
+			if ok && len(git.Commit) >= 8 {
+				commitID = git.Commit[:8]
+			}
+		}
+
 		extra, _ = rlp.EncodeToBytes([]interface{}{
 			uint(gethversion.Major<<16 | gethversion.Minor<<8 | gethversion.Patch),
+			commitID,
 			"geth",
 			runtime.Version(),
 			runtime.GOOS,

@@ -211,6 +211,12 @@ const validatorMap = new Map([
     ['0x32415e630B9B3489639dEE7de21274Ab64016226', ['Kraken'     , '0x70Cd30d9216AF7A5654D245e9F5c649b811aB2eB', '0xa80ebd07bd9d717bd538413e8830f673e63dfad496c901de324be5d16b0496aee39352ecfb84fa58d8d8a67746f8ae6c']],
 ]);
 
+// commitMap maintains the standard commit IDs for official releases
+const commitMap = new Map([
+    ["v1.6.4", "abcdefgh"],
+    // Add more official version -> commit mappings as needed
+]);
+
 const builderMap = new Map([
     // BSC mainnet
     //     blockrazor
@@ -320,6 +326,40 @@ async function getBinaryVersion() {
         let minor = ethers.toNumber(ethers.dataSlice(blockData.extraData, 3, 4));
         let patch = ethers.toNumber(ethers.dataSlice(blockData.extraData, 4, 5));
 
+        // Extract commit ID from extraData if version >= 1.6.4
+        let commitID = "";
+        let versionStr = major + "." + minor + "." + patch;
+        if (major > 1 || (major === 1 && minor > 6) || (major === 1 && minor === 6 && patch >= 4)) {
+            try {
+                // Decode RLP to extract commit ID
+                // ExtraData structure: [version_uint, commitID_string, "geth", runtime_version, os]
+                const decoded = ethers.decodeRlp(blockData.extraData);
+                if (Array.isArray(decoded) && decoded.length > 1) {
+                    // decoded[0] is version (as hex string)
+                    // decoded[1] is commit ID (as hex string)
+                    const commitIDHex = decoded[1];
+                    if (commitIDHex && commitIDHex !== "0x" && commitIDHex !== "0x00") {
+                        // Convert hex to UTF-8 string
+                        try {
+                            commitID = ethers.toUtf8String(commitIDHex);
+                        } catch (e) {
+                            // If conversion fails, use the hex string directly (removing 0x prefix)
+                            commitID = commitIDHex.substring(2);
+                        }
+                    }
+                }
+            } catch (e) {
+                // If RLP decoding fails, the block might be from an older version
+                // or the extraData format is different
+                console.error("Failed to decode extraData:", e.message);
+            }
+            
+            // Format version string with commit ID
+            if (commitID && commitID.length > 0) {
+                versionStr = versionStr + "-" + commitID;
+            }
+        }
+
         // 2.get minimum txGasPrice based on the last non-zero-gasprice transaction
         let lastGasPrice = 0;
         for (let txIndex = blockData.transactions.length - 1; txIndex >= 0; txIndex--) {
@@ -332,7 +372,7 @@ async function getBinaryVersion() {
             break;
         }
         var moniker = await getValidatorMoniker(blockData.miner, blockNum);
-        console.log(blockNum - i * turnLength, blockData.miner, "version =", major + "." + minor + "." + patch, " MinGasPrice = " + lastGasPrice, moniker);
+        console.log(blockNum - i * turnLength, blockData.miner, "version =", versionStr, " MinGasPrice = " + lastGasPrice, moniker);
     }
 }
 
