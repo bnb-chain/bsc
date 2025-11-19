@@ -95,7 +95,9 @@ type MIRExecutionEnv struct {
 
 // MIRInterpreter executes MIR instructions and produces values.
 type MIRInterpreter struct {
-	env        *MIRExecutionEnv
+	env *MIRExecutionEnv
+	// cfg points to the current CFG during RunCFGWithResolver; used for runtime backfill
+	cfg        *CFG
 	memory     []byte
 	returndata []byte
 	results    []*uint256.Int
@@ -338,6 +340,37 @@ func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
 			}
 		}
 		if onlyNopsAndStop && hasStop {
+			// Ensure gas/accounting hooks see the landing JUMPDEST and terminal STOP
+			if it.beforeOp != nil {
+				instrs := block.instructions
+				// Block-entry pre-op for the first instruction (likely MirJUMPDEST)
+				if len(instrs) > 0 && instrs[0] != nil {
+					ctx := &MIRPreOpContext{
+						M:            instrs[0],
+						EvmOp:        instrs[0].evmOp,
+						IsBlockEntry: true,
+						Block:        block,
+					}
+					if err := it.beforeOp(ctx); err != nil {
+						return nil, err
+					}
+				}
+				// Also emit a pre-op for the terminal STOP to keep tracer/gas parity
+				for i := len(instrs) - 1; i >= 0; i-- {
+					if instrs[i] != nil && instrs[i].op == MirSTOP {
+						ctx := &MIRPreOpContext{
+							M:            instrs[i],
+							EvmOp:        instrs[i].evmOp,
+							IsBlockEntry: false,
+							Block:        block,
+						}
+						if err := it.beforeOp(ctx); err != nil {
+							return nil, err
+						}
+						break
+					}
+				}
+			}
 			return it.returndata, nil
 		}
 	}
@@ -440,6 +473,8 @@ func (it *MIRInterpreter) publishLiveOut(block *MIRBasicBlock) {
 
 // RunCFGWithResolver sets up a resolver backed by the given CFG and runs from entry block
 func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]byte, error) {
+	// Record the active CFG for possible runtime backfill of dynamic targets
+	it.cfg = cfg
 	// Reset global caches at the start of each execution to avoid stale values
 	// This ensures values from previous executions or different paths don't pollute the current run
 	if it.globalResultsBySig != nil {
@@ -486,8 +521,21 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 		// This handles cases like entry blocks with only PUSH operations
 		if bb.Size() == 0 && it.beforeOp != nil {
 			ctx := &it.preOpCtx
-			ctx.M = nil // No MIR instruction for blocks with Size=0
+			// Synthesize JUMPDEST charge for trivial landing blocks with no MIR
+			ctx.M = nil
 			ctx.EvmOp = 0
+			if it.cfg != nil && int(bb.firstPC) >= 0 && int(bb.firstPC) < len(it.cfg.rawCode) {
+				if ByteCode(it.cfg.rawCode[int(bb.firstPC)]) == JUMPDEST {
+					// Create a minimal MIR to allow adapter to charge JUMPDEST gas
+					mirDebugWarn("MIR synthesize JUMPDEST pre-op at block entry", "block", bb.blockNum, "firstPC", bb.firstPC, "size", bb.Size())
+					synth := new(MIR)
+					synth.op = MirJUMPDEST
+					synth.evmPC = uint(bb.firstPC)
+					synth.evmOp = byte(JUMPDEST)
+					ctx.M = synth
+					ctx.EvmOp = synth.evmOp
+				}
+			}
 			ctx.Operands = nil
 			ctx.MemorySize = 0
 			ctx.Length = 0
@@ -592,8 +640,24 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 	// For block entry, we need to charge gas even if the first instruction is a NOP
 	if isBlockEntry && it.beforeOp != nil {
 		ctx := &it.preOpCtx
+		// Default to the actual first MIR instruction
 		ctx.M = m
 		ctx.EvmOp = m.evmOp
+		// If the underlying bytecode begins with JUMPDEST but the first MIR op is not MirJUMPDEST
+		// (e.g., it was optimized away), synthesize a MirJUMPDEST so the adapter can charge gas once.
+		if it.cfg != nil && it.currentBB != nil {
+			fp := int(it.currentBB.firstPC)
+			if fp >= 0 && it.cfg.rawCode != nil && fp < len(it.cfg.rawCode) && ByteCode(it.cfg.rawCode[fp]) == JUMPDEST {
+				if m == nil || m.op != MirJUMPDEST {
+					synth := new(MIR)
+					synth.op = MirJUMPDEST
+					synth.evmPC = uint(it.currentBB.firstPC)
+					synth.evmOp = byte(JUMPDEST)
+					ctx.M = synth
+					ctx.EvmOp = synth.evmOp
+				}
+			}
+		}
 		ctx.Operands = nil
 		ctx.MemorySize = 0
 		ctx.Length = 0
@@ -3032,6 +3096,84 @@ func (it *MIRInterpreter) scheduleJump(udest uint64, m *MIR, isFallthrough bool)
 	// Then resolve to a basic block in the CFG
 	it.nextBB = it.env.ResolveBB(udest)
 	if it.nextBB == nil {
+		// Attempt runtime backfill: if destination is a valid JUMPDEST and not yet built,
+		// synthesize a landing block, wire the current block as parent, seed entry stack,
+		// and rebuild a bounded set of successors so PHIs stabilize.
+		if !isFallthrough && it.cfg != nil {
+			code := it.cfg.rawCode
+			if int(udest) >= 0 && int(udest) < len(code) && ByteCode(code[udest]) == JUMPDEST {
+				// Create or get the target BB
+				targetBB := it.cfg.createBB(uint(udest), it.currentBB)
+				// Wire parent and seed incoming/entry stacks from current exit
+				if it.currentBB != nil {
+					if exit := it.currentBB.ExitStack(); exit != nil {
+						targetBB.AddIncomingStack(it.currentBB, exit)
+						targetBB.SetParents([]*MIRBasicBlock{it.currentBB})
+						vs := ValueStack{}
+						vs.resetTo(exit)
+						vs.markAllLiveIn()
+						targetBB.ResetForRebuild(true)
+						unproc := MIRBasicBlockStack{}
+						if err := it.cfg.buildBasicBlock(targetBB, &vs, it.cfg.getMemoryAccessor(), it.cfg.getStateAccessor(), &unproc); err == nil {
+							targetBB.built = true
+							targetBB.queued = false
+							// Rebuild successors with a conservative BFS budget to propagate PHIs
+							type q struct{ items []*MIRBasicBlock }
+							push := func(Q *q, b *MIRBasicBlock) {
+								if b != nil {
+									Q.items = append(Q.items, b)
+								}
+							}
+							pop := func(Q *q) *MIRBasicBlock {
+								if len(Q.items) == 0 {
+									return nil
+								}
+								b := Q.items[len(Q.items)-1]
+								Q.items = Q.items[:len(Q.items)-1]
+								return b
+							}
+							var Q q
+							for _, ch := range targetBB.Children() {
+								push(&Q, ch)
+							}
+							// Drain any enqueued children produced during the initial build
+							for unproc.Size() != 0 {
+								push(&Q, unproc.Pop())
+							}
+							visited := make(map[*MIRBasicBlock]bool)
+							budget := 256
+							for len(Q.items) > 0 && budget > 0 {
+								nb := pop(&Q)
+								if nb == nil || visited[nb] {
+									budget--
+									continue
+								}
+								visited[nb] = true
+								vs.resetTo(nil)
+								// If single parent, seed from that parent's exit; otherwise let PHIs form
+								if len(nb.Parents()) == 1 {
+									if ps := nb.Parents()[0].ExitStack(); ps != nil {
+										vs.resetTo(ps)
+										vs.markAllLiveIn()
+									}
+								}
+								nb.ResetForRebuild(true)
+								if err := it.cfg.buildBasicBlock(nb, &vs, it.cfg.getMemoryAccessor(), it.cfg.getStateAccessor(), &unproc); err == nil {
+									nb.built = true
+									nb.queued = false
+									for _, ch := range nb.Children() {
+										push(&Q, ch)
+									}
+								}
+								budget--
+							}
+							// Successfully built target; use it
+							it.nextBB = targetBB
+						}
+					}
+				}
+			}
+		}
 		// For fallthrough, try to get the block from children if ResolveBB fails
 		if isFallthrough {
 			children := it.currentBB.Children()

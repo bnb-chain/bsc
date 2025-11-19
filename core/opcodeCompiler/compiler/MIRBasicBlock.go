@@ -660,6 +660,8 @@ func (b *MIRBasicBlock) CreateStorageOpMIR(op MirOperation, stack *ValueStack, a
 			accessor.recordStateLoad(key)
 		}
 		mir.operands = []*Value{&key}
+		// TLOAD produces a value
+		stack.push(mir.Result())
 	case MirTSTORE:
 		// EVM pops key (top) then value, same as SSTORE
 		key := stack.pop()
@@ -672,10 +674,7 @@ func (b *MIRBasicBlock) CreateStorageOpMIR(op MirOperation, stack *ValueStack, a
 		// no-op
 	}
 
-	// Push generic result for all except handled separately above
-	if op != MirSLOAD {
-		stack.push(mir.Result())
-	}
+	// Do not push for SSTORE/TSTORE (no stack result). SLOAD/TLOAD already handled above.
 	mir = b.appendMIR(mir)
 	mir.genStackDepth = stack.size()
 	// noisy generation logging removed
@@ -884,7 +883,7 @@ func (b *MIRBasicBlock) CreateLogMIR(op MirOperation, stack *ValueStack) *MIR {
 	}
 	mir.operands = operands
 
-	stack.push(mir.Result())
+	// LOGx consume operands and do not push a result
 	mir = b.appendMIR(mir)
 	mir.genStackDepth = stack.size()
 	// noisy generation logging removed

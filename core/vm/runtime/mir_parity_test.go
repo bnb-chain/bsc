@@ -3,10 +3,9 @@ package runtime_test
 import (
 	"encoding/hex"
 	"math/big"
-	"testing"
-
 	"os"
 	"sort"
+	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
@@ -19,18 +18,18 @@ import (
 	"github.com/holiman/uint256"
 )
 
-func TestMIRParity_USDT_Basic(t *testing.T) {
-	if os.Getenv("MIR_PARITY_REAL") != "1" {
-		t.Skip("Skipping real-contract parity (set MIR_PARITY_REAL=1 to enable)")
-	}
+func TestMIRParity_USDT(t *testing.T) {
+
 	// Decode USDT bytecode from benchmarks
 	realCode, err := hex.DecodeString(usdtHex[2:])
 	if err != nil {
 		t.Fatalf("decode USDT hex: %v", err)
 	}
 
-	// Methods to test (keep small for speed)
+	// Methods to test (views + a few state-changing/revert paths)
 	zeroAddress := make([]byte, 32)
+	one := make([]byte, 32)
+	one[len(one)-1] = 1
 	methods := []struct {
 		name     string
 		selector []byte
@@ -42,13 +41,17 @@ func TestMIRParity_USDT_Basic(t *testing.T) {
 		{"totalSupply", []byte{0x18, 0x16, 0x0d, 0xdd}, nil},
 		{"balanceOf", []byte{0x70, 0xa0, 0x82, 0x31}, [][]byte{zeroAddress}},
 		{"allowance", []byte{0x39, 0x50, 0x93, 0x51}, [][]byte{zeroAddress, zeroAddress}},
+		// Common ERC20 write paths; parity is based on matching success/revert and gas
+		{"approve_zero_zero", []byte{0x09, 0x5e, 0xa7, 0xb3}, [][]byte{zeroAddress, make([]byte, 32)}},
+		{"transfer_zero_1", []byte{0xa9, 0x05, 0x9c, 0xbb}, [][]byte{zeroAddress, one}},
+		{"transferFrom_zero_zero_1", []byte{0x23, 0xb8, 0x72, 0xdd}, [][]byte{zeroAddress, zeroAddress, one}},
 	}
 
 	// Build base and MIR envs
 	// Use BSC config at/after London to match benches and opcode availability
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	baseCfg := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mirCfg := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}}
+	mirCfg := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true, MIRStrictNoFallback: true}}
 
 	// Prepare states
 	baseCfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
@@ -80,7 +83,8 @@ func TestMIRParity_USDT_Basic(t *testing.T) {
 		baseSender := vm.AccountRef(baseCfg.Origin)
 		baseEnv.StateDB.CreateAccount(baseAddr)
 		baseEnv.StateDB.SetCode(baseAddr, realCode)
-		baseRet, baseGasLeft, baseErr := baseEnv.Call(baseSender, baseAddr, input, baseCfg.GasLimit, uint256.NewInt(0))
+		baseCallValue := uint256.NewInt(0)
+		baseRet, baseGasLeft, baseErr := baseEnv.Call(baseSender, baseAddr, input, baseCfg.GasLimit, baseCallValue)
 
 		// Enable MIR generation only for the MIR run; base env already created
 		compiler.EnableOpcodeParse()
@@ -96,7 +100,8 @@ func TestMIRParity_USDT_Basic(t *testing.T) {
 		mirSender := vm.AccountRef(mirCfg.Origin)
 		mirEnv.StateDB.CreateAccount(mirAddr)
 		mirEnv.StateDB.SetCode(mirAddr, realCode)
-		mirRet, mirGasLeft, mirErr := mirEnv.Call(mirSender, mirAddr, input, mirCfg.GasLimit, uint256.NewInt(0))
+		mirCallValue := uint256.NewInt(0)
+		mirRet, mirGasLeft, mirErr := mirEnv.Call(mirSender, mirAddr, input, mirCfg.GasLimit, mirCallValue)
 		// If both errored, compare error strings and skip remainder
 		if baseErr != nil || mirErr != nil {
 			if (baseErr == nil) != (mirErr == nil) || (baseErr != nil && mirErr != nil && baseErr.Error() != mirErr.Error()) {
@@ -133,10 +138,8 @@ func TestMIRParity_USDT_Basic(t *testing.T) {
 	}
 }
 
-func TestMIRParity_WBNB_Basic(t *testing.T) {
-	if os.Getenv("MIR_PARITY_REAL") != "1" {
-		t.Skip("Skipping real-contract parity (set MIR_PARITY_REAL=1 to enable)")
-	}
+func TestMIRParity_WBNB(t *testing.T) {
+
 	// Decode WBNB bytecode from benchmarks
 	code, err := hex.DecodeString(wbnbHex[2:])
 	if err != nil {
@@ -144,6 +147,8 @@ func TestMIRParity_WBNB_Basic(t *testing.T) {
 	}
 
 	zeroAddress := make([]byte, 32)
+	one := make([]byte, 32)
+	one[len(one)-1] = 1
 	methods := []struct {
 		name     string
 		selector []byte
@@ -154,11 +159,16 @@ func TestMIRParity_WBNB_Basic(t *testing.T) {
 		{"decimals", []byte{0x31, 0x3c, 0xe5, 0x67}, nil},
 		{"totalSupply", []byte{0x18, 0x16, 0x0d, 0xdd}, nil},
 		{"balanceOf", []byte{0x70, 0xa0, 0x82, 0x31}, [][]byte{zeroAddress}},
+		{"allowance", []byte{0xdd, 0x62, 0xed, 0x3e}, [][]byte{zeroAddress, zeroAddress}},
+		// deposit with value; parity on success paths
+		{"deposit_value_1e18", []byte{0xd0, 0xe3, 0x0d, 0xb0}, nil},
+		// transfer to zero addr should revert (parity in error)
+		{"transfer_zero_1", []byte{0xa9, 0x05, 0x9c, 0xbb}, [][]byte{zeroAddress, one}},
 	}
 
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	baseCfg := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mirCfg := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}}
+	mirCfg := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true, MIRStrictNoFallback: true}}
 
 	baseCfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	mirCfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
@@ -179,7 +189,13 @@ func TestMIRParity_WBNB_Basic(t *testing.T) {
 		baseSender := vm.AccountRef(baseCfg.Origin)
 		baseEnv.StateDB.CreateAccount(baseAddr)
 		baseEnv.StateDB.SetCode(baseAddr, code)
-		baseRet, baseGasLeft, baseErr := baseEnv.Call(baseSender, baseAddr, input, baseCfg.GasLimit, uint256.NewInt(0))
+		// per-call value and optional funding (for deposit)
+		callValue := uint256.NewInt(0)
+		if m.name == "deposit_value_1e18" {
+			val := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+			baseEnv.StateDB.AddBalance(baseCfg.Origin, uint256.MustFromBig(val), tracing.BalanceIncreaseGenesisBalance)
+		}
+		baseRet, baseGasLeft, baseErr := baseEnv.Call(baseSender, baseAddr, input, baseCfg.GasLimit, callValue)
 
 		// Enable MIR parsing now for MIR run only
 		compiler.EnableOpcodeParse()
@@ -195,7 +211,22 @@ func TestMIRParity_WBNB_Basic(t *testing.T) {
 		mirSender := vm.AccountRef(mirCfg.Origin)
 		mirEnv.StateDB.CreateAccount(mirAddr)
 		mirEnv.StateDB.SetCode(mirAddr, code)
-		mirRet, mirGasLeft, mirErr := mirEnv.Call(mirSender, mirAddr, input, mirCfg.GasLimit, uint256.NewInt(0))
+		mirCallValue := uint256.NewInt(0)
+		if m.name == "deposit_value_1e18" {
+			val := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+			mirEnv.StateDB.AddBalance(mirCfg.Origin, uint256.MustFromBig(val), tracing.BalanceIncreaseGenesisBalance)
+			mirCallValue = uint256.MustFromBig(val)
+			// also set base call value to same amount by rerunning base call if needed
+			// (base call was run with 0; since envs are independent per method, just align call values below)
+			// Re-run base call with value to ensure parity on success path
+			baseEnv = runtime.NewEnv(baseCfg)
+			baseEnv.StateDB.CreateAccount(baseAddr)
+			baseEnv.StateDB.SetCode(baseAddr, code)
+			baseEnv.StateDB.AddBalance(baseCfg.Origin, uint256.MustFromBig(val), tracing.BalanceIncreaseGenesisBalance)
+			baseSender = vm.AccountRef(baseCfg.Origin)
+			baseRet, baseGasLeft, baseErr = baseEnv.Call(baseSender, baseAddr, input, baseCfg.GasLimit, uint256.MustFromBig(val))
+		}
+		mirRet, mirGasLeft, mirErr := mirEnv.Call(mirSender, mirAddr, input, mirCfg.GasLimit, mirCallValue)
 		if baseErr != nil || mirErr != nil {
 			if (baseErr == nil) != (mirErr == nil) || (baseErr != nil && mirErr != nil && baseErr.Error() != mirErr.Error()) {
 				t.Fatalf("error mismatch for %s: base=%v mir=%v", m.name, baseErr, mirErr)

@@ -53,6 +53,11 @@ type MIRInterpreterAdapter struct {
 	blockEntryGasCharges map[*compiler.MIRBasicBlock]uint64
 	// Current block being executed (for GAS opcode to know which block entry charges to add back)
 	currentBlock *compiler.MIRBasicBlock
+	// Track whether the last executed opcode was a control transfer (JUMP/JUMPI)
+	lastWasJump bool
+	// Dedup JUMPDEST charge at first instruction of landing block
+	lastJdPC           uint32
+	lastJdBlockFirstPC uint32
 }
 
 // countOpcodesInRange counts EVM opcodes in a given PC range
@@ -628,6 +633,9 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 		// Fallback to regular EVM interpreter
 		return adapter.evm.Interpreter().Run(contract, input, readOnly)
 	}
+	// Reset JUMPDEST de-dup guard per top-level run
+	adapter.lastJdPC = ^uint32(0)
+	adapter.lastJdBlockFirstPC = ^uint32(0)
 
 	// Pre-flight fork gating: if the bytecode contains opcodes not enabled at the current fork,
 	// mirror EVM behavior by returning invalid opcode errors instead of running MIR.
@@ -716,6 +724,12 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 		if ctx == nil {
 			return nil
 		}
+		// Track if previous op was a JUMP/JUMPI to decide landing-time JUMPDEST charge
+		if ctx.M != nil {
+			if OpCode(ctx.EvmOp) == JUMP || OpCode(ctx.EvmOp) == JUMPI || ctx.M.Op() == compiler.MirJUMP || ctx.M.Op() == compiler.MirJUMPI {
+				adapter.lastWasJump = true
+			}
+		}
 		// On block entry, charge constant gas for all EVM opcodes in the block
 		// (including PUSH/DUP/SWAP that don't have MIR instructions)
 		// Exception: EXP and KECCAK256 constant gas is charged per instruction (along with dynamic gas)
@@ -726,6 +740,23 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 			adapter.currentBlock = ctx.Block
 			// Track total gas charged at block entry (for GAS opcode to add back)
 			var blockEntryTotalGas uint64
+			// If the first opcode of the underlying bytecode at this block is JUMPDEST, EVM charges 1 gas upon entering.
+			// Charge it up-front here (once), and record for GAS to add back.
+			if adapter.currentContract != nil {
+				code := adapter.currentContract.Code
+				firstPC := int(ctx.Block.FirstPC())
+				if code != nil && firstPC >= 0 && firstPC < len(code) && OpCode(code[firstPC]) == JUMPDEST {
+					jg := params.JumpdestGas
+					if adapter.currentContract.Gas < jg {
+						return ErrOutOfGas
+					}
+					adapter.currentContract.Gas -= jg
+					blockEntryTotalGas += jg
+					// remember we charged this (block-first JUMPDEST)
+					adapter.lastJdPC = uint32(ctx.Block.FirstPC())
+					adapter.lastJdBlockFirstPC = uint32(ctx.Block.FirstPC())
+				}
+			}
 			// Validate that we're only charging for the current block
 			// (ctx.Block should match the block we're entering)
 			// Charge block entry gas for all opcodes in the block
@@ -879,18 +910,65 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 			scope := &ScopeContext{Memory: adapter.memShadow, Stack: nil, Contract: contract}
 			adapter.evm.Config.Tracer.OnOpcode(uint64(ctx.M.EvmPC()), byte(evmOp), contract.Gas, 0, scope, nil, adapter.evm.depth, nil)
 		}
-		// Constant gas is charged at block entry, so we don't charge it per instruction
-		// Exception: JUMPDEST must be charged when executed (it's a jump target, charged when PC lands on it)
-		// JUMPDEST is always skipped at block entry (see block entry charging above)
-		// We charge JUMPDEST when executed (when MirJUMPDEST is executed)
-		if ctx.M != nil && ctx.M.Op() == compiler.MirJUMPDEST && !ctx.IsBlockEntry {
-			// JUMPDEST charges 1 gas when executed (when PC lands on it)
-			// Only charge if not at block entry (block entry charging was skipped above)
-			jumpdestGas := params.JumpdestGas
-			if contract.Gas < jumpdestGas {
-				return ErrOutOfGas
+		// Constant gas is charged at block entry; JUMPDEST is charged at block entry of landing blocks.
+		// Charge JUMPDEST exactly when executed (matches base EVM semantics).
+		// For zero-size landing blocks, MIR synthesizes a JUMPDEST pre-op at block-entry:
+		// in that case, charge at block-entry; for normal blocks, charge on instruction (IsBlockEntry=false).
+		// Charge JUMPDEST on landing exactly once.
+		// Prefer charging at the instruction itself; if first MIR instruction doesn't carry EvmOp=JUMPDEST,
+		// charge at block entry when coming from a jump, based on bytecode and/or first MIR instr.
+		if ctx.M != nil && (ctx.EvmOp == byte(JUMPDEST) || ctx.M.Op() == compiler.MirJUMPDEST) {
+			lp := uint32(ctx.M.EvmPC())
+			var bf uint32
+			if ctx.Block != nil {
+				bf = uint32(ctx.Block.FirstPC())
 			}
-			contract.Gas -= jumpdestGas
+			// Skip if we've already charged for this exact landing in this block
+			if adapter.lastJdPC == lp && adapter.lastJdBlockFirstPC == bf {
+				// no-op
+			} else {
+				jumpdestGas := params.JumpdestGas
+				if contract.Gas < jumpdestGas {
+					return ErrOutOfGas
+				}
+				contract.Gas -= jumpdestGas
+				adapter.lastJdPC = lp
+				adapter.lastJdBlockFirstPC = bf
+			}
+		} else if ctx.IsBlockEntry && ctx.Block != nil && adapter.currentContract != nil {
+			firstPC := int(ctx.Block.FirstPC())
+			isJD := false
+			// Check bytecode at firstPC
+			code := adapter.currentContract.Code
+			if code != nil && firstPC >= 0 && firstPC < len(code) {
+				if OpCode(code[firstPC]) == JUMPDEST {
+					isJD = true
+				}
+			}
+			// Also check first MIR instruction if available
+			if !isJD {
+				if instrs := ctx.Block.Instructions(); len(instrs) > 0 && instrs[0] != nil {
+					if instrs[0].Op() == compiler.MirJUMPDEST || instrs[0].EvmOp() == byte(JUMPDEST) {
+						isJD = true
+					}
+				}
+			}
+			if isJD {
+				lp := uint32(ctx.Block.FirstPC())
+				bf := lp
+				// Dedup
+				if !(adapter.lastJdPC == lp && adapter.lastJdBlockFirstPC == bf) {
+					jumpdestGas := params.JumpdestGas
+					if contract.Gas < jumpdestGas {
+						return ErrOutOfGas
+					}
+					contract.Gas -= jumpdestGas
+					adapter.lastJdPC = lp
+					adapter.lastJdBlockFirstPC = bf
+				}
+			}
+			// Clear jump flag at block entry regardless
+			adapter.lastWasJump = false
 		}
 		// Exception: GAS opcode must read gas BEFORE its own constant gas is charged
 		// GAS opcode constant gas is skipped at block entry, so we charge it when executed
