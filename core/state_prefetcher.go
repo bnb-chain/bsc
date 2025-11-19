@@ -66,7 +66,7 @@ func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *type
 
 	// Iterate over and process the individual transactions
 	for i, tx := range transactions {
-		stateCpy := statedb.StateForPrefetch() // lightweight state for prefetch with shared cache
+		stateCpy := statedb.CopyDoPrefetch()
 		workers.Go(func() error {
 			// If block precaching was interrupted, abort
 			if interrupt != nil && interrupt.Load() {
