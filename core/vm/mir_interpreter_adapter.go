@@ -1159,9 +1159,16 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 				resizeShadow(ctx.MemorySize)
 			}
 		case CALLDATACOPY, CODECOPY, RETURNDATACOPY:
-			// Only charge gas if memory is expanding
+			// Always charge copy gas per word
+			var size uint64
+			if len(ctx.Operands) >= 3 {
+				size = ctx.Operands[2].Uint64()
+			}
+			copyGas := toWord(size) * params.CopyGas
+			// Memory expansion gas if destination grows memory
+			var memGas uint64
 			if ctx.MemorySize > uint64(adapter.memShadow.Len()) {
-				gas, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
+				g, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
 				if err != nil {
 					if errors.Is(err, ErrGasUintOverflow) {
 						err = nil
@@ -1169,23 +1176,28 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 						return err
 					}
 				}
-				// copy gas per word: size is operand[2]
-				var size uint64
-				if len(ctx.Operands) >= 3 {
-					size = ctx.Operands[2].Uint64()
-				}
-				copyGas := toWord(size) * params.CopyGas
-				add := gas + copyGas
+				memGas = g
+			}
+			add := memGas + copyGas
+			if add > 0 {
 				if contract.Gas < add {
 					return ErrOutOfGas
 				}
 				contract.Gas -= add
+			}
+			if ctx.MemorySize > uint64(adapter.memShadow.Len()) {
 				resizeShadow(ctx.MemorySize)
 			}
 		case EXTCODECOPY:
-			// Only charge gas if memory is expanding
+			// Always charge copy gas per word; memory expansion if needed
+			var size uint64
+			if len(ctx.Operands) >= 4 {
+				size = ctx.Operands[3].Uint64()
+			}
+			copyGas := toWord(size) * params.CopyGas
+			var memGas uint64
 			if ctx.MemorySize > uint64(adapter.memShadow.Len()) {
-				gas, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
+				g, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
 				if err != nil {
 					if errors.Is(err, ErrGasUintOverflow) {
 						err = nil
@@ -1193,16 +1205,16 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 						return err
 					}
 				}
-				var size uint64
-				if len(ctx.Operands) >= 4 {
-					size = ctx.Operands[3].Uint64()
-				}
-				copyGas := toWord(size) * params.CopyGas
-				add := gas + copyGas
+				memGas = g
+			}
+			add := memGas + copyGas
+			if add > 0 {
 				if contract.Gas < add {
 					return ErrOutOfGas
 				}
 				contract.Gas -= add
+			}
+			if ctx.MemorySize > uint64(adapter.memShadow.Len()) {
 				resizeShadow(ctx.MemorySize)
 			}
 			// EIP-2929 cold-warm surcharge for EXTCODECOPY
@@ -1228,25 +1240,34 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 			}
 		case MCOPY:
 			if ctx.MemorySize > 0 {
-				gas, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
-				if err != nil {
-					if errors.Is(err, ErrGasUintOverflow) {
-						err = nil
-					} else {
-						return err
-					}
-				}
+				// Always charge copy gas; and memory gas if growing
 				var size uint64
 				if len(ctx.Operands) >= 3 {
 					size = ctx.Operands[2].Uint64()
 				}
 				copyGas := toWord(size) * params.CopyGas
-				add := gas + copyGas
-				if contract.Gas < add {
-					return ErrOutOfGas
+				var memGas uint64
+				if ctx.MemorySize > uint64(adapter.memShadow.Len()) {
+					g, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
+					if err != nil {
+						if errors.Is(err, ErrGasUintOverflow) {
+							err = nil
+						} else {
+							return err
+						}
+					}
+					memGas = g
 				}
-				contract.Gas -= add
-				resizeShadow(ctx.MemorySize)
+				add := memGas + copyGas
+				if add > 0 {
+					if contract.Gas < add {
+						return ErrOutOfGas
+					}
+					contract.Gas -= add
+				}
+				if ctx.MemorySize > uint64(adapter.memShadow.Len()) {
+					resizeShadow(ctx.MemorySize)
+				}
 			}
 		case KECCAK256:
 			// KECCAK256 has constant gas (30) + memory gas + word gas

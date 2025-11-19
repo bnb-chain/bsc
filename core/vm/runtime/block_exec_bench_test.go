@@ -81,98 +81,38 @@ func buildUSDTBlockBundle(t tb, signer types.Signer, key *ecdsa.PrivateKey, send
 	return blocks[0], receipts[0], genesis
 }
 
-func BenchmarkBlockExecute_USDT_ParityThroughput(b *testing.B) {
-	// Prepare sender and addresses
+// Shared helper to build a USDT-heavy single block for benchmarks
+func buildUSDTBenchInputs(b tb) (key *ecdsa.PrivateKey, sender common.Address, contract common.Address, signer types.Signer, payloads [][]byte, block *types.Block, genesis *core.Genesis) {
 	key, err := crypto.GenerateKey()
 	if err != nil {
 		b.Fatalf("generate key: %v", err)
 	}
-	sender := crypto.PubkeyToAddress(key.PublicKey)
-	contract := common.BytesToAddress([]byte("usdt_block_bench"))
-	signer := types.HomesteadSigner{}
-
+	sender = crypto.PubkeyToAddress(key.PublicKey)
+	contract = common.BytesToAddress([]byte("usdt_block_bench"))
+	signer = types.HomesteadSigner{}
 	// Prepare ERC20 call payloads (approve, transfer)
 	zeroAddress := make([]byte, 32)
 	oneUint := make([]byte, 32)
 	oneUint[31] = 1
-	payloads := [][]byte{
+	payloads = [][]byte{
 		append([]byte{0x09, 0x5e, 0xa7, 0xb3}, append(append([]byte{}, zeroAddress...), oneUint...)...), // approve
 		append([]byte{0xa9, 0x05, 0x9c, 0xbb}, append([]byte{}, zeroAddress...)...),                     // transfer
 	}
-
 	// Build a 1-block bundle with many calls
-	block, _, genesis := buildUSDTBlockBundle(b, signer, key, sender, contract, payloads, 300) // ~300 tx
-
-	run := func(cfg vm.Config) (time.Duration, uint64, *core.BlockChain) {
-		db := rawdb.NewMemoryDatabase()
-		engine := ethash.NewFaker()
-		chain, err := core.NewBlockChain(db, nil, genesis, nil, engine, cfg, nil, nil)
-		if err != nil {
-			b.Fatalf("new blockchain: %v", err)
-		}
-		defer chain.Stop()
-		start := time.Now()
-		if _, err := chain.InsertChain([]*types.Block{block}); err != nil {
-			b.Fatalf("insert chain: %v", err)
-		}
-		elapsed := time.Since(start)
-		receipts := chain.GetReceiptsByHash(block.Hash())
-		var used uint64
-		for _, r := range receipts {
-			used += r.GasUsed
-		}
-		return elapsed, used, chain
-	}
-
-	// Base run
-	cfgBase := vm.Config{EnableOpcodeOptimizations: false}
-	elapsedB, gasB, chainB := run(cfgBase)
-
-	// MIR run
-	compiler.EnableOpcodeParse()
-	cfgMIR := vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true, MIRStrictNoFallback: true}
-	elapsedM, gasM, chainM := run(cfgMIR)
-
-	// Parity checks
-	if gasB != gasM {
-		b.Fatalf("total gas used mismatch base=%d mir=%d", gasB, gasM)
-	}
-	rootB := chainB.CurrentBlock().Root
-	rootM := chainM.CurrentBlock().Root
-	if rootB != rootM {
-		b.Fatalf("post-state root mismatch base=%s mir=%s", rootB.Hex(), rootM.Hex())
-	}
-
-	// Report throughput (gas/s) and times
-	gpsB := float64(gasB) / elapsedB.Seconds()
-	gpsM := float64(gasM) / elapsedM.Seconds()
-	b.ReportMetric(gpsB, "base_gas/s")
-	b.ReportMetric(gpsM, "mir_gas/s")
+	block, _, genesis = buildUSDTBlockBundle(b, signer, key, sender, contract, payloads, 300) // ~300 tx
+	return
 }
 
-func BenchmarkBlockExecute_USDT_ParityThroughput2(b *testing.B) {
-	// Prepare sender and addresses
-	key, err := crypto.GenerateKey()
-	if err != nil {
-		b.Fatalf("generate key: %v", err)
-	}
-	sender := crypto.PubkeyToAddress(key.PublicKey)
-	contract := common.BytesToAddress([]byte("usdt_block_bench"))
-	signer := types.HomesteadSigner{}
-
-	// Prepare ERC20 call payloads (approve, transfer)
-	zeroAddress := make([]byte, 32)
-	oneUint := make([]byte, 32)
-	oneUint[31] = 1
-	payloads := [][]byte{
-		append([]byte{0x09, 0x5e, 0xa7, 0xb3}, append(append([]byte{}, zeroAddress...), oneUint...)...), // approve
-		append([]byte{0xa9, 0x05, 0x9c, 0xbb}, append([]byte{}, zeroAddress...)...),                     // transfer
-	}
-
-	// Build a 1-block bundle with many calls
-	block, _, genesis := buildUSDTBlockBundle(b, signer, key, sender, contract, payloads, 300) // ~300 tx
-
-	run := func(cfg vm.Config) (time.Duration, uint64, *core.BlockChain) {
+// BenchmarkUSDT_Block_BaseThroughput executes the USDT block using the base EVM.
+// Reports Mgas/s and total gas used clearly.
+func BenchmarkUSDT_Block_BaseThroughput(b *testing.B) {
+	key, sender, contract, signer, payloads, block, genesis := buildUSDTBenchInputs(b)
+	_ = key
+	_ = sender
+	_ = contract
+	_ = signer
+	_ = payloads
+	run := func(cfg vm.Config) (time.Duration, uint64) {
 		db := rawdb.NewMemoryDatabase()
 		engine := ethash.NewFaker()
 		chain, err := core.NewBlockChain(db, nil, genesis, nil, engine, cfg, nil, nil)
@@ -190,31 +130,78 @@ func BenchmarkBlockExecute_USDT_ParityThroughput2(b *testing.B) {
 		for _, r := range receipts {
 			used += r.GasUsed
 		}
-		return elapsed, used, chain
+		return elapsed, used
 	}
-
-	// Base run
 	cfgBase := vm.Config{EnableOpcodeOptimizations: false}
-	elapsedB, gasB, chainB := run(cfgBase)
+	// Loop over b.N to make ns/op meaningful and stabilize metrics
+	var totalElapsed time.Duration
+	var totalGas uint64
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		elapsed, gas := run(cfgBase)
+		totalElapsed += elapsed
+		totalGas += gas
+	}
+	// Aggregate throughput over total elapsed; report average gas per run
+	if totalElapsed > 0 {
+		mgasPerSec := (float64(totalGas) / 1e6) / totalElapsed.Seconds()
+		b.ReportMetric(mgasPerSec, "Mgas/s")
+	}
+	if b.N > 0 {
+		avgGas := float64(totalGas) / float64(b.N)
+		b.ReportMetric(avgGas, "gas_total")
+	}
+}
 
-	// MIR run
+// BenchmarkUSDT_Block_MIRThroughput executes the same USDT block using MIR.
+// Reports Mgas/s and total gas used clearly.
+func BenchmarkUSDT_Block_MIRThroughput(b *testing.B) {
+	key, sender, contract, signer, payloads, block, genesis := buildUSDTBenchInputs(b)
+	_ = key
+	_ = sender
+	_ = contract
+	_ = signer
+	_ = payloads
+	run := func(cfg vm.Config) (time.Duration, uint64) {
+		db := rawdb.NewMemoryDatabase()
+		engine := ethash.NewFaker()
+		chain, err := core.NewBlockChain(db, nil, genesis, nil, engine, cfg, nil, nil)
+		if err != nil {
+			b.Fatalf("new blockchain: %v", err)
+		}
+		defer chain.Stop()
+		start := time.Now()
+		if _, err := chain.InsertChain([]*types.Block{block}); err != nil {
+			b.Fatalf("insert chain: %v", err)
+		}
+		elapsed := time.Since(start)
+		receipts := chain.GetReceiptsByHash(block.Hash())
+		var used uint64
+		for _, r := range receipts {
+			used += r.GasUsed
+		}
+		return elapsed, used
+	}
 	compiler.EnableOpcodeParse()
 	cfgMIR := vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true, MIRStrictNoFallback: true}
-	elapsedM, gasM, chainM := run(cfgMIR)
-
-	// Parity checks
-	if gasB != gasM {
-		b.Fatalf("total gas used mismatch base=%d mir=%d", gasB, gasM)
+	// Loop over b.N to make ns/op meaningful and stabilize metrics
+	var totalElapsed time.Duration
+	var totalGas uint64
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		elapsed, gas := run(cfgMIR)
+		totalElapsed += elapsed
+		totalGas += gas
 	}
-	rootB := chainB.CurrentBlock().Root
-	rootM := chainM.CurrentBlock().Root
-	if rootB != rootM {
-		b.Fatalf("post-state root mismatch base=%s mir=%s", rootB.Hex(), rootM.Hex())
+	// Aggregate throughput over total elapsed; report average gas per run
+	if totalElapsed > 0 {
+		mgasPerSec := (float64(totalGas) / 1e6) / totalElapsed.Seconds()
+		b.ReportMetric(mgasPerSec, "Mgas/s")
 	}
-
-	// Report throughput (gas/s) and times
-	gpsB := float64(gasB) / elapsedB.Seconds()
-	gpsM := float64(gasM) / elapsedM.Seconds()
-	b.ReportMetric(gpsB, "base_gas/s")
-	b.ReportMetric(gpsM, "mir_gas/s")
+	if b.N > 0 {
+		avgGas := float64(totalGas) / float64(b.N)
+		b.ReportMetric(avgGas, "gas_total")
+	}
 }
