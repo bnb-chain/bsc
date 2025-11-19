@@ -174,7 +174,7 @@ var DefaultConfig = Config{
 	GlobalQueue:       4000,
 	OverflowPoolSlots: 0,
 
-	Lifetime:       10 * time.Minute,
+	Lifetime:       3 * time.Hour,
 	ReannounceTime: 10 * 365 * 24 * time.Hour,
 }
 
