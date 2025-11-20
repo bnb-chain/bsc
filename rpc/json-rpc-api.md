@@ -111,6 +111,7 @@ This document provides a comprehensive list of JSON-RPC API methods supported. E
 | debug_traceTransaction(...)                     | `TxHash`, `TraceConfig`                          |
 | debug_traceTransactionSequence(...)             | `BlockNumber\|Tag\|Hash`, `[]TxRlp`, `TraceConfig` |
 | debug_traceCall(...)                            | `TxCallObject`, `BlockNumber\|Tag`, `TraceConfig`|
+| debug_traceRawCall(...)                         | `TxRlp`, `BlockNumber\|Tag`, `TraceConfig`        |
 |                                                 |                                                  |
 | **Transaction Pool API**                        |                                                  |
 | txpool_content()                                | -                                                |
@@ -143,6 +144,7 @@ This document provides a comprehensive list of JSON-RPC API methods supported. E
 - `Integer` - Numeric value
 - `String` - Text string
 - `TxCallObject` - Transaction call object with from/to/gas/value/data
+- `TxRlp` - Hexadecimal RLP-encoded transaction payload
 - `FilterOptions` - Options for event filtering
 - `FilterId` - ID of a previously created filter
 - `VerifiedValidatorNum` - Number of validators that must verify a block

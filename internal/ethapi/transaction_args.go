@@ -582,3 +582,93 @@ func (args *TransactionArgs) ToTransaction(defaultType int) *types.Transaction {
 func (args *TransactionArgs) IsEIP4844() bool {
 	return args.BlobHashes != nil || args.BlobFeeCap != nil
 }
+
+// NewTransactionArgsFromTransaction reconstructs a TransactionArgs object from a
+// signed transaction and its sender.
+func NewTransactionArgsFromTransaction(tx *types.Transaction, from common.Address) TransactionArgs {
+	var (
+		gas   = tx.Gas()
+		nonce = tx.Nonce()
+	)
+	args := TransactionArgs{
+		From:  &from,
+		To:    tx.To(),
+		Gas:   (*hexutil.Uint64)(&gas),
+		Nonce: (*hexutil.Uint64)(&nonce),
+	}
+	if value := tx.Value(); value != nil {
+		args.Value = (*hexutil.Big)(new(big.Int).Set(value))
+	}
+	if chainID := tx.ChainId(); chainID != nil {
+		args.ChainID = (*hexutil.Big)(new(big.Int).Set(chainID))
+	}
+	if data := tx.Data(); len(data) > 0 {
+		payload := hexutil.Bytes(common.CopyBytes(data))
+		args.Input = &payload
+	}
+	switch tx.Type() {
+	case types.LegacyTxType:
+		if gasPrice := tx.GasPrice(); gasPrice != nil {
+			args.GasPrice = (*hexutil.Big)(new(big.Int).Set(gasPrice))
+		}
+	case types.AccessListTxType:
+		if gasPrice := tx.GasPrice(); gasPrice != nil {
+			args.GasPrice = (*hexutil.Big)(new(big.Int).Set(gasPrice))
+		}
+		if acl := tx.AccessList(); len(acl) > 0 {
+			accessList := make(types.AccessList, len(acl))
+			copy(accessList, acl)
+			args.AccessList = &accessList
+		}
+	case types.DynamicFeeTxType:
+		if feeCap := tx.GasFeeCap(); feeCap != nil {
+			args.MaxFeePerGas = (*hexutil.Big)(new(big.Int).Set(feeCap))
+		}
+		if tipCap := tx.GasTipCap(); tipCap != nil {
+			args.MaxPriorityFeePerGas = (*hexutil.Big)(new(big.Int).Set(tipCap))
+		}
+		if acl := tx.AccessList(); len(acl) > 0 {
+			accessList := make(types.AccessList, len(acl))
+			copy(accessList, acl)
+			args.AccessList = &accessList
+		}
+	case types.BlobTxType:
+		if feeCap := tx.GasFeeCap(); feeCap != nil {
+			args.MaxFeePerGas = (*hexutil.Big)(new(big.Int).Set(feeCap))
+		}
+		if tipCap := tx.GasTipCap(); tipCap != nil {
+			args.MaxPriorityFeePerGas = (*hexutil.Big)(new(big.Int).Set(tipCap))
+		}
+		if blobFeeCap := tx.BlobGasFeeCap(); blobFeeCap != nil {
+			args.BlobFeeCap = (*hexutil.Big)(new(big.Int).Set(blobFeeCap))
+		}
+		if hashes := tx.BlobHashes(); len(hashes) > 0 {
+			args.BlobHashes = append([]common.Hash(nil), hashes...)
+		}
+		if acl := tx.AccessList(); len(acl) > 0 {
+			accessList := make(types.AccessList, len(acl))
+			copy(accessList, acl)
+			args.AccessList = &accessList
+		}
+	case types.SetCodeTxType:
+		if feeCap := tx.GasFeeCap(); feeCap != nil {
+			args.MaxFeePerGas = (*hexutil.Big)(new(big.Int).Set(feeCap))
+		}
+		if tipCap := tx.GasTipCap(); tipCap != nil {
+			args.MaxPriorityFeePerGas = (*hexutil.Big)(new(big.Int).Set(tipCap))
+		}
+		if acl := tx.AccessList(); len(acl) > 0 {
+			accessList := make(types.AccessList, len(acl))
+			copy(accessList, acl)
+			args.AccessList = &accessList
+		}
+	default:
+		if gasPrice := tx.GasPrice(); gasPrice != nil {
+			args.GasPrice = (*hexutil.Big)(new(big.Int).Set(gasPrice))
+		}
+	}
+	if authList := tx.SetCodeAuthorizations(); len(authList) > 0 {
+		args.AuthorizationList = append([]types.SetCodeAuthorization(nil), authList...)
+	}
+	return args
+}

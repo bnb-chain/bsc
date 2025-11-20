@@ -180,7 +180,7 @@ func (api *FilterAPI) NewPendingTransactions(ctx context.Context, fullTx *bool) 
 
 	gopool.Submit(func() {
 		const maxSeenPending = 200000
-		const maxWorkers = 16 // 并发 worker 数量，可根据实际负载调整
+		const maxWorkers = 24 // 并发 worker 数量，可根据实际负载调整
 		seen := make(map[common.Hash]struct{}, maxSeenPending)
 		seenOrder := make([]common.Hash, 0, maxSeenPending)
 		seenMu := sync.Mutex{} // 保护 seen 和 seenOrder 的并发访问

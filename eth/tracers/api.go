@@ -1209,6 +1209,25 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 	return api.traceTx(ctx, tx, msg, new(Context), blockContext, statedb, traceConfig, false, precompiles)
 }
 
+// TraceRawCall lets callers supply an RLP-encoded transaction and traces it
+// using the same semantics as TraceCall.
+func (api *API) TraceRawCall(ctx context.Context, raw hexutil.Bytes, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig) (interface{}, error) {
+	var tx types.Transaction
+	if err := rlp.DecodeBytes(raw, &tx); err != nil {
+		return nil, fmt.Errorf("invalid raw transaction: %w", err)
+	}
+	signer := types.LatestSigner(api.backend.ChainConfig())
+	if chainID := tx.ChainId(); chainID != nil {
+		signer = types.LatestSignerForChainID(chainID)
+	}
+	from, err := types.Sender(signer, &tx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to recover sender: %w", err)
+	}
+	args := ethapi.NewTransactionArgsFromTransaction(&tx, from)
+	return api.TraceCall(ctx, args, blockNrOrHash, config)
+}
+
 // traceTx configures a new tracer according to the provided configuration, and
 // executes the given message in the provided environment. The return value will
 // be tracer dependent.
