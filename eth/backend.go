@@ -32,7 +32,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
@@ -66,7 +65,6 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/dnsdisc"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/triedb/pathdb"
@@ -510,8 +508,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 func makeExtraData(extra []byte) []byte {
 	if len(extra) == 0 {
-		// create default extradata
-		// For version >= 1.6.4, include commit id (8 characters)
+		// For version >= 1.6.4, use compact format: [version(uint32), commitID, go_version, os]
 		commitID := ""
 		if gethversion.Major > 1 || (gethversion.Major == 1 && gethversion.Minor > 6) ||
 			(gethversion.Major == 1 && gethversion.Minor == 6 && gethversion.Patch >= 4) {
@@ -519,19 +516,27 @@ func makeExtraData(extra []byte) []byte {
 			if ok && len(git.Commit) >= 8 {
 				commitID = git.Commit[:8]
 			}
-		}
 
-		extra, _ = rlp.EncodeToBytes([]interface{}{
-			uint(gethversion.Major<<16 | gethversion.Minor<<8 | gethversion.Patch),
-			commitID,
-			"geth",
-			runtime.Version(),
-			runtime.GOOS,
-		})
-	}
-	if uint64(len(extra)) > params.MaximumExtraDataSize-params.ForkIDSize {
-		log.Warn("Miner extra data exceed limit", "extra", hexutil.Bytes(extra), "limit", params.MaximumExtraDataSize-params.ForkIDSize)
-		extra = nil
+			osName := runtime.GOOS
+			if len(osName) > 3 {
+				osName = osName[:3]
+			}
+
+			versionWord := uint32(gethversion.Major<<16 | gethversion.Minor<<8 | gethversion.Patch)
+			extra, _ = rlp.EncodeToBytes([]interface{}{
+				versionWord,
+				commitID,
+				runtime.Version(),
+				osName,
+			})
+		} else {
+			extra, _ = rlp.EncodeToBytes([]interface{}{
+				uint(gethversion.Major<<16 | gethversion.Minor<<8 | gethversion.Patch),
+				"geth",
+				runtime.Version(),
+				runtime.GOOS,
+			})
+		}
 	}
 	return extra
 }

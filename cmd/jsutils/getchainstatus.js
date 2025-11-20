@@ -211,12 +211,6 @@ const validatorMap = new Map([
     ['0x32415e630B9B3489639dEE7de21274Ab64016226', ['Kraken'     , '0x70Cd30d9216AF7A5654D245e9F5c649b811aB2eB', '0xa80ebd07bd9d717bd538413e8830f673e63dfad496c901de324be5d16b0496aee39352ecfb84fa58d8d8a67746f8ae6c']],
 ]);
 
-// commitMap maintains the standard commit IDs for official releases
-const commitMap = new Map([
-    ["v1.6.4", "abcdefgh"],
-    // Add more official version -> commit mappings as needed
-]);
-
 const builderMap = new Map([
     // BSC mainnet
     //     blockrazor
@@ -321,43 +315,52 @@ async function getBinaryVersion() {
     let turnLength = program.turnLength;
     for (let i = 0; i < program.num; i++) {
         let blockData = await provider.getBlock(blockNum - i * turnLength);
-        // 1.get Geth client version
-        let major = ethers.toNumber(ethers.dataSlice(blockData.extraData, 2, 3));
-        let minor = ethers.toNumber(ethers.dataSlice(blockData.extraData, 3, 4));
-        let patch = ethers.toNumber(ethers.dataSlice(blockData.extraData, 4, 5));
 
-        // Extract commit ID from extraData if version >= 1.6.4
+        let major = 0, minor = 0, patch = 0;
         let commitID = "";
-        let versionStr = major + "." + minor + "." + patch;
-        if (major > 1 || (major === 1 && minor > 6) || (major === 1 && minor === 6 && patch >= 4)) {
-            try {
-                // Decode RLP to extract commit ID
-                // ExtraData structure: [version_uint, commitID_string, "geth", runtime_version, os]
-                const decoded = ethers.decodeRlp(blockData.extraData);
-                if (Array.isArray(decoded) && decoded.length > 1) {
-                    // decoded[0] is version (as hex string)
-                    // decoded[1] is commit ID (as hex string)
-                    const commitIDHex = decoded[1];
-                    if (commitIDHex && commitIDHex !== "0x" && commitIDHex !== "0x00") {
-                        // Convert hex to UTF-8 string
-                        try {
-                            commitID = ethers.toUtf8String(commitIDHex);
-                        } catch (e) {
-                            // If conversion fails, use the hex string directly (removing 0x prefix)
-                            commitID = commitIDHex.substring(2);
-                        }
-                    }
-                }
-            } catch (e) {
-                // If RLP decoding fails, the block might be from an older version
-                // or the extraData format is different
-                console.error("Failed to decode extraData:", e.message);
-            }
+
+        try {
+            major = ethers.toNumber(ethers.dataSlice(blockData.extraData, 2, 3));
+            minor = ethers.toNumber(ethers.dataSlice(blockData.extraData, 3, 4));
+            patch = ethers.toNumber(ethers.dataSlice(blockData.extraData, 4, 5));
             
-            // Format version string with commit ID
-            if (commitID && commitID.length > 0) {
-                versionStr = versionStr + "-" + commitID;
+            // Check version: >= 1.6.4 uses new format with commitID
+            const isNewFormat = major > 1 || (major === 1 && minor > 6) || (major === 1 && minor === 6 && patch >= 4);
+            
+            if (isNewFormat) {
+                const extraVanity = 28;
+                let vanityBytes = ethers.getBytes(ethers.dataSlice(blockData.extraData, 0, extraVanity));
+
+                let rlpLength = vanityBytes.length;
+                if (vanityBytes[0] >= 0xC0 && vanityBytes[0] <= 0xF7) {
+                    rlpLength = (vanityBytes[0] - 0xC0) + 1; 
+                }
+                
+                const rlpData = ethers.dataSlice(blockData.extraData, 0, rlpLength);
+                const decoded = ethers.decodeRlp(rlpData);
+                
+                if (Array.isArray(decoded) && decoded.length >= 2) {
+                     const secondElemHex = decoded[1];
+                     let secondElemStr = "";
+                     try {
+                         secondElemStr = ethers.toUtf8String(secondElemHex);
+                     } catch (e) {
+                         secondElemStr = secondElemHex;
+                     }
+                     
+                     if (secondElemStr.length > 0 && secondElemStr !== "geth") {
+                         commitID = secondElemStr.startsWith("0x") ? secondElemStr.substring(2) : secondElemStr;
+                     }
+                }
             }
+        } catch (e) {
+            console.log("Parsing failed:", e.message);
+        }
+
+        // Format version string
+        let versionStr = major + "." + minor + "." + patch;
+        if (commitID && commitID.length > 0) {
+            versionStr = versionStr + "-" + commitID;
         }
 
         // 2.get minimum txGasPrice based on the last non-zero-gasprice transaction
