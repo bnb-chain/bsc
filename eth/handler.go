@@ -419,21 +419,29 @@ func newHandler(config *handlerConfig) (*handler, error) {
 			h.incrementPeerTxCount(peer, len(txs))
 		}
 		if h.peerBlacklist != nil && peer != "" && len(txs) > 0 {
-			successCount := 0
-			if len(errors) == 0 {
-				successCount = len(txs)
-			} else if len(errors) == len(txs) {
-				for _, err := range errors {
-					if err == nil || err == txpool.ErrAlreadyKnown {
-						successCount++
-					}
-				}
-			} else {
-				// Fallback in unexpected scenarios, assume successful to avoid penalizing peers unfairly.
-				successCount = len(txs)
+			// 白名单节点不受黑名单记录和惩罚
+			isWhitelisted := false
+			if h.peerWhitelist != nil {
+				isWhitelisted = h.peerWhitelist.isWhitelisted(peer)
 			}
-			if h.peerBlacklist.record(peer, successCount, len(txs)) {
-				h.removePeer(peer)
+			
+			if !isWhitelisted {
+				successCount := 0
+				if len(errors) == 0 {
+					successCount = len(txs)
+				} else if len(errors) == len(txs) {
+					for _, err := range errors {
+						if err == nil || err == txpool.ErrAlreadyKnown {
+							successCount++
+						}
+					}
+				} else {
+					// Fallback in unexpected scenarios, assume successful to avoid penalizing peers unfairly.
+					successCount = len(txs)
+				}
+				if h.peerBlacklist.record(peer, successCount, len(txs)) {
+					h.removePeer(peer)
+				}
 			}
 		}
 		for _, err := range errors {
@@ -735,9 +743,15 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	}
 	defer h.decHandlers()
 
+	// 检查黑名单，但白名单节点不受黑名单限制
 	if h.peerBlacklist != nil && h.peerBlacklist.isBlacklisted(peer.ID()) {
-		peer.Log().Info("Rejecting connection from blacklisted peer", "peer", peer.ID())
-		return p2p.DiscUselessPeer
+		// 如果节点在白名单中，豁免黑名单检查
+		if h.peerWhitelist != nil && h.peerWhitelist.isWhitelisted(peer.ID()) {
+			peer.Log().Info("Peer is blacklisted but whitelisted, allowing connection", "peer", peer.ID())
+		} else {
+			peer.Log().Info("Rejecting connection from blacklisted peer", "peer", peer.ID())
+			return p2p.DiscUselessPeer
+		}
 	}
 
 	// If the peer has a `snap` extension, wait for it to connect so we can have
