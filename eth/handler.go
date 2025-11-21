@@ -667,11 +667,13 @@ func (h *handler) peerLatencyCollectionLoop() {
 			// 获取所有peer
 			peers := h.peers.list()
 			for _, peer := range peers {
-				// 获取延迟信息 (毫秒)
-				latency := peer.Latency()
-				if latency > 0 {
-					// 记录延迟到白名单
-					h.peerWhitelist.recordLatency(peer.ID(), latency)
+				// 获取底层p2p peer的延迟信息 (毫秒)
+				if peer.Peer != nil && peer.Peer.Peer != nil {
+					latency := peer.Peer.Peer.Latency()
+					if latency > 0 {
+						// 记录延迟到白名单
+						h.peerWhitelist.recordLatency(peer.ID(), latency)
+					}
 				}
 			}
 			
