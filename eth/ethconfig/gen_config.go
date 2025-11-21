@@ -75,6 +75,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		OverrideMaxwell           *uint64 `toml:",omitempty"`
 		OverrideFermi             *uint64 `toml:",omitempty"`
 		OverrideOsaka             *uint64 `toml:",omitempty"`
+		OverrideMendel            *uint64 `toml:",omitempty"`
 		OverrideVerkle            *uint64 `toml:",omitempty"`
 		BlobExtraReserve          uint64
 		EnableOpcodeOptimizing    bool
@@ -144,6 +145,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.OverrideMaxwell = c.OverrideMaxwell
 	enc.OverrideFermi = c.OverrideFermi
 	enc.OverrideOsaka = c.OverrideOsaka
+	enc.OverrideMendel = c.OverrideMendel
 	enc.OverrideVerkle = c.OverrideVerkle
 	enc.BlobExtraReserve = c.BlobExtraReserve
 	enc.EnableOpcodeOptimizing = c.EnableOpcodeOptimizing
@@ -217,6 +219,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		OverrideMaxwell           *uint64 `toml:",omitempty"`
 		OverrideFermi             *uint64 `toml:",omitempty"`
 		OverrideOsaka             *uint64 `toml:",omitempty"`
+		OverrideMendel            *uint64 `toml:",omitempty"`
 		OverrideVerkle            *uint64 `toml:",omitempty"`
 		BlobExtraReserve          *uint64
 		EnableOpcodeOptimizing    *bool
@@ -402,6 +405,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.OverrideOsaka != nil {
 		c.OverrideOsaka = dec.OverrideOsaka
+	}
+	if dec.OverrideMendel != nil {
+		c.OverrideMendel = dec.OverrideMendel
 	}
 	if dec.OverrideVerkle != nil {
 		c.OverrideVerkle = dec.OverrideVerkle

@@ -210,6 +210,9 @@ type Config struct {
 	// OverrideOsaka (TODO: remove after the fork)
 	OverrideOsaka *uint64 `toml:",omitempty"`
 
+	// OverrideMendel (TODO: remove after the fork)
+	OverrideMendel *uint64 `toml:",omitempty"`
+
 	// OverrideVerkle (TODO: remove after the fork)
 	OverrideVerkle *uint64 `toml:",omitempty"`
 
