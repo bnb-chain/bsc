@@ -28,7 +28,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -510,33 +512,27 @@ func makeExtraData(extra []byte) []byte {
 	if len(extra) == 0 {
 		// For version >= 1.6.4, use compact format: [version(uint32), commitID, go_version, os]
 		commitID := ""
-		if gethversion.Major > 1 || (gethversion.Major == 1 && gethversion.Minor > 6) ||
-			(gethversion.Major == 1 && gethversion.Minor == 6 && gethversion.Patch >= 4) {
-			git, ok := version.VCS()
-			if ok && len(git.Commit) >= 8 {
-				commitID = git.Commit[:8]
-			}
-
-			osName := runtime.GOOS
-			if len(osName) > 3 {
-				osName = osName[:3]
-			}
-
-			versionWord := uint32(gethversion.Major<<16 | gethversion.Minor<<8 | gethversion.Patch)
-			extra, _ = rlp.EncodeToBytes([]interface{}{
-				versionWord,
-				commitID,
-				runtime.Version(),
-				osName,
-			})
-		} else {
-			extra, _ = rlp.EncodeToBytes([]interface{}{
-				uint(gethversion.Major<<16 | gethversion.Minor<<8 | gethversion.Patch),
-				"geth",
-				runtime.Version(),
-				runtime.GOOS,
-			})
+		git, ok := version.VCS()
+		if ok && len(git.Commit) >= 8 {
+			commitID = git.Commit[:8]
 		}
+
+		osName := runtime.GOOS
+		if len(osName) > 3 {
+			osName = osName[:3]
+		}
+
+		versionWord := uint32(gethversion.Major<<16 | gethversion.Minor<<8 | gethversion.Patch)
+		extra, _ = rlp.EncodeToBytes([]interface{}{
+			versionWord,
+			commitID,
+			runtime.Version(),
+			osName,
+		})
+	}
+	if uint64(len(extra)) > params.MaximumExtraDataSize-params.ForkIDSize {
+		log.Warn("Miner extra data exceed limit", "extra", hexutil.Bytes(extra), "limit", params.MaximumExtraDataSize-params.ForkIDSize)
+		extra = nil
 	}
 	return extra
 }
