@@ -45,7 +45,6 @@ type freezerdb struct {
 	readOnly    bool
 	ancientRoot string
 
-	ethdb.AncientFreezer
 	stateStore   ethdb.Database
 	snapStore    ethdb.KeyValueStore
 	txIndexStore ethdb.KeyValueStore
