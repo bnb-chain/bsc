@@ -1424,7 +1424,6 @@ func inspectHistory(ctx *cli.Context) error {
 	return inspectStorage(triedb, start, end, address, slot, ctx.Bool("raw"))
 }
 
-<<<<<<< HEAD
 func inspectIncrSnapshot(ctx *cli.Context) error {
 	if !ctx.IsSet(utils.IncrSnapshotPathFlag.Name) {
 		return errors.New("increment snapshot path is not set")
@@ -1433,7 +1432,9 @@ func inspectIncrSnapshot(ctx *cli.Context) error {
 	if err := rawdb.InspectIncrStore(baseDir); err != nil {
 		return err
 	}
-=======
+	return nil
+}
+
 // migrateDatabase migrates a single database to multi-database format
 func migrateDatabase(ctx *cli.Context) error {
 	stack, cfg := makeConfigNode(ctx)
@@ -1707,6 +1708,5 @@ func traverseAndMigrate(chainDB ethdb.Database) error {
 	}
 	log.Info("migrate completed", "chain", chainStat, "state", stateStat, "snap", snapStat,
 		"index", indexStat, "elapsed", common.PrettyDuration(time.Since(start)))
->>>>>>> 85d1c7917 (ethdb:  support  scalable db architecture  with four sub-databases (#3351))
 	return nil
 }
