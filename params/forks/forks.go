@@ -44,6 +44,7 @@ const (
 	Maxwell
 	Fermi
 	Osaka
+	Mendel
 )
 
 // String implements fmt.Stringer.
@@ -79,4 +80,5 @@ var forkToString = map[Fork]string{
 	Maxwell:          "Maxwell",
 	Fermi:            "Fermi",
 	Osaka:            "Osaka",
+	Mendel:           "Mendel",
 }

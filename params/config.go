@@ -227,6 +227,7 @@ var (
 		MaxwellTime:         newUint64(1751250600), // 2025-06-30 02:30:00 AM UTC
 		FermiTime:           nil,
 		OsakaTime:           nil,
+		MendelTime:          nil,
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
@@ -276,6 +277,7 @@ var (
 		MaxwellTime:         newUint64(1748243100), // 2025-05-26 07:05:00 AM UTC
 		FermiTime:           newUint64(1762741500), // 2025-11-10 02:25:00 AM UTC
 		OsakaTime:           nil,
+		MendelTime:          nil,
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
@@ -325,8 +327,9 @@ var (
 		LorentzTime:         newUint64(0),
 		MaxwellTime:         newUint64(0),
 		// TODO: set them to `0` when passed on the mainnet
-		FermiTime: nil,
-		OsakaTime: nil,
+		FermiTime:  nil,
+		OsakaTime:  nil,
+		MendelTime: nil,
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
@@ -656,6 +659,7 @@ type ChainConfig struct {
 	MaxwellTime    *uint64 `json:"maxwellTime,omitempty"`    // Maxwell switch time (nil = no fork, 0 = already on maxwell)
 	FermiTime      *uint64 `json:"fermiTime,omitempty"`      // Fermi switch time (nil = no fork, 0 = already on fermi)
 	OsakaTime      *uint64 `json:"osakaTime,omitempty"`      // Osaka switch time (nil = no fork, 0 = already on osaka)
+	MendelTime     *uint64 `json:"mendelTime,omitempty"`     // Mendel switch time (nil = no fork, 0 = already on mendel)
 	VerkleTime     *uint64 `json:"verkleTime,omitempty"`     // Verkle switch time (nil = no fork, 0 = already on verkle)
 
 	// TerminalTotalDifficulty is the amount of total difficulty reached by
@@ -837,9 +841,15 @@ func (c *ChainConfig) String() string {
 		OsakaTime = big.NewInt(0).SetUint64(*c.OsakaTime)
 	}
 
+	var MendelTime *big.Int
+	if c.MendelTime != nil {
+		MendelTime = big.NewInt(0).SetUint64(*c.MendelTime)
+	}
+
 	return fmt.Sprintf("{ChainID: %v, Engine: %v, Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, "+
 		"MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Hertzfix: %v, "+
-		"ShanghaiTime: %v, KeplerTime: %v, FeynmanTime: %v, FeynmanFixTime: %v, CancunTime: %v, HaberTime: %v, HaberFixTime: %v, BohrTime: %v, PascalTime: %v, PragueTime: %v, LorentzTime: %v, MaxwellTime: %v, FermiTime: %v, OsakaTime: %v}",
+		"ShanghaiTime: %v, KeplerTime: %v, FeynmanTime: %v, FeynmanFixTime: %v, CancunTime: %v, HaberTime: %v, HaberFixTime: %v, BohrTime: %v, PascalTime: %v, PragueTime: %v, LorentzTime: %v, MaxwellTime: %v, FermiTime: %v, "+
+		"OsakaTime: %v, MendelTime: %v}",
 		c.ChainID,
 		engine,
 		c.HomesteadBlock,
@@ -886,6 +896,7 @@ func (c *ChainConfig) String() string {
 		MaxwellTime,
 		FermiTime,
 		OsakaTime,
+		MendelTime,
 	)
 }
 
@@ -1300,6 +1311,20 @@ func (c *ChainConfig) IsOnOsaka(currentBlockNumber *big.Int, lastBlockTime uint6
 	return !c.IsOsaka(lastBlockNumber, lastBlockTime) && c.IsOsaka(currentBlockNumber, currentBlockTime)
 }
 
+// IsMendel returns whether time is either equal to the Mendel fork time or greater.
+func (c *ChainConfig) IsMendel(num *big.Int, time uint64) bool {
+	return c.IsLondon(num) && isTimestampForked(c.MendelTime, time)
+}
+
+// IsOnMendel eturns whether currentBlockTime is either equal to the Mendel fork time or greater firstly.
+func (c *ChainConfig) IsOnMendel(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	lastBlockNumber := new(big.Int)
+	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
+		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+	}
+	return !c.IsMendel(lastBlockNumber, lastBlockTime) && c.IsMendel(currentBlockNumber, currentBlockTime)
+}
+
 // IsVerkle returns whether time is either equal to the Verkle fork time or greater.
 func (c *ChainConfig) IsVerkle(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.VerkleTime, time)
@@ -1386,6 +1411,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "maxwellTime", timestamp: c.MaxwellTime},
 		{name: "fermiTime", timestamp: c.FermiTime},
 		{name: "osakaTime", timestamp: c.OsakaTime},
+		{name: "mendelTime", timestamp: c.MendelTime},
 		{name: "verkleTime", timestamp: c.VerkleTime, optional: true},
 	} {
 		if lastFork.name != "" {
@@ -1599,6 +1625,9 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	if isForkTimestampIncompatible(c.OsakaTime, newcfg.OsakaTime, headTimestamp) {
 		return newTimestampCompatError("Osaka fork timestamp", c.OsakaTime, newcfg.OsakaTime)
 	}
+	if isForkTimestampIncompatible(c.MendelTime, newcfg.MendelTime, headTimestamp) {
+		return newTimestampCompatError("Mendel fork timestamp", c.MendelTime, newcfg.MendelTime)
+	}
 	if isForkTimestampIncompatible(c.VerkleTime, newcfg.VerkleTime, headTimestamp) {
 		return newTimestampCompatError("Verkle fork timestamp", c.VerkleTime, newcfg.VerkleTime)
 	}
@@ -1622,6 +1651,8 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 	london := c.LondonBlock
 
 	switch {
+	case c.IsMendel(london, time):
+		return forks.Mendel
 	case c.IsOsaka(london, time):
 		return forks.Osaka
 	case c.IsFermi(london, time):
@@ -1645,6 +1676,8 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 // the fork isn't defined or isn't a time-based fork.
 func (c *ChainConfig) Timestamp(fork forks.Fork) *uint64 {
 	switch {
+	case fork == forks.Mendel:
+		return c.MendelTime
 	case fork == forks.Osaka:
 		return c.OsakaTime
 	case fork == forks.Fermi:
@@ -1814,7 +1847,7 @@ type Rules struct {
 	IsHertzfix                                              bool
 	IsShanghai, IsKepler, IsFeynman, IsCancun, IsHaber      bool
 	IsBohr, IsPascal, IsPrague, IsLorentz, IsMaxwell        bool
-	IsFermi, IsOsaka, IsVerkle                              bool
+	IsFermi, IsOsaka, IsMendel, IsVerkle                    bool
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -1859,6 +1892,7 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsMaxwell:        c.IsMaxwell(num, timestamp),
 		IsFermi:          c.IsFermi(num, timestamp),
 		IsOsaka:          c.IsOsaka(num, timestamp),
+		IsMendel:         c.IsMendel(num, timestamp),
 		IsVerkle:         c.IsVerkle(num, timestamp),
 		IsEIP4762:        isVerkle,
 	}

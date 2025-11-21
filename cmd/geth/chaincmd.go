@@ -72,6 +72,7 @@ var (
 			utils.OverrideMaxwell,
 			utils.OverrideFermi,
 			utils.OverrideOsaka,
+			utils.OverrideMendel,
 			utils.OverrideVerkle,
 			// utils.MultiDataBaseFlag,
 		}, utils.DatabaseFlags),
@@ -348,6 +349,10 @@ func initGenesis(ctx *cli.Context) error {
 	if ctx.IsSet(utils.OverrideOsaka.Name) {
 		v := ctx.Uint64(utils.OverrideOsaka.Name)
 		overrides.OverrideOsaka = &v
+	}
+	if ctx.IsSet(utils.OverrideMendel.Name) {
+		v := ctx.Uint64(utils.OverrideMendel.Name)
+		overrides.OverrideMendel = &v
 	}
 	if ctx.IsSet(utils.OverrideVerkle.Name) {
 		v := ctx.Uint64(utils.OverrideVerkle.Name)
