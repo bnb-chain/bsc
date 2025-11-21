@@ -149,6 +149,7 @@ type handlerConfig struct {
 	ProxyedValidatorAddresses []common.Address
 	ProxyedNodeIds            []enode.ID
 	PeerBlacklist             peerBlacklistConfig
+	PeerWhitelist             peerWhitelistConfig
 	PendingLogPath            string
 }
 
@@ -195,6 +196,7 @@ type handler struct {
 
 	requiredBlocks map[uint64]common.Hash
 	peerBlacklist  *txPeerBlacklist
+	peerWhitelist  *peerWhitelist
 
 	peerStatsLock sync.RWMutex
 	peerTxCounts  map[string]uint64
@@ -262,6 +264,14 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		h.peerBlacklist = bl
 		if bl != nil {
 			log.Info("Loaded peer blacklist", "entries", len(bl.list()))
+		}
+	}
+	if wl, err := newPeerWhitelist(config.PeerWhitelist); err != nil {
+		return nil, err
+	} else {
+		h.peerWhitelist = wl
+		if wl != nil {
+			log.Info("Loaded peer whitelist", "entries", len(wl.list()), "threshold", wl.cfg.LatencyThreshold, "maxSize", wl.cfg.MaxSize)
 		}
 	}
 	if h.chain.NoTries() {
@@ -631,6 +641,38 @@ func (h *handler) pendingPeerLogLoop() {
 	}
 }
 
+// peerLatencyCollectionLoop 周期性采集所有peer的延迟信息，记录到白名单
+func (h *handler) peerLatencyCollectionLoop() {
+	defer h.wg.Done()
+	
+	// 每30秒采集一次延迟信息
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ticker.C:
+			if h.peerWhitelist == nil {
+				return
+			}
+			
+			// 获取所有peer
+			peers := h.peers.list()
+			for _, peer := range peers {
+				// 获取延迟信息 (毫秒)
+				latency := peer.Latency()
+				if latency > 0 {
+					// 记录延迟到白名单
+					h.peerWhitelist.recordLatency(peer.ID(), latency)
+				}
+			}
+			
+		case <-h.stopCh:
+			return
+		}
+	}
+}
+
 func (h *handler) writePendingPeerStats() {
 	if h.pendingLogPath == "" {
 		return
@@ -775,6 +817,12 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	}
 	h.resetPeerTxCount(peer.ID())
 	peer.Log().Debug("Ethereum peer connected", "name", peer.Name(), "peers.len", h.peers.len())
+	
+	// 通知白名单：节点已连接
+	if h.peerWhitelist != nil {
+		h.peerWhitelist.onPeerConnected(peer.ID(), peer.Node().URLv4())
+	}
+	
 	defer h.unregisterPeer(peer.ID())
 
 	p := h.peers.peer(peer.ID())
@@ -918,6 +966,12 @@ func (h *handler) unregisterPeer(id string) {
 	} else {
 		logger = log.New("peer", id[:8])
 	}
+	
+	// 通知白名单：节点即将断开
+	if h.peerWhitelist != nil {
+		h.peerWhitelist.onPeerDisconnected(id)
+	}
+	
 	// Abort if the peer does not exist
 	peer := h.peers.peer(id)
 	if peer == nil {
@@ -992,6 +1046,12 @@ func (h *handler) Start(maxPeers int, maxPeersPerIP int) {
 	if h.pendingLogPath != "" && h.pendingTracker != nil {
 		h.wg.Add(1)
 		go h.pendingPeerLogLoop()
+	}
+
+	// 启动白名单延迟采集循环
+	if h.peerWhitelist != nil {
+		h.wg.Add(1)
+		go h.peerLatencyCollectionLoop()
 	}
 
 	// broadcast mined blocks

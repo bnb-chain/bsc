@@ -81,6 +81,13 @@ var Defaults = Config{
 		MinimumSamples:   100,
 		Persistence:      "peer-blacklist.json",
 	},
+	PeerWhitelist: PeerWhitelistConfig{
+		Enabled:          false,
+		LatencyThreshold: 30,  // 30ms
+		MaxSize:          100,
+		MinConnDuration:  300, // 5 minutes
+		Persistence:      "peer-whitelist.json",
+	},
 	PendingTxLogPath: "pending-peer-stats.log",
 }
 
@@ -90,6 +97,15 @@ type PeerBlacklistConfig struct {
 	SuccessThreshold float64 // Minimum tx acceptance ratio before peer is blacklisted
 	MinimumSamples   uint64  // Minimum number of txs evaluated before blacklisting is considered
 	Persistence      string  // Relative path of the blacklist persistence file
+}
+
+// PeerWhitelistConfig describes how low-latency peers should be tracked and persisted for priority connections.
+type PeerWhitelistConfig struct {
+	Enabled           bool   // Enable peer whitelist based on low latency
+	LatencyThreshold  int64  // Maximum latency in milliseconds to be whitelisted (default: 30ms)
+	MaxSize           int    // Maximum number of peers in whitelist (default: 100)
+	MinConnDuration   int64  // Minimum connection duration in seconds to be considered (default: 300s = 5min)
+	Persistence       string // Relative path of the whitelist persistence file
 }
 
 //go:generate go run github.com/fjl/gencodec -type Config -formats toml -out gen_config.go
@@ -115,6 +131,7 @@ type Config struct {
 	EVNNodeIDsToAdd        []enode.ID
 	EVNNodeIDsToRemove     []enode.ID
 	PeerBlacklist          PeerBlacklistConfig
+	PeerWhitelist          PeerWhitelistConfig
 	// PendingTxLogPath is the path of the append-only log file to write top peers
 	// who first deliver pending transactions.
 	PendingTxLogPath string `toml:",omitempty"`

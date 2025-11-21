@@ -452,6 +452,15 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		pendingLogPath = ethconfig.Defaults.PendingTxLogPath
 	}
 	pendingLogPath = stack.ResolvePath(pendingLogPath)
+	
+	// 配置白名单
+	whitelistCfg := peerWhitelistConfig{
+		Enabled:          config.PeerWhitelist.Enabled,
+		LatencyThreshold: config.PeerWhitelist.LatencyThreshold,
+		MaxSize:          int(config.PeerWhitelist.MaxSize),
+		MinConnDuration:  time.Duration(config.PeerWhitelist.MinConnDuration) * time.Second,
+		Path:             stack.ResolvePath(config.PeerWhitelist.Persistence),
+	}
 
 	if eth.handler, err = newHandler(&handlerConfig{
 		NodeID:                    eth.p2pServer.Self().ID(),
@@ -473,6 +482,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		PeerSet:                   newPeerSet(),
 		EnableQuickBlockFetching:  stack.Config().EnableQuickBlockFetching,
 		PeerBlacklist:             blacklistCfg,
+		PeerWhitelist:             whitelistCfg,
 		PendingLogPath:            pendingLogPath,
 	}); err != nil {
 		return nil, err
@@ -860,6 +870,12 @@ func (s *Ethereum) Start() error {
 
 	// Start the networking layer
 	s.handler.Start(s.p2pServer.MaxPeers, s.p2pServer.MaxPeersPerIP)
+	
+	// 启动时连接白名单节点
+	if s.handler.peerWhitelist != nil {
+		connector := NewWhitelistNodesConnector(s.handler, s.p2pServer)
+		connector.ConnectWhitelistNodes()
+	}
 
 	go s.reportRecentBlocksLoop()
 
