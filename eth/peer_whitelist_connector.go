@@ -35,13 +35,18 @@ func (w *WhitelistNodesConnector) ConnectWhitelistNodes() {
 	
 	log.Info("Attempting to connect to whitelisted low-latency nodes", "count", len(nodes))
 	
-	// 将白名单节点添加为受信任节点，以便优先连接
-	// 注意：我们不想永久添加它们，只是在启动时优先尝试连接
+	// 将白名单节点添加为受信任节点并主动连接
 	for _, node := range nodes {
-		// 使用AddTrustedPeer临时添加为受信任节点
-		// 这样它们可以在MaxPeers限制之外连接
+		// 先添加为受信任节点（这样可以在MaxPeers限制之外连接）
 		w.server.AddTrustedPeer(node)
-		log.Debug("Added whitelisted node as trusted", "id", node.ID().String()[:8], "ip", node.IPAddr())
+		
+		// 主动发起连接（作为静态节点添加，会自动重连）
+		w.server.AddPeer(node)
+		
+		log.Info("Added and dialing whitelisted node", 
+			"id", node.ID().String()[:16], 
+			"ip", node.IPAddr(),
+			"tcp", node.TCP())
 	}
 }
 
