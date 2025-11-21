@@ -1121,12 +1121,8 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 		block, err = api.blockByHash(ctx, hash)
 	} else if number, ok := blockNrOrHash.Number(); ok {
 		if number == rpc.PendingBlockNumber {
-			// We don't have access to the miner here. For tracing 'future' transactions,
-			// it can be done with block- and state-overrides instead, which offers
-			// more flexibility and stability than trying to trace on 'pending', since
-			// the contents of 'pending' is unstable and probably not a true representation
-			// of what the next actual block is likely to contain.
-			return nil, errors.New("tracing on top of pending is not supported")
+			// Nodes running without a miner still expect pending to behave like "latest".
+			number = rpc.LatestBlockNumber
 		}
 		block, err = api.blockByNumber(ctx, number)
 	} else {
@@ -1213,7 +1209,7 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 // using the same semantics as TraceCall.
 func (api *API) TraceRawCall(ctx context.Context, raw hexutil.Bytes, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig) (interface{}, error) {
 	var tx types.Transaction
-	if err := rlp.DecodeBytes(raw, &tx); err != nil {
+	if err := tx.UnmarshalBinary(raw); err != nil {
 		return nil, fmt.Errorf("invalid raw transaction: %w", err)
 	}
 	signer := types.LatestSigner(api.backend.ChainConfig())
