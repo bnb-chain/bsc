@@ -454,9 +454,17 @@ func (api *FilterAPI) TransactionReceipts(ctx context.Context, filter *Transacti
 
 		var (
 			signer      = types.LatestSigner(api.sys.backend.ChainConfig())
-			remaining   = len(txHashes) // 0 means never auto-unsubscribe
+			pending     map[common.Hash]struct{} // Track pending receipts, nil means never auto-unsubscribe
 			gracePeriod <-chan time.Time
 		)
+
+		// Initialize pending map for specific tx hashes
+		if len(txHashes) > 0 {
+			pending = make(map[common.Hash]struct{}, len(txHashes))
+			for _, hash := range txHashes {
+				pending[hash] = struct{}{}
+			}
+		}
 
 		for {
 			select {
@@ -479,10 +487,14 @@ func (api *FilterAPI) TransactionReceipts(ctx context.Context, filter *Transacti
 					notifier.Notify(rpcSub.ID, marshaledReceipts)
 
 					// Auto-unsubscribe when all receipts received (with grace period for reorgs)
-					if remaining > 0 {
-						remaining -= len(receiptsWithTxs)
-						if remaining <= 0 && gracePeriod == nil {
-							gracePeriod = time.After(3 * time.Second) // BSC: ~0.75s/block, wait 4 blocks
+					if pending != nil {
+						for _, receiptWithTx := range receiptsWithTxs {
+							if receiptWithTx.Transaction != nil {
+								delete(pending, receiptWithTx.Transaction.Hash())
+							}
+						}
+						if len(pending) == 0 && gracePeriod == nil {
+							gracePeriod = time.After(3 * time.Second) // Grace period for reorg handling
 						}
 					}
 				}
