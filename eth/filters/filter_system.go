@@ -187,19 +187,18 @@ const (
 )
 
 type subscription struct {
-	id              rpc.ID
-	typ             Type
-	created         time.Time
-	logsCrit        ethereum.FilterQuery
-	logs            chan []*types.Log
-	txs             chan []*types.Transaction
-	headers         chan *types.Header
-	votes           chan *types.VoteEnvelope
-	receipts        chan []*ReceiptWithTx
-	txHashes        []common.Hash            // contains transaction hashes for transactionReceipts subscription filtering
-	remainingHashes map[common.Hash]struct{} // tracks pending receipts for auto-unsubscribe
-	installed       chan struct{}            // closed when the filter is installed
-	err             chan error               // closed when the filter is uninstalled
+	id        rpc.ID
+	typ       Type
+	created   time.Time
+	logsCrit  ethereum.FilterQuery
+	logs      chan []*types.Log
+	txs       chan []*types.Transaction
+	headers   chan *types.Header
+	votes     chan *types.VoteEnvelope
+	receipts  chan []*ReceiptWithTx
+	txHashes  []common.Hash // contains transaction hashes for transactionReceipts subscription filtering
+	installed chan struct{} // closed when the filter is installed
+	err       chan error    // closed when the filter is uninstalled
 }
 
 // EventSystem creates subscriptions, processes events and broadcasts them to the
@@ -458,29 +457,18 @@ func (es *EventSystem) SubscribeNewVotes(votes chan *types.VoteEnvelope) *Subscr
 // SubscribeTransactionReceipts creates a subscription that writes transaction receipts for
 // transactions when they are included in blocks. If txHashes is provided, only receipts
 // for those specific transaction hashes will be delivered.
-// The subscription will automatically unsubscribe once all specified receipts are received.
 func (es *EventSystem) SubscribeTransactionReceipts(txHashes []common.Hash, receipts chan []*ReceiptWithTx) *Subscription {
-	// Initialize remainingHashes for auto-unsubscribe tracking
-	var remainingHashes map[common.Hash]struct{}
-	if len(txHashes) > 0 {
-		remainingHashes = make(map[common.Hash]struct{}, len(txHashes))
-		for _, hash := range txHashes {
-			remainingHashes[hash] = struct{}{}
-		}
-	}
-
 	sub := &subscription{
-		id:              rpc.NewID(),
-		typ:             TransactionReceiptsSubscription,
-		created:         time.Now(),
-		logs:            make(chan []*types.Log),
-		txs:             make(chan []*types.Transaction),
-		headers:         make(chan *types.Header),
-		receipts:        receipts,
-		txHashes:        txHashes,
-		remainingHashes: remainingHashes,
-		installed:       make(chan struct{}),
-		err:             make(chan error),
+		id:        rpc.NewID(),
+		typ:       TransactionReceiptsSubscription,
+		created:   time.Now(),
+		logs:      make(chan []*types.Log),
+		txs:       make(chan []*types.Transaction),
+		headers:   make(chan *types.Header),
+		receipts:  receipts,
+		txHashes:  txHashes,
+		installed: make(chan struct{}),
+		err:       make(chan error),
 	}
 	return es.subscribe(sub)
 }
@@ -517,39 +505,11 @@ func (es *EventSystem) handleChainEvent(filters filterIndex, ev core.ChainEvent)
 	}
 
 	// Handle transaction receipts subscriptions when a new block is added
-	var toUninstall []*subscription
 	for _, f := range filters[TransactionReceiptsSubscription] {
 		matchedReceipts := filterReceipts(f.txHashes, ev)
 		if len(matchedReceipts) > 0 {
 			f.receipts <- matchedReceipts
-
-			// Auto-unsubscribe: track and remove received receipts
-			if f.remainingHashes != nil {
-				for _, receipt := range matchedReceipts {
-					if receipt.Transaction != nil {
-						delete(f.remainingHashes, receipt.Transaction.Hash())
-					}
-				}
-
-				// All receipts received, mark for uninstall
-				if len(f.remainingHashes) == 0 {
-					log.Debug("Receipt subscription completed, auto-unsubscribing",
-						"id", f.id, "total", len(f.txHashes), "duration", time.Since(f.created))
-					toUninstall = append(toUninstall, f)
-				}
-			}
 		}
-	}
-
-	// Uninstall completed subscriptions (outside iteration to avoid map modification during iteration)
-	for _, f := range toUninstall {
-		go func(sub *subscription) {
-			select {
-			case es.uninstall <- sub:
-			case <-time.After(5 * time.Second):
-				log.Warn("Auto-uninstall timeout", "id", sub.id, "type", "receipt")
-			}
-		}(f)
 	}
 }
 

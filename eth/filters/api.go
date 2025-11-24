@@ -453,6 +453,7 @@ func (api *FilterAPI) TransactionReceipts(ctx context.Context, filter *Transacti
 		defer receiptsSub.Unsubscribe()
 
 		signer := types.LatestSigner(api.sys.backend.ChainConfig())
+		remaining := len(txHashes) // 0 means never auto-unsubscribe
 
 		for {
 			select {
@@ -473,6 +474,14 @@ func (api *FilterAPI) TransactionReceipts(ctx context.Context, filter *Transacti
 
 					// Send a batch of tx receipts in one notification
 					notifier.Notify(rpcSub.ID, marshaledReceipts)
+
+					// Auto-unsubscribe when all receipts received
+					if remaining > 0 {
+						remaining -= len(receiptsWithTxs)
+						if remaining <= 0 {
+							return
+						}
+					}
 				}
 			case <-rpcSub.Err():
 				return
