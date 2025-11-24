@@ -452,8 +452,11 @@ func (api *FilterAPI) TransactionReceipts(ctx context.Context, filter *Transacti
 	gopool.Submit(func() {
 		defer receiptsSub.Unsubscribe()
 
-		signer := types.LatestSigner(api.sys.backend.ChainConfig())
-		remaining := len(txHashes) // 0 means never auto-unsubscribe
+		var (
+			signer      = types.LatestSigner(api.sys.backend.ChainConfig())
+			remaining   = len(txHashes) // 0 means never auto-unsubscribe
+			gracePeriod <-chan time.Time
+		)
 
 		for {
 			select {
@@ -475,14 +478,16 @@ func (api *FilterAPI) TransactionReceipts(ctx context.Context, filter *Transacti
 					// Send a batch of tx receipts in one notification
 					notifier.Notify(rpcSub.ID, marshaledReceipts)
 
-					// Auto-unsubscribe when all receipts received
+					// Auto-unsubscribe when all receipts received (with grace period for reorgs)
 					if remaining > 0 {
 						remaining -= len(receiptsWithTxs)
-						if remaining <= 0 {
-							return
+						if remaining <= 0 && gracePeriod == nil {
+							gracePeriod = time.After(3 * time.Second) // BSC: ~0.75s/block, wait 4 blocks
 						}
 					}
 				}
+			case <-gracePeriod:
+				return
 			case <-rpcSub.Err():
 				return
 			}
