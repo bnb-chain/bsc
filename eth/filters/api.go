@@ -494,7 +494,7 @@ func (api *FilterAPI) TransactionReceipts(ctx context.Context, filter *Transacti
 							}
 						}
 						if len(pending) == 0 && gracePeriod == nil {
-							gracePeriod = time.After(3 * time.Second) // Grace period for reorg handling
+							gracePeriod = time.After(12 * time.Second) // Grace period for reorg handling
 						}
 					}
 				}
