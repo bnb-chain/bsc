@@ -1,7 +1,7 @@
 // Copyright 2024 The go-ethereum Authors
 // Complex runtime contract interactions test
 
-package tests
+package runtime
 
 import (
 	"bytes"

@@ -1,7 +1,7 @@
 // Copyright 2024 The go-ethereum Authors
 // Simple opcodes comparison test with builder pattern
 
-package tests
+package runtime
 
 import (
 	"bytes"
@@ -139,16 +139,16 @@ func buildPushTest(n int) OpcodeTestCase {
 	if n < 1 || n > 32 {
 		panic("PUSH size must be between 1 and 32")
 	}
-	
+
 	// Generate n bytes of test data (0x01, 0x02, ..., 0x0n)
 	data := make([]byte, n)
 	for i := 0; i < n; i++ {
 		data[i] = byte((i + 1) % 256)
 	}
-	
+
 	// PUSHn opcode is 0x60 + (n-1)
 	pushOp := byte(0x60 + n - 1)
-	
+
 	// Construct bytecode: PUSHn <data>, PUSH1 0x00, MSTORE, PUSH1 0x20, PUSH1 0x00, RETURN
 	code := make([]byte, 0, n+10)
 	code = append(code, pushOp)
@@ -158,7 +158,7 @@ func buildPushTest(n int) OpcodeTestCase {
 	code = append(code, byte(vm.PUSH1), 0x20)
 	code = append(code, byte(vm.PUSH1), 0x00)
 	code = append(code, byte(vm.RETURN))
-	
+
 	return OpcodeTestCase{
 		Name:        fmt.Sprintf("PUSH%d", n),
 		Bytecode:    code,
@@ -946,7 +946,7 @@ func TestMIRvsEVM_JumpOperations(t *testing.T) {
 				byte(vm.MSTORE),      // PC=12: MSTORE
 				byte(vm.PUSH1), 0x20, // PC=13: push 32
 				byte(vm.PUSH1), 0x00, // PC=15: push 0
-				byte(vm.RETURN),      // PC=17: RETURN
+				byte(vm.RETURN), // PC=17: RETURN
 			},
 			InitialGas:  100000,
 			Description: "Basic JUMP to JUMPDEST",
@@ -965,7 +965,7 @@ func TestMIRvsEVM_JumpOperations(t *testing.T) {
 				byte(vm.MSTORE),      // PC=14: MSTORE
 				byte(vm.PUSH1), 0x20, // PC=15: push 32
 				byte(vm.PUSH1), 0x00, // PC=17: push 0
-				byte(vm.RETURN),      // PC=19: RETURN
+				byte(vm.RETURN), // PC=19: RETURN
 			},
 			InitialGas:  100000,
 			Description: "JUMP forward skipping multiple instructions",
@@ -989,7 +989,7 @@ func TestMIRvsEVM_JumpOperations(t *testing.T) {
 				byte(vm.MSTORE),      // PC=18: MSTORE
 				byte(vm.PUSH1), 0x20, // PC=19: push 32
 				byte(vm.PUSH1), 0x00, // PC=21: push 0
-				byte(vm.RETURN),      // PC=23: RETURN
+				byte(vm.RETURN), // PC=23: RETURN
 			},
 			InitialGas:  100000,
 			Description: "JUMP backward loop (3 iterations)",
@@ -1013,7 +1013,7 @@ func TestMIRvsEVM_JumpOperations(t *testing.T) {
 				byte(vm.MSTORE),      // PC=18: MSTORE
 				byte(vm.PUSH1), 0x20, // PC=19: push 32
 				byte(vm.PUSH1), 0x00, // PC=21: push 0
-				byte(vm.RETURN),      // PC=23: RETURN
+				byte(vm.RETURN), // PC=23: RETURN
 			},
 			InitialGas:  100000,
 			Description: "JUMP backward loop (5 iterations)",
@@ -1029,7 +1029,7 @@ func TestMIRvsEVM_ReturnOperations(t *testing.T) {
 			Bytecode: []byte{
 				byte(vm.PUSH1), 0x00, // PC=0: push 0 (size)
 				byte(vm.PUSH1), 0x00, // PC=2: push 0 (offset)
-				byte(vm.RETURN),      // PC=4: RETURN (empty)
+				byte(vm.RETURN), // PC=4: RETURN (empty)
 			},
 			InitialGas:  100000,
 			Description: "RETURN with empty data",
@@ -1042,7 +1042,7 @@ func TestMIRvsEVM_ReturnOperations(t *testing.T) {
 				byte(vm.MSTORE),      // PC=4: MSTORE
 				byte(vm.PUSH1), 0x01, // PC=5: push 1 (size)
 				byte(vm.PUSH1), 0x1f, // PC=7: push 31 (offset, last byte of word)
-				byte(vm.RETURN),      // PC=9: RETURN
+				byte(vm.RETURN), // PC=9: RETURN
 			},
 			InitialGas:  100000,
 			Description: "RETURN single byte",
@@ -1061,7 +1061,7 @@ func TestMIRvsEVM_ReturnOperations(t *testing.T) {
 				byte(vm.MSTORE),      // PC=14: MSTORE at offset 64
 				byte(vm.PUSH1), 0x60, // PC=15: push 96 (size)
 				byte(vm.PUSH1), 0x00, // PC=17: push 0 (offset)
-				byte(vm.RETURN),      // PC=19: RETURN 96 bytes
+				byte(vm.RETURN), // PC=19: RETURN 96 bytes
 			},
 			InitialGas:  100000,
 			Description: "RETURN large data (96 bytes)",
@@ -1078,7 +1078,7 @@ func TestMIRvsEVM_ReturnOperations(t *testing.T) {
 				byte(vm.MSTORE),      // PC=10: MSTORE
 				byte(vm.PUSH1), 0x20, // PC=11: push 32
 				byte(vm.PUSH1), 0x00, // PC=13: push 0
-				byte(vm.RETURN),      // PC=15: RETURN
+				byte(vm.RETURN), // PC=15: RETURN
 			},
 			InitialGas:  100000,
 			Description: "RETURN after arithmetic computation",
@@ -1094,7 +1094,7 @@ func TestMIRvsEVM_RevertOperations(t *testing.T) {
 			Bytecode: []byte{
 				byte(vm.PUSH1), 0x00, // PC=0: push 0 (size)
 				byte(vm.PUSH1), 0x00, // PC=2: push 0 (offset)
-				byte(vm.REVERT),      // PC=4: REVERT (empty)
+				byte(vm.REVERT), // PC=4: REVERT (empty)
 			},
 			InitialGas:  100000,
 			Description: "REVERT with empty data",
@@ -1107,7 +1107,7 @@ func TestMIRvsEVM_RevertOperations(t *testing.T) {
 				byte(vm.MSTORE),      // PC=4: MSTORE
 				byte(vm.PUSH1), 0x20, // PC=5: push 32 (size)
 				byte(vm.PUSH1), 0x00, // PC=7: push 0 (offset)
-				byte(vm.REVERT),      // PC=9: REVERT with reason
+				byte(vm.REVERT), // PC=9: REVERT with reason
 			},
 			InitialGas:  100000,
 			Description: "REVERT with error reason",
@@ -1123,7 +1123,7 @@ func TestMIRvsEVM_RevertOperations(t *testing.T) {
 				byte(vm.MSTORE),      // PC=9: MSTORE
 				byte(vm.PUSH1), 0x20, // PC=10: push 32
 				byte(vm.PUSH1), 0x00, // PC=12: push 0
-				byte(vm.REVERT),      // PC=14: REVERT
+				byte(vm.REVERT), // PC=14: REVERT
 			},
 			InitialGas:  100000,
 			Description: "REVERT after storage modification",
@@ -1142,7 +1142,7 @@ func TestMIRvsEVM_RevertOperations(t *testing.T) {
 				byte(vm.MSTORE),      // PC=14: MSTORE
 				byte(vm.PUSH1), 0x20, // PC=15: push 32
 				byte(vm.PUSH1), 0x00, // PC=17: push 0
-				byte(vm.REVERT),      // PC=19: REVERT
+				byte(vm.REVERT), // PC=19: REVERT
 			},
 			InitialGas:  100000,
 			Description: "REVERT after conditional jump",
