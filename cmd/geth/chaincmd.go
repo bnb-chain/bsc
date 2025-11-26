@@ -456,7 +456,7 @@ func createPorts(ipStr string, port int, size int) []int {
 }
 
 // Create config for node i in the cluster
-func createNodeConfig(baseConfig gethConfig, ip string, port int, enodes []*enode.Node, index int, staticConnect bool) gethConfig {
+func createNodeConfig(baseConfig gethConfig, prefix string, ip string, port int, enodes []*enode.Node, index int) gethConfig {
 	baseConfig.Node.HTTPHost = ip
 	baseConfig.Node.P2P.ListenAddr = fmt.Sprintf(":%d", port)
 	connectEnodes := make([]*enode.Node, 0, len(enodes)-1)
@@ -467,9 +467,10 @@ func createNodeConfig(baseConfig gethConfig, ip string, port int, enodes []*enod
 		connectEnodes = append(connectEnodes, enodes[j])
 	}
 	// Set the P2P connections between this node and the other nodes
-	if staticConnect {
-		baseConfig.Node.P2P.StaticNodes = connectEnodes
-	} else {
+	baseConfig.Node.P2P.StaticNodes = connectEnodes
+	if prefix == "fullnode" {
+		// Fullnodes may reside in different regions than the `enodes`.
+		// StaticNodes cannot connect to them directly, but can still discover them.
 		baseConfig.Node.P2P.BootstrapNodes = connectEnodes
 	}
 	return baseConfig
@@ -544,7 +545,7 @@ func initNetwork(ctx *cli.Context) error {
 		connectOneExtraEnodes = true
 	}
 
-	configs, enodes, accounts, err := createConfigs(config, initDir, "node", ips, ports, sentryEnodes, connectOneExtraEnodes, true)
+	configs, enodes, accounts, err := createConfigs(config, initDir, "node", ips, ports, sentryEnodes, connectOneExtraEnodes)
 	if err != nil {
 		utils.Fatalf("Failed to create node configs: %v", err)
 	}
@@ -625,7 +626,7 @@ func createSentryNodeConfigs(ctx *cli.Context, baseConfig gethConfig, initDir st
 	if err != nil {
 		utils.Fatalf("Failed to parse ports: %v", err)
 	}
-	configs, enodes, _, err := createConfigs(baseConfig, initDir, "sentry", ips, ports, nil, false, true)
+	configs, enodes, _, err := createConfigs(baseConfig, initDir, "sentry", ips, ports, nil, false)
 	if err != nil {
 		utils.Fatalf("Failed to create config: %v", err)
 	}
@@ -648,7 +649,7 @@ func createAndSaveFullNodeConfigs(ctx *cli.Context, inGenesisFile *os.File, base
 		utils.Fatalf("Failed to parse ports: %v", err)
 	}
 
-	configs, enodes, _, err := createConfigs(baseConfig, initDir, "fullnode", ips, ports, extraEnodes, false, false)
+	configs, enodes, _, err := createConfigs(baseConfig, initDir, "fullnode", ips, ports, extraEnodes, false)
 	if err != nil {
 		utils.Fatalf("Failed to create config: %v", err)
 	}
@@ -663,7 +664,7 @@ func createAndSaveFullNodeConfigs(ctx *cli.Context, inGenesisFile *os.File, base
 	return configs, enodes, nil
 }
 
-func createConfigs(base gethConfig, initDir string, prefix string, ips []string, ports []int, extraEnodes []*enode.Node, connectOneExtraEnodes bool, staticConnect bool) ([]gethConfig, []*enode.Node, [][]common.Address, error) {
+func createConfigs(base gethConfig, initDir string, prefix string, ips []string, ports []int, extraEnodes []*enode.Node, connectOneExtraEnodes bool) ([]gethConfig, []*enode.Node, [][]common.Address, error) {
 	if len(ips) != len(ports) {
 		return nil, nil, nil, errors.New("mismatch of size and length of ports")
 	}
@@ -694,7 +695,7 @@ func createConfigs(base gethConfig, initDir string, prefix string, ips []string,
 			allEnodes = []*enode.Node{enodes[i], extraEnodes[i]}
 			index = 0
 		}
-		configs[i] = createNodeConfig(base, ips[i], ports[i], allEnodes, index, staticConnect)
+		configs[i] = createNodeConfig(base, prefix, ips[i], ports[i], allEnodes, index)
 	}
 	return configs, enodes, accounts, nil
 }
