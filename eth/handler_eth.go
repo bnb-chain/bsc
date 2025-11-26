@@ -165,6 +165,10 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPa
 		trueHead = block.ParentHash()
 		trueTD   = new(big.Int).Sub(td, block.Difficulty())
 	)
+	if block.NumberU64() == 1 { // this enable sync with the right peer when starting up a new network
+		trueHead = block.Hash()
+		trueTD = td
+	}
 	// Update the peer's total difficulty if better than the previous
 	if _, td := peer.Head(); trueTD.Cmp(td) > 0 {
 		peer.SetHead(trueHead, trueTD)
