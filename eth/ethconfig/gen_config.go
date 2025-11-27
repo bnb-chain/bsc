@@ -32,6 +32,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		NoPrefetch              bool
 		EnableBAL               bool
 		DirectBroadcast         bool
+		DisableHistoricalSync   bool
 		DisableSnapProtocol     bool
 		RangeLimit              bool
 		TxLookupLimit           uint64 `toml:",omitempty"`
@@ -93,6 +94,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.NoPrefetch = c.NoPrefetch
 	enc.EnableBAL = c.EnableBAL
 	enc.DirectBroadcast = c.DirectBroadcast
+	enc.DisableHistoricalSync = c.DisableHistoricalSync
 	enc.DisableSnapProtocol = c.DisableSnapProtocol
 	enc.RangeLimit = c.RangeLimit
 	enc.TxLookupLimit = c.TxLookupLimit
@@ -158,6 +160,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		NoPrefetch              *bool
 		EnableBAL               *bool
 		DirectBroadcast         *bool
+		DisableHistoricalSync   *bool
 		DisableSnapProtocol     *bool
 		RangeLimit              *bool
 		TxLookupLimit           *uint64 `toml:",omitempty"`
@@ -249,6 +252,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.DirectBroadcast != nil {
 		c.DirectBroadcast = *dec.DirectBroadcast
+	}
+	if dec.DisableHistoricalSync != nil {
+		c.DisableHistoricalSync = *dec.DisableHistoricalSync
 	}
 	if dec.DisableSnapProtocol != nil {
 		c.DisableSnapProtocol = *dec.DisableSnapProtocol

@@ -111,10 +111,11 @@ type Config struct {
 	NoPruning  bool // Whether to disable pruning and flush everything to disk
 	NoPrefetch bool // Whether to disable prefetching and only load state on demand
 
-	EnableBAL           bool
-	DirectBroadcast     bool
-	DisableSnapProtocol bool // Whether disable snap protocol
-	RangeLimit          bool
+	EnableBAL             bool
+	DirectBroadcast       bool
+	DisableHistoricalSync bool // Whether to skip historical blockchain sync at startup
+	DisableSnapProtocol   bool // Whether disable snap protocol
+	RangeLimit            bool
 
 	// Deprecated: use 'TransactionHistory' instead.
 	TxLookupLimit uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.

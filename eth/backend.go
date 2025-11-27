@@ -437,6 +437,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		DisablePeerTxBroadcast:    config.DisablePeerTxBroadcast,
 		PeerSet:                   newPeerSet(),
 		EnableQuickBlockFetching:  stack.Config().EnableQuickBlockFetching,
+		DisableHistoricalSync:     config.DisableHistoricalSync,
 	}); err != nil {
 		return nil, err
 	}
@@ -825,6 +826,7 @@ func (s *Ethereum) Start() error {
 	s.handler.Start(s.p2pServer.MaxPeers, s.p2pServer.MaxPeersPerIP)
 
 	go s.reportRecentBlocksLoop()
+	go s.logNewHeadsLoop()
 
 	// Start the connection manager
 	s.dropper.Start(s.p2pServer, func() bool { return !s.Synced() })
@@ -1067,4 +1069,34 @@ func validTimeMetric(startMs, endMs int64) bool {
 		return false
 	}
 	return endMs-startMs <= MaxBlockHandleDelayMs
+}
+
+func (s *Ethereum) logNewHeadsLoop() {
+	headCh := make(chan core.ChainHeadEvent, 16)
+	sub := s.blockchain.SubscribeChainHeadEvent(headCh)
+	defer sub.Unsubscribe()
+
+	for {
+		select {
+		case ev := <-headCh:
+			if ev.Header == nil {
+				continue
+			}
+			header := ev.Header
+			blockTime := time.Unix(int64(header.Time), 0).UTC()
+			signedTime := time.Now().UTC()
+			log.Info("New block received",
+				"number", header.Number,
+				"hash", header.Hash(),
+				"blockTime", blockTime.Format(time.RFC3339Nano),
+				"receivedAt", signedTime.Format(time.RFC3339Nano))
+		case err := <-sub.Err():
+			if err != nil {
+				log.Warn("Chain head subscription dropped", "err", err)
+			}
+			return
+		case <-s.stopCh:
+			return
+		}
+	}
 }

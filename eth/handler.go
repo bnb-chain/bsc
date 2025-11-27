@@ -144,6 +144,7 @@ type handlerConfig struct {
 	EnableBAL                 bool
 	EVNNodeIdsWhitelist       []enode.ID
 	ProxyedValidatorAddresses []common.Address
+	DisableHistoricalSync     bool
 }
 
 type handler struct {
@@ -197,6 +198,8 @@ type handler struct {
 
 	handlerStartCh chan struct{}
 	handlerDoneCh  chan struct{}
+
+	disableHistoricalSync bool
 }
 
 // newHandler returns a handler for all Ethereum chain management protocol.
@@ -229,6 +232,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		handlerDoneCh:              make(chan struct{}),
 		handlerStartCh:             make(chan struct{}),
 		stopCh:                     make(chan struct{}),
+		disableHistoricalSync:      config.DisableHistoricalSync,
 	}
 	for _, nodeID := range config.EVNNodeIdsWhitelist {
 		h.evnNodeIdsWhitelistMap[nodeID] = struct{}{}
@@ -393,6 +397,10 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 	h.txFetcher = fetcher.NewTxFetcher(h.txpool.Has, addTxs, fetchTx, h.removePeer)
 	h.chainSync = newChainSyncer(h)
+	if h.disableHistoricalSync {
+		log.Warn("历史数据同步已禁用；节点将仅处理新接收到的区块。")
+		h.enableSyncedFeatures()
+	}
 	return h, nil
 }
 
