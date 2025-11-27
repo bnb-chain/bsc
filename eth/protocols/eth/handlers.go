@@ -33,12 +33,54 @@ import (
 // requestTracker is a singleton tracker for eth/66 and newer request times.
 var requestTracker = tracker.New(ProtocolName, 5*time.Minute)
 
+func firstHash(hashes []common.Hash) common.Hash {
+	if len(hashes) == 0 {
+		return common.Hash{}
+	}
+	return hashes[0]
+}
+
+func firstNumber(numbers []uint64) uint64 {
+	if len(numbers) == 0 {
+		return 0
+	}
+	return numbers[0]
+}
+
+func headerInfo(headers []*types.Header) (uint64, common.Hash) {
+	if len(headers) == 0 || headers[0] == nil {
+		return 0, common.Hash{}
+	}
+	return headers[0].Number.Uint64(), headers[0].Hash()
+}
+
+func firstReceiptHash[L ReceiptsList](lists []L) common.Hash {
+	if len(lists) == 0 {
+		return common.Hash{}
+	}
+	hasher := trie.NewStackTrie(nil)
+	return types.DeriveSha(lists[0], hasher)
+}
+
+func firstTxHash(txs []*types.Transaction) common.Hash {
+	for _, tx := range txs {
+		if tx != nil {
+			return tx.Hash()
+		}
+	}
+	return common.Hash{}
+}
+
 func handleGetBlockHeaders(backend Backend, msg Decoder, peer *Peer) error {
 	// Decode the complex header query
 	var query GetBlockHeadersPacket
 	if err := msg.Decode(&query); err != nil {
 		return err
 	}
+
+	origin := query.GetBlockHeadersRequest.Origin
+	log.Info("收到消息,handleGetBlockHeaders", "originNumber", origin.Number, "originHash", origin.Hash)
+
 	response := ServiceGetBlockHeadersQuery(backend.Chain(), query.GetBlockHeadersRequest, peer)
 	return peer.ReplyBlockHeadersRLP(query.RequestId, response)
 }
@@ -222,6 +264,9 @@ func handleGetBlockBodies(backend Backend, msg Decoder, peer *Peer) error {
 	if err := msg.Decode(&query); err != nil {
 		return err
 	}
+
+	log.Info("收到消息,handleGetBlockBodies", "requested", len(query.GetBlockBodiesRequest), "firstHash", firstHash(query.GetBlockBodiesRequest))
+
 	response := ServiceGetBlockBodiesQuery(backend.Chain(), query.GetBlockBodiesRequest)
 	return peer.ReplyBlockBodiesRLP(query.RequestId, response)
 }
@@ -267,6 +312,9 @@ func handleGetReceipts68(backend Backend, msg Decoder, peer *Peer) error {
 	if err := msg.Decode(&query); err != nil {
 		return err
 	}
+
+	log.Info("收到消息,handleGetReceipts68", "requested", len(query.GetReceiptsRequest), "firstHash", firstHash(query.GetReceiptsRequest))
+
 	response := ServiceGetReceiptsQuery68(backend.Chain(), query.GetReceiptsRequest)
 	return peer.ReplyReceiptsRLP(query.RequestId, response)
 }
@@ -361,6 +409,11 @@ func handleNewBlockhashes(backend Backend, msg Decoder, peer *Peer) error {
 	if err := msg.Decode(ann); err != nil {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
 	}
+
+	hashes, numbers := ann.Unpack()
+
+	log.Info("收到消息,handleNewBlockhashes", "count", len(*ann), "firstNumber", firstNumber(numbers), "firstHash", firstHash(hashes))
+
 	// Mark the hashes as present at the remote node
 	for _, block := range *ann {
 		peer.markBlock(block.Hash)
@@ -375,6 +428,9 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 	if err := msg.Decode(ann); err != nil {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
 	}
+
+	block := ann.Block
+	log.Info("收到消息,handleNewBlock", "number", block.NumberU64(), "hash", block.Hash())
 
 	if ann.Bal != nil {
 		log.Debug("handleNewBlock, BAL", "number", ann.Block.NumberU64(), "hash", ann.Block.Hash(), "peer", peer.ID(),
@@ -411,6 +467,10 @@ func handleBlockHeaders(backend Backend, msg Decoder, peer *Peer) error {
 	if err := msg.Decode(res); err != nil {
 		return err
 	}
+
+	firstNum, firstHash := headerInfo(res.BlockHeadersRequest)
+	log.Info("收到消息,handleBlockHeaders", "headers", len(res.BlockHeadersRequest), "firstNumber", firstNum, "firstHash", firstHash)
+
 	metadata := func() interface{} {
 		hashes := make([]common.Hash, len(res.BlockHeadersRequest))
 		for i, header := range res.BlockHeadersRequest {
@@ -431,6 +491,9 @@ func handleBlockBodies(backend Backend, msg Decoder, peer *Peer) error {
 	if err := msg.Decode(res); err != nil {
 		return err
 	}
+
+	log.Info("收到消息,handleBlockBodies", "bodies", len(res.BlockBodiesResponse))
+
 	metadata := func() interface{} {
 		var (
 			txsHashes        = make([]common.Hash, len(res.BlockBodiesResponse))
@@ -460,6 +523,9 @@ func handleReceipts[L ReceiptsList](backend Backend, msg Decoder, peer *Peer) er
 	if err := msg.Decode(res); err != nil {
 		return err
 	}
+
+	log.Info("收到消息,handleReceipts", "lists", len(res.List), "firstHash", firstReceiptHash(res.List))
+
 	// Assign temporary hashing buffer to each list item, the same buffer is shared
 	// between all receipt list instances.
 	buffers := new(receiptListBuffers)
@@ -496,6 +562,9 @@ func handleNewPooledTransactionHashes(backend Backend, msg Decoder, peer *Peer) 
 	if err := msg.Decode(ann); err != nil {
 		return err
 	}
+
+	log.Info("收到消息,handleNewPooledTransactionHashes", "count", len(ann.Hashes), "firstHash", firstHash(ann.Hashes))
+
 	if len(ann.Hashes) != len(ann.Types) || len(ann.Hashes) != len(ann.Sizes) {
 		return fmt.Errorf("NewPooledTransactionHashes: invalid len of fields in %v %v %v", len(ann.Hashes), len(ann.Types), len(ann.Sizes))
 	}
@@ -512,6 +581,9 @@ func handleGetPooledTransactions(backend Backend, msg Decoder, peer *Peer) error
 	if err := msg.Decode(&query); err != nil {
 		return err
 	}
+
+	log.Info("收到消息,handleGetPooledTransactions", "requested", len(query.GetPooledTransactionsRequest), "firstHash", firstHash(query.GetPooledTransactionsRequest))
+
 	hashes, txs := answerGetPooledTransactions(backend, query.GetPooledTransactionsRequest)
 	return peer.ReplyPooledTransactionsRLP(query.RequestId, hashes, txs)
 }
@@ -549,6 +621,9 @@ func handleTransactions(backend Backend, msg Decoder, peer *Peer) error {
 	if err := msg.Decode(&txs); err != nil {
 		return err
 	}
+
+	log.Info("收到消息,handleTransactions", "count", len(txs), "firstHash", firstTxHash(txs))
+
 	for i, tx := range txs {
 		// Validate and mark the remote transaction
 		if tx == nil {
@@ -569,6 +644,9 @@ func handlePooledTransactions(backend Backend, msg Decoder, peer *Peer) error {
 	if err := msg.Decode(&txs); err != nil {
 		return err
 	}
+
+	log.Info("收到消息,handlePooledTransactions", "count", len(txs.PooledTransactionsResponse), "firstHash", firstTxHash(txs.PooledTransactionsResponse))
+
 	for i, tx := range txs.PooledTransactionsResponse {
 		// Validate and mark the remote transaction
 		if tx == nil {
