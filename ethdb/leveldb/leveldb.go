@@ -15,7 +15,6 @@
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
 //go:build !js && !wasip1
-// +build !js,!wasip1
 
 // Package leveldb implements the key-value database layer based on LevelDB.
 package leveldb
