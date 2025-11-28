@@ -99,6 +99,7 @@ var (
 	validVotesfromSelfCounter         = metrics.NewRegisteredCounter("parlia/VerifyVote/self", nil)
 	doubleSignCounter                 = metrics.NewRegisteredCounter("parlia/doublesign", nil)
 	intentionalDelayMiningCounter     = metrics.NewRegisteredCounter("parlia/intentionalDelayMining", nil)
+	attestationVoteCountGauge         = metrics.NewRegisteredGauge("parlia/attestation/voteCount", nil)
 
 	systemContracts = map[common.Address]bool{
 		common.HexToAddress(systemcontracts.ValidatorContract):          true,
@@ -566,6 +567,9 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 	if !aggSig.FastAggregateVerify(votedAddrs, attestation.Data.Hash()) {
 		return errors.New("invalid attestation, signature verify failed")
 	}
+
+	// === Step 6: Update vote count metric after successful verification ===
+	attestationVoteCountGauge.Update(int64(len(votedAddrs)))
 
 	return nil
 }
@@ -1129,6 +1133,9 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 		log.Warn(fmt.Sprintf("assembleVoteAttestation, check VoteAddress Set failed, expected:%d, real:%d", len(signatures), bitsetCount))
 		return errors.New("invalid attestation, check VoteAddress Set failed")
 	}
+
+	// Update vote count metric
+	attestationVoteCountGauge.Update(int64(len(votes)))
 
 	// === Step 4: Encode & insert into header extra ===
 	buf := new(bytes.Buffer)
