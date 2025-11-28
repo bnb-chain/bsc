@@ -225,7 +225,7 @@ var (
 		PragueTime:          newUint64(1742436600), // 2025-03-20 02:10:00 AM UTC
 		LorentzTime:         newUint64(1745903100), // 2025-04-29 05:05:00 AM UTC
 		MaxwellTime:         newUint64(1751250600), // 2025-06-30 02:30:00 AM UTC
-		FermiTime:           nil,
+		FermiTime:           newUint64(1768357800), // 2026-01-14 02:30:00 AM UTC
 		OsakaTime:           nil,
 		MendelTime:          nil,
 
