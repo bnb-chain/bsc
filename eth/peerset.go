@@ -501,6 +501,19 @@ func (ps *peerSet) peerWithHighestTD() *eth.Peer {
 	return bestPeer
 }
 
+func (ps *peerSet) list() []*eth.Peer {
+	ps.lock.RLock()
+	defer ps.lock.RUnlock()
+
+	peers := make([]*eth.Peer, 0, len(ps.peers))
+	for _, peer := range ps.peers {
+		if peer != nil && peer.Peer != nil {
+			peers = append(peers, peer.Peer)
+		}
+	}
+	return peers
+}
+
 // close disconnects all peers.
 func (ps *peerSet) close() {
 	ps.lock.Lock()

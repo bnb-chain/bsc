@@ -36,6 +36,7 @@ type ethHandler handler
 
 func (h *ethHandler) Chain() *core.BlockChain { return h.chain }
 func (h *ethHandler) TxPool() eth.TxPool      { return h.txpool }
+func (h *ethHandler) Peers() []*eth.Peer      { return h.peers.list() }
 
 // RunPeer is invoked when a peer joins on the `eth` protocol.
 func (h *ethHandler) RunPeer(peer *eth.Peer, hand eth.Handler) error {

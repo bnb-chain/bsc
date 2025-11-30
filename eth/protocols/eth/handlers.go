@@ -33,6 +33,12 @@ import (
 // requestTracker is a singleton tracker for eth/66 and newer request times.
 var requestTracker = tracker.New(ProtocolName, 5*time.Minute)
 
+type peerEnumerator interface {
+	Peers() []*Peer
+}
+
+const receiptsRequestTimeout = 3 * time.Second
+
 func firstHash(hashes []common.Hash) common.Hash {
 	if len(hashes) == 0 {
 		return common.Hash{}
@@ -79,7 +85,7 @@ func handleGetBlockHeaders(backend Backend, msg Decoder, peer *Peer) error {
 	}
 
 	origin := query.GetBlockHeadersRequest.Origin
-	log.Info("收到消息,handleGetBlockHeaders", "originNumber", origin.Number, "originHash", origin.Hash)
+	log.Debug("收到消息,handleGetBlockHeaders", "originNumber", origin.Number, "originHash", origin.Hash)
 
 	response := ServiceGetBlockHeadersQuery(backend.Chain(), query.GetBlockHeadersRequest, peer)
 	return peer.ReplyBlockHeadersRLP(query.RequestId, response)
@@ -265,7 +271,7 @@ func handleGetBlockBodies(backend Backend, msg Decoder, peer *Peer) error {
 		return err
 	}
 
-	log.Info("收到消息,handleGetBlockBodies", "requested", len(query.GetBlockBodiesRequest), "firstHash", firstHash(query.GetBlockBodiesRequest))
+	log.Debug("收到消息,handleGetBlockBodies", "requested", len(query.GetBlockBodiesRequest), "firstHash", firstHash(query.GetBlockBodiesRequest))
 
 	response := ServiceGetBlockBodiesQuery(backend.Chain(), query.GetBlockBodiesRequest)
 	return peer.ReplyBlockBodiesRLP(query.RequestId, response)
@@ -413,6 +419,9 @@ func handleNewBlockhashes(backend Backend, msg Decoder, peer *Peer) error {
 	hashes, numbers := ann.Unpack()
 
 	log.Info("收到消息,handleNewBlockhashes", "count", len(*ann), "firstNumber", firstNumber(numbers), "firstHash", firstHash(hashes))
+	if len(*ann) == 1 && len(hashes) > 0 && len(numbers) > 0 {
+		requestReceiptsFromPeers(backend, hashes[0], numbers[0])
+	}
 
 	// Mark the hashes as present at the remote node
 	for _, block := range *ann {
@@ -469,7 +478,7 @@ func handleBlockHeaders(backend Backend, msg Decoder, peer *Peer) error {
 	}
 
 	firstNum, firstHash := headerInfo(res.BlockHeadersRequest)
-	log.Info("收到消息,handleBlockHeaders", "headers", len(res.BlockHeadersRequest), "firstNumber", firstNum, "firstHash", firstHash)
+	log.Debug("收到消息,handleBlockHeaders", "headers", len(res.BlockHeadersRequest), "firstNumber", firstNum, "firstHash", firstHash)
 
 	metadata := func() interface{} {
 		hashes := make([]common.Hash, len(res.BlockHeadersRequest))
@@ -492,7 +501,7 @@ func handleBlockBodies(backend Backend, msg Decoder, peer *Peer) error {
 		return err
 	}
 
-	log.Info("收到消息,handleBlockBodies", "bodies", len(res.BlockBodiesResponse))
+	log.Debug("收到消息,handleBlockBodies", "bodies", len(res.BlockBodiesResponse))
 
 	metadata := func() interface{} {
 		var (
@@ -515,6 +524,54 @@ func handleBlockBodies(backend Backend, msg Decoder, peer *Peer) error {
 		code: BlockBodiesMsg,
 		Res:  &res.BlockBodiesResponse,
 	}, metadata)
+}
+
+func requestReceiptsFromPeers(backend Backend, hash common.Hash, number uint64) {
+	lister, ok := backend.(peerEnumerator)
+	if !ok {
+		return
+	}
+	peers := lister.Peers()
+	if len(peers) == 0 {
+		return
+	}
+	for _, target := range peers {
+		if target == nil {
+			continue
+		}
+		sendReceiptsRequest(target, hash, number)
+	}
+}
+
+func sendReceiptsRequest(peer *Peer, hash common.Hash, number uint64) {
+	resCh := make(chan *Response)
+	log.Info("发送receipts请求", "peer", peer.ID(), "number", number, "hash", hash)
+	req, err := peer.RequestReceipts([]common.Hash{hash}, resCh)
+	if err != nil {
+		log.Warn("Failed to request receipts", "peer", peer.ID(), "number", number, "hash", hash, "err", err)
+		return
+	}
+	go func() {
+		defer req.Close()
+		timeout := time.NewTimer(receiptsRequestTimeout)
+		defer timeout.Stop()
+
+		select {
+		case res := <-resCh:
+			if res == nil {
+				return
+			}
+			switch payload := res.Res.(type) {
+			case *ReceiptsRLPResponse:
+				log.Info("收到receipts响应", "peer", peer.ID(), "number", number, "hash", hash, "entries", len(*payload))
+			default:
+				log.Warn("Unexpected receipts响应", "peer", peer.ID(), "hash", hash, "type", fmt.Sprintf("%T", res.Res))
+			}
+			res.Done <- nil
+		case <-timeout.C:
+			log.Warn("请求receipts超时", "peer", peer.ID(), "number", number, "hash", hash)
+		}
+	}()
 }
 
 func handleReceipts[L ReceiptsList](backend Backend, msg Decoder, peer *Peer) error {
@@ -563,7 +620,7 @@ func handleNewPooledTransactionHashes(backend Backend, msg Decoder, peer *Peer) 
 		return err
 	}
 
-	log.Info("收到消息,handleNewPooledTransactionHashes", "count", len(ann.Hashes), "firstHash", firstHash(ann.Hashes))
+	log.Debug("收到消息,handleNewPooledTransactionHashes", "count", len(ann.Hashes), "firstHash", firstHash(ann.Hashes))
 
 	if len(ann.Hashes) != len(ann.Types) || len(ann.Hashes) != len(ann.Sizes) {
 		return fmt.Errorf("NewPooledTransactionHashes: invalid len of fields in %v %v %v", len(ann.Hashes), len(ann.Types), len(ann.Sizes))
@@ -582,7 +639,7 @@ func handleGetPooledTransactions(backend Backend, msg Decoder, peer *Peer) error
 		return err
 	}
 
-	log.Info("收到消息,handleGetPooledTransactions", "requested", len(query.GetPooledTransactionsRequest), "firstHash", firstHash(query.GetPooledTransactionsRequest))
+	log.Debug("收到消息,handleGetPooledTransactions", "requested", len(query.GetPooledTransactionsRequest), "firstHash", firstHash(query.GetPooledTransactionsRequest))
 
 	hashes, txs := answerGetPooledTransactions(backend, query.GetPooledTransactionsRequest)
 	return peer.ReplyPooledTransactionsRLP(query.RequestId, hashes, txs)
@@ -622,12 +679,12 @@ func handleTransactions(backend Backend, msg Decoder, peer *Peer) error {
 		return err
 	}
 
-	log.Info("收到消息,handleTransactions", "count", len(txs), "firstHash", firstTxHash(txs))
+	log.Debug("收到消息,handleTransactions", "count", len(txs), "firstHash", firstTxHash(txs))
 
 	for i, tx := range txs {
 		// Validate and mark the remote transaction
 		if tx == nil {
-			return fmt.Errorf("Transactions: transaction %d is nil", i)
+			return fmt.Errorf("transactions packet %d is nil", i)
 		}
 		peer.markTransaction(tx.Hash())
 	}
@@ -645,12 +702,12 @@ func handlePooledTransactions(backend Backend, msg Decoder, peer *Peer) error {
 		return err
 	}
 
-	log.Info("收到消息,handlePooledTransactions", "count", len(txs.PooledTransactionsResponse), "firstHash", firstTxHash(txs.PooledTransactionsResponse))
+	log.Debug("收到消息,handlePooledTransactions", "count", len(txs.PooledTransactionsResponse), "firstHash", firstTxHash(txs.PooledTransactionsResponse))
 
 	for i, tx := range txs.PooledTransactionsResponse {
 		// Validate and mark the remote transaction
 		if tx == nil {
-			return fmt.Errorf("PooledTransactions: transaction %d is nil", i)
+			return fmt.Errorf("pooled transactions packet %d is nil", i)
 		}
 		peer.markTransaction(tx.Hash())
 	}
