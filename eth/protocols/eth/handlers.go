@@ -40,11 +40,11 @@ type peerEnumerator interface {
 
 const receiptsRequestTimeout = 1000 * time.Millisecond
 
-func firstHash(hashes []common.Hash) common.Hash {
+func firstHash(hashes []common.Hash) string {
 	if len(hashes) == 0 {
-		return common.Hash{}
+		return common.Hash{}.Hex()
 	}
-	return hashes[0]
+	return hashes[0].Hex()
 }
 
 func firstNumber(numbers []uint64) uint64 {
@@ -54,28 +54,28 @@ func firstNumber(numbers []uint64) uint64 {
 	return numbers[0]
 }
 
-func headerInfo(headers []*types.Header) (uint64, common.Hash) {
+func headerInfo(headers []*types.Header) (uint64, string) {
 	if len(headers) == 0 || headers[0] == nil {
-		return 0, common.Hash{}
+		return 0, common.Hash{}.Hex()
 	}
-	return headers[0].Number.Uint64(), headers[0].Hash()
+	return headers[0].Number.Uint64(), headers[0].Hash().Hex()
 }
 
-func firstReceiptHash[L ReceiptsList](lists []L) common.Hash {
+func firstReceiptHash[L ReceiptsList](lists []L) string {
 	if len(lists) == 0 {
-		return common.Hash{}
+		return common.Hash{}.Hex()
 	}
 	hasher := trie.NewStackTrie(nil)
-	return types.DeriveSha(lists[0], hasher)
+	return types.DeriveSha(lists[0], hasher).Hex()
 }
 
-func firstTxHash(txs []*types.Transaction) common.Hash {
+func firstTxHash(txs []*types.Transaction) string {
 	for _, tx := range txs {
 		if tx != nil {
-			return tx.Hash()
+			return tx.Hash().Hex()
 		}
 	}
-	return common.Hash{}
+	return common.Hash{}.Hex()
 }
 
 func handleGetBlockHeaders(backend Backend, msg Decoder, peer *Peer) error {
@@ -440,7 +440,7 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 	}
 
 	block := ann.Block
-	log.Info("收到消息,handleNewBlock", "number", block.NumberU64(), "hash", block.Hash())
+	log.Info("收到消息,handleNewBlock", "number", block.NumberU64(), "hash", block.Hash().Hex())
 
 	if ann.Bal != nil {
 		log.Debug("handleNewBlock, BAL", "number", ann.Block.NumberU64(), "hash", ann.Block.Hash(), "peer", peer.ID(),
