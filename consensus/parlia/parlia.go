@@ -99,6 +99,7 @@ var (
 	validVotesfromSelfCounter         = metrics.NewRegisteredCounter("parlia/VerifyVote/self", nil)
 	doubleSignCounter                 = metrics.NewRegisteredCounter("parlia/doublesign", nil)
 	intentionalDelayMiningCounter     = metrics.NewRegisteredCounter("parlia/intentionalDelayMining", nil)
+	attestationVoteCountGauge         = metrics.NewRegisteredGauge("parlia/attestation/voteCount", nil)
 
 	systemContracts = map[common.Address]bool{
 		common.HexToAddress(systemcontracts.ValidatorContract):          true,
