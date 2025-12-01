@@ -52,14 +52,14 @@ type AmbiguousAddrError struct {
 }
 
 func (err *AmbiguousAddrError) Error() string {
-	files := ""
+	var files strings.Builder
 	for i, a := range err.Matches {
-		files += a.URL.Path
+		files.WriteString(a.URL.Path)
 		if i < len(err.Matches)-1 {
-			files += ", "
+			files.WriteString(", ")
 		}
 	}
-	return fmt.Sprintf("multiple keys match address (%s)", files)
+	return fmt.Sprintf("multiple keys match address (%s)", files.String())
 }
 
 // accountCache is a live index of all accounts in the keystore.

@@ -22,6 +22,7 @@ package leveldb
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -265,7 +266,7 @@ func (db *Database) Stat() (string, error) {
 		return "", err
 	}
 	var (
-		message       string
+		message       strings.Builder
 		totalRead     int64
 		totalWrite    int64
 		totalSize     int64
@@ -273,8 +274,8 @@ func (db *Database) Stat() (string, error) {
 		totalDuration time.Duration
 	)
 	if len(stats.LevelSizes) > 0 {
-		message += " Level |   Tables   |    Size(MB)   |    Time(sec)  |    Read(MB)   |   Write(MB)\n" +
-			"-------+------------+---------------+---------------+---------------+---------------\n"
+		message.WriteString(" Level |   Tables   |    Size(MB)   |    Time(sec)  |    Read(MB)   |   Write(MB)\n" +
+			"-------+------------+---------------+---------------+---------------+---------------\n")
 		for level, size := range stats.LevelSizes {
 			read := stats.LevelRead[level]
 			write := stats.LevelWrite[level]
@@ -289,22 +290,22 @@ func (db *Database) Stat() (string, error) {
 			totalRead += read
 			totalWrite += write
 			totalDuration += duration
-			message += fmt.Sprintf(" %3d   | %10d | %13.5f | %13.5f | %13.5f | %13.5f\n",
+			message.WriteString(fmt.Sprintf(" %3d   | %10d | %13.5f | %13.5f | %13.5f | %13.5f\n",
 				level, tables, float64(size)/1048576.0, duration.Seconds(),
-				float64(read)/1048576.0, float64(write)/1048576.0)
+				float64(read)/1048576.0, float64(write)/1048576.0))
 		}
-		message += "-------+------------+---------------+---------------+---------------+---------------\n"
-		message += fmt.Sprintf(" Total | %10d | %13.5f | %13.5f | %13.5f | %13.5f\n",
+		message.WriteString("-------+------------+---------------+---------------+---------------+---------------\n")
+		message.WriteString(fmt.Sprintf(" Total | %10d | %13.5f | %13.5f | %13.5f | %13.5f\n",
 			totalTables, float64(totalSize)/1048576.0, totalDuration.Seconds(),
-			float64(totalRead)/1048576.0, float64(totalWrite)/1048576.0)
-		message += "-------+------------+---------------+---------------+---------------+---------------\n\n"
+			float64(totalRead)/1048576.0, float64(totalWrite)/1048576.0))
+		message.WriteString("-------+------------+---------------+---------------+---------------+---------------\n\n")
 	}
-	message += fmt.Sprintf("Read(MB):%.5f Write(MB):%.5f\n", float64(stats.IORead)/1048576.0, float64(stats.IOWrite)/1048576.0)
-	message += fmt.Sprintf("BlockCache(MB):%.5f FileCache:%d\n", float64(stats.BlockCacheSize)/1048576.0, stats.OpenedTablesCount)
-	message += fmt.Sprintf("MemoryCompaction:%d Level0Compaction:%d NonLevel0Compaction:%d SeekCompaction:%d\n", stats.MemComp, stats.Level0Comp, stats.NonLevel0Comp, stats.SeekComp)
-	message += fmt.Sprintf("WriteDelayCount:%d WriteDelayDuration:%s Paused:%t\n", stats.WriteDelayCount, common.PrettyDuration(stats.WriteDelayDuration), stats.WritePaused)
-	message += fmt.Sprintf("Snapshots:%d Iterators:%d\n", stats.AliveSnapshots, stats.AliveIterators)
-	return message, nil
+	message.WriteString(fmt.Sprintf("Read(MB):%.5f Write(MB):%.5f\n", float64(stats.IORead)/1048576.0, float64(stats.IOWrite)/1048576.0))
+	message.WriteString(fmt.Sprintf("BlockCache(MB):%.5f FileCache:%d\n", float64(stats.BlockCacheSize)/1048576.0, stats.OpenedTablesCount))
+	message.WriteString(fmt.Sprintf("MemoryCompaction:%d Level0Compaction:%d NonLevel0Compaction:%d SeekCompaction:%d\n", stats.MemComp, stats.Level0Comp, stats.NonLevel0Comp, stats.SeekComp))
+	message.WriteString(fmt.Sprintf("WriteDelayCount:%d WriteDelayDuration:%s Paused:%t\n", stats.WriteDelayCount, common.PrettyDuration(stats.WriteDelayDuration), stats.WritePaused))
+	message.WriteString(fmt.Sprintf("Snapshots:%d Iterators:%d\n", stats.AliveSnapshots, stats.AliveIterators))
+	return message.String(), nil
 }
 
 // Compact flattens the underlying data store for the given key range. In essence,
