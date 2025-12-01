@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/pool"
 )
 
 const (
@@ -82,6 +83,8 @@ type Backend interface {
 	// the remote peer. Only packets not consumed by the protocol handler will
 	// be forwarded to the backend.
 	Handle(peer *Peer, packet Packet) error
+
+	GetLPManager() *pool.LPManager
 }
 
 // TxPool defines the methods needed by the protocol handler to serve transactions.

@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // LPType enumerates supported liquidity pool flavours.
@@ -71,8 +72,9 @@ func (s *LPState) PriceToken0InToken1() *big.Rat {
 
 // LPManager tracks multiple LPs concurrently.
 type LPManager struct {
-	mu    sync.RWMutex
-	pools map[common.Address]*LPState
+	mu                 sync.RWMutex
+	pools              map[common.Address]*LPState
+	currentBlockHeight uint64 // Tracks the current blockchain height
 }
 
 // Errors surfaced by LPManager operations.
@@ -86,21 +88,80 @@ var (
 // NewLPManager constructs an empty manager.
 func NewLPManager() *LPManager {
 	return &LPManager{
-		pools: make(map[common.Address]*LPState),
+		pools:              make(map[common.Address]*LPState),
+		currentBlockHeight: 0,
 	}
+}
+
+// NewLPManagerFromConfig creates a new LPManager and initializes it with pools from a config file.
+func NewLPManagerFromConfig() (*LPManager, error) {
+	manager := NewLPManager()
+	config, err := LoadLPConfig("./pool/lp_config.json")
+	if err != nil {
+		return nil, err
+	}
+
+	for _, poolEntry := range config.Pools {
+		lpConfig, err := poolEntry.ToLPConfig()
+		if err != nil {
+			return nil, err
+		}
+
+		if err := manager.RegisterPool(lpConfig); err != nil {
+			return nil, err
+		}
+	}
+
+	return manager, nil
+}
+
+// SetCurrentBlockHeight sets the current blockchain height.
+func (m *LPManager) SetCurrentBlockHeight(height uint64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.currentBlockHeight = height
+}
+
+// GetCurrentBlockHeight returns the current blockchain height.
+func (m *LPManager) GetCurrentBlockHeight() uint64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.currentBlockHeight
+}
+
+func (m *LPManager) AllLPInManager() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	addresses := make([]string, 0, len(m.pools))
+	for addr := range m.pools {
+		addresses = append(addresses, addr.String())
+	}
+	return addresses
 }
 
 // RegisterPool adds a new LP to the manager.
 func (m *LPManager) RegisterPool(cfg LPConfig) error {
 	if cfg.Address == (common.Address{}) {
-		return errors.New("lp address must not be zero")
+		return errors.New("lp地址为空")
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if _, ok := m.pools[cfg.Address]; ok {
 		return ErrPoolExists
 	}
-	m.pools[cfg.Address] = &LPState{Config: cfg}
+	m.pools[cfg.Address] = &LPState{Config: cfg, BlockHeight: 0}
+
+	// pancakeswapv2
+	if cfg.Type == LPTypePancakeV2 {
+		m.pools[cfg.Address].V2State = &V2State{Reserve0: big.NewInt(0), Reserve1: big.NewInt(0)}
+	}
+
+	//pancakeswapv3
+	if cfg.Type == LPTypePancakeV3 {
+		m.pools[cfg.Address].V3State = &V3State{SqrtPriceX96: big.NewInt(0), Liquidity: big.NewInt(0), Tick: 0}
+	}
+
 	return nil
 }
 
@@ -128,6 +189,11 @@ func (m *LPManager) UpdateV2(addr common.Address, blockHeight uint64, reserve0, 
 		Reserve0: new(big.Int).Set(reserve0),
 		Reserve1: new(big.Int).Set(reserve1),
 	}
+
+	if blockHeight == m.currentBlockHeight {
+		log.Info("LP块高度和区块高度一致", "区块高度", m.currentBlockHeight, "LP高度", blockHeight)
+	}
+
 	return nil
 }
 
@@ -156,6 +222,11 @@ func (m *LPManager) UpdateV3(addr common.Address, blockHeight uint64, sqrtPriceX
 		Liquidity:    new(big.Int).Set(liquidity),
 		Tick:         tick,
 	}
+
+	if blockHeight == m.currentBlockHeight {
+		log.Info("LP块高度和区块高度一致", "区块高度", m.currentBlockHeight, "LP高度", blockHeight)
+	}
+
 	return nil
 }
 

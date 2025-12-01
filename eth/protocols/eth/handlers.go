@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/tracker"
+	"github.com/ethereum/go-ethereum/pool"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 )
@@ -37,7 +38,7 @@ type peerEnumerator interface {
 	Peers() []*Peer
 }
 
-const receiptsRequestTimeout = 3 * time.Second
+const receiptsRequestTimeout = 1000 * time.Millisecond
 
 func firstHash(hashes []common.Hash) common.Hash {
 	if len(hashes) == 0 {
@@ -420,7 +421,7 @@ func handleNewBlockhashes(backend Backend, msg Decoder, peer *Peer) error {
 
 	log.Info("收到消息,handleNewBlockhashes", "count", len(*ann), "firstNumber", firstNumber(numbers), "firstHash", firstHash(hashes))
 	if len(*ann) == 1 && len(hashes) > 0 && len(numbers) > 0 {
-		requestReceiptsFromPeers(backend, hashes[0], numbers[0])
+		updateLpManager(backend, numbers[0], hashes[0])
 	}
 
 	// Mark the hashes as present at the remote node
@@ -463,6 +464,9 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 	}
 	ann.Block.ReceivedAt = msg.Time()
 	ann.Block.ReceivedFrom = peer
+
+	//更新LManager
+	updateLpManager(backend, block.NumberU64(), block.Hash())
 
 	// Mark the peer as owning the block
 	peer.markBlock(ann.Block.Hash())
@@ -526,29 +530,44 @@ func handleBlockBodies(backend Backend, msg Decoder, peer *Peer) error {
 	}, metadata)
 }
 
-func requestReceiptsFromPeers(backend Backend, hash common.Hash, number uint64) {
+func updateLpManager(backend Backend, blockNumber uint64, hash common.Hash) {
+	lpManager := backend.GetLPManager()
+	curBlockHeight := lpManager.GetCurrentBlockHeight()
+
+	//更新区块高度
+	if curBlockHeight < blockNumber {
+		lpManager.SetCurrentBlockHeight(blockNumber)
+		log.Info("更新lpManager区块高度", "height", blockNumber, "hash", hash)
+		requestReceiptsFromPeersAndUpdateLp(backend, hash, blockNumber)
+	} else {
+		log.Warn("区块高度小于lpManager区块高度,丢弃")
+	}
+}
+
+func requestReceiptsFromPeersAndUpdateLp(backend Backend, hash common.Hash, number uint64) {
 	lister, ok := backend.(peerEnumerator)
 	if !ok {
 		return
 	}
 	peers := lister.Peers()
 	if len(peers) == 0 {
+		log.Warn("当前没有Peer连接,无法更新", "blockNumber", number, "hash", hash)
 		return
 	}
 	for _, target := range peers {
 		if target == nil {
 			continue
 		}
-		sendReceiptsRequest(target, hash, number)
+		sendReceiptsRequestAndUpdateLp(backend.GetLPManager(), target, hash, number)
 	}
 }
 
-func sendReceiptsRequest(peer *Peer, hash common.Hash, number uint64) {
+func sendReceiptsRequestAndUpdateLp(lpManager *pool.LPManager, peer *Peer, hash common.Hash, number uint64) {
 	resCh := make(chan *Response)
 	log.Info("发送receipts请求", "peer", peer.ID(), "number", number, "hash", hash)
 	req, err := peer.RequestReceipts([]common.Hash{hash}, resCh)
 	if err != nil {
-		log.Warn("Failed to request receipts", "peer", peer.ID(), "number", number, "hash", hash, "err", err)
+		log.Warn("发送receipts请求失败", "peer", peer.ID(), "number", number, "hash", hash, "err", err)
 		return
 	}
 	go func() {
@@ -564,8 +583,13 @@ func sendReceiptsRequest(peer *Peer, hash common.Hash, number uint64) {
 			switch payload := res.Res.(type) {
 			case *ReceiptsRLPResponse:
 				log.Info("收到receipts响应", "peer", peer.ID(), "number", number, "hash", hash, "entries", len(*payload))
+
+				//解析receipts
+
+				//更新数据
+
 			default:
-				log.Warn("Unexpected receipts响应", "peer", peer.ID(), "hash", hash, "type", fmt.Sprintf("%T", res.Res))
+				log.Warn("未知receipts响应", "peer", peer.ID(), "hash", hash, "type", fmt.Sprintf("%T", res.Res))
 			}
 			res.Done <- nil
 		case <-timeout.C:

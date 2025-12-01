@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/ethereum/go-ethereum/pool"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -174,6 +175,17 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if config.Miner.GasPrice == nil || config.Miner.GasPrice.Sign() <= 0 {
 		log.Warn("Sanitizing invalid miner gas price", "provided", config.Miner.GasPrice, "updated", ethconfig.Defaults.Miner.GasPrice)
 		config.Miner.GasPrice = new(big.Int).Set(ethconfig.Defaults.Miner.GasPrice)
+	}
+
+	if config.LPManager == nil {
+		//加载配置
+		manager, err := pool.NewLPManagerFromConfig()
+		if err == nil {
+			config.LPManager = manager
+			log.Info("初始化LPManager成功", "addresses", manager.AllLPInManager())
+		} else {
+			log.Error("初始化LPManager失败", "err", err)
+		}
 	}
 
 	chainDb, err := stack.OpenAndMergeDatabase(ChainData, ChainDBNamespace, false, config)
@@ -438,6 +450,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		PeerSet:                   newPeerSet(),
 		EnableQuickBlockFetching:  stack.Config().EnableQuickBlockFetching,
 		DisableHistoricalSync:     config.DisableHistoricalSync,
+		LPManager:                 config.LPManager,
 	}); err != nil {
 		return nil, err
 	}

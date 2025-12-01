@@ -45,6 +45,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/pool"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
 )
@@ -156,8 +157,9 @@ func (b *testBackend) close() {
 	b.chain.Stop()
 }
 
-func (b *testBackend) Chain() *core.BlockChain { return b.chain }
-func (b *testBackend) TxPool() TxPool          { return b.txpool }
+func (b *testBackend) Chain() *core.BlockChain       { return b.chain }
+func (b *testBackend) TxPool() TxPool                { return b.txpool }
+func (b *testBackend) GetLPManager() *pool.LPManager { panic("not implemented") }
 
 func (b *testBackend) RunPeer(peer *Peer, handler Handler) error {
 	// Normally the backend would do peer maintenance and handshakes. All that

@@ -49,6 +49,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/pool"
 )
 
 const (
@@ -145,6 +146,7 @@ type handlerConfig struct {
 	EVNNodeIdsWhitelist       []enode.ID
 	ProxyedValidatorAddresses []common.Address
 	DisableHistoricalSync     bool
+	LPManager                 *pool.LPManager
 }
 
 type handler struct {
@@ -200,6 +202,7 @@ type handler struct {
 	handlerDoneCh  chan struct{}
 
 	disableHistoricalSync bool
+	lpManager             *pool.LPManager
 }
 
 // newHandler returns a handler for all Ethereum chain management protocol.
@@ -233,6 +236,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		handlerStartCh:             make(chan struct{}),
 		stopCh:                     make(chan struct{}),
 		disableHistoricalSync:      config.DisableHistoricalSync,
+		lpManager:                  config.LPManager,
 	}
 	for _, nodeID := range config.EVNNodeIdsWhitelist {
 		h.evnNodeIdsWhitelistMap[nodeID] = struct{}{}
@@ -398,7 +402,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	h.txFetcher = fetcher.NewTxFetcher(h.txpool.Has, addTxs, fetchTx, h.removePeer)
 	h.chainSync = newChainSyncer(h)
 	if h.disableHistoricalSync {
-		log.Warn("历史数据同步已禁用；节点将仅处理新接收到的区块。")
+		log.Warn("历史数据同步已禁用, 节点将仅处理新接收到的区块")
 		h.enableSyncedFeatures()
 	}
 	return h, nil

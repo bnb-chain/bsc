@@ -38,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/pool"
 )
 
 // FullNodeGPO contains default gasprice oracle settings for full node.
@@ -215,6 +216,9 @@ type Config struct {
 
 	// blob setting
 	BlobExtraReserve uint64
+
+	// LPManager
+	LPManager *pool.LPManager `toml:",omitempty"`
 }
 
 // CreateConsensusEngine creates a consensus engine for the given chain config.
