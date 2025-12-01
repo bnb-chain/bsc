@@ -180,6 +180,47 @@ func (b *testBackend) Handle(*Peer, Packet) error {
 // Tests that block headers can be retrieved from a remote chain based on user queries.
 func TestGetBlockHeaders68(t *testing.T) { testGetBlockHeaders(t, ETH68) }
 
+func TestDecodeReceiptsRLPResponse(t *testing.T) {
+	t.Parallel()
+
+	logs := []*types.Log{
+		{
+			Address: common.HexToAddress("0x0000000000000000000000000000000000000001"),
+			Topics:  []common.Hash{common.HexToHash("0x02")},
+			Data:    []byte{0x03, 0x04},
+		},
+	}
+	blockReceipts := types.Receipts{
+		{
+			Status:            types.ReceiptStatusSuccessful,
+			CumulativeGasUsed: 21000,
+			Logs:              logs,
+		},
+	}
+	resp := ReceiptsRLPResponse(types.EncodeBlockReceiptLists([]types.Receipts{blockReceipts}))
+
+	decoded, err := decodeReceiptsRLPResponse(resp)
+	if err != nil {
+		t.Fatalf("decodeReceiptsRLPResponse error: %v", err)
+	}
+	if len(decoded) != 1 {
+		t.Fatalf("expected 1 block of receipts, got %d", len(decoded))
+	}
+	if len(decoded[0]) != len(blockReceipts) {
+		t.Fatalf("expected %d receipts, got %d", len(blockReceipts), len(decoded[0]))
+	}
+	got := decoded[0][0]
+	if got.CumulativeGasUsed != blockReceipts[0].CumulativeGasUsed {
+		t.Fatalf("unexpected cumulative gas used, want %d got %d", blockReceipts[0].CumulativeGasUsed, got.CumulativeGasUsed)
+	}
+	if len(got.Logs) != len(logs) {
+		t.Fatalf("unexpected logs length, want %d got %d", len(logs), len(got.Logs))
+	}
+	if got.Logs[0].Address != logs[0].Address {
+		t.Fatalf("log address mismatch, want %s got %s", logs[0].Address.Hex(), got.Logs[0].Address.Hex())
+	}
+}
+
 func testGetBlockHeaders(t *testing.T, protocol uint) {
 	t.Parallel()
 

@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -115,20 +116,39 @@ func NewLPManagerFromConfig() (*LPManager, error) {
 	return manager, nil
 }
 
-// SetCurrentBlockHeight sets the current blockchain height.
-func (m *LPManager) SetCurrentBlockHeight(height uint64) {
+// 尝试更新高度
+func (m *LPManager) TryUpdateBlockHeight(height uint64) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.currentBlockHeight = height
+
+	//竞争到了修改
+	if height > m.currentBlockHeight {
+		m.currentBlockHeight = height
+		return true
+	}
+
+	//没竞争到
+	return false
 }
 
-// GetCurrentBlockHeight returns the current blockchain height.
-func (m *LPManager) GetCurrentBlockHeight() uint64 {
+// 判断是否需要更新
+func (m *LPManager) NeedUpdate(height uint64) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.currentBlockHeight
+	if height <= m.currentBlockHeight {
+		log.Warn("区块高度小于lpManager区块高度,丢弃")
+		return false
+	}
+	return true
 }
 
+// 更新操作
+func (m *LPManager) Update(receiptMap map[common.Address]*types.Receipt) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+}
+
+// 获取所有LP
 func (m *LPManager) AllLPInManager() []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

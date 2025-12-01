@@ -532,15 +532,9 @@ func handleBlockBodies(backend Backend, msg Decoder, peer *Peer) error {
 
 func updateLpManager(backend Backend, blockNumber uint64, hash common.Hash) {
 	lpManager := backend.GetLPManager()
-	curBlockHeight := lpManager.GetCurrentBlockHeight()
 
-	//更新区块高度
-	if curBlockHeight < blockNumber {
-		lpManager.SetCurrentBlockHeight(blockNumber)
-		log.Info("更新lpManager区块高度", "height", blockNumber, "hash", hash)
+	if lpManager.NeedUpdate(blockNumber) {
 		requestReceiptsFromPeersAndUpdateLp(backend, hash, blockNumber)
-	} else {
-		log.Warn("区块高度小于lpManager区块高度,丢弃")
 	}
 }
 
@@ -584,9 +578,45 @@ func sendReceiptsRequestAndUpdateLp(lpManager *pool.LPManager, peer *Peer, hash 
 			case *ReceiptsRLPResponse:
 				log.Info("收到receipts响应", "peer", peer.ID(), "number", number, "hash", hash, "entries", len(*payload))
 
+				//竞争失败，直接返回
+				if !lpManager.TryUpdateBlockHeight(number) {
+					return
+				}
+
 				//解析receipts
+				receiptsList, err := decodeReceiptsRLPResponse(*payload)
+				if err != nil {
+					log.Warn("解析receipts失败", "peer", peer.ID(), "number", number, "hash", hash, "err", err)
+					return
+				}
+
+				//过滤监控LP的receipts，并且按顺序覆盖
+				receiptMap := make(map[common.Address]*types.Receipt)
+				lps := lpManager.AllLPInManager()
+				lpSet := make(map[common.Address]struct{}, len(lps))
+				for _, addr := range lps {
+					lpSet[common.HexToAddress(addr)] = struct{}{}
+				}
+				for _, receipts := range receiptsList {
+					for _, receipt := range receipts {
+						if receipt == nil {
+							continue
+						}
+						for _, logEntry := range receipt.Logs {
+							if logEntry == nil {
+								continue
+							}
+							if _, ok := lpSet[logEntry.Address]; ok {
+								// 如果同一个LP在该区块内多次操作，以最后一次为准
+								receiptMap[logEntry.Address] = receipt
+							}
+						}
+					}
+				}
 
 				//更新数据
+				log.Info("更新LP数据", "blockNumber", number, "hash", hash, "更新LP数量", len(receiptMap))
+				lpManager.Update(receiptMap)
 
 			default:
 				log.Warn("未知receipts响应", "peer", peer.ID(), "hash", hash, "type", fmt.Sprintf("%T", res.Res))
@@ -596,6 +626,29 @@ func sendReceiptsRequestAndUpdateLp(lpManager *pool.LPManager, peer *Peer, hash 
 			log.Warn("请求receipts超时", "peer", peer.ID(), "number", number, "hash", hash)
 		}
 	}()
+}
+
+func decodeReceiptsRLPResponse(resp ReceiptsRLPResponse) ([]types.Receipts, error) {
+	if len(resp) == 0 {
+		return nil, nil
+	}
+	result := make([]types.Receipts, 0, len(resp))
+	for i, raw := range resp {
+		if len(raw) == 0 {
+			result = append(result, nil)
+			continue
+		}
+		var stored []*types.ReceiptForStorage
+		if err := rlp.DecodeBytes(raw, &stored); err != nil {
+			return nil, fmt.Errorf("decode block receipts %d: %w", i, err)
+		}
+		blockReceipts := make(types.Receipts, len(stored))
+		for j, receipt := range stored {
+			blockReceipts[j] = (*types.Receipt)(receipt)
+		}
+		result = append(result, blockReceipts)
+	}
+	return result, nil
 }
 
 func handleReceipts[L ReceiptsList](backend Backend, msg Decoder, peer *Peer) error {
