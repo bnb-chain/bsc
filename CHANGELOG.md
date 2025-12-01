@@ -1,4 +1,19 @@
 # Changelog
+## v1.6.4
+### FEATURE
+[\#3466](https://github.com/bnb-chain/bsc/pull/3466) config: update BSC Mainnet hardfork time: Fermi
+[\#3454](https://github.com/bnb-chain/bsc/pull/3454) eth: support fetch commit id info from extra data
+
+### BUGFIX
+[\#3448](https://github.com/bnb-chain/bsc/pull/3448) TxPool: change lifetime back to 3 hours
+[\#3457](https://github.com/bnb-chain/bsc/pull/3457) cmd/geth: stop supporting multidatabase flag
+[\#3467](https://github.com/bnb-chain/bsc/pull/3467) go.mod: downgrade bls-eth-go-binary to run on windows
+
+### IMPROVEMENT
+[\#3445](https://github.com/bnb-chain/bsc/pull/3445) eth: improve prefetch by using cached reader
+[\#3459](https://github.com/bnb-chain/bsc/pull/3459) feat: transactionReceipts auto-unsubscribe implementation
+[\#3468](https://github.com/bnb-chain/bsc/pull/3468) metric: add metric for vote count
+
 ## v1.6.3
 ### FEATURE
 NA
