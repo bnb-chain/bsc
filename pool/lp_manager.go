@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/pool/processor"
 )
 
 // LPType enumerates supported liquidity pool flavours.
@@ -143,9 +144,49 @@ func (m *LPManager) NeedUpdate(height uint64) bool {
 }
 
 // 更新操作
-func (m *LPManager) Update(receiptMap map[common.Address]*types.Receipt) {
+func (m *LPManager) Update(blockNumber uint64, receiptMap map[common.Address]*types.Receipt) {
+	if len(receiptMap) == 0 {
+		return
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	for addr, receipt := range receiptMap {
+		state, ok := m.pools[addr]
+		if !ok {
+			log.Warn("未注册的LP, 跳过更新", "address", addr)
+			continue
+		}
+
+		derived, okState, err := processor.ProcessReceipt(string(state.Config.Type), receipt)
+		if err != nil {
+			log.Warn("解析receipt失败", "blockNumber", blockNumber, "address", addr, "err", err)
+			continue
+		}
+		if !okState || derived == nil {
+			continue
+		}
+
+		switch state.Config.Type {
+		case LPTypePancakeV2:
+			if derived.V2 == nil {
+				continue
+			}
+			state.V2State = cloneV2State(derived.V2)
+			state.BlockHeight = blockNumber
+		case LPTypePancakeV3:
+			if derived.V3 == nil {
+				continue
+			}
+			state.V3State = cloneV3State(derived.V3)
+			state.BlockHeight = blockNumber
+		default:
+			log.Warn("未知LP类型, 无法更新", "blockNumber", blockNumber, "address", addr, "type", state.Config.Type)
+		}
+
+		log.Info("LP价格", "blockNumber", blockNumber, "address", addr, "priceToken0InToken1", state.PriceToken0InToken1())
+	}
 }
 
 // 获取所有LP
@@ -185,71 +226,6 @@ func (m *LPManager) RegisterPool(cfg LPConfig) error {
 	return nil
 }
 
-// UpdateV2 sets the latest PancakeSwap V2 style reserves for a pool.
-func (m *LPManager) UpdateV2(addr common.Address, blockHeight uint64, reserve0, reserve1 *big.Int) error {
-	if reserve0 == nil || reserve1 == nil {
-		return errors.New("reserves cannot be nil")
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	state, ok := m.pools[addr]
-	if !ok {
-		return ErrPoolMissing
-	}
-	if state.Config.Type != LPTypePancakeV2 {
-		return ErrTypeMismatch
-	}
-	if blockHeight < state.BlockHeight {
-		return ErrStaleUpdate
-	}
-
-	state.BlockHeight = blockHeight
-	state.V2State = &V2State{
-		Reserve0: new(big.Int).Set(reserve0),
-		Reserve1: new(big.Int).Set(reserve1),
-	}
-
-	if blockHeight == m.currentBlockHeight {
-		log.Info("LP块高度和区块高度一致", "区块高度", m.currentBlockHeight, "LP高度", blockHeight)
-	}
-
-	return nil
-}
-
-// UpdateV3 applies the latest PancakeSwap V3 style state.
-func (m *LPManager) UpdateV3(addr common.Address, blockHeight uint64, sqrtPriceX96, liquidity *big.Int, tick int32) error {
-	if sqrtPriceX96 == nil || liquidity == nil {
-		return errors.New("sqrt price and liquidity cannot be nil")
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	state, ok := m.pools[addr]
-	if !ok {
-		return ErrPoolMissing
-	}
-	if state.Config.Type != LPTypePancakeV3 {
-		return ErrTypeMismatch
-	}
-	if blockHeight < state.BlockHeight {
-		return ErrStaleUpdate
-	}
-
-	state.BlockHeight = blockHeight
-	state.V3State = &V3State{
-		SqrtPriceX96: new(big.Int).Set(sqrtPriceX96),
-		Liquidity:    new(big.Int).Set(liquidity),
-		Tick:         tick,
-	}
-
-	if blockHeight == m.currentBlockHeight {
-		log.Info("LP块高度和区块高度一致", "区块高度", m.currentBlockHeight, "LP高度", blockHeight)
-	}
-
-	return nil
-}
-
 // Get returns a snapshot of the tracked LP state.
 func (m *LPManager) Get(addr common.Address) (*LPState, bool) {
 	m.mu.RLock()
@@ -273,6 +249,27 @@ func (m *LPManager) Get(addr common.Address) (*LPState, bool) {
 		}
 	}
 	return &clone, true
+}
+
+func cloneV2State(src *processor.V2State) *V2State {
+	if src == nil {
+		return nil
+	}
+	return &V2State{
+		Reserve0: new(big.Int).Set(src.Reserve0),
+		Reserve1: new(big.Int).Set(src.Reserve1),
+	}
+}
+
+func cloneV3State(src *processor.V3State) *V3State {
+	if src == nil {
+		return nil
+	}
+	return &V3State{
+		SqrtPriceX96: new(big.Int).Set(src.SqrtPriceX96),
+		Liquidity:    new(big.Int).Set(src.Liquidity),
+		Tick:         src.Tick,
+	}
 }
 
 func computeV2Price(reserve0, reserve1 *big.Int, dec0, dec1 int) *big.Rat {

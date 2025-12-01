@@ -558,10 +558,10 @@ func requestReceiptsFromPeersAndUpdateLp(backend Backend, hash common.Hash, numb
 
 func sendReceiptsRequestAndUpdateLp(lpManager *pool.LPManager, peer *Peer, hash common.Hash, number uint64) {
 	resCh := make(chan *Response)
-	log.Info("发送receipts请求", "peer", peer.ID(), "number", number, "hash", hash)
+	log.Info("发送receipts请求", "peer", peer.ID(), "number", number, "hash", hash.Hex())
 	req, err := peer.RequestReceipts([]common.Hash{hash}, resCh)
 	if err != nil {
-		log.Warn("发送receipts请求失败", "peer", peer.ID(), "number", number, "hash", hash, "err", err)
+		log.Warn("发送receipts请求失败", "peer", peer.ID(), "number", number, "hash", hash.Hex(), "err", err)
 		return
 	}
 	go func() {
@@ -576,7 +576,7 @@ func sendReceiptsRequestAndUpdateLp(lpManager *pool.LPManager, peer *Peer, hash 
 			}
 			switch payload := res.Res.(type) {
 			case *ReceiptsRLPResponse:
-				log.Info("收到receipts响应", "peer", peer.ID(), "number", number, "hash", hash, "entries", len(*payload))
+				log.Info("收到receipts响应", "peer", peer.ID(), "number", number, "hash", hash.Hex(), "entries", len(*payload))
 
 				//竞争失败，直接返回
 				if !lpManager.TryUpdateBlockHeight(number) {
@@ -616,7 +616,7 @@ func sendReceiptsRequestAndUpdateLp(lpManager *pool.LPManager, peer *Peer, hash 
 
 				//更新数据
 				log.Info("更新LP数据", "blockNumber", number, "hash", hash, "更新LP数量", len(receiptMap))
-				lpManager.Update(receiptMap)
+				lpManager.Update(number, receiptMap)
 
 			default:
 				log.Warn("未知receipts响应", "peer", peer.ID(), "hash", hash, "type", fmt.Sprintf("%T", res.Res))
