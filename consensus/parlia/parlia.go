@@ -568,9 +568,6 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 		return errors.New("invalid attestation, signature verify failed")
 	}
 
-	// === Step 6: Update vote count metric after successful verification ===
-	attestationVoteCountGauge.Update(int64(len(votedAddrs)))
-
 	return nil
 }
 
@@ -1133,9 +1130,6 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 		log.Warn(fmt.Sprintf("assembleVoteAttestation, check VoteAddress Set failed, expected:%d, real:%d", len(signatures), bitsetCount))
 		return errors.New("invalid attestation, check VoteAddress Set failed")
 	}
-
-	// Update vote count metric
-	attestationVoteCountGauge.Update(int64(len(votes)))
 
 	// === Step 4: Encode & insert into header extra ===
 	buf := new(bytes.Buffer)
