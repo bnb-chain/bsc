@@ -185,7 +185,7 @@ func (m *LPManager) Update(blockNumber uint64, receiptMap map[common.Address]*ty
 			log.Warn("未知LP类型, 无法更新", "blockNumber", blockNumber, "address", addr, "type", state.Config.Type)
 		}
 
-		log.Info("LP价格", "blockNumber", blockNumber, "address", addr, "priceToken0InToken1", state.PriceToken0InToken1())
+		log.Info("LP价格", "blockNumber", blockNumber, "address", addr, "priceToken0InToken1", state.PriceToken0InToken1().FloatString(4))
 	}
 }
 
