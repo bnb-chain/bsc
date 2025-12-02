@@ -578,6 +578,11 @@ func sendReceiptsRequestAndUpdateLp(lpManager *pool.LPManager, peer *Peer, hash 
 				res.Done <- nil
 			}()
 
+			if lpManager.IsProcessed(number) {
+				log.Debug("收到已处理区块的receipts响应, 跳过", "peer", peer.ID(), "number", number, "hash", hash)
+				return
+			}
+
 			payload, ok := res.Res.(*ReceiptsRLPResponse)
 			if !ok {
 				log.Warn("未知receipts响应", "peer", peer.ID(), "hash", hash, "type", fmt.Sprintf("%T", res.Res))

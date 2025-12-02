@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math/big"
 	"sync"
+	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -58,7 +59,8 @@ type trackedPool struct {
 type LPManager struct {
 	mu                 sync.RWMutex
 	pools              map[common.Address]*trackedPool
-	currentBlockHeight uint64 // Tracks the current blockchain height
+	poolSnapshot       atomic.Value // map[common.Address]*trackedPool
+	currentBlockHeight uint64       // Tracks the current blockchain height
 }
 
 // Errors surfaced by LPManager operations.
@@ -71,10 +73,12 @@ var (
 
 // NewLPManager constructs an empty manager.
 func NewLPManager() *LPManager {
-	return &LPManager{
+	manager := &LPManager{
 		pools:              make(map[common.Address]*trackedPool),
 		currentBlockHeight: 0,
 	}
+	manager.poolSnapshot.Store(map[common.Address]*trackedPool{})
+	return manager
 }
 
 // NewLPManagerFromConfig creates a new LPManager and initializes it with pools from a config file.
@@ -125,6 +129,13 @@ func (m *LPManager) NeedUpdate(height uint64) bool {
 	return true
 }
 
+// IsProcessed returns true if the manager has already processed the given height.
+func (m *LPManager) IsProcessed(height uint64) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return height <= m.currentBlockHeight
+}
+
 // UpdateFromReceipts 解析一批 receipts 并更新对应 LP 的状态。
 // 返回实际完成更新的 LP 数量。
 func (m *LPManager) UpdateFromReceipts(blockNumber uint64, receiptsList []types.Receipts) int {
@@ -132,9 +143,12 @@ func (m *LPManager) UpdateFromReceipts(blockNumber uint64, receiptsList []types.
 		return 0
 	}
 
-	// 先在读锁下筛选出监控中的 LP，并保留同一 LP 在区块内的最新一次操作。
+	snapshot := m.snapshotPools()
+	if len(snapshot) == 0 {
+		return 0
+	}
+
 	tracked := make(map[common.Address]*types.Receipt)
-	m.mu.RLock()
 	for _, receipts := range receiptsList {
 		for _, receipt := range receipts {
 			if receipt == nil {
@@ -144,13 +158,12 @@ func (m *LPManager) UpdateFromReceipts(blockNumber uint64, receiptsList []types.
 				if logEntry == nil {
 					continue
 				}
-				if _, ok := m.pools[logEntry.Address]; ok {
+				if _, ok := snapshot[logEntry.Address]; ok {
 					tracked[logEntry.Address] = receipt
 				}
 			}
 		}
 	}
-	m.mu.RUnlock()
 
 	if len(tracked) == 0 {
 		return 0
@@ -220,6 +233,7 @@ func (m *LPManager) RegisterPool(cfg LPConfig) error {
 		handler:     handler,
 		blockHeight: 0,
 	}
+	m.refreshSnapshotLocked()
 
 	return nil
 }
@@ -258,4 +272,19 @@ func metadataFromConfig(cfg LPConfig) processor.Metadata {
 		Token1Decimals: cfg.Token1Decimals,
 		Fee:            cfg.Fee,
 	}
+}
+
+func (m *LPManager) snapshotPools() map[common.Address]*trackedPool {
+	if snapshot, ok := m.poolSnapshot.Load().(map[common.Address]*trackedPool); ok {
+		return snapshot
+	}
+	return nil
+}
+
+func (m *LPManager) refreshSnapshotLocked() {
+	clone := make(map[common.Address]*trackedPool, len(m.pools))
+	for addr, pool := range m.pools {
+		clone[addr] = pool
+	}
+	m.poolSnapshot.Store(clone)
 }
