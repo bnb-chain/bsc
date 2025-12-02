@@ -12,7 +12,7 @@ func computeV2Price(reserve0, reserve1 *big.Int, dec0, dec1 int) *big.Rat {
 	num := new(big.Int).Set(reserve1)
 	den := new(big.Int).Set(reserve0)
 
-	adjustDecimals(num, den, dec1-dec0)
+	adjustDecimals(num, den, dec0-dec1)
 
 	return new(big.Rat).SetFrac(num, den)
 }
@@ -24,7 +24,7 @@ func computeV3Price(sqrtPriceX96 *big.Int, dec0, dec1 int) *big.Rat {
 	num := new(big.Int).Mul(sqrtPriceX96, sqrtPriceX96)
 	den := new(big.Int).Lsh(big.NewInt(1), 192) // 2^192
 
-	adjustDecimals(num, den, dec1-dec0)
+	adjustDecimals(num, den, dec0-dec1)
 
 	return new(big.Rat).SetFrac(num, den)
 }
