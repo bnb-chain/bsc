@@ -60,7 +60,8 @@ type LPManager struct {
 	mu                 sync.RWMutex
 	pools              map[common.Address]*trackedPool
 	poolSnapshot       atomic.Value // map[common.Address]*trackedPool
-	currentBlockHeight uint64       // Tracks the current blockchain height
+	processing         map[uint64]struct{}
+	currentBlockHeight uint64 // Tracks the current blockchain height
 }
 
 // Errors surfaced by LPManager operations.
@@ -75,6 +76,7 @@ var (
 func NewLPManager() *LPManager {
 	manager := &LPManager{
 		pools:              make(map[common.Address]*trackedPool),
+		processing:         make(map[uint64]struct{}),
 		currentBlockHeight: 0,
 	}
 	manager.poolSnapshot.Store(map[common.Address]*trackedPool{})
@@ -129,11 +131,27 @@ func (m *LPManager) NeedUpdate(height uint64) bool {
 	return true
 }
 
-// IsProcessed returns true if the manager has already processed the given height.
-func (m *LPManager) IsProcessed(height uint64) bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return height <= m.currentBlockHeight
+// BeginProcess marks a block height as being processed. Returns false if the
+// block has already been processed or is currently in progress.
+func (m *LPManager) BeginProcess(height uint64) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if height <= m.currentBlockHeight {
+		return false
+	}
+	if _, exists := m.processing[height]; exists {
+		return false
+	}
+	m.processing[height] = struct{}{}
+	return true
+}
+
+// EndProcess clears the in-progress marker for a block height.
+func (m *LPManager) EndProcess(height uint64) {
+	m.mu.Lock()
+	delete(m.processing, height)
+	m.mu.Unlock()
 }
 
 // UpdateFromReceipts 解析一批 receipts 并更新对应 LP 的状态。
@@ -235,6 +253,22 @@ func (m *LPManager) RegisterPool(cfg LPConfig) error {
 	}
 	m.refreshSnapshotLocked()
 
+	return nil
+}
+
+// UnregisterPool removes an LP from the manager.
+func (m *LPManager) UnregisterPool(addr common.Address) error {
+	if addr == (common.Address{}) {
+		return errors.New("lp地址为空")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.pools[addr]; !ok {
+		return ErrPoolMissing
+	}
+	delete(m.pools, addr)
+	m.refreshSnapshotLocked()
 	return nil
 }
 

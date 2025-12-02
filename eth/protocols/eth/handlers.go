@@ -578,10 +578,11 @@ func sendReceiptsRequestAndUpdateLp(lpManager *pool.LPManager, peer *Peer, hash 
 				res.Done <- nil
 			}()
 
-			if lpManager.IsProcessed(number) {
-				log.Debug("收到已处理区块的receipts响应, 跳过", "peer", peer.ID(), "number", number, "hash", hash)
+			if !lpManager.BeginProcess(number) {
+				log.Debug("区块已处理或正在处理中, 跳过", "peer", peer.ID(), "number", number, "hash", hash)
 				return
 			}
+			defer lpManager.EndProcess(number)
 
 			payload, ok := res.Res.(*ReceiptsRLPResponse)
 			if !ok {
