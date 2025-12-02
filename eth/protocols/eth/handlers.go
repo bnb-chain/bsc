@@ -574,54 +574,42 @@ func sendReceiptsRequestAndUpdateLp(lpManager *pool.LPManager, peer *Peer, hash 
 			if res == nil {
 				return
 			}
-			switch payload := res.Res.(type) {
-			case *ReceiptsRLPResponse:
-				log.Info("收到receipts响应", "peer", peer.ID(), "number", number, "hash", hash.Hex(), "entries", len(*payload))
+			defer func() {
+				res.Done <- nil
+			}()
 
-				//竞争失败，直接返回
-				if !lpManager.TryUpdateBlockHeight(number) {
-					return
-				}
-
-				//解析receipts
-				receiptsList, err := decodeReceiptsRLPResponse(*payload)
-				if err != nil {
-					log.Warn("解析receipts失败", "peer", peer.ID(), "number", number, "hash", hash, "err", err)
-					return
-				}
-
-				//过滤监控LP的receipts，并且按顺序覆盖
-				receiptMap := make(map[common.Address]*types.Receipt)
-				lps := lpManager.AllLPInManager()
-				lpSet := make(map[common.Address]struct{}, len(lps))
-				for _, addr := range lps {
-					lpSet[common.HexToAddress(addr)] = struct{}{}
-				}
-				for _, receipts := range receiptsList {
-					for _, receipt := range receipts {
-						if receipt == nil {
-							continue
-						}
-						for _, logEntry := range receipt.Logs {
-							if logEntry == nil {
-								continue
-							}
-							if _, ok := lpSet[logEntry.Address]; ok {
-								// 如果同一个LP在该区块内多次操作，以最后一次为准
-								receiptMap[logEntry.Address] = receipt
-							}
-						}
-					}
-				}
-
-				//更新数据
-				log.Info("更新LP数据", "blockNumber", number, "hash", hash, "更新LP数量", len(receiptMap))
-				lpManager.Update(number, receiptMap)
-
-			default:
-				log.Warn("未知receipts响应", "peer", peer.ID(), "hash", hash, "type", fmt.Sprintf("%T", res.Res))
+			if !lpManager.BeginProcess(number) {
+				log.Debug("区块已处理或正在处理中, 跳过", "peer", peer.ID(), "number", number, "hash", hash)
+				return
 			}
-			res.Done <- nil
+			defer lpManager.EndProcess(number)
+
+			payload, ok := res.Res.(*ReceiptsRLPResponse)
+			if !ok {
+				log.Warn("未知receipts响应", "peer", peer.ID(), "hash", hash, "type", fmt.Sprintf("%T", res.Res))
+				return
+			}
+
+			log.Info("收到receipts响应", "peer", peer.ID(), "number", number, "hash", hash.Hex(), "entries", len(*payload))
+
+			receiptsList, err := decodeReceiptsRLPResponse(*payload)
+			if err != nil {
+				log.Warn("解析receipts失败", "peer", peer.ID(), "number", number, "hash", hash, "err", err)
+				return
+			}
+
+			// 在解析成功后才竞争高度，保证失败场景可以由其他peer补偿
+			if !lpManager.TryUpdateBlockHeight(number) {
+				return
+			}
+
+			updated := lpManager.UpdateFromReceipts(number, receiptsList)
+			if updated == 0 {
+				log.Debug("区块中无监控LP日志，跳过更新", "blockNumber", number, "hash", hash)
+				return
+			}
+
+			log.Info("更新LP数据", "blockNumber", number, "hash", hash, "更新LP数量", updated)
 		case <-timeout.C:
 			log.Warn("请求receipts超时", "peer", peer.ID(), "number", number, "hash", hash)
 		}

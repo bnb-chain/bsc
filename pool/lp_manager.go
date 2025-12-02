@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math/big"
 	"sync"
+	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -58,6 +59,8 @@ type trackedPool struct {
 type LPManager struct {
 	mu                 sync.RWMutex
 	pools              map[common.Address]*trackedPool
+	poolSnapshot       atomic.Value // map[common.Address]*trackedPool
+	processing         map[uint64]struct{}
 	currentBlockHeight uint64 // Tracks the current blockchain height
 }
 
@@ -71,10 +74,13 @@ var (
 
 // NewLPManager constructs an empty manager.
 func NewLPManager() *LPManager {
-	return &LPManager{
+	manager := &LPManager{
 		pools:              make(map[common.Address]*trackedPool),
+		processing:         make(map[uint64]struct{}),
 		currentBlockHeight: 0,
 	}
+	manager.poolSnapshot.Store(map[common.Address]*trackedPool{})
+	return manager
 }
 
 // NewLPManagerFromConfig creates a new LPManager and initializes it with pools from a config file.
@@ -125,19 +131,69 @@ func (m *LPManager) NeedUpdate(height uint64) bool {
 	return true
 }
 
-// 更新操作
-func (m *LPManager) Update(blockNumber uint64, receiptMap map[common.Address]*types.Receipt) {
-	if len(receiptMap) == 0 {
-		return
+// BeginProcess marks a block height as being processed. Returns false if the
+// block has already been processed or is currently in progress.
+func (m *LPManager) BeginProcess(height uint64) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if height <= m.currentBlockHeight {
+		return false
+	}
+	if _, exists := m.processing[height]; exists {
+		return false
+	}
+	m.processing[height] = struct{}{}
+	return true
+}
+
+// EndProcess clears the in-progress marker for a block height.
+func (m *LPManager) EndProcess(height uint64) {
+	m.mu.Lock()
+	delete(m.processing, height)
+	m.mu.Unlock()
+}
+
+// UpdateFromReceipts 解析一批 receipts 并更新对应 LP 的状态。
+// 返回实际完成更新的 LP 数量。
+func (m *LPManager) UpdateFromReceipts(blockNumber uint64, receiptsList []types.Receipts) int {
+	if len(receiptsList) == 0 {
+		return 0
+	}
+
+	snapshot := m.snapshotPools()
+	if len(snapshot) == 0 {
+		return 0
+	}
+
+	tracked := make(map[common.Address]*types.Receipt)
+	for _, receipts := range receiptsList {
+		for _, receipt := range receipts {
+			if receipt == nil {
+				continue
+			}
+			for _, logEntry := range receipt.Logs {
+				if logEntry == nil {
+					continue
+				}
+				if _, ok := snapshot[logEntry.Address]; ok {
+					tracked[logEntry.Address] = receipt
+				}
+			}
+		}
+	}
+
+	if len(tracked) == 0 {
+		return 0
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	for addr, receipt := range receiptMap {
+	updatedCount := 0
+	for addr, receipt := range tracked {
 		pool, ok := m.pools[addr]
 		if !ok {
-			log.Warn("未注册的LP, 跳过更新", "address", addr)
 			continue
 		}
 
@@ -149,7 +205,9 @@ func (m *LPManager) Update(blockNumber uint64, receiptMap map[common.Address]*ty
 		if !updated {
 			continue
 		}
+
 		pool.blockHeight = blockNumber
+		updatedCount++
 
 		price := pool.handler.PriceToken0InToken1()
 		priceStr := "nil"
@@ -158,6 +216,8 @@ func (m *LPManager) Update(blockNumber uint64, receiptMap map[common.Address]*ty
 		}
 		log.Info("LP价格", "blockNumber", blockNumber, "address", addr, "priceToken0InToken1", priceStr)
 	}
+
+	return updatedCount
 }
 
 // 获取所有LP
@@ -191,7 +251,24 @@ func (m *LPManager) RegisterPool(cfg LPConfig) error {
 		handler:     handler,
 		blockHeight: 0,
 	}
+	m.refreshSnapshotLocked()
 
+	return nil
+}
+
+// UnregisterPool removes an LP from the manager.
+func (m *LPManager) UnregisterPool(addr common.Address) error {
+	if addr == (common.Address{}) {
+		return errors.New("lp地址为空")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.pools[addr]; !ok {
+		return ErrPoolMissing
+	}
+	delete(m.pools, addr)
+	m.refreshSnapshotLocked()
 	return nil
 }
 
@@ -229,4 +306,19 @@ func metadataFromConfig(cfg LPConfig) processor.Metadata {
 		Token1Decimals: cfg.Token1Decimals,
 		Fee:            cfg.Fee,
 	}
+}
+
+func (m *LPManager) snapshotPools() map[common.Address]*trackedPool {
+	if snapshot, ok := m.poolSnapshot.Load().(map[common.Address]*trackedPool); ok {
+		return snapshot
+	}
+	return nil
+}
+
+func (m *LPManager) refreshSnapshotLocked() {
+	clone := make(map[common.Address]*trackedPool, len(m.pools))
+	for addr, pool := range m.pools {
+		clone[addr] = pool
+	}
+	m.poolSnapshot.Store(clone)
 }
