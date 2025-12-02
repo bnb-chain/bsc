@@ -125,19 +125,44 @@ func (m *LPManager) NeedUpdate(height uint64) bool {
 	return true
 }
 
-// 更新操作
-func (m *LPManager) Update(blockNumber uint64, receiptMap map[common.Address]*types.Receipt) {
-	if len(receiptMap) == 0 {
-		return
+// UpdateFromReceipts 解析一批 receipts 并更新对应 LP 的状态。
+// 返回实际完成更新的 LP 数量。
+func (m *LPManager) UpdateFromReceipts(blockNumber uint64, receiptsList []types.Receipts) int {
+	if len(receiptsList) == 0 {
+		return 0
+	}
+
+	// 先在读锁下筛选出监控中的 LP，并保留同一 LP 在区块内的最新一次操作。
+	tracked := make(map[common.Address]*types.Receipt)
+	m.mu.RLock()
+	for _, receipts := range receiptsList {
+		for _, receipt := range receipts {
+			if receipt == nil {
+				continue
+			}
+			for _, logEntry := range receipt.Logs {
+				if logEntry == nil {
+					continue
+				}
+				if _, ok := m.pools[logEntry.Address]; ok {
+					tracked[logEntry.Address] = receipt
+				}
+			}
+		}
+	}
+	m.mu.RUnlock()
+
+	if len(tracked) == 0 {
+		return 0
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	for addr, receipt := range receiptMap {
+	updatedCount := 0
+	for addr, receipt := range tracked {
 		pool, ok := m.pools[addr]
 		if !ok {
-			log.Warn("未注册的LP, 跳过更新", "address", addr)
 			continue
 		}
 
@@ -149,7 +174,9 @@ func (m *LPManager) Update(blockNumber uint64, receiptMap map[common.Address]*ty
 		if !updated {
 			continue
 		}
+
 		pool.blockHeight = blockNumber
+		updatedCount++
 
 		price := pool.handler.PriceToken0InToken1()
 		priceStr := "nil"
@@ -158,6 +185,8 @@ func (m *LPManager) Update(blockNumber uint64, receiptMap map[common.Address]*ty
 		}
 		log.Info("LP价格", "blockNumber", blockNumber, "address", addr, "priceToken0InToken1", priceStr)
 	}
+
+	return updatedCount
 }
 
 // 获取所有LP

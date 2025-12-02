@@ -592,41 +592,18 @@ func sendReceiptsRequestAndUpdateLp(lpManager *pool.LPManager, peer *Peer, hash 
 				return
 			}
 
-			receiptMap := make(map[common.Address]*types.Receipt)
-			lps := lpManager.AllLPInManager()
-			lpSet := make(map[common.Address]struct{}, len(lps))
-			for _, addr := range lps {
-				lpSet[common.HexToAddress(addr)] = struct{}{}
-			}
-			for _, receipts := range receiptsList {
-				for _, receipt := range receipts {
-					if receipt == nil {
-						continue
-					}
-					for _, logEntry := range receipt.Logs {
-						if logEntry == nil {
-							continue
-						}
-						if _, ok := lpSet[logEntry.Address]; ok {
-							// 如果同一个LP在该区块内多次操作，以最后一次为准
-							receiptMap[logEntry.Address] = receipt
-						}
-					}
-				}
-			}
-
 			// 在解析成功后才竞争高度，保证失败场景可以由其他peer补偿
 			if !lpManager.TryUpdateBlockHeight(number) {
 				return
 			}
 
-			if len(receiptMap) == 0 {
+			updated := lpManager.UpdateFromReceipts(number, receiptsList)
+			if updated == 0 {
 				log.Debug("区块中无监控LP日志，跳过更新", "blockNumber", number, "hash", hash)
 				return
 			}
 
-			log.Info("更新LP数据", "blockNumber", number, "hash", hash, "更新LP数量", len(receiptMap))
-			lpManager.Update(number, receiptMap)
+			log.Info("更新LP数据", "blockNumber", number, "hash", hash, "更新LP数量", updated)
 		case <-timeout.C:
 			log.Warn("请求receipts超时", "peer", peer.ID(), "number", number, "hash", hash)
 		}
