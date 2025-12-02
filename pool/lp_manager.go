@@ -33,49 +33,31 @@ type LPConfig struct {
 
 // LPState keeps the dynamic parameters required to quote prices.
 type LPState struct {
-	Config LPConfig
-
+	Config      LPConfig
 	BlockHeight uint64
-	V2State     *V2State
-	V3State     *V3State
-}
-
-// V2State mirrors PancakeSwap V2 style reserves.
-type V2State struct {
-	Reserve0 *big.Int
-	Reserve1 *big.Int
-}
-
-// V3State mirrors PancakeSwap V3 (Uniswap V3) style sqrt price data.
-type V3State struct {
-	SqrtPriceX96 *big.Int
-	Liquidity    *big.Int
-	Tick         int32
+	Price       *big.Rat
+	Snapshot    processor.Snapshot
 }
 
 // PriceToken0InToken1 returns the spot price of token0 denominated in token1.
 // Nil is returned when the state for the underlying pool is incomplete.
 func (s *LPState) PriceToken0InToken1() *big.Rat {
-	switch s.Config.Type {
-	case LPTypePancakeV2:
-		if s.V2State == nil || s.V2State.Reserve0.Sign() == 0 || s.V2State.Reserve1.Sign() == 0 {
-			return nil
-		}
-		return computeV2Price(s.V2State.Reserve0, s.V2State.Reserve1, int(s.Config.Token0Decimals), int(s.Config.Token1Decimals))
-	case LPTypePancakeV3:
-		if s.V3State == nil || s.V3State.SqrtPriceX96.Sign() == 0 {
-			return nil
-		}
-		return computeV3Price(s.V3State.SqrtPriceX96, int(s.Config.Token0Decimals), int(s.Config.Token1Decimals))
-	default:
+	if s == nil || s.Price == nil {
 		return nil
 	}
+	return new(big.Rat).Set(s.Price)
+}
+
+type trackedPool struct {
+	config      LPConfig
+	handler     processor.Handler
+	blockHeight uint64
 }
 
 // LPManager tracks multiple LPs concurrently.
 type LPManager struct {
 	mu                 sync.RWMutex
-	pools              map[common.Address]*LPState
+	pools              map[common.Address]*trackedPool
 	currentBlockHeight uint64 // Tracks the current blockchain height
 }
 
@@ -90,7 +72,7 @@ var (
 // NewLPManager constructs an empty manager.
 func NewLPManager() *LPManager {
 	return &LPManager{
-		pools:              make(map[common.Address]*LPState),
+		pools:              make(map[common.Address]*trackedPool),
 		currentBlockHeight: 0,
 	}
 }
@@ -153,39 +135,28 @@ func (m *LPManager) Update(blockNumber uint64, receiptMap map[common.Address]*ty
 	defer m.mu.Unlock()
 
 	for addr, receipt := range receiptMap {
-		state, ok := m.pools[addr]
+		pool, ok := m.pools[addr]
 		if !ok {
 			log.Warn("未注册的LP, 跳过更新", "address", addr)
 			continue
 		}
 
-		derived, okState, err := processor.ProcessReceipt(string(state.Config.Type), receipt)
+		updated, err := pool.handler.ApplyReceipt(receipt)
 		if err != nil {
 			log.Warn("解析receipt失败", "blockNumber", blockNumber, "address", addr, "err", err)
 			continue
 		}
-		if !okState || derived == nil {
+		if !updated {
 			continue
 		}
+		pool.blockHeight = blockNumber
 
-		switch state.Config.Type {
-		case LPTypePancakeV2:
-			if derived.V2 == nil {
-				continue
-			}
-			state.V2State = cloneV2State(derived.V2)
-			state.BlockHeight = blockNumber
-		case LPTypePancakeV3:
-			if derived.V3 == nil {
-				continue
-			}
-			state.V3State = cloneV3State(derived.V3)
-			state.BlockHeight = blockNumber
-		default:
-			log.Warn("未知LP类型, 无法更新", "blockNumber", blockNumber, "address", addr, "type", state.Config.Type)
+		price := pool.handler.PriceToken0InToken1()
+		priceStr := "nil"
+		if price != nil {
+			priceStr = price.FloatString(4)
 		}
-
-		log.Info("LP价格", "blockNumber", blockNumber, "address", addr, "priceToken0InToken1", state.PriceToken0InToken1().FloatString(4))
+		log.Info("LP价格", "blockNumber", blockNumber, "address", addr, "priceToken0InToken1", priceStr)
 	}
 }
 
@@ -211,16 +182,14 @@ func (m *LPManager) RegisterPool(cfg LPConfig) error {
 	if _, ok := m.pools[cfg.Address]; ok {
 		return ErrPoolExists
 	}
-	m.pools[cfg.Address] = &LPState{Config: cfg, BlockHeight: 0}
-
-	// pancakeswapv2
-	if cfg.Type == LPTypePancakeV2 {
-		m.pools[cfg.Address].V2State = &V2State{Reserve0: big.NewInt(0), Reserve1: big.NewInt(0)}
+	handler, err := processor.BuildHandler(string(cfg.Type), metadataFromConfig(cfg))
+	if err != nil {
+		return err
 	}
-
-	//pancakeswapv3
-	if cfg.Type == LPTypePancakeV3 {
-		m.pools[cfg.Address].V3State = &V3State{SqrtPriceX96: big.NewInt(0), Liquidity: big.NewInt(0), Tick: 0}
+	m.pools[cfg.Address] = &trackedPool{
+		config:      cfg,
+		handler:     handler,
+		blockHeight: 0,
 	}
 
 	return nil
@@ -230,95 +199,34 @@ func (m *LPManager) RegisterPool(cfg LPConfig) error {
 func (m *LPManager) Get(addr common.Address) (*LPState, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	state, ok := m.pools[addr]
+	pool, ok := m.pools[addr]
 	if !ok {
 		return nil, false
 	}
-	clone := *state
-	if state.V2State != nil {
-		clone.V2State = &V2State{
-			Reserve0: new(big.Int).Set(state.V2State.Reserve0),
-			Reserve1: new(big.Int).Set(state.V2State.Reserve1),
-		}
+	snapshot := pool.handler.Snapshot()
+	var clone processor.Snapshot
+	if snapshot != nil {
+		clone = snapshot.Clone()
 	}
-	if state.V3State != nil {
-		clone.V3State = &V3State{
-			SqrtPriceX96: new(big.Int).Set(state.V3State.SqrtPriceX96),
-			Liquidity:    new(big.Int).Set(state.V3State.Liquidity),
-			Tick:         state.V3State.Tick,
-		}
+	var price *big.Rat
+	if p := pool.handler.PriceToken0InToken1(); p != nil {
+		price = new(big.Rat).Set(p)
 	}
-	return &clone, true
+	return &LPState{
+		Config:      pool.config,
+		BlockHeight: pool.blockHeight,
+		Price:       price,
+		Snapshot:    clone,
+	}, true
 }
 
-func cloneV2State(src *processor.V2State) *V2State {
-	if src == nil {
-		return nil
+func metadataFromConfig(cfg LPConfig) processor.Metadata {
+	return processor.Metadata{
+		Address:        cfg.Address,
+		Token0Symbol:   cfg.Token0Symbol,
+		Token1Symbol:   cfg.Token1Symbol,
+		Token0Decimals: cfg.Token0Decimals,
+		Token1Decimals: cfg.Token1Decimals,
+		Fee:            cfg.Fee,
 	}
-	return &V2State{
-		Reserve0: new(big.Int).Set(src.Reserve0),
-		Reserve1: new(big.Int).Set(src.Reserve1),
-	}
-}
-
-func cloneV3State(src *processor.V3State) *V3State {
-	if src == nil {
-		return nil
-	}
-	return &V3State{
-		SqrtPriceX96: new(big.Int).Set(src.SqrtPriceX96),
-		Liquidity:    new(big.Int).Set(src.Liquidity),
-		Tick:         src.Tick,
-	}
-}
-
-func computeV2Price(reserve0, reserve1 *big.Int, dec0, dec1 int) *big.Rat {
-	num := new(big.Int).Set(reserve1)
-	den := new(big.Int).Set(reserve0)
-
-	adjustDecimals(num, den, dec1-dec0)
-
-	return new(big.Rat).SetFrac(num, den)
-}
-
-func computeV3Price(sqrtPriceX96 *big.Int, dec0, dec1 int) *big.Rat {
-	num := new(big.Int).Mul(sqrtPriceX96, sqrtPriceX96)
-	den := new(big.Int).Lsh(big.NewInt(1), 192) // 2^192
-
-	adjustDecimals(num, den, dec1-dec0)
-
-	return new(big.Rat).SetFrac(num, den)
-}
-
-func adjustDecimals(num, den *big.Int, exp int) {
-	if exp == 0 {
-		return
-	}
-	if exp > 0 {
-		num.Mul(num, pow10(exp))
-	} else {
-		den.Mul(den, pow10(-exp))
-	}
-}
-
-var (
-	pow10Mu    sync.Mutex
-	pow10Cache = map[int]*big.Int{
-		0: big.NewInt(1),
-	}
-)
-
-func pow10(exp int) *big.Int {
-	pow10Mu.Lock()
-	defer pow10Mu.Unlock()
-	if val, ok := pow10Cache[exp]; ok {
-		return val
-	}
-	base := big.NewInt(10)
-	result := big.NewInt(1)
-	for i := 0; i < exp; i++ {
-		result.Mul(result, base)
-	}
-	pow10Cache[exp] = result
-	return result
 }

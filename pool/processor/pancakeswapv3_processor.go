@@ -84,3 +84,48 @@ func decodeInt24(data []byte) (int32, error) {
 	}
 	return n, nil
 }
+
+// PancakeSwapV3Handler wires swap log parsing into the generic LP handler interface.
+type PancakeSwapV3Handler struct {
+	meta    Metadata
+	parser  *PancakeSwapV3Processor
+	current *V3State
+}
+
+// NewPancakeSwapV3Handler constructs a handler instance for an LP.
+func NewPancakeSwapV3Handler(meta Metadata) (Handler, error) {
+	return &PancakeSwapV3Handler{
+		meta:   meta,
+		parser: NewPancakeSwapV3Processor(),
+	}, nil
+}
+
+// ApplyReceipt inspects swap logs and records the latest sqrt price/liquidity/tick.
+func (h *PancakeSwapV3Handler) ApplyReceipt(receipt *types.Receipt) (bool, error) {
+	state, ok, err := h.parser.Process(receipt)
+	if err != nil {
+		return false, err
+	}
+	if !ok || state == nil {
+		return false, nil
+	}
+	clone, _ := state.Clone().(*V3State)
+	h.current = clone
+	return true, nil
+}
+
+// PriceToken0InToken1 returns the spot price derived from the cached sqrt price.
+func (h *PancakeSwapV3Handler) PriceToken0InToken1() *big.Rat {
+	if h.current == nil {
+		return nil
+	}
+	return computeV3Price(h.current.SqrtPriceX96, int(h.meta.Token0Decimals), int(h.meta.Token1Decimals))
+}
+
+// Snapshot returns a clone of the cached V3 state.
+func (h *PancakeSwapV3Handler) Snapshot() Snapshot {
+	if h.current == nil {
+		return nil
+	}
+	return h.current.Clone()
+}

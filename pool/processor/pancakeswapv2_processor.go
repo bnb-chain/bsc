@@ -61,3 +61,48 @@ func decodeV2Sync(data []byte) (*V2State, error) {
 		Reserve1: reserve1,
 	}, nil
 }
+
+// PancakeSwapV2Handler wires the PancakeSwap V2 processor into the generic LP handler interface.
+type PancakeSwapV2Handler struct {
+	meta    Metadata
+	parser  *PancakeSwapV2Processor
+	current *V2State
+}
+
+// NewPancakeSwapV2Handler constructs a handler that can keep the latest reserves for a pool.
+func NewPancakeSwapV2Handler(meta Metadata) (Handler, error) {
+	return &PancakeSwapV2Handler{
+		meta:   meta,
+		parser: NewPancakeSwapV2Processor(),
+	}, nil
+}
+
+// ApplyReceipt inspects the receipt for Sync events and updates the cached reserves.
+func (h *PancakeSwapV2Handler) ApplyReceipt(receipt *types.Receipt) (bool, error) {
+	state, ok, err := h.parser.Process(receipt)
+	if err != nil {
+		return false, err
+	}
+	if !ok || state == nil {
+		return false, nil
+	}
+	clone, _ := state.Clone().(*V2State)
+	h.current = clone
+	return true, nil
+}
+
+// PriceToken0InToken1 returns the spot price derived from the most recent reserves.
+func (h *PancakeSwapV2Handler) PriceToken0InToken1() *big.Rat {
+	if h.current == nil {
+		return nil
+	}
+	return computeV2Price(h.current.Reserve0, h.current.Reserve1, int(h.meta.Token0Decimals), int(h.meta.Token1Decimals))
+}
+
+// Snapshot returns a clone of the current reserve state.
+func (h *PancakeSwapV2Handler) Snapshot() Snapshot {
+	if h.current == nil {
+		return nil
+	}
+	return h.current.Clone()
+}
