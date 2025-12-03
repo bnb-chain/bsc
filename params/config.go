@@ -684,6 +684,10 @@ type ChainConfig struct {
 	// those cases.
 	EnableVerkleAtGenesis bool `json:"enableVerkleAtGenesis,omitempty"`
 
+	// EnableBAL is a flag that specifies whether the node generate
+	// bal in block.
+	EnableBAL bool `json:"enableBAL,omitempty"`
+
 	RamanujanBlock  *big.Int `json:"ramanujanBlock,omitempty"`  // ramanujanBlock switch block (nil = no fork, 0 = already activated)
 	NielsBlock      *big.Int `json:"nielsBlock,omitempty"`      // nielsBlock switch block (nil = no fork, 0 = already activated)
 	MirrorSyncBlock *big.Int `json:"mirrorSyncBlock,omitempty"` // mirrorSyncBlock switch block (nil = no fork, 0 = already activated)
@@ -1342,6 +1346,10 @@ func (c *ChainConfig) IsVerkle(num *big.Int, time uint64) bool {
 // those cases.
 func (c *ChainConfig) IsVerkleGenesis() bool {
 	return c.EnableVerkleAtGenesis
+}
+
+func (c *ChainConfig) IsEnableBAL() bool {
+	return c.EnableBAL
 }
 
 // IsEIP4762 returns whether eip 4762 has been activated at given block.

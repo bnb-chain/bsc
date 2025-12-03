@@ -60,7 +60,7 @@ func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err
 
 	// refer logic in ValidateBody
 	if !chain.Config().IsCancun(block.Number(), block.Time()) {
-		if len(block.Sidecars()) != 0 {
+		if block.Sidecars() != nil {
 			return errors.New("sidecars present in block body before cancun")
 		}
 		return nil

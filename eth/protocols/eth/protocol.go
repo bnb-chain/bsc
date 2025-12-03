@@ -231,10 +231,10 @@ type BlockHeadersRLPPacket struct {
 
 // NewBlockPacket is the network packet for the block propagation message.
 type NewBlockPacket struct {
-	Block    *types.Block
-	TD       *big.Int
-	Sidecars types.BlobSidecars           `rlp:"optional"`
-	Bal      *types.BlockAccessListEncode `rlp:"optional"`
+	Block           *types.Block
+	TD              *big.Int
+	Sidecars        types.BlobSidecars           `rlp:"optional"`
+	BlockAccessList *types.BlockAccessListEncode `rlp:"optional"`
 }
 
 // sanityCheck verifies that the values are reasonable, as a DoS protection
@@ -242,7 +242,7 @@ func (request *NewBlockPacket) sanityCheck() error {
 	if err := request.Block.SanityCheck(); err != nil {
 		return err
 	}
-	//TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
+	// TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
 	// larger, it will still fit within 100 bits
 	if tdlen := request.TD.BitLen(); tdlen > 100 {
 		return fmt.Errorf("too large block TD: bitlen %d", tdlen)

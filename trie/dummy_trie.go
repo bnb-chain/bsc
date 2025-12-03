@@ -47,6 +47,14 @@ func (t *EmptyTrie) UpdateStorage(_ common.Address, key, value []byte) error {
 	return nil
 }
 
+func (t *EmptyTrie) UpdateAccountBatch(addresses []common.Address, accounts []*types.StateAccount, _ []int) error {
+	return nil
+}
+
+func (t *EmptyTrie) UpdateStorageBatch(_ common.Address, keys [][]byte, values [][]byte) error {
+	return nil
+}
+
 // UpdateAccount abstract an account write in the trie.
 func (t *EmptyTrie) UpdateAccount(address common.Address, account *types.StateAccount, codeLen int) error {
 	return nil

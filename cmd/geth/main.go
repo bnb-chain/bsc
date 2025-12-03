@@ -148,7 +148,6 @@ var (
 		utils.MinerRecommitIntervalFlag,
 		utils.MinerNewPayloadTimeoutFlag, // deprecated
 		utils.MinerDelayLeftoverFlag,
-		utils.EnableBALFlag,
 		// utils.MinerNewPayloadTimeout,
 		utils.NATFlag,
 		utils.NoDiscoverFlag,
@@ -193,6 +192,7 @@ var (
 		utils.IncrSnapshotKeptBlocksFlag,
 		utils.UseRemoteIncrSnapshotFlag,
 		utils.RemoteIncrSnapshotURLFlag,
+		utils.ExperimentalBALFlag,
 		// utils.BeaconApiFlag,
 		// utils.BeaconApiHeaderFlag,
 		// utils.BeaconThresholdFlag,

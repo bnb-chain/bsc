@@ -1495,10 +1495,85 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	return nil
 }
 
+func (p *Parlia) SignBAL(blockAccessList *types.BlockAccessListEncode) error {
+	p.lock.RLock()
+	val, signFn := p.val, p.signFn
+	p.lock.RUnlock()
+
+	data, err := rlp.EncodeToBytes([]interface{}{blockAccessList.Version, blockAccessList.Number, blockAccessList.Hash, blockAccessList.AccessList.Hash()})
+	if err != nil {
+		log.Error("Encode to bytes failed when sealing", "err", err)
+		return errors.New("encode to bytes failed")
+	}
+
+	if len(data) > int(params.MaxBALSize) {
+		log.Error("data is too large", "dataSize", len(data), "maxSize", params.MaxBALSize)
+		return errors.New("data is too large")
+	}
+
+	sig, err := signFn(accounts.Account{Address: val}, accounts.MimetypeParlia, data)
+	if err != nil {
+		log.Error("Sign for the block header failed when sealing", "err", err)
+		return errors.New("sign for the block header failed")
+	}
+
+	if blockAccessList.SignData == nil {
+		blockAccessList.SignData = make([]byte, 65)
+	}
+	copy(blockAccessList.SignData, sig)
+	return nil
+}
+
+func (p *Parlia) VerifyBAL(block *types.Block, blockAccessList *types.BlockAccessListEncode) error {
+	if blockAccessList.Version != 1 {
+		log.Error("invalid BAL version", "version", blockAccessList.Version)
+		return errors.New("invalid BAL version")
+	}
+
+	if blockAccessList.AccessList.Hash().Cmp(blockAccessList.Hash) == 0 {
+		// TODO: skip the BAL signature verify temporarily
+		log.Info("skip the BAL signature verify temporarily", "block", block.Number(), "hash", block.Hash())
+		return nil
+	}
+
+	if len(blockAccessList.SignData) != 65 {
+		log.Error("invalid BAL signature", "signatureSize", len(blockAccessList.SignData))
+		return errors.New("invalid BAL signature")
+	}
+
+	// Recover the public key and the Ethereum address
+	data, err := rlp.EncodeToBytes([]interface{}{blockAccessList.Version, blockAccessList.Number, blockAccessList.Hash, blockAccessList.AccessList.Hash()})
+	if err != nil {
+		log.Error("encode to bytes failed", "err", err)
+		return errors.New("encode to bytes failed")
+	}
+
+	if len(data) > int(params.MaxBALSize) {
+		log.Error("data is too large", "dataSize", len(data), "maxSize", params.MaxBALSize)
+		return errors.New("data is too large")
+	}
+
+	pubkey, err := crypto.Ecrecover(crypto.Keccak256(data), blockAccessList.SignData)
+	if err != nil {
+		log.Error("Ecrecover failed", "err", err, "signData", blockAccessList.SignData)
+		return err
+	}
+	var pubkeyAddr common.Address
+	copy(pubkeyAddr[:], crypto.Keccak256(pubkey[1:])[12:])
+
+	signer := block.Header().Coinbase
+	if signer != pubkeyAddr {
+		log.Error("BAL signer mismatch", "signer", signer, "pubkeyAddr", pubkeyAddr, "bal.Number", blockAccessList.Number, "bal.Hash", blockAccessList.Hash, "bal.signdata", common.Bytes2Hex(blockAccessList.SignData))
+		return errors.New("signer mismatch")
+	}
+
+	return nil
+}
+
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
-func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
-	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
+func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, statedb *state.StateDB,
+	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks, onFinalize func()) (*types.Block, []*types.Receipt, error) {
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	cx := chainContext{Chain: chain, parlia: p}
 
@@ -1508,23 +1583,27 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	if receipts == nil {
 		receipts = make([]*types.Receipt, 0)
 	}
+	var workingState vm.StateDB = statedb
+	if tracer != nil {
+		workingState = state.NewHookedState(statedb, tracer)
+	}
 
 	parent := chain.GetHeaderByHash(header.ParentHash)
 	if parent == nil {
 		return nil, nil, errors.New("parent not found")
 	}
 
-	systemcontracts.TryUpdateBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state, false)
+	systemcontracts.TryUpdateBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, workingState, false)
 
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
-		err := p.initializeFeynmanContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer)
+		err := p.initializeFeynmanContract(workingState, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer)
 		if err != nil {
 			log.Error("init feynman contract failed", "error", err)
 		}
 	}
 
 	if header.Number.Cmp(common.Big1) == 0 {
-		err := p.initContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer)
+		err := p.initContract(workingState, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer)
 		if err != nil {
 			log.Error("init contract failed")
 		}
@@ -1548,7 +1627,7 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 			}
 		}
 		if !signedRecently {
-			err = p.slash(spoiledVal, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer)
+			err = p.slash(spoiledVal, workingState, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer)
 			if err != nil {
 				// it is possible that slash validator failed because of the slash channel is disabled.
 				log.Error("slash validator failed", "block hash", header.Hash(), "address", spoiledVal)
@@ -1556,13 +1635,13 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		}
 	}
 
-	err := p.distributeIncoming(p.val, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer)
+	err := p.distributeIncoming(p.val, workingState, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	if p.chainConfig.IsPlato(header.Number) {
-		if err := p.distributeFinalityReward(chain, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer); err != nil {
+		if err := p.distributeFinalityReward(chain, workingState, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -1571,7 +1650,7 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	if p.chainConfig.IsFeynman(header.Number, header.Time) && isBreatheBlock(parent.Time, header.Time) {
 		// we should avoid update validators in the Feynman upgrade block
 		if !p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
-			if err := p.updateValidatorSetV2(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer); err != nil {
+			if err := p.updateValidatorSetV2(workingState, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer); err != nil {
 				return nil, nil, err
 			}
 		}
@@ -1582,12 +1661,17 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		return nil, nil, errors.New("gas consumption of system txs exceed the gas limit")
 	}
 	header.UncleHash = types.EmptyUncleHash
+
+	if onFinalize != nil {
+		onFinalize()
+	}
+
 	var blk *types.Block
 	var rootHash common.Hash
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
-		rootHash = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+		rootHash = workingState.IntermediateRoot(chain.Config().IsEIP158(header.Number))
 		wg.Done()
 	}()
 	go func() {
@@ -1787,71 +1871,6 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	return nil
 }
 
-func (p *Parlia) SignBAL(blockAccessList *types.BlockAccessListEncode) error {
-	p.lock.RLock()
-	val, signFn := p.val, p.signFn
-	p.lock.RUnlock()
-
-	data, err := rlp.EncodeToBytes([]interface{}{blockAccessList.Version, blockAccessList.Number, blockAccessList.Hash, blockAccessList.Accounts})
-	if err != nil {
-		log.Error("Encode to bytes failed when sealing", "err", err)
-		return errors.New("encode to bytes failed")
-	}
-
-	if len(data) > int(params.MaxBALSize) {
-		log.Error("data is too large", "dataSize", len(data), "maxSize", params.MaxBALSize)
-		return errors.New("data is too large")
-	}
-
-	sig, err := signFn(accounts.Account{Address: val}, accounts.MimetypeParlia, data)
-	if err != nil {
-		log.Error("Sign for the block header failed when sealing", "err", err)
-		return errors.New("sign for the block header failed")
-	}
-
-	copy(blockAccessList.SignData, sig)
-	return nil
-}
-
-func (p *Parlia) VerifyBAL(block *types.Block, bal *types.BlockAccessListEncode) error {
-	if bal.Version != 0 {
-		log.Error("invalid BAL version", "version", bal.Version)
-		return errors.New("invalid BAL version")
-	}
-
-	if len(bal.SignData) != 65 {
-		log.Error("invalid BAL signature", "signatureSize", len(bal.SignData))
-		return errors.New("invalid BAL signature")
-	}
-
-	// Recover the public key and the Ethereum address
-	data, err := rlp.EncodeToBytes([]interface{}{bal.Version, block.Number(), block.Hash(), bal.Accounts})
-	if err != nil {
-		log.Error("encode to bytes failed", "err", err)
-		return errors.New("encode to bytes failed")
-	}
-
-	if len(data) > int(params.MaxBALSize) {
-		log.Error("data is too large", "dataSize", len(data), "maxSize", params.MaxBALSize)
-		return errors.New("data is too large")
-	}
-
-	pubkey, err := crypto.Ecrecover(crypto.Keccak256(data), bal.SignData)
-	if err != nil {
-		return err
-	}
-	var pubkeyAddr common.Address
-	copy(pubkeyAddr[:], crypto.Keccak256(pubkey[1:])[12:])
-
-	signer := block.Header().Coinbase
-	if signer != pubkeyAddr {
-		log.Error("BAL signer mismatch", "signer", signer, "pubkeyAddr", pubkeyAddr, "bal.Number", bal.Number, "bal.Hash", bal.Hash)
-		return errors.New("signer mismatch")
-	}
-
-	return nil
-}
-
 func (p *Parlia) shouldWaitForCurrentBlockProcess(chain consensus.ChainHeaderReader, header *types.Header, snap *Snapshot) bool {
 	if header.Difficulty.Cmp(diffInTurn) == 0 {
 		return false
@@ -2039,7 +2058,7 @@ func (p *Parlia) distributeIncoming(val common.Address, state vm.StateDB, header
 		rewards := new(uint256.Int)
 		rewards = rewards.Rsh(balance, systemRewardPercent)
 		if rewards.Cmp(common.U2560) > 0 {
-			state.SetBalance(consensus.SystemAddress, balance.Sub(balance, rewards), tracing.BalanceChangeUnspecified)
+			state.SubBalance(consensus.SystemAddress, rewards, tracing.BalanceChangeUnspecified)
 			state.AddBalance(coinbase, rewards, tracing.BalanceChangeUnspecified)
 			err := p.distributeToSystem(rewards.ToBig(), state, header, chain, txs, receipts, receivedTxs, usedGas, mining, tracer)
 			if err != nil {
@@ -2054,7 +2073,7 @@ func (p *Parlia) distributeIncoming(val common.Address, state vm.StateDB, header
 		return nil
 	}
 
-	state.SetBalance(consensus.SystemAddress, common.U2560, tracing.BalanceDecreaseBSCDistributeReward)
+	state.SubBalance(consensus.SystemAddress, balance, tracing.BalanceDecreaseBSCDistributeReward)
 	state.AddBalance(coinbase, balance, tracing.BalanceIncreaseBSCDistributeReward)
 	log.Trace("distribute to validator contract", "block hash", header.Hash(), "amount", balance)
 	return p.distributeToValidator(balance.ToBig(), val, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, tracer)
@@ -2191,6 +2210,11 @@ func (p *Parlia) applyTransaction(
 		expectedTx = actualTx
 		// move to next
 		*receivedTxs = (*receivedTxs)[1:]
+	}
+	if indexer, ok := state.(interface {
+		SetAccessListIndex(int)
+	}); ok {
+		indexer.SetAccessListIndex(len(*txs) + 1)
 	}
 	state.SetTxContext(expectedTx.Hash(), len(*txs))
 
@@ -2446,9 +2470,6 @@ func (p *Parlia) detectNewVersionWithFork(chain consensus.ChainHeaderReader, hea
 	forkHashHex := hex.EncodeToString(nextForkHash[:])
 	if !snap.isMajorityFork(forkHashHex) {
 		logFn := log.Debug
-		if state.NoTries() {
-			logFn = log.Warn
-		}
 		logFn("possible fork detected: client is not in majority", "nextForkHash", forkHashHex)
 	}
 }
@@ -2493,8 +2514,6 @@ func applyMessage(
 	if chainConfig.IsCancun(header.Number, header.Time) {
 		rules := evm.ChainConfig().Rules(evm.Context.BlockNumber, evm.Context.Random != nil, evm.Context.Time)
 		state.Prepare(rules, msg.From, evm.Context.Coinbase, msg.To, vm.ActivePrecompiles(rules), msg.AccessList)
-	} else {
-		state.ClearAccessList()
 	}
 	// Increment the nonce for the next transaction
 	state.SetNonce(msg.From, state.GetNonce(msg.From)+1, tracing.NonceChangeEoACall)
