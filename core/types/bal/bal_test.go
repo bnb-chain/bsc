@@ -106,7 +106,7 @@ func TestBALEncoding(t *testing.T) {
 		t.Fatalf("encoded block hash doesn't match decoded")
 	}
 	if !equalBALs(bal.ToEncodingObj(), &dec) {
-		t.Fatal("decoded BAL doesn't match")
+		t.Fatalf("decoded BAL mismatch:\nwant: %#v\nhave: %#v", bal.ToEncodingObj(), dec)
 	}
 }
 

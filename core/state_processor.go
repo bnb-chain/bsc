@@ -381,6 +381,9 @@ func processRequestsSystemCall(requests *[][]byte, evm *vm.EVM, requestType byte
 	if err != nil {
 		return fmt.Errorf("system call failed to execute: %v", err)
 	}
+	if len(ret) == 0 {
+		return nil // skip empty output
+	}
 	evm.StateDB.Finalise(true)
 	// Append prefixed requestsData to the requests list.
 	requestsData := make([]byte, len(ret)+1)
