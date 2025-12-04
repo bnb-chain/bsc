@@ -35,6 +35,9 @@ type dummyStatedb struct {
 
 func (*dummyStatedb) GetRefund() uint64                                    { return 1337 }
 func (*dummyStatedb) GetState(_ common.Address, _ common.Hash) common.Hash { return common.Hash{} }
+func (*dummyStatedb) GetStateAndCommittedState(common.Address, common.Hash) (common.Hash, common.Hash) {
+	return common.Hash{}, common.Hash{}
+}
 func (*dummyStatedb) SetState(_ common.Address, _ common.Hash, _ common.Hash) common.Hash {
 	return common.Hash{}
 }

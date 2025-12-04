@@ -30,7 +30,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		BscDiscoveryURLs          []string
 		NoPruning                 bool
 		NoPrefetch                bool
-		EnableBAL                 bool
 		DirectBroadcast           bool
 		DisableSnapProtocol       bool
 		RangeLimit                bool
@@ -77,6 +76,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		OverrideOsaka             *uint64 `toml:",omitempty"`
 		OverrideMendel            *uint64 `toml:",omitempty"`
 		OverrideVerkle            *uint64 `toml:",omitempty"`
+		ExperimentalBAL           bool    `toml:",omitempty"`
 		BlobExtraReserve          uint64
 		EnableOpcodeOptimizing    bool
 		EnableIncrSnapshots       bool
@@ -100,7 +100,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.BscDiscoveryURLs = c.BscDiscoveryURLs
 	enc.NoPruning = c.NoPruning
 	enc.NoPrefetch = c.NoPrefetch
-	enc.EnableBAL = c.EnableBAL
 	enc.DirectBroadcast = c.DirectBroadcast
 	enc.DisableSnapProtocol = c.DisableSnapProtocol
 	enc.RangeLimit = c.RangeLimit
@@ -147,6 +146,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.OverrideOsaka = c.OverrideOsaka
 	enc.OverrideMendel = c.OverrideMendel
 	enc.OverrideVerkle = c.OverrideVerkle
+	enc.ExperimentalBAL = c.ExperimentalBAL
 	enc.BlobExtraReserve = c.BlobExtraReserve
 	enc.EnableOpcodeOptimizing = c.EnableOpcodeOptimizing
 	enc.EnableIncrSnapshots = c.EnableIncrSnapshots
@@ -174,7 +174,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		BscDiscoveryURLs          []string
 		NoPruning                 *bool
 		NoPrefetch                *bool
-		EnableBAL                 *bool
 		DirectBroadcast           *bool
 		DisableSnapProtocol       *bool
 		RangeLimit                *bool
@@ -221,6 +220,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		OverrideOsaka             *uint64 `toml:",omitempty"`
 		OverrideMendel            *uint64 `toml:",omitempty"`
 		OverrideVerkle            *uint64 `toml:",omitempty"`
+		ExperimentalBAL           *bool   `toml:",omitempty"`
 		BlobExtraReserve          *uint64
 		EnableOpcodeOptimizing    *bool
 		EnableIncrSnapshots       *bool
@@ -270,9 +270,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.NoPrefetch != nil {
 		c.NoPrefetch = *dec.NoPrefetch
-	}
-	if dec.EnableBAL != nil {
-		c.EnableBAL = *dec.EnableBAL
 	}
 	if dec.DirectBroadcast != nil {
 		c.DirectBroadcast = *dec.DirectBroadcast
@@ -411,6 +408,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.OverrideVerkle != nil {
 		c.OverrideVerkle = dec.OverrideVerkle
+	}
+	if dec.ExperimentalBAL != nil {
+		c.ExperimentalBAL = *dec.ExperimentalBAL
 	}
 	if dec.BlobExtraReserve != nil {
 		c.BlobExtraReserve = *dec.BlobExtraReserve

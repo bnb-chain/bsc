@@ -26,7 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
-	"github.com/ethereum/go-ethereum/core/state"
+	state2 "github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -405,10 +405,9 @@ func (beacon *Beacon) Finalize(chain consensus.ChainHeaderReader, header *types.
 
 // FinalizeAndAssemble implements consensus.Engine, setting the final state and
 // assembling the block.
-func (beacon *Beacon) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
-	// FinalizeAndAssemble is different with Prepare, it can be used in both block generation.
+func (beacon *Beacon) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state2.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks, onFinalization func()) (*types.Block, []*types.Receipt, error) {
 	if !beacon.IsPoSHeader(header) {
-		return beacon.ethone.FinalizeAndAssemble(chain, header, state, body, receipts, tracer)
+		return beacon.ethone.FinalizeAndAssemble(chain, header, state, body, receipts, tracer, onFinalization)
 	}
 	shanghai := chain.Config().IsShanghai(header.Number, header.Time)
 	if shanghai {
@@ -426,6 +425,10 @@ func (beacon *Beacon) FinalizeAndAssemble(chain consensus.ChainHeaderReader, hea
 
 	// Assign the final state root to header.
 	header.Root = state.IntermediateRoot(true)
+
+	if onFinalization != nil {
+		onFinalization()
+	}
 
 	// Assemble the final block.
 	block := types.NewBlock(header, body, receipts, trie.NewStackTrie(nil))
@@ -491,15 +494,6 @@ func (beacon *Beacon) SealHash(header *types.Header) common.Hash {
 	return beacon.ethone.SealHash(header)
 }
 
-func (beacon *Beacon) SignBAL(blockAccessList *types.BlockAccessListEncode) error {
-	return nil
-}
-
-// VerifyBAL verifies the BAL of the block
-func (beacon *Beacon) VerifyBAL(block *types.Block, bal *types.BlockAccessListEncode) error {
-	return nil
-}
-
 // CalcDifficulty is the difficulty adjustment algorithm. It returns
 // the difficulty that a new block should have when created at time
 // given the parent block's time and difficulty.
@@ -550,4 +544,12 @@ func IsTTDReached(chain consensus.ChainHeaderReader, parentHash common.Hash, par
 		return false, consensus.ErrUnknownAncestor
 	}
 	return td.Cmp(chain.Config().TerminalTotalDifficulty) >= 0, nil
+}
+
+func (beacon *Beacon) SignBAL(blockAccessList *types.BlockAccessListEncode) error {
+	return nil
+}
+
+func (beacon *Beacon) VerifyBAL(block *types.Block, blockAccessList *types.BlockAccessListEncode) error {
+	return nil
 }

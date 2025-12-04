@@ -161,10 +161,11 @@ func (ec *Client) BlobSidecarByTxHash(ctx context.Context, hash common.Hash) (*t
 }
 
 type rpcBlock struct {
-	Hash         *common.Hash        `json:"hash"`
-	Transactions []rpcTransaction    `json:"transactions"`
-	UncleHashes  []common.Hash       `json:"uncles"`
-	Withdrawals  []*types.Withdrawal `json:"withdrawals,omitempty"`
+	Hash         *common.Hash                 `json:"hash"`
+	Transactions []rpcTransaction             `json:"transactions"`
+	UncleHashes  []common.Hash                `json:"uncles"`
+	Withdrawals  []*types.Withdrawal          `json:"withdrawals,omitempty"`
+	AccessList   *types.BlockAccessListEncode `json:"accessList,omitempty"`
 }
 
 func (ec *Client) getBlock(ctx context.Context, method string, args ...interface{}) (*types.Block, error) {

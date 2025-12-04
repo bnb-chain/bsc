@@ -112,7 +112,6 @@ type Config struct {
 	NoPruning  bool // Whether to disable pruning and flush everything to disk
 	NoPrefetch bool // Whether to disable prefetching and only load state on demand
 
-	EnableBAL           bool
 	DirectBroadcast     bool
 	DisableSnapProtocol bool // Whether disable snap protocol
 	RangeLimit          bool
@@ -215,6 +214,11 @@ type Config struct {
 
 	// OverrideVerkle (TODO: remove after the fork)
 	OverrideVerkle *uint64 `toml:",omitempty"`
+
+	// ExperimentalBAL enables EIP-7928 block access list verification when
+	// executing post-cancun blocks that contain access lists, and access list
+	// construction on blocks that do not.
+	ExperimentalBAL bool `toml:",omitempty"`
 
 	// blob setting
 	BlobExtraReserve uint64

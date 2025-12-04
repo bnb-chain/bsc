@@ -143,7 +143,7 @@ var (
 
 	BlockBlobSidecarsPrefix = []byte("blobs")
 
-	BlockBALPrefix = []byte("bal") // blockBALPrefix + blockNumber (uint64 big endian) + blockHash -> block access list
+	BlockAccessListPrefix = []byte("bal")
 
 	// new log index
 	filterMapsPrefix         = "fm-"
@@ -205,6 +205,11 @@ func blockBodyKey(number uint64, hash common.Hash) []byte {
 	return append(append(blockBodyPrefix, encodeBlockNumber(number)...), hash.Bytes()...)
 }
 
+// blockBALKey = blockBALPrefix + blockNumber (uint64 big endian) + blockHash
+func blockAccessListKey(number uint64, hash common.Hash) []byte {
+	return append(append(BlockAccessListPrefix, encodeBlockNumber(number)...), hash.Bytes()...)
+}
+
 // blockReceiptsKey = blockReceiptsPrefix + num (uint64 big endian) + hash
 func blockReceiptsKey(number uint64, hash common.Hash) []byte {
 	return append(append(blockReceiptsPrefix, encodeBlockNumber(number)...), hash.Bytes()...)
@@ -213,11 +218,6 @@ func blockReceiptsKey(number uint64, hash common.Hash) []byte {
 // blockBlobSidecarsKey = BlockBlobSidecarsPrefix + blockNumber (uint64 big endian) + blockHash
 func blockBlobSidecarsKey(number uint64, hash common.Hash) []byte {
 	return append(append(BlockBlobSidecarsPrefix, encodeBlockNumber(number)...), hash.Bytes()...)
-}
-
-// blockBALKey = blockBALPrefix + blockNumber (uint64 big endian) + blockHash
-func blockBALKey(number uint64, hash common.Hash) []byte {
-	return append(append(BlockBALPrefix, encodeBlockNumber(number)...), hash.Bytes()...)
 }
 
 // txLookupKey = txLookupPrefix + hash

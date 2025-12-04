@@ -3020,7 +3020,7 @@ func testDeleteRecreateSlotsAcrossManyBlocks(t *testing.T, scheme string) {
 			e.exist = false
 			e.values = nil
 		}
-		//t.Logf("block %d; adding destruct\n", e.blocknum)
+		// t.Logf("block %d; adding destruct\n", e.blocknum)
 		return tx
 	}
 	var newResurrect = func(e *expectation, b *BlockGen) *types.Transaction {
@@ -3031,7 +3031,7 @@ func testDeleteRecreateSlotsAcrossManyBlocks(t *testing.T, scheme string) {
 			e.exist = true
 			e.values = map[int]int{3: e.blocknum + 1, 4: 4}
 		}
-		//t.Logf("block %d; adding resurrect\n", e.blocknum)
+		// t.Logf("block %d; adding resurrect\n", e.blocknum)
 		return tx
 	}
 
@@ -3061,8 +3061,8 @@ func testDeleteRecreateSlotsAcrossManyBlocks(t *testing.T, scheme string) {
 	// Import the canonical chain
 	options := DefaultConfig().WithStateScheme(scheme)
 	options.VmConfig = vm.Config{
-		//Debug:  true,
-		//Tracer: vm.NewJSONLogger(nil, os.Stdout),
+		// Debug:  true,
+		// Tracer: vm.NewJSONLogger(nil, os.Stdout),
 	}
 	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, engine, options)
 	if err != nil {
@@ -3201,8 +3201,8 @@ func testInitThenFailCreateContract(t *testing.T, scheme string) {
 	// Import the canonical chain
 	options := DefaultConfig().WithStateScheme(scheme)
 	options.VmConfig = vm.Config{
-		//Debug:  true,
-		//Tracer: vm.NewJSONLogger(nil, os.Stdout),
+		// Debug:  true,
+		// Tracer: vm.NewJSONLogger(nil, os.Stdout),
 	}
 	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, engine, options)
 	if err != nil {
@@ -4130,7 +4130,7 @@ func (c *mockParlia) Finalize(chain consensus.ChainHeaderReader, header *types.H
 	return
 }
 
-func (c *mockParlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
+func (c *mockParlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks, finalize func()) (*types.Block, []*types.Receipt, error) {
 	// Finalize block
 	c.Finalize(chain, header, state, &body.Transactions, body.Uncles, body.Withdrawals, nil, nil, nil, tracer)
 

@@ -18,6 +18,7 @@ package trie
 
 import (
 	"maps"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -45,6 +46,7 @@ type tracer struct {
 	inserts    map[string]struct{}
 	deletes    map[string]struct{}
 	accessList map[string][]byte
+	rwlock     sync.RWMutex
 }
 
 // newTracer initializes the tracer for capturing trie changes.
@@ -53,6 +55,7 @@ func newTracer() *tracer {
 		inserts:    make(map[string]struct{}),
 		deletes:    make(map[string]struct{}),
 		accessList: make(map[string][]byte),
+		rwlock:     sync.RWMutex{},
 	}
 }
 
@@ -60,6 +63,8 @@ func newTracer() *tracer {
 // blob internally. Don't change the value outside of function since
 // it's not deep-copied.
 func (t *tracer) onRead(path []byte, val []byte) {
+	t.rwlock.Lock()
+	defer t.rwlock.Unlock()
 	t.accessList[string(path)] = val
 }
 
@@ -67,6 +72,8 @@ func (t *tracer) onRead(path []byte, val []byte) {
 // in the deletion set (resurrected node), then just wipe it from
 // the deletion set as it's "untouched".
 func (t *tracer) onInsert(path []byte) {
+	t.rwlock.Lock()
+	defer t.rwlock.Unlock()
 	if _, present := t.deletes[string(path)]; present {
 		delete(t.deletes, string(path))
 		return
@@ -78,6 +85,8 @@ func (t *tracer) onInsert(path []byte) {
 // in the addition set, then just wipe it from the addition set
 // as it's untouched.
 func (t *tracer) onDelete(path []byte) {
+	t.rwlock.Lock()
+	defer t.rwlock.Unlock()
 	if _, present := t.inserts[string(path)]; present {
 		delete(t.inserts, string(path))
 		return
@@ -87,6 +96,8 @@ func (t *tracer) onDelete(path []byte) {
 
 // reset clears the content tracked by tracer.
 func (t *tracer) reset() {
+	t.rwlock.Lock()
+	defer t.rwlock.Unlock()
 	t.inserts = make(map[string]struct{})
 	t.deletes = make(map[string]struct{})
 	t.accessList = make(map[string][]byte)
@@ -94,6 +105,8 @@ func (t *tracer) reset() {
 
 // copy returns a deep copied tracer instance.
 func (t *tracer) copy() *tracer {
+	t.rwlock.RLock()
+	defer t.rwlock.RUnlock()
 	accessList := make(map[string][]byte, len(t.accessList))
 	for path, blob := range t.accessList {
 		accessList[path] = common.CopyBytes(blob)
@@ -107,6 +120,8 @@ func (t *tracer) copy() *tracer {
 
 // deletedNodes returns a list of node paths which are deleted from the trie.
 func (t *tracer) deletedNodes() []string {
+	t.rwlock.Lock()
+	defer t.rwlock.Unlock()
 	var paths []string
 	for path := range t.deletes {
 		// It's possible a few deleted nodes were embedded

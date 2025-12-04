@@ -830,7 +830,7 @@ func (diff *StateOverride) Apply(statedb *state.StateDB, precompiles vm.Precompi
 		}
 		// Override account(contract) code.
 		if account.Code != nil {
-			statedb.SetCode(addr, *account.Code)
+			statedb.SetCode(addr, *account.Code, tracing.CodeChangeUnspecified)
 		}
 		// Override account balance.
 		if account.Balance != nil {
@@ -1270,6 +1270,9 @@ func RPCMarshalBlock(block *types.Block, inclTx bool, fullTx bool, config *param
 	fields["uncles"] = uncleHashes
 	if block.Withdrawals() != nil {
 		fields["withdrawals"] = block.Withdrawals()
+	}
+	if block.AccessList() != nil {
+		fields["accessList"] = block.AccessList()
 	}
 	return fields
 }

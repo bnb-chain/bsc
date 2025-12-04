@@ -82,23 +82,23 @@ func (*GetBlocksByRangePacket) Kind() byte   { return GetBlocksByRangeMsg }
 
 // BlockData contains types.extblock + sidecars
 type BlockData struct {
-	Header      *types.Header
-	Txs         []*types.Transaction
-	Uncles      []*types.Header
-	Withdrawals []*types.Withdrawal          `rlp:"optional"`
-	Sidecars    types.BlobSidecars           `rlp:"optional"`
-	BAL         *types.BlockAccessListEncode `rlp:"optional"`
+	Header          *types.Header
+	Txs             []*types.Transaction
+	Uncles          []*types.Header
+	Withdrawals     []*types.Withdrawal          `rlp:"optional"`
+	Sidecars        types.BlobSidecars           `rlp:"optional"`
+	BlockAccessList *types.BlockAccessListEncode `rlp:"optional"`
 }
 
 // NewBlockData creates a new BlockData object from a block
 func NewBlockData(block *types.Block) *BlockData {
 	return &BlockData{
-		Header:      block.Header(),
-		Txs:         block.Transactions(),
-		Uncles:      block.Uncles(),
-		Withdrawals: block.Withdrawals(),
-		Sidecars:    block.Sidecars(),
-		BAL:         block.BAL(),
+		Header:          block.Header(),
+		Txs:             block.Transactions(),
+		Uncles:          block.Uncles(),
+		Withdrawals:     block.Withdrawals(),
+		Sidecars:        block.Sidecars(),
+		BlockAccessList: block.AccessList(),
 	}
 }
 

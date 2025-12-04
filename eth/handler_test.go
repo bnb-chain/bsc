@@ -273,12 +273,16 @@ func (c *mockParlia) Finalize(chain consensus.ChainHeaderReader, header *types.H
 	return
 }
 
-func (c *mockParlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
+func (c *mockParlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks, onFinalize func()) (*types.Block, []*types.Receipt, error) {
 	// Finalize block
 	c.Finalize(chain, header, state, &body.Transactions, body.Uncles, body.Withdrawals, nil, nil, nil, tracer)
 
 	// Assign the final state root to header.
 	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+
+	if onFinalize != nil {
+		onFinalize()
+	}
 
 	// Header seems complete, assemble into a block and return
 	return types.NewBlock(header, body, receipts, trie.NewStackTrie(nil)), receipts, nil

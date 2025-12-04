@@ -183,11 +183,6 @@ var (
 		Usage:    "Chapel network: pre-configured Proof-of-Stake-Authority BSC test network",
 		Category: flags.EthCategory,
 	}
-	EnableBALFlag = &cli.BoolFlag{
-		Name:     "enablebal",
-		Usage:    "Enable block access list feature, validator will generate BAL for each block",
-		Category: flags.EthCategory,
-	}
 	// Dev mode
 	DeveloperFlag = &cli.BoolFlag{
 		Name:     "dev",
@@ -1335,6 +1330,14 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Value:    "",
 		Category: flags.StateCategory,
 	}
+
+	// Block Access List flags
+
+	ExperimentalBALFlag = &cli.BoolFlag{
+		Name:     "experimental.bal",
+		Usage:    "Enable block-access-list building when importing post-Cancun blocks, and validation that access lists contained in post-Cancun blocks correctly correspond to the state changes in those blocks. This is used for development purposes only.  Do not enable it otherwise.",
+		Category: flags.MiscCategory,
+	}
 )
 
 var (
@@ -1809,9 +1812,6 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	if ctx.IsSet(DisableSnapProtocolFlag.Name) {
 		cfg.DisableSnapProtocol = ctx.Bool(DisableSnapProtocolFlag.Name)
 	}
-	if ctx.IsSet(EnableBALFlag.Name) {
-		cfg.EnableBAL = ctx.Bool(EnableBALFlag.Name)
-	}
 	if ctx.IsSet(RangeLimitFlag.Name) {
 		cfg.RangeLimit = ctx.Bool(RangeLimitFlag.Name)
 	}
@@ -2111,9 +2111,6 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(CacheNoPrefetchFlag.Name) {
 		cfg.NoPrefetch = ctx.Bool(CacheNoPrefetchFlag.Name)
 	}
-	if ctx.IsSet(EnableBALFlag.Name) {
-		cfg.EnableBAL = ctx.Bool(EnableBALFlag.Name)
-	}
 	// Read the value from the flag no matter if it's set or not.
 	cfg.Preimages = ctx.Bool(CachePreimagesFlag.Name)
 	if cfg.NoPruning && !cfg.Preimages {
@@ -2386,6 +2383,8 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 			cfg.VMTraceJsonConfig = ctx.String(VMTraceJsonConfigFlag.Name)
 		}
 	}
+
+	cfg.ExperimentalBAL = ctx.Bool(ExperimentalBALFlag.Name)
 
 	// Download and merge incremental snapshot config
 	if ctx.IsSet(UseRemoteIncrSnapshotFlag.Name) {
@@ -2808,7 +2807,6 @@ func MakeChain(ctx *cli.Context, stack *node.Node, readonly bool) (*core.BlockCh
 	options := &core.BlockChainConfig{
 		TrieCleanLimit: ethconfig.Defaults.TrieCleanCache,
 		NoPrefetch:     ctx.Bool(CacheNoPrefetchFlag.Name),
-		EnableBAL:      ctx.Bool(EnableBALFlag.Name),
 		TrieDirtyLimit: ethconfig.Defaults.TrieDirtyCache,
 		ArchiveMode:    ctx.String(GCModeFlag.Name) == "archive",
 		TrieTimeLimit:  ethconfig.Defaults.TrieTimeout,
@@ -2863,6 +2861,7 @@ func MakeChain(ctx *cli.Context, stack *node.Node, readonly bool) (*core.BlockCh
 	}
 	options.VmConfig = vmcfg
 
+	options.EnableBAL = ctx.Bool(ExperimentalBALFlag.Name)
 	chain, err := core.NewBlockChain(chainDb, gspec, engine, options)
 	if err != nil {
 		Fatalf("Can't create BlockChain: %v", err)
