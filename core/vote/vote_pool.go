@@ -345,11 +345,17 @@ func (pool *VotePool) GetVotes() []*types.VoteEnvelope {
 	return votesRes
 }
 
-func (pool *VotePool) FetchVotesByBlockHash(blockHash common.Hash) []*types.VoteEnvelope {
+func (pool *VotePool) FetchVotesByBlockHash(targetBlockHash common.Hash, sourceBlockNum uint64) []*types.VoteEnvelope {
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
-	if _, ok := pool.curVotes[blockHash]; ok {
-		return pool.curVotes[blockHash].voteMessages
+	if voteBox, ok := pool.curVotes[targetBlockHash]; ok {
+		var res []*types.VoteEnvelope
+		for _, vote := range voteBox.voteMessages {
+			if vote.Data.SourceNumber == sourceBlockNum {
+				res = append(res, vote)
+			}
+		}
+		return res
 	}
 	return nil
 }

@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/willf/bitset"
 )
 
 // Snapshot is the state of the validatorSet at a given point.
@@ -218,6 +219,10 @@ func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.C
 			return
 		}
 	}
+
+	// Update vote count metric after validation passed
+	voteCount := bitset.From([]uint64{uint64(attestation.VoteAddressSet)}).Count()
+	attestationVoteCountGauge.Update(int64(voteCount))
 
 	// Update attestation
 	// Two scenarios for s.Attestation being nil:

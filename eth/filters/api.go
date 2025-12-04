@@ -452,7 +452,19 @@ func (api *FilterAPI) TransactionReceipts(ctx context.Context, filter *Transacti
 	gopool.Submit(func() {
 		defer receiptsSub.Unsubscribe()
 
-		signer := types.LatestSigner(api.sys.backend.ChainConfig())
+		var (
+			signer      = types.LatestSigner(api.sys.backend.ChainConfig())
+			pending     map[common.Hash]struct{} // Track pending receipts, nil means never auto-unsubscribe
+			gracePeriod <-chan time.Time
+		)
+
+		// Initialize pending map for specific tx hashes
+		if len(txHashes) > 0 {
+			pending = make(map[common.Hash]struct{}, len(txHashes))
+			for _, hash := range txHashes {
+				pending[hash] = struct{}{}
+			}
+		}
 
 		for {
 			select {
@@ -473,7 +485,21 @@ func (api *FilterAPI) TransactionReceipts(ctx context.Context, filter *Transacti
 
 					// Send a batch of tx receipts in one notification
 					notifier.Notify(rpcSub.ID, marshaledReceipts)
+
+					// Auto-unsubscribe when all receipts received (with grace period for reorgs)
+					if pending != nil {
+						for _, receiptWithTx := range receiptsWithTxs {
+							if receiptWithTx.Transaction != nil {
+								delete(pending, receiptWithTx.Transaction.Hash())
+							}
+						}
+						if len(pending) == 0 && gracePeriod == nil {
+							gracePeriod = time.After(12 * time.Second) // Grace period for reorg handling
+						}
+					}
 				}
+			case <-gracePeriod:
+				return
 			case <-rpcSub.Err():
 				return
 			}

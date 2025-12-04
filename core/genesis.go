@@ -271,6 +271,8 @@ type ChainOverrides struct {
 	OverrideLorentz        *uint64
 	OverrideMaxwell        *uint64
 	OverrideFermi          *uint64
+	OverrideOsaka          *uint64
+	OverrideMendel         *uint64
 	OverrideVerkle         *uint64
 }
 
@@ -299,6 +301,12 @@ func (o *ChainOverrides) apply(cfg *params.ChainConfig) error {
 	}
 	if o.OverrideFermi != nil {
 		cfg.FermiTime = o.OverrideFermi
+	}
+	if o.OverrideOsaka != nil {
+		cfg.OsakaTime = o.OverrideOsaka
+	}
+	if o.OverrideMendel != nil {
+		cfg.MendelTime = o.OverrideMendel
 	}
 	if o.OverrideVerkle != nil {
 		cfg.VerkleTime = o.OverrideVerkle

@@ -15,7 +15,6 @@
 // along with go-ethereum. If not, see <http://www.gnu.org/licenses/>.
 
 //go:build !windows && !openbsd && !wasip1
-// +build !windows,!openbsd,!wasip1
 
 package utils
 

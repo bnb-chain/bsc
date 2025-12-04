@@ -15,7 +15,6 @@
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
 //go:build nacl || js || !cgo
-// +build nacl js !cgo
 
 package rlp
 

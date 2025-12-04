@@ -266,9 +266,9 @@ const builderMap = new Map([
 
     // Chapel
     ["0x627fE6AFA2E84e461CB7AE7C2c46e8adf9a954a2", "txboost"],
-    ["0x5EC60f73f938e36400ec3CC3Ff4d7a7703F7c005", "nodereal ap"],
+    ["0xa5559F1761e6dCa79Ac0c7A301CCDcC71D378fee", "nodereal ap"],
     ["0x6C98EB21139F6E12db5b78a4AeD4d8eBA147FB7b", "nodereal eu"],
-    ["0x5b67a234592331e85fC57Bb148769c1d2fF62520", "nodereal us"],
+    ["0x4E8cbf5912717B212db5b450ae7737455A5cc0aF", "nodereal us"],
     ["0x4827b423D03a349b7519Dda537e9A28d31ecBB48", "club48 ap"],
     ["0x48B2665E5E9a343409199D70F7495c8aB660BB48", "club48 eu"],
     ["0x48B4bBEbF0655557A461e91B8905b85864B8BB48", "club48 us"],
@@ -315,10 +315,53 @@ async function getBinaryVersion() {
     let turnLength = program.turnLength;
     for (let i = 0; i < program.num; i++) {
         let blockData = await provider.getBlock(blockNum - i * turnLength);
-        // 1.get Geth client version
-        let major = ethers.toNumber(ethers.dataSlice(blockData.extraData, 2, 3));
-        let minor = ethers.toNumber(ethers.dataSlice(blockData.extraData, 3, 4));
-        let patch = ethers.toNumber(ethers.dataSlice(blockData.extraData, 4, 5));
+
+        let major = 0, minor = 0, patch = 0;
+        let commitID = "";
+
+        try {
+            major = ethers.toNumber(ethers.dataSlice(blockData.extraData, 2, 3));
+            minor = ethers.toNumber(ethers.dataSlice(blockData.extraData, 3, 4));
+            patch = ethers.toNumber(ethers.dataSlice(blockData.extraData, 4, 5));
+            
+            // Check version: >= 1.6.4 uses new format with commitID
+            const isNewFormat = major > 1 || (major === 1 && minor > 6) || (major === 1 && minor === 6 && patch >= 4);
+            
+            if (isNewFormat) {
+                const extraVanity = 28;
+                let vanityBytes = ethers.getBytes(ethers.dataSlice(blockData.extraData, 0, extraVanity));
+
+                let rlpLength = vanityBytes.length;
+                if (vanityBytes[0] >= 0xC0 && vanityBytes[0] <= 0xF7) {
+                    rlpLength = (vanityBytes[0] - 0xC0) + 1; 
+                }
+                
+                const rlpData = ethers.dataSlice(blockData.extraData, 0, rlpLength);
+                const decoded = ethers.decodeRlp(rlpData);
+                
+                if (Array.isArray(decoded) && decoded.length >= 2) {
+                     const secondElemHex = decoded[1];
+                     let secondElemStr = "";
+                     try {
+                         secondElemStr = ethers.toUtf8String(secondElemHex);
+                     } catch (e) {
+                         secondElemStr = secondElemHex;
+                     }
+                     
+                     if (secondElemStr.length > 0 && secondElemStr !== "geth") {
+                         commitID = secondElemStr.startsWith("0x") ? secondElemStr.substring(2) : secondElemStr;
+                     }
+                }
+            }
+        } catch (e) {
+            console.log("Parsing failed:", e.message);
+        }
+
+        // Format version string
+        let versionStr = major + "." + minor + "." + patch;
+        if (commitID && commitID.length > 0) {
+            versionStr = versionStr + "-" + commitID;
+        }
 
         // 2.get minimum txGasPrice based on the last non-zero-gasprice transaction
         let lastGasPrice = 0;
@@ -332,7 +375,7 @@ async function getBinaryVersion() {
             break;
         }
         var moniker = await getValidatorMoniker(blockData.miner, blockNum);
-        console.log(blockNum - i * turnLength, blockData.miner, "version =", major + "." + minor + "." + patch, " MinGasPrice = " + lastGasPrice, moniker);
+        console.log(blockNum - i * turnLength, blockData.miner, "version =", versionStr, " MinGasPrice = " + lastGasPrice, moniker);
     }
 }
 

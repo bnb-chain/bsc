@@ -1246,16 +1246,60 @@ func overrideConfig(original *params.ChainConfig, override *params.ChainConfig) 
 		copy.ShanghaiTime = timestamp
 		canon = false
 	}
+	if timestamp := override.KeplerTime; timestamp != nil {
+		copy.KeplerTime = timestamp
+		canon = false
+	}
+	if timestamp := override.FeynmanTime; timestamp != nil {
+		copy.FeynmanTime = timestamp
+		canon = false
+	}
+	if timestamp := override.FeynmanFixTime; timestamp != nil {
+		copy.FeynmanFixTime = timestamp
+		canon = false
+	}
 	if timestamp := override.CancunTime; timestamp != nil {
 		copy.CancunTime = timestamp
+		canon = false
+	}
+	if timestamp := override.HaberTime; timestamp != nil {
+		copy.HaberTime = timestamp
+		canon = false
+	}
+	if timestamp := override.HaberFixTime; timestamp != nil {
+		copy.HaberFixTime = timestamp
+		canon = false
+	}
+	if timestamp := override.BohrTime; timestamp != nil {
+		copy.BohrTime = timestamp
+		canon = false
+	}
+	if timestamp := override.PascalTime; timestamp != nil {
+		copy.PascalTime = timestamp
 		canon = false
 	}
 	if timestamp := override.PragueTime; timestamp != nil {
 		copy.PragueTime = timestamp
 		canon = false
 	}
+	if timestamp := override.LorentzTime; timestamp != nil {
+		copy.LorentzTime = timestamp
+		canon = false
+	}
+	if timestamp := override.MaxwellTime; timestamp != nil {
+		copy.MaxwellTime = timestamp
+		canon = false
+	}
+	if timestamp := override.FermiTime; timestamp != nil {
+		copy.FermiTime = timestamp
+		canon = false
+	}
 	if timestamp := override.OsakaTime; timestamp != nil {
 		copy.OsakaTime = timestamp
+		canon = false
+	}
+	if timestamp := override.MendelTime; timestamp != nil {
+		copy.MendelTime = timestamp
 		canon = false
 	}
 	if timestamp := override.VerkleTime; timestamp != nil {

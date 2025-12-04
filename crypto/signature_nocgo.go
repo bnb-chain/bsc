@@ -15,7 +15,6 @@
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
 //go:build nacl || js || wasip1 || !cgo || gofuzz || tinygo
-// +build nacl js wasip1 !cgo gofuzz tinygo
 
 package crypto
 
