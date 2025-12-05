@@ -1322,3 +1322,104 @@ func TestQuickBlockFetching(t *testing.T) {
 		t.Error("Block was not imported through quick block fetching")
 	}
 }
+
+// TestQuickBlockFetchingNoDuplicates tests that quick block fetching is not triggered
+// more than once for the same hash, even if the block is announced again after forgetHash is called.
+func TestQuickBlockFetchingNoDuplicates(t *testing.T) {
+	// Setup test environment
+	log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stdout, log.LevelInfo, true)))
+
+	// Create mock block retriever
+	blockRetriever := newMockBlockRetriever()
+	headerRequester := newMockHeaderRequester(50 * time.Millisecond)
+	bodyRequester := newMockBodyRequester(50 * time.Millisecond)
+
+	// Create blockchain
+	parent := types.NewBlock(&types.Header{
+		Number:     big.NewInt(10),
+		ParentHash: common.Hash{},
+	}, nil, nil, nil)
+	blockRetriever.blocks[parent.Hash()] = parent
+
+	// Generate child block
+	block := types.NewBlock(&types.Header{
+		Number:     big.NewInt(11),
+		ParentHash: parent.Hash(),
+	}, nil, nil, nil)
+
+	// Track how many times fetchRangeBlocks is called
+	var fetchRangeBlocksCalls atomic.Int32
+	var fetchDone = make(chan struct{})
+
+	// Create fetcher with quick block fetching support
+	fetcher := NewBlockFetcher(
+		blockRetriever.getBlock,
+		func(header *types.Header) error { return nil },
+		func(block *types.Block, propagate bool) {},
+		func() uint64 { return 10 }, // Current height
+		func() uint64 { return 5 },  // Finalized height
+		func(blocks types.Blocks) (int, error) {
+			// Add blocks to local blockchain
+			for _, block := range blocks {
+				blockRetriever.blocks[block.Hash()] = block
+			}
+			return len(blocks), nil
+		},
+		func(id string) {},
+		// fetchRangeBlocks function simulates quick block fetching
+		func(peer string, startHeight uint64, startHash common.Hash, count uint64) ([]*types.Block, error) {
+			calls := fetchRangeBlocksCalls.Add(1)
+			if calls == 1 {
+				// First call: simulate a slow fetch
+				time.Sleep(100 * time.Millisecond)
+				close(fetchDone)
+			}
+			// Return requested block
+			return []*types.Block{block}, nil
+		},
+	)
+
+	// Start fetcher
+	fetcher.Start()
+	defer fetcher.Stop()
+
+	// Send first block notification from peer1
+	err := fetcher.Notify("peer1", block.Hash(), block.NumberU64(), time.Now(),
+		headerRequester.requestHeader, bodyRequester.requestBodies)
+	if err != nil {
+		t.Fatalf("Notify failed: %v", err)
+	}
+
+	// Wait a bit to ensure the first quick fetch is in progress
+	time.Sleep(10 * time.Millisecond)
+
+	// Inject the block directly (simulating direct broadcast) - this will trigger forgetHash
+	err = fetcher.Enqueue("peer0", block)
+	if err != nil {
+		t.Fatalf("Enqueue failed: %v", err)
+	}
+
+	// Wait a bit for the block to be processed
+	time.Sleep(50 * time.Millisecond)
+
+	// Send second block notification from peer2 for the SAME block
+	// Before the fix, this would trigger another quick fetch because announced is cleared
+	err = fetcher.Notify("peer2", block.Hash(), block.NumberU64(), time.Now(),
+		headerRequester.requestHeader, bodyRequester.requestBodies)
+	if err != nil {
+		t.Fatalf("Notify failed: %v", err)
+	}
+
+	// Wait for the first fetch to complete
+	<-fetchDone
+
+	// Wait a bit more to allow any duplicate fetches to complete
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify that fetchRangeBlocks was called only once
+	// Before the fix, it would be called twice (once for peer1, once for peer2)
+	calls := fetchRangeBlocksCalls.Load()
+	if calls > 1 {
+		t.Errorf("fetchRangeBlocks was called %d times, expected 1", calls)
+	}
+}
