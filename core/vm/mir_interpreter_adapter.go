@@ -80,12 +80,12 @@ func countOpcodesInRange(code []byte, firstPC, lastPC uint) map[byte]uint32 {
 			}
 			// If we hit a block terminator (other than JUMPDEST), include it and stop
 			if op == STOP || op == RETURN || op == REVERT || op == SELFDESTRUCT {
-				lastPC = pc + 1
+				lastPC = pc
 				break
 			}
 			// JUMP and JUMPI also terminate blocks (include them)
 			if op == JUMP || op == JUMPI {
-				lastPC = pc + 1
+				lastPC = pc
 				break
 			}
 			// Skip PUSH opcodes
@@ -107,7 +107,7 @@ func countOpcodesInRange(code []byte, firstPC, lastPC uint) map[byte]uint32 {
 		}
 	}
 	pc := firstPC
-	for pc < lastPC && pc < uint(len(code)) {
+	for pc <= lastPC && pc < uint(len(code)) {
 		op := OpCode(code[pc])
 		// Count the opcode
 		counts[byte(op)]++
@@ -268,8 +268,43 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 				contract.Gas -= add
 			}
 		case MLOAD, MSTORE, MSTORE8, RETURN, REVERT, CREATE, CREATE2:
-			if ctx.MemorySize > uint64(adapter.memShadow.Len()) {
-				gas, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
+			// Calculate the required memory size for the operation
+			var needed uint64
+			switch evmOp {
+			case MLOAD, MSTORE:
+				if len(ctx.Operands) > 0 {
+					off := ctx.Operands[0].Uint64()
+					needed = off + 32
+				}
+			case MSTORE8:
+				if len(ctx.Operands) > 0 {
+					off := ctx.Operands[0].Uint64()
+					needed = off + 1
+				}
+			case RETURN, REVERT:
+				if len(ctx.Operands) >= 2 {
+					off := ctx.Operands[0].Uint64()
+					size := ctx.Operands[1].Uint64()
+					needed = off + size
+				}
+			case CREATE, CREATE2:
+				// CREATE: value, offset, size
+				// CREATE2: value, offset, size, salt
+				if len(ctx.Operands) >= 3 {
+					off := ctx.Operands[1].Uint64()
+					size := ctx.Operands[2].Uint64()
+					needed = off + size
+				}
+			}
+
+			// Round up to 32 bytes
+			memSize := (needed + 31) / 32 * 32
+			if memSize < needed { // overflow check
+				return ErrGasUintOverflow
+			}
+
+			if memSize > uint64(adapter.memShadow.Len()) {
+				gas, err := memoryGasCost(adapter.memShadow, memSize)
 				if err != nil {
 					if errors.Is(err, ErrGasUintOverflow) {
 						err = nil
@@ -295,11 +330,22 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 						contract.Gas -= more
 					}
 				}
-				resizeShadow(ctx.MemorySize)
+				resizeShadow(memSize)
 				// Pre-size MIR interpreter memory to move resize cost out of handler
-				adapter.mirInterpreter.EnsureMemorySize(ctx.MemorySize)
+				adapter.mirInterpreter.EnsureMemorySize(memSize)
 			}
 		case CALLDATACOPY, CODECOPY, RETURNDATACOPY:
+			// Always charge copy gas per word
+			var size uint64
+			if len(ctx.Operands) >= 3 {
+				size = ctx.Operands[2].Uint64()
+			}
+			copyGas := toWord(size) * params.CopyGas
+			if contract.Gas < copyGas {
+				return ErrOutOfGas
+			}
+			contract.Gas -= copyGas
+
 			if ctx.MemorySize > uint64(adapter.memShadow.Len()) {
 				gas, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
 				if err != nil {
@@ -309,20 +355,25 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 						return err
 					}
 				}
-				var size uint64
-				if len(ctx.Operands) >= 3 {
-					size = ctx.Operands[2].Uint64()
-				}
-				copyGas := toWord(size) * params.CopyGas
-				add := gas + copyGas
-				if contract.Gas < add {
+				if contract.Gas < gas {
 					return ErrOutOfGas
 				}
-				contract.Gas -= add
+				contract.Gas -= gas
 				resizeShadow(ctx.MemorySize)
 				adapter.mirInterpreter.EnsureMemorySize(ctx.MemorySize)
 			}
 		case EXTCODECOPY:
+			// Always charge copy gas per word
+			var size uint64
+			if len(ctx.Operands) >= 4 {
+				size = ctx.Operands[3].Uint64()
+			}
+			copyGas := toWord(size) * params.CopyGas
+			if contract.Gas < copyGas {
+				return ErrOutOfGas
+			}
+			contract.Gas -= copyGas
+
 			if ctx.MemorySize > uint64(adapter.memShadow.Len()) {
 				gas, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
 				if err != nil {
@@ -332,16 +383,10 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 						return err
 					}
 				}
-				var size uint64
-				if len(ctx.Operands) >= 4 {
-					size = ctx.Operands[3].Uint64()
-				}
-				copyGas := toWord(size) * params.CopyGas
-				add := gas + copyGas
-				if contract.Gas < add {
+				if contract.Gas < gas {
 					return ErrOutOfGas
 				}
-				contract.Gas -= add
+				contract.Gas -= gas
 				resizeShadow(ctx.MemorySize)
 				adapter.mirInterpreter.EnsureMemorySize(ctx.MemorySize)
 			}
@@ -374,6 +419,17 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 				}
 			}
 		case MCOPY:
+			// Always charge copy gas per word
+			var size uint64
+			if len(ctx.Operands) >= 3 {
+				size = ctx.Operands[2].Uint64()
+			}
+			copyGas := toWord(size) * params.CopyGas
+			if contract.Gas < copyGas {
+				return ErrOutOfGas
+			}
+			contract.Gas -= copyGas
+
 			if ctx.MemorySize > uint64(adapter.memShadow.Len()) {
 				gas, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
 				if err != nil {
@@ -383,16 +439,10 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 						return err
 					}
 				}
-				var size uint64
-				if len(ctx.Operands) >= 3 {
-					size = ctx.Operands[2].Uint64()
-				}
-				copyGas := toWord(size) * params.CopyGas
-				add := gas + copyGas
-				if contract.Gas < add {
+				if contract.Gas < gas {
 					return ErrOutOfGas
 				}
-				contract.Gas -= add
+				contract.Gas -= gas
 				resizeShadow(ctx.MemorySize)
 				adapter.mirInterpreter.EnsureMemorySize(ctx.MemorySize)
 			}
@@ -434,10 +484,7 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 			if ctx.MemorySize > 0 {
 				gas, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
 				if err != nil {
-					if errors.Is(err, ErrGasUintOverflow) {
-					} else {
-						return err
-					}
+					return err
 				}
 				n := int(evmOp - LOG0)
 				add := gas + uint64(n)*params.LogTopicGas
@@ -482,10 +529,7 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 				st.push(ctx.Operands[0])
 				gas, err := gasSStore(adapter.evm, contract, st, adapter.memShadow, 0)
 				if err != nil {
-					if errors.Is(err, ErrGasUintOverflow) {
-					} else {
-						return err
-					}
+					return err
 				}
 				if contract.Gas < gas {
 					return ErrOutOfGas
@@ -493,13 +537,34 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 				contract.Gas -= gas
 			}
 		case CALL, CALLCODE, DELEGATECALL, STATICCALL:
+			// Use vm gas calculators to set evm.callGasTemp and deduct dynamic gas
+			// Build stack so Back(0)=requestedGas, Back(1)=addr, Back(2)=value (if present)
 			st := newstack()
-			defer returnStack(st)
+			// Ensure ctx.Operands length checks per variant
+			var memSize uint64
+			// Calculate required memory size
 			switch evmOp {
 			case CALL, CALLCODE:
 				if len(ctx.Operands) < 7 {
 					return nil
 				}
+				// args: [3] [4] -> [3]+[4]
+				// ret: [5] [6] -> [5]+[6]
+				argsOff := ctx.Operands[3].Uint64()
+				argsSize := ctx.Operands[4].Uint64()
+				retOff := ctx.Operands[5].Uint64()
+				retSize := ctx.Operands[6].Uint64()
+				m1 := argsOff + argsSize
+				m2 := retOff + retSize
+				needed := m1
+				if m2 > m1 {
+					needed = m2
+				}
+				memSize = (needed + 31) / 32 * 32
+				if memSize < needed {
+					return ErrGasUintOverflow
+				}
+
 				st.push(ctx.Operands[2])
 				st.push(ctx.Operands[1])
 				st.push(ctx.Operands[0])
@@ -508,15 +573,15 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 				hadOverflow := false
 				if adapter.evm.chainRules.IsBerlin {
 					if evmOp == CALL {
-						dyn, err = gasCallEIP2929(adapter.evm, contract, st, adapter.memShadow, ctx.MemorySize)
+						dyn, err = gasCallEIP2929(adapter.evm, contract, st, adapter.memShadow, memSize)
 					} else {
-						dyn, err = gasCallCodeEIP2929(adapter.evm, contract, st, adapter.memShadow, ctx.MemorySize)
+						dyn, err = gasCallCodeEIP2929(adapter.evm, contract, st, adapter.memShadow, memSize)
 					}
 				} else {
 					if evmOp == CALL {
-						dyn, err = gasCall(adapter.evm, contract, st, adapter.memShadow, ctx.MemorySize)
+						dyn, err = gasCall(adapter.evm, contract, st, adapter.memShadow, memSize)
 					} else {
-						dyn, err = gasCallCode(adapter.evm, contract, st, adapter.memShadow, ctx.MemorySize)
+						dyn, err = gasCallCode(adapter.evm, contract, st, adapter.memShadow, memSize)
 					}
 				}
 				if err != nil {
@@ -534,30 +599,46 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 					return ErrOutOfGas
 				}
 				contract.Gas -= dyn
-				if !hadOverflow {
-					resizeShadow(ctx.MemorySize)
+				if !hadOverflow && memSize > 0 {
+					resizeShadow(memSize)
+					adapter.mirInterpreter.EnsureMemorySize(memSize)
 				}
 			case DELEGATECALL, STATICCALL:
 				if len(ctx.Operands) < 6 {
 					return nil
 				}
-				st := newstack()
-				defer returnStack(st)
+				// args: [2] [3] -> [2]+[3]
+				// ret: [4] [5] -> [4]+[5]
+				argsOff := ctx.Operands[2].Uint64()
+				argsSize := ctx.Operands[3].Uint64()
+				retOff := ctx.Operands[4].Uint64()
+				retSize := ctx.Operands[5].Uint64()
+				m1 := argsOff + argsSize
+				m2 := retOff + retSize
+				needed := m1
+				if m2 > m1 {
+					needed = m2
+				}
+				memSize = (needed + 31) / 32 * 32
+				if memSize < needed {
+					return ErrGasUintOverflow
+				}
+
 				st.push(ctx.Operands[0])
 				var dyn uint64
 				var err error
 				hadOverflow := false
 				if adapter.evm.chainRules.IsBerlin {
 					if evmOp == DELEGATECALL {
-						dyn, err = gasDelegateCallEIP2929(adapter.evm, contract, st, adapter.memShadow, ctx.MemorySize)
+						dyn, err = gasDelegateCallEIP2929(adapter.evm, contract, st, adapter.memShadow, memSize)
 					} else {
-						dyn, err = gasStaticCallEIP2929(adapter.evm, contract, st, adapter.memShadow, ctx.MemorySize)
+						dyn, err = gasStaticCallEIP2929(adapter.evm, contract, st, adapter.memShadow, memSize)
 					}
 				} else {
 					if evmOp == DELEGATECALL {
-						dyn, err = gasDelegateCall(adapter.evm, contract, st, adapter.memShadow, ctx.MemorySize)
+						dyn, err = gasDelegateCall(adapter.evm, contract, st, adapter.memShadow, memSize)
 					} else {
-						dyn, err = gasStaticCall(adapter.evm, contract, st, adapter.memShadow, ctx.MemorySize)
+						dyn, err = gasStaticCall(adapter.evm, contract, st, adapter.memShadow, memSize)
 					}
 				}
 				if err != nil {
@@ -573,8 +654,9 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 					return ErrOutOfGas
 				}
 				contract.Gas -= dyn
-				if !hadOverflow {
-					resizeShadow(ctx.MemorySize)
+				if !hadOverflow && memSize > 0 {
+					resizeShadow(memSize)
+					adapter.mirInterpreter.EnsureMemorySize(memSize)
 				}
 			}
 		}
@@ -1019,6 +1101,18 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 		if !isEXP && (evmOp == EXP || ctx.EvmOp == byte(EXP)) {
 			isEXP = true
 		}
+
+		// DEBUG: innerHook trace
+		// if true {
+		//      opsStr := ""
+		//      for _, op := range ctx.Operands {
+		//          if op != nil {
+		//              opsStr += fmt.Sprintf("%x ", op.Bytes())
+		//          }
+		//      }
+		//
+		// }
+
 		if isEXP {
 			expHandledByMir = true
 			// EXP has both constant and dynamic gas (charged together, following EVM logic)
@@ -1116,9 +1210,44 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 				}
 			}
 		case MLOAD, MSTORE, MSTORE8, RETURN, REVERT, CREATE, CREATE2:
-			// Only charge gas if memory is expanding (same logic as the first beforeOp hook)
-			if ctx.MemorySize > uint64(adapter.memShadow.Len()) {
-				gas, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
+			// Calculate the required memory size for the operation
+			var needed uint64
+			switch evmOp {
+			case MLOAD, MSTORE:
+				if len(ctx.Operands) > 0 {
+					off := ctx.Operands[0].Uint64()
+					needed = off + 32
+				}
+			case MSTORE8:
+				if len(ctx.Operands) > 0 {
+					off := ctx.Operands[0].Uint64()
+					needed = off + 1
+				}
+			case RETURN, REVERT:
+				if len(ctx.Operands) >= 2 {
+					off := ctx.Operands[0].Uint64()
+					size := ctx.Operands[1].Uint64()
+					needed = off + size
+				}
+			case CREATE, CREATE2:
+				// CREATE: value, offset, size
+				// CREATE2: value, offset, size, salt
+				if len(ctx.Operands) >= 3 {
+					off := ctx.Operands[1].Uint64()
+					size := ctx.Operands[2].Uint64()
+					needed = off + size
+				}
+			}
+
+			// Round up to 32 bytes
+			memSize := (needed + 31) / 32 * 32
+			if memSize < needed { // overflow check
+				return ErrGasUintOverflow
+			}
+
+			// Only charge gas if memory is expanding
+			if memSize > uint64(adapter.memShadow.Len()) {
+				gas, err := memoryGasCost(adapter.memShadow, memSize)
 				if err != nil {
 					if errors.Is(err, ErrGasUintOverflow) {
 						err = nil
@@ -1129,46 +1258,54 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 					return ErrOutOfGas
 				}
 				contract.Gas -= gas
-				// CREATE2: Always charge Keccak256WordGas for salt hashing (Constantinople feature)
-				if evmOp == CREATE2 {
-					if len(ctx.Operands) >= 3 {
-						size := ctx.Operands[2].Uint64()
-						keccak256Gas := toWord(size) * params.Keccak256WordGas
-						if contract.Gas < keccak256Gas {
-							return ErrOutOfGas
-						}
-						contract.Gas -= keccak256Gas
+				resizeShadow(memSize)
+				adapter.mirInterpreter.EnsureMemorySize(memSize)
+			}
+
+			// Additional gas charges
+			if evmOp == CREATE2 {
+				if len(ctx.Operands) >= 3 {
+					size := ctx.Operands[2].Uint64()
+					keccak256Gas := toWord(size) * params.Keccak256WordGas
+					if contract.Gas < keccak256Gas {
+						return ErrOutOfGas
 					}
+					contract.Gas -= keccak256Gas
 				}
-				// EIP-3860 initcode per-word gas for CREATE/CREATE2 (only if Shanghai is active)
-				if (evmOp == CREATE || evmOp == CREATE2) && adapter.evm.chainRules.IsShanghai {
-					// operands: value, offset, size, (salt)
-					if len(ctx.Operands) >= 3 {
-						size := ctx.Operands[2].Uint64()
-						if size > params.MaxInitCodeSize {
-							return fmt.Errorf("%w: size %d", ErrMaxInitCodeSizeExceeded, size)
-						}
-						// EIP-3860: InitCodeWordGas for both CREATE and CREATE2
-						more := params.InitCodeWordGas * toWord(size)
-						if contract.Gas < more {
-							return ErrOutOfGas
-						}
-						contract.Gas -= more
+			}
+			// EIP-3860 initcode per-word gas for CREATE/CREATE2 (only if Shanghai is active)
+			if (evmOp == CREATE || evmOp == CREATE2) && adapter.evm.chainRules.IsShanghai {
+				if len(ctx.Operands) >= 3 {
+					size := ctx.Operands[2].Uint64()
+					if size > params.MaxInitCodeSize {
+						return fmt.Errorf("%w: size %d", ErrMaxInitCodeSizeExceeded, size)
 					}
+					more := params.InitCodeWordGas * toWord(size)
+					if contract.Gas < more {
+						return ErrOutOfGas
+					}
+					contract.Gas -= more
 				}
-				resizeShadow(ctx.MemorySize)
 			}
 		case CALLDATACOPY, CODECOPY, RETURNDATACOPY:
 			// Always charge copy gas per word
-			var size uint64
+			var memOff, size uint64
 			if len(ctx.Operands) >= 3 {
+				memOff = ctx.Operands[0].Uint64()
 				size = ctx.Operands[2].Uint64()
 			}
 			copyGas := toWord(size) * params.CopyGas
+
+			needed := memOff + size
+			memSize := (needed + 31) / 32 * 32
+			if memSize < needed {
+				return ErrGasUintOverflow
+			}
+
 			// Memory expansion gas if destination grows memory
 			var memGas uint64
-			if ctx.MemorySize > uint64(adapter.memShadow.Len()) {
-				g, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
+			if memSize > uint64(adapter.memShadow.Len()) {
+				g, err := memoryGasCost(adapter.memShadow, memSize)
 				if err != nil {
 					if errors.Is(err, ErrGasUintOverflow) {
 						err = nil
@@ -1185,19 +1322,28 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 				}
 				contract.Gas -= add
 			}
-			if ctx.MemorySize > uint64(adapter.memShadow.Len()) {
-				resizeShadow(ctx.MemorySize)
+			if memSize > uint64(adapter.memShadow.Len()) {
+				resizeShadow(memSize)
+				adapter.mirInterpreter.EnsureMemorySize(memSize)
 			}
 		case EXTCODECOPY:
 			// Always charge copy gas per word; memory expansion if needed
-			var size uint64
+			var memOff, size uint64
 			if len(ctx.Operands) >= 4 {
+				memOff = ctx.Operands[1].Uint64()
 				size = ctx.Operands[3].Uint64()
 			}
 			copyGas := toWord(size) * params.CopyGas
+
+			needed := memOff + size
+			memSize := (needed + 31) / 32 * 32
+			if memSize < needed {
+				return ErrGasUintOverflow
+			}
+
 			var memGas uint64
-			if ctx.MemorySize > uint64(adapter.memShadow.Len()) {
-				g, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
+			if memSize > uint64(adapter.memShadow.Len()) {
+				g, err := memoryGasCost(adapter.memShadow, memSize)
 				if err != nil {
 					if errors.Is(err, ErrGasUintOverflow) {
 						err = nil
@@ -1214,8 +1360,9 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 				}
 				contract.Gas -= add
 			}
-			if ctx.MemorySize > uint64(adapter.memShadow.Len()) {
-				resizeShadow(ctx.MemorySize)
+			if memSize > uint64(adapter.memShadow.Len()) {
+				resizeShadow(memSize)
+				adapter.mirInterpreter.EnsureMemorySize(memSize)
 			}
 			// EIP-2929 cold-warm surcharge for EXTCODECOPY
 			if adapter.evm.chainRules.IsBerlin {
@@ -1239,48 +1386,71 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 				}
 			}
 		case MCOPY:
-			if ctx.MemorySize > 0 {
-				// Always charge copy gas; and memory gas if growing
-				var size uint64
-				if len(ctx.Operands) >= 3 {
-					size = ctx.Operands[2].Uint64()
-				}
-				copyGas := toWord(size) * params.CopyGas
-				var memGas uint64
-				if ctx.MemorySize > uint64(adapter.memShadow.Len()) {
-					g, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
-					if err != nil {
-						if errors.Is(err, ErrGasUintOverflow) {
-							err = nil
-						} else {
-							return err
-						}
+			// Always charge copy gas; and memory gas if growing
+			// Operands: dest, src, len
+			var dest, src, size uint64
+			if len(ctx.Operands) >= 3 {
+				dest = ctx.Operands[0].Uint64()
+				src = ctx.Operands[1].Uint64()
+				size = ctx.Operands[2].Uint64()
+			}
+			copyGas := toWord(size) * params.CopyGas
+
+			// Expansion for both read and write
+			m1 := dest + size
+			m2 := src + size
+			needed := m1
+			if m2 > m1 {
+				needed = m2
+			}
+			memSize := (needed + 31) / 32 * 32
+			if memSize < needed {
+				return ErrGasUintOverflow
+			}
+
+			var memGas uint64
+			if memSize > uint64(adapter.memShadow.Len()) {
+				g, err := memoryGasCost(adapter.memShadow, memSize)
+				if err != nil {
+					if errors.Is(err, ErrGasUintOverflow) {
+						err = nil
+					} else {
+						return err
 					}
-					memGas = g
 				}
-				add := memGas + copyGas
-				if add > 0 {
-					if contract.Gas < add {
-						return ErrOutOfGas
-					}
-					contract.Gas -= add
+				memGas = g
+			}
+			add := memGas + copyGas
+			if add > 0 {
+				if contract.Gas < add {
+					return ErrOutOfGas
 				}
-				if ctx.MemorySize > uint64(adapter.memShadow.Len()) {
-					resizeShadow(ctx.MemorySize)
-				}
+				contract.Gas -= add
+			}
+			if memSize > uint64(adapter.memShadow.Len()) {
+				resizeShadow(memSize)
+				adapter.mirInterpreter.EnsureMemorySize(memSize)
 			}
 		case KECCAK256:
 			// KECCAK256 has constant gas (30) + memory gas + word gas
 			// Constant gas is charged per instruction (not at block entry)
-			var size uint64
+			var offset, size uint64
 			if len(ctx.Operands) >= 2 {
+				offset = ctx.Operands[0].Uint64()
 				size = ctx.Operands[1].Uint64()
 			}
+			// Calculate memory size
+			needed := offset + size
+			memSize := (needed + 31) / 32 * 32
+			if memSize < needed {
+				return ErrGasUintOverflow
+			}
+
 			wordGas := toWord(size) * params.Keccak256WordGas
 			totalGas := params.Keccak256Gas + wordGas
 			// Memory expansion gas (if any)
-			if ctx.MemorySize > uint64(adapter.memShadow.Len()) {
-				gas, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
+			if memSize > uint64(adapter.memShadow.Len()) {
+				gas, err := memoryGasCost(adapter.memShadow, memSize)
 				if err != nil {
 					if errors.Is(err, ErrGasUintOverflow) {
 						// align with base interpreter: don't surface overflow from call gas calc here
@@ -1294,32 +1464,42 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 				return ErrOutOfGas
 			}
 			contract.Gas -= totalGas
-			if ctx.MemorySize > 0 {
-				resizeShadow(ctx.MemorySize)
+			if memSize > uint64(adapter.memShadow.Len()) {
+				resizeShadow(memSize)
+				adapter.mirInterpreter.EnsureMemorySize(memSize)
 			}
 		case LOG0, LOG1, LOG2, LOG3, LOG4:
-			if ctx.MemorySize > 0 {
-				gas, err := memoryGasCost(adapter.memShadow, ctx.MemorySize)
+			var offset, size uint64
+			if len(ctx.Operands) >= 2 {
+				offset = ctx.Operands[0].Uint64()
+				size = ctx.Operands[1].Uint64()
+			}
+			needed := offset + size
+			memSize := (needed + 31) / 32 * 32
+			if memSize < needed {
+				return ErrGasUintOverflow
+			}
+
+			var gas uint64
+			if memSize > uint64(adapter.memShadow.Len()) {
+				g, err := memoryGasCost(adapter.memShadow, memSize)
 				if err != nil {
-					if errors.Is(err, ErrGasUintOverflow) {
-					} else {
-						return err
-					}
+					return err
 				}
-				// Topics and data costs
-				n := int(evmOp - LOG0)
-				add := gas + params.LogGas + uint64(n)*params.LogTopicGas
-				var size uint64
-				if len(ctx.Operands) >= 2 {
-					size = ctx.Operands[1].Uint64()
-				}
-				// LogDataGas is per byte
-				add += size * params.LogDataGas
-				if contract.Gas < add {
-					return ErrOutOfGas
-				}
-				contract.Gas -= add
-				resizeShadow(ctx.MemorySize)
+				gas = g
+			}
+			// Topics and data costs
+			n := int(evmOp - LOG0)
+			add := gas + params.LogGas + uint64(n)*params.LogTopicGas
+			// LogDataGas is per byte
+			add += size * params.LogDataGas
+			if contract.Gas < add {
+				return ErrOutOfGas
+			}
+			contract.Gas -= add
+			if memSize > uint64(adapter.memShadow.Len()) {
+				resizeShadow(memSize)
+				adapter.mirInterpreter.EnsureMemorySize(memSize)
 			}
 		case SELFDESTRUCT:
 			// Charge dynamic gas according to fork rules
@@ -1363,10 +1543,7 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 					gas, err = gasSStore(adapter.evm, contract, st, adapter.memShadow, 0)
 				}
 				if err != nil {
-					if errors.Is(err, ErrGasUintOverflow) {
-					} else {
-						return err
-					}
+					return err
 				}
 				if contract.Gas < gas {
 					return ErrOutOfGas
@@ -1477,6 +1654,16 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 	bbs := cfg.GetBasicBlocks()
 	// Allow blocks with Size=0 to execute if they have children (e.g., entry block with only PUSH)
 	// PUSH operations don't create MIR instructions but are handled via block-level opcode counts
+	if len(bbs) > 0 {
+		bbByPC := cfg.BlockByPC(0)
+		var bbByPCSize uint
+		if bbByPC != nil {
+			bbByPCSize = bbByPC.Size()
+		}
+		log.Warn("Adapter.Run checking entry block", "len(bbs)", len(bbs), "bb0.Size", bbs[0].Size(), "bb0.children", len(bbs[0].Children()), "BlockByPC(0)!=nil", bbByPC != nil, "BlockByPC(0).Size", bbByPCSize)
+	} else {
+		log.Warn("Adapter.Run checking entry block", "len(bbs)", 0)
+	}
 	entryBlockHasContent := len(bbs) > 0 && bbs[0] != nil && (bbs[0].Size() > 0 || len(bbs[0].Children()) > 0)
 	if entryBlockHasContent {
 		result, err := adapter.mirInterpreter.RunCFGWithResolver(cfg, bbs[0])
@@ -1579,8 +1766,8 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 
 	// Set call value for CALLVALUE op
 	if contract != nil && contract.Value() != nil {
-		// MIR will clone when reading
-		env.CallValue = contract.Value()
+		// MIR will clone when reading, but we also clone here to insulate from Contract mutation
+		env.CallValue = new(uint256.Int).Set(contract.Value())
 	} else {
 		env.CallValue = uint256.NewInt(0)
 	}
@@ -1757,14 +1944,19 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 
 	// Install jumpdest checker using EVM contract helpers
 	env.CheckJumpdest = func(pc uint64) bool {
+
 		// Must be within bounds and at a JUMPDEST and code segment
 		if pc >= uint64(len(contract.Code)) {
+
 			return false
 		}
 		if OpCode(contract.Code[pc]) != JUMPDEST {
+
 			return false
 		}
-		return contract.isCode(pc)
+		isC := contract.isCode(pc)
+
+		return isC
 	}
 }
 

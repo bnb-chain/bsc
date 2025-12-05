@@ -1,6 +1,8 @@
 package compiler
 
 import (
+	"os"
+
 	ethlog "github.com/ethereum/go-ethereum/log"
 )
 
@@ -14,6 +16,14 @@ var (
 	// ParserDebugLogsEnabled controls verbose logs inside the opcode parser / CFG builder
 	ParserDebugLogsEnabled = false
 )
+
+func init() {
+	if os.Getenv("MIR_DEBUG") == "1" || os.Getenv("MIR_DEBUG") == "true" {
+		DebugLogsEnabled = true
+		MIRDebugLogsEnabled = true
+		ParserDebugLogsEnabled = true
+	}
+}
 
 // EnableMIRDebugLogs toggles MIR interpreter debug logs at runtime.
 func EnableMIRDebugLogs(on bool) { MIRDebugLogsEnabled = on }

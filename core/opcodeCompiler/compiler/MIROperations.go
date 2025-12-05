@@ -291,6 +291,7 @@ const (
 
 // 0x50 range - 'storage' and execution.
 const (
+	MirPOP      MirOperation = 0x50
 	MirMLOAD    MirOperation = 0x51
 	MirMSTORE   MirOperation = 0x52
 	MirMSTORE8  MirOperation = 0x53
