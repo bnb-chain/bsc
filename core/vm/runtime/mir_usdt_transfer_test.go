@@ -181,10 +181,8 @@ func TestMIRUSDTTransfer(t *testing.T) {
 
 	compiler.EnableOpcodeParse()
 
-	// 🔍 启用 MIR 调试日志
-	compiler.EnableDebugLogs(true)
+	// 🔍 启用 MIR 调试日志（单一开关）
 	compiler.EnableMIRDebugLogs(true)
-	compiler.EnableParserDebugLogs(true)
 	t.Log("🔍 MIR debug logs enabled")
 
 	blockContext := vm.BlockContext{

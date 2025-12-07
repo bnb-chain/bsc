@@ -1092,8 +1092,8 @@ func TestJUMPI_VarDest_ElseBranch_DebugWarnPrints(t *testing.T) {
 	// Configure logger to print to stdout at warn level
 	h := ethlog.NewTerminalHandlerWithLevel(os.Stdout, ethlog.LevelWarn, false)
 	ethlog.SetDefault(ethlog.NewLogger(h))
-	EnableParserDebugLogs(true)
-	defer EnableParserDebugLogs(false)
+	EnableMIRDebugLogs(true)
+	defer EnableMIRDebugLogs(false)
 
 	// Code: ensure len(operands)>0 and destination has no payload (unknown) to hit the warn:
 	// 0:  PUSH1 0x00

@@ -173,7 +173,6 @@ func TestMIRUSDT_DeployFromCreation_EVMvsMIR(t *testing.T) {
 
 	// Optional debug logs
 	if os.Getenv("MIR_DEBUG") == "1" {
-		compiler.EnableParserDebugLogs(true)
 		compiler.EnableMIRDebugLogs(true)
 	}
 	var lastMIRPC uint64
