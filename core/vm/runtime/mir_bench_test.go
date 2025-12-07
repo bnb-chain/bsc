@@ -105,7 +105,8 @@ func BenchmarkMIRVsEVM_AddMul(b *testing.B) {
 		BlockNumber: big.NewInt(1),
 		Value:       big.NewInt(0),
 		EVMConfig: vm.Config{
-			EnableOpcodeOptimizations: true,
+			EnableOpcodeOptimizations: false,
+			EnableMIR:                 true,
 		},
 	}
 
@@ -173,7 +174,7 @@ func BenchmarkMIRVsEVM_AddMulReturn(b *testing.B) {
 		Origin:      common.Address{},
 		BlockNumber: big.NewInt(1),
 		Value:       big.NewInt(0),
-		EVMConfig:   vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true},
+		EVMConfig:   vm.Config{EnableMIR: true},
 	}
 
 	b.Run("EVM_Base_Return", func(b *testing.B) {
@@ -215,8 +216,8 @@ func BenchmarkMIRVsEVM_AddMulReturn(b *testing.B) {
 }
 
 func BenchmarkMIRVsEVM_Storage(b *testing.B) {
-	cfgBase := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}}
+	cfgBase := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{}}
+	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableMIR: true}}
 
 	b.Run("EVM_Base_Storage", func(b *testing.B) {
 		if cfgBase.State == nil {
@@ -257,8 +258,8 @@ func BenchmarkMIRVsEVM_Storage(b *testing.B) {
 }
 
 func BenchmarkMIRVsEVM_Keccak(b *testing.B) {
-	cfgBase := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}}
+	cfgBase := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{}}
+	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableMIR: true}}
 
 	b.Run("EVM_Base_Keccak", func(b *testing.B) {
 		if cfgBase.State == nil {
@@ -299,8 +300,8 @@ func BenchmarkMIRVsEVM_Keccak(b *testing.B) {
 }
 
 func BenchmarkMIRVsEVM_CalldataKeccak(b *testing.B) {
-	cfgBase := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}}
+	cfgBase := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{}}
+	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableMIR: true}}
 	input := make([]byte, 96)
 	for i := range input {
 		input[i] = byte(i)
@@ -346,8 +347,8 @@ func BenchmarkMIRVsEVM_CalldataKeccak(b *testing.B) {
 
 func TestMIRVsEVM_Functional(t *testing.T) {
 	// Base and MIR configs
-	base := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true, MIRStrictNoFallback: true}}
+	base := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{}}
+	mir := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 
 	// helper to run code and return output
@@ -552,7 +553,7 @@ func TestAddMulReturn_BaseAndMIR(t *testing.T) {
 		Origin:      common.Address{},
 		BlockNumber: big.NewInt(1),
 		Value:       big.NewInt(0),
-		EVMConfig:   vm.Config{EnableOpcodeOptimizations: true},
+		EVMConfig:   vm.Config{EnableMIR: true},
 	}
 	if cfgMIR.State == nil {
 		cfgMIR.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())

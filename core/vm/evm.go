@@ -146,17 +146,16 @@ func NewEVM(blockCtx BlockContext, statedb StateDB, chainConfig *params.ChainCon
 
 	evm.baseInterpreter = NewEVMInterpreter(evm)
 	evm.interpreter = evm.baseInterpreter
+
 	if evm.Config.EnableOpcodeOptimizations {
 		evm.optInterpreter = NewEVMInterpreter(evm)
 		evm.optInterpreter.CopyAndInstallSuperInstruction()
 		evm.interpreter = evm.optInterpreter
 		compiler.EnableOptimization()
+	}
 
-		// Initialize MIR interpreter for advanced optimizations when enabled
-		// Also honor strict mode, which requires MIR path without fallback.
-		if evm.Config.EnableMIR || evm.Config.MIRStrictNoFallback {
-			evm.mirInterpreter = NewMIRInterpreterAdapter(evm)
-		}
+	if evm.Config.EnableMIR {
+		evm.mirInterpreter = NewMIRInterpreterAdapter(evm)
 	}
 	return evm
 }
@@ -265,49 +264,42 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		if len(code) == 0 {
 			ret, err = nil, nil // gas is unchanged
 		} else {
-			if evm.Config.EnableOpcodeOptimizations {
-				addrCopy := addr
-				// If the account has no code, we can abort here
-				// The depth-check is already done, and precompiles handled above
-				contract := GetContract(caller, AccountRef(addrCopy), value, gas)
-				defer ReturnContract(contract)
-				codeHash := evm.resolveCodeHash(addrCopy)
-				contract.optimized, code = tryGetOptimizedCodeWithMIR(evm, codeHash, code, contract)
-				//runStart := time.Now()
+			addrCopy := addr
+			// If the account has no code, we can abort here
+			// The depth-check is already done, and precompiles handled above
+			contract := GetContract(caller, AccountRef(addrCopy), value, gas)
+			defer ReturnContract(contract)
+			codeHash := evm.resolveCodeHash(addrCopy)
 
-				// Choose interpreter based on available optimizations
+			if evm.Config.EnableMIR {
+				prepareMIR(evm, codeHash, code, contract)
 				if contract.HasMIRCode() && evm.mirInterpreter != nil {
-					// Use MIR interpreter for contracts with MIR representation
 					contract.SetCallCode(&addrCopy, codeHash, code)
 					ret, err = evm.mirInterpreter.Run(contract, input, false)
-				} else if contract.optimized {
-					evm.UseOptInterpreter()
-					contract.SetCallCode(&addrCopy, codeHash, code)
-					ret, err = evm.interpreter.Run(contract, input, false)
 				} else {
-					evm.UseBaseInterpreter()
+					// Fallback to legacy interpreter if MIR generation fails but we have code
+					// This might happen if generation errors out.
 					contract.SetCallCode(&addrCopy, codeHash, code)
 					ret, err = evm.interpreter.Run(contract, input, false)
 				}
-				contract.IsSystemCall = isSystemCall(caller)
-				gas = contract.Gas
-				//runTime := time.Since(runStart)
-				//interpreterRunTimer.Update(runTime)
-			} else {
-				addrCopy := addr
-				// If the account has no code, we can abort here
-				// The depth-check is already done, and precompiles handled above
-				contract := GetContract(caller, AccountRef(addrCopy), value, gas)
-				defer ReturnContract(contract)
+			} else if evm.Config.EnableOpcodeOptimizations {
+				contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 
-				//runStart := time.Now()
-				contract.IsSystemCall = isSystemCall(caller)
-				contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), code)
+				// Choose interpreter based on available optimizations
+				if contract.optimized {
+					evm.UseOptInterpreter()
+				} else {
+					evm.UseBaseInterpreter()
+				}
+				contract.SetCallCode(&addrCopy, codeHash, code)
 				ret, err = evm.interpreter.Run(contract, input, false)
-				gas = contract.Gas
-				//runTime := time.Since(runStart)
-				//interpreterRunTimer.Update(runTime)
+			} else {
+				evm.UseBaseInterpreter()
+				contract.SetCallCode(&addrCopy, codeHash, code)
+				ret, err = evm.interpreter.Run(contract, input, false)
 			}
+			contract.IsSystemCall = isSystemCall(caller)
+			gas = contract.Gas
 		}
 	}
 	// When an error was returned by the EVM or when setting the creation code
@@ -361,45 +353,44 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
 		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.Config.Tracer)
 	} else {
-		if evm.Config.EnableOpcodeOptimizations {
-			addrCopy := addr
-			// Initialise a new contract and set the code that is to be used by the EVM.
-			// The contract is a scoped environment for this execution context only.
-			contract := GetContract(caller, AccountRef(caller.Address()), value, gas)
-			defer ReturnContract(contract)
-			code := evm.resolveCode(addrCopy)
-			codeHash := evm.resolveCodeHash(addrCopy)
-			// Try MIR first
-			contract.optimized, code = tryGetOptimizedCodeWithMIR(evm, codeHash, code, contract)
+		addrCopy := addr
+		// Initialise a new contract and set the code that is to be used by the EVM.
+		// The contract is a scoped environment for this execution context only.
+		contract := GetContract(caller, AccountRef(caller.Address()), value, gas)
+		defer ReturnContract(contract)
+		code := evm.resolveCode(addrCopy)
+		codeHash := evm.resolveCodeHash(addrCopy)
+
+		if evm.Config.EnableMIR {
+			prepareMIR(evm, codeHash, code, contract)
 			if contract.HasMIRCode() && evm.mirInterpreter != nil {
 				contract.SetCallCode(&addrCopy, codeHash, code)
 				ret, err = evm.mirInterpreter.Run(contract, input, false)
 			} else {
-				// Fallback to superinstruction/base path
-				if !contract.optimized {
-					// If MIR not available, consider superinstruction optimization
-					contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
-				}
-				if contract.optimized {
-					evm.UseOptInterpreter()
-				} else {
-					evm.UseBaseInterpreter()
-				}
 				contract.SetCallCode(&addrCopy, codeHash, code)
 				ret, err = evm.interpreter.Run(contract, input, false)
 			}
-			gas = contract.Gas
-		} else {
-			addrCopy := addr
-			// Initialise a new contract and set the code that is to be used by the EVM.
-			// The contract is a scoped environment for this execution context only.
-			contract := GetContract(caller, AccountRef(caller.Address()), value, gas)
-			defer ReturnContract(contract)
+		} else if evm.Config.EnableOpcodeOptimizations {
+			// Try MIR first
+			// contract.optimized, code = tryGetOptimizedCodeWithMIR(evm, codeHash, code, contract)
+			// Note: previous code called tryGetOptimizedCodeWithMIR here even if MIR flag was off?
+			// No, tryGetOptimizedCodeWithMIR checked the flags internally.
 
+			// Fallback to superinstruction/base path
+			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
+
+			if contract.optimized {
+				evm.UseOptInterpreter()
+			} else {
+				evm.UseBaseInterpreter()
+			}
+			contract.SetCallCode(&addrCopy, codeHash, code)
+			ret, err = evm.interpreter.Run(contract, input, false)
+		} else {
 			contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
 			ret, err = evm.interpreter.Run(contract, input, false)
-			gas = contract.Gas
 		}
+		gas = contract.Gas
 	}
 	if err != nil {
 		evm.StateDB.RevertToSnapshot(snapshot)
@@ -441,42 +432,38 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
 		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.Config.Tracer)
 	} else {
-		if evm.Config.EnableOpcodeOptimizations {
-			addrCopy := addr
-			// Initialise a new contract and make initialise the delegate values
-			contract := GetContract(caller, AccountRef(caller.Address()), nil, gas).AsDelegate()
-			defer ReturnContract(contract)
-			code := evm.resolveCode(addrCopy)
-			codeHash := evm.resolveCodeHash(addrCopy)
-			// Try MIR first
-			contract.optimized, code = tryGetOptimizedCodeWithMIR(evm, codeHash, code, contract)
+		addrCopy := addr
+		// Initialise a new contract and make initialise the delegate values
+		contract := GetContract(caller, AccountRef(caller.Address()), nil, gas).AsDelegate()
+		defer ReturnContract(contract)
+		code := evm.resolveCode(addrCopy)
+		codeHash := evm.resolveCodeHash(addrCopy)
+
+		if evm.Config.EnableMIR {
+			prepareMIR(evm, codeHash, code, contract)
 			if contract.HasMIRCode() && evm.mirInterpreter != nil {
 				contract.SetCallCode(&addrCopy, codeHash, code)
 				ret, err = evm.mirInterpreter.Run(contract, input, false)
 			} else {
-				// Fallback to superinstruction/base path
-				if !contract.optimized {
-					contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
-				}
-				if contract.optimized {
-					evm.UseOptInterpreter()
-				} else {
-					evm.UseBaseInterpreter()
-				}
 				contract.SetCallCode(&addrCopy, codeHash, code)
 				ret, err = evm.interpreter.Run(contract, input, false)
 			}
-			gas = contract.Gas
-		} else {
-			addrCopy := addr
-			// Initialise a new contract and make initialise the delegate values
-			contract := GetContract(caller, AccountRef(caller.Address()), nil, gas).AsDelegate()
-			defer ReturnContract(contract)
+		} else if evm.Config.EnableOpcodeOptimizations {
+			// Fallback to superinstruction/base path
+			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 
+			if contract.optimized {
+				evm.UseOptInterpreter()
+			} else {
+				evm.UseBaseInterpreter()
+			}
+			contract.SetCallCode(&addrCopy, codeHash, code)
+			ret, err = evm.interpreter.Run(contract, input, false)
+		} else {
 			contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
 			ret, err = evm.interpreter.Run(contract, input, false)
-			gas = contract.Gas
 		}
+		gas = contract.Gas
 	}
 	if err != nil {
 		evm.StateDB.RevertToSnapshot(snapshot)
@@ -522,53 +509,45 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
 		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.Config.Tracer)
 	} else {
-		if evm.Config.EnableOpcodeOptimizations {
-			// At this point, we use a copy of address. If we don't, the go compiler will
-			// leak the 'contract' to the outer scope, and make allocation for 'contract'
-			// even if the actual execution ends on RunPrecompiled above.
-			addrCopy := addr
-			// Initialise a new contract and set the code that is to be used by the EVM.
-			// The contract is a scoped environment for this execution context only.
-			contract := GetContract(caller, AccountRef(addrCopy), new(uint256.Int), gas)
-			defer ReturnContract(contract)
-			code := evm.resolveCode(addrCopy)
-			codeHash := evm.resolveCodeHash(addrCopy)
-			// Try MIR first
-			contract.optimized, code = tryGetOptimizedCodeWithMIR(evm, codeHash, code, contract)
+		// At this point, we use a copy of address. If we don't, the go compiler will
+		// leak the 'contract' to the outer scope, and make allocation for 'contract'
+		// even if the actual execution ends on RunPrecompiled above.
+		addrCopy := addr
+		// Initialise a new contract and set the code that is to be used by the EVM.
+		// The contract is a scoped environment for this execution context only.
+		contract := GetContract(caller, AccountRef(addrCopy), new(uint256.Int), gas)
+		defer ReturnContract(contract)
+		code := evm.resolveCode(addrCopy)
+		codeHash := evm.resolveCodeHash(addrCopy)
+
+		if evm.Config.EnableMIR {
+			prepareMIR(evm, codeHash, code, contract)
 			if contract.HasMIRCode() && evm.mirInterpreter != nil {
 				contract.SetCallCode(&addrCopy, codeHash, code)
 				ret, err = evm.mirInterpreter.Run(contract, input, true)
 			} else {
-				// Fallback to superinstruction/base path
-				if !contract.optimized {
-					contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
-				}
-				if contract.optimized {
-					evm.UseOptInterpreter()
-				} else {
-					evm.UseBaseInterpreter()
-				}
 				contract.SetCallCode(&addrCopy, codeHash, code)
 				ret, err = evm.interpreter.Run(contract, input, true)
 			}
-			gas = contract.Gas
-		} else {
-			// At this point, we use a copy of address. If we don't, the go compiler will
-			// leak the 'contract' to the outer scope, and make allocation for 'contract'
-			// even if the actual execution ends on RunPrecompiled above.
-			addrCopy := addr
-			// Initialise a new contract and set the code that is to be used by the EVM.
-			// The contract is a scoped environment for this execution context only.
-			contract := GetContract(caller, AccountRef(addrCopy), new(uint256.Int), gas)
-			defer ReturnContract(contract)
+		} else if evm.Config.EnableOpcodeOptimizations {
+			// Fallback to superinstruction/base path
+			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 
+			if contract.optimized {
+				evm.UseOptInterpreter()
+			} else {
+				evm.UseBaseInterpreter()
+			}
+			contract.SetCallCode(&addrCopy, codeHash, code)
+			ret, err = evm.interpreter.Run(contract, input, true)
+		} else {
 			contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
 			// When an error was returned by the EVM or when setting the creation code
 			// above we revert to the snapshot and consume any gas remaining. Additionally
 			// when we're in Homestead this also counts for code storage gas errors.
 			ret, err = evm.interpreter.Run(contract, input, true)
-			gas = contract.Gas
 		}
+		gas = contract.Gas
 	}
 	if err != nil {
 		evm.StateDB.RevertToSnapshot(snapshot)
@@ -602,41 +581,21 @@ func tryGetOptimizedCode(evm *EVM, codeHash common.Hash, rawCode []byte) (bool, 
 	return optimized, code
 }
 
-// tryGetOptimizedCodeWithMIR attempts to get optimized code and load MIR CFG from cache for MIR interpreter execution
-func tryGetOptimizedCodeWithMIR(evm *EVM, codeHash common.Hash, rawCode []byte, contract *Contract) (bool, []byte) {
-	var code []byte
-	optimized := false
-	code = rawCode
-
-	// Check if MIR optimization is enabled
-	if evm.Config.EnableOpcodeOptimizations && evm.mirInterpreter != nil && compiler.IsOpcodeParseEnabled() {
-		// Try global compiler MIR CFG cache first
-		if cfg := compiler.LoadMIRCFG(codeHash); cfg != nil {
-			contract.SetMIRCFG(cfg)
-			return false, rawCode
-		}
-
-		// If no cached CFG, try to generate-and-cache synchronously as fallback
-		cfg, err := compiler.TryGenerateMIRCFG(codeHash, rawCode)
-		if err == nil && cfg != nil {
-			contract.SetMIRCFG(cfg)
-			return false, rawCode
-		}
+// prepareMIR attempts to load MIR CFG from cache or generate it for MIR interpreter execution
+func prepareMIR(evm *EVM, codeHash common.Hash, rawCode []byte, contract *Contract) {
+	if !evm.Config.EnableMIR || evm.mirInterpreter == nil {
+		return
 	}
-	// Superinstruction path: fall back to traditional bytecode optimization if no MIR CFG
-	optCode := compiler.LoadOptimizedCode(codeHash)
-	if len(optCode) != 0 {
-		code = optCode
-		optimized = true
-	} else {
-		// Generate optimized code (superinstruction only, MIR already attempted above)
-		optCode, err := compiler.GenOrRewriteOptimizedCode(codeHash, rawCode)
-		if err == nil && len(optCode) != 0 {
-			code = optCode
-			optimized = true
-		}
+	// Try global compiler MIR CFG cache first
+	if cfg := compiler.LoadMIRCFG(codeHash); cfg != nil {
+		contract.SetMIRCFG(cfg)
+		return
 	}
-	return optimized, code
+
+	// If no cached CFG, try to generate-and-cache synchronously as fallback
+	if cfg, err := compiler.TryGenerateMIRCFG(codeHash, rawCode); err == nil && cfg != nil {
+		contract.SetMIRCFG(cfg)
+	}
 }
 
 type codeAndHash struct {
@@ -756,10 +715,16 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 // initNewContract runs a new contract's creation code, performs checks on the
 // resulting code that is to be deployed, and consumes necessary gas.
 func (evm *EVM) initNewContract(contract *Contract, address common.Address, value *uint256.Int) ([]byte, error) {
-	// We don't use superinstruction optimizations for creation code (runs once),
-	// but we may run initcode via MIR if enabled.
+	// We don't use superinstruction optimizations for creation code (runs once).
+	// Force base interpreter for fallback/default execution.
+	if evm.Config.EnableOpcodeOptimizations {
+		compiler.DisableOptimization()
+		evm.UseBaseInterpreter()
+	}
+
+	// We may run initcode via MIR if enabled.
 	contract.optimized = false
-	useMIR := evm.Config.EnableOpcodeOptimizations && evm.Config.EnableMIR && evm.Config.EnableMIRInitcode && evm.mirInterpreter != nil
+	useMIR := evm.Config.EnableMIR && evm.mirInterpreter != nil
 	if useMIR {
 		// Ensure MIR CFG is available for the initcode
 		code := contract.Code
@@ -778,14 +743,6 @@ func (evm *EVM) initNewContract(contract *Contract, address common.Address, valu
 		}
 		if contract.HasMIRCode() {
 			return evm.mirInterpreter.Run(contract, nil, false)
-		}
-		// If MIR not available, fall back to base interpreter without superinstructions
-		compiler.DisableOptimization()
-		evm.UseBaseInterpreter()
-	} else {
-		if evm.Config.EnableOpcodeOptimizations {
-			compiler.DisableOptimization()
-			evm.UseBaseInterpreter()
 		}
 	}
 

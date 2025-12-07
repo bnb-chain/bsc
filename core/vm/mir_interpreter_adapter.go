@@ -712,8 +712,7 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, readOnly bool) (ret []byte, err error) {
 	// Check if we have MIR-optimized code
 	if !contract.HasMIRCode() {
-		// Fallback to regular EVM interpreter
-		return adapter.evm.Interpreter().Run(contract, input, readOnly)
+		return nil, fmt.Errorf("MIR code missing for %s", contract.Address())
 	}
 	// Reset JUMPDEST de-dup guard per top-level run
 	adapter.lastJdPC = ^uint32(0)
@@ -733,9 +732,7 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 	cfgInterface := contract.GetMIRCFG()
 	cfg, ok := cfgInterface.(*compiler.CFG)
 	if !ok || cfg == nil {
-		// Fallback if no valid MIR CFG available
-		log.Error("MIR fallback: invalid CFG, using EVM interpreter", "addr", contract.Address(), "codehash", contract.CodeHash)
-		return adapter.evm.Interpreter().Run(contract, input, readOnly)
+		return nil, fmt.Errorf("MIR CFG invalid for %s", contract.Address())
 	}
 
 	// Set current contract for the pre-installed hook
@@ -1669,12 +1666,7 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 		result, err := adapter.mirInterpreter.RunCFGWithResolver(cfg, bbs[0])
 		if err != nil {
 			if err == compiler.ErrMIRFallback {
-				if adapter.evm.Config.MIRStrictNoFallback {
-					// Strict mode: do not fallback; surface the error for debugging.
-					return nil, fmt.Errorf("MIR strict mode: no fallback (reason=%w)", err)
-				}
-				log.Error("MIR fallback requested by interpreter, using EVM interpreter", "addr", contract.Address(), "pc", 0)
-				return adapter.evm.baseInterpreter.Run(contract, input, readOnly)
+				return nil, fmt.Errorf("MIR fallback requested but disabled: %w", err)
 			}
 			// Map compiler.errREVERT to vm.ErrExecutionReverted to preserve gas
 			if errors.Is(err, compiler.GetErrREVERT()) {
@@ -1688,12 +1680,8 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 		// where a STOP simply returns empty bytes.
 		return result, nil
 	}
-	// If nothing returned from the entry, fallback to EVM to preserve semantics
-	if adapter.evm.Config.MIRStrictNoFallback {
-		return nil, fmt.Errorf("MIR strict mode: entry block produced no result")
-	}
-	log.Error("MIR fallback: entry block produced no result, using EVM interpreter", "addr", contract.Address())
-	return adapter.evm.Interpreter().Run(contract, input, readOnly)
+	// If nothing returned from the entry, return error
+	return nil, fmt.Errorf("MIR entry block produced no result")
 }
 
 // setupExecutionEnvironment configures the MIR interpreter with contract-specific data

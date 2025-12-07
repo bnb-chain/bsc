@@ -73,7 +73,7 @@ func TestWBNB_Transfer_EVMvsMIR_Debug(t *testing.T) {
 		Origin:      common.Address{},
 		BlockNumber: big.NewInt(15_000_000),
 		Value:       big.NewInt(0),
-		EVMConfig:   vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true, MIRStrictNoFallback: true},
+		EVMConfig:   vm.Config{EnableMIR: true},
 	}
 
 	// Install contract code into fresh state for each config
@@ -212,7 +212,7 @@ func TestWBNB_View_Name_EVMvsMIR_Success(t *testing.T) {
 		Origin:      common.Address{},
 		BlockNumber: big.NewInt(15_000_000),
 		Value:       big.NewInt(0),
-		EVMConfig:   vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true, MIRStrictNoFallback: true},
+		EVMConfig:   vm.Config{EnableMIR: true},
 	}
 	// setup states
 	address := common.BytesToAddress([]byte("contract_wbnb_single"))
@@ -305,7 +305,7 @@ func TestWBNB_Deposit_Then_Transfer_EVMvsMIR_Success(t *testing.T) {
 		Origin:      common.Address{},
 		BlockNumber: big.NewInt(15_000_000),
 		Value:       big.NewInt(0),
-		EVMConfig:   vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true, MIRStrictNoFallback: true},
+		EVMConfig:   vm.Config{EnableMIR: true},
 	}
 	// setup states
 	address := common.BytesToAddress([]byte("contract_wbnb_single"))
@@ -348,7 +348,6 @@ func TestWBNB_Deposit_Then_Transfer_EVMvsMIR_Success(t *testing.T) {
 	mirDepositCfg := *mir
 	mirDepositCfg.EVMConfig.EnableOpcodeOptimizations = false
 	mirDepositCfg.EVMConfig.EnableMIR = false
-	mirDepositCfg.EVMConfig.EnableMIRInitcode = false
 	mirDepositCfg.State = mir.State
 	envMD := runtime.NewEnv(&mirDepositCfg)
 	if _, _, err := envMD.Call(senderM, address, depositSel, mir.GasLimit, uint256.MustFromBig(fund)); err != nil {
@@ -442,7 +441,7 @@ func BenchmarkWBNB_View_Name(b *testing.B) {
 			Origin:      common.Address{},
 			BlockNumber: big.NewInt(15_000_000),
 			Value:       big.NewInt(0),
-			EVMConfig:   vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true},
+			EVMConfig:   vm.Config{EnableMIR: true},
 		}
 		if cfg.State == nil {
 			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
@@ -506,7 +505,7 @@ func TestWBNB_Deposit_EVMvsMIR_Parity(t *testing.T) {
 		Origin:      common.Address{},
 		BlockNumber: big.NewInt(15_000_000),
 		Value:       big.NewInt(0),
-		EVMConfig:   vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true, MIRStrictNoFallback: true},
+		EVMConfig:   vm.Config{EnableMIR: true},
 	}
 	address := common.BytesToAddress([]byte("contract_wbnb_deposit"))
 	// init states
@@ -636,7 +635,7 @@ func TestWBNB_Deposit_EVMvsMIR_Success(t *testing.T) {
 		Origin:      common.Address{},
 		BlockNumber: big.NewInt(15_000_000),
 		Value:       big.NewInt(0),
-		EVMConfig:   vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true, MIRStrictNoFallback: true},
+		EVMConfig:   vm.Config{EnableMIR: true},
 	}
 	// setup states
 	address := common.BytesToAddress([]byte("contract_wbnb_deposit"))

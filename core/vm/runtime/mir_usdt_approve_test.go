@@ -50,10 +50,8 @@ func TestMIRUSDT_Approve_EVMvsMIR_Single(t *testing.T) {
 		BlockNumber: compatBlock,
 		Value:       big.NewInt(0),
 		EVMConfig: vm.Config{
-			EnableOpcodeOptimizations: true,
+			EnableOpcodeOptimizations: false,
 			EnableMIR:                 true,
-			EnableMIRInitcode:         false, // Keep false for runtime test
-			MIRStrictNoFallback:       true,
 		},
 	}
 	if base.State == nil {

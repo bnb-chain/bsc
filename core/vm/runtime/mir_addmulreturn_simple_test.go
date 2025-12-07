@@ -39,7 +39,7 @@ func TestMIRVsEVM_AddMulReturn_Simple(t *testing.T) {
 	base.EVMConfig = vm.Config{EnableOpcodeOptimizations: false}
 	// MIR config
 	mir := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, Value: big.NewInt(0), BlockNumber: big.NewInt(1)}
-	mir.EVMConfig = vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}
+	mir.EVMConfig = vm.Config{EnableMIR: true}
 
 	// Aggregation helpers
 	type agg struct {
@@ -257,7 +257,7 @@ func TestProfile_AddMulReturn_Apple(t *testing.T) {
 	// Common config fields (no tracers)
 	mkCfg := func(enableMIR bool) *runtime.Config {
 		cfg := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, Value: big.NewInt(0), BlockNumber: big.NewInt(1)}
-		cfg.EVMConfig = vm.Config{EnableOpcodeOptimizations: enableMIR, EnableMIR: enableMIR, EnableMIRInitcode: enableMIR}
+		cfg.EVMConfig = vm.Config{EnableOpcodeOptimizations: false, EnableMIR: enableMIR}
 		return cfg
 	}
 
@@ -379,7 +379,7 @@ func TestPerf_AddMulReturn_Apple(t *testing.T) {
 	code := addMulReturnSimple
 	mkCfg := func(enableMIR bool) *runtime.Config {
 		cfg := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, Value: big.NewInt(0), BlockNumber: big.NewInt(1)}
-		cfg.EVMConfig = vm.Config{EnableOpcodeOptimizations: enableMIR, EnableMIR: enableMIR, EnableMIRInitcode: enableMIR}
+		cfg.EVMConfig = vm.Config{EnableOpcodeOptimizations: false, EnableMIR: enableMIR}
 		return cfg
 	}
 	runN := func(cfg *runtime.Config, label string, iters int) (time.Duration, []byte) {
@@ -411,7 +411,7 @@ func TestPerf_Storage_Apple(t *testing.T) {
 	code := storageStoreLoadReturn
 	mkCfg := func(enableMIR bool) *runtime.Config {
 		cfg := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, Value: big.NewInt(0), BlockNumber: big.NewInt(1)}
-		cfg.EVMConfig = vm.Config{EnableOpcodeOptimizations: enableMIR, EnableMIR: enableMIR, EnableMIRInitcode: enableMIR}
+		cfg.EVMConfig = vm.Config{EnableOpcodeOptimizations: false, EnableMIR: enableMIR}
 		return cfg
 	}
 	runN := func(cfg *runtime.Config, label string, iters int) (time.Duration, []byte) {
@@ -443,7 +443,7 @@ func TestPerf_KeccakMemory_Apple(t *testing.T) {
 	code := keccakMemReturn
 	mkCfg := func(enableMIR bool) *runtime.Config {
 		cfg := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, Value: big.NewInt(0), BlockNumber: big.NewInt(1)}
-		cfg.EVMConfig = vm.Config{EnableOpcodeOptimizations: enableMIR, EnableMIR: enableMIR, EnableMIRInitcode: enableMIR}
+		cfg.EVMConfig = vm.Config{EnableOpcodeOptimizations: false, EnableMIR: enableMIR}
 		return cfg
 	}
 	runN := func(cfg *runtime.Config, label string, iters int) (time.Duration, []byte) {
@@ -476,7 +476,7 @@ func TestPerf_CalldataKeccak_Apple(t *testing.T) {
 	input := make([]byte, 96)
 	mkCfg := func(enableMIR bool) *runtime.Config {
 		cfg := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, Value: big.NewInt(0), BlockNumber: big.NewInt(1)}
-		cfg.EVMConfig = vm.Config{EnableOpcodeOptimizations: enableMIR, EnableMIR: enableMIR, EnableMIRInitcode: enableMIR}
+		cfg.EVMConfig = vm.Config{EnableOpcodeOptimizations: false, EnableMIR: enableMIR}
 		return cfg
 	}
 	runN := func(cfg *runtime.Config, label string, iters int) (time.Duration, []byte) {
@@ -533,7 +533,7 @@ func TestPerf_USDT_Apple(t *testing.T) {
 	}
 	mkCfg := func(enableMIR bool) *runtime.Config {
 		cfg := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, Value: big.NewInt(0), BlockNumber: big.NewInt(1)}
-		cfg.EVMConfig = vm.Config{EnableOpcodeOptimizations: enableMIR, EnableMIR: enableMIR, EnableMIRInitcode: enableMIR}
+		cfg.EVMConfig = vm.Config{EnableOpcodeOptimizations: false, EnableMIR: enableMIR}
 		return cfg
 	}
 	runN := func(cfg *runtime.Config, label string, input []byte, iters int) time.Duration {
@@ -591,7 +591,7 @@ func TestPerf_WBNB_Apple(t *testing.T) {
 	}
 	mkCfg := func(enableMIR bool) *runtime.Config {
 		cfg := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, Value: big.NewInt(0), BlockNumber: big.NewInt(1)}
-		cfg.EVMConfig = vm.Config{EnableOpcodeOptimizations: enableMIR, EnableMIR: enableMIR, EnableMIRInitcode: enableMIR}
+		cfg.EVMConfig = vm.Config{EnableOpcodeOptimizations: false, EnableMIR: enableMIR}
 		return cfg
 	}
 	runN := func(cfg *runtime.Config, label string, input []byte, iters int) time.Duration {

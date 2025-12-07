@@ -184,7 +184,7 @@ func BenchmarkUSDT_Block_MIRThroughput(b *testing.B) {
 		return elapsed, used
 	}
 	compiler.EnableOpcodeParse()
-	cfgMIR := vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true, MIRStrictNoFallback: true}
+	cfgMIR := vm.Config{EnableMIR: true}
 	// Loop over b.N to make ns/op meaningful and stabilize metrics
 	var totalElapsed time.Duration
 	var totalGas uint64

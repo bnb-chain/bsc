@@ -202,10 +202,8 @@ func executeRuntimeWithMIR(testCase RuntimeTestCase) *RuntimeExecutionResult {
 	}
 
 	vmConfig := vm.Config{
-		EnableOpcodeOptimizations: true,
+		EnableOpcodeOptimizations: false,
 		EnableMIR:                 true,
-		EnableMIRInitcode:         true,
-		MIRStrictNoFallback:       true,
 	}
 
 	evm := vm.NewEVM(blockContext, statedb, chainConfig, vmConfig)

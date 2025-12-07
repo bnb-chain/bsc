@@ -41,8 +41,8 @@ const usdtHex = "0x608060405234801561001057600080fd5b506004361061012c5760003560e
 
 func BenchmarkMIRVsEVM_USDT(b *testing.B) {
 	// Base and MIR configs
-	cfgBase := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}}
+	cfgBase := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{}}
+	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 
 	// decode bytecode
@@ -122,8 +122,8 @@ const wbnbHex = "0x6060604052600436106100af576000357c010000000000000000000000000
 
 func BenchmarkMIRVsEVM_WBNB(b *testing.B) {
 	only := strings.ToUpper(os.Getenv("ONLY"))
-	cfgBase := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true, MIRStrictNoFallback: true}}
+	cfgBase := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{}}
+	cfgMIR := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(1), Value: big.NewInt(0), EVMConfig: vm.Config{EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 
 	code, err := hex.DecodeString(wbnbHex[2:])
@@ -517,8 +517,8 @@ func TestUSDT_MIRVsEVM_Parity(t *testing.T) {
 	// Base and MIR configs
 	// Use BSC chain config at/after London so SHR/SHL/SAR and others are enabled
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
-	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}}
+	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 
 	// Prepare simple args (zero address, 1)
@@ -609,7 +609,7 @@ func TestUSDT_MIR_Strict_ListFailures(t *testing.T) {
 
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 
 	zeroAddress := make([]byte, 32)
@@ -669,7 +669,7 @@ func TestWBNB_MIR_Strict_ListFailures(t *testing.T) {
 	}
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 
 	zeroAddress := make([]byte, 32)
@@ -734,7 +734,7 @@ func TestUSDT_Transfer_EVMvsMIR(t *testing.T) {
 	// Base and MIR configs
 	// Use a post-Constantinople/London block so SHR and friends are enabled and MIR can execute
 	base := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(15000000), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(15000000), Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, EnableMIR: true, EnableMIRInitcode: true}}
+	mir := &runtime.Config{ChainConfig: params.MainnetChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: big.NewInt(15000000), Value: big.NewInt(0), EVMConfig: vm.Config{EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 
 	// Prepare transfer(to, amount)
@@ -819,7 +819,6 @@ func TestUSDT_Transfer_EVMvsMIR(t *testing.T) {
 	}
 
 	// Repeat with MIRStrictNoFallback enabled
-	mir.EVMConfig.MIRStrictNoFallback = true
 	rb2, errB2 := run(base, "usdt_transfer_b_strict", evmTracer, nil)
 	t.Logf("rb2: %x", rb2)
 	rm2, errM2 := run(mir, "usdt_transfer_m_strict", evmTracer, mirTracer)
@@ -867,7 +866,7 @@ func TestUSDT_MIR_Strict_Debug_Allowance(t *testing.T) {
 	// Post-London rules
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 
 	// allowace(owner, spender)
@@ -960,7 +959,7 @@ func TestUSDT_MIR_Strict_Debug_Approve(t *testing.T) {
 
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 
 	// approve(spender, amount)
@@ -1025,7 +1024,7 @@ func TestUSDT_Strict_Parity_Allowance(t *testing.T) {
 	}
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 	zero := make([]byte, 32)
 	input := append([]byte{0x39, 0x50, 0x93, 0x51}, zero...)
@@ -1081,7 +1080,7 @@ func TestUSDT_Strict_Parity_Approve(t *testing.T) {
 	}
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false, EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 	zero := make([]byte, 32)
 	one := make([]byte, 32)
@@ -1134,7 +1133,7 @@ func TestUSDT_Strict_Parity_Name(t *testing.T) {
 	}
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false, EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 	input := []byte{0x06, 0xfd, 0xde, 0x03}
 	run := func(cfg *runtime.Config, label string) ([]byte, error) {
@@ -1182,7 +1181,7 @@ func TestUSDT_Strict_Parity_Symbol(t *testing.T) {
 	}
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false, EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 	input := []byte{0x95, 0xd8, 0x9b, 0x41}
 	run := func(cfg *runtime.Config, label string) ([]byte, error) {
@@ -1230,7 +1229,7 @@ func TestUSDT_Strict_Parity_Decimals(t *testing.T) {
 	}
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false, EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 	input := []byte{0x31, 0x3c, 0xe5, 0x67}
 	run := func(cfg *runtime.Config, label string) ([]byte, error) {
@@ -1278,7 +1277,7 @@ func TestUSDT_Strict_Parity_TotalSupply(t *testing.T) {
 	}
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false, EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 	input := []byte{0x18, 0x16, 0x0d, 0xdd}
 	run := func(cfg *runtime.Config, label string) ([]byte, error) {
@@ -1325,7 +1324,7 @@ func TestUSDT_Strict_Parity_BalanceOf(t *testing.T) {
 	}
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false, EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 	zero := make([]byte, 32)
 	input := append([]byte{0x70, 0xa0, 0x82, 0x31}, zero...)
@@ -1374,7 +1373,7 @@ func TestUSDT_Strict_Parity_Transfer(t *testing.T) {
 	}
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false, EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 	zero := make([]byte, 32)
 	one := make([]byte, 32)
@@ -1427,7 +1426,7 @@ func TestWBNB_Strict_Parity_Name(t *testing.T) {
 	}
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false, EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 	input := []byte{0x06, 0xfd, 0xde, 0x03}
 	run := func(cfg *runtime.Config, label string) ([]byte, error) {
@@ -1475,7 +1474,7 @@ func TestWBNB_Strict_Parity_Symbol(t *testing.T) {
 	}
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false, EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 	input := []byte{0x95, 0xd8, 0x9b, 0x41}
 	run := func(cfg *runtime.Config, label string) ([]byte, error) {
@@ -1525,7 +1524,7 @@ func TestWBNB_Strict_Parity_Decimals(t *testing.T) {
 	}
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false, EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 	input := []byte{0x31, 0x3c, 0xe5, 0x67}
 	run := func(cfg *runtime.Config, label string) ([]byte, error) {
@@ -1573,7 +1572,7 @@ func TestWBNB_Strict_Parity_TotalSupply(t *testing.T) {
 	}
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false, EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 	input := []byte{0x18, 0x16, 0x0d, 0xdd}
 	run := func(cfg *runtime.Config, label string) ([]byte, error) {
@@ -1621,7 +1620,7 @@ func TestWBNB_Strict_Parity_BalanceOf(t *testing.T) {
 	}
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false, EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 	zero := make([]byte, 32)
 	input := append([]byte{0x70, 0xa0, 0x82, 0x31}, zero...)
@@ -1670,7 +1669,7 @@ func TestWBNB_Strict_Parity_Allowance(t *testing.T) {
 	}
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false, EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 	zero := make([]byte, 32)
 	input := append([]byte{0x39, 0x50, 0x93, 0x51}, zero...)
@@ -1724,7 +1723,7 @@ func TestWBNB_Strict_Parity_Approve(t *testing.T) {
 	}
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false, EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 	zero := make([]byte, 32)
 	one := make([]byte, 32)
@@ -1776,7 +1775,7 @@ func TestWBNB_Strict_Parity_Transfer(t *testing.T) {
 	}
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false, EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 	zero := make([]byte, 32)
 	one := make([]byte, 32)
@@ -1961,7 +1960,7 @@ func TestUSDT_Proxy_Call_Parity(t *testing.T) {
 
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false, EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 
 	// Build a simple caller which:
@@ -2039,7 +2038,7 @@ func TestUSDC_BSC_Proxy_Parity_NoArgs(t *testing.T) {
 
 	compatBlock := new(big.Int).Set(params.BSCChainConfig.LondonBlock)
 	base := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false}}
-	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: true, MIRStrictNoFallback: true}}
+	mir := &runtime.Config{ChainConfig: params.BSCChainConfig, GasLimit: 10_000_000, Origin: common.Address{}, BlockNumber: compatBlock, Value: big.NewInt(0), EVMConfig: vm.Config{EnableOpcodeOptimizations: false, EnableMIR: true}}
 	compiler.EnableOpcodeParse()
 
 	// Build a tiny proxy that:

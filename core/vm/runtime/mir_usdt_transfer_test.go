@@ -174,10 +174,8 @@ func TestMIRUSDTTransfer(t *testing.T) {
 	t.Logf("✅ Chain config created - Chain ID: %d", chainConfig.ChainID)
 
 	vmConfig := vm.Config{
-		EnableOpcodeOptimizations: true,
+		EnableOpcodeOptimizations: false,
 		EnableMIR:                 true,
-		EnableMIRInitcode:         false,
-		MIRStrictNoFallback:       true,
 	}
 	t.Log("✅ EVM configuration created (MIR enabled for both runtime and constructor)")
 

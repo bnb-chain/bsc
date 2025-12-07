@@ -57,10 +57,8 @@ func TestMIRUSDT_Allowance_EVMvsMIR_Single(t *testing.T) {
 		BlockNumber: compatBlock,
 		Value:       big.NewInt(0),
 		EVMConfig: vm.Config{
-			EnableOpcodeOptimizations: true,
+			EnableOpcodeOptimizations: false,
 			EnableMIR:                 true,
-			EnableMIRInitcode:         false,
-			MIRStrictNoFallback:       true,
 		},
 	}
 	if base.State == nil {

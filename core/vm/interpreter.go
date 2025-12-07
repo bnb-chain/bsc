@@ -34,16 +34,10 @@ type Config struct {
 	NoBaseFee                 bool  // Forces the EIP-1559 baseFee to 0 (needed for 0 price calls)
 	EnablePreimageRecording   bool  // Enables recording of SHA3/keccak preimages
 	ExtraEips                 []int // Additional EIPS that are to be enabled
-	EnableOpcodeOptimizations bool  // Enable opcode optimization
-	// EnableMIR controls whether the MIR interpreter is preferred when a MIR CFG is available.
-	// Default: true when opcode optimizations are enabled.
+	EnableOpcodeOptimizations bool // Enable opcode optimization (Super Instructions).
+	// EnableMIR controls whether the MIR interpreter is used.
+	// If enabled, MIR interpreter takes precedence over the standard/optimized interpreter.
 	EnableMIR bool
-	// EnableMIRInitcode controls whether contract creation initcode executes via MIR (when MIR CFG available).
-	// Default: false, as initcode runs once and affects deployed code.
-	EnableMIRInitcode bool
-	// When true, do not fallback to the stock EVM interpreter if MIR encounters
-	// any issue and requests fallback. Instead, propagate the MIR error to caller.
-	MIRStrictNoFallback bool
 
 	StatelessSelfValidation bool // Generate execution witnesses and self-check against them (testing purpose)
 }
