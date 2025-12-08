@@ -2339,7 +2339,27 @@ func mirHandleSAR(it *MIRInterpreter, m *MIR) error {
 	return nil
 }
 func mirHandleEQ(it *MIRInterpreter, m *MIR) error {
+	// Debug: log operands for EQ@295
+	if m.evmPC == 295 && len(m.operands) >= 2 {
+		op1 := m.operands[1]
+		defPC := uint(999)
+		kind := -1
+		if op1 != nil {
+			kind = int(op1.kind)
+			if op1.def != nil {
+				defPC = op1.def.evmPC
+			}
+		}
+		mirDebugWarn("EQ@295 operand", "op1_kind", kind, "op1_defPC", defPC)
+	}
+
 	a, b, err := mirLoadAB(it, m)
+
+	// Debug: log values for EQ@295
+	if m.evmPC == 295 {
+		mirDebugWarn("EQ@295 values", "a", a.Uint64(), "b", b.Uint64(), "match", a.Eq(b))
+	}
+
 	//log.Warn("MIR EQ", "a", a, "==b", b)
 	if err != nil {
 		return err
