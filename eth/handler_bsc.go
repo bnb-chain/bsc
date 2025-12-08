@@ -17,22 +17,11 @@ func (h *bscHandler) Chain() *core.BlockChain { return h.chain }
 
 // RunPeer is invoked when a peer joins on the `bsc` protocol.
 func (h *bscHandler) RunPeer(peer *bsc.Peer, hand bsc.Handler) error {
-	if err := peer.Handshake(); err != nil {
-		// ensure that waitBscExtension receives the exit signal normally
-		// otherwise, can't graceful shutdown
-		ps := h.peers
-		id := peer.ID()
+	// Send capability message asynchronously for backward compatibility.
+	// Old nodes expect this message to complete their handshake.
+	// We don't wait for response - just send and continue.
+	peer.SendBscCap()
 
-		// Ensure nobody can double connect
-		ps.lock.Lock()
-		if wait, ok := ps.bscWait[id]; ok {
-			delete(ps.bscWait, id)
-			peer.Log().Error("Bsc extension Handshake failed", "err", err)
-			wait <- nil
-		}
-		ps.lock.Unlock()
-		return err
-	}
 	return (*handler)(h).runBscExtension(peer, hand)
 }
 
