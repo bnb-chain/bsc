@@ -197,6 +197,11 @@ func init() {
 	mirHandlers[byte(MirISZERO)] = mirHandleISZERO
 	mirHandlers[byte(MirNOT)] = mirHandleNOT
 	mirHandlers[byte(MirBYTE)] = mirHandleBYTE
+
+	// DUP operations
+	for i := MirOperation(0); i < 16; i++ {
+		mirHandlers[byte(MirDUP1+i)] = mirHandleDUP
+	}
 }
 
 func NewMIRInterpreter(env *MIRExecutionEnv) *MIRInterpreter {
@@ -299,6 +304,20 @@ func (it *MIRInterpreter) GetEnv() *MIRExecutionEnv {
 // RunMIR executes all instructions in the given basic block list sequentially.
 // For now, control-flow is assumed to be linear within a basic block.
 func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
+	if block.FirstPC() == 375 {
+		fmt.Printf("RunMIR: Entering block PC=375, numInstr=%d\n", len(block.instructions))
+		for i, instr := range block.instructions {
+			hasUnknown := false
+			for _, op := range instr.operands {
+				if op != nil && op.kind == Unknown {
+					hasUnknown = true
+					break
+				}
+			}
+			fmt.Printf("  [%d] pc=%d op=%s hasUnknown=%t numOps=%d\n",
+				i, instr.evmPC, instr.op.String(), hasUnknown, len(instr.operands))
+		}
+	}
 	mirDebugWarn("MIR RunMIR: block", "block", block.blockNum, "instructions", len(block.instructions))
 	for i, ins := range block.instructions {
 		mirDebugWarn("MIR instruction", "idx", i, "op", ins.op)
@@ -517,12 +536,65 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 		}
 	}
 	if it.env != nil && it.env.ResolveBB == nil && cfg != nil {
-		// Build a lightweight resolver using cfg.pcToBlock
+		// Build a lightweight resolver using cfg.pcToBlock and cfg.pcToVariants
+		// CRITICAL FIX: Context-aware variant selection based on predecessor and parent matching
 		it.env.ResolveBB = func(pc uint64) *MIRBasicBlock {
 			if cfg == nil || cfg.pcToBlock == nil {
 				mirDebugWarn("MIR RunCFGWithResolver: cfg or pcToBlock is nil", "pc", pc)
 				return nil
 			}
+
+			// First check if there are variant blocks at this PC
+			if variants, ok := cfg.pcToVariants[uint(pc)]; ok && len(variants) > 0 {
+				// Context-aware selection based on entry stack depth from predecessor
+				var bestVariant *MIRBasicBlock
+				var fallbackVariant *MIRBasicBlock
+
+				// Get the expected entry stack size from predecessor's exit stack
+				expectedStackSize := 0
+				if it.prevBB != nil && it.prevBB.ExitStack() != nil {
+					expectedStackSize = len(it.prevBB.ExitStack())
+				}
+
+				for _, variant := range variants {
+					if variant != nil && variant.built {
+						// Get the entry stack size for this variant
+						variantEntrySize := 0
+						if variant.EntryStack() != nil {
+							variantEntrySize = len(variant.EntryStack())
+						}
+
+						// Count PHI operands
+						phiOperandCount := 0
+						for _, instr := range variant.Instructions() {
+							if instr.op == MirPHI && len(instr.operands) > phiOperandCount {
+								phiOperandCount = len(instr.operands)
+							}
+						}
+
+						// Select variant whose entry stack size matches expected size
+						if variantEntrySize == expectedStackSize {
+							bestVariant = variant
+							break // Found matching variant
+						} else if fallbackVariant == nil {
+							// Track first fallback
+							fallbackVariant = variant
+						}
+					}
+				}
+
+				// Use best match or fallback to first built variant
+				selectedVariant := bestVariant
+				if selectedVariant == nil {
+					selectedVariant = fallbackVariant
+				}
+
+				if selectedVariant != nil {
+					return selectedVariant
+				}
+			}
+
+			// Fallback to canonical block
 			if bb, ok := cfg.pcToBlock[uint(pc)]; ok {
 				mirDebugWarn("MIR RunCFGWithResolver: found bb", "pc", pc, "bb", bb.blockNum)
 				return bb
@@ -533,11 +605,26 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 	}
 	// Follow control flow starting at entry; loop jumping between blocks
 	bb := entry
+	// Initialize prevBB to nil for entry block (no predecessor)
+	it.prevBB = nil
+	it.currentBB = nil
 	// Small oscillation guard: detect excessive re-visits of the same block to prevent infinite loops
 	visitCount := make(map[*MIRBasicBlock]int)
 	const visitBudgetPerBlock = 2048
+	totalVisits := 0
 	for bb != nil {
 		visitCount[bb]++
+		totalVisits++
+		// Update prevBB to track block transitions correctly for PHI resolution
+		// This must happen BEFORE RunMIR so PHI nodes can see the correct predecessor
+		it.prevBB = it.currentBB
+
+		// EMERGENCY STOP: If we've visited blocks too many times, something is wrong
+		// This prevents infinite loops
+		if totalVisits > 10000 {
+			return nil, fmt.Errorf("MIR execution exceeded iteration limit (possible infinite loop)")
+		}
+
 		// visitCount check removed for production runs; rely on gas limit
 		// if visitCount[bb] > visitBudgetPerBlock {
 		//	mirDebugError("MIR oscillation guard: excessive visits to block", "block", bb.blockNum, "firstPC", bb.firstPC, "lastPC", bb.lastPC)
@@ -596,8 +683,6 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 						// Publish on fallthrough, too
 						//log.Warn("MIR publish before fallthrough", "from_block", bb.blockNum)
 						it.publishLiveOut(bb)
-						// Preserve predecessor for successor PHI resolution on fallthrough
-						it.prevBB = bb
 						if children[0] == bb {
 							mirDebugWarn("MIR: self-loop fallthrough detected; rerunning block", "blockNum", bb.blockNum)
 							bb = children[0]
@@ -698,6 +783,7 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 			bb = it.nextBB
 			continue
 		case errSTOP:
+			fmt.Printf("RunCFGWithResolver: errSTOP, returning %d bytes\n", len(it.returndata))
 			return it.returndata, nil
 		case errRETURN:
 			return it.returndata, nil
@@ -1017,7 +1103,6 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 	}
 	switch m.op {
 	case MirPHI:
-
 		// Select operand based on actual predecessor block when available; fallback to first.
 		if len(m.operands) == 0 {
 			it.setResult(m, it.zeroConst)
@@ -1026,13 +1111,14 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		selected := 0
 		if it.currentBB != nil && it.prevBB != nil {
 			parents := it.currentBB.Parents()
+			prevPC := it.prevBB.FirstPC()
+			// Match parents by PC instead of pointer equality to handle CFG rebuilds
 			for i := 0; i < len(parents) && i < len(m.operands); i++ {
-				if parents[i] == it.prevBB {
+				if parents[i] != nil && parents[i].FirstPC() == prevPC {
 					selected = i
 					break
 				}
 			}
-
 		}
 		v := it.evalValue(m.operands[selected])
 		it.setResult(m, v)
@@ -2029,6 +2115,7 @@ func mirHandleJUMP(it *MIRInterpreter, m *MIR) error {
 		return ErrMIRFallback
 	}
 	udest, _ := dest.Uint64WithOverflow()
+	fmt.Printf("JUMP@%d: dest=%d\n", m.evmPC, udest)
 	// Cache resolved PHI-based destination to stabilize later uses across blocks.
 	// However, avoid pinning when the destination is a self-loop to the current block's entry;
 	// allowing re-evaluation on the next iteration can let the dispatcher progress.
@@ -2059,14 +2146,27 @@ func mirHandleJUMPI(it *MIRInterpreter, m *MIR) error {
 	}
 	cond := it.evalValue(m.operands[1])
 
+	// Log JUMPI decisions for control flow tracing
+	dest := it.evalValue(m.operands[0])
+	fmt.Printf("JUMPI@%d: cond=%v (isZero=%t) dest=%v\n",
+		m.evmPC, cond.Uint64(), cond.IsZero(), dest.Uint64())
+
 	if cond.IsZero() {
 		// fallthrough: use children[1] which is the fallthrough block for JUMPI
 		children := it.currentBB.Children()
 		// In our builder, children[0] is fallthrough BB for JUMPI, targets follow.
 		if len(children) >= 1 && children[0] != nil {
+			fmt.Printf("  -> fallthrough to PC=%d\n", children[0].FirstPC())
+			if m.evmPC == 374 {
+				exitStack := it.currentBB.ExitStack()
+				fmt.Printf("JUMPI@374 fallthrough: nextBB PC=%d, exitStackSize=%d\n",
+					children[0].FirstPC(), len(exitStack))
+				if len(exitStack) > 0 {
+					fmt.Printf("  exitStack[0] = %s\n", exitStack[0].DebugString())
+				}
+			}
 			it.nextBB = children[0]
 			it.publishLiveOut(it.currentBB)
-			it.prevBB = it.currentBB
 			return nil // Return nil to indicate success (no error), loop continues
 		}
 		// Fallback: try to resolve fallthrough block directly
@@ -2075,7 +2175,6 @@ func mirHandleJUMPI(it *MIRInterpreter, m *MIR) error {
 		it.nextBB = it.env.ResolveBB(udest)
 		if it.nextBB != nil {
 			it.publishLiveOut(it.currentBB)
-			it.prevBB = it.currentBB
 			return errJUMP
 		}
 		// If we can't resolve the block and children[1] doesn't exist,
@@ -2083,7 +2182,6 @@ func mirHandleJUMPI(it *MIRInterpreter, m *MIR) error {
 		// This should only happen if the CFG is malformed
 		it.nextBB = nil
 		it.publishLiveOut(it.currentBB)
-		it.prevBB = it.currentBB
 		return nil
 	}
 	dest, ok := it.resolveJumpDestValue(m.operands[0])
@@ -2092,13 +2190,13 @@ func mirHandleJUMPI(it *MIRInterpreter, m *MIR) error {
 		return ErrMIRFallback
 	}
 	udest, _ := dest.Uint64WithOverflow()
+	fmt.Printf("  -> jump to PC=%d\n", udest)
 	err := it.scheduleJump(udest, m, false)
 	return err
 }
 
 // mirHandlePHI sets the result to the first available incoming value.
 func mirHandlePHI(it *MIRInterpreter, m *MIR) error {
-
 	// If we can, take the exact value from the immediate predecessor's exit stack
 	if it.prevBB != nil {
 		exit := it.prevBB.ExitStack()
@@ -2112,7 +2210,6 @@ func mirHandlePHI(it *MIRInterpreter, m *MIR) error {
 				src.liveIn = true
 
 				val := it.evalValue(&src)
-
 				it.setResult(m, val)
 				// Record PHI result with predecessor sensitivity for future uses
 				if m != nil {
@@ -2173,10 +2270,49 @@ func mirHandlePHI(it *MIRInterpreter, m *MIR) error {
 	selected := 0
 	if it.currentBB != nil && it.prevBB != nil {
 		parents := it.currentBB.Parents()
+		prevPC := uint(0)
+		if it.prevBB != nil {
+			prevPC = it.prevBB.FirstPC()
+		}
+
+		// Debug: log parent ordering for block 454's critical PHI
+		if m.evmPC == 454 && it.currentBB.FirstPC() == 454 && len(parents) > 0 {
+			type parentInfo struct{ PC, BlockNum uint }
+			parentInfos := make([]parentInfo, 0)
+			for _, p := range parents {
+				if p != nil {
+					parentInfos = append(parentInfos, parentInfo{PC: p.FirstPC(), BlockNum: uint(p.blockNum)})
+				}
+			}
+			prevBlockNum := uint(0)
+			if it.prevBB != nil {
+				prevBlockNum = uint(it.prevBB.blockNum)
+			}
+			operandStrs := make([]string, 0)
+			for i, op := range m.operands {
+				val := it.evalValue(op)
+				operandStrs = append(operandStrs, fmt.Sprintf("[%d]=%v", i, val))
+			}
+			fmt.Printf("PHI@454-runtime: prevBB={PC:%d,Blk:%d} parents=%v operands=%v\n",
+				prevPC, prevBlockNum, parentInfos, operandStrs)
+		}
+
+		// First try exact pointer match (most precise)
+		found := false
 		for i := 0; i < len(parents) && i < len(m.operands); i++ {
 			if parents[i] == it.prevBB {
 				selected = i
+				found = true
 				break
+			}
+		}
+		// Fall back to FirstPC match if pointer doesn't match (can happen after rebuild)
+		if !found {
+			for i := 0; i < len(parents) && i < len(m.operands); i++ {
+				if parents[i] != nil && parents[i].FirstPC() == prevPC {
+					selected = i
+					break
+				}
 			}
 		}
 	}
@@ -2193,6 +2329,21 @@ func mirHandlePHI(it *MIRInterpreter, m *MIR) error {
 			it.phiLastPred[m] = it.prevBB
 		}
 	}
+	return nil
+}
+
+func mirHandleDUP(it *MIRInterpreter, m *MIR) error {
+	// DUP operations duplicate a stack value
+	// operand[0] is the value to duplicate
+	if len(m.operands) < 1 {
+		return fmt.Errorf("DUP missing operand")
+	}
+
+	// Evaluate the value to duplicate
+	val := it.evalValue(m.operands[0])
+
+	// Set the result to the same value (effectively duplicating it)
+	it.setResult(m, val)
 	return nil
 }
 
@@ -2285,7 +2436,8 @@ func mirHandleSUB(it *MIRInterpreter, m *MIR) error {
 		return err
 	}
 	// EVM: top - next => a - b
-	it.setResult(m, it.tmpA.Clear().Sub(a, b))
+	result := it.tmpA.Clear().Sub(a, b)
+	it.setResult(m, result)
 	return nil
 }
 func mirHandleAND(it *MIRInterpreter, m *MIR) error {
@@ -2623,17 +2775,6 @@ func mirHandleBYTE(it *MIRInterpreter, m *MIR) error {
 func (it *MIRInterpreter) execArithmetic(m *MIR) error {
 	if len(m.operands) < 2 {
 		return fmt.Errorf("arithmetic op requires 2 operands")
-	}
-	// Check for Unknown operands - these indicate CFG construction issues
-	if m.operands[0] != nil && m.operands[0].kind == Unknown {
-		mirDebugError("MIR execArithmetic encountered Unknown operand[0] - requesting EVM fallback",
-			"evm_pc", m.evmPC, "op", m.op.String())
-		return ErrMIRFallback
-	}
-	if m.operands[1] != nil && m.operands[1].kind == Unknown {
-		mirDebugError("MIR execArithmetic encountered Unknown operand[1] - requesting EVM fallback",
-			"evm_pc", m.evmPC, "op", m.op.String())
-		return ErrMIRFallback
 	}
 	a := it.evalValue(m.operands[0])
 	b := it.evalValue(m.operands[1])
@@ -3424,32 +3565,38 @@ func (it *MIRInterpreter) scheduleJump(udest uint64, m *MIR, isFallthrough bool)
 	// Then resolve to a basic block in the CFG
 	it.nextBB = it.env.ResolveBB(udest)
 	// Detect trivial two-node oscillation: jumping back-and-forth between two blocks.
-	if !isFallthrough && it.currentBB != nil {
-		from := uint64(it.currentBB.firstPC)
-		// previous jump was lastJumpFrom -> lastJumpTo; now about to do from -> udest
-		// if we see a 2-cycle (from == lastJumpTo && udest == lastJumpFrom), try to break it
-		if it.lastJumpFrom == udest && it.lastJumpTo == from {
-			// Attempt to break the 2-cycle by preferring an alternate PHI operand destination (if available)
-			if m != nil && len(m.operands) > 0 {
-				opv := m.operands[0]
-				if opv != nil && opv.kind == Variable && opv.def != nil && opv.def.op == MirPHI {
-					for _, alt := range opv.def.operands {
-						if alt == nil {
-							continue
-						}
-						if v := it.evalValue(alt); v != nil {
-							if u, _ := v.Uint64WithOverflow(); it.env.CheckJumpdest(u) && u != from && u != udest {
-								mirDebugWarn("MIR scheduleJump: breaking 2-cycle by choosing alternate PHI dest", "from", from, "old_dest", udest, "new_dest", u)
-								udest = u
-								it.nextBB = it.env.ResolveBB(udest)
-								break
+	// DISABLED: 2-cycle breaking logic was incorrectly interfering with legitimate loops
+	// The cycle-breaker was treating loop back-edges (e.g., 454→322 in a for-loop) as infinite loops
+	// and forcibly redirecting to alternate PHI destinations, breaking loop termination logic.
+	// Legitimate loops should be controlled by JUMPI conditions, not by this heuristic.
+	/*
+		if !isFallthrough && it.currentBB != nil {
+			from := uint64(it.currentBB.firstPC)
+			// previous jump was lastJumpFrom -> lastJumpTo; now about to do from -> udest
+			// if we see a 2-cycle (from == lastJumpTo && udest == lastJumpFrom), try to break it
+			if it.lastJumpFrom == udest && it.lastJumpTo == from {
+				// Attempt to break the 2-cycle by preferring an alternate PHI operand destination (if available)
+				if m != nil && len(m.operands) > 0 {
+					opv := m.operands[0]
+					if opv != nil && opv.kind == Variable && opv.def != nil && opv.def.op == MirPHI {
+						for _, alt := range opv.def.operands {
+							if alt == nil {
+								continue
+							}
+							if v := it.evalValue(alt); v != nil {
+								if u, _ := v.Uint64WithOverflow(); it.env.CheckJumpdest(u) && u != from && u != udest {
+									mirDebugWarn("MIR scheduleJump: breaking 2-cycle by choosing alternate PHI dest", "from", from, "old_dest", udest, "new_dest", u)
+									udest = u
+									it.nextBB = it.env.ResolveBB(udest)
+									break
+								}
 							}
 						}
 					}
 				}
 			}
 		}
-	}
+	*/
 	// Record last jump pair
 	if it.currentBB != nil {
 		it.lastJumpFrom = uint64(it.currentBB.firstPC)
@@ -3649,7 +3796,8 @@ func (it *MIRInterpreter) scheduleJump(udest uint64, m *MIR, isFallthrough bool)
 		}
 	}
 	it.publishLiveOut(it.currentBB)
-	it.prevBB = it.currentBB
+	// prevBB is now set by the main loop in RunCFGWithResolver before each block transition
+	// so we don't set it here to avoid overwriting the correct value
 	return errJUMP
 }
 

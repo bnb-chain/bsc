@@ -725,6 +725,10 @@ func (evm *EVM) initNewContract(contract *Contract, address common.Address, valu
 	// We may run initcode via MIR if enabled.
 	contract.optimized = false
 	useMIR := evm.Config.EnableMIR && evm.mirInterpreter != nil
+
+	var ret []byte
+	var err error
+
 	if useMIR {
 		// Ensure MIR CFG is available for the initcode
 		code := contract.Code
@@ -742,11 +746,15 @@ func (evm *EVM) initNewContract(contract *Contract, address common.Address, valu
 			}
 		}
 		if contract.HasMIRCode() {
-			return evm.mirInterpreter.Run(contract, nil, false)
+			ret, err = evm.mirInterpreter.Run(contract, nil, false)
+			// Don't return early - continue to code size checks and SetCode below
+		} else {
+			ret, err = evm.interpreter.Run(contract, nil, false)
 		}
+	} else {
+		ret, err = evm.interpreter.Run(contract, nil, false)
 	}
 
-	ret, err := evm.interpreter.Run(contract, nil, false)
 	if err != nil {
 		return ret, err
 	}
