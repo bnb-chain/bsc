@@ -153,7 +153,7 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 		return out
 	}
 	env.SStoreFunc = func(key [32]byte, value [32]byte) {
-		fmt.Printf("SStoreFunc: addr=%s key=%x value=%x\n", adapter.currentSelf.Hex(), key[:8], value[:8])
+		compiler.MirDebugInfo("SStoreFunc", "addr", adapter.currentSelf.Hex(), "key", fmt.Sprintf("%x", key[:8]), "value", fmt.Sprintf("%x", value[:8]))
 		evm.StateDB.SetState(adapter.currentSelf, common.BytesToHash(key[:]), common.BytesToHash(value[:]))
 	}
 	env.TLoadFunc = func(key [32]byte) [32]byte {
@@ -711,12 +711,12 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 // Run executes the contract using MIR interpreter
 // This method should match the signature of EVMInterpreter.Run
 func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, readOnly bool) (ret []byte, err error) {
-	fmt.Printf("MIRInterpreterAdapter.Run called: contract=%s readOnly=%v\n", contract.Address().Hex(), readOnly)
+	compiler.MirDebugWarn("MIRInterpreterAdapter.Run called", "contract", contract.Address().Hex(), "readOnly", readOnly)
 	// Check if we have MIR-optimized code
 	if !contract.HasMIRCode() {
 		return nil, fmt.Errorf("MIR code missing for %s", contract.Address())
 	}
-	fmt.Printf("MIRInterpreterAdapter.Run: contract has MIR code\n")
+	compiler.MirDebugWarn("MIRInterpreterAdapter.Run: contract has MIR code")
 	// Reset JUMPDEST de-dup guard per top-level run
 	adapter.lastJdPC = ^uint32(0)
 	adapter.lastJdBlockFirstPC = ^uint32(0)
