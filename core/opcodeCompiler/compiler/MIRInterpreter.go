@@ -132,8 +132,10 @@ type MIRInterpreter struct {
 	phiResultsBySig map[uint64]map[int]map[*MIRBasicBlock]*uint256.Int
 	// phiLastPredBySig[evmPC][idx] = pred
 	phiLastPredBySig map[uint64]map[int]*MIRBasicBlock
-	// globalResultsBySig[evmPC][idx] = value
+	// globalResultsBySig[evmPC][idx] = value (deprecated - idx is variant-specific)
 	globalResultsBySig map[uint64]map[int]*uint256.Int
+	// globalResultsByPC[evmPC] = value (PC-only key, handles variants correctly)
+	globalResultsByPC map[uint64]*uint256.Int
 	// simple oscillation tracker for dispatcher loops
 	lastJumpFrom uint64
 	lastJumpTo   uint64
@@ -1042,6 +1044,7 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		}
 		a, b, _ := mirLoadAB(it, m)
 		result := it.tmpA.Clear().Add(a, b)
+
 		it.setResult(m, result)
 		return nil
 	case MirMUL:
@@ -1232,6 +1235,7 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		if len(m.operands) < 2 {
 			return fmt.Errorf("SSTORE missing operands")
 		}
+
 		key := it.evalValue(m.operands[0])
 		val := it.evalValue(m.operands[1])
 		it.sstore(key, val)
@@ -2828,6 +2832,7 @@ func (it *MIRInterpreter) evalValue(v *Value) (ret *uint256.Int) {
 	if v == nil {
 		return it.zeroConst
 	}
+
 	switch v.kind {
 	case Konst:
 		if v.u != nil {
@@ -2907,12 +2912,13 @@ func (it *MIRInterpreter) evalValue(v *Value) (ret *uint256.Int) {
 			}
 			// Then try global cache for live-in values (only if not found locally)
 			if v.liveIn {
-				// PURE APPROACH 1: Always use signature-based cache (evmPC, idx)
-				// This is simpler, more maintainable, and absolutely correct for loops
+				// FIXED APPROACH: Use PC-only key to handle variant blocks correctly
+				// Variant blocks at the same PC have different indices but produce the same result
 				if v.def.evmPC != 0 {
-					if byPC := it.globalResultsBySig[uint64(v.def.evmPC)]; byPC != nil {
-						if val, ok := byPC[v.def.idx]; ok && val != nil {
+					if it.globalResultsByPC != nil {
+						if val := it.globalResultsByPC[uint64(v.def.evmPC)]; val != nil {
 							return val
+						} else {
 						}
 					}
 				}
@@ -2925,10 +2931,10 @@ func (it *MIRInterpreter) evalValue(v *Value) (ret *uint256.Int) {
 				}
 			}
 			// Finally, fallback to global map for non-live-in cross-BB defs
-			// Also check globalResultsBySig for non-live-in values (they might still be in the cache)
+			// Use PC-only lookup first (handles variants), then pointer-based
 			if v.def.evmPC != 0 {
-				if byPC := it.globalResultsBySig[uint64(v.def.evmPC)]; byPC != nil {
-					if val, ok := byPC[v.def.idx]; ok && val != nil {
+				if it.globalResultsByPC != nil {
+					if val := it.globalResultsByPC[uint64(v.def.evmPC)]; val != nil {
 						return val
 					}
 				}
@@ -2952,6 +2958,7 @@ func (it *MIRInterpreter) setResult(m *MIR, val *uint256.Int) {
 	if m.idx < 0 {
 		return
 	}
+
 	// Ensure results slice can hold index m.idx
 	if m.idx >= len(it.results) {
 		// Grow to m.idx+1, preserving existing entries
@@ -2967,6 +2974,19 @@ func (it *MIRInterpreter) setResult(m *MIR, val *uint256.Int) {
 		it.results[m.idx] = new(uint256.Int)
 	}
 	it.results[m.idx].Set(val)
+
+	// CRITICAL FIX: Store to global cache using PC-only key for cross-block/cross-variant access
+	// Multiple variant blocks at the same PC have different indices but produce the same result
+	// So we use ONLY evmPC as key, ignoring idx to handle variants correctly
+	if m.evmPC != 0 {
+		if it.globalResultsByPC == nil {
+			it.globalResultsByPC = make(map[uint64]*uint256.Int)
+		}
+		if it.globalResultsByPC[uint64(m.evmPC)] == nil {
+			it.globalResultsByPC[uint64(m.evmPC)] = new(uint256.Int)
+		}
+		it.globalResultsByPC[uint64(m.evmPC)].Set(val)
+	}
 }
 
 // MemoryCap returns the capacity of the internal memory buffer
