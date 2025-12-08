@@ -121,14 +121,30 @@ func getSmallScaleConfig() (int64, uint64, uint64) {
 	return numTransfers, batchGasLimit, blockGasLimit
 }
 
+// TestBaseUSDTTransfer tests USDT transfers using native EVM interpreter (no MIR)
+func TestBaseUSDTTransfer(t *testing.T) {
+	runUSDTTransferTest(t, false) // false = use native EVM
+}
+
+// TestMIRUSDTTransfer tests USDT transfers using MIR interpreter
 func TestMIRUSDTTransfer(t *testing.T) {
+	runUSDTTransferTest(t, true) // true = use MIR
+}
+
+// runUSDTTransferTest is the shared test logic for both native EVM and MIR
+func runUSDTTransferTest(t *testing.T, useMIR bool) {
+	interpreterName := "Native EVM"
+	if useMIR {
+		interpreterName = "MIR"
+	}
+
 	// 启用BSC详细日志
 	setupBSCLogging(t)
 
 	// 选择测试规模 - 使用小规模测试避免超时
 	numTransfers, batchGasLimit, blockGasLimit := getSmallScaleConfig() // 5万次转账
 
-	t.Logf("🚀 Pure BSC-EVM Benchmark - USDT Token Individual Transfers (Scale: %d transfers)", numTransfers)
+	t.Logf("🚀 [%s] Pure BSC-EVM Benchmark - USDT Token Individual Transfers (Scale: %d transfers)", interpreterName, numTransfers)
 	t.Logf("📊 Gas Configuration - Total: %d, Block: %d", batchGasLimit, blockGasLimit)
 
 	// Load USDT contract bytecode
@@ -175,15 +191,18 @@ func TestMIRUSDTTransfer(t *testing.T) {
 
 	vmConfig := vm.Config{
 		EnableOpcodeOptimizations: false,
-		EnableMIR:                 true,
+		EnableMIR:                 useMIR,
 	}
-	t.Log("✅ EVM configuration created (MIR enabled for both runtime and constructor)")
 
-	compiler.EnableOpcodeParse()
-
-	// 🔍 启用 MIR 调试日志（单一开关）
-	compiler.EnableMIRDebugLogs(true)
-	t.Log("🔍 MIR debug logs enabled")
+	if useMIR {
+		t.Log("✅ EVM configuration created (MIR enabled)")
+		compiler.EnableOpcodeParse() // Enable MIR CFG parsing and caching
+		// 🔍 启用 MIR 调试日志（单一开关）
+		compiler.EnableMIRDebugLogs(true)
+		t.Log("🔍 MIR debug logs enabled")
+	} else {
+		t.Log("✅ EVM configuration created (Native EVM)")
+	}
 
 	blockContext := vm.BlockContext{
 		CanTransfer: core.CanTransfer,
@@ -231,16 +250,39 @@ func TestMIRUSDTTransfer(t *testing.T) {
 	// Verify some recipient balances
 	t.Log("🔍 Verifying transfers...")
 	startRecipient := common.HexToAddress("0x1111111111111111111111111111111111111234")
+	expectedBalancePerRecipient := big.NewInt(1000000000000000000) // 1 token each
 	for i := 0; i < 3; i++ {
 		recipient := common.BigToAddress(new(big.Int).Add(startRecipient.Big(), big.NewInt(int64(i))))
 		balance := getTokenBalance(t, evm, recipient)
-		t.Logf("✅ Recipient %d (%s): %s tokens", i+1, recipient.Hex(), new(big.Int).Div(balance, big.NewInt(1000000000000000000)).String())
+		balanceInTokens := new(big.Int).Div(balance, big.NewInt(1000000000000000000))
+		t.Logf("Recipient %d (%s): %s tokens (raw: %s)", i+1, recipient.Hex(), balanceInTokens.String(), balance.String())
+
+		// Assert recipient received exactly 1 token
+		if balance.Cmp(expectedBalancePerRecipient) != 0 {
+			t.Errorf("❌ Recipient %d balance INCORRECT: expected %s, got %s",
+				i+1, expectedBalancePerRecipient.String(), balance.String())
+		} else {
+			t.Logf("✅ Recipient %d balance VERIFIED: %s tokens", i+1, balanceInTokens.String())
+		}
 	}
 
 	// Verify Alice's final balance
 	t.Log("🔍 Verifying Alice's final balance...")
 	aliceFinalBalance := getTokenBalance(t, evm, aliceAddr)
-	t.Logf("✅ Alice's final balance: %s tokens", new(big.Int).Div(aliceFinalBalance, big.NewInt(1000000000000000000)).String())
+	expectedAliceFinal := new(big.Int).Sub(aliceTokenBalance, new(big.Int).Mul(big.NewInt(numTransfers), big.NewInt(1000000000000000000)))
+	aliceFinalInTokens := new(big.Int).Div(aliceFinalBalance, big.NewInt(1000000000000000000))
+	t.Logf("Alice's final balance: %s tokens (raw: %s)", aliceFinalInTokens.String(), aliceFinalBalance.String())
+	t.Logf("Expected Alice final: %s (initial %s - %d transfers)",
+		new(big.Int).Div(expectedAliceFinal, big.NewInt(1000000000000000000)).String(),
+		new(big.Int).Div(aliceTokenBalance, big.NewInt(1000000000000000000)).String(),
+		numTransfers)
+
+	if aliceFinalBalance.Cmp(expectedAliceFinal) != 0 {
+		t.Errorf("❌ Alice's final balance INCORRECT: expected %s, got %s",
+			expectedAliceFinal.String(), aliceFinalBalance.String())
+	} else {
+		t.Logf("✅ Alice's final balance VERIFIED: %s tokens", aliceFinalInTokens.String())
+	}
 
 	t.Log("✨ BSC-EVM Benchmark completed successfully!")
 }
@@ -349,8 +391,8 @@ func performIndividualTransfersWithConfig(t *testing.T, evm *vm.EVM, numTransfer
 		// 执行transfer调用
 		executeTransaction(t, evm, globalUsdtContract, calldata, gasPerTransfer)
 
-		// 每10000次转账打印一次进度
-		if (i+1)%10000 == 0 {
+		// 每10次转账打印一次进度
+		if (i+1)%(int(numTransfers)/10) == 0 {
 			t.Logf("📊 Progress: %d/%d transfers completed", i+1, numTransfers)
 		}
 	}

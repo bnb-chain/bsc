@@ -132,8 +132,10 @@ type MIRInterpreter struct {
 	phiResultsBySig map[uint64]map[int]map[*MIRBasicBlock]*uint256.Int
 	// phiLastPredBySig[evmPC][idx] = pred
 	phiLastPredBySig map[uint64]map[int]*MIRBasicBlock
-	// globalResultsBySig[evmPC][idx] = value
+	// globalResultsBySig[evmPC][idx] = value (deprecated - idx is variant-specific)
 	globalResultsBySig map[uint64]map[int]*uint256.Int
+	// globalResultsByPC[evmPC] = value (PC-only key, handles variants correctly)
+	globalResultsByPC map[uint64]*uint256.Int
 	// simple oscillation tracker for dispatcher loops
 	lastJumpFrom uint64
 	lastJumpTo   uint64
@@ -197,6 +199,11 @@ func init() {
 	mirHandlers[byte(MirISZERO)] = mirHandleISZERO
 	mirHandlers[byte(MirNOT)] = mirHandleNOT
 	mirHandlers[byte(MirBYTE)] = mirHandleBYTE
+
+	// DUP operations
+	for i := MirOperation(0); i < 16; i++ {
+		mirHandlers[byte(MirDUP1+i)] = mirHandleDUP
+	}
 }
 
 func NewMIRInterpreter(env *MIRExecutionEnv) *MIRInterpreter {
@@ -299,9 +306,9 @@ func (it *MIRInterpreter) GetEnv() *MIRExecutionEnv {
 // RunMIR executes all instructions in the given basic block list sequentially.
 // For now, control-flow is assumed to be linear within a basic block.
 func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
-	mirDebugWarn("MIR RunMIR: block", "block", block.blockNum, "instructions", len(block.instructions))
+	MirDebugWarn("MIR RunMIR: block", "block", block.blockNum, "instructions", len(block.instructions))
 	for i, ins := range block.instructions {
-		mirDebugWarn("MIR instruction", "idx", i, "op", ins.op)
+		MirDebugWarn("MIR instruction", "idx", i, "op", ins.op)
 	}
 	if block == nil || len(block.instructions) == 0 {
 		return it.returndata, nil
@@ -400,7 +407,10 @@ func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
 				return nil, err
 			default:
 				// Don't fallback - expose the error so we can fix it
-				mirDebugWarn("RunMIR: Instruction error (not falling back)", "evmPC", ins.evmPC, "op", ins.op.String(), "err", err)
+				// PERFORMANCE: Only evaluate String() when debug logging is enabled
+				if DebugLogsEnabled {
+					MirDebugWarn("RunMIR: Instruction error (not falling back)", "evmPC", ins.evmPC, "op", ins.op.String(), "err", err)
+				}
 				return nil, err
 			}
 		}
@@ -426,7 +436,7 @@ func (it *MIRInterpreter) publishLiveOut(block *MIRBasicBlock) {
 
 	//log.Warn("MIR publishLiveOut", "block", block.blockNum, "size", len(block.instructions), "defs", defs, "it.results", it.results, "block.exitStack", block.ExitStack())
 	if len(defs) == 0 && len(block.ExitStack()) == 0 {
-		mirDebugWarn("MIR publishLiveOut: no live outs", "block", block.blockNum)
+		MirDebugWarn("MIR publishLiveOut: no live outs", "block", block.blockNum)
 		return
 	}
 	inBlock := make(map[*MIR]bool, len(block.instructions))
@@ -487,7 +497,7 @@ func (it *MIRInterpreter) publishLiveOut(block *MIRBasicBlock) {
 func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]byte, error) {
 	defer func() {
 		if r := recover(); r != nil {
-			mirDebugError("MIR panic", "err", r, "stack", string(debug.Stack()))
+			MirDebugError("MIR panic", "err", r, "stack", string(debug.Stack()))
 			panic(r)
 		}
 	}()
@@ -517,30 +527,89 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 		}
 	}
 	if it.env != nil && it.env.ResolveBB == nil && cfg != nil {
-		// Build a lightweight resolver using cfg.pcToBlock
+		// Build a lightweight resolver using cfg.pcToBlock and cfg.pcToVariants
+		// CRITICAL FIX: Context-aware variant selection based on predecessor and parent matching
 		it.env.ResolveBB = func(pc uint64) *MIRBasicBlock {
 			if cfg == nil || cfg.pcToBlock == nil {
-				mirDebugWarn("MIR RunCFGWithResolver: cfg or pcToBlock is nil", "pc", pc)
+				MirDebugWarn("MIR RunCFGWithResolver: cfg or pcToBlock is nil", "pc", pc)
 				return nil
 			}
+
+			// First check if there are variant blocks at this PC
+			if variants, ok := cfg.pcToVariants[uint(pc)]; ok && len(variants) > 0 {
+				// Context-aware selection based on entry stack depth from predecessor
+				var bestVariant *MIRBasicBlock
+				var fallbackVariant *MIRBasicBlock
+
+				// Get the expected entry stack size from predecessor's exit stack
+				expectedStackSize := 0
+				if it.prevBB != nil && it.prevBB.ExitStack() != nil {
+					expectedStackSize = len(it.prevBB.ExitStack())
+				}
+
+				for _, variant := range variants {
+					if variant != nil && variant.built {
+						// Get the entry stack size for this variant
+						variantEntrySize := 0
+						if variant.EntryStack() != nil {
+							variantEntrySize = len(variant.EntryStack())
+						}
+
+						// Count PHI operands
+						phiOperandCount := 0
+						for _, instr := range variant.Instructions() {
+							if instr.op == MirPHI && len(instr.operands) > phiOperandCount {
+								phiOperandCount = len(instr.operands)
+							}
+						}
+
+						// Select variant whose entry stack size matches expected size
+						if variantEntrySize == expectedStackSize {
+							bestVariant = variant
+							break // Found matching variant
+						} else if fallbackVariant == nil {
+							// Track first fallback
+							fallbackVariant = variant
+						}
+					}
+				}
+
+				// Use best match or fallback to first built variant
+				selectedVariant := bestVariant
+				if selectedVariant == nil {
+					selectedVariant = fallbackVariant
+				}
+
+				if selectedVariant != nil {
+					return selectedVariant
+				}
+			}
+
+			// Fallback to canonical block
 			if bb, ok := cfg.pcToBlock[uint(pc)]; ok {
-				mirDebugWarn("MIR RunCFGWithResolver: found bb", "pc", pc, "bb", bb.blockNum)
+				MirDebugWarn("MIR RunCFGWithResolver: found bb", "pc", pc, "bb", bb.blockNum)
 				return bb
 			}
-			mirDebugWarn("MIR RunCFGWithResolver: not found bb", "pc", pc)
+			MirDebugWarn("MIR RunCFGWithResolver: not found bb", "pc", pc)
 			return nil
 		}
 	}
 	// Follow control flow starting at entry; loop jumping between blocks
 	bb := entry
+	// Initialize prevBB to nil for entry block (no predecessor)
+	it.prevBB = nil
+	it.currentBB = nil
 	// Small oscillation guard: detect excessive re-visits of the same block to prevent infinite loops
 	visitCount := make(map[*MIRBasicBlock]int)
 	const visitBudgetPerBlock = 2048
 	for bb != nil {
 		visitCount[bb]++
+		// Update prevBB to track block transitions correctly for PHI resolution
+		// This must happen BEFORE RunMIR so PHI nodes can see the correct predecessor
+		it.prevBB = it.currentBB
 		// visitCount check removed for production runs; rely on gas limit
 		// if visitCount[bb] > visitBudgetPerBlock {
-		//	mirDebugError("MIR oscillation guard: excessive visits to block", "block", bb.blockNum, "firstPC", bb.firstPC, "lastPC", bb.lastPC)
+		//	MirDebugError("MIR oscillation guard: excessive visits to block", "block", bb.blockNum, "firstPC", bb.firstPC, "lastPC", bb.lastPC)
 		//	return nil, ErrMIRFallback
 		// }
 		it.nextBB = nil
@@ -554,7 +623,7 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 			if it.cfg != nil && int(bb.firstPC) >= 0 && int(bb.firstPC) < len(it.cfg.rawCode) {
 				if ByteCode(it.cfg.rawCode[int(bb.firstPC)]) == JUMPDEST {
 					// Create a minimal MIR to allow adapter to charge JUMPDEST gas
-					mirDebugWarn("MIR synthesize JUMPDEST pre-op at block entry", "block", bb.blockNum, "firstPC", bb.firstPC, "size", bb.Size())
+					MirDebugWarn("MIR synthesize JUMPDEST pre-op at block entry", "block", bb.blockNum, "firstPC", bb.firstPC, "size", bb.Size())
 					synth := new(MIR)
 					synth.op = MirJUMPDEST
 					synth.evmPC = uint(bb.firstPC)
@@ -576,7 +645,7 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 		}
 		_, err := it.RunMIR(bb)
 		if err == nil {
-			mirDebugWarn("MIR RunCFGWithResolver: run mir success", "bb", bb.blockNum, "firstPC", bb.firstPC, "lastPC", bb.lastPC, "it.nextBB", it.nextBB)
+			MirDebugWarn("MIR RunCFGWithResolver: run mir success", "bb", bb.blockNum, "firstPC", bb.firstPC, "lastPC", bb.lastPC, "it.nextBB", it.nextBB)
 			// Safety check: if block ended with terminal instruction (RETURN/REVERT/STOP), don't fallthrough
 			if len(bb.instructions) > 0 {
 				lastInstr := bb.instructions[len(bb.instructions)-1]
@@ -596,10 +665,8 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 						// Publish on fallthrough, too
 						//log.Warn("MIR publish before fallthrough", "from_block", bb.blockNum)
 						it.publishLiveOut(bb)
-						// Preserve predecessor for successor PHI resolution on fallthrough
-						it.prevBB = bb
 						if children[0] == bb {
-							mirDebugWarn("MIR: self-loop fallthrough detected; rerunning block", "blockNum", bb.blockNum)
+							MirDebugWarn("MIR: self-loop fallthrough detected; rerunning block", "blockNum", bb.blockNum)
 							bb = children[0]
 							continue
 						}
@@ -680,7 +747,7 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 						// Preserve predecessor for successor PHI resolution on conditional fallthrough
 						it.prevBB = bb
 						if children[1] == bb {
-							mirDebugWarn("MIR: self-loop conditional fallthrough detected; rerunning block", "blockNum", bb.blockNum)
+							MirDebugWarn("MIR: self-loop conditional fallthrough detected; rerunning block", "blockNum", bb.blockNum)
 							bb = children[1]
 							continue
 						}
@@ -980,6 +1047,7 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		}
 		a, b, _ := mirLoadAB(it, m)
 		result := it.tmpA.Clear().Add(a, b)
+
 		it.setResult(m, result)
 		return nil
 	case MirMUL:
@@ -1017,7 +1085,6 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 	}
 	switch m.op {
 	case MirPHI:
-
 		// Select operand based on actual predecessor block when available; fallback to first.
 		if len(m.operands) == 0 {
 			it.setResult(m, it.zeroConst)
@@ -1026,13 +1093,14 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		selected := 0
 		if it.currentBB != nil && it.prevBB != nil {
 			parents := it.currentBB.Parents()
+			prevPC := it.prevBB.FirstPC()
+			// Match parents by PC instead of pointer equality to handle CFG rebuilds
 			for i := 0; i < len(parents) && i < len(m.operands); i++ {
-				if parents[i] == it.prevBB {
+				if parents[i] != nil && parents[i].FirstPC() == prevPC {
 					selected = i
 					break
 				}
 			}
-
 		}
 		v := it.evalValue(m.operands[selected])
 		it.setResult(m, v)
@@ -1170,6 +1238,7 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		if len(m.operands) < 2 {
 			return fmt.Errorf("SSTORE missing operands")
 		}
+
 		key := it.evalValue(m.operands[0])
 		val := it.evalValue(m.operands[1])
 		it.sstore(key, val)
@@ -1213,7 +1282,7 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		if sz == nil {
 			sz = it.evalValue(m.operands[2])
 		}
-		mirDebugWarn("MIR CODECOPY", "dest", dest, "off", off, "sz", sz)
+		MirDebugWarn("MIR CODECOPY", "dest", dest, "off", off, "sz", sz)
 		// Copy from env.Code if present; else zero-fill
 		if it.env != nil && it.env.Code != nil {
 			d := dest.Uint64()
@@ -1584,17 +1653,22 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		} else {
 			sz = it.evalValue(m.operands[1])
 		}
-		mirDebugWarn("MIR RETURN", "off", off, "sz", sz)
+		// PERFORMANCE: Only evaluate fmt.Sprintf when debug logging is enabled
+		if DebugLogsEnabled {
+			MirDebugWarn("MIR RETURN", "off", off, "sz", sz)
+		}
 		it.returndata = it.readMemCopy(off, sz)
-		if len(it.returndata) > 0 {
-			// Log first 16 bytes for debugging constructor emissions
-			first := it.returndata
-			if len(first) > 16 {
-				first = first[:16]
+		if DebugLogsEnabled {
+			if len(it.returndata) > 0 {
+				// Log first 16 bytes for debugging constructor emissions
+				first := it.returndata
+				if len(first) > 16 {
+					first = first[:16]
+				}
+				MirDebugWarn("MIR RETURN data", "len", len(it.returndata), "head", fmt.Sprintf("%x", first))
+			} else {
+				MirDebugWarn("MIR RETURN data empty")
 			}
-			mirDebugWarn("MIR RETURN data", "len", len(it.returndata), "head", fmt.Sprintf("%x", first))
-		} else {
-			mirDebugWarn("MIR RETURN data empty")
 		}
 		return errRETURN
 	case MirREVERT:
@@ -2025,7 +2099,7 @@ func mirHandleJUMP(it *MIRInterpreter, m *MIR) error {
 	}
 	dest, ok := it.resolveJumpDestValue(m.operands[0])
 	if !ok {
-		mirDebugError("MIR JUMP cannot resolve PHI-derived dest - requesting EVM fallback", "from_evm_pc", m.evmPC)
+		MirDebugError("MIR JUMP cannot resolve PHI-derived dest - requesting EVM fallback", "from_evm_pc", m.evmPC)
 		return ErrMIRFallback
 	}
 	udest, _ := dest.Uint64WithOverflow()
@@ -2066,7 +2140,6 @@ func mirHandleJUMPI(it *MIRInterpreter, m *MIR) error {
 		if len(children) >= 1 && children[0] != nil {
 			it.nextBB = children[0]
 			it.publishLiveOut(it.currentBB)
-			it.prevBB = it.currentBB
 			return nil // Return nil to indicate success (no error), loop continues
 		}
 		// Fallback: try to resolve fallthrough block directly
@@ -2075,7 +2148,6 @@ func mirHandleJUMPI(it *MIRInterpreter, m *MIR) error {
 		it.nextBB = it.env.ResolveBB(udest)
 		if it.nextBB != nil {
 			it.publishLiveOut(it.currentBB)
-			it.prevBB = it.currentBB
 			return errJUMP
 		}
 		// If we can't resolve the block and children[1] doesn't exist,
@@ -2083,12 +2155,11 @@ func mirHandleJUMPI(it *MIRInterpreter, m *MIR) error {
 		// This should only happen if the CFG is malformed
 		it.nextBB = nil
 		it.publishLiveOut(it.currentBB)
-		it.prevBB = it.currentBB
 		return nil
 	}
 	dest, ok := it.resolveJumpDestValue(m.operands[0])
 	if !ok {
-		mirDebugError("MIR JUMPI cannot resolve PHI-derived dest - requesting EVM fallback", "from_evm_pc", m.evmPC)
+		MirDebugError("MIR JUMPI cannot resolve PHI-derived dest - requesting EVM fallback", "from_evm_pc", m.evmPC)
 		return ErrMIRFallback
 	}
 	udest, _ := dest.Uint64WithOverflow()
@@ -2098,7 +2169,6 @@ func mirHandleJUMPI(it *MIRInterpreter, m *MIR) error {
 
 // mirHandlePHI sets the result to the first available incoming value.
 func mirHandlePHI(it *MIRInterpreter, m *MIR) error {
-
 	// If we can, take the exact value from the immediate predecessor's exit stack
 	if it.prevBB != nil {
 		exit := it.prevBB.ExitStack()
@@ -2112,7 +2182,6 @@ func mirHandlePHI(it *MIRInterpreter, m *MIR) error {
 				src.liveIn = true
 
 				val := it.evalValue(&src)
-
 				it.setResult(m, val)
 				// Record PHI result with predecessor sensitivity for future uses
 				if m != nil {
@@ -2173,10 +2242,27 @@ func mirHandlePHI(it *MIRInterpreter, m *MIR) error {
 	selected := 0
 	if it.currentBB != nil && it.prevBB != nil {
 		parents := it.currentBB.Parents()
+		prevPC := uint(0)
+		if it.prevBB != nil {
+			prevPC = it.prevBB.FirstPC()
+		}
+
+		// First try exact pointer match (most precise)
+		found := false
 		for i := 0; i < len(parents) && i < len(m.operands); i++ {
 			if parents[i] == it.prevBB {
 				selected = i
+				found = true
 				break
+			}
+		}
+		// Fall back to FirstPC match if pointer doesn't match (can happen after rebuild)
+		if !found {
+			for i := 0; i < len(parents) && i < len(m.operands); i++ {
+				if parents[i] != nil && parents[i].FirstPC() == prevPC {
+					selected = i
+					break
+				}
 			}
 		}
 	}
@@ -2193,6 +2279,21 @@ func mirHandlePHI(it *MIRInterpreter, m *MIR) error {
 			it.phiLastPred[m] = it.prevBB
 		}
 	}
+	return nil
+}
+
+func mirHandleDUP(it *MIRInterpreter, m *MIR) error {
+	// DUP operations duplicate a stack value
+	// operand[0] is the value to duplicate
+	if len(m.operands) < 1 {
+		return fmt.Errorf("DUP missing operand")
+	}
+
+	// Evaluate the value to duplicate
+	val := it.evalValue(m.operands[0])
+
+	// Set the result to the same value (effectively duplicating it)
+	it.setResult(m, val)
 	return nil
 }
 
@@ -2227,12 +2328,12 @@ func mirLoadAB(it *MIRInterpreter, m *MIR) (a, b *uint256.Int, err error) {
 	}
 	// Check for Unknown operands - these indicate CFG construction issues
 	if m.operands[0] != nil && m.operands[0].kind == Unknown {
-		mirDebugError("MIR mirLoadAB encountered Unknown operand[0] - requesting EVM fallback",
+		MirDebugError("MIR mirLoadAB encountered Unknown operand[0] - requesting EVM fallback",
 			"evm_pc", m.evmPC, "op", m.op.String())
 		return nil, nil, ErrMIRFallback
 	}
 	if m.operands[1] != nil && m.operands[1].kind == Unknown {
-		mirDebugError("MIR mirLoadAB encountered Unknown operand[1] - requesting EVM fallback",
+		MirDebugError("MIR mirLoadAB encountered Unknown operand[1] - requesting EVM fallback",
 			"evm_pc", m.evmPC, "op", m.op.String())
 		return nil, nil, ErrMIRFallback
 	}
@@ -2285,7 +2386,8 @@ func mirHandleSUB(it *MIRInterpreter, m *MIR) error {
 		return err
 	}
 	// EVM: top - next => a - b
-	it.setResult(m, it.tmpA.Clear().Sub(a, b))
+	result := it.tmpA.Clear().Sub(a, b)
+	it.setResult(m, result)
 	return nil
 }
 func mirHandleAND(it *MIRInterpreter, m *MIR) error {
@@ -2373,7 +2475,10 @@ func mirHandleEQ(it *MIRInterpreter, m *MIR) error {
 }
 func mirHandleLT(it *MIRInterpreter, m *MIR) error {
 	a, b, err := mirLoadAB(it, m)
-	mirDebugWarn("MIR LT", "a", a.Hex(), "b", b.Hex())
+	// PERFORMANCE: Only evaluate Hex() when debug logging is enabled
+	if DebugLogsEnabled {
+		MirDebugWarn("MIR LT", "a", a.Hex(), "b", b.Hex())
+	}
 	if err != nil {
 		return err
 	}
@@ -2644,17 +2749,6 @@ func (it *MIRInterpreter) execArithmetic(m *MIR) error {
 	if len(m.operands) < 2 {
 		return fmt.Errorf("arithmetic op requires 2 operands")
 	}
-	// Check for Unknown operands - these indicate CFG construction issues
-	if m.operands[0] != nil && m.operands[0].kind == Unknown {
-		mirDebugError("MIR execArithmetic encountered Unknown operand[0] - requesting EVM fallback",
-			"evm_pc", m.evmPC, "op", m.op.String())
-		return ErrMIRFallback
-	}
-	if m.operands[1] != nil && m.operands[1].kind == Unknown {
-		mirDebugError("MIR execArithmetic encountered Unknown operand[1] - requesting EVM fallback",
-			"evm_pc", m.evmPC, "op", m.op.String())
-		return ErrMIRFallback
-	}
 	a := it.evalValue(m.operands[0])
 	b := it.evalValue(m.operands[1])
 
@@ -2769,6 +2863,7 @@ func (it *MIRInterpreter) evalValue(v *Value) (ret *uint256.Int) {
 	if v == nil {
 		return it.zeroConst
 	}
+
 	switch v.kind {
 	case Konst:
 		if v.u != nil {
@@ -2778,7 +2873,7 @@ func (it *MIRInterpreter) evalValue(v *Value) (ret *uint256.Int) {
 	case Unknown:
 		// Unknown values should not default to zero - this indicates a CFG construction issue
 		// or stack underflow. Return zeroConst as fallback but log error for debugging.
-		mirDebugError("MIR evalValue encountered Unknown value - this should not happen at runtime",
+		MirDebugError("MIR evalValue encountered Unknown value - this should not happen at runtime",
 			"def", v.def != nil, "def_evmPC", func() uint {
 				if v.def != nil {
 					return v.def.evmPC
@@ -2848,12 +2943,13 @@ func (it *MIRInterpreter) evalValue(v *Value) (ret *uint256.Int) {
 			}
 			// Then try global cache for live-in values (only if not found locally)
 			if v.liveIn {
-				// PURE APPROACH 1: Always use signature-based cache (evmPC, idx)
-				// This is simpler, more maintainable, and absolutely correct for loops
+				// FIXED APPROACH: Use PC-only key to handle variant blocks correctly
+				// Variant blocks at the same PC have different indices but produce the same result
 				if v.def.evmPC != 0 {
-					if byPC := it.globalResultsBySig[uint64(v.def.evmPC)]; byPC != nil {
-						if val, ok := byPC[v.def.idx]; ok && val != nil {
+					if it.globalResultsByPC != nil {
+						if val := it.globalResultsByPC[uint64(v.def.evmPC)]; val != nil {
 							return val
+						} else {
 						}
 					}
 				}
@@ -2866,10 +2962,10 @@ func (it *MIRInterpreter) evalValue(v *Value) (ret *uint256.Int) {
 				}
 			}
 			// Finally, fallback to global map for non-live-in cross-BB defs
-			// Also check globalResultsBySig for non-live-in values (they might still be in the cache)
+			// Use PC-only lookup first (handles variants), then pointer-based
 			if v.def.evmPC != 0 {
-				if byPC := it.globalResultsBySig[uint64(v.def.evmPC)]; byPC != nil {
-					if val, ok := byPC[v.def.idx]; ok && val != nil {
+				if it.globalResultsByPC != nil {
+					if val := it.globalResultsByPC[uint64(v.def.evmPC)]; val != nil {
 						return val
 					}
 				}
@@ -2893,6 +2989,7 @@ func (it *MIRInterpreter) setResult(m *MIR, val *uint256.Int) {
 	if m.idx < 0 {
 		return
 	}
+
 	// Ensure results slice can hold index m.idx
 	if m.idx >= len(it.results) {
 		// Grow to m.idx+1, preserving existing entries
@@ -2908,6 +3005,19 @@ func (it *MIRInterpreter) setResult(m *MIR, val *uint256.Int) {
 		it.results[m.idx] = new(uint256.Int)
 	}
 	it.results[m.idx].Set(val)
+
+	// CRITICAL FIX: Store to global cache using PC-only key for cross-block/cross-variant access
+	// Multiple variant blocks at the same PC have different indices but produce the same result
+	// So we use ONLY evmPC as key, ignoring idx to handle variants correctly
+	if m.evmPC != 0 {
+		if it.globalResultsByPC == nil {
+			it.globalResultsByPC = make(map[uint64]*uint256.Int)
+		}
+		if it.globalResultsByPC[uint64(m.evmPC)] == nil {
+			it.globalResultsByPC[uint64(m.evmPC)] = new(uint256.Int)
+		}
+		it.globalResultsByPC[uint64(m.evmPC)].Set(val)
+	}
 }
 
 // MemoryCap returns the capacity of the internal memory buffer
@@ -3308,7 +3418,7 @@ func (it *MIRInterpreter) scheduleJump(udest uint64, m *MIR, isFallthrough bool)
 				preferred = (preferred << 8) | uint64(m.meta[k])
 			}
 			if it.env.CheckJumpdest(preferred) {
-				mirDebugWarn("MIR scheduleJump: using builder-preferred target for invalid dest", "from_evm_pc", m.evmPC, "old_dest", udest, "new_dest", preferred)
+				MirDebugWarn("MIR scheduleJump: using builder-preferred target for invalid dest", "from_evm_pc", m.evmPC, "old_dest", udest, "new_dest", preferred)
 				udest = preferred
 			}
 		}
@@ -3341,7 +3451,7 @@ func (it *MIRInterpreter) scheduleJump(udest uint64, m *MIR, isFallthrough bool)
 						}
 						it.globalResultsBySig[uint64(opv.def.evmPC)][opv.def.idx] = new(uint256.Int).Set(chosenAlt)
 					}
-					mirDebugWarn("MIR scheduleJump: pinned PHI-derived dest", "from_evm_pc", m.evmPC, "dest_pc", chosenU)
+					MirDebugWarn("MIR scheduleJump: pinned PHI-derived dest", "from_evm_pc", m.evmPC, "dest_pc", chosenU)
 				}
 			}
 		}
@@ -3375,7 +3485,7 @@ func (it *MIRInterpreter) scheduleJump(udest uint64, m *MIR, isFallthrough bool)
 						}
 					}
 					if foundForward {
-						mirDebugWarn("MIR scheduleJump: prefer forward PHI dest", "from_evm_pc", m.evmPC, "old_dest", udest, "new_dest", bestForward, "curFirst", curFirst)
+						MirDebugWarn("MIR scheduleJump: prefer forward PHI dest", "from_evm_pc", m.evmPC, "old_dest", udest, "new_dest", bestForward, "curFirst", curFirst)
 						udest = bestForward
 						// Pin chosen forward to caches to stabilize
 						if bestVal != nil {
@@ -3401,7 +3511,7 @@ func (it *MIRInterpreter) scheduleJump(udest uint64, m *MIR, isFallthrough bool)
 					preferred = (preferred << 8) | uint64(m.meta[k])
 				}
 				if preferred != curFirst && it.env.CheckJumpdest(preferred) {
-					mirDebugWarn("MIR scheduleJump: using builder-preferred non-self target", "from_evm_pc", m.evmPC, "old_dest", udest, "new_dest", preferred)
+					MirDebugWarn("MIR scheduleJump: using builder-preferred non-self target", "from_evm_pc", m.evmPC, "old_dest", udest, "new_dest", preferred)
 					udest = preferred
 				}
 			}
@@ -3415,7 +3525,7 @@ func (it *MIRInterpreter) scheduleJump(udest uint64, m *MIR, isFallthrough bool)
 					}
 					if v := it.evalValue(alt); v != nil {
 						if u, _ := v.Uint64WithOverflow(); it.env.CheckJumpdest(u) && u != curFirst {
-							mirDebugWarn("MIR scheduleJump: replaced self-loop dest with alternative", "from_evm_pc", m.evmPC, "old_dest", udest, "new_dest", u)
+							MirDebugWarn("MIR scheduleJump: replaced self-loop dest with alternative", "from_evm_pc", m.evmPC, "old_dest", udest, "new_dest", u)
 							udest = u
 							// Pin chosen alternative for stability in later uses
 							if it.globalResults != nil {
@@ -3437,39 +3547,45 @@ func (it *MIRInterpreter) scheduleJump(udest uint64, m *MIR, isFallthrough bool)
 	// First, enforce EVM byte-level rule: target must be a valid JUMPDEST and not in push-data
 	if !isFallthrough {
 		if !it.env.CheckJumpdest(udest) {
-			mirDebugError("MIR jump invalid jumpdest - mirroring EVM error", "from_evm_pc", m.evmPC, "dest_pc", udest)
+			MirDebugError("MIR jump invalid jumpdest - mirroring EVM error", "from_evm_pc", m.evmPC, "dest_pc", udest)
 			return fmt.Errorf("invalid jump destination: %d", udest)
 		}
 	}
 	// Then resolve to a basic block in the CFG
 	it.nextBB = it.env.ResolveBB(udest)
 	// Detect trivial two-node oscillation: jumping back-and-forth between two blocks.
-	if !isFallthrough && it.currentBB != nil {
-		from := uint64(it.currentBB.firstPC)
-		// previous jump was lastJumpFrom -> lastJumpTo; now about to do from -> udest
-		// if we see a 2-cycle (from == lastJumpTo && udest == lastJumpFrom), try to break it
-		if it.lastJumpFrom == udest && it.lastJumpTo == from {
-			// Attempt to break the 2-cycle by preferring an alternate PHI operand destination (if available)
-			if m != nil && len(m.operands) > 0 {
-				opv := m.operands[0]
-				if opv != nil && opv.kind == Variable && opv.def != nil && opv.def.op == MirPHI {
-					for _, alt := range opv.def.operands {
-						if alt == nil {
-							continue
-						}
-						if v := it.evalValue(alt); v != nil {
-							if u, _ := v.Uint64WithOverflow(); it.env.CheckJumpdest(u) && u != from && u != udest {
-								mirDebugWarn("MIR scheduleJump: breaking 2-cycle by choosing alternate PHI dest", "from", from, "old_dest", udest, "new_dest", u)
-								udest = u
-								it.nextBB = it.env.ResolveBB(udest)
-								break
+	// DISABLED: 2-cycle breaking logic was incorrectly interfering with legitimate loops
+	// The cycle-breaker was treating loop back-edges (e.g., 454→322 in a for-loop) as infinite loops
+	// and forcibly redirecting to alternate PHI destinations, breaking loop termination logic.
+	// Legitimate loops should be controlled by JUMPI conditions, not by this heuristic.
+	/*
+		if !isFallthrough && it.currentBB != nil {
+			from := uint64(it.currentBB.firstPC)
+			// previous jump was lastJumpFrom -> lastJumpTo; now about to do from -> udest
+			// if we see a 2-cycle (from == lastJumpTo && udest == lastJumpFrom), try to break it
+			if it.lastJumpFrom == udest && it.lastJumpTo == from {
+				// Attempt to break the 2-cycle by preferring an alternate PHI operand destination (if available)
+				if m != nil && len(m.operands) > 0 {
+					opv := m.operands[0]
+					if opv != nil && opv.kind == Variable && opv.def != nil && opv.def.op == MirPHI {
+						for _, alt := range opv.def.operands {
+							if alt == nil {
+								continue
+							}
+							if v := it.evalValue(alt); v != nil {
+								if u, _ := v.Uint64WithOverflow(); it.env.CheckJumpdest(u) && u != from && u != udest {
+									MirDebugWarn("MIR scheduleJump: breaking 2-cycle by choosing alternate PHI dest", "from", from, "old_dest", udest, "new_dest", u)
+									udest = u
+									it.nextBB = it.env.ResolveBB(udest)
+									break
+								}
 							}
 						}
 					}
 				}
 			}
 		}
-	}
+	*/
 	// Record last jump pair
 	if it.currentBB != nil {
 		it.lastJumpFrom = uint64(it.currentBB.firstPC)
@@ -3481,7 +3597,7 @@ func (it *MIRInterpreter) scheduleJump(udest uint64, m *MIR, isFallthrough bool)
 		// synthesize a landing block, wire the current block as parent, seed entry stack,
 		// and rebuild a bounded set of successors so PHIs stabilize.
 		if it.cfg != nil {
-			mirDebugWarn("MIR scheduleJump backfill check", "udest", udest, "isFallthrough", isFallthrough)
+			MirDebugWarn("MIR scheduleJump backfill check", "udest", udest, "isFallthrough", isFallthrough)
 			code := it.cfg.rawCode
 			if int(udest) >= 0 && int(udest) < len(code) && ByteCode(code[udest]) == JUMPDEST {
 				// Create or get the target BB
@@ -3616,7 +3732,7 @@ func (it *MIRInterpreter) scheduleJump(udest uint64, m *MIR, isFallthrough bool)
 				it.prevBB = it.currentBB
 				return nil
 			}
-			mirDebugError("MIR jump target not mapped in CFG", "from_evm_pc", m.evmPC, "dest_pc", udest)
+			MirDebugError("MIR jump target not mapped in CFG", "from_evm_pc", m.evmPC, "dest_pc", udest)
 			return fmt.Errorf("unresolvable jump target")
 		}
 	} else {
@@ -3669,7 +3785,8 @@ func (it *MIRInterpreter) scheduleJump(udest uint64, m *MIR, isFallthrough bool)
 		}
 	}
 	it.publishLiveOut(it.currentBB)
-	it.prevBB = it.currentBB
+	// prevBB is now set by the main loop in RunCFGWithResolver before each block transition
+	// so we don't set it here to avoid overwriting the correct value
 	return errJUMP
 }
 

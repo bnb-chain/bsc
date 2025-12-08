@@ -25,15 +25,22 @@ func EnableMIRDebugLogs(on bool) { DebugLogsEnabled = on }
 
 func shouldLog() bool { return DebugLogsEnabled }
 
-// mirDebugWarn emits a warning only if debug logging is enabled.
-func mirDebugWarn(msg string, ctx ...interface{}) {
+// MirDebugWarn emits a warning only if debug logging is enabled.
+func MirDebugWarn(msg string, ctx ...interface{}) {
 	if shouldLog() {
 		ethlog.Warn(msg, ctx...)
 	}
 }
 
-// mirDebugError emits an error only if debug logging is enabled.
-func mirDebugError(msg string, ctx ...interface{}) {
+// MirDebugInfo emits info only if debug logging is enabled.
+func MirDebugInfo(msg string, ctx ...interface{}) {
+	if shouldLog() {
+		ethlog.Info(msg, ctx...)
+	}
+}
+
+// MirDebugError emits an error only if debug logging is enabled.
+func MirDebugError(msg string, ctx ...interface{}) {
 	if shouldLog() {
 		ethlog.Error(msg, ctx...)
 	}

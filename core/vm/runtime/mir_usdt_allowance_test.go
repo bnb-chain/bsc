@@ -124,6 +124,8 @@ func TestMIRUSDT_Allowance_EVMvsMIR_Single(t *testing.T) {
 	// Trace last PC for MIR
 	var lastMIRPC uint64
 	compiler.SetGlobalMIRTracerExtended(func(m *compiler.MIR) {
+		// Clean up global tracer to prevent test pollution
+		defer compiler.SetGlobalMIRTracerExtended(nil)
 		if m != nil {
 			lastMIRPC = uint64(m.EvmPC())
 			ops := m.OperandDebugStrings()

@@ -187,6 +187,8 @@ func TestMIRUSDT_DeployFromCreation_EVMvsMIR(t *testing.T) {
 			t.Logf("MIR: pc=%d op=%s operands=%v", lastMIRPC, m.Op().String(), ops)
 		}
 	})
+	// Clean up global tracer to prevent test pollution
+	defer compiler.SetGlobalMIRTracerExtended(nil)
 	// Read creation code from file
 	creationHexBytes, err := ioutil.ReadFile("../test_contract/usdt_creation_code.txt")
 	if err != nil {

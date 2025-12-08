@@ -52,7 +52,7 @@ func (c *MIRCache) Len() int {
 
 // LoadMIRCFG loads a cached MIR CFG (similar to LoadOptimizedCode)
 func LoadMIRCFG(hash common.Hash) *CFG {
-	if !enabled {
+	if !IsOpcodeParseEnabled() {
 		return nil
 	}
 	return mirCache.GetCachedCFG(hash)

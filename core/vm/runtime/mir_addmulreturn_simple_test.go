@@ -81,6 +81,8 @@ func TestMIRVsEVM_AddMulReturn_Simple(t *testing.T) {
 	}
 	var mirLastPC uint64
 	compiler.SetGlobalMIRTracerExtended(func(m *compiler.MIR) {
+		// Clean up global tracer to prevent test pollution
+		defer compiler.SetGlobalMIRTracerExtended(nil)
 		if m != nil {
 			mirLastPC = uint64(m.EvmPC())
 		}
@@ -89,6 +91,8 @@ func TestMIRVsEVM_AddMulReturn_Simple(t *testing.T) {
 		// Reset hooks after test
 		compiler.SetGlobalMIRTracerExtended(nil)
 	})
+	// Clean up global tracer to prevent test pollution
+	defer compiler.SetGlobalMIRTracerExtended(nil)
 
 	// Helper to run code and return output, gasLeft, last executed pc
 	run := func(cfg *runtime.Config, code []byte, addrLabel string) ([]byte, uint64, uint64, error) {
