@@ -407,7 +407,10 @@ func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
 				return nil, err
 			default:
 				// Don't fallback - expose the error so we can fix it
-				MirDebugWarn("RunMIR: Instruction error (not falling back)", "evmPC", ins.evmPC, "op", ins.op.String(), "err", err)
+				// PERFORMANCE: Only evaluate String() when debug logging is enabled
+				if DebugLogsEnabled {
+					MirDebugWarn("RunMIR: Instruction error (not falling back)", "evmPC", ins.evmPC, "op", ins.op.String(), "err", err)
+				}
 				return nil, err
 			}
 		}
@@ -1650,17 +1653,22 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		} else {
 			sz = it.evalValue(m.operands[1])
 		}
-		MirDebugWarn("MIR RETURN", "off", off, "sz", sz)
+		// PERFORMANCE: Only evaluate fmt.Sprintf when debug logging is enabled
+		if DebugLogsEnabled {
+			MirDebugWarn("MIR RETURN", "off", off, "sz", sz)
+		}
 		it.returndata = it.readMemCopy(off, sz)
-		if len(it.returndata) > 0 {
-			// Log first 16 bytes for debugging constructor emissions
-			first := it.returndata
-			if len(first) > 16 {
-				first = first[:16]
+		if DebugLogsEnabled {
+			if len(it.returndata) > 0 {
+				// Log first 16 bytes for debugging constructor emissions
+				first := it.returndata
+				if len(first) > 16 {
+					first = first[:16]
+				}
+				MirDebugWarn("MIR RETURN data", "len", len(it.returndata), "head", fmt.Sprintf("%x", first))
+			} else {
+				MirDebugWarn("MIR RETURN data empty")
 			}
-			MirDebugWarn("MIR RETURN data", "len", len(it.returndata), "head", fmt.Sprintf("%x", first))
-		} else {
-			MirDebugWarn("MIR RETURN data empty")
 		}
 		return errRETURN
 	case MirREVERT:
@@ -2447,7 +2455,10 @@ func mirHandleEQ(it *MIRInterpreter, m *MIR) error {
 }
 func mirHandleLT(it *MIRInterpreter, m *MIR) error {
 	a, b, err := mirLoadAB(it, m)
-	MirDebugWarn("MIR LT", "a", a.Hex(), "b", b.Hex())
+	// PERFORMANCE: Only evaluate Hex() when debug logging is enabled
+	if DebugLogsEnabled {
+		MirDebugWarn("MIR LT", "a", a.Hex(), "b", b.Hex())
+	}
 	if err != nil {
 		return err
 	}
