@@ -304,20 +304,6 @@ func (it *MIRInterpreter) GetEnv() *MIRExecutionEnv {
 // RunMIR executes all instructions in the given basic block list sequentially.
 // For now, control-flow is assumed to be linear within a basic block.
 func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
-	if block.FirstPC() == 375 {
-		fmt.Printf("RunMIR: Entering block PC=375, numInstr=%d\n", len(block.instructions))
-		for i, instr := range block.instructions {
-			hasUnknown := false
-			for _, op := range instr.operands {
-				if op != nil && op.kind == Unknown {
-					hasUnknown = true
-					break
-				}
-			}
-			fmt.Printf("  [%d] pc=%d op=%s hasUnknown=%t numOps=%d\n",
-				i, instr.evmPC, instr.op.String(), hasUnknown, len(instr.operands))
-		}
-	}
 	mirDebugWarn("MIR RunMIR: block", "block", block.blockNum, "instructions", len(block.instructions))
 	for i, ins := range block.instructions {
 		mirDebugWarn("MIR instruction", "idx", i, "op", ins.op)
@@ -611,20 +597,11 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 	// Small oscillation guard: detect excessive re-visits of the same block to prevent infinite loops
 	visitCount := make(map[*MIRBasicBlock]int)
 	const visitBudgetPerBlock = 2048
-	totalVisits := 0
 	for bb != nil {
 		visitCount[bb]++
-		totalVisits++
 		// Update prevBB to track block transitions correctly for PHI resolution
 		// This must happen BEFORE RunMIR so PHI nodes can see the correct predecessor
 		it.prevBB = it.currentBB
-
-		// EMERGENCY STOP: If we've visited blocks too many times, something is wrong
-		// This prevents infinite loops
-		if totalVisits > 10000 {
-			return nil, fmt.Errorf("MIR execution exceeded iteration limit (possible infinite loop)")
-		}
-
 		// visitCount check removed for production runs; rely on gas limit
 		// if visitCount[bb] > visitBudgetPerBlock {
 		//	mirDebugError("MIR oscillation guard: excessive visits to block", "block", bb.blockNum, "firstPC", bb.firstPC, "lastPC", bb.lastPC)
@@ -783,7 +760,6 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 			bb = it.nextBB
 			continue
 		case errSTOP:
-			fmt.Printf("RunCFGWithResolver: errSTOP, returning %d bytes\n", len(it.returndata))
 			return it.returndata, nil
 		case errRETURN:
 			return it.returndata, nil
@@ -2115,7 +2091,6 @@ func mirHandleJUMP(it *MIRInterpreter, m *MIR) error {
 		return ErrMIRFallback
 	}
 	udest, _ := dest.Uint64WithOverflow()
-	fmt.Printf("JUMP@%d: dest=%d\n", m.evmPC, udest)
 	// Cache resolved PHI-based destination to stabilize later uses across blocks.
 	// However, avoid pinning when the destination is a self-loop to the current block's entry;
 	// allowing re-evaluation on the next iteration can let the dispatcher progress.
@@ -2146,25 +2121,11 @@ func mirHandleJUMPI(it *MIRInterpreter, m *MIR) error {
 	}
 	cond := it.evalValue(m.operands[1])
 
-	// Log JUMPI decisions for control flow tracing
-	dest := it.evalValue(m.operands[0])
-	fmt.Printf("JUMPI@%d: cond=%v (isZero=%t) dest=%v\n",
-		m.evmPC, cond.Uint64(), cond.IsZero(), dest.Uint64())
-
 	if cond.IsZero() {
 		// fallthrough: use children[1] which is the fallthrough block for JUMPI
 		children := it.currentBB.Children()
 		// In our builder, children[0] is fallthrough BB for JUMPI, targets follow.
 		if len(children) >= 1 && children[0] != nil {
-			fmt.Printf("  -> fallthrough to PC=%d\n", children[0].FirstPC())
-			if m.evmPC == 374 {
-				exitStack := it.currentBB.ExitStack()
-				fmt.Printf("JUMPI@374 fallthrough: nextBB PC=%d, exitStackSize=%d\n",
-					children[0].FirstPC(), len(exitStack))
-				if len(exitStack) > 0 {
-					fmt.Printf("  exitStack[0] = %s\n", exitStack[0].DebugString())
-				}
-			}
 			it.nextBB = children[0]
 			it.publishLiveOut(it.currentBB)
 			return nil // Return nil to indicate success (no error), loop continues
@@ -2190,7 +2151,6 @@ func mirHandleJUMPI(it *MIRInterpreter, m *MIR) error {
 		return ErrMIRFallback
 	}
 	udest, _ := dest.Uint64WithOverflow()
-	fmt.Printf("  -> jump to PC=%d\n", udest)
 	err := it.scheduleJump(udest, m, false)
 	return err
 }
@@ -2273,28 +2233,6 @@ func mirHandlePHI(it *MIRInterpreter, m *MIR) error {
 		prevPC := uint(0)
 		if it.prevBB != nil {
 			prevPC = it.prevBB.FirstPC()
-		}
-
-		// Debug: log parent ordering for block 454's critical PHI
-		if m.evmPC == 454 && it.currentBB.FirstPC() == 454 && len(parents) > 0 {
-			type parentInfo struct{ PC, BlockNum uint }
-			parentInfos := make([]parentInfo, 0)
-			for _, p := range parents {
-				if p != nil {
-					parentInfos = append(parentInfos, parentInfo{PC: p.FirstPC(), BlockNum: uint(p.blockNum)})
-				}
-			}
-			prevBlockNum := uint(0)
-			if it.prevBB != nil {
-				prevBlockNum = uint(it.prevBB.blockNum)
-			}
-			operandStrs := make([]string, 0)
-			for i, op := range m.operands {
-				val := it.evalValue(op)
-				operandStrs = append(operandStrs, fmt.Sprintf("[%d]=%v", i, val))
-			}
-			fmt.Printf("PHI@454-runtime: prevBB={PC:%d,Blk:%d} parents=%v operands=%v\n",
-				prevPC, prevBlockNum, parentInfos, operandStrs)
 		}
 
 		// First try exact pointer match (most precise)

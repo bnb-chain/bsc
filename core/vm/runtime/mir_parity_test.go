@@ -95,6 +95,8 @@ func TestMIRParity_USDT(t *testing.T) {
 		// MIR run; capture last EVM pc via global MIR tracer
 		var mirLastPC uint64
 		compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
+			// Clean up global tracer to prevent test pollution
+			defer compiler.SetGlobalMIRTracerExtended(nil)
 			if mm != nil {
 				mirLastPC = uint64(mm.EvmPC())
 			}
@@ -217,6 +219,8 @@ func TestMIRParity_WBNB(t *testing.T) {
 		// MIR run capturing last EVM pc
 		var mirLastPC uint64
 		compiler.SetGlobalMIRTracerExtended(func(mm *compiler.MIR) {
+			// Clean up global tracer to prevent test pollution
+			defer compiler.SetGlobalMIRTracerExtended(nil)
 			if mm != nil {
 				if mm.EvmPC() != 0 {
 					mirLastPC = uint64(mm.EvmPC())

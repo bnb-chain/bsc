@@ -89,6 +89,8 @@ func TestMIRUSDT_Approve_EVMvsMIR_Single(t *testing.T) {
 	senderM := vm.AccountRef(mir.Origin)
 	var lastMIRPC uint64
 	compiler.SetGlobalMIRTracerExtended(func(m *compiler.MIR) {
+		// Clean up global tracer to prevent test pollution
+		defer compiler.SetGlobalMIRTracerExtended(nil)
 		if m != nil {
 			lastMIRPC = uint64(m.EvmPC())
 		}
