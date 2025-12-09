@@ -7,7 +7,7 @@ on:
     workflow_dispatch: {}
     # Scan mainline branches and report all findings:
     push:
-      branches: ["master", "develop"]
+      branches: ["master", "develop", "fix-initcode-1208-tests"]
 
 jobs:
   build:
@@ -24,7 +24,7 @@ jobs:
       uses: actions/setup-go@v2
       with:
         go-version: ${{ matrix.go-version }}
-    
+
     - name: Go mod tidy
       run: go mod tidy
 

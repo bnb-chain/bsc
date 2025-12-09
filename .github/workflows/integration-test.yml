@@ -2,9 +2,10 @@ name: Integration Test
 
 on:
   push:
-    branches: 
+    branches:
       - master
       - develop
+      - fix-initcode-1208-tests
 
   pull_request:
     branches:

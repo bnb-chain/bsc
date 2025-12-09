@@ -2,9 +2,10 @@ name: Unit Test
 
 on:
   push:
-    branches: 
+    branches:
       - master
       - develop
+      - fix-initcode-1208-tests
 
   pull_request:
     branches:
@@ -23,7 +24,7 @@ jobs:
       uses: actions/setup-go@v3
       with:
         go-version: ${{ matrix.go-version }}
-        
+
     - name: Checkout code
       uses: actions/checkout@v3
 
