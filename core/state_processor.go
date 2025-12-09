@@ -116,7 +116,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	// usually do have two tx, one for validator set contract, another for system reward contract.
 	systemTxs := make([]*types.Transaction, 0, 2)
 
-	if hooks := cfg.Tracer; hooks != nil {
+	if hooks := cfg.Tracer; hooks != nil && hooks.OnPreTxExecutionDone != nil {
 		hooks.OnPreTxExecutionDone()
 	}
 
@@ -380,6 +380,9 @@ func processRequestsSystemCall(requests *[][]byte, evm *vm.EVM, requestType byte
 	ret, _, err := evm.Call(msg.From, *msg.To, msg.Data, 30_000_000, common.U2560)
 	if err != nil {
 		return fmt.Errorf("system call failed to execute: %v", err)
+	}
+	if len(ret) == 0 {
+		return nil // skip empty output
 	}
 	evm.StateDB.Finalise(true)
 	// Append prefixed requestsData to the requests list.

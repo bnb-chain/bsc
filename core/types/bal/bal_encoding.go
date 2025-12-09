@@ -264,14 +264,7 @@ var _ rlp.Encoder = &AccessListBuilder{}
 // toEncodingObj creates an instance of the ConstructionAccountAccesses of the type that is
 // used as input for the encoding.
 func (a *ConstructionAccountAccesses) toEncodingObj(addr common.Address) AccountAccess {
-	res := AccountAccess{
-		Address:        addr,
-		StorageChanges: make([]encodingSlotWrites, 0),
-		StorageReads:   make([]common.Hash, 0),
-		BalanceChanges: make([]encodingBalanceChange, 0),
-		NonceChanges:   make([]encodingAccountNonce, 0),
-		CodeChanges:    make([]CodeChange, 0),
-	}
+	res := AccountAccess{Address: addr}
 
 	// Convert write slots
 	writeSlots := slices.Collect(maps.Keys(a.StorageWrites))

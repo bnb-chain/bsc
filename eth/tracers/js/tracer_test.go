@@ -40,6 +40,9 @@ type dummyStatedb struct {
 
 func (*dummyStatedb) GetRefund() uint64                           { return 1337 }
 func (*dummyStatedb) GetBalance(addr common.Address) *uint256.Int { return new(uint256.Int) }
+func (*dummyStatedb) GetStateAndCommittedState(_ common.Address, _ common.Hash) (common.Hash, common.Hash) {
+	return common.Hash{}, common.Hash{}
+}
 
 type vmContext struct {
 	blockCtx vm.BlockContext

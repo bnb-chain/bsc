@@ -106,19 +106,29 @@ func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *s
 	if acct == nil {
 		acct = types.NewEmptyStateAccount()
 	}
+	if acct.Balance == nil {
+		acct.Balance = new(uint256.Int)
+	}
 	return &stateObject{
 		db:                 db,
 		address:            address,
 		addrHash:           crypto.Keccak256Hash(address[:]),
 		origin:             origin,
 		data:               *acct,
-		txPreBalance:       acct.Balance.Clone(),
+		txPreBalance:       cloneBalance(acct.Balance),
 		txPreNonce:         acct.Nonce,
 		originStorage:      make(Storage),
 		dirtyStorage:       make(Storage),
 		pendingStorage:     make(Storage),
 		uncommittedStorage: make(Storage),
 	}
+}
+
+func cloneBalance(balance *uint256.Int) *uint256.Int {
+	if balance == nil {
+		return new(uint256.Int)
+	}
+	return balance.Clone()
 }
 
 func (s *stateObject) markSelfdestructed() {
@@ -305,7 +315,7 @@ func (s *stateObject) finalise() {
 
 	s.nonFinalizedCode = false
 
-	s.txPreBalance = s.data.Balance.Clone()
+	s.txPreBalance = cloneBalance(s.data.Balance)
 	s.txPreNonce = s.data.Nonce
 }
 
@@ -384,7 +394,7 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		used = append(used, key) // Copy needed for closure
 	}
 	if len(updateKeys) > 0 {
-		if err := tr.UpdateStorageBatch(common.Address{}, updateKeys, updateValues); err != nil {
+		if err := tr.UpdateStorageBatch(s.address, updateKeys, updateValues); err != nil {
 			s.db.setError(err)
 			return nil, err
 		}
@@ -542,7 +552,7 @@ func (s *stateObject) deepCopy(db *StateDB) *stateObject {
 		selfDestructed:     s.selfDestructed,
 		newContract:        s.newContract,
 		txPreNonce:         s.txPreNonce,
-		txPreBalance:       s.txPreBalance.Clone(),
+		txPreBalance:       cloneBalance(s.txPreBalance),
 	}
 	if s.trie != nil {
 		obj.trie = mustCopyTrie(s.trie)

@@ -680,15 +680,20 @@ func (s *StateDB) updateStateObject(obj *stateObject) {
 	}
 }
 func (s *StateDB) updateStateObjects(objs []*stateObject) {
+	if s.db.NoTries() {
+		return
+	}
 	var addrs []common.Address
 	var accts []*types.StateAccount
+	var codeLens []int
 
 	for _, obj := range objs {
 		addrs = append(addrs, obj.Address())
 		accts = append(accts, &obj.data)
+		codeLens = append(codeLens, len(obj.code))
 	}
 
-	if err := s.trie.UpdateAccountBatch(addrs, accts, nil); err != nil {
+	if err := s.trie.UpdateAccountBatch(addrs, accts, codeLens); err != nil {
 		s.setError(fmt.Errorf("updateStateObjects error: %v", err))
 	}
 
