@@ -572,7 +572,7 @@ func TestBuildBasicBlock_MultiParent_PHI(t *testing.T) {
 	// the target block should show multiple parents and create PHI nodes.
 	// However, CFG construction uses variant blocks - same stack depth reuses same variant.
 	// So this test is relaxed to check for at least 1 parent and optionally check for PHI.
-	// 
+	//
 	// Two paths to JUMPDEST at PC=13:
 	// Path A: JUMPI (condition true) -> PC=13
 	// Path B: JUMPI fallthrough -> JUMP -> PC=13
