@@ -98,6 +98,7 @@ var (
 		utils.TxPoolOverflowPoolSlotsFlag,
 		utils.TxPoolLifetimeFlag,
 		utils.TxPoolReannounceTimeFlag,
+		utils.MinerTxGasLimitFlag,
 		utils.BlobPoolDataDirFlag,
 		utils.BlobPoolDataCapFlag,
 		utils.BlobPoolPriceBumpFlag,
@@ -455,9 +456,18 @@ func startNode(ctx *cli.Context, stack *node.Node, backend ethapi.Backend, isCon
 	// Start auxiliary services if enabled
 	ethBackend, ok := backend.(*eth.EthAPIBackend)
 	gasCeil := ethBackend.Miner().GasCeil()
+	maxTxGas := uint64(0)
 	if gasCeil > params.SystemTxsGasSoftLimit {
-		ethBackend.TxPool().SetMaxGas(gasCeil - params.SystemTxsGasSoftLimit)
+		maxTxGas = gasCeil - params.SystemTxsGasSoftLimit
 	}
+	txGasLimit := ethBackend.Miner().TxGasLimit()
+	if txGasLimit > 0 && (maxTxGas == 0 || txGasLimit < maxTxGas) {
+		maxTxGas = txGasLimit
+	}
+	if maxTxGas > 0 {
+		ethBackend.TxPool().SetMaxGas(maxTxGas)
+	}
+
 	if ctx.Bool(utils.MiningEnabledFlag.Name) {
 		// Mining only makes sense if a full Ethereum node is running
 		if ctx.String(utils.SyncModeFlag.Name) == "light" {

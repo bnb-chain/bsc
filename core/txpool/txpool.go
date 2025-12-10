@@ -76,6 +76,8 @@ type TxPool struct {
 	term chan struct{}           // Termination channel to detect a closed pool
 
 	sync chan chan error // Testing / simulator channel to block until internal reset is done
+
+	maxGasLimit uint64 // Optional local cap for per-tx gas (0 = disabled)
 }
 
 // New creates a new transaction pool to gather, sort and filter inbound
@@ -105,6 +107,7 @@ func New(gasTip uint64, chain BlockChain, subpools []SubPool) (*TxPool, error) {
 		term:     make(chan struct{}),
 		sync:     make(chan chan error),
 	}
+
 	reserver := NewReservationTracker()
 	for i, subpool := range subpools {
 		if err := subpool.Init(gasTip, head, reserver.NewHandle(i)); err != nil {
@@ -270,6 +273,18 @@ func (p *TxPool) SetMaxGas(gas uint64) {
 		subpool.SetMaxGas(gas)
 	}
 }
+
+/*
+// SetGasLimtCap sets the per-transaction gas cap
+func (p *TxPool) SetGasLimtCap(gas uint64) {
+	p.maxGasLimit = gas
+}
+
+// GasLimitCap returns the currently applied per-transaction gas cap.
+func (p *TxPool) GasLimitCap() uint64 {
+	return p.maxGasLimit
+}
+*/
 
 // Has returns an indicator whether the pool has a transaction cached with the
 // given hash.
