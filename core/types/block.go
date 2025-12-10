@@ -634,9 +634,7 @@ func (b *Block) WithAccessList(accessList *BlockAccessListEncode) *Block {
 		withdrawals:  b.withdrawals,
 		witness:      b.witness,
 		sidecars:     b.sidecars,
-	}
-	if accessList != nil {
-		block.accessList = accessList
+		accessList:   accessList,
 	}
 	return block
 }
