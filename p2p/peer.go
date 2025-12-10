@@ -134,7 +134,7 @@ type Peer struct {
 	ProxyedPeerFlag atomic.Bool
 
 	// it indicates the peer can handle BAL(block access list) packet
-	CanHandleBAL atomic.Bool
+	CanHandleBAL7928 atomic.Bool
 }
 
 // NewPeer returns a peer for testing purposes.

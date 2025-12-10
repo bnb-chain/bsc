@@ -474,9 +474,9 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		return err
 	}
 
-	if bscExt != nil && bscExt.Version() == bsc.Bsc3 {
-		peer.CanHandleBAL.Store(true)
-		log.Debug("runEthPeer", "bscExt.Version", bscExt.Version(), "CanHandleBAL", peer.CanHandleBAL.Load())
+	if bscExt != nil && bscExt.Version() == bsc.Bsc7928 {
+		peer.CanHandleBAL7928.Store(true)
+		log.Debug("runEthPeer", "bscExt.Version", bscExt.Version(), "CanHandleBAL7928", peer.CanHandleBAL7928.Load())
 	}
 
 	// Execute the Ethereum handshake
@@ -847,7 +847,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 			log.Debug("Broadcast block to peer",
 				"hash", hash, "peer", peer.ID(),
 				"EVNPeerFlag", peer.EVNPeerFlag.Load(),
-				"CanHandleBAL", peer.CanHandleBAL.Load(),
+				"CanHandleBAL7928", peer.CanHandleBAL7928.Load(),
 			)
 			peer.AsyncSendNewBlock(block, td)
 		}
@@ -860,7 +860,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 					log.Debug("Broadcast block to proxyed peer",
 						"hash", hash, "peer", peer.ID(),
 						"EVNPeerFlag", peer.EVNPeerFlag.Load(),
-						"CanHandleBAL", peer.CanHandleBAL.Load(),
+						"CanHandleBAL7928", peer.CanHandleBAL7928.Load(),
 					)
 					peer.AsyncSendNewBlock(block, td)
 					proxyedPeersCnt++
@@ -876,7 +876,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 					log.Debug("Broadcast block to EVN peer",
 						"hash", hash, "peer", peer.ID(),
 						"EVNPeerFlag", peer.EVNPeerFlag.Load(),
-						"CanHandleBAL", peer.CanHandleBAL.Load(),
+						"CanHandleBAL7928", peer.CanHandleBAL7928.Load(),
 					)
 					peer.AsyncSendNewBlock(block, td)
 					evnPeersCnt++
@@ -897,7 +897,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 	// Otherwise if the block is indeed in our own chain, announce it
 	if h.chain.HasBlock(hash, block.NumberU64()) {
 		for _, peer := range peers {
-			log.Debug("Announced block to peer", "hash", hash, "peer", peer.ID(), "EVNPeerFlag", peer.EVNPeerFlag.Load(), "CanHandleBAL", peer.CanHandleBAL.Load())
+			log.Debug("Announced block to peer", "hash", hash, "peer", peer.ID(), "EVNPeerFlag", peer.EVNPeerFlag.Load(), "CanHandleBAL7928", peer.CanHandleBAL7928.Load())
 			peer.AsyncSendNewBlockHash(block)
 		}
 		log.Debug("Announced block", "hash", hash, "recipients", len(peers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))

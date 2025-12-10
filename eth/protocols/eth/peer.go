@@ -313,15 +313,15 @@ func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
 	// Mark all the block hash as known, but ensure we don't overflow our limits
 	p.knownBlocks.Add(block.Hash())
 	accessList := block.AccessList()
-	if !p.CanHandleBAL.Load() {
+	if !p.CanHandleBAL7928.Load() {
 		accessList = nil
 	}
 	if accessList != nil {
 		log.Debug("SendNewBlock", "number", block.NumberU64(), "hash", block.Hash(), "peer", p.ID(),
-			"balSize", block.AccessListSize(), "version", accessList.Version, "canHandleBAL", p.CanHandleBAL.Load())
+			"balSize", block.AccessListSize(), "version", accessList.Version, "CanHandleBAL7928", p.CanHandleBAL7928.Load())
 	} else {
 		log.Debug("SendNewBlock no block access list", "number", block.NumberU64(), "hash", block.Hash(), "peer", p.ID(),
-			"txNum", len(block.Transactions()), "canHandleBAL", p.CanHandleBAL.Load())
+			"txNum", len(block.Transactions()), "CanHandleBAL7928", p.CanHandleBAL7928.Load())
 	}
 	return p2p.Send(p.rw, NewBlockMsg, &NewBlockPacket{
 		Block:           block,
