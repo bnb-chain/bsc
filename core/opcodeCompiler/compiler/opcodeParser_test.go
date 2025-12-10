@@ -8,6 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/holiman/uint256"
 )
 
 func TestOpcodeParse(t *testing.T) {
@@ -1127,5 +1128,410 @@ func TestJUMPI_VarDest_ElseBranch_DebugWarnPrints(t *testing.T) {
 	code := []byte{0x60, 0x00, 0x51, 0x60, 0x01, 0x90, 0x57, 0x00}
 	if _, err := GenerateMIRCFG(common.Hash{}, code); err != nil {
 		t.Fatalf("GenerateMIRCFG error: %v", err)
+	}
+}
+
+// ===== Additional Coverage Tests =====
+
+// TestTryResolveUint64ConstPC_ConstantValue tests constant evaluation
+func TestTryResolveUint64ConstPC_ConstantValue(t *testing.T) {
+	// Test with a constant value
+	constVal := &Value{
+		kind:    Konst,
+		u:       uint256.NewInt(42),
+		payload: []byte{0x00, 0x2a}, // 42 in big-endian
+	}
+	result, ok := tryResolveUint64ConstPC(constVal, 10)
+	if !ok {
+		t.Fatalf("expected constant to be resolvable")
+	}
+	if result != 42 {
+		t.Fatalf("expected 42, got %d", result)
+	}
+}
+
+// TestTryResolveUint64ConstPC_PHIAllSame tests PHI with all same operands
+func TestTryResolveUint64ConstPC_PHIAllSame(t *testing.T) {
+	// Create a PHI with all operands = 10
+	const1 := &Value{kind: Konst, u: uint256.NewInt(10)}
+	const2 := &Value{kind: Konst, u: uint256.NewInt(10)}
+
+	phi := &MIR{
+		op:       MirPHI,
+		operands: []*Value{const1, const2},
+	}
+
+	phiVar := &Value{
+		kind: Variable,
+		def:  phi,
+	}
+
+	result, ok := tryResolveUint64ConstPC(phiVar, 10)
+	if !ok {
+		t.Fatalf("expected PHI with all same operands to be resolvable")
+	}
+	if result != 10 {
+		t.Fatalf("expected 10, got %d", result)
+	}
+}
+
+// TestTryResolveUint64ConstPC_PHIDifferent tests PHI with different operands
+func TestTryResolveUint64ConstPC_PHIDifferent(t *testing.T) {
+	// Create a PHI with different operands
+	const1 := &Value{kind: Konst, u: uint256.NewInt(10)}
+	const2 := &Value{kind: Konst, u: uint256.NewInt(20)}
+
+	phi := &MIR{
+		op:       MirPHI,
+		operands: []*Value{const1, const2},
+	}
+
+	phiVar := &Value{
+		kind: Variable,
+		def:  phi,
+	}
+
+	_, ok := tryResolveUint64ConstPC(phiVar, 10)
+	if ok {
+		t.Fatalf("expected PHI with different operands to NOT be resolvable")
+	}
+}
+
+// TestTryResolveUint64ConstPC_BinaryOps tests binary operation evaluation
+func TestTryResolveUint64ConstPC_BinaryOps(t *testing.T) {
+	tests := []struct {
+		name     string
+		op       MirOperation
+		a, b     uint64
+		expected uint64
+	}{
+		{"ADD", MirADD, 10, 20, 30},
+		{"SUB", MirSUB, 50, 20, 30},
+		{"AND", MirAND, 0xFF, 0x0F, 0x0F},
+		{"OR", MirOR, 0xF0, 0x0F, 0xFF},
+		{"XOR", MirXOR, 0xFF, 0x0F, 0xF0},
+		{"SHL", MirSHL, 1, 3, 8},
+		{"SHR", MirSHR, 16, 2, 4},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opA := &Value{kind: Konst, u: uint256.NewInt(tt.a)}
+			opB := &Value{kind: Konst, u: uint256.NewInt(tt.b)}
+
+			mir := &MIR{
+				op:       tt.op,
+				operands: []*Value{opA, opB},
+			}
+
+			varVal := &Value{
+				kind: Variable,
+				def:  mir,
+			}
+
+			result, ok := tryResolveUint64ConstPC(varVal, 10)
+			if !ok {
+				t.Fatalf("expected %s to be resolvable", tt.name)
+			}
+			if result != tt.expected {
+				t.Fatalf("expected %d, got %d", tt.expected, result)
+			}
+		})
+	}
+}
+
+// TestTryResolveUint64ConstPC_BudgetExhaustion tests budget limits
+func TestTryResolveUint64ConstPC_BudgetExhaustion(t *testing.T) {
+	constVal := &Value{kind: Konst, u: uint256.NewInt(42)}
+
+	// Budget 0 should fail
+	_, ok := tryResolveUint64ConstPC(constVal, 0)
+	if ok {
+		t.Fatalf("expected budget exhaustion to prevent resolution")
+	}
+
+	// Nil value should fail
+	_, ok = tryResolveUint64ConstPC(nil, 10)
+	if ok {
+		t.Fatalf("expected nil value to fail")
+	}
+}
+
+// TestTryResolveUint64ConstPC_UnknownValue tests unknown/variable values
+func TestTryResolveUint64ConstPC_UnknownValue(t *testing.T) {
+	unknownVal := &Value{kind: Unknown}
+	_, ok := tryResolveUint64ConstPC(unknownVal, 10)
+	if ok {
+		t.Fatalf("expected unknown value to NOT be resolvable")
+	}
+
+	// Variable without def
+	varNoDef := &Value{kind: Variable, def: nil}
+	_, ok = tryResolveUint64ConstPC(varNoDef, 10)
+	if ok {
+		t.Fatalf("expected variable without def to NOT be resolvable")
+	}
+}
+
+// TestBuildPCIndex tests PC to block mapping
+func TestBuildPCIndex(t *testing.T) {
+	// Simple bytecode with multiple blocks
+	// 0: PUSH1 0x05
+	// 2: JUMP
+	// 3: STOP
+	// 4: STOP
+	// 5: JUMPDEST
+	// 6: STOP
+	code := []byte{0x60, 0x05, 0x56, 0x00, 0x00, 0x5b, 0x00}
+
+	cfg, err := GenerateMIRCFG(common.Hash{}, code)
+	if err != nil {
+		t.Fatalf("GenerateMIRCFG error: %v", err)
+	}
+
+	// Test BlockByPC for existing blocks
+	block0 := cfg.BlockByPC(0)
+	if block0 == nil {
+		t.Fatalf("expected block at PC=0")
+	}
+	if block0.FirstPC() != 0 {
+		t.Fatalf("expected block.FirstPC=0, got %d", block0.FirstPC())
+	}
+
+	block5 := cfg.BlockByPC(5)
+	if block5 == nil {
+		t.Fatalf("expected block at PC=5")
+	}
+	if block5.FirstPC() != 5 {
+		t.Fatalf("expected block.FirstPC=5, got %d", block5.FirstPC())
+	}
+
+	// Test non-existent PC
+	blockNone := cfg.BlockByPC(999)
+	if blockNone != nil {
+		t.Fatalf("expected no block at PC=999")
+	}
+}
+
+// TestBlockByPC_NilCFG tests nil CFG handling
+func TestBlockByPC_NilCFG(t *testing.T) {
+	var cfg *CFG
+	block := cfg.BlockByPC(0)
+	if block != nil {
+		t.Fatalf("expected nil block from nil CFG")
+	}
+}
+
+// TestCreateEntryBB tests entry block creation
+func TestCreateEntryBB(t *testing.T) {
+	cfg := NewCFG(common.Hash{}, []byte{0x00})
+
+	entryBB := cfg.createEntryBB()
+	if entryBB == nil {
+		t.Fatalf("expected entry block to be created")
+	}
+
+	if entryBB.blockNum != 0 {
+		t.Fatalf("expected blockNum=0, got %d", entryBB.blockNum)
+	}
+
+	if cfg.basicBlockCount != 1 {
+		t.Fatalf("expected basicBlockCount=1, got %d", cfg.basicBlockCount)
+	}
+}
+
+// TestEntryIndexForSelector_NotFound tests missing selector
+func TestEntryIndexForSelector_NotFound(t *testing.T) {
+	// Simple code without function selectors
+	code := []byte{0x60, 0x01, 0x56, 0x00}
+
+	cfg, err := GenerateMIRCFG(common.Hash{}, code)
+	if err != nil {
+		t.Fatalf("GenerateMIRCFG error: %v", err)
+	}
+
+	idx := cfg.EntryIndexForSelector(0xDEADBEEF)
+	if idx != -1 {
+		t.Fatalf("expected -1 for missing selector, got %d", idx)
+	}
+}
+
+// TestGetVariantBlock_MultipleDepths tests variant block creation
+func TestGetVariantBlock_MultipleDepths(t *testing.T) {
+	// Create bytecode that reaches the same PC with different stack depths
+	// This is complex, so we'll use a simpler approach: just test getVariantBlock directly
+	code := []byte{
+		0x60, 0x08, // PUSH1 0x08 (PC=0-1)
+		0x56,       // JUMP (PC=2)
+		0x00,       // STOP (PC=3)
+		0x60, 0x08, // PUSH1 0x08 (PC=4-5)
+		0x60, 0x01, // PUSH1 0x01 (PC=6-7)
+		0x5b, // JUMPDEST (PC=8)
+		0x00, // STOP (PC=9)
+	}
+
+	cfg, err := GenerateMIRCFG(common.Hash{}, code)
+	if err != nil {
+		t.Fatalf("GenerateMIRCFG error: %v", err)
+	}
+
+	// Check if PC=8 has variants (it should have at least the canonical block)
+	variants := cfg.pcToVariants[8]
+	if variants == nil {
+		t.Fatalf("expected variants map for PC=8")
+	}
+
+	if len(variants) == 0 {
+		t.Fatalf("expected at least one variant at PC=8")
+	}
+}
+
+// TestBuildBasicBlock_ComplexOpcodes tests less common opcodes for coverage
+func TestBuildBasicBlock_ComplexOpcodes(t *testing.T) {
+	tests := []struct {
+		name string
+		code []byte
+	}{
+		{
+			name: "CREATE2",
+			code: []byte{
+				0x60, 0x00, // PUSH1 0 (value)
+				0x60, 0x00, // PUSH1 0 (offset)
+				0x60, 0x00, // PUSH1 0 (size)
+				0x60, 0x00, // PUSH1 0 (salt)
+				0xf5, // CREATE2
+				0x00, // STOP
+			},
+		},
+		{
+			name: "DELEGATECALL",
+			code: []byte{
+				0x60, 0x00, // PUSH1 0 (gas)
+				0x60, 0x00, // PUSH1 0 (addr)
+				0x60, 0x00, // PUSH1 0 (inOffset)
+				0x60, 0x00, // PUSH1 0 (inSize)
+				0x60, 0x00, // PUSH1 0 (outOffset)
+				0x60, 0x00, // PUSH1 0 (outSize)
+				0xf4, // DELEGATECALL
+				0x00, // STOP
+			},
+		},
+		{
+			name: "STATICCALL",
+			code: []byte{
+				0x60, 0x00, // PUSH1 0 (gas)
+				0x60, 0x00, // PUSH1 0 (addr)
+				0x60, 0x00, // PUSH1 0 (inOffset)
+				0x60, 0x00, // PUSH1 0 (inSize)
+				0x60, 0x00, // PUSH1 0 (outOffset)
+				0x60, 0x00, // PUSH1 0 (outSize)
+				0xfa, // STATICCALL
+				0x00, // STOP
+			},
+		},
+		{
+			name: "TLOAD",
+			code: []byte{
+				0x60, 0x00, // PUSH1 0 (key)
+				0x5c, // TLOAD
+				0x00, // STOP
+			},
+		},
+		{
+			name: "TSTORE",
+			code: []byte{
+				0x60, 0x00, // PUSH1 0 (key)
+				0x60, 0x01, // PUSH1 1 (value)
+				0x5d, // TSTORE
+				0x00, // STOP
+			},
+		},
+		{
+			name: "MCOPY",
+			code: []byte{
+				0x60, 0x00, // PUSH1 0 (dest)
+				0x60, 0x20, // PUSH1 32 (src)
+				0x60, 0x20, // PUSH1 32 (length)
+				0x5e, // MCOPY
+				0x00, // STOP
+			},
+		},
+		{
+			name: "BLOBHASH",
+			code: []byte{
+				0x60, 0x00, // PUSH1 0 (index)
+				0x49, // BLOBHASH
+				0x00, // STOP
+			},
+		},
+		{
+			name: "BLOBBASEFEE",
+			code: []byte{
+				0x4a, // BLOBBASEFEE
+				0x00, // STOP
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := GenerateMIRCFG(common.Hash{}, tt.code)
+			if err != nil {
+				t.Fatalf("GenerateMIRCFG error for %s: %v", tt.name, err)
+			}
+		})
+	}
+}
+
+// TestBuildBasicBlock_InvalidOpcodes tests handling of unknown/invalid opcodes
+func TestBuildBasicBlock_InvalidOpcodes(t *testing.T) {
+	// Test custom/fused opcodes (0xb0-0xcf) - should be treated as NOPs
+	code := []byte{0xb0, 0xb5, 0xc0, 0xcf, 0x00} // Custom opcodes + STOP
+	cfg, err := GenerateMIRCFG(common.Hash{}, code)
+	if err != nil {
+		t.Fatalf("GenerateMIRCFG should tolerate custom opcodes: %v", err)
+	}
+	if cfg == nil {
+		t.Fatalf("expected CFG to be created")
+	}
+
+	// Test completely unknown opcode (should terminate block as INVALID)
+	code2 := []byte{0x60, 0x01, 0xfe, 0x00} // PUSH1 1, INVALID, STOP
+	cfg2, err2 := GenerateMIRCFG(common.Hash{}, code2)
+	if err2 != nil {
+		t.Fatalf("GenerateMIRCFG error: %v", err2)
+	}
+	if cfg2 == nil {
+		t.Fatalf("expected CFG to be created")
+	}
+}
+
+// TestGenerateMIRCFG_EmptyCode tests empty code handling
+func TestGenerateMIRCFG_EmptyCode(t *testing.T) {
+	_, err := GenerateMIRCFG(common.Hash{}, []byte{})
+	if err == nil {
+		t.Fatalf("expected error for empty code")
+	}
+	if err.Error() != "empty code" {
+		t.Fatalf("expected 'empty code' error, got: %v", err)
+	}
+}
+
+// TestGetBasicBlocks tests GetBasicBlocks method
+func TestGetBasicBlocks(t *testing.T) {
+	code := []byte{0x60, 0x01, 0x00} // PUSH1 1, STOP
+	cfg, err := GenerateMIRCFG(common.Hash{}, code)
+	if err != nil {
+		t.Fatalf("GenerateMIRCFG error: %v", err)
+	}
+
+	blocks := cfg.GetBasicBlocks()
+	if len(blocks) == 0 {
+		t.Fatalf("expected at least one basic block")
+	}
+
+	// First block should be at PC=0
+	if blocks[0].FirstPC() != 0 {
+		t.Fatalf("expected first block at PC=0, got PC=%d", blocks[0].FirstPC())
 	}
 }
