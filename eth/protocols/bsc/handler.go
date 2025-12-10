@@ -165,6 +165,9 @@ func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 	if block == nil {
 		return fmt.Errorf("msg %v, cannot get start block: %v, %v", GetBlocksByRangeMsg, req.StartBlockHeight, req.StartBlockHash)
 	}
+	if !peer.CanHandleBAL7928.Load() && block.AccessList() != nil {
+		block = block.WithAccessList(nil) // remove the block access list
+	}
 	blocks = append(blocks, NewBlockData(block))
 	balSize := block.AccessListSize()
 	for i := uint64(1); i < req.Count; i++ {
