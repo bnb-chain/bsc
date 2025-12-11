@@ -45,9 +45,9 @@ var (
 	// allowed by a pool for a single account.
 	ErrAccountLimitExceeded = errors.New("account limit exceeded")
 
-	// ErrGasLimit is returned if a transaction's requested gas limit exceeds the
-	// maximum allowance of the current block.
-	ErrGasLimit = errors.New("exceeds block gas limit")
+	// ErrTxGasLimit is returned if a transaction's gas exceeds either the configured
+	// per-transaction gas cap or the current block gas limit.
+	ErrTxGasLimit = errors.New("exceeds transaction gas limit")
 
 	// ErrNegativeValue is a sanity error to ensure no one is able to specify a
 	// transaction with a negative value.
