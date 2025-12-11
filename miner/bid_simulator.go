@@ -433,7 +433,7 @@ func (b *bidSimulator) newBidLoop() {
 				continue
 			}
 
-			if errCap := b.checkBidTxGasLimit(newBid.bid); errCap != nil {
+			if errCap := b.checkIfBidExceedsTxGasLimit(newBid.bid); errCap != nil {
 				if newBid.feedback != nil {
 					newBid.feedback <- errCap
 				}
@@ -530,8 +530,8 @@ func (b *bidSimulator) getBlockInterval(parentHeader *types.Header) uint64 {
 	return blockInterval
 }
 
-// checkBidTxGasLimit checks whether any transaction in the bid exceeds the max txn gas.
-func (b *bidSimulator) checkBidTxGasLimit(bid *types.Bid) error {
+// checkIfBidExceedsTxGasLimit checks whether any transaction in the bid exceeds the max txn gas.
+func (b *bidSimulator) checkIfBidExceedsTxGasLimit(bid *types.Bid) error {
 	if b.txMaxGas < params.MinTxGasLimitCap {
 		return nil
 	}
