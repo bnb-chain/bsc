@@ -566,7 +566,7 @@ var (
 	}
 	MinerTxGasLimitFlag = &cli.Uint64Flag{
 		Name:     "miner.txgaslimit",
-		Usage:    fmt.Sprintf("Maximum gas allowed per transaction for local selection/validation (0 = disabled, min = %d)", params.MinTxGasLimitCap),
+		Usage:    fmt.Sprintf("Maximum gas allowed per transaction (default = 0, disabled; min = %d)", params.MinTxGasLimitCap),
 		Category: flags.MinerCategory,
 	}
 	// Blob transaction pool settings
