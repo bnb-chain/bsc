@@ -460,9 +460,10 @@ func startNode(ctx *cli.Context, stack *node.Node, backend ethapi.Backend, isCon
 	if gasCeil > params.SystemTxsGasSoftLimit {
 		maxTxGas = gasCeil - params.SystemTxsGasSoftLimit
 	}
-	txGasLimit := ethBackend.Miner().TxGasLimit()
-	if txGasLimit > 0 && (maxTxGas == 0 || txGasLimit < maxTxGas) {
-		maxTxGas = txGasLimit
+	if txGasLimit := ethBackend.Miner().TxGasLimit(); txGasLimit > 0 {
+		if maxTxGas == 0 || txGasLimit < maxTxGas {
+			maxTxGas = txGasLimit
+		}
 	}
 	if maxTxGas > 0 {
 		ethBackend.TxPool().SetMaxGas(maxTxGas)

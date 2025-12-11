@@ -546,7 +546,7 @@ func (b *bidSimulator) checkIfBidExceedsTxGasLimit(bid *types.Bid) error {
 				"txGasLimit", b.txMaxGas,
 			)
 
-			return fmt.Errorf("bid rejected: tx gas %d exceeds max tx gas %d", tx.Gas(), b.txMaxGas)
+			return fmt.Errorf("bid rejected: %w (cap: %d, tx: %d)", core.ErrGasLimitTooHigh, b.txMaxGas, tx.Gas())
 		}
 	}
 	return nil

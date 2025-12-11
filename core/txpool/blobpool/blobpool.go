@@ -1654,8 +1654,10 @@ func (p *BlobPool) Pending(filter txpool.PendingFilter) map[common.Address][]*tx
 					break // blobfee too low, cannot be included, discard rest of txs from the account
 				}
 			}
-			if filter.GasLimitCap != 0 && tx.execGas > filter.GasLimitCap {
-				break // execution gas limit is too high
+			if filter.GasLimitCap != 0 {
+				if tx.execGas > filter.GasLimitCap {
+					break // execution gas limit is too high
+				}
 			}
 			// Transaction was accepted according to the filter, append to the pending list
 			lazies = append(lazies, &txpool.LazyTransaction{

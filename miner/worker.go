@@ -1047,7 +1047,7 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 	if env.header.ExcessBlobGas != nil {
 		filter.BlobFee = uint256.MustFromBig(eip4844.CalcBlobFee(w.chainConfig, env.header))
 	}
-	w.eth.TxPool()
+
 	if cap := w.getTxGasLimit(); cap > 0 {
 		filter.GasLimitCap = cap
 	}
