@@ -27,18 +27,26 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
+// Default timing configurations
 var (
-	defaultDelayLeftOver         = 50 * time.Millisecond
 	defaultRecommit              = 10 * time.Second
 	defaultMaxWaitProposalInSecs = uint64(45)
-	// default configurations for MEV
-	defaultMevEnabled                   = false
-	defaultGreedyMergeTx         bool   = true
-	defaultBuilderFeeCeil        string = "0"
-	defaultValidatorCommission   uint64 = 100
-	defaultBidSimulationLeftOver        = 50 * time.Millisecond
-	defaultNoInterruptLeftOver          = 250 * time.Millisecond
-	defaultMaxBidsPerBuilder     uint32 = 2
+
+	// Extra time for finalizing and committing blocks (excludes writing to disk).
+	defaultDelayLeftOver         = 25 * time.Millisecond
+	defaultBidSimulationLeftOver = 30 * time.Millisecond
+	// For estimation, assume 500 Mgas/s:
+	//	(100M gas / 500 Mgas/s) * 1000 ms + 10 ms buffer + defaultDelayLeftOver ≈ 235 ms.
+	defaultNoInterruptLeftOver = 235 * time.Millisecond
+)
+
+// Other default MEV-related configurations
+var (
+	defaultMevEnabled          = false
+	defaultGreedyMergeTx       = true
+	defaultBuilderFeeCeil      = "0"
+	defaultValidatorCommission = uint64(100)
+	defaultMaxBidsPerBuilder   = uint32(2) // Simple strategy: send one bid early, another near deadline
 )
 
 // Config is the configuration parameters of mining.
@@ -59,7 +67,7 @@ type Config struct {
 
 // DefaultConfig contains default settings for miner.
 var DefaultConfig = Config{
-	GasCeil:  0,
+	GasCeil:  100000000,
 	GasPrice: big.NewInt(params.GWei),
 
 	// The default recommit time is chosen as two seconds since

@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	lru "github.com/hashicorp/golang-lru"
+	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/holiman/uint256"
 	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 	"github.com/willf/bitset"
@@ -61,6 +61,7 @@ const (
 	defaultBlockInterval uint64 = 3000 // Default block interval in milliseconds
 	lorentzBlockInterval uint64 = 1500 // Block interval starting from the Lorentz hard fork
 	maxwellBlockInterval uint64 = 750  // Block interval starting from the Maxwell hard fork
+	fermiBlockInterval   uint64 = 450  // Block interval starting from the Fermi hard fork
 	defaultTurnLength    uint8  = 1    // Default consecutive number of blocks a validator receives priority for block production
 
 	extraVanity      = 32 // Fixed number of extra-data prefix bytes reserved for signer vanity
@@ -84,6 +85,8 @@ const (
 
 	// `finalityRewardInterval` should be smaller than `inMemorySnapshots`, otherwise, it will result in excessive computation.
 	finalityRewardInterval = 200
+
+	kAncestorGenerationDepth = 3
 )
 
 var (
@@ -96,6 +99,7 @@ var (
 	validVotesfromSelfCounter         = metrics.NewRegisteredCounter("parlia/VerifyVote/self", nil)
 	doubleSignCounter                 = metrics.NewRegisteredCounter("parlia/doublesign", nil)
 	intentionalDelayMiningCounter     = metrics.NewRegisteredCounter("parlia/intentionalDelayMining", nil)
+	attestationVoteCountGauge         = metrics.NewRegisteredGauge("parlia/attestation/voteCount", nil)
 
 	systemContracts = map[common.Address]bool{
 		common.HexToAddress(systemcontracts.ValidatorContract):          true,
@@ -196,11 +200,11 @@ func isToSystemContract(to common.Address) bool {
 }
 
 // ecrecover extracts the Ethereum account address from a signed header.
-func ecrecover(header *types.Header, sigCache *lru.ARCCache, chainId *big.Int) (common.Address, error) {
+func ecrecover(header *types.Header, sigCache *lru.Cache[common.Hash, common.Address], chainId *big.Int) (common.Address, error) {
 	// If the signature's already cached, return that
 	hash := header.Hash()
 	if address, known := sigCache.Get(hash); known {
-		return address.(common.Address), nil
+		return address, nil
 	}
 	// Retrieve the signature from the header extra-data
 	if len(header.Extra) < extraSeal {
@@ -240,9 +244,9 @@ type Parlia struct {
 	genesisHash common.Hash
 	db          ethdb.Database // Database to store and retrieve snapshot checkpoints
 
-	recentSnaps   *lru.ARCCache // Snapshots for recent block to speed up
-	signatures    *lru.ARCCache // Signatures of recent blocks to speed up mining
-	recentHeaders *lru.ARCCache //
+	recentSnaps   *lru.Cache[common.Hash, *Snapshot]      // Snapshots for recent block to speed up
+	signatures    *lru.Cache[common.Hash, common.Address] // Signatures of recent blocks to speed up mining
+	recentHeaders *lru.Cache[string, common.Hash]
 	// Recent headers to check for double signing: key includes block number and miner. value is the block header
 	// If same key's value already exists for different block header roots then double sign is detected
 
@@ -276,19 +280,6 @@ func New(
 	parliaConfig := chainConfig.Parlia
 	log.Info("Parlia", "chainConfig", chainConfig)
 
-	// Allocate the snapshot caches and create the engine
-	recentSnaps, err := lru.NewARC(inMemorySnapshots)
-	if err != nil {
-		panic(err)
-	}
-	signatures, err := lru.NewARC(inMemorySignatures)
-	if err != nil {
-		panic(err)
-	}
-	recentHeaders, err := lru.NewARC(inMemoryHeaders)
-	if err != nil {
-		panic(err)
-	}
 	vABIBeforeLuban, err := abi.JSON(strings.NewReader(validatorSetABIBeforeLuban))
 	if err != nil {
 		panic(err)
@@ -311,9 +302,9 @@ func New(
 		genesisHash:                genesisHash,
 		db:                         db,
 		ethAPI:                     ethAPI,
-		recentSnaps:                recentSnaps,
-		recentHeaders:              recentHeaders,
-		signatures:                 signatures,
+		recentSnaps:                lru.NewCache[common.Hash, *Snapshot](inMemorySnapshots),
+		recentHeaders:              lru.NewCache[string, common.Hash](inMemoryHeaders),
+		signatures:                 lru.NewCache[common.Hash, common.Address](inMemorySignatures),
 		validatorSetABIBeforeLuban: vABIBeforeLuban,
 		validatorSetABI:            vABI,
 		slashABI:                   sABI,
@@ -464,8 +455,17 @@ func (p *Parlia) getParent(chain consensus.ChainHeaderReader, header *types.Head
 	return parent, nil
 }
 
+// trimParents safely removes last element if exists.
+func trimParents(parents []*types.Header) []*types.Header {
+	if len(parents) > 1 {
+		return parents[:len(parents)-1]
+	}
+	return nil
+}
+
 // verifyVoteAttestation checks whether the vote attestation in the header is valid.
 func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) error {
+	// === Step 1: Extract attestation ===
 	epochLength, err := p.epochLength(chain, header, parents)
 	if err != nil {
 		return err
@@ -483,21 +483,15 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 	if len(attestation.Extra) > types.MaxAttestationExtraLength {
 		return fmt.Errorf("invalid attestation, too large extra length: %d", len(attestation.Extra))
 	}
+	if attestation.Data.SourceNumber >= attestation.Data.TargetNumber {
+		return errors.New("invalid attestation, SourceNumber not lower than TargetNumber")
+	}
 
-	// Get parent block
+	// === Step 2: Verify source block ===
 	parent, err := p.getParent(chain, header, parents)
 	if err != nil {
 		return err
 	}
-
-	// The target block should be direct parent.
-	targetNumber := attestation.Data.TargetNumber
-	targetHash := attestation.Data.TargetHash
-	if targetNumber != parent.Number.Uint64() || targetHash != parent.Hash() {
-		return fmt.Errorf("invalid attestation, target mismatch, expected block: %d, hash: %s; real block: %d, hash: %s",
-			parent.Number.Uint64(), parent.Hash(), targetNumber, targetHash)
-	}
-
 	// The source block should be the highest justified block.
 	sourceNumber := attestation.Data.SourceNumber
 	sourceHash := attestation.Data.SourceHash
@@ -514,17 +508,34 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 			justifiedBlockNumber, justifiedBlockHash, sourceNumber, sourceHash)
 	}
 
-	// The snapshot should be the targetNumber-1 block's snapshot.
-	if len(parents) > 1 {
-		parents = parents[:len(parents)-1]
-	} else {
-		parents = nil
+	// === Step 3: Verify target block ===
+	targetNumber := attestation.Data.TargetNumber
+	targetHash := attestation.Data.TargetHash
+	match := false
+	ancestor := parent
+	ancestorParents := trimParents(parents)
+	for range p.GetAncestorGenerationDepth(header) {
+		if targetNumber == ancestor.Number.Uint64() && targetHash == ancestor.Hash() {
+			match = true
+			break
+		}
+
+		ancestor, err = p.getParent(chain, ancestor, ancestorParents)
+		if err != nil {
+			return err
+		}
+		ancestorParents = trimParents(ancestorParents)
 	}
-	snap, err := p.snapshot(chain, parent.Number.Uint64()-1, parent.ParentHash, parents)
+	if !match {
+		return fmt.Errorf("invalid attestation, target mismatch, real block: %d, hash: %s", targetNumber, targetHash)
+	}
+
+	// === Step 4: Check quorum ===
+	// The snapshot should be the targetNumber-1 block's snapshot.
+	snap, err := p.snapshot(chain, ancestor.Number.Uint64()-1, ancestor.ParentHash, ancestorParents)
 	if err != nil {
 		return err
 	}
-
 	// Filter out valid validator from attestation.
 	validators := snap.validators()
 	validatorsBitSet := bitset.From([]uint64{uint64(attestation.VoteAddressSet)})
@@ -543,13 +554,12 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 		}
 		votedAddrs = append(votedAddrs, voteAddr)
 	}
-
 	// The valid voted validators should be no less than 2/3 validators.
 	if len(votedAddrs) < cmath.CeilDiv(len(snap.Validators)*2, 3) {
 		return errors.New("invalid attestation, not enough validators voted")
 	}
 
-	// Verify the aggregated signature.
+	// === Step 5: Signature verification ===
 	aggSig, err := bls.SignatureFromBytes(attestation.AggSignature[:])
 	if err != nil {
 		return fmt.Errorf("BLS signature converts failed: %v", err)
@@ -760,7 +770,7 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 	for snap == nil {
 		// If an in-memory snapshot was found, use that
 		if s, ok := p.recentSnaps.Get(hash); ok {
-			snap = s.(*Snapshot)
+			snap = s
 			break
 		}
 
@@ -801,7 +811,9 @@ func (p *Parlia) snapshot(chain consensus.ChainHeaderReader, number uint64, hash
 				blockHeader := chain.GetHeaderByNumber(number)
 				if blockHeader != nil {
 					blockHash = blockHeader.Hash()
-					if p.chainConfig.IsMaxwell(blockHeader.Number, blockHeader.Time) {
+					if p.chainConfig.IsFermi(blockHeader.Number, blockHeader.Time) {
+						blockInterval = fermiBlockInterval
+					} else if p.chainConfig.IsMaxwell(blockHeader.Number, blockHeader.Time) {
 						blockInterval = maxwellBlockInterval
 					} else if p.chainConfig.IsLorentz(blockHeader.Number, blockHeader.Time) {
 						blockInterval = lorentzBlockInterval
@@ -950,7 +962,7 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 	if ok && preHash != header.Hash() {
 		doubleSignCounter.Inc(1)
 		log.Warn("DoubleSign detected", " block", header.Number, " miner", header.Coinbase,
-			"hash1", preHash.(common.Hash), "hash2", header.Hash())
+			"hash1", preHash, "hash2", header.Hash())
 	} else {
 		p.recentHeaders.Add(key, header.Hash())
 	}
@@ -1035,55 +1047,72 @@ func (p *Parlia) prepareTurnLength(chain consensus.ChainHeaderReader, header *ty
 	return nil
 }
 
+// assembleVoteAttestation collects votes and assembles the vote attestation into the block header.
 func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, header *types.Header) error {
-	if !p.chainConfig.IsLuban(header.Number) || header.Number.Uint64() < 2 {
+	// === Step 1: Preconditions ===
+	if !p.chainConfig.IsLuban(header.Number) || header.Number.Uint64() < 3 || p.VotePool == nil {
 		return nil
 	}
 
-	if p.VotePool == nil {
-		return nil
-	}
-
-	// Fetch direct parent's votes
+	// === Step 2: Find target header with quorum votes ===
 	parent := chain.GetHeaderByHash(header.ParentHash)
 	if parent == nil {
 		return errors.New("parent not found")
 	}
-	snap, err := p.snapshot(chain, parent.Number.Uint64()-1, parent.ParentHash, nil)
-	if err != nil {
-		return err
-	}
-	votes := p.VotePool.FetchVoteByBlockHash(parent.Hash())
-	if len(votes) < cmath.CeilDiv(len(snap.Validators)*2, 3) {
-		return nil
-	}
-
-	// Prepare vote attestation
-	// Prepare vote data
 	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, []*types.Header{parent})
 	if err != nil {
 		return errors.New("unexpected error when getting the highest justified number and hash")
 	}
+	var (
+		votes                  []*types.VoteEnvelope
+		targetHeader           = parent
+		targetHeaderParentSnap *Snapshot
+	)
+	for range p.GetAncestorGenerationDepth(header) {
+		snap, err := p.snapshot(chain, targetHeader.Number.Uint64()-1, targetHeader.ParentHash, nil)
+		if err != nil {
+			return err
+		}
+		votes = p.VotePool.FetchVotesByBlockHash(targetHeader.Hash(), justifiedBlockNumber)
+		quorum := cmath.CeilDiv(len(snap.Validators)*2, 3)
+		if len(votes) >= quorum {
+			targetHeaderParentSnap = snap
+			break
+		}
+
+		targetHeader = chain.GetHeaderByHash(targetHeader.ParentHash)
+		if targetHeader == nil {
+			return errors.New("parent not found")
+		}
+		if targetHeader.Number.Uint64() <= justifiedBlockNumber {
+			break
+		}
+	}
+	if targetHeaderParentSnap == nil {
+		return nil
+	}
+
+	// === Step 3: Build vote attestation ===
 	attestation := &types.VoteAttestation{
 		Data: &types.VoteData{
 			SourceNumber: justifiedBlockNumber,
 			SourceHash:   justifiedBlockHash,
-			TargetNumber: parent.Number.Uint64(),
-			TargetHash:   parent.Hash(),
+			TargetNumber: targetHeader.Number.Uint64(),
+			TargetHash:   targetHeader.Hash(),
 		},
 	}
-	// Check vote data from votes
+	// Validate vote data consistency
 	for _, vote := range votes {
 		if vote.Data.Hash() != attestation.Data.Hash() {
-			return fmt.Errorf("vote check error, expected: %v, real: %v", attestation.Data, vote)
+			return fmt.Errorf("vote check error, expected: %v, real: %v", attestation.Data, vote.Data)
 		}
 	}
 	// Prepare aggregated vote signature
 	voteAddrSet := make(map[types.BLSPublicKey]struct{}, len(votes))
-	signatures := make([][]byte, 0, len(votes))
-	for _, vote := range votes {
+	signatures := make([][]byte, len(votes))
+	for i, vote := range votes {
 		voteAddrSet[vote.VoteAddress] = struct{}{}
-		signatures = append(signatures, vote.Signature[:])
+		signatures[i] = vote.Signature[:]
 	}
 	sigs, err := bls.MultipleSignaturesFromBytes(signatures)
 	if err != nil {
@@ -1091,28 +1120,25 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 	}
 	copy(attestation.AggSignature[:], bls.AggregateSignatures(sigs).Marshal())
 	// Prepare vote address bitset.
-	for _, valInfo := range snap.Validators {
+	for _, valInfo := range targetHeaderParentSnap.Validators {
 		if _, ok := voteAddrSet[valInfo.VoteAddress]; ok {
 			attestation.VoteAddressSet |= 1 << (valInfo.Index - 1) // Index is offset by 1
 		}
 	}
-	validatorsBitSet := bitset.From([]uint64{uint64(attestation.VoteAddressSet)})
-	if validatorsBitSet.Count() < uint(len(signatures)) {
-		log.Warn(fmt.Sprintf("assembleVoteAttestation, check VoteAddress Set failed, expected:%d, real:%d", len(signatures), validatorsBitSet.Count()))
+	bitsetCount := bitset.From([]uint64{uint64(attestation.VoteAddressSet)}).Count()
+	if bitsetCount < uint(len(signatures)) {
+		log.Warn(fmt.Sprintf("assembleVoteAttestation, check VoteAddress Set failed, expected:%d, real:%d", len(signatures), bitsetCount))
 		return errors.New("invalid attestation, check VoteAddress Set failed")
 	}
 
-	// Append attestation to header extra field.
+	// === Step 4: Encode & insert into header extra ===
 	buf := new(bytes.Buffer)
-	err = rlp.Encode(buf, attestation)
-	if err != nil {
-		return err
+	if err = rlp.Encode(buf, attestation); err != nil {
+		return fmt.Errorf("attestation: failed to encode: %w", err)
 	}
-
-	// Insert vote attestation into header extra ahead extra seal.
 	extraSealStart := len(header.Extra) - extraSeal
 	extraSealBytes := header.Extra[extraSealStart:]
-	header.Extra = append(header.Extra[0:extraSealStart], buf.Bytes()...)
+	header.Extra = append(header.Extra[:extraSealStart], buf.Bytes()...)
 	header.Extra = append(header.Extra, extraSealBytes...)
 
 	return nil
@@ -1370,15 +1396,8 @@ func (p *Parlia) EstimateGasReservedForSystemTxs(chain consensus.ChainHeaderRead
 func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, txs *[]*types.Transaction,
 	uncles []*types.Header, _ []*types.Withdrawal, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
 	// warn if not in majority fork
-	number := header.Number.Uint64()
-	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
-	if err != nil {
-		return err
-	}
-	nextForkHash := forkid.NextForkHash(p.chainConfig, p.genesisHash, chain.GenesisHeader().Time, number, header.Time)
-	if !snap.isMajorityFork(hex.EncodeToString(nextForkHash[:])) {
-		log.Debug("there is a possible fork, and your client is not the majority. Please check...", "nextForkHash", hex.EncodeToString(nextForkHash[:]))
-	}
+	p.detectNewVersionWithFork(chain, header, state)
+
 	// If the block is an epoch end block, verify the validator list
 	// The verification can only be done when the state is ready, it can't be done in VerifyHeader.
 	if err := p.verifyValidators(chain, header); err != nil {
@@ -1413,6 +1432,10 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 		}
 	}
 	if header.Difficulty.Cmp(diffInTurn) != 0 {
+		snap, err := p.snapshot(chain, header.Number.Uint64()-1, header.ParentHash, nil)
+		if err != nil {
+			return err
+		}
 		spoiledVal := snap.inturnValidator()
 		signedRecently := false
 		if p.chainConfig.IsPlato(header.Number) {
@@ -1648,12 +1671,20 @@ func (p *Parlia) Authorize(val common.Address, signFn SignerFn, signTxFn SignerT
 
 // Argument leftOver is the time reserved for block finalize(calculate root, distribute income...)
 func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header, leftOver *time.Duration) *time.Duration {
-	number := header.Number.Uint64()
-	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
+	snap, err := p.snapshot(chain, header.Number.Uint64()-1, header.ParentHash, nil)
 	if err != nil {
 		return nil
 	}
+
 	delay := p.delayForRamanujanFork(snap, header)
+	// The blocking time should be no more than half of period when snap.TurnLength == 1
+	timeForMining := time.Duration(snap.BlockInterval) * time.Millisecond / 2
+	if !snap.lastBlockInOneTurn(header.Number.Uint64()) {
+		timeForMining = time.Duration(snap.BlockInterval) * time.Millisecond
+	}
+	if delay > timeForMining {
+		delay = timeForMining
+	}
 
 	if *leftOver >= time.Duration(snap.BlockInterval)*time.Millisecond {
 		// ignore invalid leftOver
@@ -1665,14 +1696,6 @@ func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header, leftOv
 		delay = delay - *leftOver
 	}
 
-	// The blocking time should be no more than half of period when snap.TurnLength == 1
-	timeForMining := time.Duration(snap.BlockInterval) * time.Millisecond / 2
-	if !snap.lastBlockInOneTurn(header.Number.Uint64()) {
-		timeForMining = time.Duration(snap.BlockInterval) * time.Millisecond * 4 / 5
-	}
-	if delay > timeForMining {
-		delay = timeForMining
-	}
 	return &delay
 }
 
@@ -1725,7 +1748,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 		if err != nil {
 			/* If the vote attestation can't be assembled successfully, the blockchain won't get
 			   fast finalized, but it can be tolerated, so just report this error here. */
-			log.Error("Assemble vote attestation failed when sealing", "err", err)
+			log.Debug("Assemble vote attestation failed when sealing", "err", err)
 		}
 
 		// Sign all the things!
@@ -1760,6 +1783,71 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 			log.Warn("Sealing result is not read by miner", "sealhash", types.SealHash(header, p.chainConfig.ChainID))
 		}
 	}()
+
+	return nil
+}
+
+func (p *Parlia) SignBAL(blockAccessList *types.BlockAccessListEncode) error {
+	p.lock.RLock()
+	val, signFn := p.val, p.signFn
+	p.lock.RUnlock()
+
+	data, err := rlp.EncodeToBytes([]interface{}{blockAccessList.Version, blockAccessList.Number, blockAccessList.Hash, blockAccessList.Accounts})
+	if err != nil {
+		log.Error("Encode to bytes failed when sealing", "err", err)
+		return errors.New("encode to bytes failed")
+	}
+
+	if len(data) > int(params.MaxBALSize) {
+		log.Error("data is too large", "dataSize", len(data), "maxSize", params.MaxBALSize)
+		return errors.New("data is too large")
+	}
+
+	sig, err := signFn(accounts.Account{Address: val}, accounts.MimetypeParlia, data)
+	if err != nil {
+		log.Error("Sign for the block header failed when sealing", "err", err)
+		return errors.New("sign for the block header failed")
+	}
+
+	copy(blockAccessList.SignData, sig)
+	return nil
+}
+
+func (p *Parlia) VerifyBAL(block *types.Block, bal *types.BlockAccessListEncode) error {
+	if bal.Version != 0 {
+		log.Error("invalid BAL version", "version", bal.Version)
+		return errors.New("invalid BAL version")
+	}
+
+	if len(bal.SignData) != 65 {
+		log.Error("invalid BAL signature", "signatureSize", len(bal.SignData))
+		return errors.New("invalid BAL signature")
+	}
+
+	// Recover the public key and the Ethereum address
+	data, err := rlp.EncodeToBytes([]interface{}{bal.Version, block.Number(), block.Hash(), bal.Accounts})
+	if err != nil {
+		log.Error("encode to bytes failed", "err", err)
+		return errors.New("encode to bytes failed")
+	}
+
+	if len(data) > int(params.MaxBALSize) {
+		log.Error("data is too large", "dataSize", len(data), "maxSize", params.MaxBALSize)
+		return errors.New("data is too large")
+	}
+
+	pubkey, err := crypto.Ecrecover(crypto.Keccak256(data), bal.SignData)
+	if err != nil {
+		return err
+	}
+	var pubkeyAddr common.Address
+	copy(pubkeyAddr[:], crypto.Keccak256(pubkey[1:])[12:])
+
+	signer := block.Header().Coinbase
+	if signer != pubkeyAddr {
+		log.Error("BAL signer mismatch", "signer", signer, "pubkeyAddr", pubkeyAddr, "bal.Number", bal.Number, "bal.Hash", bal.Hash)
+		return errors.New("signer mismatch")
+	}
 
 	return nil
 }
@@ -2154,8 +2242,8 @@ func (p *Parlia) applyTransaction(
 	tracingReceipt.GasUsed = gasUsed
 
 	// Set the receipt logs and create a bloom for filtering
-	tracingReceipt.Logs = state.GetLogs(expectedTx.Hash(), header.Number.Uint64(), header.Hash())
-	tracingReceipt.Bloom = types.CreateBloom(types.Receipts{tracingReceipt})
+	tracingReceipt.Logs = state.GetLogs(expectedTx.Hash(), header.Number.Uint64(), header.Hash(), header.Time)
+	tracingReceipt.Bloom = types.CreateBloom(tracingReceipt)
 	tracingReceipt.BlockHash = header.Hash()
 	tracingReceipt.BlockNumber = header.Number
 	tracingReceipt.TransactionIndex = uint(state.TxIndex())
@@ -2340,6 +2428,40 @@ func (p *Parlia) NextProposalBlock(chain consensus.ChainHeaderReader, header *ty
 	return snap.nextProposalBlock(proposer)
 }
 
+func (p *Parlia) detectNewVersionWithFork(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB) {
+	// Ignore blocks that are considered too old
+	const maxBlockReceiveDelay = 10 * time.Second
+	blockTime := time.UnixMilli(int64(header.MilliTimestamp()))
+	if time.Since(blockTime) > maxBlockReceiveDelay {
+		return
+	}
+
+	// If the fork is not a majority, log a warning or debug message
+	number := header.Number.Uint64()
+	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
+	if err != nil {
+		return
+	}
+	nextForkHash := forkid.NextForkHash(p.chainConfig, p.genesisHash, chain.GenesisHeader().Time, number, header.Time)
+	forkHashHex := hex.EncodeToString(nextForkHash[:])
+	if !snap.isMajorityFork(forkHashHex) {
+		logFn := log.Debug
+		if state.NoTries() {
+			logFn = log.Warn
+		}
+		logFn("possible fork detected: client is not in majority", "nextForkHash", forkHashHex)
+	}
+}
+
+// TODO(Nathan): use kAncestorGenerationDepth directly instead of this func once Fermi hardfork passed
+func (p *Parlia) GetAncestorGenerationDepth(header *types.Header) uint64 {
+	if p.chainConfig.IsFermi(header.Number, header.Time) {
+		return kAncestorGenerationDepth
+	}
+
+	return 1
+}
+
 // chain context
 type chainContext struct {
 	Chain  consensus.ChainHeaderReader
@@ -2378,7 +2500,7 @@ func applyMessage(
 	state.SetNonce(msg.From, state.GetNonce(msg.From)+1, tracing.NonceChangeEoACall)
 
 	ret, returnGas, err := evm.Call(
-		vm.AccountRef(msg.From),
+		msg.From,
 		*msg.To,
 		msg.Data,
 		msg.GasLimit,

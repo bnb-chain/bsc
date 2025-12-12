@@ -133,12 +133,12 @@ func TestMIRUSDT_Name_EVMvsMIR_Single(t *testing.T) {
 		t.Log(sb6.String())
 	}
 
-	senderB := vm.AccountRef(base.Origin)
+	senderB := base.Origin
 	retB, leftB, errB := evmB.Call(senderB, addr, input, base.GasLimit, uint256.MustFromBig(base.Value))
 
 	// MIR call (enable parsing right before run)
 	compiler.EnableOpcodeParse()
-	senderM := vm.AccountRef(mir.Origin)
+	senderM := mir.Origin
 	retM, leftM, errM := evmM.Call(senderM, addr, input, mir.GasLimit, uint256.MustFromBig(mir.Value))
 
 	// Parity on error/no-error
@@ -257,8 +257,8 @@ func TestMIRUSDT_DeployFromCreation_EVMvsMIR(t *testing.T) {
 	evmB := runtime.NewEnv(baseCfg)
 	evmM := runtime.NewEnv(mirCfg)
 
-	_, _, _, errB := evmB.Create(vm.AccountRef(baseCfg.Origin), creation, baseCfg.GasLimit, uint256.MustFromBig(baseCfg.Value))
-	_, _, _, errM := evmM.Create(vm.AccountRef(mirCfg.Origin), creation, mirCfg.GasLimit, uint256.MustFromBig(mirCfg.Value))
+	_, _, _, errB := evmB.Create(baseCfg.Origin, creation, baseCfg.GasLimit, uint256.MustFromBig(baseCfg.Value))
+	_, _, _, errM := evmM.Create(mirCfg.Origin, creation, mirCfg.GasLimit, uint256.MustFromBig(mirCfg.Value))
 
 	if (errB != nil) != (errM != nil) {
 		t.Fatalf("creation error mismatch: base=%v mir=%v", errB, errM)
@@ -311,8 +311,8 @@ func TestMIRUSDT_DeployFromCreation_EVMvsMIR(t *testing.T) {
 
 	// Call name()
 	input := []byte{0x06, 0xfd, 0xde, 0x03}
-	retB, _, errB := evmB.Call(vm.AccountRef(baseCfg.Origin), addr, input, baseCfg.GasLimit, uint256.NewInt(0))
-	retM, _, errM := evmM.Call(vm.AccountRef(mirCfg.Origin), addr, input, mirCfg.GasLimit, uint256.NewInt(0))
+	retB, _, errB := evmB.Call(baseCfg.Origin, addr, input, baseCfg.GasLimit, uint256.NewInt(0))
+	retM, _, errM := evmM.Call(mirCfg.Origin, addr, input, mirCfg.GasLimit, uint256.NewInt(0))
 
 	if (errB != nil) != (errM != nil) {
 		t.Fatalf("name call error mismatch: base=%v mir=%v", errB, errM)

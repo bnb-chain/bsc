@@ -230,7 +230,7 @@ func executeWithEVM(bytecode, calldata []byte, initialGas uint64, opcodeName str
 	evm.SetTxContext(txContext)
 
 	ret, gasLeft, err := evm.Call(
-		vm.AccountRef(caller),
+		caller,
 		contract,
 		calldata,
 		initialGas,
@@ -303,7 +303,7 @@ func executeWithMIR(bytecode, calldata []byte, initialGas uint64, opcodeName str
 	evm.SetTxContext(txContext)
 
 	ret, gasLeft, err := evm.Call(
-		vm.AccountRef(caller),
+		caller,
 		contract,
 		calldata,
 		initialGas,

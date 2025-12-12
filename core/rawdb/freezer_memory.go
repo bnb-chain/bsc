@@ -31,25 +31,19 @@ import (
 
 // memoryTable is used to store a list of sequential items in memory.
 type memoryTable struct {
-	name   string   // Table name
 	items  uint64   // Number of stored items in the table, including the deleted ones
 	offset uint64   // Number of deleted items from the table
 	data   [][]byte // List of rlp-encoded items, sort in order
 	size   uint64   // Total memory size occupied by the table
 	lock   sync.RWMutex
+
+	name   string
+	config freezerTableConfig
 }
 
 // newMemoryTable initializes the memory table.
-func newMemoryTable(name string) *memoryTable {
-	return &memoryTable{name: name}
-}
-
-// has returns an indicator whether the specified data exists.
-func (t *memoryTable) has(number uint64) bool {
-	t.lock.RLock()
-	defer t.lock.RUnlock()
-
-	return number >= t.offset && number < t.items
+func newMemoryTable(name string, config freezerTableConfig) *memoryTable {
+	return &memoryTable{name: name, config: config}
 }
 
 // retrieve retrieves multiple items in sequence, starting from the index 'start'.
@@ -223,27 +217,16 @@ type MemoryFreezer struct {
 }
 
 // NewMemoryFreezer initializes an in-memory freezer instance.
-func NewMemoryFreezer(readonly bool, tableName map[string]bool) *MemoryFreezer {
+func NewMemoryFreezer(readonly bool, tableName map[string]freezerTableConfig) *MemoryFreezer {
 	tables := make(map[string]*memoryTable)
-	for name := range tableName {
-		tables[name] = newMemoryTable(name)
+	for name, cfg := range tableName {
+		tables[name] = newMemoryTable(name, cfg)
 	}
 	return &MemoryFreezer{
 		writeBatch: newMemoryBatch(),
 		readonly:   readonly,
 		tables:     tables,
 	}
-}
-
-// HasAncient returns an indicator whether the specified data exists.
-func (f *MemoryFreezer) HasAncient(kind string, number uint64) (bool, error) {
-	f.lock.RLock()
-	defer f.lock.RUnlock()
-
-	if table := f.tables[kind]; table != nil {
-		return table.has(number), nil
-	}
-	return false, nil
 }
 
 // Ancient retrieves an ancient binary blob from the in-memory freezer.
@@ -285,22 +268,6 @@ func (f *MemoryFreezer) Ancients() (uint64, error) {
 	defer f.lock.RUnlock()
 
 	return f.items, nil
-}
-
-// ItemAmountInAncient returns the actual length of current freezer.
-func (f *MemoryFreezer) ItemAmountInAncient() (uint64, error) {
-	f.lock.RLock()
-	defer f.lock.RUnlock()
-
-	return f.items, nil
-}
-
-// Ancients returns the ancient item numbers in the freezer.
-func (f *MemoryFreezer) AncientOffSet() uint64 {
-	f.lock.RLock()
-	defer f.lock.RUnlock()
-
-	return f.tail
 }
 
 // Tail returns the number of first stored item in the freezer.
@@ -389,7 +356,9 @@ func (f *MemoryFreezer) TruncateHead(items uint64) (uint64, error) {
 	return old, nil
 }
 
-// TruncateTail discards any recent data below the provided threshold number.
+// TruncateTail discards all data below the provided threshold number.
+// Note this will only truncate 'prunable' tables. Block headers and canonical
+// hashes cannot be truncated at this time.
 func (f *MemoryFreezer) TruncateTail(tail uint64) (uint64, error) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
@@ -401,9 +370,14 @@ func (f *MemoryFreezer) TruncateTail(tail uint64) (uint64, error) {
 	if old >= tail {
 		return old, nil
 	}
-	for _, table := range f.tables {
-		if err := table.truncateTail(tail); err != nil {
-			return 0, err
+	for kind, table := range f.tables {
+		if slices.Contains(additionTables, kind) && table.items == 0 {
+			continue
+		}
+		if table.config.prunable {
+			if err := table.truncateTail(tail); err != nil {
+				return 0, err
+			}
 		}
 	}
 	f.tail = tail
@@ -433,8 +407,8 @@ func (f *MemoryFreezer) Reset() error {
 	defer f.lock.Unlock()
 
 	tables := make(map[string]*memoryTable)
-	for name := range f.tables {
-		tables[name] = newMemoryTable(name)
+	for name, table := range f.tables {
+		tables[name] = newMemoryTable(name, table.config)
 	}
 	f.tables = tables
 	f.items, f.tail = 0, 0
@@ -442,12 +416,16 @@ func (f *MemoryFreezer) Reset() error {
 }
 
 func (f *MemoryFreezer) TruncateTableTail(kind string, tail uint64) (uint64, error) {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
 func (f *MemoryFreezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error {
-	//TODO implement me
+	// TODO implement me
+	panic("not supported")
+}
+
+func (f *MemoryFreezer) ResetTableForIncr(kind string, startAt uint64, onlyEmpty bool) error {
 	panic("not supported")
 }
 

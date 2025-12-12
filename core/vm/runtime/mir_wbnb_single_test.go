@@ -101,8 +101,8 @@ func TestWBNB_Transfer_EVMvsMIR_Debug(t *testing.T) {
 	evmM.StateDB.CreateAccount(address)
 	evmB.StateDB.SetCode(address, runtimeCode)
 	evmM.StateDB.SetCode(address, runtimeCode)
-	senderB := vm.AccountRef(base.Origin)
-	senderM := vm.AccountRef(mir.Origin)
+	senderB := base.Origin
+	senderM := mir.Origin
 
 	// Build transfer(to, amount) calldata
 	selector := []byte{0xa9, 0x05, 0x9c, 0xbb}
@@ -239,8 +239,8 @@ func TestWBNB_View_Name_EVMvsMIR_Success(t *testing.T) {
 	evmM.StateDB.CreateAccount(address)
 	evmB.StateDB.SetCode(address, runtimeCode)
 	evmM.StateDB.SetCode(address, runtimeCode)
-	senderB := vm.AccountRef(base.Origin)
-	senderM := vm.AccountRef(mir.Origin)
+	senderB := base.Origin
+	senderM := mir.Origin
 
 	// name()
 	input := []byte{0x06, 0xfd, 0xde, 0x03}
@@ -336,8 +336,8 @@ func TestWBNB_Deposit_Then_Transfer_EVMvsMIR_Success(t *testing.T) {
 	fund := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil) // 1 ether
 	evmB.StateDB.AddBalance(base.Origin, uint256.MustFromBig(fund), tracing.BalanceIncreaseGenesisBalance)
 	evmM.StateDB.AddBalance(mir.Origin, uint256.MustFromBig(fund), tracing.BalanceIncreaseGenesisBalance)
-	senderB := vm.AccountRef(base.Origin)
-	senderM := vm.AccountRef(mir.Origin)
+	senderB := base.Origin
+	senderM := mir.Origin
 
 	// deposit(value=1e18)
 	depositSel := []byte{0xd0, 0xe3, 0x0d, 0xb0}
@@ -423,7 +423,7 @@ func BenchmarkWBNB_View_Name(b *testing.B) {
 		env := runtime.NewEnv(cfg)
 		env.StateDB.CreateAccount(address)
 		env.StateDB.SetCode(address, runtimeCode)
-		sender := vm.AccountRef(cfg.Origin)
+		sender := cfg.Origin
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -449,7 +449,7 @@ func BenchmarkWBNB_View_Name(b *testing.B) {
 		env := runtime.NewEnv(cfg)
 		env.StateDB.CreateAccount(address)
 		env.StateDB.SetCode(address, runtimeCode)
-		sender := vm.AccountRef(cfg.Origin)
+		sender := cfg.Origin
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -536,8 +536,8 @@ func TestWBNB_Deposit_EVMvsMIR_Parity(t *testing.T) {
 	fund := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil) // 1 ether
 	evmB.StateDB.AddBalance(base.Origin, uint256.MustFromBig(fund), tracing.BalanceIncreaseGenesisBalance)
 	evmM.StateDB.AddBalance(mir.Origin, uint256.MustFromBig(fund), tracing.BalanceIncreaseGenesisBalance)
-	senderB := vm.AccountRef(base.Origin)
-	senderM := vm.AccountRef(mir.Origin)
+	senderB := base.Origin
+	senderM := mir.Origin
 
 	// deposit selector; value=1e18
 	depositSel := []byte{0xd0, 0xe3, 0x0d, 0xb0}
@@ -655,8 +655,8 @@ func TestWBNB_Deposit_EVMvsMIR_Success(t *testing.T) {
 	fund := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil) // 1 ether
 	evmB.StateDB.AddBalance(base.Origin, uint256.MustFromBig(fund), tracing.BalanceIncreaseGenesisBalance)
 	evmM.StateDB.AddBalance(mir.Origin, uint256.MustFromBig(fund), tracing.BalanceIncreaseGenesisBalance)
-	senderB := vm.AccountRef(base.Origin)
-	senderM := vm.AccountRef(mir.Origin)
+	senderB := base.Origin
+	senderM := mir.Origin
 
 	// deposit(value=1e18)
 	depositSel := []byte{0xd0, 0xe3, 0x0d, 0xb0}

@@ -83,7 +83,7 @@ const (
 	minTrienodeHealThrottle = 1
 
 	// maxTrienodeHealThrottle is the maximum divisor for throttling trie node
-	// heal requests to avoid overloading the local node and exessively expanding
+	// heal requests to avoid overloading the local node and excessively expanding
 	// the state trie bedth wise.
 	maxTrienodeHealThrottle = maxTrieRequestCount
 
@@ -2049,7 +2049,7 @@ func (s *Syncer) processStorageResponse(res *storageResponse) {
 		},
 	}
 	var snapBatch ethdb.HookedBatch
-	if s.db.StateStore() != nil {
+	if s.db.HasSeparateStateStore() {
 		usingMultDatabase = true
 		snapBatch = ethdb.HookedBatch{
 			Batch: s.db.NewBatch(),
@@ -2380,8 +2380,8 @@ func (s *Syncer) commitHealer(force bool) {
 	batch := s.db.NewBatch()
 	var stateBatch ethdb.Batch
 	var err error
-	if s.db.StateStore() != nil {
-		stateBatch = s.db.StateStore().NewBatch()
+	if s.db.HasSeparateStateStore() {
+		stateBatch = s.db.GetStateStore().NewBatch()
 		err = s.healer.scheduler.Commit(batch, stateBatch)
 	} else {
 		err = s.healer.scheduler.Commit(batch, nil)
@@ -2392,7 +2392,7 @@ func (s *Syncer) commitHealer(force bool) {
 	if err := batch.Write(); err != nil {
 		log.Crit("Failed to persist healing data", "err", err)
 	}
-	if s.db.StateStore() != nil {
+	if s.db.HasSeparateStateStore() {
 		if err := stateBatch.Write(); err != nil {
 			log.Crit("Failed to persist healing data", "err", err)
 		}
@@ -3151,6 +3151,10 @@ func (s *Syncer) reportSyncProgress(force bool) {
 	// Don't report anything until we have a meaningful progress
 	if estBytes < 1.0 {
 		return
+	}
+	// Cap the estimated state size using the synced size to avoid negative values
+	if estBytes < float64(synced) {
+		estBytes = float64(synced)
 	}
 	elapsed := time.Since(s.startTime)
 	estTime := elapsed / time.Duration(synced) * time.Duration(estBytes)

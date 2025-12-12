@@ -25,14 +25,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/crypto/kzg4844"
-	"github.com/holiman/uint256"
-
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
+	"go.uber.org/goleak"
 )
 
 var _ bind.ContractBackend = (Client)(nil)
@@ -52,7 +52,7 @@ func simTestBackend(testAddr common.Address) *Backend {
 	)
 }
 
-func newBlobTx(sim *Backend, key *ecdsa.PrivateKey) (*types.Transaction, error) {
+func newBlobTx(sim *Backend, key *ecdsa.PrivateKey, nonce uint64) (*types.Transaction, error) {
 	client := sim.Client()
 
 	testBlob := &kzg4844.Blob{0x00}
@@ -67,12 +67,8 @@ func newBlobTx(sim *Backend, key *ecdsa.PrivateKey) (*types.Transaction, error) 
 
 	addr := crypto.PubkeyToAddress(key.PublicKey)
 	chainid, _ := client.ChainID(context.Background())
-	nonce, err := client.PendingNonceAt(context.Background(), addr)
-	if err != nil {
-		return nil, err
-	}
-
 	chainidU256, _ := uint256.FromBig(chainid)
+
 	tx := types.NewTx(&types.BlobTx{
 		ChainID:    chainidU256,
 		GasTipCap:  gasTipCapU256,
@@ -92,7 +88,7 @@ func newBlobTx(sim *Backend, key *ecdsa.PrivateKey) (*types.Transaction, error) 
 	return types.SignTx(tx, types.LatestSignerForChainID(chainid), key)
 }
 
-func newTx(sim *Backend, key *ecdsa.PrivateKey) (*types.Transaction, error) {
+func newTx(sim *Backend, key *ecdsa.PrivateKey, nonce uint64) (*types.Transaction, error) {
 	client := sim.Client()
 
 	// create a signed transaction to send
@@ -100,10 +96,7 @@ func newTx(sim *Backend, key *ecdsa.PrivateKey) (*types.Transaction, error) {
 	gasPrice := new(big.Int).Add(head.BaseFee, big.NewInt(params.GWei))
 	addr := crypto.PubkeyToAddress(key.PublicKey)
 	chainid, _ := client.ChainID(context.Background())
-	nonce, err := client.PendingNonceAt(context.Background(), addr)
-	if err != nil {
-		return nil, err
-	}
+
 	tx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   chainid,
 		Nonce:     nonce,
@@ -165,7 +158,7 @@ func TestSendTransaction(t *testing.T) {
 	client := sim.Client()
 	ctx := context.Background()
 
-	signedTx, err := newTx(sim, testKey)
+	signedTx, err := newTx(sim, testKey, 0)
 	if err != nil {
 		t.Errorf("could not create transaction: %v", err)
 	}
@@ -256,7 +249,7 @@ func TestForkResendTx(t *testing.T) {
 	parent, _ := client.HeaderByNumber(ctx, nil)
 
 	// 2.
-	tx, err := newTx(sim, testKey)
+	tx, err := newTx(sim, testKey, 0)
 	if err != nil {
 		t.Fatalf("could not create transaction: %v", err)
 	}
@@ -301,7 +294,7 @@ func TestCommitReturnValue(t *testing.T) {
 	}
 
 	// Create a block in the original chain (containing a transaction to force different block hashes)
-	tx, _ := newTx(sim, testKey)
+	tx, _ := newTx(sim, testKey, 0)
 	if err := client.SendTransaction(ctx, tx); err != nil {
 		t.Errorf("sending transaction: %v", err)
 	}
@@ -349,4 +342,21 @@ func TestAdjustTimeAfterFork(t *testing.T) {
 	if head.Number.Uint64() == 2 && head.ParentHash != h1.Hash() {
 		t.Errorf("failed to build block on fork")
 	}
+}
+
+func createAndCloseSimBackend() {
+	genesisData := types.GenesisAlloc{}
+	simulatedBackend := NewBackend(genesisData)
+	defer simulatedBackend.Close()
+}
+
+// TestCheckSimBackendGoroutineLeak checks whether creation of a simulated backend leaks go-routines.  Any long-lived go-routines
+// spawned by global variables are not considered leaked.
+func TestCheckSimBackendGoroutineLeak(t *testing.T) {
+	createAndCloseSimBackend()
+	ignoreCur := goleak.IgnoreCurrent()
+	// ignore this leveldb function:  this go-routine is guaranteed to be terminated 1 second after closing db handle
+	ignoreLdb := goleak.IgnoreAnyFunction("github.com/syndtr/goleveldb/leveldb.(*DB).mpoolDrain")
+	createAndCloseSimBackend()
+	goleak.VerifyNone(t, ignoreCur, ignoreLdb)
 }

@@ -32,25 +32,9 @@ type Database struct {
 	remote *rpc.Client
 }
 
-func (db *Database) BlockStoreReader() ethdb.Reader {
-	return db
-}
-
-func (db *Database) BlockStore() ethdb.Database {
-	return db
-}
-
-func (db *Database) HasSeparateBlockStore() bool {
-	return false
-}
-
-func (db *Database) SetBlockStore(block ethdb.Database) {
-	panic("not supported")
-}
-
 func (db *Database) Has(key []byte) (bool, error) {
 	if _, err := db.Get(key); err != nil {
-		return false, nil
+		return false, err
 	}
 	return true, nil
 }
@@ -64,13 +48,6 @@ func (db *Database) Get(key []byte) ([]byte, error) {
 	return resp, nil
 }
 
-func (db *Database) HasAncient(kind string, number uint64) (bool, error) {
-	if _, err := db.Ancient(kind, number); err != nil {
-		return false, nil
-	}
-	return true, nil
-}
-
 func (db *Database) Ancient(kind string, number uint64) ([]byte, error) {
 	var resp hexutil.Bytes
 	err := db.remote.Call(&resp, "debug_dbAncient", kind, number)
@@ -81,10 +58,6 @@ func (db *Database) Ancient(kind string, number uint64) ([]byte, error) {
 }
 
 func (db *Database) AncientRange(kind string, start, count, maxBytes uint64) ([][]byte, error) {
-	panic("not supported")
-}
-
-func (db *Database) ItemAmountInAncient() (uint64, error) {
 	panic("not supported")
 }
 
@@ -102,23 +75,15 @@ func (db *Database) AncientSize(kind string) (uint64, error) {
 	panic("not supported")
 }
 
-func (db *Database) DiffStore() ethdb.KeyValueStore {
-	panic("not supported")
-}
-
-func (db *Database) SetDiffStore(diff ethdb.KeyValueStore) {
-	panic("not supported")
-}
-
-func (db *Database) StateStore() ethdb.Database {
-	panic("not supported")
-}
-
 func (db *Database) SetStateStore(state ethdb.Database) {
 	panic("not supported")
 }
 
 func (db *Database) GetStateStore() ethdb.Database {
+	panic("not supported")
+}
+
+func (db *Database) HasSeparateStateStore() bool {
 	panic("not supported")
 }
 
@@ -128,10 +93,6 @@ func (db *Database) StateStoreReader() ethdb.Reader {
 
 func (db *Database) ReadAncients(fn func(op ethdb.AncientReaderOp) error) (err error) {
 	return fn(db)
-}
-
-func (db *Database) AncientOffSet() uint64 {
-	panic("not supported")
 }
 
 func (db *Database) Put(key []byte, value []byte) error {
@@ -172,6 +133,10 @@ func (db *Database) ResetTable(kind string, startAt uint64, onlyEmpty bool) erro
 	panic("not supported")
 }
 
+func (db *Database) ResetTableForIncr(kind string, startAt uint64, onlyEmpty bool) error {
+	panic("not supported")
+}
+
 func (db *Database) SyncAncient() error {
 	return nil
 }
@@ -209,12 +174,17 @@ func (db *Database) Close() error {
 	return nil
 }
 
-func (db *Database) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
+func (db *Database) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
+	panic("not supported")
+}
+
+func (db *Database) CleanBlock(ethdb.KeyValueStore, uint64) error {
 	panic("not supported")
 }
 
 func New(client *rpc.Client) ethdb.Database {
-	return &Database{
-		remote: client,
+	if client == nil {
+		return nil
 	}
+	return &Database{remote: client}
 }

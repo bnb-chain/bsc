@@ -121,7 +121,7 @@ func executeRuntimeWithEVM(testCase RuntimeTestCase) *RuntimeExecutionResult {
 
 	snapshot := statedb.Snapshot()
 	ret, gasLeft, err := evm.Call(
-		vm.AccountRef(caller),
+		caller,
 		mainAddr,
 		testCase.CallData,
 		initialGas,
@@ -132,7 +132,7 @@ func executeRuntimeWithEVM(testCase RuntimeTestCase) *RuntimeExecutionResult {
 		ReturnData:      ret,
 		GasUsed:         initialGas - gasLeft,
 		Err:             err,
-		Logs:            statedb.GetLogs(common.Hash{}, 1000, common.Hash{}),
+		Logs:            statedb.GetLogs(common.Hash{}, 1000, common.Hash{}, 0),
 		Storage:         make(map[common.Hash]common.Hash),
 		UsedMIR:         false,
 		InterpreterInfo: "Base EVM Interpreter (EnableOpcodeOptimizations=false)",
@@ -222,7 +222,7 @@ func executeRuntimeWithMIR(testCase RuntimeTestCase) *RuntimeExecutionResult {
 
 	snapshot := statedb.Snapshot()
 	ret, gasLeft, err := evm.Call(
-		vm.AccountRef(caller),
+		caller,
 		mainAddr,
 		testCase.CallData,
 		initialGas,
@@ -263,7 +263,7 @@ func executeRuntimeWithMIR(testCase RuntimeTestCase) *RuntimeExecutionResult {
 		ReturnData:      ret,
 		GasUsed:         initialGas - gasLeft,
 		Err:             err,
-		Logs:            statedb.GetLogs(common.Hash{}, 1000, common.Hash{}),
+		Logs:            statedb.GetLogs(common.Hash{}, 1000, common.Hash{}, 0),
 		Storage:         make(map[common.Hash]common.Hash),
 		UsedMIR:         usedMIR,
 		InterpreterInfo: interpreterInfo,

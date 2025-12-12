@@ -100,7 +100,7 @@ func TestMIRVsEVM_AddMulReturn_Simple(t *testing.T) {
 			cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 		}
 		address := common.BytesToAddress([]byte(addrLabel))
-		sender := vm.AccountRef(cfg.Origin)
+		sender := cfg.Origin
 		var lastPC uint64
 		// Install per-run tracer to track lastPC and collect per-op timings for MIR runs
 		cfg.EVMConfig.Tracer = &tracing.Hooks{OnOpcode: func(pc uint64, op byte, _ uint64, _ uint64, _ tracing.OpContext, _ []byte, _ int, _ error) {
@@ -318,7 +318,7 @@ func TestProfile_AddMulReturn_Apple(t *testing.T) {
 		}
 		evm := runtime.NewEnv(cfg)
 		addr := common.BytesToAddress([]byte(label))
-		sender := vm.AccountRef(cfg.Origin)
+		sender := cfg.Origin
 		evm.StateDB.CreateAccount(addr)
 		evm.StateDB.SetCode(addr, code)
 		// Warm-up once to build MIR CFG if needed
@@ -392,7 +392,7 @@ func TestPerf_AddMulReturn_Apple(t *testing.T) {
 		}
 		evm := runtime.NewEnv(cfg)
 		addr := common.BytesToAddress([]byte(label))
-		sender := vm.AccountRef(cfg.Origin)
+		sender := cfg.Origin
 		evm.StateDB.CreateAccount(addr)
 		evm.StateDB.SetCode(addr, code)
 		// warm
@@ -424,7 +424,7 @@ func TestPerf_Storage_Apple(t *testing.T) {
 		}
 		evm := runtime.NewEnv(cfg)
 		addr := common.BytesToAddress([]byte(label))
-		sender := vm.AccountRef(cfg.Origin)
+		sender := cfg.Origin
 		evm.StateDB.CreateAccount(addr)
 		evm.StateDB.SetCode(addr, code)
 		// warm
@@ -456,7 +456,7 @@ func TestPerf_KeccakMemory_Apple(t *testing.T) {
 		}
 		evm := runtime.NewEnv(cfg)
 		addr := common.BytesToAddress([]byte(label))
-		sender := vm.AccountRef(cfg.Origin)
+		sender := cfg.Origin
 		evm.StateDB.CreateAccount(addr)
 		evm.StateDB.SetCode(addr, code)
 		// warm
@@ -489,7 +489,7 @@ func TestPerf_CalldataKeccak_Apple(t *testing.T) {
 		}
 		evm := runtime.NewEnv(cfg)
 		addr := common.BytesToAddress([]byte(label))
-		sender := vm.AccountRef(cfg.Origin)
+		sender := cfg.Origin
 		evm.StateDB.CreateAccount(addr)
 		evm.StateDB.SetCode(addr, code)
 		// warm
@@ -546,7 +546,7 @@ func TestPerf_USDT_Apple(t *testing.T) {
 		}
 		evm := runtime.NewEnv(cfg)
 		addr := common.BytesToAddress([]byte(label))
-		sender := vm.AccountRef(cfg.Origin)
+		sender := cfg.Origin
 		evm.StateDB.CreateAccount(addr)
 		evm.StateDB.SetCode(addr, codeBytes)
 		// warm
@@ -604,7 +604,7 @@ func TestPerf_WBNB_Apple(t *testing.T) {
 		}
 		evm := runtime.NewEnv(cfg)
 		addr := common.BytesToAddress([]byte(label))
-		sender := vm.AccountRef(cfg.Origin)
+		sender := cfg.Origin
 		evm.StateDB.CreateAccount(addr)
 		evm.StateDB.SetCode(addr, codeBytes)
 		// warm

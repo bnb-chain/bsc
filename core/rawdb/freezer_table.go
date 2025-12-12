@@ -102,11 +102,11 @@ type freezerTable struct {
 	// should never be lower than itemOffset.
 	itemHidden atomic.Uint64
 
-	noCompression bool // if true, disables snappy compression. Note: does not work retroactively
-	readonly      bool
-	maxFileSize   uint32 // Max file size for data-files
-	name          string
-	path          string
+	config      freezerTableConfig // if true, disables snappy compression. Note: does not work retroactively
+	readonly    bool
+	maxFileSize uint32 // Max file size for data-files
+	name        string
+	path        string
 
 	head   *os.File            // File descriptor for the data head of the table
 	index  *os.File            // File descriptor for the indexEntry file of the table
@@ -127,25 +127,20 @@ type freezerTable struct {
 }
 
 // newFreezerTable opens the given path as a freezer table.
-func newFreezerTable(path, name string, disableSnappy, readonly bool) (*freezerTable, error) {
-	return newTable(path, name, metrics.NewInactiveMeter(), metrics.NewInactiveMeter(), metrics.NewGauge(), freezerTableSize, disableSnappy, readonly)
-}
-
-// newAdditionTable opens the given path as a addition table.
-func newAdditionTable(path, name string, disableSnappy, readonly bool) (*freezerTable, error) {
-	return openAdditionTable(path, name, metrics.NewInactiveMeter(), metrics.NewInactiveMeter(), metrics.NewGauge(), freezerTableSize, disableSnappy, readonly)
+func newFreezerTable(path, name string, config freezerTableConfig, readonly bool) (*freezerTable, error) {
+	return newTable(path, name, metrics.NewInactiveMeter(), metrics.NewInactiveMeter(), metrics.NewGauge(), freezerTableSize, config, readonly)
 }
 
 // newTable opens a freezer table, creating the data and index files if they are
 // non-existent. Both files are truncated to the shortest common length to ensure
 // they don't go out of sync.
-func newTable(path string, name string, readMeter, writeMeter *metrics.Meter, sizeGauge *metrics.Gauge, maxFilesize uint32, noCompression, readonly bool) (*freezerTable, error) {
+func newTable(path string, name string, readMeter, writeMeter *metrics.Meter, sizeGauge *metrics.Gauge, maxFilesize uint32, config freezerTableConfig, readonly bool) (*freezerTable, error) {
 	// Ensure the containing directory exists and open the indexEntry file
 	if err := os.MkdirAll(path, 0755); err != nil {
 		return nil, err
 	}
 	var idxName string
-	if noCompression {
+	if config.noSnappy {
 		idxName = fmt.Sprintf("%s.ridx", name) // raw index file
 	} else {
 		idxName = fmt.Sprintf("%s.cidx", name) // compressed index file
@@ -156,7 +151,7 @@ func newTable(path string, name string, readMeter, writeMeter *metrics.Meter, si
 		meta  *os.File
 	)
 	if readonly {
-		// Will fail if table doesn't exist
+		// Will fail if table index file or meta file is not existent
 		index, err = openFreezerFileForReadOnly(filepath.Join(path, idxName))
 		if err != nil {
 			return nil, err
@@ -191,19 +186,19 @@ func newTable(path string, name string, readMeter, writeMeter *metrics.Meter, si
 	}
 	// Create the table and repair any past inconsistency
 	tab := &freezerTable{
-		index:         index,
-		metadata:      metadata,
-		lastSync:      time.Now(),
-		files:         make(map[uint32]*os.File),
-		readMeter:     readMeter,
-		writeMeter:    writeMeter,
-		sizeGauge:     sizeGauge,
-		name:          name,
-		path:          path,
-		logger:        log.New("database", path, "table", name),
-		noCompression: noCompression,
-		readonly:      readonly,
-		maxFileSize:   maxFilesize,
+		index:       index,
+		metadata:    metadata,
+		lastSync:    time.Now(),
+		files:       make(map[uint32]*os.File),
+		readMeter:   readMeter,
+		writeMeter:  writeMeter,
+		sizeGauge:   sizeGauge,
+		name:        name,
+		path:        path,
+		logger:      log.New("database", path, "table", name),
+		config:      config,
+		readonly:    readonly,
+		maxFileSize: maxFilesize,
 	}
 	if err := tab.repair(); err != nil {
 		tab.Close()
@@ -886,7 +881,7 @@ func (t *freezerTable) openFile(num uint32, opener func(string) (*os.File, error
 	var exist bool
 	if f, exist = t.files[num]; !exist {
 		var name string
-		if t.noCompression {
+		if t.config.noSnappy {
 			name = fmt.Sprintf("%s.%04d.rdat", t.name, num)
 		} else {
 			name = fmt.Sprintf("%s.%04d.cdat", t.name, num)
@@ -1002,13 +997,13 @@ func (t *freezerTable) RetrieveItems(start, count, maxBytes uint64) ([][]byte, e
 		item := diskData[offset : offset+diskSize]
 		offset += diskSize
 		decompressedSize := diskSize
-		if !t.noCompression {
+		if !t.config.noSnappy {
 			decompressedSize, _ = snappy.DecodedLen(item)
 		}
 		if i > 0 && maxBytes != 0 && uint64(outputSize+decompressedSize) > maxBytes {
 			break
 		}
-		if !t.noCompression {
+		if !t.config.noSnappy {
 			data, err := snappy.Decode(nil, item)
 			if err != nil {
 				return nil, err
@@ -1119,12 +1114,6 @@ func (t *freezerTable) retrieveItems(start, count, maxBytes uint64) ([]byte, []i
 	// Update metrics.
 	t.readMeter.Mark(int64(totalSize))
 	return output, sizes, nil
-}
-
-// has returns an indicator whether the specified number data is still accessible
-// in the freezer table.
-func (t *freezerTable) has(number uint64) bool {
-	return t.items.Load() > number && t.itemHidden.Load() <= number
 }
 
 // size returns the total data size in the freezer table.
@@ -1311,7 +1300,7 @@ func (t *freezerTable) resetItems(startAt uint64) (*freezerTable, error) {
 	t.index.Close()
 	os.Remove(t.index.Name())
 	var idxName string
-	if t.noCompression {
+	if t.config.noSnappy {
 		idxName = fmt.Sprintf("%s.ridx", t.name) // raw index file
 	} else {
 		idxName = fmt.Sprintf("%s.cidx", t.name) // compressed index file
@@ -1332,5 +1321,40 @@ func (t *freezerTable) resetItems(startAt uint64) (*freezerTable, error) {
 	}
 	index.Close()
 
-	return newFreezerTable(t.path, t.name, t.noCompression, t.readonly)
+	return newFreezerTable(t.path, t.name, t.config, t.readonly)
+}
+
+// resetTailMeta reset freezer table with new legacyOffset
+// Caution: the table cannot be used anymore, it will sync/close all data files
+func (t *freezerTable) resetTailMeta(legacyOffset uint64) error {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	if t.readonly {
+		return errors.New("resetItems in readonly mode")
+	}
+
+	// if the table enable the tail truncation, add the hidden items
+	legacyOffset += t.itemHidden.Load()
+
+	// overwrite metadata file
+	t.metadata.setVirtualTail(legacyOffset, true)
+	if t.metadata.flushOffset < int64(legacyOffset) {
+		t.metadata.setFlushOffset(int64(legacyOffset), true)
+	}
+
+	// overwrite first index
+	var firstIndex indexEntry
+	buffer := make([]byte, indexEntrySize)
+	t.index.ReadAt(buffer, 0)
+	firstIndex.unmarshalBinary(buffer)
+	firstIndex.offset = uint32(legacyOffset)
+	if _, err := t.index.WriteAt(firstIndex.append(nil), 0); err != nil {
+		return err
+	}
+	if err := t.index.Sync(); err != nil {
+		return err
+	}
+	t.index.Close()
+
+	return nil
 }

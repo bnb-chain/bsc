@@ -34,12 +34,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-var EvmPool = sync.Pool{
-	New: func() interface{} {
-		return &EVM{}
-	},
-}
-
 type (
 	// CanTransferFunc is the signature of a transfer guard function
 	CanTransferFunc func(StateDB, common.Address, *uint256.Int) bool
@@ -101,29 +95,41 @@ type EVM struct {
 	// Context provides auxiliary blockchain related information
 	Context BlockContext
 	TxContext
+
 	// StateDB gives access to the underlying state
 	StateDB StateDB
-	// Depth is the current call stack
+
+	// depth is the current call stack
 	depth int
 
 	// chainConfig contains information about the current chain
 	chainConfig *params.ChainConfig
+
 	// chain rules contains the chain rules for the current epoch
 	chainRules params.Rules
-	// virtual machine configuration options used to initialise the
-	// evm.
+
+	// virtual machine configuration options used to initialise the evm
 	Config Config
-	// global (to this context) ethereum virtual machine
-	// used throughout the execution of the tx.
+
+	// global (to this context) ethereum virtual machine used throughout
+	// the execution of the tx
 	interpreter *EVMInterpreter
+
 	// abort is used to abort the EVM calling operations
 	abort atomic.Bool
+
 	// callGasTemp holds the gas available for the current call. This is needed because the
 	// available gas is calculated in gasCall* according to the 63/64 rule and later
 	// applied in opCall*.
 	callGasTemp uint64
+
 	// precompiles holds the precompiled contracts for the current epoch
-	precompiles     map[common.Address]PrecompiledContract
+	precompiles map[common.Address]PrecompiledContract
+
+	// jumpDests is the aggregated result of JUMPDEST analysis made through
+	jumpDests map[common.Hash]bitvec
+
+	// the life cycle of EVM.
 	optInterpreter  *EVMInterpreter
 	baseInterpreter *EVMInterpreter
 	mirInterpreter  *MIRInterpreterAdapter
@@ -142,6 +148,7 @@ func NewEVM(blockCtx BlockContext, statedb StateDB, chainConfig *params.ChainCon
 		Config:      config,
 		chainConfig: chainConfig,
 		chainRules:  chainConfig.Rules(blockCtx.BlockNumber, blockCtx.Random != nil, blockCtx.Time),
+		jumpDests:   make(map[common.Hash]bitvec),
 	}
 	evm.precompiles = activePrecompiledContracts(evm.chainRules)
 
@@ -210,18 +217,18 @@ func (evm *EVM) Interpreter() *EVMInterpreter {
 	return evm.interpreter
 }
 
-func isSystemCall(caller ContractRef) bool {
-	return caller.Address() == params.SystemAddress
+func isSystemCall(caller common.Address) bool {
+	return caller == params.SystemAddress
 }
 
 // Call executes the contract associated with the addr with the given input as
 // parameters. It also handles any necessary value transfer required and takse
 // the necessary steps to create accounts and reverses the state in case of an
 // execution error or failed value transfer.
-func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas uint64, value *uint256.Int) (ret []byte, leftOverGas uint64, err error) {
+func (evm *EVM) Call(caller common.Address, addr common.Address, input []byte, gas uint64, value *uint256.Int) (ret []byte, leftOverGas uint64, err error) {
 	// Capture the tracer start/end events in debug mode
 	if evm.Config.Tracer != nil {
-		evm.captureBegin(evm.depth, CALL, caller.Address(), addr, input, gas, value.ToBig())
+		evm.captureBegin(evm.depth, CALL, caller, addr, input, gas, value.ToBig())
 		defer func(startGas uint64) {
 			evm.captureEnd(evm.depth, startGas, leftOverGas, ret, err)
 		}(gas)
@@ -231,7 +238,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		return nil, gas, ErrDepth
 	}
 	// Fail if we're trying to transfer more than the available balance
-	if !value.IsZero() && !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value) {
+	if !value.IsZero() && !evm.Context.CanTransfer(evm.StateDB, caller, value) {
 		return nil, gas, ErrInsufficientBalance
 	}
 	snapshot := evm.StateDB.Snapshot()
@@ -239,8 +246,14 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 
 	if !evm.StateDB.Exist(addr) {
 		if !isPrecompile && evm.chainRules.IsEIP4762 && !isSystemCall(caller) {
-			// add proof of absence to witness
-			wgas := evm.AccessEvents.AddAccount(addr, false)
+			// Add proof of absence to witness
+			// At this point, the read costs have already been charged, either because this
+			// is a direct tx call, in which case it's covered by the intrinsic gas, or because
+			// of a CALL instruction, in which case BASIC_DATA has been added to the access
+			// list in write mode. If there is enough gas paying for the addition of the code
+			// hash leaf to the access list, then account creation will proceed unimpaired.
+			// Thus, only pay for the creation of the code hash leaf here.
+			wgas := evm.AccessEvents.CodeHashGas(addr, true, gas, false)
 			if gas < wgas {
 				evm.StateDB.RevertToSnapshot(snapshot)
 				return nil, 0, ErrOutOfGas
@@ -254,22 +267,21 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		}
 		evm.StateDB.CreateAccount(addr)
 	}
-	evm.Context.Transfer(evm.StateDB, caller.Address(), addr, value)
+	evm.Context.Transfer(evm.StateDB, caller, addr, value)
 
 	if isPrecompile {
 		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.Config.Tracer)
 	} else {
 		// Initialise a new contract and set the code that is to be used by the EVM.
-		// The contract is a scoped environment for this execution context only.
 		code := evm.resolveCode(addr)
 		if len(code) == 0 {
 			ret, err = nil, nil // gas is unchanged
 		} else {
-			addrCopy := addr
-			// If the account has no code, we can abort here
-			// The depth-check is already done, and precompiles handled above
-			contract := GetContract(caller, AccountRef(addrCopy), value, gas)
-			defer ReturnContract(contract)
+		addrCopy := addr
+		// If the account has no code, we can abort here
+		// The depth-check is already done, and precompiles handled above
+		contract := GetContract(caller, addrCopy, value, gas, evm.jumpDests)
+		defer ReturnContract(contract)
 			codeHash := evm.resolveCodeHash(addrCopy)
 
 			if evm.Config.EnableMIR {
@@ -280,22 +292,22 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				if evm.mirInterpreter == nil {
 					return nil, gas, fmt.Errorf("MIR enabled but mirInterpreter is nil")
 				}
-				contract.SetCallCode(&addrCopy, codeHash, code)
+				contract.SetCallCode(codeHash, code)
 				ret, err = evm.mirInterpreter.Run(contract, input, false)
 			} else if evm.Config.EnableOpcodeOptimizations {
 				contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
-
 				// Choose interpreter based on available optimizations
 				if contract.optimized {
 					evm.UseOptInterpreter()
+					contract.codeBitmapFunc = codeBitmapWhitSI
 				} else {
 					evm.UseBaseInterpreter()
 				}
-				contract.SetCallCode(&addrCopy, codeHash, code)
+				contract.SetCallCode(codeHash, code)
 				ret, err = evm.interpreter.Run(contract, input, false)
 			} else {
 				evm.UseBaseInterpreter()
-				contract.SetCallCode(&addrCopy, codeHash, code)
+				contract.SetCallCode(evm.resolveCodeHash(addr), code)
 				ret, err = evm.interpreter.Run(contract, input, false)
 			}
 			contract.IsSystemCall = isSystemCall(caller)
@@ -328,10 +340,10 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 //
 // CallCode differs from Call in the sense that it executes the given address'
 // code with the caller as context.
-func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, gas uint64, value *uint256.Int) (ret []byte, leftOverGas uint64, err error) {
+func (evm *EVM) CallCode(caller common.Address, addr common.Address, input []byte, gas uint64, value *uint256.Int) (ret []byte, leftOverGas uint64, err error) {
 	// Invoke tracer hooks that signal entering/exiting a call frame
 	if evm.Config.Tracer != nil {
-		evm.captureBegin(evm.depth, CALLCODE, caller.Address(), addr, input, gas, value.ToBig())
+		evm.captureBegin(evm.depth, CALLCODE, caller, addr, input, gas, value.ToBig())
 		defer func(startGas uint64) {
 			evm.captureEnd(evm.depth, startGas, leftOverGas, ret, err)
 		}(gas)
@@ -344,7 +356,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 	// Note although it's noop to transfer X ether to caller itself. But
 	// if caller doesn't have enough balance, it would be an error to allow
 	// over-charging itself. So the check here is necessary.
-	if !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value) {
+	if !evm.Context.CanTransfer(evm.StateDB, caller, value) {
 		return nil, gas, ErrInsufficientBalance
 	}
 	var snapshot = evm.StateDB.Snapshot()
@@ -356,7 +368,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 		addrCopy := addr
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
-		contract := GetContract(caller, AccountRef(caller.Address()), value, gas)
+		contract := GetContract(caller, caller, value, gas, evm.jumpDests)
 		defer ReturnContract(contract)
 		code := evm.resolveCode(addrCopy)
 		codeHash := evm.resolveCodeHash(addrCopy)
@@ -369,26 +381,21 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 			if evm.mirInterpreter == nil {
 				return nil, gas, fmt.Errorf("MIR enabled but mirInterpreter is nil")
 			}
-			contract.SetCallCode(&addrCopy, codeHash, code)
+			contract.SetCallCode(codeHash, code)
 			ret, err = evm.mirInterpreter.Run(contract, input, false)
 		} else if evm.Config.EnableOpcodeOptimizations {
-			// Try MIR first
-			// contract.optimized, code = tryGetOptimizedCodeWithMIR(evm, codeHash, code, contract)
-			// Note: previous code called tryGetOptimizedCodeWithMIR here even if MIR flag was off?
-			// No, tryGetOptimizedCodeWithMIR checked the flags internally.
-
-			// Fallback to superinstruction/base path
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
+			contract.SetCallCode(codeHash, code)
 
 			if contract.optimized {
 				evm.UseOptInterpreter()
+				contract.codeBitmapFunc = codeBitmapWhitSI
 			} else {
 				evm.UseBaseInterpreter()
 			}
-			contract.SetCallCode(&addrCopy, codeHash, code)
 			ret, err = evm.interpreter.Run(contract, input, false)
 		} else {
-			contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
+			contract.SetCallCode(evm.resolveCodeHash(addr), evm.resolveCode(addr))
 			ret, err = evm.interpreter.Run(contract, input, false)
 		}
 		gas = contract.Gas
@@ -399,7 +406,6 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 			if evm.Config.Tracer != nil && evm.Config.Tracer.OnGasChange != nil {
 				evm.Config.Tracer.OnGasChange(gas, 0, tracing.GasChangeCallFailedExecution)
 			}
-
 			gas = 0
 		}
 	}
@@ -411,14 +417,11 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 //
 // DelegateCall differs from CallCode in the sense that it executes the given address'
 // code with the caller as context and the caller is set to the caller of the caller.
-func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []byte, gas uint64) (ret []byte, leftOverGas uint64, err error) {
+func (evm *EVM) DelegateCall(originCaller common.Address, caller common.Address, addr common.Address, input []byte, gas uint64, value *uint256.Int) (ret []byte, leftOverGas uint64, err error) {
 	// Invoke tracer hooks that signal entering/exiting a call frame
 	if evm.Config.Tracer != nil {
-		// NOTE: caller must, at all times be a contract. It should never happen
-		// that caller is something other than a Contract.
-		parent := caller.(*Contract)
 		// DELEGATECALL inherits value from parent call
-		evm.captureBegin(evm.depth, DELEGATECALL, caller.Address(), addr, input, gas, parent.value.ToBig())
+		evm.captureBegin(evm.depth, DELEGATECALL, caller, addr, input, gas, value.ToBig())
 		defer func(startGas uint64) {
 			evm.captureEnd(evm.depth, startGas, leftOverGas, ret, err)
 		}(gas)
@@ -435,7 +438,8 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 	} else {
 		addrCopy := addr
 		// Initialise a new contract and make initialise the delegate values
-		contract := GetContract(caller, AccountRef(caller.Address()), nil, gas).AsDelegate()
+		// Note: For delegatecall, originCaller is the caller, and caller is the address
+		contract := GetContract(originCaller, caller, nil, gas, evm.jumpDests)
 		defer ReturnContract(contract)
 		code := evm.resolveCode(addrCopy)
 		codeHash := evm.resolveCodeHash(addrCopy)
@@ -448,21 +452,20 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 			if evm.mirInterpreter == nil {
 				return nil, gas, fmt.Errorf("MIR enabled but mirInterpreter is nil")
 			}
-			contract.SetCallCode(&addrCopy, codeHash, code)
+			contract.SetCallCode(codeHash, code)
 			ret, err = evm.mirInterpreter.Run(contract, input, false)
 		} else if evm.Config.EnableOpcodeOptimizations {
-			// Fallback to superinstruction/base path
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
-
+			contract.SetCallCode(codeHash, code)
 			if contract.optimized {
 				evm.UseOptInterpreter()
+				contract.codeBitmapFunc = codeBitmapWhitSI
 			} else {
 				evm.UseBaseInterpreter()
 			}
-			contract.SetCallCode(&addrCopy, codeHash, code)
 			ret, err = evm.interpreter.Run(contract, input, false)
 		} else {
-			contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
+			contract.SetCallCode(evm.resolveCodeHash(addr), evm.resolveCode(addr))
 			ret, err = evm.interpreter.Run(contract, input, false)
 		}
 		gas = contract.Gas
@@ -483,10 +486,10 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 // as parameters while disallowing any modifications to the state during the call.
 // Opcodes that attempt to perform such modifications will result in exceptions
 // instead of performing the modifications.
-func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte, gas uint64) (ret []byte, leftOverGas uint64, err error) {
+func (evm *EVM) StaticCall(caller common.Address, addr common.Address, input []byte, gas uint64) (ret []byte, leftOverGas uint64, err error) {
 	// Invoke tracer hooks that signal entering/exiting a call frame
 	if evm.Config.Tracer != nil {
-		evm.captureBegin(evm.depth, STATICCALL, caller.Address(), addr, input, gas, nil)
+		evm.captureBegin(evm.depth, STATICCALL, caller, addr, input, gas, nil)
 		defer func(startGas uint64) {
 			evm.captureEnd(evm.depth, startGas, leftOverGas, ret, err)
 		}(gas)
@@ -517,7 +520,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 		addrCopy := addr
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
-		contract := GetContract(caller, AccountRef(addrCopy), new(uint256.Int), gas)
+		contract := GetContract(caller, addrCopy, new(uint256.Int), gas, evm.jumpDests)
 		defer ReturnContract(contract)
 		code := evm.resolveCode(addrCopy)
 		codeHash := evm.resolveCodeHash(addrCopy)
@@ -530,21 +533,23 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 			if evm.mirInterpreter == nil {
 				return nil, gas, fmt.Errorf("MIR enabled but mirInterpreter is nil")
 			}
-			contract.SetCallCode(&addrCopy, codeHash, code)
+			contract.SetCallCode(codeHash, code)
 			ret, err = evm.mirInterpreter.Run(contract, input, true)
 		} else if evm.Config.EnableOpcodeOptimizations {
-			// Fallback to superinstruction/base path
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
-
 			if contract.optimized {
 				evm.UseOptInterpreter()
+				contract.codeBitmapFunc = codeBitmapWhitSI
 			} else {
 				evm.UseBaseInterpreter()
 			}
-			contract.SetCallCode(&addrCopy, codeHash, code)
+			contract.SetCallCode(codeHash, code)
+			// When an error was returned by the EVM or when setting the creation code
+			// above we revert to the snapshot and consume any gas remaining. Additionally
+			// when we're in Homestead this also counts for code storage gas errors.
 			ret, err = evm.interpreter.Run(contract, input, true)
 		} else {
-			contract.SetCallCode(&addrCopy, evm.resolveCodeHash(addrCopy), evm.resolveCode(addrCopy))
+			contract.SetCallCode(evm.resolveCodeHash(addr), evm.resolveCode(addr))
 			// When an error was returned by the EVM or when setting the creation code
 			// above we revert to the snapshot and consume any gas remaining. Additionally
 			// when we're in Homestead this also counts for code storage gas errors.
@@ -574,12 +579,7 @@ func tryGetOptimizedCode(evm *EVM, codeHash common.Hash, rawCode []byte) (bool, 
 		code = optCode
 		optimized = true
 	} else {
-		// Try to generate optimized code synchronously
-		optCode, err := compiler.GenOrRewriteOptimizedCode(codeHash, rawCode)
-		if err == nil && len(optCode) != 0 {
-			code = optCode
-			optimized = true
-		}
+		compiler.GenOrLoadOptimizedCode(codeHash, rawCode)
 	}
 	return optimized, code
 }
@@ -614,9 +614,9 @@ func (c *codeAndHash) Hash() common.Hash {
 }
 
 // create creates a new contract using code as deployment code.
-func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64, value *uint256.Int, address common.Address, typ OpCode) (ret []byte, createAddress common.Address, leftOverGas uint64, err error) {
+func (evm *EVM) create(caller common.Address, code []byte, gas uint64, value *uint256.Int, address common.Address, typ OpCode) (ret []byte, createAddress common.Address, leftOverGas uint64, err error) {
 	if evm.Config.Tracer != nil {
-		evm.captureBegin(evm.depth, typ, caller.Address(), address, codeAndHash.code, gas, value.ToBig())
+		evm.captureBegin(evm.depth, typ, caller, address, code, gas, value.ToBig())
 		defer func(startGas uint64) {
 			evm.captureEnd(evm.depth, startGas, leftOverGas, ret, err)
 		}(gas)
@@ -626,18 +626,18 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	if evm.depth > int(params.CallCreateDepth) {
 		return nil, common.Address{}, gas, ErrDepth
 	}
-	if !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value) {
+	if !evm.Context.CanTransfer(evm.StateDB, caller, value) {
 		return nil, common.Address{}, gas, ErrInsufficientBalance
 	}
-	nonce := evm.StateDB.GetNonce(caller.Address())
+	nonce := evm.StateDB.GetNonce(caller)
 	if nonce+1 < nonce {
 		return nil, common.Address{}, gas, ErrNonceUintOverflow
 	}
-	evm.StateDB.SetNonce(caller.Address(), nonce+1, tracing.NonceChangeContractCreator)
+	evm.StateDB.SetNonce(caller, nonce+1, tracing.NonceChangeContractCreator)
 
 	// Charge the contract creation init gas in verkle mode
 	if evm.chainRules.IsEIP4762 {
-		statelessGas := evm.AccessEvents.ContractCreatePreCheckGas(address)
+		statelessGas := evm.AccessEvents.ContractCreatePreCheckGas(address, gas)
 		if statelessGas > gas {
 			return nil, common.Address{}, 0, ErrOutOfGas
 		}
@@ -685,26 +685,28 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	}
 	// Charge the contract creation init gas in verkle mode
 	if evm.chainRules.IsEIP4762 {
-		statelessGas := evm.AccessEvents.ContractCreateInitGas(address)
-		if statelessGas > gas {
+		consumed, wanted := evm.AccessEvents.ContractCreateInitGas(address, gas)
+		if consumed < wanted {
 			return nil, common.Address{}, 0, ErrOutOfGas
 		}
 		if evm.Config.Tracer != nil && evm.Config.Tracer.OnGasChange != nil {
-			evm.Config.Tracer.OnGasChange(gas, gas-statelessGas, tracing.GasChangeWitnessContractInit)
+			evm.Config.Tracer.OnGasChange(gas, gas-consumed, tracing.GasChangeWitnessContractInit)
 		}
-		gas = gas - statelessGas
+		gas = gas - consumed
 	}
-	evm.Context.Transfer(evm.StateDB, caller.Address(), address, value)
+	evm.Context.Transfer(evm.StateDB, caller, address, value)
 
 	// Initialise a new contract and set the code that is to be used by the EVM.
 	// The contract is a scoped environment for this execution context only.
-	contract := GetContract(caller, AccountRef(address), value, gas)
+	contract := GetContract(caller, address, value, gas, evm.jumpDests)
 	defer ReturnContract(contract)
 
-	contract.SetCodeOptionalHash(&address, codeAndHash)
+	// Explicitly set the code to a null hash to prevent caching of jump analysis
+	// for the initialization code.
+	contract.SetCallCode(common.Hash{}, code)
 	contract.IsDeployment = true
 
-	ret, err = evm.initNewContract(contract, address, value)
+	ret, err = evm.initNewContract(contract, address)
 	if err != nil && (evm.chainRules.IsHomestead || err != ErrCodeStoreOutOfGas) {
 		evm.StateDB.RevertToSnapshot(snapshot)
 		if err != ErrExecutionReverted {
@@ -717,9 +719,9 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 
 // initNewContract runs a new contract's creation code, performs checks on the
 // resulting code that is to be deployed, and consumes necessary gas.
-func (evm *EVM) initNewContract(contract *Contract, address common.Address, value *uint256.Int) ([]byte, error) {
-	// We don't use superinstruction optimizations for creation code (runs once).
-	// Force base interpreter for fallback/default execution.
+func (evm *EVM) initNewContract(contract *Contract, address common.Address) ([]byte, error) {
+	// We don't optimize creation code as it run only once.
+	contract.optimized = false
 	if evm.Config.EnableOpcodeOptimizations {
 		compiler.DisableOptimization()
 		evm.UseBaseInterpreter()
@@ -757,7 +759,6 @@ func (evm *EVM) initNewContract(contract *Contract, address common.Address, valu
 	} else {
 		ret, err = evm.interpreter.Run(contract, nil, false)
 	}
-
 	if err != nil {
 		return ret, err
 	}
@@ -766,6 +767,7 @@ func (evm *EVM) initNewContract(contract *Contract, address common.Address, valu
 	if evm.Config.EnableOpcodeOptimizations {
 		compiler.EnableOptimization()
 		evm.UseOptInterpreter()
+		contract.codeBitmapFunc = codeBitmapWhitSI
 	}
 
 	// Check whether the max code size has been exceeded, assign err if the case.
@@ -784,7 +786,9 @@ func (evm *EVM) initNewContract(contract *Contract, address common.Address, valu
 			return ret, ErrCodeStoreOutOfGas
 		}
 	} else {
-		if len(ret) > 0 && !contract.UseGas(evm.AccessEvents.CodeChunksRangeGas(address, 0, uint64(len(ret)), uint64(len(ret)), true), evm.Config.Tracer, tracing.GasChangeWitnessCodeChunk) {
+		consumed, wanted := evm.AccessEvents.CodeChunksRangeGas(address, 0, uint64(len(ret)), uint64(len(ret)), true, contract.Gas)
+		contract.UseGas(consumed, evm.Config.Tracer, tracing.GasChangeWitnessCodeChunk)
+		if len(ret) > 0 && (consumed < wanted) {
 			return ret, ErrCodeStoreOutOfGas
 		}
 	}
@@ -794,19 +798,19 @@ func (evm *EVM) initNewContract(contract *Contract, address common.Address, valu
 }
 
 // Create creates a new contract using code as deployment code.
-func (evm *EVM) Create(caller ContractRef, code []byte, gas uint64, value *uint256.Int) (ret []byte, contractAddr common.Address, leftOverGas uint64, err error) {
-	contractAddr = crypto.CreateAddress(caller.Address(), evm.StateDB.GetNonce(caller.Address()))
-	return evm.create(caller, &codeAndHash{code: code}, gas, value, contractAddr, CREATE)
+func (evm *EVM) Create(caller common.Address, code []byte, gas uint64, value *uint256.Int) (ret []byte, contractAddr common.Address, leftOverGas uint64, err error) {
+	contractAddr = crypto.CreateAddress(caller, evm.StateDB.GetNonce(caller))
+	return evm.create(caller, code, gas, value, contractAddr, CREATE)
 }
 
 // Create2 creates a new contract using code as deployment code.
 //
 // The different between Create2 with Create is Create2 uses keccak256(0xff ++ msg.sender ++ salt ++ keccak256(init_code))[12:]
 // instead of the usual sender-and-nonce-hash as the address where the contract is initialized at.
-func (evm *EVM) Create2(caller ContractRef, code []byte, gas uint64, endowment *uint256.Int, salt *uint256.Int) (ret []byte, contractAddr common.Address, leftOverGas uint64, err error) {
-	codeAndHash := &codeAndHash{code: code}
-	contractAddr = crypto.CreateAddress2(caller.Address(), salt.Bytes32(), codeAndHash.Hash().Bytes())
-	return evm.create(caller, codeAndHash, gas, endowment, contractAddr, CREATE2)
+func (evm *EVM) Create2(caller common.Address, code []byte, gas uint64, endowment *uint256.Int, salt *uint256.Int) (ret []byte, contractAddr common.Address, leftOverGas uint64, err error) {
+	inithash := crypto.HashData(evm.interpreter.hasher, code)
+	contractAddr = crypto.CreateAddress2(caller, salt.Bytes32(), inithash[:])
+	return evm.create(caller, code, gas, endowment, contractAddr, CREATE2)
 }
 
 // resolveCode returns the code associated with the provided account. After

@@ -118,7 +118,7 @@ func BenchmarkMIRVsEVM_AddMul(b *testing.B) {
 		// Build a proper env with State
 		evm := runtime.NewEnv(cfgBase)
 		address := common.BytesToAddress([]byte("contract"))
-		sender := vm.AccountRef(cfgBase.Origin)
+		sender := cfgBase.Origin
 		evm.StateDB.CreateAccount(address)
 		evm.StateDB.SetCode(address, simpleAddMul)
 
@@ -143,7 +143,7 @@ func BenchmarkMIRVsEVM_AddMul(b *testing.B) {
 		// Fresh env with optimizations enabled
 		evm := runtime.NewEnv(cfgMIR)
 		address := common.BytesToAddress([]byte("contract"))
-		sender := vm.AccountRef(cfgMIR.Origin)
+		sender := cfgMIR.Origin
 		evm.StateDB.CreateAccount(address)
 		evm.StateDB.SetCode(address, simpleAddMul)
 
@@ -183,7 +183,7 @@ func BenchmarkMIRVsEVM_AddMulReturn(b *testing.B) {
 		}
 		evm := runtime.NewEnv(cfgBase)
 		address := common.BytesToAddress([]byte("contract"))
-		sender := vm.AccountRef(cfgBase.Origin)
+		sender := cfgBase.Origin
 		evm.StateDB.CreateAccount(address)
 		evm.StateDB.SetCode(address, addMulReturn)
 		b.ResetTimer()
@@ -202,7 +202,7 @@ func BenchmarkMIRVsEVM_AddMulReturn(b *testing.B) {
 		}
 		evm := runtime.NewEnv(cfgMIR)
 		address := common.BytesToAddress([]byte("contract"))
-		sender := vm.AccountRef(cfgMIR.Origin)
+		sender := cfgMIR.Origin
 		evm.StateDB.CreateAccount(address)
 		evm.StateDB.SetCode(address, addMulReturn)
 		b.ResetTimer()
@@ -225,7 +225,7 @@ func BenchmarkMIRVsEVM_Storage(b *testing.B) {
 		}
 		evm := runtime.NewEnv(cfgBase)
 		address := common.BytesToAddress([]byte("contract_storage"))
-		sender := vm.AccountRef(cfgBase.Origin)
+		sender := cfgBase.Origin
 		evm.StateDB.CreateAccount(address)
 		evm.StateDB.SetCode(address, storageStoreLoadReturn)
 		b.ResetTimer()
@@ -244,7 +244,7 @@ func BenchmarkMIRVsEVM_Storage(b *testing.B) {
 		}
 		evm := runtime.NewEnv(cfgMIR)
 		address := common.BytesToAddress([]byte("contract_storage"))
-		sender := vm.AccountRef(cfgMIR.Origin)
+		sender := cfgMIR.Origin
 		evm.StateDB.CreateAccount(address)
 		evm.StateDB.SetCode(address, storageStoreLoadReturn)
 		b.ResetTimer()
@@ -267,7 +267,7 @@ func BenchmarkMIRVsEVM_Keccak(b *testing.B) {
 		}
 		evm := runtime.NewEnv(cfgBase)
 		address := common.BytesToAddress([]byte("contract_keccak"))
-		sender := vm.AccountRef(cfgBase.Origin)
+		sender := cfgBase.Origin
 		evm.StateDB.CreateAccount(address)
 		evm.StateDB.SetCode(address, keccakMemReturn)
 		b.ResetTimer()
@@ -286,7 +286,7 @@ func BenchmarkMIRVsEVM_Keccak(b *testing.B) {
 		}
 		evm := runtime.NewEnv(cfgMIR)
 		address := common.BytesToAddress([]byte("contract_keccak"))
-		sender := vm.AccountRef(cfgMIR.Origin)
+		sender := cfgMIR.Origin
 		evm.StateDB.CreateAccount(address)
 		evm.StateDB.SetCode(address, keccakMemReturn)
 		b.ResetTimer()
@@ -313,7 +313,7 @@ func BenchmarkMIRVsEVM_CalldataKeccak(b *testing.B) {
 		}
 		evm := runtime.NewEnv(cfgBase)
 		address := common.BytesToAddress([]byte("contract_calldata"))
-		sender := vm.AccountRef(cfgBase.Origin)
+		sender := cfgBase.Origin
 		evm.StateDB.CreateAccount(address)
 		evm.StateDB.SetCode(address, calldataKeccakReturn)
 		b.ResetTimer()
@@ -332,7 +332,7 @@ func BenchmarkMIRVsEVM_CalldataKeccak(b *testing.B) {
 		}
 		evm := runtime.NewEnv(cfgMIR)
 		address := common.BytesToAddress([]byte("contract_calldata"))
-		sender := vm.AccountRef(cfgMIR.Origin)
+		sender := cfgMIR.Origin
 		evm.StateDB.CreateAccount(address)
 		evm.StateDB.SetCode(address, calldataKeccakReturn)
 		b.ResetTimer()
@@ -358,7 +358,7 @@ func TestMIRVsEVM_Functional(t *testing.T) {
 		}
 		evm := runtime.NewEnv(cfg)
 		address := common.BytesToAddress([]byte(addrLabel))
-		sender := vm.AccountRef(cfg.Origin)
+		sender := cfg.Origin
 		evm.StateDB.CreateAccount(address)
 		evm.StateDB.SetCode(address, code)
 		ret, _, err := evm.Call(sender, address, input, cfg.GasLimit, uint256.MustFromBig(cfg.Value))
@@ -479,7 +479,7 @@ func TestMIRVsEVM_Functional(t *testing.T) {
 		baseTr.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 		evmBase := runtime.NewEnv(baseTr)
 		addrBase := common.BytesToAddress([]byte("addr_ck_b"))
-		sender := vm.AccountRef(baseTr.Origin)
+		sender := baseTr.Origin
 		evmBase.StateDB.CreateAccount(addrBase)
 		evmBase.StateDB.SetCode(addrBase, calldataKeccakReturn)
 		rb, _, err := evmBase.Call(sender, addrBase, input, baseTr.GasLimit, uint256.MustFromBig(baseTr.Value))
@@ -530,7 +530,7 @@ func TestAddMulReturn_BaseAndMIR(t *testing.T) {
 	}
 	evm := runtime.NewEnv(cfgBase)
 	addr := common.BytesToAddress([]byte("contract"))
-	sender := vm.AccountRef(cfgBase.Origin)
+	sender := cfgBase.Origin
 	evm.StateDB.CreateAccount(addr)
 	evm.StateDB.SetCode(addr, addMulReturn)
 	ret, _, err := evm.Call(sender, addr, nil, cfgBase.GasLimit, uint256.MustFromBig(cfgBase.Value))

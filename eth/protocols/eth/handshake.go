@@ -24,6 +24,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/gopool"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -37,94 +38,160 @@ const (
 
 // Handshake executes the eth protocol handshake, negotiating version number,
 // network IDs, difficulties, head and genesis blocks.
-func (p *Peer) Handshake(network uint64, td *big.Int, head common.Hash, genesis common.Hash, forkID forkid.ID, forkFilter forkid.Filter, extension *UpgradeStatusExtension) error {
-	// Send out own handshake in a new thread
+func (p *Peer) Handshake(networkID uint64, chain *core.BlockChain, rangeMsg BlockRangeUpdatePacket, td *big.Int, extension *UpgradeStatusExtension) error {
+	switch p.version {
+	case ETH69:
+		return p.handshake69(networkID, chain, rangeMsg)
+	case ETH68:
+		return p.handshake68(networkID, chain, td, extension)
+	default:
+		return errors.New("unsupported protocol version")
+	}
+}
+
+func (p *Peer) handshake68(networkID uint64, chain *core.BlockChain, td *big.Int, extension *UpgradeStatusExtension) error {
+	var (
+		genesis    = chain.Genesis()
+		latest     = chain.CurrentBlock()
+		forkID     = forkid.NewID(chain.Config(), genesis, latest.Number.Uint64(), latest.Time)
+		forkFilter = forkid.NewFilter(chain)
+	)
 	errc := make(chan error, 2)
-
-	var status StatusPacket // safe to read after two values have been received from errc
-
-	gopool.Submit(func() {
-		errc <- p2p.Send(p.rw, StatusMsg, &StatusPacket{
+	go func() {
+		pkt := &StatusPacket68{
 			ProtocolVersion: uint32(p.version),
-			NetworkID:       network,
+			NetworkID:       networkID,
 			TD:              td,
-			Head:            head,
-			Genesis:         genesis,
+			Head:            latest.Hash(),
+			Genesis:         genesis.Hash(),
 			ForkID:          forkID,
-		})
-	})
-	gopool.Submit(func() {
-		errc <- p.readStatus(network, &status, genesis, forkFilter)
-	})
-	timeout := time.NewTimer(handshakeTimeout)
-	defer timeout.Stop()
-	for i := 0; i < 2; i++ {
-		select {
-		case err := <-errc:
-			if err != nil {
-				markError(p, err)
-				return err
-			}
-		case <-timeout.C:
-			markError(p, p2p.DiscReadTimeout)
-			return p2p.DiscReadTimeout
 		}
+		errc <- p2p.Send(p.rw, StatusMsg, pkt)
+	}()
+	var status StatusPacket68 // safe to read after two values have been received from errc
+	go func() {
+		errc <- p.readStatus68(networkID, &status, genesis.Hash(), forkFilter)
+	}()
+	if err := waitForHandshake(errc, p); err != nil {
+		return err
 	}
 	p.td, p.head = status.TD, status.Head
-
-	if p.version >= ETH68 {
-		var upgradeStatus UpgradeStatusPacket // safe to read after two values have been received from errc
-		if extension == nil {
-			extension = &UpgradeStatusExtension{}
-		}
-		extensionRaw, err := extension.Encode()
-		if err != nil {
-			return err
-		}
-
-		gopool.Submit(func() {
-			errc <- p2p.Send(p.rw, UpgradeStatusMsg, &UpgradeStatusPacket{
-				Extension: extensionRaw,
-			})
-		})
-		gopool.Submit(func() {
-			errc <- p.readUpgradeStatus(&upgradeStatus)
-		})
-		timeout := time.NewTimer(handshakeTimeout)
-		defer timeout.Stop()
-		for i := 0; i < 2; i++ {
-			select {
-			case err := <-errc:
-				if err != nil {
-					return err
-				}
-			case <-timeout.C:
-				return p2p.DiscReadTimeout
-			}
-		}
-
-		extension, err := upgradeStatus.GetExtension()
-		if err != nil {
-			return err
-		}
-		p.statusExtension = extension
-
-		if p.statusExtension.DisablePeerTxBroadcast {
-			p.Log().Debug("peer does not need broadcast txs, closing broadcast routines")
-			p.CloseTxBroadcast()
-		}
-	}
-
 	// TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
 	// larger, it will still fit within 100 bits
 	if tdlen := p.td.BitLen(); tdlen > 100 {
 		return fmt.Errorf("too large total difficulty: bitlen %d", tdlen)
 	}
+
+	var upgradeStatus UpgradeStatusPacket // safe to read after two values have been received from errc
+	if extension == nil {
+		extension = &UpgradeStatusExtension{}
+	}
+	extensionRaw, err := extension.Encode()
+	if err != nil {
+		return err
+	}
+	gopool.Submit(func() {
+		errc <- p2p.Send(p.rw, UpgradeStatusMsg, &UpgradeStatusPacket{
+			Extension: extensionRaw,
+		})
+	})
+	gopool.Submit(func() {
+		errc <- p.readUpgradeStatus(&upgradeStatus)
+	})
+	if err := waitForHandshake(errc, p); err != nil {
+		return err
+	}
+	extension, err = upgradeStatus.GetExtension()
+	if err != nil {
+		return err
+	}
+	p.statusExtension = extension
+	if p.statusExtension.DisablePeerTxBroadcast {
+		p.Log().Debug("peer does not need broadcast txs, closing broadcast routines")
+		p.CloseTxBroadcast()
+	}
 	return nil
 }
 
-// readStatus reads the remote handshake message.
-func (p *Peer) readStatus(network uint64, status *StatusPacket, genesis common.Hash, forkFilter forkid.Filter) error {
+func (p *Peer) readStatus68(networkID uint64, status *StatusPacket68, genesis common.Hash, forkFilter forkid.Filter) error {
+	if err := p.readStatusMsg(status); err != nil {
+		return err
+	}
+	if status.NetworkID != networkID {
+		return fmt.Errorf("%w: %d (!= %d)", errNetworkIDMismatch, status.NetworkID, networkID)
+	}
+	if uint(status.ProtocolVersion) != p.version {
+		return fmt.Errorf("%w: %d (!= %d)", errProtocolVersionMismatch, status.ProtocolVersion, p.version)
+	}
+	if status.Genesis != genesis {
+		return fmt.Errorf("%w: %x (!= %x)", errGenesisMismatch, status.Genesis, genesis)
+	}
+	if err := forkFilter(status.ForkID); err != nil {
+		return fmt.Errorf("%w: %v", errForkIDRejected, err)
+	}
+	return nil
+}
+
+func (p *Peer) handshake69(networkID uint64, chain *core.BlockChain, rangeMsg BlockRangeUpdatePacket) error {
+	var (
+		genesis    = chain.Genesis()
+		latest     = chain.CurrentBlock()
+		forkID     = forkid.NewID(chain.Config(), genesis, latest.Number.Uint64(), latest.Time)
+		forkFilter = forkid.NewFilter(chain)
+	)
+
+	errc := make(chan error, 2)
+	go func() {
+		pkt := &StatusPacket69{
+			ProtocolVersion: uint32(p.version),
+			NetworkID:       networkID,
+			Genesis:         genesis.Hash(),
+			ForkID:          forkID,
+			EarliestBlock:   rangeMsg.EarliestBlock,
+			LatestBlock:     rangeMsg.LatestBlock,
+			LatestBlockHash: rangeMsg.LatestBlockHash,
+		}
+		errc <- p2p.Send(p.rw, StatusMsg, pkt)
+	}()
+	var status StatusPacket69 // safe to read after two values have been received from errc
+	go func() {
+		errc <- p.readStatus69(networkID, &status, genesis.Hash(), forkFilter)
+	}()
+
+	return waitForHandshake(errc, p)
+}
+
+func (p *Peer) readStatus69(networkID uint64, status *StatusPacket69, genesis common.Hash, forkFilter forkid.Filter) error {
+	if err := p.readStatusMsg(status); err != nil {
+		return err
+	}
+	if status.NetworkID != networkID {
+		return fmt.Errorf("%w: %d (!= %d)", errNetworkIDMismatch, status.NetworkID, networkID)
+	}
+	if uint(status.ProtocolVersion) != p.version {
+		return fmt.Errorf("%w: %d (!= %d)", errProtocolVersionMismatch, status.ProtocolVersion, p.version)
+	}
+	if status.Genesis != genesis {
+		return fmt.Errorf("%w: %x (!= %x)", errGenesisMismatch, status.Genesis, genesis)
+	}
+	if err := forkFilter(status.ForkID); err != nil {
+		return fmt.Errorf("%w: %v", errForkIDRejected, err)
+	}
+	// Handle initial block range.
+	initRange := &BlockRangeUpdatePacket{
+		EarliestBlock:   status.EarliestBlock,
+		LatestBlock:     status.LatestBlock,
+		LatestBlockHash: status.LatestBlockHash,
+	}
+	if err := initRange.Validate(); err != nil {
+		return fmt.Errorf("%w: %v", errInvalidBlockRange, err)
+	}
+	p.lastRange.Store(initRange)
+	return nil
+}
+
+// readStatusMsg reads the first message on the connection.
+func (p *Peer) readStatusMsg(dst any) error {
 	msg, err := p.rw.ReadMsg()
 	if err != nil {
 		return err
@@ -135,21 +202,26 @@ func (p *Peer) readStatus(network uint64, status *StatusPacket, genesis common.H
 	if msg.Size > maxMessageSize {
 		return fmt.Errorf("%w: %v > %v", errMsgTooLarge, msg.Size, maxMessageSize)
 	}
-	// Decode the handshake and make sure everything matches
-	if err := msg.Decode(&status); err != nil {
-		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
+	if err := msg.Decode(dst); err != nil {
+		return err
 	}
-	if status.NetworkID != network {
-		return fmt.Errorf("%w: %d (!= %d)", errNetworkIDMismatch, status.NetworkID, network)
-	}
-	if uint(status.ProtocolVersion) != p.version {
-		return fmt.Errorf("%w: %d (!= %d)", errProtocolVersionMismatch, status.ProtocolVersion, p.version)
-	}
-	if status.Genesis != genesis {
-		return fmt.Errorf("%w: %x (!= %x)", errGenesisMismatch, status.Genesis, genesis)
-	}
-	if err := forkFilter(status.ForkID); err != nil {
-		return fmt.Errorf("%w: %v", errForkIDRejected, err)
+	return nil
+}
+
+func waitForHandshake(errc <-chan error, p *Peer) error {
+	timeout := time.NewTimer(handshakeTimeout)
+	defer timeout.Stop()
+	for range 2 {
+		select {
+		case err := <-errc:
+			if err != nil {
+				markError(p, err)
+				return err
+			}
+		case <-timeout.C:
+			markError(p, p2p.DiscReadTimeout)
+			return p2p.DiscReadTimeout
+		}
 	}
 	return nil
 }
@@ -191,4 +263,15 @@ func markError(p *Peer, err error) {
 	default:
 		m.peerError.Mark(1)
 	}
+}
+
+// Validate checks basic validity of a block range announcement.
+func (p *BlockRangeUpdatePacket) Validate() error {
+	if p.EarliestBlock > p.LatestBlock {
+		return errors.New("earliest > latest")
+	}
+	if p.LatestBlockHash == (common.Hash{}) {
+		return errors.New("zero latest hash")
+	}
+	return nil
 }

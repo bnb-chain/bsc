@@ -19,9 +19,8 @@ package eth
 import (
 	"net"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
-	"github.com/ethereum/go-ethereum/eth/protocols/trust"
-
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 )
@@ -30,21 +29,33 @@ import (
 // about a connected peer.
 type ethPeerInfo struct {
 	Version uint `json:"version"` // Ethereum protocol version negotiated
+	*peerBlockRange
+}
+
+type peerBlockRange struct {
+	Earliest   uint64      `json:"earliestBlock"`
+	Latest     uint64      `json:"latestBlock"`
+	LatestHash common.Hash `json:"latestBlockHash"`
 }
 
 // ethPeer is a wrapper around eth.Peer to maintain a few extra metadata.
 type ethPeer struct {
 	*eth.Peer
-	snapExt  *snapPeer // Satellite `snap` connection
-	trustExt *trustPeer
-	bscExt   *bscPeer // Satellite `bsc` connection
+	snapExt *snapPeer // Satellite `snap` connection
+	bscExt  *bscPeer  // Satellite `bsc` connection
 }
 
 // info gathers and returns some `eth` protocol metadata known about a peer.
 func (p *ethPeer) info() *ethPeerInfo {
-	return &ethPeerInfo{
-		Version: p.Version(),
+	info := &ethPeerInfo{Version: p.Version()}
+	if br := p.BlockRange(); br != nil {
+		info.peerBlockRange = &peerBlockRange{
+			Earliest:   br.EarliestBlock,
+			Latest:     br.LatestBlock,
+			LatestHash: br.LatestBlockHash,
+		}
 	}
+	return info
 }
 
 func (p *ethPeer) remoteAddr() net.Addr {
@@ -60,12 +71,6 @@ type snapPeerInfo struct {
 	Version uint `json:"version"` // Snapshot protocol version negotiated
 }
 
-// trustPeerInfo represents a short summary of the `trust` sub-protocol metadata known
-// about a connected peer.
-type trustPeerInfo struct {
-	Version uint `json:"version"` // Trust protocol version negotiated
-}
-
 // bscPeerInfo represents a short summary of the `bsc` sub-protocol metadata known
 // about a connected peer.
 type bscPeerInfo struct {
@@ -77,11 +82,6 @@ type snapPeer struct {
 	*snap.Peer
 }
 
-// trustPeer is a wrapper around trust.Peer to maintain a few extra metadata.
-type trustPeer struct {
-	*trust.Peer
-}
-
 // bscPeer is a wrapper around bsc.Peer to maintain a few extra metadata.
 type bscPeer struct {
 	*bsc.Peer
@@ -90,13 +90,6 @@ type bscPeer struct {
 // info gathers and returns some `snap` protocol metadata known about a peer.
 func (p *snapPeer) info() *snapPeerInfo {
 	return &snapPeerInfo{
-		Version: p.Version(),
-	}
-}
-
-// info gathers and returns some `trust` protocol metadata known about a peer.
-func (p *trustPeer) info() *trustPeerInfo {
-	return &trustPeerInfo{
 		Version: p.Version(),
 	}
 }

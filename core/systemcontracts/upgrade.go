@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts/bohr"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/bruno"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/euler"
+	"github.com/ethereum/go-ethereum/core/systemcontracts/fermi"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/feynman"
 	feynmanFix "github.com/ethereum/go-ethereum/core/systemcontracts/feynman_fix"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/gibbs"
@@ -92,6 +93,8 @@ var (
 	lorentzUpgrade = make(map[string]*Upgrade)
 
 	maxwellUpgrade = make(map[string]*Upgrade)
+
+	fermiUpgrade = make(map[string]*Upgrade)
 )
 
 func init() {
@@ -1019,6 +1022,39 @@ func init() {
 			},
 		},
 	}
+
+	fermiUpgrade[mainNet] = &Upgrade{
+		UpgradeName: "fermi",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(StakeHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/34618f607f8356cf147dde6a69fae150bd53d5bf",
+				Code:         fermi.MainnetStakeHubContract,
+			},
+		},
+	}
+
+	fermiUpgrade[chapelNet] = &Upgrade{
+		UpgradeName: "fermi",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(StakeHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/34618f607f8356cf147dde6a69fae150bd53d5bf",
+				Code:         fermi.ChapelStakeHubContract,
+			},
+		},
+	}
+
+	fermiUpgrade[rialtoNet] = &Upgrade{
+		UpgradeName: "fermi",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(StakeHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/34618f607f8356cf147dde6a69fae150bd53d5bf",
+				Code:         fermi.RialtoStakeHubContract,
+			},
+		},
+	}
 }
 
 func TryUpdateBuildInSystemContract(config *params.ChainConfig, blockNumber *big.Int, lastBlockTime uint64, blockTime uint64, statedb vm.StateDB, atBlockBegin bool) {
@@ -1132,6 +1168,10 @@ func upgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 
 	if config.IsOnMaxwell(blockNumber, lastBlockTime, blockTime) {
 		applySystemContractUpgrade(maxwellUpgrade[network], blockNumber, statedb, logger)
+	}
+
+	if config.IsOnFermi(blockNumber, lastBlockTime, blockTime) {
+		applySystemContractUpgrade(fermiUpgrade[network], blockNumber, statedb, logger)
 	}
 
 	/*

@@ -20,10 +20,12 @@ import (
 	"math/big"
 	"math/rand"
 	"sync"
+	"sync/atomic"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -64,6 +66,7 @@ type Peer struct {
 	*p2p.Peer                         // The embedded P2P package peer
 	rw              p2p.MsgReadWriter // Input/output streams for snap
 	version         uint              // Protocol version negotiated
+	lastRange       atomic.Pointer[BlockRangeUpdatePacket]
 	statusExtension *UpgradeStatusExtension
 
 	lagging bool        // lagging peer is still connected, but won't be used to sync.
@@ -179,6 +182,12 @@ func (p *Peer) SetHead(hash common.Hash, td *big.Int) {
 // KnownBlock returns whether peer is known to already have a block.
 func (p *Peer) KnownBlock(hash common.Hash) bool {
 	return p.knownBlocks.Contains(hash)
+}
+
+// BlockRange returns the latest announced block range.
+// This will be nil for peers below protocol version eth/69.
+func (p *Peer) BlockRange() *BlockRangeUpdatePacket {
+	return p.lastRange.Load()
 }
 
 // KnownTransaction returns whether peer is known to already have a transaction.
@@ -303,10 +312,23 @@ func (p *Peer) AsyncSendNewBlockHash(block *types.Block) {
 func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
 	// Mark all the block hash as known, but ensure we don't overflow our limits
 	p.knownBlocks.Add(block.Hash())
+	bal := block.BAL()
+	if !p.CanHandleBAL.Load() {
+		bal = nil
+	}
+	if bal != nil {
+		log.Debug("SendNewBlock", "number", block.NumberU64(), "hash", block.Hash(), "peer", p.ID(),
+			"balSize", block.BALSize(), "version", bal.Version, "canHandleBAL", p.CanHandleBAL.Load())
+	} else {
+		log.Debug("SendNewBlock no BAL", "number", block.NumberU64(), "hash", block.Hash(), "peer", p.ID(),
+			"txNum", len(block.Transactions()), "canHandleBAL", p.CanHandleBAL.Load())
+	}
+
 	return p2p.Send(p.rw, NewBlockMsg, &NewBlockPacket{
 		Block:    block,
 		TD:       td,
 		Sidecars: block.Sidecars(),
+		Bal:      bal,
 	})
 }
 
@@ -481,6 +503,14 @@ func (p *Peer) RequestTxs(hashes []common.Hash) error {
 		RequestId:                    id,
 		GetPooledTransactionsRequest: hashes,
 	})
+}
+
+// SendBlockRangeUpdate sends a notification about our available block range to the peer.
+func (p *Peer) SendBlockRangeUpdate(msg BlockRangeUpdatePacket) error {
+	if p.version < ETH69 {
+		return nil
+	}
+	return p2p.Send(p.rw, BlockRangeUpdateMsg, &msg)
 }
 
 // knownCache is a cache for known hashes.

@@ -112,22 +112,6 @@ func memoryLog(stack *Stack) (uint64, bool) {
 	return calcMemSize64(stack.Back(0), stack.Back(1))
 }
 
-func memoryExtCall(stack *Stack) (uint64, bool) {
-	return calcMemSize64(stack.Back(1), stack.Back(2))
-}
-
-func memoryDataCopy(stack *Stack) (uint64, bool) {
-	return calcMemSize64(stack.Back(0), stack.Back(2))
-}
-
-func memoryEOFCreate(stack *Stack) (uint64, bool) {
-	return calcMemSize64(stack.Back(2), stack.Back(3))
-}
-
-func memoryReturnContract(stack *Stack) (uint64, bool) {
-	return calcMemSize64(stack.Back(0), stack.Back(1))
-}
-
 func memoryDup2MStorePush1Add(stack *Stack) (uint64, bool) {
 	return calcMemSize64WithUint(stack.Back(1), 32)
 }

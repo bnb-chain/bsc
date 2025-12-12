@@ -27,7 +27,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rpc"
 )
 
 var (
@@ -69,7 +68,7 @@ type ChainHeaderReader interface {
 }
 
 type VotePool interface {
-	FetchVoteByBlockHash(blockHash common.Hash) []*types.VoteEnvelope
+	FetchVotesByBlockHash(targetBlockHash common.Hash, sourceBlockNum uint64) []*types.VoteEnvelope
 }
 
 // ChainReader defines a small collection of methods needed to access the local
@@ -137,12 +136,15 @@ type Engine interface {
 	// SealHash returns the hash of a block prior to it being sealed.
 	SealHash(header *types.Header) common.Hash
 
+	// SignBAL signs the BAL of the block
+	SignBAL(blockAccessList *types.BlockAccessListEncode) error
+
+	// VerifyBAL verifies the BAL of the block
+	VerifyBAL(block *types.Block, bal *types.BlockAccessListEncode) error
+
 	// CalcDifficulty is the difficulty adjustment algorithm. It returns the difficulty
 	// that a new block should have.
 	CalcDifficulty(chain ChainHeaderReader, time uint64, parent *types.Header) *big.Int
-
-	// APIs returns the RPC APIs this consensus engine provides.
-	APIs(chain ChainHeaderReader) []rpc.API
 
 	// Delay returns the max duration the miner can commit txs
 	Delay(chain ChainReader, header *types.Header, leftOver *time.Duration) *time.Duration

@@ -18,7 +18,9 @@
 package memorydb
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -45,7 +47,6 @@ type Database struct {
 	lock sync.RWMutex
 
 	stateStore ethdb.Database
-	blockStore ethdb.Database
 }
 
 func (db *Database) ModifyAncients(f func(ethdb.AncientWriteOp) error) (int64, error) {
@@ -78,11 +79,6 @@ func (db *Database) ResetTable(kind string, startAt uint64, onlyEmpty bool) erro
 	panic("implement me")
 }
 
-func (db *Database) HasAncient(kind string, number uint64) (bool, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
 func (db *Database) Ancient(kind string, number uint64) ([]byte, error) {
 	//TODO implement me
 	panic("implement me")
@@ -104,16 +100,6 @@ func (db *Database) Tail() (uint64, error) {
 }
 
 func (db *Database) AncientSize(kind string) (uint64, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (db *Database) ItemAmountInAncient() (uint64, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (db *Database) AncientOffSet() uint64 {
 	//TODO implement me
 	panic("implement me")
 }
@@ -200,18 +186,24 @@ func (db *Database) Delete(key []byte) error {
 }
 
 // DeleteRange deletes all of the keys (and values) in the range [start,end)
-// (inclusive on start, exclusive on end).
+// (inclusive on start, exclusive on end). If the start is nil, it represents
+// the key before all keys; if the end is nil, it represents the key after
+// all keys.
 func (db *Database) DeleteRange(start, end []byte) error {
 	db.lock.Lock()
 	defer db.lock.Unlock()
+
 	if db.db == nil {
 		return errMemorydbClosed
 	}
-
 	for key := range db.db {
-		if key >= string(start) && key < string(end) {
-			delete(db.db, key)
+		if start != nil && key < string(start) {
+			continue
 		}
+		if end != nil && key >= string(end) {
+			continue
+		}
+		delete(db.db, key)
 	}
 	return nil
 }
@@ -301,19 +293,15 @@ func (db *Database) StateStoreReader() ethdb.Reader {
 	return db.stateStore
 }
 
-func (db *Database) BlockStoreReader() ethdb.Reader {
-	if db.blockStore == nil {
-		return db
-	}
-	return db.blockStore
-}
-
 // keyvalue is a key-value tuple tagged with a deletion field to allow creating
 // memory-database write batches.
 type keyvalue struct {
 	key    string
 	value  []byte
 	delete bool
+
+	rangeFrom []byte
+	rangeTo   []byte
 }
 
 // batch is a write-only memory batch that commits changes to its host
@@ -326,15 +314,26 @@ type batch struct {
 
 // Put inserts the given value into the batch for later committing.
 func (b *batch) Put(key, value []byte) error {
-	b.writes = append(b.writes, keyvalue{string(key), common.CopyBytes(value), false})
+	b.writes = append(b.writes, keyvalue{key: string(key), value: common.CopyBytes(value)})
 	b.size += len(key) + len(value)
 	return nil
 }
 
 // Delete inserts the key removal into the batch for later committing.
 func (b *batch) Delete(key []byte) error {
-	b.writes = append(b.writes, keyvalue{string(key), nil, true})
+	b.writes = append(b.writes, keyvalue{key: string(key), delete: true})
 	b.size += len(key)
+	return nil
+}
+
+// DeleteRange removes all keys in the range [start, end) from the batch for later committing.
+func (b *batch) DeleteRange(start, end []byte) error {
+	b.writes = append(b.writes, keyvalue{
+		rangeFrom: bytes.Clone(start),
+		rangeTo:   bytes.Clone(end),
+		delete:    true,
+	})
+	b.size += len(start) + len(end)
 	return nil
 }
 
@@ -351,12 +350,26 @@ func (b *batch) Write() error {
 	if b.db.db == nil {
 		return errMemorydbClosed
 	}
-	for _, keyvalue := range b.writes {
-		if keyvalue.delete {
-			delete(b.db.db, keyvalue.key)
+	for _, entry := range b.writes {
+		if entry.delete {
+			if entry.key != "" {
+				// Single key deletion
+				delete(b.db.db, entry.key)
+			} else {
+				// Range deletion (inclusive of start, exclusive of end)
+				for key := range b.db.db {
+					if entry.rangeFrom != nil && key < string(entry.rangeFrom) {
+						continue
+					}
+					if entry.rangeTo != nil && key >= string(entry.rangeTo) {
+						continue
+					}
+					delete(b.db.db, key)
+				}
+			}
 			continue
 		}
-		b.db.db[keyvalue.key] = keyvalue.value
+		b.db.db[entry.key] = entry.value
 	}
 	return nil
 }
@@ -369,14 +382,26 @@ func (b *batch) Reset() {
 
 // Replay replays the batch contents.
 func (b *batch) Replay(w ethdb.KeyValueWriter) error {
-	for _, keyvalue := range b.writes {
-		if keyvalue.delete {
-			if err := w.Delete([]byte(keyvalue.key)); err != nil {
-				return err
+	for _, entry := range b.writes {
+		if entry.delete {
+			if entry.key != "" {
+				// Single key deletion
+				if err := w.Delete([]byte(entry.key)); err != nil {
+					return err
+				}
+			} else {
+				// Range deletion
+				if rangeDeleter, ok := w.(ethdb.KeyValueRangeDeleter); ok {
+					if err := rangeDeleter.DeleteRange(entry.rangeFrom, entry.rangeTo); err != nil {
+						return err
+					}
+				} else {
+					return fmt.Errorf("ethdb.KeyValueWriter does not implement DeleteRange")
+				}
 			}
 			continue
 		}
-		if err := w.Put([]byte(keyvalue.key), keyvalue.value); err != nil {
+		if err := w.Put([]byte(entry.key), entry.value); err != nil {
 			return err
 		}
 	}

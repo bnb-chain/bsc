@@ -1853,23 +1853,26 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 		if (kind == 0 || kind == 1) && value != nil && !value.IsZero() {
 			gas += params.CallStipend
 		}
-		var (
-			out      []byte
-			leftover uint64
-			err      error
-		)
-		switch kind {
-		case 0: // CALL
-			out, leftover, err = adapter.evm.Call(contract, to, callInput, gas, value)
-		case 1: // CALLCODE
-			out, leftover, err = adapter.evm.CallCode(contract, to, callInput, gas, value)
-		case 2: // DELEGATECALL
-			out, leftover, err = adapter.evm.DelegateCall(contract, to, callInput, gas)
-		case 3: // STATICCALL
-			out, leftover, err = adapter.evm.StaticCall(contract, to, callInput, gas)
-		default:
-			return nil, false
-		}
+	var (
+		out      []byte
+		leftover uint64
+		err      error
+	)
+	switch kind {
+	case 0: // CALL
+		out, leftover, err = adapter.evm.Call(contract.Caller(), to, callInput, gas, value)
+	case 1: // CALLCODE
+		out, leftover, err = adapter.evm.CallCode(contract.Caller(), to, callInput, gas, value)
+	case 2: // DELEGATECALL
+		// DelegateCall signature: (originCaller, caller, addr, input, gas, value)
+		// For delegatecall from MIR, the current contract's caller is the originCaller
+		// and the current contract's address is the caller (for the nested call)
+		out, leftover, err = adapter.evm.DelegateCall(contract.Caller(), contract.Address(), to, callInput, gas, contract.Value())
+	case 3: // STATICCALL
+		out, leftover, err = adapter.evm.StaticCall(contract.Caller(), to, callInput, gas)
+	default:
+		return nil, false
+	}
 		// Refund leftover like stock interpreter
 		contract.RefundGas(leftover, adapter.evm.Config.Tracer, tracing.GasChangeCallLeftOverRefunded)
 		if err != nil {
@@ -1889,25 +1892,25 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 		if kind == 5 { // CREATE2
 			tracingReason = tracing.GasChangeCallContractCreation2
 		}
-		contract.UseGas(gas, adapter.evm.Config.Tracer, tracingReason)
-		var (
-			out      []byte
-			newAddr  common.Address
-			leftover uint64
-			err      error
-		)
-		if kind == 4 { // CREATE
-			out, newAddr, leftover, err = adapter.evm.Create(contract, init, gas, value)
-		} else { // CREATE2
-			var saltU *uint256.Int
-			if salt != nil {
-				saltU = new(uint256.Int).SetBytes(salt[:])
-			} else {
-				saltU = uint256.NewInt(0)
-			}
-			out, newAddr, leftover, err = adapter.evm.Create2(contract, init, gas, value, saltU)
+	contract.UseGas(gas, adapter.evm.Config.Tracer, tracingReason)
+	var (
+		out      []byte
+		newAddr  common.Address
+		leftover uint64
+		err      error
+	)
+	if kind == 4 { // CREATE
+		out, newAddr, leftover, err = adapter.evm.Create(contract.Caller(), init, gas, value)
+	} else { // CREATE2
+		var saltU *uint256.Int
+		if salt != nil {
+			saltU = new(uint256.Int).SetBytes(salt[:])
+		} else {
+			saltU = uint256.NewInt(0)
 		}
-		copy(addr[:], newAddr[:])
+		out, newAddr, leftover, err = adapter.evm.Create2(contract.Caller(), init, gas, value, saltU)
+	}
+	copy(addr[:], newAddr[:])
 		// Refund leftover like stock interpreter
 		contract.RefundGas(leftover, adapter.evm.Config.Tracer, tracing.GasChangeCallLeftOverRefunded)
 		if err != nil {

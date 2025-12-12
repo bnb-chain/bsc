@@ -17,8 +17,11 @@
 package common
 
 import (
+	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 // FileExist checks if a file exists at filePath.
@@ -36,4 +39,15 @@ func AbsolutePath(datadir string, filename string) string {
 		return filename
 	}
 	return filepath.Join(datadir, filename)
+}
+
+func GetGoRoot() (string, error) {
+	cmd := exec.Command("go", "env", "GOROOT")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out.String()), nil
 }

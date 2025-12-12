@@ -14,27 +14,26 @@ var contractPool = sync.Pool{
 }
 
 // GetContract returns a contract from the pool or creates a new one
-func GetContract(caller ContractRef, object ContractRef, value *uint256.Int, gas uint64) *Contract {
+func GetContract(caller common.Address, address common.Address, value *uint256.Int, gas uint64, jumpDests map[common.Hash]bitvec) *Contract {
 	contract := contractPool.Get().(*Contract)
 
 	// Reset the contract with new values
-	contract.CallerAddress = caller.Address()
 	contract.caller = caller
-	contract.self = object
+	contract.address = address
 	contract.value = value
 	contract.Gas = gas
 	contract.Code = nil
 	contract.CodeHash = common.Hash{}
-	contract.CodeAddr = nil
 	contract.Input = nil
 	contract.IsDeployment = false
 	contract.IsSystemCall = false
-	if parent, ok := caller.(*Contract); ok {
-		// Reuse JUMPDEST analysis from parent context if available.
-		contract.jumpdests = parent.jumpdests
-	} else {
-		contract.jumpdests = make(map[common.Hash]bitvec)
+
+	// Initialize the jump analysis map if it's nil, mostly for tests
+	if jumpDests == nil {
+		jumpDests = make(map[common.Hash]bitvec)
 	}
+	contract.codeBitmapFunc = codeBitmap
+	contract.jumpdests = jumpDests
 	contract.analysis = nil
 
 	return contract

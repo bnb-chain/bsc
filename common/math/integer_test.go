@@ -17,6 +17,7 @@
 package math
 
 import (
+	"bytes"
 	"math"
 	"testing"
 )
@@ -114,4 +115,41 @@ func TestMustParseUint64Panic(t *testing.T) {
 		}
 	}()
 	MustParseUint64("ggg")
+}
+
+func TestHexOrDecimal64_MarshalText(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   HexOrDecimal64
+		want    []byte
+		wantErr bool
+	}{
+		{
+			name:  "zero value",
+			input: HexOrDecimal64(0),
+			want:  []byte("0x0"),
+		},
+		{
+			name:  "positive value",
+			input: HexOrDecimal64(0x123abc),
+			want:  []byte("0x123abc"),
+		},
+		{
+			name:  "max uint64 value",
+			input: HexOrDecimal64(math.MaxUint64),
+			want:  []byte("0xffffffffffffffff"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.input.MarshalText()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("HexOrDecimal64.MarshalText() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !bytes.Equal(got, tt.want) {
+				t.Errorf("HexOrDecimal64.MarshalText() = %s, want %s", got, tt.want)
+			}
+		})
+	}
 }

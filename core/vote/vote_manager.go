@@ -22,7 +22,7 @@ import (
 // the new node may cast votes for the same block height that the previous node already voted on.
 // To avoid double-voting issues, the node should wait for a few blocks
 // before participating in voting after it starts mining.
-const blocksNumberSinceMining = 20
+const blocksNumberSinceMining = 40
 
 var diffInTurn = big.NewInt(2) // Block difficulty for in-turn signatures
 var votesManagerCounter = metrics.NewRegisteredCounter("votesManager/local", nil)
@@ -152,19 +152,6 @@ func (voteManager *VoteManager) loop() {
 			}
 
 			curHead := cHead.Header
-			if p, ok := voteManager.engine.(*parlia.Parlia); ok {
-				// Approximately equal to the block interval of next block, except for the switch block.
-				blockInterval, err := p.BlockInterval(voteManager.chain, curHead)
-				if err != nil {
-					log.Debug("failed to get BlockInterval when voting")
-				}
-				nextBlockMinedTime := time.UnixMilli(int64((curHead.MilliTimestamp() + blockInterval)))
-				timeForBroadcast := 50 * time.Millisecond // enough to broadcast a vote
-				if time.Now().Add(timeForBroadcast).After(nextBlockMinedTime) {
-					log.Warn("too late to vote", "Head.Time(Second)", curHead.Time, "Now(Millisecond)", time.Now().UnixMilli())
-					continue
-				}
-			}
 
 			// Check if cur validator is within the validatorSet at curHead
 			if !voteManager.engine.IsActiveValidatorAt(voteManager.chain, curHead,
@@ -190,6 +177,20 @@ func (voteManager *VoteManager) loop() {
 				if sourceHash == (common.Hash{}) {
 					log.Debug("sourceHash is empty")
 					continue
+				}
+
+				if p, ok := voteManager.engine.(*parlia.Parlia); ok {
+					// Approximately equal to the block interval of next block, except for the switch block.
+					blockInterval, err := p.BlockInterval(voteManager.chain, curHead)
+					if err != nil {
+						log.Debug("failed to get BlockInterval when voting")
+					}
+					voteAssembledTime := time.UnixMilli(int64((curHead.MilliTimestamp() + p.GetAncestorGenerationDepth(curHead)*blockInterval)))
+					timeForBroadcast := 50 * time.Millisecond // enough to broadcast a vote in the same region
+					if time.Now().Add(timeForBroadcast).After(voteAssembledTime) {
+						log.Warn("too late to vote", "Head.Time(Millisecond)", curHead.MilliTimestamp(), "Now(Millisecond)", time.Now().UnixMilli())
+						continue
+					}
 				}
 
 				voteMessage.Data.SourceNumber = sourceNumber
@@ -295,9 +296,9 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 				log.Error("Failed to get voteData info from LRU cache.")
 				continue
 			}
-			if voteData.(*types.VoteData).SourceNumber > sourceNumber {
+			if voteData.SourceNumber > sourceNumber {
 				log.Debug(fmt.Sprintf("error: cur vote %d-->%d is across the span of other votes %d-->%d",
-					sourceNumber, targetNumber, voteData.(*types.VoteData).SourceNumber, voteData.(*types.VoteData).TargetNumber))
+					sourceNumber, targetNumber, voteData.SourceNumber, voteData.TargetNumber))
 				return false, 0, common.Hash{}
 			}
 		}
@@ -309,9 +310,9 @@ func (voteManager *VoteManager) UnderRules(header *types.Header) (bool, uint64, 
 				log.Error("Failed to get voteData info from LRU cache.")
 				continue
 			}
-			if voteData.(*types.VoteData).SourceNumber < sourceNumber {
+			if voteData.SourceNumber < sourceNumber {
 				log.Debug(fmt.Sprintf("error: cur vote %d-->%d is within the span of other votes %d-->%d",
-					sourceNumber, targetNumber, voteData.(*types.VoteData).SourceNumber, voteData.(*types.VoteData).TargetNumber))
+					sourceNumber, targetNumber, voteData.SourceNumber, voteData.TargetNumber))
 				return false, 0, common.Hash{}
 			}
 		}

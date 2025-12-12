@@ -513,8 +513,9 @@ func (tab *Table) filterNode(n *enode.Node) bool {
 		return false
 	}
 	if node, err := tab.net.RequestENR(n); err != nil {
+		// If the ENR request fails, we assume the node is not valid, and try to add it to the table next time.
 		tab.log.Trace("ENR request failed", "id", n.ID(), "ipAddr", n.IPAddr(), "updPort", n.UDP(), "err", err)
-		return false
+		return true
 	} else if !tab.enrFilter(node.Record()) {
 		tab.log.Trace("ENR record filter out", "id", n.ID(), "ipAddr", n.IPAddr(), "updPort", n.UDP())
 		return true
@@ -560,6 +561,7 @@ func (tab *Table) handleAddNode(req addNodeOp) bool {
 		return false
 	}
 
+	tab.log.Trace("ENR record filter passed", "id", req.node.ID(), "ipAddr", req.node.IPAddr(), "updPort", req.node.UDP())
 	tab.mutex.Lock()
 	defer tab.mutex.Unlock()
 
@@ -747,4 +749,12 @@ func pushNode(list []*tableNode, n *tableNode, max int) ([]*tableNode, *tableNod
 	copy(list[1:], list)
 	list[0] = n
 	return list, removed
+}
+
+// deleteNode removes a node from the table.
+func (tab *Table) deleteNode(n *enode.Node) {
+	tab.mutex.Lock()
+	defer tab.mutex.Unlock()
+	b := tab.bucket(n.ID())
+	tab.deleteInBucket(b, n.ID())
 }

@@ -75,7 +75,7 @@ func TestMIRUSDT_Approve_EVMvsMIR_Single(t *testing.T) {
 	input = append(input, zeroAddress...)                           // value
 
 	// Base call
-	senderB := vm.AccountRef(base.Origin)
+	senderB := base.Origin
 	var lastBasePC uint64
 	base.EVMConfig.Tracer = &tracing.Hooks{
 		OnOpcode: func(pc uint64, op byte, gas uint64, cost uint64, scope tracing.OpContext, rData []byte, depth int, err error) {
@@ -86,7 +86,7 @@ func TestMIRUSDT_Approve_EVMvsMIR_Single(t *testing.T) {
 
 	// MIR call
 	compiler.EnableOpcodeParse()
-	senderM := vm.AccountRef(mir.Origin)
+	senderM := mir.Origin
 	var lastMIRPC uint64
 	compiler.SetGlobalMIRTracerExtended(func(m *compiler.MIR) {
 		// Clean up global tracer to prevent test pollution
