@@ -2206,6 +2206,13 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		}
 	}
 
+	// Note: EnableMIR is typically set via config.toml, not CLI flags
+	// When EnableMIR is true, enable opcode parsing for CFG generation
+	if cfg.EnableMIR {
+		compiler.EnableOpcodeParse()
+		log.Info("MIR interpreter enabled", "mode", "production-testing")
+	}
+
 	if ctx.IsSet(RPCGlobalGasCapFlag.Name) {
 		cfg.RPCGasCap = ctx.Uint64(RPCGlobalGasCapFlag.Name)
 	}

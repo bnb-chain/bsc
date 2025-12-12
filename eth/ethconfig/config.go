@@ -73,6 +73,7 @@ var Defaults = Config{
 	RPCTxFeeCap:            1,                                         // 1 ether
 	BlobExtraReserve:       params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
 	EnableOpcodeOptimizing: false,
+	EnableMIR:              false, // MIR interpreter disabled by default
 }
 
 //go:generate go run github.com/fjl/gencodec -type Config -formats toml -out gen_config.go
@@ -207,6 +208,11 @@ type Config struct {
 
 	//opcode optimization setting
 	EnableOpcodeOptimizing bool
+
+	// MIR (Middle Intermediate Representation) interpreter setting
+	// When enabled, MIR interpreter will be used for EVM execution
+	// This provides optimized bytecode execution with CFG-based optimizations
+	EnableMIR bool
 }
 
 // CreateConsensusEngine creates a consensus engine for the given chain config.

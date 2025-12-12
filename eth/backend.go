@@ -305,6 +305,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		vmConfig = vm.Config{
 			EnablePreimageRecording:   config.EnablePreimageRecording,
 			EnableOpcodeOptimizations: config.EnableOpcodeOptimizing,
+			EnableMIR:                 config.EnableMIR,
 		}
 		cacheConfig = &core.CacheConfig{
 			TrieCleanLimit:      config.TrieCleanCache,

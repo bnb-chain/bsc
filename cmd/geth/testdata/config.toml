@@ -10,6 +10,11 @@ TrieDirtyCache = 256
 TriesInMemory = 128
 TrieTimeout = 3600000000000
 EnablePreimageRecording = false
+# EnableMIR enables the MIR (Middle Intermediate Representation) interpreter
+# When enabled, EVM execution uses optimized CFG-based bytecode execution
+# Default: false (use native EVM interpreter)
+# Set to true for production-level testing to uncover bugs before deployment
+EnableMIR = false
 
 [Eth.Miner]
 GasFloor = 30000000

@@ -74,6 +74,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		OverrideVerkle          *uint64 `toml:",omitempty"`
 		BlobExtraReserve        uint64
 		EnableOpcodeOptimizing  bool
+		EnableMIR               bool
 	}
 	var enc Config
 	enc.Genesis = c.Genesis
@@ -133,6 +134,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.OverrideVerkle = c.OverrideVerkle
 	enc.BlobExtraReserve = c.BlobExtraReserve
 	enc.EnableOpcodeOptimizing = c.EnableOpcodeOptimizing
+	enc.EnableMIR = c.EnableMIR
 	return &enc, nil
 }
 
@@ -196,6 +198,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		OverrideVerkle          *uint64 `toml:",omitempty"`
 		BlobExtraReserve        *uint64
 		EnableOpcodeOptimizing  *bool
+		EnableMIR               *bool
 	}
 	var dec Config
 	if err := unmarshal(&dec); err != nil {
@@ -371,6 +374,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.EnableOpcodeOptimizing != nil {
 		c.EnableOpcodeOptimizing = *dec.EnableOpcodeOptimizing
+	}
+	if dec.EnableMIR != nil {
+		c.EnableMIR = *dec.EnableMIR
 	}
 	return nil
 }
