@@ -773,7 +773,9 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 	tx := txsPrefetch.PeekWithUnwrap()
 	if tx != nil {
 		txCurr := &tx
-		w.prefetcher.PrefetchMining(txsPrefetch, env.header, env.gasPool.Gas(), env.state.StateForPrefetch(), *w.chain.GetVMConfig(), stopPrefetchCh, txCurr)
+		// PrefetchMining only warms up the state cache, it doesn't need tracer for state tracking.
+		// Using empty vm.Config avoids sharing journal state across concurrent goroutines.
+		w.prefetcher.PrefetchMining(txsPrefetch, env.header, env.gasPool.Gas(), env.state.StateForPrefetch(), vm.Config{}, stopPrefetchCh, txCurr)
 	}
 
 	signal := commitInterruptNone
