@@ -269,6 +269,10 @@ func (s *hookedStateDB) SelfDestruct6780(address common.Address) (uint256.Int, b
 	return prev, changed
 }
 
+func (s *hookedStateDB) NoTries() bool {
+	return s.inner.NoTries()
+}
+
 func (s *hookedStateDB) AddLog(log *types.Log) {
 	// The inner will modify the log (add fields), so invoke that first
 	s.inner.AddLog(log)
@@ -277,8 +281,8 @@ func (s *hookedStateDB) AddLog(log *types.Log) {
 	}
 }
 
-func (s *hookedStateDB) GetLogs(hash common.Hash, blockNumber uint64, blockHash common.Hash) []*types.Log {
-	return s.inner.GetLogs(hash, blockNumber, blockHash)
+func (s *hookedStateDB) GetLogs(hash common.Hash, blockNumber uint64, blockHash common.Hash, blockTime uint64) []*types.Log {
+	return s.inner.GetLogs(hash, blockNumber, blockHash, blockTime)
 }
 
 func (s *hookedStateDB) Finalise(deleteEmptyObjects bool) {

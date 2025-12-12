@@ -18,68 +18,50 @@ package vm
 
 import (
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/metrics"
-	lru "github.com/hashicorp/golang-lru"
 	"github.com/holiman/uint256"
 )
 
 const codeBitmapCacheSize = 2000
 
 var (
-	codeBitmapCache, _ = lru.New(codeBitmapCacheSize)
+	codeBitmapCache = lru.NewCache[common.Hash, bitvec](codeBitmapCacheSize)
 
 	contractCodeBitmapHitMeter  = metrics.NewRegisteredMeter("vm/contract/code/bitmap/hit", nil)
 	contractCodeBitmapMissMeter = metrics.NewRegisteredMeter("vm/contract/code/bitmap/miss", nil)
 )
 
-// ContractRef is a reference to the contract's backing object
-type ContractRef interface {
-	Address() common.Address
-}
-
-// AccountRef implements ContractRef.
-//
-// Account references are used during EVM initialisation and
-// its primary use is to fetch addresses. Removing this object
-// proves difficult because of the cached jump destinations which
-// are fetched from the parent contract (i.e. the caller), which
-// is a ContractRef.
-type AccountRef common.Address
-
-// Address casts AccountRef to an Address
-func (ar AccountRef) Address() common.Address { return (common.Address)(ar) }
-
 // Contract represents an ethereum contract in the state database. It contains
 // the contract code, calling arguments. Contract implements ContractRef
 type Contract struct {
-	// CallerAddress is the result of the caller which initialised this
-	// contract. However when the "call method" is delegated this value
-	// needs to be initialised to that of the caller's caller.
-	CallerAddress common.Address
-	caller        ContractRef
-	self          ContractRef
+	// caller is the result of the caller which initialised this
+	// contract. However, when the "call method" is delegated this
+	// value needs to be initialised to that of the caller's caller.
+	caller  common.Address
+	address common.Address
 
 	jumpdests map[common.Hash]bitvec // Aggregated result of JUMPDEST analysis.
 	analysis  bitvec                 // Locally cached result of JUMPDEST analysis
 
 	Code     []byte
 	CodeHash common.Hash
-	CodeAddr *common.Address
 	Input    []byte
 
 	// is the execution frame represented by this object a contract deployment
 	IsDeployment bool
 	IsSystemCall bool
 
-	Gas       uint64
-	value     *uint256.Int
-	optimized bool
-	
+	Gas            uint64
+	value          *uint256.Int
+	optimized      bool
+	codeBitmapFunc func(code []byte) bitvec
+
 	// MIR-related fields
-	mirCFG    interface{}  // MIR Control Flow Graph for this contract (using interface{} to avoid import cycle)
-	hasMIR    bool         // Whether this contract has MIR representation
+	mirCFG interface{} // MIR Control Flow Graph for this contract (using interface{} to avoid import cycle)
+	hasMIR bool        // Whether this contract has MIR representation
 }
 
 func (c *Contract) validJumpdest(dest *uint256.Int) bool {
@@ -112,18 +94,18 @@ func (c *Contract) isCode(udest uint64) bool {
 		if !exist {
 			if cached, ok := codeBitmapCache.Get(c.CodeHash); ok {
 				contractCodeBitmapHitMeter.Mark(1)
-				analysis = cached.(bitvec)
+				analysis = cached
 			} else if c.optimized {
 				analysis = compiler.LoadBitvec(c.CodeHash)
 				if analysis == nil {
-					analysis = codeBitmap(c.Code)
+					analysis = c.codeBitmapFunc(c.Code)
 					compiler.StoreBitvec(c.CodeHash, analysis)
 				}
 				c.jumpdests[c.CodeHash] = analysis
 			} else {
 				// Do the analysis and save in parent context
 				// We do not need to store it in c.analysis
-				analysis = codeBitmap(c.Code)
+				analysis = c.codeBitmapFunc(c.Code)
 				c.jumpdests[c.CodeHash] = analysis
 				contractCodeBitmapMissMeter.Mark(1)
 				codeBitmapCache.Add(c.CodeHash, analysis)
@@ -138,21 +120,9 @@ func (c *Contract) isCode(udest uint64) bool {
 	// we don't have to recalculate it for every JUMP instruction in the execution
 	// However, we don't save it within the parent context
 	if c.analysis == nil {
-		c.analysis = codeBitmap(c.Code)
+		c.analysis = c.codeBitmapFunc(c.Code)
 	}
 	return c.analysis.codeSegment(udest)
-}
-
-// AsDelegate sets the contract to be a delegate call and returns the current
-// contract (for chaining calls)
-func (c *Contract) AsDelegate() *Contract {
-	// NOTE: caller must, at all times be a contract. It should never happen
-	// that caller is something other than a Contract.
-	parent := c.caller.(*Contract)
-	c.CallerAddress = parent.CallerAddress
-	c.value = parent.value
-
-	return c
 }
 
 // GetOp returns the n'th element in the contract's byte array
@@ -169,7 +139,7 @@ func (c *Contract) GetOp(n uint64) OpCode {
 // Caller will recursively call caller when the contract is a delegate
 // call, including that of caller's caller.
 func (c *Contract) Caller() common.Address {
-	return c.CallerAddress
+	return c.caller
 }
 
 // UseGas attempts the use gas and subtracts it and returns true on success
@@ -197,7 +167,7 @@ func (c *Contract) RefundGas(gas uint64, logger *tracing.Hooks, reason tracing.G
 
 // Address returns the contracts address
 func (c *Contract) Address() common.Address {
-	return c.self.Address()
+	return c.address
 }
 
 // Value returns the contract's value (sent to it from it's caller)
@@ -207,18 +177,9 @@ func (c *Contract) Value() *uint256.Int {
 
 // SetCallCode sets the code of the contract and address of the backing data
 // object
-func (c *Contract) SetCallCode(addr *common.Address, hash common.Hash, code []byte) {
+func (c *Contract) SetCallCode(hash common.Hash, code []byte) {
 	c.Code = code
 	c.CodeHash = hash
-	c.CodeAddr = addr
-}
-
-// SetCodeOptionalHash can be used to provide code, but it's optional to provide hash.
-// In case hash is not provided, the jumpdest analysis will not be saved to the parent context
-func (c *Contract) SetCodeOptionalHash(addr *common.Address, codeAndHash *codeAndHash) {
-	c.Code = codeAndHash.code
-	c.CodeHash = codeAndHash.hash
-	c.CodeAddr = addr
 }
 
 // SetOptimizedForTest returns a contract with optimized equals true for test purpose only

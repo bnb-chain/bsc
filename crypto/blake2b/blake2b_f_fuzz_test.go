@@ -1,6 +1,5 @@
 // Only enable fuzzer on platforms with AVX enabled
 //go:build go1.7 && amd64 && !gccgo && !appengine
-// +build go1.7,amd64,!gccgo,!appengine
 
 package blake2b
 

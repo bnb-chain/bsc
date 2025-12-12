@@ -47,7 +47,7 @@ func (t *EmptyTrie) UpdateStorage(_ common.Address, key, value []byte) error {
 	return nil
 }
 
-// TryUpdateAccount abstract an account write in the trie.
+// UpdateAccount abstract an account write in the trie.
 func (t *EmptyTrie) UpdateAccount(address common.Address, account *types.StateAccount, codeLen int) error {
 	return nil
 }

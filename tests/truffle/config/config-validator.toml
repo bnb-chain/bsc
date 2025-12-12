@@ -10,6 +10,10 @@ TrieDirtyCache = 256
 TrieTimeout = 6000000000
 EnablePreimageRecording = false
 
+[Eth.Miner]
+GasCeil = 100000000
+GasPrice = 100000000
+
 [Eth.GPO]
 Blocks = 20
 Percentile = 60

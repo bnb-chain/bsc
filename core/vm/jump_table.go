@@ -62,7 +62,6 @@ var (
 	cancunInstructionSet           = newCancunInstructionSet()
 	verkleInstructionSet           = newVerkleInstructionSet()
 	pragueInstructionSet           = newPragueInstructionSet()
-	eofInstructionSet              = newEOFInstructionSetForTesting()
 )
 
 // JumpTable contains the EVM opcodes supported at a given fork.
@@ -87,18 +86,8 @@ func validate(jt JumpTable) JumpTable {
 }
 
 func newVerkleInstructionSet() JumpTable {
-	instructionSet := newCancunInstructionSet()
+	instructionSet := newShanghaiInstructionSet()
 	enable4762(&instructionSet)
-	return validate(instructionSet)
-}
-
-func NewEOFInstructionSetForTesting() JumpTable {
-	return newEOFInstructionSetForTesting()
-}
-
-func newEOFInstructionSetForTesting() JumpTable {
-	instructionSet := newPragueInstructionSet()
-	enableEOF(&instructionSet)
 	return validate(instructionSet)
 }
 
@@ -1287,5 +1276,53 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 		maxStack:    maxStack(1, 4),
 	}
 
+	tbl[Dup3And] = &operation{
+		execute:     opDup3And,
+		constantGas: 2 * GasFastestStep,
+		minStack:    minStack(3, 0),
+		maxStack:    maxStack(0, 0),
+	}
+
+	tbl[Swap2Swap1Dup3SubSwap2Dup3GtPush2] = &operation{
+		execute:     opSwap2Swap1Dup3SubSwap2Dup3GtPush2,
+		constantGas: 8 * GasFastestStep,
+		minStack:    minStack(3, 0),
+		maxStack:    maxStack(0, 2),
+	}
+
+	tbl[Swap1Dup2] = &operation{
+		execute:     opSwap1Dup2,
+		constantGas: 2 * GasFastestStep,
+		minStack:    minStack(2, 0),
+		maxStack:    maxStack(0, 1),
+	}
+
+	tbl[SHRSHRDup1MulDup1] = &operation{
+		execute:     opSHRSHRDup1MulDup1,
+		constantGas: 4*GasFastestStep + GasFastStep,
+		minStack:    minStack(3, 0),
+		maxStack:    maxStack(0, 1),
+	}
+
+	tbl[Swap3PopPopPop] = &operation{
+		execute:     opSwap3PopPopPop,
+		constantGas: GasFastestStep + 3*GasQuickStep,
+		minStack:    minStack(4, 0),
+		maxStack:    maxStack(0, 0),
+	}
+
+	tbl[SubSLTIsZeroPush2] = &operation{
+		execute:     opSubSLTIsZeroPush2,
+		constantGas: 4 * GasFastestStep,
+		minStack:    minStack(3, 0),
+		maxStack:    maxStack(0, 1),
+	}
+
+	tbl[Dup11MulDup3SubMulDup1] = &operation{
+		execute:     opDup11MulDup3SubMulDup1,
+		constantGas: 4*GasFastestStep + 2*GasFastStep,
+		minStack:    minStack(11, 0),
+		maxStack:    maxStack(0, 1),
+	}
 	return tbl
 }

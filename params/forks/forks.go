@@ -19,13 +19,14 @@ package forks
 // Fork is a numerical identifier of specific network upgrades (forks).
 type Fork int
 
+// Not all forks defined.
 const (
-	Frontier = iota
+	Frontier Fork = iota
 	FrontierThawing
 	Homestead
 	DAO
-	TangerineWhistle
-	SpuriousDragon
+	TangerineWhistle // a.k.a. the EIP150 fork
+	SpuriousDragon   // a.k.a. the EIP155 fork
 	Byzantium
 	Constantinople
 	Petersburg
@@ -43,4 +44,41 @@ const (
 	Maxwell
 	Fermi
 	Osaka
+	Mendel
 )
+
+// String implements fmt.Stringer.
+func (f Fork) String() string {
+	s, ok := forkToString[f]
+	if !ok {
+		return "Unknown fork"
+	}
+	return s
+}
+
+var forkToString = map[Fork]string{
+	Frontier:         "Frontier",
+	FrontierThawing:  "Frontier Thawing",
+	Homestead:        "Homestead",
+	DAO:              "DAO",
+	TangerineWhistle: "Tangerine Whistle",
+	SpuriousDragon:   "Spurious Dragon",
+	Byzantium:        "Byzantium",
+	Constantinople:   "Constantinople",
+	Petersburg:       "Petersburg",
+	Istanbul:         "Istanbul",
+	MuirGlacier:      "Muir Glacier",
+	Berlin:           "Berlin",
+	London:           "London",
+	ArrowGlacier:     "Arrow Glacier",
+	GrayGlacier:      "Gray Glacier",
+	Paris:            "Paris",
+	Shanghai:         "Shanghai",
+	Cancun:           "Cancun",
+	Prague:           "Prague",
+	Lorentz:          "Lorentz",
+	Maxwell:          "Maxwell",
+	Fermi:            "Fermi",
+	Osaka:            "Osaka",
+	Mendel:           "Mendel",
+}

@@ -15,7 +15,6 @@
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
 //go:build none
-// +build none
 
 /*
 The mkalloc tool creates the genesis allocation constants in genesis_alloc.go

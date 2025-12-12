@@ -39,7 +39,7 @@ type freezerBatch struct {
 func newFreezerBatch(f *Freezer) *freezerBatch {
 	batch := &freezerBatch{tables: make(map[string]*freezerTableBatch, len(f.tables))}
 	for kind, table := range f.tables {
-		batch.tables[kind] = table.newBatch(f.offset)
+		batch.tables[kind] = table.newBatch()
 	}
 	return batch
 }
@@ -97,16 +97,12 @@ type freezerTableBatch struct {
 	indexBuffer []byte
 	curItem     uint64 // expected index of next append
 	totalBytes  int64  // counts written bytes since reset
-	offset      uint64
 }
 
 // newBatch creates a new batch for the freezer table.
-func (t *freezerTable) newBatch(offset uint64) *freezerTableBatch {
-	var batch = &freezerTableBatch{
-		t:      t,
-		offset: offset,
-	}
-	if !t.noCompression {
+func (t *freezerTable) newBatch() *freezerTableBatch {
+	batch := &freezerTableBatch{t: t}
+	if !t.config.noSnappy {
 		batch.sb = new(snappyBuffer)
 	}
 	batch.reset()
@@ -117,7 +113,7 @@ func (t *freezerTable) newBatch(offset uint64) *freezerTableBatch {
 func (batch *freezerTableBatch) reset() {
 	batch.dataBuffer = batch.dataBuffer[:0]
 	batch.indexBuffer = batch.indexBuffer[:0]
-	curItem := batch.t.items.Load() + batch.offset
+	curItem := batch.t.items.Load()
 	batch.curItem = atomic.LoadUint64(&curItem)
 	batch.totalBytes = 0
 }
@@ -212,7 +208,7 @@ func (batch *freezerTableBatch) commit() error {
 
 	// Update headBytes of table.
 	batch.t.headBytes += dataSize
-	items := batch.curItem - batch.offset
+	items := batch.curItem
 	batch.t.items.Store(items)
 
 	// Update metrics.

@@ -23,25 +23,25 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/tracing"
-	"github.com/ethereum/go-ethereum/crypto/kzg4844"
-	"github.com/ethereum/go-ethereum/trie"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/trie"
 	"github.com/holiman/uint256"
 )
 
@@ -86,6 +86,36 @@ func (p *testTxPool) Get(hash common.Hash) *types.Transaction {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	return p.pool[hash]
+}
+
+// Get retrieves the transaction from local txpool with given
+// tx hash.
+func (p *testTxPool) GetRLP(hash common.Hash) []byte {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	tx := p.pool[hash]
+	if tx != nil {
+		blob, _ := rlp.EncodeToBytes(tx)
+		return blob
+	}
+	return nil
+}
+
+// GetMetadata returns the transaction type and transaction size with the given
+// hash.
+func (p *testTxPool) GetMetadata(hash common.Hash) *txpool.TxMetadata {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	tx := p.pool[hash]
+	if tx != nil {
+		return &txpool.TxMetadata{
+			Type: tx.Type(),
+			Size: tx.Size(),
+		}
+	}
+	return nil
 }
 
 // Add appends a batch of transactions to the pool, and notifies any
@@ -180,7 +210,7 @@ func newTestHandlerWithBlocks(blocks int) *testHandler {
 		Config: params.TestChainConfig,
 		Alloc:  types.GenesisAlloc{testAddr: {Balance: big.NewInt(1000000)}},
 	}
-	chain, _ := core.NewBlockChain(db, nil, gspec, nil, ethash.NewFaker(), vm.Config{}, nil, nil)
+	chain, _ := core.NewBlockChain(db, gspec, ethash.NewFaker(), nil)
 
 	_, bs, _ := core.GenerateChainWithGenesis(gspec, ethash.NewFaker(), blocks, nil)
 	if _, err := chain.InsertChain(bs); err != nil {
@@ -261,7 +291,7 @@ func (c *mockParlia) CalcDifficulty(chain consensus.ChainHeaderReader, time uint
 func newTestParliaHandlerAfterCancun(t *testing.T, config *params.ChainConfig, mode ethconfig.SyncMode, preCancunBlks, postCancunBlks uint64) *testHandler {
 	// Have N headers in the freezer
 	frdir := t.TempDir()
-	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false, false, false, false, false)
+	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false)
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend")
 	}
@@ -270,7 +300,9 @@ func newTestParliaHandlerAfterCancun(t *testing.T, config *params.ChainConfig, m
 		Alloc:  types.GenesisAlloc{testAddr: {Balance: new(big.Int).SetUint64(10 * params.Ether)}},
 	}
 	engine := &mockParlia{}
-	chain, _ := core.NewBlockChain(db, nil, gspec, nil, engine, vm.Config{}, nil, nil)
+	cfg := core.DefaultConfig()
+	cfg.StateScheme = rawdb.PathScheme
+	chain, _ := core.NewBlockChain(db, gspec, engine, cfg)
 	signer := types.LatestSigner(config)
 
 	_, bs, _ := core.GenerateChainWithGenesis(gspec, engine, int(preCancunBlks+postCancunBlks), func(i int, gen *core.BlockGen) {
@@ -319,7 +351,9 @@ func (b *testHandler) close() {
 	b.chain.Stop()
 }
 
-// newTestVotePool creates a mock vote pool.
+// testVotePool is a mock vote pool that simply collects and stores votes.
+// Its purpose is to simulate vote collection behavior without implementing
+// complex validation and consensus rules.
 type testVotePool struct {
 	pool map[common.Hash]*types.VoteEnvelope // Hash map of collected votes
 
@@ -342,7 +376,7 @@ func (t *testVotePool) PutVote(vote *types.VoteEnvelope) {
 	t.voteFeed.Send(core.NewVoteEvent{Vote: vote})
 }
 
-func (t *testVotePool) FetchVoteByBlockHash(blockHash common.Hash) []*types.VoteEnvelope {
+func (t *testVotePool) FetchVotesByBlockHash(targetBlockHash common.Hash, sourceBlockNum uint64) []*types.VoteEnvelope {
 	panic("implement me")
 }
 

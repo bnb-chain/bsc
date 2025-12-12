@@ -368,7 +368,7 @@ func TestBlockReceiptStorage(t *testing.T) {
 		ContractAddress: common.BytesToAddress([]byte{0x01, 0x11, 0x11}),
 		GasUsed:         111111,
 	}
-	receipt1.Bloom = types.CreateBloom(types.Receipts{receipt1})
+	receipt1.Bloom = types.CreateBloom(receipt1)
 
 	receipt2 := &types.Receipt{
 		PostState:         common.Hash{2}.Bytes(),
@@ -381,7 +381,7 @@ func TestBlockReceiptStorage(t *testing.T) {
 		ContractAddress: common.BytesToAddress([]byte{0x02, 0x22, 0x22}),
 		GasUsed:         222222,
 	}
-	receipt2.Bloom = types.CreateBloom(types.Receipts{receipt2})
+	receipt2.Bloom = types.CreateBloom(receipt2)
 	receipts := []*types.Receipt{receipt1, receipt2}
 
 	// Check that no receipt entries are in a pristine database
@@ -407,7 +407,11 @@ func TestBlockReceiptStorage(t *testing.T) {
 		t.Fatalf("receipts returned when body was deleted: %v", rs)
 	}
 	// Ensure that receipts without metadata can be returned without the block body too
-	if err := checkReceiptsRLP(ReadRawReceipts(db, hash, 0), receipts); err != nil {
+	raw := ReadRawReceipts(db, hash, 0)
+	for _, r := range raw {
+		r.Bloom = types.CreateBloom(r)
+	}
+	if err := checkReceiptsRLP(raw, receipts); err != nil {
 		t.Fatal(err)
 	}
 	// Sanity check that body alone without the receipt is a full purge
@@ -518,7 +522,7 @@ func checkBlobSidecarsRLP(have, want types.BlobSidecars) error {
 func TestAncientStorage(t *testing.T) {
 	// Freezer style fast import the chain.
 	frdir := t.TempDir()
-	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false, false, false)
+	db, err := Open(NewMemoryDatabase(), OpenOptions{Ancient: frdir})
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend")
 	}
@@ -547,8 +551,12 @@ func TestAncientStorage(t *testing.T) {
 		t.Fatalf("non existent td returned")
 	}
 
+	if blob := ReadCanonicalReceiptsRLP(db, number, &hash); len(blob) > 0 {
+		t.Fatalf("non existent receipts returned")
+	}
+
 	// Write and verify the header in the database
-	_, err = WriteAncientBlocks(db, []*types.Block{block}, []types.Receipts{nil}, big.NewInt(100))
+	_, err = WriteAncientBlocks(db, []*types.Block{block}, types.EncodeBlockReceiptLists([]types.Receipts{nil}), big.NewInt(100))
 	require.NoError(t, err)
 
 	if blob := ReadHeaderRLP(db, hash, number); len(blob) == 0 {
@@ -562,6 +570,9 @@ func TestAncientStorage(t *testing.T) {
 	}
 	if blob := ReadTdRLP(db, hash, number); len(blob) == 0 {
 		t.Fatalf("no td returned")
+	}
+	if blob := ReadCanonicalReceiptsRLP(db, number, &hash); len(blob) == 0 {
+		t.Fatalf("no receipts returned")
 	}
 
 	// Use a fake hash for data retrieval, nothing should be returned.
@@ -577,6 +588,53 @@ func TestAncientStorage(t *testing.T) {
 	}
 	if blob := ReadTdRLP(db, fakeHash, number); len(blob) != 0 {
 		t.Fatalf("invalid td returned")
+	}
+}
+
+func TestWriteAncientHeaderChain(t *testing.T) {
+	db, err := Open(NewMemoryDatabase(), OpenOptions{Ancient: t.TempDir()})
+	if err != nil {
+		t.Fatalf("failed to create database with ancient backend")
+	}
+	defer db.Close()
+
+	// Create a test block
+	var headers []*types.Header
+	headers = append(headers, &types.Header{
+		Number:      big.NewInt(0),
+		Difficulty:  big.NewInt(2),
+		Extra:       []byte("test block"),
+		UncleHash:   types.EmptyUncleHash,
+		TxHash:      types.EmptyTxsHash,
+		ReceiptHash: types.EmptyReceiptsHash,
+	})
+	headers = append(headers, &types.Header{
+		Number:      big.NewInt(1),
+		Difficulty:  big.NewInt(2),
+		Extra:       []byte("test block"),
+		UncleHash:   types.EmptyUncleHash,
+		TxHash:      types.EmptyTxsHash,
+		ReceiptHash: types.EmptyReceiptsHash,
+	})
+	// Write and verify the header in the database
+	WriteAncientHeaderChain(db, headers, new(big.Int))
+
+	for _, header := range headers {
+		if blob := ReadHeaderRLP(db, header.Hash(), header.Number.Uint64()); len(blob) == 0 {
+			t.Fatalf("no header returned")
+		}
+		if h := ReadCanonicalHash(db, header.Number.Uint64()); h != header.Hash() {
+			t.Fatalf("no canonical hash returned")
+		}
+		if blob := ReadBodyRLP(db, header.Hash(), header.Number.Uint64()); len(blob) != 0 {
+			t.Fatalf("unexpected body returned")
+		}
+		if blob := ReadReceiptsRLP(db, header.Hash(), header.Number.Uint64()); len(blob) != 0 {
+			t.Fatalf("unexpected body returned")
+		}
+		if blob := ReadTdRLP(db, header.Hash(), header.Number.Uint64()); len(blob) == 0 {
+			t.Fatalf("unexpected td returned")
+		}
 	}
 }
 
@@ -657,7 +715,7 @@ func TestHashesInRange(t *testing.T) {
 func BenchmarkWriteAncientBlocks(b *testing.B) {
 	// Open freezer database.
 	frdir := b.TempDir()
-	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false, false, false)
+	db, err := Open(NewMemoryDatabase(), OpenOptions{Ancient: frdir})
 	if err != nil {
 		b.Fatalf("failed to create database with ancient backend")
 	}
@@ -689,7 +747,7 @@ func BenchmarkWriteAncientBlocks(b *testing.B) {
 		for j := 0; j < length; j++ {
 			blocks[i+j] = blocks[i+j].WithSidecars(batchSidecars[j])
 		}
-		writeSize, err := WriteAncientBlocks(db, blocks, receipts, td)
+		writeSize, err := WriteAncientBlocks(db, blocks, types.EncodeBlockReceiptLists(receipts), td)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -793,26 +851,28 @@ func makeTestSidecars(n int, nPerBlock int) []types.BlobSidecars {
 }
 
 type fullLogRLP struct {
-	Address     common.Address
-	Topics      []common.Hash
-	Data        []byte
-	BlockNumber uint64
-	TxHash      common.Hash
-	TxIndex     uint
-	BlockHash   common.Hash
-	Index       uint
+	Address        common.Address
+	Topics         []common.Hash
+	Data           []byte
+	BlockNumber    uint64
+	BlockTimestamp uint64
+	TxHash         common.Hash
+	TxIndex        uint
+	BlockHash      common.Hash
+	Index          uint
 }
 
 func newFullLogRLP(l *types.Log) *fullLogRLP {
 	return &fullLogRLP{
-		Address:     l.Address,
-		Topics:      l.Topics,
-		Data:        l.Data,
-		BlockNumber: l.BlockNumber,
-		TxHash:      l.TxHash,
-		TxIndex:     l.TxIndex,
-		BlockHash:   l.BlockHash,
-		Index:       l.Index,
+		Address:        l.Address,
+		Topics:         l.Topics,
+		Data:           l.Data,
+		BlockNumber:    l.BlockNumber,
+		BlockTimestamp: l.BlockTimestamp,
+		TxHash:         l.TxHash,
+		TxIndex:        l.TxIndex,
+		BlockHash:      l.BlockHash,
+		Index:          l.Index,
 	}
 }
 
@@ -838,7 +898,7 @@ func TestReadLogs(t *testing.T) {
 		ContractAddress: common.BytesToAddress([]byte{0x01, 0x11, 0x11}),
 		GasUsed:         111111,
 	}
-	receipt1.Bloom = types.CreateBloom(types.Receipts{receipt1})
+	receipt1.Bloom = types.CreateBloom(receipt1)
 
 	receipt2 := &types.Receipt{
 		PostState:         common.Hash{2}.Bytes(),
@@ -851,7 +911,7 @@ func TestReadLogs(t *testing.T) {
 		ContractAddress: common.BytesToAddress([]byte{0x02, 0x22, 0x22}),
 		GasUsed:         222222,
 	}
-	receipt2.Bloom = types.CreateBloom(types.Receipts{receipt2})
+	receipt2.Bloom = types.CreateBloom(receipt2)
 	receipts := []*types.Receipt{receipt1, receipt2}
 
 	hash := common.BytesToHash([]byte{0x03, 0x14})
@@ -947,7 +1007,7 @@ func TestDeriveLogFields(t *testing.T) {
 	// Derive log metadata fields
 	number := big.NewInt(1)
 	hash := common.BytesToHash([]byte{0x03, 0x14})
-	types.Receipts(receipts).DeriveFields(params.TestChainConfig, hash, number.Uint64(), 0, big.NewInt(0), big.NewInt(0), txs)
+	types.Receipts(receipts).DeriveFields(params.TestChainConfig, hash, number.Uint64(), 12, big.NewInt(0), big.NewInt(0), txs)
 
 	// Iterate over all the computed fields and check that they're correct
 	logIndex := uint(0)
@@ -958,6 +1018,9 @@ func TestDeriveLogFields(t *testing.T) {
 			}
 			if receipts[i].Logs[j].BlockHash != hash {
 				t.Errorf("receipts[%d].Logs[%d].BlockHash = %s, want %s", i, j, receipts[i].Logs[j].BlockHash.String(), hash.String())
+			}
+			if receipts[i].Logs[j].BlockTimestamp != 12 {
+				t.Errorf("receipts[%d].Logs[%d].BlockTimestamp = %d, want %d", i, j, receipts[i].Logs[j].BlockTimestamp, 12)
 			}
 			if receipts[i].Logs[j].TxHash != txs[i].Hash() {
 				t.Errorf("receipts[%d].Logs[%d].TxHash = %s, want %s", i, j, receipts[i].Logs[j].TxHash.String(), txs[i].Hash().String())
@@ -1003,7 +1066,7 @@ func TestHeadersRLPStorage(t *testing.T) {
 	// Have N headers in the freezer
 	frdir := t.TempDir()
 
-	db, err := NewDatabaseWithFreezer(NewMemoryDatabase(), frdir, "", false, false, false, false, false)
+	db, err := Open(NewMemoryDatabase(), OpenOptions{Ancient: frdir})
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend")
 	}
@@ -1026,7 +1089,7 @@ func TestHeadersRLPStorage(t *testing.T) {
 	}
 	receipts := make([]types.Receipts, 100)
 	// Write first half to ancients
-	WriteAncientBlocks(db, chain[:50], receipts[:50], big.NewInt(100))
+	WriteAncientBlocks(db, chain[:50], types.EncodeBlockReceiptLists(receipts[:50]), big.NewInt(100))
 	// Write second half to db
 	for i := 50; i < 100; i++ {
 		WriteCanonicalHash(db, chain[i].Hash(), chain[i].NumberU64())
@@ -1058,4 +1121,377 @@ func TestHeadersRLPStorage(t *testing.T) {
 	checkSequence(0, 1)    // Only genesis
 	checkSequence(1, 1)    // Only block 1
 	checkSequence(1, 2)    // Genesis + block 1
+}
+
+// Tests BAL (Block Access List) storage and retrieval operations.
+func TestBALStorage(t *testing.T) {
+	db := NewMemoryDatabase()
+
+	// Create test BAL data
+	bal := &types.BlockAccessListEncode{
+		Version:  1,
+		SignData: make([]byte, 65),
+		Accounts: []types.AccountAccessListEncode{
+			{
+				TxIndex: 0,
+				Address: common.HexToAddress("0x1234567890123456789012345678901234567890"),
+				StorageItems: []types.StorageAccessItem{
+					{Key: common.HexToHash("0x01"), TxIndex: 0, Dirty: false},
+					{Key: common.HexToHash("0x02"), TxIndex: 1, Dirty: true},
+				},
+			},
+			{
+				TxIndex: 1,
+				Address: common.HexToAddress("0x2222222222222222222222222222222222222222"),
+				StorageItems: []types.StorageAccessItem{
+					{Key: common.HexToHash("0x03"), TxIndex: 2, Dirty: false},
+				},
+			},
+		},
+	}
+
+	// Fill SignData with test data
+	copy(bal.SignData, []byte("test_signature_data_for_bal_testing_12345678901234567890123456789"))
+
+	hash := common.HexToHash("0x123456789abcdef")
+	number := uint64(42)
+
+	// Test non-existent BAL retrieval
+	if entry := ReadBAL(db, hash, number); entry != nil {
+		t.Fatalf("Non-existent BAL returned: %v", entry)
+	}
+	if entry := ReadBALRLP(db, hash, number); len(entry) != 0 {
+		t.Fatalf("Non-existent raw BAL returned: %v", entry)
+	}
+
+	// Test BAL storage and retrieval
+	WriteBAL(db, hash, number, bal)
+	if entry := ReadBAL(db, hash, number); entry == nil {
+		t.Fatalf("Stored BAL not found")
+	} else if !balEqual(entry, bal) {
+		t.Fatalf("Retrieved BAL mismatch: have %v, want %v", entry, bal)
+	}
+
+	// Test raw BAL retrieval
+	if entry := ReadBALRLP(db, hash, number); len(entry) == 0 {
+		t.Fatalf("Stored raw BAL not found")
+	}
+
+	// Test BAL deletion
+	DeleteBAL(db, hash, number)
+	if entry := ReadBAL(db, hash, number); entry != nil {
+		t.Fatalf("Deleted BAL still returned: %v", entry)
+	}
+	if entry := ReadBALRLP(db, hash, number); len(entry) != 0 {
+		t.Fatalf("Deleted raw BAL still returned: %v", entry)
+	}
+}
+
+func TestBALRLPStorage(t *testing.T) {
+	db := NewMemoryDatabase()
+
+	// Test different BAL configurations
+	testCases := []struct {
+		name   string
+		bal    *types.BlockAccessListEncode
+		hash   common.Hash
+		number uint64
+	}{
+		{
+			name: "empty accounts",
+			bal: &types.BlockAccessListEncode{
+				Version:  0,
+				SignData: make([]byte, 65),
+				Accounts: []types.AccountAccessListEncode{},
+			},
+			hash:   common.HexToHash("0x1111"),
+			number: 1,
+		},
+		{
+			name: "single account with multiple storage items",
+			bal: &types.BlockAccessListEncode{
+				Version:  2,
+				SignData: make([]byte, 65),
+				Accounts: []types.AccountAccessListEncode{
+					{
+						TxIndex: 0,
+						Address: common.HexToAddress("0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"),
+						StorageItems: []types.StorageAccessItem{
+							{Key: common.HexToHash("0x0a"), TxIndex: 0, Dirty: true},
+							{Key: common.HexToHash("0x0b"), TxIndex: 1, Dirty: false},
+							{Key: common.HexToHash("0x0c"), TxIndex: 2, Dirty: true},
+						},
+					},
+				},
+			},
+			hash:   common.HexToHash("0x2222"),
+			number: 2,
+		},
+		{
+			name: "multiple accounts",
+			bal: &types.BlockAccessListEncode{
+				Version:  ^uint32(0), // Max uint32 value
+				SignData: make([]byte, 65),
+				Accounts: []types.AccountAccessListEncode{
+					{
+						TxIndex: 0,
+						Address: common.HexToAddress("0x1111111111111111111111111111111111111111"),
+						StorageItems: []types.StorageAccessItem{
+							{Key: common.HexToHash("0x01"), TxIndex: 0, Dirty: false},
+						},
+					},
+					{
+						TxIndex: 1,
+						Address: common.HexToAddress("0x3333333333333333333333333333333333333333"),
+						StorageItems: []types.StorageAccessItem{
+							{Key: common.HexToHash("0x04"), TxIndex: 3, Dirty: true},
+							{Key: common.HexToHash("0x05"), TxIndex: 4, Dirty: false},
+						},
+					},
+					{
+						TxIndex:      2,
+						Address:      common.HexToAddress("0x4444444444444444444444444444444444444444"),
+						StorageItems: []types.StorageAccessItem{},
+					},
+				},
+			},
+			hash:   common.HexToHash("0x3333"),
+			number: 100,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Fill SignData with unique test data
+			sigData := fmt.Sprintf("test_signature_for_%s_123456789012345678901234567890123456789012345678901234567890", tc.name)
+			copy(tc.bal.SignData, []byte(sigData))
+
+			// Store BAL
+			WriteBAL(db, tc.hash, tc.number, tc.bal)
+
+			// Test RLP retrieval
+			rawData := ReadBALRLP(db, tc.hash, tc.number)
+			if len(rawData) == 0 {
+				t.Fatalf("Failed to store/retrieve raw BAL data")
+			}
+
+			// Test structured retrieval
+			retrieved := ReadBAL(db, tc.hash, tc.number)
+			if retrieved == nil {
+				t.Fatalf("Failed to retrieve structured BAL")
+			}
+
+			// Compare values
+			if !balEqual(retrieved, tc.bal) {
+				t.Fatalf("Retrieved BAL doesn't match stored BAL")
+			}
+
+			// Test deletion
+			DeleteBAL(db, tc.hash, tc.number)
+			if ReadBAL(db, tc.hash, tc.number) != nil {
+				t.Fatalf("BAL not properly deleted")
+			}
+		})
+	}
+}
+
+func TestBALCorruptedData(t *testing.T) {
+	db := NewMemoryDatabase()
+	hash := common.HexToHash("0x9999")
+	number := uint64(123)
+
+	// Store corrupted RLP data directly
+	corruptedData := []byte{0xff, 0xff, 0xff, 0xff} // Invalid RLP
+	if err := db.Put(blockBALKey(number, hash), corruptedData); err != nil {
+		t.Fatalf("Failed to store corrupted data: %v", err)
+	}
+
+	// ReadBALRLP should return the corrupted data
+	rawData := ReadBALRLP(db, hash, number)
+	if !bytes.Equal(rawData, corruptedData) {
+		t.Fatalf("ReadBALRLP should return raw data even if corrupted")
+	}
+
+	// ReadBAL should return nil for corrupted data
+	bal := ReadBAL(db, hash, number)
+	if bal != nil {
+		t.Fatalf("ReadBAL should return nil for corrupted data, got: %v", bal)
+	}
+}
+
+func TestBALLargeData(t *testing.T) {
+	db := NewMemoryDatabase()
+
+	// Create BAL with large amount of data
+	accounts := make([]types.AccountAccessListEncode, 1000)
+	for i := 0; i < 1000; i++ {
+		storageItems := make([]types.StorageAccessItem, 10)
+		for j := 0; j < 10; j++ {
+			storageItems[j] = types.StorageAccessItem{
+				Key:     common.BigToHash(big.NewInt(int64(i*10 + j))),
+				TxIndex: uint32(i*10 + j),
+				Dirty:   (i+j)%2 == 0,
+			}
+		}
+		accounts[i] = types.AccountAccessListEncode{
+			TxIndex:      uint32(i),
+			Address:      common.BigToAddress(big.NewInt(int64(i))),
+			StorageItems: storageItems,
+		}
+	}
+
+	bal := &types.BlockAccessListEncode{
+		Version:  12345,
+		SignData: make([]byte, 65),
+		Accounts: accounts,
+	}
+
+	// Fill SignData
+	copy(bal.SignData, []byte("large_data_test_signature_123456789012345678901234567890123456789"))
+
+	hash := common.HexToHash("0xaaaa")
+	number := uint64(999)
+
+	// Test storage and retrieval of large data
+	WriteBAL(db, hash, number, bal)
+
+	retrieved := ReadBAL(db, hash, number)
+	if retrieved == nil {
+		t.Fatalf("Failed to retrieve large BAL data")
+	}
+
+	if !balEqual(retrieved, bal) {
+		t.Fatalf("Large BAL data integrity check failed")
+	}
+
+	// Test deletion
+	DeleteBAL(db, hash, number)
+	if ReadBAL(db, hash, number) != nil {
+		t.Fatalf("Large BAL data not properly deleted")
+	}
+}
+
+func TestBALMultipleBlocks(t *testing.T) {
+	db := NewMemoryDatabase()
+
+	// Store BALs for multiple blocks
+	blocks := []struct {
+		hash   common.Hash
+		number uint64
+		bal    *types.BlockAccessListEncode
+	}{
+		{
+			hash:   common.HexToHash("0xaaaa"),
+			number: 1,
+			bal: &types.BlockAccessListEncode{
+				Version:  1,
+				SignData: make([]byte, 65),
+				Accounts: []types.AccountAccessListEncode{
+					{
+						TxIndex: 0,
+						Address: common.HexToAddress("0x1111111111111111111111111111111111111111"),
+						StorageItems: []types.StorageAccessItem{
+							{Key: common.HexToHash("0x01"), TxIndex: 0, Dirty: false},
+						},
+					},
+				},
+			},
+		},
+		{
+			hash:   common.HexToHash("0xbbbb"),
+			number: 2,
+			bal: &types.BlockAccessListEncode{
+				Version:  2,
+				SignData: make([]byte, 65),
+				Accounts: []types.AccountAccessListEncode{
+					{
+						TxIndex: 0,
+						Address: common.HexToAddress("0x2222222222222222222222222222222222222222"),
+						StorageItems: []types.StorageAccessItem{
+							{Key: common.HexToHash("0x02"), TxIndex: 1, Dirty: true},
+						},
+					},
+				},
+			},
+		},
+		{
+			hash:   common.HexToHash("0xcccc"),
+			number: 3,
+			bal: &types.BlockAccessListEncode{
+				Version:  3,
+				SignData: make([]byte, 65),
+				Accounts: []types.AccountAccessListEncode{},
+			},
+		},
+	}
+
+	// Store all BALs
+	for i, block := range blocks {
+		sigData := fmt.Sprintf("signature_for_block_%d_123456789012345678901234567890123456789012345678901234567890", i)
+		copy(block.bal.SignData, []byte(sigData))
+		WriteBAL(db, block.hash, block.number, block.bal)
+	}
+
+	// Verify all can be retrieved independently
+	for i, block := range blocks {
+		retrieved := ReadBAL(db, block.hash, block.number)
+		if retrieved == nil {
+			t.Fatalf("Failed to retrieve BAL for block %d", i)
+		}
+		if !balEqual(retrieved, block.bal) {
+			t.Fatalf("BAL mismatch for block %d", i)
+		}
+	}
+
+	// Delete middle block
+	DeleteBAL(db, blocks[1].hash, blocks[1].number)
+
+	// Verify first and third blocks still exist
+	if ReadBAL(db, blocks[0].hash, blocks[0].number) == nil {
+		t.Fatalf("Block 0 BAL was incorrectly deleted")
+	}
+	if ReadBAL(db, blocks[1].hash, blocks[1].number) != nil {
+		t.Fatalf("Block 1 BAL was not deleted")
+	}
+	if ReadBAL(db, blocks[2].hash, blocks[2].number) == nil {
+		t.Fatalf("Block 2 BAL was incorrectly deleted")
+	}
+}
+
+// Helper function to compare two BlockAccessListEncode structs
+func balEqual(a, b *types.BlockAccessListEncode) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	if a.Version != b.Version {
+		return false
+	}
+	if !bytes.Equal(a.SignData, b.SignData) {
+		return false
+	}
+	if len(a.Accounts) != len(b.Accounts) {
+		return false
+	}
+	for i, accountA := range a.Accounts {
+		accountB := b.Accounts[i]
+		if accountA.TxIndex != accountB.TxIndex {
+			return false
+		}
+		if accountA.Address != accountB.Address {
+			return false
+		}
+		if len(accountA.StorageItems) != len(accountB.StorageItems) {
+			return false
+		}
+		for j, storageA := range accountA.StorageItems {
+			storageB := accountB.StorageItems[j]
+			if storageA.Key != storageB.Key || storageA.TxIndex != storageB.TxIndex || storageA.Dirty != storageB.Dirty {
+				return false
+			}
+		}
+	}
+	return true
 }

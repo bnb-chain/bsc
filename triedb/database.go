@@ -32,9 +32,8 @@ import (
 
 // Config defines all necessary options for database.
 type Config struct {
-	Preimages bool // Flag whether the preimage of node key is recorded
-	Cache     int
 	NoTries   bool
+	Preimages bool           // Flag whether the preimage of node key is recorded
 	IsVerkle  bool           // Flag whether the db is holding a verkle tree
 	HashDB    *hashdb.Config // Configs for hash-based scheme
 	PathDB    *pathdb.Config // Configs for experimental path-based scheme
@@ -97,11 +96,10 @@ type Database struct {
 func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	// Sanitize the config and use the default one if it's not specified.
 	var triediskdb ethdb.Database
-	if diskdb != nil && diskdb.StateStore() != nil {
-		triediskdb = diskdb.StateStore()
-	} else {
-		triediskdb = diskdb
+	if diskdb != nil {
+		triediskdb = diskdb.GetStateStore()
 	}
+
 	dbScheme := rawdb.ReadStateScheme(diskdb)
 	if config == nil {
 		if dbScheme == rawdb.PathScheme {
@@ -118,9 +116,6 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 		} else {
 			config.HashDB = hashdb.Defaults
 		}
-	}
-	if config.PathDB != nil && config.NoTries {
-		config.PathDB.NoTries = true
 	}
 	var preimages *preimageStore
 	if config.Preimages {
@@ -175,6 +170,15 @@ func (db *Database) NodeReader(blockRoot common.Hash) (database.NodeReader, erro
 // not available.
 func (db *Database) StateReader(blockRoot common.Hash) (database.StateReader, error) {
 	return db.backend.StateReader(blockRoot)
+}
+
+// HistoricReader constructs a reader for accessing the requested historic state.
+func (db *Database) HistoricReader(root common.Hash) (*pathdb.HistoricalStateReader, error) {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		return nil, errors.New("not supported")
+	}
+	return pdb.HistoricReader(root)
 }
 
 // Update performs a state transition by committing dirty nodes contained in the
@@ -259,6 +263,11 @@ func (db *Database) InsertPreimage(preimages map[common.Hash][]byte) {
 		return
 	}
 	db.preimages.insertPreimage(preimages)
+}
+
+// PreimageEnabled returns the indicator if the pre-image store is enabled.
+func (db *Database) PreimageEnabled() bool {
+	return db.preimages != nil
 }
 
 // Cap iteratively flushes old but still referenced trie nodes until the total
@@ -383,6 +392,46 @@ func (db *Database) GetAllRooHash() [][]string {
 	return pdb.GetAllRooHash()
 }
 
+// VerifyState traverses the flat states specified by the given state root and
+// ensures they are matched with each other.
+func (db *Database) VerifyState(root common.Hash) error {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		return errors.New("not supported")
+	}
+	return pdb.VerifyState(root)
+}
+
+// AccountIterator creates a new account iterator for the specified root hash and
+// seeks to a starting account hash.
+func (db *Database) AccountIterator(root common.Hash, seek common.Hash) (pathdb.AccountIterator, error) {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		return nil, errors.New("not supported")
+	}
+	return pdb.AccountIterator(root, seek)
+}
+
+// StorageIterator creates a new storage iterator for the specified root hash and
+// account. The iterator will be move to the specific start position.
+func (db *Database) StorageIterator(root common.Hash, account common.Hash, seek common.Hash) (pathdb.StorageIterator, error) {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		return nil, errors.New("not supported")
+	}
+	return pdb.StorageIterator(root, account, seek)
+}
+
+// IndexProgress returns the indexing progress made so far. It provides the
+// number of states that remain unindexed.
+func (db *Database) IndexProgress() (uint64, error) {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		return 0, errors.New("not supported")
+	}
+	return pdb.IndexProgress()
+}
+
 // IsVerkle returns the indicator if the database is holding a verkle tree.
 func (db *Database) IsVerkle() bool {
 	return db.config.IsVerkle
@@ -391,4 +440,51 @@ func (db *Database) IsVerkle() bool {
 // Disk returns the underlying disk database.
 func (db *Database) Disk() ethdb.Database {
 	return db.disk
+}
+
+// MergeIncrState merges the state in incremental snapshot into base snapshot
+func (db *Database) MergeIncrState(incrDir string) error {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		log.Error("Not supported")
+		return nil
+	}
+	return pdb.MergeIncrState(incrDir)
+}
+
+// WriteContractCodes used to write contract codes into incremental db.
+func (db *Database) WriteContractCodes(codes map[common.Address]rawdb.ContractCode) error {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		log.Error("Not supported")
+		return errors.New("not supported WriteContractCodes")
+	}
+	return pdb.WriteContractCodes(codes)
+}
+
+// IsIncrEnabled returns true if incremental is enabled, otherwise false.
+func (db *Database) IsIncrEnabled() bool {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		return false
+	}
+	return pdb.IsIncrEnabled()
+}
+
+// SetStateGenerator is used to set state generator.
+func (db *Database) SetStateGenerator() {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		return
+	}
+	pdb.SetStateGenerator()
+}
+
+// RepairIncrStore is used to repair incr store.
+func (db *Database) GetStartBlock() (uint64, error) {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		return 0, errors.New("not supported GetStartBlock")
+	}
+	return pdb.GetStartBlock()
 }

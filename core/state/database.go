@@ -34,10 +34,10 @@ import (
 
 const (
 	// Number of codehash->size associations to keep.
-	codeSizeCacheSize = 100000
+	codeSizeCacheSize = 1_000_000 // 4 megabytes in total
 
 	// Cache size granted for caching clean code.
-	codeCacheSize = 64 * 1024 * 1024
+	codeCacheSize = 256 * 1024 * 1024
 
 	// Number of address->curve point associations to keep.
 	pointCacheSize = 4096
@@ -150,7 +150,6 @@ type Trie interface {
 type CachingDB struct {
 	disk          ethdb.KeyValueStore
 	triedb        *triedb.Database
-	noTries       bool
 	snap          *snapshot.Tree
 	codeCache     *lru.SizeConstrainedCache[common.Hash, []byte]
 	codeSizeCache *lru.Cache[common.Hash, int]
@@ -159,12 +158,9 @@ type CachingDB struct {
 
 // NewDatabase creates a state database with the provided data sources.
 func NewDatabase(triedb *triedb.Database, snap *snapshot.Tree) *CachingDB {
-	noTries := triedb != nil && triedb.Config() != nil && triedb.Config().NoTries
-
 	return &CachingDB{
 		disk:          triedb.Disk(),
 		triedb:        triedb,
-		noTries:       noTries,
 		snap:          snap,
 		codeCache:     lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
 		codeSizeCache: lru.NewCache[common.Hash, int](codeSizeCacheSize),
@@ -182,27 +178,28 @@ func NewDatabaseForTesting() *CachingDB {
 func (db *CachingDB) Reader(stateRoot common.Hash) (Reader, error) {
 	var readers []StateReader
 
-	// Set up the state snapshot reader if available. This feature
-	// is optional and may be partially useful if it's not fully
-	// generated.
-	if db.snap != nil {
-		// If standalone state snapshot is available (hash scheme),
-		// then construct the legacy snap reader.
+	// Configure the state reader using the standalone snapshot in hash mode.
+	// This reader offers improved performance but is optional and only
+	// partially useful if the snapshot is not fully generated.
+	if db.TrieDB().Scheme() == rawdb.HashScheme && db.snap != nil {
 		snap := db.snap.Snapshot(stateRoot)
 		if snap != nil {
 			readers = append(readers, newFlatReader(snap))
 		}
-	} else {
-		// If standalone state snapshot is not available, try to construct
-		// the state reader with database.
+	}
+	// Configure the state reader using the path database in path mode.
+	// This reader offers improved performance but is optional and only
+	// partially useful if the snapshot data in path database is not
+	// fully generated.
+	if db.TrieDB().Scheme() == rawdb.PathScheme {
 		reader, err := db.triedb.StateReader(stateRoot)
 		if err == nil {
-			readers = append(readers, newFlatReader(reader)) // state reader is optional
+			readers = append(readers, newFlatReader(reader))
 		}
 	}
 	if !db.NoTries() {
-		// Set up the trie reader, which is expected to always be available
-		// as the gatekeeper unless the state is corrupted.
+		// Configure the trie reader, which is expected to be available as the
+		// gatekeeper unless the state is corrupted.
 		tr, err := newTrieReader(stateRoot, db.triedb, db.pointCache)
 		if err != nil {
 			return nil, err
@@ -217,9 +214,21 @@ func (db *CachingDB) Reader(stateRoot common.Hash) (Reader, error) {
 	return newReader(newCachingCodeReader(db.disk, db.codeCache, db.codeSizeCache), combined), nil
 }
 
+// ReadersWithCacheStats creates a pair of state readers sharing the same internal cache and
+// same backing Reader, but exposing separate statistics.
+// and statistics.
+func (db *CachingDB) ReadersWithCacheStats(stateRoot common.Hash) (ReaderWithStats, ReaderWithStats, error) {
+	reader, err := db.Reader(stateRoot)
+	if err != nil {
+		return nil, nil, err
+	}
+	shared := newReaderWithCache(reader)
+	return newReaderWithCacheStats(shared), newReaderWithCacheStats(shared), nil
+}
+
 // OpenTrie opens the main account trie at a specific root hash.
 func (db *CachingDB) OpenTrie(root common.Hash) (Trie, error) {
-	if db.noTries {
+	if db.NoTries() {
 		return trie.NewEmptyTrie(), nil
 	}
 	if db.triedb.IsVerkle() {
@@ -234,7 +243,7 @@ func (db *CachingDB) OpenTrie(root common.Hash) (Trie, error) {
 
 // OpenStorageTrie opens the storage trie of an account.
 func (db *CachingDB) OpenStorageTrie(stateRoot common.Hash, address common.Address, root common.Hash, self Trie) (Trie, error) {
-	if db.noTries {
+	if db.NoTries() {
 		return trie.NewEmptyTrie(), nil
 	}
 
@@ -252,7 +261,7 @@ func (db *CachingDB) OpenStorageTrie(stateRoot common.Hash, address common.Addre
 }
 
 func (db *CachingDB) NoTries() bool {
-	return db.noTries
+	return db.triedb != nil && db.triedb.Config() != nil && db.triedb.Config().NoTries
 }
 
 // ContractCodeWithPrefix retrieves a particular contract's code. If the

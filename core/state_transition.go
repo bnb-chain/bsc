@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -36,10 +37,10 @@ import (
 // ExecutionResult includes all output after executing given evm
 // message no matter the execution itself is successful or not.
 type ExecutionResult struct {
-	UsedGas     uint64 // Total used gas, not including the refunded gas
-	RefundedGas uint64 // Total gas refunded after execution
-	Err         error  // Any error encountered during the execution(listed in core/vm/errors.go)
-	ReturnData  []byte // Returned data from evm(function result or data supplied with revert opcode)
+	UsedGas    uint64 // Total used gas, not including the refunded gas
+	MaxUsedGas uint64 // Maximum gas consumed during execution, excluding gas refunds.
+	Err        error  // Any error encountered during the execution(listed in core/vm/errors.go)
+	ReturnData []byte // Returned data from evm(function result or data supplied with revert opcode)
 }
 
 // Unwrap returns the internal evm error which allows us for further
@@ -161,7 +162,9 @@ type Message struct {
 
 	// When SkipNonceChecks is true, the message nonce is not checked against the
 	// account nonce in state.
-	// This field will be set to true for operations like RPC eth_call.
+	//
+	// This field will be set to true for operations like RPC eth_call
+	// or the state prefetching.
 	SkipNonceChecks bool
 
 	// When SkipFromEOACheck is true, the message sender is not checked to be an EOA.
@@ -425,7 +428,6 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 
 	var (
 		msg              = st.msg
-		sender           = vm.AccountRef(msg.From)
 		rules            = st.evm.ChainConfig().Rules(st.evm.Context.BlockNumber, st.evm.Context.Random != nil, st.evm.Context.Time)
 		contractCreation = msg.To == nil
 		floorDataGas     uint64
@@ -467,7 +469,7 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		st.evm.AccessEvents.AddTxOrigin(msg.From)
 
 		if targetAddr := msg.To; targetAddr != nil {
-			st.evm.AccessEvents.AddTxDestination(*targetAddr, msg.Value.Sign() != 0)
+			st.evm.AccessEvents.AddTxDestination(*targetAddr, msg.Value.Sign() != 0, !st.state.Exist(*targetAddr))
 		}
 	}
 
@@ -495,7 +497,7 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		vmerr error // vm errors do not effect consensus and are therefore not assigned to err
 	)
 	if contractCreation {
-		ret, _, st.gasRemaining, vmerr = st.evm.Create(sender, msg.Data, st.gasRemaining, value)
+		ret, _, st.gasRemaining, vmerr = st.evm.Create(msg.From, msg.Data, st.gasRemaining, value)
 	} else {
 		// Increment the nonce for the next transaction.
 		st.state.SetNonce(msg.From, st.state.GetNonce(msg.From)+1, tracing.NonceChangeEoACall)
@@ -518,12 +520,15 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		}
 
 		// Execute the transaction's call.
-		ret, st.gasRemaining, vmerr = st.evm.Call(sender, st.to(), msg.Data, st.gasRemaining, value)
+		ret, st.gasRemaining, vmerr = st.evm.Call(msg.From, st.to(), msg.Data, st.gasRemaining, value)
 	}
 
+	// Record the gas used excluding gas refunds. This value represents the actual
+	// gas allowance required to complete execution.
+	peakGasUsed := st.gasUsed()
+
 	// Compute refund counter, capped to a refund quotient.
-	gasRefund := st.calcRefund()
-	st.gasRemaining += gasRefund
+	st.gasRemaining += st.calcRefund()
 	if rules.IsPrague {
 		// After EIP-7623: Data-heavy transactions pay the floor gas.
 		if st.gasUsed() < floorDataGas {
@@ -533,15 +538,15 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 				t.OnGasChange(prev, st.gasRemaining, tracing.GasChangeTxDataFloor)
 			}
 		}
+		if peakGasUsed < floorDataGas {
+			peakGasUsed = floorDataGas
+		}
 	}
 	st.returnGas()
 
 	effectiveTip := msg.GasPrice
 	if rules.IsLondon {
-		effectiveTip = new(big.Int).Sub(msg.GasFeeCap, st.evm.Context.BaseFee)
-		if effectiveTip.Cmp(msg.GasTipCap) > 0 {
-			effectiveTip = msg.GasTipCap
-		}
+		effectiveTip = new(big.Int).Sub(msg.GasPrice, st.evm.Context.BaseFee)
 	}
 	effectiveTipU256, _ := uint256.FromBig(effectiveTip)
 
@@ -562,15 +567,15 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 
 		// add the coinbase to the witness iff the fee is greater than 0
 		if rules.IsEIP4762 && fee.Sign() != 0 {
-			st.evm.AccessEvents.AddAccount(st.evm.Context.Coinbase, true)
+			st.evm.AccessEvents.AddAccount(st.evm.Context.Coinbase, true, math.MaxUint64)
 		}
 	}
 
 	return &ExecutionResult{
-		UsedGas:     st.gasUsed(),
-		RefundedGas: gasRefund,
-		Err:         vmerr,
-		ReturnData:  ret,
+		UsedGas:    st.gasUsed(),
+		MaxUsedGas: peakGasUsed,
+		Err:        vmerr,
+		ReturnData: ret,
 	}, nil
 }
 
@@ -589,13 +594,11 @@ func (st *stateTransition) validateAuthorization(auth *types.SetCodeAuthorizatio
 	if err != nil {
 		return authority, fmt.Errorf("%w: %v", ErrAuthorizationInvalidSignature, err)
 	}
-	for _, blackListAddr := range types.NanoBlackList {
-		if blackListAddr == authority {
-			return authority, errors.New("block blacklist account")
-		}
+	if slices.Contains(types.NanoBlackList, authority) {
+		return authority, errors.New("block blacklist account")
 	}
 	// Check the authority account
-	//  1) doesn't have code or has exisiting delegation
+	//  1) doesn't have code or has existing delegation
 	//  2) matches the auth's nonce
 	//
 	// Note it is added to the access list even if the authorization is invalid.

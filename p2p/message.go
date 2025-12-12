@@ -152,13 +152,21 @@ func (r *eofSignal) Read(buf []byte) (int, error) {
 // MsgPipe creates a message pipe. Reads on one end are matched
 // with writes on the other. The pipe is full-duplex, both ends
 // implement MsgReadWriter.
-func MsgPipe() (*MsgPipeRW, *MsgPipeRW) {
+func MsgPipe(args ...any) (*MsgPipeRW, *MsgPipeRW) {
+	noBlock := false
+	if len(args) > 0 {
+		noBlock = args[0].(bool)
+	}
+	c1, c2 := make(chan Msg), make(chan Msg)
+	if noBlock {
+		c1 = make(chan Msg, 1)
+		c2 = make(chan Msg, 1)
+	}
 	var (
-		c1, c2  = make(chan Msg), make(chan Msg)
 		closing = make(chan struct{})
 		closed  = new(atomic.Bool)
-		rw1     = &MsgPipeRW{c1, c2, closing, closed}
-		rw2     = &MsgPipeRW{c2, c1, closing, closed}
+		rw1     = &MsgPipeRW{c1, c2, closing, closed, noBlock}
+		rw2     = &MsgPipeRW{c2, c1, closing, closed, noBlock}
 	)
 	return rw1, rw2
 }
@@ -173,6 +181,7 @@ type MsgPipeRW struct {
 	r       <-chan Msg
 	closing chan struct{}
 	closed  *atomic.Bool
+	noBlock bool
 }
 
 // WriteMsg sends a message on the pipe.
@@ -183,6 +192,9 @@ func (p *MsgPipeRW) WriteMsg(msg Msg) error {
 		msg.Payload = &eofSignal{msg.Payload, msg.Size, consumed}
 		select {
 		case p.w <- msg:
+			if p.noBlock {
+				return nil
+			}
 			if msg.Size > 0 {
 				// wait for payload read or discard
 				select {

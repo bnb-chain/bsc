@@ -18,9 +18,23 @@
 package ethdb
 
 import (
+	"bytes"
+	"errors"
 	"io"
 
 	"github.com/ethereum/go-ethereum/params"
+)
+
+var (
+	// MaximumKey is a special marker representing the largest possible key
+	// in the database.
+	//
+	// All prefixed database entries will be smaller than this marker.
+	// For trie nodes in hash mode, we use a 32-byte slice filled with 0xFF
+	// because there may be shared prefixes starting with multiple 0xFF bytes.
+	// Using 32 bytes ensures that only a hash collision could potentially
+	// match or exceed it.
+	MaximumKey = bytes.Repeat([]byte{0xff}, 32)
 )
 
 // KeyValueReader wraps the Has and Get method of a backing data store.
@@ -41,10 +55,19 @@ type KeyValueWriter interface {
 	Delete(key []byte) error
 }
 
+var ErrTooManyKeys = errors.New("too many keys in deleted range")
+
 // KeyValueRangeDeleter wraps the DeleteRange method of a backing data store.
 type KeyValueRangeDeleter interface {
 	// DeleteRange deletes all of the keys (and values) in the range [start,end)
 	// (inclusive on start, exclusive on end).
+	//
+	// A nil start is treated as a key before all keys in the data store; a nil
+	// end is treated as a key after all keys in the data store. If both is nil
+	// then the entire data store will be purged.
+	//
+	// Some implementations of DeleteRange may return ErrTooManyKeys after
+	// partially deleting entries in the given range.
 	DeleteRange(start, end []byte) error
 }
 
@@ -89,10 +112,6 @@ type KeyValueStore interface {
 
 // AncientReaderOp contains the methods required to read from immutable ancient data.
 type AncientReaderOp interface {
-	// HasAncient returns an indicator whether the specified data exists in the
-	// ancient store.
-	HasAncient(kind string, number uint64) (bool, error)
-
 	// Ancient retrieves an ancient binary blob from the append-only immutable files.
 	Ancient(kind string, number uint64) ([]byte, error)
 
@@ -113,12 +132,6 @@ type AncientReaderOp interface {
 
 	// AncientSize returns the ancient size of the specified category.
 	AncientSize(kind string) (uint64, error)
-
-	// ItemAmountInAncient returns the actual length of current ancientDB.
-	ItemAmountInAncient() (uint64, error)
-
-	// AncientOffSet returns the offset of current ancientDB.
-	AncientOffSet() uint64
 }
 
 // AncientReader is the extended ancient reader interface including 'batched' or 'atomic' reading.
@@ -149,6 +162,8 @@ type AncientWriter interface {
 	// is item_n(start from 0). The deleted items may not be removed from the ancient store
 	// immediately, but only when the accumulated deleted data reach the threshold then
 	// will be removed all together.
+	//
+	// Note that data marked as non-prunable will still be retained and remain accessible.
 	TruncateTail(n uint64) (uint64, error)
 
 	// TruncateTableTail will truncate certain table to new tail
@@ -156,6 +171,8 @@ type AncientWriter interface {
 
 	// ResetTable will reset certain table with new start point
 	ResetTable(kind string, startAt uint64, onlyEmpty bool) error
+
+	ResetTableForIncr(kind string, startAt uint64, onlyEmpty bool) error
 }
 
 type FreezerEnv struct {
@@ -166,7 +183,11 @@ type FreezerEnv struct {
 // AncientFreezer defines the help functions for freezing ancient data
 type AncientFreezer interface {
 	// SetupFreezerEnv provides params.ChainConfig for checking hark forks, like isCancun.
-	SetupFreezerEnv(env *FreezerEnv) error
+	SetupFreezerEnv(env *FreezerEnv, blockHistory uint64) error
+
+	// CleanBlock cleans block data in pebble and chain freezer.
+	// WARN: it's only used in the incremental snapshot situation.
+	CleanBlock(kvStore KeyValueStore, start uint64) error
 }
 
 // AncientWriteOp is given to the function argument of ModifyAncients.
@@ -190,20 +211,9 @@ type AncientStater interface {
 	AncientDatadir() (string, error)
 }
 
+// StateStoreReader wraps the StateStoreReader method.
 type StateStoreReader interface {
 	StateStoreReader() Reader
-}
-
-type BlockStoreReader interface {
-	BlockStoreReader() Reader
-}
-
-// MultiDatabaseReader contains the methods required to read data from both key-value as well as
-// blockStore or stateStore.
-type MultiDatabaseReader interface {
-	KeyValueReader
-	StateStoreReader
-	BlockStoreReader
 }
 
 // Reader contains the methods required to read data from both key-value as well as
@@ -212,7 +222,6 @@ type Reader interface {
 	KeyValueReader
 	AncientReader
 	StateStoreReader
-	BlockStoreReader
 }
 
 // AncientStore contains all the methods required to allow handling different
@@ -224,21 +233,10 @@ type AncientStore interface {
 	io.Closer
 }
 
-type DiffStore interface {
-	DiffStore() KeyValueStore
-	SetDiffStore(diff KeyValueStore)
-}
-
 type StateStore interface {
-	StateStore() Database
 	SetStateStore(state Database)
 	GetStateStore() Database
-}
-
-type BlockStore interface {
-	BlockStore() Database
-	SetBlockStore(block Database)
-	HasSeparateBlockStore() bool
+	HasSeparateStateStore() bool
 }
 
 // ResettableAncientStore extends the AncientStore interface by adding a Reset method.
@@ -252,11 +250,8 @@ type ResettableAncientStore interface {
 // Database contains all the methods required by the high level database to not
 // only access the key-value data store but also the ancient chain store.
 type Database interface {
-	DiffStore
 	StateStore
-	BlockStore
 	StateStoreReader
-	BlockStoreReader
 	AncientFreezer
 
 	KeyValueStore

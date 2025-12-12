@@ -34,11 +34,10 @@ type Config struct {
 	NoBaseFee                 bool  // Forces the EIP-1559 baseFee to 0 (needed for 0 price calls)
 	EnablePreimageRecording   bool  // Enables recording of SHA3/keccak preimages
 	ExtraEips                 []int // Additional EIPS that are to be enabled
-	EnableOpcodeOptimizations bool // Enable opcode optimization (Super Instructions).
+	EnableOpcodeOptimizations bool  // Enable opcode optimization
 	// EnableMIR controls whether the MIR interpreter is used.
 	// If enabled, MIR interpreter takes precedence over the standard/optimized interpreter.
-	EnableMIR bool
-
+	EnableMIR               bool
 	StatelessSelfValidation bool // Generate execution witnesses and self-check against them (testing purpose)
 }
 
@@ -166,7 +165,7 @@ func NewEVMInterpreter(evm *EVM) *EVMInterpreter {
 		}
 	}
 	evm.Config.ExtraEips = extraEips
-	return &EVMInterpreter{evm: evm, table: table}
+	return &EVMInterpreter{evm: evm, table: table, hasher: crypto.NewKeccakState()}
 }
 
 func (in *EVMInterpreter) CopyAndInstallSuperInstruction() {
@@ -258,7 +257,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// if the PC ends up in a new "chunk" of verkleized code, charge the
 			// associated costs.
 			contractAddr := contract.Address()
-			contract.Gas -= in.evm.TxContext.AccessEvents.CodeChunksRangeGas(contractAddr, pc, 1, uint64(len(contract.Code)), false)
+			consumed, wanted := in.evm.TxContext.AccessEvents.CodeChunksRangeGas(contractAddr, pc, 1, uint64(len(contract.Code)), false, contract.Gas)
+			contract.UseGas(consumed, in.evm.Config.Tracer, tracing.GasChangeWitnessCodeChunk)
+			if consumed < wanted {
+				return nil, ErrOutOfGas
+			}
 		}
 
 		// Get the operation from the jump table and validate the stack to ensure there are
@@ -274,6 +277,10 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}
 		// for tracing: this gas consumption event is emitted below in the debug section.
 		if contract.Gas < cost {
+			if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
+				err = in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext)
+				return nil, err
+			}
 			return nil, ErrOutOfGas
 		} else {
 			contract.Gas -= cost
@@ -305,6 +312,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			// cost is explicitly set so that the capture state defer method can get the proper cost
 			// cost is explicitly set so that the capture state defer method can get the proper cost
 			var dynamicCost uint64
+			memLastGasCost := mem.lastGasCost
 			dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
 			cost += dynamicCost // for tracing
 			if err != nil {
@@ -312,6 +320,12 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			}
 			// for tracing: this gas consumption event is emitted below in the debug section.
 			if contract.Gas < dynamicCost {
+				contract.Gas += operation.constantGas // restore deducted constant gas first
+				mem.lastGasCost = memLastGasCost
+				if seq, isSuper := DecomposeSuperInstruction(op); isSuper {
+					err = in.tryFallbackForSuperInstruction(&pc, seq, contract, stack, mem, callContext)
+					return nil, err
+				}
 				return nil, ErrOutOfGas
 			} else {
 				contract.Gas -= dynamicCost

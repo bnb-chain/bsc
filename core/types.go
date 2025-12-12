@@ -17,6 +17,8 @@
 package core
 
 import (
+	"sync/atomic"
+
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -31,9 +33,6 @@ type Validator interface {
 
 	// ValidateState validates the given statedb and optionally the process result.
 	ValidateState(block *types.Block, state *state.StateDB, res *ProcessResult, stateless bool) error
-
-	// RemoteVerifyManager return remoteVerifyManager of validator.
-	RemoteVerifyManager() *remoteVerifyManager
 }
 
 type TransactionsByPriceAndNonce interface {
@@ -47,9 +46,11 @@ type Prefetcher interface {
 	// Prefetch processes the state changes according to the Ethereum rules by running
 	// the transaction messages using the statedb, but any changes are discarded. The
 	// only goal is to warm the state caches.
-	Prefetch(transactions types.Transactions, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg *vm.Config, interruptCh <-chan struct{})
+	Prefetch(transactions types.Transactions, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interrupt *atomic.Bool)
 	// PrefetchMining used for pre-caching transaction signatures and state trie nodes. Only used for mining stage.
 	PrefetchMining(txs TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr **types.Transaction)
+	// prefetch based on block access list
+	PrefetchBAL(block *types.Block, statedb *state.StateDB, interruptChan <-chan struct{})
 }
 
 // Processor is an interface for processing blocks using a given initial state.
