@@ -51,7 +51,7 @@ func TestMIRUSDT_Allowance_BaseTrace(t *testing.T) {
 		},
 	}
 
-	senderB := vm.AccountRef(base.Origin)
+	senderB := base.Origin
 	_, _, errB := evmB.Call(senderB, addr, input, base.GasLimit, uint256.MustFromBig(base.Value))
 	fmt.Printf("Base result: %v\n", errB)
 }

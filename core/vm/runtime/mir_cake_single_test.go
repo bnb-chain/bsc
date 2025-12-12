@@ -98,8 +98,8 @@ func TestMIRCAKE_Transfer_EVMvsMIR_Single(t *testing.T) {
 	}
 
 	// Execute base then MIR
-	senderB := vm.AccountRef(base.Origin)
-	senderM := vm.AccountRef(mir.Origin)
+	senderB := base.Origin
+	senderM := mir.Origin
 	retB, leftB, errB := evmB.Call(senderB, tokenAddr, input, base.GasLimit, uint256.MustFromBig(base.Value))
 	// Enable MIR parsing only before MIR call
 	compiler.EnableOpcodeParse()

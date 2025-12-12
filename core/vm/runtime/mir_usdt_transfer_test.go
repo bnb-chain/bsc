@@ -312,7 +312,7 @@ func deployContract(t *testing.T, evm *vm.EVM, bytecode []byte) {
 	deployGasLimit := uint64(2000000000) // 2B gas
 	t.Logf("🔧 Deploying contract with %d gas...", deployGasLimit)
 
-	ret, contractAddr, leftOverGas, err := evm.Create(aliceRef, bytecode, deployGasLimit, value)
+	ret, contractAddr, leftOverGas, err := evm.Create(aliceAddr, bytecode, deployGasLimit, value)
 	gasUsed := deployGasLimit - leftOverGas
 	t.Logf("📝 evm.Create returned: err=%v, gasUsed=%d", err, gasUsed)
 
@@ -406,7 +406,7 @@ func performIndividualTransfersWithConfig(t *testing.T, evm *vm.EVM, numTransfer
 func executeTransaction(t *testing.T, evm *vm.EVM, to common.Address, data []byte, gasLimit uint64) []byte {
 	// Execute call
 	value := uint256.NewInt(0)
-	ret, leftOverGas, err := evm.Call(aliceRef, to, data, gasLimit, value)
+	ret, leftOverGas, err := evm.Call(aliceAddr, to, data, gasLimit, value)
 
 	if err != nil {
 		gasUsed := gasLimit - leftOverGas

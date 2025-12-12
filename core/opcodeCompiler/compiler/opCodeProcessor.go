@@ -51,6 +51,15 @@ type optimizeTask struct {
 	rawCode  []byte
 }
 
+// MIR optimization task structure
+type mirOptimizeTask struct {
+	taskType mirOptimizeTaskType
+	hash     common.Hash
+	rawCode  []byte
+}
+
+type mirOptimizeTaskType byte
+
 func init() {
 	taskChannel = make(chan optimizeTask, taskChannelSize)
 	mirTaskChannel = make(chan mirOptimizeTask, taskChannelSize)

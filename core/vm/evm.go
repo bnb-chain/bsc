@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sync"
 	"sync/atomic"
 
 	"github.com/holiman/uint256"
@@ -129,8 +130,6 @@ type EVM struct {
 	jumpDests map[common.Hash]bitvec
 
 	// the life cycle of EVM.
-	optInterpreter  *EVMInterpreter
-	baseInterpreter *EVMInterpreter
 	optInterpreter  *EVMInterpreter
 	baseInterpreter *EVMInterpreter
 	mirInterpreter  *MIRInterpreterAdapter
@@ -278,11 +277,11 @@ func (evm *EVM) Call(caller common.Address, addr common.Address, input []byte, g
 		if len(code) == 0 {
 			ret, err = nil, nil // gas is unchanged
 		} else {
-			addrCopy := addr
-			// If the account has no code, we can abort here
-			// The depth-check is already done, and precompiles handled above
-			contract := GetContract(caller, AccountRef(addrCopy), value, gas)
-			defer ReturnContract(contract)
+		addrCopy := addr
+		// If the account has no code, we can abort here
+		// The depth-check is already done, and precompiles handled above
+		contract := GetContract(caller, addrCopy, value, gas, evm.jumpDests)
+		defer ReturnContract(contract)
 			codeHash := evm.resolveCodeHash(addrCopy)
 
 			if evm.Config.EnableMIR {
@@ -293,7 +292,7 @@ func (evm *EVM) Call(caller common.Address, addr common.Address, input []byte, g
 				if evm.mirInterpreter == nil {
 					return nil, gas, fmt.Errorf("MIR enabled but mirInterpreter is nil")
 				}
-				contract.SetCallCode(&addrCopy, codeHash, code)
+				contract.SetCallCode(codeHash, code)
 				ret, err = evm.mirInterpreter.Run(contract, input, false)
 			} else if evm.Config.EnableOpcodeOptimizations {
 				contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
@@ -369,7 +368,7 @@ func (evm *EVM) CallCode(caller common.Address, addr common.Address, input []byt
 		addrCopy := addr
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
-		contract := GetContract(caller, AccountRef(caller.Address()), value, gas)
+		contract := GetContract(caller, caller, value, gas, evm.jumpDests)
 		defer ReturnContract(contract)
 		code := evm.resolveCode(addrCopy)
 		codeHash := evm.resolveCodeHash(addrCopy)
@@ -382,7 +381,7 @@ func (evm *EVM) CallCode(caller common.Address, addr common.Address, input []byt
 			if evm.mirInterpreter == nil {
 				return nil, gas, fmt.Errorf("MIR enabled but mirInterpreter is nil")
 			}
-			contract.SetCallCode(&addrCopy, codeHash, code)
+			contract.SetCallCode(codeHash, code)
 			ret, err = evm.mirInterpreter.Run(contract, input, false)
 		} else if evm.Config.EnableOpcodeOptimizations {
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
@@ -439,7 +438,8 @@ func (evm *EVM) DelegateCall(originCaller common.Address, caller common.Address,
 	} else {
 		addrCopy := addr
 		// Initialise a new contract and make initialise the delegate values
-		contract := GetContract(caller, AccountRef(caller.Address()), nil, gas).AsDelegate()
+		// Note: For delegatecall, originCaller is the caller, and caller is the address
+		contract := GetContract(originCaller, caller, nil, gas, evm.jumpDests)
 		defer ReturnContract(contract)
 		code := evm.resolveCode(addrCopy)
 		codeHash := evm.resolveCodeHash(addrCopy)
@@ -452,7 +452,7 @@ func (evm *EVM) DelegateCall(originCaller common.Address, caller common.Address,
 			if evm.mirInterpreter == nil {
 				return nil, gas, fmt.Errorf("MIR enabled but mirInterpreter is nil")
 			}
-			contract.SetCallCode(&addrCopy, codeHash, code)
+			contract.SetCallCode(codeHash, code)
 			ret, err = evm.mirInterpreter.Run(contract, input, false)
 		} else if evm.Config.EnableOpcodeOptimizations {
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
@@ -520,7 +520,7 @@ func (evm *EVM) StaticCall(caller common.Address, addr common.Address, input []b
 		addrCopy := addr
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
-		contract := GetContract(caller, AccountRef(addrCopy), new(uint256.Int), gas)
+		contract := GetContract(caller, addrCopy, new(uint256.Int), gas, evm.jumpDests)
 		defer ReturnContract(contract)
 		code := evm.resolveCode(addrCopy)
 		codeHash := evm.resolveCodeHash(addrCopy)
@@ -533,7 +533,7 @@ func (evm *EVM) StaticCall(caller common.Address, addr common.Address, input []b
 			if evm.mirInterpreter == nil {
 				return nil, gas, fmt.Errorf("MIR enabled but mirInterpreter is nil")
 			}
-			contract.SetCallCode(&addrCopy, codeHash, code)
+			contract.SetCallCode(codeHash, code)
 			ret, err = evm.mirInterpreter.Run(contract, input, true)
 		} else if evm.Config.EnableOpcodeOptimizations {
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)

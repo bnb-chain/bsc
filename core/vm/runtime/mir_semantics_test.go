@@ -56,7 +56,7 @@ func runCodeReturn(code []byte, enableMIR bool) ([]byte, error) {
 	}
 	evm := runtime.NewEnv(cfg)
 	addr := common.BytesToAddress([]byte("mir_semantics"))
-	sender := vm.AccountRef(cfg.Origin)
+	sender := cfg.Origin
 	evm.StateDB.CreateAccount(addr)
 	evm.StateDB.SetCode(addr, code)
 	ret, _, err := evm.Call(sender, addr, nil, cfg.GasLimit, uint256.NewInt(0))
@@ -76,7 +76,7 @@ func runCodeReturnWithTracer(code []byte, enableMIR bool, tracer *tracing.Hooks)
 	}
 	evm := runtime.NewEnv(cfg)
 	addr := common.BytesToAddress([]byte("mir_semantics"))
-	sender := vm.AccountRef(cfg.Origin)
+	sender := cfg.Origin
 	evm.StateDB.CreateAccount(addr)
 	evm.StateDB.SetCode(addr, code)
 	ret, _, err := evm.Call(sender, addr, nil, cfg.GasLimit, uint256.NewInt(0))

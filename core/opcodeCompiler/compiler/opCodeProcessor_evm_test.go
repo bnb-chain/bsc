@@ -187,7 +187,7 @@ func executeContract(code, input []byte, cfg *runtime.Config) ([]byte, uint64, e
 	// Create EVM environment
 	evm := runtime.NewEnv(cfg)
 	address := common.BytesToAddress([]byte("contract"))
-	sender := vm.AccountRef(cfg.Origin)
+	sender := cfg.Origin // AccountRef was removed, use Origin directly
 
 	// Set up the contract code
 	evm.StateDB.CreateAccount(address)

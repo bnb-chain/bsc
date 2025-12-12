@@ -115,7 +115,3 @@ func memoryLog(stack *Stack) (uint64, bool) {
 func memoryDup2MStorePush1Add(stack *Stack) (uint64, bool) {
 	return calcMemSize64WithUint(stack.Back(1), 32)
 }
-
-func memoryDup2MStorePush1Add(stack *Stack) (uint64, bool) {
-	return calcMemSize64WithUint(stack.Back(1), 32)
-}
