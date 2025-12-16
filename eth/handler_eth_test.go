@@ -35,6 +35,8 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -77,9 +79,17 @@ func (h *testEthHandler) Handle(peer *eth.Peer, packet eth.Packet) error {
 
 // Tests that peers are correctly accepted (or rejected) based on the advertised
 // fork IDs in the protocol handshake.
-func TestForkIDSplit68(t *testing.T) { testForkIDSplit(t, eth.ETH68) }
+func TestForkIDSplit68(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testForkIDSplit68(t, vmCfg)
+		})
+	}
+}
 
-func testForkIDSplit(t *testing.T, protocol uint) {
+func testForkIDSplit68(t *testing.T, vmCfg vm.Config) { testForkIDSplit(t, eth.ETH68, vmCfg) }
+
+func testForkIDSplit(t *testing.T, protocol uint, vmCfg vm.Config) {
 	t.Parallel()
 
 	var (
@@ -246,9 +256,17 @@ func testForkIDSplit(t *testing.T, protocol uint) {
 }
 
 // Tests that received transactions are added to the local pool.
-func TestRecvTransactions68(t *testing.T) { testRecvTransactions(t, eth.ETH68) }
+func TestRecvTransactions68(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testRecvTransactions68(t, vmCfg)
+		})
+	}
+}
 
-func testRecvTransactions(t *testing.T, protocol uint) {
+func testRecvTransactions68(t *testing.T, vmCfg vm.Config) { testRecvTransactions(t, eth.ETH68, vmCfg) }
+
+func testRecvTransactions(t *testing.T, protocol uint, vmCfg vm.Config) {
 	t.Parallel()
 
 	// Create a message handler, configure it to accept transactions and watch them
@@ -376,9 +394,17 @@ func testWaitBscExtensionTimout(t *testing.T, protocol uint) {
 }
 
 // This test checks that pending transactions are sent.
-func TestSendTransactions68(t *testing.T) { testSendTransactions(t, eth.ETH68) }
+func TestSendTransactions68(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testSendTransactions68(t, vmCfg)
+		})
+	}
+}
 
-func testSendTransactions(t *testing.T, protocol uint) {
+func testSendTransactions68(t *testing.T, vmCfg vm.Config) { testSendTransactions(t, eth.ETH68, vmCfg) }
+
+func testSendTransactions(t *testing.T, protocol uint, vmCfg vm.Config) {
 	t.Parallel()
 
 	// Create a message handler and fill the pool with big transactions
@@ -459,9 +485,17 @@ func testSendTransactions(t *testing.T, protocol uint) {
 
 // Tests that transactions get propagated to all attached peers, either via direct
 // broadcasts or via announcements/retrievals.
-func TestTransactionPropagation68(t *testing.T) { testTransactionPropagation(t, eth.ETH68) }
+func TestTransactionPropagation68(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testTransactionPropagation68(t, vmCfg)
+		})
+	}
+}
 
-func testTransactionPropagation(t *testing.T, protocol uint) {
+func testTransactionPropagation68(t *testing.T, vmCfg vm.Config) { testTransactionPropagation(t, eth.ETH68, vmCfg) }
+
+func testTransactionPropagation(t *testing.T, protocol uint, vmCfg vm.Config) {
 	t.Parallel()
 
 	// Create a source handler to send transactions from and a number of sinks

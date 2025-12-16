@@ -136,7 +136,7 @@ func (t *BytecodeTracer) OnOpcode(pc uint64, op byte, gas, cost uint64, scope tr
 	t.pc = pc
 
 	// Print the opcode being executed
-	opcodeName := getOpcodeName(op)
+	opcodeName := getOpcodeNameFromByte(op)
 	fmt.Printf("EXEC: PC=%d, OP=%s (0x%02x), Gas=%d, Cost=%d\n", pc, opcodeName, op, gas, cost)
 
 	// For PUSH opcodes, also print the data
@@ -158,8 +158,8 @@ func (t *BytecodeTracer) GetExecutedBytes() []byte {
 	return t.executedBytes
 }
 
-// getOpcodeName returns a human-readable name for a bytecode opcode
-func getOpcodeName(opcode byte) string {
+// getOpcodeNameFromByte returns a human-readable name for a bytecode opcode
+func getOpcodeNameFromByte(opcode byte) string {
 	names := map[byte]string{
 		0x00: "STOP",
 		0x01: "ADD",
@@ -353,7 +353,7 @@ func BenchmarkOpCodeFusionPerformance(b *testing.B) {
 	}
 
 	// Apply fusion to get optimized code
-	fusedCode, err := compiler.DoCodeFusion(append([]byte{}, code...))
+	_, err := compiler.DoCodeFusion(append([]byte{}, code...))
 	if err != nil {
 		b.Fatalf("doCodeFusion failed: %v", err)
 	}

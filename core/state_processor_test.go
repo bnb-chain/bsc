@@ -31,7 +31,9 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/holiman/uint256"
@@ -45,6 +47,14 @@ func u64(val uint64) *uint64 { return &val }
 // blockchain imports bad blocks, meaning blocks which have valid headers but
 // contain invalid transactions
 func TestStateProcessorErrors(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testStateProcessorErrors(t, vmCfg)
+		})
+	}
+}
+
+func testStateProcessorErrors(t *testing.T, vmCfg vm.Config) {
 	var (
 		config  = params.MergedTestChainConfig
 		signer  = types.LatestSigner(config)
@@ -125,7 +135,7 @@ func TestStateProcessorErrors(t *testing.T) {
 					},
 				},
 			}
-			blockchain, _  = NewBlockChain(db, gspec, beacon.New(ethash.NewFaker()), nil)
+			blockchain, _  = NewBlockChain(db, gspec, beacon.New(ethash.NewFaker()), DefaultConfig().WithVMConfig(vmCfg))
 			tooBigInitCode = [params.MaxInitCodeSize + 1]byte{}
 		)
 
@@ -293,7 +303,7 @@ func TestStateProcessorErrors(t *testing.T) {
 					},
 				},
 			}
-			blockchain, _ = NewBlockChain(db, gspec, ethash.NewFaker(), nil)
+			blockchain, _ = NewBlockChain(db, gspec, ethash.NewFaker(), DefaultConfig().WithVMConfig(vmCfg))
 		)
 		defer blockchain.Stop()
 		for i, tt := range []struct {
@@ -332,7 +342,7 @@ func TestStateProcessorErrors(t *testing.T) {
 					},
 				},
 			}
-			blockchain, _ = NewBlockChain(db, gspec, beacon.New(ethash.NewFaker()), nil)
+			blockchain, _ = NewBlockChain(db, gspec, beacon.New(ethash.NewFaker()), DefaultConfig().WithVMConfig(vmCfg))
 		)
 		defer blockchain.Stop()
 		for i, tt := range []struct {

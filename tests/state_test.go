@@ -97,6 +97,14 @@ func TestExecutionSpecState(t *testing.T) {
 }
 
 func execStateTest(t *testing.T, st *testMatcher, test *StateTest) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			execStateTestWithConfig(t, st, test, vmCfg)
+		})
+	}
+}
+
+func execStateTestWithConfig(t *testing.T, st *testMatcher, test *StateTest, baseVmCfg vm.Config) {
 	for _, subtest := range test.Subtests() {
 		key := fmt.Sprintf("%s/%d", subtest.Fork, subtest.Index)
 

@@ -59,6 +59,7 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/internal/blocktest"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -443,6 +444,27 @@ type testBackend struct {
 	acc     accounts.Account
 }
 
+// newTestBackendWithVMConfig creates a test backend with custom vm.Config for dual-mode testing.
+func newTestBackendWithVMConfig(t *testing.T, n int, gspec *core.Genesis, engine consensus.Engine, generator func(i int, b *core.BlockGen, vmCfg vm.Config), vmCfg vm.Config) *testBackend {
+	options := core.DefaultConfig().WithArchive(true).WithVMConfig(vmCfg)
+	options.TxLookupLimit = 0
+
+	accman, acc := newTestAccountManager(t)
+	gspec.Alloc[acc.Address] = types.Account{Balance: big.NewInt(params.Ether)}
+
+	db, blocks, _ := core.GenerateChainWithGenesisAndVMConfig(gspec, engine, n, generator, vmCfg)
+
+	chain, err := core.NewBlockChain(db, gspec, engine, options)
+	if err != nil {
+		t.Fatalf("failed to create tester chain: %v", err)
+	}
+	if n, err := chain.InsertChain(blocks); err != nil {
+		t.Fatalf("block %d: failed to insert into chain: %v", n, err)
+	}
+
+	return &testBackend{db: db, chain: chain, accman: accman, acc: acc}
+}
+
 func newTestBackend(t *testing.T, n int, gspec *core.Genesis, engine consensus.Engine, generator func(i int, b *core.BlockGen)) *testBackend {
 	options := core.DefaultConfig().WithArchive(true)
 	options.TxLookupLimit = 0 // index all txs
@@ -680,6 +702,14 @@ func (b testBackend) HistoryPruningCutoff() uint64 {
 }
 
 func TestEstimateGas(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testEstimateGas(t, vmCfg)
+		})
+	}
+}
+
+func testEstimateGas(t *testing.T, vmCfg vm.Config) {
 	t.Parallel()
 	// Initialize test accounts
 	var (
@@ -707,14 +737,14 @@ func TestEstimateGas(t *testing.T) {
 		return append(revertSelector, encodedMessage...)
 	}
 
-	api := NewBlockChainAPI(newTestBackend(t, genBlocks, genesis, beacon.New(ethash.NewFaker()), func(i int, b *core.BlockGen) {
+	api := NewBlockChainAPI(newTestBackendWithVMConfig(t, genBlocks, genesis, beacon.New(ethash.NewFaker()), func(i int, b *core.BlockGen, vmCfg vm.Config) {
 		// Transfer from account[0] to account[1]
 		//    value: 1000 wei
 		//    fee:   0 wei
 		tx, _ := types.SignTx(types.NewTx(&types.LegacyTx{Nonce: uint64(i), To: &accounts[1].addr, Value: big.NewInt(1000), Gas: params.TxGas, GasPrice: b.BaseFee(), Data: nil}), signer, accounts[0].key)
-		b.AddTx(tx)
+		b.AddTxWithVMConfigForTest(tx, vmCfg)
 		b.SetPoS()
-	}))
+	}, vmCfg))
 
 	setCodeAuthorization, _ := types.SignSetCode(accounts[0].key, types.SetCodeAuthorization{
 		Address: accounts[0].addr,
@@ -969,6 +999,14 @@ func TestEstimateGas(t *testing.T) {
 }
 
 func TestCall(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testCall(t, vmCfg)
+		})
+	}
+}
+
+func testCall(t *testing.T, vmCfg vm.Config) {
 	t.Parallel()
 
 	// Initialize test accounts
@@ -993,14 +1031,14 @@ func TestCall(t *testing.T) {
 		genBlocks = 10
 		signer    = types.HomesteadSigner{}
 	)
-	api := NewBlockChainAPI(newTestBackend(t, genBlocks, genesis, beacon.New(ethash.NewFaker()), func(i int, b *core.BlockGen) {
+	api := NewBlockChainAPI(newTestBackendWithVMConfig(t, genBlocks, genesis, beacon.New(ethash.NewFaker()), func(i int, b *core.BlockGen, vmCfg vm.Config) {
 		// Transfer from account[0] to account[1]
 		//    value: 1000 wei
 		//    fee:   0 wei
 		tx, _ := types.SignTx(types.NewTx(&types.LegacyTx{Nonce: uint64(i), To: &accounts[1].addr, Value: big.NewInt(1000), Gas: params.TxGas, GasPrice: b.BaseFee(), Data: nil}), signer, accounts[0].key)
-		b.AddTx(tx)
+		b.AddTxWithVMConfigForTest(tx, vmCfg)
 		b.SetPoS()
-	}))
+	}, vmCfg))
 	randomAccounts := newAccounts(3)
 	var testSuite = []struct {
 		name           string
@@ -1289,6 +1327,14 @@ func TestCall(t *testing.T) {
 }
 
 func TestSimulateV1(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testSimulateV1(t, vmCfg)
+		})
+	}
+}
+
+func testSimulateV1(t *testing.T, vmCfg vm.Config) {
 	t.Parallel()
 	// Initialize test accounts
 	var (

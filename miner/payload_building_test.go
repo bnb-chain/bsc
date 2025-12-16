@@ -26,16 +26,26 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/params"
 )
 
 func TestBuildPayload(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testBuildPayload(t, vmCfg)
+		})
+	}
+}
+
+func testBuildPayload(t *testing.T, vmCfg vm.Config) {
 	t.Parallel()
 	var (
 		db        = rawdb.NewMemoryDatabase()
 		recipient = common.HexToAddress("0xdeadbeef")
 	)
-	w, b := newTestWorker(t, params.TestChainConfig, ethash.NewFaker(), db, 0)
+	w, b := newTestWorker(t, params.TestChainConfig, ethash.NewFaker(), db, 0, vmCfg)
 	defer w.close()
 
 	timestamp := uint64(time.Now().Unix())

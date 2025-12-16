@@ -27,27 +27,35 @@ import (
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 )
 
 // Tests that snap sync is disabled after a successful sync cycle.
-func TestSnapSyncDisabling68(t *testing.T) { testSnapSyncDisabling(t, eth.ETH68, snap.SNAP1) }
+func TestSnapSyncDisabling68(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testSnapSyncDisabling(t, eth.ETH68, snap.SNAP1, vmCfg)
+		})
+	}
+}
 
 // Tests that snap sync gets disabled as soon as a real block is successfully
 // imported into the blockchain.
-func testSnapSyncDisabling(t *testing.T, ethVer uint, snapVer uint) {
+func testSnapSyncDisabling(t *testing.T, ethVer uint, snapVer uint, vmCfg vm.Config) {
 	t.Parallel()
 
 	// Create an empty handler and ensure it's in snap sync mode
-	empty := newTestHandler()
+	empty := newTestHandlerWithBlocksAndVMConfig(0, vmCfg)
 	if !empty.handler.snapSync.Load() {
 		t.Fatalf("snap sync disabled on pristine blockchain")
 	}
 	defer empty.close()
 
 	// Create a full handler and ensure snap sync ends up disabled
-	full := newTestHandlerWithBlocks(1024)
+	full := newTestHandlerWithBlocksAndVMConfig(1024, vmCfg)
 	if full.handler.snapSync.Load() {
 		t.Fatalf("snap sync not disabled on non-empty blockchain")
 	}

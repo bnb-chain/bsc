@@ -35,6 +35,8 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -113,7 +115,7 @@ type testWorkerBackend struct {
 	genesis *core.Genesis
 }
 
-func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, n int) *testWorkerBackend {
+func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, n int, vmCfg vm.Config) *testWorkerBackend {
 	var gspec = &core.Genesis{
 		Config: chainConfig,
 		Alloc:  types.GenesisAlloc{testBankAddress: {Balance: testBankFunds}},
@@ -129,7 +131,7 @@ func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine 
 	default:
 		t.Fatalf("unexpected consensus engine type: %T", engine)
 	}
-	chain, err := core.NewBlockChain(db, gspec, engine, &core.BlockChainConfig{ArchiveMode: true})
+	chain, err := core.NewBlockChain(db, gspec, engine, (&core.BlockChainConfig{ArchiveMode: true}).WithVMConfig(vmCfg))
 	if err != nil {
 		t.Fatalf("core.NewBlockChain failed: %v", err)
 	}
@@ -158,8 +160,8 @@ func (b *testWorkerBackend) newRandomTx(creation bool) *types.Transaction {
 	return tx
 }
 
-func newTestWorker(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, blocks int) (*worker, *testWorkerBackend) {
-	backend := newTestWorkerBackend(t, chainConfig, engine, db, blocks)
+func newTestWorker(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, blocks int, vmCfg vm.Config) (*worker, *testWorkerBackend) {
+	backend := newTestWorkerBackend(t, chainConfig, engine, db, blocks, vmCfg)
 	backend.txPool.Add(pendingTxs, true)
 	w := newWorker(testConfig, engine, backend, new(event.TypeMux))
 	w.setEtherbase(testBankAddress)
@@ -167,6 +169,14 @@ func newTestWorker(t *testing.T, chainConfig *params.ChainConfig, engine consens
 }
 
 func TestGenerateAndImportBlock(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testGenerateAndImportBlock(t, vmCfg)
+		})
+	}
+}
+
+func testGenerateAndImportBlock(t *testing.T, vmCfg vm.Config) {
 	t.Parallel()
 	var (
 		db     = rawdb.NewMemoryDatabase()
@@ -175,11 +185,11 @@ func TestGenerateAndImportBlock(t *testing.T) {
 	config.Clique = &params.CliqueConfig{Period: 1, Epoch: 30000}
 	engine := clique.New(config.Clique, db)
 
-	w, b := newTestWorker(t, &config, engine, db, 0)
+	w, b := newTestWorker(t, &config, engine, db, 0, vmCfg)
 	defer w.close()
 
 	// This test chain imports the mined blocks.
-	chain, _ := core.NewBlockChain(rawdb.NewMemoryDatabase(), b.genesis, engine, nil)
+	chain, _ := core.NewBlockChain(rawdb.NewMemoryDatabase(), b.genesis, engine, core.DefaultConfig().WithVMConfig(vmCfg))
 	defer chain.Stop()
 
 	// Ignore empty commit here for less noise.
@@ -211,18 +221,32 @@ func TestGenerateAndImportBlock(t *testing.T) {
 }
 
 func TestEmptyWorkEthash(t *testing.T) {
-	t.Parallel()
-	testEmptyWork(t, ethashChainConfig, ethash.NewFaker())
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testEmptyWorkEthash(t, vmCfg)
+		})
+	}
+}
+
+func testEmptyWorkEthash(t *testing.T, vmCfg vm.Config) {
+	testEmptyWork(t, ethashChainConfig, ethash.NewFaker(), vmCfg)
 }
 func TestEmptyWorkClique(t *testing.T) {
-	t.Parallel()
-	testEmptyWork(t, cliqueChainConfig, clique.New(cliqueChainConfig.Clique, rawdb.NewMemoryDatabase()))
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testEmptyWorkClique(t, vmCfg)
+		})
+	}
 }
 
-func testEmptyWork(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine) {
+func testEmptyWorkClique(t *testing.T, vmCfg vm.Config) {
+	testEmptyWork(t, cliqueChainConfig, clique.New(cliqueChainConfig.Clique, rawdb.NewMemoryDatabase()), vmCfg)
+}
+
+func testEmptyWork(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, vmCfg vm.Config) {
 	defer engine.Close()
 
-	w, _ := newTestWorker(t, chainConfig, engine, rawdb.NewMemoryDatabase(), 0)
+	w, _ := newTestWorker(t, chainConfig, engine, rawdb.NewMemoryDatabase(), 0, vmCfg)
 	defer w.close()
 
 	taskCh := make(chan struct{}, 2)
@@ -255,27 +279,48 @@ func testEmptyWork(t *testing.T, chainConfig *params.ChainConfig, engine consens
 }
 
 func TestGetSealingWorkEthash(t *testing.T) {
-	t.Parallel()
-	testGetSealingWork(t, ethashChainConfig, ethash.NewFaker())
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testGetSealingWorkEthash(t, vmCfg)
+		})
+	}
+}
+
+func testGetSealingWorkEthash(t *testing.T, vmCfg vm.Config) {
+	testGetSealingWork(t, ethashChainConfig, ethash.NewFaker(), vmCfg)
 }
 
 func TestGetSealingWorkClique(t *testing.T) {
-	t.Parallel()
-	testGetSealingWork(t, cliqueChainConfig, clique.New(cliqueChainConfig.Clique, rawdb.NewMemoryDatabase()))
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testGetSealingWorkClique(t, vmCfg)
+		})
+	}
+}
+
+func testGetSealingWorkClique(t *testing.T, vmCfg vm.Config) {
+	testGetSealingWork(t, cliqueChainConfig, clique.New(cliqueChainConfig.Clique, rawdb.NewMemoryDatabase()), vmCfg)
 }
 
 func TestGetSealingWorkPostMerge(t *testing.T) {
-	t.Parallel()
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testGetSealingWorkPostMerge(t, vmCfg)
+		})
+	}
+}
+
+func testGetSealingWorkPostMerge(t *testing.T, vmCfg vm.Config) {
 	local := new(params.ChainConfig)
 	*local = *ethashChainConfig
 	local.TerminalTotalDifficulty = big.NewInt(0)
-	testGetSealingWork(t, local, ethash.NewFaker())
+	testGetSealingWork(t, local, ethash.NewFaker(), vmCfg)
 }
 
-func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine) {
+func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, vmCfg vm.Config) {
 	defer engine.Close()
 
-	w, b := newTestWorker(t, chainConfig, engine, rawdb.NewMemoryDatabase(), 0)
+	w, b := newTestWorker(t, chainConfig, engine, rawdb.NewMemoryDatabase(), 0, vmCfg)
 	defer w.close()
 
 	w.setExtra([]byte{0x01, 0x02})

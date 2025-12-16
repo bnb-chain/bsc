@@ -33,6 +33,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -1752,12 +1754,17 @@ func testLongReorgedSnapSyncingDeepRepair(t *testing.T, snapshots bool) {
 }
 
 func testRepair(t *testing.T, tt *rewindTest, snapshots bool) {
-	for _, scheme := range []string{rawdb.HashScheme, rawdb.PathScheme} {
-		testRepairWithScheme(t, tt, snapshots, scheme)
+	for _, vmCfg := range vmtest.Configs() {
+		for _, scheme := range []string{rawdb.HashScheme, rawdb.PathScheme} {
+			name := vmtest.Name(vmCfg) + "/" + scheme
+			t.Run(name, func(t *testing.T) {
+				testRepairWithScheme(t, tt, snapshots, scheme, vmCfg)
+			})
+		}
 	}
 }
 
-func testRepairWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme string) {
+func testRepairWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme string, vmCfg vm.Config) {
 	// It's hard to follow the test case, visualize the input
 	// log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelInfo, true)))
 	// fmt.Println(tt.dump(false))
@@ -1914,11 +1921,15 @@ func testRepairWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme s
 // In this case the snapshot layer of B3 is not created because of existent
 // state.
 func TestIssue23496(t *testing.T) {
-	testIssue23496(t, rawdb.HashScheme)
-	testIssue23496(t, rawdb.PathScheme)
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testIssue23496(t, rawdb.HashScheme, vmCfg)
+			testIssue23496(t, rawdb.PathScheme, vmCfg)
+		})
+	}
 }
 
-func testIssue23496(t *testing.T, scheme string) {
+func testIssue23496(t *testing.T, scheme string, vmCfg vm.Config) {
 	// It's hard to follow the test case, visualize the input
 	// log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelInfo, true)))
 
@@ -1945,7 +1956,7 @@ func testIssue23496(t *testing.T, scheme string) {
 		engine  = ethash.NewFullFaker()
 		options = DefaultConfig().WithStateScheme(scheme)
 	)
-	chain, err := NewBlockChain(db, gspec, engine, options)
+	chain, err := NewBlockChain(db, gspec, engine, options.WithVMConfig(vmCfg))
 	if err != nil {
 		t.Fatalf("Failed to create chain: %v", err)
 	}

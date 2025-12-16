@@ -3,12 +3,17 @@ package compiler
 import (
 	"errors"
 	"fmt"
+	"math"
 	"runtime/debug"
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
 )
+
+// maxMemorySize is the maximum memory offset we allow to prevent overflow panics.
+// This is a conservative limit; actual EVM would OOG long before reaching this.
+const maxMemorySize = math.MaxUint64 - 64
 
 // Precomputed keccak256("") constant as a static array to avoid per-call allocations
 var emptyKeccakHash = [32]byte{
@@ -385,7 +390,7 @@ func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
 					}
 				}
 			}
-			return it.returndata, nil
+			return nil, nil // STOP returns empty data
 		}
 	}
 	// Avoid per-run clearing of results to reduce overhead for trivial blocks;
@@ -397,7 +402,7 @@ func (it *MIRInterpreter) RunMIR(block *MIRBasicBlock) ([]byte, error) {
 		if err := it.exec(ins); err != nil {
 			switch err {
 			case errSTOP:
-				return it.returndata, nil
+				return nil, nil // STOP returns empty data, not returndata
 			case errRETURN:
 				return it.returndata, nil
 			case errREVERT:
@@ -651,8 +656,10 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 				lastInstr := bb.instructions[len(bb.instructions)-1]
 				if lastInstr != nil {
 					switch lastInstr.op {
-					case MirRETURN, MirREVERT, MirSTOP, MirSELFDESTRUCT:
+					case MirRETURN, MirREVERT:
 						return it.returndata, nil
+					case MirSTOP, MirSELFDESTRUCT:
+						return nil, nil // STOP/SELFDESTRUCT return empty data
 					}
 				}
 			}
@@ -765,7 +772,7 @@ func (it *MIRInterpreter) RunCFGWithResolver(cfg *CFG, entry *MIRBasicBlock) ([]
 			bb = it.nextBB
 			continue
 		case errSTOP:
-			return it.returndata, nil
+			return nil, nil // STOP returns empty data
 		case errRETURN:
 			return it.returndata, nil
 		case errREVERT:
@@ -1362,7 +1369,18 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 			return fmt.Errorf("BLOCKHASH missing operand")
 		}
 		num := it.evalValue(m.operands[0]).Uint64()
-		if it.env != nil && it.env.BlockHashFunc != nil {
+		// Apply EVM boundary check: BLOCKHASH can only access the most recent 256 blocks
+		// This matches the logic in core/vm/instructions.go opBlockhash
+		const blockhashLookback uint64 = 256
+		upper := it.env.BlockNumber
+		var lower uint64
+		if upper <= blockhashLookback {
+			lower = 0
+		} else {
+			lower = upper - blockhashLookback
+		}
+		// Only query if num is in valid range [lower, upper)
+		if num >= lower && num < upper && it.env != nil && it.env.BlockHashFunc != nil {
 			h := it.env.BlockHashFunc(num)
 			it.setResult(m, it.tmpA.Clear().SetBytes(h[:]))
 		} else {
@@ -1539,6 +1557,11 @@ func (it *MIRInterpreter) exec(m *MIR) error {
 		sz := it.preOpOps[2]
 		if sz == nil {
 			sz = it.evalValue(m.operands[2])
+		}
+		// EVM semantics: revert if offset+size > returndatasize (since Byzantium)
+		end := new(uint256.Int).Add(off, sz)
+		if !end.IsUint64() || end.Uint64() > uint64(len(it.returndata)) {
+			return fmt.Errorf("return data out of bounds")
 		}
 		it.returnDataCopy(dest, off, sz)
 		return nil
@@ -2307,6 +2330,10 @@ func mirHandleMLOAD(it *MIRInterpreter, m *MIR) error {
 		off = it.preOpOps[0]
 	} else {
 		off = it.evalValue(m.operands[0])
+	}
+	// Check for huge memory offset that would cause gas overflow
+	if !off.IsUint64() || off.Uint64() > maxMemorySize-32 {
+		return fmt.Errorf("gas uint64 overflow")
 	}
 	// Ensure memory growth side-effect even if value is forwarded via meta
 	it.ensureMemSize(off.Uint64() + 32)
@@ -3090,11 +3117,20 @@ func (it *MIRInterpreter) readMemView(off, sz *uint256.Int) []byte {
 }
 
 func (it *MIRInterpreter) readMem32(off *uint256.Int) []byte {
+	// Check for overflow: if offset is too large, return zeros to prevent panic
+	if !off.IsUint64() || off.Uint64() > maxMemorySize-32 {
+		return make([]byte, 32)
+	}
 	it.ensureMemSize(off.Uint64() + 32)
 	return append([]byte(nil), it.memory[off.Uint64():off.Uint64()+32]...)
 }
 
 func (it *MIRInterpreter) readMem32Into(off *uint256.Int, dst *[32]byte) {
+	// Check for overflow: if offset is too large, return zeros to prevent panic
+	if !off.IsUint64() || off.Uint64() > maxMemorySize-32 {
+		clear(dst[:])
+		return
+	}
 	it.ensureMemSize(off.Uint64() + 32)
 	copy(dst[:], it.memory[off.Uint64():off.Uint64()+32])
 	if it.tracerEx != nil || it.tracer != nil {
@@ -3103,6 +3139,10 @@ func (it *MIRInterpreter) readMem32Into(off *uint256.Int, dst *[32]byte) {
 }
 
 func (it *MIRInterpreter) writeMem32(off, val *uint256.Int) {
+	// Check for overflow: if offset is too large, silently ignore to prevent panic
+	if !off.IsUint64() || off.Uint64() > maxMemorySize-32 {
+		return
+	}
 	o := off.Uint64()
 	it.ensureMemSize(o + 32)
 	// Directly encode 32-byte big-endian representation without extra zeroing/allocations
@@ -3110,6 +3150,10 @@ func (it *MIRInterpreter) writeMem32(off, val *uint256.Int) {
 }
 
 func (it *MIRInterpreter) writeMem8(off, val *uint256.Int) {
+	// Check for overflow: if offset is too large, silently ignore to prevent panic
+	if !off.IsUint64() || off.Uint64() > maxMemorySize-1 {
+		return
+	}
 	o := off.Uint64()
 	it.ensureMemSize(o + 1)
 	it.memory[o] = byte(val.Uint64() & 0xff)

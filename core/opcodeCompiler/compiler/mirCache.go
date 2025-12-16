@@ -57,3 +57,12 @@ func LoadMIRCFG(hash common.Hash) *CFG {
 	}
 	return mirCache.GetCachedCFG(hash)
 }
+
+// ClearMIRCache clears all cached MIR CFGs.
+// This is useful for testing to avoid CFG pollution between tests,
+// since runtime backfill can modify CFG structure (parents, PHI nodes, etc.)
+func ClearMIRCache() {
+	if mirCache != nil && mirCache.cfgCache != nil {
+		mirCache.cfgCache.Purge()
+	}
+}

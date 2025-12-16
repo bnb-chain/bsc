@@ -35,6 +35,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/ethereum/go-ethereum/triedb/hashdb"
@@ -1956,12 +1958,17 @@ func testLongReorgedSnapSyncingDeepSetHead(t *testing.T, snapshots bool) {
 }
 
 func testSetHead(t *testing.T, tt *rewindTest, snapshots bool) {
-	for _, scheme := range []string{rawdb.HashScheme, rawdb.PathScheme} {
-		testSetHeadWithScheme(t, tt, snapshots, scheme)
+	for _, vmCfg := range vmtest.Configs() {
+		for _, scheme := range []string{rawdb.HashScheme, rawdb.PathScheme} {
+			name := vmtest.Name(vmCfg) + "/" + scheme
+			t.Run(name, func(t *testing.T) {
+				testSetHeadWithScheme(t, tt, snapshots, scheme, vmCfg)
+			})
+		}
 	}
 }
 
-func testSetHeadWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme string) {
+func testSetHeadWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme string, vmCfg vm.Config) {
 	// It's hard to follow the test case, visualize the input
 	// log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelInfo, true)))
 	// fmt.Println(tt.dump(false))
@@ -2008,7 +2015,7 @@ func testSetHeadWithScheme(t *testing.T, tt *rewindTest, snapshots bool, scheme 
 	}, 0); err != nil {
 		t.Fatalf("Failed to create chain: %v", err)
 	}
-	chain, err := NewBlockChain(db, gspec, engine, options)
+	chain, err := NewBlockChain(db, gspec, engine, options.WithVMConfig(vmCfg))
 	if err != nil {
 		t.Fatalf("Failed to create chain: %v", err)
 	}

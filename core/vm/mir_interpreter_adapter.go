@@ -128,12 +128,21 @@ func NewMIRInterpreterAdapter(evm *EVM) *MIRInterpreterAdapter {
 	adapter := &MIRInterpreterAdapter{evm: evm}
 
 	// Create MIR execution environment from EVM context
+	var chainID uint64
+	if evm.ChainConfig() != nil && evm.ChainConfig().ChainID != nil {
+		chainID = evm.ChainConfig().ChainID.Uint64()
+	}
+	var blockNumber uint64
+	if evm.Context.BlockNumber != nil {
+		blockNumber = evm.Context.BlockNumber.Uint64()
+	}
+
 	env := &compiler.MIRExecutionEnv{
 		Memory:      make([]byte, 0, 1024),
 		Storage:     make(map[[32]byte][32]byte),
-		BlockNumber: evm.Context.BlockNumber.Uint64(),
+		BlockNumber: blockNumber,
 		Timestamp:   evm.Context.Time,
-		ChainID:     evm.ChainConfig().ChainID.Uint64(),
+		ChainID:     chainID,
 		GasPrice:    0, // Will be set from transaction context
 		BaseFee:     0, // Will be set from block context
 		SelfBalance: 0, // Will be set from contract context
@@ -747,7 +756,10 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 	}
 
 	// Set current contract for the pre-installed hook
+	// Save old contract for restoration after nested calls
+	oldContract := adapter.currentContract
 	adapter.currentContract = contract
+	defer func() { adapter.currentContract = oldContract }()
 
 	// Save current env state before modifying it (for nested calls)
 	env := adapter.mirInterpreter.GetEnv()
@@ -830,6 +842,7 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 			adapter.currentBlock = ctx.Block
 			// Track total gas charged at block entry (for GAS opcode to add back)
 			var blockEntryTotalGas uint64
+
 			// If the first opcode of the underlying bytecode at this block is JUMPDEST, EVM charges 1 gas upon entering.
 			// Charge it up-front here (once), and record for GAS to add back.
 			if adapter.currentContract != nil {
@@ -865,6 +878,7 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 				validatedCounts := countOpcodesInRange(currentContract.Code, firstPC, lastPC)
 				// Use validated counts instead of EVMOpCounts() to ensure accuracy
 				counts = validatedCounts
+
 			} else {
 				// Fallback to EVMOpCounts() if we can't validate
 				counts = ctx.Block.EVMOpCounts()
@@ -1673,10 +1687,14 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 		log.Warn("Adapter.Run checking entry block", "len(bbs)", 0)
 	}
 	entryBlockHasContent := len(bbs) > 0 && bbs[0] != nil && (bbs[0].Size() > 0 || len(bbs[0].Children()) > 0)
-	if entryBlockHasContent {
+	hasCode := len(contract.Code) > 0
+	if entryBlockHasContent || hasCode {
 		result, err := adapter.mirInterpreter.RunCFGWithResolver(cfg, bbs[0])
 		if err != nil {
 			if err == compiler.ErrMIRFallback {
+				if compiler.DebugLogsEnabled {
+					fmt.Printf("⚠️ MIR fallback requested: contract=%s error=%v\n", contract.Address().Hex(), err)
+				}
 				return nil, fmt.Errorf("MIR fallback requested but disabled: %w", err)
 			}
 			// Map compiler.errREVERT to vm.ErrExecutionReverted to preserve gas
@@ -1689,9 +1707,18 @@ func (adapter *MIRInterpreterAdapter) Run(contract *Contract, input []byte, read
 		// If MIR executed without error, return whatever returndata was produced.
 		// An empty result (e.g., STOP) should not trigger fallback; mirror EVM semantics
 		// where a STOP simply returns empty bytes.
+		if compiler.DebugLogsEnabled {
+			fmt.Printf("✅ MIR interpreter completed successfully: contract=%s resultLen=%d\n", contract.Address().Hex(), len(result))
+		}
 		return result, nil
 	}
-	// If nothing returned from the entry, return error
+	// If nothing returned from the entry, check for implicit STOP
+	if len(contract.Code) > 0 {
+		return nil, nil // Implicit STOP for code with no MIR-executable instructions
+	}
+	if compiler.DebugLogsEnabled {
+		fmt.Printf("❌ MIR entry block produced no result: contract=%s\n", contract.Address().Hex())
+	}
 	return nil, fmt.Errorf("MIR entry block produced no result")
 }
 
@@ -1853,26 +1880,26 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 		if (kind == 0 || kind == 1) && value != nil && !value.IsZero() {
 			gas += params.CallStipend
 		}
-	var (
-		out      []byte
-		leftover uint64
-		err      error
-	)
-	switch kind {
-	case 0: // CALL
-		out, leftover, err = adapter.evm.Call(contract.Caller(), to, callInput, gas, value)
-	case 1: // CALLCODE
-		out, leftover, err = adapter.evm.CallCode(contract.Caller(), to, callInput, gas, value)
-	case 2: // DELEGATECALL
-		// DelegateCall signature: (originCaller, caller, addr, input, gas, value)
-		// For delegatecall from MIR, the current contract's caller is the originCaller
-		// and the current contract's address is the caller (for the nested call)
-		out, leftover, err = adapter.evm.DelegateCall(contract.Caller(), contract.Address(), to, callInput, gas, contract.Value())
-	case 3: // STATICCALL
-		out, leftover, err = adapter.evm.StaticCall(contract.Caller(), to, callInput, gas)
-	default:
-		return nil, false
-	}
+		var (
+			out      []byte
+			leftover uint64
+			err      error
+		)
+		switch kind {
+		case 0: // CALL
+			out, leftover, err = adapter.evm.Call(contract.Caller(), to, callInput, gas, value)
+		case 1: // CALLCODE
+			out, leftover, err = adapter.evm.CallCode(contract.Caller(), to, callInput, gas, value)
+		case 2: // DELEGATECALL
+			// DelegateCall signature: (originCaller, caller, addr, input, gas, value)
+			// For delegatecall from MIR, the current contract's caller is the originCaller
+			// and the current contract's address is the caller (for the nested call)
+			out, leftover, err = adapter.evm.DelegateCall(contract.Caller(), contract.Address(), to, callInput, gas, contract.Value())
+		case 3: // STATICCALL
+			out, leftover, err = adapter.evm.StaticCall(contract.Caller(), to, callInput, gas)
+		default:
+			return nil, false
+		}
 		// Refund leftover like stock interpreter
 		contract.RefundGas(leftover, adapter.evm.Config.Tracer, tracing.GasChangeCallLeftOverRefunded)
 		if err != nil {
@@ -1892,25 +1919,28 @@ func (adapter *MIRInterpreterAdapter) setupExecutionEnvironment(contract *Contra
 		if kind == 5 { // CREATE2
 			tracingReason = tracing.GasChangeCallContractCreation2
 		}
-	contract.UseGas(gas, adapter.evm.Config.Tracer, tracingReason)
-	var (
-		out      []byte
-		newAddr  common.Address
-		leftover uint64
-		err      error
-	)
-	if kind == 4 { // CREATE
-		out, newAddr, leftover, err = adapter.evm.Create(contract.Caller(), init, gas, value)
-	} else { // CREATE2
-		var saltU *uint256.Int
-		if salt != nil {
-			saltU = new(uint256.Int).SetBytes(salt[:])
-		} else {
-			saltU = uint256.NewInt(0)
+		contract.UseGas(gas, adapter.evm.Config.Tracer, tracingReason)
+		var (
+			out      []byte
+			newAddr  common.Address
+			leftover uint64
+			err      error
+		)
+		if kind == 4 { // CREATE
+			// Use contract.Address() (the executing contract) not contract.Caller() (who called this contract)
+			// This matches the behavior of opCreate in instructions.go
+			out, newAddr, leftover, err = adapter.evm.Create(contract.Address(), init, gas, value)
+		} else { // CREATE2
+			var saltU *uint256.Int
+			if salt != nil {
+				saltU = new(uint256.Int).SetBytes(salt[:])
+			} else {
+				saltU = uint256.NewInt(0)
+			}
+			// Use contract.Address() to match opCreate2 in instructions.go
+			out, newAddr, leftover, err = adapter.evm.Create2(contract.Address(), init, gas, value, saltU)
 		}
-		out, newAddr, leftover, err = adapter.evm.Create2(contract.Caller(), init, gas, value, saltU)
-	}
-	copy(addr[:], newAddr[:])
+		copy(addr[:], newAddr[:])
 		// Refund leftover like stock interpreter
 		contract.RefundGas(leftover, adapter.evm.Config.Tracer, tracing.GasChangeCallLeftOverRefunded)
 		if err != nil {

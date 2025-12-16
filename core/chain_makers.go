@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/params"
@@ -168,6 +169,16 @@ func (b *BlockGen) AddTxWithChain(bc *BlockChain, tx *types.Transaction) {
 // The evm interpreter can be customized with the provided vm config.
 func (b *BlockGen) AddTxWithVMConfig(tx *types.Transaction, config vm.Config) {
 	b.addTx(nil, config, tx)
+}
+
+// AddTxWithVMConfigForTest adds a transaction to the generated block with custom vm.Config.
+// Unlike AddTxWithVMConfig, this method creates a proper ChainContext to support
+// all EVM features including blob gas calculation (EIP-4844).
+// This method is intended for testing purposes where vm.Config needs to be customized
+// (e.g., enabling MIR interpreter) and the genesis may have ExcessBlobGas set.
+func (b *BlockGen) AddTxWithVMConfigForTest(tx *types.Transaction, config vm.Config) {
+	bc := &BlockChain{chainConfig: b.cm.config}
+	b.addTx(bc, config, tx)
 }
 
 // GetBalance returns the balance of the given address at the generated block.
@@ -512,6 +523,33 @@ func GenerateChainWithGenesis(genesis *Genesis, engine consensus.Engine, n int, 
 		panic(err)
 	}
 	blocks, receipts := GenerateChain(genesis.Config, genesis.ToBlock(), engine, db, n, gen)
+	return db, blocks, receipts
+}
+
+// GenerateChainWithGenesisAndVMConfig is similar to GenerateChainWithGenesis but allows
+// passing a custom vm.Config. The generator function receives the vmConfig so that
+// transactions can be added with the same configuration using AddTxWithVMConfigForTest.
+// This is intended for testing purposes where consistent vm.Config is needed across
+// block generation and validation (e.g., for MIR interpreter testing).
+func GenerateChainWithGenesisAndVMConfig(genesis *Genesis, engine consensus.Engine, n int, gen func(int, *BlockGen, vm.Config), vmCfg vm.Config) (ethdb.Database, []*types.Block, []types.Receipts) {
+	// Clear MIR cache only when MIR is enabled to prevent interference between tests
+	if vmCfg.EnableMIR {
+		compiler.ClearMIRCache()
+	}
+	db := rawdb.NewMemoryDatabase()
+	triedb := triedb.NewDatabase(db, triedb.HashDefaults)
+	defer triedb.Close()
+	_, err := genesis.Commit(db, triedb)
+	if err != nil {
+		panic(err)
+	}
+	// Wrap the generator to pass vmCfg
+	wrappedGen := func(i int, b *BlockGen) {
+		if gen != nil {
+			gen(i, b, vmCfg)
+		}
+	}
+	blocks, receipts := GenerateChain(genesis.Config, genesis.ToBlock(), engine, db, n, wrappedGen)
 	return db, blocks, receipts
 }
 

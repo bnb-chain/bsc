@@ -44,6 +44,8 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/holiman/uint256"
@@ -176,9 +178,15 @@ func (b *testBackend) Handle(*Peer, Packet) error {
 }
 
 // Tests that block headers can be retrieved from a remote chain based on user queries.
-func TestGetBlockHeaders68(t *testing.T) { testGetBlockHeaders(t, ETH68) }
+func TestGetBlockHeaders68(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testGetBlockHeaders(t, ETH68, vmCfg)
+		})
+	}
+}
 
-func testGetBlockHeaders(t *testing.T, protocol uint) {
+func testGetBlockHeaders(t *testing.T, protocol uint, vmCfg vm.Config) {
 	t.Parallel()
 
 	backend := newTestBackend(maxHeadersServe + 15)
@@ -389,9 +397,15 @@ func testGetBlockHeaders(t *testing.T, protocol uint) {
 }
 
 // Tests that block contents can be retrieved from a remote chain based on their hashes.
-func TestGetBlockBodies68(t *testing.T) { testGetBlockBodies(t, ETH68) }
+func TestGetBlockBodies68(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testGetBlockBodies(t, ETH68, vmCfg)
+		})
+	}
+}
 
-func testGetBlockBodies(t *testing.T, protocol uint) {
+func testGetBlockBodies(t *testing.T, protocol uint, vmCfg vm.Config) {
 	t.Parallel()
 
 	gen := func(n int, g *core.BlockGen) {
@@ -483,9 +497,15 @@ func testGetBlockBodies(t *testing.T, protocol uint) {
 }
 
 // Tests that the transaction receipts can be retrieved based on hashes.
-func TestGetBlockReceipts68(t *testing.T) { testGetBlockReceipts(t, ETH68) }
+func TestGetBlockReceipts68(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testGetBlockReceipts(t, ETH68, vmCfg)
+		})
+	}
+}
 
-func testGetBlockReceipts(t *testing.T, protocol uint) {
+func testGetBlockReceipts(t *testing.T, protocol uint, vmCfg vm.Config) {
 	t.Parallel()
 
 	// Define three accounts to simulate transactions with

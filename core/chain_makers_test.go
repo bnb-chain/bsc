@@ -30,10 +30,20 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/triedb"
 )
 
 func TestGeneratePOSChain(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testGeneratePOSChain(t, vmCfg)
+		})
+	}
+}
+
+func testGeneratePOSChain(t *testing.T, vmCfg vm.Config) {
 	var (
 		keyHex  = "9c647b8b7c4e7c3490668fb6c11473619db80c93704c70893d3813af4090c39c"
 		key, _  = crypto.HexToECDSA(keyHex)
@@ -117,7 +127,7 @@ func TestGeneratePOSChain(t *testing.T) {
 	})
 
 	// Import the chain. This runs all block validation rules.
-	blockchain, _ := NewBlockChain(db, gspec, beacon.NewFaker(), nil)
+	blockchain, _ := NewBlockChain(db, gspec, beacon.NewFaker(), DefaultConfig().WithVMConfig(vmCfg))
 	defer blockchain.Stop()
 
 	if i, err := blockchain.InsertChain(genchain); err != nil {

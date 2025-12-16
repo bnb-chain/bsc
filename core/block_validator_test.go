@@ -29,16 +29,22 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/params"
 )
 
 // Tests that simple header verification works, for both good and bad blocks.
 func TestHeaderVerification(t *testing.T) {
-	testHeaderVerification(t, rawdb.HashScheme)
-	testHeaderVerification(t, rawdb.PathScheme)
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testHeaderVerification(t, rawdb.HashScheme, vmCfg)
+			testHeaderVerification(t, rawdb.PathScheme, vmCfg)
+		})
+	}
 }
 
-func testHeaderVerification(t *testing.T, scheme string) {
+func testHeaderVerification(t *testing.T, scheme string, vmCfg vm.Config) {
 	// Create a simple chain to verify
 	var (
 		gspec        = &Genesis{Config: params.TestChainConfig}
@@ -50,7 +56,7 @@ func testHeaderVerification(t *testing.T, scheme string) {
 	}
 	// Run the header checker for blocks one-by-one, checking for both valid and invalid nonces
 	options := DefaultConfig().WithStateScheme(scheme)
-	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), options)
+	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), options.WithVMConfig(vmCfg))
 	defer chain.Stop()
 	if err != nil {
 		t.Fatal(err)

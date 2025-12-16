@@ -35,6 +35,8 @@ import (
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/triedb"
@@ -100,8 +102,16 @@ func (bc *testBlockChain) SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent)
 }
 
 func TestMiner(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testMiner(t, vmCfg)
+		})
+	}
+}
+
+func testMiner(t *testing.T, vmCfg vm.Config) {
 	t.Parallel()
-	miner, mux, cleanup := createMiner(t)
+	miner, mux, cleanup := createMiner(t, vmCfg)
 	defer cleanup(false)
 
 	miner.Start()
@@ -130,8 +140,16 @@ func TestMiner(t *testing.T) {
 // An initial FailedEvent should allow mining to stop on a subsequent
 // downloader StartEvent.
 func TestMinerDownloaderFirstFails(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testMinerDownloaderFirstFails(t, vmCfg)
+		})
+	}
+}
+
+func testMinerDownloaderFirstFails(t *testing.T, vmCfg vm.Config) {
 	t.Parallel()
-	miner, mux, cleanup := createMiner(t)
+	miner, mux, cleanup := createMiner(t, vmCfg)
 	defer cleanup(false)
 
 	miner.Start()
@@ -164,8 +182,16 @@ func TestMinerDownloaderFirstFails(t *testing.T) {
 }
 
 func TestMinerStartStopAfterDownloaderEvents(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testMinerStartStopAfterDownloaderEvents(t, vmCfg)
+		})
+	}
+}
+
+func testMinerStartStopAfterDownloaderEvents(t *testing.T, vmCfg vm.Config) {
 	t.Parallel()
-	miner, mux, cleanup := createMiner(t)
+	miner, mux, cleanup := createMiner(t, vmCfg)
 	defer cleanup(false)
 
 	miner.Start()
@@ -189,8 +215,16 @@ func TestMinerStartStopAfterDownloaderEvents(t *testing.T) {
 }
 
 func TestStartWhileDownload(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testStartWhileDownload(t, vmCfg)
+		})
+	}
+}
+
+func testStartWhileDownload(t *testing.T, vmCfg vm.Config) {
 	t.Parallel()
-	miner, mux, cleanup := createMiner(t)
+	miner, mux, cleanup := createMiner(t, vmCfg)
 	defer cleanup(false)
 	waitForMiningState(t, miner, false)
 	miner.Start()
@@ -204,8 +238,16 @@ func TestStartWhileDownload(t *testing.T) {
 }
 
 func TestStartStopMiner(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testStartStopMiner(t, vmCfg)
+		})
+	}
+}
+
+func testStartStopMiner(t *testing.T, vmCfg vm.Config) {
 	t.Parallel()
-	miner, _, cleanup := createMiner(t)
+	miner, _, cleanup := createMiner(t, vmCfg)
 	defer cleanup(false)
 	waitForMiningState(t, miner, false)
 	miner.Start()
@@ -215,8 +257,16 @@ func TestStartStopMiner(t *testing.T) {
 }
 
 func TestCloseMiner(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testCloseMiner(t, vmCfg)
+		})
+	}
+}
+
+func testCloseMiner(t *testing.T, vmCfg vm.Config) {
 	t.Parallel()
-	miner, _, cleanup := createMiner(t)
+	miner, _, cleanup := createMiner(t, vmCfg)
 	defer cleanup(true)
 	waitForMiningState(t, miner, false)
 	miner.Start()
@@ -229,8 +279,16 @@ func TestCloseMiner(t *testing.T) {
 // TestMinerSetEtherbase checks that etherbase becomes set even if mining isn't
 // possible at the moment
 func TestMinerSetEtherbase(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testMinerSetEtherbase(t, vmCfg)
+		})
+	}
+}
+
+func testMinerSetEtherbase(t *testing.T, vmCfg vm.Config) {
 	t.Parallel()
-	miner, mux, cleanup := createMiner(t)
+	miner, mux, cleanup := createMiner(t, vmCfg)
 	defer cleanup(false)
 	miner.Start()
 	waitForMiningState(t, miner, true)
@@ -294,7 +352,7 @@ func minerTestGenesisBlock(period uint64, gasLimit uint64, faucet common.Address
 		},
 	}
 }
-func createMiner(t *testing.T) (*Miner, *event.TypeMux, func(skipMiner bool)) {
+func createMiner(t *testing.T, vmCfg vm.Config) (*Miner, *event.TypeMux, func(skipMiner bool)) {
 	// Create Ethash config
 	config := minerconfig.Config{
 		Etherbase: common.HexToAddress("123456789"),
@@ -310,7 +368,7 @@ func createMiner(t *testing.T) (*Miner, *event.TypeMux, func(skipMiner bool)) {
 	// Create consensus engine
 	engine := clique.New(chainConfig.Clique, chainDB)
 	// Create Ethereum backend
-	bc, err := core.NewBlockChain(chainDB, genesis, engine, nil)
+	bc, err := core.NewBlockChain(chainDB, genesis, engine, core.DefaultConfig().WithVMConfig(vmCfg))
 	if err != nil {
 		t.Fatalf("can't create new chain %v", err)
 	}

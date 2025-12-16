@@ -25,6 +25,8 @@ import (
 // once under base and once under MIR.
 func TestMIRUSDT_Allowance_EVMvsMIR_Single(t *testing.T) {
 	// Enable MIR opcode parsing
+	// Clear MIR cache to prevent pollution from other tests
+	compiler.ClearMIRCache()
 	compiler.EnableOpcodeParse()
 	// Optional debug logs (env var)
 	if os.Getenv("MIR_DEBUG") == "1" {

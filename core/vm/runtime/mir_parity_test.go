@@ -18,6 +18,9 @@ import (
 )
 
 func TestMIRParity_USDT(t *testing.T) {
+	// Clear MIR cache to prevent CFG pollution from previous tests
+	compiler.ClearMIRCache()
+
 	// Decode USDT bytecode from benchmarks
 	realCode, err := hex.DecodeString(usdtHex[2:])
 	if err != nil {

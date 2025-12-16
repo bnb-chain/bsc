@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
@@ -37,6 +38,14 @@ const (
 )
 
 func TestImpactOfValidatorOutOfService(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testImpactOfValidatorOutOfService(t, vmCfg)
+		})
+	}
+}
+
+func testImpactOfValidatorOutOfService(t *testing.T, vmCfg vm.Config) {
 	testCases := []struct {
 		totalValidators int
 		downValidators  int
@@ -642,6 +651,14 @@ var (
 )
 
 func TestParlia_applyTransactionTracing(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testParlia_applyTransactionTracing(t, vmCfg)
+		})
+	}
+}
+
+func testParlia_applyTransactionTracing(t *testing.T, vmCfg vm.Config) {
 	frdir := t.TempDir()
 	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false)
 	if err != nil {
@@ -660,7 +677,7 @@ func TestParlia_applyTransactionTracing(t *testing.T) {
 	mockEngine := &mockParlia{}
 	genesisBlock := gspec.MustCommit(db, trieDB)
 
-	chain, _ := core.NewBlockChain(db, gspec, mockEngine, nil)
+	chain, _ := core.NewBlockChain(db, gspec, mockEngine, core.DefaultConfig().WithVMConfig(vmCfg))
 	signer := types.LatestSigner(config)
 
 	bs, _ := core.GenerateChain(config, genesisBlock, mockEngine, db, 1, func(i int, gen *core.BlockGen) {

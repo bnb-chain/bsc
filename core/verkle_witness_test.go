@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/ethereum/go-ethereum/triedb"
@@ -226,6 +227,14 @@ func testProcessVerkle(t *testing.T) {
 }
 
 func TestProcessParentBlockHash(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testProcessParentBlockHash(t, vmCfg)
+		})
+	}
+}
+
+func testProcessParentBlockHash(t *testing.T, vmCfg vm.Config) {
 	// This test uses blocks where,
 	// block 1 parent hash is 0x0100....
 	// block 2 parent hash is 0x0200....
@@ -242,7 +251,7 @@ func TestProcessParentBlockHash(t *testing.T) {
 				chainConfig = testVerkleChainConfig
 			}
 			vmContext := NewEVMBlockContext(header, nil, new(common.Address))
-			evm := vm.NewEVM(vmContext, statedb, chainConfig, vm.Config{})
+			evm := vm.NewEVM(vmContext, statedb, chainConfig, vmCfg)
 			ProcessParentBlockHash(header.ParentHash, evm)
 		}
 		// Read block hashes for block 0 .. num-1

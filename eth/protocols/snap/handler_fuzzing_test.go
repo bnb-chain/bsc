@@ -31,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	fuzz "github.com/google/gofuzz"
@@ -125,7 +126,8 @@ func getChain() *core.BlockChain {
 		SnapshotWait:   true,
 	}
 	trieRoot = blocks[len(blocks)-1].Root()
-	bc, _ := core.NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), options)
+	vmCfg := vmtest.Configs()[0]
+	bc, _ := core.NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), options.WithVMConfig(vmCfg))
 	if _, err := bc.InsertChain(blocks); err != nil {
 		panic(err)
 	}

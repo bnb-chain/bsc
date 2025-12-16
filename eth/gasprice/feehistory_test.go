@@ -22,10 +22,19 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
 func TestFeeHistory(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testFeeHistory(t, vmCfg)
+		})
+	}
+}
+
+func testFeeHistory(t *testing.T, vmCfg vm.Config) {
 	var cases = []struct {
 		pending             bool
 		maxHeader, maxBlock uint64
@@ -58,7 +67,7 @@ func TestFeeHistory(t *testing.T) {
 			MaxHeaderHistory: c.maxHeader,
 			MaxBlockHistory:  c.maxBlock,
 		}
-		backend := newTestBackend(t, big.NewInt(16), big.NewInt(28), c.pending)
+		backend := newTestBackend(t, big.NewInt(16), big.NewInt(28), c.pending, vm.Config{})
 		oracle := NewOracle(backend, config, nil)
 
 		first, reward, baseFee, ratio, blobBaseFee, blobRatio, err := oracle.FeeHistory(context.Background(), c.count, c.last, c.percent)

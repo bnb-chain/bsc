@@ -50,6 +50,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/pebble"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/holiman/uint256"
@@ -76,6 +77,34 @@ func newCanonical(engine consensus.Engine, n int, full bool, scheme string) (eth
 	)
 	// Initialize a fresh chain with only a genesis block
 	options := DefaultConfig().WithStateScheme(scheme)
+	blockchain, _ := NewBlockChain(rawdb.NewMemoryDatabase(), genesis, engine, options)
+
+	// Create and inject the requested chain
+	if n == 0 {
+		return rawdb.NewMemoryDatabase(), genesis, blockchain, nil
+	}
+	if full {
+		// Full block-chain requested
+		genDb, blocks := makeBlockChainWithGenesis(genesis, n, engine, canonicalSeed)
+		_, err := blockchain.InsertChain(blocks)
+		return genDb, genesis, blockchain, err
+	}
+	// Header-only chain requested
+	genDb, headers := makeHeaderChainWithGenesis(genesis, n, engine, canonicalSeed)
+	_, err := blockchain.InsertHeaderChain(headers)
+	return genDb, genesis, blockchain, err
+}
+
+// newCanonicalWithVMConfig is like newCanonical but with custom vm.Config.
+func newCanonicalWithVMConfig(engine consensus.Engine, n int, full bool, scheme string, vmCfg vm.Config) (ethdb.Database, *Genesis, *BlockChain, error) {
+	var (
+		genesis = &Genesis{
+			BaseFee: big.NewInt(params.InitialBaseFee),
+			Config:  params.AllEthashProtocolChanges,
+		}
+	)
+	// Initialize a fresh chain with only a genesis block
+	options := DefaultConfig().WithStateScheme(scheme).WithVMConfig(vmCfg)
 	blockchain, _ := NewBlockChain(rawdb.NewMemoryDatabase(), genesis, engine, options)
 
 	// Create and inject the requested chain
@@ -217,12 +246,16 @@ func testHeaderChainImport(chain []*types.Header, blockchain *BlockChain) error 
 }
 
 func TestLastBlock(t *testing.T) {
-	testLastBlock(t, rawdb.HashScheme)
-	testLastBlock(t, rawdb.PathScheme)
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testLastBlock(t, rawdb.HashScheme, vmCfg)
+			testLastBlock(t, rawdb.PathScheme, vmCfg)
+		})
+	}
 }
 
-func testLastBlock(t *testing.T, scheme string) {
-	genDb, _, blockchain, err := newCanonical(ethash.NewFaker(), 0, true, scheme)
+func testLastBlock(t *testing.T, scheme string, vmCfg vm.Config) {
+	genDb, _, blockchain, err := newCanonicalWithVMConfig(ethash.NewFaker(), 0, true, scheme, vmCfg)
 	if err != nil {
 		t.Fatalf("failed to create pristine chain: %v", err)
 	}

@@ -168,6 +168,9 @@ func TestMIRUSDT_Name_EVMvsMIR_Single(t *testing.T) {
 // - Deploy with MIR EVM (MIR initcode enabled)
 // - If both succeed, call name() on each and compare parity (ret, gas, error)
 func TestMIRUSDT_DeployFromCreation_EVMvsMIR(t *testing.T) {
+	// Clear MIR cache to prevent CFG pollution from previous tests
+	compiler.ClearMIRCache()
+
 	// Enable Opcode Parse
 	compiler.EnableOpcodeParse()
 

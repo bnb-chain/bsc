@@ -1438,11 +1438,8 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 								continue
 							}
 							if ByteCode(code[tpc]) != JUMPDEST {
-								// emit error but continue collecting other valid targets
-								errM := curBB.CreateVoidMIR(MirERRJUMPDEST)
-								if errM != nil {
-									errM.meta = []byte{code[tpc]}
-								}
+								// For JUMPI: skip invalid targets, don't create MirERRJUMPDEST.
+								// Runtime will handle if this target is selected and invalid.
 								continue
 							}
 
@@ -1490,12 +1487,10 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 							if isJumpdest {
 								targetBB = c.getVariantBlock(uint(targetPC), depth, curBB)
 							} else {
-								// Model invalid target as ErrJumpdest in current block and do not create target BB
-								errM := curBB.CreateVoidMIR(MirERRJUMPDEST)
-								if errM != nil {
-									errM.meta = []byte{code[targetPC]}
-								}
-								// Still create fallthrough block
+								// For JUMPI with invalid target: do NOT create MirERRJUMPDEST.
+								// Let runtime handle it - if condition is 0, we fallthrough and no error.
+								// If condition is non-zero, scheduleJump will report the error.
+								// Still create fallthrough block only (no target block)
 								fallthroughBB := c.getVariantBlock(uint(i+1), depth, curBB)
 								fallthroughBB.SetInitDepthMax(depth)
 								curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
@@ -1584,12 +1579,9 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 						if isJumpdest {
 							targetBB = c.getVariantBlock(uint(targetPC), depth, curBB)
 						} else {
-							// Model invalid target as ErrJumpdest in current block and do not create target BB
-							errM := curBB.CreateVoidMIR(MirERRJUMPDEST)
-							if errM != nil {
-								errM.meta = []byte{code[targetPC]}
-							}
-							// Still create fallthrough block
+							// For JUMPI with invalid target: do NOT create MirERRJUMPDEST.
+							// Let runtime handle it - if condition is 0, we fallthrough and no error.
+							// Still create fallthrough block only (no target block)
 							fallthroughBB := c.createBB(uint(i+1), curBB)
 							fallthroughBB.SetInitDepthMax(depth)
 							curBB.SetChildren([]*MIRBasicBlock{fallthroughBB})
@@ -1798,6 +1790,7 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 				depth = 0
 			}
 		case CREATE:
+			curBB.SetLastPC(uint(i)) // Mark end of current block before CREATE
 			// CREATE takes 3 operands: value, offset, size
 			// EVM stack layout (top to bottom): value, offset, size
 			value := valueStack.pop()
@@ -1832,6 +1825,7 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			depth = targetDepth
 			return nil
 		case CREATE2:
+			curBB.SetLastPC(uint(i)) // Mark end of current block before CREATE2
 			// CREATE2 takes 4 operands: value, offset, size, salt
 			// EVM stack layout (top to bottom): value, offset, size, salt
 			value := valueStack.pop()
@@ -1867,6 +1861,7 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			depth = targetDepth
 			return nil
 		case CALL:
+			curBB.SetLastPC(uint(i)) // Mark end of current block before CALL
 			// CALL takes 7 operands: gas, addr, value, inOffset, inSize, outOffset, outSize
 			// Pop from stack top to bottom (LIFO): gas is on top
 			gas := valueStack.pop()
@@ -1906,6 +1901,7 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			depth = targetDepth
 			return nil
 		case CALLCODE:
+			curBB.SetLastPC(uint(i)) // Mark end of current block before CALLCODE
 			// CALLCODE takes same operands as CALL
 			// Pop from stack top to bottom (LIFO): gas is on top
 			gas := valueStack.pop()
@@ -1964,6 +1960,7 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			}
 			return nil
 		case DELEGATECALL:
+			curBB.SetLastPC(uint(i)) // Mark end of current block before DELEGATECALL
 			// DELEGATECALL takes 6 operands: gas, addr, inOffset, inSize, outOffset, outSize
 			// Pop from stack top to bottom (LIFO): gas is on top
 			gas := valueStack.pop()
@@ -2002,6 +1999,7 @@ func (c *CFG) buildBasicBlock(curBB *MIRBasicBlock, valueStack *ValueStack, memo
 			depth = targetDepth
 			return nil
 		case STATICCALL:
+			curBB.SetLastPC(uint(i)) // Mark end of current block before STATICCALL
 			// STATICCALL takes 6 operands: gas, addr, inOffset, inSize, outOffset, outSize
 			// Pop from stack top to bottom (LIFO): gas is on top
 			gas := valueStack.pop()

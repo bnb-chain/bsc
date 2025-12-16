@@ -508,6 +508,9 @@ func TestDumpUSDTMIRAndEVM(t *testing.T) {
 
 // TestUSDT_MIRVsEVM_Parity compares outputs of MIR vs base EVM for key USDT selectors
 func TestUSDT_MIRVsEVM_Parity(t *testing.T) {
+	// Clear MIR cache to prevent CFG pollution from previous tests
+	compiler.ClearMIRCache()
+
 	// Decode USDT runtime bytecode
 	code, err := hex.DecodeString(usdtHex[2:])
 	if err != nil {
@@ -602,6 +605,9 @@ func TestUSDT_MIRVsEVM_Parity(t *testing.T) {
 // TestUSDT_MIR_Strict_ListFailures enables MIR strict mode (no fallback) and
 // lists any selectors that fail or mismatch versus base EVM.
 func TestUSDT_MIR_Strict_ListFailures(t *testing.T) {
+	// Clear MIR cache to prevent CFG pollution from previous tests
+	compiler.ClearMIRCache()
+
 	code, err := hex.DecodeString(usdtHex[2:])
 	if err != nil {
 		t.Fatalf("decode USDT hex: %v", err)
@@ -1018,6 +1024,9 @@ func TestUSDT_MIR_Strict_Debug_Approve(t *testing.T) {
 // TestUSDT_Strict_Parity_Allowance runs allowance once under strict mode and
 // asserts parity with base EVM (error and returndata).
 func TestUSDT_Strict_Parity_Allowance(t *testing.T) {
+	// Clear MIR cache to prevent CFG pollution from previous tests
+	compiler.ClearMIRCache()
+
 	code, err := hex.DecodeString(usdtHex[2:])
 	if err != nil {
 		t.Fatalf("decode USDT hex: %v", err)

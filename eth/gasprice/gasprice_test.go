@@ -31,9 +31,11 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/holiman/uint256"
@@ -136,7 +138,7 @@ func (b *testBackend) teardown() {
 
 // newTestBackend creates a test backend. OBS: don't forget to invoke tearDown
 // after use, otherwise the blockchain instance will mem-leak via goroutines.
-func newTestBackend(t *testing.T, londonBlock *big.Int, cancunBlock *big.Int, pending bool) *testBackend {
+func newTestBackend(t *testing.T, londonBlock *big.Int, cancunBlock *big.Int, pending bool, vmCfg vm.Config) *testBackend {
 	if londonBlock != nil && cancunBlock != nil && londonBlock.Cmp(cancunBlock) == 1 {
 		panic("cannot define test backend with cancun before london")
 	}
@@ -225,7 +227,7 @@ func newTestBackend(t *testing.T, londonBlock *big.Int, cancunBlock *big.Int, pe
 
 	// Construct testing chain
 	gspec.Config.TerminalTotalDifficulty = new(big.Int).SetUint64(td)
-	chain, err := core.NewBlockChain(db, gspec, engine, &core.BlockChainConfig{NoPrefetch: true})
+	chain, err := core.NewBlockChain(db, gspec, engine, core.DefaultConfig().WithVMConfig(vmCfg))
 	if err != nil {
 		t.Fatalf("Failed to create local chain, %v", err)
 	}
@@ -247,6 +249,14 @@ func (b *testBackend) GetBlockByNumber(number uint64) *types.Block {
 }
 
 func TestSuggestTipCap(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testSuggestTipCap(t, vmCfg)
+		})
+	}
+}
+
+func testSuggestTipCap(t *testing.T, vmCfg vm.Config) {
 	config := Config{
 		Blocks:     3,
 		Percentile: 60,
@@ -262,7 +272,7 @@ func TestSuggestTipCap(t *testing.T) {
 		{big.NewInt(33), big.NewInt(params.GWei * int64(30))}, // Fork point in the future
 	}
 	for _, c := range cases {
-		backend := newTestBackend(t, c.fork, nil, false)
+		backend := newTestBackend(t, c.fork, nil, false, vm.Config{})
 		oracle := NewOracle(backend, config, big.NewInt(params.GWei))
 
 		// The gas price sampled is: 32G, 31G, 30G, 29G, 28G, 27G

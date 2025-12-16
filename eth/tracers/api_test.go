@@ -46,6 +46,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/internal/ethapi/override"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 )
@@ -67,7 +68,7 @@ type testBackend struct {
 
 // newTestBackend creates a new test backend. OBS: After test is done, teardown must be
 // invoked in order to release associated resources.
-func newTestBackend(t *testing.T, n int, gspec *core.Genesis, generator func(i int, b *core.BlockGen)) *testBackend {
+func newTestBackend(t *testing.T, n int, gspec *core.Genesis, generator func(i int, b *core.BlockGen), vmCfg vm.Config) *testBackend {
 	backend := &testBackend{
 		chainConfig: gspec.Config,
 		engine:      ethash.NewFaker(),
@@ -85,7 +86,7 @@ func newTestBackend(t *testing.T, n int, gspec *core.Genesis, generator func(i i
 		TriesInMemory:  128,
 		ArchiveMode:    true, // Archive mode
 	}
-	chain, err := core.NewBlockChain(backend.chaindb, gspec, backend.engine, options)
+	chain, err := core.NewBlockChain(backend.chaindb, gspec, backend.engine, options.WithVMConfig(vmCfg))
 	if err != nil {
 		t.Fatalf("failed to create tester chain: %v", err)
 	}
@@ -227,6 +228,14 @@ func newStateTracer(ctx *Context, cfg json.RawMessage, chainCfg *params.ChainCon
 }
 
 func TestStateHooks(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testStateHooks(t, vmCfg)
+		})
+	}
+}
+
+func testStateHooks(t *testing.T, vmCfg vm.Config) {
 	t.Parallel()
 
 	// Initialize test accounts
@@ -265,7 +274,7 @@ func TestStateHooks(t *testing.T) {
 				signer, key)
 			b.AddTx(tx)
 			nonce++
-		})
+		}, vmCfg)
 	)
 	defer backend.teardown()
 	DefaultDirectory.Register("stateTracer", newStateTracer, false)
@@ -282,6 +291,14 @@ func TestStateHooks(t *testing.T) {
 }
 
 func TestTraceCall(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testTraceCall(t, vmCfg)
+		})
+	}
+}
+
+func testTraceCall(t *testing.T, vmCfg vm.Config) {
 	t.Parallel()
 
 	// Initialize test accounts
@@ -337,7 +354,7 @@ func TestTraceCall(t *testing.T) {
 			b.AddTx(tx)
 			nonce++
 		}
-	})
+	}, vmCfg)
 
 	uintPtr := func(i int) *hexutil.Uint { x := hexutil.Uint(i); return &x }
 
@@ -514,6 +531,14 @@ func TestTraceCall(t *testing.T) {
 }
 
 func TestTraceTransaction(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testTraceTransaction(t, vmCfg)
+		})
+	}
+}
+
+func testTraceTransaction(t *testing.T, vmCfg vm.Config) {
 	t.Parallel()
 
 	// Initialize test accounts
@@ -541,7 +566,7 @@ func TestTraceTransaction(t *testing.T) {
 			signer, accounts[0].key)
 		b.AddTx(tx)
 		target = tx.Hash()
-	})
+	}, vmCfg)
 	defer backend.chain.Stop()
 	api := NewAPI(backend)
 	result, err := api.TraceTransaction(context.Background(), target, nil)
@@ -569,6 +594,14 @@ func TestTraceTransaction(t *testing.T) {
 }
 
 func TestTraceBlock(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testTraceBlock(t, vmCfg)
+		})
+	}
+}
+
+func testTraceBlock(t *testing.T, vmCfg vm.Config) {
 	t.Parallel()
 
 	// Initialize test accounts
@@ -598,7 +631,7 @@ func TestTraceBlock(t *testing.T) {
 			signer, accounts[0].key)
 		b.AddTx(tx)
 		txHash = tx.Hash()
-	})
+	}, vmCfg)
 	defer backend.chain.Stop()
 	api := NewAPI(backend)
 
@@ -659,6 +692,14 @@ func TestTraceBlock(t *testing.T) {
 }
 
 func TestTracingWithOverrides(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testTracingWithOverrides(t, vmCfg)
+		})
+	}
+}
+
+func testTracingWithOverrides(t *testing.T, vmCfg vm.Config) {
 	t.Parallel()
 	// Initialize test accounts
 	accounts := newAccounts(3)
@@ -695,7 +736,7 @@ func TestTracingWithOverrides(t *testing.T) {
 			Data:     nil}),
 			signer, accounts[0].key)
 		b.AddTx(tx)
-	})
+	}, vmCfg)
 	defer backend.chain.Stop()
 	api := NewAPI(backend)
 	randomAccounts := newAccounts(3)
@@ -1092,6 +1133,14 @@ func newStates(keys []common.Hash, vals []common.Hash) map[common.Hash]common.Ha
 }
 
 func TestTraceChain(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testTraceChain(t, vmCfg)
+		})
+	}
+}
+
+func testTraceChain(t *testing.T, vmCfg vm.Config) {
 	// Initialize test accounts
 	accounts := newAccounts(3)
 	genesis := &core.Genesis{
@@ -1119,7 +1168,7 @@ func TestTraceChain(t *testing.T) {
 			b.AddTx(tx)
 			nonce += 1
 		}
-	})
+	}, vmCfg)
 	backend.refHook = func() { ref.Add(1) }
 	backend.relHook = func() { rel.Add(1) }
 	api := NewAPI(backend)
@@ -1169,7 +1218,7 @@ func TestTraceChain(t *testing.T) {
 }
 
 // newTestMergedBackend creates a post-merge chain
-func newTestMergedBackend(t *testing.T, n int, gspec *core.Genesis, generator func(i int, b *core.BlockGen)) *testBackend {
+func newTestMergedBackend(t *testing.T, n int, gspec *core.Genesis, generator func(i int, b *core.BlockGen), vmCfg vm.Config) *testBackend {
 	backend := &testBackend{
 		chainConfig: gspec.Config,
 		engine:      beacon.NewFaker(),
@@ -1186,7 +1235,7 @@ func newTestMergedBackend(t *testing.T, n int, gspec *core.Genesis, generator fu
 		SnapshotLimit:  0,
 		ArchiveMode:    true, // Archive mode
 	}
-	chain, err := core.NewBlockChain(backend.chaindb, gspec, backend.engine, options)
+	chain, err := core.NewBlockChain(backend.chaindb, gspec, backend.engine, options.WithVMConfig(vmCfg))
 	if err != nil {
 		t.Fatalf("failed to create tester chain: %v", err)
 	}
@@ -1198,6 +1247,14 @@ func newTestMergedBackend(t *testing.T, n int, gspec *core.Genesis, generator fu
 }
 
 func TestTraceBlockWithBasefee(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testTraceBlockWithBasefee(t, vmCfg)
+		})
+	}
+}
+
+func testTraceBlockWithBasefee(t *testing.T, vmCfg vm.Config) {
 	t.Parallel()
 	accounts := newAccounts(1)
 	target := common.HexToAddress("0x1111111111111111111111111111111111111111")
@@ -1226,7 +1283,7 @@ func TestTraceBlockWithBasefee(t *testing.T) {
 		b.AddTx(tx)
 		txHash = tx.Hash()
 		baseFee.Set(b.BaseFee())
-	})
+	}, vmCfg)
 	defer backend.chain.Stop()
 	api := NewAPI(backend)
 
@@ -1256,6 +1313,14 @@ func TestTraceBlockWithBasefee(t *testing.T) {
 }
 
 func TestStandardTraceBlockToFile(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testStandardTraceBlockToFile(t, vmCfg)
+		})
+	}
+}
+
+func testStandardTraceBlockToFile(t *testing.T, vmCfg vm.Config) {
 	var (
 		// A sender who makes transactions, has some funds
 		key, _  = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
@@ -1312,7 +1377,7 @@ func TestStandardTraceBlockToFile(t *testing.T) {
 		}), types.HomesteadSigner{}, key)
 		b.AddTx(tx)
 		txHashs = append(txHashs, tx.Hash())
-	})
+	}, vmCfg)
 	defer backend.chain.Stop()
 
 	var testSuite = []struct {

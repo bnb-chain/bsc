@@ -37,6 +37,8 @@ import (
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/node"
+	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/triedb"
@@ -181,7 +183,7 @@ type testBlockParam struct {
 	txs     []testTransactionParam
 }
 
-func newTestBackend(config *node.Config) (*node.Node, []*types.Block, error) {
+func newTestBackend(config *node.Config, vmCfg vm.Config) (*node.Node, []*types.Block, error) {
 	// Generate test chain.
 	blocks := generateTestChain()
 
@@ -223,7 +225,7 @@ func generateTestChain() []*types.Block {
 	// Create a database pre-initialize with a genesis block
 	db := rawdb.NewMemoryDatabase()
 	genesis.MustCommit(db, triedb.NewDatabase(db, nil))
-	chain, _ := core.NewBlockChain(db, genesis, ethash.NewFaker(), nil)
+	chain, _ := core.NewBlockChain(db, genesis, ethash.NewFaker(), core.DefaultConfig())
 	generate := func(i int, block *core.BlockGen) {
 		block.OffsetTime(5)
 		block.SetExtra([]byte("test"))
@@ -271,7 +273,15 @@ func generateTestChain() []*types.Block {
 }
 
 func TestEthClient(t *testing.T) {
-	backend, chain, err := newTestBackend(nil)
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testEthClient(t, vmCfg)
+		})
+	}
+}
+
+func testEthClient(t *testing.T, vmCfg vm.Config) {
+	backend, chain, err := newTestBackend(nil, vmCfg)
 	if err != nil {
 		t.Fatal(err)
 	}

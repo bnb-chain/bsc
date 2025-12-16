@@ -27,11 +27,20 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/tests"
 )
 
 func BenchmarkTransactionTraceV2(b *testing.B) {
+	for _, vmCfg := range vmtest.Configs() {
+		b.Run(vmtest.Name(vmCfg), func(b *testing.B) {
+			benchmarkTransactionTraceV2(b, vmCfg)
+		})
+	}
+}
+
+func benchmarkTransactionTraceV2(b *testing.B, vmCfg vm.Config) {
 	key, _ := crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
 	from := crypto.PubkeyToAddress(key.PublicKey)
 	gas := uint64(1000000) // 1M gas
@@ -78,7 +87,7 @@ func BenchmarkTransactionTraceV2(b *testing.B) {
 	state := tests.MakePreState(rawdb.NewMemoryDatabase(), alloc, false, rawdb.HashScheme)
 	defer state.Close()
 
-	evm := vm.NewEVM(context, state.StateDB, params.AllEthashProtocolChanges, vm.Config{})
+	evm := vm.NewEVM(context, state.StateDB, params.AllEthashProtocolChanges, vmCfg)
 
 	msg, err := core.TransactionToMessage(tx, signer, context.BaseFee)
 	if err != nil {

@@ -19,6 +19,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/internal/vmtest"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/triedb"
 
@@ -26,6 +28,14 @@ import (
 )
 
 func TestPrefetchLeaking(t *testing.T) {
+	for _, vmCfg := range vmtest.Configs() {
+		t.Run(vmtest.Name(vmCfg), func(t *testing.T) {
+			testPrefetchLeaking(t, vmCfg)
+		})
+	}
+}
+
+func testPrefetchLeaking(t *testing.T, vmCfg vm.Config) {
 	ctx := t.Context()
 	var (
 		gendb   = rawdb.NewMemoryDatabase()
@@ -52,7 +62,7 @@ func TestPrefetchLeaking(t *testing.T) {
 	})
 	archiveDb := rawdb.NewMemoryDatabase()
 	gspec.MustCommit(archiveDb, triedb.NewDatabase(archiveDb, nil))
-	archive, _ := NewBlockChain(archiveDb, gspec, ethash.NewFaker(), nil)
+	archive, _ := NewBlockChain(archiveDb, gspec, ethash.NewFaker(), DefaultConfig().WithVMConfig(vmCfg))
 	defer archive.Stop()
 
 	block := blocks[0]

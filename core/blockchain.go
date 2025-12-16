@@ -263,6 +263,12 @@ func (cfg BlockChainConfig) WithNoAsyncFlush(on bool) *BlockChainConfig {
 	return &cfg
 }
 
+// WithVMConfig sets the vm.Config on the blockchain config.
+func (cfg BlockChainConfig) WithVMConfig(vmCfg vm.Config) *BlockChainConfig {
+	cfg.VmConfig = vmCfg
+	return &cfg
+}
+
 // triedbConfig derives the configures for trie database.
 func (cfg *BlockChainConfig) triedbConfig(isVerkle bool) *triedb.Config {
 	config := &triedb.Config{
