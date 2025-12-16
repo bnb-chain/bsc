@@ -95,6 +95,10 @@ func (j *journal) snapshot() {
 
 // revert reverts all state changes up to the last tracked revision.
 func (j *journal) revert(hooks *Hooks) {
+	// Guard against empty revisions (can happen with concurrent access)
+	if len(j.revisions) == 0 {
+		return
+	}
 	// Replay the journal entries above the last revision to undo changes,
 	// then remove the reverted changes from the journal.
 	rev := j.revisions[len(j.revisions)-1]
@@ -108,7 +112,10 @@ func (j *journal) revert(hooks *Hooks) {
 // popRevision removes an item from the revision stack. This basically forgets about
 // the last call to snapshot() and moves to the one prior.
 func (j *journal) popRevision() {
-	j.revisions = j.revisions[:len(j.revisions)-1]
+	// Guard against empty revisions (can happen with concurrent access)
+	if len(j.revisions) > 0 {
+		j.revisions = j.revisions[:len(j.revisions)-1]
+	}
 }
 
 // OnTxEnd resets the journal since each transaction has its own EVM call stack.

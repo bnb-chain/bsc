@@ -38,6 +38,9 @@ func (*dummyStatedb) GetState(_ common.Address, _ common.Hash) common.Hash { ret
 func (*dummyStatedb) SetState(_ common.Address, _ common.Hash, _ common.Hash) common.Hash {
 	return common.Hash{}
 }
+func (*dummyStatedb) GetStateAndCommittedState(_ common.Address, _ common.Hash) (common.Hash, common.Hash) {
+	return common.Hash{}, common.Hash{}
+}
 
 func TestStoreCapture(t *testing.T) {
 	var (

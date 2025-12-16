@@ -54,6 +54,9 @@ type stateObject struct {
 	origin   *types.StateAccount // Account original data without any change applied, nil means it was not existent
 	data     types.StateAccount  // Account data with all mutations applied in the scope of block
 
+	txPreBalance *uint256.Int // the account balance after the last call to finalise
+	txPreNonce   uint64       // the account nonce after the last call to finalise
+
 	// Write caches.
 	trie Trie   // storage trie, which becomes non-nil on first access
 	code []byte // contract bytecode, which gets set when code is loaded
@@ -76,6 +79,8 @@ type stateObject struct {
 	// Cache flags.
 	dirtyCode bool // true if the code was updated
 
+	nonFinalizedCode bool // true if the code was updated since the last call to finalise
+
 	// Flag whether the account was marked as self-destructed. The self-destructed
 	// account is still accessible in the scope of same transaction.
 	selfDestructed bool
@@ -85,6 +90,8 @@ type stateObject struct {
 	// the contract is just created within the current transaction, or when the
 	// object was previously existent and is being deployed as a contract within
 	// the current transaction.
+	//
+	// the flag is set upon beginning of contract initcode execution, not when the code is actually deployed to the address.
 	newContract bool
 }
 
@@ -99,17 +106,29 @@ func newObject(db *StateDB, address common.Address, acct *types.StateAccount) *s
 	if acct == nil {
 		acct = types.NewEmptyStateAccount()
 	}
+	if acct.Balance == nil {
+		acct.Balance = new(uint256.Int)
+	}
 	return &stateObject{
 		db:                 db,
 		address:            address,
 		addrHash:           crypto.Keccak256Hash(address[:]),
 		origin:             origin,
 		data:               *acct,
+		txPreBalance:       cloneBalance(acct.Balance),
+		txPreNonce:         acct.Nonce,
 		originStorage:      make(Storage),
 		dirtyStorage:       make(Storage),
 		pendingStorage:     make(Storage),
 		uncommittedStorage: make(Storage),
 	}
+}
+
+func cloneBalance(balance *uint256.Int) *uint256.Int {
+	if balance == nil {
+		return new(uint256.Int)
+	}
+	return balance.Clone()
 }
 
 func (s *stateObject) markSelfdestructed() {
@@ -266,7 +285,7 @@ func (s *stateObject) finalise() {
 			delete(s.uncommittedStorage, key)
 		} else if exist {
 			// The slot is modified to another value and the slot has been
-			// tracked for commit, do nothing here.
+			// tracked for commit in uncommittedStorage.
 		} else {
 			// The slot is different from its original value and hasn't been
 			// tracked for commit yet.
@@ -293,6 +312,11 @@ func (s *stateObject) finalise() {
 	// of the newly-created object as it's no longer eligible for self-destruct
 	// by EIP-6780. For non-newly-created objects, it's a no-op.
 	s.newContract = false
+
+	s.nonFinalizedCode = false
+
+	s.txPreBalance = cloneBalance(s.data.Balance)
+	s.txPreNonce = s.data.Nonce
 }
 
 // updateTrie is responsible for persisting cached storage changes into the
@@ -343,8 +367,10 @@ func (s *stateObject) updateTrie() (Trie, error) {
 	// into a shortnode. This requires `B` to be resolved from disk.
 	// Whereas if the created node is handled first, then the collapse is avoided, and `B` is not resolved.
 	var (
-		deletions []common.Hash
-		used      = make([]common.Hash, 0, len(s.uncommittedStorage))
+		deletions    []common.Hash
+		used         = make([]common.Hash, 0, len(s.uncommittedStorage))
+		updateKeys   [][]byte
+		updateValues [][]byte
 	)
 	for key, origin := range s.uncommittedStorage {
 		// Skip noop changes, persist actual changes
@@ -358,16 +384,20 @@ func (s *stateObject) updateTrie() (Trie, error) {
 			continue
 		}
 		if (value != common.Hash{}) {
-			if err := tr.UpdateStorage(s.address, key[:], common.TrimLeftZeroes(value[:])); err != nil {
-				s.db.setError(err)
-				return nil, err
-			}
+			updateKeys = append(updateKeys, key[:])
+			updateValues = append(updateValues, common.TrimLeftZeroes(value[:]))
 			s.db.StorageUpdated.Add(1)
 		} else {
 			deletions = append(deletions, key)
 		}
 		// Cache the items for preloading
 		used = append(used, key) // Copy needed for closure
+	}
+	if len(updateKeys) > 0 {
+		if err := tr.UpdateStorageBatch(s.address, updateKeys, updateValues); err != nil {
+			s.db.setError(err)
+			return nil, err
+		}
 	}
 	for _, key := range deletions {
 		if err := tr.DeleteStorage(s.address, key[:]); err != nil {
@@ -521,6 +551,8 @@ func (s *stateObject) deepCopy(db *StateDB) *stateObject {
 		dirtyCode:          s.dirtyCode,
 		selfDestructed:     s.selfDestructed,
 		newContract:        s.newContract,
+		txPreNonce:         s.txPreNonce,
+		txPreBalance:       cloneBalance(s.txPreBalance),
 	}
 	if s.trie != nil {
 		obj.trie = mustCopyTrie(s.trie)
@@ -579,15 +611,21 @@ func (s *stateObject) CodeSize() int {
 func (s *stateObject) SetCode(codeHash common.Hash, code []byte) (prev []byte) {
 	prev = slices.Clone(s.code)
 	s.db.journal.setCode(s.address, prev)
-	s.setCode(codeHash, code)
+	s.setCodeModified(codeHash, code)
 	return prev
 }
 
 func (s *stateObject) setCode(codeHash common.Hash, code []byte) {
 	s.code = code
 	s.data.CodeHash = codeHash[:]
+}
+
+// setCodeModified sets the code and hash and dirty markers.
+func (s *stateObject) setCodeModified(codeHash common.Hash, code []byte) {
+	s.setCode(codeHash, code)
 	s.dirtyCode = true
 	compiler.GenOrLoadOptimizedCode(codeHash, s.code)
+	s.nonFinalizedCode = true
 }
 
 func (s *stateObject) SetNonce(nonce uint64) {

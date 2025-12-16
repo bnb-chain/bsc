@@ -10,9 +10,10 @@ import (
 
 // Constants to match up protocol versions and messages
 const (
-	Bsc1 = 1
-	Bsc2 = 2
-	Bsc3 = 3 // to BAL process
+	Bsc1    = 1
+	Bsc2    = 2
+	Bsc3    = 3 // to BAL process
+	Bsc7928 = 4 // to EIP7928 process
 )
 
 // ProtocolName is the official short name of the `bsc` protocol used during
@@ -21,11 +22,11 @@ const ProtocolName = "bsc"
 
 // ProtocolVersions are the supported versions of the `bsc` protocol (first
 // is primary).
-var ProtocolVersions = []uint{Bsc1, Bsc2, Bsc3}
+var ProtocolVersions = []uint{Bsc1, Bsc2, Bsc3, Bsc7928}
 
 // protocolLengths are the number of implemented message corresponding to
 // different protocol versions.
-var protocolLengths = map[uint]uint64{Bsc1: 2, Bsc2: 4, Bsc3: 4}
+var protocolLengths = map[uint]uint64{Bsc1: 2, Bsc2: 4, Bsc3: 4, Bsc7928: 4}
 
 // maxMessageSize is the maximum cap on the size of a protocol message.
 const maxMessageSize = 10 * 1024 * 1024
@@ -82,23 +83,23 @@ func (*GetBlocksByRangePacket) Kind() byte   { return GetBlocksByRangeMsg }
 
 // BlockData contains types.extblock + sidecars
 type BlockData struct {
-	Header      *types.Header
-	Txs         []*types.Transaction
-	Uncles      []*types.Header
-	Withdrawals []*types.Withdrawal          `rlp:"optional"`
-	Sidecars    types.BlobSidecars           `rlp:"optional"`
-	BAL         *types.BlockAccessListEncode `rlp:"optional"`
+	Header          *types.Header
+	Txs             []*types.Transaction
+	Uncles          []*types.Header
+	Withdrawals     []*types.Withdrawal          `rlp:"optional"`
+	Sidecars        types.BlobSidecars           `rlp:"optional"`
+	BlockAccessList *types.BlockAccessListEncode `rlp:"optional"`
 }
 
 // NewBlockData creates a new BlockData object from a block
 func NewBlockData(block *types.Block) *BlockData {
 	return &BlockData{
-		Header:      block.Header(),
-		Txs:         block.Transactions(),
-		Uncles:      block.Uncles(),
-		Withdrawals: block.Withdrawals(),
-		Sidecars:    block.Sidecars(),
-		BAL:         block.BAL(),
+		Header:          block.Header(),
+		Txs:             block.Transactions(),
+		Uncles:          block.Uncles(),
+		Withdrawals:     block.Withdrawals(),
+		Sidecars:        block.Sidecars(),
+		BlockAccessList: block.AccessList(),
 	}
 }
 

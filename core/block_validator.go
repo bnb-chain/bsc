@@ -110,6 +110,7 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 					return errors.New("data blobs present in block body")
 				}
 			}
+
 			return nil
 		},
 		func() error {

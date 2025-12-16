@@ -17,10 +17,13 @@
 package eth
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/ethereum/go-ethereum/core/types/bal"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -191,7 +194,6 @@ func (api *DebugAPI) AccountRange(blockNrOrHash rpc.BlockNumberOrHash, start hex
 		OnlyWithAddresses: !incompletes,
 		Start:             start,
 		Max:               uint64(maxResults),
-		StateScheme:       stateDb.Database().TrieDB().Scheme(),
 	}
 	if maxResults > AccountRangeMaxResults || maxResults <= 0 {
 		opts.Max = AccountRangeMaxResults
@@ -445,4 +447,47 @@ func (api *DebugAPI) GetTrieFlushInterval() (string, error) {
 		return "", errors.New("trie flush interval is undefined for path-based scheme")
 	}
 	return api.eth.blockchain.GetTrieFlushInterval().String(), nil
+}
+
+// StateSize returns the current state size statistics from the state size tracker.
+// Returns an error if the state size tracker is not initialized or if stats are not ready.
+func (api *DebugAPI) StateSize(blockHashOrNumber *rpc.BlockNumberOrHash) (interface{}, error) {
+	// StateSizer functionality is not available in this version
+	return nil, errors.New("state size tracker is not available in this version")
+}
+
+func (api *DebugAPI) ExecutionWitness(bn rpc.BlockNumber) (interface{}, error) {
+	// ExecutionWitness functionality is not available in this version
+	return nil, errors.New("execution witness is not available in this version")
+}
+
+func (api *DebugAPI) ExecutionWitnessByHash(hash common.Hash) (interface{}, error) {
+	// ExecutionWitness functionality is not available in this version
+	return nil, errors.New("execution witness is not available in this version")
+}
+
+func (api *DebugAPI) GetBlockAccessList(number rpc.BlockNumberOrHash) (*bal.BlockAccessList, error) {
+	var block *types.Block
+	if num := number.BlockNumber; num != nil {
+		block = api.eth.blockchain.GetBlockByNumber(uint64(num.Int64()))
+	} else if hash := number.BlockHash; hash != nil {
+		block = api.eth.blockchain.GetBlockByHash(*hash)
+	}
+
+	if block == nil {
+		return nil, fmt.Errorf("block not found")
+	}
+	return block.AccessList().AccessList, nil
+}
+
+func (api *DebugAPI) GetEncodedBlockAccessList(number rpc.BlockNumberOrHash) ([]byte, error) {
+	bal, err := api.GetBlockAccessList(number)
+	if err != nil {
+		return nil, err
+	}
+	var enc bytes.Buffer
+	if err = bal.EncodeRLP(&enc); err != nil {
+		return nil, err
+	}
+	return enc.Bytes(), nil
 }

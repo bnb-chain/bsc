@@ -28,6 +28,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/metrics"
 
+	"github.com/ethereum/go-ethereum/core/types/bal"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
@@ -128,6 +130,14 @@ type StateDB struct {
 	// The tx context and all occurred logs in the scope of transaction.
 	thash   common.Hash
 	txIndex int
+	sender  common.Address
+
+	// block access list modifications will be recorded with this index.
+	// 0 - state access before transaction execution
+	// 1 -> len(block txs) - state access of each transaction
+	// len(block txs) + 1 - state access after transaction execution.
+	balIndex int
+
 	logs    map[common.Hash][]*types.Log
 	logSize uint
 
@@ -138,9 +148,6 @@ type StateDB struct {
 	accessList   *accessList
 	accessEvents *AccessEvents
 
-	// block level access list
-	blockAccessList *types.BlockAccessListRecord
-
 	// Transient storage
 	transientStorage transientStorage
 
@@ -150,6 +157,10 @@ type StateDB struct {
 
 	// State witness if cross validation is needed
 	witness *stateless.Witness // TODO(Nathan): more define the relation with `noTrie`
+
+	stateAccesses bal.StateAccesses // accounts/storage accessed during transaction execution
+
+	blockAccessList *BALReader
 
 	// Measurements gathered during execution for debugging purposes
 	AccountReads    time.Duration
@@ -168,6 +179,10 @@ type StateDB struct {
 	StorageLoaded  int          // Number of storage slots retrieved from the database during the state transition
 	StorageUpdated atomic.Int64 // Number of storage slots updated during the state transition
 	StorageDeleted atomic.Int64 // Number of storage slots deleted during the state transition
+}
+
+func (s *StateDB) BlockAccessList() *BALReader {
+	return s.blockAccessList
 }
 
 // New creates a new state from a given trie.
@@ -193,20 +208,13 @@ func NewWithReader(root common.Hash, db Database, reader Reader) (*StateDB, erro
 		preimages:            make(map[common.Hash][]byte),
 		journal:              newJournal(),
 		accessList:           newAccessList(),
-		blockAccessList:      nil,
 		transientStorage:     newTransientStorage(),
+		stateAccesses:        make(bal.StateAccesses),
 	}
 	if db.TrieDB().IsVerkle() {
 		sdb.accessEvents = NewAccessEvents(db.PointCache())
 	}
 	return sdb, nil
-}
-
-func (s *StateDB) InitBlockAccessList() {
-	if s.blockAccessList != nil {
-		log.Warn("prepareBAL blockAccessList is not nil")
-	}
-	s.blockAccessList = &types.BlockAccessListRecord{Accounts: make(map[common.Address]types.AccountAccessListRecord)}
 }
 
 func (s *StateDB) SetNeedBadSharedStorage(needBadSharedStorage bool) {
@@ -344,6 +352,38 @@ func (s *StateDB) AddRefund(gas uint64) {
 	s.refund += gas
 }
 
+func (s *StateDB) SetBlockAccessList(al *BALReader) {
+	s.blockAccessList = al
+}
+
+// LoadModifiedPrestate instantiates the live object based on accounts
+// which appeared in the total state diff of a block, and were also preexisting.
+func (s *StateDB) LoadModifiedPrestate(addrs []common.Address) (res map[common.Address]*types.StateAccount) {
+	stateAccounts := new(sync.Map)
+	wg := new(sync.WaitGroup)
+	res = make(map[common.Address]*types.StateAccount)
+
+	for _, addr := range addrs {
+		wg.Add(1)
+		go func(addr common.Address) {
+			acct, err := s.reader.Account(addr)
+			if err == nil && acct != nil { // TODO: what should we do if the error is not nil?
+				stateAccounts.Store(addr, acct)
+			}
+			wg.Done()
+		}(addr)
+	}
+	wg.Wait()
+	stateAccounts.Range(func(addr any, val any) bool {
+		address := addr.(common.Address)
+		stateAccount := val.(*types.StateAccount)
+		res[address] = stateAccount
+		return true
+	})
+
+	return res
+}
+
 // SubRefund removes gas from the refund counter.
 // This method will panic if the refund counter goes below zero
 func (s *StateDB) SubRefund(gas uint64) {
@@ -384,43 +424,6 @@ func (s *StateDB) GetNonce(addr common.Address) uint64 {
 	}
 
 	return 0
-}
-
-func (s *StateDB) PreloadAccount(addr common.Address) {
-	if s.Empty(addr) {
-		return
-	}
-	s.GetCode(addr)
-}
-
-func (s *StateDB) PreloadStorage(addr common.Address, key common.Hash) {
-	if s.Empty(addr) {
-		return
-	}
-	s.GetState(addr, key)
-}
-func (s *StateDB) PreloadAccountTrie(addr common.Address) {
-	if s.prefetcher == nil {
-		return
-	}
-
-	addressesToPrefetch := []common.Address{addr}
-	if err := s.prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, addressesToPrefetch, nil, false); err != nil {
-		log.Error("Failed to prefetch addresses", "addresses", len(addressesToPrefetch), "err", err)
-	}
-}
-
-func (s *StateDB) PreloadStorageTrie(addr common.Address, key common.Hash) {
-	if s.prefetcher == nil {
-		return
-	}
-	obj := s.getStateObject(addr)
-	if obj == nil {
-		return
-	}
-	if err := s.prefetcher.prefetch(obj.addrHash, obj.origin.Root, obj.address, nil, []common.Hash{key}, true); err != nil {
-		log.Error("Failed to prefetch storage slot", "addr", obj.address, "key", key, "err", err)
-	}
 }
 
 // GetStorageRoot retrieves the storage root from the given address or empty
@@ -472,7 +475,6 @@ func (s *StateDB) GetCodeHash(addr common.Address) common.Hash {
 func (s *StateDB) GetState(addr common.Address, hash common.Hash) common.Hash {
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
-		s.blockAccessList.AddStorage(addr, hash, uint32(s.txIndex), false)
 		return stateObject.GetState(hash)
 	}
 	return common.Hash{}
@@ -486,6 +488,15 @@ func (s *StateDB) GetCommittedState(addr common.Address, hash common.Hash) commo
 		return stateObject.GetCommittedState(hash)
 	}
 	return common.Hash{}
+}
+
+// GetStateAndCommittedState returns the current value and the original value.
+func (s *StateDB) GetStateAndCommittedState(addr common.Address, hash common.Hash) (common.Hash, common.Hash) {
+	stateObject := s.getStateObject(addr)
+	if stateObject != nil {
+		return stateObject.getState(hash)
+	}
+	return common.Hash{}, common.Hash{}
 }
 
 // Database retrieves the low level database supporting the lower level trie ops.
@@ -546,7 +557,7 @@ func (s *StateDB) SetNonce(addr common.Address, nonce uint64, reason tracing.Non
 	}
 }
 
-func (s *StateDB) SetCode(addr common.Address, code []byte) (prev []byte) {
+func (s *StateDB) SetCode(addr common.Address, code []byte, reason tracing.CodeChangeReason) (prev []byte) {
 	stateObject := s.getOrNewStateObject(addr)
 	if stateObject != nil {
 		return stateObject.SetCode(crypto.Keccak256Hash(code), code)
@@ -555,7 +566,6 @@ func (s *StateDB) SetCode(addr common.Address, code []byte) (prev []byte) {
 }
 
 func (s *StateDB) SetState(addr common.Address, key, value common.Hash) common.Hash {
-	s.blockAccessList.AddStorage(addr, key, uint32(s.txIndex), true)
 	if stateObject := s.getOrNewStateObject(addr); stateObject != nil {
 		return stateObject.SetState(key, value)
 	}
@@ -651,11 +661,11 @@ func (s *StateDB) GetTransientState(addr common.Address, key common.Hash) common
 	return s.transientStorage.Get(addr, key)
 }
 
-//
 // Setting, updating & deleting state object methods.
 //
-
 // updateStateObject writes the given object to the trie.
+//
+//nolint:unused
 func (s *StateDB) updateStateObject(obj *stateObject) {
 	if s.db.NoTries() {
 		return
@@ -667,6 +677,30 @@ func (s *StateDB) updateStateObject(obj *stateObject) {
 	}
 	if obj.dirtyCode {
 		s.trie.UpdateContractCode(obj.Address(), common.BytesToHash(obj.CodeHash()), obj.code)
+	}
+}
+func (s *StateDB) updateStateObjects(objs []*stateObject) {
+	if s.db.NoTries() {
+		return
+	}
+	var addrs []common.Address
+	var accts []*types.StateAccount
+	var codeLens []int
+
+	for _, obj := range objs {
+		addrs = append(addrs, obj.Address())
+		accts = append(accts, &obj.data)
+		codeLens = append(codeLens, len(obj.code))
+	}
+
+	if err := s.trie.UpdateAccountBatch(addrs, accts, codeLens); err != nil {
+		s.setError(fmt.Errorf("updateStateObjects error: %v", err))
+	}
+
+	for _, obj := range objs {
+		if obj.dirtyCode {
+			s.trie.UpdateContractCode(obj.Address(), common.BytesToHash(obj.CodeHash()), obj.code)
+		}
 	}
 }
 
@@ -685,7 +719,6 @@ func (s *StateDB) deleteStateObject(addr common.Address) {
 // getStateObject retrieves a state object given by the address, returning nil if
 // the object is not found or was deleted in this execution context.
 func (s *StateDB) getStateObject(addr common.Address) *stateObject {
-	s.blockAccessList.AddAccount(addr, uint32(s.txIndex))
 	// Prefer live objects if any is available
 	if obj := s.stateObjects[addr]; obj != nil {
 		return obj
@@ -694,6 +727,24 @@ func (s *StateDB) getStateObject(addr common.Address) *stateObject {
 	if _, ok := s.stateObjectsDestruct[addr]; ok {
 		return nil
 	}
+
+	// if we are executing against a block access list, construct the account
+	// state at the current tx index by applying the access-list diff on top
+	// of the prestate value for the account.
+	if s.blockAccessList != nil && s.balIndex != 0 && s.blockAccessList.isModified(addr) {
+		acct := s.blockAccessList.readAccount(s, addr, s.balIndex-1)
+		if acct != nil {
+			s.setStateObject(acct)
+			return acct
+		}
+		return nil
+
+		// if the acct was nil, it might be non-existent or was not explicitly requested for loading from the blockAcccessList object.
+		// try to load it from the snapshot.
+
+		// TODO: if the acct was non-existent because it was deleted, we should just return nil herre.
+	}
+
 	s.AccountLoaded++
 
 	start := time.Now()
@@ -732,6 +783,7 @@ func (s *StateDB) getOrNewStateObject(addr common.Address) *stateObject {
 	if obj == nil {
 		obj = s.createObject(addr)
 	}
+
 	return obj
 }
 
@@ -798,14 +850,6 @@ func (s *StateDB) CopyDoPrefetch() *StateDB {
 	return s.copyInternal(true)
 }
 
-func (s *StateDB) TransferBlockAccessList(prev *StateDB) {
-	if prev == nil {
-		return
-	}
-	s.blockAccessList = prev.blockAccessList
-	prev.blockAccessList = nil
-}
-
 // If doPrefetch is true, it tries to reuse the prefetcher, the copied StateDB will do active trie prefetch.
 // otherwise, just do inactive copy trie prefetcher.
 func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
@@ -823,9 +867,13 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 		refund:               s.refund,
 		thash:                s.thash,
 		txIndex:              s.txIndex,
+		balIndex:             s.balIndex,
 		logs:                 make(map[common.Hash][]*types.Log, len(s.logs)),
 		logSize:              s.logSize,
 		preimages:            maps.Clone(s.preimages),
+
+		stateAccesses:   make(bal.StateAccesses), // Don't deep copy state accesses
+		blockAccessList: s.blockAccessList,
 
 		// Do we need to copy the access list and transient storage?
 		// In practice: No. At the start of a transaction, these two lists are empty.
@@ -834,7 +882,6 @@ func (s *StateDB) copyInternal(doPrefetch bool) *StateDB {
 		// empty lists, so we do it anyway to not blow up if we ever decide copy them
 		// in the middle of a transaction.
 		accessList:       s.accessList.Copy(),
-		blockAccessList:  nil,
 		transientStorage: s.transientStorage.Copy(),
 		journal:          s.journal.copy(),
 	}
@@ -897,6 +944,9 @@ func (s *StateDB) GetRefund() uint64 {
 // Finalise finalises the state by removing the destructed objects and clears
 // the journal as well as the refunds. Finalise, however, will not push any updates
 // into the tries just yet. Only IntermediateRoot or Commit will do that.
+//
+// If EnableStateDiffRecording has been called, it returns a state diff containing
+// the state which was mutated since the previous invocation of Finalise. Otherwise, nil.
 func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 	addressesToPrefetch := make([]common.Address, 0, len(s.journal.dirties))
 	for addr := range s.journal.dirties {
@@ -921,9 +971,9 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 			}
 		} else {
 			obj.finalise()
+
 			s.markUpdate(addr)
-		}
-		// At this point, also ship the address off to the precacher. The precacher
+		} // At this point, also ship the address off to the precacher. The precacher
 		// will start loading tries, and when the change is eventually committed,
 		// the commit-phase will be a lot faster
 		addressesToPrefetch = append(addressesToPrefetch, addr) // Copy needed for closure
@@ -933,6 +983,7 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 			log.Error("Failed to prefetch addresses", "addresses", len(addressesToPrefetch), "err", err)
 		}
 	}
+
 	// Invalidate journal because reverting across transactions is not allowed.
 	s.clearJournalAndRefund()
 }
@@ -1070,6 +1121,7 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	var (
 		usedAddrs    []common.Address
 		deletedAddrs []common.Address
+		updatedObjs  []*stateObject
 	)
 	for addr, op := range s.mutations {
 		if op.applied {
@@ -1080,10 +1132,13 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 		if op.isDelete() {
 			deletedAddrs = append(deletedAddrs, addr)
 		} else {
-			s.updateStateObject(s.stateObjects[addr])
+			updatedObjs = append(updatedObjs, s.stateObjects[addr])
 			s.AccountUpdated += 1
 		}
 		usedAddrs = append(usedAddrs, addr) // Copy needed for closure
+	}
+	if len(updatedObjs) > 0 {
+		s.updateStateObjects(updatedObjs)
 	}
 	for _, deletedAddr := range deletedAddrs {
 		s.deleteStateObject(deletedAddr)
@@ -1103,7 +1158,20 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	}
 
 	hash := s.trie.Hash()
-
+	/*
+		it, err := s.trie.NodeIterator([]byte{})
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("state trie")
+		for it.Next(true) {
+			if it.Leaf() {
+				 fmt.Printf("%x: %x\n", it.Path(), it.LeafBlob())
+			} else {
+				 fmt.Printf("%x: %x\n", it.Path(), it.Hash())
+			}
+		}
+	*/
 	// If witness building is enabled, gather the account trie witness
 	if s.witness != nil {
 		s.witness.AddState(s.trie.Witness())
@@ -1122,6 +1190,19 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 func (s *StateDB) SetTxContext(thash common.Hash, ti int) {
 	s.thash = thash
 	s.txIndex = ti
+	s.balIndex = ti + 1
+}
+
+// SetAccessListIndex sets the current index that state mutations will
+// be reported as in the BAL.  It is only relevant if this StateDB instance
+// is being used in the BAL construction path.
+func (s *StateDB) SetAccessListIndex(idx int) {
+	s.balIndex = idx
+}
+
+// SetTxSender sets the sender of the currently-executing transaction.
+func (s *StateDB) SetTxSender(sender common.Address) {
+	s.sender = sender
 }
 
 // StateDB.Prepare is not called before processing a system transaction, call ClearAccessList instead.
@@ -1317,6 +1398,7 @@ func (s *StateDB) commit(deleteEmptyObjects bool, noStorageWiping bool) (*stateU
 		s.StopPrefetcher()
 		return nil, fmt.Errorf("commit aborted due to earlier error: %v", s.dbErr)
 	}
+
 	// Finalize any pending changes and merge everything into the tries
 	s.IntermediateRoot(deleteEmptyObjects)
 
@@ -1687,52 +1769,7 @@ func (s *StateDB) AccessEvents() *AccessEvents {
 	return s.accessEvents
 }
 
-func (s *StateDB) DumpAccessList(block *types.Block) {
-	if s.blockAccessList == nil {
-		return
-	}
-	accountCount := 0
-	storageCount := 0
-	dirtyStorageCount := 0
-	for addr, account := range s.blockAccessList.Accounts {
-		accountCount++
-		log.Debug("  DumpAccessList Address", "address", addr.Hex(), "txIndex", account.TxIndex)
-		for _, storageItem := range account.StorageItems {
-			log.Debug("  DumpAccessList Storage Item", "key", storageItem.Key.Hex(), "txIndex", storageItem.TxIndex, "dirty", storageItem.Dirty)
-			storageCount++
-			if storageItem.Dirty {
-				dirtyStorageCount++
-			}
-		}
-	}
-	log.Info("DumpAccessList", "blockNumber", block.NumberU64(), "GasUsed", block.GasUsed(),
-		"accountCount", accountCount, "storageCount", storageCount, "dirtyStorageCount", dirtyStorageCount)
-}
-
-// GetEncodedBlockAccessList: convert BlockAccessListRecord to BlockAccessListEncode
-func (s *StateDB) GetEncodedBlockAccessList(block *types.Block) *types.BlockAccessListEncode {
-	if s.blockAccessList == nil {
-		return nil
-	}
-	// encode block access list to rlp to propagate with the block
-	blockAccessList := types.BlockAccessListEncode{
-		Version:  0,
-		Number:   block.NumberU64(),
-		Hash:     block.Hash(),
-		SignData: make([]byte, 65),
-		Accounts: make([]types.AccountAccessListEncode, 0),
-	}
-	for addr, account := range s.blockAccessList.Accounts {
-		accountAccessList := types.AccountAccessListEncode{
-			TxIndex:      account.TxIndex,
-			Address:      addr,
-			StorageItems: make([]types.StorageAccessItem, 0),
-		}
-		for _, storageItem := range account.StorageItems {
-			accountAccessList.StorageItems = append(accountAccessList.StorageItems, storageItem)
-		}
-		blockAccessList.Accounts = append(blockAccessList.Accounts, accountAccessList)
-	}
-
-	return &blockAccessList
+func (s *StateDB) IsAddressInMutations(addr common.Address) bool {
+	_, ok := s.mutations[addr]
+	return ok
 }
