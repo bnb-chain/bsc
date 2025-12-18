@@ -1202,7 +1202,13 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 	if config != nil {
 		traceConfig = &config.TraceConfig
 	}
-	return api.traceTx(ctx, tx, msg, new(Context), blockContext, statedb, traceConfig, false, precompiles)
+	// Assemble the structured logger context
+	txctx := &Context{
+		BlockHash:   h.Hash(),
+		BlockNumber: h.Number,
+		TxHash:      tx.Hash(),
+	}
+	return api.traceTx(ctx, tx, msg, txctx, blockContext, statedb, traceConfig, false, precompiles)
 }
 
 // TraceRawCall lets callers supply an RLP-encoded transaction and traces it
