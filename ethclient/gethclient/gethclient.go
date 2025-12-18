@@ -44,6 +44,14 @@ type Client struct {
 	c *rpc.Client
 }
 
+// PendingTxFirstSeenResult is returned by debug_pendingTxFirstSeen debug RPC.
+type PendingTxFirstSeenResult struct {
+	TxHash      common.Hash `json:"txHash"`
+	FirstSeen   int64       `json:"firstSeen"`
+	PeerID      string      `json:"peerId,omitempty"`
+	PeerAddress string      `json:"peerAddress,omitempty"`
+}
+
 // New creates a client that uses the given RPC client.
 func New(c *rpc.Client) *Client {
 	return &Client{c}
@@ -206,6 +214,15 @@ func (ec *Client) GetNodeInfo(ctx context.Context) (*p2p.NodeInfo, error) {
 	return &result, err
 }
 
+// PendingTxFirstSeen returns the first-seen time and peer info for a pending transaction.
+func (ec *Client) PendingTxFirstSeen(ctx context.Context, hash common.Hash) (*PendingTxFirstSeenResult, error) {
+	var result PendingTxFirstSeenResult
+	if err := ec.c.CallContext(ctx, &result, "debug_pendingTxFirstSeen", hash); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // SubscribeFullPendingTransactions subscribes to new pending transactions.
 func (ec *Client) SubscribeFullPendingTransactions(ctx context.Context, ch chan<- *types.Transaction) (*rpc.ClientSubscription, error) {
 	return ec.c.EthSubscribe(ctx, ch, "newPendingTransactions", true)
@@ -222,6 +239,22 @@ func (ec *Client) TraceTransaction(ctx context.Context, hash common.Hash, config
 	var result any
 	err := ec.c.CallContext(ctx, &result, "debug_traceTransaction", hash.Hex(), config)
 	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// TraceTransactionSequence executes a slice of signed transactions sequentially on the same
+// base state and returns the trace result for each transaction.
+func (ec *Client) TraceTransactionSequence(ctx context.Context, blockNrOrHash *rpc.BlockNumberOrHash, txs []hexutil.Bytes, config *tracers.TraceConfig) ([]any, error) {
+	var (
+		result []any
+		block  interface{}
+	)
+	if blockNrOrHash != nil {
+		block = blockNrOrHash
+	}
+	if err := ec.c.CallContext(ctx, &result, "debug_traceTransactionSequence", block, txs, config); err != nil {
 		return nil, err
 	}
 	return result, nil

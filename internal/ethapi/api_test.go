@@ -637,6 +637,9 @@ func (b testBackend) TxPoolContent() (map[common.Address][]*types.Transaction, m
 func (b testBackend) TxPoolContentFrom(addr common.Address) ([]*types.Transaction, []*types.Transaction) {
 	panic("implement me")
 }
+func (b testBackend) GetPendingTxFirstSeen(hash common.Hash) (int64, string, string, bool) {
+	return 0, "", "", false
+}
 func (b testBackend) SubscribeNewTxsEvent(events chan<- core.NewTxsEvent) event.Subscription {
 	panic("implement me")
 }
@@ -651,6 +654,12 @@ func (b testBackend) SubscribeRemovedLogsEvent(ch chan<- core.RemovedLogsEvent) 
 }
 func (b testBackend) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscription {
 	panic("implement me")
+}
+func (b testBackend) SubscribePendingLogsEvent(ch chan<- []*types.Log) event.Subscription {
+	panic("implement me")
+}
+func (b testBackend) SimulateTransaction(context.Context, *types.Transaction) (*types.Receipt, error) {
+	return nil, nil
 }
 
 func (b *testBackend) MevRunning() bool                       { return false }

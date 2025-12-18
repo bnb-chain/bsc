@@ -101,6 +101,17 @@ func newPeerSet() *peerSet {
 	}
 }
 
+func (ps *peerSet) list() []*ethPeer {
+	ps.lock.RLock()
+	defer ps.lock.RUnlock()
+
+	result := make([]*ethPeer, 0, len(ps.peers))
+	for _, peer := range ps.peers {
+		result = append(result, peer)
+	}
+	return result
+}
+
 // registerSnapExtension unblocks an already connected `eth` peer waiting for its
 // `snap` extension, or if no such peer exists, tracks the extension for the time
 // being until the `eth` main protocol starts looking for it.

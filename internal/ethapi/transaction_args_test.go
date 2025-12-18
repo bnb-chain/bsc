@@ -404,6 +404,9 @@ func (b *backendMock) GetPoolTransaction(txHash common.Hash) *types.Transaction 
 func (b *backendMock) GetPoolNonce(ctx context.Context, addr common.Address) (uint64, error) {
 	return 0, nil
 }
+func (b *backendMock) GetPendingTxFirstSeen(hash common.Hash) (int64, string, string, bool) {
+	return 0, "", "", false
+}
 func (b *backendMock) Stats() (pending int, queued int) { return 0, 0 }
 func (b *backendMock) TxPoolContent() (map[common.Address][]*types.Transaction, map[common.Address][]*types.Transaction) {
 	return nil, nil
@@ -415,6 +418,9 @@ func (b *backendMock) SubscribeNewTxsEvent(chan<- core.NewTxsEvent) event.Subscr
 func (b *backendMock) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscription    { return nil }
 func (b *backendMock) SubscribeRemovedLogsEvent(ch chan<- core.RemovedLogsEvent) event.Subscription {
 	return nil
+}
+func (b *backendMock) SimulateTransaction(context.Context, *types.Transaction) (*types.Receipt, error) {
+	return nil, nil
 }
 
 func (b *backendMock) Engine() consensus.Engine { return nil }

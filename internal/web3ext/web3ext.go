@@ -199,6 +199,11 @@ web3._extend({
 			params: 1
 		}),
 		new web3._extend.Method({
+			name: 'pendingTxFirstSeen',
+			call: 'debug_pendingTxFirstSeen',
+			params: 1
+		}),
+		new web3._extend.Method({
 			name: 'setHead',
 			call: 'debug_setHead',
 			params: 1
@@ -385,8 +390,20 @@ web3._extend({
 			inputFormatter: [null, null]
 		}),
 		new web3._extend.Method({
+			name: 'traceTransactionSequence',
+			call: 'debug_traceTransactionSequence',
+			params: 3,
+			inputFormatter: [null, null, null]
+		}),
+		new web3._extend.Method({
 			name: 'traceCall',
 			call: 'debug_traceCall',
+			params: 3,
+			inputFormatter: [null, null, null]
+		}),
+		new web3._extend.Method({
+			name: 'traceRawCall',
+			call: 'debug_traceRawCall',
 			params: 3,
 			inputFormatter: [null, null, null]
 		}),
