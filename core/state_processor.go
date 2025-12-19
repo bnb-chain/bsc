@@ -148,6 +148,9 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		}
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)
+		if block.NumberU64() == 72103125 {
+			log.Error("Debug tx", "transaction Index", i, "txHash", receipt.TxHash, "gasUsed", receipt.GasUsed)
+		}
 	}
 	bloomProcessors.Close()
 
@@ -182,6 +185,9 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		allLogs = append(allLogs, receipt.Logs...)
 	}
 	statedb.DumpAccessList(block)
+	if block.NumberU64() == 72103125 {
+		panic("Block 72103125 processed, stopping for debug")
+	}
 	return &ProcessResult{
 		Receipts: receipts,
 		Requests: requests,
