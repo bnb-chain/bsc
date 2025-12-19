@@ -564,6 +564,11 @@ var (
 		Value:    ethconfig.Defaults.TxPool.ReannounceTime,
 		Category: flags.TxPoolCategory,
 	}
+	MinerTxGasLimitFlag = &cli.Uint64Flag{
+		Name:     "miner.txgaslimit",
+		Usage:    fmt.Sprintf("Maximum gas allowed per transaction (default = 0, disabled; min = %d)", params.MinTxGasLimitCap),
+		Category: flags.MinerCategory,
+	}
 	// Blob transaction pool settings
 	BlobPoolDataDirFlag = &cli.StringFlag{
 		Name:     "blobpool.datadir",
@@ -1989,6 +1994,13 @@ func setMiner(ctx *cli.Context, cfg *minerconfig.Config) {
 	}
 	if ctx.Bool(DisableVoteAttestationFlag.Name) {
 		cfg.DisableVoteAttestation = true
+	}
+	if ctx.IsSet(MinerTxGasLimitFlag.Name) {
+		limit := ctx.Uint64(MinerTxGasLimitFlag.Name)
+		if limit != 0 && limit < params.MinTxGasLimitCap {
+			Fatalf("Invalid --miner.txgaslimit: %d (must be >= %d or 0)", limit, params.MinTxGasLimitCap)
+		}
+		cfg.TxGasLimit = limit
 	}
 }
 

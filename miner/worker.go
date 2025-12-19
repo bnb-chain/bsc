@@ -301,6 +301,12 @@ func (w *worker) getGasCeil() uint64 {
 	return w.config.GasCeil
 }
 
+func (w *worker) getTxGasLimit() uint64 {
+	w.confMu.RLock()
+	defer w.confMu.RUnlock()
+	return w.config.TxGasLimit
+}
+
 // setExtra sets the content used to initialize the block extra field.
 func (w *worker) setExtra(extra []byte) {
 	w.confMu.Lock()
@@ -1040,6 +1046,10 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 	}
 	if env.header.ExcessBlobGas != nil {
 		filter.BlobFee = uint256.MustFromBig(eip4844.CalcBlobFee(w.chainConfig, env.header))
+	}
+
+	if cap := w.getTxGasLimit(); cap > 0 {
+		filter.GasLimitCap = cap
 	}
 
 	filter.OnlyPlainTxs, filter.OnlyBlobTxs = true, false

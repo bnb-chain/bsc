@@ -93,6 +93,7 @@ type bidSimulator struct {
 	config        *minerconfig.MevConfig
 	delayLeftOver time.Duration
 	minGasPrice   *big.Int
+	txMaxGas      uint64
 	chain         *core.BlockChain
 	txpool        *txpool.TxPool
 	chainConfig   *params.ChainConfig
@@ -135,6 +136,7 @@ func newBidSimulator(
 	config *minerconfig.MevConfig,
 	delayLeftOver *time.Duration,
 	minGasPrice *big.Int,
+	txMaxGas uint64,
 	eth Backend,
 	chainConfig *params.ChainConfig,
 	engine consensus.Engine,
@@ -143,6 +145,7 @@ func newBidSimulator(
 	b := &bidSimulator{
 		config:        config,
 		minGasPrice:   minGasPrice,
+		txMaxGas:      txMaxGas,
 		chain:         eth.BlockChain(),
 		txpool:        eth.TxPool(),
 		chainConfig:   chainConfig,
@@ -430,6 +433,13 @@ func (b *bidSimulator) newBidLoop() {
 				continue
 			}
 
+			if errCap := b.checkIfBidExceedsTxGasLimit(newBid.bid); errCap != nil {
+				if newBid.feedback != nil {
+					newBid.feedback <- errCap
+				}
+				continue
+			}
+
 			var replyErr error
 			toCommit := true
 			bidAcceptted := true
@@ -518,6 +528,28 @@ func (b *bidSimulator) getBlockInterval(parentHeader *types.Header) uint64 {
 		log.Debug("failed to get BlockInterval when bidBetterBefore")
 	}
 	return blockInterval
+}
+
+// checkIfBidExceedsTxGasLimit checks whether any transaction in the bid exceeds the max txn gas.
+func (b *bidSimulator) checkIfBidExceedsTxGasLimit(bid *types.Bid) error {
+	if b.txMaxGas < params.MinTxGasLimitCap {
+		return nil
+	}
+	// Scan all txs in the bid to check if any transaction exceeds txGasLimit.
+	for _, tx := range bid.Txs {
+		if tx.Gas() > b.txMaxGas {
+			log.Debug("discard bid due to per-tx gas limit",
+				"block", bid.BlockNumber,
+				"bidHash", bid.Hash().TerminalString(),
+				"txHash", tx.Hash().TerminalString(),
+				"txGas", tx.Gas(),
+				"txGasLimit", b.txMaxGas,
+			)
+
+			return fmt.Errorf("bid rejected: %w (cap: %d, tx: %d)", core.ErrGasLimitTooHigh, b.txMaxGas, tx.Gas())
+		}
+	}
+	return nil
 }
 
 func (b *bidSimulator) bidBetterBefore(parentHash common.Hash) time.Time {

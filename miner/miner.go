@@ -70,7 +70,7 @@ func New(eth Backend, config *minerconfig.Config, mux *event.TypeMux, engine con
 		worker:  newWorker(config, engine, eth, mux),
 	}
 
-	miner.bidSimulator = newBidSimulator(&config.Mev, config.DelayLeftOver, config.GasPrice, eth, eth.BlockChain().Config(), engine, miner.worker)
+	miner.bidSimulator = newBidSimulator(&config.Mev, config.DelayLeftOver, config.GasPrice, config.TxGasLimit, eth, eth.BlockChain().Config(), engine, miner.worker)
 	miner.worker.setBestBidFetcher(miner.bidSimulator)
 
 	miner.wg.Add(1)
@@ -234,4 +234,8 @@ func (miner *Miner) BuildPayload(args *BuildPayloadArgs, witness bool) (*Payload
 
 func (miner *Miner) GasCeil() uint64 {
 	return miner.worker.getGasCeil()
+}
+
+func (miner *Miner) TxGasLimit() uint64 {
+	return miner.worker.getTxGasLimit()
 }
