@@ -333,7 +333,7 @@ func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header
 					// Convert the transaction into an executable message and pre-cache its sender
 					msg, err := TransactionToMessage(tx, signer, header.BaseFee)
 					if err != nil {
-						return // Also invalid block, bail out
+						continue // Skip invalid tx from txpool
 					}
 					// Disable the nonce check
 					msg.SkipNonceChecks = true
