@@ -226,8 +226,12 @@ type worker struct {
 
 func newWorker(config *minerconfig.Config, engine consensus.Engine, eth Backend, mux *event.TypeMux) *worker {
 	chainConfig := eth.BlockChain().Config()
+	prefetcher := core.NewStatePrefetcher(chainConfig, eth.BlockChain().HeadChain())
+	if config.Mev.Enabled != nil && *config.Mev.Enabled {
+		prefetcher.EnableMevMode()
+	}
 	worker := &worker{
-		prefetcher:         core.NewStatePrefetcher(chainConfig, eth.BlockChain().HeadChain()),
+		prefetcher:         prefetcher,
 		config:             config,
 		chainConfig:        chainConfig,
 		engine:             engine,
