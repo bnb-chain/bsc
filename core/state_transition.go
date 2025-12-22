@@ -562,7 +562,7 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 			blobFee.Mul(blobFee, st.evm.Context.BlobBaseFee)
 			blobFeeU256, _ := uint256.FromBig(blobFee)
 			st.state.AddBalance(consensus.SystemAddress, blobFeeU256, tracing.BalanceIncreaseRewardTransactionFee)
-			if st.evm.Context.BlockNumber.Uint64() == 72103125 {
+			if st.evm.Context.BlockNumber.Uint64() == 71929449 {
 				log.Error("check value in execute 2 after AddBalance", "blobFeeU256", blobFeeU256, "st.state.TxIndex()", st.state.TxIndex(), "st.state.GetBalance(consensus.SystemAddress)", st.state.GetBalance(consensus.SystemAddress))
 			}
 		}
