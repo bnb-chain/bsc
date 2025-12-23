@@ -149,7 +149,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		}
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)
-		if block.NumberU64() == 72103125 {
+		if block.NumberU64() == 71929449 {
 			log.Error("Debug tx", "transaction Index", i, "txHash", receipt.TxHash, "gasUsed", receipt.GasUsed)
 		}
 	}
@@ -185,8 +185,8 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	for _, receipt := range receipts {
 		allLogs = append(allLogs, receipt.Logs...)
 	}
-	if block.NumberU64() == 72103125 {
-		panic("Block 72103125 processed, stopping for debug")
+	if block.NumberU64() == 71929449 {
+		panic("Block 71929449 processed, stopping for debug")
 	}
 	return &ProcessResult{
 		Receipts: receipts,
