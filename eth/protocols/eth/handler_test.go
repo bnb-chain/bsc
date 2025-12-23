@@ -136,8 +136,7 @@ func newTestBackendWithGenerator(blocks int, shanghai bool, cancun bool, generat
 	txconfig := legacypool.DefaultConfig
 	txconfig.Journal = "" // Don't litter the disk with test journals
 
-	storage, _ := os.MkdirTemp("", "blobpool-")
-	defer os.RemoveAll(storage)
+	storage := t.TempDir()
 
 	blobPool := blobpool.New(blobpool.Config{Datadir: storage}, chain, nil)
 	legacyPool := legacypool.New(txconfig, chain)
