@@ -1169,7 +1169,9 @@ func (s *StateDB) fastDeleteStorage(snaps *snapshot.Tree, addrHash common.Hash, 
 	if err := iter.Error(); err != nil { // error might occur during iteration
 		return nil, nil, nil, err
 	}
-	if stack.Hash() != root {
+	// In NoTries mode, root is always EmptyRootHash (see updateRoot()),
+	// so we skip the hash verification. The snapshot is the source of truth.
+	if !s.db.NoTries() && stack.Hash() != root {
 		return nil, nil, nil, fmt.Errorf("snapshot is not matched, exp %x, got %x", root, stack.Hash())
 	}
 	return storages, storageOrigins, nodes, nil
@@ -1284,7 +1286,10 @@ func (s *StateDB) handleDestruction(noStorageWiping bool) (map[common.Hash]*acco
 		deletes[addrHash] = op
 
 		// Short circuit if the origin storage was empty.
-		if prev.Root == types.EmptyRootHash || s.db.TrieDB().IsVerkle() {
+		// In NoTries mode, prev.Root is always EmptyRootHash (see updateRoot()),
+		// so we cannot rely on it to determine if storage exists.
+		// We must try to delete storage via snapshot regardless.
+		if (!s.db.NoTries() && prev.Root == types.EmptyRootHash) || s.db.TrieDB().IsVerkle() {
 			continue
 		}
 		if noStorageWiping {
