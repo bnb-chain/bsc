@@ -188,11 +188,12 @@ type BlockFetcher struct {
 	requeue chan *blockOrHeaderInject
 
 	// Announce states
-	announces  map[string]int                   // Per peer blockAnnounce counts to prevent memory exhaustion
-	announced  map[common.Hash][]*blockAnnounce // Announced blocks, scheduled for fetching
-	fetching   map[common.Hash]*blockAnnounce   // Announced blocks, currently fetching
-	fetched    map[common.Hash][]*blockAnnounce // Blocks with headers fetched, scheduled for body retrieval
-	completing map[common.Hash]*blockAnnounce   // Blocks with headers, currently body-completing
+	announces     map[string]int                   // Per peer blockAnnounce counts to prevent memory exhaustion
+	announced     map[common.Hash][]*blockAnnounce // Announced blocks, scheduled for fetching
+	fetching      map[common.Hash]*blockAnnounce   // Announced blocks, currently fetching
+	fetched       map[common.Hash][]*blockAnnounce // Blocks with headers fetched, scheduled for body retrieval
+	completing    map[common.Hash]*blockAnnounce   // Blocks with headers, currently body-completing
+	quickFetching map[common.Hash]struct{}         // Blocks currently being quick fetched (async)
 
 	// Block cache
 	queue  *prque.Prque[int64, *blockOrHeaderInject] // Queue containing the import operations (block number sorted)
@@ -235,6 +236,7 @@ func NewBlockFetcher(getBlock blockRetrievalFn, verifyHeader headerVerifierFn, b
 		fetching:             make(map[common.Hash]*blockAnnounce),
 		fetched:              make(map[common.Hash][]*blockAnnounce),
 		completing:           make(map[common.Hash]*blockAnnounce),
+		quickFetching:        make(map[common.Hash]struct{}),
 		queue:                prque.New[int64, *blockOrHeaderInject](nil),
 		queues:               make(map[string]int),
 		queued:               make(map[common.Hash]*blockOrHeaderInject),
@@ -456,8 +458,12 @@ func (f *BlockFetcher) loop() {
 			}
 			// if there enable range fetching, just request the first announce and wait for response,
 			// and if it gets timeout and wait for later header & body fetching.
+			// Check quickFetching to avoid duplicate fetches when announced is cleared but async fetch is still pending.
 			if f.fetchRangeBlocks != nil && len(f.announced[notification.hash]) == 1 {
-				f.asyncFetchRangeBlocks(notification)
+				if _, ok := f.quickFetching[notification.hash]; !ok {
+					f.quickFetching[notification.hash] = struct{}{}
+					f.asyncFetchRangeBlocks(notification)
+				}
 			}
 			// schedule the first arrive announce hash
 			if len(f.announced) == 1 {
@@ -776,14 +782,19 @@ func (f *BlockFetcher) loop() {
 					// Pick the last peer to retrieve from, but ignore the current one
 					next := f.announced[annHash][len(f.announced[annHash])-1]
 					if next.origin != entry.announce.origin {
+						// Keep quickFetching entry since we're retrying
 						f.asyncFetchRangeBlocks(next)
+						continue
 					}
 				}
+				// No retry, clear quickFetching entry
+				delete(f.quickFetching, annHash)
 				continue
 			}
 			quickBlockFetchingSuccessMeter.Mark(1)
 			for _, block := range entry.blocks {
 				hash := block.Hash()
+				delete(f.quickFetching, hash)
 				f.forgetHash(hash)
 				if f.getBlock(hash) != nil {
 					continue
