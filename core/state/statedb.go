@@ -1289,7 +1289,7 @@ func (s *StateDB) handleDestruction(noStorageWiping bool) (map[common.Hash]*acco
 		// In NoTries mode, prev.Root is always EmptyRootHash (see updateRoot()),
 		// so we cannot rely on it to determine if storage exists.
 		// We must try to delete storage via snapshot regardless.
-		if !s.db.NoTries() && (prev.Root == types.EmptyRootHash || s.db.TrieDB().IsVerkle()) {
+		if (!s.db.NoTries() && prev.Root == types.EmptyRootHash) || s.db.TrieDB().IsVerkle() {
 			continue
 		}
 		if noStorageWiping {
