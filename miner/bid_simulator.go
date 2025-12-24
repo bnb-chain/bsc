@@ -118,8 +118,9 @@ type bidSimulator struct {
 	simBidCh chan *simBidReq
 	newBidCh chan newBidPackage
 
-	pendingMu sync.RWMutex
-	pending   map[uint64]map[common.Address]map[common.Hash]struct{} // blockNumber -> builder -> bidHash -> struct{}
+	pendingMu     sync.RWMutex
+	pending       map[uint64]map[common.Address]map[common.Hash]struct{} // blockNumber -> builder -> bidHash -> struct{}
+	pendingByName map[uint64]map[string]map[common.Hash]struct{}         // blockNumber -> builderName -> bidHash -> struct{}
 
 	bestBidMu    sync.RWMutex
 	bestBid      map[common.Hash]*BidRuntime // prevBlockHash -> bidRuntime
@@ -129,7 +130,7 @@ type bidSimulator struct {
 	simulatingBid map[common.Hash]*BidRuntime // prevBlockHash -> bidRuntime, in the process of simulation
 	bidsToSim     map[uint64][]*BidRuntime    // blockNumber -->  bidRuntime list, used to discard envs
 
-	maxBidsPerBuilder uint32 // Maximum number of bids allowed per builder per block
+	maxBidsPerBuilder uint32 // Maximum number of bids allowed per builder per block (now used for builder name)
 }
 
 func newBidSimulator(
@@ -157,6 +158,7 @@ func newBidSimulator(
 		simBidCh:      make(chan *simBidReq),
 		newBidCh:      make(chan newBidPackage, 100),
 		pending:       make(map[uint64]map[common.Address]map[common.Hash]struct{}),
+		pendingByName: make(map[uint64]map[string]map[common.Hash]struct{}),
 		bestBid:       make(map[common.Hash]*BidRuntime),
 		bestBidToRun:  make(map[common.Hash]*types.Bid),
 		simulatingBid: make(map[common.Hash]*BidRuntime),
@@ -185,6 +187,11 @@ func newBidSimulator(
 	go b.newBidLoop()
 
 	return b
+}
+
+// getBuilderName returns the builder name for the given address
+func (b *bidSimulator) getBuilderName(builder common.Address) string {
+	return b.config.GetBuilderName(builder)
 }
 
 func (b *bidSimulator) dialSentryAndBuilders() {
@@ -561,6 +568,7 @@ func (b *bidSimulator) clearLoop() {
 	clearFn := func(parentHash common.Hash, blockNumber uint64) {
 		b.pendingMu.Lock()
 		delete(b.pending, blockNumber)
+		delete(b.pendingByName, blockNumber)
 		b.pendingMu.Unlock()
 
 		// clearThreshold := b.chain.GetFinalizedNumber(b.chain.GetHeaderByHash(parentHash))
@@ -672,6 +680,20 @@ func (b *bidSimulator) CheckPending(blockNumber uint64, builder common.Address, 
 		return fmt.Errorf("too many bids: exceeded limit of %d bids per builder per block", b.maxBidsPerBuilder)
 	}
 
+	// Check builder name limit
+	builderName := b.getBuilderName(builder)
+	if _, ok := b.pendingByName[blockNumber]; !ok {
+		b.pendingByName[blockNumber] = make(map[string]map[common.Hash]struct{})
+	}
+
+	if _, ok := b.pendingByName[blockNumber][builderName]; !ok {
+		b.pendingByName[blockNumber][builderName] = make(map[common.Hash]struct{})
+	}
+
+	if len(b.pendingByName[blockNumber][builderName]) >= int(b.maxBidsPerBuilder) {
+		return fmt.Errorf("too many bids: exceeded limit of %d bids per builder name (%s) per block", b.maxBidsPerBuilder, builderName)
+	}
+
 	return nil
 }
 
@@ -680,6 +702,10 @@ func (b *bidSimulator) AddPending(blockNumber uint64, builder common.Address, bi
 	defer b.pendingMu.Unlock()
 
 	b.pending[blockNumber][builder][bidHash] = struct{}{}
+
+	// Also add to pendingByName
+	builderName := b.getBuilderName(builder)
+	b.pendingByName[blockNumber][builderName][bidHash] = struct{}{}
 }
 
 // simBid simulates a newBid with txs.
