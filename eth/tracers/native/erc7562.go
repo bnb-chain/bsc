@@ -309,6 +309,7 @@ func (t *erc7562Tracer) OnLog(log1 *types.Log) {
 		Topics:   log1.Topics,
 		Data:     log1.Data,
 		Position: hexutil.Uint(len(t.callstackWithOpcodes[len(t.callstackWithOpcodes)-1].Calls)),
+		Index:    hexutil.Uint(log1.Index),
 	}
 	t.callstackWithOpcodes[len(t.callstackWithOpcodes)-1].Logs = append(t.callstackWithOpcodes[len(t.callstackWithOpcodes)-1].Logs, l)
 }
