@@ -48,6 +48,7 @@ type Contract struct {
 
 	Code     []byte
 	CodeHash common.Hash
+	CodeAddr *common.Address // Address where the code was loaded from (for CODECOPY in optimized mode)
 	Input    []byte
 
 	// is the execution frame represented by this object a contract deployment
@@ -173,9 +174,10 @@ func (c *Contract) Value() *uint256.Int {
 
 // SetCallCode sets the code of the contract and address of the backing data
 // object
-func (c *Contract) SetCallCode(hash common.Hash, code []byte) {
+func (c *Contract) SetCallCode(codeAddr *common.Address, hash common.Hash, code []byte) {
 	c.Code = code
 	c.CodeHash = hash
+	c.CodeAddr = codeAddr
 }
 
 // SetOptimizedForTest returns a contract with optimized equals true for test purpose only

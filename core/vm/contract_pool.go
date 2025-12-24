@@ -24,6 +24,7 @@ func GetContract(caller common.Address, address common.Address, value *uint256.I
 	contract.Gas = gas
 	contract.Code = nil
 	contract.CodeHash = common.Hash{}
+	contract.CodeAddr = nil
 	contract.Input = nil
 	contract.IsDeployment = false
 	contract.IsSystemCall = false
