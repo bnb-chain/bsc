@@ -110,7 +110,7 @@ func (in *EVMInterpreter) executeSingleOpcode(pc *uint64, op OpCode, contract *C
 func (in *EVMInterpreter) tryFallbackForSuperInstruction(pc *uint64, seq []OpCode, contract *Contract, stack *Stack, mem *Memory, callCtx *ScopeContext) error {
 	for _, sub := range seq {
 		if err := in.executeSingleOpcode(pc, sub, contract, stack, mem, callCtx); err != nil {
-			log.Error("[FALLBACK-EXEC]", "op", sub.String(), "err", err, "gasLeft", contract.Gas)
+			log.Debug("[FALLBACK-EXEC]", "op", sub.String(), "err", err, "gasLeft", contract.Gas)
 			return err // OutOfGas or other errors, will let upper level handle
 		}
 	}
