@@ -343,6 +343,13 @@ func ReadHeaderRange(db ethdb.Reader, number uint64, count uint64) []rlp.RawValu
 // ReadHeaderRLP retrieves a block header in its raw RLP database encoding.
 func ReadHeaderRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.RawValue {
 	var data []byte
+	// Try reading from kvdb first, as there is a lock in ReadAncients which could stuck the current process
+	data, _ = db.Get(headerKey(number, hash))
+	if len(data) > 0 {
+		return data
+	}
+
+	// If not, try reading from ancients
 	db.ReadAncients(func(reader ethdb.AncientReaderOp) error {
 		// First try to look up the data in ancient database. Extra hash
 		// comparison is necessary since ancient database only maintains
@@ -351,8 +358,6 @@ func ReadHeaderRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.RawValu
 		if len(data) > 0 && crypto.Keccak256Hash(data) == hash {
 			return nil
 		}
-		// If not, try reading from leveldb
-		data, _ = db.Get(headerKey(number, hash))
 		return nil
 	})
 	return data
@@ -458,18 +463,20 @@ func isCanon(reader ethdb.AncientReaderOp, number uint64, hash common.Hash) bool
 
 // ReadBodyRLP retrieves the block body (transactions and uncles) in RLP encoding.
 func ReadBodyRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.RawValue {
-	// First try to look up the data in ancient database. Extra hash
-	// comparison is necessary since ancient database only maintains
-	// the canonical data.
 	var data []byte
+	// Try reading from kvdb first, as there is a lock in ReadAncients which could stuck the current process
+	data, _ = db.Get(blockBodyKey(number, hash))
+	if len(data) > 0 {
+		return data
+	}
+	// Extra hash comparison is necessary since ancient database only maintains
+	// the canonical data.
 	db.ReadAncients(func(reader ethdb.AncientReaderOp) error {
 		// Check if the data is in ancients
 		if isCanon(reader, number, hash) {
 			data, _ = reader.Ancient(ChainFreezerBodiesTable, number)
 			return nil
 		}
-		// If not, try reading from leveldb
-		data, _ = db.Get(blockBodyKey(number, hash))
 		return nil
 	})
 	return data
