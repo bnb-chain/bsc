@@ -340,11 +340,12 @@ func confirmAndRemoveDB(paths []string, kind string, ctx *cli.Context, removeFla
 		confirm bool
 		err     error
 	)
-	msg := fmt.Sprintf("Location(s) of '%s': \n", kind)
+	var msg strings.Builder
+	msg.WriteString(fmt.Sprintf("Location(s) of '%s': \n", kind))
 	for _, path := range paths {
-		msg += fmt.Sprintf("\t- %s\n", path)
+		msg.WriteString(fmt.Sprintf("\t- %s\n", path))
 	}
-	fmt.Println(msg)
+	fmt.Println(msg.String())
 	if ctx.IsSet(removeFlagName) {
 		confirm = ctx.Bool(removeFlagName)
 		if confirm {
