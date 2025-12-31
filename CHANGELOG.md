@@ -1,4 +1,12 @@
 # Changelog
+## v1.6.5
+### FEATURE
+[\#3488](https://github.com/bnb-chain/bsc/pull/3488) miner: optional transaction gas limit cap
+
+### IMPROVEMENT
+[\#3483](https://github.com/bnb-chain/bsc/pull/3483) feat: remove the handshake from the bsc protocol
+[\#3486](https://github.com/bnb-chain/bsc/pull/3486) feat: update filtermaps checkpoints
+
 ## v1.6.4
 ### FEATURE
 [\#3466](https://github.com/bnb-chain/bsc/pull/3466) config: update BSC Mainnet hardfork time: Fermi

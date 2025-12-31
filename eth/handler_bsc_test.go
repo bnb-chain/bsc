@@ -108,9 +108,7 @@ func testSendVotes(t *testing.T, protocol uint) {
 	}(localBsc)
 
 	time.Sleep(200 * time.Millisecond)
-	remoteBsc.Handshake()
 
-	time.Sleep(200 * time.Millisecond)
 	go func(p *eth.Peer) {
 		handler.handler.runEthPeer(p, func(peer *eth.Peer) error {
 			return eth.Handle((*ethHandler)(handler.handler), peer)
@@ -209,9 +207,7 @@ func testRecvVotes(t *testing.T, protocol uint) {
 	}(localBsc)
 
 	time.Sleep(200 * time.Millisecond)
-	remoteBsc.Handshake()
 
-	time.Sleep(200 * time.Millisecond)
 	go func(p *eth.Peer) {
 		handler.handler.runEthPeer(p, func(peer *eth.Peer) error {
 			return eth.Handle((*ethHandler)(handler.handler), peer)

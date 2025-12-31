@@ -103,7 +103,7 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 
 	// Ensure the transaction doesn't exceed the current miner max acceptable limit gas
 	if opts.MaxGas > 0 && opts.MaxGas < tx.Gas() {
-		return ErrGasLimit
+		return fmt.Errorf("%w (cap: %d, tx: %d)", core.ErrGasLimitTooHigh, opts.MaxGas, tx.Gas())
 	}
 
 	// Sanity check for extremely large numbers (supported by RLP or RPC)

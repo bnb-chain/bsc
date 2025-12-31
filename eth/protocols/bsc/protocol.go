@@ -40,11 +40,9 @@ const (
 var defaultExtra = []byte{0x00}
 
 var (
-	errNoBscCapMsg             = errors.New("no bsc capability message")
-	errMsgTooLarge             = errors.New("message too long")
-	errDecode                  = errors.New("invalid message")
-	errInvalidMsgCode          = errors.New("invalid message code")
-	errProtocolVersionMismatch = errors.New("protocol version mismatch")
+	errMsgTooLarge    = errors.New("message too long")
+	errDecode         = errors.New("invalid message")
+	errInvalidMsgCode = errors.New("invalid message code")
 )
 
 // Packet represents a p2p message in the `bsc` protocol.

@@ -77,6 +77,8 @@ type PendingFilter struct {
 	BaseFee *uint256.Int // Minimum 1559 basefee needed to include a transaction
 	BlobFee *uint256.Int // Minimum 4844 blobfee needed to include a blob transaction
 
+	GasLimitCap uint64 // Maximum gas allowed per transaction
+
 	OnlyPlainTxs bool // Return only plain EVM transactions (peer-join announces, block space filling)
 	OnlyBlobTxs  bool // Return only blob transactions (block blob-space filling)
 }
