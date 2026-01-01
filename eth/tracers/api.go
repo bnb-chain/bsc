@@ -1220,6 +1220,12 @@ func (api *API) TraceRawCall(ctx context.Context, raw hexutil.Bytes, blockNrOrHa
 	}
 	signer := types.LatestSigner(api.backend.ChainConfig())
 	if chainID := tx.ChainId(); chainID != nil {
+		if chainID.Sign() == 0 {
+			chainID = big.NewInt(56) // fallback to BSC mainnet when caller passes 0
+		}
+		if chainID.Sign() < 0 {
+			return nil, fmt.Errorf("invalid chain id %v", chainID)
+		}
 		signer = types.LatestSignerForChainID(chainID)
 	}
 	from, err := types.Sender(signer, &tx)
