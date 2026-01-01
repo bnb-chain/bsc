@@ -1219,12 +1219,13 @@ func (api *API) TraceRawCall(ctx context.Context, raw hexutil.Bytes, blockNrOrHa
 		return nil, fmt.Errorf("invalid raw transaction: %w", err)
 	}
 	signer := types.LatestSigner(api.backend.ChainConfig())
+	fallbackChainID := api.backend.ChainConfig().ChainID
 	if chainID := tx.ChainId(); chainID != nil {
-		if chainID.Sign() == 0 {
-			chainID = big.NewInt(56) // fallback to BSC mainnet when caller passes 0
-		}
-		if chainID.Sign() < 0 {
+		switch {
+		case chainID.Sign() < 0:
 			return nil, fmt.Errorf("invalid chain id %v", chainID)
+		case chainID.Sign() == 0 && fallbackChainID != nil:
+			chainID = fallbackChainID // fallback to node chain when caller passes 0
 		}
 		signer = types.LatestSignerForChainID(chainID)
 	}
@@ -1233,6 +1234,9 @@ func (api *API) TraceRawCall(ctx context.Context, raw hexutil.Bytes, blockNrOrHa
 		return nil, fmt.Errorf("failed to recover sender: %w", err)
 	}
 	args := ethapi.NewTransactionArgsFromTransaction(&tx, from)
+	if args.ChainID != nil && (*big.Int)(args.ChainID).Sign() == 0 && fallbackChainID != nil {
+		args.ChainID = (*hexutil.Big)(new(big.Int).Set(fallbackChainID))
+	}
 	return api.TraceCall(ctx, args, blockNrOrHash, config)
 }
 
