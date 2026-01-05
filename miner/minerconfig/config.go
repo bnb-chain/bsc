@@ -32,13 +32,20 @@ var (
 	defaultRecommit              = 10 * time.Second
 	defaultMaxWaitProposalInSecs = uint64(45)
 
+	defaultGasCeil = uint64(55_000_000)
 	// Extra time for finalizing and committing blocks (excludes writing to disk).
-	defaultDelayLeftOver         = 25 * time.Millisecond
-	defaultBidSimulationLeftOver = 30 * time.Millisecond
-	// For estimation, assume 500 Mgas/s:
-	//	(100M gas / 500 Mgas/s) * 1000 ms + 10 ms buffer + defaultDelayLeftOver ≈ 235 ms.
-	defaultNoInterruptLeftOver = 235 * time.Millisecond
+	defaultDelayLeftOver         = 15 * time.Millisecond
+	defaultBidSimulationLeftOver = 20 * time.Millisecond
 )
+
+func getDefaultNoInterruptLeftOver() *time.Duration {
+	expectedProcessingSpeed := 500_000_000 // For estimation, assume 500 Mgas/s
+	bidProcessing := float64(defaultGasCeil) / float64(expectedProcessingSpeed)
+	buffer := 10 * time.Millisecond
+	noInterruptLeftOver := time.Duration(bidProcessing*float64(time.Second)) + buffer + defaultDelayLeftOver
+
+	return &noInterruptLeftOver
+}
 
 // Other default MEV-related configurations
 var (
@@ -68,7 +75,7 @@ type Config struct {
 
 // DefaultConfig contains default settings for miner.
 var DefaultConfig = Config{
-	GasCeil:  100000000,
+	GasCeil:  defaultGasCeil,
 	GasPrice: big.NewInt(params.GWei),
 	// The default recommit time is chosen as two seconds since
 	// consensus-layer usually will wait a half slot of time(6s)
@@ -109,7 +116,7 @@ var DefaultMevConfig = MevConfig{
 	Builders:              nil,
 	ValidatorCommission:   &defaultValidatorCommission,
 	BidSimulationLeftOver: &defaultBidSimulationLeftOver,
-	NoInterruptLeftOver:   &defaultNoInterruptLeftOver,
+	NoInterruptLeftOver:   getDefaultNoInterruptLeftOver(),
 	MaxBidsPerBuilder:     &defaultMaxBidsPerBuilder,
 }
 
@@ -155,7 +162,7 @@ func ApplyDefaultMinerConfig(cfg *Config) {
 		log.Info("ApplyDefaultMinerConfig", "Mev.BidSimulationLeftOver", *cfg.Mev.BidSimulationLeftOver)
 	}
 	if cfg.Mev.NoInterruptLeftOver == nil {
-		cfg.Mev.NoInterruptLeftOver = &defaultNoInterruptLeftOver
+		cfg.Mev.NoInterruptLeftOver = getDefaultNoInterruptLeftOver()
 		log.Info("ApplyDefaultMinerConfig", "Mev.NoInterruptLeftOver", *cfg.Mev.NoInterruptLeftOver)
 	}
 	if cfg.Mev.MaxBidsPerBuilder == nil {
