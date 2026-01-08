@@ -1,3 +1,4 @@
 CVE-2024-34478 # "CWE-754: Improper Check for Unusual or Exceptional Conditions." This vulnerability is BTC only, BSC does not have the issue.
 CVE-2021-43668 # "CWE-476: NULL Pointer Dereference", the repo: syndtr/goleveldb is not actively maintained, seems there is no fix for this crash yet, BSC used pebbleDB to replaced levelDB, so ignore this vulnerability.
 CVE-2025-47908 # "CWE-400: Uncontrolled Resource Consumption ('Resource Exhaustion')", This vulnerability is only for RPC nodes which have specifically enabled malicous Cors options, which is unlikely to happen.
+CVE-2025-64702 # "CWE-770: Allocation of Resources Without Limits or Throttling". Attack vector is unreachable as QUIC/HTTP3 is not enabled in BSC's P2P configuration.
