@@ -6,7 +6,7 @@ program.option("--startNum <startNum>", "start num");
 program.option("--endNum <endNum>", "end num");
 program.option("--miner <miner>", "miner", "");
 program.option("--num <Num>", "validator num", 21);
-program.option("--turnLength <Num>", "the consecutive block length", 16);
+program.option("--turnLength <Num>", "the consecutive block length", 8);
 program.option("--topNum <Num>", "top num of address to be displayed", 20);
 program.option("--blockNum <Num>", "block num", 0);
 program.option("--stepLength <Num>", "step length", 115200);
@@ -43,7 +43,7 @@ function printUsage() {
     console.log("  --stepNum    the step num, default: 1");
     console.log("\nExample:");
     console.log("  node getchainstatus.js GetMaxTxCountInBlockRange --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000005");
-    console.log("  node getchainstatus.js GetBinaryVersion --rpc https://bsc-testnet-dataseed.bnbchain.org --num 21 --turnLength 16");
+    console.log("  node getchainstatus.js GetBinaryVersion --rpc https://bsc-testnet-dataseed.bnbchain.org --num 21 --turnLength 8");
     console.log("  node getchainstatus.js GetTopAddr --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010 --topNum 10");
     console.log("  node getchainstatus.js GetSlashCount --rpc https://bsc-testnet-dataseed.bnbchain.org --blockNum 40000001 --stepNum 1 --stepLength 115200"); // default: latest block
     console.log("  node getchainstatus.js GetPerformanceData --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010");
@@ -511,7 +511,7 @@ async function getPerformanceData() {
     let gasUsedTotal = 0;
     let inturnBlocks = 0;
     let justifiedBlocks = 0;
-    let turnLength = 16;
+    let turnLength = 8;
     let lastTimestamp = null; 
     let parliaEnabled = true;
     
