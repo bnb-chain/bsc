@@ -157,9 +157,10 @@ func (api *API) blockByNumberAndHash(ctx context.Context, number rpc.BlockNumber
 // TraceConfig holds extra parameters to trace functions.
 type TraceConfig struct {
 	*logger.Config
-	Tracer  *string
-	Timeout *string
-	Reexec  *uint64
+	Tracer         *string
+	Timeout        *string
+	Reexec         *uint64
+	EnsureBalance  bool // 补齐 from 账户余额以绕过预扣款不足（仅用于追踪）
 	// Config specific to given tracer. Note struct logger
 	// config are historically embedded in main object.
 	TracerConfig json.RawMessage
@@ -1298,6 +1299,9 @@ func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *cor
 
 	// Call Prepare to clear out the statedb access list
 	statedb.SetTxContext(txctx.TxHash, txctx.TxIndex)
+	// if config.EnsureBalance {
+		ensureTraceBalance(statedb, message)
+	// }
 	_, err = core.ApplyTransactionWithEVM(message, new(core.GasPool).AddGas(message.GasLimit), statedb, vmctx.BlockNumber, txctx.BlockHash, vmctx.Time, tx, &usedGas, evm)
 	if err != nil {
 		return nil, fmt.Errorf("tracing failed: %w", err)
@@ -1306,6 +1310,45 @@ func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *cor
 		tracer.OnSystemTxFixIntrinsicGas(intrinsicGas)
 	}
 	return tracer.GetResult()
+}
+
+// ensureTraceBalance guarantees the sender has足够余额覆盖 gasLimit*gasPrice+value，再额外留 10% 余量。
+// 仅用于追踪，避免因历史状态余额不足导致的报错，不会影响链上真实状态。
+func ensureTraceBalance(statedb *state.StateDB, msg *core.Message) {
+	if statedb == nil || msg == nil {
+		return
+	}
+	// 计算需要的 gas 价格：EIP-1559 优先使用 GasFeeCap，否则退回 GasPrice
+	price := new(big.Int)
+	switch {
+	case msg.GasFeeCap != nil:
+		price.Set(msg.GasFeeCap)
+	case msg.GasPrice != nil:
+		price.Set(msg.GasPrice)
+	default:
+		price.SetUint64(0)
+	}
+	required := new(big.Int).SetUint64(msg.GasLimit)
+	required.Mul(required, price)
+	if msg.Value != nil {
+		required.Add(required, msg.Value)
+	}
+	if required.Sign() == 0 {
+		return
+	}
+	// 留 10% 余量
+	required.Mul(required, big.NewInt(11))
+	required.Div(required, big.NewInt(10))
+
+	current := statedb.GetBalance(msg.From).ToBig()
+	if current.Cmp(required) >= 0 {
+		return
+	}
+	u256, overflow := uint256.FromBig(required)
+	if overflow {
+		return
+	}
+	statedb.SetBalance(msg.From, u256, tracing.BalanceChangeUnspecified)
 }
 
 // APIs return the collection of RPC services the tracer package offers.
