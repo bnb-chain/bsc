@@ -298,7 +298,7 @@ func (im *incrManager) processWriteTask(dl *diffLayer) error {
 	return nil
 }
 
-// writeChainData writes incremental data: chain and state
+// writeIncrData writes incremental data: chain and state
 func (im *incrManager) writeIncrData(dl *diffLayer) error {
 	head, err := im.incrDB.GetChainFreezer().Ancients()
 	if err != nil {
