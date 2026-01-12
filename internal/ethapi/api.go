@@ -1199,17 +1199,17 @@ func (api *BlockChainAPI) EstimateGas(ctx context.Context, args TransactionArgs,
 }
 
 // GetDiffAccounts returns changed accounts in a specific block number.
-func (s *BlockChainAPI) GetDiffAccounts(ctx context.Context, blockNr rpc.BlockNumber) ([]common.Address, error) {
-	if s.b.Chain() == nil {
+func (api *BlockChainAPI) GetDiffAccounts(ctx context.Context, blockNr rpc.BlockNumber) ([]common.Address, error) {
+	if api.b.Chain() == nil {
 		return nil, fmt.Errorf("blockchain not support get diff accounts")
 	}
 
 	// Replay the block when diff layer not found, it is very slow.
-	block, err := s.b.BlockByNumber(ctx, blockNr)
+	block, err := api.b.BlockByNumber(ctx, blockNr)
 	if err != nil {
 		return nil, fmt.Errorf("block not found for block number (%d): %v", blockNr, err)
 	}
-	_, statedb, err := s.replay(ctx, block, nil)
+	_, statedb, err := api.replay(ctx, block, nil)
 	if err != nil {
 		return nil, err
 	}
