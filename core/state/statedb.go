@@ -1741,3 +1741,11 @@ func (s *StateDB) GetEncodedBlockAccessList(block *types.Block) *types.BlockAcce
 
 	return &blockAccessList
 }
+
+func (s *StateDB) GetDirtyAccounts() []common.Address {
+	accounts := make([]common.Address, 0, len(s.mutations))
+	for account := range s.mutations {
+		accounts = append(accounts, account)
+	}
+	return accounts
+}
