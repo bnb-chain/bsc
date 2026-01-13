@@ -438,12 +438,6 @@ var (
 		Usage:    "Do not maintain log search index",
 		Category: flags.StateCategory,
 	}
-	LogExportCheckpointsFlag = &cli.StringFlag{
-		Name:     "history.logs.export",
-		Usage:    "Export checkpoints to file in go source file format",
-		Category: flags.StateCategory,
-		Value:    "",
-	}
 	// Beacon client light sync settings
 	BeaconApiFlag = &cli.StringSliceFlag{
 		Name:     "beacon.api",
@@ -2216,9 +2210,6 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.IsSet(LogNoHistoryFlag.Name) {
 		cfg.LogNoHistory = true
-	}
-	if ctx.IsSet(LogExportCheckpointsFlag.Name) {
-		cfg.LogExportCheckpoints = ctx.String(LogExportCheckpointsFlag.Name)
 	}
 	if ctx.String(GCModeFlag.Name) == "archive" && cfg.BlockHistory != 0 {
 		cfg.BlockHistory = 0

@@ -183,9 +183,9 @@ func (b *testBackend) startFilterMaps(history uint64, disabled bool, params filt
 	head := b.CurrentBlock()
 	chainView := filtermaps.NewChainView(b, head.Number.Uint64(), head.Hash())
 	config := filtermaps.Config{
-		History:        history,
-		Disabled:       disabled,
-		ExportFileName: "",
+		History:            history,
+		Disabled:           disabled,
+		CheckpointFileName: "",
 	}
 	b.fm, _ = filtermaps.NewFilterMaps(b.db, chainView, 0, 0, params, config)
 	b.fm.Start()

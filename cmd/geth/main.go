@@ -117,7 +117,6 @@ var (
 		// utils.ChainHistoryFlag, // disabled in bsc
 		utils.LogHistoryFlag,
 		utils.LogNoHistoryFlag,
-		utils.LogExportCheckpointsFlag,
 		utils.StateHistoryFlag,
 		utils.PathDBSyncFlag,
 		utils.JournalFileFlag,
