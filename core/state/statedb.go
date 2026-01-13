@@ -1286,10 +1286,13 @@ func (s *StateDB) handleDestruction(noStorageWiping bool) (map[common.Hash]*acco
 		deletes[addrHash] = op
 
 		// Short circuit if the origin storage was empty.
-		// In NoTries mode, prev.Root is always EmptyRootHash (see updateRoot()),
-		// so we cannot rely on it to determine if storage exists.
-		// We must try to delete storage via snapshot regardless.
-		if (!s.db.NoTries() && prev.Root == types.EmptyRootHash) || s.db.TrieDB().IsVerkle() {
+		// 1. Standard Trie: Reliable check via EmptyRootHash.
+		// 2. NoTries: Since Root is always EmptyRootHash (see updateRoot()),
+		//    we rely on EIP-158 emptiness to skip storage cleanup for deleted empty accounts.
+		// 3. Verkle: Legacy trie-root based checks are inapplicable.
+		if (!s.db.NoTries() && prev.Root == types.EmptyRootHash) ||
+			/*(s.db.NoTries() && prevObj.empty()) ||*/ // EIP158 is true from the genesis block in BSC
+			s.db.TrieDB().IsVerkle() {
 			continue
 		}
 		if noStorageWiping {
