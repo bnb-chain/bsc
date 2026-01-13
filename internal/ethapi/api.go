@@ -1201,7 +1201,7 @@ func (api *BlockChainAPI) EstimateGas(ctx context.Context, args TransactionArgs,
 // GetDiffAccounts returns changed accounts in a specific block number.
 func (api *BlockChainAPI) GetDiffAccounts(ctx context.Context, blockNr rpc.BlockNumber) ([]common.Address, error) {
 	if api.b.Chain() == nil {
-		return nil, fmt.Errorf("blockchain not support get diff accounts")
+		return nil, errors.New("blockchain does not support get diff accounts")
 	}
 
 	// Replay the block when diff layer not found, it is very slow.
@@ -1223,11 +1223,14 @@ func (api *BlockChainAPI) needToReplay(ctx context.Context, block *types.Block, 
 	}
 
 	accountSet := make(map[common.Address]struct{}, len(accounts))
+	spendValueMap := make(map[common.Address]*big.Int, len(accounts))
+	receiveValueMap := make(map[common.Address]*big.Int, len(accounts))
+
 	for _, account := range accounts {
 		accountSet[account] = struct{}{}
+		spendValueMap[account] = big.NewInt(0)
+		receiveValueMap[account] = big.NewInt(0)
 	}
-	spendValueMap := make(map[common.Address]uint64, len(accounts))
-	receiveValueMap := make(map[common.Address]uint64, len(accounts))
 
 	signer := types.MakeSigner(api.b.ChainConfig(), block.Number(), block.Time())
 	for index, tx := range block.Transactions() {
@@ -1238,18 +1241,19 @@ func (api *BlockChainAPI) needToReplay(ctx context.Context, block *types.Block, 
 		}
 
 		if _, exists := accountSet[from]; exists {
-			spendValueMap[from] += receipt.GasUsed * tx.GasPrice().Uint64()
+			gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
+			gasCost := new(big.Int).Mul(gasUsed, tx.GasPrice())
+			spendValueMap[from].Add(spendValueMap[from], gasCost)
 			if receipt.Status == types.ReceiptStatusSuccessful {
-				spendValueMap[from] += tx.Value().Uint64()
+				spendValueMap[from].Add(spendValueMap[from], tx.Value())
 			}
 		}
 
 		if tx.To() == nil {
 			continue
 		}
-
 		if _, exists := accountSet[*tx.To()]; exists && receipt.Status == types.ReceiptStatusSuccessful {
-			receiveValueMap[*tx.To()] += tx.Value().Uint64()
+			receiveValueMap[*tx.To()].Add(receiveValueMap[*tx.To()], tx.Value())
 		}
 	}
 
@@ -1266,9 +1270,12 @@ func (api *BlockChainAPI) needToReplay(ctx context.Context, block *types.Block, 
 		return false, fmt.Errorf("statedb not found for block number (%d): %v", block.NumberU64(), err)
 	}
 	for _, account := range accounts {
-		parentBalance := parentState.GetBalance(account).Uint64()
-		currentBalance := currentState.GetBalance(account).Uint64()
-		if receiveValueMap[account]-spendValueMap[account] != currentBalance-parentBalance {
+		parentBalance := parentState.GetBalance(account).ToBig()
+		currentBalance := currentState.GetBalance(account).ToBig()
+		theoryDiff := new(big.Int).Sub(receiveValueMap[account], spendValueMap[account])
+		actualDiff := new(big.Int).Sub(currentBalance, parentBalance)
+		if theoryDiff.Cmp(actualDiff) != 0 {
+			// log.Debug("Balance mismatch detected", "addr", account, "theory", theoryDiff, "actual", actualDiff)
 			return true, nil
 		}
 	}
