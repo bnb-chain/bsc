@@ -1206,8 +1206,8 @@ func (api *BlockChainAPI) GetDiffAccounts(ctx context.Context, blockNr rpc.Block
 
 	// Replay the block when diff layer not found, it is very slow.
 	block, err := api.b.BlockByNumber(ctx, blockNr)
-	if err != nil {
-		return nil, fmt.Errorf("block not found for block number (%d): %v", blockNr, err)
+	if err != nil || block == nil {
+		return nil, fmt.Errorf("block not found for block number %d", blockNr)
 	}
 	_, statedb, err := api.replay(ctx, block, nil)
 	if err != nil {
@@ -1258,8 +1258,8 @@ func (api *BlockChainAPI) needToReplay(ctx context.Context, block *types.Block, 
 	}
 
 	parent, err := api.b.BlockByHash(ctx, block.ParentHash())
-	if err != nil {
-		return false, fmt.Errorf("block not found for block number (%d): %v", block.NumberU64()-1, err)
+	if err != nil || parent == nil {
+		return false, fmt.Errorf("block not found for block number %d", block.NumberU64()-1)
 	}
 	parentState, err := api.b.Chain().StateAt(parent.Root())
 	if err != nil {
@@ -1302,8 +1302,8 @@ func (api *BlockChainAPI) replay(ctx context.Context, block *types.Block, accoun
 	}
 
 	parent, err := api.b.BlockByHash(ctx, block.ParentHash())
-	if err != nil {
-		return nil, nil, fmt.Errorf("block not found for block number (%d): %v", block.NumberU64()-1, err)
+	if err != nil || parent == nil {
+		return nil, nil, fmt.Errorf("block not found for block number %d", block.NumberU64()-1)
 	}
 	statedb, err := api.b.Chain().StateAt(parent.Root())
 	if err != nil {
@@ -1385,8 +1385,8 @@ func (api *BlockChainAPI) GetDiffAccountsWithScope(ctx context.Context, blockNr 
 	}
 
 	block, err := api.b.BlockByNumber(ctx, blockNr)
-	if err != nil {
-		return nil, fmt.Errorf("block not found for block number (%d): %v", blockNr, err)
+	if err != nil || block == nil {
+		return nil, fmt.Errorf("block not found for block number %d", blockNr)
 	}
 
 	needReplay, err := api.needToReplay(ctx, block, accounts)
