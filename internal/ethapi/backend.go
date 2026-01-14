@@ -89,6 +89,8 @@ type Backend interface {
 	TxPoolContentFrom(addr common.Address) ([]*types.Transaction, []*types.Transaction)
 	SubscribeNewTxsEvent(chan<- core.NewTxsEvent) event.Subscription
 
+	GetPendingTxFirstSeen(hash common.Hash) (int64, string, string, bool)
+
 	ChainConfig() *params.ChainConfig
 	Engine() consensus.Engine
 	// CurrentValidators return the list of validator at the latest block
@@ -104,6 +106,7 @@ type Backend interface {
 	SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscription
 	SubscribeFinalizedHeaderEvent(ch chan<- core.FinalizedHeaderEvent) event.Subscription
 	SubscribeNewVoteEvent(chan<- core.NewVoteEvent) event.Subscription
+	SimulateTransaction(ctx context.Context, tx *types.Transaction) (*types.Receipt, error)
 
 	// MevRunning return true if mev is running
 	MevRunning() bool

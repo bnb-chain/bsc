@@ -204,7 +204,7 @@ func (api *TxPoolAPI) Content() map[string]map[string]map[string]*RPCTransaction
 	for account, txs := range pending {
 		dump := make(map[string]*RPCTransaction, len(txs))
 		for _, tx := range txs {
-			dump[fmt.Sprintf("%d", tx.Nonce())] = NewRPCPendingTransaction(tx, curHeader, api.b.ChainConfig())
+			dump[fmt.Sprintf("%d", tx.Nonce())] = NewRPCPendingTransaction(tx, curHeader, api.b.ChainConfig(), nil)
 		}
 		content["pending"][account.Hex()] = dump
 	}
@@ -212,7 +212,7 @@ func (api *TxPoolAPI) Content() map[string]map[string]map[string]*RPCTransaction
 	for account, txs := range queue {
 		dump := make(map[string]*RPCTransaction, len(txs))
 		for _, tx := range txs {
-			dump[fmt.Sprintf("%d", tx.Nonce())] = NewRPCPendingTransaction(tx, curHeader, api.b.ChainConfig())
+			dump[fmt.Sprintf("%d", tx.Nonce())] = NewRPCPendingTransaction(tx, curHeader, api.b.ChainConfig(), nil)
 		}
 		content["queued"][account.Hex()] = dump
 	}
@@ -228,14 +228,14 @@ func (api *TxPoolAPI) ContentFrom(addr common.Address) map[string]map[string]*RP
 	// Build the pending transactions
 	dump := make(map[string]*RPCTransaction, len(pending))
 	for _, tx := range pending {
-		dump[fmt.Sprintf("%d", tx.Nonce())] = NewRPCPendingTransaction(tx, curHeader, api.b.ChainConfig())
+		dump[fmt.Sprintf("%d", tx.Nonce())] = NewRPCPendingTransaction(tx, curHeader, api.b.ChainConfig(), nil)
 	}
 	content["pending"] = dump
 
 	// Build the queued transactions
 	dump = make(map[string]*RPCTransaction, len(queue))
 	for _, tx := range queue {
-		dump[fmt.Sprintf("%d", tx.Nonce())] = NewRPCPendingTransaction(tx, curHeader, api.b.ChainConfig())
+		dump[fmt.Sprintf("%d", tx.Nonce())] = NewRPCPendingTransaction(tx, curHeader, api.b.ChainConfig(), nil)
 	}
 	content["queued"] = dump
 
@@ -1319,6 +1319,8 @@ type RPCTransaction struct {
 	R                   *hexutil.Big                 `json:"r"`
 	S                   *hexutil.Big                 `json:"s"`
 	YParity             *hexutil.Uint64              `json:"yParity,omitempty"`
+	Raw                 hexutil.Bytes                `json:"rawTransaction,omitempty"`
+	Logs                []*types.Log                 `json:"logs,omitempty"`
 }
 
 // newRPCTransaction returns a transaction that will serialize to the RPC
@@ -1426,7 +1428,7 @@ func effectiveGasPrice(tx *types.Transaction, baseFee *big.Int) *big.Int {
 }
 
 // NewRPCPendingTransaction returns a pending transaction that will serialize to the RPC representation
-func NewRPCPendingTransaction(tx *types.Transaction, current *types.Header, config *params.ChainConfig) *RPCTransaction {
+func NewRPCPendingTransaction(tx *types.Transaction, current *types.Header, config *params.ChainConfig, logs []*types.Log) *RPCTransaction {
 	var (
 		baseFee     *big.Int
 		blockNumber = uint64(0)
@@ -1437,7 +1439,14 @@ func NewRPCPendingTransaction(tx *types.Transaction, current *types.Header, conf
 		blockNumber = current.Number.Uint64()
 		blockTime = current.Time
 	}
-	return newRPCTransaction(tx, common.Hash{}, blockNumber, blockTime, 0, baseFee, config)
+	rpcTx := newRPCTransaction(tx, common.Hash{}, blockNumber, blockTime, 0, baseFee, config)
+	if logs != nil {
+		rpcTx.Logs = logs
+	}
+	if raw, err := tx.MarshalBinary(); err == nil {
+		rpcTx.Raw = raw
+	}
+	return rpcTx
 }
 
 // newRPCTransactionsFromBlockIndex returns transactions that will serialize to the RPC representation.
@@ -1709,7 +1718,7 @@ func (api *TransactionAPI) GetTransactionByHash(ctx context.Context, hash common
 	if !found {
 		// No finalized transaction, try to retrieve it from the pool
 		if tx := api.b.GetPoolTransaction(hash); tx != nil {
-			return NewRPCPendingTransaction(tx, api.b.CurrentHeader(), api.b.ChainConfig()), nil
+			return NewRPCPendingTransaction(tx, api.b.CurrentHeader(), api.b.ChainConfig(), nil), nil
 		}
 		// If also not in the pool there is a chance the tx indexer is still in progress.
 		if !api.b.TxIndexDone() {
@@ -2168,7 +2177,7 @@ func (api *TransactionAPI) PendingTransactions() ([]*RPCTransaction, error) {
 	for _, tx := range pending {
 		from, _ := types.Sender(api.signer, tx)
 		if _, exists := accounts[from]; exists {
-			transactions = append(transactions, NewRPCPendingTransaction(tx, curHeader, api.b.ChainConfig()))
+			transactions = append(transactions, NewRPCPendingTransaction(tx, curHeader, api.b.ChainConfig(), nil))
 		}
 	}
 	return transactions, nil
@@ -2230,6 +2239,13 @@ func (api *TransactionAPI) Resend(ctx context.Context, sendArgs TransactionArgs,
 // namespace.
 type DebugAPI struct {
 	b Backend
+}
+
+type PendingTxFirstSeenResult struct {
+	TxHash      common.Hash `json:"txHash"`
+	FirstSeen   int64       `json:"firstSeen"`
+	PeerID      string      `json:"peerId,omitempty"`
+	PeerAddress string      `json:"peerAddress,omitempty"`
 }
 
 // NewDebugAPI creates a new instance of DebugAPI.
@@ -2366,6 +2382,19 @@ func (api *DebugAPI) SetHead(number hexutil.Uint64) error {
 	}
 	api.b.SetHead(uint64(number))
 	return nil
+}
+
+func (api *DebugAPI) PendingTxFirstSeen(ctx context.Context, hash common.Hash) (*PendingTxFirstSeenResult, error) {
+	firstSeen, peerID, peerAddr, ok := api.b.GetPendingTxFirstSeen(hash)
+	if !ok {
+		return nil, fmt.Errorf("pending tx %s not found", hash.Hex())
+	}
+	return &PendingTxFirstSeenResult{
+		TxHash:      hash,
+		FirstSeen:   firstSeen,
+		PeerID:      peerID,
+		PeerAddress: peerAddr,
+	}, nil
 }
 
 // NetAPI offers network related RPC methods

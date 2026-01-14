@@ -99,7 +99,7 @@ func LatestSigner(config *params.ChainConfig) Signer {
 // If you have a ChainConfig and know the current block number, use MakeSigner instead.
 func LatestSignerForChainID(chainID *big.Int) Signer {
 	var signer Signer
-	if chainID != nil {
+	if chainID != nil && chainID.Sign() > 0 {
 		signer = NewPragueSigner(chainID)
 	} else {
 		signer = HomesteadSigner{}

@@ -1,4 +1,4 @@
-// Copyright 2015 The go-ethereum Authors
+﻿// Copyright 2015 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -22,6 +22,9 @@ import (
 	"maps"
 	"math"
 	"math/big"
+	"os"
+	"path/filepath"
+	"sort"
 	"slices"
 	"strings"
 	"sync"
@@ -145,6 +148,9 @@ type handlerConfig struct {
 	EVNNodeIdsWhitelist       []enode.ID
 	ProxyedValidatorAddresses []common.Address
 	ProxyedNodeIds            []enode.ID
+	PeerBlacklist             peerBlacklistConfig
+	PeerWhitelist             peerWhitelistConfig
+	PendingLogPath            string
 }
 
 type handler struct {
@@ -189,6 +195,13 @@ type handler struct {
 	voteMonitorSub event.Subscription
 
 	requiredBlocks map[uint64]common.Hash
+	peerBlacklist  *txPeerBlacklist
+	peerWhitelist  *peerWhitelist
+
+	peerStatsLock sync.RWMutex
+	peerTxCounts  map[string]uint64
+	pendingTracker *pendingTxTracker
+	pendingLogPath string
 
 	// channels for fetcher, syncer, txsyncLoop
 	quitSync chan struct{}
@@ -221,6 +234,9 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		chain:                      config.Chain,
 		peers:                      config.PeerSet,
 		peersPerIP:                 make(map[string]int),
+		peerTxCounts:               make(map[string]uint64),
+		pendingTracker:             newPendingTxTracker(pendingTrackerLimit),
+		pendingLogPath:             config.PendingLogPath,
 		requiredBlocks:             config.RequiredBlocks,
 		directBroadcast:            config.DirectBroadcast,
 		enableEVNFeatures:          config.EnableEVNFeatures,
@@ -241,6 +257,22 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 	for _, nodeID := range config.ProxyedNodeIds {
 		h.proxyedNodeIdsMap[nodeID] = struct{}{}
+	}
+	if bl, err := newTxPeerBlacklist(config.PeerBlacklist); err != nil {
+		return nil, err
+	} else {
+		h.peerBlacklist = bl
+		if bl != nil {
+			log.Info("Loaded peer blacklist", "entries", len(bl.list()))
+		}
+	}
+	if wl, err := newPeerWhitelist(config.PeerWhitelist); err != nil {
+		return nil, err
+	} else {
+		h.peerWhitelist = wl
+		if wl != nil {
+			log.Info("Loaded peer whitelist", "entries", len(wl.list()), "threshold", wl.cfg.LatencyThreshold, "maxSize", wl.cfg.MaxSize)
+		}
 	}
 	if h.chain.NoTries() {
 	} else if config.Sync == ethconfig.FullSync {
@@ -276,7 +308,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		return nil, errors.New("snap sync not supported with snapshots disabled")
 	}
 	// Construct the downloader (long sync)
-	h.downloader = downloader.New(config.Database, h.eventMux, h.chain, h.removePeer, nil)
+	h.downloader = downloader.New(config.Database, h.eventMux, h.chain, h.dropPeer, nil)
 
 	// Construct the fetcher (short sync)
 	validator := func(header *types.Header) error {
@@ -372,7 +404,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 
 	h.blockFetcher = fetcher.NewBlockFetcher(h.chain.GetBlockByHash, validator, broadcastBlockWithCheck,
-		heighter, finalizeHeighter, inserter, h.removePeer, fetchRangeBlocks)
+		heighter, finalizeHeighter, inserter, h.dropPeer, fetchRangeBlocks)
 
 	fetchTx := func(peer string, hashes []common.Hash) error {
 		p := h.peers.peer(peer)
@@ -383,6 +415,35 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	}
 	addTxs := func(peer string, txs []*types.Transaction) []error {
 		errors := h.txpool.Add(txs, false)
+		if peer != "" {
+			h.incrementPeerTxCount(peer, len(txs))
+		}
+		if h.peerBlacklist != nil && peer != "" && len(txs) > 0 {
+			// 白名单节点不受黑名单记录和惩罚
+			isWhitelisted := false
+			if h.peerWhitelist != nil {
+				isWhitelisted = h.peerWhitelist.isWhitelisted(peer)
+			}
+			
+			if !isWhitelisted {
+				successCount := 0
+				if len(errors) == 0 {
+					successCount = len(txs)
+				} else if len(errors) == len(txs) {
+					for _, err := range errors {
+						if err == nil || err == txpool.ErrAlreadyKnown {
+							successCount++
+						}
+					}
+				} else {
+					// Fallback in unexpected scenarios, assume successful to avoid penalizing peers unfairly.
+					successCount = len(txs)
+				}
+				if h.peerBlacklist.record(peer, successCount, len(txs)) {
+					h.removePeer(peer)
+				}
+			}
+		}
 		for _, err := range errors {
 			if err == txpool.ErrInBlackList {
 				accountBlacklistPeerCounter.Inc(1)
@@ -395,11 +456,148 @@ func newHandler(config *handlerConfig) (*handler, error) {
 				}
 			}
 		}
+		h.recordPendingTxs(peer, txs, errors)
 		return errors
 	}
-	h.txFetcher = fetcher.NewTxFetcher(h.txpool.Has, addTxs, fetchTx, h.removePeer)
+	h.txFetcher = fetcher.NewTxFetcher(h.txpool.Has, addTxs, fetchTx, h.dropPeer)
 	h.chainSync = newChainSyncer(h)
 	return h, nil
+}
+
+func (h *handler) resetPeerTxCount(id string) {
+	if h == nil {
+		return
+	}
+	h.peerStatsLock.Lock()
+	h.peerTxCounts[id] = 0
+	h.peerStatsLock.Unlock()
+}
+
+func (h *handler) clearPeerTxCount(id string) {
+	if h == nil {
+		return
+	}
+	h.peerStatsLock.Lock()
+	delete(h.peerTxCounts, id)
+	h.peerStatsLock.Unlock()
+}
+
+func (h *handler) incrementPeerTxCount(id string, delta int) {
+	if h == nil || delta <= 0 {
+		return
+	}
+	h.peerStatsLock.Lock()
+	h.peerTxCounts[id] += uint64(delta)
+	h.peerStatsLock.Unlock()
+}
+
+func (h *handler) getPeerTxCount(id string) uint64 {
+	h.peerStatsLock.RLock()
+	defer h.peerStatsLock.RUnlock()
+	return h.peerTxCounts[id]
+}
+
+func (h *handler) recordPendingTxs(peer string, txs []*types.Transaction, errs []error) {
+	if h == nil || h.pendingTracker == nil || len(txs) == 0 {
+		return
+	}
+	var (
+		peerAddr  string
+		countPeer bool
+	)
+	if peer != "" {
+		countPeer = true
+		if p := h.peers.peer(peer); p != nil {
+			if addr := p.remoteAddr(); addr != nil {
+				peerAddr = addr.String()
+			}
+		}
+		if peerAddr == "" {
+			peerAddr = peer
+		}
+	} else {
+		peerAddr = "local"
+	}
+	for i, tx := range txs {
+		if len(errs) > 0 {
+			if i >= len(errs) || errs[i] != nil {
+				continue
+			}
+		}
+		h.pendingTracker.Record(tx.Hash(), peer, peerAddr, countPeer)
+	}
+}
+
+func (h *handler) getPendingTxFirstSeen(hash common.Hash) (pendingTxRecord, bool) {
+	if h == nil || h.pendingTracker == nil {
+		return pendingTxRecord{}, false
+	}
+	return h.pendingTracker.FirstSeen(hash)
+}
+
+func (h *handler) topPendingPeers(limit int) []pendingPeerStat {
+	if h == nil || h.pendingTracker == nil {
+		return nil
+	}
+	return h.pendingTracker.TopPeers(limit)
+}
+
+func (h *handler) dropWorstPeers(exempt map[string]struct{}, limit int) bool {
+	if h == nil || limit <= 0 {
+		return false
+	}
+	peers := h.peers.list()
+	type candidate struct {
+		id      string
+		txCount uint64
+	}
+	candidates := make([]candidate, 0, len(peers))
+	for _, p := range peers {
+		if p == nil || p.Peer == nil {
+			continue
+		}
+		id := p.ID()
+		if exempt != nil {
+			if _, skip := exempt[id]; skip {
+				continue
+			}
+		}
+		info := p.Peer.Info()
+		if info != nil && info.Network.Trusted {
+			continue
+		}
+		candidates = append(candidates, candidate{id: id, txCount: h.getPeerTxCount(id)})
+	}
+	if len(candidates) == 0 {
+		return false
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].txCount == candidates[j].txCount {
+			return candidates[i].id < candidates[j].id
+		}
+		return candidates[i].txCount < candidates[j].txCount
+	})
+	dropped := 0
+	for _, cand := range candidates {
+		log.Info("Dropping peer with low pending activity", "peer", cand.id, "txCount", cand.txCount)
+		h.dropPeer(cand.id)
+		dropped++
+		if dropped >= limit {
+			break
+		}
+	}
+	return dropped > 0
+}
+
+func (h *handler) dropPeer(id string) {
+	if id == "" {
+		return
+	}
+	h.clearPeerTxCount(id)
+	if h.peerBlacklist != nil {
+		h.peerBlacklist.blacklist(id, 0)
+	}
+	h.removePeer(id)
 }
 
 // protoTracker tracks the number of active protocol handlers.
@@ -436,6 +634,93 @@ func (h *handler) protoTracker() {
 	}
 }
 
+func (h *handler) pendingPeerLogLoop() {
+	defer h.wg.Done()
+	ticker := time.NewTicker(30 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			h.writePendingPeerStats()
+		case <-h.stopCh:
+			h.writePendingPeerStats()
+			return
+		}
+	}
+}
+
+// peerLatencyCollectionLoop 周期性采集所有peer的延迟信息，记录到白名单
+func (h *handler) peerLatencyCollectionLoop() {
+	defer h.wg.Done()
+	
+	// 每30秒采集一次延迟信息
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ticker.C:
+			if h.peerWhitelist == nil {
+				return
+			}
+			
+			// 获取所有peer
+			peers := h.peers.list()
+			for _, peer := range peers {
+				// 通过 Info() 方法获取延迟信息 (毫秒)
+				if peer.Peer != nil && peer.Peer.Peer != nil {
+					info := peer.Peer.Peer.Info()
+					if info != nil && info.Latency > 0 {
+						// 记录延迟到白名单
+						h.peerWhitelist.recordLatency(peer.ID(), info.Latency)
+					}
+				}
+			}
+			
+		case <-h.stopCh:
+			return
+		}
+	}
+}
+
+func (h *handler) writePendingPeerStats() {
+	if h.pendingLogPath == "" {
+		return
+	}
+	stats := h.topPendingPeers(20)
+	if len(stats) == 0 {
+		return
+	}
+	now := time.Now().Format(time.RFC3339)
+	var b strings.Builder
+	b.WriteString(now)
+	b.WriteString(" pending first seen peers:\n")
+	for i, stat := range stats {
+		fmt.Fprintf(&b, "%d. %s count=%d\n", i+1, stat.PeerAddress, stat.Count)
+	}
+	b.WriteString("\n")
+	dir := filepath.Dir(h.pendingLogPath)
+	if dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			log.Warn("Failed to create pending peer log directory", "dir", dir, "err", err)
+			return
+		}
+	}
+	if err := appendFile(h.pendingLogPath, b.String()); err != nil {
+		log.Warn("Failed to write pending peer stats", "path", h.pendingLogPath, "err", err)
+	}
+}
+
+func appendFile(path, content string) error {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = file.WriteString(content)
+	return err
+}
+
 // incHandlers signals to increment the number of active handlers if not
 // quitting.
 func (h *handler) incHandlers() bool {
@@ -459,6 +744,17 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		return p2p.DiscQuitting
 	}
 	defer h.decHandlers()
+
+	// 检查黑名单，但白名单节点不受黑名单限制
+	if h.peerBlacklist != nil && h.peerBlacklist.isBlacklisted(peer.ID()) {
+		// 如果节点在白名单中，豁免黑名单检查
+		if h.peerWhitelist != nil && h.peerWhitelist.isWhitelisted(peer.ID()) {
+			peer.Log().Info("Peer is blacklisted but whitelisted, allowing connection", "peer", peer.ID())
+		} else {
+			peer.Log().Info("Rejecting connection from blacklisted peer", "peer", peer.ID())
+			return p2p.DiscUselessPeer
+		}
+	}
 
 	// If the peer has a `snap` extension, wait for it to connect so we can have
 	// a uniform initialization/teardown mechanism
@@ -501,7 +797,13 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	// Ignore maxPeers if this is a trusted peer
 	peerInfo := peer.Peer.Info()
 	if !peerInfo.Network.Trusted {
-		if reject || h.peers.len() >= h.maxPeers {
+		if h.peers.len() >= h.maxPeers {
+			exempt := map[string]struct{}{peer.ID(): {}}
+			if !h.dropWorstPeers(exempt, 5) {
+				return p2p.DiscTooManyPeers
+			}
+		}
+		if reject {
 			return p2p.DiscTooManyPeers
 		}
 	}
@@ -529,7 +831,14 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 		peer.Log().Error("Ethereum peer registration failed", "err", err)
 		return err
 	}
+	h.resetPeerTxCount(peer.ID())
 	peer.Log().Debug("Ethereum peer connected", "name", peer.Name(), "peers.len", h.peers.len())
+	
+	// 通知白名单：节点已连接
+	if h.peerWhitelist != nil {
+		h.peerWhitelist.onPeerConnected(peer.ID(), peer.Node().URLv4())
+	}
+	
 	defer h.unregisterPeer(peer.ID())
 
 	p := h.peers.peer(peer.ID())
@@ -673,12 +982,19 @@ func (h *handler) unregisterPeer(id string) {
 	} else {
 		logger = log.New("peer", id[:8])
 	}
+	
+	// 通知白名单：节点即将断开
+	if h.peerWhitelist != nil {
+		h.peerWhitelist.onPeerDisconnected(id)
+	}
+	
 	// Abort if the peer does not exist
 	peer := h.peers.peer(id)
 	if peer == nil {
 		logger.Warn("Ethereum peer removal failed", "err", errPeerNotRegistered)
 		return
 	}
+	h.clearPeerTxCount(id)
 	// Remove the `eth` peer if it exists
 	logger.Debug("Removing Ethereum peer", "snap", peer.snapExt != nil)
 
@@ -742,6 +1058,17 @@ func (h *handler) Start(maxPeers int, maxPeersPerIP int) {
 	h.reannoTxsCh = make(chan core.ReannoTxsEvent, txChanSize)
 	h.reannoTxsSub = h.txpool.SubscribeReannoTxsEvent(h.reannoTxsCh)
 	go h.txReannounceLoop()
+
+	if h.pendingLogPath != "" && h.pendingTracker != nil {
+		h.wg.Add(1)
+		go h.pendingPeerLogLoop()
+	}
+
+	// 启动白名单延迟采集循环
+	if h.peerWhitelist != nil {
+		h.wg.Add(1)
+		go h.peerLatencyCollectionLoop()
+	}
 
 	// broadcast mined blocks
 	h.wg.Add(1)
@@ -1292,3 +1619,5 @@ func (st *blockRangeState) stop() {
 func (st *blockRangeState) currentRange() eth.BlockRangeUpdatePacket {
 	return *st.next.Load()
 }
+
+

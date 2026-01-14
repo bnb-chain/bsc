@@ -157,9 +157,10 @@ func (api *API) blockByNumberAndHash(ctx context.Context, number rpc.BlockNumber
 // TraceConfig holds extra parameters to trace functions.
 type TraceConfig struct {
 	*logger.Config
-	Tracer  *string
-	Timeout *string
-	Reexec  *uint64
+	Tracer         *string
+	Timeout        *string
+	Reexec         *uint64
+	EnsureBalance  bool // 补齐 from 账户余额以绕过预扣款不足（仅用于追踪）
 	// Config specific to given tracer. Note struct logger
 	// config are historically embedded in main object.
 	TracerConfig json.RawMessage
@@ -1026,6 +1027,81 @@ func (api *API) TraceTransaction(ctx context.Context, hash common.Hash, config *
 	return api.traceTx(ctx, tx, msg, txctx, vmctx, statedb, config, isSystemTx, nil)
 }
 
+// TraceTransactionSequence replays a list of signed transactions on top of the
+// same base state sequentially, returning the trace result of each transaction.
+// The base state defaults to the latest canonical block when not specified.
+func (api *API) TraceTransactionSequence(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash, txs []hexutil.Bytes, config *TraceConfig) ([]interface{}, error) {
+	if len(txs) == 0 {
+		return nil, errors.New("no transactions supplied for tracing")
+	}
+	var (
+		block *types.Block
+		err   error
+	)
+	switch {
+	case blockNrOrHash.BlockHash != nil:
+		block, err = api.blockByHash(ctx, *blockNrOrHash.BlockHash)
+	case blockNrOrHash.BlockNumber != nil:
+		number := *blockNrOrHash.BlockNumber
+		if number == rpc.PendingBlockNumber {
+			return nil, errors.New("tracing on top of pending is not supported")
+		}
+		block, err = api.blockByNumber(ctx, number)
+	default:
+		block, err = api.blockByNumber(ctx, rpc.LatestBlockNumber)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	reexec := defaultTraceReexec
+	if config != nil && config.Reexec != nil {
+		reexec = *config.Reexec
+	}
+	statedb, release, err := api.backend.StateAtBlock(ctx, block, reexec, nil, false, false)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	header := block.Header()
+	blockContext := core.NewEVMBlockContext(header, api.chainContext(ctx), nil)
+	rules := api.backend.ChainConfig().Rules(blockContext.BlockNumber, blockContext.Random != nil, blockContext.Time)
+	precompiles := vm.ActivePrecompiledContracts(rules)
+	signer := types.MakeSigner(api.backend.ChainConfig(), block.Number(), block.Time())
+	baseTxIndex := len(block.Transactions())
+
+	results := make([]interface{}, 0, len(txs))
+	for i, raw := range txs {
+		tx := new(types.Transaction)
+		if err := tx.UnmarshalBinary(raw); err != nil {
+			return nil, fmt.Errorf("invalid transaction %d: %w", i, err)
+		}
+		msg, err := core.TransactionToMessage(tx, signer, block.BaseFee())
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert transaction %d: %w", i, err)
+		}
+		var isSystemTx bool
+		if posa, ok := api.backend.Engine().(consensus.PoSA); ok {
+			if isSystem, _ := posa.IsSystemTransaction(tx, header); isSystem {
+				isSystemTx = true
+			}
+		}
+		txctx := &Context{
+			BlockHash:   block.Hash(),
+			BlockNumber: block.Number(),
+			TxIndex:     baseTxIndex + i,
+			TxHash:      tx.Hash(),
+		}
+		trace, err := api.traceTx(ctx, tx, msg, txctx, blockContext, statedb, config, isSystemTx, precompiles)
+		if err != nil {
+			return nil, fmt.Errorf("failed to trace transaction %d: %w", i, err)
+		}
+		results = append(results, trace)
+	}
+	return results, nil
+}
+
 // TraceCall lets you trace a given eth_call. It collects the structured logs
 // created during the execution of EVM if the given transaction was added on
 // top of the provided block and returns them as a JSON object.
@@ -1046,12 +1122,8 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 		block, err = api.blockByHash(ctx, hash)
 	} else if number, ok := blockNrOrHash.Number(); ok {
 		if number == rpc.PendingBlockNumber {
-			// We don't have access to the miner here. For tracing 'future' transactions,
-			// it can be done with block- and state-overrides instead, which offers
-			// more flexibility and stability than trying to trace on 'pending', since
-			// the contents of 'pending' is unstable and probably not a true representation
-			// of what the next actual block is likely to contain.
-			return nil, errors.New("tracing on top of pending is not supported")
+			// Nodes running without a miner still expect pending to behave like "latest".
+			number = rpc.LatestBlockNumber
 		}
 		block, err = api.blockByNumber(ctx, number)
 	} else {
@@ -1131,7 +1203,42 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 	if config != nil {
 		traceConfig = &config.TraceConfig
 	}
-	return api.traceTx(ctx, tx, msg, new(Context), blockContext, statedb, traceConfig, false, precompiles)
+	// Assemble the structured logger context
+	txctx := &Context{
+		BlockHash:   h.Hash(),
+		BlockNumber: h.Number,
+		TxHash:      tx.Hash(),
+	}
+	return api.traceTx(ctx, tx, msg, txctx, blockContext, statedb, traceConfig, false, precompiles)
+}
+
+// TraceRawCall lets callers supply an RLP-encoded transaction and traces it
+// using the same semantics as TraceCall.
+func (api *API) TraceRawCall(ctx context.Context, raw hexutil.Bytes, blockNrOrHash rpc.BlockNumberOrHash, config *TraceCallConfig) (interface{}, error) {
+	var tx types.Transaction
+	if err := tx.UnmarshalBinary(raw); err != nil {
+		return nil, fmt.Errorf("invalid raw transaction: %w", err)
+	}
+	signer := types.LatestSigner(api.backend.ChainConfig())
+	fallbackChainID := api.backend.ChainConfig().ChainID
+	if chainID := tx.ChainId(); chainID != nil {
+		switch {
+		case chainID.Sign() < 0:
+			return nil, fmt.Errorf("invalid chain id %v", chainID)
+		case chainID.Sign() == 0 && fallbackChainID != nil:
+			chainID = fallbackChainID // fallback to node chain when caller passes 0
+		}
+		signer = types.LatestSignerForChainID(chainID)
+	}
+	from, err := types.Sender(signer, &tx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to recover sender: %w", err)
+	}
+	args := ethapi.NewTransactionArgsFromTransaction(&tx, from)
+	if args.ChainID != nil && (*big.Int)(args.ChainID).Sign() == 0 && fallbackChainID != nil {
+		args.ChainID = (*hexutil.Big)(new(big.Int).Set(fallbackChainID))
+	}
+	return api.TraceCall(ctx, args, blockNrOrHash, config)
 }
 
 // traceTx configures a new tracer according to the provided configuration, and
@@ -1192,6 +1299,9 @@ func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *cor
 
 	// Call Prepare to clear out the statedb access list
 	statedb.SetTxContext(txctx.TxHash, txctx.TxIndex)
+	// if config.EnsureBalance {
+		ensureTraceBalance(statedb, message)
+	// }
 	_, err = core.ApplyTransactionWithEVM(message, new(core.GasPool).AddGas(message.GasLimit), statedb, vmctx.BlockNumber, txctx.BlockHash, vmctx.Time, tx, &usedGas, evm)
 	if err != nil {
 		return nil, fmt.Errorf("tracing failed: %w", err)
@@ -1200,6 +1310,45 @@ func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *cor
 		tracer.OnSystemTxFixIntrinsicGas(intrinsicGas)
 	}
 	return tracer.GetResult()
+}
+
+// ensureTraceBalance guarantees the sender has足够余额覆盖 gasLimit*gasPrice+value，再额外留 10% 余量。
+// 仅用于追踪，避免因历史状态余额不足导致的报错，不会影响链上真实状态。
+func ensureTraceBalance(statedb *state.StateDB, msg *core.Message) {
+	if statedb == nil || msg == nil {
+		return
+	}
+	// 计算需要的 gas 价格：EIP-1559 优先使用 GasFeeCap，否则退回 GasPrice
+	price := new(big.Int)
+	switch {
+	case msg.GasFeeCap != nil:
+		price.Set(msg.GasFeeCap)
+	case msg.GasPrice != nil:
+		price.Set(msg.GasPrice)
+	default:
+		price.SetUint64(0)
+	}
+	required := new(big.Int).SetUint64(msg.GasLimit)
+	required.Mul(required, price)
+	if msg.Value != nil {
+		required.Add(required, msg.Value)
+	}
+	if required.Sign() == 0 {
+		return
+	}
+	// 留 10% 余量
+	required.Mul(required, big.NewInt(11))
+	required.Div(required, big.NewInt(10))
+
+	current := statedb.GetBalance(msg.From).ToBig()
+	if current.Cmp(required) >= 0 {
+		return
+	}
+	u256, overflow := uint256.FromBig(required)
+	if overflow {
+		return
+	}
+	statedb.SetBalance(msg.From, u256, tracing.BalanceChangeUnspecified)
 }
 
 // APIs return the collection of RPC services the tracer package offers.

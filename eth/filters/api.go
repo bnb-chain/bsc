@@ -33,6 +33,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/rpc"
+
+	// "github.com/ethereum/go-ethereum/log"
 )
 
 var (
@@ -177,11 +179,24 @@ func (api *FilterAPI) NewPendingTransactions(ctx context.Context, fullTx *bool) 
 	rpcSub := notifier.CreateSubscription()
 
 	gopool.Submit(func() {
+		const maxSeenPending = 200000
+		const maxWorkers = 24 // 并发 worker 数量，可根据实际负载调整
+		seen := make(map[common.Hash]struct{}, maxSeenPending)
+		seenOrder := make([]common.Hash, 0, maxSeenPending)
+		seenMu := sync.Mutex{} // 保护 seen 和 seenOrder 的并发访问
+
 		txs := make(chan []*types.Transaction, 128)
 		pendingTxSub := api.events.SubscribePendingTxs(txs)
 		defer pendingTxSub.Unsubscribe()
 
 		chainConfig := api.sys.backend.ChainConfig()
+
+		// 模拟结果的结构体（无需保持顺序）
+		type simResult struct {
+			tx      *types.Transaction
+			receipt *types.Receipt
+			err     error
+		}
 
 		for {
 			select {
@@ -189,12 +204,87 @@ func (api *FilterAPI) NewPendingTransactions(ctx context.Context, fullTx *bool) 
 				// To keep the original behaviour, send a single tx hash in one notification.
 				// TODO(rjl493456442) Send a batch of tx hashes in one notification
 				latest := api.sys.backend.CurrentHeader()
+				batchSeen := make(map[common.Hash]struct{}, len(txs))
+				
+				// 过滤去重和已见的交易
+				var toSimulate []*types.Transaction
 				for _, tx := range txs {
+					hash := tx.Hash()
+					if _, ok := batchSeen[hash]; ok {
+						continue
+					}
+					batchSeen[hash] = struct{}{}
+					
+					seenMu.Lock()
+					_, exists := seen[hash]
+					seenMu.Unlock()
+					
+					if exists {
+						continue
+					}
+					toSimulate = append(toSimulate, tx)
+				}
+
+				if len(toSimulate) == 0 {
+					continue
+				}
+
+				// 并发模拟交易 - 流式处理，无需等待所有完成
+				results := make(chan simResult, len(toSimulate))
+				var wg sync.WaitGroup
+				semaphore := make(chan struct{}, maxWorkers)
+
+				for _, tx := range toSimulate {
+					wg.Add(1)
+					txCopy := tx
+					
+					gopool.Submit(func() {
+						defer wg.Done()
+						semaphore <- struct{}{} // 获取信号量
+						defer func() { <-semaphore }() // 释放信号量
+
+						receipt, err := api.sys.backend.SimulateTransaction(ctx, txCopy)
+						results <- simResult{
+							tx:      txCopy,
+							receipt: receipt,
+							err:     err,
+						}
+					})
+				}
+
+				// 等待所有模拟完成并关闭结果通道
+				go func() {
+					wg.Wait()
+					close(results)
+				}()
+
+				// 流式处理结果 - 交易一完成就立即通知，无需等待所有交易
+				for result := range results {
+					if result.err != nil || result.receipt == nil || result.receipt.Status != types.ReceiptStatusSuccessful {
+						continue
+					}
+					
+					hash := result.tx.Hash()
+					
+					// 加锁更新 seen map
+					seenMu.Lock()
+					seen[hash] = struct{}{}
+					seenOrder = append(seenOrder, hash)
+					
+					// 限制 seen map 大小
+					if len(seen) > maxSeenPending && len(seenOrder) > 0 {
+						oldest := seenOrder[0]
+						seenOrder = seenOrder[1:]
+						delete(seen, oldest)
+					}
+					seenMu.Unlock()
+					
+					// 立即通知订阅端，无需等待其他交易
 					if fullTx != nil && *fullTx {
-						rpcTx := ethapi.NewRPCPendingTransaction(tx, latest, chainConfig)
+						rpcTx := ethapi.NewRPCPendingTransaction(result.tx, latest, chainConfig, result.receipt.Logs)
 						notifier.Notify(rpcSub.ID, rpcTx)
 					} else {
-						notifier.Notify(rpcSub.ID, tx.Hash())
+						notifier.Notify(rpcSub.ID, hash)
 					}
 				}
 			case <-rpcSub.Err():
@@ -682,7 +772,7 @@ func (api *FilterAPI) GetFilterChanges(id rpc.ID) (interface{}, error) {
 			if f.fullTx {
 				txs := make([]*ethapi.RPCTransaction, 0, len(f.txs))
 				for _, tx := range f.txs {
-					txs = append(txs, ethapi.NewRPCPendingTransaction(tx, latest, chainConfig))
+					txs = append(txs, ethapi.NewRPCPendingTransaction(tx, latest, chainConfig, nil))
 				}
 				f.txs = nil
 				return txs, nil

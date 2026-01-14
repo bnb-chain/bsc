@@ -140,6 +140,10 @@ func (b *testBackend) GetLogs(ctx context.Context, hash common.Hash, number uint
 	return logs, nil
 }
 
+func (b *testBackend) SimulateTransaction(context.Context, *types.Transaction) (*types.Receipt, error) {
+	return &types.Receipt{Status: types.ReceiptStatusSuccessful, Logs: []*types.Log{}}, nil
+}
+
 func (b *testBackend) SubscribeNewTxsEvent(ch chan<- core.NewTxsEvent) event.Subscription {
 	return b.txFeed.Subscribe(ch)
 }

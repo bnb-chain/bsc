@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
@@ -45,6 +46,8 @@ import (
 	"github.com/ethereum/go-ethereum/miner"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
+
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // EthAPIBackend implements ethapi.Backend and tracers.Backend for full nodes
@@ -338,7 +341,11 @@ func (b *EthAPIBackend) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscri
 }
 
 func (b *EthAPIBackend) SendTx(ctx context.Context, signedTx *types.Transaction) error {
-	err := b.eth.txPool.Add([]*types.Transaction{signedTx}, false)[0]
+	errs := b.eth.txPool.Add([]*types.Transaction{signedTx}, false)
+	if b.eth.handler != nil {
+		b.eth.handler.recordPendingTxs("", []*types.Transaction{signedTx}, errs)
+	}
+	err := errs[0]
 
 	// If the local transaction tracker is not configured, returns whatever
 	// returned from the txpool.
@@ -374,6 +381,17 @@ func (b *EthAPIBackend) GetPoolTransactions() (types.Transactions, error) {
 
 func (b *EthAPIBackend) GetPoolTransaction(hash common.Hash) *types.Transaction {
 	return b.eth.txPool.Get(hash)
+}
+
+func (b *EthAPIBackend) GetPendingTxFirstSeen(hash common.Hash) (int64, string, string, bool) {
+	if b.eth.handler == nil {
+		return 0, "", "", false
+	}
+	rec, ok := b.eth.handler.getPendingTxFirstSeen(hash)
+	if !ok {
+		return 0, "", "", false
+	}
+	return rec.FirstSeen, rec.PeerID, rec.PeerAddress, true
 }
 
 // GetCanonicalTransaction retrieves the lookup along with the transaction itself
@@ -415,6 +433,70 @@ func (b *EthAPIBackend) TxPoolContentFrom(addr common.Address) ([]*types.Transac
 
 func (b *EthAPIBackend) TxPool() *txpool.TxPool {
 	return b.eth.txPool
+}
+
+func (b *EthAPIBackend) SimulateTransaction(ctx context.Context, tx *types.Transaction) (*types.Receipt, error) {
+	// select {
+	// case <-ctx.Done():
+	// 	log.Warn("SimulateTransaction Done", ctx.Err())
+	// 	return nil, ctx.Err()
+	// default:
+	// }
+
+	var (
+		header *types.Header
+		state  *state.StateDB
+		err    error
+	)
+
+	if pendingBlock, _, pendingState := b.eth.miner.Pending(); pendingBlock != nil && pendingState != nil {
+		header = types.CopyHeader(pendingBlock.Header())
+		state = pendingState.Copy()
+	} else {
+		latest := b.eth.blockchain.CurrentBlock()
+		if latest == nil {
+			return nil, errors.New("no latest block available")
+		}
+		header = types.CopyHeader(latest)
+		header.Number = new(big.Int).Add(header.Number, big.NewInt(1))
+		header.ParentHash = latest.Hash()
+		header.Time = header.Time + 1
+		if latest.BaseFee != nil {
+			header.BaseFee = eip1559.CalcBaseFee(b.eth.blockchain.Config(), latest)
+		}
+		state, err = b.eth.blockchain.StateAt(latest.Root)
+		if err != nil {
+			log.Warn("SimulateTransaction StateAt error", err)
+			return nil, err
+		}
+	}
+	if state == nil {
+		return nil, errors.New("state unavailable for simulation")
+	}
+
+	chainConfig := b.eth.blockchain.Config()
+	signer := types.MakeSigner(chainConfig, header.Number, header.Time)
+	msg, err := core.TransactionToMessage(tx, signer, header.BaseFee)
+	if err != nil {
+		log.Warn("SimulateTransaction TransactionToMessage error", err)
+		return nil, err
+	}
+
+	gasPool := new(core.GasPool)
+	gasPool.AddGas(header.GasLimit)
+
+	blockCtx := core.NewEVMBlockContext(header, b.eth.blockchain, nil)
+	evm := vm.NewEVM(blockCtx, state, chainConfig, vm.Config{})
+	evm.SetTxContext(core.NewEVMTxContext(msg))
+	state.SetTxContext(tx.Hash(), 0)
+
+	usedGas := uint64(0)
+	receipt, err := core.ApplyTransactionWithEVM(msg, gasPool, state, header.Number, common.Hash{}, header.Time, tx, &usedGas, evm)
+	if err != nil {
+		log.Debug("SimulateTransaction ApplyTransactionWithEVM error", err)
+		return nil, err
+	}
+	return receipt, nil
 }
 
 func (b *EthAPIBackend) SubscribeNewTxsEvent(ch chan<- core.NewTxsEvent) event.Subscription {

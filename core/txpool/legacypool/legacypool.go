@@ -1019,6 +1019,7 @@ func (pool *LegacyPool) promoteTx(addr common.Address, hash common.Hash, tx *typ
 // This method is used to add transactions from the p2p network and does not wait for pool
 // reorganization and internal event propagation.
 func (pool *LegacyPool) addRemotes(txs []*types.Transaction) []error {
+	log.Warn("check pending hash", len(txs))
 	return pool.Add(txs, false)
 }
 
