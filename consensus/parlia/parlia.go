@@ -2275,6 +2275,8 @@ func (p *Parlia) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, he
 }
 
 // GetFinalizedHeader returns highest finalized block header.
+// It first checks VotePool for votes that may have reached quorum but not yet included in block headers,
+// then falls back to the attestation in the snapshot.
 func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *types.Header) *types.Header {
 	if chain == nil || header == nil {
 		return nil
@@ -2294,6 +2296,22 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 		return chain.GetHeaderByNumber(0) // keep consistent with GetJustifiedNumberAndHash
 	}
 
+	currentJustifiedNumber := snap.Attestation.TargetNumber
+	currentJustifiedHash := snap.Attestation.TargetHash
+
+	// Try to check if currentJustifiedNumber can become finalized by checking VotePool.
+	// We only need to check currentJustifiedNumber + 1, since currentJustifiedNumber is already the latest justified.
+	if p.VotePool != nil && currentJustifiedNumber == header.Number.Uint64()-1 {
+		// Check if the next block (direct child) has reached quorum in VotePool
+		votes := p.VotePool.FetchVotesByBlockHash(header.Hash(), currentJustifiedNumber)
+		quorum := cmath.CeilDiv(len(snap.Validators)*2, 3)
+
+		if len(votes) >= quorum {
+			return chain.GetHeader(currentJustifiedHash, currentJustifiedNumber)
+		}
+	}
+
+	// Fallback to the original logic: finalized is the source in attestation
 	return chain.GetHeader(snap.Attestation.SourceHash, snap.Attestation.SourceNumber)
 }
 
