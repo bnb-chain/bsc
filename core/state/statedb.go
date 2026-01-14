@@ -1286,12 +1286,17 @@ func (s *StateDB) handleDestruction(noStorageWiping bool) (map[common.Hash]*acco
 		deletes[addrHash] = op
 
 		// Short circuit if the origin storage was empty.
+		//
 		// 1. Standard Trie: Reliable check via EmptyRootHash.
-		// 2. NoTries: Since Root is always EmptyRootHash (see updateRoot()),
-		//    we rely on EIP-158 emptiness to skip storage cleanup for deleted empty accounts.
+		// 2. NoTries: Since `prev.Root` is always EmptyRootHash (refer to updateRoot()):
+		//    a. EIP-158 is active from BSC genesis, ensuring that "empty accounts" are
+		//       cleared upon finalization; thus, `prevObj.origin` is guaranteed to be nil.
+		//    b. Post-Cancun (EIP-6780): If an EOA with balance is converted to a contract
+		//       via CREATE/CREATE2 and then calls SELFDESTRUCT within the same transaction,
+		//       we must honor 'noStorageWiping' to skip redundant or illegal disk deletion.
 		// 3. Verkle: Legacy trie-root based checks are inapplicable.
-		if (!s.db.NoTries() && prev.Root == types.EmptyRootHash) ||
-			/*(s.db.NoTries() && prevObj.empty()) ||*/ // EIP158 is true from the genesis block in BSC
+		if !s.db.NoTries() && prev.Root == types.EmptyRootHash ||
+			s.db.NoTries() && noStorageWiping ||
 			s.db.TrieDB().IsVerkle() {
 			continue
 		}
