@@ -150,7 +150,7 @@ func iterateTransactions(db ethdb.Database, from uint64, to uint64, reverse bool
 		for data := range rlpCh {
 			var body types.Body
 			if err := rlp.DecodeBytes(data.rlp, &body); err != nil {
-				log.Warn("Failed to decode block body", "block", data.number, "error", err)
+				// log.Warn("Failed to decode block body", "block", data.number, "error", err)
 				return
 			}
 			var hashes []common.Hash
