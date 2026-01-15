@@ -405,12 +405,8 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 
 	// Initialize filtermaps log index.
-	// Auto-enable checkpoint file for BSC chains
-	var checkpointFile string
-	chainID := eth.blockchain.Config().ChainID.Uint64()
-	if chainID == 56 || chainID == 97 { // BSC Mainnet or Chapel
-		checkpointFile = filepath.Join(stack.DataDir(), "geth", "filtermap_checkpoints.json")
-	}
+	// Auto-enable checkpoint file
+	checkpointFile := filepath.Join(stack.DataDir(), "geth", "filtermap_checkpoints.json")
 
 	fmConfig := filtermaps.Config{
 		History:            config.LogHistory,

@@ -394,27 +394,19 @@ func (f *FilterMaps) init() error {
 	defer f.indexLock.Unlock()
 
 	// Load checkpoints from custom file if specified
-	allCheckpoints := checkpoints
 	if f.checkpointFile != "" {
 		if data, err := os.ReadFile(f.checkpointFile); err == nil {
 			if customCheckpoints := loadCustomCheckpoints(data); len(customCheckpoints) > 0 {
-				// Create a new slice with embedded checkpoints + custom checkpoints
-				allCheckpoints = make([]checkpointList, len(checkpoints)+1)
-				copy(allCheckpoints, checkpoints)
-				allCheckpoints[len(checkpoints)] = customCheckpoints
+				checkpoints = append(checkpoints, customCheckpoints)
 				log.Info("Loaded custom checkpoints from file",
 					"path", f.checkpointFile,
 					"count", len(customCheckpoints))
 			}
-		} else {
-			log.Debug("Could not load custom checkpoint file",
-				"path", f.checkpointFile,
-				"error", err)
 		}
 	}
 
 	var bestIdx, bestLen int
-	for idx, checkpointList := range allCheckpoints {
+	for idx, checkpointList := range checkpoints {
 		// binary search to find the last checkpoint that is <= headNumber
 		min, max := 0, len(checkpointList)
 		for min < max {
@@ -439,12 +431,7 @@ func (f *FilterMaps) init() error {
 	}
 	var initBlockNumber uint64
 	if bestLen > 0 {
-		initBlockNumber = allCheckpoints[bestIdx][bestLen-1].BlockNumber
-		log.Info("Using checkpoint for initialization",
-			"checkpointBlock", initBlockNumber,
-			"matchedCheckpoints", bestLen)
-	} else {
-		log.Warn("No matching checkpoints found, starting from genesis")
+		initBlockNumber = checkpoints[bestIdx][bestLen-1].BlockNumber
 	}
 	if initBlockNumber < f.historyCutoff {
 		return errors.New("cannot start indexing before history cutoff point")
@@ -455,15 +442,12 @@ func (f *FilterMaps) init() error {
 			initBlockNumber = 1
 		}
 		if f.indexedView.chain.GetCanonicalHash(initBlockNumber) == (common.Hash{}) {
-			log.Error("Init block is pruned",
-				"initBlock", initBlockNumber,
-				"headNumber", f.targetView.HeadNumber())
 			return fmt.Errorf("cannot start indexing: blockNumber=%d is pruned", initBlockNumber)
 		}
 	}
 	batch := f.db.NewBatch()
 	for epoch := range bestLen {
-		cp := allCheckpoints[bestIdx][epoch]
+		cp := checkpoints[bestIdx][epoch]
 		f.storeLastBlockOfMap(batch, f.lastEpochMap(uint32(epoch)), cp.BlockNumber, cp.BlockId)
 		f.storeBlockLvPointer(batch, cp.BlockNumber, cp.FirstIndex)
 	}
@@ -471,7 +455,7 @@ func (f *FilterMaps) init() error {
 		initialized: true,
 	}
 	if bestLen > 0 {
-		cp := allCheckpoints[bestIdx][bestLen-1]
+		cp := checkpoints[bestIdx][bestLen-1]
 		fmr.blocks = common.NewRange(cp.BlockNumber+1, 0)
 		fmr.maps = common.NewRange(f.firstEpochMap(uint32(bestLen)), 0)
 	}

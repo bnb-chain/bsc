@@ -34,11 +34,12 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		DirectBroadcast           bool
 		DisableSnapProtocol       bool
 		RangeLimit                bool
-		TxLookupLimit             uint64                 `toml:",omitempty"`
-		TransactionHistory        uint64                 `toml:",omitempty"`
-		BlockHistory              uint64                 `toml:",omitempty"`
-		LogHistory                uint64                 `toml:",omitempty"`
-		LogNoHistory              bool                   `toml:",omitempty"`
+		TxLookupLimit             uint64 `toml:",omitempty"`
+		TransactionHistory        uint64 `toml:",omitempty"`
+		BlockHistory              uint64 `toml:",omitempty"`
+		LogHistory                uint64 `toml:",omitempty"`
+		LogNoHistory              bool   `toml:",omitempty"`
+		LogExportCheckpoints      string
 		StateHistory              uint64                 `toml:",omitempty"`
 		StateScheme               string                 `toml:",omitempty"`
 		PathSyncFlush             bool                   `toml:",omitempty"`
@@ -115,6 +116,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.BlockHistory = c.BlockHistory
 	enc.LogHistory = c.LogHistory
 	enc.LogNoHistory = c.LogNoHistory
+	enc.LogExportCheckpoints = c.LogExportCheckpoints
 	enc.StateHistory = c.StateHistory
 	enc.StateScheme = c.StateScheme
 	enc.PathSyncFlush = c.PathSyncFlush
@@ -190,11 +192,12 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		DirectBroadcast           *bool
 		DisableSnapProtocol       *bool
 		RangeLimit                *bool
-		TxLookupLimit             *uint64                `toml:",omitempty"`
-		TransactionHistory        *uint64                `toml:",omitempty"`
-		BlockHistory              *uint64                `toml:",omitempty"`
-		LogHistory                *uint64                `toml:",omitempty"`
-		LogNoHistory              *bool                  `toml:",omitempty"`
+		TxLookupLimit             *uint64 `toml:",omitempty"`
+		TransactionHistory        *uint64 `toml:",omitempty"`
+		BlockHistory              *uint64 `toml:",omitempty"`
+		LogHistory                *uint64 `toml:",omitempty"`
+		LogNoHistory              *bool   `toml:",omitempty"`
+		LogExportCheckpoints      *string
 		StateHistory              *uint64                `toml:",omitempty"`
 		StateScheme               *string                `toml:",omitempty"`
 		PathSyncFlush             *bool                  `toml:",omitempty"`
@@ -315,6 +318,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.LogNoHistory != nil {
 		c.LogNoHistory = *dec.LogNoHistory
+	}
+	if dec.LogExportCheckpoints != nil {
+		c.LogExportCheckpoints = *dec.LogExportCheckpoints
 	}
 	if dec.StateHistory != nil {
 		c.StateHistory = *dec.StateHistory
