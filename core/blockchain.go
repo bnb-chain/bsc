@@ -1141,6 +1141,23 @@ func (bc *BlockChain) SetFinalized(header *types.Header) {
 	}
 }
 
+// NotifyFinalized sends a FinalizedHeaderEvent and updates currentFinalBlock.
+// This is used both by normal block processing and vote pool early finalization.
+func (bc *BlockChain) NotifyFinalized(header *types.Header) {
+	if header == nil {
+		return
+	}
+	currentFinalized := bc.currentFinalBlock.Load()
+	// Skip if older or same finalized block (deduplicate by hash)
+	if currentFinalized != nil && (header.Number.Uint64() < currentFinalized.Number.Uint64() || header.Hash() == currentFinalized.Hash()) {
+		return
+	}
+	bc.SetFinalized(header)
+	bc.finalizedHeaderFeed.Send(FinalizedHeaderEvent{header})
+	finalizedBlockGauge.Update(int64(header.Number.Uint64()))
+	log.Info("Finalized block", "number", header.Number, "hash", header.Hash())
+}
+
 // setHeadBeyondRoot rewinds the local chain to a new head with the extra condition
 // that the rewind must pass the specified state root. This method is meant to be
 // used when rewinding with snapshots enabled to ensure that we go back further than
@@ -2064,15 +2081,13 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 		// event here.
 		var finalizedHeader *types.Header
 		if posa, ok := bc.Engine().(consensus.PoSA); ok {
-			if finalizedHeader = posa.GetFinalizedHeader(bc, block.Header()); finalizedHeader != nil {
-				bc.SetFinalized(finalizedHeader)
-			}
+			finalizedHeader = posa.GetFinalizedHeader(bc, block.Header())
 		}
 		if sealedBlockSender != nil {
 			bc.chainHeadFeed.Send(ChainHeadEvent{Header: block.Header()})
-			if finalizedHeader != nil {
-				bc.finalizedHeaderFeed.Send(FinalizedHeaderEvent{finalizedHeader})
-			}
+		}
+		if finalizedHeader != nil {
+			bc.NotifyFinalized(finalizedHeader)
 		}
 	}
 	return status, nil
@@ -2173,7 +2188,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 			bc.chainHeadFeed.Send(ChainHeadEvent{Header: lastCanon.Header()})
 			if posa, ok := bc.Engine().(consensus.PoSA); ok {
 				if finalizedHeader := posa.GetFinalizedHeader(bc, lastCanon.Header()); finalizedHeader != nil {
-					bc.finalizedHeaderFeed.Send(FinalizedHeaderEvent{finalizedHeader})
+					bc.NotifyFinalized(finalizedHeader)
 				}
 			}
 		}
