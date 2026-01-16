@@ -106,6 +106,14 @@ func (mip *mockInvalidPOSA) IsActiveValidatorAt(chain consensus.ChainHeaderReade
 	return true
 }
 
+func (mp *mockPOSA) CheckFinalityAndNotify(chain consensus.ChainHeaderReader, targetBlockHash common.Hash, notifyFn func(finalizedHeader *types.Header)) {
+	// No-op for testing
+}
+
+func (mip *mockInvalidPOSA) CheckFinalityAndNotify(chain consensus.ChainHeaderReader, targetBlockHash common.Hash, notifyFn func(finalizedHeader *types.Header)) {
+	// No-op for testing
+}
+
 func (pool *VotePool) verifyStructureSizeOfVotePool(receivedVotes, curVotes, futureVotes, curVotesPq, futureVotesPq int) bool {
 	for i := 0; i < timeThreshold; i++ {
 		time.Sleep(1 * time.Second)

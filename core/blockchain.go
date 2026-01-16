@@ -2103,16 +2103,15 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 		// event here.
 		var finalizedHeader *types.Header
 		if posa, ok := bc.Engine().(consensus.PoSA); ok {
-			finalizedHeader = posa.GetFinalizedHeader(bc, block.Header())
+			if finalizedHeader = posa.GetFinalizedHeader(bc, block.Header()); finalizedHeader != nil {
+				bc.SetFinalized(finalizedHeader)
+			}
 		}
 		if sealedBlockSender != nil {
 			bc.chainHeadFeed.Send(ChainHeadEvent{Header: block.Header()})
 			if finalizedHeader != nil {
 				bc.NotifyFinalized(finalizedHeader)
 			}
-		}
-		if finalizedHeader != nil {
-			bc.SetFinalized(finalizedHeader)
 		}
 	}
 	return status, nil
