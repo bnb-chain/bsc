@@ -2323,7 +2323,6 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 // CheckFinalityAndNotify checks if votes for the target block have reached quorum,
 // and if so, notifies the blockchain of early finalization via the notifyFn callback.
 func (p *Parlia) CheckFinalityAndNotify(chain consensus.ChainHeaderReader, targetBlockHash common.Hash, notifyFn func(finalizedHeader *types.Header)) {
-
 	// Skip if already notified for this block
 	if _, ok := p.finalizedNotified.Get(targetBlockHash); ok {
 		return

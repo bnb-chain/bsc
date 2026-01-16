@@ -72,6 +72,9 @@ var (
 	justifiedBlockGauge = metrics.NewRegisteredGauge("chain/head/justified", nil)
 	finalizedBlockGauge = metrics.NewRegisteredGauge("chain/head/finalized", nil)
 
+	finalizedSkippedOlderCounter      = metrics.NewRegisteredCounter("chain/finalized/skipped/older", nil)
+	finalizedSkippedSameHeightCounter = metrics.NewRegisteredCounter("chain/finalized/skipped/sameheight", nil)
+
 	blockInsertMgaspsGauge  = metrics.NewRegisteredGauge("chain/insert/mgasps", nil)
 	blockInsertTxSizeGauge  = metrics.NewRegisteredGauge("chain/insert/txsize", nil)
 	blockInsertGasUsedGauge = metrics.NewRegisteredGauge("chain/insert/gasused", nil)
@@ -376,6 +379,7 @@ type BlockChain struct {
 	currentBlock          atomic.Pointer[types.Header] // Current head of the chain
 	currentSnapBlock      atomic.Pointer[types.Header] // Current head of snap-sync
 	currentFinalBlock     atomic.Pointer[types.Header] // Latest (consensus) finalized block
+	highestNotifiedFinal  atomic.Pointer[types.Header] // Highest finalized block that has been notified (for deduplication)
 	chasingHead           atomic.Pointer[types.Header]
 	historyPrunePoint     atomic.Pointer[history.PrunePoint]
 
@@ -1141,21 +1145,39 @@ func (bc *BlockChain) SetFinalized(header *types.Header) {
 	}
 }
 
-// NotifyFinalized sends a FinalizedHeaderEvent and updates currentFinalBlock.
+// NotifyFinalized sends a FinalizedHeaderEvent.
 // This is used both by normal block processing and vote pool early finalization.
 func (bc *BlockChain) NotifyFinalized(header *types.Header) {
 	if header == nil {
 		return
 	}
-	currentFinalized := bc.currentFinalBlock.Load()
-	// Skip if older or same finalized block (deduplicate by hash)
-	if currentFinalized != nil && (header.Number.Uint64() < currentFinalized.Number.Uint64() || header.Hash() == currentFinalized.Hash()) {
-		return
+	headerHash := header.Hash()
+	headerNumber := header.Number.Uint64()
+
+	// Check highest notified to deduplicate
+	highestNotified := bc.highestNotifiedFinal.Load()
+	if highestNotified != nil {
+		// Skip if older finalized block
+		if headerNumber < highestNotified.Number.Uint64() {
+			finalizedSkippedOlderCounter.Inc(1)
+			return
+		}
+		// Skip if same finalized block (deduplicate by hash)
+		if headerHash == highestNotified.Hash() {
+			return
+		}
+		// Same height but different hash (possible reorg)
+		if headerNumber == highestNotified.Number.Uint64() {
+			finalizedSkippedSameHeightCounter.Inc(1)
+		}
 	}
-	bc.SetFinalized(header)
+
+	// Update highest notified before sending to prevent duplicate notifications
+	bc.highestNotifiedFinal.Store(header)
+
 	bc.finalizedHeaderFeed.Send(FinalizedHeaderEvent{header})
-	finalizedBlockGauge.Update(int64(header.Number.Uint64()))
-	log.Info("Finalized block", "number", header.Number, "hash", header.Hash())
+	finalizedBlockGauge.Update(int64(headerNumber))
+	log.Info("Finalized block", "number", header.Number, "hash", headerHash)
 }
 
 // setHeadBeyondRoot rewinds the local chain to a new head with the extra condition
@@ -2085,9 +2107,12 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 		}
 		if sealedBlockSender != nil {
 			bc.chainHeadFeed.Send(ChainHeadEvent{Header: block.Header()})
+			if finalizedHeader != nil {
+				bc.NotifyFinalized(finalizedHeader)
+			}
 		}
 		if finalizedHeader != nil {
-			bc.NotifyFinalized(finalizedHeader)
+			bc.SetFinalized(finalizedHeader)
 		}
 	}
 	return status, nil
