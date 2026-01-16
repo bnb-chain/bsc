@@ -46,6 +46,7 @@ var DeprecatedFlags = []cli.Flag{
 	EnablePersonal,
 	PruneAncientDataFlag,
 	JournalFileFlag,
+	LogExportCheckpointsFlag,
 }
 
 var (

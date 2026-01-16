@@ -441,8 +441,9 @@ var (
 	// Deprecated Jan 2025
 	LogExportCheckpointsFlag = &cli.StringFlag{
 		Name:     "history.logs.export",
-		Usage:    "Export checkpoints to file in go source file format",
-		Category: flags.StateCategory,
+		Usage:    "Deprecated, checkpoint file is auto-enabled at datadir/geth/filtermap_checkpoints.json",
+		Category: flags.DeprecatedCategory,
+		Value:    "",
 	}
 	// Beacon client light sync settings
 	BeaconApiFlag = &cli.StringSliceFlag{

@@ -126,7 +126,7 @@ type Config struct {
 	BlockHistory       uint64 `toml:",omitempty"` // The maximum number of blocks from head whose block body/header/receipt/diff/hash are reserved.
 	LogHistory         uint64 `toml:",omitempty"` // The maximum number of blocks from head where a log search index is maintained.
 	LogNoHistory       bool   `toml:",omitempty"` // No log search index is maintained.
-	// Deprecated: exporting checkpoint file is auto-enabled.
+	// Deprecated: checkpoint file is auto-enabled at datadir/geth/filtermap_checkpoints.json.
 	LogExportCheckpoints string
 	StateHistory         uint64 `toml:",omitempty"` // The maximum number of blocks from head whose state histories are reserved.
 
