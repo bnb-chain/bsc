@@ -218,8 +218,8 @@ type Config struct {
 	Disabled bool   // disables indexing completely
 
 	// CheckpointFileName specifies the path to the checkpoint JSON file.
-	// If set, checkpoints will be loaded from this file during initialization (import),
-	// and the file will be updated with new checkpoint information during operation (export).
+	// If set, checkpoints will be loaded from this file during initialization,
+	// and the file will be updated with new checkpoint information during operation.
 	CheckpointFileName string
 
 	// expect trie nodes of hash based state scheme in the filtermaps key range;
@@ -407,7 +407,7 @@ func (f *FilterMaps) init() error {
 
 	var bestIdx, bestLen int
 	for idx, checkpointList := range checkpoints {
-		// binary search to find the last checkpoint that is <= headNumber
+		// binary search for the last matching epoch head
 		min, max := 0, len(checkpointList)
 		for min < max {
 			mid := (min + max + 1) / 2
