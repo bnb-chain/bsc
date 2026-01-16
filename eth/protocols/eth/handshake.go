@@ -66,20 +66,66 @@ func (p *Peer) handshake68(networkID uint64, chain *core.BlockChain, td *big.Int
 			Genesis:         genesis.Hash(),
 			ForkID:          forkID,
 		}
-		errc <- p2p.Send(p.rw, StatusMsg, pkt)
+		err := p2p.Send(p.rw, StatusMsg, pkt)
+		if err != nil {
+			p.Log().Warn(
+				"eth handshake(68): failed to send local status",
+				"err", err,
+				"peer", p.id,
+				"ver", p.version,
+				"network", networkID,
+				"genesis", genesis.Hash(),
+				"forkid", forkID,
+				"head", latest.Hash(),
+			)
+		}
+		errc <- err
 	}()
 	var status StatusPacket68 // safe to read after two values have been received from errc
 	go func() {
-		errc <- p.readStatus68(networkID, &status, genesis.Hash(), forkFilter)
+		err := p.readStatus68(networkID, &status, genesis.Hash(), forkFilter)
+		if err != nil {
+			// High-signal diagnostics for handshake failures at status read/validation.
+			// `status` may be partially filled depending on where the error happened.
+			p.Log().Warn(
+				"eth handshake(68): failed to read/validate remote status",
+				"err", err,
+				"peer", p.id,
+				"ver", p.version,
+				"expected.network", networkID,
+				"expected.genesis", genesis.Hash(),
+				"expected.forkid", forkID,
+				"remote.network", status.NetworkID,
+				"remote.ver", status.ProtocolVersion,
+				"remote.genesis", status.Genesis,
+				"remote.forkid", status.ForkID,
+			)
+		}
+		errc <- err
 	}()
 	if err := waitForHandshake(errc, p); err != nil {
+		p.Log().Warn(
+			"eth handshake(68): status handshake failed",
+			"err", err,
+			"peer", p.id,
+			"ver", p.version,
+			"network", networkID,
+		)
 		return err
 	}
 	p.td, p.head = status.TD, status.Head
 	// TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
 	// larger, it will still fit within 100 bits
 	if tdlen := p.td.BitLen(); tdlen > 100 {
-		return fmt.Errorf("too large total difficulty: bitlen %d", tdlen)
+		err := fmt.Errorf("too large total difficulty: bitlen %d", tdlen)
+		p.Log().Warn(
+			"eth handshake(68): rejected remote status due to TD too large",
+			"err", err,
+			"peer", p.id,
+			"ver", p.version,
+			"remote.td.bitlen", tdlen,
+		)
+		return err
 	}
 
 	var upgradeStatus UpgradeStatusPacket // safe to read after two values have been received from errc
@@ -88,21 +134,57 @@ func (p *Peer) handshake68(networkID uint64, chain *core.BlockChain, td *big.Int
 	}
 	extensionRaw, err := extension.Encode()
 	if err != nil {
+		p.Log().Warn(
+			"eth handshake(68): failed to encode local upgrade status extension",
+			"err", err,
+			"peer", p.id,
+			"ver", p.version,
+		)
 		return err
 	}
 	gopool.Submit(func() {
-		errc <- p2p.Send(p.rw, UpgradeStatusMsg, &UpgradeStatusPacket{
+		err := p2p.Send(p.rw, UpgradeStatusMsg, &UpgradeStatusPacket{
 			Extension: extensionRaw,
 		})
+		if err != nil {
+			p.Log().Warn(
+				"eth handshake(68): failed to send upgrade status",
+				"err", err,
+				"peer", p.id,
+				"ver", p.version,
+			)
+		}
+		errc <- err
 	})
 	gopool.Submit(func() {
-		errc <- p.readUpgradeStatus(&upgradeStatus)
+		err := p.readUpgradeStatus(&upgradeStatus)
+		if err != nil {
+			p.Log().Warn(
+				"eth handshake(68): failed to read upgrade status",
+				"err", err,
+				"peer", p.id,
+				"ver", p.version,
+			)
+		}
+		errc <- err
 	})
 	if err := waitForHandshake(errc, p); err != nil {
+		p.Log().Warn(
+			"eth handshake(68): upgrade status handshake failed",
+			"err", err,
+			"peer", p.id,
+			"ver", p.version,
+		)
 		return err
 	}
 	extension, err = upgradeStatus.GetExtension()
 	if err != nil {
+		p.Log().Warn(
+			"eth handshake(68): failed to decode remote upgrade status extension",
+			"err", err,
+			"peer", p.id,
+			"ver", p.version,
+		)
 		return err
 	}
 	p.statusExtension = extension

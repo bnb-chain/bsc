@@ -112,7 +112,10 @@ func (cs *chainSyncer) loop() {
 
 	for {
 		if op := cs.nextSyncOp(); op != nil {
+			log.Debug("Starting sync", "peer", op.peer.ID(), "peer.head", op.head, "peer.td", op.td)
 			cs.startSync(op)
+		} else {
+			log.Debug("No sync candidate found")
 		}
 		select {
 		case <-cs.peerEventCh:
@@ -151,6 +154,7 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 		minPeers = cs.handler.maxPeers
 	}
 	if cs.handler.peers.len() < minPeers {
+		log.Debug("Skip sync: not enough peers", "peers.len", cs.handler.peers.len(), "minPeers", minPeers)
 		return nil
 	}
 	// We have enough peers, pick the one with the highest TD, but avoid going
@@ -158,8 +162,11 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 	// clients to direct the chain head to sync to.
 	peer := cs.handler.peers.peerWithHighestTD()
 	if peer == nil {
+		log.Debug("Skip sync: no peer candidate (peerWithHighestTD returned nil)")
 		return nil
 	}
+	peerHead, peerTD := peer.Head()
+	log.Debug("Sync candidate selected (highest TD)", "peer", peer.ID(), "peer.head", peerHead, "peer.td", peerTD)
 	mode, ourTD := cs.modeAndLocalHead()
 	op := peerToSyncOp(mode, peer)
 	if op.td.Cmp(ourTD) <= 0 {
