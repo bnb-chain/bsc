@@ -2220,6 +2220,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.IsSet(LogExportCheckpointsFlag.Name) {
 		cfg.LogExportCheckpoints = ctx.String(LogExportCheckpointsFlag.Name)
+		log.Warn("Flag --history.logs.export is deprecated, checkpoint file is auto-enabled at datadir/geth/filtermap_checkpoints.json")
 	}
 	if ctx.String(GCModeFlag.Name) == "archive" && cfg.BlockHistory != 0 {
 		cfg.BlockHistory = 0
