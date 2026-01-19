@@ -74,6 +74,8 @@ var (
 
 	finalizedSkippedOlderCounter      = metrics.NewRegisteredCounter("chain/finalized/skipped/older", nil)
 	finalizedSkippedSameHeightCounter = metrics.NewRegisteredCounter("chain/finalized/skipped/sameheight", nil)
+	finalizedLatencyEarlyGauge        = metrics.NewRegisteredGauge("chain/finalized/latency/early", nil)  // early finalization latency (via VotePool)
+	finalizedLatencyNormalGauge       = metrics.NewRegisteredGauge("chain/finalized/latency/normal", nil) // normal finalization latency (via block processing)
 
 	blockInsertMgaspsGauge  = metrics.NewRegisteredGauge("chain/insert/mgasps", nil)
 	blockInsertTxSizeGauge  = metrics.NewRegisteredGauge("chain/insert/txsize", nil)
@@ -1175,9 +1177,13 @@ func (bc *BlockChain) NotifyFinalized(header *types.Header) {
 	// Update highest notified before sending to prevent duplicate notifications
 	bc.highestNotifiedFinal.Store(header)
 
+	// Calculate early finalization latency in milliseconds
+	latencyMs := int64(uint64(time.Now().UnixMilli()) - header.MilliTimestamp())
+	finalizedLatencyEarlyGauge.Update(latencyMs)
+
 	bc.finalizedHeaderFeed.Send(FinalizedHeaderEvent{header})
 	finalizedBlockGauge.Update(int64(headerNumber))
-	log.Debug("Finalized block", "number", header.Number, "hash", headerHash)
+	log.Debug("Early finalized block", "number", header.Number, "hash", headerHash, "latencyMs", latencyMs)
 }
 
 // setHeadBeyondRoot rewinds the local chain to a new head with the extra condition
@@ -2110,6 +2116,7 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 		if sealedBlockSender != nil {
 			bc.chainHeadFeed.Send(ChainHeadEvent{Header: block.Header()})
 			if finalizedHeader != nil {
+				finalizedLatencyNormalGauge.Update(int64(uint64(time.Now().UnixMilli()) - finalizedHeader.MilliTimestamp()))
 				bc.NotifyFinalized(finalizedHeader)
 			}
 		}
@@ -2212,6 +2219,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 			bc.chainHeadFeed.Send(ChainHeadEvent{Header: lastCanon.Header()})
 			if posa, ok := bc.Engine().(consensus.PoSA); ok {
 				if finalizedHeader := posa.GetFinalizedHeader(bc, lastCanon.Header()); finalizedHeader != nil {
+					finalizedLatencyNormalGauge.Update(int64(uint64(time.Now().UnixMilli()) - finalizedHeader.MilliTimestamp()))
 					bc.NotifyFinalized(finalizedHeader)
 				}
 			}
