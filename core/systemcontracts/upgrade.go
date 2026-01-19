@@ -1095,83 +1095,83 @@ func upgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 
 	logger := log.New("system-contract-upgrade", network)
 	if config.IsOnRamanujan(blockNumber) {
-		applySystemContractUpgrade(ramanujanUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(ramanujanUpgrade[network], blockNumber, statedb, logger.New("fork", "Ramanujan"))
 	}
 
 	if config.IsOnNiels(blockNumber) {
-		applySystemContractUpgrade(nielsUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(nielsUpgrade[network], blockNumber, statedb, logger.New("fork", "Niels"))
 	}
 
 	if config.IsOnMirrorSync(blockNumber) {
-		applySystemContractUpgrade(mirrorUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(mirrorUpgrade[network], blockNumber, statedb, logger.New("fork", "MirrorSync"))
 	}
 
 	if config.IsOnBruno(blockNumber) {
-		applySystemContractUpgrade(brunoUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(brunoUpgrade[network], blockNumber, statedb, logger.New("fork", "Bruno"))
 	}
 
 	if config.IsOnEuler(blockNumber) {
-		applySystemContractUpgrade(eulerUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(eulerUpgrade[network], blockNumber, statedb, logger.New("fork", "Euler"))
 	}
 
 	if config.IsOnGibbs(blockNumber) {
-		applySystemContractUpgrade(gibbsUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(gibbsUpgrade[network], blockNumber, statedb, logger.New("fork", "Gibbs"))
 	}
 
 	if config.IsOnMoran(blockNumber) {
-		applySystemContractUpgrade(moranUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(moranUpgrade[network], blockNumber, statedb, logger.New("fork", "Moran"))
 	}
 
 	if config.IsOnPlanck(blockNumber) {
-		applySystemContractUpgrade(planckUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(planckUpgrade[network], blockNumber, statedb, logger.New("fork", "Planck"))
 	}
 
 	if config.IsOnLuban(blockNumber) {
-		applySystemContractUpgrade(lubanUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(lubanUpgrade[network], blockNumber, statedb, logger.New("fork", "Luban"))
 	}
 
 	if config.IsOnPlato(blockNumber) {
-		applySystemContractUpgrade(platoUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(platoUpgrade[network], blockNumber, statedb, logger.New("fork", "Plato"))
 	}
 
 	if config.IsOnShanghai(blockNumber, lastBlockTime, blockTime) {
-		logger.Info("Empty upgrade config for shanghai", "height", blockNumber.String())
+		logger.New("fork", "Shanghai").Info("Empty upgrade config for shanghai", "height", blockNumber.String())
 	}
 
 	if config.IsOnKepler(blockNumber, lastBlockTime, blockTime) {
-		applySystemContractUpgrade(keplerUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(keplerUpgrade[network], blockNumber, statedb, logger.New("fork", "Kepler"))
 	}
 
 	if config.IsOnFeynman(blockNumber, lastBlockTime, blockTime) {
-		applySystemContractUpgrade(feynmanUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(feynmanUpgrade[network], blockNumber, statedb, logger.New("fork", "Feynman"))
 	}
 
 	if config.IsOnFeynmanFix(blockNumber, lastBlockTime, blockTime) {
-		applySystemContractUpgrade(feynmanFixUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(feynmanFixUpgrade[network], blockNumber, statedb, logger.New("fork", "FeynmanFix"))
 	}
 
 	if config.IsOnHaberFix(blockNumber, lastBlockTime, blockTime) {
-		applySystemContractUpgrade(haberFixUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(haberFixUpgrade[network], blockNumber, statedb, logger.New("fork", "HaberFix"))
 	}
 
 	if config.IsOnBohr(blockNumber, lastBlockTime, blockTime) {
-		applySystemContractUpgrade(bohrUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(bohrUpgrade[network], blockNumber, statedb, logger.New("fork", "Bohr"))
 	}
 
 	if config.IsOnPascal(blockNumber, lastBlockTime, blockTime) {
-		applySystemContractUpgrade(pascalUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(pascalUpgrade[network], blockNumber, statedb, logger.New("fork", "Pascal"))
 	}
 
 	if config.IsOnLorentz(blockNumber, lastBlockTime, blockTime) {
-		applySystemContractUpgrade(lorentzUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(lorentzUpgrade[network], blockNumber, statedb, logger.New("fork", "Lorentz"))
 	}
 
 	if config.IsOnMaxwell(blockNumber, lastBlockTime, blockTime) {
-		applySystemContractUpgrade(maxwellUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(maxwellUpgrade[network], blockNumber, statedb, logger.New("fork", "Maxwell"))
 	}
 
 	if config.IsOnFermi(blockNumber, lastBlockTime, blockTime) {
-		applySystemContractUpgrade(fermiUpgrade[network], blockNumber, statedb, logger)
+		applySystemContractUpgrade(fermiUpgrade[network], blockNumber, statedb, logger.New("fork", "Fermi"))
 	}
 
 	/*
