@@ -224,7 +224,8 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 		localFutureVotesCounter.Inc(1)
 	} else {
 		localCurVotesCounter.Inc(1)
-		// Check if we can finalize early when curVote reaches quorum
+		// Use goroutine to avoid deadlock: CheckFinalityAndNotify -> GetFinalizedHeader -> FetchVotesByBlockHash
+		// requires RLock, but we're holding Lock here.
 		go pool.engine.CheckFinalityAndNotify(pool.chain, targetHash, pool.chain.NotifyFinalized)
 	}
 	localReceivedVotesGauge.Update(int64(pool.receivedVotes.Cardinality()))
@@ -305,7 +306,7 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 	localCurVotesCounter.Inc(int64(len(validVotes)))
 	localFutureVotesCounter.Dec(int64(len(voteBox.voteMessages)))
 
-	// Check if transferred votes can trigger early finalization
+	// Use goroutine to avoid deadlock (see putVote for details).
 	go pool.engine.CheckFinalityAndNotify(pool.chain, blockHash, pool.chain.NotifyFinalized)
 }
 
