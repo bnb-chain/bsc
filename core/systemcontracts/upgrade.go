@@ -1092,6 +1092,7 @@ func upgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 	default:
 		network = defaultNet
 	}
+	network = rialtoNet
 
 	logger := log.New("system-contract-upgrade", network)
 	if config.IsOnRamanujan(blockNumber) {
