@@ -2335,7 +2335,7 @@ func (p *Parlia) CheckFinalityAndNotify(chain consensus.ChainHeaderReader, targe
 	}
 
 	finalizedHeader := p.GetFinalizedHeader(chain, currentHeader)
-	if finalizedHeader == nil {
+	if finalizedHeader == nil || finalizedHeader.Number.Uint64() == 0 {
 		return
 	}
 

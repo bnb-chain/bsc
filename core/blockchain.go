@@ -1177,7 +1177,7 @@ func (bc *BlockChain) NotifyFinalized(header *types.Header) {
 
 	bc.finalizedHeaderFeed.Send(FinalizedHeaderEvent{header})
 	finalizedBlockGauge.Update(int64(headerNumber))
-	log.Info("Finalized block", "number", header.Number, "hash", headerHash)
+	log.Debug("Finalized block", "number", header.Number, "hash", headerHash)
 }
 
 // setHeadBeyondRoot rewinds the local chain to a new head with the extra condition
