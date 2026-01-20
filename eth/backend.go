@@ -239,19 +239,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		chainConfig.BohrTime = config.OverridePassedForkTime
 		chainConfig.PascalTime = config.OverridePassedForkTime
 		chainConfig.PragueTime = config.OverridePassedForkTime
+		chainConfig.LorentzTime = config.OverridePassedForkTime
+		chainConfig.MaxwellTime = config.OverridePassedForkTime
+		chainConfig.FermiTime = config.OverridePassedForkTime
 		overrides.OverridePassedForkTime = config.OverridePassedForkTime
-	}
-	if config.OverrideLorentz != nil {
-		chainConfig.LorentzTime = config.OverrideLorentz
-		overrides.OverrideLorentz = config.OverrideLorentz
-	}
-	if config.OverrideMaxwell != nil {
-		chainConfig.MaxwellTime = config.OverrideMaxwell
-		overrides.OverrideMaxwell = config.OverrideMaxwell
-	}
-	if config.OverrideFermi != nil {
-		chainConfig.FermiTime = config.OverrideFermi
-		overrides.OverrideFermi = config.OverrideFermi
 	}
 	if config.OverrideOsaka != nil {
 		chainConfig.OsakaTime = config.OverrideOsaka

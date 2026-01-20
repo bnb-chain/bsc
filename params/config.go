@@ -350,8 +350,8 @@ var (
 		PragueTime:          newUint64(0),
 		LorentzTime:         newUint64(0),
 		MaxwellTime:         newUint64(0),
+		FermiTime:           newUint64(0),
 		// TODO: set them to `0` when passed on the mainnet
-		FermiTime:  nil,
 		OsakaTime:  nil,
 		MendelTime: nil,
 
