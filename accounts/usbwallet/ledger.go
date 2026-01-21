@@ -509,9 +509,15 @@ func (w *ledgerDriver) ledgerSignTypedMessage(derivationPath []uint32, domainHas
 //	Optional APDU data       | arbitrary
 func (w *ledgerDriver) ledgerExchange(opcode ledgerOpcode, p1 ledgerParam1, p2 ledgerParam2, data []byte) ([]byte, error) {
 	// Construct the message payload, possibly split into multiple chunks
-	apdu := make([]byte, 2, 7+len(data))
+	// APDU body length is 5 bytes of header plus the data length. It is encoded
+	// as a 16-bit big-endian value, so enforce that it fits and avoid int overflow.
+	apduLen := 5 + len(data)
+	if apduLen < 5 || apduLen > 0xffff {
+		return nil, errors.New("APDU payload too large")
+	}
+	apdu := make([]byte, 2, 2+apduLen)
 
-	binary.BigEndian.PutUint16(apdu, uint16(5+len(data)))
+	binary.BigEndian.PutUint16(apdu, uint16(apduLen))
 	apdu = append(apdu, []byte{0xe0, byte(opcode), byte(p1), byte(p2), byte(len(data))}...)
 	apdu = append(apdu, data...)
 

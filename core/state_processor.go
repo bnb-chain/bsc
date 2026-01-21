@@ -19,6 +19,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"time"
 
@@ -380,6 +381,9 @@ func processRequestsSystemCall(requests *[][]byte, evm *vm.EVM, requestType byte
 	}
 	if len(ret) == 0 {
 		return nil // skip empty output
+	}
+	if len(ret) > math.MaxInt-1 {
+		return fmt.Errorf("system call response too large")
 	}
 	// Append prefixed requestsData to the requests list.
 	requestsData := make([]byte, len(ret)+1)
