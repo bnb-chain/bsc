@@ -16,6 +16,8 @@
 
 package trie
 
+import "math"
+
 // Trie keys are dealt with in three distinct encodings:
 //
 // KEYBYTES encoding contains the actual key and nothing else. This encoding is the
@@ -94,7 +96,14 @@ func compactToHex(compact []byte) []byte {
 }
 
 func keybytesToHex(str []byte) []byte {
-	l := len(str)*2 + 1
+	// Compute the required length using a wider type to avoid overflow on 32-bit platforms.
+	l64 := uint64(len(str))*2 + 1
+	if l64 > math.MaxInt {
+		// The trie implementation assumes reasonably sized keys; extremely large keys
+		// are not supported and would overflow an int-based slice length.
+		panic("trie: keybytesToHex allocation size overflows int")
+	}
+	l := int(l64)
 	var nibbles = make([]byte, l)
 	for i, b := range str {
 		nibbles[i*2] = b / 16
