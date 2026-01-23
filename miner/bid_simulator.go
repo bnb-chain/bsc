@@ -93,7 +93,7 @@ type bidSimulator struct {
 	config        *minerconfig.MevConfig
 	delayLeftOver time.Duration
 	minGasPrice   *big.Int
-	txMaxGas      uint64
+	txMaxGas      uint64 // Maximum gas for per transaction(will be removed after Mendel hardfork)
 	chain         *core.BlockChain
 	txpool        *txpool.TxPool
 	chainConfig   *params.ChainConfig
@@ -535,12 +535,12 @@ func (b *bidSimulator) checkIfBidExceedsTxGasLimit(bid *types.Bid) error {
 	var gasLimitCap uint64
 	currentHeader := b.chain.CurrentBlock()
 	if b.chainConfig.IsOsaka(currentHeader.Number, currentHeader.Time) {
-		// After Osaka fork, enforce the protocol-level cap
 		gasLimitCap = params.MaxTxGas
-	} else if b.txMaxGas >= params.MaxTxGas {
-		gasLimitCap = b.txMaxGas
 	} else {
-		return nil
+		if b.txMaxGas == 0 {
+			return nil
+		}
+		gasLimitCap = b.txMaxGas
 	}
 
 	// Scan all txs in the bid to check if any transaction exceeds the gas limit cap
