@@ -1052,8 +1052,9 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	// Start executing the transaction
 	r.env.state.SetTxContext(tx.Hash(), r.env.tcount)
 
-	// check EIP 7934 RLP-encoded block size cap
-	if chainConfig.IsOsaka(env.header.Number, env.header.Time) && !env.txFitsSize(tx) {
+	// if inclusion of the transaction would put the block size over the
+	// maximum we allow, don't add any more txs to the payload.
+	if !env.txFitsSize(tx) {
 		return core.ErrBlockOversized
 	}
 
