@@ -140,8 +140,7 @@ func CalcExcessBlobGas(config *params.ChainConfig, parent *types.Header, headTim
 	bcfg := latestBlobConfig(config, headTimestamp)
 
 	// BEP-657: for non-recalculation blocks (N % 5 != 1), inherit parent's ExcessBlobGas
-	headNumber := parent.Number.Uint64() + 1
-	if config.IsMendel(config.LondonBlock, headTimestamp) && headNumber%5 != 1 {
+	if config.IsMendel(config.LondonBlock, headTimestamp) && parent.Number.Uint64()%5 != 0 {
 		if parent.ExcessBlobGas != nil {
 			return *parent.ExcessBlobGas
 		}
