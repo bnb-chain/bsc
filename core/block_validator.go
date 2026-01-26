@@ -105,7 +105,6 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 				// happens in state transition.
 			}
 
-			// BEP-657: Check that non-eligible blocks have no blob transactions
 			if !eip4844.IsBlobEligibleBlock(v.config, block.NumberU64(), block.Time()) && blobs > 0 {
 				return fmt.Errorf("blob transactions not allowed in block %d (N %% 5 != 0)", block.NumberU64())
 			}

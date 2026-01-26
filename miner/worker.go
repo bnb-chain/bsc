@@ -1065,7 +1065,6 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 	pendingPlainTxs := w.eth.TxPool().Pending(filter)
 	pendingPlainTxsTimer.UpdateSince(plainTxsStart)
 
-	// BEP-657: Only fetch blob transactions for eligible blocks (N % 5 == 0)
 	var pendingBlobTxs map[common.Address][]*txpool.LazyTransaction
 	if eip4844.IsBlobEligibleBlock(w.chainConfig, env.header.Number.Uint64(), env.header.Time) {
 		filter.BlobTxs = true

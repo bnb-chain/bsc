@@ -66,7 +66,6 @@ func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err
 		return nil
 	}
 
-	// BEP-657: Non-eligible blocks (N % 5 != 0) must not have any sidecars
 	if !eip4844.IsBlobEligibleBlock(chain.Config(), block.NumberU64(), block.Time()) {
 		if len(block.Sidecars()) != 0 {
 			return fmt.Errorf("sidecars present in non-eligible block %d (N %% 5 != 0)", block.NumberU64())
