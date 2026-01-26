@@ -110,6 +110,13 @@ func VerifyEIP4844Header(config *params.ChainConfig, parent, header *types.Heade
 		return errors.New("header is missing blobGasUsed")
 	}
 
+	// BEP-657: Verify that non-eligible blocks have no blob gas used
+	if !IsBlobEligibleBlock(config, header.Number.Uint64(), header.Time) {
+		if *header.BlobGasUsed != 0 {
+			return fmt.Errorf("blob transactions not allowed in block %d (N %% 5 != 0)", header.Number.Uint64())
+		}
+	}
+
 	// Verify that the blob gas used remains within reasonable limits.
 	if *header.BlobGasUsed > bcfg.maxBlobGas() {
 		return fmt.Errorf("blob gas used %d exceeds maximum allowance %d", *header.BlobGasUsed, bcfg.maxBlobGas())
@@ -131,6 +138,16 @@ func VerifyEIP4844Header(config *params.ChainConfig, parent, header *types.Heade
 func CalcExcessBlobGas(config *params.ChainConfig, parent *types.Header, headTimestamp uint64) uint64 {
 	eip7918 := config.IsOsaka(config.LondonBlock, headTimestamp) && config.IsNotInBSC()
 	bcfg := latestBlobConfig(config, headTimestamp)
+
+	// BEP-657: For blocks where N % 5 != 1, ExcessBlobGas equals parent's ExcessBlobGas
+	headNumber := parent.Number.Uint64() + 1
+	if config.IsMendel(config.LondonBlock, headTimestamp) && headNumber%5 != 1 {
+		if parent.ExcessBlobGas != nil {
+			return *parent.ExcessBlobGas
+		}
+		return 0
+	}
+
 	return calcExcessBlobGas(eip7918, bcfg, parent)
 }
 
@@ -183,6 +200,18 @@ func MaxBlobsPerBlock(cfg *params.ChainConfig, time uint64) int {
 		return 0
 	}
 	return blobConfig.Max
+}
+
+// IsBlobEligibleBlock returns whether blob transactions can be included in the block.
+// BEP-657: After Mendel fork, blob transactions are only allowed in blocks where
+// block number modulo 5 equals zero (i.e., blocks ending in 0 or 5).
+func IsBlobEligibleBlock(cfg *params.ChainConfig, blockNumber uint64, time uint64) bool {
+	// Before Mendel fork, all blocks can include blob transactions (if Cancun is active)
+	if !cfg.IsMendel(cfg.LondonBlock, time) {
+		return true
+	}
+	// BEP-657: Only blocks where N % 5 == 0 can include blob transactions
+	return blockNumber%5 == 0
 }
 
 // MaxBlobGasPerBlock returns the maximum blob gas that can be spent in a block at the given timestamp.

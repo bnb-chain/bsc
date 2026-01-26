@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -102,6 +103,11 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 
 				// The individual checks for blob validity (version-check + not empty)
 				// happens in state transition.
+			}
+
+			// BEP-657: Check that non-eligible blocks have no blob transactions
+			if !eip4844.IsBlobEligibleBlock(v.config, block.NumberU64(), block.Time()) && blobs > 0 {
+				return fmt.Errorf("blob transactions not allowed in block %d (N %% 5 != 0)", block.NumberU64())
 			}
 
 			// Check blob gas usage.
