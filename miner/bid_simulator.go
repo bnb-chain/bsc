@@ -1052,6 +1052,12 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	// Start executing the transaction
 	r.env.state.SetTxContext(tx.Hash(), r.env.tcount)
 
+	// if inclusion of the transaction would put the block size over the
+	// maximum we allow, don't add any more txs to the payload.
+	if !env.txFitsSize(tx) {
+		return core.ErrBlockOversized
+	}
+
 	if tx.Type() == types.BlobTxType {
 		sc = types.NewBlobSidecarFromTx(tx)
 		if sc == nil {
@@ -1084,10 +1090,12 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 		env.receipts = append(env.receipts, receipt)
 		env.sidecars = append(env.sidecars, sc)
 		env.blobs += len(sc.Blobs)
+		env.size += tx.WithoutBlobTxSidecar().Size()
 		*env.header.BlobGasUsed += receipt.BlobGasUsed
 	} else {
 		env.txs = append(env.txs, tx)
 		env.receipts = append(env.receipts, receipt)
+		env.size += tx.Size()
 	}
 
 	r.env.tcount++
