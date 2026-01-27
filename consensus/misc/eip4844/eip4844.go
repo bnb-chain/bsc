@@ -139,7 +139,7 @@ func CalcExcessBlobGas(config *params.ChainConfig, parent *types.Header, headTim
 	eip7918 := config.IsOsaka(config.LondonBlock, headTimestamp) && config.IsNotInBSC()
 	bcfg := latestBlobConfig(config, headTimestamp)
 
-	// BEP-657: for non-recalculation blocks (N % BlobEligibleBlockInterval != 0), inherit parent's ExcessBlobGas
+	// BEP-657: for non-recalculation blocks (N % BlobEligibleBlockInterval != 1), inherit parent's ExcessBlobGas
 	if config.IsMendel(config.LondonBlock, headTimestamp) && parent.Number.Uint64()%params.BlobEligibleBlockInterval != 0 {
 		if parent.ExcessBlobGas != nil {
 			return *parent.ExcessBlobGas
