@@ -68,7 +68,7 @@ type Config struct {
 	VoteEnable             bool           // Whether to vote when mining
 	MaxWaitProposalInSecs  *uint64        `toml:",omitempty"` // The maximum time to wait for the proposal to be done, it's aimed to prevent validator being slashed when restarting
 	DisableVoteAttestation bool           // Whether to skip assembling vote attestation
-	TxGasLimit             uint64         // Maximum gas for per transaction
+	TxGasLimit             uint64         // Maximum gas for per transaction(will be removed after Mendel hardfork)
 
 	Mev MevConfig // Mev configuration
 }
