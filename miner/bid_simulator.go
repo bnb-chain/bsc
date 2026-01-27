@@ -1068,7 +1068,7 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 
 	if tx.Type() == types.BlobTxType {
 		if !eip4844.IsBlobEligibleBlock(chainConfig, r.env.header.Number.Uint64(), r.env.header.Time) {
-			return fmt.Errorf("blob transactions not allowed in block %d (N %% 5 != 0)", r.env.header.Number.Uint64())
+			return fmt.Errorf("blob transactions not allowed in block %d (N %% %d != 0)", r.env.header.Number.Uint64(), params.BlobEligibleBlockInterval)
 		}
 
 		sc = types.NewBlobSidecarFromTx(tx)
