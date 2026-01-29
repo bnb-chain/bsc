@@ -111,7 +111,7 @@ func VerifyEIP4844Header(config *params.ChainConfig, parent, header *types.Heade
 	}
 
 	// BEP-657: non-eligible blocks must have no blob gas used
-	if !IsBlobEligibleBlock(config, header.Number.Uint64(), header.Time) {
+	if config.IsInBSC() && !IsBlobEligibleBlock(config, header.Number.Uint64(), header.Time) {
 		if *header.BlobGasUsed != 0 {
 			return fmt.Errorf("blob transactions not allowed in block %d (N %% %d != 0)", header.Number.Uint64(), params.BlobEligibleBlockInterval)
 		}
