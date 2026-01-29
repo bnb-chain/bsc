@@ -31,6 +31,7 @@ import (
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/common/mclock"
@@ -328,9 +329,9 @@ type BlockStats struct {
 	// Note: FirstSendTime is "send start time", not "send completed time"
 	// Used with RecvNewBlockTime to calculate network propagation delay
 	BroadcastStartTime atomic.Int64
-	FirstSendTime      atomic.Int64  // Send start time, more precise than BroadcastStartTime
-	FirstSendTo        atomic.Value  // Peer address of first send (e.g., "192.168.1.2:30303")
-	PeerSendTimes      sync.Map      // map[string]int64: peerAddr -> sendTime (for all peers)
+	FirstSendTime      atomic.Int64 // Send start time, more precise than BroadcastStartTime
+	FirstSendTo        atomic.Value // Peer address of first send (e.g., "192.168.1.2:30303")
+	PeerSendTimes      sync.Map     // map[string]int64: peerAddr -> sendTime (for all peers)
 
 	// [Network-L2] WriteEndTime: when WriteBlockAndSetHead completes
 	// LocalProcessDelay = BroadcastStartTime - WriteEndTime
@@ -2467,6 +2468,42 @@ type blockProcessingResult struct {
 // processBlock executes and validates the given block. If there was no error
 // it writes the block and associated state to database.
 func (bc *BlockChain) processBlock(parentRoot common.Hash, block *types.Block, setHead bool, makeWitness bool) (_ *blockProcessingResult, blockEndErr error) {
+	// for logs
+	var (
+		// processing_ptime(execution + accountRead + storageRead) + vtime(validationDuration + accountUpdate + storageUpdate + accountHash) + xvtime(crossValidation)
+		//ptime                 time.Duration
+		executionDuration     time.Duration
+		accountReadDuration   time.Duration
+		storageReadDuration   time.Duration
+		validationDuration    time.Duration
+		accountUpdateDuration time.Duration
+		storageUpdateDuration time.Duration
+		accountHashDuration   time.Duration
+		xvtime                time.Duration
+
+		accountCommitDuration  time.Duration
+		storageCommitDuration  time.Duration
+		snapshotCommitDuration time.Duration
+		triedbCommitDuration   time.Duration
+		blockWriteDuration     time.Duration
+
+		// other duration
+		singleAccountReadDuration time.Duration
+		singleStorageReadDuration time.Duration
+	)
+	if metrics.EnabledExpensive() {
+		defer func(start time.Time) {
+			log.Info("processDuration", "blockNumber", block.NumberU64(), "blockHash", block.Hash(),
+				"duration", fmt.Sprintf("%s=(evm(%s+%s+%s)+vtime(%s+%s+%s+%s)+xvtime(%s))+wtime(%s+max(%s+%s)+%s+%s)",
+					time.Since(start), executionDuration, accountReadDuration, storageReadDuration,
+					validationDuration, accountUpdateDuration, storageUpdateDuration, accountHashDuration,
+					xvtime,
+					blockWriteDuration, accountCommitDuration, storageCommitDuration, snapshotCommitDuration, triedbCommitDuration,
+				),
+				"singleAccountRead", singleAccountReadDuration, "singleStorageRead", singleStorageReadDuration,
+			)
+		}(time.Now())
+	}
 	var (
 		err       error
 		startTime = time.Now()
@@ -2613,28 +2650,44 @@ func (bc *BlockChain) processBlock(parentRoot common.Hash, block *types.Block, s
 			return nil, fmt.Errorf("stateless self-validation receipt root mismatch (cross: %x local: %x)", crossReceiptRoot, block.ReceiptHash())
 		}
 	}
-	xvtime := time.Since(xvstart)
+	xvtime = time.Since(xvstart)
 	proctime := time.Since(startTime) // processing + validation + cross validation
 
 	// Update the metrics touched during block processing and validation
 	if metrics.EnabledExpensive() {
 		accountReadTimer.Update(statedb.AccountReads) // Account reads are complete(in processing)
+		accountReadDuration = statedb.AccountReads
 		storageReadTimer.Update(statedb.StorageReads) // Storage reads are complete(in processing)
+		storageReadDuration = statedb.StorageReads
 		if statedb.AccountLoaded != 0 {
-			accountReadSingleTimer.Update(statedb.AccountReads / time.Duration(statedb.AccountLoaded))
+			singleDuration := statedb.AccountReads / time.Duration(statedb.AccountLoaded)
+			accountReadSingleTimer.Update(singleDuration)
+			singleAccountReadDuration = singleDuration
 		}
 		if statedb.StorageLoaded != 0 {
-			storageReadSingleTimer.Update(statedb.StorageReads / time.Duration(statedb.StorageLoaded))
+			singleDuration := statedb.StorageReads / time.Duration(statedb.StorageLoaded)
+			storageReadSingleTimer.Update(singleDuration)
+			singleStorageReadDuration = singleDuration
 		}
 		accountUpdateTimer.Update(statedb.AccountUpdates) // Account updates are complete(in validation)
 		storageUpdateTimer.Update(statedb.StorageUpdates) // Storage updates are complete(in validation)
 		accountHashTimer.Update(statedb.AccountHashes)    // Account hashes are complete(in validation)
+
+		accountReadDuration = statedb.AccountReads
+		storageReadDuration = statedb.StorageReads
+		accountHashDuration = statedb.AccountHashes
 	}
-	triehash := statedb.AccountHashes                                                 // The time spent on tries hashing
-	trieUpdate := statedb.AccountUpdates + statedb.StorageUpdates                     // The time spent on tries update
-	blockExecutionTimer.Update(ptime - (statedb.AccountReads + statedb.StorageReads)) // The time spent on EVM processing
-	blockValidationTimer.Update(vtime - (triehash + trieUpdate))                      // The time spent on block validation
-	blockCrossValidationTimer.Update(xvtime)                                          // The time spent on stateless cross validation
+	triehash := statedb.AccountHashes                             // The time spent on tries hashing
+	trieUpdate := statedb.AccountUpdates + statedb.StorageUpdates // The time spent on tries update
+
+	executionDuration = ptime - (statedb.AccountReads + statedb.StorageReads)
+	validationDuration = vtime - (triehash + trieUpdate)
+	blockExecutionTimer.Update(executionDuration)   // The time spent on EVM processing
+	blockValidationTimer.Update(validationDuration) // The time spent on block validation
+	blockCrossValidationTimer.Update(xvtime)        // The time spent on stateless cross validation
+
+	accountUpdateDuration = statedb.AccountUpdates
+	storageUpdateDuration = statedb.StorageUpdates
 
 	// Write the block to the chain and get the status.
 	var (
@@ -2656,8 +2709,15 @@ func (bc *BlockChain) processBlock(parentRoot common.Hash, block *types.Block, s
 		storageCommitTimer.Update(statedb.StorageCommits)   // Storage commits are complete, we can mark them
 		snapshotCommitTimer.Update(statedb.SnapshotCommits) // Snapshot commits are complete, we can mark them
 		triedbCommitTimer.Update(statedb.TrieDBCommits)     // Trie database commits are complete, we can mark them
+
+		accountCommitDuration = statedb.AccountCommits
+		storageCommitDuration = statedb.StorageCommits
+		snapshotCommitDuration = statedb.SnapshotCommits
+		triedbCommitDuration = statedb.TrieDBCommits
 	}
-	blockWriteTimer.Update(time.Since(wstart) - max(statedb.AccountCommits, statedb.StorageCommits) /* concurrent */ - statedb.SnapshotCommits - statedb.TrieDBCommits)
+	wtime := time.Since(wstart)
+	blockWriteDuration = wtime - max(statedb.AccountCommits, statedb.StorageCommits) /* concurrent */ - statedb.SnapshotCommits - statedb.TrieDBCommits
+	blockWriteTimer.Update(blockWriteDuration)
 	elapsed := time.Since(startTime) + 1 // prevent zero division
 	blockInsertTimer.Update(elapsed)
 	blockInsertTxSizeGauge.Update(int64(len(block.Transactions())))

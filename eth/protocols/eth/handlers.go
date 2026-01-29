@@ -25,9 +25,14 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p/tracker"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+)
+
+var (
+	eth68RecvLatencyTimer = metrics.NewRegisteredTimer("p2p/eth68/blockRecvLatency", nil)
 )
 
 // requestTracker is a singleton tracker for eth/66 and newer request times.
@@ -371,10 +376,15 @@ func handleNewBlockhashes(backend Backend, msg Decoder, peer *Peer) error {
 
 func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 	// Retrieve and decode the propagated block
+	recvTime := time.Now()
 	ann := new(NewBlockPacket)
 	if err := msg.Decode(ann); err != nil {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
 	}
+
+	recvLatency := recvTime.Sub(time.UnixMilli(int64(ann.Block.Header().MilliTimestamp())))
+	log.LatencyWithBlockMeta(ann.Block.Number().Uint64(), ann.Block.Hash(), "Eth68HandleNewBlock", recvLatency)
+	eth68RecvLatencyTimer.Update(recvLatency) // Storage reads are complete(in processing)
 
 	if ann.Bal != nil {
 		log.Debug("handleNewBlock, BAL", "number", ann.Block.NumberU64(), "hash", ann.Block.Hash(), "peer", peer.ID(),
