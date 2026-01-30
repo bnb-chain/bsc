@@ -110,6 +110,9 @@ type environment struct {
 	witness *stateless.Witness
 
 	committed bool
+
+	// Mining phase timing breakdown
+	miningStats *MiningStats
 }
 
 // discard terminates the background prefetcher go-routine. It should
@@ -130,6 +133,78 @@ type task struct {
 
 	createdAt     time.Time
 	miningStartAt time.Time
+	sealStartAt   time.Time // When Seal() was called
+
+	// Mining phase timing breakdown
+	miningStats *MiningStats
+}
+
+// MiningStats holds timing measurements for different phases of block mining.
+// Similar to StateDB's timing fields (AccountReads, StorageReads, etc.)
+type MiningStats struct {
+	// Parlia consensus phases
+	PrepareTime time.Duration // Parlia.Prepare - header preparation
+	SealTime    time.Duration // Parlia.Seal - signing and waiting
+
+	// Waiting phases (4 types)
+	WaitingOutOfTurnTime time.Duration // Waiting-1: out-of-turn backoff
+	WaitingTxCollectTime time.Duration // Waiting-4: tx-collection/resubmit waiting
+	WaitingMEVTime       time.Duration // Waiting-2: MEV window waiting
+	// Note: Waiting-3 (Seal timing) is included in SealTime
+
+	// Transaction processing
+	FillTxsTime   time.Duration // TxPool().Pending - fetch transactions from pool
+	ExecutionTime time.Duration // commitTransactions - total VM + IO time
+
+	// Execution breakdown (from statedb, high-level)
+	ExecutionIOTime time.Duration // IO: AccountReads + StorageReads + AccountUpdates + StorageUpdates
+
+	// MEV
+	MEVCompareTime time.Duration // MEV bid comparison and selection (excluding waiting)
+
+	// FinalizeAndAssemble breakdown
+	FinalizeSystemTxTime time.Duration // Parlia system transactions (init/slash/distribute)
+	RootCalcTime         time.Duration // state.IntermediateRoot + types.NewBlock (concurrent)
+
+	// Write phase
+	WriteTime time.Duration // WriteBlockAndSetHead - database write
+
+	// Network (for reference, actual measurement needs handler.go changes)
+	BroadcastStartTime int64 // Unix milliseconds when BroadcastBlock(true) starts
+}
+
+// String returns a formatted string of mining stats
+func (ms *MiningStats) String() string {
+	if ms == nil {
+		return "nil"
+	}
+	// Total time (excluding waiting, as waiting overlaps with other phases)
+	total := ms.PrepareTime + ms.FillTxsTime + ms.ExecutionTime +
+		ms.MEVCompareTime + ms.FinalizeSystemTxTime + ms.RootCalcTime + ms.SealTime + ms.WriteTime
+	totalWaiting := ms.WaitingOutOfTurnTime + ms.WaitingTxCollectTime + ms.WaitingMEVTime
+	return fmt.Sprintf(
+		"total=%v prepare=%v fillTxs=%v exec=%v(io=%v) mevCompare=%v finalizeSysTx=%v rootCalc=%v seal=%v write=%v | waiting: outOfTurn=%v txCollect=%v mev=%v (totalWait=%v)",
+		total, ms.PrepareTime, ms.FillTxsTime, ms.ExecutionTime, ms.ExecutionIOTime,
+		ms.MEVCompareTime, ms.FinalizeSystemTxTime, ms.RootCalcTime, ms.SealTime, ms.WriteTime,
+		ms.WaitingOutOfTurnTime, ms.WaitingTxCollectTime, ms.WaitingMEVTime, totalWaiting,
+	)
+}
+
+// TotalTime returns the sum of all non-overlapping phases
+func (ms *MiningStats) TotalTime() time.Duration {
+	if ms == nil {
+		return 0
+	}
+	return ms.PrepareTime + ms.FillTxsTime + ms.ExecutionTime +
+		ms.MEVCompareTime + ms.FinalizeSystemTxTime + ms.RootCalcTime + ms.SealTime + ms.WriteTime
+}
+
+// TotalWaitingTime returns the sum of all waiting phases
+func (ms *MiningStats) TotalWaitingTime() time.Duration {
+	if ms == nil {
+		return 0
+	}
+	return ms.WaitingOutOfTurnTime + ms.WaitingTxCollectTime + ms.WaitingMEVTime
 }
 
 const (
@@ -523,6 +598,9 @@ func (w *worker) taskLoop() {
 			if w.skipSealHook != nil && w.skipSealHook(task) {
 				continue
 			}
+			// Record seal start time
+			task.sealStartAt = time.Now()
+
 			w.pendingMu.Lock()
 			w.pendingTasks[sealHash] = task
 			w.pendingMu.Unlock()
@@ -614,6 +692,11 @@ func (w *worker) resultLoop() {
 				w.recentMinedBlocks.Add(block.NumberU64(), []common.Hash{block.ParentHash()})
 			}
 
+			// Calculate Seal time (from sealStartAt to now)
+			if task.miningStats != nil && !task.sealStartAt.IsZero() {
+				task.miningStats.SealTime = time.Since(task.sealStartAt)
+			}
+
 			// add BAL to the block
 			bal := task.state.GetEncodedBlockAccessList(block)
 			if bal != nil && w.engine.SignBAL(bal) == nil {
@@ -622,7 +705,7 @@ func (w *worker) resultLoop() {
 			task.state.DumpAccessList(block)
 
 			// Commit block and state to database.
-			start := time.Now()
+			writeStart := time.Now()
 			status, err := w.chain.WriteBlockAndSetHead(block, receipts, logs, task.state, w.mux)
 			if status != core.CanonStatTy {
 				if err != nil {
@@ -632,10 +715,47 @@ func (w *worker) resultLoop() {
 				}
 				continue
 			}
-			writeBlockTimer.UpdateSince(start)
+			writeBlockTimer.UpdateSince(writeStart)
+
+			// Record WriteBlock time
+			if task.miningStats != nil {
+				task.miningStats.WriteTime = time.Since(writeStart)
+			}
+
 			stats := w.chain.GetBlockStats(block.Hash())
 			stats.SendBlockTime.Store(time.Now().UnixMilli())
 			stats.StartMiningTime.Store(task.miningStartAt.UnixMilli())
+
+			// Log mining stats breakdown
+			if task.miningStats != nil {
+				ms := task.miningStats
+				log.Info("Mining phase breakdown",
+					"number", block.Number(),
+					"hash", hash.TerminalString(),
+					// Parlia consensus
+					"prepare", ms.PrepareTime,
+					"seal", ms.SealTime,
+					// Transaction processing
+					"fillTxs", ms.FillTxsTime,
+					"execution", ms.ExecutionTime,
+					"executionIO", ms.ExecutionIOTime,
+					// FinalizeAndAssemble breakdown
+					"finalizeSysTx", ms.FinalizeSystemTxTime,
+					"rootCalc", ms.RootCalcTime,
+					// MEV
+					"mevCompare", ms.MEVCompareTime,
+					// Write
+					"write", ms.WriteTime,
+					// Totals
+					"total", ms.TotalTime(),
+					// Waiting breakdown
+					"waitOutOfTurn", ms.WaitingOutOfTurnTime,
+					"waitTxCollect", ms.WaitingTxCollectTime,
+					"waitMEV", ms.WaitingMEVTime,
+					"totalWait", ms.TotalWaitingTime(),
+				)
+			}
+
 			log.Info("Successfully seal and write new block", "number", block.Number(), "hash", hash, "time", block.Header().MilliTimestamp(), "sealhash", sealhash,
 				"block size(noBal)", block.Size(), "balSize", block.BALSize(), "elapsed", common.PrettyDuration(time.Since(task.createdAt)))
 			w.mux.Post(core.NewMinedBlockEvent{Block: block})
@@ -1052,6 +1172,9 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 		filter.GasLimitCap = cap
 	}
 
+	// Track FillTxs time (fetching from txpool)
+	fillTxsStart := time.Now()
+
 	filter.OnlyPlainTxs, filter.OnlyBlobTxs = true, false
 	plainTxsStart := time.Now()
 	pendingPlainTxs := w.eth.TxPool().Pending(filter)
@@ -1097,12 +1220,34 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 		}
 	}
 
+	// Record FillTxs time before execution
+	if env.miningStats != nil {
+		env.miningStats.FillTxsTime += time.Since(fillTxsStart)
+	}
+
 	// Fill the block with all available pending transactions.
+	// Track Execution time separately (high-level, not per-tx)
+	execStart := time.Now()
+
+	// Record IO baseline from statedb before execution (high-level IO measurement)
+	var ioBaseline time.Duration
+	if env.miningStats != nil && env.state != nil {
+		ioBaseline = env.state.AccountReads + env.state.StorageReads +
+			env.state.AccountUpdates + env.state.StorageUpdates
+	}
+
 	if len(prioPlainTxs) > 0 || len(prioBlobTxs) > 0 {
 		plainTxs := newTransactionsByPriceAndNonce(env.signer, prioPlainTxs, env.header.BaseFee)
 		blobTxs := newTransactionsByPriceAndNonce(env.signer, prioBlobTxs, env.header.BaseFee)
 
 		if err := w.commitTransactions(env, plainTxs, blobTxs, interruptCh, stopTimer); err != nil {
+			if env.miningStats != nil {
+				env.miningStats.ExecutionTime += time.Since(execStart)
+				// Calculate IO from statedb accumulated values (high-level)
+				ioNow := env.state.AccountReads + env.state.StorageReads +
+					env.state.AccountUpdates + env.state.StorageUpdates
+				env.miningStats.ExecutionIOTime += ioNow - ioBaseline
+			}
 			return err
 		}
 	}
@@ -1111,8 +1256,22 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 		blobTxs := newTransactionsByPriceAndNonce(env.signer, normalBlobTxs, env.header.BaseFee)
 
 		if err := w.commitTransactions(env, plainTxs, blobTxs, interruptCh, stopTimer); err != nil {
+			if env.miningStats != nil {
+				env.miningStats.ExecutionTime += time.Since(execStart)
+				// Calculate IO from statedb accumulated values (high-level)
+				ioNow := env.state.AccountReads + env.state.StorageReads +
+					env.state.AccountUpdates + env.state.StorageUpdates
+				env.miningStats.ExecutionIOTime += ioNow - ioBaseline
+			}
 			return err
 		}
+	}
+	if env.miningStats != nil {
+		env.miningStats.ExecutionTime += time.Since(execStart)
+		// Calculate IO from statedb accumulated values (high-level)
+		ioNow := env.state.AccountReads + env.state.StorageReads +
+			env.state.AccountUpdates + env.state.StorageUpdates
+		env.miningStats.ExecutionIOTime += ioNow - ioBaseline
 	}
 
 	return nil
@@ -1191,6 +1350,9 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 	}
 	start := time.Now()
 
+	// Initialize mining stats for timing breakdown
+	miningStats := &MiningStats{}
+
 	// Set the coinbase if the worker is running or it's required
 	var coinbase common.Address
 	if w.isRunning() {
@@ -1227,6 +1389,8 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 
 LOOP:
 	for {
+		// Track Prepare time (Parlia.Prepare is called inside prepareWork)
+		prepareStart := time.Now()
 		work, err := w.prepareWork(&generateParams{
 			timestamp:  uint64(timestamp),
 			parentHash: parentHash,
@@ -1236,6 +1400,11 @@ LOOP:
 		if err != nil {
 			return
 		}
+		miningStats.PrepareTime += time.Since(prepareStart)
+
+		// Attach miningStats to work environment
+		work.miningStats = miningStats
+
 		prevWork = work
 		workList = append(workList, work)
 
@@ -1247,6 +1416,7 @@ LOOP:
 			log.Debug("Not enough time for commitWork")
 			break
 		} else {
+			// [Waiting-1] Out-of-turn backoff
 			if !w.inTurn() && len(workList) == 1 {
 				if parliaEngine, ok := w.engine.(*parlia.Parlia); ok {
 					// When mining out of turn, continuous access to the txpool and trie database
@@ -1256,8 +1426,13 @@ LOOP:
 						beforeSealing := time.Until(time.UnixMilli(int64(work.header.MilliTimestamp())))
 						if wait := beforeSealing - time.Duration(blockInterval)*time.Millisecond; wait > 0 {
 							log.Debug("Applying backoff before mining", "block", work.header.Number, "waiting(ms)", wait.Milliseconds())
+							waitStart := time.Now()
 							select {
 							case <-time.After(wait):
+								// Record Waiting-1: out-of-turn backoff time
+								if miningStats != nil {
+									miningStats.WaitingOutOfTurnTime += time.Since(waitStart)
+								}
 							case <-interruptCh:
 								log.Debug("CommitWork interrupted: new block imported or resubmission triggered", "block", work.header.Number)
 								return
@@ -1312,11 +1487,18 @@ LOOP:
 		// stopTimer was the maximum delay for each fillTransactions
 		// but now it is used to wait until (head.Time - DelayLeftOver) is reached.
 		stopTimer.Reset(time.Until(time.UnixMilli(int64(work.header.MilliTimestamp()))) - *w.config.DelayLeftOver)
+
+		// [Waiting-4] Tx-collection / resubmit waiting
+		txCollectWaitStart := time.Now()
 	LOOP_WAIT:
 		for {
 			select {
 			case <-stopTimer.C:
 				log.Debug("commitWork stopTimer expired")
+				// Record Waiting-4: tx-collection waiting time
+				if miningStats != nil {
+					miningStats.WaitingTxCollectTime += time.Since(txCollectWaitStart)
+				}
 				break LOOP
 			case <-interruptCh:
 				log.Debug("commitWork interruptCh closed, new block imported or resubmit triggered")
@@ -1328,10 +1510,18 @@ LOOP:
 					"newTxsNum", newTxsNum, "len(ev.Txs)", len(ev.Txs))
 				if *delay < fillDuration {
 					// There may not have enough time for another fillTransactions.
+					// Record Waiting-4: tx-collection waiting time
+					if miningStats != nil {
+						miningStats.WaitingTxCollectTime += time.Since(txCollectWaitStart)
+					}
 					break LOOP
 				} else if *delay < fillDuration*2 {
 					// We can schedule another fillTransactions, but the time is limited,
 					// probably it is the last chance, schedule it immediately.
+					// Record Waiting-4: tx-collection waiting time
+					if miningStats != nil {
+						miningStats.WaitingTxCollectTime += time.Since(txCollectWaitStart)
+					}
 					break LOOP_WAIT
 				} else {
 					// There is still plenty of time left.
@@ -1342,12 +1532,20 @@ LOOP:
 					//   2.no much time left, have to schedule it immediately.
 					newTxsNum = newTxsNum + len(ev.Txs)
 					if newTxsNum >= work.tcount {
+						// Record Waiting-4: tx-collection waiting time
+						if miningStats != nil {
+							miningStats.WaitingTxCollectTime += time.Since(txCollectWaitStart)
+						}
 						break LOOP_WAIT
 					}
 					stopWaitTimer.Reset(*delay - fillDuration*2)
 				}
 			case <-stopWaitTimer.C:
 				if newTxsNum > 0 {
+					// Record Waiting-4: tx-collection waiting time
+					if miningStats != nil {
+						miningStats.WaitingTxCollectTime += time.Since(txCollectWaitStart)
+					}
 					break LOOP_WAIT
 				}
 			}
@@ -1378,19 +1576,27 @@ LOOP:
 		// Time left till sealing the block.
 		tillSealingTime := time.Until(time.UnixMilli(int64(bestWork.header.MilliTimestamp()))) - *w.config.DelayLeftOver
 		if tillSealingTime > 0 {
+			// [Waiting-2] MEV window waiting
 			// Still some time left, wait for the best bid.
 			// This happens during the peak time of the network, the local block building LOOP would break earlier than
 			// the final sealing time by meeting the errBlockInterruptedByOutOfGas criteria.
-
 			log.Info("commitWork local building finished, wait for the best bid", "tillSealingTime", common.PrettyDuration(tillSealingTime))
+			mevWaitStart := time.Now()
 			stopTimer.Reset(tillSealingTime)
 			select {
 			case <-stopTimer.C:
+				// Record Waiting-2: MEV window waiting time
+				if miningStats != nil {
+					miningStats.WaitingMEVTime += time.Since(mevWaitStart)
+				}
 			case <-interruptCh:
 				log.Debug("commitWork interruptCh closed, new block imported or resubmit triggered")
 				return
 			}
 		}
+
+		// [MEV Compare] Track MEV comparison time (excluding waiting)
+		mevCompareStart := time.Now()
 
 		bestBid := w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
 
@@ -1428,6 +1634,11 @@ LOOP:
 				)
 			}
 		}
+
+		// Record MEV compare time (excluding waiting)
+		if miningStats != nil {
+			miningStats.MEVCompareTime += time.Since(mevCompareStart)
+		}
 	}
 
 	w.commit(bestWork, w.fullTaskHook, start)
@@ -1459,6 +1670,14 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		}
 		fees := env.state.GetBalance(consensus.SystemAddress).ToBig()
 		feesInEther := new(big.Float).Quo(new(big.Float).SetInt(fees), big.NewFloat(params.Ether))
+
+		// Record statedb values before FinalizeAndAssemble to calculate RootCalc delta
+		var rootCalcBaseline time.Duration
+		if env.miningStats != nil && env.state != nil {
+			// These values accumulate during IntermediateRoot(), so we need the delta
+			rootCalcBaseline = env.state.AccountUpdates + env.state.StorageUpdates + env.state.AccountHashes
+		}
+
 		// Withdrawals are set to nil here, because this is only called in PoW.
 		finalizeStart := time.Now()
 		body := types.Body{Transactions: env.txs}
@@ -1474,6 +1693,19 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		env.receipts = receipts
 		finalizeBlockTimer.UpdateSince(finalizeStart)
 
+		// Calculate FinalizeSystemTx and RootCalc times from FinalizeAndAssemble
+		// RootCalc time = delta of (AccountUpdates + StorageUpdates + AccountHashes) during FinalizeAndAssemble
+		// FinalizeSystemTx time = total FinalizeAndAssemble time - RootCalc time
+		if env.miningStats != nil {
+			rootCalcNow := env.state.AccountUpdates + env.state.StorageUpdates + env.state.AccountHashes
+			rootCalcTime := rootCalcNow - rootCalcBaseline
+			totalFinalizeTime := time.Since(finalizeStart)
+			env.miningStats.RootCalcTime = rootCalcTime
+			if totalFinalizeTime > rootCalcTime {
+				env.miningStats.FinalizeSystemTxTime = totalFinalizeTime - rootCalcTime
+			}
+		}
+
 		// If Cancun enabled, sidecars can't be nil then.
 		if w.chainConfig.IsCancun(env.header.Number, env.header.Time) && env.sidecars == nil {
 			env.sidecars = make(types.BlobSidecars, 0)
@@ -1481,7 +1713,7 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		block = block.WithSidecars(env.sidecars)
 
 		select {
-		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
+		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start, miningStats: env.miningStats}:
 			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
 				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
 

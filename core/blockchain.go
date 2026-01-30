@@ -320,6 +320,11 @@ type BlockStats struct {
 	StartMiningTime      atomic.Int64
 	ImportedBlockTime    atomic.Int64
 
+	// Network timing for full block broadcast (NewBlockMsg)
+	// BroadcastStartTime: when BroadcastBlock(propagate=true) starts sending to peers
+	// Used with RecvNewBlockTime to calculate network propagation delay
+	BroadcastStartTime atomic.Int64
+
 	SendVoteTime         atomic.Int64
 	FirstRecvVoteTime    atomic.Int64
 	RecvMajorityVoteTime atomic.Int64
