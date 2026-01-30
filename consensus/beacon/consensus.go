@@ -288,6 +288,7 @@ func (beacon *Beacon) verifyHeader(chain consensus.ChainHeaderReader, header, pa
 	// if header.GasUsed > header.GasLimit {
 	// 	return fmt.Errorf("invalid gasUsed: have %d, gasLimit %d", header.GasUsed, header.GasLimit)
 	// }
+
 	// Verify that the block number is parent's +1
 	if diff := new(big.Int).Sub(header.Number, parent.Number); diff.Cmp(common.Big1) != 0 {
 		return consensus.ErrInvalidNumber
