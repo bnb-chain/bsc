@@ -152,11 +152,30 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPa
 	blockFirstReceived := false
 	if stats.RecvNewBlockTime.Load() == 0 {
 		blockFirstReceived = true
-		stats.RecvNewBlockTime.Store(time.Now().UnixMilli())
+		recvTime := time.Now().UnixMilli()
+		stats.RecvNewBlockTime.Store(recvTime)
 		addr := peer.RemoteAddr()
 		if addr != nil {
 			stats.RecvNewBlockFrom.Store(addr.String())
 		}
+
+		// [Network-Receive] Log network timing for cross-node analysis
+		// NetworkDelay = time from block timestamp to when we received it
+		// This includes: sender's processing + network transfer + our decoding
+		blockTime := int64(block.Header().MilliTimestamp())
+		networkDelay := recvTime - blockTime
+		var peerAddr string
+		if addr != nil {
+			peerAddr = addr.String()
+		}
+		log.Info("Network: received new block",
+			"number", block.Number(),
+			"hash", block.Hash().TerminalString(),
+			"blockTime", blockTime,
+			"recvTime", recvTime,
+			"networkDelay", time.Duration(networkDelay)*time.Millisecond,
+			"from", peerAddr,
+		)
 	}
 
 	// Assuming the block is importable by the peer, but possibly not yet done so,

@@ -141,57 +141,119 @@ type task struct {
 
 // MiningStats holds timing measurements for different phases of block mining.
 // Similar to StateDB's timing fields (AccountReads, StorageReads, etc.)
+//
+// High-level aggregation (use the methods below):
+//   - Parlia()    = PrepareTime + FinalizeSystemTxTime + SealTime
+//   - MEV()       = MEVCompareTime (waiting is separate)
+//   - Execution() = FillTxsTime + ExecutionTime, with IO() = ExecutionIOTime
+//   - RootCalc()  = RootCalcTime (state root calculation, note: Assembly is in FinalizeSystemTxTime)
+//   - Write()     = WriteTime (separate, database persistence)
+//   - Waiting()   = WaitingOutOfTurnTime + WaitingTxCollectTime + WaitingMEVTime (separate)
 type MiningStats struct {
-	// Parlia consensus phases
-	PrepareTime time.Duration // Parlia.Prepare - header preparation
-	SealTime    time.Duration // Parlia.Seal - signing and waiting
+	// === Low-level timing fields ===
 
-	// Waiting phases (4 types)
-	WaitingOutOfTurnTime time.Duration // Waiting-1: out-of-turn backoff
-	WaitingTxCollectTime time.Duration // Waiting-4: tx-collection/resubmit waiting
-	WaitingMEVTime       time.Duration // Waiting-2: MEV window waiting
-	// Note: Waiting-3 (Seal timing) is included in SealTime
+	// Parlia consensus - Prepare phase
+	PrepareTime time.Duration // engine.Prepare() - set header fields
 
-	// Transaction processing
-	FillTxsTime   time.Duration // TxPool().Pending - fetch transactions from pool
-	ExecutionTime time.Duration // commitTransactions - total VM + IO time
+	// Parlia consensus - Seal phase (includes Waiting-3: seal timing delay)
+	SealTime time.Duration // engine.Seal() - wait for block time + sign
 
-	// Execution breakdown (from statedb, high-level)
-	ExecutionIOTime time.Duration // IO: AccountReads + StorageReads + AccountUpdates + StorageUpdates
+	// Waiting phases (sequential, not overlapping)
+	WaitingOutOfTurnTime time.Duration // Waiting-1: out-of-turn validator backoff
+	WaitingTxCollectTime time.Duration // Waiting-4: wait for new txs in LOOP_WAIT
+	WaitingMEVTime       time.Duration // Waiting-2: MEV window waiting for builder bids
 
-	// MEV
-	MEVCompareTime time.Duration // MEV bid comparison and selection (excluding waiting)
+	// Transaction fetching
+	FillTxsTime time.Duration // TxPool().Pending() - fetch pending transactions
+
+	// Transaction execution (VM + IO)
+	ExecutionTime   time.Duration // commitTransactions total time
+	ExecutionIOTime time.Duration // IO portion: AccountReads + StorageReads + AccountUpdates + StorageUpdates
+
+	// MEV comparison (excluding waiting)
+	MEVCompareTime time.Duration // GetBestBid() + reward comparison
 
 	// FinalizeAndAssemble breakdown
-	FinalizeSystemTxTime time.Duration // Parlia system transactions (init/slash/distribute)
-	RootCalcTime         time.Duration // state.IntermediateRoot + types.NewBlock (concurrent)
+	// Note: FinalizeSystemTxTime includes system txs (init/slash/distribute) AND types.NewBlock() assembly
+	// Note: RootCalcTime only covers state.IntermediateRoot() (state root), not receipt root
+	FinalizeSystemTxTime time.Duration // System txs + block assembly (= FinalizeAndAssemble - RootCalcTime)
+	RootCalcTime         time.Duration // state.IntermediateRoot() - state trie root calculation
 
-	// Write phase
-	WriteTime time.Duration // WriteBlockAndSetHead - database write
+	// Write phase (database persistence)
+	WriteTime time.Duration // WriteBlockAndSetHead - write block/receipts/state to DB
 
-	// Network (for reference, actual measurement needs handler.go changes)
-	BroadcastStartTime int64 // Unix milliseconds when BroadcastBlock(true) starts
+	// Network timing (for cross-node measurement)
+	BroadcastStartTime int64 // Unix millis when BroadcastBlock(propagate=true) starts
 }
 
-// String returns a formatted string of mining stats
-func (ms *MiningStats) String() string {
+// === High-level aggregation methods ===
+
+// Parlia returns the total Parlia consensus time.
+// Includes: header preparation + system transactions + block assembly + seal/sign.
+func (ms *MiningStats) Parlia() time.Duration {
 	if ms == nil {
-		return "nil"
+		return 0
 	}
-	// Total time (excluding waiting, as waiting overlaps with other phases)
-	total := ms.PrepareTime + ms.FillTxsTime + ms.ExecutionTime +
-		ms.MEVCompareTime + ms.FinalizeSystemTxTime + ms.RootCalcTime + ms.SealTime + ms.WriteTime
-	totalWaiting := ms.WaitingOutOfTurnTime + ms.WaitingTxCollectTime + ms.WaitingMEVTime
-	return fmt.Sprintf(
-		"total=%v prepare=%v fillTxs=%v exec=%v(io=%v) mevCompare=%v finalizeSysTx=%v rootCalc=%v seal=%v write=%v | waiting: outOfTurn=%v txCollect=%v mev=%v (totalWait=%v)",
-		total, ms.PrepareTime, ms.FillTxsTime, ms.ExecutionTime, ms.ExecutionIOTime,
-		ms.MEVCompareTime, ms.FinalizeSystemTxTime, ms.RootCalcTime, ms.SealTime, ms.WriteTime,
-		ms.WaitingOutOfTurnTime, ms.WaitingTxCollectTime, ms.WaitingMEVTime, totalWaiting,
-	)
+	return ms.PrepareTime + ms.FinalizeSystemTxTime + ms.SealTime
 }
 
-// TotalTime returns the sum of all non-overlapping phases
-func (ms *MiningStats) TotalTime() time.Duration {
+// MEV returns the MEV comparison time (excluding MEV waiting).
+// MEV waiting is counted separately in Waiting().
+func (ms *MiningStats) MEV() time.Duration {
+	if ms == nil {
+		return 0
+	}
+	return ms.MEVCompareTime
+}
+
+// Execution returns the total transaction execution time (VM + IO).
+// Use IO() to get the IO portion breakdown.
+func (ms *MiningStats) Execution() time.Duration {
+	if ms == nil {
+		return 0
+	}
+	return ms.FillTxsTime + ms.ExecutionTime
+}
+
+// IO returns the IO portion of execution time.
+// This is the time spent on state reads/writes during transaction execution.
+func (ms *MiningStats) IO() time.Duration {
+	if ms == nil {
+		return 0
+	}
+	return ms.ExecutionIOTime
+}
+
+// RootCalc returns the state root calculation time.
+// Note: This only covers state.IntermediateRoot(), not types.NewBlock() assembly.
+func (ms *MiningStats) RootCalc() time.Duration {
+	if ms == nil {
+		return 0
+	}
+	return ms.RootCalcTime
+}
+
+// Write returns the database write time.
+// Includes: WriteBlockAndSetHead (block/receipts/state persistence).
+func (ms *MiningStats) Write() time.Duration {
+	if ms == nil {
+		return 0
+	}
+	return ms.WriteTime
+}
+
+// Waiting returns the total waiting time (strategic/timing waits).
+// These are intentional waits, not compute bottlenecks.
+func (ms *MiningStats) Waiting() time.Duration {
+	if ms == nil {
+		return 0
+	}
+	return ms.WaitingOutOfTurnTime + ms.WaitingTxCollectTime + ms.WaitingMEVTime
+}
+
+// ActiveTime returns the sum of all compute/active phases (excluding waiting).
+// Use this to find optimization hotspots.
+func (ms *MiningStats) ActiveTime() time.Duration {
 	if ms == nil {
 		return 0
 	}
@@ -199,12 +261,25 @@ func (ms *MiningStats) TotalTime() time.Duration {
 		ms.MEVCompareTime + ms.FinalizeSystemTxTime + ms.RootCalcTime + ms.SealTime + ms.WriteTime
 }
 
-// TotalWaitingTime returns the sum of all waiting phases
-func (ms *MiningStats) TotalWaitingTime() time.Duration {
+// WallClockTime returns the total wall clock time (active + waiting).
+// Use this to check if 450ms block time budget is sufficient.
+func (ms *MiningStats) WallClockTime() time.Duration {
 	if ms == nil {
 		return 0
 	}
-	return ms.WaitingOutOfTurnTime + ms.WaitingTxCollectTime + ms.WaitingMEVTime
+	return ms.ActiveTime() + ms.Waiting()
+}
+
+// String returns a formatted string of mining stats (high-level view).
+func (ms *MiningStats) String() string {
+	if ms == nil {
+		return "nil"
+	}
+	return fmt.Sprintf(
+		"Parlia=%v MEV=%v Execution=%v(IO=%v) RootCalc=%v Write=%v | Waiting=%v | Active=%v WallClock=%v",
+		ms.Parlia(), ms.MEV(), ms.Execution(), ms.IO(), ms.RootCalc(), ms.Write(),
+		ms.Waiting(), ms.ActiveTime(), ms.WallClockTime(),
+	)
 }
 
 const (
@@ -726,33 +801,39 @@ func (w *worker) resultLoop() {
 			stats.SendBlockTime.Store(time.Now().UnixMilli())
 			stats.StartMiningTime.Store(task.miningStartAt.UnixMilli())
 
-			// Log mining stats breakdown
+			// Log mining stats breakdown (high-level aggregation)
 			if task.miningStats != nil {
 				ms := task.miningStats
 				log.Info("Mining phase breakdown",
 					"number", block.Number(),
 					"hash", hash.TerminalString(),
-					// Parlia consensus
+					// High-level phases (what you want to see)
+					"Parlia", ms.Parlia(),
+					"MEV", ms.MEV(),
+					"Execution", ms.Execution(),
+					"IO", ms.IO(),
+					"RootCalc", ms.RootCalc(),
+					"Write", ms.Write(),
+					"Waiting", ms.Waiting(),
+					// Summary
+					"Active", ms.ActiveTime(),
+					"WallClock", ms.WallClockTime(),
+				)
+				// Detailed breakdown for debugging (optional, can be changed to Debug level)
+				log.Debug("Mining stats detail",
+					"number", block.Number(),
+					// Parlia breakdown
 					"prepare", ms.PrepareTime,
-					"seal", ms.SealTime,
-					// Transaction processing
-					"fillTxs", ms.FillTxsTime,
-					"execution", ms.ExecutionTime,
-					"executionIO", ms.ExecutionIOTime,
-					// FinalizeAndAssemble breakdown
 					"finalizeSysTx", ms.FinalizeSystemTxTime,
-					"rootCalc", ms.RootCalcTime,
-					// MEV
-					"mevCompare", ms.MEVCompareTime,
-					// Write
-					"write", ms.WriteTime,
-					// Totals
-					"total", ms.TotalTime(),
+					"seal", ms.SealTime,
+					// Execution breakdown
+					"fillTxs", ms.FillTxsTime,
+					"execTime", ms.ExecutionTime,
+					"execIO", ms.ExecutionIOTime,
 					// Waiting breakdown
 					"waitOutOfTurn", ms.WaitingOutOfTurnTime,
 					"waitTxCollect", ms.WaitingTxCollectTime,
 					"waitMEV", ms.WaitingMEVTime,
-					"totalWait", ms.TotalWaitingTime(),
 				)
 			}
 
@@ -1230,48 +1311,40 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 	execStart := time.Now()
 
 	// Record IO baseline from statedb before execution (high-level IO measurement)
+	// We calculate IO delta only once at the end using defer to avoid duplication
 	var ioBaseline time.Duration
 	if env.miningStats != nil && env.state != nil {
 		ioBaseline = env.state.AccountReads + env.state.StorageReads +
 			env.state.AccountUpdates + env.state.StorageUpdates
 	}
 
+	// Use a named return and defer to ensure we record stats exactly once
+	var execErr error
+	defer func() {
+		if env.miningStats != nil && env.state != nil {
+			env.miningStats.ExecutionTime += time.Since(execStart)
+			// Calculate IO delta (only once, at function exit)
+			ioNow := env.state.AccountReads + env.state.StorageReads +
+				env.state.AccountUpdates + env.state.StorageUpdates
+			env.miningStats.ExecutionIOTime += ioNow - ioBaseline
+		}
+	}()
+
 	if len(prioPlainTxs) > 0 || len(prioBlobTxs) > 0 {
 		plainTxs := newTransactionsByPriceAndNonce(env.signer, prioPlainTxs, env.header.BaseFee)
 		blobTxs := newTransactionsByPriceAndNonce(env.signer, prioBlobTxs, env.header.BaseFee)
 
-		if err := w.commitTransactions(env, plainTxs, blobTxs, interruptCh, stopTimer); err != nil {
-			if env.miningStats != nil {
-				env.miningStats.ExecutionTime += time.Since(execStart)
-				// Calculate IO from statedb accumulated values (high-level)
-				ioNow := env.state.AccountReads + env.state.StorageReads +
-					env.state.AccountUpdates + env.state.StorageUpdates
-				env.miningStats.ExecutionIOTime += ioNow - ioBaseline
-			}
-			return err
+		if execErr = w.commitTransactions(env, plainTxs, blobTxs, interruptCh, stopTimer); execErr != nil {
+			return execErr
 		}
 	}
 	if len(normalPlainTxs) > 0 || len(normalBlobTxs) > 0 {
 		plainTxs := newTransactionsByPriceAndNonce(env.signer, normalPlainTxs, env.header.BaseFee)
 		blobTxs := newTransactionsByPriceAndNonce(env.signer, normalBlobTxs, env.header.BaseFee)
 
-		if err := w.commitTransactions(env, plainTxs, blobTxs, interruptCh, stopTimer); err != nil {
-			if env.miningStats != nil {
-				env.miningStats.ExecutionTime += time.Since(execStart)
-				// Calculate IO from statedb accumulated values (high-level)
-				ioNow := env.state.AccountReads + env.state.StorageReads +
-					env.state.AccountUpdates + env.state.StorageUpdates
-				env.miningStats.ExecutionIOTime += ioNow - ioBaseline
-			}
-			return err
+		if execErr = w.commitTransactions(env, plainTxs, blobTxs, interruptCh, stopTimer); execErr != nil {
+			return execErr
 		}
-	}
-	if env.miningStats != nil {
-		env.miningStats.ExecutionTime += time.Since(execStart)
-		// Calculate IO from statedb accumulated values (high-level)
-		ioNow := env.state.AccountReads + env.state.StorageReads +
-			env.state.AccountUpdates + env.state.StorageUpdates
-		env.miningStats.ExecutionIOTime += ioNow - ioBaseline
 	}
 
 	return nil

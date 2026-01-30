@@ -21,6 +21,7 @@ import (
 	"math/rand"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/ethereum/go-ethereum/common"
@@ -59,6 +60,11 @@ const (
 	maxQueuedBlockAnns = 4
 )
 
+// BlockSentCallback is called when a block starts sending via p2p.Send
+// Note: sendTime is recorded BEFORE p2p.Send call, so it's "send start time"
+// Parameters: block hash, send start timestamp (unix millis)
+type BlockSentCallback func(hash common.Hash, sendTime int64)
+
 // Peer is a collection of relevant information we have about a `eth` peer.
 type Peer struct {
 	id string // Unique ID for the peer, cached
@@ -89,6 +95,9 @@ type Peer struct {
 	term   chan struct{} // Termination channel to stop the broadcasters
 	txTerm chan struct{} // Termination channel to stop the tx broadcasters
 	lock   sync.RWMutex  // Mutex protecting the internal fields
+
+	// Callback for network timing measurement (方案 C)
+	onBlockSent BlockSentCallback
 }
 
 // NewPeer creates a wrapper for a network connection and negotiated  protocol
@@ -136,6 +145,14 @@ func (p *Peer) CloseTxBroadcast() {
 	default:
 		close(p.txTerm)
 	}
+}
+
+// SetBlockSentCallback sets the callback for when a block starts sending via p2p.Send
+// Note: callback is invoked with "send start time" (before p2p.Send completes)
+func (p *Peer) SetBlockSentCallback(cb BlockSentCallback) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.onBlockSent = cb
 }
 
 // ID retrieves the peer's unique identifier.
@@ -324,12 +341,29 @@ func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
 			"txNum", len(block.Transactions()), "canHandleBAL", p.CanHandleBAL.Load())
 	}
 
-	return p2p.Send(p.rw, NewBlockMsg, &NewBlockPacket{
+	// [Network-C] Record send start time (开始发送时刻)
+	// Note: This is recorded BEFORE p2p.Send, so it's "send start time" not "send completed time"
+	// This is more accurate than BroadcastStartTime which only records queue entry time
+	sendTime := time.Now().UnixMilli()
+
+	err := p2p.Send(p.rw, NewBlockMsg, &NewBlockPacket{
 		Block:    block,
 		TD:       td,
 		Sidecars: block.Sidecars(),
 		Bal:      bal,
 	})
+
+	// Call the callback to record FirstSendTime (only first peer matters)
+	if err == nil {
+		p.lock.RLock()
+		cb := p.onBlockSent
+		p.lock.RUnlock()
+		if cb != nil {
+			cb(block.Hash(), sendTime)
+		}
+	}
+
+	return err
 }
 
 // AsyncSendNewBlock queues an entire block for propagation to a remote peer. If

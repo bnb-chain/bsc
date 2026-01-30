@@ -199,6 +199,16 @@ type handler struct {
 
 	handlerStartCh chan struct{}
 	handlerDoneCh  chan struct{}
+
+	// [Network-A] Channel for network stats reporting
+	networkStatsCh chan *networkStatsRequest
+}
+
+// networkStatsRequest holds block info for network timing report
+type networkStatsRequest struct {
+	hash      common.Hash
+	number    uint64
+	blockTime int64 // block timestamp in millis
 }
 
 // newHandler returns a handler for all Ethereum chain management protocol.
@@ -232,6 +242,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		handlerDoneCh:              make(chan struct{}),
 		handlerStartCh:             make(chan struct{}),
 		stopCh:                     make(chan struct{}),
+		networkStatsCh:             make(chan *networkStatsRequest, 16), // [Network-A] buffer for recent blocks
 	}
 	for _, nodeID := range config.EVNNodeIdsWhitelist {
 		h.evnNodeIdsWhitelistMap[nodeID] = struct{}{}
@@ -532,6 +543,13 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	peer.Log().Debug("Ethereum peer connected", "name", peer.Name(), "peers.len", h.peers.len())
 	defer h.unregisterPeer(peer.ID())
 
+	// [Network-C] Set callback to record FirstSendTime (真正发送时刻)
+	peer.SetBlockSentCallback(func(hash common.Hash, sendTime int64) {
+		stats := h.chain.GetBlockStats(hash)
+		// Only record the first send time (CompareAndSwap ensures atomicity)
+		stats.FirstSendTime.CompareAndSwap(0, sendTime)
+	})
+
 	p := h.peers.peer(peer.ID())
 	if p == nil {
 		return errors.New("peer dropped during handling")
@@ -748,6 +766,10 @@ func (h *handler) Start(maxPeers int, maxPeersPerIP int) {
 	h.minedBlockSub = h.eventMux.Subscribe(core.NewMinedBlockEvent{}, core.NewSealedBlockEvent{})
 	go h.minedBroadcastLoop()
 
+	// [Network-A] start network stats reporting loop
+	h.wg.Add(1)
+	go h.networkStatsLoop()
+
 	// broadcast block range
 	h.wg.Add(1)
 	h.blockRange = newBlockRangeState(h.chain, h.eventMux)
@@ -821,8 +843,20 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 	if propagate {
 		// [Network-Send] Record broadcast start time for network latency measurement
 		// This is the "send" side timestamp; paired with RecvNewBlockTime on receiver
+		broadcastTime := time.Now().UnixMilli()
 		stats := h.chain.GetBlockStats(hash)
-		stats.BroadcastStartTime.Store(time.Now().UnixMilli())
+		stats.BroadcastStartTime.Store(broadcastTime)
+
+		// Log for cross-node network analysis
+		blockTime := int64(block.Header().MilliTimestamp())
+		broadcastDelay := broadcastTime - blockTime
+		log.Info("Network: broadcasting new block",
+			"number", block.Number(),
+			"hash", hash.TerminalString(),
+			"blockTime", blockTime,
+			"broadcastTime", broadcastTime,
+			"broadcastDelay", time.Duration(broadcastDelay)*time.Millisecond,
+		)
 
 		// Calculate the TD of the block (it's not imported yet, so block.Td is not valid)
 		var td *big.Int
@@ -894,6 +928,18 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 			"evn", evnPeersCnt,
 			"duration", common.PrettyDuration(time.Since(block.ReceivedAt)),
 		)
+
+		// [Network-A] Send to network stats loop for delayed reporting
+		// (wait for FirstSendTime to be set by peer goroutines)
+		select {
+		case h.networkStatsCh <- &networkStatsRequest{
+			hash:      hash,
+			number:    block.NumberU64(),
+			blockTime: int64(block.Header().MilliTimestamp()),
+		}:
+		default:
+			// Channel full, skip reporting for this block
+		}
 		return
 	}
 	// Otherwise if the block is indeed in our own chain, announce it
@@ -1296,4 +1342,107 @@ func (st *blockRangeState) stop() {
 // This is safe to call from any goroutine.
 func (st *blockRangeState) currentRange() eth.BlockRangeUpdatePacket {
 	return *st.next.Load()
+}
+
+// networkStatsLoop reports network timing for recently mined blocks.
+// [Network-A] This is the aggregation loop that waits for FirstSendTime to be set
+// and then outputs per-block network timing.
+func (h *handler) networkStatsLoop() {
+	defer h.wg.Done()
+
+	// Buffer to hold pending blocks waiting for FirstSendTime
+	type pendingBlock struct {
+		req       *networkStatsRequest
+		addedAt   time.Time
+		reported  bool
+	}
+	pending := make(map[common.Hash]*pendingBlock)
+
+	// Ticker to periodically check and report
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	// Cleanup ticker to remove old entries
+	cleanupTicker := time.NewTicker(10 * time.Second)
+	defer cleanupTicker.Stop()
+
+	for {
+		select {
+		case req := <-h.networkStatsCh:
+			// Add new block to pending
+			pending[req.hash] = &pendingBlock{
+				req:      req,
+				addedAt:  time.Now(),
+				reported: false,
+			}
+
+		case <-ticker.C:
+			// Check all pending blocks
+			for hash, pb := range pending {
+				if pb.reported {
+					continue
+				}
+
+				stats := h.chain.GetBlockStats(hash)
+				firstSendTime := stats.FirstSendTime.Load()
+				broadcastStartTime := stats.BroadcastStartTime.Load()
+
+				// Wait at least 50ms for FirstSendTime to be set (async send)
+				if time.Since(pb.addedAt) < 50*time.Millisecond {
+					continue
+				}
+
+				// Report if FirstSendTime is set, or timeout after 500ms
+				if firstSendTime > 0 || time.Since(pb.addedAt) > 500*time.Millisecond {
+					pb.reported = true
+
+					// Calculate timing
+					blockTime := pb.req.blockTime
+					var queueDelay, sendDelay time.Duration
+
+					if broadcastStartTime > 0 {
+						// BroadcastStartTime - blockTime = time from block creation to queue
+						queueDelay = time.Duration(broadcastStartTime-blockTime) * time.Millisecond
+					}
+
+					if firstSendTime > 0 && broadcastStartTime > 0 {
+						// FirstSendTime - BroadcastStartTime = time in queue
+						sendDelay = time.Duration(firstSendTime-broadcastStartTime) * time.Millisecond
+					}
+
+					// Total delay from block time to first send start
+					var totalSendDelay time.Duration
+					if firstSendTime > 0 {
+						totalSendDelay = time.Duration(firstSendTime-blockTime) * time.Millisecond
+					} else if broadcastStartTime > 0 {
+						// Fallback to BroadcastStartTime if FirstSendTime not available
+						totalSendDelay = queueDelay
+					}
+
+					log.Info("Network: block broadcast timing (send side)",
+						"number", pb.req.number,
+						"hash", hash.TerminalString(),
+						"blockTime", blockTime,
+						"broadcastStartTime", broadcastStartTime,
+						"firstSendTime", firstSendTime,
+					"queueDelay", queueDelay,       // Time from block to start queueing
+					"sendQueueDelay", sendDelay,    // Time in peer send queue (to send start)
+					"totalSendDelay", totalSendDelay, // Total time from block to send start
+					)
+				}
+			}
+
+		case <-cleanupTicker.C:
+			// Remove old entries (older than 30 seconds)
+			now := time.Now()
+			for hash, pb := range pending {
+				if now.Sub(pb.addedAt) > 30*time.Second {
+					delete(pending, hash)
+				}
+			}
+
+		case <-h.stopCh:
+			return
+		}
+	}
 }
