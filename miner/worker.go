@@ -150,6 +150,12 @@ type task struct {
 //   - Write()     = WriteTime (separate, database persistence)
 //   - Waiting()   = WaitingOutOfTurnTime + WaitingTxCollectTime + WaitingMEVTime (separate)
 type MiningStats struct {
+	// === Top-level independent timing ===
+	// MinePhaseTotal is independently measured from mine start to end (not sum of parts)
+	// Use this to cross-check: if MinePhaseTotal >> WallClockTime(), something is missing
+	MinePhaseTotal time.Duration // Independent measurement: commitWork start → WriteBlockAndSetHead end
+	MinePhaseStart time.Time     // Start time of mine phase (for calculating MinePhaseTotal)
+
 	// === Low-level timing fields ===
 
 	// Parlia consensus - Prepare phase
@@ -268,6 +274,16 @@ func (ms *MiningStats) WallClockTime() time.Duration {
 		return 0
 	}
 	return ms.ActiveTime() + ms.Waiting()
+}
+
+// Uncovered returns the time not covered by the breakdown (MinePhaseTotal - WallClockTime).
+// If this is significantly positive, there are phases not yet instrumented.
+// If this is negative, there may be overlapping measurements.
+func (ms *MiningStats) Uncovered() time.Duration {
+	if ms == nil {
+		return 0
+	}
+	return ms.MinePhaseTotal - ms.WallClockTime()
 }
 
 // String returns a formatted string of mining stats (high-level view).
@@ -792,9 +808,13 @@ func (w *worker) resultLoop() {
 			}
 			writeBlockTimer.UpdateSince(writeStart)
 
-			// Record WriteBlock time
+			// Record WriteBlock time and calculate MinePhaseTotal
 			if task.miningStats != nil {
 				task.miningStats.WriteTime = time.Since(writeStart)
+				// Calculate independent total time (for cross-checking)
+				if !task.miningStats.MinePhaseStart.IsZero() {
+					task.miningStats.MinePhaseTotal = time.Since(task.miningStats.MinePhaseStart)
+				}
 			}
 
 			stats := w.chain.GetBlockStats(block.Hash())
@@ -815,9 +835,11 @@ func (w *worker) resultLoop() {
 					"RootCalc", ms.RootCalc(),
 					"Write", ms.Write(),
 					"Waiting", ms.Waiting(),
-					// Summary
+					// Summary (WallClock = sum of parts, MinePhaseTotal = independent measurement)
 					"Active", ms.ActiveTime(),
 					"WallClock", ms.WallClockTime(),
+					"MineTotal", ms.MinePhaseTotal,  // Independent measurement for cross-check
+					"Uncovered", ms.Uncovered(),     // MineTotal - WallClock (should be ~0 if complete)
 				)
 				// Detailed breakdown for debugging (optional, can be changed to Debug level)
 				log.Debug("Mining stats detail",
@@ -1424,7 +1446,9 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 	start := time.Now()
 
 	// Initialize mining stats for timing breakdown
-	miningStats := &MiningStats{}
+	miningStats := &MiningStats{
+		MinePhaseStart: start, // Record start time for independent total measurement
+	}
 
 	// Set the coinbase if the worker is running or it's required
 	var coinbase common.Address
