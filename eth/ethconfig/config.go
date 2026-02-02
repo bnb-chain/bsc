@@ -72,8 +72,8 @@ var Defaults = Config{
 	RPCGasCap:              50000000,
 	RPCEVMTimeout:          5 * time.Second,
 	GPO:                    FullNodeGPO,
-	TxSyncDefaultTimeout:   20 * time.Second,
-	TxSyncMaxTimeout:       1 * time.Minute,
+	TxSyncDefaultTimeout:   5 * time.Second,
+	TxSyncMaxTimeout:       10 * time.Second,
 	RPCTxFeeCap:            1,                                         // 1 ether
 	BlobExtraReserve:       params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
 	EnableOpcodeOptimizing: false,
