@@ -158,38 +158,65 @@ type MiningStats struct {
 
 	// === Low-level timing fields ===
 
-	// Parlia consensus - Prepare phase
+	// ========== Parlia consensus - Level 1 (existing) ==========
 	PrepareTime time.Duration // engine.Prepare() - set header fields
+	SealTime    time.Duration // engine.Seal() - wait for block time + sign
 
-	// Parlia consensus - Seal phase (includes Waiting-3: seal timing delay)
-	SealTime time.Duration // engine.Seal() - wait for block time + sign
+	// ========== Parlia consensus - Level 2 (new breakdown) ==========
+	// PrepareTime breakdown:
+	//   - HeaderPrepareTime: setting header fields (time, difficulty, extra, coinbase)
+	HeaderPrepareTime time.Duration // Header field preparation (= PrepareTime, since Prepare mainly sets header)
 
-	// Waiting phases (sequential, not overlapping)
+	// FinalizeSystemTxTime breakdown (measured in consensus/parlia/parlia.go FinalizeAndAssemble):
+	//   - SystemTxExecTime: executing system transactions (slash/distribute/upgrade/init)
+	//   - BlockAssemblyTime: IntermediateRoot + tx/receipt roots calculation + types.NewBlock()
+	SystemTxExecTime  time.Duration // System transaction execution (init/slash/distribute/upgrade)
+	BlockAssemblyTime time.Duration // IntermediateRoot + NewBlock (runs in parallel)
+
+	// SealTime breakdown (measured in consensus/parlia/parlia.go Seal goroutine):
+	//   - SealWaitTime: waiting for block timestamp (time.After(delay))
+	//   - SealSignTime: vote attestation assembly + signing + extra seal
+	SealWaitTime time.Duration // Waiting for block timestamp
+	SealSignTime time.Duration // Signing and finalizing
+
+	// ========== Waiting phases (sequential, not overlapping) ==========
 	WaitingOutOfTurnTime time.Duration // Waiting-1: out-of-turn validator backoff
 	WaitingTxCollectTime time.Duration // Waiting-4: wait for new txs in LOOP_WAIT
 	WaitingMEVTime       time.Duration // Waiting-2: MEV window waiting for builder bids
 
-	// Transaction fetching
+	// ========== Transaction fetching ==========
 	FillTxsTime time.Duration // TxPool().Pending() - fetch pending transactions
 
-	// Transaction execution (VM + IO)
+	// ========== Transaction execution (VM + IO) ==========
 	ExecutionTime   time.Duration // commitTransactions total time
 	ExecutionIOTime time.Duration // IO portion: AccountReads + StorageReads + AccountUpdates + StorageUpdates
 
-	// MEV comparison (excluding waiting)
+	// ========== MEV - Level 1 (existing) ==========
 	MEVCompareTime time.Duration // GetBestBid() + reward comparison
 
-	// FinalizeAndAssemble breakdown
+	// ========== MEV - Level 2 (new breakdown) ==========
+	//   - GetBestBidTime: time to retrieve best bid from memory
+	//   - RewardCompareTime: time to compare rewards and make decision
+	GetBestBidTime    time.Duration // Retrieving best bid from bidSimulator
+	RewardCompareTime time.Duration // Comparing local vs bid rewards
+
+	// ========== FinalizeAndAssemble (existing) ==========
 	// Note: FinalizeSystemTxTime includes system txs (init/slash/distribute) AND types.NewBlock() assembly
 	// Note: RootCalcTime only covers state.IntermediateRoot() (state root), not receipt root
 	FinalizeSystemTxTime time.Duration // System txs + block assembly (= FinalizeAndAssemble - RootCalcTime)
 	RootCalcTime         time.Duration // state.IntermediateRoot() - state trie root calculation
 
-	// Write phase (database persistence)
+	// ========== Write phase (database persistence) ==========
 	WriteTime time.Duration // WriteBlockAndSetHead - write block/receipts/state to DB
 
-	// Network timing (for cross-node measurement)
+	// ========== Network timing - Level 1 (existing) ==========
 	BroadcastStartTime int64 // Unix millis when BroadcastBlock(propagate=true) starts
+
+	// ========== Network timing - Level 2 (new breakdown) ==========
+	// WriteEndTime: when WriteBlockAndSetHead completes (for LocalProcessDelay calculation)
+	// LocalProcessDelay = BroadcastStartTime - WriteEndTime
+	//   (includes: Post(NewSealedBlockEvent) + eventmux dispatch + goroutine scheduling)
+	WriteEndTime int64 // Unix millis when WriteBlockAndSetHead completes
 }
 
 // === High-level aggregation methods ===
@@ -786,6 +813,15 @@ func (w *worker) resultLoop() {
 			// Calculate Seal time (from sealStartAt to now)
 			if task.miningStats != nil && !task.sealStartAt.IsZero() {
 				task.miningStats.SealTime = time.Since(task.sealStartAt)
+
+				// [Parlia-L2] Read SealWaitTime and SealSignTime from Parlia
+				// (set by consensus/parlia/parlia.go Seal goroutine)
+				if parliaEngine, ok := w.engine.(*parlia.Parlia); ok {
+					if sealTiming := parliaEngine.GetSealTiming(block.Hash()); sealTiming != nil {
+						task.miningStats.SealWaitTime = sealTiming.WaitTime
+						task.miningStats.SealSignTime = sealTiming.SignTime
+					}
+				}
 			}
 
 			// add BAL to the block
@@ -811,6 +847,9 @@ func (w *worker) resultLoop() {
 			// Record WriteBlock time and calculate MinePhaseTotal
 			if task.miningStats != nil {
 				task.miningStats.WriteTime = time.Since(writeStart)
+				// [Network-L2] Record WriteEndTime for LocalProcessDelay calculation
+				// LocalProcessDelay = BroadcastStartTime - WriteEndTime
+				task.miningStats.WriteEndTime = time.Now().UnixMilli()
 				// Calculate independent total time (for cross-checking)
 				if !task.miningStats.MinePhaseStart.IsZero() {
 					task.miningStats.MinePhaseTotal = time.Since(task.miningStats.MinePhaseStart)
@@ -820,6 +859,10 @@ func (w *worker) resultLoop() {
 			stats := w.chain.GetBlockStats(block.Hash())
 			stats.SendBlockTime.Store(time.Now().UnixMilli())
 			stats.StartMiningTime.Store(task.miningStartAt.UnixMilli())
+			// [Network-L2] Store WriteEndTime in BlockStats for LocalProcessDelay calculation
+			if task.miningStats != nil {
+				stats.WriteEndTime.Store(task.miningStats.WriteEndTime)
+			}
 
 			// Log mining stats breakdown (high-level aggregation)
 			if task.miningStats != nil {
@@ -841,21 +884,41 @@ func (w *worker) resultLoop() {
 					"MineTotal", ms.MinePhaseTotal,  // Independent measurement for cross-check
 					"Uncovered", ms.Uncovered(),     // MineTotal - WallClock (should be ~0 if complete)
 				)
-				// Detailed breakdown for debugging (optional, can be changed to Debug level)
-				log.Debug("Mining stats detail",
+				// Detailed breakdown for debugging (Level 2 breakdown)
+				log.Debug("Mining stats detail - Parlia",
 					"number", block.Number(),
-					// Parlia breakdown
+					// Parlia Level 1
 					"prepare", ms.PrepareTime,
 					"finalizeSysTx", ms.FinalizeSystemTxTime,
 					"seal", ms.SealTime,
+					// Parlia Level 2 (new)
+					"headerPrepare", ms.HeaderPrepareTime,
+					"systemTxExec", ms.SystemTxExecTime,
+					"blockAssembly", ms.BlockAssemblyTime,
+					"sealWait", ms.SealWaitTime,
+					"sealSign", ms.SealSignTime,
+				)
+				log.Debug("Mining stats detail - Execution & MEV",
+					"number", block.Number(),
 					// Execution breakdown
 					"fillTxs", ms.FillTxsTime,
 					"execTime", ms.ExecutionTime,
 					"execIO", ms.ExecutionIOTime,
+					// MEV Level 1
+					"mevCompare", ms.MEVCompareTime,
+					// MEV Level 2 (new)
+					"getBestBid", ms.GetBestBidTime,
+					"rewardCompare", ms.RewardCompareTime,
+				)
+				log.Debug("Mining stats detail - Waiting & Network",
+					"number", block.Number(),
 					// Waiting breakdown
 					"waitOutOfTurn", ms.WaitingOutOfTurnTime,
 					"waitTxCollect", ms.WaitingTxCollectTime,
 					"waitMEV", ms.WaitingMEVTime,
+					// Network Level 2 (new)
+					"writeEndTime", ms.WriteEndTime,
+					"broadcastStartTime", ms.BroadcastStartTime,
 				)
 			}
 
@@ -1498,6 +1561,9 @@ LOOP:
 			return
 		}
 		miningStats.PrepareTime += time.Since(prepareStart)
+		// [Parlia-L2] HeaderPrepareTime is essentially the same as PrepareTime
+		// because engine.Prepare() mainly sets header fields (time, difficulty, extra, coinbase)
+		miningStats.HeaderPrepareTime += time.Since(prepareStart)
 
 		// Attach miningStats to work environment
 		work.miningStats = miningStats
@@ -1695,8 +1761,15 @@ LOOP:
 		// [MEV Compare] Track MEV comparison time (excluding waiting)
 		mevCompareStart := time.Now()
 
+		// [MEV-L2] GetBestBid: retrieve best bid from memory (bidSimulator)
+		getBestBidStart := time.Now()
 		bestBid := w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
+		if miningStats != nil {
+			miningStats.GetBestBidTime += time.Since(getBestBidStart)
+		}
 
+		// [MEV-L2] RewardCompare: compare local reward vs bid reward
+		rewardCompareStart := time.Now()
 		if bestBid != nil {
 			bidExistGauge.Inc(1)
 			bestBidGasUsedGauge.Update(int64(bestBid.bid.GasUsed) / 1_000_000)
@@ -1730,6 +1803,9 @@ LOOP:
 					"bid", bestBid.bid.Hash().TerminalString(),
 				)
 			}
+		}
+		if miningStats != nil {
+			miningStats.RewardCompareTime += time.Since(rewardCompareStart)
 		}
 
 		// Record MEV compare time (excluding waiting)
@@ -1801,6 +1877,11 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 			if totalFinalizeTime > rootCalcTime {
 				env.miningStats.FinalizeSystemTxTime = totalFinalizeTime - rootCalcTime
 			}
+
+			// [Parlia-L2] Read SystemTxExecTime and BlockAssemblyTime from StateDB
+			// (set by consensus/parlia/parlia.go FinalizeAndAssemble)
+			env.miningStats.SystemTxExecTime = env.state.SystemTxExecTime
+			env.miningStats.BlockAssemblyTime = env.state.BlockAssemblyTime
 		}
 
 		// If Cancun enabled, sidecars can't be nil then.

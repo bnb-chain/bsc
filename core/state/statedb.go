@@ -168,6 +168,11 @@ type StateDB struct {
 	StorageLoaded  int          // Number of storage slots retrieved from the database during the state transition
 	StorageUpdated atomic.Int64 // Number of storage slots updated during the state transition
 	StorageDeleted atomic.Int64 // Number of storage slots deleted during the state transition
+
+	// Parlia L2 timing (set by consensus/parlia during FinalizeAndAssemble)
+	// These are used by miner/worker.go to get accurate timing breakdown
+	SystemTxExecTime  time.Duration // Time spent executing system transactions
+	BlockAssemblyTime time.Duration // Time spent in types.NewBlock() (tx/receipt roots)
 }
 
 // New creates a new state from a given trie.

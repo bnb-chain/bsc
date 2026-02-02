@@ -328,6 +328,11 @@ type BlockStats struct {
 	BroadcastStartTime atomic.Int64
 	FirstSendTime      atomic.Int64 // 开始发送时刻（send start），比 BroadcastStartTime 更精确
 
+	// [Network-L2] WriteEndTime: when WriteBlockAndSetHead completes
+	// LocalProcessDelay = BroadcastStartTime - WriteEndTime
+	// (includes: Post(NewSealedBlockEvent) + eventmux dispatch + goroutine scheduling)
+	WriteEndTime atomic.Int64
+
 	SendVoteTime         atomic.Int64
 	FirstRecvVoteTime    atomic.Int64
 	RecvMajorityVoteTime atomic.Int64

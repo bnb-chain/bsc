@@ -238,6 +238,12 @@ func ParliaRLP(header *types.Header, chainId *big.Int) []byte {
 }
 
 // Parlia is the consensus engine of BSC
+// SealTiming holds timing measurements for the Seal phase
+type SealTiming struct {
+	WaitTime time.Duration // Time waiting for block timestamp (delay)
+	SignTime time.Duration // Time for signing + attestation assembly
+}
+
 type Parlia struct {
 	chainConfig *params.ChainConfig  // Chain config
 	config      *params.ParliaConfig // Consensus engine configuration parameters for parlia consensus
@@ -264,6 +270,9 @@ type Parlia struct {
 	validatorSetABI            abi.ABI
 	slashABI                   abi.ABI
 	stakeHubABI                abi.ABI
+
+	// Seal timing storage for L2 profiling (accessed by miner/worker.go)
+	sealTimings sync.Map // map[common.Hash]*SealTiming
 
 	// The fields below are for testing only
 	fakeDiff bool // Skip difficulty verifications
@@ -1499,6 +1508,9 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 // nor block rewards given, and returns the final block.
 func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
 	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
+	// [Parlia-L2] Start timing system transaction execution
+	systemTxStart := time.Now()
+
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	cx := chainContext{Chain: chain, parlia: p}
 
@@ -1581,9 +1593,17 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	if header.GasLimit < header.GasUsed {
 		return nil, nil, errors.New("gas consumption of system txs exceed the gas limit")
 	}
+
+	// [Parlia-L2] Record system transaction execution time
+	state.SystemTxExecTime = time.Since(systemTxStart)
+
 	header.UncleHash = types.EmptyUncleHash
 	var blk *types.Block
 	var rootHash common.Hash
+
+	// [Parlia-L2] Start timing block assembly (NewBlock + IntermediateRoot runs in parallel)
+	assemblyStart := time.Now()
+
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
@@ -1596,6 +1616,10 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	}()
 	wg.Wait()
 	blk.SetRoot(rootHash)
+
+	// [Parlia-L2] Record block assembly time
+	state.BlockAssemblyTime = time.Since(assemblyStart)
+
 	// Assemble and return the final block for sealing
 	return blk, receipts, nil
 }
@@ -1738,11 +1762,18 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	// Wait until sealing is terminated or delay timeout.
 	log.Trace("Waiting for slot to sign and propagate", "delay", common.PrettyDuration(delay))
 	go func() {
+		// [Parlia-L2] Start timing the wait phase
+		waitStart := time.Now()
+
 		select {
 		case <-stop:
 			return
 		case <-time.After(delay):
 		}
+
+		// [Parlia-L2] Record wait time and start timing sign phase
+		waitTime := time.Since(waitStart)
+		signStart := time.Now()
 
 		err := p.assembleVoteAttestation(chain, header)
 		if err != nil {
@@ -1777,8 +1808,16 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 			}
 		}
 
+		// [Parlia-L2] Record sign time and store seal timing
+		signTime := time.Since(signStart)
+		sealedBlock := block.WithSeal(header)
+		p.sealTimings.Store(sealedBlock.Hash(), &SealTiming{
+			WaitTime: waitTime,
+			SignTime: signTime,
+		})
+
 		select {
-		case results <- block.WithSeal(header):
+		case results <- sealedBlock:
 		default:
 			log.Warn("Sealing result is not read by miner", "sealhash", types.SealHash(header, p.chainConfig.ChainID))
 		}
@@ -1960,6 +1999,15 @@ func (p *Parlia) APIs(chain consensus.ChainHeaderReader) []rpc.API {
 
 // Close implements consensus.Engine. It's a noop for parlia as there are no background threads.
 func (p *Parlia) Close() error {
+	return nil
+}
+
+// GetSealTiming retrieves and removes the seal timing for a block hash.
+// This is used by miner/worker.go to get L2 profiling data.
+func (p *Parlia) GetSealTiming(hash common.Hash) *SealTiming {
+	if val, ok := p.sealTimings.LoadAndDelete(hash); ok {
+		return val.(*SealTiming)
+	}
 	return nil
 }
 

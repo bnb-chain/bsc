@@ -1398,7 +1398,14 @@ func (h *handler) networkStatsLoop() {
 
 					// Calculate timing
 					blockTime := pb.req.blockTime
-					var queueDelay, sendDelay time.Duration
+					writeEndTime := stats.WriteEndTime.Load()
+					var queueDelay, sendDelay, localProcessDelay time.Duration
+
+					// [Network-L2] LocalProcessDelay = BroadcastStartTime - WriteEndTime
+					// This includes: Post(NewSealedBlockEvent) + eventmux dispatch + goroutine scheduling
+					if writeEndTime > 0 && broadcastStartTime > 0 {
+						localProcessDelay = time.Duration(broadcastStartTime-writeEndTime) * time.Millisecond
+					}
 
 					if broadcastStartTime > 0 {
 						// BroadcastStartTime - blockTime = time from block creation to queue
@@ -1406,7 +1413,7 @@ func (h *handler) networkStatsLoop() {
 					}
 
 					if firstSendTime > 0 && broadcastStartTime > 0 {
-						// FirstSendTime - BroadcastStartTime = time in queue
+						// FirstSendTime - BroadcastStartTime = time in queue (PeerQueueDelay)
 						sendDelay = time.Duration(firstSendTime-broadcastStartTime) * time.Millisecond
 					}
 
@@ -1423,11 +1430,13 @@ func (h *handler) networkStatsLoop() {
 						"number", pb.req.number,
 						"hash", hash.TerminalString(),
 						"blockTime", blockTime,
+						"writeEndTime", writeEndTime,
 						"broadcastStartTime", broadcastStartTime,
 						"firstSendTime", firstSendTime,
-					"queueDelay", queueDelay,       // Time from block to start queueing
-					"sendQueueDelay", sendDelay,    // Time in peer send queue (to send start)
-					"totalSendDelay", totalSendDelay, // Total time from block to send start
+						// Level 2 breakdown
+						"localProcessDelay", localProcessDelay, // WriteEnd → BroadcastStart (eventmux/scheduler)
+						"peerQueueDelay", sendDelay,            // BroadcastStart → FirstSendTime
+						"totalSendDelay", totalSendDelay,       // blockTime → FirstSendTime
 					)
 				}
 			}
