@@ -258,9 +258,12 @@ const builderMap = new Map([
     ["0xb49f86586a840AB9920D2f340a85586E50FD30a2", "inblock eu"],
     ["0x0F6D8b72F3687de6f2824903a83B3ba13c0e88A0", "inblock us"],
     //      nodereal
-    ["0x79102dB16781ddDfF63F301C9Be557Fd1Dd48fA0", "nodereal ap"],
-    ["0xd0d56b330a0dea077208b96910ce452fd77e1b6f", "nodereal eu"],
-    ["0x4f24ce4cd03a6503de97cf139af2c26347930b99", "nodereal us"],
+    ["0x79102dB16781ddDfF63F301C9Be557Fd1Dd48fA0", "nodereal ap-1"],
+    ["0x5B526b45e833704d84b5C2EB0F41323dA9466c48", "nodereal ap-2"],
+    ["0xd0d56b330a0dea077208b96910ce452fd77e1b6f", "nodereal eu-1"],
+    ["0xa547F87B2BADE689a404544859314CBC01f2605e", "nodereal eu-2"],
+    ["0x4f24ce4cd03a6503de97cf139af2c26347930b99", "nodereal us-1"],
+    ["0xFD3F1Ad459D585C50Cf4630649817C6E0cec7335", "nodereal us-2"],
     //      xzbuilder
     ["0x812720cb4639550D7BDb1d8F2be463F4a9663762", "xzbuilder"],
 
