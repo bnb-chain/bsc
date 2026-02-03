@@ -1600,6 +1600,7 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	header.UncleHash = types.EmptyUncleHash
 	var blk *types.Block
 	var rootHash common.Hash
+	var rootCalcTime time.Duration
 
 	// [Parlia-L2] Start timing block assembly (NewBlock + IntermediateRoot runs in parallel)
 	assemblyStart := time.Now()
@@ -1607,7 +1608,10 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
+		// [Parlia-L2] Directly measure IntermediateRoot time (independent of metrics.EnabledExpensive)
+		rootStart := time.Now()
 		rootHash = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+		rootCalcTime = time.Since(rootStart)
 		wg.Done()
 	}()
 	go func() {
@@ -1617,8 +1621,9 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	wg.Wait()
 	blk.SetRoot(rootHash)
 
-	// [Parlia-L2] Record block assembly time
+	// [Parlia-L2] Record timing
 	state.BlockAssemblyTime = time.Since(assemblyStart)
+	state.RootCalcTime = rootCalcTime
 
 	// Assemble and return the final block for sealing
 	return blk, receipts, nil

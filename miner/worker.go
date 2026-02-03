@@ -1844,12 +1844,8 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		fees := env.state.GetBalance(consensus.SystemAddress).ToBig()
 		feesInEther := new(big.Float).Quo(new(big.Float).SetInt(fees), big.NewFloat(params.Ether))
 
-		// Record statedb values before FinalizeAndAssemble to calculate RootCalc delta
-		var rootCalcBaseline time.Duration
-		if env.miningStats != nil && env.state != nil {
-			// These values accumulate during IntermediateRoot(), so we need the delta
-			rootCalcBaseline = env.state.AccountUpdates + env.state.StorageUpdates + env.state.AccountHashes
-		}
+		// Note: RootCalcTime is now measured directly in parlia.go FinalizeAndAssemble
+		// (independent of metrics.EnabledExpensive, which defaults to false)
 
 		// Withdrawals are set to nil here, because this is only called in PoW.
 		finalizeStart := time.Now()
@@ -1866,22 +1862,21 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		env.receipts = receipts
 		finalizeBlockTimer.UpdateSince(finalizeStart)
 
-		// Calculate FinalizeSystemTx and RootCalc times from FinalizeAndAssemble
-		// RootCalc time = delta of (AccountUpdates + StorageUpdates + AccountHashes) during FinalizeAndAssemble
-		// FinalizeSystemTx time = total FinalizeAndAssemble time - RootCalc time
+		// Read timing from StateDB (measured directly in parlia.go FinalizeAndAssemble)
+		// This is independent of metrics.EnabledExpensive (which defaults to false)
 		if env.miningStats != nil {
-			rootCalcNow := env.state.AccountUpdates + env.state.StorageUpdates + env.state.AccountHashes
-			rootCalcTime := rootCalcNow - rootCalcBaseline
 			totalFinalizeTime := time.Since(finalizeStart)
-			env.miningStats.RootCalcTime = rootCalcTime
-			if totalFinalizeTime > rootCalcTime {
-				env.miningStats.FinalizeSystemTxTime = totalFinalizeTime - rootCalcTime
-			}
 
-			// [Parlia-L2] Read SystemTxExecTime and BlockAssemblyTime from StateDB
-			// (set by consensus/parlia/parlia.go FinalizeAndAssemble)
+			// [Parlia-L2] Read all timing fields from StateDB
 			env.miningStats.SystemTxExecTime = env.state.SystemTxExecTime
 			env.miningStats.BlockAssemblyTime = env.state.BlockAssemblyTime
+			env.miningStats.RootCalcTime = env.state.RootCalcTime
+
+			// FinalizeSystemTxTime = total - RootCalc (since RootCalc runs in parallel with NewBlock)
+			// Note: BlockAssemblyTime includes both IntermediateRoot and NewBlock in parallel
+			if totalFinalizeTime > env.miningStats.RootCalcTime {
+				env.miningStats.FinalizeSystemTxTime = totalFinalizeTime - env.miningStats.RootCalcTime
+			}
 		}
 
 		// If Cancun enabled, sidecars can't be nil then.

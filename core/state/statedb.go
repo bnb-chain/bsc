@@ -173,6 +173,7 @@ type StateDB struct {
 	// These are used by miner/worker.go to get accurate timing breakdown
 	SystemTxExecTime  time.Duration // Time spent executing system transactions
 	BlockAssemblyTime time.Duration // Time spent in types.NewBlock() (tx/receipt roots)
+	RootCalcTime      time.Duration // Time spent in IntermediateRoot() (state trie root calculation)
 }
 
 // New creates a new state from a given trie.
