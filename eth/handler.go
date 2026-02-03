@@ -543,7 +543,7 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	peer.Log().Debug("Ethereum peer connected", "name", peer.Name(), "peers.len", h.peers.len())
 	defer h.unregisterPeer(peer.ID())
 
-	// [Network-C] Set callback to record FirstSendTime (真正发送时刻)
+	// [Network-C] Set callback to record FirstSendTime (actual send start time)
 	peer.SetBlockSentCallback(func(hash common.Hash, sendTime int64) {
 		stats := h.chain.GetBlockStats(hash)
 		// Only record the first send time (CompareAndSwap ensures atomicity)

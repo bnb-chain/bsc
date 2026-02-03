@@ -96,7 +96,7 @@ type Peer struct {
 	txTerm chan struct{} // Termination channel to stop the tx broadcasters
 	lock   sync.RWMutex  // Mutex protecting the internal fields
 
-	// Callback for network timing measurement (方案 C)
+	// Callback for network timing measurement (Option C: precise send-start timestamp)
 	onBlockSent BlockSentCallback
 }
 
@@ -341,7 +341,7 @@ func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
 			"txNum", len(block.Transactions()), "canHandleBAL", p.CanHandleBAL.Load())
 	}
 
-	// [Network-C] Record send start time (开始发送时刻)
+	// [Network-C] Record send start time (before p2p.Send call)
 	// Note: This is recorded BEFORE p2p.Send, so it's "send start time" not "send completed time"
 	// This is more accurate than BroadcastStartTime which only records queue entry time
 	sendTime := time.Now().UnixMilli()

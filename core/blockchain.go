@@ -321,12 +321,12 @@ type BlockStats struct {
 	ImportedBlockTime    atomic.Int64
 
 	// Network timing for full block broadcast (NewBlockMsg)
-	// BroadcastStartTime: when BroadcastBlock(propagate=true) starts (入队时刻)
-	// FirstSendTime: when first peer starts calling p2p.Send (开始发送时刻，在 p2p.Send 调用前记录)
+	// BroadcastStartTime: when BroadcastBlock(propagate=true) starts (queue entry time)
+	// FirstSendTime: when first peer starts calling p2p.Send (send start time, recorded before p2p.Send call)
 	// Note: FirstSendTime is "send start time", not "send completed time"
 	// Used with RecvNewBlockTime to calculate network propagation delay
 	BroadcastStartTime atomic.Int64
-	FirstSendTime      atomic.Int64 // 开始发送时刻（send start），比 BroadcastStartTime 更精确
+	FirstSendTime      atomic.Int64 // Send start time, more precise than BroadcastStartTime
 
 	// [Network-L2] WriteEndTime: when WriteBlockAndSetHead completes
 	// LocalProcessDelay = BroadcastStartTime - WriteEndTime
