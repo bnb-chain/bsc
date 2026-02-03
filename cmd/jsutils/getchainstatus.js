@@ -227,7 +227,12 @@ const builderMap = new Map([
     ["0x48FeE1BB3823D72fdF80671ebaD5646Ae397BB48", "puissant us"],
     ["0x48B4bBEbF0655557A461e91B8905b85864B8BB48", "puissant x"],
     ["0x4827b423D03a349b7519Dda537e9A28d31ecBB48", "puissant y"],
-    ["0x48B2665E5E9a343409199D70F7495c8aB660BB48", "puissant:z"],
+    ["0x48B2665E5E9a343409199D70F7495c8aB660BB48", "puissant z"],
+    //     unknown 
+    ["0x48265F91F542dCE47ABE5E6683bb086c0f36BB48", "unknown-1"],
+    ["0x48437A0d4AB091b81c6DeD43dEbf23cdfC85BB48", "unknown-2"],
+    ["0x4851f44038fE746173e9E3C4A6e7E904c619BB48", "unknown-3"],
+    ["0x4880cb180d3bb665748f7b66f75F1fEE68D8BB48", "unknown-4"],
     //     blockroute
     ["0xD4376FdC9b49d90e6526dAa929f2766a33BFFD52", "blockroute dublin"],
     ["0x2873fc7aD9122933BECB384f5856f0E87918388d", "blockroute frankfurt"],
@@ -258,9 +263,12 @@ const builderMap = new Map([
     ["0xb49f86586a840AB9920D2f340a85586E50FD30a2", "inblock eu"],
     ["0x0F6D8b72F3687de6f2824903a83B3ba13c0e88A0", "inblock us"],
     //      nodereal
-    ["0x79102dB16781ddDfF63F301C9Be557Fd1Dd48fA0", "nodereal ap"],
-    ["0xd0d56b330a0dea077208b96910ce452fd77e1b6f", "nodereal eu"],
-    ["0x4f24ce4cd03a6503de97cf139af2c26347930b99", "nodereal us"],
+    ["0x79102dB16781ddDfF63F301C9Be557Fd1Dd48fA0", "nodereal ap-1"],
+    ["0x5B526b45e833704d84b5C2EB0F41323dA9466c48", "nodereal ap-2"],
+    ["0xd0d56b330a0dea077208b96910ce452fd77e1b6f", "nodereal eu-1"],
+    ["0xa547F87B2BADE689a404544859314CBC01f2605e", "nodereal eu-2"],
+    ["0x4f24ce4cd03a6503de97cf139af2c26347930b99", "nodereal us-1"],
+    ["0xFD3F1Ad459D585C50Cf4630649817C6E0cec7335", "nodereal us-2"],
     //      xzbuilder
     ["0x812720cb4639550D7BDb1d8F2be463F4a9663762", "xzbuilder"],
 
