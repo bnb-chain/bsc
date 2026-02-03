@@ -225,9 +225,13 @@ const builderMap = new Map([
     ["0x48a5Ed9abC1a8FBe86ceC4900483f43a7f2dBB48", "puissant ap"],
     ["0x487e5Dfe70119C1b320B8219B190a6fa95a5BB48", "puissant eu"],
     ["0x48FeE1BB3823D72fdF80671ebaD5646Ae397BB48", "puissant us"],
-    ["0x48B4bBEbF0655557A461e91B8905b85864B8BB48", "puissant x"],
-    ["0x4827b423D03a349b7519Dda537e9A28d31ecBB48", "puissant y"],
-    ["0x48B2665E5E9a343409199D70F7495c8aB660BB48", "puissant:z"],
+    ["0x4827b423D03a349b7519Dda537e9A28d31ecBB48", "puissant a"],
+    ["0x48B2665E5E9a343409199D70F7495c8aB660BB48", "puissant b"],
+    ["0x48B4bBEbF0655557A461e91B8905b85864B8BB48", "puissant c"],
+    ["0x48265F91F542dCE47ABE5E6683bb086c0f36BB48", "puissant d"],
+    ["0x48437A0d4AB091b81c6DeD43dEbf23cdfC85BB48", "puissant e"],
+    ["0x4851f44038fE746173e9E3C4A6e7E904c619BB48", "puissant f"],
+    ["0x4880cb180d3bb665748f7b66f75F1fEE68D8BB48", "puissant g"],
     //     blockroute
     ["0xD4376FdC9b49d90e6526dAa929f2766a33BFFD52", "blockroute dublin"],
     ["0x2873fc7aD9122933BECB384f5856f0E87918388d", "blockroute frankfurt"],
@@ -269,9 +273,6 @@ const builderMap = new Map([
 
     // Chapel
     ["0x627fE6AFA2E84e461CB7AE7C2c46e8adf9a954a2", "txboost"],
-    ["0xa5559F1761e6dCa79Ac0c7A301CCDcC71D378fee", "nodereal ap"],
-    ["0x6C98EB21139F6E12db5b78a4AeD4d8eBA147FB7b", "nodereal eu"],
-    ["0x4E8cbf5912717B212db5b450ae7737455A5cc0aF", "nodereal us"],
     ["0x4827b423D03a349b7519Dda537e9A28d31ecBB48", "club48 ap"],
     ["0x48B2665E5E9a343409199D70F7495c8aB660BB48", "club48 eu"],
     ["0x48B4bBEbF0655557A461e91B8905b85864B8BB48", "club48 us"],
