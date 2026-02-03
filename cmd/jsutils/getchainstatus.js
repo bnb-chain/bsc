@@ -246,10 +246,13 @@ const builderMap = new Map([
     ["0x36CB523286D57680efBbfb417C63653115bCEBB5", "jetbldr ap"],
     ["0x3aD6121407f6EDb65C8B2a518515D45863C206A8", "jetbldr eu"],
     ["0x345324dC15F1CDcF9022E3B7F349e911fb823b4C", "jetbldr us"],
+    ["0xfd38358475078F81a45077f6e59dff8286e0dCA1", "jetbldr dublin"],
+    ["0x7F5fbFd8e2eB3160dF4c96757DEEf29E26F969a3", "jetbldr tokyo"],
+    ["0xA0Cde9891C6966fCe740817cc5576De2C669AB43", "jetbldr virginia"],
     //      blockbus
-    ["0x3FC0c936c00908c07723ffbf2d536D6E0f62C3A4", "jetbldr dublin"],
-    ["0x17e9F0D7E45A500f0148B29C6C98EfD19d95F138", "jetbldr tokyo"],
-    ["0x1319Be8b8Ec4AA81f501924BdCF365fBcAa8d753", "jetbldr virginia"],
+    ["0x3FC0c936c00908c07723ffbf2d536D6E0f62C3A4", "blockbus dublin"],
+    ["0x17e9F0D7E45A500f0148B29C6C98EfD19d95F138", "blockbus tokyo"],
+    ["0x1319Be8b8Ec4AA81f501924BdCF365fBcAa8d753", "blockbus virginia"],
     //     txboost(blocksmith)
     ["0x6Dddf681C908705472D09B1D7036B2241B50e5c7", "txboost ap"],
     ["0x76736159984AE865a9b9Cc0Df61484A49dA68191", "txboost eu"],
