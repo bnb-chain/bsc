@@ -543,11 +543,15 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	peer.Log().Debug("Ethereum peer connected", "name", peer.Name(), "peers.len", h.peers.len())
 	defer h.unregisterPeer(peer.ID())
 
-	// [Network-C] Set callback to record FirstSendTime (actual send start time)
-	peer.SetBlockSentCallback(func(hash common.Hash, sendTime int64) {
+	// [Network-C] Set callback to record FirstSendTime and FirstSendTo (actual send start time)
+	peer.SetBlockSentCallback(func(hash common.Hash, sendTime int64, peerAddr string) {
 		stats := h.chain.GetBlockStats(hash)
-		// Only record the first send time (CompareAndSwap ensures atomicity)
-		stats.FirstSendTime.CompareAndSwap(0, sendTime)
+		// Only record the first send time and peer (CompareAndSwap ensures atomicity)
+		// If FirstSendTime is already set, this peer is not the first sender
+		if stats.FirstSendTime.CompareAndSwap(0, sendTime) {
+			// Only set FirstSendTo if we successfully set FirstSendTime (we are the first)
+			stats.FirstSendTo.Store(peerAddr)
+		}
 	})
 
 	p := h.peers.peer(peer.ID())
@@ -1426,13 +1430,20 @@ func (h *handler) networkStatsLoop() {
 						totalSendDelay = queueDelay
 					}
 
-					log.Info("Network: block broadcast timing (send side)",
+					// Get the peer address that received the first send
+				firstSendTo := ""
+				if v := stats.FirstSendTo.Load(); v != nil {
+					firstSendTo = v.(string)
+				}
+
+				log.Info("Network: block broadcast timing (send side)",
 						"number", pb.req.number,
 						"hash", hash.TerminalString(),
 						"blockTime", blockTime,
 						"writeEndTime", writeEndTime,
 						"broadcastStartTime", broadcastStartTime,
 						"firstSendTime", firstSendTime,
+						"firstSendTo", firstSendTo, // Peer address of first send (for multi-peer debugging)
 						// Level 2 breakdown
 						"localProcessDelay", localProcessDelay, // WriteEnd → BroadcastStart (eventmux/scheduler)
 						"peerQueueDelay", sendDelay,            // BroadcastStart → FirstSendTime

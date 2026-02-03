@@ -62,8 +62,8 @@ const (
 
 // BlockSentCallback is called when a block starts sending via p2p.Send
 // Note: sendTime is recorded BEFORE p2p.Send call, so it's "send start time"
-// Parameters: block hash, send start timestamp (unix millis)
-type BlockSentCallback func(hash common.Hash, sendTime int64)
+// Parameters: block hash, send start timestamp (unix millis), peer address
+type BlockSentCallback func(hash common.Hash, sendTime int64, peerAddr string)
 
 // Peer is a collection of relevant information we have about a `eth` peer.
 type Peer struct {
@@ -353,13 +353,18 @@ func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
 		Bal:      bal,
 	})
 
-	// Call the callback to record FirstSendTime (only first peer matters)
+	// Call the callback to record FirstSendTime and FirstSendTo (only first peer matters)
 	if err == nil {
 		p.lock.RLock()
 		cb := p.onBlockSent
 		p.lock.RUnlock()
 		if cb != nil {
-			cb(block.Hash(), sendTime)
+			// Get peer address for debugging which peer was first
+			peerAddr := ""
+			if addr := p.RemoteAddr(); addr != nil {
+				peerAddr = addr.String()
+			}
+			cb(block.Hash(), sendTime, peerAddr)
 		}
 	}
 

@@ -323,10 +323,12 @@ type BlockStats struct {
 	// Network timing for full block broadcast (NewBlockMsg)
 	// BroadcastStartTime: when BroadcastBlock(propagate=true) starts (queue entry time)
 	// FirstSendTime: when first peer starts calling p2p.Send (send start time, recorded before p2p.Send call)
+	// FirstSendTo: the peer address that FirstSendTime corresponds to (for multi-peer debugging)
 	// Note: FirstSendTime is "send start time", not "send completed time"
 	// Used with RecvNewBlockTime to calculate network propagation delay
 	BroadcastStartTime atomic.Int64
-	FirstSendTime      atomic.Int64 // Send start time, more precise than BroadcastStartTime
+	FirstSendTime      atomic.Int64  // Send start time, more precise than BroadcastStartTime
+	FirstSendTo        atomic.Value  // Peer address of first send (e.g., "192.168.1.2:30303")
 
 	// [Network-L2] WriteEndTime: when WriteBlockAndSetHead completes
 	// LocalProcessDelay = BroadcastStartTime - WriteEndTime
