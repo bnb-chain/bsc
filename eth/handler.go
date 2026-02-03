@@ -543,13 +543,15 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	peer.Log().Debug("Ethereum peer connected", "name", peer.Name(), "peers.len", h.peers.len())
 	defer h.unregisterPeer(peer.ID())
 
-	// [Network-C] Set callback to record FirstSendTime and FirstSendTo (actual send start time)
+	// [Network-C] Set callback to record send times for all peers
 	peer.SetBlockSentCallback(func(hash common.Hash, sendTime int64, peerAddr string) {
 		stats := h.chain.GetBlockStats(hash)
-		// Only record the first send time and peer (CompareAndSwap ensures atomicity)
-		// If FirstSendTime is already set, this peer is not the first sender
+		// Record send time for ALL peers (for precise per-peer latency measurement)
+		if peerAddr != "" {
+			stats.PeerSendTimes.Store(peerAddr, sendTime)
+		}
+		// Also record the first send time and peer (for quick access / backward compatibility)
 		if stats.FirstSendTime.CompareAndSwap(0, sendTime) {
-			// Only set FirstSendTo if we successfully set FirstSendTime (we are the first)
 			stats.FirstSendTo.Store(peerAddr)
 		}
 	})
@@ -1431,19 +1433,36 @@ func (h *handler) networkStatsLoop() {
 					}
 
 					// Get the peer address that received the first send
-				firstSendTo := ""
-				if v := stats.FirstSendTo.Load(); v != nil {
-					firstSendTo = v.(string)
-				}
+					firstSendTo := ""
+					if v := stats.FirstSendTo.Load(); v != nil {
+						firstSendTo = v.(string)
+					}
 
-				log.Info("Network: block broadcast timing (send side)",
+					// Collect all peer send times for detailed per-peer analysis
+					peerCount := 0
+					var peerSendTimesStr string
+					stats.PeerSendTimes.Range(func(key, value interface{}) bool {
+						peerAddr := key.(string)
+						peerSendTime := value.(int64)
+						peerDelay := time.Duration(peerSendTime-blockTime) * time.Millisecond
+						if peerCount > 0 {
+							peerSendTimesStr += ", "
+						}
+						peerSendTimesStr += fmt.Sprintf("%s:%v", peerAddr, peerDelay)
+						peerCount++
+						return true
+					})
+
+					log.Info("Network: block broadcast timing (send side)",
 						"number", pb.req.number,
 						"hash", hash.TerminalString(),
 						"blockTime", blockTime,
 						"writeEndTime", writeEndTime,
 						"broadcastStartTime", broadcastStartTime,
 						"firstSendTime", firstSendTime,
-						"firstSendTo", firstSendTo, // Peer address of first send (for multi-peer debugging)
+						"firstSendTo", firstSendTo,
+						"peerCount", peerCount,
+						"allPeerDelays", peerSendTimesStr, // All peers: "addr1:delay1, addr2:delay2, ..."
 						// Level 2 breakdown
 						"localProcessDelay", localProcessDelay, // WriteEnd → BroadcastStart (eventmux/scheduler)
 						"peerQueueDelay", sendDelay,            // BroadcastStart → FirstSendTime
