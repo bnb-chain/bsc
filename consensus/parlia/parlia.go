@@ -265,10 +265,6 @@ type Parlia struct {
 	slashABI                   abi.ABI
 	stakeHubABI                abi.ABI
 
-	// finalizedNotified tracks blocks that have already triggered early finalization notification
-	// to avoid duplicate notifications
-	finalizedNotified *lru.Cache[common.Hash, struct{}]
-
 	// The fields below are for testing only
 	fakeDiff bool // Skip difficulty verifications
 }
@@ -309,7 +305,6 @@ func New(
 		recentSnaps:                lru.NewCache[common.Hash, *Snapshot](inMemorySnapshots),
 		recentHeaders:              lru.NewCache[string, common.Hash](inMemoryHeaders),
 		signatures:                 lru.NewCache[common.Hash, common.Address](inMemorySignatures),
-		finalizedNotified:          lru.NewCache[common.Hash, struct{}](inMemorySnapshots),
 		validatorSetABIBeforeLuban: vABIBeforeLuban,
 		validatorSetABI:            vABI,
 		slashABI:                   sABI,
@@ -2323,26 +2318,18 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 // CheckFinalityAndNotify checks if votes for the target block have reached quorum,
 // and if so, notifies the blockchain of early finalization via the notifyFn callback.
 func (p *Parlia) CheckFinalityAndNotify(chain consensus.ChainHeaderReader, targetBlockHash common.Hash, notifyFn func(finalizedHeader *types.Header)) {
-	// Skip if already notified for this block
-	if _, ok := p.finalizedNotified.Get(targetBlockHash); ok {
+	// Get target block header directly by hash (don't rely on currentHeader which may have moved forward)
+	targetHeader := chain.GetHeaderByHash(targetBlockHash)
+	if targetHeader == nil {
 		return
 	}
 
-	// Get target block header
-	currentHeader := chain.CurrentHeader()
-	if currentHeader == nil || currentHeader.Hash() != targetBlockHash {
-		return
-	}
-
-	finalizedHeader := p.GetFinalizedHeader(chain, currentHeader)
+	finalizedHeader := p.GetFinalizedHeader(chain, targetHeader)
 	if finalizedHeader == nil || finalizedHeader.Number.Uint64() == 0 {
 		return
 	}
 
-	// Mark as notified to avoid duplicate notifications
-	p.finalizedNotified.Add(targetBlockHash, struct{}{})
-
-	// Notify via callback
+	// Notify via callback (NotifyFinalized has its own deduplication logic)
 	notifyFn(finalizedHeader)
 }
 
