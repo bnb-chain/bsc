@@ -148,10 +148,10 @@ Download latest chaindata snapshot from [here](https://github.com/bnb-chain/bsc-
 #### 4. Start a full node
 ```shell
 ## It will run with Path-Base Storage Scheme by default and enable inline state prune, keeping the latest 90000 blocks' history state.
-./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0
+./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0 --history.logs.disable
 
 ## It is recommend to run fullnode with `--tries-verify-mode none` if you want high performance and care little about state consistency.
-./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0 --tries-verify-mode none
+./geth --config ./config.toml --datadir ./node  --cache 8000 --rpc.allow-unprotected-txs --history.transactions 0 --history.logs.disable --tries-verify-mode none
 ```
 
 #### 5. Monitor node status
