@@ -176,6 +176,18 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPa
 			"networkDelay", time.Duration(networkDelay)*time.Millisecond,
 			"from", peerAddr,
 		)
+
+		// [Network-Recv] Send to sliding window statistics loop
+		select {
+		case h.recvStatsCh <- &recvStatsRequest{
+			number:       block.NumberU64(),
+			blockTime:    blockTime,
+			recvTime:     recvTime,
+			networkDelay: networkDelay,
+		}:
+		default:
+			// Channel full, skip this sample
+		}
 	}
 
 	// Assuming the block is importable by the peer, but possibly not yet done so,

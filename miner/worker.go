@@ -740,6 +740,40 @@ func (w *worker) taskLoop() {
 // and flush relative data to the database.
 func (w *worker) resultLoop() {
 	defer w.wg.Done()
+
+	// [Mining Sliding Window] Statistics collection
+	// Window size: 1000 blocks, report every 100 blocks
+	const windowSize = 1000
+	const reportInterval = 100
+	type miningSample struct {
+		parlia    time.Duration
+		mev       time.Duration
+		execution time.Duration
+		io        time.Duration
+		rootCalc  time.Duration
+		write     time.Duration
+		waiting   time.Duration
+		active    time.Duration
+		wallClock time.Duration
+		mineTotal time.Duration
+	}
+	window := make([]miningSample, 0, windowSize)
+	blocksProcessed := 0
+
+	// Helper: compute percentile from sorted slice
+	percentile := func(sorted []time.Duration, p float64) time.Duration {
+		if len(sorted) == 0 {
+			return 0
+		}
+		idx := int(float64(len(sorted)-1) * p)
+		return sorted[idx]
+	}
+
+	// Helper: sort duration slice
+	sortDurations := func(d []time.Duration) {
+		slices.Sort(d)
+	}
+
 	for {
 		select {
 		case block := <-w.resultCh:
@@ -920,6 +954,107 @@ func (w *worker) resultLoop() {
 					"writeEndTime", ms.WriteEndTime,
 					"broadcastStartTime", ms.BroadcastStartTime,
 				)
+
+				// [Mining Sliding Window] Add sample to window
+				sample := miningSample{
+					parlia:    ms.Parlia(),
+					mev:       ms.MEV(),
+					execution: ms.Execution(),
+					io:        ms.IO(),
+					rootCalc:  ms.RootCalc(),
+					write:     ms.Write(),
+					waiting:   ms.Waiting(),
+					active:    ms.ActiveTime(),
+					wallClock: ms.WallClockTime(),
+					mineTotal: ms.MinePhaseTotal,
+				}
+				window = append(window, sample)
+				if len(window) > windowSize {
+					window = window[1:] // Remove oldest
+				}
+				blocksProcessed++
+
+				// Report sliding window stats every N blocks
+				if blocksProcessed%reportInterval == 0 && len(window) >= reportInterval {
+					// Collect all values for percentile calculation
+					parliaVals := make([]time.Duration, len(window))
+					mevVals := make([]time.Duration, len(window))
+					execVals := make([]time.Duration, len(window))
+					ioVals := make([]time.Duration, len(window))
+					rootVals := make([]time.Duration, len(window))
+					writeVals := make([]time.Duration, len(window))
+					waitVals := make([]time.Duration, len(window))
+					activeVals := make([]time.Duration, len(window))
+					wallClockVals := make([]time.Duration, len(window))
+					mineTotalVals := make([]time.Duration, len(window))
+
+					for i, s := range window {
+						parliaVals[i] = s.parlia
+						mevVals[i] = s.mev
+						execVals[i] = s.execution
+						ioVals[i] = s.io
+						rootVals[i] = s.rootCalc
+						writeVals[i] = s.write
+						waitVals[i] = s.waiting
+						activeVals[i] = s.active
+						wallClockVals[i] = s.wallClock
+						mineTotalVals[i] = s.mineTotal
+					}
+
+					// Sort for percentile calculation
+					sortDurations(parliaVals)
+					sortDurations(mevVals)
+					sortDurations(execVals)
+					sortDurations(ioVals)
+					sortDurations(rootVals)
+					sortDurations(writeVals)
+					sortDurations(waitVals)
+					sortDurations(activeVals)
+					sortDurations(wallClockVals)
+					sortDurations(mineTotalVals)
+
+					// Output Mining Sliding Window with all key metrics
+				// Format: Parlia, MEV, Execution (VM), IO, RootCalc, Write, Waiting, Active, Total
+				log.Info("Mining stats (sliding window)",
+						"samples", len(window),
+						// === Parlia (consensus engine) ===
+						"Parlia_p50", percentile(parliaVals, 0.5),
+						"Parlia_p90", percentile(parliaVals, 0.9),
+						"Parlia_p99", percentile(parliaVals, 0.99),
+						// === MEV (builder bid comparison) ===
+						"MEV_p50", percentile(mevVals, 0.5),
+						"MEV_p90", percentile(mevVals, 0.9),
+						"MEV_p99", percentile(mevVals, 0.99),
+						// === Execution (VM - transaction execution) ===
+						"Exec_p50", percentile(execVals, 0.5),
+						"Exec_p90", percentile(execVals, 0.9),
+						"Exec_p99", percentile(execVals, 0.99),
+						// === IO (state reads/writes during execution) ===
+						"IO_p50", percentile(ioVals, 0.5),
+						"IO_p90", percentile(ioVals, 0.9),
+						"IO_p99", percentile(ioVals, 0.99),
+						// === RootCalc (state root calculation) ===
+						"RootCalc_p50", percentile(rootVals, 0.5),
+						"RootCalc_p90", percentile(rootVals, 0.9),
+						"RootCalc_p99", percentile(rootVals, 0.99),
+						// === Write (database persistence) ===
+						"Write_p50", percentile(writeVals, 0.5),
+						"Write_p90", percentile(writeVals, 0.9),
+						"Write_p99", percentile(writeVals, 0.99),
+						// === Waiting (strategic waits) ===
+						"Wait_p50", percentile(waitVals, 0.5),
+						"Wait_p90", percentile(waitVals, 0.9),
+						"Wait_p99", percentile(waitVals, 0.99),
+						// === Active (compute time excluding waits) ===
+						"Active_p50", percentile(activeVals, 0.5),
+						"Active_p90", percentile(activeVals, 0.9),
+						"Active_p99", percentile(activeVals, 0.99),
+						// === Total (wall clock including waiting) ===
+						"Total_p50", percentile(mineTotalVals, 0.5),
+						"Total_p90", percentile(mineTotalVals, 0.9),
+						"Total_p99", percentile(mineTotalVals, 0.99),
+					)
+				}
 			}
 
 			log.Info("Successfully seal and write new block", "number", block.Number(), "hash", hash, "time", block.Header().MilliTimestamp(), "sealhash", sealhash,

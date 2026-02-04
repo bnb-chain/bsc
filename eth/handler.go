@@ -23,6 +23,7 @@ import (
 	"math"
 	"math/big"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -200,8 +201,11 @@ type handler struct {
 	handlerStartCh chan struct{}
 	handlerDoneCh  chan struct{}
 
-	// [Network-A] Channel for network stats reporting
+	// [Network-A] Channel for network stats reporting (send side)
 	networkStatsCh chan *networkStatsRequest
+
+	// [Network-Recv] Channel for receive-side network stats (end-to-end delay)
+	recvStatsCh chan *recvStatsRequest
 }
 
 // networkStatsRequest holds block info for network timing report
@@ -209,6 +213,14 @@ type networkStatsRequest struct {
 	hash      common.Hash
 	number    uint64
 	blockTime int64 // block timestamp in millis
+}
+
+// recvStatsRequest holds receive timing data for sliding window statistics
+type recvStatsRequest struct {
+	number       uint64
+	blockTime    int64 // block timestamp in millis
+	recvTime     int64 // receive timestamp in millis
+	networkDelay int64 // recvTime - blockTime in millis
 }
 
 // newHandler returns a handler for all Ethereum chain management protocol.
@@ -243,6 +255,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		handlerStartCh:             make(chan struct{}),
 		stopCh:                     make(chan struct{}),
 		networkStatsCh:             make(chan *networkStatsRequest, 16), // [Network-A] buffer for recent blocks
+		recvStatsCh:                make(chan *recvStatsRequest, 64),    // [Network-Recv] buffer for receive stats
 	}
 	for _, nodeID := range config.EVNNodeIdsWhitelist {
 		h.evnNodeIdsWhitelistMap[nodeID] = struct{}{}
@@ -772,9 +785,13 @@ func (h *handler) Start(maxPeers int, maxPeersPerIP int) {
 	h.minedBlockSub = h.eventMux.Subscribe(core.NewMinedBlockEvent{}, core.NewSealedBlockEvent{})
 	go h.minedBroadcastLoop()
 
-	// [Network-A] start network stats reporting loop
+	// [Network-A] start network stats reporting loop (send side)
 	h.wg.Add(1)
 	go h.networkStatsLoop()
+
+	// [Network-Recv] start receive-side sliding window stats loop
+	h.wg.Add(1)
+	go h.recvStatsLoop()
 
 	// broadcast block range
 	h.wg.Add(1)
@@ -1351,133 +1368,219 @@ func (st *blockRangeState) currentRange() eth.BlockRangeUpdatePacket {
 }
 
 // networkStatsLoop reports network timing for recently mined blocks.
-// [Network-A] This is the aggregation loop that waits for FirstSendTime to be set
-// and then outputs per-block network timing.
+// Outputs per-block network timing + sliding window statistics (p50/p90/p99).
+// Network timing is a parallel pipeline, does NOT block mining.
 func (h *handler) networkStatsLoop() {
 	defer h.wg.Done()
 
-	// Buffer to hold pending blocks waiting for FirstSendTime
+	// Sliding window for statistics (1000 blocks ≈ 7.5 minutes at 450ms/block)
+	const windowSize = 1000
+	const reportInterval = 100 // Report stats every N blocks
+	type sample struct {
+		localDelay time.Duration
+		queueDelay time.Duration
+		totalDelay time.Duration
+	}
+	window := make([]sample, 0, windowSize)
+	blocksProcessed := 0
+
+	// Pending blocks waiting for FirstSendTime
 	type pendingBlock struct {
-		req       *networkStatsRequest
-		addedAt   time.Time
-		reported  bool
+		req     *networkStatsRequest
+		addedAt time.Time
+		emitted bool
 	}
 	pending := make(map[common.Hash]*pendingBlock)
 
-	// Ticker to periodically check and report
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
-
-	// Cleanup ticker to remove old entries
 	cleanupTicker := time.NewTicker(10 * time.Second)
 	defer cleanupTicker.Stop()
+
+	// Helper: compute percentile from sorted slice
+	percentile := func(sorted []time.Duration, p float64) time.Duration {
+		if len(sorted) == 0 {
+			return 0
+		}
+		idx := int(float64(len(sorted)-1) * p)
+		return sorted[idx]
+	}
 
 	for {
 		select {
 		case req := <-h.networkStatsCh:
-			// Add new block to pending
-			pending[req.hash] = &pendingBlock{
-				req:      req,
-				addedAt:  time.Now(),
-				reported: false,
-			}
+			pending[req.hash] = &pendingBlock{req: req, addedAt: time.Now()}
 
 		case <-ticker.C:
-			// Check all pending blocks
 			for hash, pb := range pending {
-				if pb.reported {
+				if pb.emitted {
+					continue
+				}
+				// Wait at least 50ms for data
+				if time.Since(pb.addedAt) < 50*time.Millisecond {
 					continue
 				}
 
 				stats := h.chain.GetBlockStats(hash)
 				firstSendTime := stats.FirstSendTime.Load()
 				broadcastStartTime := stats.BroadcastStartTime.Load()
+				writeEndTime := stats.WriteEndTime.Load()
+				blockTime := pb.req.blockTime
 
-				// Wait at least 50ms for FirstSendTime to be set (async send)
-				if time.Since(pb.addedAt) < 50*time.Millisecond {
-					continue
-				}
+				// Network ready: have at least BroadcastStartTime
+				networkReady := broadcastStartTime > 0
+				timeout := time.Since(pb.addedAt) > 1*time.Second
 
-				// Report if FirstSendTime is set, or timeout after 500ms
-				if firstSendTime > 0 || time.Since(pb.addedAt) > 500*time.Millisecond {
-					pb.reported = true
+				if networkReady || timeout {
+					pb.emitted = true
 
-					// Calculate timing
-					blockTime := pb.req.blockTime
-					writeEndTime := stats.WriteEndTime.Load()
-					var queueDelay, sendDelay, localProcessDelay time.Duration
-
-					// [Network-L2] LocalProcessDelay = BroadcastStartTime - WriteEndTime
-					// This includes: Post(NewSealedBlockEvent) + eventmux dispatch + goroutine scheduling
+					// Calculate delays
+					var localDelay, queueDelay, totalDelay time.Duration
 					if writeEndTime > 0 && broadcastStartTime > 0 {
-						localProcessDelay = time.Duration(broadcastStartTime-writeEndTime) * time.Millisecond
+						localDelay = time.Duration(broadcastStartTime-writeEndTime) * time.Millisecond
 					}
-
-					if broadcastStartTime > 0 {
-						// BroadcastStartTime - blockTime = time from block creation to queue
-						queueDelay = time.Duration(broadcastStartTime-blockTime) * time.Millisecond
-					}
-
 					if firstSendTime > 0 && broadcastStartTime > 0 {
-						// FirstSendTime - BroadcastStartTime = time in queue (PeerQueueDelay)
-						sendDelay = time.Duration(firstSendTime-broadcastStartTime) * time.Millisecond
+						queueDelay = time.Duration(firstSendTime-broadcastStartTime) * time.Millisecond
 					}
-
-					// Total delay from block time to first send start
-					var totalSendDelay time.Duration
 					if firstSendTime > 0 {
-						totalSendDelay = time.Duration(firstSendTime-blockTime) * time.Millisecond
+						totalDelay = time.Duration(firstSendTime-blockTime) * time.Millisecond
 					} else if broadcastStartTime > 0 {
-						// Fallback to BroadcastStartTime if FirstSendTime not available
-						totalSendDelay = queueDelay
+						totalDelay = time.Duration(broadcastStartTime-blockTime) * time.Millisecond
 					}
 
-					// Get the peer address that received the first send
+					// Peer info
 					firstSendTo := ""
 					if v := stats.FirstSendTo.Load(); v != nil {
 						firstSendTo = v.(string)
 					}
-
-					// Collect all peer send times for detailed per-peer analysis
 					peerCount := 0
-					var peerSendTimesStr string
-					stats.PeerSendTimes.Range(func(key, value interface{}) bool {
-						peerAddr := key.(string)
-						peerSendTime := value.(int64)
-						peerDelay := time.Duration(peerSendTime-blockTime) * time.Millisecond
-						if peerCount > 0 {
-							peerSendTimesStr += ", "
-						}
-						peerSendTimesStr += fmt.Sprintf("%s:%v", peerAddr, peerDelay)
+					stats.PeerSendTimes.Range(func(_, _ interface{}) bool {
 						peerCount++
 						return true
 					})
 
-					log.Info("Network: block broadcast timing (send side)",
+					// Per-block network timing log
+					log.Info("Network timing",
 						"number", pb.req.number,
 						"hash", hash.TerminalString(),
-						"blockTime", blockTime,
-						"writeEndTime", writeEndTime,
-						"broadcastStartTime", broadcastStartTime,
-						"firstSendTime", firstSendTime,
-						"firstSendTo", firstSendTo,
-						"peerCount", peerCount,
-						"allPeerDelays", peerSendTimesStr, // All peers: "addr1:delay1, addr2:delay2, ..."
-						// Level 2 breakdown
-						"localProcessDelay", localProcessDelay, // WriteEnd → BroadcastStart (eventmux/scheduler)
-						"peerQueueDelay", sendDelay,            // BroadcastStart → FirstSendTime
-						"totalSendDelay", totalSendDelay,       // blockTime → FirstSendTime
+						"localDelay", localDelay,  // WriteEnd → BroadcastStart
+						"queueDelay", queueDelay,  // BroadcastStart → FirstSend
+						"totalDelay", totalDelay,  // blockTime → FirstSend
+						"sendTo", firstSendTo,
+						"peers", peerCount,
 					)
+
+					// Add to sliding window
+					if networkReady {
+						window = append(window, sample{localDelay, queueDelay, totalDelay})
+						if len(window) > windowSize {
+							window = window[1:] // Remove oldest
+						}
+						blocksProcessed++
+
+						// Report sliding window stats every N blocks
+						if blocksProcessed%reportInterval == 0 && len(window) >= reportInterval {
+							// Sort for percentiles
+							localDelays := make([]time.Duration, len(window))
+							queueDelays := make([]time.Duration, len(window))
+							totalDelays := make([]time.Duration, len(window))
+							for i, s := range window {
+								localDelays[i] = s.localDelay
+								queueDelays[i] = s.queueDelay
+								totalDelays[i] = s.totalDelay
+							}
+							sort.Slice(localDelays, func(i, j int) bool { return localDelays[i] < localDelays[j] })
+							sort.Slice(queueDelays, func(i, j int) bool { return queueDelays[i] < queueDelays[j] })
+							sort.Slice(totalDelays, func(i, j int) bool { return totalDelays[i] < totalDelays[j] })
+
+							log.Info("Network stats - send side (sliding window)",
+								"samples", len(window),
+								"LocalProcess_p50", percentile(localDelays, 0.5),
+								"LocalProcess_p90", percentile(localDelays, 0.9),
+								"LocalProcess_p99", percentile(localDelays, 0.99),
+								"PeerQueue_p50", percentile(queueDelays, 0.5),
+								"PeerQueue_p90", percentile(queueDelays, 0.9),
+								"PeerQueue_p99", percentile(queueDelays, 0.99),
+								"SendTotal_p50", percentile(totalDelays, 0.5),
+								"SendTotal_p90", percentile(totalDelays, 0.9),
+								"SendTotal_p99", percentile(totalDelays, 0.99),
+							)
+						}
+					}
 				}
 			}
 
 		case <-cleanupTicker.C:
-			// Remove old entries (older than 30 seconds)
 			now := time.Now()
 			for hash, pb := range pending {
 				if now.Sub(pb.addedAt) > 30*time.Second {
 					delete(pending, hash)
 				}
+			}
+
+		case <-h.stopCh:
+			return
+		}
+	}
+}
+
+// recvStatsLoop collects and reports receive-side network statistics.
+// This runs on the RECEIVER node (not the miner/validator) to track
+// end-to-end network delay: from block creation to block received.
+// [Network-Recv] Sliding window statistics for received blocks.
+func (h *handler) recvStatsLoop() {
+	defer h.wg.Done()
+
+	// Sliding window for receive-side statistics
+	const windowSize = 1000
+	const reportInterval = 100
+	type recvSample struct {
+		networkDelay time.Duration // blockTime → recvTime (end-to-end)
+	}
+	window := make([]recvSample, 0, windowSize)
+	blocksProcessed := 0
+
+	// Helper: compute percentile from sorted slice
+	percentile := func(sorted []time.Duration, p float64) time.Duration {
+		if len(sorted) == 0 {
+			return 0
+		}
+		idx := int(float64(len(sorted)-1) * p)
+		return sorted[idx]
+	}
+
+	for {
+		select {
+		case req := <-h.recvStatsCh:
+			// Add sample to window
+			sample := recvSample{
+				networkDelay: time.Duration(req.networkDelay) * time.Millisecond,
+			}
+			window = append(window, sample)
+			if len(window) > windowSize {
+				window = window[1:] // Remove oldest
+			}
+			blocksProcessed++
+
+			// Report sliding window stats every N blocks
+			if blocksProcessed%reportInterval == 0 && len(window) >= reportInterval {
+				// Collect delays for sorting
+				delays := make([]time.Duration, len(window))
+				for i, s := range window {
+					delays[i] = s.networkDelay
+				}
+				sort.Slice(delays, func(i, j int) bool { return delays[i] < delays[j] })
+
+				log.Info("Network stats - receive side (sliding window)",
+					"samples", len(window),
+					// End-to-end delay: blockTime → recvTime
+					// This is the TRUE network propagation delay seen by receiver
+					"E2E_p50", percentile(delays, 0.5),
+					"E2E_p90", percentile(delays, 0.9),
+					"E2E_p99", percentile(delays, 0.99),
+					"E2E_min", delays[0],
+					"E2E_max", delays[len(delays)-1],
+				)
 			}
 
 		case <-h.stopCh:
