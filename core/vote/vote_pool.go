@@ -224,9 +224,10 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 		localFutureVotesCounter.Inc(1)
 	} else {
 		localCurVotesCounter.Inc(1)
-		// Use goroutine to avoid deadlock: CheckFinalityAndNotify -> GetFinalizedHeader -> FetchVotesByBlockHash
-		// requires RLock, but we're holding Lock here.
-		go pool.engine.CheckFinalityAndNotify(pool.chain, targetHash, pool.chain.NotifyFinalized)
+		// Skip if target block is already finalized and notified
+		if highestNotified := pool.chain.HighestNotifiedFinal(); highestNotified == nil || targetNumber > highestNotified.Number.Uint64()+1 {
+			go pool.engine.CheckFinalityAndNotify(pool.chain, targetHash, pool.chain.NotifyFinalized)
+		}
 	}
 	localReceivedVotesGauge.Update(int64(pool.receivedVotes.Cardinality()))
 }

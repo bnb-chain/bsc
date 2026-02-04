@@ -68,6 +68,12 @@ func (bc *BlockChain) CurrentFinalBlock() *types.Header {
 	return nil
 }
 
+// HighestNotifiedFinal retrieves the highest finalized block that has been notified.
+// This is used for deduplication in early finalization checks.
+func (bc *BlockChain) HighestNotifiedFinal() *types.Header {
+	return bc.highestNotifiedFinal.Load()
+}
+
 // CurrentSafeBlock retrieves the current safe block of the canonical
 // chain. The block is retrieved from the blockchain's internal cache.
 func (bc *BlockChain) CurrentSafeBlock() *types.Header {
