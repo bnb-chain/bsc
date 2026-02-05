@@ -1571,11 +1571,23 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 }
 
 // generateWork generates a sealing block based on the given parameters.
+// This is used by the Builder API / Engine API path (MEV).
 func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadResult {
+	// Initialize mining stats for Builder API path profiling
+	start := time.Now()
+	miningStats := &MiningStats{
+		MinePhaseStart: start,
+	}
+
+	// Track Prepare time
+	prepareStart := time.Now()
 	work, err := w.prepareWork(params, witness)
 	if err != nil {
 		return &newPayloadResult{err: err}
 	}
+	miningStats.PrepareTime = time.Since(prepareStart)
+	miningStats.HeaderPrepareTime = miningStats.PrepareTime
+	work.miningStats = miningStats
 	defer work.discard()
 
 	if !params.noTxs {
@@ -1585,7 +1597,10 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 		})
 		defer timer.Stop()
 
+		// Track FillTransactions (Execution) time
+		fillStart := time.Now()
 		err := w.fillTransactions(nil, work, nil, nil)
+		miningStats.FillTxsTime = time.Since(fillStart)
 		if errors.Is(err, errBlockInterruptedByTimeout) {
 			log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.recommit))
 		}
@@ -1618,10 +1633,50 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 	}
 
 	fees := work.state.GetBalance(consensus.SystemAddress)
+
+	// Track FinalizeAndAssemble time (includes RootCalc and SystemTx)
+	finalizeStart := time.Now()
 	block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, &body, work.receipts, nil)
 	if err != nil {
 		return &newPayloadResult{err: err}
 	}
+	totalFinalizeTime := time.Since(finalizeStart)
+
+	// Read timing fields from StateDB (set during FinalizeAndAssemble)
+	miningStats.SystemTxExecTime = work.state.SystemTxExecTime
+	miningStats.BlockAssemblyTime = work.state.BlockAssemblyTime
+	miningStats.RootCalcTime = work.state.RootCalcTime
+
+	// Calculate FinalizeSystemTxTime = total - RootCalc
+	if totalFinalizeTime > miningStats.RootCalcTime {
+		miningStats.FinalizeSystemTxTime = totalFinalizeTime - miningStats.RootCalcTime
+	} else {
+		miningStats.FinalizeSystemTxTime = totalFinalizeTime
+	}
+
+	// Calculate total time for Builder API path
+	miningStats.MinePhaseTotal = time.Since(miningStats.MinePhaseStart)
+
+	// Log mining stats for Builder API path
+	// Note: This path doesn't have Seal/Write time as sealing happens via Engine API
+	log.Info("Mining phase breakdown (Builder API)",
+		"number", block.Number(),
+		"hash", block.Hash().TerminalString(),
+		"txs", len(work.txs),
+		// High-level phases
+		"Parlia", miningStats.Parlia(),
+		"Execution", miningStats.Execution(),
+		"IO", miningStats.ExecutionIOTime,
+		"RootCalc", miningStats.RootCalcTime,
+		"FinalizeSystemTx", miningStats.FinalizeSystemTxTime,
+		// Detailed breakdown
+		"Prepare", miningStats.PrepareTime,
+		"FillTxs", miningStats.FillTxsTime,
+		"SystemTxExec", miningStats.SystemTxExecTime,
+		"BlockAssembly", miningStats.BlockAssemblyTime,
+		// Total
+		"MineTotal", miningStats.MinePhaseTotal,
+	)
 
 	return &newPayloadResult{
 		block:    block,
@@ -1929,6 +1984,9 @@ LOOP:
 				bidWinGauge.Inc(1)
 
 				bestWork = bestBid.env
+				// Preserve miningStats from local mining for profiling
+				// (bestBid.env doesn't have miningStats set by bid simulator)
+				bestWork.miningStats = miningStats
 
 				log.Info("[BUILDER BLOCK]",
 					"block", bestWork.header.Number.Uint64(),
