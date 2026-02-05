@@ -45,6 +45,7 @@ const (
 	Fermi
 	Osaka
 	Mendel
+	Pasteur // BOP1 will be skipped in BSC, so let Pasteur be the next to Mendel
 	BPO1
 	BPO2
 	BPO3
@@ -93,4 +94,5 @@ var forkToString = map[Fork]string{
 	BPO4:             "BPO4",
 	BPO5:             "BPO5",
 	Amsterdam:        "Amsterdam",
+	Pasteur:          "Pasteur",
 }

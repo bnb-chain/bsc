@@ -80,6 +80,7 @@ var (
 		utils.OverrideMendel,
 		utils.OverrideBPO1,
 		utils.OverrideBPO2,
+		utils.OverridePasteur,
 		utils.OverrideVerkle,
 		utils.OverrideGenesisFlag,
 		utils.OverrideFullImmutabilityThreshold,

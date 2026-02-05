@@ -1303,6 +1303,18 @@ func overrideConfig(original *params.ChainConfig, override *params.ChainConfig) 
 		copy.MendelTime = timestamp
 		canon = false
 	}
+	if timestamp := override.BPO1Time; timestamp != nil {
+		copy.BPO1Time = timestamp
+		canon = false
+	}
+	if timestamp := override.BPO2Time; timestamp != nil {
+		copy.BPO2Time = timestamp
+		canon = false
+	}
+	if timestamp := override.PasteurTime; timestamp != nil {
+		copy.PasteurTime = timestamp
+		canon = false
+	}
 	if timestamp := override.VerkleTime; timestamp != nil {
 		copy.VerkleTime = timestamp
 		canon = false
