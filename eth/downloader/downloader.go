@@ -1442,6 +1442,7 @@ func (d *Downloader) importBlockResults(results []*fetchResult) error {
 	blocks := make([]*types.Block, len(results))
 	for i, result := range results {
 		blocks[i] = types.NewBlockWithHeader(result.Header).WithBody(result.body()).WithSidecars(result.Sidecars)
+		log.LatencyWithBlockMeta(blocks[i].NumberU64(), blocks[i].Hash(), "importBlock", time.Since(time.UnixMilli(int64(blocks[i].Header().MilliTimestamp()))))
 	}
 	// Downloaded blocks are always regarded as trusted after the
 	// transition. Because the downloaded chain is guided by the

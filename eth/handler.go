@@ -335,6 +335,9 @@ func newHandler(config *handlerConfig) (*handler, error) {
 			log.Warn("Syncing, discarded propagated block", "number", blocks[0].Number(), "hash", blocks[0].Hash())
 			return 0, nil
 		}
+		for _, block := range blocks {
+			log.LatencyWithBlockMeta(block.NumberU64(), block.Hash(), "inserter", time.Since(time.UnixMilli(int64(block.Header().MilliTimestamp()))))
+		}
 		return h.chain.InsertChain(blocks)
 	}
 
