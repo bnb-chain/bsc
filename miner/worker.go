@@ -1597,10 +1597,9 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 		})
 		defer timer.Stop()
 
-		// Track FillTransactions (Execution) time
-		fillStart := time.Now()
+		// FillTxsTime, ExecutionTime, ExecutionIOTime are set inside fillTransactions
+		// via work.miningStats (which we set above)
 		err := w.fillTransactions(nil, work, nil, nil)
-		miningStats.FillTxsTime = time.Since(fillStart)
 		if errors.Is(err, errBlockInterruptedByTimeout) {
 			log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.recommit))
 		}
