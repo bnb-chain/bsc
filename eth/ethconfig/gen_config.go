@@ -74,9 +74,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		RPCEVMTimeout             time.Duration
 		RPCTxFeeCap               float64
 		OverridePassedForkTime    *uint64       `toml:",omitempty"`
-		OverrideLorentz           *uint64       `toml:",omitempty"`
-		OverrideMaxwell           *uint64       `toml:",omitempty"`
-		OverrideFermi             *uint64       `toml:",omitempty"`
 		OverrideOsaka             *uint64       `toml:",omitempty"`
 		OverrideMendel            *uint64       `toml:",omitempty"`
 		OverrideBPO1              *uint64       `toml:",omitempty"`
@@ -151,9 +148,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.RPCEVMTimeout = c.RPCEVMTimeout
 	enc.RPCTxFeeCap = c.RPCTxFeeCap
 	enc.OverridePassedForkTime = c.OverridePassedForkTime
-	enc.OverrideLorentz = c.OverrideLorentz
-	enc.OverrideMaxwell = c.OverrideMaxwell
-	enc.OverrideFermi = c.OverrideFermi
 	enc.OverrideOsaka = c.OverrideOsaka
 	enc.OverrideMendel = c.OverrideMendel
 	enc.OverrideBPO1 = c.OverrideBPO1
@@ -232,9 +226,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		RPCEVMTimeout             *time.Duration
 		RPCTxFeeCap               *float64
 		OverridePassedForkTime    *uint64        `toml:",omitempty"`
-		OverrideLorentz           *uint64        `toml:",omitempty"`
-		OverrideMaxwell           *uint64        `toml:",omitempty"`
-		OverrideFermi             *uint64        `toml:",omitempty"`
 		OverrideOsaka             *uint64        `toml:",omitempty"`
 		OverrideMendel            *uint64        `toml:",omitempty"`
 		OverrideBPO1              *uint64        `toml:",omitempty"`
@@ -423,15 +414,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.OverridePassedForkTime != nil {
 		c.OverridePassedForkTime = dec.OverridePassedForkTime
-	}
-	if dec.OverrideLorentz != nil {
-		c.OverrideLorentz = dec.OverrideLorentz
-	}
-	if dec.OverrideMaxwell != nil {
-		c.OverrideMaxwell = dec.OverrideMaxwell
-	}
-	if dec.OverrideFermi != nil {
-		c.OverrideFermi = dec.OverrideFermi
 	}
 	if dec.OverrideOsaka != nil {
 		c.OverrideOsaka = dec.OverrideOsaka

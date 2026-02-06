@@ -68,9 +68,6 @@ var (
 		Flags: slices.Concat([]cli.Flag{
 			utils.CachePreimagesFlag,
 			utils.OverridePassedForkTime,
-			utils.OverrideLorentz,
-			utils.OverrideMaxwell,
-			utils.OverrideFermi,
 			utils.OverrideOsaka,
 			utils.OverrideMendel,
 			utils.OverrideBPO1,
@@ -336,18 +333,6 @@ func initGenesis(ctx *cli.Context) error {
 	if ctx.IsSet(utils.OverridePassedForkTime.Name) {
 		v := ctx.Uint64(utils.OverridePassedForkTime.Name)
 		overrides.OverridePassedForkTime = &v
-	}
-	if ctx.IsSet(utils.OverrideLorentz.Name) {
-		v := ctx.Uint64(utils.OverrideLorentz.Name)
-		overrides.OverrideLorentz = &v
-	}
-	if ctx.IsSet(utils.OverrideMaxwell.Name) {
-		v := ctx.Uint64(utils.OverrideMaxwell.Name)
-		overrides.OverrideMaxwell = &v
-	}
-	if ctx.IsSet(utils.OverrideFermi.Name) {
-		v := ctx.Uint64(utils.OverrideFermi.Name)
-		overrides.OverrideFermi = &v
 	}
 	if ctx.IsSet(utils.OverrideOsaka.Name) {
 		v := ctx.Uint64(utils.OverrideOsaka.Name)
