@@ -24,6 +24,12 @@ import (
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 )
 
+// masterPeerHeaderTimeout caps the timeout for blocking header requests on the
+// critical sync path (fetchHead, findAncestor, skeleton). With BSC's 0.45s block
+// interval, the dynamic TargetTimeout (10s+) causes excessive lag; this ensures
+// we fail fast and switch peers instead.
+const masterPeerHeaderTimeout = 5 * time.Second
+
 // fetchHeadersByHash is a blocking version of Peer.RequestHeadersByHash which
 // handles all the cancellation, interruption and timeout mechanisms of a data
 // retrieval to allow blocking API calls.
@@ -38,13 +44,18 @@ func (d *Downloader) fetchHeadersByHash(p *peerConnection, hash common.Hash, amo
 	}
 	defer req.Close()
 
-	// Wait until the response arrives, the request is cancelled or times out
+	// Wait until the response arrives, the request is cancelled or times out.
 	ttl := d.peers.rates.TargetTimeout()
-
+	if ttl > masterPeerHeaderTimeout {
+		ttl = masterPeerHeaderTimeout
+	}
 	timeoutTimer := time.NewTimer(ttl)
 	defer timeoutTimer.Stop()
 
 	select {
+	case <-d.cancelCh:
+		return nil, nil, errCanceled
+
 	case <-timeoutTimer.C:
 		// Header retrieval timed out, update the metrics
 		p.log.Debug("Header request timed out", "elapsed", ttl)
@@ -80,9 +91,11 @@ func (d *Downloader) fetchHeadersByNumber(p *peerConnection, number uint64, amou
 	}
 	defer req.Close()
 
-	// Wait until the response arrives, the request is cancelled or times out
+	// Wait until the response arrives, the request is cancelled or times out.
 	ttl := d.peers.rates.TargetTimeout()
-
+	if ttl > masterPeerHeaderTimeout {
+		ttl = masterPeerHeaderTimeout
+	}
 	timeoutTimer := time.NewTimer(ttl)
 	defer timeoutTimer.Stop()
 

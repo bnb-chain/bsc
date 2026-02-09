@@ -117,10 +117,16 @@ func (cs *chainSyncer) loop() {
 		select {
 		case <-cs.peerEventCh:
 			// Peer information changed, recheck.
-		case <-cs.doneCh:
+		case err := <-cs.doneCh:
 			cs.doneCh = nil
-			cs.force.Reset(forceSyncCycle)
-			cs.forced = false
+			if err != nil {
+				// Sync failed, keep forced=true so nextSyncOp can immediately
+				// retry with minPeers=1 instead of waiting for the 10s force timer.
+				cs.forced = true
+			} else {
+				cs.force.Reset(forceSyncCycle)
+				cs.forced = false
+			}
 		case <-cs.force.C:
 			cs.forced = true
 
@@ -184,11 +190,17 @@ func (cs *chainSyncer) nextSyncOp() *chainSyncOp {
 		// 		log.Info("Disable transaction acceptance randomly for the delay exceeding 10 blocks.")
 		// 	}
 	} else if op.td.Cmp(new(big.Int).Add(ourTD, common.Big2)) <= 0 { // common.Big2: difficulty of an in-turn block
-		// On BSC, blocks are produced much faster than on Ethereum.
-		// If the node is only slightly behind (e.g., 1 block), syncing is unnecessary.
-		// It's likely still processing broadcasted blocks(such as including a big tx) or block hash announcements.
-		// In most cases, the node will catch up within 2 seconds.
-		time.Sleep(2 * time.Second)
+		// Only slightly behind (~1 block). Wait briefly for block broadcast to
+		// catch up before starting a full sync. Use non-blocking select to stay
+		// responsive to quit signals and peer events.
+		waitTimer := time.NewTimer(500 * time.Millisecond)
+		defer waitTimer.Stop()
+		select {
+		case <-waitTimer.C:
+		case <-cs.handler.quitSync:
+			return nil
+		case <-cs.peerEventCh:
+		}
 
 		// Re-check local head to see if it has caught up
 		if _, latestTD := cs.modeAndLocalHead(); ourTD.Cmp(latestTD) < 0 {
