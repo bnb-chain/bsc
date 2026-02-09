@@ -275,6 +275,7 @@ type ChainOverrides struct {
 	OverrideMendel         *uint64
 	OverrideBPO1           *uint64
 	OverrideBPO2           *uint64
+	OverridePasteur        *uint64
 	OverrideVerkle         *uint64
 }
 
@@ -315,6 +316,9 @@ func (o *ChainOverrides) apply(cfg *params.ChainConfig) error {
 	}
 	if o.OverrideBPO2 != nil {
 		cfg.BPO2Time = o.OverrideBPO2
+	}
+	if o.OverridePasteur != nil {
+		cfg.PasteurTime = o.OverridePasteur
 	}
 	if o.OverrideVerkle != nil {
 		cfg.VerkleTime = o.OverrideVerkle
