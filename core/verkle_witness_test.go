@@ -691,7 +691,7 @@ func TestProcessVerkleSelfDestructInSeparateTx(t *testing.T) {
 		account2.Bytes(),
 		[]byte{byte(vm.SELFDESTRUCT)})
 
-	//The goal of this test is to test SELFDESTRUCT that happens in a contract
+	// The goal of this test is to test SELFDESTRUCT that happens in a contract
 	// execution which is created in a previous transaction.
 	selfDestructContract := slices.Concat([]byte{
 		byte(vm.PUSH1), byte(len(runtimeCode)),

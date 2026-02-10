@@ -209,7 +209,7 @@ func (t *transactionsByPriceAndNonce) Forward(tx *types.Transaction) {
 	for _, head := range t.heads {
 		if head.tx != nil && head.tx.Resolve() != nil {
 			if tx == head.tx.Tx {
-				//shift t to the position one after tx
+				// Shift t to the position one after tx
 				txTmp := t.PeekWithUnwrap()
 				for txTmp != tx {
 					t.Shift()
@@ -220,13 +220,13 @@ func (t *transactionsByPriceAndNonce) Forward(tx *types.Transaction) {
 			}
 		}
 	}
-	//get the sender address of tx
+	// Get the sender address of tx
 	acc, _ := types.Sender(t.signer, tx)
-	//check whether target tx exists in t.txs
+	// Check whether target tx exists in t.txs
 	if txs, ok := t.txs[acc]; ok {
 		for _, txLazyTmp := range txs {
 			if txLazyTmp != nil && txLazyTmp.Resolve() != nil {
-				//found the same pointer in t.txs as tx and then shift t to the position one after tx
+				// Found the same pointer in t.txs as tx and then shift t to the position one after tx
 				if tx == txLazyTmp.Tx {
 					txTmp := t.PeekWithUnwrap()
 					for txTmp != tx {
