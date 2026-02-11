@@ -1066,7 +1066,7 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 	pendingPlainTxsTimer.UpdateSince(plainTxsStart)
 
 	var pendingBlobTxs map[common.Address][]*txpool.LazyTransaction
-	if eip4844.IsBlobEligibleBlock(w.chainConfig, env.header.Number.Uint64(), env.header.Time) {
+	if env.header.Number.Uint64()%params.BlobEligibleBlockInterval == 0 {
 		filter.BlobTxs = true
 		filter.BlobVersion = types.BlobSidecarVersion0
 
