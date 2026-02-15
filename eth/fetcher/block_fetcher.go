@@ -598,7 +598,24 @@ func (f *BlockFetcher) loop() {
 					case res := <-resCh:
 						res.Done <- nil
 						// Ignoring withdrawals here, will set it to empty later if EmptyWithdrawalsHash in header.
-						txs, uncles, _, sidecars := res.Res.(*eth.BlockBodiesResponse).Unpack()
+						bodies := *res.Res.(*eth.BlockBodiesResponse)
+						txs := make([][]*types.Transaction, len(bodies))
+						uncles := make([][]*types.Header, len(bodies))
+						sidecars := make([]types.BlobSidecars, len(bodies))
+						for i, body := range bodies {
+							var err error
+							if txs[i], err = body.Transactions.Items(); err != nil {
+								log.Debug("Failed to decode block body transactions", "peer", peer, "err", err)
+								f.dropPeer(peer)
+								return
+							}
+							if uncles[i], err = body.Uncles.Items(); err != nil {
+								log.Debug("Failed to decode block body uncles", "peer", peer, "err", err)
+								f.dropPeer(peer)
+								return
+							}
+							sidecars[i] = body.Sidecars
+						}
 						f.FilterBodies(peer, txs, uncles, sidecars, time.Now())
 
 					case <-timeout.C:
