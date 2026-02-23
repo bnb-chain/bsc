@@ -107,6 +107,11 @@ func (api *API) GetFinalizedNumber(number *rpc.BlockNumber) (uint64, error) {
 	if header == nil {
 		return 0, errUnknownBlock
 	}
+	if number != nil && *number == rpc.FinalizedBlockNumber {
+		// If a caller explicitly asks for the finalized block, return that block number directly.
+		// Querying its own snapshot again would return the previously finalized parent.
+		return header.Number.Uint64(), nil
+	}
 	snap, err := api.parlia.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil)
 	if err != nil || snap.Attestation == nil {
 		return 0, err
