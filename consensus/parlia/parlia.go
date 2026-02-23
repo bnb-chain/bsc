@@ -2302,9 +2302,15 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 	// Try to check if currentJustifiedNumber can become finalized by checking VotePool.
 	// We only need to check currentJustifiedNumber + 1, since currentJustifiedNumber is already the latest justified.
 	if p.VotePool != nil && currentJustifiedNumber == header.Number.Uint64()-1 {
+		parentSnap, err := p.snapshot(chain, header.Number.Uint64()-1, header.ParentHash, nil)
+		if err != nil {
+			log.Error("Failed to get parent snapshot for finality check",
+				"error", err, "blockNumber", header.Number.Uint64()-1, "blockHash", header.ParentHash)
+			return chain.GetHeader(snap.Attestation.SourceHash, snap.Attestation.SourceNumber)
+		}
 		// Check if the next block (direct child) has reached quorum in VotePool
 		votes := p.VotePool.FetchVotesByBlockHash(header.Hash(), currentJustifiedNumber)
-		quorum := cmath.CeilDiv(len(snap.Validators)*2, 3)
+		quorum := cmath.CeilDiv(len(parentSnap.Validators)*2, 3)
 
 		if len(votes) >= quorum {
 			return chain.GetHeader(currentJustifiedHash, currentJustifiedNumber)
