@@ -44,6 +44,11 @@ Key changes from the code sync include:
 - [ci: upgrade github actions to latest versions](https://github.com/bnb-chain/bsc/pull/3515)
 - [ci: ignore nancy failre of quic-go@v0.49.1](https://github.com/bnb-chain/bsc/pull/3512)
 
+## v1.6.7
+### BUGFIX
+crypto/secp256k1: fix coordinate check
+crypto/ecies: fix ECIES invalid-curve handling
+
 ## v1.6.6
 ### BUGFIX
 core/txpool: drop peers on invalid KZG proofs
