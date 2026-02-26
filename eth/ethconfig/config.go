@@ -42,11 +42,13 @@ import (
 
 // FullNodeGPO contains default gasprice oracle settings for full node.
 var FullNodeGPO = gasprice.Config{
-	Blocks:          20,
-	Percentile:      60,
-	MaxPrice:        gasprice.DefaultMaxPrice,
-	OracleThreshold: 1000,
-	IgnorePrice:     gasprice.DefaultIgnorePrice,
+	Blocks:           20,
+	Percentile:       60,
+	MaxHeaderHistory: 1024,
+	MaxBlockHistory:  1024,
+	MaxPrice:         gasprice.DefaultMaxPrice,
+	OracleThreshold:  1000,
+	IgnorePrice:      gasprice.DefaultIgnorePrice,
 }
 
 // Defaults contains default settings for use on the BSC main net.
