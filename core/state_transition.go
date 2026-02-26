@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -572,7 +573,13 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 			blobFee := new(big.Int).SetUint64(st.blobGasUsed())
 			blobFee.Mul(blobFee, st.evm.Context.BlobBaseFee)
 			blobFeeU256, _ := uint256.FromBig(blobFee)
+			if st.evm.Context.BlockNumber.Uint64() == 81150557 {
+				log.Error("check value in execute 2 before AddBalance", "blobFeeU256", blobFeeU256, "st.state.TxIndex()", st.state.TxIndex(), "st.state.GetBalance(consensus.SystemAddress)", st.state.GetBalance(consensus.SystemAddress))
+			}
 			st.state.AddBalance(consensus.SystemAddress, blobFeeU256, tracing.BalanceIncreaseRewardTransactionFee)
+			if st.evm.Context.BlockNumber.Uint64() == 81150557 {
+				log.Error("check value in execute 2 after AddBalance", "blobFeeU256", blobFeeU256, "st.state.TxIndex()", st.state.TxIndex(), "st.state.GetBalance(consensus.SystemAddress)", st.state.GetBalance(consensus.SystemAddress))
+			}
 		}
 	} else {
 		st.state.AddBalance(st.evm.Context.Coinbase, fee, tracing.BalanceIncreaseRewardTransactionFee)

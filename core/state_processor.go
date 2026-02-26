@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -36,6 +37,7 @@ import (
 )
 
 const largeTxGasLimit = 10000000 // 10M Gas, to measure the execution time of large tx
+const debugTargetBlock uint64 = 81150557
 
 // StateProcessor is a basic Processor, which takes care of transitioning
 // state from one point to another.
@@ -150,6 +152,9 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 			bloomProcessors.Close()
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
+		if blockNumber.Uint64() == debugTargetBlock {
+			log.Error("Debug tx", "transaction Index", i, "txHash", receipt.TxHash, "gasUsed", receipt.GasUsed)
+		}
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)
 	}
@@ -181,6 +186,9 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	err = p.chain.Engine().Finalize(p.chain, header, tracingStateDB, &commonTxs, block.Uncles(), block.Withdrawals(), &receipts, &systemTxs, usedGas, cfg.Tracer)
 	if err != nil {
 		return nil, err
+	}
+	if blockNumber.Uint64() == debugTargetBlock {
+		os.Exit(0)
 	}
 	for _, receipt := range receipts {
 		allLogs = append(allLogs, receipt.Logs...)
