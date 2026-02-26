@@ -3090,7 +3090,6 @@ func (bc *BlockChain) reorg(oldHead *types.Header, newHead *types.Header) error 
 		}
 	}
 	// Apply new blocks in forward order
-	reorgWriteStart := time.Now()
 	for i := len(newChain) - 1; i >= 1; i-- {
 		// Collect all the included transactions
 		block := bc.GetBlock(newChain[i].Hash(), newChain[i].Number.Uint64())
@@ -3111,9 +3110,6 @@ func (bc *BlockChain) reorg(oldHead *types.Header, newHead *types.Header) error 
 		// Update the head block
 		bc.writeHeadBlock(block)
 	}
-	if len(newChain) > 1 {
-		log.Info("Reorg: applied new canonical chain", "blocks", len(newChain)-1, "from", newChain[len(newChain)-1].Number, "to", newChain[1].Number, "elapsed", time.Since(reorgWriteStart))
-	}
 	if len(rebirthLogs) > 0 {
 		bc.logsFeed.Send(rebirthLogs)
 	}
@@ -3133,17 +3129,12 @@ func (bc *BlockChain) reorg(oldHead *types.Header, newHead *types.Header) error 
 	if len(newChain) > 1 {
 		number = newChain[1].Number
 	}
-	var deletedCanonical []uint64
 	for i := number.Uint64() + 1; ; i++ {
 		hash := rawdb.ReadCanonicalHash(bc.db, i)
 		if hash == (common.Hash{}) {
 			break
 		}
 		rawdb.DeleteCanonicalHash(blockBatch, i)
-		deletedCanonical = append(deletedCanonical, i)
-	}
-	if len(deletedCanonical) > 0 {
-		log.Info("Reorg: deleting canonical hashes", "from", deletedCanonical[0], "to", deletedCanonical[len(deletedCanonical)-1], "count", len(deletedCanonical), "commonBlock", commonBlock.Number, "time", time.Now())
 	}
 	if err := indexesBatch.Write(); err != nil {
 		log.Crit("Failed to delete useless indexes", "err", err)
