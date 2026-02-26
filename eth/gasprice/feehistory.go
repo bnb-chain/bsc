@@ -25,6 +25,7 @@ import (
 	"math/big"
 	"slices"
 	"sync/atomic"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
@@ -272,6 +273,9 @@ func (oracle *Oracle) FeeHistory(ctx context.Context, blocks uint64, unresolvedL
 	}
 	oldestBlock := lastBlock + 1 - blocks
 
+	resolveTime := time.Now()
+	log.Info("FeeHistory resolved range", "oldestBlock", oldestBlock, "lastBlock", lastBlock, "blocks", blocks, "resolveTime", resolveTime)
+
 	var next atomic.Uint64
 	next.Store(oldestBlock)
 	results := make(chan *blockFees, blocks)
@@ -307,6 +311,9 @@ func (oracle *Oracle) FeeHistory(ctx context.Context, blocks uint64, unresolvedL
 							if fees.block != nil && fees.err == nil {
 								fees.receipts, fees.err = oracle.backend.GetReceipts(ctx, fees.block.Hash())
 								fees.header = fees.block.Header()
+							}
+							if fees.block == nil && fees.err == nil {
+								log.Warn("FeeHistory: BlockByNumber returned nil", "blockNumber", blockNumber, "lastBlock", lastBlock, "elapsed", time.Since(resolveTime))
 							}
 						} else {
 							fees.header, fees.err = oracle.backend.HeaderByNumber(ctx, rpc.BlockNumber(blockNumber))
@@ -347,6 +354,13 @@ func (oracle *Oracle) FeeHistory(ctx context.Context, blocks uint64, unresolvedL
 				firstMissing = i
 			}
 		}
+	}
+	if firstMissing < uint64(len(reward)) {
+		log.Warn("FeeHistory: truncated due to missing blocks",
+			"oldestBlock", oldestBlock, "lastBlock", lastBlock,
+			"requested", lastBlock+1-oldestBlock, "firstMissing", firstMissing,
+			"missingBlockNumber", oldestBlock+firstMissing,
+			"returned", firstMissing, "elapsed", time.Since(resolveTime))
 	}
 	if firstMissing == 0 {
 		return common.Big0, nil, nil, nil, nil, nil, nil
