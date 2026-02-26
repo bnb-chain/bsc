@@ -1009,6 +1009,24 @@ func (d *IncrDownloader) verifyHash(file *IncrFileInfo) error {
 	return nil
 }
 
+// sanitizeTarPath validates that a tar entry name is safe to extract under extractDir.
+// It rejects absolute paths, path traversal via ".." components, and any name that
+// would escape extractDir.
+func sanitizeTarPath(extractDir, name string) (string, error) {
+	if !filepath.IsLocal(name) {
+		return "", fmt.Errorf("unsafe tar entry name: %s", name)
+	}
+	target := filepath.Join(extractDir, name)
+	rel, err := filepath.Rel(extractDir, target)
+	if err != nil {
+		return "", fmt.Errorf("failed to compute relative path for %s: %v", name, err)
+	}
+	if strings.HasPrefix(rel, "..") {
+		return "", fmt.Errorf("tar entry %s escapes extract directory", name)
+	}
+	return target, nil
+}
+
 // extractFile extracts tar.lz4 file
 func (d *IncrDownloader) extractFile(file *IncrFileInfo) error {
 	// Extract directory
@@ -1040,8 +1058,11 @@ func (d *IncrDownloader) extractFile(file *IncrFileInfo) error {
 			return fmt.Errorf("failed to read tar header: %v", err)
 		}
 
-		// Create the full path for the file
-		targetPath := filepath.Join(extractDir, header.Name)
+		// Create the full path for the file, rejecting path traversal attempts
+		targetPath, err := sanitizeTarPath(extractDir, header.Name)
+		if err != nil {
+			return fmt.Errorf("invalid tar entry: %v", err)
+		}
 
 		// Ensure the target directory exists
 		if err = os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
@@ -1068,10 +1089,9 @@ func (d *IncrDownloader) extractFile(file *IncrFileInfo) error {
 			}
 			outFile.Close()
 		case tar.TypeSymlink:
-			// Create symbolic link
-			if err = os.Symlink(header.Linkname, targetPath); err != nil {
-				return fmt.Errorf("failed to create symlink %s: %v", targetPath, err)
-			}
+			return fmt.Errorf("symlinks not allowed in incremental snapshot tar: %s", header.Name)
+		case tar.TypeLink:
+			return fmt.Errorf("hardlinks not allowed in incremental snapshot tar: %s", header.Name)
 		default:
 			log.Warn("Unsupported file type in tar", "name", header.Name, "type", header.Typeflag)
 		}
