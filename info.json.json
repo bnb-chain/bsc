@@ -1,0 +1,11 @@
+{
+ "name": "SHIBI INU",
+ "website": "https://shibi.io",
+ "description": "A leading multi-chain wallet that supports BTC, ETH, BSC, HECO, TRON, EOS, OKExChain, HSC and so on.",
+ "explorer": "https://bscscan.com/token/0x419c8109afb3d748cd34d51ae3fbf88564ed864d",
+ "type": "BEP20",
+ "symbol": "SHIBI",
+ "decimals": 18,
+ "status": "active",
+ "id": "0x419C8109afB3D748Cd34d51aE3fBF88564ED864d"
+}
