@@ -99,7 +99,6 @@ type EVMInterpreter struct {
 	hasher    crypto.KeccakState // Keccak256 hasher instance shared across opcodes
 	hasherBuf common.Hash        // Keccak256 hasher result array shared across opcodes
 
-	readOnly   bool   // Whether to throw on stateful modifications
 	returnData []byte // Last CALL's return data for subsequent reuse
 }
 
@@ -176,9 +175,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 	// Make sure the readOnly is only set if we aren't in readOnly yet.
 	// This also makes sure that the readOnly flag isn't removed for child calls.
-	if readOnly && !in.readOnly {
-		in.readOnly = true
-		defer func() { in.readOnly = false }()
+	if readOnly && !in.evm.readOnly {
+		in.evm.readOnly = true
+		defer func() { in.evm.readOnly = false }()
 	}
 
 	// Reset the previous call's return data. It's unimportant to preserve the old buffer
