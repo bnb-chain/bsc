@@ -23,6 +23,7 @@ import (
 	"math"
 	"math/big"
 	"slices"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -575,6 +576,7 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 			blobFeeU256, _ := uint256.FromBig(blobFee)
 			if st.evm.Context.BlockNumber.Uint64() == 81150557 {
 				log.Error("check value in execute 2 before AddBalance", "blobFeeU256", blobFeeU256, "st.state.TxIndex()", st.state.TxIndex(), "st.state.GetBalance(consensus.SystemAddress)", st.state.GetBalance(consensus.SystemAddress))
+				time.Sleep(100 * time.Millisecond)
 			}
 			st.state.AddBalance(consensus.SystemAddress, blobFeeU256, tracing.BalanceIncreaseRewardTransactionFee)
 			if st.evm.Context.BlockNumber.Uint64() == 81150557 {
