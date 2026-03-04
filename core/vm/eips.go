@@ -209,7 +209,7 @@ func opTload(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]by
 
 // opTstore implements TSTORE opcode
 func opTstore(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
-	if interpreter.evm.readOnly {
+	if interpreter.readOnly {
 		return nil, ErrWriteProtection
 	}
 	loc := scope.Stack.pop()
