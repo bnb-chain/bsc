@@ -370,6 +370,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			// - DATADIR/triedb/verkle.journal
 			TrieJournalDirectory: stack.ResolvePath("triedb"),
 			StateSizeTracking:    config.EnableStateSizeTracking,
+
+			StatelessSelfValidation: config.StatelessSelfValidation,
+			EnableWitnessStats:      config.EnableWitnessStats,
 		}
 	)
 	if config.DisableTxIndexer {
