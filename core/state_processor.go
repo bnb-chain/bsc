@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -187,9 +186,9 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	if err != nil {
 		return nil, err
 	}
-	if blockNumber.Uint64() == debugTargetBlock {
-		os.Exit(0)
-	}
+	//if blockNumber.Uint64() == debugTargetBlock {
+	//	os.Exit(0)
+	//}
 	for _, receipt := range receipts {
 		allLogs = append(allLogs, receipt.Logs...)
 	}
