@@ -123,6 +123,11 @@ type EVM struct {
 	// jumpDests stores results of JUMPDEST analysis.
 	jumpDests JumpDestCache
 
+	// readOnly is a call-stack property set by STATICCALL and inherited by all
+	// descendants. It must live on EVM (not interpreter) since the EVM may swap
+	// interpreter implementations during execution.
+	readOnly bool
+
 	// global (to this context) ethereum virtual machine used throughout
 	// the execution of the tx
 	interpreter *EVMInterpreter
