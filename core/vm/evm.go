@@ -112,11 +112,6 @@ type EVM struct {
 	// abort is used to abort the EVM calling operations
 	abort atomic.Bool
 
-	// readOnly is a call-stack property set by STATICCALL and inherited by all
-	// descendants. It must live on EVM (not interpreter) since the EVM may swap
-	// interpreter implementations during execution.
-	readOnly bool
-
 	// callGasTemp holds the gas available for the current call. This is needed because the
 	// available gas is calculated in gasCall* according to the 63/64 rule and later
 	// applied in opCall*.
@@ -127,6 +122,11 @@ type EVM struct {
 
 	// jumpDests stores results of JUMPDEST analysis.
 	jumpDests JumpDestCache
+
+	// readOnly is a call-stack property set by STATICCALL and inherited by all
+	// descendants. It must live on EVM (not interpreter) since the EVM may swap
+	// interpreter implementations during execution.
+	readOnly bool
 
 	// global (to this context) ethereum virtual machine used throughout
 	// the execution of the tx
