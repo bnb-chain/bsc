@@ -1778,3 +1778,91 @@ func TestOpSwap2Swap1Dup3SubSwap2Dup3GtPush2(t *testing.T) {
 	require.Equal(t, pc1, pc2)
 	require.Equal(t, scope2.Memory.Data(), scope1.Memory.Data())
 }
+
+// TestSuperInstructionMaxStackBoundary verifies that super-instructions enforce
+// the same stack overflow behavior as their raw opcode sequences at the EVM
+// stack limit (1024). This is a regression test for a consensus-safety bug where
+// fused instructions used net-effect maxStack instead of the tightest
+// intermediate bound, allowing execution to succeed where raw semantics would
+// fail with ErrStackOverflow.
+func TestSuperInstructionMaxStackBoundary(t *testing.T) {
+	baseTbl := newCancunInstructionSet()
+	optTbl := createOptimizedOpcodeTable(copyJumpTable(&baseTbl))
+
+	type seqEntry struct {
+		name    string
+		superOp OpCode
+		rawOps  []OpCode
+	}
+
+	cases := []seqEntry{
+		// Originally too permissive (optimized succeeded where raw failed)
+		{"Push2Jump", Push2Jump, []OpCode{PUSH2, JUMP}},
+		{"Push2JumpI", Push2JumpI, []OpCode{PUSH2, JUMPI}},
+		{"Push1Add", Push1Add, []OpCode{PUSH1, ADD}},
+		{"Push1Shl", Push1Shl, []OpCode{PUSH1, SHL}},
+		{"Dup2LT", Dup2LT, []OpCode{DUP2, LT}},
+		{"JumpIfZero", JumpIfZero, []OpCode{ISZERO, PUSH2, JUMPI}},
+		{"IsZeroPush2", IsZeroPush2, []OpCode{ISZERO, PUSH2}},
+		{"Dup3And", Dup3And, []OpCode{DUP3, AND}},
+		{"Dup2MStorePush1Add", Dup2MStorePush1Add, []OpCode{DUP2, MSTORE, PUSH1, ADD}},
+		{"Dup1Push4EqPush2", Dup1Push4EqPush2, []OpCode{DUP1, PUSH4, EQ, PUSH2}},
+		// Originally too restrictive (optimized failed where raw succeeded)
+		{"AndDup2AddSwap1Dup2LT", AndDup2AddSwap1Dup2LT, []OpCode{AND, DUP2, ADD, SWAP1, DUP2, LT}},
+		{"Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT", Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT,
+			[]OpCode{SWAP1, PUSH1, DUP1, NOT, SWAP2, ADD, AND, DUP2, ADD, SWAP1, DUP2, LT}},
+		{"Swap2Swap1Dup3SubSwap2Dup3GtPush2", Swap2Swap1Dup3SubSwap2Dup3GtPush2,
+			[]OpCode{SWAP2, SWAP1, DUP3, SUB, SWAP2, DUP3, GT, PUSH2}},
+		{"SHRSHRDup1MulDup1", SHRSHRDup1MulDup1, []OpCode{SHR, SHR, DUP1, MUL, DUP1}},
+		{"SubSLTIsZeroPush2", SubSLTIsZeroPush2, []OpCode{SUB, SLT, ISZERO, PUSH2}},
+		{"Push1CalldataloadPush1ShrDup1Push4GtPush2", Push1CalldataloadPush1ShrDup1Push4GtPush2,
+			[]OpCode{PUSH1, CALLDATALOAD, PUSH1, SHR, DUP1, PUSH4, GT, PUSH2}},
+		// Already correct (included as guards)
+		{"Push1Push1", Push1Push1, []OpCode{PUSH1, PUSH1}},
+		{"Push1Dup1", Push1Dup1, []OpCode{PUSH1, DUP1}},
+		{"Push1Push1Push1SHLSub", Push1Push1Push1SHLSub, []OpCode{PUSH1, PUSH1, PUSH1, SHL, SUB}},
+		{"Dup11MulDup3SubMulDup1", Dup11MulDup3SubMulDup1, []OpCode{DUP11, MUL, DUP3, SUB, MUL, DUP1}},
+		{"Swap1Dup2", Swap1Dup2, []OpCode{SWAP1, DUP2}},
+		{"Swap3PopPopPop", Swap3PopPopPop, []OpCode{SWAP3, POP, POP, POP}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Compute the tightest maxStack across the raw opcode sequence.
+			// At each step, the interpreter checks: currentStackLen > op.maxStack.
+			// We track the cumulative stack delta to translate each raw op's
+			// constraint back to the initial stack length.
+			tightest := int(params.StackLimit) + 1
+			delta := 0
+			for _, op := range tc.rawOps {
+				baseOp := baseTbl[op]
+				require.NotNilf(t, baseOp, "base op %s not found", op)
+				// Raw constraint: (initialStack + delta) <= baseOp.maxStack
+				// => initialStack <= baseOp.maxStack - delta
+				constraint := baseOp.maxStack - delta
+				if constraint < tightest {
+					tightest = constraint
+				}
+				// Derive push count: maxStack = StackLimit + pops - pushes
+				// => pushes = StackLimit + pops - maxStack
+				pops := baseOp.minStack
+				pushes := int(params.StackLimit) + pops - baseOp.maxStack
+				delta += pushes - pops
+			}
+			// Cap at physical stack limit (intermediate checks can't be tighter
+			// than the stack itself).
+			if tightest > int(params.StackLimit) {
+				tightest = int(params.StackLimit)
+			}
+
+			optOp := optTbl[tc.superOp]
+			require.NotNilf(t, optOp, "optimized op %s not found", tc.superOp)
+
+			if optOp.maxStack != tightest {
+				t.Errorf("%s: optimized maxStack (%d) != tightest intermediate "+
+					"raw constraint (%d); consensus divergence at stack boundary",
+					tc.name, optOp.maxStack, tightest)
+			}
+		})
+	}
+}
