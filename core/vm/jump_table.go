@@ -1116,8 +1116,8 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 	tbl[AndSwap1PopSwap2Swap1] = &operation{
 		execute:     opAndSwap1PopSwap2Swap1,
 		constantGas: 4*GasFastestStep + GasQuickStep,
-		minStack:    minStack(2, 0),
-		maxStack:    maxStack(2, 0),
+		minStack:    minStack(5, 0),
+		maxStack:    maxStack(1, 0),
 	}
 
 	tbl[Swap2Swap1PopJump] = &operation{
@@ -1138,7 +1138,7 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 		execute:     opPopSwap2Swap1Pop,
 		constantGas: 2*GasFastestStep + 2*GasQuickStep,
 		minStack:    minStack(4, 4),
-		maxStack:    maxStack(4, 4),
+		maxStack:    maxStack(1, 0),
 	}
 
 	tbl[Push2Jump] = &operation{
@@ -1186,22 +1186,22 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 	tbl[Swap1Pop] = &operation{
 		execute:     opSwap1Pop,
 		constantGas: GasFastestStep + GasQuickStep,
-		minStack:    minStack(1, 0),
-		maxStack:    maxStack(1, 0),
+		minStack:    minStack(2, 0),
+		maxStack:    maxStack(0, 0),
 	}
 
 	tbl[PopJump] = &operation{
 		execute:     opPopJump,
 		constantGas: GasQuickStep + GasMidStep,
-		minStack:    minStack(1, 0),
-		maxStack:    maxStack(1, 0),
+		minStack:    minStack(2, 0),
+		maxStack:    maxStack(1, 0), // tightest intermediate: PUSH2 at stack S-2 requires S <= 1025
 	}
 
 	tbl[Pop2] = &operation{
 		execute:     opPop2,
 		constantGas: 2 * GasQuickStep,
 		minStack:    minStack(2, 0),
-		maxStack:    maxStack(2, 0),
+		maxStack:    maxStack(1, 0), // tightest intermediate: PUSH2 at stack S-2 requires S <= 1025
 	}
 
 	tbl[Swap2Swap1] = &operation{
@@ -1215,7 +1215,7 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 		execute:     opSwap2Pop,
 		constantGas: GasFastestStep + GasQuickStep,
 		minStack:    minStack(3, 2),
-		maxStack:    maxStack(3, 2),
+		maxStack:    maxStack(3, 3),
 	}
 
 	tbl[Dup2LT] = &operation{
@@ -1272,14 +1272,14 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 	tbl[AndDup2AddSwap1Dup2LT] = &operation{
 		execute:     opAndDup2AddSwap1Dup2LT,
 		constantGas: 6 * GasFastestStep,
-		minStack:    minStack(0, 3),
+		minStack:    minStack(3, 0),
 		maxStack:    maxStack(0, 0), // tightest intermediate: DUP2 at stack S-1 requires S <= 1024
 	}
 
 	tbl[Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT] = &operation{
 		execute:     opSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT,
 		constantGas: 12 * GasFastestStep,
-		minStack:    minStack(1, 4),
+		minStack:    minStack(2, 4),
 		maxStack:    maxStack(0, 2), // tightest intermediate: DUP1 at stack S+1 requires S <= 1022
 	}
 
@@ -1308,7 +1308,7 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 		execute:     opSHRSHRDup1MulDup1,
 		constantGas: 4*GasFastestStep + GasFastStep,
 		minStack:    minStack(3, 0),
-		maxStack:    maxStack(0, 0), // tightest intermediate: DUP1 at stack S-2 requires S <= 1025 (capped 1024)
+		maxStack:    maxStack(1, 0), // tightest intermediate: DUP1 at stack S-2 requires S <= 1025
 	}
 
 	tbl[Swap3PopPopPop] = &operation{
@@ -1322,7 +1322,7 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 		execute:     opSubSLTIsZeroPush2,
 		constantGas: 4 * GasFastestStep,
 		minStack:    minStack(3, 0),
-		maxStack:    maxStack(0, 0), // tightest intermediate: PUSH2 at stack S-2 requires S <= 1025 (capped 1024)
+		maxStack:    maxStack(1, 0), // tightest intermediate: PUSH2 at stack S-2 requires S <= 1025
 	}
 
 	tbl[Dup11MulDup3SubMulDup1] = &operation{
