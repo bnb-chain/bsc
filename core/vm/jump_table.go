@@ -1194,14 +1194,14 @@ func createOptimizedOpcodeTable(tbl *JumpTable) *JumpTable {
 		execute:     opPopJump,
 		constantGas: GasQuickStep + GasMidStep,
 		minStack:    minStack(2, 0),
-		maxStack:    maxStack(1, 0), // tightest intermediate: PUSH2 at stack S-2 requires S <= 1025
+		maxStack:    maxStack(1, 0),
 	}
 
 	tbl[Pop2] = &operation{
 		execute:     opPop2,
 		constantGas: 2 * GasQuickStep,
 		minStack:    minStack(2, 0),
-		maxStack:    maxStack(1, 0), // tightest intermediate: PUSH2 at stack S-2 requires S <= 1025
+		maxStack:    maxStack(1, 0),
 	}
 
 	tbl[Swap2Swap1] = &operation{
