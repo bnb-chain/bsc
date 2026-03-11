@@ -228,7 +228,12 @@ func (s *Snapshot) updateAttestation(header *types.Header, chainConfig *params.C
 	// Two scenarios for s.Attestation being nil:
 	// 1) The first attestation is assembled.
 	// 2) The snapshot on disk is missing, prompting the creation of a new snapshot using `newSnapshot`.
-	if s.Attestation != nil && attestation.Data.SourceNumber+1 != attestation.Data.TargetNumber {
+	// Post-Pasteur, consecutive voting blocks are N apart, so the adjacency check uses voteInterval.
+	voteInterval := uint64(1)
+	if chainConfig.IsPasteur(header.Number, header.Time) {
+		voteInterval = pasteurVoteInterval
+	}
+	if s.Attestation != nil && attestation.Data.SourceNumber+voteInterval != attestation.Data.TargetNumber {
 		s.Attestation.TargetNumber = attestation.Data.TargetNumber
 		s.Attestation.TargetHash = attestation.Data.TargetHash
 	} else {

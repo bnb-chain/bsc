@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 type finalizedHeaderChain struct {
@@ -173,3 +174,245 @@ func TestGetFinalizedHeaderUsesParentSnapshotForFastFinalityQuorum(t *testing.T)
 }
 
 var _ consensus.ChainHeaderReader = (*finalizedHeaderChain)(nil)
+
+func TestGetVoteInterval(t *testing.T) {
+	pasteurTime := uint64(1000)
+	cfg := &params.ChainConfig{
+		ChainID:     big.NewInt(56),
+		LondonBlock: big.NewInt(0),
+		PasteurTime: &pasteurTime,
+		Parlia:      &params.ParliaConfig{},
+	}
+	genesis := &types.Header{Number: big.NewInt(0)}
+	engine := New(cfg, nil, nil, genesis.Hash())
+
+	prePasteur := &types.Header{Number: big.NewInt(10), Time: 999}
+	if got := engine.GetVoteInterval(prePasteur); got != 1 {
+		t.Fatalf("expected vote interval 1 pre-Pasteur, got %d", got)
+	}
+	if !engine.IsVotingBlock(prePasteur) {
+		t.Fatal("pre-Pasteur: every block should be a voting block")
+	}
+
+	postPasteur := &types.Header{Number: big.NewInt(10), Time: 1000}
+	if got := engine.GetVoteInterval(postPasteur); got != pasteurVoteInterval {
+		t.Fatalf("expected vote interval %d post-Pasteur, got %d", pasteurVoteInterval, got)
+	}
+}
+
+func TestIsVotingBlock(t *testing.T) {
+	pasteurTime := uint64(0)
+	cfg := &params.ChainConfig{
+		ChainID:     big.NewInt(56),
+		LondonBlock: big.NewInt(0),
+		PasteurTime: &pasteurTime,
+		Parlia:      &params.ParliaConfig{},
+	}
+	genesis := &types.Header{Number: big.NewInt(0)}
+	engine := New(cfg, nil, nil, genesis.Hash())
+
+	tests := []struct {
+		blockNum uint64
+		isVoting bool
+	}{
+		{0, true},
+		{1, false},
+		{2, true},
+		{3, false},
+		{4, true},
+		{100, true},
+		{101, false},
+	}
+	for _, tc := range tests {
+		header := &types.Header{Number: big.NewInt(int64(tc.blockNum)), Time: 1}
+		got := engine.IsVotingBlock(header)
+		if got != tc.isVoting {
+			t.Errorf("IsVotingBlock(%d) = %v, want %v", tc.blockNum, got, tc.isVoting)
+		}
+	}
+}
+
+func TestGetAncestorGenerationDepthPasteur(t *testing.T) {
+	pasteurTime := uint64(0)
+	fermiTime := uint64(0)
+	cfg := &params.ChainConfig{
+		ChainID:     big.NewInt(56),
+		LondonBlock: big.NewInt(0),
+		FermiTime:   &fermiTime,
+		PasteurTime: &pasteurTime,
+		Parlia:      &params.ParliaConfig{},
+	}
+	genesis := &types.Header{Number: big.NewInt(0)}
+	engine := New(cfg, nil, nil, genesis.Hash())
+
+	header := &types.Header{Number: big.NewInt(10), Time: 1}
+	depth := engine.GetAncestorGenerationDepth(header)
+	if depth != pasteurVoteAncestorDepth {
+		t.Fatalf("expected ancestor depth %d for Pasteur, got %d", pasteurVoteAncestorDepth, depth)
+	}
+}
+
+func TestUpdateAttestationVoteInterval(t *testing.T) {
+	pasteurTime := uint64(0)
+	fermiTime := uint64(0)
+	cfg := &params.ChainConfig{
+		ChainID:     big.NewInt(56),
+		LondonBlock: big.NewInt(0),
+		LubanBlock:  big.NewInt(0),
+		FermiTime:   &fermiTime,
+		PasteurTime: &pasteurTime,
+		Parlia:      &params.ParliaConfig{},
+	}
+
+	makeHeaderWithAttestation := func(number uint64, attestation *types.VoteAttestation) *types.Header {
+		attBytes, err := rlp.EncodeToBytes(attestation)
+		if err != nil {
+			t.Fatalf("failed to encode attestation: %v", err)
+		}
+		extra := make([]byte, extraVanity+len(attBytes)+extraSeal)
+		copy(extra[extraVanity:], attBytes)
+		return &types.Header{
+			Number: big.NewInt(int64(number)),
+			Time:   1,
+			Extra:  extra,
+		}
+	}
+
+	// Case 1: consecutive voting blocks (source=2, target=4, gap=N=2) → full attestation replacement
+	snap := &Snapshot{
+		config:      cfg.Parlia,
+		EpochLength: 200,
+		Attestation: &types.VoteData{
+			SourceNumber: 0,
+			SourceHash:   common.Hash{0x01},
+			TargetNumber: 2,
+			TargetHash:   common.Hash{0x02},
+		},
+	}
+	header4 := makeHeaderWithAttestation(4, &types.VoteAttestation{
+		Data: &types.VoteData{
+			SourceNumber: 2,
+			SourceHash:   common.Hash{0x02},
+			TargetNumber: 4,
+			TargetHash:   common.Hash{0x04},
+		},
+	})
+	snap.updateAttestation(header4, cfg)
+	if snap.Attestation.SourceNumber != 2 || snap.Attestation.TargetNumber != 4 {
+		t.Fatalf("consecutive: expected attestation (source=2, target=4), got (source=%d, target=%d)",
+			snap.Attestation.SourceNumber, snap.Attestation.TargetNumber)
+	}
+
+	// Case 2: non-consecutive voting blocks (source=2, target=6, gap=4≠N=2) → only target advances
+	snap2 := &Snapshot{
+		config:      cfg.Parlia,
+		EpochLength: 200,
+		Attestation: &types.VoteData{
+			SourceNumber: 0,
+			SourceHash:   common.Hash{0x01},
+			TargetNumber: 2,
+			TargetHash:   common.Hash{0x02},
+		},
+	}
+	header6 := makeHeaderWithAttestation(6, &types.VoteAttestation{
+		Data: &types.VoteData{
+			SourceNumber: 2,
+			SourceHash:   common.Hash{0x02},
+			TargetNumber: 6,
+			TargetHash:   common.Hash{0x06},
+		},
+	})
+	snap2.updateAttestation(header6, cfg)
+	if snap2.Attestation.SourceNumber != 0 {
+		t.Fatalf("non-consecutive: expected source=0 (not advanced), got %d", snap2.Attestation.SourceNumber)
+	}
+	if snap2.Attestation.TargetNumber != 6 {
+		t.Fatalf("non-consecutive: expected target=6, got %d", snap2.Attestation.TargetNumber)
+	}
+}
+
+func TestGetFinalizedHeaderWithVoteInterval(t *testing.T) {
+	pasteurTime := uint64(0)
+	cfg := &params.ChainConfig{
+		ChainID:     big.NewInt(56),
+		LondonBlock: big.NewInt(0),
+		PlatoBlock:  big.NewInt(0),
+		PasteurTime: &pasteurTime,
+		Parlia:      &params.ParliaConfig{},
+	}
+
+	genesis := &types.Header{Number: big.NewInt(0)}
+	block1 := &types.Header{Number: big.NewInt(1), Time: 1, ParentHash: genesis.Hash()}
+
+	block2 := &types.Header{Number: big.NewInt(2), Time: 1, ParentHash: block1.Hash()}
+	block3 := &types.Header{Number: big.NewInt(3), Time: 1, ParentHash: block2.Hash()}
+	block4 := &types.Header{Number: big.NewInt(4), Time: 1, ParentHash: block3.Hash()}
+
+	chain := &finalizedHeaderChain{
+		cfg:     cfg,
+		current: block4,
+		byHash: map[common.Hash]*types.Header{
+			genesis.Hash(): genesis,
+			block1.Hash():  block1,
+			block2.Hash():  block2,
+			block3.Hash():  block3,
+			block4.Hash():  block4,
+		},
+		byNumber: map[uint64]*types.Header{
+			0: genesis,
+			1: block1,
+			2: block2,
+			3: block3,
+			4: block4,
+		},
+	}
+
+	// Snapshot at block 4: justified=2, finalized=0
+	snap4 := &Snapshot{
+		config:     cfg.Parlia,
+		Number:     4,
+		Hash:       block4.Hash(),
+		Validators: makeValidatorSet(3),
+		Attestation: &types.VoteData{
+			SourceNumber: 0, SourceHash: genesis.Hash(),
+			TargetNumber: 2, TargetHash: block2.Hash(),
+		},
+		Recents:          make(map[uint64]common.Address),
+		RecentForkHashes: make(map[uint64]string),
+	}
+	snap3 := &Snapshot{
+		config:     cfg.Parlia,
+		Number:     3,
+		Hash:       block3.Hash(),
+		Validators: makeValidatorSet(3),
+		Attestation: &types.VoteData{
+			SourceNumber: 0, SourceHash: genesis.Hash(),
+			TargetNumber: 2, TargetHash: block2.Hash(),
+		},
+		Recents:          make(map[uint64]common.Address),
+		RecentForkHashes: make(map[uint64]string),
+	}
+
+	engine := New(cfg, nil, nil, genesis.Hash())
+	engine.recentSnaps.Add(block4.Hash(), snap4)
+	engine.recentSnaps.Add(block3.Hash(), snap3)
+	engine.VotePool = &fixedVotePool{n: 2}
+
+	// block4 is a voting block and justified+N==4: early finality should promote block2
+	finalizedHeader := engine.GetFinalizedHeader(chain, block4)
+	if finalizedHeader == nil {
+		t.Fatal("expected finalized header, got nil")
+	}
+	if finalizedHeader.Number.Uint64() != 2 {
+		t.Fatalf("expected finalized block 2, got %d", finalizedHeader.Number.Uint64())
+	}
+
+	// block3 is not a voting block: should fall back to snapshot source (block 0)
+	finalizedFromBlock3 := engine.GetFinalizedHeader(chain, block3)
+	if finalizedFromBlock3 == nil {
+		t.Fatal("expected finalized header from block3, got nil")
+	}
+	if finalizedFromBlock3.Number.Uint64() != 0 {
+		t.Fatalf("expected finalized block 0 from non-voting block, got %d", finalizedFromBlock3.Number.Uint64())
+	}
+}

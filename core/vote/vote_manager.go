@@ -162,6 +162,11 @@ func (voteManager *VoteManager) loop() {
 				continue
 			}
 
+			if !voteManager.engine.IsVotingBlock(curHead) {
+				log.Debug("skip voting for non-voting block", "blockNumber", curHead.Number.Uint64())
+				continue
+			}
+
 			// Vote for curBlockHeader block.
 			vote := &types.VoteData{
 				TargetNumber: curHead.Number.Uint64(),
@@ -180,12 +185,13 @@ func (voteManager *VoteManager) loop() {
 				}
 
 				if p, ok := voteManager.engine.(*parlia.Parlia); ok {
-					// Approximately equal to the block interval of next block, except for the switch block.
 					blockInterval, err := p.BlockInterval(voteManager.chain, curHead)
 					if err != nil {
 						log.Debug("failed to get BlockInterval when voting")
 					}
-					voteAssembledTime := time.UnixMilli(int64((curHead.MilliTimestamp() + p.GetAncestorGenerationDepth(curHead)*blockInterval)))
+					// BEP-667: votes for curHead will be included in the next voting block,
+					// which is voteInterval blocks away, not GetAncestorGenerationDepth blocks away.
+					voteAssembledTime := time.UnixMilli(int64((curHead.MilliTimestamp() + p.GetVoteInterval(curHead)*blockInterval)))
 					timeForBroadcast := 50 * time.Millisecond // enough to broadcast a vote in the same region
 					if time.Now().Add(timeForBroadcast).After(voteAssembledTime) {
 						log.Warn("too late to vote", "Head.Time(Millisecond)", curHead.MilliTimestamp(), "Now(Millisecond)", time.Now().UnixMilli())
@@ -214,28 +220,35 @@ func (voteManager *VoteManager) loop() {
 			}
 
 			// check the latest justified block, which indicating the stability of the network
-			curJustifiedNumber, _, err := voteManager.engine.GetJustifiedNumberAndHash(voteManager.chain, []*types.Header{curHead})
+			voteInterval := voteManager.engine.GetVoteInterval(curHead)
+			curJustifiedNumber, curJustifiedHash, err := voteManager.engine.GetJustifiedNumberAndHash(voteManager.chain, []*types.Header{curHead})
 			if err == nil && curJustifiedNumber != 0 {
-				if curJustifiedNumber+1 != curHead.Number.Uint64() {
-					log.Debug("not justified", "blockNumber", curHead.Number.Uint64()-1)
+				if curJustifiedNumber+voteInterval != curHead.Number.Uint64() {
+					log.Debug("not justified", "blockNumber", curHead.Number.Uint64()-voteInterval)
 					notJustified.Inc(1)
 				} else {
-					parent := voteManager.chain.GetHeaderByHash(curHead.ParentHash)
-					if parent != nil {
-						if parent.Difficulty.Cmp(diffInTurn) == 0 {
+					// BEP-667: the justified block is curJustifiedNumber (= curHead - voteInterval),
+					// not curHead's direct parent. Use the justified block's header for the
+					// inTurn check so the metric remains meaningful after the Pasteur fork.
+					justifiedHeader := voteManager.chain.GetHeaderByHash(curJustifiedHash)
+					if justifiedHeader != nil {
+						if justifiedHeader.Difficulty.Cmp(diffInTurn) == 0 {
 							inTurnJustified.Inc(1)
 						} else {
-							log.Debug("not in turn block justified", "blockNumber", parent.Number.Int64(), "blockHash", parent.Hash())
+							log.Debug("not in turn block justified", "blockNumber", justifiedHeader.Number.Int64(), "blockHash", justifiedHeader.Hash())
 							notInTurnJustified.Inc(1)
 						}
 
-						lastJustifiedNumber, _, err := voteManager.engine.GetJustifiedNumberAndHash(voteManager.chain, []*types.Header{parent})
-						if err == nil {
-							if lastJustifiedNumber == 0 || lastJustifiedNumber+1 == curJustifiedNumber {
-								continuousJustified.Inc(1)
-							} else {
-								log.Debug("not continuous block justified", "lastJustified", lastJustifiedNumber, "curJustified", curJustifiedNumber)
-								notContinuousJustified.Inc(1)
+						parent := voteManager.chain.GetHeaderByHash(curHead.ParentHash)
+						if parent != nil {
+							lastJustifiedNumber, _, err := voteManager.engine.GetJustifiedNumberAndHash(voteManager.chain, []*types.Header{parent})
+							if err == nil {
+								if lastJustifiedNumber == 0 || lastJustifiedNumber+voteInterval == curJustifiedNumber {
+									continuousJustified.Inc(1)
+								} else {
+									log.Debug("not continuous block justified", "lastJustified", lastJustifiedNumber, "curJustified", curJustifiedNumber)
+									notContinuousJustified.Inc(1)
+								}
 							}
 						}
 					}

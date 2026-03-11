@@ -166,4 +166,8 @@ type PoSA interface {
 	VerifyVote(chain ChainHeaderReader, vote *types.VoteEnvelope) error
 	IsActiveValidatorAt(chain ChainHeaderReader, header *types.Header, checkVoteKeyFn func(bLSPublicKey *types.BLSPublicKey) bool) bool
 	NextProposalBlock(chain ChainHeaderReader, header *types.Header, proposer common.Address) (uint64, uint64, error)
+	// IsVotingBlock returns whether validators vote on the given block (BEP-667).
+	IsVotingBlock(header *types.Header) bool
+	// GetVoteInterval returns N, the number of blocks between consecutive voting blocks (BEP-667).
+	GetVoteInterval(header *types.Header) uint64
 }

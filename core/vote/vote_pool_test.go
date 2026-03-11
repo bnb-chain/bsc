@@ -98,6 +98,11 @@ func (mip *mockInvalidPOSA) VerifyVote(chain consensus.ChainHeaderReader, vote *
 	return nil
 }
 
+func (mp *mockPOSA) IsVotingBlock(header *types.Header) bool             { return true }
+func (mp *mockPOSA) GetVoteInterval(header *types.Header) uint64         { return 1 }
+func (mip *mockInvalidPOSA) IsVotingBlock(header *types.Header) bool     { return true }
+func (mip *mockInvalidPOSA) GetVoteInterval(header *types.Header) uint64 { return 1 }
+
 func (mp *mockPOSA) IsActiveValidatorAt(chain consensus.ChainHeaderReader, header *types.Header, checkVoteKeyFn func(bLSPublicKey *types.BLSPublicKey) bool) bool {
 	return true
 }

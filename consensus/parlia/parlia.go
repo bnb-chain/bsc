@@ -87,6 +87,10 @@ const (
 	finalityRewardInterval = 200
 
 	kAncestorGenerationDepth = 3
+
+	// BEP-667: vote interval N and ancestor search depth (in voting-block units).
+	pasteurVoteInterval      uint64 = 2
+	pasteurVoteAncestorDepth uint64 = 2
 )
 
 var (
@@ -477,6 +481,11 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 	if attestation == nil {
 		return nil
 	}
+
+	if !p.IsVotingBlock(header) {
+		return errors.New("non-voting block must not carry vote attestation")
+	}
+
 	if attestation.Data == nil {
 		return errors.New("invalid attestation, vote data is nil")
 	}
@@ -514,10 +523,14 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 	match := false
 	ancestor := parent
 	ancestorParents := trimParents(parents)
-	for range p.GetAncestorGenerationDepth(header) {
+	for votingLeft := p.GetAncestorGenerationDepth(header); votingLeft > 0; {
 		if targetNumber == ancestor.Number.Uint64() && targetHash == ancestor.Hash() {
 			match = true
 			break
+		}
+
+		if p.IsVotingBlock(ancestor) {
+			votingLeft--
 		}
 
 		ancestor, err = p.getParent(chain, ancestor, ancestorParents)
@@ -528,6 +541,11 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 	}
 	if !match {
 		return fmt.Errorf("invalid attestation, target mismatch, real block: %d, hash: %s", targetNumber, targetHash)
+	}
+
+	// Use ancestor's own header time so pre-Pasteur blocks are accepted correctly at fork boundaries.
+	if !p.IsVotingBlock(ancestor) {
+		return errors.New("invalid attestation, target is not a voting block")
 	}
 
 	// === Step 4: Check quorum ===
@@ -1054,6 +1072,10 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 		return nil
 	}
 
+	if !p.IsVotingBlock(header) {
+		return nil
+	}
+
 	// === Step 2: Find target header with quorum votes ===
 	parent := chain.GetHeaderByHash(header.ParentHash)
 	if parent == nil {
@@ -1068,16 +1090,19 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 		targetHeader           = parent
 		targetHeaderParentSnap *Snapshot
 	)
-	for range p.GetAncestorGenerationDepth(header) {
-		snap, err := p.snapshot(chain, targetHeader.Number.Uint64()-1, targetHeader.ParentHash, nil)
-		if err != nil {
-			return err
-		}
-		votes = p.VotePool.FetchVotesByBlockHash(targetHeader.Hash(), justifiedBlockNumber)
-		quorum := cmath.CeilDiv(len(snap.Validators)*2, 3)
-		if len(votes) >= quorum {
-			targetHeaderParentSnap = snap
-			break
+	for votingLeft := p.GetAncestorGenerationDepth(header); votingLeft > 0; {
+		if p.IsVotingBlock(targetHeader) {
+			snap, err := p.snapshot(chain, targetHeader.Number.Uint64()-1, targetHeader.ParentHash, nil)
+			if err != nil {
+				return err
+			}
+			votes = p.VotePool.FetchVotesByBlockHash(targetHeader.Hash(), justifiedBlockNumber)
+			quorum := cmath.CeilDiv(len(snap.Validators)*2, 3)
+			if len(votes) >= quorum {
+				targetHeaderParentSnap = snap
+				break
+			}
+			votingLeft--
 		}
 
 		targetHeader = chain.GetHeaderByHash(targetHeader.ParentHash)
@@ -1625,6 +1650,10 @@ func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteE
 	if header.Number.Uint64() != targetNumber {
 		log.Warn("unexpected target number", "expect", header.Number.Uint64(), "real", targetNumber)
 		return errors.New("target number mismatch")
+	}
+
+	if !p.IsVotingBlock(header) {
+		return errors.New("vote target is not a voting block")
 	}
 
 	justifiedBlockNumber, justifiedBlockHash, err := p.GetJustifiedNumberAndHash(chain, []*types.Header{header})
@@ -2302,11 +2331,11 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 	currentJustifiedHash := snap.Attestation.TargetHash
 	currentJustifiedNumber := snap.Attestation.TargetNumber
 	// Try to check if currentJustifiedNumber can become finalized by checking VotePool.
-	// We only need to check currentJustifiedNumber + 1, since currentJustifiedNumber is already the latest justified.
-	if p.VotePool != nil && currentJustifiedNumber == header.Number.Uint64()-1 {
+	voteInterval := p.GetVoteInterval(header)
+	if p.VotePool != nil && p.IsVotingBlock(header) &&
+		currentJustifiedNumber+voteInterval == header.Number.Uint64() {
 		parentSnap, err := p.snapshot(chain, header.Number.Uint64()-1, header.ParentHash, nil)
 		if err == nil {
-			// Check if the next block (direct child) has reached quorum in VotePool
 			votes := p.VotePool.FetchVotesByBlockHash(header.Hash(), currentJustifiedNumber)
 			quorum := cmath.CeilDiv(len(parentSnap.Validators)*2, 3)
 
@@ -2497,12 +2526,28 @@ func (p *Parlia) detectNewVersionWithFork(chain consensus.ChainHeaderReader, hea
 	}
 }
 
-// TODO(Nathan): use kAncestorGenerationDepth directly instead of this func once Fermi hardfork passed
+// GetVoteInterval returns N, the vote interval (BEP-667). Pre-Pasteur: 1, Pasteur+: pasteurVoteInterval.
+func (p *Parlia) GetVoteInterval(header *types.Header) uint64 {
+	if p.chainConfig.IsPasteur(header.Number, header.Time) {
+		return pasteurVoteInterval
+	}
+	return 1
+}
+
+// IsVotingBlock returns whether the given block is a voting block (blockNumber % N == 0).
+func (p *Parlia) IsVotingBlock(header *types.Header) bool {
+	return header.Number.Uint64()%p.GetVoteInterval(header) == 0
+}
+
+// GetAncestorGenerationDepth returns how many voting-block ancestors to search for quorum votes.
+// Pre-Fermi: 1, Fermi: 3, Pasteur: pasteurVoteAncestorDepth.
 func (p *Parlia) GetAncestorGenerationDepth(header *types.Header) uint64 {
+	if p.chainConfig.IsPasteur(header.Number, header.Time) {
+		return pasteurVoteAncestorDepth
+	}
 	if p.chainConfig.IsFermi(header.Number, header.Time) {
 		return kAncestorGenerationDepth
 	}
-
 	return 1
 }
 
