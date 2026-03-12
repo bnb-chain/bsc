@@ -2229,7 +2229,7 @@ func (p *Parlia) applyTransaction(
 	}
 	*txs = append(*txs, expectedTx)
 	// increment nonce only when tx is included
-	state.SetNonce(msg.From, state.GetNonce(msg.From)+1, tracing.NonceChangeEoACall)
+	state.SetNonce(msg.From, nonce+1, tracing.NonceChangeEoACall)
 	var root []byte
 	if p.chainConfig.IsByzantium(header.Number) {
 		state.Finalise(true)
