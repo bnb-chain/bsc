@@ -191,7 +191,7 @@ func (voteManager *VoteManager) loop() {
 					}
 					// BEP-667: votes for curHead will be included in the next voting block,
 					// which is voteInterval blocks away, not GetAncestorGenerationDepth blocks away.
-					voteAssembledTime := time.UnixMilli(int64((curHead.MilliTimestamp() + p.GetVoteInterval(curHead)*blockInterval)))
+					voteAssembledTime := time.UnixMilli(int64(curHead.MilliTimestamp() + p.GetVoteInterval(curHead)*blockInterval))
 					timeForBroadcast := 50 * time.Millisecond // enough to broadcast a vote in the same region
 					if time.Now().Add(timeForBroadcast).After(voteAssembledTime) {
 						log.Warn("too late to vote", "Head.Time(Millisecond)", curHead.MilliTimestamp(), "Now(Millisecond)", time.Now().UnixMilli())
