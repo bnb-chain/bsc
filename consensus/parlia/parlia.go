@@ -2191,7 +2191,6 @@ func (p *Parlia) applyTransaction(
 		*receivedTxs = (*receivedTxs)[1:]
 	}
 	state.SetTxContext(expectedTx.Hash(), len(*txs))
-	*txs = append(*txs, expectedTx)
 
 	// Create a new context to be used in the EVM environment
 	context := core.NewEVMBlockContext(header, chainContext, nil)
@@ -2228,6 +2227,9 @@ func (p *Parlia) applyTransaction(
 	if err != nil {
 		return err
 	}
+	*txs = append(*txs, expectedTx)
+	// increment nonce only when tx is included
+	state.SetNonce(msg.From, state.GetNonce(msg.From)+1, tracing.NonceChangeEoACall)
 	var root []byte
 	if p.chainConfig.IsByzantium(header.Number) {
 		state.Finalise(true)
@@ -2530,8 +2532,6 @@ func applyMessage(
 	} else {
 		state.ClearAccessList()
 	}
-	// Increment the nonce for the next transaction
-	state.SetNonce(msg.From, state.GetNonce(msg.From)+1, tracing.NonceChangeEoACall)
 
 	ret, returnGas, err := evm.Call(
 		msg.From,
