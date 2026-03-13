@@ -1,6 +1,6 @@
 # Changelog
 ## v1.7.1
-v1.7.1 is a preview release, which implements BEPs defined in [Osaka/Mendel](https://github.com/allformless/BEPs/blob/mendle-bep-list/BEPs/BEP-658.md).
+v1.7.1 is for BSC Chapel testnet [Osaka/Mendel hardfork](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-658.md),the hard fork time is 2026-03-24 02:30:00 AM UTC
 
 ### FEATURE
 - [feat: support bid block size check for BEP-655](https://github.com/bnb-chain/bsc/pull/3529)
