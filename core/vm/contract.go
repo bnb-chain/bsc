@@ -25,7 +25,7 @@ import (
 	"github.com/holiman/uint256"
 )
 
-const codeBitmapCacheSize = 2000
+const codeBitmapCacheSize = 2048
 
 var (
 	codeBitmapCache = lru.NewCache[common.Hash, BitVec](codeBitmapCacheSize)

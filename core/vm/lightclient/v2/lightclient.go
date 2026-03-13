@@ -143,6 +143,9 @@ func DecodeConsensusState(input []byte) (ConsensusState, error) {
 	if inputLen <= minimumLength || (inputLen-minimumLength)%singleValidatorBytesLength != 0 {
 		return ConsensusState{}, fmt.Errorf("expected input size %d+%d*N, actual input size: %d", minimumLength, singleValidatorBytesLength, inputLen)
 	}
+	if inputLen > maxConsensusStateLength {
+		return ConsensusState{}, fmt.Errorf("consensus state too large: %d bytes exceeds maximum %d (max 99 validators)", inputLen, maxConsensusStateLength)
+	}
 
 	pos := uint64(0)
 	chainID := string(bytes.Trim(input[pos:pos+chainIDLength], "\x00"))

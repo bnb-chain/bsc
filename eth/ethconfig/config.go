@@ -42,11 +42,13 @@ import (
 
 // FullNodeGPO contains default gasprice oracle settings for full node.
 var FullNodeGPO = gasprice.Config{
-	Blocks:          20,
-	Percentile:      60,
-	MaxPrice:        gasprice.DefaultMaxPrice,
-	OracleThreshold: 1000,
-	IgnorePrice:     gasprice.DefaultIgnorePrice,
+	Blocks:           20,
+	Percentile:       60,
+	MaxHeaderHistory: 1024,
+	MaxBlockHistory:  1024,
+	MaxPrice:         gasprice.DefaultMaxPrice,
+	OracleThreshold:  1000,
+	IgnorePrice:      gasprice.DefaultIgnorePrice,
 }
 
 // Defaults contains default settings for use on the BSC main net.
@@ -72,8 +74,8 @@ var Defaults = Config{
 	RPCGasCap:              50000000,
 	RPCEVMTimeout:          5 * time.Second,
 	GPO:                    FullNodeGPO,
-	TxSyncDefaultTimeout:   20 * time.Second,
-	TxSyncMaxTimeout:       1 * time.Minute,
+	TxSyncDefaultTimeout:   5 * time.Second,
+	TxSyncMaxTimeout:       10 * time.Second,
 	RPCTxFeeCap:            1,                                         // 1 ether
 	BlobExtraReserve:       params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
 	EnableOpcodeOptimizing: false,
@@ -233,6 +235,9 @@ type Config struct {
 
 	// OverrideBPO2 (TODO: remove after the fork)
 	OverrideBPO2 *uint64 `toml:",omitempty"`
+
+	// OverridePasteur (TODO: remove after the fork)
+	OverridePasteur *uint64 `toml:",omitempty"`
 
 	// OverrideVerkle (TODO: remove after the fork)
 	OverrideVerkle *uint64 `toml:",omitempty"`

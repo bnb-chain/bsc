@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/node"
+	"github.com/ethereum/go-ethereum/params"
 )
 
 // TestTransactionRollbackBehavior tests that calling Rollback on the simulated backend doesn't prevent subsequent
@@ -53,6 +54,12 @@ func TestTransactionRollbackBehavior(t *testing.T) {
 
 	if pendingStateHasTx(client, btx0) || pendingStateHasTx(client, tx0) || pendingStateHasTx(client, tx1) {
 		t.Fatalf("all transactions were not rolled back")
+	}
+
+	// BEP-657: blob txs only allowed in blocks where N % BlobEligibleBlockInterval == 0.
+	// Advance block number so the next commit lands on a blob-eligible block.
+	for i := uint64(1); i < params.BlobEligibleBlockInterval; i++ {
+		sim.Commit()
 	}
 
 	btx2 := testSendSignedTx(t, testKey, sim, true, 0)

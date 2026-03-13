@@ -598,6 +598,9 @@ func (api *API) IntermediateRoots(ctx context.Context, hash common.Hash, config 
 		}
 
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
+		if !beforeSystemTx {
+			msg.SkipTransactionChecks = true
+		}
 		statedb.SetTxContext(tx.Hash(), i)
 		if _, err := core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(msg.GasLimit)); err != nil {
 			log.Warn("Tracing intermediate roots did not complete", "txindex", i, "txhash", tx.Hash(), "err", err)
@@ -800,6 +803,9 @@ txloop:
 
 		// Generate the next state snapshot fast without tracing
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
+		if !beforeSystemTx {
+			msg.SkipTransactionChecks = true
+		}
 		statedb.SetTxContext(tx.Hash(), i)
 		if _, err := core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(msg.GasLimit)); err != nil {
 			failed = err
@@ -905,6 +911,9 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 
 		// Prepare the transaction for un-traced execution
 		msg, _ := core.TransactionToMessage(tx, signer, block.BaseFee())
+		if !beforeSystemTx {
+			msg.SkipTransactionChecks = true
+		}
 		if txHash != (common.Hash{}) && tx.Hash() != txHash {
 			// Process the tx to update state, but don't trace it.
 			_, err := core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(msg.GasLimit))
@@ -1189,6 +1198,7 @@ func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *cor
 	// Run the transaction with tracing enabled.
 	if isSystemTx {
 		intrinsicGas, _ = core.IntrinsicGas(message.Data, message.AccessList, message.SetCodeAuthorizations, false, true, true, false)
+		message.SkipTransactionChecks = true
 	}
 
 	// Call Prepare to clear out the statedb access list
@@ -1301,6 +1311,18 @@ func overrideConfig(original *params.ChainConfig, override *params.ChainConfig) 
 	}
 	if timestamp := override.MendelTime; timestamp != nil {
 		copy.MendelTime = timestamp
+		canon = false
+	}
+	if timestamp := override.BPO1Time; timestamp != nil {
+		copy.BPO1Time = timestamp
+		canon = false
+	}
+	if timestamp := override.BPO2Time; timestamp != nil {
+		copy.BPO2Time = timestamp
+		canon = false
+	}
+	if timestamp := override.PasteurTime; timestamp != nil {
+		copy.PasteurTime = timestamp
 		canon = false
 	}
 	if timestamp := override.VerkleTime; timestamp != nil {

@@ -1778,3 +1778,111 @@ func TestOpSwap2Swap1Dup3SubSwap2Dup3GtPush2(t *testing.T) {
 	require.Equal(t, pc1, pc2)
 	require.Equal(t, scope2.Memory.Data(), scope1.Memory.Data())
 }
+
+// TestSuperInstructionStackBoundary verifies that every super-instruction in
+// createOptimizedOpcodeTable has the same minStack and maxStack as the tightest
+// intermediate constraint across its raw opcode sequence. A super-instruction
+// skips per-step stack checks, so its bounds must reflect the strictest
+// individual requirement; otherwise execution can diverge from the raw sequence
+// at stack boundaries (underflow or overflow), which is a consensus bug.
+//
+// For each raw op at cumulative stack delta d, the constraint on the initial
+// stack depth s is:
+//
+//	minStack[op] - d <= s <= maxStack[op] - d
+//
+// The tightest bounds are the max of all lower constraints and the min of all
+// upper constraints across the sequence.
+func TestSuperInstructionStackBoundary(t *testing.T) {
+	// log.SetDefault(log.NewLogger(log.NewTerminalHandlerWithLevel(os.Stderr, log.LevelDebug, true)))
+	baseTbl := newCancunInstructionSet()
+	optTbl := createOptimizedOpcodeTable(copyJumpTable(&baseTbl))
+
+	type seqEntry struct {
+		name    string
+		superOp OpCode
+		rawOps  []OpCode
+	}
+
+	// Ordered as they appear in createOptimizedOpcodeTable, excluding Nop.
+	cases := []seqEntry{
+		{"AndSwap1PopSwap2Swap1", AndSwap1PopSwap2Swap1, []OpCode{AND, SWAP1, POP, SWAP2, SWAP1}},
+		{"Swap2Swap1PopJump", Swap2Swap1PopJump, []OpCode{SWAP2, SWAP1, POP, JUMP}},
+		{"Swap1PopSwap2Swap1", Swap1PopSwap2Swap1, []OpCode{SWAP1, POP, SWAP2, SWAP1}},
+		{"PopSwap2Swap1Pop", PopSwap2Swap1Pop, []OpCode{POP, SWAP2, SWAP1, POP}},
+		{"Push2Jump", Push2Jump, []OpCode{PUSH2, JUMP}},
+		{"Push2JumpI", Push2JumpI, []OpCode{PUSH2, JUMPI}},
+		{"Push1Push1", Push1Push1, []OpCode{PUSH1, PUSH1}},
+		{"Push1Add", Push1Add, []OpCode{PUSH1, ADD}},
+		{"Push1Shl", Push1Shl, []OpCode{PUSH1, SHL}},
+		{"Push1Dup1", Push1Dup1, []OpCode{PUSH1, DUP1}},
+		{"Swap1Pop", Swap1Pop, []OpCode{SWAP1, POP}},
+		{"PopJump", PopJump, []OpCode{POP, JUMP}},
+		{"Pop2", Pop2, []OpCode{POP, POP}},
+		{"Swap2Swap1", Swap2Swap1, []OpCode{SWAP2, SWAP1}},
+		{"Swap2Pop", Swap2Pop, []OpCode{SWAP2, POP}},
+		{"Dup2LT", Dup2LT, []OpCode{DUP2, LT}},
+		{"JumpIfZero", JumpIfZero, []OpCode{ISZERO, PUSH2, JUMPI}},
+		{"IsZeroPush2", IsZeroPush2, []OpCode{ISZERO, PUSH2}},
+		{"Dup2MStorePush1Add", Dup2MStorePush1Add, []OpCode{DUP2, MSTORE, PUSH1, ADD}},
+		{"Dup1Push4EqPush2", Dup1Push4EqPush2, []OpCode{DUP1, PUSH4, EQ, PUSH2}},
+		{"Push1CalldataloadPush1ShrDup1Push4GtPush2", Push1CalldataloadPush1ShrDup1Push4GtPush2,
+			[]OpCode{PUSH1, CALLDATALOAD, PUSH1, SHR, DUP1, PUSH4, GT, PUSH2}},
+		{"Push1Push1Push1SHLSub", Push1Push1Push1SHLSub, []OpCode{PUSH1, PUSH1, PUSH1, SHL, SUB}},
+		{"AndDup2AddSwap1Dup2LT", AndDup2AddSwap1Dup2LT, []OpCode{AND, DUP2, ADD, SWAP1, DUP2, LT}},
+		{"Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT", Swap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT,
+			[]OpCode{SWAP1, PUSH1, DUP1, NOT, SWAP2, ADD, AND, DUP2, ADD, SWAP1, DUP2, LT}},
+		{"Dup3And", Dup3And, []OpCode{DUP3, AND}},
+		{"Swap2Swap1Dup3SubSwap2Dup3GtPush2", Swap2Swap1Dup3SubSwap2Dup3GtPush2,
+			[]OpCode{SWAP2, SWAP1, DUP3, SUB, SWAP2, DUP3, GT, PUSH2}},
+		{"Swap1Dup2", Swap1Dup2, []OpCode{SWAP1, DUP2}},
+		{"SHRSHRDup1MulDup1", SHRSHRDup1MulDup1, []OpCode{SHR, SHR, DUP1, MUL, DUP1}},
+		{"Swap3PopPopPop", Swap3PopPopPop, []OpCode{SWAP3, POP, POP, POP}},
+		{"SubSLTIsZeroPush2", SubSLTIsZeroPush2, []OpCode{SUB, SLT, ISZERO, PUSH2}},
+		{"Dup11MulDup3SubMulDup1", Dup11MulDup3SubMulDup1, []OpCode{DUP11, MUL, DUP3, SUB, MUL, DUP1}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Simulate the raw sequence to find the tightest stack bounds.
+			// delta tracks the cumulative stack depth change from the initial depth.
+			// For each op, translate its per-step constraint to the initial depth:
+			//   lower: initial >= baseOp.minStack - delta  (take maximum across steps)
+			//   upper: initial <= baseOp.maxStack - delta  (take minimum across steps)
+			tightestMinStack := 0                             // sentinel: smaller than any real constraint
+			tightestMaxStack := int(params.StackLimit) + 1024 // sentinel: larger than any real constraint
+			delta := 0
+			for _, op := range tc.rawOps {
+				baseOp := baseTbl[op]
+				require.NotNilf(t, baseOp, "base op %s not found", op)
+
+				if c := baseOp.minStack - delta; c > tightestMinStack {
+					tightestMinStack = c
+				}
+				if c := baseOp.maxStack - delta; c < tightestMaxStack {
+					tightestMaxStack = c
+				}
+
+				// Advance delta by net stack effect (pushes - pops).
+				// Derive pushes from: maxStack = StackLimit + pops - pushes
+				pops := baseOp.minStack
+				pushes := int(params.StackLimit) + pops - baseOp.maxStack
+				delta += pushes - pops
+			}
+
+			optOp := optTbl[tc.superOp]
+			require.NotNilf(t, optOp, "optimized op %s not found", tc.superOp)
+
+			if optOp.minStack != tightestMinStack {
+				t.Errorf("minStack %d != tightest raw constraint %d; super-instruction is more permissive than raw sequence at stack lower boundary",
+					optOp.minStack, tightestMinStack)
+			}
+			if optOp.maxStack != tightestMaxStack {
+				t.Errorf("maxStack %d != tightest raw constraint %d; super-instruction is more permissive than raw sequence at stack upper boundary",
+					optOp.maxStack, tightestMaxStack)
+			}
+
+			// log.Debug(tc.name, "minStack", tightestMinStack, "maxStack", tightestMaxStack)
+		})
+	}
+}
