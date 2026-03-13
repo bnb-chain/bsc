@@ -304,10 +304,10 @@ var (
 		LorentzTime:         newUint64(1744097580), // 2025-04-08 07:33:00 AM UTC
 		MaxwellTime:         newUint64(1748243100), // 2025-05-26 07:05:00 AM UTC
 		FermiTime:           newUint64(1762741500), // 2025-11-10 02:25:00 AM UTC
-		OsakaTime:           nil,
-		MendelTime:          nil,
-		BPO1Time:            nil, // will be skipped in BSC
-		BPO2Time:            nil, // will be skipped in BSC
+		OsakaTime:           newUint64(1774319400), // 2026-03-24 02:30:00 AM UTC
+		MendelTime:          newUint64(1774319400), // 2026-03-24 02:30:00 AM UTC
+		BPO1Time:            nil,                   // will be skipped in BSC
+		BPO2Time:            nil,                   // will be skipped in BSC
 		AmsterdamTime:       nil,
 		PasteurTime:         nil,
 
