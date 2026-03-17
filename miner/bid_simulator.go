@@ -22,7 +22,6 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -1082,15 +1081,8 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 		}
 
 		// Validate blob sidecar commitment hashes and KZG proofs.
-		if sidecar := tx.BlobTxSidecar(); sidecar != nil {
-			if err := sidecar.ValidateBlobCommitmentHashes(tx.BlobHashes()); err != nil {
-				return err
-			}
-			for i := range sidecar.Blobs {
-				if err := kzg4844.VerifyBlobProof(&sidecar.Blobs[i], sidecar.Commitments[i], sidecar.Proofs[i]); err != nil {
-					return fmt.Errorf("invalid blob %d proof: %v", i, err)
-				}
-			}
+		if err := txpool.ValidateBlobTx(tx, env.header, nil); err != nil {
+			return err
 		}
 
 		// Checking against blob gas limit: It's kind of ugly to perform this check here, but there
