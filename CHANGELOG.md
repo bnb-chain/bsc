@@ -1,4 +1,12 @@
 # Changelog
+## v1.7.2
+v1.7.2 is for BSC Mainnet [Osaka/Mendel hardfork](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-658.md)
+
+### BUGFIX
+[\#3597](https://github.com/bnb-chain/bsc/pull/3597) miner: support blob sidecar validation for bids
+[\#3590](https://github.com/bnb-chain/bsc/pull/3590) eth: delayed p2p message decoding
+[\#3601](https://github.com/bnb-chain/bsc/pull/3601) core: reject future chasing heads for DA checks
+
 ## v1.7.1
 v1.7.1 is for BSC Chapel testnet [Osaka/Mendel hardfork](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-658.md),the hard fork time is 2026-03-24 02:30:00 AM UTC
 
