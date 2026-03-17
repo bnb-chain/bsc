@@ -314,15 +314,21 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		return h.chain.InsertChain(blocks)
 	}
 
-	broadcastBlockWithCheck := func(block *types.Block, propagate bool) {
+	broadcastBlockWithCheck := func(peer string, block *types.Block, propagate bool) {
 		if propagate {
 			if !(block.Header().WithdrawalsHash == nil && block.Withdrawals() == nil) &&
 				!(block.Header().EmptyWithdrawalsHash() && block.Withdrawals() != nil && len(block.Withdrawals()) == 0) {
-				log.Error("Propagated block has invalid withdrawals")
+				log.Error("Propagated block has invalid withdrawals", "peer", peer)
 				return
 			}
 			if err := core.IsDataAvailable(h.chain, block); err != nil {
-				log.Error("Propagating block with invalid sidecars", "number", block.Number(), "hash", block.Hash(), "err", err)
+				var peerAddr string
+				if p := h.peers.peer(peer); p != nil {
+					if addr := p.RemoteAddr(); addr != nil {
+						peerAddr = addr.String()
+					}
+				}
+				log.Error("Propagating block with invalid sidecars", "number", block.Number(), "hash", block.Hash(), "peer", peer[:16], "peerAddr", peerAddr, "err", err)
 				return
 			}
 		}
