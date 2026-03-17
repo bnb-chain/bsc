@@ -22,6 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -1079,6 +1080,19 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 		if sc.Version == types.BlobSidecarVersion1 {
 			return errors.New("cell proof is not supported yet")
 		}
+
+		// Validate blob sidecar commitment hashes and KZG proofs.
+		if sidecar := tx.BlobTxSidecar(); sidecar != nil {
+			if err := sidecar.ValidateBlobCommitmentHashes(tx.BlobHashes()); err != nil {
+				return err
+			}
+			for i := range sidecar.Blobs {
+				if err := kzg4844.VerifyBlobProof(&sidecar.Blobs[i], sidecar.Commitments[i], sidecar.Proofs[i]); err != nil {
+					return fmt.Errorf("invalid blob %d proof: %v", i, err)
+				}
+			}
+		}
+
 		// Checking against blob gas limit: It's kind of ugly to perform this check here, but there
 		// isn't really a better place right now. The blob gas limit is checked at block validation time
 		// and not during execution. This means core.ApplyTransaction will not return an error if the
