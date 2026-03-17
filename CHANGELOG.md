@@ -1,4 +1,8 @@
 # Changelog
+## v1.6.8
+### BUGFIX
+[\#3597](https://github.com/bnb-chain/bsc/pull/3597) miner: support blob sidecar validation for bids
+
 ## v1.6.7
 ### BUGFIX
 crypto/secp256k1: fix coordinate check
