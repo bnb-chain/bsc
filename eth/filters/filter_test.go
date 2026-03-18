@@ -376,6 +376,18 @@ func testFilters(t *testing.T, history uint64, noHistory bool) {
 			},
 		*/
 		{
+			f:   sys.NewRangeFilter(int64(rpc.SafeBlockNumber), int64(rpc.LatestBlockNumber), nil, nil, false),
+			err: "safe header not found",
+		},
+		{
+			f:   sys.NewRangeFilter(int64(rpc.SafeBlockNumber), int64(rpc.SafeBlockNumber), nil, nil, false),
+			err: "safe header not found",
+		},
+		{
+			f:   sys.NewRangeFilter(int64(rpc.LatestBlockNumber), int64(rpc.SafeBlockNumber), nil, nil, false),
+			err: "safe header not found",
+		},
+		{
 			f:   sys.NewRangeFilter(int64(rpc.PendingBlockNumber), int64(rpc.PendingBlockNumber), nil, nil, false),
 			err: errPendingLogsUnsupported.Error(),
 		},
