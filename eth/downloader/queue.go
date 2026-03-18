@@ -796,6 +796,7 @@ func (q *queue) DeliverBodies(id string, hashes eth.BlockBodyHashes, bodies []et
 	var txLists [][]*types.Transaction
 	var uncleLists [][]*types.Header
 	var withdrawalLists [][]*types.Withdrawal
+	var sidecarLists []types.BlobSidecars
 
 	validate := func(index int, header *types.Header) error {
 		if hashes.TransactionRoots[index] != header.TxHash {
@@ -838,12 +839,19 @@ func (q *queue) DeliverBodies(id string, hashes eth.BlockBodyHashes, bodies []et
 		} else {
 			withdrawalLists = append(withdrawalLists, nil)
 		}
-
-		// do some sanity check for sidecar
-		for _, sidecar := range bodies[index].Sidecars {
-			if err := sidecar.SanityCheck(header.Number, header.Hash()); err != nil {
-				return err
+		if bodies[index].Sidecars != nil {
+			sidecars, err := bodies[index].Sidecars.Items()
+			if err != nil {
+				return fmt.Errorf("%w: bad sidecars: %v", errInvalidBody, err)
 			}
+			for _, sidecar := range sidecars {
+				if err := sidecar.SanityCheck(header.Number, header.Hash()); err != nil {
+					return err
+				}
+			}
+			sidecarLists = append(sidecarLists, sidecars)
+		} else {
+			sidecarLists = append(sidecarLists, nil)
 		}
 		return nil
 	}
@@ -852,7 +860,7 @@ func (q *queue) DeliverBodies(id string, hashes eth.BlockBodyHashes, bodies []et
 		result.Transactions = txLists[index]
 		result.Uncles = uncleLists[index]
 		result.Withdrawals = withdrawalLists[index]
-		result.Sidecars = bodies[index].Sidecars
+		result.Sidecars = sidecarLists[index]
 		result.SetBodyDone()
 	}
 	nresults := len(hashes.TransactionRoots)

@@ -298,8 +298,8 @@ type BlockBodiesResponse []BlockBody
 type BlockBody struct {
 	Transactions rlp.RawList[*types.Transaction]
 	Uncles       rlp.RawList[*types.Header]
-	Withdrawals  *rlp.RawList[*types.Withdrawal] `rlp:"optional"`
-	Sidecars     types.BlobSidecars              `rlp:"optional"`
+	Withdrawals  *rlp.RawList[*types.Withdrawal]  `rlp:"optional"`
+	Sidecars     *rlp.RawList[*types.BlobSidecar] `rlp:"optional"`
 }
 
 // GetReceiptsRequest represents a block receipts query.

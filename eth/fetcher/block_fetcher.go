@@ -614,7 +614,15 @@ func (f *BlockFetcher) loop() {
 								f.dropPeer(peer)
 								return
 							}
-							sidecars[i] = body.Sidecars
+							if body.Sidecars != nil {
+								if sidecars[i], err = body.Sidecars.Items(); err != nil {
+									log.Debug("Failed to decode block body sidecars", "peer", peer, "err", err)
+									f.dropPeer(peer)
+									return
+								}
+							} else {
+								sidecars[i] = nil
+							}
 						}
 						f.FilterBodies(peer, txs, uncles, sidecars, time.Now())
 
