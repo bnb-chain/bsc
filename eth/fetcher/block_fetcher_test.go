@@ -34,9 +34,32 @@ import (
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/triedb"
 )
+
+func encodeRL[T any](slice []T) rlp.RawList[T] {
+	rl, err := rlp.EncodeToRawList(slice)
+	if err != nil {
+		panic(err)
+	}
+	return rl
+}
+
+func encodeBody(b *types.Block) eth.BlockBody {
+	return eth.BlockBody{
+		Transactions: encodeRL([]*types.Transaction(b.Transactions())),
+		Uncles:       encodeRL(b.Uncles()),
+	}
+}
+
+func encodeBodyFromParts(txs []*types.Transaction, uncles []*types.Header) eth.BlockBody {
+	return eth.BlockBody{
+		Transactions: encodeRL(txs),
+		Uncles:       encodeRL(uncles),
+	}
+}
 
 var (
 	testdb      = rawdb.NewMemoryDatabase()
@@ -227,19 +250,16 @@ func (f *fetcherTester) makeBodyFetcher(peer string, blocks map[common.Hash]*typ
 			}
 		}
 		// Return on a new thread
-		bodies := make([]*eth.BlockBody, len(transactions))
+		bodies := make(eth.BlockBodiesResponse, len(transactions))
 		for i, txs := range transactions {
-			bodies[i] = &eth.BlockBody{
-				Transactions: txs,
-				Uncles:       uncles[i],
-			}
+			bodies[i] = encodeBodyFromParts(txs, uncles[i])
 		}
 		req := &eth.Request{
 			Peer: peer,
 		}
 		res := &eth.Response{
 			Req:  req,
-			Res:  (*eth.BlockBodiesResponse)(&bodies),
+			Res:  &bodies,
 			Time: drift,
 			Done: make(chan error, 1), // Ignore the returned status
 		}
@@ -1001,17 +1021,14 @@ func newMockBodyRequester(delay time.Duration) *mockBodyRequester {
 func (m *mockBodyRequester) requestBodies(hashes []common.Hash, ch chan *eth.Response) (*eth.Request, error) {
 	go func() {
 		time.Sleep(m.delay)
-		var bodies []*eth.BlockBody
+		var bodies eth.BlockBodiesResponse
 		for _, hash := range hashes {
 			if body, ok := m.bodies[hash]; ok {
-				bodies = append(bodies, &eth.BlockBody{
-					Transactions: body.Transactions,
-					Uncles:       body.Uncles,
-				})
+				bodies = append(bodies, encodeBodyFromParts(body.Transactions, body.Uncles))
 			}
 		}
 		ch <- &eth.Response{
-			Res: (*eth.BlockBodiesResponse)(&bodies),
+			Res: &bodies,
 		}
 	}()
 	return &eth.Request{}, nil
@@ -1100,18 +1117,15 @@ func TestBlockFetcherMultiplePeers(t *testing.T) {
 		bodyRequester := func(hashes []common.Hash, sink chan *eth.Response) (*eth.Request, error) {
 			go func() {
 				// Return requested body
-				bodies := make([]*eth.BlockBody, 0)
+				var bodies eth.BlockBodiesResponse
 				for _, hash := range hashes {
 					if hash == block.Hash() {
-						bodies = append(bodies, &eth.BlockBody{
-							Transactions: block.Transactions(),
-							Uncles:       block.Uncles(),
-						})
+						bodies = append(bodies, encodeBody(block))
 					}
 				}
 				res := &eth.Response{
 					Req:  &eth.Request{},
-					Res:  (*eth.BlockBodiesResponse)(&bodies),
+					Res:  &bodies,
 					Done: make(chan error, 1),
 				}
 				sink <- res
@@ -1195,18 +1209,15 @@ func TestBlockFetcherMultiplePeers(t *testing.T) {
 		bodyRequester := func(hashes []common.Hash, sink chan *eth.Response) (*eth.Request, error) {
 			go func() {
 				// Return requested body
-				bodies := make([]*eth.BlockBody, 0)
+				var bodies eth.BlockBodiesResponse
 				for _, hash := range hashes {
 					if hash == newBlock.Hash() {
-						bodies = append(bodies, &eth.BlockBody{
-							Transactions: newBlock.Transactions(),
-							Uncles:       newBlock.Uncles(),
-						})
+						bodies = append(bodies, encodeBody(newBlock))
 					}
 				}
 				res := &eth.Response{
 					Req:  &eth.Request{},
-					Res:  (*eth.BlockBodiesResponse)(&bodies),
+					Res:  &bodies,
 					Done: make(chan error, 1),
 				}
 				sink <- res
