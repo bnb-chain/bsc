@@ -128,7 +128,7 @@ func (f *fetcherTester) verifyHeader(header *types.Header) error {
 }
 
 // broadcastBlock is a nop placeholder for the block broadcasting.
-func (f *fetcherTester) broadcastBlock(block *types.Block, propagate bool) {
+func (f *fetcherTester) broadcastBlock(peer string, block *types.Block, propagate bool) {
 }
 
 // chainHeight retrieves the current height (block number) of the chain.
@@ -1047,7 +1047,7 @@ func TestBlockFetcherMultiplePeers(t *testing.T) {
 			return nil
 		},
 		// broadcastBlock
-		func(block *types.Block, propagate bool) {},
+		func(peer string, block *types.Block, propagate bool) {},
 		// chainHeight - returns the height of the highest block in the chain
 		func() uint64 {
 			var maxHeight uint64 = 0
@@ -1268,7 +1268,7 @@ func TestQuickBlockFetching(t *testing.T) {
 	fetcher := NewBlockFetcher(
 		blockRetriever.getBlock,
 		func(header *types.Header) error { return nil },
-		func(block *types.Block, propagate bool) {},
+		func(peer string, block *types.Block, propagate bool) {},
 		func() uint64 { return 10 }, // Current height
 		func() uint64 { return 5 },  // Finalized height
 		func(blocks types.Blocks) (int, error) {
