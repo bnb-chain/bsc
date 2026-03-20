@@ -1396,9 +1396,6 @@ func (bc *BlockChain) SnapSyncCommitHead(hash common.Hash) error {
 
 // UpdateChasingHead update remote best chain head, used by DA check now.
 func (bc *BlockChain) UpdateChasingHead(head *types.Header) {
-	if head == nil || head.Number == nil {
-		return
-	}
 	if head.Time > uint64(time.Now().Unix()) {
 		log.Warn("Ignoring future chasing head", "number", head.Number, "time", head.Time)
 		return
