@@ -12,10 +12,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/bits-and-blooms/bitset"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/willf/bitset"
 )
 
 // follow define in parlia
