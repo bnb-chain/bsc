@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/internal/version"
 	"github.com/ethereum/go-ethereum/log"
+	"golang.org/x/sync/errgroup"
 )
 
 // MevRunning return true if mev is running.
@@ -78,6 +80,33 @@ func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common
 	}
 
 	return bid.Hash(), nil
+}
+
+const maxBlobValConcurrency = 3
+
+// startAsyncBlobValidation launches a single background goroutine that validates
+// all blob transactions in the bid (field checks + KZG proof verification).
+func startAsyncBlobValidation(bid *types.Bid) {
+	var blobTxs []*types.Transaction
+	for _, tx := range bid.Txs {
+		if tx.Type() == types.BlobTxType {
+			blobTxs = append(blobTxs, tx)
+		}
+	}
+	if len(blobTxs) == 0 {
+		return
+	}
+	bid.BlobValResult = make(chan error, 1)
+	go func() {
+		var g errgroup.Group
+		g.SetLimit(maxBlobValConcurrency)
+		for _, tx := range blobTxs {
+			g.Go(func() error {
+				return txpool.ValidateBlobTx(tx, nil, nil)
+			})
+		}
+		bid.BlobValResult <- g.Wait()
+	}()
 }
 
 func (miner *Miner) MevParams() *types.MevParams {
