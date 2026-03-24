@@ -17,6 +17,7 @@
 package filtermaps
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -76,7 +77,7 @@ type FilterMaps struct {
 	closeWg        sync.WaitGroup
 	history        uint64
 	hashScheme     bool // use hashdb-safe delete range method
-	exportFileName string
+	checkpointFile string
 	Params
 
 	db ethdb.KeyValueStore
@@ -216,9 +217,10 @@ type Config struct {
 	History  uint64 // number of historical blocks to index
 	Disabled bool   // disables indexing completely
 
-	// This option enables the checkpoint JSON file generator.
-	// If set, the given file will be updated with checkpoint information.
-	ExportFileName string
+	// CheckpointFileName specifies the path to the checkpoint JSON file.
+	// If set, checkpoints will be loaded from this file during initialization,
+	// and the file will be updated with new checkpoint information during operation.
+	CheckpointFileName string
 
 	// expect trie nodes of hash based state scheme in the filtermaps key range;
 	// use safe iterator based implementation of DeleteRange that skips them
@@ -245,7 +247,7 @@ func NewFilterMaps(db ethdb.KeyValueStore, initView *ChainView, historyCutoff, f
 		disabled:          config.Disabled,
 		hashScheme:        config.HashScheme,
 		disabledCh:        make(chan struct{}),
-		exportFileName:    config.ExportFileName,
+		checkpointFile:    config.CheckpointFileName,
 		Params:            params,
 		targetView:        initView,
 		indexedView:       initView,
@@ -370,6 +372,17 @@ func (f *FilterMaps) isShuttingDown() bool {
 	}
 }
 
+// loadCustomCheckpoints safely loads and parses a checkpoint list from JSON data.
+// Returns an empty list if the data is invalid or parsing fails.
+func loadCustomCheckpoints(data []byte) checkpointList {
+	var result checkpointList
+	if err := json.Unmarshal(data, &result); err != nil {
+		log.Warn("Failed to parse custom checkpoint file", "error", err)
+		return nil
+	}
+	return result
+}
+
 // init initializes an empty log index according to the current targetView.
 func (f *FilterMaps) init() error {
 	// ensure that there is no remaining data in the filter maps key range
@@ -380,18 +393,37 @@ func (f *FilterMaps) init() error {
 	f.indexLock.Lock()
 	defer f.indexLock.Unlock()
 
+	// Load checkpoints from custom file if specified
+	if f.checkpointFile != "" {
+		if data, err := os.ReadFile(f.checkpointFile); err == nil {
+			if customCheckpoints := loadCustomCheckpoints(data); len(customCheckpoints) > 0 {
+				checkpoints = append(checkpoints, customCheckpoints)
+				log.Info("Loaded custom checkpoints from file",
+					"path", f.checkpointFile,
+					"count", len(customCheckpoints))
+			}
+		}
+	}
+
 	var bestIdx, bestLen int
 	for idx, checkpointList := range checkpoints {
 		// binary search for the last matching epoch head
 		min, max := 0, len(checkpointList)
 		for min < max {
 			mid := (min + max + 1) / 2
-			cp := checkpointList[mid-1]
-			if cp.BlockNumber <= f.targetView.HeadNumber() && f.targetView.BlockId(cp.BlockNumber) == cp.BlockId {
+			if checkpointList[mid-1].BlockNumber <= f.targetView.HeadNumber() {
 				min = mid
 			} else {
 				max = mid - 1
 			}
+		}
+		if max == 0 {
+			continue
+		}
+		// verify the latest checkpoint within range
+		cp := checkpointList[max-1]
+		if f.targetView.BlockId(cp.BlockNumber) != cp.BlockId {
+			continue
 		}
 		if max > bestLen {
 			bestIdx, bestLen = idx, max
@@ -871,14 +903,14 @@ func (f *FilterMaps) exportCheckpoints() {
 	if epochCount == f.lastFinalEpoch {
 		return
 	}
-	w, err := os.Create(f.exportFileName)
+	w, err := os.Create(f.checkpointFile)
 	if err != nil {
-		log.Error("Error creating checkpoint export file", "name", f.exportFileName, "error", err)
+		log.Error("Error creating checkpoint export file", "name", f.checkpointFile, "error", err)
 		return
 	}
 	defer w.Close()
 
-	log.Info("Exporting log index checkpoints", "epochs", epochCount, "file", f.exportFileName)
+	log.Info("Exporting log index checkpoints", "epochs", epochCount, "file", f.checkpointFile)
 	w.WriteString("[\n")
 	comma := ","
 	for epoch := uint32(0); epoch < epochCount; epoch++ {

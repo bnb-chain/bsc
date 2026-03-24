@@ -1,4 +1,65 @@
 # Changelog
+## v1.7.1
+v1.7.1 is for BSC Chapel testnet [Osaka/Mendel hardfork](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-658.md),the hard fork time is 2026-03-24 02:30:00 AM UTC
+
+### FEATURE
+- [feat: support bid block size check for BEP-655](https://github.com/bnb-chain/bsc/pull/3529)
+- [feat: support mev bid gas check of bep 652](https://github.com/bnb-chain/bsc/pull/3528)
+- [eip4844.go: disable eip-7918 for bsc](https://github.com/bnb-chain/bsc/pull/3531)
+- [feat: implement BEP-657 - Limit Blob Transaction Inclusion by Block Number](https://github.com/bnb-chain/bsc/pull/3533)
+
+### BUGFIX
+- [core/types: fix typo in vote comparison (#3573)](https://github.com/bnb-chain/bsc/pull/3573)
+- [Fee history issue](https://github.com/bnb-chain/bsc/pull/3577)
+- [go.mod: upgrade otel to fix CVE-2026-24051](https://github.com/bnb-chain/bsc/pull/3554)
+- [fix: fix gaslimit check in trace api (#3580)](https://github.com/bnb-chain/bsc/pull/3580)
+- [miner: fix missing tcount increment in commitBlobTransaction (#3581)](https://github.com/bnb-chain/bsc/pull/3581)
+- [fix: superinstruction bad block (#3582)](https://github.com/bnb-chain/bsc/pull/3582)
+- [core/vm: align super-instruction minStack and maxStack bounds (#3584)](https://github.com/bnb-chain/bsc/pull/3584)
+- [rlp: finalize listIterator on parse error to prevent non-advancing loops (#3586)](https://github.com/bnb-chain/bsc/pull/3586)
+- [eth/protocols/snap: restore peers to idle pool on request revert (#3587)](https://github.com/bnb-chain/bsc/pull/3587)
+
+## v1.7.0
+v1.7.0-alpha is a preview release for upstream code sync, it catches up with [go-ethereum release [v1.16.7]](https://github.com/ethereum/go-ethereum/releases/tag/v1.16.7) and also include several bug fix and improvements.
+
+### Code Sync
+- [upstream: merge geth-v1.16.2 ～ geth-v1.16.7](https://github.com/bnb-chain/bsc/pull/3505)
+Key changes from the code sync include:
+  - Osaka:
+    - Implement EIP-7823 - Set upper bounds for MODEXP
+    - Implement EIP-7825 - Transaction Gas Limit Cap.
+    - Implement EIP-7883 - ModExp Gas Cost Increase.
+    - Implement EIP-7918 - Blob base fee bounded by execution cost.
+    - Implement EIP-7934 - RLP Execution Block Size Limit.
+    - Implement EIP-7939 - CLZ opcode.
+    - Implement EIP-7951 - Precompile for secp256r1 Curve Support.
+  - eth_sendRawTransactionSync: Synchronous transaction submission
+  - Performance Optimizations: Multiple improvements to enhance overall performance
+  - Code Refactoring: Major cleanup and improvements to components including:
+    - TriePrefetcher prefetch trie nodes in a account in parallel.
+    - Introduced a file-based state journal and refactored state history writes
+
+### FEATURE
+- [internal/ethapi: recover GetDiffAccounts and GetDiffAccountsWithScope](https://github.com/bnb-chain/bsc/pull/3516)
+
+### IMPROVEMENT
+- [miner: enable more prefetch threads in local mining mode](https://github.com/bnb-chain/bsc/pull/3496)
+- [miner/minerconfig: get defaultNoInterruptLeftOver automatically](https://github.com/bnb-chain/bsc/pull/3509)
+
+### BUGFIX
+- core/state: fix handleDestruction for fast node ([#3501](https://github.com/bnb-chain/bsc/pull/3501),[#3517](https://github.com/bnb-chain/bsc/pull/3517),[#3519](https://github.com/bnb-chain/bsc/pull/3519))
+- [fix: add back Contract CodeAddr for superinstruction](https://github.com/bnb-chain/bsc/pull/3502)
+- [fix: fix pruned node init filtermap err](https://github.com/bnb-chain/bsc/pull/3522)
+
+### Others
+- [ci: upgrade github actions to latest versions](https://github.com/bnb-chain/bsc/pull/3515)
+- [ci: ignore nancy failre of quic-go@v0.49.1](https://github.com/bnb-chain/bsc/pull/3512)
+
+## v1.6.7
+### BUGFIX
+crypto/secp256k1: fix coordinate check
+crypto/ecies: fix ECIES invalid-curve handling
+
 ## v1.6.6
 ### BUGFIX
 core/txpool: drop peers on invalid KZG proofs

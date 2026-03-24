@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/common/bitutil"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -127,9 +128,7 @@ func MergeBloom(receipts Receipts) Bloom {
 	for _, receipt := range receipts {
 		if len(receipt.Logs) != 0 {
 			bl := receipt.Bloom.Bytes()
-			for i := range bin {
-				bin[i] |= bl[i]
-			}
+			bitutil.ORBytes(bin[:], bin[:], bl)
 		}
 	}
 	return bin

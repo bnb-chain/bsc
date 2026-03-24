@@ -83,8 +83,9 @@ func TestExecutionSpecBlocktests(t *testing.T) {
 
 	// the deployment is different from go-ethereum
 	bt.skipLoad("^prague/eip2935_historical_block_hashes_from_state/contract_deployment/system_contract_deployment.json")
-	bt.skipLoad(".*prague/eip7251_consolidations/contract_deployment/system_contract_deployment.json")
-	bt.skipLoad(".*prague/eip7002_el_triggerable_withdrawals/contract_deployment/system_contract_deployment.json")
+	// These tests require us to handle scenarios where a system contract is not deployed at a fork
+	bt.skipLoad(".*prague/eip7251_consolidations/test_system_contract_deployment.json")
+	bt.skipLoad(".*prague/eip7002_el_triggerable_withdrawals/test_system_contract_deployment.json")
 
 	bt.walk(t, executionSpecBlockchainTestDir, func(t *testing.T, name string, test *BlockTest) {
 		execBlockTest(t, bt, test)

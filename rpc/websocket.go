@@ -61,7 +61,7 @@ func (s *Server) WebsocketHandler(allowedOrigins []string, messageSizeLimit int6
 			log.Debug("WebSocket upgrade failed", "err", err)
 			return
 		}
-		limit := int64(wsDefaultReadLimit)
+		limit := s.wsReadLimit
 		if messageSizeLimit > 0 {
 			limit = messageSizeLimit
 		}

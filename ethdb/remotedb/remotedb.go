@@ -182,6 +182,10 @@ func (db *Database) CleanBlock(ethdb.KeyValueStore, uint64) error {
 	panic("not supported")
 }
 
+func (db *Database) AncientBytes(kind string, id, offset, length uint64) ([]byte, error) {
+	panic("not supported")
+}
+
 func New(client *rpc.Client) ethdb.Database {
 	if client == nil {
 		return nil

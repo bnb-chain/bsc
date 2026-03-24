@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -260,6 +261,18 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		chainConfig.MendelTime = config.OverrideMendel
 		overrides.OverrideMendel = config.OverrideMendel
 	}
+	if config.OverrideBPO1 != nil {
+		chainConfig.BPO1Time = config.OverrideBPO1
+		overrides.OverrideBPO1 = config.OverrideBPO1
+	}
+	if config.OverrideBPO2 != nil {
+		chainConfig.BPO2Time = config.OverrideBPO2
+		overrides.OverrideBPO2 = config.OverrideBPO2
+	}
+	if config.OverridePasteur != nil {
+		chainConfig.PasteurTime = config.OverridePasteur
+		overrides.OverridePasteur = config.OverridePasteur
+	}
 	if config.OverrideVerkle != nil {
 		chainConfig.VerkleTime = config.OverrideVerkle
 		overrides.OverrideVerkle = config.OverrideVerkle
@@ -344,7 +357,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			StateScheme:           config.StateScheme,
 			PathSyncFlush:         config.PathSyncFlush,
 			JournalFilePath:       journalFilePath,
-			JournalFile:           config.JournalFileEnabled,
 			EnableIncr:            config.EnableIncrSnapshots,
 			IncrHistoryPath:       config.IncrSnapshotPath,
 			IncrHistory:           config.IncrSnapshotBlockInterval,
@@ -356,8 +368,16 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			TxLookupLimit:         int64(min(config.TransactionHistory, math.MaxInt64)),
 			VmConfig: vm.Config{
 				EnablePreimageRecording:   config.EnablePreimageRecording,
+				EnableWitnessStats:        config.EnableWitnessStats,
+				StatelessSelfValidation:   config.StatelessSelfValidation,
 				EnableOpcodeOptimizations: config.EnableOpcodeOptimizing,
 			},
+			// Enables file journaling for the trie database. The journal files will be stored
+			// within the data directory. The corresponding paths will be either:
+			// - DATADIR/triedb/merkle.journal
+			// - DATADIR/triedb/verkle.journal
+			TrieJournalDirectory: stack.ResolvePath("triedb"),
+			StateSizeTracking:    config.EnableStateSizeTracking,
 		}
 	)
 	if config.DisableTxIndexer {
@@ -381,6 +401,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if stack.Config().EnableDoubleSignMonitor {
 		bcOps = append(bcOps, core.EnableDoubleSignChecker)
 	}
+	// Override the chain config with provided settings.
 	options.Overrides = &overrides
 	eth.blockchain, err = core.NewBlockChain(chainDb, config.Genesis, eth.engine, options, bcOps...)
 	if err != nil {
@@ -388,11 +409,14 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 
 	// Initialize filtermaps log index.
+	// Auto-enable checkpoint file
+	checkpointFile := filepath.Join(stack.DataDir(), "geth", "filtermap_checkpoints.json")
+
 	fmConfig := filtermaps.Config{
-		History:        config.LogHistory,
-		Disabled:       config.LogNoHistory,
-		ExportFileName: config.LogExportCheckpoints,
-		HashScheme:     config.StateScheme == rawdb.HashScheme,
+		History:            config.LogHistory,
+		Disabled:           config.LogNoHistory,
+		CheckpointFileName: checkpointFile,
+		HashScheme:         config.StateScheme == rawdb.HashScheme,
 	}
 	chainView := eth.newChainView(eth.blockchain.CurrentBlock())
 	historyCutoff, _ := eth.blockchain.HistoryPruningCutoff()

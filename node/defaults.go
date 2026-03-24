@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -98,7 +99,7 @@ func DefaultDataDir() string {
 			// is non-empty, use it, otherwise DTRT and check %LOCALAPPDATA%.
 			fallback := filepath.Join(home, "AppData", "Roaming", "Ethereum")
 			appdata := windowsAppData()
-			if appdata == "" || isNonEmptyDir(fallback) {
+			if appdata == "" || common.IsNonEmptyDir(fallback) {
 				return fallback
 			}
 			return filepath.Join(appdata, "Ethereum")
@@ -119,16 +120,6 @@ func windowsAppData() string {
 		panic("environment variable LocalAppData is undefined")
 	}
 	return v
-}
-
-func isNonEmptyDir(dir string) bool {
-	f, err := os.Open(dir)
-	if err != nil {
-		return false
-	}
-	names, _ := f.Readdir(1)
-	f.Close()
-	return len(names) > 0
 }
 
 func homeDir() string {

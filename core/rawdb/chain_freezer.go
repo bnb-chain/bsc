@@ -157,15 +157,15 @@ func (f *chainFreezer) Close() error {
 func (f *chainFreezer) readHeadNumber(db ethdb.KeyValueReader) uint64 {
 	hash := ReadHeadBlockHash(db)
 	if hash == (common.Hash{}) {
-		log.Error("Head block is not reachable")
+		log.Warn("Head block is not reachable")
 		return 0
 	}
-	number := ReadHeaderNumber(db, hash)
-	if number == nil {
+	number, ok := ReadHeaderNumber(db, hash)
+	if !ok {
 		log.Error("Number of head block is missing")
 		return 0
 	}
-	return *number
+	return number
 }
 
 // readFinalizedNumber returns the number of finalized block. 0 is returned
@@ -175,12 +175,12 @@ func (f *chainFreezer) readFinalizedNumber(db ethdb.KeyValueReader) uint64 {
 	if hash == (common.Hash{}) {
 		return 0
 	}
-	number := ReadHeaderNumber(db, hash)
-	if number == nil {
+	number, ok := ReadHeaderNumber(db, hash)
+	if !ok {
 		log.Error("Number of finalized block is missing")
 		return 0
 	}
-	return *number
+	return number
 }
 
 // freezeThreshold returns the threshold for chain freezing. It's determined
@@ -245,7 +245,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 			last      uint64 // the last block to freeze
 
 			hash   common.Hash
-			number *uint64
+			number uint64
 			head   *types.Header
 			err    error
 		)
@@ -278,15 +278,15 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 				backoff = true
 				continue
 			}
-			number = ReadHeaderNumber(nfdb, hash)
-			if number == nil {
+			number, ok := ReadHeaderNumber(nfdb, hash)
+			if !ok {
 				log.Error("Current full block number unavailable", "hash", hash)
 				backoff = true
 				continue
 			}
-			head = ReadHeader(nfdb, hash, *number)
+			head = ReadHeader(nfdb, hash, number)
 			if head == nil {
-				log.Error("Current full block unavailable", "number", *number, "hash", hash)
+				log.Error("Current full block unavailable", "number", number, "hash", hash)
 				backoff = true
 				continue
 			}
@@ -305,34 +305,34 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 				backoff = true
 				continue
 			}
-			number = ReadHeaderNumber(nfdb, hash)
+			number, ok := ReadHeaderNumber(nfdb, hash)
 			threshold = f.threshold.Load()
 			frozen, _ := f.Ancients() // no error will occur, safe to ignore
 			switch {
-			case number == nil:
+			case !ok:
 				log.Error("Current full block number unavailable", "hash", hash)
 				backoff = true
 				continue
 
-			case *number < threshold:
-				log.Debug("Current full block not old enough to freeze", "number", *number, "hash", hash, "delay", threshold)
+			case number < threshold:
+				log.Debug("Current full block not old enough to freeze", "number", number, "hash", hash, "delay", threshold)
 				backoff = true
 				continue
 
-			case *number-threshold <= frozen:
-				log.Debug("Ancient blocks frozen already", "number", *number, "hash", hash, "frozen", frozen)
+			case number-threshold <= frozen:
+				log.Debug("Ancient blocks frozen already", "number", number, "hash", hash, "frozen", frozen)
 				backoff = true
 				continue
 			}
-			head = ReadHeader(nfdb, hash, *number)
+			head = ReadHeader(nfdb, hash, number)
 			if head == nil {
-				log.Error("Current full block unavailable", "number", *number, "hash", hash)
+				log.Error("Current full block unavailable", "number", number, "hash", hash)
 				backoff = true
 				continue
 			}
 			trySlowdownFreeze(head)
 			first, _ = f.Ancients()
-			last = *number - threshold
+			last = number - threshold
 			if last-first > freezerBatchLimit {
 				last = first + freezerBatchLimit
 			}
@@ -442,9 +442,9 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 		env, _ := f.freezeEnv.Load().(*ethdb.FreezerEnv)
 		// try prune blob data after cancun fork
 		if isCancun(env, head.Number, head.Time) {
-			f.tryPruneBlobAncientTable(env, *number)
+			f.tryPruneBlobAncientTable(env, number)
 		}
-		f.tryPruneHistoryBlock(*number)
+		f.tryPruneHistoryBlock(number)
 
 		// TODO(galaio): Temporarily comment that the current BSC is suitable for small-volume writes,
 		// and then the large-volume mode will be enabled after optimizing the freeze performance of ancient.
@@ -724,6 +724,10 @@ func (f *chainFreezer) AncientSize(kind string) (uint64, error) {
 
 func (f *chainFreezer) AncientRange(kind string, start, count, maxBytes uint64) ([][]byte, error) {
 	return f.ancients.AncientRange(kind, start, count, maxBytes)
+}
+
+func (f *chainFreezer) AncientBytes(kind string, id, offset, length uint64) ([]byte, error) {
+	return f.ancients.AncientBytes(kind, id, offset, length)
 }
 
 func (f *chainFreezer) ModifyAncients(fn func(ethdb.AncientWriteOp) error) (int64, error) {

@@ -107,7 +107,7 @@ type SlashIndicatorFinalityEvidenceWrapper struct {
 }
 
 func NewSlashIndicatorFinalityEvidenceWrapper(vote1, vote2 *VoteEnvelope) *SlashIndicatorFinalityEvidenceWrapper {
-	if !bytes.Equal(vote1.VoteAddress[:], vote1.VoteAddress[:]) ||
+	if !bytes.Equal(vote1.VoteAddress[:], vote2.VoteAddress[:]) ||
 		vote1.Data == nil || vote2.Data == nil {
 		return nil
 	}

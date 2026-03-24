@@ -71,7 +71,7 @@ type backend interface {
 	//
 	// For hash scheme, there is no differentiation between diff layer nodes
 	// and dirty disk layer nodes, so both are merged into the second return.
-	Size() (common.StorageSize, common.StorageSize, common.StorageSize)
+	Size() (common.StorageSize, common.StorageSize)
 
 	// Commit writes all relevant trie nodes belonging to the specified state
 	// to disk. Report specifies whether logs will be displayed in info level.
@@ -214,16 +214,16 @@ func (db *Database) Commit(root common.Hash, report bool) error {
 // Size returns the storage size of diff layer nodes above the persistent disk
 // layer, the dirty nodes buffered within the disk layer, and the size of cached
 // preimages.
-func (db *Database) Size() (common.StorageSize, common.StorageSize, common.StorageSize, common.StorageSize) {
+func (db *Database) Size() (common.StorageSize, common.StorageSize, common.StorageSize) {
 	var (
-		diffs, nodes, immutablenodes common.StorageSize
-		preimages                    common.StorageSize
+		diffs, nodes common.StorageSize
+		preimages    common.StorageSize
 	)
-	diffs, nodes, immutablenodes = db.backend.Size()
+	diffs, nodes = db.backend.Size()
 	if db.preimages != nil {
 		preimages = db.preimages.size()
 	}
-	return diffs, nodes, immutablenodes, preimages
+	return diffs, nodes, preimages
 }
 
 // Scheme returns the node scheme used in the database.
@@ -442,6 +442,15 @@ func (db *Database) Disk() ethdb.Database {
 	return db.disk
 }
 
+// SnapshotCompleted returns the indicator if the snapshot is completed.
+func (db *Database) SnapshotCompleted() bool {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		return false
+	}
+	return pdb.SnapshotCompleted()
+}
+
 // MergeIncrState merges the state in incremental snapshot into base snapshot
 func (db *Database) MergeIncrState(incrDir string) error {
 	pdb, ok := db.backend.(*pathdb.Database)
@@ -480,7 +489,7 @@ func (db *Database) SetStateGenerator() {
 	pdb.SetStateGenerator()
 }
 
-// RepairIncrStore is used to repair incr store.
+// GetStartBlock returns the start block number.
 func (db *Database) GetStartBlock() (uint64, error) {
 	pdb, ok := db.backend.(*pathdb.Database)
 	if !ok {

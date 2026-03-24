@@ -40,8 +40,9 @@ const checkInterval = 10
 // from disk. Transactions are executed in parallel to fully leverage the
 // SSD's read performance.
 type statePrefetcher struct {
-	config *params.ChainConfig // Chain configuration options
-	chain  *HeaderChain        // Canonical block chain
+	config     *params.ChainConfig // Chain configuration options
+	chain      *HeaderChain        // Canonical block chain
+	mevEnabled bool                // Indicate whether MEV is enabled
 }
 
 // NewStatePrefetcher initialises a new statePrefetcher.
@@ -50,6 +51,11 @@ func NewStatePrefetcher(config *params.ChainConfig, chain *HeaderChain) *statePr
 		config: config,
 		chain:  chain,
 	}
+}
+
+// EnableMevMode enables MEV mode for this prefetcher.
+func (p *statePrefetcher) EnableMevMode() {
+	p.mevEnabled = true
 }
 
 // Prefetch processes the state changes according to the Ethereum rules by running
@@ -66,7 +72,7 @@ func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *type
 
 	// Iterate over and process the individual transactions
 	for i, tx := range transactions {
-		stateCpy := statedb.CopyDoPrefetch()
+		stateCpy := statedb.Copy() // closure
 		workers.Go(func() error {
 			// If block precaching was interrupted, abort
 			if interrupt != nil && interrupt.Load() {
@@ -116,12 +122,6 @@ func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *type
 				fails.Add(1)
 				return nil // Ugh, something went horribly wrong, bail out
 			}
-			// Pre-load trie nodes for the intermediate root.
-			//
-			// This operation incurs significant memory allocations due to
-			// trie hashing and node decoding. TODO(rjl493456442): investigate
-			// ways to mitigate this overhead.
-			stateCpy.IntermediateRoot(true)
 			return nil
 		})
 	}
@@ -147,7 +147,7 @@ func (p *statePrefetcher) PrefetchBALSnapshot(balPrefetch *types.BlockAccessList
 	// prefetch snapshot cache
 	for i := 0; i < prefetchThreadBALSnapshot; i++ {
 		go func() {
-			newStatedb := statedb.CopyDoPrefetch()
+			newStatedb := statedb.Copy()
 			for {
 				select {
 				case accAddr := <-accChan:
@@ -205,7 +205,7 @@ func (p *statePrefetcher) PrefetchBALTrie(balPrefetch *types.BlockAccessListPref
 
 	for i := 0; i < prefetchThreadBALTrie; i++ {
 		go func() {
-			newStatedb := statedb.CopyDoPrefetch()
+			newStatedb := statedb.Copy()
 			for {
 				select {
 				case accItem := <-accItemsChan:
@@ -285,10 +285,16 @@ func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header
 		signer = types.MakeSigner(p.config, header.Number, header.Time)
 	)
 
-	txCh := make(chan *types.Transaction, 2*prefetchMiningThread)
-	for i := 0; i < prefetchMiningThread; i++ {
+	// When MEV is not enabled, use more threads for local mining
+	threadCount := prefetchMiningThread
+	if !p.mevEnabled {
+		threadCount = max(prefetchMiningThread, 3*runtime.NumCPU()/5)
+	}
+
+	txCh := make(chan *types.Transaction, 2*threadCount)
+	for i := 0; i < threadCount; i++ {
 		go func(startCh <-chan *types.Transaction, stopCh <-chan struct{}) {
-			newStatedb := statedb.CopyDoPrefetch()
+			newStatedb := statedb.Copy()
 			evm := vm.NewEVM(NewEVMBlockContext(header, p.chain, nil), newStatedb, p.config, cfg)
 			idx := 0
 			// Iterate over and process the individual transactions
@@ -321,7 +327,7 @@ func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header
 					// Convert the transaction into an executable message and pre-cache its sender
 					msg, err := TransactionToMessage(tx, signer, header.BaseFee)
 					if err != nil {
-						return // Also invalid block, bail out
+						continue // Skip invalid tx from txpool
 					}
 					// Disable the nonce check
 					msg.SkipNonceChecks = true

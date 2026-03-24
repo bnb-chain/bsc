@@ -24,6 +24,25 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
+// BeaconDevSync is a development helper to test synchronization by providing
+// a block hash instead of header to run the beacon sync against.
+//
+// The method will reach out to the network to retrieve the header of the sync
+// target instead of receiving it from the consensus node.
+//
+// Note, this must not be used in live code. If the forkchcoice endpoint where
+// to use this instead of giving us the payload first, then essentially nobody
+// in the network would have the block yet that we'd attempt to retrieve.
+func (d *Downloader) BeaconDevSync(mode SyncMode, header *types.Header) error {
+	// Be very loud that this code should not be used in a live node
+	log.Warn("----------------------------------")
+	log.Warn("Beacon syncing with hash as target", "number", header.Number, "hash", header.Hash())
+	log.Warn("This is unhealthy for a live node!")
+	log.Warn("This is incompatible with the consensus layer!")
+	log.Warn("----------------------------------")
+	return nil
+}
+
 // GetHeader tries to retrieve the header with a given hash from a random peer.
 func (d *Downloader) GetHeader(hash common.Hash) (*types.Header, error) {
 	// Pick a random peer to sync from and keep retrying if none are yet
@@ -33,7 +52,8 @@ func (d *Downloader) GetHeader(hash common.Hash) (*types.Header, error) {
 
 	for _, peer := range d.peers.peers {
 		if peer == nil {
-			return nil, errors.New("could not find peer")
+			log.Warn("Encountered nil peer while retrieving sync target", "hash", hash)
+			continue
 		}
 		// Found a peer, attempt to retrieve the header whilst blocking and
 		// retry if it fails for whatever reason

@@ -704,7 +704,7 @@ func TestParlia_applyTransactionTracing(t *testing.T) {
 	recording := &recordingTracer{}
 	hooks := recording.hooks()
 
-	cx := chainContext{Chain: chain, parlia: engine}
+	cx := chainContext{ChainHeaderReader: chain, parlia: engine}
 	applyErr := engine.applyTransaction(msg, state.NewHookedState(stateDB, hooks), bs[0].Header(), cx, &txs, &receipts, &receivedTxs, &usedGas, false, hooks)
 	if applyErr != nil {
 		t.Fatalf("failed to apply system contract transaction: %v", applyErr)
@@ -713,15 +713,15 @@ func TestParlia_applyTransactionTracing(t *testing.T) {
 	expectedRecords := []string{
 		"system tx start",
 		"tx [0xe9a5597c7f5a6a10a18959d262319fbf19cecb4d9d1ce8f2c990089bd88016fc] from [0x0000000000000000000000000000000000000000] start",
-		"nonce change [0x0000000000000000000000000000000000000000]: 0 -> 1",
 		"call enter [0x0000000000000000000000000000000000000000] -> [0x0000000000000000000000000000000000001000] (type 241, gas 9223372036854775807, value 0)",
 		"call exit (depth 0, gas used 0, reverted false, err: <none>)",
+		"nonce change [0x0000000000000000000000000000000000000000]: 0 -> 1",
 		"tx [0xe9a5597c7f5a6a10a18959d262319fbf19cecb4d9d1ce8f2c990089bd88016fc] end (log count 0, cumulative gas used 0, err: <none>)",
 		"system tx end",
 	}
 
 	if !slices.Equal(recording.records, expectedRecords) {
-		t.Errorf("expected \n%s\n\ngot\n\n%s", formatRecords(recording.records), formatRecords(expectedRecords))
+		t.Errorf("expected \n%s\n\ngot\n\n%s", formatRecords(expectedRecords), formatRecords(recording.records))
 	}
 }
 

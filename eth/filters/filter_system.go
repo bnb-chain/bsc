@@ -41,8 +41,9 @@ import (
 
 // Config represents the configuration of the filter system.
 type Config struct {
-	LogCacheSize int           // maximum number of cached blocks (default: 32)
-	Timeout      time.Duration // how long filters stay active (default: 5min)
+	LogCacheSize  int           // maximum number of cached blocks (default: 32)
+	Timeout       time.Duration // how long filters stay active (default: 5min)
+	LogQueryLimit int           // maximum number of addresses allowed in filter criteria (default: 1000)
 }
 
 func (cfg Config) withDefaults() Config {
@@ -197,9 +198,9 @@ type subscription struct {
 	headers   chan *types.Header
 	votes     chan *types.VoteEnvelope
 	receipts  chan []*ReceiptWithTx
-	txHashes  []common.Hash // contains transaction hashes for transactionReceipts subscription filtering
-	installed chan struct{} // closed when the filter is installed
-	err       chan error    // closed when the filter is uninstalled
+	txHashes  map[common.Hash]bool // contains transaction hashes for transactionReceipts subscription filtering
+	installed chan struct{}        // closed when the filter is installed
+	err       chan error           // closed when the filter is uninstalled
 }
 
 // EventSystem creates subscriptions, processes events and broadcasts them to the
@@ -321,8 +322,15 @@ func (es *EventSystem) SubscribeLogs(crit ethereum.FilterQuery, logs chan []*typ
 	if len(crit.Topics) > maxTopics {
 		return nil, errExceedMaxTopics
 	}
-	if len(crit.Addresses) > maxAddresses {
-		return nil, errExceedMaxAddresses
+	if es.sys.cfg.LogQueryLimit != 0 {
+		if len(crit.Addresses) > es.sys.cfg.LogQueryLimit {
+			return nil, errExceedLogQueryLimit
+		}
+		for _, topics := range crit.Topics {
+			if len(topics) > es.sys.cfg.LogQueryLimit {
+				return nil, errExceedLogQueryLimit
+			}
+		}
 	}
 	var from, to rpc.BlockNumber
 	if crit.FromBlock == nil {
@@ -459,6 +467,10 @@ func (es *EventSystem) SubscribeNewVotes(votes chan *types.VoteEnvelope) *Subscr
 // transactions when they are included in blocks. If txHashes is provided, only receipts
 // for those specific transaction hashes will be delivered.
 func (es *EventSystem) SubscribeTransactionReceipts(txHashes []common.Hash, receipts chan []*ReceiptWithTx) *Subscription {
+	hashSet := make(map[common.Hash]bool)
+	for _, h := range txHashes {
+		hashSet[h] = true
+	}
 	sub := &subscription{
 		id:        rpc.NewID(),
 		typ:       TransactionReceiptsSubscription,
@@ -467,7 +479,7 @@ func (es *EventSystem) SubscribeTransactionReceipts(txHashes []common.Hash, rece
 		txs:       make(chan []*types.Transaction),
 		headers:   make(chan *types.Header),
 		receipts:  receipts,
-		txHashes:  txHashes,
+		txHashes:  hashSet,
 		installed: make(chan struct{}),
 		err:       make(chan error),
 	}

@@ -402,7 +402,11 @@ func inspectTrie(ctx *cli.Context) error {
 	if ctx.NArg() >= 1 {
 		if ctx.Args().Get(0) == "latest" {
 			headerHash := rawdb.ReadHeadHeaderHash(db)
-			blockNumber = *(rawdb.ReadHeaderNumber(db, headerHash))
+			var ok bool
+			blockNumber, ok = rawdb.ReadHeaderNumber(db, headerHash)
+			if !ok {
+				return fmt.Errorf("failed to ReadHeaderNumber, Args[0]: latest, headerHash: %v", headerHash)
+			}
 		} else if ctx.Args().Get(0) == "snapshot" {
 			trieRootHash = rawdb.ReadSnapshotRoot(db)
 			blockNumber = math.MaxUint64

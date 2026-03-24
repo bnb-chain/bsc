@@ -29,88 +29,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 )
 
-// stateIdent represents the identifier of a state element, which can be
-// either an account or a storage slot.
-type stateIdent struct {
-	account bool
-
-	// The hash of the account address. This is used instead of the raw account
-	// address is to align the traversal order with the Merkle-Patricia-Trie.
-	addressHash common.Hash
-
-	// The hash of the storage slot key. This is used instead of the raw slot key
-	// because, in legacy state histories (prior to the Cancun fork), the slot
-	// identifier is the hash of the key, and the original key (preimage) cannot
-	// be recovered. To maintain backward compatibility, the key hash is used.
-	//
-	// Meanwhile, using the storage key hash also preserve the traversal order
-	// with Merkle-Patricia-Trie.
-	//
-	// This field is null if the identifier refers to account data.
-	storageHash common.Hash
-}
-
-// String returns the string format state identifier.
-func (ident stateIdent) String() string {
-	if ident.account {
-		return ident.addressHash.Hex()
-	}
-	return ident.addressHash.Hex() + ident.storageHash.Hex()
-}
-
-// newAccountIdent constructs a state identifier for an account.
-func newAccountIdent(addressHash common.Hash) stateIdent {
-	return stateIdent{
-		account:     true,
-		addressHash: addressHash,
-	}
-}
-
-// newStorageIdent constructs a state identifier for a storage slot.
-// The address denotes the address of the associated account;
-// the storageHash denotes the hash of the raw storage slot key;
-func newStorageIdent(addressHash common.Hash, storageHash common.Hash) stateIdent {
-	return stateIdent{
-		addressHash: addressHash,
-		storageHash: storageHash,
-	}
-}
-
-// stateIdentQuery is the extension of stateIdent by adding the raw storage key.
-type stateIdentQuery struct {
-	stateIdent
-
-	address    common.Address
-	storageKey common.Hash
-}
-
-// newAccountIdentQuery constructs a state identifier for an account.
-func newAccountIdentQuery(address common.Address, addressHash common.Hash) stateIdentQuery {
-	return stateIdentQuery{
-		stateIdent: stateIdent{
-			account:     true,
-			addressHash: addressHash,
-		},
-		address: address,
-	}
-}
-
-// newStorageIdentQuery constructs a state identifier for a storage slot.
-// the address denotes the address of the associated account;
-// the addressHash denotes the address hash of the associated account;
-// the storageKey denotes the raw storage slot key;
-// the storageHash denotes the hash of the raw storage slot key;
-func newStorageIdentQuery(address common.Address, addressHash common.Hash, storageKey common.Hash, storageHash common.Hash) stateIdentQuery {
-	return stateIdentQuery{
-		stateIdent: stateIdent{
-			addressHash: addressHash,
-			storageHash: storageHash,
-		},
-		address:    address,
-		storageKey: storageKey,
-	}
-}
-
 // indexReaderWithLimitTag is a wrapper around indexReader that includes an
 // additional index position. This position represents the ID of the last
 // indexed state history at the time the reader was created, implying that
@@ -122,19 +40,14 @@ type indexReaderWithLimitTag struct {
 }
 
 // newIndexReaderWithLimitTag constructs a index reader with indexing position.
-func newIndexReaderWithLimitTag(db ethdb.KeyValueReader, state stateIdent) (*indexReaderWithLimitTag, error) {
-	// Read the last indexed ID before the index reader construction
-	metadata := loadIndexMetadata(db)
-	if metadata == nil {
-		return nil, errors.New("state history hasn't been indexed yet")
-	}
+func newIndexReaderWithLimitTag(db ethdb.KeyValueReader, state stateIdent, limit uint64) (*indexReaderWithLimitTag, error) {
 	r, err := newIndexReader(db, state)
 	if err != nil {
 		return nil, err
 	}
 	return &indexReaderWithLimitTag{
 		reader: r,
-		limit:  metadata.Last,
+		limit:  limit,
 		db:     db,
 	}, nil
 }
@@ -174,7 +87,7 @@ func (r *indexReaderWithLimitTag) readGreaterThan(id uint64, lastID uint64) (uin
 	// Given that it's very unlikely to occur and users try to perform historical
 	// state queries while reverting the states at the same time. Simply returning
 	// an error should be sufficient for now.
-	metadata := loadIndexMetadata(r.db)
+	metadata := loadIndexMetadata(r.db, toHistoryType(r.reader.state.typ))
 	if metadata == nil || metadata.Last < lastID {
 		return 0, errors.New("state history hasn't been indexed yet")
 	}
@@ -231,25 +144,17 @@ func (r *historyReader) readAccountMetadata(address common.Address, historyID ui
 // readStorageMetadata resolves the storage slot metadata within the specified
 // state history.
 func (r *historyReader) readStorageMetadata(storageKey common.Hash, storageHash common.Hash, historyID uint64, slotOffset, slotNumber int) ([]byte, error) {
-	// TODO(rj493456442) optimize it with partial read
-	blob := rawdb.ReadStateStorageIndex(r.freezer, historyID)
-	if len(blob) == 0 {
-		return nil, fmt.Errorf("storage index is truncated, historyID: %d", historyID)
+	data, err := rawdb.ReadStateStorageIndex(r.freezer, historyID, slotIndexSize*slotOffset, slotIndexSize*slotNumber)
+	if err != nil {
+		msg := fmt.Sprintf("id: %d, slot-offset: %d, slot-length: %d", historyID, slotOffset, slotNumber)
+		return nil, fmt.Errorf("storage indices corrupted, %s, %w", msg, err)
 	}
-	if len(blob)%slotIndexSize != 0 {
-		return nil, fmt.Errorf("storage indices is corrupted, historyID: %d, size: %d", historyID, len(blob))
-	}
-	if slotIndexSize*(slotOffset+slotNumber) > len(blob) {
-		return nil, fmt.Errorf("storage indices is truncated, historyID: %d, size: %d, offset: %d, length: %d", historyID, len(blob), slotOffset, slotNumber)
-	}
-	subSlice := blob[slotIndexSize*slotOffset : slotIndexSize*(slotOffset+slotNumber)]
-
 	// TODO(rj493456442) get rid of the metadata resolution
 	var (
 		m      meta
 		target common.Hash
 	)
-	blob = rawdb.ReadStateHistoryMeta(r.freezer, historyID)
+	blob := rawdb.ReadStateHistoryMeta(r.freezer, historyID)
 	if err := m.decode(blob); err != nil {
 		return nil, err
 	}
@@ -259,17 +164,17 @@ func (r *historyReader) readStorageMetadata(storageKey common.Hash, storageHash 
 		target = storageKey
 	}
 	pos := sort.Search(slotNumber, func(i int) bool {
-		slotID := subSlice[slotIndexSize*i : slotIndexSize*i+common.HashLength]
+		slotID := data[slotIndexSize*i : slotIndexSize*i+common.HashLength]
 		return bytes.Compare(slotID, target.Bytes()) >= 0
 	})
 	if pos == slotNumber {
 		return nil, fmt.Errorf("storage metadata is not found, slot key: %#x, historyID: %d", storageKey, historyID)
 	}
 	offset := slotIndexSize * pos
-	if target != common.BytesToHash(subSlice[offset:offset+common.HashLength]) {
+	if target != common.BytesToHash(data[offset:offset+common.HashLength]) {
 		return nil, fmt.Errorf("storage metadata is not found, slot key: %#x, historyID: %d", storageKey, historyID)
 	}
-	return subSlice[offset : slotIndexSize*(pos+1)], nil
+	return data[offset : slotIndexSize*(pos+1)], nil
 }
 
 // readAccount retrieves the account data from the specified state history.
@@ -281,12 +186,11 @@ func (r *historyReader) readAccount(address common.Address, historyID uint64) ([
 	length := int(metadata[common.AddressLength])                                                     // one byte for account data length
 	offset := int(binary.BigEndian.Uint32(metadata[common.AddressLength+1 : common.AddressLength+5])) // four bytes for the account data offset
 
-	// TODO(rj493456442) optimize it with partial read
-	data := rawdb.ReadStateAccountHistory(r.freezer, historyID)
-	if len(data) < length+offset {
+	data, err := rawdb.ReadStateAccountHistory(r.freezer, historyID, offset, length)
+	if err != nil {
 		return nil, fmt.Errorf("account data is truncated, address: %#x, historyID: %d, size: %d, offset: %d, len: %d", address, historyID, len(data), offset, length)
 	}
-	return data[offset : offset+length], nil
+	return data, nil
 }
 
 // readStorage retrieves the storage slot data from the specified state history.
@@ -309,12 +213,11 @@ func (r *historyReader) readStorage(address common.Address, storageKey common.Ha
 	length := int(slotMetadata[common.HashLength])                                                  // one byte for slot data length
 	offset := int(binary.BigEndian.Uint32(slotMetadata[common.HashLength+1 : common.HashLength+5])) // four bytes for slot data offset
 
-	// TODO(rj493456442) optimize it with partial read
-	data := rawdb.ReadStateStorageHistory(r.freezer, historyID)
-	if len(data) < offset+length {
+	data, err := rawdb.ReadStateStorageHistory(r.freezer, historyID, offset, length)
+	if err != nil {
 		return nil, fmt.Errorf("storage data is truncated, address: %#x, key: %#x, historyID: %d, size: %d, offset: %d, len: %d", address, storageKey, historyID, len(data), offset, length)
 	}
-	return data[offset : offset+length], nil
+	return data, nil
 }
 
 // read retrieves the state element data associated with the stateID.
@@ -325,17 +228,18 @@ func (r *historyReader) read(state stateIdentQuery, stateID uint64, lastID uint6
 	tail, err := r.freezer.Tail()
 	if err != nil {
 		return nil, err
-	}
-	// stateID == tail is allowed, as the first history object preserved
-	// is tail+1
+	} // firstID = tail+1
+
+	// stateID+1 == firstID is allowed, as all the subsequent state histories
+	// are present with no gap inside.
 	if stateID < tail {
-		return nil, errors.New("historical state has been pruned")
+		return nil, fmt.Errorf("historical state has been pruned, first: %d, state: %d", tail+1, stateID)
 	}
 
 	// To serve the request, all state histories from stateID+1 to lastID
 	// must be indexed. It's not supposed to happen unless system is very
 	// wrong.
-	metadata := loadIndexMetadata(r.disk)
+	metadata := loadIndexMetadata(r.disk, toHistoryType(state.typ))
 	if metadata == nil || metadata.Last < lastID {
 		indexed := "null"
 		if metadata != nil {
@@ -348,7 +252,7 @@ func (r *historyReader) read(state stateIdentQuery, stateID uint64, lastID uint6
 	// state retrieval
 	ir, ok := r.readers[state.String()]
 	if !ok {
-		ir, err = newIndexReaderWithLimitTag(r.disk, state.stateIdent)
+		ir, err = newIndexReaderWithLimitTag(r.disk, state.stateIdent, metadata.Last)
 		if err != nil {
 			return nil, err
 		}
@@ -368,7 +272,7 @@ func (r *historyReader) read(state stateIdentQuery, stateID uint64, lastID uint6
 	// that the associated state histories are no longer available due to a rollback.
 	// Such truncation should be captured by the state resolver below, rather than returning
 	// invalid data.
-	if state.account {
+	if state.typ == typeAccount {
 		return r.readAccount(state.address, historyID)
 	}
 	return r.readStorage(state.address, state.storageKey, state.storageHash, historyID)

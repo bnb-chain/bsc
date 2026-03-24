@@ -1,4 +1,4 @@
-// Copyright 2021 The go-ethereum Authors
+// Copyright 2025 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -14,16 +14,11 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-//go:build !nacl && !js && cgo
+//go:build windows
 
-package rlp
+package pathdb
 
-import (
-	"reflect"
-	"unsafe"
-)
-
-// byteArrayBytes returns a slice of the byte array v.
-func byteArrayBytes(v reflect.Value, length int) []byte {
-	return unsafe.Slice((*byte)(unsafe.Pointer(v.UnsafeAddr())), length)
+func syncDir(name string) error {
+	// On Windows, fsync on directories is not supported
+	return nil
 }

@@ -209,11 +209,6 @@ web3._extend({
 			params: 1
 		}),
 		new web3._extend.Method({
-			name: 'seedHash',
-			call: 'debug_seedHash',
-			params: 1
-		}),
-		new web3._extend.Method({
 			name: 'dumpBlock',
 			call: 'debug_dumpBlock',
 			params: 1,
@@ -471,6 +466,17 @@ web3._extend({
 			call: 'debug_getTrieFlushInterval',
 			params: 0
 		}),
+		new web3._extend.Method({
+			name: 'sync',
+			call: 'debug_sync',
+			params: 1
+		}),
+		new web3._extend.Method({
+			name: 'stateSize',
+			call: 'debug_stateSize',
+			params: 1,
+			inputFormatter: [null],
+		}),
 	],
 	properties: []
 });
@@ -602,6 +608,11 @@ web3._extend({
 			call: 'eth_getBlobSidecarByTxHash',
 			params: 2,
 		}),
+		new web3._extend.Method({
+			name: 'config',
+			call: 'eth_config',
+			params: 0,
+		})
 	],
 	properties: [
 		new web3._extend.Property({

@@ -21,6 +21,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
+	"github.com/ethereum/go-ethereum/core/overlay"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -83,10 +84,18 @@ type Trie interface {
 	// be returned.
 	GetAccount(address common.Address) (*types.StateAccount, error)
 
+	// PrefetchAccount attempts to resolve specific accounts from the database
+	// to accelerate subsequent trie operations.
+	PrefetchAccount([]common.Address) error
+
 	// GetStorage returns the value for key stored in the trie. The value bytes
 	// must not be modified by the caller. If a node was not found in the database,
 	// a trie.MissingNodeError is returned.
 	GetStorage(addr common.Address, key []byte) ([]byte, error)
+
+	// PrefetchStorage attempts to resolve specific storage slots from the database
+	// to accelerate subsequent trie operations.
+	PrefetchStorage(addr common.Address, keys [][]byte) error
 
 	// UpdateAccount abstracts an account write to the trie. It encodes the
 	// provided account object with associated algorithm and then updates it
@@ -124,7 +133,7 @@ type Trie interface {
 
 	// Witness returns a set containing all trie nodes that have been accessed.
 	// The returned map could be nil if the witness is empty.
-	Witness() map[string]struct{}
+	Witness() map[string][]byte
 
 	// NodeIterator returns an iterator that returns nodes of the trie. Iteration
 	// starts at the key after the given start key. And error will be returned
@@ -154,17 +163,21 @@ type CachingDB struct {
 	codeCache     *lru.SizeConstrainedCache[common.Hash, []byte]
 	codeSizeCache *lru.Cache[common.Hash, int]
 	pointCache    *utils.PointCache
+
+	// Transition-specific fields
+	TransitionStatePerRoot *lru.Cache[common.Hash, *overlay.TransitionState]
 }
 
 // NewDatabase creates a state database with the provided data sources.
 func NewDatabase(triedb *triedb.Database, snap *snapshot.Tree) *CachingDB {
 	return &CachingDB{
-		disk:          triedb.Disk(),
-		triedb:        triedb,
-		snap:          snap,
-		codeCache:     lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
-		codeSizeCache: lru.NewCache[common.Hash, int](codeSizeCacheSize),
-		pointCache:    utils.NewPointCache(pointCacheSize),
+		disk:                   triedb.Disk(),
+		triedb:                 triedb,
+		snap:                   snap,
+		codeCache:              lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
+		codeSizeCache:          lru.NewCache[common.Hash, int](codeSizeCacheSize),
+		pointCache:             utils.NewPointCache(pointCacheSize),
+		TransitionStatePerRoot: lru.NewCache[common.Hash, *overlay.TransitionState](1000),
 	}
 }
 
@@ -232,7 +245,13 @@ func (db *CachingDB) OpenTrie(root common.Hash) (Trie, error) {
 		return trie.NewEmptyTrie(), nil
 	}
 	if db.triedb.IsVerkle() {
-		return trie.NewVerkleTrie(root, db.triedb, db.pointCache)
+		ts := overlay.LoadTransitionState(db.TrieDB().Disk(), root, db.triedb.IsVerkle())
+		if ts.InTransition() {
+			panic("transition isn't supported yet")
+		}
+		if ts.Transitioned() {
+			return trie.NewVerkleTrie(root, db.triedb, db.pointCache)
+		}
 	}
 	tr, err := trie.NewStateTrie(trie.StateTrieID(root), db.triedb)
 	if err != nil {
@@ -247,9 +266,6 @@ func (db *CachingDB) OpenStorageTrie(stateRoot common.Hash, address common.Addre
 		return trie.NewEmptyTrie(), nil
 	}
 
-	// In the verkle case, there is only one tree. But the two-tree structure
-	// is hardcoded in the codebase. So we need to return the same trie in this
-	// case.
 	if db.triedb.IsVerkle() {
 		return self, nil
 	}
@@ -306,6 +322,8 @@ func mustCopyTrie(t Trie) Trie {
 	case *trie.EmptyTrie:
 		return t.Copy()
 	case *trie.VerkleTrie:
+		return t.Copy()
+	case *trie.TransitionTrie:
 		return t.Copy()
 	default:
 		panic(fmt.Errorf("unknown trie type %T", t))

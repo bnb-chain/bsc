@@ -107,6 +107,10 @@ func (c *tmHeaderValidate) Run(input []byte) (result []byte, err error) {
 	return result, nil
 }
 
+func (c *tmHeaderValidate) Name() string {
+	return "HEADER_VALIDATE"
+}
+
 // ------------------------------------------------------------------------------------------------------------------------------------------------
 
 // iavlMerkleProofValidate implemented as a native contract.
@@ -125,6 +129,10 @@ func (c *iavlMerkleProofValidate) Run(input []byte) (result []byte, err error) {
 	return c.basicIavlMerkleProofValidate.Run(input)
 }
 
+func (c *iavlMerkleProofValidate) Name() string {
+	return "IAVL_MERKLE_PROOF_VALIDATE"
+}
+
 // tmHeaderValidateNano implemented as a native contract.
 type tmHeaderValidateNano struct{}
 
@@ -136,6 +144,10 @@ func (c *tmHeaderValidateNano) Run(input []byte) (result []byte, err error) {
 	return nil, errors.New("suspend")
 }
 
+func (c *tmHeaderValidateNano) Name() string {
+	return "HEADER_VALIDATE_NANO"
+}
+
 type iavlMerkleProofValidateNano struct{}
 
 func (c *iavlMerkleProofValidateNano) RequiredGas(_ []byte) uint64 {
@@ -144,6 +156,10 @@ func (c *iavlMerkleProofValidateNano) RequiredGas(_ []byte) uint64 {
 
 func (c *iavlMerkleProofValidateNano) Run(_ []byte) (result []byte, err error) {
 	return nil, errors.New("suspend")
+}
+
+func (c *iavlMerkleProofValidateNano) Name() string {
+	return "IAVL_MERKLE_PROOF_VALIDATE_NANO"
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------
@@ -163,6 +179,10 @@ func (c *iavlMerkleProofValidateMoran) Run(input []byte) (result []byte, err err
 		forbiddenSimpleValueOpVerifier,
 	}
 	return c.basicIavlMerkleProofValidate.Run(input)
+}
+
+func (c *iavlMerkleProofValidateMoran) Name() string {
+	return "IAVL_MERKLE_PROOF_VALIDATE_MORAN"
 }
 
 type iavlMerkleProofValidatePlanck struct {
@@ -186,6 +206,10 @@ func (c *iavlMerkleProofValidatePlanck) Run(input []byte) (result []byte, err er
 	return c.basicIavlMerkleProofValidate.Run(input)
 }
 
+func (c *iavlMerkleProofValidatePlanck) Name() string {
+	return "IAVL_MERKLE_PROOF_VALIDATE_PLANCK"
+}
+
 type iavlMerkleProofValidatePlato struct {
 	basicIavlMerkleProofValidate
 }
@@ -205,6 +229,10 @@ func (c *iavlMerkleProofValidatePlato) Run(input []byte) (result []byte, err err
 	c.basicIavlMerkleProofValidate.keyVerifier = keyVerifier
 	c.basicIavlMerkleProofValidate.opsVerifier = proofOpsVerifier
 	return c.basicIavlMerkleProofValidate.Run(input)
+}
+
+func (c *iavlMerkleProofValidatePlato) Name() string {
+	return "IAVL_MERKLE_PROOF_VALIDATE_PLATO"
 }
 
 func successfulMerkleResult() []byte {
@@ -393,12 +421,20 @@ func (c *cometBFTLightBlockValidate) Run(input []byte) (result []byte, err error
 	return c.run(input, false)
 }
 
+func (c *cometBFTLightBlockValidate) Name() string {
+	return "COMET_BFT_LIGHT_BLOCK_VALIDATE"
+}
+
 type cometBFTLightBlockValidateHertz struct {
 	cometBFTLightBlockValidate
 }
 
 func (c *cometBFTLightBlockValidateHertz) Run(input []byte) (result []byte, err error) {
 	return c.run(input, true)
+}
+
+func (c *cometBFTLightBlockValidateHertz) Name() string {
+	return "COMET_BFT_LIGHT_BLOCK_VALIDATE_HERTZ"
 }
 
 // secp256k1SignatureRecover implemented as a native contract.
@@ -436,4 +472,8 @@ func (c *secp256k1SignatureRecover) runTMSecp256k1Signature(pubkey, signatureStr
 		return nil, errors.New("invalid signature")
 	}
 	return tmPubKey.Address().Bytes(), nil
+}
+
+func (c *secp256k1SignatureRecover) Name() string {
+	return "SECP256K1_SIGNATURE_RECOVER"
 }

@@ -212,7 +212,7 @@ func applyShanghaiChecks(env *stEnv, chainConfig *params.ChainConfig) error {
 	if !chainConfig.IsShanghai(big.NewInt(int64(env.Number)), env.Timestamp) {
 		return nil
 	}
-	if chainConfig.Parlia == nil && env.Withdrawals == nil {
+	if chainConfig.IsNotInBSC() && env.Withdrawals == nil {
 		return NewError(ErrorConfig, errors.New("Shanghai config but missing 'withdrawals' in env section"))
 	}
 	return nil

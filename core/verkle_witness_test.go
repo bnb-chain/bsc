@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"math/big"
 	"slices"
 	"testing"
@@ -206,12 +207,15 @@ func testProcessVerkle(t *testing.T) {
 
 	t.Log("verified verkle proof, inserting blocks into the chain")
 
+	for i, b := range chain {
+		fmt.Printf("%d %x\n", i, b.Root())
+	}
 	endnum, err := blockchain.InsertChain(chain)
 	if err != nil {
 		t.Fatalf("block %d imported with error: %v", endnum, err)
 	}
 
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		b := blockchain.GetBlockByNumber(uint64(i) + 1)
 		if b == nil {
 			t.Fatalf("expected block %d to be present in chain", i+1)
@@ -232,7 +236,7 @@ func TestProcessParentBlockHash(t *testing.T) {
 	// etc
 	checkBlockHashes := func(statedb *state.StateDB, isVerkle bool) {
 		statedb.SetNonce(params.HistoryStorageAddress, 1, tracing.NonceChangeUnspecified)
-		statedb.SetCode(params.HistoryStorageAddress, params.HistoryStorageCode)
+		statedb.SetCode(params.HistoryStorageAddress, params.HistoryStorageCode, tracing.CodeChangeUnspecified)
 		// Process n blocks, from 1 .. num
 		var num = 2
 		for i := 1; i <= num; i++ {
@@ -455,7 +459,7 @@ func verkleTestGenesis(config *params.ChainConfig) *Genesis {
 func TestProcessVerkleContractWithEmptyCode(t *testing.T) {
 	// The test txs were taken from a secondary testnet with chain id 69421
 	config := *testKaustinenLikeChainConfig
-	config.ChainID.SetUint64(69421)
+	config.ChainID = new(big.Int).SetUint64(69421)
 	gspec := verkleTestGenesis(&config)
 
 	genesisH, _, _, _, _, statediffs := GenerateVerkleChainWithGenesis(gspec, beacon.New(ethash.NewFaker()), 1, func(i int, gen *BlockGen) {
@@ -511,7 +515,7 @@ func TestProcessVerkleContractWithEmptyCode(t *testing.T) {
 func TestProcessVerkleExtCodeHashOpcode(t *testing.T) {
 	// The test txs were taken from a secondary testnet with chain id 69421
 	config := *testKaustinenLikeChainConfig
-	config.ChainID.SetUint64(69421)
+	config.ChainID = new(big.Int).SetUint64(69421)
 
 	var (
 		signer     = types.LatestSigner(&config)
@@ -615,7 +619,7 @@ func TestProcessVerkleExtCodeHashOpcode(t *testing.T) {
 func TestProcessVerkleBalanceOpcode(t *testing.T) {
 	// The test txs were taken from a secondary testnet with chain id 69421
 	config := *testKaustinenLikeChainConfig
-	config.ChainID.SetUint64(69421)
+	config.ChainID = new(big.Int).SetUint64(69421)
 
 	var (
 		signer     = types.LatestSigner(&config)
@@ -672,7 +676,7 @@ func TestProcessVerkleBalanceOpcode(t *testing.T) {
 func TestProcessVerkleSelfDestructInSeparateTx(t *testing.T) {
 	// The test txs were taken from a secondary testnet with chain id 69421
 	config := *testKaustinenLikeChainConfig
-	config.ChainID.SetUint64(69421)
+	config.ChainID = new(big.Int).SetUint64(69421)
 
 	var (
 		signer     = types.LatestSigner(&config)
@@ -792,7 +796,7 @@ func TestProcessVerkleSelfDestructInSeparateTx(t *testing.T) {
 func TestProcessVerkleSelfDestructInSameTx(t *testing.T) {
 	// The test txs were taken from a secondary testnet with chain id 69421
 	config := *testKaustinenLikeChainConfig
-	config.ChainID.SetUint64(69421)
+	config.ChainID = new(big.Int).SetUint64(69421)
 
 	var (
 		signer     = types.LatestSigner(&config)
@@ -888,7 +892,7 @@ func TestProcessVerkleSelfDestructInSameTx(t *testing.T) {
 func TestProcessVerkleSelfDestructInSeparateTxWithSelfBeneficiary(t *testing.T) {
 	// The test txs were taken from a secondary testnet with chain id 69421
 	config := *testKaustinenLikeChainConfig
-	config.ChainID.SetUint64(69421)
+	config.ChainID = new(big.Int).SetUint64(69421)
 
 	var (
 		signer     = types.LatestSigner(&config)
@@ -978,7 +982,7 @@ func TestProcessVerkleSelfDestructInSeparateTxWithSelfBeneficiary(t *testing.T) 
 func TestProcessVerkleSelfDestructInSameTxWithSelfBeneficiary(t *testing.T) {
 	// The test txs were taken from a secondary testnet with chain id 69421
 	config := *testKaustinenLikeChainConfig
-	config.ChainID.SetUint64(69421)
+	config.ChainID = new(big.Int).SetUint64(69421)
 
 	var (
 		signer     = types.LatestSigner(&config)
@@ -1042,7 +1046,7 @@ func TestProcessVerkleSelfDestructInSameTxWithSelfBeneficiary(t *testing.T) {
 func TestProcessVerkleSelfDestructInSameTxWithSelfBeneficiaryAndPrefundedAccount(t *testing.T) {
 	// The test txs were taken from a secondary testnet with chain id 69421
 	config := *testKaustinenLikeChainConfig
-	config.ChainID.SetUint64(69421)
+	config.ChainID = new(big.Int).SetUint64(69421)
 
 	var (
 		signer     = types.LatestSigner(&config)

@@ -2,9 +2,10 @@
 cd ..
 git submodule update --init --depth 1 --recursive
 git apply tests/0001-diff-go-ethereum.patch
+git apply tests/0002-diff-go-ethereum.patch
 cd tests
 rm -rf spec-tests && mkdir spec-tests && cd spec-tests
-wget https://github.com/ethereum/execution-spec-tests/releases/download/v4.5.0/fixtures_develop.tar.gz
+wget https://github.com/ethereum/execution-spec-tests/releases/download/v5.4.0/fixtures_develop.tar.gz
 tar xzf fixtures_develop.tar.gz && rm -f fixtures_develop.tar.gz
 cd ..
 go test -run . -v -short >test.log

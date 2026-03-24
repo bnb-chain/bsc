@@ -20,7 +20,6 @@ package memorydb
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -85,6 +84,11 @@ func (db *Database) Ancient(kind string, number uint64) ([]byte, error) {
 }
 
 func (db *Database) AncientRange(kind string, start, count, maxBytes uint64) ([][]byte, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (db *Database) AncientBytes(kind string, id, offset, length uint64) ([]byte, error) {
 	//TODO implement me
 	panic("implement me")
 }
@@ -396,7 +400,7 @@ func (b *batch) Replay(w ethdb.KeyValueWriter) error {
 						return err
 					}
 				} else {
-					return fmt.Errorf("ethdb.KeyValueWriter does not implement DeleteRange")
+					return errors.New("ethdb.KeyValueWriter does not implement DeleteRange")
 				}
 			}
 			continue

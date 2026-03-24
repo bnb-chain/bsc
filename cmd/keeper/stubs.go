@@ -1,4 +1,4 @@
-// Copyright 2021 The go-ethereum Authors
+// Copyright 2025 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -14,13 +14,13 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-//go:build nacl || js || !cgo
+//go:build !example && !ziren
 
-package rlp
+package main
 
-import "reflect"
-
-// byteArrayBytes returns a slice of the byte array v.
-func byteArrayBytes(v reflect.Value, length int) []byte {
-	return v.Slice(0, length).Bytes()
+// getInput is a stub implementation for when no platform-specific build tags are set.
+// This allows golangci-lint to typecheck the code without errors.
+// The actual implementations are provided in platform-specific files.
+func getInput() []byte {
+	panic("stub")
 }

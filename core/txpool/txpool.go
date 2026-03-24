@@ -66,7 +66,6 @@ type BlockChain interface {
 type TxPool struct {
 	subpools []SubPool // List of subpools for specialized transaction handling
 	chain    BlockChain
-	signer   types.Signer
 
 	stateLock sync.RWMutex   // The lock for protecting state instance
 	state     *state.StateDB // Current state at the blockchain head
@@ -99,7 +98,6 @@ func New(gasTip uint64, chain BlockChain, subpools []SubPool) (*TxPool, error) {
 	pool := &TxPool{
 		subpools: subpools,
 		chain:    chain,
-		signer:   types.LatestSigner(chain.Config()),
 		state:    statedb,
 		quit:     make(chan chan error),
 		term:     make(chan struct{}),

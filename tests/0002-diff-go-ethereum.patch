@@ -1,0 +1,18 @@
+diff --git a/core/vm/contracts.go b/core/vm/contracts.go
+index 000000000..000000000 100644
+--- a/core/vm/contracts.go
++++ b/core/vm/contracts.go
+@@ -340,13 +340,6 @@ var PrecompiledContractsOsaka = PrecompiledContracts{
+ 	common.BytesToAddress([]byte{0x10}): &bls12381MapG1{},
+ 	common.BytesToAddress([]byte{0x11}): &bls12381MapG2{},
+ 
+-	common.BytesToAddress([]byte{0x64}): &tmHeaderValidate{},
+-	common.BytesToAddress([]byte{0x65}): &iavlMerkleProofValidatePlato{},
+-	common.BytesToAddress([]byte{0x66}): &blsSignatureVerify{},
+-	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidateHertz{},
+-	common.BytesToAddress([]byte{0x68}): &verifyDoubleSignEvidence{},
+-	common.BytesToAddress([]byte{0x69}): &secp256k1SignatureRecover{},
+-
+ 	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{eip7951: true},
+ }
+ 

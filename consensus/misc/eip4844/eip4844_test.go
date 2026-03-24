@@ -28,9 +28,10 @@ import (
 func TestCalcExcessBlobGas(t *testing.T) {
 	var (
 		config        = params.MainnetChainConfig
-		targetBlobs   = targetBlobsPerBlock(config, *config.CancunTime)
+		targetBlobs   = config.BlobScheduleConfig.Cancun.Target
 		targetBlobGas = uint64(targetBlobs) * params.BlobTxBlobGasPerBlob
 	)
+
 	var tests = []struct {
 		excess uint64
 		blobs  int
@@ -90,6 +91,65 @@ func TestCalcBlobFee(t *testing.T) {
 	}
 }
 
+func TestCalcBlobFeePostOsaka(t *testing.T) {
+	zero := uint64(0)
+	bpo1 := uint64(1754836608)
+	bpo2 := uint64(1754934912)
+	bpo3 := uint64(1755033216)
+
+	tests := []struct {
+		excessBlobGas uint64
+		blobGasUsed   uint64
+		blobfee       uint64
+		basefee       uint64
+		parenttime    uint64
+		headertime    uint64
+	}{
+		{5149252, 1310720, 5617366, 30, 1754904516, 1754904528},
+		{19251039, 2490368, 20107103, 50, 1755033204, 1755033216},
+	}
+	for i, tt := range tests {
+		config := &params.ChainConfig{
+			LondonBlock: big.NewInt(0),
+			CancunTime:  &zero,
+			PragueTime:  &zero,
+			OsakaTime:   &zero,
+			BPO1Time:    &bpo1,
+			BPO2Time:    &bpo2,
+			BPO3Time:    &bpo3,
+			BlobScheduleConfig: &params.BlobScheduleConfig{
+				Cancun: params.DefaultCancunBlobConfig,
+				Prague: params.DefaultPragueBlobConfig,
+				Osaka:  params.DefaultOsakaBlobConfig,
+				BPO1: &params.BlobConfig{
+					Target:         9,
+					Max:            14,
+					UpdateFraction: 8832827,
+				},
+				BPO2: &params.BlobConfig{
+					Target:         14,
+					Max:            21,
+					UpdateFraction: 13739630,
+				},
+				BPO3: &params.BlobConfig{
+					Target:         21,
+					Max:            32,
+					UpdateFraction: 20609697,
+				},
+			}}
+		parent := &types.Header{
+			ExcessBlobGas: &tt.excessBlobGas,
+			BlobGasUsed:   &tt.blobGasUsed,
+			BaseFee:       big.NewInt(int64(tt.basefee)),
+			Time:          tt.parenttime,
+		}
+		have := CalcExcessBlobGas(config, parent, tt.headertime)
+		if have != tt.blobfee {
+			t.Errorf("test %d: blobfee mismatch: have %v want %v", i, have, tt.blobfee)
+		}
+	}
+}
+
 func TestFakeExponential(t *testing.T) {
 	tests := []struct {
 		factor      int64
@@ -124,6 +184,126 @@ func TestFakeExponential(t *testing.T) {
 		later := fmt.Sprintf("%d %d %d", f, n, d)
 		if original != later {
 			t.Errorf("test %d: fake exponential modified arguments: have\n%v\nwant\n%v", i, later, original)
+		}
+	}
+}
+
+func TestCalcExcessBlobGasEIP7918(t *testing.T) {
+	var (
+		cfg           = params.MergedTestChainConfig
+		targetBlobs   = cfg.BlobScheduleConfig.Osaka.Target
+		blobGasTarget = uint64(targetBlobs) * params.BlobTxBlobGasPerBlob
+	)
+
+	makeHeader := func(parentExcess, parentBaseFee uint64, blobsUsed int) *types.Header {
+		blobGasUsed := uint64(blobsUsed) * params.BlobTxBlobGasPerBlob
+		return &types.Header{
+			BaseFee:       big.NewInt(int64(parentBaseFee)),
+			ExcessBlobGas: &parentExcess,
+			BlobGasUsed:   &blobGasUsed,
+		}
+	}
+
+	tests := []struct {
+		name          string
+		header        *types.Header
+		wantExcessGas uint64
+	}{
+		{
+			name:          "BelowReservePrice",
+			header:        makeHeader(0, 1_000_000_000, targetBlobs),
+			wantExcessGas: blobGasTarget * 3 / 9,
+		},
+		{
+			name:          "AboveReservePrice",
+			header:        makeHeader(0, 1, targetBlobs),
+			wantExcessGas: 0,
+		},
+	}
+	for _, tc := range tests {
+		got := CalcExcessBlobGas(cfg, tc.header, *cfg.CancunTime)
+		if got != tc.wantExcessGas {
+			t.Fatalf("%s: excess-blob-gas mismatch – have %d, want %d",
+				tc.name, got, tc.wantExcessGas)
+		}
+	}
+}
+
+// TestBEP657 tests BEP-657: Limit Blob Transaction Inclusion by Block Number.
+// After Mendel fork, only blocks where N % BlobEligibleBlockInterval == 0 can include blob transactions.
+func TestBEP657(t *testing.T) {
+	mendelTime := uint64(1000)
+	cfg := *params.RialtoChainConfig
+	cfg.MendelTime = &mendelTime
+	config := &cfg
+	targetBlobGas := uint64(config.BlobScheduleConfig.Cancun.Target) * params.BlobTxBlobGasPerBlob
+
+	// Test IsBlobEligibleBlock
+	for _, tt := range []struct {
+		blockNum uint64
+		time     uint64
+		want     bool
+	}{
+		{1, 999, true},   // before fork: all eligible
+		{5, 1000, true},  // after fork: N%5==0 eligible
+		{1, 1000, false}, // after fork: N%5!=0 not eligible
+	} {
+		if got := IsBlobEligibleBlock(config, tt.blockNum, tt.time); got != tt.want {
+			t.Errorf("IsBlobEligibleBlock(%d, %d) = %v, want %v", tt.blockNum, tt.time, got, tt.want)
+		}
+	}
+
+	// Test CalcExcessBlobGas: inherit vs recalculate
+	for i, tt := range []struct {
+		parentNum   uint64
+		excess      uint64
+		used        uint64
+		time        uint64
+		wantInherit bool
+	}{
+		{5, 600000, params.BlobTxBlobGasPerBlob * 4, 1000, false}, // parent N%5==0: recalc
+		{3, 700000, 0, 1000, true},                                // parent N%5!=0: inherit
+		{3, 500000, params.BlobTxBlobGasPerBlob * 2, 999, false},  // before fork: recalc
+	} {
+		parent := &types.Header{Number: big.NewInt(int64(tt.parentNum)), Time: 1000, ExcessBlobGas: &tt.excess, BlobGasUsed: &tt.used}
+		got := CalcExcessBlobGas(config, parent, tt.time)
+		if tt.wantInherit && got != tt.excess {
+			t.Errorf("CalcExcessBlobGas test %d: want inherit %d, got %d", i, tt.excess, got)
+		}
+		if !tt.wantInherit {
+			want := tt.excess + tt.used
+			if want >= targetBlobGas {
+				want -= targetBlobGas
+			} else {
+				want = 0
+			}
+			if got != want {
+				t.Errorf("CalcExcessBlobGas test %d: want recalc %d, got %d", i, want, got)
+			}
+		}
+	}
+
+	// Test VerifyEIP4844Header: BlobGasUsed validation
+	makeHeader := func(num, blobGas, time uint64) *types.Header {
+		zero := uint64(0)
+		return &types.Header{Number: big.NewInt(int64(num)), Time: time, ExcessBlobGas: &zero, BlobGasUsed: &blobGas}
+	}
+	for i, tt := range []struct {
+		parentNum, headerNum, blobGas uint64
+		time                          uint64
+		wantErr                       bool
+	}{
+		{4, 5, params.BlobTxBlobGasPerBlob, 1000, false}, // eligible: can have blobs
+		{5, 6, params.BlobTxBlobGasPerBlob, 1000, true},  // non-eligible: must fail
+		{5, 6, 0, 1000, false},                           // non-eligible: no blobs OK
+		{5, 6, params.BlobTxBlobGasPerBlob, 999, false},  // before fork: all OK
+	} {
+		err := VerifyEIP4844Header(config, makeHeader(tt.parentNum, 0, 1000), makeHeader(tt.headerNum, tt.blobGas, tt.time))
+		if tt.wantErr && err == nil {
+			t.Errorf("VerifyEIP4844Header test %d: expected error", i)
+		}
+		if !tt.wantErr && err != nil {
+			t.Errorf("VerifyEIP4844Header test %d: unexpected error: %v", i, err)
 		}
 	}
 }

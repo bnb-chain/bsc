@@ -158,9 +158,7 @@ func newTestBackend(t *testing.T, londonBlock *big.Int, cancunBlock *big.Int, pe
 	config.LondonBlock = londonBlock
 	config.ArrowGlacierBlock = londonBlock
 	config.GrayGlacierBlock = londonBlock
-
 	engine := beacon.New(ethash.NewFaker())
-	engine.TestingTTDBlock(testHead + 1)
 
 	td := params.GenesisDifficulty.Uint64()
 

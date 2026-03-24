@@ -36,8 +36,7 @@ type Config struct {
 	// This field must be set to a valid secp256k1 private key.
 	PrivateKey *ecdsa.PrivateKey `toml:"-"`
 
-	// MaxPeers is the maximum number of peers that can be
-	// connected. It must be greater than zero.
+	// MaxPeers is the maximum number of peers that can be connected.
 	MaxPeers int
 
 	// MaxPeersPerIP is the maximum number of peers that can be

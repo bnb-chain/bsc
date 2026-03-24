@@ -31,7 +31,7 @@ import (
 // - gas limit check
 // - basefee check
 func VerifyEIP1559Header(config *params.ChainConfig, parent, header *types.Header) error {
-	if config.Parlia == nil {
+	if config.IsNotInBSC() {
 		// Verify that the gas limit remains within allowed bounds
 		parentGasLimit := parent.GasLimit
 		if !config.IsLondon(parent.Number) {
@@ -57,7 +57,7 @@ func VerifyEIP1559Header(config *params.ChainConfig, parent, header *types.Heade
 
 // CalcBaseFee calculates the basefee of the header.
 func CalcBaseFee(config *params.ChainConfig, parent *types.Header) *big.Int {
-	if config.Parlia != nil {
+	if config.IsInBSC() {
 		return new(big.Int).SetUint64(params.InitialBaseFeeForBSC)
 	}
 

@@ -220,9 +220,7 @@ func TestRecoverSanity(t *testing.T) {
 func BenchmarkSign(b *testing.B) {
 	_, seckey := generateKeyPair()
 	msg := csprngEntropy(32)
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		Sign(msg, seckey)
 	}
 }
@@ -231,9 +229,7 @@ func BenchmarkRecover(b *testing.B) {
 	msg := csprngEntropy(32)
 	_, seckey := generateKeyPair()
 	sig, _ := Sign(msg, seckey)
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		RecoverPubkey(msg, sig)
 	}
 }

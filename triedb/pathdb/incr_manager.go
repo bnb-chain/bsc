@@ -298,7 +298,7 @@ func (im *incrManager) processWriteTask(dl *diffLayer) error {
 	return nil
 }
 
-// writeChainData writes incremental data: chain and state
+// writeIncrData writes incremental data: chain and state
 func (im *incrManager) writeIncrData(dl *diffLayer) error {
 	head, err := im.incrDB.GetChainFreezer().Ancients()
 	if err != nil {
@@ -394,7 +394,7 @@ func (im *incrManager) writeIncrStateData(dl *diffLayer) error {
 
 	start := time.Now()
 	// Commit to async buffer instead of direct write
-	im.asyncBuffer.commit(dl.root, dl.nodes, dl.states.stateSet, dl.stateID(), dl.block)
+	im.asyncBuffer.commit(dl.root, dl.nodes.nodeSet, dl.states.stateSet, dl.stateID(), dl.block)
 	if err := im.asyncBuffer.flush(im.incrDB, false); err != nil {
 		return fmt.Errorf("failed to flush async incremental state buffer: %v", err)
 	}
@@ -600,7 +600,7 @@ func (im *incrManager) ForceFlushStateBuffer() error {
 
 // truncateStateFreezer truncate state history by flushed stateID.
 func (im *incrManager) truncateStateFreezer(stateID uint64) error {
-	tail, err := im.db.freezer.Tail()
+	tail, err := im.db.stateFreezer.Tail()
 	if err != nil {
 		return nil
 	}
@@ -610,7 +610,7 @@ func (im *incrManager) truncateStateFreezer(stateID uint64) error {
 		return nil
 	}
 
-	pruned, err := truncateFromTail(im.db.diskdb, im.db.freezer, stateID-limit)
+	pruned, err := truncateFromTail(im.db.stateFreezer, typeStateHistory, stateID-limit)
 	if err != nil {
 		log.Error("Failed to truncate from tail", "error", err, "target", stateID)
 		return err

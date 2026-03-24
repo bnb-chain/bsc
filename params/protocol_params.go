@@ -28,7 +28,7 @@ const (
 	MaxGasLimit          uint64 = 0x7fffffffffffffff // Maximum the gas limit (2^63-1).
 	GenesisGasLimit      uint64 = 4712388            // Gas limit of the Genesis block.
 	PayBidTxGasLimit     uint64 = 25000              // Gas limit of the PayBidTx in the types.BidArgs.
-	MinTxGasLimitCap     uint64 = 1 << 24            // Minimum the transaction gas limit cap.
+	MaxTxGas             uint64 = 1 << 24            // Maximum transaction gas limit after eip-7825 (16,777,216).
 
 	MaximumExtraDataSize  uint64 = 32       // Maximum size extra data may be after Genesis.
 	ForkIDSize            uint64 = 4        // The length of fork id
@@ -176,7 +176,7 @@ const (
 	Bls12381MapG1Gas          uint64 = 5500  // Gas price for BLS12-381 mapping field element to G1 operation
 	Bls12381MapG2Gas          uint64 = 23800 // Gas price for BLS12-381 mapping field element to G2 operation
 
-	P256VerifyGas uint64 = 3450 // secp256r1 elliptic curve signature verifier gas price
+	P256VerifyGas uint64 = 6900 // secp256r1 elliptic curve signature verifier gas price
 
 	// The Refund Quotient is the cap on how much of the used gas can be refunded. Before EIP-3529,
 	// up to half the consumed gas could be refunded. Redefined as 1/5th in EIP-3529
@@ -188,8 +188,13 @@ const (
 	BlobTxBlobGasPerBlob               = 1 << 17 // Gas consumption of a single data blob (== blob byte size)
 	BlobTxMinBlobGasprice              = 1       // Minimum gas price for data blobs
 	BlobTxPointEvaluationPrecompileGas = 50000   // Gas price for the point evaluation precompile.
+	BlobTxMaxBlobs                     = 6
+	BlobBaseCost                       = 1 << 13 // Base execution gas cost for a blob.
+	BlobEligibleBlockInterval          = 5       // BEP-657: Blob transactions are only allowed in blocks where N % 5 == 0
 
-	HistoryServeWindow = 8192 // Number of blocks to serve historical block hashes for, EIP-2935.
+	HistoryServeWindow = 8191 // Number of blocks to serve historical block hashes for, EIP-2935.
+
+	MaxBlockSize = 8_388_608 // maximum size of an RLP-encoded block
 )
 
 var (

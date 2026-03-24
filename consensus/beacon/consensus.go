@@ -61,8 +61,7 @@ var (
 // is only used for necessary consensus checks. The legacy consensus engine can be any
 // engine implements the consensus interface (except the beacon itself).
 type Beacon struct {
-	ethone   consensus.Engine // Original consensus engine used in eth1, e.g. ethash or clique
-	ttdblock *uint64          // Merge block-number for testchain generation without TTDs
+	ethone consensus.Engine // Original consensus engine used in eth1, e.g. ethash or clique
 }
 
 // New creates a consensus engine with the given embedded eth1 engine.
@@ -71,28 +70,6 @@ func New(ethone consensus.Engine) *Beacon {
 		panic("nested consensus engine")
 	}
 	return &Beacon{ethone: ethone}
-}
-
-// isPostMerge reports whether the given block number is assumed to be post-merge.
-// Here we check the MergeNetsplitBlock to allow configuring networks with a PoW or
-// PoA chain for unit testing purposes.
-func isPostMerge(config *params.ChainConfig, blockNum uint64, timestamp uint64) bool {
-	mergedAtGenesis := config.TerminalTotalDifficulty != nil && config.TerminalTotalDifficulty.Sign() == 0
-	return mergedAtGenesis ||
-		config.MergeNetsplitBlock != nil && blockNum >= config.MergeNetsplitBlock.Uint64() ||
-		config.ShanghaiTime != nil && timestamp >= *config.ShanghaiTime
-}
-
-// TestingTTDBlock is a replacement mechanism for TTD-based pre-/post-merge
-// splitting. With chain history deletion, TD calculations become impossible.
-// This is fine for progressing the live chain, but to be able to generate test
-// chains, we do need a split point. This method supports setting an explicit
-// block number to use as the splitter *for testing*, instead of having to keep
-// the notion of TDs in the client just for testing.
-//
-// The block with supplied number is regarded as the last pre-merge block.
-func (beacon *Beacon) TestingTTDBlock(number uint64) {
-	beacon.ttdblock = &number
 }
 
 // Author implements consensus.Engine, returning the verified author of the block.
@@ -374,7 +351,7 @@ func (beacon *Beacon) NextInTurnValidator(chain consensus.ChainHeaderReader, hea
 // Prepare implements consensus.Engine, initializing the difficulty field of a
 // header to conform to the beacon protocol. The changes are done inline.
 func (beacon *Beacon) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
-	if !isPostMerge(chain.Config(), header.Number.Uint64(), header.Time) {
+	if !chain.Config().IsPostMerge(header.Number.Uint64(), header.Time) {
 		return beacon.ethone.Prepare(chain, header)
 	}
 	header.Difficulty = beaconDifficulty
@@ -504,7 +481,7 @@ func (beacon *Beacon) VerifyBAL(block *types.Block, bal *types.BlockAccessListEn
 // the difficulty that a new block should have when created at time
 // given the parent block's time and difficulty.
 func (beacon *Beacon) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, parent *types.Header) *big.Int {
-	if !isPostMerge(chain.Config(), parent.Number.Uint64()+1, time) {
+	if !chain.Config().IsPostMerge(parent.Number.Uint64()+1, time) {
 		return beacon.ethone.CalcDifficulty(chain, time, parent)
 	}
 	return beaconDifficulty

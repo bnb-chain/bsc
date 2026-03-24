@@ -39,8 +39,16 @@ func (t *EmptyTrie) GetStorage(_ common.Address, key []byte) ([]byte, error) {
 	return nil, nil
 }
 
+func (t *EmptyTrie) PrefetchStorage(addr common.Address, keys [][]byte) error {
+	return nil
+}
+
 func (t *EmptyTrie) GetAccount(address common.Address) (*types.StateAccount, error) {
 	return nil, nil
+}
+
+func (t *EmptyTrie) PrefetchAccount(addresses []common.Address) error {
+	return nil
 }
 
 func (t *EmptyTrie) UpdateStorage(_ common.Address, key, value []byte) error {
@@ -93,6 +101,6 @@ func (t *EmptyTrie) IsVerkle() bool {
 }
 
 // Witness returns a set containing all trie nodes that have been accessed.
-func (t *EmptyTrie) Witness() map[string]struct{} {
+func (t *EmptyTrie) Witness() map[string][]byte {
 	panic("not implemented")
 }

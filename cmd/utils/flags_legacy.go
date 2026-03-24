@@ -42,41 +42,51 @@ var DeprecatedFlags = []cli.Flag{
 	LogBacktraceAtFlag,
 	LogDebugFlag,
 	MinerNewPayloadTimeoutFlag,
+	MetricsEnabledExpensiveFlag,
+	EnablePersonal,
 	PruneAncientDataFlag,
+	JournalFileFlag,
+	LogExportCheckpointsFlag,
 }
 
 var (
 	// Deprecated May 2020, shown in aliased flags section
 	NoUSBFlag = &cli.BoolFlag{
 		Name:     "nousb",
+		Hidden:   true,
 		Usage:    "Disables monitoring for and managing USB hardware wallets (deprecated)",
 		Category: flags.DeprecatedCategory,
 	}
 	// Deprecated March 2022
 	LegacyWhitelistFlag = &cli.StringFlag{
 		Name:     "whitelist",
+		Hidden:   true,
 		Usage:    "Comma separated block number-to-hash mappings to enforce (<number>=<hash>) (deprecated in favor of --eth.requiredblocks)",
 		Category: flags.DeprecatedCategory,
 	}
 	// Deprecated July 2023
 	CacheTrieJournalFlag = &cli.StringFlag{
 		Name:     "cache.trie.journal",
+		Hidden:   true,
 		Usage:    "Disk journal directory for trie cache to survive node restarts",
 		Category: flags.DeprecatedCategory,
 	}
 	CacheTrieRejournalFlag = &cli.DurationFlag{
 		Name:     "cache.trie.rejournal",
+		Hidden:   true,
 		Usage:    "Time interval to regenerate the trie cache journal",
 		Category: flags.DeprecatedCategory,
 	}
 	LegacyDiscoveryV5Flag = &cli.BoolFlag{
 		Name:     "v5disc",
+		Hidden:   true,
 		Usage:    "Enables the experimental RLPx V5 (Topic Discovery) mechanism (deprecated, use --discv5 instead)",
 		Category: flags.DeprecatedCategory,
 	}
 	// Deprecated August 2023
 	TxLookupLimitFlag = &cli.Uint64Flag{
 		Name:     "txlookuplimit",
+		Hidden:   true,
 		Usage:    "Number of recent blocks to maintain transactions index for (default = about one year, 0 = entire chain) (deprecated, use history.transactions instead)",
 		Value:    ethconfig.Defaults.TransactionHistory,
 		Category: flags.DeprecatedCategory,
@@ -84,38 +94,51 @@ var (
 	// Deprecated November 2023
 	LogBacktraceAtFlag = &cli.StringFlag{
 		Name:     "log.backtrace",
+		Hidden:   true,
 		Usage:    "Request a stack trace at a specific logging statement (deprecated)",
 		Value:    "",
 		Category: flags.DeprecatedCategory,
 	}
 	LogDebugFlag = &cli.BoolFlag{
 		Name:     "log.debug",
+		Hidden:   true,
 		Usage:    "Prepends log messages with call-site location (deprecated)",
 		Category: flags.DeprecatedCategory,
 	}
 	// Deprecated February 2024
 	MinerNewPayloadTimeoutFlag = &cli.DurationFlag{
 		Name:     "miner.newpayload-timeout",
+		Hidden:   true,
 		Usage:    "Specify the maximum time allowance for creating a new payload (deprecated)",
 		Value:    *ethconfig.Defaults.Miner.Recommit,
 		Category: flags.DeprecatedCategory,
 	}
 	MetricsEnabledExpensiveFlag = &cli.BoolFlag{
 		Name:     "metrics.expensive",
+		Hidden:   true,
 		Usage:    "Enable expensive metrics collection and reporting (deprecated)",
 		Category: flags.DeprecatedCategory,
 	}
 	// Deprecated Oct 2024
 	EnablePersonal = &cli.BoolFlag{
 		Name:     "rpc.enabledeprecatedpersonal",
+		Hidden:   true,
 		Usage:    "This used to enable the 'personal' namespace.",
 		Category: flags.DeprecatedCategory,
 	}
 	// Deprecated Dec 2024
 	PruneAncientDataFlag = &cli.BoolFlag{
 		Name:     "pruneancient",
+		Hidden:   true,
 		Usage:    "Prune ancient data, is an optional config and disabled by default. Only keep the latest 9w blocks' data,the older blocks' data will be permanently pruned. Notice:the geth/chaindata/ancient dir will be removed, if restart without the flag, the ancient data will start with the previous point that the oldest unpruned block number. Recommends to the user who don't care about the ancient data.",
-		Category: flags.BlockHistoryCategory,
+		Category: flags.DeprecatedCategory,
+	}
+	JournalFileFlag = &cli.BoolFlag{
+		Name:     "journalfile",
+		Hidden:   true,
+		Usage:    "Enable using journal file to store the TrieJournal instead of KVDB in pbss (default = true, deprecated)",
+		Value:    true,
+		Category: flags.DeprecatedCategory,
 	}
 )
 
