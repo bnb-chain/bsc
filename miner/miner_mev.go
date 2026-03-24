@@ -11,7 +11,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/internal/version"
 	"github.com/ethereum/go-ethereum/log"
-	"golang.org/x/sync/errgroup"
 )
 
 // MevRunning return true if mev is running.
@@ -84,29 +83,25 @@ func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common
 
 const maxBlobValConcurrency = 3
 
-// startAsyncBlobValidation launches a single background goroutine that validates
-// all blob transactions in the bid (field checks + KZG proof verification).
+var blobValSem = make(chan struct{}, maxBlobValConcurrency)
+
+// startAsyncBlobValidation launches one goroutine per blob transaction to
+// validate it in the background (field checks + KZG proof verification).
+// Concurrency is throttled by blobValSem. Results are stored per-tx in
+// bid.BlobValResults keyed by tx hash.
 func startAsyncBlobValidation(bid *types.Bid) {
-	var blobTxs []*types.Transaction
+	bid.BlobValResults = make(map[common.Hash]chan error)
 	for _, tx := range bid.Txs {
 		if tx.Type() == types.BlobTxType {
-			blobTxs = append(blobTxs, tx)
+			ch := make(chan error, 1)
+			bid.BlobValResults[tx.Hash()] = ch
+			go func() {
+				blobValSem <- struct{}{}
+				defer func() { <-blobValSem }()
+				ch <- txpool.ValidateBlobTx(tx, nil, nil)
+			}()
 		}
 	}
-	if len(blobTxs) == 0 {
-		return
-	}
-	bid.BlobValResult = make(chan error, 1)
-	go func() {
-		var g errgroup.Group
-		g.SetLimit(maxBlobValConcurrency)
-		for _, tx := range blobTxs {
-			g.Go(func() error {
-				return txpool.ValidateBlobTx(tx, nil, nil)
-			})
-		}
-		bid.BlobValResult <- g.Wait()
-	}()
 }
 
 func (miner *Miner) MevParams() *types.MevParams {

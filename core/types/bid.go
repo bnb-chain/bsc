@@ -176,9 +176,9 @@ type Bid struct {
 
 	rawBid RawBid
 
-	// BlobValResult carries the result of async blob tx validation (field
-	// checks + KZG proof verification).
-	BlobValResult chan error
+	// BlobValResults carries per-tx results of async blob validation (field
+	// checks + KZG proof verification), keyed by transaction hash.
+	BlobValResults map[common.Hash]chan error
 }
 
 func (b *Bid) Commit() {

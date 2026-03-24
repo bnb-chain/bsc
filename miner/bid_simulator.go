@@ -1007,9 +1007,8 @@ type BidRuntime struct {
 	packedBlockReward     *big.Int
 	packedValidatorReward *big.Int
 
-	finished      chan struct{}
-	duration      time.Duration
-	blobValidated bool // true after async blob validation result has been consumed
+	finished chan struct{}
+	duration time.Duration
 }
 
 func newBidRuntime(newBid *types.Bid, validatorCommission uint64) (*BidRuntime, error) {
@@ -1085,15 +1084,14 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 			return errors.New("cell proof is not supported yet")
 		}
 
-		if !r.blobValidated {
-			if r.bid.BlobValResult != nil {
-				if err := <-r.bid.BlobValResult; err != nil {
-					return err
-				}
-			} else if err := txpool.ValidateBlobTx(tx, env.header, nil); err != nil {
+		if ch, ok := r.bid.BlobValResults[tx.Hash()]; ok {
+			if err := <-ch; err != nil {
 				return err
 			}
-			r.blobValidated = true
+		} else {
+			if err := txpool.ValidateBlobTx(tx, env.header, nil); err != nil {
+				return err
+			}
 		}
 
 		// Checking against blob gas limit: It's kind of ugly to perform this check here, but there
