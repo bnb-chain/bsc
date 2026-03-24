@@ -5,9 +5,9 @@ import (
 	"encoding/hex"
 	"testing"
 
+	"github.com/cosmos/iavl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tendermint/iavl"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	cmn "github.com/tendermint/tendermint/libs/common"
 
