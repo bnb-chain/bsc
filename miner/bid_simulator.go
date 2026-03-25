@@ -1085,6 +1085,7 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 		}
 
 		if ch, ok := r.bid.BlobValResults[tx.Hash()]; ok {
+			delete(r.bid.BlobValResults, tx.Hash())
 			if err := <-ch; err != nil {
 				return err
 			}

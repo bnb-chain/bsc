@@ -81,23 +81,19 @@ func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common
 	return bid.Hash(), nil
 }
 
-const maxBlobValConcurrency = 3
-
-var blobValSem = make(chan struct{}, maxBlobValConcurrency)
-
 // startAsyncBlobValidation launches one goroutine per blob transaction to
 // validate it in the background (field checks + KZG proof verification).
-// Concurrency is throttled by blobValSem. Results are stored per-tx in
-// bid.BlobValResults keyed by tx hash.
+// Results are stored per-tx in bid.BlobValResults keyed by tx hash.
 func startAsyncBlobValidation(bid *types.Bid) {
 	bid.BlobValResults = make(map[common.Hash]chan error)
 	for _, tx := range bid.Txs {
 		if tx.Type() == types.BlobTxType {
+			if _, dup := bid.BlobValResults[tx.Hash()]; dup {
+				continue
+			}
 			ch := make(chan error, 1)
 			bid.BlobValResults[tx.Hash()] = ch
 			go func() {
-				blobValSem <- struct{}{}
-				defer func() { <-blobValSem }()
 				ch <- txpool.ValidateBlobTx(tx, nil, nil)
 			}()
 		}
