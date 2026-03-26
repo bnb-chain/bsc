@@ -25,6 +25,9 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
+	blscommon "github.com/prysmaticlabs/prysm/v5/crypto/bls/common"
 )
 
 // precompiledTest defines the input/output pairs for precompiled contract tests.
@@ -352,6 +355,84 @@ func TestPrecompiledBLS12381MapG1(t *testing.T)      { testJson("blsMapG1", "f0f
 func TestPrecompiledBLS12381MapG2(t *testing.T)      { testJson("blsMapG2", "f10", t) }
 
 func TestPrecompiledBlsSignatureVerify(t *testing.T) { testJson("blsSignatureVerify", "66", t) }
+
+func TestActivePrecompiledContractsUsesMendelVariants(t *testing.T) {
+	rules := params.Rules{IsOsaka: true, IsMendel: true}
+	precompiles := ActivePrecompiledContracts(rules)
+
+	requirePrecompile := func(addr byte) PrecompiledContract {
+		t.Helper()
+
+		precompile, ok := precompiles[common.BytesToAddress([]byte{addr})]
+		if !ok {
+			t.Fatalf("missing precompile 0x%02x", addr)
+		}
+		return precompile
+	}
+
+	if got := requirePrecompile(0x66).Name(); got != "BLS_SIGNATURE_VERIFY_MENDEL" {
+		t.Fatalf("unexpected Mendel 0x66 precompile: %s", got)
+	}
+	if got := requirePrecompile(0x67).Name(); got != "COMET_BFT_LIGHT_BLOCK_VALIDATE_HERTZ_MENDEL" {
+		t.Fatalf("unexpected Mendel 0x67 precompile: %s", got)
+	}
+}
+
+func TestBlsSignatureVerifyRejectsDuplicatePubKeysAtMendel(t *testing.T) {
+	msg := [32]byte{'d', 'u', 'p'}
+
+	sk1, err := bls.RandKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sk2, err := bls.RandKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pk1 := sk1.PublicKey()
+	pk2 := sk2.PublicKey()
+	sig1 := sk1.Sign(msg[:])
+	dupAgg := bls.AggregateSignatures([]blscommon.Signature{sig1, sig1, sig1})
+
+	mendelRules := params.Rules{IsOsaka: true, IsMendel: true}
+	mendelVerify := ActivePrecompiledContracts(mendelRules)[common.BytesToAddress([]byte{0x66})]
+
+	input := append(msg[:], dupAgg.Marshal()...)
+	input = append(input, pk1.Marshal()...)
+	input = append(input, pk1.Marshal()...)
+	input = append(input, pk1.Marshal()...)
+
+	res, err := mendelVerify.Run(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(res) != 0 {
+		t.Fatalf("expected Mendel duplicate-pubkey verification to fail, got %x", res)
+	}
+
+	osakaRules := params.Rules{IsOsaka: true}
+	osakaVerify := ActivePrecompiledContracts(osakaRules)[common.BytesToAddress([]byte{0x66})]
+	legacyRes, err := osakaVerify.Run(input)
+	if err != nil {
+		t.Fatalf("unexpected Osaka error: %v", err)
+	}
+	if len(legacyRes) == 0 {
+		t.Fatalf("expected pre-Mendel duplicate-pubkey verification to succeed")
+	}
+
+	mixedInput := append(msg[:], dupAgg.Marshal()...)
+	mixedInput = append(mixedInput, pk1.Marshal()...)
+	mixedInput = append(mixedInput, pk2.Marshal()...)
+	mixedInput = append(mixedInput, pk2.Marshal()...)
+	mixedRes, err := mendelVerify.Run(mixedInput)
+	if err != nil {
+		t.Fatalf("unexpected mixed-key error: %v", err)
+	}
+	if len(mixedRes) != 0 {
+		t.Fatalf("expected mixed duplicate-signature verification to fail, got %x", mixedRes)
+	}
+}
 
 func TestPrecompiledPointEvaluation(t *testing.T) { testJson("pointEvaluation", "0a", t) }
 

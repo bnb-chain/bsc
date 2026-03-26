@@ -350,6 +350,13 @@ var PrecompiledContractsOsaka = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{eip7951: true},
 }
 
+var PrecompiledContractsMendel = func() PrecompiledContracts {
+	precompiles := maps.Clone(PrecompiledContractsOsaka)
+	precompiles[common.BytesToAddress([]byte{0x66})] = &blsSignatureVerifyMendel{}
+	precompiles[common.BytesToAddress([]byte{0x67})] = &cometBFTLightBlockValidateHertzMendel{}
+	return precompiles
+}()
+
 // PrecompiledContractsP256Verify contains the precompiled Ethereum
 // contract specified in EIP-7212. This is exported for testing purposes.
 var PrecompiledContractsP256Verify = PrecompiledContracts{
@@ -357,6 +364,7 @@ var PrecompiledContractsP256Verify = PrecompiledContracts{
 }
 
 var (
+	PrecompiledAddressesMendel    []common.Address
 	PrecompiledAddressesOsaka     []common.Address
 	PrecompiledAddressesPrague    []common.Address
 	PrecompiledAddressesHaber     []common.Address
@@ -417,6 +425,9 @@ func init() {
 	for k := range PrecompiledContractsPrague {
 		PrecompiledAddressesPrague = append(PrecompiledAddressesPrague, k)
 	}
+	for k := range PrecompiledContractsMendel {
+		PrecompiledAddressesMendel = append(PrecompiledAddressesMendel, k)
+	}
 	for k := range PrecompiledContractsOsaka {
 		PrecompiledAddressesOsaka = append(PrecompiledAddressesOsaka, k)
 	}
@@ -426,6 +437,8 @@ func activePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 	switch {
 	case rules.IsVerkle:
 		return PrecompiledContractsVerkle
+	case rules.IsMendel:
+		return PrecompiledContractsMendel
 	case rules.IsOsaka:
 		return PrecompiledContractsOsaka
 	case rules.IsPrague:
@@ -467,6 +480,8 @@ func ActivePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 // ActivePrecompiles returns the precompile addresses enabled with the current configuration.
 func ActivePrecompiles(rules params.Rules) []common.Address {
 	switch {
+	case rules.IsMendel:
+		return PrecompiledAddressesMendel
 	case rules.IsOsaka:
 		return PrecompiledAddressesOsaka
 	case rules.IsPrague:
@@ -1602,6 +1617,10 @@ func (c *bls12381MapG2) Name() string {
 // blsSignatureVerify implements bls signature verification precompile.
 type blsSignatureVerify struct{}
 
+type blsSignatureVerifyMendel struct {
+	blsSignatureVerify
+}
+
 const (
 	msgHashLength         = uint64(32)
 	signatureLength       = uint64(96)
@@ -1620,16 +1639,13 @@ func (c *blsSignatureVerify) RequiredGas(input []byte) uint64 {
 	return params.BlsSignatureVerifyBaseGas + pubKeyNumber*params.BlsSignatureVerifyPerKeyGas
 }
 
-// Run input:
-// msg      | signature | [{bls pubkey}] |
-// 32 bytes | 96 bytes  | [{48 bytes}]   |
-func (c *blsSignatureVerify) Run(input []byte) ([]byte, error) {
+func parseBlsSignatureVerifyInput(input []byte, requireUniquePubKeys bool) ([32]byte, bls.Signature, []bls.PublicKey, error) {
 	msgAndSigLength := msgHashLength + signatureLength
 	inputLen := uint64(len(input))
 	if inputLen <= msgAndSigLength ||
 		(inputLen-msgAndSigLength)%singleBlsPubkeyLength != 0 {
 		log.Debug("blsSignatureVerify input size wrong", "inputLen", inputLen)
-		return nil, ErrExecutionReverted
+		return [32]byte{}, nil, nil, ErrExecutionReverted
 	}
 
 	var msg [32]byte
@@ -1640,27 +1656,50 @@ func (c *blsSignatureVerify) Run(input []byte) ([]byte, error) {
 	sig, err := bls.SignatureFromBytes(signatureBytes)
 	if err != nil {
 		log.Debug("blsSignatureVerify invalid signature", "err", err)
-		return nil, ErrExecutionReverted
+		return [32]byte{}, nil, nil, ErrExecutionReverted
 	}
 
 	pubKeyNumber := (inputLen - msgAndSigLength) / singleBlsPubkeyLength
 	pubKeys := make([]bls.PublicKey, pubKeyNumber)
+	var seenPubKeys map[string]struct{}
+	if requireUniquePubKeys {
+		seenPubKeys = make(map[string]struct{}, pubKeyNumber)
+	}
 	for i := uint64(0); i < pubKeyNumber; i++ {
 		pubKeyBytes := getData(input, msgAndSigLength+i*singleBlsPubkeyLength, singleBlsPubkeyLength)
 		pubKey, err := bls.PublicKeyFromBytes(pubKeyBytes)
 		if err != nil {
 			log.Debug("blsSignatureVerify invalid pubKey", "err", err)
-			return nil, ErrExecutionReverted
+			return [32]byte{}, nil, nil, ErrExecutionReverted
+		}
+		if requireUniquePubKeys {
+			key := string(pubKeyBytes)
+			if _, ok := seenPubKeys[key]; ok {
+				return msg, sig, nil, nil
+			}
+			seenPubKeys[key] = struct{}{}
 		}
 		pubKeys[i] = pubKey
 	}
 
-	if pubKeyNumber > 1 {
+	return msg, sig, pubKeys, nil
+}
+
+func runBlsSignatureVerify(input []byte, requireUniquePubKeys bool) ([]byte, error) {
+	msg, sig, pubKeys, err := parseBlsSignatureVerifyInput(input, requireUniquePubKeys)
+	if err != nil {
+		return nil, err
+	}
+	if pubKeys == nil {
+		return common.Big0.Bytes(), nil
+	}
+
+	if len(pubKeys) > 1 {
 		if !sig.FastAggregateVerify(pubKeys, msg) {
 			return common.Big0.Bytes(), nil
 		}
 	} else {
-		if !sig.Verify(pubKeys[0], msgBytes) {
+		if !sig.Verify(pubKeys[0], msg[:]) {
 			return common.Big0.Bytes(), nil
 		}
 	}
@@ -1668,8 +1707,23 @@ func (c *blsSignatureVerify) Run(input []byte) ([]byte, error) {
 	return common.Big1.Bytes(), nil
 }
 
+// Run input:
+// msg      | signature | [{bls pubkey}] |
+// 32 bytes | 96 bytes  | [{48 bytes}]   |
+func (c *blsSignatureVerify) Run(input []byte) ([]byte, error) {
+	return runBlsSignatureVerify(input, false)
+}
+
 func (c *blsSignatureVerify) Name() string {
 	return "BLS_SIGNATURE_VERIFY"
+}
+
+func (c *blsSignatureVerifyMendel) Run(input []byte) ([]byte, error) {
+	return runBlsSignatureVerify(input, true)
+}
+
+func (c *blsSignatureVerifyMendel) Name() string {
+	return "BLS_SIGNATURE_VERIFY_MENDEL"
 }
 
 // kzgPointEvaluation implements the EIP-4844 point evaluation precompile.

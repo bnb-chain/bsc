@@ -196,3 +196,54 @@ func TestConsensusStateApplyLightBlock(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeConsensusStateWithValidationRejectsDuplicateValidators(t *testing.T) {
+	csBytes, err := hex.DecodeString(testcases[0].consensusStateBytes)
+	require.NoError(t, err)
+
+	validatorBytes := csBytes[chainIDLength+heightLength+validatorSetHashLength:]
+	duplicateConsensusState := append([]byte{}, csBytes[:chainIDLength+heightLength+validatorSetHashLength]...)
+	duplicateConsensusState = append(duplicateConsensusState, validatorBytes...)
+	duplicateConsensusState = append(duplicateConsensusState, validatorBytes...)
+
+	_, err = DecodeConsensusStateWithValidation(duplicateConsensusState)
+	require.ErrorContains(t, err, "duplicate validator")
+}
+
+func TestValidateUniqueValidatorSetRejectsDuplicateBridgeKeys(t *testing.T) {
+	makeValidator := func(info validatorInfo) *types.Validator {
+		t.Helper()
+
+		pubKeyBytes, err := hex.DecodeString(info.pubKey)
+		require.NoError(t, err)
+		relayerAddress, err := hex.DecodeString(info.relayerAddress)
+		require.NoError(t, err)
+		relayerBlsKey, err := hex.DecodeString(info.relayerBlsKey)
+		require.NoError(t, err)
+
+		pubkey := ed25519.PubKey(make([]byte, ed25519.PubKeySize))
+		copy(pubkey[:], pubKeyBytes)
+		validator := types.NewValidator(pubkey, info.votingPower)
+		validator.SetRelayerAddress(relayerAddress)
+		validator.SetBlsKey(relayerBlsKey)
+		return validator
+	}
+
+	t.Run("duplicate bls key", func(t *testing.T) {
+		first := makeValidator(testcases[1].vals[0])
+		second := makeValidator(testcases[1].vals[1])
+		second.SetBlsKey(append([]byte{}, first.BlsKey...))
+
+		err := validateUniqueValidatorSet(&types.ValidatorSet{Validators: []*types.Validator{first, second}})
+		require.ErrorContains(t, err, "duplicate validator bls key")
+	})
+
+	t.Run("duplicate relayer address", func(t *testing.T) {
+		first := makeValidator(testcases[1].vals[0])
+		second := makeValidator(testcases[1].vals[1])
+		second.SetRelayerAddress(append([]byte{}, first.RelayerAddress...))
+
+		err := validateUniqueValidatorSet(&types.ValidatorSet{Validators: []*types.Validator{first, second}})
+		require.ErrorContains(t, err, "duplicate validator relayer address")
+	})
+}
