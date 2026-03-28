@@ -93,7 +93,7 @@ type bidSimulator struct {
 	config        *minerconfig.MevConfig
 	delayLeftOver time.Duration
 	minGasPrice   *big.Int
-	txMaxGas      uint64
+	txMaxGas      uint64 // Maximum gas for per transaction(will be removed after Mendel hardfork)
 	chain         *core.BlockChain
 	txpool        *txpool.TxPool
 	chainConfig   *params.ChainConfig
@@ -532,21 +532,29 @@ func (b *bidSimulator) getBlockInterval(parentHeader *types.Header) uint64 {
 
 // checkIfBidExceedsTxGasLimit checks whether any transaction in the bid exceeds the max txn gas.
 func (b *bidSimulator) checkIfBidExceedsTxGasLimit(bid *types.Bid) error {
-	if b.txMaxGas < params.MaxTxGas {
-		return nil
+	var gasLimitCap uint64
+	currentHeader := b.chain.CurrentBlock()
+	if b.chainConfig.IsOsaka(currentHeader.Number, currentHeader.Time) {
+		gasLimitCap = params.MaxTxGas
+	} else {
+		if b.txMaxGas == 0 {
+			return nil
+		}
+		gasLimitCap = b.txMaxGas
 	}
-	// Scan all txs in the bid to check if any transaction exceeds txGasLimit.
+
+	// Scan all txs in the bid to check if any transaction exceeds the gas limit cap
 	for _, tx := range bid.Txs {
-		if tx.Gas() > b.txMaxGas {
+		if tx.Gas() > gasLimitCap {
 			log.Debug("discard bid due to per-tx gas limit",
 				"block", bid.BlockNumber,
 				"bidHash", bid.Hash().TerminalString(),
 				"txHash", tx.Hash().TerminalString(),
 				"txGas", tx.Gas(),
-				"txGasLimit", b.txMaxGas,
+				"txGasLimit", gasLimitCap,
 			)
 
-			return fmt.Errorf("bid rejected: %w (cap: %d, tx: %d)", core.ErrGasLimitTooHigh, b.txMaxGas, tx.Gas())
+			return fmt.Errorf("bid rejected: %w (cap: %d, tx: %d)", core.ErrGasLimitTooHigh, gasLimitCap, tx.Gas())
 		}
 	}
 	return nil
@@ -1052,7 +1060,17 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	// Start executing the transaction
 	r.env.state.SetTxContext(tx.Hash(), r.env.tcount)
 
+	// if inclusion of the transaction would put the block size over the
+	// maximum we allow, don't add any more txs to the payload.
+	if !env.txFitsSize(tx) {
+		return core.ErrBlockOversized
+	}
+
 	if tx.Type() == types.BlobTxType {
+		if !eip4844.IsBlobEligibleBlock(chainConfig, r.env.header.Number.Uint64(), r.env.header.Time) {
+			return fmt.Errorf("blob transactions not allowed in block %d (N %% %d != 0)", r.env.header.Number.Uint64(), params.BlobEligibleBlockInterval)
+		}
+
 		sc = types.NewBlobSidecarFromTx(tx)
 		if sc == nil {
 			return errors.New("blob transaction without blobs in miner")
@@ -1061,6 +1079,12 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 		if sc.Version == types.BlobSidecarVersion1 {
 			return errors.New("cell proof is not supported yet")
 		}
+
+		// Validate blob sidecar commitment hashes and KZG proofs.
+		if err := txpool.ValidateBlobTx(tx, env.header, nil); err != nil {
+			return err
+		}
+
 		// Checking against blob gas limit: It's kind of ugly to perform this check here, but there
 		// isn't really a better place right now. The blob gas limit is checked at block validation time
 		// and not during execution. This means core.ApplyTransaction will not return an error if the
@@ -1084,10 +1108,12 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 		env.receipts = append(env.receipts, receipt)
 		env.sidecars = append(env.sidecars, sc)
 		env.blobs += len(sc.Blobs)
+		env.size += tx.WithoutBlobTxSidecar().Size()
 		*env.header.BlobGasUsed += receipt.BlobGasUsed
 	} else {
 		env.txs = append(env.txs, tx)
 		env.receipts = append(env.receipts, receipt)
+		env.size += tx.Size()
 	}
 
 	r.env.tcount++

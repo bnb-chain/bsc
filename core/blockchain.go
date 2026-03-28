@@ -138,12 +138,11 @@ var (
 const (
 	bodyCacheLimit      = 256
 	blockCacheLimit     = 256
-	receiptsCacheLimit  = 10000
-	sidecarsCacheLimit  = 1024
+	receiptsCacheLimit  = 256
+	sidecarsCacheLimit  = 256
 	txLookupCacheLimit  = 1024
 	maxFutureBlocks     = 256
 	maxTimeFutureBlocks = 30
-	maxBeyondBlocks     = 2048
 	prefetchTxNumber    = 50
 
 	// BlockChainVersion ensures that an incompatible database forces a resync from scratch.
@@ -1397,7 +1396,11 @@ func (bc *BlockChain) SnapSyncCommitHead(hash common.Hash) error {
 
 // UpdateChasingHead update remote best chain head, used by DA check now.
 func (bc *BlockChain) UpdateChasingHead(head *types.Header) {
-	bc.chasingHead.Store(head)
+	if head.Time > uint64(time.Now().Unix()) {
+		log.Warn("Ignoring future chasing head", "number", head.Number, "time", head.Time)
+		return
+	}
+	bc.chasingHead.Store(types.CopyHeader(head))
 }
 
 // ChasingHead return the best chain head of peers.

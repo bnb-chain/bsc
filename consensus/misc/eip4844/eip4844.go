@@ -110,6 +110,13 @@ func VerifyEIP4844Header(config *params.ChainConfig, parent, header *types.Heade
 		return errors.New("header is missing blobGasUsed")
 	}
 
+	// BEP-657: non-eligible blocks must have no blob gas used
+	if !IsBlobEligibleBlock(config, header.Number.Uint64(), header.Time) {
+		if *header.BlobGasUsed != 0 {
+			return fmt.Errorf("blob transactions not allowed in block %d (N %% %d != 0)", header.Number.Uint64(), params.BlobEligibleBlockInterval)
+		}
+	}
+
 	// Verify that the blob gas used remains within reasonable limits.
 	if *header.BlobGasUsed > bcfg.maxBlobGas() {
 		return fmt.Errorf("blob gas used %d exceeds maximum allowance %d", *header.BlobGasUsed, bcfg.maxBlobGas())
@@ -129,12 +136,21 @@ func VerifyEIP4844Header(config *params.ChainConfig, parent, header *types.Heade
 // CalcExcessBlobGas calculates the excess blob gas after applying the set of
 // blobs on top of the excess blob gas.
 func CalcExcessBlobGas(config *params.ChainConfig, parent *types.Header, headTimestamp uint64) uint64 {
-	isOsaka := config.IsOsaka(config.LondonBlock, headTimestamp)
+	eip7918 := config.IsOsaka(config.LondonBlock, headTimestamp) && config.IsNotInBSC()
 	bcfg := latestBlobConfig(config, headTimestamp)
-	return calcExcessBlobGas(isOsaka, bcfg, parent)
+
+	// BEP-657: for non-recalculation blocks (N % BlobEligibleBlockInterval != 1), inherit parent's ExcessBlobGas
+	if config.IsMendel(config.LondonBlock, headTimestamp) && parent.Number.Uint64()%params.BlobEligibleBlockInterval != 0 {
+		if parent.ExcessBlobGas != nil {
+			return *parent.ExcessBlobGas
+		}
+		return 0
+	}
+
+	return calcExcessBlobGas(eip7918, bcfg, parent)
 }
 
-func calcExcessBlobGas(isOsaka bool, bcfg *BlobConfig, parent *types.Header) uint64 {
+func calcExcessBlobGas(eip7918 bool, bcfg *BlobConfig, parent *types.Header) uint64 {
 	var parentExcessBlobGas, parentBlobGasUsed uint64
 	if parent.ExcessBlobGas != nil {
 		parentExcessBlobGas = *parent.ExcessBlobGas
@@ -151,7 +167,7 @@ func calcExcessBlobGas(isOsaka bool, bcfg *BlobConfig, parent *types.Header) uin
 
 	// EIP-7918 (post-Osaka) introduces a different formula for computing excess,
 	// in cases where the price is lower than a 'reserve price'.
-	if isOsaka {
+	if eip7918 {
 		var (
 			baseCost     = big.NewInt(params.BlobBaseCost)
 			reservePrice = baseCost.Mul(baseCost, parent.BaseFee)
@@ -183,6 +199,15 @@ func MaxBlobsPerBlock(cfg *params.ChainConfig, time uint64) int {
 		return 0
 	}
 	return blobConfig.Max
+}
+
+// IsBlobEligibleBlock returns whether blob transactions can be included in the block.
+// BEP-657: After Mendel fork, only blocks where N % BlobEligibleBlockInterval == 0 can include blob transactions.
+func IsBlobEligibleBlock(cfg *params.ChainConfig, blockNumber uint64, time uint64) bool {
+	if !cfg.IsMendel(cfg.LondonBlock, time) {
+		return true
+	}
+	return blockNumber%params.BlobEligibleBlockInterval == 0
 }
 
 // MaxBlobGasPerBlock returns the maximum blob gas that can be spent in a block at the given timestamp.

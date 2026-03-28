@@ -15,10 +15,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bits-and-blooms/bitset"
 	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/holiman/uint256"
 	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
-	"github.com/willf/bitset"
 	"golang.org/x/crypto/sha3"
 
 	"github.com/ethereum/go-ethereum/accounts"
@@ -265,10 +265,6 @@ type Parlia struct {
 	slashABI                   abi.ABI
 	stakeHubABI                abi.ABI
 
-	// finalizedNotified tracks blocks that have already triggered early finalization notification
-	// to avoid duplicate notifications
-	finalizedNotified *lru.Cache[common.Hash, struct{}]
-
 	// The fields below are for testing only
 	fakeDiff bool // Skip difficulty verifications
 }
@@ -309,7 +305,6 @@ func New(
 		recentSnaps:                lru.NewCache[common.Hash, *Snapshot](inMemorySnapshots),
 		recentHeaders:              lru.NewCache[string, common.Hash](inMemoryHeaders),
 		signatures:                 lru.NewCache[common.Hash, common.Address](inMemorySignatures),
-		finalizedNotified:          lru.NewCache[common.Hash, struct{}](inMemorySnapshots),
 		validatorSetABIBeforeLuban: vABIBeforeLuban,
 		validatorSetABI:            vABI,
 		slashABI:                   sABI,
@@ -1425,7 +1420,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
 		err := p.initializeFeynmanContract(state, header, cx, txs, receipts, systemTxs, usedGas, false, tracer)
 		if err != nil {
-			log.Error("init feynman contract failed", "error", err)
+			return fmt.Errorf("init feynman contract failed: %v", err)
 		}
 	}
 
@@ -1433,7 +1428,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	if header.Number.Cmp(common.Big1) == 0 {
 		err := p.initContract(state, header, cx, txs, receipts, systemTxs, usedGas, false, tracer)
 		if err != nil {
-			log.Error("init contract failed")
+			return errors.New("init contract failed")
 		}
 	}
 	if header.Difficulty.Cmp(diffInTurn) != 0 {
@@ -1458,7 +1453,6 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 			log.Trace("slash validator", "block hash", header.Hash(), "address", spoiledVal)
 			err = p.slash(spoiledVal, state, header, cx, txs, receipts, systemTxs, usedGas, false, tracer)
 			if err != nil {
-				// it is possible that slash validator failed because of the slash channel is disabled.
 				log.Error("slash validator failed", "block hash", header.Hash(), "address", spoiledVal, "err", err)
 			}
 		}
@@ -1524,14 +1518,14 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
 		err := p.initializeFeynmanContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer)
 		if err != nil {
-			log.Error("init feynman contract failed", "error", err)
+			return nil, nil, fmt.Errorf("init feynman contract failed: %v", err)
 		}
 	}
 
 	if header.Number.Cmp(common.Big1) == 0 {
 		err := p.initContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer)
 		if err != nil {
-			log.Error("init contract failed")
+			return nil, nil, errors.New("init contract failed")
 		}
 	}
 	if header.Difficulty.Cmp(diffInTurn) != 0 {
@@ -1555,7 +1549,6 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		if !signedRecently {
 			err = p.slash(spoiledVal, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer)
 			if err != nil {
-				// it is possible that slash validator failed because of the slash channel is disabled.
 				log.Error("slash validator failed", "block hash", header.Hash(), "address", spoiledVal)
 			}
 		}
@@ -2235,6 +2228,8 @@ func (p *Parlia) applyTransaction(
 		return err
 	}
 	*txs = append(*txs, expectedTx)
+	// increment nonce only when tx is included
+	state.SetNonce(msg.From, nonce+1, tracing.NonceChangeEoACall)
 	var root []byte
 	if p.chainConfig.IsByzantium(header.Number) {
 		state.Finalise(true)
@@ -2301,48 +2296,48 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 		return chain.GetHeaderByNumber(0) // keep consistent with GetJustifiedNumberAndHash
 	}
 
-	currentJustifiedNumber := snap.Attestation.TargetNumber
-	currentJustifiedHash := snap.Attestation.TargetHash
+	finalizedHash := snap.Attestation.SourceHash
+	finalizedNumber := snap.Attestation.SourceNumber
 
+	currentJustifiedHash := snap.Attestation.TargetHash
+	currentJustifiedNumber := snap.Attestation.TargetNumber
 	// Try to check if currentJustifiedNumber can become finalized by checking VotePool.
 	// We only need to check currentJustifiedNumber + 1, since currentJustifiedNumber is already the latest justified.
 	if p.VotePool != nil && currentJustifiedNumber == header.Number.Uint64()-1 {
-		// Check if the next block (direct child) has reached quorum in VotePool
-		votes := p.VotePool.FetchVotesByBlockHash(header.Hash(), currentJustifiedNumber)
-		quorum := cmath.CeilDiv(len(snap.Validators)*2, 3)
+		parentSnap, err := p.snapshot(chain, header.Number.Uint64()-1, header.ParentHash, nil)
+		if err == nil {
+			// Check if the next block (direct child) has reached quorum in VotePool
+			votes := p.VotePool.FetchVotesByBlockHash(header.Hash(), currentJustifiedNumber)
+			quorum := cmath.CeilDiv(len(parentSnap.Validators)*2, 3)
 
-		if len(votes) >= quorum {
-			return chain.GetHeader(currentJustifiedHash, currentJustifiedNumber)
+			if len(votes) >= quorum {
+				finalizedHash = currentJustifiedHash
+				finalizedNumber = currentJustifiedNumber
+			}
+		} else {
+			log.Error("Failed to get parent snapshot for finality check",
+				"error", err, "blockNumber", header.Number.Uint64()-1, "blockHash", header.ParentHash)
 		}
 	}
 
-	// Fallback to the original logic: finalized is the source in attestation
-	return chain.GetHeader(snap.Attestation.SourceHash, snap.Attestation.SourceNumber)
+	return chain.GetHeader(finalizedHash, finalizedNumber)
 }
 
 // CheckFinalityAndNotify checks if votes for the target block have reached quorum,
 // and if so, notifies the blockchain of early finalization via the notifyFn callback.
 func (p *Parlia) CheckFinalityAndNotify(chain consensus.ChainHeaderReader, targetBlockHash common.Hash, notifyFn func(finalizedHeader *types.Header)) {
-	// Skip if already notified for this block
-	if _, ok := p.finalizedNotified.Get(targetBlockHash); ok {
+	// Get target block header directly by hash (don't rely on currentHeader which may have moved forward)
+	targetHeader := chain.GetHeaderByHash(targetBlockHash)
+	if targetHeader == nil {
 		return
 	}
 
-	// Get target block header
-	currentHeader := chain.CurrentHeader()
-	if currentHeader == nil || currentHeader.Hash() != targetBlockHash {
-		return
-	}
-
-	finalizedHeader := p.GetFinalizedHeader(chain, currentHeader)
+	finalizedHeader := p.GetFinalizedHeader(chain, targetHeader)
 	if finalizedHeader == nil || finalizedHeader.Number.Uint64() == 0 {
 		return
 	}
 
-	// Mark as notified to avoid duplicate notifications
-	p.finalizedNotified.Add(targetBlockHash, struct{}{})
-
-	// Notify via callback
+	// Notify via callback (NotifyFinalized has its own deduplication logic)
 	notifyFn(finalizedHeader)
 }
 
@@ -2537,8 +2532,6 @@ func applyMessage(
 	} else {
 		state.ClearAccessList()
 	}
-	// Increment the nonce for the next transaction
-	state.SetNonce(msg.From, state.GetNonce(msg.From)+1, tracing.NonceChangeEoACall)
 
 	ret, returnGas, err := evm.Call(
 		msg.From,

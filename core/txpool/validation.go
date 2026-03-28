@@ -104,7 +104,7 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	}
 
 	// Ensure the transaction doesn't exceed the current miner max acceptable limit gas
-	if opts.MaxGas > 0 && opts.MaxGas < tx.Gas() {
+	if opts.MaxGas > 0 && tx.Gas() > opts.MaxGas {
 		return fmt.Errorf("%w (cap: %d, tx: %d)", core.ErrGasLimitTooHigh, opts.MaxGas, tx.Gas())
 	}
 
@@ -151,7 +151,7 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 		return fmt.Errorf("%w: gas tip cap %v, minimum needed %v", ErrTxGasPriceTooLow, tx.GasTipCap(), opts.MinTip)
 	}
 	if tx.Type() == types.BlobTxType {
-		return validateBlobTx(tx, head, opts)
+		return ValidateBlobTx(tx, head, opts)
 	}
 	if tx.Type() == types.SetCodeTxType {
 		if len(tx.SetCodeAuthorizations()) == 0 {
@@ -161,8 +161,9 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	return nil
 }
 
-// validateBlobTx implements the blob-transaction specific validations.
-func validateBlobTx(tx *types.Transaction, head *types.Header, opts *ValidationOptions) error {
+// ValidateBlobTx validates blob-transaction specific fields including sidecar
+// commitment hashes and KZG proofs.
+func ValidateBlobTx(tx *types.Transaction, head *types.Header, opts *ValidationOptions) error {
 	sidecar := tx.BlobTxSidecar()
 	if sidecar == nil {
 		return errors.New("missing sidecar in blob transaction")

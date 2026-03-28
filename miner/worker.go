@@ -735,6 +735,7 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, 
 	env.sidecars = append(env.sidecars, sc)
 	env.blobs += len(sc.Blobs)
 	env.size += txNoBlob.Size()
+	env.tcount++
 	*env.header.BlobGasUsed += receipt.BlobGasUsed
 	return receipt.Logs, nil
 }
@@ -1065,12 +1066,17 @@ func (w *worker) fillTransactions(interruptCh chan int32, env *environment, stop
 	pendingPlainTxs := w.eth.TxPool().Pending(filter)
 	pendingPlainTxsTimer.UpdateSince(plainTxsStart)
 
-	filter.BlobTxs = true
-	filter.BlobVersion = types.BlobSidecarVersion0
+	var pendingBlobTxs map[common.Address][]*txpool.LazyTransaction
+	if env.header.Number.Uint64()%params.BlobEligibleBlockInterval == 0 {
+		filter.BlobTxs = true
+		filter.BlobVersion = types.BlobSidecarVersion0
 
-	blobTxsStart := time.Now()
-	pendingBlobTxs := w.eth.TxPool().Pending(filter)
-	pendingBlobTxsTimer.UpdateSince(blobTxsStart)
+		blobTxsStart := time.Now()
+		pendingBlobTxs = w.eth.TxPool().Pending(filter)
+		pendingBlobTxsTimer.UpdateSince(blobTxsStart)
+	} else {
+		pendingBlobTxs = make(map[common.Address][]*txpool.LazyTransaction)
+	}
 
 	if bidTxs != nil {
 		filterBidTxs := func(commonTxs map[common.Address][]*txpool.LazyTransaction) {

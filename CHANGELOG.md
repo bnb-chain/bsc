@@ -1,4 +1,32 @@
 # Changelog
+## v1.7.2
+v1.7.2 is for BSC Mainnet [Osaka/Mendel hardfork](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-658.md),the hard fork time is 2026-04-28 02:30:00 AM UTC
+
+### BUGFIX
+- [\#3597](https://github.com/bnb-chain/bsc/pull/3597) miner: support blob sidecar validation for bids
+- [\#3590](https://github.com/bnb-chain/bsc/pull/3590) eth: delayed p2p message decoding
+- [\#3601](https://github.com/bnb-chain/bsc/pull/3601) core: reject future chasing heads for DA checks
+
+## v1.7.1
+v1.7.1 is for BSC Chapel testnet [Osaka/Mendel hardfork](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-658.md),the hard fork time is 2026-03-24 02:30:00 AM UTC
+
+### FEATURE
+- [feat: support bid block size check for BEP-655](https://github.com/bnb-chain/bsc/pull/3529)
+- [feat: support mev bid gas check of bep 652](https://github.com/bnb-chain/bsc/pull/3528)
+- [eip4844.go: disable eip-7918 for bsc](https://github.com/bnb-chain/bsc/pull/3531)
+- [feat: implement BEP-657 - Limit Blob Transaction Inclusion by Block Number](https://github.com/bnb-chain/bsc/pull/3533)
+
+### BUGFIX
+- [core/types: fix typo in vote comparison (#3573)](https://github.com/bnb-chain/bsc/pull/3573)
+- [Fee history issue](https://github.com/bnb-chain/bsc/pull/3577)
+- [go.mod: upgrade otel to fix CVE-2026-24051](https://github.com/bnb-chain/bsc/pull/3554)
+- [fix: fix gaslimit check in trace api (#3580)](https://github.com/bnb-chain/bsc/pull/3580)
+- [miner: fix missing tcount increment in commitBlobTransaction (#3581)](https://github.com/bnb-chain/bsc/pull/3581)
+- [fix: superinstruction bad block (#3582)](https://github.com/bnb-chain/bsc/pull/3582)
+- [core/vm: align super-instruction minStack and maxStack bounds (#3584)](https://github.com/bnb-chain/bsc/pull/3584)
+- [rlp: finalize listIterator on parse error to prevent non-advancing loops (#3586)](https://github.com/bnb-chain/bsc/pull/3586)
+- [eth/protocols/snap: restore peers to idle pool on request revert (#3587)](https://github.com/bnb-chain/bsc/pull/3587)
+
 ## v1.7.0
 v1.7.0-alpha is a preview release for upstream code sync, it catches up with [go-ethereum release [v1.16.7]](https://github.com/ethereum/go-ethereum/releases/tag/v1.16.7) and also include several bug fix and improvements.
 
@@ -34,6 +62,11 @@ Key changes from the code sync include:
 ### Others
 - [ci: upgrade github actions to latest versions](https://github.com/bnb-chain/bsc/pull/3515)
 - [ci: ignore nancy failre of quic-go@v0.49.1](https://github.com/bnb-chain/bsc/pull/3512)
+
+## v1.6.7
+### BUGFIX
+crypto/secp256k1: fix coordinate check
+crypto/ecies: fix ECIES invalid-curve handling
 
 ## v1.6.6
 ### BUGFIX
