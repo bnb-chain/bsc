@@ -148,7 +148,10 @@ func (prog SyncProgress) Done() bool {
 	if prog.CurrentBlock < prog.HighestBlock {
 		return false
 	}
-	return prog.TxIndexRemainingBlocks == 0 && prog.StateIndexRemaining == 0
+	// Transaction indexing is a background process that may take a long time
+	// (e.g. archive nodes indexing the entire chain from a snapshot) and should
+	// not block the sync status. Its progress is still reported in the response.
+	return prog.StateIndexRemaining == 0
 }
 
 // ChainSyncReader wraps access to the node's current sync status. If there's no
