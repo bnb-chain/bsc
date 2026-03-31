@@ -1497,11 +1497,13 @@ func opSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(pc *uint64, interpreter *E
 	e := scope.Stack.Back(1)
 	c.Add(e, c)
 	scope.Stack.swap1()
-	g, h := *c, scope.Stack.peek()
-	if g.Lt(h) {
-		h.SetOne()
+	// Match the raw DUP2, LT sequence: compare the computed value now at
+	// stack[len-2] against the original top value at stack[len-1].
+	computed, original := *scope.Stack.Back(1), scope.Stack.peek()
+	if computed.Lt(original) {
+		original.SetOne()
 	} else {
-		h.Clear()
+		original.Clear()
 	}
 
 	*pc += 10
