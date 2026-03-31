@@ -19,6 +19,10 @@ import (
 const (
 	maxCurVoteAmountPerBlock    = 21
 	maxFutureVoteAmountPerBlock = 50
+	// Bound distinct future hashes per height so one spammed future block number
+	// cannot grow the pool without limit. Additional votes for an already tracked
+	// hash are still governed by maxFutureVoteAmountPerBlock.
+	maxFutureVoteBlockHashesPerHeight = 64
 
 	voteBufferForPut = 256
 	// votes in the range (currentBlockNum-256,currentBlockNum+11] will be stored
@@ -70,6 +74,9 @@ type VotePool struct {
 
 	curVotes    map[common.Hash]*VoteBox
 	futureVotes map[common.Hash]*VoteBox
+	// Track future hashes by target height so the per-height cap can reject new
+	// fanout without blocking more votes for hashes we already know about.
+	futureVoteHashesByNumber map[uint64]mapset.Set[common.Hash]
 
 	curVotesPq    *votesPriorityQueue
 	futureVotesPq *votesPriorityQueue
@@ -86,15 +93,16 @@ type votesPriorityQueue []*types.VoteData
 
 func NewVotePool(chain *core.BlockChain, engine consensus.PoSA) *VotePool {
 	votePool := &VotePool{
-		chain:                  chain,
-		receivedVotes:          mapset.NewSet[common.Hash](),
-		curVotes:               make(map[common.Hash]*VoteBox),
-		futureVotes:            make(map[common.Hash]*VoteBox),
-		curVotesPq:             &votesPriorityQueue{},
-		futureVotesPq:          &votesPriorityQueue{},
-		highestVerifiedBlockCh: make(chan core.HighestVerifiedBlockEvent, highestVerifiedBlockChanSize),
-		votesCh:                make(chan *types.VoteEnvelope, voteBufferForPut),
-		engine:                 engine,
+		chain:                    chain,
+		receivedVotes:            mapset.NewSet[common.Hash](),
+		curVotes:                 make(map[common.Hash]*VoteBox),
+		futureVotes:              make(map[common.Hash]*VoteBox),
+		futureVoteHashesByNumber: make(map[uint64]mapset.Set[common.Hash]),
+		curVotesPq:               &votesPriorityQueue{},
+		futureVotesPq:            &votesPriorityQueue{},
+		highestVerifiedBlockCh:   make(chan core.HighestVerifiedBlockEvent, highestVerifiedBlockChanSize),
+		votesCh:                  make(chan *types.VoteEnvelope, voteBufferForPut),
+		engine:                   engine,
 	}
 
 	// Subscribe events from blockchain and start the main event loop.
@@ -207,6 +215,7 @@ func (pool *VotePool) putVote(m map[common.Hash]*VoteBox, votesPq *votesPriority
 		m[targetHash] = voteBox
 
 		if isFutureVote {
+			pool.trackFutureVoteHashLocked(targetNumber, targetHash)
 			localFutureVotesPqGauge.Update(int64(votesPq.Len()))
 		} else {
 			localCurVotesPqGauge.Update(int64(votesPq.Len()))
@@ -289,6 +298,13 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 		validVotes = append(validVotes, vote)
 	}
 
+	if len(validVotes) == 0 {
+		delete(futureVotes, blockHash)
+		pool.untrackFutureVoteHashLocked(voteBox.blockNumber, blockHash)
+		localFutureVotesCounter.Dec(int64(len(voteBox.voteMessages)))
+		return
+	}
+
 	// may len(curVotes[blockHash].voteMessages) extra maxCurVoteAmountPerBlock, but it doesn't matter
 	if _, ok := curVotes[blockHash]; !ok {
 		heap.Push(curPq, voteData)
@@ -303,6 +319,7 @@ func (pool *VotePool) transfer(blockHash common.Hash) {
 	}
 
 	delete(futureVotes, blockHash)
+	pool.untrackFutureVoteHashLocked(voteBox.blockNumber, blockHash)
 
 	localCurVotesCounter.Inc(int64(len(validVotes)))
 	localFutureVotesCounter.Dec(int64(len(voteBox.voteMessages)))
@@ -369,6 +386,7 @@ func (pool *VotePool) FetchVotesByBlockHash(targetBlockHash common.Hash, sourceB
 
 func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m map[common.Hash]*VoteBox, isFutureVote bool, voteHash common.Hash) bool {
 	targetHash := vote.Data.TargetHash
+	targetNumber := vote.Data.TargetNumber
 	pool.mu.RLock()
 	defer pool.mu.RUnlock()
 
@@ -389,6 +407,15 @@ func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m
 			return false
 		}
 	}
+	// Future votes only span a small head+11 window, so cap distinct hashes per
+	// height to keep fake future forks from expanding the pool unboundedly.
+	if isFutureVote {
+		if futureVoteHashes, ok := pool.futureVoteHashesByNumber[targetNumber]; ok &&
+			!futureVoteHashes.Contains(targetHash) &&
+			futureVoteHashes.Cardinality() >= maxFutureVoteBlockHashesPerHeight {
+			return false
+		}
+	}
 
 	// Verify bls signature.
 	if err := vote.Verify(); err != nil {
@@ -397,6 +424,28 @@ func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m
 	}
 
 	return true
+}
+
+func (pool *VotePool) trackFutureVoteHashLocked(targetNumber uint64, targetHash common.Hash) {
+	futureVoteHashes, ok := pool.futureVoteHashesByNumber[targetNumber]
+	if !ok {
+		futureVoteHashes = mapset.NewSet[common.Hash]()
+		pool.futureVoteHashesByNumber[targetNumber] = futureVoteHashes
+	}
+	futureVoteHashes.Add(targetHash)
+}
+
+func (pool *VotePool) untrackFutureVoteHashLocked(targetNumber uint64, targetHash common.Hash) {
+	futureVoteHashes, ok := pool.futureVoteHashesByNumber[targetNumber]
+	if !ok {
+		return
+	}
+	// Drop empty height buckets so the cap reflects only future hashes that are
+	// still retained in the pool.
+	futureVoteHashes.Remove(targetHash)
+	if futureVoteHashes.Cardinality() == 0 {
+		delete(pool.futureVoteHashesByNumber, targetNumber)
+	}
 }
 
 func (pq votesPriorityQueue) Less(i, j int) bool {

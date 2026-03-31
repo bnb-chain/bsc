@@ -67,6 +67,10 @@ type mockInvalidPOSA struct {
 	consensus.PoSA
 }
 
+type mockRejectPOSA struct {
+	consensus.PoSA
+}
+
 // testBackend is a mock implementation of the live Ethereum message handler.
 type testBackend struct {
 	eventMux *event.TypeMux
@@ -98,6 +102,10 @@ func (mip *mockInvalidPOSA) VerifyVote(chain consensus.ChainHeaderReader, vote *
 	return nil
 }
 
+func (mrp *mockRejectPOSA) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) error {
+	return errors.New("invalid vote")
+}
+
 func (mp *mockPOSA) IsActiveValidatorAt(chain consensus.ChainHeaderReader, header *types.Header, checkVoteKeyFn func(bLSPublicKey *types.BLSPublicKey) bool) bool {
 	return true
 }
@@ -111,6 +119,10 @@ func (mp *mockPOSA) CheckFinalityAndNotify(chain consensus.ChainHeaderReader, ta
 }
 
 func (mip *mockInvalidPOSA) CheckFinalityAndNotify(chain consensus.ChainHeaderReader, targetBlockHash common.Hash, notifyFn func(finalizedHeader *types.Header)) {
+	// No-op for testing
+}
+
+func (mrp *mockRejectPOSA) CheckFinalityAndNotify(chain consensus.ChainHeaderReader, targetBlockHash common.Hash, notifyFn func(finalizedHeader *types.Header)) {
 	// No-op for testing
 }
 
@@ -137,6 +149,29 @@ func (journal *VoteJournal) verifyJournal(size, lastLatestVoteNumber int) bool {
 		}
 	}
 	return false
+}
+
+func newSignedVoteEnvelope(t *testing.T, targetNumber uint64, targetHash common.Hash) *types.VoteEnvelope {
+	t.Helper()
+
+	secretKey, err := bls.RandKey()
+	if err != nil {
+		t.Fatalf("failed to generate bls key: %v", err)
+	}
+
+	vote := &types.VoteEnvelope{
+		Data: &types.VoteData{
+			TargetNumber: targetNumber,
+			TargetHash:   targetHash,
+		},
+	}
+	voteDataHash := vote.Data.Hash()
+	signature := secretKey.Sign(voteDataHash[:])
+
+	copy(vote.VoteAddress[:], secretKey.PublicKey().Marshal())
+	copy(vote.Signature[:], signature.Marshal())
+
+	return vote
 }
 
 func TestValidVotePool(t *testing.T) {
@@ -403,6 +438,114 @@ func testVotePool(t *testing.T, isValidRules bool) {
 	// Verify if journal no longer than 512
 	if !voteJournal.verifyJournal(512, 513) {
 		t.Fatalf("journal failed")
+	}
+}
+
+func TestTransferDropsInvalidFutureVotes(t *testing.T) {
+	walletPasswordDir, walletDir := setUpKeyManager(t)
+
+	genesis := &core.Genesis{
+		Config: params.TestChainConfig,
+		Alloc:  types.GenesisAlloc{testAddr: {Balance: big.NewInt(1000000)}},
+	}
+
+	db := rawdb.NewMemoryDatabase()
+	chain, _ := core.NewBlockChain(db, genesis, ethash.NewFullFaker(), nil)
+	votePool := NewVotePool(chain, &mockRejectPOSA{})
+
+	signer, err := NewVoteSigner(walletPasswordDir, walletDir)
+	if err != nil {
+		t.Fatalf("failed to create vote signer: %v", err)
+	}
+
+	futureVote := &types.VoteEnvelope{
+		Data: &types.VoteData{
+			TargetNumber: upperLimitOfVoteBlockNumber,
+			TargetHash:   common.HexToHash("0x1234"),
+		},
+	}
+	if err := signer.SignVote(futureVote); err != nil {
+		t.Fatalf("failed to sign vote: %v", err)
+	}
+
+	if ok := votePool.putIntoVotePool(futureVote); !ok {
+		t.Fatalf("failed to insert future vote")
+	}
+	if len(votePool.futureVotes) != 1 || votePool.futureVotesPq.Len() != 1 {
+		t.Fatalf("future vote was not stored in future votes")
+	}
+
+	votePool.mu.Lock()
+	votePool.transfer(futureVote.Data.TargetHash)
+	votePool.mu.Unlock()
+
+	if votePool.receivedVotes.Contains(futureVote.Hash()) {
+		t.Fatalf("invalid future vote hash should be removed after transfer")
+	}
+	if len(votePool.futureVotes) != 0 || votePool.futureVotesPq.Len() != 0 {
+		t.Fatalf("invalid future vote should be removed from future votes")
+	}
+	if len(votePool.curVotes) != 0 || votePool.curVotesPq.Len() != 0 {
+		t.Fatalf("invalid future vote should not create current vote entries")
+	}
+}
+
+func TestFutureVoteDistinctHashLimit(t *testing.T) {
+	genesis := &core.Genesis{
+		Config: params.TestChainConfig,
+		Alloc:  types.GenesisAlloc{testAddr: {Balance: big.NewInt(1000000)}},
+	}
+
+	db := rawdb.NewMemoryDatabase()
+	chain, _ := core.NewBlockChain(db, genesis, ethash.NewFullFaker(), nil)
+	votePool := NewVotePool(chain, &mockPOSA{})
+
+	targetNumber := uint64(upperLimitOfVoteBlockNumber)
+	for i := 0; i < maxFutureVoteBlockHashesPerHeight; i++ {
+		targetHash := common.BigToHash(big.NewInt(int64(i + 1)))
+		vote := newSignedVoteEnvelope(t, targetNumber, targetHash)
+		if ok := votePool.putIntoVotePool(vote); !ok {
+			t.Fatalf("future vote %d should be accepted before reaching the distinct hash limit", i)
+		}
+	}
+
+	overflowVote := newSignedVoteEnvelope(t, targetNumber, common.HexToHash("0xffff"))
+	if ok := votePool.putIntoVotePool(overflowVote); ok {
+		t.Fatalf("future vote with a new target hash should be rejected after reaching the distinct hash limit")
+	}
+}
+
+func TestFutureVoteDistinctHashLimitAllowsTrackedHash(t *testing.T) {
+	genesis := &core.Genesis{
+		Config: params.TestChainConfig,
+		Alloc:  types.GenesisAlloc{testAddr: {Balance: big.NewInt(1000000)}},
+	}
+
+	db := rawdb.NewMemoryDatabase()
+	chain, _ := core.NewBlockChain(db, genesis, ethash.NewFullFaker(), nil)
+	votePool := NewVotePool(chain, &mockPOSA{})
+
+	targetNumber := uint64(upperLimitOfVoteBlockNumber)
+	trackedHash := common.HexToHash("0x1")
+	firstVote := newSignedVoteEnvelope(t, targetNumber, trackedHash)
+	if ok := votePool.putIntoVotePool(firstVote); !ok {
+		t.Fatalf("first future vote for tracked hash should be accepted")
+	}
+
+	for i := 1; i < maxFutureVoteBlockHashesPerHeight; i++ {
+		targetHash := common.BigToHash(big.NewInt(int64(i + 1)))
+		vote := newSignedVoteEnvelope(t, targetNumber, targetHash)
+		if ok := votePool.putIntoVotePool(vote); !ok {
+			t.Fatalf("future vote %d should be accepted before reaching the distinct hash limit", i)
+		}
+	}
+
+	secondVote := newSignedVoteEnvelope(t, targetNumber, trackedHash)
+	if ok := votePool.putIntoVotePool(secondVote); !ok {
+		t.Fatalf("future vote for an already tracked hash should still be accepted after reaching the distinct hash limit")
+	}
+	if got := len(votePool.futureVotes[trackedHash].voteMessages); got != 2 {
+		t.Fatalf("tracked hash should retain both votes, got %d", got)
 	}
 }
 
