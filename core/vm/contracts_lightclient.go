@@ -403,11 +403,7 @@ func (c *cometBFTLightBlockValidate) run(input []byte, isHertz bool, requireUniq
 		cs    *v2.ConsensusState
 		block *types.LightBlock
 	)
-	if requireUniqueValidators {
-		cs, block, err = v2.DecodeLightBlockValidationInputWithValidation(input)
-	} else {
-		cs, block, err = v2.DecodeLightBlockValidationInput(input)
-	}
+	cs, block, err = v2.DecodeLightBlockValidationInput(input, requireUniqueValidators)
 	if err != nil {
 		return nil, err
 	}
@@ -446,16 +442,16 @@ func (c *cometBFTLightBlockValidateHertz) Name() string {
 	return "COMET_BFT_LIGHT_BLOCK_VALIDATE_HERTZ"
 }
 
-type cometBFTLightBlockValidateHertzMendel struct {
+type cometBFTLightBlockValidatePasteur struct {
 	cometBFTLightBlockValidate
 }
 
-func (c *cometBFTLightBlockValidateHertzMendel) Run(input []byte) (result []byte, err error) {
+func (c *cometBFTLightBlockValidatePasteur) Run(input []byte) (result []byte, err error) {
 	return c.run(input, true, true)
 }
 
-func (c *cometBFTLightBlockValidateHertzMendel) Name() string {
-	return "COMET_BFT_LIGHT_BLOCK_VALIDATE_HERTZ_MENDEL"
+func (c *cometBFTLightBlockValidatePasteur) Name() string {
+	return "COMET_BFT_LIGHT_BLOCK_VALIDATE_PASTEUR"
 }
 
 // secp256k1SignatureRecover implemented as a native contract.

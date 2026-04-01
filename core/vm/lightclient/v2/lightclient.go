@@ -37,18 +37,28 @@ type ConsensusState struct {
 }
 
 type validatorDuplicateTracker struct {
-	field string
-	seen  map[string]int
+	field      string
+	seen       map[string]int
+	ignoreZero bool
 }
 
-func newValidatorDuplicateTracker(field string, size int) validatorDuplicateTracker {
+func newValidatorDuplicateTracker(field string, size int, ignoreZero bool) validatorDuplicateTracker {
 	return validatorDuplicateTracker{
-		field: field,
-		seen:  make(map[string]int, size),
+		field:      field,
+		seen:       make(map[string]int, size),
+		ignoreZero: ignoreZero,
 	}
 }
 
 func (t validatorDuplicateTracker) check(idx int, value []byte) error {
+	if t.ignoreZero {
+		// Optional bridge fields may be omitted in source validators or zero-filled by
+		// fixed-width decoding. Both forms mean "unset" and should not count as duplicates.
+		if len(value) == 0 || isZeroBytes(value) {
+			return nil
+		}
+	}
+
 	key := string(value)
 	if firstIdx, ok := t.seen[key]; ok {
 		return fmt.Errorf("duplicate validator %s #%d and #%d: %X", t.field, firstIdx, idx, value)
@@ -57,16 +67,28 @@ func (t validatorDuplicateTracker) check(idx int, value []byte) error {
 	return nil
 }
 
+func isZeroBytes(value []byte) bool {
+	if len(value) == 0 {
+		return false
+	}
+	for _, b := range value {
+		if b != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func validateUniqueValidatorSet(validatorSet *types.ValidatorSet) error {
 	if validatorSet == nil {
 		return nil
 	}
 
 	size := len(validatorSet.Validators)
-	addresses := newValidatorDuplicateTracker("address", size)
-	pubKeys := newValidatorDuplicateTracker("pubkey", size)
-	blsKeys := newValidatorDuplicateTracker("bls key", size)
-	relayerAddresses := newValidatorDuplicateTracker("relayer address", size)
+	addresses := newValidatorDuplicateTracker("address", size, false)
+	pubKeys := newValidatorDuplicateTracker("pubkey", size, false)
+	blsKeys := newValidatorDuplicateTracker("bls key", size, true)
+	relayerAddresses := newValidatorDuplicateTracker("relayer address", size, true)
 
 	for idx, validator := range validatorSet.Validators {
 		if validator == nil || validator.PubKey == nil {
@@ -190,7 +212,7 @@ func (cs *ConsensusState) ApplyLightBlock(block *types.LightBlock, isHertz bool)
 // input:
 // | chainID   | height   | nextValidatorSetHash | [{validator pubkey, voting power, relayer address, relayer bls pubkey}] |
 // | 32 bytes  | 8 bytes  | 32 bytes             | [{32 bytes, 8 bytes, 20 bytes, 48 bytes}]                               |
-func decodeConsensusState(input []byte, requireUniqueValidators bool) (ConsensusState, error) {
+func DecodeConsensusState(input []byte, requireUniqueValidators bool) (ConsensusState, error) {
 	minimumLength := chainIDLength + heightLength + validatorSetHashLength
 	inputLen := uint64(len(input))
 	if inputLen <= minimumLength || (inputLen-minimumLength)%singleValidatorBytesLength != 0 {
@@ -254,18 +276,10 @@ func decodeConsensusState(input []byte, requireUniqueValidators bool) (Consensus
 	return consensusState, nil
 }
 
-func DecodeConsensusState(input []byte) (ConsensusState, error) {
-	return decodeConsensusState(input, false)
-}
-
-func DecodeConsensusStateWithValidation(input []byte) (ConsensusState, error) {
-	return decodeConsensusState(input, true)
-}
-
 // input:
 // consensus state length | consensus state | light block |
 // 32 bytes               |                 |             |
-func decodeLightBlockValidationInput(input []byte, requireUniqueValidators bool) (*ConsensusState, *types.LightBlock, error) {
+func DecodeLightBlockValidationInput(input []byte, requireUniqueValidators bool) (*ConsensusState, *types.LightBlock, error) {
 	if uint64(len(input)) <= consensusStateLengthBytesLength {
 		return nil, nil, errors.New("invalid input")
 	}
@@ -280,7 +294,7 @@ func decodeLightBlockValidationInput(input []byte, requireUniqueValidators bool)
 		return nil, nil, fmt.Errorf("expected payload size %d, actual size: %d", consensusStateLengthBytesLength+csLen, len(input))
 	}
 
-	cs, err := decodeConsensusState(input[consensusStateLengthBytesLength:consensusStateLengthBytesLength+csLen], requireUniqueValidators)
+	cs, err := DecodeConsensusState(input[consensusStateLengthBytesLength:consensusStateLengthBytesLength+csLen], requireUniqueValidators)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -301,14 +315,6 @@ func decodeLightBlockValidationInput(input []byte, requireUniqueValidators bool)
 	}
 
 	return &cs, block, nil
-}
-
-func DecodeLightBlockValidationInput(input []byte) (*ConsensusState, *types.LightBlock, error) {
-	return decodeLightBlockValidationInput(input, false)
-}
-
-func DecodeLightBlockValidationInputWithValidation(input []byte) (*ConsensusState, *types.LightBlock, error) {
-	return decodeLightBlockValidationInput(input, true)
 }
 
 // output:

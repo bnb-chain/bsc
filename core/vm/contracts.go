@@ -350,10 +350,10 @@ var PrecompiledContractsOsaka = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{eip7951: true},
 }
 
-var PrecompiledContractsMendel = func() PrecompiledContracts {
+var PrecompiledContractsPasteur = func() PrecompiledContracts {
 	precompiles := maps.Clone(PrecompiledContractsOsaka)
-	precompiles[common.BytesToAddress([]byte{0x66})] = &blsSignatureVerifyMendel{}
-	precompiles[common.BytesToAddress([]byte{0x67})] = &cometBFTLightBlockValidateHertzMendel{}
+	precompiles[common.BytesToAddress([]byte{0x66})] = &blsSignatureVerifyPasteur{}
+	precompiles[common.BytesToAddress([]byte{0x67})] = &cometBFTLightBlockValidatePasteur{}
 	return precompiles
 }()
 
@@ -364,7 +364,7 @@ var PrecompiledContractsP256Verify = PrecompiledContracts{
 }
 
 var (
-	PrecompiledAddressesMendel    []common.Address
+	PrecompiledAddressesPasteur   []common.Address
 	PrecompiledAddressesOsaka     []common.Address
 	PrecompiledAddressesPrague    []common.Address
 	PrecompiledAddressesHaber     []common.Address
@@ -425,8 +425,8 @@ func init() {
 	for k := range PrecompiledContractsPrague {
 		PrecompiledAddressesPrague = append(PrecompiledAddressesPrague, k)
 	}
-	for k := range PrecompiledContractsMendel {
-		PrecompiledAddressesMendel = append(PrecompiledAddressesMendel, k)
+	for k := range PrecompiledContractsPasteur {
+		PrecompiledAddressesPasteur = append(PrecompiledAddressesPasteur, k)
 	}
 	for k := range PrecompiledContractsOsaka {
 		PrecompiledAddressesOsaka = append(PrecompiledAddressesOsaka, k)
@@ -437,8 +437,8 @@ func activePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 	switch {
 	case rules.IsVerkle:
 		return PrecompiledContractsVerkle
-	case rules.IsMendel:
-		return PrecompiledContractsMendel
+	case rules.IsPasteur:
+		return PrecompiledContractsPasteur
 	case rules.IsOsaka:
 		return PrecompiledContractsOsaka
 	case rules.IsPrague:
@@ -480,8 +480,8 @@ func ActivePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 // ActivePrecompiles returns the precompile addresses enabled with the current configuration.
 func ActivePrecompiles(rules params.Rules) []common.Address {
 	switch {
-	case rules.IsMendel:
-		return PrecompiledAddressesMendel
+	case rules.IsPasteur:
+		return PrecompiledAddressesPasteur
 	case rules.IsOsaka:
 		return PrecompiledAddressesOsaka
 	case rules.IsPrague:
@@ -1617,7 +1617,7 @@ func (c *bls12381MapG2) Name() string {
 // blsSignatureVerify implements bls signature verification precompile.
 type blsSignatureVerify struct{}
 
-type blsSignatureVerifyMendel struct {
+type blsSignatureVerifyPasteur struct {
 	blsSignatureVerify
 }
 
@@ -1718,12 +1718,12 @@ func (c *blsSignatureVerify) Name() string {
 	return "BLS_SIGNATURE_VERIFY"
 }
 
-func (c *blsSignatureVerifyMendel) Run(input []byte) ([]byte, error) {
+func (c *blsSignatureVerifyPasteur) Run(input []byte) ([]byte, error) {
 	return runBlsSignatureVerify(input, true)
 }
 
-func (c *blsSignatureVerifyMendel) Name() string {
-	return "BLS_SIGNATURE_VERIFY_MENDEL"
+func (c *blsSignatureVerifyPasteur) Name() string {
+	return "BLS_SIGNATURE_VERIFY_PASTEUR"
 }
 
 // kzgPointEvaluation implements the EIP-4844 point evaluation precompile.

@@ -3,6 +3,7 @@ package v2
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"testing"
 
@@ -144,7 +145,7 @@ func TestDecodeConsensusState(t *testing.T) {
 		csBytes, err := hex.DecodeString(testcase.consensusStateBytes)
 		require.NoError(t, err)
 
-		cs, err := DecodeConsensusState(csBytes)
+		cs, err := DecodeConsensusState(csBytes, false)
 		require.NoError(t, err)
 
 		if cs.ChainID != testcase.chainID {
@@ -182,7 +183,7 @@ func TestConsensusStateApplyLightBlock(t *testing.T) {
 		block, err := types.LightBlockFromProto(&lbpb)
 		require.NoError(t, err)
 
-		cs, err := DecodeConsensusState(csBytes)
+		cs, err := DecodeConsensusState(csBytes, false)
 		require.NoError(t, err)
 		validatorSetChanged, err := cs.ApplyLightBlock(block, true)
 		require.NoError(t, err)
@@ -206,7 +207,7 @@ func TestDecodeConsensusStateWithValidationRejectsDuplicateValidators(t *testing
 	duplicateConsensusState = append(duplicateConsensusState, validatorBytes...)
 	duplicateConsensusState = append(duplicateConsensusState, validatorBytes...)
 
-	_, err = DecodeConsensusStateWithValidation(duplicateConsensusState)
+	_, err = DecodeConsensusState(duplicateConsensusState, true)
 	require.ErrorContains(t, err, "duplicate validator")
 }
 
@@ -246,4 +247,75 @@ func TestValidateUniqueValidatorSetRejectsDuplicateBridgeKeys(t *testing.T) {
 		err := validateUniqueValidatorSet(&types.ValidatorSet{Validators: []*types.Validator{first, second}})
 		require.ErrorContains(t, err, "duplicate validator relayer address")
 	})
+}
+
+func TestDecodeConsensusStateWithValidationAllowsUnsetBridgeKeys(t *testing.T) {
+	makeValidator := func(seed byte) *types.Validator {
+		t.Helper()
+
+		pubkey := ed25519.PubKey(make([]byte, ed25519.PubKeySize))
+		for i := range pubkey {
+			pubkey[i] = seed + byte(i) + 1
+		}
+
+		return types.NewValidator(pubkey, 100)
+	}
+
+	consensusState := ConsensusState{
+		ChainID:              "chain_9000-121",
+		Height:               1,
+		NextValidatorSetHash: bytes.Repeat([]byte{0xAB}, int(validatorSetHashLength)),
+		ValidatorSet: &types.ValidatorSet{
+			Validators: []*types.Validator{
+				makeValidator(0x01),
+				makeValidator(0x02),
+			},
+		},
+	}
+
+	csBytes, err := consensusState.EncodeConsensusState()
+	require.NoError(t, err)
+
+	_, err = DecodeConsensusState(csBytes, true)
+	require.NoError(t, err)
+}
+
+func TestIsZeroBytesRequiresNonEmptyInput(t *testing.T) {
+	require.False(t, isZeroBytes(nil))
+	require.False(t, isZeroBytes([]byte{}))
+	require.True(t, isZeroBytes([]byte{0x00, 0x00}))
+	require.False(t, isZeroBytes([]byte{0x00, 0x01}))
+}
+
+func TestDecodeLightBlockValidationInputAllowsUnsetBlockBridgeKeys(t *testing.T) {
+	csBytes, err := hex.DecodeString(applyBlocksTestcases[0].consensusStateBytes)
+	require.NoError(t, err)
+
+	blockBytes, err := hex.DecodeString(applyBlocksTestcases[0].lightBlockBytes)
+	require.NoError(t, err)
+
+	var lbpb tmproto.LightBlock
+	err = lbpb.Unmarshal(blockBytes)
+	require.NoError(t, err)
+
+	block, err := types.LightBlockFromProto(&lbpb)
+	require.NoError(t, err)
+
+	for _, validator := range block.ValidatorSet.Validators {
+		validator.SetBlsKey(nil)
+		validator.SetRelayerAddress(nil)
+	}
+
+	blockProto, err := block.ToProto()
+	require.NoError(t, err)
+	blockBytes, err = blockProto.Marshal()
+	require.NoError(t, err)
+
+	input := make([]byte, consensusStateLengthBytesLength)
+	binary.BigEndian.PutUint64(input[consensusStateLengthBytesLength-uint64TypeLength:], uint64(len(csBytes)))
+	input = append(input, csBytes...)
+	input = append(input, blockBytes...)
+
+	_, _, err = DecodeLightBlockValidationInput(input, true)
+	require.NoError(t, err)
 }
