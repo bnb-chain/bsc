@@ -762,8 +762,6 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		}
 	}(startTS)
 
-	// Start async blob validation so it runs in parallel with prepareWork and
-	// other setup below.
 	startAsyncBlobValidation(bidRuntime.bid)
 
 	// prepareWork will configure header with a suitable time according to consensus
