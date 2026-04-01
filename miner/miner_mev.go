@@ -13,7 +13,10 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-const maxBlobValConcurrency = 3
+const (
+	maxBlobValConcurrency = 3
+	maxBlobTxPerBlock     = 6
+)
 
 // MevRunning return true if mev is running.
 func (miner *Miner) MevRunning() bool {
@@ -93,7 +96,7 @@ func startAsyncBlobValidation(bid *types.Bid) {
 	}
 
 	bid.BlobValResults = make(map[common.Hash]chan error)
-	jobs := make([]blobJob, 0, maxBlobValConcurrency)
+	jobs := make([]blobJob, 0, maxBlobTxPerBlock)
 
 	for _, tx := range bid.Txs {
 		if tx.Type() == types.BlobTxType {
@@ -103,6 +106,9 @@ func startAsyncBlobValidation(bid *types.Bid) {
 			ch := make(chan error, 1)
 			bid.BlobValResults[tx.Hash()] = ch
 			jobs = append(jobs, blobJob{tx: tx, ch: ch})
+			if len(jobs) >= maxBlobTxPerBlock {
+				break
+			}
 		}
 	}
 
