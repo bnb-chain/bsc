@@ -762,6 +762,10 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		}
 	}(startTS)
 
+	// Start async blob validation so it runs in parallel with prepareWork and
+	// other setup below.
+	startAsyncBlobValidation(bidRuntime.bid)
+
 	// prepareWork will configure header with a suitable time according to consensus
 	// prepareWork will start trie prefetching
 	if bidRuntime.env, err = b.bidWorker.prepareWork(&generateParams{
@@ -1080,9 +1084,15 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 			return errors.New("cell proof is not supported yet")
 		}
 
-		// Validate blob sidecar commitment hashes and KZG proofs.
-		if err := txpool.ValidateBlobTx(tx, env.header, nil); err != nil {
-			return err
+		if ch, ok := r.bid.BlobValResults[tx.Hash()]; ok {
+			delete(r.bid.BlobValResults, tx.Hash())
+			if err := <-ch; err != nil {
+				return err
+			}
+		} else {
+			if err := txpool.ValidateBlobTx(tx, env.header, nil); err != nil {
+				return err
+			}
 		}
 
 		// Checking against blob gas limit: It's kind of ugly to perform this check here, but there

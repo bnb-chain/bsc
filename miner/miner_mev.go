@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/internal/version"
 	"github.com/ethereum/go-ethereum/log"
@@ -78,6 +79,25 @@ func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common
 	}
 
 	return bid.Hash(), nil
+}
+
+// startAsyncBlobValidation launches one goroutine per blob transaction to
+// validate it in the background (field checks + KZG proof verification).
+// Results are stored per-tx in bid.BlobValResults keyed by tx hash.
+func startAsyncBlobValidation(bid *types.Bid) {
+	bid.BlobValResults = make(map[common.Hash]chan error)
+	for _, tx := range bid.Txs {
+		if tx.Type() == types.BlobTxType {
+			if _, dup := bid.BlobValResults[tx.Hash()]; dup {
+				continue
+			}
+			ch := make(chan error, 1)
+			bid.BlobValResults[tx.Hash()] = ch
+			go func() {
+				ch <- txpool.ValidateBlobTx(tx, nil, nil)
+			}()
+		}
+	}
 }
 
 func (miner *Miner) MevParams() *types.MevParams {
