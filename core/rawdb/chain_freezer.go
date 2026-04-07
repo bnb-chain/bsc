@@ -40,9 +40,9 @@ const (
 	// storage.
 	freezerRecheckInterval = time.Minute
 
-	// TODO(galaio): For BSC, the 0.75 interval and freezing of 30,000 blocks will seriously affect performance.
-	// It is temporarily adjusted to 100, and improves the freezing performance later.
-	SlowFreezerBatchLimit = 100
+	// For BSC, freezing 30,000 blocks at once will seriously affect performance near the chain head.
+	// Set to 200 to keep up with 450ms block interval (~133 blocks/min) while limiting I/O impact.
+	SlowFreezerBatchLimit = 200
 	SlowdownFreezeWindow  = 24 * time.Hour
 )
 
