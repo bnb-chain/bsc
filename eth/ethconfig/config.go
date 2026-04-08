@@ -58,6 +58,7 @@ var Defaults = Config{
 	NetworkId:              0, // enable auto configuration of networkID == chainID
 	TxLookupLimit:          2350000,
 	TransactionHistory:     2350000,
+	LogHistory:             576000,
 	BlockHistory:           0,
 	StateHistory:           params.FullImmutabilityThreshold,
 	DatabaseCache:          512,
