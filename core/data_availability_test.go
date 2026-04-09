@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
 	gokzg4844 "github.com/crate-crypto/go-kzg-4844"
@@ -148,6 +149,41 @@ func TestIsDataAvailable(t *testing.T) {
 		}
 		require.NoError(t, err, i)
 	}
+}
+
+func TestIsDataAvailableRejectsFutureChasingHead(t *testing.T) {
+	blockTime := uint64(time.Now().Unix())
+	cfg := params.ParliaTestChainConfig
+
+	badBlob := emptyBlob
+	badBlob[0] = 0x01
+	badSidecar := &types.BlobTxSidecar{
+		Blobs:       []kzg4844.Blob{badBlob},
+		Commitments: []kzg4844.Commitment{emptyBlobCommit},
+		Proofs:      []kzg4844.Proof{emptyBlobProof},
+	}
+	makeBlock := func() *types.Block {
+		block := types.NewBlockWithHeader(&types.Header{
+			Number: big.NewInt(1),
+			Time:   blockTime,
+		}).WithBody(types.Body{Transactions: types.Transactions{
+			createMockDATx(cfg, badSidecar),
+		}})
+		return block.WithSidecars(collectBlobsFromTxs(block.Header(), block.Transactions()))
+	}
+
+	block := makeBlock()
+	reader := &mockSplitDAHeaderReader{
+		config:      cfg,
+		currentNum:  1,
+		currentTime: blockTime,
+		chasingNum:  100000,
+		chasingTime: blockTime + 30*86400,
+	}
+
+	err := IsDataAvailable(reader, block)
+	require.Error(t, err)
+	require.NotEmpty(t, block.Sidecars())
 }
 
 func TestCheckDataAvailableInBatch(t *testing.T) {
@@ -322,6 +358,14 @@ type mockDAHeaderReader struct {
 	chasingHeadTime   uint64
 }
 
+type mockSplitDAHeaderReader struct {
+	config      *params.ChainConfig
+	currentNum  uint64
+	currentTime uint64
+	chasingNum  uint64
+	chasingTime uint64
+}
+
 func NewMockDAHeaderReader(config *params.ChainConfig) *mockDAHeaderReader {
 	return &mockDAHeaderReader{
 		config: config,
@@ -377,6 +421,81 @@ func (r *mockDAHeaderReader) GetHighestVerifiedHeader() *types.Header {
 
 func (r *mockDAHeaderReader) GetVerifiedBlockByHash(hash common.Hash) *types.Header {
 	panic("not supported")
+}
+
+func (r *mockSplitDAHeaderReader) Config() *params.ChainConfig {
+	return r.config
+}
+
+func (r *mockSplitDAHeaderReader) CurrentHeader() *types.Header {
+	return &types.Header{
+		Number: new(big.Int).SetUint64(r.currentNum),
+		Time:   r.currentTime,
+	}
+}
+
+func (r *mockSplitDAHeaderReader) ChasingHead() *types.Header {
+	if r.chasingNum == 0 && r.chasingTime == 0 {
+		return nil
+	}
+	return &types.Header{
+		Number: new(big.Int).SetUint64(r.chasingNum),
+		Time:   r.chasingTime,
+	}
+}
+
+func (r *mockSplitDAHeaderReader) GenesisHeader() *types.Header {
+	panic("not supported")
+}
+
+func (r *mockSplitDAHeaderReader) GetHeader(hash common.Hash, number uint64) *types.Header {
+	panic("not supported")
+}
+
+func (r *mockSplitDAHeaderReader) GetHeaderByNumber(number uint64) *types.Header {
+	panic("not supported")
+}
+
+func (r *mockSplitDAHeaderReader) GetHeaderByHash(hash common.Hash) *types.Header {
+	panic("not supported")
+}
+
+func (r *mockSplitDAHeaderReader) GetTd(hash common.Hash, number uint64) *big.Int {
+	panic("not supported")
+}
+
+func (r *mockSplitDAHeaderReader) GetHighestVerifiedHeader() *types.Header {
+	panic("not supported")
+}
+
+func (r *mockSplitDAHeaderReader) GetVerifiedBlockByHash(hash common.Hash) *types.Header {
+	panic("not supported")
+}
+
+func TestUpdateChasingHeadRejectsFutureHeader(t *testing.T) {
+	now := uint64(time.Now().Unix())
+	bc := &BlockChain{hc: &HeaderChain{}}
+	bc.hc.SetCurrentHeader(&types.Header{
+		Number: big.NewInt(100),
+		Time:   now,
+	})
+
+	valid := &types.Header{
+		Number: big.NewInt(101),
+		Time:   now,
+	}
+	bc.UpdateChasingHead(valid)
+	require.NotNil(t, bc.ChasingHead())
+	require.Equal(t, valid.Number.Uint64(), bc.ChasingHead().Number.Uint64())
+	require.Equal(t, valid.Time, bc.ChasingHead().Time)
+
+	future := &types.Header{
+		Number: big.NewInt(102),
+		Time:   now + uint64(time.Hour/time.Second),
+	}
+	bc.UpdateChasingHead(future)
+	require.Equal(t, valid.Number.Uint64(), bc.ChasingHead().Number.Uint64())
+	require.Equal(t, valid.Time, bc.ChasingHead().Time)
 }
 
 func createMockDATx(config *params.ChainConfig, sidecar *types.BlobTxSidecar) *types.Transaction {

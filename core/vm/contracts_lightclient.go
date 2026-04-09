@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/tendermint/iavl"
+	"github.com/cosmos/iavl"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/crypto/secp256k1"
 	cmn "github.com/tendermint/tendermint/libs/common"
