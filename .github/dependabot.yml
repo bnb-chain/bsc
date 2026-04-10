@@ -5,3 +5,8 @@ updates:
     schedule:
       interval: "weekly"
     target-branch: "develop"
+  - package-ecosystem: "gomod"
+    directory: "/cmd/keeper"
+    schedule:
+      interval: "weekly"
+    target-branch: "develop"
