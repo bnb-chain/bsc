@@ -19,6 +19,7 @@ package rawdb
 import (
 	"bytes"
 	"errors"
+	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -215,9 +216,9 @@ func DeleteTrienodeHistoryIndexBlock(db ethdb.KeyValueWriter, addressHash common
 // increaseKey increase the input key by one bit. Return nil if the entire
 // addition operation overflows.
 func increaseKey(key []byte) []byte {
-	for i := len(key) - 1; i >= 0; i-- {
-		key[i]++
-		if key[i] != 0x0 {
+	for _, v := range slices.Backward(key) {
+		v++
+		if v != 0x0 {
 			return key
 		}
 	}

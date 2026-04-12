@@ -2849,11 +2849,11 @@ func (bc *BlockChain) insertSideChain(block *types.Block, it *insertIterator, ma
 		blocks []*types.Block
 		memory uint64
 	)
-	for i := len(hashes) - 1; i >= 0; i-- {
+	for i, v := range slices.Backward(hashes) {
 		// Append the next block to our batch
-		block := bc.GetBlock(hashes[i], numbers[i])
+		block := bc.GetBlock(v, numbers[i])
 		if block == nil {
-			log.Crit("Importing heavy sidechain block is nil", "hash", hashes[i], "number", numbers[i])
+			log.Crit("Importing heavy sidechain block is nil", "hash", v, "number", numbers[i])
 		}
 		blocks = append(blocks, block)
 		memory += block.Size()
@@ -2914,7 +2914,7 @@ func (bc *BlockChain) recoverAncestors(block *types.Block, makeWitness bool) (co
 		return common.Hash{}, errors.New("missing parent")
 	}
 	// Import all the pruned blocks to make the state available
-	for i := len(hashes) - 1; i >= 0; i-- {
+	for i, v := range slices.Backward(hashes) {
 		// If the chain is terminating, stop processing blocks
 		if bc.insertStopped() {
 			log.Debug("Abort during blocks processing")
@@ -2924,7 +2924,7 @@ func (bc *BlockChain) recoverAncestors(block *types.Block, makeWitness bool) (co
 		if i == 0 {
 			b = block
 		} else {
-			b = bc.GetBlock(hashes[i], numbers[i])
+			b = bc.GetBlock(v, numbers[i])
 		}
 		if _, _, err := bc.insertChain(types.Blocks{b}, false, makeWitness && i == 0); err != nil {
 			return b.ParentHash(), err
@@ -3057,8 +3057,8 @@ func (bc *BlockChain) reorg(oldHead *types.Header, newHead *types.Header) error 
 	//
 	// TODO(karalabe): This should be nuked out, no idea how, deprecate some APIs?
 	{
-		for i := len(oldChain) - 1; i >= 0; i-- {
-			block := bc.GetBlock(oldChain[i].Hash(), oldChain[i].Number.Uint64())
+		for _, v := range slices.Backward(oldChain) {
+			block := bc.GetBlock(v.Hash(), v.Number.Uint64())
 			if block == nil {
 				return errInvalidOldChain // Corrupt database, mostly here to avoid weird panics
 			}

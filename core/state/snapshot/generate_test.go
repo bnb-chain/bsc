@@ -19,6 +19,7 @@ package snapshot
 import (
 	"fmt"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -855,9 +856,9 @@ func testGenerateWithIncompleteStorage(t *testing.T, scheme string) {
 }
 
 func incKey(key []byte) []byte {
-	for i := len(key) - 1; i >= 0; i-- {
-		key[i]++
-		if key[i] != 0x0 {
+	for _, v := range slices.Backward(key) {
+		v++
+		if v != 0x0 {
 			break
 		}
 	}
@@ -865,9 +866,9 @@ func incKey(key []byte) []byte {
 }
 
 func decKey(key []byte) []byte {
-	for i := len(key) - 1; i >= 0; i-- {
-		key[i]--
-		if key[i] != 0xff {
+	for _, v := range slices.Backward(key) {
+		v--
+		if v != 0xff {
 			break
 		}
 	}

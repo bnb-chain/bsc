@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
@@ -709,9 +710,9 @@ func (dl *diskLayer) generate(stats *generatorStats) {
 // increaseKey increase the input key by one bit. Return nil if the entire
 // addition operation overflows.
 func increaseKey(key []byte) []byte {
-	for i := len(key) - 1; i >= 0; i-- {
-		key[i]++
-		if key[i] != 0x0 {
+	for _, v := range slices.Backward(key) {
+		v++
+		if v != 0x0 {
 			return key
 		}
 	}

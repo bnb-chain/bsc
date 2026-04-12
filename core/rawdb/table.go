@@ -17,6 +17,8 @@
 package rawdb
 
 import (
+	"slices"
+
 	"github.com/ethereum/go-ethereum/ethdb"
 )
 
@@ -189,10 +191,10 @@ func (t *table) Compact(start []byte, limit []byte) error {
 	// as the limit
 	if limit == nil {
 		limit = []byte(t.prefix)
-		for i := len(limit) - 1; i >= 0; i-- {
+		for i, v := range slices.Backward(limit) {
 			// Bump the current character, stopping if it doesn't overflow
-			limit[i]++
-			if limit[i] > 0 {
+			v++
+			if v > 0 {
 				break
 			}
 			// Character overflown, proceed to the next or nil if the last
