@@ -570,6 +570,10 @@ func (b *EthAPIBackend) SendBid(ctx context.Context, bid *types.BidArgs) (common
 	return b.Miner().SendBid(ctx, bid)
 }
 
+func (b *EthAPIBackend) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) (common.Hash, error) {
+	return b.Miner().SendBidBlock(ctx, args)
+}
+
 func (b *EthAPIBackend) MinerInTurn() bool {
 	return b.Miner().InTurn()
 }

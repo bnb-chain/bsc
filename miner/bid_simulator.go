@@ -132,6 +132,16 @@ type bidSimulator struct {
 	bidsToSim     map[uint64][]*BidRuntime    // blockNumber -->  bidRuntime list, used to discard envs
 
 	maxBidsPerBuilder uint32 // Maximum number of bids allowed per builder per block
+
+	// BidBlock (zero-simulate MEV) fields
+	bestBidBlockMu sync.RWMutex
+	bestBidBlock  map[common.Hash]*BidBlockRuntime // parentHash -> best bid block
+	newBidBlockCh  chan *types.BidBlock              // channel for incoming bid blocks
+}
+
+// BidBlockRuntime holds the bid block and its expected reward.
+type BidBlockRuntime struct {
+	block *types.BidBlock
 }
 
 func newBidSimulator(
@@ -161,6 +171,8 @@ func newBidSimulator(
 		bestBidToRun:  make(map[common.Hash]*types.Bid),
 		simulatingBid: make(map[common.Hash]*BidRuntime),
 		bidsToSim:     make(map[uint64][]*BidRuntime),
+		bestBidBlock:  make(map[common.Hash]*BidBlockRuntime),
+		newBidBlockCh: make(chan *types.BidBlock, 100),
 	}
 	if delayLeftOver != nil {
 		b.delayLeftOver = *delayLeftOver
@@ -183,6 +195,7 @@ func newBidSimulator(
 	go b.clearLoop()
 	go b.mainLoop()
 	go b.newBidLoop()
+	go b.newBidBlockLoop()
 
 	return b
 }
@@ -601,6 +614,14 @@ func (b *bidSimulator) clearLoop() {
 			}
 		}
 		b.simBidMu.Unlock()
+
+		b.bestBidBlockMu.Lock()
+		for k, v := range b.bestBidBlock{
+			if v.block.BlockNumber <= clearThreshold {
+				delete(b.bestBidBlock, k)
+			}
+		}
+		b.bestBidBlockMu.Unlock()
 	}
 
 	for {
@@ -617,6 +638,75 @@ func (b *bidSimulator) clearLoop() {
 			return
 
 		case <-b.chainHeadSub.Err():
+			return
+		}
+	}
+}
+
+// SetBestBidBlock sets the best bid block for a given parent hash.
+func (b *bidSimulator) SetBestBidBlock(parentHash common.Hash, rt *BidBlockRuntime) {
+	b.bestBidBlockMu.Lock()
+	defer b.bestBidBlockMu.Unlock()
+	b.bestBidBlock[parentHash] = rt
+}
+
+// GetBestBidBlock returns the best bid block for a given parent hash.
+func (b *bidSimulator) GetBestBidBlock(parentHash common.Hash) *BidBlockRuntime {
+	b.bestBidBlockMu.RLock()
+	defer b.bestBidBlockMu.RUnlock()
+	return b.bestBidBlock[parentHash]
+}
+
+// sendBidBlock sends a bid block to the newBidBlockCh channel.
+func (b *bidSimulator) sendBidBlock(_ context.Context, block *types.BidBlock) error {
+	timer := time.NewTimer(1 * time.Second)
+	defer timer.Stop()
+
+	select {
+	case b.newBidBlockCh <- block:
+		b.AddPending(block.BlockNumber, block.Builder, block.Hash())
+		return nil
+	case <-timer.C:
+		return types.ErrMevBusy
+	}
+}
+
+// newBidBlockLoop handles incoming bid blocks, selecting the one with highest GasFee.
+func (b *bidSimulator) newBidBlockLoop() {
+	for {
+		select {
+		case block := <-b.newBidBlockCh:
+			if !b.isRunning() || !b.receivingBid() {
+				continue
+			}
+
+			// check stale block
+			currentBlock := b.chain.CurrentBlock()
+			if block.BlockNumber <= currentBlock.Number.Uint64() {
+				log.Debug("BidBlock: discard stale block", "blockNumber", block.BlockNumber)
+				continue
+			}
+
+			// compare with current best
+			best := b.GetBestBidBlock(block.ParentHash)
+			if best != nil && best.block.GasFee.Cmp(block.GasFee) >= 0 {
+				log.Debug("BidBlock: discard lower GasFee block",
+					"blockNumber", block.BlockNumber,
+					"builder", block.Builder,
+					"gasFee", block.GasFee,
+					"bestGasFee", best.block.GasFee)
+				continue
+			}
+
+			b.SetBestBidBlock(block.ParentHash, &BidBlockRuntime{block: block})
+			log.Info("[BID BLOCK ARRIVED]",
+				"blockNumber", block.BlockNumber,
+				"builder", block.Builder,
+				"gasFee", block.GasFee,
+				"txs", len(block.UserTxs),
+				"systemTxs", len(block.SystemTxs))
+
+		case <-b.exitCh:
 			return
 		}
 	}

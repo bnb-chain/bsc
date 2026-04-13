@@ -48,6 +48,58 @@ func (miner *Miner) HasBuilder(builder common.Address) bool {
 	return miner.bidSimulator.ExistBuilder(builder)
 }
 
+func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) (common.Hash, error) {
+	builder, err := args.EcrecoverSender()
+	if err != nil {
+		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("invalid signature: %v", err))
+	}
+
+	if !miner.bidSimulator.ExistBuilder(builder) {
+		return common.Hash{}, types.NewInvalidBidError("builder is not registered")
+	}
+
+	err = miner.bidSimulator.CheckPending(args.BlockNumber, builder, args.Hash())
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	signer := types.MakeSigner(miner.worker.chainConfig, big.NewInt(int64(args.BlockNumber)), uint64(time.Now().Unix()))
+	userTxs, err := args.DecodeUserTxs(signer)
+	if err != nil {
+		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("failed to decode user txs: %v", err))
+	}
+
+	systemTxs, err := args.DecodeSystemTxs()
+	if err != nil {
+		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("failed to decode system txs: %v", err))
+	}
+
+	bidBetterBefore := miner.bidSimulator.bidBetterBefore(args.ParentHash)
+	timeout := time.Until(bidBetterBefore)
+	if timeout <= 0 {
+		return common.Hash{}, fmt.Errorf("too late, expected before %s, appeared %s later", bidBetterBefore,
+			common.PrettyDuration(timeout))
+	}
+
+	bidBlock := &types.BidBlock{
+		Builder:     builder,
+		BlockNumber: args.BlockNumber,
+		ParentHash:  args.ParentHash,
+		GasFee:      args.GasFee,
+		UserTxs:     userTxs,
+		SystemTxs:   systemTxs,
+		Header:      args.Header,
+		Sidecars:    args.Sidecars,
+	}
+
+	err = miner.bidSimulator.sendBidBlock(ctx, bidBlock)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	return args.Hash(), nil
+}
+
 func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common.Hash, error) {
 	builder, err := bidArgs.EcrecoverSender()
 	if err != nil {

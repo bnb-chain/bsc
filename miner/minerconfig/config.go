@@ -54,6 +54,7 @@ var (
 	defaultBuilderFeeCeil      = "0"
 	defaultValidatorCommission = uint64(100)
 	defaultMaxBidsPerBuilder   = uint32(2) // Simple strategy: send one bid early, another near deadline
+	defaultBidBlockMode        = false
 )
 
 // Config is the configuration parameters of mining.
@@ -105,6 +106,7 @@ type MevConfig struct {
 	BidSimulationLeftOver *time.Duration  `toml:",omitempty"`
 	NoInterruptLeftOver   *time.Duration  `toml:",omitempty"`
 	MaxBidsPerBuilder     *uint32         `toml:",omitempty"` // Maximum number of bids allowed per builder per block
+	BidBlockMode          *bool           `toml:",omitempty"` // Enable PreBuildBlock mode (zero-simulate MEV)
 }
 
 var DefaultMevConfig = MevConfig{
@@ -117,6 +119,7 @@ var DefaultMevConfig = MevConfig{
 	BidSimulationLeftOver: &defaultBidSimulationLeftOver,
 	NoInterruptLeftOver:   getDefaultNoInterruptLeftOver(),
 	MaxBidsPerBuilder:     &defaultMaxBidsPerBuilder,
+	BidBlockMode:          &defaultBidBlockMode,
 }
 
 func ApplyDefaultMinerConfig(cfg *Config) {
@@ -167,5 +170,9 @@ func ApplyDefaultMinerConfig(cfg *Config) {
 	if cfg.Mev.MaxBidsPerBuilder == nil {
 		cfg.Mev.MaxBidsPerBuilder = &defaultMaxBidsPerBuilder
 		log.Info("ApplyDefaultMinerConfig", "Mev.MaxBidsPerBuilder", *cfg.Mev.MaxBidsPerBuilder)
+	}
+	if cfg.Mev.BidBlockMode == nil {
+		cfg.Mev.BidBlockMode = &defaultBidBlockMode
+		log.Info("ApplyDefaultMinerConfig", "Mev.BidBlockMode", *cfg.Mev.BidBlockMode)
 	}
 }

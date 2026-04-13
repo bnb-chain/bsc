@@ -433,6 +433,9 @@ func (b *backendMock) RemoveBuilder(builder common.Address) error               
 func (b *backendMock) SendBid(ctx context.Context, bid *types.BidArgs) (common.Hash, error) {
 	panic("implement me")
 }
+func (b *backendMock) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) (common.Hash, error) {
+	panic("implement me")
+}
 func (b *backendMock) MinerInTurn() bool                            { return false }
 func (b *backendMock) CurrentView() *filtermaps.ChainView           { return nil }
 func (b *backendMock) NewMatcherBackend() filtermaps.MatcherBackend { return nil }

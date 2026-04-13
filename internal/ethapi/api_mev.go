@@ -87,6 +87,46 @@ func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, 
 	return m.b.SendBid(ctx, &args)
 }
 
+// SendBidBlock receives a bid block from the builders (zero-simulate MEV).
+// The validator skips simulation and uses builder-provided execution results directly.
+func (m *MevAPI) SendBidBlock(ctx context.Context, args types.BidBlockArgs) (common.Hash, error) {
+	ctx = context.WithValue(ctx, "receiveTime", time.Now().UnixMilli())
+	if !m.b.MevRunning() {
+		return common.Hash{}, types.ErrMevNotRunning
+	}
+
+	currentBlock := m.b.CurrentBlock()
+
+	if args.BlockNumber < currentBlock.Number.Uint64()+1 {
+		return common.Hash{}, types.NewInvalidBidError(
+			fmt.Sprintf("stale block number: %d, latest block: %d", args.BlockNumber, currentBlock.Number.Uint64()))
+	} else if args.BlockNumber > currentBlock.Number.Uint64()+1 {
+		return common.Hash{}, types.NewInvalidBidError(
+			fmt.Sprintf("block in future: %d, latest block: %d", args.BlockNumber, currentBlock.Number.Uint64()))
+	} else if !m.b.MinerInTurn() {
+		return common.Hash{}, types.ErrMevNotInTurn
+	}
+
+	if args.ParentHash != currentBlock.Hash() {
+		return common.Hash{}, types.NewInvalidBidError(
+			fmt.Sprintf("non-aligned parent hash: %v", currentBlock.Hash()))
+	}
+
+	if args.GasFee == nil || args.GasFee.Sign() <= 0 {
+		return common.Hash{}, types.NewInvalidBidError("empty gasFee")
+	}
+
+	if args.Header.GasUsed == 0 {
+		return common.Hash{}, types.NewInvalidBidError("empty gasUsed in header")
+	}
+
+	if len(args.Txs) == 0 {
+		return common.Hash{}, types.NewInvalidBidError("empty txs")
+	}
+
+	return m.b.SendBidBlock(ctx, &args)
+}
+
 func (m *MevAPI) Params() *types.MevParams {
 	return m.b.MevParams()
 }

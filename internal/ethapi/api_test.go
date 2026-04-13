@@ -732,6 +732,9 @@ func (b *testBackend) RemoveBuilder(builder common.Address) error               
 func (b *testBackend) SendBid(ctx context.Context, bid *types.BidArgs) (common.Hash, error) {
 	panic("implement me")
 }
+func (b *testBackend) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) (common.Hash, error) {
+	panic("implement me")
+}
 func (b *testBackend) MinerInTurn() bool { return false }
 
 func (b testBackend) CurrentView() *filtermaps.ChainView {

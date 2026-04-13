@@ -46,6 +46,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/trie"
 )
 
 const (
@@ -128,8 +129,16 @@ type task struct {
 	state    *state.StateDB
 	block    *types.Block
 
+	isBidBlock   bool              // true if this is a BidBlock (zero-simulate MEV)
+	bidBlockInfo *bidBlockTaskInfo // non-nil only when isBidBlock is true
+
 	createdAt     time.Time
 	miningStartAt time.Time
+}
+
+type bidBlockTaskInfo struct {
+	builder common.Address
+	gasFee  *big.Int
 }
 
 // txFits reports whether the transaction fits into the block size limit.
@@ -178,6 +187,7 @@ type getWorkReq struct {
 type bidFetcher interface {
 	GetBestBid(parentHash common.Hash) *BidRuntime
 	GetSimulatingBid(prevBlockHash common.Hash) *BidRuntime
+	GetBestBidBlock(parentHash common.Hash) *BidBlockRuntime
 }
 
 // worker is the main object which takes care of submitting new work to consensus engine
@@ -574,6 +584,13 @@ func (w *worker) resultLoop() {
 				log.Error("Block found but no relative pending task", "number", block.Number(), "sealhash", sealhash, "hash", hash)
 				continue
 			}
+
+			// BidBlock path: broadcast first, then InsertChain for async verification
+			if task.isBidBlock {
+				w.handleBidBlockResult(block, task)
+				continue
+			}
+
 			// Different block could share same sealhash, deep copy here to prevent write-write conflict.
 			var (
 				receipts = make([]*types.Receipt, len(task.receipts))
@@ -644,6 +661,53 @@ func (w *worker) resultLoop() {
 		case <-w.exitCh:
 			return
 		}
+	}
+}
+
+// handleBidBlockResult handles a sealed BidBlock: double-sign check, broadcast, then InsertChain for verification.
+func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
+	hash := block.Hash()
+
+	// Double-sign check (reuse existing logic)
+	if prev, ok := w.recentMinedBlocks.Get(block.NumberU64()); ok {
+		if slices.Contains(prev, block.ParentHash()) {
+			log.Error("Reject Double Sign!! (BidBlock)", "block", block.NumberU64(),
+				"hash", hash, "ParentHash", block.ParentHash())
+			return
+		}
+		prevParents := append(prev, block.ParentHash())
+		w.recentMinedBlocks.Add(block.NumberU64(), prevParents)
+	} else {
+		w.recentMinedBlocks.Add(block.NumberU64(), []common.Hash{block.ParentHash()})
+	}
+
+	// Broadcast the block first (before verification)
+	stats := w.chain.GetBlockStats(hash)
+	stats.SendBlockTime.Store(time.Now().UnixMilli())
+	stats.StartMiningTime.Store(task.miningStartAt.UnixMilli())
+
+	log.Info("[BID BLOCK SEALED]",
+		"number", block.Number(),
+		"hash", hash,
+		"builder", task.bidBlockInfo.builder,
+		"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
+
+	w.mux.Post(core.NewMinedBlockEvent{Block: block})
+
+	// InsertChain: re-execute all transactions and verify stateRoot/receiptHash
+	if _, err := w.chain.InsertChain(types.Blocks{block}); err != nil {
+		log.Error("[BID BLOCK VERIFY FAILED]",
+			"number", block.Number(),
+			"hash", hash,
+			"builder", task.bidBlockInfo.builder,
+			"err", err)
+		// TODO: jail builder (phase 2)
+	} else {
+		log.Info("[BID BLOCK VERIFIED]",
+			"number", block.Number(),
+			"hash", hash,
+			"builder", task.bidBlockInfo.builder)
+		// TODO: GasFee post-verification (phase 2)
 	}
 }
 
@@ -1421,43 +1485,68 @@ LOOP:
 			}
 		}
 
-		bestBid := w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
-
-		if bestBid != nil {
-			bidExistGauge.Inc(1)
-			bestBidGasUsedGauge.Update(int64(bestBid.bid.GasUsed) / 1_000_000)
-			bestWorkGasUsedGauge.Update(int64(bestWork.header.GasUsed) / 1_000_000)
-
-			log.Debug("BidSimulator: final compare", "block", bestWork.header.Number.Uint64(),
-				"localBlockReward", bestReward.String(),
-				"bidBlockReward", bestBid.packedBlockReward.String())
-		}
-
-		if bestBid != nil && bestReward.CmpBig(bestBid.packedBlockReward) < 0 {
-			// localValidatorReward is the reward for the validator self by the local block.
-			localValidatorReward := new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
-			localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
-
-			log.Debug("BidSimulator: final compare", "block", bestWork.header.Number.Uint64(),
-				"localValidatorReward", localValidatorReward.String(),
-				"bidValidatorReward", bestBid.packedValidatorReward.String())
-
-			// blockReward(benefits delegators) and validatorReward(benefits the validator) are both optimal
-			if localValidatorReward.CmpBig(bestBid.packedValidatorReward) < 0 {
-				bidWinGauge.Inc(1)
-				if bestBid.greedyMerged {
-					greedyMergeOnchainCounter.Inc(1)
-				}
-
-				bestWork = bestBid.env
-
-				log.Info("[BUILDER BLOCK]",
+		if w.config.Mev.BidBlockMode != nil && *w.config.Mev.BidBlockMode {
+			// BidBlock mode: use pre-built block from builder (zero-simulate MEV)
+			bestBidBlock := w.bidFetcher.GetBestBidBlock(bestWork.header.ParentHash)
+			if bestBidBlock != nil {
+				log.Info("[BID BLOCK selected]",
 					"block", bestWork.header.Number.Uint64(),
-					"builder", bestBid.bid.Builder,
-					"blockReward", weiToEtherStringF6(bestBid.packedBlockReward),
-					"validatorReward", weiToEtherStringF6(bestBid.packedValidatorReward),
-					"bid", bestBid.bid.Hash().TerminalString(),
-				)
+					"builder", bestBidBlock.block.Builder,
+					"gasFee", bestBidBlock.block.GasFee,
+					"txs", len(bestBidBlock.block.UserTxs),
+					"systemTxs", len(bestBidBlock.block.SystemTxs))
+
+				if err := w.commitBidBlock(bestBidBlock, bestWork.header, start); err != nil {
+					log.Error("Failed to commit bid block, fallback to local", "err", err)
+				} else {
+					// Swap out the old work
+					if w.current != nil {
+						w.current.discard()
+					}
+					w.current = bestWork
+					return
+				}
+			}
+		} else {
+			// Legacy SendBid mode: compare with simulated bid
+			bestBid := w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
+
+			if bestBid != nil {
+				bidExistGauge.Inc(1)
+				bestBidGasUsedGauge.Update(int64(bestBid.bid.GasUsed) / 1_000_000)
+				bestWorkGasUsedGauge.Update(int64(bestWork.header.GasUsed) / 1_000_000)
+
+				log.Debug("BidSimulator: final compare", "block", bestWork.header.Number.Uint64(),
+					"localBlockReward", bestReward.String(),
+					"bidBlockReward", bestBid.packedBlockReward.String())
+			}
+
+			if bestBid != nil && bestReward.CmpBig(bestBid.packedBlockReward) < 0 {
+				// localValidatorReward is the reward for the validator self by the local block.
+				localValidatorReward := new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
+				localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
+
+				log.Debug("BidSimulator: final compare", "block", bestWork.header.Number.Uint64(),
+					"localValidatorReward", localValidatorReward.String(),
+					"bidValidatorReward", bestBid.packedValidatorReward.String())
+
+				// blockReward(benefits delegators) and validatorReward(benefits the validator) are both optimal
+				if localValidatorReward.CmpBig(bestBid.packedValidatorReward) < 0 {
+					bidWinGauge.Inc(1)
+					if bestBid.greedyMerged {
+						greedyMergeOnchainCounter.Inc(1)
+					}
+
+					bestWork = bestBid.env
+
+					log.Info("[BUILDER BLOCK]",
+						"block", bestWork.header.Number.Uint64(),
+						"builder", bestBid.bid.Builder,
+						"blockReward", weiToEtherStringF6(bestBid.packedBlockReward),
+						"validatorReward", weiToEtherStringF6(bestBid.packedValidatorReward),
+						"bid", bestBid.bid.Hash().TerminalString(),
+					)
+				}
 			}
 		}
 	}
@@ -1476,6 +1565,74 @@ LOOP:
 func (w *worker) inTurn() bool {
 	validator, _ := w.engine.NextInTurnValidator(w.chain, w.chain.CurrentBlock())
 	return validator != common.Address{} && validator == w.etherbase()
+}
+
+// commitBidBlock assembles a block from a BidBlock (zero-simulate MEV path).
+// The validator signs system txs, builds header from local Prepare() + builder's execution results,
+// and submits the block for sealing. No EVM execution is performed.
+func (w *worker) commitBidBlock(bidBlockRT *BidBlockRuntime, localHeader *types.Header, start time.Time) error {
+	pb := bidBlockRT.block
+
+	// 1. Sign system transactions using validator's signTxFn
+	p, ok := w.engine.(*parlia.Parlia)
+	if !ok {
+		return errors.New("engine is not parlia")
+	}
+	signedSystemTxs := make([]*types.Transaction, len(pb.SystemTxs))
+	for i, unsignedTx := range pb.SystemTxs {
+		signed, err := p.SignSystemTx(unsignedTx, w.chainConfig.ChainID)
+		if err != nil {
+			return fmt.Errorf("failed to sign system tx %d: %v", i, err)
+		}
+		signedSystemTxs[i] = signed
+	}
+
+	// 2. Assemble transaction list
+	allTxs := make([]*types.Transaction, 0, len(pb.UserTxs)+len(signedSystemTxs))
+	allTxs = append(allTxs, pb.UserTxs...)
+	allTxs = append(allTxs, signedSystemTxs...)
+
+	// 3. Build header: consensus fields from local Prepare(), execution fields from BidBlockHeader
+	header := types.CopyHeader(localHeader)
+	header.GasUsed = pb.Header.GasUsed
+	header.Root = pb.Header.Root
+	header.ReceiptHash = pb.Header.ReceiptHash
+	header.Bloom = pb.Header.LogsBloom
+	header.TxHash = types.DeriveSha(types.Transactions(allTxs), trie.NewStackTrie(nil))
+
+	// 4. Assemble block
+	body := &types.Body{Transactions: allTxs}
+	if header.EmptyWithdrawalsHash() {
+		body.Withdrawals = make([]*types.Withdrawal, 0)
+	}
+	block := types.NewBlock(header, body, nil, trie.NewStackTrie(nil))
+
+	// Attach sidecars if present
+	if pb.Sidecars != nil {
+		block = block.WithSidecars(pb.Sidecars)
+	} else if w.chainConfig.IsCancun(header.Number, header.Time) {
+		block = block.WithSidecars(make(types.BlobSidecars, 0))
+	}
+
+	// 5. Submit to seal (assembleVoteAttestation + sign header happen inside Seal)
+	select {
+	case w.taskCh <- &task{
+		block:         block,
+		isBidBlock:    true,
+		bidBlockInfo:  &bidBlockTaskInfo{builder: pb.Builder, gasFee: pb.GasFee},
+		createdAt:     time.Now(),
+		miningStartAt: start,
+	}:
+		log.Info("[BID BLOCK COMMIT]",
+			"number", block.Number(),
+			"builder", pb.Builder,
+			"txs", len(allTxs),
+			"gas", block.GasUsed(),
+			"gasFee", pb.GasFee)
+	case <-w.exitCh:
+		log.Info("Worker has exited")
+	}
+	return nil
 }
 
 // commit runs any post-transaction state modifications, assembles the final block
