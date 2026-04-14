@@ -9,6 +9,7 @@ import (
 	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto/pq/mldsa"
 )
 
 const (
@@ -18,8 +19,15 @@ const (
 	MaxAttestationExtraLength = 256
 )
 
+const (
+	PQPublicKeyLength = 1312
+	PQSignatureLength = 2420
+)
+
 type BLSPublicKey [BLSPublicKeyLength]byte
 type BLSSignature [BLSSignatureLength]byte
+type PQPublicKey [PQPublicKeyLength]byte
+type PQSignature [PQSignatureLength]byte
 type ValidatorsBitSet uint64
 
 // VoteData represents the vote range that validator voted for fast finality.
@@ -43,10 +51,28 @@ type VoteEnvelope struct {
 	hash atomic.Value
 }
 
+// PQVoteEnvelope represents the vote of a single validator using post-quantum signatures.
+type PQVoteEnvelope struct {
+	VoteAddress PQPublicKey // The ML-DSA-44 public key of the validator.
+	Signature   PQSignature // Validator's ML-DSA-44 signature for the vote data.
+	Data        *VoteData   // The vote data for fast finality.
+
+	// caches
+	hash atomic.Value
+}
+
 // VoteAttestation represents the votes of super majority validators.
 type VoteAttestation struct {
 	VoteAddressSet ValidatorsBitSet // The bitset marks the voted validators.
 	AggSignature   BLSSignature     // The aggregated BLS signature of the voted validators' signatures.
+	Data           *VoteData        // The vote data for fast finality.
+	Extra          []byte           // Reserved for future usage.
+}
+
+// PQVoteAttestation represents the votes of super majority validators using STARK aggregation.
+type PQVoteAttestation struct {
+	VoteAddressSet ValidatorsBitSet // The bitset marks the voted validators.
+	AggProof       []byte           // The STARK aggregate proof replacing BLS aggregate signature.
 	Data           *VoteData        // The vote data for fast finality.
 	Extra          []byte           // Reserved for future usage.
 }
@@ -72,6 +98,26 @@ func (v *VoteEnvelope) calcVoteHash() common.Hash {
 }
 
 func (b BLSPublicKey) Bytes() []byte { return b[:] }
+func (b PQPublicKey) Bytes() []byte  { return b[:] }
+
+// Hash returns the PQ vote's hash.
+func (v *PQVoteEnvelope) Hash() common.Hash {
+	if hash := v.hash.Load(); hash != nil {
+		return hash.(common.Hash)
+	}
+	h := v.calcVoteHash()
+	v.hash.Store(h)
+	return h
+}
+
+func (v *PQVoteEnvelope) calcVoteHash() common.Hash {
+	vote := struct {
+		VoteAddress PQPublicKey
+		Signature   PQSignature
+		Data        *VoteData
+	}{v.VoteAddress, v.Signature, v.Data}
+	return rlpHash(vote)
+}
 
 // Verify vote using BLS.
 func (v *VoteEnvelope) Verify() error {
@@ -88,6 +134,15 @@ func (v *VoteEnvelope) Verify() error {
 	voteDataHash := v.Data.Hash()
 	if !sig.Verify(blsPubKey, voteDataHash[:]) {
 		return errors.New("verify bls signature failed.")
+	}
+	return nil
+}
+
+// Verify verifies the PQ vote using ML-DSA-44.
+func (v *PQVoteEnvelope) Verify() error {
+	voteDataHash := v.Data.Hash()
+	if !mldsa.Verify(v.VoteAddress[:], voteDataHash[:], v.Signature[:]) {
+		return errors.New("verify ML-DSA-44 signature failed")
 	}
 	return nil
 }

@@ -42,6 +42,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/blake2b"
 	"github.com/ethereum/go-ethereum/crypto/bn256"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/ethereum/go-ethereum/crypto/pq/proofs"
 	"github.com/ethereum/go-ethereum/crypto/secp256k1"
 	"github.com/ethereum/go-ethereum/crypto/secp256r1"
 	"github.com/ethereum/go-ethereum/log"
@@ -227,6 +228,7 @@ var PrecompiledContractsHertz = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x66}): &blsSignatureVerify{},
 	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidateHertz{},
 	common.BytesToAddress([]byte{0x68}): &pqRecover{},
+	common.BytesToAddress([]byte{0x6a}): &pqAttestationVerify{},
 	common.BytesToAddress([]byte{0x70}): &pqKeyRegistry{},
 }
 
@@ -249,6 +251,7 @@ var PrecompiledContractsFeynman = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidateHertz{},
 	common.BytesToAddress([]byte{0x68}): &pqRecoverCompat{},
 	common.BytesToAddress([]byte{0x69}): &secp256k1SignatureRecover{},
+	common.BytesToAddress([]byte{0x6a}): &pqAttestationVerify{},
 	common.BytesToAddress([]byte{0x70}): &pqKeyRegistry{},
 }
 
@@ -272,6 +275,7 @@ var PrecompiledContractsCancun = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidateHertz{},
 	common.BytesToAddress([]byte{0x68}): &pqRecoverCompat{},
 	common.BytesToAddress([]byte{0x69}): &secp256k1SignatureRecover{},
+	common.BytesToAddress([]byte{0x6a}): &pqAttestationVerify{},
 	common.BytesToAddress([]byte{0x70}): &pqKeyRegistry{},
 }
 
@@ -295,6 +299,7 @@ var PrecompiledContractsHaber = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidateHertz{},
 	common.BytesToAddress([]byte{0x68}): &pqRecoverCompat{},
 	common.BytesToAddress([]byte{0x69}): &secp256k1SignatureRecover{},
+	common.BytesToAddress([]byte{0x6a}): &pqAttestationVerify{},
 	common.BytesToAddress([]byte{0x70}): &pqKeyRegistry{},
 
 	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{},
@@ -327,6 +332,7 @@ var PrecompiledContractsPrague = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidateHertz{},
 	common.BytesToAddress([]byte{0x68}): &pqRecoverCompat{},
 	common.BytesToAddress([]byte{0x69}): &secp256k1SignatureRecover{},
+	common.BytesToAddress([]byte{0x6a}): &pqAttestationVerify{},
 	common.BytesToAddress([]byte{0x70}): &pqKeyRegistry{},
 
 	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{},
@@ -336,6 +342,7 @@ var PrecompiledContractsBLS = PrecompiledContractsPrague
 
 var PrecompiledContractsVerkle = func() PrecompiledContracts {
 	contracts := maps.Clone(PrecompiledContractsBerlin)
+	contracts[common.BytesToAddress([]byte{0x6a})] = &pqAttestationVerify{}
 	contracts[common.BytesToAddress([]byte{0x70})] = &pqKeyRegistry{}
 	return contracts
 }()
@@ -367,6 +374,7 @@ var PrecompiledContractsOsaka = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidateHertz{},
 	common.BytesToAddress([]byte{0x68}): &pqRecoverCompat{},
 	common.BytesToAddress([]byte{0x69}): &secp256k1SignatureRecover{},
+	common.BytesToAddress([]byte{0x6a}): &pqAttestationVerify{},
 	common.BytesToAddress([]byte{0x70}): &pqKeyRegistry{},
 
 	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{eip7951: true},
@@ -1706,6 +1714,231 @@ func (c *blsSignatureVerify) Run(input []byte) ([]byte, error) {
 
 func (c *blsSignatureVerify) Name() string {
 	return "BLS_SIGNATURE_VERIFY"
+}
+
+// pqAttestationVerify implements STARK-based PQ attestation verification precompile.
+type pqAttestationVerify struct{}
+
+// RequiredGas returns the gas required to verify a PQ attestation.
+// Base cost: 200,000 gas (STARK proof verification is flat-cost).
+func (c *pqAttestationVerify) RequiredGas(input []byte) uint64 {
+	return 200000
+}
+
+// Run verifies a STARK aggregate proof for PQ attestations.
+// Input format: [proof_len (4 bytes)] [proof_bytes] [vote_data_hash (32 bytes)] [num_pubkeys (4 bytes)] [{pubkey (1312 bytes)}...]
+// Returns 1 if valid, 0 if invalid.
+func (c *pqAttestationVerify) Run(input []byte) ([]byte, error) {
+	if len(input) < 8 {
+		return nil, ErrExecutionReverted
+	}
+
+	inputLen := len(input)
+
+	// Parse proof length and proof bytes.
+	proofLen := int(input[0])<<24 | int(input[1])<<16 | int(input[2])<<8 | int(input[3])
+	offset := 4
+	if proofLen <= 0 || offset+proofLen > inputLen {
+		return nil, ErrExecutionReverted
+	}
+	proofBytes := input[offset : offset+proofLen]
+	offset += proofLen
+
+	// Parse vote data hash (32 bytes).
+	if offset+32 > inputLen {
+		return nil, ErrExecutionReverted
+	}
+	var voteDataHash common.Hash
+	copy(voteDataHash[:], input[offset:offset+32])
+	offset += 32
+
+	// Parse pubkeys.
+	if offset+4 > inputLen {
+		return nil, ErrExecutionReverted
+	}
+	numPubkeys := int(input[offset])<<24 | int(input[offset+1])<<16 | int(input[offset+2])<<8 | int(input[offset+3])
+	offset += 4
+
+	pubkeySize := 1312 // ML-DSA-44 public key size
+	if numPubkeys <= 0 || numPubkeys > 1000 || offset+numPubkeys*pubkeySize > inputLen {
+		return nil, ErrExecutionReverted
+	}
+
+	pubkeys := make([][]byte, numPubkeys)
+	for i := 0; i < numPubkeys; i++ {
+		pubkeys[i] = input[offset : offset+pubkeySize]
+		offset += pubkeySize
+	}
+
+	if len(proofBytes) < 104 { // minimum STARK aggregation size
+		return common.Big0.Bytes(), nil
+	}
+
+	// Unmarshal the STARK aggregation from proof bytes.
+	agg, err := pqUnmarshalSTARKAggregation(proofBytes)
+	if err != nil {
+		return common.Big0.Bytes(), nil
+	}
+
+	// Check vote data hash binding.
+	if agg.voteDataHash != voteDataHash {
+		return common.Big0.Bytes(), nil
+	}
+
+	// Verify STARK proof (auth paths).
+	prover := proofs.NewSTARKProver()
+	valid, err := prover.VerifySTARKProof(agg.proof, nil)
+	if err != nil || !valid {
+		return common.Big0.Bytes(), nil
+	}
+
+	// Verify committee root matches pubkeys.
+	expectedRoot := pqComputeCommitteeRoot(pubkeys)
+	if expectedRoot != agg.committeeRoot {
+		return common.Big0.Bytes(), nil
+	}
+
+	return common.Big1.Bytes(), nil
+}
+
+// pqUnmarshalResult holds the minimal parsed STARK aggregation for the precompile.
+type pqUnmarshalResult struct {
+	committeeRoot common.Hash
+	voteDataHash  common.Hash
+	proof         *proofs.STARKProofData
+}
+
+// pqUnmarshalSTARKAggregation is a minimal unmarshal for the precompile (avoids importing parlia).
+func pqUnmarshalSTARKAggregation(data []byte) (*pqUnmarshalResult, error) {
+	if len(data) < 104 {
+		return nil, fmt.Errorf("proof too short")
+	}
+	offset := 0
+
+	var committeeRoot common.Hash
+	copy(committeeRoot[:], data[offset:offset+32])
+	offset += 32
+
+	var voteDataHash common.Hash
+	copy(voteDataHash[:], data[offset:offset+32])
+	offset += 32
+
+	numValidators := int(data[offset])<<24 | int(data[offset+1])<<16 | int(data[offset+2])<<8 | int(data[offset+3])
+	offset += 4
+	if numValidators <= 0 || numValidators > 1000 {
+		return nil, fmt.Errorf("invalid numValidators")
+	}
+
+	if offset+32 > len(data) {
+		return nil, fmt.Errorf("proof truncated")
+	}
+	var commitmentRoot [32]byte
+	copy(commitmentRoot[:], data[offset:offset+32])
+	offset += 32
+
+	if offset+4 > len(data) {
+		return nil, fmt.Errorf("proof truncated")
+	}
+	numFRI := int(data[offset])<<24 | int(data[offset+1])<<16 | int(data[offset+2])<<8 | int(data[offset+3])
+	offset += 4
+	if numFRI > 64 {
+		return nil, fmt.Errorf("invalid numFRI")
+	}
+	friLayers := make([][32]byte, numFRI)
+	for i := 0; i < numFRI; i++ {
+		if offset+32 > len(data) {
+			return nil, fmt.Errorf("proof truncated")
+		}
+		copy(friLayers[i][:], data[offset:offset+32])
+		offset += 32
+	}
+
+	if offset+4 > len(data) {
+		return nil, fmt.Errorf("proof truncated")
+	}
+	numQ := int(data[offset])<<24 | int(data[offset+1])<<16 | int(data[offset+2])<<8 | int(data[offset+3])
+	offset += 4
+	if numQ > 1024 {
+		return nil, fmt.Errorf("invalid numQ")
+	}
+	queryResponses := make([]proofs.QueryResponse, numQ)
+	for i := 0; i < numQ; i++ {
+		if offset+36 > len(data) {
+			return nil, fmt.Errorf("proof truncated")
+		}
+		idx := int(data[offset])<<24 | int(data[offset+1])<<16 | int(data[offset+2])<<8 | int(data[offset+3])
+		offset += 4
+		var val [32]byte
+		copy(val[:], data[offset:offset+32])
+		offset += 32
+
+		if offset+4 > len(data) {
+			return nil, fmt.Errorf("proof truncated")
+		}
+		numAuth := int(data[offset])<<24 | int(data[offset+1])<<16 | int(data[offset+2])<<8 | int(data[offset+3])
+		offset += 4
+		if numAuth > 64 {
+			return nil, fmt.Errorf("invalid numAuth")
+		}
+		authPath := make([][32]byte, numAuth)
+		for j := 0; j < numAuth; j++ {
+			if offset+32 > len(data) {
+				return nil, fmt.Errorf("proof truncated")
+			}
+			copy(authPath[j][:], data[offset:offset+32])
+			offset += 32
+		}
+		queryResponses[i] = proofs.QueryResponse{Index: idx, Value: val, AuthPath: authPath}
+	}
+
+	return &pqUnmarshalResult{
+		committeeRoot: committeeRoot,
+		voteDataHash:  voteDataHash,
+		proof: &proofs.STARKProofData{
+			CommitmentRoot: commitmentRoot,
+			FRILayers:      friLayers,
+			QueryResponses: queryResponses,
+			TraceLength:    numValidators,
+			NumColumns:     7,
+		},
+	}, nil
+}
+
+// pqComputeCommitteeRoot computes a SHA-256 Merkle root over validator public keys.
+func pqComputeCommitteeRoot(pubkeys [][]byte) common.Hash {
+	if len(pubkeys) == 0 {
+		return common.Hash{}
+	}
+	leaves := make([][32]byte, len(pubkeys))
+	for i, pk := range pubkeys {
+		h := sha256.New()
+		h.Write(pk)
+		copy(leaves[i][:], h.Sum(nil))
+	}
+	target := 1
+	for target < len(leaves) {
+		target <<= 1
+	}
+	padded := make([][32]byte, target)
+	copy(padded, leaves)
+	layer := padded
+	for len(layer) > 1 {
+		next := make([][32]byte, len(layer)/2)
+		for i := range next {
+			h := sha256.New()
+			h.Write(layer[2*i][:])
+			h.Write(layer[2*i+1][:])
+			copy(next[i][:], h.Sum(nil))
+		}
+		layer = next
+	}
+	var root common.Hash
+	copy(root[:], layer[0][:])
+	return root
+}
+
+func (c *pqAttestationVerify) Name() string {
+	return "PQ_ATTESTATION_VERIFY"
 }
 
 const (

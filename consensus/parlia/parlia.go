@@ -407,6 +407,8 @@ func getValidatorBytesFromHeader(header *types.Header, chainConfig *params.Chain
 }
 
 // getVoteAttestationFromHeader returns the vote attestation extracted from the header's extra field if exists.
+// After PQ fork, headers contain PQVoteAttestation (with STARK proof); this function converts it
+// to VoteAttestation so downstream consumers (snapshot, finality rewards) work unchanged.
 func getVoteAttestationFromHeader(header *types.Header, chainConfig *params.ChainConfig, epochLength uint64) (*types.VoteAttestation, error) {
 	if len(header.Extra) <= extraVanity+extraSeal {
 		return nil, nil
@@ -430,6 +432,22 @@ func getVoteAttestationFromHeader(header *types.Header, chainConfig *params.Chai
 			return nil, nil
 		}
 		attestationBytes = header.Extra[start:end]
+	}
+
+	// After PQ fork, headers contain PQVoteAttestation instead of VoteAttestation.
+	// Try PQ format first if we're past the fork, then fall back to legacy.
+	if chainConfig.IsPQFork(header.Number, header.Time) {
+		var pqAttestation types.PQVoteAttestation
+		if err := rlp.Decode(bytes.NewReader(attestationBytes), &pqAttestation); err == nil {
+			// Convert PQVoteAttestation to VoteAttestation for downstream compatibility.
+			// Downstream only uses VoteAddressSet, Data, and Extra — not AggSignature.
+			return &types.VoteAttestation{
+				VoteAddressSet: pqAttestation.VoteAddressSet,
+				Data:           pqAttestation.Data,
+				Extra:          pqAttestation.Extra,
+			}, nil
+		}
+		// Fall through to try legacy format (for blocks at the fork boundary).
 	}
 
 	var attestation types.VoteAttestation
@@ -743,12 +761,18 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 	}
 
 	// Verify vote attestation for fast finality.
-	if err := p.verifyVoteAttestation(chain, header, parents); err != nil {
-		log.Warn("Verify vote attestation failed", "error", err, "hash", header.Hash(), "number", header.Number,
+	var verifyAttErr error
+	if chain.Config().IsPQFork(header.Number, header.Time) {
+		verifyAttErr = p.pqVerifyVoteAttestation(chain, header, parents)
+	} else {
+		verifyAttErr = p.verifyVoteAttestation(chain, header, parents)
+	}
+	if verifyAttErr != nil {
+		log.Warn("Verify vote attestation failed", "error", verifyAttErr, "hash", header.Hash(), "number", header.Number,
 			"parent", header.ParentHash, "coinbase", header.Coinbase, "extra", common.Bytes2Hex(header.Extra))
 		verifyVoteAttestationErrorCounter.Inc(1)
 		if chain.Config().IsPlato(header.Number) {
-			return err
+			return verifyAttErr
 		}
 	}
 
@@ -1742,11 +1766,16 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 		case <-time.After(delay):
 		}
 
-		err := p.assembleVoteAttestation(chain, header)
-		if err != nil {
+		var assembleErr error
+		if p.chainConfig.IsPQFork(header.Number, header.Time) {
+			assembleErr = p.pqAssembleVoteAttestation(chain, header)
+		} else {
+			assembleErr = p.assembleVoteAttestation(chain, header)
+		}
+		if assembleErr != nil {
 			/* If the vote attestation can't be assembled successfully, the blockchain won't get
 			   fast finalized, but it can be tolerated, so just report this error here. */
-			log.Debug("Assemble vote attestation failed when sealing", "err", err)
+			log.Debug("Assemble vote attestation failed when sealing", "err", assembleErr)
 		}
 
 		// Sign all the things!

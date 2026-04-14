@@ -1,251 +1,308 @@
 # Post-Quantum BSC — Implementation Plan
 
-Phase 0 and Phase 1 are **complete**. Phases 2 and 3 are pending.
+**Last updated:** 2026-04-13
+**Branch:** `post_quantum_dev`
+**Fork activation:** Timestamp-based via `PQForkTime` / `IsPQFork(num, time)`
 
 ---
 
-## Phase 1.5 — PQ Public Key Registry (pending)
+## Status Overview
 
-> **Why:** ML-DSA-44 public key is 1312 bytes. Embedding it in every transaction inflates
-> each tx by ~3732 bytes (pubkey + sig) vs 65 bytes for secp256k1 — a 57× increase.
-> This is measured as the "worst case" baseline in the Phase 1 benchmark, then eliminated
-> by the registry so the optimised path only carries the 2420-byte signature per tx.
+| Phase | Name | Status | Notes |
+|-------|------|--------|-------|
+| 0 | PQ Crypto Primitives | **Complete** | ML-DSA-44, ML-KEM-768, XMSS stubs |
+| 1 | PQ Transaction Signing | **Complete** | Tx type `0x05`, `PQSigner`, `pqRecover` precompile |
+| 1.5 | PQ Public Key Registry | **Complete** | `pqKeyRegistry` precompile at `0x70` |
+| 2 | P2P Handshake: ML-KEM-768 | Pending | Design ready, not yet implemented |
+| 3 | Fast Finality Voting: STARK Aggregation | **Complete** (placeholder prover) | STARK prover is a structural placeholder |
+| 4 | Integration & Full Benchmark | Pending | Depends on production STARK prover |
+
+---
+
+## Phase 0 — PQ Crypto Primitives (Complete)
+
+### Deliverables
+
+| File | Description |
+|------|-------------|
+| `crypto/pq/mldsa/mldsa.go` | ML-DSA-44 (Dilithium): `GenerateKey`, `Sign`, `Verify`, `PublicKeyFromPrivate`, `PubKeyToAddress` |
+| `crypto/pq/mldsa/mldsa_test.go` | Unit tests |
+| `crypto/pq/mlkem/mlkem.go` | ML-KEM-768: `GenerateKey`, `Encapsulate`, `Decapsulate` |
+| `crypto/pq/mlkem/mlkem_test.go` | Unit tests |
+| `crypto/pq/xmss/xmss.go` | XMSS stubs (Sign, Aggregate, VerifyProof — returns "not implemented") |
+| `crypto/crypto.go` | Top-level wrappers: `SignPQ`, `VerifyPQ`, `PQPubkeyToAddress` |
+| `crypto/pq_signing_test.go` | Integration tests for crypto wrappers |
+
+### Key Constants
+
+| Parameter | Value |
+|-----------|-------|
+| ML-DSA-44 public key | 1312 bytes |
+| ML-DSA-44 signature | 2420 bytes |
+| ML-KEM-768 ciphertext | ~1088 bytes |
+
+---
+
+## Phase 1 — PQ Transaction Signing (Complete)
+
+### Deliverables
+
+| File | Description |
+|------|-------------|
+| `core/types/pq_transaction.go` | `PQTxData` (type `0x05`) with `From`, `PQSignature` fields |
+| `core/types/transaction_signing_pq.go` | `PQSigner`, `pqDispatchSigner`, `SignPQTx` |
+| `core/types/pq_transaction_test.go` | Sign/verify/sender recovery test |
+| `core/pq_e2e_test.go` | Full chain E2E: genesis → PQ tx → block insert → balance check |
+| `params/config.go` | `PQForkTime`, `IsPQFork()`, fork ordering |
 
 ### Design
 
-A system-level key-value store mapping `address → PQPublicKey` written directly into
-the MPT state trie (same mechanism as contract storage), keyed under a reserved system
-address (e.g. `0x0000…PQRegistry`).
+- New tx type `0x05` (`PQTxData`) carries an explicit `From` field (20 bytes) and `PQSignature` (2420 bytes)
+- `PQSigner.Sender()` looks up `From` in the PQ key registry, verifies ML-DSA-44 signature
+- `pqDispatchSigner` wraps the base signer; dispatches PQ txs to `PQSigner`, delegates others to the base
+- `MakeSigner()` and `LatestSigner()` auto-wrap with `pqDispatchSigner` when `IsPQFork` is active
 
-```
-Registry state layout (per account slot):
-  key:   keccak256(addr)          // 32-byte slot key
-  value: PQPublicKey (1312 bytes) // stored as consecutive 32-byte slots (41 slots)
-```
+### Precompile: `pqRecover` (`0x68`)
 
-### 1.5.1 — Registration Transaction
-
-A new one-time tx type **or** a system contract call that writes the sender's PQ public
-key into the registry. Two sub-options:
-
-**Option A — System contract (recommended):** Deploy a precompiled system contract at
-`0x0000…PQRegistry`. Registration is a normal tx `to=0x…PQRegistry, data=pubkey`.
-Gas cost covers the 41-slot write (~20k gas × 41 = ~820k gas, one-time per address).
-
-**Option B — Dedicated tx type `0x51`:** A `PQRegisterTxData` tx that carries only the
-pubkey and is processed at the protocol level, bypassing EVM.
-
-Go with **Option A** — no new tx type needed, simpler tooling, compatible with existing
-wallets once they know the contract ABI.
-
-### 1.5.2 — Modified `PQTxData` (post-registry)
-
-Remove `PQPublicKey` from the tx payload. `Sender()` looks up the registry:
-
-```go
-// Before (Phase 1):
-type PQTxData struct {
-    ...
-    PQPublicKey []byte  // 1312 bytes — removed after Phase 1.5
-    PQSignature []byte  // 2420 bytes — stays
-}
-
-// After (Phase 1.5):
-type PQTxData struct {
-    ...
-    PQSignature []byte  // 2420 bytes only
-}
-```
-
-`PQSigner.Sender(tx)` flow after registry:
-1. Compute candidate address from `tx.inner.(*PQTxData)` — not possible without pubkey,
-   so sender address must be derivable another way.
-2. **Bootstrapping problem:** without the pubkey we cannot derive the address.
-   Solution: keep a 20-byte `From` field in `PQTxData` (explicit sender), then:
-   a. Look up `registry[From]` → `pubKey`
-   b. Verify `mldsa.Verify(pubKey, sigHash, PQSignature)`
-   c. Return `From` if valid, error otherwise
-
-This shifts the trust model: sender is asserted (like EIP-3074) and verified via
-registry lookup + signature check, rather than derived from the signature.
-
-```go
-type PQTxData struct {
-    ChainID     *big.Int
-    Nonce       uint64
-    GasPrice    *big.Int
-    Gas         uint64
-    To          *common.Address
-    Value       *big.Int
-    Data        []byte
-    From        common.Address  // explicit sender (20 bytes)
-    PQSignature []byte          // 2420 bytes
-}
-```
-
-**Net tx overhead vs secp256k1:** 2420 + 20 = 2440 bytes vs 65 bytes (~37× baseline).
-
-### 1.5.3 — Registry Precompile
-
-**Decision: Go precompile** (faster, no EVM overhead, consistent with other BSC crypto precompiles).
-
-**File:** `core/vm/contracts.go` — add `pqKeyRegistry` at `0x70`.
-
-```
-pqKeyRegistry.Run(input, caller, statedb):
-  if len(input) == 1312:           // register: caller → pubkey
-    if slot_0(caller) != zero:     // write-once: reject if already registered
-      return nil, ErrAlreadyRegistered
-    write 41 × 32-byte slots under registry address, keyed by keccak256(caller)
-    return []byte{1}, nil
-  if len(input) == 20:             // lookup: query address → pubkey
-    read 41 slots, return 1312-byte pubkey (or zeros if unregistered)
-    return pubkey, nil
-  return nil, ErrInvalidInput
-
-Gas:
-  register: params.SstoreSetGas * 41  (~820k, one-time)
-  lookup:   params.SloadGas * 41      (~2.7k, per tx validation)
-```
-
-State storage: `statedb.SetState(registryAddr, slot, value)` / `GetState`.
-Slot derivation: `slot_i = keccak256(addr ++ i)` for `i` in `0..40`.
-
-The precompile needs `StateDB` write access — it must be called as a stateful precompile
-(same pattern as BSC's `tmHeaderValidate`). Register in all fork maps from `PQForkBlock`
-onward alongside the existing BSC precompiles (0x64–0x69).
-
-### 1.5.4 — `PQSigner` changes
-
-- `core/types/transaction_signing_pq.go`: `Sender` takes a `StateDB` reader interface
-  to look up the registry. This requires threading state into the signer — consistent
-  with how `statedb` is already passed to `ApplyTransaction`.
-- `SignPQTx` helper: before signing, assert `From` is registered (warn if not).
-
-### 1.5.5 — Migration Path
-
-| Step | Who | What |
-|---|---|---|
-| 1 | User | Send registration tx (one-time, ~820k gas) |
-| 2 | Node | Write `addr → pubkey` into registry state |
-| 3 | User | Send normal PQ txs (2440 bytes each, no pubkey) |
-| 4 | Node | `Sender()` reads registry, verifies sig |
-
-### 1.5.6 — Benchmark Comparison
-
-Run Phase 1 benchmark twice:
-- **Baseline:** `PQTxData` with embedded pubkey (3732 bytes overhead) — measures worst case
-- **Optimised:** `PQTxData` with registry lookup (2440 bytes overhead) — measures target
-
-Both answer: "at what TPS does block propagation exceed 0.45 s?"
-
-### 1.5.7 — Decisions
-
-| # | Decision |
-|---|---|
-| Key rotation | **Write-once:** if `registry[caller]` already exists, `Run` returns an error and reverts. No overwrite, no cooldown. Can be relaxed in a later version. |
-| Genesis pre-registration | **Deferred:** skip for now; handle at local net deployment time. |
+- Input: `[hash(32) || signature(2420) || pubkey(1312)]` → total 3764 bytes
+- Output: address (32 bytes, zero-padded, address at bytes 12-31)
+- Gas: 30,000
+- In pre-PQFork maps: coexists with `doubleSignEvidence` via `pqRecoverCompat` (routes by input length)
 
 ---
 
-## Phase 2 — P2P Handshake: ML-KEM-768 (pending)
+## Phase 1.5 — PQ Public Key Registry (Complete)
 
-**Touch points:** `p2p/rlpx/rlpx.go`, `crypto/ecies/`
+### Precompile: `pqKeyRegistry` (`0x70`)
+
+- **Register** (input = 1312 bytes): `caller → pubkey` write-once to state trie (41 x 32-byte slots)
+  - Gas: `SstoreSetGas * 41` (~820k gas, one-time per address)
+  - Rejects if already registered
+- **Lookup** (input = 20 bytes): `query address → 1312-byte pubkey`
+  - Gas: `SloadGas * 41` (~2.7k gas)
+  - Returns zeros if unregistered
+- State storage: `statedb.SetState(registryAddr, slot, value)` where `slot_i = keccak256(addr ++ i)` for `i in 0..40`
+- Stateful precompile: implements `RunStateful(input, caller, stateDB, readOnly)`
+
+### `PQSigner` Integration
+
+`PQSigner.Sender(tx)` calls `pqKeyRegistryLookup(From)` to retrieve the pubkey, then verifies the ML-DSA-44 signature against the tx hash.
+
+### Migration Path
+
+1. User sends registration tx to `0x70` (one-time, ~820k gas)
+2. Node writes `addr → pubkey` into registry state
+3. User sends PQ txs (`PQTxData`) — no embedded pubkey, only 2440 bytes overhead vs 65 for secp256k1
+
+---
+
+## Phase 2 — P2P Handshake: ML-KEM-768 (Pending)
+
+**Touch points:** `p2p/rlpx/rlpx.go`, `crypto/pq/mlkem/`
 
 ### 2.1 ML-KEM-768 Session Key Exchange
 
-Replace ECDH inside `handshakeState` only. Everything above (AES-CTR framing, MAC,
-multiplexing) is unchanged.
+Replace ECDH inside `handshakeState` only. AES-CTR framing, MAC, multiplexing unchanged.
 
 | Step | Current | Replacement |
-|---|---|---|
+|------|---------|-------------|
 | Initiator key | ephemeral secp256k1 keypair | ML-KEM-768 encapsulation key |
 | Auth message | ECIES-encrypted token + sig | ML-KEM ciphertext (1088 bytes) + identity sig |
 | Shared secret | `ECDH(eph_priv, eph_pub)` | `Decapsulate(ciphertext)` → 32-byte shared secret |
-| Derived secrets | `aesSecret`, `macSecret` | Same HKDF derivation, same field names |
+| Derived secrets | `aesSecret`, `macSecret` | Same HKDF derivation |
 
 **Files to create/modify:**
-- `p2p/rlpx/rlpx.go`: add `runInitiatorPQ` / `runRecipientPQ`; add `Conn.isPQ bool`;
-  fallback to legacy handshake if peer does not advertise `pq-rlpx` capability.
-- `crypto/pq/mlkem/mlkem.go`: already exists (Phase 0).
+- `p2p/rlpx/rlpx.go`: add `runInitiatorPQ` / `runRecipientPQ`; `Conn.isPQ bool`; fallback to legacy if peer does not advertise `pq-rlpx`
+- `crypto/pq/mlkem/mlkem.go`: already exists (Phase 0)
 
 ### 2.2 Node Identity
-Node discovery (`p2p/enode/`) keeps secp256k1 node IDs — out of scope, unchanged.
-Only the session key establishment is replaced.
 
-### 2.3 Benchmark Gate — Phase 2
-- Handshake latency: ML-KEM vs ECDH under simulated 45-peer mesh.
-- Ciphertext size overhead on first-packet RTT.
+Node discovery (`p2p/enode/`) keeps secp256k1 node IDs — unchanged. Only session key establishment is replaced.
+
+### 2.3 Benchmark Gate
+
+- Handshake latency: ML-KEM vs ECDH under simulated 45-peer mesh
+- Ciphertext size overhead on first-packet RTT
 
 ---
 
-## Phase 3 — Fast Finality Voting: leanXMSS / pqSNARK (pending)
+## Phase 3 — Fast Finality Voting: STARK Aggregation (Complete — Placeholder Prover)
 
-**Touch points:** `core/vote/`, `core/types/vote.go`, `consensus/parlia/parlia.go`,
-`core/vm/contracts.go`
+**Touch points:** `core/vote/`, `core/types/vote.go`, `consensus/parlia/`, `core/vm/contracts.go`, `crypto/pq/proofs/`
 
-### 3.1 Prerequisite: leanXMSS library
-Replace the `crypto/pq/xmss/xmss.go` stub with a real implementation once the
-leanVM/leanXMSS library is available. The stub interface is already in place.
+### 3.1 STARK Proof System
+
+| File | Description |
+|------|-------------|
+| `crypto/pq/proofs/stark_prover.go` | `STARKProver`, `GenerateSTARKProof`, `VerifySTARKProof`, Merkle tree utilities |
+
+**Current state:** Placeholder implementation that builds Merkle commitments, FRI layer stubs, and query responses, but does **NOT** perform real STARK proving (no polynomial interpolation, no FRI commitment, no constraint evaluation). Marked with `TODO: Replace with a production STARK/leanVM prover`.
 
 ### 3.2 Data Structure Changes — `core/types/vote.go`
 
-```go
-// Replace
-type VoteEnvelope struct {
-    VoteAddress types.BLSPublicKey   // 48 bytes  →  types.PQPublicKey (leanXMSS)
-    Signature   types.BLSSignature   // 96 bytes  →  types.PQSignature (XMSS sig)
-    Data        *VoteData
-}
+| Type | Description |
+|------|-------------|
+| `PQPublicKey [1312]byte` | ML-DSA-44 public key type |
+| `PQSignature [2420]byte` | ML-DSA-44 signature type |
+| `PQVoteEnvelope` | Individual validator PQ vote (VoteAddress, Signature, Data) |
+| `PQVoteAttestation` | Aggregated PQ attestation (VoteAddressSet, AggProof, Data, Extra) |
+| `PQVoteEnvelope.Verify()` | Verifies ML-DSA-44 signature against `Data.Hash()` |
+| `PQVoteEnvelope.Hash()` | Computes envelope hash |
 
-type VoteAttestation struct {
-    VoteAddressSet uint64
-    AggSignature   types.BLSSignature  // 96 bytes  →  AggProof []byte (pqSNARK proof)
-    Extra          *VoteData
-    VoteAddresses  []types.BLSPublicKey
-}
-```
+All existing BLS types (`VoteEnvelope`, `VoteAttestation`, `BLSPublicKey`, `BLSSignature`) are preserved for backward compatibility.
 
-### 3.3 Vote Signing — `core/vote/vote_signer.go`
-- Replace `bls.Sign(key, data)` with `xmss.Sign(key, data)`.
-- XMSS is stateful (one-time signatures per leaf); keystore must persist `TreeIndex uint64`.
+### 3.3 Vote Signing — `core/vote/pq_vote_signer.go`
 
-### 3.4 Vote Aggregation — new `core/vote/pq_aggregator.go`
-- Collect individual `VoteEnvelope` entries (same pool logic).
-- Call `leanVM.Aggregate(sigs, pubkeys, msg) → proof`.
-- Write `AggProof` into `VoteAttestation`.
+| Function | Description |
+|----------|-------------|
+| `NewPQVoteSigner(pqKeyPath)` | Creates signer from private key file |
+| `NewPQVoteSignerFromRawKey(privKey)` | Creates signer from raw bytes (for testing) |
+| `SignVote(vote *PQVoteEnvelope)` | Signs with ML-DSA-44, populates VoteAddress + Signature |
 
-### 3.5 Consensus Verification — `consensus/parlia/parlia.go`
-- Replace `bls.FastAggregateVerify` with `leanVM.VerifyProof(proof, pubkeys, msg)`.
-- May need to raise `extraVanity`/`extraSeal` header size cap for larger proof bytes.
+### 3.4 STARK Signature Aggregation — `consensus/parlia/pq_stark_aggregation.go`
 
-### 3.6 Precompile Update — `core/vm/contracts.go`
-- Add `pqAttestation` precompile at `0x69`.
-  - Input: `proof || pubkeys || msg`
-  - Gas: calibrate after benchmarks.
+| Type/Function | Description |
+|---------------|-------------|
+| `PQVoteData` | Per-vote input: target/source block info + PQ sig/pubkey + validator index |
+| `STARKSignatureAggregation` | Output: AggregateProof + CommitteeRoot + VoteDataHash + NumValidators |
+| `STARKSignatureAggregator` | Stateful aggregator with mutex-protected prover |
+| `Aggregate(votes, voteDataHash)` | Builds execution trace (7 columns), generates STARK proof, computes committee root |
+| `Verify(agg, pubkeys, expectedVoteDataHash)` | Checks vote data hash binding → verifies STARK proof → validates committee root |
+| `MarshalSTARKAggregation(agg)` | Binary serialization for header storage |
+| `UnmarshalSTARKAggregation(data)` | Deserialization with bounds checks (H3 fix: numValidators≤1000, numFRI≤64, numQ≤1024, numAuth≤64) |
+| `computeCommitteeRoot(pubkeys)` | SHA-256 Merkle tree over validator public keys |
+| `hashSignatureData(sig, pubkey)` | SHA-256 commitment over signature + public key |
 
-### 3.7 Benchmark Gate — Phase 3
-- **Target:** end-to-end latency from 45 validators signing → pool collects → aggregate
-  proof generated → `VerifyProof` completes.
-- **Key unknown:** what is the leanXMSS aggregation latency across 45 validators?
+### 3.5 Vote Attestation Assembly & Verification — `consensus/parlia/pq_vote_attestation.go`
+
+| Function | Description |
+|----------|-------------|
+| `pqAssembleVoteAttestation(chain, header)` | Collects PQ votes from pool, validates quorum (2/3), STARK aggregates, RLP-encodes into header Extra |
+| `pqVerifyVoteAttestation(chain, header, parents)` | Extracts PQVoteAttestation from header, validates source/target blocks, checks quorum, verifies STARK proof |
+| `getPQVoteAttestationFromHeader(header, chainConfig, epochLength)` | Decodes PQVoteAttestation from header Extra (handles epoch and non-epoch blocks) |
+
+### 3.6 Consensus Fork Gating — `consensus/parlia/parlia.go`
+
+Three fork-gated integration points:
+
+| Line | Context | Logic |
+|------|---------|-------|
+| 439 | `getVoteAttestationFromHeader` | Post-PQFork: tries PQ decode first, converts `PQVoteAttestation → VoteAttestation` for downstream consumers |
+| 765 | `verifyHeader` | `IsPQFork` → `pqVerifyVoteAttestation()` else `verifyVoteAttestation()` |
+| 1770 | `Seal` (block production) | `IsPQFork` → `pqAssembleVoteAttestation()` else `assembleVoteAttestation()` |
+
+### 3.7 Precompile: `pqAttestationVerify` (`0x6a`)
+
+- Input: `[proof_len(4)] [proof_bytes] [vote_data_hash(32)] [num_pubkeys(4)] [{pubkey(1312)}...]`
+- Full STARK verification: unmarshal → verify STARK proof → validate committee root → check vote data hash binding
+- Registered in Hertz+ fork maps (not in Luban/Plato early fork maps)
+
+### 3.8 Tests
+
+| File | Tests |
+|------|-------|
+| `consensus/parlia/pq_stark_aggregation_test.go` | 8 unit tests + 1 benchmark: Basic, Verify, MismatchedPubkeys, EmptyVotes, MarshalUnmarshal, SingleVote, NilVerify, VoteDataHashMismatch, BenchmarkSTARKAggregation_21Validators |
+| `consensus/parlia/pq_e2e_test.go` | 4 E2E tests (10 cases): FullFlow (21 validators full pipeline), NegativeCases (6 sub-tests), CommitteeRootDeterminism, IndividualSignatureVerification |
+
+### 3.9 Review Fixes Applied
+
+| ID | Issue | Fix |
+|----|-------|-----|
+| C3 | VoteDataHash not verified during Verify | Added `expectedVoteDataHash` param, enforced binding check (replay protection) |
+| C4 | Non-deterministic committee root | Assembly now uses `snap.validators()` sorted order |
+| C5 | Downstream consumers break post-fork | `getVoteAttestationFromHeader` converts PQVoteAttestation → VoteAttestation |
+| H1 | Epoch blocks skipped in header extraction | Added epoch block handling mirroring legacy function |
+| H2 | `BytesToHash` truncation for vote address | Changed to `crypto.Keccak256Hash` |
+| H3 | Unmarshal OOM DoS | Added upper bounds on all array lengths |
+| H4 | Precompile only checked committee root | Rewrote with full STARK verify flow |
+| H5 | Precompile in early fork maps | Removed from Luban/Plato maps |
+
+### 3.10 Known Limitations
+
+- **STARK prover is a placeholder.** Structural correctness is ensured (Merkle commitments, data flow) but not cryptographic soundness. Must be replaced with a production STARK/leanVM prover before any public network deployment.
+- **PQ assembly path consumes BLS-typed `[]*VoteEnvelope`.** The `VotePool` and `VoteManager` still deal in BLS-typed envelopes (`VoteEnvelope` with 48-byte pubkey / 96-byte sig). `pqAssembleVoteAttestation` adapts by reading `.Signature[:]` and `.VoteAddress[:]` — this works for the current bridge because the byte slicing is size-agnostic, but a full PQ vote pipeline should switch `VotePool`/`VoteManager` to `PQVoteEnvelope`.
+- **XMSS not used.** The original plan mentioned leanXMSS; the current implementation uses ML-DSA-44 for vote signing (same as transaction signing) with STARK aggregation, which is a simpler and more practical approach.
 
 ---
 
-## Phase 4 — Integration & Full Benchmark (pending)
+## Phase 4 — Integration & Full Benchmark (Pending)
 
-### 4.1 Combined hardfork activation
-- Gate all three changes behind `PQForkBlock` (already added to `params/config.go`).
-- Devnet: `PQForkBlock = 0`. Testnet: future block.
+### 4.1 Prerequisites
 
-### 4.2 Combined benchmark suite
-Run all three active simultaneously on devnet:
-- TPS ceiling (block propagation stays < 0.45 s).
-- Finality latency (vote collect + aggregate + verify round-trip).
-- Handshake overhead (time-to-first-byte vs baseline).
+- [ ] Production STARK prover (replace placeholder in `crypto/pq/proofs/stark_prover.go`)
+- [ ] Full PQ vote pipeline: switch `VotePool` / `VoteManager` from `VoteEnvelope` to `PQVoteEnvelope`
+- [ ] Phase 2 (P2P handshake) implementation
 
-### 4.3 Open questions
+### 4.2 Combined Hardfork Activation
+
+Gate all changes behind `PQForkTime` (already added to `params/config.go`).
+- Devnet: `PQForkTime = 0` (already active)
+- Testnet: future timestamp
+
+### 4.3 Combined Benchmark Suite
+
+Run all phases active simultaneously on devnet:
+
+| Metric | Target |
+|--------|--------|
+| TPS ceiling | Block propagation stays < 0.45 s |
+| Finality latency | Vote collect + aggregate + verify round-trip |
+| Handshake overhead | Time-to-first-byte vs baseline |
+| Tx overhead | 2440 bytes (with registry) vs 65 bytes (secp256k1) |
+
+### 4.4 Open Questions
+
 | # | Question | Notes |
-|---|---|---|
-| 1 | leanXMSS library: proof size, verify time? | Blocks Phase 3 entirely |
-| 2 | XMSS tree state management — one-time-key reuse risk | Security review needed |
-| 3 | Gas repricing for `pqAttestation` precompile | After Phase 3 benchmarks |
+|---|----------|-------|
+| 1 | Production STARK prover: proof size, verify time? | Blocks Phase 4 |
+| 2 | VotePool/VoteManager PQ migration strategy | Backward compat during fork transition |
+| 3 | Gas repricing for `pqAttestationVerify` precompile | After production prover benchmarks |
+| 4 | ML-KEM-768 handshake: discovery compatibility | Peer capability negotiation needed |
+
+---
+
+## File Inventory
+
+### New Files
+
+| File | Phase | Lines |
+|------|-------|-------|
+| `crypto/pq/mldsa/mldsa.go` | 0 | ML-DSA-44 primitives |
+| `crypto/pq/mldsa/mldsa_test.go` | 0 | Tests |
+| `crypto/pq/mlkem/mlkem.go` | 0 | ML-KEM-768 primitives |
+| `crypto/pq/mlkem/mlkem_test.go` | 0 | Tests |
+| `crypto/pq/xmss/xmss.go` | 0 | Stubs |
+| `crypto/pq_signing_test.go` | 0 | Wrapper tests |
+| `core/types/pq_transaction.go` | 1 | PQTxData type 0x05 |
+| `core/types/transaction_signing_pq.go` | 1 | PQSigner, pqDispatchSigner |
+| `core/types/pq_transaction_test.go` | 1 | Tests |
+| `core/pq_e2e_test.go` | 1 | Chain-level E2E test |
+| `core/vote/pq_vote_signer.go` | 3 | PQ vote signing |
+| `crypto/pq/proofs/stark_prover.go` | 3 | STARK proof system (placeholder) |
+| `consensus/parlia/pq_stark_aggregation.go` | 3 | STARK signature aggregation |
+| `consensus/parlia/pq_vote_attestation.go` | 3 | PQ vote attestation assembly/verification |
+| `consensus/parlia/pq_stark_aggregation_test.go` | 3 | STARK aggregation unit tests |
+| `consensus/parlia/pq_e2e_test.go` | 3 | STARK aggregation E2E tests |
+| `core/vm/pq_precompile_test.go` | 1 | pqRecover precompile tests |
+
+### Modified Files
+
+| File | Changes |
+|------|---------|
+| `params/config.go` | `PQForkTime`, `IsPQFork()`, fork ordering, `BuildBlockContext.IsPQ` |
+| `core/types/vote.go` | PQ types: `PQPublicKey`, `PQSignature`, `PQVoteEnvelope`, `PQVoteAttestation` |
+| `core/vm/contracts.go` | 3 precompiles: `pqRecover` (0x68), `pqAttestationVerify` (0x6a), `pqKeyRegistry` (0x70) |
+| `consensus/parlia/parlia.go` | Fork gating at lines 439, 765, 1770 |
+| `crypto/crypto.go` | `SignPQ`, `VerifyPQ`, `PQPubkeyToAddress` wrappers |
+| `core/genesis.go` | `PQForkTime` genesis override |
+| `eth/backend.go` | `PQForkTime` backend config override |
+
+---
+
+## Precompile Address Map
+
+| Address | Name | Phase | Description |
+|---------|------|-------|-------------|
+| `0x68` | `pqRecoverCompat` | 1 | ML-DSA-44 signature → address recovery (coexists with doubleSignEvidence) |
+| `0x6a` | `pqAttestationVerify` | 3 | STARK aggregate proof verification |
+| `0x70` | `pqKeyRegistry` | 1.5 | PQ public key registration and lookup |

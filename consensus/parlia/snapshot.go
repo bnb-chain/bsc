@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/log"
@@ -54,8 +55,9 @@ type Snapshot struct {
 }
 
 type ValidatorInfo struct {
-	Index       int                `json:"index:omitempty"` // The index should offset by 1
-	VoteAddress types.BLSPublicKey `json:"vote_address,omitempty"`
+	Index         int                `json:"index:omitempty"` // The index should offset by 1
+	VoteAddress   types.BLSPublicKey `json:"vote_address,omitempty"`
+	PQVoteAddress types.PQPublicKey  `json:"pq_vote_address,omitempty"` // ML-DSA-44 vote pubkey (post-PQFork)
 }
 
 // newSnapshot creates a new snapshot with the specified startup parameters. This
@@ -86,9 +88,14 @@ func newSnapshot(
 	for idx, v := range validators {
 		// The luban fork from the genesis block
 		if len(voteAddrs) == len(validators) {
-			snap.Validators[v] = &ValidatorInfo{
+			info := &ValidatorInfo{
 				VoteAddress: voteAddrs[idx],
 			}
+			// Populate PQ vote pubkey from the 0x70 registry cache if genesis pre-allocated it.
+			if pubKey := vm.PQRegistryLookup(v); len(pubKey) == types.PQPublicKeyLength {
+				copy(info.PQVoteAddress[:], pubKey)
+			}
+			snap.Validators[v] = info
 		} else {
 			snap.Validators[v] = &ValidatorInfo{}
 		}
@@ -165,8 +172,9 @@ func (s *Snapshot) copy() *Snapshot {
 
 	for v := range s.Validators {
 		cpy.Validators[v] = &ValidatorInfo{
-			Index:       s.Validators[v].Index,
-			VoteAddress: s.Validators[v].VoteAddress,
+			Index:         s.Validators[v].Index,
+			VoteAddress:   s.Validators[v].VoteAddress,
+			PQVoteAddress: s.Validators[v].PQVoteAddress,
 		}
 	}
 	for block, v := range s.Recents {
@@ -407,9 +415,20 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 				if !chainConfig.IsLuban(header.Number) {
 					newVals[val] = &ValidatorInfo{}
 				} else {
-					newVals[val] = &ValidatorInfo{
+					info := &ValidatorInfo{
 						VoteAddress: voteAddrs[idx],
 					}
+					// Carry over PQVoteAddress from the previous validator set if the validator stays.
+					if prev, ok := snap.Validators[val]; ok {
+						info.PQVoteAddress = prev.PQVoteAddress
+					}
+					// For any validator whose PQ pubkey is not yet cached, look it up from the 0x70 registry.
+					if chainConfig.IsPQFork(header.Number, header.Time) && info.PQVoteAddress == (types.PQPublicKey{}) {
+						if pubKey := vm.PQRegistryLookup(val); len(pubKey) == types.PQPublicKeyLength {
+							copy(info.PQVoteAddress[:], pubKey)
+						}
+					}
+					newVals[val] = info
 				}
 			}
 			if chainConfig.IsBohr(header.Number, header.Time) {
