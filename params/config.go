@@ -353,6 +353,7 @@ var (
 		CancunTime:          newUint64(0),
 		HaberTime:           newUint64(0),
 		HaberFixTime:        newUint64(0),
+		PQForkTime:          newUint64(0),
 		BohrTime:            newUint64(0),
 		PascalTime:          newUint64(0),
 		PragueTime:          newUint64(0),
@@ -704,7 +705,6 @@ type ChainConfig struct {
 	ArrowGlacierBlock   *big.Int `json:"arrowGlacierBlock,omitempty"`   // Eip-4345 (bomb delay) switch block (nil = no fork, 0 = already activated)
 	GrayGlacierBlock    *big.Int `json:"grayGlacierBlock,omitempty"`    // Eip-5133 (bomb delay) switch block (nil = no fork, 0 = already activated)
 	MergeNetsplitBlock  *big.Int `json:"mergeNetsplitBlock,omitempty"`  // Virtual fork after The Merge to use as a network splitter
-
 	// Fork scheduling was switched from blocks to timestamps here
 
 	ShanghaiTime   *uint64 `json:"shanghaiTime,omitempty"`   // Shanghai switch time (nil = no fork, 0 = already on shanghai)
@@ -729,6 +729,7 @@ type ChainConfig struct {
 	BPO5Time       *uint64 `json:"bpo5Time,omitempty"`       // BPO5 switch time (nil = no fork, 0 = already on bpo5)
 	AmsterdamTime  *uint64 `json:"amsterdamTime,omitempty"`  // Amsterdam switch time (nil = no fork, 0 = already on amsterdam)
 	PasteurTime    *uint64 `json:"pasteurTime,omitempty"`    // PasteurTime switch time (nil = no fork, 0 = already on pasteurTime)
+	PQForkTime     *uint64 `json:"pqForkTime,omitempty"`     // PQ switch time (nil = no fork, 0 = already active)
 	VerkleTime     *uint64 `json:"verkleTime,omitempty"`     // Verkle switch time (nil = no fork, 0 = already on verkle)
 
 	// TerminalTotalDifficulty is the amount of total difficulty reached by
@@ -929,11 +930,15 @@ func (c *ChainConfig) String() string {
 	if c.PasteurTime != nil {
 		PasteurTime = big.NewInt(0).SetUint64(*c.PasteurTime)
 	}
+	var PQForkTime *big.Int
+	if c.PQForkTime != nil {
+		PQForkTime = big.NewInt(0).SetUint64(*c.PQForkTime)
+	}
 
 	return fmt.Sprintf("{ChainID: %v, Engine: %v, Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, "+
 		"MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Hertzfix: %v, "+
 		"ShanghaiTime: %v, KeplerTime: %v, FeynmanTime: %v, FeynmanFixTime: %v, CancunTime: %v, HaberTime: %v, HaberFixTime: %v, BohrTime: %v, PascalTime: %v, PragueTime: %v, LorentzTime: %v, MaxwellTime: %v, FermiTime: %v, "+
-		"OsakaTime: %v, MendelTime: %v, BPO1Time: %v, BPO2Time: %v, PasteurTime: %v}",
+		"OsakaTime: %v, MendelTime: %v, BPO1Time: %v, BPO2Time: %v, PasteurTime: %v, PQForkTime: %v}",
 		c.ChainID,
 		engine,
 		c.HomesteadBlock,
@@ -984,6 +989,7 @@ func (c *ChainConfig) String() string {
 		BPO1Time,
 		BPO2Time,
 		PasteurTime,
+		PQForkTime,
 	)
 }
 
@@ -1180,6 +1186,11 @@ func (c *ChainConfig) IsBerlin(num *big.Int) bool {
 // IsLondon returns whether num is either equal to the London fork block or greater.
 func (c *ChainConfig) IsLondon(num *big.Int) bool {
 	return isBlockForked(c.LondonBlock, num)
+}
+
+// IsPQFork returns whether the PQ fork is active at the given block timestamp.
+func (c *ChainConfig) IsPQFork(num *big.Int, time uint64) bool {
+	return isTimestampForked(c.PQForkTime, time)
 }
 
 // IsArrowGlacier returns whether num is either equal to the Arrow Glacier (EIP-4345) fork block or greater.
@@ -1583,6 +1594,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "bpo5", timestamp: c.BPO5Time, optional: true},
 		{name: "amsterdam", timestamp: c.AmsterdamTime, optional: true},
 		{name: "pasteurTime", timestamp: c.PasteurTime, optional: true},
+		{name: "pqForkTime", timestamp: c.PQForkTime, optional: true},
 	} {
 		if lastFork.name != "" {
 			switch {
@@ -2123,7 +2135,7 @@ type Rules struct {
 	IsShanghai, IsKepler, IsFeynman, IsCancun, IsHaber      bool
 	IsBohr, IsPascal, IsPrague, IsLorentz, IsMaxwell        bool
 	IsFermi, IsOsaka, IsMendel                              bool
-	IsAmsterdam, IsPasteur, IsVerkle                        bool
+	IsAmsterdam, IsPasteur, IsPQ, IsVerkle                  bool
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -2171,6 +2183,7 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsMendel:         c.IsMendel(num, timestamp),
 		IsAmsterdam:      (isMerge || c.IsInBSC()) && c.IsAmsterdam(num, timestamp),
 		IsPasteur:        c.IsPasteur(num, timestamp),
+		IsPQ:             c.IsPQFork(num, timestamp),
 		IsVerkle:         c.IsVerkle(num, timestamp),
 		IsEIP4762:        isVerkle,
 	}

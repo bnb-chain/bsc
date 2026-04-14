@@ -344,6 +344,11 @@ var (
 		Usage:    "Manually specify the Verkle fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
+	OverridePQHardfork = &cli.Uint64Flag{
+		Name:     "override.pqhardfork",
+		Usage:    "Manually specify the PQ hardfork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
 	OverrideGenesisFlag = &cli.StringFlag{
 		Name:     "override.genesis",
 		Usage:    "Load genesis block and configuration from file at this path",

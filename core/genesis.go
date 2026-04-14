@@ -277,6 +277,7 @@ type ChainOverrides struct {
 	OverrideBPO2           *uint64
 	OverridePasteur        *uint64
 	OverrideVerkle         *uint64
+	OverridePQHardfork     *uint64
 }
 
 // apply applies the chain overrides on the supplied chain config.
@@ -322,6 +323,9 @@ func (o *ChainOverrides) apply(cfg *params.ChainConfig) error {
 	}
 	if o.OverrideVerkle != nil {
 		cfg.VerkleTime = o.OverrideVerkle
+	}
+	if o.OverridePQHardfork != nil {
+		cfg.PQForkTime = o.OverridePQHardfork
 	}
 	return cfg.CheckConfigForkOrder()
 }

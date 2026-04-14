@@ -82,6 +82,7 @@ var (
 		utils.OverrideBPO2,
 		utils.OverridePasteur,
 		utils.OverrideVerkle,
+		utils.OverridePQHardfork,
 		utils.OverrideGenesisFlag,
 		utils.OverrideFullImmutabilityThreshold,
 		utils.OverrideMinBlocksForBlobRequests,

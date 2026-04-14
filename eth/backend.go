@@ -177,6 +177,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		config.Miner.GasPrice = new(big.Int).Set(ethconfig.Defaults.Miner.GasPrice)
 	}
 
+	// Wire PQ public-key registry lookup so PQSigner.Sender can resolve pubkeys
+	// from the process-level cache populated by the 0x70 precompile.
+	types.SetPQRegistryBackend(vm.PQRegistryLookup)
+
 	chainDb, err := stack.OpenAndMergeDatabase(ChainData, ChainDBNamespace, false, config)
 	if err != nil {
 		return nil, err
@@ -276,6 +280,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if config.OverrideVerkle != nil {
 		chainConfig.VerkleTime = config.OverrideVerkle
 		overrides.OverrideVerkle = config.OverrideVerkle
+	}
+	if config.OverridePQHardfork != nil {
+		chainConfig.PQForkTime = config.OverridePQHardfork
+		overrides.OverridePQHardfork = config.OverridePQHardfork
 	}
 
 	// startup ancient freeze

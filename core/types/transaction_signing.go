@@ -56,6 +56,9 @@ func MakeSigner(config *params.ChainConfig, blockNumber *big.Int, blockTime uint
 	default:
 		signer = FrontierSigner{}
 	}
+	if config.IsPQFork(blockNumber, blockTime) {
+		signer = NewPQDispatchSigner(signer, config.ChainID)
+	}
 	return signer
 }
 
@@ -85,6 +88,9 @@ func LatestSigner(config *params.ChainConfig) Signer {
 		}
 	} else {
 		signer = HomesteadSigner{}
+	}
+	if config.PQForkTime != nil {
+		signer = NewPQDispatchSigner(signer, config.ChainID)
 	}
 	return signer
 }

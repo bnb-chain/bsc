@@ -31,6 +31,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/crypto/pq/mldsa"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -85,6 +86,21 @@ func CreateAddress(b common.Address, nonce uint64) common.Address {
 // contract code hash and a salt.
 func CreateAddress2(b common.Address, salt [32]byte, inithash []byte) common.Address {
 	return common.BytesToAddress(Keccak256([]byte{0xff}, b.Bytes(), salt[:], inithash)[12:])
+}
+
+// SignPQ signs a digest using an ML-DSA private key.
+func SignPQ(digest []byte, privKey []byte) ([]byte, error) {
+	return mldsa.Sign(privKey, digest)
+}
+
+// VerifyPQ verifies an ML-DSA signature against the given public key and digest.
+func VerifyPQ(pubKey []byte, digest []byte, sig []byte) bool {
+	return mldsa.Verify(pubKey, digest, sig)
+}
+
+// PQPubkeyToAddress derives an address from an ML-DSA public key.
+func PQPubkeyToAddress(pubKey []byte) common.Address {
+	return mldsa.PubKeyToAddress(pubKey)
 }
 
 // ToECDSA creates a private key with the given D value.
