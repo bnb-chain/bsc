@@ -71,6 +71,12 @@ type VotePool interface {
 	FetchVotesByBlockHash(targetBlockHash common.Hash, sourceBlockNum uint64) []*types.VoteEnvelope
 }
 
+// PQVotePool is the post-quantum counterpart of VotePool. It is consumed by
+// parlia when assembling a PQ vote attestation after the PQ hardfork.
+type PQVotePool interface {
+	FetchVotesByBlockHash(targetBlockHash common.Hash, sourceBlockNum uint64) []*types.PQVoteEnvelope
+}
+
 // ChainReader defines a small collection of methods needed to access the local
 // blockchain during header and/or uncle verification.
 type ChainReader interface {

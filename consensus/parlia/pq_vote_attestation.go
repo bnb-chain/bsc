@@ -18,7 +18,7 @@ import (
 // pqAssembleVoteAttestation collects PQ votes and assembles the STARK-aggregated
 // vote attestation into the block header. This replaces BLS aggregation post-PQFork.
 func (p *Parlia) pqAssembleVoteAttestation(chain consensus.ChainHeaderReader, header *types.Header) error {
-	if !p.chainConfig.IsLuban(header.Number) || header.Number.Uint64() < 3 || p.VotePool == nil {
+	if !p.chainConfig.IsPQFork(header.Number, header.Time) || header.Number.Uint64() < 3 || p.PQVotePool == nil {
 		return nil
 	}
 
@@ -32,7 +32,7 @@ func (p *Parlia) pqAssembleVoteAttestation(chain consensus.ChainHeaderReader, he
 	}
 
 	var (
-		votes                  []*types.VoteEnvelope
+		votes                  []*types.PQVoteEnvelope
 		targetHeader           = parent
 		targetHeaderParentSnap *Snapshot
 	)
@@ -41,7 +41,7 @@ func (p *Parlia) pqAssembleVoteAttestation(chain consensus.ChainHeaderReader, he
 		if err != nil {
 			return err
 		}
-		votes = p.VotePool.FetchVotesByBlockHash(targetHeader.Hash(), justifiedBlockNumber)
+		votes = p.PQVotePool.FetchVotesByBlockHash(targetHeader.Hash(), justifiedBlockNumber)
 		quorum := cmath.CeilDiv(len(snap.Validators)*2, 3)
 		if len(votes) >= quorum {
 			targetHeaderParentSnap = snap
@@ -78,7 +78,7 @@ func (p *Parlia) pqAssembleVoteAttestation(chain consensus.ChainHeaderReader, he
 	}
 
 	// Build a map from vote address hash to vote for deduplication and lookup.
-	voteAddrSet := make(map[common.Hash]*types.VoteEnvelope, len(votes))
+	voteAddrSet := make(map[common.Hash]*types.PQVoteEnvelope, len(votes))
 	for _, vote := range votes {
 		addrHash := crypto.Keccak256Hash(vote.VoteAddress[:])
 		voteAddrSet[addrHash] = vote

@@ -155,7 +155,8 @@ type Ethereum struct {
 
 	shutdownTracker *shutdowncheck.ShutdownTracker // Tracks if and when the node has shutdown ungracefully
 
-	votePool *vote.VotePool
+	votePool   *vote.VotePool
+	pqVotePool *vote.PQVotePool
 	stopCh   chan struct{}
 }
 
@@ -526,6 +527,32 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				return nil, err
 			}
 			log.Info("Create voteManager successfully")
+		}
+
+		// Post-quantum vote pool & manager. The pool is always created so the
+		// p2p handler can relay PQ votes even on a non-producing node. The
+		// manager is only started when a --pqvotekey file is configured.
+		if parliaEngine, ok := eth.engine.(*parlia.Parlia); ok {
+			pqVotePool := vote.NewPQVotePool(eth.blockchain)
+			eth.pqVotePool = pqVotePool
+			if !config.Miner.DisableVoteAttestation {
+				parliaEngine.PQVotePool = pqVotePool
+			}
+			eth.handler.pqVotepool = pqVotePool
+			log.Info("Create PQ votePool successfully")
+
+			if pqKeyPath := stack.ResolvePath(stack.Config().PQVoteKeyFile); pqKeyPath != "" && stack.Config().PQVoteKeyFile != "" {
+				pqSigner, err := vote.NewPQVoteSigner(pqKeyPath)
+				if err != nil {
+					log.Error("Failed to load PQ vote signer", "path", pqKeyPath, "err", err)
+					return nil, err
+				}
+				if _, err := vote.NewPQVoteManager(eth, eth.blockchain, pqVotePool, pqSigner, parliaEngine); err != nil {
+					log.Error("Failed to initialize PQ voteManager", "err", err)
+					return nil, err
+				}
+				log.Info("Create PQ voteManager successfully")
+			}
 		}
 	}
 	eth.APIBackend.gpo = gasprice.NewOracle(eth.APIBackend, config.GPO, config.Miner.GasPrice)

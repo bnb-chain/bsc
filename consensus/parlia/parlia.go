@@ -260,6 +260,7 @@ type Parlia struct {
 
 	ethAPI                     *ethapi.BlockChainAPI
 	VotePool                   consensus.VotePool
+	PQVotePool                 consensus.PQVotePool
 	validatorSetABIBeforeLuban abi.ABI
 	validatorSetABI            abi.ABI
 	slashABI                   abi.ABI

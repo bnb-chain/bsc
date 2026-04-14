@@ -190,6 +190,7 @@ var (
 		utils.BLSPasswordFileFlag,
 		utils.BLSWalletDirFlag,
 		utils.VoteJournalDirFlag,
+		utils.PQVoteKeyFileFlag,
 		utils.LogDebugFlag,
 		utils.LogBacktraceAtFlag,
 		utils.BlobExtraReserveFlag,
