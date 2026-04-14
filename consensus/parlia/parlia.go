@@ -1635,6 +1635,22 @@ func (p *Parlia) IsActiveValidatorAt(chain consensus.ChainHeaderReader, header *
 	return ok && (checkVoteKeyFn == nil || (validatorInfo != nil && checkVoteKeyFn(&validatorInfo.VoteAddress)))
 }
 
+// IsActivePQValidatorAt is the post-quantum counterpart of IsActiveValidatorAt.
+// It checks whether this node's address is in the validator set and, optionally,
+// whether its ML-DSA-44 public key matches the one registered in the snapshot.
+func (p *Parlia) IsActivePQValidatorAt(chain consensus.ChainHeaderReader, header *types.Header, checkPQKeyFn func(pqPubKey *types.PQPublicKey) bool) bool {
+	number := header.Number.Uint64()
+	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
+	if err != nil {
+		log.Error("failed to get the snapshot from consensus", "error", err)
+		return false
+	}
+	validators := snap.Validators
+	validatorInfo, ok := validators[p.val]
+
+	return ok && (checkPQKeyFn == nil || (validatorInfo != nil && checkPQKeyFn(&validatorInfo.PQVoteAddress)))
+}
+
 // VerifyVote will verify: 1. If the vote comes from valid validators 2. If the vote's sourceNumber and sourceHash are correct
 func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) error {
 	targetNumber := vote.Data.TargetNumber
