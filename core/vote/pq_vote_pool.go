@@ -22,7 +22,7 @@ const (
 )
 
 var (
-	localPQCurVotesCounter   = metrics.NewRegisteredCounter("curPQVotes/local", nil)
+	localPQCurVotesCounter    = metrics.NewRegisteredCounter("curPQVotes/local", nil)
 	localPQReceivedVotesGauge = metrics.NewRegisteredGauge("receivedPQVotes/local", nil)
 )
 

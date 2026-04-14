@@ -157,7 +157,7 @@ type Ethereum struct {
 
 	votePool   *vote.VotePool
 	pqVotePool *vote.PQVotePool
-	stopCh   chan struct{}
+	stopCh     chan struct{}
 }
 
 // New creates a new Ethereum object (including the initialisation of the common Ethereum object),
