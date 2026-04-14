@@ -555,6 +555,42 @@ func (s *Snapshot) indexOfVal(validator common.Address) int {
 	return -1
 }
 
+// ExtractValidatorAddresses extracts consensus addresses from a header's
+// extra data. It handles both pre-Luban (address-only) and post-Luban
+// (address + BLS vote key) formats. Callers that just need the address
+// list (e.g. PQ registry warm-up) can use this instead of parseValidators.
+func ExtractValidatorAddresses(header *types.Header) []common.Address {
+	if header == nil || len(header.Extra) <= extraVanity+extraSeal {
+		return nil
+	}
+	payload := header.Extra[extraVanity : len(header.Extra)-extraSeal]
+	if len(payload) == 0 {
+		return nil
+	}
+
+	// Post-Luban: first byte = validator count, then N × (addr + BLS key).
+	n := int(payload[0])
+	body := payload[validatorNumberSize:]
+	if n > 0 && len(body) >= n*validatorBytesLength {
+		addrs := make([]common.Address, n)
+		for i := 0; i < n; i++ {
+			addrs[i] = common.BytesToAddress(body[i*validatorBytesLength : i*validatorBytesLength+common.AddressLength])
+		}
+		return addrs
+	}
+
+	// Pre-Luban: payload is just N × 20-byte addresses, no count byte.
+	if len(payload)%validatorBytesLengthBeforeLuban == 0 {
+		n = len(payload) / validatorBytesLengthBeforeLuban
+		addrs := make([]common.Address, n)
+		for i := 0; i < n; i++ {
+			addrs[i] = common.BytesToAddress(payload[i*validatorBytesLengthBeforeLuban : (i+1)*validatorBytesLengthBeforeLuban])
+		}
+		return addrs
+	}
+	return nil
+}
+
 func parseValidators(header *types.Header, chainConfig *params.ChainConfig, epochLength uint64) ([]common.Address, []types.BLSPublicKey, error) {
 	validatorsBytes := getValidatorBytesFromHeader(header, chainConfig, epochLength)
 	if len(validatorsBytes) == 0 {

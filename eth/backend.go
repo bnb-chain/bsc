@@ -417,6 +417,21 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		return nil, err
 	}
 
+	// Warm the PQ key registry cache from on-chain state so that
+	// PQRegistryLookup works immediately for snapshot PQVoteAddress resolution.
+	// Scans the current head's extra data for validator addresses — works
+	// regardless of whether pubkeys were pre-populated in genesis or registered
+	// via tx later.
+	if stateDB, stateErr := eth.blockchain.State(); stateErr == nil {
+		curHeader := eth.blockchain.CurrentHeader()
+		if curHeader != nil {
+			addrs := parlia.ExtractValidatorAddresses(curHeader)
+			if n := vm.WarmPQRegistryCache(stateDB, addrs); n > 0 {
+				log.Info("Warmed PQ registry cache from state", "validators", n)
+			}
+		}
+	}
+
 	// Initialize filtermaps log index.
 	// Auto-enable checkpoint file
 	checkpointFile := filepath.Join(stack.DataDir(), "geth", "filtermap_checkpoints.json")

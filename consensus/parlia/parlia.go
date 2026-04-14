@@ -1646,10 +1646,19 @@ func (p *Parlia) IsActivePQValidatorAt(chain consensus.ChainHeaderReader, header
 		log.Error("failed to get the snapshot from consensus", "error", err)
 		return false
 	}
-	validators := snap.Validators
-	validatorInfo, ok := validators[p.val]
-
-	return ok && (checkPQKeyFn == nil || (validatorInfo != nil && checkPQKeyFn(&validatorInfo.PQVoteAddress)))
+	validatorInfo, ok := snap.Validators[p.val]
+	if !ok || validatorInfo == nil {
+		return false
+	}
+	// If the snapshot's PQVoteAddress is empty (e.g. genesis snapshot was
+	// created before the registry cache was warmed), try to back-fill it
+	// from the now-warm PQRegistryLookup cache.
+	if validatorInfo.PQVoteAddress == (types.PQPublicKey{}) {
+		if pubKey := vm.PQRegistryLookup(p.val); len(pubKey) == types.PQPublicKeyLength {
+			copy(validatorInfo.PQVoteAddress[:], pubKey)
+		}
+	}
+	return checkPQKeyFn == nil || checkPQKeyFn(&validatorInfo.PQVoteAddress)
 }
 
 // VerifyVote will verify: 1. If the vote comes from valid validators 2. If the vote's sourceNumber and sourceHash are correct

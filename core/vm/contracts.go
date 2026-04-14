@@ -2101,6 +2101,33 @@ func PQRegistryLookup(addr common.Address) []byte {
 	return nil
 }
 
+// WarmPQRegistryCache reads the 0x70 registry storage for each validator
+// address via the provided stateDB and pre-populates pqRegistryCache.
+// Call this once at startup after the blockchain is initialized, before
+// the PQ vote manager or snapshot code needs PQRegistryLookup.
+func WarmPQRegistryCache(stateDB StateDB, validators []common.Address) int {
+	warmed := 0
+	for _, addr := range validators {
+		if _, ok := pqRegistryCache.Load(addr); ok {
+			continue // already cached
+		}
+		pubKey := make([]byte, pqPubKeySize)
+		allZero := true
+		for i := 0; i < pqSlotsPerKey; i++ {
+			chunk := stateDB.GetState(pqRegistryAddress, pqRegistrySlot(addr, i))
+			if chunk != (common.Hash{}) {
+				allZero = false
+			}
+			copy(pubKey[i*common.HashLength:], chunk[:])
+		}
+		if !allZero {
+			pqRegistryCache.Store(addr, pubKey)
+			warmed++
+		}
+	}
+	return warmed
+}
+
 // pqRecoverCompat preserves the existing double-sign evidence precompile at 0x68
 // while routing fixed-size ML-DSA inputs to pqRecover.
 type pqRecoverCompat struct{}

@@ -89,7 +89,7 @@ func (p *Parlia) pqAssembleVoteAttestation(chain consensus.ChainHeaderReader, he
 	validators := targetHeaderParentSnap.validators()
 	pqVotes := make([]PQVoteData, 0, len(votes))
 	for idx, val := range validators {
-		addrHash := crypto.Keccak256Hash(targetHeaderParentSnap.Validators[val].VoteAddress[:])
+		addrHash := crypto.Keccak256Hash(targetHeaderParentSnap.Validators[val].PQVoteAddress[:])
 		vote, ok := voteAddrSet[addrHash]
 		if !ok {
 			continue
@@ -125,11 +125,12 @@ func (p *Parlia) pqAssembleVoteAttestation(chain consensus.ChainHeaderReader, he
 		"source", attestation.Data.SourceNumber, "votes", len(pqVotes),
 		"proofSize", len(proofBytes))
 
-	// Prepare vote address bitset.
-	for _, valInfo := range targetHeaderParentSnap.Validators {
-		addrHash := crypto.Keccak256Hash(valInfo.VoteAddress[:])
+	// Prepare vote address bitset using canonical validator order.
+	for idx, val := range validators {
+		valInfo := targetHeaderParentSnap.Validators[val]
+		addrHash := crypto.Keccak256Hash(valInfo.PQVoteAddress[:])
 		if _, ok := voteAddrSet[addrHash]; ok {
-			attestation.VoteAddressSet |= 1 << (valInfo.Index - 1)
+			attestation.VoteAddressSet |= 1 << uint(idx)
 		}
 	}
 
@@ -234,7 +235,7 @@ func (p *Parlia) pqVerifyVoteAttestation(chain consensus.ChainHeaderReader, head
 		if !validatorsBitSet.Test(uint(index)) {
 			continue
 		}
-		votedPubkeys = append(votedPubkeys, snap.Validators[val].VoteAddress[:])
+		votedPubkeys = append(votedPubkeys, snap.Validators[val].PQVoteAddress[:])
 		votedCount++
 	}
 
