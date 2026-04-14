@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
+	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/log"
 )
@@ -55,6 +56,18 @@ func (h *handler) syncVotes(p *bscPeer) {
 		return
 	}
 	p.AsyncSendVotes(votes)
+}
+
+// syncPQVotes sends all currently pending PQ votes to the given peer (Bsc4+).
+func (h *handler) syncPQVotes(p *bscPeer) {
+	if p.Version() < bsc.Bsc4 {
+		return
+	}
+	votes := h.pqVotepool.GetVotes()
+	if len(votes) == 0 {
+		return
+	}
+	p.AsyncSendPQVotes(votes)
 }
 
 // chainSyncer coordinates blockchain sync components.

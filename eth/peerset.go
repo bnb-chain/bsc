@@ -476,6 +476,21 @@ func (ps *peerSet) peersWithoutVote(hash common.Hash) []*ethPeer {
 	return list
 }
 
+// peersWithoutPQVote retrieves a list of peers that do not have a given
+// post-quantum vote in their set of known hashes.
+func (ps *peerSet) peersWithoutPQVote(hash common.Hash) []*ethPeer {
+	ps.lock.RLock()
+	defer ps.lock.RUnlock()
+
+	list := make([]*ethPeer, 0, len(ps.peers))
+	for _, p := range ps.peers {
+		if p.bscExt != nil && !p.bscExt.KnownPQVote(hash) {
+			list = append(list, p)
+		}
+	}
+	return list
+}
+
 // len returns if the current number of `eth` peers in the set. Since the `snap`
 // peers are tied to the existence of an `eth` connection, that will always be a
 // subset of `eth`.
