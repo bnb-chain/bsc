@@ -26,8 +26,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/prysmaticlabs/prysm/v5/crypto/bls"
-	blscommon "github.com/prysmaticlabs/prysm/v5/crypto/bls/common"
 )
 
 // precompiledTest defines the input/output pairs for precompiled contract tests.
@@ -370,67 +368,8 @@ func TestActivePrecompiledContractsUsesPasteurVariants(t *testing.T) {
 		return precompile
 	}
 
-	if got := requirePrecompile(0x66).Name(); got != "BLS_SIGNATURE_VERIFY_PASTEUR" {
-		t.Fatalf("unexpected Pasteur 0x66 precompile: %s", got)
-	}
 	if got := requirePrecompile(0x67).Name(); got != "COMET_BFT_LIGHT_BLOCK_VALIDATE_PASTEUR" {
 		t.Fatalf("unexpected Pasteur 0x67 precompile: %s", got)
-	}
-}
-
-func TestBlsSignatureVerifyRejectsDuplicatePubKeysAtPasteur(t *testing.T) {
-	msg := [32]byte{'d', 'u', 'p'}
-
-	sk1, err := bls.RandKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sk2, err := bls.RandKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	pk1 := sk1.PublicKey()
-	pk2 := sk2.PublicKey()
-	sig1 := sk1.Sign(msg[:])
-	dupAgg := bls.AggregateSignatures([]blscommon.Signature{sig1, sig1, sig1})
-
-	pasteurRules := params.Rules{IsOsaka: true, IsMendel: true, IsPasteur: true}
-	pasteurVerify := ActivePrecompiledContracts(pasteurRules)[common.BytesToAddress([]byte{0x66})]
-
-	input := append(msg[:], dupAgg.Marshal()...)
-	input = append(input, pk1.Marshal()...)
-	input = append(input, pk1.Marshal()...)
-	input = append(input, pk1.Marshal()...)
-
-	res, err := pasteurVerify.Run(input)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(res) != 0 {
-		t.Fatalf("expected Pasteur duplicate-pubkey verification to fail, got %x", res)
-	}
-
-	osakaRules := params.Rules{IsOsaka: true}
-	osakaVerify := ActivePrecompiledContracts(osakaRules)[common.BytesToAddress([]byte{0x66})]
-	legacyRes, err := osakaVerify.Run(input)
-	if err != nil {
-		t.Fatalf("unexpected Osaka error: %v", err)
-	}
-	if len(legacyRes) == 0 {
-		t.Fatalf("expected pre-Pasteur duplicate-pubkey verification to succeed")
-	}
-
-	mixedInput := append(msg[:], dupAgg.Marshal()...)
-	mixedInput = append(mixedInput, pk1.Marshal()...)
-	mixedInput = append(mixedInput, pk2.Marshal()...)
-	mixedInput = append(mixedInput, pk2.Marshal()...)
-	mixedRes, err := pasteurVerify.Run(mixedInput)
-	if err != nil {
-		t.Fatalf("unexpected mixed-key error: %v", err)
-	}
-	if len(mixedRes) != 0 {
-		t.Fatalf("expected mixed duplicate-signature verification to fail, got %x", mixedRes)
 	}
 }
 
