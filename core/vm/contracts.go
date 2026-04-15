@@ -352,7 +352,8 @@ var PrecompiledContractsOsaka = PrecompiledContracts{
 
 var PrecompiledContractsPasteur = func() PrecompiledContracts {
 	precompiles := maps.Clone(PrecompiledContractsOsaka)
-	precompiles[common.BytesToAddress([]byte{0x66})] = &blsSignatureVerifyPasteur{}
+	// Note: 0x66 (blsSignatureVerify) is a generic BLS verification primitive
+	// and does not require unique pubkeys. Uniqueness is enforced by callers.
 	precompiles[common.BytesToAddress([]byte{0x67})] = &cometBFTLightBlockValidatePasteur{}
 	return precompiles
 }()
@@ -1617,10 +1618,6 @@ func (c *bls12381MapG2) Name() string {
 // blsSignatureVerify implements bls signature verification precompile.
 type blsSignatureVerify struct{}
 
-type blsSignatureVerifyPasteur struct {
-	blsSignatureVerify
-}
-
 const (
 	msgHashLength         = uint64(32)
 	signatureLength       = uint64(96)
@@ -1639,13 +1636,20 @@ func (c *blsSignatureVerify) RequiredGas(input []byte) uint64 {
 	return params.BlsSignatureVerifyBaseGas + pubKeyNumber*params.BlsSignatureVerifyPerKeyGas
 }
 
-func parseBlsSignatureVerifyInput(input []byte, requireUniquePubKeys bool) ([32]byte, bls.Signature, []bls.PublicKey, error) {
+// Run input:
+// msg      | signature | [{bls pubkey}] |
+// 32 bytes | 96 bytes  | [{48 bytes}]   |
+//
+// Note: as a generic BLS signature verification primitive, this precompile
+// does not require public keys to be unique. Callers that need uniqueness
+// (e.g. validator set decoding) must enforce it themselves.
+func (c *blsSignatureVerify) Run(input []byte) ([]byte, error) {
 	msgAndSigLength := msgHashLength + signatureLength
 	inputLen := uint64(len(input))
 	if inputLen <= msgAndSigLength ||
 		(inputLen-msgAndSigLength)%singleBlsPubkeyLength != 0 {
 		log.Debug("blsSignatureVerify input size wrong", "inputLen", inputLen)
-		return [32]byte{}, nil, nil, ErrExecutionReverted
+		return nil, ErrExecutionReverted
 	}
 
 	var msg [32]byte
@@ -1656,50 +1660,27 @@ func parseBlsSignatureVerifyInput(input []byte, requireUniquePubKeys bool) ([32]
 	sig, err := bls.SignatureFromBytes(signatureBytes)
 	if err != nil {
 		log.Debug("blsSignatureVerify invalid signature", "err", err)
-		return [32]byte{}, nil, nil, ErrExecutionReverted
+		return nil, ErrExecutionReverted
 	}
 
 	pubKeyNumber := (inputLen - msgAndSigLength) / singleBlsPubkeyLength
 	pubKeys := make([]bls.PublicKey, pubKeyNumber)
-	var seenPubKeys map[string]struct{}
-	if requireUniquePubKeys {
-		seenPubKeys = make(map[string]struct{}, pubKeyNumber)
-	}
 	for i := uint64(0); i < pubKeyNumber; i++ {
 		pubKeyBytes := getData(input, msgAndSigLength+i*singleBlsPubkeyLength, singleBlsPubkeyLength)
 		pubKey, err := bls.PublicKeyFromBytes(pubKeyBytes)
 		if err != nil {
 			log.Debug("blsSignatureVerify invalid pubKey", "err", err)
-			return [32]byte{}, nil, nil, ErrExecutionReverted
-		}
-		if requireUniquePubKeys {
-			key := string(pubKeyBytes)
-			if _, ok := seenPubKeys[key]; ok {
-				return msg, sig, nil, nil
-			}
-			seenPubKeys[key] = struct{}{}
+			return nil, ErrExecutionReverted
 		}
 		pubKeys[i] = pubKey
 	}
 
-	return msg, sig, pubKeys, nil
-}
-
-func runBlsSignatureVerify(input []byte, requireUniquePubKeys bool) ([]byte, error) {
-	msg, sig, pubKeys, err := parseBlsSignatureVerifyInput(input, requireUniquePubKeys)
-	if err != nil {
-		return nil, err
-	}
-	if pubKeys == nil {
-		return common.Big0.Bytes(), nil
-	}
-
-	if len(pubKeys) > 1 {
+	if pubKeyNumber > 1 {
 		if !sig.FastAggregateVerify(pubKeys, msg) {
 			return common.Big0.Bytes(), nil
 		}
 	} else {
-		if !sig.Verify(pubKeys[0], msg[:]) {
+		if !sig.Verify(pubKeys[0], msgBytes) {
 			return common.Big0.Bytes(), nil
 		}
 	}
@@ -1707,23 +1688,8 @@ func runBlsSignatureVerify(input []byte, requireUniquePubKeys bool) ([]byte, err
 	return common.Big1.Bytes(), nil
 }
 
-// Run input:
-// msg      | signature | [{bls pubkey}] |
-// 32 bytes | 96 bytes  | [{48 bytes}]   |
-func (c *blsSignatureVerify) Run(input []byte) ([]byte, error) {
-	return runBlsSignatureVerify(input, false)
-}
-
 func (c *blsSignatureVerify) Name() string {
 	return "BLS_SIGNATURE_VERIFY"
-}
-
-func (c *blsSignatureVerifyPasteur) Run(input []byte) ([]byte, error) {
-	return runBlsSignatureVerify(input, true)
-}
-
-func (c *blsSignatureVerifyPasteur) Name() string {
-	return "BLS_SIGNATURE_VERIFY_PASTEUR"
 }
 
 // kzgPointEvaluation implements the EIP-4844 point evaluation precompile.
