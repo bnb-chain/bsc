@@ -42,15 +42,15 @@ type validatorDuplicateTracker struct {
 	ignoreZero bool
 }
 
-func newValidatorDuplicateTracker(field string, size int, ignoreZero bool) validatorDuplicateTracker {
-	return validatorDuplicateTracker{
+func newValidatorDuplicateTracker(field string, size int, ignoreZero bool) *validatorDuplicateTracker {
+	return &validatorDuplicateTracker{
 		field:      field,
 		seen:       make(map[string]int, size),
 		ignoreZero: ignoreZero,
 	}
 }
 
-func (t validatorDuplicateTracker) check(idx int, value []byte) error {
+func (t *validatorDuplicateTracker) check(idx int, value []byte) error {
 	if t.ignoreZero {
 		// Optional bridge fields may be omitted in source validators or zero-filled by
 		// fixed-width decoding. Both forms mean "unset" and should not count as duplicates.
