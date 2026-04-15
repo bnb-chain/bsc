@@ -2018,6 +2018,12 @@ func (c pqKeyRegistry) Run(input []byte) ([]byte, error) {
 }
 
 func (pqKeyRegistry) RunStateful(input []byte, caller common.Address, stateDB StateDB, readOnly bool) ([]byte, error) {
+	// Ensure the registry account has nonce=1 so EIP-158 does not treat it as
+	// "empty" and wipe its storage during state finalization.
+	if stateDB != nil && !readOnly && stateDB.GetNonce(pqRegistryAddress) == 0 {
+		stateDB.SetNonce(pqRegistryAddress, 1, tracing.NonceChangeUnspecified)
+	}
+
 	switch len(input) {
 	case pqPubKeySize:
 		// Self-register: caller registers its own PQ public key.
