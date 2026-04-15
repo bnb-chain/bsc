@@ -1,4 +1,24 @@
 # Changelog
+## v1.7.3
+
+### FEATURE
+- [\#3624](https://github.com/bnb-chain/bsc/pull/3624) cmd/utils: disabled transaction unindexing for archive node by default; when running in archive mode, the `--history.transactions` flag is now respected to specify transaction history range instead of being forced to index all history
+- [\#3634](https://github.com/bnb-chain/bsc/pull/3634) eth/ethconfig: set default value to 576000 for history.logs
+
+### IMPROVEMENT
+- [\#3626](https://github.com/bnb-chain/bsc/pull/3626) eth: tune timing parameters and broadcast queue for 450ms block
+- [\#3618](https://github.com/bnb-chain/bsc/pull/3618) [\#3629](https://github.com/bnb-chain/bsc/pull/3629) miner: async blob tx validation during bid simulation with worker pool
+
+### BUGFIX
+- [\#3633](https://github.com/bnb-chain/bsc/pull/3633) core/rawdb: increase SlowFreezerBatchLimit from 100 to 200, fixing kvdb abnormal continuous growth
+- [\#3631](https://github.com/bnb-chain/bsc/pull/3631) core/vote: fix deadlock in votepool when stop client
+- [\#3627](https://github.com/bnb-chain/bsc/pull/3627) core/vm: fix super-instruction LT comparison after swap1
+
+### Others
+- [\#3639](https://github.com/bnb-chain/bsc/pull/3639) go.mod: use go1.25.0 and update otel
+- [\#3617](https://github.com/bnb-chain/bsc/pull/3617) build(deps): bump github.com/mattn/go-colorable from 0.1.13 to 0.1.14
+- [\#3616](https://github.com/bnb-chain/bsc/pull/3616) build(deps): bump github.com/gorilla/mux from 1.8.0 to 1.8.1
+
 ## v1.7.2
 v1.7.2 is for BSC Mainnet [Osaka/Mendel hardfork](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-658.md),the hard fork time is 2026-04-28 02:30:00 AM UTC
 
