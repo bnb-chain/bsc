@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/bidutil"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
@@ -135,13 +136,13 @@ type bidSimulator struct {
 
 	// BidBlock (zero-simulate MEV) fields
 	bestBidBlockMu sync.RWMutex
-	bestBidBlock  map[common.Hash]*BidBlockRuntime // parentHash -> best bid block
-	newBidBlockCh  chan *types.BidBlock              // channel for incoming bid blocks
+	bestBidBlock   map[common.Hash]*BidBlockRuntime  // parentHash -> best bid block
+	newBidBlockCh  chan *types.DecodedBidBlock       // channel for incoming bid blocks
 }
 
-// BidBlockRuntime holds the bid block and its expected reward.
+// BidBlockRuntime holds the decoded bid block tracked by the simulator.
 type BidBlockRuntime struct {
-	block *types.BidBlock
+	block *types.DecodedBidBlock
 }
 
 func newBidSimulator(
@@ -172,7 +173,7 @@ func newBidSimulator(
 		simulatingBid: make(map[common.Hash]*BidRuntime),
 		bidsToSim:     make(map[uint64][]*BidRuntime),
 		bestBidBlock:  make(map[common.Hash]*BidBlockRuntime),
-		newBidBlockCh: make(chan *types.BidBlock, 100),
+		newBidBlockCh: make(chan *types.DecodedBidBlock, 100),
 	}
 	if delayLeftOver != nil {
 		b.delayLeftOver = *delayLeftOver
@@ -616,8 +617,8 @@ func (b *bidSimulator) clearLoop() {
 		b.simBidMu.Unlock()
 
 		b.bestBidBlockMu.Lock()
-		for k, v := range b.bestBidBlock{
-			if v.block.BlockNumber <= clearThreshold {
+		for k, v := range b.bestBidBlock {
+			if v.block.BlockNumber() <= clearThreshold {
 				delete(b.bestBidBlock, k)
 			}
 		}
@@ -657,14 +658,109 @@ func (b *bidSimulator) GetBestBidBlock(parentHash common.Hash) *BidBlockRuntime 
 	return b.bestBidBlock[parentHash]
 }
 
-// sendBidBlock sends a bid block to the newBidBlockCh channel.
-func (b *bidSimulator) sendBidBlock(_ context.Context, block *types.BidBlock) error {
+// preSealVerifyBidBlock validates the builder-supplied header against locally
+// derived consensus fields. Execution-result fields (Root, ReceiptHash, Bloom,
+// GasUsed, BlobGasUsed) are trusted here and verified post-seal via InsertChain.
+//
+// Mismatches here indicate a malformed or stale BidBlock and result in immediate
+// rejection. Timestamp uses the same range check as the normal header verification
+// path (blockTimeVerifyForRamanujanFork).
+func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) error {
+	parliaEngine, ok := b.engine.(*parlia.Parlia)
+	if !ok {
+		return errors.New("consensus engine is not parlia")
+	}
+
+	header := decoded.Header
+	if header == nil {
+		return errors.New("bid block header is nil")
+	}
+
+	parent := b.chain.GetHeaderByHash(header.ParentHash)
+	if parent == nil {
+		return fmt.Errorf("parent not found: %s", header.ParentHash.Hex())
+	}
+
+	// 1. Number must equal parent.Number + 1.
+	expectedNumber := new(big.Int).Add(parent.Number, big.NewInt(1))
+	if header.Number.Cmp(expectedNumber) != 0 {
+		return fmt.Errorf("invalid number: got %v, want %v", header.Number, expectedNumber)
+	}
+
+	// 2. Coinbase must be the in-turn validator (this node).
+	expectedCoinbase := b.bidWorker.etherbase()
+	if header.Coinbase != expectedCoinbase {
+		return fmt.Errorf("invalid coinbase: got %s, want %s",
+			header.Coinbase.Hex(), expectedCoinbase.Hex())
+	}
+
+	// 3. GasLimit must stay within the EIP-1559 bounds relative to parent.
+	if err := verifyGasLimitBounds(parent.GasLimit, header.GasLimit); err != nil {
+		return err
+	}
+
+	// 4. GasUsed must not exceed GasLimit (consensus hard rule).
+	if header.GasUsed > header.GasLimit {
+		return fmt.Errorf("invalid gasUsed: %d > gasLimit %d", header.GasUsed, header.GasLimit)
+	}
+
+	// 5. BaseFee must match the EIP-1559 derived value.
+	if b.chainConfig.IsLondon(header.Number) {
+		expectedBaseFee := eip1559.CalcBaseFee(b.chainConfig, parent)
+		if header.BaseFee == nil || header.BaseFee.Cmp(expectedBaseFee) != 0 {
+			return fmt.Errorf("invalid baseFee: got %v, want %v", header.BaseFee, expectedBaseFee)
+		}
+	} else if header.BaseFee != nil {
+		return fmt.Errorf("invalid baseFee before London: got %v", header.BaseFee)
+	}
+
+	// 6. Difficulty must match the Parlia-derived value for this validator.
+	expectedDiff, err := parliaEngine.ExpectedDifficulty(b.chain, parent, expectedCoinbase)
+	if err != nil {
+		return fmt.Errorf("failed to compute expected difficulty: %v", err)
+	}
+	if header.Difficulty == nil || header.Difficulty.Cmp(expectedDiff) != 0 {
+		return fmt.Errorf("invalid difficulty: got %v, want %v", header.Difficulty, expectedDiff)
+	}
+
+	// 7. Timestamp must pass the Parlia range check.
+	if err := parliaEngine.VerifyBlockTime(b.chain, header, parent); err != nil {
+		return fmt.Errorf("invalid block time: %v", err)
+	}
+	if header.Time > uint64(time.Now().Unix()) {
+		return consensus.ErrFutureBlock
+	}
+
+	return nil
+}
+
+// verifyGasLimitBounds enforces that header.GasLimit differs from parent.GasLimit
+// by at most parent.GasLimit / GasLimitBoundDivisor, matching the rule used in
+// verifyCascadingFields.
+func verifyGasLimitBounds(parentGasLimit, headerGasLimit uint64) error {
+	if headerGasLimit < params.MinGasLimit {
+		return fmt.Errorf("invalid gasLimit: %d below minimum %d", headerGasLimit, params.MinGasLimit)
+	}
+	diff := int64(parentGasLimit) - int64(headerGasLimit)
+	if diff < 0 {
+		diff = -diff
+	}
+	limit := parentGasLimit / params.GasLimitBoundDivisor
+	if uint64(diff) >= limit {
+		return fmt.Errorf("invalid gasLimit: got %d, parent %d, max diff %d",
+			headerGasLimit, parentGasLimit, limit-1)
+	}
+	return nil
+}
+
+// sendBidBlock sends a decoded bid block to the newBidBlockCh channel for selection.
+func (b *bidSimulator) sendBidBlock(_ context.Context, block *types.DecodedBidBlock) error {
 	timer := time.NewTimer(1 * time.Second)
 	defer timer.Stop()
 
 	select {
 	case b.newBidBlockCh <- block:
-		b.AddPending(block.BlockNumber, block.Builder, block.Hash())
+		b.AddPending(block.BlockNumber(), block.Builder, block.Hash())
 		return nil
 	case <-timer.C:
 		return types.ErrMevBusy
@@ -680,31 +776,30 @@ func (b *bidSimulator) newBidBlockLoop() {
 				continue
 			}
 
-			// check stale block
+			// Discard stale blocks whose block number is no longer current.
 			currentBlock := b.chain.CurrentBlock()
-			if block.BlockNumber <= currentBlock.Number.Uint64() {
-				log.Debug("BidBlock: discard stale block", "blockNumber", block.BlockNumber)
+			if block.BlockNumber() <= currentBlock.Number.Uint64() {
+				log.Debug("BidBlock: discard stale block", "blockNumber", block.BlockNumber())
 				continue
 			}
 
-			// compare with current best
-			best := b.GetBestBidBlock(block.ParentHash)
+			// Keep the highest-GasFee BidBlock per parent.
+			best := b.GetBestBidBlock(block.ParentHash())
 			if best != nil && best.block.GasFee.Cmp(block.GasFee) >= 0 {
 				log.Debug("BidBlock: discard lower GasFee block",
-					"blockNumber", block.BlockNumber,
+					"blockNumber", block.BlockNumber(),
 					"builder", block.Builder,
 					"gasFee", block.GasFee,
 					"bestGasFee", best.block.GasFee)
 				continue
 			}
 
-			b.SetBestBidBlock(block.ParentHash, &BidBlockRuntime{block: block})
+			b.SetBestBidBlock(block.ParentHash(), &BidBlockRuntime{block: block})
 			log.Info("[BID BLOCK ARRIVED]",
-				"blockNumber", block.BlockNumber,
+				"blockNumber", block.BlockNumber(),
 				"builder", block.Builder,
 				"gasFee", block.GasFee,
-				"txs", len(block.UserTxs),
-				"systemTxs", len(block.SystemTxs))
+				"txs", len(block.Txs))
 
 		case <-b.exitCh:
 			return

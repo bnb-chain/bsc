@@ -95,33 +95,45 @@ func (m *MevAPI) SendBidBlock(ctx context.Context, args types.BidBlockArgs) (com
 		return common.Hash{}, types.ErrMevNotRunning
 	}
 
-	currentBlock := m.b.CurrentBlock()
+	// Basic structural validation.
+	if args.BidBlock == nil {
+		return common.Hash{}, types.NewInvalidBidError("empty BidBlock")
+	}
+	bb := args.BidBlock
+	if bb.Header == nil {
+		return common.Hash{}, types.NewInvalidBidError("empty Header")
+	}
 
-	if args.BlockNumber < currentBlock.Number.Uint64()+1 {
+	blockNumber := bb.Header.Number.Uint64()
+	parentHash := bb.Header.ParentHash
+	currentBlock := m.b.CurrentBlock()
+	currentNumber := currentBlock.Number.Uint64()
+
+	if blockNumber < currentNumber+1 {
 		return common.Hash{}, types.NewInvalidBidError(
-			fmt.Sprintf("stale block number: %d, latest block: %d", args.BlockNumber, currentBlock.Number.Uint64()))
-	} else if args.BlockNumber > currentBlock.Number.Uint64()+1 {
+			fmt.Sprintf("stale block number: %d, latest block: %d", blockNumber, currentNumber))
+	} else if blockNumber > currentNumber+1 {
 		return common.Hash{}, types.NewInvalidBidError(
-			fmt.Sprintf("block in future: %d, latest block: %d", args.BlockNumber, currentBlock.Number.Uint64()))
+			fmt.Sprintf("block in future: %d, latest block: %d", blockNumber, currentNumber))
 	} else if !m.b.MinerInTurn() {
 		return common.Hash{}, types.ErrMevNotInTurn
 	}
 
-	if args.ParentHash != currentBlock.Hash() {
+	if parentHash != currentBlock.Hash() {
 		return common.Hash{}, types.NewInvalidBidError(
 			fmt.Sprintf("non-aligned parent hash: %v", currentBlock.Hash()))
 	}
 
-	if args.GasFee == nil || args.GasFee.Sign() <= 0 {
+	if bb.GasFee == nil || bb.GasFee.Sign() <= 0 {
 		return common.Hash{}, types.NewInvalidBidError("empty gasFee")
 	}
 
-	if args.Header.GasUsed == 0 {
+	if bb.Header.GasUsed == 0 {
 		return common.Hash{}, types.NewInvalidBidError("empty gasUsed in header")
 	}
 
-	if len(args.Txs) == 0 {
-		return common.Hash{}, types.NewInvalidBidError("empty txs")
+	if len(bb.Transactions) == 0 {
+		return common.Hash{}, types.NewInvalidBidError("empty transactions")
 	}
 
 	return m.b.SendBidBlock(ctx, &args)

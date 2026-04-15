@@ -202,82 +202,105 @@ type BidIssue struct {
 	Message   string
 }
 
-// BidBlockHeader contains execution-result fields computed by the builder.
-type BidBlockHeader struct {
-	GasUsed     uint64      `json:"gasUsed"`
-	Root        common.Hash `json:"stateRoot"`
-	ReceiptHash common.Hash `json:"receiptsRoot"`
-	LogsBloom   Bloom       `json:"logsBloom"`
-}
-
-// BidBlockArgs is the input for SendBidBlock RPC.
+// BidBlockArgs is the input for the SendBidBlock RPC.
+// Mirrors the BidArgs pattern: signed payload (BidBlock) + Signature.
 type BidBlockArgs struct {
-	Signature hexutil.Bytes   `json:"signature"`
-	BlockNumber uint64          `json:"blockNumber"`
-	ParentHash  common.Hash     `json:"parentHash"`
-	GasFee      *big.Int        `json:"gasFee"`
-	Txs         []hexutil.Bytes `json:"txs"`
-	Header      BidBlockHeader  `json:"header"`
-	SystemTxs   []hexutil.Bytes `json:"systemTxs"`
-	Sidecars    BlobSidecars    `json:"sidecars,omitempty"`
-
-	hash atomic.Value
+	// BidBlock from builder directly
+	BidBlock *BidBlock
+	// Signature of the BidBlock from builder, covering all fields of BidBlock
+	Signature hexutil.Bytes `json:"signature"`
 }
 
-// Hash returns rlpHash of the core fields for signature verification.
-func (args *BidBlockArgs) Hash() common.Hash {
-	if hash := args.hash.Load(); hash != nil {
-		return hash.(common.Hash)
-	}
-	h := rlpHash([]interface{}{args.BlockNumber, args.ParentHash, args.GasFee, args.Header})
-	args.hash.Store(h)
-	return h
-}
-
-// EcrecoverSender recovers the builder address from the signature.
-func (args *BidBlockArgs) EcrecoverSender() (common.Address, error) {
-	pk, err := crypto.SigToPub(args.Hash().Bytes(), args.Signature)
+// EcrecoverSender recovers the builder address from the signature over BidBlock.Hash().
+func (b *BidBlockArgs) EcrecoverSender() (common.Address, error) {
+	pk, err := crypto.SigToPub(b.BidBlock.Hash().Bytes(), b.Signature)
 	if err != nil {
 		return common.Address{}, err
 	}
 	return crypto.PubkeyToAddress(*pk), nil
 }
 
-// DecodeUserTxs decodes the signed user transactions concurrently (reuses RawBid.DecodeTxs pattern).
-func (args *BidBlockArgs) DecodeUserTxs(signer Signer) ([]*Transaction, error) {
-	rawBid := &RawBid{Txs: args.Txs}
-	return rawBid.DecodeTxs(signer)
+// ToDecodedBidBlock converts BidBlockArgs to a decoded internal representation.
+// Note: decoding does NOT perform ecrecover on individual transactions —
+// the validator never executes transactions on the critical path, so sender
+// recovery is deferred to the asynchronous InsertChain → Process() step.
+func (b *BidBlockArgs) ToDecodedBidBlock(builder common.Address) (*DecodedBidBlock, error) {
+	txs, err := b.DecodeTxs()
+	if err != nil {
+		return nil, err
+	}
+
+	return &DecodedBidBlock{
+		Builder:     builder,
+		Header:      b.BidBlock.Header,
+		Txs:         txs,
+		Sidecars:    b.BidBlock.Sidecars,
+		GasFee:      b.BidBlock.GasFee,
+		rawBidBlock: *b.BidBlock,
+	}, nil
 }
 
-// DecodeSystemTxs decodes the unsigned system transactions (no Sender recovery).
-func (args *BidBlockArgs) DecodeSystemTxs() ([]*Transaction, error) {
-	txs := make([]*Transaction, len(args.SystemTxs))
-	for i, txBytes := range args.SystemTxs {
+// DecodeTxs decodes the unified transaction list.
+// Layout: user transactions (signed) first, unsigned system transactions last —
+// mirroring on-chain block layout. No ecrecover is performed here.
+func (b *BidBlockArgs) DecodeTxs() ([]*Transaction, error) {
+	txs := make([]*Transaction, len(b.BidBlock.Transactions))
+	for i, txBytes := range b.BidBlock.Transactions {
 		tx := new(Transaction)
 		if err := tx.UnmarshalBinary(txBytes); err != nil {
-			return nil, fmt.Errorf("failed to decode system tx %d: %v", i, err)
+			return nil, fmt.Errorf("failed to decode tx %d: %v", i, err)
 		}
 		txs[i] = tx
 	}
 	return txs, nil
 }
 
-// BidBlock is the decoded internal representation.
+// BidBlock is the builder-proposed block carried by BidBlockArgs.
+// Mirrors types.Block's core fields (header + transactions + sidecars) plus a declared GasFee.
+// All fields are covered by the builder's signature in BidBlockArgs, preventing MITM tampering.
 type BidBlock struct {
-	Builder     common.Address
-	BlockNumber uint64
-	ParentHash  common.Hash
-	GasFee      *big.Int
-	UserTxs     Transactions
-	SystemTxs   Transactions
-	Header      BidBlockHeader
-	Sidecars    BlobSidecars
-	hash        common.Hash
+	Header       *Header         `json:"header"`
+	Transactions []hexutil.Bytes `json:"transactions"` // user txs (signed) first, unsigned system txs last
+	Sidecars     BlobSidecars    `json:"sidecars,omitempty"`
+	GasFee       *big.Int        `json:"gasFee"`
+
+	hash atomic.Value
 }
 
-// Hash returns the BidBlock hash.
-func (pb *BidBlock) Hash() common.Hash {
-	return pb.hash
+// Hash returns rlpHash over all BidBlock fields. This is what the builder signs.
+func (b *BidBlock) Hash() common.Hash {
+	if hash := b.hash.Load(); hash != nil {
+		return hash.(common.Hash)
+	}
+	h := rlpHash(b)
+	b.hash.Store(h)
+	return h
+}
+
+// DecodedBidBlock is the validator-side decoded representation of a BidBlock.
+type DecodedBidBlock struct {
+	Builder  common.Address // recovered from BidBlockArgs.Signature
+	Header   *Header
+	Txs      Transactions // user txs + unsigned system txs, same order as BidBlock.Transactions
+	Sidecars BlobSidecars
+	GasFee   *big.Int
+
+	rawBidBlock BidBlock
+}
+
+// Hash returns the hash of the underlying BidBlock.
+func (d *DecodedBidBlock) Hash() common.Hash {
+	return d.rawBidBlock.Hash()
+}
+
+// BlockNumber returns the block number from the header.
+func (d *DecodedBidBlock) BlockNumber() uint64 {
+	return d.Header.Number.Uint64()
+}
+
+// ParentHash returns the parent hash from the header.
+func (d *DecodedBidBlock) ParentHash() common.Hash {
+	return d.Header.ParentHash
 }
 
 type MevParams struct {

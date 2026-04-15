@@ -326,6 +326,195 @@ func (p *Parlia) IsSystemTransaction(tx *types.Transaction, header *types.Header
 	return sender == header.Coinbase, nil
 }
 
+// IsUnsignedSystemTxCandidate reports whether tx has the structural shape of an
+// unsigned system transaction from a builder-supplied BidBlock:
+// target is a system contract, gasPrice == 0, and the signature values are empty.
+// Unlike IsSystemTransaction, this does NOT perform ecrecover and does NOT require
+// the sender to match header.Coinbase — the tx is unsigned at this stage.
+func (p *Parlia) IsUnsignedSystemTxCandidate(tx *types.Transaction, header *types.Header) bool {
+	if tx == nil || tx.To() == nil || !isToSystemContract(*tx.To()) {
+		return false
+	}
+	if tx.GasPrice() == nil || tx.GasPrice().Sign() != 0 {
+		return false
+	}
+	v, r, s := tx.RawSignatureValues()
+	return isZeroSig(v, r, s)
+}
+
+// isZeroSig reports whether a tx's signature values are absent (nil) or zero,
+// i.e. the tx has not been signed.
+func isZeroSig(v, r, s *big.Int) bool {
+	isZero := func(x *big.Int) bool { return x == nil || x.Sign() == 0 }
+	return isZero(v) && isZero(r) && isZero(s)
+}
+
+// signableSystemTxMethods lists the ValidatorContract methods the validator
+// is allowed to sign on the BidBlock path (per BEP-675 §4.3). Any unsigned
+// system transaction targeting a different method — or a different contract —
+// must be rejected before signing.
+var signableSystemTxMethods = []string{
+	"deposit",
+	"distributeFinalityReward",
+	"updateValidatorSetV2",
+}
+
+// IsSignableSystemTx reports whether tx is a BidBlock-provided unsigned
+// system transaction that the validator is allowed to sign. Enforces the
+// BEP-675 whitelist:
+//
+//   - to == ValidatorContract (no SlashContract / SystemRewardContract)
+//   - gasPrice == 0
+//   - v/r/s == 0 (unsigned)
+//   - data selector matches one of: deposit / distributeFinalityReward /
+//     updateValidatorSetV2
+//
+// Callers should reject the entire BidBlock when an unsigned system-tx
+// candidate (identified via IsUnsignedSystemTxCandidate) fails this check.
+func (p *Parlia) IsSignableSystemTx(tx *types.Transaction) bool {
+	if tx == nil || tx.To() == nil {
+		return false
+	}
+	if *tx.To() != common.HexToAddress(systemcontracts.ValidatorContract) {
+		return false
+	}
+	if tx.GasPrice() == nil || tx.GasPrice().Sign() != 0 {
+		return false
+	}
+	v, r, s := tx.RawSignatureValues()
+	if !isZeroSig(v, r, s) {
+		return false
+	}
+	return p.hasSignableSelector(tx.Data())
+}
+
+// hasSignableSelector checks whether the 4-byte method selector in data matches
+// one of the whitelisted ValidatorContract methods.
+func (p *Parlia) hasSignableSelector(data []byte) bool {
+	if len(data) < 4 {
+		return false
+	}
+	selector := data[:4]
+	for _, name := range signableSystemTxMethods {
+		method, ok := p.validatorSetABI.Methods[name]
+		if !ok {
+			continue
+		}
+		if bytes.Equal(selector, method.ID) {
+			return true
+		}
+	}
+	return false
+}
+
+// expectedSystemTxEntry describes one entry in the expected system-tx sequence
+// of a BidBlock. Fields are deterministic from (parent, header) alone so the
+// validator can reconstruct the expected shape pre-seal without running EVM.
+type expectedSystemTxEntry struct {
+	// method is the ABI method name (used only for error reporting).
+	method string
+	// selector is the 4-byte function selector this entry must carry.
+	selector []byte
+	// optional marks entries whose presence depends on post-user-tx state that
+	// the validator cannot determine pre-seal (specifically: distributeIncoming,
+	// which fires only when SystemAddress has non-zero balance).
+	optional bool
+}
+
+// ExpectedSystemTxShape returns the expected system-tx sequence for a BidBlock
+// with the given header, based on Parlia's Finalize ordering:
+//
+//	distributeIncoming (optional) → distributeFinalityReward (cond.) → updateValidatorSetV2 (cond.)
+//
+// Entry inclusion and selector are fully determined by (header.Number,
+// header.Time, parent.Time) and chain config, so the validator can build this
+// shape before signing without executing user transactions.
+//
+// The distributeIncoming entry is optional because whether it fires depends on
+// the SystemAddress balance after user-tx execution, which is not available
+// pre-seal. distributeFinalityReward and updateValidatorSetV2 fire under
+// deterministic header-level conditions and are therefore required when
+// applicable.
+func (p *Parlia) ExpectedSystemTxShape(header, parent *types.Header) []expectedSystemTxEntry {
+	shape := make([]expectedSystemTxEntry, 0, 3)
+
+	// distributeIncoming (post-Kepler produces a single distributeToValidator
+	// call with method "deposit"). Presence depends on SystemAddress balance.
+	shape = append(shape, expectedSystemTxEntry{
+		method:   "deposit",
+		selector: p.selectorFor("deposit"),
+		optional: true,
+	})
+
+	// distributeFinalityReward: fires only at finality reward intervals when
+	// the Plato fork is active.
+	if p.chainConfig.IsPlato(header.Number) &&
+		header.Number.Uint64()%finalityRewardInterval == 0 {
+		shape = append(shape, expectedSystemTxEntry{
+			method:   "distributeFinalityReward",
+			selector: p.selectorFor("distributeFinalityReward"),
+			optional: false,
+		})
+	}
+
+	// updateValidatorSetV2: fires only on a breathe block after the Feynman
+	// fork, and not on the fork activation block itself.
+	if p.chainConfig.IsFeynman(header.Number, header.Time) &&
+		isBreatheBlock(parent.Time, header.Time) &&
+		!p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
+		shape = append(shape, expectedSystemTxEntry{
+			method:   "updateValidatorSetV2",
+			selector: p.selectorFor("updateValidatorSetV2"),
+			optional: false,
+		})
+	}
+
+	return shape
+}
+
+// VerifySystemTxShape checks that the given trailing system transactions match
+// the expected shape (method selectors and ordering). Optional entries may be
+// absent, but required entries must appear at their expected position, and no
+// extra unexpected system transaction is allowed.
+//
+// The txs argument should already have passed IsSignableSystemTx so that each
+// tx has a well-formed selector at data[:4].
+func (p *Parlia) VerifySystemTxShape(txs []*types.Transaction, shape []expectedSystemTxEntry) error {
+	i := 0
+	for _, exp := range shape {
+		if i >= len(txs) {
+			if exp.optional {
+				continue
+			}
+			return fmt.Errorf("missing required system tx %q", exp.method)
+		}
+		if bytes.HasPrefix(txs[i].Data(), exp.selector) {
+			i++
+			continue
+		}
+		if exp.optional {
+			continue
+		}
+		return fmt.Errorf("expected system tx %q at position %d, got selector 0x%x",
+			exp.method, i, txs[i].Data()[:4])
+	}
+	if i < len(txs) {
+		return fmt.Errorf("unexpected extra system tx at position %d (selector 0x%x)",
+			i, txs[i].Data()[:4])
+	}
+	return nil
+}
+
+// selectorFor returns the 4-byte ABI selector of the named ValidatorContract
+// method, or nil if the method is not registered on the ABI.
+func (p *Parlia) selectorFor(methodName string) []byte {
+	method, ok := p.validatorSetABI.Methods[methodName]
+	if !ok {
+		return nil
+	}
+	return method.ID
+}
+
 func (p *Parlia) IsSystemContract(to *common.Address) bool {
 	if to == nil {
 		return false
@@ -1669,6 +1858,28 @@ func (p *Parlia) SignSystemTx(tx *types.Transaction, chainID *big.Int) (*types.T
 		return nil, errors.New("signTxFn not set")
 	}
 	return p.signTxFn(accounts.Account{Address: p.val}, tx, chainID)
+}
+
+// VerifyBlockTime validates that a header's timestamp is acceptable given its parent.
+// This is the same range check used during normal header verification
+// (blockTimeVerifyForRamanujanFork). Exposed for BidBlock pre-seal verification,
+// where a fully built header has not yet entered the standard VerifyHeader path.
+func (p *Parlia) VerifyBlockTime(chain consensus.ChainHeaderReader, header, parent *types.Header) error {
+	snap, err := p.snapshot(chain, parent.Number.Uint64(), parent.Hash(), nil)
+	if err != nil {
+		return err
+	}
+	return p.blockTimeVerifyForRamanujanFork(snap, header, parent)
+}
+
+// ExpectedDifficulty returns the difficulty a validator should produce for the
+// given parent when building the next block. Exposed for BidBlock pre-seal verification.
+func (p *Parlia) ExpectedDifficulty(chain consensus.ChainHeaderReader, parent *types.Header, validator common.Address) (*big.Int, error) {
+	snap, err := p.snapshot(chain, parent.Number.Uint64(), parent.Hash(), nil)
+	if err != nil {
+		return nil, err
+	}
+	return CalcDifficulty(snap, validator), nil
 }
 
 // Argument leftOver is the time reserved for block finalize(calculate root, distribute income...)

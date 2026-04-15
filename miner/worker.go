@@ -1485,67 +1485,89 @@ LOOP:
 			}
 		}
 
+		// Candidate selection:
+		//   - Always consider the legacy SendBid path (simBid) if a bid exists.
+		//   - Additionally consider the SendBidBlock path when BidBlockMode is on.
+		//   - Use "strictly better on both blockReward AND validatorReward" as the
+		//     promotion rule (same semantics as the original 2-way comparison).
+		//   - Candidates are compared pairwise against the current winner in the
+		//     order: local → simBid → bidBlock. The bidBlock path is evaluated last
+		//     so that a winning BidBlock replaces any previously-chosen simBid env.
+
+		// Baseline: local block's rewards.
+		localValidatorReward := new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
+		localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
+
+		winnerBlockReward := new(uint256.Int).Set(bestReward)
+		winnerValidatorReward := new(uint256.Int).Set(localValidatorReward)
+
+		// Candidate 1 — legacy SendBid (simBid). Always evaluated when a bid exists.
+		bestBid := w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
+		if bestBid != nil {
+			bidExistGauge.Inc(1)
+			bestBidGasUsedGauge.Update(int64(bestBid.bid.GasUsed) / 1_000_000)
+			bestWorkGasUsedGauge.Update(int64(bestWork.header.GasUsed) / 1_000_000)
+
+			log.Debug("BidSimulator: compare vs simBid", "block", bestWork.header.Number.Uint64(),
+				"localBlockReward", winnerBlockReward.String(),
+				"simBidBlockReward", bestBid.packedBlockReward.String())
+
+			if winnerBlockReward.CmpBig(bestBid.packedBlockReward) < 0 &&
+				winnerValidatorReward.CmpBig(bestBid.packedValidatorReward) < 0 {
+				bidWinGauge.Inc(1)
+				bestWork = bestBid.env
+				winnerBlockReward.SetFromBig(bestBid.packedBlockReward)
+				winnerValidatorReward.SetFromBig(bestBid.packedValidatorReward)
+
+				log.Info("[BUILDER BLOCK]",
+					"block", bestWork.header.Number.Uint64(),
+					"builder", bestBid.bid.Builder,
+					"blockReward", weiToEtherStringF6(bestBid.packedBlockReward),
+					"validatorReward", weiToEtherStringF6(bestBid.packedValidatorReward),
+					"bid", bestBid.bid.Hash().TerminalString(),
+				)
+			}
+		}
+
+		// Candidate 2 — SendBidBlock (zero-simulate path), only when BidBlockMode enabled.
 		if w.config.Mev.BidBlockMode != nil && *w.config.Mev.BidBlockMode {
-			// BidBlock mode: use pre-built block from builder (zero-simulate MEV)
 			bestBidBlock := w.bidFetcher.GetBestBidBlock(bestWork.header.ParentHash)
 			if bestBidBlock != nil {
-				log.Info("[BID BLOCK selected]",
-					"block", bestWork.header.Number.Uint64(),
-					"builder", bestBidBlock.block.Builder,
-					"gasFee", bestBidBlock.block.GasFee,
-					"txs", len(bestBidBlock.block.UserTxs),
-					"systemTxs", len(bestBidBlock.block.SystemTxs))
-
-				if err := w.commitBidBlock(bestBidBlock, bestWork.header, start); err != nil {
-					log.Error("Failed to commit bid block, fallback to local", "err", err)
+				// GasFee is declared in the "total block reward" unit, same as
+				// SystemAddress balance / packedBlockReward. There is no BuilderFee
+				// on the SendBidBlock path, so validatorReward is exactly
+				// GasFee * commission / 10000.
+				bidBlockFee, overflow := uint256.FromBig(bestBidBlock.block.GasFee)
+				if overflow || bidBlockFee == nil {
+					log.Warn("BidBlock GasFee overflow, skipping", "gasFee", bestBidBlock.block.GasFee)
 				} else {
-					// Swap out the old work
-					if w.current != nil {
-						w.current.discard()
+					bidBlockValidatorReward := new(uint256.Int).Mul(bidBlockFee, uint256.NewInt(*w.config.Mev.ValidatorCommission))
+					bidBlockValidatorReward.Div(bidBlockValidatorReward, uint256.NewInt(10000))
+
+					log.Debug("BidSimulator: compare vs bidBlock", "block", bestWork.header.Number.Uint64(),
+						"winnerBlockReward", winnerBlockReward.String(),
+						"bidBlockGasFee", bidBlockFee.String())
+
+					if winnerBlockReward.Cmp(bidBlockFee) < 0 &&
+						winnerValidatorReward.Cmp(bidBlockValidatorReward) < 0 {
+						// BidBlock strictly better — use it as the winning block.
+						log.Info("[BID BLOCK selected]",
+							"block", bestWork.header.Number.Uint64(),
+							"builder", bestBidBlock.block.Builder,
+							"gasFee", bestBidBlock.block.GasFee,
+							"txs", len(bestBidBlock.block.Txs))
+
+						if err := w.commitBidBlock(bestBidBlock, bestWork.header, start); err != nil {
+							log.Error("Failed to commit bid block, fallback to non-BidBlock winner", "err", err)
+							// Fall through to w.commit(bestWork, ...) below.
+						} else {
+							if w.current != nil {
+								w.current.discard()
+							}
+							w.current = bestWork
+							return
+						}
 					}
-					w.current = bestWork
-					return
-				}
-			}
-		} else {
-			// Legacy SendBid mode: compare with simulated bid
-			bestBid := w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
-
-			if bestBid != nil {
-				bidExistGauge.Inc(1)
-				bestBidGasUsedGauge.Update(int64(bestBid.bid.GasUsed) / 1_000_000)
-				bestWorkGasUsedGauge.Update(int64(bestWork.header.GasUsed) / 1_000_000)
-
-				log.Debug("BidSimulator: final compare", "block", bestWork.header.Number.Uint64(),
-					"localBlockReward", bestReward.String(),
-					"bidBlockReward", bestBid.packedBlockReward.String())
-			}
-
-			if bestBid != nil && bestReward.CmpBig(bestBid.packedBlockReward) < 0 {
-				// localValidatorReward is the reward for the validator self by the local block.
-				localValidatorReward := new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
-				localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
-
-				log.Debug("BidSimulator: final compare", "block", bestWork.header.Number.Uint64(),
-					"localValidatorReward", localValidatorReward.String(),
-					"bidValidatorReward", bestBid.packedValidatorReward.String())
-
-				// blockReward(benefits delegators) and validatorReward(benefits the validator) are both optimal
-				if localValidatorReward.CmpBig(bestBid.packedValidatorReward) < 0 {
-					bidWinGauge.Inc(1)
-					if bestBid.greedyMerged {
-						greedyMergeOnchainCounter.Inc(1)
-					}
-
-					bestWork = bestBid.env
-
-					log.Info("[BUILDER BLOCK]",
-						"block", bestWork.header.Number.Uint64(),
-						"builder", bestBid.bid.Builder,
-						"blockReward", weiToEtherStringF6(bestBid.packedBlockReward),
-						"validatorReward", weiToEtherStringF6(bestBid.packedValidatorReward),
-						"bid", bestBid.bid.Hash().TerminalString(),
-					)
 				}
 			}
 		}
@@ -1568,53 +1590,105 @@ func (w *worker) inTurn() bool {
 }
 
 // commitBidBlock assembles a block from a BidBlock (zero-simulate MEV path).
-// The validator signs system txs, builds header from local Prepare() + builder's execution results,
-// and submits the block for sealing. No EVM execution is performed.
+// System transactions are identified as the trailing entries of the merged
+// Transactions list (unsigned; to == system contract; gasPrice == 0), and signed
+// in place using the validator's signTxFn. The final header uses consensus fields
+// from local Prepare() and execution-result fields from the builder's header.
+// No EVM execution is performed on this path.
 func (w *worker) commitBidBlock(bidBlockRT *BidBlockRuntime, localHeader *types.Header, start time.Time) error {
 	pb := bidBlockRT.block
 
-	// 1. Sign system transactions using validator's signTxFn
 	p, ok := w.engine.(*parlia.Parlia)
 	if !ok {
 		return errors.New("engine is not parlia")
 	}
-	signedSystemTxs := make([]*types.Transaction, len(pb.SystemTxs))
-	for i, unsignedTx := range pb.SystemTxs {
-		signed, err := p.SignSystemTx(unsignedTx, w.chainConfig.ChainID)
+
+	// 1. Identify the trailing unsigned system-tx region and sign in place.
+	//    System txs are always positioned at the end of the block, matching the
+	//    layout produced by FinalizeAndAssemble. The builder ships them unsigned,
+	//    so we detect them via IsUnsignedSystemTxCandidate (structural check only,
+	//    no ecrecover). Per BEP-675 §4.3, before signing we additionally require
+	//    each candidate to pass the stricter IsSignableSystemTx whitelist:
+	//      - to == ValidatorContract
+	//      - data selector ∈ {deposit, distributeFinalityReward, updateValidatorSetV2}
+	//    Any candidate that fails this whitelist causes the entire BidBlock to be
+	//    rejected (no partial signing).
+	allTxs := make([]*types.Transaction, len(pb.Txs))
+	copy(allTxs, pb.Txs)
+
+	systemStart := len(allTxs)
+	for i := len(allTxs) - 1; i >= 0; i-- {
+		if !p.IsUnsignedSystemTxCandidate(allTxs[i], localHeader) {
+			break
+		}
+		systemStart = i
+	}
+
+	// Stage 1 — whitelist: every unsigned-system-tx candidate must target
+	// ValidatorContract with one of the three signable methods.
+	for i := systemStart; i < len(allTxs); i++ {
+		if !p.IsSignableSystemTx(allTxs[i]) {
+			toAddr := "<nil>"
+			if allTxs[i].To() != nil {
+				toAddr = allTxs[i].To().Hex()
+			}
+			return fmt.Errorf(
+				"BidBlock rejected: unsigned system tx at position %d (to=%s) "+
+					"is not on the BEP-675 signable whitelist", i, toAddr,
+			)
+		}
+	}
+
+	// Stage 2 — shape: the trailing system txs must match the expected
+	// sequence and ordering derived from the header (Parlia's Finalize order).
+	// distributeIncoming is optional (balance-dependent); the other entries
+	// are required when their fork/interval conditions hold.
+	parent := w.chain.GetHeaderByHash(localHeader.ParentHash)
+	if parent == nil {
+		return fmt.Errorf("BidBlock rejected: parent header not found for %s", localHeader.ParentHash.Hex())
+	}
+	shape := p.ExpectedSystemTxShape(localHeader, parent)
+	if err := p.VerifySystemTxShape(allTxs[systemStart:], shape); err != nil {
+		return fmt.Errorf("BidBlock rejected: %w", err)
+	}
+
+	// Stage 3 — sign each whitelisted system tx in place with the validator key.
+	for i := systemStart; i < len(allTxs); i++ {
+		signed, err := p.SignSystemTx(allTxs[i], w.chainConfig.ChainID)
 		if err != nil {
 			return fmt.Errorf("failed to sign system tx %d: %v", i, err)
 		}
-		signedSystemTxs[i] = signed
+		allTxs[i] = signed
 	}
 
-	// 2. Assemble transaction list
-	allTxs := make([]*types.Transaction, 0, len(pb.UserTxs)+len(signedSystemTxs))
-	allTxs = append(allTxs, pb.UserTxs...)
-	allTxs = append(allTxs, signedSystemTxs...)
-
-	// 3. Build header: consensus fields from local Prepare(), execution fields from BidBlockHeader
+	// 2. Build header: consensus fields from local Prepare(), execution-result
+	//    fields from the builder-supplied header.
 	header := types.CopyHeader(localHeader)
 	header.GasUsed = pb.Header.GasUsed
 	header.Root = pb.Header.Root
 	header.ReceiptHash = pb.Header.ReceiptHash
-	header.Bloom = pb.Header.LogsBloom
+	header.Bloom = pb.Header.Bloom
+	if pb.Header.BlobGasUsed != nil {
+		blobGasUsed := *pb.Header.BlobGasUsed
+		header.BlobGasUsed = &blobGasUsed
+	}
 	header.TxHash = types.DeriveSha(types.Transactions(allTxs), trie.NewStackTrie(nil))
 
-	// 4. Assemble block
+	// 3. Assemble block.
 	body := &types.Body{Transactions: allTxs}
 	if header.EmptyWithdrawalsHash() {
 		body.Withdrawals = make([]*types.Withdrawal, 0)
 	}
 	block := types.NewBlock(header, body, nil, trie.NewStackTrie(nil))
 
-	// Attach sidecars if present
+	// Attach sidecars if present.
 	if pb.Sidecars != nil {
 		block = block.WithSidecars(pb.Sidecars)
 	} else if w.chainConfig.IsCancun(header.Number, header.Time) {
 		block = block.WithSidecars(make(types.BlobSidecars, 0))
 	}
 
-	// 5. Submit to seal (assembleVoteAttestation + sign header happen inside Seal)
+	// 4. Submit to seal (assembleVoteAttestation + sign header happen inside Seal).
 	select {
 	case w.taskCh <- &task{
 		block:         block,
@@ -1627,6 +1701,7 @@ func (w *worker) commitBidBlock(bidBlockRT *BidBlockRuntime, localHeader *types.
 			"number", block.Number(),
 			"builder", pb.Builder,
 			"txs", len(allTxs),
+			"systemTxs", len(allTxs)-systemStart,
 			"gas", block.GasUsed(),
 			"gasFee", pb.GasFee)
 	case <-w.exitCh:

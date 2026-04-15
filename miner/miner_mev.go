@@ -49,55 +49,52 @@ func (miner *Miner) HasBuilder(builder common.Address) bool {
 }
 
 func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) (common.Hash, error) {
+	// 1. Recover builder address from signature (covers entire BidBlock).
 	builder, err := args.EcrecoverSender()
 	if err != nil {
 		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("invalid signature: %v", err))
 	}
 
+	// 2. Verify the builder is registered.
 	if !miner.bidSimulator.ExistBuilder(builder) {
 		return common.Hash{}, types.NewInvalidBidError("builder is not registered")
 	}
 
-	err = miner.bidSimulator.CheckPending(args.BlockNumber, builder, args.Hash())
-	if err != nil {
+	// 3. Deduplicate: same (blockNumber, builder, bidHash) is rejected.
+	bb := args.BidBlock
+	if bb == nil || bb.Header == nil {
+		return common.Hash{}, types.NewInvalidBidError("empty BidBlock or Header")
+	}
+	blockNumber := bb.Header.Number.Uint64()
+	parentHash := bb.Header.ParentHash
+	if err := miner.bidSimulator.CheckPending(blockNumber, builder, bb.Hash()); err != nil {
 		return common.Hash{}, err
 	}
 
-	signer := types.MakeSigner(miner.worker.chainConfig, big.NewInt(int64(args.BlockNumber)), uint64(time.Now().Unix()))
-	userTxs, err := args.DecodeUserTxs(signer)
-	if err != nil {
-		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("failed to decode user txs: %v", err))
-	}
-
-	systemTxs, err := args.DecodeSystemTxs()
-	if err != nil {
-		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("failed to decode system txs: %v", err))
-	}
-
-	bidBetterBefore := miner.bidSimulator.bidBetterBefore(args.ParentHash)
-	timeout := time.Until(bidBetterBefore)
-	if timeout <= 0 {
+	// 4. Reject late arrivals beyond BidBetterBefore.
+	bidBetterBefore := miner.bidSimulator.bidBetterBefore(parentHash)
+	if timeout := time.Until(bidBetterBefore); timeout <= 0 {
 		return common.Hash{}, fmt.Errorf("too late, expected before %s, appeared %s later", bidBetterBefore,
 			common.PrettyDuration(timeout))
 	}
 
-	bidBlock := &types.BidBlock{
-		Builder:     builder,
-		BlockNumber: args.BlockNumber,
-		ParentHash:  args.ParentHash,
-		GasFee:      args.GasFee,
-		UserTxs:     userTxs,
-		SystemTxs:   systemTxs,
-		Header:      args.Header,
-		Sidecars:    args.Sidecars,
+	// 5. Decode transactions (UnmarshalBinary only — no ecrecover on hot path).
+	decoded, err := args.ToDecodedBidBlock(builder)
+	if err != nil {
+		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("failed to decode bid block: %v", err))
 	}
 
-	err = miner.bidSimulator.sendBidBlock(ctx, bidBlock)
-	if err != nil {
+	// 6. Pre-seal header verification: consensus fields must match locally derived values.
+	if err := miner.bidSimulator.preSealVerifyBidBlock(decoded); err != nil {
+		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("pre-seal verify failed: %v", err))
+	}
+
+	// 7. Enter bid selection (compared against other BidBlocks by GasFee).
+	if err := miner.bidSimulator.sendBidBlock(ctx, decoded); err != nil {
 		return common.Hash{}, err
 	}
 
-	return args.Hash(), nil
+	return bb.Hash(), nil
 }
 
 func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common.Hash, error) {
