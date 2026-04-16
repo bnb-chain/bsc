@@ -125,10 +125,6 @@ func (m *simChainHeadReader) CurrentHeader() *types.Header {
 	return m.Backend.CurrentHeader()
 }
 
-func (m *simChainHeadReader) ChasingHead() *types.Header {
-	return m.Backend.Chain().ChasingHead()
-}
-
 func (m *simChainHeadReader) GetHeader(hash common.Hash, number uint64) *types.Header {
 	header, err := m.Backend.HeaderByNumber(m.Context, rpc.BlockNumber(number))
 	if err != nil || header == nil {
