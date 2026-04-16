@@ -386,7 +386,6 @@ type BlockChain struct {
 	currentSnapBlock      atomic.Pointer[types.Header] // Current head of snap-sync
 	currentFinalBlock     atomic.Pointer[types.Header] // Latest (consensus) finalized block
 	highestNotifiedFinal  atomic.Pointer[types.Header] // Highest finalized block that has been notified (for deduplication)
-	chasingHead           atomic.Pointer[types.Header]
 	historyPrunePoint     atomic.Pointer[history.PrunePoint]
 
 	bodyCache       *lru.Cache[common.Hash, *types.Body]
@@ -521,7 +520,6 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 	bc.highestVerifiedBlock.Store(nil)
 	bc.currentBlock.Store(nil)
 	bc.currentSnapBlock.Store(nil)
-	bc.chasingHead.Store(nil)
 
 	// Update chain info data metrics
 	chainInfoGauge.Update(metrics.GaugeInfoValue{"chain_id": bc.chainConfig.ChainID.String()})
@@ -1392,20 +1390,6 @@ func (bc *BlockChain) SnapSyncCommitHead(hash common.Hash) error {
 	}
 	log.Info("Committed new head block", "number", block.Number(), "hash", hash)
 	return nil
-}
-
-// UpdateChasingHead update remote best chain head, used by DA check now.
-func (bc *BlockChain) UpdateChasingHead(head *types.Header) {
-	if head.Time > uint64(time.Now().Unix()) {
-		log.Warn("Ignoring future chasing head", "number", head.Number, "time", head.Time)
-		return
-	}
-	bc.chasingHead.Store(types.CopyHeader(head))
-}
-
-// ChasingHead return the best chain head of peers.
-func (bc *BlockChain) ChasingHead() *types.Header {
-	return bc.chasingHead.Load()
 }
 
 // Reset purges the entire blockchain, restoring it to its genesis state.

@@ -226,9 +226,6 @@ type BlockChain interface {
 	// with trie nodes.
 	TrieDB() *triedb.Database
 
-	// UpdateChasingHead update remote best chain head, used by DA check now.
-	UpdateChasingHead(head *types.Header)
-
 	// AncientTail retrieves the tail the ancients blocks
 	AncientTail() (uint64, error)
 
@@ -648,8 +645,6 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td, ttd *
 			return d.checkStalling(td, beaconMode)
 		})
 	}
-	// update the chasing head
-	d.blockchain.UpdateChasingHead(remoteHeader)
 	return d.spawnSync(fetchers)
 }
 
