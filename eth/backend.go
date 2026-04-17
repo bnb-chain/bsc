@@ -1016,6 +1016,9 @@ func (s *Ethereum) Stop() error {
 	if s.miner.Mining() {
 		s.miner.TryWaitProposalDoneWhenStopping()
 	}
+	if s.votePool != nil {
+		s.votePool.Stop()
+	}
 	// Stop all the peer-related stuff first.
 	s.discmix.Close()
 	s.dropper.Stop()

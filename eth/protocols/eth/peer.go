@@ -51,14 +51,13 @@ const (
 	maxQueuedTxAnns = 4096
 
 	// maxQueuedBlocks is the maximum number of block propagations to queue up before
-	// dropping broadcasts. There's not much point in queueing stale blocks, so a few
-	// that might cover uncles should be enough.
-	maxQueuedBlocks = 4
+	// dropping broadcasts. With 450ms block interval, a 1.5s slow block can cause 3-4
+	// blocks to queue up, so we need a larger buffer to avoid dropping broadcasts.
+	maxQueuedBlocks = 16
 
 	// maxQueuedBlockAnns is the maximum number of block announcements to queue up before
-	// dropping broadcasts. Similarly to block propagations, there's no point to queue
-	// above some healthy uncle limit, so use that.
-	maxQueuedBlockAnns = 4
+	// dropping broadcasts. Increased to match maxQueuedBlocks for 450ms block interval.
+	maxQueuedBlockAnns = 16
 )
 
 // Peer is a collection of relevant information we have about a `eth` peer.

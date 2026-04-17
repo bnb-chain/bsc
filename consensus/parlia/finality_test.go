@@ -73,10 +73,6 @@ func (c *finalizedHeaderChain) GetVerifiedBlockByHash(hash common.Hash) *types.H
 	return c.byHash[hash]
 }
 
-func (c *finalizedHeaderChain) ChasingHead() *types.Header {
-	return c.current
-}
-
 type fixedVotePool struct {
 	n int
 }

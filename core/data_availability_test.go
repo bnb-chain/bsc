@@ -24,16 +24,16 @@ var (
 
 func TestIsDataAvailable(t *testing.T) {
 	hr := NewMockDAHeaderReader(params.ParliaTestChainConfig)
+	now := uint64(time.Now().Unix())
 	tests := []struct {
-		block             *types.Block
-		chasingHeadNumber uint64
-		chasingHeadTime   uint64
-		withSidecar       bool
-		err               bool
+		block       *types.Block
+		withSidecar bool
+		err         bool
 	}{
 		{
 			block: types.NewBlockWithHeader(&types.Header{
 				Number: big.NewInt(1),
+				Time:   now,
 			}).WithBody(types.Body{Transactions: types.Transactions{
 				createMockDATx(hr.Config(), nil),
 				createMockDATx(hr.Config(), &types.BlobTxSidecar{
@@ -42,26 +42,24 @@ func TestIsDataAvailable(t *testing.T) {
 					Proofs:      []kzg4844.Proof{emptyBlobProof},
 				}),
 			}}),
-			chasingHeadNumber: 1,
-			chasingHeadTime:   params.MinTimeDurationForBlobRequests - 1,
-			withSidecar:       true,
-			err:               false,
+			withSidecar: true,
+			err:         false,
 		},
 		{
 			block: types.NewBlockWithHeader(&types.Header{
 				Number: big.NewInt(1),
+				Time:   now,
 			}).WithBody(types.Body{Transactions: types.Transactions{
 				createMockDATx(hr.Config(), nil),
 				createMockDATx(hr.Config(), nil),
 			}}),
-			chasingHeadNumber: 1,
-			chasingHeadTime:   params.MinTimeDurationForBlobRequests - 1,
-			withSidecar:       true,
-			err:               false,
+			withSidecar: true,
+			err:         false,
 		},
 		{
 			block: types.NewBlockWithHeader(&types.Header{
 				Number: big.NewInt(1),
+				Time:   now,
 			}).WithBody(types.Body{Transactions: types.Transactions{
 				createMockDATx(hr.Config(), nil),
 				createMockDATx(hr.Config(), &types.BlobTxSidecar{
@@ -70,14 +68,13 @@ func TestIsDataAvailable(t *testing.T) {
 					Proofs:      []kzg4844.Proof{emptyBlobProof},
 				}),
 			}}),
-			chasingHeadNumber: 1,
-			chasingHeadTime:   params.MinTimeDurationForBlobRequests - 1,
-			withSidecar:       false,
-			err:               true,
+			withSidecar: false,
+			err:         true,
 		},
 		{
 			block: types.NewBlockWithHeader(&types.Header{
 				Number: big.NewInt(1),
+				Time:   now,
 			}).WithBody(types.Body{Transactions: types.Transactions{
 				createMockDATx(hr.Config(), nil),
 				createMockDATx(hr.Config(), &types.BlobTxSidecar{
@@ -91,15 +88,13 @@ func TestIsDataAvailable(t *testing.T) {
 					Proofs:      []kzg4844.Proof{emptyBlobProof, emptyBlobProof},
 				}),
 			}}),
-			chasingHeadNumber: 1,
-			chasingHeadTime:   params.MinTimeDurationForBlobRequests - 1,
-			withSidecar:       true,
-			err:               false,
+			withSidecar: true,
+			err:         false,
 		},
-
 		{
 			block: types.NewBlockWithHeader(&types.Header{
 				Number: big.NewInt(1),
+				Time:   now,
 			}).WithBody(types.Body{Transactions: types.Transactions{
 				createMockDATx(hr.Config(), nil),
 				createMockDATx(hr.Config(), &types.BlobTxSidecar{
@@ -113,14 +108,14 @@ func TestIsDataAvailable(t *testing.T) {
 					Proofs:      []kzg4844.Proof{emptyBlobProof, emptyBlobProof, emptyBlobProof, emptyBlobProof},
 				}),
 			}}),
-			chasingHeadNumber: params.MinBlocksForBlobRequests + 1,
-			chasingHeadTime:   params.MinTimeDurationForBlobRequests,
-			withSidecar:       true,
-			err:               true,
+			withSidecar: true,
+			err:         true,
 		},
+		// Old block outside the retention window: DA check is skipped, sidecars cleaned, no error.
 		{
 			block: types.NewBlockWithHeader(&types.Header{
 				Number: big.NewInt(1),
+				Time:   0,
 			}).WithBody(types.Body{Transactions: types.Transactions{
 				createMockDATx(hr.Config(), nil),
 				createMockDATx(hr.Config(), &types.BlobTxSidecar{
@@ -129,10 +124,8 @@ func TestIsDataAvailable(t *testing.T) {
 					Proofs:      []kzg4844.Proof{emptyBlobProof},
 				}),
 			}}),
-			chasingHeadNumber: params.MinBlocksForBlobRequests + 1,
-			chasingHeadTime:   params.MinTimeDurationForBlobRequests + 1,
-			withSidecar:       false,
-			err:               false,
+			withSidecar: false,
+			err:         false,
 		},
 	}
 
@@ -140,7 +133,6 @@ func TestIsDataAvailable(t *testing.T) {
 		if item.withSidecar {
 			item.block = item.block.WithSidecars(collectBlobsFromTxs(item.block.Header(), item.block.Transactions()))
 		}
-		hr.setChasingHead(item.chasingHeadNumber, item.chasingHeadTime)
 		err := IsDataAvailable(hr, item.block)
 		if item.err {
 			require.Error(t, err, i)
@@ -151,43 +143,45 @@ func TestIsDataAvailable(t *testing.T) {
 	}
 }
 
-func TestIsDataAvailableRejectsFutureChasingHead(t *testing.T) {
-	blockTime := uint64(time.Now().Unix())
-	cfg := params.ParliaTestChainConfig
+// TestIsDataAvailableSkipsOldBlocks verifies that the time-based retention window
+// is enforced using wall-clock time: old blocks bypass DA and get sidecars cleaned,
+// while recent blocks are always fully validated.
+func TestIsDataAvailableSkipsOldBlocks(t *testing.T) {
+	hr := NewMockDAHeaderReader(params.ParliaTestChainConfig)
 
-	badBlob := emptyBlob
-	badBlob[0] = 0x01
-	badSidecar := &types.BlobTxSidecar{
-		Blobs:       []kzg4844.Blob{badBlob},
-		Commitments: []kzg4844.Commitment{emptyBlobCommit},
-		Proofs:      []kzg4844.Proof{emptyBlobProof},
-	}
-	makeBlock := func() *types.Block {
-		block := types.NewBlockWithHeader(&types.Header{
-			Number: big.NewInt(1),
-			Time:   blockTime,
-		}).WithBody(types.Body{Transactions: types.Transactions{
-			createMockDATx(cfg, badSidecar),
-		}})
-		return block.WithSidecars(collectBlobsFromTxs(block.Header(), block.Transactions()))
-	}
+	// A block outside the retention window must have sidecars cleaned without error.
+	oldBlock := types.NewBlockWithHeader(&types.Header{
+		Number: big.NewInt(1),
+		Time:   0, // far outside MinTimeDurationForBlobRequests window
+	}).WithBody(types.Body{Transactions: types.Transactions{
+		createMockDATx(hr.Config(), &types.BlobTxSidecar{
+			Blobs:       []kzg4844.Blob{emptyBlob},
+			Commitments: []kzg4844.Commitment{emptyBlobCommit},
+			Proofs:      []kzg4844.Proof{emptyBlobProof},
+		}),
+	}})
+	oldBlock = oldBlock.WithSidecars(collectBlobsFromTxs(oldBlock.Header(), oldBlock.Transactions()))
+	require.NotEmpty(t, oldBlock.Sidecars())
+	require.NoError(t, IsDataAvailable(hr, oldBlock))
+	require.Empty(t, oldBlock.Sidecars(), "sidecars must be cleaned for blocks outside the retention window")
 
-	block := makeBlock()
-	reader := &mockSplitDAHeaderReader{
-		config:      cfg,
-		currentNum:  1,
-		currentTime: blockTime,
-		chasingNum:  100000,
-		chasingTime: blockTime + 30*86400,
-	}
-
-	err := IsDataAvailable(reader, block)
-	require.Error(t, err)
-	require.NotEmpty(t, block.Sidecars())
+	// A recent block with an invalid sidecar must not be silently skipped.
+	recentBlock := types.NewBlockWithHeader(&types.Header{
+		Number: big.NewInt(1),
+		Time:   uint64(time.Now().Unix()),
+	}).WithBody(types.Body{Transactions: types.Transactions{
+		createMockDATx(hr.Config(), &types.BlobTxSidecar{
+			Blobs:       []kzg4844.Blob{emptyBlob, emptyBlob, emptyBlob},
+			Commitments: []kzg4844.Commitment{emptyBlobCommit, emptyBlobCommit, emptyBlobCommit},
+			Proofs:      []kzg4844.Proof{emptyBlobProof}, // mismatched proof count
+		}),
+	}})
+	require.Error(t, IsDataAvailable(hr, recentBlock), "recent blocks with invalid sidecars must fail DA check")
 }
 
 func TestCheckDataAvailableInBatch(t *testing.T) {
 	hr := NewMockDAHeaderReader(params.ParliaTestChainConfig)
+	now := uint64(time.Now().Unix())
 	tests := []struct {
 		chain types.Blocks
 		err   bool
@@ -197,6 +191,7 @@ func TestCheckDataAvailableInBatch(t *testing.T) {
 			chain: types.Blocks{
 				types.NewBlockWithHeader(&types.Header{
 					Number: big.NewInt(1),
+					Time:   now,
 				}).WithBody(types.Body{Transactions: types.Transactions{
 					createMockDATx(hr.Config(), nil),
 					createMockDATx(hr.Config(), &types.BlobTxSidecar{
@@ -212,6 +207,7 @@ func TestCheckDataAvailableInBatch(t *testing.T) {
 				}}),
 				types.NewBlockWithHeader(&types.Header{
 					Number: big.NewInt(2),
+					Time:   now,
 				}).WithBody(types.Body{Transactions: types.Transactions{
 					createMockDATx(hr.Config(), &types.BlobTxSidecar{
 						Blobs:       []kzg4844.Blob{emptyBlob, emptyBlob},
@@ -226,6 +222,7 @@ func TestCheckDataAvailableInBatch(t *testing.T) {
 			chain: types.Blocks{
 				types.NewBlockWithHeader(&types.Header{
 					Number: big.NewInt(1),
+					Time:   now,
 				}).WithBody(types.Body{Transactions: types.Transactions{
 					createMockDATx(hr.Config(), &types.BlobTxSidecar{
 						Blobs:       []kzg4844.Blob{emptyBlob},
@@ -235,6 +232,7 @@ func TestCheckDataAvailableInBatch(t *testing.T) {
 				}}),
 				types.NewBlockWithHeader(&types.Header{
 					Number: big.NewInt(2),
+					Time:   now,
 				}).WithBody(types.Body{Transactions: types.Transactions{
 					createMockDATx(hr.Config(), &types.BlobTxSidecar{
 						Blobs:       []kzg4844.Blob{emptyBlob, emptyBlob, emptyBlob},
@@ -244,6 +242,7 @@ func TestCheckDataAvailableInBatch(t *testing.T) {
 				}}),
 				types.NewBlockWithHeader(&types.Header{
 					Number: big.NewInt(3),
+					Time:   now,
 				}).WithBody(types.Body{Transactions: types.Transactions{
 					createMockDATx(hr.Config(), &types.BlobTxSidecar{
 						Blobs:       []kzg4844.Blob{emptyBlob},
@@ -259,6 +258,7 @@ func TestCheckDataAvailableInBatch(t *testing.T) {
 			chain: types.Blocks{
 				types.NewBlockWithHeader(&types.Header{
 					Number: big.NewInt(1),
+					Time:   now,
 				}).WithBody(types.Body{Transactions: types.Transactions{
 					createMockDATx(hr.Config(), nil),
 					createMockDATx(hr.Config(), &types.BlobTxSidecar{
@@ -297,6 +297,7 @@ func BenchmarkEmptySidecarDAChecking(b *testing.B) {
 	hr := NewMockDAHeaderReader(params.ParliaTestChainConfig)
 	block := types.NewBlockWithHeader(&types.Header{
 		Number: big.NewInt(1),
+		Time:   uint64(time.Now().Unix()),
 	}).WithBody(types.Body{Transactions: types.Transactions{
 		createMockDATx(hr.Config(), emptySidecar()),
 		createMockDATx(hr.Config(), emptySidecar()),
@@ -319,6 +320,7 @@ func BenchmarkRandomSidecarDAChecking(b *testing.B) {
 	for i := 0; i < len(blocks); i++ {
 		block := types.NewBlockWithHeader(&types.Header{
 			Number: big.NewInt(1),
+			Time:   uint64(time.Now().Unix()),
 		}).WithBody(types.Body{Transactions: types.Transactions{
 			createMockDATx(hr.Config(), randomSidecar()),
 			createMockDATx(hr.Config(), randomSidecar()),
@@ -353,28 +355,11 @@ func collectBlobsFromTxs(header *types.Header, txs types.Transactions) types.Blo
 }
 
 type mockDAHeaderReader struct {
-	config            *params.ChainConfig
-	chasingHeadNumber uint64
-	chasingHeadTime   uint64
-}
-
-type mockSplitDAHeaderReader struct {
-	config      *params.ChainConfig
-	currentNum  uint64
-	currentTime uint64
-	chasingNum  uint64
-	chasingTime uint64
+	config *params.ChainConfig
 }
 
 func NewMockDAHeaderReader(config *params.ChainConfig) *mockDAHeaderReader {
-	return &mockDAHeaderReader{
-		config: config,
-	}
-}
-
-func (r *mockDAHeaderReader) setChasingHead(number, time uint64) {
-	r.chasingHeadNumber = number
-	r.chasingHeadTime = time
+	return &mockDAHeaderReader{config: config}
 }
 
 func (r *mockDAHeaderReader) Config() *params.ChainConfig {
@@ -382,17 +367,7 @@ func (r *mockDAHeaderReader) Config() *params.ChainConfig {
 }
 
 func (r *mockDAHeaderReader) CurrentHeader() *types.Header {
-	return &types.Header{
-		Number: new(big.Int).SetUint64(r.chasingHeadNumber),
-		Time:   r.chasingHeadTime,
-	}
-}
-
-func (r *mockDAHeaderReader) ChasingHead() *types.Header {
-	return &types.Header{
-		Number: new(big.Int).SetUint64(r.chasingHeadNumber),
-		Time:   r.chasingHeadTime,
-	}
+	return &types.Header{}
 }
 
 func (r *mockDAHeaderReader) GenesisHeader() *types.Header {
@@ -421,81 +396,6 @@ func (r *mockDAHeaderReader) GetHighestVerifiedHeader() *types.Header {
 
 func (r *mockDAHeaderReader) GetVerifiedBlockByHash(hash common.Hash) *types.Header {
 	panic("not supported")
-}
-
-func (r *mockSplitDAHeaderReader) Config() *params.ChainConfig {
-	return r.config
-}
-
-func (r *mockSplitDAHeaderReader) CurrentHeader() *types.Header {
-	return &types.Header{
-		Number: new(big.Int).SetUint64(r.currentNum),
-		Time:   r.currentTime,
-	}
-}
-
-func (r *mockSplitDAHeaderReader) ChasingHead() *types.Header {
-	if r.chasingNum == 0 && r.chasingTime == 0 {
-		return nil
-	}
-	return &types.Header{
-		Number: new(big.Int).SetUint64(r.chasingNum),
-		Time:   r.chasingTime,
-	}
-}
-
-func (r *mockSplitDAHeaderReader) GenesisHeader() *types.Header {
-	panic("not supported")
-}
-
-func (r *mockSplitDAHeaderReader) GetHeader(hash common.Hash, number uint64) *types.Header {
-	panic("not supported")
-}
-
-func (r *mockSplitDAHeaderReader) GetHeaderByNumber(number uint64) *types.Header {
-	panic("not supported")
-}
-
-func (r *mockSplitDAHeaderReader) GetHeaderByHash(hash common.Hash) *types.Header {
-	panic("not supported")
-}
-
-func (r *mockSplitDAHeaderReader) GetTd(hash common.Hash, number uint64) *big.Int {
-	panic("not supported")
-}
-
-func (r *mockSplitDAHeaderReader) GetHighestVerifiedHeader() *types.Header {
-	panic("not supported")
-}
-
-func (r *mockSplitDAHeaderReader) GetVerifiedBlockByHash(hash common.Hash) *types.Header {
-	panic("not supported")
-}
-
-func TestUpdateChasingHeadRejectsFutureHeader(t *testing.T) {
-	now := uint64(time.Now().Unix())
-	bc := &BlockChain{hc: &HeaderChain{}}
-	bc.hc.SetCurrentHeader(&types.Header{
-		Number: big.NewInt(100),
-		Time:   now,
-	})
-
-	valid := &types.Header{
-		Number: big.NewInt(101),
-		Time:   now,
-	}
-	bc.UpdateChasingHead(valid)
-	require.NotNil(t, bc.ChasingHead())
-	require.Equal(t, valid.Number.Uint64(), bc.ChasingHead().Number.Uint64())
-	require.Equal(t, valid.Time, bc.ChasingHead().Time)
-
-	future := &types.Header{
-		Number: big.NewInt(102),
-		Time:   now + uint64(time.Hour/time.Second),
-	}
-	bc.UpdateChasingHead(future)
-	require.Equal(t, valid.Number.Uint64(), bc.ChasingHead().Number.Uint64())
-	require.Equal(t, valid.Time, bc.ChasingHead().Time)
 }
 
 func createMockDATx(config *params.ChainConfig, sidecar *types.BlobTxSidecar) *types.Transaction {
