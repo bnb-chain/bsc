@@ -1,6 +1,6 @@
 module github.com/ethereum/go-ethereum
 
-go 1.25.0
+go 1.25.7
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.2.0
@@ -10,14 +10,14 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.18.45
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.43
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.30.2
-	github.com/bits-and-blooms/bitset v1.20.0
+	github.com/bits-and-blooms/bitset v1.24.4
 	github.com/bnb-chain/fastssz v0.1.2
 	github.com/bnb-chain/ics23 v0.1.0
 	github.com/cespare/cp v1.1.1
 	github.com/cloudflare/cloudflare-go v0.114.0
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/cometbft/cometbft v0.37.0
-	github.com/consensys/gnark-crypto v0.18.1
+	github.com/consensys/gnark-crypto v0.20.1
 	github.com/cosmos/iavl v0.12.0
 	github.com/crate-crypto/go-eth-kzg v1.4.0
 	github.com/crate-crypto/go-ipa v0.0.0-20240724233137-53bbb0ceb27a
