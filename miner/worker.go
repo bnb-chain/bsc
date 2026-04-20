@@ -1442,6 +1442,9 @@ LOOP:
 			// blockReward(benefits delegators) and validatorReward(benefits the validator) are both optimal
 			if localValidatorReward.CmpBig(bestBid.packedValidatorReward) < 0 {
 				bidWinGauge.Inc(1)
+				if bestBid.greedyMerged {
+					greedyMergeOnchainCounter.Inc(1)
+				}
 
 				bestWork = bestBid.env
 
