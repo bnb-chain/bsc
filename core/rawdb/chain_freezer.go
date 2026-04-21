@@ -263,7 +263,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 				log.Debug("Current full block not old enough to freeze", "err", err)
 				continue
 			}
-			frozen, _ := f.Ancients() // no error will occur, safe to ignore
+			frozen, _ = f.Ancients() // no error will occur, safe to ignore
 
 			// Short circuit if the blocks below threshold are already frozen.
 			if frozen != 0 && frozen-1 >= threshold {
@@ -309,7 +309,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 			var ok bool
 			number, ok = ReadHeaderNumber(nfdb, hash)
 			threshold = f.threshold.Load()
-			frozen, _ := f.Ancients() // no error will occur, safe to ignore
+			frozen, _ = f.Ancients() // no error will occur, safe to ignore
 			switch {
 			case !ok:
 				log.Error("Current full block number unavailable", "hash", hash)
@@ -333,7 +333,7 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 				continue
 			}
 			trySlowdownFreeze(head)
-			first, _ = f.Ancients()
+			first = frozen
 			last = number - threshold
 			if last-first > freezerBatchLimit {
 				last = first + freezerBatchLimit
