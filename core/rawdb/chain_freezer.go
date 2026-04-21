@@ -168,38 +168,6 @@ func (f *chainFreezer) readHeadNumber(db ethdb.KeyValueReader) uint64 {
 	return number
 }
 
-// readFinalizedNumber returns the number of finalized block. 0 is returned
-// if the block is unknown or not available yet.
-func (f *chainFreezer) readFinalizedNumber(db ethdb.KeyValueReader) uint64 {
-	hash := ReadFinalizedBlockHash(db)
-	if hash == (common.Hash{}) {
-		return 0
-	}
-	number, ok := ReadHeaderNumber(db, hash)
-	if !ok {
-		log.Error("Number of finalized block is missing")
-		return 0
-	}
-	return number
-}
-
-// freezeThreshold returns the threshold for chain freezing. It's determined
-// by formula: max(finality, HEAD-params.FullImmutabilityThreshold).
-func (f *chainFreezer) freezeThreshold(db ethdb.KeyValueReader) (uint64, error) {
-	var (
-		head      = f.readHeadNumber(db)
-		final     = f.readFinalizedNumber(db)
-		headLimit uint64
-	)
-	if head > params.FullImmutabilityThreshold {
-		headLimit = head - params.FullImmutabilityThreshold
-	}
-	if final == 0 && headLimit == 0 {
-		return 0, errors.New("freezing threshold is not available")
-	}
-	return max(final, headLimit), nil
-}
-
 // freeze is a background thread that periodically checks the blockchain for any
 // import progress and moves ancient data from the fast database into the freezer.
 //
