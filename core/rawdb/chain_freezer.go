@@ -278,7 +278,8 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 				backoff = true
 				continue
 			}
-			number, ok := ReadHeaderNumber(nfdb, hash)
+			var ok bool
+			number, ok = ReadHeaderNumber(nfdb, hash)
 			if !ok {
 				log.Error("Current full block number unavailable", "hash", hash)
 				backoff = true
@@ -305,7 +306,8 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 				backoff = true
 				continue
 			}
-			number, ok := ReadHeaderNumber(nfdb, hash)
+			var ok bool
+			number, ok = ReadHeaderNumber(nfdb, hash)
 			threshold = f.threshold.Load()
 			frozen, _ := f.Ancients() // no error will occur, safe to ignore
 			switch {
