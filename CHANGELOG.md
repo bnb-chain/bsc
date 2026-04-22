@@ -1,11 +1,13 @@
 # Changelog
 ## v1.7.3
-v1.7.3 is a maintenance release, which mainly fixes kvdb abnormal continuous growth, pls refer change log for detail.
+v1.7.3 is a maintenance release, which mainly fixes online block pruning and kvdb abnormal continuous growth, pls refer change log for detail.
 
 ### BUGFIX
+- [\#3653](https://github.com/bnb-chain/bsc/pull/3653) core/rawdb: fix freeze header-number shadowing for block prune
 - [\#3633](https://github.com/bnb-chain/bsc/pull/3633) core/rawdb: increase SlowFreezerBatchLimit from 100 to 200, fixing kvdb abnormal continuous growth
 - [\#3631](https://github.com/bnb-chain/bsc/pull/3631) core/vote: fix deadlock in votepool when stop client
 - [\#3627](https://github.com/bnb-chain/bsc/pull/3627) core/vm: fix super-instruction LT comparison after swap1
+- [\#3652](https://github.com/bnb-chain/bsc/pull/3652) consensus/parlia: fix big.Int pointer comparison in isIntentionalDelayMining
 
 ### FEATURE
 - [\#3624](https://github.com/bnb-chain/bsc/pull/3624) cmd/utils: disabled transaction unindexing for archive node by default; when running in archive mode, the `--history.transactions` flag is now respected to specify transaction history range instead of being forced to index all history
@@ -16,6 +18,7 @@ v1.7.3 is a maintenance release, which mainly fixes kvdb abnormal continuous gro
 - [\#3618](https://github.com/bnb-chain/bsc/pull/3618) [\#3629](https://github.com/bnb-chain/bsc/pull/3629) miner: async blob tx validation during bid simulation with worker pool
 - [\#3650](https://github.com/bnb-chain/bsc/pull/3650) miner: shrink greedy merge buffer
 - [\#3645](https://github.com/bnb-chain/bsc/pull/3645) core: use now for DA check instead of chasingHead.time
+- [\#3622](https://github.com/bnb-chain/bsc/pull/3622) core/vm: continue after super-instruction fallback
 
 ### Others
 - [\#3639](https://github.com/bnb-chain/bsc/pull/3639) go.mod: use go1.25.0 and update otel
