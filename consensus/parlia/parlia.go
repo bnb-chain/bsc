@@ -1585,22 +1585,22 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	header.UncleHash = types.EmptyUncleHash
 	var blk *types.Block
 	var rootHash common.Hash
-	if p.noExecution {
-		// NoExecution: skip expensive IntermediateRoot, use empty hash for root and receipts.
-		blk = types.NewBlock(header, body, nil, trie.NewStackTrie(nil))
-	} else {
-		wg := sync.WaitGroup{}
-		wg.Add(2)
-		go func() {
-			rootHash = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
-			wg.Done()
-		}()
-		go func() {
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+	go func() {
+		rootHash = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+		wg.Done()
+	}()
+	go func() {
+		if p.noExecution {
+			// NoExecution: skip receipt trie (normal txs have no receipts).
+			blk = types.NewBlock(header, body, nil, trie.NewStackTrie(nil))
+		} else {
 			blk = types.NewBlock(header, body, receipts, trie.NewStackTrie(nil))
-			wg.Done()
-		}()
-		wg.Wait()
-	}
+		}
+		wg.Done()
+	}()
+	wg.Wait()
 	blk.SetRoot(rootHash)
 	// Assemble and return the final block for sealing
 	return blk, receipts, nil
