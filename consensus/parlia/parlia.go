@@ -266,11 +266,8 @@ type Parlia struct {
 	stakeHubABI                abi.ABI
 
 	// The fields below are for testing only
-	fakeDiff    bool // Skip difficulty verifications
-	noExecution bool // Skip IntermediateRoot computation at FinalizeAndAssemble
+	fakeDiff bool // Skip difficulty verifications
 }
-
-func (p *Parlia) SetNoExecution(on bool) { p.noExecution = on }
 
 // New creates a Parlia consensus engine.
 func New(
@@ -1592,12 +1589,7 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 		wg.Done()
 	}()
 	go func() {
-		if p.noExecution {
-			// NoExecution: skip receipt trie (normal txs have no receipts).
-			blk = types.NewBlock(header, body, nil, trie.NewStackTrie(nil))
-		} else {
-			blk = types.NewBlock(header, body, receipts, trie.NewStackTrie(nil))
-		}
+		blk = types.NewBlock(header, body, receipts, trie.NewStackTrie(nil))
 		wg.Done()
 	}()
 	wg.Wait()

@@ -316,11 +316,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
-	if config.NoExecution {
-		if p, ok := eth.engine.(*parlia.Parlia); ok {
-			p.SetNoExecution(true)
-		}
-	}
 
 	bcVersion := rawdb.ReadDatabaseVersion(chainDb)
 	var dbVer = "<nil>"
