@@ -350,6 +350,14 @@ var PrecompiledContractsOsaka = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{eip7951: true},
 }
 
+var PrecompiledContractsPasteur = func() PrecompiledContracts {
+	precompiles := maps.Clone(PrecompiledContractsOsaka)
+	// Note: 0x66 (blsSignatureVerify) is a generic BLS verification primitive
+	// and does not require unique pubkeys. Uniqueness is enforced by callers.
+	precompiles[common.BytesToAddress([]byte{0x67})] = &cometBFTLightBlockValidatePasteur{}
+	return precompiles
+}()
+
 // PrecompiledContractsP256Verify contains the precompiled Ethereum
 // contract specified in EIP-7212. This is exported for testing purposes.
 var PrecompiledContractsP256Verify = PrecompiledContracts{
@@ -357,6 +365,7 @@ var PrecompiledContractsP256Verify = PrecompiledContracts{
 }
 
 var (
+	PrecompiledAddressesPasteur   []common.Address
 	PrecompiledAddressesOsaka     []common.Address
 	PrecompiledAddressesPrague    []common.Address
 	PrecompiledAddressesHaber     []common.Address
@@ -417,6 +426,9 @@ func init() {
 	for k := range PrecompiledContractsPrague {
 		PrecompiledAddressesPrague = append(PrecompiledAddressesPrague, k)
 	}
+	for k := range PrecompiledContractsPasteur {
+		PrecompiledAddressesPasteur = append(PrecompiledAddressesPasteur, k)
+	}
 	for k := range PrecompiledContractsOsaka {
 		PrecompiledAddressesOsaka = append(PrecompiledAddressesOsaka, k)
 	}
@@ -426,6 +438,8 @@ func activePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 	switch {
 	case rules.IsVerkle:
 		return PrecompiledContractsVerkle
+	case rules.IsPasteur:
+		return PrecompiledContractsPasteur
 	case rules.IsOsaka:
 		return PrecompiledContractsOsaka
 	case rules.IsPrague:
@@ -467,6 +481,8 @@ func ActivePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 // ActivePrecompiles returns the precompile addresses enabled with the current configuration.
 func ActivePrecompiles(rules params.Rules) []common.Address {
 	switch {
+	case rules.IsPasteur:
+		return PrecompiledAddressesPasteur
 	case rules.IsOsaka:
 		return PrecompiledAddressesOsaka
 	case rules.IsPrague:
@@ -1623,6 +1639,10 @@ func (c *blsSignatureVerify) RequiredGas(input []byte) uint64 {
 // Run input:
 // msg      | signature | [{bls pubkey}] |
 // 32 bytes | 96 bytes  | [{48 bytes}]   |
+//
+// Note: as a generic BLS signature verification primitive, this precompile
+// does not require public keys to be unique. Callers that need uniqueness
+// (e.g. validator set decoding) must enforce it themselves.
 func (c *blsSignatureVerify) Run(input []byte) ([]byte, error) {
 	msgAndSigLength := msgHashLength + signatureLength
 	inputLen := uint64(len(input))

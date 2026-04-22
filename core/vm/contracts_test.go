@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/params"
 )
 
 // precompiledTest defines the input/output pairs for precompiled contract tests.
@@ -352,6 +353,25 @@ func TestPrecompiledBLS12381MapG1(t *testing.T)      { testJson("blsMapG1", "f0f
 func TestPrecompiledBLS12381MapG2(t *testing.T)      { testJson("blsMapG2", "f10", t) }
 
 func TestPrecompiledBlsSignatureVerify(t *testing.T) { testJson("blsSignatureVerify", "66", t) }
+
+func TestActivePrecompiledContractsUsesPasteurVariants(t *testing.T) {
+	rules := params.Rules{IsOsaka: true, IsMendel: true, IsPasteur: true}
+	precompiles := ActivePrecompiledContracts(rules)
+
+	requirePrecompile := func(addr byte) PrecompiledContract {
+		t.Helper()
+
+		precompile, ok := precompiles[common.BytesToAddress([]byte{addr})]
+		if !ok {
+			t.Fatalf("missing precompile 0x%02x", addr)
+		}
+		return precompile
+	}
+
+	if got := requirePrecompile(0x67).Name(); got != "COMET_BFT_LIGHT_BLOCK_VALIDATE_PASTEUR" {
+		t.Fatalf("unexpected Pasteur 0x67 precompile: %s", got)
+	}
+}
 
 func TestPrecompiledPointEvaluation(t *testing.T) { testJson("pointEvaluation", "0a", t) }
 

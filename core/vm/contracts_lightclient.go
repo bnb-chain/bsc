@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/cometbft/cometbft/types"
 	"github.com/cosmos/iavl"
 	"github.com/tendermint/tendermint/crypto/merkle"
 	"github.com/tendermint/tendermint/crypto/secp256k1"
@@ -391,14 +392,18 @@ func (c *cometBFTLightBlockValidate) RequiredGas(input []byte) uint64 {
 	return params.CometBFTLightBlockValidateGas
 }
 
-func (c *cometBFTLightBlockValidate) run(input []byte, isHertz bool) (result []byte, err error) {
+func (c *cometBFTLightBlockValidate) run(input []byte, isHertz bool, requireUniqueValidators bool) (result []byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("internal error: %v\n", r)
 		}
 	}()
 
-	cs, block, err := v2.DecodeLightBlockValidationInput(input)
+	var (
+		cs    *v2.ConsensusState
+		block *types.LightBlock
+	)
+	cs, block, err = v2.DecodeLightBlockValidationInput(input, requireUniqueValidators)
 	if err != nil {
 		return nil, err
 	}
@@ -418,7 +423,7 @@ func (c *cometBFTLightBlockValidate) run(input []byte, isHertz bool) (result []b
 }
 
 func (c *cometBFTLightBlockValidate) Run(input []byte) (result []byte, err error) {
-	return c.run(input, false)
+	return c.run(input, false, false)
 }
 
 func (c *cometBFTLightBlockValidate) Name() string {
@@ -430,11 +435,23 @@ type cometBFTLightBlockValidateHertz struct {
 }
 
 func (c *cometBFTLightBlockValidateHertz) Run(input []byte) (result []byte, err error) {
-	return c.run(input, true)
+	return c.run(input, true, false)
 }
 
 func (c *cometBFTLightBlockValidateHertz) Name() string {
 	return "COMET_BFT_LIGHT_BLOCK_VALIDATE_HERTZ"
+}
+
+type cometBFTLightBlockValidatePasteur struct {
+	cometBFTLightBlockValidate
+}
+
+func (c *cometBFTLightBlockValidatePasteur) Run(input []byte) (result []byte, err error) {
+	return c.run(input, true, true)
+}
+
+func (c *cometBFTLightBlockValidatePasteur) Name() string {
+	return "COMET_BFT_LIGHT_BLOCK_VALIDATE_PASTEUR"
 }
 
 // secp256k1SignatureRecover implemented as a native contract.
