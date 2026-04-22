@@ -168,38 +168,6 @@ func (f *chainFreezer) readHeadNumber(db ethdb.KeyValueReader) uint64 {
 	return number
 }
 
-// readFinalizedNumber returns the number of finalized block. 0 is returned
-// if the block is unknown or not available yet.
-func (f *chainFreezer) readFinalizedNumber(db ethdb.KeyValueReader) uint64 {
-	hash := ReadFinalizedBlockHash(db)
-	if hash == (common.Hash{}) {
-		return 0
-	}
-	number, ok := ReadHeaderNumber(db, hash)
-	if !ok {
-		log.Error("Number of finalized block is missing")
-		return 0
-	}
-	return number
-}
-
-// freezeThreshold returns the threshold for chain freezing. It's determined
-// by formula: max(finality, HEAD-params.FullImmutabilityThreshold).
-func (f *chainFreezer) freezeThreshold(db ethdb.KeyValueReader) (uint64, error) {
-	var (
-		head      = f.readHeadNumber(db)
-		final     = f.readFinalizedNumber(db)
-		headLimit uint64
-	)
-	if head > params.FullImmutabilityThreshold {
-		headLimit = head - params.FullImmutabilityThreshold
-	}
-	if final == 0 && headLimit == 0 {
-		return 0, errors.New("freezing threshold is not available")
-	}
-	return max(final, headLimit), nil
-}
-
 // freeze is a background thread that periodically checks the blockchain for any
 // import progress and moves ancient data from the fast database into the freezer.
 //
@@ -238,104 +206,42 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 			}
 		}
 
-		var (
-			frozen    uint64
-			threshold uint64
-			first     uint64 // the first block to freeze
-			last      uint64 // the last block to freeze
-
-			hash   common.Hash
-			number uint64
-			head   *types.Header
-			err    error
-		)
-
 		// BSC does not use the finalized block as the freeze indicator, for two reasons:
 		//   1. To retain double-signed blocks in recent days.
 		//   2. In pruneancient mode, frozen blocks are pruned away, which may result in too few
 		//      blocks being retained. If the node is forcefully killed, it may fail to repair
 		//      itself during restart.
-		useFinalizedForFreeze := false
-		if useFinalizedForFreeze {
-			threshold, err = f.freezeThreshold(nfdb)
-			if err != nil {
-				backoff = true
-				log.Debug("Current full block not old enough to freeze", "err", err)
-				continue
-			}
-			frozen, _ := f.Ancients() // no error will occur, safe to ignore
+		// Retrieve the freezing threshold.
+		hash := ReadHeadBlockHash(nfdb)
+		if hash == (common.Hash{}) {
+			log.Debug("Current full block hash unavailable") // new chain, empty database
+			backoff = true
+			continue
+		}
+		threshold := f.threshold.Load()
+		frozen, _ := f.Ancients() // no error will occur, safe to ignore
+		number, ok := ReadHeaderNumber(nfdb, hash)
+		switch {
+		case !ok:
+			log.Error("Current full block number unavailable", "hash", hash)
+			backoff = true
+			continue
 
-			// Short circuit if the blocks below threshold are already frozen.
-			if frozen != 0 && frozen-1 >= threshold {
-				backoff = true
-				log.Debug("Ancient blocks frozen already", "threshold", threshold, "frozen", frozen)
-				continue
-			}
+		case number < threshold:
+			log.Debug("Current full block not old enough to freeze", "number", number, "hash", hash, "delay", threshold)
+			backoff = true
+			continue
 
-			hash = ReadHeadBlockHash(nfdb)
-			if hash == (common.Hash{}) {
-				log.Debug("Current full block hash unavailable") // new chain, empty database
-				backoff = true
-				continue
-			}
-			number, ok := ReadHeaderNumber(nfdb, hash)
-			if !ok {
-				log.Error("Current full block number unavailable", "hash", hash)
-				backoff = true
-				continue
-			}
-			head = ReadHeader(nfdb, hash, number)
-			if head == nil {
-				log.Error("Current full block unavailable", "number", number, "hash", hash)
-				backoff = true
-				continue
-			}
-			trySlowdownFreeze(head)
-
-			first = frozen
-			last = threshold
-			if last-first+1 > freezerBatchLimit {
-				last = freezerBatchLimit + first - 1
-			}
-		} else {
-			// Retrieve the freezing threshold.
-			hash = ReadHeadBlockHash(nfdb)
-			if hash == (common.Hash{}) {
-				log.Debug("Current full block hash unavailable") // new chain, empty database
-				backoff = true
-				continue
-			}
-			number, ok := ReadHeaderNumber(nfdb, hash)
-			threshold = f.threshold.Load()
-			frozen, _ := f.Ancients() // no error will occur, safe to ignore
-			switch {
-			case !ok:
-				log.Error("Current full block number unavailable", "hash", hash)
-				backoff = true
-				continue
-
-			case number < threshold:
-				log.Debug("Current full block not old enough to freeze", "number", number, "hash", hash, "delay", threshold)
-				backoff = true
-				continue
-
-			case number-threshold <= frozen:
-				log.Debug("Ancient blocks frozen already", "number", number, "hash", hash, "frozen", frozen)
-				backoff = true
-				continue
-			}
-			head = ReadHeader(nfdb, hash, number)
-			if head == nil {
-				log.Error("Current full block unavailable", "number", number, "hash", hash)
-				backoff = true
-				continue
-			}
-			trySlowdownFreeze(head)
-			first, _ = f.Ancients()
-			last = number - threshold
-			if last-first > freezerBatchLimit {
-				last = first + freezerBatchLimit
-			}
+		case number-threshold <= frozen:
+			log.Debug("Ancient blocks frozen already", "number", number, "hash", hash, "frozen", frozen)
+			backoff = true
+			continue
+		}
+		head := ReadHeader(nfdb, hash, number)
+		if head == nil {
+			log.Error("Current full block unavailable", "number", number, "hash", hash)
+			backoff = true
+			continue
 		}
 
 		// check env first before chain freeze, it must wait when the env is necessary
@@ -349,11 +255,17 @@ func (f *chainFreezer) freeze(db ethdb.KeyValueStore, continueFreeze bool) {
 			continue
 		}
 
+		trySlowdownFreeze(head)
+
 		// Seems we have data ready to be frozen, process in usable batches
 		var (
 			start = time.Now()
+			first = frozen
+			last  = number - threshold
 		)
-
+		if last-first+1 > freezerBatchLimit {
+			last = freezerBatchLimit + first - 1
+		}
 		ancients, err := f.freezeRangeWithBlobs(nfdb, first, last)
 		if err != nil {
 			log.Error("Error in block freeze operation", "err", err)
