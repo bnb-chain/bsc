@@ -266,8 +266,11 @@ type Parlia struct {
 	stakeHubABI                abi.ABI
 
 	// The fields below are for testing only
-	fakeDiff bool // Skip difficulty verifications
+	fakeDiff    bool // Skip difficulty verifications
+	noExecution bool // Skip IntermediateRoot computation at FinalizeAndAssemble
 }
+
+func (p *Parlia) SetNoExecution(on bool) { p.noExecution = on }
 
 // New creates a Parlia consensus engine.
 func New(
@@ -1582,17 +1585,22 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	header.UncleHash = types.EmptyUncleHash
 	var blk *types.Block
 	var rootHash common.Hash
-	wg := sync.WaitGroup{}
-	wg.Add(2)
-	go func() {
-		rootHash = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
-		wg.Done()
-	}()
-	go func() {
-		blk = types.NewBlock(header, body, receipts, trie.NewStackTrie(nil))
-		wg.Done()
-	}()
-	wg.Wait()
+	if p.noExecution {
+		// NoExecution: skip expensive IntermediateRoot, use empty hash for root and receipts.
+		blk = types.NewBlock(header, body, nil, trie.NewStackTrie(nil))
+	} else {
+		wg := sync.WaitGroup{}
+		wg.Add(2)
+		go func() {
+			rootHash = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+			wg.Done()
+		}()
+		go func() {
+			blk = types.NewBlock(header, body, receipts, trie.NewStackTrie(nil))
+			wg.Done()
+		}()
+		wg.Wait()
+	}
 	blk.SetRoot(rootHash)
 	// Assemble and return the final block for sealing
 	return blk, receipts, nil

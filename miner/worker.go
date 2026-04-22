@@ -38,7 +38,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/stateless"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
-	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -47,7 +46,6 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/trie"
 )
 
 const (
@@ -744,45 +742,25 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, 
 
 // applyTransaction runs the transaction. If execution fails, state and gas pool are reverted.
 func (w *worker) applyTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, error) {
-	// NoExecution mode: run tx pre-checks (nonce, balance, signature) but skip EVM execution.
-	// Gas is not deducted from balance, but nonce is incremented to maintain ordering.
+	// NoExecution mode: validate tx (signature) but skip EVM execution.
+	// No nonce update, no balance deduction. System txs still go through FinalizeAndAssemble.
 	if w.chain.NoExecution() {
-		signer := env.signer
-		from, err := types.Sender(signer, tx)
-		if err != nil {
+		if _, err := types.Sender(env.signer, tx); err != nil {
 			return nil, err
 		}
-		// Nonce check
-		stNonce := env.state.GetNonce(from)
-		if txNonce := tx.Nonce(); stNonce != txNonce {
-			if stNonce > txNonce {
-				return nil, core.ErrNonceTooLow
-			}
-			return nil, core.ErrNonceTooHigh
-		}
-		// Balance check: sender must have enough to cover gas cost + value
-		mgval := new(big.Int).Mul(new(big.Int).SetUint64(tx.Gas()), tx.GasPrice())
-		totalCost := new(big.Int).Add(mgval, tx.Value())
-		if have := env.state.GetBalance(from); have.ToBig().Cmp(totalCost) < 0 {
-			return nil, core.ErrInsufficientFunds
-		}
-		// Gas pool check
 		gasUsed := tx.Gas()
 		if err := env.gasPool.SubGas(gasUsed); err != nil {
 			return nil, err
 		}
 		env.header.GasUsed += gasUsed
-		// Increment nonce so next tx from same sender works
-		env.state.SetNonce(from, stNonce+1, tracing.NonceChangeEoACall)
-		receipt := &types.Receipt{
+		return &types.Receipt{
 			Type:              tx.Type(),
 			Status:            types.ReceiptStatusSuccessful,
 			CumulativeGasUsed: env.header.GasUsed,
 			TxHash:            tx.Hash(),
 			GasUsed:           gasUsed,
 			BlockNumber:       env.header.Number,
-		}
-		return receipt, nil
+		}, nil
 	}
 
 	var (
@@ -806,7 +784,7 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 	)
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
-		if p, ok := w.engine.(*parlia.Parlia); ok && !w.chain.NoExecution() {
+		if p, ok := w.engine.(*parlia.Parlia); ok {
 			gasReserved := p.EstimateGasReservedForSystemTxs(w.chain, env.header)
 			env.gasPool.SubGas(gasReserved)
 			log.Debug("commitTransactions", "number", env.header.Number.Uint64(), "time", env.header.Time, "EstimateGasReservedForSystemTxs", gasReserved)
@@ -1529,41 +1507,23 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		if interval != nil {
 			interval()
 		}
-		var block *types.Block
-		var receipts []*types.Receipt
-
-		// NoExecution mode: skip FinalizeAndAssemble (system txs + state root),
-		// build block directly with zero state root.
-		if w.chain.NoExecution() {
-			env.committed = true
-			header := types.CopyHeader(env.header)
-			header.Root = common.Hash{} // zero hash
-			header.UncleHash = types.EmptyUncleHash
-			body := types.Body{Transactions: env.txs}
-			if header.EmptyWithdrawalsHash() {
-				body.Withdrawals = make([]*types.Withdrawal, 0)
-			}
-			block = types.NewBlock(header, &body, env.receipts, trie.NewStackTrie(nil))
-			receipts = env.receipts
-		} else {
-			fees := env.state.GetBalance(consensus.SystemAddress).ToBig()
-			_ = new(big.Float).Quo(new(big.Float).SetInt(fees), big.NewFloat(params.Ether))
-			// Withdrawals are set to nil here, because this is only called in PoW.
-			finalizeStart := time.Now()
-			body := types.Body{Transactions: env.txs}
-			if env.header.EmptyWithdrawalsHash() {
-				body.Withdrawals = make([]*types.Withdrawal, 0)
-			}
-			var err error
-			block, receipts, err = w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(env.header), env.state, &body, env.receipts, nil)
-			env.committed = true
-			if err != nil {
-				return err
-			}
-			env.txs = body.Transactions
-			env.receipts = receipts
-			finalizeBlockTimer.UpdateSince(finalizeStart)
+		fees := env.state.GetBalance(consensus.SystemAddress).ToBig()
+		feesInEther := new(big.Float).Quo(new(big.Float).SetInt(fees), big.NewFloat(params.Ether))
+		// Withdrawals are set to nil here, because this is only called in PoW.
+		finalizeStart := time.Now()
+		body := types.Body{Transactions: env.txs}
+		if env.header.EmptyWithdrawalsHash() {
+			body.Withdrawals = make([]*types.Withdrawal, 0)
 		}
+		block, receipts, err := w.engine.FinalizeAndAssemble(w.chain, types.CopyHeader(env.header), env.state, &body, env.receipts, nil)
+		env.committed = true
+		if err != nil {
+			return err
+		}
+		env.txs = body.Transactions
+		env.receipts = receipts
+		finalizeBlockTimer.UpdateSince(finalizeStart)
+		_ = feesInEther
 
 		// If Cancun enabled, sidecars can't be nil then.
 		if w.chainConfig.IsCancun(env.header.Number, env.header.Time) && env.sidecars == nil {
@@ -1574,7 +1534,7 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		select {
 		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
 			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
-				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "elapsed", common.PrettyDuration(time.Since(start)))
+				"txs", len(env.txs), "blobs", env.blobs, "gas", block.GasUsed(), "fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
 
 		case <-w.exitCh:
 			log.Info("Worker has exited")

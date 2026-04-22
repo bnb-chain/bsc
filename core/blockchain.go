@@ -2525,32 +2525,6 @@ func (bc *BlockChain) ProcessBlock(parentRoot common.Hash, block *types.Block, s
 	)
 	defer interrupt.Store(true) // terminate the prefetch at the end
 
-	// NoExecution mode: skip EVM execution and state root computation entirely.
-	// Only persist block data for benchmarking tx ordering performance.
-	if bc.cfg.NoExecution {
-		log.Debug("NoExecution mode: skipping EVM execution", "number", block.NumberU64(), "hash", block.Hash())
-		ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
-		if ptd == nil {
-			return nil, consensus.ErrUnknownAncestor
-		}
-		externTd := new(big.Int).Add(block.Difficulty(), ptd)
-		if err := bc.writeBlockWithoutState(block, externTd); err != nil {
-			return nil, err
-		}
-		var status WriteStatus
-		if setHead {
-			bc.writeHeadBlock(block)
-			status = CanonStatTy
-		} else {
-			status = SideStatTy
-		}
-		return &blockProcessingResult{
-			usedGas:  block.GasUsed(),
-			procTime: time.Since(startTime),
-			status:   status,
-		}, nil
-	}
-
 	needBadSharedStorage := bc.chainConfig.NeedBadSharedStorage(block.Number())
 	needPrefetch := needBadSharedStorage || (!bc.cfg.NoPrefetch && len(block.Transactions()) >= prefetchTxNumber) || block.BAL() != nil
 	if !needPrefetch {

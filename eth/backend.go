@@ -316,6 +316,11 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err != nil {
 		return nil, err
 	}
+	if config.NoExecution {
+		if p, ok := eth.engine.(*parlia.Parlia); ok {
+			p.SetNoExecution(true)
+		}
+	}
 
 	bcVersion := rawdb.ReadDatabaseVersion(chainDb)
 	var dbVer = "<nil>"
@@ -372,6 +377,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				EnableWitnessStats:        config.EnableWitnessStats,
 				StatelessSelfValidation:   config.StatelessSelfValidation,
 				EnableOpcodeOptimizations: config.EnableOpcodeOptimizing,
+				NoExecution:              config.NoExecution,
 			},
 			// Enables file journaling for the trie database. The journal files will be stored
 			// within the data directory. The corresponding paths will be either:

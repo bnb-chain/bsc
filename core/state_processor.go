@@ -138,6 +138,12 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 			}
 		}
 
+		// NoExecution mode: skip normal tx EVM execution, only validate.
+		if cfg.NoExecution {
+			commonTxs = append(commonTxs, tx)
+			continue
+		}
+
 		msg, err := TransactionToMessage(tx, signer, header.BaseFee)
 		if err != nil {
 			bloomProcessors.Close()

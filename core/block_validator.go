@@ -149,6 +149,13 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 		return errors.New("nil ProcessResult value")
 	}
 	header := block.Header()
+
+	// NoExecution mode: skip gas, bloom, receipt root, and state root validation.
+	// Normal txs were not executed, so these fields use empty/zero values.
+	if v.bc.NoExecution() {
+		return nil
+	}
+
 	if block.GasUsed() != res.GasUsed {
 		return fmt.Errorf("invalid gas used (remote: %d local: %d)", block.GasUsed(), res.GasUsed)
 	}
