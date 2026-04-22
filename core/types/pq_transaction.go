@@ -23,6 +23,18 @@ type PQTxData struct {
 	PQSignature []byte
 }
 
+// PQFrom returns the embedded sender address and true if tx is a PQ
+// transaction. Unlike Sender(), this does NOT verify the signature.
+// Use only when the signature will be verified separately (e.g. during
+// block state processing after the block has already been seal-verified).
+func PQFrom(tx *Transaction) (common.Address, bool) {
+	pqtx, ok := tx.inner.(*PQTxData)
+	if !ok {
+		return common.Address{}, false
+	}
+	return pqtx.From, true
+}
+
 func (tx *PQTxData) copy() TxData {
 	cpy := &PQTxData{
 		Nonce:       tx.Nonce,
