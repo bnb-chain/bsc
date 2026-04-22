@@ -85,6 +85,16 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	if lastBlock == nil {
 		return nil, errors.New("could not get parent block")
 	}
+
+	// For PQ-fork blocks, override the registry backend to fall back to stateDB
+	// so that any registered address (not just warmed validators) can be looked up
+	// during tx sender recovery. The override is scoped to this Process call.
+	if config.IsPQFork(blockNumber, header.Time) {
+		restore := types.SetPQRegistryBackend(func(addr common.Address) []byte {
+			return vm.PQRegistryLookupWithState(addr, statedb)
+		})
+		defer restore()
+	}
 	// Handle upgrade built-in system contract code
 	systemcontracts.TryUpdateBuildInSystemContract(p.chain.Config(), blockNumber, lastBlock.Time, block.Time(), statedb, true)
 

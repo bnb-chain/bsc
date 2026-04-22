@@ -2107,6 +2107,34 @@ func PQRegistryLookup(addr common.Address) []byte {
 	return nil
 }
 
+// PQRegistryLookupWithState returns the registered ML-DSA-44 public key for
+// addr, first checking the process-level cache and falling back to reading the
+// 0x70 registry storage slots from stateDB. Results are written into the cache
+// so subsequent lookups are fast. Use this during block processing where an
+// arbitrary registered address may appear as a PQ tx sender.
+func PQRegistryLookupWithState(addr common.Address, stateDB StateDB) []byte {
+	if cached, ok := pqRegistryCache.Load(addr); ok {
+		return common.CopyBytes(cached.([]byte))
+	}
+	if stateDB == nil {
+		return nil
+	}
+	pubKey := make([]byte, pqPubKeySize)
+	allZero := true
+	for i := 0; i < pqSlotsPerKey; i++ {
+		chunk := stateDB.GetState(pqRegistryAddress, pqRegistrySlot(addr, i))
+		if chunk != (common.Hash{}) {
+			allZero = false
+		}
+		copy(pubKey[i*common.HashLength:], chunk[:])
+	}
+	if allZero {
+		return nil
+	}
+	pqRegistryCache.Store(addr, pubKey)
+	return common.CopyBytes(pubKey)
+}
+
 // WarmPQRegistryCache reads the 0x70 registry storage for each validator
 // address via the provided stateDB and pre-populates pqRegistryCache.
 // Call this once at startup after the blockchain is initialized, before
