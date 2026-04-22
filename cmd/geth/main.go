@@ -134,6 +134,7 @@ var (
 		utils.CacheGCFlag,
 		utils.CacheSnapshotFlag,
 		// utils.CacheNoPrefetchFlag,
+		utils.NoExecutionFlag,
 		utils.CachePreimagesFlag,
 		// utils.MultiDataBaseFlag,
 		utils.PruneAncientDataFlag, // deprecated

@@ -345,6 +345,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		options = &core.BlockChainConfig{
 			TrieCleanLimit:        config.TrieCleanCache,
 			NoPrefetch:            config.NoPrefetch,
+			NoExecution:           config.NoExecution,
 			EnableBAL:             config.EnableBAL,
 			TrieDirtyLimit:        config.TrieDirtyCache,
 			ArchiveMode:           config.NoPruning,

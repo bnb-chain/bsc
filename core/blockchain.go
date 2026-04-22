@@ -218,7 +218,8 @@ type BlockChainConfig struct {
 	ChainHistoryMode history.HistoryMode
 
 	// Misc options
-	NoPrefetch bool            // Whether to disable heuristic state prefetching when processing blocks
+	NoPrefetch  bool            // Whether to disable heuristic state prefetching when processing blocks
+	NoExecution bool            // Skip EVM execution and state root computation (benchmark mode)
 	Overrides  *ChainOverrides // Optional chain config overrides
 	VmConfig   vm.Config       // Config options for the EVM Interpreter
 
@@ -684,6 +685,10 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 
 func (bc *BlockChain) NoTries() bool {
 	return bc.statedb.NoTries()
+}
+
+func (bc *BlockChain) NoExecution() bool {
+	return bc.cfg.NoExecution
 }
 
 func (bc *BlockChain) cacheReceipts(hash common.Hash, receipts types.Receipts, block *types.Block) {
@@ -2519,6 +2524,32 @@ func (bc *BlockChain) ProcessBlock(parentRoot common.Hash, block *types.Block, s
 		interrupt atomic.Bool
 	)
 	defer interrupt.Store(true) // terminate the prefetch at the end
+
+	// NoExecution mode: skip EVM execution and state root computation entirely.
+	// Only persist block data for benchmarking tx ordering performance.
+	if bc.cfg.NoExecution {
+		log.Debug("NoExecution mode: skipping EVM execution", "number", block.NumberU64(), "hash", block.Hash())
+		ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
+		if ptd == nil {
+			return nil, consensus.ErrUnknownAncestor
+		}
+		externTd := new(big.Int).Add(block.Difficulty(), ptd)
+		if err := bc.writeBlockWithoutState(block, externTd); err != nil {
+			return nil, err
+		}
+		var status WriteStatus
+		if setHead {
+			bc.writeHeadBlock(block)
+			status = CanonStatTy
+		} else {
+			status = SideStatTy
+		}
+		return &blockProcessingResult{
+			usedGas:  block.GasUsed(),
+			procTime: time.Since(startTime),
+			status:   status,
+		}, nil
+	}
 
 	needBadSharedStorage := bc.chainConfig.NeedBadSharedStorage(block.Number())
 	needPrefetch := needBadSharedStorage || (!bc.cfg.NoPrefetch && len(block.Transactions()) >= prefetchTxNumber) || block.BAL() != nil

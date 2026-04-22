@@ -115,7 +115,8 @@ type Config struct {
 
 	// State options.
 	NoPruning  bool // Whether to disable pruning and flush everything to disk
-	NoPrefetch bool // Whether to disable prefetching and only load state on demand
+	NoPrefetch  bool // Whether to disable prefetching and only load state on demand
+	NoExecution bool // Skip EVM execution and state root computation (benchmark mode)
 
 	EnableBAL           bool
 	DirectBroadcast     bool

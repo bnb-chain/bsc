@@ -644,6 +644,11 @@ var (
 		Usage:    "Disable heuristic state prefetch during block import (less CPU and disk IO, more time waiting for data)",
 		Category: flags.PerfCategory,
 	}
+	NoExecutionFlag = &cli.BoolFlag{
+		Name:     "noexecution",
+		Usage:    "Skip EVM execution and state root computation during mining and syncing (benchmark tx ordering only)",
+		Category: flags.PerfCategory,
+	}
 	CachePreimagesFlag = &cli.BoolFlag{
 		Name:     "cache.preimages",
 		Usage:    "Enable recording the SHA3/keccak preimages of trie keys",
@@ -2171,6 +2176,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(CacheNoPrefetchFlag.Name) {
 		cfg.NoPrefetch = ctx.Bool(CacheNoPrefetchFlag.Name)
 	}
+	if ctx.IsSet(NoExecutionFlag.Name) {
+		cfg.NoExecution = ctx.Bool(NoExecutionFlag.Name)
+	}
 	if ctx.IsSet(EnableBALFlag.Name) {
 		cfg.EnableBAL = ctx.Bool(EnableBALFlag.Name)
 	}
@@ -2898,6 +2906,7 @@ func MakeChain(ctx *cli.Context, stack *node.Node, readonly bool) (*core.BlockCh
 	options := &core.BlockChainConfig{
 		TrieCleanLimit: ethconfig.Defaults.TrieCleanCache,
 		NoPrefetch:     ctx.Bool(CacheNoPrefetchFlag.Name),
+		NoExecution:    ctx.Bool(NoExecutionFlag.Name),
 		EnableBAL:      ctx.Bool(EnableBALFlag.Name),
 		TrieDirtyLimit: ethconfig.Defaults.TrieDirtyCache,
 		ArchiveMode:    ctx.String(GCModeFlag.Name) == "archive",

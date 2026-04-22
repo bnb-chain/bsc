@@ -30,6 +30,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		BscDiscoveryURLs          []string
 		NoPruning                 bool
 		NoPrefetch                bool
+		NoExecution               bool
 		EnableBAL                 bool
 		DirectBroadcast           bool
 		DisableSnapProtocol       bool
@@ -108,6 +109,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.BscDiscoveryURLs = c.BscDiscoveryURLs
 	enc.NoPruning = c.NoPruning
 	enc.NoPrefetch = c.NoPrefetch
+	enc.NoExecution = c.NoExecution
 	enc.EnableBAL = c.EnableBAL
 	enc.DirectBroadcast = c.DirectBroadcast
 	enc.DisableSnapProtocol = c.DisableSnapProtocol
@@ -190,6 +192,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		BscDiscoveryURLs          []string
 		NoPruning                 *bool
 		NoPrefetch                *bool
+		NoExecution               *bool
 		EnableBAL                 *bool
 		DirectBroadcast           *bool
 		DisableSnapProtocol       *bool
@@ -294,6 +297,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.NoPrefetch != nil {
 		c.NoPrefetch = *dec.NoPrefetch
+	}
+	if dec.NoExecution != nil {
+		c.NoExecution = *dec.NoExecution
 	}
 	if dec.EnableBAL != nil {
 		c.EnableBAL = *dec.EnableBAL
