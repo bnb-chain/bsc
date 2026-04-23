@@ -750,6 +750,7 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction, recei
 		if err != nil {
 			return nil, err
 		}
+		log.Debug("NoExecution: skip tx execution", "hash", tx.Hash(), "from", from, "nonce", tx.Nonce())
 		// Nonce check
 		stNonce := env.state.GetNonce(from)
 		if txNonce := tx.Nonce(); stNonce != txNonce {

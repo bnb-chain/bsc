@@ -141,6 +141,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		// NoExecution mode: validate nonce and increment, but skip EVM execution.
 		if cfg.NoExecution {
 			from, _ := types.Sender(signer, tx)
+			log.Debug("NoExecution: skip tx execution in sync", "block", blockNumber, "txIdx", i, "hash", tx.Hash(), "from", from, "nonce", tx.Nonce())
 			stNonce := statedb.GetNonce(from)
 			if txNonce := tx.Nonce(); stNonce != txNonce {
 				bloomProcessors.Close()
