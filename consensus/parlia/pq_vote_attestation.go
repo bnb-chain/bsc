@@ -9,6 +9,7 @@ import (
 	cmath "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
@@ -229,13 +230,22 @@ func (p *Parlia) pqVerifyVoteAttestation(chain consensus.ChainHeaderReader, head
 	}
 
 	// Collect voted validator public keys for committee root verification.
+	// Back-fill PQVoteAddress from the process-level cache when the snapshot was
+	// loaded from DB before WarmPQRegistryCache had run (PQVoteAddress == zero).
+	// Writing through the pointer also updates the LRU-cached Snapshot in place.
 	votedPubkeys := make([][]byte, 0, validatorsBitSet.Count())
 	votedCount := 0
 	for index, val := range validators {
 		if !validatorsBitSet.Test(uint(index)) {
 			continue
 		}
-		votedPubkeys = append(votedPubkeys, snap.Validators[val].PQVoteAddress[:])
+		valInfo := snap.Validators[val]
+		if valInfo.PQVoteAddress == (types.PQPublicKey{}) {
+			if pubKey := vm.PQRegistryLookup(val); len(pubKey) == types.PQPublicKeyLength {
+				copy(valInfo.PQVoteAddress[:], pubKey)
+			}
+		}
+		votedPubkeys = append(votedPubkeys, valInfo.PQVoteAddress[:])
 		votedCount++
 	}
 

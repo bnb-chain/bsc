@@ -1661,6 +1661,35 @@ func (p *Parlia) IsActivePQValidatorAt(chain consensus.ChainHeaderReader, header
 	return checkPQKeyFn == nil || checkPQKeyFn(&validatorInfo.PQVoteAddress)
 }
 
+// CurrentValidators returns the validator addresses in the snapshot at the
+// current chain head.  Unlike ExtractValidatorAddresses it does not require
+// the head to be an epoch block, so it is safe to call after any restart.
+func (p *Parlia) CurrentValidators(chain consensus.ChainHeaderReader) []common.Address {
+	head := chain.CurrentHeader()
+	if head == nil {
+		return nil
+	}
+	var number uint64
+	var hash common.Hash
+	if head.Number.Sign() == 0 {
+		number = 0
+		hash = head.Hash()
+	} else {
+		number = head.Number.Uint64() - 1
+		hash = head.ParentHash
+	}
+	snap, err := p.snapshot(chain, number, hash, nil)
+	if err != nil {
+		log.Error("CurrentValidators: failed to get snapshot", "err", err)
+		return nil
+	}
+	addrs := make([]common.Address, 0, len(snap.Validators))
+	for addr := range snap.Validators {
+		addrs = append(addrs, addr)
+	}
+	return addrs
+}
+
 // VerifyVote will verify: 1. If the vote comes from valid validators 2. If the vote's sourceNumber and sourceHash are correct
 func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) error {
 	targetNumber := vote.Data.TargetNumber

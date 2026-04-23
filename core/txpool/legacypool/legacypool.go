@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -603,6 +604,23 @@ func (pool *LegacyPool) Pending(filter txpool.PendingFilter) map[common.Address]
 // This check is meant as an early check which only needs to be performed once,
 // and does not require the pool mutex to be held.
 func (pool *LegacyPool) ValidateTxBasics(tx *types.Transaction) error {
+	// For PQ transactions the sender's pubkey must be in the process-level cache
+	// before PQSigner.Sender can verify the signature.  On a fresh start the cache
+	// is only pre-warmed for validators; a regular sender whose key is stored in
+	// the 0x70 registry on-chain won't be in the cache yet.  Fill it on-demand.
+	// Each call creates its own StateDB snapshot via StateAt so that concurrent
+	// invocations of ValidateTxBasics never share a StateDB — pool.currentState
+	// is not goroutine-safe for concurrent reads.  The write target is
+	// pqRegistryCache (sync.Map), which is safe for concurrent stores.
+	if tx.Type() == types.PQTxType {
+		if from, ok := types.PQFrom(tx); ok && len(vm.PQRegistryLookup(from)) == 0 {
+			if head := pool.currentHead.Load(); head != nil {
+				if statedb, err := pool.chain.StateAt(head.Root); err == nil {
+					vm.PQRegistryLookupWithState(from, statedb)
+				}
+			}
+		}
+	}
 	sender, err := types.Sender(pool.signer, tx)
 	if err != nil {
 		return err

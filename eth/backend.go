@@ -419,13 +419,11 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 	// Warm the PQ key registry cache from on-chain state so that
 	// PQRegistryLookup works immediately for snapshot PQVoteAddress resolution.
-	// Scans the current head's extra data for validator addresses — works
-	// regardless of whether pubkeys were pre-populated in genesis or registered
-	// via tx later.
-	if stateDB, stateErr := eth.blockchain.State(); stateErr == nil {
-		curHeader := eth.blockchain.CurrentHeader()
-		if curHeader != nil {
-			addrs := parlia.ExtractValidatorAddresses(curHeader)
+	// Use the Parlia snapshot as the authoritative validator source: it is always
+	// current regardless of whether the head is an epoch block.
+	if parliaEngine, ok := eth.engine.(*parlia.Parlia); ok {
+		if stateDB, stateErr := eth.blockchain.State(); stateErr == nil {
+			addrs := parliaEngine.CurrentValidators(eth.blockchain)
 			if n := vm.WarmPQRegistryCache(stateDB, addrs); n > 0 {
 				log.Info("Warmed PQ registry cache from state", "validators", n)
 			}

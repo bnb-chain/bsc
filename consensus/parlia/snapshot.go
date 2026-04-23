@@ -142,7 +142,28 @@ func loadSnapshot(config *params.ParliaConfig, sigCache *lru.Cache[common.Hash, 
 	snap.sigCache = sigCache
 	snap.ethAPI = ethAPI
 
+	// Back-fill PQVoteAddress for any validator whose entry is still zero.
+	// This happens when the snapshot was stored to DB before WarmPQRegistryCache
+	// had run (e.g. genesis snapshot on first startup).  The cache is warm by the
+	// time loadSnapshot is called on subsequent restarts, so this is a no-op once
+	// the pubkeys are in the cache.
+	snap.backfillPQVoteAddresses()
+
 	return snap, nil
+}
+
+// backfillPQVoteAddresses populates PQVoteAddress for every validator whose
+// field is still the zero value, using the process-level pqRegistryCache.
+// Because ValidatorInfo is stored by pointer the update is visible to all
+// holders of this Snapshot (including the LRU cache).
+func (s *Snapshot) backfillPQVoteAddresses() {
+	for addr, info := range s.Validators {
+		if info != nil && info.PQVoteAddress == (types.PQPublicKey{}) {
+			if pubKey := vm.PQRegistryLookup(addr); len(pubKey) == types.PQPublicKeyLength {
+				copy(info.PQVoteAddress[:], pubKey)
+			}
+		}
+	}
 }
 
 // store inserts the snapshot into the database.
