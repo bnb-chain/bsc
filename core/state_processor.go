@@ -138,8 +138,18 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 			}
 		}
 
-		// NoExecution mode: skip normal tx EVM execution, only validate.
+		// NoExecution mode: validate nonce and increment, but skip EVM execution.
 		if cfg.NoExecution {
+			from, _ := types.Sender(signer, tx)
+			stNonce := statedb.GetNonce(from)
+			if txNonce := tx.Nonce(); stNonce != txNonce {
+				bloomProcessors.Close()
+				if stNonce > txNonce {
+					return nil, fmt.Errorf("nonce too low for tx %d [%v]: state %d, tx %d", i, tx.Hash().Hex(), stNonce, txNonce)
+				}
+				return nil, fmt.Errorf("nonce too high for tx %d [%v]: state %d, tx %d", i, tx.Hash().Hex(), stNonce, txNonce)
+			}
+			statedb.SetNonce(from, stNonce+1, tracing.NonceChangeEoACall)
 			commonTxs = append(commonTxs, tx)
 			continue
 		}
