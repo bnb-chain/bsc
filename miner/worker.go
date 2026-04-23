@@ -38,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/stateless"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -742,12 +743,23 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, 
 
 // applyTransaction runs the transaction. If execution fails, state and gas pool are reverted.
 func (w *worker) applyTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, error) {
-	// NoExecution mode: validate tx (signature) but skip EVM execution.
-	// No nonce update, no balance deduction. System txs still go through FinalizeAndAssemble.
+	// NoExecution mode: validate tx (signature + nonce), increment nonce, but skip EVM execution.
+	// System txs still go through FinalizeAndAssemble.
 	if w.chain.NoExecution() {
-		if _, err := types.Sender(env.signer, tx); err != nil {
+		from, err := types.Sender(env.signer, tx)
+		if err != nil {
 			return nil, err
 		}
+		// Nonce check
+		stNonce := env.state.GetNonce(from)
+		if txNonce := tx.Nonce(); stNonce != txNonce {
+			if stNonce > txNonce {
+				return nil, core.ErrNonceTooLow
+			}
+			return nil, core.ErrNonceTooHigh
+		}
+		env.state.SetNonce(from, stNonce+1, tracing.NonceChangeEoACall)
+		// Gas accounting
 		gasUsed := tx.Gas()
 		if err := env.gasPool.SubGas(gasUsed); err != nil {
 			return nil, err
