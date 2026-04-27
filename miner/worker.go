@@ -1487,7 +1487,7 @@ LOOP:
 
 		// Candidate selection:
 		//   - Always consider the legacy SendBid path (simBid) if a bid exists.
-		//   - Additionally consider the SendBidBlock path when BidBlockMode is on.
+		//   - Additionally consider the SendBidBlock path when BidBlockEnabled is on.
 		//   - Use "strictly better on both blockReward AND validatorReward" as the
 		//     promotion rule (same semantics as the original 2-way comparison).
 		//   - Candidates are compared pairwise against the current winner in the
@@ -1529,8 +1529,8 @@ LOOP:
 			}
 		}
 
-		// Candidate 2 — SendBidBlock (zero-simulate path), only when BidBlockMode enabled.
-		if w.config.Mev.BidBlockMode != nil && *w.config.Mev.BidBlockMode {
+		// Candidate 2 — SendBidBlock (zero-simulate path), only when BidBlockEnabled is on.
+		if w.config.Mev.BidBlockEnabled != nil && *w.config.Mev.BidBlockEnabled {
 			bestBidBlock := w.bidFetcher.GetBestBidBlock(bestWork.header.ParentHash)
 			if bestBidBlock != nil {
 				// GasFee is declared in the "total block reward" unit, same as
