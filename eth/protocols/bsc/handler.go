@@ -96,6 +96,14 @@ var bsc2 = map[uint64]msgHandler{
 	BlocksByRangeMsg:    handleBlocksByRange,
 }
 
+var bsc4 = map[uint64]msgHandler{
+	BscCapMsg:           handleBscCap,
+	VotesMsg:            handleVotes,
+	GetBlocksByRangeMsg: handleGetBlocksByRange,
+	BlocksByRangeMsg:    handleBlocksByRange,
+	PQVotesMsg:          handlePQVotes,
+}
+
 // handleBscCap ignores the capability message for backward compatibility.
 // Old nodes send BscCapMsg as part of their handshake, we just ignore it
 // since P2P layer already negotiated the protocol version.
@@ -126,6 +134,9 @@ func handleMessage(backend Backend, peer *Peer) error {
 	if peer.Version() >= Bsc2 {
 		handlers = bsc2
 	}
+	if peer.Version() >= Bsc4 {
+		handlers = bsc4
+	}
 
 	// Track the amount of time it takes to serve the request and run the handler
 	if metrics.Enabled() {
@@ -152,6 +163,15 @@ func handleVotes(backend Backend, msg Decoder, peer *Peer) error {
 	}
 	// Schedule all the unknown hashes for retrieval
 	peer.markVotes(ann.Votes)
+	return backend.Handle(peer, ann)
+}
+
+func handlePQVotes(backend Backend, msg Decoder, peer *Peer) error {
+	ann := new(PQVotesPacket)
+	if err := msg.Decode(ann); err != nil {
+		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
+	}
+	peer.markPQVotes(ann.Votes)
 	return backend.Handle(peer, ann)
 }
 

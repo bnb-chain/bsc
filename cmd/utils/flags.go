@@ -344,6 +344,11 @@ var (
 		Usage:    "Manually specify the Verkle fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
+	OverridePQHardfork = &cli.Uint64Flag{
+		Name:     "override.pqhardfork",
+		Usage:    "Manually specify the PQ hardfork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
 	OverrideGenesisFlag = &cli.StringFlag{
 		Name:     "override.genesis",
 		Usage:    "Load genesis block and configuration from file at this path",
@@ -1318,6 +1323,12 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Category: flags.FastFinalityCategory,
 	}
 
+	PQVoteKeyFileFlag = &cli.StringFlag{
+		Name:     "pqvotekey",
+		Usage:    "Path to a file containing the raw ML-DSA-44 private key used for post-quantum vote signing after PQForkTime",
+		Category: flags.AccountCategory,
+	}
+
 	// Blob setting
 	BlobExtraReserveFlag = &cli.Uint64Flag{
 		Name:     "blob.extra-reserve",
@@ -1873,6 +1884,9 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	}
 	if ctx.IsSet(BLSPasswordFileFlag.Name) {
 		cfg.BLSPasswordFile = ctx.String(BLSPasswordFileFlag.Name)
+	}
+	if ctx.IsSet(PQVoteKeyFileFlag.Name) {
+		cfg.PQVoteKeyFile = ctx.String(PQVoteKeyFileFlag.Name)
 	}
 	if ctx.IsSet(DBEngineFlag.Name) {
 		dbEngine := ctx.String(DBEngineFlag.Name)

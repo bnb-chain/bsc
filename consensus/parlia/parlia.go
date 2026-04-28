@@ -260,6 +260,7 @@ type Parlia struct {
 
 	ethAPI                     *ethapi.BlockChainAPI
 	VotePool                   consensus.VotePool
+	PQVotePool                 consensus.PQVotePool
 	validatorSetABIBeforeLuban abi.ABI
 	validatorSetABI            abi.ABI
 	slashABI                   abi.ABI
@@ -407,6 +408,8 @@ func getValidatorBytesFromHeader(header *types.Header, chainConfig *params.Chain
 }
 
 // getVoteAttestationFromHeader returns the vote attestation extracted from the header's extra field if exists.
+// After PQ fork, headers contain PQVoteAttestation (with STARK proof); this function converts it
+// to VoteAttestation so downstream consumers (snapshot, finality rewards) work unchanged.
 func getVoteAttestationFromHeader(header *types.Header, chainConfig *params.ChainConfig, epochLength uint64) (*types.VoteAttestation, error) {
 	if len(header.Extra) <= extraVanity+extraSeal {
 		return nil, nil
@@ -430,6 +433,22 @@ func getVoteAttestationFromHeader(header *types.Header, chainConfig *params.Chai
 			return nil, nil
 		}
 		attestationBytes = header.Extra[start:end]
+	}
+
+	// After PQ fork, headers contain PQVoteAttestation instead of VoteAttestation.
+	// Try PQ format first if we're past the fork, then fall back to legacy.
+	if chainConfig.IsPQFork(header.Number, header.Time) {
+		var pqAttestation types.PQVoteAttestation
+		if err := rlp.Decode(bytes.NewReader(attestationBytes), &pqAttestation); err == nil {
+			// Convert PQVoteAttestation to VoteAttestation for downstream compatibility.
+			// Downstream only uses VoteAddressSet, Data, and Extra — not AggSignature.
+			return &types.VoteAttestation{
+				VoteAddressSet: pqAttestation.VoteAddressSet,
+				Data:           pqAttestation.Data,
+				Extra:          pqAttestation.Extra,
+			}, nil
+		}
+		// Fall through to try legacy format (for blocks at the fork boundary).
 	}
 
 	var attestation types.VoteAttestation
@@ -743,12 +762,18 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 	}
 
 	// Verify vote attestation for fast finality.
-	if err := p.verifyVoteAttestation(chain, header, parents); err != nil {
-		log.Warn("Verify vote attestation failed", "error", err, "hash", header.Hash(), "number", header.Number,
+	var verifyAttErr error
+	if chain.Config().IsPQFork(header.Number, header.Time) {
+		verifyAttErr = p.pqVerifyVoteAttestation(chain, header, parents)
+	} else {
+		verifyAttErr = p.verifyVoteAttestation(chain, header, parents)
+	}
+	if verifyAttErr != nil {
+		log.Warn("Verify vote attestation failed", "error", verifyAttErr, "hash", header.Hash(), "number", header.Number,
 			"parent", header.ParentHash, "coinbase", header.Coinbase, "extra", common.Bytes2Hex(header.Extra))
 		verifyVoteAttestationErrorCounter.Inc(1)
 		if chain.Config().IsPlato(header.Number) {
-			return err
+			return verifyAttErr
 		}
 	}
 
@@ -1611,6 +1636,60 @@ func (p *Parlia) IsActiveValidatorAt(chain consensus.ChainHeaderReader, header *
 	return ok && (checkVoteKeyFn == nil || (validatorInfo != nil && checkVoteKeyFn(&validatorInfo.VoteAddress)))
 }
 
+// IsActivePQValidatorAt is the post-quantum counterpart of IsActiveValidatorAt.
+// It checks whether this node's address is in the validator set and, optionally,
+// whether its ML-DSA-44 public key matches the one registered in the snapshot.
+func (p *Parlia) IsActivePQValidatorAt(chain consensus.ChainHeaderReader, header *types.Header, checkPQKeyFn func(pqPubKey *types.PQPublicKey) bool) bool {
+	number := header.Number.Uint64()
+	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
+	if err != nil {
+		log.Error("failed to get the snapshot from consensus", "error", err)
+		return false
+	}
+	validatorInfo, ok := snap.Validators[p.val]
+	if !ok || validatorInfo == nil {
+		return false
+	}
+	// If the snapshot's PQVoteAddress is empty (e.g. genesis snapshot was
+	// created before the registry cache was warmed), try to back-fill it
+	// from the now-warm PQRegistryLookup cache.
+	if validatorInfo.PQVoteAddress == (types.PQPublicKey{}) {
+		if pubKey := vm.PQRegistryLookup(p.val); len(pubKey) == types.PQPublicKeyLength {
+			copy(validatorInfo.PQVoteAddress[:], pubKey)
+		}
+	}
+	return checkPQKeyFn == nil || checkPQKeyFn(&validatorInfo.PQVoteAddress)
+}
+
+// CurrentValidators returns the validator addresses in the snapshot at the
+// current chain head.  Unlike ExtractValidatorAddresses it does not require
+// the head to be an epoch block, so it is safe to call after any restart.
+func (p *Parlia) CurrentValidators(chain consensus.ChainHeaderReader) []common.Address {
+	head := chain.CurrentHeader()
+	if head == nil {
+		return nil
+	}
+	var number uint64
+	var hash common.Hash
+	if head.Number.Sign() == 0 {
+		number = 0
+		hash = head.Hash()
+	} else {
+		number = head.Number.Uint64() - 1
+		hash = head.ParentHash
+	}
+	snap, err := p.snapshot(chain, number, hash, nil)
+	if err != nil {
+		log.Error("CurrentValidators: failed to get snapshot", "err", err)
+		return nil
+	}
+	addrs := make([]common.Address, 0, len(snap.Validators))
+	for addr := range snap.Validators {
+		addrs = append(addrs, addr)
+	}
+	return addrs
+}
+
 // VerifyVote will verify: 1. If the vote comes from valid validators 2. If the vote's sourceNumber and sourceHash are correct
 func (p *Parlia) VerifyVote(chain consensus.ChainHeaderReader, vote *types.VoteEnvelope) error {
 	targetNumber := vote.Data.TargetNumber
@@ -1742,11 +1821,16 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 		case <-time.After(delay):
 		}
 
-		err := p.assembleVoteAttestation(chain, header)
-		if err != nil {
+		var assembleErr error
+		if p.chainConfig.IsPQFork(header.Number, header.Time) {
+			assembleErr = p.pqAssembleVoteAttestation(chain, header)
+		} else {
+			assembleErr = p.assembleVoteAttestation(chain, header)
+		}
+		if assembleErr != nil {
 			/* If the vote attestation can't be assembled successfully, the blockchain won't get
 			   fast finalized, but it can be tolerated, so just report this error here. */
-			log.Debug("Assemble vote attestation failed when sealing", "err", err)
+			log.Debug("Assemble vote attestation failed when sealing", "err", assembleErr)
 		}
 
 		// Sign all the things!

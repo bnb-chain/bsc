@@ -13,6 +13,7 @@ const (
 	Bsc1 = 1
 	Bsc2 = 2
 	Bsc3 = 3 // to BAL process
+	Bsc4 = 4 // adds post-quantum (ML-DSA-44) votes
 )
 
 // ProtocolName is the official short name of the `bsc` protocol used during
@@ -21,11 +22,11 @@ const ProtocolName = "bsc"
 
 // ProtocolVersions are the supported versions of the `bsc` protocol (first
 // is primary).
-var ProtocolVersions = []uint{Bsc1, Bsc2, Bsc3}
+var ProtocolVersions = []uint{Bsc1, Bsc2, Bsc3, Bsc4}
 
 // protocolLengths are the number of implemented message corresponding to
 // different protocol versions.
-var protocolLengths = map[uint]uint64{Bsc1: 2, Bsc2: 4, Bsc3: 4}
+var protocolLengths = map[uint]uint64{Bsc1: 2, Bsc2: 4, Bsc3: 4, Bsc4: 5}
 
 // maxMessageSize is the maximum cap on the size of a protocol message.
 const maxMessageSize = 10 * 1024 * 1024
@@ -35,6 +36,7 @@ const (
 	VotesMsg            = 0x01
 	GetBlocksByRangeMsg = 0x02 // it can request (StartBlockHeight-Count, StartBlockHeight] range blocks from remote peer
 	BlocksByRangeMsg    = 0x03 // the replied blocks from remote peer
+	PQVotesMsg          = 0x04 // post-quantum (ML-DSA-44) votes, Bsc4+
 )
 
 var defaultExtra = []byte{0x00}
@@ -67,6 +69,14 @@ func (*BscCapPacket) Kind() byte   { return BscCapMsg }
 
 func (*VotesPacket) Name() string { return "Votes" }
 func (*VotesPacket) Kind() byte   { return VotesMsg }
+
+// PQVotesPacket is the network packet for post-quantum votes record.
+type PQVotesPacket struct {
+	Votes []*types.PQVoteEnvelope
+}
+
+func (*PQVotesPacket) Name() string { return "PQVotes" }
+func (*PQVotesPacket) Kind() byte   { return PQVotesMsg }
 
 type GetBlocksByRangePacket struct {
 	RequestId        uint64

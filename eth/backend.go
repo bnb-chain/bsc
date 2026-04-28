@@ -155,8 +155,9 @@ type Ethereum struct {
 
 	shutdownTracker *shutdowncheck.ShutdownTracker // Tracks if and when the node has shutdown ungracefully
 
-	votePool *vote.VotePool
-	stopCh   chan struct{}
+	votePool   *vote.VotePool
+	pqVotePool *vote.PQVotePool
+	stopCh     chan struct{}
 }
 
 // New creates a new Ethereum object (including the initialisation of the common Ethereum object),
@@ -176,6 +177,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		log.Warn("Sanitizing invalid miner gas price", "provided", config.Miner.GasPrice, "updated", ethconfig.Defaults.Miner.GasPrice)
 		config.Miner.GasPrice = new(big.Int).Set(ethconfig.Defaults.Miner.GasPrice)
 	}
+
+	// Wire PQ public-key registry lookup so PQSigner.Sender can resolve pubkeys
+	// from the process-level cache populated by the 0x70 precompile.
+	types.SetPQRegistryBackend(vm.PQRegistryLookup)
 
 	chainDb, err := stack.OpenAndMergeDatabase(ChainData, ChainDBNamespace, false, config)
 	if err != nil {
@@ -276,6 +281,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if config.OverrideVerkle != nil {
 		chainConfig.VerkleTime = config.OverrideVerkle
 		overrides.OverrideVerkle = config.OverrideVerkle
+	}
+	if config.OverridePQHardfork != nil {
+		chainConfig.PQForkTime = config.OverridePQHardfork
+		overrides.OverridePQHardfork = config.OverridePQHardfork
 	}
 
 	// startup ancient freeze
@@ -408,6 +417,19 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		return nil, err
 	}
 
+	// Warm the PQ key registry cache from on-chain state so that
+	// PQRegistryLookup works immediately for snapshot PQVoteAddress resolution.
+	// Use the Parlia snapshot as the authoritative validator source: it is always
+	// current regardless of whether the head is an epoch block.
+	if parliaEngine, ok := eth.engine.(*parlia.Parlia); ok {
+		if stateDB, stateErr := eth.blockchain.State(); stateErr == nil {
+			addrs := parliaEngine.CurrentValidators(eth.blockchain)
+			if n := vm.WarmPQRegistryCache(stateDB, addrs); n > 0 {
+				log.Info("Warmed PQ registry cache from state", "validators", n)
+			}
+		}
+	}
+
 	// Initialize filtermaps log index.
 	// Auto-enable checkpoint file
 	checkpointFile := filepath.Join(stack.DataDir(), "geth", "filtermap_checkpoints.json")
@@ -518,6 +540,32 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				return nil, err
 			}
 			log.Info("Create voteManager successfully")
+		}
+
+		// Post-quantum vote pool & manager. The pool is always created so the
+		// p2p handler can relay PQ votes even on a non-producing node. The
+		// manager is only started when a --pqvotekey file is configured.
+		if parliaEngine, ok := eth.engine.(*parlia.Parlia); ok {
+			pqVotePool := vote.NewPQVotePool(eth.blockchain)
+			eth.pqVotePool = pqVotePool
+			if !config.Miner.DisableVoteAttestation {
+				parliaEngine.PQVotePool = pqVotePool
+			}
+			eth.handler.pqVotepool = pqVotePool
+			log.Info("Create PQ votePool successfully")
+
+			if pqKeyPath := stack.ResolvePath(stack.Config().PQVoteKeyFile); pqKeyPath != "" && stack.Config().PQVoteKeyFile != "" {
+				pqSigner, err := vote.NewPQVoteSigner(pqKeyPath)
+				if err != nil {
+					log.Error("Failed to load PQ vote signer", "path", pqKeyPath, "err", err)
+					return nil, err
+				}
+				if _, err := vote.NewPQVoteManager(eth, eth.blockchain, pqVotePool, pqSigner, parliaEngine); err != nil {
+					log.Error("Failed to initialize PQ voteManager", "err", err)
+					return nil, err
+				}
+				log.Info("Create PQ voteManager successfully")
+			}
 		}
 	}
 	eth.APIBackend.gpo = gasprice.NewOracle(eth.APIBackend, config.GPO, config.Miner.GasPrice)

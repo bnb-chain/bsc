@@ -32,12 +32,14 @@ const (
 
 // Peer is a collection of relevant information we have about a `bsc` peer.
 type Peer struct {
-	id            string                     // Unique ID for the peer, cached
-	knownVotes    *knownCache                // Set of vote hashes known to be known by this peer
-	voteBroadcast chan []*types.VoteEnvelope // Channel used to queue votes propagation requests
-	periodBegin   time.Time                  // Begin time of the latest period for votes counting
-	periodCounter uint                       // Votes number in the latest period
-	dispatcher    *Dispatcher                // Message request-response dispatcher
+	id              string                       // Unique ID for the peer, cached
+	knownVotes      *knownCache                  // Set of vote hashes known to be known by this peer
+	voteBroadcast   chan []*types.VoteEnvelope   // Channel used to queue votes propagation requests
+	knownPQVotes    *knownCache                  // Set of PQ vote hashes known by this peer (Bsc4+)
+	pqVoteBroadcast chan []*types.PQVoteEnvelope // Channel used to queue PQ votes propagation requests
+	periodBegin     time.Time                    // Begin time of the latest period for votes counting
+	periodCounter   uint                         // Votes number in the latest period
+	dispatcher      *Dispatcher                  // Message request-response dispatcher
 
 	*p2p.Peer                   // The embedded P2P package peer
 	rw        p2p.MsgReadWriter // Input/output streams for bsc
@@ -51,19 +53,24 @@ type Peer struct {
 func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter) *Peer {
 	id := p.ID().String()
 	peer := &Peer{
-		id:            id,
-		knownVotes:    newKnownCache(maxKnownVotes),
-		voteBroadcast: make(chan []*types.VoteEnvelope, voteBufferSize),
-		periodBegin:   time.Now(),
-		periodCounter: 0,
-		Peer:          p,
-		rw:            rw,
-		version:       version,
-		logger:        log.New("peer", id[:8]),
-		term:          make(chan struct{}),
+		id:              id,
+		knownVotes:      newKnownCache(maxKnownVotes),
+		voteBroadcast:   make(chan []*types.VoteEnvelope, voteBufferSize),
+		knownPQVotes:    newKnownCache(maxKnownVotes),
+		pqVoteBroadcast: make(chan []*types.PQVoteEnvelope, voteBufferSize),
+		periodBegin:     time.Now(),
+		periodCounter:   0,
+		Peer:            p,
+		rw:              rw,
+		version:         version,
+		logger:          log.New("peer", id[:8]),
+		term:            make(chan struct{}),
 	}
 	peer.dispatcher = NewDispatcher(peer)
 	go peer.broadcastVotes()
+	if version >= Bsc4 {
+		go peer.broadcastPQVotes()
+	}
 	return peer
 }
 
@@ -151,6 +158,56 @@ func (p *Peer) broadcastVotes() {
 			}
 			p.Log().Trace("Sent votes", "count", len(votes))
 
+		case <-p.term:
+			return
+		}
+	}
+}
+
+// KnownPQVote returns whether peer is known to already have a PQ vote.
+func (p *Peer) KnownPQVote(hash common.Hash) bool {
+	return p.knownPQVotes.contains(hash)
+}
+
+// markPQVotes marks PQ votes as known for the peer so we don't repropagate them.
+func (p *Peer) markPQVotes(votes []*types.PQVoteEnvelope) {
+	for _, vote := range votes {
+		if !p.knownPQVotes.contains(vote.Hash()) {
+			p.knownPQVotes.add(vote.Hash())
+		}
+	}
+}
+
+// sendPQVotes propagates a batch of PQ votes to the remote peer.
+func (p *Peer) sendPQVotes(votes []*types.PQVoteEnvelope) error {
+	p.markPQVotes(votes)
+	return p2p.Send(p.rw, PQVotesMsg, &PQVotesPacket{votes})
+}
+
+// AsyncSendPQVotes queues a batch of PQ votes for propagation. Silently dropped
+// if the peer buffer is full or closed.
+func (p *Peer) AsyncSendPQVotes(votes []*types.PQVoteEnvelope) {
+	if p.version < Bsc4 {
+		return
+	}
+	select {
+	case p.pqVoteBroadcast <- votes:
+	case <-p.term:
+		p.Log().Debug("Dropping PQ vote propagation for closed peer", "count", len(votes))
+	default:
+		p.Log().Debug("Dropping PQ vote propagation for abnormal peer", "count", len(votes))
+	}
+}
+
+// broadcastPQVotes is the write loop for post-quantum votes (Bsc4+).
+func (p *Peer) broadcastPQVotes() {
+	for {
+		select {
+		case votes := <-p.pqVoteBroadcast:
+			if err := p.sendPQVotes(votes); err != nil {
+				return
+			}
+			p.Log().Trace("Sent PQ votes", "count", len(votes))
 		case <-p.term:
 			return
 		}

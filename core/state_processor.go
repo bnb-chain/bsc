@@ -85,6 +85,20 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	if lastBlock == nil {
 		return nil, errors.New("could not get parent block")
 	}
+
+	// For PQ-fork blocks, pre-warm the registry cache for every PQ tx sender.
+	// PQFrom extracts the embedded From field without signature verification,
+	// which is safe here because the block seal has already been checked.
+	// This must be done on the Process statedb (single-threaded) so there is
+	// no data race with the concurrently-running prefetcher goroutine, which
+	// uses its own throwaway statedb and falls back to a cache-only lookup.
+	if config.IsPQFork(blockNumber, header.Time) {
+		for _, tx := range block.Transactions() {
+			if from, ok := types.PQFrom(tx); ok {
+				vm.PQRegistryLookupWithState(from, statedb)
+			}
+		}
+	}
 	// Handle upgrade built-in system contract code
 	systemcontracts.TryUpdateBuildInSystemContract(p.chain.Config(), blockNumber, lastBlock.Time, block.Time(), statedb, true)
 

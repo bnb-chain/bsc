@@ -86,6 +86,9 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	if !rules.IsPrague && tx.Type() == types.SetCodeTxType {
 		return fmt.Errorf("%w: type %d rejected, pool not yet in Prague", core.ErrTxTypeNotSupported, tx.Type())
 	}
+	if !rules.IsPQ && tx.Type() == types.PQTxType {
+		return fmt.Errorf("%w: type %d rejected, pool not yet in PQ", core.ErrTxTypeNotSupported, tx.Type())
+	}
 	// Check whether the init code size has been exceeded
 	if rules.IsShanghai && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
 		return fmt.Errorf("%w: code size %v, limit %v", core.ErrMaxInitCodeSizeExceeded, len(tx.Data()), params.MaxInitCodeSize)

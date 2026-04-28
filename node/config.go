@@ -241,6 +241,11 @@ type Config struct {
 	// VoteJournalDir is the directory to store votes in the fast finality feature.
 	VoteJournalDir string `toml:",omitempty"`
 
+	// PQVoteKeyFile is a file containing the raw ML-DSA-44 private key used to
+	// sign post-quantum votes after PQForkTime. If empty, this node will not
+	// produce PQ votes locally (but will still relay received ones).
+	PQVoteKeyFile string `toml:",omitempty"`
+
 	// BatchRequestLimit is the maximum number of requests in a batch.
 	BatchRequestLimit int `toml:",omitempty"`
 

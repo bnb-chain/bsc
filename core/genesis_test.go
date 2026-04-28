@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"math/big"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
@@ -287,6 +288,178 @@ func TestConfigOrDefault(t *testing.T) {
 
 	if config.PlanckBlock.Cmp(params.BSCChainConfig.PlanckBlock) != 0 {
 		t.Errorf("resulting config should have PlanckBlock = %v , but instead is %v", params.BSCChainConfig.PlanckBlock, config.PlanckBlock)
+	}
+}
+
+const pqForkTimeGenesisJSON = `{
+	"config": {
+		"chainId": 714,
+		"homesteadBlock": 0,
+		"eip150Block": 0,
+		"eip155Block": 0,
+		"eip158Block": 0,
+		"byzantiumBlock": 0,
+		"constantinopleBlock": 0,
+		"petersburgBlock": 0,
+		"istanbulBlock": 0,
+		"muirGlacierBlock": 0,
+		"mirrorSyncBlock": 1,
+		"brunoBlock": 1,
+		"eulerBlock": 2,
+		"nanoBlock": 3,
+		"moranBlock": 3,
+		"gibbsBlock": 4,
+		"planckBlock": 5,
+		"lubanBlock": 6,
+		"platoBlock": 7,
+		"berlinBlock": 8,
+		"londonBlock": 8,
+		"hertzBlock": 8,
+		"hertzfixBlock": 8,
+		"pqForkTime": 0,
+		"shanghaiTime": 0,
+		"keplerTime": 0,
+		"feynmanTime": 0,
+		"feynmanFixTime": 0,
+		"cancunTime": 0,
+		"haberTime": 0,
+		"haberFixTime": 0,
+		"bohrTime": 0,
+		"pascalTime": 0,
+		"pragueTime": 0,
+		"lorentzTime": 0,
+		"maxwellTime": 0,
+		"fermiTime": 0,
+		"osakaTime": 0,
+		"mendelTime": 0,
+		"pasteurTime": 0,
+		"blobSchedule": {
+			"cancun": {
+				"target": 3,
+				"max": 6,
+				"baseFeeUpdateFraction": 3338477
+			},
+			"prague": {
+				"target": 3,
+				"max": 6,
+				"baseFeeUpdateFraction": 3338477
+			},
+			"osaka": {
+				"target": 3,
+				"max": 6,
+				"baseFeeUpdateFraction": 3338477
+			}
+		},
+		"parlia": {
+			"period": 3,
+			"epoch": 200
+		}
+	},
+	"nonce": "0x0",
+	"timestamp": "0x5e9da7ce",
+	"extraData": "0x00",
+	"gasLimit": "0x2625a00",
+	"difficulty": "0x1",
+	"mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+	"coinbase": "0x0000000000000000000000000000000000000000",
+	"alloc": {}
+}`
+
+func decodePQForkTimeGenesis(t *testing.T) *Genesis {
+	t.Helper()
+
+	var genesis Genesis
+	if err := json.Unmarshal([]byte(pqForkTimeGenesisJSON), &genesis); err != nil {
+		t.Fatalf("unmarshal genesis: %v", err)
+	}
+	if genesis.Config == nil {
+		t.Fatal("decoded genesis config is nil")
+	}
+	if genesis.Config.PQForkTime == nil || *genesis.Config.PQForkTime != 0 {
+		t.Fatalf("decoded PQForkTime lost: have %v want 0", genesis.Config.PQForkTime)
+	}
+	return &genesis
+}
+
+func TestLoadChainConfigWithRialtoHashPreservesPQForkTime(t *testing.T) {
+	genesis := decodePQForkTimeGenesis(t)
+
+	db := rawdb.NewMemoryDatabase()
+	tdb := triedb.NewDatabase(db, triedb.HashDefaults)
+	block, err := genesis.Commit(db, tdb)
+	if err != nil {
+		t.Fatalf("commit genesis: %v", err)
+	}
+	oldRialtoHash := params.RialtoGenesisHash
+	params.RialtoGenesisHash = block.Hash()
+	defer func() {
+		params.RialtoGenesisHash = oldRialtoHash
+	}()
+
+	got, hash, err := LoadChainConfig(db, nil)
+	if err != nil {
+		t.Fatalf("LoadChainConfig: %v", err)
+	}
+	if hash != block.Hash() {
+		t.Fatalf("unexpected genesis hash: have %s want %s", hash, block.Hash())
+	}
+	if got.PQForkTime == nil || *got.PQForkTime != 0 {
+		t.Fatalf("loaded PQForkTime lost: have %v want 0", got.PQForkTime)
+	}
+}
+
+func TestCustomGenesisPQForkTimeRoundTrip(t *testing.T) {
+	genesis := decodePQForkTimeGenesis(t)
+
+	db := rawdb.NewMemoryDatabase()
+	tdb := triedb.NewDatabase(db, triedb.HashDefaults)
+	block, err := genesis.Commit(db, tdb)
+	if err != nil {
+		t.Fatalf("commit genesis: %v", err)
+	}
+	stored := rawdb.ReadChainConfig(db, block.Hash())
+	if stored == nil {
+		t.Fatal("stored config is nil after commit")
+	}
+	if stored.PQForkTime == nil || *stored.PQForkTime != 0 {
+		t.Fatalf("stored PQForkTime lost after commit: have %v want 0", stored.PQForkTime)
+	}
+	oldRialtoHash := params.RialtoGenesisHash
+	params.RialtoGenesisHash = block.Hash()
+	defer func() {
+		params.RialtoGenesisHash = oldRialtoHash
+	}()
+
+	passedForkTime := uint64(1)
+	lastHardforkTime := uint64(2)
+	updatedCfg, _, _, err := SetupGenesisBlockWithOverride(db, tdb, nil, &ChainOverrides{
+		OverridePassedForkTime: &passedForkTime,
+		OverrideLorentz:        &passedForkTime,
+		OverrideMaxwell:        &passedForkTime,
+		OverrideFermi:          &lastHardforkTime,
+		OverrideOsaka:          &lastHardforkTime,
+		OverrideMendel:         &lastHardforkTime,
+		OverridePasteur:        &lastHardforkTime,
+		OverridePQHardfork:     &lastHardforkTime,
+	})
+	if err != nil {
+		t.Fatalf("setup genesis with override: %v", err)
+	}
+	if updatedCfg == nil {
+		t.Fatal("updated config is nil")
+	}
+	if updatedCfg.PQForkTime == nil || *updatedCfg.PQForkTime != lastHardforkTime {
+		t.Fatalf("updated PQForkTime lost after override path: have %v want %d", updatedCfg.PQForkTime, lastHardforkTime)
+	}
+	if !strings.Contains(updatedCfg.String(), "PQForkTime: 2") {
+		t.Fatalf("chain config string missing PQForkTime: %s", updatedCfg.String())
+	}
+	stored = rawdb.ReadChainConfig(db, block.Hash())
+	if stored == nil {
+		t.Fatal("stored config is nil after override path")
+	}
+	if stored.PQForkTime == nil || *stored.PQForkTime != lastHardforkTime {
+		t.Fatalf("stored PQForkTime lost after override path: have %v want %d", stored.PQForkTime, lastHardforkTime)
 	}
 }
 

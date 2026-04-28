@@ -77,6 +77,7 @@ var (
 			utils.OverrideBPO2,
 			utils.OverridePasteur,
 			utils.OverrideVerkle,
+			utils.OverridePQHardfork,
 			// utils.MultiDataBaseFlag,
 		}, utils.DatabaseFlags),
 		Description: `
@@ -373,6 +374,10 @@ func initGenesis(ctx *cli.Context) error {
 	if ctx.IsSet(utils.OverrideVerkle.Name) {
 		v := ctx.Uint64(utils.OverrideVerkle.Name)
 		overrides.OverrideVerkle = &v
+	}
+	if ctx.IsSet(utils.OverridePQHardfork.Name) {
+		v := ctx.Uint64(utils.OverridePQHardfork.Name)
+		overrides.OverridePQHardfork = &v
 	}
 
 	chaindb := utils.MakeChainDatabase(ctx, stack, false)

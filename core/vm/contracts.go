@@ -26,7 +26,9 @@ import (
 	"math"
 	"math/big"
 	"math/bits"
+	"sync"
 
+	"github.com/cloudflare/circl/sign/mldsa/mldsa44"
 	"github.com/consensys/gnark-crypto/ecc"
 	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fp"
@@ -40,6 +42,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/blake2b"
 	"github.com/ethereum/go-ethereum/crypto/bn256"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/ethereum/go-ethereum/crypto/pq/proofs"
 	"github.com/ethereum/go-ethereum/crypto/secp256k1"
 	"github.com/ethereum/go-ethereum/crypto/secp256r1"
 	"github.com/ethereum/go-ethereum/log"
@@ -57,6 +60,13 @@ type PrecompiledContract interface {
 	RequiredGas(input []byte) uint64  // RequiredPrice calculates the contract gas use
 	Run(input []byte) ([]byte, error) // Run runs the precompiled contract
 	Name() string
+}
+
+// StatefulPrecompiledContract is implemented by precompiles that need caller
+// context or direct access to StateDB.
+type StatefulPrecompiledContract interface {
+	PrecompiledContract
+	RunStateful(input []byte, caller common.Address, stateDB StateDB, readOnly bool) ([]byte, error)
 }
 
 // PrecompiledContracts contains the precompiled contracts supported at the given fork.
@@ -163,6 +173,7 @@ var PrecompiledContractsLuban = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x65}): &iavlMerkleProofValidatePlanck{},
 	common.BytesToAddress([]byte{0x66}): &blsSignatureVerify{},
 	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidate{},
+	common.BytesToAddress([]byte{0x68}): &pqRecover{},
 }
 
 // PrecompiledContractsPlato contains the default set of pre-compiled Ethereum
@@ -182,6 +193,7 @@ var PrecompiledContractsPlato = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x65}): &iavlMerkleProofValidatePlato{},
 	common.BytesToAddress([]byte{0x66}): &blsSignatureVerify{},
 	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidate{},
+	common.BytesToAddress([]byte{0x68}): &pqRecover{},
 }
 
 // PrecompiledContractsBerlin contains the default set of pre-compiled Ethereum
@@ -215,6 +227,9 @@ var PrecompiledContractsHertz = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x65}): &iavlMerkleProofValidatePlato{},
 	common.BytesToAddress([]byte{0x66}): &blsSignatureVerify{},
 	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidateHertz{},
+	common.BytesToAddress([]byte{0x68}): &pqRecover{},
+	common.BytesToAddress([]byte{0x6a}): &pqAttestationVerify{},
+	common.BytesToAddress([]byte{0x70}): &pqKeyRegistry{},
 }
 
 // PrecompiledContractsFeynman contains the default set of pre-compiled Ethereum
@@ -234,8 +249,10 @@ var PrecompiledContractsFeynman = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x65}): &iavlMerkleProofValidatePlato{},
 	common.BytesToAddress([]byte{0x66}): &blsSignatureVerify{},
 	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidateHertz{},
-	common.BytesToAddress([]byte{0x68}): &verifyDoubleSignEvidence{},
+	common.BytesToAddress([]byte{0x68}): &pqRecoverCompat{},
 	common.BytesToAddress([]byte{0x69}): &secp256k1SignatureRecover{},
+	common.BytesToAddress([]byte{0x6a}): &pqAttestationVerify{},
+	common.BytesToAddress([]byte{0x70}): &pqKeyRegistry{},
 }
 
 // PrecompiledContractsCancun contains the default set of pre-compiled Ethereum
@@ -256,8 +273,10 @@ var PrecompiledContractsCancun = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x65}): &iavlMerkleProofValidatePlato{},
 	common.BytesToAddress([]byte{0x66}): &blsSignatureVerify{},
 	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidateHertz{},
-	common.BytesToAddress([]byte{0x68}): &verifyDoubleSignEvidence{},
+	common.BytesToAddress([]byte{0x68}): &pqRecoverCompat{},
 	common.BytesToAddress([]byte{0x69}): &secp256k1SignatureRecover{},
+	common.BytesToAddress([]byte{0x6a}): &pqAttestationVerify{},
+	common.BytesToAddress([]byte{0x70}): &pqKeyRegistry{},
 }
 
 // PrecompiledContractsHaber contains the default set of pre-compiled Ethereum
@@ -278,8 +297,10 @@ var PrecompiledContractsHaber = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x65}): &iavlMerkleProofValidatePlato{},
 	common.BytesToAddress([]byte{0x66}): &blsSignatureVerify{},
 	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidateHertz{},
-	common.BytesToAddress([]byte{0x68}): &verifyDoubleSignEvidence{},
+	common.BytesToAddress([]byte{0x68}): &pqRecoverCompat{},
 	common.BytesToAddress([]byte{0x69}): &secp256k1SignatureRecover{},
+	common.BytesToAddress([]byte{0x6a}): &pqAttestationVerify{},
+	common.BytesToAddress([]byte{0x70}): &pqKeyRegistry{},
 
 	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{},
 }
@@ -309,15 +330,22 @@ var PrecompiledContractsPrague = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x65}): &iavlMerkleProofValidatePlato{},
 	common.BytesToAddress([]byte{0x66}): &blsSignatureVerify{},
 	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidateHertz{},
-	common.BytesToAddress([]byte{0x68}): &verifyDoubleSignEvidence{},
+	common.BytesToAddress([]byte{0x68}): &pqRecoverCompat{},
 	common.BytesToAddress([]byte{0x69}): &secp256k1SignatureRecover{},
+	common.BytesToAddress([]byte{0x6a}): &pqAttestationVerify{},
+	common.BytesToAddress([]byte{0x70}): &pqKeyRegistry{},
 
 	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{},
 }
 
 var PrecompiledContractsBLS = PrecompiledContractsPrague
 
-var PrecompiledContractsVerkle = PrecompiledContractsBerlin
+var PrecompiledContractsVerkle = func() PrecompiledContracts {
+	contracts := maps.Clone(PrecompiledContractsBerlin)
+	contracts[common.BytesToAddress([]byte{0x6a})] = &pqAttestationVerify{}
+	contracts[common.BytesToAddress([]byte{0x70})] = &pqKeyRegistry{}
+	return contracts
+}()
 
 // PrecompiledContractsOsaka contains the set of pre-compiled Ethereum
 // contracts used in the Osaka release.
@@ -344,8 +372,10 @@ var PrecompiledContractsOsaka = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x65}): &iavlMerkleProofValidatePlato{},
 	common.BytesToAddress([]byte{0x66}): &blsSignatureVerify{},
 	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidateHertz{},
-	common.BytesToAddress([]byte{0x68}): &verifyDoubleSignEvidence{},
+	common.BytesToAddress([]byte{0x68}): &pqRecoverCompat{},
 	common.BytesToAddress([]byte{0x69}): &secp256k1SignatureRecover{},
+	common.BytesToAddress([]byte{0x6a}): &pqAttestationVerify{},
+	common.BytesToAddress([]byte{0x70}): &pqKeyRegistry{},
 
 	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{eip7951: true},
 }
@@ -358,6 +388,7 @@ var PrecompiledContractsP256Verify = PrecompiledContracts{
 
 var (
 	PrecompiledAddressesOsaka     []common.Address
+	PrecompiledAddressesVerkle    []common.Address
 	PrecompiledAddressesPrague    []common.Address
 	PrecompiledAddressesHaber     []common.Address
 	PrecompiledAddressesCancun    []common.Address
@@ -417,6 +448,9 @@ func init() {
 	for k := range PrecompiledContractsPrague {
 		PrecompiledAddressesPrague = append(PrecompiledAddressesPrague, k)
 	}
+	for k := range PrecompiledContractsVerkle {
+		PrecompiledAddressesVerkle = append(PrecompiledAddressesVerkle, k)
+	}
 	for k := range PrecompiledContractsOsaka {
 		PrecompiledAddressesOsaka = append(PrecompiledAddressesOsaka, k)
 	}
@@ -467,6 +501,8 @@ func ActivePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 // ActivePrecompiles returns the precompile addresses enabled with the current configuration.
 func ActivePrecompiles(rules params.Rules) []common.Address {
 	switch {
+	case rules.IsVerkle:
+		return PrecompiledAddressesVerkle
 	case rules.IsOsaka:
 		return PrecompiledAddressesOsaka
 	case rules.IsPrague:
@@ -506,6 +542,10 @@ func ActivePrecompiles(rules params.Rules) []common.Address {
 // - the _remaining_ gas,
 // - any error that occurred
 func RunPrecompiledContract(p PrecompiledContract, input []byte, suppliedGas uint64, logger *tracing.Hooks) (ret []byte, remainingGas uint64, err error) {
+	return runPrecompiledContract(p, input, suppliedGas, logger, common.Address{}, nil, false)
+}
+
+func runPrecompiledContract(p PrecompiledContract, input []byte, suppliedGas uint64, logger *tracing.Hooks, caller common.Address, stateDB StateDB, readOnly bool) (ret []byte, remainingGas uint64, err error) {
 	gasCost := p.RequiredGas(input)
 	if suppliedGas < gasCost {
 		return nil, 0, ErrOutOfGas
@@ -514,6 +554,10 @@ func RunPrecompiledContract(p PrecompiledContract, input []byte, suppliedGas uin
 		logger.OnGasChange(suppliedGas, suppliedGas-gasCost, tracing.GasChangeCallPrecompiledContract)
 	}
 	suppliedGas -= gasCost
+	if stateful, ok := p.(StatefulPrecompiledContract); ok {
+		output, err := stateful.RunStateful(input, caller, stateDB, readOnly)
+		return output, suppliedGas, err
+	}
 	output, err := p.Run(input)
 	return output, suppliedGas, err
 }
@@ -1670,6 +1714,516 @@ func (c *blsSignatureVerify) Run(input []byte) ([]byte, error) {
 
 func (c *blsSignatureVerify) Name() string {
 	return "BLS_SIGNATURE_VERIFY"
+}
+
+// pqAttestationVerify implements STARK-based PQ attestation verification precompile.
+type pqAttestationVerify struct{}
+
+// RequiredGas returns the gas required to verify a PQ attestation.
+// Base cost: 200,000 gas (STARK proof verification is flat-cost).
+func (c *pqAttestationVerify) RequiredGas(input []byte) uint64 {
+	return 200000
+}
+
+// Run verifies a STARK aggregate proof for PQ attestations.
+// Input format: [proof_len (4 bytes)] [proof_bytes] [vote_data_hash (32 bytes)] [num_pubkeys (4 bytes)] [{pubkey (1312 bytes)}...]
+// Returns 1 if valid, 0 if invalid.
+func (c *pqAttestationVerify) Run(input []byte) ([]byte, error) {
+	if len(input) < 8 {
+		return nil, ErrExecutionReverted
+	}
+
+	inputLen := len(input)
+
+	// Parse proof length and proof bytes.
+	proofLen := int(input[0])<<24 | int(input[1])<<16 | int(input[2])<<8 | int(input[3])
+	offset := 4
+	if proofLen <= 0 || offset+proofLen > inputLen {
+		return nil, ErrExecutionReverted
+	}
+	proofBytes := input[offset : offset+proofLen]
+	offset += proofLen
+
+	// Parse vote data hash (32 bytes).
+	if offset+32 > inputLen {
+		return nil, ErrExecutionReverted
+	}
+	var voteDataHash common.Hash
+	copy(voteDataHash[:], input[offset:offset+32])
+	offset += 32
+
+	// Parse pubkeys.
+	if offset+4 > inputLen {
+		return nil, ErrExecutionReverted
+	}
+	numPubkeys := int(input[offset])<<24 | int(input[offset+1])<<16 | int(input[offset+2])<<8 | int(input[offset+3])
+	offset += 4
+
+	pubkeySize := 1312 // ML-DSA-44 public key size
+	if numPubkeys <= 0 || numPubkeys > 1000 || offset+numPubkeys*pubkeySize > inputLen {
+		return nil, ErrExecutionReverted
+	}
+
+	pubkeys := make([][]byte, numPubkeys)
+	for i := 0; i < numPubkeys; i++ {
+		pubkeys[i] = input[offset : offset+pubkeySize]
+		offset += pubkeySize
+	}
+
+	if len(proofBytes) < 104 { // minimum STARK aggregation size
+		return common.Big0.Bytes(), nil
+	}
+
+	// Unmarshal the STARK aggregation from proof bytes.
+	agg, err := pqUnmarshalSTARKAggregation(proofBytes)
+	if err != nil {
+		return common.Big0.Bytes(), nil
+	}
+
+	// Check vote data hash binding.
+	if agg.voteDataHash != voteDataHash {
+		return common.Big0.Bytes(), nil
+	}
+
+	// Verify STARK proof (auth paths).
+	prover := proofs.NewSTARKProver()
+	valid, err := prover.VerifySTARKProof(agg.proof, nil)
+	if err != nil || !valid {
+		return common.Big0.Bytes(), nil
+	}
+
+	// Verify committee root matches pubkeys.
+	expectedRoot := pqComputeCommitteeRoot(pubkeys)
+	if expectedRoot != agg.committeeRoot {
+		return common.Big0.Bytes(), nil
+	}
+
+	return common.Big1.Bytes(), nil
+}
+
+// pqUnmarshalResult holds the minimal parsed STARK aggregation for the precompile.
+type pqUnmarshalResult struct {
+	committeeRoot common.Hash
+	voteDataHash  common.Hash
+	proof         *proofs.STARKProofData
+}
+
+// pqUnmarshalSTARKAggregation is a minimal unmarshal for the precompile (avoids importing parlia).
+func pqUnmarshalSTARKAggregation(data []byte) (*pqUnmarshalResult, error) {
+	if len(data) < 104 {
+		return nil, fmt.Errorf("proof too short")
+	}
+	offset := 0
+
+	var committeeRoot common.Hash
+	copy(committeeRoot[:], data[offset:offset+32])
+	offset += 32
+
+	var voteDataHash common.Hash
+	copy(voteDataHash[:], data[offset:offset+32])
+	offset += 32
+
+	numValidators := int(data[offset])<<24 | int(data[offset+1])<<16 | int(data[offset+2])<<8 | int(data[offset+3])
+	offset += 4
+	if numValidators <= 0 || numValidators > 1000 {
+		return nil, fmt.Errorf("invalid numValidators")
+	}
+
+	if offset+32 > len(data) {
+		return nil, fmt.Errorf("proof truncated")
+	}
+	var commitmentRoot [32]byte
+	copy(commitmentRoot[:], data[offset:offset+32])
+	offset += 32
+
+	if offset+4 > len(data) {
+		return nil, fmt.Errorf("proof truncated")
+	}
+	numFRI := int(data[offset])<<24 | int(data[offset+1])<<16 | int(data[offset+2])<<8 | int(data[offset+3])
+	offset += 4
+	if numFRI > 64 {
+		return nil, fmt.Errorf("invalid numFRI")
+	}
+	friLayers := make([][32]byte, numFRI)
+	for i := 0; i < numFRI; i++ {
+		if offset+32 > len(data) {
+			return nil, fmt.Errorf("proof truncated")
+		}
+		copy(friLayers[i][:], data[offset:offset+32])
+		offset += 32
+	}
+
+	if offset+4 > len(data) {
+		return nil, fmt.Errorf("proof truncated")
+	}
+	numQ := int(data[offset])<<24 | int(data[offset+1])<<16 | int(data[offset+2])<<8 | int(data[offset+3])
+	offset += 4
+	if numQ > 1024 {
+		return nil, fmt.Errorf("invalid numQ")
+	}
+	queryResponses := make([]proofs.QueryResponse, numQ)
+	for i := 0; i < numQ; i++ {
+		if offset+36 > len(data) {
+			return nil, fmt.Errorf("proof truncated")
+		}
+		idx := int(data[offset])<<24 | int(data[offset+1])<<16 | int(data[offset+2])<<8 | int(data[offset+3])
+		offset += 4
+		var val [32]byte
+		copy(val[:], data[offset:offset+32])
+		offset += 32
+
+		if offset+4 > len(data) {
+			return nil, fmt.Errorf("proof truncated")
+		}
+		numAuth := int(data[offset])<<24 | int(data[offset+1])<<16 | int(data[offset+2])<<8 | int(data[offset+3])
+		offset += 4
+		if numAuth > 64 {
+			return nil, fmt.Errorf("invalid numAuth")
+		}
+		authPath := make([][32]byte, numAuth)
+		for j := 0; j < numAuth; j++ {
+			if offset+32 > len(data) {
+				return nil, fmt.Errorf("proof truncated")
+			}
+			copy(authPath[j][:], data[offset:offset+32])
+			offset += 32
+		}
+		queryResponses[i] = proofs.QueryResponse{Index: idx, Value: val, AuthPath: authPath}
+	}
+
+	return &pqUnmarshalResult{
+		committeeRoot: committeeRoot,
+		voteDataHash:  voteDataHash,
+		proof: &proofs.STARKProofData{
+			CommitmentRoot: commitmentRoot,
+			FRILayers:      friLayers,
+			QueryResponses: queryResponses,
+			TraceLength:    numValidators,
+			NumColumns:     7,
+		},
+	}, nil
+}
+
+// pqComputeCommitteeRoot computes a SHA-256 Merkle root over validator public keys.
+func pqComputeCommitteeRoot(pubkeys [][]byte) common.Hash {
+	if len(pubkeys) == 0 {
+		return common.Hash{}
+	}
+	leaves := make([][32]byte, len(pubkeys))
+	for i, pk := range pubkeys {
+		h := sha256.New()
+		h.Write(pk)
+		copy(leaves[i][:], h.Sum(nil))
+	}
+	target := 1
+	for target < len(leaves) {
+		target <<= 1
+	}
+	padded := make([][32]byte, target)
+	copy(padded, leaves)
+	layer := padded
+	for len(layer) > 1 {
+		next := make([][32]byte, len(layer)/2)
+		for i := range next {
+			h := sha256.New()
+			h.Write(layer[2*i][:])
+			h.Write(layer[2*i+1][:])
+			copy(next[i][:], h.Sum(nil))
+		}
+		layer = next
+	}
+	var root common.Hash
+	copy(root[:], layer[0][:])
+	return root
+}
+
+func (c *pqAttestationVerify) Name() string {
+	return "PQ_ATTESTATION_VERIFY"
+}
+
+const (
+	pqRecoverGas          = 30000
+	pqRecoverHashLength   = 32
+	pqRecoverSigLength    = mldsa44.SignatureSize
+	pqRecoverPubKeyLength = mldsa44.PublicKeySize
+	pqRecoverInputLength  = pqRecoverHashLength + pqRecoverSigLength + pqRecoverPubKeyLength
+	pqPubKeySize          = 1312
+	pqSlotsPerKey         = 41
+	pqRegistryRegisterGas = 20000 * pqSlotsPerKey
+	pqRegistryLookupGas   = 800 * pqSlotsPerKey
+)
+
+var (
+	pqRegistryAddress = common.BytesToAddress([]byte{0x70})
+	// TODO: Remove the fallback map once all callers use StateDB-backed execution.
+	pqRegistryFallback sync.Map
+	// pqRegistryCache is a process-level, write-once cache of addr → pubkey.
+	// Because the registry is immutable after registration, entries never need
+	// invalidation. Memory: ~1312 bytes per entry (≈13 MB for 10k addresses).
+	pqRegistryCache sync.Map // common.Address → []byte (1312 bytes)
+)
+
+// pqRecover implements ML-DSA signature verification and address recovery.
+type pqRecover struct{}
+
+func (pqRecover) RequiredGas(input []byte) uint64 {
+	return pqRecoverGas
+}
+
+func (pqRecover) Run(input []byte) ([]byte, error) {
+	if len(input) != pqRecoverInputLength {
+		return false32Byte, nil
+	}
+
+	hash := input[:pqRecoverHashLength]
+	sigOffset := pqRecoverHashLength + pqRecoverSigLength
+	sig := input[pqRecoverHashLength:sigOffset]
+	pubKey := input[sigOffset:]
+
+	if !crypto.VerifyPQ(pubKey, hash, sig) {
+		return false32Byte, nil
+	}
+
+	addr := crypto.PQPubkeyToAddress(pubKey)
+	out := make([]byte, 32)
+	copy(out[12:], addr[:])
+	return out, nil
+}
+
+func (pqRecover) Name() string {
+	return "PQRECOVER"
+}
+
+// NewPQRecoverPrecompile returns the pqRecover precompile instance for use in tests
+// and explicit precompile injection (e.g. when the BSC-specific Hertz fork rules
+// are not activated by the chain config in use).
+func NewPQRecoverPrecompile() PrecompiledContract { return pqRecover{} }
+
+// pqKeyRegistry implements PQ public-key registration and lookup at 0x70.
+type pqKeyRegistry struct{}
+
+func (pqKeyRegistry) RequiredGas(input []byte) uint64 {
+	switch len(input) {
+	case pqPubKeySize, common.AddressLength + pqPubKeySize:
+		return pqRegistryRegisterGas
+	case common.AddressLength:
+		return pqRegistryLookupGas
+	default:
+		return 0
+	}
+}
+
+func (c pqKeyRegistry) Run(input []byte) ([]byte, error) {
+	return c.RunStateful(input, common.Address{}, nil, false)
+}
+
+func (pqKeyRegistry) RunStateful(input []byte, caller common.Address, stateDB StateDB, readOnly bool) ([]byte, error) {
+	// Ensure the registry account has nonce=1 so EIP-158 does not treat it as
+	// "empty" and wipe its storage during state finalization.
+	if stateDB != nil && !readOnly && stateDB.GetNonce(pqRegistryAddress) == 0 {
+		stateDB.SetNonce(pqRegistryAddress, 1, tracing.NonceChangeUnspecified)
+	}
+
+	switch len(input) {
+	case pqPubKeySize:
+		// Self-register: caller registers its own PQ public key.
+		if readOnly {
+			return nil, ErrWriteProtection
+		}
+		if pqRegistryChunkAt(caller, 0, stateDB) != (common.Hash{}) {
+			return nil, errors.New("already registered")
+		}
+		pubKey := common.CopyBytes(input)
+		for i := 0; i < pqSlotsPerKey; i++ {
+			start := i * common.HashLength
+			end := start + common.HashLength
+			pqRegistryWriteChunk(caller, i, common.BytesToHash(pubKey[start:end]), stateDB)
+		}
+		// Populate cache on registration so subsequent lookups never hit stateDB.
+		pqRegistryCache.Store(caller, pubKey)
+		return []byte{1}, nil
+
+	case common.AddressLength + pqPubKeySize:
+		// Delegate-register (devnet bootstrap): any caller can register a target
+		// address on its behalf. Useful when the PQ account has no gas to send a
+		// self-registration tx (e.g., first-time devnet setup).
+		// Format: target_addr (20 bytes) || pubkey (1312 bytes)
+		if readOnly {
+			return nil, ErrWriteProtection
+		}
+		target := common.BytesToAddress(input[:common.AddressLength])
+		if pqRegistryChunkAt(target, 0, stateDB) != (common.Hash{}) {
+			return nil, errors.New("already registered")
+		}
+		pubKey := common.CopyBytes(input[common.AddressLength:])
+		for i := 0; i < pqSlotsPerKey; i++ {
+			start := i * common.HashLength
+			end := start + common.HashLength
+			pqRegistryWriteChunk(target, i, common.BytesToHash(pubKey[start:end]), stateDB)
+		}
+		pqRegistryCache.Store(target, pubKey)
+		return []byte{1}, nil
+	case common.AddressLength:
+		addr := common.BytesToAddress(input)
+		// Fast path: return cached pubkey without touching stateDB.
+		if cached, ok := pqRegistryCache.Load(addr); ok {
+			return common.CopyBytes(cached.([]byte)), nil
+		}
+		// Slow path: assemble from 41 stateDB slots.
+		pubKey := make([]byte, pqPubKeySize)
+		allZero := true
+		for i := 0; i < pqSlotsPerKey; i++ {
+			chunk := pqRegistryChunkAt(addr, i, stateDB)
+			if chunk != (common.Hash{}) {
+				allZero = false
+			}
+			copy(pubKey[i*common.HashLength:], chunk[:])
+		}
+		if allZero {
+			return make([]byte, pqPubKeySize), nil
+		}
+		// Warm the cache for future lookups.
+		pqRegistryCache.Store(addr, pubKey)
+		return pubKey, nil
+	default:
+		return nil, errors.New("invalid input length")
+	}
+}
+
+func (pqKeyRegistry) Name() string {
+	return "PQ_KEY_REGISTRY"
+}
+
+// NewPQKeyRegistryPrecompile returns the pqKeyRegistry precompile instance for tests.
+func NewPQKeyRegistryPrecompile() PrecompiledContract { return pqKeyRegistry{} }
+
+// PQRegistryLookup returns the registered ML-DSA-44 public key for addr from
+// the process-level cache. Returns nil if addr has not been registered.
+// Safe for concurrent use (sync.Map read).
+func PQRegistryLookup(addr common.Address) []byte {
+	if cached, ok := pqRegistryCache.Load(addr); ok {
+		return common.CopyBytes(cached.([]byte))
+	}
+	return nil
+}
+
+// PQRegistryLookupWithState returns the registered ML-DSA-44 public key for
+// addr, first checking the process-level cache and falling back to reading the
+// 0x70 registry storage slots from stateDB. Results are written into the cache
+// so subsequent lookups are fast. Use this during block processing where an
+// arbitrary registered address may appear as a PQ tx sender.
+func PQRegistryLookupWithState(addr common.Address, stateDB StateDB) []byte {
+	if cached, ok := pqRegistryCache.Load(addr); ok {
+		return common.CopyBytes(cached.([]byte))
+	}
+	if stateDB == nil {
+		return nil
+	}
+	pubKey := make([]byte, pqPubKeySize)
+	allZero := true
+	for i := 0; i < pqSlotsPerKey; i++ {
+		chunk := stateDB.GetState(pqRegistryAddress, pqRegistrySlot(addr, i))
+		if chunk != (common.Hash{}) {
+			allZero = false
+		}
+		copy(pubKey[i*common.HashLength:], chunk[:])
+	}
+	if allZero {
+		return nil
+	}
+	pqRegistryCache.Store(addr, pubKey)
+	return common.CopyBytes(pubKey)
+}
+
+// WarmPQRegistryCache reads the 0x70 registry storage for each validator
+// address via the provided stateDB and pre-populates pqRegistryCache.
+// Call this once at startup after the blockchain is initialized, before
+// the PQ vote manager or snapshot code needs PQRegistryLookup.
+func WarmPQRegistryCache(stateDB StateDB, validators []common.Address) int {
+	warmed := 0
+	for _, addr := range validators {
+		if _, ok := pqRegistryCache.Load(addr); ok {
+			continue // already cached
+		}
+		pubKey := make([]byte, pqPubKeySize)
+		allZero := true
+		for i := 0; i < pqSlotsPerKey; i++ {
+			chunk := stateDB.GetState(pqRegistryAddress, pqRegistrySlot(addr, i))
+			if chunk != (common.Hash{}) {
+				allZero = false
+			}
+			copy(pubKey[i*common.HashLength:], chunk[:])
+		}
+		if !allZero {
+			pqRegistryCache.Store(addr, pubKey)
+			warmed++
+		}
+	}
+	return warmed
+}
+
+// pqRecoverCompat preserves the existing double-sign evidence precompile at 0x68
+// while routing fixed-size ML-DSA inputs to pqRecover.
+type pqRecoverCompat struct{}
+
+func (pqRecoverCompat) RequiredGas(input []byte) uint64 {
+	if len(input) == pqRecoverInputLength && !looksLikeDoubleSignEvidenceInput(input) {
+		return (&pqRecover{}).RequiredGas(input)
+	}
+	return (&verifyDoubleSignEvidence{}).RequiredGas(input)
+}
+
+func (pqRecoverCompat) Run(input []byte) ([]byte, error) {
+	if len(input) == pqRecoverInputLength {
+		out, err := (&pqRecover{}).Run(input)
+		if !bytes.Equal(out, false32Byte) || !looksLikeDoubleSignEvidenceInput(input) {
+			return out, err
+		}
+	}
+	return (&verifyDoubleSignEvidence{}).Run(input)
+}
+
+func (pqRecoverCompat) Name() string {
+	return "PQRECOVER_COMPAT"
+}
+
+func pqRegistrySlot(addr common.Address, index int) common.Hash {
+	indexBytes := uint256.NewInt(uint64(index)).Bytes32()
+	return crypto.Keccak256Hash(addr.Bytes(), indexBytes[:])
+}
+
+func pqRegistryChunkAt(addr common.Address, index int, stateDB StateDB) common.Hash {
+	if stateDB != nil {
+		return stateDB.GetState(pqRegistryAddress, pqRegistrySlot(addr, index))
+	}
+	if value, ok := pqRegistryFallback.Load(addr); ok {
+		if pubKey, ok := value.([]byte); ok && len(pubKey) == pqPubKeySize {
+			start := index * common.HashLength
+			end := start + common.HashLength
+			return common.BytesToHash(pubKey[start:end])
+		}
+	}
+	return common.Hash{}
+}
+
+func pqRegistryWriteChunk(addr common.Address, index int, chunk common.Hash, stateDB StateDB) {
+	if stateDB != nil {
+		stateDB.SetState(pqRegistryAddress, pqRegistrySlot(addr, index), chunk)
+		return
+	}
+	pubKey := make([]byte, pqPubKeySize)
+	if existing, ok := pqRegistryFallback.Load(addr); ok {
+		if existingKey, ok := existing.([]byte); ok && len(existingKey) == pqPubKeySize {
+			copy(pubKey, existingKey)
+		}
+	}
+	copy(pubKey[index*common.HashLength:], chunk[:])
+	pqRegistryFallback.Store(addr, pubKey)
+}
+
+func looksLikeDoubleSignEvidenceInput(input []byte) bool {
+	var evidence DoubleSignEvidence
+	return rlp.DecodeBytes(input, &evidence) == nil
 }
 
 // kzgPointEvaluation implements the EIP-4844 point evaluation precompile.

@@ -125,6 +125,13 @@ type votePool interface {
 	SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.Subscription
 }
 
+// pqVotePool is the post-quantum counterpart of votePool.
+type pqVotePool interface {
+	PutVote(vote *types.PQVoteEnvelope)
+	GetVotes() []*types.PQVoteEnvelope
+	SubscribeNewPQVoteEvent(ch chan<- core.NewPQVoteEvent) event.Subscription
+}
+
 // handlerConfig is the collection of initialization parameters to create a full
 // node network handler.
 type handlerConfig struct {
@@ -133,6 +140,7 @@ type handlerConfig struct {
 	Chain                     *core.BlockChain // Blockchain to serve data from
 	TxPool                    txPool           // Transaction pool to propagate from
 	VotePool                  votePool
+	PQVotePool                pqVotePool // optional post-quantum vote pool (Bsc4+)
 	Network                   uint64                 // Network identifier to adfvertise
 	Sync                      ethconfig.SyncMode     // Whether to snap or full sync
 	BloomCache                uint64                 // Megabytes to alloc for snap sync bloom
@@ -167,6 +175,7 @@ type handler struct {
 	database             ethdb.Database
 	txpool               txPool
 	votepool             votePool
+	pqVotepool           pqVotePool
 	maliciousVoteMonitor *monitor.MaliciousVoteMonitor
 	chain                *core.BlockChain
 	maxPeers             int
@@ -190,6 +199,8 @@ type handler struct {
 	voteCh         chan core.NewVoteEvent
 	votesSub       event.Subscription
 	voteMonitorSub event.Subscription
+	pqVoteCh       chan core.NewPQVoteEvent
+	pqVotesSub     event.Subscription
 
 	requiredBlocks map[uint64]common.Hash
 
@@ -221,6 +232,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		database:                   config.Database,
 		txpool:                     config.TxPool,
 		votepool:                   config.VotePool,
+		pqVotepool:                 config.PQVotePool,
 		chain:                      config.Chain,
 		peers:                      config.PeerSet,
 		txBroadcastKey:             newBroadcastChoiceKey(),
@@ -564,6 +576,9 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	if h.votepool != nil && p.bscExt != nil {
 		h.syncVotes(p.bscExt)
 	}
+	if h.pqVotepool != nil && p.bscExt != nil {
+		h.syncPQVotes(p.bscExt)
+	}
 
 	// Create a notification channel for pending requests if the peer goes down
 	dead := make(chan struct{})
@@ -748,6 +763,14 @@ func (h *handler) Start(maxPeers int, maxPeersPerIP int) {
 		}
 	}
 
+	// broadcast post-quantum votes (Bsc4+)
+	if h.pqVotepool != nil {
+		h.wg.Add(1)
+		h.pqVoteCh = make(chan core.NewPQVoteEvent, voteChanSize)
+		h.pqVotesSub = h.pqVotepool.SubscribeNewPQVoteEvent(h.pqVoteCh)
+		go h.pqVoteBroadcastLoop()
+	}
+
 	// announce local pending transactions again
 	h.wg.Add(1)
 	h.reannoTxsCh = make(chan core.ReannoTxsEvent, txChanSize)
@@ -800,6 +823,9 @@ func (h *handler) Stop() {
 		if h.maliciousVoteMonitor != nil {
 			h.voteMonitorSub.Unsubscribe()
 		}
+	}
+	if h.pqVotepool != nil {
+		h.pqVotesSub.Unsubscribe() // quits pqVoteBroadcastLoop
 	}
 	close(h.stopCh)
 	// Quit chainSync and txsync64.
@@ -1131,6 +1157,35 @@ func (h *handler) voteBroadcastLoop() {
 			// so one vote will be sent instantly without waiting for other votes for batch sending by design.
 			h.BroadcastVote(event.Vote)
 		case <-h.votesSub.Err():
+			return
+		}
+	}
+}
+
+// BroadcastPQVote propagates a PQ vote to all peers that have not seen it yet
+// and that negotiated at least Bsc4.
+func (h *handler) BroadcastPQVote(vote *types.PQVoteEnvelope) {
+	if vote == nil {
+		return
+	}
+	peers := h.peers.peersWithoutPQVote(vote.Hash())
+	for _, peer := range peers {
+		if peer.bscExt == nil || peer.bscExt.Version() < bsc.Bsc4 {
+			continue
+		}
+		peer.bscExt.AsyncSendPQVotes([]*types.PQVoteEnvelope{vote})
+	}
+	log.Debug("PQ vote broadcast", "peers", len(peers), "target", vote.Data.TargetNumber)
+}
+
+// pqVoteBroadcastLoop announces new PQ votes to connected peers.
+func (h *handler) pqVoteBroadcastLoop() {
+	defer h.wg.Done()
+	for {
+		select {
+		case event := <-h.pqVoteCh:
+			h.BroadcastPQVote(event.Vote)
+		case <-h.pqVotesSub.Err():
 			return
 		}
 	}

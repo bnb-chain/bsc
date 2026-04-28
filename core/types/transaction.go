@@ -208,6 +208,8 @@ func (tx *Transaction) decodeTyped(b []byte) (TxData, error) {
 		inner = new(AccessListTx)
 	case DynamicFeeTxType:
 		inner = new(DynamicFeeTx)
+	case PQTxType:
+		inner = new(PQTxData)
 	case BlobTxType:
 		inner = new(BlobTx)
 	case SetCodeTxType:

@@ -243,6 +243,9 @@ type Config struct {
 	// OverrideVerkle (TODO: remove after the fork)
 	OverrideVerkle *uint64 `toml:",omitempty"`
 
+	// OverridePQHardfork overrides the PQ transaction activation timestamp.
+	OverridePQHardfork *uint64 `toml:",omitempty"`
+
 	// EIP-7966: eth_sendRawTransactionSync timeouts
 	TxSyncDefaultTimeout time.Duration `toml:",omitempty"`
 	TxSyncMaxTimeout     time.Duration `toml:",omitempty"`

@@ -38,6 +38,9 @@ type RemovedLogsEvent struct{ Logs []*types.Log }
 // NewVoteEvent is posted when a batch of votes enters the vote pool.
 type NewVoteEvent struct{ Vote *types.VoteEnvelope }
 
+// NewPQVoteEvent is posted when a PQ (ML-DSA-44) vote enters the PQ vote pool.
+type NewPQVoteEvent struct{ Vote *types.PQVoteEnvelope }
+
 // FinalizedHeaderEvent is posted when a finalized header is reached.
 type FinalizedHeaderEvent struct{ Header *types.Header }
 

@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/lru"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/log"
@@ -54,8 +55,9 @@ type Snapshot struct {
 }
 
 type ValidatorInfo struct {
-	Index       int                `json:"index:omitempty"` // The index should offset by 1
-	VoteAddress types.BLSPublicKey `json:"vote_address,omitempty"`
+	Index         int                `json:"index:omitempty"` // The index should offset by 1
+	VoteAddress   types.BLSPublicKey `json:"vote_address,omitempty"`
+	PQVoteAddress types.PQPublicKey  `json:"pq_vote_address,omitempty"` // ML-DSA-44 vote pubkey (post-PQFork)
 }
 
 // newSnapshot creates a new snapshot with the specified startup parameters. This
@@ -86,9 +88,14 @@ func newSnapshot(
 	for idx, v := range validators {
 		// The luban fork from the genesis block
 		if len(voteAddrs) == len(validators) {
-			snap.Validators[v] = &ValidatorInfo{
+			info := &ValidatorInfo{
 				VoteAddress: voteAddrs[idx],
 			}
+			// Populate PQ vote pubkey from the 0x70 registry cache if genesis pre-allocated it.
+			if pubKey := vm.PQRegistryLookup(v); len(pubKey) == types.PQPublicKeyLength {
+				copy(info.PQVoteAddress[:], pubKey)
+			}
+			snap.Validators[v] = info
 		} else {
 			snap.Validators[v] = &ValidatorInfo{}
 		}
@@ -135,7 +142,28 @@ func loadSnapshot(config *params.ParliaConfig, sigCache *lru.Cache[common.Hash, 
 	snap.sigCache = sigCache
 	snap.ethAPI = ethAPI
 
+	// Back-fill PQVoteAddress for any validator whose entry is still zero.
+	// This happens when the snapshot was stored to DB before WarmPQRegistryCache
+	// had run (e.g. genesis snapshot on first startup).  The cache is warm by the
+	// time loadSnapshot is called on subsequent restarts, so this is a no-op once
+	// the pubkeys are in the cache.
+	snap.backfillPQVoteAddresses()
+
 	return snap, nil
+}
+
+// backfillPQVoteAddresses populates PQVoteAddress for every validator whose
+// field is still the zero value, using the process-level pqRegistryCache.
+// Because ValidatorInfo is stored by pointer the update is visible to all
+// holders of this Snapshot (including the LRU cache).
+func (s *Snapshot) backfillPQVoteAddresses() {
+	for addr, info := range s.Validators {
+		if info != nil && info.PQVoteAddress == (types.PQPublicKey{}) {
+			if pubKey := vm.PQRegistryLookup(addr); len(pubKey) == types.PQPublicKeyLength {
+				copy(info.PQVoteAddress[:], pubKey)
+			}
+		}
+	}
 }
 
 // store inserts the snapshot into the database.
@@ -165,8 +193,9 @@ func (s *Snapshot) copy() *Snapshot {
 
 	for v := range s.Validators {
 		cpy.Validators[v] = &ValidatorInfo{
-			Index:       s.Validators[v].Index,
-			VoteAddress: s.Validators[v].VoteAddress,
+			Index:         s.Validators[v].Index,
+			VoteAddress:   s.Validators[v].VoteAddress,
+			PQVoteAddress: s.Validators[v].PQVoteAddress,
 		}
 	}
 	for block, v := range s.Recents {
@@ -407,9 +436,20 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 				if !chainConfig.IsLuban(header.Number) {
 					newVals[val] = &ValidatorInfo{}
 				} else {
-					newVals[val] = &ValidatorInfo{
+					info := &ValidatorInfo{
 						VoteAddress: voteAddrs[idx],
 					}
+					// Carry over PQVoteAddress from the previous validator set if the validator stays.
+					if prev, ok := snap.Validators[val]; ok {
+						info.PQVoteAddress = prev.PQVoteAddress
+					}
+					// For any validator whose PQ pubkey is not yet cached, look it up from the 0x70 registry.
+					if chainConfig.IsPQFork(header.Number, header.Time) && info.PQVoteAddress == (types.PQPublicKey{}) {
+						if pubKey := vm.PQRegistryLookup(val); len(pubKey) == types.PQPublicKeyLength {
+							copy(info.PQVoteAddress[:], pubKey)
+						}
+					}
+					newVals[val] = info
 				}
 			}
 			if chainConfig.IsBohr(header.Number, header.Time) {
@@ -534,6 +574,42 @@ func (s *Snapshot) indexOfVal(validator common.Address) int {
 		}
 	}
 	return -1
+}
+
+// ExtractValidatorAddresses extracts consensus addresses from a header's
+// extra data. It handles both pre-Luban (address-only) and post-Luban
+// (address + BLS vote key) formats. Callers that just need the address
+// list (e.g. PQ registry warm-up) can use this instead of parseValidators.
+func ExtractValidatorAddresses(header *types.Header) []common.Address {
+	if header == nil || len(header.Extra) <= extraVanity+extraSeal {
+		return nil
+	}
+	payload := header.Extra[extraVanity : len(header.Extra)-extraSeal]
+	if len(payload) == 0 {
+		return nil
+	}
+
+	// Post-Luban: first byte = validator count, then N × (addr + BLS key).
+	n := int(payload[0])
+	body := payload[validatorNumberSize:]
+	if n > 0 && len(body) >= n*validatorBytesLength {
+		addrs := make([]common.Address, n)
+		for i := 0; i < n; i++ {
+			addrs[i] = common.BytesToAddress(body[i*validatorBytesLength : i*validatorBytesLength+common.AddressLength])
+		}
+		return addrs
+	}
+
+	// Pre-Luban: payload is just N × 20-byte addresses, no count byte.
+	if len(payload)%validatorBytesLengthBeforeLuban == 0 {
+		n = len(payload) / validatorBytesLengthBeforeLuban
+		addrs := make([]common.Address, n)
+		for i := 0; i < n; i++ {
+			addrs[i] = common.BytesToAddress(payload[i*validatorBytesLengthBeforeLuban : (i+1)*validatorBytesLengthBeforeLuban])
+		}
+		return addrs
+	}
+	return nil
 }
 
 func parseValidators(header *types.Header, chainConfig *params.ChainConfig, epochLength uint64) ([]common.Address, []types.BLSPublicKey, error) {

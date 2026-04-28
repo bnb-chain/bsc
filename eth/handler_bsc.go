@@ -42,6 +42,9 @@ func (h *bscHandler) Handle(peer *bsc.Peer, packet bsc.Packet) error {
 	case *bsc.VotesPacket:
 		return h.handleVotesBroadcast(peer, packet.Votes)
 
+	case *bsc.PQVotesPacket:
+		return h.handlePQVotesBroadcast(peer, packet.Votes)
+
 	default:
 		return fmt.Errorf("unexpected bsc packet type: %T", packet)
 	}
@@ -59,5 +62,20 @@ func (h *bscHandler) handleVotesBroadcast(peer *bsc.Peer, votes []*types.VoteEnv
 		h.votepool.PutVote(votes[0])
 	}
 
+	return nil
+}
+
+// handlePQVotesBroadcast is invoked when a peer delivers a PQVotesPacket.
+func (h *bscHandler) handlePQVotesBroadcast(peer *bsc.Peer, votes []*types.PQVoteEnvelope) error {
+	if h.pqVotepool == nil {
+		return nil
+	}
+	if peer.IsOverLimitAfterReceiving() {
+		return nil
+	}
+	// Single-vote DoS protection mirrors the BLS handler — one envelope per broadcast.
+	if len(votes) > 0 {
+		h.pqVotepool.PutVote(votes[0])
+	}
 	return nil
 }

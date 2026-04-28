@@ -14,9 +14,10 @@ require (
 	github.com/bnb-chain/fastssz v0.1.2
 	github.com/bnb-chain/ics23 v0.1.0
 	github.com/cespare/cp v1.1.1
+	github.com/cloudflare/circl v1.6.3
 	github.com/cloudflare/cloudflare-go v0.114.0
 	github.com/cockroachdb/pebble v1.1.5
-	github.com/cometbft/cometbft v0.37.0
+	github.com/cometbft/cometbft v0.0.0-00010101000000-000000000000
 	github.com/consensys/gnark-crypto v0.18.1
 	github.com/cosmos/iavl v0.12.0
 	github.com/crate-crypto/go-eth-kzg v1.4.0

@@ -83,6 +83,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		OverrideBPO2              *uint64       `toml:",omitempty"`
 		OverridePasteur           *uint64       `toml:",omitempty"`
 		OverrideVerkle            *uint64       `toml:",omitempty"`
+		OverridePQHardfork        *uint64       `toml:",omitempty"`
 		TxSyncDefaultTimeout      time.Duration `toml:",omitempty"`
 		TxSyncMaxTimeout          time.Duration `toml:",omitempty"`
 		BlobExtraReserve          uint64
@@ -161,6 +162,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.OverrideBPO2 = c.OverrideBPO2
 	enc.OverridePasteur = c.OverridePasteur
 	enc.OverrideVerkle = c.OverrideVerkle
+	enc.OverridePQHardfork = c.OverridePQHardfork
 	enc.TxSyncDefaultTimeout = c.TxSyncDefaultTimeout
 	enc.TxSyncMaxTimeout = c.TxSyncMaxTimeout
 	enc.BlobExtraReserve = c.BlobExtraReserve
@@ -243,6 +245,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		OverrideBPO2              *uint64        `toml:",omitempty"`
 		OverridePasteur           *uint64        `toml:",omitempty"`
 		OverrideVerkle            *uint64        `toml:",omitempty"`
+		OverridePQHardfork        *uint64        `toml:",omitempty"`
 		TxSyncDefaultTimeout      *time.Duration `toml:",omitempty"`
 		TxSyncMaxTimeout          *time.Duration `toml:",omitempty"`
 		BlobExtraReserve          *uint64
@@ -453,6 +456,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.OverrideVerkle != nil {
 		c.OverrideVerkle = dec.OverrideVerkle
+	}
+	if dec.OverridePQHardfork != nil {
+		c.OverridePQHardfork = dec.OverridePQHardfork
 	}
 	if dec.TxSyncDefaultTimeout != nil {
 		c.TxSyncDefaultTimeout = *dec.TxSyncDefaultTimeout
