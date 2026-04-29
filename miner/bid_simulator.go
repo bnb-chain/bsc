@@ -136,13 +136,8 @@ type bidSimulator struct {
 
 	// BidBlock (zero-simulate MEV) fields
 	bestBidBlockMu sync.RWMutex
-	bestBidBlock   map[common.Hash]*BidBlockRuntime  // parentHash -> best bid block
-	newBidBlockCh  chan *types.DecodedBidBlock       // channel for incoming bid blocks
-}
-
-// BidBlockRuntime holds the decoded bid block tracked by the simulator.
-type BidBlockRuntime struct {
-	block *types.DecodedBidBlock
+	bestBidBlock   map[common.Hash]*types.DecodedBidBlock // parentHash -> best bid block
+	newBidBlockCh  chan *types.DecodedBidBlock            // channel for incoming bid blocks
 }
 
 func newBidSimulator(
@@ -172,7 +167,7 @@ func newBidSimulator(
 		bestBidToRun:  make(map[common.Hash]*types.Bid),
 		simulatingBid: make(map[common.Hash]*BidRuntime),
 		bidsToSim:     make(map[uint64][]*BidRuntime),
-		bestBidBlock:  make(map[common.Hash]*BidBlockRuntime),
+		bestBidBlock:  make(map[common.Hash]*types.DecodedBidBlock),
 		newBidBlockCh: make(chan *types.DecodedBidBlock, 100),
 	}
 	if delayLeftOver != nil {
@@ -618,7 +613,7 @@ func (b *bidSimulator) clearLoop() {
 
 		b.bestBidBlockMu.Lock()
 		for k, v := range b.bestBidBlock {
-			if v.block.BlockNumber() <= clearThreshold {
+			if v.BlockNumber() <= clearThreshold {
 				delete(b.bestBidBlock, k)
 			}
 		}
@@ -645,14 +640,14 @@ func (b *bidSimulator) clearLoop() {
 }
 
 // SetBestBidBlock sets the best bid block for a given parent hash.
-func (b *bidSimulator) SetBestBidBlock(parentHash common.Hash, rt *BidBlockRuntime) {
+func (b *bidSimulator) SetBestBidBlock(parentHash common.Hash, block *types.DecodedBidBlock) {
 	b.bestBidBlockMu.Lock()
 	defer b.bestBidBlockMu.Unlock()
-	b.bestBidBlock[parentHash] = rt
+	b.bestBidBlock[parentHash] = block
 }
 
 // GetBestBidBlock returns the best bid block for a given parent hash.
-func (b *bidSimulator) GetBestBidBlock(parentHash common.Hash) *BidBlockRuntime {
+func (b *bidSimulator) GetBestBidBlock(parentHash common.Hash) *types.DecodedBidBlock {
 	b.bestBidBlockMu.RLock()
 	defer b.bestBidBlockMu.RUnlock()
 	return b.bestBidBlock[parentHash]
@@ -785,16 +780,16 @@ func (b *bidSimulator) newBidBlockLoop() {
 
 			// Keep the highest-GasFee BidBlock per parent.
 			best := b.GetBestBidBlock(block.ParentHash())
-			if best != nil && best.block.GasFee.Cmp(block.GasFee) >= 0 {
+			if best != nil && best.GasFee.Cmp(block.GasFee) >= 0 {
 				log.Debug("BidBlock: discard lower GasFee block",
 					"blockNumber", block.BlockNumber(),
 					"builder", block.Builder,
 					"gasFee", block.GasFee,
-					"bestGasFee", best.block.GasFee)
+					"bestGasFee", best.GasFee)
 				continue
 			}
 
-			b.SetBestBidBlock(block.ParentHash(), &BidBlockRuntime{block: block})
+			b.SetBestBidBlock(block.ParentHash(), block)
 			log.Info("[BID BLOCK ARRIVED]",
 				"blockNumber", block.BlockNumber(),
 				"builder", block.Builder,

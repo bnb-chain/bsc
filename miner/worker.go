@@ -145,8 +145,8 @@ type bidBlockTaskInfo struct {
 // carried into Stage 2 of the two-stage bid selection.
 // Exactly one of (env, bidBlock) is non-nil.
 type bidCandidate struct {
-	env             *environment     // non-nil: simBid path
-	bidBlock        *BidBlockRuntime // non-nil: bidBlock path
+	env             *environment            // non-nil: simBid path
+	bidBlock        *types.DecodedBidBlock  // non-nil: bidBlock path
 	blockReward     *uint256.Int
 	validatorReward *uint256.Int
 	builder         common.Address
@@ -200,7 +200,7 @@ type getWorkReq struct {
 type bidFetcher interface {
 	GetBestBid(parentHash common.Hash) *BidRuntime
 	GetSimulatingBid(prevBlockHash common.Hash) *BidRuntime
-	GetBestBidBlock(parentHash common.Hash) *BidBlockRuntime
+	GetBestBidBlock(parentHash common.Hash) *types.DecodedBidBlock
 }
 
 // worker is the main object which takes care of submitting new work to consensus engine
@@ -1478,7 +1478,12 @@ LOOP:
 
 	// when out-turn, use bestWork to prevent bundle leakage.
 	// when in-turn, compare with remote work.
-	var winnerBidBlock *BidBlockRuntime // set by Stage 2 if bidBlock wins; used at unified commit exit
+	var winnerBidBlock *types.DecodedBidBlock // set by Stage 2 if bidBlock wins; used at unified commit exit
+	// simBidCandidate is the Stage-1 simBid candidate, kept around so that if a
+	// BidBlock wins Stage 2 but later fails verify/commit, we can still fall back
+	// to comparing simBid against local (the legacy dual-threshold gate) instead
+	// of going straight to the local block.
+	var simBidCandidate *bidCandidate
 	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
 		inturnBlocksGauge.Inc(1)
 		// We want to start sealing the block as late as possible here if mev is enabled, so we could give builder the chance to send their final bid.
@@ -1539,6 +1544,9 @@ LOOP:
 					bidHash:         bestBid.bid.Hash(),
 					greedyMerged:    bestBid.greedyMerged,
 				}
+				// Save a stable pointer to the simBid candidate so it survives
+				// any later BidBlock override of bidWinner.
+				simBidCandidate = bidWinner
 			}
 		}
 
@@ -1548,9 +1556,9 @@ LOOP:
 			if bestBidBlock != nil {
 				// On the SendBidBlock path BuilderFee == 0, so validator net
 				// equals GasFee * commission / 10000.
-				bidBlockFee, overflow := uint256.FromBig(bestBidBlock.block.GasFee)
+				bidBlockFee, overflow := uint256.FromBig(bestBidBlock.GasFee)
 				if overflow {
-					log.Warn("BidBlock GasFee overflow, skipping", "gasFee", bestBidBlock.block.GasFee)
+					log.Warn("BidBlock GasFee overflow, skipping", "gasFee", bestBidBlock.GasFee)
 				} else {
 					bidBlockValidatorReward := new(uint256.Int).Mul(bidBlockFee, uint256.NewInt(*w.config.Mev.ValidatorCommission))
 					bidBlockValidatorReward.Div(bidBlockValidatorReward, uint256.NewInt(10000))
@@ -1571,7 +1579,7 @@ LOOP:
 							bidBlock:        bestBidBlock,
 							blockReward:     bidBlockFee,
 							validatorReward: bidBlockValidatorReward,
-							builder:         bestBidBlock.block.Builder,
+							builder:         bestBidBlock.Builder,
 						}
 					}
 				}
@@ -1596,8 +1604,8 @@ LOOP:
 					log.Info("[BID BLOCK selected]",
 						"block", bestWork.header.Number.Uint64(),
 						"builder", bidWinner.builder,
-						"gasFee", bidWinner.bidBlock.block.GasFee,
-						"txs", len(bidWinner.bidBlock.block.Txs))
+						"gasFee", bidWinner.bidBlock.GasFee,
+						"txs", len(bidWinner.bidBlock.Txs))
 				} else {
 					// SendBid path won — promote the simulated env.
 					bidWinGauge.Inc(1)
@@ -1618,12 +1626,47 @@ LOOP:
 	}
 
 	// Unified commit exit: either commitBidBlock (zero-simulate) or commit (normal).
+	// Verify BidBlock structurally before deciding to commit it; on any BidBlock
+	// failure, fall through to the simBid-vs-local fallback below.
 	if winnerBidBlock != nil {
-		if err := w.commitBidBlock(winnerBidBlock, bestWork.header, start); err != nil {
-			log.Error("Failed to commit bid block, fallback to local", "err", err)
-			w.commit(bestWork, w.fullTaskHook, start)
+		// preSealVerifyBidBlock already enforced engine == parlia, so any
+		// BidBlock that reaches this exit is parlia-only by construction.
+		p := w.engine.(*parlia.Parlia)
+		allTxs, systemStart, err := verifyBidBlockSystemTxs(winnerBidBlock, bestWork.header, w.chain, p)
+		if err != nil {
+			log.Warn("BidBlock failed verify, fallback to simBid/local", "err", err)
+			winnerBidBlock = nil
+		} else if err := w.commitBidBlock(p, winnerBidBlock, allTxs, systemStart, bestWork.header, start); err != nil {
+			log.Error("Failed to commit bid block, fallback to simBid/local", "err", err)
+			winnerBidBlock = nil
 		}
-	} else {
+	}
+
+	// simBid fallback. Re-runs the legacy dual-threshold gate against simBid
+	// whenever no BidBlock is being committed. This catches:
+	//   - bidBlock won Stage 1 then lost Stage 2 (simBid was discarded silently)
+	//   - bidBlock won Stage 2 then failed verify/commit
+	// When simBid already won Stage 2 normally, bestWork already points at
+	// simBidCandidate.env — skip to avoid a redundant log.
+	if winnerBidBlock == nil && simBidCandidate != nil && simBidCandidate.env != nil &&
+		bestWork != simBidCandidate.env {
+		localValidatorReward := new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
+		localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
+		if bestReward.Cmp(simBidCandidate.blockReward) < 0 &&
+			localValidatorReward.Cmp(simBidCandidate.validatorReward) < 0 {
+			bidWinGauge.Inc(1)
+			bestWork = simBidCandidate.env
+			log.Info("[BUILDER BLOCK] (simBid fallback)",
+				"block", bestWork.header.Number.Uint64(),
+				"builder", simBidCandidate.builder,
+				"blockReward", weiToEtherStringF6(simBidCandidate.blockReward.ToBig()),
+				"validatorReward", weiToEtherStringF6(simBidCandidate.validatorReward.ToBig()),
+				"bid", simBidCandidate.bidHash.TerminalString(),
+			)
+		}
+	}
+
+	if winnerBidBlock == nil {
 		w.commit(bestWork, w.fullTaskHook, start)
 	}
 
@@ -1641,38 +1684,35 @@ func (w *worker) inTurn() bool {
 	return validator != common.Address{} && validator == w.etherbase()
 }
 
-// commitBidBlock assembles a block from a BidBlock .
-// System transactions are identified as the trailing entries of the merged
-// Transactions list (unsigned; to == system contract; gasPrice == 0), and signed
-// in place using the validator's signTxFn. The final header uses consensus fields
-// from local Prepare(), but Time/MixDigest (the second + millisecond timestamp,
-// already validated by preSealVerifyBidBlock) and execution-result fields are
-// taken from the builder's header — the builder's Root/ReceiptHash/Bloom/GasUsed
-// were computed under that exact timestamp, so sealing under any other Time would
-// produce a header whose state roots no longer match.
-// No EVM execution is performed on this path.
-func (w *worker) commitBidBlock(bidBlock *BidBlockRuntime, localHeader *types.Header, start time.Time) error {
-	if !w.isRunning() {
-		return errors.New("worker is not running")
-	}
-
-	decoded := bidBlock.block
-
-	p, ok := w.engine.(*parlia.Parlia)
-	if !ok {
-		return errors.New("engine is not parlia")
-	}
-
-	// 1. Identify the trailing unsigned system-tx region and sign in place.
-	//    System txs are always positioned at the end of the block, matching the
-	//    layout produced by FinalizeAndAssemble. The builder ships them unsigned,
-	//    so we detect them via IsUnsignedSystemTxCandidate (structural check only,
-	//    no ecrecover). Per BEP-675 §4.3, before signing we additionally require
-	//    each candidate to pass the stricter IsSignableSystemTx whitelist:
-	//      - to == ValidatorContract
-	//      - data selector ∈ {deposit, distributeFinalityReward, updateValidatorSetV2}
-	//    Any candidate that fails this whitelist causes the entire BidBlock to be
-	//    rejected (no partial signing).
+// verifyBidBlockSystemTxs identifies the trailing unsigned system-tx region in
+// decoded.Txs and validates it against the BEP-675 signable whitelist plus the
+// expected per-block sequence/ordering derived from localHeader. It does not
+// sign anything and does not depend on validator-private state, so it is safe
+// to call from any context that already trusts decoded's header (e.g. after
+// preSealVerifyBidBlock).
+//
+// On success it returns a fresh copy of the full transaction list — the caller
+// is free to mutate the [systemStart:] range without touching decoded.Txs —
+// along with the index of the first system tx.
+//
+// System txs sit at the end of the block, matching the layout produced by
+// FinalizeAndAssemble. The builder ships them unsigned, so we detect them via
+// IsUnsignedSystemTxCandidate (structural check, no ecrecover) and then run
+// two stages:
+//   - Stage 1, whitelist: each candidate must target ValidatorContract with
+//     one of {deposit, distributeFinalityReward, updateValidatorSetV2}.
+//   - Stage 2, shape: the trailing region must match the expected sequence
+//     and ordering for this header. distributeIncoming is optional
+//     (balance-dependent); the other entries are required when their
+//     fork/interval conditions hold.
+//
+// Any failure causes the entire BidBlock to be rejected — no partial accept.
+func verifyBidBlockSystemTxs(
+	decoded *types.DecodedBidBlock,
+	localHeader *types.Header,
+	chain *core.BlockChain,
+	p *parlia.Parlia,
+) ([]*types.Transaction, int, error) {
 	allTxs := make([]*types.Transaction, len(decoded.Txs))
 	copy(allTxs, decoded.Txs)
 
@@ -1684,49 +1724,83 @@ func (w *worker) commitBidBlock(bidBlock *BidBlockRuntime, localHeader *types.He
 		systemStart = i
 	}
 
-	// Stage 1 — whitelist: every unsigned-system-tx candidate must target
-	// ValidatorContract with one of the three signable methods.
+	// Stage 1 — whitelist.
 	for i := systemStart; i < len(allTxs); i++ {
 		if !p.IsSignableSystemTx(allTxs[i]) {
 			toAddr := "<nil>"
 			if allTxs[i].To() != nil {
 				toAddr = allTxs[i].To().Hex()
 			}
-			return fmt.Errorf(
+			return nil, 0, fmt.Errorf(
 				"BidBlock rejected: unsigned system tx at position %d (to=%s) "+
 					"is not on the BEP-675 signable whitelist", i, toAddr,
 			)
 		}
 	}
 
-	// Stage 2 — shape: the trailing system txs must match the expected
-	// sequence and ordering derived from the header (Parlia's Finalize order).
-	// distributeIncoming is optional (balance-dependent); the other entries
-	// are required when their fork/interval conditions hold.
-	parent := w.chain.GetHeaderByHash(localHeader.ParentHash)
+	// Stage 2 — shape.
+	parent := chain.GetHeaderByHash(localHeader.ParentHash)
 	if parent == nil {
-		return fmt.Errorf("BidBlock rejected: parent header not found for %s", localHeader.ParentHash.Hex())
+		return nil, 0, fmt.Errorf("BidBlock rejected: parent header not found for %s", localHeader.ParentHash.Hex())
 	}
 	shape := p.ExpectedSystemTxShape(localHeader, parent)
 	if err := p.VerifySystemTxShape(allTxs[systemStart:], shape); err != nil {
-		return fmt.Errorf("BidBlock rejected: %w", err)
+		return nil, 0, fmt.Errorf("BidBlock rejected: %w", err)
 	}
 
-	// Stage 3 — sign each whitelisted system tx in place with the validator key.
+	return allTxs, systemStart, nil
+}
+
+// signBidBlockSystemTxs signs allTxs[systemStart:] in place using the
+// validator's signTxFn (Parlia.SignSystemTx). It assumes the caller has
+// already validated the region via verifyBidBlockSystemTxs.
+func signBidBlockSystemTxs(
+	allTxs []*types.Transaction,
+	systemStart int,
+	chainID *big.Int,
+	p *parlia.Parlia,
+) error {
 	for i := systemStart; i < len(allTxs); i++ {
-		signed, err := p.SignSystemTx(allTxs[i], w.chainConfig.ChainID)
+		signed, err := p.SignSystemTx(allTxs[i], chainID)
 		if err != nil {
 			return fmt.Errorf("failed to sign system tx %d: %v", i, err)
 		}
 		allTxs[i] = signed
 	}
+	return nil
+}
+
+// commitBidBlock assembles a block from an already-verified BidBlock.
+// It signs the trailing system-tx region in place, builds the final header,
+// and submits the block to seal. The caller MUST have already run
+// verifyBidBlockSystemTxs and pass back its (allTxs, systemStart) result.
+//
+// The final header uses consensus fields from local Prepare(), but
+// Time/MixDigest (the second + millisecond timestamp, validated by
+// preSealVerifyBidBlock) and execution-result fields are taken from the
+// builder's header — the builder's Root/ReceiptHash/Bloom/GasUsed were
+// computed under that exact timestamp, so sealing under any other Time would
+// produce a header whose state roots no longer match.
+// No EVM execution is performed on this path.
+func (w *worker) commitBidBlock(
+	p *parlia.Parlia,
+	decoded *types.DecodedBidBlock,
+	allTxs []*types.Transaction,
+	systemStart int,
+	localHeader *types.Header,
+	start time.Time,
+) error {
+	if !w.isRunning() {
+		return errors.New("worker is not running")
+	}
+
+	// 1. Sign the verified system-tx region in place with the validator key.
+	if err := signBidBlockSystemTxs(allTxs, systemStart, w.chainConfig.ChainID, p); err != nil {
+		return err
+	}
 
 	// 2. Build header: consensus fields from local Prepare(), timestamp +
-	//    execution-result fields from the builder-supplied header. Time and
-	//    MixDigest (millisecond fraction) must come from the builder because
-	//    Root/ReceiptHash/Bloom/GasUsed were computed under that timestamp;
-	//    preSealVerifyBidBlock has already enforced the Parlia range and the
-	//    Time<->MixDigest consistency, so this is safe.
+	//    execution-result fields from the builder-supplied header.
 	header := types.CopyHeader(localHeader)
 	header.Time = decoded.Header.Time
 	header.MixDigest = decoded.Header.MixDigest
