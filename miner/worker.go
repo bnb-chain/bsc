@@ -1645,7 +1645,11 @@ func (w *worker) inTurn() bool {
 // System transactions are identified as the trailing entries of the merged
 // Transactions list (unsigned; to == system contract; gasPrice == 0), and signed
 // in place using the validator's signTxFn. The final header uses consensus fields
-// from local Prepare() and execution-result fields from the builder's header.
+// from local Prepare(), but Time/MixDigest (the second + millisecond timestamp,
+// already validated by preSealVerifyBidBlock) and execution-result fields are
+// taken from the builder's header — the builder's Root/ReceiptHash/Bloom/GasUsed
+// were computed under that exact timestamp, so sealing under any other Time would
+// produce a header whose state roots no longer match.
 // No EVM execution is performed on this path.
 func (w *worker) commitBidBlock(bidBlock *BidBlockRuntime, localHeader *types.Header, start time.Time) error {
 	if !w.isRunning() {
@@ -1717,9 +1721,15 @@ func (w *worker) commitBidBlock(bidBlock *BidBlockRuntime, localHeader *types.He
 		allTxs[i] = signed
 	}
 
-	// 2. Build header: consensus fields from local Prepare(), execution-result
-	//    fields from the builder-supplied header.
+	// 2. Build header: consensus fields from local Prepare(), timestamp +
+	//    execution-result fields from the builder-supplied header. Time and
+	//    MixDigest (millisecond fraction) must come from the builder because
+	//    Root/ReceiptHash/Bloom/GasUsed were computed under that timestamp;
+	//    preSealVerifyBidBlock has already enforced the Parlia range and the
+	//    Time<->MixDigest consistency, so this is safe.
 	header := types.CopyHeader(localHeader)
+	header.Time = decoded.Header.Time
+	header.MixDigest = decoded.Header.MixDigest
 	header.GasUsed = decoded.Header.GasUsed
 	header.Root = decoded.Header.Root
 	header.ReceiptHash = decoded.Header.ReceiptHash
