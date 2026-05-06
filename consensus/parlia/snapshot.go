@@ -397,6 +397,10 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 				log.Debug("validator set switch", "turnLength", *turnLength)
 			}
 
+			log.Info("check Luban, Plato hardforks", "checkpointLuban", chainConfig.IsLuban(checkpointHeader.Number),
+				"headerLuban", chainConfig.IsLuban(header.Number), "checkpointPlaot", chainConfig.IsPlato(checkpointHeader.Number),
+				"headerPlaot", chainConfig.IsPlato(header.Number), "number", number, "minerHistoryCheckLen", snap.minerHistoryCheckLen(),
+				"turnLength", s.TurnLength, "validatorsLen", len(s.Validators))
 			// get validators from headers and use that for new validator set
 			newValArr, voteAddrs, err := parseValidators(checkpointHeader, chainConfig, epochLength)
 			if err != nil {
@@ -404,7 +408,8 @@ func (s *Snapshot) apply(headers []*types.Header, chain consensus.ChainHeaderRea
 			}
 			newVals := make(map[common.Address]*ValidatorInfo, len(newValArr))
 			for idx, val := range newValArr {
-				if !chainConfig.IsLuban(header.Number) {
+				// TODO: Temporarily fix this corner case
+				if !chainConfig.IsLuban(checkpointHeader.Number) {
 					newVals[val] = &ValidatorInfo{}
 				} else {
 					newVals[val] = &ValidatorInfo{
