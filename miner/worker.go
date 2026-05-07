@@ -1208,6 +1208,26 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 	}
 }
 
+// delay returns the time budget for local block building.
+// For the last block in a validator's turn it caps the budget to BlockInterval/4,
+// giving the next validator enough lead time to avoid producing an empty block.
+// (post-Fermi: 450ms interval, ~120ms one-way p2p delay)
+func (w *worker) delay(header *types.Header, leftOver *time.Duration) *time.Duration {
+	d := w.engine.Delay(w.chain, header, leftOver)
+	if d == nil {
+		return nil
+	}
+	if p, ok := w.engine.(*parlia.Parlia); ok && p.IsLastBlockInTurn(w.chain, header) {
+		blockInterval, err := p.BlockInterval(w.chain, header)
+		if err == nil {
+			if cap := time.Duration(blockInterval) * time.Millisecond / 4; *d > cap {
+				return &cap
+			}
+		}
+	}
+	return d
+}
+
 // commitWork generates several new sealing tasks based on the parent block
 // and submit them to the sealer.
 func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
@@ -1265,7 +1285,7 @@ LOOP:
 		prevWork = work
 		workList = append(workList, work)
 
-		delay := w.engine.Delay(w.chain, work.header, w.config.DelayLeftOver)
+		delay := w.delay(work.header, w.config.DelayLeftOver)
 		if delay == nil {
 			log.Warn("commitWork delay is nil, something is wrong")
 			stopTimer = nil
@@ -1348,7 +1368,7 @@ LOOP:
 				log.Debug("commitWork interruptCh closed, new block imported or resubmit triggered")
 				return
 			case ev := <-txsCh:
-				delay := w.engine.Delay(w.chain, work.header, w.config.DelayLeftOver)
+				delay := w.delay(work.header, w.config.DelayLeftOver)
 				log.Debug("commitWork txsCh arrived", "fillDuration", fillDuration.String(),
 					"delay", delay.String(), "work.tcount", work.tcount,
 					"newTxsNum", newTxsNum, "len(ev.Txs)", len(ev.Txs))

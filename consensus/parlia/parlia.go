@@ -1667,6 +1667,15 @@ func (p *Parlia) Authorize(val common.Address, signFn SignerFn, signTxFn SignerT
 	p.signTxFn = signTxFn
 }
 
+// IsLastBlockInTurn reports whether header is the last block in the current validator's turn.
+func (p *Parlia) IsLastBlockInTurn(chain consensus.ChainReader, header *types.Header) bool {
+	snap, err := p.snapshot(chain, header.Number.Uint64()-1, header.ParentHash, nil)
+	if err != nil {
+		return false
+	}
+	return snap.lastBlockInOneTurn(header.Number.Uint64())
+}
+
 // Argument leftOver is the time reserved for block finalize(calculate root, distribute income...)
 func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header, leftOver *time.Duration) *time.Duration {
 	snap, err := p.snapshot(chain, header.Number.Uint64()-1, header.ParentHash, nil)
@@ -1675,11 +1684,7 @@ func (p *Parlia) Delay(chain consensus.ChainReader, header *types.Header, leftOv
 	}
 
 	delay := p.delayForRamanujanFork(snap, header)
-	// The blocking time should be no more than half of period when snap.TurnLength == 1
-	timeForMining := time.Duration(snap.BlockInterval) * time.Millisecond / 2
-	if !snap.lastBlockInOneTurn(header.Number.Uint64()) {
-		timeForMining = time.Duration(snap.BlockInterval) * time.Millisecond
-	}
+	timeForMining := time.Duration(snap.BlockInterval) * time.Millisecond
 	if delay > timeForMining {
 		delay = timeForMining
 	}
