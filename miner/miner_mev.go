@@ -65,6 +65,9 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 	if bb == nil || bb.Header == nil {
 		return common.Hash{}, types.NewInvalidBidError("empty BidBlock or Header")
 	}
+	if bb.GasFee == nil || bb.GasFee.Sign() < 0 {
+		return common.Hash{}, types.NewInvalidBidError("invalid BidBlock GasFee")
+	}
 	blockNumber := bb.Header.Number.Uint64()
 	parentHash := bb.Header.ParentHash
 	if err := miner.bidSimulator.CheckPending(blockNumber, builder, bb.Hash()); err != nil {

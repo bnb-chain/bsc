@@ -714,14 +714,47 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			"hash", hash,
 			"builder", task.bidBlockInfo.builder,
 			"err", err)
-		// TODO: jail builder (phase 2)
-	} else {
-		log.Info("[BID BLOCK VERIFIED]",
+		// TODO: mark builder dishonest and revoke BidBlock permission.
+		return
+	}
+
+	actualGasFee, err := w.validateBidBlockGasFee(block, task.bidBlockInfo)
+	if err != nil {
+		log.Error("[BID BLOCK GAS FEE VERIFY FAILED]",
 			"number", block.Number(),
 			"hash", hash,
-			"builder", task.bidBlockInfo.builder)
-		// TODO: GasFee post-verification (phase 2)
+			"builder", task.bidBlockInfo.builder,
+			"claimed", task.bidBlockInfo.gasFee,
+			"actual", actualGasFee,
+			"err", err)
+		// TODO: mark builder dishonest and revoke BidBlock permission.
+		return
 	}
+
+	log.Info("[BID BLOCK VERIFIED]",
+		"number", block.Number(),
+		"hash", hash,
+		"builder", task.bidBlockInfo.builder,
+		"claimedGasFee", task.bidBlockInfo.gasFee,
+		"actualGasFee", actualGasFee)
+}
+
+// validateBidBlockGasFee compares claimed GasFee with the verified distribution
+// value. It must run only after InsertChain succeeds.
+func (w *worker) validateBidBlockGasFee(block *types.Block, info *bidBlockTaskInfo) (*big.Int, error) {
+	p, ok := w.engine.(*parlia.Parlia)
+	if !ok {
+		return nil, errors.New("consensus engine is not parlia")
+	}
+	actual := p.ExtractDistributedGasFee(block)
+	claimed := info.gasFee
+	if claimed == nil {
+		claimed = new(big.Int)
+	}
+	if claimed.Cmp(actual) > 0 {
+		return actual, fmt.Errorf("BidBlock GasFee over-claim: claimed=%v actual=%v", claimed, actual)
+	}
+	return actual, nil
 }
 
 // makeEnv creates a new environment for the sealing block.

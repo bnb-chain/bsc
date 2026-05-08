@@ -515,6 +515,39 @@ func (p *Parlia) selectorFor(methodName string) []byte {
 	return method.ID
 }
 
+// ExtractDistributedGasFee reads the GasFee value from the trailing
+// ValidatorContract.deposit system tx. Call only after InsertChain succeeds.
+func (p *Parlia) ExtractDistributedGasFee(block *types.Block) *big.Int {
+	txs := block.Transactions()
+	actual := new(big.Int)
+	coinbase := block.Coinbase()
+
+	depositSel := p.selectorFor("deposit")
+	valContract := common.HexToAddress(systemcontracts.ValidatorContract)
+
+	for i := len(txs) - 1; i >= 0; i-- {
+		tx := txs[i]
+		to := tx.To()
+		if to == nil || !isToSystemContract(*to) {
+			return actual
+		}
+		if tx.GasPrice() == nil || tx.GasPrice().Sign() != 0 {
+			return actual
+		}
+		sender, err := types.Sender(p.signer, tx)
+		if err != nil || sender != coinbase {
+			return actual
+		}
+		if *to == valContract &&
+			len(depositSel) == 4 &&
+			len(tx.Data()) >= 4 &&
+			bytes.Equal(tx.Data()[:4], depositSel) {
+			actual.Add(actual, tx.Value())
+		}
+	}
+	return actual
+}
+
 func (p *Parlia) IsSystemContract(to *common.Address) bool {
 	if to == nil {
 		return false
