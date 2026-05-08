@@ -189,40 +189,19 @@ func (db *Database) loadLayers() layer {
 	return newDiskLayer(root, rawdb.ReadPersistentStateID(db.diskdb), db, nil, nil, newBuffer(db.config.WriteBufferSize, nil, nil, 0), nil)
 }
 
-// tryUnwrapJournal detects legacy format and unwraps if needed.
-// Legacy format: wraps layer data in []byte with shasum.
-func tryUnwrapJournal(r *rlp.Stream) (jr *rlp.Stream, isLegacy bool, err error) {
-	kind, size, err := r.Kind()
-	if err != nil {
-		return nil, false, err
-	}
-	if kind == rlp.String && size > common.HashLength {
-		var buf []byte
-		if err := r.Decode(&buf); err != nil {
-			return nil, false, err
-		}
-		return rlp.NewStream(bytes.NewReader(buf), 0), true, nil
-	}
-	return r, false, nil
-}
-
 // loadDiskLayer reads the binary blob from the layer journal, reconstructing
 // a new disk layer on it.
 func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
-	jr, isLegacy, err := tryUnwrapJournal(r)
-	if err != nil {
-		return nil, fmt.Errorf("load disk layer: %v", err)
-	}
-
+	// Resolve disk layer root
 	var root common.Hash
-	if err := jr.Decode(&root); err != nil {
+	if err := r.Decode(&root); err != nil {
 		return nil, fmt.Errorf("load disk root: %v", err)
 	}
 	// Resolve the state id of disk layer, it can be different
 	// with the persistent id tracked in disk, the id distance
 	// is the number of transitions aggregated in disk layer.
 	var id uint64
-	if err := jr.Decode(&id); err != nil {
+	if err := r.Decode(&id); err != nil {
 		return nil, fmt.Errorf("load state id: %v", err)
 	}
 	stored := rawdb.ReadPersistentStateID(db.diskdb)
@@ -231,20 +210,13 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 	}
 	// Resolve nodes cached in aggregated buffer
 	var nodes nodeSet
-	if err := nodes.decode(jr); err != nil {
+	if err := nodes.decode(r); err != nil {
 		return nil, err
 	}
 	// Resolve flat state sets in aggregated buffer
 	var states stateSet
-	if err := states.decode(jr); err != nil {
+	if err := states.decode(r); err != nil {
 		return nil, err
-	}
-	// Skip shasum if legacy format
-	if isLegacy {
-		var shaSum [32]byte
-		if err := r.Decode(&shaSum); err != nil {
-			return nil, fmt.Errorf("load disk shasum: %v", err)
-		}
 	}
 	return newDiskLayer(root, id, db, nil, nil, newBuffer(db.config.WriteBufferSize, &nodes, &states, id-stored), nil), nil
 }
@@ -252,16 +224,9 @@ func (db *Database) loadDiskLayer(r *rlp.Stream) (layer, error) {
 // loadDiffLayer reads the next sections of a layer journal, reconstructing a new
 // diff and verifying that it can be linked to the requested parent.
 func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
-	jr, isLegacy, err := tryUnwrapJournal(r)
-	if err != nil {
-		if err == io.EOF {
-			return parent, nil
-		}
-		return nil, fmt.Errorf("load diff layer: %v", err)
-	}
-
+	// Read the next diff journal entry
 	var root common.Hash
-	if err := jr.Decode(&root); err != nil {
+	if err := r.Decode(&root); err != nil {
 		// The first read may fail with EOF, marking the end of the journal
 		if err == io.EOF {
 			return parent, nil
@@ -269,25 +234,18 @@ func (db *Database) loadDiffLayer(parent layer, r *rlp.Stream) (layer, error) {
 		return nil, fmt.Errorf("load diff root: %v", err)
 	}
 	var block uint64
-	if err := jr.Decode(&block); err != nil {
+	if err := r.Decode(&block); err != nil {
 		return nil, fmt.Errorf("load block number: %v", err)
 	}
 	// Read in-memory trie nodes from journal
 	var nodes nodeSetWithOrigin
-	if err := nodes.decode(jr); err != nil {
+	if err := nodes.decode(r); err != nil {
 		return nil, err
 	}
 	// Read flat states set (with original value attached) from journal
 	var stateSet StateSetWithOrigin
-	if err := stateSet.decode(jr); err != nil {
+	if err := stateSet.decode(r); err != nil {
 		return nil, err
-	}
-	// Skip shasum if legacy format
-	if isLegacy {
-		var shaSum [32]byte
-		if err := r.Decode(&shaSum); err != nil {
-			return nil, fmt.Errorf("load diff shasum: %v", err)
-		}
 	}
 	return db.loadDiffLayer(newDiffLayer(parent, root, parent.stateID()+1, block, &nodes, &stateSet), r)
 }
