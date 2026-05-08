@@ -49,18 +49,20 @@ func (miner *Miner) HasBuilder(builder common.Address) bool {
 }
 
 func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) (common.Hash, error) {
-	// 1. Recover builder address from signature (covers entire BidBlock).
 	builder, err := args.EcrecoverSender()
 	if err != nil {
 		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("invalid signature: %v", err))
 	}
 
-	// 2. Verify the builder is registered.
 	if !miner.bidSimulator.ExistBuilder(builder) {
 		return common.Hash{}, types.NewInvalidBidError("builder is not registered")
 	}
 
-	// 3. Deduplicate: same (blockNumber, builder, bidHash) is rejected.
+	// Check permission before CheckPending so rejected BidBlocks do not use quota.
+	if !miner.bidSimulator.IsBidBlockAllowed(builder) {
+		return common.Hash{}, types.NewInvalidBidError("builder BidBlock permission revoked, fallback to SendBid")
+	}
+
 	bb := args.BidBlock
 	if bb == nil || bb.Header == nil {
 		return common.Hash{}, types.NewInvalidBidError("empty BidBlock or Header")
@@ -74,25 +76,21 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 		return common.Hash{}, err
 	}
 
-	// 4. Reject late arrivals beyond BidBetterBefore.
 	bidBetterBefore := miner.bidSimulator.bidBetterBefore(parentHash)
 	if timeout := time.Until(bidBetterBefore); timeout <= 0 {
 		return common.Hash{}, fmt.Errorf("too late, expected before %s, appeared %s later", bidBetterBefore,
 			common.PrettyDuration(timeout))
 	}
 
-	// 5. Decode transactions (UnmarshalBinary only — no ecrecover on hot path).
 	decoded, err := args.ToDecodedBidBlock(builder)
 	if err != nil {
 		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("failed to decode bid block: %v", err))
 	}
 
-	// 6. Pre-seal header verification: consensus fields must match locally derived values.
 	if err := miner.bidSimulator.preSealVerifyBidBlock(decoded); err != nil {
 		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("pre-seal verify failed: %v", err))
 	}
 
-	// 7. Enter bid selection (compared against other BidBlocks by GasFee).
 	if err := miner.bidSimulator.sendBidBlock(ctx, decoded); err != nil {
 		return common.Hash{}, err
 	}

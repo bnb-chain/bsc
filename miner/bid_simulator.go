@@ -138,6 +138,9 @@ type bidSimulator struct {
 	bestBidBlockMu sync.RWMutex
 	bestBidBlock   map[common.Hash]*types.DecodedBidBlock // parentHash -> best bid block
 	newBidBlockCh  chan *types.DecodedBidBlock            // channel for incoming bid blocks
+
+	// SendBidBlock permission is separate from legacy SendBid admission.
+	permMgr *BidBlockPermissionManager
 }
 
 func newBidSimulator(
@@ -169,6 +172,7 @@ func newBidSimulator(
 		bidsToSim:     make(map[uint64][]*BidRuntime),
 		bestBidBlock:  make(map[common.Hash]*types.DecodedBidBlock),
 		newBidBlockCh: make(chan *types.DecodedBidBlock, 100),
+		permMgr:       NewBidBlockPermissionManager(),
 	}
 	if delayLeftOver != nil {
 		b.delayLeftOver = *delayLeftOver
@@ -285,6 +289,11 @@ func (b *bidSimulator) ExistBuilder(builder common.Address) bool {
 	_, ok := b.builders[builder]
 
 	return ok
+}
+
+// IsBidBlockAllowed reports whether builder may use SendBidBlock.
+func (b *bidSimulator) IsBidBlockAllowed(builder common.Address) bool {
+	return b.permMgr.IsAllowed(builder)
 }
 
 // best bid here is based on packedBlockReward after the bid is simulated
