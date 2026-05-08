@@ -2807,12 +2807,6 @@ func MakeStateDataBase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.
 	return statediskdb
 }
 
-func PathDBConfigAddJournalFilePath(stack *node.Node, config *pathdb.Config) *pathdb.Config {
-	path := fmt.Sprintf("%s/%s", stack.ResolvePath("chaindata"), eth.JournalFileName)
-	config.JournalFilePath = path
-	return config
-}
-
 // tryMakeReadOnlyDatabase try to open the chain database in read-only mode,
 // or fallback to write mode if the database is not initialized.
 //
@@ -2990,6 +2984,9 @@ func MakeConsolePreloads(ctx *cli.Context) []string {
 
 // MakeTrieDatabase constructs a trie database based on the configured scheme.
 func MakeTrieDatabase(ctx *cli.Context, stack *node.Node, disk ethdb.Database, preimage bool, readOnly bool, isVerkle bool, mergeIncr bool) *triedb.Database {
+	if ctx.IsSet(JournalFileFlag.Name) {
+		log.Warn("--journalfile is deprecated and has no effect, please remove it")
+	}
 	config := &triedb.Config{
 		Preimages: preimage,
 		IsVerkle:  isVerkle,
@@ -3016,7 +3013,6 @@ func MakeTrieDatabase(ctx *cli.Context, stack *node.Node, disk ethdb.Database, p
 	}
 	pathConfig.JournalDirectory = stack.ResolvePath("triedb")
 	config.PathDB = &pathConfig
-	config.PathDB.JournalFilePath = fmt.Sprintf("%s/%s", stack.ResolvePath("chaindata"), eth.JournalFileName)
 	return triedb.NewDatabase(disk, config)
 }
 

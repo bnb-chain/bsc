@@ -1063,7 +1063,7 @@ func parseDumpConfig(ctx *cli.Context, stack *node.Node, db ethdb.Database) (*st
 	} else {
 		// Use latest
 		if scheme == rawdb.PathScheme {
-			triedb := triedb.NewDatabase(db, &triedb.Config{PathDB: utils.PathDBConfigAddJournalFilePath(stack, pathdb.ReadOnly)})
+			triedb := triedb.NewDatabase(db, &triedb.Config{PathDB: pathdb.ReadOnly})
 			defer triedb.Close()
 			if stateRoot := triedb.Head(); stateRoot != (common.Hash{}) {
 				header.Root = stateRoot
@@ -1136,7 +1136,7 @@ func dumpAllRootHashInPath(ctx *cli.Context) error {
 	defer stack.Close()
 	db := utils.MakeChainDatabase(ctx, stack, true)
 	defer db.Close()
-	triedb := triedb.NewDatabase(db, &triedb.Config{PathDB: utils.PathDBConfigAddJournalFilePath(stack, pathdb.ReadOnly)})
+	triedb := triedb.NewDatabase(db, &triedb.Config{PathDB: pathdb.ReadOnly})
 	defer triedb.Close()
 
 	scheme, err := rawdb.ParseStateScheme(ctx.String(utils.StateSchemeFlag.Name), db)

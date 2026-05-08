@@ -184,7 +184,6 @@ type BlockChainConfig struct {
 	TriesInMemory         uint64 // How many tries keeps in memory
 	NoTries               bool   // Insecure settings. Do not have any tries in databases if enabled.
 	PathSyncFlush         bool   // Whether sync flush the trienodebuffer of pathdb to disk.
-	JournalFilePath       string // The path to store journal file which is used in pathdb
 	EnableIncr            bool   // Flag whether the freezer db stores incremental block and state history
 	IncrHistoryPath       string // The path to store incremental block and chain files
 	IncrHistory           uint64 // Amount of block and state history stored in incremental freezer db
@@ -286,7 +285,6 @@ func (cfg *BlockChainConfig) triedbConfig(isVerkle bool) *triedb.Config {
 	}
 	if cfg.StateScheme == rawdb.PathScheme {
 		config.PathDB = &pathdb.Config{
-			JournalFilePath: cfg.JournalFilePath,
 			EnableIncr:      cfg.EnableIncr,
 			IncrHistoryPath: cfg.IncrHistoryPath,
 			IncrHistory:     cfg.IncrHistory,

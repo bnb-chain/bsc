@@ -64,15 +64,6 @@ func (db *Database) loadJournal(diskRoot common.Hash) (layer, error) {
 		}
 		defer f.Close()
 		reader = f
-	} else if path := db.config.JournalFilePath; path != "" && common.FileExist(path) { // TODO(Nathan): delete this branch in v1.8.x
-		// If a journal file is specified, read it from there
-		log.Info("Load database journal from file", "path", path)
-		f, err := os.OpenFile(path, os.O_RDONLY, 0644)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read journal file %s: %w", path, err)
-		}
-		defer f.Close()
-		reader = f
 	} else {
 		log.Info("Load database journal from disk")
 		journal := rawdb.ReadTrieJournal(db.diskdb)

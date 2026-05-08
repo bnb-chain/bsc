@@ -81,8 +81,6 @@ type Config struct {
 	NoAsyncFlush      bool // Flag whether the background buffer flushing is disabled
 	NoAsyncGeneration bool // Flag whether the background generation is disabled
 
-	JournalFilePath string // The path of journal file
-
 	EnableIncr      bool   // Flag whether the freezer db stores incr block and state history
 	MergeIncr       bool   // Flag to merge incr snapshots
 	IncrHistory     uint64 // Amount of block and state history stored in incr freezer db

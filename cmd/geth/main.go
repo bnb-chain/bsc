@@ -121,7 +121,7 @@ var (
 		utils.LogExportCheckpointsFlag,
 		utils.StateHistoryFlag,
 		utils.PathDBSyncFlag,
-		utils.JournalFileFlag,
+		utils.JournalFileFlag, // deprecated
 		utils.LightKDFFlag,
 		utils.EthRequiredBlocksFlag,
 		utils.LegacyWhitelistFlag, // deprecated

@@ -76,7 +76,6 @@ import (
 
 const (
 	ChainDBNamespace = "eth/db/chaindata/"
-	JournalFileName  = "trie.journal"
 	ChainData        = "chaindata"
 )
 
@@ -336,11 +335,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		}
 	}
 
-	path := ChainData
-	if stack.CheckIfMultiDataBase() {
-		path = ChainData + "/state"
-	}
-	journalFilePath := stack.ResolvePath(path) + "/" + JournalFileName
 	var (
 		options = &core.BlockChainConfig{
 			TrieCleanLimit:        config.TrieCleanCache,
@@ -356,7 +350,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			StateHistory:          config.StateHistory,
 			StateScheme:           config.StateScheme,
 			PathSyncFlush:         config.PathSyncFlush,
-			JournalFilePath:       journalFilePath,
 			EnableIncr:            config.EnableIncrSnapshots,
 			IncrHistoryPath:       config.IncrSnapshotPath,
 			IncrHistory:           config.IncrSnapshotBlockInterval,
