@@ -107,3 +107,11 @@ type BlocksByRangePacket struct {
 
 func (*BlocksByRangePacket) Name() string { return "BlocksByRange" }
 func (*BlocksByRangePacket) Kind() byte   { return BlocksByRangeMsg }
+
+// BlocksByRangeRLPPacket mirrors BlocksByRangePacket on the wire but carries
+// pre-encoded entries, letting the server reuse RLP bytes already produced for
+// size accounting and avoid a redundant encode pass in p2p.Send.
+type BlocksByRangeRLPPacket struct {
+	RequestId uint64
+	Blocks    []rlp.RawValue
+}

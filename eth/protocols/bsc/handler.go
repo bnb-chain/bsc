@@ -13,9 +13,20 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
-const MaxRequestRangeBlocksCount = 64
+const (
+	// MaxRequestRangeBlocksCount is the maximum number of blocks to serve per
+	// GetBlocksByRange request. Mostly there to bound disk lookups; with BSC's
+	// typical block size, the practical limit will always be softResponseLimit.
+	MaxRequestRangeBlocksCount = 64
+
+	// softResponseLimit is the target maximum size of replies. The hard cap on
+	// the wire is maxMessageSize (10MB); 8MB leaves headroom for outer RLP/p2p
+	// framing. Each entry's measured size includes sidecars and BAL.
+	softResponseLimit = 8 * 1024 * 1024
+)
 
 // Handler is a callback to invoke from an outside runner after the boilerplate
 // exchanges have passed.
@@ -168,7 +179,7 @@ func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 	}
 
 	// Get requested blocks
-	blocks := make([]*BlockData, 0, req.Count)
+	blocks := make([]rlp.RawValue, 0, req.Count)
 	var block *types.Block
 	// Prioritize blockHash query, get block & sidecars from db
 	if req.StartBlockHash != (common.Hash{}) {
@@ -179,19 +190,28 @@ func handleGetBlocksByRange(backend Backend, msg Decoder, peer *Peer) error {
 	if block == nil {
 		return fmt.Errorf("msg %v, cannot get start block: %v, %v", GetBlocksByRangeMsg, req.StartBlockHeight, req.StartBlockHash)
 	}
-	blocks = append(blocks, NewBlockData(block))
-	balSize := block.BALSize()
-	for i := uint64(1); i < req.Count; i++ {
-		block = backend.Chain().GetBlockByHash(block.ParentHash())
-		if block == nil {
+	responseSize := 0
+	for i := uint64(0); i < req.Count; i++ {
+		if i > 0 {
+			block = backend.Chain().GetBlockByHash(block.ParentHash())
+			if block == nil {
+				break
+			}
+		}
+		enc, err := rlp.EncodeToBytes(NewBlockData(block))
+		if err != nil {
+			log.Error("failed to encode BlockData", "hash", block.Hash(), "err", err)
 			break
 		}
-		balSize += block.BALSize()
-		blocks = append(blocks, NewBlockData(block))
+		if len(blocks) > 0 && responseSize+len(enc) > softResponseLimit {
+			break // already have at least one block; next entry would overflow
+		}
+		blocks = append(blocks, enc)
+		responseSize += len(enc)
 	}
 
-	log.Debug("reply GetBlocksByRange msg", "from", peer.id, "req", req.Count, "blocks", len(blocks), "balSize", balSize)
-	return p2p.Send(peer.rw, BlocksByRangeMsg, &BlocksByRangePacket{
+	log.Debug("reply GetBlocksByRange msg", "from", peer.id, "req", req.Count, "blocks", len(blocks), "responseSize", responseSize)
+	return p2p.Send(peer.rw, BlocksByRangeMsg, &BlocksByRangeRLPPacket{
 		RequestId: req.RequestId,
 		Blocks:    blocks,
 	})
