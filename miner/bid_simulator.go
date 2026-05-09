@@ -151,7 +151,11 @@ func newBidSimulator(
 	chainConfig *params.ChainConfig,
 	engine consensus.Engine,
 	bidWorker bidWorker,
+	permMgr *BidBlockPermissionManager,
 ) *bidSimulator {
+	if permMgr == nil {
+		permMgr = NewBidBlockPermissionManager()
+	}
 	b := &bidSimulator{
 		config:        config,
 		minGasPrice:   minGasPrice,
@@ -172,7 +176,7 @@ func newBidSimulator(
 		bidsToSim:     make(map[uint64][]*BidRuntime),
 		bestBidBlock:  make(map[common.Hash]*types.DecodedBidBlock),
 		newBidBlockCh: make(chan *types.DecodedBidBlock, 100),
-		permMgr:       NewBidBlockPermissionManager(),
+		permMgr:       permMgr,
 	}
 	if delayLeftOver != nil {
 		b.delayLeftOver = *delayLeftOver

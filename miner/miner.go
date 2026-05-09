@@ -60,6 +60,7 @@ type Miner struct {
 }
 
 func New(eth Backend, config *minerconfig.Config, mux *event.TypeMux, engine consensus.Engine) *Miner {
+	bidBlockPermMgr := NewBidBlockPermissionManager()
 	miner := &Miner{
 		mux:     mux,
 		eth:     eth,
@@ -67,10 +68,10 @@ func New(eth Backend, config *minerconfig.Config, mux *event.TypeMux, engine con
 		exitCh:  make(chan struct{}),
 		startCh: make(chan struct{}),
 		stopCh:  make(chan struct{}),
-		worker:  newWorker(config, engine, eth, mux),
+		worker:  newWorker(config, engine, eth, mux, bidBlockPermMgr),
 	}
 
-	miner.bidSimulator = newBidSimulator(&config.Mev, config.DelayLeftOver, config.GasPrice, eth, eth.BlockChain().Config(), engine, miner.worker)
+	miner.bidSimulator = newBidSimulator(&config.Mev, config.DelayLeftOver, config.GasPrice, config.TxGasLimit, eth, eth.BlockChain().Config(), engine, miner.worker, bidBlockPermMgr)
 	miner.worker.setBestBidFetcher(miner.bidSimulator)
 
 	miner.wg.Add(1)

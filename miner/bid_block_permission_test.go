@@ -250,3 +250,15 @@ func TestBidBlockAdmission_RevokedDoesNotConsumeQuota(t *testing.T) {
 		t.Fatalf("revoked builder should have 0 pending entries; got %d", revokedCount)
 	}
 }
+
+func TestBidBlockPermission_SharedManager(t *testing.T) {
+	m := NewBidBlockPermissionManager()
+	w := &worker{permMgr: m}
+	b := &bidSimulator{permMgr: m}
+	builder := common.HexToAddress("0x1")
+
+	w.permMgr.Revoke(builder, RevokeReasonGasFeeOverClaim, common.Hash{}, 1)
+	if b.IsBidBlockAllowed(builder) {
+		t.Fatal("bidSimulator should observe worker revoke")
+	}
+}
