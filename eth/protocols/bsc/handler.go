@@ -150,6 +150,11 @@ func handleVotes(backend Backend, msg Decoder, peer *Peer) error {
 	if err := msg.Decode(ann); err != nil {
 		return fmt.Errorf("%w: message %v: %v", errDecode, msg, err)
 	}
+	// Charge limiter by vote count, not packet count, to match the documented
+	// intent of receiveRateLimitPerSecond (see peer.go:23-27).
+	if peer.IsOverLimitAfterReceivingVotes(uint(len(ann.Votes))) {
+		return nil
+	}
 	// Schedule all the unknown hashes for retrieval
 	peer.markVotes(ann.Votes)
 	return backend.Handle(peer, ann)

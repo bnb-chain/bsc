@@ -124,9 +124,10 @@ func (p *Peer) AsyncSendVotes(votes []*types.VoteEnvelope) {
 	}
 }
 
-// Step into the next period when secondsPerPeriod seconds passed,
-// Otherwise, check whether the number of received votes extra (secondsPerPeriod * receiveRateLimitPerSecond)
-func (p *Peer) IsOverLimitAfterReceiving() bool {
+// IsOverLimitAfterReceivingVotes increments the per-period vote counter by n
+// and reports whether the rolling 30s budget has been exceeded.
+// The budget is `secondsPerPeriod * receiveRateLimitPerSecond` votes per peer.
+func (p *Peer) IsOverLimitAfterReceivingVotes(n uint) bool {
 	if timeInterval := time.Since(p.periodBegin).Seconds(); timeInterval >= secondsPerPeriod {
 		if p.periodCounter > uint(secondsPerPeriod*receiveRateLimitPerSecond) {
 			p.Log().Debug("sending votes too much", "secondsPerPeriod", secondsPerPeriod, "count ", p.periodCounter)
@@ -135,7 +136,7 @@ func (p *Peer) IsOverLimitAfterReceiving() bool {
 		p.periodCounter = 0
 		return false
 	}
-	p.periodCounter += 1
+	p.periodCounter += n
 	return p.periodCounter > uint(secondsPerPeriod*receiveRateLimitPerSecond)
 }
 
