@@ -48,6 +48,10 @@ func (miner *Miner) HasBuilder(builder common.Address) bool {
 	return miner.bidSimulator.ExistBuilder(builder)
 }
 
+func (miner *Miner) GetBidBlockPermission(builder common.Address) types.BidBlockPermissionStatus {
+	return miner.bidSimulator.GetBidBlockPermission(builder)
+}
+
 func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) (common.Hash, error) {
 	builder, err := args.EcrecoverSender()
 	if err != nil {

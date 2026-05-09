@@ -204,6 +204,35 @@ func TestBidBlockPermission_ActiveRevokeCount(t *testing.T) {
 	}
 }
 
+func TestBidBlockPermission_GetStatus(t *testing.T) {
+	m := NewBidBlockPermissionManager()
+	builder := common.HexToAddress("0x1")
+	now := time.Date(2026, 5, 9, 10, 0, 0, 0, time.UTC)
+	resetAt := time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)
+	m.setClock(func() time.Time { return now })
+
+	status := m.GetStatus(builder)
+	if !status.Allowed {
+		t.Fatal("fresh builder should be allowed")
+	}
+	if !status.ResetAt.Equal(resetAt) {
+		t.Fatalf("resetAt: got %s, want %s", status.ResetAt, resetAt)
+	}
+
+	hash := common.HexToHash("0xabc")
+	m.Revoke(builder, RevokeReasonInsertChainFailed, hash, 100)
+	status = m.GetStatus(builder)
+	if status.Allowed {
+		t.Fatal("revoked builder should not be allowed")
+	}
+	if status.Reason != string(RevokeReasonInsertChainFailed) {
+		t.Fatalf("reason: got %s", status.Reason)
+	}
+	if status.BlockHash != hash || !status.RevokedAt.Equal(now) || !status.ResetAt.Equal(resetAt) {
+		t.Fatalf("status mismatch: %#v", status)
+	}
+}
+
 func TestBidBlockAdmission_RevokedDoesNotConsumeQuota(t *testing.T) {
 	b := &bidSimulator{
 		builders:          make(map[common.Address]*builderclient.Client),

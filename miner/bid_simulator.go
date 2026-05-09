@@ -300,6 +300,10 @@ func (b *bidSimulator) IsBidBlockAllowed(builder common.Address) bool {
 	return b.permMgr.IsAllowed(builder)
 }
 
+func (b *bidSimulator) GetBidBlockPermission(builder common.Address) types.BidBlockPermissionStatus {
+	return b.permMgr.GetStatus(builder)
+}
+
 // best bid here is based on packedBlockReward after the bid is simulated
 func (b *bidSimulator) SetBestBid(prevBlockHash common.Hash, bid *BidRuntime) {
 	b.bestBidMu.Lock()

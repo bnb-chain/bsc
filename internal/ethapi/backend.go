@@ -121,6 +121,8 @@ type Backend interface {
 	RemoveBuilder(builder common.Address) error
 	// HasBuilder returns true if the builder is in the builder list.
 	HasBuilder(builder common.Address) bool
+	// GetBidBlockPermission returns the builder's current SendBidBlock permission.
+	GetBidBlockPermission(builder common.Address) types.BidBlockPermissionStatus
 	// SendBid receives bid from the builders.
 	SendBid(ctx context.Context, bid *types.BidArgs) (common.Hash, error)
 	// SendBidBlock receives a pre-built block from builders (zero-simulate MEV).

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 // BidBlockRevokeReason classifies why a builder lost SendBidBlock permission.
@@ -85,6 +86,25 @@ func (m *BidBlockPermissionManager) GetRecord(builder common.Address) (BidBlockR
 	return rec, true
 }
 
+func (m *BidBlockPermissionManager) GetStatus(builder common.Address) types.BidBlockPermissionStatus {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	now := m.clock()
+	status := types.BidBlockPermissionStatus{
+		Allowed: true,
+		ResetAt: nextUTCDay(now),
+	}
+	rec, found := m.revoked[builder]
+	if !found || !sameUTCDay(rec.RevokedAt, now) {
+		return status
+	}
+	status.Allowed = false
+	status.Reason = string(rec.Reason)
+	status.BlockHash = rec.BlockHash
+	status.RevokedAt = rec.RevokedAt
+	return status
+}
+
 // ActiveRevokeCount returns the number of currently revoked builders.
 func (m *BidBlockPermissionManager) ActiveRevokeCount() int {
 	m.mu.RLock()
@@ -110,4 +130,9 @@ func sameUTCDay(t1, t2 time.Time) bool {
 	y1, mo1, d1 := t1.UTC().Date()
 	y2, mo2, d2 := t2.UTC().Date()
 	return y1 == y2 && mo1 == mo2 && d1 == d2
+}
+
+func nextUTCDay(t time.Time) time.Time {
+	y, mo, d := t.UTC().Date()
+	return time.Date(y, mo, d+1, 0, 0, 0, 0, time.UTC)
 }

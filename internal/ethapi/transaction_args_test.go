@@ -423,6 +423,9 @@ func (b *backendMock) CurrentValidators() ([]common.Address, error) { return []c
 
 func (b *backendMock) MevRunning() bool                       { return false }
 func (b *backendMock) HasBuilder(builder common.Address) bool { return false }
+func (b *backendMock) GetBidBlockPermission(builder common.Address) types.BidBlockPermissionStatus {
+	return types.BidBlockPermissionStatus{}
+}
 func (b *backendMock) MevParams() *types.MevParams {
 	return &types.MevParams{}
 }
