@@ -45,7 +45,6 @@ type ValidationOptions struct {
 	MaxSize      uint64   // Maximum size of a transaction that the caller can meaningfully handle
 	MinTip       *big.Int // Minimum gas tip needed to allow a transaction into the caller pool
 	MaxBlobCount int      // Maximum number of blobs allowed per transaction
-	MaxGas       uint64   // Max acceptable transaction gas in the txpool
 }
 
 // ValidationFunction is an method type which the pools use to perform the tx-validations which do not
@@ -101,11 +100,6 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	// Ensure the transaction doesn't exceed the current block limit gas
 	if head.GasLimit < tx.Gas() {
 		return ErrGasLimit
-	}
-
-	// Ensure the transaction doesn't exceed the current miner max acceptable limit gas
-	if opts.MaxGas > 0 && tx.Gas() > opts.MaxGas {
-		return fmt.Errorf("%w (cap: %d, tx: %d)", core.ErrGasLimitTooHigh, opts.MaxGas, tx.Gas())
 	}
 
 	// Sanity check for extremely large numbers (supported by RLP or RPC)

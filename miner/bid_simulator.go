@@ -96,7 +96,6 @@ type bidSimulator struct {
 	config        *minerconfig.MevConfig
 	delayLeftOver time.Duration
 	minGasPrice   *big.Int
-	txMaxGas      uint64 // Maximum gas for per transaction(will be removed after Mendel hardfork)
 	chain         *core.BlockChain
 	txpool        *txpool.TxPool
 	chainConfig   *params.ChainConfig
@@ -139,7 +138,6 @@ func newBidSimulator(
 	config *minerconfig.MevConfig,
 	delayLeftOver *time.Duration,
 	minGasPrice *big.Int,
-	txMaxGas uint64,
 	eth Backend,
 	chainConfig *params.ChainConfig,
 	engine consensus.Engine,
@@ -148,7 +146,6 @@ func newBidSimulator(
 	b := &bidSimulator{
 		config:        config,
 		minGasPrice:   minGasPrice,
-		txMaxGas:      txMaxGas,
 		chain:         eth.BlockChain(),
 		txpool:        eth.TxPool(),
 		chainConfig:   chainConfig,
@@ -436,6 +433,8 @@ func (b *bidSimulator) newBidLoop() {
 				continue
 			}
 
+			// Pre-check before simulation for fast feedback to the builder;
+			// simulation would reject these txs anyway via state_transition preCheck.
 			if errCap := b.checkIfBidExceedsTxGasLimit(newBid.bid); errCap != nil {
 				if newBid.feedback != nil {
 					newBid.feedback <- errCap
@@ -535,29 +534,20 @@ func (b *bidSimulator) getBlockInterval(parentHeader *types.Header) uint64 {
 
 // checkIfBidExceedsTxGasLimit checks whether any transaction in the bid exceeds the max txn gas.
 func (b *bidSimulator) checkIfBidExceedsTxGasLimit(bid *types.Bid) error {
-	var gasLimitCap uint64
 	currentHeader := b.chain.CurrentBlock()
-	if b.chainConfig.IsOsaka(currentHeader.Number, currentHeader.Time) {
-		gasLimitCap = params.MaxTxGas
-	} else {
-		if b.txMaxGas == 0 {
-			return nil
-		}
-		gasLimitCap = b.txMaxGas
+	if !b.chainConfig.IsOsaka(currentHeader.Number, currentHeader.Time) {
+		return nil
 	}
-
-	// Scan all txs in the bid to check if any transaction exceeds the gas limit cap
 	for _, tx := range bid.Txs {
-		if tx.Gas() > gasLimitCap {
+		if tx.Gas() > params.MaxTxGas {
 			log.Debug("discard bid due to per-tx gas limit",
 				"block", bid.BlockNumber,
 				"bidHash", bid.Hash().TerminalString(),
 				"txHash", tx.Hash().TerminalString(),
 				"txGas", tx.Gas(),
-				"txGasLimit", gasLimitCap,
+				"txGasLimit", params.MaxTxGas,
 			)
-
-			return fmt.Errorf("bid rejected: %w (cap: %d, tx: %d)", core.ErrGasLimitTooHigh, gasLimitCap, tx.Gas())
+			return fmt.Errorf("bid rejected: %w (cap: %d, tx: %d)", core.ErrGasLimitTooHigh, params.MaxTxGas, tx.Gas())
 		}
 	}
 	return nil

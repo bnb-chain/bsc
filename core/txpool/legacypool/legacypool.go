@@ -247,7 +247,6 @@ type LegacyPool struct {
 	scope        event.SubscriptionScope
 	signer       types.Signer
 	mu           sync.RWMutex
-	maxGas       atomic.Uint64 // Currently accepted max gas, it will be modified by MinerAPI
 
 	currentHead   atomic.Pointer[types.Header] // Current head of the blockchain
 	currentState  *state.StateDB               // Current state in the blockchain head
@@ -623,7 +622,6 @@ func (pool *LegacyPool) ValidateTxBasics(tx *types.Transaction) error {
 			1<<types.SetCodeTxType,
 		MaxSize: txMaxSize,
 		MinTip:  pool.gasTip.Load().ToBig(),
-		MaxGas:  pool.GetMaxGas(),
 	}
 	return txpool.ValidateTransaction(tx, pool.currentHead.Load(), pool.signer, opts)
 }
@@ -1682,14 +1680,6 @@ func (pool *LegacyPool) demoteUnexecutables() {
 			}
 		}
 	}
-}
-
-func (pool *LegacyPool) GetMaxGas() uint64 {
-	return pool.maxGas.Load()
-}
-
-func (pool *LegacyPool) SetMaxGas(maxGas uint64) {
-	pool.maxGas.Store(maxGas)
 }
 
 // accountSet is simply a set of addresses to check for existence, and a signer

@@ -140,6 +140,13 @@ var (
 		Value:    true,
 		Category: flags.DeprecatedCategory,
 	}
+	// Deprecated: tx gas limit is now enforced at protocol level by EIP-7825.
+	MinerTxGasLimitFlag = &cli.Uint64Flag{
+		Name:     "miner.txgaslimit",
+		Hidden:   true,
+		Usage:    "Deprecated: per-transaction gas limit is now enforced by EIP-7825; this flag has no effect",
+		Category: flags.DeprecatedCategory,
+	}
 )
 
 // showDeprecated displays deprecated flags that will be soon removed from the codebase.

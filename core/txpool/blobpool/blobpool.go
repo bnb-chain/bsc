@@ -344,7 +344,6 @@ type BlobPool struct {
 	head   atomic.Pointer[types.Header] // Current head of the chain
 	state  *state.StateDB               // Current state at the head of the chain
 	gasTip atomic.Pointer[uint256.Int]  // Currently accepted minimum gas tip
-	maxGas atomic.Uint64                // Currently accepted max gas, it will be modified by MinerAPI
 
 	lookup *lookup                          // Lookup table mapping blobs to txs and txs to billy entries
 	index  map[common.Address][]*blobTxMeta // Blob transactions grouped by accounts, sorted by nonce
@@ -1335,7 +1334,6 @@ func (p *BlobPool) ValidateTxBasics(tx *types.Transaction) error {
 		MaxSize:      txMaxSize,
 		MinTip:       p.gasTip.Load().ToBig(),
 		MaxBlobCount: maxBlobsPerTx,
-		MaxGas:       p.GetMaxGas(),
 	}
 	return txpool.ValidateTransaction(tx, p.head.Load(), p.signer, opts)
 }
@@ -2157,14 +2155,6 @@ func (p *BlobPool) Status(hash common.Hash) txpool.TxStatus {
 		return txpool.TxStatusPending
 	}
 	return txpool.TxStatusUnknown
-}
-
-func (p *BlobPool) SetMaxGas(maxGas uint64) {
-	p.maxGas.Store(maxGas)
-}
-
-func (p *BlobPool) GetMaxGas() uint64 {
-	return p.maxGas.Load()
 }
 
 // Clear implements txpool.SubPool, removing all tracked transactions

@@ -263,12 +263,6 @@ func (p *TxPool) SetGasTip(tip *big.Int) {
 	}
 }
 
-func (p *TxPool) SetMaxGas(gas uint64) {
-	for _, subpool := range p.subpools {
-		subpool.SetMaxGas(gas)
-	}
-}
-
 // Has returns an indicator whether the pool has a transaction cached with the
 // given hash.
 func (p *TxPool) Has(hash common.Hash) bool {

@@ -20,8 +20,6 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/ethereum/go-ethereum/params"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
@@ -67,15 +65,6 @@ func (api *MinerAPI) SetGasPrice(gasPrice hexutil.Big) bool {
 
 	api.e.txPool.SetGasTip((*big.Int)(&gasPrice))
 	api.e.Miner().SetGasTip((*big.Int)(&gasPrice))
-	return true
-}
-
-// SetGasLimit sets the gaslimit to target towards during mining.
-func (api *MinerAPI) SetGasLimit(gasLimit hexutil.Uint64) bool {
-	api.e.Miner().SetGasCeil(uint64(gasLimit))
-	if uint64(gasLimit) > params.SystemTxsGasSoftLimit {
-		api.e.TxPool().SetMaxGas(uint64(gasLimit) - params.SystemTxsGasSoftLimit)
-	}
 	return true
 }
 

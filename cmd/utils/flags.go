@@ -584,11 +584,6 @@ var (
 		Value:    ethconfig.Defaults.TxPool.ReannounceTime,
 		Category: flags.TxPoolCategory,
 	}
-	MinerTxGasLimitFlag = &cli.Uint64Flag{
-		Name:     "miner.txgaslimit",
-		Usage:    fmt.Sprintf("Maximum gas allowed per transaction (default = 0, disabled; min = %d)", params.MaxTxGas),
-		Category: flags.MinerCategory,
-	}
 	// Blob transaction pool settings
 	BlobPoolDataDirFlag = &cli.StringFlag{
 		Name:     "blobpool.datadir",
@@ -2044,11 +2039,7 @@ func setMiner(ctx *cli.Context, cfg *minerconfig.Config) {
 		cfg.DisableVoteAttestation = true
 	}
 	if ctx.IsSet(MinerTxGasLimitFlag.Name) {
-		limit := ctx.Uint64(MinerTxGasLimitFlag.Name)
-		if limit != 0 && limit < params.MaxTxGas {
-			Fatalf("Invalid --miner.txgaslimit: %d (must be >= %d or 0)", limit, params.MaxTxGas)
-		}
-		cfg.TxGasLimit = limit
+		log.Warn("The flag --miner.txgaslimit is deprecated and has no effect; per-transaction gas limit is now enforced by EIP-7825")
 	}
 }
 
