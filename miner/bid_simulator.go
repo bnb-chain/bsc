@@ -670,6 +670,18 @@ func (b *bidSimulator) GetBestBidBlock(parentHash common.Hash) *types.DecodedBid
 	return b.bestBidBlock[parentHash]
 }
 
+// PurgeBestBidBlock removes the cached best BidBlock if it belongs to builder.
+func (b *bidSimulator) PurgeBestBidBlock(parentHash common.Hash, builder common.Address) bool {
+	b.bestBidBlockMu.Lock()
+	defer b.bestBidBlockMu.Unlock()
+	block := b.bestBidBlock[parentHash]
+	if block == nil || block.Builder != builder {
+		return false
+	}
+	delete(b.bestBidBlock, parentHash)
+	return true
+}
+
 // preSealVerifyBidBlock validates the builder-supplied header against locally
 // derived consensus fields. Execution-result fields (Root, ReceiptHash, Bloom,
 // GasUsed, BlobGasUsed) are trusted here and verified post-seal via InsertChain.

@@ -201,6 +201,7 @@ type bidFetcher interface {
 	GetBestBid(parentHash common.Hash) *BidRuntime
 	GetSimulatingBid(prevBlockHash common.Hash) *BidRuntime
 	GetBestBidBlock(parentHash common.Hash) *types.DecodedBidBlock
+	PurgeBestBidBlock(parentHash common.Hash, builder common.Address) bool
 }
 
 // worker is the main object which takes care of submitting new work to consensus engine
@@ -721,6 +722,7 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			"err", err,
 			"revokeReason", RevokeReasonInsertChainFailed)
 		w.permMgr.Revoke(task.bidBlockInfo.builder, RevokeReasonInsertChainFailed, hash, block.NumberU64())
+		w.purgeBestBidBlock(block.ParentHash(), task.bidBlockInfo.builder)
 		return
 	}
 
@@ -735,6 +737,7 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			"err", err,
 			"revokeReason", RevokeReasonGasFeeOverClaim)
 		w.permMgr.Revoke(task.bidBlockInfo.builder, RevokeReasonGasFeeOverClaim, hash, block.NumberU64())
+		w.purgeBestBidBlock(block.ParentHash(), task.bidBlockInfo.builder)
 		return
 	}
 
@@ -744,6 +747,25 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 		"builder", task.bidBlockInfo.builder,
 		"claimedGasFee", task.bidBlockInfo.gasFee,
 		"actualGasFee", actualGasFee)
+}
+
+func (w *worker) getAllowedBestBidBlock(parentHash common.Hash) *types.DecodedBidBlock {
+	bestBidBlock := w.bidFetcher.GetBestBidBlock(parentHash)
+	if bestBidBlock == nil || w.permMgr.IsAllowed(bestBidBlock.Builder) {
+		return bestBidBlock
+	}
+	w.purgeBestBidBlock(parentHash, bestBidBlock.Builder)
+	log.Warn("BidBlock builder permission revoked, skip cached best BidBlock",
+		"parent", parentHash,
+		"builder", bestBidBlock.Builder,
+		"block", bestBidBlock.BlockNumber())
+	return nil
+}
+
+func (w *worker) purgeBestBidBlock(parentHash common.Hash, builder common.Address) {
+	if w.bidFetcher != nil {
+		w.bidFetcher.PurgeBestBidBlock(parentHash, builder)
+	}
 }
 
 // validateBidBlockGasFee compares claimed GasFee with the verified distribution
@@ -1592,7 +1614,7 @@ LOOP:
 
 		// Stage 1 candidate B — SendBidBlock (only when BidBlockEnabled is on).
 		if w.config.Mev.BidBlockEnabled != nil && *w.config.Mev.BidBlockEnabled {
-			bestBidBlock := w.bidFetcher.GetBestBidBlock(bestWork.header.ParentHash)
+			bestBidBlock := w.getAllowedBestBidBlock(bestWork.header.ParentHash)
 			if bestBidBlock != nil {
 				// On the SendBidBlock path BuilderFee == 0, so validator net
 				// equals GasFee * commission / 10000.
