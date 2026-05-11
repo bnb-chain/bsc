@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -148,11 +149,12 @@ func (m *MevAPI) HasBuilder(builder common.Address) bool {
 }
 
 type BidBlockPermissionResult struct {
-	Allowed   bool         `json:"allowed"`
-	Reason    string       `json:"reason,omitempty"`
-	BlockHash *common.Hash `json:"blockHash,omitempty"`
-	RevokedAt *time.Time   `json:"revokedAt,omitempty"`
-	ResetAt   time.Time    `json:"resetAt"`
+	Allowed     bool            `json:"allowed"`
+	Reason      string          `json:"reason,omitempty"`
+	BlockHash   *common.Hash    `json:"blockHash,omitempty"`
+	BlockNumber *hexutil.Uint64 `json:"blockNumber,omitempty"`
+	RevokedAt   *time.Time      `json:"revokedAt,omitempty"`
+	ResetAt     time.Time       `json:"resetAt"`
 }
 
 func (m *MevAPI) GetBidBlockPermission(builder common.Address) *BidBlockPermissionResult {
@@ -163,9 +165,11 @@ func (m *MevAPI) GetBidBlockPermission(builder common.Address) *BidBlockPermissi
 	}
 	if !status.Allowed {
 		blockHash := status.BlockHash
+		blockNum := hexutil.Uint64(status.BlockNum)
 		revokedAt := status.RevokedAt
 		result.Reason = status.Reason
 		result.BlockHash = &blockHash
+		result.BlockNumber = &blockNum
 		result.RevokedAt = &revokedAt
 	}
 	return result

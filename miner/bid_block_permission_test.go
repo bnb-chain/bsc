@@ -228,7 +228,7 @@ func TestBidBlockPermission_GetStatus(t *testing.T) {
 	if status.Reason != string(RevokeReasonInsertChainFailed) {
 		t.Fatalf("reason: got %s", status.Reason)
 	}
-	if status.BlockHash != hash || !status.RevokedAt.Equal(now) || !status.ResetAt.Equal(resetAt) {
+	if status.BlockHash != hash || status.BlockNum != 100 || !status.RevokedAt.Equal(now) || !status.ResetAt.Equal(resetAt) {
 		t.Fatalf("status mismatch: %#v", status)
 	}
 }

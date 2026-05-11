@@ -109,6 +109,7 @@ func TestMevAPIGetBidBlockPermission(t *testing.T) {
 			Allowed:   false,
 			Reason:    "gasfee_overclaim",
 			BlockHash: blockHash,
+			BlockNum:  100,
 			RevokedAt: revokedAt,
 			ResetAt:   resetAt,
 		},
@@ -123,6 +124,9 @@ func TestMevAPIGetBidBlockPermission(t *testing.T) {
 	}
 	if result.BlockHash == nil || *result.BlockHash != blockHash {
 		t.Fatalf("blockHash: got %v, want %s", result.BlockHash, blockHash)
+	}
+	if result.BlockNumber == nil || *result.BlockNumber != hexutil.Uint64(100) {
+		t.Fatalf("blockNumber: got %v, want 100", result.BlockNumber)
 	}
 	if result.RevokedAt == nil || !result.RevokedAt.Equal(revokedAt) {
 		t.Fatalf("revokedAt: got %v, want %s", result.RevokedAt, revokedAt)

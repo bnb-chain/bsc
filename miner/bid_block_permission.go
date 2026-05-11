@@ -101,6 +101,7 @@ func (m *BidBlockPermissionManager) GetStatus(builder common.Address) types.BidB
 	status.Allowed = false
 	status.Reason = string(rec.Reason)
 	status.BlockHash = rec.BlockHash
+	status.BlockNum = rec.BlockNum
 	status.RevokedAt = rec.RevokedAt
 	return status
 }
