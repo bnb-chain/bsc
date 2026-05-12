@@ -17,8 +17,10 @@ import (
 type BidBlockRevokeReason string
 
 const (
-	RevokeReasonInsertChainFailed BidBlockRevokeReason = "insertchain_failed"
-	RevokeReasonGasFeeOverClaim   BidBlockRevokeReason = "gasfee_overclaim"
+	RevokeReasonInsertChainFailed    BidBlockRevokeReason = "insertchain_failed"
+	RevokeReasonGasFeeOverClaim      BidBlockRevokeReason = "gasfee_overclaim"
+	RevokeReasonSystemTxInvalid      BidBlockRevokeReason = "system_tx_invalid"
+	RevokeReasonBidBlockCommitFailed BidBlockRevokeReason = "bidblock_commit_failed"
 )
 
 // BidBlockRevokeRecord holds one active revoke event.

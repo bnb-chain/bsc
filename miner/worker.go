@@ -749,17 +749,31 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 		"actualGasFee", actualGasFee)
 }
 
-func (w *worker) getAllowedBestBidBlock(parentHash common.Hash) *types.DecodedBidBlock {
+func (w *worker) getAllowedBestBidBlock(header *types.Header) *types.DecodedBidBlock {
+	parentHash := header.ParentHash
 	bestBidBlock := w.bidFetcher.GetBestBidBlock(parentHash)
-	if bestBidBlock == nil || w.permMgr.IsAllowed(bestBidBlock.Builder) {
-		return bestBidBlock
+	if bestBidBlock == nil {
+		return nil
 	}
-	w.purgeBestBidBlock(parentHash, bestBidBlock.Builder)
-	log.Warn("BidBlock builder permission revoked, skip cached best BidBlock",
-		"parent", parentHash,
-		"builder", bestBidBlock.Builder,
-		"block", bestBidBlock.BlockNumber())
-	return nil
+	if !w.permMgr.IsAllowed(bestBidBlock.Builder) {
+		w.purgeBestBidBlock(parentHash, bestBidBlock.Builder)
+		log.Debug("BidBlock builder permission revoked, skip cached best BidBlock",
+			"parent", parentHash,
+			"builder", bestBidBlock.Builder,
+			"block", bestBidBlock.BlockNumber())
+		return nil
+	}
+	// The selected BidBlock must target the same parent slot as this sealing work.
+	if bestBidBlock.Header.Time != header.Time || bestBidBlock.Header.MixDigest != header.MixDigest {
+		w.purgeBestBidBlock(parentHash, bestBidBlock.Builder)
+		log.Debug("BidBlock timestamp mismatch, skip cached best BidBlock",
+			"parent", parentHash,
+			"builder", bestBidBlock.Builder,
+			"bidBlockTime", bestBidBlock.Header.MilliTimestamp(),
+			"workTime", header.MilliTimestamp())
+		return nil
+	}
+	return bestBidBlock
 }
 
 func (w *worker) purgeBestBidBlock(parentHash common.Hash, builder common.Address) {
@@ -1614,7 +1628,7 @@ LOOP:
 
 		// Stage 1 candidate B — SendBidBlock (only when BidBlockEnabled is on).
 		if w.config.Mev.BidBlockEnabled != nil && *w.config.Mev.BidBlockEnabled {
-			bestBidBlock := w.getAllowedBestBidBlock(bestWork.header.ParentHash)
+			bestBidBlock := w.getAllowedBestBidBlock(bestWork.header)
 			if bestBidBlock != nil {
 				// On the SendBidBlock path BuilderFee == 0, so validator net
 				// equals GasFee * commission / 10000.
@@ -1696,10 +1710,20 @@ LOOP:
 		p := w.engine.(*parlia.Parlia)
 		allTxs, systemStart, err := verifyBidBlockSystemTxs(winnerBidBlock, bestWork.header, w.chain, p)
 		if err != nil {
-			log.Warn("BidBlock failed verify, fallback to simBid/local", "err", err)
+			log.Warn("BidBlock failed verify, fallback to simBid/local",
+				"builder", winnerBidBlock.Builder,
+				"err", err,
+				"revokeReason", RevokeReasonSystemTxInvalid)
+			w.permMgr.Revoke(winnerBidBlock.Builder, RevokeReasonSystemTxInvalid, winnerBidBlock.Hash(), winnerBidBlock.BlockNumber())
+			w.purgeBestBidBlock(winnerBidBlock.ParentHash(), winnerBidBlock.Builder)
 			winnerBidBlock = nil
 		} else if err := w.commitBidBlock(p, winnerBidBlock, allTxs, systemStart, bestWork.header, start); err != nil {
-			log.Error("Failed to commit bid block, fallback to simBid/local", "err", err)
+			log.Error("Failed to commit bid block, fallback to simBid/local",
+				"builder", winnerBidBlock.Builder,
+				"err", err,
+				"revokeReason", RevokeReasonBidBlockCommitFailed)
+			w.permMgr.Revoke(winnerBidBlock.Builder, RevokeReasonBidBlockCommitFailed, winnerBidBlock.Hash(), winnerBidBlock.BlockNumber())
+			w.purgeBestBidBlock(winnerBidBlock.ParentHash(), winnerBidBlock.Builder)
 			winnerBidBlock = nil
 		}
 	}

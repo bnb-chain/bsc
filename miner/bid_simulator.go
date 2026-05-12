@@ -718,10 +718,10 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 			header.Coinbase.Hex(), expectedCoinbase.Hex())
 	}
 
-	// 3. GasLimit must stay within the EIP-1559 bounds relative to parent.
-	if err := verifyGasLimitBounds(parent.GasLimit, header.GasLimit); err != nil {
-		return err
-	}
+	// 3. TODO: GasLimit bounds check is intentionally skipped here.
+	// Design principle: builder is responsible for correctness; invalid blocks
+	// trigger permission revocation via InsertChain failure. Only basic sanity
+	// checks are done pre-seal.
 
 	// 4. GasUsed must not exceed GasLimit (consensus hard rule).
 	if header.GasUsed > header.GasLimit {
@@ -751,29 +751,7 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 	if err := parliaEngine.VerifyBlockTime(b.chain, header, parent); err != nil {
 		return fmt.Errorf("invalid block time: %v", err)
 	}
-	if header.Time > uint64(time.Now().Unix()) {
-		return consensus.ErrFutureBlock
-	}
 
-	return nil
-}
-
-// verifyGasLimitBounds enforces that header.GasLimit differs from parent.GasLimit
-// by at most parent.GasLimit / GasLimitBoundDivisor, matching the rule used in
-// verifyCascadingFields.
-func verifyGasLimitBounds(parentGasLimit, headerGasLimit uint64) error {
-	if headerGasLimit < params.MinGasLimit {
-		return fmt.Errorf("invalid gasLimit: %d below minimum %d", headerGasLimit, params.MinGasLimit)
-	}
-	diff := int64(parentGasLimit) - int64(headerGasLimit)
-	if diff < 0 {
-		diff = -diff
-	}
-	limit := parentGasLimit / params.GasLimitBoundDivisor
-	if uint64(diff) >= limit {
-		return fmt.Errorf("invalid gasLimit: got %d, parent %d, max diff %d",
-			headerGasLimit, parentGasLimit, limit-1)
-	}
 	return nil
 }
 
