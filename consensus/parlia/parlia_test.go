@@ -703,7 +703,7 @@ func TestParlia_applyTransactionTracing(t *testing.T) {
 	hooks := recording.hooks()
 
 	cx := chainContext{ChainHeaderReader: chain, parlia: engine}
-	applyErr := engine.applyTransaction(msg, state.NewHookedState(stateDB, hooks), bs[0].Header(), cx, &txs, &receipts, &receivedTxs, &usedGas, false, hooks)
+	applyErr := engine.applyTransaction(msg, state.NewHookedState(stateDB, hooks), bs[0].Header(), cx, &txs, &receipts, &receivedTxs, &usedGas, false, false, hooks)
 	if applyErr != nil {
 		t.Fatalf("failed to apply system contract transaction: %v", applyErr)
 	}
@@ -721,6 +721,89 @@ func TestParlia_applyTransactionTracing(t *testing.T) {
 	if !slices.Equal(recording.records, expectedRecords) {
 		t.Errorf("expected \n%s\n\ngot\n\n%s", formatRecords(expectedRecords), formatRecords(recording.records))
 	}
+}
+
+func TestParliaApplyTransactionBindSign(t *testing.T) {
+	frdir := t.TempDir()
+	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false)
+	if err != nil {
+		t.Fatalf("failed to create database with ancient backend: %v", err)
+	}
+
+	trieDB := triedb.NewDatabase(db, nil)
+	defer trieDB.Close()
+
+	config := params.ParliaTestChainConfig
+	gspec := &core.Genesis{
+		Config: config,
+		Alloc:  types.GenesisAlloc{testAddr: {Balance: new(big.Int).SetUint64(10 * params.Ether)}},
+	}
+	mockEngine := &mockParlia{}
+	genesisBlock := gspec.MustCommit(db, trieDB)
+	chain, _ := core.NewBlockChain(db, gspec, mockEngine, nil)
+	defer chain.Stop()
+
+	engine := New(config, db, nil, genesisBlock.Hash())
+	builderKey, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+	builderAddr := crypto.PubkeyToAddress(builderKey.PublicKey)
+	engine.Authorize(builderAddr, nil, func(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
+		if account.Address != builderAddr {
+			return nil, fmt.Errorf("unexpected signing account %s", account.Address)
+		}
+		return types.SignTx(tx, types.LatestSigner(config), builderKey)
+	})
+
+	msg := engine.getSystemMessage(builderAddr, common.HexToAddress(systemcontracts.ValidatorContract), nil, common.Big0)
+	cx := chainContext{ChainHeaderReader: chain, parlia: engine}
+	header := types.CopyHeader(genesisBlock.Header())
+
+	run := func(bindSign bool) (*state.StateDB, []*types.Transaction, []*types.Receipt, uint64) {
+		t.Helper()
+		stateDB, err := state.New(genesisBlock.Root(), state.NewDatabase(trieDB, nil))
+		if err != nil {
+			t.Fatalf("failed to create stateDB: %v", err)
+		}
+		txs := make([]*types.Transaction, 0, 1)
+		receipts := make([]*types.Receipt, 0, 1)
+		usedGas := uint64(0)
+		if err := engine.applyTransaction(msg, stateDB, header, cx, &txs, &receipts, nil, &usedGas, true, bindSign, nil); err != nil {
+			t.Fatalf("failed to apply transaction with bindSign=%v: %v", bindSign, err)
+		}
+		return stateDB, txs, receipts, usedGas
+	}
+
+	unsignedState, unsignedTxs, unsignedReceipts, unsignedGas := run(false)
+	signedState, signedTxs, signedReceipts, signedGas := run(true)
+
+	if len(unsignedTxs) != 1 || len(signedTxs) != 1 {
+		t.Fatalf("expected one system tx, got unsigned=%d signed=%d", len(unsignedTxs), len(signedTxs))
+	}
+	if !isUnsignedTx(unsignedTxs[0]) {
+		t.Fatalf("expected bindSign=false system tx to be unsigned")
+	}
+	if isUnsignedTx(signedTxs[0]) {
+		t.Fatalf("expected bindSign=true system tx to be signed")
+	}
+	if unsignedGas != signedGas {
+		t.Fatalf("gas used mismatch: unsigned=%d signed=%d", unsignedGas, signedGas)
+	}
+	if rootA, rootB := unsignedState.IntermediateRoot(config.IsEIP158(header.Number)), signedState.IntermediateRoot(config.IsEIP158(header.Number)); rootA != rootB {
+		t.Fatalf("state root mismatch: unsigned=%s signed=%s", rootA, rootB)
+	}
+	if hashA, hashB := types.DeriveSha(types.Receipts(unsignedReceipts), trie.NewStackTrie(nil)), types.DeriveSha(types.Receipts(signedReceipts), trie.NewStackTrie(nil)); hashA != hashB {
+		t.Fatalf("receipt hash mismatch: unsigned=%s signed=%s", hashA, hashB)
+	}
+	if bloomA, bloomB := unsignedReceipts[0].Bloom, signedReceipts[0].Bloom; bloomA != bloomB {
+		t.Fatalf("receipt bloom mismatch")
+	}
+}
+
+func isUnsignedTx(tx *types.Transaction) bool {
+	v, r, s := tx.RawSignatureValues()
+	return v.Sign() == 0 && r.Sign() == 0 && s.Sign() == 0
 }
 
 func formatRecords(records []string) string {
