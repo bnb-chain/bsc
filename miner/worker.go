@@ -1705,6 +1705,15 @@ LOOP:
 	// Verify BidBlock structurally before deciding to commit it; on any BidBlock
 	// failure, fall through to the simBid-vs-local fallback below.
 	if winnerBidBlock != nil {
+		if !w.permMgr.IsAllowed(winnerBidBlock.Builder) {
+			log.Debug("BidBlock builder permission revoked before commit, fallback to simBid/local",
+				"builder", winnerBidBlock.Builder,
+				"block", winnerBidBlock.BlockNumber())
+			w.purgeBestBidBlock(winnerBidBlock.ParentHash(), winnerBidBlock.Builder)
+			winnerBidBlock = nil
+		}
+	}
+	if winnerBidBlock != nil {
 		// preSealVerifyBidBlock already enforced engine == parlia, so any
 		// BidBlock that reaches this exit is parlia-only by construction.
 		p := w.engine.(*parlia.Parlia)
@@ -1861,12 +1870,8 @@ func signBidBlockSystemTxs(
 // and submits the block to seal. The caller MUST have already run
 // verifyBidBlockSystemTxs and pass back its (allTxs, systemStart) result.
 //
-// The final header uses consensus fields from local Prepare(), but
-// Time/MixDigest (the second + millisecond timestamp, validated by
-// preSealVerifyBidBlock) and execution-result fields are taken from the
-// builder's header — the builder's Root/ReceiptHash/Bloom/GasUsed were
-// computed under that exact timestamp, so sealing under any other Time would
-// produce a header whose state roots no longer match.
+// The final header uses the builder-supplied header as the base. The validator
+// fills Extra from local Prepare(), signs system txs, and recomputes TxHash.
 // No EVM execution is performed on this path.
 func (w *worker) commitBidBlock(
 	p *parlia.Parlia,
@@ -1885,19 +1890,9 @@ func (w *worker) commitBidBlock(
 		return err
 	}
 
-	// 2. Build header: consensus fields from local Prepare(), timestamp +
-	//    execution-result fields from the builder-supplied header.
-	header := types.CopyHeader(localHeader)
-	header.Time = decoded.Header.Time
-	header.MixDigest = decoded.Header.MixDigest
-	header.GasUsed = decoded.Header.GasUsed
-	header.Root = decoded.Header.Root
-	header.ReceiptHash = decoded.Header.ReceiptHash
-	header.Bloom = decoded.Header.Bloom
-	if decoded.Header.BlobGasUsed != nil {
-		blobGasUsed := *decoded.Header.BlobGasUsed
-		header.BlobGasUsed = &blobGasUsed
-	}
+	// 2. Build header: builder fields are preserved, validator fields are filled locally.
+	header := types.CopyHeader(decoded.Header)
+	header.Extra = common.CopyBytes(localHeader.Extra)
 	header.TxHash = types.DeriveSha(types.Transactions(allTxs), trie.NewStackTrie(nil))
 
 	// 3. Assemble block.
