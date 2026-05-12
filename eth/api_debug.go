@@ -520,27 +520,3 @@ func (api *DebugAPI) ExecutionWitness(bn rpc.BlockNumberOrHash) (*stateless.ExtW
 
 	return result.Witness().ToExtWitness(), nil
 }
-
-func (api *DebugAPI) ExecutionWitnessByHash(hash common.Hash) (*stateless.ExtWitness, error) {
-	bc := api.eth.blockchain
-	block := bc.GetBlockByHash(hash)
-	if block == nil {
-		return &stateless.ExtWitness{}, fmt.Errorf("block hash %x not found", hash)
-	}
-
-	parent := bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
-	if parent == nil {
-		return &stateless.ExtWitness{}, fmt.Errorf("block number %x found, but parent missing", hash)
-	}
-	config := core.ExecuteConfig{
-		WriteState:   false,
-		EnableTracer: false,
-		MakeWitness:  true,
-	}
-	result, err := bc.ProcessBlock(context.Background(), parent.Root, block, config)
-	if err != nil {
-		return nil, err
-	}
-
-	return result.Witness().ToExtWitness(), nil
-}

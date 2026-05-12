@@ -360,8 +360,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			TxLookupLimit:         int64(min(config.TransactionHistory, math.MaxInt64)),
 			VmConfig: vm.Config{
 				EnablePreimageRecording:   config.EnablePreimageRecording,
-				EnableWitnessStats:        config.EnableWitnessStats,
-				StatelessSelfValidation:   config.StatelessSelfValidation,
 				EnableOpcodeOptimizations: config.EnableOpcodeOptimizing,
 			},
 			// Enables file journaling for the trie database. The journal files will be stored
