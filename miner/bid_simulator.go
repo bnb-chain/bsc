@@ -584,6 +584,11 @@ func (b *bidSimulator) bidBetterBefore(parentHash common.Hash) time.Time {
 	return bidutil.BidBetterBefore(parentHeader, b.getBlockInterval(parentHeader), b.delayLeftOver, *b.config.BidSimulationLeftOver)
 }
 
+func (b *bidSimulator) bidMustBefore(parentHash common.Hash) time.Time {
+	parentHeader := b.chain.GetHeaderByHash(parentHash)
+	return bidutil.BidMustBefore(parentHeader, b.getBlockInterval(parentHeader), b.delayLeftOver)
+}
+
 func (b *bidSimulator) clearLoop() {
 	clearFn := func(parentHash common.Hash, blockNumber uint64) {
 		b.pendingMu.Lock()

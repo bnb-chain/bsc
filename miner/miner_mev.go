@@ -80,9 +80,9 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 		return common.Hash{}, err
 	}
 
-	bidBetterBefore := miner.bidSimulator.bidBetterBefore(parentHash)
-	if timeout := time.Until(bidBetterBefore); timeout <= 0 {
-		return common.Hash{}, fmt.Errorf("too late, expected before %s, appeared %s later", bidBetterBefore,
+	bidMustBefore := miner.bidSimulator.bidMustBefore(parentHash)
+	if timeout := time.Until(bidMustBefore); timeout <= 0 {
+		return common.Hash{}, fmt.Errorf("too late, expected before %s, appeared %s later", bidMustBefore,
 			common.PrettyDuration(timeout))
 	}
 
