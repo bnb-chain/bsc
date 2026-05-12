@@ -62,10 +62,6 @@ const UnHealthyTimeout = 5 * time.Second
 // allowed to produce in order to speed up calculations.
 const estimateGasErrorRatio = 0.015
 
-// maxGetStorageSlots is the maximum total number of storage slots that can
-// be requested in a single eth_getStorageValues call.
-const maxGetStorageSlots = 1024
-
 // maxGetProofKeys is the maximum number of storage keys that can be
 // requested in a single eth_getProof call.
 const maxGetProofKeys = 1024
