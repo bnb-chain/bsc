@@ -200,8 +200,8 @@ type getWorkReq struct {
 type bidFetcher interface {
 	GetBestBid(parentHash common.Hash) *BidRuntime
 	GetSimulatingBid(prevBlockHash common.Hash) *BidRuntime
-	GetBestBidBlock(parentHash common.Hash) *types.DecodedBidBlock
-	PurgeBestBidBlock(parentHash common.Hash, builder common.Address) bool
+	GetBidBlockCandidates(parentHash common.Hash) []*types.DecodedBidBlock
+	PurgeBidBlockCandidates(parentHash common.Hash, builder common.Address) bool
 }
 
 // worker is the main object which takes care of submitting new work to consensus engine
@@ -722,7 +722,7 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			"err", err,
 			"revokeReason", RevokeReasonInsertChainFailed)
 		w.permMgr.Revoke(task.bidBlockInfo.builder, RevokeReasonInsertChainFailed, hash, block.NumberU64())
-		w.purgeBestBidBlock(block.ParentHash(), task.bidBlockInfo.builder)
+		w.purgeBidBlockCandidates(block.ParentHash(), task.bidBlockInfo.builder)
 		return
 	}
 
@@ -737,7 +737,7 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			"err", err,
 			"revokeReason", RevokeReasonGasFeeOverClaim)
 		w.permMgr.Revoke(task.bidBlockInfo.builder, RevokeReasonGasFeeOverClaim, hash, block.NumberU64())
-		w.purgeBestBidBlock(block.ParentHash(), task.bidBlockInfo.builder)
+		w.purgeBidBlockCandidates(block.ParentHash(), task.bidBlockInfo.builder)
 		return
 	}
 
@@ -749,37 +749,100 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 		"actualGasFee", actualGasFee)
 }
 
-func (w *worker) getAllowedBestBidBlock(header *types.Header) *types.DecodedBidBlock {
+func (w *worker) getAllowedBidBlockCandidates(header *types.Header) []*types.DecodedBidBlock {
 	parentHash := header.ParentHash
-	bestBidBlock := w.bidFetcher.GetBestBidBlock(parentHash)
-	if bestBidBlock == nil {
+	bidBlocks := w.bidFetcher.GetBidBlockCandidates(parentHash)
+	if len(bidBlocks) == 0 {
 		return nil
 	}
-	if !w.permMgr.IsAllowed(bestBidBlock.Builder) {
-		w.purgeBestBidBlock(parentHash, bestBidBlock.Builder)
-		log.Debug("BidBlock builder permission revoked, skip cached best BidBlock",
-			"parent", parentHash,
-			"builder", bestBidBlock.Builder,
-			"block", bestBidBlock.BlockNumber())
-		return nil
+	allowed := make([]*types.DecodedBidBlock, 0, len(bidBlocks))
+	for _, bidBlock := range bidBlocks {
+		if !w.permMgr.IsAllowed(bidBlock.Builder) {
+			w.purgeBidBlockCandidates(parentHash, bidBlock.Builder)
+			log.Debug("BidBlock builder permission revoked, skip cached BidBlock",
+				"parent", parentHash,
+				"builder", bidBlock.Builder,
+				"block", bidBlock.BlockNumber())
+			continue
+		}
+		// The selected BidBlock must target the same parent slot as this sealing work.
+		if bidBlock.Header.Time != header.Time || bidBlock.Header.MixDigest != header.MixDigest {
+			w.purgeBidBlockCandidates(parentHash, bidBlock.Builder)
+			log.Debug("BidBlock timestamp mismatch, skip cached BidBlock",
+				"parent", parentHash,
+				"builder", bidBlock.Builder,
+				"bidBlockTime", bidBlock.Header.MilliTimestamp(),
+				"workTime", header.MilliTimestamp())
+			continue
+		}
+		allowed = append(allowed, bidBlock)
 	}
-	// The selected BidBlock must target the same parent slot as this sealing work.
-	if bestBidBlock.Header.Time != header.Time || bestBidBlock.Header.MixDigest != header.MixDigest {
-		w.purgeBestBidBlock(parentHash, bestBidBlock.Builder)
-		log.Debug("BidBlock timestamp mismatch, skip cached best BidBlock",
-			"parent", parentHash,
-			"builder", bestBidBlock.Builder,
-			"bidBlockTime", bestBidBlock.Header.MilliTimestamp(),
-			"workTime", header.MilliTimestamp())
-		return nil
-	}
-	return bestBidBlock
+	return allowed
 }
 
-func (w *worker) purgeBestBidBlock(parentHash common.Hash, builder common.Address) {
+func (w *worker) purgeBidBlockCandidates(parentHash common.Hash, builder common.Address) {
 	if w.bidFetcher != nil {
-		w.bidFetcher.PurgeBestBidBlock(parentHash, builder)
+		w.bidFetcher.PurgeBidBlockCandidates(parentHash, builder)
 	}
+}
+
+func (w *worker) selectBidBlockCandidate(header *types.Header, candidates []*types.DecodedBidBlock, simBidCandidate *bidCandidate, bestReward, localValidatorReward *uint256.Int) *bidCandidate {
+	for _, bidBlock := range candidates {
+		bidBlockFee, overflow := uint256.FromBig(bidBlock.GasFee)
+		if overflow {
+			log.Warn("BidBlock GasFee overflow, skipping", "gasFee", bidBlock.GasFee)
+			continue
+		}
+
+		bidBlockValidatorReward := new(uint256.Int).Mul(bidBlockFee, uint256.NewInt(*w.config.Mev.ValidatorCommission))
+		bidBlockValidatorReward.Div(bidBlockValidatorReward, uint256.NewInt(10000))
+
+		if simBidCandidate != nil && bidBlockValidatorReward.Cmp(simBidCandidate.validatorReward) <= 0 {
+			return nil
+		}
+
+		simBidVR := "<none>"
+		if simBidCandidate != nil {
+			simBidVR = simBidCandidate.validatorReward.String()
+		}
+		log.Debug("BidSimulator: stage-1 bidBlock wins",
+			"block", header.Number.Uint64(),
+			"bidBlockValidatorReward", bidBlockValidatorReward.String(),
+			"simBidValidatorReward", simBidVR)
+
+		log.Debug("BidSimulator: stage-2 compare vs local",
+			"block", header.Number.Uint64(),
+			"localBlockReward", bestReward.String(),
+			"localValidatorReward", localValidatorReward.String(),
+			"bidReward", bidBlockFee.String(),
+			"bidValidatorReward", bidBlockValidatorReward.String())
+
+		if bestReward.Cmp(bidBlockFee) < 0 && localValidatorReward.Cmp(bidBlockValidatorReward) < 0 {
+			log.Info("[BID BLOCK selected]",
+				"block", header.Number.Uint64(),
+				"builder", bidBlock.Builder,
+				"gasFee", bidBlock.GasFee,
+				"txs", len(bidBlock.Txs))
+			return &bidCandidate{
+				bidBlock:        bidBlock,
+				blockReward:     bidBlockFee,
+				validatorReward: bidBlockValidatorReward,
+				builder:         bidBlock.Builder,
+			}
+		}
+		return nil
+	}
+	return nil
+}
+
+func removeBidBlockCandidatesByBuilder(candidates []*types.DecodedBidBlock, builder common.Address) []*types.DecodedBidBlock {
+	kept := candidates[:0]
+	for _, candidate := range candidates {
+		if candidate.Builder != builder {
+			kept = append(kept, candidate)
+		}
+	}
+	return kept
 }
 
 // validateBidBlockGasFee compares claimed GasFee with the verified distribution
@@ -1554,12 +1617,15 @@ LOOP:
 
 	// when out-turn, use bestWork to prevent bundle leakage.
 	// when in-turn, compare with remote work.
-	var winnerBidBlock *types.DecodedBidBlock // set by Stage 2 if bidBlock wins; used at unified commit exit
+	var bidBlockCandidates []*types.DecodedBidBlock
+	var bidBlockCommitted bool
+	var bidBlockFallback bool
 	// simBidCandidate is the Stage-1 simBid candidate, kept around so that if a
 	// BidBlock wins Stage 2 but later fails verify/commit, we can still fall back
 	// to comparing simBid against local (the legacy dual-threshold gate) instead
 	// of going straight to the local block.
 	var simBidCandidate *bidCandidate
+	var localValidatorReward *uint256.Int
 	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
 		inturnBlocksGauge.Inc(1)
 		// We want to start sealing the block as late as possible here if mev is enabled, so we could give builder the chance to send their final bid.
@@ -1593,10 +1659,8 @@ LOOP:
 		//     validatorReward to replace local.
 
 		// Local baseline (used in Stage 2).
-		localValidatorReward := new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
+		localValidatorReward = new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
 		localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
-
-		var bidWinner *bidCandidate
 
 		// Stage 1 candidate A — legacy SendBid (simBid).
 		bestBid := w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
@@ -1612,7 +1676,7 @@ LOOP:
 					"blockReward", bestBid.packedBlockReward,
 					"validatorReward", bestBid.packedValidatorReward)
 			} else {
-				bidWinner = &bidCandidate{
+				simBidCandidate = &bidCandidate{
 					env:             bestBid.env,
 					blockReward:     simBR,
 					validatorReward: simVR,
@@ -1620,138 +1684,83 @@ LOOP:
 					bidHash:         bestBid.bid.Hash(),
 					greedyMerged:    bestBid.greedyMerged,
 				}
-				// Save a stable pointer to the simBid candidate so it survives
-				// any later BidBlock override of bidWinner.
-				simBidCandidate = bidWinner
 			}
 		}
 
 		// Stage 1 candidate B — SendBidBlock (only when BidBlockEnabled is on).
 		if w.config.Mev.BidBlockEnabled != nil && *w.config.Mev.BidBlockEnabled {
-			bestBidBlock := w.getAllowedBestBidBlock(bestWork.header)
-			if bestBidBlock != nil {
-				// On the SendBidBlock path BuilderFee == 0, so validator net
-				// equals GasFee * commission / 10000.
-				bidBlockFee, overflow := uint256.FromBig(bestBidBlock.GasFee)
-				if overflow {
-					log.Warn("BidBlock GasFee overflow, skipping", "gasFee", bestBidBlock.GasFee)
-				} else {
-					bidBlockValidatorReward := new(uint256.Int).Mul(bidBlockFee, uint256.NewInt(*w.config.Mev.ValidatorCommission))
-					bidBlockValidatorReward.Div(bidBlockValidatorReward, uint256.NewInt(10000))
-
-					// Stage 1 single-threshold comparison. First-come-first-served:
-					// bidBlock replaces simBid only when strictly greater on
-					// validator net.
-					if bidWinner == nil || bidBlockValidatorReward.Cmp(bidWinner.validatorReward) > 0 {
-						simBidVR := "<none>"
-						if bidWinner != nil {
-							simBidVR = bidWinner.validatorReward.String()
-						}
-						log.Debug("BidSimulator: stage-1 bidBlock wins",
-							"block", bestWork.header.Number.Uint64(),
-							"bidBlockValidatorReward", bidBlockValidatorReward.String(),
-							"simBidValidatorReward", simBidVR)
-						bidWinner = &bidCandidate{
-							bidBlock:        bestBidBlock,
-							blockReward:     bidBlockFee,
-							validatorReward: bidBlockValidatorReward,
-							builder:         bestBidBlock.Builder,
-						}
-					}
-				}
-			}
-		}
-
-		// Stage 2 — bid winner vs local with the legacy dual-threshold gate.
-		// Only set flags here; actual commit happens at the unified exit below.
-		if bidWinner != nil {
-			log.Debug("BidSimulator: stage-2 compare vs local",
-				"block", bestWork.header.Number.Uint64(),
-				"localBlockReward", bestReward.String(),
-				"localValidatorReward", localValidatorReward.String(),
-				"bidReward", bidWinner.blockReward.String(),
-				"bidValidatorReward", bidWinner.validatorReward.String())
-
-			if bestReward.Cmp(bidWinner.blockReward) < 0 &&
-				localValidatorReward.Cmp(bidWinner.validatorReward) < 0 {
-				if bidWinner.bidBlock != nil {
-					// SendBidBlock path won — defer to commitBidBlock at the exit.
-					winnerBidBlock = bidWinner.bidBlock
-					log.Info("[BID BLOCK selected]",
-						"block", bestWork.header.Number.Uint64(),
-						"builder", bidWinner.builder,
-						"gasFee", bidWinner.bidBlock.GasFee,
-						"txs", len(bidWinner.bidBlock.Txs))
-				} else {
-					// SendBid path won — promote the simulated env.
-					bidWinGauge.Inc(1)
-					if bidWinner.greedyMerged {
-						greedyMergeOnchainCounter.Inc(1)
-					}
-					bestWork = bidWinner.env
-					log.Info("[BUILDER BLOCK]",
-						"block", bestWork.header.Number.Uint64(),
-						"builder", bidWinner.builder,
-						"blockReward", weiToEtherStringF6(bidWinner.blockReward.ToBig()),
-						"validatorReward", weiToEtherStringF6(bidWinner.validatorReward.ToBig()),
-						"bid", bidWinner.bidHash.TerminalString(),
-					)
-				}
-			}
+			bidBlockCandidates = w.getAllowedBidBlockCandidates(bestWork.header)
 		}
 	}
 
 	// Unified commit exit: either commitBidBlock (zero-simulate) or commit (normal).
 	// Verify BidBlock structurally before deciding to commit it; on any BidBlock
-	// failure, fall through to the simBid-vs-local fallback below.
-	if winnerBidBlock != nil {
+	// failure, try the next BidBlock candidate before simBid/local fallback.
+	for len(bidBlockCandidates) > 0 {
+		bidWinner := w.selectBidBlockCandidate(bestWork.header, bidBlockCandidates, simBidCandidate, bestReward, localValidatorReward)
+		if bidWinner == nil {
+			break
+		}
+		winnerBidBlock := bidWinner.bidBlock
 		if !w.permMgr.IsAllowed(winnerBidBlock.Builder) {
-			log.Debug("BidBlock builder permission revoked before commit, fallback to simBid/local",
+			log.Debug("BidBlock builder permission revoked before commit, try next candidate",
 				"builder", winnerBidBlock.Builder,
 				"block", winnerBidBlock.BlockNumber())
-			w.purgeBestBidBlock(winnerBidBlock.ParentHash(), winnerBidBlock.Builder)
-			winnerBidBlock = nil
+			w.purgeBidBlockCandidates(winnerBidBlock.ParentHash(), winnerBidBlock.Builder)
+			bidBlockCandidates = removeBidBlockCandidatesByBuilder(bidBlockCandidates, winnerBidBlock.Builder)
+			bidBlockFallback = true
+			continue
 		}
-	}
-	if winnerBidBlock != nil {
+
 		// preSealVerifyBidBlock already enforced engine == parlia, so any
 		// BidBlock that reaches this exit is parlia-only by construction.
 		p := w.engine.(*parlia.Parlia)
 		allTxs, systemStart, err := verifyBidBlockSystemTxs(winnerBidBlock, bestWork.header, w.chain, p)
 		if err != nil {
-			log.Warn("BidBlock failed verify, fallback to simBid/local",
+			log.Warn("BidBlock failed verify, try next candidate",
 				"builder", winnerBidBlock.Builder,
 				"err", err,
 				"revokeReason", RevokeReasonSystemTxInvalid)
 			w.permMgr.Revoke(winnerBidBlock.Builder, RevokeReasonSystemTxInvalid, winnerBidBlock.Hash(), winnerBidBlock.BlockNumber())
-			w.purgeBestBidBlock(winnerBidBlock.ParentHash(), winnerBidBlock.Builder)
-			winnerBidBlock = nil
+			w.purgeBidBlockCandidates(winnerBidBlock.ParentHash(), winnerBidBlock.Builder)
+			bidBlockCandidates = removeBidBlockCandidatesByBuilder(bidBlockCandidates, winnerBidBlock.Builder)
+			bidBlockFallback = true
+			continue
 		} else if err := w.commitBidBlock(p, winnerBidBlock, allTxs, systemStart, bestWork.header, start); err != nil {
-			log.Error("Failed to commit bid block, fallback to simBid/local",
+			log.Error("Failed to commit bid block, try next candidate",
 				"builder", winnerBidBlock.Builder,
 				"err", err,
 				"revokeReason", RevokeReasonBidBlockCommitFailed)
 			w.permMgr.Revoke(winnerBidBlock.Builder, RevokeReasonBidBlockCommitFailed, winnerBidBlock.Hash(), winnerBidBlock.BlockNumber())
-			w.purgeBestBidBlock(winnerBidBlock.ParentHash(), winnerBidBlock.Builder)
-			winnerBidBlock = nil
+			w.purgeBidBlockCandidates(winnerBidBlock.ParentHash(), winnerBidBlock.Builder)
+			bidBlockCandidates = removeBidBlockCandidatesByBuilder(bidBlockCandidates, winnerBidBlock.Builder)
+			bidBlockFallback = true
+			continue
 		}
+		bidBlockCommitted = true
+		break
 	}
 
 	// simBid fallback. Re-runs the legacy dual-threshold gate against simBid
-	// whenever no BidBlock is being committed. This catches:
-	//   - bidBlock won Stage 1 then lost Stage 2 (simBid was discarded silently)
-	//   - bidBlock won Stage 2 then failed verify/commit
-	// When simBid already won Stage 2 normally, bestWork already points at
-	// simBidCandidate.env — skip to avoid a redundant log.
-	if winnerBidBlock == nil && simBidCandidate != nil && simBidCandidate.env != nil &&
+	// whenever no BidBlock is being committed.
+	if !bidBlockCommitted && simBidCandidate != nil && simBidCandidate.env != nil &&
 		bestWork != simBidCandidate.env {
-		localValidatorReward := new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
-		localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
+		if localValidatorReward == nil {
+			localValidatorReward = new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
+			localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
+		}
 		if bestReward.Cmp(simBidCandidate.blockReward) < 0 &&
 			localValidatorReward.Cmp(simBidCandidate.validatorReward) < 0 {
 			bidWinGauge.Inc(1)
+			if simBidCandidate.greedyMerged {
+				greedyMergeOnchainCounter.Inc(1)
+			}
 			bestWork = simBidCandidate.env
-			log.Info("[BUILDER BLOCK] (simBid fallback)",
+			logMsg := "[BUILDER BLOCK]"
+			if bidBlockFallback {
+				logMsg = "[BUILDER BLOCK] (simBid fallback)"
+			}
+			log.Info(logMsg,
 				"block", bestWork.header.Number.Uint64(),
 				"builder", simBidCandidate.builder,
 				"blockReward", weiToEtherStringF6(simBidCandidate.blockReward.ToBig()),
@@ -1761,7 +1770,7 @@ LOOP:
 		}
 	}
 
-	if winnerBidBlock == nil {
+	if !bidBlockCommitted {
 		w.commit(bestWork, w.fullTaskHook, start)
 	}
 
