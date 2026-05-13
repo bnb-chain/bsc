@@ -17,6 +17,7 @@
 package miner // TOFIX
 
 import (
+	"bytes"
 	"math/big"
 	"testing"
 	"time"
@@ -36,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/trie"
 	"github.com/holiman/uint256"
 )
 
@@ -207,6 +209,65 @@ func TestGenerateAndImportBlock(t *testing.T) {
 		case <-time.After(3 * time.Second): // Worker needs 1s to include new changes.
 			t.Fatalf("timeout")
 		}
+	}
+}
+
+func TestCommitBidBlockPreservesBuilderExecutionHeaderFields(t *testing.T) {
+	w := &worker{
+		chainConfig: params.TestChainConfig,
+		taskCh:      make(chan *task, 1),
+		exitCh:      make(chan struct{}),
+	}
+	w.running.Store(true)
+
+	tx := types.NewTransaction(0, common.Address{0x1}, big.NewInt(1), params.TxGas, big.NewInt(1), nil)
+	receiptHash := common.Hash{0x11}
+	root := common.Hash{0x22}
+	var bloom types.Bloom
+	bloom[0] = 0x33
+
+	decoded := &types.DecodedBidBlock{
+		Header: &types.Header{
+			Number:      big.NewInt(1),
+			ParentHash:  common.Hash{0xaa},
+			UncleHash:   common.Hash{0xbb},
+			Root:        root,
+			ReceiptHash: receiptHash,
+			Bloom:       bloom,
+			GasUsed:     21000,
+		},
+		Txs:    types.Transactions{tx},
+		GasFee: big.NewInt(1),
+	}
+	localHeader := &types.Header{Extra: []byte{0x44, 0x55}}
+
+	if err := w.commitBidBlock(nil, decoded, []*types.Transaction{tx}, 1, localHeader, time.Now()); err != nil {
+		t.Fatalf("commitBidBlock failed: %v", err)
+	}
+
+	task := <-w.taskCh
+	block := task.block
+	if block.ReceiptHash() != receiptHash {
+		t.Fatalf("receipt hash mismatch: got %s want %s", block.ReceiptHash(), receiptHash)
+	}
+	if block.Root() != root {
+		t.Fatalf("root mismatch: got %s want %s", block.Root(), root)
+	}
+	if block.Bloom() != bloom {
+		t.Fatalf("bloom mismatch")
+	}
+	if block.GasUsed() != decoded.Header.GasUsed {
+		t.Fatalf("gas used mismatch: got %d want %d", block.GasUsed(), decoded.Header.GasUsed)
+	}
+	wantTxHash := types.DeriveSha(types.Transactions{tx}, trie.NewStackTrie(nil))
+	if block.TxHash() != wantTxHash {
+		t.Fatalf("tx hash mismatch: got %s want %s", block.TxHash(), wantTxHash)
+	}
+	if block.UncleHash() != types.EmptyUncleHash {
+		t.Fatalf("uncle hash mismatch: got %s want %s", block.UncleHash(), types.EmptyUncleHash)
+	}
+	if got := block.Extra(); !bytes.Equal(got, localHeader.Extra) {
+		t.Fatalf("extra mismatch: got %x want %x", got, localHeader.Extra)
 	}
 }
 

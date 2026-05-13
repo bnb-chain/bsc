@@ -1872,14 +1872,8 @@ func bindSignBidBlockSystemTxs(
 	return nil
 }
 
-// commitBidBlock assembles a block from an already-verified BidBlock.
-// It signs the trailing system-tx region in place, builds the final header,
-// and submits the block to seal. The caller MUST have already run
-// verifyBidBlockSystemTxs and pass back its (allTxs, systemStart) result.
-//
-// The final header uses the builder-supplied header as the base. The validator
-// fills Extra from local Prepare(), signs system txs, and recomputes TxHash.
-// No EVM execution is performed on this path.
+// commitBidBlock signs system txs and seals a verified BidBlock.
+// Builder execution-result fields are preserved without re-executing transactions.
 func (w *worker) commitBidBlock(
 	p *parlia.Parlia,
 	decoded *types.DecodedBidBlock,
@@ -1892,22 +1886,24 @@ func (w *worker) commitBidBlock(
 		return errors.New("worker is not running")
 	}
 
-	// 1. Sign the verified system-tx region in place with the validator key.
 	if err := bindSignBidBlockSystemTxs(allTxs, systemStart, w.chainConfig.ChainID, p); err != nil {
 		return err
 	}
 
-	// 2. Build header: builder fields are preserved, validator fields are filled locally.
 	header := types.CopyHeader(decoded.Header)
 	header.Extra = common.CopyBytes(localHeader.Extra)
-	header.TxHash = types.DeriveSha(types.Transactions(allTxs), trie.NewStackTrie(nil))
+	header.UncleHash = types.EmptyUncleHash
+	if len(allTxs) == 0 {
+		header.TxHash = types.EmptyTxsHash
+	} else {
+		header.TxHash = types.DeriveSha(types.Transactions(allTxs), trie.NewStackTrie(nil))
+	}
 
-	// 3. Assemble block.
 	body := &types.Body{Transactions: allTxs}
 	if header.EmptyWithdrawalsHash() {
 		body.Withdrawals = make([]*types.Withdrawal, 0)
 	}
-	block := types.NewBlock(header, body, nil, trie.NewStackTrie(nil))
+	block := types.NewBlockWithHeader(header).WithBody(*body)
 
 	// Attach sidecars if present.
 	if decoded.Sidecars != nil {
@@ -1916,7 +1912,7 @@ func (w *worker) commitBidBlock(
 		block = block.WithSidecars(make(types.BlobSidecars, 0))
 	}
 
-	// 4. Submit to seal (assembleVoteAttestation + sign header happen inside Seal).
+	// assembleVoteAttestation + sign header happen inside Seal.
 	select {
 	case w.taskCh <- &task{
 		block:         block,
