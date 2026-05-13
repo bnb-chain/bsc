@@ -1365,15 +1365,32 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 		return err
 	}
 
-	// Set the correct difficulty
-	header.Difficulty = calcDifficulty(snap, p.val)
+	return p.prepareHeader(chain, header, snap, p.val, number)
+}
 
-	// Ensure the extra data has all it's components
+// PrepareForBuilder prepares consensus header fields for BidBlock construction.
+// It mirrors Prepare, but uses the in-turn validator as Coinbase instead of p.val.
+func (p *Parlia) PrepareForBuilder(chain consensus.ChainHeaderReader, header *types.Header) error {
+	header.Nonce = types.BlockNonce{}
+
+	number := header.Number.Uint64()
+	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
+	if err != nil {
+		return err
+	}
+	validator := snap.inturnValidator()
+	header.Coinbase = validator
+
+	return p.prepareHeader(chain, header, snap, validator, number)
+}
+
+func (p *Parlia) prepareHeader(chain consensus.ChainHeaderReader, header *types.Header, snap *Snapshot, validator common.Address, number uint64) error {
+	header.Difficulty = calcDifficulty(snap, validator)
+
 	if len(header.Extra) < extraVanity-nextForkHashSize {
 		header.Extra = append(header.Extra, bytes.Repeat([]byte{0x00}, extraVanity-nextForkHashSize-len(header.Extra))...)
 	}
 
-	// Ensure the timestamp has the correct delay
 	parent := chain.GetHeader(header.ParentHash, number-1)
 	if parent == nil {
 		return consensus.ErrUnknownAncestor

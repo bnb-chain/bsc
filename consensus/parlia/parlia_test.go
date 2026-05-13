@@ -820,6 +820,72 @@ func TestParliaFinalizeAndAssembleBidBlock(t *testing.T) {
 	}
 }
 
+func TestParliaPrepareForBuilderMatchesPrepare(t *testing.T) {
+	frdir := t.TempDir()
+	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false)
+	if err != nil {
+		t.Fatalf("failed to create database with ancient backend: %v", err)
+	}
+
+	trieDB := triedb.NewDatabase(db, nil)
+	defer trieDB.Close()
+
+	config := params.ParliaTestChainConfig
+	extra := make([]byte, extraVanity+validatorNumberSize+validatorBytesLength+extraSeal)
+	extra[extraVanity] = 1
+	copy(extra[extraVanity+validatorNumberSize:], testAddr[:])
+	gspec := &core.Genesis{
+		Config:    config,
+		ExtraData: extra,
+		Alloc:     types.GenesisAlloc{testAddr: {Balance: new(big.Int).SetUint64(10 * params.Ether)}},
+	}
+	mockEngine := &mockParlia{}
+	genesisBlock := gspec.MustCommit(db, trieDB)
+	chain, _ := core.NewBlockChain(db, gspec, mockEngine, nil)
+	defer chain.Stop()
+
+	engine := New(config, db, nil, genesisBlock.Hash())
+	inturnValidator, err := engine.NextInTurnValidator(chain, genesisBlock.Header())
+	if err != nil {
+		t.Fatalf("failed to get in-turn validator: %v", err)
+	}
+	engine.Authorize(inturnValidator, nil, nil)
+
+	newHeader := func() *types.Header {
+		return &types.Header{
+			ParentHash: genesisBlock.Hash(),
+			Number:     common.Big1,
+			GasLimit:   params.SystemTxsGasHardLimit,
+		}
+	}
+	validatorHeader := newHeader()
+	builderHeader := newHeader()
+
+	if err := engine.Prepare(chain, validatorHeader); err != nil {
+		t.Fatalf("failed to prepare validator header: %v", err)
+	}
+	if err := engine.PrepareForBuilder(chain, builderHeader); err != nil {
+		t.Fatalf("failed to prepare builder header: %v", err)
+	}
+
+	if builderHeader.Coinbase != validatorHeader.Coinbase {
+		t.Fatalf("coinbase mismatch: builder=%s validator=%s", builderHeader.Coinbase, validatorHeader.Coinbase)
+	}
+	if builderHeader.Coinbase != inturnValidator {
+		t.Fatalf("builder coinbase mismatch: have %s want %s", builderHeader.Coinbase, inturnValidator)
+	}
+	if builderHeader.Time != validatorHeader.Time || builderHeader.MixDigest != validatorHeader.MixDigest {
+		t.Fatalf("time mismatch: builder=(%d,%s) validator=(%d,%s)",
+			builderHeader.Time, builderHeader.MixDigest, validatorHeader.Time, validatorHeader.MixDigest)
+	}
+	if builderHeader.Difficulty.Cmp(validatorHeader.Difficulty) != 0 {
+		t.Fatalf("difficulty mismatch: builder=%s validator=%s", builderHeader.Difficulty, validatorHeader.Difficulty)
+	}
+	if len(builderHeader.Extra) != len(validatorHeader.Extra) {
+		t.Fatalf("extra length mismatch: builder=%d validator=%d", len(builderHeader.Extra), len(validatorHeader.Extra))
+	}
+}
+
 func formatRecords(records []string) string {
 	indented := make([]string, 0, len(records))
 	for _, record := range records {
