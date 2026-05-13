@@ -445,7 +445,7 @@ func (p *Parlia) ExpectedSystemTxShape(header, parent *types.Header) []expectedS
 		optional: true,
 	})
 
-	if header.Number.Uint64()%finalityRewardInterval == 0 {
+	if p.chainConfig.IsPlato(header.Number) && header.Number.Uint64()%finalityRewardInterval == 0 {
 		shape = append(shape, expectedSystemTxEntry{
 			method:   "distributeFinalityReward",
 			selector: p.selectorFor("distributeFinalityReward"),
@@ -453,7 +453,9 @@ func (p *Parlia) ExpectedSystemTxShape(header, parent *types.Header) []expectedS
 		})
 	}
 
-	if isBreatheBlock(parent.Time, header.Time) {
+	if p.chainConfig.IsFeynman(header.Number, header.Time) &&
+		isBreatheBlock(parent.Time, header.Time) &&
+		!p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
 		shape = append(shape, expectedSystemTxEntry{
 			method:   "updateValidatorSetV2",
 			selector: p.selectorFor("updateValidatorSetV2"),
