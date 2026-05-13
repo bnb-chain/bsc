@@ -101,7 +101,6 @@ type bidSimulator struct {
 	config        *minerconfig.MevConfig
 	delayLeftOver time.Duration
 	minGasPrice   *big.Int
-	txMaxGas      uint64 // Maximum gas for per transaction(will be removed after Mendel hardfork)
 	chain         *core.BlockChain
 	txpool        *txpool.TxPool
 	chainConfig   *params.ChainConfig
@@ -152,7 +151,6 @@ func newBidSimulator(
 	config *minerconfig.MevConfig,
 	delayLeftOver *time.Duration,
 	minGasPrice *big.Int,
-	txMaxGas uint64,
 	eth Backend,
 	chainConfig *params.ChainConfig,
 	engine consensus.Engine,
@@ -165,7 +163,6 @@ func newBidSimulator(
 	b := &bidSimulator{
 		config:             config,
 		minGasPrice:        minGasPrice,
-		txMaxGas:           txMaxGas,
 		chain:              eth.BlockChain(),
 		txpool:             eth.TxPool(),
 		chainConfig:        chainConfig,
