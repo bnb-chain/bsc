@@ -728,8 +728,8 @@ func isUnsignedTx(tx *types.Transaction) bool {
 	return v.Sign() == 0 && r.Sign() == 0 && s.Sign() == 0
 }
 
-// TestParliaFinalizeAndAssembleForBuilder verifies builder finalize emits unsigned system txs.
-func TestParliaFinalizeAndAssembleForBuilder(t *testing.T) {
+// TestParliaFinalizeAndAssembleBidBlock verifies BidBlock assembly emits unsigned system txs.
+func TestParliaFinalizeAndAssembleBidBlock(t *testing.T) {
 	frdir := t.TempDir()
 	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false)
 	if err != nil {
@@ -782,13 +782,13 @@ func TestParliaFinalizeAndAssembleForBuilder(t *testing.T) {
 		return stateDB
 	}
 
-	signedBlock, signedReceipts, err := engine.FinalizeAndAssembleWithOpts(chain, newHeader(), newState(), &types.Body{}, nil, nil, FinalizeOpts{BindSign: true})
+	signedBlock, signedReceipts, err := engine.FinalizeAndAssembleWithOpts(chain, newHeader(), newState(), &types.Body{}, nil, nil, FinalizeOpts{SignSystemTx: true})
 	if err != nil {
 		t.Fatalf("failed to finalize signed block: %v", err)
 	}
-	unsignedBlock, actualGasFee, unsignedReceipts, err := engine.FinalizeAndAssembleForBuilder(chain, newHeader(), newState(), &types.Body{}, nil, nil)
+	unsignedBlock, actualGasFee, unsignedReceipts, err := engine.FinalizeAndAssembleBidBlock(chain, newHeader(), newState(), &types.Body{}, nil, nil)
 	if err != nil {
-		t.Fatalf("failed to finalize builder block: %v", err)
+		t.Fatalf("failed to finalize BidBlock: %v", err)
 	}
 
 	if actualGasFee.Cmp(gasFee.ToBig()) != 0 {
@@ -813,14 +813,13 @@ func TestParliaFinalizeAndAssembleForBuilder(t *testing.T) {
 		t.Fatalf("expected default finalize path to sign system txs")
 	}
 	if !isUnsignedTx(unsignedBlock.Transactions()[0]) {
-		t.Fatalf("expected builder finalize path to keep system txs unsigned")
+		t.Fatalf("expected BidBlock assembly to keep system txs unsigned")
 	}
 	if len(signedReceipts) != len(unsignedReceipts) {
 		t.Fatalf("receipt count mismatch: signed=%d unsigned=%d", len(signedReceipts), len(unsignedReceipts))
 	}
 }
 
-// TestParliaFinalizeAndAssembleForBuilderUsesHeaderCoinbase verifies deposit uses header.Coinbase.
 func formatRecords(records []string) string {
 	indented := make([]string, 0, len(records))
 	for _, record := range records {

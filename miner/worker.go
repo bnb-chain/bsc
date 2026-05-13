@@ -1855,10 +1855,8 @@ func verifyBidBlockSystemTxs(
 	return allTxs, systemStart, nil
 }
 
-// signBidBlockSystemTxs signs allTxs[systemStart:] in place using the
-// validator's signTxFn (Parlia.SignSystemTx). It assumes the caller has
-// already validated the region via verifyBidBlockSystemTxs.
-func signBidBlockSystemTxs(
+// bindSignBidBlockSystemTxs signs the verified unsigned system txs from a BidBlock.
+func bindSignBidBlockSystemTxs(
 	allTxs []*types.Transaction,
 	systemStart int,
 	chainID *big.Int,
@@ -1895,7 +1893,7 @@ func (w *worker) commitBidBlock(
 	}
 
 	// 1. Sign the verified system-tx region in place with the validator key.
-	if err := signBidBlockSystemTxs(allTxs, systemStart, w.chainConfig.ChainID, p); err != nil {
+	if err := bindSignBidBlockSystemTxs(allTxs, systemStart, w.chainConfig.ChainID, p); err != nil {
 		return err
 	}
 
@@ -1914,7 +1912,7 @@ func (w *worker) commitBidBlock(
 	// Attach sidecars if present.
 	if decoded.Sidecars != nil {
 		block = block.WithSidecars(decoded.Sidecars)
-	} else if w.chainConfig.IsCancun(header.Number, header.Time) {
+	} else {
 		block = block.WithSidecars(make(types.BlobSidecars, 0))
 	}
 

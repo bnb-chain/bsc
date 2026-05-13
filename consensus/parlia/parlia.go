@@ -421,14 +421,13 @@ type expectedSystemTxEntry struct {
 	optional bool
 }
 
-// ExpectedSystemTxShape returns the expected system-tx sequence for a BidBlock
-// with the given header, based on Parlia's Finalize ordering:
+// ExpectedSystemTxShape returns the expected post-Osaka/Mendel system-tx
+// sequence for a BidBlock with the given header, based on Parlia's Finalize ordering:
 //
 //	distributeIncoming (optional) → distributeFinalityReward (cond.) → updateValidatorSetV2 (cond.)
 //
-// Entry inclusion and selector are fully determined by (header.Number,
-// header.Time, parent.Time) and chain config, so the validator can build this
-// shape before signing without executing user transactions.
+// Entry inclusion and selector are fully determined by header-level data, so
+// the validator can build this shape before signing without executing user txs.
 //
 // The distributeIncoming entry is optional because whether it fires depends on
 // the SystemAddress balance after user-tx execution, which is not available
@@ -446,10 +445,7 @@ func (p *Parlia) ExpectedSystemTxShape(header, parent *types.Header) []expectedS
 		optional: true,
 	})
 
-	// distributeFinalityReward: fires only at finality reward intervals when
-	// the Plato fork is active.
-	if p.chainConfig.IsPlato(header.Number) &&
-		header.Number.Uint64()%finalityRewardInterval == 0 {
+	if header.Number.Uint64()%finalityRewardInterval == 0 {
 		shape = append(shape, expectedSystemTxEntry{
 			method:   "distributeFinalityReward",
 			selector: p.selectorFor("distributeFinalityReward"),
@@ -457,11 +453,7 @@ func (p *Parlia) ExpectedSystemTxShape(header, parent *types.Header) []expectedS
 		})
 	}
 
-	// updateValidatorSetV2: fires only on a breathe block after the Feynman
-	// fork, and not on the fork activation block itself.
-	if p.chainConfig.IsFeynman(header.Number, header.Time) &&
-		isBreatheBlock(parent.Time, header.Time) &&
-		!p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
+	if isBreatheBlock(parent.Time, header.Time) {
 		shape = append(shape, expectedSystemTxEntry{
 			method:   "updateValidatorSetV2",
 			selector: p.selectorFor("updateValidatorSetV2"),
@@ -1486,7 +1478,7 @@ func (p *Parlia) verifyTurnLength(chain consensus.ChainHeaderReader, header *typ
 
 func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, state vm.StateDB, header *types.Header,
 	cx core.ChainContext, txs *[]*types.Transaction, receipts *[]*types.Receipt, systemTxs *[]*types.Transaction,
-	usedGas *uint64, mining bool, bindSign bool, tracer *tracing.Hooks) error {
+	usedGas *uint64, mining bool, signSystemTx bool, tracer *tracing.Hooks) error {
 	currentHeight := header.Number.Uint64()
 	if currentHeight%finalityRewardInterval != 0 {
 		return nil
@@ -1557,7 +1549,7 @@ func (p *Parlia) distributeFinalityReward(chain consensus.ChainHeaderReader, sta
 		return err
 	}
 	msg := p.getSystemMessage(header.Coinbase, common.HexToAddress(systemcontracts.ValidatorContract), data, common.Big0)
-	return p.applyTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, mining, bindSign, tracer)
+	return p.applyTransaction(msg, state, header, cx, txs, receipts, systemTxs, usedGas, mining, signSystemTx, tracer)
 }
 
 func (p *Parlia) EstimateGasReservedForSystemTxs(chain consensus.ChainHeaderReader, header *types.Header) uint64 {
@@ -1703,15 +1695,15 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 
 // FinalizeOpts controls Parlia system-tx assembly behavior.
 type FinalizeOpts struct {
-	BindSign bool
+	SignSystemTx bool
 }
 
-// FinalizeAndAssembleForBuilder assembles a BidBlock-compatible block with
+// FinalizeAndAssembleBidBlock assembles a BidBlock-compatible block with
 // unsigned system transactions and returns the distribution basis for GasFee.
-func (p *Parlia) FinalizeAndAssembleForBuilder(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
+func (p *Parlia) FinalizeAndAssembleBidBlock(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
 	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, *big.Int, []*types.Receipt, error) {
 	gasFee := state.GetBalance(consensus.SystemAddress).ToBig()
-	block, receipts, err := p.FinalizeAndAssembleWithOpts(chain, header, state, body, receipts, tracer, FinalizeOpts{BindSign: false})
+	block, receipts, err := p.FinalizeAndAssembleWithOpts(chain, header, state, body, receipts, tracer, FinalizeOpts{SignSystemTx: false})
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -1722,12 +1714,10 @@ func (p *Parlia) FinalizeAndAssembleForBuilder(chain consensus.ChainHeaderReader
 // nor block rewards given, and returns the final block.
 func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
 	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
-	return p.FinalizeAndAssembleWithOpts(chain, header, state, body, receipts, tracer, FinalizeOpts{BindSign: true})
+	return p.FinalizeAndAssembleWithOpts(chain, header, state, body, receipts, tracer, FinalizeOpts{SignSystemTx: true})
 }
 
-// FinalizeAndAssembleWithOpts assembles a block with configurable system-tx
-// signing behavior. Validator local mining uses BindSign=true; builder BidBlock
-// construction uses BindSign=false.
+// FinalizeAndAssembleWithOpts controls whether generated system txs are signed.
 func (p *Parlia) FinalizeAndAssembleWithOpts(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
 	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks, opts FinalizeOpts) (*types.Block, []*types.Receipt, error) {
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
@@ -1748,14 +1738,14 @@ func (p *Parlia) FinalizeAndAssembleWithOpts(chain consensus.ChainHeaderReader, 
 	systemcontracts.TryUpdateBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state, false)
 
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
-		err := p.initializeFeynmanContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.BindSign, tracer)
+		err := p.initializeFeynmanContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.SignSystemTx, tracer)
 		if err != nil {
 			return nil, nil, fmt.Errorf("init feynman contract failed: %v", err)
 		}
 	}
 
 	if header.Number.Cmp(common.Big1) == 0 {
-		err := p.initContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.BindSign, tracer)
+		err := p.initContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.SignSystemTx, tracer)
 		if err != nil {
 			return nil, nil, errors.New("init contract failed")
 		}
@@ -1779,20 +1769,20 @@ func (p *Parlia) FinalizeAndAssembleWithOpts(chain consensus.ChainHeaderReader, 
 			}
 		}
 		if !signedRecently {
-			err = p.slash(spoiledVal, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.BindSign, tracer)
+			err = p.slash(spoiledVal, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.SignSystemTx, tracer)
 			if err != nil {
 				log.Error("slash validator failed", "block hash", header.Hash(), "address", spoiledVal)
 			}
 		}
 	}
 
-	err := p.distributeIncoming(header.Coinbase, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.BindSign, tracer)
+	err := p.distributeIncoming(header.Coinbase, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.SignSystemTx, tracer)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	if p.chainConfig.IsPlato(header.Number) {
-		if err := p.distributeFinalityReward(chain, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.BindSign, tracer); err != nil {
+		if err := p.distributeFinalityReward(chain, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.SignSystemTx, tracer); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -1801,7 +1791,7 @@ func (p *Parlia) FinalizeAndAssembleWithOpts(chain consensus.ChainHeaderReader, 
 	if p.chainConfig.IsFeynman(header.Number, header.Time) && isBreatheBlock(parent.Time, header.Time) {
 		// we should avoid update validators in the Feynman upgrade block
 		if !p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
-			if err := p.updateValidatorSetV2(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.BindSign, tracer); err != nil {
+			if err := p.updateValidatorSetV2(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.SignSystemTx, tracer); err != nil {
 				return nil, nil, err
 			}
 		}
@@ -2231,7 +2221,7 @@ func (p *Parlia) isIntentionalDelayMining(chain consensus.ChainHeaderReader, hea
 
 // distributeIncoming distributes system incoming of the block
 func (p *Parlia) distributeIncoming(val common.Address, state vm.StateDB, header *types.Header, chain core.ChainContext,
-	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, bindSign bool, tracer *tracing.Hooks) error {
+	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, signSystemTx bool, tracer *tracing.Hooks) error {
 	coinbase := header.Coinbase
 
 	doDistributeSysReward := !p.chainConfig.IsKepler(header.Number, header.Time) &&
@@ -2243,7 +2233,7 @@ func (p *Parlia) distributeIncoming(val common.Address, state vm.StateDB, header
 		if rewards.Cmp(common.U2560) > 0 {
 			state.SetBalance(consensus.SystemAddress, balance.Sub(balance, rewards), tracing.BalanceChangeUnspecified)
 			state.AddBalance(coinbase, rewards, tracing.BalanceChangeUnspecified)
-			err := p.distributeToSystem(rewards.ToBig(), state, header, chain, txs, receipts, receivedTxs, usedGas, mining, bindSign, tracer)
+			err := p.distributeToSystem(rewards.ToBig(), state, header, chain, txs, receipts, receivedTxs, usedGas, mining, signSystemTx, tracer)
 			if err != nil {
 				return err
 			}
@@ -2259,12 +2249,12 @@ func (p *Parlia) distributeIncoming(val common.Address, state vm.StateDB, header
 	state.SetBalance(consensus.SystemAddress, common.U2560, tracing.BalanceDecreaseBSCDistributeReward)
 	state.AddBalance(coinbase, balance, tracing.BalanceIncreaseBSCDistributeReward)
 	log.Trace("distribute to validator contract", "block hash", header.Hash(), "amount", balance)
-	return p.distributeToValidator(balance.ToBig(), val, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, bindSign, tracer)
+	return p.distributeToValidator(balance.ToBig(), val, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, signSystemTx, tracer)
 }
 
 // slash spoiled validators
 func (p *Parlia) slash(spoiledVal common.Address, state vm.StateDB, header *types.Header, chain core.ChainContext,
-	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, bindSign bool, tracer *tracing.Hooks) error {
+	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, signSystemTx bool, tracer *tracing.Hooks) error {
 	// method
 	method := "slash"
 
@@ -2279,12 +2269,12 @@ func (p *Parlia) slash(spoiledVal common.Address, state vm.StateDB, header *type
 	// get system message
 	msg := p.getSystemMessage(header.Coinbase, common.HexToAddress(systemcontracts.SlashContract), data, common.Big0)
 	// apply message
-	return p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, bindSign, tracer)
+	return p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, signSystemTx, tracer)
 }
 
 // init contract
 func (p *Parlia) initContract(state vm.StateDB, header *types.Header, chain core.ChainContext,
-	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, bindSign bool, tracer *tracing.Hooks) error {
+	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, signSystemTx bool, tracer *tracing.Hooks) error {
 	// method
 	method := "init"
 	// contracts
@@ -2307,7 +2297,7 @@ func (p *Parlia) initContract(state vm.StateDB, header *types.Header, chain core
 		msg := p.getSystemMessage(header.Coinbase, common.HexToAddress(c), data, common.Big0)
 		// apply message
 		log.Trace("init contract", "block hash", header.Hash(), "contract", c)
-		err = p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, bindSign, tracer)
+		err = p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, signSystemTx, tracer)
 		if err != nil {
 			return err
 		}
@@ -2316,17 +2306,17 @@ func (p *Parlia) initContract(state vm.StateDB, header *types.Header, chain core
 }
 
 func (p *Parlia) distributeToSystem(amount *big.Int, state vm.StateDB, header *types.Header, chain core.ChainContext,
-	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, bindSign bool, tracer *tracing.Hooks) error {
+	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, signSystemTx bool, tracer *tracing.Hooks) error {
 	// get system message
 	msg := p.getSystemMessage(header.Coinbase, common.HexToAddress(systemcontracts.SystemRewardContract), nil, amount)
 	// apply message
-	return p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, bindSign, tracer)
+	return p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, signSystemTx, tracer)
 }
 
 // distributeToValidator deposits validator reward to validator contract
 func (p *Parlia) distributeToValidator(amount *big.Int, validator common.Address,
 	state vm.StateDB, header *types.Header, chain core.ChainContext,
-	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, bindSign bool, tracer *tracing.Hooks) error {
+	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, signSystemTx bool, tracer *tracing.Hooks) error {
 	// method
 	method := "deposit"
 
@@ -2341,7 +2331,7 @@ func (p *Parlia) distributeToValidator(amount *big.Int, validator common.Address
 	// get system message
 	msg := p.getSystemMessage(header.Coinbase, common.HexToAddress(systemcontracts.ValidatorContract), data, amount)
 	// apply message
-	return p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, bindSign, tracer)
+	return p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, signSystemTx, tracer)
 }
 
 // get system message
@@ -2362,7 +2352,7 @@ func (p *Parlia) applyTransaction(
 	header *types.Header,
 	chainContext core.ChainContext,
 	txs *[]*types.Transaction, receipts *[]*types.Receipt,
-	receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, bindSign bool,
+	receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, signSystemTx bool,
 	tracer *tracing.Hooks,
 ) (applyErr error) {
 	nonce := state.GetNonce(msg.From)
@@ -2371,9 +2361,9 @@ func (p *Parlia) applyTransaction(
 
 	if mining {
 		var err error
-		if bindSign {
+		if signSystemTx {
 			if msg.From != p.val {
-				return fmt.Errorf("cannot bind-sign system tx from %s with validator %s", msg.From, p.val)
+				return fmt.Errorf("cannot sign system tx from %s with validator %s", msg.From, p.val)
 			}
 			expectedTx, err = p.signTxFn(accounts.Account{Address: msg.From}, expectedTx, p.chainConfig.ChainID)
 			if err != nil {
