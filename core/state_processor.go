@@ -185,7 +185,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	for _, receipt := range receipts {
 		allLogs = append(allLogs, receipt.Logs...)
 	}
-	statedb.DumpAccessList(block)
+
 	return &ProcessResult{
 		Receipts: receipts,
 		Requests: requests,

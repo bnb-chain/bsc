@@ -182,11 +182,6 @@ var (
 		Usage:    "Chapel network: pre-configured Proof-of-Stake-Authority BSC test network",
 		Category: flags.EthCategory,
 	}
-	EnableBALFlag = &cli.BoolFlag{
-		Name:     "enablebal",
-		Usage:    "Enable block access list feature, validator will generate BAL for each block",
-		Category: flags.EthCategory,
-	}
 	// Dev mode
 	DeveloperFlag = &cli.BoolFlag{
 		Name:     "dev",
@@ -1857,9 +1852,6 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	if ctx.IsSet(DisableSnapProtocolFlag.Name) {
 		cfg.DisableSnapProtocol = ctx.Bool(DisableSnapProtocolFlag.Name)
 	}
-	if ctx.IsSet(EnableBALFlag.Name) {
-		cfg.EnableBAL = ctx.Bool(EnableBALFlag.Name)
-	}
 	if ctx.IsSet(RangeLimitFlag.Name) {
 		cfg.RangeLimit = ctx.Bool(RangeLimitFlag.Name)
 	}
@@ -2077,6 +2069,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	flags.CheckExclusive(ctx, BSCMainnetFlag, DeveloperFlag, NetworkIdFlag, OverrideGenesisFlag)
 	flags.CheckExclusive(ctx, DeveloperFlag, ExternalSignerFlag) // Can't use both ephemeral unlocked and external signer
 
+	if ctx.IsSet(EnableBALFlag.Name) {
+		log.Warn("The flag --enable-bal is deprecated and has no effect; BEP-592 block access list has been removed")
+	}
 	// Set configurations from CLI flags
 	setEtherbase(ctx, cfg)
 	setGPO(ctx, &cfg.GPO)
@@ -2161,9 +2156,6 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 	if ctx.IsSet(CacheNoPrefetchFlag.Name) {
 		cfg.NoPrefetch = ctx.Bool(CacheNoPrefetchFlag.Name)
-	}
-	if ctx.IsSet(EnableBALFlag.Name) {
-		cfg.EnableBAL = ctx.Bool(EnableBALFlag.Name)
 	}
 	// Read the value from the flag no matter if it's set or not.
 	cfg.Preimages = ctx.Bool(CachePreimagesFlag.Name)
@@ -2883,7 +2875,6 @@ func MakeChain(ctx *cli.Context, stack *node.Node, readonly bool) (*core.BlockCh
 	options := &core.BlockChainConfig{
 		TrieCleanLimit: ethconfig.Defaults.TrieCleanCache,
 		NoPrefetch:     ctx.Bool(CacheNoPrefetchFlag.Name),
-		EnableBAL:      ctx.Bool(EnableBALFlag.Name),
 		TrieDirtyLimit: ethconfig.Defaults.TrieDirtyCache,
 		ArchiveMode:    ctx.String(GCModeFlag.Name) == "archive",
 		TrieTimeLimit:  ethconfig.Defaults.TrieTimeout,

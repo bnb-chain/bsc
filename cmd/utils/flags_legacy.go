@@ -47,6 +47,7 @@ var DeprecatedFlags = []cli.Flag{
 	PruneAncientDataFlag,
 	JournalFileFlag,
 	LogExportCheckpointsFlag,
+	EnableBALFlag,
 }
 
 var (
@@ -145,6 +146,13 @@ var (
 		Name:     "miner.txgaslimit",
 		Hidden:   true,
 		Usage:    "Deprecated: per-transaction gas limit is now enforced by EIP-7825; this flag has no effect",
+		Category: flags.DeprecatedCategory,
+	}
+	// Deprecated: BEP-592 non-consensus BAL is superseded by EIP-7928 in upstream go-ethereum.
+	EnableBALFlag = &cli.BoolFlag{
+		Name:     "enable-bal",
+		Hidden:   true,
+		Usage:    "Deprecated: BEP-592 block access list has been removed; this flag has no effect",
 		Category: flags.DeprecatedCategory,
 	}
 )

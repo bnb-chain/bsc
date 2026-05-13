@@ -225,6 +225,8 @@ func blockBlobSidecarsKey(number uint64, hash common.Hash) []byte {
 }
 
 // blockBALKey = blockBALPrefix + blockNumber (uint64 big endian) + blockHash
+//
+//nolint:unused
 func blockBALKey(number uint64, hash common.Hash) []byte {
 	return append(append(BlockBALPrefix, encodeBlockNumber(number)...), hash.Bytes()...)
 }

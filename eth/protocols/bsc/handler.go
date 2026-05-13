@@ -24,7 +24,7 @@ const (
 
 	// softResponseLimit is the target maximum size of replies. The hard cap on
 	// the wire is maxMessageSize (10MB); 8MB leaves headroom for outer RLP/p2p
-	// framing. Each entry's measured size includes sidecars and BAL.
+	// framing. Each entry's measured size includes sidecars.
 	softResponseLimit = 8 * 1024 * 1024
 )
 

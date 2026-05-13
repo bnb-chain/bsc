@@ -143,7 +143,6 @@ type handlerConfig struct {
 	PeerSet                   *peerSet
 	EnableQuickBlockFetching  bool
 	EnableEVNFeatures         bool
-	EnableBAL                 bool
 	EVNNodeIdsWhitelist       []enode.ID
 	ProxyedValidatorAddresses []common.Address
 	ProxyedNodeIds            []enode.ID
@@ -154,7 +153,6 @@ type handler struct {
 	networkID                  uint64
 	disablePeerTxBroadcast     bool
 	enableEVNFeatures          bool
-	enableBAL                  bool
 	evnNodeIdsWhitelistMap     map[enode.ID]struct{}
 	proxyedValidatorAddressMap map[common.Address]struct{}
 	proxyedNodeIdsMap          map[enode.ID]struct{}
@@ -228,7 +226,6 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		requiredBlocks:             config.RequiredBlocks,
 		directBroadcast:            config.DirectBroadcast,
 		enableEVNFeatures:          config.EnableEVNFeatures,
-		enableBAL:                  config.EnableBAL,
 		evnNodeIdsWhitelistMap:     make(map[enode.ID]struct{}),
 		proxyedValidatorAddressMap: make(map[common.Address]struct{}),
 		proxyedNodeIdsMap:          make(map[enode.ID]struct{}),
@@ -358,9 +355,6 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		for i, item := range res {
 			block := types.NewBlockWithHeader(item.Header).WithBody(types.Body{Transactions: item.Txs, Uncles: item.Uncles})
 			block = block.WithSidecars(item.Sidecars)
-			if item.BAL != nil && h.chain.Engine().VerifyBAL(block, item.BAL) == nil {
-				block = block.WithBAL(item.BAL)
-			}
 			block.ReceivedAt = time.Now()
 			block.ReceivedFrom = p.ID()
 			if err := block.SanityCheck(); err != nil {
@@ -482,10 +476,6 @@ func (h *handler) runEthPeer(peer *eth.Peer, handler eth.Handler) error {
 	if err != nil {
 		peer.Log().Error("Bsc extension barrier failed", "err", err)
 		return err
-	}
-	if bscExt != nil && bscExt.Version() == bsc.Bsc3 {
-		peer.CanHandleBAL.Store(true)
-		log.Debug("runEthPeer", "bscExt.Version", bscExt.Version(), "CanHandleBAL", peer.CanHandleBAL.Load())
 	}
 	// Execute the Ethereum handshake
 	var (
@@ -857,7 +847,6 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 			log.Debug("Broadcast block to peer",
 				"hash", hash, "peer", peer.ID(),
 				"EVNPeerFlag", peer.EVNPeerFlag.Load(),
-				"CanHandleBAL", peer.CanHandleBAL.Load(),
 			)
 			peer.AsyncSendNewBlock(block, td)
 		}
@@ -870,7 +859,6 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 					log.Debug("Broadcast block to proxyed peer",
 						"hash", hash, "peer", peer.ID(),
 						"EVNPeerFlag", peer.EVNPeerFlag.Load(),
-						"CanHandleBAL", peer.CanHandleBAL.Load(),
 					)
 					peer.AsyncSendNewBlock(block, td)
 					proxyedPeersCnt++
@@ -886,7 +874,6 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 					log.Debug("Broadcast block to EVN peer",
 						"hash", hash, "peer", peer.ID(),
 						"EVNPeerFlag", peer.EVNPeerFlag.Load(),
-						"CanHandleBAL", peer.CanHandleBAL.Load(),
 					)
 					peer.AsyncSendNewBlock(block, td)
 					evnPeersCnt++
@@ -908,7 +895,7 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 	if h.chain.HasBlock(hash, block.NumberU64()) {
 		for _, peer := range peers {
 			log.Debug("Announced block to peer", "hash", hash, "peer", peer.ID(),
-				"EVNPeerFlag", peer.EVNPeerFlag.Load(), "CanHandleBAL", peer.CanHandleBAL.Load())
+				"EVNPeerFlag", peer.EVNPeerFlag.Load())
 			peer.AsyncSendNewBlockHash(block)
 		}
 		log.Debug("Announced block", "hash", hash, "recipients", len(peers), "duration", common.PrettyDuration(time.Since(block.ReceivedAt)))

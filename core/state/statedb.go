@@ -135,9 +135,6 @@ type StateDB struct {
 	accessList   *accessList
 	accessEvents *AccessEvents
 
-	// block level access list
-	blockAccessList *types.BlockAccessListRecord
-
 	// Transient storage
 	transientStorage transientStorage
 
@@ -191,20 +188,12 @@ func NewWithReader(root common.Hash, db Database, reader Reader) (*StateDB, erro
 		preimages:            make(map[common.Hash][]byte),
 		journal:              newJournal(),
 		accessList:           newAccessList(),
-		blockAccessList:      nil,
 		transientStorage:     newTransientStorage(),
 	}
 	if db.TrieDB().IsVerkle() {
 		sdb.accessEvents = NewAccessEvents(db.PointCache())
 	}
 	return sdb, nil
-}
-
-func (s *StateDB) InitBlockAccessList() {
-	if s.blockAccessList != nil {
-		log.Warn("prepareBAL blockAccessList is not nil")
-	}
-	s.blockAccessList = &types.BlockAccessListRecord{Accounts: make(map[common.Address]types.AccountAccessListRecord)}
 }
 
 func (s *StateDB) SetNeedBadSharedStorage(needBadSharedStorage bool) {
@@ -365,43 +354,6 @@ func (s *StateDB) GetNonce(addr common.Address) uint64 {
 	return 0
 }
 
-func (s *StateDB) PreloadAccount(addr common.Address) {
-	if s.Empty(addr) {
-		return
-	}
-	s.GetCode(addr)
-}
-
-func (s *StateDB) PreloadStorage(addr common.Address, key common.Hash) {
-	if s.Empty(addr) {
-		return
-	}
-	s.GetState(addr, key)
-}
-func (s *StateDB) PreloadAccountTrie(addr common.Address) {
-	if s.prefetcher == nil {
-		return
-	}
-
-	addressesToPrefetch := []common.Address{addr}
-	if err := s.prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, addressesToPrefetch, nil, false); err != nil {
-		log.Error("Failed to prefetch addresses", "addresses", len(addressesToPrefetch), "err", err)
-	}
-}
-
-func (s *StateDB) PreloadStorageTrie(addr common.Address, key common.Hash) {
-	if s.prefetcher == nil {
-		return
-	}
-	obj := s.getStateObject(addr)
-	if obj == nil {
-		return
-	}
-	if err := s.prefetcher.prefetch(obj.addrHash, obj.origin.Root, obj.address, nil, []common.Hash{key}, true); err != nil {
-		log.Error("Failed to prefetch storage slot", "addr", obj.address, "key", key, "err", err)
-	}
-}
-
 // GetStorageRoot retrieves the storage root from the given address or empty
 // if object not found.
 func (s *StateDB) GetStorageRoot(addr common.Address) common.Hash {
@@ -451,7 +403,6 @@ func (s *StateDB) GetCodeHash(addr common.Address) common.Hash {
 func (s *StateDB) GetState(addr common.Address, hash common.Hash) common.Hash {
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
-		s.blockAccessList.AddStorage(addr, hash, uint32(s.txIndex), false)
 		return stateObject.GetState(hash)
 	}
 	return common.Hash{}
@@ -543,7 +494,6 @@ func (s *StateDB) SetCode(addr common.Address, code []byte, reason tracing.CodeC
 }
 
 func (s *StateDB) SetState(addr common.Address, key, value common.Hash) common.Hash {
-	s.blockAccessList.AddStorage(addr, key, uint32(s.txIndex), true)
 	if stateObject := s.getOrNewStateObject(addr); stateObject != nil {
 		return stateObject.SetState(key, value)
 	}
@@ -673,7 +623,6 @@ func (s *StateDB) deleteStateObject(addr common.Address) {
 // getStateObject retrieves a state object given by the address, returning nil if
 // the object is not found or was deleted in this execution context.
 func (s *StateDB) getStateObject(addr common.Address) *stateObject {
-	s.blockAccessList.AddAccount(addr, uint32(s.txIndex))
 	// Prefer live objects if any is available
 	if obj := s.stateObjects[addr]; obj != nil {
 		return obj
@@ -773,14 +722,6 @@ func (s *StateDB) StateForPrefetch() *StateDB {
 	return state
 }
 
-func (s *StateDB) TransferBlockAccessList(prev *StateDB) {
-	if prev == nil {
-		return
-	}
-	s.blockAccessList = prev.blockAccessList
-	prev.blockAccessList = nil
-}
-
 // Copy creates a deep, independent copy of the state.
 // Snapshots of the copied state cannot be applied to the copy.
 func (s *StateDB) Copy() *StateDB {
@@ -809,7 +750,6 @@ func (s *StateDB) Copy() *StateDB {
 		// empty lists, so we do it anyway to not blow up if we ever decide copy them
 		// in the middle of a transaction.
 		accessList:       s.accessList.Copy(),
-		blockAccessList:  nil,
 		transientStorage: s.transientStorage.Copy(),
 		journal:          s.journal.copy(),
 	}
@@ -1675,56 +1615,6 @@ func (s *StateDB) Witness() *stateless.Witness {
 
 func (s *StateDB) AccessEvents() *AccessEvents {
 	return s.accessEvents
-}
-
-func (s *StateDB) DumpAccessList(block *types.Block) {
-	if s.blockAccessList == nil {
-		return
-	}
-	accountCount := 0
-	storageCount := 0
-	dirtyStorageCount := 0
-	for addr, account := range s.blockAccessList.Accounts {
-		accountCount++
-		log.Debug("  DumpAccessList Address", "address", addr.Hex(), "txIndex", account.TxIndex)
-		for _, storageItem := range account.StorageItems {
-			log.Debug("  DumpAccessList Storage Item", "key", storageItem.Key.Hex(), "txIndex", storageItem.TxIndex, "dirty", storageItem.Dirty)
-			storageCount++
-			if storageItem.Dirty {
-				dirtyStorageCount++
-			}
-		}
-	}
-	log.Info("DumpAccessList", "blockNumber", block.NumberU64(), "GasUsed", block.GasUsed(),
-		"accountCount", accountCount, "storageCount", storageCount, "dirtyStorageCount", dirtyStorageCount)
-}
-
-// GetEncodedBlockAccessList: convert BlockAccessListRecord to BlockAccessListEncode
-func (s *StateDB) GetEncodedBlockAccessList(block *types.Block) *types.BlockAccessListEncode {
-	if s.blockAccessList == nil {
-		return nil
-	}
-	// encode block access list to rlp to propagate with the block
-	blockAccessList := types.BlockAccessListEncode{
-		Version:  0,
-		Number:   block.NumberU64(),
-		Hash:     block.Hash(),
-		SignData: make([]byte, 65),
-		Accounts: make([]types.AccountAccessListEncode, 0),
-	}
-	for addr, account := range s.blockAccessList.Accounts {
-		accountAccessList := types.AccountAccessListEncode{
-			TxIndex:      account.TxIndex,
-			Address:      addr,
-			StorageItems: make([]types.StorageAccessItem, 0),
-		}
-		for _, storageItem := range account.StorageItems {
-			accountAccessList.StorageItems = append(accountAccessList.StorageItems, storageItem)
-		}
-		blockAccessList.Accounts = append(blockAccessList.Accounts, accountAccessList)
-	}
-
-	return &blockAccessList
 }
 
 func (s *StateDB) GetDirtyAccounts() []common.Address {
