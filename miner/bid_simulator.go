@@ -139,7 +139,7 @@ type bidSimulator struct {
 
 	maxBidsPerBuilder uint32 // Maximum number of bids allowed per builder per block
 
-	// BidBlock (zero-simulate MEV) fields
+	// SendBidBlock fields
 	bidBlockCandidatesMu sync.RWMutex
 	bidBlockCandidates   map[common.Hash][]*types.DecodedBidBlock // parentHash -> ordered bid block candidates
 	newBidBlockCh        chan *types.DecodedBidBlock              // channel for incoming bid blocks
@@ -752,13 +752,8 @@ func containsBidBlock(blocks []*types.DecodedBidBlock, target *types.DecodedBidB
 	return false
 }
 
-// preSealVerifyBidBlock validates the builder-supplied header against locally
-// derived consensus fields. Execution-result fields (Root, ReceiptHash, Bloom,
-// GasUsed, BlobGasUsed) are trusted here and verified post-seal via InsertChain.
-//
-// Mismatches here indicate a malformed or stale BidBlock and result in immediate
-// rejection. Timestamp uses the same range check as the normal header verification
-// path (blockTimeVerifyForRamanujanFork).
+// preSealVerifyBidBlock validates deterministic header fields before selection.
+// Execution-result fields are deferred to InsertChain.
 func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) error {
 	parliaEngine, ok := b.engine.(*parlia.Parlia)
 	if !ok {
@@ -788,10 +783,7 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 			header.Coinbase.Hex(), expectedCoinbase.Hex())
 	}
 
-	// 3. TODO: GasLimit bounds check is intentionally skipped here.
-	// Design principle: builder is responsible for correctness; invalid blocks
-	// trigger permission revocation via InsertChain failure. Only basic sanity
-	// checks are done pre-seal.
+	// 3. TODO: add full GasLimit bounds check when BidBlock pre-seal rules define it.
 
 	// 4. GasUsed must not exceed GasLimit (consensus hard rule).
 	if header.GasUsed > header.GasLimit {
@@ -825,7 +817,7 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 	return nil
 }
 
-// sendBidBlock sends a decoded bid block to the newBidBlockCh channel for selection.
+// sendBidBlock queues a decoded BidBlock for selection.
 func (b *bidSimulator) sendBidBlock(_ context.Context, block *types.DecodedBidBlock) error {
 	timer := time.NewTimer(1 * time.Second)
 	defer timer.Stop()
@@ -839,7 +831,7 @@ func (b *bidSimulator) sendBidBlock(_ context.Context, block *types.DecodedBidBl
 	}
 }
 
-// newBidBlockLoop handles incoming bid blocks, selecting the one with highest GasFee.
+// newBidBlockLoop stores incoming BidBlock candidates by GasFee.
 func (b *bidSimulator) newBidBlockLoop() {
 	for {
 		select {

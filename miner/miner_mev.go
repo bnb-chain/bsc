@@ -52,7 +52,16 @@ func (miner *Miner) GetBidBlockPermission(builder common.Address) types.BidBlock
 	return miner.bidSimulator.GetBidBlockPermission(builder)
 }
 
+func (miner *Miner) bidBlockEnabled() bool {
+	return miner.worker.config.Mev.Enabled != nil && *miner.worker.config.Mev.Enabled &&
+		miner.worker.config.Mev.BidBlockEnabled != nil && *miner.worker.config.Mev.BidBlockEnabled
+}
+
 func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) (common.Hash, error) {
+	if !miner.bidBlockEnabled() {
+		return common.Hash{}, types.NewInvalidBidError("BidBlock disabled, fallback to SendBid")
+	}
+
 	builder, err := args.EcrecoverSender()
 	if err != nil {
 		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("invalid signature: %v", err))

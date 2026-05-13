@@ -4,12 +4,16 @@
 package miner
 
 import (
+	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/miner/builderclient"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 )
 
 func TestBidBlockPermission_DefaultActive(t *testing.T) {
@@ -277,6 +281,39 @@ func TestBidBlockAdmission_RevokedDoesNotConsumeQuota(t *testing.T) {
 	}
 	if revokedCount != 0 {
 		t.Fatalf("revoked builder should have 0 pending entries; got %d", revokedCount)
+	}
+}
+
+func TestBidBlockAdmission_DisabledDoesNotConsumeQuota(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		mevEnabled      bool
+		bidBlockEnabled bool
+	}{
+		{name: "BidBlock disabled", mevEnabled: true, bidBlockEnabled: false},
+		{name: "MEV disabled", mevEnabled: false, bidBlockEnabled: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			miner := &Miner{
+				worker: &worker{config: &minerconfig.Config{
+					Mev: minerconfig.MevConfig{
+						Enabled:         &tc.mevEnabled,
+						BidBlockEnabled: &tc.bidBlockEnabled,
+					},
+				}},
+				bidSimulator: &bidSimulator{
+					pending: make(map[uint64]map[common.Address]map[common.Hash]struct{}),
+				},
+			}
+
+			_, err := miner.SendBidBlock(context.Background(), &types.BidBlockArgs{})
+			if err == nil || !strings.Contains(err.Error(), "BidBlock disabled") {
+				t.Fatalf("expected BidBlock disabled error, got %v", err)
+			}
+			if len(miner.bidSimulator.pending) != 0 {
+				t.Fatalf("disabled SendBidBlock must not touch pending map; got %d entries", len(miner.bidSimulator.pending))
+			}
+		})
 	}
 }
 

@@ -129,7 +129,7 @@ type task struct {
 	state    *state.StateDB
 	block    *types.Block
 
-	isBidBlock   bool              // true if this is a BidBlock (zero-simulate MEV)
+	isBidBlock   bool              // true for SendBidBlock
 	bidBlockInfo *bidBlockTaskInfo // non-nil only when isBidBlock is true
 
 	createdAt     time.Time
@@ -1788,29 +1788,8 @@ func (w *worker) inTurn() bool {
 	return validator != common.Address{} && validator == w.etherbase()
 }
 
-// verifyBidBlockSystemTxs identifies the trailing unsigned system-tx region in
-// decoded.Txs and validates it against the BEP-675 signable whitelist plus the
-// expected per-block sequence/ordering derived from localHeader. It does not
-// sign anything and does not depend on validator-private state, so it is safe
-// to call from any context that already trusts decoded's header (e.g. after
-// preSealVerifyBidBlock).
-//
-// On success it returns a fresh copy of the full transaction list — the caller
-// is free to mutate the [systemStart:] range without touching decoded.Txs —
-// along with the index of the first system tx.
-//
-// System txs sit at the end of the block, matching the layout produced by
-// FinalizeAndAssemble. The builder ships them unsigned, so we detect them via
-// IsUnsignedSystemTxCandidate (structural check, no ecrecover) and then run
-// two stages:
-//   - Stage 1, whitelist: each candidate must target ValidatorContract with
-//     one of {deposit, distributeFinalityReward, updateValidatorSetV2}.
-//   - Stage 2, shape: the trailing region must match the expected sequence
-//     and ordering for this header. distributeIncoming is optional
-//     (balance-dependent); the other entries are required when their
-//     fork/interval conditions hold.
-//
-// Any failure causes the entire BidBlock to be rejected — no partial accept.
+// verifyBidBlockSystemTxs validates the trailing unsigned system-tx region.
+// It returns a copied tx list so the caller can bind-sign system txs in place.
 func verifyBidBlockSystemTxs(
 	decoded *types.DecodedBidBlock,
 	localHeader *types.Header,

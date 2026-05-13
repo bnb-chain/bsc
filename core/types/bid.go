@@ -203,11 +203,8 @@ type BidIssue struct {
 }
 
 // BidBlockArgs is the input for the SendBidBlock RPC.
-// Mirrors the BidArgs pattern: signed payload (BidBlock) + Signature.
 type BidBlockArgs struct {
-	// BidBlock from builder directly
-	BidBlock *BidBlock
-	// Signature of the BidBlock from builder, covering all fields of BidBlock
+	BidBlock  *BidBlock
 	Signature hexutil.Bytes `json:"signature"`
 }
 
@@ -221,9 +218,7 @@ func (b *BidBlockArgs) EcrecoverSender() (common.Address, error) {
 }
 
 // ToDecodedBidBlock converts BidBlockArgs to a decoded internal representation.
-// Note: decoding does NOT perform ecrecover on individual transactions —
-// the validator never executes transactions on the critical path, so sender
-// recovery is deferred to the asynchronous InsertChain → Process() step.
+// Note: transaction sender recovery is deferred to InsertChain.
 func (b *BidBlockArgs) ToDecodedBidBlock(builder common.Address) (*DecodedBidBlock, error) {
 	txs, err := b.DecodeTxs()
 	if err != nil {
@@ -240,9 +235,7 @@ func (b *BidBlockArgs) ToDecodedBidBlock(builder common.Address) (*DecodedBidBlo
 	}, nil
 }
 
-// DecodeTxs decodes the unified transaction list.
-// Layout: user transactions (signed) first, unsigned system transactions last —
-// mirroring on-chain block layout. No ecrecover is performed here.
+// DecodeTxs decodes user txs followed by unsigned system txs.
 func (b *BidBlockArgs) DecodeTxs() ([]*Transaction, error) {
 	txs := make([]*Transaction, len(b.BidBlock.Transactions))
 	for i, txBytes := range b.BidBlock.Transactions {
@@ -256,11 +249,9 @@ func (b *BidBlockArgs) DecodeTxs() ([]*Transaction, error) {
 }
 
 // BidBlock is the builder-proposed block carried by BidBlockArgs.
-// Mirrors types.Block's core fields (header + transactions + sidecars) plus a declared GasFee.
-// All fields are covered by the builder's signature in BidBlockArgs, preventing MITM tampering.
 type BidBlock struct {
 	Header       *Header         `json:"header"`
-	Transactions []hexutil.Bytes `json:"transactions"` // user txs (signed) first, unsigned system txs last
+	Transactions []hexutil.Bytes `json:"transactions"` // user txs first, unsigned system txs last
 	Sidecars     BlobSidecars    `json:"sidecars,omitempty"`
 	GasFee       *big.Int        `json:"gasFee"`
 
@@ -281,7 +272,7 @@ func (b *BidBlock) Hash() common.Hash {
 type DecodedBidBlock struct {
 	Builder  common.Address // recovered from BidBlockArgs.Signature
 	Header   *Header
-	Txs      Transactions // user txs + unsigned system txs, same order as BidBlock.Transactions
+	Txs      Transactions
 	Sidecars BlobSidecars
 	GasFee   *big.Int
 

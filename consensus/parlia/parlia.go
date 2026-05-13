@@ -326,11 +326,8 @@ func (p *Parlia) IsSystemTransaction(tx *types.Transaction, header *types.Header
 	return sender == header.Coinbase, nil
 }
 
-// IsUnsignedSystemTxCandidate reports whether tx has the structural shape of an
-// unsigned system transaction from a builder-supplied BidBlock:
-// target is a system contract, gasPrice == 0, and the signature values are empty.
-// Unlike IsSystemTransaction, this does NOT perform ecrecover and does NOT require
-// the sender to match header.Coinbase — the tx is unsigned at this stage.
+// IsUnsignedSystemTxCandidate reports whether tx looks like an unsigned
+// BidBlock system tx. It does not recover the sender.
 func (p *Parlia) IsUnsignedSystemTxCandidate(tx *types.Transaction, header *types.Header) bool {
 	if tx == nil || tx.To() == nil || !isToSystemContract(*tx.To()) {
 		return false
@@ -349,19 +346,16 @@ func isZeroSig(v, r, s *big.Int) bool {
 	return isZero(v) && isZero(r) && isZero(s)
 }
 
-// signableSystemTxMethods lists the ValidatorContract methods the validator
-// is allowed to sign on the BidBlock path (per BEP-675 §4.3). Any unsigned
-// system transaction targeting a different method — or a different contract —
-// must be rejected before signing.
+// signableSystemTxMethods lists ValidatorContract methods allowed on the
+// BidBlock bind-sign path.
 var signableSystemTxMethods = []string{
 	"deposit",
 	"distributeFinalityReward",
 	"updateValidatorSetV2",
 }
 
-// IsSignableSystemTx reports whether tx is a BidBlock-provided unsigned
-// system transaction that the validator is allowed to sign. Enforces the
-// BEP-675 whitelist:
+// IsSignableSystemTx reports whether tx passes the BidBlock system-tx
+// signing whitelist:
 //
 //   - to == ValidatorContract (no SlashContract / SystemRewardContract)
 //   - gasPrice == 0
@@ -369,8 +363,8 @@ var signableSystemTxMethods = []string{
 //   - data selector matches one of: deposit / distributeFinalityReward /
 //     updateValidatorSetV2
 //
-// Callers should reject the entire BidBlock when an unsigned system-tx
-// candidate (identified via IsUnsignedSystemTxCandidate) fails this check.
+// Callers should reject the BidBlock if a trailing unsigned system-tx
+// candidate fails this check.
 func (p *Parlia) IsSignableSystemTx(tx *types.Transaction) bool {
 	if tx == nil || tx.To() == nil {
 		return false
@@ -407,38 +401,21 @@ func (p *Parlia) hasSignableSelector(data []byte) bool {
 	return false
 }
 
-// expectedSystemTxEntry describes one entry in the expected system-tx sequence
-// of a BidBlock. Fields are deterministic from (parent, header) alone so the
-// validator can reconstruct the expected shape pre-seal without running EVM.
+// expectedSystemTxEntry describes one slot in the trailing system-tx sequence.
 type expectedSystemTxEntry struct {
-	// method is the ABI method name (used only for error reporting).
-	method string
-	// selector is the 4-byte function selector this entry must carry.
+	method   string
 	selector []byte
-	// optional marks entries whose presence depends on post-user-tx state that
-	// the validator cannot determine pre-seal (specifically: distributeIncoming,
-	// which fires only when SystemAddress has non-zero balance).
 	optional bool
 }
 
-// ExpectedSystemTxShape returns the expected post-Osaka/Mendel system-tx
-// sequence for a BidBlock with the given header, based on Parlia's Finalize ordering:
+// ExpectedSystemTxShape returns the expected trailing system-tx order:
 //
 //	distributeIncoming (optional) → distributeFinalityReward (cond.) → updateValidatorSetV2 (cond.)
 //
-// Entry inclusion and selector are fully determined by header-level data, so
-// the validator can build this shape before signing without executing user txs.
-//
-// The distributeIncoming entry is optional because whether it fires depends on
-// the SystemAddress balance after user-tx execution, which is not available
-// pre-seal. distributeFinalityReward and updateValidatorSetV2 fire under
-// deterministic header-level conditions and are therefore required when
-// applicable.
+// distributeIncoming is optional because it depends on post-user-tx balance.
 func (p *Parlia) ExpectedSystemTxShape(header, parent *types.Header) []expectedSystemTxEntry {
 	shape := make([]expectedSystemTxEntry, 0, 3)
 
-	// distributeIncoming (post-Kepler produces a single distributeToValidator
-	// call with method "deposit"). Presence depends on SystemAddress balance.
 	shape = append(shape, expectedSystemTxEntry{
 		method:   "deposit",
 		selector: p.selectorFor("deposit"),
@@ -466,13 +443,7 @@ func (p *Parlia) ExpectedSystemTxShape(header, parent *types.Header) []expectedS
 	return shape
 }
 
-// VerifySystemTxShape checks that the given trailing system transactions match
-// the expected shape (method selectors and ordering). Optional entries may be
-// absent, but required entries must appear at their expected position, and no
-// extra unexpected system transaction is allowed.
-//
-// The txs argument should already have passed IsSignableSystemTx so that each
-// tx has a well-formed selector at data[:4].
+// VerifySystemTxShape checks selector order for trailing system txs.
 func (p *Parlia) VerifySystemTxShape(txs []*types.Transaction, shape []expectedSystemTxEntry) error {
 	i := 0
 	for _, exp := range shape {
@@ -1712,13 +1683,13 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	return nil
 }
 
-// FinalizeOpts controls Parlia system-tx assembly behavior.
+// FinalizeOpts controls system-tx signing during block assembly.
 type FinalizeOpts struct {
 	SignSystemTx bool
 }
 
-// FinalizeAndAssembleBidBlock assembles a BidBlock-compatible block with
-// unsigned system transactions and returns the distribution basis for GasFee.
+// FinalizeAndAssembleBidBlock assembles a BidBlock with unsigned system txs
+// and returns actualGasFee.
 func (p *Parlia) FinalizeAndAssembleBidBlock(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
 	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, *big.Int, []*types.Receipt, error) {
 	gasFee := state.GetBalance(consensus.SystemAddress).ToBig()

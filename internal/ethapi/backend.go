@@ -125,7 +125,7 @@ type Backend interface {
 	GetBidBlockPermission(builder common.Address) types.BidBlockPermissionStatus
 	// SendBid receives bid from the builders.
 	SendBid(ctx context.Context, bid *types.BidArgs) (common.Hash, error)
-	// SendBidBlock receives a pre-built block from builders (zero-simulate MEV).
+	// SendBidBlock receives a BidBlock from builders.
 	SendBidBlock(ctx context.Context, args *types.BidBlockArgs) (common.Hash, error)
 	// MinerInTurn returns true if the validator is in turn to propose the block.
 	MinerInTurn() bool

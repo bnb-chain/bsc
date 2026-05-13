@@ -88,8 +88,7 @@ func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, 
 	return m.b.SendBid(ctx, &args)
 }
 
-// SendBidBlock receives a bid block from the builders (zero-simulate MEV).
-// The validator skips simulation and uses builder-provided execution results directly.
+// SendBidBlock receives a BidBlock from builders.
 func (m *MevAPI) SendBidBlock(ctx context.Context, args types.BidBlockArgs) (common.Hash, error) {
 	ctx = context.WithValue(ctx, "receiveTime", time.Now().UnixMilli())
 	if !m.b.MevRunning() {
