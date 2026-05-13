@@ -1701,10 +1701,35 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	return nil
 }
 
+// FinalizeOpts controls Parlia system-tx assembly behavior.
+type FinalizeOpts struct {
+	BindSign bool
+}
+
+// FinalizeAndAssembleForBuilder assembles a BidBlock-compatible block with
+// unsigned system transactions and returns the distribution basis for GasFee.
+func (p *Parlia) FinalizeAndAssembleForBuilder(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
+	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, *big.Int, []*types.Receipt, error) {
+	gasFee := state.GetBalance(consensus.SystemAddress).ToBig()
+	block, receipts, err := p.FinalizeAndAssembleWithOpts(chain, header, state, body, receipts, tracer, FinalizeOpts{BindSign: false})
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return block, gasFee, receipts, nil
+}
+
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
 func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
 	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
+	return p.FinalizeAndAssembleWithOpts(chain, header, state, body, receipts, tracer, FinalizeOpts{BindSign: true})
+}
+
+// FinalizeAndAssembleWithOpts assembles a block with configurable system-tx
+// signing behavior. Validator local mining uses BindSign=true; builder BidBlock
+// construction uses BindSign=false.
+func (p *Parlia) FinalizeAndAssembleWithOpts(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
+	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks, opts FinalizeOpts) (*types.Block, []*types.Receipt, error) {
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	cx := chainContext{ChainHeaderReader: chain, parlia: p}
 
@@ -1723,14 +1748,14 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	systemcontracts.TryUpdateBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state, false)
 
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
-		err := p.initializeFeynmanContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, true, tracer)
+		err := p.initializeFeynmanContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.BindSign, tracer)
 		if err != nil {
 			return nil, nil, fmt.Errorf("init feynman contract failed: %v", err)
 		}
 	}
 
 	if header.Number.Cmp(common.Big1) == 0 {
-		err := p.initContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, true, tracer)
+		err := p.initContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.BindSign, tracer)
 		if err != nil {
 			return nil, nil, errors.New("init contract failed")
 		}
@@ -1754,20 +1779,20 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 			}
 		}
 		if !signedRecently {
-			err = p.slash(spoiledVal, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, true, tracer)
+			err = p.slash(spoiledVal, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.BindSign, tracer)
 			if err != nil {
 				log.Error("slash validator failed", "block hash", header.Hash(), "address", spoiledVal)
 			}
 		}
 	}
 
-	err := p.distributeIncoming(p.val, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, true, tracer)
+	err := p.distributeIncoming(header.Coinbase, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.BindSign, tracer)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	if p.chainConfig.IsPlato(header.Number) {
-		if err := p.distributeFinalityReward(chain, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, true, tracer); err != nil {
+		if err := p.distributeFinalityReward(chain, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.BindSign, tracer); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -1776,7 +1801,7 @@ func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	if p.chainConfig.IsFeynman(header.Number, header.Time) && isBreatheBlock(parent.Time, header.Time) {
 		// we should avoid update validators in the Feynman upgrade block
 		if !p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
-			if err := p.updateValidatorSetV2(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, true, tracer); err != nil {
+			if err := p.updateValidatorSetV2(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.BindSign, tracer); err != nil {
 				return nil, nil, err
 			}
 		}

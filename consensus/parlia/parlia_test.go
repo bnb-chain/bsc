@@ -723,7 +723,13 @@ func TestParlia_applyTransactionTracing(t *testing.T) {
 	}
 }
 
-func TestParliaApplyTransactionBindSign(t *testing.T) {
+func isUnsignedTx(tx *types.Transaction) bool {
+	v, r, s := tx.RawSignatureValues()
+	return v.Sign() == 0 && r.Sign() == 0 && s.Sign() == 0
+}
+
+// TestParliaFinalizeAndAssembleForBuilder verifies builder finalize emits unsigned system txs.
+func TestParliaFinalizeAndAssembleForBuilder(t *testing.T) {
 	frdir := t.TempDir()
 	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false)
 	if err != nil {
@@ -744,68 +750,77 @@ func TestParliaApplyTransactionBindSign(t *testing.T) {
 	defer chain.Stop()
 
 	engine := New(config, db, nil, genesisBlock.Hash())
-	builderKey, err := crypto.GenerateKey()
+	validatorKey, err := crypto.GenerateKey()
 	if err != nil {
 		t.Fatalf("failed to generate key: %v", err)
 	}
-	builderAddr := crypto.PubkeyToAddress(builderKey.PublicKey)
-	engine.Authorize(builderAddr, nil, func(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
-		if account.Address != builderAddr {
+	validator := crypto.PubkeyToAddress(validatorKey.PublicKey)
+	engine.Authorize(validator, nil, func(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
+		if account.Address != validator {
 			return nil, fmt.Errorf("unexpected signing account %s", account.Address)
 		}
-		return types.SignTx(tx, types.LatestSigner(config), builderKey)
+		return types.SignTx(tx, types.LatestSigner(config), validatorKey)
 	})
 
-	msg := engine.getSystemMessage(builderAddr, common.HexToAddress(systemcontracts.ValidatorContract), nil, common.Big0)
-	cx := chainContext{ChainHeaderReader: chain, parlia: engine}
-	header := types.CopyHeader(genesisBlock.Header())
-
-	run := func(bindSign bool) (*state.StateDB, []*types.Transaction, []*types.Receipt, uint64) {
-		t.Helper()
+	gasFee := uint256.NewInt(12345)
+	newHeader := func() *types.Header {
+		return &types.Header{
+			ParentHash: genesisBlock.Hash(),
+			Number:     common.Big1,
+			Coinbase:   validator,
+			Difficulty: new(big.Int).Set(diffInTurn),
+			GasLimit:   params.SystemTxsGasHardLimit,
+			Time:       genesisBlock.Time() + 1,
+		}
+	}
+	newState := func() *state.StateDB {
 		stateDB, err := state.New(genesisBlock.Root(), state.NewDatabase(trieDB, nil))
 		if err != nil {
 			t.Fatalf("failed to create stateDB: %v", err)
 		}
-		txs := make([]*types.Transaction, 0, 1)
-		receipts := make([]*types.Receipt, 0, 1)
-		usedGas := uint64(0)
-		if err := engine.applyTransaction(msg, stateDB, header, cx, &txs, &receipts, nil, &usedGas, true, bindSign, nil); err != nil {
-			t.Fatalf("failed to apply transaction with bindSign=%v: %v", bindSign, err)
-		}
-		return stateDB, txs, receipts, usedGas
+		stateDB.SetBalance(consensus.SystemAddress, new(uint256.Int).Set(gasFee), tracing.BalanceChangeUnspecified)
+		return stateDB
 	}
 
-	unsignedState, unsignedTxs, unsignedReceipts, unsignedGas := run(false)
-	signedState, signedTxs, signedReceipts, signedGas := run(true)
+	signedBlock, signedReceipts, err := engine.FinalizeAndAssembleWithOpts(chain, newHeader(), newState(), &types.Body{}, nil, nil, FinalizeOpts{BindSign: true})
+	if err != nil {
+		t.Fatalf("failed to finalize signed block: %v", err)
+	}
+	unsignedBlock, actualGasFee, unsignedReceipts, err := engine.FinalizeAndAssembleForBuilder(chain, newHeader(), newState(), &types.Body{}, nil, nil)
+	if err != nil {
+		t.Fatalf("failed to finalize builder block: %v", err)
+	}
 
-	if len(unsignedTxs) != 1 || len(signedTxs) != 1 {
-		t.Fatalf("expected one system tx, got unsigned=%d signed=%d", len(unsignedTxs), len(signedTxs))
+	if actualGasFee.Cmp(gasFee.ToBig()) != 0 {
+		t.Fatalf("gas fee mismatch: have %s want %s", actualGasFee, gasFee)
 	}
-	if !isUnsignedTx(unsignedTxs[0]) {
-		t.Fatalf("expected bindSign=false system tx to be unsigned")
+	if signedBlock.Root() != unsignedBlock.Root() {
+		t.Fatalf("state root mismatch: signed=%s unsigned=%s", signedBlock.Root(), unsignedBlock.Root())
 	}
-	if isUnsignedTx(signedTxs[0]) {
-		t.Fatalf("expected bindSign=true system tx to be signed")
+	if signedBlock.ReceiptHash() != unsignedBlock.ReceiptHash() {
+		t.Fatalf("receipt hash mismatch: signed=%s unsigned=%s", signedBlock.ReceiptHash(), unsignedBlock.ReceiptHash())
 	}
-	if unsignedGas != signedGas {
-		t.Fatalf("gas used mismatch: unsigned=%d signed=%d", unsignedGas, signedGas)
-	}
-	if rootA, rootB := unsignedState.IntermediateRoot(config.IsEIP158(header.Number)), signedState.IntermediateRoot(config.IsEIP158(header.Number)); rootA != rootB {
-		t.Fatalf("state root mismatch: unsigned=%s signed=%s", rootA, rootB)
-	}
-	if hashA, hashB := types.DeriveSha(types.Receipts(unsignedReceipts), trie.NewStackTrie(nil)), types.DeriveSha(types.Receipts(signedReceipts), trie.NewStackTrie(nil)); hashA != hashB {
-		t.Fatalf("receipt hash mismatch: unsigned=%s signed=%s", hashA, hashB)
-	}
-	if bloomA, bloomB := unsignedReceipts[0].Bloom, signedReceipts[0].Bloom; bloomA != bloomB {
+	if signedBlock.Bloom() != unsignedBlock.Bloom() {
 		t.Fatalf("receipt bloom mismatch")
 	}
+	if signedBlock.GasUsed() != unsignedBlock.GasUsed() {
+		t.Fatalf("gas used mismatch: signed=%d unsigned=%d", signedBlock.GasUsed(), unsignedBlock.GasUsed())
+	}
+	if len(signedBlock.Transactions()) == 0 || len(unsignedBlock.Transactions()) == 0 {
+		t.Fatalf("expected system transactions in both finalized blocks")
+	}
+	if isUnsignedTx(signedBlock.Transactions()[0]) {
+		t.Fatalf("expected default finalize path to sign system txs")
+	}
+	if !isUnsignedTx(unsignedBlock.Transactions()[0]) {
+		t.Fatalf("expected builder finalize path to keep system txs unsigned")
+	}
+	if len(signedReceipts) != len(unsignedReceipts) {
+		t.Fatalf("receipt count mismatch: signed=%d unsigned=%d", len(signedReceipts), len(unsignedReceipts))
+	}
 }
 
-func isUnsignedTx(tx *types.Transaction) bool {
-	v, r, s := tx.RawSignatureValues()
-	return v.Sign() == 0 && r.Sign() == 0 && s.Sign() == 0
-}
-
+// TestParliaFinalizeAndAssembleForBuilderUsesHeaderCoinbase verifies deposit uses header.Coinbase.
 func formatRecords(records []string) string {
 	indented := make([]string, 0, len(records))
 	for _, record := range records {
