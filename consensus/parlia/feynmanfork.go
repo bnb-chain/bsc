@@ -31,7 +31,7 @@ func isBreatheBlock(lastBlockTime, blockTime uint64) bool {
 
 // initializeFeynmanContract initialize new contracts of Feynman fork
 func (p *Parlia) initializeFeynmanContract(state vm.StateDB, header *types.Header, chain core.ChainContext,
-	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, signSystemTx bool, tracer *tracing.Hooks,
+	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, signTx bool, tracer *tracing.Hooks,
 ) error {
 	// method
 	method := "initialize"
@@ -54,7 +54,7 @@ func (p *Parlia) initializeFeynmanContract(state vm.StateDB, header *types.Heade
 		msg := p.getSystemMessage(header.Coinbase, common.HexToAddress(c), data, common.Big0)
 		// apply message
 		log.Info("initialize feynman contract", "block number", header.Number.Uint64(), "contract", c)
-		err = p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, signSystemTx, tracer)
+		err = p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, signTx, tracer)
 		if err != nil {
 			return err
 		}
@@ -97,7 +97,7 @@ func (h *ValidatorHeap) Pop() interface{} {
 }
 
 func (p *Parlia) updateValidatorSetV2(state vm.StateDB, header *types.Header, chain core.ChainContext,
-	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, signSystemTx bool, tracer *tracing.Hooks,
+	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, signTx bool, tracer *tracing.Hooks,
 ) error {
 	// 1. get all validators and its voting power
 	blockNr := rpc.BlockNumberOrHashWithHash(header.ParentHash, false)
@@ -124,7 +124,7 @@ func (p *Parlia) updateValidatorSetV2(state vm.StateDB, header *types.Header, ch
 	// get system message
 	msg := p.getSystemMessage(header.Coinbase, common.HexToAddress(systemcontracts.ValidatorContract), data, common.Big0)
 	// apply message
-	return p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, signSystemTx, tracer)
+	return p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, signTx, tracer)
 }
 
 func (p *Parlia) getValidatorElectionInfo(blockNr rpc.BlockNumberOrHash) ([]ValidatorItem, error) {
