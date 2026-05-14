@@ -1687,8 +1687,9 @@ LOOP:
 			}
 		}
 
-		// Stage 1 candidate B — SendBidBlock (only when BidBlockEnabled is on).
-		if w.config.Mev.BidBlockEnabled != nil && *w.config.Mev.BidBlockEnabled {
+		// Stage 1 candidate B — SendBidBlock.
+		if w.config.Mev.Enabled != nil && *w.config.Mev.Enabled &&
+			w.config.Mev.BidBlockEnabled != nil && *w.config.Mev.BidBlockEnabled {
 			bidBlockCandidates = w.getAllowedBidBlockCandidates(bestWork.header)
 		}
 	}
