@@ -85,6 +85,9 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 	}
 	blockNumber := bb.Header.Number.Uint64()
 	parentHash := bb.Header.ParentHash
+	if miner.bidSimulator.chain.GetHeaderByHash(parentHash) == nil {
+		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("parent not found: %s", parentHash.Hex()))
+	}
 	if err := miner.bidSimulator.CheckPending(blockNumber, builder, bb.Hash()); err != nil {
 		return common.Hash{}, err
 	}
