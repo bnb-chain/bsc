@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	cmath "github.com/ethereum/go-ethereum/common/math"
@@ -831,12 +832,15 @@ func TestParliaPrepareForBuilderMatchesPrepare(t *testing.T) {
 	defer trieDB.Close()
 
 	config := params.ParliaTestChainConfig
-	extra := make([]byte, extraVanity+validatorNumberSize+validatorBytesLength+extraSeal)
-	extra[extraVanity] = 1
+	otherValidator := common.HexToAddress("0x2000000000000000000000000000000000000000")
+	extra := make([]byte, extraVanity+validatorNumberSize+2*validatorBytesLength+extraSeal)
+	extra[extraVanity] = 2
 	copy(extra[extraVanity+validatorNumberSize:], testAddr[:])
+	copy(extra[extraVanity+validatorNumberSize+validatorBytesLength:], otherValidator[:])
 	gspec := &core.Genesis{
 		Config:    config,
 		ExtraData: extra,
+		Timestamp: uint64(time.Now().Add(10 * time.Second).Unix()),
 		Alloc:     types.GenesisAlloc{testAddr: {Balance: new(big.Int).SetUint64(10 * params.Ether)}},
 	}
 	mockEngine := &mockParlia{}
@@ -844,12 +848,18 @@ func TestParliaPrepareForBuilderMatchesPrepare(t *testing.T) {
 	chain, _ := core.NewBlockChain(db, gspec, mockEngine, nil)
 	defer chain.Stop()
 
-	engine := New(config, db, nil, genesisBlock.Hash())
-	inturnValidator, err := engine.NextInTurnValidator(chain, genesisBlock.Header())
+	validatorEngine := New(config, db, nil, genesisBlock.Hash())
+	inturnValidator, err := validatorEngine.NextInTurnValidator(chain, genesisBlock.Header())
 	if err != nil {
 		t.Fatalf("failed to get in-turn validator: %v", err)
 	}
-	engine.Authorize(inturnValidator, nil, nil)
+	validatorEngine.Authorize(inturnValidator, nil, nil)
+	builderEngine := New(config, db, nil, genesisBlock.Hash())
+	if inturnValidator == testAddr {
+		builderEngine.Authorize(otherValidator, nil, nil)
+	} else {
+		builderEngine.Authorize(testAddr, nil, nil)
+	}
 
 	newHeader := func() *types.Header {
 		return &types.Header{
@@ -861,10 +871,10 @@ func TestParliaPrepareForBuilderMatchesPrepare(t *testing.T) {
 	validatorHeader := newHeader()
 	builderHeader := newHeader()
 
-	if err := engine.Prepare(chain, validatorHeader); err != nil {
+	if err := validatorEngine.Prepare(chain, validatorHeader); err != nil {
 		t.Fatalf("failed to prepare validator header: %v", err)
 	}
-	if err := engine.PrepareForBuilder(chain, builderHeader); err != nil {
+	if err := builderEngine.PrepareForBuilder(chain, builderHeader); err != nil {
 		t.Fatalf("failed to prepare builder header: %v", err)
 	}
 
