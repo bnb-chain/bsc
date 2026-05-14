@@ -870,6 +870,36 @@ func (ec *Client) SendBid(ctx context.Context, args types.BidArgs) (common.Hash,
 	return hash, nil
 }
 
+// SendBidBlock sends a BidBlock (zero-simulate MEV path).
+func (ec *Client) SendBidBlock(ctx context.Context, args types.BidBlockArgs) (common.Hash, error) {
+	var hash common.Hash
+	err := ec.c.CallContext(ctx, &hash, "mev_sendBidBlock", args)
+	if err != nil {
+		return common.Hash{}, err
+	}
+	return hash, nil
+}
+
+// BidBlockPermission is the result of mev_getBidBlockPermission.
+type BidBlockPermission struct {
+	Allowed     bool            `json:"allowed"`
+	Reason      string          `json:"reason,omitempty"`
+	BlockHash   *common.Hash    `json:"blockHash,omitempty"`
+	BlockNumber *hexutil.Uint64 `json:"blockNumber,omitempty"`
+	RevokedAt   *time.Time      `json:"revokedAt,omitempty"`
+	ResetAt     time.Time       `json:"resetAt"`
+}
+
+// GetBidBlockPermission queries the builder's current BidBlock permission status.
+func (ec *Client) GetBidBlockPermission(ctx context.Context, builder common.Address) (*BidBlockPermission, error) {
+	var result BidBlockPermission
+	err := ec.c.CallContext(ctx, &result, "mev_getBidBlockPermission", builder)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // BestBidGasFee returns the gas fee of the best bid for the given parent hash.
 func (ec *Client) BestBidGasFee(ctx context.Context, parentHash common.Hash) (*big.Int, error) {
 	var fee *big.Int
