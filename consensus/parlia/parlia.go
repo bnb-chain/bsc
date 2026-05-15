@@ -326,193 +326,6 @@ func (p *Parlia) IsSystemTransaction(tx *types.Transaction, header *types.Header
 	return sender == header.Coinbase, nil
 }
 
-// IsUnsignedSystemTxCandidate reports whether tx looks like an unsigned
-// BidBlock system tx. It does not recover the sender.
-func (p *Parlia) IsUnsignedSystemTxCandidate(tx *types.Transaction, header *types.Header) bool {
-	if tx == nil || tx.To() == nil || !isToSystemContract(*tx.To()) {
-		return false
-	}
-	if tx.GasPrice() == nil || tx.GasPrice().Sign() != 0 {
-		return false
-	}
-	v, r, s := tx.RawSignatureValues()
-	return isZeroSig(v, r, s)
-}
-
-// isZeroSig reports whether a tx's signature values are absent (nil) or zero,
-// i.e. the tx has not been signed.
-func isZeroSig(v, r, s *big.Int) bool {
-	isZero := func(x *big.Int) bool { return x == nil || x.Sign() == 0 }
-	return isZero(v) && isZero(r) && isZero(s)
-}
-
-// signableSystemTxMethods lists ValidatorContract methods allowed on the
-// BidBlock bind-sign path.
-var signableSystemTxMethods = []string{
-	"deposit",
-	"distributeFinalityReward",
-	"updateValidatorSetV2",
-}
-
-// IsSignableSystemTx reports whether tx passes the BidBlock system-tx
-// signing whitelist:
-//
-//   - to == ValidatorContract (no SlashContract / SystemRewardContract)
-//   - gasPrice == 0
-//   - v/r/s == 0 (unsigned)
-//   - data selector matches one of: deposit / distributeFinalityReward /
-//     updateValidatorSetV2
-//
-// Callers should reject the BidBlock if a trailing unsigned system-tx
-// candidate fails this check.
-func (p *Parlia) IsSignableSystemTx(tx *types.Transaction) bool {
-	if tx == nil || tx.To() == nil {
-		return false
-	}
-	if *tx.To() != common.HexToAddress(systemcontracts.ValidatorContract) {
-		return false
-	}
-	if tx.GasPrice() == nil || tx.GasPrice().Sign() != 0 {
-		return false
-	}
-	v, r, s := tx.RawSignatureValues()
-	if !isZeroSig(v, r, s) {
-		return false
-	}
-	return p.hasSignableSelector(tx.Data())
-}
-
-// hasSignableSelector checks whether the 4-byte method selector in data matches
-// one of the whitelisted ValidatorContract methods.
-func (p *Parlia) hasSignableSelector(data []byte) bool {
-	if len(data) < 4 {
-		return false
-	}
-	selector := data[:4]
-	for _, name := range signableSystemTxMethods {
-		method, ok := p.validatorSetABI.Methods[name]
-		if !ok {
-			continue
-		}
-		if bytes.Equal(selector, method.ID) {
-			return true
-		}
-	}
-	return false
-}
-
-// expectedSystemTxEntry describes one slot in the trailing system-tx sequence.
-type expectedSystemTxEntry struct {
-	method   string
-	selector []byte
-	optional bool
-}
-
-// ExpectedSystemTxShape returns the expected trailing system-tx order:
-//
-//	distributeIncoming (optional) → distributeFinalityReward (cond.) → updateValidatorSetV2 (cond.)
-//
-// distributeIncoming is optional because it depends on post-user-tx balance.
-func (p *Parlia) ExpectedSystemTxShape(header, parent *types.Header) []expectedSystemTxEntry {
-	shape := make([]expectedSystemTxEntry, 0, 3)
-
-	shape = append(shape, expectedSystemTxEntry{
-		method:   "deposit",
-		selector: p.selectorFor("deposit"),
-		optional: true,
-	})
-
-	if p.chainConfig.IsPlato(header.Number) && header.Number.Uint64()%finalityRewardInterval == 0 {
-		shape = append(shape, expectedSystemTxEntry{
-			method:   "distributeFinalityReward",
-			selector: p.selectorFor("distributeFinalityReward"),
-			optional: false,
-		})
-	}
-
-	if p.chainConfig.IsFeynman(header.Number, header.Time) &&
-		isBreatheBlock(parent.Time, header.Time) &&
-		!p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
-		shape = append(shape, expectedSystemTxEntry{
-			method:   "updateValidatorSetV2",
-			selector: p.selectorFor("updateValidatorSetV2"),
-			optional: false,
-		})
-	}
-
-	return shape
-}
-
-// VerifySystemTxShape checks selector order for trailing system txs.
-func (p *Parlia) VerifySystemTxShape(txs []*types.Transaction, shape []expectedSystemTxEntry) error {
-	i := 0
-	for _, exp := range shape {
-		if i >= len(txs) {
-			if exp.optional {
-				continue
-			}
-			return fmt.Errorf("missing required system tx %q", exp.method)
-		}
-		if bytes.HasPrefix(txs[i].Data(), exp.selector) {
-			i++
-			continue
-		}
-		if exp.optional {
-			continue
-		}
-		return fmt.Errorf("expected system tx %q at position %d, got selector 0x%x",
-			exp.method, i, txs[i].Data()[:4])
-	}
-	if i < len(txs) {
-		return fmt.Errorf("unexpected extra system tx at position %d (selector 0x%x)",
-			i, txs[i].Data()[:4])
-	}
-	return nil
-}
-
-// selectorFor returns the 4-byte ABI selector of the named ValidatorContract
-// method, or nil if the method is not registered on the ABI.
-func (p *Parlia) selectorFor(methodName string) []byte {
-	method, ok := p.validatorSetABI.Methods[methodName]
-	if !ok {
-		return nil
-	}
-	return method.ID
-}
-
-// ExtractDistributedGasFee reads the GasFee value from the trailing
-// ValidatorContract.deposit system tx. Call only after InsertChain succeeds.
-func (p *Parlia) ExtractDistributedGasFee(block *types.Block) *big.Int {
-	txs := block.Transactions()
-	actual := new(big.Int)
-	coinbase := block.Coinbase()
-
-	depositSel := p.selectorFor("deposit")
-	valContract := common.HexToAddress(systemcontracts.ValidatorContract)
-
-	for i := len(txs) - 1; i >= 0; i-- {
-		tx := txs[i]
-		to := tx.To()
-		if to == nil || !isToSystemContract(*to) {
-			return actual
-		}
-		if tx.GasPrice() == nil || tx.GasPrice().Sign() != 0 {
-			return actual
-		}
-		sender, err := types.Sender(p.signer, tx)
-		if err != nil || sender != coinbase {
-			return actual
-		}
-		if *to == valContract &&
-			len(depositSel) == 4 &&
-			len(tx.Data()) >= 4 &&
-			bytes.Equal(tx.Data()[:4], depositSel) {
-			actual.Add(actual, tx.Value())
-		}
-	}
-	return actual
-}
-
 func (p *Parlia) IsSystemContract(to *common.Address) bool {
 	if to == nil {
 		return false
@@ -1341,22 +1154,6 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	return p.prepareHeader(chain, header, snap, p.val, number)
 }
 
-// PrepareForBidBlock prepares consensus header fields for BidBlock construction.
-// It mirrors Prepare, but uses the in-turn validator as Coinbase instead of p.val.
-func (p *Parlia) PrepareForBidBlock(chain consensus.ChainHeaderReader, header *types.Header) error {
-	header.Nonce = types.BlockNonce{}
-
-	number := header.Number.Uint64()
-	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
-	if err != nil {
-		return err
-	}
-	validator := snap.inturnValidator()
-	header.Coinbase = validator
-
-	return p.prepareHeader(chain, header, snap, validator, number)
-}
-
 func (p *Parlia) prepareHeader(chain consensus.ChainHeaderReader, header *types.Header, snap *Snapshot, validator common.Address, number uint64) error {
 	header.Difficulty = calcDifficulty(snap, validator)
 
@@ -1368,7 +1165,7 @@ func (p *Parlia) prepareHeader(chain consensus.ChainHeaderReader, header *types.
 	if parent == nil {
 		return consensus.ErrUnknownAncestor
 	}
-	blockTime := p.blockTimeForRamanujanFork(snap, header, parent, validator)
+	blockTime := p.blockTimeForRamanujanFork(snap, header, parent)
 	header.Time = blockTime / 1000 // get seconds
 	if p.chainConfig.IsLorentz(header.Number, header.Time) {
 		header.SetMilliseconds(blockTime % 1000)
@@ -1615,7 +1412,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	if header.Number.Cmp(common.Big1) == 0 {
-		err := p.initContract(state, header, cx, txs, receipts, systemTxs, usedGas, false, false, tracer)
+		err := p.initContract(state, header, cx, txs, receipts, systemTxs, usedGas, false, tracer)
 		if err != nil {
 			return errors.New("init contract failed")
 		}
@@ -1640,7 +1437,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 
 		if !signedRecently {
 			log.Trace("slash validator", "block hash", header.Hash(), "address", spoiledVal)
-			err = p.slash(spoiledVal, state, header, cx, txs, receipts, systemTxs, usedGas, false, false, tracer)
+			err = p.slash(spoiledVal, state, header, cx, txs, receipts, systemTxs, usedGas, false, tracer)
 			if err != nil {
 				log.Error("slash validator failed", "block hash", header.Hash(), "address", spoiledVal, "err", err)
 			}
@@ -1688,18 +1485,6 @@ type FinalizeOpts struct {
 	SignSystemTx bool
 }
 
-// FinalizeAndAssembleBidBlock assembles a BidBlock with unsigned system txs
-// and returns actualGasFee.
-func (p *Parlia) FinalizeAndAssembleBidBlock(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
-	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, *big.Int, []*types.Receipt, error) {
-	gasFee := state.GetBalance(consensus.SystemAddress).ToBig()
-	block, receipts, err := p.FinalizeAndAssembleWithOpts(chain, header, state, body, receipts, tracer, FinalizeOpts{SignSystemTx: false})
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	return block, gasFee, receipts, nil
-}
-
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
 // nor block rewards given, and returns the final block.
 func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
@@ -1735,7 +1520,7 @@ func (p *Parlia) FinalizeAndAssembleWithOpts(chain consensus.ChainHeaderReader, 
 	}
 
 	if header.Number.Cmp(common.Big1) == 0 {
-		err := p.initContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.SignSystemTx, tracer)
+		err := p.initContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer)
 		if err != nil {
 			return nil, nil, errors.New("init contract failed")
 		}
@@ -1759,7 +1544,7 @@ func (p *Parlia) FinalizeAndAssembleWithOpts(chain consensus.ChainHeaderReader, 
 			}
 		}
 		if !signedRecently {
-			err = p.slash(spoiledVal, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.SignSystemTx, tracer)
+			err = p.slash(spoiledVal, state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer)
 			if err != nil {
 				log.Error("slash validator failed", "block hash", header.Hash(), "address", spoiledVal)
 			}
@@ -1886,38 +1671,6 @@ func (p *Parlia) IsLastBlockInTurn(chain consensus.ChainReader, header *types.He
 		return false
 	}
 	return snap.lastBlockInOneTurn(header.Number.Uint64())
-}
-
-// SignSystemTx signs a BidBlock system tx with the validator key.
-func (p *Parlia) SignSystemTx(tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
-	if p.signTxFn == nil {
-		return nil, errors.New("signTxFn not set")
-	}
-	return p.signTxFn(accounts.Account{Address: p.val}, tx, chainID)
-}
-
-// VerifyBlockTime validates that a header's timestamp is acceptable given its parent.
-// This is the same range check used during normal header verification
-// (blockTimeVerifyForRamanujanFork). Exposed for BidBlock pre-seal verification,
-// where a fully built header has not yet entered the standard VerifyHeader path.
-func (p *Parlia) VerifyBlockTime(chain consensus.ChainHeaderReader, header, parent *types.Header) error {
-	snap, err := p.snapshot(chain, parent.Number.Uint64(), parent.Hash(), nil)
-	if err != nil {
-		return err
-	}
-	return p.blockTimeVerifyForRamanujanFork(snap, header, parent)
-}
-
-// ExpectedDifficulty returns the difficulty a validator should produce for the
-// given parent when building the next block. Exposed for BidBlock pre-seal verification.
-func (p *Parlia) ExpectedDifficulty(chain consensus.ChainHeaderReader, parent *types.Header, validator common.Address) (*big.Int, error) {
-	snap, err := p.snapshot(chain, parent.Number.Uint64(), parent.Hash(), nil)
-	if err != nil {
-		return nil, err
-	}
-	return CalcDifficulty(snap, validator), nil
 }
 
 // Argument leftOver is the time reserved for block finalize(calculate root, distribute income...)
@@ -2244,7 +1997,7 @@ func (p *Parlia) distributeIncoming(val common.Address, state vm.StateDB, header
 
 // slash spoiled validators
 func (p *Parlia) slash(spoiledVal common.Address, state vm.StateDB, header *types.Header, chain core.ChainContext,
-	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, signTx bool, tracer *tracing.Hooks) error {
+	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, tracer *tracing.Hooks) error {
 	// method
 	method := "slash"
 
@@ -2259,12 +2012,12 @@ func (p *Parlia) slash(spoiledVal common.Address, state vm.StateDB, header *type
 	// get system message
 	msg := p.getSystemMessage(header.Coinbase, common.HexToAddress(systemcontracts.SlashContract), data, common.Big0)
 	// apply message
-	return p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, signTx, tracer)
+	return p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, true, tracer)
 }
 
 // init contract
 func (p *Parlia) initContract(state vm.StateDB, header *types.Header, chain core.ChainContext,
-	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, signTx bool, tracer *tracing.Hooks) error {
+	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, tracer *tracing.Hooks) error {
 	// method
 	method := "init"
 	// contracts
@@ -2287,7 +2040,7 @@ func (p *Parlia) initContract(state vm.StateDB, header *types.Header, chain core
 		msg := p.getSystemMessage(header.Coinbase, common.HexToAddress(c), data, common.Big0)
 		// apply message
 		log.Trace("init contract", "block hash", header.Hash(), "contract", c)
-		err = p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, signTx, tracer)
+		err = p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, true, tracer)
 		if err != nil {
 			return err
 		}

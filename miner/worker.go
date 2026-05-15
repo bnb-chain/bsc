@@ -1810,7 +1810,7 @@ func verifyBidBlockSystemTxs(
 
 	// Stage 1 — whitelist.
 	for i := systemStart; i < len(allTxs); i++ {
-		if !p.IsSignableSystemTx(allTxs[i]) {
+		if !p.IsSignableSystemTx(allTxs[i], localHeader) {
 			toAddr := "<nil>"
 			if allTxs[i].To() != nil {
 				toAddr = allTxs[i].To().Hex()
@@ -1827,7 +1827,7 @@ func verifyBidBlockSystemTxs(
 	if parent == nil {
 		return nil, 0, fmt.Errorf("BidBlock rejected: parent header not found for %s", localHeader.ParentHash.Hex())
 	}
-	shape := p.ExpectedSystemTxShape(localHeader, parent)
+	shape := p.ExpectedSystemTxShape(localHeader, parent, decoded.GasFee)
 	if err := p.VerifySystemTxShape(allTxs[systemStart:], shape); err != nil {
 		return nil, 0, fmt.Errorf("BidBlock rejected: %w", err)
 	}

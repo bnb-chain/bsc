@@ -4,7 +4,6 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	cmath "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -29,10 +28,10 @@ func (p *Parlia) delayForRamanujanFork(snap *Snapshot, header *types.Header) tim
 	return delay
 }
 
-func (p *Parlia) blockTimeForRamanujanFork(snap *Snapshot, header, parent *types.Header, validator common.Address) uint64 {
+func (p *Parlia) blockTimeForRamanujanFork(snap *Snapshot, header, parent *types.Header) uint64 {
 	blockTime := parent.MilliTimestamp() + snap.BlockInterval
 	if p.chainConfig.IsRamanujan(header.Number) {
-		blockTime = blockTime + p.backOffTime(snap, parent, header, validator)
+		blockTime = blockTime + p.backOffTime(snap, parent, header, header.Coinbase)
 	}
 	if now := uint64(time.Now().UnixMilli()); blockTime < now {
 		// Just to make the millisecond part of the time look more aligned.

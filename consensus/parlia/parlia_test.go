@@ -749,6 +749,9 @@ func TestParliaFinalizeAndAssembleBidBlock(t *testing.T) {
 	genesisBlock := gspec.MustCommit(db, trieDB)
 	chain, _ := core.NewBlockChain(db, gspec, mockEngine, nil)
 	defer chain.Stop()
+	parents, _ := core.GenerateChain(config, genesisBlock, mockEngine, db, 1, nil)
+	parent := parents[0]
+	rawdb.WriteBlock(db, parent)
 
 	engine := New(config, db, nil, genesisBlock.Hash())
 	validatorKey, err := crypto.GenerateKey()
@@ -766,16 +769,16 @@ func TestParliaFinalizeAndAssembleBidBlock(t *testing.T) {
 	gasFee := uint256.NewInt(12345)
 	newHeader := func() *types.Header {
 		return &types.Header{
-			ParentHash: genesisBlock.Hash(),
-			Number:     common.Big1,
+			ParentHash: parent.Hash(),
+			Number:     new(big.Int).Add(parent.Number(), common.Big1),
 			Coinbase:   validator,
 			Difficulty: new(big.Int).Set(diffInTurn),
 			GasLimit:   params.SystemTxsGasHardLimit,
-			Time:       genesisBlock.Time() + 1,
+			Time:       parent.Time() + 1,
 		}
 	}
 	newState := func() *state.StateDB {
-		stateDB, err := state.New(genesisBlock.Root(), state.NewDatabase(trieDB, nil))
+		stateDB, err := state.New(parent.Root(), state.NewDatabase(trieDB, nil))
 		if err != nil {
 			t.Fatalf("failed to create stateDB: %v", err)
 		}
