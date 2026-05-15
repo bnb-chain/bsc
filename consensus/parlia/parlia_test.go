@@ -821,7 +821,7 @@ func TestParliaFinalizeAndAssembleBidBlock(t *testing.T) {
 	}
 }
 
-func TestParliaPrepareForBuilderMatchesPrepare(t *testing.T) {
+func TestParliaPrepareForBidBlockMatchesPrepare(t *testing.T) {
 	frdir := t.TempDir()
 	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false)
 	if err != nil {
@@ -874,8 +874,8 @@ func TestParliaPrepareForBuilderMatchesPrepare(t *testing.T) {
 	if err := validatorEngine.Prepare(chain, validatorHeader); err != nil {
 		t.Fatalf("failed to prepare validator header: %v", err)
 	}
-	if err := builderEngine.PrepareForBuilder(chain, builderHeader); err != nil {
-		t.Fatalf("failed to prepare builder header: %v", err)
+	if err := builderEngine.PrepareForBidBlock(chain, builderHeader); err != nil {
+		t.Fatalf("failed to prepare BidBlock header: %v", err)
 	}
 
 	if builderHeader.Coinbase != validatorHeader.Coinbase {

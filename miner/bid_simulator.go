@@ -35,7 +35,7 @@ import (
 
 const (
 	prefetchTxNumber               = 50
-	maxBidBlockCandidatesPerParent = 4
+	maxBidBlockCandidatesPerParent = 10
 )
 
 var (

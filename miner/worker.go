@@ -786,7 +786,7 @@ func (w *worker) purgeBidBlockCandidates(parentHash common.Hash, builder common.
 	}
 }
 
-func (w *worker) selectBidBlockCandidate(header *types.Header, candidates []*types.DecodedBidBlock, simBidCandidate *bidCandidate, bestReward, localValidatorReward *uint256.Int) *bidCandidate {
+func (w *worker) selectBidBlock(header *types.Header, candidates []*types.DecodedBidBlock, simBidCandidate *bidCandidate, bestReward, localValidatorReward *uint256.Int) *bidCandidate {
 	for _, bidBlock := range candidates {
 		bidBlockFee, overflow := uint256.FromBig(bidBlock.GasFee)
 		if overflow {
@@ -835,7 +835,7 @@ func (w *worker) selectBidBlockCandidate(header *types.Header, candidates []*typ
 	return nil
 }
 
-func removeBidBlockCandidatesByBuilder(candidates []*types.DecodedBidBlock, builder common.Address) []*types.DecodedBidBlock {
+func dropBidBlocksByBuilder(candidates []*types.DecodedBidBlock, builder common.Address) []*types.DecodedBidBlock {
 	kept := candidates[:0]
 	for _, candidate := range candidates {
 		if candidate.Builder != builder {
@@ -1698,7 +1698,7 @@ LOOP:
 	// Verify BidBlock structurally before deciding to commit it; on any BidBlock
 	// failure, try the next BidBlock candidate before simBid/local fallback.
 	for len(bidBlockCandidates) > 0 {
-		bidWinner := w.selectBidBlockCandidate(bestWork.header, bidBlockCandidates, simBidCandidate, bestReward, localValidatorReward)
+		bidWinner := w.selectBidBlock(bestWork.header, bidBlockCandidates, simBidCandidate, bestReward, localValidatorReward)
 		if bidWinner == nil {
 			break
 		}
@@ -1708,7 +1708,7 @@ LOOP:
 				"builder", winnerBidBlock.Builder,
 				"block", winnerBidBlock.BlockNumber())
 			w.purgeBidBlockCandidates(winnerBidBlock.ParentHash(), winnerBidBlock.Builder)
-			bidBlockCandidates = removeBidBlockCandidatesByBuilder(bidBlockCandidates, winnerBidBlock.Builder)
+			bidBlockCandidates = dropBidBlocksByBuilder(bidBlockCandidates, winnerBidBlock.Builder)
 			bidBlockFallback = true
 			continue
 		}
@@ -1724,7 +1724,7 @@ LOOP:
 				"revokeReason", RevokeReasonSystemTxInvalid)
 			w.permMgr.Revoke(winnerBidBlock.Builder, RevokeReasonSystemTxInvalid, winnerBidBlock.Hash(), winnerBidBlock.BlockNumber())
 			w.purgeBidBlockCandidates(winnerBidBlock.ParentHash(), winnerBidBlock.Builder)
-			bidBlockCandidates = removeBidBlockCandidatesByBuilder(bidBlockCandidates, winnerBidBlock.Builder)
+			bidBlockCandidates = dropBidBlocksByBuilder(bidBlockCandidates, winnerBidBlock.Builder)
 			bidBlockFallback = true
 			continue
 		} else if err := w.commitBidBlock(p, winnerBidBlock, allTxs, systemStart, bestWork.header, start); err != nil {
@@ -1734,7 +1734,7 @@ LOOP:
 				"revokeReason", RevokeReasonBidBlockCommitFailed)
 			w.permMgr.Revoke(winnerBidBlock.Builder, RevokeReasonBidBlockCommitFailed, winnerBidBlock.Hash(), winnerBidBlock.BlockNumber())
 			w.purgeBidBlockCandidates(winnerBidBlock.ParentHash(), winnerBidBlock.Builder)
-			bidBlockCandidates = removeBidBlockCandidatesByBuilder(bidBlockCandidates, winnerBidBlock.Builder)
+			bidBlockCandidates = dropBidBlocksByBuilder(bidBlockCandidates, winnerBidBlock.Builder)
 			bidBlockFallback = true
 			continue
 		}

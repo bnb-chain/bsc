@@ -1341,9 +1341,9 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	return p.prepareHeader(chain, header, snap, p.val, number)
 }
 
-// PrepareForBuilder prepares consensus header fields for BidBlock construction.
+// PrepareForBidBlock prepares consensus header fields for BidBlock construction.
 // It mirrors Prepare, but uses the in-turn validator as Coinbase instead of p.val.
-func (p *Parlia) PrepareForBuilder(chain consensus.ChainHeaderReader, header *types.Header) error {
+func (p *Parlia) PrepareForBidBlock(chain consensus.ChainHeaderReader, header *types.Header) error {
 	header.Nonce = types.BlockNonce{}
 
 	number := header.Number.Uint64()
