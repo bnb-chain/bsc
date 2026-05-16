@@ -1,6 +1,7 @@
 package types
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"sync/atomic"
@@ -210,6 +211,9 @@ type BidBlockArgs struct {
 
 // EcrecoverSender recovers the builder address from the signature over BidBlock.Hash().
 func (b *BidBlockArgs) EcrecoverSender() (common.Address, error) {
+	if b.BidBlock == nil {
+		return common.Address{}, errors.New("BidBlock is nil")
+	}
 	pk, err := crypto.SigToPub(b.BidBlock.Hash().Bytes(), b.Signature)
 	if err != nil {
 		return common.Address{}, err

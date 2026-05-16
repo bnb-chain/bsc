@@ -1792,7 +1792,7 @@ func verifyBidBlockSystemTxs(
 
 	systemStart := len(allTxs)
 	for i := len(allTxs) - 1; i >= 0; i-- {
-		if !p.IsUnsignedSystemTxCandidate(allTxs[i], localHeader) {
+		if !p.IsUnsignedSystemTxCandidate(allTxs[i]) {
 			break
 		}
 		systemStart = i
@@ -1800,7 +1800,7 @@ func verifyBidBlockSystemTxs(
 
 	// Stage 1 — whitelist.
 	for i := systemStart; i < len(allTxs); i++ {
-		if !p.IsSignableSystemTx(allTxs[i], localHeader) {
+		if !p.IsSignableSystemTx(allTxs[i]) {
 			toAddr := "<nil>"
 			if allTxs[i].To() != nil {
 				toAddr = allTxs[i].To().Hex()

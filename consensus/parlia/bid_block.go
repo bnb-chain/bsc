@@ -17,7 +17,7 @@ import (
 
 // IsUnsignedSystemTxCandidate reports whether tx looks like an unsigned
 // BidBlock system tx. It does not recover the sender.
-func (p *Parlia) IsUnsignedSystemTxCandidate(tx *types.Transaction, header *types.Header) bool {
+func (p *Parlia) IsUnsignedSystemTxCandidate(tx *types.Transaction) bool {
 	if tx == nil || tx.To() == nil || !isToSystemContract(*tx.To()) {
 		return false
 	}
@@ -40,8 +40,8 @@ var signableSystemTxMethods = []string{
 }
 
 // IsSignableSystemTx reports whether tx can be bind-signed for BidBlock.
-func (p *Parlia) IsSignableSystemTx(tx *types.Transaction, header *types.Header) bool {
-	if !p.IsUnsignedSystemTxCandidate(tx, header) {
+func (p *Parlia) IsSignableSystemTx(tx *types.Transaction) bool {
+	if !p.IsUnsignedSystemTxCandidate(tx) {
 		return false
 	}
 	if *tx.To() != common.HexToAddress(systemcontracts.ValidatorContract) {

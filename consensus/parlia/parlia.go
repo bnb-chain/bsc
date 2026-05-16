@@ -1404,7 +1404,7 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	systemcontracts.TryUpdateBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state, false)
 
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
-		err := p.initializeFeynmanContract(state, header, cx, txs, receipts, systemTxs, usedGas, false, false, tracer)
+		err := p.initializeFeynmanContract(state, header, cx, txs, receipts, systemTxs, usedGas, false, tracer)
 		if err != nil {
 			return fmt.Errorf("init feynman contract failed: %v", err)
 		}
@@ -1513,7 +1513,7 @@ func (p *Parlia) FinalizeAndAssembleWithOpts(chain consensus.ChainHeaderReader, 
 	systemcontracts.TryUpdateBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state, false)
 
 	if p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
-		err := p.initializeFeynmanContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, opts.SignSystemTx, tracer)
+		err := p.initializeFeynmanContract(state, header, cx, &body.Transactions, &receipts, nil, &header.GasUsed, true, tracer)
 		if err != nil {
 			return nil, nil, fmt.Errorf("init feynman contract failed: %v", err)
 		}
