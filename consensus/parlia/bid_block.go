@@ -180,8 +180,21 @@ func (p *Parlia) PrepareForBidBlock(chain consensus.ChainHeaderReader, header *t
 	}
 	validator := snap.inturnValidator()
 	header.Coinbase = validator
+	parent := chain.GetHeader(header.ParentHash, number-1)
+	if parent == nil {
+		return consensus.ErrUnknownAncestor
+	}
+	blockTime := p.blockTimeForBidBlock(snap, header, parent)
 
-	return p.prepareHeader(chain, header, snap, validator, number)
+	return p.prepareHeader(chain, header, snap, validator, number, blockTime)
+}
+
+func (p *Parlia) blockTimeForBidBlock(snap *Snapshot, header, parent *types.Header) uint64 {
+	blockTime := parent.MilliTimestamp() + snap.BlockInterval
+	if p.chainConfig.IsRamanujan(header.Number) {
+		blockTime += p.backOffTime(snap, parent, header, header.Coinbase)
+	}
+	return blockTime
 }
 
 // FinalizeAndAssembleBidBlock assembles a BidBlock with unsigned system txs
@@ -206,13 +219,24 @@ func (p *Parlia) SignSystemTx(tx *types.Transaction, chainID *big.Int) (*types.T
 	return p.signTxFn(accounts.Account{Address: p.val}, tx, chainID)
 }
 
-// VerifyBlockTime validates a BidBlock timestamp before it enters VerifyHeader.
-func (p *Parlia) VerifyBlockTime(chain consensus.ChainHeaderReader, header, parent *types.Header) error {
+func (p *Parlia) ExpectedBidBlockTime(chain consensus.ChainHeaderReader, header, parent *types.Header) (uint64, error) {
 	snap, err := p.snapshot(chain, parent.Number.Uint64(), parent.Hash(), nil)
+	if err != nil {
+		return 0, err
+	}
+	return p.blockTimeForBidBlock(snap, header, parent), nil
+}
+
+// VerifyBlockTime validates the deterministic BidBlock timestamp.
+func (p *Parlia) VerifyBlockTime(chain consensus.ChainHeaderReader, header, parent *types.Header) error {
+	expected, err := p.ExpectedBidBlockTime(chain, header, parent)
 	if err != nil {
 		return err
 	}
-	return p.blockTimeVerifyForRamanujanFork(snap, header, parent)
+	if got := header.MilliTimestamp(); got != expected {
+		return fmt.Errorf("invalid BidBlock timestamp: got %d, want %d", got, expected)
+	}
+	return nil
 }
 
 func (p *Parlia) ExpectedDifficulty(chain consensus.ChainHeaderReader, parent *types.Header, validator common.Address) (*big.Int, error) {
@@ -220,5 +244,5 @@ func (p *Parlia) ExpectedDifficulty(chain consensus.ChainHeaderReader, parent *t
 	if err != nil {
 		return nil, err
 	}
-	return CalcDifficulty(snap, validator), nil
+	return calcDifficulty(snap, validator), nil
 }

@@ -1150,22 +1150,22 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	if err != nil {
 		return err
 	}
+	parent := chain.GetHeader(header.ParentHash, number-1)
+	if parent == nil {
+		return consensus.ErrUnknownAncestor
+	}
+	blockTime := p.blockTimeForRamanujanFork(snap, header, parent)
 
-	return p.prepareHeader(chain, header, snap, p.val, number)
+	return p.prepareHeader(chain, header, snap, p.val, number, blockTime)
 }
 
-func (p *Parlia) prepareHeader(chain consensus.ChainHeaderReader, header *types.Header, snap *Snapshot, validator common.Address, number uint64) error {
+func (p *Parlia) prepareHeader(chain consensus.ChainHeaderReader, header *types.Header, snap *Snapshot, validator common.Address, number uint64, blockTime uint64) error {
 	header.Difficulty = calcDifficulty(snap, validator)
 
 	if len(header.Extra) < extraVanity-nextForkHashSize {
 		header.Extra = append(header.Extra, bytes.Repeat([]byte{0x00}, extraVanity-nextForkHashSize-len(header.Extra))...)
 	}
 
-	parent := chain.GetHeader(header.ParentHash, number-1)
-	if parent == nil {
-		return consensus.ErrUnknownAncestor
-	}
-	blockTime := p.blockTimeForRamanujanFork(snap, header, parent)
 	header.Time = blockTime / 1000 // get seconds
 	if p.chainConfig.IsLorentz(header.Number, header.Time) {
 		header.SetMilliseconds(blockTime % 1000)

@@ -824,7 +824,7 @@ func TestParliaFinalizeAndAssembleBidBlock(t *testing.T) {
 	}
 }
 
-func TestParliaPrepareForBidBlockMatchesPrepare(t *testing.T) {
+func TestParliaPrepareForBidBlockUsesDeterministicTime(t *testing.T) {
 	frdir := t.TempDir()
 	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false)
 	if err != nil {
@@ -843,7 +843,7 @@ func TestParliaPrepareForBidBlockMatchesPrepare(t *testing.T) {
 	gspec := &core.Genesis{
 		Config:    config,
 		ExtraData: extra,
-		Timestamp: uint64(time.Now().Add(10 * time.Second).Unix()),
+		Timestamp: uint64(time.Now().Add(-10 * time.Second).Unix()),
 		Alloc:     types.GenesisAlloc{testAddr: {Balance: new(big.Int).SetUint64(10 * params.Ether)}},
 	}
 	mockEngine := &mockParlia{}
@@ -887,9 +887,19 @@ func TestParliaPrepareForBidBlockMatchesPrepare(t *testing.T) {
 	if builderHeader.Coinbase != inturnValidator {
 		t.Fatalf("builder coinbase mismatch: have %s want %s", builderHeader.Coinbase, inturnValidator)
 	}
-	if builderHeader.Time != validatorHeader.Time || builderHeader.MixDigest != validatorHeader.MixDigest {
-		t.Fatalf("time mismatch: builder=(%d,%s) validator=(%d,%s)",
-			builderHeader.Time, builderHeader.MixDigest, validatorHeader.Time, validatorHeader.MixDigest)
+	expectedTime, err := builderEngine.ExpectedBidBlockTime(chain, builderHeader, genesisBlock.Header())
+	if err != nil {
+		t.Fatalf("failed to compute expected BidBlock time: %v", err)
+	}
+	if builderHeader.MilliTimestamp() != expectedTime {
+		t.Fatalf("builder time mismatch: have %d want %d", builderHeader.MilliTimestamp(), expectedTime)
+	}
+	badHeader := types.CopyHeader(builderHeader)
+	badTime := expectedTime + 50
+	badHeader.Time = badTime / 1000
+	badHeader.SetMilliseconds(badTime % 1000)
+	if err := builderEngine.VerifyBlockTime(chain, badHeader, genesisBlock.Header()); err == nil {
+		t.Fatal("expected BidBlock timestamp mismatch")
 	}
 	if builderHeader.Difficulty.Cmp(validatorHeader.Difficulty) != 0 {
 		t.Fatalf("difficulty mismatch: builder=%s validator=%s", builderHeader.Difficulty, validatorHeader.Difficulty)

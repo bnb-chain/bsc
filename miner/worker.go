@@ -765,16 +765,6 @@ func (w *worker) getAllowedBidBlockCandidates(header *types.Header) []*types.Dec
 				"block", bidBlock.BlockNumber())
 			continue
 		}
-		// The selected BidBlock must target the same parent slot as this sealing work.
-		if bidBlock.Header.Time != header.Time || bidBlock.Header.MixDigest != header.MixDigest {
-			w.purgeBidBlockCandidates(parentHash, bidBlock.Builder)
-			log.Debug("BidBlock timestamp mismatch, skip cached BidBlock",
-				"parent", parentHash,
-				"builder", bidBlock.Builder,
-				"bidBlockTime", bidBlock.Header.MilliTimestamp(),
-				"workTime", header.MilliTimestamp())
-			continue
-		}
 		allowed = append(allowed, bidBlock)
 	}
 	return allowed

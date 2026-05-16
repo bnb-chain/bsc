@@ -806,7 +806,7 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 		return fmt.Errorf("invalid difficulty: got %v, want %v", header.Difficulty, expectedDiff)
 	}
 
-	// 7. Timestamp must pass the Parlia range check.
+	// 7. Timestamp must match the deterministic BidBlock time.
 	if err := parliaEngine.VerifyBlockTime(b.chain, header, parent); err != nil {
 		return fmt.Errorf("invalid block time: %v", err)
 	}
