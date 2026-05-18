@@ -7,7 +7,6 @@ import (
 	"math/big"
 	"net"
 	"net/http"
-	"sort"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -34,8 +33,7 @@ import (
 )
 
 const (
-	prefetchTxNumber               = 50
-	maxBidBlockCandidatesPerParent = 10
+	prefetchTxNumber = 50
 )
 
 var (
@@ -139,9 +137,9 @@ type bidSimulator struct {
 	maxBidsPerBuilder uint32 // Maximum number of bids allowed per builder per block
 
 	// SendBidBlock fields
-	bidBlockCandidatesMu sync.RWMutex
-	bidBlockCandidates   map[common.Hash][]*types.DecodedBidBlock // parentHash -> ordered bid block candidates
-	newBidBlockCh        chan *types.DecodedBidBlock              // channel for incoming bid blocks
+	bestBidBlockMu sync.RWMutex
+	bestBidBlock   map[common.Hash]*types.DecodedBidBlock // parentHash -> best bid block
+	newBidBlockCh  chan *types.DecodedBidBlock            // channel for incoming bid blocks
 
 	// SendBidBlock permission is separate from legacy SendBid admission.
 	permMgr *BidBlockPermissionManager
@@ -161,26 +159,26 @@ func newBidSimulator(
 		permMgr = NewBidBlockPermissionManager()
 	}
 	b := &bidSimulator{
-		config:             config,
-		minGasPrice:        minGasPrice,
-		chain:              eth.BlockChain(),
-		txpool:             eth.TxPool(),
-		chainConfig:        chainConfig,
-		engine:             engine,
-		bidWorker:          bidWorker,
-		exitCh:             make(chan struct{}),
-		chainHeadCh:        make(chan core.ChainHeadEvent, chainHeadChanSize),
-		builders:           make(map[common.Address]*builderclient.Client),
-		simBidCh:           make(chan *simBidReq),
-		newBidCh:           make(chan newBidPackage, 100),
-		pending:            make(map[uint64]map[common.Address]map[common.Hash]struct{}),
-		bestBid:            make(map[common.Hash]*BidRuntime),
-		bestBidToRun:       make(map[common.Hash]*types.Bid),
-		simulatingBid:      make(map[common.Hash]*BidRuntime),
-		bidsToSim:          make(map[uint64][]*BidRuntime),
-		bidBlockCandidates: make(map[common.Hash][]*types.DecodedBidBlock),
-		newBidBlockCh:      make(chan *types.DecodedBidBlock, 100),
-		permMgr:            permMgr,
+		config:        config,
+		minGasPrice:   minGasPrice,
+		chain:         eth.BlockChain(),
+		txpool:        eth.TxPool(),
+		chainConfig:   chainConfig,
+		engine:        engine,
+		bidWorker:     bidWorker,
+		exitCh:        make(chan struct{}),
+		chainHeadCh:   make(chan core.ChainHeadEvent, chainHeadChanSize),
+		builders:      make(map[common.Address]*builderclient.Client),
+		simBidCh:      make(chan *simBidReq),
+		newBidCh:      make(chan newBidPackage, 100),
+		pending:       make(map[uint64]map[common.Address]map[common.Hash]struct{}),
+		bestBid:       make(map[common.Hash]*BidRuntime),
+		bestBidToRun:  make(map[common.Hash]*types.Bid),
+		simulatingBid: make(map[common.Hash]*BidRuntime),
+		bidsToSim:     make(map[uint64][]*BidRuntime),
+		bestBidBlock:  make(map[common.Hash]*types.DecodedBidBlock),
+		newBidBlockCh: make(chan *types.DecodedBidBlock, 100),
+		permMgr:       permMgr,
 	}
 	if delayLeftOver != nil {
 		b.delayLeftOver = *delayLeftOver
@@ -637,13 +635,13 @@ func (b *bidSimulator) clearLoop() {
 		}
 		b.simBidMu.Unlock()
 
-		b.bidBlockCandidatesMu.Lock()
-		for k, blocks := range b.bidBlockCandidates {
-			if len(blocks) == 0 || blocks[0].BlockNumber() <= clearThreshold {
-				delete(b.bidBlockCandidates, k)
+		b.bestBidBlockMu.Lock()
+		for k, block := range b.bestBidBlock {
+			if block == nil || block.BlockNumber() <= clearThreshold {
+				delete(b.bestBidBlock, k)
 			}
 		}
-		b.bidBlockCandidatesMu.Unlock()
+		b.bestBidBlockMu.Unlock()
 	}
 
 	for {
@@ -665,47 +663,27 @@ func (b *bidSimulator) clearLoop() {
 	}
 }
 
-// AddBidBlockCandidate keeps the top BidBlock candidates for a given parent hash.
-func (b *bidSimulator) AddBidBlockCandidate(parentHash common.Hash, block *types.DecodedBidBlock) bool {
+// AddBidBlock keeps the best BidBlock for a given parent hash.
+func (b *bidSimulator) AddBidBlock(parentHash common.Hash, block *types.DecodedBidBlock) bool {
 	if !b.permMgr.IsAllowed(block.Builder) {
 		return false
 	}
 
-	b.bidBlockCandidatesMu.Lock()
-	defer b.bidBlockCandidatesMu.Unlock()
+	b.bestBidBlockMu.Lock()
+	defer b.bestBidBlockMu.Unlock()
 
-	blocks := b.bidBlockCandidates[parentHash]
-	for i, existing := range blocks {
-		if existing.Builder != block.Builder {
-			continue
-		}
-		if existing.GasFee.Cmp(block.GasFee) >= 0 {
-			return false
-		}
-		blocks[i] = block
-		return true
+	if existing := b.bestBidBlock[parentHash]; existing != nil && existing.GasFee.Cmp(block.GasFee) >= 0 {
+		return false
 	}
-
-	b.bidBlockCandidates[parentHash] = append(blocks, block)
+	b.bestBidBlock[parentHash] = block
 	return true
 }
 
-// GetBidBlockCandidates returns ordered BidBlock candidates for a given parent hash.
-func (b *bidSimulator) GetBidBlockCandidates(parentHash common.Hash) []*types.DecodedBidBlock {
-	b.bidBlockCandidatesMu.RLock()
-	defer b.bidBlockCandidatesMu.RUnlock()
-	blocks := b.bidBlockCandidates[parentHash]
-	return sortBidBlockCandidates(append([]*types.DecodedBidBlock(nil), blocks...))
-}
-
-func sortBidBlockCandidates(blocks []*types.DecodedBidBlock) []*types.DecodedBidBlock {
-	sort.SliceStable(blocks, func(i, j int) bool {
-		return blocks[i].GasFee.Cmp(blocks[j].GasFee) > 0
-	})
-	if len(blocks) > maxBidBlockCandidatesPerParent {
-		blocks = blocks[:maxBidBlockCandidatesPerParent]
-	}
-	return blocks
+// GetBestBidBlock returns the best BidBlock for a given parent hash.
+func (b *bidSimulator) GetBestBidBlock(parentHash common.Hash) *types.DecodedBidBlock {
+	b.bestBidBlockMu.RLock()
+	defer b.bestBidBlockMu.RUnlock()
+	return b.bestBidBlock[parentHash]
 }
 
 // preSealVerifyBidBlock validates deterministic header fields before selection.
@@ -779,7 +757,7 @@ func (b *bidSimulator) sendBidBlock(_ context.Context, block *types.DecodedBidBl
 	}
 }
 
-// newBidBlockLoop stores incoming BidBlock candidates by GasFee.
+// newBidBlockLoop stores the best incoming BidBlock by GasFee.
 func (b *bidSimulator) newBidBlockLoop() {
 	for {
 		select {
@@ -795,8 +773,8 @@ func (b *bidSimulator) newBidBlockLoop() {
 				continue
 			}
 
-			if !b.AddBidBlockCandidate(block.ParentHash(), block) {
-				log.Debug("BidBlock: discard BidBlock outside candidate set",
+			if !b.AddBidBlock(block.ParentHash(), block) {
+				log.Debug("BidBlock: discard BidBlock below current best or not allowed",
 					"blockNumber", block.BlockNumber(),
 					"builder", block.Builder,
 					"gasFee", block.GasFee)
