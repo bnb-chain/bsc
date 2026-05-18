@@ -795,17 +795,14 @@ func (w *worker) selectBidBlock(header *types.Header, candidates []*types.Decode
 		if simBidCandidate != nil {
 			simBidVR = simBidCandidate.validatorReward.String()
 		}
-		log.Debug("BidSimulator: stage-1 bidBlock wins",
-			"block", header.Number.Uint64(),
-			"bidBlockValidatorReward", bidBlockValidatorReward.String(),
-			"simBidValidatorReward", simBidVR)
-
-		log.Debug("BidSimulator: stage-2 compare vs local",
+		// TODO: switch back to Debug after BidBlock rollout stabilizes.
+		log.Info("BidSimulator: BidBlock win bid, compare with local",
 			"block", header.Number.Uint64(),
 			"localBlockReward", bestReward.String(),
 			"localValidatorReward", localValidatorReward.String(),
 			"bidReward", bidBlockFee.String(),
-			"bidValidatorReward", bidBlockValidatorReward.String())
+			"bidValidatorReward", bidBlockValidatorReward.String(),
+			"simBidValidatorReward", simBidVR)
 
 		if bestReward.Cmp(bidBlockFee) < 0 && localValidatorReward.Cmp(bidBlockValidatorReward) < 0 {
 			log.Info("[BID BLOCK selected]",
