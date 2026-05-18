@@ -85,8 +85,6 @@ func (p *Parlia) ExpectedSystemTxShape(header, parent *types.Header, gasFee *big
 		})
 	}
 
-	// BEP-675 ships after Mendel, which is well past Plato. Plato is always
-	// active here, so we only need the interval check.
 	if header.Number.Uint64()%finalityRewardInterval == 0 {
 		shape = append(shape, expectedSystemTxEntry{
 			method:   "distributeFinalityReward",
@@ -94,9 +92,7 @@ func (p *Parlia) ExpectedSystemTxShape(header, parent *types.Header, gasFee *big
 		})
 	}
 
-	if p.chainConfig.IsFeynman(header.Number, header.Time) &&
-		isBreatheBlock(parent.Time, header.Time) &&
-		!p.chainConfig.IsOnFeynman(header.Number, parent.Time, header.Time) {
+	if isBreatheBlock(parent.Time, header.Time) {
 		shape = append(shape, expectedSystemTxEntry{
 			method:   "updateValidatorSetV2",
 			selector: p.selectorFor("updateValidatorSetV2"),
@@ -190,11 +186,8 @@ func (p *Parlia) PrepareForBidBlock(chain consensus.ChainHeaderReader, header *t
 }
 
 func (p *Parlia) blockTimeForBidBlock(snap *Snapshot, header, parent *types.Header) uint64 {
-	blockTime := parent.MilliTimestamp() + snap.BlockInterval
-	if p.chainConfig.IsRamanujan(header.Number) {
-		blockTime += p.backOffTime(snap, parent, header, header.Coinbase)
-	}
-	return blockTime
+	return parent.MilliTimestamp() + snap.BlockInterval +
+		p.backOffTime(snap, parent, header, header.Coinbase)
 }
 
 // FinalizeAndAssembleBidBlock assembles a BidBlock with unsigned system txs

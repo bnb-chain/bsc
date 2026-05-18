@@ -788,13 +788,9 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 	}
 
 	// 5. BaseFee must match the EIP-1559 derived value.
-	if b.chainConfig.IsLondon(header.Number) {
-		expectedBaseFee := eip1559.CalcBaseFee(b.chainConfig, parent)
-		if header.BaseFee == nil || header.BaseFee.Cmp(expectedBaseFee) != 0 {
-			return fmt.Errorf("invalid baseFee: got %v, want %v", header.BaseFee, expectedBaseFee)
-		}
-	} else if header.BaseFee != nil {
-		return fmt.Errorf("invalid baseFee before London: got %v", header.BaseFee)
+	expectedBaseFee := eip1559.CalcBaseFee(b.chainConfig, parent)
+	if header.BaseFee == nil || header.BaseFee.Cmp(expectedBaseFee) != 0 {
+		return fmt.Errorf("invalid baseFee: got %v, want %v", header.BaseFee, expectedBaseFee)
 	}
 
 	// 6. Difficulty must match the Parlia-derived value for this validator.
