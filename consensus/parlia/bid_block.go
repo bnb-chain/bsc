@@ -103,19 +103,18 @@ func (p *Parlia) ExpectedSystemTxShape(header, parent *types.Header, gasFee *big
 }
 
 func (p *Parlia) VerifySystemTxShape(txs []*types.Transaction, shape []expectedSystemTxEntry) error {
-	for i, exp := range shape {
-		if i >= len(txs) {
-			return fmt.Errorf("missing required system tx %q", exp.method)
-		}
-		if bytes.HasPrefix(txs[i].Data(), exp.selector) {
-			continue
-		}
-		return fmt.Errorf("expected system tx %q at position %d, got selector 0x%x",
-			exp.method, i, txSelector(txs[i]))
+	if len(txs) < len(shape) {
+		return fmt.Errorf("missing required system tx %q", shape[len(txs)].method)
 	}
-	if len(shape) < len(txs) {
+	if len(txs) > len(shape) {
 		return fmt.Errorf("unexpected extra system tx at position %d (selector 0x%x)",
 			len(shape), txSelector(txs[len(shape)]))
+	}
+	for i, exp := range shape {
+		if !bytes.HasPrefix(txs[i].Data(), exp.selector) {
+			return fmt.Errorf("expected system tx %q at position %d, got selector 0x%x",
+				exp.method, i, txSelector(txs[i]))
+		}
 	}
 	return nil
 }
@@ -230,12 +229,4 @@ func (p *Parlia) VerifyBlockTime(chain consensus.ChainHeaderReader, header, pare
 		return fmt.Errorf("invalid BidBlock timestamp: got %d, want %d", got, expected)
 	}
 	return nil
-}
-
-func (p *Parlia) ExpectedDifficulty(chain consensus.ChainHeaderReader, parent *types.Header, validator common.Address) (*big.Int, error) {
-	snap, err := p.snapshot(chain, parent.Number.Uint64(), parent.Hash(), nil)
-	if err != nil {
-		return nil, err
-	}
-	return calcDifficulty(snap, validator), nil
 }

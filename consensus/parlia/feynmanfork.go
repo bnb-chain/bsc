@@ -30,9 +30,6 @@ func isBreatheBlock(lastBlockTime, blockTime uint64) bool {
 }
 
 // initializeFeynmanContract initialize new contracts of Feynman fork.
-// Feynman has passed on mainnet/testnet, so the mining path is unreachable;
-// signTx is hardcoded to false (replay only goes through the !mining branch
-// in applyTransaction, where signTx is ignored).
 func (p *Parlia) initializeFeynmanContract(state vm.StateDB, header *types.Header, chain core.ChainContext,
 	txs *[]*types.Transaction, receipts *[]*types.Receipt, receivedTxs *[]*types.Transaction, usedGas *uint64, mining bool, tracer *tracing.Hooks,
 ) error {
@@ -57,7 +54,7 @@ func (p *Parlia) initializeFeynmanContract(state vm.StateDB, header *types.Heade
 		msg := p.getSystemMessage(header.Coinbase, common.HexToAddress(c), data, common.Big0)
 		// apply message
 		log.Info("initialize feynman contract", "block number", header.Number.Uint64(), "contract", c)
-		err = p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, false, tracer)
+		err = p.applyTransaction(msg, state, header, chain, txs, receipts, receivedTxs, usedGas, mining, true, tracer)
 		if err != nil {
 			return err
 		}

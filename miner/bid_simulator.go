@@ -793,13 +793,9 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 		return fmt.Errorf("invalid baseFee: got %v, want %v", header.BaseFee, expectedBaseFee)
 	}
 
-	// 6. Difficulty must match the Parlia-derived value for this validator.
-	expectedDiff, err := parliaEngine.ExpectedDifficulty(b.chain, parent, expectedCoinbase)
-	if err != nil {
-		return fmt.Errorf("failed to compute expected difficulty: %v", err)
-	}
-	if header.Difficulty == nil || header.Difficulty.Cmp(expectedDiff) != 0 {
-		return fmt.Errorf("invalid difficulty: got %v, want %v", header.Difficulty, expectedDiff)
+	// 6. Difficulty must be in-turn.
+	if header.Difficulty == nil || header.Difficulty.Cmp(diffInTurn) != 0 {
+		return fmt.Errorf("invalid difficulty: got %v, want %v", header.Difficulty, diffInTurn)
 	}
 
 	// 7. Timestamp must match the deterministic BidBlock time.
