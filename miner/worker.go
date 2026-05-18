@@ -201,7 +201,6 @@ type bidFetcher interface {
 	GetBestBid(parentHash common.Hash) *BidRuntime
 	GetSimulatingBid(prevBlockHash common.Hash) *BidRuntime
 	GetBidBlockCandidates(parentHash common.Hash) []*types.DecodedBidBlock
-	PurgeBidBlockCandidates(parentHash common.Hash, builder common.Address) bool
 }
 
 // worker is the main object which takes care of submitting new work to consensus engine
@@ -722,7 +721,6 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			"err", err,
 			"revokeReason", RevokeReasonInsertChainFailed)
 		w.permMgr.Revoke(task.bidBlockInfo.builder, RevokeReasonInsertChainFailed, hash, block.NumberU64())
-		w.purgeBidBlockCandidates(block.ParentHash(), task.bidBlockInfo.builder)
 		return
 	}
 
@@ -737,7 +735,6 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			"err", err,
 			"revokeReason", RevokeReasonGasFeeOverClaim)
 		w.permMgr.Revoke(task.bidBlockInfo.builder, RevokeReasonGasFeeOverClaim, hash, block.NumberU64())
-		w.purgeBidBlockCandidates(block.ParentHash(), task.bidBlockInfo.builder)
 		return
 	}
 
@@ -755,25 +752,7 @@ func (w *worker) getAllowedBidBlockCandidates(header *types.Header) []*types.Dec
 	if len(bidBlocks) == 0 {
 		return nil
 	}
-	allowed := make([]*types.DecodedBidBlock, 0, len(bidBlocks))
-	for _, bidBlock := range bidBlocks {
-		if !w.permMgr.IsAllowed(bidBlock.Builder) {
-			w.purgeBidBlockCandidates(parentHash, bidBlock.Builder)
-			log.Debug("BidBlock builder permission revoked, skip cached BidBlock",
-				"parent", parentHash,
-				"builder", bidBlock.Builder,
-				"block", bidBlock.BlockNumber())
-			continue
-		}
-		allowed = append(allowed, bidBlock)
-	}
-	return allowed
-}
-
-func (w *worker) purgeBidBlockCandidates(parentHash common.Hash, builder common.Address) {
-	if w.bidFetcher != nil {
-		w.bidFetcher.PurgeBidBlockCandidates(parentHash, builder)
-	}
+	return bidBlocks
 }
 
 func (w *worker) selectBidBlock(header *types.Header, candidates []*types.DecodedBidBlock, simBidCandidate *bidCandidate, bestReward, localValidatorReward *uint256.Int) *bidCandidate {
@@ -1701,7 +1680,6 @@ LOOP:
 				"err", err,
 				"revokeReason", RevokeReasonSystemTxInvalid)
 			w.permMgr.Revoke(winnerBidBlock.Builder, RevokeReasonSystemTxInvalid, winnerBidBlock.Hash(), winnerBidBlock.BlockNumber())
-			w.purgeBidBlockCandidates(winnerBidBlock.ParentHash(), winnerBidBlock.Builder)
 			bidBlockCandidates = dropBidBlocksByBuilder(bidBlockCandidates, winnerBidBlock.Builder)
 			bidBlockFallback = true
 			continue
@@ -1713,7 +1691,6 @@ LOOP:
 				"err", err,
 				"revokeReason", RevokeReasonBidBlockCommitFailed)
 			w.permMgr.Revoke(winnerBidBlock.Builder, RevokeReasonBidBlockCommitFailed, winnerBidBlock.Hash(), winnerBidBlock.BlockNumber())
-			w.purgeBidBlockCandidates(winnerBidBlock.ParentHash(), winnerBidBlock.Builder)
 			bidBlockCandidates = dropBidBlocksByBuilder(bidBlockCandidates, winnerBidBlock.Builder)
 			bidBlockFallback = true
 			continue

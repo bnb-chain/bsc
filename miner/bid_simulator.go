@@ -639,16 +639,8 @@ func (b *bidSimulator) clearLoop() {
 
 		b.bidBlockCandidatesMu.Lock()
 		for k, blocks := range b.bidBlockCandidates {
-			kept := blocks[:0]
-			for _, block := range blocks {
-				if block.BlockNumber() > clearThreshold {
-					kept = append(kept, block)
-				}
-			}
-			if len(kept) == 0 {
+			if len(blocks) == 0 || blocks[0].BlockNumber() <= clearThreshold {
 				delete(b.bidBlockCandidates, k)
-			} else {
-				b.bidBlockCandidates[k] = kept
 			}
 		}
 		b.bidBlockCandidatesMu.Unlock()
@@ -675,6 +667,10 @@ func (b *bidSimulator) clearLoop() {
 
 // AddBidBlockCandidate keeps the top BidBlock candidates for a given parent hash.
 func (b *bidSimulator) AddBidBlockCandidate(parentHash common.Hash, block *types.DecodedBidBlock) bool {
+	if !b.permMgr.IsAllowed(block.Builder) {
+		return false
+	}
+
 	b.bidBlockCandidatesMu.Lock()
 	defer b.bidBlockCandidatesMu.Unlock()
 
@@ -687,13 +683,11 @@ func (b *bidSimulator) AddBidBlockCandidate(parentHash common.Hash, block *types
 			return false
 		}
 		blocks[i] = block
-		b.bidBlockCandidates[parentHash] = sortBidBlockCandidates(blocks)
-		return containsBidBlock(b.bidBlockCandidates[parentHash], block)
+		return true
 	}
 
-	blocks = append(blocks, block)
-	b.bidBlockCandidates[parentHash] = sortBidBlockCandidates(blocks)
-	return containsBidBlock(b.bidBlockCandidates[parentHash], block)
+	b.bidBlockCandidates[parentHash] = append(blocks, block)
+	return true
 }
 
 // GetBidBlockCandidates returns ordered BidBlock candidates for a given parent hash.
@@ -701,33 +695,7 @@ func (b *bidSimulator) GetBidBlockCandidates(parentHash common.Hash) []*types.De
 	b.bidBlockCandidatesMu.RLock()
 	defer b.bidBlockCandidatesMu.RUnlock()
 	blocks := b.bidBlockCandidates[parentHash]
-	return append([]*types.DecodedBidBlock(nil), blocks...)
-}
-
-// PurgeBidBlockCandidates removes cached BidBlock candidates from builder.
-func (b *bidSimulator) PurgeBidBlockCandidates(parentHash common.Hash, builder common.Address) bool {
-	b.bidBlockCandidatesMu.Lock()
-	defer b.bidBlockCandidatesMu.Unlock()
-
-	blocks := b.bidBlockCandidates[parentHash]
-	if len(blocks) == 0 {
-		return false
-	}
-	kept := blocks[:0]
-	removed := false
-	for _, block := range blocks {
-		if block.Builder == builder {
-			removed = true
-			continue
-		}
-		kept = append(kept, block)
-	}
-	if len(kept) == 0 {
-		delete(b.bidBlockCandidates, parentHash)
-	} else {
-		b.bidBlockCandidates[parentHash] = kept
-	}
-	return removed
+	return sortBidBlockCandidates(append([]*types.DecodedBidBlock(nil), blocks...))
 }
 
 func sortBidBlockCandidates(blocks []*types.DecodedBidBlock) []*types.DecodedBidBlock {
@@ -738,15 +706,6 @@ func sortBidBlockCandidates(blocks []*types.DecodedBidBlock) []*types.DecodedBid
 		blocks = blocks[:maxBidBlockCandidatesPerParent]
 	}
 	return blocks
-}
-
-func containsBidBlock(blocks []*types.DecodedBidBlock, target *types.DecodedBidBlock) bool {
-	for _, block := range blocks {
-		if block == target {
-			return true
-		}
-	}
-	return false
 }
 
 // preSealVerifyBidBlock validates deterministic header fields before selection.
