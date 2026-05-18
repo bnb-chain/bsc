@@ -241,11 +241,11 @@ func TestCommitBidBlockPreservesBuilderExecutionHeaderFields(t *testing.T) {
 	}
 	localHeader := &types.Header{Extra: []byte{0x44, 0x55}}
 
-	if err := w.commitBidBlock(nil, decoded, []*types.Transaction{tx}, 1, localHeader, time.Now()); err != nil {
-		t.Fatalf("commitBidBlock failed: %v", err)
+	task, err := w.prepareBidBlockTask(nil, decoded, []*types.Transaction{tx}, 1, localHeader, time.Now())
+	if err != nil {
+		t.Fatalf("prepareBidBlockTask failed: %v", err)
 	}
 
-	task := <-w.taskCh
 	block := task.block
 	if block.ReceiptHash() != receiptHash {
 		t.Fatalf("receipt hash mismatch: got %s want %s", block.ReceiptHash(), receiptHash)

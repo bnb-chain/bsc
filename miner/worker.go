@@ -1693,15 +1693,6 @@ LOOP:
 			break
 		}
 		winnerBidBlock := bidWinner.bidBlock
-		if !w.permMgr.IsAllowed(winnerBidBlock.Builder) {
-			log.Debug("BidBlock builder permission revoked before commit, try next candidate",
-				"builder", winnerBidBlock.Builder,
-				"block", winnerBidBlock.BlockNumber())
-			w.purgeBidBlockCandidates(winnerBidBlock.ParentHash(), winnerBidBlock.Builder)
-			bidBlockCandidates = dropBidBlocksByBuilder(bidBlockCandidates, winnerBidBlock.Builder)
-			bidBlockFallback = true
-			continue
-		}
 
 		// preSealVerifyBidBlock already enforced engine == parlia, so any
 		// BidBlock that reaches this exit is parlia-only by construction.
@@ -1717,8 +1708,10 @@ LOOP:
 			bidBlockCandidates = dropBidBlocksByBuilder(bidBlockCandidates, winnerBidBlock.Builder)
 			bidBlockFallback = true
 			continue
-		} else if err := w.commitBidBlock(p, winnerBidBlock, allTxs, systemStart, bestWork.header, start); err != nil {
-			log.Error("Failed to commit bid block, try next candidate",
+		}
+		task, err := w.prepareBidBlockTask(p, winnerBidBlock, allTxs, systemStart, bestWork.header, start)
+		if err != nil {
+			log.Error("Failed to prepare bid block, try next candidate",
 				"builder", winnerBidBlock.Builder,
 				"err", err,
 				"revokeReason", RevokeReasonBidBlockCommitFailed)
@@ -1728,6 +1721,7 @@ LOOP:
 			bidBlockFallback = true
 			continue
 		}
+		w.enqueueBidBlockTask(task, len(allTxs)-systemStart)
 		bidBlockCommitted = true
 		break
 	}
@@ -1842,22 +1836,22 @@ func bindSignBidBlockSystemTxs(
 	return nil
 }
 
-// commitBidBlock signs system txs and seals a verified BidBlock.
+// prepareBidBlockTask signs system txs and assembles a verified BidBlock task.
 // Builder execution-result fields are preserved without re-executing transactions.
-func (w *worker) commitBidBlock(
+func (w *worker) prepareBidBlockTask(
 	p *parlia.Parlia,
 	decoded *types.DecodedBidBlock,
 	allTxs []*types.Transaction,
 	systemStart int,
 	localHeader *types.Header,
 	start time.Time,
-) error {
+) (*task, error) {
 	if !w.isRunning() {
-		return errors.New("worker is not running")
+		return nil, errors.New("worker is not running")
 	}
 
 	if err := bindSignBidBlockSystemTxs(allTxs, systemStart, w.chainConfig.ChainID, p); err != nil {
-		return err
+		return nil, err
 	}
 
 	header := types.CopyHeader(decoded.Header)
@@ -1882,26 +1876,29 @@ func (w *worker) commitBidBlock(
 		block = block.WithSidecars(make(types.BlobSidecars, 0))
 	}
 
-	// assembleVoteAttestation + sign header happen inside Seal.
-	select {
-	case w.taskCh <- &task{
+	return &task{
 		block:         block,
 		isBidBlock:    true,
 		bidBlockInfo:  &bidBlockTaskInfo{builder: decoded.Builder, gasFee: decoded.GasFee},
 		createdAt:     time.Now(),
 		miningStartAt: start,
-	}:
+	}, nil
+}
+
+func (w *worker) enqueueBidBlockTask(task *task, systemTxs int) {
+	// assembleVoteAttestation + sign header happen inside Seal.
+	select {
+	case w.taskCh <- task:
 		log.Info("[BID BLOCK COMMIT]",
-			"number", block.Number(),
-			"builder", decoded.Builder,
-			"txs", len(allTxs),
-			"systemTxs", len(allTxs)-systemStart,
-			"gas", block.GasUsed(),
-			"gasFee", decoded.GasFee)
+			"number", task.block.Number(),
+			"builder", task.bidBlockInfo.builder,
+			"txs", len(task.block.Transactions()),
+			"systemTxs", systemTxs,
+			"gas", task.block.GasUsed(),
+			"gasFee", task.bidBlockInfo.gasFee)
 	case <-w.exitCh:
 		log.Info("Worker has exited")
 	}
-	return nil
 }
 
 // commit runs any post-transaction state modifications, assembles the final block
