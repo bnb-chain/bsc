@@ -627,13 +627,6 @@ func (w *worker) resultLoop() {
 				logs = append(logs, receipt.Logs...)
 			}
 
-			// add BAL to the block
-			bal := task.state.GetEncodedBlockAccessList(block)
-			if bal != nil && w.engine.SignBAL(bal) == nil {
-				block = block.WithBAL(bal)
-			}
-			task.state.DumpAccessList(block)
-
 			// Commit block and state to database.
 			start := time.Now()
 			status, err := w.chain.WriteBlockAndSetHead(block, receipts, logs, task.state, w.mux)
