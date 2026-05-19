@@ -285,9 +285,14 @@ func New(
 	if err != nil {
 		panic(err)
 	}
-	for _, method := range signableSystemTxMethods {
-		if _, ok := vABI.Methods[method]; !ok {
-			panic(fmt.Sprintf("missing validator set ABI method %s", method))
+	for methodName, selector := range signableSystemTxSelectors {
+		method, ok := vABI.Methods[methodName]
+		if !ok {
+			panic(fmt.Sprintf("missing validator set ABI method %s", methodName))
+		}
+		if !bytes.Equal(method.ID, selector[:]) {
+			panic(fmt.Sprintf("invalid validator set ABI selector for %s: got 0x%x, want 0x%x",
+				methodName, method.ID, selector[:]))
 		}
 	}
 	sABI, err := abi.JSON(strings.NewReader(slashABI))
@@ -1485,12 +1490,6 @@ func (p *Parlia) Finalize(chain consensus.ChainHeaderReader, header *types.Heade
 	return nil
 }
 
-// FinalizeOpts controls system-tx signing during block assembly.
-type FinalizeOpts struct {
-	SignSystemTx bool
-}
-
-// systemTxMode selects how generated system txs are handled.
 type systemTxMode uint8
 
 const (
@@ -1499,16 +1498,13 @@ const (
 	systemTxPacking
 )
 
-// FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
-// nor block rewards given, and returns the final block.
 func (p *Parlia) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
 	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
-	return p.FinalizeAndAssembleWithOpts(chain, header, state, body, receipts, tracer, FinalizeOpts{SignSystemTx: true})
+	return p.finalizeAndAssemble(chain, header, state, body, receipts, tracer, systemTxMining)
 }
 
-// FinalizeAndAssembleWithOpts controls whether generated system txs are signed.
-func (p *Parlia) FinalizeAndAssembleWithOpts(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
-	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks, opts FinalizeOpts) (*types.Block, []*types.Receipt, error) {
+func (p *Parlia) finalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
+	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks, mode systemTxMode) (*types.Block, []*types.Receipt, error) {
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	cx := chainContext{ChainHeaderReader: chain, parlia: p}
 
@@ -1522,11 +1518,6 @@ func (p *Parlia) FinalizeAndAssembleWithOpts(chain consensus.ChainHeaderReader, 
 	parent := chain.GetHeaderByHash(header.ParentHash)
 	if parent == nil {
 		return nil, nil, errors.New("parent not found")
-	}
-
-	mode := systemTxPacking
-	if opts.SignSystemTx {
-		mode = systemTxMining
 	}
 
 	systemcontracts.TryUpdateBuildInSystemContract(p.chainConfig, header.Number, parent.Time, header.Time, state, false)

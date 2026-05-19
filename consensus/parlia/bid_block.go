@@ -33,10 +33,10 @@ func isZeroSig(v, r, s *big.Int) bool {
 	return isZero(v) && isZero(r) && isZero(s)
 }
 
-var signableSystemTxMethods = []string{
-	"deposit",
-	"distributeFinalityReward",
-	"updateValidatorSetV2",
+var signableSystemTxSelectors = map[string][4]byte{
+	"deposit":                  {0xf3, 0x40, 0xfa, 0x01},
+	"distributeFinalityReward": {0x30, 0x0c, 0x35, 0x67},
+	"updateValidatorSetV2":     {0x1e, 0x4c, 0x15, 0x24},
 }
 
 // IsSignableSystemTx reports whether tx can be bind-signed for BidBlock.
@@ -55,9 +55,8 @@ func (p *Parlia) hasSignableSelector(data []byte) bool {
 		return false
 	}
 	selector := data[:4]
-	for _, name := range signableSystemTxMethods {
-		method := p.validatorSetABI.Methods[name]
-		if bytes.Equal(selector, method.ID) {
+	for _, methodSelector := range signableSystemTxSelectors {
+		if bytes.Equal(selector, methodSelector[:]) {
 			return true
 		}
 	}
@@ -66,7 +65,7 @@ func (p *Parlia) hasSignableSelector(data []byte) bool {
 
 type expectedSystemTxEntry struct {
 	method   string
-	selector []byte
+	selector [4]byte
 }
 
 // ExpectedSystemTxShape returns the expected trailing system-tx order for accepted BidBlocks:
@@ -111,7 +110,7 @@ func (p *Parlia) VerifySystemTxShape(txs []*types.Transaction, shape []expectedS
 			len(shape), txSelector(txs[len(shape)]))
 	}
 	for i, exp := range shape {
-		if !bytes.HasPrefix(txs[i].Data(), exp.selector) {
+		if !bytes.HasPrefix(txs[i].Data(), exp.selector[:]) {
 			return fmt.Errorf("expected system tx %q at position %d, got selector 0x%x",
 				exp.method, i, txSelector(txs[i]))
 		}
@@ -137,25 +136,22 @@ func (p *Parlia) ExtractBidBlockDepositValue(txs []*types.Transaction) *big.Int 
 		if !p.IsUnsignedSystemTxCandidate(tx) {
 			break
 		}
-
-		to := tx.To()
-		if to != nil &&
-			*to == valContract &&
-			len(depositSel) == 4 &&
+		// tx.To() is guaranteed non-nil by IsUnsignedSystemTxCandidate.
+		if *tx.To() == valContract &&
 			len(tx.Data()) >= 4 &&
-			bytes.Equal(tx.Data()[:4], depositSel) {
+			bytes.Equal(tx.Data()[:4], depositSel[:]) {
 			return new(big.Int).Set(tx.Value())
 		}
 	}
 	return new(big.Int)
 }
 
-func (p *Parlia) selectorFor(methodName string) []byte {
-	method, ok := p.validatorSetABI.Methods[methodName]
+func (p *Parlia) selectorFor(methodName string) [4]byte {
+	selector, ok := signableSystemTxSelectors[methodName]
 	if !ok {
-		return nil
+		panic(fmt.Sprintf("missing fixed system tx selector %s", methodName))
 	}
-	return method.ID
+	return selector
 }
 
 // PrepareForBidBlock prepares consensus header fields for BidBlock construction.
@@ -189,7 +185,7 @@ func (p *Parlia) blockTimeForBidBlock(snap *Snapshot, header, parent *types.Head
 func (p *Parlia) FinalizeAndAssembleBidBlock(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
 	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, *big.Int, []*types.Receipt, error) {
 	gasFee := state.GetBalance(consensus.SystemAddress).ToBig()
-	block, receipts, err := p.FinalizeAndAssembleWithOpts(chain, header, state, body, receipts, tracer, FinalizeOpts{SignSystemTx: false})
+	block, receipts, err := p.finalizeAndAssemble(chain, header, state, body, receipts, tracer, systemTxPacking)
 	if err != nil {
 		return nil, nil, nil, err
 	}
