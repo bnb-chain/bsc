@@ -238,10 +238,10 @@ func TestBidBlockPermission_GetStatus(t *testing.T) {
 }
 
 func TestBidBlockAdmission_RevokedDoesNotConsumeQuota(t *testing.T) {
+	permMgr := NewBidBlockPermissionManager()
 	b := &bidSimulator{
 		builders:          make(map[common.Address]*builderclient.Client),
 		pending:           make(map[uint64]map[common.Address]map[common.Hash]struct{}),
-		permMgr:           NewBidBlockPermissionManager(),
 		maxBidsPerBuilder: 2,
 	}
 
@@ -249,13 +249,13 @@ func TestBidBlockAdmission_RevokedDoesNotConsumeQuota(t *testing.T) {
 	const blockNum uint64 = 100
 
 	b.builders[builder] = nil
-	b.permMgr.Revoke(builder, RevokeReasonInsertChainFailed, common.Hash{}, blockNum-1)
+	permMgr.Revoke(builder, RevokeReasonInsertChainFailed, common.Hash{}, blockNum-1)
 
 	if !b.ExistBuilder(builder) {
 		t.Fatal("registered builder must pass ExistBuilder")
 	}
-	if b.IsBidBlockAllowed(builder) {
-		t.Fatal("revoked builder must fail IsBidBlockAllowed")
+	if permMgr.IsAllowed(builder) {
+		t.Fatal("revoked builder must fail permission check")
 	}
 
 	b.pendingMu.RLock()
@@ -317,15 +317,14 @@ func TestBidBlockAdmission_DisabledDoesNotConsumeQuota(t *testing.T) {
 	}
 }
 
-func TestBidBlockPermission_SharedManager(t *testing.T) {
+func TestMinerBidBlockPermission_UsesWorkerManager(t *testing.T) {
 	m := NewBidBlockPermissionManager()
-	w := &worker{permMgr: m}
-	b := &bidSimulator{permMgr: m}
+	miner := &Miner{worker: &worker{permMgr: m}}
 	builder := common.HexToAddress("0x1")
 
-	w.permMgr.Revoke(builder, RevokeReasonGasFeeOverClaim, common.Hash{}, 1)
-	if b.IsBidBlockAllowed(builder) {
-		t.Fatal("bidSimulator should observe worker revoke")
+	m.Revoke(builder, RevokeReasonGasFeeOverClaim, common.Hash{}, 1)
+	if miner.GetBidBlockPermission(builder).Allowed {
+		t.Fatal("miner should report worker revoke")
 	}
 }
 

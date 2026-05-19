@@ -145,9 +145,6 @@ type bidSimulator struct {
 	bestBidBlockMu sync.RWMutex
 	bestBidBlock   map[common.Hash]*types.DecodedBidBlock // parentHash -> best bid block
 	newBidBlockCh  chan newBidBlockPackage                // channel for incoming bid blocks
-
-	// SendBidBlock permission is separate from legacy SendBid admission.
-	permMgr *BidBlockPermissionManager
 }
 
 func newBidSimulator(
@@ -158,11 +155,7 @@ func newBidSimulator(
 	chainConfig *params.ChainConfig,
 	engine consensus.Engine,
 	bidWorker bidWorker,
-	permMgr *BidBlockPermissionManager,
 ) *bidSimulator {
-	if permMgr == nil {
-		permMgr = NewBidBlockPermissionManager()
-	}
 	b := &bidSimulator{
 		config:        config,
 		minGasPrice:   minGasPrice,
@@ -183,7 +176,6 @@ func newBidSimulator(
 		bidsToSim:     make(map[uint64][]*BidRuntime),
 		bestBidBlock:  make(map[common.Hash]*types.DecodedBidBlock),
 		newBidBlockCh: make(chan newBidBlockPackage, 100),
-		permMgr:       permMgr,
 	}
 	if delayLeftOver != nil {
 		b.delayLeftOver = *delayLeftOver
@@ -300,30 +292,6 @@ func (b *bidSimulator) ExistBuilder(builder common.Address) bool {
 	_, ok := b.builders[builder]
 
 	return ok
-}
-
-// IsBidBlockAllowed reports whether builder may use SendBidBlock.
-func (b *bidSimulator) IsBidBlockAllowed(builder common.Address) bool {
-	return b.permMgr.IsAllowed(builder)
-}
-
-func (b *bidSimulator) GetBidBlockPermission(builder common.Address) types.BidBlockPermissionStatus {
-	return b.permMgr.GetStatus(builder)
-}
-
-func (b *bidSimulator) SetBidBlockPermission(builder common.Address, allowed bool) {
-	b.permMgr.SetAllowed(builder, allowed)
-	if allowed {
-		return
-	}
-	// Drop already cached BidBlocks from this builder so manual deny takes effect immediately.
-	b.bestBidBlockMu.Lock()
-	for parent, block := range b.bestBidBlock {
-		if block.Builder == builder {
-			delete(b.bestBidBlock, parent)
-		}
-	}
-	b.bestBidBlockMu.Unlock()
 }
 
 // best bid here is based on packedBlockReward after the bid is simulated
@@ -685,10 +653,6 @@ func (b *bidSimulator) clearLoop() {
 
 // AddBidBlock keeps the best BidBlock for a given parent hash.
 func (b *bidSimulator) AddBidBlock(parentHash common.Hash, block *types.DecodedBidBlock) error {
-	if !b.permMgr.IsAllowed(block.Builder) {
-		return errors.New("BidBlock permission revoked")
-	}
-
 	b.bestBidBlockMu.Lock()
 	defer b.bestBidBlockMu.Unlock()
 
@@ -716,17 +680,7 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 	}
 
 	header := decoded.Header
-	if header == nil {
-		return errors.New("bid block header is nil")
-	}
-	if decoded.GasFee == nil || decoded.GasFee.Sign() < 0 {
-		return errors.New("invalid BidBlock GasFee")
-	}
-
 	parent := b.chain.GetHeaderByHash(header.ParentHash)
-	if parent == nil {
-		return fmt.Errorf("parent not found: %s", header.ParentHash.Hex())
-	}
 
 	// 1. Number must equal parent.Number + 1.
 	expectedNumber := new(big.Int).Add(parent.Number, big.NewInt(1))

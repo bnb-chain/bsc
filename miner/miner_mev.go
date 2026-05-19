@@ -49,11 +49,11 @@ func (miner *Miner) HasBuilder(builder common.Address) bool {
 }
 
 func (miner *Miner) GetBidBlockPermission(builder common.Address) types.BidBlockPermissionStatus {
-	return miner.bidSimulator.GetBidBlockPermission(builder)
+	return miner.worker.permMgr.GetStatus(builder)
 }
 
 func (miner *Miner) SetBidBlockPermission(builder common.Address, allowed bool) {
-	miner.bidSimulator.SetBidBlockPermission(builder, allowed)
+	miner.worker.permMgr.SetAllowed(builder, allowed)
 }
 
 func (miner *Miner) bidBlockEnabled() bool {
@@ -81,7 +81,7 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 	}
 
 	// Check permission before CheckPending so rejected BidBlocks do not use quota.
-	if !miner.bidSimulator.IsBidBlockAllowed(builder) {
+	if !miner.worker.permMgr.IsAllowed(builder) {
 		return common.Hash{}, types.NewInvalidBidError("builder BidBlock permission revoked, fallback to SendBid")
 	}
 
