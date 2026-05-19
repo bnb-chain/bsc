@@ -93,6 +93,11 @@ type newBidPackage struct {
 	receiveTime int64
 }
 
+type newBidBlockPackage struct {
+	bidBlock *types.DecodedBidBlock
+	feedback chan error
+}
+
 // bidSimulator is in charge of receiving bid from builders, reporting issue to builders.
 // And take care of bid simulation, rewards computing, best bid maintaining.
 type bidSimulator struct {
@@ -139,7 +144,7 @@ type bidSimulator struct {
 	// SendBidBlock fields
 	bestBidBlockMu sync.RWMutex
 	bestBidBlock   map[common.Hash]*types.DecodedBidBlock // parentHash -> best bid block
-	newBidBlockCh  chan *types.DecodedBidBlock            // channel for incoming bid blocks
+	newBidBlockCh  chan newBidBlockPackage                // channel for incoming bid blocks
 
 	// SendBidBlock permission is separate from legacy SendBid admission.
 	permMgr *BidBlockPermissionManager
@@ -177,7 +182,7 @@ func newBidSimulator(
 		simulatingBid: make(map[common.Hash]*BidRuntime),
 		bidsToSim:     make(map[uint64][]*BidRuntime),
 		bestBidBlock:  make(map[common.Hash]*types.DecodedBidBlock),
-		newBidBlockCh: make(chan *types.DecodedBidBlock, 100),
+		newBidBlockCh: make(chan newBidBlockPackage, 100),
 		permMgr:       permMgr,
 	}
 	if delayLeftOver != nil {
@@ -664,19 +669,19 @@ func (b *bidSimulator) clearLoop() {
 }
 
 // AddBidBlock keeps the best BidBlock for a given parent hash.
-func (b *bidSimulator) AddBidBlock(parentHash common.Hash, block *types.DecodedBidBlock) bool {
+func (b *bidSimulator) AddBidBlock(parentHash common.Hash, block *types.DecodedBidBlock) error {
 	if !b.permMgr.IsAllowed(block.Builder) {
-		return false
+		return errors.New("BidBlock permission revoked")
 	}
 
 	b.bestBidBlockMu.Lock()
 	defer b.bestBidBlockMu.Unlock()
 
 	if existing := b.bestBidBlock[parentHash]; existing != nil && existing.GasFee.Cmp(block.GasFee) >= 0 {
-		return false
+		return fmt.Errorf("BidBlock gasFee below current best: got %v, best %v", block.GasFee, existing.GasFee)
 	}
 	b.bestBidBlock[parentHash] = block
-	return true
+	return nil
 }
 
 // GetBestBidBlock returns the best BidBlock for a given parent hash.
@@ -688,6 +693,7 @@ func (b *bidSimulator) GetBestBidBlock(parentHash common.Hash) *types.DecodedBid
 
 // preSealVerifyBidBlock validates deterministic header fields before selection.
 // Execution-result fields are deferred to InsertChain.
+// TODO: extract shared deterministic Parlia header checks when this path grows.
 func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) error {
 	parliaEngine, ok := b.engine.(*parlia.Parlia)
 	if !ok {
@@ -748,10 +754,18 @@ func (b *bidSimulator) sendBidBlock(_ context.Context, block *types.DecodedBidBl
 	timer := time.NewTimer(1 * time.Second)
 	defer timer.Stop()
 
+	replyCh := make(chan error, 1)
+
 	select {
-	case b.newBidBlockCh <- block:
+	case b.newBidBlockCh <- newBidBlockPackage{bidBlock: block, feedback: replyCh}:
 		b.AddPending(block.BlockNumber(), block.Builder, block.Hash())
-		return nil
+	case <-timer.C:
+		return types.ErrMevBusy
+	}
+
+	select {
+	case reply := <-replyCh:
+		return reply
 	case <-timer.C:
 		return types.ErrMevBusy
 	}
@@ -761,8 +775,12 @@ func (b *bidSimulator) sendBidBlock(_ context.Context, block *types.DecodedBidBl
 func (b *bidSimulator) newBidBlockLoop() {
 	for {
 		select {
-		case block := <-b.newBidBlockCh:
+		case newBidBlock := <-b.newBidBlockCh:
+			block := newBidBlock.bidBlock
 			if !b.isRunning() || !b.receivingBid() {
+				if newBidBlock.feedback != nil {
+					newBidBlock.feedback <- errors.New("BidBlock is discarded, not receiving bids")
+				}
 				continue
 			}
 
@@ -770,14 +788,21 @@ func (b *bidSimulator) newBidBlockLoop() {
 			currentBlock := b.chain.CurrentBlock()
 			if block.BlockNumber() <= currentBlock.Number.Uint64() {
 				log.Debug("BidBlock: discard stale block", "blockNumber", block.BlockNumber())
+				if newBidBlock.feedback != nil {
+					newBidBlock.feedback <- fmt.Errorf("BidBlock is discarded, stale block number: %d, latest block: %d", block.BlockNumber(), currentBlock.Number.Uint64())
+				}
 				continue
 			}
 
-			if !b.AddBidBlock(block.ParentHash(), block) {
-				log.Debug("BidBlock: discard BidBlock below current best or not allowed",
+			if err := b.AddBidBlock(block.ParentHash(), block); err != nil {
+				log.Debug("BidBlock: discard BidBlock",
 					"blockNumber", block.BlockNumber(),
 					"builder", block.Builder,
-					"gasFee", block.GasFee)
+					"gasFee", block.GasFee,
+					"err", err)
+				if newBidBlock.feedback != nil {
+					newBidBlock.feedback <- err
+				}
 				continue
 			}
 
@@ -786,6 +811,9 @@ func (b *bidSimulator) newBidBlockLoop() {
 				"builder", block.Builder,
 				"gasFee", block.GasFee,
 				"txs", len(block.Txs))
+			if newBidBlock.feedback != nil {
+				newBidBlock.feedback <- nil
+			}
 
 		case <-b.exitCh:
 			return
