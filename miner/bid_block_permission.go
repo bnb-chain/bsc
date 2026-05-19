@@ -17,11 +17,9 @@ import (
 type BidBlockRevokeReason string
 
 const (
-	RevokeReasonInsertChainFailed    BidBlockRevokeReason = "insertchain_failed"
-	RevokeReasonGasFeeOverClaim      BidBlockRevokeReason = "gasfee_overclaim"
-	RevokeReasonSystemTxInvalid      BidBlockRevokeReason = "system_tx_invalid"
-	RevokeReasonBidBlockCommitFailed BidBlockRevokeReason = "bidblock_commit_failed"
-	RevokeReasonManual               BidBlockRevokeReason = "manual"
+	RevokeReasonInsertChainFailed BidBlockRevokeReason = "insertchain_failed"
+	RevokeReasonGasFeeOverClaim   BidBlockRevokeReason = "gasfee_overclaim"
+	RevokeReasonManual            BidBlockRevokeReason = "manual"
 )
 
 // BidBlockRevokeRecord holds one active revoke event.
@@ -52,13 +50,13 @@ func NewBidBlockPermissionManager() *BidBlockPermissionManager {
 // IsAllowed reports whether builder may currently use SendBidBlock.
 func (m *BidBlockPermissionManager) IsAllowed(builder common.Address) bool {
 	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.isAllowed(builder, m.clock())
+}
+
+func (m *BidBlockPermissionManager) isAllowed(builder common.Address, now time.Time) bool {
 	rec, found := m.revoked[builder]
-	clock := m.clock
-	m.mu.RUnlock()
-	if !found {
-		return true
-	}
-	return !sameUTCDay(rec.RevokedAt, clock())
+	return !found || !sameUTCDay(rec.RevokedAt, now)
 }
 
 // Revoke marks builder as denied for the remainder of the current UTC day.
@@ -78,34 +76,23 @@ func (m *BidBlockPermissionManager) Revoke(
 	}
 }
 
-// GetRecord returns builder's active revoke record.
-func (m *BidBlockPermissionManager) GetRecord(builder common.Address) (BidBlockRevokeRecord, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	rec, found := m.revoked[builder]
-	if !found || !sameUTCDay(rec.RevokedAt, m.clock()) {
-		return BidBlockRevokeRecord{}, false
-	}
-	return rec, true
-}
-
 func (m *BidBlockPermissionManager) GetStatus(builder common.Address) types.BidBlockPermissionStatus {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	now := m.clock()
 	status := types.BidBlockPermissionStatus{
 		Allowed: true,
-		ResetAt: nextUTCDay(now),
 	}
-	rec, found := m.revoked[builder]
-	if !found || !sameUTCDay(rec.RevokedAt, now) {
+	if m.isAllowed(builder, now) {
 		return status
 	}
+	rec := m.revoked[builder]
 	status.Allowed = false
 	status.Reason = string(rec.Reason)
 	status.BlockHash = rec.BlockHash
 	status.BlockNum = rec.BlockNum
 	status.RevokedAt = rec.RevokedAt
+	status.ResetAt = nextUTCDay(now)
 	return status
 }
 
@@ -134,13 +121,6 @@ func (m *BidBlockPermissionManager) SetAllowed(builder common.Address, allowed b
 		RevokedAt: m.clock(),
 		Reason:    RevokeReasonManual,
 	}
-}
-
-// setClock replaces the time source for tests.
-func (m *BidBlockPermissionManager) setClock(f func() time.Time) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.clock = f
 }
 
 func sameUTCDay(t1, t2 time.Time) bool {

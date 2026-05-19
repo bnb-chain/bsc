@@ -16,13 +16,30 @@ import (
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
 )
 
+func getBidBlockPermissionRecord(m *BidBlockPermissionManager, builder common.Address) (BidBlockRevokeRecord, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	now := m.clock()
+	rec, found := m.revoked[builder]
+	if !found || !sameUTCDay(rec.RevokedAt, now) {
+		return BidBlockRevokeRecord{}, false
+	}
+	return rec, true
+}
+
+func setBidBlockPermissionClock(m *BidBlockPermissionManager, f func() time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.clock = f
+}
+
 func TestBidBlockPermission_DefaultActive(t *testing.T) {
 	m := NewBidBlockPermissionManager()
 	builder := common.HexToAddress("0x1")
 	if !m.IsAllowed(builder) {
 		t.Fatal("default state should be Active for any builder")
 	}
-	if _, ok := m.GetRecord(builder); ok {
+	if _, ok := getBidBlockPermissionRecord(m, builder); ok {
 		t.Fatal("no record expected for fresh builder")
 	}
 }
@@ -37,7 +54,7 @@ func TestBidBlockPermission_RevokeBlocks(t *testing.T) {
 		t.Fatal("revoked builder should not be allowed in same UTC day")
 	}
 
-	rec, ok := m.GetRecord(builder)
+	rec, ok := getBidBlockPermissionRecord(m, builder)
 	if !ok {
 		t.Fatal("record expected after Revoke")
 	}
@@ -73,7 +90,7 @@ func TestBidBlockPermission_RevokeOverwritesSameDay(t *testing.T) {
 	m.Revoke(builder, RevokeReasonInsertChainFailed, common.HexToHash("0x1"), 1)
 	m.Revoke(builder, RevokeReasonGasFeeOverClaim, common.HexToHash("0x2"), 2)
 
-	rec, ok := m.GetRecord(builder)
+	rec, ok := getBidBlockPermissionRecord(m, builder)
 	if !ok {
 		t.Fatal("record expected")
 	}
@@ -92,17 +109,17 @@ func TestBidBlockPermission_LazyResetCrossDay(t *testing.T) {
 	day1 := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
 	day2 := day1.Add(24 * time.Hour)
 
-	m.setClock(func() time.Time { return day1 })
+	setBidBlockPermissionClock(m, func() time.Time { return day1 })
 	m.Revoke(builder, RevokeReasonInsertChainFailed, common.Hash{}, 1)
 	if m.IsAllowed(builder) {
 		t.Fatal("revoked on day1 should be blocked on day1")
 	}
 
-	m.setClock(func() time.Time { return day2 })
+	setBidBlockPermissionClock(m, func() time.Time { return day2 })
 	if !m.IsAllowed(builder) {
 		t.Fatal("cross-day record should be treated as Active (lazy reset)")
 	}
-	if _, ok := m.GetRecord(builder); ok {
+	if _, ok := getBidBlockPermissionRecord(m, builder); ok {
 		t.Fatal("getRecord should report expired on cross-day")
 	}
 }
@@ -112,11 +129,11 @@ func TestBidBlockPermission_SameDayBoundary(t *testing.T) {
 	builder := common.HexToAddress("0x1")
 
 	near := time.Date(2026, 5, 8, 23, 59, 59, 0, time.UTC)
-	m.setClock(func() time.Time { return near })
+	setBidBlockPermissionClock(m, func() time.Time { return near })
 	m.Revoke(builder, RevokeReasonInsertChainFailed, common.Hash{}, 1)
 
 	justAfter := time.Date(2026, 5, 9, 0, 0, 1, 0, time.UTC)
-	m.setClock(func() time.Time { return justAfter })
+	setBidBlockPermissionClock(m, func() time.Time { return justAfter })
 	if !m.IsAllowed(builder) {
 		t.Fatal("revoke at 23:59:59 should not survive past 00:00 UTC")
 	}
@@ -177,7 +194,7 @@ func TestBidBlockPermission_ConcurrentAccess(t *testing.T) {
 		b := builders[i%len(builders)]
 		go func() { defer wg.Done(); m.IsAllowed(b) }()
 		go func() { defer wg.Done(); m.Revoke(b, RevokeReasonInsertChainFailed, common.Hash{}, 1) }()
-		go func() { defer wg.Done(); m.GetRecord(b) }()
+		go func() { defer wg.Done(); getBidBlockPermissionRecord(m, b) }()
 	}
 	wg.Wait()
 }
@@ -191,7 +208,7 @@ func TestBidBlockPermission_ActiveRevokeCount(t *testing.T) {
 
 	day1 := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
 	day2 := day1.Add(24 * time.Hour)
-	m.setClock(func() time.Time { return day1 })
+	setBidBlockPermissionClock(m, func() time.Time { return day1 })
 
 	a := common.HexToAddress("0xa")
 	b := common.HexToAddress("0xb")
@@ -202,7 +219,7 @@ func TestBidBlockPermission_ActiveRevokeCount(t *testing.T) {
 		t.Fatalf("two revoked: got %d, want 2", got)
 	}
 
-	m.setClock(func() time.Time { return day2 })
+	setBidBlockPermissionClock(m, func() time.Time { return day2 })
 	if got := m.ActiveRevokeCount(); got != 0 {
 		t.Fatalf("after cross-day: got %d, want 0 (entries are stale, not active)", got)
 	}
@@ -213,14 +230,14 @@ func TestBidBlockPermission_GetStatus(t *testing.T) {
 	builder := common.HexToAddress("0x1")
 	now := time.Date(2026, 5, 9, 10, 0, 0, 0, time.UTC)
 	resetAt := time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)
-	m.setClock(func() time.Time { return now })
+	setBidBlockPermissionClock(m, func() time.Time { return now })
 
 	status := m.GetStatus(builder)
 	if !status.Allowed {
 		t.Fatal("fresh builder should be allowed")
 	}
-	if !status.ResetAt.Equal(resetAt) {
-		t.Fatalf("resetAt: got %s, want %s", status.ResetAt, resetAt)
+	if !status.ResetAt.IsZero() {
+		t.Fatalf("allowed status should not set resetAt: got %s", status.ResetAt)
 	}
 
 	hash := common.HexToHash("0xabc")
@@ -336,7 +353,7 @@ func TestBidBlockPermission_SetAllowed_Deny(t *testing.T) {
 	if m.IsAllowed(builder) {
 		t.Fatal("builder should be denied after SetAllowed(false)")
 	}
-	rec, ok := m.GetRecord(builder)
+	rec, ok := getBidBlockPermissionRecord(m, builder)
 	if !ok {
 		t.Fatal("record expected after SetAllowed(false)")
 	}
@@ -354,7 +371,7 @@ func TestBidBlockPermission_SetAllowed_Clear(t *testing.T) {
 	if !m.IsAllowed(builder) {
 		t.Fatal("manual SetAllowed(true) should override revoke")
 	}
-	if _, ok := m.GetRecord(builder); ok {
+	if _, ok := getBidBlockPermissionRecord(m, builder); ok {
 		t.Fatal("record should be cleared")
 	}
 }
