@@ -285,6 +285,11 @@ func New(
 	if err != nil {
 		panic(err)
 	}
+	for _, method := range signableSystemTxMethods {
+		if _, ok := vABI.Methods[method]; !ok {
+			panic(fmt.Sprintf("missing validator set ABI method %s", method))
+		}
+	}
 	sABI, err := abi.JSON(strings.NewReader(slashABI))
 	if err != nil {
 		panic(err)

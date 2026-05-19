@@ -56,10 +56,7 @@ func (p *Parlia) hasSignableSelector(data []byte) bool {
 	}
 	selector := data[:4]
 	for _, name := range signableSystemTxMethods {
-		method, ok := p.validatorSetABI.Methods[name]
-		if !ok {
-			continue
-		}
+		method := p.validatorSetABI.Methods[name]
 		if bytes.Equal(selector, method.ID) {
 			return true
 		}
