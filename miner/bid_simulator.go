@@ -682,38 +682,32 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 	header := decoded.Header
 	parent := b.chain.GetHeaderByHash(header.ParentHash)
 
-	// 1. Number must equal parent.Number + 1.
-	expectedNumber := new(big.Int).Add(parent.Number, big.NewInt(1))
-	if header.Number.Cmp(expectedNumber) != 0 {
-		return fmt.Errorf("invalid number: got %v, want %v", header.Number, expectedNumber)
-	}
-
-	// 2. Coinbase must be the in-turn validator (this node).
+	// 1. Coinbase must be the in-turn validator (this node).
 	expectedCoinbase := b.bidWorker.etherbase()
 	if header.Coinbase != expectedCoinbase {
 		return fmt.Errorf("invalid coinbase: got %s, want %s",
 			header.Coinbase.Hex(), expectedCoinbase.Hex())
 	}
 
-	// 3. TODO: add full GasLimit bounds check when BidBlock pre-seal rules define it.
+	// 2. TODO: add full GasLimit bounds check when BidBlock pre-seal rules define it.
 
-	// 4. GasUsed must not exceed GasLimit (consensus hard rule).
+	// 3. GasUsed must not exceed GasLimit (consensus hard rule).
 	if header.GasUsed > header.GasLimit {
 		return fmt.Errorf("invalid gasUsed: %d > gasLimit %d", header.GasUsed, header.GasLimit)
 	}
 
-	// 5. BaseFee must match the EIP-1559 derived value.
+	// 4. BaseFee must match the EIP-1559 derived value.
 	expectedBaseFee := eip1559.CalcBaseFee(b.chainConfig, parent)
 	if header.BaseFee == nil || header.BaseFee.Cmp(expectedBaseFee) != 0 {
 		return fmt.Errorf("invalid baseFee: got %v, want %v", header.BaseFee, expectedBaseFee)
 	}
 
-	// 6. Difficulty must be in-turn.
+	// 5. Difficulty must be in-turn.
 	if header.Difficulty == nil || header.Difficulty.Cmp(diffInTurn) != 0 {
 		return fmt.Errorf("invalid difficulty: got %v, want %v", header.Difficulty, diffInTurn)
 	}
 
-	// 7. Timestamp must match the deterministic BidBlock time.
+	// 6. Timestamp must match the deterministic BidBlock time.
 	if err := parliaEngine.VerifyBlockTime(b.chain, header, parent); err != nil {
 		return fmt.Errorf("invalid block time: %v", err)
 	}
