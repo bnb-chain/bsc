@@ -1446,17 +1446,9 @@ LOOP:
 			}
 		}
 
-		// Two-stage bid selection.
-		// Stage 1 (single threshold — validator net): pick the best bid
-		//   between simBid (legacy SendBid) and bidBlock (SendBidBlock).
-		//   - Metric: validator net reward
-		//       simBid:   packedValidatorReward (= packedBlockReward * c/10000 - BuilderFee)
-		//       bidBlock: GasFee * c/10000          (BuilderFee == 0 by design)
-		//   - Tie-break: first-come-first-served. simBid is the default winner;
-		//     bidBlock must be strictly greater on validator net to take its place.
-		// Stage 2 (dual threshold — legacy gate): the Stage-1 bid winner vs local.
-		//   - The bid must be strictly better on BOTH blockReward AND
-		//     validatorReward to replace local.
+		// Two-stage bid selection:
+		//   Stage 1: bidBlock vs simBid by validator net reward (bidBlock must be strictly greater).
+		//   Stage 2: Stage-1 winner vs local; must be strictly better on BOTH blockReward AND validatorReward.
 
 		// Local baseline (used in Stage 2).
 		localValidatorReward = new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
@@ -1478,7 +1470,7 @@ LOOP:
 
 	var verifiedTxs *verifiedBidBlockTxs
 	var bidBlockSelected bool
-	verifiedTxs, bidBlockSelected, err := w.selectVerifiedBidBlock(bestWork.header, bestBidBlock, simBidValidatorReward, bestReward, localValidatorReward)
+	verifiedTxs, bidBlockSelected, err := w.verifyAndSelectBidBlock(bestWork.header, bestBidBlock, simBidValidatorReward, bestReward, localValidatorReward)
 	if err != nil {
 		log.Warn("BidBlock failed verify, fallback",
 			"builder", bestBidBlock.Builder,

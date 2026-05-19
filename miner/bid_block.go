@@ -114,7 +114,7 @@ func (w *worker) selectBidBlock(header *types.Header, bidBlock *types.DecodedBid
 	return false
 }
 
-func (w *worker) selectVerifiedBidBlock(header *types.Header, bidBlock *types.DecodedBidBlock, simBidValidatorReward, bestReward, localValidatorReward *uint256.Int) (*verifiedBidBlockTxs, bool, error) {
+func (w *worker) verifyAndSelectBidBlock(header *types.Header, bidBlock *types.DecodedBidBlock, simBidValidatorReward, bestReward, localValidatorReward *uint256.Int) (*verifiedBidBlockTxs, bool, error) {
 	if bidBlock == nil {
 		return nil, false, nil
 	}
