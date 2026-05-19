@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
@@ -455,6 +456,15 @@ func (b *EthAPIBackend) FeeHistory(ctx context.Context, blockCount uint64, lastB
 
 func (b *EthAPIBackend) Chain() *core.BlockChain {
 	return b.eth.BlockChain()
+}
+
+func (b *EthAPIBackend) BaseFee(ctx context.Context) *big.Int {
+	head := b.CurrentHeader()
+	nextBlock := new(big.Int).Add(head.Number, common.Big1)
+	if b.ChainConfig().IsLondon(nextBlock) {
+		return eip1559.CalcBaseFee(b.ChainConfig(), head)
+	}
+	return nil
 }
 
 func (b *EthAPIBackend) BlobBaseFee(ctx context.Context) *big.Int {
