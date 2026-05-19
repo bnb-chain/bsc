@@ -328,3 +328,34 @@ func TestBidBlockPermission_SharedManager(t *testing.T) {
 		t.Fatal("bidSimulator should observe worker revoke")
 	}
 }
+
+func TestBidBlockPermission_SetAllowed_Deny(t *testing.T) {
+	m := NewBidBlockPermissionManager()
+	builder := common.HexToAddress("0x1")
+
+	m.SetAllowed(builder, false)
+	if m.IsAllowed(builder) {
+		t.Fatal("builder should be denied after SetAllowed(false)")
+	}
+	rec, ok := m.GetRecord(builder)
+	if !ok {
+		t.Fatal("record expected after SetAllowed(false)")
+	}
+	if rec.Reason != RevokeReasonManual {
+		t.Fatalf("reason: got %q, want %q", rec.Reason, RevokeReasonManual)
+	}
+}
+
+func TestBidBlockPermission_SetAllowed_Clear(t *testing.T) {
+	m := NewBidBlockPermissionManager()
+	builder := common.HexToAddress("0x1")
+
+	m.Revoke(builder, RevokeReasonInsertChainFailed, common.HexToHash("0xabc"), 100)
+	m.SetAllowed(builder, true)
+	if !m.IsAllowed(builder) {
+		t.Fatal("manual SetAllowed(true) should override revoke")
+	}
+	if _, ok := m.GetRecord(builder); ok {
+		t.Fatal("record should be cleared")
+	}
+}

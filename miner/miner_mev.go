@@ -52,6 +52,10 @@ func (miner *Miner) GetBidBlockPermission(builder common.Address) types.BidBlock
 	return miner.bidSimulator.GetBidBlockPermission(builder)
 }
 
+func (miner *Miner) SetBidBlockPermission(builder common.Address, allowed bool) {
+	miner.bidSimulator.SetBidBlockPermission(builder, allowed)
+}
+
 func (miner *Miner) bidBlockEnabled() bool {
 	return miner.worker.config.Mev.Enabled != nil && *miner.worker.config.Mev.Enabled &&
 		miner.worker.config.Mev.BidBlockEnabled != nil && *miner.worker.config.Mev.BidBlockEnabled

@@ -21,6 +21,7 @@ const (
 	RevokeReasonGasFeeOverClaim      BidBlockRevokeReason = "gasfee_overclaim"
 	RevokeReasonSystemTxInvalid      BidBlockRevokeReason = "system_tx_invalid"
 	RevokeReasonBidBlockCommitFailed BidBlockRevokeReason = "bidblock_commit_failed"
+	RevokeReasonManual               BidBlockRevokeReason = "manual"
 )
 
 // BidBlockRevokeRecord holds one active revoke event.
@@ -120,6 +121,19 @@ func (m *BidBlockPermissionManager) ActiveRevokeCount() int {
 		}
 	}
 	return count
+}
+
+func (m *BidBlockPermissionManager) SetAllowed(builder common.Address, allowed bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if allowed {
+		delete(m.revoked, builder)
+		return
+	}
+	m.revoked[builder] = BidBlockRevokeRecord{
+		RevokedAt: m.clock(),
+		Reason:    RevokeReasonManual,
+	}
 }
 
 // setClock replaces the time source for tests.

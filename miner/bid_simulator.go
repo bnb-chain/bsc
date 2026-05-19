@@ -311,6 +311,21 @@ func (b *bidSimulator) GetBidBlockPermission(builder common.Address) types.BidBl
 	return b.permMgr.GetStatus(builder)
 }
 
+func (b *bidSimulator) SetBidBlockPermission(builder common.Address, allowed bool) {
+	b.permMgr.SetAllowed(builder, allowed)
+	if allowed {
+		return
+	}
+	// Drop already cached BidBlocks from this builder so manual deny takes effect immediately.
+	b.bestBidBlockMu.Lock()
+	for parent, block := range b.bestBidBlock {
+		if block.Builder == builder {
+			delete(b.bestBidBlock, parent)
+		}
+	}
+	b.bestBidBlockMu.Unlock()
+}
+
 // best bid here is based on packedBlockReward after the bid is simulated
 func (b *bidSimulator) SetBestBid(prevBlockHash common.Hash, bid *BidRuntime) {
 	b.bestBidMu.Lock()

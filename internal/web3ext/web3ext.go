@@ -144,6 +144,12 @@ web3._extend({
 			name: 'stopWS',
 			call: 'admin_stopWS'
 		}),
+		new web3._extend.Method({
+			name: 'setBidBlockPermission',
+			call: 'admin_setBidBlockPermission',
+			params: 2,
+			inputFormatter: [web3._extend.formatters.inputAddressFormatter, null]
+		}),
 	],
 	properties: [
 		new web3._extend.Property({
