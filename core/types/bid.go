@@ -1,7 +1,6 @@
 package types
 
 import (
-	"errors"
 	"fmt"
 	"math/big"
 	"sync/atomic"
@@ -211,9 +210,6 @@ type BidBlockArgs struct {
 
 // EcrecoverSender recovers the builder address from the signature over BidBlock.Hash().
 func (b *BidBlockArgs) EcrecoverSender() (common.Address, error) {
-	if b.BidBlock == nil {
-		return common.Address{}, errors.New("BidBlock is nil")
-	}
 	pk, err := crypto.SigToPub(b.BidBlock.Hash().Bytes(), b.Signature)
 	if err != nil {
 		return common.Address{}, err
@@ -230,12 +226,12 @@ func (b *BidBlockArgs) ToDecodedBidBlock(builder common.Address) (*DecodedBidBlo
 	}
 
 	return &DecodedBidBlock{
-		Builder:     builder,
-		Header:      b.BidBlock.Header,
-		Txs:         txs,
-		Sidecars:    b.BidBlock.Sidecars,
-		GasFee:      b.BidBlock.GasFee,
-		rawBidBlock: *b.BidBlock,
+		Builder:  builder,
+		Header:   b.BidBlock.Header,
+		Txs:      txs,
+		Sidecars: b.BidBlock.Sidecars,
+		GasFee:   b.BidBlock.GasFee,
+		bidHash:  b.BidBlock.Hash(),
 	}, nil
 }
 
@@ -280,12 +276,12 @@ type DecodedBidBlock struct {
 	Sidecars BlobSidecars
 	GasFee   *big.Int
 
-	rawBidBlock BidBlock
+	bidHash common.Hash
 }
 
-// Hash returns the hash of the underlying BidBlock.
+// Hash returns the hash of the original BidBlock payload.
 func (d *DecodedBidBlock) Hash() common.Hash {
-	return d.rawBidBlock.Hash()
+	return d.bidHash
 }
 
 // BlockNumber returns the block number from the header.

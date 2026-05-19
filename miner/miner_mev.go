@@ -62,6 +62,11 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 		return common.Hash{}, types.NewInvalidBidError("BidBlock disabled, fallback to SendBid")
 	}
 
+	if args == nil || args.BidBlock == nil || args.BidBlock.Header == nil {
+		return common.Hash{}, types.NewInvalidBidError("empty BidBlock or Header")
+	}
+	bb := args.BidBlock
+
 	builder, err := args.EcrecoverSender()
 	if err != nil {
 		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("invalid signature: %v", err))
@@ -76,10 +81,6 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 		return common.Hash{}, types.NewInvalidBidError("builder BidBlock permission revoked, fallback to SendBid")
 	}
 
-	bb := args.BidBlock
-	if bb == nil || bb.Header == nil {
-		return common.Hash{}, types.NewInvalidBidError("empty BidBlock or Header")
-	}
 	if bb.GasFee == nil || bb.GasFee.Sign() < 0 {
 		return common.Hash{}, types.NewInvalidBidError("invalid BidBlock GasFee")
 	}
