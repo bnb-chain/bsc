@@ -764,12 +764,6 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 		return fmt.Errorf("invalid block time: %v", err)
 	}
 
-	depositValue := parliaEngine.ExtractBidBlockDepositValue(decoded.Txs)
-	if decoded.GasFee.Cmp(depositValue) > 0 {
-		b.permMgr.Revoke(decoded.Builder, RevokeReasonGasFeeOverClaim, decoded.Hash(), decoded.BlockNumber())
-		return fmt.Errorf("BidBlock GasFee over-claim: claimed=%v deposit=%v", decoded.GasFee, depositValue)
-	}
-
 	return nil
 }
 

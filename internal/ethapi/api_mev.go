@@ -153,23 +153,24 @@ type BidBlockPermissionResult struct {
 	BlockHash   *common.Hash    `json:"blockHash,omitempty"`
 	BlockNumber *hexutil.Uint64 `json:"blockNumber,omitempty"`
 	RevokedAt   *time.Time      `json:"revokedAt,omitempty"`
-	ResetAt     time.Time       `json:"resetAt"`
+	ResetAt     *time.Time      `json:"resetAt,omitempty"`
 }
 
 func (m *MevAPI) GetBidBlockPermission(builder common.Address) *BidBlockPermissionResult {
 	status := m.b.GetBidBlockPermission(builder)
 	result := &BidBlockPermissionResult{
 		Allowed: status.Allowed,
-		ResetAt: status.ResetAt,
 	}
 	if !status.Allowed {
 		blockHash := status.BlockHash
 		blockNum := hexutil.Uint64(status.BlockNum)
 		revokedAt := status.RevokedAt
+		resetAt := status.ResetAt
 		result.Reason = status.Reason
 		result.BlockHash = &blockHash
 		result.BlockNumber = &blockNum
 		result.RevokedAt = &revokedAt
+		result.ResetAt = &resetAt
 	}
 	return result
 }

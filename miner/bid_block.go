@@ -65,6 +65,20 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 		return
 	}
 
+	p := w.engine.(*parlia.Parlia)
+	actualGasFee := p.ExtractDistributedGasFee(block)
+	if task.bidBlockInfo.gasFee != nil && task.bidBlockInfo.gasFee.Cmp(actualGasFee) > 0 {
+		log.Error("[BID BLOCK GAS FEE OVER-CLAIM]",
+			"number", block.Number(),
+			"hash", hash,
+			"builder", task.bidBlockInfo.builder,
+			"claimed", task.bidBlockInfo.gasFee,
+			"actual", actualGasFee,
+			"revokeReason", RevokeReasonGasFeeOverClaim)
+		w.permMgr.Revoke(task.bidBlockInfo.builder, RevokeReasonGasFeeOverClaim, hash, block.NumberU64())
+		return
+	}
+
 	log.Info("[BID BLOCK VERIFIED]",
 		"number", block.Number(),
 		"hash", hash,
@@ -77,7 +91,7 @@ func (w *worker) getBestBidBlock(header *types.Header) *types.DecodedBidBlock {
 	return w.bidFetcher.GetBestBidBlock(parentHash)
 }
 
-func (w *worker) selectBidBlock(header *types.Header, bidBlock *types.DecodedBidBlock, simBidValidatorReward, bestReward, localValidatorReward *uint256.Int) bool {
+func (w *worker) selectBidBlock(header *types.Header, bidBlock *types.DecodedBidBlock, simBidValidatorReward, bestReward *uint256.Int) bool {
 	if bidBlock == nil {
 		return false
 	}
@@ -98,12 +112,11 @@ func (w *worker) selectBidBlock(header *types.Header, bidBlock *types.DecodedBid
 	log.Info("BidSimulator: BidBlock win bid, compare with local",
 		"block", header.Number.Uint64(),
 		"localBlockReward", bestReward.String(),
-		"localValidatorReward", localValidatorReward.String(),
 		"bidReward", bidBlockFee.String(),
 		"bidValidatorReward", bidBlockValidatorReward.String(),
 		"simBidValidatorReward", simBidVR)
 
-	if bestReward.Cmp(bidBlockFee) < 0 && localValidatorReward.Cmp(bidBlockValidatorReward) < 0 {
+	if bestReward.Cmp(bidBlockFee) < 0 {
 		log.Info("[BID BLOCK selected]",
 			"block", header.Number.Uint64(),
 			"builder", bidBlock.Builder,
@@ -114,7 +127,7 @@ func (w *worker) selectBidBlock(header *types.Header, bidBlock *types.DecodedBid
 	return false
 }
 
-func (w *worker) verifyAndSelectBidBlock(header *types.Header, bidBlock *types.DecodedBidBlock, simBidValidatorReward, bestReward, localValidatorReward *uint256.Int) (*verifiedBidBlockTxs, bool, error) {
+func (w *worker) verifyAndSelectBidBlock(header *types.Header, bidBlock *types.DecodedBidBlock, simBidValidatorReward, bestReward *uint256.Int) (*verifiedBidBlockTxs, bool, error) {
 	if bidBlock == nil {
 		return nil, false, nil
 	}
@@ -124,7 +137,7 @@ func (w *worker) verifyAndSelectBidBlock(header *types.Header, bidBlock *types.D
 	if err != nil {
 		return nil, false, err
 	}
-	selected := w.selectBidBlock(header, bidBlock, simBidValidatorReward, bestReward, localValidatorReward)
+	selected := w.selectBidBlock(header, bidBlock, simBidValidatorReward, bestReward)
 	return verifiedTxs, selected, nil
 }
 
@@ -208,12 +221,10 @@ func (w *worker) prepareBidBlockTask(
 		return nil, errors.New("missing verified BidBlock txs")
 	}
 
-	if len(verifiedTxs.systemTxs) > 0 {
-		// preSealVerifyBidBlock already enforced engine == parlia.
-		p := w.engine.(*parlia.Parlia)
-		if err := bindSignBidBlockSystemTxs(verifiedTxs.systemTxs, w.chainConfig.ChainID, p); err != nil {
-			return nil, err
-		}
+	// preSealVerifyBidBlock already enforced engine == parlia.
+	p := w.engine.(*parlia.Parlia)
+	if err := bindSignBidBlockSystemTxs(verifiedTxs.systemTxs, w.chainConfig.ChainID, p); err != nil {
+		return nil, err
 	}
 
 	header := types.CopyHeader(decoded.Header)

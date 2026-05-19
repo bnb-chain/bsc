@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/clique"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
+	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/txpool"
@@ -213,8 +214,11 @@ func TestGenerateAndImportBlock(t *testing.T) {
 }
 
 func TestCommitBidBlockPreservesBuilderExecutionHeaderFields(t *testing.T) {
+	engine := parlia.New(params.TestChainConfig, rawdb.NewMemoryDatabase(), nil, common.Hash{})
+	defer engine.Close()
 	w := &worker{
 		chainConfig: params.TestChainConfig,
+		engine:      engine,
 		taskCh:      make(chan *task, 1),
 		exitCh:      make(chan struct{}),
 	}

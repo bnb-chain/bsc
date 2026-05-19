@@ -126,20 +126,23 @@ func txSelector(tx *types.Transaction) []byte {
 	return data[:4]
 }
 
-// ExtractBidBlockDepositValue returns the deposit value carried by raw BidBlock system txs.
-func (p *Parlia) ExtractBidBlockDepositValue(txs []*types.Transaction) *big.Int {
+// ExtractDistributedGasFee returns the deposit value distributed to the
+// ValidatorContract in a committed block's trailing system-tx region.
+func (p *Parlia) ExtractDistributedGasFee(block *types.Block) *big.Int {
+	txs := block.Transactions()
 	depositSel := p.selectorFor("deposit")
 	valContract := common.HexToAddress(systemcontracts.ValidatorContract)
 
 	for i := len(txs) - 1; i >= 0; i-- {
 		tx := txs[i]
-		if !p.IsUnsignedSystemTxCandidate(tx) {
+		isSystem, err := p.IsSystemTransaction(tx, block.Header())
+		if err != nil || !isSystem {
 			break
 		}
-		// tx.To() is guaranteed non-nil by IsUnsignedSystemTxCandidate.
-		if *tx.To() == valContract &&
-			len(tx.Data()) >= 4 &&
-			bytes.Equal(tx.Data()[:4], depositSel[:]) {
+		if tx.To() == nil || *tx.To() != valContract {
+			continue
+		}
+		if len(tx.Data()) >= 4 && bytes.Equal(tx.Data()[:4], depositSel[:]) {
 			return new(big.Int).Set(tx.Value())
 		}
 	}

@@ -1470,13 +1470,11 @@ LOOP:
 
 	var verifiedTxs *verifiedBidBlockTxs
 	var bidBlockSelected bool
-	verifiedTxs, bidBlockSelected, err := w.verifyAndSelectBidBlock(bestWork.header, bestBidBlock, simBidValidatorReward, bestReward, localValidatorReward)
+	verifiedTxs, bidBlockSelected, err := w.verifyAndSelectBidBlock(bestWork.header, bestBidBlock, simBidValidatorReward, bestReward)
 	if err != nil {
 		log.Warn("BidBlock failed verify, fallback",
 			"builder", bestBidBlock.Builder,
-			"err", err,
-			"revokeReason", RevokeReasonSystemTxInvalid)
-		w.permMgr.Revoke(bestBidBlock.Builder, RevokeReasonSystemTxInvalid, bestBidBlock.Hash(), bestBidBlock.BlockNumber())
+			"err", err)
 		bidBlockFallback = true
 	}
 	if bidBlockSelected {
@@ -1484,8 +1482,7 @@ LOOP:
 		if err != nil {
 			log.Error("Failed to prepare bid block, fallback",
 				"builder", bestBidBlock.Builder,
-				"err", err,
-				"revokeReason", RevokeReasonBidBlockCommitFailed)
+				"err", err)
 			bidBlockFallback = true
 		} else {
 			w.enqueueBidBlockTask(task, len(verifiedTxs.systemTxs))
