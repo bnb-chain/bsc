@@ -605,6 +605,10 @@ func (w *worker) resultLoop() {
 				continue
 			}
 
+			if !w.recordMinedBlock(block) {
+				continue
+			}
+
 			// BidBlock path: broadcast first, then InsertChain for async verification
 			if task.isBidBlock {
 				w.handleBidBlockResult(block, task)
@@ -638,26 +642,12 @@ func (w *worker) resultLoop() {
 				logs = append(logs, receipt.Logs...)
 			}
 
-			if prev, ok := w.recentMinedBlocks.Get(block.NumberU64()); ok {
-				doubleSign := false
-				prevParents := prev
-				if slices.Contains(prevParents, block.ParentHash()) {
-					log.Error("Reject Double Sign!!", "block", block.NumberU64(),
-						"hash", block.Hash(),
-						"root", block.Root(),
-						"ParentHash", block.ParentHash())
-					doubleSign = true
-				}
-				if doubleSign {
-					continue
-				}
-				prevParents = append(prevParents, block.ParentHash())
-				w.recentMinedBlocks.Add(block.NumberU64(), prevParents)
-			} else {
-				// Add() will call removeOldest internally to remove the oldest element
-				// if the LRU Cache is full
-				w.recentMinedBlocks.Add(block.NumberU64(), []common.Hash{block.ParentHash()})
+			// add BAL to the block
+			bal := task.state.GetEncodedBlockAccessList(block)
+			if bal != nil && w.engine.SignBAL(bal) == nil {
+				block = block.WithBAL(bal)
 			}
+			task.state.DumpAccessList(block)
 
 			// Commit block and state to database.
 			start := time.Now()
@@ -684,22 +674,28 @@ func (w *worker) resultLoop() {
 	}
 }
 
-// handleBidBlockResult handles a sealed BidBlock: double-sign check, broadcast, then InsertChain for verification.
-func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
-	hash := block.Hash()
-
-	// Double-sign check (reuse existing logic)
+func (w *worker) recordMinedBlock(block *types.Block) bool {
 	if prev, ok := w.recentMinedBlocks.Get(block.NumberU64()); ok {
 		if slices.Contains(prev, block.ParentHash()) {
-			log.Error("Reject Double Sign!! (BidBlock)", "block", block.NumberU64(),
-				"hash", hash, "ParentHash", block.ParentHash())
-			return
+			log.Error("Reject Double Sign!!", "block", block.NumberU64(),
+				"hash", block.Hash(),
+				"root", block.Root(),
+				"ParentHash", block.ParentHash())
+			return false
 		}
 		prevParents := append(prev, block.ParentHash())
 		w.recentMinedBlocks.Add(block.NumberU64(), prevParents)
 	} else {
+		// Add() will call removeOldest internally to remove the oldest element
+		// if the LRU Cache is full.
 		w.recentMinedBlocks.Add(block.NumberU64(), []common.Hash{block.ParentHash()})
 	}
+	return true
+}
+
+// handleBidBlockResult handles a sealed BidBlock: broadcast, then InsertChain for verification.
+func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
+	hash := block.Hash()
 
 	// Broadcast the block first (before verification)
 	stats := w.chain.GetBlockStats(hash)
