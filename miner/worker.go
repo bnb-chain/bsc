@@ -141,21 +141,6 @@ type bidBlockTaskInfo struct {
 	gasFee  *big.Int
 }
 
-// bidCandidate represents the Stage-1 bid winner (simBid or bidBlock)
-// carried into Stage 2 of the two-stage bid selection.
-// Exactly one of (env, bidBlock) is non-nil.
-type bidCandidate struct {
-	env             *environment           // non-nil: simBid path
-	bidBlock        *types.DecodedBidBlock // non-nil: bidBlock path
-	bidBlockTxs     []*types.Transaction
-	bidBlockSysFrom int
-	blockReward     *uint256.Int
-	validatorReward *uint256.Int
-	builder         common.Address
-	bidHash         common.Hash // simBid path only, for logging
-	greedyMerged    bool        // simBid path only
-}
-
 // txFits reports whether the transaction fits into the block size limit.
 func (env *environment) txFitsSize(tx *types.Transaction) bool {
 	return env.size+tx.Size() < params.MaxBlockSize-maxBlockSizeBufferZone
@@ -740,27 +725,22 @@ func (w *worker) getBestBidBlock(header *types.Header) *types.DecodedBidBlock {
 	return w.bidFetcher.GetBestBidBlock(parentHash)
 }
 
-func (w *worker) selectBidBlock(header *types.Header, bidBlock *types.DecodedBidBlock, allTxs []*types.Transaction, systemStart int, simBidCandidate *bidCandidate, bestReward, localValidatorReward *uint256.Int) *bidCandidate {
+func (w *worker) selectBidBlock(header *types.Header, bidBlock *types.DecodedBidBlock, simBidValidatorReward, bestReward, localValidatorReward *uint256.Int) bool {
 	if bidBlock == nil {
-		return nil
+		return false
 	}
 
-	bidBlockFee, overflow := uint256.FromBig(bidBlock.GasFee)
-	if overflow {
-		log.Warn("BidBlock GasFee overflow, skipping", "gasFee", bidBlock.GasFee)
-		return nil
-	}
-
+	bidBlockFee := uint256.MustFromBig(bidBlock.GasFee)
 	bidBlockValidatorReward := new(uint256.Int).Mul(bidBlockFee, uint256.NewInt(*w.config.Mev.ValidatorCommission))
 	bidBlockValidatorReward.Div(bidBlockValidatorReward, uint256.NewInt(10000))
 
-	if simBidCandidate != nil && bidBlockValidatorReward.Cmp(simBidCandidate.validatorReward) <= 0 {
-		return nil
+	if simBidValidatorReward != nil && bidBlockValidatorReward.Cmp(simBidValidatorReward) <= 0 {
+		return false
 	}
 
 	simBidVR := "<none>"
-	if simBidCandidate != nil {
-		simBidVR = simBidCandidate.validatorReward.String()
+	if simBidValidatorReward != nil {
+		simBidVR = simBidValidatorReward.String()
 	}
 	// TODO: switch back to Debug after BidBlock rollout stabilizes.
 	log.Info("BidSimulator: BidBlock win bid, compare with local",
@@ -777,29 +757,23 @@ func (w *worker) selectBidBlock(header *types.Header, bidBlock *types.DecodedBid
 			"builder", bidBlock.Builder,
 			"gasFee", bidBlock.GasFee,
 			"txs", len(bidBlock.Txs))
-		return &bidCandidate{
-			bidBlock:        bidBlock,
-			bidBlockTxs:     allTxs,
-			bidBlockSysFrom: systemStart,
-			blockReward:     bidBlockFee,
-			validatorReward: bidBlockValidatorReward,
-			builder:         bidBlock.Builder,
-		}
+		return true
 	}
-	return nil
+	return false
 }
 
-func (w *worker) selectVerifiedBidBlock(header *types.Header, bidBlock *types.DecodedBidBlock, simBidCandidate *bidCandidate, bestReward, localValidatorReward *uint256.Int) (*parlia.Parlia, *bidCandidate, error) {
+func (w *worker) selectVerifiedBidBlock(header *types.Header, bidBlock *types.DecodedBidBlock, simBidValidatorReward, bestReward, localValidatorReward *uint256.Int) (*parlia.Parlia, []*types.Transaction, int, bool, error) {
 	if bidBlock == nil {
-		return nil, nil, nil
+		return nil, nil, 0, false, nil
 	}
 	// preSealVerifyBidBlock already enforced engine == parlia.
 	p := w.engine.(*parlia.Parlia)
 	allTxs, systemStart, err := verifyBidBlockSystemTxs(bidBlock, header, w.chain, p)
 	if err != nil {
-		return p, nil, err
+		return p, nil, 0, false, err
 	}
-	return p, w.selectBidBlock(header, bidBlock, allTxs, systemStart, simBidCandidate, bestReward, localValidatorReward), nil
+	selected := w.selectBidBlock(header, bidBlock, simBidValidatorReward, bestReward, localValidatorReward)
+	return p, allTxs, systemStart, selected, nil
 }
 
 // makeEnv creates a new environment for the sealing block.
@@ -1556,14 +1530,12 @@ LOOP:
 
 	// when out-turn, use bestWork to prevent bundle leakage.
 	// when in-turn, compare with remote work.
+	var bestBid *BidRuntime
 	var bestBidBlock *types.DecodedBidBlock
 	var bidBlockCommitted bool
 	var bidBlockFallback bool
-	// simBidCandidate is the Stage-1 simBid candidate, kept around so that if a
-	// BidBlock wins Stage 2 but later fails verify/commit, we can still fall back
-	// to comparing simBid against local (the legacy dual-threshold gate) instead
-	// of going straight to the local block.
-	var simBidCandidate *bidCandidate
+	var simBidBlockReward *uint256.Int
+	var simBidValidatorReward *uint256.Int
 	var localValidatorReward *uint256.Int
 	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
 		inturnBlocksGauge.Inc(1)
@@ -1602,40 +1574,24 @@ LOOP:
 		localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
 
 		// Stage 1 candidate A — legacy SendBid (simBid).
-		bestBid := w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
+		bestBid = w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
 		if bestBid != nil {
 			bidExistGauge.Inc(1)
 			bestBidGasUsedGauge.Update(int64(bestBid.bid.GasUsed) / 1_000_000)
 			bestWorkGasUsedGauge.Update(int64(bestWork.header.GasUsed) / 1_000_000)
-
-			simBR, simBROverflow := uint256.FromBig(bestBid.packedBlockReward)
-			simVR, simVROverflow := uint256.FromBig(bestBid.packedValidatorReward)
-			if simBROverflow || simVROverflow {
-				log.Warn("simBid reward overflow, skipping",
-					"blockReward", bestBid.packedBlockReward,
-					"validatorReward", bestBid.packedValidatorReward)
-			} else {
-				simBidCandidate = &bidCandidate{
-					env:             bestBid.env,
-					blockReward:     simBR,
-					validatorReward: simVR,
-					builder:         bestBid.bid.Builder,
-					bidHash:         bestBid.bid.Hash(),
-					greedyMerged:    bestBid.greedyMerged,
-				}
-			}
+			simBidBlockReward = uint256.MustFromBig(bestBid.packedBlockReward)
+			simBidValidatorReward = uint256.MustFromBig(bestBid.packedValidatorReward)
 		}
 
 		// Stage 1 candidate B — SendBidBlock.
-		if w.config.Mev.Enabled != nil && *w.config.Mev.Enabled &&
-			w.config.Mev.BidBlockEnabled != nil && *w.config.Mev.BidBlockEnabled {
-			bestBidBlock = w.getBestBidBlock(bestWork.header)
-		}
+		bestBidBlock = w.getBestBidBlock(bestWork.header)
 	}
 
-	var bidWinner *bidCandidate
 	var p *parlia.Parlia
-	p, bidWinner, err := w.selectVerifiedBidBlock(bestWork.header, bestBidBlock, simBidCandidate, bestReward, localValidatorReward)
+	var bidBlockTxs []*types.Transaction
+	var bidBlockSysFrom int
+	var bidBlockSelected bool
+	p, bidBlockTxs, bidBlockSysFrom, bidBlockSelected, err := w.selectVerifiedBidBlock(bestWork.header, bestBidBlock, simBidValidatorReward, bestReward, localValidatorReward)
 	if err != nil {
 		log.Warn("BidBlock failed verify, fallback",
 			"builder", bestBidBlock.Builder,
@@ -1644,17 +1600,16 @@ LOOP:
 		w.permMgr.Revoke(bestBidBlock.Builder, RevokeReasonSystemTxInvalid, bestBidBlock.Hash(), bestBidBlock.BlockNumber())
 		bidBlockFallback = true
 	}
-	if bidWinner != nil {
-		winnerBidBlock := bidWinner.bidBlock
-		task, err := w.prepareBidBlockTask(p, winnerBidBlock, bidWinner.bidBlockTxs, bidWinner.bidBlockSysFrom, bestWork.header, start)
+	if bidBlockSelected {
+		task, err := w.prepareBidBlockTask(p, bestBidBlock, bidBlockTxs, bidBlockSysFrom, bestWork.header, start)
 		if err != nil {
 			log.Error("Failed to prepare bid block, fallback",
-				"builder", winnerBidBlock.Builder,
+				"builder", bestBidBlock.Builder,
 				"err", err,
 				"revokeReason", RevokeReasonBidBlockCommitFailed)
 			bidBlockFallback = true
 		} else {
-			w.enqueueBidBlockTask(task, len(bidWinner.bidBlockTxs)-bidWinner.bidBlockSysFrom)
+			w.enqueueBidBlockTask(task, len(bidBlockTxs)-bidBlockSysFrom)
 			bidBlockCommitted = true
 		}
 	}
@@ -1669,29 +1624,29 @@ LOOP:
 
 	// simBid fallback. Re-runs the legacy dual-threshold gate against simBid
 	// whenever no BidBlock is being committed.
-	if simBidCandidate != nil && simBidCandidate.env != nil &&
-		bestWork != simBidCandidate.env {
+	if bestBid != nil && bestBid.env != nil &&
+		bestWork != bestBid.env {
 		if localValidatorReward == nil {
 			localValidatorReward = new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
 			localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
 		}
-		if bestReward.Cmp(simBidCandidate.blockReward) < 0 &&
-			localValidatorReward.Cmp(simBidCandidate.validatorReward) < 0 {
+		if bestReward.Cmp(simBidBlockReward) < 0 &&
+			localValidatorReward.Cmp(simBidValidatorReward) < 0 {
 			bidWinGauge.Inc(1)
-			if simBidCandidate.greedyMerged {
+			if bestBid.greedyMerged {
 				greedyMergeOnchainCounter.Inc(1)
 			}
-			bestWork = simBidCandidate.env
+			bestWork = bestBid.env
 			logMsg := "[BUILDER BLOCK]"
 			if bidBlockFallback {
 				logMsg = "[BUILDER BLOCK] (simBid fallback)"
 			}
 			log.Info(logMsg,
 				"block", bestWork.header.Number.Uint64(),
-				"builder", simBidCandidate.builder,
-				"blockReward", weiToEtherStringF6(simBidCandidate.blockReward.ToBig()),
-				"validatorReward", weiToEtherStringF6(simBidCandidate.validatorReward.ToBig()),
-				"bid", simBidCandidate.bidHash.TerminalString(),
+				"builder", bestBid.bid.Builder,
+				"blockReward", weiToEtherStringF6(simBidBlockReward.ToBig()),
+				"validatorReward", weiToEtherStringF6(simBidValidatorReward.ToBig()),
+				"bid", bestBid.bid.Hash().TerminalString(),
 			)
 		}
 	}
