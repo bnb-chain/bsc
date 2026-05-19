@@ -83,6 +83,9 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 	if bb.GasFee == nil || bb.GasFee.Sign() < 0 {
 		return common.Hash{}, types.NewInvalidBidError("invalid BidBlock GasFee")
 	}
+	if len(bb.Transactions) == 0 {
+		return common.Hash{}, types.NewInvalidBidError("empty BidBlock txs")
+	}
 	blockNumber := bb.Header.Number.Uint64()
 	parentHash := bb.Header.ParentHash
 	if miner.bidSimulator.chain.GetHeaderByHash(parentHash) == nil {

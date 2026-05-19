@@ -72,10 +72,13 @@ type expectedSystemTxEntry struct {
 // ExpectedSystemTxShape returns the expected trailing system-tx order for accepted BidBlocks:
 //
 //	deposit (if GasFee > 0) -> distributeFinalityReward (cond.) -> updateValidatorSetV2 (cond.)
+//
+// Precondition: gasFee is validated by BidBlock admission.
+// Deposit is expected only when GasFee > 0.
 func (p *Parlia) ExpectedSystemTxShape(header, parent *types.Header, gasFee *big.Int) []expectedSystemTxEntry {
 	shape := make([]expectedSystemTxEntry, 0, 3)
 
-	if gasFee != nil && gasFee.Sign() > 0 {
+	if gasFee.Sign() > 0 {
 		shape = append(shape, expectedSystemTxEntry{
 			method:   "deposit",
 			selector: p.selectorFor("deposit"),
