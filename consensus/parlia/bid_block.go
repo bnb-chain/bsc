@@ -180,16 +180,14 @@ func (p *Parlia) blockTimeForBidBlock(snap *Snapshot, header, parent *types.Head
 		p.backOffTime(snap, parent, header, header.Coinbase)
 }
 
-// FinalizeAndAssembleBidBlock assembles a BidBlock with unsigned system txs
-// and returns actualGasFee.
+// FinalizeAndAssembleBidBlock assembles a BidBlock with unsigned system txs.
 func (p *Parlia) FinalizeAndAssembleBidBlock(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
-	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, *big.Int, []*types.Receipt, error) {
-	gasFee := state.GetBalance(consensus.SystemAddress).ToBig()
+	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
 	block, receipts, err := p.finalizeAndAssemble(chain, header, state, body, receipts, tracer, systemTxPacking)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
-	return block, gasFee, receipts, nil
+	return block, receipts, nil
 }
 
 // SignSystemTx signs a BidBlock system tx with the validator key.

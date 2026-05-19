@@ -787,18 +787,15 @@ func TestParliaFinalizeAndAssembleBidBlock(t *testing.T) {
 		return stateDB
 	}
 
-	signedBlock, signedReceipts, err := engine.FinalizeAndAssembleWithOpts(chain, newHeader(), newState(), &types.Body{}, nil, nil, FinalizeOpts{SignSystemTx: true})
+	signedBlock, signedReceipts, err := engine.FinalizeAndAssemble(chain, newHeader(), newState(), &types.Body{}, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to finalize signed block: %v", err)
 	}
-	unsignedBlock, actualGasFee, unsignedReceipts, err := engine.FinalizeAndAssembleBidBlock(chain, newHeader(), newState(), &types.Body{}, nil, nil)
+	unsignedBlock, unsignedReceipts, err := engine.FinalizeAndAssembleBidBlock(chain, newHeader(), newState(), &types.Body{}, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to finalize BidBlock: %v", err)
 	}
 
-	if actualGasFee.Cmp(gasFee.ToBig()) != 0 {
-		t.Fatalf("gas fee mismatch: have %s want %s", actualGasFee, gasFee)
-	}
 	if signedBlock.Root() != unsignedBlock.Root() {
 		t.Fatalf("state root mismatch: signed=%s unsigned=%s", signedBlock.Root(), unsignedBlock.Root())
 	}
