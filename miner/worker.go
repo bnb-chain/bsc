@@ -674,6 +674,7 @@ func (w *worker) resultLoop() {
 	}
 }
 
+// recordMinedBlock records the mined parent for this height and rejects repeat signing.
 func (w *worker) recordMinedBlock(block *types.Block) bool {
 	if prev, ok := w.recentMinedBlocks.Get(block.NumberU64()); ok {
 		if slices.Contains(prev, block.ParentHash()) {
@@ -708,7 +709,12 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 		"builder", task.bidBlockInfo.builder,
 		"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
 
-	w.mux.Post(core.NewMinedBlockEvent{Block: block})
+	// Use NewSealedBlockEvent (full-block push) instead of NewMinedBlockEvent
+	// (announce-only) so peers receive the BidBlock immediately and can validate
+	// it in parallel with our async InsertChain. The duplicate NewSealedBlockEvent
+	// posted by WriteBlockAndSetHead after InsertChain is deduplicated by the
+	// handler's known-peers cache.
+	w.mux.Post(core.NewSealedBlockEvent{Block: block})
 
 	// InsertChain: re-execute all transactions and verify stateRoot/receiptHash
 	if _, err := w.chain.InsertChain(types.Blocks{block}); err != nil {
@@ -722,26 +728,11 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 		return
 	}
 
-	actualGasFee, err := w.validateBidBlockGasFee(block, task.bidBlockInfo)
-	if err != nil {
-		log.Error("[BID BLOCK GAS FEE VERIFY FAILED]",
-			"number", block.Number(),
-			"hash", hash,
-			"builder", task.bidBlockInfo.builder,
-			"claimed", task.bidBlockInfo.gasFee,
-			"actual", actualGasFee,
-			"err", err,
-			"revokeReason", RevokeReasonGasFeeOverClaim)
-		w.permMgr.Revoke(task.bidBlockInfo.builder, RevokeReasonGasFeeOverClaim, hash, block.NumberU64())
-		return
-	}
-
 	log.Info("[BID BLOCK VERIFIED]",
 		"number", block.Number(),
 		"hash", hash,
 		"builder", task.bidBlockInfo.builder,
-		"claimedGasFee", task.bidBlockInfo.gasFee,
-		"actualGasFee", actualGasFee)
+		"gasFee", task.bidBlockInfo.gasFee)
 }
 
 func (w *worker) getBestBidBlock(header *types.Header) *types.DecodedBidBlock {
@@ -798,22 +789,17 @@ func (w *worker) selectBidBlock(header *types.Header, bidBlock *types.DecodedBid
 	return nil
 }
 
-// validateBidBlockGasFee compares claimed GasFee with the verified distribution
-// value. It must run only after InsertChain succeeds.
-func (w *worker) validateBidBlockGasFee(block *types.Block, info *bidBlockTaskInfo) (*big.Int, error) {
-	p, ok := w.engine.(*parlia.Parlia)
-	if !ok {
-		return nil, errors.New("consensus engine is not parlia")
+func (w *worker) selectVerifiedBidBlock(header *types.Header, bidBlock *types.DecodedBidBlock, simBidCandidate *bidCandidate, bestReward, localValidatorReward *uint256.Int) (*parlia.Parlia, *bidCandidate, error) {
+	if bidBlock == nil {
+		return nil, nil, nil
 	}
-	actual := p.ExtractDistributedGasFee(block)
-	claimed := info.gasFee
-	if claimed == nil {
-		claimed = new(big.Int)
+	// preSealVerifyBidBlock already enforced engine == parlia.
+	p := w.engine.(*parlia.Parlia)
+	allTxs, systemStart, err := verifyBidBlockSystemTxs(bidBlock, header, w.chain, p)
+	if err != nil {
+		return p, nil, err
 	}
-	if claimed.Cmp(actual) > 0 {
-		return actual, fmt.Errorf("BidBlock GasFee over-claim: claimed=%v actual=%v", claimed, actual)
-	}
-	return actual, nil
+	return p, w.selectBidBlock(header, bidBlock, allTxs, systemStart, simBidCandidate, bestReward, localValidatorReward), nil
 }
 
 // makeEnv creates a new environment for the sealing block.
@@ -1647,24 +1633,16 @@ LOOP:
 		}
 	}
 
-	// Verify the best BidBlock structurally before comparing it with simBid/local.
 	var bidWinner *bidCandidate
 	var p *parlia.Parlia
-	if bestBidBlock != nil {
-		// preSealVerifyBidBlock already enforced engine == parlia, so any
-		// BidBlock that reaches this exit is parlia-only by construction.
-		p = w.engine.(*parlia.Parlia)
-		allTxs, systemStart, err := verifyBidBlockSystemTxs(bestBidBlock, bestWork.header, w.chain, p)
-		if err != nil {
-			log.Warn("BidBlock failed verify, fallback",
-				"builder", bestBidBlock.Builder,
-				"err", err,
-				"revokeReason", RevokeReasonSystemTxInvalid)
-			w.permMgr.Revoke(bestBidBlock.Builder, RevokeReasonSystemTxInvalid, bestBidBlock.Hash(), bestBidBlock.BlockNumber())
-			bidBlockFallback = true
-		} else {
-			bidWinner = w.selectBidBlock(bestWork.header, bestBidBlock, allTxs, systemStart, simBidCandidate, bestReward, localValidatorReward)
-		}
+	p, bidWinner, err := w.selectVerifiedBidBlock(bestWork.header, bestBidBlock, simBidCandidate, bestReward, localValidatorReward)
+	if err != nil {
+		log.Warn("BidBlock failed verify, fallback",
+			"builder", bestBidBlock.Builder,
+			"err", err,
+			"revokeReason", RevokeReasonSystemTxInvalid)
+		w.permMgr.Revoke(bestBidBlock.Builder, RevokeReasonSystemTxInvalid, bestBidBlock.Hash(), bestBidBlock.BlockNumber())
+		bidBlockFallback = true
 	}
 	if bidWinner != nil {
 		winnerBidBlock := bidWinner.bidBlock
@@ -1674,7 +1652,6 @@ LOOP:
 				"builder", winnerBidBlock.Builder,
 				"err", err,
 				"revokeReason", RevokeReasonBidBlockCommitFailed)
-			w.permMgr.Revoke(winnerBidBlock.Builder, RevokeReasonBidBlockCommitFailed, winnerBidBlock.Hash(), winnerBidBlock.BlockNumber())
 			bidBlockFallback = true
 		} else {
 			w.enqueueBidBlockTask(task, len(bidWinner.bidBlockTxs)-bidWinner.bidBlockSysFrom)
@@ -1682,9 +1659,17 @@ LOOP:
 		}
 	}
 
+	if bidBlockCommitted {
+		if w.current != nil {
+			w.current.discard()
+		}
+		w.current = bestWork
+		return
+	}
+
 	// simBid fallback. Re-runs the legacy dual-threshold gate against simBid
 	// whenever no BidBlock is being committed.
-	if !bidBlockCommitted && simBidCandidate != nil && simBidCandidate.env != nil &&
+	if simBidCandidate != nil && simBidCandidate.env != nil &&
 		bestWork != simBidCandidate.env {
 		if localValidatorReward == nil {
 			localValidatorReward = new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
@@ -1711,9 +1696,7 @@ LOOP:
 		}
 	}
 
-	if !bidBlockCommitted {
-		w.commit(bestWork, w.fullTaskHook, start)
-	}
+	w.commit(bestWork, w.fullTaskHook, start)
 
 	// Swap out the old work with the new one, terminating any leftover
 	// prefetcher processes in the mean time and starting a new one.

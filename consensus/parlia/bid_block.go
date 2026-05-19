@@ -127,28 +127,15 @@ func txSelector(tx *types.Transaction) []byte {
 	return data[:4]
 }
 
-func (p *Parlia) selectorFor(methodName string) []byte {
-	method, ok := p.validatorSetABI.Methods[methodName]
-	if !ok {
-		return nil
-	}
-	return method.ID
-}
-
-// ExtractDistributedGasFee reads the GasFee value from the trailing
-// ValidatorContract.deposit system tx. Call only after InsertChain succeeds.
-func (p *Parlia) ExtractDistributedGasFee(block *types.Block) *big.Int {
-	txs := block.Transactions()
-	actual := new(big.Int)
-
+// ExtractBidBlockDepositValue returns the deposit value carried by raw BidBlock system txs.
+func (p *Parlia) ExtractBidBlockDepositValue(txs []*types.Transaction) *big.Int {
 	depositSel := p.selectorFor("deposit")
 	valContract := common.HexToAddress(systemcontracts.ValidatorContract)
 
 	for i := len(txs) - 1; i >= 0; i-- {
 		tx := txs[i]
-		isSystem, err := p.IsSystemTransaction(tx, block.Header())
-		if err != nil || !isSystem {
-			return actual
+		if !p.IsUnsignedSystemTxCandidate(tx) {
+			break
 		}
 
 		to := tx.To()
@@ -157,10 +144,18 @@ func (p *Parlia) ExtractDistributedGasFee(block *types.Block) *big.Int {
 			len(depositSel) == 4 &&
 			len(tx.Data()) >= 4 &&
 			bytes.Equal(tx.Data()[:4], depositSel) {
-			return tx.Value()
+			return new(big.Int).Set(tx.Value())
 		}
 	}
-	return actual
+	return new(big.Int)
+}
+
+func (p *Parlia) selectorFor(methodName string) []byte {
+	method, ok := p.validatorSetABI.Methods[methodName]
+	if !ok {
+		return nil
+	}
+	return method.ID
 }
 
 // PrepareForBidBlock prepares consensus header fields for BidBlock construction.
