@@ -240,8 +240,9 @@ func TestCommitBidBlockPreservesBuilderExecutionHeaderFields(t *testing.T) {
 		GasFee: big.NewInt(1),
 	}
 	localHeader := &types.Header{Extra: []byte{0x44, 0x55}}
+	verifiedTxs := &verifiedBidBlockTxs{allTxs: []*types.Transaction{tx}}
 
-	task, err := w.prepareBidBlockTask(nil, decoded, []*types.Transaction{tx}, 1, localHeader, time.Now())
+	task, err := w.prepareBidBlockTask(decoded, verifiedTxs, localHeader, time.Now())
 	if err != nil {
 		t.Fatalf("prepareBidBlockTask failed: %v", err)
 	}

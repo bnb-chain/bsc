@@ -129,8 +129,7 @@ type task struct {
 	state    *state.StateDB
 	block    *types.Block
 
-	isBidBlock   bool              // true for SendBidBlock
-	bidBlockInfo *bidBlockTaskInfo // non-nil only when isBidBlock is true
+	bidBlockInfo *bidBlockTaskInfo
 
 	createdAt     time.Time
 	miningStartAt time.Time
@@ -139,6 +138,11 @@ type task struct {
 type bidBlockTaskInfo struct {
 	builder common.Address
 	gasFee  *big.Int
+}
+
+type verifiedBidBlockTxs struct {
+	allTxs    []*types.Transaction
+	systemTxs []*types.Transaction
 }
 
 // txFits reports whether the transaction fits into the block size limit.
@@ -595,7 +599,7 @@ func (w *worker) resultLoop() {
 			}
 
 			// BidBlock path: broadcast first, then InsertChain for async verification
-			if task.isBidBlock {
+			if task.bidBlockInfo != nil {
 				w.handleBidBlockResult(block, task)
 				continue
 			}
@@ -755,18 +759,18 @@ func (w *worker) selectBidBlock(header *types.Header, bidBlock *types.DecodedBid
 	return false
 }
 
-func (w *worker) selectVerifiedBidBlock(header *types.Header, bidBlock *types.DecodedBidBlock, simBidValidatorReward, bestReward, localValidatorReward *uint256.Int) (*parlia.Parlia, []*types.Transaction, int, bool, error) {
+func (w *worker) selectVerifiedBidBlock(header *types.Header, bidBlock *types.DecodedBidBlock, simBidValidatorReward, bestReward, localValidatorReward *uint256.Int) (*verifiedBidBlockTxs, bool, error) {
 	if bidBlock == nil {
-		return nil, nil, 0, false, nil
+		return nil, false, nil
 	}
 	// preSealVerifyBidBlock already enforced engine == parlia.
 	p := w.engine.(*parlia.Parlia)
-	allTxs, systemStart, err := verifyBidBlockSystemTxs(bidBlock, header, w.chain, p)
+	verifiedTxs, err := verifyBidBlockSystemTxs(bidBlock, header, w.chain, p)
 	if err != nil {
-		return p, nil, 0, false, err
+		return nil, false, err
 	}
 	selected := w.selectBidBlock(header, bidBlock, simBidValidatorReward, bestReward, localValidatorReward)
-	return p, allTxs, systemStart, selected, nil
+	return verifiedTxs, selected, nil
 }
 
 // makeEnv creates a new environment for the sealing block.
@@ -1580,11 +1584,9 @@ LOOP:
 		bestBidBlock = w.getBestBidBlock(bestWork.header)
 	}
 
-	var p *parlia.Parlia
-	var bidBlockTxs []*types.Transaction
-	var bidBlockSysFrom int
+	var verifiedTxs *verifiedBidBlockTxs
 	var bidBlockSelected bool
-	p, bidBlockTxs, bidBlockSysFrom, bidBlockSelected, err := w.selectVerifiedBidBlock(bestWork.header, bestBidBlock, simBidValidatorReward, bestReward, localValidatorReward)
+	verifiedTxs, bidBlockSelected, err := w.selectVerifiedBidBlock(bestWork.header, bestBidBlock, simBidValidatorReward, bestReward, localValidatorReward)
 	if err != nil {
 		log.Warn("BidBlock failed verify, fallback",
 			"builder", bestBidBlock.Builder,
@@ -1594,7 +1596,7 @@ LOOP:
 		bidBlockFallback = true
 	}
 	if bidBlockSelected {
-		task, err := w.prepareBidBlockTask(p, bestBidBlock, bidBlockTxs, bidBlockSysFrom, bestWork.header, start)
+		task, err := w.prepareBidBlockTask(bestBidBlock, verifiedTxs, bestWork.header, start)
 		if err != nil {
 			log.Error("Failed to prepare bid block, fallback",
 				"builder", bestBidBlock.Builder,
@@ -1602,7 +1604,7 @@ LOOP:
 				"revokeReason", RevokeReasonBidBlockCommitFailed)
 			bidBlockFallback = true
 		} else {
-			w.enqueueBidBlockTask(task, len(bidBlockTxs)-bidBlockSysFrom)
+			w.enqueueBidBlockTask(task, len(verifiedTxs.systemTxs))
 			bidBlockCommitted = true
 		}
 	}
@@ -1667,7 +1669,7 @@ func verifyBidBlockSystemTxs(
 	localHeader *types.Header,
 	chain *core.BlockChain,
 	p *parlia.Parlia,
-) ([]*types.Transaction, int, error) {
+) (*verifiedBidBlockTxs, error) {
 	allTxs := make([]*types.Transaction, len(decoded.Txs))
 	copy(allTxs, decoded.Txs)
 
@@ -1686,7 +1688,7 @@ func verifyBidBlockSystemTxs(
 			if allTxs[i].To() != nil {
 				toAddr = allTxs[i].To().Hex()
 			}
-			return nil, 0, fmt.Errorf(
+			return nil, fmt.Errorf(
 				"BidBlock rejected: unsigned system tx at position %d (to=%s) "+
 					"is not on the BEP-675 signable whitelist", i, toAddr,
 			)
@@ -1696,29 +1698,31 @@ func verifyBidBlockSystemTxs(
 	// Stage 2 — shape.
 	parent := chain.GetHeaderByHash(localHeader.ParentHash)
 	if parent == nil {
-		return nil, 0, fmt.Errorf("BidBlock rejected: parent header not found for %s", localHeader.ParentHash.Hex())
+		return nil, fmt.Errorf("BidBlock rejected: parent header not found for %s", localHeader.ParentHash.Hex())
 	}
 	shape := p.ExpectedSystemTxShape(localHeader, parent, decoded.GasFee)
 	if err := p.VerifySystemTxShape(allTxs[systemStart:], shape); err != nil {
-		return nil, 0, fmt.Errorf("BidBlock rejected: %w", err)
+		return nil, fmt.Errorf("BidBlock rejected: %w", err)
 	}
 
-	return allTxs, systemStart, nil
+	return &verifiedBidBlockTxs{
+		allTxs:    allTxs,
+		systemTxs: allTxs[systemStart:],
+	}, nil
 }
 
 // bindSignBidBlockSystemTxs signs the verified unsigned system txs from a BidBlock.
 func bindSignBidBlockSystemTxs(
-	allTxs []*types.Transaction,
-	systemStart int,
+	systemTxs []*types.Transaction,
 	chainID *big.Int,
 	p *parlia.Parlia,
 ) error {
-	for i := systemStart; i < len(allTxs); i++ {
-		signed, err := p.SignSystemTx(allTxs[i], chainID)
+	for i, tx := range systemTxs {
+		signed, err := p.SignSystemTx(tx, chainID)
 		if err != nil {
 			return fmt.Errorf("failed to sign system tx %d: %v", i, err)
 		}
-		allTxs[i] = signed
+		systemTxs[i] = signed
 	}
 	return nil
 }
@@ -1726,31 +1730,36 @@ func bindSignBidBlockSystemTxs(
 // prepareBidBlockTask signs system txs and assembles a verified BidBlock task.
 // Builder execution-result fields are preserved without re-executing transactions.
 func (w *worker) prepareBidBlockTask(
-	p *parlia.Parlia,
 	decoded *types.DecodedBidBlock,
-	allTxs []*types.Transaction,
-	systemStart int,
+	verifiedTxs *verifiedBidBlockTxs,
 	localHeader *types.Header,
 	start time.Time,
 ) (*task, error) {
 	if !w.isRunning() {
 		return nil, errors.New("worker is not running")
 	}
+	if verifiedTxs == nil {
+		return nil, errors.New("missing verified BidBlock txs")
+	}
 
-	if err := bindSignBidBlockSystemTxs(allTxs, systemStart, w.chainConfig.ChainID, p); err != nil {
-		return nil, err
+	if len(verifiedTxs.systemTxs) > 0 {
+		// preSealVerifyBidBlock already enforced engine == parlia.
+		p := w.engine.(*parlia.Parlia)
+		if err := bindSignBidBlockSystemTxs(verifiedTxs.systemTxs, w.chainConfig.ChainID, p); err != nil {
+			return nil, err
+		}
 	}
 
 	header := types.CopyHeader(decoded.Header)
 	header.Extra = common.CopyBytes(localHeader.Extra)
 	header.UncleHash = types.EmptyUncleHash
-	if len(allTxs) == 0 {
+	if len(verifiedTxs.allTxs) == 0 {
 		header.TxHash = types.EmptyTxsHash
 	} else {
-		header.TxHash = types.DeriveSha(types.Transactions(allTxs), trie.NewStackTrie(nil))
+		header.TxHash = types.DeriveSha(types.Transactions(verifiedTxs.allTxs), trie.NewStackTrie(nil))
 	}
 
-	body := &types.Body{Transactions: allTxs}
+	body := &types.Body{Transactions: verifiedTxs.allTxs}
 	if header.EmptyWithdrawalsHash() {
 		body.Withdrawals = make([]*types.Withdrawal, 0)
 	}
@@ -1765,7 +1774,6 @@ func (w *worker) prepareBidBlockTask(
 
 	return &task{
 		block:         block,
-		isBidBlock:    true,
 		bidBlockInfo:  &bidBlockTaskInfo{builder: decoded.Builder, gasFee: decoded.GasFee},
 		createdAt:     time.Now(),
 		miningStartAt: start,
