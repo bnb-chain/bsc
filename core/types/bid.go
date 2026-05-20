@@ -230,7 +230,6 @@ func (b *BidBlockArgs) ToDecodedBidBlock(builder common.Address) (*DecodedBidBlo
 		Header:   b.BidBlock.Header,
 		Txs:      txs,
 		Sidecars: b.BidBlock.Sidecars,
-		GasFee:   b.BidBlock.GasFee,
 		bidHash:  b.BidBlock.Hash(),
 	}, nil
 }
@@ -253,7 +252,6 @@ type BidBlock struct {
 	Header       *Header         `json:"header"`
 	Transactions []hexutil.Bytes `json:"transactions"` // user txs first, unsigned system txs last
 	Sidecars     BlobSidecars    `json:"sidecars,omitempty"`
-	GasFee       *big.Int        `json:"gasFee"`
 
 	hash atomic.Value
 }

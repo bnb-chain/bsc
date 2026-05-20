@@ -85,9 +85,6 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 		return common.Hash{}, types.NewInvalidBidError("builder BidBlock permission revoked, fallback to SendBid")
 	}
 
-	if bb.GasFee == nil || bb.GasFee.Sign() < 0 {
-		return common.Hash{}, types.NewInvalidBidError("invalid BidBlock GasFee")
-	}
 	if len(bb.Transactions) == 0 {
 		return common.Hash{}, types.NewInvalidBidError("empty BidBlock txs")
 	}

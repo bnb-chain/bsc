@@ -124,10 +124,6 @@ func (m *MevAPI) SendBidBlock(ctx context.Context, args types.BidBlockArgs) (com
 			fmt.Sprintf("non-aligned parent hash: %v", currentBlock.Hash()))
 	}
 
-	if bb.GasFee == nil || bb.GasFee.Sign() <= 0 {
-		return common.Hash{}, types.NewInvalidBidError("empty gasFee")
-	}
-
 	if bb.Header.GasUsed == 0 {
 		return common.Hash{}, types.NewInvalidBidError("empty gasUsed in header")
 	}
