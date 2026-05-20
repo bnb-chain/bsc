@@ -72,14 +72,14 @@ const (
 )
 
 var (
-	bidExistGauge            = metrics.NewRegisteredGauge("worker/bidExist", nil)
-	bidWinGauge              = metrics.NewRegisteredGauge("worker/bidWin", nil)
-	inturnBlocksGauge        = metrics.NewRegisteredGauge("worker/inturnBlocks", nil)
-	bestBidGasUsedGauge      = metrics.NewRegisteredGauge("worker/bestBidGasUsed", nil)      // MGas
-	bestWorkGasUsedGauge     = metrics.NewRegisteredGauge("worker/bestWorkGasUsed", nil)     // MGas
-	bidBlockCommitGauge      = metrics.NewRegisteredGauge("worker/bidBlockCommit", nil)
-	bidBlockGasUsedGauge     = metrics.NewRegisteredGauge("worker/bidBlockGasUsed", nil)     // MGas
-	bidBlockSystemTxsGauge   = metrics.NewRegisteredGauge("worker/bidBlockSystemTxs", nil)
+	bidExistGauge          = metrics.NewRegisteredGauge("worker/bidExist", nil)
+	bidWinGauge            = metrics.NewRegisteredGauge("worker/bidWin", nil)
+	inturnBlocksGauge      = metrics.NewRegisteredGauge("worker/inturnBlocks", nil)
+	bestBidGasUsedGauge    = metrics.NewRegisteredGauge("worker/bestBidGasUsed", nil)  // MGas
+	bestWorkGasUsedGauge   = metrics.NewRegisteredGauge("worker/bestWorkGasUsed", nil) // MGas
+	bidBlockCommitGauge    = metrics.NewRegisteredGauge("worker/bidBlockCommit", nil)
+	bidBlockGasUsedGauge   = metrics.NewRegisteredGauge("worker/bidBlockGasUsed", nil) // MGas
+	bidBlockSystemTxsGauge = metrics.NewRegisteredGauge("worker/bidBlockSystemTxs", nil)
 
 	writeBlockTimer      = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer   = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
