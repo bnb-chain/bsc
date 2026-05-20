@@ -264,9 +264,6 @@ type Parlia struct {
 	validatorSetABI            abi.ABI
 	slashABI                   abi.ABI
 	stakeHubABI                abi.ABI
-
-	// The fields below are for testing only
-	fakeDiff bool // Skip difficulty verifications
 }
 
 // New creates a Parlia consensus engine.
@@ -576,23 +573,35 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 // looking those up from the database. This is useful for concurrently verifying
 // a batch of new headers.
 func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) error {
-	if header.Number == nil {
-		return errUnknownBlock
-	}
-
 	// Don't waste time checking blocks from the future
 	if header.Time > uint64(time.Now().Unix()) {
 		return consensus.ErrFutureBlock
 	}
-	// Check that the extra-data contains the vanity, validators and signature.
+
+	if err := p.VerifyUnsealedHeader(chain, header, parents); err != nil {
+		return err
+	}
+
+	// All basic checks passed, verify the seal and return
+	return p.verifySeal(chain, header, parents)
+}
+
+// VerifyUnsealedHeader performs all header validity checks that do not require
+// a valid seal signature. It is used to validate a locally proposed block before
+// sealing: it runs the same structural, fork-rule, and cascading-field checks as
+// VerifyHeader but skips verifySeal (no signature yet) and verifyVoteAttestation
+// (vote attestation is embedded by the sealer and not present before sealing).
+func (p *Parlia) VerifyUnsealedHeader(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) error {
+	// check extra data
 	if len(header.Extra) < extraVanity {
 		return errMissingVanity
 	}
 	if len(header.Extra) < extraVanity+extraSeal {
 		return errMissingSignature
 	}
-
-	// check extra data
+	if header.Number == nil {
+		return errUnknownBlock
+	}
 	number := header.Number.Uint64()
 	epochLength, err := p.epochLength(chain, header, parents)
 	if err != nil {
@@ -618,51 +627,10 @@ func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.H
 			return fmt.Errorf("invalid MixDigest, have %#x, expected the last two bytes to represent milliseconds", header.MixDigest)
 		}
 	}
+
 	// Ensure that the block doesn't contain any uncles which are meaningless in PoA
 	if header.UncleHash != types.EmptyUncleHash {
 		return errInvalidUncleHash
-	}
-	// Ensure that the block's difficulty is meaningful (may not be correct at this point)
-	if number > 0 {
-		if header.Difficulty == nil {
-			return errInvalidDifficulty
-		}
-	}
-
-	parent, err := p.getParent(chain, header, parents)
-	if err != nil {
-		return err
-	}
-
-	// Verify the block's gas usage and (if applicable) verify the base fee.
-	if !chain.Config().IsLondon(header.Number) {
-		// Verify BaseFee not present before EIP-1559 fork.
-		if header.BaseFee != nil {
-			return fmt.Errorf("invalid baseFee before fork: have %d, expected 'nil'", header.BaseFee)
-		}
-	} else if err := eip1559.VerifyEIP1559Header(chain.Config(), parent, header); err != nil {
-		// Verify the header's EIP-1559 attributes.
-		return err
-	}
-
-	cancun := chain.Config().IsCancun(header.Number, header.Time)
-	if !cancun {
-		switch {
-		case header.ExcessBlobGas != nil:
-			return fmt.Errorf("invalid excessBlobGas: have %d, expected nil", header.ExcessBlobGas)
-		case header.BlobGasUsed != nil:
-			return fmt.Errorf("invalid blobGasUsed: have %d, expected nil", header.BlobGasUsed)
-		case header.WithdrawalsHash != nil:
-			return fmt.Errorf("invalid WithdrawalsHash, have %#x, expected nil", header.WithdrawalsHash)
-		}
-	} else {
-		switch {
-		case !header.EmptyWithdrawalsHash():
-			return errors.New("header has wrong WithdrawalsHash")
-		}
-		if err := eip4844.VerifyEIP4844Header(chain.Config(), parent, header); err != nil {
-			return err
-		}
 	}
 
 	bohr := chain.Config().IsBohr(header.Number, header.Time)
@@ -702,12 +670,22 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 		return nil
 	}
 
-	parent, err := p.getParent(chain, header, parents)
+	snap, err := p.snapshot(chain, number-1, header.ParentHash, parents)
 	if err != nil {
 		return err
 	}
+	if header.Difficulty == nil {
+		return errInvalidDifficulty
+	}
+	inturn := snap.inturn(header.Coinbase)
+	if inturn && header.Difficulty.Cmp(diffInTurn) != 0 {
+		return errWrongDifficulty
+	}
+	if !inturn && header.Difficulty.Cmp(diffNoTurn) != 0 {
+		return errWrongDifficulty
+	}
 
-	snap, err := p.snapshot(chain, number-1, header.ParentHash, parents)
+	parent, err := p.getParent(chain, header, parents)
 	if err != nil {
 		return err
 	}
@@ -715,6 +693,36 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 	err = p.blockTimeVerifyForRamanujanFork(snap, header, parent)
 	if err != nil {
 		return err
+	}
+
+	// Verify the block's gas usage and (if applicable) verify the base fee.
+	if !chain.Config().IsLondon(header.Number) {
+		// Verify BaseFee not present before EIP-1559 fork.
+		if header.BaseFee != nil {
+			return fmt.Errorf("invalid baseFee before fork: have %d, expected 'nil'", header.BaseFee)
+		}
+	} else if err := eip1559.VerifyEIP1559Header(chain.Config(), parent, header); err != nil {
+		// Verify the header's EIP-1559 attributes.
+		return err
+	}
+
+	cancun := chain.Config().IsCancun(header.Number, header.Time)
+	if !cancun {
+		switch {
+		case header.ExcessBlobGas != nil:
+			return fmt.Errorf("invalid excessBlobGas: have %d, expected nil", header.ExcessBlobGas)
+		case header.BlobGasUsed != nil:
+			return fmt.Errorf("invalid blobGasUsed: have %d, expected nil", header.BlobGasUsed)
+		case header.WithdrawalsHash != nil:
+			return fmt.Errorf("invalid WithdrawalsHash, have %#x, expected nil", header.WithdrawalsHash)
+		}
+	} else {
+		if !header.EmptyWithdrawalsHash() {
+			return errors.New("header has wrong WithdrawalsHash")
+		}
+		if err := eip4844.VerifyEIP4844Header(chain.Config(), parent, header); err != nil {
+			return err
+		}
 	}
 
 	// Verify that the gas limit is <= 2^63-1
@@ -742,18 +750,7 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 		return fmt.Errorf("invalid gas limit: have %d, want %d += %d", header.GasLimit, parent.GasLimit, limit-1)
 	}
 
-	// Verify vote attestation for fast finality.
-	if err := p.verifyVoteAttestation(chain, header, parents); err != nil {
-		log.Warn("Verify vote attestation failed", "error", err, "hash", header.Hash(), "number", header.Number,
-			"parent", header.ParentHash, "coinbase", header.Coinbase, "extra", common.Bytes2Hex(header.Extra))
-		verifyVoteAttestationErrorCounter.Inc(1)
-		if chain.Config().IsPlato(header.Number) {
-			return err
-		}
-	}
-
-	// All basic checks passed, verify the seal and return
-	return p.verifySeal(chain, header, parents)
+	return nil
 }
 
 // snapshot retrieves the authorization snapshot at a given point in time.
@@ -924,12 +921,6 @@ func (p *Parlia) VerifyRequests(header *types.Header, Requests [][]byte) error {
 	return nil
 }
 
-// VerifySeal implements consensus.Engine, checking whether the signature contained
-// in the header satisfies the consensus protocol requirements.
-func (p *Parlia) VerifySeal(chain consensus.ChainReader, header *types.Header) error {
-	return p.verifySeal(chain, header, nil)
-}
-
 // verifySeal checks whether the signature contained in the header satisfies the
 // consensus protocol requirements. The method accepts an optional list of parent
 // headers that aren't yet part of the local blockchain to generate the snapshots
@@ -940,10 +931,15 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 	if number == 0 {
 		return errUnknownBlock
 	}
-	// Retrieve the snapshot needed to verify this header and cache it
-	snap, err := p.snapshot(chain, number-1, header.ParentHash, parents)
-	if err != nil {
-		return err
+
+	// Verify vote attestation for fast finality.
+	if err := p.verifyVoteAttestation(chain, header, parents); err != nil {
+		log.Warn("Verify vote attestation failed", "error", err, "hash", header.Hash(), "number", header.Number,
+			"parent", header.ParentHash, "coinbase", header.Coinbase, "extra", common.Bytes2Hex(header.Extra))
+		verifyVoteAttestationErrorCounter.Inc(1)
+		if chain.Config().IsPlato(header.Number) {
+			return err
+		}
 	}
 
 	// Resolve the authorization key and check against validators
@@ -967,23 +963,18 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 		p.recentHeaders.Add(key, header.Hash())
 	}
 
+	// Retrieve the snapshot needed to verify this header and cache it
+	snap, err := p.snapshot(chain, number-1, header.ParentHash, parents)
+	if err != nil {
+		return err
+	}
+
 	if _, ok := snap.Validators[signer]; !ok {
 		return errUnauthorizedValidator(signer.String())
 	}
 
 	if snap.SignRecently(signer) {
 		return errRecentlySigned
-	}
-
-	// Ensure that the difficulty corresponds to the turn-ness of the signer
-	if !p.fakeDiff {
-		inturn := snap.inturn(signer)
-		if inturn && header.Difficulty.Cmp(diffInTurn) != 0 {
-			return errWrongDifficulty
-		}
-		if !inturn && header.Difficulty.Cmp(diffNoTurn) != 0 {
-			return errWrongDifficulty
-		}
 	}
 
 	return nil
@@ -1167,7 +1158,7 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	}
 
 	// Set the correct difficulty
-	header.Difficulty = CalcDifficulty(snap, p.val)
+	header.Difficulty = calcDifficulty(snap, p.val)
 
 	// Ensure the extra data has all it's components
 	if len(header.Extra) < extraVanity-nextForkHashSize {
@@ -1840,13 +1831,13 @@ func (p *Parlia) CalcDifficulty(chain consensus.ChainHeaderReader, time uint64, 
 	if err != nil {
 		return nil
 	}
-	return CalcDifficulty(snap, p.val)
+	return calcDifficulty(snap, p.val)
 }
 
 // CalcDifficulty is the difficulty adjustment algorithm. It returns the difficulty
 // that a new block should have based on the previous blocks in the chain and the
 // current signer.
-func CalcDifficulty(snap *Snapshot, signer common.Address) *big.Int {
+func calcDifficulty(snap *Snapshot, signer common.Address) *big.Int {
 	if snap.inturn(signer) {
 		return new(big.Int).Set(diffInTurn)
 	}
