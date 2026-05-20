@@ -1166,11 +1166,11 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	}
 	blockTime := p.blockTimeForRamanujanFork(snap, header, parent)
 
-	return p.prepareHeader(chain, header, snap, p.val, number, blockTime)
+	return p.prepareHeader(chain, header, snap, blockTime)
 }
 
-func (p *Parlia) prepareHeader(chain consensus.ChainHeaderReader, header *types.Header, snap *Snapshot, validator common.Address, number uint64, blockTime uint64) error {
-	header.Difficulty = calcDifficulty(snap, validator)
+func (p *Parlia) prepareHeader(chain consensus.ChainHeaderReader, header *types.Header, snap *Snapshot, blockTime uint64) error {
+	header.Difficulty = calcDifficulty(snap, header.Coinbase)
 
 	if len(header.Extra) < extraVanity-nextForkHashSize {
 		header.Extra = append(header.Extra, bytes.Repeat([]byte{0x00}, extraVanity-nextForkHashSize-len(header.Extra))...)
@@ -1184,7 +1184,7 @@ func (p *Parlia) prepareHeader(chain consensus.ChainHeaderReader, header *types.
 	}
 
 	header.Extra = header.Extra[:extraVanity-nextForkHashSize]
-	nextForkHash := forkid.NextForkHash(p.chainConfig, p.genesisHash, chain.GenesisHeader().Time, number, header.Time)
+	nextForkHash := forkid.NextForkHash(p.chainConfig, p.genesisHash, chain.GenesisHeader().Time, header.Number.Uint64(), header.Time)
 	header.Extra = append(header.Extra, nextForkHash[:]...)
 
 	if err := p.prepareValidators(chain, header); err != nil {

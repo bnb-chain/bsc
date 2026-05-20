@@ -44,7 +44,7 @@ func (p *Parlia) PrepareForBidBlock(chain consensus.ChainHeaderReader, header *t
 	}
 	blockTime := parent.MilliTimestamp() + snap.BlockInterval
 
-	return p.prepareHeader(chain, header, snap, validator, number, blockTime)
+	return p.prepareHeader(chain, header, snap, blockTime)
 }
 
 // FinalizeAndAssembleBidBlock assembles a BidBlock with unsigned system txs.

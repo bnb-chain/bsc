@@ -98,6 +98,7 @@ type BuilderConfig struct {
 
 type MevConfig struct {
 	Enabled               *bool           `toml:",omitempty"` // Whether to enable Mev or not
+	BidBlockEnabled       *bool           `toml:",omitempty"` // Whether to accept SendBidBlock RPC (BEP-675); coexists with legacy SendBid
 	GreedyMergeTx         *bool           `toml:",omitempty"` // Whether to merge local transactions to the bid
 	BuilderFeeCeil        *string         `toml:",omitempty"` // The maximum builder fee of a bid
 	SentryURL             string          // The url of Mev sentry
@@ -106,11 +107,11 @@ type MevConfig struct {
 	BidSimulationLeftOver *time.Duration  `toml:",omitempty"`
 	NoInterruptLeftOver   *time.Duration  `toml:",omitempty"`
 	MaxBidsPerBuilder     *uint32         `toml:",omitempty"` // Maximum number of bids allowed per builder per block
-	BidBlockEnabled       *bool           `toml:",omitempty"` // Whether to accept SendBidBlock RPC (BEP-675); coexists with legacy SendBid
 }
 
 var DefaultMevConfig = MevConfig{
 	Enabled:               &defaultMevEnabled,
+	BidBlockEnabled:       &defaultBidBlockEnabled,
 	GreedyMergeTx:         &defaultGreedyMergeTx,
 	BuilderFeeCeil:        &defaultBuilderFeeCeil,
 	SentryURL:             "",
@@ -119,7 +120,6 @@ var DefaultMevConfig = MevConfig{
 	BidSimulationLeftOver: &defaultBidSimulationLeftOver,
 	NoInterruptLeftOver:   getDefaultNoInterruptLeftOver(),
 	MaxBidsPerBuilder:     &defaultMaxBidsPerBuilder,
-	BidBlockEnabled:       &defaultBidBlockEnabled,
 }
 
 func ApplyDefaultMinerConfig(cfg *Config) {
@@ -147,6 +147,14 @@ func ApplyDefaultMinerConfig(cfg *Config) {
 		cfg.Mev.Enabled = &defaultMevEnabled
 		log.Info("ApplyDefaultMinerConfig", "Mev.Enabled", *cfg.Mev.Enabled)
 	}
+	if cfg.Mev.BidBlockEnabled == nil {
+		cfg.Mev.BidBlockEnabled = &defaultBidBlockEnabled
+		log.Info("ApplyDefaultMinerConfig", "Mev.BidBlockEnabled", *cfg.Mev.BidBlockEnabled)
+	}
+	if *cfg.Mev.BidBlockEnabled && !*cfg.Mev.Enabled {
+		log.Error("Invalid miner config: Mev.BidBlockEnabled requires Mev.Enabled")
+		cfg.Mev.BidBlockEnabled = &defaultBidBlockEnabled
+	}
 	if cfg.Mev.BuilderFeeCeil == nil {
 		cfg.Mev.BuilderFeeCeil = &defaultBuilderFeeCeil
 		log.Info("ApplyDefaultMinerConfig", "Mev.BuilderFeeCeil", *cfg.Mev.BuilderFeeCeil)
@@ -170,14 +178,5 @@ func ApplyDefaultMinerConfig(cfg *Config) {
 	if cfg.Mev.MaxBidsPerBuilder == nil {
 		cfg.Mev.MaxBidsPerBuilder = &defaultMaxBidsPerBuilder
 		log.Info("ApplyDefaultMinerConfig", "Mev.MaxBidsPerBuilder", *cfg.Mev.MaxBidsPerBuilder)
-	}
-	if cfg.Mev.BidBlockEnabled == nil {
-		cfg.Mev.BidBlockEnabled = &defaultBidBlockEnabled
-		log.Info("ApplyDefaultMinerConfig", "Mev.BidBlockEnabled", *cfg.Mev.BidBlockEnabled)
-	}
-	if cfg.Mev.BidBlockEnabled != nil && *cfg.Mev.BidBlockEnabled &&
-		cfg.Mev.Enabled != nil && !*cfg.Mev.Enabled {
-		log.Error("Invalid miner config: Mev.BidBlockEnabled requires Mev.Enabled")
-		cfg.Mev.BidBlockEnabled = &defaultBidBlockEnabled
 	}
 }
