@@ -57,16 +57,6 @@ func (p *Parlia) FinalizeAndAssembleBidBlock(chain consensus.ChainHeaderReader, 
 	return block, receipts, nil
 }
 
-// SignSystemTx signs a BidBlock system tx with the validator key.
-func (p *Parlia) SignSystemTx(tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
-	if p.signTxFn == nil {
-		return nil, errors.New("signTxFn not set")
-	}
-	return p.signTxFn(accounts.Account{Address: p.val}, tx, chainID)
-}
-
 // VerifyBlockTime validates the deterministic BidBlock timestamp.
 func (p *Parlia) VerifyBlockTime(chain consensus.ChainHeaderReader, header, parent *types.Header) error {
 	snap, err := p.snapshot(chain, parent.Number.Uint64(), parent.Hash(), nil)
@@ -78,6 +68,16 @@ func (p *Parlia) VerifyBlockTime(chain consensus.ChainHeaderReader, header, pare
 		return fmt.Errorf("invalid BidBlock timestamp: got %d, want %d", got, expected)
 	}
 	return nil
+}
+
+// SignSystemTx signs a BidBlock system tx with the validator key.
+func (p *Parlia) SignSystemTx(tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	if p.signTxFn == nil {
+		return nil, errors.New("signTxFn not set")
+	}
+	return p.signTxFn(accounts.Account{Address: p.val}, tx, chainID)
 }
 
 // IsUnsignedSystemTxCandidate reports whether tx looks like an unsigned
