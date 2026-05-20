@@ -17,7 +17,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/bidutil"
 	"github.com/ethereum/go-ethereum/consensus"
-	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
@@ -670,59 +669,28 @@ func (b *bidSimulator) GetBestBidBlock(parentHash common.Hash) *types.DecodedBid
 	return b.bestBidBlock[parentHash]
 }
 
-// preSealVerifyBidBlock validates deterministic header fields before selection.
-// Execution-result fields are deferred to InsertChain.
-// TODO: extract shared deterministic Parlia header checks when this path grows.
+// preSealVerifyBidBlock validates a BidBlock before admission.
 func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) error {
 	parliaEngine, ok := b.engine.(*parlia.Parlia)
 	if !ok {
 		return errors.New("consensus engine is not parlia")
 	}
-
 	header := decoded.Header
-	// RPC admission checks the parent hash, but pre-seal must not assume the lookup succeeds.
-	parent := b.chain.GetHeaderByHash(header.ParentHash)
-	if parent == nil {
-		return fmt.Errorf("parent header not found: %s", header.ParentHash.Hex())
-	}
 
-	// 1. Coinbase must be the in-turn validator (this node).
-	expectedCoinbase := b.bidWorker.etherbase()
-	if header.Coinbase != expectedCoinbase {
+	if header.Coinbase != b.bidWorker.etherbase() {
 		return fmt.Errorf("invalid coinbase: got %s, want %s",
-			header.Coinbase.Hex(), expectedCoinbase.Hex())
+			header.Coinbase.Hex(), b.bidWorker.etherbase().Hex())
+	}
+	if err := parliaEngine.VerifyUnsealedHeader(b.chain, header, nil); err != nil {
+		return fmt.Errorf("invalid header: %v", err)
 	}
 
-	// 2. TODO: add full GasLimit bounds check when BidBlock pre-seal rules define it.
-
-	// 3. GasUsed must not exceed GasLimit (consensus hard rule).
-	if header.GasUsed > header.GasLimit {
-		return fmt.Errorf("invalid gasUsed: %d > gasLimit %d", header.GasUsed, header.GasLimit)
-	}
-
-	// 4. BaseFee must match the EIP-1559 derived value.
-	expectedBaseFee := eip1559.CalcBaseFee(b.chainConfig, parent)
-	if header.BaseFee == nil || header.BaseFee.Cmp(expectedBaseFee) != 0 {
-		return fmt.Errorf("invalid baseFee: got %v, want %v", header.BaseFee, expectedBaseFee)
-	}
-
-	// 5. Difficulty must be in-turn.
-	if header.Difficulty == nil || header.Difficulty.Cmp(diffInTurn) != 0 {
-		return fmt.Errorf("invalid difficulty: got %v, want %v", header.Difficulty, diffInTurn)
-	}
-
-	// 6. Timestamp must match the deterministic BidBlock time.
-	if err := parliaEngine.VerifyBlockTime(b.chain, header, parent); err != nil {
-		return fmt.Errorf("invalid block time: %v", err)
-	}
-
-	// 7. GasFee is derived from the unsigned deposit tx.
 	decoded.GasFee = parliaEngine.ExtractBidBlockDepositValue(decoded.Txs)
 	if decoded.GasFee.Sign() <= 0 {
 		return errors.New("empty gasFee")
 	}
 
-	// 8. Validate and locate the trailing unsigned system-tx region.
+	parent := b.chain.GetHeaderByHash(header.ParentHash)
 	systemTxStart, err := parliaEngine.VerifyBidBlockSystemTxs(decoded, parent)
 	if err != nil {
 		return err

@@ -88,10 +88,9 @@ func bindSignBidBlockSystemTxs(
 }
 
 // prepareBidBlockTask signs system txs and assembles a BidBlock task.
-// Validator computes only Extra (SetExtraData here + seal signature in engine.Seal)
-// and TxHash (re-derived after bind-signing the trailing system txs). All other
-// header fields flow from decoded.Header via CopyHeader; any lie is caught by
-// InsertChain.
+// Validator rewrites only the post-vanity portion of Extra (via SetExtraData,
+// + seal signature in Seal) and recomputes TxHash; all other header fields
+// flow verbatim from decoded.Header.
 func (w *worker) prepareBidBlockTask(
 	decoded *types.DecodedBidBlock,
 	start time.Time,
@@ -100,10 +99,9 @@ func (w *worker) prepareBidBlockTask(
 		return nil, errors.New("worker is not running")
 	}
 
-	// preSealVerifyBidBlock already enforced engine == parlia.
 	p := w.engine.(*parlia.Parlia)
 
-	// Shallow-copy the tx slice so bind-signing does not mutate the cached BidBlock.
+	// Copy the tx slice so bind-signing does not mutate the cached BidBlock.
 	allTxs := make([]*types.Transaction, len(decoded.Txs))
 	copy(allTxs, decoded.Txs)
 	if err := bindSignBidBlockSystemTxs(allTxs[decoded.SystemTxStart:], w.chainConfig.ChainID, p); err != nil {
@@ -111,17 +109,10 @@ func (w *worker) prepareBidBlockTask(
 	}
 
 	header := types.CopyHeader(decoded.Header)
-	w.confMu.RLock()
-	header.Extra = common.CopyBytes(w.extra)
-	w.confMu.RUnlock()
 	if err := p.SetExtraData(w.chain, header); err != nil {
 		return nil, err
 	}
-	if len(allTxs) == 0 {
-		header.TxHash = types.EmptyTxsHash
-	} else {
-		header.TxHash = types.DeriveSha(types.Transactions(allTxs), trie.NewStackTrie(nil))
-	}
+	header.TxHash = types.DeriveSha(types.Transactions(allTxs), trie.NewStackTrie(nil))
 
 	body := &types.Body{Transactions: allTxs}
 	if header.EmptyWithdrawalsHash() {

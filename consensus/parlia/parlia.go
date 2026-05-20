@@ -1179,18 +1179,26 @@ func (p *Parlia) prepareHeader(chain consensus.ChainHeaderReader, header *types.
 		header.MixDigest = common.Hash{}
 	}
 
+	p.fillExtraDataVanity(chain, header)
 	return p.SetExtraData(chain, header)
 }
 
-// SetExtraData rebuilds the validator-controlled extra-data section.
-func (p *Parlia) SetExtraData(chain consensus.ChainHeaderReader, header *types.Header) error {
+// fillExtraDataVanity pads vanity and writes nextForkHash to produce the 32-byte vanity prefix.
+func (p *Parlia) fillExtraDataVanity(chain consensus.ChainHeaderReader, header *types.Header) {
 	if len(header.Extra) < extraVanity-nextForkHashSize {
 		header.Extra = append(header.Extra, bytes.Repeat([]byte{0x00}, extraVanity-nextForkHashSize-len(header.Extra))...)
 	}
-
 	header.Extra = header.Extra[:extraVanity-nextForkHashSize]
 	nextForkHash := forkid.NextForkHash(p.chainConfig, p.genesisHash, chain.GenesisHeader().Time, header.Number.Uint64(), header.Time)
 	header.Extra = append(header.Extra, nextForkHash[:]...)
+}
+
+// SetExtraData appends validator-set, turnLength and reserved seal space after the 32-byte vanity prefix.
+func (p *Parlia) SetExtraData(chain consensus.ChainHeaderReader, header *types.Header) error {
+	if len(header.Extra) < extraVanity {
+		return fmt.Errorf("extra data too short for vanity prefix: %d < %d", len(header.Extra), extraVanity)
+	}
+	header.Extra = header.Extra[:extraVanity]
 
 	if err := p.prepareValidators(chain, header); err != nil {
 		return err
