@@ -1493,8 +1493,8 @@ LOOP:
 	if bidBlockCommitted {
 		if w.current != nil {
 			w.current.discard()
+			w.current = nil
 		}
-		w.current = bestWork
 		return
 	}
 
