@@ -674,6 +674,14 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 	if err != nil {
 		return err
 	}
+
+	if _, ok := snap.Validators[header.Coinbase]; !ok {
+		return errUnauthorizedValidator(header.Coinbase.String())
+	}
+	if snap.SignRecently(header.Coinbase) {
+		return errRecentlySigned
+	}
+
 	if header.Difficulty == nil {
 		return errInvalidDifficulty
 	}
@@ -961,20 +969,6 @@ func (p *Parlia) verifySeal(chain consensus.ChainHeaderReader, header *types.Hea
 			"hash1", preHash, "hash2", header.Hash())
 	} else {
 		p.recentHeaders.Add(key, header.Hash())
-	}
-
-	// Retrieve the snapshot needed to verify this header and cache it
-	snap, err := p.snapshot(chain, number-1, header.ParentHash, parents)
-	if err != nil {
-		return err
-	}
-
-	if _, ok := snap.Validators[signer]; !ok {
-		return errUnauthorizedValidator(signer.String())
-	}
-
-	if snap.SignRecently(signer) {
-		return errRecentlySigned
 	}
 
 	return nil
