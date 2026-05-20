@@ -680,6 +680,7 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 	}
 
 	header := decoded.Header
+	// RPC admission checks the parent hash, but pre-seal must not assume the lookup succeeds.
 	parent := b.chain.GetHeaderByHash(header.ParentHash)
 	if parent == nil {
 		return fmt.Errorf("parent header not found: %s", header.ParentHash.Hex())
@@ -721,6 +722,12 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 		return errors.New("empty gasFee")
 	}
 
+	// 8. Validate and locate the trailing unsigned system-tx region.
+	systemTxStart, err := parliaEngine.VerifyBidBlockSystemTxs(decoded, parent)
+	if err != nil {
+		return err
+	}
+	decoded.SystemTxStart = systemTxStart
 	return nil
 }
 

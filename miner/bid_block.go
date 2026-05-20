@@ -26,17 +26,7 @@ type bidBlockTaskInfo struct {
 	gasFee  *big.Int
 }
 
-type verifiedBidBlockTxs struct {
-	allTxs    []*types.Transaction
-	systemTxs []*types.Transaction
-}
-
-func (w *worker) getBestBidBlock(header *types.Header) *types.DecodedBidBlock {
-	parentHash := header.ParentHash
-	return w.bidFetcher.GetBestBidBlock(parentHash)
-}
-
-func (w *worker) selectBidBlock(header *types.Header, bidBlock *types.DecodedBidBlock, simBidBlockReward, simBidValidatorReward, bestReward *uint256.Int) bool {
+func (w *worker) selectBidBlock(bidBlock *types.DecodedBidBlock, simBidBlockReward, simBidValidatorReward, bestReward *uint256.Int) bool {
 	if bidBlock == nil {
 		return false
 	}
@@ -60,9 +50,10 @@ func (w *worker) selectBidBlock(header *types.Header, bidBlock *types.DecodedBid
 	if simBidValidatorReward != nil {
 		simBidVR = simBidValidatorReward.String()
 	}
+	blockNum := bidBlock.Header.Number.Uint64()
 	// TODO: switch back to Debug after BidBlock rollout stabilizes.
 	log.Info("BidSimulator: BidBlock win bid, compare with local",
-		"block", header.Number.Uint64(),
+		"block", blockNum,
 		"localBlockReward", bestReward.String(),
 		"bidReward", bidBlockFee.String(),
 		"bidValidatorReward", bidBlockValidatorReward.String(),
@@ -71,7 +62,7 @@ func (w *worker) selectBidBlock(header *types.Header, bidBlock *types.DecodedBid
 
 	if bestReward.Cmp(bidBlockFee) < 0 {
 		log.Info("[BID BLOCK selected]",
-			"block", header.Number.Uint64(),
+			"block", blockNum,
 			"builder", bidBlock.Builder,
 			"gasFee", bidBlock.GasFee,
 			"txs", len(bidBlock.Txs))
@@ -80,56 +71,7 @@ func (w *worker) selectBidBlock(header *types.Header, bidBlock *types.DecodedBid
 	return false
 }
 
-// verifyBidBlockSystemTxs validates the trailing unsigned system-tx region.
-// It returns a copied tx list so the caller can bind-sign system txs in place.
-func verifyBidBlockSystemTxs(
-	decoded *types.DecodedBidBlock,
-	localHeader *types.Header,
-	chain *core.BlockChain,
-	p *parlia.Parlia,
-) (*verifiedBidBlockTxs, error) {
-	allTxs := make([]*types.Transaction, len(decoded.Txs))
-	copy(allTxs, decoded.Txs)
-
-	systemStart := len(allTxs)
-	for i := len(allTxs) - 1; i >= 0; i-- {
-		if !p.IsUnsignedSystemTxCandidate(allTxs[i]) {
-			break
-		}
-		systemStart = i
-	}
-
-	// Stage 1 — whitelist.
-	for i := systemStart; i < len(allTxs); i++ {
-		if !p.IsSignableSystemTx(allTxs[i]) {
-			toAddr := "<nil>"
-			if allTxs[i].To() != nil {
-				toAddr = allTxs[i].To().Hex()
-			}
-			return nil, fmt.Errorf(
-				"BidBlock rejected: unsigned system tx at position %d (to=%s) "+
-					"is not on the BEP-675 signable whitelist", i, toAddr,
-			)
-		}
-	}
-
-	// Stage 2 — shape.
-	parent := chain.GetHeaderByHash(localHeader.ParentHash)
-	if parent == nil {
-		return nil, fmt.Errorf("BidBlock rejected: parent header not found for %s", localHeader.ParentHash.Hex())
-	}
-	shape := p.ExpectedSystemTxShape(localHeader, parent)
-	if err := p.VerifySystemTxShape(allTxs[systemStart:], shape); err != nil {
-		return nil, fmt.Errorf("BidBlock rejected: %w", err)
-	}
-
-	return &verifiedBidBlockTxs{
-		allTxs:    allTxs,
-		systemTxs: allTxs[systemStart:],
-	}, nil
-}
-
-// bindSignBidBlockSystemTxs signs the verified unsigned system txs from a BidBlock.
+// bindSignBidBlockSystemTxs signs the verified unsigned system txs from a BidBlock in place.
 func bindSignBidBlockSystemTxs(
 	systemTxs []*types.Transaction,
 	chainID *big.Int,
@@ -145,48 +87,47 @@ func bindSignBidBlockSystemTxs(
 	return nil
 }
 
-// prepareBidBlockTask signs system txs and assembles a verified BidBlock task.
-// Builder execution-result fields are preserved without re-executing transactions.
+// prepareBidBlockTask signs system txs and assembles a BidBlock task.
+// Validator computes only Extra (SetExtraData here + seal signature in engine.Seal)
+// and TxHash (re-derived after bind-signing the trailing system txs). All other
+// header fields flow from decoded.Header via CopyHeader; any lie is caught by
+// InsertChain.
 func (w *worker) prepareBidBlockTask(
 	decoded *types.DecodedBidBlock,
-	verifiedTxs *verifiedBidBlockTxs,
-	localHeader *types.Header,
 	start time.Time,
 ) (*task, error) {
 	if !w.isRunning() {
 		return nil, errors.New("worker is not running")
 	}
-	if verifiedTxs == nil {
-		return nil, errors.New("missing verified BidBlock txs")
-	}
 
 	// preSealVerifyBidBlock already enforced engine == parlia.
 	p := w.engine.(*parlia.Parlia)
-	if err := bindSignBidBlockSystemTxs(verifiedTxs.systemTxs, w.chainConfig.ChainID, p); err != nil {
+
+	// Shallow-copy the tx slice so bind-signing does not mutate the cached BidBlock.
+	allTxs := make([]*types.Transaction, len(decoded.Txs))
+	copy(allTxs, decoded.Txs)
+	if err := bindSignBidBlockSystemTxs(allTxs[decoded.SystemTxStart:], w.chainConfig.ChainID, p); err != nil {
 		return nil, err
 	}
 
 	header := types.CopyHeader(decoded.Header)
-	header.Extra = common.CopyBytes(localHeader.Extra)
-	header.UncleHash = types.EmptyUncleHash
-	if len(verifiedTxs.allTxs) == 0 {
+	w.confMu.RLock()
+	header.Extra = common.CopyBytes(w.extra)
+	w.confMu.RUnlock()
+	if err := p.SetExtraData(w.chain, header); err != nil {
+		return nil, err
+	}
+	if len(allTxs) == 0 {
 		header.TxHash = types.EmptyTxsHash
 	} else {
-		header.TxHash = types.DeriveSha(types.Transactions(verifiedTxs.allTxs), trie.NewStackTrie(nil))
+		header.TxHash = types.DeriveSha(types.Transactions(allTxs), trie.NewStackTrie(nil))
 	}
 
-	body := &types.Body{Transactions: verifiedTxs.allTxs}
+	body := &types.Body{Transactions: allTxs}
 	if header.EmptyWithdrawalsHash() {
 		body.Withdrawals = make([]*types.Withdrawal, 0)
 	}
-	block := types.NewBlockWithHeader(header).WithBody(*body)
-
-	// Attach sidecars if present.
-	if decoded.Sidecars != nil {
-		block = block.WithSidecars(decoded.Sidecars)
-	} else {
-		block = block.WithSidecars(make(types.BlobSidecars, 0))
-	}
+	block := types.NewBlockWithHeader(header).WithBody(*body).WithSidecars(decoded.Sidecars)
 
 	return &task{
 		block:         block,

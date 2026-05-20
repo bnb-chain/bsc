@@ -268,11 +268,12 @@ func (b *BidBlock) Hash() common.Hash {
 
 // DecodedBidBlock is the validator-side decoded representation of a BidBlock.
 type DecodedBidBlock struct {
-	Builder  common.Address // recovered from BidBlockArgs.Signature
-	Header   *Header
-	Txs      Transactions
-	Sidecars BlobSidecars
-	GasFee   *big.Int
+	Builder       common.Address // recovered from BidBlockArgs.Signature
+	Header        *Header
+	Txs           Transactions
+	Sidecars      BlobSidecars
+	GasFee        *big.Int
+	SystemTxStart int // index in Txs where the unsigned trailing system-tx region begins; set during admission.
 
 	bidHash common.Hash
 }

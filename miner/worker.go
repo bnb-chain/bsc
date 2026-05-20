@@ -72,11 +72,14 @@ const (
 )
 
 var (
-	bidExistGauge        = metrics.NewRegisteredGauge("worker/bidExist", nil)
-	bidWinGauge          = metrics.NewRegisteredGauge("worker/bidWin", nil)
-	inturnBlocksGauge    = metrics.NewRegisteredGauge("worker/inturnBlocks", nil)
-	bestBidGasUsedGauge  = metrics.NewRegisteredGauge("worker/bestBidGasUsed", nil)  // MGas
-	bestWorkGasUsedGauge = metrics.NewRegisteredGauge("worker/bestWorkGasUsed", nil) // MGas
+	bidExistGauge            = metrics.NewRegisteredGauge("worker/bidExist", nil)
+	bidWinGauge              = metrics.NewRegisteredGauge("worker/bidWin", nil)
+	inturnBlocksGauge        = metrics.NewRegisteredGauge("worker/inturnBlocks", nil)
+	bestBidGasUsedGauge      = metrics.NewRegisteredGauge("worker/bestBidGasUsed", nil)      // MGas
+	bestWorkGasUsedGauge     = metrics.NewRegisteredGauge("worker/bestWorkGasUsed", nil)     // MGas
+	bidBlockCommitGauge      = metrics.NewRegisteredGauge("worker/bidBlockCommit", nil)
+	bidBlockGasUsedGauge     = metrics.NewRegisteredGauge("worker/bidBlockGasUsed", nil)     // MGas
+	bidBlockSystemTxsGauge   = metrics.NewRegisteredGauge("worker/bidBlockSystemTxs", nil)
 
 	writeBlockTimer      = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer   = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
@@ -1446,10 +1449,6 @@ LOOP:
 			}
 		}
 
-		// Two-stage bid selection:
-		//   Stage 1: bidBlock vs simBid by validator net reward (bidBlock must be strictly greater).
-		//   Stage 2: Stage-1 winner vs local; must be strictly better on BOTH blockReward AND validatorReward.
-
 		// Local baseline (used in Stage 2).
 		localValidatorReward = new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
 		localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
@@ -1465,29 +1464,24 @@ LOOP:
 		}
 
 		// Stage 1 candidate B — SendBidBlock.
-		bestBidBlock = w.getBestBidBlock(bestWork.header)
+		bestBidBlock = w.bidFetcher.GetBestBidBlock(parentHash)
 	}
 
-	if bestBidBlock != nil {
-		// preSealVerifyBidBlock already enforced engine == parlia.
-		p := w.engine.(*parlia.Parlia)
-		verifiedTxs, err := verifyBidBlockSystemTxs(bestBidBlock, bestWork.header, w.chain, p)
+	if bestBidBlock != nil && w.selectBidBlock(bestBidBlock, simBidBlockReward, simBidValidatorReward, bestReward) {
+		task, err := w.prepareBidBlockTask(bestBidBlock, start)
 		if err != nil {
-			log.Warn("BidBlock failed verify, fallback",
+			log.Error("Failed to prepare bid block, fallback",
 				"builder", bestBidBlock.Builder,
 				"err", err)
 			bidBlockFallback = true
-		} else if w.selectBidBlock(bestWork.header, bestBidBlock, simBidBlockReward, simBidValidatorReward, bestReward) {
-			task, err := w.prepareBidBlockTask(bestBidBlock, verifiedTxs, bestWork.header, start)
-			if err != nil {
-				log.Error("Failed to prepare bid block, fallback",
-					"builder", bestBidBlock.Builder,
-					"err", err)
-				bidBlockFallback = true
-			} else {
-				w.enqueueBidBlockTask(task, len(verifiedTxs.systemTxs))
-				bidBlockCommitted = true
-			}
+		} else {
+			systemTxCount := len(bestBidBlock.Txs) - bestBidBlock.SystemTxStart
+			w.enqueueBidBlockTask(task, systemTxCount)
+			bidBlockCommitted = true
+			bidBlockCommitGauge.Inc(1)
+			bidBlockGasUsedGauge.Update(int64(bestBidBlock.Header.GasUsed) / 1_000_000)
+			bidBlockSystemTxsGauge.Update(int64(systemTxCount))
+			bestWorkGasUsedGauge.Update(int64(bestWork.header.GasUsed) / 1_000_000)
 		}
 	}
 

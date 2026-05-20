@@ -147,13 +147,17 @@ func ApplyDefaultMinerConfig(cfg *Config) {
 		cfg.Mev.Enabled = &defaultMevEnabled
 		log.Info("ApplyDefaultMinerConfig", "Mev.Enabled", *cfg.Mev.Enabled)
 	}
-	if cfg.Mev.BidBlockEnabled == nil {
-		cfg.Mev.BidBlockEnabled = &defaultBidBlockEnabled
-		log.Info("ApplyDefaultMinerConfig", "Mev.BidBlockEnabled", *cfg.Mev.BidBlockEnabled)
-	}
-	if *cfg.Mev.BidBlockEnabled && !*cfg.Mev.Enabled {
-		log.Error("Invalid miner config: Mev.BidBlockEnabled requires Mev.Enabled")
-		cfg.Mev.BidBlockEnabled = &defaultBidBlockEnabled
+	if *cfg.Mev.Enabled {
+		if cfg.Mev.BidBlockEnabled == nil {
+			cfg.Mev.BidBlockEnabled = &defaultBidBlockEnabled
+			log.Info("ApplyDefaultMinerConfig", "Mev.BidBlockEnabled", *cfg.Mev.BidBlockEnabled)
+		}
+	} else {
+		if cfg.Mev.BidBlockEnabled != nil && *cfg.Mev.BidBlockEnabled {
+			log.Warn("Mev.BidBlockEnabled reset to false because Mev.Enabled is false")
+		}
+		disabled := false
+		cfg.Mev.BidBlockEnabled = &disabled
 	}
 	if cfg.Mev.BuilderFeeCeil == nil {
 		cfg.Mev.BuilderFeeCeil = &defaultBuilderFeeCeil

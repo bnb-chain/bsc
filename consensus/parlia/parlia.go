@@ -1172,15 +1172,20 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 func (p *Parlia) prepareHeader(chain consensus.ChainHeaderReader, header *types.Header, snap *Snapshot, blockTime uint64) error {
 	header.Difficulty = calcDifficulty(snap, header.Coinbase)
 
-	if len(header.Extra) < extraVanity-nextForkHashSize {
-		header.Extra = append(header.Extra, bytes.Repeat([]byte{0x00}, extraVanity-nextForkHashSize-len(header.Extra))...)
-	}
-
 	header.Time = blockTime / 1000 // get seconds
 	if p.chainConfig.IsLorentz(header.Number, header.Time) {
 		header.SetMilliseconds(blockTime % 1000)
 	} else {
 		header.MixDigest = common.Hash{}
+	}
+
+	return p.SetExtraData(chain, header)
+}
+
+// SetExtraData rebuilds the validator-controlled extra-data section.
+func (p *Parlia) SetExtraData(chain consensus.ChainHeaderReader, header *types.Header) error {
+	if len(header.Extra) < extraVanity-nextForkHashSize {
+		header.Extra = append(header.Extra, bytes.Repeat([]byte{0x00}, extraVanity-nextForkHashSize-len(header.Extra))...)
 	}
 
 	header.Extra = header.Extra[:extraVanity-nextForkHashSize]
