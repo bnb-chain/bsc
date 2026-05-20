@@ -712,6 +712,12 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 		return fmt.Errorf("invalid block time: %v", err)
 	}
 
+	// 7. Claimed GasFee cannot exceed the unsigned deposit tx value.
+	depositValue := parliaEngine.ExtractBidBlockDepositValue(decoded.Txs)
+	if decoded.GasFee.Cmp(depositValue) > 0 {
+		return fmt.Errorf("invalid gasFee: claimed %v exceeds deposit %v", decoded.GasFee, depositValue)
+	}
+
 	return nil
 }
 

@@ -885,10 +885,11 @@ func TestParliaPrepareForBidBlockUsesDeterministicTime(t *testing.T) {
 	if builderHeader.Coinbase != inturnValidator {
 		t.Fatalf("builder coinbase mismatch: have %s want %s", builderHeader.Coinbase, inturnValidator)
 	}
-	expectedTime, err := builderEngine.ExpectedBidBlockTime(chain, builderHeader, genesisBlock.Header())
+	blockInterval, err := builderEngine.BlockInterval(chain, builderHeader)
 	if err != nil {
-		t.Fatalf("failed to compute expected BidBlock time: %v", err)
+		t.Fatalf("failed to compute block interval: %v", err)
 	}
+	expectedTime := genesisBlock.Header().MilliTimestamp() + blockInterval
 	if builderHeader.MilliTimestamp() != expectedTime {
 		t.Fatalf("builder time mismatch: have %d want %d", builderHeader.MilliTimestamp(), expectedTime)
 	}

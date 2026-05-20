@@ -1468,25 +1468,26 @@ LOOP:
 		bestBidBlock = w.getBestBidBlock(bestWork.header)
 	}
 
-	var verifiedTxs *verifiedBidBlockTxs
-	var bidBlockSelected bool
-	verifiedTxs, bidBlockSelected, err := w.verifyAndSelectBidBlock(bestWork.header, bestBidBlock, simBidValidatorReward, bestReward)
-	if err != nil {
-		log.Warn("BidBlock failed verify, fallback",
-			"builder", bestBidBlock.Builder,
-			"err", err)
-		bidBlockFallback = true
-	}
-	if bidBlockSelected {
-		task, err := w.prepareBidBlockTask(bestBidBlock, verifiedTxs, bestWork.header, start)
+	if bestBidBlock != nil {
+		// preSealVerifyBidBlock already enforced engine == parlia.
+		p := w.engine.(*parlia.Parlia)
+		verifiedTxs, err := verifyBidBlockSystemTxs(bestBidBlock, bestWork.header, w.chain, p)
 		if err != nil {
-			log.Error("Failed to prepare bid block, fallback",
+			log.Warn("BidBlock failed verify, fallback",
 				"builder", bestBidBlock.Builder,
 				"err", err)
 			bidBlockFallback = true
-		} else {
-			w.enqueueBidBlockTask(task, len(verifiedTxs.systemTxs))
-			bidBlockCommitted = true
+		} else if w.selectBidBlock(bestWork.header, bestBidBlock, simBidBlockReward, simBidValidatorReward, bestReward) {
+			task, err := w.prepareBidBlockTask(bestBidBlock, verifiedTxs, bestWork.header, start)
+			if err != nil {
+				log.Error("Failed to prepare bid block, fallback",
+					"builder", bestBidBlock.Builder,
+					"err", err)
+				bidBlockFallback = true
+			} else {
+				w.enqueueBidBlockTask(task, len(verifiedTxs.systemTxs))
+				bidBlockCommitted = true
+			}
 		}
 	}
 

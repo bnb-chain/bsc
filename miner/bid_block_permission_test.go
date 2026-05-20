@@ -74,7 +74,7 @@ func TestBidBlockPermission_BuildersIndependent(t *testing.T) {
 	a := common.HexToAddress("0xa")
 	b := common.HexToAddress("0xb")
 
-	m.Revoke(a, RevokeReasonGasFeeOverClaim, common.Hash{}, 1)
+	m.Revoke(a, RevokeReasonInsertChainFailed, common.Hash{}, 1)
 	if m.IsAllowed(a) {
 		t.Fatal("a should be revoked")
 	}
@@ -88,13 +88,13 @@ func TestBidBlockPermission_RevokeOverwritesSameDay(t *testing.T) {
 	builder := common.HexToAddress("0x1")
 
 	m.Revoke(builder, RevokeReasonInsertChainFailed, common.HexToHash("0x1"), 1)
-	m.Revoke(builder, RevokeReasonGasFeeOverClaim, common.HexToHash("0x2"), 2)
+	m.Revoke(builder, RevokeReasonManual, common.HexToHash("0x2"), 2)
 
 	rec, ok := getBidBlockPermissionRecord(m, builder)
 	if !ok {
 		t.Fatal("record expected")
 	}
-	if rec.Reason != RevokeReasonGasFeeOverClaim {
+	if rec.Reason != RevokeReasonManual {
 		t.Fatalf("most recent reason should win: got %s", rec.Reason)
 	}
 	if rec.BlockNum != 2 {
@@ -213,7 +213,7 @@ func TestBidBlockPermission_ActiveRevokeCount(t *testing.T) {
 	a := common.HexToAddress("0xa")
 	b := common.HexToAddress("0xb")
 	m.Revoke(a, RevokeReasonInsertChainFailed, common.Hash{}, 1)
-	m.Revoke(b, RevokeReasonGasFeeOverClaim, common.Hash{}, 2)
+	m.Revoke(b, RevokeReasonManual, common.Hash{}, 2)
 
 	if got := m.ActiveRevokeCount(); got != 2 {
 		t.Fatalf("two revoked: got %d, want 2", got)
@@ -339,7 +339,7 @@ func TestMinerBidBlockPermission_UsesWorkerManager(t *testing.T) {
 	miner := &Miner{worker: &worker{permMgr: m}}
 	builder := common.HexToAddress("0x1")
 
-	m.Revoke(builder, RevokeReasonGasFeeOverClaim, common.Hash{}, 1)
+	m.Revoke(builder, RevokeReasonInsertChainFailed, common.Hash{}, 1)
 	if miner.GetBidBlockPermission(builder).Allowed {
 		t.Fatal("miner should report worker revoke")
 	}

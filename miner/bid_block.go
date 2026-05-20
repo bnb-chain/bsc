@@ -31,67 +31,12 @@ type verifiedBidBlockTxs struct {
 	systemTxs []*types.Transaction
 }
 
-// handleBidBlockResult handles a sealed BidBlock: broadcast, then InsertChain for verification.
-func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
-	hash := block.Hash()
-
-	// Broadcast the block first (before verification)
-	stats := w.chain.GetBlockStats(hash)
-	stats.SendBlockTime.Store(time.Now().UnixMilli())
-	stats.StartMiningTime.Store(task.miningStartAt.UnixMilli())
-
-	log.Info("[BID BLOCK SEALED]",
-		"number", block.Number(),
-		"hash", hash,
-		"builder", task.bidBlockInfo.builder,
-		"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
-
-	// Use NewSealedBlockEvent (full-block push) instead of NewMinedBlockEvent
-	// (announce-only) so peers receive the BidBlock immediately and can validate
-	// it in parallel with our async InsertChain. The duplicate NewSealedBlockEvent
-	// posted by WriteBlockAndSetHead after InsertChain is deduplicated by the
-	// handler's known-peers cache.
-	w.mux.Post(core.NewSealedBlockEvent{Block: block})
-
-	// InsertChain: re-execute all transactions and verify stateRoot/receiptHash
-	if _, err := w.chain.InsertChain(types.Blocks{block}); err != nil {
-		log.Error("[BID BLOCK VERIFY FAILED]",
-			"number", block.Number(),
-			"hash", hash,
-			"builder", task.bidBlockInfo.builder,
-			"err", err,
-			"revokeReason", RevokeReasonInsertChainFailed)
-		w.permMgr.Revoke(task.bidBlockInfo.builder, RevokeReasonInsertChainFailed, hash, block.NumberU64())
-		return
-	}
-
-	p := w.engine.(*parlia.Parlia)
-	actualGasFee := p.ExtractDistributedGasFee(block)
-	if task.bidBlockInfo.gasFee != nil && task.bidBlockInfo.gasFee.Cmp(actualGasFee) > 0 {
-		log.Error("[BID BLOCK GAS FEE OVER-CLAIM]",
-			"number", block.Number(),
-			"hash", hash,
-			"builder", task.bidBlockInfo.builder,
-			"claimed", task.bidBlockInfo.gasFee,
-			"actual", actualGasFee,
-			"revokeReason", RevokeReasonGasFeeOverClaim)
-		w.permMgr.Revoke(task.bidBlockInfo.builder, RevokeReasonGasFeeOverClaim, hash, block.NumberU64())
-		return
-	}
-
-	log.Info("[BID BLOCK VERIFIED]",
-		"number", block.Number(),
-		"hash", hash,
-		"builder", task.bidBlockInfo.builder,
-		"gasFee", task.bidBlockInfo.gasFee)
-}
-
 func (w *worker) getBestBidBlock(header *types.Header) *types.DecodedBidBlock {
 	parentHash := header.ParentHash
 	return w.bidFetcher.GetBestBidBlock(parentHash)
 }
 
-func (w *worker) selectBidBlock(header *types.Header, bidBlock *types.DecodedBidBlock, simBidValidatorReward, bestReward *uint256.Int) bool {
+func (w *worker) selectBidBlock(header *types.Header, bidBlock *types.DecodedBidBlock, simBidBlockReward, simBidValidatorReward, bestReward *uint256.Int) bool {
 	if bidBlock == nil {
 		return false
 	}
@@ -103,7 +48,14 @@ func (w *worker) selectBidBlock(header *types.Header, bidBlock *types.DecodedBid
 	if simBidValidatorReward != nil && bidBlockValidatorReward.Cmp(simBidValidatorReward) <= 0 {
 		return false
 	}
+	if simBidBlockReward != nil && bidBlockFee.Cmp(simBidBlockReward) <= 0 {
+		return false
+	}
 
+	simBidBR := "<none>"
+	if simBidBlockReward != nil {
+		simBidBR = simBidBlockReward.String()
+	}
 	simBidVR := "<none>"
 	if simBidValidatorReward != nil {
 		simBidVR = simBidValidatorReward.String()
@@ -114,6 +66,7 @@ func (w *worker) selectBidBlock(header *types.Header, bidBlock *types.DecodedBid
 		"localBlockReward", bestReward.String(),
 		"bidReward", bidBlockFee.String(),
 		"bidValidatorReward", bidBlockValidatorReward.String(),
+		"simBidBlockReward", simBidBR,
 		"simBidValidatorReward", simBidVR)
 
 	if bestReward.Cmp(bidBlockFee) < 0 {
@@ -125,20 +78,6 @@ func (w *worker) selectBidBlock(header *types.Header, bidBlock *types.DecodedBid
 		return true
 	}
 	return false
-}
-
-func (w *worker) verifyAndSelectBidBlock(header *types.Header, bidBlock *types.DecodedBidBlock, simBidValidatorReward, bestReward *uint256.Int) (*verifiedBidBlockTxs, bool, error) {
-	if bidBlock == nil {
-		return nil, false, nil
-	}
-	// preSealVerifyBidBlock already enforced engine == parlia.
-	p := w.engine.(*parlia.Parlia)
-	verifiedTxs, err := verifyBidBlockSystemTxs(bidBlock, header, w.chain, p)
-	if err != nil {
-		return nil, false, err
-	}
-	selected := w.selectBidBlock(header, bidBlock, simBidValidatorReward, bestReward)
-	return verifiedTxs, selected, nil
 }
 
 // verifyBidBlockSystemTxs validates the trailing unsigned system-tx region.
@@ -271,4 +210,45 @@ func (w *worker) enqueueBidBlockTask(task *task, systemTxs int) {
 	case <-w.exitCh:
 		log.Info("Worker has exited")
 	}
+}
+
+// handleBidBlockResult handles a sealed BidBlock: broadcast, then InsertChain for verification.
+func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
+	hash := block.Hash()
+
+	// Broadcast the block first (before verification)
+	stats := w.chain.GetBlockStats(hash)
+	stats.SendBlockTime.Store(time.Now().UnixMilli())
+	stats.StartMiningTime.Store(task.miningStartAt.UnixMilli())
+
+	log.Info("[BID BLOCK SEALED]",
+		"number", block.Number(),
+		"hash", hash,
+		"builder", task.bidBlockInfo.builder,
+		"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
+
+	// Use NewSealedBlockEvent (full-block push) instead of NewMinedBlockEvent
+	// (announce-only) so peers receive the BidBlock immediately and can validate
+	// it in parallel with our async InsertChain. The duplicate NewSealedBlockEvent
+	// posted by WriteBlockAndSetHead after InsertChain is deduplicated by the
+	// handler's known-peers cache.
+	w.mux.Post(core.NewSealedBlockEvent{Block: block})
+
+	// InsertChain: re-execute all transactions and verify stateRoot/receiptHash
+	if _, err := w.chain.InsertChain(types.Blocks{block}); err != nil {
+		log.Error("[BID BLOCK VERIFY FAILED]",
+			"number", block.Number(),
+			"hash", hash,
+			"builder", task.bidBlockInfo.builder,
+			"err", err,
+			"revokeReason", RevokeReasonInsertChainFailed)
+		w.permMgr.Revoke(task.bidBlockInfo.builder, RevokeReasonInsertChainFailed, hash, block.NumberU64())
+		return
+	}
+
+	log.Info("[BID BLOCK VERIFIED]",
+		"number", block.Number(),
+		"hash", hash,
+		"builder", task.bidBlockInfo.builder,
+		"gasFee", task.bidBlockInfo.gasFee)
 }

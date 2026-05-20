@@ -18,7 +18,6 @@ type BidBlockRevokeReason string
 
 const (
 	RevokeReasonInsertChainFailed BidBlockRevokeReason = "insertchain_failed"
-	RevokeReasonGasFeeOverClaim   BidBlockRevokeReason = "gasfee_overclaim"
 	RevokeReasonManual            BidBlockRevokeReason = "manual"
 )
 
