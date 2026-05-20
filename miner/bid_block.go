@@ -118,7 +118,7 @@ func verifyBidBlockSystemTxs(
 	if parent == nil {
 		return nil, fmt.Errorf("BidBlock rejected: parent header not found for %s", localHeader.ParentHash.Hex())
 	}
-	shape := p.ExpectedSystemTxShape(localHeader, parent, decoded.GasFee)
+	shape := p.ExpectedSystemTxShape(localHeader, parent)
 	if err := p.VerifySystemTxShape(allTxs[systemStart:], shape); err != nil {
 		return nil, fmt.Errorf("BidBlock rejected: %w", err)
 	}

@@ -108,8 +108,8 @@ func (p *Parlia) IsSignableSystemTx(tx *types.Transaction) bool {
 //
 //	deposit -> distributeFinalityReward (cond.) -> updateValidatorSetV2 (cond.)
 //
-// Precondition: gasFee is derived and validated by BidBlock admission.
-func (p *Parlia) ExpectedSystemTxShape(header, parent *types.Header, gasFee *big.Int) []expectedSystemTxEntry {
+// Precondition: BidBlock admission has already enforced a non-zero deposit value.
+func (p *Parlia) ExpectedSystemTxShape(header, parent *types.Header) []expectedSystemTxEntry {
 	shape := make([]expectedSystemTxEntry, 0, 3)
 
 	shape = append(shape, expectedSystemTxEntry{
