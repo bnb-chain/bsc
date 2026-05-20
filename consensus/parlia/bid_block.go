@@ -106,19 +106,16 @@ func (p *Parlia) IsSignableSystemTx(tx *types.Transaction) bool {
 
 // ExpectedSystemTxShape returns the expected trailing system-tx order for accepted BidBlocks:
 //
-//	deposit (if GasFee > 0) -> distributeFinalityReward (cond.) -> updateValidatorSetV2 (cond.)
+//	deposit -> distributeFinalityReward (cond.) -> updateValidatorSetV2 (cond.)
 //
-// Precondition: gasFee is validated by BidBlock admission.
-// Deposit is expected only when GasFee > 0.
+// Precondition: gasFee is derived and validated by BidBlock admission.
 func (p *Parlia) ExpectedSystemTxShape(header, parent *types.Header, gasFee *big.Int) []expectedSystemTxEntry {
 	shape := make([]expectedSystemTxEntry, 0, 3)
 
-	if gasFee.Sign() > 0 {
-		shape = append(shape, expectedSystemTxEntry{
-			method:   "deposit",
-			selector: p.selectorFor("deposit"),
-		})
-	}
+	shape = append(shape, expectedSystemTxEntry{
+		method:   "deposit",
+		selector: p.selectorFor("deposit"),
+	})
 
 	if header.Number.Uint64()%finalityRewardInterval == 0 {
 		shape = append(shape, expectedSystemTxEntry{
@@ -165,28 +162,6 @@ func (p *Parlia) ExtractBidBlockDepositValue(txs []*types.Transaction) *big.Int 
 			break
 		}
 		if tx.To() != nil && *tx.To() == valContract && bytes.HasPrefix(tx.Data(), depositSel[:]) {
-			return new(big.Int).Set(tx.Value())
-		}
-	}
-	return new(big.Int)
-}
-
-// ExtractDistributedGasFee returns the validator-contract deposit from a sealed block.
-func (p *Parlia) ExtractDistributedGasFee(block *types.Block) *big.Int {
-	txs := block.Transactions()
-	depositSel := p.selectorFor("deposit")
-	valContract := common.HexToAddress(systemcontracts.ValidatorContract)
-
-	for i := len(txs) - 1; i >= 0; i-- {
-		tx := txs[i]
-		isSystem, err := p.IsSystemTransaction(tx, block.Header())
-		if err != nil || !isSystem {
-			break
-		}
-		if tx.To() == nil || *tx.To() != valContract {
-			continue
-		}
-		if bytes.HasPrefix(tx.Data(), depositSel[:]) {
 			return new(big.Int).Set(tx.Value())
 		}
 	}
