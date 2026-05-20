@@ -681,6 +681,9 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 
 	header := decoded.Header
 	parent := b.chain.GetHeaderByHash(header.ParentHash)
+	if parent == nil {
+		return fmt.Errorf("parent header not found: %s", header.ParentHash.Hex())
+	}
 
 	// 1. Coinbase must be the in-turn validator (this node).
 	expectedCoinbase := b.bidWorker.etherbase()
