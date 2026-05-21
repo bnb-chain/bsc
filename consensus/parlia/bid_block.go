@@ -139,10 +139,13 @@ func (p *Parlia) ExtractBidBlockDepositValue(txs []*types.Transaction) (int, *bi
 		}
 		systemTxStart = i
 	}
-	depositSel := p.selectorFor("deposit")
-	for i := systemTxStart; i < len(txs); i++ {
-		if bytes.HasPrefix(txs[i].Data(), depositSel[:]) {
-			return systemTxStart, new(big.Int).Set(txs[i].Value())
+	// Deposit is the first trailing unsigned system tx (see expectedSystemTxShape).
+	// systemTxStart == 0 means there are no preceding user txs to collect fees from,
+	// which is invalid by design — return zero GasFee so admission rejects it.
+	if systemTxStart > 0 && systemTxStart < len(txs) {
+		depositSel := p.selectorFor("deposit")
+		if bytes.HasPrefix(txs[systemTxStart].Data(), depositSel[:]) {
+			return systemTxStart, new(big.Int).Set(txs[systemTxStart].Value())
 		}
 	}
 	return systemTxStart, new(big.Int)
