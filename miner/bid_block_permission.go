@@ -61,10 +61,7 @@ func NewBidBlockPermissionManager() *BidBlockPermissionManager {
 func (m *BidBlockPermissionManager) IsAllowed(builder common.Address) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.isAllowed(builder, m.clock())
-}
-
-func (m *BidBlockPermissionManager) isAllowed(builder common.Address, now time.Time) bool {
+	now := m.clock()
 	rec, found := m.revoked[builder]
 	return !found || !sameUTCDay(rec.RevokedAt, now)
 }
@@ -93,10 +90,10 @@ func (m *BidBlockPermissionManager) GetStatus(builder common.Address) types.BidB
 	status := types.BidBlockPermissionStatus{
 		Allowed: true,
 	}
-	if m.isAllowed(builder, now) {
+	rec, found := m.revoked[builder]
+	if !found || !sameUTCDay(rec.RevokedAt, now) {
 		return status
 	}
-	rec := m.revoked[builder]
 	status.Allowed = false
 	status.Reason = string(rec.Reason)
 	status.BlockHash = rec.BlockHash

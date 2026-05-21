@@ -1171,19 +1171,13 @@ func (p *Parlia) prepare(chain consensus.ChainHeaderReader, header *types.Header
 	}
 	blockTime := p.blockTimeForRamanujanFork(snap, header, parent)
 
-	return p.prepareHeader(chain, header, snap, blockTime)
-}
-
-func (p *Parlia) prepareHeader(chain consensus.ChainHeaderReader, header *types.Header, snap *Snapshot, blockTime uint64) error {
 	header.Difficulty = calcDifficulty(snap, header.Coinbase)
-
 	header.Time = blockTime / 1000 // get seconds
 	if p.chainConfig.IsLorentz(header.Number, header.Time) {
 		header.SetMilliseconds(blockTime % 1000)
 	} else {
 		header.MixDigest = common.Hash{}
 	}
-
 	return p.SetExtraData(chain, header)
 }
 

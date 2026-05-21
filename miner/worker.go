@@ -72,15 +72,14 @@ const (
 )
 
 var (
-	bidExistGauge          = metrics.NewRegisteredGauge("worker/bidExist", nil)
-	bidWinGauge            = metrics.NewRegisteredGauge("worker/bidWin", nil)
-	inturnBlocksGauge      = metrics.NewRegisteredGauge("worker/inturnBlocks", nil)
-	bestBidGasUsedGauge    = metrics.NewRegisteredGauge("worker/bestBidGasUsed", nil)  // MGas
-	bestWorkGasUsedGauge   = metrics.NewRegisteredGauge("worker/bestWorkGasUsed", nil) // MGas
-	bidBlockCommitGauge    = metrics.NewRegisteredGauge("worker/bidBlockCommit", nil)
-	bidBlockGasUsedGauge   = metrics.NewRegisteredGauge("worker/bidBlockGasUsed", nil) // MGas
-	bidBlockSystemTxsGauge = metrics.NewRegisteredGauge("worker/bidBlockSystemTxs", nil)
-	bidBlockRevokeGauge    = metrics.NewRegisteredGauge("worker/bidBlockRevoke", nil)
+	bidExistGauge        = metrics.NewRegisteredGauge("worker/bidExist", nil)
+	bidWinGauge          = metrics.NewRegisteredGauge("worker/bidWin", nil)
+	inturnBlocksGauge    = metrics.NewRegisteredGauge("worker/inturnBlocks", nil)
+	bestBidGasUsedGauge  = metrics.NewRegisteredGauge("worker/bestBidGasUsed", nil)  // MGas
+	bestWorkGasUsedGauge = metrics.NewRegisteredGauge("worker/bestWorkGasUsed", nil) // MGas
+	bidBlockCommitGauge  = metrics.NewRegisteredGauge("worker/bidBlockCommit", nil)
+	bidBlockGasUsedGauge = metrics.NewRegisteredGauge("worker/bidBlockGasUsed", nil) // MGas
+	bidBlockRevokeGauge  = metrics.NewRegisteredGauge("worker/bidBlockRevoke", nil)
 
 	writeBlockTimer      = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer   = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
@@ -1432,6 +1431,9 @@ LOOP:
 	var localValidatorReward *uint256.Int
 	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
 		inturnBlocksGauge.Inc(1)
+		localValidatorReward = new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
+		localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
+
 		// We want to start sealing the block as late as possible here if mev is enabled, so we could give builder the chance to send their final bid.
 		// Time left till sealing the block.
 		tillSealingTime := time.Until(time.UnixMilli(int64(bestWork.header.MilliTimestamp()))) - *w.config.DelayLeftOver
@@ -1449,10 +1451,6 @@ LOOP:
 				return
 			}
 		}
-
-		// Local baseline (used in Stage 2).
-		localValidatorReward = new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
-		localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
 
 		// Stage 1 candidate A — legacy SendBid (simBid).
 		bestBid = w.bidFetcher.GetBestBid(bestWork.header.ParentHash)
@@ -1481,7 +1479,6 @@ LOOP:
 			bidBlockCommitted = true
 			bidBlockCommitGauge.Inc(1)
 			bidBlockGasUsedGauge.Update(int64(bestBidBlock.Header.GasUsed) / 1_000_000)
-			bidBlockSystemTxsGauge.Update(int64(systemTxCount))
 			bestWorkGasUsedGauge.Update(int64(bestWork.header.GasUsed) / 1_000_000)
 		}
 	}
@@ -1496,12 +1493,7 @@ LOOP:
 
 	// simBid fallback. Re-runs the legacy dual-threshold gate against simBid
 	// whenever no BidBlock is being committed.
-	if bestBid != nil && bestBid.env != nil &&
-		bestWork != bestBid.env {
-		if localValidatorReward == nil {
-			localValidatorReward = new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
-			localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
-		}
+	if bestBid != nil {
 		if bestReward.Cmp(simBidBlockReward) < 0 &&
 			localValidatorReward.Cmp(simBidValidatorReward) < 0 {
 			bidWinGauge.Inc(1)

@@ -54,7 +54,8 @@ var (
 	defaultBuilderFeeCeil      = "0"
 	defaultValidatorCommission = uint64(100)
 	defaultMaxBidsPerBuilder   = uint32(2) // Simple strategy: send one bid early, another near deadline
-	defaultBidBlockEnabled     = false
+	// TODO: default to true before BidBlock launches on mainnet.
+	defaultBidBlockEnabled = false
 )
 
 // Config is the configuration parameters of mining.
