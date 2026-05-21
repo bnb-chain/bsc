@@ -88,17 +88,13 @@ func bindSignBidBlockSystemTxs(
 }
 
 // prepareBidBlockTask signs system txs and assembles a BidBlock task.
-// Validator rewrites:
-//   - Extra: SetExtraData here + seal signature in engine.Seal()
-//   - TxHash: re-derived after bind-signing the trailing system txs
-//   - GasLimit: nudged toward the validator's local GasCeil policy when feasible
-//
-// All other header fields flow verbatim from decoded.Header. In particular,
-// Time / MixDigest (post-Lorentz millisecond bytes) / Coinbase / Difficulty
-// must stay as the builder produced them via parlia.PrepareForBidBlock: they
-// are covered by the bid signature, and the time fields must match what
-// blockTimeVerifyForRamanujanFork computes at admission. Modifying any of
-// them here will break either signature verification or admission.
+// Extra was finalized by the validator during admission (SendBidBlock calls
+// SetExtraData before preSealVerifyBidBlock); engine.Seal will later fill the
+// reserved vote-attestation/seal-signature bytes. Here we only recompute TxHash
+// after bind-signing the trailing system txs. Do not touch fields that enter
+// the EVM BlockContext (GasLimit, Coinbase, Time, Difficulty, BaseFee, ...) —
+// changing them after the builder's pre-execution would diverge the re-executed
+// stateRoot and fail InsertChain.
 func (w *worker) prepareBidBlockTask(
 	decoded *types.DecodedBidBlock,
 	start time.Time,
@@ -117,25 +113,6 @@ func (w *worker) prepareBidBlockTask(
 	}
 
 	header := types.CopyHeader(decoded.Header)
-
-	// Apply validator's local GasLimit policy when it doesn't break the
-	// gasUsed ≤ gasLimit invariant. VerifyUnsealedHeader already bounded the
-	// builder's GasLimit within ±1/1024 of parent; this nudges it toward the
-	// operator-configured GasCeil within that window.
-	parent := w.chain.GetHeaderByHash(header.ParentHash)
-	if parent == nil {
-		return nil, fmt.Errorf("parent not found: %s", header.ParentHash.Hex())
-	}
-	w.confMu.RLock()
-	localGasLimit := core.CalcGasLimit(parent.GasLimit, w.config.GasCeil)
-	w.confMu.RUnlock()
-	if localGasLimit >= header.GasUsed {
-		header.GasLimit = localGasLimit
-	}
-
-	if err := p.SetExtraData(w.chain, header); err != nil {
-		return nil, err
-	}
 	header.TxHash = types.DeriveSha(types.Transactions(allTxs), trie.NewStackTrie(nil))
 
 	body := &types.Body{Transactions: allTxs}

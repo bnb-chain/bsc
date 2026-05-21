@@ -2,11 +2,13 @@ package miner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/internal/version"
@@ -106,6 +108,21 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 	decoded, err := args.ToDecodedBidBlock(builder)
 	if err != nil {
 		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("failed to decode bid block: %v", err))
+	}
+
+	// Validator owns the entire Extra: overwrite builder's bytes with the operator-configured
+	// vanity and let SetExtraData rebuild forkhash + validators + turnLength + reserved seal
+	// space. This runs before preSealVerifyBidBlock so VerifyUnsealedHeader validates the
+	// validator-constructed Extra rather than the builder's.
+	parliaEngine, ok := miner.worker.engine.(*parlia.Parlia)
+	if !ok {
+		return common.Hash{}, errors.New("consensus engine is not parlia")
+	}
+	miner.worker.confMu.RLock()
+	decoded.Header.Extra = common.CopyBytes(miner.worker.extra)
+	miner.worker.confMu.RUnlock()
+	if err := parliaEngine.SetExtraData(miner.worker.chain, decoded.Header); err != nil {
+		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("set extra data: %v", err))
 	}
 
 	if err := miner.bidSimulator.preSealVerifyBidBlock(decoded); err != nil {
