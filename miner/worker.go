@@ -80,6 +80,7 @@ var (
 	bidBlockCommitGauge    = metrics.NewRegisteredGauge("worker/bidBlockCommit", nil)
 	bidBlockGasUsedGauge   = metrics.NewRegisteredGauge("worker/bidBlockGasUsed", nil) // MGas
 	bidBlockSystemTxsGauge = metrics.NewRegisteredGauge("worker/bidBlockSystemTxs", nil)
+	bidBlockRevokeGauge    = metrics.NewRegisteredGauge("worker/bidBlockRevoke", nil)
 
 	writeBlockTimer      = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer   = metrics.NewRegisteredTimer("worker/finalizeblock", nil)

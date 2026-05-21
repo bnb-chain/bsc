@@ -17,6 +17,17 @@ import (
 type BidBlockRevokeReason string
 
 const (
+	// RevokeReasonInsertChainFailed: the sealed BidBlock failed InsertChain.
+	// These are conditions the validator cannot check before re-execution and
+	// therefore depends on the builder to get right:
+	//   - Root          (post-execution state root)
+	//   - ReceiptHash   (post-execution receipts trie root)
+	//   - Bloom         (post-execution logs bloom)
+	//   - GasUsed       (cumulative gas consumed)
+	//   - Tx precheck failures (nonce, balance, signature, intrinsic gas, ...)
+	//   - System tx value / params (e.g. deposit value vs. SystemAddress balance)
+	//   - Blob sidecar checks (KZG proofs, blob hashes)
+	// Any mismatch is treated as builder dishonesty and revokes permission.
 	RevokeReasonInsertChainFailed BidBlockRevokeReason = "insertchain_failed"
 	RevokeReasonManual            BidBlockRevokeReason = "manual"
 )

@@ -26,25 +26,17 @@ type expectedSystemTxEntry struct {
 	selector [4]byte
 }
 
-// PrepareForBidBlock prepares consensus header fields for BidBlock construction.
-// It mirrors Prepare, but uses the in-turn validator as Coinbase instead of p.val.
+// PrepareForBidBlock is Prepare with Coinbase set to the in-turn validator instead of p.val.
 func (p *Parlia) PrepareForBidBlock(chain consensus.ChainHeaderReader, header *types.Header) error {
-	header.Nonce = types.BlockNonce{}
-
+	// Resolve Coinbase up front: backOffTime (used inside prepare via
+	// blockTimeForRamanujanFork) and calcDifficulty both depend on it.
 	number := header.Number.Uint64()
 	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
 	if err != nil {
 		return err
 	}
-	validator := snap.inturnValidator()
-	header.Coinbase = validator
-	parent := chain.GetHeader(header.ParentHash, number-1)
-	if parent == nil {
-		return consensus.ErrUnknownAncestor
-	}
-	blockTime := parent.MilliTimestamp() + snap.BlockInterval
-
-	return p.prepareHeader(chain, header, snap, blockTime)
+	header.Coinbase = snap.inturnValidator()
+	return p.prepare(chain, header)
 }
 
 // FinalizeAndAssembleBidBlock assembles a BidBlock with unsigned system txs.
@@ -55,19 +47,6 @@ func (p *Parlia) FinalizeAndAssembleBidBlock(chain consensus.ChainHeaderReader, 
 		return nil, nil, err
 	}
 	return block, receipts, nil
-}
-
-// VerifyBlockTime validates the deterministic BidBlock timestamp.
-func (p *Parlia) VerifyBlockTime(chain consensus.ChainHeaderReader, header, parent *types.Header) error {
-	snap, err := p.snapshot(chain, parent.Number.Uint64(), parent.Hash(), nil)
-	if err != nil {
-		return err
-	}
-	expected := parent.MilliTimestamp() + snap.BlockInterval
-	if got := header.MilliTimestamp(); got != expected {
-		return fmt.Errorf("invalid BidBlock timestamp: got %d, want %d", got, expected)
-	}
-	return nil
 }
 
 // SignSystemTx signs a BidBlock system tx with the validator key.

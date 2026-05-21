@@ -1153,6 +1153,11 @@ func (p *Parlia) NextInTurnValidator(chain consensus.ChainHeaderReader, header *
 // header for running the transactions on top.
 func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
 	header.Coinbase = p.val
+	return p.prepare(chain, header)
+}
+
+// prepare is shared by Prepare and PrepareForBidBlock; caller sets Coinbase/Number/ParentHash.
+func (p *Parlia) prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
 	header.Nonce = types.BlockNonce{}
 
 	number := header.Number.Uint64()
