@@ -12,7 +12,8 @@ import (
 const (
 	wiggleTimeBeforeFork       = 500 * time.Millisecond // Random delay (per signer) to allow concurrent signers
 	fixedBackOffTimeBeforeFork = 200 * time.Millisecond
-	millisecondsUnit           = 50 // not enforced at the consensus level
+	millisecondsUnit           = 50  // not enforced at the consensus level
+	clockDiffTolerance         = 200 // milliseconds of clock-drift tolerance for block-time verification
 )
 
 func (p *Parlia) delayForRamanujanFork(snap *Snapshot, header *types.Header) time.Duration {
@@ -42,9 +43,12 @@ func (p *Parlia) blockTimeForRamanujanFork(snap *Snapshot, header, parent *types
 
 func (p *Parlia) blockTimeVerifyForRamanujanFork(snap *Snapshot, header, parent *types.Header) error {
 	if p.chainConfig.IsRamanujan(header.Number) {
-		if header.MilliTimestamp() < parent.MilliTimestamp()+snap.BlockInterval+p.backOffTime(snap, parent, header, header.Coinbase) {
-			return consensus.ErrFutureBlock
+		lowerTime := parent.MilliTimestamp() + snap.BlockInterval + p.backOffTime(snap, parent, header, header.Coinbase)
+		upperTime := uint64(time.Now().UnixMilli()) + millisecondsUnit + clockDiffTolerance
+		if ts := header.MilliTimestamp(); ts == lowerTime || (lowerTime < ts && ts < upperTime) {
+			return nil
 		}
+		return consensus.ErrFutureBlock
 	}
 	return nil
 }

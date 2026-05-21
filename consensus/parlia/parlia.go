@@ -584,7 +584,7 @@ func (p *Parlia) verifyVoteAttestation(chain consensus.ChainHeaderReader, header
 // a batch of new headers.
 func (p *Parlia) verifyHeader(chain consensus.ChainHeaderReader, header *types.Header, parents []*types.Header) error {
 	// Don't waste time checking blocks from the future
-	if header.Time > uint64(time.Now().Unix()) {
+	if header.MilliTimestamp() > uint64(time.Now().UnixMilli())+clockDiffTolerance {
 		return consensus.ErrFutureBlock
 	}
 
