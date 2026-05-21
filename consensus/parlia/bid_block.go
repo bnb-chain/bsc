@@ -28,8 +28,7 @@ type expectedSystemTxEntry struct {
 
 // PrepareForBidBlock is Prepare with Coinbase set to the in-turn validator instead of p.val.
 func (p *Parlia) PrepareForBidBlock(chain consensus.ChainHeaderReader, header *types.Header) error {
-	// Resolve Coinbase up front: backOffTime (used inside prepare via
-	// blockTimeForRamanujanFork) and calcDifficulty both depend on it.
+	// Coinbase must be set before prepare(): backOffTime and calcDifficulty depend on it.
 	number := header.Number.Uint64()
 	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
 	if err != nil {
@@ -59,9 +58,9 @@ func (p *Parlia) SignSystemTx(tx *types.Transaction, chainID *big.Int) (*types.T
 	return p.signTxFn(accounts.Account{Address: p.val}, tx, chainID)
 }
 
-// IsUnsignedSystemTxCandidate reports whether tx looks like an unsigned
+// isUnsignedSystemTxCandidate reports whether tx looks like an unsigned
 // BidBlock system tx. It does not recover the sender.
-func (p *Parlia) IsUnsignedSystemTxCandidate(tx *types.Transaction) bool {
+func (p *Parlia) isUnsignedSystemTxCandidate(tx *types.Transaction) bool {
 	if tx == nil || tx.To() == nil || !isToSystemContract(*tx.To()) {
 		return false
 	}
@@ -72,9 +71,9 @@ func (p *Parlia) IsUnsignedSystemTxCandidate(tx *types.Transaction) bool {
 	return isZeroSig(v, r, s)
 }
 
-// IsSignableSystemTx reports whether tx can be bind-signed for BidBlock.
-func (p *Parlia) IsSignableSystemTx(tx *types.Transaction) bool {
-	if !p.IsUnsignedSystemTxCandidate(tx) {
+// isSignableSystemTx reports whether tx can be bind-signed for BidBlock.
+func (p *Parlia) isSignableSystemTx(tx *types.Transaction) bool {
+	if !p.isUnsignedSystemTxCandidate(tx) {
 		return false
 	}
 	if *tx.To() != common.HexToAddress(systemcontracts.ValidatorContract) {
@@ -83,12 +82,12 @@ func (p *Parlia) IsSignableSystemTx(tx *types.Transaction) bool {
 	return p.hasSignableSelector(tx.Data())
 }
 
-// ExpectedSystemTxShape returns the expected trailing system-tx order for accepted BidBlocks:
+// expectedSystemTxShape returns the expected trailing system-tx order for accepted BidBlocks:
 //
 //	deposit -> distributeFinalityReward (cond.) -> updateValidatorSetV2 (cond.)
 //
 // Precondition: BidBlock admission has already enforced a non-zero deposit value.
-func (p *Parlia) ExpectedSystemTxShape(header, parent *types.Header) []expectedSystemTxEntry {
+func (p *Parlia) expectedSystemTxShape(header, parent *types.Header) []expectedSystemTxEntry {
 	shape := make([]expectedSystemTxEntry, 0, 3)
 
 	shape = append(shape, expectedSystemTxEntry{
@@ -113,7 +112,7 @@ func (p *Parlia) ExpectedSystemTxShape(header, parent *types.Header) []expectedS
 	return shape
 }
 
-func (p *Parlia) VerifySystemTxShape(txs []*types.Transaction, shape []expectedSystemTxEntry) error {
+func (p *Parlia) verifySystemTxShape(txs []*types.Transaction, shape []expectedSystemTxEntry) error {
 	if len(txs) < len(shape) {
 		return fmt.Errorf("missing required system tx %q", shape[len(txs)].method)
 	}
@@ -135,7 +134,7 @@ func (p *Parlia) VerifySystemTxShape(txs []*types.Transaction, shape []expectedS
 func (p *Parlia) ExtractBidBlockDepositValue(txs []*types.Transaction) (int, *big.Int) {
 	systemTxStart := len(txs)
 	for i := len(txs) - 1; i >= 0; i-- {
-		if !p.IsUnsignedSystemTxCandidate(txs[i]) {
+		if !p.isUnsignedSystemTxCandidate(txs[i]) {
 			break
 		}
 		systemTxStart = i
@@ -152,10 +151,10 @@ func (p *Parlia) ExtractBidBlockDepositValue(txs []*types.Transaction) (int, *bi
 // VerifyBidBlockSystemTxs validates the trailing unsigned system-tx region starting at systemTxStart.
 //
 //	Stage 1 — each trailing unsigned tx must be on the BEP-675 signable whitelist.
-//	Stage 2 — selectors & order must match ExpectedSystemTxShape for this header.
+//	Stage 2 — selectors & order must match expectedSystemTxShape for this header.
 func (p *Parlia) VerifyBidBlockSystemTxs(decoded *types.DecodedBidBlock, parent *types.Header, systemTxStart int) error {
 	for i := systemTxStart; i < len(decoded.Txs); i++ {
-		if !p.IsSignableSystemTx(decoded.Txs[i]) {
+		if !p.isSignableSystemTx(decoded.Txs[i]) {
 			toAddr := "<nil>"
 			if decoded.Txs[i].To() != nil {
 				toAddr = decoded.Txs[i].To().Hex()
@@ -163,8 +162,8 @@ func (p *Parlia) VerifyBidBlockSystemTxs(decoded *types.DecodedBidBlock, parent 
 			return fmt.Errorf("unsigned system tx at position %d (to=%s) is not on the signable whitelist", i, toAddr)
 		}
 	}
-	shape := p.ExpectedSystemTxShape(decoded.Header, parent)
-	return p.VerifySystemTxShape(decoded.Txs[systemTxStart:], shape)
+	shape := p.expectedSystemTxShape(decoded.Header, parent)
+	return p.verifySystemTxShape(decoded.Txs[systemTxStart:], shape)
 }
 
 func (p *Parlia) hasSignableSelector(data []byte) bool {

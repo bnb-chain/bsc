@@ -183,11 +183,6 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 		"builder", task.bidBlockInfo.builder,
 		"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
 
-	// Use NewSealedBlockEvent (full-block push) instead of NewMinedBlockEvent
-	// (announce-only) so peers receive the BidBlock immediately and can validate
-	// it in parallel with our async InsertChain. The duplicate NewSealedBlockEvent
-	// posted by WriteBlockAndSetHead after InsertChain is deduplicated by the
-	// handler's known-peers cache.
 	w.mux.Post(core.NewSealedBlockEvent{Block: block})
 
 	// InsertChain: re-execute all transactions and verify stateRoot/receiptHash
