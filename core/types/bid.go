@@ -225,11 +225,16 @@ func (b *BidBlockArgs) ToDecodedBidBlock(builder common.Address) (*DecodedBidBlo
 		return nil, err
 	}
 
+	sidecars := b.BidBlock.Sidecars
+	if sidecars == nil {
+		sidecars = BlobSidecars{}
+	}
+
 	return &DecodedBidBlock{
 		Builder:  builder,
 		Header:   b.BidBlock.Header,
 		Txs:      txs,
-		Sidecars: b.BidBlock.Sidecars,
+		Sidecars: sidecars,
 		bidHash:  b.BidBlock.Hash(),
 	}, nil
 }
