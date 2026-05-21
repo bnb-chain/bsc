@@ -301,5 +301,6 @@ type MevParams struct {
 	GasCeil               uint64
 	GasPrice              *big.Int // Minimum avg gas price for bid block
 	BuilderFeeCeil        *big.Int
+	BidBlockEnabled       bool // whether mev_sendBidBlock is accepted
 	Version               string
 }

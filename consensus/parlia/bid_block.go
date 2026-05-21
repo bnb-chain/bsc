@@ -151,51 +151,41 @@ func (p *Parlia) VerifySystemTxShape(txs []*types.Transaction, shape []expectedS
 	return nil
 }
 
-// VerifyBidBlockSystemTxs locates and validates the trailing unsigned system-tx region
-// of a BidBlock. It returns the index in decoded.Txs where the region begins.
-//
-//	Stage 1 — each trailing unsigned tx must be on the BEP-675 signable whitelist.
-//	Stage 2 — selectors & order must match ExpectedSystemTxShape for this header.
-func (p *Parlia) VerifyBidBlockSystemTxs(decoded *types.DecodedBidBlock, parent *types.Header) (int, error) {
-	systemTxStart := len(decoded.Txs)
-	for i := len(decoded.Txs) - 1; i >= 0; i-- {
-		if !p.IsUnsignedSystemTxCandidate(decoded.Txs[i]) {
+// ExtractBidBlockDepositValue locates the trailing unsigned system-tx region and
+// returns its start index along with the value of the deposit tx (zero if absent).
+func (p *Parlia) ExtractBidBlockDepositValue(txs []*types.Transaction) (int, *big.Int) {
+	systemTxStart := len(txs)
+	for i := len(txs) - 1; i >= 0; i-- {
+		if !p.IsUnsignedSystemTxCandidate(txs[i]) {
 			break
 		}
 		systemTxStart = i
 	}
+	depositSel := p.selectorFor("deposit")
+	for i := systemTxStart; i < len(txs); i++ {
+		if bytes.HasPrefix(txs[i].Data(), depositSel[:]) {
+			return systemTxStart, new(big.Int).Set(txs[i].Value())
+		}
+	}
+	return systemTxStart, new(big.Int)
+}
 
+// VerifyBidBlockSystemTxs validates the trailing unsigned system-tx region starting at systemTxStart.
+//
+//	Stage 1 — each trailing unsigned tx must be on the BEP-675 signable whitelist.
+//	Stage 2 — selectors & order must match ExpectedSystemTxShape for this header.
+func (p *Parlia) VerifyBidBlockSystemTxs(decoded *types.DecodedBidBlock, parent *types.Header, systemTxStart int) error {
 	for i := systemTxStart; i < len(decoded.Txs); i++ {
 		if !p.IsSignableSystemTx(decoded.Txs[i]) {
 			toAddr := "<nil>"
 			if decoded.Txs[i].To() != nil {
 				toAddr = decoded.Txs[i].To().Hex()
 			}
-			return 0, fmt.Errorf("unsigned system tx at position %d (to=%s) is not on the signable whitelist", i, toAddr)
+			return fmt.Errorf("unsigned system tx at position %d (to=%s) is not on the signable whitelist", i, toAddr)
 		}
 	}
-
 	shape := p.ExpectedSystemTxShape(decoded.Header, parent)
-	if err := p.VerifySystemTxShape(decoded.Txs[systemTxStart:], shape); err != nil {
-		return 0, err
-	}
-	return systemTxStart, nil
-}
-
-// ExtractBidBlockDepositValue returns the deposit value from unsigned BidBlock system txs.
-func (p *Parlia) ExtractBidBlockDepositValue(txs []*types.Transaction) *big.Int {
-	depositSel := p.selectorFor("deposit")
-
-	for i := len(txs) - 1; i >= 0; i-- {
-		tx := txs[i]
-		if !p.IsSignableSystemTx(tx) {
-			break
-		}
-		if bytes.HasPrefix(tx.Data(), depositSel[:]) {
-			return new(big.Int).Set(tx.Value())
-		}
-	}
-	return new(big.Int)
+	return p.VerifySystemTxShape(decoded.Txs[systemTxStart:], shape)
 }
 
 func (p *Parlia) hasSignableSelector(data []byte) bool {

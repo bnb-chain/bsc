@@ -685,18 +685,13 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 		return fmt.Errorf("invalid header: %v", err)
 	}
 
-	decoded.GasFee = parliaEngine.ExtractBidBlockDepositValue(decoded.Txs)
+	decoded.SystemTxStart, decoded.GasFee = parliaEngine.ExtractBidBlockDepositValue(decoded.Txs)
 	if decoded.GasFee.Sign() <= 0 {
 		return errors.New("empty gasFee")
 	}
 
 	parent := b.chain.GetHeaderByHash(header.ParentHash)
-	systemTxStart, err := parliaEngine.VerifyBidBlockSystemTxs(decoded, parent)
-	if err != nil {
-		return err
-	}
-	decoded.SystemTxStart = systemTxStart
-	return nil
+	return parliaEngine.VerifyBidBlockSystemTxs(decoded, parent, decoded.SystemTxStart)
 }
 
 // sendBidBlock queues a decoded BidBlock for selection.
