@@ -59,8 +59,7 @@ func (miner *Miner) SetBidBlockPermission(builder common.Address, allowed bool) 
 }
 
 func (miner *Miner) bidBlockEnabled() bool {
-	return miner.worker.config.Mev.Enabled != nil && *miner.worker.config.Mev.Enabled &&
-		miner.worker.config.Mev.BidBlockEnabled != nil && *miner.worker.config.Mev.BidBlockEnabled
+	return *miner.worker.config.Mev.BidBlockEnabled
 }
 
 func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) (common.Hash, error) {
@@ -68,9 +67,7 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 		return common.Hash{}, types.NewInvalidBidError("BidBlock disabled, fallback to SendBid")
 	}
 
-	if args == nil || args.BidBlock == nil || args.BidBlock.Header == nil {
-		return common.Hash{}, types.NewInvalidBidError("empty BidBlock or Header")
-	}
+	// args / args.BidBlock / args.BidBlock.Header are validated at the RPC entry (MevAPI.SendBidBlock).
 	bb := args.BidBlock
 
 	builder, err := args.EcrecoverSender()

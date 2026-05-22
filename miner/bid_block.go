@@ -115,9 +115,9 @@ func (w *worker) prepareBidBlockTask(
 	header := types.CopyHeader(decoded.Header)
 	header.TxHash = types.DeriveSha(types.Transactions(allTxs), trie.NewStackTrie(nil))
 
-	body := &types.Body{Transactions: allTxs}
-	if header.EmptyWithdrawalsHash() {
-		body.Withdrawals = make([]*types.Withdrawal, 0)
+	body := &types.Body{
+		Transactions: allTxs,
+		Withdrawals:  make([]*types.Withdrawal, 0),
 	}
 	block := types.NewBlockWithHeader(header).WithBody(*body).WithSidecars(decoded.Sidecars)
 
