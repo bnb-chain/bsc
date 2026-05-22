@@ -16,6 +16,11 @@ import (
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
 )
 
+// testInsertChainReason is a placeholder used by tests where the specific
+// InsertChain error text doesn't matter — production passes
+// "InsertChain err: <err.Error()>" here.
+const testInsertChainReason = "InsertChain err: test"
+
 func getBidBlockPermissionRecord(m *BidBlockPermissionManager, builder common.Address) (BidBlockRevokeRecord, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -49,7 +54,7 @@ func TestBidBlockPermission_RevokeBlocks(t *testing.T) {
 	builder := common.HexToAddress("0x1")
 	hash := common.HexToHash("0xabc")
 
-	m.Revoke(builder, RevokeReasonInsertChainFailed, hash, 100)
+	m.Revoke(builder, testInsertChainReason, hash, 100)
 	if m.IsAllowed(builder) {
 		t.Fatal("revoked builder should not be allowed in same UTC day")
 	}
@@ -58,8 +63,8 @@ func TestBidBlockPermission_RevokeBlocks(t *testing.T) {
 	if !ok {
 		t.Fatal("record expected after Revoke")
 	}
-	if rec.Reason != RevokeReasonInsertChainFailed {
-		t.Fatalf("reason: got %s, want %s", rec.Reason, RevokeReasonInsertChainFailed)
+	if rec.Reason != testInsertChainReason {
+		t.Fatalf("reason: got %s, want %s", rec.Reason, testInsertChainReason)
 	}
 	if rec.BlockHash != hash {
 		t.Fatalf("blockHash: got %s, want %s", rec.BlockHash.Hex(), hash.Hex())
@@ -74,7 +79,7 @@ func TestBidBlockPermission_BuildersIndependent(t *testing.T) {
 	a := common.HexToAddress("0xa")
 	b := common.HexToAddress("0xb")
 
-	m.Revoke(a, RevokeReasonInsertChainFailed, common.Hash{}, 1)
+	m.Revoke(a, testInsertChainReason, common.Hash{}, 1)
 	if m.IsAllowed(a) {
 		t.Fatal("a should be revoked")
 	}
@@ -87,7 +92,7 @@ func TestBidBlockPermission_RevokeOverwritesSameDay(t *testing.T) {
 	m := NewBidBlockPermissionManager()
 	builder := common.HexToAddress("0x1")
 
-	m.Revoke(builder, RevokeReasonInsertChainFailed, common.HexToHash("0x1"), 1)
+	m.Revoke(builder, testInsertChainReason, common.HexToHash("0x1"), 1)
 	m.Revoke(builder, RevokeReasonManual, common.HexToHash("0x2"), 2)
 
 	rec, ok := getBidBlockPermissionRecord(m, builder)
@@ -110,7 +115,7 @@ func TestBidBlockPermission_LazyResetCrossDay(t *testing.T) {
 	day2 := day1.Add(24 * time.Hour)
 
 	setBidBlockPermissionClock(m, func() time.Time { return day1 })
-	m.Revoke(builder, RevokeReasonInsertChainFailed, common.Hash{}, 1)
+	m.Revoke(builder, testInsertChainReason, common.Hash{}, 1)
 	if m.IsAllowed(builder) {
 		t.Fatal("revoked on day1 should be blocked on day1")
 	}
@@ -130,7 +135,7 @@ func TestBidBlockPermission_SameDayBoundary(t *testing.T) {
 
 	near := time.Date(2026, 5, 8, 23, 59, 59, 0, time.UTC)
 	setBidBlockPermissionClock(m, func() time.Time { return near })
-	m.Revoke(builder, RevokeReasonInsertChainFailed, common.Hash{}, 1)
+	m.Revoke(builder, testInsertChainReason, common.Hash{}, 1)
 
 	justAfter := time.Date(2026, 5, 9, 0, 0, 1, 0, time.UTC)
 	setBidBlockPermissionClock(m, func() time.Time { return justAfter })
@@ -193,7 +198,7 @@ func TestBidBlockPermission_ConcurrentAccess(t *testing.T) {
 		wg.Add(3)
 		b := builders[i%len(builders)]
 		go func() { defer wg.Done(); m.IsAllowed(b) }()
-		go func() { defer wg.Done(); m.Revoke(b, RevokeReasonInsertChainFailed, common.Hash{}, 1) }()
+		go func() { defer wg.Done(); m.Revoke(b, testInsertChainReason, common.Hash{}, 1) }()
 		go func() { defer wg.Done(); getBidBlockPermissionRecord(m, b) }()
 	}
 	wg.Wait()
@@ -212,7 +217,7 @@ func TestBidBlockPermission_ActiveRevokeCount(t *testing.T) {
 
 	a := common.HexToAddress("0xa")
 	b := common.HexToAddress("0xb")
-	m.Revoke(a, RevokeReasonInsertChainFailed, common.Hash{}, 1)
+	m.Revoke(a, testInsertChainReason, common.Hash{}, 1)
 	m.Revoke(b, RevokeReasonManual, common.Hash{}, 2)
 
 	if got := m.ActiveRevokeCount(); got != 2 {
@@ -241,12 +246,12 @@ func TestBidBlockPermission_GetStatus(t *testing.T) {
 	}
 
 	hash := common.HexToHash("0xabc")
-	m.Revoke(builder, RevokeReasonInsertChainFailed, hash, 100)
+	m.Revoke(builder, testInsertChainReason, hash, 100)
 	status = m.GetStatus(builder)
 	if status.Allowed {
 		t.Fatal("revoked builder should not be allowed")
 	}
-	if status.Reason != string(RevokeReasonInsertChainFailed) {
+	if status.Reason != testInsertChainReason {
 		t.Fatalf("reason: got %s", status.Reason)
 	}
 	if status.BlockHash != hash || status.BlockNum != 100 || !status.RevokedAt.Equal(now) || !status.ResetAt.Equal(resetAt) {
@@ -266,7 +271,7 @@ func TestBidBlockAdmission_RevokedDoesNotConsumeQuota(t *testing.T) {
 	const blockNum uint64 = 100
 
 	b.builders[builder] = nil
-	permMgr.Revoke(builder, RevokeReasonInsertChainFailed, common.Hash{}, blockNum-1)
+	permMgr.Revoke(builder, testInsertChainReason, common.Hash{}, blockNum-1)
 
 	if !b.ExistBuilder(builder) {
 		t.Fatal("registered builder must pass ExistBuilder")
@@ -339,7 +344,7 @@ func TestMinerBidBlockPermission_UsesWorkerManager(t *testing.T) {
 	miner := &Miner{worker: &worker{permMgr: m}}
 	builder := common.HexToAddress("0x1")
 
-	m.Revoke(builder, RevokeReasonInsertChainFailed, common.Hash{}, 1)
+	m.Revoke(builder, testInsertChainReason, common.Hash{}, 1)
 	if miner.GetBidBlockPermission(builder).Allowed {
 		t.Fatal("miner should report worker revoke")
 	}
@@ -366,7 +371,7 @@ func TestBidBlockPermission_SetAllowed_Clear(t *testing.T) {
 	m := NewBidBlockPermissionManager()
 	builder := common.HexToAddress("0x1")
 
-	m.Revoke(builder, RevokeReasonInsertChainFailed, common.HexToHash("0xabc"), 100)
+	m.Revoke(builder, testInsertChainReason, common.HexToHash("0xabc"), 100)
 	m.SetAllowed(builder, true)
 	if !m.IsAllowed(builder) {
 		t.Fatal("manual SetAllowed(true) should override revoke")

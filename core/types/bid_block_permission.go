@@ -8,7 +8,7 @@ import (
 
 type BidBlockPermissionStatus struct {
 	Allowed   bool
-	Reason    string
+	Reason    string // err detail for auto revokes (InsertChain failure), or "manual" for admin revokes
 	BlockHash common.Hash
 	BlockNum  uint64
 	RevokedAt time.Time

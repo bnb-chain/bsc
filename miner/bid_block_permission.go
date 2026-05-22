@@ -13,29 +13,16 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-// BidBlockRevokeReason classifies why a builder lost SendBidBlock permission.
-type BidBlockRevokeReason string
-
-const (
-	// RevokeReasonInsertChainFailed: the sealed BidBlock failed InsertChain.
-	// These are conditions the validator cannot check before re-execution and
-	// therefore depends on the builder to get right:
-	//   - Root          (post-execution state root)
-	//   - ReceiptHash   (post-execution receipts trie root)
-	//   - Bloom         (post-execution logs bloom)
-	//   - GasUsed       (cumulative gas consumed)
-	//   - Tx precheck failures (nonce, balance, signature, intrinsic gas, ...)
-	//   - System tx value / params (e.g. deposit value vs. SystemAddress balance)
-	//   - Blob sidecar checks (KZG proofs, blob hashes)
-	// Any mismatch is treated as builder dishonesty and revokes permission.
-	RevokeReasonInsertChainFailed BidBlockRevokeReason = "insertchain_failed"
-	RevokeReasonManual            BidBlockRevokeReason = "manual"
-)
+// RevokeReasonManual is the Reason value used when an operator manually revokes
+// a builder via SetAllowed. Automatic revokes always come from InsertChain
+// failures and carry the underlying error message as Reason directly — see the
+// auto-revoke call site in handleBidBlockResult for the conditions that trigger.
+const RevokeReasonManual = "manual"
 
 // BidBlockRevokeRecord holds one active revoke event.
 type BidBlockRevokeRecord struct {
 	RevokedAt time.Time
-	Reason    BidBlockRevokeReason
+	Reason    string // err detail for auto revokes (InsertChain failure), or RevokeReasonManual
 	BlockHash common.Hash
 	BlockNum  uint64
 }
@@ -67,9 +54,11 @@ func (m *BidBlockPermissionManager) IsAllowed(builder common.Address) bool {
 }
 
 // Revoke marks builder as denied for the remainder of the current UTC day.
+// reason is surfaced via GetBidBlockPermission RPC so builders can see specifics
+// (the InsertChain error text for auto revokes, or RevokeReasonManual for admin).
 func (m *BidBlockPermissionManager) Revoke(
 	builder common.Address,
-	reason BidBlockRevokeReason,
+	reason string,
 	blockHash common.Hash,
 	blockNum uint64,
 ) {
@@ -95,7 +84,7 @@ func (m *BidBlockPermissionManager) GetStatus(builder common.Address) types.BidB
 		return status
 	}
 	status.Allowed = false
-	status.Reason = string(rec.Reason)
+	status.Reason = rec.Reason
 	status.BlockHash = rec.BlockHash
 	status.BlockNum = rec.BlockNum
 	status.RevokedAt = rec.RevokedAt

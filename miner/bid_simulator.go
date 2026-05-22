@@ -654,7 +654,8 @@ func (b *bidSimulator) AddBidBlock(parentHash common.Hash, block *types.DecodedB
 	defer b.bestBidBlockMu.Unlock()
 
 	if existing := b.bestBidBlock[parentHash]; existing != nil && block.GasFee.Cmp(existing.GasFee) < 0 {
-		return fmt.Errorf("BidBlock gasFee below current best: got %v, best %v", block.GasFee, existing.GasFee)
+		return fmt.Errorf("BidBlock gasFee below current best: got %s, best %s",
+			weiToEtherStringF6(block.GasFee), weiToEtherStringF6(existing.GasFee))
 	}
 	b.bestBidBlock[parentHash] = block
 	return nil

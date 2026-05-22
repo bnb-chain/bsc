@@ -162,15 +162,28 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 
 	w.mux.Post(core.NewSealedBlockEvent{Block: block})
 
-	// InsertChain: re-execute all transactions and verify stateRoot/receiptHash
+	// InsertChain re-executes all txs and validates fields the validator could
+	// not check at admission. Any mismatch is treated as builder dishonesty and
+	// revokes the builder for the rest of the UTC day. Categories caught here:
+	//   - Root          (post-execution state root)
+	//   - ReceiptHash   (post-execution receipts trie root)
+	//   - Bloom         (post-execution logs bloom)
+	//   - GasUsed       (cumulative gas consumed)
+	//   - Tx precheck failures (nonce, balance, signature, intrinsic gas, ...)
+	//   - System tx value / params (e.g. deposit value vs. SystemAddress balance)
+	//   - Blob sidecar checks (KZG proofs, blob hashes)
 	if _, err := w.chain.InsertChain(types.Blocks{block}); err != nil {
 		log.Error("[BID BLOCK VERIFY FAILED]",
 			"number", block.Number(),
 			"hash", hash,
+			"parentHash", block.ParentHash(),
+			"txs", len(block.Transactions()),
+			"gasUsed", block.GasUsed(),
+			"stateRoot", block.Root(),
+			"receiptHash", block.ReceiptHash(),
 			"builder", task.bidBlockInfo.builder,
-			"err", err,
-			"revokeReason", RevokeReasonInsertChainFailed)
-		w.permMgr.Revoke(task.bidBlockInfo.builder, RevokeReasonInsertChainFailed, hash, block.NumberU64())
+			"err", err)
+		w.permMgr.Revoke(task.bidBlockInfo.builder, fmt.Sprintf("InsertChain err: %v", err), hash, block.NumberU64())
 		bidBlockRevokeGauge.Inc(1)
 		return
 	}
