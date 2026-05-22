@@ -60,11 +60,11 @@ func (w *worker) selectBidBlock(bidBlock *types.DecodedBidBlock, simBidBlockRewa
 		"simBidBlockReward", simBidBR,
 		"simBidValidatorReward", simBidVR)
 
-	if bestReward.Cmp(bidBlockFee) < 0 {
+	if bidBlockFee.Cmp(bestReward) > 0 {
 		log.Info("[BID BLOCK selected]",
 			"block", blockNum,
 			"builder", bidBlock.Builder,
-			"gasFee", bidBlock.GasFee,
+			"gasFee", weiToEtherStringF6(bidBlock.GasFee),
 			"txs", len(bidBlock.Txs))
 		return true
 	}
@@ -139,7 +139,7 @@ func (w *worker) enqueueBidBlockTask(task *task, systemTxs int) {
 			"txs", len(task.block.Transactions()),
 			"systemTxs", systemTxs,
 			"gas", task.block.GasUsed(),
-			"gasFee", task.bidBlockInfo.gasFee)
+			"gasFee", weiToEtherStringF6(task.bidBlockInfo.gasFee))
 	case <-w.exitCh:
 		log.Info("Worker has exited")
 	}
@@ -179,5 +179,5 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 		"number", block.Number(),
 		"hash", hash,
 		"builder", task.bidBlockInfo.builder,
-		"gasFee", task.bidBlockInfo.gasFee)
+		"gasFee", weiToEtherStringF6(task.bidBlockInfo.gasFee))
 }

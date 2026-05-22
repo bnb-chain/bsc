@@ -59,7 +59,7 @@ func (miner *Miner) SetBidBlockPermission(builder common.Address, allowed bool) 
 }
 
 func (miner *Miner) bidBlockEnabled() bool {
-	return *miner.worker.config.Mev.BidBlockEnabled
+	return *miner.worker.config.Mev.Enabled && *miner.worker.config.Mev.BidBlockEnabled
 }
 
 func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) (common.Hash, error) {

@@ -287,12 +287,8 @@ func New(
 	}
 	for methodName, selector := range signableSystemTxSelectors {
 		method, ok := vABI.Methods[methodName]
-		if !ok {
-			panic(fmt.Sprintf("missing validator set ABI method %s", methodName))
-		}
-		if !bytes.Equal(method.ID, selector[:]) {
-			panic(fmt.Sprintf("invalid validator set ABI selector for %s: got 0x%x, want 0x%x",
-				methodName, method.ID, selector[:]))
+		if !ok || !bytes.Equal(method.ID, selector[:]) {
+			panic(fmt.Sprintf("invalid validator set ABI selector for %s", methodName))
 		}
 	}
 	sABI, err := abi.JSON(strings.NewReader(slashABI))
@@ -1165,13 +1161,15 @@ func (p *Parlia) prepare(chain consensus.ChainHeaderReader, header *types.Header
 	if err != nil {
 		return err
 	}
+
+	header.Difficulty = calcDifficulty(snap, header.Coinbase)
+
 	parent := chain.GetHeader(header.ParentHash, number-1)
 	if parent == nil {
 		return consensus.ErrUnknownAncestor
 	}
 	blockTime := p.blockTimeForRamanujanFork(snap, header, parent)
 
-	header.Difficulty = calcDifficulty(snap, header.Coinbase)
 	header.Time = blockTime / 1000 // get seconds
 	if p.chainConfig.IsLorentz(header.Number, header.Time) {
 		header.SetMilliseconds(blockTime % 1000)

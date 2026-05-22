@@ -31,9 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-const (
-	prefetchTxNumber = 50
-)
+const prefetchTxNumber = 50
 
 var (
 	bidPreCheckTimer     = metrics.NewRegisteredTimer("bid/preCheck", nil)
@@ -655,7 +653,7 @@ func (b *bidSimulator) AddBidBlock(parentHash common.Hash, block *types.DecodedB
 	b.bestBidBlockMu.Lock()
 	defer b.bestBidBlockMu.Unlock()
 
-	if existing := b.bestBidBlock[parentHash]; existing != nil && existing.GasFee.Cmp(block.GasFee) >= 0 {
+	if existing := b.bestBidBlock[parentHash]; existing != nil && block.GasFee.Cmp(existing.GasFee) < 0 {
 		return fmt.Errorf("BidBlock gasFee below current best: got %v, best %v", block.GasFee, existing.GasFee)
 	}
 	b.bestBidBlock[parentHash] = block
@@ -743,7 +741,7 @@ func (b *bidSimulator) newBidBlockLoop() {
 				log.Debug("BidBlock: discard BidBlock",
 					"blockNumber", block.BlockNumber(),
 					"builder", block.Builder,
-					"gasFee", block.GasFee,
+					"gasFee", weiToEtherStringF6(block.GasFee),
 					"err", err)
 				if newBidBlock.feedback != nil {
 					newBidBlock.feedback <- err
@@ -754,7 +752,7 @@ func (b *bidSimulator) newBidBlockLoop() {
 			log.Info("[BID BLOCK ARRIVED]",
 				"blockNumber", block.BlockNumber(),
 				"builder", block.Builder,
-				"gasFee", block.GasFee,
+				"gasFee", weiToEtherStringF6(block.GasFee),
 				"txs", len(block.Txs))
 			if newBidBlock.feedback != nil {
 				newBidBlock.feedback <- nil
