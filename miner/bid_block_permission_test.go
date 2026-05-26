@@ -24,9 +24,8 @@ const testInsertChainReason = "InsertChain err: test"
 func getBidBlockPermissionRecord(m *BidBlockPermissionManager, builder common.Address) (BidBlockRevokeRecord, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	now := m.clock()
 	rec, found := m.revoked[builder]
-	if !found || !sameUTCDay(rec.RevokedAt, now) {
+	if !found || !isRevokeActive(rec.RevokedAt, m.clock()) {
 		return BidBlockRevokeRecord{}, false
 	}
 	return rec, true
@@ -56,7 +55,7 @@ func TestBidBlockPermission_RevokeBlocks(t *testing.T) {
 
 	m.Revoke(builder, testInsertChainReason, hash, 100)
 	if m.IsAllowed(builder) {
-		t.Fatal("revoked builder should not be allowed in same UTC day")
+		t.Fatal("revoked builder should not be allowed within 24h of revoke")
 	}
 
 	rec, ok := getBidBlockPermissionRecord(m, builder)
@@ -88,7 +87,7 @@ func TestBidBlockPermission_BuildersIndependent(t *testing.T) {
 	}
 }
 
-func TestBidBlockPermission_RevokeOverwritesSameDay(t *testing.T) {
+func TestBidBlockPermission_RevokeOverwrites(t *testing.T) {
 	m := NewBidBlockPermissionManager()
 	builder := common.HexToAddress("0x1")
 
@@ -107,81 +106,92 @@ func TestBidBlockPermission_RevokeOverwritesSameDay(t *testing.T) {
 	}
 }
 
-func TestBidBlockPermission_LazyResetCrossDay(t *testing.T) {
+func TestBidBlockPermission_ExpiresAt24h(t *testing.T) {
 	m := NewBidBlockPermissionManager()
 	builder := common.HexToAddress("0x1")
 
-	day1 := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
-	day2 := day1.Add(24 * time.Hour)
+	revokeTime := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
+	exactly24hLater := revokeTime.Add(24 * time.Hour)
 
-	setBidBlockPermissionClock(m, func() time.Time { return day1 })
+	setBidBlockPermissionClock(m, func() time.Time { return revokeTime })
 	m.Revoke(builder, testInsertChainReason, common.Hash{}, 1)
 	if m.IsAllowed(builder) {
-		t.Fatal("revoked on day1 should be blocked on day1")
+		t.Fatal("freshly revoked builder should be blocked")
 	}
 
-	setBidBlockPermissionClock(m, func() time.Time { return day2 })
+	setBidBlockPermissionClock(m, func() time.Time { return exactly24hLater })
 	if !m.IsAllowed(builder) {
-		t.Fatal("cross-day record should be treated as Active (lazy reset)")
+		t.Fatal("record at exactly revokedAt + 24h should be expired")
 	}
 	if _, ok := getBidBlockPermissionRecord(m, builder); ok {
-		t.Fatal("getRecord should report expired on cross-day")
+		t.Fatal("getRecord should report expired at revokedAt + 24h")
 	}
 }
 
-func TestBidBlockPermission_SameDayBoundary(t *testing.T) {
+func TestBidBlockPermission_StillRevokedWithin24h(t *testing.T) {
 	m := NewBidBlockPermissionManager()
 	builder := common.HexToAddress("0x1")
 
-	near := time.Date(2026, 5, 8, 23, 59, 59, 0, time.UTC)
-	setBidBlockPermissionClock(m, func() time.Time { return near })
+	// UTC midnight should not reset the revoke; only elapsed time matters.
+	// This covers the old day-boundary bypass.
+	revokeTime := time.Date(2026, 5, 8, 23, 59, 59, 0, time.UTC)
+	setBidBlockPermissionClock(m, func() time.Time { return revokeTime })
 	m.Revoke(builder, testInsertChainReason, common.Hash{}, 1)
 
-	justAfter := time.Date(2026, 5, 9, 0, 0, 1, 0, time.UTC)
-	setBidBlockPermissionClock(m, func() time.Time { return justAfter })
-	if !m.IsAllowed(builder) {
-		t.Fatal("revoke at 23:59:59 should not survive past 00:00 UTC")
+	justAfterUTCMidnight := time.Date(2026, 5, 9, 0, 0, 1, 0, time.UTC)
+	setBidBlockPermissionClock(m, func() time.Time { return justAfterUTCMidnight })
+	if m.IsAllowed(builder) {
+		t.Fatal("revoke must not expire just because UTC day rolled over (only 2s elapsed)")
+	}
+
+	justBefore24h := revokeTime.Add(24*time.Hour - time.Second)
+	setBidBlockPermissionClock(m, func() time.Time { return justBefore24h })
+	if m.IsAllowed(builder) {
+		t.Fatal("revoke must still be active 1s before the 24h boundary")
 	}
 }
 
-func TestBidBlockPermission_SameUTCDay(t *testing.T) {
-	cases := []struct {
-		name string
-		t1   time.Time
-		t2   time.Time
-		want bool
-	}{
-		{
-			name: "midnight to end of day same UTC",
-			t1:   time.Date(2026, 5, 8, 0, 0, 0, 0, time.UTC),
-			t2:   time.Date(2026, 5, 8, 23, 59, 59, 0, time.UTC),
-			want: true,
-		},
-		{
-			name: "across UTC midnight",
-			t1:   time.Date(2026, 5, 8, 23, 59, 59, 0, time.UTC),
-			t2:   time.Date(2026, 5, 9, 0, 0, 0, 0, time.UTC),
-			want: false,
-		},
-		{
-			name: "different zones, same UTC day",
-			t1:   time.Date(2026, 5, 7, 23, 0, 0, 0, time.FixedZone("EST", -5*3600)),
-			t2:   time.Date(2026, 5, 8, 4, 0, 0, 0, time.UTC),
-			want: true,
-		},
-		{
-			name: "different zones, different UTC days",
-			t1:   time.Date(2026, 5, 8, 22, 0, 0, 0, time.FixedZone("EST", -5*3600)),
-			t2:   time.Date(2026, 5, 8, 22, 0, 0, 0, time.UTC),
-			want: false,
-		},
+// Builders revoked at different times should expire independently.
+func TestBidBlockPermission_IndependentResetAt(t *testing.T) {
+	m := NewBidBlockPermissionManager()
+	a := common.HexToAddress("0xa")
+	b := common.HexToAddress("0xb")
+
+	t0 := time.Date(2026, 5, 8, 10, 0, 0, 0, time.UTC)
+
+	setBidBlockPermissionClock(m, func() time.Time { return t0 })
+	m.Revoke(a, testInsertChainReason, common.Hash{}, 1)
+
+	setBidBlockPermissionClock(m, func() time.Time { return t0.Add(5 * time.Hour) })
+	m.Revoke(b, testInsertChainReason, common.Hash{}, 2)
+
+	// Both revoked at t0 + 6h; resetAt fields must be independent.
+	setBidBlockPermissionClock(m, func() time.Time { return t0.Add(6 * time.Hour) })
+	statusA := m.GetStatus(a)
+	statusB := m.GetStatus(b)
+	if statusA.Allowed || statusB.Allowed {
+		t.Fatal("both builders should be revoked at t0 + 6h")
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			if got := sameUTCDay(c.t1, c.t2); got != c.want {
-				t.Fatalf("sameUTCDay: got %v, want %v", got, c.want)
-			}
-		})
+	if want := t0.Add(24 * time.Hour); !statusA.ResetAt.Equal(want) {
+		t.Fatalf("A resetAt: got %s, want %s", statusA.ResetAt, want)
+	}
+	if want := t0.Add(29 * time.Hour); !statusB.ResetAt.Equal(want) {
+		t.Fatalf("B resetAt: got %s, want %s", statusB.ResetAt, want)
+	}
+
+	// At A.RevokedAt + 24h, A's lockout expires but B still has 5h left.
+	setBidBlockPermissionClock(m, func() time.Time { return t0.Add(24 * time.Hour) })
+	if !m.IsAllowed(a) {
+		t.Fatal("A should be allowed at its own RevokedAt + 24h")
+	}
+	if m.IsAllowed(b) {
+		t.Fatal("B should still be revoked (only 19h elapsed since its own RevokedAt)")
+	}
+
+	// At B.RevokedAt + 24h, B's lockout also expires.
+	setBidBlockPermissionClock(m, func() time.Time { return t0.Add(29 * time.Hour) })
+	if !m.IsAllowed(b) {
+		t.Fatal("B should be allowed at its own RevokedAt + 24h")
 	}
 }
 
@@ -211,9 +221,9 @@ func TestBidBlockPermission_ActiveRevokeCount(t *testing.T) {
 		t.Fatalf("empty manager: got %d, want 0", got)
 	}
 
-	day1 := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
-	day2 := day1.Add(24 * time.Hour)
-	setBidBlockPermissionClock(m, func() time.Time { return day1 })
+	revokeTime := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
+	after24h := revokeTime.Add(24 * time.Hour)
+	setBidBlockPermissionClock(m, func() time.Time { return revokeTime })
 
 	a := common.HexToAddress("0xa")
 	b := common.HexToAddress("0xb")
@@ -224,9 +234,9 @@ func TestBidBlockPermission_ActiveRevokeCount(t *testing.T) {
 		t.Fatalf("two revoked: got %d, want 2", got)
 	}
 
-	setBidBlockPermissionClock(m, func() time.Time { return day2 })
+	setBidBlockPermissionClock(m, func() time.Time { return after24h })
 	if got := m.ActiveRevokeCount(); got != 0 {
-		t.Fatalf("after cross-day: got %d, want 0 (entries are stale, not active)", got)
+		t.Fatalf("after revokedAt + 24h: got %d, want 0 (entries are stale, not active)", got)
 	}
 }
 
@@ -234,7 +244,7 @@ func TestBidBlockPermission_GetStatus(t *testing.T) {
 	m := NewBidBlockPermissionManager()
 	builder := common.HexToAddress("0x1")
 	now := time.Date(2026, 5, 9, 10, 0, 0, 0, time.UTC)
-	resetAt := time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)
+	resetAt := now.Add(24 * time.Hour)
 	setBidBlockPermissionClock(m, func() time.Time { return now })
 
 	status := m.GetStatus(builder)
