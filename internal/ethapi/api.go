@@ -530,7 +530,8 @@ func (api *BlockChainAPI) GetBlockByHash(ctx context.Context, hash common.Hash, 
 }
 
 // BlockMevInfo describes a block's MEV builder attribution.
-// Local blocks omit Builder and Version.
+// Version "v1" means legacy SendBid; version "v2" means BEP-675 SendBidBlock.
+// Local-mined blocks omit Builder and Version.
 type BlockMevInfo struct {
 	BlockNumber hexutil.Uint64  `json:"blockNumber"`
 	BlockHash   common.Hash     `json:"blockHash"`
@@ -540,7 +541,6 @@ type BlockMevInfo struct {
 }
 
 // GetBlockMevInfo returns the MEV builder attribution for the given block.
-// Local blocks and untagged blocks return no Builder.
 func (api *BlockChainAPI) GetBlockMevInfo(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (*BlockMevInfo, error) {
 	header, err := api.b.HeaderByNumberOrHash(ctx, blockNrOrHash)
 	if err != nil {
