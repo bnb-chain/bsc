@@ -529,26 +529,18 @@ func (api *BlockChainAPI) GetBlockByHash(ctx context.Context, hash common.Hash, 
 	return nil, err
 }
 
-// BlockMevInfo describes how a block was produced from the MEV perspective.
-//
-//   - Source "bid"      -> block won by a legacy SendBid (Version "v1").
-//   - Source "bidblock" -> block won by a BEP-675 SendBidBlock (Version "v2").
-//   - Source "local"    -> validator built the block itself; Builder is omitted.
-//
-// The current implementation decodes the BEP-675 transitional RequestsHash
-// layout (see core/types/block_mev_info.go). Keeping this behind an RPC
-// lets callers stay stable if the source moves elsewhere later.
+// BlockMevInfo describes a block's MEV builder attribution.
+// Local blocks omit Builder and Version.
 type BlockMevInfo struct {
 	BlockNumber hexutil.Uint64  `json:"blockNumber"`
 	BlockHash   common.Hash     `json:"blockHash"`
 	Miner       common.Address  `json:"miner"`
-	Source      string          `json:"source"`
 	Version     string          `json:"version,omitempty"`
 	Builder     *common.Address `json:"builder,omitempty"`
 }
 
-// GetBlockMevInfo returns the MEV source attribution for the given block.
-// Local blocks and untagged blocks return Source="local" with no Builder.
+// GetBlockMevInfo returns the MEV builder attribution for the given block.
+// Local blocks and untagged blocks return no Builder.
 func (api *BlockChainAPI) GetBlockMevInfo(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (*BlockMevInfo, error) {
 	header, err := api.b.HeaderByNumberOrHash(ctx, blockNrOrHash)
 	if err != nil {
@@ -561,7 +553,6 @@ func (api *BlockChainAPI) GetBlockMevInfo(ctx context.Context, blockNrOrHash rpc
 		BlockNumber: hexutil.Uint64(header.Number.Uint64()),
 		BlockHash:   header.Hash(),
 		Miner:       header.Coinbase,
-		Source:      "local",
 	}
 	if header.RequestsHash == nil {
 		return info, nil
@@ -572,10 +563,8 @@ func (api *BlockChainAPI) GetBlockMevInfo(ctx context.Context, blockNrOrHash rpc
 	}
 	switch version {
 	case types.BlockMevInfoVersionBid:
-		info.Source = "bid"
 		info.Version = "v1"
 	case types.BlockMevInfoVersionBidBlock:
-		info.Source = "bidblock"
 		info.Version = "v2"
 	}
 	b := builder

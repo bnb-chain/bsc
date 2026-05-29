@@ -305,10 +305,11 @@ async function getBlockMevInfo(blockNumber) {
     try {
         rpcInfo = await provider.send("eth_getBlockMevInfo", ["0x" + blockNumber.toString(16)]);
         if (rpcInfo) {
-            const source = rpcInfo.source || "local";
-            if (source !== "local") {
-                return { ...rpcInfo, source };
+            if (!rpcInfo.builder) {
+                return { ...rpcInfo, source: "local" };
             }
+            const source = rpcInfo.version === "v2" ? "bidblock" : "bid";
+            return { ...rpcInfo, source };
         }
     } catch (_) {
         // Older validators do not expose eth_getBlockMevInfo; fall back to the
