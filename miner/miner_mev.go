@@ -121,6 +121,8 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 	if err := parliaEngine.SetExtraData(miner.worker.chain, decoded.Header); err != nil {
 		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("set extra data: %v", err))
 	}
+	// Record MEV v2 (bidblock path) source and builder address.
+	setBidMevInfo(decoded.Header, builder, true)
 
 	if err := miner.bidSimulator.preSealVerifyBidBlock(decoded); err != nil {
 		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("pre-seal verify failed: %v", err))

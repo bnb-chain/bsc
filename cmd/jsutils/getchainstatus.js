@@ -290,6 +290,57 @@ const builderMap = new Map([
     ["0xA8caEc0D68a90Ac971EA1aDEFA1747447e1f9871",  "blockroute"],
 ]);
 
+function getMappedAddressName(addressMap, address) {
+    if (!address) return undefined;
+    try {
+        const normalized = ethers.getAddress(address);
+        return addressMap.get(normalized) || addressMap.get(normalized.toLowerCase());
+    } catch (_) {
+        return addressMap.get(address);
+    }
+}
+
+async function getBlockMevInfo(blockNumber) {
+    let rpcInfo;
+    try {
+        rpcInfo = await provider.send("eth_getBlockMevInfo", ["0x" + blockNumber.toString(16)]);
+        if (rpcInfo) {
+            const source = rpcInfo.source || "local";
+            if (source !== "local") {
+                return { ...rpcInfo, source };
+            }
+        }
+    } catch (_) {
+        // Older validators do not expose eth_getBlockMevInfo; fall back to the
+        // pre-BEP-675 payment-tx heuristic below.
+    }
+
+    const block = await provider.getBlock(blockNumber);
+    if (!block) return rpcInfo || { blockNumber, source: "local" };
+
+    const txHashes = block.transactions.slice(-4);
+    const txResults = await Promise.all(txHashes.map(txHash => provider.getTransaction(txHash)));
+    for (const txData of txResults) {
+        if (!txData || !txData.to || !getMappedAddressName(builderMap, txData.to)) continue;
+        return {
+            blockNumber: block.number,
+            blockHash: block.hash,
+            miner: block.miner,
+            source: "bid",
+            builder: txData.to,
+            fallback: true,
+        };
+    }
+
+    return {
+        ...(rpcInfo || {}),
+        blockNumber: rpcInfo ? (rpcInfo.blockNumber || block.number) : block.number,
+        blockHash: rpcInfo ? (rpcInfo.blockHash || block.hash) : block.hash,
+        miner: rpcInfo ? (rpcInfo.miner || block.miner) : block.miner,
+        source: "local",
+    };
+}
+
 // 1.cmd: "GetMaxTxCountInBlockRange", usage:
 // node getchainstatus.js GetMaxTxCountInBlockRange --rpc https://bsc-testnet-dataseed.bnbchain.org \
 //      --startNum 40000001  --endNum 40000005 \
@@ -856,6 +907,8 @@ async function getMevStatus() {
         local: 0,
         ...Object.fromEntries([...new Set(builderMap.values())].map(builder => [builder, 0]))
     };
+    // Per-type tallies for the MEV path breakdown (v1 = legacy SendBid, v2 = bidblock).
+    let typeCounts = { mev_v1: 0, mev_v2: 0, local: 0 };
 
     // Get the latest block number
     const latestBlock = await provider.getBlockNumber();
@@ -877,12 +930,18 @@ async function getMevStatus() {
         return;
     }
 
-    const blockPromises = [];
+    const blockNumbers = [];
     for (let i = startBlock; i <= endBlock; i++) {
-        blockPromises.push(provider.getBlock(i));
+        blockNumbers.push(i);
     }
 
-    const blocks = await Promise.all(blockPromises);
+    let mevInfos;
+    try {
+        mevInfos = await Promise.all(blockNumbers.map(getBlockMevInfo));
+    } catch (err) {
+        console.error("GetMevStatus failed:", err.shortMessage || err.message || err);
+        return;
+    }
 
     // Calculate max lengths for alignment with default values
     let maxMinerLength = 10; // Default length
@@ -898,38 +957,39 @@ async function getMevStatus() {
         maxBuilderLength = Math.max(...builderLengths);
     }
 
-    for (const blockData of blocks) {
-        const minerInfo = validatorMap.get(blockData.miner);
+    for (const mevInfo of mevInfos) {
+        const blockNumber = typeof mevInfo.blockNumber === "string"
+            ? BigInt(mevInfo.blockNumber).toString()
+            : mevInfo.blockNumber.toString();
+        const minerInfo = getMappedAddressName(validatorMap, mevInfo.miner);
         const miner = minerInfo ? minerInfo[0] : "Unknown";
-        const transactions = blockData.transactions.slice(-4); // Last 4 transactions
-        const txPromises = transactions.map(txHash => provider.getTransaction(txHash));
 
-        const txResults = await Promise.all(txPromises);
-        let mevBlock = false;
-
-        for (const txData of txResults) {
-            if (builderMap.has(txData.to)) {
-                const builder = builderMap.get(txData.to);
-                counts[builder]++;
-
-                mevBlock = true;
-                console.log(
-                    `blockNum: ${blockData.number.toString().padStart(8)}      ` +
-                    `miner: ${miner.padEnd(maxMinerLength)}        ` +
-                    `builder: (${builder.padEnd(maxBuilderLength)}) ${txData.to}`
-                );
-                break;
-            }
-        }
-
-        if (!mevBlock) {
-            counts.local++;
+        if (mevInfo.source !== "local") {
+            const builderName = getMappedAddressName(builderMap, mevInfo.builder);
+            const friendlyName = builderName || mevInfo.builder;
+            const bucket = builderName || mevInfo.builder;
+            // v2 = bidblock (tagged), everything else on the MEV path = v1
+            // (tagged legacy bid, or heuristic-detected payBidTx which is v1-only).
+            const typeLabel = (mevInfo.source === "bidblock" || mevInfo.version === "v2") ? "mev_v2" : "mev_v1";
+            counts[bucket] = (counts[bucket] || 0) + 1;
+            typeCounts[typeLabel]++;
             console.log(
-                `blockNum: ${blockData.number.toString().padStart(8)}      ` +
+                `blockNum: ${blockNumber.padStart(8)}      ` +
+                `type: ${typeLabel.padEnd(6)}   ` +
                 `miner: ${miner.padEnd(maxMinerLength)}        ` +
-                `builder: local`
+                `builder: (${friendlyName.padEnd(maxBuilderLength)}) ${mevInfo.builder}`
             );
+            continue;
         }
+
+        counts.local++;
+        typeCounts.local++;
+        console.log(
+            `blockNum: ${blockNumber.padStart(8)}      ` +
+            `type: ${"local".padEnd(6)}   ` +
+            `miner: ${miner.padEnd(maxMinerLength)}        ` +
+            `builder: local`
+        );
     }
 
     const total = endBlock - startBlock + 1;
@@ -947,6 +1007,17 @@ async function getMevStatus() {
             const ratio = (value * 100 / total).toFixed(2);
             console.log(`${key.padEnd(maxBuilderLength)}: ${value.toString().padStart(3)} blocks (${ratio}%)`);
         });
+
+    // MEV path breakdown: v1 (legacy SendBid) vs v2 (bidblock), as a share of MEV blocks.
+    const mevTotal = typeCounts.mev_v1 + typeCounts.mev_v2;
+    console.log("\nMEV Path Distribution:");
+    console.log(`MEV blocks: ${mevTotal} (${(mevTotal * 100 / total).toFixed(2)}% of total)`);
+    if (mevTotal > 0) {
+        const v1Ratio = (typeCounts.mev_v1 * 100 / mevTotal).toFixed(2);
+        const v2Ratio = (typeCounts.mev_v2 * 100 / mevTotal).toFixed(2);
+        console.log(`${"mev_v1".padEnd(8)}: ${typeCounts.mev_v1.toString().padStart(3)} blocks (${v1Ratio}% of MEV)`);
+        console.log(`${"mev_v2".padEnd(8)}: ${typeCounts.mev_v2.toString().padStart(3)} blocks (${v2Ratio}% of MEV)`);
+    }
 }
 
 // 11.cmd: "getLargeTxs", usage:

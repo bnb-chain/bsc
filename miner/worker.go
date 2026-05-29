@@ -1501,6 +1501,8 @@ LOOP:
 				greedyMergeOnchainCounter.Inc(1)
 			}
 			bestWork = bestBid.env
+			// Record MEV v1 (bid path) source and builder address.
+			setBidMevInfo(bestWork.header, bestBid.bid.Builder, false)
 			logMsg := "[BUILDER BLOCK]"
 			if bidBlockFallback {
 				logMsg = "[BUILDER BLOCK] (simBid fallback)"

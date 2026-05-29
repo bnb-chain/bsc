@@ -26,6 +26,18 @@ type bidBlockTaskInfo struct {
 	gasFee  *big.Int
 }
 
+func setBidMevInfo(header *types.Header, builder common.Address, isBidBlock bool) {
+	if !isBidBlock && header.RequestsHash == nil {
+		return
+	}
+	version := types.BlockMevInfoVersionBid
+	if isBidBlock {
+		version = types.BlockMevInfoVersionBidBlock
+	}
+	tag := types.EncodeBlockMevInfo(version, builder)
+	header.RequestsHash = &tag
+}
+
 func (w *worker) selectBidBlock(bidBlock *types.DecodedBidBlock, simBidBlockReward, simBidValidatorReward, bestReward *uint256.Int) bool {
 	if bidBlock == nil {
 		return false
