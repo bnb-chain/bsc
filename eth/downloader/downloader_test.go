@@ -116,6 +116,7 @@ func (dl *downloadTester) newPeer(id string, version uint, blocks []*types.Block
 		id:              id,
 		chain:           newTestBlockchain(blocks),
 		withholdHeaders: make(map[common.Hash]struct{}),
+		dropped:         make(chan error, 1),
 	}
 	dl.peers[id] = peer
 
@@ -144,6 +145,9 @@ type downloadTesterPeer struct {
 	chain *core.BlockChain
 
 	withholdHeaders map[common.Hash]struct{}
+	corruptBodies   bool // if set, the peer serves incorrect bodies
+
+	dropped chan error // signaled when res.Done receives an error
 }
 
 func (dlp *downloadTesterPeer) MarkLagging() {
@@ -279,6 +283,11 @@ func (dlp *downloadTesterPeer) RequestBodies(hashes []common.Hash, sink chan *et
 		txsHashes[i] = types.DeriveSha(types.Transactions(body.Transactions), hasher)
 		uncleHashes[i] = types.CalcUncleHash(body.Uncles)
 	}
+	if dlp.corruptBodies {
+		for i := range txsHashes {
+			txsHashes[i] = common.Hash{0xff}
+		}
+	}
 	req := &eth.Request{
 		Peer: dlp.id,
 	}
@@ -291,10 +300,16 @@ func (dlp *downloadTesterPeer) RequestBodies(hashes []common.Hash, sink chan *et
 			WithdrawalRoots:  withdrawalHashes,
 		},
 		Time: 1,
-		Done: make(chan error, 1), // Ignore the returned status
+		Done: make(chan error),
 	}
 	go func() {
 		sink <- res
+		if err := <-res.Done; err != nil {
+			select {
+			case dlp.dropped <- err:
+			default:
+			}
+		}
 	}()
 	return req, nil
 }
@@ -1261,5 +1276,23 @@ func TestRemoteHeaderRequestSpan(t *testing.T) {
 			t.Logf("exp: %v\n", exp)
 			t.Errorf("test %d: wrong values", i)
 		}
+	}
+}
+
+// TestInvalidBodyPeerDrop verifies that a peer serving corrupted block bodies
+// is signalled through res.Done so the eth protocol handler can drop it.
+func TestInvalidBodyPeerDrop(t *testing.T) {
+	tester := newTester(t)
+	defer tester.terminate()
+
+	chain := testChainBase.shorten(blockCacheMaxItems - 15)
+	peer := tester.newPeer("corrupt", eth.ETH68, chain.blocks[1:])
+	peer.corruptBodies = true
+
+	go tester.sync("corrupt", nil, FullSync)
+	select {
+	case <-peer.dropped:
+	case <-time.After(1 * time.Minute):
+		t.Fatal("peer was not dropped")
 	}
 }
