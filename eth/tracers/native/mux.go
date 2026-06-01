@@ -71,6 +71,8 @@ func newMuxTracer(ctx *tracers.Context, cfg json.RawMessage, chainConfig *params
 			OnStorageChange:           t.OnStorageChange,
 			OnLog:                     t.OnLog,
 			OnSystemTxFixIntrinsicGas: t.OnSystemTxFixIntrinsicGas,
+			OnSystemCallStartV2:       t.OnSystemCallStart,
+			OnSystemCallEnd:           t.OnSystemCallEnd,
 		},
 		GetResult: t.GetResult,
 		Stop:      t.Stop,
@@ -177,6 +179,24 @@ func (t *muxTracer) OnSystemTxFixIntrinsicGas(intrinsicGas uint64) {
 	for _, t := range t.tracers {
 		if t.OnSystemTxFixIntrinsicGas != nil {
 			t.OnSystemTxFixIntrinsicGas(intrinsicGas)
+		}
+	}
+}
+
+func (t *muxTracer) OnSystemCallStart(vm *tracing.VMContext) {
+	for _, t := range t.tracers {
+		if t.OnSystemCallStartV2 != nil {
+			t.OnSystemCallStartV2(vm)
+		} else if t.OnSystemCallStart != nil {
+			t.OnSystemCallStart()
+		}
+	}
+}
+
+func (t *muxTracer) OnSystemCallEnd() {
+	for _, t := range t.tracers {
+		if t.OnSystemCallEnd != nil {
+			t.OnSystemCallEnd()
 		}
 	}
 }
