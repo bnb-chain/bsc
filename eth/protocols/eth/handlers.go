@@ -240,7 +240,7 @@ func ServiceGetBlockBodiesQuery(chain *core.BlockChain, query GetBlockBodiesRequ
 		}
 		body := chain.GetBody(hash)
 		if body == nil {
-			continue
+			break // If we don't have this block's body, stop serving.
 		}
 		sidecars := chain.GetSidecarsByHash(hash)
 		bodyWithSidecars := &struct {
@@ -257,7 +257,7 @@ func ServiceGetBlockBodiesQuery(chain *core.BlockChain, query GetBlockBodiesRequ
 		enc, err := rlp.EncodeToBytes(bodyWithSidecars)
 		if err != nil {
 			log.Error("block body encode err", "hash", hash, "err", err)
-			continue
+			break
 		}
 		bodies = append(bodies, enc)
 		bytes += len(enc)
@@ -301,19 +301,20 @@ func ServiceGetReceiptsQuery68(chain *core.BlockChain, query GetReceiptsRequest)
 		// Retrieve the requested block's receipts
 		results := chain.GetReceiptsRLP(hash)
 		if results == nil {
+			// If we don't have this block (or it isn't an empty-receipts block), stop serving.
 			if header := chain.GetHeaderByHash(hash); header == nil || header.ReceiptHash != types.EmptyRootHash {
-				continue
+				break
 			}
 		} else {
 			body := chain.GetBodyRLP(hash)
 			if body == nil {
-				continue
+				break // The block body is missing, stop serving.
 			}
 			var err error
 			results, err = blockReceiptsToNetwork68(results, body)
 			if err != nil {
 				log.Error("Error in block receipts conversion", "hash", hash, "err", err)
-				continue
+				break
 			}
 		}
 		receipts = append(receipts, results)
@@ -338,19 +339,20 @@ func serviceGetReceiptsQuery69(chain *core.BlockChain, query GetReceiptsRequest)
 		// Retrieve the requested block's receipts
 		results := chain.GetReceiptsRLP(hash)
 		if results == nil {
+			// If we don't have this block (or it isn't an empty-receipts block), stop serving.
 			if header := chain.GetHeaderByHash(hash); header == nil || header.ReceiptHash != types.EmptyRootHash {
-				continue
+				break
 			}
 		} else {
 			body := chain.GetBodyRLP(hash)
 			if body == nil {
-				continue
+				break // The block body is missing, stop serving.
 			}
 			var err error
 			results, err = blockReceiptsToNetwork69(results, body)
 			if err != nil {
 				log.Error("Error in block receipts conversion", "hash", hash, "err", err)
-				continue
+				break
 			}
 		}
 		receipts = append(receipts, results)
