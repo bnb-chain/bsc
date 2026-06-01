@@ -26,7 +26,10 @@ type bidBlockTaskInfo struct {
 	gasFee  *big.Int
 }
 
+// setBidMevInfo tags header.RequestsHash with the BEP-675 block-source info
 func setBidMevInfo(header *types.Header, builder common.Address, isBidBlock bool) {
+	// Legacy BID: a nil RequestsHash denotes a pre-Prague block that must stay
+	// untagged. BIDBLOCK is post-Prague and validator-owned, so always stamped.
 	if !isBidBlock && header.RequestsHash == nil {
 		return
 	}
@@ -43,14 +46,14 @@ func (w *worker) selectBidBlock(bidBlock *types.DecodedBidBlock, simBidBlockRewa
 		return false
 	}
 
-	bidBlockFee := uint256.MustFromBig(bidBlock.GasFee)
-	bidBlockValidatorReward := new(uint256.Int).Mul(bidBlockFee, uint256.NewInt(*w.config.Mev.ValidatorCommission))
-	bidBlockValidatorReward.Div(bidBlockValidatorReward, uint256.NewInt(10000))
+	bidBlockFee := bidBlock.GasFee
+	bidBlockValidatorReward := new(big.Int).Mul(bidBlockFee, new(big.Int).SetUint64(*w.config.Mev.ValidatorCommission))
+	bidBlockValidatorReward.Div(bidBlockValidatorReward, big.NewInt(10000))
 
-	if simBidValidatorReward != nil && bidBlockValidatorReward.Cmp(simBidValidatorReward) <= 0 {
+	if simBidValidatorReward != nil && bidBlockValidatorReward.Cmp(simBidValidatorReward.ToBig()) <= 0 {
 		return false
 	}
-	if simBidBlockReward != nil && bidBlockFee.Cmp(simBidBlockReward) <= 0 {
+	if simBidBlockReward != nil && bidBlockFee.Cmp(simBidBlockReward.ToBig()) <= 0 {
 		return false
 	}
 
@@ -72,7 +75,7 @@ func (w *worker) selectBidBlock(bidBlock *types.DecodedBidBlock, simBidBlockRewa
 		"simBidBlockReward", simBidBR,
 		"simBidValidatorReward", simBidVR)
 
-	if bidBlockFee.Cmp(bestReward) > 0 {
+	if bidBlockFee.Cmp(bestReward.ToBig()) > 0 {
 		log.Info("[BID BLOCK selected]",
 			"block", blockNum,
 			"builder", bidBlock.Builder,
@@ -197,6 +200,7 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			"err", err)
 		w.permMgr.Revoke(task.bidBlockInfo.builder, fmt.Sprintf("InsertChain err: %v", err), hash, block.NumberU64())
 		bidBlockRevokeGauge.Inc(1)
+		bidBlockRevokedBuildersGauge.Update(int64(w.permMgr.ActiveRevokeCount()))
 		return
 	}
 

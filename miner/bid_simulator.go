@@ -33,6 +33,9 @@ import (
 
 const prefetchTxNumber = 50
 
+// uint256BitLen is the bit width of uint256; a value wider than this cannot fit a tx value.
+const uint256BitLen = 256
+
 var (
 	bidPreCheckTimer     = metrics.NewRegisteredTimer("bid/preCheck", nil)
 	bidTryInterruptTimer = metrics.NewRegisteredTimer("bid/sim/tryInterrupt", nil)
@@ -653,8 +656,8 @@ func (b *bidSimulator) AddBidBlock(parentHash common.Hash, block *types.DecodedB
 	b.bestBidBlockMu.Lock()
 	defer b.bestBidBlockMu.Unlock()
 
-	if existing := b.bestBidBlock[parentHash]; existing != nil && block.GasFee.Cmp(existing.GasFee) < 0 {
-		return fmt.Errorf("BidBlock gasFee below current best: got %s, best %s",
+	if existing := b.bestBidBlock[parentHash]; existing != nil && block.GasFee.Cmp(existing.GasFee) <= 0 {
+		return fmt.Errorf("BidBlock gasFee not higher than current best: got %s, best %s",
 			weiToEtherStringF6(block.GasFee), weiToEtherStringF6(existing.GasFee))
 	}
 	b.bestBidBlock[parentHash] = block
@@ -687,6 +690,17 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 	decoded.SystemTxStart, decoded.GasFee = parliaEngine.ExtractBidBlockDepositValue(decoded.Txs)
 	if decoded.GasFee.Sign() <= 0 {
 		return errors.New("empty gasFee")
+	}
+	// Deposit value must fit uint256 (tx RLP decoding does not cap big.Int width).
+	if decoded.GasFee.BitLen() > uint256BitLen {
+		return fmt.Errorf("gasFee exceeds uint256: bitLen %d (deposit value %s)", decoded.GasFee.BitLen(), decoded.GasFee.String())
+	}
+
+	// Per-tx gas cap over user txs only, mirroring SendBid.
+	for _, tx := range decoded.Txs[:decoded.SystemTxStart] {
+		if tx.Gas() > params.MaxTxGas {
+			return fmt.Errorf("%w (cap: %d, tx: %d)", core.ErrGasLimitTooHigh, params.MaxTxGas, tx.Gas())
+		}
 	}
 
 	parent := b.chain.GetHeaderByHash(header.ParentHash)

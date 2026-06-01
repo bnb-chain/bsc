@@ -79,7 +79,9 @@ var (
 	bestWorkGasUsedGauge = metrics.NewRegisteredGauge("worker/bestWorkGasUsed", nil) // MGas
 	bidBlockCommitGauge  = metrics.NewRegisteredGauge("worker/bidBlockCommit", nil)
 	bidBlockGasUsedGauge = metrics.NewRegisteredGauge("worker/bidBlockGasUsed", nil) // MGas
-	bidBlockRevokeGauge  = metrics.NewRegisteredGauge("worker/bidBlockRevoke", nil)
+	bidBlockRevokeGauge  = metrics.NewRegisteredGauge("worker/bidBlockRevoke", nil)  // cumulative revoke count
+	// bidBlockRevokedBuildersGauge snapshots how many builders are revoked, taken at each revoke.
+	bidBlockRevokedBuildersGauge = metrics.NewRegisteredGauge("worker/bidBlockRevokedBuilders", nil)
 
 	writeBlockTimer      = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer   = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
