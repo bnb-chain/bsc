@@ -1609,7 +1609,8 @@ func (p *BlobPool) GetBlobs(vhashes []common.Hash, version byte, convert bool) (
 				} else {
 					proof, err := kzg4844.ComputeBlobProof(&sidecar.Blobs[i], sidecar.Commitments[i])
 					if err != nil {
-						return nil, nil, nil, err
+						log.Error("Failed to compute blob proof", "id", txID, "err", err)
+						continue
 					}
 					pf = []kzg4844.Proof{proof}
 				}
@@ -1617,13 +1618,15 @@ func (p *BlobPool) GetBlobs(vhashes []common.Hash, version byte, convert bool) (
 				if sidecar.Version == types.BlobSidecarVersion0 {
 					cellProofs, err := kzg4844.ComputeCellProofs(&sidecar.Blobs[i])
 					if err != nil {
-						return nil, nil, nil, err
+						log.Error("Failed to compute cell proofs", "id", txID, "err", err)
+						continue
 					}
 					pf = cellProofs
 				} else {
 					cellProofs, err := sidecar.CellProofsAt(i)
 					if err != nil {
-						return nil, nil, nil, err
+						log.Error("Failed to get cell proofs", "id", txID, "err", err)
+						continue
 					}
 					pf = cellProofs
 				}
