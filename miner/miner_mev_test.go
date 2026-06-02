@@ -2,6 +2,7 @@ package miner
 
 import (
 	"crypto/rand"
+	"errors"
 	"testing"
 
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
@@ -83,5 +84,22 @@ func TestStartAsyncBlobValidation_InvalidProof(t *testing.T) {
 	}
 	if err := <-ch; err == nil {
 		t.Fatal("expected error for invalid KZG proof")
+	}
+}
+
+func TestValidateBidBlockBlobTxs_InvalidProof(t *testing.T) {
+	sidecar := validBlobSidecar(1)
+	sidecar.Proofs[0][0] ^= 0xff
+
+	tx := makeSignedBlobTx(0, sidecar).WithoutBlobTxSidecar()
+	blockSidecar := &types.BlobSidecar{
+		BlobTxSidecar: *sidecar,
+		TxHash:        tx.Hash(),
+		TxIndex:       0,
+	}
+	if err := validateBidBlockBlobTxs(&types.Header{}, []*types.Transaction{tx}, types.BlobSidecars{blockSidecar}, 1); err == nil {
+		t.Fatal("expected error for invalid BidBlock blob proof")
+	} else if !errors.Is(err, errInvalidBidBlockBlobTx) {
+		t.Fatalf("expected invalid BidBlock blob tx error, got %v", err)
 	}
 }

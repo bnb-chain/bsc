@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sync"
 	"time"
 
 	"github.com/holiman/uint256"
@@ -16,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie"
@@ -25,6 +27,8 @@ type bidBlockTaskInfo struct {
 	builder common.Address
 	gasFee  *big.Int
 }
+
+var errInvalidBidBlockBlobTx = errors.New("invalid BidBlock blob transaction")
 
 // setBidMevInfo tags header.RequestsHash with the BEP-675 block-source info
 func setBidMevInfo(header *types.Header, builder common.Address, isBidBlock bool) {
@@ -123,11 +127,15 @@ func (w *worker) prepareBidBlockTask(
 	// Copy the tx slice so bind-signing does not mutate the cached BidBlock.
 	allTxs := make([]*types.Transaction, len(decoded.Txs))
 	copy(allTxs, decoded.Txs)
+
+	header := types.CopyHeader(decoded.Header)
+	// Validate blob proofs before bind-signing so a bad-KZG BidBlock fails fast.
+	if err := validateBidBlockBlobTxs(header, allTxs, decoded.Sidecars, decoded.SystemTxStart); err != nil {
+		return nil, err
+	}
 	if err := bindSignBidBlockSystemTxs(allTxs[decoded.SystemTxStart:], w.chainConfig.ChainID, p); err != nil {
 		return nil, err
 	}
-
-	header := types.CopyHeader(decoded.Header)
 	header.TxHash = types.DeriveSha(types.Transactions(allTxs), trie.NewStackTrie(nil))
 
 	body := &types.Body{
@@ -144,6 +152,99 @@ func (w *worker) prepareBidBlockTask(
 	}, nil
 }
 
+type bidBlockBlobValidationJob struct {
+	order   int
+	txIndex int
+	tx      *types.Transaction
+}
+
+type bidBlockBlobValidationResult struct {
+	order int
+	err   error
+}
+
+// validateBidBlockBlobTxs runs expensive blob proof checks for the selected BidBlock.
+func validateBidBlockBlobTxs(header *types.Header, txs []*types.Transaction, sidecars types.BlobSidecars, systemTxStart int) error {
+	if systemTxStart > len(txs) {
+		return fmt.Errorf("invalid system tx start: %d > txs %d", systemTxStart, len(txs))
+	}
+
+	jobs := make([]bidBlockBlobValidationJob, 0, len(sidecars))
+	sidecarIndex := 0
+	for txIndex, tx := range txs[:systemTxStart] {
+		if tx.Type() != types.BlobTxType {
+			continue
+		}
+		if sidecarIndex >= len(sidecars) {
+			return fmt.Errorf("blob info mismatch: sidecars %d, blob txs at least %d",
+				len(sidecars), sidecarIndex+1)
+		}
+		sidecar := sidecars[sidecarIndex]
+		if sidecar == nil {
+			return fmt.Errorf("missing sidecar for blob tx at index %d", txIndex)
+		}
+		jobs = append(jobs, bidBlockBlobValidationJob{
+			order:   len(jobs),
+			txIndex: txIndex,
+			tx:      tx.WithBlobTxSidecar(&sidecar.BlobTxSidecar),
+		})
+		sidecarIndex++
+	}
+	if sidecarIndex != len(sidecars) {
+		return fmt.Errorf("blob info mismatch: sidecars %d, blob txs %d", len(sidecars), sidecarIndex)
+	}
+	if len(jobs) == 0 {
+		return nil
+	}
+	if len(jobs) == 1 {
+		return validateBidBlockBlobTx(header, jobs[0])
+	}
+
+	workers := len(jobs)
+	if workers > maxBlobValConcurrency {
+		workers = maxBlobValConcurrency
+	}
+	jobCh := make(chan bidBlockBlobValidationJob, len(jobs))
+	for _, job := range jobs {
+		jobCh <- job
+	}
+	close(jobCh)
+
+	resultCh := make(chan bidBlockBlobValidationResult, len(jobs))
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer wg.Done()
+			for job := range jobCh {
+				if err := validateBidBlockBlobTx(header, job); err != nil {
+					resultCh <- bidBlockBlobValidationResult{order: job.order, err: err}
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(resultCh)
+
+	errs := make([]error, len(jobs))
+	for result := range resultCh {
+		errs[result.order] = result.err
+	}
+	for _, err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateBidBlockBlobTx(header *types.Header, job bidBlockBlobValidationJob) error {
+	if err := txpool.ValidateBlobTx(job.tx, header, nil); err != nil {
+		return fmt.Errorf("%w at index %d: %v", errInvalidBidBlockBlobTx, job.txIndex, err)
+	}
+	return nil
+}
+
 func (w *worker) enqueueBidBlockTask(task *task, systemTxs int) {
 	// assembleVoteAttestation + sign header happen inside Seal.
 	select {
@@ -158,6 +259,12 @@ func (w *worker) enqueueBidBlockTask(task *task, systemTxs int) {
 	case <-w.exitCh:
 		log.Info("Worker has exited")
 	}
+}
+
+func (w *worker) revokeBidBlockBuilder(builder common.Address, reason string, hash common.Hash, blockNum uint64) {
+	w.permMgr.Revoke(builder, reason, hash, blockNum)
+	bidBlockRevokeGauge.Inc(1)
+	bidBlockRevokedBuildersGauge.Update(int64(w.permMgr.ActiveRevokeCount()))
 }
 
 // handleBidBlockResult handles a sealed BidBlock: broadcast, then InsertChain for verification.
@@ -198,9 +305,7 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			"receiptHash", block.ReceiptHash(),
 			"builder", task.bidBlockInfo.builder,
 			"err", err)
-		w.permMgr.Revoke(task.bidBlockInfo.builder, fmt.Sprintf("InsertChain err: %v", err), hash, block.NumberU64())
-		bidBlockRevokeGauge.Inc(1)
-		bidBlockRevokedBuildersGauge.Update(int64(w.permMgr.ActiveRevokeCount()))
+		w.revokeBidBlockBuilder(task.bidBlockInfo.builder, fmt.Sprintf("InsertChain err: %v", err), hash, block.NumberU64())
 		return
 	}
 

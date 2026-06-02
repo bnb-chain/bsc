@@ -688,12 +688,14 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 	}
 
 	decoded.SystemTxStart, decoded.GasFee = parliaEngine.ExtractBidBlockDepositValue(decoded.Txs)
-	if decoded.GasFee.Sign() <= 0 {
-		return errors.New("empty gasFee")
-	}
-	// Deposit value must fit uint256 (tx RLP decoding does not cap big.Int width).
+	// GasFee comes from the deposit tx value; reject overflow before bid selection.
 	if decoded.GasFee.BitLen() > uint256BitLen {
-		return fmt.Errorf("gasFee exceeds uint256: bitLen %d (deposit value %s)", decoded.GasFee.BitLen(), decoded.GasFee.String())
+		return fmt.Errorf("gasFee exceeds uint256: bitLen %d", decoded.GasFee.BitLen())
+	}
+
+	// Only cheap sidecar checks run at admission; KZG is checked for the selected BidBlock.
+	if err := b.validateBidBlockBlobSidecars(decoded); err != nil {
+		return err
 	}
 
 	// Per-tx gas cap over user txs only, mirroring SendBid.
@@ -705,6 +707,44 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 
 	parent := b.chain.GetHeaderByHash(header.ParentHash)
 	return parliaEngine.VerifyBidBlockSystemTxs(decoded, parent, decoded.SystemTxStart)
+}
+
+// validateBidBlockBlobSidecars checks cheap sidecar invariants before bid selection.
+func (b *bidSimulator) validateBidBlockBlobSidecars(decoded *types.DecodedBidBlock) error {
+	header := decoded.Header
+	sidecarIndex := 0
+	blobCount := 0
+	for txIndex, tx := range decoded.Txs[:decoded.SystemTxStart] {
+		if tx.Type() != types.BlobTxType {
+			continue
+		}
+		if sidecarIndex >= len(decoded.Sidecars) {
+			return fmt.Errorf("blob info mismatch: sidecars %d, blob txs at least %d",
+				len(decoded.Sidecars), sidecarIndex+1)
+		}
+		sidecar := decoded.Sidecars[sidecarIndex]
+		if sidecar == nil {
+			return fmt.Errorf("missing sidecar for blob tx at index %d", txIndex)
+		}
+		if sidecar.TxHash != tx.Hash() {
+			return fmt.Errorf("sidecar's TxHash mismatch with transaction at index %d, want: %v, have: %v",
+				txIndex, tx.Hash(), sidecar.TxHash)
+		}
+		if sidecar.TxIndex != uint64(txIndex) {
+			return fmt.Errorf("sidecar's TxIndex mismatch with transaction at index %d, want: %d, have: %d",
+				txIndex, txIndex, sidecar.TxIndex)
+		}
+		blobCount += len(sidecar.Blobs)
+		if blobCount > eip4844.MaxBlobsPerBlock(b.chainConfig, header.Time) {
+			return fmt.Errorf("too many blobs in block: have %d, permitted %d",
+				blobCount, eip4844.MaxBlobsPerBlock(b.chainConfig, header.Time))
+		}
+		sidecarIndex++
+	}
+	if sidecarIndex != len(decoded.Sidecars) {
+		return fmt.Errorf("blob info mismatch: sidecars %d, blob txs %d", len(decoded.Sidecars), sidecarIndex)
+	}
+	return nil
 }
 
 // sendBidBlock queues a decoded BidBlock for selection.

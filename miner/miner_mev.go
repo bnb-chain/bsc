@@ -125,6 +125,11 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 	setBidMevInfo(decoded.Header, builder, true)
 
 	if err := miner.bidSimulator.preSealVerifyBidBlock(decoded); err != nil {
+		log.Warn("BidBlock pre-seal verification failed",
+			"block", blockNumber,
+			"builder", builder,
+			"bidHash", decoded.Hash().TerminalString(),
+			"err", err)
 		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("pre-seal verify failed: %v", err))
 	}
 
