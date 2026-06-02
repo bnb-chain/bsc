@@ -688,6 +688,13 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 	}
 
 	decoded.SystemTxStart, decoded.GasFee = parliaEngine.ExtractBidBlockDepositValue(decoded.Txs)
+	decoded.BidTxIndexes = decoded.BidTxIndexes[:0]
+	for i, tx := range decoded.Txs[:decoded.SystemTxStart] {
+		if !b.txpool.Has(tx.Hash()) {
+			decoded.BidTxIndexes = append(decoded.BidTxIndexes, i)
+		}
+	}
+
 	// GasFee comes from the deposit tx value; reject overflow before bid selection.
 	if decoded.GasFee.BitLen() > uint256BitLen {
 		return fmt.Errorf("gasFee exceeds uint256: bitLen %d", decoded.GasFee.BitLen())
@@ -729,6 +736,9 @@ func (b *bidSimulator) validateBidBlockBlobSidecars(decoded *types.DecodedBidBlo
 		sidecar := decoded.Sidecars[sidecarIndex]
 		if sidecar == nil {
 			return fmt.Errorf("missing sidecar for blob tx at index %d", txIndex)
+		}
+		if sidecar.Version == types.BlobSidecarVersion1 {
+			return errors.New("cell proof is not supported yet")
 		}
 		if sidecar.TxHash != tx.Hash() {
 			return fmt.Errorf("sidecar's TxHash mismatch with transaction at index %d, want: %v, have: %v",

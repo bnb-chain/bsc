@@ -24,8 +24,9 @@ import (
 )
 
 type bidBlockTaskInfo struct {
-	builder common.Address
-	gasFee  *big.Int
+	builder      common.Address
+	gasFee       *big.Int
+	bidTxIndexes []int
 }
 
 var errInvalidBidBlockBlobTx = errors.New("invalid BidBlock blob transaction")
@@ -145,8 +146,12 @@ func (w *worker) prepareBidBlockTask(
 	block := types.NewBlockWithHeader(header).WithBody(*body).WithSidecars(decoded.Sidecars)
 
 	return &task{
-		block:         block,
-		bidBlockInfo:  &bidBlockTaskInfo{builder: decoded.Builder, gasFee: decoded.GasFee},
+		block: block,
+		bidBlockInfo: &bidBlockTaskInfo{
+			builder:      decoded.Builder,
+			gasFee:       decoded.GasFee,
+			bidTxIndexes: append([]int(nil), decoded.BidTxIndexes...),
+		},
 		createdAt:     time.Now(),
 		miningStartAt: start,
 	}, nil
@@ -308,10 +313,45 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 		w.revokeBidBlockBuilder(task.bidBlockInfo.builder, fmt.Sprintf("InsertChain err: %v", err), hash, block.NumberU64())
 		return
 	}
+	// Policy check after successful import: keep the block, revoke future BidBlocks if needed.
+	if w.revokeBidBlockBuilderIfBidTxGasPriceLow(block, task) {
+		return
+	}
 
 	log.Info("[BID BLOCK VERIFIED]",
 		"number", block.Number(),
 		"hash", hash,
 		"builder", task.bidBlockInfo.builder,
 		"gasFee", weiToEtherStringF6(task.bidBlockInfo.gasFee))
+}
+
+func (w *worker) revokeBidBlockBuilderIfBidTxGasPriceLow(block *types.Block, task *task) bool {
+	if len(task.bidBlockInfo.bidTxIndexes) == 0 {
+		return false
+	}
+	receipts := w.chain.GetReceiptsByHash(block.Hash())
+	if len(receipts) != len(block.Transactions()) {
+		return false
+	}
+	bidGasPrice, bidGasUsed, err := validateBidTxGasPrice(
+		block.Transactions(),
+		receipts,
+		task.bidBlockInfo.bidTxIndexes,
+		block.BaseFee(),
+		w.config.GasPrice,
+	)
+	if err == nil {
+		return false
+	}
+	log.Error("[BID BLOCK GASPRICE LOW]",
+		"number", block.Number(),
+		"hash", block.Hash(),
+		"builder", task.bidBlockInfo.builder,
+		"bidGasPrice", bidGasPrice,
+		"minGasPrice", w.config.GasPrice,
+		"bidGasUsed", bidGasUsed,
+		"bidTxs", len(task.bidBlockInfo.bidTxIndexes),
+		"err", err)
+	w.revokeBidBlockBuilder(task.bidBlockInfo.builder, err.Error(), block.Hash(), block.NumberU64())
+	return true
 }
