@@ -718,6 +718,10 @@ func (b *bidSimulator) validateBidBlockBlobSidecars(decoded *types.DecodedBidBlo
 		if tx.Type() != types.BlobTxType {
 			continue
 		}
+		if !eip4844.IsBlobEligibleBlock(b.chainConfig, header.Number.Uint64(), header.Time) {
+			return fmt.Errorf("blob transactions not allowed in block %d (N %% %d != 0)",
+				header.Number.Uint64(), params.BlobEligibleBlockInterval)
+		}
 		if sidecarIndex >= len(decoded.Sidecars) {
 			return fmt.Errorf("blob info mismatch: sidecars %d, blob txs at least %d",
 				len(decoded.Sidecars), sidecarIndex+1)
