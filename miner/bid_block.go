@@ -24,9 +24,9 @@ import (
 )
 
 type bidBlockTaskInfo struct {
-	builder      common.Address
-	gasFee       *big.Int
-	bidTxIndexes []int
+	builder       common.Address
+	gasFee        *big.Int
+	systemTxStart int
 }
 
 var errInvalidBidBlockBlobTx = errors.New("invalid BidBlock blob transaction")
@@ -130,7 +130,6 @@ func (w *worker) prepareBidBlockTask(
 	copy(allTxs, decoded.Txs)
 
 	header := types.CopyHeader(decoded.Header)
-	// Validate blob proofs before bind-signing so a bad-KZG BidBlock fails fast.
 	if err := validateBidBlockBlobTxs(header, allTxs, decoded.Sidecars, decoded.SystemTxStart); err != nil {
 		return nil, err
 	}
@@ -148,9 +147,9 @@ func (w *worker) prepareBidBlockTask(
 	return &task{
 		block: block,
 		bidBlockInfo: &bidBlockTaskInfo{
-			builder:      decoded.Builder,
-			gasFee:       decoded.GasFee,
-			bidTxIndexes: append([]int(nil), decoded.BidTxIndexes...),
+			builder:       decoded.Builder,
+			gasFee:        decoded.GasFee,
+			systemTxStart: decoded.SystemTxStart,
 		},
 		createdAt:     time.Now(),
 		miningStartAt: start,
@@ -158,51 +157,24 @@ func (w *worker) prepareBidBlockTask(
 }
 
 type bidBlockBlobValidationJob struct {
-	order   int
 	txIndex int
 	tx      *types.Transaction
 }
 
-type bidBlockBlobValidationResult struct {
-	order int
-	err   error
-}
-
 // validateBidBlockBlobTxs runs expensive blob proof checks for the selected BidBlock.
 func validateBidBlockBlobTxs(header *types.Header, txs []*types.Transaction, sidecars types.BlobSidecars, systemTxStart int) error {
-	if systemTxStart > len(txs) {
-		return fmt.Errorf("invalid system tx start: %d > txs %d", systemTxStart, len(txs))
-	}
-
 	jobs := make([]bidBlockBlobValidationJob, 0, len(sidecars))
 	sidecarIndex := 0
 	for txIndex, tx := range txs[:systemTxStart] {
 		if tx.Type() != types.BlobTxType {
 			continue
 		}
-		if sidecarIndex >= len(sidecars) {
-			return fmt.Errorf("blob info mismatch: sidecars %d, blob txs at least %d",
-				len(sidecars), sidecarIndex+1)
-		}
 		sidecar := sidecars[sidecarIndex]
-		if sidecar == nil {
-			return fmt.Errorf("missing sidecar for blob tx at index %d", txIndex)
-		}
 		jobs = append(jobs, bidBlockBlobValidationJob{
-			order:   len(jobs),
 			txIndex: txIndex,
 			tx:      tx.WithBlobTxSidecar(&sidecar.BlobTxSidecar),
 		})
 		sidecarIndex++
-	}
-	if sidecarIndex != len(sidecars) {
-		return fmt.Errorf("blob info mismatch: sidecars %d, blob txs %d", len(sidecars), sidecarIndex)
-	}
-	if len(jobs) == 0 {
-		return nil
-	}
-	if len(jobs) == 1 {
-		return validateBidBlockBlobTx(header, jobs[0])
 	}
 
 	workers := len(jobs)
@@ -215,7 +187,7 @@ func validateBidBlockBlobTxs(header *types.Header, txs []*types.Transaction, sid
 	}
 	close(jobCh)
 
-	resultCh := make(chan bidBlockBlobValidationResult, len(jobs))
+	errCh := make(chan error, len(jobs))
 	var wg sync.WaitGroup
 	wg.Add(workers)
 	for i := 0; i < workers; i++ {
@@ -223,22 +195,15 @@ func validateBidBlockBlobTxs(header *types.Header, txs []*types.Transaction, sid
 			defer wg.Done()
 			for job := range jobCh {
 				if err := validateBidBlockBlobTx(header, job); err != nil {
-					resultCh <- bidBlockBlobValidationResult{order: job.order, err: err}
+					errCh <- err
 				}
 			}
 		}()
 	}
 	wg.Wait()
-	close(resultCh)
-
-	errs := make([]error, len(jobs))
-	for result := range resultCh {
-		errs[result.order] = result.err
-	}
-	for _, err := range errs {
-		if err != nil {
-			return err
-		}
+	close(errCh)
+	for err := range errCh {
+		return err
 	}
 	return nil
 }
@@ -313,9 +278,28 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 		w.revokeBidBlockBuilder(task.bidBlockInfo.builder, fmt.Sprintf("InsertChain err: %v", err), hash, block.NumberU64())
 		return
 	}
-	// Policy check after successful import: keep the block, revoke future BidBlocks if needed.
-	if w.revokeBidBlockBuilderIfBidTxGasPriceLow(block, task) {
-		return
+	// Check the post-import average gas price over non-system txs; only future BidBlock permission is revoked.
+	if receipts := w.chain.GetReceiptsByHash(block.Hash()); receipts != nil {
+		avgGasPrice, nonSystemGasUsed, err := validateBidBlockGasPrice(
+			block.Transactions(),
+			receipts,
+			task.bidBlockInfo.systemTxStart,
+			block.BaseFee(),
+			w.config.GasPrice,
+		)
+		if err != nil {
+			log.Error("[BID BLOCK GASPRICE LOW]",
+				"number", block.Number(),
+				"hash", block.Hash(),
+				"builder", task.bidBlockInfo.builder,
+				"avgGasPrice", avgGasPrice,
+				"minGasPrice", w.config.GasPrice,
+				"nonSystemGasUsed", nonSystemGasUsed,
+				"nonSystemTxs", task.bidBlockInfo.systemTxStart,
+				"err", err)
+			w.revokeBidBlockBuilder(task.bidBlockInfo.builder, err.Error(), block.Hash(), block.NumberU64())
+			return
+		}
 	}
 
 	log.Info("[BID BLOCK VERIFIED]",
@@ -323,35 +307,4 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 		"hash", hash,
 		"builder", task.bidBlockInfo.builder,
 		"gasFee", weiToEtherStringF6(task.bidBlockInfo.gasFee))
-}
-
-func (w *worker) revokeBidBlockBuilderIfBidTxGasPriceLow(block *types.Block, task *task) bool {
-	if len(task.bidBlockInfo.bidTxIndexes) == 0 {
-		return false
-	}
-	receipts := w.chain.GetReceiptsByHash(block.Hash())
-	if len(receipts) != len(block.Transactions()) {
-		return false
-	}
-	bidGasPrice, bidGasUsed, err := validateBidTxGasPrice(
-		block.Transactions(),
-		receipts,
-		task.bidBlockInfo.bidTxIndexes,
-		block.BaseFee(),
-		w.config.GasPrice,
-	)
-	if err == nil {
-		return false
-	}
-	log.Error("[BID BLOCK GASPRICE LOW]",
-		"number", block.Number(),
-		"hash", block.Hash(),
-		"builder", task.bidBlockInfo.builder,
-		"bidGasPrice", bidGasPrice,
-		"minGasPrice", w.config.GasPrice,
-		"bidGasUsed", bidGasUsed,
-		"bidTxs", len(task.bidBlockInfo.bidTxIndexes),
-		"err", err)
-	w.revokeBidBlockBuilder(task.bidBlockInfo.builder, err.Error(), block.Hash(), block.NumberU64())
-	return true
 }

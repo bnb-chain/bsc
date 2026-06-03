@@ -280,8 +280,6 @@ type DecodedBidBlock struct {
 	GasFee        *big.Int
 	SystemTxStart int // index in Txs where the unsigned trailing system-tx region begins; set during admission.
 
-	BidTxIndexes []int // user tx indexes absent from the validator txpool at admission.
-
 	bidHash common.Hash
 }
 

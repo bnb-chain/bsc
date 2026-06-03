@@ -688,14 +688,11 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 	}
 
 	decoded.SystemTxStart, decoded.GasFee = parliaEngine.ExtractBidBlockDepositValue(decoded.Txs)
-	decoded.BidTxIndexes = decoded.BidTxIndexes[:0]
-	for i, tx := range decoded.Txs[:decoded.SystemTxStart] {
-		if !b.txpool.Has(tx.Hash()) {
-			decoded.BidTxIndexes = append(decoded.BidTxIndexes, i)
-		}
-	}
 
 	// GasFee comes from the deposit tx value; reject overflow before bid selection.
+	if decoded.GasFee.Sign() <= 0 {
+		return errors.New("empty gasFee")
+	}
 	if decoded.GasFee.BitLen() > uint256BitLen {
 		return fmt.Errorf("gasFee exceeds uint256: bitLen %d", decoded.GasFee.BitLen())
 	}

@@ -11,37 +11,35 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-var errBidTxGasPriceTooLow = errors.New("average bid tx gas price too low")
+var errBidBlockGasPriceTooLow = errors.New("average non-system tx gas price too low")
 
-func validateBidTxGasPrice(
+func validateBidBlockGasPrice(
 	txs types.Transactions,
 	receipts types.Receipts,
-	txIndexes []int,
+	systemTxStart int,
 	baseFee *big.Int,
 	minGasPrice *big.Int,
 ) (*big.Int, uint64, error) {
-	avgGasPrice, gasUsed := calcAverageBidTxGasPrice(txs, receipts, txIndexes, baseFee)
+	avgGasPrice, gasUsed := calcAverageTxGasPrice(txs[:systemTxStart], receipts[:systemTxStart], baseFee)
 	if gasUsed == 0 {
 		return avgGasPrice, gasUsed, nil
 	}
 	if avgGasPrice.Cmp(minGasPrice) < 0 {
-		return avgGasPrice, gasUsed, fmt.Errorf("%w, bid:%v, min:%v", errBidTxGasPriceTooLow, avgGasPrice, minGasPrice)
+		return avgGasPrice, gasUsed, fmt.Errorf("%w, avg:%v, min:%v", errBidBlockGasPriceTooLow, avgGasPrice, minGasPrice)
 	}
 	return avgGasPrice, gasUsed, nil
 }
 
-func calcAverageBidTxGasPrice(
+func calcAverageTxGasPrice(
 	txs types.Transactions,
 	receipts types.Receipts,
-	txIndexes []int,
 	baseFee *big.Int,
 ) (*big.Int, uint64) {
 	gasUsed := uint64(0)
 	gasFee := new(big.Int)
 
-	for _, txIndex := range txIndexes {
-		tx := txs[txIndex]
-		receipt := receipts[txIndex]
+	for i, tx := range txs {
+		receipt := receipts[i]
 
 		gasUsed += receipt.GasUsed
 		effectiveGasPrice := tx.EffectiveGasTipValue(baseFee)
