@@ -3,6 +3,7 @@ package miner
 import (
 	"crypto/rand"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
@@ -101,5 +102,7 @@ func TestValidateBidBlockBlobTxs_InvalidProof(t *testing.T) {
 		t.Fatal("expected error for invalid BidBlock blob proof")
 	} else if !errors.Is(err, errInvalidBidBlockBlobTx) {
 		t.Fatalf("expected invalid BidBlock blob tx error, got %v", err)
+	} else if !strings.Contains(err.Error(), "BidBlock blob validation failed") {
+		t.Fatalf("unexpected error message: %v", err)
 	}
 }

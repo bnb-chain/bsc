@@ -29,7 +29,7 @@ type bidBlockTaskInfo struct {
 	systemTxStart int
 }
 
-var errInvalidBidBlockBlobTx = errors.New("invalid BidBlock blob transaction")
+var errInvalidBidBlockBlobTx = errors.New("BidBlock blob validation failed")
 
 // setBidMevInfo tags header.RequestsHash with the BEP-675 block-source info
 func setBidMevInfo(header *types.Header, builder common.Address, isBidBlock bool) {
@@ -197,8 +197,8 @@ func validateBidBlockBlobTxs(header *types.Header, txs []*types.Transaction, sid
 		go func() {
 			defer wg.Done()
 			for job := range jobCh {
-				if err := validateBidBlockBlobTx(header, job); err != nil {
-					errCh <- err
+				if err := txpool.ValidateBlobTx(job.tx, header, nil); err != nil {
+					errCh <- fmt.Errorf("%w: %v", errInvalidBidBlockBlobTx, err)
 				}
 			}
 		}()
@@ -207,13 +207,6 @@ func validateBidBlockBlobTxs(header *types.Header, txs []*types.Transaction, sid
 	close(errCh)
 	for err := range errCh {
 		return err
-	}
-	return nil
-}
-
-func validateBidBlockBlobTx(header *types.Header, job bidBlockBlobValidationJob) error {
-	if err := txpool.ValidateBlobTx(job.tx, header, nil); err != nil {
-		return fmt.Errorf("%w at index %d: %v", errInvalidBidBlockBlobTx, job.txIndex, err)
 	}
 	return nil
 }
