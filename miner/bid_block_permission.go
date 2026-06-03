@@ -55,8 +55,8 @@ func NewBidBlockPermissionManager() *BidBlockPermissionManager {
 func (m *BidBlockPermissionManager) IsAllowed(builder common.Address) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	rec, found := m.revoked[builder]
-	return !found || !isRevokeActive(rec, m.clock())
+	_, found := m.activeRecord(builder, m.clock())
+	return !found
 }
 
 // Revoke denies builder and records the reason exposed by the permission RPC.
@@ -98,8 +98,8 @@ func (m *BidBlockPermissionManager) GetStatus(builder common.Address) types.BidB
 	status := types.BidBlockPermissionStatus{
 		Allowed: true,
 	}
-	rec, found := m.revoked[builder]
-	if !found || !isRevokeActive(rec, m.clock()) {
+	rec, found := m.activeRecord(builder, m.clock())
+	if !found {
 		return status
 	}
 	status.Allowed = false
@@ -142,6 +142,14 @@ func (m *BidBlockPermissionManager) SetAllowed(builder common.Address, allowed b
 // isRevokeActive reports whether now is before the revoke reset time.
 func isRevokeActive(rec BidBlockRevokeRecord, now time.Time) bool {
 	return now.Before(rec.RevokedAt.Add(rec.revokeDuration()))
+}
+
+func (m *BidBlockPermissionManager) activeRecord(builder common.Address, now time.Time) (BidBlockRevokeRecord, bool) {
+	rec, found := m.revoked[builder]
+	if !found || !isRevokeActive(rec, now) {
+		return BidBlockRevokeRecord{}, false
+	}
+	return rec, true
 }
 
 func (rec BidBlockRevokeRecord) revokeDuration() time.Duration {

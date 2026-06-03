@@ -76,6 +76,7 @@ var (
 type bidWorker interface {
 	prepareWork(params *generateParams, witness bool) (*environment, error)
 	etherbase() common.Address
+	getGasCeil() uint64
 	getPrefetcher() core.Prefetcher
 	fillTransactions(interruptCh chan int32, env *environment, stopTimer *time.Timer, bidTxs mapset.Set[common.Hash]) (err error)
 }
@@ -683,6 +684,14 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 		return fmt.Errorf("invalid coinbase: got %s, want %s",
 			header.Coinbase.Hex(), b.bidWorker.etherbase().Hex())
 	}
+	parent := b.chain.GetHeaderByHash(header.ParentHash)
+	if parent == nil {
+		return consensus.ErrUnknownAncestor
+	}
+	expectedGasLimit := core.CalcGasLimit(parent.GasLimit, b.bidWorker.getGasCeil())
+	if header.GasLimit != expectedGasLimit {
+		return fmt.Errorf("invalid gasLimit: got %d, want %d", header.GasLimit, expectedGasLimit)
+	}
 	if err := parliaEngine.VerifyUnsealedHeader(b.chain, header, nil); err != nil {
 		return fmt.Errorf("invalid header: %v", err)
 	}
@@ -709,7 +718,6 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 		}
 	}
 
-	parent := b.chain.GetHeaderByHash(header.ParentHash)
 	return parliaEngine.VerifyBidBlockSystemTxs(decoded, parent, decoded.SystemTxStart)
 }
 

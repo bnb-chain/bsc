@@ -24,11 +24,7 @@ const testInsertChainReason = "InsertChain err: test"
 func getBidBlockPermissionRecord(m *BidBlockPermissionManager, builder common.Address) (BidBlockRevokeRecord, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	rec, found := m.revoked[builder]
-	if !found || !isRevokeActive(rec, m.clock()) {
-		return BidBlockRevokeRecord{}, false
-	}
-	return rec, true
+	return m.activeRecord(builder, m.clock())
 }
 
 func setBidBlockPermissionClock(m *BidBlockPermissionManager, f func() time.Time) {
