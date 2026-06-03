@@ -131,6 +131,9 @@ func (w *worker) prepareBidBlockTask(
 
 	header := types.CopyHeader(decoded.Header)
 	if err := validateBidBlockBlobTxs(header, allTxs, decoded.Sidecars, decoded.SystemTxStart); err != nil {
+		if errors.Is(err, errInvalidBidBlockBlobTx) {
+			w.revokeBidBlockBuilder(decoded.Builder, err.Error(), decoded.Hash(), decoded.BlockNumber())
+		}
 		return nil, err
 	}
 	if err := bindSignBidBlockSystemTxs(allTxs[decoded.SystemTxStart:], w.chainConfig.ChainID, p); err != nil {
@@ -232,7 +235,11 @@ func (w *worker) enqueueBidBlockTask(task *task, systemTxs int) {
 }
 
 func (w *worker) revokeBidBlockBuilder(builder common.Address, reason string, hash common.Hash, blockNum uint64) {
-	w.permMgr.Revoke(builder, reason, hash, blockNum)
+	w.revokeBidBlockBuilderFor(builder, reason, hash, blockNum, bidBlockRevokeDuration)
+}
+
+func (w *worker) revokeBidBlockBuilderFor(builder common.Address, reason string, hash common.Hash, blockNum uint64, duration time.Duration) {
+	w.permMgr.RevokeFor(builder, reason, hash, blockNum, duration)
 	bidBlockRevokeGauge.Inc(1)
 	bidBlockRevokedBuildersGauge.Update(int64(w.permMgr.ActiveRevokeCount()))
 }
@@ -256,7 +263,7 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 
 	// InsertChain re-executes all txs and validates fields the validator could
 	// not check at admission. Any mismatch is treated as builder dishonesty and
-	// revokes the builder for the rest of the UTC day. Categories caught here:
+	// revokes the builder for the default lockout window. Categories caught here:
 	//   - Root          (post-execution state root)
 	//   - ReceiptHash   (post-execution receipts trie root)
 	//   - Bloom         (post-execution logs bloom)
@@ -278,9 +285,9 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 		w.revokeBidBlockBuilder(task.bidBlockInfo.builder, fmt.Sprintf("InsertChain err: %v", err), hash, block.NumberU64())
 		return
 	}
-	// Check the post-import average gas fee per non-system gas; only future BidBlock permission is revoked.
+	// Check the post-import average gas price excluding system transactions; only future BidBlock permission is revoked.
 	if receipts := w.chain.GetReceiptsByHash(block.Hash()); receipts != nil {
-		avgGasFeePerGas, nonSystemGasUsed, err := validateBidBlockGasFeePerGas(
+		avgGasPrice, nonSystemGasUsed, err := validateBidBlockAverageGasPrice(
 			task.bidBlockInfo.gasFee,
 			receipts,
 			task.bidBlockInfo.systemTxStart,
@@ -291,12 +298,13 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 				"number", block.Number(),
 				"hash", block.Hash(),
 				"builder", task.bidBlockInfo.builder,
-				"avgGasFeePerGas", avgGasFeePerGas,
+				"avgGasPrice", avgGasPrice,
 				"minGasPrice", w.config.GasPrice,
 				"nonSystemGasUsed", nonSystemGasUsed,
 				"nonSystemTxs", task.bidBlockInfo.systemTxStart,
+				"revokeDuration", bidBlockGasPriceLowRevokeDuration,
 				"err", err)
-			w.revokeBidBlockBuilder(task.bidBlockInfo.builder, err.Error(), block.Hash(), block.NumberU64())
+			w.revokeBidBlockBuilderFor(task.bidBlockInfo.builder, err.Error(), block.Hash(), block.NumberU64(), bidBlockGasPriceLowRevokeDuration)
 			return
 		}
 	}

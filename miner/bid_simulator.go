@@ -716,13 +716,15 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 // validateBidBlockBlobSidecars checks cheap sidecar invariants before bid selection.
 func (b *bidSimulator) validateBidBlockBlobSidecars(decoded *types.DecodedBidBlock) error {
 	header := decoded.Header
+	blobEligibleBlock := eip4844.IsBlobEligibleBlock(b.chainConfig, header.Number.Uint64(), header.Time)
+	maxBlobsPerBlock := eip4844.MaxBlobsPerBlock(b.chainConfig, header.Time)
 	sidecarIndex := 0
 	blobCount := 0
 	for txIndex, tx := range decoded.Txs[:decoded.SystemTxStart] {
 		if tx.Type() != types.BlobTxType {
 			continue
 		}
-		if !eip4844.IsBlobEligibleBlock(b.chainConfig, header.Number.Uint64(), header.Time) {
+		if !blobEligibleBlock {
 			return fmt.Errorf("blob transactions not allowed in block %d (N %% %d != 0)",
 				header.Number.Uint64(), params.BlobEligibleBlockInterval)
 		}
@@ -746,9 +748,9 @@ func (b *bidSimulator) validateBidBlockBlobSidecars(decoded *types.DecodedBidBlo
 				txIndex, txIndex, sidecar.TxIndex)
 		}
 		blobCount += len(sidecar.Blobs)
-		if blobCount > eip4844.MaxBlobsPerBlock(b.chainConfig, header.Time) {
+		if blobCount > maxBlobsPerBlock {
 			return fmt.Errorf("too many blobs in block: have %d, permitted %d",
-				blobCount, eip4844.MaxBlobsPerBlock(b.chainConfig, header.Time))
+				blobCount, maxBlobsPerBlock)
 		}
 		sidecarIndex++
 	}

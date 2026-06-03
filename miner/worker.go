@@ -1474,10 +1474,6 @@ LOOP:
 			log.Error("Failed to prepare bid block, fallback",
 				"builder", bestBidBlock.Builder,
 				"err", err)
-			if errors.Is(err, errInvalidBidBlockBlobTx) {
-				w.revokeBidBlockBuilder(bestBidBlock.Builder, fmt.Sprintf("prepareBidBlockTask err: %v", err),
-					bestBidBlock.Hash(), bestBidBlock.BlockNumber())
-			}
 			bidBlockFallback = true
 		} else {
 			systemTxCount := len(bestBidBlock.Txs) - bestBidBlock.SystemTxStart

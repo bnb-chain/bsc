@@ -25,7 +25,7 @@ func getBidBlockPermissionRecord(m *BidBlockPermissionManager, builder common.Ad
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	rec, found := m.revoked[builder]
-	if !found || !isRevokeActive(rec.RevokedAt, m.clock()) {
+	if !found || !isRevokeActive(rec, m.clock()) {
 		return BidBlockRevokeRecord{}, false
 	}
 	return rec, true
@@ -71,6 +71,9 @@ func TestBidBlockPermission_RevokeBlocks(t *testing.T) {
 	if rec.BlockNum != 100 {
 		t.Fatalf("blockNum: got %d, want 100", rec.BlockNum)
 	}
+	if rec.Duration != bidBlockRevokeDuration {
+		t.Fatalf("duration: got %s, want %s", rec.Duration, bidBlockRevokeDuration)
+	}
 }
 
 func TestBidBlockPermission_BuildersIndependent(t *testing.T) {
@@ -84,6 +87,28 @@ func TestBidBlockPermission_BuildersIndependent(t *testing.T) {
 	}
 	if !m.IsAllowed(b) {
 		t.Fatal("b should remain active")
+	}
+}
+
+func TestBidBlockPermission_RevokeForCustomDuration(t *testing.T) {
+	m := NewBidBlockPermissionManager()
+	builder := common.HexToAddress("0x1")
+	now := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
+
+	setBidBlockPermissionClock(m, func() time.Time { return now })
+	m.RevokeFor(builder, errBidBlockAverageGasPriceTooLow.Error(), common.Hash{}, 1, bidBlockGasPriceLowRevokeDuration)
+
+	status := m.GetStatus(builder)
+	if status.Allowed {
+		t.Fatal("builder should be revoked")
+	}
+	if want := now.Add(bidBlockGasPriceLowRevokeDuration); !status.ResetAt.Equal(want) {
+		t.Fatalf("resetAt: got %s, want %s", status.ResetAt, want)
+	}
+
+	setBidBlockPermissionClock(m, func() time.Time { return now.Add(bidBlockGasPriceLowRevokeDuration) })
+	if !m.IsAllowed(builder) {
+		t.Fatal("gas price low revoke should expire after the custom duration")
 	}
 }
 

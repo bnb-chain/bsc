@@ -11,9 +11,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-var errBidBlockGasFeePerGasTooLow = errors.New("average BidBlock gas fee per gas too low")
+var errBidBlockAverageGasPriceTooLow = errors.New("BidBlock average gas price too low")
 
-func validateBidBlockGasFeePerGas(
+func validateBidBlockAverageGasPrice(
 	gasFee *big.Int,
 	receipts types.Receipts,
 	systemTxStart int,
@@ -23,11 +23,11 @@ func validateBidBlockGasFeePerGas(
 	if gasUsed == 0 {
 		return nil, 0, nil
 	}
-	avgGasFeePerGas := new(big.Int).Div(new(big.Int).Set(gasFee), new(big.Int).SetUint64(gasUsed))
-	if avgGasFeePerGas.Cmp(minGasPrice) < 0 {
-		return avgGasFeePerGas, gasUsed, fmt.Errorf("%w, avg:%v, min:%v", errBidBlockGasFeePerGasTooLow, avgGasFeePerGas, minGasPrice)
+	avgGasPrice := new(big.Int).Div(new(big.Int).Set(gasFee), new(big.Int).SetUint64(gasUsed))
+	if avgGasPrice.Cmp(minGasPrice) < 0 {
+		return avgGasPrice, gasUsed, fmt.Errorf("%w, avg:%v, min:%v", errBidBlockAverageGasPriceTooLow, avgGasPrice, minGasPrice)
 	}
-	return avgGasFeePerGas, gasUsed, nil
+	return avgGasPrice, gasUsed, nil
 }
 
 func calcNonSystemGasUsed(

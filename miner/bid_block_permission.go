@@ -14,24 +14,28 @@ import (
 )
 
 // RevokeReasonManual is the Reason value used when an operator manually revokes
-// a builder via SetAllowed. Automatic revokes always come from InsertChain
-// failures and carry the underlying error message as Reason directly — see the
-// auto-revoke call site in handleBidBlockResult for the conditions that trigger.
+// a builder via SetAllowed. Automatic revokes carry the underlying error or
+// policy message as Reason directly.
 const RevokeReasonManual = "manual"
 
-// bidBlockRevokeDuration is the fixed lockout window for BidBlock revokes.
-const bidBlockRevokeDuration = 24 * time.Hour
+const (
+	// bidBlockRevokeDuration is the default lockout window for invalid BidBlocks.
+	bidBlockRevokeDuration = 24 * time.Hour
+	// bidBlockGasPriceLowRevokeDuration is one epoch for gas-price policy revokes.
+	bidBlockGasPriceLowRevokeDuration = 450 * time.Second
+)
 
 // BidBlockRevokeRecord holds one active revoke event.
 type BidBlockRevokeRecord struct {
 	RevokedAt time.Time
+	Duration  time.Duration
 	Reason    string // err detail for auto revokes (InsertChain failure), or RevokeReasonManual
 	BlockHash common.Hash
 	BlockNum  uint64
 }
 
 // BidBlockPermissionManager tracks per-builder SendBidBlock revokes.
-// Revokes are kept in memory and expire lazily after the fixed lockout window.
+// Revokes are kept in memory and expire lazily after their lockout window.
 type BidBlockPermissionManager struct {
 	mu      sync.RWMutex
 	revoked map[common.Address]BidBlockRevokeRecord
@@ -52,7 +56,7 @@ func (m *BidBlockPermissionManager) IsAllowed(builder common.Address) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	rec, found := m.revoked[builder]
-	return !found || !isRevokeActive(rec.RevokedAt, m.clock())
+	return !found || !isRevokeActive(rec, m.clock())
 }
 
 // Revoke denies builder and records the reason exposed by the permission RPC.
@@ -62,10 +66,26 @@ func (m *BidBlockPermissionManager) Revoke(
 	blockHash common.Hash,
 	blockNum uint64,
 ) {
+	m.RevokeFor(builder, reason, blockHash, blockNum, bidBlockRevokeDuration)
+}
+
+// RevokeFor denies builder for the supplied duration and records the reason
+// exposed by the permission RPC.
+func (m *BidBlockPermissionManager) RevokeFor(
+	builder common.Address,
+	reason string,
+	blockHash common.Hash,
+	blockNum uint64,
+	duration time.Duration,
+) {
+	if duration <= 0 {
+		duration = bidBlockRevokeDuration
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.revoked[builder] = BidBlockRevokeRecord{
 		RevokedAt: m.clock(),
+		Duration:  duration,
 		Reason:    reason,
 		BlockHash: blockHash,
 		BlockNum:  blockNum,
@@ -79,7 +99,7 @@ func (m *BidBlockPermissionManager) GetStatus(builder common.Address) types.BidB
 		Allowed: true,
 	}
 	rec, found := m.revoked[builder]
-	if !found || !isRevokeActive(rec.RevokedAt, m.clock()) {
+	if !found || !isRevokeActive(rec, m.clock()) {
 		return status
 	}
 	status.Allowed = false
@@ -87,7 +107,7 @@ func (m *BidBlockPermissionManager) GetStatus(builder common.Address) types.BidB
 	status.BlockHash = rec.BlockHash
 	status.BlockNum = rec.BlockNum
 	status.RevokedAt = rec.RevokedAt
-	status.ResetAt = rec.RevokedAt.Add(bidBlockRevokeDuration)
+	status.ResetAt = rec.RevokedAt.Add(rec.revokeDuration())
 	return status
 }
 
@@ -98,7 +118,7 @@ func (m *BidBlockPermissionManager) ActiveRevokeCount() int {
 	now := m.clock()
 	count := 0
 	for _, rec := range m.revoked {
-		if isRevokeActive(rec.RevokedAt, now) {
+		if isRevokeActive(rec, now) {
 			count++
 		}
 	}
@@ -114,11 +134,19 @@ func (m *BidBlockPermissionManager) SetAllowed(builder common.Address, allowed b
 	}
 	m.revoked[builder] = BidBlockRevokeRecord{
 		RevokedAt: m.clock(),
+		Duration:  bidBlockRevokeDuration,
 		Reason:    RevokeReasonManual,
 	}
 }
 
 // isRevokeActive reports whether now is before the revoke reset time.
-func isRevokeActive(revokedAt, now time.Time) bool {
-	return now.Before(revokedAt.Add(bidBlockRevokeDuration))
+func isRevokeActive(rec BidBlockRevokeRecord, now time.Time) bool {
+	return now.Before(rec.RevokedAt.Add(rec.revokeDuration()))
+}
+
+func (rec BidBlockRevokeRecord) revokeDuration() time.Duration {
+	if rec.Duration <= 0 {
+		return bidBlockRevokeDuration
+	}
+	return rec.Duration
 }
