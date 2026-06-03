@@ -190,6 +190,26 @@ func (p *Parlia) selectorFor(methodName string) [4]byte {
 	return selector
 }
 
+func (p *Parlia) BlockTimeUpperCheck(chain consensus.ChainHeaderReader, header *types.Header) error {
+	number := header.Number.Uint64()
+	snap, err := p.snapshot(chain, number-1, header.ParentHash, nil)
+	if err != nil {
+		return err
+	}
+
+	parent := chain.GetHeader(header.ParentHash, number-1)
+	if parent == nil {
+		return consensus.ErrUnknownAncestor
+	}
+
+	maxAllowed := p.blockTimeForRamanujanFork(snap, header, parent)
+	if header.MilliTimestamp() > maxAllowed {
+		return fmt.Errorf("BidBlock time too far in future: headerTime=%d, maxAllowed=%d",
+			header.MilliTimestamp(), maxAllowed)
+	}
+	return nil
+}
+
 func txSelector(tx *types.Transaction) []byte {
 	data := tx.Data()
 	if len(data) < 4 {

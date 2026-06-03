@@ -695,6 +695,9 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 	if err := parliaEngine.VerifyUnsealedHeader(b.chain, header, nil); err != nil {
 		return fmt.Errorf("invalid header: %v", err)
 	}
+	if err := parliaEngine.BlockTimeUpperCheck(b.chain, header); err != nil {
+		return fmt.Errorf("invalid header: %v", err)
+	}
 
 	decoded.SystemTxStart, decoded.GasFee = parliaEngine.ExtractBidBlockDepositValue(decoded.Txs)
 
