@@ -11,52 +11,31 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-var errBidBlockGasPriceTooLow = errors.New("average non-system tx gas price too low")
+var errBidBlockGasFeePerGasTooLow = errors.New("average BidBlock gas fee per gas too low")
 
-func validateBidBlockGasPrice(
-	txs types.Transactions,
+func validateBidBlockGasFeePerGas(
+	gasFee *big.Int,
 	receipts types.Receipts,
 	systemTxStart int,
-	baseFee *big.Int,
 	minGasPrice *big.Int,
 ) (*big.Int, uint64, error) {
-	avgGasPrice, gasUsed := calcAverageTxGasPrice(txs[:systemTxStart], receipts[:systemTxStart], baseFee)
+	gasUsed := calcNonSystemGasUsed(receipts[:systemTxStart])
 	if gasUsed == 0 {
-		return avgGasPrice, gasUsed, nil
+		return nil, 0, nil
 	}
-	if avgGasPrice.Cmp(minGasPrice) < 0 {
-		return avgGasPrice, gasUsed, fmt.Errorf("%w, avg:%v, min:%v", errBidBlockGasPriceTooLow, avgGasPrice, minGasPrice)
+	avgGasFeePerGas := new(big.Int).Div(new(big.Int).Set(gasFee), new(big.Int).SetUint64(gasUsed))
+	if avgGasFeePerGas.Cmp(minGasPrice) < 0 {
+		return avgGasFeePerGas, gasUsed, fmt.Errorf("%w, avg:%v, min:%v", errBidBlockGasFeePerGasTooLow, avgGasFeePerGas, minGasPrice)
 	}
-	return avgGasPrice, gasUsed, nil
+	return avgGasFeePerGas, gasUsed, nil
 }
 
-func calcAverageTxGasPrice(
-	txs types.Transactions,
+func calcNonSystemGasUsed(
 	receipts types.Receipts,
-	baseFee *big.Int,
-) (*big.Int, uint64) {
+) uint64 {
 	gasUsed := uint64(0)
-	gasFee := new(big.Int)
-
-	for i, tx := range txs {
-		receipt := receipts[i]
-
+	for _, receipt := range receipts {
 		gasUsed += receipt.GasUsed
-		effectiveGasPrice := tx.EffectiveGasTipValue(baseFee)
-		if baseFee != nil {
-			effectiveGasPrice.Add(effectiveGasPrice, baseFee)
-		}
-
-		txGasFee := new(big.Int).Mul(effectiveGasPrice, new(big.Int).SetUint64(receipt.GasUsed))
-		gasFee.Add(gasFee, txGasFee)
-
-		if tx.Type() == types.BlobTxType && receipt.BlobGasUsed != 0 {
-			blobFee := new(big.Int).Mul(receipt.BlobGasPrice, new(big.Int).SetUint64(receipt.BlobGasUsed))
-			gasFee.Add(gasFee, blobFee)
-		}
 	}
-	if gasUsed == 0 {
-		return nil, 0
-	}
-	return gasFee.Div(gasFee, new(big.Int).SetUint64(gasUsed)), gasUsed
+	return gasUsed
 }

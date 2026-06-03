@@ -278,13 +278,12 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 		w.revokeBidBlockBuilder(task.bidBlockInfo.builder, fmt.Sprintf("InsertChain err: %v", err), hash, block.NumberU64())
 		return
 	}
-	// Check the post-import average gas price over non-system txs; only future BidBlock permission is revoked.
+	// Check the post-import average gas fee per non-system gas; only future BidBlock permission is revoked.
 	if receipts := w.chain.GetReceiptsByHash(block.Hash()); receipts != nil {
-		avgGasPrice, nonSystemGasUsed, err := validateBidBlockGasPrice(
-			block.Transactions(),
+		avgGasFeePerGas, nonSystemGasUsed, err := validateBidBlockGasFeePerGas(
+			task.bidBlockInfo.gasFee,
 			receipts,
 			task.bidBlockInfo.systemTxStart,
-			block.BaseFee(),
 			w.config.GasPrice,
 		)
 		if err != nil {
@@ -292,7 +291,7 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 				"number", block.Number(),
 				"hash", block.Hash(),
 				"builder", task.bidBlockInfo.builder,
-				"avgGasPrice", avgGasPrice,
+				"avgGasFeePerGas", avgGasFeePerGas,
 				"minGasPrice", w.config.GasPrice,
 				"nonSystemGasUsed", nonSystemGasUsed,
 				"nonSystemTxs", task.bidBlockInfo.systemTxStart,
