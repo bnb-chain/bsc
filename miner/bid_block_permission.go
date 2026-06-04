@@ -107,7 +107,7 @@ func (m *BidBlockPermissionManager) GetStatus(builder common.Address) types.BidB
 	status.BlockHash = rec.BlockHash
 	status.BlockNum = rec.BlockNum
 	status.RevokedAt = rec.RevokedAt
-	status.ResetAt = rec.RevokedAt.Add(rec.revokeDuration())
+	status.ResetAt = rec.RevokedAt.Add(rec.Duration)
 	return status
 }
 
@@ -141,7 +141,7 @@ func (m *BidBlockPermissionManager) SetAllowed(builder common.Address, allowed b
 
 // isRevokeActive reports whether now is before the revoke reset time.
 func isRevokeActive(rec BidBlockRevokeRecord, now time.Time) bool {
-	return now.Before(rec.RevokedAt.Add(rec.revokeDuration()))
+	return now.Before(rec.RevokedAt.Add(rec.Duration))
 }
 
 func (m *BidBlockPermissionManager) activeRecord(builder common.Address, now time.Time) (BidBlockRevokeRecord, bool) {
@@ -150,11 +150,4 @@ func (m *BidBlockPermissionManager) activeRecord(builder common.Address, now tim
 		return BidBlockRevokeRecord{}, false
 	}
 	return rec, true
-}
-
-func (rec BidBlockRevokeRecord) revokeDuration() time.Duration {
-	if rec.Duration <= 0 {
-		return bidBlockRevokeDuration
-	}
-	return rec.Duration
 }
