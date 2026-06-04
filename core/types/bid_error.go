@@ -3,11 +3,14 @@ package types
 import "errors"
 
 const (
-	InvalidBidParamError = -38001
-	InvalidPayBidTxError = -38002
-	MevNotRunningError   = -38003
-	MevBusyError         = -38004
-	MevNotInTurnError    = -38005
+	InvalidBidParamError           = -38001
+	InvalidPayBidTxError           = -38002
+	MevNotRunningError             = -38003
+	MevBusyError                   = -38004
+	MevNotInTurnError              = -38005
+	BidBlockPermissionRevokedError = -38006
+	BidBlockPreSealVerifyError     = -38007
+	BidBlockTooLateError           = -38008
 )
 
 var (
@@ -35,6 +38,18 @@ func NewInvalidBidError(message string) *bidError {
 
 func NewInvalidPayBidTxError(message string) *bidError {
 	return newBidError(errors.New(message), InvalidPayBidTxError)
+}
+
+func NewBidBlockPermissionRevokedError(message string) *bidError {
+	return newBidError(errors.New(message), BidBlockPermissionRevokedError)
+}
+
+func NewBidBlockPreSealVerifyError(message string) *bidError {
+	return newBidError(errors.New(message), BidBlockPreSealVerifyError)
+}
+
+func NewBidBlockTooLateError(message string) *bidError {
+	return newBidError(errors.New(message), BidBlockTooLateError)
 }
 
 func newBidError(err error, code int) *bidError {

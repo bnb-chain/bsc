@@ -81,7 +81,7 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 
 	// Check permission before CheckPending so rejected BidBlocks do not use quota.
 	if !miner.worker.permMgr.IsAllowed(builder) {
-		return common.Hash{}, types.NewInvalidBidError("builder BidBlock permission revoked, fallback to SendBid")
+		return common.Hash{}, types.NewBidBlockPermissionRevokedError("builder BidBlock permission revoked, fallback to SendBid")
 	}
 
 	if len(bb.Transactions) == 0 {
@@ -98,8 +98,8 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 
 	bidMustBefore := miner.bidSimulator.bidMustBefore(parentHash)
 	if timeout := time.Until(bidMustBefore); timeout <= 0 {
-		return common.Hash{}, fmt.Errorf("too late, expected before %s, appeared %s later", bidMustBefore,
-			common.PrettyDuration(timeout))
+		return common.Hash{}, types.NewBidBlockTooLateError(fmt.Sprintf("too late, expected before %s, appeared %s later",
+			bidMustBefore, common.PrettyDuration(timeout)))
 	}
 
 	decoded, err := args.ToDecodedBidBlock(builder)
@@ -130,7 +130,7 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 			"builder", builder,
 			"bidHash", decoded.Hash().TerminalString(),
 			"err", err)
-		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("pre-seal verify failed: %v", err))
+		return common.Hash{}, types.NewBidBlockPreSealVerifyError(fmt.Sprintf("pre-seal verify failed: %v", err))
 	}
 
 	if err := miner.bidSimulator.sendBidBlock(ctx, decoded); err != nil {
