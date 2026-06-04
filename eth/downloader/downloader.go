@@ -1521,6 +1521,12 @@ func (d *Downloader) processSnapSyncContent() error {
 				return errCanceled
 			default:
 			}
+			// Nothing to process this iteration; wait for the next batch.
+			// Skips the pre-commit pivot-stale block below, which would
+			// otherwise dereference results[len(results)-1].
+			if oldPivot == nil {
+				continue
+			}
 		}
 		if d.chainInsertHook != nil {
 			d.chainInsertHook(results, nil)
@@ -1546,7 +1552,7 @@ func (d *Downloader) processSnapSyncContent() error {
 			results = append(append([]*fetchResult{oldPivot}, oldTail...), results...)
 		}
 		// Split around the pivot block and process the two sides via snap/full sync
-		if !d.committed.Load() {
+		if !d.committed.Load() && len(results) > 0 {
 			latest := results[len(results)-1].Header
 			// If the height is above the pivot block by 2 sets, it means the pivot
 			// became stale in the network, and it was garbage collected, move to a
@@ -1556,6 +1562,12 @@ func (d *Downloader) processSnapSyncContent() error {
 			// need to be taken into account, otherwise we're detecting the pivot move
 			// late and will drop peers due to unavailable state!!!
 			if height := latest.Number.Uint64(); height >= pivot.Number.Uint64()+2*uint64(fsMinFullBlocks)-uint64(reorgProtHeaderDelay) {
+				// The second index requires len(results) >= fsMinFullBlocks - reorgProtHeaderDelay + 1.
+				// In normal operation the height guard above implies enough accumulated results,
+				// but guard explicitly to avoid panic if invariants ever drift.
+				if len(results) < fsMinFullBlocks-reorgProtHeaderDelay+1 {
+					continue
+				}
 				log.Warn("Pivot became stale, moving", "old", pivot.Number.Uint64(), "new", height-uint64(fsMinFullBlocks)+uint64(reorgProtHeaderDelay))
 				pivot = results[len(results)-1-fsMinFullBlocks+reorgProtHeaderDelay].Header // must exist as lower old pivot is uncommitted
 
