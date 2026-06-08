@@ -1943,11 +1943,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 			rawdb.WriteBlobSidecars(blockBatch, block.Hash(), block.NumberU64(), block.Sidecars())
 		}
-		if bc.db.HasSeparateStateStore() {
-			rawdb.WritePreimages(bc.db.GetStateStore(), statedb.Preimages())
-		} else {
-			rawdb.WritePreimages(blockBatch, statedb.Preimages())
-		}
+		rawdb.WritePreimages(blockBatch, statedb.Preimages())
 		if err := blockBatch.Write(); err != nil {
 			log.Crit("Failed to write block into disk", "err", err)
 		}

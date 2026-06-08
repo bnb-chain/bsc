@@ -95,11 +95,6 @@ type Database struct {
 // the legacy hash-based scheme is used by default.
 func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	// Sanitize the config and use the default one if it's not specified.
-	var triediskdb ethdb.Database
-	if diskdb != nil {
-		triediskdb = diskdb.GetStateStore()
-	}
-
 	dbScheme := rawdb.ReadStateScheme(diskdb)
 	if config == nil {
 		if dbScheme == rawdb.PathScheme {
@@ -119,7 +114,7 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	}
 	var preimages *preimageStore
 	if config.Preimages {
-		preimages = newPreimageStore(triediskdb)
+		preimages = newPreimageStore(diskdb)
 	}
 	db := &Database{
 		disk:      diskdb,
@@ -132,25 +127,25 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	 * 3. Last, use the default scheme, namely hash scheme
 	 */
 	if config.HashDB != nil {
-		if rawdb.ReadStateScheme(triediskdb) == rawdb.PathScheme {
+		if rawdb.ReadStateScheme(diskdb) == rawdb.PathScheme {
 			log.Warn("Incompatible state scheme", "old", rawdb.PathScheme, "new", rawdb.HashScheme)
 		}
-		db.backend = hashdb.New(triediskdb, config.HashDB)
+		db.backend = hashdb.New(diskdb, config.HashDB)
 	} else if config.PathDB != nil {
-		if rawdb.ReadStateScheme(triediskdb) == rawdb.HashScheme {
+		if rawdb.ReadStateScheme(diskdb) == rawdb.HashScheme {
 			log.Warn("Incompatible state scheme", "old", rawdb.HashScheme, "new", rawdb.PathScheme)
 		}
-		db.backend = pathdb.New(triediskdb, config.PathDB, config.IsVerkle)
+		db.backend = pathdb.New(diskdb, config.PathDB, config.IsVerkle)
 	} else if strings.Compare(dbScheme, rawdb.PathScheme) == 0 {
 		if config.PathDB == nil {
 			config.PathDB = pathdb.Defaults
 		}
-		db.backend = pathdb.New(triediskdb, config.PathDB, config.IsVerkle)
+		db.backend = pathdb.New(diskdb, config.PathDB, config.IsVerkle)
 	} else {
 		if config.HashDB == nil {
 			config.HashDB = hashdb.Defaults
 		}
-		db.backend = hashdb.New(triediskdb, config.HashDB)
+		db.backend = hashdb.New(diskdb, config.HashDB)
 	}
 	return db
 }
