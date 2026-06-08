@@ -500,7 +500,7 @@ func (api *DebugAPI) StateSize(blockHashOrNumber *rpc.BlockNumberOrHash) (interf
 func (api *DebugAPI) ExecutionWitness(bn rpc.BlockNumberOrHash) (*stateless.ExtWitness, error) {
 	bc := api.eth.blockchain
 	block, err := api.eth.APIBackend.BlockByNumberOrHash(context.Background(), bn)
-	if err != nil {
+	if block == nil || err != nil {
 		return &stateless.ExtWitness{}, fmt.Errorf("block %v not found", bn)
 	}
 
