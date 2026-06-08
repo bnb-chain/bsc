@@ -252,10 +252,10 @@ var (
 		FermiTime:           newUint64(1768357800), // 2026-01-14 02:30:00 AM UTC
 		OsakaTime:           newUint64(1777343400), // 2026-04-28 02:30:00 AM UTC
 		MendelTime:          newUint64(1777343400), // 2026-04-28 02:30:00 AM UTC
-		BPO1Time:            nil,                   // will be skipped in BSC
-		BPO2Time:            nil,                   // will be skipped in BSC
-		AmsterdamTime:       nil,
 		PasteurTime:         nil,
+		BPO1Time:            nil, // will be skipped in BSC
+		BPO2Time:            nil, // will be skipped in BSC
+		AmsterdamTime:       nil,
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
@@ -306,10 +306,10 @@ var (
 		FermiTime:           newUint64(1762741500), // 2025-11-10 02:25:00 AM UTC
 		OsakaTime:           newUint64(1774319400), // 2026-03-24 02:30:00 AM UTC
 		MendelTime:          newUint64(1774319400), // 2026-03-24 02:30:00 AM UTC
-		BPO1Time:            nil,                   // will be skipped in BSC
-		BPO2Time:            nil,                   // will be skipped in BSC
-		AmsterdamTime:       nil,
 		PasteurTime:         nil,
+		BPO1Time:            nil, // will be skipped in BSC
+		BPO2Time:            nil, // will be skipped in BSC
+		AmsterdamTime:       nil,
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
@@ -362,10 +362,10 @@ var (
 		// TODO: set them to `0` when passed on the mainnet
 		OsakaTime:     nil,
 		MendelTime:    nil,
+		PasteurTime:   nil,
 		BPO1Time:      nil, // will be skipped in BSC
 		BPO2Time:      nil, // will be skipped in BSC
 		AmsterdamTime: nil,
-		PasteurTime:   nil,
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
@@ -722,13 +722,13 @@ type ChainConfig struct {
 	FermiTime      *uint64 `json:"fermiTime,omitempty"`      // Fermi switch time (nil = no fork, 0 = already on fermi)
 	OsakaTime      *uint64 `json:"osakaTime,omitempty"`      // Osaka switch time (nil = no fork, 0 = already on osaka)
 	MendelTime     *uint64 `json:"mendelTime,omitempty"`     // Mendel switch time (nil = no fork, 0 = already on mendel)
+	PasteurTime    *uint64 `json:"pasteurTime,omitempty"`    // Pasteur switch time (nil = no fork, 0 = already on pasteur)
 	BPO1Time       *uint64 `json:"bpo1Time,omitempty"`       // BPO1 switch time (nil = no fork, 0 = already on bpo1)
 	BPO2Time       *uint64 `json:"bpo2Time,omitempty"`       // BPO2 switch time (nil = no fork, 0 = already on bpo2)
 	BPO3Time       *uint64 `json:"bpo3Time,omitempty"`       // BPO3 switch time (nil = no fork, 0 = already on bpo3)
 	BPO4Time       *uint64 `json:"bpo4Time,omitempty"`       // BPO4 switch time (nil = no fork, 0 = already on bpo4)
 	BPO5Time       *uint64 `json:"bpo5Time,omitempty"`       // BPO5 switch time (nil = no fork, 0 = already on bpo5)
 	AmsterdamTime  *uint64 `json:"amsterdamTime,omitempty"`  // Amsterdam switch time (nil = no fork, 0 = already on amsterdam)
-	PasteurTime    *uint64 `json:"pasteurTime,omitempty"`    // PasteurTime switch time (nil = no fork, 0 = already on pasteurTime)
 	VerkleTime     *uint64 `json:"verkleTime,omitempty"`     // Verkle switch time (nil = no fork, 0 = already on verkle)
 
 	// TerminalTotalDifficulty is the amount of total difficulty reached by
@@ -915,6 +915,11 @@ func (c *ChainConfig) String() string {
 		MendelTime = big.NewInt(0).SetUint64(*c.MendelTime)
 	}
 
+	var PasteurTime *big.Int
+	if c.PasteurTime != nil {
+		PasteurTime = big.NewInt(0).SetUint64(*c.PasteurTime)
+	}
+
 	var BPO1Time *big.Int
 	if c.BPO1Time != nil {
 		BPO1Time = big.NewInt(0).SetUint64(*c.BPO1Time)
@@ -925,15 +930,10 @@ func (c *ChainConfig) String() string {
 		BPO2Time = big.NewInt(0).SetUint64(*c.BPO2Time)
 	}
 
-	var PasteurTime *big.Int
-	if c.PasteurTime != nil {
-		PasteurTime = big.NewInt(0).SetUint64(*c.PasteurTime)
-	}
-
 	return fmt.Sprintf("{ChainID: %v, Engine: %v, Homestead: %v DAO: %v DAOSupport: %v EIP150: %v EIP155: %v EIP158: %v Byzantium: %v Constantinople: %v Petersburg: %v Istanbul: %v, Muir Glacier: %v, Ramanujan: %v, Niels: %v, "+
 		"MirrorSync: %v, Bruno: %v, Berlin: %v, YOLO v3: %v, CatalystBlock: %v, London: %v, ArrowGlacier: %v, MergeFork:%v, Euler: %v, Gibbs: %v, Nano: %v, Moran: %v, Planck: %v,Luban: %v, Plato: %v, Hertz: %v, Hertzfix: %v, "+
 		"ShanghaiTime: %v, KeplerTime: %v, FeynmanTime: %v, FeynmanFixTime: %v, CancunTime: %v, HaberTime: %v, HaberFixTime: %v, BohrTime: %v, PascalTime: %v, PragueTime: %v, LorentzTime: %v, MaxwellTime: %v, FermiTime: %v, "+
-		"OsakaTime: %v, MendelTime: %v, BPO1Time: %v, BPO2Time: %v, PasteurTime: %v}",
+		"OsakaTime: %v, MendelTime: %v, PasteurTime: %v, BPO1Time: %v, BPO2Time: %v}",
 		c.ChainID,
 		engine,
 		c.HomesteadBlock,
@@ -981,9 +981,9 @@ func (c *ChainConfig) String() string {
 		FermiTime,
 		OsakaTime,
 		MendelTime,
+		PasteurTime,
 		BPO1Time,
 		BPO2Time,
-		PasteurTime,
 	)
 }
 
@@ -1444,6 +1444,20 @@ func (c *ChainConfig) IsOnMendel(currentBlockNumber *big.Int, lastBlockTime uint
 	return !c.IsMendel(lastBlockNumber, lastBlockTime) && c.IsMendel(currentBlockNumber, currentBlockTime)
 }
 
+// IsPasteur returns whether time is either equal to the Pasteur fork time or greater.
+func (c *ChainConfig) IsPasteur(num *big.Int, time uint64) bool {
+	return c.IsLondon(num) && isTimestampForked(c.PasteurTime, time)
+}
+
+// IsOnPasteur eturns whether currentBlockTime is either equal to the Pasteur fork time or greater firstly.
+func (c *ChainConfig) IsOnPasteur(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
+	lastBlockNumber := new(big.Int)
+	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
+		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
+	}
+	return !c.IsPasteur(lastBlockNumber, lastBlockTime) && c.IsPasteur(currentBlockNumber, currentBlockTime)
+}
+
 // IsBPO1 returns whether time is either equal to the BPO1 fork time or greater.
 func (c *ChainConfig) IsBPO1(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.BPO1Time, time)
@@ -1472,20 +1486,6 @@ func (c *ChainConfig) IsBPO5(num *big.Int, time uint64) bool {
 // IsAmsterdam returns whether time is either equal to the Amsterdam fork time or greater.
 func (c *ChainConfig) IsAmsterdam(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.AmsterdamTime, time)
-}
-
-// IsPasteur returns whether time is either equal to the Pasteur fork time or greater.
-func (c *ChainConfig) IsPasteur(num *big.Int, time uint64) bool {
-	return c.IsLondon(num) && isTimestampForked(c.PasteurTime, time)
-}
-
-// IsOnPasteur eturns whether currentBlockTime is either equal to the Pasteur fork time or greater firstly.
-func (c *ChainConfig) IsOnPasteur(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
-	lastBlockNumber := new(big.Int)
-	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
-		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
-	}
-	return !c.IsPasteur(lastBlockNumber, lastBlockTime) && c.IsPasteur(currentBlockNumber, currentBlockTime)
 }
 
 // IsVerkle returns whether time is either equal to the Verkle fork time or greater.
@@ -1575,6 +1575,7 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "fermiTime", timestamp: c.FermiTime},
 		{name: "osakaTime", timestamp: c.OsakaTime},
 		{name: "mendelTime", timestamp: c.MendelTime},
+		{name: "pasteurTime", timestamp: c.PasteurTime},
 		{name: "verkleTime", timestamp: c.VerkleTime, optional: true},
 		{name: "bpo1", timestamp: c.BPO1Time, optional: true},
 		{name: "bpo2", timestamp: c.BPO2Time, optional: true},
@@ -1582,7 +1583,6 @@ func (c *ChainConfig) CheckConfigForkOrder() error {
 		{name: "bpo4", timestamp: c.BPO4Time, optional: true},
 		{name: "bpo5", timestamp: c.BPO5Time, optional: true},
 		{name: "amsterdam", timestamp: c.AmsterdamTime, optional: true},
-		{name: "pasteurTime", timestamp: c.PasteurTime, optional: true},
 	} {
 		if lastFork.name != "" {
 			switch {
@@ -1804,6 +1804,9 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	if isForkTimestampIncompatible(c.MendelTime, newcfg.MendelTime, headTimestamp) {
 		return newTimestampCompatError("Mendel fork timestamp", c.MendelTime, newcfg.MendelTime)
 	}
+	if isForkTimestampIncompatible(c.PasteurTime, newcfg.PasteurTime, headTimestamp) {
+		return newTimestampCompatError("Pasteur fork timestamp", c.PasteurTime, newcfg.PasteurTime)
+	}
 	if isForkTimestampIncompatible(c.VerkleTime, newcfg.VerkleTime, headTimestamp) {
 		return newTimestampCompatError("Verkle fork timestamp", c.VerkleTime, newcfg.VerkleTime)
 	}
@@ -1825,9 +1828,6 @@ func (c *ChainConfig) checkCompatible(newcfg *ChainConfig, headNumber *big.Int, 
 	if isForkTimestampIncompatible(c.AmsterdamTime, newcfg.AmsterdamTime, headTimestamp) {
 		return newTimestampCompatError("Amsterdam fork timestamp", c.AmsterdamTime, newcfg.AmsterdamTime)
 	}
-	if isForkTimestampIncompatible(c.PasteurTime, newcfg.PasteurTime, headTimestamp) {
-		return newTimestampCompatError("Pasteur fork timestamp", c.PasteurTime, newcfg.PasteurTime)
-	}
 	return nil
 }
 
@@ -1848,8 +1848,6 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 	london := c.LondonBlock
 
 	switch {
-	case c.IsPasteur(london, time):
-		return forks.Pasteur
 	case c.IsAmsterdam(london, time):
 		return forks.Amsterdam
 	case c.IsBPO5(london, time):
@@ -1862,6 +1860,8 @@ func (c *ChainConfig) LatestFork(time uint64) forks.Fork {
 		return forks.BPO2
 	case c.IsBPO1(london, time):
 		return forks.BPO1
+	case c.IsPasteur(london, time):
+		return forks.Pasteur
 	case c.IsMendel(london, time):
 		return forks.Mendel
 	case c.IsOsaka(london, time):
@@ -1937,8 +1937,6 @@ func (c *ChainConfig) ActiveSystemContracts(time uint64) map[string]common.Addre
 // the fork isn't defined or isn't a time-based fork.
 func (c *ChainConfig) Timestamp(fork forks.Fork) *uint64 {
 	switch {
-	case fork == forks.Pasteur:
-		return c.PasteurTime
 	case fork == forks.Amsterdam:
 		return c.AmsterdamTime
 	case fork == forks.BPO5:
@@ -1951,6 +1949,8 @@ func (c *ChainConfig) Timestamp(fork forks.Fork) *uint64 {
 		return c.BPO2Time
 	case fork == forks.BPO1:
 		return c.BPO1Time
+	case fork == forks.Pasteur:
+		return c.PasteurTime
 	case fork == forks.Mendel:
 		return c.MendelTime
 	case fork == forks.Osaka:
@@ -2123,7 +2123,7 @@ type Rules struct {
 	IsShanghai, IsKepler, IsFeynman, IsCancun, IsHaber      bool
 	IsBohr, IsPascal, IsPrague, IsLorentz, IsMaxwell        bool
 	IsFermi, IsOsaka, IsMendel                              bool
-	IsAmsterdam, IsPasteur, IsVerkle                        bool
+	IsPasteur, IsAmsterdam, IsVerkle                        bool
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -2169,8 +2169,8 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsFermi:          c.IsFermi(num, timestamp),
 		IsOsaka:          (isMerge || c.IsInBSC()) && c.IsOsaka(num, timestamp),
 		IsMendel:         c.IsMendel(num, timestamp),
-		IsAmsterdam:      (isMerge || c.IsInBSC()) && c.IsAmsterdam(num, timestamp),
 		IsPasteur:        c.IsPasteur(num, timestamp),
+		IsAmsterdam:      (isMerge || c.IsInBSC()) && c.IsAmsterdam(num, timestamp),
 		IsVerkle:         c.IsVerkle(num, timestamp),
 		IsEIP4762:        isVerkle,
 	}

@@ -73,9 +73,9 @@ var (
 			utils.OverrideFermi,
 			utils.OverrideOsaka,
 			utils.OverrideMendel,
+			utils.OverridePasteur,
 			utils.OverrideBPO1,
 			utils.OverrideBPO2,
-			utils.OverridePasteur,
 			utils.OverrideVerkle,
 			// utils.MultiDataBaseFlag,
 		}, utils.DatabaseFlags),
@@ -358,6 +358,10 @@ func initGenesis(ctx *cli.Context) error {
 		v := ctx.Uint64(utils.OverrideMendel.Name)
 		overrides.OverrideMendel = &v
 	}
+	if ctx.IsSet(utils.OverridePasteur.Name) {
+		v := ctx.Uint64(utils.OverridePasteur.Name)
+		overrides.OverridePasteur = &v
+	}
 	if ctx.IsSet(utils.OverrideBPO1.Name) {
 		v := ctx.Uint64(utils.OverrideBPO1.Name)
 		overrides.OverrideBPO1 = &v
@@ -365,10 +369,6 @@ func initGenesis(ctx *cli.Context) error {
 	if ctx.IsSet(utils.OverrideBPO2.Name) {
 		v := ctx.Uint64(utils.OverrideBPO2.Name)
 		overrides.OverrideBPO2 = &v
-	}
-	if ctx.IsSet(utils.OverridePasteur.Name) {
-		v := ctx.Uint64(utils.OverridePasteur.Name)
-		overrides.OverridePasteur = &v
 	}
 	if ctx.IsSet(utils.OverrideVerkle.Name) {
 		v := ctx.Uint64(utils.OverrideVerkle.Name)
