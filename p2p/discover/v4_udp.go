@@ -448,7 +448,8 @@ func (t *UDPv4) loop(isBootNode bool) {
 		}
 		// Start the timer so it fires when the next pending reply has expired.
 		now := time.Now()
-		for el := plist.Front(); el != nil; el = el.Next() {
+		for el := plist.Front(); el != nil; {
+			next := el.Next()
 			nextTimeout = el.Value.(*replyMatcher)
 			if dist := nextTimeout.deadline.Sub(now); dist < 2*respTimeout {
 				timeout.Reset(dist)
@@ -459,6 +460,7 @@ func (t *UDPv4) loop(isBootNode bool) {
 			// backwards after the deadline was assigned.
 			nextTimeout.errc <- errClockWarp
 			plist.Remove(el)
+			el = next
 		}
 		nextTimeout = nil
 		timeout.Stop()
