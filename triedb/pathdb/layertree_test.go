@@ -882,3 +882,64 @@ func TestStorageLookup(t *testing.T) {
 		}
 	}
 }
+
+// TestLookupZeroBaseRootFallback regresses the sentinel collision in
+// accountTip/storageTip when the disk layer root is itself common.Hash{}
+// (a fresh verkle/bintrie database whose empty trie hashes to zero).
+// Returning only common.Hash conflated the disk-layer fallback with the
+// "stale" sentinel, so lookupAccount/Storage reported errSnapshotStale
+// for a valid fall-through.
+func TestLookupZeroBaseRootFallback(t *testing.T) {
+	db := New(rawdb.NewMemoryDatabase(), nil, false)
+	base := newDiskLayer(common.Hash{}, 0, db, nil, nil, newBuffer(0, nil, nil, 0), nil)
+	tr := newLayerTree(base)
+
+	if err := tr.add(common.Hash{0x2}, common.Hash{}, 1,
+		NewNodeSetWithOrigin(nil, nil),
+		NewStateSetWithOrigin(randomAccountSet("0xa"),
+			randomStorageSet([]string{"0xa"}, [][]string{{"0x1"}}, nil),
+			nil, nil, false)); err != nil {
+		t.Fatalf("add first diff layer: %v", err)
+	}
+	if err := tr.add(common.Hash{0x3}, common.Hash{0x2}, 2,
+		NewNodeSetWithOrigin(nil, nil),
+		NewStateSetWithOrigin(randomAccountSet("0xb"), nil, nil, nil, false)); err != nil {
+		t.Fatalf("add second diff layer: %v", err)
+	}
+
+	// Unknown account at HEAD: must fall through to the zero-rooted disk layer.
+	l, err := tr.lookupAccount(common.HexToHash("0xdead"), common.Hash{0x3})
+	if err != nil {
+		t.Fatalf("lookupAccount fallback: unexpected error %v", err)
+	}
+	if l.rootHash() != (common.Hash{}) {
+		t.Errorf("lookupAccount fallback: want disk root 0, got %x", l.rootHash())
+	}
+
+	// Symmetric storage case.
+	l, err = tr.lookupStorage(common.HexToHash("0xdead"), common.HexToHash("0x99"), common.Hash{0x3})
+	if err != nil {
+		t.Fatalf("lookupStorage fallback: unexpected error %v", err)
+	}
+	if l.rootHash() != (common.Hash{}) {
+		t.Errorf("lookupStorage fallback: want disk root 0, got %x", l.rootHash())
+	}
+
+	// Happy path still works: account 0xa was written in diff 0x2.
+	l, err = tr.lookupAccount(common.HexToHash("0xa"), common.Hash{0x3})
+	if err != nil {
+		t.Fatalf("lookupAccount(known): %v", err)
+	}
+	if l.rootHash() != (common.Hash{0x2}) {
+		t.Errorf("lookupAccount(known): want %x, got %x", common.Hash{0x2}, l.rootHash())
+	}
+
+	// Truly stale state root must still surface errSnapshotStale,
+	// pinning the other half of the contract.
+	if _, err := tr.lookupAccount(common.HexToHash("0xa"), common.HexToHash("0xdeadbeef")); !errors.Is(err, errSnapshotStale) {
+		t.Errorf("lookupAccount(stale): want errSnapshotStale, got %v", err)
+	}
+	if _, err := tr.lookupStorage(common.HexToHash("0xa"), common.HexToHash("0x1"), common.HexToHash("0xdeadbeef")); !errors.Is(err, errSnapshotStale) {
+		t.Errorf("lookupStorage(stale): want errSnapshotStale, got %v", err)
+	}
+}
