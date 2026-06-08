@@ -451,7 +451,7 @@ func (s *Sync) ProcessNode(result NodeSyncResult) error {
 // Commit flushes the data stored in the internal membatch out to persistent
 // storage, returning any occurred error. The whole data set will be flushed
 // in an atomic database batch.
-func (s *Sync) Commit(dbw ethdb.Batch, stateBatch ethdb.Batch) error {
+func (s *Sync) Commit(dbw ethdb.Batch) error {
 	// Flush the pending node writes into database batch.
 	var (
 		account int
@@ -464,17 +464,9 @@ func (s *Sync) Commit(dbw ethdb.Batch, stateBatch ethdb.Batch) error {
 		if op.del {
 			// node deletion is only supported in path mode.
 			if op.owner == (common.Hash{}) {
-				if stateBatch != nil {
-					rawdb.DeleteAccountTrieNode(stateBatch, op.path)
-				} else {
-					rawdb.DeleteAccountTrieNode(dbw, op.path)
-				}
+				rawdb.DeleteAccountTrieNode(dbw, op.path)
 			} else {
-				if stateBatch != nil {
-					rawdb.DeleteStorageTrieNode(stateBatch, op.owner, op.path)
-				} else {
-					rawdb.DeleteStorageTrieNode(dbw, op.owner, op.path)
-				}
+				rawdb.DeleteStorageTrieNode(dbw, op.owner, op.path)
 			}
 			deletionGauge.Inc(1)
 		} else {
@@ -483,11 +475,7 @@ func (s *Sync) Commit(dbw ethdb.Batch, stateBatch ethdb.Batch) error {
 			} else {
 				storage += 1
 			}
-			if stateBatch != nil {
-				rawdb.WriteTrieNode(stateBatch, op.owner, op.path, op.hash, op.blob, s.scheme)
-			} else {
-				rawdb.WriteTrieNode(dbw, op.owner, op.path, op.hash, op.blob, s.scheme)
-			}
+			rawdb.WriteTrieNode(dbw, op.owner, op.path, op.hash, op.blob, s.scheme)
 		}
 	}
 	accountNodeSyncedGauge.Inc(int64(account))
@@ -592,9 +580,9 @@ func (s *Sync) children(req *nodeRequest, object node) ([]*nodeRequest, error) {
 				// the performance impact negligible.
 				var exists bool
 				if owner == (common.Hash{}) {
-					exists = rawdb.HasAccountTrieNode(s.database.StateStoreReader(), append(inner, key[:i]...))
+					exists = rawdb.HasAccountTrieNode(s.database, append(inner, key[:i]...))
 				} else {
-					exists = rawdb.HasStorageTrieNode(s.database.StateStoreReader(), owner, append(inner, key[:i]...))
+					exists = rawdb.HasStorageTrieNode(s.database, owner, append(inner, key[:i]...))
 				}
 				if exists {
 					s.membatch.delNode(owner, append(inner, key[:i]...))
@@ -733,14 +721,14 @@ func (s *Sync) commitCodeRequest(req *codeRequest) error {
 func (s *Sync) hasNode(owner common.Hash, path []byte, hash common.Hash) (exists bool, inconsistent bool) {
 	// If node is running with hash scheme, check the presence with node hash.
 	if s.scheme == rawdb.HashScheme {
-		return rawdb.HasLegacyTrieNode(s.database.StateStoreReader(), hash), false
+		return rawdb.HasLegacyTrieNode(s.database, hash), false
 	}
 	// If node is running with path scheme, check the presence with node path.
 	var blob []byte
 	if owner == (common.Hash{}) {
-		blob = rawdb.ReadAccountTrieNode(s.database.StateStoreReader(), path)
+		blob = rawdb.ReadAccountTrieNode(s.database, path)
 	} else {
-		blob = rawdb.ReadStorageTrieNode(s.database.StateStoreReader(), owner, path)
+		blob = rawdb.ReadStorageTrieNode(s.database, owner, path)
 	}
 	exists = hash == crypto.Keccak256Hash(blob)
 	inconsistent = !exists && len(blob) != 0
