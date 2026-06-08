@@ -34,7 +34,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/event"
@@ -75,11 +74,7 @@ const (
 	initializingState = iota
 	runningState
 	closedState
-	chainDbMemoryPercentage  = 50
-	chainDbHandlesPercentage = 50
 )
-
-const StateDBNamespace = "eth/db/statedata/"
 
 // New creates a new P2P node, ready for protocol registration.
 func New(conf *Config) (*Node, error) {
@@ -782,47 +777,6 @@ func (n *Node) OpenDatabase(name string, cache, handles int, namespace string, r
 	})
 }
 
-func (n *Node) OpenAndMergeDatabase(name string, namespace string, readonly bool, config *ethconfig.Config) (ethdb.Database, error) {
-	var (
-		err                          error
-		stateDiskDb                  ethdb.Database
-		chainDataHandles             = config.DatabaseHandles
-		chainDbCache                 = config.DatabaseCache
-		stateDbCache, stateDbHandles int
-	)
-
-	isMultiDatabase := n.CheckIfMultiDataBase()
-	// Open the separated state database if the state directory exists
-	if isMultiDatabase {
-		// Resource allocation rules:
-		// 1) Allocate a fixed percentage of memory for chainDb based on chainDbMemoryPercentage & chainDbHandlesPercentage.
-		// 2) Allocate the remaining resources to stateDb.
-		chainDbCache = int(float64(config.DatabaseCache) * chainDbMemoryPercentage / 100)
-		chainDataHandles = int(float64(config.DatabaseHandles) * chainDbHandlesPercentage / 100)
-
-		stateDbCache = config.DatabaseCache - chainDbCache
-		stateDbHandles = config.DatabaseHandles - chainDataHandles
-	}
-
-	chainDB, err := n.OpenDatabaseWithFreezer(name, chainDbCache, chainDataHandles, config.DatabaseFreezer, namespace, readonly)
-	if err != nil {
-		return nil, err
-	}
-
-	if isMultiDatabase {
-		// Allocate half of the  handles and chainDbCache to this separate state data database
-		stateDiskDb, err = n.OpenDatabaseWithFreezer(name+"/state", stateDbCache, stateDbHandles, "", "eth/db/statedata/", readonly)
-		if err != nil {
-			return nil, err
-		}
-
-		log.Warn("Multi-database is an experimental feature")
-		chainDB.SetStateStore(stateDiskDb)
-	}
-
-	return chainDB, nil
-}
-
 // OpenDatabaseWithFreezer opens an existing database with the given name (or
 // creates one if no previous can be found) from within the node's data directory.
 // If the node has no data directory, an in-memory database is returned.
@@ -835,19 +789,6 @@ func (n *Node) OpenDatabaseWithFreezer(name string, cache, handles int, ancient 
 		Handles:           handles,
 		ReadOnly:          readonly,
 	})
-}
-
-// CheckIfMultiDataBase check the state and block subdirectory of db, if subdirectory exists, return true
-func (n *Node) CheckIfMultiDataBase() bool {
-	stateExist := true
-
-	separateStateDir := filepath.Join(n.ResolvePath("chaindata"), "state")
-	fileInfo, stateErr := os.Stat(separateStateDir)
-	if os.IsNotExist(stateErr) || !fileInfo.IsDir() {
-		stateExist = false
-	}
-
-	return stateExist
 }
 
 // ResolvePath returns the absolute path of a resource in the instance directory.
