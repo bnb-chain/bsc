@@ -658,8 +658,8 @@ func (b *bidSimulator) AddBidBlock(parentHash common.Hash, block *types.DecodedB
 	defer b.bestBidBlockMu.Unlock()
 
 	if existing := b.bestBidBlock[parentHash]; existing != nil && block.GasFee.Cmp(existing.GasFee) <= 0 {
-		return fmt.Errorf("BidBlock gasFee not higher than current best: got %s, best %s",
-			weiToEtherStringF6(block.GasFee), weiToEtherStringF6(existing.GasFee))
+		return fmt.Errorf("BidBlock gasFee not higher than current best: bidHash=%s got %s, bestBidHash=%s best %s",
+			block.Hash(), weiToEtherStringF6(block.GasFee), existing.Hash(), weiToEtherStringF6(existing.GasFee))
 	}
 	b.bestBidBlock[parentHash] = block
 	return nil
@@ -801,7 +801,8 @@ func (b *bidSimulator) newBidBlockLoop() {
 			block := newBidBlock.bidBlock
 			if !b.isRunning() || !b.receivingBid() {
 				if newBidBlock.feedback != nil {
-					newBidBlock.feedback <- errors.New("BidBlock is discarded, not receiving bids")
+					newBidBlock.feedback <- fmt.Errorf("BidBlock is discarded, not receiving bids: blockNumber=%d builder=%s bidHash=%s",
+						block.BlockNumber(), block.Builder, block.Hash())
 				}
 				continue
 			}
@@ -809,9 +810,13 @@ func (b *bidSimulator) newBidBlockLoop() {
 			// Discard stale blocks whose block number is no longer current.
 			currentBlock := b.chain.CurrentBlock()
 			if block.BlockNumber() <= currentBlock.Number.Uint64() {
-				log.Debug("BidBlock: discard stale block", "blockNumber", block.BlockNumber())
+				log.Debug("BidBlock: discard stale block",
+					"blockNumber", block.BlockNumber(),
+					"builder", block.Builder,
+					"bidHash", block.Hash())
 				if newBidBlock.feedback != nil {
-					newBidBlock.feedback <- fmt.Errorf("BidBlock is discarded, stale block number: %d, latest block: %d", block.BlockNumber(), currentBlock.Number.Uint64())
+					newBidBlock.feedback <- fmt.Errorf("BidBlock is discarded, stale block number: %d, latest block: %d, builder=%s, bidHash=%s",
+						block.BlockNumber(), currentBlock.Number.Uint64(), block.Builder, block.Hash())
 				}
 				continue
 			}
@@ -820,6 +825,7 @@ func (b *bidSimulator) newBidBlockLoop() {
 				log.Debug("BidBlock: discard BidBlock",
 					"blockNumber", block.BlockNumber(),
 					"builder", block.Builder,
+					"bidHash", block.Hash(),
 					"gasFee", weiToEtherStringF6(block.GasFee),
 					"err", err)
 				if newBidBlock.feedback != nil {
@@ -830,6 +836,7 @@ func (b *bidSimulator) newBidBlockLoop() {
 
 			log.Info("[BID BLOCK ARRIVED]",
 				"blockNumber", block.BlockNumber(),
+				"bidHash", block.Hash(),
 				"builder", block.Builder,
 				"gasFee", weiToEtherStringF6(block.GasFee),
 				"txs", len(block.Txs))

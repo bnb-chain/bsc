@@ -69,14 +69,15 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 
 	// args / args.BidBlock / args.BidBlock.Header are validated at the RPC entry (MevAPI.SendBidBlock).
 	bb := args.BidBlock
+	bidHash := bb.Hash()
 
 	builder, err := args.EcrecoverSender()
 	if err != nil {
-		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("invalid signature: %v", err))
+		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("invalid signature: bidHash=%s, err=%v", bidHash, err))
 	}
 
 	if !miner.bidSimulator.ExistBuilder(builder) {
-		return common.Hash{}, types.NewInvalidBidError("builder is not registered")
+		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("builder is not registered: builder=%s, bidHash=%s", builder, bidHash))
 	}
 
 	// Check permission before CheckPending so rejected BidBlocks do not use quota.
@@ -90,21 +91,21 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 	blockNumber := bb.Header.Number.Uint64()
 	parentHash := bb.Header.ParentHash
 	if miner.bidSimulator.chain.GetHeaderByHash(parentHash) == nil {
-		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("parent not found: %s", parentHash.Hex()))
+		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("parent not found: %s, bidHash=%s", parentHash.Hex(), bidHash))
 	}
-	if err := miner.bidSimulator.CheckPending(blockNumber, builder, bb.Hash()); err != nil {
+	if err := miner.bidSimulator.CheckPending(blockNumber, builder, bidHash); err != nil {
 		return common.Hash{}, err
 	}
 
 	bidMustBefore := miner.bidSimulator.bidMustBefore(parentHash)
 	if timeout := time.Until(bidMustBefore); timeout <= 0 {
-		return common.Hash{}, types.NewBidBlockTooLateError(fmt.Sprintf("too late, expected before %s, appeared %s later",
-			bidMustBefore, common.PrettyDuration(timeout)))
+		return common.Hash{}, types.NewBidBlockTooLateError(fmt.Sprintf("too late, expected before %s, appeared %s later, bidHash=%s",
+			bidMustBefore, common.PrettyDuration(timeout), bidHash))
 	}
 
 	decoded, err := args.ToDecodedBidBlock(builder)
 	if err != nil {
-		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("failed to decode bid block: %v", err))
+		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("failed to decode bid block: bidHash=%s, err=%v", bidHash, err))
 	}
 
 	// Validator owns the entire Extra: overwrite builder's bytes with the operator-configured
@@ -128,16 +129,16 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 		log.Warn("BidBlock pre-seal verification failed",
 			"block", blockNumber,
 			"builder", builder,
-			"bidHash", decoded.Hash().TerminalString(),
+			"bidHash", decoded.Hash(),
 			"err", err)
-		return common.Hash{}, types.NewBidBlockPreSealVerifyError(fmt.Sprintf("pre-seal verify failed: %v", err))
+		return common.Hash{}, types.NewBidBlockPreSealVerifyError(fmt.Sprintf("pre-seal verify failed: bidHash=%s, err=%v", bidHash, err))
 	}
 
 	if err := miner.bidSimulator.sendBidBlock(ctx, decoded); err != nil {
 		return common.Hash{}, err
 	}
 
-	return bb.Hash(), nil
+	return bidHash, nil
 }
 
 func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common.Hash, error) {

@@ -232,7 +232,7 @@ func (b *BidBlockArgs) ToDecodedBidBlock(builder common.Address) (*DecodedBidBlo
 
 	return &DecodedBidBlock{
 		Builder:  builder,
-		Header:   b.BidBlock.Header,
+		Header:   CopyHeader(b.BidBlock.Header),
 		Txs:      txs,
 		Sidecars: sidecars,
 		bidHash:  b.BidBlock.Hash(),

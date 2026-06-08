@@ -25,6 +25,7 @@ import (
 
 type bidBlockTaskInfo struct {
 	builder       common.Address
+	bidHash       common.Hash
 	gasFee        *big.Int
 	systemTxStart int
 }
@@ -74,6 +75,7 @@ func (w *worker) selectBidBlock(bidBlock *types.DecodedBidBlock, simBidBlockRewa
 	// TODO: switch back to Debug after BidBlock rollout stabilizes.
 	log.Info("BidSimulator: BidBlock win bid, compare with local",
 		"block", blockNum,
+		"bidHash", bidBlock.Hash(),
 		"localBlockReward", bestReward.String(),
 		"bidReward", bidBlockFee.String(),
 		"bidValidatorReward", bidBlockValidatorReward.String(),
@@ -83,6 +85,7 @@ func (w *worker) selectBidBlock(bidBlock *types.DecodedBidBlock, simBidBlockRewa
 	if bidBlockFee.Cmp(bestReward.ToBig()) > 0 {
 		log.Info("[BID BLOCK selected]",
 			"block", blockNum,
+			"bidHash", bidBlock.Hash(),
 			"builder", bidBlock.Builder,
 			"gasFee", weiToEtherStringF6(bidBlock.GasFee),
 			"txs", len(bidBlock.Txs))
@@ -151,6 +154,7 @@ func (w *worker) prepareBidBlockTask(
 		block: block,
 		bidBlockInfo: &bidBlockTaskInfo{
 			builder:       decoded.Builder,
+			bidHash:       decoded.Hash(),
 			gasFee:        decoded.GasFee,
 			systemTxStart: decoded.SystemTxStart,
 		},
@@ -217,6 +221,7 @@ func (w *worker) enqueueBidBlockTask(task *task, systemTxs int) {
 	case w.taskCh <- task:
 		log.Info("[BID BLOCK COMMIT]",
 			"number", task.block.Number(),
+			"bidHash", task.bidBlockInfo.bidHash,
 			"builder", task.bidBlockInfo.builder,
 			"txs", len(task.block.Transactions()),
 			"systemTxs", systemTxs,
@@ -249,6 +254,7 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 	log.Info("[BID BLOCK SEALED]",
 		"number", block.Number(),
 		"hash", hash,
+		"bidHash", task.bidBlockInfo.bidHash,
 		"builder", task.bidBlockInfo.builder,
 		"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
 
@@ -268,6 +274,7 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 		log.Error("[BID BLOCK VERIFY FAILED]",
 			"number", block.Number(),
 			"hash", hash,
+			"bidHash", task.bidBlockInfo.bidHash,
 			"parentHash", block.ParentHash(),
 			"txs", len(block.Transactions()),
 			"gasUsed", block.GasUsed(),
@@ -290,6 +297,7 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			log.Error("[BID BLOCK GASPRICE LOW]",
 				"number", block.Number(),
 				"hash", block.Hash(),
+				"bidHash", task.bidBlockInfo.bidHash,
 				"builder", task.bidBlockInfo.builder,
 				"avgGasPrice", avgGasPrice,
 				"minGasPrice", w.config.GasPrice,
@@ -305,6 +313,7 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 	log.Info("[BID BLOCK VERIFIED]",
 		"number", block.Number(),
 		"hash", hash,
+		"bidHash", task.bidBlockInfo.bidHash,
 		"builder", task.bidBlockInfo.builder,
 		"gasFee", weiToEtherStringF6(task.bidBlockInfo.gasFee))
 }
