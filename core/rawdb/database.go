@@ -49,15 +49,6 @@ type freezerdb struct {
 
 	readOnly    bool
 	ancientRoot string
-
-	stateStore ethdb.Database
-}
-
-func (frdb *freezerdb) StateStoreReader() ethdb.Reader {
-	if frdb.stateStore == nil {
-		return frdb
-	}
-	return frdb.stateStore
 }
 
 // AncientDatadir returns the path of root ancient directory.
@@ -75,33 +66,10 @@ func (frdb *freezerdb) Close() error {
 	if err := frdb.KeyValueStore.Close(); err != nil {
 		errs = append(errs, err)
 	}
-	if frdb.HasSeparateStateStore() {
-		if err := frdb.GetStateStore().Close(); err != nil {
-			errs = append(errs, err)
-		}
-	}
 	if len(errs) != 0 {
 		return fmt.Errorf("%v", errs)
 	}
 	return nil
-}
-
-func (frdb *freezerdb) SetStateStore(state ethdb.Database) {
-	if frdb.stateStore != nil {
-		frdb.stateStore.Close()
-	}
-	frdb.stateStore = state
-}
-
-func (frdb *freezerdb) GetStateStore() ethdb.Database {
-	if frdb.stateStore != nil {
-		return frdb.stateStore
-	}
-	return frdb
-}
-
-func (frdb *freezerdb) HasSeparateStateStore() bool {
-	return frdb.stateStore != nil
 }
 
 // Freeze is a helper method used for external testing to trigger and block until
@@ -130,7 +98,6 @@ func (frdb *freezerdb) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint6
 // nofreezedb is a database wrapper that disables freezer data retrievals.
 type nofreezedb struct {
 	ethdb.KeyValueStore
-	stateStore ethdb.Database
 }
 
 // Ancient returns an error as we don't have a backing chain freezer.
@@ -196,28 +163,6 @@ func (db *nofreezedb) ResetTableForIncr(kind string, startAt uint64, onlyEmpty b
 // SyncAncient returns an error as we don't have a backing chain freezer.
 func (db *nofreezedb) SyncAncient() error {
 	return errNotSupported
-}
-
-func (db *nofreezedb) SetStateStore(state ethdb.Database) {
-	db.stateStore = state
-}
-
-func (db *nofreezedb) GetStateStore() ethdb.Database {
-	if db.stateStore != nil {
-		return db.stateStore
-	}
-	return db
-}
-
-func (db *nofreezedb) HasSeparateStateStore() bool {
-	return db.stateStore != nil
-}
-
-func (db *nofreezedb) StateStoreReader() ethdb.Reader {
-	if db.stateStore != nil {
-		return db.stateStore
-	}
-	return db
 }
 
 func (db *nofreezedb) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {
@@ -321,10 +266,6 @@ func (db *emptyfreezedb) SyncAncient() error {
 	return nil
 }
 
-func (db *emptyfreezedb) GetStateStore() ethdb.Database      { return db }
-func (db *emptyfreezedb) SetStateStore(state ethdb.Database) {}
-func (db *emptyfreezedb) StateStoreReader() ethdb.Reader     { return db }
-func (db *emptyfreezedb) HasSeparateStateStore() bool        { return false }
 func (db *emptyfreezedb) ReadAncients(fn func(reader ethdb.AncientReaderOp) error) (err error) {
 	return nil
 }
@@ -623,43 +564,9 @@ func AncientInspect(db ethdb.Database) error {
 	return nil
 }
 
-type DataType int
-
-const (
-	StateDataType DataType = iota
-	ChainDataType
-	Unknown
-)
-
-func DataTypeByKey(key []byte) DataType {
-	switch {
-	// state
-	case IsLegacyTrieNode(key, key),
-		bytes.HasPrefix(key, stateIDPrefix) && len(key) == len(stateIDPrefix)+common.HashLength,
-		IsAccountTrieNode(key),
-		IsStorageTrieNode(key):
-		return StateDataType
-
-	default:
-		for _, meta := range [][]byte{
-			fastTrieProgressKey, persistentStateIDKey, trieJournalKey, snapSyncStatusFlagKey} {
-			if bytes.Equal(key, meta) {
-				return StateDataType
-			}
-		}
-		return ChainDataType
-	}
-}
-
 // InspectDatabase traverses the entire database and checks the size
 // of all different categories of data.
 func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
-	var trieIter ethdb.Iterator
-	if db.HasSeparateStateStore() {
-		trieIter = db.GetStateStore().NewIterator(keyPrefix, nil)
-		defer trieIter.Release()
-	}
-
 	var (
 		start = time.Now()
 		count atomic.Int64
@@ -839,50 +746,6 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		return it.Error()
 	}
 
-	// inspect separate trie db
-	if trieIter != nil {
-		count.Store(0)
-		logged := time.Now()
-		for trieIter.Next() {
-			var (
-				key   = trieIter.Key()
-				value = trieIter.Value()
-				size  = common.StorageSize(len(key) + len(value))
-			)
-			total.Add(uint64(size))
-
-			switch {
-			case IsLegacyTrieNode(key, value):
-				legacyTries.add(size)
-			case bytes.HasPrefix(key, stateIDPrefix) && len(key) == len(stateIDPrefix)+common.HashLength:
-				stateLookups.add(size)
-			case IsAccountTrieNode(key):
-				accountTries.add(size)
-			case IsStorageTrieNode(key):
-				storageTries.add(size)
-			default:
-				var accounted bool
-				for _, meta := range [][]byte{
-					fastTrieProgressKey, persistentStateIDKey, trieJournalKey, snapSyncStatusFlagKey} {
-					if bytes.Equal(key, meta) {
-						metadata.add(size)
-						accounted = true
-						break
-					}
-				}
-				if !accounted {
-					unaccounted.add(size)
-				}
-			}
-			count.Add(1)
-			if count.Load()%1000 == 0 && time.Since(logged) > 8*time.Second {
-				log.Info("Inspecting separate state database", "count", count.Load(), "elapsed", common.PrettyDuration(time.Since(start)))
-				logged = time.Now()
-			}
-		}
-		log.Info("Inspecting separate state database", "count", count.Load(), "elapsed", common.PrettyDuration(time.Since(start)))
-	}
-
 	var (
 		eg, ctx = errgroup.WithContext(context.Background())
 		workers = runtime.NumCPU()
@@ -965,27 +828,6 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		total.Add(uint64(ancient.size()))
 	}
 
-	// inspect ancient state in separate trie db if exist
-	if trieIter != nil {
-		stateAncients, err := inspectFreezers(db.GetStateStore())
-		if err != nil {
-			return err
-		}
-		for _, ancient := range stateAncients {
-			for _, table := range ancient.sizes {
-				if ancient.name == "chain" {
-					break
-				}
-				stats = append(stats, []string{
-					fmt.Sprintf("Ancient store (%s)", strings.Title(ancient.name)),
-					strings.Title(table.name),
-					table.size.String(),
-					fmt.Sprintf("%d", ancient.count()),
-				})
-			}
-			total.Add(uint64(ancient.size()))
-		}
-	}
 	table := newTableWriter(os.Stdout)
 	table.SetHeader([]string{"Database", "Category", "Size", "Items"})
 	table.SetFooter([]string{"", "Total", common.StorageSize(total.Load()).String(), fmt.Sprintf("%d", count.Load())})
