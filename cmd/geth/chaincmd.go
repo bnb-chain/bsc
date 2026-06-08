@@ -77,7 +77,6 @@ var (
 			utils.OverrideBPO2,
 			utils.OverridePasteur,
 			utils.OverrideVerkle,
-			// utils.MultiDataBaseFlag,
 		}, utils.DatabaseFlags),
 		Description: `
 The init command initializes a new genesis block and definition for the network.
@@ -378,17 +377,6 @@ func initGenesis(ctx *cli.Context) error {
 	chaindb := utils.MakeChainDatabase(ctx, stack, false)
 	defer chaindb.Close()
 
-	name := "chaindata"
-	// if the trie data dir has been set, new trie db with a new state database
-	if ctx.IsSet(utils.MultiDataBaseFlag.Name) {
-		statediskdb, dbErr := stack.OpenDatabaseWithFreezer(name+"/state", 0, 0, "", "", false)
-		if dbErr != nil {
-			utils.Fatalf("Failed to open separate trie database: %v", dbErr)
-		}
-		chaindb.SetStateStore(statediskdb)
-		log.Warn("Multi-database is an experimental feature")
-	}
-
 	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false, genesis.IsVerkle(), false)
 	defer triedb.Close()
 
@@ -399,7 +387,7 @@ func initGenesis(ctx *cli.Context) error {
 	if compatErr != nil {
 		utils.Fatalf("Failed to write chain config: %v", compatErr)
 	}
-	log.Info("Successfully wrote genesis state", "database", name, "hash", hash.String())
+	log.Info("Successfully wrote genesis state", "hash", hash.String())
 	return nil
 }
 
@@ -771,12 +759,6 @@ func dumpGenesis(ctx *cli.Context) error {
 		return err
 	}
 	defer db.Close()
-
-	// set the separate state & block database
-	if stack.CheckIfMultiDataBase() && err == nil {
-		stateDiskDb := utils.MakeStateDataBase(ctx, stack, true)
-		db.SetStateStore(stateDiskDb)
-	}
 
 	genesis, err = core.ReadGenesis(db)
 	if err != nil {

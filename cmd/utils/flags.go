@@ -97,12 +97,6 @@ var (
 		Value:    flags.DirectoryString(node.DefaultDataDir()),
 		Category: flags.EthCategory,
 	}
-	MultiDataBaseFlag = &cli.BoolFlag{
-		Name: "multidatabase",
-		Usage: "Enable a separated state database, it will be created subdirectory called state, " +
-			"Users can copy this state directory to another directory or disk, and then create a symbolic link to the state directory under the chaindata",
-		Category: flags.EthCategory,
-	}
 	DirectBroadcastFlag = &cli.BoolFlag{
 		Name:     "directbroadcast",
 		Usage:    "Enable directly broadcast mined block to all peers",
@@ -2638,9 +2632,6 @@ func parseDBFeatures(cfg *ethconfig.Config, stack *node.Node) string {
 	} else if cfg.StateScheme == rawdb.HashScheme {
 		features = append(features, "HBSS")
 	}
-	if stack.CheckIfMultiDataBase() {
-		features = append(features, "MultiDB")
-	}
 	if cfg.PruneAncientData || cfg.BlockHistory > 0 {
 		features = append(features, "PruneBlocks")
 	}
@@ -2767,27 +2758,11 @@ func MakeChainDatabase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.
 			EraDirectory:      ctx.String(EraFlag.Name),
 		}
 		chainDb, err = stack.OpenDatabaseWithOptions("chaindata", options)
-		// set the separate state database
-		if stack.CheckIfMultiDataBase() && err == nil {
-			stateDiskDb := MakeStateDataBase(ctx, stack, readonly)
-			chainDb.SetStateStore(stateDiskDb)
-		}
 	}
 	if err != nil {
 		Fatalf("Could not open database: %v", err)
 	}
 	return chainDb
-}
-
-// MakeStateDataBase open a separate state database using the flags passed to the client and will hard crash if it fails.
-func MakeStateDataBase(ctx *cli.Context, stack *node.Node, readonly bool) ethdb.Database {
-	cache := ctx.Int(CacheFlag.Name) * ctx.Int(CacheDatabaseFlag.Name) / 100
-	handles := MakeDatabaseHandles(ctx.Int(FDLimitFlag.Name)) * 90 / 100
-	statediskdb, err := stack.OpenDatabaseWithFreezer("chaindata/state", cache, handles, "", "", readonly)
-	if err != nil {
-		Fatalf("Failed to open separate trie database: %v", err)
-	}
-	return statediskdb
 }
 
 // tryMakeReadOnlyDatabase try to open the chain database in read-only mode,
