@@ -39,6 +39,9 @@ func Ecrecover(hash, sig []byte) ([]byte, error) {
 }
 
 func sigToPub(hash, sig []byte) (*secp256k1.PublicKey, error) {
+	if len(hash) != DigestLength {
+		return nil, fmt.Errorf("hash is required to be exactly %d bytes (%d)", DigestLength, len(hash))
+	}
 	if len(sig) != SignatureLength {
 		return nil, errors.New("invalid signature")
 	}
