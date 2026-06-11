@@ -579,7 +579,6 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		tds                stat
 		numHashPairings    stat
 		blobSidecars       stat
-		bals               stat
 		hashNumPairings    stat
 		legacyTries        stat
 		stateLookups       stat
@@ -719,8 +718,6 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			// bsc speicial
 			case bytes.HasPrefix(key, BlockBlobSidecarsPrefix):
 				blobSidecars.add(size)
-			case bytes.HasPrefix(key, BlockBALPrefix):
-				bals.add(size)
 			case bytes.HasPrefix(key, ParliaSnapshotPrefix) && len(key) == 7+common.HashLength:
 				parliaSnaps.add(size)
 
@@ -807,7 +804,6 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		{"Key-Value store", "Singleton metadata", metadata.sizeString(), metadata.countString()},
 		// bsc special
 		{"Key-Value store", "BlobSidecars", blobSidecars.sizeString(), blobSidecars.countString()},
-		{"Key-Value store", "Block access list", bals.sizeString(), bals.countString()},
 		{"Key-Value store", "Parlia snapshots", parliaSnaps.sizeString(), parliaSnaps.countString()},
 	}
 
