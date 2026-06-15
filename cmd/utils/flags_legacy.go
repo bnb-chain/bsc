@@ -48,6 +48,7 @@ var DeprecatedFlags = []cli.Flag{
 	JournalFileFlag,
 	LogExportCheckpointsFlag,
 	EnableBALFlag,
+	TxPoolOverflowPoolSlotsFlag,
 }
 
 var (

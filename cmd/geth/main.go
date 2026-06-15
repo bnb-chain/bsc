@@ -97,7 +97,7 @@ var (
 		utils.TxPoolGlobalSlotsFlag,
 		utils.TxPoolAccountQueueFlag,
 		utils.TxPoolGlobalQueueFlag,
-		utils.TxPoolOverflowPoolSlotsFlag,
+		utils.TxPoolOverflowPoolSlotsFlag, // deprecated
 		utils.TxPoolLifetimeFlag,
 		utils.TxPoolReannounceTimeFlag,
 		utils.MinerTxGasLimitFlag,
