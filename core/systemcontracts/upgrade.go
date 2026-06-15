@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts/moran"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/niels"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/pascal"
+	"github.com/ethereum/go-ethereum/core/systemcontracts/pasteur"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/planck"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/plato"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/ramanujan"
@@ -95,6 +96,8 @@ var (
 	maxwellUpgrade = make(map[string]*Upgrade)
 
 	fermiUpgrade = make(map[string]*Upgrade)
+
+	pasteurUpgrade = make(map[string]*Upgrade)
 )
 
 func init() {
@@ -1055,6 +1058,54 @@ func init() {
 			},
 		},
 	}
+
+	pasteurUpgrade[mainNet] = &Upgrade{
+		UpgradeName: "pasteur",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(StakeHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/3f02a2e834308eb989ea230cd3b90ea8c47e6699",
+				Code:         pasteur.MainnetStakeHubContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(GovernorContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/3f02a2e834308eb989ea230cd3b90ea8c47e6699",
+				Code:         pasteur.MainnetGovernorContract,
+			},
+		},
+	}
+
+	pasteurUpgrade[chapelNet] = &Upgrade{
+		UpgradeName: "pasteur",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(StakeHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/3f02a2e834308eb989ea230cd3b90ea8c47e6699",
+				Code:         pasteur.ChapelStakeHubContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(GovernorContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/3f02a2e834308eb989ea230cd3b90ea8c47e6699",
+				Code:         pasteur.ChapelGovernorContract,
+			},
+		},
+	}
+
+	pasteurUpgrade[rialtoNet] = &Upgrade{
+		UpgradeName: "pasteur",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(StakeHubContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/3f02a2e834308eb989ea230cd3b90ea8c47e6699",
+				Code:         pasteur.RialtoStakeHubContract,
+			},
+			{
+				ContractAddr: common.HexToAddress(GovernorContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/3f02a2e834308eb989ea230cd3b90ea8c47e6699",
+				Code:         pasteur.RialtoGovernorContract,
+			},
+		},
+	}
 }
 
 func TryUpdateBuildInSystemContract(config *params.ChainConfig, blockNumber *big.Int, lastBlockTime uint64, blockTime uint64, statedb vm.StateDB, atBlockBegin bool) {
@@ -1172,6 +1223,10 @@ func upgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 
 	if config.IsOnFermi(blockNumber, lastBlockTime, blockTime) {
 		applySystemContractUpgrade(fermiUpgrade[network], blockNumber, statedb, logger)
+	}
+
+	if config.IsOnPasteur(blockNumber, lastBlockTime, blockTime) {
+		applySystemContractUpgrade(pasteurUpgrade[network], blockNumber, statedb, logger)
 	}
 
 	/*
