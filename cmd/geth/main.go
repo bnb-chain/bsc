@@ -189,6 +189,7 @@ var (
 		utils.LogDebugFlag,
 		utils.LogBacktraceAtFlag,
 		utils.BlobExtraReserveFlag,
+		utils.VMOpcodeOptimizeFlag, // deprecated
 		utils.EnableIncrSnapshotFlag,
 		utils.IncrSnapshotPathFlag,
 		utils.IncrSnapshotBlockIntervalFlag,

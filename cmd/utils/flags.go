@@ -2262,7 +2262,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.Bool(VMWitnessStatsFlag.Name) {
 		cfg.StatelessSelfValidation = true
 	}
-
+	if ctx.IsSet(VMOpcodeOptimizeFlag.Name) {
+		log.Warn("The flag --vm.opcode.optimize is deprecated and has no effect")
+	}
 	if ctx.IsSet(RPCGlobalGasCapFlag.Name) {
 		cfg.RPCGasCap = ctx.Uint64(RPCGlobalGasCapFlag.Name)
 	}
