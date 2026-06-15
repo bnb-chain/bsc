@@ -49,6 +49,7 @@ var DeprecatedFlags = []cli.Flag{
 	LogExportCheckpointsFlag,
 	EnableBALFlag,
 	TxPoolOverflowPoolSlotsFlag,
+	VMOpcodeOptimizeFlag,
 }
 
 var (
@@ -161,6 +162,12 @@ var (
 		Hidden:   true,
 		Usage:    "Deprecated: Maximum number of transaction slots in overflow pool; this flag has no effect",
 		Value:    0,
+		Category: flags.DeprecatedCategory,
+	}
+	VMOpcodeOptimizeFlag = &cli.BoolFlag{
+		Name:     "vm.opcode.optimize",
+		Hidden:   true,
+		Usage:    "Deprecated: EVM opcode-level optimization (super-instructions) has been removed; this flag has no effect",
 		Category: flags.DeprecatedCategory,
 	}
 )
