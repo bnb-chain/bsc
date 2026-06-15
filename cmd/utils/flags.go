@@ -42,7 +42,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/fdlimit"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
@@ -1242,12 +1241,6 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Category: flags.MetricsCategory,
 	}
 
-	VMOpcodeOptimizeFlag = &cli.BoolFlag{
-		Name:     "vm.opcode.optimize",
-		Usage:    "enable opcode optimization",
-		Category: flags.VMCategory,
-	}
-
 	CheckSnapshotWithMPT = &cli.BoolFlag{
 		Name:     "check-snapshot-with-mpt",
 		Usage:    "Enable checking between snapshot and MPT ",
@@ -2269,14 +2262,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.Bool(VMWitnessStatsFlag.Name) {
 		cfg.StatelessSelfValidation = true
 	}
-
 	if ctx.IsSet(VMOpcodeOptimizeFlag.Name) {
-		cfg.EnableOpcodeOptimizing = ctx.Bool(VMOpcodeOptimizeFlag.Name)
-		if cfg.EnableOpcodeOptimizing {
-			compiler.EnableOptimization()
-		}
+		log.Warn("The flag --vm.opcode.optimize is deprecated and has no effect")
 	}
-
 	if ctx.IsSet(RPCGlobalGasCapFlag.Name) {
 		cfg.RPCGasCap = ctx.Uint64(RPCGlobalGasCapFlag.Name)
 	}
@@ -2887,12 +2875,7 @@ func MakeChain(ctx *cli.Context, stack *node.Node, readonly bool) (*core.BlockCh
 		options.TriesInMemory = ctx.Uint64(TriesInMemoryFlag.Name)
 	}
 	vmcfg := vm.Config{
-		EnablePreimageRecording:   ctx.Bool(VMEnableDebugFlag.Name),
-		EnableOpcodeOptimizations: ctx.Bool(VMOpcodeOptimizeFlag.Name),
-	}
-
-	if vmcfg.EnableOpcodeOptimizations {
-		compiler.EnableOptimization()
+		EnablePreimageRecording: ctx.Bool(VMEnableDebugFlag.Name),
 	}
 	if ctx.IsSet(VMTraceFlag.Name) {
 		if name := ctx.String(VMTraceFlag.Name); name != "" {
