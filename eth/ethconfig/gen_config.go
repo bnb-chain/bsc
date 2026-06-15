@@ -85,7 +85,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		TxSyncDefaultTimeout      time.Duration `toml:",omitempty"`
 		TxSyncMaxTimeout          time.Duration `toml:",omitempty"`
 		BlobExtraReserve          uint64
-		EnableOpcodeOptimizing    bool
 		EnableIncrSnapshots       bool
 		IncrSnapshotPath          string
 		IncrSnapshotBlockInterval uint64
@@ -242,7 +241,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		TxSyncDefaultTimeout      *time.Duration `toml:",omitempty"`
 		TxSyncMaxTimeout          *time.Duration `toml:",omitempty"`
 		BlobExtraReserve          *uint64
-		EnableOpcodeOptimizing    *bool
 		EnableIncrSnapshots       *bool
 		IncrSnapshotPath          *string
 		IncrSnapshotBlockInterval *uint64
