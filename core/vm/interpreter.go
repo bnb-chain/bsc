@@ -29,12 +29,11 @@ import (
 
 // Config are the configuration options for the Interpreter
 type Config struct {
-	Tracer                  *tracing.Hooks
+	Tracer *tracing.Hooks
+
 	NoBaseFee               bool  // Forces the EIP-1559 baseFee to 0 (needed for 0 price calls)
 	EnablePreimageRecording bool  // Enables recording of SHA3/keccak preimages
 	ExtraEips               []int // Additional EIPS that are to be enabled
-
-	StatelessSelfValidation bool // Generate execution witnesses and self-check against them (testing purpose)
 }
 
 // ScopeContext contains the things that are per-call, such as stack and memory,
@@ -286,7 +285,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				}
 			}
 			// Consume the gas and return an error if not enough gas is available.
-			// cost is explicitly set so that the capture state defer method can get the proper cost
 			// cost is explicitly set so that the capture state defer method can get the proper cost
 			var dynamicCost uint64
 			dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
