@@ -24,7 +24,6 @@ func GetContract(caller common.Address, address common.Address, value *uint256.I
 	contract.Gas = gas
 	contract.Code = nil
 	contract.CodeHash = common.Hash{}
-	contract.CodeAddr = nil
 	contract.Input = nil
 	contract.IsDeployment = false
 	contract.IsSystemCall = false
@@ -33,7 +32,6 @@ func GetContract(caller common.Address, address common.Address, value *uint256.I
 	if jumpDests == nil {
 		jumpDests = newMapJumpDests()
 	}
-	contract.codeBitmapFunc = codeBitmap
 	contract.jumpDests = jumpDests
 	contract.analysis = nil
 
