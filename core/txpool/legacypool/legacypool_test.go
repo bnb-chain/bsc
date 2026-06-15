@@ -41,7 +41,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/holiman/uint256"
-	"gotest.tools/assert"
 )
 
 var (
@@ -1634,7 +1633,6 @@ func TestRepricingDynamicFee(t *testing.T) {
 // Note, local transactions are never allowed to be dropped.
 func TestUnderpricing(t *testing.T) {
 	t.Parallel()
-	testTxPoolConfig.OverflowPoolSlots = 5
 
 	// Create the pool to test the pricing enforcement with
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
@@ -1800,8 +1798,6 @@ func TestUnderpricingDynamicFee(t *testing.T) {
 	pool.config.GlobalSlots = 2
 	pool.config.GlobalQueue = 2
 
-	pool.config.OverflowPoolSlots = 0
-
 	// Keep track of transaction events to ensure all executables get announced
 	events := make(chan core.NewTxsEvent, 32)
 	sub := pool.txFeed.Subscribe(events)
@@ -1879,7 +1875,6 @@ func TestUnderpricingDynamicFee(t *testing.T) {
 func TestDualHeapEviction(t *testing.T) {
 	t.Parallel()
 
-	testTxPoolConfig.OverflowPoolSlots = 1
 	pool, _ := setupPoolWithConfig(eip1559Config)
 	defer pool.Close()
 
@@ -1889,7 +1884,6 @@ func TestDualHeapEviction(t *testing.T) {
 	// With pool size = 20, floatingCount = 20 * 1 / 5 = 4, which is sufficient.
 	pool.config.GlobalSlots = 10
 	pool.config.GlobalQueue = 10
-	pool.config.OverflowPoolSlots = 1
 
 	var (
 		highTip, highCap *types.Transaction
@@ -2090,51 +2084,6 @@ func TestReplacement(t *testing.T) {
 	if err := validatePoolInternals(pool); err != nil {
 		t.Fatalf("pool internal state corrupted: %v", err)
 	}
-}
-
-func TestTransferTransactions(t *testing.T) {
-	t.Parallel()
-	testTxPoolConfig.OverflowPoolSlots = 1
-	pool, _ := setupPoolWithConfig(eip1559Config)
-	defer pool.Close()
-
-	pool.config.GlobalSlots = 1
-	pool.config.GlobalQueue = 2
-
-	// Create a number of test accounts and fund them
-	keys := make([]*ecdsa.PrivateKey, 5)
-	for i := 0; i < len(keys); i++ {
-		keys[i], _ = crypto.GenerateKey()
-		testAddBalance(pool, crypto.PubkeyToAddress(keys[i].PublicKey), big.NewInt(1000000))
-	}
-
-	tx := dynamicFeeTx(0, 100000, big.NewInt(3), big.NewInt(2), keys[0])
-	from, _ := types.Sender(pool.signer, tx)
-	pool.addToOverflowPool([]*types.Transaction{tx})
-	pending, queue := pool.Stats()
-
-	assert.Equal(t, 0, pending, "pending transactions mismatched")
-	assert.Equal(t, 0, queue, "queued transactions mismatched")
-	assert.Equal(t, uint64(1), pool.statsOverflowPool(), "OverflowPool size unexpected")
-
-	tx2 := dynamicFeeTx(0, 100000, big.NewInt(3), big.NewInt(2), keys[1])
-	pool.addToOverflowPool([]*types.Transaction{tx2})
-	assert.Equal(t, uint64(1), pool.statsOverflowPool(), "OverflowPool size unexpected")
-	<-pool.requestPromoteExecutables(newAccountSet(pool.signer, from))
-	time.Sleep(1 * time.Second)
-	pending, queue = pool.Stats()
-
-	assert.Equal(t, 1, pending, "pending transactions mismatched")
-	assert.Equal(t, 0, queue, "queued transactions mismatched")
-	assert.Equal(t, uint64(0), pool.statsOverflowPool(), "OverflowPool size unexpected")
-
-	tx3 := dynamicFeeTx(0, 100000, big.NewInt(3), big.NewInt(2), keys[2])
-	pool.addToOverflowPool([]*types.Transaction{tx3})
-	pending, queue = pool.Stats()
-
-	assert.Equal(t, 1, pending, "pending transactions mismatched")
-	assert.Equal(t, 0, queue, "queued transactions mismatched")
-	assert.Equal(t, uint64(1), pool.statsOverflowPool(), "OverflowPool size unexpected")
 }
 
 // Tests that the pool rejects replacement dynamic fee transactions that don't
