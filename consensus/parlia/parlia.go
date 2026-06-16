@@ -628,13 +628,16 @@ func (p *Parlia) VerifyUnsealedHeader(chain consensus.ChainHeaderReader, header 
 		}
 	}
 
-	// Ensure that the block doesn't contain any uncles which are meaningless in PoA
-	if header.UncleHash != types.EmptyUncleHash {
+	// Ensure that the block doesn't contain any uncles which are meaningless in PoA.
+	// From Pasteur (BEP-696), UncleHash is repurposed to carry producer metadata and may
+	// hold any value; the empty-uncle-list guarantee is enforced by VerifyUncles on the
+	// block body instead.
+	pasteur := chain.Config().IsPasteur(header.Number, header.Time)
+	if !pasteur && header.UncleHash != types.EmptyUncleHash {
 		return errInvalidUncleHash
 	}
 
 	bohr := chain.Config().IsBohr(header.Number, header.Time)
-	pasteur := chain.Config().IsPasteur(header.Number, header.Time)
 	if !bohr {
 		if header.ParentBeaconRoot != nil {
 			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)

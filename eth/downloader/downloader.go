@@ -179,6 +179,9 @@ type BlockChain interface {
 	// CurrentHeader retrieves the head header from the local chain.
 	CurrentHeader() *types.Header
 
+	// Config retrieves the chain's fork configuration.
+	Config() *params.ChainConfig
+
 	// GetTd returns the total difficulty of a local block.
 	GetTd(common.Hash, uint64) *big.Int
 
@@ -242,7 +245,7 @@ func New(stateDb ethdb.Database, mux *event.TypeMux, chain BlockChain, dropPeer 
 	dl := &Downloader{
 		stateDB:           stateDb,
 		mux:               mux,
-		queue:             newQueue(blockCacheMaxItems, blockCacheInitialItems),
+		queue:             newQueue(blockCacheMaxItems, blockCacheInitialItems, chain.Config()),
 		peers:             newPeerSet(),
 		blockchain:        chain,
 		chainCutoffNumber: cutoffNumber,

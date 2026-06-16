@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 )
 
@@ -209,6 +210,8 @@ type BlockFetcher struct {
 	dropPeer             peerDropFn             // Drops a peer for misbehaving
 	fetchRangeBlocks     fetchRangeBlocksFn     // Fetches a range of blocks from a peer
 
+	chainConfig *params.ChainConfig // Chain configuration, used for fork-gated body matching
+
 	// Testing hooks
 	announceChangeHook func(common.Hash, bool)           // Method to call upon adding or deleting a hash from the blockAnnounce list
 	queueChangeHook    func(common.Hash, bool)           // Method to call upon adding or deleting a block from the import queue
@@ -220,7 +223,7 @@ type BlockFetcher struct {
 // NewBlockFetcher creates a block fetcher to retrieve blocks based on hash announcements.
 func NewBlockFetcher(getBlock blockRetrievalFn, verifyHeader headerVerifierFn, broadcastBlock blockBroadcasterFn,
 	chainHeight chainHeightFn, chainFinalizedHeight chainFinalizedHeightFn, insertChain chainInsertFn, dropPeer peerDropFn,
-	fetchRangeBlocks fetchRangeBlocksFn) *BlockFetcher {
+	fetchRangeBlocks fetchRangeBlocksFn, chainConfig *params.ChainConfig) *BlockFetcher {
 	return &BlockFetcher{
 		notify:               make(chan *blockAnnounce),
 		inject:               make(chan *blockOrHeaderInject),
@@ -246,6 +249,7 @@ func NewBlockFetcher(getBlock blockRetrievalFn, verifyHeader headerVerifierFn, b
 		insertChain:          insertChain,
 		dropPeer:             dropPeer,
 		fetchRangeBlocks:     fetchRangeBlocks,
+		chainConfig:          chainConfig,
 	}
 }
 
@@ -746,11 +750,16 @@ func (f *BlockFetcher) loop() {
 						if f.queued[hash] != nil || announce.origin != task.peer {
 							continue
 						}
-						if uncleHash == (common.Hash{}) {
-							uncleHash = types.CalcUncleHash(task.uncles[i])
-						}
-						if uncleHash != announce.header.UncleHash {
-							continue
+						// From Pasteur (BEP-696), UncleHash carries producer metadata and no longer
+						// commits to the uncle list, so match the body on the transaction root alone;
+						// BSC bodies never carry uncles, which block import continues to enforce.
+						if f.chainConfig == nil || !f.chainConfig.IsPasteur(announce.header.Number, announce.header.Time) {
+							if uncleHash == (common.Hash{}) {
+								uncleHash = types.CalcUncleHash(task.uncles[i])
+							}
+							if uncleHash != announce.header.UncleHash {
+								continue
+							}
 						}
 						if txnHash == (common.Hash{}) {
 							txnHash = types.DeriveSha(types.Transactions(task.transactions[i]), trie.NewStackTrie(nil))

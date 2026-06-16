@@ -131,7 +131,7 @@ func newTester() *fetcherTester {
 		tester.chainHeight, tester.chainFinalizedHeight, tester.insertChain, tester.dropPeer,
 		func(peer string, startHeight uint64, startHash common.Hash, count uint64) ([]*types.Block, error) {
 			return nil, errors.New("not implemented")
-		})
+		}, params.TestChainConfig)
 	tester.fetcher.Start()
 
 	return tester
@@ -1091,6 +1091,7 @@ func TestBlockFetcherMultiplePeers(t *testing.T) {
 		func(peer string, startHeight uint64, startHash common.Hash, count uint64) ([]*types.Block, error) {
 			return nil, errors.New("not implemented")
 		},
+		params.TestChainConfig,
 	)
 
 	// Start fetcher
@@ -1299,6 +1300,7 @@ func TestQuickBlockFetching(t *testing.T) {
 			// Return requested block
 			return []*types.Block{block}, nil
 		},
+		params.TestChainConfig,
 	)
 
 	// Start fetcher

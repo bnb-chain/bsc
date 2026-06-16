@@ -64,8 +64,13 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 	if err := v.bc.engine.VerifyUncles(v.bc, block); err != nil {
 		return err
 	}
-	if hash := types.CalcUncleHash(block.Uncles()); hash != header.UncleHash {
-		return fmt.Errorf("uncle root hash mismatch (header value %x, calculated %x)", header.UncleHash, hash)
+	// From Pasteur (BEP-696), UncleHash is repurposed to carry producer metadata and no
+	// longer commits to the uncle list. VerifyUncles above already guarantees the body
+	// carries no uncles, so the uncle-root match is only enforced before Pasteur.
+	if !v.config.IsPasteur(block.Number(), block.Time()) {
+		if hash := types.CalcUncleHash(block.Uncles()); hash != header.UncleHash {
+			return fmt.Errorf("uncle root hash mismatch (header value %x, calculated %x)", header.UncleHash, hash)
+		}
 	}
 
 	validateFuns := []func() error{

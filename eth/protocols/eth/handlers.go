@@ -387,9 +387,14 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 		return err
 	}
 
-	if hash := types.CalcUncleHash(ann.Block.Uncles()); hash != ann.Block.UncleHash() {
-		log.Warn("Propagated block has invalid uncles", "have", hash, "exp", ann.Block.UncleHash())
-		return nil // TODO(karalabe): return error eventually, but wait a few releases
+	// From Pasteur (BEP-696), UncleHash carries producer metadata and no longer commits to
+	// the uncle list, so skip the uncle-root match for such blocks; the empty-uncle-list
+	// guarantee is enforced during block import.
+	if !backend.Chain().Config().IsPasteur(ann.Block.Number(), ann.Block.Time()) {
+		if hash := types.CalcUncleHash(ann.Block.Uncles()); hash != ann.Block.UncleHash() {
+			log.Warn("Propagated block has invalid uncles", "have", hash, "exp", ann.Block.UncleHash())
+			return nil // TODO(karalabe): return error eventually, but wait a few releases
+		}
 	}
 	if hash := types.DeriveSha(ann.Block.Transactions(), trie.NewStackTrie(nil)); hash != ann.Block.TxHash() {
 		log.Warn("Propagated block has invalid body", "have", hash, "exp", ann.Block.TxHash())

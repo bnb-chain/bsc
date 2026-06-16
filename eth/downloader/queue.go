@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -134,6 +135,8 @@ func (f *fetchResult) Done(kind uint) bool {
 type queue struct {
 	mode SyncMode // Synchronisation mode to decide on the block parts to schedule for fetching
 
+	config *params.ChainConfig // Chain configuration, used for fork-gated body validation
+
 	// Headers are "special", they download in batches, supported by a skeleton chain
 	headerHead      common.Hash                    // Hash of the last queued header to verify order
 	headerTaskPool  map[uint64]*types.Header       // Pending header retrieval tasks, mapping starting indexes to skeleton headers
@@ -168,9 +171,10 @@ type queue struct {
 }
 
 // newQueue creates a new download queue for scheduling block retrieval.
-func newQueue(blockCacheLimit int, thresholdInitialSize int) *queue {
+func newQueue(blockCacheLimit int, thresholdInitialSize int, config *params.ChainConfig) *queue {
 	lock := new(sync.RWMutex)
 	q := &queue{
+		config:           config,
 		headerContCh:     make(chan bool, 1),
 		blockTaskQueue:   prque.New[int64, *types.Header](nil),
 		blockWakeCh:      make(chan bool, 1),
@@ -802,8 +806,13 @@ func (q *queue) DeliverBodies(id string, hashes eth.BlockBodyHashes, bodies []et
 		if hashes.TransactionRoots[index] != header.TxHash {
 			return errInvalidBody
 		}
-		if hashes.UncleHashes[index] != header.UncleHash {
-			return errInvalidBody
+		// From Pasteur (BEP-696), UncleHash carries producer metadata and no longer commits
+		// to the uncle list, so the delivered body is matched on the transaction root alone;
+		// BSC bodies never carry uncles, which header verification continues to enforce.
+		if q.config == nil || !q.config.IsPasteur(header.Number, header.Time) {
+			if hashes.UncleHashes[index] != header.UncleHash {
+				return errInvalidBody
+			}
 		}
 		if header.WithdrawalsHash == nil {
 			// nil hash means that withdrawals should not be present in body
