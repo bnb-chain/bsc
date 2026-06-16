@@ -350,13 +350,36 @@ var PrecompiledContractsOsaka = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{eip7951: true},
 }
 
-var PrecompiledContractsPasteur = func() PrecompiledContracts {
-	precompiles := maps.Clone(PrecompiledContractsOsaka)
-	// Note: 0x66 (blsSignatureVerify) is a generic BLS verification primitive
-	// and does not require unique pubkeys. Uniqueness is enforced by callers.
-	precompiles[common.BytesToAddress([]byte{0x67})] = &cometBFTLightBlockValidatePasteur{}
-	return precompiles
-}()
+// PrecompiledContractsPasteur contains the set of pre-compiled Ethereum
+// contracts used in the Pasteur release.
+var PrecompiledContractsPasteur = PrecompiledContracts{
+	common.BytesToAddress([]byte{0x01}): &ecrecover{},
+	common.BytesToAddress([]byte{0x02}): &sha256hash{},
+	common.BytesToAddress([]byte{0x03}): &ripemd160hash{},
+	common.BytesToAddress([]byte{0x04}): &dataCopy{},
+	common.BytesToAddress([]byte{0x05}): &bigModExp{eip2565: true, eip7823: true, eip7883: true},
+	common.BytesToAddress([]byte{0x06}): &bn256AddIstanbul{},
+	common.BytesToAddress([]byte{0x07}): &bn256ScalarMulIstanbul{},
+	common.BytesToAddress([]byte{0x08}): &bn256PairingIstanbul{},
+	common.BytesToAddress([]byte{0x09}): &blake2F{},
+	common.BytesToAddress([]byte{0x0a}): &kzgPointEvaluation{},
+	common.BytesToAddress([]byte{0x0b}): &bls12381G1Add{},
+	common.BytesToAddress([]byte{0x0c}): &bls12381G1MultiExp{},
+	common.BytesToAddress([]byte{0x0d}): &bls12381G2Add{},
+	common.BytesToAddress([]byte{0x0e}): &bls12381G2MultiExp{},
+	common.BytesToAddress([]byte{0x0f}): &bls12381Pairing{},
+	common.BytesToAddress([]byte{0x10}): &bls12381MapG1{},
+	common.BytesToAddress([]byte{0x11}): &bls12381MapG2{},
+
+	common.BytesToAddress([]byte{0x64}): &tmHeaderValidate{},
+	common.BytesToAddress([]byte{0x65}): &iavlMerkleProofValidatePlato{},
+	common.BytesToAddress([]byte{0x66}): &blsSignatureVerify{},
+	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidatePasteur{},
+	common.BytesToAddress([]byte{0x68}): &verifyDoubleSignEvidence{},
+	common.BytesToAddress([]byte{0x69}): &secp256k1SignatureRecover{},
+
+	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{eip7951: true},
+}
 
 // PrecompiledContractsP256Verify contains the precompiled Ethereum
 // contract specified in EIP-7212. This is exported for testing purposes.
@@ -426,11 +449,11 @@ func init() {
 	for k := range PrecompiledContractsPrague {
 		PrecompiledAddressesPrague = append(PrecompiledAddressesPrague, k)
 	}
-	for k := range PrecompiledContractsPasteur {
-		PrecompiledAddressesPasteur = append(PrecompiledAddressesPasteur, k)
-	}
 	for k := range PrecompiledContractsOsaka {
 		PrecompiledAddressesOsaka = append(PrecompiledAddressesOsaka, k)
+	}
+	for k := range PrecompiledContractsPasteur {
+		PrecompiledAddressesPasteur = append(PrecompiledAddressesPasteur, k)
 	}
 }
 
