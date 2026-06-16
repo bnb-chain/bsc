@@ -634,13 +634,20 @@ func (p *Parlia) VerifyUnsealedHeader(chain consensus.ChainHeaderReader, header 
 	}
 
 	bohr := chain.Config().IsBohr(header.Number, header.Time)
+	pasteur := chain.Config().IsPasteur(header.Number, header.Time)
 	if !bohr {
 		if header.ParentBeaconRoot != nil {
 			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected nil", header.ParentBeaconRoot)
 		}
-	} else {
+	} else if !pasteur {
 		if header.ParentBeaconRoot == nil || *header.ParentBeaconRoot != (common.Hash{}) {
 			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected zero hash", header.ParentBeaconRoot)
+		}
+	} else {
+		// From Pasteur (BEP-696), ParentBeaconRoot is repurposed to carry producer
+		// metadata. It must still be present, but may hold any value.
+		if header.ParentBeaconRoot == nil {
+			return fmt.Errorf("invalid parentBeaconRoot, have %#x, expected non-nil", header.ParentBeaconRoot)
 		}
 	}
 
@@ -1839,7 +1846,7 @@ func calcDifficulty(snap *Snapshot, signer common.Address) *big.Int {
 }
 
 func encodeSigHeaderWithoutVoteAttestation(w io.Writer, header *types.Header, chainId *big.Int) {
-	err := rlp.Encode(w, []interface{}{
+	toEncode := []interface{}{
 		chainId,
 		header.ParentHash,
 		header.UncleHash,
@@ -1856,7 +1863,24 @@ func encodeSigHeaderWithoutVoteAttestation(w io.Writer, header *types.Header, ch
 		header.Extra[:extraVanity], // this will panic if extra is too short, should check before calling encodeSigHeaderWithoutVoteAttestation
 		header.MixDigest,
 		header.Nonce,
-	})
+	}
+	// Cover the same post-Cancun fields as types.SealHash so that this sealing-task id stays
+	// unique when the header carries them. In particular, from Pasteur (BEP-696) ParentBeaconRoot
+	// may hold producer metadata, and two block works differing only in it must not collide.
+	// The vote attestation is deliberately left out (Extra is truncated to the vanity) because it
+	// is inserted during Seal, after the task id has been computed.
+	if header.ParentBeaconRoot != nil {
+		toEncode = append(toEncode, header.BaseFee,
+			header.WithdrawalsHash,
+			header.BlobGasUsed,
+			header.ExcessBlobGas,
+			header.ParentBeaconRoot)
+
+		if header.RequestsHash != nil {
+			toEncode = append(toEncode, header.RequestsHash)
+		}
+	}
+	err := rlp.Encode(w, toEncode)
 	if err != nil {
 		panic("can't encode: " + err.Error())
 	}
