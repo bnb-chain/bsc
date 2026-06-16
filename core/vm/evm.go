@@ -97,6 +97,9 @@ type EVM struct {
 	// StateDB gives access to the underlying state
 	StateDB StateDB
 
+	// table is the jump table for the current fork
+	table *JumpTable
+
 	// depth is the current call stack
 	depth int
 
@@ -123,16 +126,10 @@ type EVM struct {
 	// jumpDests stores results of JUMPDEST analysis.
 	jumpDests JumpDestCache
 
-	// table is the jump table for the current fork
-	table *JumpTable
-
 	hasher    crypto.KeccakState // Keccak256 hasher instance shared across opcodes
 	hasherBuf common.Hash        // Keccak256 hasher result array shared across opcodes
 
-	// readOnly is a call-stack property set by STATICCALL and inherited by all
-	// descendants.
-	readOnly bool
-
+	readOnly   bool
 	returnData []byte // Last CALL's return data for subsequent reuse
 }
 
@@ -157,6 +154,7 @@ func NewEVM(blockCtx BlockContext, statedb StateDB, chainConfig *params.ChainCon
 	case evm.chainRules.IsOsaka:
 		evm.table = &osakaInstructionSet
 	case evm.chainRules.IsVerkle:
+		// TODO replace with proper instruction set when fork is specified
 		evm.table = &verkleInstructionSet
 	case evm.chainRules.IsPrague:
 		evm.table = &pragueInstructionSet
@@ -232,7 +230,6 @@ func (evm *EVM) Cancel() {
 func (evm *EVM) Cancelled() bool {
 	return evm.abort.Load()
 }
-
 
 func isSystemCall(caller common.Address) bool {
 	return caller == params.SystemAddress
