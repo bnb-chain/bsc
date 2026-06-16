@@ -291,9 +291,7 @@ func ApplyTransaction(evm *vm.EVM, gp *GasPool, statedb *state.StateDB, header *
 // ProcessBeaconBlockRoot applies the EIP-4788 system call to the beacon block root
 // contract. This method is exported to be used in tests.
 func ProcessBeaconBlockRoot(beaconRoot common.Hash, evm *vm.EVM) {
-	// BSC has no consensus-layer beacon chain, so the EIP-4788 system call is never
-	// executed. Before Pasteur the field is always the zero hash; from Pasteur (BEP-696)
-	// it may carry producer metadata. In either case the system call must be skipped.
+	// BSC has no consensus-layer beacon chain; ParentBeaconRoot is not an EIP-4788 input.
 	if chainConfig := evm.ChainConfig(); chainConfig != nil && chainConfig.IsInBSC() {
 		return
 	}

@@ -750,16 +750,17 @@ func (f *BlockFetcher) loop() {
 						if f.queued[hash] != nil || announce.origin != task.peer {
 							continue
 						}
-						// From Pasteur (BEP-696), UncleHash carries producer metadata and no longer
-						// commits to the uncle list, so match the body on the transaction root alone;
-						// BSC bodies never carry uncles, which block import continues to enforce.
-						if f.chainConfig == nil || !f.chainConfig.IsPasteur(announce.header.Number, announce.header.Time) {
-							if uncleHash == (common.Hash{}) {
-								uncleHash = types.CalcUncleHash(task.uncles[i])
-							}
-							if uncleHash != announce.header.UncleHash {
+						if uncleHash == (common.Hash{}) {
+							uncleHash = types.CalcUncleHash(task.uncles[i])
+						}
+						// After Pasteur, UncleHash is metadata; block bodies must still have no
+						// uncles. Before Pasteur, it remains the uncle-list commitment.
+						if f.chainConfig != nil && f.chainConfig.IsPasteur(announce.header.Number, announce.header.Time) {
+							if uncleHash != types.EmptyUncleHash {
 								continue
 							}
+						} else if uncleHash != announce.header.UncleHash {
+							continue
 						}
 						if txnHash == (common.Hash{}) {
 							txnHash = types.DeriveSha(types.Transactions(task.transactions[i]), trie.NewStackTrie(nil))

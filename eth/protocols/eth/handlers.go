@@ -387,10 +387,14 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 		return err
 	}
 
-	// From Pasteur (BEP-696), UncleHash carries producer metadata and no longer commits to
-	// the uncle list, so skip the uncle-root match for such blocks; the empty-uncle-list
-	// guarantee is enforced during block import.
-	if !backend.Chain().Config().IsPasteur(ann.Block.Number(), ann.Block.Time()) {
+	// After Pasteur, UncleHash is metadata; block bodies must still have no
+	// uncles. Before Pasteur, it remains the uncle-list commitment.
+	if backend.Chain().Config().IsPasteur(ann.Block.Number(), ann.Block.Time()) {
+		if len(ann.Block.Uncles()) > 0 {
+			log.Warn("Propagated block has uncles after Pasteur", "count", len(ann.Block.Uncles()))
+			return nil // TODO(karalabe): return error eventually, but wait a few releases
+		}
+	} else {
 		if hash := types.CalcUncleHash(ann.Block.Uncles()); hash != ann.Block.UncleHash() {
 			log.Warn("Propagated block has invalid uncles", "have", hash, "exp", ann.Block.UncleHash())
 			return nil // TODO(karalabe): return error eventually, but wait a few releases

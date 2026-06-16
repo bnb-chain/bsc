@@ -806,10 +806,13 @@ func (q *queue) DeliverBodies(id string, hashes eth.BlockBodyHashes, bodies []et
 		if hashes.TransactionRoots[index] != header.TxHash {
 			return errInvalidBody
 		}
-		// From Pasteur (BEP-696), UncleHash carries producer metadata and no longer commits
-		// to the uncle list, so the delivered body is matched on the transaction root alone;
-		// BSC bodies never carry uncles, which header verification continues to enforce.
-		if q.config == nil || !q.config.IsPasteur(header.Number, header.Time) {
+		// After Pasteur, UncleHash is metadata; block bodies must still have no
+		// uncles. Before Pasteur, it remains the uncle-list commitment.
+		if q.config != nil && q.config.IsPasteur(header.Number, header.Time) {
+			if hashes.UncleHashes[index] != types.EmptyUncleHash {
+				return errInvalidBody
+			}
+		} else {
 			if hashes.UncleHashes[index] != header.UncleHash {
 				return errInvalidBody
 			}

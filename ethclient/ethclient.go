@@ -199,9 +199,7 @@ func (ec *Client) getBlock(ctx context.Context, method string, args ...interface
 	if head.UncleHash == types.EmptyUncleHash && len(body.UncleHashes) > 0 {
 		return nil, errors.New("server returned non-empty uncle list but block header indicates no uncles")
 	}
-	// A non-empty UncleHash no longer implies the block has uncles: on BSC, from the Pasteur
-	// hard fork (BEP-696), UncleHash may carry producer metadata while the block has none, so
-	// the body's uncle list is authoritative and a missing list is not treated as an error.
+	// On BSC after Pasteur, a non-empty UncleHash may be producer metadata, not an uncle list.
 	if head.TxHash == types.EmptyTxsHash && len(body.Transactions) > 0 {
 		return nil, errors.New("server returned non-empty transaction list but block header indicates no transactions")
 	}
