@@ -48,6 +48,17 @@ var (
 
 	// greedyMergeOnchainCounter counts bids that went through greedy merge and were finally chosen as BUILDER BLOCK.
 	greedyMergeOnchainCounter = metrics.NewRegisteredCounter("bid/greedyMerge/onchain", nil)
+
+	// bidBlockBuildersGauge tracks the distinct registered builders that have
+	// sent BidBlock since node start (cumulative, in-memory, resets on restart).
+	bidBlockBuildersGauge = metrics.NewRegisteredGauge("bidblock/sendBidBlock/builders", nil)
+
+	// bidBlockPreCheckTimer measures SendBidBlock admission time from RPC receive
+	// to successful pre-seal verification, matching the legacy bid/preCheck scope.
+	bidBlockPreCheckTimer = metrics.NewRegisteredTimer("bidblock/sendBidBlock/preCheck", nil)
+
+	// bidBlockPreSealVerifyTimer measures only preSealVerifyBidBlock duration.
+	bidBlockPreSealVerifyTimer = metrics.NewRegisteredTimer("bidblock/sendBidBlock/preSealVerify", nil)
 )
 
 var (
@@ -146,6 +157,10 @@ type bidSimulator struct {
 	bestBidBlockMu sync.RWMutex
 	bestBidBlock   map[common.Hash]*types.DecodedBidBlock // parentHash -> best bid block
 	newBidBlockCh  chan newBidBlockPackage                // channel for incoming bid blocks
+
+	// distinct registered builders that have sent BidBlock since node start
+	bidBlockBuildersMu sync.Mutex
+	bidBlockBuilders   map[common.Address]struct{}
 }
 
 func newBidSimulator(
@@ -158,25 +173,26 @@ func newBidSimulator(
 	bidWorker bidWorker,
 ) *bidSimulator {
 	b := &bidSimulator{
-		config:        config,
-		minGasPrice:   minGasPrice,
-		chain:         eth.BlockChain(),
-		txpool:        eth.TxPool(),
-		chainConfig:   chainConfig,
-		engine:        engine,
-		bidWorker:     bidWorker,
-		exitCh:        make(chan struct{}),
-		chainHeadCh:   make(chan core.ChainHeadEvent, chainHeadChanSize),
-		builders:      make(map[common.Address]*builderclient.Client),
-		simBidCh:      make(chan *simBidReq),
-		newBidCh:      make(chan newBidPackage, 100),
-		pending:       make(map[uint64]map[common.Address]map[common.Hash]struct{}),
-		bestBid:       make(map[common.Hash]*BidRuntime),
-		bestBidToRun:  make(map[common.Hash]*types.Bid),
-		simulatingBid: make(map[common.Hash]*BidRuntime),
-		bidsToSim:     make(map[uint64][]*BidRuntime),
-		bestBidBlock:  make(map[common.Hash]*types.DecodedBidBlock),
-		newBidBlockCh: make(chan newBidBlockPackage, 100),
+		config:           config,
+		minGasPrice:      minGasPrice,
+		chain:            eth.BlockChain(),
+		txpool:           eth.TxPool(),
+		chainConfig:      chainConfig,
+		engine:           engine,
+		bidWorker:        bidWorker,
+		exitCh:           make(chan struct{}),
+		chainHeadCh:      make(chan core.ChainHeadEvent, chainHeadChanSize),
+		builders:         make(map[common.Address]*builderclient.Client),
+		simBidCh:         make(chan *simBidReq),
+		newBidCh:         make(chan newBidPackage, 100),
+		pending:          make(map[uint64]map[common.Address]map[common.Hash]struct{}),
+		bestBid:          make(map[common.Hash]*BidRuntime),
+		bestBidToRun:     make(map[common.Hash]*types.Bid),
+		simulatingBid:    make(map[common.Hash]*BidRuntime),
+		bidsToSim:        make(map[uint64][]*BidRuntime),
+		bestBidBlock:     make(map[common.Hash]*types.DecodedBidBlock),
+		newBidBlockCh:    make(chan newBidBlockPackage, 100),
+		bidBlockBuilders: make(map[common.Address]struct{}),
 	}
 	if delayLeftOver != nil {
 		b.delayLeftOver = *delayLeftOver
@@ -672,8 +688,21 @@ func (b *bidSimulator) GetBestBidBlock(parentHash common.Hash) *types.DecodedBid
 	return b.bestBidBlock[parentHash]
 }
 
+// recordBidBlockBuilder adds builder to the cumulative set of registered
+// builders that have sent BidBlock and publishes the distinct count.
+// The set is kept in memory and resets on restart.
+func (b *bidSimulator) recordBidBlockBuilder(builder common.Address) {
+	b.bidBlockBuildersMu.Lock()
+	b.bidBlockBuilders[builder] = struct{}{}
+	count := len(b.bidBlockBuilders)
+	b.bidBlockBuildersMu.Unlock()
+	bidBlockBuildersGauge.Update(int64(count))
+}
+
 // preSealVerifyBidBlock validates a BidBlock before admission.
 func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) error {
+	start := time.Now()
+	defer bidBlockPreSealVerifyTimer.UpdateSince(start)
 	parliaEngine, ok := b.engine.(*parlia.Parlia)
 	if !ok {
 		return errors.New("consensus engine is not parlia")

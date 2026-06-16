@@ -67,7 +67,6 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 		return common.Hash{}, types.NewInvalidBidError("BidBlock disabled, fallback to SendBid")
 	}
 
-	// args / args.BidBlock / args.BidBlock.Header are validated at the RPC entry (MevAPI.SendBidBlock).
 	bb := args.BidBlock
 	bidHash := bb.Hash()
 
@@ -79,6 +78,7 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 	if !miner.bidSimulator.ExistBuilder(builder) {
 		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("builder is not registered: builder=%s, bidHash=%s", builder, bidHash))
 	}
+	miner.bidSimulator.recordBidBlockBuilder(builder)
 
 	// Check permission before CheckPending so rejected BidBlocks do not use quota.
 	if !miner.worker.permMgr.IsAllowed(builder) {
@@ -132,6 +132,9 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 			"bidHash", decoded.Hash(),
 			"err", err)
 		return common.Hash{}, types.NewBidBlockPreSealVerifyError(fmt.Sprintf("pre-seal verify failed: bidHash=%s, err=%v", bidHash, err))
+	}
+	if receiveTime, ok := ctx.Value("receiveTime").(int64); ok {
+		bidBlockPreCheckTimer.UpdateSince(time.UnixMilli(receiveTime))
 	}
 
 	if err := miner.bidSimulator.sendBidBlock(ctx, decoded); err != nil {

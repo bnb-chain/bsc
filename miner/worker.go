@@ -77,6 +77,7 @@ var (
 	inturnBlocksGauge    = metrics.NewRegisteredGauge("worker/inturnBlocks", nil)
 	bestBidGasUsedGauge  = metrics.NewRegisteredGauge("worker/bestBidGasUsed", nil)  // MGas
 	bestWorkGasUsedGauge = metrics.NewRegisteredGauge("worker/bestWorkGasUsed", nil) // MGas
+	bidBlockExistGauge   = metrics.NewRegisteredGauge("worker/bidBlockExist", nil)
 	bidBlockCommitGauge  = metrics.NewRegisteredGauge("worker/bidBlockCommit", nil)
 	bidBlockGasUsedGauge = metrics.NewRegisteredGauge("worker/bidBlockGasUsed", nil) // MGas
 	bidBlockRevokeGauge  = metrics.NewRegisteredGauge("worker/bidBlockRevoke", nil)  // cumulative revoke count
@@ -1466,6 +1467,9 @@ LOOP:
 
 		// Stage 1 candidate B — SendBidBlock.
 		bestBidBlock = w.bidFetcher.GetBestBidBlock(parentHash)
+		if bestBidBlock != nil {
+			bidBlockExistGauge.Inc(1)
+		}
 	}
 
 	if bestBidBlock != nil && w.selectBidBlock(bestBidBlock, simBidBlockReward, simBidValidatorReward, bestReward) {
