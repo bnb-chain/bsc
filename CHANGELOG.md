@@ -1,4 +1,92 @@
 # Changelog
+## v1.7.4
+v1.7.4 is for BSC Chapel testnet [Pasteur hardfork](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-673.md),the hard fork time is 2026-07-XX 02:30:00 AM UTC
+
+### Pasteur Hardfork
+- [\#3623](https://github.com/bnb-chain/bsc/pull/3623) core/vm: reject duplicate bridge validators at Pasteur
+- [\#3691](https://github.com/bnb-chain/bsc/pull/3691) miner: support builder-proposed block with validator blind signing
+- [\#3717](https://github.com/bnb-chain/bsc/pull/3717) params: move Pasteur next to Mendel
+- [\#3721](https://github.com/bnb-chain/bsc/pull/3721) core/systemcontracts: introduce Pasteur hardfork system-contract upgrade
+- [\#3727](https://github.com/bnb-chain/bsc/pull/3727) core/systemcontracts: point Pasteur CommitUrl to genesis-contract v1.2.6
+
+### BUGFIX
+- [\#3668](https://github.com/bnb-chain/bsc/pull/3668) eth/handler.go: add verify bal
+- [\#3671](https://github.com/bnb-chain/bsc/pull/3671) eth/protocols/bsc: cap GetBlocksByRange response size
+- [\#3672](https://github.com/bnb-chain/bsc/pull/3672) eth/protocols/bsc: rate-limit incoming votes by vote count
+- [\#3680](https://github.com/bnb-chain/bsc/pull/3680) internal/ethapi: limit number of getProofs keys
+- [\#3681](https://github.com/bnb-chain/bsc/pull/3681) internal/ethapi: limit number of calls to eth_simulateV1
+- [\#3682](https://github.com/bnb-chain/bsc/pull/3682) internal/ethapi: fix gas cap for eth_simulateV1
+- [\#3683](https://github.com/bnb-chain/bsc/pull/3683) core: fix txLookupLock mutex leak on error returns in reorg()
+- [\#3684](https://github.com/bnb-chain/bsc/pull/3684) cmd, core, eth, tests: prevent state flushing in RPC
+- [\#3685](https://github.com/bnb-chain/bsc/pull/3685) core/tracing: fix nonce revert edge case
+- [\#3686](https://github.com/bnb-chain/bsc/pull/3686) eth/filters: fix race in pending tx and new heads subscriptions
+- [\#3687](https://github.com/bnb-chain/bsc/pull/3687) core, internal/ethapi: fix incorrect max-initcode RPC error mapping
+- [\#3688](https://github.com/bnb-chain/bsc/pull/3688) eth/filters: rangeLogs should error on invalid block range
+- [\#3689](https://github.com/bnb-chain/bsc/pull/3689) eth/filters: fix race in NewVotes and NewFinalizedHeaders
+- [\#3692](https://github.com/bnb-chain/bsc/pull/3692) eth/filters: fix source leak when New Filters
+- [\#3700](https://github.com/bnb-chain/bsc/pull/3700) crypto: add hash length check in nocgo VerifySignature
+- [\#3701](https://github.com/bnb-chain/bsc/pull/3701) p2p/discover: copy buffer before sending read errors to unhandled
+- [\#3702](https://github.com/bnb-chain/bsc/pull/3702) p2p/discover: fix timeout loop early exit when removing expired matchers
+- [\#3703](https://github.com/bnb-chain/bsc/pull/3703) eth/tracers/logger: fix exclude address list
+- [\#3705](https://github.com/bnb-chain/bsc/pull/3705) eth/protocols/eth: stop serving on unavailable responses
+- [\#3706](https://github.com/bnb-chain/bsc/pull/3706) triedb/pathdb: fix lookup sentinel collision with zero disk layer root
+- [\#3707](https://github.com/bnb-chain/bsc/pull/3707) eth/tracers: forward OnSystemCall hooks through mux
+- [\#3708](https://github.com/bnb-chain/bsc/pull/3708) eth/downloader: drop invalid peers + fix deliver index
+- [\#3709](https://github.com/bnb-chain/bsc/pull/3709) core/state: fix StateDB Reader error discarded after Commit
+- [\#3710](https://github.com/bnb-chain/bsc/pull/3710) p2p/discover: decouple nodeFeed from Table mutex in waitForNodes
+- [\#3711](https://github.com/bnb-chain/bsc/pull/3711) core/rawdb: fix file descriptor leak in freezer error paths
+- [\#3712](https://github.com/bnb-chain/bsc/pull/3712) core/rawdb: fsync temp file before rename in copyFrom
+- [\#3718](https://github.com/bnb-chain/bsc/pull/3718) fix: nocgo sigToPub hash check + pathdb zero-base regression test
+
+### IMPROVEMENT
+- [\#3669](https://github.com/bnb-chain/bsc/pull/3669) miner: reduce local mining time for last block in one turn
+- [\#3694](https://github.com/bnb-chain/bsc/pull/3694) consensus/parlia: extract VerifyUnsealedHeader from verifyHeader
+
+### CLEAN UP
+- [\#3670](https://github.com/bnb-chain/bsc/pull/3670) triedb/pathdb: remove legacy field JournalFilePath
+- [\#3678](https://github.com/bnb-chain/bsc/pull/3678) miner: remove optional transaction gas limit cap
+- [\#3690](https://github.com/bnb-chain/bsc/pull/3690) all: remove BEP-592 non-consensus block access list
+- [\#3716](https://github.com/bnb-chain/bsc/pull/3716) ethdb,trie: remove multidb code from bsc
+- [\#3720](https://github.com/bnb-chain/bsc/pull/3720) core/rawdb: cleanup bep-592 bal key related
+- [\#3722](https://github.com/bnb-chain/bsc/pull/3722) core/txpool/legacypool: remove overflowpool for txs
+- [\#3728](https://github.com/bnb-chain/bsc/pull/3728) beacon, cmd: remove fake-beacon op-stack shim (revert #2678)
+
+#### Deprecated Flags & Config Fields
+The following flags and config fields are removed or deprecated in this release. Please update your node configuration accordingly before upgrading:
+
+**CLI Flags**
+
+| Flag | Change | Note |
+|---|---|---|
+| `--journalfile` | Deprecated (no effect) | Remove from your startup script ([#3670](https://github.com/bnb-chain/bsc/pull/3670)) |
+| `--miner.txgaslimit` | Deprecated (no effect) | Per-transaction gas limit is now enforced by EIP-7825 ([#3678](https://github.com/bnb-chain/bsc/pull/3678)) |
+| `--enablebal` | Deprecated (no effect) | BEP-592 block access list has been removed ([#3690](https://github.com/bnb-chain/bsc/pull/3690)) |
+| `--multidatabase` | Removed | Multi-database support is fully removed ([#3716](https://github.com/bnb-chain/bsc/pull/3716)) |
+| `--txpool.overflowpoolslots` | Deprecated (no effect) | Overflow pool has been removed ([#3722](https://github.com/bnb-chain/bsc/pull/3722)) |
+| `--fake-beacon` | Removed | fake-beacon op-stack shim removed ([#3728](https://github.com/bnb-chain/bsc/pull/3728)) |
+| `--fake-beacon.addr` | Removed | See `--fake-beacon` ([#3728](https://github.com/bnb-chain/bsc/pull/3728)) |
+| `--fake-beacon.port` | Removed | See `--fake-beacon` ([#3728](https://github.com/bnb-chain/bsc/pull/3728)) |
+
+**Config File (TOML) Fields**
+
+| Field | Change | Note |
+|---|---|---|
+| `[Eth] EnableBAL` | **Removed** — causes load error if present | Remove this field from your config.toml before upgrading ([#3690](https://github.com/bnb-chain/bsc/pull/3690)) |
+| `[TxPool] OverflowPoolSlots` | Deprecated — silently ignored | Safe to leave but recommend removing ([#3722](https://github.com/bnb-chain/bsc/pull/3722)) |
+  
+## MetaInfo
+Mandatory Update Required: Yes
+Target Audience: all BSC Testnet users
+Procedure: before upgrading, review the deprecated flags and config fields listed above and confirm their removal has no impact on your node; once confirmed, binary replacement is sufficient:
+  - `--journalfile`: no longer has any effect, safe to remove
+  - `--miner.txgaslimit`: per-transaction gas limit is now enforced by EIP-7825; confirm EIP-7825 behaviour meets your requirements before removing
+  - `--enablebal`: no longer has any effect, safe to remove
+  - `--multidatabase`: single-database mode is now the only option; confirm your data directory is compatible
+  - `--txpool.overflowpoolslots`: overflow pool is removed; review your txpool capacity settings if you relied on it
+  - `[Eth] EnableBAL` in config.toml: **must be removed before upgrading** — will cause a startup error if left in
+  - `[TxPool] OverflowPoolSlots` in config.toml: silently ignored, but recommend removing to keep config clean
+Schedule(Timeline): TBD
+
 ## v1.7.3
 v1.7.3 is a maintenance release, which mainly fixes online block pruning and kvdb abnormal continuous growth, pls refer change log for detail.
 
