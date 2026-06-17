@@ -259,12 +259,6 @@ var (
 		utils.MetricsInfluxDBOrganizationFlag,
 		utils.StateSizeTrackingFlag,
 	}
-
-	fakeBeaconFlags = []cli.Flag{
-		utils.FakeBeaconEnabledFlag,
-		utils.FakeBeaconAddrFlag,
-		utils.FakeBeaconPortFlag,
-	}
 )
 
 var app = flags.NewApp("the go-ethereum command line interface")
@@ -321,7 +315,6 @@ func init() {
 		consoleFlags,
 		debug.Flags,
 		metricsFlags,
-		fakeBeaconFlags,
 	)
 	flags.AutoEnvVars(app.Flags, "GETH")
 

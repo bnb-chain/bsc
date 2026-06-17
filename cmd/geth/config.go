@@ -35,7 +35,6 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/accounts/scwallet"
 	"github.com/ethereum/go-ethereum/accounts/usbwallet"
-	"github.com/ethereum/go-ethereum/beacon/fakebeacon"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -110,11 +109,10 @@ type ethstatsConfig struct {
 }
 
 type gethConfig struct {
-	Eth        ethconfig.Config
-	Node       node.Config
-	Ethstats   ethstatsConfig
-	Metrics    metrics.Config
-	FakeBeacon fakebeacon.Config
+	Eth      ethconfig.Config
+	Node     node.Config
+	Ethstats ethstatsConfig
+	Metrics  metrics.Config
 }
 
 func loadConfig(file string, cfg *gethConfig) error {
@@ -354,16 +352,6 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		for _, line := range strings.Split(banner, "\n") {
 			log.Warn(line)
 		}
-	}
-
-	if ctx.IsSet(utils.FakeBeaconAddrFlag.Name) {
-		cfg.FakeBeacon.Addr = ctx.String(utils.FakeBeaconAddrFlag.Name)
-	}
-	if ctx.IsSet(utils.FakeBeaconPortFlag.Name) {
-		cfg.FakeBeacon.Port = ctx.Int(utils.FakeBeaconPortFlag.Name)
-	}
-	if cfg.FakeBeacon.Enable || ctx.IsSet(utils.FakeBeaconEnabledFlag.Name) {
-		go fakebeacon.NewService(&cfg.FakeBeacon, backend).Run()
 	}
 
 	git, _ := version.VCS()
