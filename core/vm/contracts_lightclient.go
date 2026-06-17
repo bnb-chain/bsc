@@ -134,33 +134,34 @@ func (c *iavlMerkleProofValidate) Name() string {
 	return "IAVL_MERKLE_PROOF_VALIDATE"
 }
 
-// tmHeaderValidateNano implemented as a native contract.
-type tmHeaderValidateNano struct{}
+// tmHeaderValidateDeprecated implemented as a native contract that disables the
+// legacy v1 Tendermint header-validate precompile (returns an error for any input).
+type tmHeaderValidateDeprecated struct{}
 
-func (c *tmHeaderValidateNano) RequiredGas(input []byte) uint64 {
+func (c *tmHeaderValidateDeprecated) RequiredGas(input []byte) uint64 {
 	return params.TendermintHeaderValidateGas
 }
 
-func (c *tmHeaderValidateNano) Run(input []byte) (result []byte, err error) {
-	return nil, errors.New("suspend")
+func (c *tmHeaderValidateDeprecated) Run(input []byte) (result []byte, err error) {
+	return nil, errors.New("deprecated")
 }
 
-func (c *tmHeaderValidateNano) Name() string {
-	return "HEADER_VALIDATE_NANO"
+func (c *tmHeaderValidateDeprecated) Name() string {
+	return "HEADER_VALIDATE_DEPRECATED"
 }
 
-type iavlMerkleProofValidateNano struct{}
+type iavlMerkleProofValidateDeprecated struct{}
 
-func (c *iavlMerkleProofValidateNano) RequiredGas(_ []byte) uint64 {
+func (c *iavlMerkleProofValidateDeprecated) RequiredGas(_ []byte) uint64 {
 	return params.IAVLMerkleProofValidateGas
 }
 
-func (c *iavlMerkleProofValidateNano) Run(_ []byte) (result []byte, err error) {
-	return nil, errors.New("suspend")
+func (c *iavlMerkleProofValidateDeprecated) Run(_ []byte) (result []byte, err error) {
+	return nil, errors.New("deprecated")
 }
 
-func (c *iavlMerkleProofValidateNano) Name() string {
-	return "IAVL_MERKLE_PROOF_VALIDATE_NANO"
+func (c *iavlMerkleProofValidateDeprecated) Name() string {
+	return "IAVL_MERKLE_PROOF_VALIDATE_DEPRECATED"
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------
@@ -444,6 +445,11 @@ func (c *cometBFTLightBlockValidateHertz) Name() string {
 
 type cometBFTLightBlockValidatePasteur struct {
 	cometBFTLightBlockValidate
+}
+
+// Price per input byte so cost scales with the validator/signature count.
+func (c *cometBFTLightBlockValidatePasteur) RequiredGas(input []byte) uint64 {
+	return params.CometBFTLightBlockValidateGas + uint64(len(input))*params.CometBFTLightBlockValidatePerByteGas
 }
 
 func (c *cometBFTLightBlockValidatePasteur) Run(input []byte) (result []byte, err error) {

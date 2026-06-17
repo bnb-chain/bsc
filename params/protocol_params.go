@@ -143,9 +143,10 @@ const (
 
 	// Precompiled contract gas prices
 
-	TendermintHeaderValidateGas   uint64 = 3000 // Gas for validate tendermiint consensus state
-	IAVLMerkleProofValidateGas    uint64 = 3000 // Gas for validate merkle proof
-	CometBFTLightBlockValidateGas uint64 = 3000 // Gas for validate cometBFT light block
+	TendermintHeaderValidateGas          uint64 = 3000 // Gas for validate tendermiint consensus state
+	IAVLMerkleProofValidateGas           uint64 = 3000 // Gas for validate merkle proof
+	CometBFTLightBlockValidateGas        uint64 = 3000 // Base gas for validate cometBFT light block
+	CometBFTLightBlockValidatePerByteGas uint64 = 16   // Per-input-byte gas for cometBFT light block (Pasteur)
 
 	EcrecoverGas                uint64 = 3000  // Elliptic curve sender recovery gas price
 	Sha256BaseGas               uint64 = 60    // Base price for a SHA256 operation

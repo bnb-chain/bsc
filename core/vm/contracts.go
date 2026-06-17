@@ -112,8 +112,8 @@ var PrecompiledContractsNano = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x8}): &bn256PairingIstanbul{},
 	common.BytesToAddress([]byte{0x9}): &blake2F{},
 
-	common.BytesToAddress([]byte{0x64}): &tmHeaderValidateNano{},
-	common.BytesToAddress([]byte{0x65}): &iavlMerkleProofValidateNano{},
+	common.BytesToAddress([]byte{0x64}): &tmHeaderValidateDeprecated{},
+	common.BytesToAddress([]byte{0x65}): &iavlMerkleProofValidateDeprecated{},
 }
 
 var PrecompiledContractsMoran = PrecompiledContracts{
@@ -371,8 +371,8 @@ var PrecompiledContractsPasteur = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x10}): &bls12381MapG1{},
 	common.BytesToAddress([]byte{0x11}): &bls12381MapG2{},
 
-	common.BytesToAddress([]byte{0x64}): &tmHeaderValidate{},
-	common.BytesToAddress([]byte{0x65}): &iavlMerkleProofValidatePlato{},
+	common.BytesToAddress([]byte{0x64}): &tmHeaderValidateDeprecated{},
+	common.BytesToAddress([]byte{0x65}): &iavlMerkleProofValidateDeprecated{},
 	common.BytesToAddress([]byte{0x66}): &blsSignatureVerify{},
 	common.BytesToAddress([]byte{0x67}): &cometBFTLightBlockValidatePasteur{},
 	common.BytesToAddress([]byte{0x68}): &verifyDoubleSignEvidence{},
