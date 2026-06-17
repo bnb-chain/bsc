@@ -58,12 +58,14 @@ func (miner *Miner) SetBidBlockPermission(builder common.Address, allowed bool) 
 	miner.worker.permMgr.SetAllowed(builder, allowed)
 }
 
+// bidBlockEnabled reports whether SendBidBlock is accepted.
 func (miner *Miner) bidBlockEnabled() bool {
-	return *miner.worker.config.Mev.Enabled && *miner.worker.config.Mev.BidBlockEnabled
+	if !*miner.worker.config.Mev.Enabled || !*miner.worker.config.Mev.BidBlockEnabled {
+		return false
+	}
+	return miner.bidBlockPasteurActive()
 }
 
-// bidBlockPasteurActive reports whether the BEP-675 activation point (Pasteur
-// fork) is reached at the current chain head.
 func (miner *Miner) bidBlockPasteurActive() bool {
 	head := miner.worker.chain.CurrentBlock()
 	return head != nil && miner.worker.chainConfig.IsPasteur(head.Number, head.Time)
@@ -72,11 +74,6 @@ func (miner *Miner) bidBlockPasteurActive() bool {
 func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) (common.Hash, error) {
 	if !miner.bidBlockEnabled() {
 		return common.Hash{}, types.NewInvalidBidError("BidBlock disabled, fallback to SendBid")
-	}
-
-	// BEP-675 activates at the Pasteur fork.
-	if !miner.bidBlockPasteurActive() {
-		return common.Hash{}, types.NewInvalidBidError("BidBlock not active before Pasteur, fallback to SendBid")
 	}
 
 	bb := args.BidBlock
@@ -254,7 +251,7 @@ func (miner *Miner) MevParams() *types.MevParams {
 		GasCeil:               miner.worker.config.GasCeil,
 		GasPrice:              miner.worker.config.GasPrice,
 		BuilderFeeCeil:        builderFeeCeil,
-		BidBlockEnabled:       miner.bidBlockEnabled() && miner.bidBlockPasteurActive(),
+		BidBlockEnabled:       miner.bidBlockEnabled(),
 		Version:               version.Semantic,
 	}
 }
