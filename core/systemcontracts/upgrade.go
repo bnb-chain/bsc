@@ -1064,12 +1064,12 @@ func init() {
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(StakeHubContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/3f02a2e834308eb989ea230cd3b90ea8c47e6699",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/041881a02475638b19f3d840871b7621cdebd8f8",
 				Code:         pasteur.MainnetStakeHubContract,
 			},
 			{
 				ContractAddr: common.HexToAddress(GovernorContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/3f02a2e834308eb989ea230cd3b90ea8c47e6699",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/041881a02475638b19f3d840871b7621cdebd8f8",
 				Code:         pasteur.MainnetGovernorContract,
 			},
 		},
@@ -1080,12 +1080,12 @@ func init() {
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(StakeHubContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/3f02a2e834308eb989ea230cd3b90ea8c47e6699",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/041881a02475638b19f3d840871b7621cdebd8f8",
 				Code:         pasteur.ChapelStakeHubContract,
 			},
 			{
 				ContractAddr: common.HexToAddress(GovernorContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/3f02a2e834308eb989ea230cd3b90ea8c47e6699",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/041881a02475638b19f3d840871b7621cdebd8f8",
 				Code:         pasteur.ChapelGovernorContract,
 			},
 		},
@@ -1096,12 +1096,12 @@ func init() {
 		Configs: []*UpgradeConfig{
 			{
 				ContractAddr: common.HexToAddress(StakeHubContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/3f02a2e834308eb989ea230cd3b90ea8c47e6699",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/041881a02475638b19f3d840871b7621cdebd8f8",
 				Code:         pasteur.RialtoStakeHubContract,
 			},
 			{
 				ContractAddr: common.HexToAddress(GovernorContract),
-				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/3f02a2e834308eb989ea230cd3b90ea8c47e6699",
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/041881a02475638b19f3d840871b7621cdebd8f8",
 				Code:         pasteur.RialtoGovernorContract,
 			},
 		},
