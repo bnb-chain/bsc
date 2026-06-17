@@ -54,8 +54,9 @@ var (
 	defaultBuilderFeeCeil      = "0"
 	defaultValidatorCommission = uint64(100)
 	defaultMaxBidsPerBuilder   = uint32(2) // Simple strategy: send one bid early, another near deadline
-	// TODO: default to true before BidBlock launches on mainnet.
-	defaultBidBlockEnabled = false
+	// MEV validators accept SendBidBlock by default; the RPC stays gated on the
+	// Pasteur fork and can be disabled via Mev.BidBlockEnabled=false.
+	defaultBidBlockEnabled = true
 )
 
 // Config is the configuration parameters of mining.
