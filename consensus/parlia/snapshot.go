@@ -576,6 +576,14 @@ func parseTurnLength(header *types.Header, chainConfig *params.ChainConfig, epoc
 		return nil, errInvalidTurnLength
 	}
 	turnLength := header.Extra[pos]
+	// A zero turn-length is never valid and, if accepted, would propagate into
+	// Snapshot.TurnLength and cause an integer divide-by-zero panic in
+	// inturnValidator/backOffTime. This check must live here (the header
+	// verification path) because verifyTurnLength only runs in Finalize and is
+	// bypassed by header-only sync.
+	if turnLength == 0 {
+		return nil, errInvalidTurnLength
+	}
 	return &turnLength, nil
 }
 
