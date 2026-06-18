@@ -320,10 +320,9 @@ func TestBidBlockAdmission_RevokedDoesNotConsumeQuota(t *testing.T) {
 
 	other := common.HexToAddress("0x2")
 	otherHash := common.HexToHash("0xbeef")
-	if err := b.CheckPending(blockNum, other, otherHash); err != nil {
-		t.Fatalf("active builder should pass CheckPending: %v", err)
+	if err := b.ReservePending(blockNum, other, otherHash); err != nil {
+		t.Fatalf("active builder should pass ReservePending: %v", err)
 	}
-	b.AddPending(blockNum, other, otherHash)
 
 	b.pendingMu.RLock()
 	otherCount := len(b.pending[blockNum][other])
