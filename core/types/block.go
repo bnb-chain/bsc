@@ -572,12 +572,8 @@ func (b *Block) WithSeal(header *Header) *Block {
 		transactions: b.transactions,
 		uncles:       b.uncles,
 		withdrawals:  b.withdrawals,
-<<<<<<< HEAD
-		witness:      b.witness,
-		sidecars:     b.sidecars,
-=======
 		accessList:   b.accessList,
->>>>>>> geth-v1.17.3
+		sidecars:     b.sidecars,
 	}
 }
 
@@ -589,12 +585,8 @@ func (b *Block) WithBody(body Body) *Block {
 		transactions: slices.Clone(body.Transactions),
 		uncles:       make([]*Header, len(body.Uncles)),
 		withdrawals:  slices.Clone(body.Withdrawals),
-<<<<<<< HEAD
-		witness:      b.witness,
-		sidecars:     b.sidecars,
-=======
 		accessList:   b.accessList,
->>>>>>> geth-v1.17.3
+		sidecars:     b.sidecars,
 	}
 	for i := range body.Uncles {
 		block.uncles[i] = CopyHeader(body.Uncles[i])
@@ -602,14 +594,13 @@ func (b *Block) WithBody(body Body) *Block {
 	return block
 }
 
-<<<<<<< HEAD
 // WithWithdrawals returns a copy of the block containing the given withdrawals.
 func (b *Block) WithWithdrawals(withdrawals []*Withdrawal) *Block {
 	block := &Block{
 		header:       b.header,
 		transactions: b.transactions,
 		uncles:       b.uncles,
-		witness:      b.witness,
+		accessList:   b.accessList,
 		sidecars:     b.sidecars,
 	}
 	if withdrawals != nil {
@@ -626,7 +617,7 @@ func (b *Block) WithSidecars(sidecars BlobSidecars) *Block {
 		transactions: b.transactions,
 		uncles:       b.uncles,
 		withdrawals:  b.withdrawals,
-		witness:      b.witness,
+		accessList:   b.accessList,
 	}
 	if sidecars != nil {
 		block.sidecars = make(BlobSidecars, len(sidecars))
@@ -635,8 +626,6 @@ func (b *Block) WithSidecars(sidecars BlobSidecars) *Block {
 	return block
 }
 
-func (b *Block) WithWitness(witness *ExecutionWitness) *Block {
-=======
 // WithAccessList returns a copy of the block with the given access list embedded.
 func (b *Block) WithAccessList(accessList *bal.BlockAccessList) *Block {
 	return b.WithAccessListUnsafe(accessList.Copy())
@@ -646,18 +635,13 @@ func (b *Block) WithAccessList(accessList *bal.BlockAccessList) *Block {
 // embedded. Note that the access list is not deep-copied; use WithAccessList
 // if the provided list may be modified by other actors.
 func (b *Block) WithAccessListUnsafe(accessList *bal.BlockAccessList) *Block {
->>>>>>> geth-v1.17.3
 	return &Block{
 		header:       b.header,
 		transactions: b.transactions,
 		uncles:       b.uncles,
 		withdrawals:  b.withdrawals,
-<<<<<<< HEAD
-		witness:      witness,
-		sidecars:     b.sidecars,
-=======
 		accessList:   accessList,
->>>>>>> geth-v1.17.3
+		sidecars:     b.sidecars,
 	}
 }
 

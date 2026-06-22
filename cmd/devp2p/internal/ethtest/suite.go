@@ -35,10 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/rlp"
-<<<<<<< HEAD
-=======
 	"github.com/ethereum/go-ethereum/trie"
->>>>>>> geth-v1.17.3
 	"github.com/holiman/uint256"
 )
 
@@ -447,7 +444,7 @@ func (s *Suite) TestGetReceipts(t *utesting.T) {
 	}
 	if conn.negotiatedProtoVersion < eth.ETH70 {
 		// Create block bodies request.
-		req := &eth.GetReceiptsPacket69{
+		req := &eth.GetReceiptsPacket68{
 			RequestId:          66,
 			GetReceiptsRequest: (eth.GetReceiptsRequest)(hashes),
 		}
@@ -455,7 +452,7 @@ func (s *Suite) TestGetReceipts(t *utesting.T) {
 			t.Fatalf("could not write to connection: %v", err)
 		}
 		// Wait for response.
-		resp := new(eth.ReceiptsPacket69)
+		resp := new(eth.ReceiptsPacket[*eth.ReceiptList68])
 		if err := conn.ReadMsg(ethProto, eth.ReceiptsMsg, &resp); err != nil {
 			t.Fatalf("error reading block receipts msg: %v", err)
 		}
@@ -489,12 +486,6 @@ func (s *Suite) TestGetReceipts(t *utesting.T) {
 	}
 }
 
-<<<<<<< HEAD
-	// Create receipts request.
-	req := &eth.GetReceiptsPacket{
-		RequestId:          66,
-		GetReceiptsRequest: (eth.GetReceiptsRequest)(hashes),
-=======
 func (s *Suite) TestGetLargeReceipts(t *utesting.T) {
 	t.Log(`This test sends GetReceipts requests to the node for large receipt (>10MiB) in the test chain.
 	This test is meaningful only if the client supports protocol version ETH70 or higher 
@@ -502,19 +493,12 @@ func (s *Suite) TestGetLargeReceipts(t *utesting.T) {
 	conn, err := s.dialAndPeer(nil)
 	if err != nil {
 		t.Fatalf("peering failed: %v", err)
->>>>>>> geth-v1.17.3
 	}
 	defer conn.Close()
 
 	if conn.negotiatedProtoVersion < eth.ETH70 || s.chain.txInfo.LargeReceiptBlock == nil {
 		return
 	}
-<<<<<<< HEAD
-	// Wait for response.
-	resp := new(eth.ReceiptsPacket[*eth.ReceiptList68])
-	if err := conn.ReadMsg(ethProto, eth.ReceiptsMsg, &resp); err != nil {
-		t.Fatalf("error reading block bodies msg: %v", err)
-=======
 
 	// Find block with large receipt.
 	// Place the large receipt block hash in the middle of the query
@@ -530,7 +514,6 @@ func (s *Suite) TestGetLargeReceipts(t *utesting.T) {
 		blocks = append(blocks, block.Hash())
 		receiptHashes = append(receiptHashes, block.Header().ReceiptHash)
 		receipts = append(receipts, &eth.ReceiptList{})
->>>>>>> geth-v1.17.3
 	}
 
 	incomplete := false
@@ -563,10 +546,6 @@ func (s *Suite) TestGetLargeReceipts(t *utesting.T) {
 
 		incomplete = resp.LastBlockIncomplete
 	}
-<<<<<<< HEAD
-	if resp.List.Len() != len(req.GetReceiptsRequest) {
-		t.Fatalf("wrong receipts in response: expected %d receipts, got %d", len(req.GetReceiptsRequest), resp.List.Len())
-=======
 
 	hasher := trie.NewStackTrie(nil)
 	hashes := make([]common.Hash, len(receipts))
@@ -578,7 +557,6 @@ func (s *Suite) TestGetLargeReceipts(t *utesting.T) {
 		if receiptHashes[i] != hash {
 			t.Fatalf("wrong receipt root: want %x, got %x", receiptHashes[i], hash)
 		}
->>>>>>> geth-v1.17.3
 	}
 }
 

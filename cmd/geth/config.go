@@ -37,17 +37,10 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/usbwallet"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
-<<<<<<< HEAD
 	"github.com/ethereum/go-ethereum/core/rawdb"
-=======
->>>>>>> geth-v1.17.3
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
-<<<<<<< HEAD
 	"github.com/ethereum/go-ethereum/internal/ethapi"
-=======
-	"github.com/ethereum/go-ethereum/eth/syncer"
->>>>>>> geth-v1.17.3
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/internal/telemetry/tracesetup"
 	"github.com/ethereum/go-ethereum/internal/version"
@@ -301,7 +294,6 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		v := ctx.Uint64(utils.OverrideUBT.Name)
 		cfg.Eth.OverrideUBT = &v
 	}
-<<<<<<< HEAD
 	if ctx.IsSet(utils.OverrideFullImmutabilityThreshold.Name) {
 		params.FullImmutabilityThreshold = ctx.Uint64(utils.OverrideFullImmutabilityThreshold.Name)
 		downloader.FullMaxForkAncestry = ctx.Uint64(utils.OverrideFullImmutabilityThreshold.Name)
@@ -319,11 +311,6 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	if ctx.IsSet(utils.OverrideFixedTurnLength.Name) {
 		params.FixedTurnLength = ctx.Uint64(utils.OverrideFixedTurnLength.Name)
 	}
-=======
-
-	// Start metrics export if enabled.
-	utils.SetupMetrics(&cfg.Metrics)
->>>>>>> geth-v1.17.3
 
 	// Setup OpenTelemetry reporting if enabled.
 	if err := tracesetup.SetupTelemetry(cfg.Node.OpenTelemetry, stack); err != nil {
@@ -358,19 +345,6 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	if cfg.Ethstats.URL != "" {
 		utils.RegisterEthStatsService(stack, backend, cfg.Ethstats.URL)
 	}
-
-	// Configure synchronization override service
-	syncConfig := syncer.Config{
-		ExitWhenSynced: ctx.Bool(utils.ExitWhenSyncedFlag.Name),
-	}
-	if ctx.IsSet(utils.SyncTargetFlag.Name) {
-		target := ctx.String(utils.SyncTargetFlag.Name)
-		if !common.IsHexHash(target) {
-			utils.Fatalf("sync target hash is not a valid hex hash: %s", target)
-		}
-		syncConfig.TargetBlock = common.HexToHash(target)
-	}
-	utils.RegisterSyncOverrideService(stack, eth, syncConfig)
 
 	if ctx.Bool(utils.DeveloperFlag.Name) {
 		// Start dev mode.
@@ -431,7 +405,7 @@ func applyMetricConfig(ctx *cli.Context, cfg *gethConfig) {
 		cfg.Metrics.Enabled = ctx.Bool(utils.MetricsEnabledFlag.Name)
 	}
 	if ctx.IsSet(utils.MetricsEnabledExpensiveFlag.Name) {
-		log.Warn("Expensive metrics will remain in BSC and may be removed in the future", "flag", utils.MetricsEnabledExpensiveFlag.Name)
+		log.Warn("Expensive metrics are collected by default, please remove this flag", "flag", utils.MetricsEnabledExpensiveFlag.Name)
 	}
 	if ctx.IsSet(utils.MetricsHTTPFlag.Name) {
 		cfg.Metrics.HTTP = ctx.String(utils.MetricsHTTPFlag.Name)

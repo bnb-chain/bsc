@@ -126,14 +126,7 @@ type EVM struct {
 	// jumpDests stores results of JUMPDEST analysis.
 	jumpDests JumpDestCache
 
-<<<<<<< HEAD
-	hasher    crypto.KeccakState // Keccak256 hasher instance shared across opcodes
-	hasherBuf common.Hash        // Keccak256 hasher result array shared across opcodes
-
-	readOnly   bool
-=======
 	readOnly   bool   // Whether to throw on stateful modifications
->>>>>>> geth-v1.17.3
 	returnData []byte // Last CALL's return data for subsequent reuse
 
 	arena *stackArena

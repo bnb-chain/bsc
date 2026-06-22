@@ -145,12 +145,7 @@ type StateDB struct {
 	journal *journal
 
 	// State witness if cross validation is needed
-<<<<<<< HEAD
-	witness      *stateless.Witness // TODO(Nathan): more define the relation with `noTrie`
-	witnessStats *stateless.WitnessStats
-=======
-	witness *stateless.Witness
->>>>>>> geth-v1.17.3
+	witness *stateless.Witness // TODO(Nathan): more define the relation with `noTrie`
 
 	// Measurements gathered during execution for debugging purposes
 	AccountReads   time.Duration
@@ -219,15 +214,11 @@ func (s *StateDB) SetNeedBadSharedStorage(needBadSharedStorage bool) {
 // StartPrefetcher initializes a new trie prefetcher to pull in nodes from the
 // state trie concurrently while the state is mutated so that when we reach the
 // commit phase, most of the needed data is already hot.
-<<<<<<< HEAD
-func (s *StateDB) StartPrefetcher(namespace string, witness *stateless.Witness, witnessStats *stateless.WitnessStats) {
+func (s *StateDB) StartPrefetcher(namespace string, witness *stateless.Witness) {
 	if s.db.NoTries() {
 		return
 	}
 
-=======
-func (s *StateDB) StartPrefetcher(namespace string, witness *stateless.Witness) {
->>>>>>> geth-v1.17.3
 	// Terminate any previously running prefetcher
 	s.StopPrefetcher()
 
@@ -713,7 +704,6 @@ func (s *StateDB) CreateContract(addr common.Address) {
 	}
 }
 
-<<<<<<< HEAD
 // StateForPrefetch creates a mirrored StateDB instance that shares the same
 // underlying state reader and cache as the current one. It is typically used
 // for state prefetching.
@@ -721,11 +711,16 @@ func (s *StateDB) CreateContract(addr common.Address) {
 // Note: If the reader implements readerWithCacheStats, a new wrapper is created
 // to maintain independent cache statistics while reusing the same cache source.
 func (s *StateDB) StateForPrefetch() *StateDB {
-	reader := s.reader
-	if readerWithCacheStats, ok := s.reader.(*readerWithCacheStats); ok {
-		reader = newReaderWithCacheStats(readerWithCacheStats.readerWithCache)
+	prefetchReader := s.reader
+	// ReadersWithCacheStats returns a *reader whose StateReader is *stateReaderWithStats
+	// wrapping a shared *stateReaderWithCache. Create a sibling reader that shares
+	// the same cache but tracks independent statistics.
+	if r, ok := s.reader.(*reader); ok {
+		if srs, ok := r.StateReader.(*stateReaderWithStats); ok {
+			prefetchReader = newReader(r.ContractCodeReader, newStateReaderWithStats(srs.stateReaderWithCache))
+		}
 	}
-	state, err := NewWithReader(s.originalRoot, s.db, reader)
+	state, err := NewWithReader(s.originalRoot, s.db, prefetchReader)
 	if err != nil {
 		log.Error("Failed to create StateDB for prefetch", "err", err)
 		return nil
@@ -734,7 +729,8 @@ func (s *StateDB) StateForPrefetch() *StateDB {
 	state.prefetcher = s.prefetcher
 
 	return state
-=======
+}
+
 // IsNewContract reports whether the contract at the given address was deployed
 // during the current transaction.
 func (s *StateDB) IsNewContract(addr common.Address) bool {
@@ -743,7 +739,6 @@ func (s *StateDB) IsNewContract(addr common.Address) bool {
 		return false
 	}
 	return obj.newContract
->>>>>>> geth-v1.17.3
 }
 
 // Copy creates a deep, independent copy of the state.
@@ -949,20 +944,6 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 		start   time.Time
 		workers errgroup.Group
 	)
-<<<<<<< HEAD
-	start = time.Now()
-	if s.db.TrieDB().IsVerkle() {
-		// Whilst MPT storage tries are independent, Verkle has one single trie
-		// for all the accounts and all the storage slots merged together. The
-		// former can thus be simply parallelized, but updating the latter will
-		// need concurrency support within the trie itself. That's a TODO for a
-		// later time.
-		workers.SetLimit(1)
-	}
-	for addr, op := range s.mutations {
-		if op.applied || op.isDelete() {
-			continue
-=======
 	if s.db.Type().Is(TypeUBT) {
 		// Bypass per-account updateTrie() for binary trie. In binary trie mode
 		// there is only one unified trie (OpenStorageTrie returns self), so the
@@ -994,7 +975,6 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 					s.StorageDeleted.Add(1)
 				}
 			}
->>>>>>> geth-v1.17.3
 		}
 		// Clear uncommittedStorage and assign trie on each touched object.
 		// obj.trie must be set because this path bypasses updateTrie(), which
@@ -1207,75 +1187,6 @@ func (s *StateDB) deleteStorage(addrHash common.Hash, root common.Hash) (map[com
 	return storages, storageOrigins, nodes, nil
 }
 
-<<<<<<< HEAD
-// slowDeleteStorage serves as a less-efficient alternative to "fastDeleteStorage,"
-// employed when the associated state snapshot is not available. It iterates the
-// storage slots along with all internal trie nodes via trie directly.
-func (s *StateDB) slowDeleteStorage(addr common.Address, addrHash common.Hash, root common.Hash) (map[common.Hash][]byte, map[common.Hash][]byte, *trienode.NodeSet, error) {
-	tr, err := s.db.OpenStorageTrie(s.originalRoot, addr, root, s.trie)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to open storage trie, err: %w", err)
-	}
-	// skip deleting storages for EmptyTrie
-	if _, ok := tr.(*trie.EmptyTrie); ok {
-		return nil, nil, nil, nil
-	}
-	it, err := tr.NodeIterator(nil)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to open storage iterator, err: %w", err)
-	}
-	var (
-		nodes          = trienode.NewNodeSet(addrHash) // the set for trie node mutations (value is nil)
-		storages       = make(map[common.Hash][]byte)  // the set for storage mutations (value is nil)
-		storageOrigins = make(map[common.Hash][]byte)  // the set for tracking the original value of slot
-	)
-	for it.Next(true) {
-		if it.Leaf() {
-			key := common.BytesToHash(it.LeafKey())
-			storages[key] = nil
-			storageOrigins[key] = common.CopyBytes(it.LeafBlob())
-			continue
-		}
-		if it.Hash() == (common.Hash{}) {
-			continue
-		}
-		nodes.AddNode(it.Path(), trienode.NewDeletedWithPrev(it.NodeBlob()))
-	}
-	if err := it.Error(); err != nil {
-		return nil, nil, nil, err
-	}
-	return storages, storageOrigins, nodes, nil
-}
-
-// deleteStorage is designed to delete the storage trie of a designated account.
-// The function will make an attempt to utilize an efficient strategy if the
-// associated state snapshot is reachable; otherwise, it will resort to a less
-// efficient approach.
-func (s *StateDB) deleteStorage(addr common.Address, addrHash common.Hash, root common.Hash) (map[common.Hash][]byte, map[common.Hash][]byte, *trienode.NodeSet, error) {
-	var (
-		err            error
-		nodes          *trienode.NodeSet      // the set for trie node mutations (value is nil)
-		storages       map[common.Hash][]byte // the set for storage mutations (value is nil)
-		storageOrigins map[common.Hash][]byte // the set for tracking the original value of slot
-	)
-	// The fast approach can be failed if the snapshot is not fully
-	// generated, or it's internally corrupted. Fallback to the slow
-	// one just in case.
-	snaps := s.db.Snapshot()
-	if snaps != nil {
-		storages, storageOrigins, nodes, err = s.fastDeleteStorage(snaps, addrHash, root)
-	}
-	if snaps == nil || err != nil {
-		storages, storageOrigins, nodes, err = s.slowDeleteStorage(addr, addrHash, root)
-	}
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	return storages, storageOrigins, nodes, nil
-}
-
-=======
->>>>>>> geth-v1.17.3
 // handleDestruction processes all destruction markers and deletes the account
 // and associated storage slots if necessary. There are four potential scenarios
 // as following:
@@ -1319,7 +1230,6 @@ func (s *StateDB) handleDestruction(noStorageWiping bool) (map[common.Hash]*Acco
 		deletes[addrHash] = op
 
 		// Short circuit if the origin storage was empty.
-<<<<<<< HEAD
 		//
 		// 1. Standard Trie: Reliable check via EmptyRootHash.
 		// 2. NoTries: Since `prev.Root` is always EmptyRootHash (refer to updateRoot()):
@@ -1331,10 +1241,7 @@ func (s *StateDB) handleDestruction(noStorageWiping bool) (map[common.Hash]*Acco
 		// 3. Verkle: Legacy trie-root based checks are inapplicable.
 		if !s.db.NoTries() && prev.Root == types.EmptyRootHash ||
 			s.db.NoTries() && noStorageWiping ||
-			s.db.TrieDB().IsVerkle() {
-=======
-		if prev.Root == types.EmptyRootHash || s.db.Type().Is(TypeUBT) {
->>>>>>> geth-v1.17.3
+			s.db.TrieDB().IsUBT() {
 			continue
 		}
 		if noStorageWiping {
@@ -1531,19 +1438,8 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 	if err != nil {
 		return nil, err
 	}
-<<<<<<< HEAD
 
-	// Commit dirty contract code if any exists
-	if db := s.db.TrieDB().Disk(); db != nil && len(ret.codes) > 0 {
-		batch := db.NewBatch()
-		for _, code := range ret.codes {
-			rawdb.WriteCode(batch, code.hash, code.blob)
-		}
-
-		if err := batch.Write(); err != nil {
-			return nil, err
-		}
-	}
+	/* TODO(Nathan): adapt to support incremental db
 	// Write dirty contract code into incremental db if any exists and incr is enabled
 	if db := s.db.TrieDB(); db != nil && len(ret.codes) > 0 && db.IsIncrEnabled() {
 		codes := make(map[common.Address]rawdb.ContractCode)
@@ -1556,34 +1452,8 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 		if err = db.WriteContractCodes(codes); err != nil {
 			return nil, err
 		}
-	}
+	}*/
 
-	if !ret.empty() {
-		// If snapshotting is enabled, update the snapshot tree with this new version
-		if snap := s.db.Snapshot(); snap != nil && snap.Snapshot(ret.originRoot) != nil {
-			start := time.Now()
-			if err := snap.Update(ret.root, ret.originRoot, ret.accounts, ret.storages); err != nil {
-				log.Warn("Failed to update snapshot tree", "from", ret.originRoot, "to", ret.root, "err", err)
-			}
-			// Keep 128 diff layers in the memory, persistent layer is 129th.
-			// - head layer is paired with HEAD state
-			// - head-1 layer is paired with HEAD-1 state
-			// - head-127 layer(bottom-most diff layer) is paired with HEAD-127 state
-			if err := snap.Cap(ret.root, snap.CapLimit()); err != nil {
-				log.Warn("Failed to cap snapshot tree", "root", ret.root, "layers", TriesInMemory, "err", err)
-			}
-			s.SnapshotCommits += time.Since(start)
-		}
-		// If trie database is enabled, commit the state update as a new layer
-		if db := s.db.TrieDB(); db != nil && !s.db.NoTries() {
-			start := time.Now()
-			if err := db.Update(ret.root, ret.originRoot, block, ret.nodes, ret.stateSet()); err != nil {
-				return nil, err
-			}
-			s.TrieDBCommits += time.Since(start)
-		}
-	}
-=======
 	if deriveCodeFields {
 		if err := ret.deriveCodeFields(s.reader); err != nil {
 			return nil, err
@@ -1597,7 +1467,6 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 
 	// The reader update must be performed as the final step, otherwise,
 	// the new state would not be visible before db.commit.
->>>>>>> geth-v1.17.3
 	s.reader, err = s.db.Reader(s.originalRoot)
 	return ret, err
 }
@@ -1712,14 +1581,6 @@ func (s *StateDB) AddressInAccessList(addr common.Address) bool {
 // SlotInAccessList returns true if the given (address, slot)-tuple is in the access list.
 func (s *StateDB) SlotInAccessList(addr common.Address, slot common.Hash) (addressPresent bool, slotPresent bool) {
 	return s.accessList.Contains(addr, slot)
-}
-
-func (s *StateDB) GetSnap() snapshot.Snapshot {
-	snaps := s.db.Snapshot()
-	if snaps != nil {
-		return snaps.Snapshot(s.originalRoot)
-	}
-	return nil
 }
 
 // markDelete is invoked when an account is deleted but the deletion is

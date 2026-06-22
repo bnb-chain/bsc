@@ -165,7 +165,7 @@ func NewFreezer(datadir string, namespace string, readonly bool, maxTableSize ui
 	freezer.writeBatch = newFreezerBatch(freezer)
 
 	log.Info("Opened ancient database", "database", datadir, "readonly", readonly, "tail", freezer.tail.Load(),
-		"frozen", freezer.frozen.Load(), "isIncr", isIncr)
+		"frozen", freezer.head.Load(), "isIncr", isIncr)
 	return freezer, nil
 }
 
@@ -717,7 +717,7 @@ func (f *Freezer) repairForIncr() error {
 			return err
 		}
 	}
-	f.frozen.Store(head)
+	f.head.Store(head)
 	f.tail.Store(tail)
 	return nil
 }

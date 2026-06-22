@@ -52,11 +52,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
-<<<<<<< HEAD
-	"github.com/ethereum/go-ethereum/trie"
 	"github.com/holiman/uint256"
-=======
->>>>>>> geth-v1.17.3
 )
 
 const UnHealthyTimeout = 5 * time.Second
@@ -65,13 +61,10 @@ const UnHealthyTimeout = 5 * time.Second
 // allowed to produce in order to speed up calculations.
 const estimateGasErrorRatio = 0.015
 
-<<<<<<< HEAD
-=======
 // maxGetStorageSlots is the maximum total number of storage slots that can
 // be requested in a single eth_getStorageValues call.
 const maxGetStorageSlots = 1024
 
->>>>>>> geth-v1.17.3
 // maxGetProofKeys is the maximum number of storage keys that can be
 // requested in a single eth_getProof call.
 const maxGetProofKeys = 1024
@@ -1403,11 +1396,11 @@ func (api *BlockChainAPI) needToReplay(ctx context.Context, block *types.Block, 
 	if err != nil || parent == nil {
 		return false, fmt.Errorf("block not found for block number %d", block.NumberU64()-1)
 	}
-	parentState, err := api.b.Chain().StateAt(parent.Root())
+	parentState, err := api.b.Chain().StateAt(parent.Header())
 	if err != nil {
 		return false, fmt.Errorf("statedb not found for block number (%d): %v", block.NumberU64()-1, err)
 	}
-	currentState, err := api.b.Chain().StateAt(block.Root())
+	currentState, err := api.b.Chain().StateAt(block.Header())
 	if err != nil {
 		return false, fmt.Errorf("statedb not found for block number (%d): %v", block.NumberU64(), err)
 	}
@@ -1447,7 +1440,7 @@ func (api *BlockChainAPI) replay(ctx context.Context, block *types.Block, accoun
 	if err != nil || parent == nil {
 		return nil, nil, fmt.Errorf("block not found for block number %d", block.NumberU64()-1)
 	}
-	statedb, err := api.b.Chain().StateAt(parent.Root())
+	statedb, err := api.b.Chain().StateAt(parent.Header())
 	if err != nil {
 		return nil, nil, fmt.Errorf("state not found for block number (%d): %v", block.NumberU64()-1, err)
 	}
@@ -1498,7 +1491,7 @@ func (api *BlockChainAPI) replay(ctx context.Context, block *types.Block, accoun
 			}
 		}
 
-		if _, err := core.ApplyMessage(evm, msg, new(core.GasPool).AddGas(tx.Gas())); err != nil {
+		if _, err := core.ApplyMessage(evm, msg, core.NewGasPool(tx.Gas())); err != nil {
 			return nil, nil, fmt.Errorf("transaction %#x failed: %v", tx.Hash(), err)
 		}
 		statedb.Finalise(evm.ChainConfig().IsEIP158(block.Number()))

@@ -50,6 +50,7 @@ var DeprecatedFlags = []cli.Flag{
 	EnableBALFlag,
 	TxPoolOverflowPoolSlotsFlag,
 	VMOpcodeOptimizeFlag,
+	RangeLimitFlag,
 }
 
 var (
@@ -168,6 +169,12 @@ var (
 		Name:     "vm.opcode.optimize",
 		Hidden:   true,
 		Usage:    "Deprecated: EVM opcode-level optimization (super-instructions) has been removed; this flag has no effect",
+		Category: flags.DeprecatedCategory,
+	}
+	RangeLimitFlag = &cli.BoolFlag{
+		Name:     "rangelimit",
+		Hidden:   true,
+		Usage:    "Deprecated: Enable 5000 blocks limit for range query; this flag has no effect",
 		Category: flags.DeprecatedCategory,
 	}
 )

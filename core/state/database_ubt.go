@@ -110,6 +110,11 @@ func (db *UBTDatabase) TrieDB() *triedb.Database {
 	return db.triedb
 }
 
+// NoTries returns whether the database has tries storage.
+func (db *UBTDatabase) NoTries() bool {
+	panic("NoTries is not supported for UBTDatabase")
+}
+
 // Commit flushes all pending writes and finalizes the state transition,
 // committing the changes to the underlying storage. It returns an error
 // if the commit fails.

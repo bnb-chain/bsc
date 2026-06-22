@@ -73,7 +73,6 @@ func NewMuxTracer(names []string, objects []*tracers.Tracer) (*tracers.Tracer, e
 	t := &muxTracer{names: names, tracers: objects}
 	return &tracers.Tracer{
 		Hooks: &tracing.Hooks{
-<<<<<<< HEAD
 			OnTxStart:                 t.OnTxStart,
 			OnTxEnd:                   t.OnTxEnd,
 			OnEnter:                   t.OnEnter,
@@ -82,29 +81,13 @@ func NewMuxTracer(names []string, objects []*tracers.Tracer) (*tracers.Tracer, e
 			OnFault:                   t.OnFault,
 			OnGasChange:               t.OnGasChange,
 			OnBalanceChange:           t.OnBalanceChange,
-			OnNonceChange:             t.OnNonceChange,
-			OnCodeChange:              t.OnCodeChange,
+			OnNonceChangeV2:           t.OnNonceChangeV2,
+			OnCodeChangeV2:            t.OnCodeChangeV2,
 			OnStorageChange:           t.OnStorageChange,
 			OnLog:                     t.OnLog,
 			OnSystemTxFixIntrinsicGas: t.OnSystemTxFixIntrinsicGas,
 			OnSystemCallStartV2:       t.OnSystemCallStart,
 			OnSystemCallEnd:           t.OnSystemCallEnd,
-=======
-			OnTxStart:           t.OnTxStart,
-			OnTxEnd:             t.OnTxEnd,
-			OnEnter:             t.OnEnter,
-			OnExit:              t.OnExit,
-			OnOpcode:            t.OnOpcode,
-			OnFault:             t.OnFault,
-			OnGasChange:         t.OnGasChange,
-			OnBalanceChange:     t.OnBalanceChange,
-			OnNonceChangeV2:     t.OnNonceChangeV2,
-			OnCodeChangeV2:      t.OnCodeChangeV2,
-			OnStorageChange:     t.OnStorageChange,
-			OnLog:               t.OnLog,
-			OnSystemCallStartV2: t.OnSystemCallStart,
-			OnSystemCallEnd:     t.OnSystemCallEnd,
->>>>>>> geth-v1.17.3
 		},
 		GetResult: t.GetResult,
 		Stop:      t.Stop,
@@ -211,7 +194,6 @@ func (t *muxTracer) OnLog(log *types.Log) {
 	}
 }
 
-<<<<<<< HEAD
 func (t *muxTracer) OnSystemTxFixIntrinsicGas(intrinsicGas uint64) {
 	for _, t := range t.tracers {
 		if t.OnSystemTxFixIntrinsicGas != nil {
@@ -220,8 +202,6 @@ func (t *muxTracer) OnSystemTxFixIntrinsicGas(intrinsicGas uint64) {
 	}
 }
 
-=======
->>>>>>> geth-v1.17.3
 func (t *muxTracer) OnSystemCallStart(vm *tracing.VMContext) {
 	for _, t := range t.tracers {
 		if t.OnSystemCallStartV2 != nil {

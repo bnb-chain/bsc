@@ -512,6 +512,11 @@ func (ethash *Ethash) Prepare(chain consensus.ChainHeaderReader, header *types.H
 	return nil
 }
 
+// Delay implements consensus.Engine, returning nil (no additional delay for ethash).
+func (ethash *Ethash) Delay(_ consensus.ChainReader, _ *types.Header, _ *time.Duration) *time.Duration {
+	return nil
+}
+
 // Finalize implements consensus.Engine, accumulating the block and uncle rewards,
 // setting the final state on the header
 func (ethash *Ethash) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB, _ *[]*types.Transaction, uncles []*types.Header, withdrawals []*types.Withdrawal,
@@ -521,29 +526,6 @@ func (ethash *Ethash) Finalize(chain consensus.ChainHeaderReader, header *types.
 	return
 }
 
-<<<<<<< HEAD
-// FinalizeAndAssemble implements consensus.Engine, accumulating the block and
-// uncle rewards, setting the final state and assembling the block.
-func (ethash *Ethash) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
-	if len(body.Withdrawals) > 0 {
-		return nil, nil, errors.New("ethash does not support withdrawals")
-	}
-	// Finalize block
-	ethash.Finalize(chain, header, state, &body.Transactions, body.Uncles, nil, nil, nil, nil, tracer)
-
-	// Assign the final state root to header.
-	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
-
-	// Header seems complete, assemble into a block and return
-	return types.NewBlock(header, &types.Body{Transactions: body.Transactions, Uncles: body.Uncles}, receipts, trie.NewStackTrie(nil)), receipts, nil
-}
-
-func (ethash *Ethash) Delay(_ consensus.ChainReader, _ *types.Header, _ *time.Duration) *time.Duration {
-	return nil
-}
-
-=======
->>>>>>> geth-v1.17.3
 // SealHash returns the hash of a block prior to it being sealed.
 func (ethash *Ethash) SealHash(header *types.Header) (hash common.Hash) {
 	hasher := keccak.NewLegacyKeccak256()

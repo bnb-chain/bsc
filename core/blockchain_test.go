@@ -18,11 +18,8 @@ package core
 
 import (
 	"bytes"
-<<<<<<< HEAD
-	"crypto/ecdsa"
-=======
 	"context"
->>>>>>> geth-v1.17.3
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"maps"
@@ -41,11 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
-<<<<<<< HEAD
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
-	"github.com/ethereum/go-ethereum/core/history"
-=======
->>>>>>> geth-v1.17.3
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -185,12 +178,8 @@ func testBlockChainImport(chain types.Blocks, blockchain *BlockChain) error {
 		if err != nil {
 			return err
 		}
-<<<<<<< HEAD
 		statedb.SetExpectedStateRoot(block.Root())
-		res, err := blockchain.processor.Process(block, statedb, vm.Config{})
-=======
 		res, err := blockchain.processor.Process(context.Background(), block, statedb, vm.Config{})
->>>>>>> geth-v1.17.3
 		if err != nil {
 			blockchain.reportBadBlock(block, res, err)
 			return err

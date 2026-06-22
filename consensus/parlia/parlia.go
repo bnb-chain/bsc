@@ -2097,13 +2097,15 @@ func (p *Parlia) getSystemMessage(from, toAddress common.Address, data []byte, v
 	return &core.Message{
 		From:     from,
 		GasLimit: math.MaxUint64 / 2,
-		GasPrice: big.NewInt(0),
-		Value:    value,
+		GasPrice: new(uint256.Int),
+		Value:    uint256.MustFromBig(value),
 		To:       &toAddress,
 		Data:     data,
 	}
 }
 
+// TODO(Nathan): need reflect EIP-7778 where called
+// use gp `*core.GasPool“ to replace `usedGas *uint64`
 func (p *Parlia) applyTransaction(
 	msg *core.Message,
 	state vm.StateDB,
@@ -2114,7 +2116,7 @@ func (p *Parlia) applyTransaction(
 	tracer *tracing.Hooks,
 ) (applyErr error) {
 	nonce := state.GetNonce(msg.From)
-	expectedTx := types.NewTransaction(nonce, *msg.To, msg.Value, msg.GasLimit, msg.GasPrice, msg.Data)
+	expectedTx := types.NewTransaction(nonce, *msg.To, msg.Value.ToBig(), msg.GasLimit, msg.GasPrice.ToBig(), msg.Data)
 	expectedHash := p.signer.Hash(expectedTx)
 
 	switch mode {
@@ -2492,17 +2494,19 @@ func applyMessage(
 		state.ClearAccessList()
 	}
 
-	ret, returnGas, err := evm.Call(
+	gasBudget := vm.NewGasBudget(msg.GasLimit)
+	ret, leftOverGas, err := evm.Call(
 		msg.From,
 		*msg.To,
 		msg.Data,
-		msg.GasLimit,
-		uint256.MustFromBig(msg.Value),
+		gasBudget,
+		msg.Value,
 	)
 	if err != nil {
 		log.Error("apply message failed", "msg", string(ret), "err", err)
 	}
-	return msg.GasLimit - returnGas, err
+	// TODO(Nathan): need confirm
+	return leftOverGas.Used(gasBudget), err
 }
 
 // proposalKey build a key which is a combination of the block number and the proposer address.

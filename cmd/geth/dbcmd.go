@@ -44,11 +44,6 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/triedb"
-<<<<<<< HEAD
-	"github.com/ethereum/go-ethereum/triedb/pathdb"
-	"github.com/olekukonko/tablewriter"
-=======
->>>>>>> geth-v1.17.3
 	"github.com/urfave/cli/v2"
 )
 
@@ -129,15 +124,6 @@ Remove blockchain and state databases`,
 	dbInspectTrieCmd = &cli.Command{
 		Action:    inspectTrie,
 		Name:      "inspect-trie",
-<<<<<<< HEAD
-		ArgsUsage: "<blocknum> <jobnum> <topn>",
-		Flags: []cli.Flag{
-			utils.DataDirFlag,
-			utils.SyncModeFlag,
-		},
-		Usage:       "Inspect the MPT tree of the account and contract. 'blocknum' can be latest/snapshot/number. 'topn' means output the top N storage tries info ranked by the total number of TrieNodes",
-		Description: `This commands iterates the entrie WorldState.`,
-=======
 		ArgsUsage: "<blocknum>",
 		Flags: slices.Concat([]cli.Flag{
 			utils.ExcludeStorageFlag,
@@ -150,7 +136,6 @@ Remove blockchain and state databases`,
 		Usage: "Print detailed trie information about the structure of account trie and storage tries.",
 		Description: `This commands iterates the entrie trie-backed state. If the 'blocknum' is not specified, 
 the latest block number will be used by default.`,
->>>>>>> geth-v1.17.3
 	}
 	dbCheckStateContentCmd = &cli.Command{
 		Action:    checkStateContent,
@@ -414,109 +399,6 @@ func confirmAndRemoveDB(paths []string, kind string, ctx *cli.Context, removeFla
 	}
 }
 
-func inspectTrie(ctx *cli.Context) error {
-	if ctx.NArg() < 1 {
-		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
-	}
-
-	if ctx.NArg() > 3 {
-		return fmt.Errorf("Max 3 arguments: %v", ctx.Command.ArgsUsage)
-	}
-
-	var (
-		blockNumber  uint64
-		trieRootHash common.Hash
-		jobnum       uint64
-		topN         uint64
-	)
-
-	stack, _ := makeConfigNode(ctx)
-	defer stack.Close()
-
-	db := utils.MakeChainDatabase(ctx, stack, true)
-	defer db.Close()
-	var headerBlockHash common.Hash
-	if ctx.NArg() >= 1 {
-		if ctx.Args().Get(0) == "latest" {
-			headerHash := rawdb.ReadHeadHeaderHash(db)
-			var ok bool
-			blockNumber, ok = rawdb.ReadHeaderNumber(db, headerHash)
-			if !ok {
-				return fmt.Errorf("failed to ReadHeaderNumber, Args[0]: latest, headerHash: %v", headerHash)
-			}
-		} else if ctx.Args().Get(0) == "snapshot" {
-			trieRootHash = rawdb.ReadSnapshotRoot(db)
-			blockNumber = math.MaxUint64
-		} else {
-			var err error
-			blockNumber, err = strconv.ParseUint(ctx.Args().Get(0), 10, 64)
-			if err != nil {
-				return fmt.Errorf("failed to parse blocknum, Args[0]: %v, err: %v", ctx.Args().Get(0), err)
-			}
-		}
-
-		if ctx.NArg() == 1 {
-			jobnum = 1000
-			topN = 10
-		} else if ctx.NArg() == 2 {
-			var err error
-			jobnum, err = strconv.ParseUint(ctx.Args().Get(1), 10, 64)
-			if err != nil {
-				return fmt.Errorf("failed to parse jobnum, Args[1]: %v, err: %v", ctx.Args().Get(1), err)
-			}
-			topN = 10
-		} else {
-			var err error
-			jobnum, err = strconv.ParseUint(ctx.Args().Get(1), 10, 64)
-			if err != nil {
-				return fmt.Errorf("failed to parse jobnum, Args[1]: %v, err: %v", ctx.Args().Get(1), err)
-			}
-
-			topN, err = strconv.ParseUint(ctx.Args().Get(2), 10, 64)
-			if err != nil {
-				return fmt.Errorf("failed to parse topn, Args[1]: %v, err: %v", ctx.Args().Get(1), err)
-			}
-		}
-
-		if blockNumber != math.MaxUint64 {
-			headerBlockHash = rawdb.ReadCanonicalHash(db, blockNumber)
-			if headerBlockHash == (common.Hash{}) {
-				return errors.New("ReadHeadBlockHash empty hash")
-			}
-			blockHeader := rawdb.ReadHeader(db, headerBlockHash, blockNumber)
-			trieRootHash = blockHeader.Root
-		}
-		if (trieRootHash == common.Hash{}) {
-			log.Error("Empty root hash")
-		}
-		fmt.Printf("ReadBlockHeader, root: %v, blocknum: %v\n", trieRootHash, blockNumber)
-
-		dbScheme := rawdb.ReadStateScheme(db)
-		var config *triedb.Config
-		if dbScheme == rawdb.PathScheme {
-			config = &triedb.Config{
-				PathDB: pathdb.ReadOnly,
-			}
-		} else if dbScheme == rawdb.HashScheme {
-			config = triedb.HashDefaults
-		}
-
-		triedb := triedb.NewDatabase(db, config)
-		theTrie, err := trie.New(trie.TrieID(trieRootHash), triedb)
-		if err != nil {
-			fmt.Printf("fail to new trie tree, err: %v, rootHash: %v\n", err, trieRootHash.String())
-			return err
-		}
-		theInspect, err := trie.NewInspector(theTrie, triedb, trieRootHash, blockNumber, jobnum, int(topN))
-		if err != nil {
-			return err
-		}
-		theInspect.Run()
-		theInspect.DisplayResult()
-	}
-	return nil
-}
-
 func inspect(ctx *cli.Context) error {
 	var (
 		prefix []byte
@@ -682,7 +564,7 @@ func inspectTrie(ctx *cli.Context) error {
 		config.DumpPath = stack.ResolvePath("trie-dump.bin")
 	}
 
-	triedb := utils.MakeTrieDatabase(ctx, stack, db, false, true, false)
+	triedb := utils.MakeTrieDatabase(ctx, stack, db, false, true, false, false)
 	defer triedb.Close()
 
 	if contractAddr := ctx.String(inspectTrieContractFlag.Name); contractAddr != "" {

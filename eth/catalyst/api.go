@@ -289,11 +289,7 @@ func (api *ConsensusAPI) forkchoiceUpdated(ctx context.Context, update engine.Fo
 			}
 		}
 		log.Info("Forkchoice requested sync to new head", context...)
-<<<<<<< HEAD
-		/*if err := api.eth.Downloader().BeaconSync(api.eth.SyncMode(), header, finalized); err != nil {
-=======
-		if err := api.eth.Downloader().BeaconSync(header, finalized); err != nil {
->>>>>>> geth-v1.17.3
+		/*if err := api.eth.Downloader().BeaconSync(header, finalized); err != nil {
 			return engine.STATUS_SYNCING, err
 		}*/
 		return engine.STATUS_SYNCING, nil
@@ -959,12 +955,8 @@ func (api *ConsensusAPI) delayPayloadImport(block *types.Block) engine.PayloadSt
 	// Although we don't want to trigger a sync, if there is one already in
 	// progress, try to extend it with the current payload request to relieve
 	// some strain from the forkchoice update.
-<<<<<<< HEAD
-	// err := api.eth.Downloader().BeaconExtend(api.eth.SyncMode(), block.Header())
+	// err := api.eth.Downloader().BeaconExtend(block.Header())
 	var err error
-=======
-	err := api.eth.Downloader().BeaconExtend(block.Header())
->>>>>>> geth-v1.17.3
 	if err == nil {
 		log.Debug("Payload accepted for sync extension", "number", block.NumberU64(), "hash", block.Hash())
 		return engine.PayloadStatusV1{Status: engine.SYNCING}

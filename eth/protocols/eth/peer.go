@@ -17,12 +17,9 @@
 package eth
 
 import (
-<<<<<<< HEAD
-	"math/big"
-=======
 	"errors"
 	"fmt"
->>>>>>> geth-v1.17.3
+	"math/big"
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -32,13 +29,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/p2p"
-<<<<<<< HEAD
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/tracker"
-=======
-	"github.com/ethereum/go-ethereum/p2p/tracker"
 	"github.com/ethereum/go-ethereum/params"
->>>>>>> geth-v1.17.3
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -84,7 +77,6 @@ type Peer struct {
 
 	id string // Unique ID for the peer, cached
 
-<<<<<<< HEAD
 	rw              p2p.MsgReadWriter // Input/output streams for snap
 	version         uint              // Protocol version negotiated
 	lastRange       atomic.Pointer[BlockRangeUpdatePacket]
@@ -97,11 +89,6 @@ type Peer struct {
 	knownBlocks     *knownCache            // Set of block hashes known to be known by this peer
 	queuedBlocks    chan *blockPropagation // Queue of blocks to broadcast to the peer
 	queuedBlockAnns chan *types.Block      // Queue of blocks to announce to the peer
-=======
-	rw        p2p.MsgReadWriter // Input/output streams for snap
-	version   uint              // Protocol version negotiated
-	lastRange atomic.Pointer[BlockRangeUpdatePacket]
->>>>>>> geth-v1.17.3
 
 	txpool      TxPool             // Transaction pool used by the broadcasters for liveness checks
 	knownTxs    *knownCache        // Set of transaction hashes known to be known by this peer
@@ -113,24 +100,19 @@ type Peer struct {
 	reqCancel   chan *cancel   // Dispatch channel to cancel pending requests and untrack them
 	resDispatch chan *response // Dispatch channel to fulfil pending requests and untrack them
 
-<<<<<<< HEAD
-	term   chan struct{} // Termination channel to stop the broadcasters
-	txTerm chan struct{} // Termination channel to stop the tx broadcasters
-	lock   sync.RWMutex  // Mutex protecting the internal fields
-=======
 	chainConfig *params.ChainConfig // Chain configuration for fork-aware validation
 
 	receiptBuffer     map[uint64]*receiptRequest // Previously requested receipts to buffer partial receipts
 	receiptBufferLock sync.Mutex                 // Lock for protecting the receiptBuffer
 
-	term chan struct{} // Termination channel to stop the broadcasters
->>>>>>> geth-v1.17.3
+	term   chan struct{} // Termination channel to stop the broadcasters
+	txTerm chan struct{} // Termination channel to stop the tx broadcasters
+	lock   sync.RWMutex  // Mutex protecting the internal fields
 }
 
 // NewPeer creates a wrapper for a network connection and negotiated  protocol
 // version.
-<<<<<<< HEAD
-func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool) *Peer {
+func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool, chainConfig *params.ChainConfig) *Peer {
 	cap := p2p.Cap{Name: ProtocolName, Version: version}
 	id := p.ID().String()
 	peer := &Peer{
@@ -149,29 +131,10 @@ func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool) *Pe
 		reqCancel:       make(chan *cancel),
 		resDispatch:     make(chan *response),
 		txpool:          txpool,
+		chainConfig:     chainConfig,
+		receiptBuffer:   make(map[uint64]*receiptRequest),
 		term:            make(chan struct{}),
 		txTerm:          make(chan struct{}),
-=======
-func NewPeer(version uint, p *p2p.Peer, rw p2p.MsgReadWriter, txpool TxPool, chainConfig *params.ChainConfig) *Peer {
-	cap := p2p.Cap{Name: ProtocolName, Version: version}
-	id := p.ID().String()
-	peer := &Peer{
-		id:            p.ID().String(),
-		Peer:          p,
-		rw:            rw,
-		version:       version,
-		knownTxs:      newKnownCache(maxKnownTxs),
-		txBroadcast:   make(chan []common.Hash),
-		txAnnounce:    make(chan []common.Hash),
-		tracker:       tracker.New(cap, id, 5*time.Minute),
-		reqDispatch:   make(chan *request),
-		reqCancel:     make(chan *cancel),
-		resDispatch:   make(chan *response),
-		txpool:        txpool,
-		chainConfig:   chainConfig,
-		receiptBuffer: make(map[uint64]*receiptRequest),
-		term:          make(chan struct{}),
->>>>>>> geth-v1.17.3
 	}
 	// Start up all the broadcasters
 	go peer.broadcastBlocks()
@@ -256,7 +219,6 @@ func (p *Peer) KnownTransaction(hash common.Hash) bool {
 	return p.knownTxs.Contains(hash)
 }
 
-<<<<<<< HEAD
 // markBlock marks a block as known for the peer, ensuring that the block will
 // never be propagated to this particular peer.
 func (p *Peer) markBlock(hash common.Hash) {
@@ -264,8 +226,6 @@ func (p *Peer) markBlock(hash common.Hash) {
 	p.knownBlocks.Add(hash)
 }
 
-=======
->>>>>>> geth-v1.17.3
 // MarkTransaction marks a transaction as known for the peer, ensuring that it
 // will never be propagated to this particular peer.
 func (p *Peer) MarkTransaction(hash common.Hash) {
@@ -413,11 +373,11 @@ func (p *Peer) ReplyBlockBodiesRLP(id uint64, bodies []rlp.RawValue) error {
 	})
 }
 
-// ReplyReceiptsRLP69 is the response to GetReceipts.
-func (p *Peer) ReplyReceiptsRLP69(id uint64, receipts rlp.RawList[*ReceiptList]) error {
-	return p2p.Send(p.rw, ReceiptsMsg, &ReceiptsPacket69{
-		RequestId: id,
-		List:      receipts,
+// ReplyReceiptsRLP68 is the response to GetReceipts.
+func (p *Peer) ReplyReceiptsRLP68(id uint64, receipts []rlp.RawValue) error {
+	return p2p.Send(p.rw, ReceiptsMsg, &ReceiptsRLPPacket68{
+		RequestId:           id,
+		ReceiptsRLPResponse: receipts,
 	})
 }
 
@@ -544,18 +504,6 @@ func (p *Peer) RequestReceipts(hashes []common.Hash, gasUsed []uint64, timestamp
 	p.Log().Debug("Fetching batch of receipts", "count", len(hashes))
 	id := rand.Uint64()
 
-<<<<<<< HEAD
-	req := &Request{
-		id:       id,
-		sink:     sink,
-		code:     GetReceiptsMsg,
-		want:     ReceiptsMsg,
-		numItems: len(hashes),
-		data: &GetReceiptsPacket{
-			RequestId:          id,
-			GetReceiptsRequest: hashes,
-		},
-=======
 	var req *Request
 	if p.version > ETH69 {
 		req = &Request{
@@ -584,12 +532,11 @@ func (p *Peer) RequestReceipts(hashes []common.Hash, gasUsed []uint64, timestamp
 			code:     GetReceiptsMsg,
 			want:     ReceiptsMsg,
 			numItems: len(hashes),
-			data: &GetReceiptsPacket69{
+			data: &GetReceiptsPacket68{
 				RequestId:          id,
 				GetReceiptsRequest: hashes,
 			},
 		}
->>>>>>> geth-v1.17.3
 	}
 	if err := p.dispatchRequest(req); err != nil {
 		return nil, err

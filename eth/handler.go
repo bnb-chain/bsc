@@ -109,10 +109,12 @@ type txPool interface {
 	// or also for reorged out ones.
 	SubscribeTransactions(ch chan<- core.NewTxsEvent, reorgs bool) event.Subscription
 
-<<<<<<< HEAD
 	// SubscribeReannoTxsEvent should return an event subscription of
 	// ReannoTxsEvent and send events to the given channel.
 	SubscribeReannoTxsEvent(chan<- core.ReannoTxsEvent) event.Subscription
+
+	// FilterType returns whether the given tx type is supported by the txPool.
+	FilterType(kind byte) bool
 }
 
 // votePool defines the methods needed from a votes pool implementation to
@@ -124,26 +126,21 @@ type votePool interface {
 	// SubscribeNewVoteEvent should return an event subscription of
 	// NewVotesEvent and send events to the given channel.
 	SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.Subscription
-=======
-	// FilterType returns whether the given tx type is supported by the txPool.
-	FilterType(kind byte) bool
->>>>>>> geth-v1.17.3
 }
 
 // handlerConfig is the collection of initialization parameters to create a full
 // node network handler.
 type handlerConfig struct {
-<<<<<<< HEAD
-	NodeID                    enode.ID         // P2P node ID used for tx propagation topology
-	Database                  ethdb.Database   // Database for direct sync insertions
-	Chain                     *core.BlockChain // Blockchain to serve data from
-	TxPool                    txPool           // Transaction pool to propagate from
-	VotePool                  votePool
-	Network                   uint64                 // Network identifier to adfvertise
-	Sync                      ethconfig.SyncMode     // Whether to snap or full sync
-	BloomCache                uint64                 // Megabytes to alloc for snap sync bloom
-	EventMux                  *event.TypeMux         // Legacy event mux, deprecate for `feed`
-	RequiredBlocks            map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
+	NodeID         enode.ID         // P2P node ID used for tx propagation topology
+	Database       ethdb.Database   // Database for direct sync insertions
+	Chain          *core.BlockChain // Blockchain to serve data from
+	TxPool         txPool           // Transaction pool to propagate from
+	VotePool       votePool
+	Network        uint64                 // Network identifier to adfvertise
+	Sync           ethconfig.SyncMode     // Whether to snap or full sync
+	BloomCache     uint64                 // Megabytes to alloc for snap sync bloom
+	RequiredBlocks map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
+
 	DirectBroadcast           bool
 	DisablePeerTxBroadcast    bool
 	PeerSet                   *peerSet
@@ -155,8 +152,15 @@ type handlerConfig struct {
 }
 
 type handler struct {
-	nodeID                     enode.ID
-	networkID                  uint64
+	nodeID    enode.ID
+	networkID uint64
+	Sync      ethconfig.SyncMode // Whether to snap or full sync
+
+	database ethdb.Database
+	txpool   txPool
+	chain    *core.BlockChain
+	maxPeers int
+
 	disablePeerTxBroadcast     bool
 	enableEVNFeatures          bool
 	evnNodeIdsWhitelistMap     map[enode.ID]struct{}
@@ -167,76 +171,46 @@ type handler struct {
 	synced          atomic.Bool // Flag whether we're considered synchronised (enables transaction processing)
 	acceptTxs       atomic.Bool
 	directBroadcast bool
-=======
-	NodeID         enode.ID               // P2P node ID used for tx propagation topology
-	Database       ethdb.Database         // Database for direct sync insertions
-	Chain          *core.BlockChain       // Blockchain to serve data from
-	TxPool         txPool                 // Transaction pool to propagate from
-	Network        uint64                 // Network identifier to advertise
-	Sync           ethconfig.SyncMode     // Whether to snap or full sync
-	BloomCache     uint64                 // Megabytes to alloc for snap sync bloom
-	RequiredBlocks map[uint64]common.Hash // Hard coded map of required block hashes for sync challenges
-}
 
-type handler struct {
-	nodeID    enode.ID
-	networkID uint64
-	synced    atomic.Bool // Flag whether we're considered synchronised (enables transaction processing)
->>>>>>> geth-v1.17.3
-
-	database             ethdb.Database
-	txpool               txPool
 	votepool             votePool
 	maliciousVoteMonitor *monitor.MaliciousVoteMonitor
-	chain                *core.BlockChain
-	maxPeers             int
-	maxPeersPerIP        int
-	peersPerIP           map[string]int
-	peerPerIPLock        sync.Mutex
+
+	maxPeersPerIP int
+	peersPerIP    map[string]int
+	peerPerIPLock sync.Mutex
 
 	downloader     *downloader.Downloader
-	blockFetcher   *fetcher.BlockFetcher
 	txFetcher      *fetcher.TxFetcher
 	peers          *peerSet
 	txBroadcastKey [16]byte
 
-<<<<<<< HEAD
 	eventMux       *event.TypeMux
 	txsCh          chan core.NewTxsEvent
 	txsSub         event.Subscription
 	blockRange     *blockRangeState
+	requiredBlocks map[uint64]common.Hash
+
+	// channels for fetcher, syncer, txsyncLoop
+	quitSync chan struct{}
+
+	wg sync.WaitGroup
+
+	handlerStartCh chan struct{}
+	handlerDoneCh  chan struct{}
+
 	reannoTxsCh    chan core.ReannoTxsEvent
 	reannoTxsSub   event.Subscription
 	minedBlockSub  *event.TypeMuxSubscription
 	voteCh         chan core.NewVoteEvent
 	votesSub       event.Subscription
 	voteMonitorSub event.Subscription
-=======
-	txsCh      chan core.NewTxsEvent
-	txsSub     event.Subscription
-	blockRange *blockRangeState
->>>>>>> geth-v1.17.3
-
-	requiredBlocks map[uint64]common.Hash
-
-	// channels for fetcher, syncer, txsyncLoop
-	quitSync chan struct{}
-	stopCh   chan struct{}
-
-	chainSync *chainSyncer
-	wg        sync.WaitGroup
-
-	handlerStartCh chan struct{}
-	handlerDoneCh  chan struct{}
+	blockFetcher   *fetcher.BlockFetcher
+	stopCh         chan struct{}
+	chainSync      *chainSyncer
 }
 
 // newHandler returns a handler for all Ethereum chain management protocol.
 func newHandler(config *handlerConfig) (*handler, error) {
-<<<<<<< HEAD
-	// Create the protocol manager with the base fields
-	if config.EventMux == nil {
-		config.EventMux = new(event.TypeMux) // Nicety initialization for tests
-	}
 	if config.PeerSet == nil {
 		config.PeerSet = newPeerSet() // Nicety initialization for tests
 	}
@@ -244,12 +218,12 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		nodeID:                     config.NodeID,
 		networkID:                  config.Network,
 		disablePeerTxBroadcast:     config.DisablePeerTxBroadcast,
-		eventMux:                   config.EventMux,
 		database:                   config.Database,
 		txpool:                     config.TxPool,
 		votepool:                   config.VotePool,
 		chain:                      config.Chain,
 		peers:                      config.PeerSet,
+		eventMux:                   new(event.TypeMux),
 		txBroadcastKey:             newBroadcastChoiceKey(),
 		peersPerIP:                 make(map[string]int),
 		requiredBlocks:             config.RequiredBlocks,
@@ -272,59 +246,13 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	for _, nodeID := range config.ProxyedNodeIds {
 		h.proxyedNodeIdsMap[nodeID] = struct{}{}
 	}
-	if h.chain.NoTries() {
-	} else if config.Sync == ethconfig.FullSync {
-		// The database seems empty as the current block is the genesis. Yet the snap
-		// block is ahead, so snap sync was enabled for this node at a certain point.
-		// The scenarios where this can happen is
-		// * if the user manually (or via a bad block) rolled back a snap sync node
-		//   below the sync point.
-		// * the last snap sync is not finished while user specifies a full sync this
-		//   time. But we don't have any recent state for full sync.
-		// In these cases however it's safe to reenable snap sync.
-		fullBlock, snapBlock := h.chain.CurrentBlock(), h.chain.CurrentSnapBlock()
-		if fullBlock.Number.Uint64() == 0 && snapBlock.Number.Uint64() > 0 {
-			h.snapSync.Store(true)
-			log.Warn("Switch sync mode from full sync to snap sync", "reason", "snap sync incomplete")
-		} else if !h.chain.HasState(fullBlock.Root) {
-			h.snapSync.Store(true)
-			log.Warn("Switch sync mode from full sync to snap sync", "reason", "head state missing")
-		}
-	} else {
-		head := h.chain.CurrentBlock()
-		if head.Number.Uint64() > 0 && h.chain.HasState(head.Root) {
-			log.Info("Switch sync mode from snap sync to full sync", "reason", "snap sync complete")
-		} else {
-			// If snap sync was requested and our database is empty, grant it
-			h.snapSync.Store(true)
-			log.Info("Enabled snap sync", "head", head.Number, "hash", head.Hash())
-		}
-	}
-=======
-	h := &handler{
-		nodeID:         config.NodeID,
-		networkID:      config.Network,
-		database:       config.Database,
-		txpool:         config.TxPool,
-		chain:          config.Chain,
-		peers:          newPeerSet(),
-		txBroadcastKey: newBroadcastChoiceKey(),
-		requiredBlocks: config.RequiredBlocks,
-		quitSync:       make(chan struct{}),
-		handlerDoneCh:  make(chan struct{}),
-		handlerStartCh: make(chan struct{}),
-	}
-	// Construct the downloader (long sync)
-	h.downloader = downloader.New(config.Database, config.Sync, h.chain, h.removePeer, h.enableSyncedFeatures)
 
->>>>>>> geth-v1.17.3
+	// Construct the downloader (long sync)
+	h.downloader = downloader.New(config.Database, config.Sync, h.chain, h.removePeer, nil)
 	// If snap sync is requested but snapshots are disabled, fail loudly
 	if h.downloader.ConfigSyncMode() == ethconfig.SnapSync && (config.Chain.Snapshots() == nil && config.Chain.TrieDB().Scheme() == rawdb.HashScheme) {
 		return nil, errors.New("snap sync not supported with snapshots disabled")
 	}
-<<<<<<< HEAD
-	// Construct the downloader (long sync)
-	h.downloader = downloader.New(config.Database, h.eventMux, h.chain, h.removePeer, nil)
 
 	// Construct the fetcher (short sync)
 	validator := func(header *types.Header) error {
@@ -427,8 +355,6 @@ func newHandler(config *handlerConfig) (*handler, error) {
 	h.blockFetcher = fetcher.NewBlockFetcher(h.chain.GetBlockByHash, validator, broadcastBlockWithCheck,
 		heighter, finalizeHeighter, inserter, h.removePeer, fetchRangeBlocks)
 
-=======
->>>>>>> geth-v1.17.3
 	fetchTx := func(peer string, hashes []common.Hash) error {
 		p := h.peers.peer(peer)
 		if p == nil {
@@ -452,10 +378,6 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		}
 		return errors
 	}
-<<<<<<< HEAD
-	h.txFetcher = fetcher.NewTxFetcher(h.txpool.Has, addTxs, fetchTx, h.removePeer)
-	h.chainSync = newChainSyncer(h)
-=======
 	validateMeta := func(tx common.Hash, kind byte) error {
 		if h.txpool.Has(tx) {
 			return txpool.ErrAlreadyKnown
@@ -466,7 +388,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		return nil
 	}
 	h.txFetcher = fetcher.NewTxFetcher(h.chain, validateMeta, addTxs, fetchTx, h.removePeer)
->>>>>>> geth-v1.17.3
+	h.chainSync = newChainSyncer(h)
 	return h, nil
 }
 
@@ -1192,20 +1114,10 @@ func (h *handler) voteBroadcastLoop() {
 // sync is finished.
 func (h *handler) enableSyncedFeatures() {
 	h.synced.Store(true)
-<<<<<<< HEAD
 	if !h.acceptTxs.Load() {
 		h.acceptTxs.Store(true)
 		log.Info("Enable transaction acceptance when synced.")
 	}
-
-	// If we were running snap sync and it finished, disable doing another
-	// round on next sync cycle
-	if h.snapSync.Load() {
-		log.Info("Snap sync complete, auto disabling")
-		h.snapSync.Store(false)
-	}
-=======
->>>>>>> geth-v1.17.3
 }
 
 // blockRangeState holds the state of the block range update broadcasting mechanism.

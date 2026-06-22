@@ -191,7 +191,7 @@ func testVotePool(t *testing.T, isValidRules bool) {
 
 	// Send the done event of downloader
 	time.Sleep(10 * time.Millisecond)
-	mux.Post(downloader.DoneEvent{})
+	mux.Post(downloader.SyncCompleted)
 
 	bs, _ := core.GenerateChain(params.TestChainConfig, chain.Genesis(), ethash.NewFaker(), db, 1, nil)
 	if _, err := chain.InsertChain(bs); err != nil {

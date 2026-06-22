@@ -27,43 +27,7 @@ const supportsUnaligned = runtime.GOARCH == "386" || runtime.GOARCH == "amd64" |
 //
 // Deprecated: use crypto/subtle.XORBytes
 func XORBytes(dst, a, b []byte) int {
-<<<<<<< HEAD
-	if supportsUnaligned {
-		return fastXORBytes(dst, a, b)
-	}
-	return safeXORBytes(dst, a, b)
-}
-
-// fastXORBytes xors in bulk. It only works on architectures that support
-// unaligned read/writes.
-func fastXORBytes(dst, a, b []byte) int {
-	n := min(len(b), len(a))
-	w := n / wordSize
-	if w > 0 {
-		dw := *(*[]uintptr)(unsafe.Pointer(&dst))
-		aw := *(*[]uintptr)(unsafe.Pointer(&a))
-		bw := *(*[]uintptr)(unsafe.Pointer(&b))
-		for i := 0; i < w; i++ {
-			dw[i] = aw[i] ^ bw[i]
-		}
-	}
-	for i := n - n%wordSize; i < n; i++ {
-		dst[i] = a[i] ^ b[i]
-	}
-	return n
-}
-
-// safeXORBytes xors one by one. It works on all architectures, independent if
-// it supports unaligned read/writes or not.
-func safeXORBytes(dst, a, b []byte) int {
-	n := min(len(b), len(a))
-	for i := 0; i < n; i++ {
-		dst[i] = a[i] ^ b[i]
-	}
-	return n
-=======
 	return subtle.XORBytes(dst, a, b)
->>>>>>> geth-v1.17.3
 }
 
 // ANDBytes ands the bytes in a and b. The destination is assumed to have enough

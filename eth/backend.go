@@ -39,11 +39,8 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/filtermaps"
-<<<<<<< HEAD
-	"github.com/ethereum/go-ethereum/core/monitor"
-=======
 	"github.com/ethereum/go-ethereum/core/history"
->>>>>>> geth-v1.17.3
+	"github.com/ethereum/go-ethereum/core/monitor"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/pruner"
 	"github.com/ethereum/go-ethereum/core/txpool"
@@ -274,9 +271,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		chainConfig.BPO2Time = config.OverrideBPO2
 		overrides.OverrideBPO2 = config.OverrideBPO2
 	}
-	if config.OverrideVerkle != nil {
-		chainConfig.VerkleTime = config.OverrideVerkle
-		overrides.OverrideVerkle = config.OverrideVerkle
+	if config.OverrideUBT != nil {
+		chainConfig.UBTTime = config.OverrideUBT
+		overrides.OverrideUBT = config.OverrideUBT
 	}
 
 	// startup ancient freeze
@@ -335,32 +332,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			rawdb.WriteDatabaseVersion(chainDb, core.BlockChainVersion)
 		}
 	}
-<<<<<<< HEAD
 
-	var (
-		options = &core.BlockChainConfig{
-			TrieCleanLimit:        config.TrieCleanCache,
-			NoPrefetch:            config.NoPrefetch,
-			TrieDirtyLimit:        config.TrieDirtyCache,
-			ArchiveMode:           config.NoPruning,
-			TrieTimeLimit:         config.TrieTimeout,
-			NoTries:               noTries,
-			SnapshotLimit:         config.SnapshotCache,
-			TriesInMemory:         config.TriesInMemory,
-			Preimages:             config.Preimages,
-			StateHistory:          config.StateHistory,
-			StateScheme:           config.StateScheme,
-			PathSyncFlush:         config.PathSyncFlush,
-			EnableIncr:            config.EnableIncrSnapshots,
-			IncrHistoryPath:       config.IncrSnapshotPath,
-			IncrHistory:           config.IncrSnapshotBlockInterval,
-			IncrStateBuffer:       config.IncrSnapshotStateBuffer,
-			IncrKeptBlocks:        config.IncrSnapshotKeptBlocks,
-			UseRemoteIncrSnapshot: config.UseRemoteIncrSnapshot,
-			RemoteIncrURL:         config.RemoteIncrSnapshotURL,
-			ChainHistoryMode:      config.HistoryMode,
-			TxLookupLimit:         int64(min(config.TransactionHistory, math.MaxInt64)),
-=======
 	histPolicy, err := history.NewPolicy(config.HistoryMode, genesisHash)
 	if err != nil {
 		return nil, err
@@ -372,16 +344,26 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			TrieDirtyLimit:          config.TrieDirtyCache,
 			ArchiveMode:             config.NoPruning,
 			TrieTimeLimit:           config.TrieTimeout,
+			NoTries:                 noTries,
 			SnapshotLimit:           config.SnapshotCache,
+			TriesInMemory:           config.TriesInMemory,
 			Preimages:               config.Preimages,
 			StateHistory:            config.StateHistory,
 			TrienodeHistory:         config.TrienodeHistory,
 			NodeFullValueCheckpoint: config.NodeFullValueCheckpoint,
 			BinTrieGroupDepth:       config.BinTrieGroupDepth,
-			StateScheme:             scheme,
+			StateScheme:             config.StateScheme,
 			HistoryPolicy:           histPolicy,
 			TxLookupLimit:           int64(min(config.TransactionHistory, math.MaxInt64)),
->>>>>>> geth-v1.17.3
+			PathSyncFlush:           config.PathSyncFlush,
+			EnableIncr:              config.EnableIncrSnapshots,
+			IncrHistoryPath:         config.IncrSnapshotPath,
+			IncrHistory:             config.IncrSnapshotBlockInterval,
+			IncrStateBuffer:         config.IncrSnapshotStateBuffer,
+			IncrKeptBlocks:          config.IncrSnapshotKeptBlocks,
+			UseRemoteIncrSnapshot:   config.UseRemoteIncrSnapshot,
+			RemoteIncrURL:           config.RemoteIncrSnapshotURL,
+
 			VmConfig: vm.Config{
 				EnablePreimageRecording: config.EnablePreimageRecording,
 			},
@@ -391,10 +373,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			// - DATADIR/triedb/verkle.journal
 			TrieJournalDirectory: stack.ResolvePath("triedb"),
 			StateSizeTracking:    config.EnableStateSizeTracking,
-<<<<<<< HEAD
-=======
 			SlowBlockThreshold:   config.SlowBlockThreshold,
->>>>>>> geth-v1.17.3
 
 			StatelessSelfValidation: config.StatelessSelfValidation,
 			EnableWitnessStats:      config.EnableWitnessStats,
@@ -416,24 +395,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		}
 		options.VmConfig.Tracer = t
 	}
-<<<<<<< HEAD
-=======
-	// Override the chain config with provided settings.
-	var overrides core.ChainOverrides
-	if config.OverrideOsaka != nil {
-		overrides.OverrideOsaka = config.OverrideOsaka
-	}
-	if config.OverrideBPO1 != nil {
-		overrides.OverrideBPO1 = config.OverrideBPO1
-	}
-	if config.OverrideBPO2 != nil {
-		overrides.OverrideBPO2 = config.OverrideBPO2
-	}
-	if config.OverrideUBT != nil {
-		overrides.OverrideUBT = config.OverrideUBT
-	}
-	options.Overrides = &overrides
->>>>>>> geth-v1.17.3
 
 	bcOps := make([]core.BlockChainOption, 0)
 	if stack.Config().EnableDoubleSignMonitor {
@@ -498,7 +459,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	// Permit the downloader to use the trie cache allowance during fast sync
 	cacheLimit := options.TrieCleanLimit + options.TrieDirtyLimit + options.SnapshotLimit
 	if eth.handler, err = newHandler(&handlerConfig{
-<<<<<<< HEAD
 		NodeID:                    eth.p2pServer.Self().ID(),
 		Database:                  chainDb,
 		Chain:                     eth.blockchain,
@@ -506,7 +466,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		Network:                   networkID,
 		Sync:                      config.SyncMode,
 		BloomCache:                uint64(cacheLimit),
-		EventMux:                  eth.eventMux,
 		RequiredBlocks:            config.RequiredBlocks,
 		DirectBroadcast:           config.DirectBroadcast,
 		EnableEVNFeatures:         stack.Config().EnableEVNFeatures,
@@ -516,23 +475,13 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		DisablePeerTxBroadcast:    config.DisablePeerTxBroadcast,
 		PeerSet:                   newPeerSet(),
 		EnableQuickBlockFetching:  stack.Config().EnableQuickBlockFetching,
-=======
-		NodeID:         eth.p2pServer.Self().ID(),
-		Database:       chainDb,
-		Chain:          eth.blockchain,
-		TxPool:         eth.txPool,
-		Network:        networkID,
-		Sync:           config.SyncMode,
-		BloomCache:     uint64(cacheLimit),
-		RequiredBlocks: config.RequiredBlocks,
->>>>>>> geth-v1.17.3
 	}); err != nil {
 		return nil, err
 	}
 
 	eth.dropper = newDropper(eth.p2pServer.MaxDialedConns(), eth.p2pServer.MaxInboundConns())
 
-	eth.miner = miner.New(eth, &config.Miner, eth.EventMux(), eth.engine)
+	eth.miner = miner.New(eth, &config.Miner, eth.handler.eventMux, eth.engine)
 	eth.miner.SetExtra(makeExtraData(config.Miner.ExtraData))
 	eth.miner.SetPrioAddresses(config.TxPool.Locals)
 
@@ -636,7 +585,7 @@ func (s *Ethereum) APIs() []rpc.API {
 			Service:   downloader.NewDownloaderAPI(s.handler.downloader, s.blockchain),
 		}, {
 			Namespace: "eth",
-			Service:   filters.NewFilterAPI(filters.NewFilterSystem(s.APIBackend, filters.Config{}), s.config.RangeLimit),
+			Service:   filters.NewFilterAPI(filters.NewFilterSystem(s.APIBackend, filters.Config{})),
 		}, {
 			Namespace: "admin",
 			Service:   NewAdminAPI(s),
@@ -885,7 +834,6 @@ func (s *Ethereum) BlockChain() *core.BlockChain       { return s.blockchain }
 func (s *Ethereum) TxPool() *txpool.TxPool             { return s.txPool }
 func (s *Ethereum) BlobTxPool() *blobpool.BlobPool     { return s.blobTxPool }
 func (s *Ethereum) VotePool() *vote.VotePool           { return s.votePool }
-func (s *Ethereum) EventMux() *event.TypeMux           { return s.eventMux }
 func (s *Ethereum) Engine() consensus.Engine           { return s.engine }
 func (s *Ethereum) ChainDb() ethdb.Database            { return s.chainDb }
 func (s *Ethereum) IsListening() bool                  { return true } // Always listening
@@ -1094,7 +1042,6 @@ func (s *Ethereum) Stop() error {
 	close(s.stopCh)
 	return nil
 }
-<<<<<<< HEAD
 
 func (s *Ethereum) reportRecentBlocksLoop() {
 	reportCnt := uint64(2)
@@ -1175,5 +1122,3 @@ func validTimeMetric(startMs, endMs int64) bool {
 	}
 	return endMs-startMs <= MaxBlockHandleDelayMs
 }
-=======
->>>>>>> geth-v1.17.3

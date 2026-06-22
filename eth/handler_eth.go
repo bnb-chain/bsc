@@ -128,7 +128,6 @@ func handleTransactions(peer *eth.Peer, list []*types.Transaction, directBroadca
 		peer.MarkTransaction(hash)
 	}
 	return nil
-<<<<<<< HEAD
 }
 
 // handleBlockAnnounces is invoked from a peer's message handler when it transmits a
@@ -204,6 +203,4 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPa
 		}
 	}
 	return nil
-=======
->>>>>>> geth-v1.17.3
 }

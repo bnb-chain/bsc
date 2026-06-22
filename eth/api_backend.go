@@ -329,14 +329,13 @@ func (b *EthAPIBackend) SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent) e
 	return b.eth.BlockChain().SubscribeChainHeadEvent(ch)
 }
 
-<<<<<<< HEAD
 func (b *EthAPIBackend) SubscribeFinalizedHeaderEvent(ch chan<- core.FinalizedHeaderEvent) event.Subscription {
 	return b.eth.BlockChain().SubscribeFinalizedHeaderEvent(ch)
-=======
+}
+
 // SubscribeNewPayloadEvent registers a subscription for NewPayloadEvent.
 func (b *EthAPIBackend) SubscribeNewPayloadEvent(ch chan<- core.NewPayloadEvent) event.Subscription {
 	return b.eth.BlockChain().SubscribeNewPayloadEvent(ch)
->>>>>>> geth-v1.17.3
 }
 
 func (b *EthAPIBackend) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscription {
@@ -529,7 +528,6 @@ func (b *EthAPIBackend) CurrentHeader() *types.Header {
 	return b.eth.blockchain.CurrentHeader()
 }
 
-<<<<<<< HEAD
 func (b *EthAPIBackend) Miner() *miner.Miner {
 	return b.eth.Miner()
 }
@@ -538,12 +536,8 @@ func (b *EthAPIBackend) StartMining() error {
 	return b.eth.StartMining()
 }
 
-func (b *EthAPIBackend) StateAtBlock(ctx context.Context, block *types.Block, reexec uint64, base *state.StateDB, readOnly bool, preferDisk bool) (*state.StateDB, tracers.StateReleaseFunc, error) {
-	return b.eth.stateAtBlock(ctx, block, reexec, base, readOnly, preferDisk)
-=======
 func (b *EthAPIBackend) StateAtBlock(ctx context.Context, block *types.Block, base *state.StateDB, readOnly bool, preferDisk bool) (*state.StateDB, tracers.StateReleaseFunc, error) {
 	return b.eth.stateAtBlock(ctx, block, base, readOnly, preferDisk)
->>>>>>> geth-v1.17.3
 }
 
 func (b *EthAPIBackend) StateAtTransaction(ctx context.Context, block *types.Block, txIndex int) (*types.Transaction, vm.BlockContext, *state.StateDB, tracers.StateReleaseFunc, error) {

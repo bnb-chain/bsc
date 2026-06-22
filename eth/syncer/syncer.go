@@ -170,7 +170,7 @@ func (s *Syncer) run() {
 				}
 				if header := s.backend.BlockChain().GetHeaderByNumber(head.Number.Uint64() - params.EpochLength); header != nil {
 					if safe := s.backend.BlockChain().CurrentSafeBlock(); safe == nil || safe.Number.Cmp(header.Number) < 0 {
-						s.backend.BlockChain().SetSafe(header)
+						// s.backend.BlockChain().SetSafe(header)
 					}
 				}
 			}

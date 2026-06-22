@@ -22,22 +22,13 @@ import (
 	"os"
 	"slices"
 	"sort"
-<<<<<<< HEAD
-	"strconv"
 	"strings"
-	"time"
-=======
->>>>>>> geth-v1.17.3
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/console/prompt"
-<<<<<<< HEAD
 	"github.com/ethereum/go-ethereum/eth"
-	"github.com/ethereum/go-ethereum/eth/downloader"
-=======
->>>>>>> geth-v1.17.3
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
@@ -71,7 +62,7 @@ var (
 		utils.NoUSBFlag, // deprecated
 		utils.DirectBroadcastFlag,
 		utils.DisableSnapProtocolFlag,
-		utils.RangeLimitFlag,
+		utils.RangeLimitFlag, // deprecated
 		utils.USBFlag,
 		utils.SmartCardDaemonPathFlag,
 		utils.RialtoHash,
@@ -124,14 +115,11 @@ var (
 		utils.LogNoHistoryFlag,
 		utils.LogExportCheckpointsFlag,
 		utils.StateHistoryFlag,
-<<<<<<< HEAD
 		utils.PathDBSyncFlag,
 		utils.JournalFileFlag, // deprecated
-=======
 		utils.TrienodeHistoryFlag,
 		utils.TrienodeHistoryFullValueCheckpointFlag,
 		utils.BinTrieGroupDepthFlag,
->>>>>>> geth-v1.17.3
 		utils.LightKDFFlag,
 		utils.EthRequiredBlocksFlag,
 		utils.LegacyWhitelistFlag, // deprecated
@@ -200,7 +188,6 @@ var (
 		utils.VoteJournalDirFlag,
 		utils.LogDebugFlag,
 		utils.LogBacktraceAtFlag,
-<<<<<<< HEAD
 		utils.BlobExtraReserveFlag,
 		utils.VMOpcodeOptimizeFlag, // deprecated
 		utils.EnableIncrSnapshotFlag,
@@ -218,18 +205,8 @@ var (
 		// utils.BeaconGenesisRootFlag,
 		// utils.BeaconGenesisTimeFlag,
 		// utils.BeaconCheckpointFlag,
-=======
-		utils.BeaconApiFlag,
-		utils.BeaconApiHeaderFlag,
-		utils.BeaconThresholdFlag,
-		utils.BeaconNoFilterFlag,
-		utils.BeaconConfigFlag,
-		utils.BeaconGenesisRootFlag,
-		utils.BeaconGenesisTimeFlag,
-		utils.BeaconCheckpointFlag,
-		utils.BeaconCheckpointFileFlag,
+		// utils.BeaconCheckpointFileFlag,
 		utils.LogSlowBlockFlag,
->>>>>>> geth-v1.17.3
 	}, utils.NetworkFlags, utils.DatabaseFlags)
 
 	rpcFlags = []cli.Flag{
@@ -333,14 +310,9 @@ func init() {
 		utils.ShowDeprecated,
 		// See snapshot.go
 		snapshotCommand,
-<<<<<<< HEAD
 		blsCommand,
-		// See verkle.go
-		verkleCommand,
-=======
 		// See bintrie_convert.go
 		bintrieCommand,
->>>>>>> geth-v1.17.3
 	}
 	if logTestCommand != nil {
 		app.Commands = append(app.Commands, logTestCommand)
@@ -387,19 +359,6 @@ func prepare(ctx *cli.Context) {
 	case ctx.IsSet(utils.ChapelFlag.Name):
 		log.Info("Starting BSC on Chapel testnet...")
 	}
-<<<<<<< HEAD
-	// If we're a full node on mainnet without --cache specified, bump default cache allowance
-	if !ctx.IsSet(utils.CacheFlag.Name) && !ctx.IsSet(utils.NetworkIdFlag.Name) {
-		// Make sure we're not on any supported preconfigured testnet either
-		if !ctx.IsSet(utils.ChapelFlag.Name) &&
-			!ctx.IsSet(utils.DeveloperFlag.Name) {
-			// Nope, we're really on mainnet. Bump that cache up!
-			log.Info("Bumping default cache on mainnet", "provided", ctx.Int(utils.CacheFlag.Name), "updated", 4096)
-			ctx.Set(utils.CacheFlag.Name, strconv.Itoa(4096))
-		}
-	}
-=======
->>>>>>> geth-v1.17.3
 }
 
 // geth is the main entry point into the system if no special subcommand is run.
@@ -469,40 +428,10 @@ func startNode(ctx *cli.Context, stack *node.Node, backend ethapi.Backend, isCon
 			}
 		}
 	}()
-<<<<<<< HEAD
-
-	// Spawn a standalone goroutine for status synchronization monitoring,
-	// close the node when synchronization is complete if user required.
-	if ctx.Bool(utils.ExitWhenSyncedFlag.Name) {
-		go func() {
-			sub := stack.EventMux().Subscribe(downloader.DoneEvent{})
-			defer sub.Unsubscribe()
-			for {
-				event := <-sub.Chan()
-				if event == nil {
-					continue
-				}
-				done, ok := event.Data.(downloader.DoneEvent)
-				if !ok {
-					continue
-				}
-				if timestamp := time.Unix(int64(done.Latest.Time), 0); time.Since(timestamp) < 10*time.Minute {
-					log.Info("Synchronisation completed", "latestnum", done.Latest.Number, "latesthash", done.Latest.Hash(),
-						"age", common.PrettyAge(timestamp))
-					stack.Close()
-				}
-			}
-		}()
-	}
 
 	// Start auxiliary services if enabled
 	ethBackend, ok := backend.(*eth.EthAPIBackend)
 	if ctx.Bool(utils.MiningEnabledFlag.Name) {
-		// Mining only makes sense if a full Ethereum node is running
-		if ctx.String(utils.SyncModeFlag.Name) == "light" {
-			utils.Fatalf("Light clients do not support mining")
-		}
-
 		if !ok {
 			utils.Fatalf("Ethereum service not running")
 		}
@@ -543,6 +472,4 @@ func unlockAccounts(ctx *cli.Context, stack *node.Node) {
 	for i, account := range unlocks {
 		unlockAccount(ks, account, i, passwords)
 	}
-=======
->>>>>>> geth-v1.17.3
 }

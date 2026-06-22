@@ -1,8 +1,4 @@
-<<<<<<<< HEAD:eth/protocols/bsc/metrics.go
-// Copyright 2023 The go-ethereum Authors
-========
 // Copyright 2022 The go-ethereum Authors
->>>>>>>> geth-v1.17.3:core/rawdb/freezer_utils_windows.go
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -18,21 +14,6 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-<<<<<<<< HEAD:eth/protocols/bsc/metrics.go
-package bsc
-
-import (
-	metrics "github.com/ethereum/go-ethereum/metrics"
-)
-
-var (
-	ingressRegistrationErrorName = "eth/protocols/bsc/ingress/registration/error"
-	egressRegistrationErrorName  = "eth/protocols/bsc/egress/registration/error"
-
-	IngressRegistrationErrorMeter = metrics.NewRegisteredMeter(ingressRegistrationErrorName, nil)
-	EgressRegistrationErrorMeter  = metrics.NewRegisteredMeter(egressRegistrationErrorName, nil)
-)
-========
 //go:build windows
 // +build windows
 
@@ -43,4 +24,3 @@ package rawdb
 func syncDir(name string) error {
 	return nil
 }
->>>>>>>> geth-v1.17.3:core/rawdb/freezer_utils_windows.go

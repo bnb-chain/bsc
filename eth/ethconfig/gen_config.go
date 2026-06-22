@@ -18,7 +18,6 @@ import (
 // MarshalTOML marshals as TOML.
 func (c Config) MarshalTOML() (interface{}, error) {
 	type Config struct {
-<<<<<<< HEAD
 		Genesis                   *core.Genesis `toml:",omitempty"`
 		NetworkId                 uint64
 		SyncMode                  SyncMode
@@ -33,7 +32,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		NoPrefetch                bool
 		DirectBroadcast           bool
 		DisableSnapProtocol       bool
-		RangeLimit                bool
 		TxLookupLimit             uint64 `toml:",omitempty"`
 		TransactionHistory        uint64 `toml:",omitempty"`
 		BlockHistory              uint64 `toml:",omitempty"`
@@ -41,10 +39,14 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		LogNoHistory              bool   `toml:",omitempty"`
 		LogExportCheckpoints      string
 		StateHistory              uint64                 `toml:",omitempty"`
+		TrienodeHistory           int64                  `toml:",omitempty"`
+		NodeFullValueCheckpoint   uint32                 `toml:",omitempty"`
 		StateScheme               string                 `toml:",omitempty"`
 		PathSyncFlush             bool                   `toml:",omitempty"`
 		DisableTxIndexer          bool                   `toml:",omitempty"`
+		BinTrieGroupDepth         int                    `toml:",omitempty"`
 		RequiredBlocks            map[uint64]common.Hash `toml:"-"`
+		SlowBlockThreshold        time.Duration          `toml:",omitempty"`
 		SkipBcVersionCheck        bool                   `toml:"-"`
 		DatabaseHandles           int                    `toml:"-"`
 		DatabaseCache             int
@@ -82,9 +84,10 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		OverridePasteur           *uint64       `toml:",omitempty"`
 		OverrideBPO1              *uint64       `toml:",omitempty"`
 		OverrideBPO2              *uint64       `toml:",omitempty"`
-		OverrideVerkle            *uint64       `toml:",omitempty"`
+		OverrideUBT               *uint64       `toml:",omitempty"`
 		TxSyncDefaultTimeout      time.Duration `toml:",omitempty"`
 		TxSyncMaxTimeout          time.Duration `toml:",omitempty"`
+		RangeLimit                uint64        `toml:",omitempty"`
 		BlobExtraReserve          uint64
 		EnableIncrSnapshots       bool
 		IncrSnapshotPath          string
@@ -93,60 +96,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		IncrSnapshotKeptBlocks    uint64
 		UseRemoteIncrSnapshot     bool
 		RemoteIncrSnapshotURL     string
-=======
-		Genesis                 *core.Genesis `toml:",omitempty"`
-		NetworkId               uint64
-		SyncMode                SyncMode
-		HistoryMode             history.HistoryMode
-		EthDiscoveryURLs        []string
-		SnapDiscoveryURLs       []string
-		NoPruning               bool
-		NoPrefetch              bool
-		TxLookupLimit           uint64 `toml:",omitempty"`
-		TransactionHistory      uint64 `toml:",omitempty"`
-		LogHistory              uint64 `toml:",omitempty"`
-		LogNoHistory            bool   `toml:",omitempty"`
-		LogExportCheckpoints    string
-		StateHistory            uint64                 `toml:",omitempty"`
-		TrienodeHistory         int64                  `toml:",omitempty"`
-		NodeFullValueCheckpoint uint32                 `toml:",omitempty"`
-		StateScheme             string                 `toml:",omitempty"`
-		BinTrieGroupDepth       int                    `toml:",omitempty"`
-		RequiredBlocks          map[uint64]common.Hash `toml:"-"`
-		SlowBlockThreshold      time.Duration          `toml:",omitempty"`
-		SkipBcVersionCheck      bool                   `toml:"-"`
-		DatabaseHandles         int                    `toml:"-"`
-		DatabaseCache           int
-		DatabaseFreezer         string
-		DatabaseEra             string
-		TrieCleanCache          int
-		TrieDirtyCache          int
-		TrieTimeout             time.Duration
-		SnapshotCache           int
-		Preimages               bool
-		FilterLogCacheSize      int
-		LogQueryLimit           int
-		Miner                   miner.Config
-		TxPool                  legacypool.Config
-		BlobPool                blobpool.Config
-		GPO                     gasprice.Config
-		EnablePreimageRecording bool
-		EnableWitnessStats      bool
-		StatelessSelfValidation bool
-		EnableStateSizeTracking bool
-		VMTrace                 string
-		VMTraceJsonConfig       string
-		RPCGasCap               uint64
-		RPCEVMTimeout           time.Duration
-		RPCTxFeeCap             float64
-		OverrideOsaka           *uint64       `toml:",omitempty"`
-		OverrideBPO1            *uint64       `toml:",omitempty"`
-		OverrideBPO2            *uint64       `toml:",omitempty"`
-		OverrideUBT             *uint64       `toml:",omitempty"`
-		TxSyncDefaultTimeout    time.Duration `toml:",omitempty"`
-		TxSyncMaxTimeout        time.Duration `toml:",omitempty"`
-		RangeLimit              uint64        `toml:",omitempty"`
->>>>>>> geth-v1.17.3
 	}
 	var enc Config
 	enc.Genesis = c.Genesis
@@ -163,7 +112,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.NoPrefetch = c.NoPrefetch
 	enc.DirectBroadcast = c.DirectBroadcast
 	enc.DisableSnapProtocol = c.DisableSnapProtocol
-	enc.RangeLimit = c.RangeLimit
 	enc.TxLookupLimit = c.TxLookupLimit
 	enc.TransactionHistory = c.TransactionHistory
 	enc.BlockHistory = c.BlockHistory
@@ -174,12 +122,9 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.TrienodeHistory = c.TrienodeHistory
 	enc.NodeFullValueCheckpoint = c.NodeFullValueCheckpoint
 	enc.StateScheme = c.StateScheme
-<<<<<<< HEAD
 	enc.PathSyncFlush = c.PathSyncFlush
 	enc.DisableTxIndexer = c.DisableTxIndexer
-=======
 	enc.BinTrieGroupDepth = c.BinTrieGroupDepth
->>>>>>> geth-v1.17.3
 	enc.RequiredBlocks = c.RequiredBlocks
 	enc.SlowBlockThreshold = c.SlowBlockThreshold
 	enc.SkipBcVersionCheck = c.SkipBcVersionCheck
@@ -222,7 +167,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.OverrideUBT = c.OverrideUBT
 	enc.TxSyncDefaultTimeout = c.TxSyncDefaultTimeout
 	enc.TxSyncMaxTimeout = c.TxSyncMaxTimeout
-<<<<<<< HEAD
+	enc.RangeLimit = c.RangeLimit
 	enc.BlobExtraReserve = c.BlobExtraReserve
 	enc.EnableIncrSnapshots = c.EnableIncrSnapshots
 	enc.IncrSnapshotPath = c.IncrSnapshotPath
@@ -231,16 +176,12 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.IncrSnapshotKeptBlocks = c.IncrSnapshotKeptBlocks
 	enc.UseRemoteIncrSnapshot = c.UseRemoteIncrSnapshot
 	enc.RemoteIncrSnapshotURL = c.RemoteIncrSnapshotURL
-=======
-	enc.RangeLimit = c.RangeLimit
->>>>>>> geth-v1.17.3
 	return &enc, nil
 }
 
 // UnmarshalTOML unmarshals from TOML.
 func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	type Config struct {
-<<<<<<< HEAD
 		Genesis                   *core.Genesis `toml:",omitempty"`
 		NetworkId                 *uint64
 		SyncMode                  *SyncMode
@@ -255,7 +196,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		NoPrefetch                *bool
 		DirectBroadcast           *bool
 		DisableSnapProtocol       *bool
-		RangeLimit                *bool
 		TxLookupLimit             *uint64 `toml:",omitempty"`
 		TransactionHistory        *uint64 `toml:",omitempty"`
 		BlockHistory              *uint64 `toml:",omitempty"`
@@ -263,10 +203,14 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		LogNoHistory              *bool   `toml:",omitempty"`
 		LogExportCheckpoints      *string
 		StateHistory              *uint64                `toml:",omitempty"`
+		TrienodeHistory           *int64                 `toml:",omitempty"`
+		NodeFullValueCheckpoint   *uint32                `toml:",omitempty"`
 		StateScheme               *string                `toml:",omitempty"`
 		PathSyncFlush             *bool                  `toml:",omitempty"`
 		DisableTxIndexer          *bool                  `toml:",omitempty"`
+		BinTrieGroupDepth         *int                   `toml:",omitempty"`
 		RequiredBlocks            map[uint64]common.Hash `toml:"-"`
+		SlowBlockThreshold        *time.Duration         `toml:",omitempty"`
 		SkipBcVersionCheck        *bool                  `toml:"-"`
 		DatabaseHandles           *int                   `toml:"-"`
 		DatabaseCache             *int
@@ -304,9 +248,10 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		OverridePasteur           *uint64        `toml:",omitempty"`
 		OverrideBPO1              *uint64        `toml:",omitempty"`
 		OverrideBPO2              *uint64        `toml:",omitempty"`
-		OverrideVerkle            *uint64        `toml:",omitempty"`
+		OverrideUBT               *uint64        `toml:",omitempty"`
 		TxSyncDefaultTimeout      *time.Duration `toml:",omitempty"`
 		TxSyncMaxTimeout          *time.Duration `toml:",omitempty"`
+		RangeLimit                *uint64        `toml:",omitempty"`
 		BlobExtraReserve          *uint64
 		EnableIncrSnapshots       *bool
 		IncrSnapshotPath          *string
@@ -315,60 +260,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		IncrSnapshotKeptBlocks    *uint64
 		UseRemoteIncrSnapshot     *bool
 		RemoteIncrSnapshotURL     *string
-=======
-		Genesis                 *core.Genesis `toml:",omitempty"`
-		NetworkId               *uint64
-		SyncMode                *SyncMode
-		HistoryMode             *history.HistoryMode
-		EthDiscoveryURLs        []string
-		SnapDiscoveryURLs       []string
-		NoPruning               *bool
-		NoPrefetch              *bool
-		TxLookupLimit           *uint64 `toml:",omitempty"`
-		TransactionHistory      *uint64 `toml:",omitempty"`
-		LogHistory              *uint64 `toml:",omitempty"`
-		LogNoHistory            *bool   `toml:",omitempty"`
-		LogExportCheckpoints    *string
-		StateHistory            *uint64                `toml:",omitempty"`
-		TrienodeHistory         *int64                 `toml:",omitempty"`
-		NodeFullValueCheckpoint *uint32                `toml:",omitempty"`
-		StateScheme             *string                `toml:",omitempty"`
-		BinTrieGroupDepth       *int                   `toml:",omitempty"`
-		RequiredBlocks          map[uint64]common.Hash `toml:"-"`
-		SlowBlockThreshold      *time.Duration         `toml:",omitempty"`
-		SkipBcVersionCheck      *bool                  `toml:"-"`
-		DatabaseHandles         *int                   `toml:"-"`
-		DatabaseCache           *int
-		DatabaseFreezer         *string
-		DatabaseEra             *string
-		TrieCleanCache          *int
-		TrieDirtyCache          *int
-		TrieTimeout             *time.Duration
-		SnapshotCache           *int
-		Preimages               *bool
-		FilterLogCacheSize      *int
-		LogQueryLimit           *int
-		Miner                   *miner.Config
-		TxPool                  *legacypool.Config
-		BlobPool                *blobpool.Config
-		GPO                     *gasprice.Config
-		EnablePreimageRecording *bool
-		EnableWitnessStats      *bool
-		StatelessSelfValidation *bool
-		EnableStateSizeTracking *bool
-		VMTrace                 *string
-		VMTraceJsonConfig       *string
-		RPCGasCap               *uint64
-		RPCEVMTimeout           *time.Duration
-		RPCTxFeeCap             *float64
-		OverrideOsaka           *uint64        `toml:",omitempty"`
-		OverrideBPO1            *uint64        `toml:",omitempty"`
-		OverrideBPO2            *uint64        `toml:",omitempty"`
-		OverrideUBT             *uint64        `toml:",omitempty"`
-		TxSyncDefaultTimeout    *time.Duration `toml:",omitempty"`
-		TxSyncMaxTimeout        *time.Duration `toml:",omitempty"`
-		RangeLimit              *uint64        `toml:",omitempty"`
->>>>>>> geth-v1.17.3
 	}
 	var dec Config
 	if err := unmarshal(&dec); err != nil {
@@ -416,9 +307,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.DisableSnapProtocol != nil {
 		c.DisableSnapProtocol = *dec.DisableSnapProtocol
 	}
-	if dec.RangeLimit != nil {
-		c.RangeLimit = *dec.RangeLimit
-	}
 	if dec.TxLookupLimit != nil {
 		c.TxLookupLimit = *dec.TxLookupLimit
 	}
@@ -449,16 +337,14 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.StateScheme != nil {
 		c.StateScheme = *dec.StateScheme
 	}
-<<<<<<< HEAD
 	if dec.PathSyncFlush != nil {
 		c.PathSyncFlush = *dec.PathSyncFlush
 	}
 	if dec.DisableTxIndexer != nil {
 		c.DisableTxIndexer = *dec.DisableTxIndexer
-=======
+	}
 	if dec.BinTrieGroupDepth != nil {
 		c.BinTrieGroupDepth = *dec.BinTrieGroupDepth
->>>>>>> geth-v1.17.3
 	}
 	if dec.RequiredBlocks != nil {
 		c.RequiredBlocks = dec.RequiredBlocks
@@ -586,7 +472,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.TxSyncMaxTimeout != nil {
 		c.TxSyncMaxTimeout = *dec.TxSyncMaxTimeout
 	}
-<<<<<<< HEAD
+	if dec.RangeLimit != nil {
+		c.RangeLimit = *dec.RangeLimit
+	}
 	if dec.BlobExtraReserve != nil {
 		c.BlobExtraReserve = *dec.BlobExtraReserve
 	}
@@ -610,10 +498,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.RemoteIncrSnapshotURL != nil {
 		c.RemoteIncrSnapshotURL = *dec.RemoteIncrSnapshotURL
-=======
-	if dec.RangeLimit != nil {
-		c.RangeLimit = *dec.RangeLimit
->>>>>>> geth-v1.17.3
 	}
 	return nil
 }

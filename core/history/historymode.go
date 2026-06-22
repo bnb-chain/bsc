@@ -93,28 +93,13 @@ var staticPrunePoints = map[HistoryMode]map[common.Hash]*PrunePoint{
 			BlockNumber: 15537393,
 			BlockHash:   common.HexToHash("0x55b11b918355b1ef9c5db810302ebad0bf2544255b530cdce90674d5887bb286"),
 		},
-		params.SepoliaGenesisHash: {
-			BlockNumber: 1450409,
-			BlockHash:   common.HexToHash("0x229f6b18ca1552f1d5146deceb5387333f40dc6275aebee3f2c5c4ece07d02db"),
-		},
 	},
-<<<<<<< HEAD
-=======
 	KeepPostPrague: {
 		params.MainnetGenesisHash: {
 			BlockNumber: 22431084,
 			BlockHash:   common.HexToHash("0x50c8cab760b2948349c590461b166773c45d8f4858cccf5a43025ab2960152e8"),
 		},
-		params.SepoliaGenesisHash: {
-			BlockNumber: 7836331,
-			BlockHash:   common.HexToHash("0xe6571beb68bf24dbd8a6ba354518996920c55a3f8d8fdca423e391b8ad071f22"),
-		},
-		params.HoodiGenesisHash: {
-			BlockNumber: 60412,
-			BlockHash:   common.HexToHash("0x1562792812ef418eaafc8f1f093d84d9634971e9dd6b0771302eb5b9fd4d2c46"),
-		},
 	},
->>>>>>> geth-v1.17.3
 }
 
 // HistoryPolicy describes the configured history pruning strategy. It captures

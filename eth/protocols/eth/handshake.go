@@ -37,11 +37,10 @@ const (
 
 // Handshake executes the eth protocol handshake, negotiating version number,
 // network IDs, difficulties, head and genesis blocks.
-<<<<<<< HEAD
 func (p *Peer) Handshake(networkID uint64, chain forkid.Blockchain, rangeMsg BlockRangeUpdatePacket, td *big.Int, extension *UpgradeStatusExtension) error {
 	switch p.version {
-	case ETH69:
-		return p.handshake69(networkID, chain, rangeMsg)
+	case ETH70:
+		return p.handshake(networkID, chain, rangeMsg)
 	case ETH68:
 		return p.handshake68(networkID, chain, td, extension)
 	default:
@@ -132,10 +131,7 @@ func (p *Peer) readStatus68(networkID uint64, status *StatusPacket68, genesis co
 	return nil
 }
 
-func (p *Peer) handshake69(networkID uint64, chain forkid.Blockchain, rangeMsg BlockRangeUpdatePacket) error {
-=======
-func (p *Peer) Handshake(networkID uint64, chain forkid.Blockchain, rangeMsg BlockRangeUpdatePacket) error {
->>>>>>> geth-v1.17.3
+func (p *Peer) handshake(networkID uint64, chain forkid.Blockchain, rangeMsg BlockRangeUpdatePacket) error {
 	var (
 		genesis    = chain.Genesis()
 		latest     = chain.CurrentHeader()

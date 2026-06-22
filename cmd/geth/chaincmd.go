@@ -21,10 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-<<<<<<< HEAD
 	"net"
-=======
->>>>>>> geth-v1.17.3
 	"os"
 	"path"
 	"path/filepath"
@@ -392,11 +389,7 @@ func initGenesis(ctx *cli.Context) error {
 	chaindb := utils.MakeChainDatabase(ctx, stack, false)
 	defer chaindb.Close()
 
-<<<<<<< HEAD
-	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false, genesis.IsVerkle(), false)
-=======
-	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false, genesis.IsUBT())
->>>>>>> geth-v1.17.3
+	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false, genesis.IsUBT(), false)
 	defer triedb.Close()
 
 	_, hash, compatErr, err := core.SetupGenesisBlockWithOverride(chaindb, triedb, genesis, &overrides, nil)

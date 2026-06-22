@@ -71,6 +71,7 @@ type Config struct {
 	VoteEnable             bool           // Whether to vote when mining
 	MaxWaitProposalInSecs  *uint64        `toml:",omitempty"` // The maximum time to wait for the proposal to be done, it's aimed to prevent validator being slashed when restarting
 	DisableVoteAttestation bool           // Whether to skip assembling vote attestation
+	MaxBlobsPerBlock       int            // Maximum number of blobs per block (0 for unset uses protocol default)
 
 	Mev MevConfig // Mev configuration
 }
@@ -78,7 +79,7 @@ type Config struct {
 // DefaultConfig contains default settings for miner.
 var DefaultConfig = Config{
 	GasCeil:  defaultGasCeil,
-	GasPrice: big.NewInt(params.GWei),
+	GasPrice: big.NewInt(params.GWei / 20),
 	// The default recommit time is chosen as two seconds since
 	// consensus-layer usually will wait a half slot of time(6s)
 	// for payload generation. It should be enough for Geth to

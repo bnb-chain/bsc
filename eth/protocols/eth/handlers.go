@@ -238,7 +238,6 @@ func ServiceGetBlockBodiesQuery(chain *core.BlockChain, query GetBlockBodiesRequ
 			lookups >= 2*maxBodiesServe {
 			break
 		}
-<<<<<<< HEAD
 		body := chain.GetBody(hash)
 		if body == nil {
 			break // If we don't have this block's body, stop serving.
@@ -262,26 +261,18 @@ func ServiceGetBlockBodiesQuery(chain *core.BlockChain, query GetBlockBodiesRequ
 		}
 		bodies = append(bodies, enc)
 		bytes += len(enc)
-=======
-		data := chain.GetBodyRLP(hash)
-		if len(data) == 0 {
-			break // If we don't have this block's body, stop serving.
-		}
-		bodies = append(bodies, data)
-		bytes += len(data)
->>>>>>> geth-v1.17.3
 	}
 	return bodies
 }
 
-func handleGetReceipts69(backend Backend, msg Decoder, peer *Peer) error {
+func handleGetReceipts68(backend Backend, msg Decoder, peer *Peer) error {
 	// Decode the block receipts retrieval message
-	var query GetReceiptsPacket69
+	var query GetReceiptsPacket68
 	if err := msg.Decode(&query); err != nil {
 		return err
 	}
-	response := ServiceGetReceiptsQuery69(backend.Chain(), query.GetReceiptsRequest)
-	return peer.ReplyReceiptsRLP69(query.RequestId, response)
+	response := ServiceGetReceiptsQuery68(backend.Chain(), query.GetReceiptsRequest)
+	return peer.ReplyReceiptsRLP68(query.RequestId, response)
 }
 
 func handleGetReceipts70(backend Backend, msg Decoder, peer *Peer) error {
@@ -293,23 +284,22 @@ func handleGetReceipts70(backend Backend, msg Decoder, peer *Peer) error {
 	return peer.ReplyReceiptsRLP70(query.RequestId, response, lastBlockIncomplete)
 }
 
-// ServiceGetReceiptsQuery69 assembles the response to a receipt query.
-// It does not send the bloom filters for the receipts. It is exposed
-// to allow external packages to test protocol behavior.
-func ServiceGetReceiptsQuery69(chain *core.BlockChain, query GetReceiptsRequest) rlp.RawList[*ReceiptList] {
+// ServiceGetReceiptsQuery68 assembles the response to a receipt query. It is
+// exposed to allow external packages to test protocol behavior.
+func ServiceGetReceiptsQuery68(chain *core.BlockChain, query GetReceiptsRequest) []rlp.RawValue {
+	// Gather state data until the fetch or network limits is reached
 	var (
 		bytes    int
-		receipts rlp.RawList[*ReceiptList]
+		receipts []rlp.RawValue
 	)
 	for lookups, hash := range query {
-		if bytes >= softResponseLimit || receipts.Len() >= maxReceiptsServe || lookups >= 2*maxReceiptsServe {
+		if bytes >= softResponseLimit || len(receipts) >= maxReceiptsServe ||
+			lookups >= 2*maxReceiptsServe {
 			break
 		}
-
 		// Retrieve the requested block's receipts
 		results := chain.GetReceiptsRLP(hash)
 		if results == nil {
-<<<<<<< HEAD
 			// If we don't have this block (or it isn't an empty-receipts block), stop serving.
 			if header := chain.GetHeaderByHash(hash); header == nil || header.ReceiptHash != types.EmptyRootHash {
 				break
@@ -325,20 +315,8 @@ func ServiceGetReceiptsQuery69(chain *core.BlockChain, query GetReceiptsRequest)
 				log.Error("Error in block receipts conversion", "hash", hash, "err", err)
 				break
 			}
-=======
-			break // Don't have this block's receipts, stop serving.
->>>>>>> geth-v1.17.3
 		}
-		body := chain.GetBodyRLP(hash)
-		if body == nil {
-			break // The block body is missing, stop serving.
-		}
-		results, _, err := blockReceiptsToNetwork(results, body, receiptQueryParams{})
-		if err != nil {
-			log.Error("Error in block receipts conversion", "hash", hash, "err", err)
-			break
-		}
-		receipts.AppendRaw(results)
+		receipts = append(receipts, results)
 		bytes += len(results)
 	}
 	return receipts
@@ -360,25 +338,7 @@ func serviceGetReceiptsQuery70(chain *core.BlockChain, query GetReceiptsRequest,
 		results := chain.GetReceiptsRLP(hash)
 		// If we don't have this block's receipts or body, stop serving.
 		if results == nil {
-<<<<<<< HEAD
-			// If we don't have this block (or it isn't an empty-receipts block), stop serving.
-			if header := chain.GetHeaderByHash(hash); header == nil || header.ReceiptHash != types.EmptyRootHash {
-				break
-			}
-		} else {
-			body := chain.GetBodyRLP(hash)
-			if body == nil {
-				break // The block body is missing, stop serving.
-			}
-			var err error
-			results, err = blockReceiptsToNetwork69(results, body)
-			if err != nil {
-				log.Error("Error in block receipts conversion", "hash", hash, "err", err)
-				break
-			}
-=======
 			break
->>>>>>> geth-v1.17.3
 		}
 		body := chain.GetBodyRLP(hash)
 		if body == nil {
@@ -404,8 +364,8 @@ func serviceGetReceiptsQuery70(chain *core.BlockChain, query GetReceiptsRequest,
 			return receipts, true
 		}
 	}
-<<<<<<< HEAD
-	return receipts
+
+	return receipts, false
 }
 
 func handleNewBlockhashes(backend Backend, msg Decoder, peer *Peer) error {
@@ -449,9 +409,6 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 	peer.markBlock(ann.Block.Hash())
 
 	return backend.Handle(peer, ann)
-=======
-	return receipts, false
->>>>>>> geth-v1.17.3
 }
 
 func handleBlockHeaders(backend Backend, msg Decoder, peer *Peer) error {
@@ -595,13 +552,9 @@ func writeTxForHash(tx []byte, buf *bytes.Buffer) {
 	}
 }
 
-<<<<<<< HEAD
 func handleReceipts[L ReceiptsList](backend Backend, msg Decoder, peer *Peer) error {
-=======
-func handleReceipts69(backend Backend, msg Decoder, peer *Peer) error {
->>>>>>> geth-v1.17.3
 	// A batch of receipts arrived to one of our previous requests
-	res := new(ReceiptsPacket69)
+	res := new(ReceiptsPacket[L])
 	if err := msg.Decode(res); err != nil {
 		return err
 	}
@@ -609,7 +562,6 @@ func handleReceipts69(backend Backend, msg Decoder, peer *Peer) error {
 	tresp := tracker.Response{ID: res.RequestId, MsgCode: ReceiptsMsg, Size: res.List.Len()}
 	if err := peer.tracker.Fulfil(tresp); err != nil {
 		return fmt.Errorf("Receipts: %w", err)
-<<<<<<< HEAD
 	}
 
 	// Assign temporary hashing buffer to each list item, the same buffer is shared
@@ -621,16 +573,29 @@ func handleReceipts69(backend Backend, msg Decoder, peer *Peer) error {
 	buffers := new(receiptListBuffers)
 	for i := range receiptLists {
 		receiptLists[i].setBuffers(buffers)
-=======
->>>>>>> geth-v1.17.3
 	}
 
-	receiptLists, err := res.List.Items()
-	if err != nil {
-		return fmt.Errorf("Receipts: %w", err)
+	metadata := func() interface{} {
+		hasher := trie.NewStackTrie(nil)
+		hashes := make([]common.Hash, len(receiptLists))
+		for i := range receiptLists {
+			hashes[i] = types.DeriveSha(receiptLists[i].Derivable(), hasher)
+		}
+		return hashes
 	}
-
-	return dispatchReceipts(res.RequestId, receiptLists, peer)
+	var enc ReceiptsRLPResponse
+	for i := range receiptLists {
+		encReceipts, err := receiptLists[i].EncodeForStorage()
+		if err != nil {
+			return fmt.Errorf("Receipts: invalid list %d: %v", i, err)
+		}
+		enc = append(enc, encReceipts)
+	}
+	return peer.dispatchResponse(&Response{
+		id:   res.RequestId,
+		code: ReceiptsMsg,
+		Res:  &enc,
+	}, metadata)
 }
 
 func handleReceipts70(backend Backend, msg Decoder, peer *Peer) error {

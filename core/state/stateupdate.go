@@ -114,32 +114,18 @@ func (sc *StateUpdate) Empty() bool {
 // deletions and account updates to create a complete state update.
 func NewStateUpdate(typ StorageKeyEncoding, originRoot common.Hash, root common.Hash, blockNumber uint64, deletes map[common.Hash]*AccountDelete, updates map[common.Hash]*AccountUpdate, nodes *trienode.MergedNodeSet) *StateUpdate {
 	var (
-<<<<<<< HEAD
-		accounts       = make(map[common.Hash][]byte)
-		accountsOrigin = make(map[common.Address][]byte)
-		storages       = make(map[common.Hash]map[common.Hash][]byte)
-		storagesOrigin = make(map[common.Address]map[common.Hash][]byte)
-		codes          = make(map[common.Address]contractCode)
-		destructsAddrs = make(map[common.Address]struct{})
-=======
 		accounts       = make(map[common.Hash]*types.StateAccount)
 		accountsOrigin = make(map[common.Address]*types.StateAccount)
 		storages       = make(map[common.Hash]map[common.Hash]common.Hash)
 		storagesOrigin = make(map[common.Address]map[common.Hash]common.Hash)
 		codes          = make(map[common.Address]*ContractCode)
->>>>>>> geth-v1.17.3
 	)
 	// Since some accounts might be deleted and recreated within the same
 	// block, deletions must be aggregated first.
 	for addrHash, op := range deletes {
 		addr := op.Address
 		accounts[addrHash] = nil
-<<<<<<< HEAD
-		destructsAddrs[addr] = struct{}{}
-		accountsOrigin[addr] = op.origin
-=======
 		accountsOrigin[addr] = op.Origin
->>>>>>> geth-v1.17.3
 
 		if len(op.Storages) > 0 {
 			storages[addrHash] = op.Storages
@@ -191,19 +177,6 @@ func NewStateUpdate(typ StorageKeyEncoding, originRoot common.Hash, root common.
 			}
 		}
 	}
-<<<<<<< HEAD
-	sc := &stateUpdate{
-		originRoot:     originRoot,
-		root:           root,
-		blockNumber:    blockNumber,
-		accounts:       accounts,
-		accountsOrigin: accountsOrigin,
-		storages:       storages,
-		storagesOrigin: storagesOrigin,
-		rawStorageKey:  rawStorageKey,
-		codes:          codes,
-		nodes:          nodes,
-=======
 	return &StateUpdate{
 		OriginRoot:     originRoot,
 		Root:           root,
@@ -215,10 +188,7 @@ func NewStateUpdate(typ StorageKeyEncoding, originRoot common.Hash, root common.
 		StorageKeyType: typ,
 		Codes:          codes,
 		Nodes:          nodes,
->>>>>>> geth-v1.17.3
 	}
-
-	return sc
 }
 
 // encodeSlot encodes the storage slot value by trimming all leading zeros

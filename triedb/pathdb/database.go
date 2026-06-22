@@ -190,7 +190,7 @@ func New(diskdb ethdb.Database, config *Config, isUBT bool) *Database {
 	if err != nil {
 		log.Crit("Failed to repair history", "err", err)
 	}
-<<<<<<< HEAD
+	db.stateFreezer, db.trienodeFreezer = states, trienodes
 
 	if db.config.EnableIncr {
 		db.checkIncrConfig()
@@ -200,9 +200,6 @@ func New(diskdb ethdb.Database, config *Config, isUBT bool) *Database {
 		// Start incremental store async workers
 		db.incr.Start()
 	}
-=======
-	db.stateFreezer, db.trienodeFreezer = states, trienodes
->>>>>>> geth-v1.17.3
 
 	// Disable database in case node is still in the initial state sync stage.
 	if rawdb.ReadSnapSyncStatusFlag(diskdb) == rawdb.StateSyncRunning && !db.readOnly {
@@ -229,7 +226,6 @@ func New(diskdb ethdb.Database, config *Config, isUBT bool) *Database {
 	return db
 }
 
-<<<<<<< HEAD
 // SetStateGenerator sets state generator.
 func (db *Database) SetStateGenerator() {
 	if err := db.setStateGenerator(); err != nil {
@@ -237,19 +233,6 @@ func (db *Database) SetStateGenerator() {
 	}
 }
 
-// repairHistory truncates leftover state history objects, which may occur due
-// to an unclean shutdown or other unexpected reasons.
-func (db *Database) repairHistory() error {
-	// Open the freezer for state history. This mechanism ensures that
-	// only one database instance can be opened at a time to prevent
-	// accidental mutation.
-	ancient, err := db.diskdb.AncientDatadir()
-	if err != nil {
-		// TODO error out if ancient store is disabled. A tons of unit tests
-		// disable the ancient store thus the error here will immediately fail
-		// all of them. Fix the tests first.
-		return nil
-=======
 // setHistoryIndexer initializes the indexers for both state history and
 // trienode history if available. Note that this function may be called while
 // existing indexers are still running, so they must be closed beforehand.
@@ -257,7 +240,6 @@ func (db *Database) setHistoryIndexer() {
 	// TODO (rjl493456442) disable the background indexing in read-only mode
 	if !db.config.EnableStateIndexing {
 		return
->>>>>>> geth-v1.17.3
 	}
 	if db.stateFreezer != nil {
 		if db.stateIndexer != nil {
@@ -717,7 +699,6 @@ func (db *Database) Close() error {
 	if db.trienodeIndexer != nil {
 		db.trienodeIndexer.close()
 	}
-<<<<<<< HEAD
 
 	if db.config.EnableIncr {
 		log.Info("Closing incremental store")
@@ -735,8 +716,6 @@ func (db *Database) Close() error {
 		}
 	}
 
-	return db.stateFreezer.Close()
-=======
 	// Close the attached state history freezer.
 	if db.stateFreezer != nil {
 		if err := db.stateFreezer.Close(); err != nil {
@@ -749,7 +728,6 @@ func (db *Database) Close() error {
 		}
 	}
 	return nil
->>>>>>> geth-v1.17.3
 }
 
 // Size returns the current storage size of the memory cache in front of the

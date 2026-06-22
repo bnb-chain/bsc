@@ -218,15 +218,14 @@ func blockReceiptsKey(number uint64, hash common.Hash) []byte {
 	return append(append(blockReceiptsPrefix, encodeBlockNumber(number)...), hash.Bytes()...)
 }
 
-<<<<<<< HEAD
 // blockBlobSidecarsKey = BlockBlobSidecarsPrefix + blockNumber (uint64 big endian) + blockHash
 func blockBlobSidecarsKey(number uint64, hash common.Hash) []byte {
 	return append(append(BlockBlobSidecarsPrefix, encodeBlockNumber(number)...), hash.Bytes()...)
-=======
+}
+
 // accessListKey = accessListPrefix + num (uint64 big endian) + hash
 func accessListKey(number uint64, hash common.Hash) []byte {
 	return append(append(accessListPrefix, encodeBlockNumber(number)...), hash.Bytes()...)
->>>>>>> geth-v1.17.3
 }
 
 // txLookupKey = txLookupPrefix + hash

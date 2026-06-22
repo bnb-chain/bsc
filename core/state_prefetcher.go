@@ -116,11 +116,7 @@ func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *type
 
 			// We attempt to apply a transaction. The goal is not to execute
 			// the transaction successfully, rather to warm up touched data slots.
-<<<<<<< HEAD
-			if _, err := ApplyMessage(evm, msg, new(GasPool).AddGas(gasLimit)); err != nil {
-=======
 			if _, err := ApplyMessage(evm, msg, nil); err != nil {
->>>>>>> geth-v1.17.3
 				fails.Add(1)
 				return nil // Ugh, something went horribly wrong, bail out
 			}
@@ -195,7 +191,7 @@ func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header
 
 					idx++
 					newStatedb.SetTxContext(tx.Hash(), idx)
-					ApplyMessage(evm, msg, new(GasPool).AddGas(gasLimit))
+					ApplyMessage(evm, msg, NewGasPool(gasLimit))
 
 				case <-stopCh:
 					return

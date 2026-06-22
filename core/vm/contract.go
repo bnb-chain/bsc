@@ -57,8 +57,6 @@ type Contract struct {
 	value *uint256.Int
 }
 
-<<<<<<< HEAD
-=======
 // NewContract returns a new contract environment for the execution of EVM.
 func NewContract(caller common.Address, address common.Address, value *uint256.Int, gas GasBudget, jumpDests JumpDestCache) *Contract {
 	// Initialize the jump analysis cache if it's nil, mostly for tests
@@ -74,7 +72,6 @@ func NewContract(caller common.Address, address common.Address, value *uint256.I
 	}
 }
 
->>>>>>> geth-v1.17.3
 func (c *Contract) validJumpdest(dest *uint256.Int) bool {
 	udest, overflow := dest.Uint64WithOverflow()
 	// PC cannot go beyond len(code) and certainly can't be bigger than 63bits.

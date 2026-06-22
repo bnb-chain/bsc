@@ -355,9 +355,6 @@ func (s *stateSet) encode(w io.Writer) error {
 	if err := rlp.Encode(w, s.rawStorageKey); err != nil {
 		return err
 	}
-<<<<<<< HEAD
-	var enc accounts
-=======
 	type accounts struct {
 		AddrHashes []common.Hash
 		Accounts   [][]byte
@@ -366,7 +363,6 @@ func (s *stateSet) encode(w io.Writer) error {
 		AddrHashes: make([]common.Hash, 0, len(s.accountData)),
 		Accounts:   make([][]byte, 0, len(s.accountData)),
 	}
->>>>>>> geth-v1.17.3
 	for addrHash, blob := range s.accountData {
 		enc.AddrHashes = append(enc.AddrHashes, addrHash)
 		enc.Accounts = append(enc.Accounts, blob)

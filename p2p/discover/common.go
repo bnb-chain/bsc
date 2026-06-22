@@ -21,11 +21,8 @@ import (
 	"crypto/ecdsa"
 	crand "crypto/rand"
 	"encoding/binary"
-<<<<<<< HEAD
 	"fmt"
-=======
 	"iter"
->>>>>>> geth-v1.17.3
 	"math/rand"
 	"net"
 	"net/netip"

@@ -168,8 +168,6 @@ func (r *RawList[T]) AppendRaw(b []byte) error {
 	return nil
 }
 
-<<<<<<< HEAD
-=======
 // AppendList appends all items from another RawList to this list.
 func (r *RawList[T]) AppendList(other *RawList[T]) {
 	if other.enc == nil || other.length == 0 {
@@ -182,7 +180,6 @@ func (r *RawList[T]) AppendList(other *RawList[T]) {
 	r.length += other.length
 }
 
->>>>>>> geth-v1.17.3
 // StringSize returns the encoded size of a string.
 func StringSize(s string) uint64 {
 	switch n := len(s); n {

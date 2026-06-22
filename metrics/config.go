@@ -20,18 +20,6 @@ import "time"
 
 // Config contains the configuration for the metric collection.
 type Config struct {
-<<<<<<< HEAD
-	Enabled          bool   `toml:",omitempty"`
-	EnabledExpensive bool   `toml:",omitempty"`
-	HTTP             string `toml:",omitempty"`
-	Port             int    `toml:",omitempty"`
-	EnableInfluxDB   bool   `toml:",omitempty"`
-	InfluxDBEndpoint string `toml:",omitempty"`
-	InfluxDBDatabase string `toml:",omitempty"`
-	InfluxDBUsername string `toml:",omitempty"`
-	InfluxDBPassword string `toml:",omitempty"`
-	InfluxDBTags     string `toml:",omitempty"`
-=======
 	Enabled          bool          `toml:",omitempty"`
 	EnabledExpensive bool          `toml:"-"`
 	HTTP             string        `toml:",omitempty"`
@@ -43,7 +31,6 @@ type Config struct {
 	InfluxDBPassword string        `toml:",omitempty"`
 	InfluxDBTags     string        `toml:",omitempty"`
 	InfluxDBInterval time.Duration `toml:",omitempty"`
->>>>>>> geth-v1.17.3
 
 	EnableInfluxDBV2     bool   `toml:",omitempty"`
 	InfluxDBToken        string `toml:",omitempty"`

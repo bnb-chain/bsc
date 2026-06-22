@@ -502,11 +502,7 @@ func (api *DebugAPI) StateSize(blockHashOrNumber *rpc.BlockNumberOrHash) (interf
 func (api *DebugAPI) ExecutionWitness(bn rpc.BlockNumberOrHash) (*stateless.ExtWitness, error) {
 	bc := api.eth.blockchain
 	block, err := api.eth.APIBackend.BlockByNumberOrHash(context.Background(), bn)
-<<<<<<< HEAD
 	if block == nil || err != nil {
-=======
-	if err != nil {
->>>>>>> geth-v1.17.3
 		return &stateless.ExtWitness{}, fmt.Errorf("block %v not found", bn)
 	}
 	parent := bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
@@ -522,9 +518,5 @@ func (api *DebugAPI) ExecutionWitness(bn rpc.BlockNumberOrHash) (*stateless.ExtW
 	if err != nil {
 		return nil, err
 	}
-<<<<<<< HEAD
-
-=======
->>>>>>> geth-v1.17.3
 	return result.Witness().ToExtWitness(), nil
 }

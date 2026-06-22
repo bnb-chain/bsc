@@ -560,7 +560,6 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 		contractCreation = msg.To == nil
 		floorDataGas     uint64
 	)
-<<<<<<< HEAD
 	if st.evm.ChainConfig().IsNano(st.evm.Context.BlockNumber) {
 		for _, blackListAddr := range types.NanoBlackList {
 			if blackListAddr == msg.From {
@@ -571,8 +570,6 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 			}
 		}
 	}
-=======
->>>>>>> geth-v1.17.3
 	// Check clauses 4-5, subtract intrinsic gas if everything is correct
 	cost, err := IntrinsicGas(msg.Data, msg.AccessList, msg.SetCodeAuthorizations, contractCreation, rules.IsHomestead, rules.IsIstanbul, rules.IsShanghai, rules.IsAmsterdam)
 	if err != nil {
@@ -614,15 +611,10 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 	}
 
 	// Check whether the init code size has been exceeded.
-<<<<<<< HEAD
-	if rules.IsShanghai && contractCreation && len(msg.Data) > params.MaxInitCodeSize {
-		return nil, fmt.Errorf("%w: code size %v limit %v", vm.ErrMaxInitCodeSizeExceeded, len(msg.Data), params.MaxInitCodeSize)
-=======
 	if contractCreation {
 		if err := vm.CheckMaxInitCodeSize(&rules, uint64(len(msg.Data))); err != nil {
 			return nil, err
 		}
->>>>>>> geth-v1.17.3
 	}
 
 	// Execute the preparatory steps for state transition which includes:
@@ -704,7 +696,7 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 	}
 
 	fee := new(uint256.Int).SetUint64(st.gasUsed())
-	fee.Mul(fee, effectiveTipU256)
+	fee.Mul(fee, effectiveTip)
 	// consensus engine is parlia
 	if st.evm.ChainConfig().IsInBSC() {
 		st.state.AddBalance(consensus.SystemAddress, fee, tracing.BalanceIncreaseRewardTransactionFee)
@@ -716,11 +708,6 @@ func (st *stateTransition) execute() (*ExecutionResult, error) {
 			st.state.AddBalance(consensus.SystemAddress, blobFeeU256, tracing.BalanceIncreaseRewardTransactionFee)
 		}
 	} else {
-<<<<<<< HEAD
-=======
-		fee := new(uint256.Int).SetUint64(st.gasUsed())
-		fee.Mul(fee, effectiveTip)
->>>>>>> geth-v1.17.3
 		st.state.AddBalance(st.evm.Context.Coinbase, fee, tracing.BalanceIncreaseRewardTransactionFee)
 
 		// add the coinbase to the witness iff the fee is greater than 0

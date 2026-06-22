@@ -323,7 +323,6 @@ func truncateFromTail(store ethdb.AncientStore, typ historyType, ntail uint64) (
 	return int(ntail - otail), nil
 }
 
-<<<<<<< HEAD
 // truncateIncrChainFreezerFromHead removes the extra incr chain histories from the head with the given
 // parameters. It returns the number of items removed from the head.
 func truncateIncrChainFreezerFromHead(store ethdb.AncientStore, nhead uint64) (int, error) {
@@ -377,7 +376,8 @@ func truncateIncrChainFreezerFromTail(store ethdb.AncientStore, ntail uint64) (i
 		return 0, err
 	}
 	return int(ntail - otail), nil
-=======
+}
+
 // purgeHistory resets the history and also purges the associated index data.
 func purgeHistory(store ethdb.ResettableAncientStore, disk ethdb.KeyValueStore, typ historyType) {
 	if store == nil {
@@ -512,5 +512,4 @@ func repairHistory(db ethdb.Database, isUBT bool, readOnly bool, stateID uint64,
 	truncate(states, typeStateHistory, truncTo)
 	truncate(trienodes, typeTrienodeHistory, truncTo)
 	return states, trienodes, nil
->>>>>>> geth-v1.17.3
 }

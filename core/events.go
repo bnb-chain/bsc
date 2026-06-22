@@ -54,13 +54,11 @@ type ChainHeadEvent struct {
 	Header *types.Header
 }
 
-<<<<<<< HEAD
 type HighestVerifiedBlockEvent struct{ Header *types.Header }
-=======
+
 // NewPayloadEvent is posted when engine_newPayloadVX processes a block.
 type NewPayloadEvent struct {
 	Hash           common.Hash
 	Number         uint64
 	ProcessingTime time.Duration
 }
->>>>>>> geth-v1.17.3

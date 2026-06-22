@@ -105,10 +105,10 @@ type Config struct {
 	FullValueCheckpoint uint32 // The rate at which trie nodes are encoded in full-value format
 
 	// Testing configurations
-<<<<<<< HEAD
-	SnapshotNoBuild   bool // Flag Whether the state generation is disabled
-	NoAsyncFlush      bool // Flag whether the background buffer flushing is disabled
-	NoAsyncGeneration bool // Flag whether the background generation is disabled
+	SnapshotNoBuild     bool // Flag Whether the state generation is disabled
+	NoAsyncFlush        bool // Flag whether the background buffer flushing is disabled
+	NoAsyncGeneration   bool // Flag whether the background generation is disabled
+	NoHistoryIndexDelay bool // Flag whether the history index delay is disabled
 
 	EnableIncr      bool   // Flag whether the freezer db stores incr block and state history
 	MergeIncr       bool   // Flag to merge incr snapshots
@@ -116,12 +116,6 @@ type Config struct {
 	IncrHistoryPath string // The path to store incr block and chain files
 	IncrStateBuffer uint64 // Maximum memory allowance (in bytes) for incr state buffer
 	IncrKeptBlocks  uint64 // Amount of block kept in incr snapshot
-=======
-	SnapshotNoBuild     bool // Flag Whether the state generation is disabled
-	NoAsyncFlush        bool // Flag whether the background buffer flushing is disabled
-	NoAsyncGeneration   bool // Flag whether the background generation is disabled
-	NoHistoryIndexDelay bool // Flag whether the history index delay is disabled
->>>>>>> geth-v1.17.3
 }
 
 // sanitize checks the provided user configurations and changes anything that's

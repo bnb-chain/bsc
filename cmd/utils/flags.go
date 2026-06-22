@@ -105,11 +105,6 @@ var (
 		Usage:    "Disable snap protocol",
 		Category: flags.EthCategory,
 	}
-	RangeLimitFlag = &cli.BoolFlag{
-		Name:     "rangelimit",
-		Usage:    "Enable 5000 blocks limit for range query",
-		Category: flags.APICategory,
-	}
 	RemoteDBFlag = &cli.StringFlag{
 		Name:     "remotedb",
 		Usage:    "URL for remote database",
@@ -160,11 +155,7 @@ var (
 	}
 	NetworkIdFlag = &cli.Uint64Flag{
 		Name:     "networkid",
-<<<<<<< HEAD
-		Usage:    "Explicitly set network id (integer)(For testnets: use --chapel instead)",
-=======
-		Usage:    "Explicitly set network ID (integer)(For testnets: use --sepolia, --holesky, --hoodi instead)",
->>>>>>> geth-v1.17.3
+		Usage:    "Explicitly set network ID (integer)(For testnets: use --chapel instead)",
 		Value:    ethconfig.Defaults.NetworkId,
 		Category: flags.EthCategory,
 	}
@@ -1069,11 +1060,7 @@ var (
 		Aliases:  []string{"discv5"},
 		Usage:    "Enables the V5 discovery mechanism",
 		Category: flags.NetworkingCategory,
-<<<<<<< HEAD
-		Value:    false,
-=======
 		Value:    node.DefaultConfig.P2P.DiscoveryV5,
->>>>>>> geth-v1.17.3
 	}
 	NetrestrictFlag = &cli.StringFlag{
 		Name:     "netrestrict",
@@ -1298,9 +1285,8 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Category: flags.MetricsCategory,
 	}
 
-<<<<<<< HEAD
 	CheckSnapshotWithMPT = &cli.BoolFlag{
-		Name:     "check-snapshot-with-mpt",
+		Name:     "check-snapshot-with-mpt", // TODO(Nathan): remove this flag after the snapshot and MPT check is stable
 		Usage:    "Enable checking between snapshot and MPT ",
 		Category: flags.FastNodeCategory,
 	}
@@ -1397,7 +1383,8 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 		Usage:    "Set from which remote url is used to download incremental snapshots",
 		Value:    "",
 		Category: flags.StateCategory,
-=======
+	}
+
 	// RPC Telemetry
 	RPCTelemetryFlag = &cli.BoolFlag{
 		Name:     "rpc.telemetry",
@@ -1445,7 +1432,6 @@ Please note that --` + MetricsHTTPFlag.Name + ` must be set to start the server.
 	EraFormatFlag = &cli.StringFlag{
 		Name:  "era.format",
 		Usage: "Archive format: 'era1' or 'erae'",
->>>>>>> geth-v1.17.3
 	}
 )
 
@@ -1889,13 +1875,10 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	setNodeUserIdent(ctx, cfg)
 	SetDataDir(ctx, cfg)
 	setSmartCard(ctx, cfg)
-<<<<<<< HEAD
 	setMonitors(ctx, cfg)
 	setBLSWalletDir(ctx, cfg)
 	setVoteJournalDir(ctx, cfg)
-=======
 	setOpenTelemetry(ctx, cfg)
->>>>>>> geth-v1.17.3
 
 	if ctx.IsSet(JWTSecretFlag.Name) {
 		cfg.JWTSecret = ctx.String(JWTSecretFlag.Name)
@@ -1930,7 +1913,7 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 		cfg.DisableSnapProtocol = ctx.Bool(DisableSnapProtocolFlag.Name)
 	}
 	if ctx.IsSet(RangeLimitFlag.Name) {
-		cfg.RangeLimit = ctx.Bool(RangeLimitFlag.Name)
+		log.Warn("Option --rangelimit is deprecated and has no effect,use rpc.rangelimit instead")
 	}
 	if ctx.IsSet(InsecureUnlockAllowedFlag.Name) {
 		cfg.InsecureUnlockAllowed = ctx.Bool(InsecureUnlockAllowedFlag.Name)
@@ -2174,13 +2157,8 @@ func setRequiredBlocks(ctx *cli.Context, cfg *ethconfig.Config) {
 
 // SetEthConfig applies eth-related command line flags to the config.
 func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
-<<<<<<< HEAD
-	// Avoid conflicting network flags, don't allow network id override on preset networks
-	flags.CheckExclusive(ctx, BSCMainnetFlag, DeveloperFlag, NetworkIdFlag, OverrideGenesisFlag)
-=======
 	// Avoid conflicting network flags
-	flags.CheckExclusive(ctx, MainnetFlag, DeveloperFlag, SepoliaFlag, HoleskyFlag, HoodiFlag, OverrideGenesisFlag)
->>>>>>> geth-v1.17.3
+	flags.CheckExclusive(ctx, BSCMainnetFlag, DeveloperFlag, OverrideGenesisFlag)
 	flags.CheckExclusive(ctx, DeveloperFlag, ExternalSignerFlag) // Can't use both ephemeral unlocked and external signer
 
 	if ctx.IsSet(EnableBALFlag.Name) {
@@ -2263,7 +2241,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 		cfg.DisableSnapProtocol = ctx.Bool(DisableSnapProtocolFlag.Name)
 	}
 	if ctx.IsSet(RangeLimitFlag.Name) {
-		cfg.RangeLimit = ctx.Bool(RangeLimitFlag.Name)
+		log.Warn("Option --rangelimit is deprecated and has no effect,use rpc.rangelimit instead")
 	}
 	if ctx.IsSet(CacheNoPrefetchFlag.Name) {
 		cfg.NoPrefetch = ctx.Bool(CacheNoPrefetchFlag.Name)
@@ -2278,11 +2256,6 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(StateHistoryFlag.Name) {
 		cfg.StateHistory = ctx.Uint64(StateHistoryFlag.Name)
 	}
-<<<<<<< HEAD
-	scheme, err := ParseCLIAndConfigStateScheme(ctx.String(StateSchemeFlag.Name), cfg.StateScheme)
-	if err != nil {
-		Fatalf("%v", err)
-=======
 	if ctx.IsSet(TrienodeHistoryFlag.Name) {
 		cfg.TrienodeHistory = ctx.Int64(TrienodeHistoryFlag.Name)
 	}
@@ -2292,9 +2265,12 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	if ctx.IsSet(BinTrieGroupDepthFlag.Name) {
 		cfg.BinTrieGroupDepth = ctx.Int(BinTrieGroupDepthFlag.Name)
 	}
+	scheme, err := ParseCLIAndConfigStateScheme(ctx.String(StateSchemeFlag.Name), cfg.StateScheme)
+	if err != nil {
+		Fatalf("%v", err)
+	}
 	if ctx.IsSet(StateSchemeFlag.Name) {
 		cfg.StateScheme = ctx.String(StateSchemeFlag.Name)
->>>>>>> geth-v1.17.3
 	}
 	cfg.StateScheme = scheme
 	// Parse transaction history flag, if user is still using legacy config
@@ -2707,12 +2683,11 @@ func RegisterFilterAPI(stack *node.Node, backend ethapi.Backend, ethcfg *ethconf
 	})
 	stack.RegisterAPIs([]rpc.API{{
 		Namespace: "eth",
-		Service:   filters.NewFilterAPI(filterSystem, ethcfg.RangeLimit),
+		Service:   filters.NewFilterAPI(filterSystem),
 	}})
 	return filterSystem
 }
 
-<<<<<<< HEAD
 func EnableNodeInfo(poolConfig *legacypool.Config, nodeInfo *p2p.NodeInfo) SetupMetricsOption {
 	return func() {
 		// register node info into metrics
@@ -2729,16 +2704,6 @@ func EnableNodeInfo(poolConfig *legacypool.Config, nodeInfo *p2p.NodeInfo) Setup
 			"Lifetime":     poolConfig.Lifetime,
 		})
 	}
-=======
-// RegisterSyncOverrideService adds the synchronization override service into node.
-func RegisterSyncOverrideService(stack *node.Node, eth *eth.Ethereum, config syncer.Config) {
-	if config.TargetBlock != (common.Hash{}) {
-		log.Info("Registered sync override service", "hash", config.TargetBlock, "exitWhenSynced", config.ExitWhenSynced)
-	} else {
-		log.Info("Registered sync override service")
-	}
-	syncer.Register(stack, eth, config)
->>>>>>> geth-v1.17.3
 }
 
 func EnableNodeTrack(ctx *cli.Context, cfg *ethconfig.Config, stack *node.Node) SetupMetricsOption {
@@ -3001,18 +2966,6 @@ func MakeChain(ctx *cli.Context, stack *node.Node, readonly bool) (*core.BlockCh
 		Fatalf("%v", err)
 	}
 	options := &core.BlockChainConfig{
-<<<<<<< HEAD
-		TrieCleanLimit: ethconfig.Defaults.TrieCleanCache,
-		NoPrefetch:     ctx.Bool(CacheNoPrefetchFlag.Name),
-		TrieDirtyLimit: ethconfig.Defaults.TrieDirtyCache,
-		ArchiveMode:    ctx.String(GCModeFlag.Name) == "archive",
-		TrieTimeLimit:  ethconfig.Defaults.TrieTimeout,
-		TriesInMemory:  ethconfig.Defaults.TriesInMemory,
-		SnapshotLimit:  ethconfig.Defaults.SnapshotCache,
-		Preimages:      ctx.Bool(CachePreimagesFlag.Name),
-		StateScheme:    scheme,
-		StateHistory:   ctx.Uint64(StateHistoryFlag.Name),
-=======
 		TrieCleanLimit:          ethconfig.Defaults.TrieCleanCache,
 		NoPrefetch:              ctx.Bool(CacheNoPrefetchFlag.Name),
 		TrieDirtyLimit:          ethconfig.Defaults.TrieDirtyCache,
@@ -3026,7 +2979,7 @@ func MakeChain(ctx *cli.Context, stack *node.Node, readonly bool) (*core.BlockCh
 		NodeFullValueCheckpoint: uint32(ctx.Uint(TrienodeHistoryFullValueCheckpointFlag.Name)),
 		BinTrieGroupDepth:       ctx.Int(BinTrieGroupDepthFlag.Name),
 
->>>>>>> geth-v1.17.3
+		TriesInMemory: ethconfig.Defaults.TriesInMemory,
 		// Disable transaction indexing/unindexing.
 		TxLookupLimit: -1,
 
@@ -3112,14 +3065,10 @@ func MakeConsolePreloads(ctx *cli.Context) []string {
 }
 
 // MakeTrieDatabase constructs a trie database based on the configured scheme.
-<<<<<<< HEAD
-func MakeTrieDatabase(ctx *cli.Context, stack *node.Node, disk ethdb.Database, preimage bool, readOnly bool, isVerkle bool, mergeIncr bool) *triedb.Database {
+func MakeTrieDatabase(ctx *cli.Context, stack *node.Node, disk ethdb.Database, preimage bool, readOnly bool, isUBT bool, mergeIncr bool) *triedb.Database {
 	if ctx.IsSet(JournalFileFlag.Name) {
 		log.Warn("--journalfile is deprecated and has no effect, please remove it")
 	}
-=======
-func MakeTrieDatabase(ctx *cli.Context, stack *node.Node, disk ethdb.Database, preimage bool, readOnly bool, isUBT bool) *triedb.Database {
->>>>>>> geth-v1.17.3
 	config := &triedb.Config{
 		Preimages: preimage,
 		IsUBT:     isUBT,

@@ -439,7 +439,6 @@ func (bc *BlockChain) GetTd(hash common.Hash, number uint64) *big.Int {
 
 // HasState checks if state trie is fully present in the database or not.
 func (bc *BlockChain) HasState(hash common.Hash) bool {
-<<<<<<< HEAD
 	if bc.NoTries() {
 		if bc.snaps != nil {
 			return bc.snaps.Snapshot(hash) != nil
@@ -452,10 +451,7 @@ func (bc *BlockChain) HasState(hash common.Hash) bool {
 		}
 		return found
 	}
-	_, err := bc.statedb.OpenTrie(hash)
-=======
 	_, err := bc.triedb.NodeReader(hash)
->>>>>>> geth-v1.17.3
 	return err == nil
 }
 
@@ -495,57 +491,56 @@ func (bc *BlockChain) State() (*state.StateDB, error) {
 	return bc.StateAt(bc.CurrentBlock())
 }
 
-// StateAt returns a new mutable state based on a particular point in time.
-<<<<<<< HEAD
-func (bc *BlockChain) StateAt(root common.Hash) (*state.StateDB, error) {
-	stateDb, err := state.New(root, bc.statedb)
-	if err != nil {
-		return nil, err
-	}
-
+// StateWithCacheAt returns a new mutable state with cache based on a particular point in time.
+func (bc *BlockChain) StateWithCacheAt(root common.Hash) (*state.StateDB, error) {
 	// If there's no trie and the specified snapshot is not available, getting
 	// any state will by default return nil.
 	// Instead of that, it will be more useful to return an error to indicate
 	// the state is not available.
-	if stateDb.NoTries() && stateDb.GetSnap() == nil {
+	if bc.NoTries() && bc.snaps == nil {
 		return nil, errors.New("state is not available")
+	}
+
+	mptDbImpl := state.NewMPTDatabase(bc.triedb, bc.codedb)
+	mptDb := mptDbImpl.WithSnapshot(bc.snaps)
+	_, process, err := mptDbImpl.ReadersWithCacheStats(root)
+	if err != nil {
+		return nil, err
+	}
+	stateDb, err := state.NewWithReader(root, mptDb, process)
+	if err != nil {
+		return nil, err
 	}
 
 	return stateDb, nil
 }
 
-// StateWithCacheAt returns a new mutable state with cache based on a particular point in time.
-func (bc *BlockChain) StateWithCacheAt(root common.Hash) (*state.StateDB, error) {
-	_, process, err := bc.statedb.ReadersWithCacheStats(root)
-	if err != nil {
-		return nil, err
-	}
-	stateDb, err := state.NewWithReader(root, bc.statedb, process)
-	if err != nil {
-		return nil, err
-	}
-
+func (bc *BlockChain) StateAt(header *types.Header) (*state.StateDB, error) {
 	// If there's no trie and the specified snapshot is not available, getting
 	// any state will by default return nil.
 	// Instead of that, it will be more useful to return an error to indicate
 	// the state is not available.
-	if stateDb.NoTries() && stateDb.GetSnap() == nil {
+	if bc.NoTries() && bc.snaps == nil {
 		return nil, errors.New("state is not available")
 	}
 
-	return stateDb, nil
-=======
-func (bc *BlockChain) StateAt(header *types.Header) (*state.StateDB, error) {
 	if bc.chainConfig.IsUBT(header.Number, header.Time) {
 		return state.New(header.Root, state.NewUBTDatabase(bc.triedb, bc.codedb))
 	}
 	return state.New(header.Root, state.NewMPTDatabase(bc.triedb, bc.codedb).WithSnapshot(bc.snaps))
->>>>>>> geth-v1.17.3
 }
 
 // StateAtForkBoundary returns a new mutable state based on the parent state
 // and the given header, handling the transition across the UBT fork.
 func (bc *BlockChain) StateAtForkBoundary(parent *types.Header, header *types.Header) (*state.StateDB, error) {
+	// If there's no trie and the specified snapshot is not available, getting
+	// any state will by default return nil.
+	// Instead of that, it will be more useful to return an error to indicate
+	// the state is not available.
+	if bc.NoTries() && bc.snaps == nil {
+		return nil, errors.New("state is not available")
+	}
+
 	// The parent is already in the UBT fork.
 	if bc.chainConfig.IsUBT(parent.Number, parent.Time) {
 		return state.New(parent.Root, state.NewUBTDatabase(bc.triedb, bc.codedb))
@@ -685,7 +680,6 @@ func (bc *BlockChain) SubscribeBlockProcessingEvent(ch chan<- bool) event.Subscr
 	return bc.scope.Track(bc.blockProcFeed.Subscribe(ch))
 }
 
-<<<<<<< HEAD
 // SubscribeFinalizedHeaderEvent registers a subscription of FinalizedHeaderEvent.
 func (bc *BlockChain) SubscribeFinalizedHeaderEvent(ch chan<- FinalizedHeaderEvent) event.Subscription {
 	return bc.scope.Track(bc.finalizedHeaderFeed.Subscribe(ch))
@@ -698,7 +692,8 @@ func (bc *BlockChain) AncientTail() (uint64, error) {
 		return 0, err
 	}
 	return tail, nil
-=======
+}
+
 // SubscribeNewPayloadEvent registers a subscription for NewPayloadEvent.
 func (bc *BlockChain) SubscribeNewPayloadEvent(ch chan<- NewPayloadEvent) event.Subscription {
 	return bc.scope.Track(bc.newPayloadFeed.Subscribe(ch))
@@ -707,5 +702,4 @@ func (bc *BlockChain) SubscribeNewPayloadEvent(ch chan<- NewPayloadEvent) event.
 // SendNewPayloadEvent sends a NewPayloadEvent to subscribers.
 func (bc *BlockChain) SendNewPayloadEvent(ev NewPayloadEvent) {
 	bc.newPayloadFeed.Send(ev)
->>>>>>> geth-v1.17.3
 }

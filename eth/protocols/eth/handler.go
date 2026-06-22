@@ -170,23 +170,27 @@ func Handle(backend Backend, peer *Peer) error {
 type msgHandler func(backend Backend, msg Decoder, peer *Peer) error
 type Decoder interface {
 	Decode(val interface{}) error
+	Time() time.Time
 }
 
-var eth69 = map[uint64]msgHandler{
+var eth68 = map[uint64]msgHandler{
+	NewBlockHashesMsg:             handleNewBlockhashes,
+	NewBlockMsg:                   handleNewBlock,
 	TransactionsMsg:               handleTransactions,
 	NewPooledTransactionHashesMsg: handleNewPooledTransactionHashes,
 	GetBlockHeadersMsg:            handleGetBlockHeaders,
 	BlockHeadersMsg:               handleBlockHeaders,
 	GetBlockBodiesMsg:             handleGetBlockBodies,
 	BlockBodiesMsg:                handleBlockBodies,
-	GetReceiptsMsg:                handleGetReceipts69,
-	ReceiptsMsg:                   handleReceipts69,
+	GetReceiptsMsg:                handleGetReceipts68,
+	ReceiptsMsg:                   handleReceipts[*ReceiptList68],
 	GetPooledTransactionsMsg:      handleGetPooledTransactions,
 	PooledTransactionsMsg:         handlePooledTransactions,
-	BlockRangeUpdateMsg:           handleBlockRangeUpdate,
 }
 
 var eth70 = map[uint64]msgHandler{
+	NewBlockHashesMsg:             handleNewBlockhashes,
+	NewBlockMsg:                   handleNewBlock,
 	TransactionsMsg:               handleTransactions,
 	NewPooledTransactionHashesMsg: handleNewPooledTransactionHashes,
 	GetBlockHeadersMsg:            handleGetBlockHeaders,
@@ -215,8 +219,8 @@ func handleMessage(backend Backend, peer *Peer) error {
 
 	var handlers map[uint64]msgHandler
 	switch peer.version {
-	case ETH69:
-		handlers = eth69
+	case ETH68:
+		handlers = eth68
 	case ETH70:
 		handlers = eth70
 	default:

@@ -114,18 +114,11 @@ func (d iterativeDump) OnRoot(root common.Hash) {
 
 // DumpToCollector iterates the state according to the given options and inserts
 // the items into a collector for aggregation or serialization.
-<<<<<<< HEAD
-//
-// The state iterator is still trie-based and can be converted to snapshot-based
-// once the state snapshot is fully integrated into database. TODO(rjl493456442).
-func (s *StateDB) DumpToCollector(c DumpCollector, conf *DumpConfig) (nextKey []byte) {
+func (s *StateDB) DumpToCollector(c DumpCollector, conf *DumpConfig) (nextKey []byte, err error) {
 	if s.NoTries() { // TODO(Nathan): remove after converted to snapshot-based
-		return nil
+		return nil, errors.New("cannot dump state with no tries")
 	}
 
-=======
-func (s *StateDB) DumpToCollector(c DumpCollector, conf *DumpConfig) (nextKey []byte, err error) {
->>>>>>> geth-v1.17.3
 	// Sanitize the input to allow nil configs
 	if conf == nil {
 		conf = new(DumpConfig)

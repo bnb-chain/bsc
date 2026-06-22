@@ -19,7 +19,6 @@ package filters
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"math/big"
 	"slices"
@@ -46,18 +45,13 @@ type Filter struct {
 	block      *common.Hash // Block hash if filtering a single block
 	begin, end int64        // Range interval if filtering multiple blocks
 
-	rangeLimit        bool
 	rangeLogsTestHook chan rangeLogsTestEvent
 	rangeLimit        uint64
 }
 
 // NewRangeFilter creates a new filter which uses a bloom filter on blocks to
 // figure out whether a particular block is interesting or not.
-<<<<<<< HEAD
-func (sys *FilterSystem) NewRangeFilter(begin, end int64, addresses []common.Address, topics [][]common.Hash, rangeLimit bool) *Filter {
-=======
 func (sys *FilterSystem) NewRangeFilter(begin, end int64, addresses []common.Address, topics [][]common.Hash, rangeLimit uint64) *Filter {
->>>>>>> geth-v1.17.3
 	// Create a generic filter and convert it into a range filter
 	filter := newFilter(sys, addresses, topics)
 	filter.begin = begin
@@ -153,13 +147,8 @@ func (f *Filter) Logs(ctx context.Context) ([]*types.Log, error) {
 	if err != nil {
 		return nil, err
 	}
-<<<<<<< HEAD
-	if f.rangeLimit && (end-begin) > maxFilterBlockRange {
-		return nil, fmt.Errorf("exceed maximum block range: %d", maxFilterBlockRange)
-=======
 	if f.rangeLimit != 0 && (end-begin) > f.rangeLimit {
 		return nil, invalidParamsErr("exceed maximum block range %d", f.rangeLimit)
->>>>>>> geth-v1.17.3
 	}
 	return f.rangeLogs(ctx, begin, end)
 }

@@ -432,16 +432,6 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	if err != nil {
 		return nil, err
 	}
-<<<<<<< HEAD
-
-	if dl.db.config.EnableIncr {
-		err := dl.commitIncrData(bottom)
-		if err != nil {
-			log.Error("Failed to commit incremental data after retries", "err", err)
-			return nil, err
-		}
-	}
-=======
 	// Construct and store the trienode history first. If crash happens after
 	// storing the trienode history but without flushing the corresponding
 	// states(journal), the stored trienode history will be truncated from head
@@ -453,7 +443,14 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 	// Since the state history and trienode history may be configured with different
 	// lengths, the buffer will be flushed once either of them meets its threshold.
 	flush := flushA || flushB
->>>>>>> geth-v1.17.3
+
+	if dl.db.config.EnableIncr {
+		err := dl.commitIncrData(bottom)
+		if err != nil {
+			log.Error("Failed to commit incremental data after retries", "err", err)
+			return nil, err
+		}
+	}
 
 	// Mark the diskLayer as stale before applying any mutations on top.
 	dl.stale = true

@@ -1168,10 +1168,11 @@ func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *cor
 	}()
 	defer cancel()
 
-	var intrinsicGas uint64 = 0
+	var intrinsicGas vm.GasCosts
 	// Run the transaction with tracing enabled.
 	if isSystemTx {
-		intrinsicGas, _ = core.IntrinsicGas(message.Data, message.AccessList, message.SetCodeAuthorizations, false, true, true, false)
+		isAmsterdam := false //TODO(Nathan): apply hardfork logic
+		intrinsicGas, _ = core.IntrinsicGas(message.Data, message.AccessList, message.SetCodeAuthorizations, false, true, true, false, isAmsterdam)
 		message.SkipTransactionChecks = true
 	}
 
@@ -1183,7 +1184,7 @@ func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *cor
 		return nil, fmt.Errorf("tracing failed: %w", err)
 	}
 	if tracer.OnSystemTxFixIntrinsicGas != nil {
-		tracer.OnSystemTxFixIntrinsicGas(intrinsicGas)
+		tracer.OnSystemTxFixIntrinsicGas(intrinsicGas.RegularGas) //TODO(Nathan)
 	}
 	return tracer.GetResult()
 }
@@ -1284,7 +1285,6 @@ func overrideConfig(original *params.ChainConfig, override *params.ChainConfig) 
 		copy.OsakaTime = timestamp
 		canon = false
 	}
-<<<<<<< HEAD
 	if timestamp := override.MendelTime; timestamp != nil {
 		copy.MendelTime = timestamp
 		canon = false
@@ -1301,12 +1301,8 @@ func overrideConfig(original *params.ChainConfig, override *params.ChainConfig) 
 		copy.BPO2Time = timestamp
 		canon = false
 	}
-	if timestamp := override.VerkleTime; timestamp != nil {
-		copy.VerkleTime = timestamp
-=======
 	if timestamp := override.UBTTime; timestamp != nil {
 		copy.UBTTime = timestamp
->>>>>>> geth-v1.17.3
 		canon = false
 	}
 

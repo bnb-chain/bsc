@@ -137,6 +137,11 @@ func (db *MPTDatabase) TrieDB() *triedb.Database {
 	return db.triedb
 }
 
+// NoTries returns whether the database has tries storage.
+func (db *MPTDatabase) NoTries() bool {
+	return db.triedb.Config().NoTries
+}
+
 // Commit flushes all pending writes and finalizes the state transition,
 // committing the changes to the underlying storage. It returns an error
 // if the commit fails.
@@ -167,9 +172,13 @@ func (db *MPTDatabase) Commit(update *StateUpdate) error {
 		// - head layer is paired with HEAD state
 		// - head-1 layer is paired with HEAD-1 state
 		// - head-127 layer(bottom-most diff layer) is paired with HEAD-127 state
-		if err := db.snap.Cap(update.Root, TriesInMemory); err != nil {
+		if err := db.snap.Cap(update.Root, db.snap.CapLimit()); err != nil {
 			log.Warn("Failed to cap snapshot tree", "root", update.Root, "layers", TriesInMemory, "err", err)
 		}
+	}
+
+	if db.NoTries() {
+		return nil
 	}
 	return db.triedb.Update(update.Root, update.OriginRoot, update.BlockNumber, update.Nodes, &triedb.StateSet{
 		Accounts:       accounts,

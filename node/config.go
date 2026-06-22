@@ -212,15 +212,9 @@ type Config struct {
 	GraphQLVirtualHosts []string `toml:",omitempty"`
 
 	// Logger is a custom logger to use with the p2p.Server.
-<<<<<<< HEAD
-	Logger log.Logger `toml:",omitempty"`
+	Logger log.Logger `toml:"-,omitempty"`
 
 	LogConfig *LogConfig `toml:",omitempty"`
-
-	oldGethResourceWarning bool
-=======
-	Logger log.Logger `toml:"-,omitempty"`
->>>>>>> geth-v1.17.3
 
 	// AllowUnprotectedTxs allows non EIP-155 protected transactions to be send over RPC.
 	AllowUnprotectedTxs bool `toml:",omitempty"`
@@ -257,9 +251,8 @@ type Config struct {
 	// Configures database engine used by the node.
 	DBEngine string `toml:",omitempty"`
 
-<<<<<<< HEAD
 	Instance int `toml:",omitempty"`
-=======
+
 	// Configures OpenTelemetry reporting.
 	OpenTelemetry OpenTelemetryConfig `toml:",omitempty"`
 
@@ -280,7 +273,6 @@ type OpenTelemetryConfig struct {
 
 	// Percentage of sampled traces.
 	SampleRatio float64 `toml:",omitempty"`
->>>>>>> geth-v1.17.3
 }
 
 // IPCEndpoint resolves an IPC endpoint based on a configured value, taking into

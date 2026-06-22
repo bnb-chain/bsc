@@ -28,13 +28,10 @@ import (
 	"sync"
 	"time"
 
-<<<<<<< HEAD
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/metrics"
 
-=======
 	"github.com/ethereum/go-ethereum/internal/telemetry"
->>>>>>> geth-v1.17.3
 	"github.com/ethereum/go-ethereum/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
@@ -573,27 +570,13 @@ func (h *handler) handleCall(cp *callProc, msg *jsonrpcMessage) *jsonrpcMessage 
 	rSpanEnd(&rErr)
 
 	// Collect the statistics for RPC calls if metrics is enabled.
-<<<<<<< HEAD
-	// We only care about pure rpc call. Filter out subscription.
-	if callb != h.unsubscribeCb {
-		rpcRequestGauge.Inc(1)
-		if answer.Error != nil {
-			failedRequestGauge.Inc(1)
-		} else {
-			successfulRequestGauge.Inc(1)
-		}
-		RpcServingTimer.UpdateSince(start)
-		newRPCRequestGauge(msg.Method).Inc(1)
-		updateServeTimeHistogram(msg.Method, answer.Error == nil, time.Since(start))
-=======
 	rpcRequestGauge.Inc(1)
 	if answer.Error != nil {
 		failedRequestGauge.Inc(1)
 	} else {
 		successfulRequestGauge.Inc(1)
->>>>>>> geth-v1.17.3
 	}
-	rpcServingTimer.UpdateSince(start)
+	RpcServingTimer.UpdateSince(start)
 	updateServeTimeHistogram(msg.Method, answer.Error == nil, time.Since(start))
 	return answer
 }

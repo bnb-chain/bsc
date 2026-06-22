@@ -152,10 +152,6 @@ func (tree *layerTree) add(root common.Hash, parentRoot common.Hash, block uint6
 	if root == parentRoot {
 		return errors.New("layer cycle")
 	}
-<<<<<<< HEAD
-	if tree.get(root) != nil {
-		log.Info("Skip add repeated difflayer", "root", root.String(), "block_id", block)
-=======
 	// If a layer with this root already exists, skip the insertion. Fork blocks
 	// can produce the same state root as the canonical block (same parent, same
 	// coinbase, zero txs); overwriting tree.layers[root] would corrupt the parent
@@ -163,7 +159,7 @@ func (tree *layerTree) add(root common.Hash, parentRoot common.Hash, block uint6
 	// appending a duplicate root to the lookup indices causes accountTip/storageTip
 	// to resolve the wrong layer.
 	if tree.get(root) != nil {
->>>>>>> geth-v1.17.3
+		log.Info("Skip add repeated difflayer", "root", root.String(), "block_id", block)
 		return nil
 	}
 	parent := tree.get(parentRoot)

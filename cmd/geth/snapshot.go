@@ -176,15 +176,6 @@ the expected order for the overlay tree migration.
 `,
 			},
 			{
-<<<<<<< HEAD
-				Action:    mergeIncrSnapshot,
-				Name:      "merge-incr-snapshot",
-				Usage:     "Merge the incremental snapshot into local data",
-				ArgsUsage: "",
-				Flags: slices.Concat([]cli.Flag{utils.IncrSnapshotPathFlag},
-					utils.DatabaseFlags),
-				Description: `This command merges multiple incremental snapshots into local data`,
-=======
 				Name:    "list-eip-7610-accounts",
 				Aliases: []string{"eip7610"},
 				Usage:   "list EIP7610 eligible accounts",
@@ -199,7 +190,15 @@ EIP-161.
 
 The exported accounts are identified by their address.
 `,
->>>>>>> geth-v1.17.3
+			},
+			{
+				Action:    mergeIncrSnapshot,
+				Name:      "merge-incr-snapshot",
+				Usage:     "Merge the incremental snapshot into local data",
+				ArgsUsage: "",
+				Flags: slices.Concat([]cli.Flag{utils.IncrSnapshotPathFlag},
+					utils.DatabaseFlags),
+				Description: `This command merges multiple incremental snapshots into local data`,
 			},
 		},
 	}
@@ -834,7 +833,6 @@ func checkAccount(ctx *cli.Context) error {
 	return nil
 }
 
-<<<<<<< HEAD
 // mergeIncrSnapshot merges the incremental snapshot into local data.
 func mergeIncrSnapshot(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
@@ -898,7 +896,10 @@ func mergeIncrSnapshot(ctx *cli.Context) error {
 		} else {
 			log.Info("Skip merge incremental snapshot", "dir", dir.Name)
 		}
-=======
+	}
+	return nil
+}
+
 // listEIP7610EligibleAccounts traverses the post–EIP-161 state and returns all
 // accounts that are eligible under EIP-7610: accounts with zero nonce, empty
 // runtime code, and non-empty storage.
@@ -933,7 +934,7 @@ func listEIP7610EligibleAccounts(ctx *cli.Context) error {
 		log.Info("Local head is prior to EIP-161", "head", headBlock.Number(), "eip-161", *config.EIP158Block)
 		return nil
 	}
-	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false)
+	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false, false)
 	defer triedb.Close()
 
 	if triedb.Scheme() != rawdb.PathScheme {
@@ -984,7 +985,6 @@ func listEIP7610EligibleAccounts(ctx *cli.Context) error {
 			copy(buf[i*common.AddressLength:], h[:])
 		}
 		log.Info("Traversed state", "eligible", len(accounts), "elapsed", common.PrettyDuration(time.Since(start)), "output", hex.EncodeToString(buf))
->>>>>>> geth-v1.17.3
 	}
 	return nil
 }

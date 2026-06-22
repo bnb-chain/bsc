@@ -90,21 +90,16 @@ type FilterAPI struct {
 	filters       map[rpc.ID]*filter
 	timeout       time.Duration
 	logQueryLimit int
-<<<<<<< HEAD
-	rangeLimit    bool
-=======
 	rangeLimit    uint64
->>>>>>> geth-v1.17.3
 }
 
 // NewFilterAPI returns a new FilterAPI instance.
-func NewFilterAPI(system *FilterSystem, rangeLimit bool) *FilterAPI {
+func NewFilterAPI(system *FilterSystem) *FilterAPI {
 	api := &FilterAPI{
 		sys:           system,
 		events:        NewEventSystem(system),
 		filters:       make(map[rpc.ID]*filter),
 		timeout:       system.cfg.Timeout,
-		rangeLimit:    rangeLimit,
 		logQueryLimit: system.cfg.LogQueryLimit,
 		rangeLimit:    system.cfg.RangeLimit,
 	}
@@ -198,11 +193,7 @@ func (api *FilterAPI) NewPendingTransactions(ctx context.Context, fullTx *bool) 
 		pendingTxSub = api.events.SubscribePendingTxs(txs)
 	)
 
-<<<<<<< HEAD
-	gopool.Submit(func() {
-=======
 	go func() {
->>>>>>> geth-v1.17.3
 		defer pendingTxSub.Unsubscribe()
 
 		chainConfig := api.sys.backend.ChainConfig()
@@ -225,7 +216,7 @@ func (api *FilterAPI) NewPendingTransactions(ctx context.Context, fullTx *bool) 
 				return
 			}
 		}
-	})
+	}()
 
 	return rpcSub, nil
 }
@@ -339,11 +330,7 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 		headersSub = api.events.SubscribeNewHeads(headers)
 	)
 
-<<<<<<< HEAD
-	gopool.Submit(func() {
-=======
 	go func() {
->>>>>>> geth-v1.17.3
 		defer headersSub.Unsubscribe()
 
 		for {
@@ -354,7 +341,7 @@ func (api *FilterAPI) NewHeads(ctx context.Context) (*rpc.Subscription, error) {
 				return
 			}
 		}
-	})
+	}()
 
 	return rpcSub, nil
 }

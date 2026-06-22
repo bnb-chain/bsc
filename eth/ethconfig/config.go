@@ -38,7 +38,6 @@ import (
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/ethereum/go-ethereum/triedb/pathdb"
 )
 
@@ -55,63 +54,36 @@ var FullNodeGPO = gasprice.Config{
 
 // Defaults contains default settings for use on the BSC main net.
 var Defaults = Config{
-<<<<<<< HEAD
-	HistoryMode:        history.KeepAll,
-	SyncMode:           SnapSync,
-	NetworkId:          0, // enable auto configuration of networkID == chainID
-	TxLookupLimit:      2350000,
-	TransactionHistory: 2350000,
-	LogHistory:         576000,
-	BlockHistory:       0,
-	StateHistory:       params.FullImmutabilityThreshold,
-	DatabaseCache:      512,
-	TrieCleanCache:     154,
-	TrieDirtyCache:     256,
-	TrieTimeout:        10 * time.Minute,
-	TriesInMemory:      128,
-	TriesVerifyMode:    core.LocalVerify,
-	SnapshotCache:      102,
-	FilterLogCacheSize: 32,
-	Miner:              minerconfig.DefaultConfig,
-	TxPool:             legacypool.DefaultConfig,
-	BlobPool:           blobpool.DefaultConfig,
-	RPCGasCap:          50000000,
-	RPCEVMTimeout:      5 * time.Second,
-	GPO:                FullNodeGPO,
-	TxSyncDefaultTimeout: 5 * time.Second,
-	TxSyncMaxTimeout:     10 * time.Second,
-	RPCTxFeeCap:        1,                                         // 1 ether
-	BlobExtraReserve:   params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
-=======
 	HistoryMode:             history.KeepAll,
 	SyncMode:                SnapSync,
 	NetworkId:               0, // enable auto configuration of networkID == chainID
 	TxLookupLimit:           2350000,
 	TransactionHistory:      2350000,
-	LogHistory:              2350000,
+	LogHistory:              576000,
+	BlockHistory:            0,
 	StateHistory:            pathdb.Defaults.StateHistory,
 	TrienodeHistory:         pathdb.Defaults.TrienodeHistory,
 	NodeFullValueCheckpoint: pathdb.Defaults.FullValueCheckpoint,
-	BinTrieGroupDepth:       triedb.DefaultBinTrieGroupDepth,
 	DatabaseCache:           2048,
 	TrieCleanCache:          614,
 	TrieDirtyCache:          1024,
 	SnapshotCache:           409,
-	TrieTimeout:             60 * time.Minute,
+	TrieTimeout:             10 * time.Minute,
+	TriesInMemory:           128,
+	TriesVerifyMode:         core.LocalVerify,
 	FilterLogCacheSize:      32,
-	LogQueryLimit:           1000,
-	Miner:                   miner.DefaultConfig,
+	Miner:                   minerconfig.DefaultConfig,
 	TxPool:                  legacypool.DefaultConfig,
 	BlobPool:                blobpool.DefaultConfig,
 	RPCGasCap:               50000000,
 	RPCEVMTimeout:           5 * time.Second,
 	GPO:                     FullNodeGPO,
-	RPCTxFeeCap:             1, // 1 ether
-	TxSyncDefaultTimeout:    20 * time.Second,
-	TxSyncMaxTimeout:        1 * time.Minute,
+	RPCTxFeeCap:             1,
+	TxSyncDefaultTimeout:    5 * time.Second,
+	TxSyncMaxTimeout:        10 * time.Second,
 	SlowBlockThreshold:      -1, // Disabled by default; set via --debug.logslowblock flag
-	RangeLimit:              0,
->>>>>>> geth-v1.17.3
+	RangeLimit:              5000,
+	BlobExtraReserve:        params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
 }
 
 //go:generate go run github.com/fjl/gencodec -type Config -formats toml -out gen_config.go
@@ -151,7 +123,6 @@ type Config struct {
 
 	DirectBroadcast     bool
 	DisableSnapProtocol bool // Whether disable snap protocol
-	RangeLimit          bool
 
 	// Deprecated: use 'TransactionHistory' instead.
 	TxLookupLimit uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
@@ -295,7 +266,9 @@ type Config struct {
 	TxSyncDefaultTimeout time.Duration `toml:",omitempty"`
 	TxSyncMaxTimeout     time.Duration `toml:",omitempty"`
 
-<<<<<<< HEAD
+	// RangeLimit restricts the maximum range (end - start) for range queries.
+	RangeLimit uint64 `toml:",omitempty"`
+
 	// blob setting
 	BlobExtraReserve uint64
 
@@ -307,10 +280,6 @@ type Config struct {
 	IncrSnapshotKeptBlocks    uint64
 	UseRemoteIncrSnapshot     bool
 	RemoteIncrSnapshotURL     string
-=======
-	// RangeLimit restricts the maximum range (end - start) for range queries.
-	RangeLimit uint64 `toml:",omitempty"`
->>>>>>> geth-v1.17.3
 }
 
 // CreateConsensusEngine creates a consensus engine for the given chain config.

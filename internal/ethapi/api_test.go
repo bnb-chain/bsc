@@ -24,10 +24,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-<<<<<<< HEAD
 	"maps"
-=======
->>>>>>> geth-v1.17.3
 	"math/big"
 	"os"
 	"path/filepath"

@@ -1033,7 +1033,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 	gasLimit := bidRuntime.env.header.GasLimit
 	if bidRuntime.env.gasPool == nil {
-		bidRuntime.env.gasPool = new(core.GasPool).AddGas(gasLimit)
+		bidRuntime.env.gasPool = core.NewGasPool(gasLimit)
 		if p, ok := b.engine.(*parlia.Parlia); ok {
 			bidRuntime.env.gasPool.SubGas(p.EstimateGasReservedForSystemTxs(b.chain, bidRuntime.env.header))
 		}
@@ -1360,8 +1360,7 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 		}
 	}
 
-	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx,
-		&env.header.GasUsed, core.NewReceiptBloomGenerator())
+	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, core.NewReceiptBloomGenerator())
 	if err != nil {
 		return err
 	} else if unRevertible && receipt.Status == types.ReceiptStatusFailed {

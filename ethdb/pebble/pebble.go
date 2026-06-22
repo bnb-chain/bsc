@@ -205,13 +205,8 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 	// limit unchanged allows writes to be flushed more smoothly. This helps
 	// avoid compaction spikes and mitigates write stalls caused by heavy
 	// compaction workloads.
-<<<<<<< HEAD
-	memTableLimit := 6
-	memTableSize := cache * 1024 * 1024 / 2 / memTableLimit
-=======
-	memTableNumber := 4
+	memTableNumber := 6
 	memTableSize := cache * 1024 * 1024 / 2 / memTableNumber
->>>>>>> geth-v1.17.3
 
 	// The memory table size is currently capped at maxMemTableSize-1 due to a
 	// known bug in the pebble where maxMemTableSize is not recognized as a
@@ -259,7 +254,7 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 		//
 		// MemTableStopWritesThreshold is set to twice the maximum number of
 		// allowed memtables to accommodate temporary spikes.
-		MemTableStopWritesThreshold: memTableNumber * 2,
+		MemTableStopWritesThreshold: memTableNumber * 2, //TODO(Nathan): check this change
 
 		// The default compaction concurrency(1 thread),
 		// Here use all available CPUs for faster compaction.

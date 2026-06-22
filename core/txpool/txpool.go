@@ -367,15 +367,11 @@ func (p *TxPool) Pending(filter PendingFilter) (map[common.Address][]*LazyTransa
 	var count int
 	txs := make(map[common.Address][]*LazyTransaction)
 	for _, subpool := range p.subpools {
-<<<<<<< HEAD
-		maps.Copy(txs, subpool.Pending(filter))
-=======
 		set, n := subpool.Pending(filter)
 		for addr, list := range set {
 			txs[addr] = list
 		}
 		count += n
->>>>>>> geth-v1.17.3
 	}
 	return txs, count
 }

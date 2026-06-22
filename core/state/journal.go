@@ -423,13 +423,8 @@ func (ch *storageChange) revert(s *StateDB) {
 	s.getStateObject(ch.account).setState(ch.key, ch.prevvalue, ch.origvalue)
 }
 
-<<<<<<< HEAD
-func (ch *storageChange) dirtied() *common.Address {
-	return &ch.account
-=======
 func (ch storageChange) dirtied() (common.Address, bool) {
 	return ch.account, true
->>>>>>> geth-v1.17.3
 }
 
 func (ch *storageChange) copy() journalEntry {

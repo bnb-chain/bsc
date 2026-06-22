@@ -17,11 +17,8 @@
 package core
 
 import (
-<<<<<<< HEAD
-	"errors"
-=======
 	"context"
->>>>>>> geth-v1.17.3
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -35,11 +32,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
-<<<<<<< HEAD
-	"github.com/ethereum/go-ethereum/log"
-=======
 	"github.com/ethereum/go-ethereum/internal/telemetry"
->>>>>>> geth-v1.17.3
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/holiman/uint256"
@@ -77,12 +71,7 @@ func (p *StateProcessor) chainConfig() *params.ChainConfig {
 func (p *StateProcessor) Process(ctx context.Context, block *types.Block, statedb *state.StateDB, cfg vm.Config) (*ProcessResult, error) {
 	var (
 		config      = p.chainConfig()
-<<<<<<< HEAD
-		receipts    = make([]*types.Receipt, 0)
-		usedGas     = new(uint64)
-=======
-		receipts    = make(types.Receipts, 0, len(block.Transactions()))
->>>>>>> geth-v1.17.3
+		receipts    = make([]*types.Receipt, 0, len(block.Transactions()))
 		header      = block.Header()
 		blockHash   = block.Hash()
 		blockNumber = block.Number()
@@ -164,55 +153,25 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 			telemetry.Int64Attribute("tx.index", int64(i)),
 		)
 
-<<<<<<< HEAD
-		receipt, err := ApplyTransactionWithEVM(msg, gp, statedb, blockNumber, blockHash, context.Time, tx, usedGas, evm, bloomProcessors)
+		receipt, err := ApplyTransactionWithEVM(msg, gp, statedb, blockNumber, blockHash, context.Time, tx, evm, bloomProcessors)
 		if err != nil {
 			bloomProcessors.Close()
-=======
-		receipt, err := ApplyTransactionWithEVM(msg, gp, statedb, blockNumber, blockHash, context.Time, tx, evm)
-		if err != nil {
 			spanEnd(&err)
->>>>>>> geth-v1.17.3
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)
-<<<<<<< HEAD
-	}
-	bloomProcessors.Close()
-
-	// Read requests if Prague is enabled.
-	var requests [][]byte
-	if config.IsPrague(block.Number(), block.Time()) && config.IsNotInBSC() {
-		var allCommonLogs []*types.Log
-		for _, receipt := range receipts {
-			allCommonLogs = append(allCommonLogs, receipt.Logs...)
-		}
-		requests = [][]byte{}
-		// EIP-6110
-		if err := ParseDepositLogs(&requests, allCommonLogs, config); err != nil {
-			return nil, fmt.Errorf("failed to parse deposit logs: %w", err)
-		}
-		// EIP-7002
-		if err := ProcessWithdrawalQueue(&requests, evm); err != nil {
-			return nil, fmt.Errorf("failed to process withdrawal queue: %w", err)
-		}
-		// EIP-7251
-		if err := ProcessConsolidationQueue(&requests, evm); err != nil {
-			return nil, fmt.Errorf("failed to process consolidation queue: %w", err)
-		}
-=======
-		allLogs = append(allLogs, receipt.Logs...)
 		spanEnd(nil)
 	}
+	bloomProcessors.Close()
 	requests, err := postExecution(ctx, config, block, allLogs, evm)
 	if err != nil {
 		return nil, err
->>>>>>> geth-v1.17.3
 	}
 
+	gasUsed := gp.Used()
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
-	err = p.chain.Engine().Finalize(p.chain, header, tracingStateDB, &commonTxs, block.Uncles(), block.Withdrawals(), &receipts, &systemTxs, usedGas, cfg.Tracer)
+	err = p.chain.Engine().Finalize(p.chain, header, tracingStateDB, &commonTxs, block.Uncles(), block.Withdrawals(), &receipts, &systemTxs, &gasUsed, cfg.Tracer)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +183,8 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		Receipts: receipts,
 		Requests: requests,
 		Logs:     allLogs,
-		GasUsed:  gp.Used(),
+		// GasUsed:  gp.Used(),
+		GasUsed: gasUsed, //TODO(Nathan): wrong here
 	}, nil
 }
 
@@ -234,7 +194,7 @@ func postExecution(ctx context.Context, config *params.ChainConfig, block *types
 	defer spanEnd(&err)
 
 	// Read requests if Prague is enabled.
-	if config.IsPrague(block.Number(), block.Time()) {
+	if config.IsPrague(block.Number(), block.Time()) && config.IsNotInBSC() {
 		requests = [][]byte{}
 		// EIP-6110
 		if err := ParseDepositLogs(&requests, allLogs, config); err != nil {
@@ -256,8 +216,7 @@ func postExecution(ctx context.Context, config *params.ChainConfig, block *types
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database
 // and uses the input parameters for its environment similar to ApplyTransaction. However,
 // this method takes an already created EVM instance as input.
-<<<<<<< HEAD
-func ApplyTransactionWithEVM(msg *Message, gp *GasPool, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, blockTime uint64, tx *types.Transaction, usedGas *uint64, evm *vm.EVM, receiptProcessors ...ReceiptProcessor) (receipt *types.Receipt, err error) {
+func ApplyTransactionWithEVM(msg *Message, gp *GasPool, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, blockTime uint64, tx *types.Transaction, evm *vm.EVM, receiptProcessors ...ReceiptProcessor) (receipt *types.Receipt, err error) {
 	// Add timing measurement
 	var result *ExecutionResult
 	if tx.Gas() > largeTxGasLimit {
@@ -270,9 +229,6 @@ func ApplyTransactionWithEVM(msg *Message, gp *GasPool, statedb *state.StateDB, 
 		}()
 	}
 
-=======
-func ApplyTransactionWithEVM(msg *Message, gp *GasPool, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, blockTime uint64, tx *types.Transaction, evm *vm.EVM) (receipt *types.Receipt, err error) {
->>>>>>> geth-v1.17.3
 	if hooks := evm.Config.Tracer; hooks != nil {
 		if hooks.OnTxStart != nil {
 			hooks.OnTxStart(evm.GetVMContext(), tx, msg.From)
@@ -298,29 +254,17 @@ func ApplyTransactionWithEVM(msg *Message, gp *GasPool, statedb *state.StateDB, 
 	if statedb.Database().Type().Is(state.TypeUBT) {
 		statedb.AccessEvents().Merge(evm.AccessEvents)
 	}
-<<<<<<< HEAD
-
-	return MakeReceipt(evm, result, statedb, blockNumber, blockHash, blockTime, tx, *usedGas, root, receiptProcessors...), nil
+	return MakeReceipt(evm, result, statedb, blockNumber, blockHash, blockTime, tx, gp.CumulativeUsed(), root, receiptProcessors...), nil
 }
 
 // MakeReceipt generates the receipt object for a transaction given its execution result.
-func MakeReceipt(evm *vm.EVM, result *ExecutionResult, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, blockTime uint64, tx *types.Transaction, usedGas uint64, root []byte, receiptProcessors ...ReceiptProcessor) *types.Receipt {
-	// Create a new receipt for the transaction, storing the intermediate root and gas used
-	// by the tx.
-	receipt := &types.Receipt{Type: tx.Type(), PostState: root, CumulativeGasUsed: usedGas}
-=======
-	return MakeReceipt(evm, result, statedb, blockNumber, blockHash, blockTime, tx, gp.CumulativeUsed(), root), nil
-}
-
-// MakeReceipt generates the receipt object for a transaction given its execution result.
-func MakeReceipt(evm *vm.EVM, result *ExecutionResult, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, blockTime uint64, tx *types.Transaction, cumulativeGas uint64, root []byte) *types.Receipt {
+func MakeReceipt(evm *vm.EVM, result *ExecutionResult, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, blockTime uint64, tx *types.Transaction, cumulativeGas uint64, root []byte, receiptProcessors ...ReceiptProcessor) *types.Receipt {
 	// Create a new receipt for the transaction, storing the intermediate root
 	// and gas used by the tx.
 	//
 	// The cumulative gas used equals the sum of gasUsed across all preceding
 	// txs with refunded gas deducted.
 	receipt := &types.Receipt{Type: tx.Type(), PostState: root, CumulativeGasUsed: cumulativeGas}
->>>>>>> geth-v1.17.3
 	if result.Failed() {
 		receipt.Status = types.ReceiptStatusFailed
 	} else {
@@ -357,21 +301,13 @@ func MakeReceipt(evm *vm.EVM, result *ExecutionResult, statedb *state.StateDB, b
 // and uses the input parameters for its environment. It returns the receipt
 // for the transaction and an error if the transaction failed,
 // indicating the block was invalid.
-<<<<<<< HEAD
-func ApplyTransaction(evm *vm.EVM, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, receiptProcessors ...ReceiptProcessor) (*types.Receipt, error) {
-=======
-func ApplyTransaction(evm *vm.EVM, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction) (*types.Receipt, error) {
->>>>>>> geth-v1.17.3
+func ApplyTransaction(evm *vm.EVM, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, receiptProcessors ...ReceiptProcessor) (*types.Receipt, error) {
 	msg, err := TransactionToMessage(tx, types.MakeSigner(evm.ChainConfig(), header.Number, header.Time), header.BaseFee)
 	if err != nil {
 		return nil, err
 	}
 	// Create a new context to be used in the EVM environment
-<<<<<<< HEAD
-	return ApplyTransactionWithEVM(msg, gp, statedb, header.Number, header.Hash(), header.Time, tx, usedGas, evm, receiptProcessors...)
-=======
-	return ApplyTransactionWithEVM(msg, gp, statedb, header.Number, header.Hash(), header.Time, tx, evm)
->>>>>>> geth-v1.17.3
+	return ApplyTransactionWithEVM(msg, gp, statedb, header.Number, header.Hash(), header.Time, tx, evm, receiptProcessors...)
 }
 
 // ProcessBeaconBlockRoot applies the EIP-4788 system call to the beacon block root
@@ -514,10 +450,24 @@ func onSystemCallStart(tracer *tracing.Hooks, ctx *tracing.VMContext) {
 	}
 }
 
+// blockAssembler is implemented by consensus engines that support FinalizeAndAssemble.
+type blockAssembler interface {
+	FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error)
+}
+
 // AssembleBlock finalizes the state and assembles the block with provided
 // body and receipts.
-func AssembleBlock(engine consensus.Engine, chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) *types.Block {
-	engine.Finalize(chain, header, state, body)
+func AssembleBlock(engine consensus.Engine, chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, []*types.Receipt, error) {
+	if p, ok := engine.(blockAssembler); ok {
+		block, receipts, err := p.FinalizeAndAssemble(chain, header, state, body, receipts, nil)
+		if err != nil {
+			return nil, nil, err
+		}
+		return block, receipts, nil
+	}
+	if err := engine.Finalize(chain, header, state, &body.Transactions, body.Uncles, body.Withdrawals, &receipts, nil, &header.GasUsed, nil); err != nil {
+		return nil, nil, err
+	}
 	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
-	return types.NewBlock(header, body, receipts, trie.NewStackTrie(nil))
+	return types.NewBlock(header, body, receipts, trie.NewStackTrie(nil)), receipts, nil
 }

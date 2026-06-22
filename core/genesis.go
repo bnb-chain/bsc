@@ -168,8 +168,7 @@ func hashAlloc(ga *types.GenesisAlloc, isUBT bool) (common.Hash, error) {
 
 // flushAlloc is very similar with hash, but the main difference is all the
 // generated states will be persisted into the given database.
-<<<<<<< HEAD
-func flushAlloc(ga *types.GenesisAlloc, triedb *triedb.Database) (common.Hash, error) {
+func flushAlloc(ga *types.GenesisAlloc, triedb *triedb.Database, tracer *tracing.Hooks) (common.Hash, error) {
 	triedbConfig := triedb.Config()
 	if triedbConfig != nil {
 		origin := triedbConfig.NoTries
@@ -179,9 +178,6 @@ func flushAlloc(ga *types.GenesisAlloc, triedb *triedb.Database) (common.Hash, e
 		}()
 	}
 
-=======
-func flushAlloc(ga *types.GenesisAlloc, triedb *triedb.Database, tracer *tracing.Hooks) (common.Hash, error) {
->>>>>>> geth-v1.17.3
 	emptyRoot := types.EmptyRootHash
 	if triedb.IsUBT() {
 		emptyRoot = types.EmptyBinaryHash
@@ -290,7 +286,6 @@ func (e *GenesisMismatchError) Error() string {
 // ChainOverrides contains the changes to chain config
 // Typically, these modifications involve hardforks that are not enabled on the BSC mainnet, intended for testing purposes.
 type ChainOverrides struct {
-<<<<<<< HEAD
 	OverridePassedForkTime *uint64
 	OverrideLorentz        *uint64
 	OverrideMaxwell        *uint64
@@ -300,13 +295,7 @@ type ChainOverrides struct {
 	OverridePasteur        *uint64
 	OverrideBPO1           *uint64
 	OverrideBPO2           *uint64
-	OverrideVerkle         *uint64
-=======
-	OverrideOsaka *uint64
-	OverrideBPO1  *uint64
-	OverrideBPO2  *uint64
-	OverrideUBT   *uint64
->>>>>>> geth-v1.17.3
+	OverrideUBT            *uint64
 }
 
 // apply applies the chain overrides on the supplied chain config.

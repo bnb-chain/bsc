@@ -36,7 +36,8 @@ type syncModer struct {
 }
 
 func newSyncModer(mode ethconfig.SyncMode, chain BlockChain, disk ethdb.KeyValueReader) *syncModer {
-	if mode == ethconfig.FullSync {
+	if chain.NoTries() {
+	} else if mode == ethconfig.FullSync {
 		// The database seems empty as the current block is the genesis. Yet the snap
 		// block is ahead, so snap sync was enabled for this node at a certain point.
 		// The scenarios where this can happen is

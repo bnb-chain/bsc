@@ -40,11 +40,7 @@ func (d *Downloader) BeaconDevSync(header *types.Header) error {
 	log.Warn("This is unhealthy for a live node!")
 	log.Warn("This is incompatible with the consensus layer!")
 	log.Warn("----------------------------------")
-<<<<<<< HEAD
 	return nil
-=======
-	return d.BeaconSync(header, header)
->>>>>>> geth-v1.17.3
 }
 
 // GetHeader tries to retrieve the header with a given hash from a random peer.

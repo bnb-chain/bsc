@@ -200,32 +200,6 @@ func (t *Tracker) Stop() {
 	t.expire = nil
 }
 
-<<<<<<< HEAD
-// Stop reclaims resources of the tracker.
-func (t *Tracker) Stop() {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-
-	if t.wake != nil {
-		t.wake.Stop()
-		t.wake = nil
-	}
-	if metrics.Enabled() {
-		// Ensure metrics are decremented for pending requests.
-		counts := make(map[uint64]int64)
-		for _, req := range t.pending {
-			counts[req.ReqCode]++
-		}
-		for code, count := range counts {
-			t.trackedGauge(code).Dec(count)
-		}
-	}
-	clear(t.pending)
-	t.expire = nil
-}
-
-=======
->>>>>>> geth-v1.17.3
 // Fulfil fills a pending request, if any is available, reporting on various metrics.
 func (t *Tracker) Fulfil(resp Response) error {
 	t.lock.Lock()

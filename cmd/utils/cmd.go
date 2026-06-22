@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/big"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -457,12 +458,6 @@ func ExportHistory(bc *core.BlockChain, dir string, first, last uint64, newBuild
 		td        = new(big.Int)
 		checksums []string
 	)
-<<<<<<< HEAD
-	for i := first; i <= last; i += step {
-		err := func() error {
-			filename := filepath.Join(dir, era.Filename(network, int(i/step), common.Hash{}))
-			f, err := os.Create(filename)
-=======
 
 	// Compute initial TD by accumulating difficulty from genesis to first-1.
 	// This is necessary because TD is no longer stored in the database. Only
@@ -489,7 +484,6 @@ func ExportHistory(bc *core.BlockChain, dir string, first, last uint64, newBuild
 
 		if err := func() error {
 			f, err := os.Create(tmpPath)
->>>>>>> geth-v1.17.3
 			if err != nil {
 				return err
 			}
@@ -507,13 +501,6 @@ func ExportHistory(bc *core.BlockChain, dir string, first, last uint64, newBuild
 				if receipt == nil {
 					return fmt.Errorf("receipts for #%d missing", n)
 				}
-<<<<<<< HEAD
-				td := bc.GetTd(block.Hash(), block.NumberU64())
-				if td == nil {
-					return fmt.Errorf("export failed on #%d: total difficulty not found", n)
-				}
-				if err := w.Add(block, receipts, td); err != nil {
-=======
 
 				// For pre-merge blocks, pass accumulated TD.
 				// For post-merge blocks (difficulty == 0), pass nil TD.
@@ -524,7 +511,6 @@ func ExportHistory(bc *core.BlockChain, dir string, first, last uint64, newBuild
 				}
 
 				if err := builder.Add(block, receipt, blockTD); err != nil {
->>>>>>> geth-v1.17.3
 					return err
 				}
 			}

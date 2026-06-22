@@ -17,11 +17,7 @@
 package miner
 
 import (
-<<<<<<< HEAD
-=======
 	"context"
-	"math/big"
->>>>>>> geth-v1.17.3
 	"reflect"
 	"testing"
 	"time"

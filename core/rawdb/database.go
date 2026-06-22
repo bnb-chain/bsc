@@ -37,7 +37,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/internal/tablewriter"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/olekukonko/tablewriter"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -369,16 +368,8 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 
 	// Create the idle freezer instance
 	frdb, err := newChainFreezer(chainFreezerDir, opts.Era, opts.MetricsNamespace, opts.ReadOnly)
-
-	// We are creating the freezerdb here because the validation logic for db and freezer below requires certain interfaces
-	// that need a database type. Therefore, we are pre-creating it for subsequent use.
-	freezerDb := &freezerdb{
-		ancientRoot:   opts.Ancient,
-		KeyValueStore: db,
-		chainFreezer:  frdb,
-	}
 	if err != nil {
-		printChainMetadata(freezerDb)
+		printChainMetadata(db)
 		return nil, err
 	}
 
@@ -417,10 +408,10 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 			// the freezer and the key-value store.
 			frgenesis, err := frdb.Ancient(ChainFreezerHashTable, 0)
 			if err != nil {
-				printChainMetadata(freezerDb)
+				printChainMetadata(db)
 				return nil, fmt.Errorf("failed to retrieve genesis from ancient %v", err)
 			} else if !bytes.Equal(kvgenesis, frgenesis) {
-				printChainMetadata(freezerDb)
+				printChainMetadata(db)
 				return nil, fmt.Errorf("genesis mismatch: %#x (leveldb) != %#x (ancients)", kvgenesis, frgenesis)
 			}
 			// Key-value store and freezer belong to the same network. Ensure that they
@@ -428,10 +419,10 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 			if kvhash, _ := db.Get(headerHashKey(frozen)); len(kvhash) == 0 {
 				// Subsequent header after the freezer limit is missing from the database.
 				// Reject startup if the database has a more recent head.
-				head, ok := ReadHeaderNumber(freezerDb, ReadHeadHeaderHash(freezerDb))
+				head, ok := ReadHeaderNumber(db, ReadHeadHeaderHash(db))
 				if !ok {
 					printChainMetadata(db)
-					return nil, fmt.Errorf("could not read header number, hash %v", ReadHeadHeaderHash(freezerDb))
+					return nil, fmt.Errorf("could not read header number, hash %v", ReadHeadHeaderHash(db))
 				}
 				if head > frozen-1 {
 					// Find the smallest block stored in the key-value store
@@ -443,7 +434,7 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 						}
 					}
 					// We are about to exit on error. Print database metadata before exiting
-					printChainMetadata(freezerDb)
+					printChainMetadata(db)
 					return nil, fmt.Errorf("gap in the chain between ancients [0 - #%d] and leveldb [#%d - #%d] ",
 						frozen-1, number, head)
 				}
@@ -458,11 +449,11 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 			// store, otherwise we'll end up missing data. We check block #1 to decide
 			// if we froze anything previously or not, but do take care of databases with
 			// only the genesis block.
-			if ReadHeadHeaderHash(freezerDb) != common.BytesToHash(kvgenesis) {
+			if ReadHeadHeaderHash(db) != common.BytesToHash(kvgenesis) {
 				// Key-value store contains more data than the genesis block, make sure we
 				// didn't freeze anything yet.
 				if kvblob, _ := db.Get(headerHashKey(1)); len(kvblob) == 0 {
-					printChainMetadata(freezerDb)
+					printChainMetadata(db)
 					return nil, errors.New("ancient chain segments already extracted, please set --datadir.ancient to the correct path")
 				}
 				// Block #1 is still in the database, we're allowed to init a new freezer
@@ -479,16 +470,12 @@ func Open(db ethdb.KeyValueStore, opts OpenOptions) (ethdb.Database, error) {
 			frdb.wg.Done()
 		}()
 	}
-<<<<<<< HEAD
-	return freezerDb, nil
-=======
 	return &freezerdb{
 		readOnly:      opts.ReadOnly,
 		ancientRoot:   opts.Ancient,
 		KeyValueStore: db,
 		chainFreezer:  frdb,
 	}, nil
->>>>>>> geth-v1.17.3
 }
 
 // NewMemoryDatabase creates an ephemeral in-memory key-value database without a
@@ -565,7 +552,7 @@ func AncientInspect(db ethdb.Database) error {
 		{"Amount of remained items in AncientStore", "Remaining items of ancientDB", counter(ancientHead - ancientTail).String()},
 		{"The last BlockNumber within ancientDB", "The last BlockNumber", counter(ancientHead - 1).String()},
 	}
-	table := newTableWriter(os.Stdout)
+	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Database", "Category", "Items"})
 	table.SetFooter([]string{"", "AncientStore information", ""})
 	table.AppendBulk(stats)
@@ -826,12 +813,8 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		{"Key-Value store", "Trie preimages", preimages.sizeString(), preimages.countString()},
 		{"Key-Value store", "Account snapshot", accountSnaps.sizeString(), accountSnaps.countString()},
 		{"Key-Value store", "Storage snapshot", storageSnaps.sizeString(), storageSnaps.countString()},
-<<<<<<< HEAD
-=======
 		{"Key-Value store", "Historical state index", stateIndex.sizeString(), stateIndex.countString()},
 		{"Key-Value store", "Historical trie index", trienodeIndex.sizeString(), trienodeIndex.countString()},
-		{"Key-Value store", "Beacon sync headers", beaconHeaders.sizeString(), beaconHeaders.countString()},
->>>>>>> geth-v1.17.3
 		{"Key-Value store", "Clique snapshots", cliqueSnaps.sizeString(), cliqueSnaps.countString()},
 		{"Key-Value store", "Singleton metadata", metadata.sizeString(), metadata.countString()},
 		// bsc special
@@ -888,7 +871,7 @@ func InspectAncients(db ethdb.Database) error {
 				fmt.Sprintf("Ancient store (%s)", strings.Title(ancient.name)),
 				strings.Title(t.name),
 				t.size.String(),
-				fmt.Sprintf("%d", ancient.count()),
+				fmt.Sprintf("%d", ancient.count),
 			})
 		}
 		total += ancient.size()
@@ -974,7 +957,7 @@ func InspectIncrStore(baseDir string) error {
 					fmt.Sprintf("%s/%s", dir.Name, strings.Title(ancient.name)),
 					strings.Title(table.name),
 					table.size.String(),
-					fmt.Sprintf("%d", ancient.count()),
+					fmt.Sprintf("%d", ancient.count),
 				})
 			}
 			total += ancient.size()

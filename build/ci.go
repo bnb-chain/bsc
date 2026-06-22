@@ -73,28 +73,9 @@ var (
 		"./cmd/keeper",
 	}
 
-<<<<<<< HEAD
-	// Files that end up in the geth*.zip archive.
-	gethArchiveFiles = []string{
-		"COPYING",
-		executablePath("geth"),
-	}
-
-	// Files that end up in the geth-alltools*.zip archive.
-	allToolsArchiveFiles = []string{
-		"COPYING",
-		executablePath("abigen"),
-		executablePath("bootnode"),
-		executablePath("evm"),
-		executablePath("geth"),
-		executablePath("rlpdump"),
-		executablePath("clef"),
-	}
-=======
 	// Files that end up in the geth-alltools*.zip archive (and the NSIS installer
 	// dev-tools section). Order matches the historical layout produced by ci.go.
-	allToolsBinaries = []string{"abigen", "evm", "geth", "rlpdump", "clef"}
->>>>>>> geth-v1.17.3
+	allToolsBinaries = []string{"abigen", "bootnode", "evm", "geth", "rlpdump", "clef"}
 
 	// Keeper build targets with their configurations
 	keeperTargets = []struct {
@@ -305,15 +286,11 @@ func doInstall(cmdline []string) {
 	// Do the build!
 	for _, pkg := range packages {
 		args := slices.Clone(gobuild.Args)
-<<<<<<< HEAD
-		outputPath := executablePath(path.Base(pkg))
+		outputPath := executablePath(path.Base(pkg), *targetOS)
 		if output != nil && *output != "" {
 			outputPath = *output
 		}
 		args = append(args, "-o", outputPath)
-=======
-		args = append(args, "-o", executablePath(path.Base(pkg), *targetOS))
->>>>>>> geth-v1.17.3
 		args = append(args, pkg)
 		build.MustRun(&exec.Cmd{Path: gobuild.Path, Args: args, Env: gobuild.Env})
 	}

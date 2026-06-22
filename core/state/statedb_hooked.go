@@ -143,17 +143,10 @@ func (s *hookedStateDB) AddSlotToAccessList(addr common.Address, slot common.Has
 	s.inner.AddSlotToAccessList(addr, slot)
 }
 
-<<<<<<< HEAD
 func (s *hookedStateDB) ClearAccessList() {
 	s.inner.ClearAccessList()
 }
 
-func (s *hookedStateDB) PointCache() *utils.PointCache {
-	return s.inner.PointCache()
-}
-
-=======
->>>>>>> geth-v1.17.3
 func (s *hookedStateDB) Prepare(rules params.Rules, sender, coinbase common.Address, dest *common.Address, precompiles []common.Address, txAccesses types.AccessList) {
 	s.inner.Prepare(rules, sender, coinbase, dest, precompiles, txAccesses)
 }
@@ -257,16 +250,10 @@ func (s *hookedStateDB) AddLog(log *types.Log) {
 	}
 }
 
-<<<<<<< HEAD
 func (s *hookedStateDB) GetLogs(hash common.Hash, blockNumber uint64, blockHash common.Hash, blockTime uint64) []*types.Log {
 	return s.inner.GetLogs(hash, blockNumber, blockHash, blockTime)
 }
 
-func (s *hookedStateDB) Finalise(deleteEmptyObjects bool) {
-	defer s.inner.Finalise(deleteEmptyObjects)
-	if s.hooks.OnBalanceChange == nil {
-		return
-=======
 func (s *hookedStateDB) LogsForBurnAccounts() []*types.Log {
 	return s.inner.LogsForBurnAccounts()
 }
@@ -275,7 +262,6 @@ func (s *hookedStateDB) Finalise(deleteEmptyObjects bool) *bal.StateAccessList {
 	if s.hooks.OnBalanceChange == nil && s.hooks.OnNonceChangeV2 == nil && s.hooks.OnNonceChange == nil && s.hooks.OnCodeChangeV2 == nil && s.hooks.OnCodeChange == nil {
 		// Short circuit if no relevant hooks are set.
 		return s.inner.Finalise(deleteEmptyObjects)
->>>>>>> geth-v1.17.3
 	}
 
 	// Collect all self-destructed addresses first, then sort them to ensure

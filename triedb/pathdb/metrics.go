@@ -87,17 +87,12 @@ var (
 	lookupAddLayerTimer    = metrics.NewRegisteredResettingTimer("pathdb/lookup/add/time", nil)
 	lookupRemoveLayerTimer = metrics.NewRegisteredResettingTimer("pathdb/lookup/remove/time", nil)
 
-<<<<<<< HEAD
-	historicalAccountReadTimer = metrics.NewRegisteredResettingTimer("pathdb/history/account/reads", nil)
-	historicalStorageReadTimer = metrics.NewRegisteredResettingTimer("pathdb/history/storage/reads", nil)
-
-	incrProcessErrorMeter = metrics.NewRegisteredMeter("pathdb/incr/process/error", nil)
-	incrCommitErrorMeter  = metrics.NewRegisteredMeter("pathdb/incr/commit/error", nil)
-=======
 	historicalAccountReadTimer  = metrics.NewRegisteredResettingTimer("pathdb/history/account/reads", nil)
 	historicalStorageReadTimer  = metrics.NewRegisteredResettingTimer("pathdb/history/storage/reads", nil)
 	historicalTrienodeReadTimer = metrics.NewRegisteredResettingTimer("pathdb/history/trienode/reads", nil)
->>>>>>> geth-v1.17.3
+
+	incrProcessErrorMeter = metrics.NewRegisteredMeter("pathdb/incr/process/error", nil)
+	incrCommitErrorMeter  = metrics.NewRegisteredMeter("pathdb/incr/commit/error", nil)
 )
 
 // Metrics in generation

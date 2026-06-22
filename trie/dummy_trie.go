@@ -96,7 +96,7 @@ func (t *EmptyTrie) Copy() *EmptyTrie {
 	return &cpy
 }
 
-func (t *EmptyTrie) IsVerkle() bool {
+func (t *EmptyTrie) IsUBT() bool {
 	return false
 }
 

@@ -215,14 +215,14 @@ func (payload *Payload) ResolveFull() *engine.ExecutionPayloadEnvelope {
 	return envelope
 }
 
-func (miner *Miner) runBuildIteration(ctx context.Context, start time.Time, iteration int, payload *Payload, params *generateParams, witness bool) {
+func (w *worker) runBuildIteration(ctx context.Context, start time.Time, iteration int, payload *Payload, params *generateParams, witness bool) {
 	ctx, span, spanEnd := telemetry.StartSpan(ctx, "miner.buildIteration",
 		telemetry.Int64Attribute("iteration", int64(iteration)),
 	)
 	var err error
 	defer spanEnd(&err)
 
-	r := miner.generateWork(ctx, params, witness)
+	r := w.generateWork(params, witness)
 	err = r.err
 	if err == nil {
 		accepted := payload.update(r, time.Since(start))
@@ -233,10 +233,7 @@ func (miner *Miner) runBuildIteration(ctx context.Context, start time.Time, iter
 }
 
 // buildPayload builds the payload according to the provided parameters.
-<<<<<<< HEAD
-func (w *worker) buildPayload(args *BuildPayloadArgs, witness bool) (*Payload, error) {
-=======
-func (miner *Miner) buildPayload(ctx context.Context, args *BuildPayloadArgs, witness bool) (result *Payload, err error) {
+func (w *worker) buildPayload(ctx context.Context, args *BuildPayloadArgs, witness bool) (result *Payload, err error) {
 	payloadID := args.Id()
 	ctx, _, spanEnd := telemetry.StartSpan(ctx, "miner.buildPayload",
 		telemetry.StringAttribute("payload.id", payloadID.String()),
@@ -245,7 +242,6 @@ func (miner *Miner) buildPayload(ctx context.Context, args *BuildPayloadArgs, wi
 	)
 	defer spanEnd(&err)
 
->>>>>>> geth-v1.17.3
 	// Build the initial version with no transaction included. It should be fast
 	// enough to run. The empty payload can at least make sure there is something
 	// to deliver for not missing slot.
@@ -260,11 +256,7 @@ func (miner *Miner) buildPayload(ctx context.Context, args *BuildPayloadArgs, wi
 		slotNum:     args.SlotNum,
 		noTxs:       true,
 	}
-<<<<<<< HEAD
-	empty := w.getSealingBlock(emptyParams)
-=======
-	empty := miner.generateWork(ctx, emptyParams, witness)
->>>>>>> geth-v1.17.3
+	empty := w.generateWork(emptyParams, witness)
 	if empty.err != nil {
 		return nil, empty.err
 	}
@@ -307,16 +299,6 @@ func (miner *Miner) buildPayload(ctx context.Context, args *BuildPayloadArgs, wi
 		for {
 			select {
 			case <-timer.C:
-<<<<<<< HEAD
-				start := time.Now()
-				r := w.getSealingBlock(fullParams)
-				if r.err == nil {
-					payload.update(r, time.Since(start))
-				} else {
-					log.Info("Error while generating work", "id", payload.id, "err", r.err)
-				}
-				timer.Reset(w.recommit)
-=======
 				// When block building takes close to the full recommit interval,
 				// the timer fires near-instantly on the next iteration. If the
 				// payload was resolved during that build, both timer.C and
@@ -331,9 +313,8 @@ func (miner *Miner) buildPayload(ctx context.Context, args *BuildPayloadArgs, wi
 				}
 				start := time.Now()
 				iteration++
-				miner.runBuildIteration(bCtx, start, iteration, payload, fullParams, witness)
-				timer.Reset(max(0, miner.config.Recommit-time.Since(start)))
->>>>>>> geth-v1.17.3
+				w.runBuildIteration(bCtx, start, iteration, payload, fullParams, witness)
+				timer.Reset(max(0, *w.config.Recommit-time.Since(start)))
 			case <-payload.stop:
 				payload.updateSpanForDelivery(bSpan)
 				log.Info("Stopping work on payload", "id", payload.id, "reason", "delivery")
@@ -362,20 +343,17 @@ func (payload *Payload) updateSpanForDelivery(bSpan trace.Span) {
 // by the parameters instead of using the locally available transactions.
 func (miner *Miner) BuildTestingPayload(args *BuildPayloadArgs, transactions []*types.Transaction, empty bool, extraData []byte) (*engine.ExecutionPayloadEnvelope, error) {
 	fullParams := &generateParams{
-		timestamp:         args.Timestamp,
-		forceTime:         true,
-		parentHash:        args.Parent,
-		coinbase:          args.FeeRecipient,
-		random:            args.Random,
-		withdrawals:       args.Withdrawals,
-		beaconRoot:        args.BeaconRoot,
-		slotNum:           args.SlotNum,
-		noTxs:             empty,
-		forceOverrides:    true,
-		overrideExtraData: extraData,
-		overrideTxs:       transactions,
+		timestamp:   args.Timestamp,
+		forceTime:   true,
+		parentHash:  args.Parent,
+		coinbase:    args.FeeRecipient,
+		random:      args.Random,
+		withdrawals: args.Withdrawals,
+		beaconRoot:  args.BeaconRoot,
+		slotNum:     args.SlotNum,
+		noTxs:       empty,
 	}
-	res := miner.generateWork(context.Background(), fullParams, false)
+	res := miner.worker.generateWork(fullParams, false)
 	if res.err != nil {
 		return nil, res.err
 	}

@@ -158,12 +158,8 @@ type Config struct {
 	AccountQueue uint64 // Maximum number of non-executable transaction slots permitted per account
 	GlobalQueue  uint64 // Maximum number of non-executable transaction slots for all accounts
 
-<<<<<<< HEAD
-	Lifetime       time.Duration // Maximum amount of time non-executable transaction are queued
+	Lifetime       time.Duration // // Maximum amount of time an account can remain stale in the non-executable pool
 	ReannounceTime time.Duration // Duration for announcing local pending transactions again
-=======
-	Lifetime time.Duration // Maximum amount of time an account can remain stale in the non-executable pool
->>>>>>> geth-v1.17.3
 }
 
 // DefaultConfig contains the default configurations for the transaction pool.

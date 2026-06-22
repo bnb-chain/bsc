@@ -17,7 +17,6 @@
 package pathdb
 
 import (
-	"bytes"
 	"sync"
 	"time"
 
@@ -114,7 +113,6 @@ func (s *initerState) update(noWait bool) {
 		hhash        = rawdb.ReadHeadHeaderHash(s.disk)
 		fhash        = rawdb.ReadHeadFastBlockHash(s.disk)
 		bhash        = rawdb.ReadHeadBlockHash(s.disk)
-		skeleton     = rawdb.ReadSkeletonSyncStatus(s.disk)
 		lastProgress = time.Now()
 	)
 	for {
@@ -138,8 +136,7 @@ func (s *initerState) update(noWait bool) {
 			newhhash := rawdb.ReadHeadHeaderHash(s.disk)
 			newfhash := rawdb.ReadHeadFastBlockHash(s.disk)
 			newbhash := rawdb.ReadHeadBlockHash(s.disk)
-			newskeleton := rawdb.ReadSkeletonSyncStatus(s.disk)
-			hasProgress := newhhash.Cmp(hhash) != 0 || newfhash.Cmp(fhash) != 0 || newbhash.Cmp(bhash) != 0 || !bytes.Equal(newskeleton, skeleton)
+			hasProgress := newhhash.Cmp(hhash) != 0 || newfhash.Cmp(fhash) != 0 || newbhash.Cmp(bhash) != 0
 
 			if !hasProgress && time.Since(lastProgress) > syncStalledTimeout {
 				s.set(stateStalled)
@@ -150,7 +147,6 @@ func (s *initerState) update(noWait bool) {
 				hhash = newhhash
 				fhash = newfhash
 				bhash = newbhash
-				skeleton = newskeleton
 				lastProgress = time.Now()
 			}
 

@@ -243,16 +243,15 @@ type BlockChain interface {
 	// HistoryPruningCutoff returns the configured history pruning point.
 	// Block bodies along with the receipts will be skipped for synchronization.
 	HistoryPruningCutoff() (uint64, common.Hash)
+
+	// NoTries indicates whether the node is running without state tries.
+	NoTries() bool
 }
 
 type DownloadOption func(downloader *Downloader) *Downloader
 
 // New creates a new downloader to fetch hashes and blocks from remote peers.
-<<<<<<< HEAD
-func New(stateDb ethdb.Database, mux *event.TypeMux, chain BlockChain, dropPeer peerDropFn, _ func()) *Downloader {
-=======
 func New(stateDb ethdb.Database, mode ethconfig.SyncMode, chain BlockChain, dropPeer peerDropFn, success func()) *Downloader {
->>>>>>> geth-v1.17.3
 	cutoffNumber, cutoffHash := chain.HistoryPruningCutoff()
 	dl := &Downloader{
 		stateDB:           stateDb,
@@ -269,11 +268,6 @@ func New(stateDb ethdb.Database, mode ethconfig.SyncMode, chain BlockChain, drop
 		stateSyncStart:    make(chan *stateSync),
 		syncStartBlock:    chain.CurrentSnapBlock().Number.Uint64(),
 	}
-<<<<<<< HEAD
-=======
-	// Create the post-merge skeleton syncer and start the process
-	dl.skeleton = newSkeleton(stateDb, dl.peers, dropPeer, newBeaconBackfiller(dl, success), chain)
->>>>>>> geth-v1.17.3
 
 	go dl.stateFetcher()
 	return dl
@@ -391,11 +385,7 @@ func (d *Downloader) LegacySync(id string, head common.Hash, name string, td *bi
 // synchronise will select the peer and use it for synchronising. If an empty string is given
 // it will use the best peer possible and synchronize if its TD is higher than our own. If any of the
 // checks fail an error will be returned. This method is synchronous
-<<<<<<< HEAD
 func (d *Downloader) synchronise(id string, hash common.Hash, td, ttd *big.Int, mode SyncMode, beaconMode bool, beaconPing chan struct{}) error {
-=======
-func (d *Downloader) synchronise(beaconPing chan struct{}) (err error) {
->>>>>>> geth-v1.17.3
 	// The beacon header syncer is async. It will start this synchronization and
 	// will continue doing other tasks. However, if synchronization needs to be
 	// cancelled, the syncer needs to know if we reached the startup point (and
@@ -426,9 +416,9 @@ func (d *Downloader) synchronise(beaconPing chan struct{}) (err error) {
 	}
 
 	// Obtain the synchronized used in this cycle
-	mode := d.moder.get(true)
+	mode = d.moder.get(true)
 	defer func() {
-		if err == nil && mode == ethconfig.SnapSync {
+		if mode == ethconfig.SnapSync {
 			d.moder.disableSnap()
 			log.Info("Disabled snap-sync after the initial sync cycle")
 		}
@@ -481,7 +471,7 @@ func (d *Downloader) synchronise(beaconPing chan struct{}) (err error) {
 	if beaconPing != nil {
 		close(beaconPing)
 	}
-	return d.syncWithPeer(p, hash, td, ttd, beaconMode)
+	return d.syncToHead(p, hash, td, ttd, beaconMode)
 }
 
 // getMode returns the sync mode used within current cycle.
@@ -489,12 +479,6 @@ func (d *Downloader) getMode() SyncMode {
 	return SyncMode(d.mode.Load())
 }
 
-<<<<<<< HEAD
-// syncWithPeer starts a block synchronization based on the hash chain from the
-// specified peer and head hash.
-func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td, ttd *big.Int, beaconMode bool) (err error) {
-	d.mux.Post(StartEvent{})
-=======
 // ConfigSyncMode returns the sync mode configured for the node.
 // The actual running sync mode can differ from this.
 func (d *Downloader) ConfigSyncMode() SyncMode {
@@ -506,12 +490,11 @@ func (d *Downloader) SubscribeSyncEvents(ch chan<- SyncEvent) event.Subscription
 	return d.scope.Track(d.feed.Subscribe(ch))
 }
 
-// syncToHead starts a block synchronization based on the hash chain from
-// the specified head hash.
-func (d *Downloader) syncToHead() (err error) {
+// syncWithPeer starts a block synchronization based on the hash chain from the
+// specified peer and head hash.
+func (d *Downloader) syncToHead(p *peerConnection, hash common.Hash, td, ttd *big.Int, beaconMode bool) (err error) {
 	mode := d.getMode()
 	d.feed.Send(SyncEvent{Type: SyncStarted, Mode: mode})
->>>>>>> geth-v1.17.3
 	defer func() {
 		// reset on error
 		if err != nil {

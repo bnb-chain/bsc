@@ -32,19 +32,12 @@ import (
 
 // Config defines all necessary options for database.
 type Config struct {
-<<<<<<< HEAD
-	NoTries   bool
-	Preimages bool           // Flag whether the preimage of node key is recorded
-	IsVerkle  bool           // Flag whether the db is holding a verkle tree
-	HashDB    *hashdb.Config // Configs for hash-based scheme
-	PathDB    *pathdb.Config // Configs for experimental path-based scheme
-=======
+	NoTries           bool
 	Preimages         bool           // Flag whether the preimage of node key is recorded
 	IsUBT             bool           // Flag whether the db is holding a unified binary tree
 	BinTrieGroupDepth int            // Number of levels per serialized group in binary trie (1-8, default 8)
 	HashDB            *hashdb.Config // Configs for hash-based scheme
 	PathDB            *pathdb.Config // Configs for experimental path-based scheme
->>>>>>> geth-v1.17.3
 }
 
 const DefaultBinTrieGroupDepth = 5
@@ -132,7 +125,9 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 		config:    config,
 		preimages: preimages,
 	}
-<<<<<<< HEAD
+	if config.HashDB != nil && config.PathDB != nil {
+		log.Crit("Both 'hash' and 'path' mode are configured")
+	}
 	/*
 	 * 1. First, initialize db according to the user config
 	 * 2. Second, initialize the db according to the scheme already used by db
@@ -147,19 +142,12 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 		if rawdb.ReadStateScheme(diskdb) == rawdb.HashScheme {
 			log.Warn("Incompatible state scheme", "old", rawdb.HashScheme, "new", rawdb.PathScheme)
 		}
-		db.backend = pathdb.New(diskdb, config.PathDB, config.IsVerkle)
+		db.backend = pathdb.New(diskdb, config.PathDB, config.IsUBT)
 	} else if strings.Compare(dbScheme, rawdb.PathScheme) == 0 {
 		if config.PathDB == nil {
 			config.PathDB = pathdb.Defaults
 		}
-		db.backend = pathdb.New(diskdb, config.PathDB, config.IsVerkle)
-=======
-	if config.HashDB != nil && config.PathDB != nil {
-		log.Crit("Both 'hash' and 'path' mode are configured")
-	}
-	if config.PathDB != nil {
 		db.backend = pathdb.New(diskdb, config.PathDB, config.IsUBT)
->>>>>>> geth-v1.17.3
 	} else {
 		if config.HashDB == nil {
 			config.HashDB = hashdb.Defaults
@@ -484,7 +472,10 @@ func (db *Database) SnapshotCompleted() bool {
 	return pdb.SnapshotCompleted()
 }
 
-<<<<<<< HEAD
+func (db *Database) BinTrieGroupDepth() int {
+	return db.config.BinTrieGroupDepth
+}
+
 // MergeIncrState merges the state in incremental snapshot into base snapshot
 func (db *Database) MergeIncrState(incrDir string) error {
 	pdb, ok := db.backend.(*pathdb.Database)
@@ -530,8 +521,4 @@ func (db *Database) GetStartBlock() (uint64, error) {
 		return 0, errors.New("not supported GetStartBlock")
 	}
 	return pdb.GetStartBlock()
-=======
-func (db *Database) BinTrieGroupDepth() int {
-	return db.config.BinTrieGroupDepth
->>>>>>> geth-v1.17.3
 }

@@ -366,13 +366,6 @@ func (tx *Transaction) GasTipCapIntCmp(other *big.Int) int {
 	return tx.inner.gasTipCap().Cmp(other)
 }
 
-// EffectiveGasTipValue is identical to EffectiveGasTip, but does not return an
-// error in case the effective gasTipCap is negative
-func (tx *Transaction) EffectiveGasTipValue(baseFee *big.Int) *big.Int {
-	effectiveTip, _ := tx.EffectiveGasTip(baseFee)
-	return effectiveTip
-}
-
 // EffectiveGasTip returns the effective miner gasTipCap for the given base fee.
 // Note: if the effective gasTipCap would be negative, this method
 // returns ErrGasFeeCapTooLow, and value is undefined.
@@ -417,18 +410,6 @@ func (tx *Transaction) calcEffectiveGasTip(dst *uint256.Int, baseFee *uint256.In
 	return err
 }
 
-<<<<<<< HEAD
-// EffectiveGasTipCmp compares the effective gasTipCap of two transactions assuming the given base fee.
-// The effective gas tip is the minimum of:
-// 1. The transaction's gasTipCap
-// 2. The transaction's gasFeeCap minus the base fee
-//
-// Returns:
-//
-//	-1 if tx's effective gas tip is less than other's
-//	 0 if they are equal
-//	+1 if tx's effective gas tip is greater than other's
-=======
 // EffectiveGasTipValue returns the effective gasTip value for the given base fee,
 // even if it would be negative. This can be used for sorting purposes.
 func (tx *Transaction) EffectiveGasTipValue(baseFee *big.Int) *big.Int {
@@ -447,7 +428,6 @@ func (tx *Transaction) EffectiveGasTipValue(baseFee *big.Int) *big.Int {
 	return dst
 }
 
->>>>>>> geth-v1.17.3
 func (tx *Transaction) EffectiveGasTipCmp(other *Transaction, baseFee *uint256.Int) int {
 	if baseFee == nil {
 		return tx.GasTipCapCmp(other)

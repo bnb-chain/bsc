@@ -67,18 +67,13 @@ type Database interface {
 	// TrieDB returns the underlying trie database for managing trie nodes.
 	TrieDB() *triedb.Database
 
-<<<<<<< HEAD
 	// NoTries returns whether the database has tries storage.
 	NoTries() bool
 
-	// Snapshot returns the underlying state snapshot.
-	Snapshot() *snapshot.Tree
-=======
 	// Commit flushes all pending writes and finalizes the state transition,
 	// committing the changes to the underlying storage. It returns an error
 	// if the commit fails.
 	Commit(update *StateUpdate) error
->>>>>>> geth-v1.17.3
 }
 
 // Trie is a Ethereum Merkle Patricia trie.
@@ -178,138 +173,9 @@ func NewDatabase(tdb *triedb.Database, codedb *CodeDB) Database {
 
 // NewDatabaseForTesting is similar to NewDatabase, but it initializes the caching
 // db by using an ephemeral memory db with default config for testing.
-<<<<<<< HEAD
-func NewDatabaseForTesting() *CachingDB {
-	return NewDatabase(triedb.NewDatabase(rawdb.NewMemoryDatabase(), nil), nil)
-}
-
-// Reader returns a state reader associated with the specified state root.
-func (db *CachingDB) Reader(stateRoot common.Hash) (Reader, error) {
-	var readers []StateReader
-
-	// Configure the state reader using the standalone snapshot in hash mode.
-	// This reader offers improved performance but is optional and only
-	// partially useful if the snapshot is not fully generated.
-	if db.TrieDB().Scheme() == rawdb.HashScheme && db.snap != nil {
-		snap := db.snap.Snapshot(stateRoot)
-		if snap != nil {
-			readers = append(readers, newFlatReader(snap))
-		}
-	}
-	// Configure the state reader using the path database in path mode.
-	// This reader offers improved performance but is optional and only
-	// partially useful if the snapshot data in path database is not
-	// fully generated.
-	if db.TrieDB().Scheme() == rawdb.PathScheme {
-		reader, err := db.triedb.StateReader(stateRoot)
-		if err == nil {
-			readers = append(readers, newFlatReader(reader))
-		}
-	}
-	if !db.NoTries() {
-		// Configure the trie reader, which is expected to be available as the
-		// gatekeeper unless the state is corrupted.
-		tr, err := newTrieReader(stateRoot, db.triedb, db.pointCache)
-		if err != nil {
-			return nil, err
-		}
-		readers = append(readers, tr)
-	}
-
-	combined, err := newMultiStateReader(readers...)
-	if err != nil {
-		return nil, err
-	}
-	return newReader(newCachingCodeReader(db.disk, db.codeCache, db.codeSizeCache), combined), nil
-}
-
-// ReadersWithCacheStats creates a pair of state readers sharing the same internal cache and
-// same backing Reader, but exposing separate statistics.
-// and statistics.
-func (db *CachingDB) ReadersWithCacheStats(stateRoot common.Hash) (ReaderWithStats, ReaderWithStats, error) {
-	reader, err := db.Reader(stateRoot)
-	if err != nil {
-		return nil, nil, err
-	}
-	shared := newReaderWithCache(reader)
-	return newReaderWithCacheStats(shared), newReaderWithCacheStats(shared), nil
-}
-
-// OpenTrie opens the main account trie at a specific root hash.
-func (db *CachingDB) OpenTrie(root common.Hash) (Trie, error) {
-	if db.NoTries() {
-		return trie.NewEmptyTrie(), nil
-	}
-	if db.triedb.IsVerkle() {
-		ts := overlay.LoadTransitionState(db.TrieDB().Disk(), root, db.triedb.IsVerkle())
-		if ts.InTransition() {
-			panic("transition isn't supported yet")
-		}
-		if ts.Transitioned() {
-			return trie.NewVerkleTrie(root, db.triedb, db.pointCache)
-		}
-	}
-	tr, err := trie.NewStateTrie(trie.StateTrieID(root), db.triedb)
-	if err != nil {
-		return nil, err
-	}
-	return tr, nil
-}
-
-// OpenStorageTrie opens the storage trie of an account.
-func (db *CachingDB) OpenStorageTrie(stateRoot common.Hash, address common.Address, root common.Hash, self Trie) (Trie, error) {
-	if db.NoTries() {
-		return trie.NewEmptyTrie(), nil
-	}
-
-	if db.triedb.IsVerkle() {
-		return self, nil
-	}
-	tr, err := trie.NewStateTrie(trie.StorageTrieID(stateRoot, crypto.Keccak256Hash(address.Bytes()), root), db.triedb)
-	if err != nil {
-		return nil, err
-	}
-	return tr, nil
-}
-
-func (db *CachingDB) NoTries() bool {
-	return db.triedb != nil && db.triedb.Config() != nil && db.triedb.Config().NoTries
-}
-
-// ContractCodeWithPrefix retrieves a particular contract's code. If the
-// code can't be found in the cache, then check the existence with **new**
-// db scheme.
-func (db *CachingDB) ContractCodeWithPrefix(address common.Address, codeHash common.Hash) []byte {
-	code, _ := db.codeCache.Get(codeHash)
-	if len(code) > 0 {
-		return code
-	}
-	code = rawdb.ReadCodeWithPrefix(db.disk, codeHash)
-	if len(code) > 0 {
-		db.codeCache.Add(codeHash, code)
-		db.codeSizeCache.Add(codeHash, len(code))
-	}
-	return code
-}
-
-// TrieDB retrieves any intermediate trie-node caching layer.
-func (db *CachingDB) TrieDB() *triedb.Database {
-	return db.triedb
-}
-
-// PointCache returns the cache of evaluated curve points.
-func (db *CachingDB) PointCache() *utils.PointCache {
-	return db.pointCache
-}
-
-// Snapshot returns the underlying state snapshot.
-func (db *CachingDB) Snapshot() *snapshot.Tree {
-	return db.snap
-=======
 func NewDatabaseForTesting() Database {
 	db := rawdb.NewMemoryDatabase()
 	return NewDatabase(triedb.NewDatabase(db, nil), NewCodeDB(db))
->>>>>>> geth-v1.17.3
 }
 
 // mustCopyTrie returns a deep-copied trie.
@@ -320,13 +186,9 @@ func mustCopyTrie(t Trie) Trie {
 	switch t := t.(type) {
 	case *trie.StateTrie:
 		return t.Copy()
-<<<<<<< HEAD
 	case *trie.EmptyTrie:
 		return t.Copy()
-	case *trie.VerkleTrie:
-=======
 	case *transitiontrie.TransitionTrie:
->>>>>>> geth-v1.17.3
 		return t.Copy()
 	case *bintrie.BinaryTrie:
 		return t.Copy()

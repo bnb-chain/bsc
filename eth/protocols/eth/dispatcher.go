@@ -204,19 +204,6 @@ loop:
 				ReqCode:  req.code,
 				RespCode: req.want,
 				Size:     req.numItems,
-<<<<<<< HEAD
-			}
-			if err := p.tracker.Track(treq); err != nil {
-				reqOp.fail <- err
-				continue loop
-			}
-			if err := p2p.Send(p.rw, req.code, req.data); err != nil {
-				reqOp.fail <- err
-				continue loop
-			}
-
-			pending[req.id] = req
-=======
 			}
 			if err := p.tracker.Track(treq); err != nil {
 				reqOp.fail <- err
@@ -231,7 +218,6 @@ loop:
 			if _, ok := pending[req.id]; !ok {
 				pending[req.id] = req
 			}
->>>>>>> geth-v1.17.3
 			reqOp.fail <- nil
 
 		case cancelOp := <-p.reqCancel:

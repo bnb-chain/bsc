@@ -136,9 +136,11 @@ func VerifyEIP4844Header(config *params.ChainConfig, parent, header *types.Heade
 // CalcExcessBlobGas calculates the excess blob gas after applying the set of
 // blobs on top of the excess blob gas.
 func CalcExcessBlobGas(config *params.ChainConfig, parent *types.Header, headTimestamp uint64) uint64 {
-<<<<<<< HEAD
 	eip7918 := config.IsOsaka(config.LondonBlock, headTimestamp) && config.IsNotInBSC()
-	bcfg := latestBlobConfig(config, headTimestamp)
+	bcfg, err := latestBlobConfig(config, headTimestamp)
+	if err != nil {
+		panic("calculating excess blob gas on nil blob config")
+	}
 
 	// BEP-657: for non-recalculation blocks (N % BlobEligibleBlockInterval != 1), inherit parent's ExcessBlobGas
 	if config.IsMendel(config.LondonBlock, headTimestamp) && parent.Number.Uint64()%params.BlobEligibleBlockInterval != 0 {
@@ -151,18 +153,7 @@ func CalcExcessBlobGas(config *params.ChainConfig, parent *types.Header, headTim
 	return calcExcessBlobGas(eip7918, bcfg, parent)
 }
 
-func calcExcessBlobGas(eip7918 bool, bcfg *BlobConfig, parent *types.Header) uint64 {
-=======
-	isOsaka := config.IsOsaka(config.LondonBlock, headTimestamp)
-	bcfg, err := latestBlobConfig(config, headTimestamp)
-	if err != nil {
-		panic("calculating excess blob gas on nil blob config")
-	}
-	return calcExcessBlobGas(isOsaka, bcfg, parent)
-}
-
-func calcExcessBlobGas(isOsaka bool, bcfg BlobConfig, parent *types.Header) uint64 {
->>>>>>> geth-v1.17.3
+func calcExcessBlobGas(eip7918 bool, bcfg BlobConfig, parent *types.Header) uint64 {
 	var parentExcessBlobGas, parentBlobGasUsed uint64
 	if parent.ExcessBlobGas != nil {
 		parentExcessBlobGas = *parent.ExcessBlobGas

@@ -215,7 +215,6 @@ type (
 	// beacon block root.
 	OnSystemCallEndHook = func()
 
-<<<<<<< HEAD
 	// OnSystemTxFixIntrinsicGasHook is called when tracing a system transaction, which does not calculate intrinsic gas during execution.
 	// this hook will subtract intrinsic gas from the total gas used.
 	OnSystemTxFixIntrinsicGasHook = func(uint64)
@@ -251,12 +250,11 @@ type (
 	// enables special routing of those transactions by having OnSystemTxStart/End defined and keeping a special
 	// system state to do something different when OnTxEnd is called.
 	OnSystemTxEndHook func()
-=======
+
 	// StateUpdateHook is called after state is committed for a block.
 	// It provides access to the complete state mutations including account changes,
 	// storage changes, trie node mutations, and contract code deployments.
 	StateUpdateHook = func(update *StateUpdate)
->>>>>>> geth-v1.17.3
 
 	/*
 		- State events -
@@ -306,15 +304,12 @@ type Hooks struct {
 	OnSystemCallStart   OnSystemCallStartHook
 	OnSystemCallStartV2 OnSystemCallStartHookV2
 	OnSystemCallEnd     OnSystemCallEndHook
-<<<<<<< HEAD
 
 	OnSystemTxStart           OnSystemTxStartHook
 	OnSystemTxEnd             OnSystemTxEndHook
 	OnSystemTxFixIntrinsicGas OnSystemTxFixIntrinsicGasHook
 
-=======
-	OnStateUpdate       StateUpdateHook
->>>>>>> geth-v1.17.3
+	OnStateUpdate StateUpdateHook
 	// State events
 	OnBalanceChange BalanceChangeHook
 	OnNonceChange   NonceChangeHook

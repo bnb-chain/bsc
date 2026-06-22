@@ -96,11 +96,8 @@ type StateDB interface {
 	NoTries() bool
 
 	AddLog(*types.Log)
-<<<<<<< HEAD
 	GetLogs(hash common.Hash, blockNumber uint64, blockHash common.Hash, blockTime uint64) []*types.Log
-=======
 	LogsForBurnAccounts() []*types.Log
->>>>>>> geth-v1.17.3
 	AddPreimage(common.Hash, []byte)
 
 	Witness() *stateless.Witness
@@ -108,10 +105,6 @@ type StateDB interface {
 	AccessEvents() *state.AccessEvents
 
 	// Finalise must be invoked at the end of a transaction
-<<<<<<< HEAD
-	Finalise(bool)
-	IntermediateRoot(deleteEmptyObjects bool) common.Hash
-=======
 	Finalise(bool) *bal.StateAccessList
->>>>>>> geth-v1.17.3
+	IntermediateRoot(deleteEmptyObjects bool) common.Hash
 }
