@@ -17,25 +17,22 @@
 package snap
 
 import (
-	"bytes"
 	"fmt"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/state/snapshot"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
+<<<<<<< HEAD
 	"github.com/ethereum/go-ethereum/p2p/tracker"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/triedb/database"
+=======
+>>>>>>> geth-v1.17.3
 )
 
 const (
@@ -54,6 +51,10 @@ const (
 	// maxTrieNodeLookups is the maximum number of state trie nodes to serve. This
 	// number is there to limit the number of disk lookups.
 	maxTrieNodeLookups = 1024
+
+	// maxAccessListLookups is the maximum number of BALs to server. This number
+	// is there to limit the number of disk lookups.
+	maxAccessListLookups = 1024
 
 	// maxTrieNodeTimeSpent is the maximum time we should spend on looking up trie nodes.
 	// If we spend too much time, then it's a fairly high chance of timing out
@@ -123,6 +124,34 @@ func Handle(backend Backend, peer *Peer) error {
 	}
 }
 
+type msgHandler func(backend Backend, msg Decoder, peer *Peer) error
+type Decoder interface {
+	Decode(val interface{}) error
+}
+
+var snap1 = map[uint64]msgHandler{
+	GetAccountRangeMsg:  handleGetAccountRange,
+	AccountRangeMsg:     handleAccountRange,
+	GetStorageRangesMsg: handleGetStorageRanges,
+	StorageRangesMsg:    handleStorageRanges,
+	GetByteCodesMsg:     handleGetByteCodes,
+	ByteCodesMsg:        handleByteCodes,
+	GetTrieNodesMsg:     handleGetTrienodes,
+	TrieNodesMsg:        handleTrieNodes,
+}
+
+// nolint:unused
+var snap2 = map[uint64]msgHandler{
+	GetAccountRangeMsg:  handleGetAccountRange,
+	AccountRangeMsg:     handleAccountRange,
+	GetStorageRangesMsg: handleGetStorageRanges,
+	StorageRangesMsg:    handleStorageRanges,
+	GetByteCodesMsg:     handleGetByteCodes,
+	ByteCodesMsg:        handleByteCodes,
+	GetAccessListsMsg:   handleGetAccessLists,
+	// AccessListsMsg: TODO
+}
+
 // HandleMessage is invoked whenever an inbound message is received from a
 // remote peer on the `snap` protocol. The remote connection is torn down upon
 // returning any error.
@@ -136,8 +165,19 @@ func HandleMessage(backend Backend, peer *Peer) error {
 		return fmt.Errorf("%w: %v > %v", errMsgTooLarge, msg.Size, maxMessageSize)
 	}
 	defer msg.Discard()
-	start := time.Now()
+
+	var handlers map[uint64]msgHandler
+	switch peer.version {
+	case SNAP1:
+		handlers = snap1
+	//case SNAP2:
+	//	handlers = snap2
+	default:
+		return fmt.Errorf("unknown eth protocol version: %v", peer.version)
+	}
+
 	// Track the amount of time it takes to serve the request and run the handler
+	start := time.Now()
 	if metrics.Enabled() {
 		h := fmt.Sprintf("%s/%s/%d/%#02x", p2p.HandleHistName, ProtocolName, peer.Version(), msg.Code)
 		defer func(start time.Time) {
@@ -149,6 +189,7 @@ func HandleMessage(backend Backend, peer *Peer) error {
 			metrics.GetOrRegisterHistogramLazy(h, nil, sampler).Update(time.Since(start).Microseconds())
 		}(start)
 	}
+<<<<<<< HEAD
 	// Handle the message depending on its contents
 	switch {
 	case msg.Code == GetAccountRangeMsg:
@@ -652,6 +693,13 @@ func ServiceGetTrieNodesQuery(chain *core.BlockChain, req *GetTrieNodesPacket, s
 		}
 	}
 	return nodes, nil
+=======
+
+	if handler := handlers[msg.Code]; handler != nil {
+		return handler(backend, msg, peer)
+	}
+	return fmt.Errorf("%w: %v", errInvalidMsgCode, msg.Code)
+>>>>>>> geth-v1.17.3
 }
 
 func nextBytes(it *rlp.Iterator) []byte {

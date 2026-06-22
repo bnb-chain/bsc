@@ -30,7 +30,11 @@ import (
 )
 
 const (
+<<<<<<< HEAD
 	ipcAPIs  = "admin:1.0 debug:1.0 eth:1.0 mev:1.0 miner:1.0 net:1.0 parlia:1.0 rpc:1.0 txpool:1.0 web3:1.0"
+=======
+	ipcAPIs  = "admin:1.0 debug:1.0 engine:1.0 eth:1.0 miner:1.0 net:1.0 rpc:1.0 testing:1.0 txpool:1.0 web3:1.0"
+>>>>>>> geth-v1.17.3
 	httpAPIs = "eth:1.0 net:1.0 rpc:1.0 web3:1.0"
 )
 
@@ -39,8 +43,13 @@ const (
 // child g gets a temporary data directory.
 func runMinimalGeth(t *testing.T, args ...string) *testgeth {
 	// --holesky to make the 'writing genesis to disk' faster (no accounts)
+	// --networkid=1337 to avoid cache bump
 	// --syncmode=full to avoid allocating fast sync bloom
+<<<<<<< HEAD
 	allArgs := []string{"--chapel", "--syncmode=full", "--port", "0",
+=======
+	allArgs := []string{"--holesky", "--networkid", "1337", "--authrpc.port", "0", "--syncmode=full", "--port", "0",
+>>>>>>> geth-v1.17.3
 		"--nat", "none", "--nodiscover", "--maxpeers", "0", "--cache", "64",
 		"--datadir.minfreedisk", "0"}
 	return runGeth(t, append(allArgs, args...)...)

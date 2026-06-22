@@ -39,6 +39,7 @@ var (
 )
 
 func (i BalanceChangeReason) String() string {
+<<<<<<< HEAD
 	switch {
 	case i <= 15:
 		return _BalanceChangeReason_name_0[_BalanceChangeReason_index_0[i]:_BalanceChangeReason_index_0[i+1]]
@@ -48,4 +49,11 @@ func (i BalanceChangeReason) String() string {
 	default:
 		return "BalanceChangeReason(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
+=======
+	idx := int(i) - 0
+	if i < 0 || idx >= len(_BalanceChangeReason_index)-1 {
+		return "BalanceChangeReason(" + strconv.FormatInt(int64(i), 10) + ")"
+	}
+	return _BalanceChangeReason_name[_BalanceChangeReason_index[idx]:_BalanceChangeReason_index[idx+1]]
+>>>>>>> geth-v1.17.3
 }

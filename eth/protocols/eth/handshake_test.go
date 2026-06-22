@@ -27,7 +27,7 @@ import (
 )
 
 // Tests that handshake failures are detected and reported correctly.
-func TestHandshake68(t *testing.T) { testHandshake(t, ETH68) }
+func TestHandshake69(t *testing.T) { testHandshake(t, ETH69) }
 
 func testHandshake(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -52,6 +52,7 @@ func testHandshake(t *testing.T, protocol uint) {
 			want: errNoStatusMsg,
 		},
 		{
+<<<<<<< HEAD
 			code: StatusMsg, data: StatusPacket68{10, 1, td, head.Hash(), genesis.Hash(), forkID},
 			want: errProtocolVersionMismatch,
 		},
@@ -65,7 +66,26 @@ func testHandshake(t *testing.T, protocol uint) {
 		},
 		{
 			code: StatusMsg, data: StatusPacket68{uint32(protocol), 1, td, head.Hash(), genesis.Hash(), forkid.ID{Hash: [4]byte{0x00, 0x01, 0x02, 0x03}}},
+=======
+			code: StatusMsg, data: StatusPacket{10, 1, genesis.Hash(), forkID, 0, head.Number.Uint64(), head.Hash()},
+			want: errProtocolVersionMismatch,
+		},
+		{
+			code: StatusMsg, data: StatusPacket{uint32(protocol), 999, genesis.Hash(), forkID, 0, head.Number.Uint64(), head.Hash()},
+			want: errNetworkIDMismatch,
+		},
+		{
+			code: StatusMsg, data: StatusPacket{uint32(protocol), 1, common.Hash{3}, forkID, 0, head.Number.Uint64(), head.Hash()},
+			want: errGenesisMismatch,
+		},
+		{
+			code: StatusMsg, data: StatusPacket{uint32(protocol), 1, genesis.Hash(), forkid.ID{Hash: [4]byte{0x00, 0x01, 0x02, 0x03}}, 0, head.Number.Uint64(), head.Hash()},
+>>>>>>> geth-v1.17.3
 			want: errForkIDRejected,
+		},
+		{
+			code: StatusMsg, data: StatusPacket{uint32(protocol), 1, genesis.Hash(), forkID, head.Number.Uint64() + 1, head.Number.Uint64(), head.Hash()},
+			want: errInvalidBlockRange,
 		},
 	}
 	for i, test := range tests {
@@ -74,7 +94,7 @@ func testHandshake(t *testing.T, protocol uint) {
 		defer app.Close()
 		defer net.Close()
 
-		peer := NewPeer(protocol, p2p.NewPeer(enode.ID{}, "peer", nil), net, nil)
+		peer := NewPeer(protocol, p2p.NewPeer(enode.ID{}, "peer", nil), net, nil, nil)
 		defer peer.Close()
 
 		// Send the junk test with one peer, check the handshake failure

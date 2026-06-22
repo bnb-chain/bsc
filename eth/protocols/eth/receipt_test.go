@@ -95,7 +95,7 @@ func init() {
 	}
 }
 
-func TestReceiptList69(t *testing.T) {
+func TestReceiptList(t *testing.T) {
 	for i, test := range receiptsTests {
 		// encode receipts from types.ReceiptForStorage object.
 		canonDB, _ := rlp.EncodeToBytes(test.input)
@@ -105,13 +105,16 @@ func TestReceiptList69(t *testing.T) {
 		canonBody, _ := rlp.EncodeToBytes(blockBody)
 
 		// convert from storage encoding to network encoding
-		network, err := blockReceiptsToNetwork69(canonDB, canonBody)
+		network, incomplete, err := blockReceiptsToNetwork(canonDB, canonBody, receiptQueryParams{})
 		if err != nil {
-			t.Fatalf("test[%d]: blockReceiptsToNetwork69 error: %v", i, err)
+			t.Fatalf("test[%d]: blockReceiptsToNetwork error: %v", i, err)
+		}
+		if incomplete {
+			t.Fatalf("test[%d]: blockReceiptsToNetwork returned incomplete == true", i)
 		}
 
 		// parse as Receipts response list from network encoding
-		var rl ReceiptList69
+		var rl ReceiptList
 		if err := rlp.DecodeBytes(network, &rl); err != nil {
 			t.Fatalf("test[%d]: can't decode network receipts: %v", i, err)
 		}
@@ -127,6 +130,7 @@ func TestReceiptList69(t *testing.T) {
 			t.Fatalf("test[%d]: re-encoded network receipt list not equal\nhave: %x\nwant: %x", i, rlNetworkEnc, network)
 		}
 
+<<<<<<< HEAD
 		// compute root hash from ReceiptList69 and compare.
 		responseHash := types.DeriveSha(rl.Derivable(), trie.NewStackTrie(nil))
 		if responseHash != test.root {
@@ -171,6 +175,12 @@ func TestReceiptList68(t *testing.T) {
 		responseHash := types.DeriveSha(rl.Derivable(), trie.NewStackTrie(nil))
 		if responseHash != test.root {
 			t.Fatalf("test[%d]: wrong root hash from ReceiptList68\nhave: %v\nwant: %v", i, responseHash, test.root)
+=======
+		// compute root hash from ReceiptList and compare.
+		responseHash := types.DeriveSha(rl.Derivable(), trie.NewStackTrie(nil))
+		if responseHash != test.root {
+			t.Fatalf("test[%d]: wrong root hash from ReceiptList\nhave: %v\nwant: %v", i, responseHash, test.root)
+>>>>>>> geth-v1.17.3
 		}
 	}
 }

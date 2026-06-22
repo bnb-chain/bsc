@@ -170,12 +170,13 @@ func (s *stateSet) accountList() []common.Hash {
 	if list != nil {
 		return list
 	}
-	// No old sorted account list exists, generate a new one. It's possible that
-	// multiple threads waiting for the write lock may regenerate the list
-	// multiple times, which is acceptable.
 	s.listLock.Lock()
 	defer s.listLock.Unlock()
 
+	// Double check after acquiring the write lock
+	if list = s.accountListSorted; list != nil {
+		return list
+	}
 	list = slices.SortedFunc(maps.Keys(s.accountData), common.Hash.Cmp)
 	s.accountListSorted = list
 	return list
@@ -200,12 +201,13 @@ func (s *stateSet) storageList(accountHash common.Hash) []common.Hash {
 	}
 	s.listLock.RUnlock()
 
-	// No old sorted account list exists, generate a new one. It's possible that
-	// multiple threads waiting for the write lock may regenerate the list
-	// multiple times, which is acceptable.
 	s.listLock.Lock()
 	defer s.listLock.Unlock()
 
+	// Double check after acquiring the write lock
+	if list := s.storageListSorted[accountHash]; list != nil {
+		return list
+	}
 	list := slices.SortedFunc(maps.Keys(s.storageData[accountHash]), common.Hash.Cmp)
 	s.storageListSorted[accountHash] = list
 	return list
@@ -353,7 +355,18 @@ func (s *stateSet) encode(w io.Writer) error {
 	if err := rlp.Encode(w, s.rawStorageKey); err != nil {
 		return err
 	}
+<<<<<<< HEAD
 	var enc accounts
+=======
+	type accounts struct {
+		AddrHashes []common.Hash
+		Accounts   [][]byte
+	}
+	enc := accounts{
+		AddrHashes: make([]common.Hash, 0, len(s.accountData)),
+		Accounts:   make([][]byte, 0, len(s.accountData)),
+	}
+>>>>>>> geth-v1.17.3
 	for addrHash, blob := range s.accountData {
 		enc.AddrHashes = append(enc.AddrHashes, addrHash)
 		enc.Accounts = append(enc.Accounts, blob)
@@ -502,7 +515,10 @@ func (s *StateSetWithOrigin) encode(w io.Writer) error {
 		Addresses []common.Address
 		Accounts  [][]byte
 	}
-	var accounts Accounts
+	accounts := Accounts{
+		Addresses: make([]common.Address, 0, len(s.accountOrigin)),
+		Accounts:  make([][]byte, 0, len(s.accountOrigin)),
+	}
 	for address, blob := range s.accountOrigin {
 		accounts.Addresses = append(accounts.Addresses, address)
 		accounts.Accounts = append(accounts.Accounts, blob)
@@ -574,6 +590,18 @@ func (s *StateSetWithOrigin) decode(r *rlp.Stream) error {
 		}
 	}
 	s.storageOrigin = storageSet
+
+	// Compute the size of origin data, keeping consistent with NewStateSetWithOrigin
+	var size int
+	for _, data := range s.accountOrigin {
+		size += common.HashLength + len(data)
+	}
+	for _, slots := range s.storageOrigin {
+		for _, data := range slots {
+			size += 2*common.HashLength + len(data)
+		}
+	}
+	s.size = s.stateSet.size + uint64(size)
 	return nil
 }
 

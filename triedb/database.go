@@ -32,27 +32,38 @@ import (
 
 // Config defines all necessary options for database.
 type Config struct {
+<<<<<<< HEAD
 	NoTries   bool
 	Preimages bool           // Flag whether the preimage of node key is recorded
 	IsVerkle  bool           // Flag whether the db is holding a verkle tree
 	HashDB    *hashdb.Config // Configs for hash-based scheme
 	PathDB    *pathdb.Config // Configs for experimental path-based scheme
+=======
+	Preimages         bool           // Flag whether the preimage of node key is recorded
+	IsUBT             bool           // Flag whether the db is holding a unified binary tree
+	BinTrieGroupDepth int            // Number of levels per serialized group in binary trie (1-8, default 8)
+	HashDB            *hashdb.Config // Configs for hash-based scheme
+	PathDB            *pathdb.Config // Configs for experimental path-based scheme
+>>>>>>> geth-v1.17.3
 }
+
+const DefaultBinTrieGroupDepth = 5
 
 // HashDefaults represents a config for using hash-based scheme with
 // default settings.
 var HashDefaults = &Config{
 	Preimages: false,
-	IsVerkle:  false,
+	IsUBT:     false,
 	HashDB:    hashdb.Defaults,
 }
 
-// VerkleDefaults represents a config for holding verkle trie data
+// UBTDefaults represents a config for holding unified binary trie data
 // using path-based scheme with default settings.
-var VerkleDefaults = &Config{
-	Preimages: false,
-	IsVerkle:  true,
-	PathDB:    pathdb.Defaults,
+var UBTDefaults = &Config{
+	Preimages:         false,
+	IsUBT:             true,
+	BinTrieGroupDepth: DefaultBinTrieGroupDepth,
+	PathDB:            pathdb.Defaults,
 }
 
 // backend defines the methods needed to access/update trie nodes in different
@@ -121,6 +132,7 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 		config:    config,
 		preimages: preimages,
 	}
+<<<<<<< HEAD
 	/*
 	 * 1. First, initialize db according to the user config
 	 * 2. Second, initialize the db according to the scheme already used by db
@@ -141,6 +153,13 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 			config.PathDB = pathdb.Defaults
 		}
 		db.backend = pathdb.New(diskdb, config.PathDB, config.IsVerkle)
+=======
+	if config.HashDB != nil && config.PathDB != nil {
+		log.Crit("Both 'hash' and 'path' mode are configured")
+	}
+	if config.PathDB != nil {
+		db.backend = pathdb.New(diskdb, config.PathDB, config.IsUBT)
+>>>>>>> geth-v1.17.3
 	} else {
 		if config.HashDB == nil {
 			config.HashDB = hashdb.Defaults
@@ -167,13 +186,22 @@ func (db *Database) StateReader(blockRoot common.Hash) (database.StateReader, er
 	return db.backend.StateReader(blockRoot)
 }
 
-// HistoricReader constructs a reader for accessing the requested historic state.
-func (db *Database) HistoricReader(root common.Hash) (*pathdb.HistoricalStateReader, error) {
+// HistoricStateReader constructs a reader for accessing the requested historic state.
+func (db *Database) HistoricStateReader(root common.Hash) (*pathdb.HistoricalStateReader, error) {
 	pdb, ok := db.backend.(*pathdb.Database)
 	if !ok {
 		return nil, errors.New("not supported")
 	}
 	return pdb.HistoricReader(root)
+}
+
+// HistoricNodeReader constructs a reader for accessing the historical trie node.
+func (db *Database) HistoricNodeReader(root common.Hash) (*pathdb.HistoricalNodeReader, error) {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		return nil, errors.New("not supported")
+	}
+	return pdb.HistoricNodeReader(root)
 }
 
 // Update performs a state transition by committing dirty nodes contained in the
@@ -352,6 +380,16 @@ func (db *Database) Enable(root common.Hash) error {
 	return pdb.Enable(root)
 }
 
+// AdoptSyncedState activates the database after a snap/2 sync and adopts the
+// flat state populated during sync as-is, skipping regeneration.
+func (db *Database) AdoptSyncedState(root common.Hash) error {
+	pdb, ok := db.backend.(*pathdb.Database)
+	if !ok {
+		return errors.New("not supported")
+	}
+	return pdb.AdoptSyncedState(root)
+}
+
 // Journal commits an entire diff hierarchy to disk into a single journal entry.
 // This is meant to be used during shutdown to persist the snapshot without
 // flattening everything down (bad for reorgs). It's only supported by path-based
@@ -419,17 +457,17 @@ func (db *Database) StorageIterator(root common.Hash, account common.Hash, seek 
 
 // IndexProgress returns the indexing progress made so far. It provides the
 // number of states that remain unindexed.
-func (db *Database) IndexProgress() (uint64, error) {
+func (db *Database) IndexProgress() (uint64, uint64, error) {
 	pdb, ok := db.backend.(*pathdb.Database)
 	if !ok {
-		return 0, errors.New("not supported")
+		return 0, 0, errors.New("not supported")
 	}
 	return pdb.IndexProgress()
 }
 
-// IsVerkle returns the indicator if the database is holding a verkle tree.
-func (db *Database) IsVerkle() bool {
-	return db.config.IsVerkle
+// IsUBT returns the indicator if the database is holding a verkle tree.
+func (db *Database) IsUBT() bool {
+	return db.config.IsUBT
 }
 
 // Disk returns the underlying disk database.
@@ -446,6 +484,7 @@ func (db *Database) SnapshotCompleted() bool {
 	return pdb.SnapshotCompleted()
 }
 
+<<<<<<< HEAD
 // MergeIncrState merges the state in incremental snapshot into base snapshot
 func (db *Database) MergeIncrState(incrDir string) error {
 	pdb, ok := db.backend.(*pathdb.Database)
@@ -491,4 +530,8 @@ func (db *Database) GetStartBlock() (uint64, error) {
 		return 0, errors.New("not supported GetStartBlock")
 	}
 	return pdb.GetStartBlock()
+=======
+func (db *Database) BinTrieGroupDepth() int {
+	return db.config.BinTrieGroupDepth
+>>>>>>> geth-v1.17.3
 }

@@ -8,6 +8,7 @@
 package bitutil
 
 import (
+	"crypto/subtle"
 	"runtime"
 	"unsafe"
 )
@@ -17,7 +18,16 @@ const supportsUnaligned = runtime.GOARCH == "386" || runtime.GOARCH == "amd64" |
 
 // XORBytes xors the bytes in a and b. The destination is assumed to have enough
 // space. Returns the number of bytes xor'd.
+//
+// If dst does not have length at least n,
+// XORBytes panics without writing anything to dst.
+//
+// dst and x or y may overlap exactly or not at all,
+// otherwise XORBytes may panic.
+//
+// Deprecated: use crypto/subtle.XORBytes
 func XORBytes(dst, a, b []byte) int {
+<<<<<<< HEAD
 	if supportsUnaligned {
 		return fastXORBytes(dst, a, b)
 	}
@@ -51,6 +61,9 @@ func safeXORBytes(dst, a, b []byte) int {
 		dst[i] = a[i] ^ b[i]
 	}
 	return n
+=======
+	return subtle.XORBytes(dst, a, b)
+>>>>>>> geth-v1.17.3
 }
 
 // ANDBytes ands the bytes in a and b. The destination is assumed to have enough

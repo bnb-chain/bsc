@@ -551,7 +551,7 @@ func TestExceedLogQueryLimit(t *testing.T) {
 		}
 	)
 
-	_, err := gspec.Commit(db, triedb.NewDatabase(db, nil))
+	_, err := gspec.Commit(db, triedb.NewDatabase(db, nil), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -37,6 +37,7 @@ const (
 
 // Handshake executes the eth protocol handshake, negotiating version number,
 // network IDs, difficulties, head and genesis blocks.
+<<<<<<< HEAD
 func (p *Peer) Handshake(networkID uint64, chain forkid.Blockchain, rangeMsg BlockRangeUpdatePacket, td *big.Int, extension *UpgradeStatusExtension) error {
 	switch p.version {
 	case ETH69:
@@ -132,6 +133,9 @@ func (p *Peer) readStatus68(networkID uint64, status *StatusPacket68, genesis co
 }
 
 func (p *Peer) handshake69(networkID uint64, chain forkid.Blockchain, rangeMsg BlockRangeUpdatePacket) error {
+=======
+func (p *Peer) Handshake(networkID uint64, chain forkid.Blockchain, rangeMsg BlockRangeUpdatePacket) error {
+>>>>>>> geth-v1.17.3
 	var (
 		genesis    = chain.Genesis()
 		latest     = chain.CurrentHeader()
@@ -141,7 +145,7 @@ func (p *Peer) handshake69(networkID uint64, chain forkid.Blockchain, rangeMsg B
 
 	errc := make(chan error, 2)
 	go func() {
-		pkt := &StatusPacket69{
+		pkt := &StatusPacket{
 			ProtocolVersion: uint32(p.version),
 			NetworkID:       networkID,
 			Genesis:         genesis.Hash(),
@@ -152,15 +156,15 @@ func (p *Peer) handshake69(networkID uint64, chain forkid.Blockchain, rangeMsg B
 		}
 		errc <- p2p.Send(p.rw, StatusMsg, pkt)
 	}()
-	var status StatusPacket69 // safe to read after two values have been received from errc
+	var status StatusPacket // safe to read after two values have been received from errc
 	go func() {
-		errc <- p.readStatus69(networkID, &status, genesis.Hash(), forkFilter)
+		errc <- p.readStatus(networkID, &status, genesis.Hash(), forkFilter)
 	}()
 
 	return waitForHandshake(errc, p)
 }
 
-func (p *Peer) readStatus69(networkID uint64, status *StatusPacket69, genesis common.Hash, forkFilter forkid.Filter) error {
+func (p *Peer) readStatus(networkID uint64, status *StatusPacket, genesis common.Hash, forkFilter forkid.Filter) error {
 	if err := p.readStatusMsg(status); err != nil {
 		return err
 	}
@@ -248,16 +252,16 @@ func markError(p *Peer, err error) {
 		return
 	}
 	m := meters.get(p.Inbound())
-	switch errors.Unwrap(err) {
-	case errNetworkIDMismatch:
+	switch {
+	case errors.Is(err, errNetworkIDMismatch):
 		m.networkIDMismatch.Mark(1)
-	case errProtocolVersionMismatch:
+	case errors.Is(err, errProtocolVersionMismatch):
 		m.protocolVersionMismatch.Mark(1)
-	case errGenesisMismatch:
+	case errors.Is(err, errGenesisMismatch):
 		m.genesisMismatch.Mark(1)
-	case errForkIDRejected:
+	case errors.Is(err, errForkIDRejected):
 		m.forkidRejected.Mark(1)
-	case p2p.DiscReadTimeout:
+	case errors.Is(err, p2p.DiscReadTimeout):
 		m.timeoutError.Mark(1)
 	default:
 		m.peerError.Mark(1)

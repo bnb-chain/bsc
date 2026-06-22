@@ -22,17 +22,22 @@ import (
 	"os"
 	"slices"
 	"sort"
+<<<<<<< HEAD
 	"strconv"
 	"strings"
 	"time"
+=======
+>>>>>>> geth-v1.17.3
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/cmd/utils"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/console/prompt"
+<<<<<<< HEAD
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/downloader"
+=======
+>>>>>>> geth-v1.17.3
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
@@ -79,7 +84,7 @@ var (
 		utils.OverridePasteur,
 		utils.OverrideBPO1,
 		utils.OverrideBPO2,
-		utils.OverrideVerkle,
+		utils.OverrideUBT,
 		utils.OverrideGenesisFlag,
 		utils.OverrideFullImmutabilityThreshold,
 		utils.OverrideMinBlocksForBlobRequests,
@@ -119,8 +124,14 @@ var (
 		utils.LogNoHistoryFlag,
 		utils.LogExportCheckpointsFlag,
 		utils.StateHistoryFlag,
+<<<<<<< HEAD
 		utils.PathDBSyncFlag,
 		utils.JournalFileFlag, // deprecated
+=======
+		utils.TrienodeHistoryFlag,
+		utils.TrienodeHistoryFullValueCheckpointFlag,
+		utils.BinTrieGroupDepthFlag,
+>>>>>>> geth-v1.17.3
 		utils.LightKDFFlag,
 		utils.EthRequiredBlocksFlag,
 		utils.LegacyWhitelistFlag, // deprecated
@@ -148,6 +159,7 @@ var (
 		utils.MinerGasPriceFlag,
 		utils.MinerEtherbaseFlag,
 		utils.MinerExtraDataFlag,
+		utils.MinerMaxBlobsFlag,
 		utils.MinerRecommitIntervalFlag,
 		utils.MinerNewPayloadTimeoutFlag, // deprecated
 		utils.MinerDelayLeftoverFlag,
@@ -188,6 +200,7 @@ var (
 		utils.VoteJournalDirFlag,
 		utils.LogDebugFlag,
 		utils.LogBacktraceAtFlag,
+<<<<<<< HEAD
 		utils.BlobExtraReserveFlag,
 		utils.VMOpcodeOptimizeFlag, // deprecated
 		utils.EnableIncrSnapshotFlag,
@@ -205,6 +218,18 @@ var (
 		// utils.BeaconGenesisRootFlag,
 		// utils.BeaconGenesisTimeFlag,
 		// utils.BeaconCheckpointFlag,
+=======
+		utils.BeaconApiFlag,
+		utils.BeaconApiHeaderFlag,
+		utils.BeaconThresholdFlag,
+		utils.BeaconNoFilterFlag,
+		utils.BeaconConfigFlag,
+		utils.BeaconGenesisRootFlag,
+		utils.BeaconGenesisTimeFlag,
+		utils.BeaconCheckpointFlag,
+		utils.BeaconCheckpointFileFlag,
+		utils.LogSlowBlockFlag,
+>>>>>>> geth-v1.17.3
 	}, utils.NetworkFlags, utils.DatabaseFlags)
 
 	rpcFlags = []cli.Flag{
@@ -240,6 +265,14 @@ var (
 		utils.BatchResponseMaxSize,
 		utils.RPCTxSyncDefaultTimeoutFlag,
 		utils.RPCTxSyncMaxTimeoutFlag,
+		utils.RPCGlobalRangeLimitFlag,
+		utils.RPCTelemetryFlag,
+		utils.RPCTelemetryEndpointFlag,
+		utils.RPCTelemetryUserFlag,
+		utils.RPCTelemetryPasswordFlag,
+		utils.RPCTelemetryInstanceIDFlag,
+		utils.RPCTelemetryTagsFlag,
+		utils.RPCTelemetrySampleRatioFlag,
 	}
 
 	metricsFlags = []cli.Flag{
@@ -253,6 +286,7 @@ var (
 		utils.MetricsInfluxDBUsernameFlag,
 		utils.MetricsInfluxDBPasswordFlag,
 		utils.MetricsInfluxDBTagsFlag,
+		utils.MetricsInfluxDBIntervalFlag,
 		utils.MetricsEnableInfluxDBV2Flag,
 		utils.MetricsInfluxDBTokenFlag,
 		utils.MetricsInfluxDBBucketFlag,
@@ -290,7 +324,6 @@ func init() {
 		javascriptCommand,
 		// See misccmd.go:
 		versionCommand,
-		versionCheckCommand,
 		licenseCommand,
 		// See config.go
 		dumpConfigCommand,
@@ -300,9 +333,14 @@ func init() {
 		utils.ShowDeprecated,
 		// See snapshot.go
 		snapshotCommand,
+<<<<<<< HEAD
 		blsCommand,
 		// See verkle.go
 		verkleCommand,
+=======
+		// See bintrie_convert.go
+		bintrieCommand,
+>>>>>>> geth-v1.17.3
 	}
 	if logTestCommand != nil {
 		app.Commands = append(app.Commands, logTestCommand)
@@ -349,6 +387,7 @@ func prepare(ctx *cli.Context) {
 	case ctx.IsSet(utils.ChapelFlag.Name):
 		log.Info("Starting BSC on Chapel testnet...")
 	}
+<<<<<<< HEAD
 	// If we're a full node on mainnet without --cache specified, bump default cache allowance
 	if !ctx.IsSet(utils.CacheFlag.Name) && !ctx.IsSet(utils.NetworkIdFlag.Name) {
 		// Make sure we're not on any supported preconfigured testnet either
@@ -359,6 +398,8 @@ func prepare(ctx *cli.Context) {
 			ctx.Set(utils.CacheFlag.Name, strconv.Itoa(4096))
 		}
 	}
+=======
+>>>>>>> geth-v1.17.3
 }
 
 // geth is the main entry point into the system if no special subcommand is run.
@@ -428,6 +469,7 @@ func startNode(ctx *cli.Context, stack *node.Node, backend ethapi.Backend, isCon
 			}
 		}
 	}()
+<<<<<<< HEAD
 
 	// Spawn a standalone goroutine for status synchronization monitoring,
 	// close the node when synchronization is complete if user required.
@@ -501,4 +543,6 @@ func unlockAccounts(ctx *cli.Context, stack *node.Node) {
 	for i, account := range unlocks {
 		unlockAccount(ks, account, i, passwords)
 	}
+=======
+>>>>>>> geth-v1.17.3
 }

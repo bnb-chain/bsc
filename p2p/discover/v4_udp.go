@@ -448,17 +448,23 @@ func (t *UDPv4) loop(isBootNode bool) {
 		}
 		// Start the timer so it fires when the next pending reply has expired.
 		now := time.Now()
+<<<<<<< HEAD
 		for el := plist.Front(); el != nil; {
 			next := el.Next()
 			nextTimeout = el.Value.(*replyMatcher)
 			if dist := nextTimeout.deadline.Sub(now); dist < 2*respTimeout {
+=======
+		for p, el := range iterList[*replyMatcher](plist) {
+			nextTimeout = p
+			if dist := p.deadline.Sub(now); dist < 2*respTimeout {
+>>>>>>> geth-v1.17.3
 				timeout.Reset(dist)
 				return
 			}
 			// Remove pending replies whose deadline is too far in the
 			// future. These can occur if the system clock jumped
 			// backwards after the deadline was assigned.
-			nextTimeout.errc <- errClockWarp
+			p.errc <- errClockWarp
 			plist.Remove(el)
 			el = next
 		}
@@ -488,9 +494,13 @@ func (t *UDPv4) loop(isBootNode bool) {
 
 		case r := <-t.gotreply:
 			var matched bool // whether any replyMatcher considered the reply acceptable.
+<<<<<<< HEAD
 			for el := plist.Front(); el != nil; {
 				next := el.Next()
 				p := el.Value.(*replyMatcher)
+=======
+			for p, el := range iterList[*replyMatcher](plist) {
+>>>>>>> geth-v1.17.3
 				if p.from == r.from && p.ptype == r.data.Kind() && p.ip == r.ip {
 					ok, requestDone := p.callback(r.data)
 					matched = matched || ok
@@ -511,9 +521,13 @@ func (t *UDPv4) loop(isBootNode bool) {
 			nextTimeout = nil
 
 			// Notify and remove callbacks whose deadline is in the past.
+<<<<<<< HEAD
 			for el := plist.Front(); el != nil; {
 				next := el.Next()
 				p := el.Value.(*replyMatcher)
+=======
+			for p, el := range iterList[*replyMatcher](plist) {
+>>>>>>> geth-v1.17.3
 				if now.After(p.deadline) || now.Equal(p.deadline) {
 					p.errc <- errTimeout
 					plist.Remove(el)

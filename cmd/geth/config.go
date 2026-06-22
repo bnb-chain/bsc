@@ -37,11 +37,19 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/usbwallet"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
+<<<<<<< HEAD
 	"github.com/ethereum/go-ethereum/core/rawdb"
+=======
+>>>>>>> geth-v1.17.3
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
+<<<<<<< HEAD
 	"github.com/ethereum/go-ethereum/internal/ethapi"
+=======
+	"github.com/ethereum/go-ethereum/eth/syncer"
+>>>>>>> geth-v1.17.3
 	"github.com/ethereum/go-ethereum/internal/flags"
+	"github.com/ethereum/go-ethereum/internal/telemetry/tracesetup"
 	"github.com/ethereum/go-ethereum/internal/version"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -289,10 +297,11 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		v := ctx.Uint64(utils.OverrideBPO2.Name)
 		cfg.Eth.OverrideBPO2 = &v
 	}
-	if ctx.IsSet(utils.OverrideVerkle.Name) {
-		v := ctx.Uint64(utils.OverrideVerkle.Name)
-		cfg.Eth.OverrideVerkle = &v
+	if ctx.IsSet(utils.OverrideUBT.Name) {
+		v := ctx.Uint64(utils.OverrideUBT.Name)
+		cfg.Eth.OverrideUBT = &v
 	}
+<<<<<<< HEAD
 	if ctx.IsSet(utils.OverrideFullImmutabilityThreshold.Name) {
 		params.FullImmutabilityThreshold = ctx.Uint64(utils.OverrideFullImmutabilityThreshold.Name)
 		downloader.FullMaxForkAncestry = ctx.Uint64(utils.OverrideFullImmutabilityThreshold.Name)
@@ -310,7 +319,18 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	if ctx.IsSet(utils.OverrideFixedTurnLength.Name) {
 		params.FixedTurnLength = ctx.Uint64(utils.OverrideFixedTurnLength.Name)
 	}
+=======
 
+	// Start metrics export if enabled.
+	utils.SetupMetrics(&cfg.Metrics)
+>>>>>>> geth-v1.17.3
+
+	// Setup OpenTelemetry reporting if enabled.
+	if err := tracesetup.SetupTelemetry(cfg.Node.OpenTelemetry, stack); err != nil {
+		utils.Fatalf("failed to setup OpenTelemetry: %v", err)
+	}
+
+	// Add Ethereum service.
 	backend, eth := utils.RegisterEthService(stack, &cfg.Eth)
 
 	// Create gauge with geth system and build information
@@ -331,7 +351,7 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	filterSystem := utils.RegisterFilterAPI(stack, backend, &cfg.Eth)
 
 	// Configure GraphQL if requested.
-	if ctx.IsSet(utils.GraphQLEnabledFlag.Name) {
+	if ctx.Bool(utils.GraphQLEnabledFlag.Name) {
 		utils.RegisterGraphQLService(stack, backend, filterSystem, &cfg.Node)
 	}
 	// Add the Ethereum Stats daemon if requested.
@@ -339,7 +359,20 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		utils.RegisterEthStatsService(stack, backend, cfg.Ethstats.URL)
 	}
 
-	if ctx.IsSet(utils.DeveloperFlag.Name) {
+	// Configure synchronization override service
+	syncConfig := syncer.Config{
+		ExitWhenSynced: ctx.Bool(utils.ExitWhenSyncedFlag.Name),
+	}
+	if ctx.IsSet(utils.SyncTargetFlag.Name) {
+		target := ctx.String(utils.SyncTargetFlag.Name)
+		if !common.IsHexHash(target) {
+			utils.Fatalf("sync target hash is not a valid hex hash: %s", target)
+		}
+		syncConfig.TargetBlock = common.HexToHash(target)
+	}
+	utils.RegisterSyncOverrideService(stack, eth, syncConfig)
+
+	if ctx.Bool(utils.DeveloperFlag.Name) {
 		// Start dev mode.
 		simBeacon, err := catalyst.NewSimulatedBeacon(ctx.Uint64(utils.DeveloperPeriodFlag.Name), cfg.Eth.Miner.Etherbase, eth)
 		if err != nil {
@@ -424,6 +457,9 @@ func applyMetricConfig(ctx *cli.Context, cfg *gethConfig) {
 	if ctx.IsSet(utils.MetricsInfluxDBTagsFlag.Name) {
 		cfg.Metrics.InfluxDBTags = ctx.String(utils.MetricsInfluxDBTagsFlag.Name)
 	}
+	if ctx.IsSet(utils.MetricsInfluxDBIntervalFlag.Name) {
+		cfg.Metrics.InfluxDBInterval = ctx.Duration(utils.MetricsInfluxDBIntervalFlag.Name)
+	}
 	if ctx.IsSet(utils.MetricsEnableInfluxDBV2Flag.Name) {
 		cfg.Metrics.EnableInfluxDBV2 = ctx.Bool(utils.MetricsEnableInfluxDBV2Flag.Name)
 	}
@@ -452,9 +488,9 @@ func applyMetricConfig(ctx *cli.Context, cfg *gethConfig) {
 			ctx.IsSet(utils.MetricsInfluxDBBucketFlag.Name)
 
 		if enableExport && v2FlagIsSet {
-			utils.Fatalf("Flags --influxdb.metrics.organization, --influxdb.metrics.token, --influxdb.metrics.bucket are only available for influxdb-v2")
+			utils.Fatalf("Flags --%s, --%s, --%s are only available for influxdb-v2", utils.MetricsInfluxDBOrganizationFlag.Name, utils.MetricsInfluxDBTokenFlag.Name, utils.MetricsInfluxDBBucketFlag.Name)
 		} else if enableExportV2 && v1FlagIsSet {
-			utils.Fatalf("Flags --influxdb.metrics.username, --influxdb.metrics.password are only available for influxdb-v1")
+			utils.Fatalf("Flags --%s, --%s are only available for influxdb-v1", utils.MetricsInfluxDBUsernameFlag.Name, utils.MetricsInfluxDBPasswordFlag.Name)
 		}
 	}
 }

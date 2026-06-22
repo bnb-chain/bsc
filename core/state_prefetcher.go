@@ -101,6 +101,7 @@ func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *type
 			}
 			// Execute the message to preload the implicit touched states
 			evm := vm.NewEVM(NewEVMBlockContext(header, p.chain, nil), stateCpy, p.config, cfg)
+			defer evm.Release()
 
 			// Convert the transaction into an executable message and pre-cache its sender
 			msg, err := TransactionToMessage(tx, signer, header.BaseFee)
@@ -115,7 +116,11 @@ func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *type
 
 			// We attempt to apply a transaction. The goal is not to execute
 			// the transaction successfully, rather to warm up touched data slots.
+<<<<<<< HEAD
 			if _, err := ApplyMessage(evm, msg, new(GasPool).AddGas(gasLimit)); err != nil {
+=======
+			if _, err := ApplyMessage(evm, msg, nil); err != nil {
+>>>>>>> geth-v1.17.3
 				fails.Add(1)
 				return nil // Ugh, something went horribly wrong, bail out
 			}

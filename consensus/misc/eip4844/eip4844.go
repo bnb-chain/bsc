@@ -53,9 +53,9 @@ func (bc *BlobConfig) blobPrice(excessBlobGas uint64) *big.Int {
 	return new(big.Int).Mul(f, big.NewInt(params.BlobTxBlobGasPerBlob))
 }
 
-func latestBlobConfig(cfg *params.ChainConfig, time uint64) *BlobConfig {
+func latestBlobConfig(cfg *params.ChainConfig, time uint64) (BlobConfig, error) {
 	if cfg.BlobScheduleConfig == nil {
-		return nil
+		return BlobConfig{}, errors.New("no blob config")
 	}
 	var (
 		london = cfg.LondonBlock
@@ -80,14 +80,14 @@ func latestBlobConfig(cfg *params.ChainConfig, time uint64) *BlobConfig {
 	case cfg.IsCancun(london, time) && s.Cancun != nil:
 		bc = s.Cancun
 	default:
-		return nil
+		return BlobConfig{}, errors.New("no blob config")
 	}
 
-	return &BlobConfig{
+	return BlobConfig{
 		Target:         bc.Target,
 		Max:            bc.Max,
 		UpdateFraction: bc.UpdateFraction,
-	}
+	}, nil
 }
 
 // VerifyEIP4844Header verifies the presence of the excessBlobGas field and that
@@ -98,8 +98,8 @@ func VerifyEIP4844Header(config *params.ChainConfig, parent, header *types.Heade
 		panic("bad header pair")
 	}
 
-	bcfg := latestBlobConfig(config, header.Time)
-	if bcfg == nil {
+	bcfg, err := latestBlobConfig(config, header.Time)
+	if err != nil {
 		panic("called before EIP-4844 is active")
 	}
 
@@ -122,7 +122,7 @@ func VerifyEIP4844Header(config *params.ChainConfig, parent, header *types.Heade
 		return fmt.Errorf("blob gas used %d exceeds maximum allowance %d", *header.BlobGasUsed, bcfg.maxBlobGas())
 	}
 	if *header.BlobGasUsed%params.BlobTxBlobGasPerBlob != 0 {
-		return fmt.Errorf("blob gas used %d not a multiple of blob gas per blob %d", header.BlobGasUsed, params.BlobTxBlobGasPerBlob)
+		return fmt.Errorf("blob gas used %d not a multiple of blob gas per blob %d", *header.BlobGasUsed, params.BlobTxBlobGasPerBlob)
 	}
 
 	// Verify the excessBlobGas is correct based on the parent header
@@ -136,6 +136,7 @@ func VerifyEIP4844Header(config *params.ChainConfig, parent, header *types.Heade
 // CalcExcessBlobGas calculates the excess blob gas after applying the set of
 // blobs on top of the excess blob gas.
 func CalcExcessBlobGas(config *params.ChainConfig, parent *types.Header, headTimestamp uint64) uint64 {
+<<<<<<< HEAD
 	eip7918 := config.IsOsaka(config.LondonBlock, headTimestamp) && config.IsNotInBSC()
 	bcfg := latestBlobConfig(config, headTimestamp)
 
@@ -151,6 +152,17 @@ func CalcExcessBlobGas(config *params.ChainConfig, parent *types.Header, headTim
 }
 
 func calcExcessBlobGas(eip7918 bool, bcfg *BlobConfig, parent *types.Header) uint64 {
+=======
+	isOsaka := config.IsOsaka(config.LondonBlock, headTimestamp)
+	bcfg, err := latestBlobConfig(config, headTimestamp)
+	if err != nil {
+		panic("calculating excess blob gas on nil blob config")
+	}
+	return calcExcessBlobGas(isOsaka, bcfg, parent)
+}
+
+func calcExcessBlobGas(isOsaka bool, bcfg BlobConfig, parent *types.Header) uint64 {
+>>>>>>> geth-v1.17.3
 	var parentExcessBlobGas, parentBlobGasUsed uint64
 	if parent.ExcessBlobGas != nil {
 		parentExcessBlobGas = *parent.ExcessBlobGas
@@ -185,8 +197,8 @@ func calcExcessBlobGas(eip7918 bool, bcfg *BlobConfig, parent *types.Header) uin
 
 // CalcBlobFee calculates the blobfee from the header's excess blob gas field.
 func CalcBlobFee(config *params.ChainConfig, header *types.Header) *big.Int {
-	blobConfig := latestBlobConfig(config, header.Time)
-	if blobConfig == nil {
+	blobConfig, err := latestBlobConfig(config, header.Time)
+	if err != nil {
 		panic("calculating blob fee on unsupported fork")
 	}
 	return blobConfig.blobBaseFee(*header.ExcessBlobGas)
@@ -194,8 +206,8 @@ func CalcBlobFee(config *params.ChainConfig, header *types.Header) *big.Int {
 
 // MaxBlobsPerBlock returns the max blobs per block for a block at the given timestamp.
 func MaxBlobsPerBlock(cfg *params.ChainConfig, time uint64) int {
-	blobConfig := latestBlobConfig(cfg, time)
-	if blobConfig == nil {
+	blobConfig, err := latestBlobConfig(cfg, time)
+	if err != nil {
 		return 0
 	}
 	return blobConfig.Max
@@ -218,11 +230,20 @@ func MaxBlobGasPerBlock(cfg *params.ChainConfig, time uint64) uint64 {
 // LatestMaxBlobsPerBlock returns the latest max blobs per block defined by the
 // configuration, regardless of the currently active fork.
 func LatestMaxBlobsPerBlock(cfg *params.ChainConfig) int {
-	bcfg := latestBlobConfig(cfg, math.MaxUint64)
-	if bcfg == nil {
+	bcfg, err := latestBlobConfig(cfg, math.MaxUint64)
+	if err != nil {
 		return 0
 	}
 	return bcfg.Max
+}
+
+// TargetBlobsPerBlock returns the target blobs per block for a block at the given timestamp.
+func TargetBlobsPerBlock(cfg *params.ChainConfig, time uint64) int {
+	blobConfig, err := latestBlobConfig(cfg, time)
+	if err != nil {
+		return 0
+	}
+	return blobConfig.Target
 }
 
 // fakeExponential approximates factor * e ** (numerator / denominator) using

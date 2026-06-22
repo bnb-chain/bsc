@@ -24,7 +24,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+<<<<<<< HEAD
 	"maps"
+=======
+>>>>>>> geth-v1.17.3
 	"math/big"
 	"os"
 	"path/filepath"
@@ -178,6 +181,7 @@ func allTransactionTypes(addr common.Address, config *params.ChainConfig) []txDa
 			Want: `{
 				"blockHash": null,
 				"blockNumber": null,
+				"blockTimestamp": null,
 				"from": "0x71562b71999873db5b286df957af199ec94617f7",
 				"gas": "0x7",
 				"gasPrice": "0x6",
@@ -208,6 +212,7 @@ func allTransactionTypes(addr common.Address, config *params.ChainConfig) []txDa
 			Want: `{
 				"blockHash": null,
 				"blockNumber": null,
+				"blockTimestamp": null,
 				"from": "0x71562b71999873db5b286df957af199ec94617f7",
 				"gas": "0x7",
 				"gasPrice": "0x6",
@@ -246,6 +251,7 @@ func allTransactionTypes(addr common.Address, config *params.ChainConfig) []txDa
 			Want: `{
 				"blockHash": null,
 				"blockNumber": null,
+				"blockTimestamp": null,
 				"from": "0x71562b71999873db5b286df957af199ec94617f7",
 				"gas": "0x7",
 				"gasPrice": "0x6",
@@ -292,6 +298,7 @@ func allTransactionTypes(addr common.Address, config *params.ChainConfig) []txDa
 			Want: `{
 				"blockHash": null,
 				"blockNumber": null,
+				"blockTimestamp": null,
 				"from": "0x71562b71999873db5b286df957af199ec94617f7",
 				"gas": "0x7",
 				"gasPrice": "0x6",
@@ -339,6 +346,7 @@ func allTransactionTypes(addr common.Address, config *params.ChainConfig) []txDa
 			Want: `{
 				"blockHash": null,
 				"blockNumber": null,
+				"blockTimestamp": null,
 				"from": "0x71562b71999873db5b286df957af199ec94617f7",
 				"gas": "0x7",
 				"gasPrice": "0x9",
@@ -383,6 +391,7 @@ func allTransactionTypes(addr common.Address, config *params.ChainConfig) []txDa
 			Want: `{
 				"blockHash": null,
 				"blockNumber": null,
+				"blockTimestamp": null,
 				"from": "0x71562b71999873db5b286df957af199ec94617f7",
 				"gas": "0x7",
 				"gasPrice": "0x9",
@@ -425,6 +434,7 @@ func allBlobTxs(addr common.Address, config *params.ChainConfig) []txData {
 			Want: `{
                 "blockHash": null,
                 "blockNumber": null,
+				"blockTimestamp": null,
                 "from": "0x71562b71999873db5b286df957af199ec94617f7",
                 "gas": "0x6",
                 "gasPrice": "0x5",
@@ -611,7 +621,7 @@ func (b testBackend) StateAndHeaderByNumber(ctx context.Context, number rpc.Bloc
 	if header == nil {
 		return nil, nil, errors.New("header not found")
 	}
-	stateDb, err := b.chain.StateAt(header.Root)
+	stateDb, err := b.chain.StateAt(header)
 	return stateDb, header, err
 }
 func (b testBackend) StateAndHeaderByNumberOrHash(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) (*state.StateDB, *types.Header, error) {
@@ -862,6 +872,17 @@ func TestEstimateGas(t *testing.T) {
 			expectErr: core.ErrInsufficientFunds,
 			want:      21000,
 		},
+		// block override gas limit should bound estimation search space.
+		{
+			blockNumber: rpc.LatestBlockNumber,
+			call: TransactionArgs{
+				From:  &accounts[0].addr,
+				Input: hex2Bytes("6080604052348015600f57600080fd5b50483a1015601c57600080fd5b60003a111560315760004811603057600080fd5b5b603f80603e6000396000f3fe6080604052600080fdfea264697066735822122060729c2cee02b10748fae5200f1c9da4661963354973d9154c13a8e9ce9dee1564736f6c63430008130033"),
+				Gas:   func() *hexutil.Uint64 { v := hexutil.Uint64(0); return &v }(),
+			},
+			blockOverrides: override.BlockOverrides{GasLimit: func() *hexutil.Uint64 { v := hexutil.Uint64(50000); return &v }()},
+			expectErr:      errors.New("gas required exceeds allowance (50000)"),
+		},
 		// empty create
 		{
 			blockNumber: rpc.LatestBlockNumber,
@@ -942,6 +963,19 @@ func TestEstimateGas(t *testing.T) {
 				BlobFeeCap: (*hexutil.Big)(big.NewInt(1)),
 			},
 			want: 21000,
+		},
+		// blob base fee block override should be applied during estimation.
+		{
+			blockNumber: rpc.LatestBlockNumber,
+			call: TransactionArgs{
+				From:       &accounts[0].addr,
+				To:         &accounts[1].addr,
+				Value:      (*hexutil.Big)(big.NewInt(1)),
+				BlobHashes: []common.Hash{{0x01, 0x22}},
+				BlobFeeCap: (*hexutil.Big)(big.NewInt(1)),
+			},
+			blockOverrides: override.BlockOverrides{BlobBaseFee: (*hexutil.Big)(big.NewInt(2))},
+			expectErr:      core.ErrBlobFeeCapTooLow,
 		},
 		// // SPDX-License-Identifier: GPL-3.0
 		//pragma solidity >=0.8.2 <0.9.0;
@@ -1096,7 +1130,7 @@ func TestCall(t *testing.T) {
 					Balance: big.NewInt(params.Ether),
 					Nonce:   1,
 					Storage: map[common.Hash]common.Hash{
-						common.Hash{}: common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000001"),
+						{}: common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000001"),
 					},
 				},
 			},
@@ -1372,6 +1406,27 @@ func TestCall(t *testing.T) {
 				Withdrawals: &types.Withdrawals{},
 			},
 			expectErr: errors.New(`block override "withdrawals" is not supported for this RPC method`),
+		},
+		// Verify that an overridden basefee is honored when computing gasPrice
+		// from the 1559 fee fields. Returning GASPRICE opcode; expected value
+		// is min(MaxFeePerGas, MaxPriorityFeePerGas + overridden BaseFee).
+		//
+		// BaseFee override = 0xa (10); MaxFeePerGas = 0x64 (100);
+		// MaxPriorityFeePerGas = 0x2 (2); expected GASPRICE = 12.
+		{
+			name:        "basefee-override-used-in-gasprice",
+			blockNumber: rpc.LatestBlockNumber,
+			call: TransactionArgs{
+				From: &accounts[0].addr,
+				// Contract: GASPRICE; PUSH1 0; MSTORE; PUSH1 32; PUSH1 0; RETURN
+				Input:                hex2Bytes("3a60005260206000f3"),
+				MaxFeePerGas:         (*hexutil.Big)(big.NewInt(100)),
+				MaxPriorityFeePerGas: (*hexutil.Big)(big.NewInt(2)),
+			},
+			blockOverrides: override.BlockOverrides{
+				BaseFeePerGas: (*hexutil.Big)(big.NewInt(10)),
+			},
+			want: "0x000000000000000000000000000000000000000000000000000000000000000c",
 		},
 	}
 	for _, tc := range testSuite {
@@ -3226,6 +3281,7 @@ func TestRPCMarshalBlock(t *testing.T) {
 					{
 						"blockHash": "0x9b73c83b25d0faf7eab854e3684c7e394336d6e135625aafa5c183f27baa8fee",
 						"blockNumber": "0x64",
+						"blockTimestamp": "0x0",
 						"from": "0x0000000000000000000000000000000000000000",
 						"gas": "0x457",
 						"gasPrice": "0x2b67",
@@ -3246,6 +3302,7 @@ func TestRPCMarshalBlock(t *testing.T) {
 					{
 						"blockHash": "0x9b73c83b25d0faf7eab854e3684c7e394336d6e135625aafa5c183f27baa8fee",
 						"blockNumber": "0x64",
+						"blockTimestamp": "0x0",
 						"from": "0x0000000000000000000000000000000000000000",
 						"gas": "0x457",
 						"gasPrice": "0x2b67",
@@ -3264,6 +3321,7 @@ func TestRPCMarshalBlock(t *testing.T) {
 					{
 						"blockHash": "0x9b73c83b25d0faf7eab854e3684c7e394336d6e135625aafa5c183f27baa8fee",
 						"blockNumber": "0x64",
+						"blockTimestamp": "0x0",
 						"from": "0x0000000000000000000000000000000000000000",
 						"gas": "0x457",
 						"gasPrice": "0x2b67",
@@ -3284,6 +3342,7 @@ func TestRPCMarshalBlock(t *testing.T) {
 					{
 						"blockHash": "0x9b73c83b25d0faf7eab854e3684c7e394336d6e135625aafa5c183f27baa8fee",
 						"blockNumber": "0x64",
+						"blockTimestamp": "0x0",
 						"from": "0x0000000000000000000000000000000000000000",
 						"gas": "0x457",
 						"gasPrice": "0x2b67",
@@ -4167,7 +4226,7 @@ func TestCreateAccessListWithStateOverrides(t *testing.T) {
 				Balance: (*hexutil.Big)(big.NewInt(1000000000000000000)),
 				Nonce:   &nonce,
 				State: map[common.Hash]common.Hash{
-					common.Hash{}: common.HexToHash("0x000000000000000000000000000000000000000000000000000000000000002a"),
+					{}: common.HexToHash("0x000000000000000000000000000000000000000000000000000000000000002a"),
 				},
 			},
 		}
@@ -4408,7 +4467,7 @@ func TestSendRawTransactionSync_Timeout(t *testing.T) {
 
 	raw, _ := makeSelfSignedRaw(t, api, b.acc.Address)
 
-	timeout := hexutil.Uint64(200) // 200ms
+	timeout := uint64(200) // 200ms
 	receipt, err := api.SendRawTransactionSync(context.Background(), raw, &timeout)
 
 	if receipt != nil {
@@ -4434,5 +4493,93 @@ func TestSendRawTransactionSync_Timeout(t *testing.T) {
 	}
 	if got, want := de.ErrorData(), tx.Hash().Hex(); got != want {
 		t.Fatalf("expected ErrorData=%s, got %v", want, got)
+	}
+}
+
+func TestGetStorageValues(t *testing.T) {
+	t.Parallel()
+
+	var (
+		addr1 = common.HexToAddress("0x1111")
+		addr2 = common.HexToAddress("0x2222")
+		slot0 = common.Hash{}
+		slot1 = common.BigToHash(big.NewInt(1))
+		slot2 = common.BigToHash(big.NewInt(2))
+		val0  = common.BigToHash(big.NewInt(42))
+		val1  = common.BigToHash(big.NewInt(100))
+		val2  = common.BigToHash(big.NewInt(200))
+
+		genesis = &core.Genesis{
+			Config: params.MergedTestChainConfig,
+			Alloc: types.GenesisAlloc{
+				addr1: {
+					Balance: big.NewInt(params.Ether),
+					Storage: map[common.Hash]common.Hash{
+						slot0: val0,
+						slot1: val1,
+					},
+				},
+				addr2: {
+					Balance: big.NewInt(params.Ether),
+					Storage: map[common.Hash]common.Hash{
+						slot2: val2,
+					},
+				},
+			},
+		}
+	)
+	api := NewBlockChainAPI(newTestBackend(t, 1, genesis, beacon.New(ethash.NewFaker()), func(i int, b *core.BlockGen) {
+		b.SetPoS()
+	}))
+	latest := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
+
+	// Happy path: multiple addresses, multiple slots.
+	result, err := api.GetStorageValues(context.Background(), map[common.Address][]common.Hash{
+		addr1: {slot0, slot1},
+		addr2: {slot2},
+	}, latest)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("expected 2 addresses in result, got %d", len(result))
+	}
+	if got := common.BytesToHash(result[addr1][0]); got != val0 {
+		t.Errorf("addr1 slot0: want %x, got %x", val0, got)
+	}
+	if got := common.BytesToHash(result[addr1][1]); got != val1 {
+		t.Errorf("addr1 slot1: want %x, got %x", val1, got)
+	}
+	if got := common.BytesToHash(result[addr2][0]); got != val2 {
+		t.Errorf("addr2 slot2: want %x, got %x", val2, got)
+	}
+
+	// Missing slot returns zero.
+	result, err = api.GetStorageValues(context.Background(), map[common.Address][]common.Hash{
+		addr1: {common.HexToHash("0xff")},
+	}, latest)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := common.BytesToHash(result[addr1][0]); got != (common.Hash{}) {
+		t.Errorf("missing slot: want zero, got %x", got)
+	}
+
+	// Empty request returns error.
+	_, err = api.GetStorageValues(context.Background(), map[common.Address][]common.Hash{}, latest)
+	if err == nil {
+		t.Fatal("expected error for empty request")
+	}
+
+	// Exceeding slot limit returns error.
+	tooMany := make([]common.Hash, maxGetStorageSlots+1)
+	for i := range tooMany {
+		tooMany[i] = common.BigToHash(big.NewInt(int64(i)))
+	}
+	_, err = api.GetStorageValues(context.Background(), map[common.Address][]common.Hash{
+		addr1: tooMany,
+	}, latest)
+	if err == nil {
+		t.Fatal("expected error for exceeding slot limit")
 	}
 }

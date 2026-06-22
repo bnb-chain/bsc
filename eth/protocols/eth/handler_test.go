@@ -179,7 +179,7 @@ func (b *testBackend) Handle(*Peer, Packet) error {
 }
 
 // Tests that block headers can be retrieved from a remote chain based on user queries.
-func TestGetBlockHeaders68(t *testing.T) { testGetBlockHeaders(t, ETH68) }
+func TestGetBlockHeaders69(t *testing.T) { testGetBlockHeaders(t, ETH69) }
 
 func testGetBlockHeaders(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -392,7 +392,7 @@ func testGetBlockHeaders(t *testing.T, protocol uint) {
 }
 
 // Tests that block contents can be retrieved from a remote chain based on their hashes.
-func TestGetBlockBodies68(t *testing.T) { testGetBlockBodies(t, ETH68) }
+func TestGetBlockBodies69(t *testing.T) { testGetBlockBodies(t, ETH69) }
 
 func testGetBlockBodies(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -545,7 +545,7 @@ func TestHashBody(t *testing.T) {
 }
 
 // Tests that the transaction receipts can be retrieved based on hashes.
-func TestGetBlockReceipts68(t *testing.T) { testGetBlockReceipts(t, ETH68) }
+func TestGetBlockReceipts69(t *testing.T) { testGetBlockReceipts(t, ETH69) }
 
 func testGetBlockReceipts(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -595,23 +595,129 @@ func testGetBlockReceipts(t *testing.T, protocol uint) {
 	// Collect the hashes to request, and the response to expect
 	var (
 		hashes   []common.Hash
+<<<<<<< HEAD
 		receipts rlp.RawList[*ReceiptList68]
+=======
+		receipts rlp.RawList[*ReceiptList]
+>>>>>>> geth-v1.17.3
 	)
 	for i := uint64(0); i <= backend.chain.CurrentBlock().Number.Uint64(); i++ {
 		block := backend.chain.GetBlockByNumber(i)
 		hashes = append(hashes, block.Hash())
+<<<<<<< HEAD
 		trs := backend.chain.GetReceiptsByHash(block.Hash())
 		receipts.Append(NewReceiptList68(trs))
+=======
+		br := backend.chain.GetReceiptsByHash(block.Hash())
+		receipts.Append(NewReceiptList(br))
+>>>>>>> geth-v1.17.3
 	}
 
 	// Send the hash request and verify the response
-	p2p.Send(peer.app, GetReceiptsMsg, &GetReceiptsPacket{
+	p2p.Send(peer.app, GetReceiptsMsg, &GetReceiptsPacket69{
 		RequestId:          123,
 		GetReceiptsRequest: hashes,
 	})
-	if err := p2p.ExpectMsg(peer.app, ReceiptsMsg, &ReceiptsPacket[*ReceiptList68]{
+	if err := p2p.ExpectMsg(peer.app, ReceiptsMsg, &ReceiptsPacket69{
 		RequestId: 123,
 		List:      receipts,
+	}); err != nil {
+		t.Errorf("receipts mismatch: %v", err)
+	}
+}
+
+func TestGetBlockPartialReceipts(t *testing.T) { testGetBlockPartialReceipts(t, ETH70) }
+
+func testGetBlockPartialReceipts(t *testing.T, protocol int) {
+	// First, generate the chain and overwrite the receipts.
+	generator := func(_ int, block *core.BlockGen) {
+		for j := 0; j < 5; j++ {
+			tx, err := types.SignTx(
+				types.NewTransaction(block.TxNonce(testAddr), testAddr, big.NewInt(1000), params.TxGas, block.BaseFee(), nil),
+				types.LatestSignerForChainID(params.TestChainConfig.ChainID),
+				testKey,
+			)
+			if err != nil {
+				t.Fatalf("failed to sign tx: %v", err)
+			}
+			block.AddTx(tx)
+		}
+	}
+	backend := newTestBackendWithGenerator(4, true, false, generator)
+	defer backend.close()
+
+	blockCutoff := 2
+	receiptCutoff := 4
+
+	// Replace the receipts in the database with larger receipts.
+	targetBlock := backend.chain.GetBlockByNumber(uint64(blockCutoff))
+	receipts := backend.chain.GetReceiptsByHash(targetBlock.Hash())
+	receiptSize := params.MaxTxGas / params.LogDataGas // ~2MiB per receipt
+	for i := range receipts {
+		payload := make([]byte, receiptSize)
+		for j := range payload {
+			payload[j] = byte(i + j)
+		}
+		receipts[i].Logs = []*types.Log{
+			{
+				Address: common.BytesToAddress([]byte{byte(i + 1)}),
+				Data:    payload,
+			},
+		}
+	}
+
+	rawdb.WriteReceipts(backend.db, targetBlock.Hash(), targetBlock.NumberU64(), receipts)
+
+	peer, _ := newTestPeer("peer", uint(protocol), backend)
+	defer peer.close()
+
+	var (
+		hashes         []common.Hash
+		partialReceipt []*ReceiptList
+	)
+	for i := uint64(0); i <= backend.chain.CurrentBlock().Number.Uint64(); i++ {
+		block := backend.chain.GetBlockByNumber(i)
+		hashes = append(hashes, block.Hash())
+	}
+	for i := 0; i <= blockCutoff; i++ {
+		block := backend.chain.GetBlockByNumber(uint64(i))
+		trs := backend.chain.GetReceiptsByHash(block.Hash())
+		limit := len(trs)
+		if i == blockCutoff {
+			limit = receiptCutoff
+		}
+		partialReceipt = append(partialReceipt, NewReceiptList(trs[:limit]))
+	}
+
+	rawPartialReceipt, _ := rlp.EncodeToRawList(partialReceipt)
+
+	p2p.Send(peer.app, GetReceiptsMsg, &GetReceiptsPacket70{
+		RequestId:              123,
+		FirstBlockReceiptIndex: 0,
+		GetReceiptsRequest:     hashes,
+	})
+	if err := p2p.ExpectMsg(peer.app, ReceiptsMsg, &ReceiptsPacket70{
+		RequestId:           123,
+		LastBlockIncomplete: true,
+		List:                rawPartialReceipt,
+	}); err != nil {
+		t.Errorf("receipts mismatch: %v", err)
+	}
+
+	// Simulate the continued request
+	partialReceipt = []*ReceiptList{NewReceiptList(receipts[receiptCutoff:])}
+	rawPartialReceipt, _ = rlp.EncodeToRawList(partialReceipt)
+
+	p2p.Send(peer.app, GetReceiptsMsg, &GetReceiptsPacket70{
+		RequestId:              123,
+		FirstBlockReceiptIndex: uint64(receiptCutoff),
+		GetReceiptsRequest:     []common.Hash{hashes[blockCutoff]},
+	})
+
+	if err := p2p.ExpectMsg(peer.app, ReceiptsMsg, &ReceiptsPacket70{
+		RequestId:           123,
+		LastBlockIncomplete: false,
+		List:                rawPartialReceipt,
 	}); err != nil {
 		t.Errorf("receipts mismatch: %v", err)
 	}
@@ -665,7 +771,7 @@ func setup() (*testBackend, *testPeer) {
 		}
 	}
 	backend := newTestBackendWithGenerator(maxBodiesServe+15, true, false, gen)
-	peer, _ := newTestPeer("peer", ETH68, backend)
+	peer, _ := newTestPeer("peer", ETH69, backend)
 	// Discard all messages
 	go func() {
 		for {
@@ -679,10 +785,10 @@ func setup() (*testBackend, *testPeer) {
 }
 
 func FuzzEthProtocolHandlers(f *testing.F) {
-	handlers := eth69
+	handlers := eth70
 	backend, peer := setup()
 	f.Fuzz(func(t *testing.T, code byte, msg []byte) {
-		handler := handlers[uint64(code)%protocolLengths[ETH69]]
+		handler := handlers[uint64(code)%protocolLengths[ETH70]]
 		if handler == nil {
 			return
 		}
@@ -858,7 +964,7 @@ func testGetPooledTransaction(t *testing.T, blobTx bool) {
 	backend := newTestBackendWithGenerator(0, true, true, nil)
 	defer backend.close()
 
-	peer, _ := newTestPeer("peer", ETH68, backend)
+	peer, _ := newTestPeer("peer", ETH69, backend)
 	defer peer.close()
 
 	var (

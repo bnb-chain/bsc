@@ -204,6 +204,7 @@ loop:
 				ReqCode:  req.code,
 				RespCode: req.want,
 				Size:     req.numItems,
+<<<<<<< HEAD
 			}
 			if err := p.tracker.Track(treq); err != nil {
 				reqOp.fail <- err
@@ -215,6 +216,22 @@ loop:
 			}
 
 			pending[req.id] = req
+=======
+			}
+			if err := p.tracker.Track(treq); err != nil {
+				reqOp.fail <- err
+				continue loop
+			}
+			if err := p2p.Send(p.rw, req.code, req.data); err != nil {
+				reqOp.fail <- err
+				continue loop
+			}
+
+			// do not overwrite if it is re-request
+			if _, ok := pending[req.id]; !ok {
+				pending[req.id] = req
+			}
+>>>>>>> geth-v1.17.3
 			reqOp.fail <- nil
 
 		case cancelOp := <-p.reqCancel:
@@ -227,6 +244,13 @@ loop:
 			}
 			// Stop tracking the request
 			delete(pending, cancelOp.id)
+
+			// Not sure if the request is about the receipt, but remove it anyway.
+			// TODO(rjl493456442, bosul): investigate whether we can avoid leaking peer fields here.
+			p.receiptBufferLock.Lock()
+			delete(p.receiptBuffer, cancelOp.id)
+			p.receiptBufferLock.Unlock()
+
 			cancelOp.fail <- nil
 
 		case resOp := <-p.resDispatch:

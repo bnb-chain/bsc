@@ -39,7 +39,11 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/filtermaps"
+<<<<<<< HEAD
 	"github.com/ethereum/go-ethereum/core/monitor"
+=======
+	"github.com/ethereum/go-ethereum/core/history"
+>>>>>>> geth-v1.17.3
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/pruner"
 	"github.com/ethereum/go-ethereum/core/txpool"
@@ -58,7 +62,6 @@ import (
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
 	"github.com/ethereum/go-ethereum/eth/tracers"
 	"github.com/ethereum/go-ethereum/ethdb"
-	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/internal/shutdowncheck"
 	"github.com/ethereum/go-ethereum/internal/version"
@@ -132,7 +135,6 @@ type Ethereum struct {
 	// DB interfaces
 	chainDb ethdb.Database // Block chain database
 
-	eventMux       *event.TypeMux
 	engine         consensus.Engine
 	accountManager *accounts.Manager
 
@@ -295,7 +297,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	eth := &Ethereum{
 		config:          config,
 		chainDb:         chainDb,
-		eventMux:        stack.EventMux(),
 		accountManager:  stack.AccountManager(),
 		networkID:       networkID,
 		gasPrice:        config.Miner.GasPrice,
@@ -334,6 +335,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			rawdb.WriteDatabaseVersion(chainDb, core.BlockChainVersion)
 		}
 	}
+<<<<<<< HEAD
 
 	var (
 		options = &core.BlockChainConfig{
@@ -358,6 +360,28 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			RemoteIncrURL:         config.RemoteIncrSnapshotURL,
 			ChainHistoryMode:      config.HistoryMode,
 			TxLookupLimit:         int64(min(config.TransactionHistory, math.MaxInt64)),
+=======
+	histPolicy, err := history.NewPolicy(config.HistoryMode, genesisHash)
+	if err != nil {
+		return nil, err
+	}
+	var (
+		options = &core.BlockChainConfig{
+			TrieCleanLimit:          config.TrieCleanCache,
+			NoPrefetch:              config.NoPrefetch,
+			TrieDirtyLimit:          config.TrieDirtyCache,
+			ArchiveMode:             config.NoPruning,
+			TrieTimeLimit:           config.TrieTimeout,
+			SnapshotLimit:           config.SnapshotCache,
+			Preimages:               config.Preimages,
+			StateHistory:            config.StateHistory,
+			TrienodeHistory:         config.TrienodeHistory,
+			NodeFullValueCheckpoint: config.NodeFullValueCheckpoint,
+			BinTrieGroupDepth:       config.BinTrieGroupDepth,
+			StateScheme:             scheme,
+			HistoryPolicy:           histPolicy,
+			TxLookupLimit:           int64(min(config.TransactionHistory, math.MaxInt64)),
+>>>>>>> geth-v1.17.3
 			VmConfig: vm.Config{
 				EnablePreimageRecording: config.EnablePreimageRecording,
 			},
@@ -367,6 +391,10 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			// - DATADIR/triedb/verkle.journal
 			TrieJournalDirectory: stack.ResolvePath("triedb"),
 			StateSizeTracking:    config.EnableStateSizeTracking,
+<<<<<<< HEAD
+=======
+			SlowBlockThreshold:   config.SlowBlockThreshold,
+>>>>>>> geth-v1.17.3
 
 			StatelessSelfValidation: config.StatelessSelfValidation,
 			EnableWitnessStats:      config.EnableWitnessStats,
@@ -388,6 +416,24 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		}
 		options.VmConfig.Tracer = t
 	}
+<<<<<<< HEAD
+=======
+	// Override the chain config with provided settings.
+	var overrides core.ChainOverrides
+	if config.OverrideOsaka != nil {
+		overrides.OverrideOsaka = config.OverrideOsaka
+	}
+	if config.OverrideBPO1 != nil {
+		overrides.OverrideBPO1 = config.OverrideBPO1
+	}
+	if config.OverrideBPO2 != nil {
+		overrides.OverrideBPO2 = config.OverrideBPO2
+	}
+	if config.OverrideUBT != nil {
+		overrides.OverrideUBT = config.OverrideUBT
+	}
+	options.Overrides = &overrides
+>>>>>>> geth-v1.17.3
 
 	bcOps := make([]core.BlockChainOption, 0)
 	if stack.Config().EnableDoubleSignMonitor {
@@ -452,6 +498,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	// Permit the downloader to use the trie cache allowance during fast sync
 	cacheLimit := options.TrieCleanLimit + options.TrieDirtyLimit + options.SnapshotLimit
 	if eth.handler, err = newHandler(&handlerConfig{
+<<<<<<< HEAD
 		NodeID:                    eth.p2pServer.Self().ID(),
 		Database:                  chainDb,
 		Chain:                     eth.blockchain,
@@ -469,6 +516,16 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		DisablePeerTxBroadcast:    config.DisablePeerTxBroadcast,
 		PeerSet:                   newPeerSet(),
 		EnableQuickBlockFetching:  stack.Config().EnableQuickBlockFetching,
+=======
+		NodeID:         eth.p2pServer.Self().ID(),
+		Database:       chainDb,
+		Chain:          eth.blockchain,
+		TxPool:         eth.txPool,
+		Network:        networkID,
+		Sync:           config.SyncMode,
+		BloomCache:     uint64(cacheLimit),
+		RequiredBlocks: config.RequiredBlocks,
+>>>>>>> geth-v1.17.3
 	}); err != nil {
 		return nil, err
 	}
@@ -576,7 +633,7 @@ func (s *Ethereum) APIs() []rpc.API {
 			Service:   NewMinerAPI(s),
 		}, {
 			Namespace: "eth",
-			Service:   downloader.NewDownloaderAPI(s.handler.downloader, s.blockchain, s.eventMux),
+			Service:   downloader.NewDownloaderAPI(s.handler.downloader, s.blockchain),
 		}, {
 			Namespace: "eth",
 			Service:   filters.NewFilterAPI(filters.NewFilterSystem(s.APIBackend, filters.Config{}), s.config.RangeLimit),
@@ -912,6 +969,9 @@ func (s *Ethereum) updateFilterMapsHeads() {
 		if head == nil || newHead.Hash() != head.Hash() {
 			head = newHead
 			chainView := s.newChainView(head)
+			if chainView == nil {
+				return
+			}
 			historyCutoff, _ := s.blockchain.HistoryPruningCutoff()
 			var finalBlock, currentBlock int64
 			if fb := s.blockchain.CurrentFinalBlock(); fb != nil {
@@ -1029,12 +1089,12 @@ func (s *Ethereum) Stop() error {
 	s.shutdownTracker.Stop()
 
 	s.chainDb.Close()
-	s.eventMux.Stop()
 
 	// stop report loop
 	close(s.stopCh)
 	return nil
 }
+<<<<<<< HEAD
 
 func (s *Ethereum) reportRecentBlocksLoop() {
 	reportCnt := uint64(2)
@@ -1115,3 +1175,5 @@ func validTimeMetric(startMs, endMs int64) bool {
 	}
 	return endMs-startMs <= MaxBlockHandleDelayMs
 }
+=======
+>>>>>>> geth-v1.17.3

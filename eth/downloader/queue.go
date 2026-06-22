@@ -522,7 +522,7 @@ func (q *queue) reserveHeaders(p *peerConnection, count int, taskPool map[common
 	skip := make([]*types.Header, 0)
 	progress := false
 	throttled := false
-	for proc := 0; len(send) < count && !taskQueue.Empty(); proc++ {
+	for len(send) < count && !taskQueue.Empty() {
 		// the task queue will pop items in order, so the highest prio block
 		// is also the lowest block number.
 		header, _ := taskQueue.Peek()
@@ -537,7 +537,6 @@ func (q *queue) reserveHeaders(p *peerConnection, count int, taskPool map[common
 			taskQueue.PopItem()
 			progress = true
 			delete(taskPool, header.Hash())
-			proc = proc - 1
 			log.Error("Fetch reservation already delivered", "number", header.Number.Uint64())
 			continue
 		}
@@ -559,7 +558,6 @@ func (q *queue) reserveHeaders(p *peerConnection, count int, taskPool map[common
 			// If it's a noop, we can skip this task
 			delete(taskPool, header.Hash())
 			taskQueue.PopItem()
-			proc = proc - 1
 			progress = true
 			continue
 		}
@@ -676,6 +674,7 @@ func (q *queue) expire(peer string, pendPool map[string]*fetchRequest, taskQueue
 	return len(req.Headers)
 }
 
+<<<<<<< HEAD
 // DeliverHeaders injects a header retrieval response into the header results
 // cache. This method either accepts all headers it received, or none of them
 // if they do not map correctly to the skeleton.
@@ -797,6 +796,18 @@ func (q *queue) DeliverBodies(id string, hashes eth.BlockBodyHashes, bodies []et
 	var uncleLists [][]*types.Header
 	var withdrawalLists [][]*types.Withdrawal
 	var sidecarLists []types.BlobSidecars
+=======
+// DeliverBodies injects a block body retrieval response into the results queue.
+// The method returns the number of blocks bodies accepted from the delivery and
+// also wakes any threads waiting for data delivery.
+func (q *queue) DeliverBodies(id string, hashes eth.BlockBodyHashes, bodies []eth.BlockBody) (int, error) {
+	q.lock.Lock()
+	defer q.lock.Unlock()
+
+	var txLists [][]*types.Transaction
+	var uncleLists [][]*types.Header
+	var withdrawalLists [][]*types.Withdrawal
+>>>>>>> geth-v1.17.3
 
 	validate := func(index int, header *types.Header) error {
 		if hashes.TransactionRoots[index] != header.TxHash {
@@ -838,6 +849,7 @@ func (q *queue) DeliverBodies(id string, hashes eth.BlockBodyHashes, bodies []et
 			withdrawalLists = append(withdrawalLists, withdrawals)
 		} else {
 			withdrawalLists = append(withdrawalLists, nil)
+<<<<<<< HEAD
 		}
 		if bodies[index].Sidecars != nil {
 			sidecars, err := bodies[index].Sidecars.Items()
@@ -852,6 +864,8 @@ func (q *queue) DeliverBodies(id string, hashes eth.BlockBodyHashes, bodies []et
 			sidecarLists = append(sidecarLists, sidecars)
 		} else {
 			sidecarLists = append(sidecarLists, nil)
+=======
+>>>>>>> geth-v1.17.3
 		}
 		return nil
 	}

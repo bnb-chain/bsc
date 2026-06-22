@@ -18,6 +18,7 @@
 package miner
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"sync"
@@ -43,6 +44,32 @@ type Backend interface {
 	TxPool() *txpool.TxPool
 }
 
+<<<<<<< HEAD
+=======
+// Config is the configuration parameters of mining.
+type Config struct {
+	Etherbase           common.Address `toml:"-"`          // Deprecated
+	PendingFeeRecipient common.Address `toml:"-"`          // Address for pending block rewards.
+	ExtraData           hexutil.Bytes  `toml:",omitempty"` // Block extra data set by the miner
+	GasCeil             uint64         // Target gas ceiling for mined blocks.
+	GasPrice            *big.Int       // Minimum gas price for mining a transaction
+	Recommit            time.Duration  // The time interval for miner to re-create mining work.
+	MaxBlobsPerBlock    int            // Maximum number of blobs per block (0 for unset uses protocol default)
+}
+
+// DefaultConfig contains default settings for miner.
+var DefaultConfig = Config{
+	GasCeil:  60_000_000,
+	GasPrice: big.NewInt(params.GWei / 1000),
+
+	// The default recommit time is chosen as two seconds since
+	// consensus-layer usually will wait a half slot of time(6s)
+	// for payload generation. It should be enough for Geth to
+	// run 3 rounds.
+	Recommit: 2 * time.Second,
+}
+
+>>>>>>> geth-v1.17.3
 // Miner is the main object which takes care of submitting new work to consensus
 // engine and gathering the sealing result.
 type Miner struct {
@@ -229,10 +256,50 @@ func (miner *Miner) SetGasCeil(ceil uint64) {
 }
 
 // BuildPayload builds the payload according to the provided parameters.
+<<<<<<< HEAD
 func (miner *Miner) BuildPayload(args *BuildPayloadArgs, witness bool) (*Payload, error) {
 	return miner.worker.buildPayload(args, witness)
 }
 
 func (miner *Miner) GasCeil() uint64 {
 	return miner.worker.getGasCeil()
+=======
+func (miner *Miner) BuildPayload(ctx context.Context, args *BuildPayloadArgs, witness bool) (*Payload, error) {
+	return miner.buildPayload(ctx, args, witness)
+}
+
+// getPending retrieves the pending block based on the current head block.
+// The result might be nil if pending generation is failed.
+func (miner *Miner) getPending() *newPayloadResult {
+	header := miner.chain.CurrentHeader()
+	miner.pendingMu.Lock()
+	defer miner.pendingMu.Unlock()
+
+	if cached := miner.pending.resolve(header.Hash()); cached != nil {
+		return cached
+	}
+	var (
+		timestamp  = uint64(time.Now().Unix())
+		withdrawal types.Withdrawals
+	)
+	if miner.chainConfig.IsShanghai(new(big.Int).Add(header.Number, big.NewInt(1)), timestamp) {
+		withdrawal = []*types.Withdrawal{}
+	}
+	ret := miner.generateWork(context.Background(),
+		&generateParams{
+			timestamp:   timestamp,
+			forceTime:   false,
+			parentHash:  header.Hash(),
+			coinbase:    miner.config.PendingFeeRecipient,
+			random:      common.Hash{},
+			withdrawals: withdrawal,
+			beaconRoot:  nil,
+			noTxs:       false,
+		}, false) // we will never make a witness for a pending block
+	if ret.err != nil {
+		return nil
+	}
+	miner.pending.update(header.Hash(), ret)
+	return ret
+>>>>>>> geth-v1.17.3
 }

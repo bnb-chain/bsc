@@ -20,34 +20,43 @@ import (
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/lru"
-	"github.com/ethereum/go-ethereum/core/overlay"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/bintrie"
+	"github.com/ethereum/go-ethereum/trie/transitiontrie"
 	"github.com/ethereum/go-ethereum/trie/trienode"
-	"github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/ethereum/go-ethereum/triedb"
 )
 
+// DatabaseType represents the type of trie backing the state database.
+type DatabaseType int
+
 const (
-	// Number of codehash->size associations to keep.
-	codeSizeCacheSize = 1_000_000 // 4 megabytes in total
+	// TypeMPT indicates a Merkle Patricia Trie (MPT) backed database.
+	TypeMPT DatabaseType = iota
 
-	// Cache size granted for caching clean code.
-	codeCacheSize = 256 * 1024 * 1024
-
-	// Number of address->curve point associations to keep.
-	pointCacheSize = 4096
+	// TypeUBT indicates a Unified Binary Trie (UBT) backed database.
+	TypeUBT
 )
+
+// Is returns the flag indicating the database type equals to the given one.
+func (typ DatabaseType) Is(t DatabaseType) bool {
+	return typ == t
+}
 
 // Database wraps access to tries and contract code.
 type Database interface {
+	// Type returns the trie type backing this database (MPT or UBT).
+	Type() DatabaseType
+
 	// Reader returns a state reader associated with the specified state root.
 	Reader(root common.Hash) (Reader, error)
+
+	// Iteratee returns a state iteratee associated with the specified state root,
+	// through which the account iterator and storage iterator can be created.
+	Iteratee(root common.Hash) (Iteratee, error)
 
 	// OpenTrie opens the main account trie.
 	OpenTrie(root common.Hash) (Trie, error)
@@ -55,17 +64,21 @@ type Database interface {
 	// OpenStorageTrie opens the storage trie of an account.
 	OpenStorageTrie(stateRoot common.Hash, address common.Address, root common.Hash, trie Trie) (Trie, error)
 
-	// PointCache returns the cache holding points used in verkle tree key computation
-	PointCache() *utils.PointCache
-
 	// TrieDB returns the underlying trie database for managing trie nodes.
 	TrieDB() *triedb.Database
 
+<<<<<<< HEAD
 	// NoTries returns whether the database has tries storage.
 	NoTries() bool
 
 	// Snapshot returns the underlying state snapshot.
 	Snapshot() *snapshot.Tree
+=======
+	// Commit flushes all pending writes and finalizes the state transition,
+	// committing the changes to the underlying storage. It returns an error
+	// if the commit fails.
+	Commit(update *StateUpdate) error
+>>>>>>> geth-v1.17.3
 }
 
 // Trie is a Ethereum Merkle Patricia trie.
@@ -149,40 +162,23 @@ type Trie interface {
 	// with the node that proves the absence of the key.
 	Prove(key []byte, proofDb ethdb.KeyValueWriter) error
 
-	// IsVerkle returns true if the trie is verkle-tree based
-	IsVerkle() bool
-}
-
-// CachingDB is an implementation of Database interface. It leverages both trie and
-// state snapshot to provide functionalities for state access. It's meant to be a
-// long-live object and has a few caches inside for sharing between blocks.
-type CachingDB struct {
-	disk          ethdb.KeyValueStore
-	triedb        *triedb.Database
-	snap          *snapshot.Tree
-	codeCache     *lru.SizeConstrainedCache[common.Hash, []byte]
-	codeSizeCache *lru.Cache[common.Hash, int]
-	pointCache    *utils.PointCache
-
-	// Transition-specific fields
-	TransitionStatePerRoot *lru.Cache[common.Hash, *overlay.TransitionState]
+	// IsUBT returns true if the trie is unified binary trie based.
+	IsUBT() bool
 }
 
 // NewDatabase creates a state database with the provided data sources.
-func NewDatabase(triedb *triedb.Database, snap *snapshot.Tree) *CachingDB {
-	return &CachingDB{
-		disk:                   triedb.Disk(),
-		triedb:                 triedb,
-		snap:                   snap,
-		codeCache:              lru.NewSizeConstrainedCache[common.Hash, []byte](codeCacheSize),
-		codeSizeCache:          lru.NewCache[common.Hash, int](codeSizeCacheSize),
-		pointCache:             utils.NewPointCache(pointCacheSize),
-		TransitionStatePerRoot: lru.NewCache[common.Hash, *overlay.TransitionState](1000),
+//
+// Deprecated, please use NewMPTDatabase or NewUBTDatabase directly.
+func NewDatabase(tdb *triedb.Database, codedb *CodeDB) Database {
+	if tdb.IsUBT() {
+		return NewUBTDatabase(tdb, codedb)
 	}
+	return NewMPTDatabase(tdb, codedb)
 }
 
 // NewDatabaseForTesting is similar to NewDatabase, but it initializes the caching
 // db by using an ephemeral memory db with default config for testing.
+<<<<<<< HEAD
 func NewDatabaseForTesting() *CachingDB {
 	return NewDatabase(triedb.NewDatabase(rawdb.NewMemoryDatabase(), nil), nil)
 }
@@ -309,6 +305,11 @@ func (db *CachingDB) PointCache() *utils.PointCache {
 // Snapshot returns the underlying state snapshot.
 func (db *CachingDB) Snapshot() *snapshot.Tree {
 	return db.snap
+=======
+func NewDatabaseForTesting() Database {
+	db := rawdb.NewMemoryDatabase()
+	return NewDatabase(triedb.NewDatabase(db, nil), NewCodeDB(db))
+>>>>>>> geth-v1.17.3
 }
 
 // mustCopyTrie returns a deep-copied trie.
@@ -319,11 +320,15 @@ func mustCopyTrie(t Trie) Trie {
 	switch t := t.(type) {
 	case *trie.StateTrie:
 		return t.Copy()
+<<<<<<< HEAD
 	case *trie.EmptyTrie:
 		return t.Copy()
 	case *trie.VerkleTrie:
+=======
+	case *transitiontrie.TransitionTrie:
+>>>>>>> geth-v1.17.3
 		return t.Copy()
-	case *trie.TransitionTrie:
+	case *bintrie.BinaryTrie:
 		return t.Copy()
 	default:
 		panic(fmt.Errorf("unknown trie type %T", t))

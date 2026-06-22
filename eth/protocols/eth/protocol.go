@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/forkid"
@@ -30,8 +29,8 @@ import (
 
 // Constants to match up protocol versions and messages
 const (
-	ETH68 = 68
 	ETH69 = 69
+	ETH70 = 70
 )
 
 // ProtocolName is the official short name of the `eth` protocol used during
@@ -40,11 +39,15 @@ const ProtocolName = "eth"
 
 // ProtocolVersions are the supported versions of the `eth` protocol (first
 // is primary).
+<<<<<<< HEAD
 var ProtocolVersions = []uint{ /*ETH69,*/ ETH68} // ETH69 is disabled in bsc
+=======
+var ProtocolVersions = []uint{ETH70, ETH69}
+>>>>>>> geth-v1.17.3
 
 // protocolLengths are the number of implemented message corresponding to
 // different protocol versions.
-var protocolLengths = map[uint]uint64{ETH68: 17, ETH69: 18}
+var protocolLengths = map[uint]uint64{ETH69: 18, ETH70: 18}
 
 // maxMessageSize is the maximum cap on the size of a protocol message.
 const maxMessageSize = 10 * 1024 * 1024
@@ -90,6 +93,7 @@ type Packet interface {
 }
 
 // StatusPacket is the network packet for the status message.
+<<<<<<< HEAD
 type StatusPacket68 struct {
 	ProtocolVersion uint32
 	NetworkID       uint64
@@ -130,6 +134,9 @@ func (p *UpgradeStatusPacket) GetExtension() (*UpgradeStatusExtension, error) {
 
 // StatusPacket69 is the network packet for the status message.
 type StatusPacket69 struct {
+=======
+type StatusPacket struct {
+>>>>>>> geth-v1.17.3
 	ProtocolVersion uint32
 	NetworkID       uint64
 	Genesis         common.Hash
@@ -138,26 +145,6 @@ type StatusPacket69 struct {
 	EarliestBlock   uint64
 	LatestBlock     uint64
 	LatestBlockHash common.Hash
-}
-
-// NewBlockHashesPacket is the network packet for the block announcements.
-type NewBlockHashesPacket []struct {
-	Hash   common.Hash // Hash of one particular block being announced
-	Number uint64      // Number of one particular block being announced
-}
-
-// Unpack retrieves the block hashes and numbers from the announcement packet
-// and returns them in a split flat format that's more consistent with the
-// internal data structures.
-func (p *NewBlockHashesPacket) Unpack() ([]common.Hash, []uint64) {
-	var (
-		hashes  = make([]common.Hash, len(*p))
-		numbers = make([]uint64, len(*p))
-	)
-	for i, body := range *p {
-		hashes[i], numbers[i] = body.Hash, body.Number
-	}
-	return hashes, numbers
 }
 
 // TransactionsPacket is the network packet for broadcasting new transactions.
@@ -234,6 +221,7 @@ type BlockHeadersRLPPacket struct {
 	BlockHeadersRLPResponse
 }
 
+<<<<<<< HEAD
 // NewBlockPacket is the network packet for the block propagation message.
 type NewBlockPacket struct {
 	Block    *types.Block
@@ -263,6 +251,8 @@ func (request *NewBlockPacket) sanityCheck() error {
 	return nil
 }
 
+=======
+>>>>>>> geth-v1.17.3
 // GetBlockBodiesRequest represents a block body query.
 type GetBlockBodiesRequest []common.Hash
 
@@ -297,22 +287,35 @@ type BlockBodiesResponse []BlockBody
 type BlockBody struct {
 	Transactions rlp.RawList[*types.Transaction]
 	Uncles       rlp.RawList[*types.Header]
+<<<<<<< HEAD
 	Withdrawals  *rlp.RawList[*types.Withdrawal]  `rlp:"optional"`
 	Sidecars     *rlp.RawList[*types.BlobSidecar] `rlp:"optional"`
+=======
+	Withdrawals  *rlp.RawList[*types.Withdrawal] `rlp:"optional"`
+>>>>>>> geth-v1.17.3
 }
 
 // GetReceiptsRequest represents a block receipts query.
 type GetReceiptsRequest []common.Hash
 
-// GetReceiptsPacket represents a block receipts query with request ID wrapping.
-type GetReceiptsPacket struct {
+// GetReceiptsPacket69 represents a block receipts query with request ID wrapping.
+type GetReceiptsPacket69 struct {
 	RequestId uint64
+	GetReceiptsRequest
+}
+
+// GetReceiptsPacket70 represents a block receipts query with request ID and
+// FirstBlockReceiptIndex wrapping.
+type GetReceiptsPacket70 struct {
+	RequestId              uint64
+	FirstBlockReceiptIndex uint64
 	GetReceiptsRequest
 }
 
 // ReceiptsResponse is the network packet for block receipts distribution.
 type ReceiptsResponse []types.Receipts
 
+<<<<<<< HEAD
 // ReceiptsList is a type constraint for block receceipt list types.
 type ReceiptsList interface {
 	*ReceiptList68 | *ReceiptList69
@@ -326,16 +329,23 @@ type ReceiptsList interface {
 type ReceiptsPacket[L ReceiptsList] struct {
 	RequestId uint64
 	List      rlp.RawList[L]
+=======
+// ReceiptsPacket69 is the network packet for block receipts distribution with
+// request ID wrapping.
+type ReceiptsPacket69 struct {
+	RequestId uint64
+	List      rlp.RawList[*ReceiptList]
+}
+
+type ReceiptsPacket70 struct {
+	RequestId           uint64
+	LastBlockIncomplete bool
+	List                rlp.RawList[*ReceiptList]
+>>>>>>> geth-v1.17.3
 }
 
 // ReceiptsRLPResponse is used for receipts, when we already have it encoded
 type ReceiptsRLPResponse []rlp.RawValue
-
-// ReceiptsRLPPacket is ReceiptsRLPResponse with request ID wrapping.
-type ReceiptsRLPPacket struct {
-	RequestId uint64
-	ReceiptsRLPResponse
-}
 
 // NewPooledTransactionHashesPacket represents a transaction announcement packet on eth/68 and newer.
 type NewPooledTransactionHashesPacket struct {
@@ -380,6 +390,7 @@ type BlockRangeUpdatePacket struct {
 	LatestBlockHash common.Hash
 }
 
+<<<<<<< HEAD
 func (*StatusPacket68) Name() string { return "Status" }
 func (*StatusPacket68) Kind() byte   { return StatusMsg }
 
@@ -391,6 +402,10 @@ func (*UpgradeStatusPacket) Kind() byte   { return UpgradeStatusMsg }
 
 func (*NewBlockHashesPacket) Name() string { return "NewBlockHashes" }
 func (*NewBlockHashesPacket) Kind() byte   { return NewBlockHashesMsg }
+=======
+func (*StatusPacket) Name() string { return "Status" }
+func (*StatusPacket) Kind() byte   { return StatusMsg }
+>>>>>>> geth-v1.17.3
 
 func (*TransactionsPacket) Name() string { return "Transactions" }
 func (*TransactionsPacket) Kind() byte   { return TransactionsMsg }
@@ -406,9 +421,6 @@ func (*GetBlockBodiesRequest) Kind() byte   { return GetBlockBodiesMsg }
 
 func (*BlockBodiesResponse) Name() string { return "BlockBodies" }
 func (*BlockBodiesResponse) Kind() byte   { return BlockBodiesMsg }
-
-func (*NewBlockPacket) Name() string { return "NewBlock" }
-func (*NewBlockPacket) Kind() byte   { return NewBlockMsg }
 
 func (*NewPooledTransactionHashesPacket) Name() string { return "NewPooledTransactionHashes" }
 func (*NewPooledTransactionHashesPacket) Kind() byte   { return NewPooledTransactionHashesMsg }

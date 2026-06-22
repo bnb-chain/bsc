@@ -28,7 +28,7 @@ import (
 )
 
 func init() {
-	tracers.DefaultDirectory.Register("muxTracer", newMuxTracer, false)
+	tracers.DefaultDirectory.Register("muxTracer", newMuxTracerFromConfig, false)
 }
 
 // muxTracer is a go implementation of the Tracer interface which
@@ -38,8 +38,8 @@ type muxTracer struct {
 	tracers []*tracers.Tracer
 }
 
-// newMuxTracer returns a new mux tracer.
-func newMuxTracer(ctx *tracers.Context, cfg json.RawMessage, chainConfig *params.ChainConfig) (*tracers.Tracer, error) {
+// newMuxTracerFromConfig returns a new mux tracer.
+func newMuxTracerFromConfig(ctx *tracers.Context, cfg json.RawMessage, chainConfig *params.ChainConfig) (*tracers.Tracer, error) {
 	var config map[string]json.RawMessage
 	if err := json.Unmarshal(cfg, &config); err != nil {
 		return nil, err
@@ -54,10 +54,26 @@ func newMuxTracer(ctx *tracers.Context, cfg json.RawMessage, chainConfig *params
 		objects = append(objects, t)
 		names = append(names, k)
 	}
+	return NewMuxTracer(names, objects)
+}
 
+// NewMuxTracer creates a multiplexing tracer that fans out tracing hooks to
+// multiple child tracers. Each hook invocation is forwarded to all children,
+// in the order they are provided.
+//
+// The names parameter associates a label with each tracer, used as keys in
+// the aggregated JSON result returned by GetResult.
+//
+// For hooks that have both a V1 and V2 form (OnCodeChange / OnCodeChangeV2,
+// OnNonceChange / OnNonceChangeV2, OnSystemCallStart / OnSystemCallStartV2),
+// the mux exposes only the V2 variant upward. The fanout then prefers each
+// child's V2 hook and falls back to V1 if only V1 is set, mirroring the
+// precedence already used in core/state_processor.go.
+func NewMuxTracer(names []string, objects []*tracers.Tracer) (*tracers.Tracer, error) {
 	t := &muxTracer{names: names, tracers: objects}
 	return &tracers.Tracer{
 		Hooks: &tracing.Hooks{
+<<<<<<< HEAD
 			OnTxStart:                 t.OnTxStart,
 			OnTxEnd:                   t.OnTxEnd,
 			OnEnter:                   t.OnEnter,
@@ -73,6 +89,22 @@ func newMuxTracer(ctx *tracers.Context, cfg json.RawMessage, chainConfig *params
 			OnSystemTxFixIntrinsicGas: t.OnSystemTxFixIntrinsicGas,
 			OnSystemCallStartV2:       t.OnSystemCallStart,
 			OnSystemCallEnd:           t.OnSystemCallEnd,
+=======
+			OnTxStart:           t.OnTxStart,
+			OnTxEnd:             t.OnTxEnd,
+			OnEnter:             t.OnEnter,
+			OnExit:              t.OnExit,
+			OnOpcode:            t.OnOpcode,
+			OnFault:             t.OnFault,
+			OnGasChange:         t.OnGasChange,
+			OnBalanceChange:     t.OnBalanceChange,
+			OnNonceChangeV2:     t.OnNonceChangeV2,
+			OnCodeChangeV2:      t.OnCodeChangeV2,
+			OnStorageChange:     t.OnStorageChange,
+			OnLog:               t.OnLog,
+			OnSystemCallStartV2: t.OnSystemCallStart,
+			OnSystemCallEnd:     t.OnSystemCallEnd,
+>>>>>>> geth-v1.17.3
 		},
 		GetResult: t.GetResult,
 		Stop:      t.Stop,
@@ -143,17 +175,21 @@ func (t *muxTracer) OnBalanceChange(a common.Address, prev, new *big.Int, reason
 	}
 }
 
-func (t *muxTracer) OnNonceChange(a common.Address, prev, new uint64) {
+func (t *muxTracer) OnNonceChangeV2(a common.Address, prev, new uint64, reason tracing.NonceChangeReason) {
 	for _, t := range t.tracers {
-		if t.OnNonceChange != nil {
+		if t.OnNonceChangeV2 != nil {
+			t.OnNonceChangeV2(a, prev, new, reason)
+		} else if t.OnNonceChange != nil {
 			t.OnNonceChange(a, prev, new)
 		}
 	}
 }
 
-func (t *muxTracer) OnCodeChange(a common.Address, prevCodeHash common.Hash, prev []byte, codeHash common.Hash, code []byte) {
+func (t *muxTracer) OnCodeChangeV2(a common.Address, prevCodeHash common.Hash, prev []byte, codeHash common.Hash, code []byte, reason tracing.CodeChangeReason) {
 	for _, t := range t.tracers {
-		if t.OnCodeChange != nil {
+		if t.OnCodeChangeV2 != nil {
+			t.OnCodeChangeV2(a, prevCodeHash, prev, codeHash, code, reason)
+		} else if t.OnCodeChange != nil {
 			t.OnCodeChange(a, prevCodeHash, prev, codeHash, code)
 		}
 	}
@@ -175,6 +211,7 @@ func (t *muxTracer) OnLog(log *types.Log) {
 	}
 }
 
+<<<<<<< HEAD
 func (t *muxTracer) OnSystemTxFixIntrinsicGas(intrinsicGas uint64) {
 	for _, t := range t.tracers {
 		if t.OnSystemTxFixIntrinsicGas != nil {
@@ -183,6 +220,8 @@ func (t *muxTracer) OnSystemTxFixIntrinsicGas(intrinsicGas uint64) {
 	}
 }
 
+=======
+>>>>>>> geth-v1.17.3
 func (t *muxTracer) OnSystemCallStart(vm *tracing.VMContext) {
 	for _, t := range t.tracers {
 		if t.OnSystemCallStartV2 != nil {

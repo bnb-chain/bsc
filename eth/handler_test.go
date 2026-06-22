@@ -149,10 +149,11 @@ func (p *testTxPool) ReannouceTransactions(txs []*types.Transaction) []error {
 }
 
 // Pending returns all the transactions known to the pool
-func (p *testTxPool) Pending(filter txpool.PendingFilter) map[common.Address][]*txpool.LazyTransaction {
+func (p *testTxPool) Pending(filter txpool.PendingFilter) (map[common.Address][]*txpool.LazyTransaction, int) {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 
+	var count int
 	batches := make(map[common.Address][]*types.Transaction)
 	for _, tx := range p.pool {
 		from, _ := types.Sender(types.HomesteadSigner{}, tx)
@@ -173,9 +174,10 @@ func (p *testTxPool) Pending(filter txpool.PendingFilter) map[common.Address][]*
 				Gas:       tx.Gas(),
 				BlobGas:   tx.BlobGas(),
 			})
+			count++
 		}
 	}
-	return pending
+	return pending, count
 }
 
 // SubscribeTransactions should return an event subscription of NewTxsEvent and
@@ -184,10 +186,20 @@ func (p *testTxPool) SubscribeTransactions(ch chan<- core.NewTxsEvent, reorgs bo
 	return p.txFeed.Subscribe(ch)
 }
 
+<<<<<<< HEAD
 // SubscribeReannoTxsEvent should return an event subscription of ReannoTxsEvent and
 // send events to the given channel.
 func (p *testTxPool) SubscribeReannoTxsEvent(ch chan<- core.ReannoTxsEvent) event.Subscription {
 	return p.reannoTxFeed.Subscribe(ch)
+=======
+// FilterType should check whether the pool supports the given type of transactions.
+func (p *testTxPool) FilterType(kind byte) bool {
+	switch kind {
+	case types.LegacyTxType, types.AccessListTxType, types.DynamicFeeTxType, types.BlobTxType, types.SetCodeTxType:
+		return true
+	}
+	return false
+>>>>>>> geth-v1.17.3
 }
 
 // testHandler is a live implementation of the Ethereum protocol handler, just
@@ -202,13 +214,13 @@ type testHandler struct {
 }
 
 // newTestHandler creates a new handler for testing purposes with no blocks.
-func newTestHandler() *testHandler {
-	return newTestHandlerWithBlocks(0)
+func newTestHandler(mode ethconfig.SyncMode) *testHandler {
+	return newTestHandlerWithBlocks(0, mode)
 }
 
 // newTestHandlerWithBlocks creates a new handler for testing purposes, with a
 // given number of initial blocks.
-func newTestHandlerWithBlocks(blocks int) *testHandler {
+func newTestHandlerWithBlocks(blocks int, mode ethconfig.SyncMode) *testHandler {
 	// Create a database pre-initialize with a genesis block
 	db := rawdb.NewMemoryDatabase()
 	gspec := &core.Genesis{
@@ -230,7 +242,7 @@ func newTestHandlerWithBlocks(blocks int) *testHandler {
 		TxPool:     txpool,
 		VotePool:   votepool,
 		Network:    1,
-		Sync:       ethconfig.SnapSync,
+		Sync:       mode,
 		BloomCache: 1,
 	})
 	handler.Start(1000, 3)
@@ -527,7 +539,7 @@ func createTestPeers(rand *rand.Rand, n int) []*ethPeer {
 		var id enode.ID
 		rand.Read(id[:])
 		p2pPeer := p2p.NewPeer(id, "test", nil)
-		ep := eth.NewPeer(eth.ETH69, p2pPeer, nil, nil)
+		ep := eth.NewPeer(eth.ETH69, p2pPeer, nil, nil, nil)
 		peers[i] = &ethPeer{Peer: ep}
 	}
 	return peers
