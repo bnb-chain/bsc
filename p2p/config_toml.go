@@ -28,7 +28,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		Name                      string `toml:"-"`
 		BootstrapNodes            []*enode.Node
 		BootstrapNodesV5          []*enode.Node `toml:",omitempty"`
-		EnableENRFilter           bool          `toml:",omitempty"`
 		StaticNodes               []*enode.Node
 		TrustedNodes              []*enode.Node
 		EVNNodeIdsWhitelist       []enode.ID       `toml:",omitempty"`
@@ -58,7 +57,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.Name = c.Name
 	enc.BootstrapNodes = c.BootstrapNodes
 	enc.BootstrapNodesV5 = c.BootstrapNodesV5
-	enc.EnableENRFilter = c.EnableENRFilter
 	enc.StaticNodes = c.StaticNodes
 	enc.TrustedNodes = c.TrustedNodes
 	enc.EVNNodeIdsWhitelist = c.EVNNodeIdsWhitelist
@@ -92,7 +90,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		Name                      *string `toml:"-"`
 		BootstrapNodes            []*enode.Node
 		BootstrapNodesV5          []*enode.Node `toml:",omitempty"`
-		EnableENRFilter           *bool         `toml:",omitempty"`
 		StaticNodes               []*enode.Node
 		TrustedNodes              []*enode.Node
 		EVNNodeIdsWhitelist       []enode.ID       `toml:",omitempty"`
@@ -146,9 +143,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.BootstrapNodesV5 != nil {
 		c.BootstrapNodesV5 = dec.BootstrapNodesV5
-	}
-	if dec.EnableENRFilter != nil {
-		c.EnableENRFilter = *dec.EnableENRFilter
 	}
 	if dec.StaticNodes != nil {
 		c.StaticNodes = dec.StaticNodes

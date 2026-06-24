@@ -29,16 +29,12 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/internal/testlog"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
 )
 
 func TestTable_pingReplace(t *testing.T) {
@@ -297,7 +293,7 @@ func TestTable_addInboundNode(t *testing.T) {
 	newrec := n2.Record()
 	newrec.Set(enr.IP{99, 99, 99, 99})
 	n2v2 := enode.SignNull(newrec, n2.ID())
-	tab.addInboundNodeSync(n2v2)
+	tab.addInboundNode(n2v2)
 	checkBucketContent(t, tab, []*enode.Node{n1, n2v2})
 
 	// Try updating n2 without sequence number change. The update is accepted
@@ -306,7 +302,7 @@ func TestTable_addInboundNode(t *testing.T) {
 	newrec.Set(enr.IP{100, 100, 100, 100})
 	newrec.SetSeq(n2.Seq())
 	n2v3 := enode.SignNull(newrec, n2.ID())
-	tab.addInboundNodeSync(n2v3)
+	tab.addInboundNode(n2v3)
 	checkBucketContent(t, tab, []*enode.Node{n1, n2v3})
 }
 
@@ -350,13 +346,13 @@ func TestTable_addInboundNodeUpdateV4Accept(t *testing.T) {
 	// Add a v4 node.
 	key, _ := crypto.HexToECDSA("dd3757a8075e88d0f2b1431e7d3c5b1562e1c0aab9643707e8cbfcc8dae5cfe3")
 	n1 := enode.NewV4(&key.PublicKey, net.IP{88, 77, 66, 1}, 9000, 9000)
-	tab.addInboundNodeSync(n1)
+	tab.addInboundNode(n1)
 	checkBucketContent(t, tab, []*enode.Node{n1})
 
 	// Add an updated version with changed IP.
 	// The update will be accepted because it is inbound.
 	n1v2 := enode.NewV4(&key.PublicKey, net.IP{99, 99, 99, 99}, 9000, 9000)
-	tab.addInboundNodeSync(n1v2)
+	tab.addInboundNode(n1v2)
 	checkBucketContent(t, tab, []*enode.Node{n1v2})
 }
 
@@ -435,41 +431,6 @@ func TestTable_revalidateSyncRecord(t *testing.T) {
 	if !reflect.DeepEqual(intable, n2) {
 		t.Fatalf("table contains old record with seq %d, want seq %d", intable.Seq(), n2.Seq())
 	}
-}
-
-// This test checks that ENR filtering is working properly
-func TestTable_filterNode(t *testing.T) {
-	// Create ENR filter
-	type eth struct {
-		ForkID forkid.ID
-		Tail   []rlp.RawValue `rlp:"tail"`
-	}
-
-	enrFilter, _ := ParseEthFilter("bsc")
-
-	// Check test ENR record
-	var r1 enr.Record
-	r1.Set(enr.WithEntry("foo", "bar"))
-	if enrFilter(&r1) {
-		t.Fatalf("filterNode doesn't work correctly for entry")
-	}
-	t.Logf("Check test ENR record - passed")
-
-	// Check wrong genesis ENR record
-	var r2 enr.Record
-	r2.Set(enr.WithEntry("eth", eth{ForkID: forkid.NewID(params.BSCChainConfig, core.DefaultChapelGenesisBlock().ToBlock(), uint64(0), uint64(0))}))
-	if enrFilter(&r2) {
-		t.Fatalf("filterNode doesn't work correctly for wrong genesis entry")
-	}
-	t.Logf("Check wrong genesis ENR record - passed")
-
-	// Check correct genesis ENR record
-	var r3 enr.Record
-	r3.Set(enr.WithEntry("eth", eth{ForkID: forkid.NewID(params.BSCChainConfig, core.DefaultBSCGenesisBlock().ToBlock(), uint64(0), uint64(0))}))
-	if !enrFilter(&r3) {
-		t.Fatalf("filterNode doesn't work correctly for correct genesis entry")
-	}
-	t.Logf("Check correct genesis ENR record - passed")
 }
 
 func TestNodesPush(t *testing.T) {

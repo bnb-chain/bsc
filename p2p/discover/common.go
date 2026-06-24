@@ -20,7 +20,6 @@ import (
 	"crypto/ecdsa"
 	crand "crypto/rand"
 	"encoding/binary"
-	"fmt"
 	"math/rand"
 	"net"
 	"net/netip"
@@ -28,14 +27,10 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/mclock"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
-	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
 )
 
 // UDPConn is a network connection on which discovery can operate.
@@ -44,48 +39,6 @@ type UDPConn interface {
 	WriteToUDPAddrPort(b []byte, addr netip.AddrPort) (n int, err error)
 	Close() error
 	LocalAddr() net.Addr
-}
-
-type NodeFilterFunc func(*enr.Record) bool
-
-func ParseEthFilter(chain string) (NodeFilterFunc, error) {
-	var filter forkid.Filter
-	switch chain {
-	case "bsc":
-		filter = forkid.NewStaticFilter(params.BSCChainConfig, core.DefaultBSCGenesisBlock().ToBlock())
-	case "chapel":
-		filter = forkid.NewStaticFilter(params.ChapelChainConfig, core.DefaultChapelGenesisBlock().ToBlock())
-	default:
-		return nil, fmt.Errorf("unknown network %q", chain)
-	}
-
-	f := func(r *enr.Record) bool {
-		var eth struct {
-			ForkID forkid.ID
-			Tail   []rlp.RawValue `rlp:"tail"`
-		}
-		if r.Load(enr.WithEntry("eth", &eth)) != nil {
-			return false
-		}
-		return filter(eth.ForkID) == nil
-	}
-	return f, nil
-}
-
-func GetEthEntry(chain string) (enr.Entry, error) {
-	var eth struct {
-		ForkID forkid.ID
-		Tail   []rlp.RawValue `rlp:"tail"`
-	}
-	switch chain {
-	case "bsc":
-		eth.ForkID = forkid.NewID(params.BSCChainConfig, core.DefaultBSCGenesisBlock().ToBlock(), uint64(0), uint64(0))
-	case "chapel":
-		eth.ForkID = forkid.NewID(params.ChapelChainConfig, core.DefaultChapelGenesisBlock().ToBlock(), uint64(0), uint64(0))
-	default:
-		return nil, fmt.Errorf("unknown network %q", chain)
-	}
-	return enr.WithEntry("eth", &eth), nil
 }
 
 // Config holds settings for the discovery listener.
@@ -109,11 +62,10 @@ type Config struct {
 	// The options below are useful in very specific cases, like in unit tests.
 	V5ProtocolID *[6]byte
 
-	FilterFunction NodeFilterFunc     // function for filtering ENR entries
-	Log            log.Logger         // if set, log messages go here
-	ValidSchemes   enr.IdentityScheme // allowed identity schemes
-	Clock          mclock.Clock
-	IsBootnode     bool // defines if it's bootnode
+	Log          log.Logger         // if set, log messages go here
+	ValidSchemes enr.IdentityScheme // allowed identity schemes
+	Clock        mclock.Clock
+	IsBootnode   bool // defines if it's bootnode
 }
 
 func (cfg Config) withDefaults() Config {
