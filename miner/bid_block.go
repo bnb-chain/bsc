@@ -122,6 +122,9 @@ func (w *worker) prepareBidBlockTask(
 	decoded *types.DecodedBidBlock,
 	start time.Time,
 ) (*task, error) {
+	prepareStart := time.Now()
+	defer bidBlockPrepareTimer.UpdateSince(prepareStart)
+
 	if !w.isRunning() {
 		return nil, errors.New("worker is not running")
 	}
@@ -270,7 +273,10 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 	//   - Tx precheck failures (nonce, balance, signature, intrinsic gas, ...)
 	//   - System tx value / params (e.g. deposit value vs. SystemAddress balance)
 	//   - Blob sidecar checks (KZG proofs, blob hashes)
-	if _, err := w.chain.InsertChain(types.Blocks{block}); err != nil {
+	verifyStart := time.Now()
+	_, insertErr := w.chain.InsertChain(types.Blocks{block})
+	bidBlockVerifyTimer.UpdateSince(verifyStart)
+	if insertErr != nil {
 		log.Error("[BID BLOCK VERIFY FAILED]",
 			"number", block.Number(),
 			"hash", hash,
@@ -281,8 +287,9 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			"stateRoot", block.Root(),
 			"receiptHash", block.ReceiptHash(),
 			"builder", task.bidBlockInfo.builder,
-			"err", err)
-		w.revokeBidBlockBuilder(task.bidBlockInfo.builder, fmt.Sprintf("InsertChain err: %v", err), hash, block.NumberU64())
+			"err", insertErr)
+		bidBlockVerifyFailedGauge.Inc(1)
+		w.revokeBidBlockBuilder(task.bidBlockInfo.builder, fmt.Sprintf("InsertChain err: %v", insertErr), hash, block.NumberU64())
 		return
 	}
 	// Check the post-import average gas price excluding system transactions; only future BidBlock permission is revoked.

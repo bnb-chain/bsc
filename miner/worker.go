@@ -78,9 +78,12 @@ var (
 	bestBidGasUsedGauge  = metrics.NewRegisteredGauge("worker/bestBidGasUsed", nil)  // MGas
 	bestWorkGasUsedGauge = metrics.NewRegisteredGauge("worker/bestWorkGasUsed", nil) // MGas
 	bidBlockExistGauge   = metrics.NewRegisteredGauge("worker/bidBlockExist", nil)
+	bidBlockWinGauge     = metrics.NewRegisteredGauge("worker/bidBlockWin", nil)
 	bidBlockCommitGauge  = metrics.NewRegisteredGauge("worker/bidBlockCommit", nil)
 	bidBlockGasUsedGauge = metrics.NewRegisteredGauge("worker/bidBlockGasUsed", nil) // MGas
 	bidBlockRevokeGauge  = metrics.NewRegisteredGauge("worker/bidBlockRevoke", nil)  // cumulative revoke count
+	// bidBlockVerifyFailedGauge counts sealed BidBlocks that failed async InsertChain verification (cumulative).
+	bidBlockVerifyFailedGauge = metrics.NewRegisteredGauge("worker/bidBlockVerifyFailed", nil)
 	// bidBlockRevokedBuildersGauge snapshots how many builders are revoked, taken at each revoke.
 	bidBlockRevokedBuildersGauge = metrics.NewRegisteredGauge("worker/bidBlockRevokedBuilders", nil)
 
@@ -1473,6 +1476,7 @@ LOOP:
 	}
 
 	if bestBidBlock != nil && w.selectBidBlock(bestBidBlock, simBidBlockReward, simBidValidatorReward, bestReward) {
+		bidBlockWinGauge.Inc(1)
 		task, err := w.prepareBidBlockTask(bestBidBlock, start)
 		if err != nil {
 			log.Error("Failed to prepare bid block, fallback",

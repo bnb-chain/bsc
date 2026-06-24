@@ -84,6 +84,15 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("invalid signature: bidHash=%s, err=%v", bidHash, err))
 	}
 
+	// Receive marker for the mev-sentry -> validator hop: correlate this bidHash with
+	// the send-side log for latency. Logged before the gates so rejected arrivals count too.
+	log.Debug("[BID BLOCK RECEIVED]",
+		"bidHash", bidHash,
+		"builder", builder,
+		"number", bb.Header.Number,
+		"parentHash", bb.Header.ParentHash,
+		"txs", len(bb.Transactions))
+
 	if !miner.bidSimulator.ExistBuilder(builder) {
 		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("builder is not registered: builder=%s, bidHash=%s", builder, bidHash))
 	}

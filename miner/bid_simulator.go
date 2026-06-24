@@ -59,6 +59,15 @@ var (
 
 	// bidBlockPreSealVerifyTimer measures only preSealVerifyBidBlock duration.
 	bidBlockPreSealVerifyTimer = metrics.NewRegisteredTimer("bidblock/sendBidBlock/preSealVerify", nil)
+
+	// bidBlockPrepareTimer measures prepareBidBlockTask: the selected BidBlock's
+	// blob KZG validation + system-tx bind-signing + TxHash recompute, on the
+	// critical path between selection and seal (fires on success and failure).
+	bidBlockPrepareTimer = metrics.NewRegisteredTimer("bidblock/prepare/duration", nil)
+
+	// bidBlockVerifyTimer times the sealed-BidBlock InsertChain verify; fires on
+	// success+failure, so _count = total verifies (verified = _count - bidBlockVerifyFailed).
+	bidBlockVerifyTimer = metrics.NewRegisteredTimer("bidblock/verify/duration", nil)
 )
 
 var (
