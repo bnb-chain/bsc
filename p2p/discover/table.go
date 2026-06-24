@@ -41,10 +41,9 @@ import (
 )
 
 const (
-	alpha              = 3   // Kademlia concurrency factor
-	bucketSize         = 16  // Kademlia bucket size
-	bootNodeBucketSize = 256 // Bigger bucket size for boot nodes
-	maxReplacements    = 10  // Size of per-bucket replacement list
+	alpha           = 3  // Kademlia concurrency factor
+	bucketSize      = 16 // Kademlia bucket size
+	maxReplacements = 10 // Size of per-bucket replacement list
 
 	// We keep buckets for the upper 1/15 of distances because
 	// it's very unlikely we'll ever encounter a node that's closer.
@@ -66,7 +65,6 @@ const (
 type Table struct {
 	mutex        sync.Mutex        // protects buckets, bucket content, nursery, rand
 	buckets      [nBuckets]*bucket // index of known nodes by distance
-	bucketSize   int               // size of bucket
 	nursery      []*enode.Node     // bootstrap nodes
 	rand         reseedingRandom   // source of randomness, periodically reseeded
 	ips          netutil.DistinctNetSet
@@ -138,10 +136,6 @@ func newTable(t transport, db *enode.DB, cfg Config) (*Table, error) {
 		closeReq:        make(chan struct{}),
 		closed:          make(chan struct{}),
 		ips:             netutil.DistinctNetSet{Subnet: tableSubnet, Limit: tableIPLimit},
-		bucketSize:      bucketSize,
-	}
-	if cfg.IsBootnode {
-		tab.bucketSize = bootNodeBucketSize
 	}
 	for i := range tab.buckets {
 		tab.buckets[i] = &bucket{
@@ -523,7 +517,6 @@ func (tab *Table) handleAddNode(req addNodeOp) bool {
 	if req.node.ID() == tab.self().ID() {
 		return false
 	}
-
 	// For nodes from inbound contact, there is an additional safety measure: if the table
 	// is still initializing the node is not added.
 	if req.isInbound && !tab.isInitDone() {
@@ -552,7 +545,6 @@ func (tab *Table) handleAddNode(req addNodeOp) bool {
 		wn.livenessChecks = 1
 		wn.isValidatedLive = true
 	}
-
 	b.entries = append(b.entries, wn)
 	b.replacements = deleteNode(b.replacements, wn.ID())
 	tab.nodeAdded(b, wn)
