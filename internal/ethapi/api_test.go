@@ -48,6 +48,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
@@ -104,7 +105,7 @@ func TestMevAPIGetBidBlockPermission(t *testing.T) {
 	revokedAt := time.Date(2026, 5, 9, 10, 0, 0, 0, time.UTC)
 	resetAt := time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC)
 	api := NewMevAPI(&testBackend{
-		bidBlockPermission: types.BidBlockPermissionStatus{
+		bidBlockPermission: buildertypes.BidBlockPermissionStatus{
 			Allowed:   false,
 			Reason:    "gasfee_overclaim",
 			BlockHash: blockHash,
@@ -488,7 +489,7 @@ type testBackend struct {
 	syncDefaultTimeout time.Duration
 	syncMaxTimeout     time.Duration
 
-	bidBlockPermission types.BidBlockPermissionStatus
+	bidBlockPermission buildertypes.BidBlockPermissionStatus
 }
 
 func fakeBlockHash(txh common.Hash) common.Hash {
@@ -760,20 +761,20 @@ func (b testBackend) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscripti
 
 func (b *testBackend) MevRunning() bool                       { return false }
 func (b *testBackend) HasBuilder(builder common.Address) bool { return false }
-func (b *testBackend) GetBidBlockPermission(builder common.Address) types.BidBlockPermissionStatus {
+func (b *testBackend) GetBidBlockPermission(builder common.Address) buildertypes.BidBlockPermissionStatus {
 	return b.bidBlockPermission
 }
-func (b *testBackend) MevParams() *types.MevParams {
-	return &types.MevParams{}
+func (b *testBackend) MevParams() *buildertypes.MevParams {
+	return &buildertypes.MevParams{}
 }
 func (b *testBackend) StartMev()                                                  {}
 func (b *testBackend) StopMev()                                                   {}
 func (b *testBackend) AddBuilder(builder common.Address, builderUrl string) error { return nil }
 func (b *testBackend) RemoveBuilder(builder common.Address) error                 { return nil }
-func (b *testBackend) SendBid(ctx context.Context, bid *types.BidArgs) (common.Hash, error) {
+func (b *testBackend) SendBid(ctx context.Context, bid *buildertypes.BidArgs) (common.Hash, error) {
 	panic("implement me")
 }
-func (b *testBackend) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) (common.Hash, error) {
+func (b *testBackend) SendBidBlock(ctx context.Context, args *buildertypes.BidBlockArgs) (common.Hash, error) {
 	panic("implement me")
 }
 func (b *testBackend) MinerInTurn() bool { return false }

@@ -19,6 +19,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie"
 )
@@ -39,15 +40,15 @@ func setBidMevInfo(header *types.Header, builder common.Address, isBidBlock bool
 	if !isBidBlock && header.RequestsHash == nil {
 		return
 	}
-	version := types.BlockMevInfoVersionBid
+	version := buildertypes.BlockMevInfoVersionBid
 	if isBidBlock {
-		version = types.BlockMevInfoVersionBidBlock
+		version = buildertypes.BlockMevInfoVersionBidBlock
 	}
-	tag := types.EncodeBlockMevInfo(version, builder)
+	tag := buildertypes.EncodeBlockMevInfo(version, builder)
 	header.RequestsHash = &tag
 }
 
-func (w *worker) selectBidBlock(bidBlock *types.DecodedBidBlock, simBidBlockReward, simBidValidatorReward, bestReward *uint256.Int) bool {
+func (w *worker) selectBidBlock(bidBlock *buildertypes.DecodedBidBlock, simBidBlockReward, simBidValidatorReward, bestReward *uint256.Int) bool {
 	if bidBlock == nil {
 		return false
 	}
@@ -119,7 +120,7 @@ func bindSignBidBlockSystemTxs(
 // changing them after the builder's pre-execution would diverge the re-executed
 // stateRoot and fail InsertChain.
 func (w *worker) prepareBidBlockTask(
-	decoded *types.DecodedBidBlock,
+	decoded *buildertypes.DecodedBidBlock,
 	start time.Time,
 ) (*task, error) {
 	prepareStart := time.Now()

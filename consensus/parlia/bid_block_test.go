@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 )
 
 // sysTx builds an unsigned system-tx candidate: to=ValidatorContract, gasPrice=0,
@@ -57,7 +58,7 @@ func TestVerifyBidBlockSystemTxs(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			decoded := &types.DecodedBidBlock{Header: header, Txs: tc.txs}
+			decoded := &buildertypes.DecodedBidBlock{Header: header, Txs: tc.txs}
 			err := p.VerifyBidBlockSystemTxs(decoded, parent, tc.sysStart)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("VerifyBidBlockSystemTxs err=%v, wantErr=%v", err, tc.wantErr)

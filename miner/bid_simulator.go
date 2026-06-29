@@ -22,6 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -109,13 +110,13 @@ type simBidReq struct {
 
 // newBidPackage is the warp of a new bid and a feedback channel
 type newBidPackage struct {
-	bid         *types.Bid
+	bid         *buildertypes.Bid
 	feedback    chan error
 	receiveTime int64
 }
 
 type newBidBlockPackage struct {
-	bidBlock *types.DecodedBidBlock
+	bidBlock *buildertypes.DecodedBidBlock
 	feedback chan error
 }
 
@@ -153,8 +154,8 @@ type bidSimulator struct {
 	pending   map[uint64]map[common.Address]map[common.Hash]struct{} // blockNumber -> builder -> bidHash -> struct{}
 
 	bestBidMu    sync.RWMutex
-	bestBid      map[common.Hash]*BidRuntime // prevBlockHash -> bidRuntime
-	bestBidToRun map[common.Hash]*types.Bid  // prevBlockHash -> *types.Bid
+	bestBid      map[common.Hash]*BidRuntime       // prevBlockHash -> bidRuntime
+	bestBidToRun map[common.Hash]*buildertypes.Bid // prevBlockHash -> *buildertypes.Bid
 
 	simBidMu      sync.RWMutex
 	simulatingBid map[common.Hash]*BidRuntime // prevBlockHash -> bidRuntime, in the process of simulation
@@ -164,8 +165,8 @@ type bidSimulator struct {
 
 	// SendBidBlock fields
 	bestBidBlockMu sync.RWMutex
-	bestBidBlock   map[common.Hash]*types.DecodedBidBlock // parentHash -> best bid block
-	newBidBlockCh  chan newBidBlockPackage                // channel for incoming bid blocks
+	bestBidBlock   map[common.Hash]*buildertypes.DecodedBidBlock // parentHash -> best bid block
+	newBidBlockCh  chan newBidBlockPackage                       // channel for incoming bid blocks
 
 	// distinct registered builders that have sent BidBlock since node start
 	bidBlockBuildersMu sync.Mutex
@@ -196,10 +197,10 @@ func newBidSimulator(
 		newBidCh:         make(chan newBidPackage, 100),
 		pending:          make(map[uint64]map[common.Address]map[common.Hash]struct{}),
 		bestBid:          make(map[common.Hash]*BidRuntime),
-		bestBidToRun:     make(map[common.Hash]*types.Bid),
+		bestBidToRun:     make(map[common.Hash]*buildertypes.Bid),
 		simulatingBid:    make(map[common.Hash]*BidRuntime),
 		bidsToSim:        make(map[uint64][]*BidRuntime),
-		bestBidBlock:     make(map[common.Hash]*types.DecodedBidBlock),
+		bestBidBlock:     make(map[common.Hash]*buildertypes.DecodedBidBlock),
 		newBidBlockCh:    make(chan newBidBlockPackage, 100),
 		bidBlockBuilders: make(map[common.Address]struct{}),
 	}
@@ -336,7 +337,7 @@ func (b *bidSimulator) GetBestBid(prevBlockHash common.Hash) *BidRuntime {
 }
 
 // best bid to run is based on bid's expectedBlockReward before the bid is simulated
-func (b *bidSimulator) SetBestBidToRun(prevBlockHash common.Hash, bid *types.Bid) {
+func (b *bidSimulator) SetBestBidToRun(prevBlockHash common.Hash, bid *buildertypes.Bid) {
 	b.bestBidMu.Lock()
 	defer b.bestBidMu.Unlock()
 
@@ -344,7 +345,7 @@ func (b *bidSimulator) SetBestBidToRun(prevBlockHash common.Hash, bid *types.Bid
 }
 
 // in case the bid is invalid(invalid GasUsed,Reward,GasPrice...), remove it.
-func (b *bidSimulator) DelBestBidToRun(prevBlockHash common.Hash, delBid *types.Bid) {
+func (b *bidSimulator) DelBestBidToRun(prevBlockHash common.Hash, delBid *buildertypes.Bid) {
 	b.bestBidMu.Lock()
 	defer b.bestBidMu.Unlock()
 	cur := b.bestBidToRun[prevBlockHash]
@@ -356,7 +357,7 @@ func (b *bidSimulator) DelBestBidToRun(prevBlockHash common.Hash, delBid *types.
 	}
 }
 
-func (b *bidSimulator) GetBestBidToRun(prevBlockHash common.Hash) *types.Bid {
+func (b *bidSimulator) GetBestBidToRun(prevBlockHash common.Hash) *buildertypes.Bid {
 	b.bestBidMu.RLock()
 	defer b.bestBidMu.RUnlock()
 
@@ -575,7 +576,7 @@ func (b *bidSimulator) getBlockInterval(parentHeader *types.Header) uint64 {
 }
 
 // checkIfBidExceedsTxGasLimit checks whether any transaction in the bid exceeds the max txn gas.
-func (b *bidSimulator) checkIfBidExceedsTxGasLimit(bid *types.Bid) error {
+func (b *bidSimulator) checkIfBidExceedsTxGasLimit(bid *buildertypes.Bid) error {
 	currentHeader := b.chain.CurrentBlock()
 	if !b.chainConfig.IsOsaka(currentHeader.Number, currentHeader.Time) {
 		return nil
@@ -678,7 +679,7 @@ func (b *bidSimulator) clearLoop() {
 }
 
 // AddBidBlock keeps the best BidBlock for a given parent hash.
-func (b *bidSimulator) AddBidBlock(parentHash common.Hash, block *types.DecodedBidBlock) error {
+func (b *bidSimulator) AddBidBlock(parentHash common.Hash, block *buildertypes.DecodedBidBlock) error {
 	b.bestBidBlockMu.Lock()
 	defer b.bestBidBlockMu.Unlock()
 
@@ -691,7 +692,7 @@ func (b *bidSimulator) AddBidBlock(parentHash common.Hash, block *types.DecodedB
 }
 
 // GetBestBidBlock returns the best BidBlock for a given parent hash.
-func (b *bidSimulator) GetBestBidBlock(parentHash common.Hash) *types.DecodedBidBlock {
+func (b *bidSimulator) GetBestBidBlock(parentHash common.Hash) *buildertypes.DecodedBidBlock {
 	b.bestBidBlockMu.RLock()
 	defer b.bestBidBlockMu.RUnlock()
 	return b.bestBidBlock[parentHash]
@@ -709,7 +710,7 @@ func (b *bidSimulator) recordBidBlockBuilder(builder common.Address) {
 }
 
 // preSealVerifyBidBlock validates a BidBlock before admission.
-func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) error {
+func (b *bidSimulator) preSealVerifyBidBlock(decoded *buildertypes.DecodedBidBlock) error {
 	start := time.Now()
 	defer bidBlockPreSealVerifyTimer.UpdateSince(start)
 	parliaEngine, ok := b.engine.(*parlia.Parlia)
@@ -763,7 +764,7 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *types.DecodedBidBlock) err
 }
 
 // validateBidBlockBlobSidecars checks cheap sidecar invariants before bid selection.
-func (b *bidSimulator) validateBidBlockBlobSidecars(decoded *types.DecodedBidBlock) error {
+func (b *bidSimulator) validateBidBlockBlobSidecars(decoded *buildertypes.DecodedBidBlock) error {
 	header := decoded.Header
 	blobEligibleBlock := eip4844.IsBlobEligibleBlock(b.chainConfig, header.Number.Uint64(), header.Time)
 	maxBlobsPerBlock := eip4844.MaxBlobsPerBlock(b.chainConfig, header.Time)
@@ -810,7 +811,7 @@ func (b *bidSimulator) validateBidBlockBlobSidecars(decoded *types.DecodedBidBlo
 }
 
 // sendBidBlock queues a decoded BidBlock for selection.
-func (b *bidSimulator) sendBidBlock(_ context.Context, block *types.DecodedBidBlock) error {
+func (b *bidSimulator) sendBidBlock(_ context.Context, block *buildertypes.DecodedBidBlock) error {
 	timer := time.NewTimer(1 * time.Second)
 	defer timer.Stop()
 
@@ -820,14 +821,14 @@ func (b *bidSimulator) sendBidBlock(_ context.Context, block *types.DecodedBidBl
 	case b.newBidBlockCh <- newBidBlockPackage{bidBlock: block, feedback: replyCh}:
 		b.AddPending(block.BlockNumber(), block.Builder, block.Hash())
 	case <-timer.C:
-		return types.ErrMevBusy
+		return buildertypes.ErrMevBusy
 	}
 
 	select {
 	case reply := <-replyCh:
 		return reply
 	case <-timer.C:
-		return types.ErrMevBusy
+		return buildertypes.ErrMevBusy
 	}
 }
 
@@ -890,7 +891,7 @@ func (b *bidSimulator) newBidBlockLoop() {
 
 // sendBid checks if the bid is already exists or if the builder sends too many bids,
 // if yes, return error, if not, add bid into newBid chan waiting for judge profit.
-func (b *bidSimulator) sendBid(ctx context.Context, bid *types.Bid) error {
+func (b *bidSimulator) sendBid(ctx context.Context, bid *buildertypes.Bid) error {
 	timer := time.NewTimer(1 * time.Second)
 	defer timer.Stop()
 
@@ -907,14 +908,14 @@ func (b *bidSimulator) sendBid(ctx context.Context, bid *types.Bid) error {
 	case b.newBidCh <- newBidPackage{bid: bid, feedback: replyCh, receiveTime: receiveTime}:
 		b.AddPending(bid.BlockNumber, bid.Builder, bid.Hash())
 	case <-timer.C:
-		return types.ErrMevBusy
+		return buildertypes.ErrMevBusy
 	}
 
 	select {
 	case reply := <-replyCh:
 		return reply
 	case <-timer.C:
-		return types.ErrMevBusy
+		return buildertypes.ErrMevBusy
 	}
 }
 
@@ -1246,7 +1247,7 @@ func (b *bidSimulator) reportIssue(bidRuntime *BidRuntime, err error) {
 
 	cli := b.builders[bidRuntime.bid.Builder]
 	if cli != nil {
-		err = cli.ReportIssue(context.Background(), &types.BidIssue{
+		err = cli.ReportIssue(context.Background(), &buildertypes.BidIssue{
 			Validator: bidRuntime.env.header.Coinbase,
 			Builder:   bidRuntime.bid.Builder,
 			BidHash:   bidRuntime.bid.Hash(),
@@ -1260,7 +1261,7 @@ func (b *bidSimulator) reportIssue(bidRuntime *BidRuntime, err error) {
 }
 
 type BidRuntime struct {
-	bid *types.Bid
+	bid *buildertypes.Bid
 
 	env *environment
 
@@ -1276,7 +1277,7 @@ type BidRuntime struct {
 	greedyMerged bool
 }
 
-func newBidRuntime(newBid *types.Bid, validatorCommission uint64) (*BidRuntime, error) {
+func newBidRuntime(newBid *buildertypes.Bid, validatorCommission uint64) (*BidRuntime, error) {
 	// check the block reward and validator reward of the newBid
 	expectedBlockReward := newBid.GasFee
 	expectedValidatorReward := new(big.Int).Mul(expectedBlockReward, big.NewInt(int64(validatorCommission)))

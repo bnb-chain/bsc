@@ -1,4 +1,4 @@
-package types
+package builder
 
 import (
 	"fmt"
@@ -10,7 +10,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const TxDecodeConcurrencyForPerBid = 5
@@ -36,7 +38,7 @@ func (b *BidArgs) EcrecoverSender() (common.Address, error) {
 	return crypto.PubkeyToAddress(*pk), nil
 }
 
-func (b *BidArgs) ToBid(builder common.Address, signer Signer) (*Bid, error) {
+func (b *BidArgs) ToBid(builder common.Address, signer types.Signer) (*Bid, error) {
 	txs, err := b.RawBid.DecodeTxs(signer)
 	if err != nil {
 		return nil, err
@@ -49,7 +51,7 @@ func (b *BidArgs) ToBid(builder common.Address, signer Signer) (*Bid, error) {
 	unRevertibleHashes.Append(b.RawBid.UnRevertible...)
 
 	if len(b.PayBidTx) != 0 {
-		var payBidTx = new(Transaction)
+		var payBidTx = new(types.Transaction)
 		err = payBidTx.UnmarshalBinary(b.PayBidTx)
 		if err != nil {
 			return nil, err
@@ -90,21 +92,21 @@ type RawBid struct {
 	hash atomic.Value
 }
 
-func (b *RawBid) DecodeTxs(signer Signer) ([]*Transaction, error) {
+func (b *RawBid) DecodeTxs(signer types.Signer) ([]*types.Transaction, error) {
 	if len(b.Txs) == 0 {
-		return []*Transaction{}, nil
+		return []*types.Transaction{}, nil
 	}
 
 	txChan := make(chan int, len(b.Txs))
-	bidTxs := make([]*Transaction, len(b.Txs))
-	decode := func(txBytes hexutil.Bytes) (*Transaction, error) {
-		tx := new(Transaction)
+	bidTxs := make([]*types.Transaction, len(b.Txs))
+	decode := func(txBytes hexutil.Bytes) (*types.Transaction, error) {
+		tx := new(types.Transaction)
 		err := tx.UnmarshalBinary(txBytes)
 		if err != nil {
 			return nil, err
 		}
 
-		_, err = Sender(signer, tx)
+		_, err = types.Sender(signer, tx)
 		if err != nil {
 			return nil, err
 		}
@@ -167,7 +169,7 @@ type Bid struct {
 	Builder      common.Address
 	BlockNumber  uint64
 	ParentHash   common.Hash
-	Txs          Transactions
+	Txs          types.Transactions
 	UnRevertible mapset.Set[common.Hash]
 	GasUsed      uint64
 	GasFee       *big.Int
@@ -227,12 +229,12 @@ func (b *BidBlockArgs) ToDecodedBidBlock(builder common.Address) (*DecodedBidBlo
 
 	sidecars := b.BidBlock.Sidecars
 	if sidecars == nil {
-		sidecars = BlobSidecars{}
+		sidecars = types.BlobSidecars{}
 	}
 
 	return &DecodedBidBlock{
 		Builder:  builder,
-		Header:   CopyHeader(b.BidBlock.Header),
+		Header:   types.CopyHeader(b.BidBlock.Header),
 		Txs:      txs,
 		Sidecars: sidecars,
 		bidHash:  b.BidBlock.Hash(),
@@ -240,10 +242,10 @@ func (b *BidBlockArgs) ToDecodedBidBlock(builder common.Address) (*DecodedBidBlo
 }
 
 // DecodeTxs decodes user txs followed by unsigned system txs.
-func (b *BidBlockArgs) DecodeTxs() ([]*Transaction, error) {
-	txs := make([]*Transaction, len(b.BidBlock.Transactions))
+func (b *BidBlockArgs) DecodeTxs() ([]*types.Transaction, error) {
+	txs := make([]*types.Transaction, len(b.BidBlock.Transactions))
 	for i, txBytes := range b.BidBlock.Transactions {
-		tx := new(Transaction)
+		tx := new(types.Transaction)
 		if err := tx.UnmarshalBinary(txBytes); err != nil {
 			return nil, fmt.Errorf("failed to decode tx %d: %v", i, err)
 		}
@@ -254,9 +256,9 @@ func (b *BidBlockArgs) DecodeTxs() ([]*Transaction, error) {
 
 // BidBlock is the builder-proposed block carried by BidBlockArgs.
 type BidBlock struct {
-	Header       *Header         `json:"header"`
-	Transactions []hexutil.Bytes `json:"transactions"` // user txs first, unsigned system txs last
-	Sidecars     BlobSidecars    `json:"sidecars,omitempty"`
+	Header       *types.Header      `json:"header"`
+	Transactions []hexutil.Bytes    `json:"transactions"` // user txs first, unsigned system txs last
+	Sidecars     types.BlobSidecars `json:"sidecars,omitempty"`
 
 	hash atomic.Value
 }
@@ -274,9 +276,9 @@ func (b *BidBlock) Hash() common.Hash {
 // DecodedBidBlock is the validator-side decoded representation of a BidBlock.
 type DecodedBidBlock struct {
 	Builder       common.Address // recovered from BidBlockArgs.Signature
-	Header        *Header
-	Txs           Transactions
-	Sidecars      BlobSidecars
+	Header        *types.Header
+	Txs           types.Transactions
+	Sidecars      types.BlobSidecars
 	GasFee        *big.Int
 	SystemTxStart int // index in Txs where the unsigned trailing system-tx region begins; set during admission.
 
@@ -308,4 +310,14 @@ type MevParams struct {
 	BuilderFeeCeil        *big.Int
 	BidBlockEnabled       bool // whether mev_sendBidBlock is accepted
 	Version               string
+}
+
+// rlpHash encodes x and returns the keccak256 hash of the encoding. It mirrors
+// the unexported helper in package types, replicated here so the bid/bidblock
+// hashing stays byte-for-byte identical after moving out of core/types.
+func rlpHash(x interface{}) (h common.Hash) {
+	sha := crypto.NewKeccakState()
+	rlp.Encode(sha, x)
+	sha.Read(h[:])
+	return h
 }

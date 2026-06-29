@@ -40,6 +40,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -189,7 +190,7 @@ type getWorkReq struct {
 type bidFetcher interface {
 	GetBestBid(parentHash common.Hash) *BidRuntime
 	GetSimulatingBid(prevBlockHash common.Hash) *BidRuntime
-	GetBestBidBlock(parentHash common.Hash) *types.DecodedBidBlock
+	GetBestBidBlock(parentHash common.Hash) *buildertypes.DecodedBidBlock
 }
 
 // worker is the main object which takes care of submitting new work to consensus engine
@@ -1429,7 +1430,7 @@ LOOP:
 	// when out-turn, use bestWork to prevent bundle leakage.
 	// when in-turn, compare with remote work.
 	var bestBid *BidRuntime
-	var bestBidBlock *types.DecodedBidBlock
+	var bestBidBlock *buildertypes.DecodedBidBlock
 	var bidBlockCommitted bool
 	var bidBlockFallback bool
 	var simBidBlockReward *uint256.Int

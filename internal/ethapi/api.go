@@ -42,6 +42,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/gasestimator"
@@ -567,14 +568,14 @@ func (api *BlockChainAPI) GetBlockMevInfo(ctx context.Context, blockNrOrHash rpc
 	if header.RequestsHash == nil {
 		return info, nil
 	}
-	version, builder, ok := types.DecodeBlockMevInfo(*header.RequestsHash)
+	version, builder, ok := buildertypes.DecodeBlockMevInfo(*header.RequestsHash)
 	if !ok {
 		return info, nil
 	}
 	switch version {
-	case types.BlockMevInfoVersionBid:
+	case buildertypes.BlockMevInfoVersionBid:
 		info.Version = "v1"
-	case types.BlockMevInfoVersionBidBlock:
+	case buildertypes.BlockMevInfoVersionBidBlock:
 		info.Version = "v2"
 	}
 	b := builder

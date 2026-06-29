@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
@@ -244,7 +245,7 @@ func TestCommitBidBlockPreservesBuilderExecutionHeaderFields(t *testing.T) {
 	bloom[0] = 0x33
 
 	builderUncleHash := common.Hash{0xbb}
-	decoded := &types.DecodedBidBlock{
+	decoded := &buildertypes.DecodedBidBlock{
 		Header: &types.Header{
 			Number:      big.NewInt(1),
 			ParentHash:  chain.Genesis().Hash(),

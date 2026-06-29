@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/internal/version"
 	"github.com/ethereum/go-ethereum/log"
 )
@@ -50,7 +51,7 @@ func (miner *Miner) HasBuilder(builder common.Address) bool {
 	return miner.bidSimulator.ExistBuilder(builder)
 }
 
-func (miner *Miner) GetBidBlockPermission(builder common.Address) types.BidBlockPermissionStatus {
+func (miner *Miner) GetBidBlockPermission(builder common.Address) buildertypes.BidBlockPermissionStatus {
 	return miner.worker.permMgr.GetStatus(builder)
 }
 
@@ -71,9 +72,9 @@ func (miner *Miner) bidBlockPasteurActive() bool {
 	return head != nil && miner.worker.chainConfig.IsPasteur(head.Number, head.Time)
 }
 
-func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) (common.Hash, error) {
+func (miner *Miner) SendBidBlock(ctx context.Context, args *buildertypes.BidBlockArgs) (common.Hash, error) {
 	if !miner.bidBlockEnabled() {
-		return common.Hash{}, types.NewInvalidBidError("BidBlock disabled, fallback to SendBid")
+		return common.Hash{}, buildertypes.NewInvalidBidError("BidBlock disabled, fallback to SendBid")
 	}
 
 	bb := args.BidBlock
@@ -81,7 +82,7 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 
 	builder, err := args.EcrecoverSender()
 	if err != nil {
-		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("invalid signature: bidHash=%s, err=%v", bidHash, err))
+		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf("invalid signature: bidHash=%s, err=%v", bidHash, err))
 	}
 
 	// Receive marker for the mev-sentry -> validator hop: correlate this bidHash with
@@ -94,22 +95,22 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 		"txs", len(bb.Transactions))
 
 	if !miner.bidSimulator.ExistBuilder(builder) {
-		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("builder is not registered: builder=%s, bidHash=%s", builder, bidHash))
+		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf("builder is not registered: builder=%s, bidHash=%s", builder, bidHash))
 	}
 	miner.bidSimulator.recordBidBlockBuilder(builder)
 
 	// Check permission before CheckPending so rejected BidBlocks do not use quota.
 	if !miner.worker.permMgr.IsAllowed(builder) {
-		return common.Hash{}, types.NewBidBlockPermissionRevokedError("builder BidBlock permission revoked, fallback to SendBid")
+		return common.Hash{}, buildertypes.NewBidBlockPermissionRevokedError("builder BidBlock permission revoked, fallback to SendBid")
 	}
 
 	if len(bb.Transactions) == 0 {
-		return common.Hash{}, types.NewInvalidBidError("empty BidBlock txs")
+		return common.Hash{}, buildertypes.NewInvalidBidError("empty BidBlock txs")
 	}
 	blockNumber := bb.Header.Number.Uint64()
 	parentHash := bb.Header.ParentHash
 	if miner.bidSimulator.chain.GetHeaderByHash(parentHash) == nil {
-		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("parent not found: %s, bidHash=%s", parentHash.Hex(), bidHash))
+		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf("parent not found: %s, bidHash=%s", parentHash.Hex(), bidHash))
 	}
 	if err := miner.bidSimulator.CheckPending(blockNumber, builder, bidHash); err != nil {
 		return common.Hash{}, err
@@ -117,13 +118,13 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 
 	bidMustBefore := miner.bidSimulator.bidMustBefore(parentHash)
 	if timeout := time.Until(bidMustBefore); timeout <= 0 {
-		return common.Hash{}, types.NewBidBlockTooLateError(fmt.Sprintf("too late, expected before %s, appeared %s later, bidHash=%s",
+		return common.Hash{}, buildertypes.NewBidBlockTooLateError(fmt.Sprintf("too late, expected before %s, appeared %s later, bidHash=%s",
 			bidMustBefore, common.PrettyDuration(timeout), bidHash))
 	}
 
 	decoded, err := args.ToDecodedBidBlock(builder)
 	if err != nil {
-		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("failed to decode bid block: bidHash=%s, err=%v", bidHash, err))
+		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf("failed to decode bid block: bidHash=%s, err=%v", bidHash, err))
 	}
 
 	// Validator owns the entire Extra: overwrite builder's bytes with the operator-configured
@@ -138,7 +139,7 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 	decoded.Header.Extra = common.CopyBytes(miner.worker.extra)
 	miner.worker.confMu.RUnlock()
 	if err := parliaEngine.SetExtraData(miner.worker.chain, decoded.Header); err != nil {
-		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("set extra data: %v", err))
+		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf("set extra data: %v", err))
 	}
 	// Record MEV v2 (bidblock path) source and builder address.
 	setBidMevInfo(decoded.Header, builder, true)
@@ -149,7 +150,7 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 			"builder", builder,
 			"bidHash", decoded.Hash(),
 			"err", err)
-		return common.Hash{}, types.NewBidBlockPreSealVerifyError(fmt.Sprintf("pre-seal verify failed: bidHash=%s, err=%v", bidHash, err))
+		return common.Hash{}, buildertypes.NewBidBlockPreSealVerifyError(fmt.Sprintf("pre-seal verify failed: bidHash=%s, err=%v", bidHash, err))
 	}
 	if receiveTime, ok := ctx.Value("receiveTime").(int64); ok {
 		bidBlockPreCheckTimer.UpdateSince(time.UnixMilli(receiveTime))
@@ -162,14 +163,14 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) 
 	return bidHash, nil
 }
 
-func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common.Hash, error) {
+func (miner *Miner) SendBid(ctx context.Context, bidArgs *buildertypes.BidArgs) (common.Hash, error) {
 	builder, err := bidArgs.EcrecoverSender()
 	if err != nil {
-		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("invalid signature:%v", err))
+		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf("invalid signature:%v", err))
 	}
 
 	if !miner.bidSimulator.ExistBuilder(builder) {
-		return common.Hash{}, types.NewInvalidBidError("builder is not registered")
+		return common.Hash{}, buildertypes.NewInvalidBidError("builder is not registered")
 	}
 
 	err = miner.bidSimulator.CheckPending(bidArgs.RawBid.BlockNumber, builder, bidArgs.RawBid.Hash())
@@ -180,7 +181,7 @@ func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common
 	signer := types.MakeSigner(miner.worker.chainConfig, big.NewInt(int64(bidArgs.RawBid.BlockNumber)), uint64(time.Now().Unix()))
 	bid, err := bidArgs.ToBid(builder, signer)
 	if err != nil {
-		return common.Hash{}, types.NewInvalidBidError(fmt.Sprintf("fail to convert bidArgs to bid, %v", err))
+		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf("fail to convert bidArgs to bid, %v", err))
 	}
 
 	bidBetterBefore := miner.bidSimulator.bidBetterBefore(bidArgs.RawBid.ParentHash)
@@ -203,7 +204,7 @@ func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common
 // startAsyncBlobValidation uses a fixed-size worker pool to validate blob
 // transactions in the background (field checks + KZG proof verification).
 // Results are stored per-tx in bid.BlobValResults keyed by tx hash.
-func startAsyncBlobValidation(bid *types.Bid) {
+func startAsyncBlobValidation(bid *buildertypes.Bid) {
 	type blobJob struct {
 		tx *types.Transaction
 		ch chan error
@@ -245,14 +246,14 @@ func startAsyncBlobValidation(bid *types.Bid) {
 	}
 }
 
-func (miner *Miner) MevParams() *types.MevParams {
+func (miner *Miner) MevParams() *buildertypes.MevParams {
 	builderFeeCeil, ok := big.NewInt(0).SetString(*miner.worker.config.Mev.BuilderFeeCeil, 10)
 	if !ok {
 		log.Error("failed to parse builder fee ceil", "BuilderFeeCeil", *miner.worker.config.Mev.BuilderFeeCeil)
 		return nil
 	}
 
-	return &types.MevParams{
+	return &buildertypes.MevParams{
 		ValidatorCommission:   *miner.worker.config.Mev.ValidatorCommission,
 		BidSimulationLeftOver: *miner.worker.config.Mev.BidSimulationLeftOver,
 		NoInterruptLeftOver:   *miner.worker.config.Mev.NoInterruptLeftOver,

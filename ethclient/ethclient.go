@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -861,7 +862,7 @@ func (ec *Client) HasBuilder(ctx context.Context, address common.Address) (bool,
 }
 
 // SendBid sends a bid
-func (ec *Client) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, error) {
+func (ec *Client) SendBid(ctx context.Context, args buildertypes.BidArgs) (common.Hash, error) {
 	var hash common.Hash
 	err := ec.c.CallContext(ctx, &hash, "mev_sendBid", args)
 	if err != nil {
@@ -871,7 +872,7 @@ func (ec *Client) SendBid(ctx context.Context, args types.BidArgs) (common.Hash,
 }
 
 // SendBidBlock sends a BidBlock (zero-simulate MEV path).
-func (ec *Client) SendBidBlock(ctx context.Context, args types.BidBlockArgs) (common.Hash, error) {
+func (ec *Client) SendBidBlock(ctx context.Context, args buildertypes.BidBlockArgs) (common.Hash, error) {
 	var hash common.Hash
 	err := ec.c.CallContext(ctx, &hash, "mev_sendBidBlock", args)
 	if err != nil {
@@ -911,8 +912,8 @@ func (ec *Client) BestBidGasFee(ctx context.Context, parentHash common.Hash) (*b
 }
 
 // MevParams returns the static params of mev
-func (ec *Client) MevParams(ctx context.Context) (*types.MevParams, error) {
-	var params types.MevParams
+func (ec *Client) MevParams(ctx context.Context) (*buildertypes.MevParams, error) {
+	var params buildertypes.MevParams
 	err := ec.c.CallContext(ctx, &params, "mev_params")
 	if err != nil {
 		return nil, err
