@@ -226,56 +226,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		return nil, err
 	}
 	// Override the chain config with provided settings.
-	var overrides core.ChainOverrides
-	if config.OverridePassedForkTime != nil {
-		chainConfig.ShanghaiTime = config.OverridePassedForkTime
-		chainConfig.KeplerTime = config.OverridePassedForkTime
-		chainConfig.FeynmanTime = config.OverridePassedForkTime
-		chainConfig.FeynmanFixTime = config.OverridePassedForkTime
-		chainConfig.CancunTime = config.OverridePassedForkTime
-		chainConfig.HaberTime = config.OverridePassedForkTime
-		chainConfig.HaberFixTime = config.OverridePassedForkTime
-		chainConfig.BohrTime = config.OverridePassedForkTime
-		chainConfig.PascalTime = config.OverridePassedForkTime
-		chainConfig.PragueTime = config.OverridePassedForkTime
-		overrides.OverridePassedForkTime = config.OverridePassedForkTime
-	}
-	if config.OverrideLorentz != nil {
-		chainConfig.LorentzTime = config.OverrideLorentz
-		overrides.OverrideLorentz = config.OverrideLorentz
-	}
-	if config.OverrideMaxwell != nil {
-		chainConfig.MaxwellTime = config.OverrideMaxwell
-		overrides.OverrideMaxwell = config.OverrideMaxwell
-	}
-	if config.OverrideFermi != nil {
-		chainConfig.FermiTime = config.OverrideFermi
-		overrides.OverrideFermi = config.OverrideFermi
-	}
-	if config.OverrideOsaka != nil {
-		chainConfig.OsakaTime = config.OverrideOsaka
-		overrides.OverrideOsaka = config.OverrideOsaka
-	}
-	if config.OverrideMendel != nil {
-		chainConfig.MendelTime = config.OverrideMendel
-		overrides.OverrideMendel = config.OverrideMendel
-	}
-	if config.OverridePasteur != nil {
-		chainConfig.PasteurTime = config.OverridePasteur
-		overrides.OverridePasteur = config.OverridePasteur
-	}
-	if config.OverrideBPO1 != nil {
-		chainConfig.BPO1Time = config.OverrideBPO1
-		overrides.OverrideBPO1 = config.OverrideBPO1
-	}
-	if config.OverrideBPO2 != nil {
-		chainConfig.BPO2Time = config.OverrideBPO2
-		overrides.OverrideBPO2 = config.OverrideBPO2
-	}
-	if config.OverrideVerkle != nil {
-		chainConfig.VerkleTime = config.OverrideVerkle
-		overrides.OverrideVerkle = config.OverrideVerkle
-	}
+	overrides := applyChainConfigOverrides(chainConfig, config)
 
 	// startup ancient freeze
 	freezeDb := chainDb
@@ -526,6 +477,73 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	eth.shutdownTracker.MarkStartup()
 
 	return eth, nil
+}
+
+func applyChainConfigOverrides(chainConfig *params.ChainConfig, config *ethconfig.Config) core.ChainOverrides {
+	var overrides core.ChainOverrides
+	if config.OverridePassedForkTime != nil {
+		chainConfig.ShanghaiTime = config.OverridePassedForkTime
+		chainConfig.KeplerTime = config.OverridePassedForkTime
+		chainConfig.FeynmanTime = config.OverridePassedForkTime
+		chainConfig.FeynmanFixTime = config.OverridePassedForkTime
+		chainConfig.CancunTime = config.OverridePassedForkTime
+		chainConfig.HaberTime = config.OverridePassedForkTime
+		chainConfig.HaberFixTime = config.OverridePassedForkTime
+		chainConfig.BohrTime = config.OverridePassedForkTime
+		chainConfig.PascalTime = config.OverridePassedForkTime
+		chainConfig.PragueTime = config.OverridePassedForkTime
+		overrides.OverridePassedForkTime = config.OverridePassedForkTime
+	}
+	if config.OverrideLorentz != nil {
+		chainConfig.LorentzTime = config.OverrideLorentz
+		overrides.OverrideLorentz = config.OverrideLorentz
+	}
+	if config.OverrideMaxwell != nil {
+		chainConfig.MaxwellTime = config.OverrideMaxwell
+		overrides.OverrideMaxwell = config.OverrideMaxwell
+	}
+	if config.OverrideFermi != nil {
+		chainConfig.FermiTime = config.OverrideFermi
+		overrides.OverrideFermi = config.OverrideFermi
+	}
+	if config.OverrideOsaka != nil {
+		chainConfig.OsakaTime = config.OverrideOsaka
+		if chainConfig.BlobScheduleConfig == nil {
+			chainConfig.BlobScheduleConfig = new(params.BlobScheduleConfig)
+		}
+		if chainConfig.BlobScheduleConfig.Osaka == nil {
+			chainConfig.BlobScheduleConfig.Osaka = defaultOsakaBlobConfig(chainConfig)
+		}
+		overrides.OverrideOsaka = config.OverrideOsaka
+	}
+	if config.OverrideMendel != nil {
+		chainConfig.MendelTime = config.OverrideMendel
+		overrides.OverrideMendel = config.OverrideMendel
+	}
+	if config.OverridePasteur != nil {
+		chainConfig.PasteurTime = config.OverridePasteur
+		overrides.OverridePasteur = config.OverridePasteur
+	}
+	if config.OverrideBPO1 != nil {
+		chainConfig.BPO1Time = config.OverrideBPO1
+		overrides.OverrideBPO1 = config.OverrideBPO1
+	}
+	if config.OverrideBPO2 != nil {
+		chainConfig.BPO2Time = config.OverrideBPO2
+		overrides.OverrideBPO2 = config.OverrideBPO2
+	}
+	if config.OverrideVerkle != nil {
+		chainConfig.VerkleTime = config.OverrideVerkle
+		overrides.OverrideVerkle = config.OverrideVerkle
+	}
+	return overrides
+}
+
+func defaultOsakaBlobConfig(chainConfig *params.ChainConfig) *params.BlobConfig {
+	if chainConfig.IsInBSC() {
+		return params.DefaultOsakaBlobConfigBSC
+	}
+	return params.DefaultOsakaBlobConfig
 }
 
 func makeExtraData(extra []byte) []byte {
