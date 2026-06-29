@@ -20,13 +20,13 @@ parent header / state
         executes and appends unsigned system tx
         returns the complete block
 
-  → block → types.BidBlock
+  → block → builder.BidBlock
         Header       = block.Header()
         Transactions = tx.MarshalBinary()
         Sidecars     = block.Sidecars()
 
   → Sign BidBlock.Hash()
-        produces types.BidBlockArgs
+        produces builder.BidBlockArgs
 
   → mev_getBidBlockPermission(builder)
         (cached; if !allowed, fall back to mev_sendBid)
@@ -99,7 +99,7 @@ for i, tx := range block.Transactions() {
     enc, _ := tx.MarshalBinary()
     txBytes[i] = enc
 }
-bidBlock := &types.BidBlock{
+bidBlock := &builder.BidBlock{
     Header:       block.Header(),
     Transactions: txBytes,
     Sidecars:     block.Sidecars(),
@@ -112,7 +112,7 @@ bidBlock := &types.BidBlock{
 
 ```go
 sig, _ := crypto.Sign(bidBlock.Hash().Bytes(), builderKey)
-args := &types.BidBlockArgs{BidBlock: bidBlock, Signature: sig}
+args := &builder.BidBlockArgs{BidBlock: bidBlock, Signature: sig}
 ```
 
 A bare keccak digest, with no EIP-191/712 prefix, consistent with the existing `mev_sendBid`. The validator recovers the address using `args.EcrecoverSender()`.
@@ -153,8 +153,9 @@ The main BidBlock failure modes have dedicated JSON-RPC codes; match by code whe
 | `pre-seal verify failed: ...` | -38007 | **fix build logic; do NOT retry the same BidBlock** |
 | `too late, expected before ...` | -38008 | dropped; next slot |
 | `the validator stop accepting bids ...` | -38003 | validator paused; retry later |
-| `the validator is working on too many bids ...` | -38004 | per-builder quota hit; retry later or fallback |
+| `the validator is working on too many bids ...` | -38004 | validator busy/overloaded (admission timed out); retry later |
 | `the validator is not in-turn ...` | -38005 | next slot or try another validator |
+| `too many bids: exceeded limit of N bids per builder per block` | _(no dedicated code; plain JSON-RPC error)_ | per-builder quota hit (`mev_params.MaxBidsPerBuilder`); retry next slot or fall back to `mev_sendBid` |
 
 **Recommended practice:**
 
@@ -170,6 +171,8 @@ BidMustBefore = parent.MilliTimestamp + BlockInterval - DelayLeftOver  // 15ms
 ```
 
 As the validator still needs µs-level time for signature recovery, tx decoding, pre-seal verification, and `Extra` overwrite before sealing, arrivals **exactly at** `BidMustBefore` may still miss the seal. We recommend builders leave a buffer of ≈100µs–1ms before `BidMustBefore`.
+
+The transmission latency on the wire is not constant: the number of transactions and the number of blobs in the BidBlock both increase the payload size and therefore the time it takes to reach the validator. A larger BidBlock arrives later, so this transmission cost must be factored into the send-window control logic (e.g. estimate the on-wire delay from the current tx/blob count and bring the send time forward accordingly), rather than assuming a fixed offset before `BidMustBefore`.
 
 ## Summary
 
