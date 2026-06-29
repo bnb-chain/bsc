@@ -307,6 +307,12 @@ func (o *ChainOverrides) apply(cfg *params.ChainConfig) error {
 	}
 	if o.OverrideOsaka != nil {
 		cfg.OsakaTime = o.OverrideOsaka
+		if cfg.BlobScheduleConfig == nil {
+			cfg.BlobScheduleConfig = new(params.BlobScheduleConfig)
+		}
+		if cfg.BlobScheduleConfig.Osaka == nil {
+			cfg.BlobScheduleConfig.Osaka = defaultOsakaBlobConfig(cfg)
+		}
 	}
 	if o.OverrideMendel != nil {
 		cfg.MendelTime = o.OverrideMendel
@@ -324,6 +330,13 @@ func (o *ChainOverrides) apply(cfg *params.ChainConfig) error {
 		cfg.VerkleTime = o.OverrideVerkle
 	}
 	return cfg.CheckConfigForkOrder()
+}
+
+func defaultOsakaBlobConfig(cfg *params.ChainConfig) *params.BlobConfig {
+	if cfg.IsInBSC() {
+		return params.DefaultOsakaBlobConfigBSC
+	}
+	return params.DefaultOsakaBlobConfig
 }
 
 // SetupGenesisBlock writes or updates the genesis block in db.

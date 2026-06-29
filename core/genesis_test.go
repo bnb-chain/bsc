@@ -39,6 +39,30 @@ func TestSetupGenesis(t *testing.T) {
 	testSetupGenesis(t, rawdb.PathScheme)
 }
 
+func TestChainOverridesAddsOsakaBlobSchedule(t *testing.T) {
+	osakaTime := uint64(1782779200)
+	mendelTime := uint64(1782779300)
+	pasteurTime := uint64(1782779400)
+	config := new(params.ChainConfig)
+	*config = *params.RialtoChainConfig
+	blobSchedule := new(params.BlobScheduleConfig)
+	*blobSchedule = *params.RialtoChainConfig.BlobScheduleConfig
+	blobSchedule.Osaka = nil
+	config.BlobScheduleConfig = blobSchedule
+
+	err := (&ChainOverrides{
+		OverrideOsaka:   &osakaTime,
+		OverrideMendel:  &mendelTime,
+		OverridePasteur: &pasteurTime,
+	}).apply(config)
+	if err != nil {
+		t.Fatalf("unexpected chain override error: %v", err)
+	}
+	if config.BlobScheduleConfig.Osaka != params.DefaultOsakaBlobConfigBSC {
+		t.Fatalf("unexpected Osaka blob schedule: have %v, want %v", config.BlobScheduleConfig.Osaka, params.DefaultOsakaBlobConfigBSC)
+	}
+}
+
 func testSetupGenesis(t *testing.T, scheme string) {
 	var (
 		customghash = common.HexToHash("0x89c99d90b79719238d2645c7642f2c9295246e80775b38cfd162b696817fbd50")
