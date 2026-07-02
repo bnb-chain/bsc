@@ -917,15 +917,6 @@ func TestStorageLookup(t *testing.T) {
 	}
 }
 
-<<<<<<< HEAD
-// TestLookupZeroBaseRootFallback regresses the sentinel collision in
-// accountTip/storageTip when the disk layer root is itself common.Hash{}
-// (a fresh verkle/bintrie database whose empty trie hashes to zero).
-// Returning only common.Hash conflated the disk-layer fallback with the
-// "stale" sentinel, so lookupAccount/Storage reported errSnapshotStale
-// for a valid fall-through.
-func TestLookupZeroBaseRootFallback(t *testing.T) {
-=======
 // TestLookupZeroBaseRootFallback is a regression test for a sentinel
 // collision in accountTip/storageTip: before the fix they returned
 // common.Hash{} as both the "stale" marker and the disk-layer fallback
@@ -960,45 +951,10 @@ func TestLookupZeroBaseRootFallback(t *testing.T) {
 	// mirrors the bintrie/verkle configuration where the empty trie
 	// hashes to EmptyVerkleHash. newTestLayerTree can't be reused
 	// because it hard-codes common.Hash{0x1}.
->>>>>>> geth-v1.17.3
 	db := New(rawdb.NewMemoryDatabase(), nil, false)
 	base := newDiskLayer(common.Hash{}, 0, db, nil, nil, newBuffer(0, nil, nil, 0), nil)
 	tr := newLayerTree(base)
 
-<<<<<<< HEAD
-	if err := tr.add(common.Hash{0x2}, common.Hash{}, 1,
-		NewNodeSetWithOrigin(nil, nil),
-		NewStateSetWithOrigin(randomAccountSet("0xa"),
-			randomStorageSet([]string{"0xa"}, [][]string{{"0x1"}}, nil),
-			nil, nil, false)); err != nil {
-		t.Fatalf("add first diff layer: %v", err)
-	}
-	if err := tr.add(common.Hash{0x3}, common.Hash{0x2}, 2,
-		NewNodeSetWithOrigin(nil, nil),
-		NewStateSetWithOrigin(randomAccountSet("0xb"), nil, nil, nil, false)); err != nil {
-		t.Fatalf("add second diff layer: %v", err)
-	}
-
-	// Unknown account at HEAD: must fall through to the zero-rooted disk layer.
-	l, err := tr.lookupAccount(common.HexToHash("0xdead"), common.Hash{0x3})
-	if err != nil {
-		t.Fatalf("lookupAccount fallback: unexpected error %v", err)
-	}
-	if l.rootHash() != (common.Hash{}) {
-		t.Errorf("lookupAccount fallback: want disk root 0, got %x", l.rootHash())
-	}
-
-	// Symmetric storage case.
-	l, err = tr.lookupStorage(common.HexToHash("0xdead"), common.HexToHash("0x99"), common.Hash{0x3})
-	if err != nil {
-		t.Fatalf("lookupStorage fallback: unexpected error %v", err)
-	}
-	if l.rootHash() != (common.Hash{}) {
-		t.Errorf("lookupStorage fallback: want disk root 0, got %x", l.rootHash())
-	}
-
-	// Happy path still works: account 0xa was written in diff 0x2.
-=======
 	// Stack two diff layers on the zero-rooted disk layer, each
 	// touching a known account and slot so we have something for the
 	// happy-path lookups to find later.
@@ -1051,24 +1007,11 @@ func TestLookupZeroBaseRootFallback(t *testing.T) {
 	// Case 3: happy path. Account 0xa was written at diff layer 0x2.
 	// The lookup must return that layer, proving the fix didn't break
 	// the normal resolution path.
->>>>>>> geth-v1.17.3
 	l, err = tr.lookupAccount(common.HexToHash("0xa"), common.Hash{0x3})
 	if err != nil {
 		t.Fatalf("lookupAccount(known): %v", err)
 	}
 	if l.rootHash() != (common.Hash{0x2}) {
-<<<<<<< HEAD
-		t.Errorf("lookupAccount(known): want %x, got %x", common.Hash{0x2}, l.rootHash())
-	}
-
-	// Truly stale state root must still surface errSnapshotStale,
-	// pinning the other half of the contract.
-	if _, err := tr.lookupAccount(common.HexToHash("0xa"), common.HexToHash("0xdeadbeef")); !errors.Is(err, errSnapshotStale) {
-		t.Errorf("lookupAccount(stale): want errSnapshotStale, got %v", err)
-	}
-	if _, err := tr.lookupStorage(common.HexToHash("0xa"), common.HexToHash("0x1"), common.HexToHash("0xdeadbeef")); !errors.Is(err, errSnapshotStale) {
-		t.Errorf("lookupStorage(stale): want errSnapshotStale, got %v", err)
-=======
 		t.Errorf("known account tip: want %x, got %x",
 			common.Hash{0x2}, l.rootHash())
 	}
@@ -1086,6 +1029,5 @@ func TestLookupZeroBaseRootFallback(t *testing.T) {
 		common.HexToHash("0xdeadbeef"))
 	if !errors.Is(err, errSnapshotStale) {
 		t.Errorf("lookupStorage(stale state): want errSnapshotStale, got %v", err)
->>>>>>> geth-v1.17.3
 	}
 }
