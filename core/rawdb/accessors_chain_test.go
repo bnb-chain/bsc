@@ -30,7 +30,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
-	"github.com/holiman/uint256"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -625,41 +624,6 @@ func TestWriteAncientHeaderChain(t *testing.T) {
 	}
 }
 
-<<<<<<< HEAD
-func TestCanonicalHashIteration(t *testing.T) {
-	var cases = []struct {
-		from, to uint64
-		limit    int
-		expect   []uint64
-	}{
-		{1, 8, 0, nil},
-		{1, 8, 1, []uint64{1}},
-		{1, 8, 10, []uint64{1, 2, 3, 4, 5, 6, 7}},
-		{1, 9, 10, []uint64{1, 2, 3, 4, 5, 6, 7, 8}},
-		{2, 9, 10, []uint64{2, 3, 4, 5, 6, 7, 8}},
-		{9, 10, 10, nil},
-	}
-	// Test empty db iteration
-	db := NewMemoryDatabase()
-	numbers, _ := ReadAllCanonicalHashes(db, 0, 10, 10)
-	if len(numbers) != 0 {
-		t.Fatalf("No entry should be returned to iterate an empty db")
-	}
-	// Fill database with testing data.
-	for i := uint64(1); i <= 8; i++ {
-		WriteCanonicalHash(db, common.Hash{}, i)
-		WriteTd(db, common.Hash{}, i, big.NewInt(10)) // Write some interferential data
-	}
-	for i, c := range cases {
-		numbers, _ := ReadAllCanonicalHashes(db, c.from, c.to, c.limit)
-		if !reflect.DeepEqual(numbers, c.expect) {
-			t.Fatalf("Case %d failed, want %v, got %v", i, c.expect, numbers)
-		}
-	}
-}
-
-=======
->>>>>>> geth-v1.17.3
 func TestHashesInRange(t *testing.T) {
 	mkHeader := func(number, seq int) *types.Header {
 		h := types.Header{

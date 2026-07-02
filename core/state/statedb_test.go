@@ -1273,13 +1273,8 @@ func TestDeleteStorage(t *testing.T) {
 	var (
 		disk     = rawdb.NewMemoryDatabase()
 		tdb      = triedb.NewDatabase(disk, nil)
-<<<<<<< HEAD
 		snaps, _ = snapshot.New(snapshot.Config{CacheSize: 10}, disk, tdb, types.EmptyRootHash, 128, false)
-		db       = NewDatabase(tdb, snaps)
-=======
-		snaps, _ = snapshot.New(snapshot.Config{CacheSize: 10}, disk, tdb, types.EmptyRootHash)
 		db       = NewMPTDatabase(tdb, nil).WithSnapshot(snaps)
->>>>>>> geth-v1.17.3
 		state, _ = New(types.EmptyRootHash, db)
 		addr     = common.HexToAddress("0x1")
 	)
