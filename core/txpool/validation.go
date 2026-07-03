@@ -166,9 +166,7 @@ func ValidateBlobTx(tx *types.Transaction, head *types.Header, opts *ValidationO
 		return errors.New("missing sidecar in blob transaction")
 	}
 	// Ensure the sidecar is constructed with the version consistent with the
-	// current fork. Without fork context (nil head/opts, e.g. the MEV blob
-	// validation paths) the expectation defaults to version 0: cell proofs
-	// are not supported on BSC.
+	// current fork.
 	version := types.BlobSidecarVersion0
 	if opts != nil && head != nil && opts.Config.IsNotInBSC() && opts.Config.IsOsaka(head.Number, head.Time) {
 		version = types.BlobSidecarVersion1
