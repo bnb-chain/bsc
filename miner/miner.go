@@ -42,6 +42,7 @@ import (
 type Backend interface {
 	BlockChain() *core.BlockChain
 	TxPool() *txpool.TxPool
+	SubscribeSyncEvents(ch chan<- downloader.SyncEvent) event.Subscription
 }
 
 // Miner is the main object which takes care of submitting new work to consensus
@@ -88,7 +89,7 @@ func (miner *Miner) update() {
 	defer miner.wg.Done()
 
 	syncCh := make(chan downloader.SyncEvent, 16)
-	syncSub := miner.eth.(interface{ Downloader() *downloader.Downloader }).Downloader().SubscribeSyncEvents(syncCh)
+	syncSub := miner.eth.SubscribeSyncEvents(syncCh)
 	defer syncSub.Unsubscribe()
 
 	shouldStart := false
@@ -124,6 +125,11 @@ func (miner *Miner) update() {
 					miner.bidSimulator.start()
 				}
 				miner.worker.syncing.Store(false)
+
+				// Stop reacting to downloader events once a sync has
+				// completed, per the one-shot behavior documented above.
+				syncSub.Unsubscribe()
+				syncCh = nil
 			}
 		case <-miner.startCh:
 			if canStart {

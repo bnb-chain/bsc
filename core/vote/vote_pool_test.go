@@ -78,6 +78,12 @@ func newTestBackend() *testBackend {
 func (b *testBackend) IsMining() bool           { return true }
 func (b *testBackend) EventMux() *event.TypeMux { return b.eventMux }
 
+// SubscribeSyncEvents subscribes to a throwaway feed that never fires,
+// mirroring the idle TypeMux the tests used before.
+func (b *testBackend) SubscribeSyncEvents(ch chan<- downloader.SyncEvent) event.Subscription {
+	return new(event.Feed).Subscribe(ch)
+}
+
 func (mp *mockPOSA) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, headers []*types.Header) (uint64, common.Hash, error) {
 	parentHeader := chain.GetHeaderByHash(headers[len(headers)-1].ParentHash)
 	if parentHeader == nil {

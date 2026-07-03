@@ -35,6 +35,7 @@ var notContinuousJustified = metrics.NewRegisteredCounter("votesManager/notConti
 // Backend wraps all methods required for voting.
 type Backend interface {
 	IsMining() bool
+	SubscribeSyncEvents(ch chan<- downloader.SyncEvent) event.Subscription
 }
 
 // VoteManager will handle the vote produced by self.
@@ -99,7 +100,7 @@ func (voteManager *VoteManager) loop() {
 	defer voteManager.syncVoteSub.Unsubscribe()
 
 	syncCh := make(chan downloader.SyncEvent, 16)
-	syncSub := voteManager.eth.(interface{ Downloader() *downloader.Downloader }).Downloader().SubscribeSyncEvents(syncCh)
+	syncSub := voteManager.eth.SubscribeSyncEvents(syncCh)
 	defer syncSub.Unsubscribe()
 
 	startVote := true
