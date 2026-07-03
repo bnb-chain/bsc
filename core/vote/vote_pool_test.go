@@ -69,19 +69,21 @@ type mockInvalidPOSA struct {
 
 // testBackend is a mock implementation of the live Ethereum message handler.
 type testBackend struct {
-	eventMux *event.TypeMux
+	syncFeed event.Feed
 }
 
 func newTestBackend() *testBackend {
-	return &testBackend{eventMux: new(event.TypeMux)}
+	return &testBackend{}
 }
-func (b *testBackend) IsMining() bool           { return true }
-func (b *testBackend) EventMux() *event.TypeMux { return b.eventMux }
+func (b *testBackend) IsMining() bool { return true }
 
-// SubscribeSyncEvents subscribes to a throwaway feed that never fires,
-// mirroring the idle TypeMux the tests used before.
 func (b *testBackend) SubscribeSyncEvents(ch chan<- downloader.SyncEvent) event.Subscription {
-	return new(event.Feed).Subscribe(ch)
+	return b.syncFeed.Subscribe(ch)
+}
+
+// postSyncEvent injects a downloader sync event into VoteManager.loop.
+func (b *testBackend) postSyncEvent(typ downloader.SyncEventType) {
+	b.syncFeed.Send(downloader.SyncEvent{Type: typ})
 }
 
 func (mp *mockPOSA) GetJustifiedNumberAndHash(chain consensus.ChainHeaderReader, headers []*types.Header) (uint64, common.Hash, error) {
@@ -161,7 +163,6 @@ func testVotePool(t *testing.T, isValidRules bool) {
 		Alloc:  types.GenesisAlloc{testAddr: {Balance: big.NewInt(1000000)}},
 	}
 
-	mux := new(event.TypeMux)
 	db := rawdb.NewMemoryDatabase()
 	chain, _ := core.NewBlockChain(db, genesis, ethash.NewFullFaker(), nil)
 
@@ -188,7 +189,8 @@ func testVotePool(t *testing.T, isValidRules bool) {
 	file.Close()
 	os.Remove(journal)
 
-	voteManager, err := NewVoteManager(newTestBackend(), chain, votePool, journal, walletPasswordDir, walletDir, mockEngine)
+	backend := newTestBackend()
+	voteManager, err := NewVoteManager(backend, chain, votePool, journal, walletPasswordDir, walletDir, mockEngine)
 	if err != nil {
 		t.Fatalf("failed to create vote managers")
 	}
@@ -197,7 +199,7 @@ func testVotePool(t *testing.T, isValidRules bool) {
 
 	// Send the done event of downloader
 	time.Sleep(10 * time.Millisecond)
-	mux.Post(downloader.SyncCompleted)
+	backend.postSyncEvent(downloader.SyncCompleted)
 
 	bs, _ := core.GenerateChain(params.TestChainConfig, chain.Genesis(), ethash.NewFaker(), db, 1, nil)
 	if _, err := chain.InsertChain(bs); err != nil {
