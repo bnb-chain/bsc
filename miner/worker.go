@@ -1184,6 +1184,17 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 		}
 	}
 	body := types.Body{Transactions: work.txs, Withdrawals: genParam.withdrawals}
+	if w.chainConfig.IsNotInBSC() {
+		if !w.chainConfig.IsShanghai(work.header.Number, work.header.Time) {
+			if body.Withdrawals != nil {
+				return &newPayloadResult{err: errors.New("unexpected withdrawals before shanghai")}
+			}
+		} else {
+			if body.Withdrawals == nil {
+				body.Withdrawals = make([]*types.Withdrawal, 0)
+			}
+		}
+	}
 	allLogs := make([]*types.Log, 0)
 	for _, r := range work.receipts {
 		allLogs = append(allLogs, r.Logs...)

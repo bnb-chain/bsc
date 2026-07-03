@@ -708,9 +708,6 @@ func testTransactionSender(t *testing.T, client *rpc.Client) {
 	}
 }
 
-<<<<<<< HEAD
-//nolint:unused
-=======
 func TestBlockReceiptsPreservesCanonicalFlag(t *testing.T) {
 	srv := rpc.NewServer()
 	service := &blockReceiptsTestService{calls: make(chan rpc.BlockNumberOrHash, 1)}
@@ -754,7 +751,6 @@ func (s *blockReceiptsTestService) GetBlockReceipts(ctx context.Context, block r
 	return []*types.Receipt{}, nil
 }
 
->>>>>>> geth-v1.17.3
 func newCanceledContext() context.Context {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
