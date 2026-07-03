@@ -271,7 +271,7 @@ func (b *BidBlock) Hash() common.Hash {
 		return hash.(common.Hash)
 	}
 	start := time.Now()
-	h := rlpHash(b.Header)
+	h := b.Header.Hash()
 	log.Debug("BidBlock Hash() computed", "number", b.Header.Number, "elapsed", time.Since(start),
 		"txs", len(b.Transactions), "sidecars", len(b.Sidecars))
 	b.hash.Store(h)
