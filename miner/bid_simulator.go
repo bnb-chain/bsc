@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/trie"
 )
 
 const prefetchTxNumber = 50
@@ -736,6 +737,9 @@ func (b *bidSimulator) preSealVerifyBidBlock(decoded *buildertypes.DecodedBidBlo
 	}
 	if err := parliaEngine.BlockTimeUpperCheck(b.chain, header); err != nil {
 		return fmt.Errorf("invalid header: %v", err)
+	}
+	if txHash := types.DeriveSha(decoded.Txs, trie.NewStackTrie(nil)); header.TxHash != txHash {
+		return fmt.Errorf("invalid tx root: got %s, want %s", header.TxHash, txHash)
 	}
 
 	decoded.SystemTxStart, decoded.GasFee = parliaEngine.ExtractBidBlockDepositValue(decoded.Txs)

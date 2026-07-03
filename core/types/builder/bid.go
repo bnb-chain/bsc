@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -263,12 +264,16 @@ type BidBlock struct {
 	hash atomic.Value
 }
 
-// Hash returns rlpHash over all BidBlock fields. This is what the builder signs.
+// Hash returns the BidBlock signing hash. The header carries TxHash, and the
+// validator checks TxHash against Transactions before blind-signing.
 func (b *BidBlock) Hash() common.Hash {
 	if hash := b.hash.Load(); hash != nil {
 		return hash.(common.Hash)
 	}
-	h := rlpHash(b)
+	start := time.Now()
+	h := rlpHash(b.Header)
+	log.Debug("BidBlock Hash() computed", "number", b.Header.Number, "elapsed", time.Since(start),
+		"txs", len(b.Transactions), "sidecars", len(b.Sidecars))
 	b.hash.Store(h)
 	return h
 }
