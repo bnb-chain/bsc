@@ -110,13 +110,8 @@ func (voteManager *VoteManager) loop() {
 		case ev := <-syncCh:
 			switch ev.Type {
 			case downloader.SyncStarted:
-				log.Debug("downloader is in startEvent mode, will not startVote")
 				startVote = false
-			case downloader.SyncFailed:
-				log.Debug("downloader is in SyncFailed mode, set startVote flag as true")
-				startVote = true
-			case downloader.SyncCompleted:
-				log.Debug("downloader is in SyncCompleted mode, set the startVote flag to true")
+			case downloader.SyncFailed, downloader.SyncCompleted:
 				startVote = true
 			}
 		case cHead := <-voteManager.highestVerifiedBlockCh:
