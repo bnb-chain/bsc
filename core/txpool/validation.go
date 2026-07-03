@@ -168,7 +168,7 @@ func ValidateBlobTx(tx *types.Transaction, head *types.Header, opts *ValidationO
 	// Ensure the sidecar is constructed with the correct version, consistent
 	// with the current fork.
 	version := types.BlobSidecarVersion0
-	if opts.Config.IsOsaka(head.Number, head.Time) {
+	if opts != nil && head != nil && opts.Config.IsNotInBSC() && opts.Config.IsOsaka(head.Number, head.Time) {
 		version = types.BlobSidecarVersion1
 	}
 	if sidecar.Version != version {
