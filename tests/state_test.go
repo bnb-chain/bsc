@@ -95,8 +95,6 @@ func TestExecutionSpecState(t *testing.T) {
 		t.Skipf("directory %s does not exist", executionSpecStateTestDir)
 	}
 	st := new(testMatcher)
-<<<<<<< HEAD
-=======
 
 	// Broken tests
 	st.skipLoad(`RevertInCreateInInit`)
@@ -104,7 +102,6 @@ func TestExecutionSpecState(t *testing.T) {
 	st.skipLoad(`dynamicAccountOverwriteEmpty_Paris`)
 	st.skipLoad(`create2collisionStorageParis`)
 
->>>>>>> geth-v1.17.3
 	st.walk(t, executionSpecStateTestDir, func(t *testing.T, name string, test *StateTest) {
 		execStateTest(t, st, test)
 	})
@@ -312,13 +309,7 @@ func runBenchmark(b *testing.B, t *StateTest) {
 			evm.SetTxContext(txContext)
 
 			// Create "contract" for sender to cache code analysis.
-<<<<<<< HEAD
-			sender := vm.GetContract(msg.From, msg.From, nil, 0, nil)
-			defer vm.ReturnContract(sender)
-=======
 			sender := vm.NewContract(msg.From, msg.From, nil, vm.GasBudget{}, nil)
->>>>>>> geth-v1.17.3
-
 			var (
 				gasUsed uint64
 				elapsed uint64
