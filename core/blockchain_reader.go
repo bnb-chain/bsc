@@ -65,7 +65,7 @@ func (bc *BlockChain) CurrentFinalBlock() *types.Header {
 		return p.GetFinalizedHeader(bc, currentHeader)
 	}
 
-	return nil
+	return bc.currentFinalBlock.Load()
 }
 
 // HighestNotifiedFinal retrieves the highest finalized block that has been notified.
