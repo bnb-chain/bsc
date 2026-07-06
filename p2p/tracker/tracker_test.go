@@ -24,8 +24,6 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 )
 
-<<<<<<< HEAD
-=======
 // TestCleanAfterStop verifies that the clean method does not crash when called
 // after Stop. This can happen because clean is scheduled via time.AfterFunc and
 // may fire after Stop sets t.expire to nil.
@@ -45,7 +43,6 @@ func TestCleanAfterStop(t *testing.T) {
 	tr.clean()
 }
 
->>>>>>> geth-v1.17.3
 // This checks that metrics gauges for pending requests are be decremented when a
 // Tracker is stopped.
 func TestMetricsOnStop(t *testing.T) {
