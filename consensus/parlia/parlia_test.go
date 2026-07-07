@@ -696,7 +696,7 @@ func TestParlia_applyTransactionTracing(t *testing.T) {
 
 	msg := engine.getSystemMessage(genesisBlock.Coinbase(), common.HexToAddress(systemcontracts.ValidatorContract), data, common.Big0)
 	nonce := stateDB.GetNonce(msg.From)
-	expectedTx := types.NewTransaction(nonce, *msg.To, msg.Value, msg.GasLimit, msg.GasPrice, msg.Data)
+	expectedTx := types.NewTransaction(nonce, *msg.To, msg.Value.ToBig(), msg.GasLimit, msg.GasPrice.ToBig(), msg.Data)
 
 	receivedTxs := []*types.Transaction{expectedTx}
 	txs := make([]*types.Transaction, 0, 1)
@@ -779,7 +779,7 @@ func TestParlia_applyTransactionModes(t *testing.T) {
 	}
 	expectedTx := func(stateDB *state.StateDB) *types.Transaction {
 		nonce := stateDB.GetNonce(msg.From)
-		return types.NewTransaction(nonce, *msg.To, msg.Value, msg.GasLimit, msg.GasPrice, msg.Data)
+		return types.NewTransaction(nonce, *msg.To, msg.Value.ToBig(), msg.GasLimit, msg.GasPrice.ToBig(), msg.Data)
 	}
 	apply := func(t *testing.T, stateDB *state.StateDB, receivedTxs *[]*types.Transaction, mode systemTxMode) ([]*types.Transaction, error) {
 		t.Helper()
@@ -865,6 +865,81 @@ func TestParlia_applyTransactionModes(t *testing.T) {
 func isUnsignedTx(tx *types.Transaction) bool {
 	v, r, s := tx.RawSignatureValues()
 	return v.Sign() == 0 && r.Sign() == 0 && s.Sign() == 0
+}
+
+// TestParlia_applyTransactionReceiptCumulativeGas verifies that a system
+// receipt continues the cumulative gas chain from the previous receipt rather
+// than from usedGas, which carries the block-level chain and runs ahead of the
+// receipt chain by the accumulated refunds after EIP-7778 (Amsterdam).
+func TestParlia_applyTransactionReceiptCumulativeGas(t *testing.T) {
+	frdir := t.TempDir()
+	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false)
+	if err != nil {
+		t.Fatalf("failed to create database with ancient backend: %v", err)
+	}
+
+	trieDB := triedb.NewDatabase(db, nil)
+	defer trieDB.Close()
+
+	config := params.ParliaTestChainConfig
+	gspec := &core.Genesis{
+		Config: config,
+		Alloc:  types.GenesisAlloc{testAddr: {Balance: new(big.Int).SetUint64(10 * params.Ether)}},
+	}
+	mockEngine := &mockParlia{}
+	genesisBlock := gspec.MustCommit(db, trieDB)
+	chain, _ := core.NewBlockChain(db, gspec, mockEngine, nil)
+	defer chain.Stop()
+	parents, _ := core.GenerateChain(config, genesisBlock, mockEngine, db, 1, nil)
+	header := parents[0].Header()
+
+	engine := New(config, db, nil, genesisBlock.Hash())
+	validatorKey, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatalf("failed to generate validator key: %v", err)
+	}
+	validator := crypto.PubkeyToAddress(validatorKey.PublicKey)
+	engine.Authorize(validator, nil, func(account accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
+		return types.SignTx(tx, types.LatestSigner(config), validatorKey)
+	})
+
+	data, err := engine.validatorSetABI.Pack("distributeFinalityReward", make([]common.Address, 0), make([]*big.Int, 0))
+	if err != nil {
+		t.Fatalf("failed to pack system contract method: %v", err)
+	}
+	msg := engine.getSystemMessage(validator, common.HexToAddress(systemcontracts.ValidatorContract), data, common.Big0)
+	cx := chainContext{ChainHeaderReader: chain, parlia: engine}
+
+	stateDB, err := state.New(genesisBlock.Root(), state.NewDatabase(trieDB, nil))
+	if err != nil {
+		t.Fatalf("failed to create stateDB: %v", err)
+	}
+
+	// Seed the two chains with diverged bases, mirroring post-Amsterdam blocks
+	// where the block-level chain runs ahead by the accumulated refunds.
+	const (
+		receiptBase = uint64(120_000)
+		blockBase   = uint64(150_000)
+	)
+	txs := make([]*types.Transaction, 0, 1)
+	receipts := []*types.Receipt{{CumulativeGasUsed: receiptBase}}
+	usedGas := blockBase
+
+	if err := engine.applyTransaction(msg, stateDB, header, cx, &txs, &receipts, nil, &usedGas, systemTxMining, nil); err != nil {
+		t.Fatalf("failed to apply system transaction: %v", err)
+	}
+	if len(receipts) != 2 {
+		t.Fatalf("expected two receipts, got %d", len(receipts))
+	}
+	sys := receipts[1]
+	sysGas := usedGas - blockBase
+	if sys.GasUsed != sysGas {
+		t.Errorf("system receipt gas: got %d, want %d", sys.GasUsed, sysGas)
+	}
+	if want := receiptBase + sysGas; sys.CumulativeGasUsed != want {
+		t.Errorf("system receipt cumulative gas: got %d, want %d (must continue the receipt chain, not the block chain at %d)",
+			sys.CumulativeGasUsed, want, blockBase+sysGas)
+	}
 }
 
 // TestParliaFinalizeAndAssembleBidBlock verifies BidBlock assembly emits unsigned system txs.
