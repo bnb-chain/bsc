@@ -156,10 +156,6 @@ func (db *nofreezedb) ResetTable(kind string, startAt uint64, onlyEmpty bool) er
 	return errNotSupported
 }
 
-func (db *nofreezedb) ResetTableForIncr(kind string, startAt uint64, onlyEmpty bool) error {
-	return errNotSupported
-}
-
 // SyncAncient returns an error as we don't have a backing chain freezer.
 func (db *nofreezedb) SyncAncient() error {
 	return errNotSupported
@@ -187,9 +183,6 @@ func (db *nofreezedb) AncientDatadir() (string, error) {
 }
 
 func (db *nofreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
-	return nil
-}
-func (db *nofreezedb) CleanBlock(ethdb.KeyValueStore, uint64) error {
 	return nil
 }
 
@@ -257,10 +250,6 @@ func (db *emptyfreezedb) ResetTable(kind string, startAt uint64, onlyEmpty bool)
 	return nil
 }
 
-func (db *emptyfreezedb) ResetTableForIncr(kind string, startAt uint64, onlyEmpty bool) error {
-	return nil
-}
-
 // SyncAncient returns nil for pruned db that we don't have a backing chain freezer.
 func (db *emptyfreezedb) SyncAncient() error {
 	return nil
@@ -275,9 +264,6 @@ func (db *emptyfreezedb) AncientDatadir() (string, error) {
 	return "", nil
 }
 func (db *emptyfreezedb) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
-	return nil
-}
-func (db *emptyfreezedb) CleanBlock(ethdb.KeyValueStore, uint64) error {
 	return nil
 }
 
@@ -882,97 +868,6 @@ func InspectAncients(db ethdb.Database) error {
 	t.AppendBulk(stats)
 	t.Render()
 
-	return nil
-}
-
-// InspectIncrStore traverses the entire incr db and checks the size
-// of all different categories of data.
-func InspectIncrStore(baseDir string) error {
-	dirs, err := GetAllIncrDirs(baseDir)
-	if err != nil {
-		return err
-	}
-	fmt.Println(dirs)
-
-	var (
-		total       common.StorageSize
-		stats       [][]string
-		unaccounted stat
-		info        = incrSnapDBInfo{
-			readonly:      true,
-			namespace:     "eth/db/incremental/",
-			offset:        0,
-			maxTableSize:  stateHistoryTableSize,
-			chainTables:   incrChainFreezerTableConfigs,
-			stateTables:   incrStateFreezerTableConfigs,
-			blockInterval: 0,
-		}
-	)
-
-	complete, err := CheckIncrSnapshotComplete(dirs[len(dirs)-1].Path)
-	if err != nil {
-		return err
-	}
-	if !complete {
-		log.Info("Skip last incremental directory", "dir", dirs[len(dirs)-1].Path)
-		dirs = dirs[:len(dirs)-1]
-	}
-
-	for _, dir := range dirs {
-		db, err := newSnapDBWrapper(dir.Path, &info)
-		if err != nil {
-			return err
-		}
-		var (
-			codes, parliaSnaps stat
-		)
-		it := db.kvDB.NewIterator(nil, nil)
-		for it.Next() {
-			var (
-				key  = it.Key()
-				size = common.StorageSize(len(key) + len(it.Value()))
-			)
-			switch {
-			case bytes.HasPrefix(key, ParliaSnapshotPrefix) && len(key) == 7+common.HashLength:
-				parliaSnaps.add(size)
-			case bytes.HasPrefix(key, CodePrefix) && len(key) == len(CodePrefix)+common.HashLength:
-				codes.add(size)
-			default:
-				unaccounted.add(size)
-			}
-		}
-		title := fmt.Sprintf("%s/KV store", dir.Name)
-		stats = append(stats, [][]string{
-			{title, "Contract codes", codes.sizeString(), codes.countString()},
-			{title, "Parlia snapshots", parliaSnaps.sizeString(), parliaSnaps.countString()},
-		}...)
-
-		ancients, err := inspectIncrFreezers(db)
-		if err != nil {
-			return err
-		}
-		for _, ancient := range ancients {
-			for _, table := range ancient.sizes {
-				stats = append(stats, []string{
-					fmt.Sprintf("%s/%s", dir.Name, strings.Title(ancient.name)),
-					strings.Title(table.name),
-					table.size.String(),
-					fmt.Sprintf("%d", ancient.count),
-				})
-			}
-			total += ancient.size()
-		}
-	}
-
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Database", "Category", "Size", "Items"})
-	table.SetFooter([]string{"", "Total", total.String(), " "})
-	table.AppendBulk(stats)
-	table.Render()
-
-	if unaccounted.size > 0 {
-		log.Error("Database contains unaccounted data", "size", unaccounted.size, "count", unaccounted.count)
-	}
 	return nil
 }
 

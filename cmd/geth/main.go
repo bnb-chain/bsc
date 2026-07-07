@@ -190,13 +190,6 @@ var (
 		utils.LogBacktraceAtFlag,
 		utils.BlobExtraReserveFlag,
 		utils.VMOpcodeOptimizeFlag, // deprecated
-		utils.EnableIncrSnapshotFlag,
-		utils.IncrSnapshotPathFlag,
-		utils.IncrSnapshotBlockIntervalFlag,
-		utils.IncrSnapshotStateBufferFlag,
-		utils.IncrSnapshotKeptBlocksFlag,
-		utils.UseRemoteIncrSnapshotFlag,
-		utils.RemoteIncrSnapshotURLFlag,
 		// utils.BeaconApiFlag,
 		// utils.BeaconApiHeaderFlag,
 		// utils.BeaconThresholdFlag,
