@@ -116,7 +116,6 @@ func (dl *downloadTester) newPeer(id string, version uint, blocks []*types.Block
 		id:              id,
 		chain:           newTestBlockchain(blocks),
 		withholdHeaders: make(map[common.Hash]struct{}),
-		withholdBodies:  make(map[common.Hash]struct{}),
 		dropped:         make(chan error, 1),
 	}
 	dl.peers[id] = peer
@@ -146,7 +145,6 @@ type downloadTesterPeer struct {
 	chain *core.BlockChain
 
 	withholdHeaders map[common.Hash]struct{}
-	withholdBodies  map[common.Hash]struct{}
 	corruptBodies   bool // if set, the peer serves incorrect bodies
 
 	dropped chan error // signaled when res.Done receives an error
