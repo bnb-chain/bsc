@@ -450,8 +450,7 @@ func NewBlockChain(db ethdb.Database, genesis *Genesis, engine consensus.Engine,
 	if err != nil {
 		return nil, err
 	}
-	trieConfig := cfg.triedbConfig(enableVerkle)
-	triedb := triedb.NewDatabase(db, trieConfig)
+	triedb := triedb.NewDatabase(db, cfg.triedbConfig(enableVerkle))
 
 	// Write the supplied genesis to the database if it has not been initialized
 	// yet. The corresponding chain config will be returned, either from the

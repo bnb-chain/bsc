@@ -139,22 +139,6 @@ func (f *chainFreezer) Close() error {
 	return f.ancients.Close()
 }
 
-// readHeadNumber returns the number of chain head block. 0 is returned if the
-// block is unknown or not available yet.
-func (f *chainFreezer) readHeadNumber(db ethdb.KeyValueReader) uint64 {
-	hash := ReadHeadBlockHash(db)
-	if hash == (common.Hash{}) {
-		log.Warn("Head block is not reachable")
-		return 0
-	}
-	number, ok := ReadHeaderNumber(db, hash)
-	if !ok {
-		log.Error("Number of head block is missing")
-		return 0
-	}
-	return number
-}
-
 // freeze is a background thread that periodically checks the blockchain for any
 // import progress and moves ancient data from the fast database into the freezer.
 //

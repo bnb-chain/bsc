@@ -2529,7 +2529,6 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 			cfg.VMTraceJsonConfig = ctx.String(VMTraceJsonConfigFlag.Name)
 		}
 	}
-
 }
 
 // SetDNSDiscoveryDefaults configures DNS discovery with the given URL if

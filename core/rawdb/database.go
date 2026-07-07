@@ -840,37 +840,6 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 	return nil
 }
 
-// InspectAncients
-func InspectAncients(db ethdb.Database) error {
-	// Totals
-	var (
-		total common.StorageSize
-		stats [][]string
-	)
-	ancients, err := inspectFreezers(db)
-	if err != nil {
-		return err
-	}
-	for _, ancient := range ancients {
-		for _, t := range ancient.sizes {
-			stats = append(stats, []string{
-				fmt.Sprintf("Ancient store (%s)", strings.Title(ancient.name)),
-				strings.Title(t.name),
-				t.size.String(),
-				fmt.Sprintf("%d", ancient.count),
-			})
-		}
-		total += ancient.size()
-	}
-	t := tablewriter.NewWriter(os.Stdout)
-	t.SetHeader([]string{"Database", "Category", "Size", "Items"})
-	t.SetFooter([]string{"", "Total", total.String(), " "})
-	t.AppendBulk(stats)
-	t.Render()
-
-	return nil
-}
-
 func DeleteTrieState(db ethdb.Database) error {
 	var (
 		it     ethdb.Iterator
