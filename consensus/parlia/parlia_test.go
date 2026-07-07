@@ -645,7 +645,7 @@ var (
 
 func TestParlia_applyTransactionTracing(t *testing.T) {
 	frdir := t.TempDir()
-	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false)
+	db, err := rawdb.Open(rawdb.NewMemoryDatabase(), rawdb.OpenOptions{Ancient: frdir})
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend")
 	}
@@ -729,7 +729,7 @@ func TestParlia_applyTransactionTracing(t *testing.T) {
 
 func TestParlia_applyTransactionModes(t *testing.T) {
 	frdir := t.TempDir()
-	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false)
+	db, err := rawdb.Open(rawdb.NewMemoryDatabase(), rawdb.OpenOptions{Ancient: frdir})
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend: %v", err)
 	}
@@ -873,7 +873,7 @@ func isUnsignedTx(tx *types.Transaction) bool {
 // receipt chain by the accumulated refunds after EIP-7778 (Amsterdam).
 func TestParlia_applyTransactionReceiptCumulativeGas(t *testing.T) {
 	frdir := t.TempDir()
-	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false)
+	db, err := rawdb.Open(rawdb.NewMemoryDatabase(), rawdb.OpenOptions{Ancient: frdir})
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend: %v", err)
 	}
@@ -945,7 +945,7 @@ func TestParlia_applyTransactionReceiptCumulativeGas(t *testing.T) {
 // TestParliaFinalizeAndAssembleBidBlock verifies BidBlock assembly emits unsigned system txs.
 func TestParliaFinalizeAndAssembleBidBlock(t *testing.T) {
 	frdir := t.TempDir()
-	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false)
+	db, err := rawdb.Open(rawdb.NewMemoryDatabase(), rawdb.OpenOptions{Ancient: frdir})
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend: %v", err)
 	}
@@ -1036,7 +1036,7 @@ func TestParliaFinalizeAndAssembleBidBlock(t *testing.T) {
 
 func TestParliaFinalizeAndAssembleBidBlockRewardsHeaderCoinbase(t *testing.T) {
 	frdir := t.TempDir()
-	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false)
+	db, err := rawdb.Open(rawdb.NewMemoryDatabase(), rawdb.OpenOptions{Ancient: frdir})
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend: %v", err)
 	}
@@ -1108,7 +1108,7 @@ func TestParliaFinalizeAndAssembleBidBlockRewardsHeaderCoinbase(t *testing.T) {
 
 func TestParliaPrepareForBidBlock(t *testing.T) {
 	frdir := t.TempDir()
-	db, err := rawdb.NewDatabaseWithFreezer(rawdb.NewMemoryDatabase(), frdir, "", false)
+	db, err := rawdb.Open(rawdb.NewMemoryDatabase(), rawdb.OpenOptions{Ancient: frdir})
 	if err != nil {
 		t.Fatalf("failed to create database with ancient backend: %v", err)
 	}
