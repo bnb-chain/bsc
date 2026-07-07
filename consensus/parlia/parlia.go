@@ -2509,7 +2509,6 @@ func applyMessage(
 	if err != nil {
 		log.Error("apply message failed", "msg", string(ret), "err", err)
 	}
-	// TODO(Nathan): need confirm
 	return leftOverGas.Used(gasBudget), err
 }
 
