@@ -8,6 +8,8 @@ v1.7.6 is for BSC Chapel testnet [Pasteur hardfork](https://github.com/bnb-chain
 - [\#3717](https://github.com/bnb-chain/bsc/pull/3717) params: move Pasteur next to Mendel
 - [\#3721](https://github.com/bnb-chain/bsc/pull/3721) core/systemcontracts: introduce Pasteur hardfork system-contract upgrade
 - [\#3727](https://github.com/bnb-chain/bsc/pull/3727) core/systemcontracts: point Pasteur CommitUrl to genesis-contract v1.2.6
+- [\#3741](https://github.com/bnb-chain/bsc/pull/3741) miner: disable BidBlock on hard-fork activation blocks
+- [\#3742](https://github.com/bnb-chain/bsc/pull/3742) miner: optimize BidBlock signing hash
 
 ### BUGFIX
 - [\#3668](https://github.com/bnb-chain/bsc/pull/3668) eth/handler.go: add verify bal
@@ -41,6 +43,7 @@ v1.7.6 is for BSC Chapel testnet [Pasteur hardfork](https://github.com/bnb-chain
 ### IMPROVEMENT
 - [\#3669](https://github.com/bnb-chain/bsc/pull/3669) miner: reduce local mining time for last block in one turn
 - [\#3694](https://github.com/bnb-chain/bsc/pull/3694) consensus/parlia: extract VerifyUnsealedHeader from verifyHeader
+- [\#3736](https://github.com/bnb-chain/bsc/pull/3736) miner: add BidBlock verify metrics
 
 ### CLEAN UP
 - [\#3670](https://github.com/bnb-chain/bsc/pull/3670) triedb/pathdb: remove legacy field JournalFilePath
@@ -50,6 +53,7 @@ v1.7.6 is for BSC Chapel testnet [Pasteur hardfork](https://github.com/bnb-chain
 - [\#3720](https://github.com/bnb-chain/bsc/pull/3720) core/rawdb: cleanup bep-592 bal key related
 - [\#3722](https://github.com/bnb-chain/bsc/pull/3722) core/txpool/legacypool: remove overflowpool for txs
 - [\#3728](https://github.com/bnb-chain/bsc/pull/3728) beacon, cmd: remove fake-beacon op-stack shim (revert #2678)
+- [\#3739](https://github.com/bnb-chain/bsc/pull/3739) core/types: extract bid and block mev info into builder subpackage
 
 #### Deprecated Flags & Config Fields
 The following flags and config fields are removed or deprecated in this release. Please update your node configuration accordingly before upgrading:
