@@ -306,7 +306,7 @@ var (
 		FermiTime:           newUint64(1762741500), // 2025-11-10 02:25:00 AM UTC
 		OsakaTime:           newUint64(1774319400), // 2026-03-24 02:30:00 AM UTC
 		MendelTime:          newUint64(1774319400), // 2026-03-24 02:30:00 AM UTC
-		PasteurTime:         newUint64(1784255400), // 2026-07-17 02:30:00 AM UTC
+		PasteurTime:         newUint64(1784601000), // 2026-07-21 02:30:00 AM UTC
 		BPO1Time:            nil,                   // will be skipped in BSC
 		BPO2Time:            nil,                   // will be skipped in BSC
 		AmsterdamTime:       nil,
