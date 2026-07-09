@@ -1,12 +1,6 @@
 package vm
 
-import (
-	"fmt"
-	"strings"
-
-	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/log"
-)
+import "strings"
 
 // superInstructionMap maps super-instruction opcodes to the slice of ordinary opcodes
 // they were fused from.  The mapping comes from the fusion patterns implemented in
@@ -59,60 +53,4 @@ func DecomposeSuperInstruction(op OpCode) ([]OpCode, bool) {
 func DecomposeSuperInstructionByName(name string) ([]OpCode, bool) {
 	op := StringToOp(strings.ToUpper(name))
 	return DecomposeSuperInstruction(op)
-}
-
-func (in *EVMInterpreter) executeSingleOpcode(pc *uint64, op OpCode, contract *Contract, stack *Stack, mem *Memory, callCtx *ScopeContext) error {
-	operation := in.table[op]
-	if operation == nil {
-		return fmt.Errorf("unknown opcode %02x", op)
-	}
-
-	// -------- check static gas --------
-	if contract.Gas < operation.constantGas {
-		return ErrOutOfGas
-	}
-	contract.Gas -= operation.constantGas
-
-	// -------- check dynamic gas  --------
-	var memorySize uint64
-	if operation.memorySize != nil {
-		memSize, overflow := operation.memorySize(stack)
-		if overflow {
-			return ErrGasUintOverflow
-		}
-		if memorySize, overflow = math.SafeMul(toWordSize(memSize), 32); overflow {
-			return ErrGasUintOverflow
-		}
-	}
-
-	if operation.dynamicGas != nil {
-		dyn, err := operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
-		if err != nil {
-			return err
-		}
-		if contract.Gas < dyn {
-			return ErrOutOfGas
-		}
-		contract.Gas -= dyn
-	}
-
-	if memorySize > 0 {
-		mem.Resize(memorySize)
-	}
-
-	// -------- execute --------
-	_, err := operation.execute(pc, in, callCtx)
-	return err
-}
-
-// tryFallbackForSuperInstruction break down superinstruction to normal opcode and execute in sequence, until gas deplete or succeed
-// return nil show successful execution of si or OOG in the middle (and updated pc/gas), shall continue in main loop
-func (in *EVMInterpreter) tryFallbackForSuperInstruction(pc *uint64, seq []OpCode, contract *Contract, stack *Stack, mem *Memory, callCtx *ScopeContext) error {
-	for _, sub := range seq {
-		if err := in.executeSingleOpcode(pc, sub, contract, stack, mem, callCtx); err != nil {
-			log.Debug("[FALLBACK-EXEC]", "op", sub.String(), "err", err, "gasLeft", contract.Gas)
-			return err // OutOfGas or other errors, will let upper level handle
-		}
-	}
-	return nil
 }

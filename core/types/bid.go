@@ -175,6 +175,10 @@ type Bid struct {
 	committed    bool // whether the bid has been committed to simulate or not
 
 	rawBid RawBid
+
+	// BlobValResults carries per-tx results of async blob validation (field
+	// checks + KZG proof verification), keyed by transaction hash.
+	BlobValResults map[common.Hash]chan error
 }
 
 func (b *Bid) Commit() {

@@ -426,10 +426,6 @@ func (hc *HeaderChain) GetVerifiedBlockByHash(hash common.Hash) *types.Header {
 	return hc.GetHeaderByHash(hash)
 }
 
-func (hc *HeaderChain) ChasingHead() *types.Header {
-	return nil
-}
-
 // GetAncestor retrieves the Nth ancestor of a given block. It assumes that either the given block or
 // a close ancestor of it is canonical. maxNonCanonical points to a downwards counter limiting the
 // number of blocks to be individually checked before we reach the canonical chain.

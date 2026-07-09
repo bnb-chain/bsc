@@ -369,6 +369,13 @@ func (tx *Transaction) EffectiveGasTipValue(baseFee *big.Int) *big.Int {
 	return effectiveTip
 }
 
+// EffectiveGasPriceForBSC returns the effective gas price of the transaction on BSC.
+// BSC does not enforce a base fee, so baseFee is always zero.
+func (tx *Transaction) EffectiveGasPriceForBSC() *big.Int {
+	dst := new(big.Int)
+	return tx.inner.effectiveGasPrice(dst, new(big.Int))
+}
+
 // EffectiveGasTip returns the effective miner gasTipCap for the given base fee.
 // Note: if the effective gasTipCap would be negative, this method
 // returns ErrGasFeeCapTooLow, and value is undefined.

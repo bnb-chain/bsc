@@ -319,7 +319,7 @@ func (p *Parlia) IsSystemTransaction(tx *types.Transaction, header *types.Header
 	if tx.To() == nil || !isToSystemContract(*tx.To()) {
 		return false, nil
 	}
-	if tx.GasPrice().Sign() != 0 {
+	if tx.EffectiveGasPriceForBSC().Sign() != 0 {
 		return false, nil
 	}
 	sender, err := types.Sender(p.signer, tx)
@@ -2020,7 +2020,7 @@ func (p *Parlia) isIntentionalDelayMining(chain consensus.ChainHeaderReader, hea
 		return false, err
 	}
 	isIntentional := header.Coinbase == parent.Coinbase &&
-		header.Difficulty == diffInTurn && parent.Difficulty == diffInTurn &&
+		header.Difficulty.Cmp(diffInTurn) == 0 && parent.Difficulty.Cmp(diffInTurn) == 0 &&
 		parent.MilliTimestamp()+blockInterval < header.MilliTimestamp()
 	return isIntentional, nil
 }

@@ -796,7 +796,3 @@ func (cm *chainMaker) GetHighestVerifiedHeader() *types.Header {
 func (cm *chainMaker) GetVerifiedBlockByHash(hash common.Hash) *types.Header {
 	return cm.GetHeaderByHash(hash)
 }
-
-func (cm *chainMaker) ChasingHead() *types.Header {
-	panic("not supported")
-}

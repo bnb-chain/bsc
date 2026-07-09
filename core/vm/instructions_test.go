@@ -1415,6 +1415,83 @@ func TestOpSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(t *testing.T) {
 	require.Equal(t, scope2.Memory.Data(), scope1.Memory.Data())
 }
 
+func TestOpSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LTOverflow(t *testing.T) {
+	var err error
+	code := []byte{0x90, 0x60, 0x0, 0x80, 0x19, 0x91, 0x1, 0x16, 0x81, 0x1, 0x90, 0x81, 0x10}
+	maxMinus10 := new(uint256.Int).SetAllOne()
+	maxMinus10.Sub(maxMinus10, uint256.NewInt(10))
+
+	pc1 := uint64(0)
+	stack1 := new(Stack)
+	stack1.push(maxMinus10.Clone())
+	stack1.push(uint256.NewInt(100))
+	scope1 := &ScopeContext{
+		Contract: &Contract{Code: code, optimized: true},
+		Stack:    stack1,
+		Memory:   NewMemory(),
+	}
+	scope1.Memory.Resize(34)
+	interpreter1 := &EVMInterpreter{}
+
+	_, err = opSwap1Push1Dup1NotSwap2AddAndDup2AddSwap1Dup2LT(&pc1, interpreter1, scope1)
+	require.NoError(t, err)
+
+	pc2 := uint64(0)
+	stack2 := new(Stack)
+	stack2.push(maxMinus10.Clone())
+	stack2.push(uint256.NewInt(100))
+	scope2 := &ScopeContext{
+		Contract: &Contract{Code: code},
+		Stack:    stack2,
+		Memory:   NewMemory(),
+	}
+	scope2.Memory.Resize(34)
+	interpreter2 := &EVMInterpreter{}
+
+	_, err = opSwap1(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
+	pc2++
+	_, err = opPush1(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
+	pc2++
+	_, err = makeDup(1)(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
+	pc2++
+	_, err = opNot(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
+	pc2++
+	_, err = opSwap2(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
+	pc2++
+	_, err = opAdd(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
+	pc2++
+	_, err = opAnd(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
+	pc2++
+	_, err = makeDup(2)(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
+	pc2++
+	_, err = opAdd(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
+	pc2++
+	_, err = opSwap1(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
+	pc2++
+	_, err = makeDup(2)(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
+	pc2++
+	_, err = opLt(&pc2, interpreter2, scope2)
+	require.NoError(t, err)
+
+	require.Equal(t, stack1.len(), stack2.len())
+	for stack1.len() != 0 {
+		require.Equal(t, stack1.pop(), stack2.pop())
+	}
+	require.Equal(t, pc1, pc2)
+	require.Equal(t, scope2.Memory.Data(), scope1.Memory.Data())
+}
+
 func TestOpPush1CalldataloadPush1ShrDup1Push4GtPush2(t *testing.T) {
 	var err error
 	code := []byte{0x60, 0x10, 0x35, 0x60, 0x11, 0x1c, 0x80, 0x63, 0x12, 0x13, 0x14, 0x15, 0x11, 0x61, 0x16, 0x17}

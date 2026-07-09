@@ -2212,7 +2212,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 	}
 
 	if ctx.String(GCModeFlag.Name) == "archive" {
-		if cfg.TransactionHistory != 0 {
+		if cfg.TransactionHistory == ethconfig.Defaults.TransactionHistory {
 			cfg.TransactionHistory = 0
 			log.Warn("Disabled transaction unindexing for archive node")
 		}
