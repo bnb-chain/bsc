@@ -98,6 +98,12 @@ func TestExecutionSpecBlocktests(t *testing.T) {
 	bt.skipLoad(`InitCollisionParis`)
 	bt.skipLoad(`dynamicAccountOverwriteEmpty_Paris`)
 	bt.skipLoad(`create2collisionStorageParis`)
+	// eip7610_create_collision fixtures were added in execution-spec-tests v5.3.0
+	// (BSC pins v5.4.0). They assert rejection of contract creation over a
+	// storage-only account, which go-ethereum's EIP-7610 rework (PR #34718, in
+	// v1.17.3) no longer does for non-allowlisted synthetic addresses. Upstream
+	// v1.17.3 pins spec-tests v5.1.0 and never sees these fixtures; skip them here.
+	bt.skipLoad(`eip7610_create_collision`)
 
 	bt.walk(t, executionSpecBlockchainTestDir, func(t *testing.T, name string, test *BlockTest) {
 		execBlockTest(t, bt, test)

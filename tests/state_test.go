@@ -84,6 +84,27 @@ func TestState(t *testing.T) {
 func TestLegacyState(t *testing.T) {
 	st := new(testMatcher)
 	initMatcher(st)
+	// Broken tests: legacy (Constantinople-era) storage-collision fixtures.
+	//
+	// go-ethereum's EIP-7610 rework (PR #34718, shipped in v1.17.3) replaced the
+	// universal GetStorageRoot collision check with a hardcoded per-chain allowlist
+	// (core/vm/eip7610.go): contract creation over an account that has non-empty
+	// storage but zero nonce and empty code is only rejected if the address is in the
+	// allowlist. These fixtures deliberately construct such a collision at a
+	// non-allowlisted synthetic address, so creation is no longer rejected and the
+	// post-state root diverges from the pre-#34718 value baked into the fixtures.
+	//
+	// This is not a BSC divergence: upstream classifies the same fixtures as broken
+	// and skips their Paris variants in initMatcher above (and in TestBlockchain /
+	// TestExecutionSpec*). Upstream's CI never runs the legacy variants because it
+	// does not check out the LegacyTests submodule; our run-evm-tests.sh does (git
+	// submodule update --recursive), so we skip the legacy variants here too.
+	// Verified: go-ethereum v1.17.3's own `evm statetest` produces byte-identical
+	// roots on these fixtures and fails them identically. The scenario is impossible
+	// on real BSC (EIP-158 active from genesis, no address collisions).
+	st.skipLoad(`InitCollision`)
+	st.skipLoad(`create2collisionStorage`)
+	st.skipLoad(`dynamicAccountOverwriteEmpty`)
 	st.walk(t, legacyStateTestDir, func(t *testing.T, name string, test *StateTest) {
 		execStateTest(t, st, test)
 	})
@@ -101,6 +122,12 @@ func TestExecutionSpecState(t *testing.T) {
 	st.skipLoad(`InitCollisionParis`)
 	st.skipLoad(`dynamicAccountOverwriteEmpty_Paris`)
 	st.skipLoad(`create2collisionStorageParis`)
+	// eip7610_create_collision fixtures were added in execution-spec-tests v5.3.0
+	// (BSC pins v5.4.0). They assert rejection of contract creation over a
+	// storage-only account, which go-ethereum's EIP-7610 rework (PR #34718, in
+	// v1.17.3) no longer does for non-allowlisted synthetic addresses. Upstream
+	// v1.17.3 pins spec-tests v5.1.0 and never sees these fixtures; skip them here.
+	st.skipLoad(`eip7610_create_collision`)
 
 	st.walk(t, executionSpecStateTestDir, func(t *testing.T, name string, test *StateTest) {
 		execStateTest(t, st, test)
