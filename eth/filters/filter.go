@@ -33,8 +33,6 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-const maxFilterBlockRange = 5000
-
 // Filter can be used to retrieve and filter logs.
 type Filter struct {
 	sys *FilterSystem
