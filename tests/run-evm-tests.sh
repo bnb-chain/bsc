@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 cd ..
-git submodule update --init --depth 1 --recursive
+# Non-recursive on purpose: skip the nested LegacyTests submodule. Its
+# Constantinople-era storage-collision fixtures (InitCollision,
+# create2collisionStorage, dynamicAccountOverwriteEmpty) fail under
+# go-ethereum's EIP-7610 allowlist collision check (v1.17.3) and are
+# structurally impossible on BSC (EIP-158 active from genesis). Upstream
+# go-ethereum likewise does not check out LegacyTests, so TestLegacyState
+# self-skips with "missing test files". tests/testdata and
+# tests/evm-benchmarks are top-level submodules and are still fetched.
+git submodule update --init --depth 1
 git apply tests/0001-diff-go-ethereum.patch
 git apply tests/0002-diff-go-ethereum.patch
 cd tests
