@@ -350,6 +350,35 @@ var PrecompiledContractsOsaka = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{eip7951: true},
 }
 
+// stripBSCPrecompiles returns a copy of a BSC precompile set with the
+// BSC-specific cross-chain / consensus precompiles (0x64-0x69, plus any
+// address in `extra`) removed, yielding the upstream go-ethereum set. It lets
+// non-BSC chains (Parlia == nil) run the standard execution-spec / state tests
+// against the vanilla precompile set without patching contracts.go.
+func stripBSCPrecompiles(m PrecompiledContracts, extra ...common.Address) PrecompiledContracts {
+	c := maps.Clone(m)
+	for _, a := range []byte{0x64, 0x65, 0x66, 0x67, 0x68, 0x69} {
+		delete(c, common.BytesToAddress([]byte{a}))
+	}
+	for _, a := range extra {
+		delete(c, a)
+	}
+	return c
+}
+
+// Standard (non-BSC) precompile sets, derived from the BSC sets above by
+// dropping the BSC-specific precompiles. These match upstream go-ethereum and
+// are selected when Parlia is not configured (rules.IsNotInBSC).
+var (
+	PrecompiledContractsIstanbulEth = stripBSCPrecompiles(PrecompiledContractsIstanbul)
+	PrecompiledContractsCancunEth   = stripBSCPrecompiles(PrecompiledContractsCancun)
+	PrecompiledContractsOsakaEth    = stripBSCPrecompiles(PrecompiledContractsOsaka)
+	// Prague's 0x100 p256Verify is a BSC-only early adoption (upstream has no
+	// p256 precompile at Prague; it arrives at Osaka via EIP-7951), so drop it
+	// from the standard set too.
+	PrecompiledContractsPragueEth = stripBSCPrecompiles(PrecompiledContractsPrague, common.BytesToAddress([]byte{0x1, 0x00}))
+)
+
 // PrecompiledContractsPasteur contains the set of pre-compiled Ethereum
 // contracts used in the Pasteur release.
 var PrecompiledContractsPasteur = PrecompiledContracts{
@@ -404,6 +433,14 @@ var (
 	PrecompiledAddressesIstanbul  []common.Address
 	PrecompiledAddressesByzantium []common.Address
 	PrecompiledAddressesHomestead []common.Address
+
+	// Standard (non-BSC) address sets, matching upstream go-ethereum. Used for
+	// chains where Parlia is not configured (rules.IsNotInBSC), e.g. the
+	// standard execution-spec / state tests.
+	PrecompiledAddressesIstanbulEth []common.Address
+	PrecompiledAddressesCancunEth   []common.Address
+	PrecompiledAddressesPragueEth   []common.Address
+	PrecompiledAddressesOsakaEth    []common.Address
 )
 
 func init() {
@@ -455,6 +492,18 @@ func init() {
 	for k := range PrecompiledContractsPasteur {
 		PrecompiledAddressesPasteur = append(PrecompiledAddressesPasteur, k)
 	}
+	for k := range PrecompiledContractsIstanbulEth {
+		PrecompiledAddressesIstanbulEth = append(PrecompiledAddressesIstanbulEth, k)
+	}
+	for k := range PrecompiledContractsCancunEth {
+		PrecompiledAddressesCancunEth = append(PrecompiledAddressesCancunEth, k)
+	}
+	for k := range PrecompiledContractsPragueEth {
+		PrecompiledAddressesPragueEth = append(PrecompiledAddressesPragueEth, k)
+	}
+	for k := range PrecompiledContractsOsakaEth {
+		PrecompiledAddressesOsakaEth = append(PrecompiledAddressesOsakaEth, k)
+	}
 }
 
 func activePrecompiledContracts(rules params.Rules) PrecompiledContracts {
@@ -464,12 +513,21 @@ func activePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 	case rules.IsPasteur:
 		return PrecompiledContractsPasteur
 	case rules.IsOsaka:
+		if rules.IsNotInBSC {
+			return PrecompiledContractsOsakaEth
+		}
 		return PrecompiledContractsOsaka
 	case rules.IsPrague:
+		if rules.IsNotInBSC {
+			return PrecompiledContractsPragueEth
+		}
 		return PrecompiledContractsPrague
 	case rules.IsHaber:
 		return PrecompiledContractsHaber
 	case rules.IsCancun:
+		if rules.IsNotInBSC {
+			return PrecompiledContractsCancunEth
+		}
 		return PrecompiledContractsCancun
 	case rules.IsFeynman:
 		return PrecompiledContractsFeynman
@@ -488,6 +546,9 @@ func activePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 	case rules.IsNano:
 		return PrecompiledContractsNano
 	case rules.IsIstanbul:
+		if rules.IsNotInBSC {
+			return PrecompiledContractsIstanbulEth
+		}
 		return PrecompiledContractsIstanbul
 	case rules.IsByzantium:
 		return PrecompiledContractsByzantium
@@ -507,12 +568,21 @@ func ActivePrecompiles(rules params.Rules) []common.Address {
 	case rules.IsPasteur:
 		return PrecompiledAddressesPasteur
 	case rules.IsOsaka:
+		if rules.IsNotInBSC {
+			return PrecompiledAddressesOsakaEth
+		}
 		return PrecompiledAddressesOsaka
 	case rules.IsPrague:
+		if rules.IsNotInBSC {
+			return PrecompiledAddressesPragueEth
+		}
 		return PrecompiledAddressesPrague
 	case rules.IsHaber:
 		return PrecompiledAddressesHaber
 	case rules.IsCancun:
+		if rules.IsNotInBSC {
+			return PrecompiledAddressesCancunEth
+		}
 		return PrecompiledAddressesCancun
 	case rules.IsFeynman:
 		return PrecompiledAddressesFeynman
@@ -531,6 +601,9 @@ func ActivePrecompiles(rules params.Rules) []common.Address {
 	case rules.IsNano:
 		return PrecompiledAddressesNano
 	case rules.IsIstanbul:
+		if rules.IsNotInBSC {
+			return PrecompiledAddressesIstanbulEth
+		}
 		return PrecompiledAddressesIstanbul
 	case rules.IsByzantium:
 		return PrecompiledAddressesByzantium
