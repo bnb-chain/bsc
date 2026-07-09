@@ -78,6 +78,7 @@ type VotePool struct {
 	highestVerifiedBlockSub event.Subscription
 
 	votesCh chan *types.VoteEnvelope
+	quit    chan struct{}
 
 	engine consensus.PoSA
 }
@@ -94,6 +95,7 @@ func NewVotePool(chain *core.BlockChain, engine consensus.PoSA) *VotePool {
 		futureVotesPq:          &votesPriorityQueue{},
 		highestVerifiedBlockCh: make(chan core.HighestVerifiedBlockEvent, highestVerifiedBlockChanSize),
 		votesCh:                make(chan *types.VoteEnvelope, voteBufferForPut),
+		quit:                   make(chan struct{}),
 		engine:                 engine,
 	}
 
@@ -110,6 +112,8 @@ func (pool *VotePool) loop() {
 
 	for {
 		select {
+		case <-pool.quit:
+			return
 		// Handle ChainHeadEvent.
 		case ev := <-pool.highestVerifiedBlockCh:
 			if ev.Header != nil {
@@ -128,7 +132,11 @@ func (pool *VotePool) loop() {
 }
 
 func (pool *VotePool) PutVote(vote *types.VoteEnvelope) {
-	pool.votesCh <- vote
+	select {
+	case pool.votesCh <- vote:
+	default:
+		log.Warn("VotePool channel full, vote dropped", "hash", vote.Hash())
+	}
 }
 
 func (pool *VotePool) putIntoVotePool(vote *types.VoteEnvelope) bool {
@@ -397,6 +405,11 @@ func (pool *VotePool) basicVerify(vote *types.VoteEnvelope, headNumber uint64, m
 	}
 
 	return true
+}
+
+func (pool *VotePool) Stop() {
+	close(pool.quit)
+	pool.scope.Close()
 }
 
 func (pq votesPriorityQueue) Less(i, j int) bool {

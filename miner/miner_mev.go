@@ -7,9 +7,15 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/internal/version"
 	"github.com/ethereum/go-ethereum/log"
+)
+
+const (
+	maxBlobValConcurrency = 3
+	maxBlobTxPerBlock     = 6
 )
 
 // MevRunning return true if mev is running.
@@ -78,6 +84,51 @@ func (miner *Miner) SendBid(ctx context.Context, bidArgs *types.BidArgs) (common
 	}
 
 	return bid.Hash(), nil
+}
+
+// startAsyncBlobValidation uses a fixed-size worker pool to validate blob
+// transactions in the background (field checks + KZG proof verification).
+// Results are stored per-tx in bid.BlobValResults keyed by tx hash.
+func startAsyncBlobValidation(bid *types.Bid) {
+	type blobJob struct {
+		tx *types.Transaction
+		ch chan error
+	}
+
+	bid.BlobValResults = make(map[common.Hash]chan error)
+	jobs := make([]blobJob, 0, maxBlobTxPerBlock)
+
+	for _, tx := range bid.Txs {
+		if tx.Type() == types.BlobTxType {
+			if _, dup := bid.BlobValResults[tx.Hash()]; dup {
+				continue
+			}
+			ch := make(chan error, 1)
+			bid.BlobValResults[tx.Hash()] = ch
+			jobs = append(jobs, blobJob{tx: tx, ch: ch})
+			if len(jobs) >= maxBlobTxPerBlock {
+				break
+			}
+		}
+	}
+
+	jobCh := make(chan blobJob, len(jobs))
+	for _, j := range jobs {
+		jobCh <- j
+	}
+	close(jobCh)
+
+	workers := len(jobs)
+	if workers > maxBlobValConcurrency {
+		workers = maxBlobValConcurrency
+	}
+	for i := 0; i < workers; i++ {
+		go func() {
+			for j := range jobCh {
+				j.ch <- txpool.ValidateBlobTx(j.tx, nil, nil)
+			}
+		}()
+	}
 }
 
 func (miner *Miner) MevParams() *types.MevParams {

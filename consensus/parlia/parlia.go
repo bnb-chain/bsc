@@ -2020,7 +2020,7 @@ func (p *Parlia) isIntentionalDelayMining(chain consensus.ChainHeaderReader, hea
 		return false, err
 	}
 	isIntentional := header.Coinbase == parent.Coinbase &&
-		header.Difficulty == diffInTurn && parent.Difficulty == diffInTurn &&
+		header.Difficulty.Cmp(diffInTurn) == 0 && parent.Difficulty.Cmp(diffInTurn) == 0 &&
 		parent.MilliTimestamp()+blockInterval < header.MilliTimestamp()
 	return isIntentional, nil
 }
