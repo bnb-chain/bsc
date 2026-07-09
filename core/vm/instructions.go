@@ -465,7 +465,17 @@ func opNumber(pc *uint64, evm *EVM, scope *ScopeContext) ([]byte, error) {
 }
 
 func opDifficulty(pc *uint64, evm *EVM, scope *ScopeContext) ([]byte, error) {
-	scope.Stack.get().SetFromBig(evm.Context.Difficulty)
+	// EIP-4399: PREVRANDAO supplants DIFFICULTY when a random value is present
+	// (post-merge). Parlia chains leave Context.Random nil (their block
+	// difficulty is non-zero), so BSC keeps DIFFICULTY semantics, while the
+	// standard tests set Random and observe PREVRANDAO. This mirrors
+	// bsc-erigon's unified opDifficulty and lets the Shanghai instruction set
+	// keep its London base without a test patch swapping it to the Merge base.
+	if evm.Context.Random != nil {
+		scope.Stack.get().SetBytes(evm.Context.Random.Bytes())
+	} else {
+		scope.Stack.get().SetFromBig(evm.Context.Difficulty)
+	}
 	return nil, nil
 }
 

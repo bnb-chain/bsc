@@ -9,12 +9,12 @@ cd ..
 # self-skips with "missing test files". tests/testdata and
 # tests/evm-benchmarks are top-level submodules and are still fetched.
 git submodule update --init --depth 1
-# 0001 only flips the Shanghai instruction-set base to Merge (upstream's base)
-# for the standard state tests. The BSC-specific precompile removals it used to
-# carry are now handled in-tree: core/vm selects the standard (…Eth) precompile
-# sets when Parlia is not configured (rules.IsNotInBSC), so no patch is needed
-# for those anymore.
-git apply tests/0001-diff-go-ethereum.patch
+# No source patch needed anymore:
+#   - BSC-specific precompiles are selected in-tree via rules.IsInBSC (non-Parlia
+#     chains get the standard upstream precompile sets).
+#   - 0x44 DIFFICULTY/PREVRANDAO is unified in opDifficulty: Parlia leaves
+#     Context.Random nil so it keeps DIFFICULTY, while the standard tests set
+#     Random and observe PREVRANDAO.
 cd tests
 rm -rf spec-tests && mkdir spec-tests && cd spec-tests
 wget https://github.com/ethereum/execution-spec-tests/releases/download/v5.1.0/fixtures_develop.tar.gz
