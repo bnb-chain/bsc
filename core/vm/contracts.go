@@ -84,8 +84,10 @@ var PrecompiledContractsByzantium = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x8}): &bn256PairingByzantium{},
 }
 
-// PrecompiledContractsIstanbulForBSC contains the default set of pre-compiled Ethereum
-// contracts used in the Istanbul release.
+// PrecompiledContractsIstanbulForBSC is the Istanbul precompile set as active on
+// BSC (Parlia). By convention the "…ForBSC" maps carry BSC's cross-chain /
+// consensus precompiles; the standard same-named map is derived from it via
+// stripBSCPrecompiles and used for non-BSC chains.
 var PrecompiledContractsIstanbulForBSC = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x1}): &ecrecover{},
 	common.BytesToAddress([]byte{0x2}): &sha256hash{},
@@ -238,8 +240,8 @@ var PrecompiledContractsFeynman = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x69}): &secp256k1SignatureRecover{},
 }
 
-// PrecompiledContractsCancunForBSC contains the default set of pre-compiled Ethereum
-// contracts used in the Cancun release.
+// PrecompiledContractsCancunForBSC is the Cancun precompile set as active on BSC
+// (Parlia); see PrecompiledContractsIstanbulForBSC for the "…ForBSC" convention.
 var PrecompiledContractsCancunForBSC = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x1}):  &ecrecover{},
 	common.BytesToAddress([]byte{0x2}):  &sha256hash{},
@@ -284,8 +286,8 @@ var PrecompiledContractsHaber = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{},
 }
 
-// PrecompiledContractsPragueForBSC contains the set of pre-compiled Ethereum
-// contracts used in the Prague release.
+// PrecompiledContractsPragueForBSC is the Prague precompile set as active on BSC
+// (Parlia); see PrecompiledContractsIstanbulForBSC for the "…ForBSC" convention.
 var PrecompiledContractsPragueForBSC = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x01}): &ecrecover{},
 	common.BytesToAddress([]byte{0x02}): &sha256hash{},
@@ -319,8 +321,8 @@ var PrecompiledContractsBLS = PrecompiledContractsPragueForBSC
 
 var PrecompiledContractsVerkle = PrecompiledContractsBerlin
 
-// PrecompiledContractsOsakaForBSC contains the set of pre-compiled Ethereum
-// contracts used in the Osaka release.
+// PrecompiledContractsOsakaForBSC is the Osaka precompile set as active on BSC
+// (Parlia); see PrecompiledContractsIstanbulForBSC for the "…ForBSC" convention.
 var PrecompiledContractsOsakaForBSC = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x01}): &ecrecover{},
 	common.BytesToAddress([]byte{0x02}): &sha256hash{},
