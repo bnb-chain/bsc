@@ -27,6 +27,11 @@ jobs:
         
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        # Non-recursive: fetch top-level submodules (testdata, evm-benchmarks)
+        # but not the nested LegacyTests, so TestLegacyState self-skips (its
+        # Constantinople collision fixtures don't apply to BSC), matching upstream.
+        submodules: true
 
     - uses: actions/cache@v4
       with:
@@ -51,5 +56,9 @@ jobs:
         ANDROID_HOME: "" # Skip android test
       run: |
         go mod download
-        cd tests && bash -x run-evm-tests.sh
+        # ci.go downloads the pinned execution-spec fixtures (build/checksums.txt)
+        # and runs the tests; no shell wrapper / source patch needed anymore.
+        # Non-short (required so fixtures are downloaded) full statetests need
+        # more than ci.go's default 10m timeout.
+        go run build/ci.go test -timeout 1h ./tests/
         
