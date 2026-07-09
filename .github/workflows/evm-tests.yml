@@ -7,10 +7,9 @@ on:
       - develop
 
   pull_request:
-    branches:
+    branches: 
       - master
       - develop
-      - 'merge-v1.17.3*'
 
 jobs:
   evm-test:
