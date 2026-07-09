@@ -130,11 +130,10 @@ func TestReceiptList(t *testing.T) {
 			t.Fatalf("test[%d]: re-encoded network receipt list not equal\nhave: %x\nwant: %x", i, rlNetworkEnc, network)
 		}
 
-<<<<<<< HEAD
-		// compute root hash from ReceiptList69 and compare.
+		// compute root hash from ReceiptList and compare.
 		responseHash := types.DeriveSha(rl.Derivable(), trie.NewStackTrie(nil))
 		if responseHash != test.root {
-			t.Fatalf("test[%d]: wrong root hash from ReceiptList69\nhave: %v\nwant: %v", i, responseHash, test.root)
+			t.Fatalf("test[%d]: wrong root hash from ReceiptList\nhave: %v\nwant: %v", i, responseHash, test.root)
 		}
 	}
 }
@@ -175,12 +174,6 @@ func TestReceiptList68(t *testing.T) {
 		responseHash := types.DeriveSha(rl.Derivable(), trie.NewStackTrie(nil))
 		if responseHash != test.root {
 			t.Fatalf("test[%d]: wrong root hash from ReceiptList68\nhave: %v\nwant: %v", i, responseHash, test.root)
-=======
-		// compute root hash from ReceiptList and compare.
-		responseHash := types.DeriveSha(rl.Derivable(), trie.NewStackTrie(nil))
-		if responseHash != test.root {
-			t.Fatalf("test[%d]: wrong root hash from ReceiptList\nhave: %v\nwant: %v", i, responseHash, test.root)
->>>>>>> geth-v1.17.3
 		}
 	}
 }
