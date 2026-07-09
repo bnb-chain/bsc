@@ -84,9 +84,9 @@ var PrecompiledContractsByzantium = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x8}): &bn256PairingByzantium{},
 }
 
-// PrecompiledContractsIstanbul contains the default set of pre-compiled Ethereum
+// PrecompiledContractsIstanbulForBSC contains the default set of pre-compiled Ethereum
 // contracts used in the Istanbul release.
-var PrecompiledContractsIstanbul = PrecompiledContracts{
+var PrecompiledContractsIstanbulForBSC = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x1}): &ecrecover{},
 	common.BytesToAddress([]byte{0x2}): &sha256hash{},
 	common.BytesToAddress([]byte{0x3}): &ripemd160hash{},
@@ -238,9 +238,9 @@ var PrecompiledContractsFeynman = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x69}): &secp256k1SignatureRecover{},
 }
 
-// PrecompiledContractsCancun contains the default set of pre-compiled Ethereum
+// PrecompiledContractsCancunForBSC contains the default set of pre-compiled Ethereum
 // contracts used in the Cancun release.
-var PrecompiledContractsCancun = PrecompiledContracts{
+var PrecompiledContractsCancunForBSC = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x1}):  &ecrecover{},
 	common.BytesToAddress([]byte{0x2}):  &sha256hash{},
 	common.BytesToAddress([]byte{0x3}):  &ripemd160hash{},
@@ -284,9 +284,9 @@ var PrecompiledContractsHaber = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{},
 }
 
-// PrecompiledContractsPrague contains the set of pre-compiled Ethereum
+// PrecompiledContractsPragueForBSC contains the set of pre-compiled Ethereum
 // contracts used in the Prague release.
-var PrecompiledContractsPrague = PrecompiledContracts{
+var PrecompiledContractsPragueForBSC = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x01}): &ecrecover{},
 	common.BytesToAddress([]byte{0x02}): &sha256hash{},
 	common.BytesToAddress([]byte{0x03}): &ripemd160hash{},
@@ -315,13 +315,13 @@ var PrecompiledContractsPrague = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{},
 }
 
-var PrecompiledContractsBLS = PrecompiledContractsPrague
+var PrecompiledContractsBLS = PrecompiledContractsPragueForBSC
 
 var PrecompiledContractsVerkle = PrecompiledContractsBerlin
 
-// PrecompiledContractsOsaka contains the set of pre-compiled Ethereum
+// PrecompiledContractsOsakaForBSC contains the set of pre-compiled Ethereum
 // contracts used in the Osaka release.
-var PrecompiledContractsOsaka = PrecompiledContracts{
+var PrecompiledContractsOsakaForBSC = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x01}): &ecrecover{},
 	common.BytesToAddress([]byte{0x02}): &sha256hash{},
 	common.BytesToAddress([]byte{0x03}): &ripemd160hash{},
@@ -370,13 +370,13 @@ func stripBSCPrecompiles(m PrecompiledContracts, extra ...common.Address) Precom
 // dropping the BSC-specific precompiles. These match upstream go-ethereum and
 // are selected when Parlia is not configured (rules.IsNotInBSC).
 var (
-	PrecompiledContractsIstanbulEth = stripBSCPrecompiles(PrecompiledContractsIstanbul)
-	PrecompiledContractsCancunEth   = stripBSCPrecompiles(PrecompiledContractsCancun)
-	PrecompiledContractsOsakaEth    = stripBSCPrecompiles(PrecompiledContractsOsaka)
+	PrecompiledContractsIstanbul = stripBSCPrecompiles(PrecompiledContractsIstanbulForBSC)
+	PrecompiledContractsCancun   = stripBSCPrecompiles(PrecompiledContractsCancunForBSC)
+	PrecompiledContractsOsaka    = stripBSCPrecompiles(PrecompiledContractsOsakaForBSC)
 	// Prague's 0x100 p256Verify is a BSC-only early adoption (upstream has no
 	// p256 precompile at Prague; it arrives at Osaka via EIP-7951), so drop it
 	// from the standard set too.
-	PrecompiledContractsPragueEth = stripBSCPrecompiles(PrecompiledContractsPrague, common.BytesToAddress([]byte{0x1, 0x00}))
+	PrecompiledContractsPrague = stripBSCPrecompiles(PrecompiledContractsPragueForBSC, common.BytesToAddress([]byte{0x1, 0x00}))
 )
 
 // PrecompiledContractsPasteur contains the set of pre-compiled Ethereum
@@ -417,30 +417,30 @@ var PrecompiledContractsP256Verify = PrecompiledContracts{
 }
 
 var (
-	PrecompiledAddressesPasteur   []common.Address
-	PrecompiledAddressesOsaka     []common.Address
-	PrecompiledAddressesPrague    []common.Address
-	PrecompiledAddressesHaber     []common.Address
-	PrecompiledAddressesCancun    []common.Address
-	PrecompiledAddressesFeynman   []common.Address
-	PrecompiledAddressesHertz     []common.Address
-	PrecompiledAddressesBerlin    []common.Address
-	PrecompiledAddressesPlato     []common.Address
-	PrecompiledAddressesLuban     []common.Address
-	PrecompiledAddressesPlanck    []common.Address
-	PrecompiledAddressesMoran     []common.Address
-	PrecompiledAddressesNano      []common.Address
-	PrecompiledAddressesIstanbul  []common.Address
-	PrecompiledAddressesByzantium []common.Address
-	PrecompiledAddressesHomestead []common.Address
+	PrecompiledAddressesPasteur        []common.Address
+	PrecompiledAddressesOsakaForBSC    []common.Address
+	PrecompiledAddressesPragueForBSC   []common.Address
+	PrecompiledAddressesHaber          []common.Address
+	PrecompiledAddressesCancunForBSC   []common.Address
+	PrecompiledAddressesFeynman        []common.Address
+	PrecompiledAddressesHertz          []common.Address
+	PrecompiledAddressesBerlin         []common.Address
+	PrecompiledAddressesPlato          []common.Address
+	PrecompiledAddressesLuban          []common.Address
+	PrecompiledAddressesPlanck         []common.Address
+	PrecompiledAddressesMoran          []common.Address
+	PrecompiledAddressesNano           []common.Address
+	PrecompiledAddressesIstanbulForBSC []common.Address
+	PrecompiledAddressesByzantium      []common.Address
+	PrecompiledAddressesHomestead      []common.Address
 
 	// Standard (non-BSC) address sets, matching upstream go-ethereum. Used for
 	// chains where Parlia is not configured (rules.IsNotInBSC), e.g. the
 	// standard execution-spec / state tests.
-	PrecompiledAddressesIstanbulEth []common.Address
-	PrecompiledAddressesCancunEth   []common.Address
-	PrecompiledAddressesPragueEth   []common.Address
-	PrecompiledAddressesOsakaEth    []common.Address
+	PrecompiledAddressesIstanbul []common.Address
+	PrecompiledAddressesCancun   []common.Address
+	PrecompiledAddressesPrague   []common.Address
+	PrecompiledAddressesOsaka    []common.Address
 )
 
 func init() {
@@ -450,8 +450,8 @@ func init() {
 	for k := range PrecompiledContractsByzantium {
 		PrecompiledAddressesByzantium = append(PrecompiledAddressesByzantium, k)
 	}
-	for k := range PrecompiledContractsIstanbul {
-		PrecompiledAddressesIstanbul = append(PrecompiledAddressesIstanbul, k)
+	for k := range PrecompiledContractsIstanbulForBSC {
+		PrecompiledAddressesIstanbulForBSC = append(PrecompiledAddressesIstanbulForBSC, k)
 	}
 	for k := range PrecompiledContractsNano {
 		PrecompiledAddressesNano = append(PrecompiledAddressesNano, k)
@@ -477,32 +477,32 @@ func init() {
 	for k := range PrecompiledContractsFeynman {
 		PrecompiledAddressesFeynman = append(PrecompiledAddressesFeynman, k)
 	}
-	for k := range PrecompiledContractsCancun {
-		PrecompiledAddressesCancun = append(PrecompiledAddressesCancun, k)
+	for k := range PrecompiledContractsCancunForBSC {
+		PrecompiledAddressesCancunForBSC = append(PrecompiledAddressesCancunForBSC, k)
 	}
 	for k := range PrecompiledContractsHaber {
 		PrecompiledAddressesHaber = append(PrecompiledAddressesHaber, k)
+	}
+	for k := range PrecompiledContractsPragueForBSC {
+		PrecompiledAddressesPragueForBSC = append(PrecompiledAddressesPragueForBSC, k)
+	}
+	for k := range PrecompiledContractsOsakaForBSC {
+		PrecompiledAddressesOsakaForBSC = append(PrecompiledAddressesOsakaForBSC, k)
+	}
+	for k := range PrecompiledContractsPasteur {
+		PrecompiledAddressesPasteur = append(PrecompiledAddressesPasteur, k)
+	}
+	for k := range PrecompiledContractsIstanbul {
+		PrecompiledAddressesIstanbul = append(PrecompiledAddressesIstanbul, k)
+	}
+	for k := range PrecompiledContractsCancun {
+		PrecompiledAddressesCancun = append(PrecompiledAddressesCancun, k)
 	}
 	for k := range PrecompiledContractsPrague {
 		PrecompiledAddressesPrague = append(PrecompiledAddressesPrague, k)
 	}
 	for k := range PrecompiledContractsOsaka {
 		PrecompiledAddressesOsaka = append(PrecompiledAddressesOsaka, k)
-	}
-	for k := range PrecompiledContractsPasteur {
-		PrecompiledAddressesPasteur = append(PrecompiledAddressesPasteur, k)
-	}
-	for k := range PrecompiledContractsIstanbulEth {
-		PrecompiledAddressesIstanbulEth = append(PrecompiledAddressesIstanbulEth, k)
-	}
-	for k := range PrecompiledContractsCancunEth {
-		PrecompiledAddressesCancunEth = append(PrecompiledAddressesCancunEth, k)
-	}
-	for k := range PrecompiledContractsPragueEth {
-		PrecompiledAddressesPragueEth = append(PrecompiledAddressesPragueEth, k)
-	}
-	for k := range PrecompiledContractsOsakaEth {
-		PrecompiledAddressesOsakaEth = append(PrecompiledAddressesOsakaEth, k)
 	}
 }
 
@@ -514,21 +514,21 @@ func activePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 		return PrecompiledContractsPasteur
 	case rules.IsOsaka:
 		if rules.IsNotInBSC {
-			return PrecompiledContractsOsakaEth
+			return PrecompiledContractsOsaka
 		}
-		return PrecompiledContractsOsaka
+		return PrecompiledContractsOsakaForBSC
 	case rules.IsPrague:
 		if rules.IsNotInBSC {
-			return PrecompiledContractsPragueEth
+			return PrecompiledContractsPrague
 		}
-		return PrecompiledContractsPrague
+		return PrecompiledContractsPragueForBSC
 	case rules.IsHaber:
 		return PrecompiledContractsHaber
 	case rules.IsCancun:
 		if rules.IsNotInBSC {
-			return PrecompiledContractsCancunEth
+			return PrecompiledContractsCancun
 		}
-		return PrecompiledContractsCancun
+		return PrecompiledContractsCancunForBSC
 	case rules.IsFeynman:
 		return PrecompiledContractsFeynman
 	case rules.IsHertz:
@@ -547,9 +547,9 @@ func activePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 		return PrecompiledContractsNano
 	case rules.IsIstanbul:
 		if rules.IsNotInBSC {
-			return PrecompiledContractsIstanbulEth
+			return PrecompiledContractsIstanbul
 		}
-		return PrecompiledContractsIstanbul
+		return PrecompiledContractsIstanbulForBSC
 	case rules.IsByzantium:
 		return PrecompiledContractsByzantium
 	default:
@@ -569,21 +569,21 @@ func ActivePrecompiles(rules params.Rules) []common.Address {
 		return PrecompiledAddressesPasteur
 	case rules.IsOsaka:
 		if rules.IsNotInBSC {
-			return PrecompiledAddressesOsakaEth
+			return PrecompiledAddressesOsaka
 		}
-		return PrecompiledAddressesOsaka
+		return PrecompiledAddressesOsakaForBSC
 	case rules.IsPrague:
 		if rules.IsNotInBSC {
-			return PrecompiledAddressesPragueEth
+			return PrecompiledAddressesPrague
 		}
-		return PrecompiledAddressesPrague
+		return PrecompiledAddressesPragueForBSC
 	case rules.IsHaber:
 		return PrecompiledAddressesHaber
 	case rules.IsCancun:
 		if rules.IsNotInBSC {
-			return PrecompiledAddressesCancunEth
+			return PrecompiledAddressesCancun
 		}
-		return PrecompiledAddressesCancun
+		return PrecompiledAddressesCancunForBSC
 	case rules.IsFeynman:
 		return PrecompiledAddressesFeynman
 	case rules.IsHertz:
@@ -602,9 +602,9 @@ func ActivePrecompiles(rules params.Rules) []common.Address {
 		return PrecompiledAddressesNano
 	case rules.IsIstanbul:
 		if rules.IsNotInBSC {
-			return PrecompiledAddressesIstanbulEth
+			return PrecompiledAddressesIstanbul
 		}
-		return PrecompiledAddressesIstanbul
+		return PrecompiledAddressesIstanbulForBSC
 	case rules.IsByzantium:
 		return PrecompiledAddressesByzantium
 	default:
