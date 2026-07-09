@@ -2104,8 +2104,6 @@ func (p *Parlia) getSystemMessage(from, toAddress common.Address, data []byte, v
 	}
 }
 
-// TODO(Nathan): need reflect EIP-7778 where called
-// use gp `*core.GasPool“ to replace `usedGas *uint64`
 func (p *Parlia) applyTransaction(
 	msg *core.Message,
 	state vm.StateDB,
@@ -2198,7 +2196,13 @@ func (p *Parlia) applyTransaction(
 		root = state.IntermediateRoot(p.chainConfig.IsEIP158(header.Number)).Bytes()
 	}
 	*usedGas += gasUsed
-	tracingReceipt = types.NewReceipt(root, false, *usedGas)
+	// Continue the receipt (refund-inclusive) chain from the previous receipt;
+	// usedGas carries the block-level (refund-exclusive, EIP-7778) chain.
+	cumulativeGasUsed := gasUsed
+	if n := len(*receipts); n > 0 {
+		cumulativeGasUsed += (*receipts)[n-1].CumulativeGasUsed
+	}
+	tracingReceipt = types.NewReceipt(root, false, cumulativeGasUsed)
 	tracingReceipt.TxHash = expectedTx.Hash()
 	tracingReceipt.GasUsed = gasUsed
 
@@ -2505,7 +2509,6 @@ func applyMessage(
 	if err != nil {
 		log.Error("apply message failed", "msg", string(ret), "err", err)
 	}
-	// TODO(Nathan): need confirm
 	return leftOverGas.Used(gasBudget), err
 }
 

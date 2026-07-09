@@ -190,8 +190,9 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		Receipts: receipts,
 		Requests: requests,
 		Logs:     allLogs,
-		// GasUsed:  gp.Used(),
-		GasUsed: gasUsed, //TODO(Nathan): wrong here
+		// gp.Used() plus the system-tx gas added by Finalize: the block-level
+		// chain (EIP-7778) validated against header.GasUsed.
+		GasUsed: gasUsed,
 	}, nil
 }
 
