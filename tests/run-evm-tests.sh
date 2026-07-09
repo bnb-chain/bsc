@@ -1,20 +1,10 @@
 #!/usr/bin/env bash
 cd ..
-# Non-recursive on purpose: skip the nested LegacyTests submodule. Its
-# Constantinople-era storage-collision fixtures (InitCollision,
-# create2collisionStorage, dynamicAccountOverwriteEmpty) fail under
-# go-ethereum's EIP-7610 allowlist collision check (v1.17.3) and are
-# structurally impossible on BSC (EIP-158 active from genesis). Upstream
-# go-ethereum likewise does not check out LegacyTests, so TestLegacyState
-# self-skips with "missing test files". tests/testdata and
-# tests/evm-benchmarks are top-level submodules and are still fetched.
+# Non-recursive: skip the nested LegacyTests submodule, whose Constantinople
+# storage-collision fixtures don't apply to BSC (EIP-158 from genesis) and are
+# skipped by upstream too. Top-level submodules (testdata, evm-benchmarks) are
+# still fetched.
 git submodule update --init --depth 1
-# No source patch needed anymore:
-#   - BSC-specific precompiles are selected in-tree via rules.IsInBSC (non-Parlia
-#     chains get the standard upstream precompile sets).
-#   - 0x44 DIFFICULTY/PREVRANDAO is unified in opDifficulty: Parlia leaves
-#     Context.Random nil so it keeps DIFFICULTY, while the standard tests set
-#     Random and observe PREVRANDAO.
 cd tests
 rm -rf spec-tests && mkdir spec-tests && cd spec-tests
 wget https://github.com/ethereum/execution-spec-tests/releases/download/v5.1.0/fixtures_develop.tar.gz
