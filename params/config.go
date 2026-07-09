@@ -2123,10 +2123,10 @@ type Rules struct {
 	IsBohr, IsPascal, IsPrague, IsLorentz, IsMaxwell        bool
 	IsFermi, IsOsaka, IsMendel                              bool
 	IsPasteur, IsAmsterdam, IsUBT                           bool
-	// IsNotInBSC is true when Parlia is not configured (non-BSC chains, e.g. the
-	// standard state / execution-spec tests). It selects the standard, non-BSC
-	// precompile set in core/vm.
-	IsNotInBSC bool
+	// IsInBSC is true when Parlia is configured (BSC chains). core/vm uses it to
+	// select the BSC precompile set (…ForBSC); non-BSC chains (e.g. the standard
+	// state / execution-spec tests) get the standard upstream set.
+	IsInBSC bool
 }
 
 // Rules ensures c's ChainID is not nil.
@@ -2171,6 +2171,6 @@ func (c *ChainConfig) Rules(num *big.Int, isMerge bool, timestamp uint64) Rules 
 		IsAmsterdam:      (isMerge || c.IsInBSC()) && c.IsAmsterdam(num, timestamp),
 		IsUBT:            isUBT,
 		IsEIP4762:        isUBT,
-		IsNotInBSC:       c.IsNotInBSC(),
+		IsInBSC:          c.IsInBSC(),
 	}
 }

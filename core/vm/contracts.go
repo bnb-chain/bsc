@@ -368,7 +368,7 @@ func stripBSCPrecompiles(m PrecompiledContracts, extra ...common.Address) Precom
 
 // Standard (non-BSC) precompile sets, derived from the BSC sets above by
 // dropping the BSC-specific precompiles. These match upstream go-ethereum and
-// are selected when Parlia is not configured (rules.IsNotInBSC).
+// are selected for non-BSC chains (!rules.IsInBSC).
 var (
 	PrecompiledContractsIstanbul = stripBSCPrecompiles(PrecompiledContractsIstanbulForBSC)
 	PrecompiledContractsCancun   = stripBSCPrecompiles(PrecompiledContractsCancunForBSC)
@@ -435,7 +435,7 @@ var (
 	PrecompiledAddressesHomestead      []common.Address
 
 	// Standard (non-BSC) address sets, matching upstream go-ethereum. Used for
-	// chains where Parlia is not configured (rules.IsNotInBSC), e.g. the
+	// chains where Parlia is not configured (non-BSC, !rules.IsInBSC), e.g. the
 	// standard execution-spec / state tests.
 	PrecompiledAddressesIstanbul []common.Address
 	PrecompiledAddressesCancun   []common.Address
@@ -513,22 +513,22 @@ func activePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 	case rules.IsPasteur:
 		return PrecompiledContractsPasteur
 	case rules.IsOsaka:
-		if rules.IsNotInBSC {
-			return PrecompiledContractsOsaka
+		if rules.IsInBSC {
+			return PrecompiledContractsOsakaForBSC
 		}
-		return PrecompiledContractsOsakaForBSC
+		return PrecompiledContractsOsaka
 	case rules.IsPrague:
-		if rules.IsNotInBSC {
-			return PrecompiledContractsPrague
+		if rules.IsInBSC {
+			return PrecompiledContractsPragueForBSC
 		}
-		return PrecompiledContractsPragueForBSC
+		return PrecompiledContractsPrague
 	case rules.IsHaber:
 		return PrecompiledContractsHaber
 	case rules.IsCancun:
-		if rules.IsNotInBSC {
-			return PrecompiledContractsCancun
+		if rules.IsInBSC {
+			return PrecompiledContractsCancunForBSC
 		}
-		return PrecompiledContractsCancunForBSC
+		return PrecompiledContractsCancun
 	case rules.IsFeynman:
 		return PrecompiledContractsFeynman
 	case rules.IsHertz:
@@ -546,10 +546,10 @@ func activePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 	case rules.IsNano:
 		return PrecompiledContractsNano
 	case rules.IsIstanbul:
-		if rules.IsNotInBSC {
-			return PrecompiledContractsIstanbul
+		if rules.IsInBSC {
+			return PrecompiledContractsIstanbulForBSC
 		}
-		return PrecompiledContractsIstanbulForBSC
+		return PrecompiledContractsIstanbul
 	case rules.IsByzantium:
 		return PrecompiledContractsByzantium
 	default:
@@ -568,22 +568,22 @@ func ActivePrecompiles(rules params.Rules) []common.Address {
 	case rules.IsPasteur:
 		return PrecompiledAddressesPasteur
 	case rules.IsOsaka:
-		if rules.IsNotInBSC {
-			return PrecompiledAddressesOsaka
+		if rules.IsInBSC {
+			return PrecompiledAddressesOsakaForBSC
 		}
-		return PrecompiledAddressesOsakaForBSC
+		return PrecompiledAddressesOsaka
 	case rules.IsPrague:
-		if rules.IsNotInBSC {
-			return PrecompiledAddressesPrague
+		if rules.IsInBSC {
+			return PrecompiledAddressesPragueForBSC
 		}
-		return PrecompiledAddressesPragueForBSC
+		return PrecompiledAddressesPrague
 	case rules.IsHaber:
 		return PrecompiledAddressesHaber
 	case rules.IsCancun:
-		if rules.IsNotInBSC {
-			return PrecompiledAddressesCancun
+		if rules.IsInBSC {
+			return PrecompiledAddressesCancunForBSC
 		}
-		return PrecompiledAddressesCancunForBSC
+		return PrecompiledAddressesCancun
 	case rules.IsFeynman:
 		return PrecompiledAddressesFeynman
 	case rules.IsHertz:
@@ -601,10 +601,10 @@ func ActivePrecompiles(rules params.Rules) []common.Address {
 	case rules.IsNano:
 		return PrecompiledAddressesNano
 	case rules.IsIstanbul:
-		if rules.IsNotInBSC {
-			return PrecompiledAddressesIstanbul
+		if rules.IsInBSC {
+			return PrecompiledAddressesIstanbulForBSC
 		}
-		return PrecompiledAddressesIstanbulForBSC
+		return PrecompiledAddressesIstanbul
 	case rules.IsByzantium:
 		return PrecompiledAddressesByzantium
 	default:
