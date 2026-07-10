@@ -333,15 +333,25 @@ loop:
 			if have, want := msg.ForkID, chain.ForkID(); !reflect.DeepEqual(have, want) {
 				return fmt.Errorf("wrong fork ID in status: have %v, want %v", have, want)
 			}
+			// verify the node's eth version is one we advertised
+			matched := false
 			for _, cap := range c.caps {
 				if cap.Name == "eth" && cap.Version == uint(msg.ProtocolVersion) {
-					break loop
+					matched = true
+					break
 				}
+			}
+			if !matched {
+				return fmt.Errorf("mismatched eth protocol version: node %d not in local caps", msg.ProtocolVersion)
 			}
 			// make sure eth protocol version is set for negotiation
 			if c.negotiatedProtoVersion == 0 {
 				return errors.New("eth protocol version must be set in Conn")
 			}
+			// BSC's handshake68 is two-phase (Status then UpgradeStatus): reply
+			// with our Status here but keep reading — the loop only breaks once the
+			// node's UpgradeStatusMsg has been answered below. Breaking here would
+			// leave the node's phase-1 readStatus68 blocked and drop the connection.
 			if status == nil {
 				// default status message
 				status = &eth.StatusPacket68{
