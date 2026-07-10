@@ -10,6 +10,7 @@ on:
     branches: 
       - master
       - develop
+      - 'merge-v1.17.3*'
 
 jobs:
   evm-test:
@@ -26,6 +27,10 @@ jobs:
         
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        # Non-recursive: fetches testdata/evm-benchmarks but not the nested
+        # LegacyTests, so TestLegacyState self-skips (matching upstream).
+        submodules: true
 
     - uses: actions/cache@v4
       with:
@@ -50,5 +55,8 @@ jobs:
         ANDROID_HOME: "" # Skip android test
       run: |
         go mod download
-        cd tests && bash -x run-evm-tests.sh
+        # ci.go downloads the pinned fixtures (build/checksums.txt) and runs the
+        # suite — no shell wrapper or source patch. Non-short so fixtures download;
+        # -timeout 1h because full statetests exceed ci.go's 10m default.
+        go run build/ci.go test -timeout 1h ./tests/
         

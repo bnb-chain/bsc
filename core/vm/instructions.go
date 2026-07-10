@@ -465,7 +465,15 @@ func opNumber(pc *uint64, evm *EVM, scope *ScopeContext) ([]byte, error) {
 }
 
 func opDifficulty(pc *uint64, evm *EVM, scope *ScopeContext) ([]byte, error) {
-	scope.Stack.get().SetFromBig(evm.Context.Difficulty)
+	// EIP-4399: PREVRANDAO supplants DIFFICULTY when a random value is present
+	// (post-merge). Parlia chains leave Context.Random nil (block difficulty is
+	// non-zero), so BSC keeps DIFFICULTY while the standard tests set Random and
+	// get PREVRANDAO.
+	if evm.Context.Random != nil {
+		scope.Stack.get().SetBytes(evm.Context.Random.Bytes())
+	} else {
+		scope.Stack.get().SetFromBig(evm.Context.Difficulty)
+	}
 	return nil, nil
 }
 
