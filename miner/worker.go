@@ -797,10 +797,12 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 	defer close(stopPrefetchCh)
 	// prefetch plainTxs txs, don't bother to prefetch a few blobTxs
 	txsPrefetch := plainTxs.Copy()
-	tx := txsPrefetch.PeekWithUnwrap()
-	if tx != nil {
-		txCurr := &tx
-		w.prefetcher.PrefetchMining(txsPrefetch, env.header, env.gasPool.Gas(), env.state.StateForPrefetch(), *w.chain.GetVMConfig(), stopPrefetchCh, txCurr)
+	// prefetchCurr marks the tx the main loop is on; the prefetch feeder reads
+	// it to rate-limit itself (see Forward).
+	var prefetchCurr atomic.Pointer[types.Transaction]
+	if prefetchHead := txsPrefetch.PeekWithUnwrap(); prefetchHead != nil {
+		prefetchCurr.Store(prefetchHead)
+		w.prefetcher.PrefetchMining(txsPrefetch, env.header, env.gasPool.Gas(), env.state.StateForPrefetch(), *w.chain.GetVMConfig(), stopPrefetchCh, &prefetchCurr)
 	}
 
 	signal := commitInterruptNone
@@ -897,6 +899,7 @@ LOOP:
 			txs.Pop()
 			continue
 		}
+		prefetchCurr.Store(tx)
 
 		// if inclusion of the transaction would put the block size over the
 		// maximum we allow, don't add any more txs to the payload.
