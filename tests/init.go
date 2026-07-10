@@ -779,15 +779,15 @@ var Forks = map[string]*params.ChainConfig{
 }
 
 var bpo1BlobConfig = &params.BlobConfig{
-	Target:         10,
-	Max:            15,
-	UpdateFraction: 8346193,
+	Target:         9,
+	Max:            14,
+	UpdateFraction: 8832827,
 }
 
 var bpo2BlobConfig = &params.BlobConfig{
 	Target:         14,
 	Max:            21,
-	UpdateFraction: 11684671,
+	UpdateFraction: 13739630,
 }
 
 // AvailableForks returns the set of defined fork names

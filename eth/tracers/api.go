@@ -1171,7 +1171,7 @@ func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *cor
 	var intrinsicGas vm.GasCosts
 	// Run the transaction with tracing enabled.
 	if isSystemTx {
-		isAmsterdam := false //TODO(Nathan): apply hardfork logic
+		isAmsterdam := api.backend.ChainConfig().IsAmsterdam(vmctx.BlockNumber, vmctx.Time)
 		intrinsicGas, _ = core.IntrinsicGas(message.Data, message.AccessList, message.SetCodeAuthorizations, false, true, true, false, isAmsterdam)
 		message.SkipTransactionChecks = true
 	}
