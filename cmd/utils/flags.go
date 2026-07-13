@@ -580,12 +580,6 @@ var (
 		Value:    ethconfig.Defaults.TxPool.Lifetime,
 		Category: flags.TxPoolCategory,
 	}
-	TxPoolReannounceTimeFlag = &cli.DurationFlag{
-		Name:     "txpool.reannouncetime",
-		Usage:    "Duration for announcing local pending transactions again (default = 10 years, minimum = 1 minute)",
-		Value:    ethconfig.Defaults.TxPool.ReannounceTime,
-		Category: flags.TxPoolCategory,
-	}
 	// Blob transaction pool settings
 	BlobPoolDataDirFlag = &cli.StringFlag{
 		Name:     "blobpool.datadir",
@@ -2072,9 +2066,6 @@ func setTxPool(ctx *cli.Context, cfg *legacypool.Config) {
 	}
 	if ctx.IsSet(TxPoolLifetimeFlag.Name) {
 		cfg.Lifetime = ctx.Duration(TxPoolLifetimeFlag.Name)
-	}
-	if ctx.IsSet(TxPoolReannounceTimeFlag.Name) {
-		cfg.ReannounceTime = ctx.Duration(TxPoolReannounceTimeFlag.Name)
 	}
 }
 
