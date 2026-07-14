@@ -1290,12 +1290,12 @@ func TestRemoteHeaderRequestSpan(t *testing.T) {
 
 // TestInvalidBodyPeerDrop verifies that a peer serving corrupted block bodies
 // is signalled through res.Done so the eth protocol handler can drop it.
-func TestInvalidBodyPeerDrop68(t *testing.T) {
+func TestInvalidBodyPeerDrop(t *testing.T) {
 	tester := newTester(t, FullSync)
 	defer tester.terminate()
 
 	chain := testChainBase.shorten(blockCacheMaxItems - 15)
-	peer := tester.newPeer("corrupt", eth.ETH68, chain.blocks[1:])
+	peer := tester.newPeer("corrupt", eth.ETH70, chain.blocks[1:])
 	peer.corruptBodies = true
 
 	go tester.sync("corrupt", nil, FullSync)
