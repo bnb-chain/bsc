@@ -1183,8 +1183,8 @@ func (api *API) traceTx(ctx context.Context, tx *types.Transaction, message *cor
 	if err != nil {
 		return nil, fmt.Errorf("tracing failed: %w", err)
 	}
-	if tracer.OnSystemTxFixIntrinsicGas != nil {
-		tracer.OnSystemTxFixIntrinsicGas(intrinsicGas.RegularGas) //TODO(Nathan)
+	if isSystemTx && tracer.OnSystemTxFixIntrinsicGas != nil {
+		tracer.OnSystemTxFixIntrinsicGas(intrinsicGas.RegularGas)
 	}
 	return tracer.GetResult()
 }
