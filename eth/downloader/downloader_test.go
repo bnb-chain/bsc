@@ -454,8 +454,8 @@ func assertOwnChain(t *testing.T, tester *downloadTester, length int) {
 	}
 }
 
-func TestCanonicalSynchronisationFull(t *testing.T) { testCanonSync(t, eth.ETH69, FullSync) }
-func TestCanonicalSynchronisationSnap(t *testing.T) { testCanonSync(t, eth.ETH69, SnapSync) }
+func TestCanonicalSynchronisationFull(t *testing.T) { testCanonSync(t, eth.ETH68, FullSync) }
+func TestCanonicalSynchronisationSnap(t *testing.T) { testCanonSync(t, eth.ETH68, SnapSync) }
 
 func testCanonSync(t *testing.T, protocol uint, mode SyncMode) {
 	tester := newTester(t, mode)
@@ -474,8 +474,8 @@ func testCanonSync(t *testing.T, protocol uint, mode SyncMode) {
 
 // Tests that if a large batch of blocks are being downloaded, it is throttled
 // until the cached blocks are retrieved.
-func TestThrottlingFull(t *testing.T) { testThrottling(t, eth.ETH69, FullSync) }
-func TestThrottlingSnap(t *testing.T) { testThrottling(t, eth.ETH69, SnapSync) }
+func TestThrottlingFull(t *testing.T) { testThrottling(t, eth.ETH68, FullSync) }
+func TestThrottlingSnap(t *testing.T) { testThrottling(t, eth.ETH68, SnapSync) }
 
 func testThrottling(t *testing.T, protocol uint, mode SyncMode) {
 	tester := newTester(t, mode)
@@ -665,8 +665,8 @@ func testBoundedHeavyForkedSync(t *testing.T, protocol uint, mode SyncMode) {
 }
 
 // Tests that a canceled download wipes all previously accumulated state.
-func TestCancelFull(t *testing.T) { testCancel(t, eth.ETH69, FullSync) }
-func TestCancelSnap(t *testing.T) { testCancel(t, eth.ETH69, SnapSync) }
+func TestCancelFull(t *testing.T) { testCancel(t, eth.ETH68, FullSync) }
+func TestCancelSnap(t *testing.T) { testCancel(t, eth.ETH68, SnapSync) }
 
 func testCancel(t *testing.T, protocol uint, mode SyncMode) {
 	tester := newTester(t, mode)
@@ -744,8 +744,8 @@ func testMultiProtoSync(t *testing.T, protocol uint, mode SyncMode) {
 
 // Tests that if a block is empty (e.g. header only), no body request should be
 // made, and instead the header should be assembled into a whole block in itself.
-func TestEmptyShortCircuitFull(t *testing.T) { testEmptyShortCircuit(t, eth.ETH69, FullSync) }
-func TestEmptyShortCircuitSnap(t *testing.T) { testEmptyShortCircuit(t, eth.ETH69, SnapSync) }
+func TestEmptyShortCircuitFull(t *testing.T) { testEmptyShortCircuit(t, eth.ETH68, FullSync) }
+func TestEmptyShortCircuitSnap(t *testing.T) { testEmptyShortCircuit(t, eth.ETH68, SnapSync) }
 
 func testEmptyShortCircuit(t *testing.T, protocol uint, mode SyncMode) {
 	tester := newTester(t, mode)
@@ -1296,22 +1296,6 @@ func TestInvalidBodyPeerDrop68(t *testing.T) {
 
 	chain := testChainBase.shorten(blockCacheMaxItems - 15)
 	peer := tester.newPeer("corrupt", eth.ETH68, chain.blocks[1:])
-	peer.corruptBodies = true
-
-	go tester.sync("corrupt", nil, FullSync)
-	select {
-	case <-peer.dropped:
-	case <-time.After(1 * time.Minute):
-		t.Fatal("peer was not dropped")
-	}
-}
-
-func TestInvalidBodyPeerDrop69(t *testing.T) {
-	tester := newTester(t, FullSync)
-	defer tester.terminate()
-
-	chain := testChainBase.shorten(blockCacheMaxItems - 15)
-	peer := tester.newPeer("corrupt", eth.ETH69, chain.blocks[1:])
 	peer.corruptBodies = true
 
 	go tester.sync("corrupt", nil, FullSync)

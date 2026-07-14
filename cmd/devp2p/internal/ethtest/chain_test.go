@@ -113,12 +113,40 @@ func TestEthProtocolNegotiation(t *testing.T) {
 			},
 			expected: uint32(64),
 		},
+		{
+			conn: &Conn{
+				ourHighestProtoVersion: eth.ETH70,
+			},
+			caps: []p2p.Cap{
+				{Name: "eth", Version: eth.ETH68},
+				{Name: "eth", Version: eth.ETH70},
+			},
+			expected: eth.ETH70,
+		},
 	}
 
 	for i, tt := range tests {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			tt.conn.negotiateEthProtocol(tt.caps)
 			assert.Equal(t, tt.expected, uint32(tt.conn.negotiatedProtoVersion))
+		})
+	}
+}
+
+func TestProtocolOffsets(t *testing.T) {
+	tests := []struct {
+		version    uint
+		snapOffset uint64
+	}{
+		{version: eth.ETH68, snapOffset: baseProtoLen + eth68ProtoLen},
+		{version: eth.ETH70, snapOffset: baseProtoLen + eth70ProtoLen},
+	}
+	for _, tt := range tests {
+		t.Run(strconv.Itoa(int(tt.version)), func(t *testing.T) {
+			conn := &Conn{negotiatedProtoVersion: tt.version}
+			assert.Equal(t, tt.snapOffset, conn.protoOffset(snapProto))
+			assert.Equal(t, ethProto, conn.getProto(baseProtoLen))
+			assert.Equal(t, snapProto, conn.getProto(tt.snapOffset))
 		})
 	}
 }
