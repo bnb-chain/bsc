@@ -113,6 +113,16 @@ func TestEthProtocolNegotiation(t *testing.T) {
 			},
 			expected: uint32(64),
 		},
+		{
+			conn: &Conn{
+				ourHighestProtoVersion: eth.ETH70,
+			},
+			caps: []p2p.Cap{
+				{Name: "eth", Version: eth.ETH68},
+				{Name: "eth", Version: eth.ETH70},
+			},
+			expected: eth.ETH70,
+		},
 	}
 
 	for i, tt := range tests {
