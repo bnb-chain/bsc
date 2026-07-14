@@ -200,7 +200,7 @@ func validateTD(td *big.Int) error {
 		return errors.New("missing total difficulty")
 	}
 	// TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
-	// larger, it will still fit within 100 bits.
+	// larger, it will still fit within 100 bits
 	if tdlen := td.BitLen(); tdlen > 100 {
 		return fmt.Errorf("too large total difficulty: bitlen %d", tdlen)
 	}

@@ -135,7 +135,7 @@ func (r *Receipt) decode(input []byte) error {
 	return nil
 }
 
-// ReceiptList is the block receipt list used by eth/70.
+// ReceiptList is the block receipt list as downloaded by eth/69.
 type ReceiptList struct {
 	items rlp.RawList[Receipt]
 }
@@ -157,7 +157,7 @@ func (rl *ReceiptList) DecodeRLP(s *rlp.Stream) error {
 	return rl.items.DecodeRLP(s)
 }
 
-// EncodeRLP encodes the list into the network format used by eth/70.
+// EncodeRLP encodes the list into the network format of eth/69.
 func (rl *ReceiptList) EncodeRLP(w io.Writer) error {
 	return rl.items.EncodeRLP(w)
 }

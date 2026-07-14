@@ -57,8 +57,8 @@ const (
 	snapProto
 )
 
-// getProto returns the protocol to which a message code belongs, assuming the
-// negotiated capabilities are exactly {eth,snap}.
+// getProto returns the protocol a certain message code is associated with
+// (assuming the negotiated capabilities are exactly {eth,snap})
 func getProto(code uint64) Proto {
 	switch {
 	case code < baseProtoLen:
@@ -72,7 +72,7 @@ func getProto(code uint64) Proto {
 	}
 }
 
-// protoOffset returns the offset at which the specified protocol's messages
+// protoOffset will return the offset at which the specified protocol's messages
 // begin.
 func protoOffset(proto Proto) uint64 {
 	switch proto {
