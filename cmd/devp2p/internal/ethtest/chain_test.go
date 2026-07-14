@@ -133,24 +133,6 @@ func TestEthProtocolNegotiation(t *testing.T) {
 	}
 }
 
-func TestProtocolOffsets(t *testing.T) {
-	tests := []struct {
-		version    uint
-		snapOffset uint64
-	}{
-		{version: eth.ETH68, snapOffset: baseProtoLen + eth68ProtoLen},
-		{version: eth.ETH70, snapOffset: baseProtoLen + eth70ProtoLen},
-	}
-	for _, tt := range tests {
-		t.Run(strconv.Itoa(int(tt.version)), func(t *testing.T) {
-			conn := &Conn{negotiatedProtoVersion: tt.version}
-			assert.Equal(t, tt.snapOffset, conn.protoOffset(snapProto))
-			assert.Equal(t, ethProto, conn.getProto(baseProtoLen))
-			assert.Equal(t, snapProto, conn.getProto(tt.snapOffset))
-		})
-	}
-}
-
 // TestChainGetHeaders tests whether the test suite can correctly
 // respond to a GetBlockHeaders request from a node.
 func TestChainGetHeaders(t *testing.T) {

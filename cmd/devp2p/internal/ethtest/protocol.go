@@ -17,7 +17,6 @@
 package ethtest
 
 import (
-	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/rlp"
 )
@@ -32,10 +31,9 @@ const (
 
 // Unexported devp2p protocol lengths from p2p package.
 const (
-	baseProtoLen  = 16
-	eth68ProtoLen = 17
-	eth70ProtoLen = 18
-	snapProtoLen  = 8
+	baseProtoLen = 16
+	ethProtoLen  = 18
+	snapProtoLen = 8
 )
 
 // Unexported handshake structure from p2p/peer.go.
@@ -61,8 +59,7 @@ const (
 
 // getProto returns the protocol to which a message code belongs, assuming the
 // negotiated capabilities are exactly {eth,snap}.
-func (c *Conn) getProto(code uint64) Proto {
-	ethProtoLen := c.ethProtoLen()
+func getProto(code uint64) Proto {
 	switch {
 	case code < baseProtoLen:
 		return baseProto
@@ -77,22 +74,15 @@ func (c *Conn) getProto(code uint64) Proto {
 
 // protoOffset returns the offset at which the specified protocol's messages
 // begin.
-func (c *Conn) protoOffset(proto Proto) uint64 {
+func protoOffset(proto Proto) uint64 {
 	switch proto {
 	case baseProto:
 		return 0
 	case ethProto:
 		return baseProtoLen
 	case snapProto:
-		return baseProtoLen + c.ethProtoLen()
+		return baseProtoLen + ethProtoLen
 	default:
 		panic("unhandled protocol")
 	}
-}
-
-func (c *Conn) ethProtoLen() uint64 {
-	if c.negotiatedProtoVersion >= eth.ETH70 {
-		return eth70ProtoLen
-	}
-	return eth68ProtoLen
 }

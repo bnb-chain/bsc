@@ -454,8 +454,8 @@ func assertOwnChain(t *testing.T, tester *downloadTester, length int) {
 	}
 }
 
-func TestCanonicalSynchronisationFull(t *testing.T) { testCanonSync(t, eth.ETH68, FullSync) }
-func TestCanonicalSynchronisationSnap(t *testing.T) { testCanonSync(t, eth.ETH68, SnapSync) }
+func TestCanonicalSynchronisationFull(t *testing.T) { testCanonSync(t, eth.ETH70, FullSync) }
+func TestCanonicalSynchronisationSnap(t *testing.T) { testCanonSync(t, eth.ETH70, SnapSync) }
 
 func testCanonSync(t *testing.T, protocol uint, mode SyncMode) {
 	tester := newTester(t, mode)
