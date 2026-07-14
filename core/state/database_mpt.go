@@ -79,13 +79,15 @@ func (db *MPTDatabase) StateReader(stateRoot common.Hash) (StateReader, error) {
 			readers = append(readers, newFlatReader(reader))
 		}
 	}
-	// Configure the trie reader, which is expected to be available as the
-	// gatekeeper unless the state is corrupted.
-	tr, err := newMPTTrieReader(stateRoot, db.triedb)
-	if err != nil {
-		return nil, err
+	if !db.NoTries() {
+		// Configure the trie reader, which is expected to be available as the
+		// gatekeeper unless the state is corrupted.
+		tr, err := newMPTTrieReader(stateRoot, db.triedb)
+		if err != nil {
+			return nil, err
+		}
+		readers = append(readers, tr)
 	}
-	readers = append(readers, tr)
 
 	return newMultiStateReader(readers...)
 }
@@ -116,6 +118,9 @@ func (db *MPTDatabase) ReadersWithCacheStats(stateRoot common.Hash) (Reader, Rea
 
 // OpenTrie opens the main account trie at a specific root hash.
 func (db *MPTDatabase) OpenTrie(root common.Hash) (Trie, error) {
+	if db.NoTries() {
+		return trie.NewEmptyTrie(), nil
+	}
 	tr, err := trie.NewStateTrie(trie.StateTrieID(root), db.triedb)
 	if err != nil {
 		return nil, err
@@ -125,6 +130,9 @@ func (db *MPTDatabase) OpenTrie(root common.Hash) (Trie, error) {
 
 // OpenStorageTrie opens the storage trie of an account.
 func (db *MPTDatabase) OpenStorageTrie(stateRoot common.Hash, address common.Address, root common.Hash, self Trie) (Trie, error) {
+	if db.NoTries() {
+		return trie.NewEmptyTrie(), nil
+	}
 	tr, err := trie.NewStateTrie(trie.StorageTrieID(stateRoot, crypto.Keccak256Hash(address.Bytes()), root), db.triedb)
 	if err != nil {
 		return nil, err
