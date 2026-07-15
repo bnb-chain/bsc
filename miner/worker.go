@@ -40,6 +40,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -78,9 +79,12 @@ var (
 	bestBidGasUsedGauge  = metrics.NewRegisteredGauge("worker/bestBidGasUsed", nil)  // MGas
 	bestWorkGasUsedGauge = metrics.NewRegisteredGauge("worker/bestWorkGasUsed", nil) // MGas
 	bidBlockExistGauge   = metrics.NewRegisteredGauge("worker/bidBlockExist", nil)
+	bidBlockWinGauge     = metrics.NewRegisteredGauge("worker/bidBlockWin", nil)
 	bidBlockCommitGauge  = metrics.NewRegisteredGauge("worker/bidBlockCommit", nil)
 	bidBlockGasUsedGauge = metrics.NewRegisteredGauge("worker/bidBlockGasUsed", nil) // MGas
 	bidBlockRevokeGauge  = metrics.NewRegisteredGauge("worker/bidBlockRevoke", nil)  // cumulative revoke count
+	// bidBlockVerifyFailedGauge counts sealed BidBlocks that failed async InsertChain verification (cumulative).
+	bidBlockVerifyFailedGauge = metrics.NewRegisteredGauge("worker/bidBlockVerifyFailed", nil)
 	// bidBlockRevokedBuildersGauge snapshots how many builders are revoked, taken at each revoke.
 	bidBlockRevokedBuildersGauge = metrics.NewRegisteredGauge("worker/bidBlockRevokedBuilders", nil)
 
@@ -186,7 +190,7 @@ type getWorkReq struct {
 type bidFetcher interface {
 	GetBestBid(parentHash common.Hash) *BidRuntime
 	GetSimulatingBid(prevBlockHash common.Hash) *BidRuntime
-	GetBestBidBlock(parentHash common.Hash) *types.DecodedBidBlock
+	GetBestBidBlock(parentHash common.Hash) *buildertypes.DecodedBidBlock
 }
 
 // worker is the main object which takes care of submitting new work to consensus engine
@@ -1426,7 +1430,7 @@ LOOP:
 	// when out-turn, use bestWork to prevent bundle leakage.
 	// when in-turn, compare with remote work.
 	var bestBid *BidRuntime
-	var bestBidBlock *types.DecodedBidBlock
+	var bestBidBlock *buildertypes.DecodedBidBlock
 	var bidBlockCommitted bool
 	var bidBlockFallback bool
 	var simBidBlockReward *uint256.Int
@@ -1473,6 +1477,7 @@ LOOP:
 	}
 
 	if bestBidBlock != nil && w.selectBidBlock(bestBidBlock, simBidBlockReward, simBidValidatorReward, bestReward) {
+		bidBlockWinGauge.Inc(1)
 		task, err := w.prepareBidBlockTask(bestBidBlock, start)
 		if err != nil {
 			log.Error("Failed to prepare bid block, fallback",

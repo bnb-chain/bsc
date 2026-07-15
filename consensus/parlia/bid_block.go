@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 )
 
 var signableSystemTxSelectors = map[string][4]byte{
@@ -64,7 +65,7 @@ func (p *Parlia) isUnsignedSystemTxCandidate(tx *types.Transaction) bool {
 	if tx == nil || tx.To() == nil || !isToSystemContract(*tx.To()) {
 		return false
 	}
-	if tx.GasPrice() == nil || tx.GasPrice().Sign() != 0 {
+	if tx.GasPrice() == nil || tx.EffectiveGasPriceForBSC().Sign() != 0 {
 		return false
 	}
 	v, r, s := tx.RawSignatureValues()
@@ -155,7 +156,7 @@ func (p *Parlia) ExtractBidBlockDepositValue(txs []*types.Transaction) (int, *bi
 //
 //	Stage 1 — each trailing unsigned tx must be on the BEP-675 signable whitelist.
 //	Stage 2 — selectors & order must match expectedSystemTxShape for this header.
-func (p *Parlia) VerifyBidBlockSystemTxs(decoded *types.DecodedBidBlock, parent *types.Header, systemTxStart int) error {
+func (p *Parlia) VerifyBidBlockSystemTxs(decoded *buildertypes.DecodedBidBlock, parent *types.Header, systemTxStart int) error {
 	for i := systemTxStart; i < len(decoded.Txs); i++ {
 		if !p.isSignableSystemTx(decoded.Txs[i]) {
 			toAddr := "<nil>"

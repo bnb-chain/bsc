@@ -94,4 +94,3 @@ func BenchmarkInterpreter(b *testing.B) {
 		gasSStoreEIP3529(evm, contract, stack, mem, 1234)
 	}
 }
-

@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/filtermaps"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
@@ -110,7 +111,7 @@ type Backend interface {
 	// MevRunning return true if mev is running
 	MevRunning() bool
 	// MevParams returns the static params of mev
-	MevParams() *types.MevParams
+	MevParams() *buildertypes.MevParams
 	// StartMev starts mev
 	StartMev()
 	// StopMev stops mev
@@ -122,11 +123,11 @@ type Backend interface {
 	// HasBuilder returns true if the builder is in the builder list.
 	HasBuilder(builder common.Address) bool
 	// GetBidBlockPermission returns the builder's current SendBidBlock permission.
-	GetBidBlockPermission(builder common.Address) types.BidBlockPermissionStatus
+	GetBidBlockPermission(builder common.Address) buildertypes.BidBlockPermissionStatus
 	// SendBid receives bid from the builders.
-	SendBid(ctx context.Context, bid *types.BidArgs) (common.Hash, error)
+	SendBid(ctx context.Context, bid *buildertypes.BidArgs) (common.Hash, error)
 	// SendBidBlock receives a BidBlock from builders.
-	SendBidBlock(ctx context.Context, args *types.BidBlockArgs) (common.Hash, error)
+	SendBidBlock(ctx context.Context, args *buildertypes.BidBlockArgs) (common.Hash, error)
 	// MinerInTurn returns true if the validator is in turn to propose the block.
 	MinerInTurn() bool
 

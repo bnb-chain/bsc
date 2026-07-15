@@ -4,7 +4,7 @@
 // BEP-675 block-source tagging. Validators encode the winning MEV path and
 // builder address into header.RequestsHash; local blocks keep EmptyRequestsHash.
 
-package types
+package builder
 
 import (
 	"github.com/ethereum/go-ethereum/common"

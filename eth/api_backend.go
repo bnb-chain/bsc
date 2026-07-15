@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/txpool/locals"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
@@ -542,7 +543,7 @@ func (b *EthAPIBackend) MevRunning() bool {
 	return b.Miner().MevRunning()
 }
 
-func (b *EthAPIBackend) MevParams() *types.MevParams {
+func (b *EthAPIBackend) MevParams() *buildertypes.MevParams {
 	return b.Miner().MevParams()
 }
 
@@ -566,15 +567,15 @@ func (b *EthAPIBackend) HasBuilder(builder common.Address) bool {
 	return b.Miner().HasBuilder(builder)
 }
 
-func (b *EthAPIBackend) GetBidBlockPermission(builder common.Address) types.BidBlockPermissionStatus {
+func (b *EthAPIBackend) GetBidBlockPermission(builder common.Address) buildertypes.BidBlockPermissionStatus {
 	return b.Miner().GetBidBlockPermission(builder)
 }
 
-func (b *EthAPIBackend) SendBid(ctx context.Context, bid *types.BidArgs) (common.Hash, error) {
+func (b *EthAPIBackend) SendBid(ctx context.Context, bid *buildertypes.BidArgs) (common.Hash, error) {
 	return b.Miner().SendBid(ctx, bid)
 }
 
-func (b *EthAPIBackend) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) (common.Hash, error) {
+func (b *EthAPIBackend) SendBidBlock(ctx context.Context, args *buildertypes.BidBlockArgs) (common.Hash, error) {
 	return b.Miner().SendBidBlock(ctx, args)
 }
 
