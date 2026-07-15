@@ -78,14 +78,9 @@ func fuzz(input []byte) int {
 	rand := rand.New(rand.NewSource(0x3a29)) // Same used in package tests!!!
 
 	f := fetcher.NewTxFetcherForTests(
-<<<<<<< HEAD
-		func(common.Hash) bool { return false },
-		func(peer string, txs []*types.Transaction) []error {
-=======
 		nil,
 		func(common.Hash, byte) error { return nil },
-		func(txs []*types.Transaction) []error {
->>>>>>> geth-v1.17.3
+		func(peer string, txs []*types.Transaction) []error {
 			return make([]error, len(txs))
 		},
 		func(string, []common.Hash) error { return nil },

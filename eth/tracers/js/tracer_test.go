@@ -55,11 +55,7 @@ func runTrace(tracer *tracers.Tracer, vmctx *vmContext, chaincfg *params.ChainCo
 		gasLimit uint64 = 31000
 		startGas uint64 = 10000
 		value           = uint256.NewInt(0)
-<<<<<<< HEAD
-		contract        = vm.GetContract(common.Address{}, common.Address{}, value, startGas, nil)
-=======
-		contract        = vm.NewContract(common.Address{}, common.Address{}, value, vm.NewGasBudget(startGas), nil)
->>>>>>> geth-v1.17.3
+		contract        = vm.GetContract(common.Address{}, common.Address{}, value, vm.NewGasBudget(startGas), nil)
 	)
 	defer vm.ReturnContract(contract)
 
@@ -189,11 +185,7 @@ func TestHaltBetweenSteps(t *testing.T) {
 		t.Fatal(err)
 	}
 	scope := &vm.ScopeContext{
-<<<<<<< HEAD
-		Contract: vm.GetContract(common.Address{}, common.Address{}, uint256.NewInt(0), 0, nil),
-=======
-		Contract: vm.NewContract(common.Address{}, common.Address{}, uint256.NewInt(0), vm.GasBudget{}, nil),
->>>>>>> geth-v1.17.3
+		Contract: vm.GetContract(common.Address{}, common.Address{}, uint256.NewInt(0), vm.GasBudget{}, nil),
 	}
 	defer vm.ReturnContract(scope.Contract)
 	evm := vm.NewEVM(vm.BlockContext{BlockNumber: big.NewInt(1)}, &dummyStatedb{}, chainConfig, vm.Config{Tracer: tracer.Hooks})
@@ -292,11 +284,7 @@ func TestEnterExit(t *testing.T) {
 		t.Fatal(err)
 	}
 	scope := &vm.ScopeContext{
-<<<<<<< HEAD
-		Contract: vm.GetContract(common.Address{}, common.Address{}, uint256.NewInt(0), 0, nil),
-=======
-		Contract: vm.NewContract(common.Address{}, common.Address{}, uint256.NewInt(0), vm.GasBudget{}, nil),
->>>>>>> geth-v1.17.3
+		Contract: vm.GetContract(common.Address{}, common.Address{}, uint256.NewInt(0), vm.GasBudget{}, nil),
 	}
 	defer vm.ReturnContract(scope.Contract)
 

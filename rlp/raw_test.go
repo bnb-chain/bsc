@@ -246,8 +246,7 @@ func TestRawListAppendRaw(t *testing.T) {
 		t.Fatalf("wrong Len %d after invalid appends, want 2", rl.Len())
 	}
 }
-<<<<<<< HEAD
-=======
+
 func TestRawListAppendList(t *testing.T) {
 	var rl1 RawList[uint64]
 	if err := rl1.Append(uint64(1)); err != nil {
@@ -296,7 +295,6 @@ func TestRawListAppendList(t *testing.T) {
 		t.Fatalf("wrong Len %d, want 4", empty.Len())
 	}
 }
->>>>>>> geth-v1.17.3
 
 func TestRawListDecodeInvalid(t *testing.T) {
 	tests := []struct {

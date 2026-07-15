@@ -71,7 +71,7 @@ type Config struct {
 	VoteEnable             bool           // Whether to vote when mining
 	MaxWaitProposalInSecs  *uint64        `toml:",omitempty"` // The maximum time to wait for the proposal to be done, it's aimed to prevent validator being slashed when restarting
 	DisableVoteAttestation bool           // Whether to skip assembling vote attestation
-	MaxBlobsPerBlock       int            // Maximum number of blobs per block (0 for unset uses protocol default)
+	MaxBlobsPerBlock       int            `toml:",omitempty"` // Maximum number of blobs per block (0 for unset uses protocol default)
 
 	Mev MevConfig // Mev configuration
 }

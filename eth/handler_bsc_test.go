@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/event"
@@ -41,7 +42,7 @@ func testSendVotes(t *testing.T, protocol uint) {
 	t.Parallel()
 
 	// Create a message handler and fill the pool with big votes
-	handler := newTestHandler()
+	handler := newTestHandler(ethconfig.FullSync)
 	defer handler.close()
 
 	insert := make([]*types.VoteEnvelope, 100)
@@ -87,8 +88,8 @@ func testSendVotes(t *testing.T, protocol uint) {
 	defer p2pEthSrc.Close()
 	defer p2pEthSink.Close()
 
-	localEth := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{1}, protos, "", caps), p2pEthSrc, nil)
-	remoteEth := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", caps), p2pEthSink, nil)
+	localEth := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{1}, protos, "", caps), p2pEthSrc, nil, nil)
+	remoteEth := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", caps), p2pEthSink, nil, nil)
 	defer localEth.Close()
 	defer remoteEth.Close()
 
@@ -157,7 +158,7 @@ func testRecvVotes(t *testing.T, protocol uint) {
 	t.Parallel()
 
 	// Create a message handler and fill the pool with big votes
-	handler := newTestHandler()
+	handler := newTestHandler(ethconfig.FullSync)
 	defer handler.close()
 
 	protos := []p2p.Protocol{
@@ -186,8 +187,8 @@ func testRecvVotes(t *testing.T, protocol uint) {
 	defer p2pEthSrc.Close()
 	defer p2pEthSink.Close()
 
-	localEth := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{1}, protos, "", caps), p2pEthSrc, nil)
-	remoteEth := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", caps), p2pEthSink, nil)
+	localEth := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{1}, protos, "", caps), p2pEthSrc, nil, nil)
+	remoteEth := eth.NewPeer(protocol, p2p.NewPeerWithProtocols(enode.ID{2}, protos, "", caps), p2pEthSink, nil, nil)
 	defer localEth.Close()
 	defer remoteEth.Close()
 

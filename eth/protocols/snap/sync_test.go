@@ -198,11 +198,7 @@ func (t *testPeer) RequestTrieNodes(id uint64, root common.Hash, count int, path
 }
 
 func (t *testPeer) RequestStorageRanges(id uint64, root common.Hash, accounts []common.Hash, origin, limit []byte, bytes int) error {
-<<<<<<< HEAD
-	t.nStorageRequests++
-=======
 	t.nStorageRequests.Add(1)
->>>>>>> geth-v1.17.3
 	if len(accounts) == 1 && origin != nil {
 		t.logger.Trace("Fetching range of large storage slots", "reqid", id, "root", root, "account", accounts[0], "origin", common.BytesToHash(origin), "limit", common.BytesToHash(limit), "bytes", common.StorageSize(bytes))
 	} else {
@@ -213,11 +209,7 @@ func (t *testPeer) RequestStorageRanges(id uint64, root common.Hash, accounts []
 }
 
 func (t *testPeer) RequestByteCodes(id uint64, hashes []common.Hash, bytes int) error {
-<<<<<<< HEAD
-	t.nBytecodeRequests++
-=======
 	t.nBytecodeRequests.Add(1)
->>>>>>> geth-v1.17.3
 	t.logger.Trace("Fetching set of byte codes", "reqid", id, "hashes", len(hashes), "bytes", common.StorageSize(bytes))
 	go t.codeRequestHandler(t, id, hashes, bytes)
 	return nil

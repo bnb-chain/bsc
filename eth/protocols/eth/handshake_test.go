@@ -18,6 +18,7 @@ package eth
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -27,7 +28,8 @@ import (
 )
 
 // Tests that handshake failures are detected and reported correctly.
-func TestHandshake69(t *testing.T) { testHandshake(t, ETH69) }
+func TestHandshake68(t *testing.T) { testHandshake(t, ETH68) }
+func TestHandshake70(t *testing.T) { testHandshake(t, ETH70) }
 
 func testHandshake(t *testing.T, protocol uint) {
 	t.Parallel()
@@ -51,42 +53,58 @@ func testHandshake(t *testing.T, protocol uint) {
 			code: TransactionsMsg, data: []interface{}{},
 			want: errNoStatusMsg,
 		},
-		{
-<<<<<<< HEAD
-			code: StatusMsg, data: StatusPacket68{10, 1, td, head.Hash(), genesis.Hash(), forkID},
-			want: errProtocolVersionMismatch,
-		},
-		{
-			code: StatusMsg, data: StatusPacket68{uint32(protocol), 999, td, head.Hash(), genesis.Hash(), forkID},
-			want: errNetworkIDMismatch,
-		},
-		{
-			code: StatusMsg, data: StatusPacket68{uint32(protocol), 1, td, head.Hash(), common.Hash{3}, forkID},
-			want: errGenesisMismatch,
-		},
-		{
-			code: StatusMsg, data: StatusPacket68{uint32(protocol), 1, td, head.Hash(), genesis.Hash(), forkid.ID{Hash: [4]byte{0x00, 0x01, 0x02, 0x03}}},
-=======
-			code: StatusMsg, data: StatusPacket{10, 1, genesis.Hash(), forkID, 0, head.Number.Uint64(), head.Hash()},
-			want: errProtocolVersionMismatch,
-		},
-		{
-			code: StatusMsg, data: StatusPacket{uint32(protocol), 999, genesis.Hash(), forkID, 0, head.Number.Uint64(), head.Hash()},
-			want: errNetworkIDMismatch,
-		},
-		{
-			code: StatusMsg, data: StatusPacket{uint32(protocol), 1, common.Hash{3}, forkID, 0, head.Number.Uint64(), head.Hash()},
-			want: errGenesisMismatch,
-		},
-		{
-			code: StatusMsg, data: StatusPacket{uint32(protocol), 1, genesis.Hash(), forkid.ID{Hash: [4]byte{0x00, 0x01, 0x02, 0x03}}, 0, head.Number.Uint64(), head.Hash()},
->>>>>>> geth-v1.17.3
-			want: errForkIDRejected,
-		},
-		{
-			code: StatusMsg, data: StatusPacket{uint32(protocol), 1, genesis.Hash(), forkID, head.Number.Uint64() + 1, head.Number.Uint64(), head.Hash()},
-			want: errInvalidBlockRange,
-		},
+	}
+	if protocol == ETH68 {
+		tests = append(tests,
+			struct {
+				code uint64
+				data interface{}
+				want error
+			}{code: StatusMsg, data: StatusPacket68{10, 1, td, head.Hash(), genesis.Hash(), forkID}, want: errProtocolVersionMismatch},
+			struct {
+				code uint64
+				data interface{}
+				want error
+			}{code: StatusMsg, data: StatusPacket68{uint32(protocol), 999, td, head.Hash(), genesis.Hash(), forkID}, want: errNetworkIDMismatch},
+			struct {
+				code uint64
+				data interface{}
+				want error
+			}{code: StatusMsg, data: StatusPacket68{uint32(protocol), 1, td, head.Hash(), common.Hash{3}, forkID}, want: errGenesisMismatch},
+			struct {
+				code uint64
+				data interface{}
+				want error
+			}{code: StatusMsg, data: StatusPacket68{uint32(protocol), 1, td, head.Hash(), genesis.Hash(), forkid.ID{Hash: [4]byte{0x00, 0x01, 0x02, 0x03}}}, want: errForkIDRejected},
+		)
+	} else {
+		tests = append(tests,
+			struct {
+				code uint64
+				data interface{}
+				want error
+			}{code: StatusMsg, data: StatusPacket{10, 1, td, genesis.Hash(), forkID, 0, head.Number.Uint64(), head.Hash()}, want: errProtocolVersionMismatch},
+			struct {
+				code uint64
+				data interface{}
+				want error
+			}{code: StatusMsg, data: StatusPacket{uint32(protocol), 999, td, genesis.Hash(), forkID, 0, head.Number.Uint64(), head.Hash()}, want: errNetworkIDMismatch},
+			struct {
+				code uint64
+				data interface{}
+				want error
+			}{code: StatusMsg, data: StatusPacket{uint32(protocol), 1, td, common.Hash{3}, forkID, 0, head.Number.Uint64(), head.Hash()}, want: errGenesisMismatch},
+			struct {
+				code uint64
+				data interface{}
+				want error
+			}{code: StatusMsg, data: StatusPacket{uint32(protocol), 1, td, genesis.Hash(), forkid.ID{Hash: [4]byte{0x00, 0x01, 0x02, 0x03}}, 0, head.Number.Uint64(), head.Hash()}, want: errForkIDRejected},
+			struct {
+				code uint64
+				data interface{}
+				want error
+			}{code: StatusMsg, data: StatusPacket{uint32(protocol), 1, td, genesis.Hash(), forkID, head.Number.Uint64() + 1, head.Number.Uint64(), head.Hash()}, want: errInvalidBlockRange},
+		)
 	}
 	for i, test := range tests {
 		// Create the two peers to shake with each other
@@ -106,5 +124,56 @@ func testHandshake(t *testing.T, protocol uint) {
 		} else if !errors.Is(err, test.want) {
 			t.Errorf("test %d: wrong error: got %q, want %q", i, err, test.want)
 		}
+	}
+}
+
+func TestHandshakeSuccess(t *testing.T) {
+	for _, protocol := range []uint{ETH68, ETH70} {
+		t.Run(fmt.Sprintf("eth/%d", protocol), func(t *testing.T) {
+			backend := newTestBackend(3)
+			defer backend.close()
+
+			head := backend.chain.CurrentBlock()
+			td := backend.chain.GetTd(head.Hash(), head.Number.Uint64())
+			blockRange := BlockRangeUpdatePacket{
+				EarliestBlock:   0,
+				LatestBlock:     head.Number.Uint64(),
+				LatestBlockHash: head.Hash(),
+			}
+			app, net := p2p.MsgPipe()
+			defer app.Close()
+			defer net.Close()
+
+			peerA := NewPeer(protocol, p2p.NewPeer(enode.ID{1}, "peer-a", nil), app, nil, backend.chain.Config())
+			defer peerA.Close()
+			peerB := NewPeer(protocol, p2p.NewPeer(enode.ID{2}, "peer-b", nil), net, nil, backend.chain.Config())
+			defer peerB.Close()
+
+			extension := &UpgradeStatusExtension{DisablePeerTxBroadcast: true}
+			errc := make(chan error, 2)
+			go func() { errc <- peerA.Handshake(1, backend.chain, blockRange, td, extension) }()
+			go func() { errc <- peerB.Handshake(1, backend.chain, blockRange, td, extension) }()
+			for range 2 {
+				if err := <-errc; err != nil {
+					t.Fatalf("handshake failed: %v", err)
+				}
+			}
+			for _, peer := range []*Peer{peerA, peerB} {
+				gotHead, gotTD := peer.Head()
+				if gotHead != head.Hash() || gotTD.Cmp(td) != 0 {
+					t.Fatalf("peer head mismatch: have (%s, %s), want (%s, %s)", gotHead, gotTD, head.Hash(), td)
+				}
+				if protocol == ETH70 {
+					if peer.statusExtension != nil {
+						t.Fatal("eth/70 negotiated an upgrade status extension")
+					}
+					if got := peer.BlockRange(); got == nil || *got != blockRange {
+						t.Fatalf("peer block range mismatch: have %+v, want %+v", got, blockRange)
+					}
+				} else if peer.statusExtension == nil || !peer.statusExtension.DisablePeerTxBroadcast {
+					t.Fatal("eth/68 did not negotiate the upgrade status extension")
+				}
+			}
+		})
 	}
 }

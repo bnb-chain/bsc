@@ -1226,12 +1226,6 @@ func (st *blockRangeState) update(chain *core.BlockChain, latest *types.Header) 
 // However, there is a special case: if the range would move back, i.e. due to SetHead, we
 // want to send it immediately.
 func (st *blockRangeState) shouldSend() bool {
-	// TODO(Nathan): enable blockRangeLoop when eth69 enabled
-	eth69Enabled := false
-	if !eth69Enabled {
-		return false
-	}
-
 	next := st.next.Load()
 	return next.LatestBlock < st.prev.LatestBlock ||
 		next.LatestBlock-st.prev.LatestBlock >= 32

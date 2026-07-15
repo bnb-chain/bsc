@@ -40,7 +40,7 @@ const (
 func (p *Peer) Handshake(networkID uint64, chain forkid.Blockchain, rangeMsg BlockRangeUpdatePacket, td *big.Int, extension *UpgradeStatusExtension) error {
 	switch p.version {
 	case ETH70:
-		return p.handshake(networkID, chain, rangeMsg)
+		return p.handshake70(networkID, chain, rangeMsg, td)
 	case ETH68:
 		return p.handshake68(networkID, chain, td, extension)
 	default:
@@ -75,11 +75,6 @@ func (p *Peer) handshake68(networkID uint64, chain forkid.Blockchain, td *big.In
 		return err
 	}
 	p.td, p.head = status.TD, status.Head
-	// TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
-	// larger, it will still fit within 100 bits
-	if tdlen := p.td.BitLen(); tdlen > 100 {
-		return fmt.Errorf("too large total difficulty: bitlen %d", tdlen)
-	}
 
 	var upgradeStatus UpgradeStatusPacket // safe to read after two values have been received from errc
 	if extension == nil {
@@ -128,10 +123,13 @@ func (p *Peer) readStatus68(networkID uint64, status *StatusPacket68, genesis co
 	if err := forkFilter(status.ForkID); err != nil {
 		return fmt.Errorf("%w: %v", errForkIDRejected, err)
 	}
+	if err := validateTD(status.TD); err != nil {
+		return err
+	}
 	return nil
 }
 
-func (p *Peer) handshake(networkID uint64, chain forkid.Blockchain, rangeMsg BlockRangeUpdatePacket) error {
+func (p *Peer) handshake70(networkID uint64, chain forkid.Blockchain, rangeMsg BlockRangeUpdatePacket, td *big.Int) error {
 	var (
 		genesis    = chain.Genesis()
 		latest     = chain.CurrentHeader()
@@ -144,6 +142,7 @@ func (p *Peer) handshake(networkID uint64, chain forkid.Blockchain, rangeMsg Blo
 		pkt := &StatusPacket{
 			ProtocolVersion: uint32(p.version),
 			NetworkID:       networkID,
+			TD:              td,
 			Genesis:         genesis.Hash(),
 			ForkID:          forkID,
 			EarliestBlock:   rangeMsg.EarliestBlock,
@@ -154,13 +153,17 @@ func (p *Peer) handshake(networkID uint64, chain forkid.Blockchain, rangeMsg Blo
 	}()
 	var status StatusPacket // safe to read after two values have been received from errc
 	go func() {
-		errc <- p.readStatus(networkID, &status, genesis.Hash(), forkFilter)
+		errc <- p.readStatus70(networkID, &status, genesis.Hash(), forkFilter)
 	}()
 
-	return waitForHandshake(errc, p)
+	if err := waitForHandshake(errc, p); err != nil {
+		return err
+	}
+	p.td, p.head = status.TD, status.LatestBlockHash
+	return nil
 }
 
-func (p *Peer) readStatus(networkID uint64, status *StatusPacket, genesis common.Hash, forkFilter forkid.Filter) error {
+func (p *Peer) readStatus70(networkID uint64, status *StatusPacket, genesis common.Hash, forkFilter forkid.Filter) error {
 	if err := p.readStatusMsg(status); err != nil {
 		return err
 	}
@@ -176,6 +179,9 @@ func (p *Peer) readStatus(networkID uint64, status *StatusPacket, genesis common
 	if err := forkFilter(status.ForkID); err != nil {
 		return fmt.Errorf("%w: %v", errForkIDRejected, err)
 	}
+	if err := validateTD(status.TD); err != nil {
+		return err
+	}
 	// Handle initial block range.
 	initRange := &BlockRangeUpdatePacket{
 		EarliestBlock:   status.EarliestBlock,
@@ -186,6 +192,18 @@ func (p *Peer) readStatus(networkID uint64, status *StatusPacket, genesis common
 		return fmt.Errorf("%w: %v", errInvalidBlockRange, err)
 	}
 	p.lastRange.Store(initRange)
+	return nil
+}
+
+func validateTD(td *big.Int) error {
+	if td == nil {
+		return errors.New("missing total difficulty")
+	}
+	// TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
+	// larger, it will still fit within 100 bits
+	if tdlen := td.BitLen(); tdlen > 100 {
+		return fmt.Errorf("too large total difficulty: bitlen %d", tdlen)
+	}
 	return nil
 }
 

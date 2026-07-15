@@ -72,7 +72,7 @@ func newTestBackend(t *testing.T) (*node.Node, []*types.Block, []common.Hash) {
 	filterSystem := filters.NewFilterSystem(ethservice.APIBackend, filters.Config{})
 	n.RegisterAPIs([]rpc.API{{
 		Namespace: "eth",
-		Service:   filters.NewFilterAPI(filterSystem, false),
+		Service:   filters.NewFilterAPI(filterSystem),
 	}})
 
 	// Import the test chain.
@@ -628,7 +628,6 @@ func testCallContractWithBlockOverrides(t *testing.T, client *rpc.Client) {
 	}
 }
 
-<<<<<<< HEAD
 func TestGetProofDeduplication(t *testing.T) {
 	backend, _, _ := newTestBackend(t)
 	client := backend.Attach()
@@ -706,7 +705,9 @@ func TestGetProofMaxKeys(t *testing.T) {
 	_, err = ec.GetProof(context.Background(), testAddr, keys, nil)
 	if err != nil {
 		t.Errorf("unexpected error with valid number of keys: %v", err)
-=======
+	}
+}
+
 func testTraceTransactionWithCallTracer(t *testing.T, client *rpc.Client, txHashes []common.Hash) {
 	ec := New(client)
 	for _, txHash := range txHashes {
@@ -761,6 +762,5 @@ func testTraceCallWithCallTracer(t *testing.T, client *rpc.Client) {
 	}
 	if result.Gas == 0 {
 		t.Fatal("gas is zero")
->>>>>>> geth-v1.17.3
 	}
 }

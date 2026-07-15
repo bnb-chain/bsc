@@ -216,7 +216,7 @@ func (payload *Payload) ResolveFull() *engine.ExecutionPayloadEnvelope {
 }
 
 func (w *worker) runBuildIteration(ctx context.Context, start time.Time, iteration int, payload *Payload, params *generateParams, witness bool) {
-	ctx, span, spanEnd := telemetry.StartSpan(ctx, "miner.buildIteration",
+	_, span, spanEnd := telemetry.StartSpan(ctx, "miner.buildIteration",
 		telemetry.Int64Attribute("iteration", int64(iteration)),
 	)
 	var err error

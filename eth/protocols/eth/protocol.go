@@ -31,7 +31,6 @@ import (
 // Constants to match up protocol versions and messages
 const (
 	ETH68 = 68
-	ETH69 = 69
 	ETH70 = 70
 )
 
@@ -41,7 +40,7 @@ const ProtocolName = "eth"
 
 // ProtocolVersions are the supported versions of the `eth` protocol (first
 // is primary).
-var ProtocolVersions = []uint{ /*ETH70,*/ ETH68}
+var ProtocolVersions = []uint{ETH70, ETH68}
 
 // protocolLengths are the number of implemented message corresponding to
 // different protocol versions.
@@ -129,13 +128,15 @@ func (p *UpgradeStatusPacket) GetExtension() (*UpgradeStatusExtension, error) {
 	return extension, nil
 }
 
-// StatusPacket69 is the network packet for the status message.
+// StatusPacket is the network packet for the eth/70 status message. It follows
+// upstream eth/70, except that BSC retains TD for Parlia chain synchronization.
+// Unlike eth/68, eth/70 does not exchange UpgradeStatusMsg.
 type StatusPacket struct {
 	ProtocolVersion uint32
 	NetworkID       uint64
-	// TD              *big.Int //TODO(Nathan): add it before enable ETH70
-	Genesis common.Hash
-	ForkID  forkid.ID
+	TD              *big.Int
+	Genesis         common.Hash
+	ForkID          forkid.ID
 	// initial available block range
 	EarliestBlock   uint64
 	LatestBlock     uint64

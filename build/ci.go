@@ -401,8 +401,8 @@ func doTest(cmdline []string) {
 		timeout  = flag.String("timeout", "10m", `Timeout of running tests`)
 		race     = flag.Bool("race", false, "Execute the race detector")
 		short    = flag.Bool("short", false, "Pass the 'short'-flag to go test")
-		// cachedir = flag.String("cachedir", "./build/cache", "directory for caching downloads")
-		threads = flag.Int("p", 1, "Number of CPU threads to use for testing")
+		cachedir = flag.String("cachedir", "./build/cache", "directory for caching downloads")
+		threads  = flag.Int("p", 1, "Number of CPU threads to use for testing")
 	)
 	flag.CommandLine.Parse(cmdline)
 
@@ -411,7 +411,7 @@ func doTest(cmdline []string) {
 
 	// Get test fixtures.
 	if !*short {
-		// downloadSpecTestFixtures(csdb, *cachedir)
+		downloadSpecTestFixtures(csdb, *cachedir)
 	}
 
 	// Configure the toolchain.

@@ -105,6 +105,9 @@ type Config struct {
 	// If your node does care about new mempool transactions (e.g., running rpc services without the need of mempool
 	// transactions) or is continuously under high pressure (e.g., mempool is always full), then you can consider
 	// to turn it on.
+	//
+	// Deprecated: only effective on eth/68 connections. It will be removed
+	// together with eth/68 support.
 	DisablePeerTxBroadcast bool
 	EVNNodeIDsToAdd        []enode.ID
 	EVNNodeIDsToRemove     []enode.ID

@@ -164,6 +164,12 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		spanEnd(nil)
 	}
 	bloomProcessors.Close()
+
+	// Gather user-tx logs before postExecution so EIP-6110 deposits parse from them.
+	numUserReceipts := len(receipts)
+	for _, receipt := range receipts {
+		allLogs = append(allLogs, receipt.Logs...)
+	}
 	requests, err := postExecution(ctx, config, block, allLogs, evm)
 	if err != nil {
 		return nil, err
@@ -175,7 +181,8 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 	if err != nil {
 		return nil, err
 	}
-	for _, receipt := range receipts {
+	// Add the system-tx logs appended by Finalize.
+	for _, receipt := range receipts[numUserReceipts:] {
 		allLogs = append(allLogs, receipt.Logs...)
 	}
 
@@ -183,8 +190,9 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		Receipts: receipts,
 		Requests: requests,
 		Logs:     allLogs,
-		// GasUsed:  gp.Used(),
-		GasUsed: gasUsed, //TODO(Nathan): wrong here
+		// gp.Used() plus the system-tx gas added by Finalize: the block-level
+		// chain (EIP-7778) validated against header.GasUsed.
+		GasUsed: gasUsed,
 	}, nil
 }
 

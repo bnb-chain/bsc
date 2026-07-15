@@ -530,8 +530,6 @@ func quickcfg() *quick.Config {
 	}
 }
 
-<<<<<<< HEAD
-=======
 func TestSetFallbackNodes_DNSHostname(t *testing.T) {
 	// Create a node with a DNS hostname but no IP, simulating an enode URL
 	// like enode://<key>@localhost:30303.
@@ -592,7 +590,6 @@ func TestSetFallbackNodes_DNSHostname(t *testing.T) {
 	t.Logf("resolved localhost to %v", resolved.IPAddr())
 }
 
->>>>>>> geth-v1.17.3
 // This test checks that waitForNodes does not block addFoundNode.
 // See https://github.com/ethereum/go-ethereum/issues/34881.
 func TestTable_waitForNodesLocking(t *testing.T) {

@@ -85,11 +85,7 @@ func BenchmarkInterpreter(b *testing.B) {
 		value             = uint256.NewInt(0)
 		stack             = newStackForTesting()
 		mem               = NewMemory()
-<<<<<<< HEAD
-		contract          = GetContract(common.Address{}, common.Address{}, value, startGas, nil)
-=======
-		contract          = NewContract(common.Address{}, common.Address{}, value, NewGasBudget(startGas), nil)
->>>>>>> geth-v1.17.3
+		contract          = GetContract(common.Address{}, common.Address{}, value, NewGasBudget(startGas), nil)
 	)
 	stack.push(uint256.NewInt(123))
 	stack.push(uint256.NewInt(123))
@@ -98,4 +94,3 @@ func BenchmarkInterpreter(b *testing.B) {
 		gasSStoreEIP3529(evm, contract, stack, mem, 1234)
 	}
 }
-
