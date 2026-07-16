@@ -2156,6 +2156,7 @@ func (p *Parlia) applyTransaction(
 	// Create a new environment which holds all relevant information
 	// about the transaction and calling mechanisms.
 	evm := vm.NewEVM(context, state, p.chainConfig, vm.Config{Tracer: tracer})
+	defer evm.Release()
 	evm.SetTxContext(core.NewEVMTxContext(msg))
 
 	// Tracing receipt will be set if there is no error and will be used to trace the transaction
