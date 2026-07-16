@@ -1539,6 +1539,7 @@ LOOP:
 				greedyMergeOnchainCounter.Inc(1)
 			}
 			bestWork = bestBid.env
+			bestBid.envAdopted.Store(true)
 			// Record MEV v1 (bid path) source and builder address.
 			setBidMevInfo(bestWork.header, bestBid.bid.Builder, false)
 			logMsg := "[BUILDER BLOCK]"

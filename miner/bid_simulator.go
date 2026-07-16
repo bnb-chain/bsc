@@ -630,7 +630,7 @@ func (b *bidSimulator) clearLoop() {
 		for blockNumber, bidList := range b.bidsToSim {
 			if blockNumber <= clearThreshold {
 				for _, bid := range bidList {
-					if bid.env != nil {
+					if bid.env != nil && !bid.envAdopted.Load() {
 						// envs for simulating only discard here
 						bid.env.discard()
 					}
@@ -1254,6 +1254,11 @@ type BidRuntime struct {
 	bid *types.Bid
 
 	env *environment
+	// envAdopted marks that env's ownership has been transferred to the worker
+	// (committed as sealing work), which then must discard it exactly once;
+	// the simulator must no longer discard it, otherwise the EVM stack arena
+	// is double-released into the global pool and gets shared by two EVMs.
+	envAdopted atomic.Bool
 
 	expectedBlockReward     *big.Int
 	expectedValidatorReward *big.Int
