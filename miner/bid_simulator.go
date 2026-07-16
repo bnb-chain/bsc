@@ -1022,6 +1022,11 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}, false); err != nil {
 		return
 	}
+	// Mark this env as simulator-owned: it is retained in bidsToSim and
+	// discarded only by clearLoop, so the worker must not discard it when this
+	// bid wins and its env becomes w.current. AddBidToSim below is what makes
+	// clearLoop the sole owner; the two must stay paired.
+	bidRuntime.env.fromBid = true
 	b.AddBidToSim(bidRuntime)
 
 	// if the left time is not enough to do simulation, return
