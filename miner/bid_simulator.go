@@ -630,9 +630,16 @@ func (b *bidSimulator) clearLoop() {
 		for blockNumber, bidList := range b.bidsToSim {
 			if blockNumber <= clearThreshold {
 				for _, bid := range bidList {
-					if bid.env != nil && !bid.envAdopted.Load() {
+					if bid.env == nil || bid.envAdopted.Load() {
+						continue
+					}
+					select {
+					case <-bid.finished:
 						// envs for simulating only discard here
 						bid.env.discard()
+					default:
+						// simulation still running; leave the env to the GC
+						// rather than releasing an arena that is still in use
 					}
 				}
 				delete(b.bidsToSim, blockNumber)
