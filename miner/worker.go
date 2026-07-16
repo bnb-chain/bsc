@@ -1531,7 +1531,11 @@ LOOP:
 
 	// simBid fallback. Re-runs the legacy dual-threshold gate against simBid
 	// whenever no BidBlock is being committed.
-	if bestBid != nil {
+	// bestBid outlives its env: once the env was adopted and later discarded
+	// (it is no longer w.current), re-adopting it would discard it a second
+	// time and double-release its stack arena. Adoption while it is still
+	// w.current stays allowed and is harmless (commit no-ops via committed).
+	if bestBid != nil && (bestBid.env == w.current || !bestBid.envAdopted.Load()) {
 		if bestReward.Cmp(simBidBlockReward) < 0 &&
 			localValidatorReward.Cmp(simBidValidatorReward) < 0 {
 			bidWinGauge.Inc(1)
