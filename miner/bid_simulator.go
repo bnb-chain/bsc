@@ -1032,12 +1032,12 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 
 	gasLimit := bidRuntime.env.header.GasLimit
-	if bidRuntime.env.gasPool == nil {
-		bidRuntime.env.gasPool = core.NewGasPool(gasLimit)
-		if p, ok := b.engine.(*parlia.Parlia); ok {
-			bidRuntime.env.gasPool.SubGas(p.EstimateGasReservedForSystemTxs(b.chain, bidRuntime.env.header))
-		}
-		bidRuntime.env.gasPool.SubGas(params.PayBidTxGasLimit)
+
+	// Reserve gas for the payBidTx appended at the end of the block so the
+	// admission check and greedy merge leave room for it; returned right before
+	// it is committed.
+	if err = bidRuntime.env.gasPool.SubGas(params.PayBidTxGasLimit); err != nil {
+		return
 	}
 
 	// error log:
@@ -1366,6 +1366,7 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	} else if unRevertible && receipt.Status == types.ReceiptStatusFailed {
 		return errors.New("no revertible transaction failed")
 	}
+	env.header.GasUsed = env.gasPool.Used()
 
 	if tx.Type() == types.BlobTxType {
 		sc.TxIndex = uint64(len(env.txs))
