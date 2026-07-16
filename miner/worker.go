@@ -1560,7 +1560,10 @@ LOOP:
 
 	// Swap out the old work with the new one, terminating any leftover
 	// prefetcher processes in the mean time and starting a new one.
-	if w.current != nil {
+	// bestWork may alias w.current when the same winning bid env is adopted
+	// again (e.g. a second newWorkReq at the same height); discarding it then
+	// would release an env that stays in use as w.current.
+	if w.current != nil && w.current != bestWork {
 		w.current.discard()
 	}
 	w.current = bestWork
