@@ -126,6 +126,11 @@ type environment struct {
 	witness *stateless.Witness
 
 	committed bool
+
+	// fromBid marks an env owned by the bid simulator (retained in bidsToSim,
+	// discarded by its clearLoop). The worker must not discard it even when a
+	// winning bid's env becomes w.current, or the EVM arena is released twice.
+	fromBid bool
 }
 
 // discard terminates the background prefetcher go-routine. It should
@@ -137,6 +142,7 @@ func (env *environment) discard() {
 	}
 	if env.evm != nil {
 		env.evm.Release()
+		env.evm = nil
 	}
 }
 
@@ -501,7 +507,7 @@ func (w *worker) mainLoop() {
 	defer w.wg.Done()
 	defer w.chainHeadSub.Unsubscribe()
 	defer func() {
-		if w.current != nil {
+		if w.current != nil && !w.current.fromBid {
 			w.current.discard()
 		}
 	}()
@@ -1522,10 +1528,10 @@ LOOP:
 	}
 
 	if bidBlockCommitted {
-		if w.current != nil {
+		if w.current != nil && !w.current.fromBid {
 			w.current.discard()
-			w.current = nil
 		}
+		w.current = nil
 		return
 	}
 
@@ -1559,7 +1565,7 @@ LOOP:
 
 	// Swap out the old work with the new one, terminating any leftover
 	// prefetcher processes in the mean time and starting a new one.
-	if w.current != nil {
+	if w.current != nil && !w.current.fromBid {
 		w.current.discard()
 	}
 	w.current = bestWork

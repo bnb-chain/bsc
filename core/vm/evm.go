@@ -19,6 +19,7 @@ package vm
 import (
 	"errors"
 	"math/big"
+	"sync"
 	"sync/atomic"
 
 	"github.com/holiman/uint256"
@@ -129,7 +130,8 @@ type EVM struct {
 	readOnly   bool   // Whether to throw on stateful modifications
 	returnData []byte // Last CALL's return data for subsequent reuse
 
-	arena *stackArena
+	arena       *stackArena
+	releaseOnce sync.Once // guards returning the arena to the pool exactly once
 }
 
 // NewEVM constructs an EVM instance with the supplied block context, state
@@ -227,10 +229,22 @@ func (evm *EVM) Cancel() {
 	evm.abort.Store(true)
 }
 
-// Release returns some memory allocated by the EVM, should be called after the EVM was used
-// for the last time. Not necessary, but an improvement.
+// Release returns the EVM's stack arena to the shared pool. It is optional (GC
+// reclaims the arena otherwise) but enables reuse; the EVM must not be used
+// afterwards.
+//
+// It is idempotent and goroutine-safe: sync.Once returns the arena once and
+// clears it, so a double Release can't hand the same arena to the pool twice
+// (which would let two later EVMs draw and race on it). Defense-in-depth, not
+// a license for aliased ownership.
 func (evm *EVM) Release() {
-	returnStack(evm.arena)
+	evm.releaseOnce.Do(func() {
+		if evm.arena == nil {
+			return
+		}
+		returnStack(evm.arena)
+		evm.arena = nil
+	})
 }
 
 // Cancelled returns true if Cancel has been called
