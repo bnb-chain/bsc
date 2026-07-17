@@ -102,7 +102,7 @@ Remove blockchain and state databases`,
 		ArgsUsage:   "<prefix> <start>",
 		Flags:       slices.Concat(utils.NetworkFlags, utils.DatabaseFlags),
 		Usage:       "Inspect the storage size for each type of data in the database",
-		Description: `This commands iterates the entire database. If the optional 'prefix' and 'start' arguments are provided, then the iteration is limited to the given subset of data.`,
+		Description: `This command iterates the entire database. If the optional 'prefix' and 'start' arguments are provided, then the iteration is limited to the given subset of data.`,
 	}
 	dbInspectTrieCmd = &cli.Command{
 		Action:    inspectTrie,
@@ -113,7 +113,7 @@ Remove blockchain and state databases`,
 			utils.SyncModeFlag,
 		},
 		Usage:       "Inspect the MPT tree of the account and contract. 'blocknum' can be latest/snapshot/number. 'topn' means output the top N storage tries info ranked by the total number of TrieNodes",
-		Description: `This commands iterates the entrie WorldState.`,
+		Description: `This command iterates the entrie WorldState.`,
 	}
 	dbCheckStateContentCmd = &cli.Command{
 		Action:    checkStateContent,
@@ -151,7 +151,7 @@ a data corruption.`,
 			utils.ChapelFlag,
 			utils.StateSchemeFlag,
 		},
-		Description: "This command delete the specify trie node from the database.",
+		Description: "This command deletes the specify trie node from the database.",
 	}
 	dbStatCmd = &cli.Command{
 		Action: dbStats,
@@ -252,7 +252,7 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 			utils.DataDirFlag,
 		},
 		Usage: "Inspect the ancientStore information",
-		Description: `This commands will read current offset from kvdb, which is the current offset and starting BlockNumber
+		Description: `This command will read current offset from kvdb, which is the current offset and starting BlockNumber
 of ancientStore, will also displays the reserved number of blocks in ancientStore `,
 	}
 	dbInspectHistoryCmd = &cli.Command{
