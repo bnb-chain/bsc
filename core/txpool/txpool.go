@@ -93,7 +93,7 @@ func New(gasTip uint64, chain BlockChain, subpools []SubPool) (*TxPool, error) {
 	// fully synced).
 	statedb, err := chain.StateAt(head)
 	if err != nil {
-		statedb, err = chain.StateAt(chain.Genesis().Header())
+		statedb, err = chain.StateAt(&types.Header{Number: head.Number, Time: head.Time, Root: types.EmptyRootHash})
 	}
 	if err != nil {
 		return nil, err

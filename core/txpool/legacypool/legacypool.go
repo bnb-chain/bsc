@@ -334,7 +334,7 @@ func (pool *LegacyPool) Init(gasTip uint64, head *types.Header, reserver txpool.
 	// fully synced).
 	statedb, err := pool.chain.StateAt(head)
 	if err != nil {
-		statedb, err = pool.chain.StateAt(pool.chain.Genesis().Header())
+		statedb, err = pool.chain.StateAt(&types.Header{Number: head.Number, Time: head.Time, Root: types.EmptyRootHash})
 	}
 	if err != nil {
 		return err
