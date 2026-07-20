@@ -445,7 +445,7 @@ func (p *BlobPool) Init(gasTip uint64, head *types.Header, reserver txpool.Reser
 	// fully synced).
 	state, err := p.chain.StateAt(head)
 	if err != nil {
-		state, err = p.chain.StateAt(p.chain.Genesis().Header())
+		state, err = p.chain.StateAt(&types.Header{Number: head.Number, Time: head.Time, Root: types.EmptyRootHash})
 	}
 	if err != nil {
 		return err
