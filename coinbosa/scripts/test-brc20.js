@@ -1,11 +1,14 @@
-// Suite de tests BOS20 exécutée contre une vraie chaîne Coinbosa.
+// Suite de tests BRC20 exécutée contre une vraie chaîne Coinbosa.
 const fs = require('fs');
 const path = require('path');
 const { ethers } = require('ethers');
 
+// Le déployeur est fourni soit par sa clé privée (PRIVATE_KEY), soit par un
+// keystore geth (KEYSTORE + PASSWORD_FILE). Les deux comptes de test sont
+// créés et financés à la volée : la suite ne dépend d'aucune allocation du genesis.
 const RPC = process.env.RPC || 'http://127.0.0.1:8545';
 const KEYSTORE_DIR = process.env.KEYSTORE || path.join(__dirname, '..', 'node1', 'keystore');
-const PASSWORD = fs.readFileSync(path.join(__dirname, '..', 'pw.txt'), 'utf8').trim();
+const PASSWORD_FILE = process.env.PASSWORD_FILE || path.join(__dirname, '..', 'pw.txt');
 const ARTIFACT = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'build', 'BosaToken.json'), 'utf8'));
 
 let pass = 0, fail = 0;
@@ -35,21 +38,32 @@ async function expectRevert(name, promise) {
   const net = await provider.getNetwork();
   console.log(`\nCoinbosa Chain — chainId ${net.chainId}, bloc ${await provider.getBlockNumber()}\n`);
 
-  // Déchiffrer les 3 comptes du keystore
-  const files = fs.readdirSync(KEYSTORE_DIR);
-  const wallets = [];
-  for (const f of files) {
-    const json = fs.readFileSync(path.join(KEYSTORE_DIR, f), 'utf8');
-    wallets.push((await ethers.Wallet.fromEncryptedJson(json, PASSWORD)).connect(provider));
+  // --- déployeur ---
+  let deployer;
+  if (process.env.PRIVATE_KEY) {
+    deployer = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+  } else {
+    const pwd = fs.readFileSync(PASSWORD_FILE, 'utf8').trim();
+    const files = fs.readdirSync(KEYSTORE_DIR).filter((f) => f.startsWith('UTC--'));
+    if (!files.length) throw new Error(`aucun keystore dans ${KEYSTORE_DIR}`);
+    // on retient le premier compte approvisionné
+    for (const f of files) {
+      const w = (await ethers.Wallet.fromEncryptedJson(fs.readFileSync(path.join(KEYSTORE_DIR, f), 'utf8'), pwd)).connect(provider);
+      if ((await provider.getBalance(w.address)) > 0n) { deployer = w; break; }
+    }
+    if (!deployer) throw new Error('aucun compte du keystore ne dispose de fonds');
   }
-  // Le déployeur doit être celui qui a des fonds : le validateur.
-  const VALIDATOR = '0x3B78F3D76c6739c34872A34F9090cCb7607DD334'.toLowerCase();
-  const deployer = wallets.find((w) => w.address.toLowerCase() === VALIDATOR);
-  const alice = wallets.find((w) => w.address.toLowerCase() !== VALIDATOR);
-  const bob = wallets.filter((w) => w.address.toLowerCase() !== VALIDATOR)[1];
+
+  // --- comptes de test, créés et financés par le déployeur ---
+  const alice = ethers.Wallet.createRandom().connect(provider);
+  const bob = ethers.Wallet.createRandom().connect(provider);
   console.log(`  déployeur : ${deployer.address}`);
   console.log(`  alice     : ${alice.address}`);
-  console.log(`  bob       : ${bob.address}\n`);
+  console.log(`  bob       : ${bob.address}`);
+  for (const w of [alice, bob]) {
+    await (await deployer.sendTransaction({ to: w.address, value: ethers.parseEther('1') })).wait();
+  }
+  console.log('  (alice et bob financés pour le gas)\n');
 
   // --- Déploiement ---
   console.log('DÉPLOIEMENT');

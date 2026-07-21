@@ -24,13 +24,7 @@ L'implémentation actuelle repose sur le client [BNB Smart Chain](https://github
 et son moteur de consensus **Parlia**. Voir la section « Écarts avec le livre blanc » pour les
 raisons de ce choix.
 
-### Éditeur
-
-**coinbosa, Inc.** — Delaware C Corporation Subsidiary, constituée le 5 janvier 2026.
-Dossier Delaware n° 10460257.
-
-Agent enregistré : Legalinc Corporate Services Inc., 131 Continental Dr, Suite 305,
-Newark, DE 19713, États-Unis.
+**Éditeur** — coinbosa, Inc., Delaware, United States.
 
 ---
 
@@ -42,7 +36,7 @@ Newark, DE 19713, États-Unis.
 | Symbole | BOSA |
 | Décimales | 10 |
 | Offre initiale | 700 000 000 BOSA |
-| Standard | BOS20 |
+| Standard | BRC20 |
 
 BOSA est un **jeton déployé sur** Coinbosa Chain, et non le coin natif qui paie le gas — même
 rapport qu'entre CAKE et BNB sur BNB Chain. C'est ce choix qui rend les 10 décimales
@@ -71,8 +65,8 @@ S'y ajoutent :
 
 ```
 contracts/
-  IBOS20.sol                 interface du standard
-  BOS20.sol                  implémentation de référence, réutilisable pour tout jeton
+  IBRC20.sol                 interface du standard
+  BRC20.sol                  implémentation de référence, réutilisable pour tout jeton
   BosaToken.sol              le jeton BOSA officiel
   CoinbosaValidatorSet.sol   contrat système du consensus
 ```
@@ -112,14 +106,31 @@ sans nouveau genesis. C'est ce contrat qui portera la gouvernance de la liste de
 |---|---|
 | Chain ID | `26262` |
 | Consensus | Parlia (preuve d'autorité avec enjeu) |
-| Temps de bloc | 3 secondes |
+| Temps de bloc | **5 secondes** |
 | Epoch | 200 blocs |
-| Client | `geth` v1.7.6, commit `69b3758c8` |
+| Client | `geth` v1.7.6 patché pour Coinbosa |
 | Compatibilité EVM | Shanghai |
 
-Le temps de bloc et l'epoch ne se règlent **pas** dans le genesis. `ParliaConfig` est une
-structure vide depuis la v1.7.6 : ce sont des constantes Go pilotées par les hardforks — 200
-blocs et 3 s par défaut, 500 et 1,5 s après Lorentz, 1000 et 0,75 s après Maxwell.
+### Pourquoi le client est patché
+
+Le temps de bloc ne se règle **pas** dans le genesis. `ParliaConfig` est une structure vide
+depuis la v1.7.6 : le temps de bloc et l'epoch sont des constantes Go pilotées par les
+hardforks — 3 s par défaut, 1,5 s après Lorentz, 0,75 s après Maxwell. Les tutoriels qui
+recopient `period` et `epoch` dans le genesis sont périmés : ces champs sont ignorés.
+
+Obtenir les 5 secondes du livre blanc impose donc de modifier le client lui-même :
+
+```diff
+  consensus/parlia/parlia.go
+- defaultBlockInterval uint64 = 3000 // Default block interval in milliseconds
++ defaultBlockInterval uint64 = 5000 // Coinbosa : 5 s par bloc (livre blanc)
+```
+
+**Le binaire officiel de BNB Chain ne convient donc pas** : il faut compiler ce dépôt.
+
+```bash
+make geth      # produit build/bin/geth
+```
 
 ---
 
@@ -131,23 +142,18 @@ Le livre blanc v2 décrit une architecture qui ne correspond plus à l'implémen
 | Livre blanc v2 | Implémentation | Pourquoi |
 |---|---|---|
 | Consensus AuRa, client Parity / OpenEthereum | Consensus Parlia, client geth (fork BSC) | **OpenEthereum est abandonné depuis 2021** et son dépôt est archivé. Construire dessus aujourd'hui signifierait partir d'un client non maintenu, sans correctifs de sécurité. Parlia appartient à la même famille — validateurs connus, autorité — mais reste activement développé. |
-| Temps de bloc 5 s | 3 s | Constante Go du client, non configurable par le genesis. |
-| 12 validateurs à la cérémonie initiale | 1 validateur | À faire. C'est le chantier prioritaire. |
-| Standard `BRC20` / `BRC-721` | `BOS20` | **À trancher** — voir ci-dessous. |
+| Temps de bloc 5 s | **conforme** | Obtenu en patchant le client, voir plus haut. |
+| Standard `BRC20` / `BRC-721` | `BRC20` conforme, `BRC-721` à faire | |
 | Frais quasi nuls, gas à 1 gwei | conforme | Le calcul du livre blanc reste valable. |
+| 12 validateurs à la cérémonie initiale | 1 validateur | À faire. C'est le chantier prioritaire. |
 | 400 000 transactions par seconde | non mesuré | Aucun réseau EVM à validateurs connus n'atteint cet ordre de grandeur. Ce chiffre n'est pas repris ici tant qu'il n'a pas été mesuré sur le réseau réel. |
 
-### Point à trancher : BOS20 ou BRC20 ?
+Le livre blanc v2 date de 2021-2022. Les écarts ci-dessus tiennent à l'évolution de
+l'écosystème depuis, pas à un changement d'ambition.
 
-Le livre blanc nomme le standard **BRC20**, avec **BRC-721** pour les NFT. Le code actuel
-implémente **BOS20**. Les deux sont fonctionnellement identiques ; seul le nom diffère. Le
-renommage est mécanique — noms de fichiers, de contrats et d'interface — mais il doit être
-décidé avant toute publication, parce que le nom du standard apparaîtra dans chaque contrat
-déployé sur le réseau.
-
-À noter : `BRC-20` désigne déjà un standard largement connu sur Bitcoin (inscriptions
-Ordinals). Réutiliser ce nom exposerait à une confusion permanente dans la documentation, les
-recherches et les intégrations tierces.
+**Note sur le nom `BRC20`** — ici, l'acronyme signifie *Bosa smart contRact 20*. Un standard
+homonyme existe sur Bitcoin (inscriptions Ordinals), sans aucun rapport technique avec
+celui-ci. Préciser « BRC20 de Coinbosa » dans les intégrations tierces évitera la confusion.
 
 ---
 
@@ -157,7 +163,7 @@ recherches et les intégrations tierces.
 npm install
 
 # générer la clé du validateur, puis le genesis correspondant
-./bin/coinbosa-geth account new --datadir node1
+./build/bin/geth account new --datadir node1
 VALIDATOR=0xVotreValidateur node scripts/build-genesis.js
 
 node scripts/compile.js      # compiler les contrats

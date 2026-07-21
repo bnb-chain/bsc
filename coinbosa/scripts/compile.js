@@ -1,4 +1,4 @@
-// Compile les contrats BOS20 avec résolution des imports locaux.
+// Compile les contrats BRC20 avec résolution des imports locaux.
 const fs = require('fs');
 const path = require('path');
 const solc = require('solc');

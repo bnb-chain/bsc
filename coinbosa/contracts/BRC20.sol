@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./IBOS20.sol";
+import "./IBRC20.sol";
 
 /**
- * @title BOS20
- * @notice Implémentation de référence du standard BOS20 de Coinbosa Chain.
+ * @title BRC20
+ * @notice Implémentation de référence du standard BRC20 de Coinbosa Chain.
  *
  * Sécurité : la logique de transfert refuse l'adresse zéro dans les deux sens,
  * les autorisations infinies ne sont pas décrémentées, et la propriété peut être
  * transférée ou définitivement abandonnée.
  */
-contract BOS20 is IBOS20 {
+contract BRC20 is IBRC20 {
     mapping(address => uint256) private _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
 
@@ -25,12 +25,12 @@ contract BOS20 is IBOS20 {
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     modifier onlyOwner() {
-        require(msg.sender == _owner, "BOS20: reserve au proprietaire");
+        require(msg.sender == _owner, "BRC20: reserve au proprietaire");
         _;
     }
 
     constructor(string memory name_, string memory symbol_, uint8 decimals_, uint256 initialSupply_, address owner_) {
-        require(owner_ != address(0), "BOS20: proprietaire nul");
+        require(owner_ != address(0), "BRC20: proprietaire nul");
         _name = name_;
         _symbol = symbol_;
         _decimals = decimals_;
@@ -70,7 +70,7 @@ contract BOS20 is IBOS20 {
     function transferFrom(address sender, address recipient, uint256 amount) public override returns (bool) {
         uint256 current = _allowances[sender][msg.sender];
         if (current != type(uint256).max) {
-            require(current >= amount, "BOS20: autorisation insuffisante");
+            require(current >= amount, "BRC20: autorisation insuffisante");
             unchecked { _approve(sender, msg.sender, current - amount); }
         }
         _transfer(sender, recipient, amount);
@@ -86,7 +86,7 @@ contract BOS20 is IBOS20 {
     /// @notice Réduit l'autorisation accordée à `spender`.
     function decreaseAllowance(address spender, uint256 subtractedValue) public returns (bool) {
         uint256 current = _allowances[msg.sender][spender];
-        require(current >= subtractedValue, "BOS20: autorisation en dessous de zero");
+        require(current >= subtractedValue, "BRC20: autorisation en dessous de zero");
         unchecked { _approve(msg.sender, spender, current - subtractedValue); }
         return true;
     }
@@ -108,7 +108,7 @@ contract BOS20 is IBOS20 {
     // --- Propriété ---
 
     function transferOwnership(address newOwner) public onlyOwner {
-        require(newOwner != address(0), "BOS20: nouveau proprietaire nul");
+        require(newOwner != address(0), "BRC20: nouveau proprietaire nul");
         emit OwnershipTransferred(_owner, newOwner);
         _owner = newOwner;
     }
@@ -122,10 +122,10 @@ contract BOS20 is IBOS20 {
     // --- Interne ---
 
     function _transfer(address sender, address recipient, uint256 amount) internal {
-        require(sender != address(0), "BOS20: envoi depuis l'adresse nulle");
-        require(recipient != address(0), "BOS20: envoi vers l'adresse nulle");
+        require(sender != address(0), "BRC20: envoi depuis l'adresse nulle");
+        require(recipient != address(0), "BRC20: envoi vers l'adresse nulle");
         uint256 senderBalance = _balances[sender];
-        require(senderBalance >= amount, "BOS20: solde insuffisant");
+        require(senderBalance >= amount, "BRC20: solde insuffisant");
         unchecked {
             _balances[sender] = senderBalance - amount;
             _balances[recipient] += amount;
@@ -134,16 +134,16 @@ contract BOS20 is IBOS20 {
     }
 
     function _mint(address account, uint256 amount) internal {
-        require(account != address(0), "BOS20: emission vers l'adresse nulle");
+        require(account != address(0), "BRC20: emission vers l'adresse nulle");
         _totalSupply += amount;
         unchecked { _balances[account] += amount; }
         emit Transfer(address(0), account, amount);
     }
 
     function _burn(address account, uint256 amount) internal {
-        require(account != address(0), "BOS20: destruction depuis l'adresse nulle");
+        require(account != address(0), "BRC20: destruction depuis l'adresse nulle");
         uint256 accountBalance = _balances[account];
-        require(accountBalance >= amount, "BOS20: solde insuffisant pour destruction");
+        require(accountBalance >= amount, "BRC20: solde insuffisant pour destruction");
         unchecked {
             _balances[account] = accountBalance - amount;
             _totalSupply -= amount;
@@ -152,8 +152,8 @@ contract BOS20 is IBOS20 {
     }
 
     function _approve(address owner_, address spender, uint256 amount) internal {
-        require(owner_ != address(0), "BOS20: autorisation depuis l'adresse nulle");
-        require(spender != address(0), "BOS20: autorisation vers l'adresse nulle");
+        require(owner_ != address(0), "BRC20: autorisation depuis l'adresse nulle");
+        require(spender != address(0), "BRC20: autorisation vers l'adresse nulle");
         _allowances[owner_][spender] = amount;
         emit Approval(owner_, spender, amount);
     }

@@ -1,4 +1,4 @@
-// Déploie le jeton BOSA (BOS20) sur Coinbosa Chain.
+// Déploie le jeton BOSA (BRC20) sur Coinbosa Chain.
 //
 //   HOLDER=0xVotreAdresseDeDepart PRIVATE_KEY=0x... RPC=http://... node scripts/deploy-bosa.js
 //

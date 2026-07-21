@@ -2,15 +2,15 @@
 pragma solidity ^0.8.20;
 
 /**
- * @title IBOS20
- * @notice Interface du standard de jeton BOS20 de Coinbosa Chain.
+ * @title IBRC20
+ * @notice Interface du standard de jeton BRC20 de Coinbosa Chain.
  *
- * BOS20 est compatible ERC-20 : tout wallet ou service qui parle ERC-20
- * fonctionne avec un jeton BOS20 sans adaptation. S'y ajoute `getOwner()`,
+ * BRC20 est compatible ERC-20 : tout wallet ou service qui parle ERC-20
+ * fonctionne avec un jeton BRC20 sans adaptation. S'y ajoute `getOwner()`,
  * qui expose le propriétaire du contrat de manière standardisée pour les
  * explorateurs et les places de marché.
  */
-interface IBOS20 {
+interface IBRC20 {
     /// @notice Quantité totale de jetons en circulation.
     function totalSupply() external view returns (uint256);
 
