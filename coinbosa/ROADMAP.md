@@ -15,7 +15,7 @@ recherche, mais de l'exécution : des machines, des services, des interfaces.
 |---|---|
 | Client Coinbosa compilé, 5 s par bloc | fait, mesuré |
 | Genesis souverain, chainId 26262 | fait |
-| Franchissement des blocs d'epoch | fait, vérifié aux blocs 200 et 400 |
+| Franchissement des blocs d'epoch | fait, vérifié aux blocs 200, 400 et 600 |
 | Standard de jeton BRC20 | fait, 26 tests sur 26 |
 | Jeton BOSA, 700 M, 10 décimales | fait, déployé et vérifié |
 | Explorateur de blocs minimal | fait, sans indexation |
@@ -90,14 +90,20 @@ rebrandable, il faut épingler la version `v10.2.6`, dernière sous GPLv3.
 
 **Critère de réussite** — un tiers peut auditer une transaction sans accès au serveur.
 
-### Jalon 4 — Le réseau est utilisable
+### Jalon 4 — Le réseau est présentable
 
-- Front-end : consultation de solde, envoi, historique, connexion de wallet
-- Portefeuille web, ou intégration MetaMask avec ajout du réseau en un clic
-- Robinet de test pour les développeurs
-- Documentation d'intégration et exemples de code
+Site public et explorateur au niveau des grandes chaînes publiques, en six langues dont
+l'arabe. La spécification complète — identité visuelle dérivée du logo, architecture
+multilingue, critères de réception mesurables — est dans **[FRONTEND.md](FRONTEND.md)**.
 
-**Critère de réussite** — un développeur extérieur intègre BOSA sans nous solliciter.
+- Site public multilingue, rendu statique ou serveur, thèmes clair et sombre
+- Ajout du réseau au wallet en un clic, sans copier-coller de paramètres
+- Explorateur indexé reprenant la charte de l'explorateur actuel
+- Robinet de test et documentation d'intégration
+
+**Critère de réussite** — Lighthouse au-dessus de 90 en performance et en accessibilité sur
+mobile, six langues sans chaîne non traduite, et un développeur extérieur qui intègre BOSA
+sans nous solliciter.
 
 ### Jalon 5 — L'écosystème est branché
 

@@ -164,6 +164,9 @@ fichier à modifier pour changer une valeur : rien n'est codé en dur dans les s
 La feuille de route, les jalons et la marche à suivre pour reprendre le projet sur une autre
 machine sont dans **[ROADMAP.md](ROADMAP.md)**.
 
+La spécification du site public et de l'explorateur — identité visuelle, architecture
+multilingue, critères de réception — est dans **[FRONTEND.md](FRONTEND.md)**.
+
 ---
 
 ## Démarrage
@@ -220,8 +223,8 @@ l'état après redémarrage.
 3. **Finalité rapide** — les clés BLS sont à zéro, le vote d'attestation est inactif.
 5. **Forks postérieurs à Kepler non activés.** Solidity vise Cancun par défaut : compiler sans
    `evmVersion: 'shanghai'` produit l'opcode `MCOPY`, que la chaîne rejette.
-6. **L'explorateur n'indexe rien.** Il interroge le RPC en direct : ni historique par adresse,
-   ni vérification de code source.
+6. **L'explorateur n'indexe rien.** Il est multilingue et aux couleurs de la marque, mais
+   interroge le RPC en direct : ni historique par adresse, ni vérification de code source.
 7. **Chain ID non enregistré.** `26262` est libre aujourd'hui, mais rien ne le réserve tant
    qu'une PR n'a pas été acceptée sur `ethereum-lists/chains`.
 
