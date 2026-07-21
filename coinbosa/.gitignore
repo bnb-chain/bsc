@@ -1,0 +1,8 @@
+node_modules/
+build/
+bin/
+node1/
+node2/
+*.log
+pw.txt
+.env

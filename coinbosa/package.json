@@ -1,0 +1,18 @@
+{
+  "name": "coinbosa-chain",
+  "version": "0.1.0",
+  "description": "Genesis, standard de jeton BOS20 et outillage de Coinbosa Chain",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "compile": "node scripts/compile.js",
+    "deploy": "node scripts/deploy-bosa.js",
+    "test": "node scripts/test-bos20.js",
+    "node": "./scripts/start-node.sh",
+    "explorer": "./scripts/start-explorer.sh"
+  },
+  "dependencies": {
+    "ethers": "^6.17.0",
+    "solc": "0.8.26"
+  }
+}

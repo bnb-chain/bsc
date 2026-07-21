@@ -1,0 +1,210 @@
+<title>Coinbosa Explorer</title>
+<style>
+  :root {
+    --bg: #0b0f1a; --panel: #121826; --line: #1f2937;
+    --txt: #e5e7eb; --dim: #8b95a7; --accent: #f0b90b; --blue: #2b6cb0; --ok: #22c55e;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f7f8fa; --panel:#fff; --line:#e5e7eb; --txt:#111827; --dim:#6b7280; }
+  }
+  :root[data-theme="dark"] { --bg:#0b0f1a; --panel:#121826; --line:#1f2937; --txt:#e5e7eb; --dim:#8b95a7; }
+  :root[data-theme="light"] { --bg:#f7f8fa; --panel:#fff; --line:#e5e7eb; --txt:#111827; --dim:#6b7280; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; }
+  .wrap { max-width:1180px; margin:0 auto; padding:24px 20px 60px; }
+  header { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:22px; }
+  .logo { width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--blue));
+          display:grid;place-items:center;font-weight:800;color:#0b0f1a;font-size:17px; }
+  h1 { font-size:19px; margin:0; font-weight:650; letter-spacing:-.01em; }
+  .sub { color:var(--dim); font-size:12px; }
+  .status { margin-left:auto; display:flex; align-items:center; gap:7px; font-size:12px; color:var(--dim); }
+  .dot { width:8px;height:8px;border-radius:50%;background:var(--ok); box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 22%,transparent); }
+  .dot.off { background:#ef4444; box-shadow:0 0 0 3px rgba(239,68,68,.22); }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr)); gap:12px; margin-bottom:20px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  .card .k { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+  .card .v { font-size:21px; font-weight:640; margin-top:5px; font-variant-numeric:tabular-nums; }
+  .search { display:flex; gap:8px; margin-bottom:20px; }
+  .search input { flex:1; background:var(--panel); border:1px solid var(--line); border-radius:10px;
+                  padding:11px 14px; color:var(--txt); font-size:13px; font-family:ui-monospace,SFMono-Regular,monospace; }
+  .search input:focus { outline:none; border-color:var(--accent); }
+  .search button { background:var(--accent); color:#0b0f1a; border:0; border-radius:10px; padding:11px 20px; font-weight:640; cursor:pointer; font-size:13px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:860px){ .grid{grid-template-columns:1fr;} }
+  .panel h2 { font-size:13px; margin:0; padding:13px 16px; border-bottom:1px solid var(--line);
+              color:var(--dim); text-transform:uppercase; letter-spacing:.06em; font-weight:620; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .scroll { max-height:430px; overflow-y:auto; }
+  .row { display:flex; align-items:center; gap:12px; padding:11px 16px; border-bottom:1px solid var(--line); }
+  .row:last-child{border-bottom:0;}
+  .row:hover { background:color-mix(in srgb,var(--accent) 6%,transparent); }
+  .badge { background:color-mix(in srgb,var(--accent) 16%,transparent); color:var(--accent);
+           border-radius:7px; padding:5px 9px; font-weight:650; font-size:12px; min-width:52px; text-align:center;
+           font-variant-numeric:tabular-nums; }
+  .mono { font-family:ui-monospace,SFMono-Regular,monospace; font-size:12px; }
+  .dim { color:var(--dim); font-size:11.5px; }
+  .right { margin-left:auto; text-align:right; }
+  pre { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px;
+        overflow-x:auto; font-size:12px; margin:0 0 16px; }
+  .hide { display:none; }
+  a { color:var(--accent); text-decoration:none; cursor:pointer; }
+  a:hover { text-decoration:underline; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="logo">C</div>
+    <div>
+      <h1>Coinbosa Explorer</h1>
+      <div class="sub">Chain ID <span id="cid">…</span> · Parlia PoSA · <span id="rpcurl"></span></div>
+    </div>
+    <div class="status"><span class="dot" id="dot"></span><span id="stat">connexion…</span></div>
+  </header>
+
+  <div class="stats">
+    <div class="card"><div class="k">Dernier bloc</div><div class="v" id="s-block">—</div></div>
+    <div class="card"><div class="k">Temps de bloc</div><div class="v" id="s-time">—</div></div>
+    <div class="card"><div class="k">Transactions</div><div class="v" id="s-txs">—</div></div>
+    <div class="card"><div class="k">Prix du gas</div><div class="v" id="s-gas">—</div></div>
+    <div class="card"><div class="k">Validateurs</div><div class="v" id="s-vals">—</div></div>
+  </div>
+
+  <div class="search">
+    <input id="q" placeholder="Rechercher : numéro de bloc, hash de transaction, ou adresse 0x…" />
+    <button onclick="search()">Rechercher</button>
+  </div>
+
+  <pre id="result" class="hide"></pre>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>Derniers blocs</h2>
+      <div class="scroll" id="blocks"></div>
+    </div>
+    <div class="panel">
+      <h2>Dernières transactions</h2>
+      <div class="scroll" id="txs"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const RPC = location.origin.replace(/:\d+$/, ':8595');
+document.getElementById('rpcurl').textContent = RPC;
+
+let seenTxs = [], lastBlockTime = null, blockTimes = [];
+
+async function rpc(method, params = []) {
+  const r = await fetch(RPC, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', method, params, id: 1 }),
+  });
+  const j = await r.json();
+  if (j.error) throw new Error(j.error.message);
+  return j.result;
+}
+
+const hex = (h) => parseInt(h, 16);
+const short = (s, n = 10) => s ? s.slice(0, n) + '…' + s.slice(-6) : '';
+const ether = (h) => (BigInt(h || '0x0') / 10n ** 12n).toString() / 1e6;
+const ago = (ts) => { const d = Math.floor(Date.now() / 1000) - ts; return d < 60 ? d + ' s' : Math.floor(d / 60) + ' min'; };
+
+async function refresh() {
+  try {
+    const [cid, bn, gp] = await Promise.all([rpc('eth_chainId'), rpc('eth_blockNumber'), rpc('eth_gasPrice')]);
+    document.getElementById('cid').textContent = hex(cid);
+    document.getElementById('s-block').textContent = hex(bn).toLocaleString('fr');
+    document.getElementById('s-gas').textContent = (hex(gp) / 1e9).toFixed(1) + ' gwei';
+    document.getElementById('dot').classList.remove('off');
+    document.getElementById('stat').textContent = 'en ligne';
+
+    const head = hex(bn);
+    const nums = [];
+    for (let i = head; i > Math.max(-1, head - 15); i--) nums.push(i);
+    const blocks = await Promise.all(nums.map((n) => rpc('eth_getBlockByNumber', ['0x' + n.toString(16), true])));
+
+    // temps de bloc moyen observé
+    const ts = blocks.map((b) => hex(b.timestamp));
+    const deltas = [];
+    for (let i = 0; i < ts.length - 1; i++) deltas.push(ts[i] - ts[i + 1]);
+    if (deltas.length) {
+      const avg = deltas.reduce((a, b) => a + b, 0) / deltas.length;
+      document.getElementById('s-time').textContent = avg.toFixed(1) + ' s';
+    }
+
+    const validators = new Set(blocks.map((b) => b.miner));
+    document.getElementById('s-vals').textContent = validators.size;
+
+    document.getElementById('blocks').innerHTML = blocks.map((b) => `
+      <div class="row">
+        <span class="badge">${hex(b.number)}</span>
+        <div>
+          <div class="mono">${short(b.hash)}</div>
+          <div class="dim">validateur ${short(b.miner, 8)}</div>
+        </div>
+        <div class="right">
+          <div>${b.transactions.length} tx</div>
+          <div class="dim">il y a ${ago(hex(b.timestamp))}</div>
+        </div>
+      </div>`).join('');
+
+    // transactions accumulées
+    for (const b of blocks) {
+      for (const t of b.transactions) {
+        if (!seenTxs.find((x) => x.hash === t.hash)) seenTxs.unshift({ ...t, ts: hex(b.timestamp) });
+      }
+    }
+    seenTxs = seenTxs.slice(0, 40);
+    document.getElementById('s-txs').textContent = seenTxs.length >= 40 ? '40+' : seenTxs.length;
+
+    document.getElementById('txs').innerHTML = seenTxs.length ? seenTxs.map((t) => `
+      <div class="row">
+        <span class="badge">${hex(t.blockNumber)}</span>
+        <div>
+          <div class="mono"><a onclick="lookup('${t.hash}')">${short(t.hash)}</a></div>
+          <div class="dim">${short(t.from, 8)} → ${t.to ? short(t.to, 8) : 'création de contrat'}</div>
+        </div>
+        <div class="right">
+          <div>${ether(t.value)} CBA</div>
+          <div class="dim">il y a ${ago(t.ts)}</div>
+        </div>
+      </div>`).join('') : '<div class="row dim">aucune transaction pour l’instant</div>';
+  } catch (e) {
+    document.getElementById('dot').classList.add('off');
+    document.getElementById('stat').textContent = 'hors ligne — ' + e.message;
+  }
+}
+
+async function lookup(v) { document.getElementById('q').value = v; await search(); }
+
+async function search() {
+  const v = document.getElementById('q').value.trim();
+  const out = document.getElementById('result');
+  if (!v) { out.classList.add('hide'); return; }
+  out.classList.remove('hide');
+  out.textContent = 'recherche…';
+  try {
+    let res;
+    if (/^\d+$/.test(v)) {
+      res = { type: 'bloc', data: await rpc('eth_getBlockByNumber', ['0x' + Number(v).toString(16), true]) };
+    } else if (/^0x[0-9a-fA-F]{64}$/.test(v)) {
+      const tx = await rpc('eth_getTransactionByHash', [v]);
+      const rc = await rpc('eth_getTransactionReceipt', [v]);
+      res = tx ? { type: 'transaction', transaction: tx, receipt: rc }
+               : { type: 'bloc', data: await rpc('eth_getBlockByHash', [v, true]) };
+    } else if (/^0x[0-9a-fA-F]{40}$/.test(v)) {
+      const [bal, nonce, code] = await Promise.all([
+        rpc('eth_getBalance', [v, 'latest']), rpc('eth_getTransactionCount', [v, 'latest']), rpc('eth_getCode', [v, 'latest']),
+      ]);
+      res = { type: 'adresse', adresse: v, solde_CBA: ether(bal), nonce: hex(nonce),
+              genre: code && code !== '0x' ? 'contrat' : 'compte externe',
+              taille_bytecode: code && code !== '0x' ? (code.length - 2) / 2 + ' octets' : null };
+    } else { res = { erreur: 'format non reconnu' }; }
+    out.textContent = JSON.stringify(res, null, 2);
+  } catch (e) { out.textContent = 'Erreur : ' + e.message; }
+}
+
+document.getElementById('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });
+refresh();
+setInterval(refresh, 3000);
+</script>
