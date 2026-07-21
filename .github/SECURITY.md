@@ -48,8 +48,9 @@ Faiblesses connues et assumées à ce stade :
 - **Un seul validateur.** Aucune tolérance aux pannes ni sécurité byzantine. Le passage à
   plusieurs validateurs est le chantier prioritaire.
 - **Pas de finalité rapide.** Les clés BLS sont à zéro, le vote d'attestation est inactif.
-- **Pas de slashing.** Un validateur fautif n'encourt aucune sanction automatique ; la
-  révocation passe par la gouvernance de la liste.
+- **La couche d'enjeu n'est pas implémentée.** Le contrat système expose un set de validateurs
+  fixe : ni dépôt, ni élection par l'enjeu, ni sanction automatique. Un validateur fautif ne
+  peut être écarté que manuellement.
 - **Concentration de l'offre.** L'intégralité des jetons et la propriété du contrat sont
   détenues par une adresse unique, protégée par une seule clé privée.
 

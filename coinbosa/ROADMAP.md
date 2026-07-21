@@ -19,6 +19,7 @@ recherche, mais de l'exécution : des machines, des services, des interfaces.
 | Standard de jeton BRC20 | fait, 26 tests sur 26 |
 | Jeton BOSA, 700 M, 10 décimales | fait, déployé et vérifié |
 | Explorateur de blocs minimal | fait, sans indexation |
+| Couche d'enjeu (staking, sanctions) | à faire — chantier structurant |
 | Réseau multi-validateurs | à faire |
 | RPC public | à faire |
 | Front-end | à faire |
@@ -51,7 +52,28 @@ public.
 
 ## Jalons
 
-### Jalon 1 — Le réseau tient debout
+### Jalon 1 — La couche d'enjeu
+
+*Chantier structurant.* Le moteur de consensus, Parlia, est conçu pour la preuve d'enjeu — son
+nom signifie *Proof of Staked Authority*. Mais le contrat système actuel expose un set de
+validateurs fixe, modifiable par un gouverneur : il n'y a ni dépôt, ni élection par l'enjeu, ni
+sanction. Cette version minimale était nécessaire pour débloquer la chaîne au bloc 200 ; elle
+n'est pas la cible.
+
+- Contrat d'enjeu : dépôt, retrait, période de déblocage
+- Élection du set de validateurs par le montant immobilisé, à chaque epoch
+- Distribution des récompenses aux validateurs et aux délégataires
+- Sanctions : absence de production, double signature, mise en quarantaine
+- Gouvernance des paramètres
+
+**Risque à surveiller** — toute fonction du chemin consensus qui revert rend le bloc
+improduisible et arrête définitivement le réseau. Chaque évolution de ce contrat doit passer par
+le contrôle de franchissement d'epoch en intégration continue.
+
+**Critère de réussite** — un validateur rejoint le set en immobilisant des jetons, sans
+intervention manuelle ; un validateur fautif est sanctionné automatiquement.
+
+### Jalon 2 — Le réseau tient debout
 
 *Sans ce jalon, tous les suivants sont sans objet.* Aujourd'hui un seul validateur produit
 tous les blocs : c'est une base de données avec des signatures, pas un réseau.
@@ -64,7 +86,7 @@ tous les blocs : c'est une base de données avec des signatures, pas un réseau.
 
 **Critère de réussite** — un nœud arrêté, la chaîne continue de produire des blocs.
 
-### Jalon 2 — Le réseau est joignable
+### Jalon 3 — Le réseau est joignable
 
 - Nœud RPC public derrière un reverse proxy, avec limitation de débit et TLS
 - Point d'accès WebSocket pour les abonnements temps réel
@@ -74,7 +96,7 @@ tous les blocs : c'est une base de données avec des signatures, pas un réseau.
 **Critère de réussite** — n'importe qui peut ajouter Coinbosa dans son wallet et envoyer une
 transaction.
 
-### Jalon 3 — Le réseau est lisible
+### Jalon 4 — Le réseau est lisible
 
 L'explorateur actuel interroge le RPC en direct : pratique pour observer, insuffisant pour un
 produit. Sans base de données, pas d'historique par adresse, pas de vérification de code
@@ -90,7 +112,7 @@ rebrandable, il faut épingler la version `v10.2.6`, dernière sous GPLv3.
 
 **Critère de réussite** — un tiers peut auditer une transaction sans accès au serveur.
 
-### Jalon 4 — Le réseau est présentable
+### Jalon 5 — Le réseau est présentable
 
 Site public et explorateur au niveau des grandes chaînes publiques, en six langues dont
 l'arabe. La spécification complète — identité visuelle dérivée du logo, architecture
@@ -105,7 +127,7 @@ multilingue, critères de réception mesurables — est dans **[FRONTEND.md](FRO
 mobile, six langues sans chaîne non traduite, et un développeur extérieur qui intègre BOSA
 sans nous solliciter.
 
-### Jalon 5 — L'écosystème est branché
+### Jalon 6 — L'écosystème est branché
 
 - Paiement en BOSA sur Coinbosa Academy
 - Cotation du BOSA sur NextFuture
@@ -114,7 +136,7 @@ sans nous solliciter.
 - Coinbosa Card adossée au solde on-chain
 - Paiement par carte classique via un prestataire
 
-### Jalon 6 — Ouverture extérieure
+### Jalon 7 — Ouverture extérieure
 
 - Audit de sécurité externe des contrats et du client patché
 - Passerelle vers un réseau majeur, sans laquelle BOSA reste enfermé sur sa propre chaîne
@@ -127,8 +149,9 @@ sans nous solliciter.
 
 - **BRC-721 et les NFT** — écartés. Le standard n'est pas implémenté et ne le sera pas tant
   qu'un besoin produit ne le justifie pas, malgré sa mention dans le livre blanc v2.
-- **Le staking et le slashing** — abandonnés avec le contrat système simplifié. Le réseau est
-  une preuve d'autorité à validateurs identifiés, ce qui correspond au livre blanc.
+- **Les contrats système complets de BNB Chain** — non repris. La couche d'enjeu de Coinbosa
+  sera écrite sur mesure pour son architecture, plutôt que d'hériter de la mécanique
+  inter-chaînes de BNB, sans objet ici.
 
 ---
 

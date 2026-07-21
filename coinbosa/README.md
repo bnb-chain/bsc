@@ -11,14 +11,14 @@
 
 ## Le réseau
 
-Coinbosa Network est une blockchain compatible Ethereum, sécurisée par un groupe de
-validateurs connus et identifiés, selon un consensus de type **preuve d'autorité**.
+Coinbosa Network est une blockchain compatible Ethereum, sécurisée par un consensus de
+**preuve d'enjeu** : les validateurs immobilisent des jetons pour participer à la production
+des blocs, et les perdent en cas de faute.
 
-Contrairement à un réseau à preuve de travail ou à preuve d'enjeu ouverte, l'identité de
-chaque validateur est vérifiée avant son entrée dans le consensus, et la liste des validateurs
-est gouvernée par un contrat intelligent. C'est ce qui permet des blocs courts et des frais de
-transaction très faibles, sans dépendre d'une capitalisation élevée pour assurer la sécurité
-du réseau.
+Le moteur de consensus, Parlia, est conçu pour ce modèle — son nom même signifie *Proof of
+Staked Authority*. Il combine l'immobilisation d'un enjeu et un nombre de validateurs borné,
+ce qui permet des blocs courts et des frais très faibles, là où un consensus ouvert à tous
+impose des compromis de vitesse.
 
 L'implémentation actuelle repose sur le client [BNB Smart Chain](https://github.com/bnb-chain/bsc)
 et son moteur de consensus **Parlia**. Voir la section « Écarts avec le livre blanc » pour les
@@ -92,10 +92,14 @@ se cumulent :
    niveau n'a d'entrée pour `Default`. Le contrat reste donc figé en version 2021, à vie.
 
 `CoinbosaValidatorSet.sol` le remplace : 5 758 octets contre 16 429, il implémente exactement
-la surface d'appel exigée par le consensus, et rien de plus. Aucune fonction du chemin
-consensus ne peut revert — c'est la règle de conception, puisqu'un revert rend le bloc
-improduisible. Le set de validateurs vit en storage et se met à jour par `updateValidatorSet()`,
-sans nouveau genesis. C'est ce contrat qui portera la gouvernance de la liste des validateurs.
+la surface d'appel exigée par le consensus, et rien de plus. Aucune fonction du chemin consensus
+ne peut revert — c'est la règle de conception, puisqu'un revert rend le bloc improduisible.
+
+**Ce contrat ne porte pas encore l'enjeu.** Dans sa version actuelle, le set de validateurs est
+fixe et modifiable par un gouverneur : c'est ce qu'il fallait pour débloquer la chaîne, pas la
+cible. La couche d'enjeu — dépôt, élection par le montant immobilisé, récompenses, sanctions,
+période de déblocage — reste à écrire. C'est le chantier décrit au jalon 2 de la
+[feuille de route](ROADMAP.md).
 
 ---
 
@@ -104,7 +108,7 @@ sans nouveau genesis. C'est ce contrat qui portera la gouvernance de la liste de
 | | |
 |---|---|
 | Chain ID | `26262` |
-| Consensus | Parlia (preuve d'autorité avec enjeu) |
+| Consensus | Parlia — preuve d'enjeu (*Proof of Staked Authority*) |
 | Temps de bloc | **5 secondes** |
 | Epoch | 200 blocs |
 | Client | `geth` v1.7.6 patché pour Coinbosa |
