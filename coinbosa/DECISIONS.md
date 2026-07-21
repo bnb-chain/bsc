@@ -39,9 +39,10 @@ le jalon 1 de la [feuille de route](ROADMAP.md).
 
 ---
 
-## D3 — D'où viennent les récompenses de validateurs
+## D3 — Rémunération des validateurs par les frais de transaction
 
-**Ouvert.** Décision requise avant d'écrire le contrat d'enjeu.
+**Tranché.** Les validateurs sont rémunérés par les frais de transaction du réseau, et par rien
+d'autre. Aucune part de l'offre n'est réservée aux récompenses, aucune émission n'est créée.
 
 Contrainte vérifiée dans le code amont — `consensus/parlia/parlia.go`, ligne 1428 :
 
@@ -49,39 +50,43 @@ Contrainte vérifiée dans le code amont — `consensus/parlia/parlia.go`, ligne
 // No block rewards in PoA, so the state remains as is and uncles are dropped
 ```
 
-**Parlia ne crée aucune monnaie.** Le revenu d'un validateur se limite aux frais de transaction,
-redistribués depuis le solde système. Sur une chaîne à frais quasi nuls et à faible volume, ce
-revenu tend vers zéro — et personne n'immobilise du capital pour un rendement nul.
+Parlia ne crée aucune monnaie. Les deux alternatives ont été écartées : un coffre pré-financé
+aurait amputé l'offre distribuable et se serait épuisé ; une émission protocolaire aurait exigé
+de modifier le cœur du consensus, faisant diverger Coinbosa de l'amont de façon irréversible et
+rendant fausse l'affirmation d'offre fixe.
 
-Le modèle du livre blanc v2 — 2,5 % d'émission pour les validateurs plus 2,5 % pour la
-soutenabilité — **n'est donc pas implémentable en l'état**.
+**Conséquence à assumer** — sans trafic, il n'y a pas de frais, donc pas de revenu. Le rendement
+d'un validateur n'est pas faible au lancement, il est **nul**, et ne croît qu'avec l'usage réel.
+Aucun validateur externe ne sera motivé économiquement avant que le volume existe. Le modèle du
+livre blanc v2 — 2,5 % d'émission validateurs plus 2,5 % de soutenabilité — est abandonné.
 
-Trois options, aucune gratuite :
-
-| Option | Mécanisme | Coût |
-|---|---|---|
-| Réserve dédiée | une part des 700 M finance les récompenses | l'offre est finie : la réserve s'épuise |
-| Émission par le client | patcher Parlia pour créer une récompense de bloc | modification du cœur du consensus |
-| Frais réels | les validateurs vivent du volume, comme sur Ethereum | contredit l'argument des frais quasi nuls |
+**Interdit de rédaction** — aucun taux de rendement, actuel ou projeté, ne figure dans les
+documents publics.
 
 ---
 
-## D4 — Deux actifs portent le nom BOSA
+## D4 — Un actif unique : le coin natif
 
-**Ouvert.** Décision requise avant toute publication.
+**Tranché.** BOSA est le coin natif de Coinbosa Chain. Le jeton BRC20 applicatif de
+700 000 000 unités est retiré ; il ne sera pas distribué.
 
-| | Coin natif | Jeton BRC20 |
-|---|---|---|
-| Rôle | paie le gas | actif applicatif |
-| Décimales | 18, imposées par l'EVM | 10 |
-| Offre | fixée au genesis | 700 000 000 |
+| | |
+|---|---|
+| Symbole | BOSA |
+| Décimales | **18** |
+| Offre | 700 000 000, fixée au genesis |
 
-Les 18 décimales du coin natif ne sont pas un choix : l'unité de base de l'EVM est le wei, et
-cette valeur est câblée dans le calcul du gas comme dans les wallets.
+**Sur les 18 décimales.** Ce n'est pas un arbitrage mais une contrainte : l'unité de base de
+l'EVM est le wei, valeur câblée dans le calcul du gas et dans tous les portefeuilles. Les
+10 décimales n'étaient possibles que sur un jeton applicatif distinct. En choisissant l'actif
+unique, elles deviennent sans objet.
 
-Deux actifs homonymes aux décimales différentes sont une source de confusion pour les
-utilisateurs, les intégrateurs et les places de cotation. Le point sera tranché avec la
-tokenomique.
+**Coût du changement : nul.** Aucune unité n'a été distribuée à un tiers, il n'existe aucun
+détenteur externe. Ce même changement après une première cotation aurait imposé une migration —
+Polygon a mis environ un an pour MATIC vers POL, BNB Beacon Chain dix-huit mois.
+
+Le changement est consigné dans [TOKENOMICS.md](TOKENOMICS.md) plutôt que substitué en silence :
+le projet a communiqué antérieurement sur 700 000 000 à 10 décimales.
 
 ---
 

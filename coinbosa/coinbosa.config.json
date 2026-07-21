@@ -1,6 +1,5 @@
 {
   "$comment": "Paramètres de référence de Coinbosa Chain. Toute valeur du réseau et du jeton est ici, jamais codée en dur dans les scripts.",
-
   "network": {
     "name": "Coinbosa Chain",
     "chainId": 26262,
@@ -11,33 +10,41 @@
     "evmVersion": "shanghai",
     "$comment": "blockIntervalMs et epochLength ne sont PAS lus par le genesis. Ce sont des constantes Go du client : voir consensus/parlia/parlia.go. Ces valeurs documentent le client patché, elles ne le configurent pas."
   },
-
   "nativeCoin": {
-    "name": "Bosa",
-    "symbol": "BOSA",
-    "decimals": 18,
-    "$comment": "Le coin natif paie le gas. Ses 18 décimales sont imposées par l'EVM (l'unité de base est le wei) et ne sont pas modifiables. Le genesis ne porte ni nom ni symbole : ce sont des métadonnées client, publiées via chainlist et les wallets."
-  },
-
-  "token": {
     "name": "Coinbosa",
     "symbol": "BOSA",
-    "decimals": 10,
-    "standard": "BRC20",
-    "initialSupply": "700000000",
-    "initialHolder": "0x3bd3104cd10e1B8196C3dd96D916e79CEf23a9C9",
-    "$comment": "Jeton BRC20 déployé sur la chaîne. initialHolder reçoit l'intégralité de l'offre et devient propriétaire du contrat."
+    "decimals": 18,
+    "totalSupply": "700000000",
+    "$comment": "Actif unique de Coinbosa Chain : paie le gas, sert d'enjeu au consensus. Les 18 décimales sont imposées par l'EVM (unité de base = wei) et ne sont pas modifiables. Offre fixée au genesis, aucune émission possible : le moteur de consensus ne crée pas de monnaie."
   },
-
   "rpc": {
     "http": "http://127.0.0.1:8545",
     "ws": "ws://127.0.0.1:8546",
     "explorer": "http://127.0.0.1:8080"
   },
-
   "validators": {
     "target": 12,
     "current": 1,
     "$comment": "Le livre blanc prévoit 12 validateurs identifiés répartis sur des serveurs distincts. La liste vit dans le contrat CoinbosaValidatorSet (0x...1000) et se met à jour par updateValidatorSet()."
+  },
+  "distribution": {
+    "$comment": "Répartition des 700 000 000 BOSA. Les adresses seront inscrites au genesis (jalon 1).",
+    "developpement": 20,
+    "technique": 10,
+    "recherche": 10,
+    "equipe": 10,
+    "fondsFinancierCard": 10,
+    "fondsLiquidite": 10,
+    "rechercheIA": 10,
+    "rechercheFinanceFintech": 5,
+    "securite": 3,
+    "audit": 2,
+    "evenementsFormation": 2,
+    "distributionPublique": 5,
+    "reserveStrategique": 3
+  },
+  "validatorRewards": {
+    "source": "frais de transaction uniquement",
+    "$comment": "Aucune part de l'offre n'est réservée aux récompenses et aucune émission n'est créée. Sans trafic, le revenu d'un validateur est nul. Ne jamais publier de taux de rendement."
   }
 }

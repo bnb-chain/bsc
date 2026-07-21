@@ -34,19 +34,19 @@ raisons de ce choix.
 |---|---|
 | Nom | Coinbosa |
 | Symbole | BOSA |
-| Décimales | 10 |
-| Offre initiale | 700 000 000 BOSA |
-| Standard | BRC20 |
+| Décimales | 18 |
+| Offre | 700 000 000 BOSA, fixée au genesis |
+| Nature | coin natif de la chaîne |
 
-BOSA est un **jeton déployé sur** Coinbosa Chain, et non le coin natif qui paie le gas — même
-rapport qu'entre CAKE et BNB sur BNB Chain. C'est ce choix qui rend les 10 décimales
-possibles : sur une chaîne EVM, le coin natif est structurellement à 18 décimales, parce que
-l'unité de base est le wei et que cette valeur est câblée dans le calcul du gas et dans les
-wallets. La structure `core.Genesis` du client ne comporte d'ailleurs aucun champ nom, symbole
-ou décimales.
+BOSA est le **coin natif** de Coinbosa Chain : il paie le gas et sert d'enjeu au consensus. Il
+n'existe pas de second actif portant ce nom.
 
-L'intégralité de l'offre est émise à une **adresse de départ** fournie au déploiement. Elle
-n'est écrite en dur nulle part dans le code.
+Les 18 décimales ne sont pas un choix mais une contrainte de l'EVM, dont l'unité de base est le
+wei. L'offre de 700 000 000 est fixée au bloc de genèse et **aucune émission n'est possible** :
+le moteur de consensus ne crée pas de monnaie.
+
+La répartition complète et la rémunération des validateurs sont dans
+**[TOKENOMICS.md](TOKENOMICS.md)**.
 
 ---
 
@@ -172,7 +172,7 @@ La spécification du site public et de l'explorateur — identité visuelle, arc
 multilingue, critères de réception — est dans **[FRONTEND.md](FRONTEND.md)**.
 
 Les décisions structurantes du projet, avec leur justification et les points encore ouverts,
-sont consignées dans **[DECISIONS.md](DECISIONS.md)**.
+sont consignées dans **[DECISIONS.md](DECISIONS.md)**, et l'économie du jeton dans **[TOKENOMICS.md](TOKENOMICS.md)**.
 
 ---
 

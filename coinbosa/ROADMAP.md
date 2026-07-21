@@ -8,181 +8,204 @@
 
 ## Où en est le projet
 
-Le socle technique de la chaîne fonctionne et est vérifié. Ce qui manque n'est plus de la
-recherche, mais de l'exécution : des machines, des services, des interfaces.
+Le socle technique fonctionne et est vérifié de bout en bout, y compris en intégration continue
+sur une machine vierge. Ce qui manque relève désormais de l'exécution, pas de la recherche.
 
 | | État |
 |---|---|
 | Client Coinbosa compilé, 5 s par bloc | fait, mesuré |
-| Genesis souverain, chainId 26262 | fait |
-| Franchissement des blocs d'epoch | fait, vérifié aux blocs 200, 400 et 600 |
+| Chaîne souveraine, chainId 26262 | fait |
+| Franchissement des blocs d'epoch | fait, vérifié aux blocs 200, 400, 600, 800 |
+| Contrat système sur mesure | fait |
 | Standard de jeton BRC20 | fait, 26 tests sur 26 |
-| Jeton BOSA, 700 M, 10 décimales | fait, déployé et vérifié |
-| Explorateur de blocs minimal | fait, sans indexation |
-| Couche d'enjeu (staking, sanctions) | à faire — chantier structurant |
+| Explorateur multilingue | fait, sans indexation |
+| Intégration continue | verte, de bout en bout |
+| **Genesis définitif — offre et répartition** | **à faire — bloquant** |
+| Couche d'enjeu (staking, sanctions) | à faire |
 | Réseau multi-validateurs | à faire |
-| RPC public | à faire |
-| Front-end | à faire |
+| RPC public, explorateur indexé, site | à faire |
 
 ---
 
-## L'écosystème Coinbosa
+## L'écosystème
 
-La chaîne n'est pas un but en soi : elle sert des produits qui existent déjà ou qui arrivent.
+La chaîne sert des produits, elle n'est pas une fin en soi.
 
-| Produit | État | Lien avec la chaîne |
+| Produit | Nature | État |
 |---|---|---|
-| **Coinbosa Academy** | en production | à raccorder : paiement en BOSA |
-| **NextFuture** | en construction | échange ; cotation et échange du BOSA |
-| **Coinbosa Card** | à venir | carte virtuelle ; dépense du solde BOSA |
-| **Neobanq** | plateforme existante | rails bancaires et interface crypto |
-| **Coinbosa VPN** | en cours | abonnement payable en BOSA |
-| **bite-fast** | jeton de l'écosystème | à porter en BRC20 sur la chaîne |
+| **Coinbosa Academy** | école de formation — forex, actions, puis crypto | en production |
+| **NextFuture** | place d'échange crypto — marché au comptant et contrats à terme | en construction |
+| **Coinbosa Card** | carte crypto prépayée et virtuelle, dépôts en crypto, dépense à l'international | à venir |
+| **bite-fast** | place d'échange crypto externe | existante |
+| **Neobanq** | plateforme bancaire | existante |
+| **Coinbosa VPN** | service d'abonnement | en cours |
 
-Deux modes de paiement sont visés partout : **en jetons de l'écosystème**, et **en monnaie
-classique par carte**. Le second suppose un prestataire de paiement, donc une entité qui
-encaisse — c'est un chantier réglementaire autant que technique.
-
-Une cotation sur des places d'échange externes est envisagée. Elle n'a pas de dépendance
-technique avec la chaîne elle-même, mais elle en a une avec tout le reste de cette feuille de
-route : aucune place sérieuse ne référence un réseau à validateur unique et sans explorateur
-public.
+Aucun de ces produits n'est raccordé à la chaîne à ce jour. Chaque raccordement sera annoncé
+lorsqu'il fonctionnera, et pas avant.
 
 ---
 
 ## Jalons
 
-### Jalon 1 — La couche d'enjeu
+### Jalon 1 — Le genesis définitif
 
-*Chantier structurant.* Le moteur de consensus, Parlia, est conçu pour la preuve d'enjeu — son
-nom signifie *Proof of Staked Authority*. Mais le contrat système actuel expose un set de
-validateurs fixe, modifiable par un gouverneur : il n'y a ni dépôt, ni élection par l'enjeu, ni
-sanction. Cette version minimale était nécessaire pour débloquer la chaîne au bloc 200 ; elle
-n'est pas la cible.
+*Bloquant : tout le reste en dépend.* Le genesis actuel est un genesis de développement. Son
+offre n'a jamais été conçue — elle est l'addition d'un héritage du réseau amont et de valeurs
+posées pour tester. Or le genesis porte désormais **l'intégralité de l'offre BOSA**, puisqu'il
+n'existe plus de jeton applicatif.
+
+- Fixer l'offre à 700 000 000 BOSA au bloc de genèse
+- Purger le solde hérité du contrat de pont du réseau amont, sans objet ici
+- Créer une adresse par poste de la répartition, et l'inscrire au genesis
+- Définir les calendriers de blocage et d'acquisition de chaque poste
+- Placer les postes significatifs sous multi-signatures
+- Regénérer, réinitialiser la chaîne, revérifier le franchissement d'epoch
+
+**Critère de réussite** — l'offre totale lue sur la chaîne vaut exactement 700 000 000 BOSA,
+répartie sur les adresses publiées, et aucun solde ne subsiste dans un contrat hérité.
+
+### Jalon 2 — La couche d'enjeu
+
+Le moteur de consensus est conçu pour la preuve d'enjeu — Parlia signifie *Proof of Staked
+Authority*. Le contrat système, lui, expose un set de validateurs fixe modifiable par une clé.
+Tant que c'est le cas, il n'y a pas de preuve d'enjeu : il y a une preuve d'autorité avec une
+couche de staking décorative.
 
 - Contrat d'enjeu : dépôt, retrait, période de déblocage
 - Élection du set de validateurs par le montant immobilisé, à chaque epoch
-- Distribution des récompenses aux validateurs et aux délégataires
 - Sanctions : absence de production, double signature, mise en quarantaine
-- Gouvernance des paramètres
+- `updateValidatorSet` passe sous multi-signatures et délai de contestation, restreint aux
+  urgences tracées publiquement
 
-**Risque à surveiller** — toute fonction du chemin consensus qui revert rend le bloc
-improduisible et arrête définitivement le réseau. Chaque évolution de ce contrat doit passer par
-le contrôle de franchissement d'epoch en intégration continue.
+**Deux risques à traiter dès la conception**, tous deux capables d'arrêter le réseau :
+
+Toute fonction du chemin consensus qui échoue rend le bloc improduisible. Le contrôle de
+franchissement d'epoch en intégration continue est obligatoire à chaque évolution.
+
+Le plafond de gas des appels de lecture est réglable **par nœud**. Si l'élection est calculée
+dans le contrat, deux validateurs configurés différemment peuvent obtenir des résultats
+différents pour le même bloc — le réseau se partitionne, puis s'arrête. Le calcul doit tenir
+dans une enveloppe de gas bornée et documentée, imposée à tous les nœuds.
 
 **Critère de réussite** — un validateur rejoint le set en immobilisant des jetons, sans
 intervention manuelle ; un validateur fautif est sanctionné automatiquement.
 
-### Jalon 2 — Le réseau tient debout
+### Jalon 3 — Le réseau tient debout
 
-*Sans ce jalon, tous les suivants sont sans objet.* Aujourd'hui un seul validateur produit
-tous les blocs : c'est une base de données avec des signatures, pas un réseau.
+Un validateur unique produit aujourd'hui tous les blocs : c'est un registre signé, pas un
+réseau.
 
-- Provisionner les serveurs, un par validateur, sur des hébergeurs et des zones distincts
+- Provisionner un serveur par validateur, sur des hébergeurs et des zones distincts
 - Générer les clés **sur chaque serveur**, jamais ailleurs
-- Cérémonie initiale : constitution du set de validateurs conformément au livre blanc
-- Raccorder les nœuds entre eux par bootnodes, vérifier la rotation des producteurs de blocs
+- Raccorder les nœuds par bootnodes, vérifier la rotation des producteurs
 - Éprouver la résilience : couper un nœud, la chaîne doit continuer
+
+**À dire franchement** — les récompenses venant uniquement des frais de transaction, un
+validateur externe n'a aucun intérêt économique à rejoindre le réseau tant que le volume
+n'existe pas. Les premiers validateurs seront donc adossés au projet, ce qui doit être écrit
+plutôt que présenté comme une décentralisation.
 
 **Critère de réussite** — un nœud arrêté, la chaîne continue de produire des blocs.
 
-### Jalon 3 — Le réseau est joignable
+### Jalon 4 — Le réseau est joignable
 
-- Nœud RPC public derrière un reverse proxy, avec limitation de débit et TLS
-- Point d'accès WebSocket pour les abonnements temps réel
-- Nœud de secours, sauvegardes, supervision et alertes
-- Enregistrement du chainId sur `ethereum-lists/chains` afin d'apparaître dans les wallets
+- Point d'accès RPC public derrière un reverse proxy, avec limitation de débit et TLS
+- Point d'accès WebSocket, nœud de secours, sauvegardes, supervision
+- Enregistrement du chainId 26262 sur `ethereum-lists/chains`
 
-**Critère de réussite** — n'importe qui peut ajouter Coinbosa dans son wallet et envoyer une
+Ce jalon conditionne plus qu'il n'y paraît : sans réseau joignable de l'extérieur, ni les
+portefeuilles, ni les explorateurs tiers, ni les outils de trésorerie multi-signatures ne
+peuvent s'y connecter.
+
+**Critère de réussite** — n'importe qui peut ajouter Coinbosa à son portefeuille et envoyer une
 transaction.
 
-### Jalon 4 — Le réseau est lisible
-
-L'explorateur actuel interroge le RPC en direct : pratique pour observer, insuffisant pour un
-produit. Sans base de données, pas d'historique par adresse, pas de vérification de code
-source, pas de suivi des porteurs.
+### Jalon 5 — Le réseau est lisible
 
 - Explorateur indexé, avec base de données
 - Vérification publique du code source des contrats
-- Suivi des porteurs de BOSA et des transferts
+- Suivi de la répartition de l'offre et des transferts
 
-**Attention licence** — Blockscout n'est plus open source depuis le 22 avril 2026. Sa version
-11 et les suivantes interdisent contractuellement de retirer la marque. Pour un produit
-rebrandable, il faut épingler la version `v10.2.6`, dernière sous GPLv3.
+**Attention licence** — Blockscout n'est plus open source depuis le 22 avril 2026 ; ses versions
+11 et suivantes interdisent contractuellement de retirer la marque. Pour un produit à notre nom,
+épingler `v10.2.6`, dernière version sous GPLv3.
 
-**Critère de réussite** — un tiers peut auditer une transaction sans accès au serveur.
+**Critère de réussite** — un tiers peut vérifier la répartition de l'offre sans accès au serveur.
+C'est précisément ce qu'une place de cotation contrôle en premier.
 
-### Jalon 5 — Le réseau est présentable
+### Jalon 6 — Le réseau est présentable
 
-Site public et explorateur au niveau des grandes chaînes publiques, en six langues dont
-l'arabe. La spécification complète — identité visuelle dérivée du logo, architecture
-multilingue, critères de réception mesurables — est dans **[FRONTEND.md](FRONTEND.md)**.
+Site public et explorateur au niveau des grandes chaînes publiques, en six langues dont l'arabe.
+Spécification complète dans **[FRONTEND.md](FRONTEND.md)**.
 
-- Site public multilingue, rendu statique ou serveur, thèmes clair et sombre
-- Ajout du réseau au wallet en un clic, sans copier-coller de paramètres
-- Explorateur indexé reprenant la charte de l'explorateur actuel
-- Robinet de test et documentation d'intégration
+**Critère de réussite** — Lighthouse au-dessus de 90 en performance et accessibilité sur mobile,
+six langues sans chaîne non traduite.
 
-**Critère de réussite** — Lighthouse au-dessus de 90 en performance et en accessibilité sur
-mobile, six langues sans chaîne non traduite, et un développeur extérieur qui intègre BOSA
-sans nous solliciter.
+### Jalon 7 — L'écosystème est branché
 
-### Jalon 6 — L'écosystème est branché
-
-- Paiement en BOSA sur Coinbosa Academy
-- Cotation du BOSA sur NextFuture
-- Portage du jeton **bite-fast** en BRC20
-- Abonnement Coinbosa VPN payable en BOSA
+- Paiement en BOSA sur Coinbosa Academy et Coinbosa VPN
+- Cotation du BOSA sur NextFuture, au comptant puis à terme
 - Coinbosa Card adossée au solde on-chain
-- Paiement par carte classique via un prestataire
+- Passerelle avec bite-fast
 
-### Jalon 7 — Ouverture extérieure
+**Le point de blocage à lever en premier**, avant tout développement : les processeurs de
+paiement et les rampes fiat ne référencent en général que les chaînes majeures. Qu'un prestataire
+accepte un actif vivant sur une chaîne souveraine n'a rien d'acquis. Si la réponse est non, il
+faudra un déploiement canonique de BOSA sur une chaîne liquide, avec passerelle vers Coinbosa —
+ce qui change l'architecture, pas seulement le calendrier.
 
-- Audit de sécurité externe des contrats et du client patché
-- Passerelle vers un réseau majeur, sans laquelle BOSA reste enfermé sur sa propre chaîne
+### Jalon 8 — Ouverture extérieure
+
+- Audit de sécurité externe des contrats et du client modifié
+- Passerelle vers un réseau majeur
 - Cotation sur des places d'échange externes
-- Publication de la tokenomique
+- Publication du livre blanc et des métriques de transparence
 
 ---
 
 ## Ce qui n'est pas au programme
 
-- **BRC-721 et les NFT** — écartés. Le standard n'est pas implémenté et ne le sera pas tant
-  qu'un besoin produit ne le justifie pas, malgré sa mention dans le livre blanc v2.
-- **Les contrats système complets de BNB Chain** — non repris. La couche d'enjeu de Coinbosa
-  sera écrite sur mesure pour son architecture, plutôt que d'hériter de la mécanique
-  inter-chaînes de BNB, sans objet ici.
+- **Les NFT (BRC-721)** — écartés. Le standard ne sera implémenté que si un besoin produit le
+  justifie.
+- **Une émission monétaire** — le moteur de consensus ne crée aucune monnaie, et l'offre de
+  700 000 000 BOSA est définitive.
+- **Les contrats système complets du réseau amont** — la couche d'enjeu de Coinbosa sera écrite
+  pour son architecture, plutôt que d'hériter d'une mécanique inter-chaînes sans objet ici.
 
 ---
 
 ## Points de vigilance
 
-**Les clés de validateur.** Elles doivent être générées sur le serveur qui les utilise, ne
-jamais transiter par un poste de travail, un dépôt ou une messagerie. Une clé compromise, c'est
-un validateur compromis.
+**Les clés de validateur** doivent être générées sur le serveur qui les utilise, et ne jamais
+transiter par un poste de travail, une messagerie ou ce dépôt.
 
-**L'adresse de départ.** Elle détient les 700 000 000 BOSA et la propriété du contrat. Sa clé
-privée mérite le même traitement qu'une clé de coffre : conservation hors ligne, sauvegarde
-séparée, et à terme un portefeuille multi-signatures plutôt qu'une clé unique.
+**La concentration de l'offre et du pouvoir.** Tant que la même clé détient l'offre et contrôle
+la liste des validateurs, une seule personne contrôle simultanément la monnaie et le consensus.
+C'est l'obstacle numéro un du dossier, devant tous les autres, et il survivrait à un changement
+de chaîne. Le jalon 1 le traite.
 
-**Le paiement en monnaie classique et la cotation externe** relèvent autant du droit que de la
-technique. Les traiter comme des sujets purement techniques serait une erreur de séquencement.
+**Le rendement des validateurs est nul sans trafic.** Ce n'est pas un défaut à corriger, c'est
+une conséquence assumée du choix de ne pas créer de monnaie. Il faut le dire, et ne jamais
+publier de taux de rendement.
+
+**Les paiements en monnaie classique et la cotation externe** relèvent autant du droit que de la
+technique.
 
 ---
 
 ## Reprendre le projet sur une autre machine
 
-Tout est dans ce dépôt. Rien d'essentiel ne vit sur la machine de développement actuelle.
+Tout est dans ce dépôt.
 
 ```bash
 git clone https://github.com/Coinbosa/coinbosa-chain
 cd coinbosa-chain
 
-# 1. compiler le client Coinbosa — le binaire officiel de BNB Chain ne convient pas,
+# 1. compiler le client Coinbosa — le binaire officiel du réseau amont ne convient pas,
 #    il produit des blocs de 3 s au lieu de 5 s
 make geth
 
-# 2. installer les dépendances des contrats
+# 2. installer les dépendances
 cd coinbosa && npm install
 
 # 3. générer la clé du validateur, puis le genesis correspondant
@@ -194,14 +217,9 @@ node scripts/compile.js
 ./scripts/start-node.sh
 ```
 
-**Prérequis** — Go 1.25 ou plus, Node 20 ou plus, environ 5 Go d'espace disque libre pour la
-compilation du client.
+**Prérequis** — Go 1.25 ou plus, Node 20 ou plus, environ 5 Go d'espace disque pour la
+compilation.
 
-Tous les paramètres du réseau et du jeton sont dans **`coinbosa.config.json`**. C'est le seul
-fichier à modifier pour changer une valeur ; rien n'est codé en dur dans les scripts.
-
-Déploiement du jeton, une fois le nœud lancé :
-
-```bash
-node scripts/deploy-bosa.js     # lit l'adresse de départ depuis coinbosa.config.json
-```
+Les paramètres du réseau sont dans **`coinbosa.config.json`**, l'économie du jeton dans
+**[TOKENOMICS.md](TOKENOMICS.md)**, et les décisions structurantes dans
+**[DECISIONS.md](DECISIONS.md)**.
