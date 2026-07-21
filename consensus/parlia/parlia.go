@@ -58,7 +58,7 @@ const (
 	defaultEpochLength   uint64 = 200  // Default number of blocks of checkpoint to update validatorSet from contract
 	lorentzEpochLength   uint64 = 500  // Epoch length starting from the Lorentz hard fork
 	maxwellEpochLength   uint64 = 1000 // Epoch length starting from the Maxwell hard fork
-	defaultBlockInterval uint64 = 3000 // Default block interval in milliseconds
+	defaultBlockInterval uint64 = 5000 // Coinbosa : 5 s par bloc (livre blanc). BSC amont : 3000.
 	lorentzBlockInterval uint64 = 1500 // Block interval starting from the Lorentz hard fork
 	maxwellBlockInterval uint64 = 750  // Block interval starting from the Maxwell hard fork
 	fermiBlockInterval   uint64 = 450  // Block interval starting from the Fermi hard fork
