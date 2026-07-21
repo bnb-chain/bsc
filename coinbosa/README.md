@@ -171,6 +171,9 @@ machine sont dans **[ROADMAP.md](ROADMAP.md)**.
 La spécification du site public et de l'explorateur — identité visuelle, architecture
 multilingue, critères de réception — est dans **[FRONTEND.md](FRONTEND.md)**.
 
+Les décisions structurantes du projet, avec leur justification et les points encore ouverts,
+sont consignées dans **[DECISIONS.md](DECISIONS.md)**.
+
 ---
 
 ## Démarrage
