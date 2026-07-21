@@ -1,4 +1,7 @@
 # Changelog
+## v1.7.7
+v1.7.7 is for BSC Mainnet [Pasteur hardfork](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-673.md),the hard fork time is 2026-08-25 02:30:00 AM UTC
+
 ## v1.7.6
 v1.7.6 is for BSC Chapel testnet [Pasteur hardfork](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-673.md),the hard fork time is 2026-07-21 02:30:00 AM UTC
 
