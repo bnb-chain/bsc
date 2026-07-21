@@ -6,3 +6,7 @@ node2/
 *.log
 pw.txt
 .env
+
+# genesis généré : dépend de votre validateur, à reconstruire avec scripts/build-genesis.js
+genesis/genesis-coinbosa.json
+genesis/CoinbosaValidatorSet.abi.json

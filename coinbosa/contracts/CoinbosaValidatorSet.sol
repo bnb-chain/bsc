@@ -1,0 +1,204 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.26;
+
+/**
+ * CoinbosaValidatorSet — remplacement du BSCValidatorSet a l'adresse 0x...1000.
+ *
+ * Implemente EXACTEMENT la surface d'appel que le moteur Parlia (bsc v1.7.6)
+ * exige du ValidatorContract quand Luban+Plato+Kepler sont ACTIFS et
+ * Feynman/Bohr/Cancun/Maxwell INACTIFS :
+ *
+ *   init()                                            parlia.go:2049  (bloc 1, system tx)
+ *   getMiningValidators()                             parlia.go:1934  (eth_call, blocs %200==0)
+ *   deposit(address) payable                          parlia.go:2082  (system tx, chaque bloc)
+ *   distributeFinalityReward(address[],uint256[])     parlia.go:1348  (system tx, blocs %200==0)
+ *   getTurnLength()                                   bohrFork.go:61  (mort tant que Bohr off)
+ *   getValidators()                                   lubanFork.go:28 (mort tant que Luban on)
+ *
+ * REGLE D'OR : aucune de ces fonctions ne doit JAMAIS revert, sinon le bloc
+ * devient improduisible (Prepare) ou invalide (Finalize).
+ */
+contract CoinbosaValidatorSet {
+    // ---------------------------------------------------------------------
+    // Parametres de deploiement (white-label : seules ces 2 constantes changent)
+    // ---------------------------------------------------------------------
+
+    /// Valeur de reference, REECRITE automatiquement par scripts/build-genesis.js
+    /// avec l'adresse passee dans VALIDATOR. Ne pas la modifier a la main : elle
+    /// doit rester identique au validateur inscrit dans l'extraData du genesis.
+    address public constant GOVERNOR = 0x0000000000000000000000000000000000000001;
+
+    // Doit etre byte-identique a la cle BLS presente dans l'extraData du genesis.
+    bytes public constant GENESIS_VOTE_ADDRESS =
+        hex"000000000000000000000000000000000000000000000000"
+        hex"000000000000000000000000000000000000000000000000";
+
+    uint256 public constant MAX_VALIDATORS = 41;
+    uint256 public constant VOTE_ADDRESS_LENGTH = 48;
+
+    // ---------------------------------------------------------------------
+    // Etat
+    // ---------------------------------------------------------------------
+    bool public alreadyInit;                     // slot 0
+    address[] public validators;                 // slot 1
+    bytes[] public voteAddresses;                // slot 2
+    mapping(address => uint256) public incoming; // slot 3
+    uint256 public totalInComing;                // slot 4
+
+    event ValidatorSetUpdated(uint256 count);
+    event ValidatorDeposit(address indexed validator, uint256 amount);
+    event ValidatorClaimed(address indexed validator, uint256 amount);
+    event SurplusSwept(address indexed to, uint256 amount);
+
+    // ---------------------------------------------------------------------
+    // Consensus : lecture
+    // ---------------------------------------------------------------------
+
+    /// Appelee par Parlia a chaque bloc d'epoch (number % 200 == 0), sur l'etat
+    /// du bloc parent, pour construire l'extraData. Retour : (adresses, cles BLS).
+    /// Fallback defensif : si l'etat est vide (init() jamais execute), on renvoie
+    /// quand meme le validateur de genese -> la chaine ne peut pas se suicider.
+    function getMiningValidators()
+        external
+        view
+        returns (address[] memory vals, bytes[] memory votes)
+    {
+        uint256 n = validators.length;
+        if (n == 0) {
+            vals = new address[](1);
+            vals[0] = GOVERNOR;
+            votes = new bytes[](1);
+            votes[0] = GENESIS_VOTE_ADDRESS;
+            return (vals, votes);
+        }
+        vals = new address[](n);
+        votes = new bytes[](n);
+        for (uint256 i = 0; i < n; ++i) {
+            vals[i] = validators[i];
+            votes[i] = voteAddresses[i];
+        }
+    }
+
+    /// Chemin pre-Luban (code mort ici) + compatibilite outils/explorateurs.
+    function getValidators() external view returns (address[] memory vals) {
+        uint256 n = validators.length;
+        if (n == 0) {
+            vals = new address[](1);
+            vals[0] = GOVERNOR;
+            return vals;
+        }
+        vals = new address[](n);
+        for (uint256 i = 0; i < n; ++i) {
+            vals[i] = validators[i];
+        }
+    }
+
+    /// Requis uniquement si Bohr est active un jour. 1 = comportement historique.
+    function getTurnLength() external pure returns (uint256) {
+        return 1;
+    }
+
+    function numOfValidators() external view returns (uint256) {
+        return validators.length;
+    }
+
+    function isCurrentValidator(address who) external view returns (bool) {
+        uint256 n = validators.length;
+        for (uint256 i = 0; i < n; ++i) {
+            if (validators[i] == who) return true;
+        }
+        return n == 0 && who == GOVERNOR;
+    }
+
+    // ---------------------------------------------------------------------
+    // Consensus : ecriture (system tx, msg.sender = coinbase, gasPrice = 0)
+    // ---------------------------------------------------------------------
+
+    /// Bloc 1 uniquement. Un revert ici rend le bloc 1 improduisible.
+    function init() external {
+        require(!alreadyInit, "already initialized");
+        alreadyInit = true;
+        validators.push(GOVERNOR);
+        voteAddresses.push(GENESIS_VOTE_ADDRESS);
+        emit ValidatorSetUpdated(1);
+    }
+
+    /// Appelee a CHAQUE bloc ou SystemAddress a un solde > 0.
+    /// Volontairement sans aucun modifier : chaque require est un risque d'arret
+    /// de chaine. Qu'un tiers appelle deposit en payant est inoffensif.
+    function deposit(address valAddr) external payable {
+        if (msg.value > 0) {
+            incoming[valAddr] += msg.value;
+            totalInComing += msg.value;
+            emit ValidatorDeposit(valAddr, msg.value);
+        }
+    }
+
+    /// Appelee a chaque bloc d'epoch (Plato actif). Sans VotePool les deux
+    /// tableaux arrivent toujours VIDES. No-op strict : jamais de revert.
+    function distributeFinalityReward(
+        address[] calldata, /* validatorsIn */
+        uint256[] calldata  /* weights */
+    ) external {
+        // volontairement vide
+    }
+
+    // ---------------------------------------------------------------------
+    // Administration (hors consensus)
+    // ---------------------------------------------------------------------
+
+    /// Rotation / ajout de validateurs SANS nouveau genesis.
+    /// ATTENTION : prend effet au prochain bloc d'epoch (multiple de 200).
+    /// Le nouveau set DOIT contenir au moins un validateur dont la cle est
+    /// detenue par un noeud mineur, sinon la chaine s'arrete a l'epoch suivant.
+    function updateValidatorSet(address[] calldata newVals, bytes[] calldata newVotes)
+        external
+    {
+        require(msg.sender == GOVERNOR, "only governor");
+        uint256 n = newVals.length;
+        require(n > 0 && n <= MAX_VALIDATORS, "bad length");
+        require(newVotes.length == n, "length mismatch");
+        for (uint256 i = 0; i < n; ++i) {
+            require(newVals[i] != address(0), "zero address");
+            require(newVotes[i].length == VOTE_ADDRESS_LENGTH, "bad vote address");
+            for (uint256 j = 0; j < i; ++j) {
+                require(newVals[i] != newVals[j], "duplicate validator");
+            }
+        }
+        delete validators;
+        delete voteAddresses;
+        for (uint256 i = 0; i < n; ++i) {
+            validators.push(newVals[i]);
+            voteAddresses.push(newVotes[i]);
+        }
+        emit ValidatorSetUpdated(n);
+    }
+
+    /// Retrait des frais de bloc accumules par un validateur.
+    function claim() external {
+        uint256 amount = incoming[msg.sender];
+        require(amount > 0, "nothing to claim");
+        incoming[msg.sender] = 0;
+        totalInComing -= amount;
+        (bool ok, ) = payable(msg.sender).call{value: amount}("");
+        require(ok, "transfer failed");
+        emit ValidatorClaimed(msg.sender, amount);
+    }
+
+    /// Fonds arrives hors deposit() (transferts directs, selfdestruct).
+    function surplus() public view returns (uint256) {
+        uint256 bal = address(this).balance;
+        return bal > totalInComing ? bal - totalInComing : 0;
+    }
+
+    function sweepSurplus(address payable to) external {
+        require(msg.sender == GOVERNOR, "only governor");
+        uint256 s = surplus();
+        require(s > 0, "no surplus");
+        (bool ok, ) = to.call{value: s}("");
+        require(ok, "transfer failed");
+        emit SurplusSwept(to, s);
+    }
+
+    receive() external payable {}
+}

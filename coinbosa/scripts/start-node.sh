@@ -9,7 +9,7 @@ CHAIN_ID=26262
 # init au premier lancement uniquement
 if [ ! -d node1/geth ]; then
   echo "→ initialisation du genesis Coinbosa"
-  ./bin/coinbosa-geth init --datadir node1 genesis/genesis-coinbosa-parlia.json
+  ./bin/coinbosa-geth init --datadir node1 genesis/genesis-coinbosa.json
 fi
 
 echo "→ démarrage du validateur $VALIDATOR sur chainId $CHAIN_ID"
