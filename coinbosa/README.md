@@ -71,7 +71,6 @@ contracts/
   CoinbosaValidatorSet.sol   contrat système du consensus
 ```
 
-Le standard NFT équivalent à l'ERC-721 reste à implémenter.
 
 ---
 
@@ -143,7 +142,7 @@ Le livre blanc v2 décrit une architecture qui ne correspond plus à l'implémen
 |---|---|---|
 | Consensus AuRa, client Parity / OpenEthereum | Consensus Parlia, client geth (fork BSC) | **OpenEthereum est abandonné depuis 2021** et son dépôt est archivé. Construire dessus aujourd'hui signifierait partir d'un client non maintenu, sans correctifs de sécurité. Parlia appartient à la même famille — validateurs connus, autorité — mais reste activement développé. |
 | Temps de bloc 5 s | **conforme** | Obtenu en patchant le client, voir plus haut. |
-| Standard `BRC20` / `BRC-721` | `BRC20` conforme, `BRC-721` à faire | |
+| Standard `BRC20` / `BRC-721` | `BRC20` conforme ; **BRC-721 écarté** | Les NFT ne sont pas au programme : le standard ne sera implémenté que si un besoin produit le justifie. |
 | Frais quasi nuls, gas à 1 gwei | conforme | Le calcul du livre blanc reste valable. |
 | 12 validateurs à la cérémonie initiale | 1 validateur | À faire. C'est le chantier prioritaire. |
 | 400 000 transactions par seconde | non mesuré | Aucun réseau EVM à validateurs connus n'atteint cet ordre de grandeur. Ce chiffre n'est pas repris ici tant qu'il n'a pas été mesuré sur le réseau réel. |
@@ -154,6 +153,16 @@ l'écosystème depuis, pas à un changement d'ambition.
 **Note sur le nom `BRC20`** — ici, l'acronyme signifie *Bosa smart contRact 20*. Un standard
 homonyme existe sur Bitcoin (inscriptions Ordinals), sans aucun rapport technique avec
 celui-ci. Préciser « BRC20 de Coinbosa » dans les intégrations tierces évitera la confusion.
+
+---
+
+## Paramètres
+
+Tous les paramètres du réseau et du jeton vivent dans **`coinbosa.config.json`**. C'est le seul
+fichier à modifier pour changer une valeur : rien n'est codé en dur dans les scripts.
+
+La feuille de route, les jalons et la marche à suivre pour reprendre le projet sur une autre
+machine sont dans **[ROADMAP.md](ROADMAP.md)**.
 
 ---
 
@@ -176,11 +185,11 @@ node scripts/compile.js      # compiler les contrats
 L'adresse de départ reçoit l'intégralité des 700 M BOSA et devient propriétaire du contrat.
 
 ```bash
-HOLDER=0xVotreAdresseDeDepart \
-PRIVATE_KEY=0xCleDuCompteQuiPaieLeGas \
-RPC=http://127.0.0.1:8545 \
 node scripts/deploy-bosa.js
 ```
+
+L'adresse est lue depuis `coinbosa.config.json` et sa somme de contrôle EIP-55 est vérifiée
+avant tout envoi. Le compte qui paie le gas vient du keystore du nœud, ou de `PRIVATE_KEY`.
 
 ### Tests
 
@@ -209,7 +218,6 @@ l'état après redémarrage.
 2. **Gouvernance des validateurs** — cérémonie initiale, vote d'ajout et de révocation,
    remplacement de clé compromise.
 3. **Finalité rapide** — les clés BLS sont à zéro, le vote d'attestation est inactif.
-4. **Standard NFT** — l'équivalent ERC-721 n'est pas implémenté.
 5. **Forks postérieurs à Kepler non activés.** Solidity vise Cancun par défaut : compiler sans
    `evmVersion: 'shanghai'` produit l'opcode `MCOPY`, que la chaîne rejette.
 6. **L'explorateur n'indexe rien.** Il interroge le RPC en direct : ni historique par adresse,

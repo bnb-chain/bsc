@@ -8,16 +8,22 @@ const path = require('path');
 const { ethers } = require('ethers');
 
 const RPC = process.env.RPC || 'http://127.0.0.1:8545';
-const HOLDER = process.env.HOLDER;
 const PRIVATE_KEY = process.env.PRIVATE_KEY;
+const KEYSTORE_DIR = process.env.KEYSTORE || path.join(__dirname, '..', 'node1', 'keystore');
+const PASSWORD_FILE = process.env.PASSWORD_FILE || path.join(__dirname, '..', 'pw.txt');
+
+// L'adresse de départ par défaut est celle de la configuration du réseau.
+const config = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'coinbosa.config.json'), 'utf8'));
+const HOLDER = process.env.HOLDER || config.token.initialHolder;
 
 if (!HOLDER || !ethers.isAddress(HOLDER)) {
-  console.error('HOLDER manquant ou invalide. Indiquez l’adresse de départ qui recevra les 700 M BOSA :');
-  console.error('  HOLDER=0x… PRIVATE_KEY=0x… node scripts/deploy-bosa.js');
+  console.error('Adresse de départ manquante ou invalide.');
+  console.error('Renseignez token.initialHolder dans coinbosa.config.json, ou passez HOLDER=0x…');
   process.exit(1);
 }
-if (!PRIVATE_KEY) {
-  console.error('PRIVATE_KEY manquante : clé privée du compte qui paie le déploiement.');
+if (ethers.getAddress(HOLDER) !== HOLDER) {
+  console.error(`Somme de contrôle EIP-55 invalide pour ${HOLDER}`);
+  console.error(`Attendu : ${ethers.getAddress(HOLDER.toLowerCase())}`);
   process.exit(1);
 }
 
@@ -30,7 +36,22 @@ const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
 
 (async () => {
   const provider = new ethers.JsonRpcProvider(RPC);
-  const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
+
+  // Le déployeur vient soit d'une clé privée, soit d'un keystore geth.
+  let wallet;
+  if (PRIVATE_KEY) {
+    wallet = new ethers.Wallet(PRIVATE_KEY, provider);
+  } else {
+    const pwd = fs.readFileSync(PASSWORD_FILE, 'utf8').trim();
+    const files = fs.readdirSync(KEYSTORE_DIR).filter((f) => f.startsWith('UTC--'));
+    if (!files.length) throw new Error(`aucun keystore dans ${KEYSTORE_DIR}`);
+    for (const f of files) {
+      const w = (await ethers.Wallet.fromEncryptedJson(fs.readFileSync(path.join(KEYSTORE_DIR, f), 'utf8'), pwd)).connect(provider);
+      if ((await provider.getBalance(w.address)) > 0n) { wallet = w; break; }
+    }
+    if (!wallet) throw new Error('aucun compte du keystore ne dispose de fonds pour payer le gas');
+  }
+
   const net = await provider.getNetwork();
 
   console.log(`Réseau     : chainId ${net.chainId}, bloc ${await provider.getBlockNumber()}`);
