@@ -1,0 +1,102 @@
+name: Coinbosa
+
+# Vérifie que la chaîne démarre réellement, franchit un bloc d'epoch, et que le
+# standard BRC20 se comporte comme spécifié. Les tests tournent contre un nœud
+# Coinbosa lancé pour l'occasion — pas contre un simulateur.
+
+on:
+  push:
+    branches: [master, main, 'coinbosa-**']
+    paths: ['coinbosa/**', 'consensus/parlia/**', '.github/workflows/coinbosa.yml']
+  pull_request:
+    paths: ['coinbosa/**', 'consensus/parlia/**', '.github/workflows/coinbosa.yml']
+  workflow_dispatch:
+
+jobs:
+  chaine-et-contrats:
+    name: Chaîne et contrats
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # --- le patch Coinbosa doit être présent, sinon les blocs font 3 s ---
+      - name: Vérifier le patch du temps de bloc
+        run: |
+          grep -q 'defaultBlockInterval uint64 = 5000' consensus/parlia/parlia.go \
+            || { echo "::error::le patch 5 s est absent de consensus/parlia/parlia.go"; exit 1; }
+          echo "patch 5 s présent"
+
+      - name: Compiler le client Coinbosa
+        run: make geth
+
+      - name: Installer les dépendances
+        working-directory: coinbosa
+        run: npm install --no-audit --no-fund
+
+      - name: Compiler les contrats
+        working-directory: coinbosa
+        run: node scripts/compile.js
+
+      # --- genesis et démarrage ---
+      - name: Générer le validateur et le genesis
+        working-directory: coinbosa
+        run: |
+          echo "coinbosa-ci" > pw.txt
+          VALIDATOR=$(../build/bin/geth account new --datadir node1 --password pw.txt 2>&1 \
+                      | grep -oE '0x[a-fA-F0-9]{40}' | head -1)
+          echo "VALIDATOR=$VALIDATOR" >> $GITHUB_ENV
+          echo "validateur : $VALIDATOR"
+          VALIDATOR=$VALIDATOR node scripts/build-genesis.js
+          ../build/bin/geth init --datadir node1 genesis/genesis-coinbosa.json
+
+      - name: Démarrer le nœud
+        working-directory: coinbosa
+        run: |
+          nohup ../build/bin/geth --datadir node1 --networkid 26262 --port 30303 --ipcdisable \
+            --http --http.addr 127.0.0.1 --http.port 8545 --http.api eth,net,web3,txpool,debug,parlia \
+            --mine --miner.etherbase "$VALIDATOR" --unlock "$VALIDATOR" \
+            --password pw.txt --allow-insecure-unlock \
+            --nodiscover --maxpeers 0 --syncmode full --gcmode archive --verbosity 2 \
+            > node.log 2>&1 &
+          for i in $(seq 1 40); do
+            n=$(curl -s -X POST -H 'Content-Type: application/json' \
+                 --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+                 http://127.0.0.1:8545 | sed -n 's/.*"result":"\([^"]*\)".*/\1/p') || true
+            [ -n "$n" ] && [ "$n" != "0x0" ] && { echo "nœud prêt, bloc $((n))"; exit 0; }
+            sleep 3
+          done
+          echo "::error::le nœud n'a pas démarré"; tail -40 node.log; exit 1
+
+      - name: Vérifier le temps de bloc (5 s)
+        working-directory: coinbosa
+        run: node scripts/check-blocktime.js
+
+      - name: Tests BRC20
+        working-directory: coinbosa
+        run: RPC=http://127.0.0.1:8545 node scripts/test-brc20.js
+
+      - name: Déployer BOSA
+        working-directory: coinbosa
+        run: RPC=http://127.0.0.1:8545 node scripts/deploy-bosa.js
+
+      # Le bloc 200 est le premier bloc d'epoch : c'est là que le contrat système
+      # est interrogé. Une régression sur CoinbosaValidatorSet fige la chaîne ici.
+      - name: Franchir un bloc d'epoch
+        working-directory: coinbosa
+        run: node scripts/check-epoch.js
+
+      - name: Journal du nœud en cas d'échec
+        if: failure()
+        working-directory: coinbosa
+        run: tail -80 node.log
