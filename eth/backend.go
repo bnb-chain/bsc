@@ -359,13 +359,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			HistoryPolicy:           histPolicy,
 			TxLookupLimit:           int64(min(config.TransactionHistory, math.MaxInt64)),
 			PathSyncFlush:           config.PathSyncFlush,
-			EnableIncr:              config.EnableIncrSnapshots,
-			IncrHistoryPath:         config.IncrSnapshotPath,
-			IncrHistory:             config.IncrSnapshotBlockInterval,
-			IncrStateBuffer:         config.IncrSnapshotStateBuffer,
-			IncrKeptBlocks:          config.IncrSnapshotKeptBlocks,
-			UseRemoteIncrSnapshot:   config.UseRemoteIncrSnapshot,
-			RemoteIncrURL:           config.RemoteIncrSnapshotURL,
 
 			VmConfig: vm.Config{
 				EnablePreimageRecording: config.EnablePreimageRecording,

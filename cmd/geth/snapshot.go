@@ -191,15 +191,6 @@ EIP-161.
 The exported accounts are identified by their address.
 `,
 			},
-			{
-				Action:    mergeIncrSnapshot,
-				Name:      "merge-incr-snapshot",
-				Usage:     "Merge the incremental snapshot into local data",
-				ArgsUsage: "",
-				Flags: slices.Concat([]cli.Flag{utils.IncrSnapshotPathFlag},
-					utils.DatabaseFlags),
-				Description: `This command merges multiple incremental snapshots into local data`,
-			},
 		},
 	}
 )
@@ -257,7 +248,7 @@ func verifyState(ctx *cli.Context) error {
 		log.Error("Failed to load head block")
 		return errors.New("no head block")
 	}
-	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false, false)
+	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false)
 	defer triedb.Close()
 
 	var (
@@ -436,7 +427,7 @@ func traverseState(ctx *cli.Context) error {
 	chaindb := utils.MakeChainDatabase(ctx, stack, true)
 	defer chaindb.Close()
 
-	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false, false)
+	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false)
 	defer triedb.Close()
 
 	headBlock := rawdb.ReadHeadBlock(chaindb)
@@ -549,7 +540,7 @@ func traverseRawState(ctx *cli.Context) error {
 	chaindb := utils.MakeChainDatabase(ctx, stack, true)
 	defer chaindb.Close()
 
-	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false, false)
+	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false)
 	defer triedb.Close()
 
 	headBlock := rawdb.ReadHeadBlock(chaindb)
@@ -700,7 +691,7 @@ func dumpState(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	triedb := utils.MakeTrieDatabase(ctx, stack, db, false, true, false, false)
+	triedb := utils.MakeTrieDatabase(ctx, stack, db, false, true, false)
 	defer triedb.Close()
 
 	stateIt, err := utils.NewStateIterator(triedb, db, root, int(ctx.Uint64(utils.TriesInMemoryFlag.Name)))
@@ -776,7 +767,7 @@ func snapshotExportPreimages(ctx *cli.Context) error {
 	chaindb := utils.MakeChainDatabase(ctx, stack, true)
 	defer chaindb.Close()
 
-	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false, false)
+	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false)
 	defer triedb.Close()
 
 	var root common.Hash
@@ -833,73 +824,6 @@ func checkAccount(ctx *cli.Context) error {
 	return nil
 }
 
-// mergeIncrSnapshot merges the incremental snapshot into local data.
-func mergeIncrSnapshot(ctx *cli.Context) error {
-	stack, _ := makeConfigNode(ctx)
-	defer stack.Close()
-
-	chainDB := utils.MakeChainDatabase(ctx, stack, false)
-	defer chainDB.Close()
-
-	trieDB := utils.MakeTrieDatabase(ctx, stack, chainDB, false, false, false, true)
-	defer trieDB.Close()
-
-	if !ctx.IsSet(utils.IncrSnapshotPathFlag.Name) {
-		return errors.New("incremental snapshot path is not set")
-	}
-	path := ctx.String(utils.IncrSnapshotPathFlag.Name)
-
-	startBlock, err := trieDB.GetStartBlock()
-	if err != nil {
-		log.Error("Failed to get start block", "error", err)
-		return err
-	}
-	dirs, err := rawdb.GetAllIncrDirs(path)
-	if err != nil {
-		log.Error("Failed to get all incremental directories", "err", err)
-		return err
-	}
-	if startBlock < dirs[0].StartBlockNum {
-		return fmt.Errorf("local start block %d is lower than incr first start block %d", startBlock, dirs[0].StartBlockNum)
-	}
-
-	for i := 1; i < len(dirs); i++ {
-		prevFile := dirs[i-1]
-		currFile := dirs[i]
-
-		expectedStartBlock := prevFile.EndBlockNum + 1
-		if currFile.StartBlockNum != expectedStartBlock {
-			return fmt.Errorf("file continuity broken: file %s ends at %d, but file %s starts at %d (expected %d)",
-				prevFile.Name, prevFile.EndBlockNum, currFile.Name, currFile.StartBlockNum, expectedStartBlock)
-		}
-	}
-
-	log.Info("Start merging incremental snapshot", "path", path, "incremental snapshot number", len(dirs))
-	for i, dir := range dirs {
-		if i == len(dirs)-1 {
-			complete, err := rawdb.CheckIncrSnapshotComplete(dir.Path)
-			if err != nil {
-				log.Error("Failed to check last incr snapshot complete", "err", err)
-				return err
-			}
-			if !complete {
-				log.Warn("Skip last incr snapshot due to data is incomplete")
-				continue
-			}
-		}
-
-		if dir.StartBlockNum >= startBlock && dir.EndBlockNum > startBlock {
-			if err = core.MergeIncrSnapshot(chainDB, trieDB, dir.Path); err != nil {
-				log.Error("Failed to merge incremental snapshot", "err", err)
-				return err
-			}
-		} else {
-			log.Info("Skip merge incremental snapshot", "dir", dir.Name)
-		}
-	}
-	return nil
-}
-
 // listEIP7610EligibleAccounts traverses the post–EIP-161 state and returns all
 // accounts that are eligible under EIP-7610: accounts with zero nonce, empty
 // runtime code, and non-empty storage.
@@ -934,7 +858,7 @@ func listEIP7610EligibleAccounts(ctx *cli.Context) error {
 		log.Info("Local head is prior to EIP-161", "head", headBlock.Number(), "eip-161", *config.EIP158Block)
 		return nil
 	}
-	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false, false)
+	triedb := utils.MakeTrieDatabase(ctx, stack, chaindb, false, true, false)
 	defer triedb.Close()
 
 	if triedb.Scheme() != rawdb.PathScheme {

@@ -103,6 +103,15 @@ var deprecatedConfigFields = map[string]bool{
 	"ethconfig.Config.LightNoPrune":            true,
 	"ethconfig.Config.LightNoSyncServe":        true,
 	"legacypool.Config.OverflowPoolSlots":      true,
+
+	// Deprecated May 2026, the incremental snapshot feature was removed.
+	"ethconfig.Config.EnableIncrSnapshots":       true,
+	"ethconfig.Config.IncrSnapshotPath":          true,
+	"ethconfig.Config.IncrSnapshotBlockInterval": true,
+	"ethconfig.Config.IncrSnapshotStateBuffer":   true,
+	"ethconfig.Config.IncrSnapshotKeptBlocks":    true,
+	"ethconfig.Config.UseRemoteIncrSnapshot":     true,
+	"ethconfig.Config.RemoteIncrSnapshotURL":     true,
 }
 
 type ethstatsConfig struct {

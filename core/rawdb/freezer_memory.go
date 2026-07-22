@@ -452,10 +452,6 @@ func (f *MemoryFreezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) 
 	panic("not supported")
 }
 
-func (f *MemoryFreezer) ResetTableForIncr(kind string, startAt uint64, onlyEmpty bool) error {
-	panic("not supported")
-}
-
 // AncientDatadir returns the path of the ancient store.
 // Since the memory freezer is ephemeral, an empty string is returned.
 func (f *MemoryFreezer) AncientDatadir() (string, error) {
