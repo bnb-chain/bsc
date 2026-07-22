@@ -233,10 +233,17 @@ des treize postes s'appliquent donc à l'allocation projet, pas au total.
 migration à sens unique ne permet pas de reprendre des jetons dans un portefeuille tiers, et
 aucune exclusion d'adresse n'est retenue.
 
-**Donnée manquante pour finaliser :** le montant de jetons Solana détenu par des tiers —
-c'est-à-dire l'offre en circulation (500 000 000) moins ce que le projet conserve sur son
-portefeuille. Cette valeur obtenue, la réserve de migration et les montants des treize postes se
-calculent sans ambiguïté.
+**Partage établi :** sur les 500 000 000 de jetons Solana, **450 000 000 sont détenus par le
+projet** et **50 000 000 par des tiers**. D'où :
+
+- **réserve de migration : 50 000 000** BOSA, pour les détenteurs tiers ;
+- **allocation projet : 650 000 000** BOSA, répartie selon les treize postes ;
+- total : 700 000 000, vérifié on-chain.
+
+**Non-double-comptage.** Les 450 000 000 de jetons Solana du projet ne sont pas migrés — le
+projet reçoit son allocation au genesis. Ces 450 000 000 seront **retirés de la circulation sur
+Solana**, publiquement, pour prouver que le projet ne migre pas ses propres jetons en plus de son
+allocation.
 
 **Conformité à ne pas éluder.** Le portail collecte des données personnelles (nom, prénom) et
 opère un transfert de valeur : protection des données, obligations anti-blanchiment et

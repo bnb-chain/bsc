@@ -175,33 +175,34 @@ jamais été distribué ; la structure est abandonnée au profit d'un actif uniq
 
 ## 5. Répartition de l'offre
 
-L'offre native est le total migré de l'offre historique émise sur Solana et BNB Chain (voir la
-section suivante). Les 700 000 000 BOSA se décomposent en deux blocs :
+L'offre de 700 000 000 BOSA se décompose en deux blocs. Des jetons Coinbosa historiques
+existent sur Solana (500 000 000), dont 450 000 000 détenus par le projet et 50 000 000 par des
+tiers (voir la section suivante).
 
-- une **réserve de migration**, égale au montant de jetons historiques détenus par des tiers,
-  créditée à ces détenteurs à mesure qu'ils migrent, un jeton pour un BOSA ;
-- une **allocation projet**, égale au reste, répartie selon les postes ci-dessous.
-
-**Les pourcentages s'appliquent à l'allocation projet, pas au total.** Les montants en jetons
-seront fixés une fois connu le partage entre l'offre détenue par le projet et celle détenue par
-des tiers ; ce document en donne la structure, pas les valeurs.
-
-| Poste | Part de l'allocation projet |
+| Bloc | Montant |
 |---|---|
-| Développement | 20 % |
-| Technique | 10 % |
-| Recherche | 10 % |
-| Équipe | 10 % |
-| Fonds financier (dépôts Coinbosa Card) | 10 % |
-| Fonds de liquidité | 10 % |
-| Recherche en intelligence artificielle | 10 % |
-| Recherche finance et fintech | 5 % |
-| Sécurité | 3 % |
-| Audit | 2 % |
-| Événements et formation | 2 % |
-| Distribution publique et communauté | 5 % |
-| Réserve stratégique | 3 % |
-| **Total** | **100 %** |
+| Réserve de migration (détenteurs tiers de jetons Solana) | 50 000 000 |
+| Allocation projet (treize postes ci-dessous) | 650 000 000 |
+| **Total** | **700 000 000** |
+
+Les pourcentages ci-dessous s'appliquent à l'allocation projet de 650 000 000.
+
+| Poste | Part | BOSA |
+|---|---|---|
+| Développement | 20 % | 130 000 000 |
+| Technique | 10 % | 65 000 000 |
+| Recherche | 10 % | 65 000 000 |
+| Équipe | 10 % | 65 000 000 |
+| Fonds financier (dépôts Coinbosa Card) | 10 % | 65 000 000 |
+| Fonds de liquidité | 10 % | 65 000 000 |
+| Recherche en intelligence artificielle | 10 % | 65 000 000 |
+| Recherche finance et fintech | 5 % | 32 500 000 |
+| Sécurité | 3 % | 19 500 000 |
+| Audit | 2 % | 13 000 000 |
+| Événements et formation | 2 % | 13 000 000 |
+| Distribution publique et communauté | 5 % | 32 500 000 |
+| Réserve stratégique | 3 % | 19 500 000 |
+| **Total allocation projet** | **100 %** | **650 000 000** |
 
 Aucune part n'est réservée aux récompenses de validation : celles-ci proviennent exclusivement
 des frais de transaction (voir [Modèle économique](#8-modèle-économique)).

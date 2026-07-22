@@ -33,8 +33,16 @@ if (!VALIDATOR || !ethers.isAddress(VALIDATOR)) {
 
 const ZERO = '0x0000000000000000000000000000000000000000';
 const WEI = 10n ** 18n;
-const TOTAL_SUPPLY = BigInt(CONFIG.nativeCoin.totalSupply); // 700 000 000
+const TOTAL_SUPPLY = BigInt(CONFIG.nativeCoin.totalSupply);       // 700 000 000
+const MIGRATION_RESERVE = BigInt(CONFIG.migration.reserve);      // 50 000 000
+const PROJECT_ALLOCATION = BigInt(CONFIG.projectAllocation.amount); // 650 000 000
 const dist = Object.entries(CONFIG.distribution).filter(([k]) => !k.startsWith('$'));
+
+// Contrôle de cohérence : réserve de migration + allocation projet = offre totale.
+if (MIGRATION_RESERVE + PROJECT_ALLOCATION !== TOTAL_SUPPLY) {
+  console.error(`ERREUR : réserve (${MIGRATION_RESERVE}) + allocation projet (${PROJECT_ALLOCATION}) ≠ offre totale (${TOTAL_SUPPLY}).`);
+  process.exit(1);
+}
 
 // En développement uniquement, le validateur détient le premier poste : cela donne au
 // producteur de blocs des fonds pour payer le gas des tests, sans toucher au total de
@@ -100,20 +108,29 @@ const VALSET = '0x0000000000000000000000000000000000001000';
 const oldSize = (base.alloc[VALSET].code.length - 2) / 2;
 alloc[VALSET] = { balance: '0x0', code: runtime };
 
-// --- 3. allouer l'offre selon la répartition ---
+// --- 3. allouer l'offre : réserve de migration + treize postes sur l'allocation projet ---
 const g = { ...base, alloc };
 let allocated = 0n;
 const table = [];
+
+// a) réserve de migration, à une adresse dédiée
+const migrationAddr = addressFor('__migration__');
+const migAmount = MIGRATION_RESERVE * WEI;
+alloc[migrationAddr] = { balance: '0x' + migAmount.toString(16) };
+allocated += migAmount;
+table.push(['réserve de migration', '', migrationAddr, MIGRATION_RESERVE]);
+
+// b) treize postes, pourcentages appliqués à l'allocation projet (650 000 000)
 for (const [post, pct] of dist) {
-  const amount = (TOTAL_SUPPLY * BigInt(pct) / 100n) * WEI;
+  const amount = (PROJECT_ALLOCATION * BigInt(pct) / 100n) * WEI;
   const address = addressFor(post);
   if (alloc[address]) alloc[address].balance = '0x' + (BigInt(alloc[address].balance || 0) + amount).toString(16);
   else alloc[address] = { balance: '0x' + amount.toString(16) };
   allocated += amount;
-  table.push([post, pct, address, amount / WEI]);
+  table.push([post, pct + ' %', address, amount / WEI]);
 }
 
-// contrôle dur : l'offre allouée doit valoir exactement 700 000 000 BOSA
+// contrôle dur : l'offre allouée doit valoir exactement l'offre totale
 const target = TOTAL_SUPPLY * WEI;
 if (allocated !== target) {
   console.error(`ERREUR : offre allouée ${allocated} wei, attendu ${target} wei.`);
@@ -135,9 +152,9 @@ console.log('solde hérité purgé:', (purged / WEI).toLocaleString('fr-FR'), 'c
 console.log('');
 console.log('répartition de l\'offre' + (ALLOW_DEV ? ' — ADRESSES DE DÉVELOPPEMENT, non dépensables' : '') + ' :');
 for (const [post, pct, address, whole] of table) {
-  console.log(`  ${post.padEnd(26)} ${String(pct).padStart(3)} %  ${address}  ${whole.toLocaleString('fr-FR').padStart(13)}`);
+  console.log(`  ${post.padEnd(28)} ${String(pct).padStart(5)}  ${address}  ${whole.toLocaleString('fr-FR').padStart(13)}`);
 }
-console.log('  ' + '-'.repeat(72));
-console.log(`  ${'TOTAL'.padEnd(26)} 100 %  ${''.padEnd(42)} ${(allocated / WEI).toLocaleString('fr-FR').padStart(13)} BOSA`);
+console.log('  ' + '-'.repeat(74));
+console.log(`  ${'TOTAL'.padEnd(28)} ${''.padStart(5)}  ${''.padEnd(42)} ${(allocated / WEI).toLocaleString('fr-FR').padStart(13)} BOSA`);
 console.log('\nécrit ->', OUT);
 if (ALLOW_DEV) console.log('\n⚠  Adresses de développement : remplissez genesis/distribution-addresses.json avant la production.');

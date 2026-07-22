@@ -38,40 +38,47 @@ Des jetons Coinbosa historiques existent sur **Solana** (500 000 000). Leurs dé
 les échanger contre du BOSA natif, à parité, par la [migration](docs/MIGRATION.md). *(Des jetons
 avaient aussi été émis sur BNB Chain ; ce jeton n'existe plus et n'entre pas dans la migration.)*
 
-L'offre de 700 000 000 BOSA se décompose en deux blocs :
+Sur ces 500 000 000 de jetons Solana, **450 000 000 sont détenus par le projet** sur son
+portefeuille, et **50 000 000 par des tiers** — public et anciens contributeurs. L'offre native
+se décompose donc ainsi :
 
-- une **réserve de migration**, égale au montant de jetons historiques détenus par des tiers
-  (public et anciens contributeurs), créditée à ces détenteurs à mesure qu'ils migrent, un jeton
-  pour un BOSA ;
-- une **allocation projet**, égale au reste, organisée selon les treize postes ci-dessous.
+| Bloc | Montant | Objet |
+|---|---|---|
+| **Réserve de migration** | 50 000 000 | créditée aux détenteurs tiers de jetons Solana, à parité, à mesure des migrations |
+| **Allocation projet** | 650 000 000 | répartie selon les treize postes ci-dessous |
+| **Total** | **700 000 000** | |
 
-**Les pourcentages des treize postes s'appliquent à l'allocation projet, pas au total de
-700 000 000.** Les montants absolus seront fixés une fois connu le montant détenu par des tiers
-sur Solana ; jusque-là, ce document en donne la structure, pas les valeurs en jetons.
+Les 450 000 000 de jetons Solana détenus par le projet **ne sont pas migrés** : le projet reçoit
+son allocation directement au genesis. Pour qu'aucun jeton ne soit compté deux fois, ces
+450 000 000 seront **retirés de la circulation sur Solana**, de manière publique et vérifiable.
+
+**Les pourcentages des treize postes s'appliquent à l'allocation projet (650 000 000), pas au
+total.**
 
 ---
 
 ## Répartition de l'allocation projet
 
-*Pourcentages appliqués à l'allocation projet (l'offre historique concentrée sur le portefeuille
-du projet). Les montants en BOSA seront publiés après réconciliation.*
+*Pourcentages appliqués à l'allocation projet de 650 000 000 BOSA.*
 
-| Poste | Part | Objet |
-|---|---|---|
-| **Développement** | 20 % | construction du réseau, des contrats et des applications |
-| **Technique** | 10 % | infrastructure, nœuds, exploitation, outillage |
-| **Recherche** | 10 % | travaux de recherche du protocole |
-| **Équipe** | 10 % | rémunération des contributeurs |
-| **Fonds financier** | 10 % | fonds de dépôt adossé à Coinbosa Card |
-| **Fonds de liquidité** | 10 % | tenue de marché et profondeur de carnet |
-| **Recherche IA** | 10 % | travaux d'intelligence artificielle |
-| **Recherche finance et fintech** | 5 % | travaux sur les usages financiers |
-| **Sécurité** | 3 % | sécurisation du réseau et réponse aux incidents |
-| **Audit** | 2 % | audits externes du code et des contrats |
-| **Événements et formation** | 2 % | formation et rencontres de l'écosystème |
-| **Distribution publique et communauté** | 5 % | mise en circulation initiale |
-| **Réserve stratégique** | 3 % | imprévus, partenariats, opportunités |
-| **Total** | **100 %** | *de l'allocation projet* |
+| Poste | Part | BOSA | Objet |
+|---|---|---|---|
+| **Développement** | 20 % | 130 000 000 | construction du réseau, des contrats et des applications |
+| **Technique** | 10 % | 65 000 000 | infrastructure, nœuds, exploitation, outillage |
+| **Recherche** | 10 % | 65 000 000 | travaux de recherche du protocole |
+| **Équipe** | 10 % | 65 000 000 | rémunération des contributeurs |
+| **Fonds financier** | 10 % | 65 000 000 | fonds de dépôt adossé à Coinbosa Card |
+| **Fonds de liquidité** | 10 % | 65 000 000 | tenue de marché et profondeur de carnet |
+| **Recherche IA** | 10 % | 65 000 000 | travaux d'intelligence artificielle |
+| **Recherche finance et fintech** | 5 % | 32 500 000 | travaux sur les usages financiers |
+| **Sécurité** | 3 % | 19 500 000 | sécurisation du réseau et réponse aux incidents |
+| **Audit** | 2 % | 13 000 000 | audits externes du code et des contrats |
+| **Événements et formation** | 2 % | 13 000 000 | formation et rencontres de l'écosystème |
+| **Distribution publique et communauté** | 5 % | 32 500 000 | mise en circulation initiale |
+| **Réserve stratégique** | 3 % | 19 500 000 | imprévus, partenariats, opportunités |
+| **Total allocation projet** | **100 %** | **650 000 000** | |
+
+Avec la réserve de migration de 50 000 000, l'offre totale atteint bien 700 000 000 BOSA.
 
 > Les treize postes bouclent à 100 % de l'allocation projet. Les deux derniers — distribution
 > publique et communauté (5 %) et réserve stratégique (3 %) — complètent les onze premiers ; le

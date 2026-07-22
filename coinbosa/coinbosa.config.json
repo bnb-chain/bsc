@@ -28,7 +28,7 @@
     "$comment": "Le livre blanc prévoit 12 validateurs identifiés répartis sur des serveurs distincts. La liste vit dans le contrat CoinbosaValidatorSet (0x...1000) et se met à jour par updateValidatorSet()."
   },
   "distribution": {
-    "$comment": "Répartition des 700 000 000 BOSA. Les adresses seront inscrites au genesis (jalon 1).",
+    "$comment": "Répartition de l'allocation projet (650 000 000 BOSA). Pourcentages appliqués à projectAllocation, pas au total. Adresses dans genesis/distribution-addresses.json.",
     "developpement": 20,
     "technique": 10,
     "recherche": 10,
@@ -46,5 +46,18 @@
   "validatorRewards": {
     "source": "frais de transaction uniquement",
     "$comment": "Aucune part de l'offre n'est réservée aux récompenses et aucune émission n'est créée. Sans trafic, le revenu d'un validateur est nul. Ne jamais publier de taux de rendement."
+  },
+  "migration": {
+    "$comment": "Migration des jetons historiques Solana vers le BOSA natif, à parité. La réserve est créditée aux détenteurs tiers à mesure des migrations. Le projet ne migre pas ses propres jetons (il reçoit son allocation au genesis) : ses 450 M Solana seront retirés de la circulation pour éviter tout double compte.",
+    "sourceChain": "solana",
+    "sourceContract": "8UyvxCoVXoVaftWzp7j9yo2sGL2HnHTFDV4capenyFaf",
+    "sourceSupply": "500000000",
+    "projectHeld": "450000000",
+    "reserve": "50000000",
+    "ratio": "1:1"
+  },
+  "projectAllocation": {
+    "$comment": "Offre native moins la réserve de migration. C'est la base sur laquelle s'appliquent les pourcentages de distribution.",
+    "amount": "650000000"
   }
 }
