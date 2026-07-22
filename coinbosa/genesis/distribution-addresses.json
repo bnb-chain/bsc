@@ -1,0 +1,16 @@
+{
+  "$comment": "Adresse de détention de chaque poste de la répartition. À remplir avec de vraies adresses multi-signatures générées sur le serveur cible, JAMAIS des clés de développement. Les parts (en %) sont définies dans coinbosa.config.json → distribution. Tant qu'une adresse vaut la valeur nulle, build-genesis.js refuse de produire le genesis de production ; en mode développement (ALLOW_DEV=1), il substitue une adresse déterministe non dépensable pour permettre la vérification.",
+  "developpement": "0x0000000000000000000000000000000000000000",
+  "technique": "0x0000000000000000000000000000000000000000",
+  "recherche": "0x0000000000000000000000000000000000000000",
+  "equipe": "0x0000000000000000000000000000000000000000",
+  "fondsFinancierCard": "0x0000000000000000000000000000000000000000",
+  "fondsLiquidite": "0x0000000000000000000000000000000000000000",
+  "rechercheIA": "0x0000000000000000000000000000000000000000",
+  "rechercheFinanceFintech": "0x0000000000000000000000000000000000000000",
+  "securite": "0x0000000000000000000000000000000000000000",
+  "audit": "0x0000000000000000000000000000000000000000",
+  "evenementsFormation": "0x0000000000000000000000000000000000000000",
+  "distributionPublique": "0x0000000000000000000000000000000000000000",
+  "reserveStrategique": "0x0000000000000000000000000000000000000000"
+}
