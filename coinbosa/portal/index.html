@@ -69,7 +69,7 @@
     <img class="logo" src="../assets/coinbosa-logo.jpg" alt="Coinbosa" />
     <div>
       <h1>Portail de migration Coinbosa</h1>
-      <div class="sub">Échangez vos jetons Solana ou BNB Chain contre du BOSA natif</div>
+      <div class="sub">Échangez vos jetons Solana contre du BOSA natif</div>
     </div>
   </header>
 
@@ -117,8 +117,8 @@
       <select id="reseau">
         <option value="">— choisir —</option>
         <option value="solana">Solana</option>
-        <option value="bnb">BNB Chain</option>
       </select>
+      <span class="hint">Seule la migration depuis Solana est ouverte. Le jeton BNB Chain n'existe plus.</span>
     </div>
 
     <div class="deposit" id="deposit" hidden>
@@ -153,7 +153,7 @@
 
 // Adresses de dépôt : VIDES tant qu'elles ne sont pas officiellement publiées.
 // Ne jamais coder ici une adresse non vérifiée — ce serait un vecteur de détournement.
-const DEPOSIT = { solana: '', bnb: '' };
+const DEPOSIT = { solana: '' };
 
 const $ = (id) => document.getElementById(id);
 
@@ -220,7 +220,7 @@ function validate() {
   if (!reseau) ok=false;
   $('deposit').hidden = !reseau;
   if (reseau) {
-    $('reseau-nom').textContent = reseau === 'solana' ? '(Solana)' : '(BNB Chain)';
+    $('reseau-nom').textContent = '(Solana)';
     $('deposit-addr').textContent = DEPOSIT[reseau] || 'à publier avant l’ouverture du portail';
   }
 
@@ -234,8 +234,7 @@ function validate() {
 
   const tx = $('tx').value.trim();
   if (!tx) { setHint('tx',''); ok=false; }
-  else if (reseau==='bnb' && !/^0x[0-9a-fA-F]{64}$/.test(tx)) { setHint('tx','Une empreinte BNB Chain fait 66 caractères (0x + 64).','err'); ok=false; }
-  else if (reseau==='solana' && !/^[1-9A-HJ-NP-Za-km-z]{43,88}$/.test(tx)) { setHint('tx','Empreinte Solana invalide (signature base58).','err'); ok=false; }
+  else if (!/^[1-9A-HJ-NP-Za-km-z]{43,88}$/.test(tx)) { setHint('tx','Empreinte Solana invalide (signature base58).','err'); ok=false; }
   else setHint('tx','Format reconnu.','ok');
 
   $('submit').disabled = !ok;

@@ -141,9 +141,10 @@ gouvernance du réseau. Toute autre utilité dépend de raccordements qui ne son
 
 ### Détenteurs historiques sur d'autres réseaux, et migration
 
-Lors de phases antérieures, des jetons Coinbosa ont été émis sur **Solana** et sur **BNB Chain**,
-et sont détenus par des tiers. Ces jetons sont distincts du coin natif décrit ici : ils vivent
-sur d'autres réseaux, et le passage à Coinbosa Chain suppose une migration.
+Lors de phases antérieures, des jetons Coinbosa ont été émis sur **Solana**, et sont détenus par
+des tiers. Ces jetons sont distincts du coin natif décrit ici : ils vivent sur un autre réseau,
+et le passage à Coinbosa Chain suppose une migration. *(Des jetons avaient aussi été émis sur BNB
+Chain ; ce jeton n'existe plus et n'entre pas dans la migration.)*
 
 Un **portail de migration** permettra à ces détenteurs d'échanger leurs jetons historiques contre
 du BOSA natif sur Coinbosa Chain. La migration est **à sens unique** : les jetons historiques sont
@@ -157,10 +158,10 @@ indique l'adresse Coinbosa Chain sur laquelle recevoir son BOSA, et reçoit en r
 vérifiable du transfert — l'empreinte de la transaction sur Coinbosa Chain, consultable par
 quiconque sur l'explorateur.
 
-Trois éléments seront publiés avant l'ouverture du portail, et non promis : le **taux de
-conversion** appliqué à chaque réseau d'origine, l'**offre historique** en circulation sur Solana
-et sur BNB Chain, et l'**allocation** de BOSA natif réservée à la migration au sein de l'offre.
-Tant que ces valeurs ne sont pas établies et vérifiables, aucune n'est avancée ici.
+Deux éléments seront publiés avant l'ouverture du portail, et non promis : le **montant de
+jetons Solana détenu par des tiers**, qui détermine la réserve de BOSA affectée à la migration,
+et l'**adresse officielle de dépôt** sur Solana. Tant que ces valeurs ne sont pas établies et
+vérifiables, aucune n'est avancée ici.
 
 ### Note de correction
 

@@ -30,25 +30,24 @@ BOSA est donc définitive. Aucun mécanisme du protocole ne peut l'augmenter.
 
 ---
 
-## L'offre native est le total migré de l'offre historique
+## Offre native et migration
 
-Des jetons Coinbosa ont été émis lors de phases antérieures : **500 000 000 sur Solana** et
-**200 000 000 sur BNB Chain**, soit 700 000 000 au total — exactement l'offre native. Ce n'est pas
-une coïncidence : l'offre native **est** le total historique, transposé à parité sur Coinbosa
-Chain par la [migration](docs/MIGRATION.md).
+L'offre native est de **700 000 000 BOSA**, fixée au genesis.
 
-L'offre de 700 000 000 BOSA se décompose donc en deux blocs :
+Des jetons Coinbosa historiques existent sur **Solana** (500 000 000). Leurs détenteurs pourront
+les échanger contre du BOSA natif, à parité, par la [migration](docs/MIGRATION.md). *(Des jetons
+avaient aussi été émis sur BNB Chain ; ce jeton n'existe plus et n'entre pas dans la migration.)*
+
+L'offre de 700 000 000 BOSA se décompose en deux blocs :
 
 - une **réserve de migration**, égale au montant de jetons historiques détenus par des tiers
   (public et anciens contributeurs), créditée à ces détenteurs à mesure qu'ils migrent, un jeton
   pour un BOSA ;
-- une **allocation projet**, égale au reste — la part que le projet détient déjà sous forme
-  historique, sur son portefeuille concentré —, organisée selon les treize postes ci-dessous.
+- une **allocation projet**, égale au reste, organisée selon les treize postes ci-dessous.
 
 **Les pourcentages des treize postes s'appliquent à l'allocation projet, pas au total de
-700 000 000.** Les montants absolus seront fixés une fois connu le partage entre l'offre détenue
-par le projet et celle détenue par des tiers ; jusque-là, ce document en donne la structure, pas
-les valeurs en jetons.
+700 000 000.** Les montants absolus seront fixés une fois connu le montant détenu par des tiers
+sur Solana ; jusque-là, ce document en donne la structure, pas les valeurs en jetons.
 
 ---
 
