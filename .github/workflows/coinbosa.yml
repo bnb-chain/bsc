@@ -57,7 +57,9 @@ jobs:
                       | grep -oE '0x[a-fA-F0-9]{40}' | head -1)
           echo "VALIDATOR=$VALIDATOR" >> $GITHUB_ENV
           echo "validateur : $VALIDATOR"
-          VALIDATOR=$VALIDATOR node scripts/build-genesis.js
+          # ALLOW_DEV : la CI vérifie la mécanique, pas la production. Les adresses de
+          # distribution restent des placeholders déterministes non dépensables.
+          VALIDATOR=$VALIDATOR ALLOW_DEV=1 node scripts/build-genesis.js
           ../build/bin/geth init --datadir node1 genesis/genesis-coinbosa.json
 
       - name: Démarrer le nœud
@@ -82,13 +84,13 @@ jobs:
         working-directory: coinbosa
         run: node scripts/check-blocktime.js
 
-      - name: Tests BRC20
+      - name: Vérifier l'offre native (700 M, pont purgé)
+        working-directory: coinbosa
+        run: RPC=http://127.0.0.1:8545 node scripts/check-supply.js
+
+      - name: Tests du standard BRC20
         working-directory: coinbosa
         run: RPC=http://127.0.0.1:8545 node scripts/test-brc20.js
-
-      - name: Déployer BOSA
-        working-directory: coinbosa
-        run: RPC=http://127.0.0.1:8545 node scripts/deploy-bosa.js
 
       # Le bloc 200 est le premier bloc d'epoch : c'est là que le contrat système
       # est interrogé. Une régression sur CoinbosaValidatorSet fige la chaîne ici.

@@ -9,7 +9,7 @@ const { ethers } = require('ethers');
 const RPC = process.env.RPC || 'http://127.0.0.1:8545';
 const KEYSTORE_DIR = process.env.KEYSTORE || path.join(__dirname, '..', 'node1', 'keystore');
 const PASSWORD_FILE = process.env.PASSWORD_FILE || path.join(__dirname, '..', 'pw.txt');
-const ARTIFACT = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'build', 'BosaToken.json'), 'utf8'));
+const ARTIFACT = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'build', 'ExampleToken.json'), 'utf8'));
 
 let pass = 0, fail = 0;
 const results = [];
@@ -75,19 +75,19 @@ async function expectRevert(name, promise) {
   console.log(`  adresse : ${addr}`);
   console.log(`  bloc    : ${dtx.blockNumber}, gas ${dtx.gasUsed}\n`);
 
-  const DEC = 10n;
+  const DEC = 18n;
   const UNIT = 10n ** DEC;
-  const SUPPLY = 700_000_000n * UNIT;
+  const SUPPLY = 1_000_000n * UNIT;
 
   // --- Métadonnées ---
-  console.log('MÉTADONNÉES (specs Coinbosa)');
-  check('name() vaut "Coinbosa"', await token.name(), 'Coinbosa');
-  check('symbol() vaut "BOSA"', await token.symbol(), 'BOSA');
-  check('decimals() vaut 10', await token.decimals(), 10);
-  check('totalSupply() vaut 700 000 000 BOSA', await token.totalSupply(), SUPPLY);
-  check('offre lisible = 700000000', (await token.totalSupply()) / UNIT, 700000000n);
-  check('getOwner() est l’adresse de départ', await token.getOwner(), deployer.address);
-  check('l’adresse de départ détient tout', await token.balanceOf(deployer.address), SUPPLY);
+  console.log('MÉTADONNÉES (jeton d’exemple du standard BRC20)');
+  check('name() vaut "Example Token"', await token.name(), 'Example Token');
+  check('symbol() vaut "EXMPL"', await token.symbol(), 'EXMPL');
+  check('decimals() vaut 18', await token.decimals(), 18);
+  check('totalSupply() vaut 1 000 000', await token.totalSupply(), SUPPLY);
+  check('offre lisible = 1000000', (await token.totalSupply()) / UNIT, 1000000n);
+  check('getOwner() est le propriétaire', await token.getOwner(), deployer.address);
+  check('le propriétaire détient tout', await token.balanceOf(deployer.address), SUPPLY);
 
   // --- Transferts ---
   console.log('\nTRANSFERTS');

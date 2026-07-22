@@ -6,7 +6,6 @@
   "private": true,
   "scripts": {
     "compile": "node scripts/compile.js",
-    "deploy": "node scripts/deploy-bosa.js",
     "test": "node scripts/test-brc20.js",
     "node": "./scripts/start-node.sh",
     "explorer": "./scripts/start-explorer.sh"

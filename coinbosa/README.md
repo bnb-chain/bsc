@@ -67,7 +67,7 @@ S'y ajoutent :
 contracts/
   IBRC20.sol                 interface du standard
   BRC20.sol                  implémentation de référence, réutilisable pour tout jeton
-  BosaToken.sol              le jeton BOSA officiel
+  ExampleToken.sol           jeton de démonstration du standard
   CoinbosaValidatorSet.sol   contrat système du consensus
 ```
 
@@ -190,16 +190,6 @@ node scripts/compile.js      # compiler les contrats
 ./scripts/start-explorer.sh  # explorateur sur http://127.0.0.1:8080
 ```
 
-### Déployer BOSA
-
-L'adresse de départ reçoit l'intégralité des 700 M BOSA et devient propriétaire du contrat.
-
-```bash
-node scripts/deploy-bosa.js
-```
-
-L'adresse est lue depuis `coinbosa.config.json` et sa somme de contrôle EIP-55 est vérifiée
-avant tout envoi. Le compte qui paie le gas vient du keystore du nœud, ou de `PRIVATE_KEY`.
 
 ### Tests
 

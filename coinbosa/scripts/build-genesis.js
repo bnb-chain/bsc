@@ -36,6 +36,13 @@ const WEI = 10n ** 18n;
 const TOTAL_SUPPLY = BigInt(CONFIG.nativeCoin.totalSupply); // 700 000 000
 const dist = Object.entries(CONFIG.distribution).filter(([k]) => !k.startsWith('$'));
 
+// En développement uniquement, le validateur détient le premier poste : cela donne au
+// producteur de blocs des fonds pour payer le gas des tests, sans toucher au total de
+// l'offre. En production, les adresses viennent toutes de distribution-addresses.json et
+// le validateur, qui produit des blocs par transactions système gratuites, n'a pas besoin
+// de solde.
+if (ALLOW_DEV) ADDR_MAP[dist[0][0]] = VALIDATOR;
+
 // La répartition doit boucler à 100 %.
 const pctSum = dist.reduce((s, [, p]) => s + p, 0);
 if (pctSum !== 100) { console.error(`ERREUR : la répartition totalise ${pctSum} %, 100 attendu.`); process.exit(1); }
