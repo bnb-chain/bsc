@@ -1,19 +1,20 @@
 // Copyright 2026 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 
-package types
+package builder
 
 import (
 	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 func TestBidBlockArgsToDecodedBidBlockNormalizesNilSidecars(t *testing.T) {
 	args := &BidBlockArgs{
 		BidBlock: &BidBlock{
-			Header: &Header{
+			Header: &types.Header{
 				Difficulty: big.NewInt(1),
 				Number:     big.NewInt(1),
 				Extra:      make([]byte, 32),
@@ -36,7 +37,7 @@ func TestBidBlockArgsToDecodedBidBlockNormalizesNilSidecars(t *testing.T) {
 func TestBidBlockArgsToDecodedBidBlockCopiesHeader(t *testing.T) {
 	args := &BidBlockArgs{
 		BidBlock: &BidBlock{
-			Header: &Header{
+			Header: &types.Header{
 				Difficulty: big.NewInt(1),
 				Number:     big.NewInt(1),
 				Extra:      []byte{1, 2, 3},

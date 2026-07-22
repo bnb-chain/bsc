@@ -3,7 +3,7 @@ package builderclient
 import (
 	"context"
 
-	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -28,6 +28,6 @@ func newClient(c *rpc.Client) *Client {
 }
 
 // ReportIssue reports an issue
-func (ec *Client) ReportIssue(ctx context.Context, args *types.BidIssue) error {
+func (ec *Client) ReportIssue(ctx context.Context, args *buildertypes.BidIssue) error {
 	return ec.c.CallContext(ctx, nil, "mev_reportIssue", args)
 }

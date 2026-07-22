@@ -322,7 +322,7 @@ func (p *Parlia) IsSystemTransaction(tx *types.Transaction, header *types.Header
 	if tx.To() == nil || !isToSystemContract(*tx.To()) {
 		return false, nil
 	}
-	if tx.GasPrice().Sign() != 0 {
+	if tx.EffectiveGasPriceForBSC().Sign() != 0 {
 		return false, nil
 	}
 	sender, err := types.Sender(p.signer, tx)

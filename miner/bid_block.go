@@ -19,6 +19,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie"
 )
@@ -39,15 +40,15 @@ func setBidMevInfo(header *types.Header, builder common.Address, isBidBlock bool
 	if !isBidBlock && header.RequestsHash == nil {
 		return
 	}
-	version := types.BlockMevInfoVersionBid
+	version := buildertypes.BlockMevInfoVersionBid
 	if isBidBlock {
-		version = types.BlockMevInfoVersionBidBlock
+		version = buildertypes.BlockMevInfoVersionBidBlock
 	}
-	tag := types.EncodeBlockMevInfo(version, builder)
+	tag := buildertypes.EncodeBlockMevInfo(version, builder)
 	header.RequestsHash = &tag
 }
 
-func (w *worker) selectBidBlock(bidBlock *types.DecodedBidBlock, simBidBlockReward, simBidValidatorReward, bestReward *uint256.Int) bool {
+func (w *worker) selectBidBlock(bidBlock *buildertypes.DecodedBidBlock, simBidBlockReward, simBidValidatorReward, bestReward *uint256.Int) bool {
 	if bidBlock == nil {
 		return false
 	}
@@ -119,9 +120,12 @@ func bindSignBidBlockSystemTxs(
 // changing them after the builder's pre-execution would diverge the re-executed
 // stateRoot and fail InsertChain.
 func (w *worker) prepareBidBlockTask(
-	decoded *types.DecodedBidBlock,
+	decoded *buildertypes.DecodedBidBlock,
 	start time.Time,
 ) (*task, error) {
+	prepareStart := time.Now()
+	defer bidBlockPrepareTimer.UpdateSince(prepareStart)
+
 	if !w.isRunning() {
 		return nil, errors.New("worker is not running")
 	}
@@ -270,7 +274,10 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 	//   - Tx precheck failures (nonce, balance, signature, intrinsic gas, ...)
 	//   - System tx value / params (e.g. deposit value vs. SystemAddress balance)
 	//   - Blob sidecar checks (KZG proofs, blob hashes)
-	if _, err := w.chain.InsertChain(types.Blocks{block}); err != nil {
+	verifyStart := time.Now()
+	_, insertErr := w.chain.InsertChain(types.Blocks{block})
+	bidBlockVerifyTimer.UpdateSince(verifyStart)
+	if insertErr != nil {
 		log.Error("[BID BLOCK VERIFY FAILED]",
 			"number", block.Number(),
 			"hash", hash,
@@ -281,8 +288,9 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			"stateRoot", block.Root(),
 			"receiptHash", block.ReceiptHash(),
 			"builder", task.bidBlockInfo.builder,
-			"err", err)
-		w.revokeBidBlockBuilder(task.bidBlockInfo.builder, fmt.Sprintf("InsertChain err: %v", err), hash, block.NumberU64())
+			"err", insertErr)
+		bidBlockVerifyFailedGauge.Inc(1)
+		w.revokeBidBlockBuilder(task.bidBlockInfo.builder, fmt.Sprintf("InsertChain err: %v", insertErr), hash, block.NumberU64())
 		return
 	}
 	// Check the post-import average gas price excluding system transactions; only future BidBlock permission is revoked.
