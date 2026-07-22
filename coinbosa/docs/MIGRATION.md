@@ -128,22 +128,60 @@ public. Ils sont énoncés ici pour qu'ils soient traités en amont.
 
 ---
 
+## Offre historique constatée
+
+| Réseau | Offre | Contrat |
+|---|---|---|
+| Solana | 500 000 000 | `8UyvxCoVXoVaftWzp7j9yo2sGL2HnHTFDV4capenyFaf` |
+| BNB Chain | 200 000 000 | `0xebbdd6648876cc64ce2878cd7e873acf1461119` *(à vérifier, voir ci-dessous)* |
+| **Total** | **700 000 000** | |
+
+Deux réserves sur ces données, à lever avant toute ouverture :
+
+- L'adresse du contrat sur BNB Chain compte **39 caractères hexadécimaux au lieu de 40** : il en
+  manque un. L'adresse exacte doit être confirmée avant toute publication — une adresse de
+  dépôt erronée détourne des fonds.
+- Une **part importante de l'offre Solana est concentrée sur un portefeuille** contrôlé par le
+  projet. Le montant réellement détenu par des tiers, sur chaque réseau, doit être établi (voir
+  *Réconciliation* ci-dessous).
+
+## Réconciliation avec l'offre native — décision ouverte
+
+Le total historique — 500 M plus 200 M — **égale exactement l'offre native de 700 000 000 BOSA**.
+Ce n'est pas un hasard, mais cela crée un point qui doit être tranché avant d'écrire les chiffres
+définitifs de la tokenomique.
+
+Si la migration se fait à parité (un jeton historique pour un BOSA natif), alors les 700 000 000
+BOSA sont **intégralement destinés aux détenteurs historiques**. Dans ce cas, la répartition en
+treize postes ne peut pas, en plus, consommer 700 000 000 : elle décrit nécessairement la part
+que le projet détient déjà sous forme historique — le grand portefeuille concentré — une fois
+celle-ci migrée. Les jetons détenus par des tiers (public, et anciens contributeurs) sont, eux,
+déjà « distribués » sous forme historique, et migrent vers leurs propres adresses.
+
+Pour boucler les chiffres, une seule donnée manque : **combien, sur les 700 M historiques, est
+détenu par le projet, et combien par des tiers.** Cette donnée obtenue, la table de répartition
+se réconcilie sans ambiguïté.
+
+**Anciens contributeurs partis avec des jetons.** Des membres d'équipe ayant quitté le projet
+détiennent chacun environ 1 000 000 de jetons historiques. Dans une migration à sens unique, ces
+jetons leur appartiennent : le projet ne peut pas les reprendre dans un portefeuille tiers sur
+Solana ou BNB. Deux voies existent, et le choix doit être documenté : honorer leur migration
+comme celle de tout détenteur, ou exclure des adresses nommées — ce qui est une décision
+centralisée, contestable, et qui doit être justifiée publiquement pour ne pas passer pour
+arbitraire.
+
 ## Ce qui doit être établi avant l'ouverture
 
-Aucune de ces valeurs n'est avancée tant qu'elle n'est pas établie et vérifiable :
+1. **La répartition projet / tiers** de l'offre historique, réseau par réseau *(voir
+   Réconciliation)*.
+2. **L'adresse exacte** du contrat sur BNB Chain.
+3. **Le taux de conversion** — a priori la parité, à confirmer.
+4. **Le sort des jetons des anciens contributeurs.**
+5. **Les adresses officielles de dépôt** sur chaque réseau.
+6. **Le niveau de connaissance du client** requis, et le prestataire éventuel.
 
-1. **L'offre historique en circulation** sur Solana et sur BNB Chain, avec les adresses de
-   contrat correspondantes.
-2. **Le taux de conversion** appliqué à chaque réseau d'origine — en tenant compte du passage
-   éventuel à 18 décimales.
-3. **L'allocation de BOSA natif** réservée à la migration au sein de l'offre de 700 000 000, et
-   son adresse.
-4. **Les adresses officielles de dépôt** sur chaque réseau d'origine.
-5. **Le prestataire et le niveau** de connaissance du client, s'ils sont requis.
-
-Le formulaire et le déroulement décrits ci-dessus ne dépendent pas de ces valeurs : ils peuvent
-être construits dès maintenant. Mais le portail **ne s'ouvre au public** qu'une fois ces cinq
-points établis et publiés.
+Le formulaire et le déroulement ne dépendent pas de ces valeurs : ils sont construits. Mais le
+portail **ne s'ouvre au public** qu'une fois ces points établis et publiés.
 
 ---
 
