@@ -30,30 +30,54 @@ BOSA est donc définitive. Aucun mécanisme du protocole ne peut l'augmenter.
 
 ---
 
-## Répartition
+## L'offre native est le total migré de l'offre historique
 
-| Poste | Part | BOSA | Objet |
-|---|---|---|---|
-| **Développement** | 20 % | 140 000 000 | construction du réseau, des contrats et des applications |
-| **Technique** | 10 % | 70 000 000 | infrastructure, nœuds, exploitation, outillage |
-| **Recherche** | 10 % | 70 000 000 | travaux de recherche du protocole |
-| **Équipe** | 10 % | 70 000 000 | rémunération des contributeurs |
-| **Fonds financier** | 10 % | 70 000 000 | fonds de dépôt adossé à Coinbosa Card |
-| **Fonds de liquidité** | 10 % | 70 000 000 | tenue de marché et profondeur de carnet |
-| **Recherche IA** | 10 % | 70 000 000 | travaux d'intelligence artificielle |
-| **Recherche finance et fintech** | 5 % | 35 000 000 | travaux sur les usages financiers |
-| **Sécurité** | 3 % | 21 000 000 | sécurisation du réseau et réponse aux incidents |
-| **Audit** | 2 % | 14 000 000 | audits externes du code et des contrats |
-| **Événements et formation** | 2 % | 14 000 000 | formation et rencontres de l'écosystème |
-| **Distribution publique et communauté** | 5 % | 35 000 000 | mise en circulation initiale |
-| **Réserve stratégique** | 3 % | 21 000 000 | imprévus, partenariats, opportunités |
-| **Total** | **100 %** | **700 000 000** | |
+Des jetons Coinbosa ont été émis lors de phases antérieures : **500 000 000 sur Solana** et
+**200 000 000 sur BNB Chain**, soit 700 000 000 au total — exactement l'offre native. Ce n'est pas
+une coïncidence : l'offre native **est** le total historique, transposé à parité sur Coinbosa
+Chain par la [migration](docs/MIGRATION.md).
 
-> Les onze premiers postes totalisent 92 %. Les deux derniers — **distribution publique et
-> communauté (5 %)** et **réserve stratégique (3 %)** — complètent les 8 % manquants et restent
-> à valider. Le premier existe parce qu'un actif sans aucune part détenue par des tiers n'a pas
-> de marché ; le second parce qu'une trésorerie sans marge de manœuvre oblige à puiser dans un
-> poste affecté à la première difficulté.
+L'offre de 700 000 000 BOSA se décompose donc en deux blocs :
+
+- une **réserve de migration**, égale au montant de jetons historiques détenus par des tiers
+  (public et anciens contributeurs), créditée à ces détenteurs à mesure qu'ils migrent, un jeton
+  pour un BOSA ;
+- une **allocation projet**, égale au reste — la part que le projet détient déjà sous forme
+  historique, sur son portefeuille concentré —, organisée selon les treize postes ci-dessous.
+
+**Les pourcentages des treize postes s'appliquent à l'allocation projet, pas au total de
+700 000 000.** Les montants absolus seront fixés une fois connu le partage entre l'offre détenue
+par le projet et celle détenue par des tiers ; jusque-là, ce document en donne la structure, pas
+les valeurs en jetons.
+
+---
+
+## Répartition de l'allocation projet
+
+*Pourcentages appliqués à l'allocation projet (l'offre historique concentrée sur le portefeuille
+du projet). Les montants en BOSA seront publiés après réconciliation.*
+
+| Poste | Part | Objet |
+|---|---|---|
+| **Développement** | 20 % | construction du réseau, des contrats et des applications |
+| **Technique** | 10 % | infrastructure, nœuds, exploitation, outillage |
+| **Recherche** | 10 % | travaux de recherche du protocole |
+| **Équipe** | 10 % | rémunération des contributeurs |
+| **Fonds financier** | 10 % | fonds de dépôt adossé à Coinbosa Card |
+| **Fonds de liquidité** | 10 % | tenue de marché et profondeur de carnet |
+| **Recherche IA** | 10 % | travaux d'intelligence artificielle |
+| **Recherche finance et fintech** | 5 % | travaux sur les usages financiers |
+| **Sécurité** | 3 % | sécurisation du réseau et réponse aux incidents |
+| **Audit** | 2 % | audits externes du code et des contrats |
+| **Événements et formation** | 2 % | formation et rencontres de l'écosystème |
+| **Distribution publique et communauté** | 5 % | mise en circulation initiale |
+| **Réserve stratégique** | 3 % | imprévus, partenariats, opportunités |
+| **Total** | **100 %** | *de l'allocation projet* |
+
+> Les treize postes bouclent à 100 % de l'allocation projet. Les deux derniers — distribution
+> publique et communauté (5 %) et réserve stratégique (3 %) — complètent les onze premiers ; le
+> premier parce qu'une part détenue par des tiers est nécessaire à l'existence d'un marché, le
+> second parce qu'une trésorerie sans marge oblige à puiser dans un poste déjà affecté.
 
 ---
 

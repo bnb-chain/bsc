@@ -218,10 +218,27 @@ si on l'entend des jetons historiques sur Solana et BNB Chain, qui eux ont des d
 livre blanc a été corrigé pour distinguer les trois : le contrat BRC20 abandonné, le coin natif
 canonique, et les jetons historiques à migrer.
 
-**Cinq valeurs à établir avant l'ouverture, aucune inventée d'ici là :** l'offre historique en
-circulation sur chaque réseau et ses adresses de contrat, le taux de conversion, l'allocation de
-BOSA réservée à la migration, les adresses officielles de dépôt, et le niveau de connaissance du
-client requis. Le portail ne s'ouvre pas tant que ces points ne sont pas publiés.
+**Offre historique constatée :** 500 000 000 sur Solana
+(`8UyvxCoVXoVaftWzp7j9yo2sGL2HnHTFDV4capenyFaf`) et 200 000 000 sur BNB Chain (adresse à
+confirmer — celle fournie fait 39 caractères hexadécimaux au lieu de 40). Total : 700 000 000,
+soit exactement l'offre native.
+
+**Modèle de réconciliation retenu :** migration à **parité** (un jeton historique pour un BOSA
+natif). Le grand portefeuille concentré, contrôlé par le projet, **devient les treize postes de
+la répartition** une fois migré. Les jetons détenus par des tiers — public et anciens
+contributeurs — migrent vers les adresses de leurs détenteurs. En conséquence, l'offre native de
+700 000 000 se décompose en deux blocs : une **réserve de migration** égale au montant détenu par
+des tiers, créditée aux détenteurs à mesure qu'ils migrent, et une **allocation projet** égale au
+reste, organisée selon les treize postes. Les pourcentages des treize postes s'appliquent donc à
+l'allocation projet, pas au total.
+
+**Anciens contributeurs :** leurs jetons sont **honorés comme ceux de tout détenteur**. La
+migration à sens unique ne permet pas de reprendre des jetons dans un portefeuille tiers, et
+aucune exclusion d'adresse n'est retenue.
+
+**Donnée manquante pour finaliser :** le partage projet / tiers de l'offre historique — combien
+des 700 000 000 est sur le portefeuille concentré, combien chez des tiers. Cette valeur obtenue,
+la réserve de migration et les montants des treize postes se calculent sans ambiguïté.
 
 **Conformité à ne pas éluder.** Le portail collecte des données personnelles (nom, prénom) et
 opère un transfert de valeur : protection des données, obligations anti-blanchiment et
