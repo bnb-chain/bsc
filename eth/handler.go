@@ -109,10 +109,6 @@ type txPool interface {
 	// or also for reorged out ones.
 	SubscribeTransactions(ch chan<- core.NewTxsEvent, reorgs bool) event.Subscription
 
-	// SubscribeReannoTxsEvent should return an event subscription of
-	// ReannoTxsEvent and send events to the given channel.
-	SubscribeReannoTxsEvent(chan<- core.ReannoTxsEvent) event.Subscription
-
 	// FilterType returns whether the given tx type is supported by the txPool.
 	FilterType(kind byte) bool
 }
@@ -198,8 +194,6 @@ type handler struct {
 	handlerStartCh chan struct{}
 	handlerDoneCh  chan struct{}
 
-	reannoTxsCh    chan core.ReannoTxsEvent
-	reannoTxsSub   event.Subscription
 	minedBlockSub  *event.TypeMuxSubscription
 	voteCh         chan core.NewVoteEvent
 	votesSub       event.Subscription
@@ -725,12 +719,6 @@ func (h *handler) Start(maxPeers int, maxPeersPerIP int) {
 		}
 	}
 
-	// announce local pending transactions again
-	h.wg.Add(1)
-	h.reannoTxsCh = make(chan core.ReannoTxsEvent, txChanSize)
-	h.reannoTxsSub = h.txpool.SubscribeReannoTxsEvent(h.reannoTxsCh)
-	go h.txReannounceLoop()
-
 	// broadcast mined blocks
 	h.wg.Add(1)
 	h.minedBlockSub = h.eventMux.Subscribe(core.NewMinedBlockEvent{}, core.NewSealedBlockEvent{})
@@ -770,7 +758,6 @@ func (h *handler) startMaliciousVoteMonitor() {
 func (h *handler) Stop() {
 	h.txsSub.Unsubscribe() // quits txBroadcastLoop
 	h.blockRange.stop()
-	h.reannoTxsSub.Unsubscribe()  // quits txReannounceLoop
 	h.minedBlockSub.Unsubscribe() // quits blockBroadcastLoop
 	if h.votepool != nil {
 		h.votesSub.Unsubscribe() // quits voteBroadcastLoop
@@ -988,24 +975,6 @@ func (h *handler) BroadcastTransactions(txs types.Transactions) {
 		"bcastpeers", len(txset), "bcastcount", directCount, "annpeers", len(annos), "anncount", annCount)
 }
 
-// ReannounceTransactions will announce a batch of local pending transactions
-// to a square root of all peers.
-func (h *handler) ReannounceTransactions(txs types.Transactions) {
-	hashes := make([]common.Hash, 0, txs.Len())
-	for _, tx := range txs {
-		hashes = append(hashes, tx.Hash())
-	}
-
-	// Announce transactions hash to a batch of peers
-	peersCount := uint(math.Sqrt(float64(h.peers.len())))
-	peers := h.peers.headPeers(peersCount)
-	for _, peer := range peers {
-		peer.AsyncSendPooledTransactionHashes(hashes)
-	}
-	log.Debug("Transaction reannounce", "txs", len(txs),
-		"announce packs", peersCount, "announced hashes", peersCount*uint(len(hashes)))
-}
-
 // BroadcastVote will propagate a batch of votes to all peers
 // which are not known to already have the given vote.
 func (h *handler) BroadcastVote(vote *types.VoteEnvelope) {
@@ -1073,21 +1042,6 @@ func (h *handler) txBroadcastLoop() {
 		case event := <-h.txsCh:
 			h.BroadcastTransactions(event.Txs)
 		case <-h.txsSub.Err():
-			return
-		case <-h.stopCh:
-			return
-		}
-	}
-}
-
-// txReannounceLoop announces local pending transactions to connected peers again.
-func (h *handler) txReannounceLoop() {
-	defer h.wg.Done()
-	for {
-		select {
-		case event := <-h.reannoTxsCh:
-			h.ReannounceTransactions(event.Txs)
-		case <-h.reannoTxsSub.Err():
 			return
 		case <-h.stopCh:
 			return

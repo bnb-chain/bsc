@@ -54,9 +54,6 @@ const (
 	// more expensive to propagate; larger transactions also take more resources
 	// to validate whether they fit into the pool or not.
 	txMaxSize = 4 * txSlotSize // 128KB
-
-	// txReannoMaxNum is the maximum number of transactions a reannounce action can include.
-	txReannoMaxNum = 1024
 )
 
 var (
@@ -81,7 +78,6 @@ var (
 var (
 	evictionInterval    = time.Minute     // Time interval to check for evictable transactions
 	statsReportInterval = 8 * time.Second // Time interval to report transaction pool stats
-	reannounceInterval  = time.Minute     // Time interval to check for reannounce transactions
 )
 
 var (
@@ -158,8 +154,7 @@ type Config struct {
 	AccountQueue uint64 // Maximum number of non-executable transaction slots permitted per account
 	GlobalQueue  uint64 // Maximum number of non-executable transaction slots for all accounts
 
-	Lifetime       time.Duration // // Maximum amount of time an account can remain stale in the non-executable pool
-	ReannounceTime time.Duration // Duration for announcing local pending transactions again
+	Lifetime time.Duration // Maximum amount of time an account can remain stale in the non-executable pool
 }
 
 // DefaultConfig contains the default configurations for the transaction pool.
@@ -175,8 +170,7 @@ var DefaultConfig = Config{
 	AccountQueue: 200,
 	GlobalQueue:  4000,
 
-	Lifetime:       3 * time.Hour,
-	ReannounceTime: 10 * 365 * 24 * time.Hour,
+	Lifetime: 3 * time.Hour,
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -211,10 +205,6 @@ func (config *Config) sanitize() Config {
 		log.Warn("Sanitizing invalid txpool lifetime", "provided", conf.Lifetime, "updated", DefaultConfig.Lifetime)
 		conf.Lifetime = DefaultConfig.Lifetime
 	}
-	if conf.ReannounceTime < time.Minute {
-		log.Warn("Sanitizing invalid txpool reannounce time", "provided", conf.ReannounceTime, "updated", time.Minute)
-		conf.ReannounceTime = time.Minute
-	}
 	return conf
 }
 
@@ -240,15 +230,13 @@ func (config *Config) sanitize() Config {
 // will reject new transactions with delegations from that account with standard in-flight
 // transactions.
 type LegacyPool struct {
-	config       Config
-	chainconfig  *params.ChainConfig
-	chain        BlockChain
-	gasTip       atomic.Pointer[uint256.Int]
-	txFeed       event.Feed
-	reannoTxFeed event.Feed // Event feed for announcing transactions again
-	scope        event.SubscriptionScope
-	signer       types.Signer
-	mu           sync.RWMutex
+	config      Config
+	chainconfig *params.ChainConfig
+	chain       BlockChain
+	gasTip      atomic.Pointer[uint256.Int]
+	txFeed      event.Feed
+	signer      types.Signer
+	mu          sync.RWMutex
 
 	currentHead   atomic.Pointer[types.Header] // Current head of the blockchain
 	currentState  *state.StateDB               // Current state in the blockchain head
@@ -361,13 +349,11 @@ func (pool *LegacyPool) loop() {
 		prevPending, prevQueued, prevStales int
 
 		// Start the stats reporting and transaction eviction tickers
-		report     = time.NewTicker(statsReportInterval)
-		evict      = time.NewTicker(evictionInterval)
-		reannounce = time.NewTicker(reannounceInterval)
+		report = time.NewTicker(statsReportInterval)
+		evict  = time.NewTicker(evictionInterval)
 	)
 	defer report.Stop()
 	defer evict.Stop()
-	defer reannounce.Stop()
 
 	// Notify tests that the init phase is done
 	close(pool.initDoneCh)
@@ -396,29 +382,6 @@ func (pool *LegacyPool) loop() {
 				pool.removeTx(hash, true, true)
 			}
 			pool.mu.Unlock()
-
-		case <-reannounce.C:
-			pool.mu.RLock()
-			reannoTxs := func() []*types.Transaction {
-				txs := make([]*types.Transaction, 0)
-				for _, list := range pool.pending {
-					for _, tx := range list.Flatten() {
-						// Default ReannounceTime is 10 years, won't announce by default.
-						if time.Since(tx.Time()) < pool.config.ReannounceTime {
-							break
-						}
-						txs = append(txs, tx)
-						if len(txs) >= txReannoMaxNum {
-							return txs
-						}
-					}
-				}
-				return txs
-			}()
-			pool.mu.RUnlock()
-			if len(reannoTxs) > 0 {
-				pool.reannoTxFeed.Send(core.ReannoTxsEvent{Txs: reannoTxs})
-			}
 		}
 	}
 }
@@ -448,12 +411,6 @@ func (pool *LegacyPool) SubscribeTransactions(ch chan<- core.NewTxsEvent, reorgs
 	// is because the new txs are added to the queue, resurrected ones too and
 	// reorgs run lazily, so separating the two would need a marker.
 	return pool.txFeed.Subscribe(ch)
-}
-
-// SubscribeReannoTxsEvent registers a subscription of ReannoTxsEvent and
-// starts sending event to the given channel.
-func (pool *LegacyPool) SubscribeReannoTxsEvent(ch chan<- core.ReannoTxsEvent) event.Subscription {
-	return pool.scope.Track(pool.reannoTxFeed.Subscribe(ch))
 }
 
 // SetGasTip updates the minimum gas tip required by the transaction pool for a

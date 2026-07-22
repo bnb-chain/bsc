@@ -26,9 +26,6 @@ import (
 // NewTxsEvent is posted when a batch of transactions enters the transaction pool.
 type NewTxsEvent struct{ Txs []*types.Transaction }
 
-// ReannoTxsEvent is posted when a batch of local pending transactions exceed a specified duration.
-type ReannoTxsEvent struct{ Txs []*types.Transaction }
-
 // NewSealedBlockEvent is posted when a block has been sealed.
 type NewSealedBlockEvent struct{ Block *types.Block }
 
