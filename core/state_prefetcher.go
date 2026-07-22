@@ -133,7 +133,7 @@ func (p *statePrefetcher) Prefetch(transactions types.Transactions, header *type
 // PrefetchMining processes the state changes according to the Ethereum rules by running
 // the transaction messages using the statedb, but any changes are discarded. The
 // only goal is to warm the state caches. Only used for mining stage.
-func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr **types.Transaction) {
+func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header *types.Header, gasLimit uint64, statedb *state.StateDB, cfg vm.Config, interruptCh <-chan struct{}, txCurr *atomic.Pointer[types.Transaction]) {
 	if statedb == nil {
 		return
 	}
@@ -207,7 +207,9 @@ func (p *statePrefetcher) PrefetchMining(txs TransactionsByPriceAndNonce, header
 				return
 			default:
 				if count++; count%checkInterval == 0 {
-					txset.Forward(*txCurr)
+					if curr := txCurr.Load(); curr != nil {
+						txset.Forward(curr)
+					}
 				}
 				tx := txset.PeekWithUnwrap()
 				if tx == nil {
