@@ -35,8 +35,8 @@ jobs:
             ${{ runner.os }}-node-
       - name: Install Deps
         run: |
-          npm install -g commitlint-plugin-function-rules @commitlint/cli
-          npm install --save-dev commitlint-plugin-function-rules @commitlint/cli
+          npm install -g commitlint-plugin-function-rules@2 @commitlint/cli@18 @commitlint/config-conventional@18
+          npm install --save-dev commitlint-plugin-function-rules@2 @commitlint/cli@18 @commitlint/config-conventional@18
       - uses: wagoid/commitlint-github-action@v5
         id: commitlint
         env:

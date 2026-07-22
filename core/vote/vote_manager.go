@@ -35,7 +35,7 @@ var notContinuousJustified = metrics.NewRegisteredCounter("votesManager/notConti
 // Backend wraps all methods required for voting.
 type Backend interface {
 	IsMining() bool
-	EventMux() *event.TypeMux
+	SubscribeSyncEvents(ch chan<- downloader.SyncEvent) event.Subscription
 }
 
 // VoteManager will handle the vote produced by self.
@@ -99,35 +99,19 @@ func (voteManager *VoteManager) loop() {
 	defer voteManager.highestVerifiedBlockSub.Unsubscribe()
 	defer voteManager.syncVoteSub.Unsubscribe()
 
-	events := voteManager.eth.EventMux().Subscribe(downloader.StartEvent{}, downloader.DoneEvent{}, downloader.FailedEvent{})
-	defer func() {
-		log.Debug("vote manager loop defer func occur")
-		if !events.Closed() {
-			log.Debug("event not closed, unsubscribed by vote manager loop")
-			events.Unsubscribe()
-		}
-	}()
-
-	dlEventCh := events.Chan()
+	syncCh := make(chan downloader.SyncEvent, 16)
+	syncSub := voteManager.eth.SubscribeSyncEvents(syncCh)
+	defer syncSub.Unsubscribe()
 
 	startVote := true
 	blockCountSinceMining := 0
 	for {
 		select {
-		case ev := <-dlEventCh:
-			if ev == nil {
-				log.Debug("dlEvent is nil, continue")
-				continue
-			}
-			switch ev.Data.(type) {
-			case downloader.StartEvent:
-				log.Debug("downloader is in startEvent mode, will not startVote")
+		case ev := <-syncCh:
+			switch ev.Type {
+			case downloader.SyncStarted:
 				startVote = false
-			case downloader.FailedEvent:
-				log.Debug("downloader is in FailedEvent mode, set startVote flag as true")
-				startVote = true
-			case downloader.DoneEvent:
-				log.Debug("downloader is in DoneEvent mode, set the startVote flag to true")
+			case downloader.SyncFailed, downloader.SyncCompleted:
 				startVote = true
 			}
 		case cHead := <-voteManager.highestVerifiedBlockCh:

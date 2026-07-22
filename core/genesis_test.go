@@ -106,7 +106,7 @@ func testSetupGenesis(t *testing.T, scheme string) {
 			name: "custom block in DB, genesis == nil",
 			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, *params.ConfigCompatError, error) {
 				tdb := triedb.NewDatabase(db, newDbConfig(scheme))
-				customg.Commit(db, tdb)
+				customg.Commit(db, tdb, nil)
 				return SetupGenesisBlock(db, tdb, nil)
 			},
 			wantHash:   customghash,
@@ -116,7 +116,7 @@ func testSetupGenesis(t *testing.T, scheme string) {
 			name: "custom block in DB, genesis == chapel",
 			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, *params.ConfigCompatError, error) {
 				tdb := triedb.NewDatabase(db, newDbConfig(scheme))
-				customg.Commit(db, tdb)
+				customg.Commit(db, tdb, nil)
 				return SetupGenesisBlock(db, tdb, DefaultChapelGenesisBlock())
 			},
 			wantErr: &GenesisMismatchError{Stored: customghash, New: params.ChapelGenesisHash},
@@ -125,7 +125,7 @@ func testSetupGenesis(t *testing.T, scheme string) {
 			name: "compatible config in DB",
 			fn: func(db ethdb.Database) (*params.ChainConfig, common.Hash, *params.ConfigCompatError, error) {
 				tdb := triedb.NewDatabase(db, newDbConfig(scheme))
-				oldcustomg.Commit(db, tdb)
+				oldcustomg.Commit(db, tdb, nil)
 				return SetupGenesisBlock(db, tdb, &customg)
 			},
 			wantHash:   customghash,
@@ -137,7 +137,7 @@ func testSetupGenesis(t *testing.T, scheme string) {
 				// Commit the 'old' genesis block with Homestead transition at #2.
 				// Advance to block #4, past the homestead transition block of customg.
 				tdb := triedb.NewDatabase(db, newDbConfig(scheme))
-				oldcustomg.Commit(db, tdb)
+				oldcustomg.Commit(db, tdb, nil)
 
 				bc, _ := NewBlockChain(db, &oldcustomg, ethash.NewFullFaker(), DefaultConfig().WithStateScheme(scheme))
 				defer bc.Stop()
@@ -207,7 +207,7 @@ func TestGenesisHashes(t *testing.T) {
 	}
 }
 
-func TestGenesis_Commit(t *testing.T) {
+func TestGenesisCommit(t *testing.T) {
 	genesis := &Genesis{
 		BaseFee: big.NewInt(params.InitialBaseFee),
 		Config:  params.TestChainConfig,
@@ -265,31 +265,6 @@ func TestReadWriteGenesisAlloc(t *testing.T) {
 	}
 }
 
-func TestConfigOrDefault(t *testing.T) {
-	defaultGenesis := DefaultGenesisBlock()
-	if defaultGenesis.Config.PlanckBlock != nil {
-		t.Errorf("initial config should have PlanckBlock = nil, but instead PlanckBlock = %v", defaultGenesis.Config.PlanckBlock)
-	}
-	gHash := params.BSCGenesisHash
-	config := defaultGenesis.chainConfigOrDefault(gHash, nil)
-
-	if config.ChainID.Cmp(params.BSCChainConfig.ChainID) != 0 {
-		t.Errorf("ChainID of resulting config should be %v, but is %v instead", params.BSCChainConfig.ChainID, config.ChainID)
-	}
-
-	if config.HomesteadBlock.Cmp(params.BSCChainConfig.HomesteadBlock) != 0 {
-		t.Errorf("resulting config should have HomesteadBlock = %v, but instead is %v", params.BSCChainConfig, config.HomesteadBlock)
-	}
-
-	if config.PlanckBlock == nil {
-		t.Errorf("resulting config should have PlanckBlock = %v , but instead is nil", params.BSCChainConfig.PlanckBlock)
-	}
-
-	if config.PlanckBlock.Cmp(params.BSCChainConfig.PlanckBlock) != 0 {
-		t.Errorf("resulting config should have PlanckBlock = %v , but instead is %v", params.BSCChainConfig.PlanckBlock, config.PlanckBlock)
-	}
-}
-
 func newDbConfig(scheme string) *triedb.Config {
 	if scheme == rawdb.HashScheme {
 		return triedb.HashDefaults
@@ -299,9 +274,9 @@ func newDbConfig(scheme string) *triedb.Config {
 	return &triedb.Config{PathDB: &config}
 }
 
-func TestVerkleGenesisCommit(t *testing.T) {
-	var verkleTime uint64 = 0
-	verkleConfig := &params.ChainConfig{
+func TestBinaryGenesisCommit(t *testing.T) {
+	var ubtTime uint64 = 0
+	ubtConfig := &params.ChainConfig{
 		ChainID:                 big.NewInt(1),
 		HomesteadBlock:          big.NewInt(0),
 		DAOForkBlock:            nil,
@@ -319,34 +294,34 @@ func TestVerkleGenesisCommit(t *testing.T) {
 		ArrowGlacierBlock:       big.NewInt(0),
 		GrayGlacierBlock:        big.NewInt(0),
 		MergeNetsplitBlock:      nil,
-		ShanghaiTime:            &verkleTime,
-		CancunTime:              &verkleTime,
-		PragueTime:              &verkleTime,
-		OsakaTime:               &verkleTime,
-		VerkleTime:              &verkleTime,
+		ShanghaiTime:            &ubtTime,
+		CancunTime:              &ubtTime,
+		PragueTime:              &ubtTime,
+		OsakaTime:               &ubtTime,
+		UBTTime:                 &ubtTime,
 		TerminalTotalDifficulty: big.NewInt(0),
-		EnableVerkleAtGenesis:   true,
+		EnableUBTAtGenesis:      true,
 		Ethash:                  nil,
 		Clique:                  nil,
 		BlobScheduleConfig: &params.BlobScheduleConfig{
 			Cancun: params.DefaultCancunBlobConfig,
 			Prague: params.DefaultPragueBlobConfig,
 			Osaka:  params.DefaultOsakaBlobConfig,
-			Verkle: params.DefaultPragueBlobConfig,
+			UBT:    params.DefaultPragueBlobConfig,
 		},
 	}
 
 	genesis := &Genesis{
 		BaseFee:    big.NewInt(params.InitialBaseFee),
-		Config:     verkleConfig,
-		Timestamp:  verkleTime,
+		Config:     ubtConfig,
+		Timestamp:  ubtTime,
 		Difficulty: big.NewInt(0),
 		Alloc: types.GenesisAlloc{
 			{1}: {Balance: big.NewInt(1), Storage: map[common.Hash]common.Hash{{1}: {1}}},
 		},
 	}
 
-	expected := common.FromHex("018d20eebb130b5e2b796465fe36aafab650650729a92435aec071bf2386f080")
+	expected := common.FromHex("0870fd587c41dc778019de8c5cb3193fe4ef1f417976461952d3712ba39163f5")
 	got := genesis.ToBlock().Root().Bytes()
 	if !bytes.Equal(got, expected) {
 		t.Fatalf("invalid genesis state root, expected %x, got %x", expected, got)
@@ -358,17 +333,18 @@ func TestVerkleGenesisCommit(t *testing.T) {
 	config.NoAsyncFlush = true
 
 	triedb := triedb.NewDatabase(db, &triedb.Config{
-		IsVerkle: true,
-		PathDB:   &config,
+		IsUBT:             true,
+		PathDB:            &config,
+		BinTrieGroupDepth: triedb.DefaultBinTrieGroupDepth,
 	})
 	block := genesis.MustCommit(db, triedb)
 	if !bytes.Equal(block.Root().Bytes(), expected) {
 		t.Fatalf("invalid genesis state root, expected %x, got %x", expected, block.Root())
 	}
 
-	// Test that the trie is verkle
-	if !triedb.IsVerkle() {
-		t.Fatalf("expected trie to be verkle")
+	// Test that the trie is a unified binary trie
+	if !triedb.IsUBT() {
+		t.Fatalf("expected trie to be a unified binary trie")
 	}
 	vdb := rawdb.NewTable(db, string(rawdb.VerklePrefix))
 	if !rawdb.HasAccountTrieNode(vdb, nil) {

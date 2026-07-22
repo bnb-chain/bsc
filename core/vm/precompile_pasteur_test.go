@@ -22,11 +22,13 @@ func TestPasteurSuspendsLegacyTendermintPrecompiles(t *testing.T) {
 		}
 	}
 
-	// Pre-Pasteur (Osaka) they are still the live, active implementations.
-	if _, ok := PrecompiledContractsOsaka[addr64].(*tmHeaderValidate); !ok {
+	// Pre-Pasteur (Osaka) they are still the live, active implementations. These
+	// tendermint precompiles live only in the BSC set (…ForBSC); the standard
+	// PrecompiledContractsOsaka has them stripped for non-BSC chains.
+	if _, ok := PrecompiledContractsOsakaForBSC[addr64].(*tmHeaderValidate); !ok {
 		t.Fatalf("0x64 must remain active (tmHeaderValidate) pre-Pasteur")
 	}
-	if _, ok := PrecompiledContractsOsaka[addr65].(*iavlMerkleProofValidatePlato); !ok {
+	if _, ok := PrecompiledContractsOsakaForBSC[addr65].(*iavlMerkleProofValidatePlato); !ok {
 		t.Fatalf("0x65 must remain active (iavlMerkleProofValidatePlato) pre-Pasteur")
 	}
 
@@ -36,7 +38,7 @@ func TestPasteurSuspendsLegacyTendermintPrecompiles(t *testing.T) {
 	if _, ok := PrecompiledContractsPasteur[addr67].(*cometBFTLightBlockValidatePasteur); !ok {
 		t.Fatalf("0x67 must be the Pasteur variant under Pasteur")
 	}
-	if _, ok := PrecompiledContractsOsaka[addr67].(*cometBFTLightBlockValidateHertz); !ok {
+	if _, ok := PrecompiledContractsOsakaForBSC[addr67].(*cometBFTLightBlockValidateHertz); !ok {
 		t.Fatalf("0x67 must remain the Hertz variant pre-Pasteur")
 	}
 
@@ -55,7 +57,7 @@ func TestPasteurSuspendsLegacyTendermintPrecompiles(t *testing.T) {
 	if pasteur67.RequiredGas(large) <= pasteur67.RequiredGas(small) {
 		t.Fatalf("Pasteur 0x67 gas must scale with input size")
 	}
-	osaka67 := PrecompiledContractsOsaka[addr67]
+	osaka67 := PrecompiledContractsOsakaForBSC[addr67]
 	if osaka67.RequiredGas(large) != osaka67.RequiredGas(small) {
 		t.Fatalf("pre-Pasteur 0x67 gas must stay flat")
 	}

@@ -93,6 +93,8 @@ func NewBackend(alloc types.GenesisAlloc, options ...func(nodeConf *node.Config,
 	}
 	ethConf.SyncMode = ethconfig.FullSync
 	ethConf.TxPool.NoLocals = true
+	// Disable log indexing to force unindexed log search
+	ethConf.LogNoHistory = true
 
 	for _, option := range options {
 		option(&nodeConf, &ethConf)
@@ -120,7 +122,7 @@ func newWithNode(stack *node.Node, conf *eth.Config, blockPeriod uint64) (*Backe
 	filterSystem := filters.NewFilterSystem(backend.APIBackend, filters.Config{})
 	stack.RegisterAPIs([]rpc.API{{
 		Namespace: "eth",
-		Service:   filters.NewFilterAPI(filterSystem, false),
+		Service:   filters.NewFilterAPI(filterSystem),
 	}})
 	// Start the node
 	if err := stack.Start(); err != nil {

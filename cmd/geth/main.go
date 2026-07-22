@@ -22,17 +22,13 @@ import (
 	"os"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/cmd/utils"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/console/prompt"
 	"github.com/ethereum/go-ethereum/eth"
-	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
@@ -66,7 +62,7 @@ var (
 		utils.NoUSBFlag, // deprecated
 		utils.DirectBroadcastFlag,
 		utils.DisableSnapProtocolFlag,
-		utils.RangeLimitFlag,
+		utils.RangeLimitFlag, // deprecated
 		utils.USBFlag,
 		utils.SmartCardDaemonPathFlag,
 		utils.RialtoHash,
@@ -79,7 +75,7 @@ var (
 		utils.OverridePasteur,
 		utils.OverrideBPO1,
 		utils.OverrideBPO2,
-		utils.OverrideVerkle,
+		utils.OverrideUBT,
 		utils.OverrideGenesisFlag,
 		utils.OverrideFullImmutabilityThreshold,
 		utils.OverrideMinBlocksForBlobRequests,
@@ -121,6 +117,9 @@ var (
 		utils.StateHistoryFlag,
 		utils.PathDBSyncFlag,
 		utils.JournalFileFlag, // deprecated
+		utils.TrienodeHistoryFlag,
+		utils.TrienodeHistoryFullValueCheckpointFlag,
+		utils.BinTrieGroupDepthFlag,
 		utils.LightKDFFlag,
 		utils.EthRequiredBlocksFlag,
 		utils.LegacyWhitelistFlag, // deprecated
@@ -148,6 +147,7 @@ var (
 		utils.MinerGasPriceFlag,
 		utils.MinerEtherbaseFlag,
 		utils.MinerExtraDataFlag,
+		utils.MinerMaxBlobsFlag,
 		utils.MinerRecommitIntervalFlag,
 		utils.MinerNewPayloadTimeoutFlag, // deprecated
 		utils.MinerDelayLeftoverFlag,
@@ -205,6 +205,8 @@ var (
 		// utils.BeaconGenesisRootFlag,
 		// utils.BeaconGenesisTimeFlag,
 		// utils.BeaconCheckpointFlag,
+		// utils.BeaconCheckpointFileFlag,
+		utils.LogSlowBlockFlag,
 	}, utils.NetworkFlags, utils.DatabaseFlags)
 
 	rpcFlags = []cli.Flag{
@@ -240,6 +242,14 @@ var (
 		utils.BatchResponseMaxSize,
 		utils.RPCTxSyncDefaultTimeoutFlag,
 		utils.RPCTxSyncMaxTimeoutFlag,
+		utils.RPCGlobalRangeLimitFlag,
+		utils.RPCTelemetryFlag,
+		utils.RPCTelemetryEndpointFlag,
+		utils.RPCTelemetryUserFlag,
+		utils.RPCTelemetryPasswordFlag,
+		utils.RPCTelemetryInstanceIDFlag,
+		utils.RPCTelemetryTagsFlag,
+		utils.RPCTelemetrySampleRatioFlag,
 	}
 
 	metricsFlags = []cli.Flag{
@@ -253,6 +263,7 @@ var (
 		utils.MetricsInfluxDBUsernameFlag,
 		utils.MetricsInfluxDBPasswordFlag,
 		utils.MetricsInfluxDBTagsFlag,
+		utils.MetricsInfluxDBIntervalFlag,
 		utils.MetricsEnableInfluxDBV2Flag,
 		utils.MetricsInfluxDBTokenFlag,
 		utils.MetricsInfluxDBBucketFlag,
@@ -290,7 +301,6 @@ func init() {
 		javascriptCommand,
 		// See misccmd.go:
 		versionCommand,
-		versionCheckCommand,
 		licenseCommand,
 		// See config.go
 		dumpConfigCommand,
@@ -301,8 +311,8 @@ func init() {
 		// See snapshot.go
 		snapshotCommand,
 		blsCommand,
-		// See verkle.go
-		verkleCommand,
+		// See bintrie_convert.go
+		bintrieCommand,
 	}
 	if logTestCommand != nil {
 		app.Commands = append(app.Commands, logTestCommand)
@@ -348,16 +358,6 @@ func prepare(ctx *cli.Context) {
 	switch {
 	case ctx.IsSet(utils.ChapelFlag.Name):
 		log.Info("Starting BSC on Chapel testnet...")
-	}
-	// If we're a full node on mainnet without --cache specified, bump default cache allowance
-	if !ctx.IsSet(utils.CacheFlag.Name) && !ctx.IsSet(utils.NetworkIdFlag.Name) {
-		// Make sure we're not on any supported preconfigured testnet either
-		if !ctx.IsSet(utils.ChapelFlag.Name) &&
-			!ctx.IsSet(utils.DeveloperFlag.Name) {
-			// Nope, we're really on mainnet. Bump that cache up!
-			log.Info("Bumping default cache on mainnet", "provided", ctx.Int(utils.CacheFlag.Name), "updated", 4096)
-			ctx.Set(utils.CacheFlag.Name, strconv.Itoa(4096))
-		}
 	}
 }
 
@@ -429,38 +429,9 @@ func startNode(ctx *cli.Context, stack *node.Node, backend ethapi.Backend, isCon
 		}
 	}()
 
-	// Spawn a standalone goroutine for status synchronization monitoring,
-	// close the node when synchronization is complete if user required.
-	if ctx.Bool(utils.ExitWhenSyncedFlag.Name) {
-		go func() {
-			sub := stack.EventMux().Subscribe(downloader.DoneEvent{})
-			defer sub.Unsubscribe()
-			for {
-				event := <-sub.Chan()
-				if event == nil {
-					continue
-				}
-				done, ok := event.Data.(downloader.DoneEvent)
-				if !ok {
-					continue
-				}
-				if timestamp := time.Unix(int64(done.Latest.Time), 0); time.Since(timestamp) < 10*time.Minute {
-					log.Info("Synchronisation completed", "latestnum", done.Latest.Number, "latesthash", done.Latest.Hash(),
-						"age", common.PrettyAge(timestamp))
-					stack.Close()
-				}
-			}
-		}()
-	}
-
 	// Start auxiliary services if enabled
 	ethBackend, ok := backend.(*eth.EthAPIBackend)
 	if ctx.Bool(utils.MiningEnabledFlag.Name) {
-		// Mining only makes sense if a full Ethereum node is running
-		if ctx.String(utils.SyncModeFlag.Name) == "light" {
-			utils.Fatalf("Light clients do not support mining")
-		}
-
 		if !ok {
 			utils.Fatalf("Ethereum service not running")
 		}

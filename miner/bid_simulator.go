@@ -1036,6 +1036,11 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}, false); err != nil {
 		return
 	}
+	// Mark this env as simulator-owned: it is retained in bidsToSim and
+	// discarded only by clearLoop, so the worker must not discard it when this
+	// bid wins and its env becomes w.current. AddBidToSim below is what makes
+	// clearLoop the sole owner; the two must stay paired.
+	bidRuntime.env.fromBid = true
 	b.AddBidToSim(bidRuntime)
 
 	// if the left time is not enough to do simulation, return
@@ -1046,12 +1051,12 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 
 	gasLimit := bidRuntime.env.header.GasLimit
-	if bidRuntime.env.gasPool == nil {
-		bidRuntime.env.gasPool = new(core.GasPool).AddGas(gasLimit)
-		if p, ok := b.engine.(*parlia.Parlia); ok {
-			bidRuntime.env.gasPool.SubGas(p.EstimateGasReservedForSystemTxs(b.chain, bidRuntime.env.header))
-		}
-		bidRuntime.env.gasPool.SubGas(params.PayBidTxGasLimit)
+
+	// Reserve gas for the payBidTx appended at the end of the block so the
+	// admission check and greedy merge leave room for it; returned right before
+	// it is committed.
+	if err = bidRuntime.env.gasPool.SubGas(params.PayBidTxGasLimit); err != nil {
+		return
 	}
 
 	// error log:
@@ -1374,13 +1379,13 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 		}
 	}
 
-	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx,
-		&env.header.GasUsed, core.NewReceiptBloomGenerator())
+	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, core.NewReceiptBloomGenerator())
 	if err != nil {
 		return err
 	} else if unRevertible && receipt.Status == types.ReceiptStatusFailed {
 		return errors.New("no revertible transaction failed")
 	}
+	env.header.GasUsed = env.gasPool.Used()
 
 	if tx.Type() == types.BlobTxType {
 		sc.TxIndex = uint64(len(env.txs))

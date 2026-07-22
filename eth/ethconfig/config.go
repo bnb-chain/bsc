@@ -38,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/triedb/pathdb"
 )
 
 // FullNodeGPO contains default gasprice oracle settings for full node.
@@ -53,32 +54,36 @@ var FullNodeGPO = gasprice.Config{
 
 // Defaults contains default settings for use on the BSC main net.
 var Defaults = Config{
-	HistoryMode:          history.KeepAll,
-	SyncMode:             SnapSync,
-	NetworkId:            0, // enable auto configuration of networkID == chainID
-	TxLookupLimit:        2350000,
-	TransactionHistory:   2350000,
-	LogHistory:           576000,
-	BlockHistory:         0,
-	StateHistory:         params.FullImmutabilityThreshold,
-	DatabaseCache:        512,
-	TrieCleanCache:       154,
-	TrieDirtyCache:       256,
-	TrieTimeout:          10 * time.Minute,
-	TriesInMemory:        128,
-	TriesVerifyMode:      core.LocalVerify,
-	SnapshotCache:        102,
-	FilterLogCacheSize:   32,
-	Miner:                minerconfig.DefaultConfig,
-	TxPool:               legacypool.DefaultConfig,
-	BlobPool:             blobpool.DefaultConfig,
-	RPCGasCap:            50000000,
-	RPCEVMTimeout:        5 * time.Second,
-	GPO:                  FullNodeGPO,
-	TxSyncDefaultTimeout: 5 * time.Second,
-	TxSyncMaxTimeout:     10 * time.Second,
-	RPCTxFeeCap:          1,                                         // 1 ether
-	BlobExtraReserve:     params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
+	HistoryMode:             history.KeepAll,
+	SyncMode:                SnapSync,
+	NetworkId:               0, // enable auto configuration of networkID == chainID
+	TxLookupLimit:           2350000,
+	TransactionHistory:      2350000,
+	LogHistory:              576000,
+	BlockHistory:            0,
+	StateHistory:            pathdb.Defaults.StateHistory,
+	TrienodeHistory:         pathdb.Defaults.TrienodeHistory,
+	NodeFullValueCheckpoint: pathdb.Defaults.FullValueCheckpoint,
+	DatabaseCache:           2048,
+	TrieCleanCache:          614,
+	TrieDirtyCache:          1024,
+	SnapshotCache:           409,
+	TrieTimeout:             10 * time.Minute,
+	TriesInMemory:           128,
+	TriesVerifyMode:         core.LocalVerify,
+	FilterLogCacheSize:      32,
+	Miner:                   minerconfig.DefaultConfig,
+	TxPool:                  legacypool.DefaultConfig,
+	BlobPool:                blobpool.DefaultConfig,
+	RPCGasCap:               50000000,
+	RPCEVMTimeout:           5 * time.Second,
+	GPO:                     FullNodeGPO,
+	RPCTxFeeCap:             1,
+	TxSyncDefaultTimeout:    5 * time.Second,
+	TxSyncMaxTimeout:        10 * time.Second,
+	SlowBlockThreshold:      -1, // Disabled by default; set via --debug.logslowblock flag
+	RangeLimit:              5000,
+	BlobExtraReserve:        params.DefaultExtraReserveForBlobRequests, // Extra reserve threshold for blob, blob never expires when -1 is set, default 28800
 }
 
 //go:generate go run github.com/fjl/gencodec -type Config -formats toml -out gen_config.go
@@ -100,6 +105,9 @@ type Config struct {
 	// If your node does care about new mempool transactions (e.g., running rpc services without the need of mempool
 	// transactions) or is continuously under high pressure (e.g., mempool is always full), then you can consider
 	// to turn it on.
+	//
+	// Deprecated: only effective on eth/68 connections. It will be removed
+	// together with eth/68 support.
 	DisablePeerTxBroadcast bool
 	EVNNodeIDsToAdd        []enode.ID
 	EVNNodeIDsToRemove     []enode.ID
@@ -118,7 +126,6 @@ type Config struct {
 
 	DirectBroadcast     bool
 	DisableSnapProtocol bool // Whether disable snap protocol
-	RangeLimit          bool
 
 	// Deprecated: use 'TransactionHistory' instead.
 	TxLookupLimit uint64 `toml:",omitempty"` // The maximum number of blocks from head whose tx indices are reserved.
@@ -130,6 +137,13 @@ type Config struct {
 	// Deprecated: checkpoint file is auto-enabled at datadir/geth/filtermap_checkpoints.json.
 	LogExportCheckpoints string
 	StateHistory         uint64 `toml:",omitempty"` // The maximum number of blocks from head whose state histories are reserved.
+	TrienodeHistory      int64  `toml:",omitempty"` // Number of blocks from the chain head for which trienode histories are retained
+
+	// The frequency of full-value encoding. For example, a value of 16 means
+	// that, on average, for a given trie node across its 16 consecutive historical
+	// versions, only one version is stored in full format, while the others
+	// are stored in diff mode for storage compression.
+	NodeFullValueCheckpoint uint32 `toml:",omitempty"`
 
 	// State scheme represents the scheme used to store ethereum states and trie
 	// nodes on top. It can be 'hash', 'path', or none which means use the scheme
@@ -139,10 +153,20 @@ type Config struct {
 
 	DisableTxIndexer bool `toml:",omitempty"` // Whether to enable the transaction indexer
 
+	// BinTrieGroupDepth is the number of levels per serialized group in binary trie.
+	// Valid values are 1-8, with 8 being the default (byte-aligned groups).
+	// Lower values create smaller groups with more nodes.
+	BinTrieGroupDepth int `toml:",omitempty"`
+
 	// RequiredBlocks is a set of block number -> hash mappings which must be in the
 	// canonical chain of all remote peers. Setting the option makes geth verify the
 	// presence of these blocks for every new peer connection.
 	RequiredBlocks map[uint64]common.Hash `toml:"-"`
+
+	// SlowBlockThreshold is the block execution time threshold beyond which
+	// detailed statistics are logged. Negative means disabled (default), zero
+	// logs all blocks, positive filters by execution time.
+	SlowBlockThreshold time.Duration `toml:",omitempty"`
 
 	// Database options
 	SkipBcVersionCheck bool `toml:"-"`
@@ -238,12 +262,15 @@ type Config struct {
 	// OverrideBPO2 (TODO: remove after the fork)
 	OverrideBPO2 *uint64 `toml:",omitempty"`
 
-	// OverrideVerkle (TODO: remove after the fork)
-	OverrideVerkle *uint64 `toml:",omitempty"`
+	// OverrideUBT (TODO: remove after the fork)
+	OverrideUBT *uint64 `toml:",omitempty"`
 
 	// EIP-7966: eth_sendRawTransactionSync timeouts
 	TxSyncDefaultTimeout time.Duration `toml:",omitempty"`
 	TxSyncMaxTimeout     time.Duration `toml:",omitempty"`
+
+	// RangeLimit restricts the maximum range (end - start) for range queries.
+	RangeLimit uint64 `toml:",omitempty"`
 
 	// blob setting
 	BlobExtraReserve uint64

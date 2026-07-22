@@ -316,10 +316,9 @@ func TestEthClient(t *testing.T) {
 		// "AtFunctions": {
 		// 	func(t *testing.T) { testAtFunctions(t, client) },
 		// },
-		// TODO(Nathan): why skip this case?
-		// "TransactionSender": {
-		// 	func(t *testing.T) { testTransactionSender(t, client) },
-		// },
+		"TransactionSender": {
+			func(t *testing.T) { testTransactionSender(t, client) },
+		},
 		"TestSendTransactionConditional": {
 			func(t *testing.T) { testSendTransactionConditional(t, client) },
 		},
@@ -674,12 +673,15 @@ func testTransactionSender(t *testing.T, client *rpc.Client) {
 	ec := ethclient.NewClient(client)
 	ctx := context.Background()
 
-	// Retrieve testTx1 via RPC.
-	block2, err := ec.HeaderByNumber(ctx, big.NewInt(2))
+	// testTx1/testTx2 are included in the last block of the test chain (see
+	// generateTestChain) at indices 2 and 3. Fetch it by latest number, matching
+	// testTransactionInBlock.
+	block, err := ec.BlockByNumber(ctx, nil)
 	if err != nil {
-		t.Fatal("can't get block 1:", err)
+		t.Fatal("can't get latest block:", err)
 	}
-	tx1, err := ec.TransactionInBlock(ctx, block2.Hash(), 0)
+	// Retrieve testTx1 via RPC so its sender gets cached.
+	tx1, err := ec.TransactionInBlock(ctx, block.Hash(), 2)
 	if err != nil {
 		t.Fatal("can't get tx:", err)
 	}
@@ -689,7 +691,7 @@ func testTransactionSender(t *testing.T, client *rpc.Client) {
 
 	// The sender address is cached in tx1, so no additional RPC should be required in
 	// TransactionSender. Ensure the server is not asked by canceling the context here.
-	sender1, err := ec.TransactionSender(newCanceledContext(), tx1, block2.Hash(), 0)
+	sender1, err := ec.TransactionSender(newCanceledContext(), tx1, block.Hash(), 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -699,7 +701,7 @@ func testTransactionSender(t *testing.T, client *rpc.Client) {
 
 	// Now try to get the sender of testTx2, which was not fetched through RPC.
 	// TransactionSender should query the server here.
-	sender2, err := ec.TransactionSender(ctx, testTx2, block2.Hash(), 1)
+	sender2, err := ec.TransactionSender(ctx, testTx2, block.Hash(), 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -708,7 +710,49 @@ func testTransactionSender(t *testing.T, client *rpc.Client) {
 	}
 }
 
-//nolint:unused
+func TestBlockReceiptsPreservesCanonicalFlag(t *testing.T) {
+	srv := rpc.NewServer()
+	service := &blockReceiptsTestService{calls: make(chan rpc.BlockNumberOrHash, 1)}
+	if err := srv.RegisterName("eth", service); err != nil {
+		t.Fatalf("failed to register service: %v", err)
+	}
+	defer srv.Stop()
+
+	client := rpc.DialInProc(srv)
+	defer client.Close()
+
+	ec := ethclient.NewClient(client)
+	defer ec.Close()
+
+	hash := common.HexToHash("0x01")
+	ref := rpc.BlockNumberOrHashWithHash(hash, true)
+
+	if _, err := ec.BlockReceipts(context.Background(), ref); err != nil {
+		t.Fatalf("BlockReceipts returned error: %v", err)
+	}
+
+	select {
+	case call := <-service.calls:
+		if call.BlockHash == nil || *call.BlockHash != hash {
+			t.Fatalf("unexpected block hash: got %v, want %v", call.BlockHash, hash)
+		}
+		if !call.RequireCanonical {
+			t.Fatalf("requireCanonical flag was lost: %+v", call)
+		}
+	default:
+		t.Fatal("service was not called")
+	}
+}
+
+type blockReceiptsTestService struct {
+	calls chan rpc.BlockNumberOrHash
+}
+
+func (s *blockReceiptsTestService) GetBlockReceipts(ctx context.Context, block rpc.BlockNumberOrHash) ([]*types.Receipt, error) {
+	s.calls <- block
+	return []*types.Receipt{}, nil
+}
+
 func newCanceledContext() context.Context {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -849,6 +893,12 @@ func TestSimulateV1(t *testing.T) {
 
 	if results[0].Calls[0].Error != nil {
 		t.Errorf("expected no error, got %v", results[0].Calls[0].Error)
+	}
+	if results[0].Calls[0].MaxUsedGas == 0 {
+		t.Error("expected maxUsedGas to be set")
+	}
+	if results[0].Calls[0].MaxUsedGas < results[0].Calls[0].GasUsed {
+		t.Errorf("expected maxUsedGas >= gasUsed, got %d < %d", results[0].Calls[0].MaxUsedGas, results[0].Calls[0].GasUsed)
 	}
 }
 

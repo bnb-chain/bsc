@@ -64,6 +64,7 @@ const (
 type backend interface {
 	SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent) event.Subscription
 	SubscribeNewTxsEvent(ch chan<- core.NewTxsEvent) event.Subscription
+	SubscribeNewPayloadEvent(ch chan<- core.NewPayloadEvent) event.Subscription
 	CurrentHeader() *types.Header
 	HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*types.Header, error)
 	GetTd(ctx context.Context, hash common.Hash) *big.Int
@@ -101,8 +102,9 @@ type Service struct {
 	pongCh chan struct{} // Pong notifications are fed into this channel
 	histCh chan []uint64 // History request block numbers are fed into this channel
 
-	headSub event.Subscription
-	txSub   event.Subscription
+	headSub       event.Subscription
+	txSub         event.Subscription
+	newPayloadSub event.Subscription
 }
 
 // connWrapper is a wrapper to prevent concurrent-write or concurrent-read on the
@@ -207,7 +209,9 @@ func (s *Service) Start() error {
 	s.headSub = s.backend.SubscribeChainHeadEvent(chainHeadCh)
 	txEventCh := make(chan core.NewTxsEvent, txChanSize)
 	s.txSub = s.backend.SubscribeNewTxsEvent(txEventCh)
-	go s.loop(chainHeadCh, txEventCh)
+	newPayloadCh := make(chan core.NewPayloadEvent, chainHeadChanSize)
+	s.newPayloadSub = s.backend.SubscribeNewPayloadEvent(newPayloadCh)
+	go s.loop(chainHeadCh, txEventCh, newPayloadCh)
 
 	log.Info("Stats daemon started")
 	return nil
@@ -217,18 +221,20 @@ func (s *Service) Start() error {
 func (s *Service) Stop() error {
 	s.headSub.Unsubscribe()
 	s.txSub.Unsubscribe()
+	s.newPayloadSub.Unsubscribe()
 	log.Info("Stats daemon stopped")
 	return nil
 }
 
 // loop keeps trying to connect to the netstats server, reporting chain events
 // until termination.
-func (s *Service) loop(chainHeadCh chan core.ChainHeadEvent, txEventCh chan core.NewTxsEvent) {
+func (s *Service) loop(chainHeadCh chan core.ChainHeadEvent, txEventCh chan core.NewTxsEvent, newPayloadCh chan core.NewPayloadEvent) {
 	// Start a goroutine that exhausts the subscriptions to avoid events piling up
 	var (
-		quitCh = make(chan struct{})
-		headCh = make(chan *types.Header, 1)
-		txCh   = make(chan struct{}, 1)
+		quitCh         = make(chan struct{})
+		headCh         = make(chan *types.Header, 1)
+		txCh           = make(chan struct{}, 1)
+		newPayloadEvCh = make(chan core.NewPayloadEvent, 1)
 	)
 	go func() {
 		var lastTx mclock.AbsTime
@@ -255,10 +261,19 @@ func (s *Service) loop(chainHeadCh chan core.ChainHeadEvent, txEventCh chan core
 				default:
 				}
 
+			// Notify of new payload events, but drop if too frequent
+			case ev := <-newPayloadCh:
+				select {
+				case newPayloadEvCh <- ev:
+				default:
+				}
+
 			// node stopped
 			case <-s.txSub.Err():
 				break HandleLoop
 			case <-s.headSub.Err():
+				break HandleLoop
+			case <-s.newPayloadSub.Err():
 				break HandleLoop
 			}
 		}
@@ -344,6 +359,10 @@ func (s *Service) loop(chainHeadCh chan core.ChainHeadEvent, txEventCh chan core
 					}
 					if err = s.reportPending(conn); err != nil {
 						log.Warn("Post-block transaction stats report failed", "err", err)
+					}
+				case ev := <-newPayloadEvCh:
+					if err = s.reportNewPayload(conn, ev); err != nil {
+						log.Warn("New payload stats report failed", "err", err)
 					}
 				case <-txCh:
 					if err = s.reportPending(conn); err != nil {
@@ -607,6 +626,33 @@ func (s uncleStats) MarshalJSON() ([]byte, error) {
 		return json.Marshal(uncles)
 	}
 	return []byte("[]"), nil
+}
+
+// newPayloadStats is the information to report about new payload events.
+type newPayloadStats struct {
+	Number         uint64      `json:"number"`
+	Hash           common.Hash `json:"hash"`
+	ProcessingTime uint64      `json:"processingTime"` // nanoseconds
+}
+
+// reportNewPayload reports a new payload event to the stats server.
+func (s *Service) reportNewPayload(conn *connWrapper, ev core.NewPayloadEvent) error {
+	details := &newPayloadStats{
+		Number:         ev.Number,
+		Hash:           ev.Hash,
+		ProcessingTime: uint64(ev.ProcessingTime.Nanoseconds()),
+	}
+
+	log.Trace("Sending new payload to ethstats", "number", details.Number, "hash", details.Hash)
+
+	stats := map[string]interface{}{
+		"id":    s.node,
+		"block": details,
+	}
+	report := map[string][]interface{}{
+		"emit": {"block_new_payload", stats},
+	}
+	return conn.WriteJSON(report)
 }
 
 // reportBlock retrieves the current chain head and reports it to the stats server.

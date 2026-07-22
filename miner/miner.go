@@ -18,6 +18,7 @@
 package miner
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"sync"
@@ -41,6 +42,7 @@ import (
 type Backend interface {
 	BlockChain() *core.BlockChain
 	TxPool() *txpool.TxPool
+	SubscribeSyncEvents(ch chan<- downloader.SyncEvent) event.Subscription
 }
 
 // Miner is the main object which takes care of submitting new work to consensus
@@ -59,16 +61,16 @@ type Miner struct {
 	wg sync.WaitGroup
 }
 
-func New(eth Backend, config *minerconfig.Config, mux *event.TypeMux, engine consensus.Engine) *Miner {
+func New(eth Backend, config *minerconfig.Config, eventMux *event.TypeMux, engine consensus.Engine) *Miner {
 	bidBlockPermMgr := NewBidBlockPermissionManager()
 	miner := &Miner{
-		mux:     mux,
+		mux:     eventMux,
 		eth:     eth,
 		engine:  engine,
 		exitCh:  make(chan struct{}),
 		startCh: make(chan struct{}),
 		stopCh:  make(chan struct{}),
-		worker:  newWorker(config, engine, eth, mux, bidBlockPermMgr),
+		worker:  newWorker(config, engine, eth, eventMux, bidBlockPermMgr),
 	}
 
 	miner.bidSimulator = newBidSimulator(&config.Mev, config.DelayLeftOver, config.GasPrice, eth, eth.BlockChain().Config(), engine, miner.worker)
@@ -86,26 +88,17 @@ func New(eth Backend, config *minerconfig.Config, mux *event.TypeMux, engine con
 func (miner *Miner) update() {
 	defer miner.wg.Done()
 
-	events := miner.mux.Subscribe(downloader.StartEvent{}, downloader.DoneEvent{}, downloader.FailedEvent{})
-	defer func() {
-		if !events.Closed() {
-			events.Unsubscribe()
-		}
-	}()
+	syncCh := make(chan downloader.SyncEvent, 16)
+	syncSub := miner.eth.SubscribeSyncEvents(syncCh)
+	defer syncSub.Unsubscribe()
 
 	shouldStart := false
 	canStart := true
-	dlEventCh := events.Chan()
 	for {
 		select {
-		case ev := <-dlEventCh:
-			if ev == nil {
-				// Unsubscription done, stop listening
-				dlEventCh = nil
-				continue
-			}
-			switch ev.Data.(type) {
-			case downloader.StartEvent:
+		case ev := <-syncCh:
+			switch ev.Type {
+			case downloader.SyncStarted:
 				wasMining := miner.Mining()
 				miner.worker.stop()
 				miner.bidSimulator.stop()
@@ -117,7 +110,7 @@ func (miner *Miner) update() {
 				}
 				miner.worker.syncing.Store(true)
 
-			case downloader.FailedEvent:
+			case downloader.SyncFailed:
 				canStart = true
 				if shouldStart {
 					miner.worker.start()
@@ -125,7 +118,7 @@ func (miner *Miner) update() {
 				}
 				miner.worker.syncing.Store(false)
 
-			case downloader.DoneEvent:
+			case downloader.SyncCompleted:
 				canStart = true
 				if shouldStart {
 					miner.worker.start()
@@ -133,8 +126,10 @@ func (miner *Miner) update() {
 				}
 				miner.worker.syncing.Store(false)
 
-				// Stop reacting to downloader events
-				events.Unsubscribe()
+				// Stop reacting to downloader events once a sync has
+				// completed, per the one-shot behavior documented above.
+				syncSub.Unsubscribe()
+				syncCh = nil
 			}
 		case <-miner.startCh:
 			if canStart {
@@ -187,7 +182,7 @@ func (miner *Miner) Pending() (*types.Block, types.Receipts, *state.StateDB) {
 	if block == nil {
 		return nil, nil, nil
 	}
-	stateDb, err := miner.worker.chain.StateAt(block.Root)
+	stateDb, err := miner.worker.chain.StateAt(block)
 	if err != nil {
 		return nil, nil, nil
 	}
@@ -229,8 +224,8 @@ func (miner *Miner) SetGasCeil(ceil uint64) {
 }
 
 // BuildPayload builds the payload according to the provided parameters.
-func (miner *Miner) BuildPayload(args *BuildPayloadArgs, witness bool) (*Payload, error) {
-	return miner.worker.buildPayload(args, witness)
+func (miner *Miner) BuildPayload(ctx context.Context, args *BuildPayloadArgs, witness bool) (*Payload, error) {
+	return miner.worker.buildPayload(ctx, args, witness)
 }
 
 func (miner *Miner) GasCeil() uint64 {
