@@ -139,13 +139,36 @@ BOSA a trois fonctions, et seulement trois : il paie les frais de transaction du
 servira d'enjeu au consensus lorsque la couche d'enjeu sera en place, et il portera la
 gouvernance du réseau. Toute autre utilité dépend de raccordements qui ne sont pas réalisés.
 
+### Détenteurs historiques sur d'autres réseaux, et migration
+
+Lors de phases antérieures, des jetons Coinbosa ont été émis sur **Solana** et sur **BNB Chain**,
+et sont détenus par des tiers. Ces jetons sont distincts du coin natif décrit ici : ils vivent
+sur d'autres réseaux, et le passage à Coinbosa Chain suppose une migration.
+
+Un **portail de migration** permettra à ces détenteurs d'échanger leurs jetons historiques contre
+du BOSA natif sur Coinbosa Chain. La migration est **à sens unique** : les jetons historiques sont
+déposés à une adresse officielle et retirés de la circulation, et un montant équivalent de BOSA
+natif est crédité au détenteur. Ce sens unique est ce qui garantit qu'aucun jeton n'existe deux
+fois.
+
+Le fonctionnement du portail est décrit dans un document dédié. Dans ses grandes lignes, le
+détenteur renseigne son identité, dépose ses jetons historiques à l'adresse officielle publiée,
+indique l'adresse Coinbosa Chain sur laquelle recevoir son BOSA, et reçoit en retour la preuve
+vérifiable du transfert — l'empreinte de la transaction sur Coinbosa Chain, consultable par
+quiconque sur l'explorateur.
+
+Trois éléments seront publiés avant l'ouverture du portail, et non promis : le **taux de
+conversion** appliqué à chaque réseau d'origine, l'**offre historique** en circulation sur Solana
+et sur BNB Chain, et l'**allocation** de BOSA natif réservée à la migration au sein de l'offre.
+Tant que ces valeurs ne sont pas établies et vérifiables, aucune n'est avancée ici.
+
 ### Note de correction
 
 Une version antérieure de ce projet a communiqué sur un jeton BOSA de 700 000 000 unités à
-**10 décimales**, sous la forme d'un contrat applicatif distinct du coin natif. Cette structure
-est abandonnée au profit d'un actif unique — le coin natif, à 18 décimales, pour la même offre.
-Aucune unité n'ayant été distribuée à un tiers, ce changement n'affecte aucun détenteur. Il est
-consigné ici plutôt que substitué en silence.
+**10 décimales**, sous la forme d'un contrat applicatif destiné à Coinbosa Chain. Ce contrat n'a
+jamais été distribué ; la structure est abandonnée au profit d'un actif unique — le coin natif, à
+18 décimales, pour la même offre. Ce point est distinct des jetons historiques évoqués ci-dessus,
+émis sur Solana et BNB Chain, qui eux ont des détenteurs et relèvent de la migration.
 
 ---
 
@@ -283,6 +306,25 @@ projet.
 Pour cette raison, **ce document ne publie aucun taux de rendement**, ni actuel ni projeté. Le
 revenu d'un validateur se calcule à partir de données publiques, bloc par bloc, par quiconque le
 souhaite.
+
+### Rémunération des contributeurs
+
+Le développement de Coinbosa Chain et des produits de l'écosystème repose sur le travail de
+contributeurs. Les personnes qui participent à ce travail — développement du protocole et des
+applications, recherche, sécurité, formation — sont **rémunérées pour les contributions
+livrées**, sur les allocations prévues à cet effet dans la répartition de l'offre : les postes
+Développement, Technique, Recherche, Équipe, Sécurité et les postes de recherche. La
+participation est ouverte, y compris à des volontaires, et la contribution donne lieu à
+rémunération.
+
+Deux limites encadrent ce principe, et elles sont énoncées ici parce qu'elles comptent :
+
+- La rémunération est la **contrepartie d'un travail effectivement livré**. Ce n'est ni un
+  rendement, ni un gain attaché à la simple détention de jetons, ni une récompense promise pour
+  avoir rejoint le projet. Détenir du BOSA ne donne droit à aucune rémunération ; contribuer, si.
+- Les montants proviennent d'allocations **finies**, inscrites au genesis. Aucune émission ne les
+  reconstitue. La rémunération des contributeurs est donc soutenable dans la limite de ces
+  allocations, et la politique qui les régit sera publiée à mesure qu'elle se met en place.
 
 ### Ce que ce modèle n'est pas
 

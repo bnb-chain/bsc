@@ -178,3 +178,51 @@ Sont explicitement écartés :
 Ce n'est pas de la prudence excessive. En droit européen, la responsabilité des dirigeants pour
 une information trompeuse dans un livre blanc ne peut être limitée par aucune clause
 contractuelle.
+
+---
+
+## D11 — Rémunération des contributeurs
+
+**Retenu.** Les personnes qui contribuent au développement de la chaîne et des produits de
+l'écosystème — y compris les volontaires — sont rémunérées pour le travail livré, sur les
+allocations dédiées de l'offre (Développement, Technique, Recherche, Équipe, Sécurité et les
+postes de recherche).
+
+**Encadrement, pour une raison précise.** La rémunération est la contrepartie d'un travail
+effectivement livré, jamais un gain attaché à la détention de jetons ni une récompense promise
+pour avoir rejoint le projet. Cette distinction n'est pas cosmétique : promettre un gain en
+échange de la simple participation, ou pour des tâches accomplies dans l'attente d'un jeton,
+rapproche l'opération d'un contrat d'investissement au regard du droit américain. Rémunérer un
+travail livré depuis une allocation finie est, au contraire, une opération ordinaire. La
+formulation retenue dans le livre blanc respecte cette ligne.
+
+Les allocations sont finies et inscrites au genesis ; aucune émission ne les reconstitue.
+
+---
+
+## D12 — Migration des détenteurs historiques (Solana et BNB Chain)
+
+**Retenu.** Des jetons Coinbosa émis lors de phases antérieures existent sur Solana et sur BNB
+Chain, détenus par des tiers. Un portail de migration leur permettra de les échanger contre du
+BOSA natif.
+
+**Conception :** migration à sens unique. Le détenteur dépose ses jetons historiques à une
+adresse officielle publiée à l'avance, indique son adresse Coinbosa Chain, et reçoit du BOSA
+natif ainsi que l'empreinte de la transaction comme preuve vérifiable. Le sens unique garantit
+qu'aucun jeton n'existe deux fois. Spécification complète dans [docs/MIGRATION.md](docs/MIGRATION.md) ;
+squelette du formulaire dans `portal/`.
+
+**Correction de documentation qui en découle.** Le livre blanc affirmait qu'aucune unité n'avait
+été distribuée à un tiers. C'était vrai du jeton BRC20 applicatif — jamais distribué — mais faux
+si on l'entend des jetons historiques sur Solana et BNB Chain, qui eux ont des détenteurs. Le
+livre blanc a été corrigé pour distinguer les trois : le contrat BRC20 abandonné, le coin natif
+canonique, et les jetons historiques à migrer.
+
+**Cinq valeurs à établir avant l'ouverture, aucune inventée d'ici là :** l'offre historique en
+circulation sur chaque réseau et ses adresses de contrat, le taux de conversion, l'allocation de
+BOSA réservée à la migration, les adresses officielles de dépôt, et le niveau de connaissance du
+client requis. Le portail ne s'ouvre pas tant que ces points ne sont pas publiés.
+
+**Conformité à ne pas éluder.** Le portail collecte des données personnelles (nom, prénom) et
+opère un transfert de valeur : protection des données, obligations anti-blanchiment et
+qualification de l'opération relèvent d'un conseil juridique préalable, pas postérieur.

@@ -1,0 +1,258 @@
+<title>Coinbosa — Portail de migration</title>
+<style>
+  /* Charte Coinbosa : or #CB9211, bleu #015E99 (extraits du logo) */
+  :root {
+    --gold: #cb9211; --gold-soft: #e0aa2e; --blue: #015e99; --blue-soft: #2b86c4;
+    --ground: #060c14; --raise: #0d1622; --raise-2: #132030; --edge: #1d2c3f;
+    --ink: #e8edf3; --ink-dim: #8296ad; --ok: #34d07f; --bad: #ef5f5f; --warn: #e0aa2e;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --ground:#f5f7fa; --raise:#fff; --raise-2:#eef2f7; --edge:#dbe3ec;
+            --ink:#0d1622; --ink-dim:#5b6b80; --gold:#966c0c; --blue:#015e99; }
+  }
+  :root[data-theme="light"] { --ground:#f5f7fa; --raise:#fff; --raise-2:#eef2f7; --edge:#dbe3ec;
+    --ink:#0d1622; --ink-dim:#5b6b80; --gold:#966c0c; --blue:#015e99; }
+  :root[data-theme="dark"] { --ground:#060c14; --raise:#0d1622; --raise-2:#132030; --edge:#1d2c3f;
+    --ink:#e8edf3; --ink-dim:#8296ad; --gold:#cb9211; --blue:#015e99; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--ground); color:var(--ink); font-family:var(--sans); font-size:15px; line-height:1.55; }
+  .wrap { max-width:680px; margin:0 auto; padding:28px 20px 70px; }
+  header { display:flex; align-items:center; gap:13px; margin-bottom:22px; }
+  .logo { width:44px; height:44px; border-radius:11px; object-fit:cover;
+          box-shadow:0 0 0 1px var(--edge), 0 6px 18px -8px color-mix(in srgb,var(--blue) 60%,transparent); }
+  h1 { font-size:19px; margin:0; font-weight:640; letter-spacing:-.01em; }
+  .sub { font-size:12px; color:var(--ink-dim); }
+
+  .banner { background:color-mix(in srgb,var(--warn) 14%,transparent); border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);
+            border-radius:11px; padding:13px 15px; font-size:13px; margin-bottom:22px; color:var(--ink); }
+  .banner b { color:var(--warn); }
+
+  .steps { display:flex; flex-direction:column; gap:0; margin-bottom:24px; counter-reset:s; }
+  .step { display:grid; grid-template-columns:30px 1fr; gap:13px; padding:12px 0; border-bottom:1px solid var(--edge); }
+  .step:last-child { border-bottom:0; }
+  .step .n { counter-increment:s; width:26px; height:26px; border-radius:50%; background:color-mix(in srgb,var(--blue) 26%,transparent);
+             color:var(--blue-soft); font-weight:650; font-size:13px; display:grid; place-items:center; font-family:var(--mono); }
+  .step .n::before { content:counter(s); }
+  .step p { margin:2px 0 0; font-size:13.5px; color:var(--ink-dim); }
+  .step h3 { margin:0; font-size:14.5px; font-weight:600; }
+
+  form { background:var(--raise); border:1px solid var(--edge); border-radius:14px; padding:22px; display:flex; flex-direction:column; gap:16px; }
+  .row { display:flex; flex-direction:column; gap:6px; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:520px){ .two{grid-template-columns:1fr;} }
+  label { font-size:12.5px; font-weight:600; color:var(--ink-dim); }
+  input, select { background:var(--ground); border:1px solid var(--edge); border-radius:9px; padding:11px 13px;
+                  color:var(--ink); font-size:14px; font-family:var(--sans); width:100%; }
+  input.mono { font-family:var(--mono); font-size:13px; }
+  input:focus, select:focus { outline:2px solid var(--gold); outline-offset:1px; border-color:var(--gold); }
+  input.bad { border-color:var(--bad); }
+  input.good { border-color:var(--ok); }
+  .hint { font-size:11.5px; color:var(--ink-dim); }
+  .hint.err { color:var(--bad); }
+  .hint.ok { color:var(--ok); }
+
+  .deposit { background:var(--raise-2); border:1px dashed var(--edge); border-radius:9px; padding:12px 14px; font-size:13px; }
+  .deposit .addr { font-family:var(--mono); font-size:12.5px; word-break:break-all; color:var(--gold); margin-top:4px; }
+
+  button { background:var(--gold); color:#0a0a0a; border:0; border-radius:10px; padding:13px; font-weight:650; font-size:14.5px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  button:hover:not(:disabled) { background:var(--gold-soft); }
+
+  footer { margin-top:26px; font-size:11.5px; color:var(--ink-dim); text-align:center; line-height:1.6; }
+  a { color:var(--gold); }
+</style>
+
+<div class="wrap">
+  <header>
+    <img class="logo" src="../assets/coinbosa-logo.jpg" alt="Coinbosa" />
+    <div>
+      <h1>Portail de migration Coinbosa</h1>
+      <div class="sub">Échangez vos jetons Solana ou BNB Chain contre du BOSA natif</div>
+    </div>
+  </header>
+
+  <div class="banner">
+    <b>Aperçu — non fonctionnel.</b> Ce formulaire ne collecte rien et n'envoie rien. Le portail
+    réel exige un service sécurisé de vérification des dépôts et de crédit, à développer et
+    auditer. N'y déposez aucun jeton tant que les adresses officielles ne sont pas publiées.
+  </div>
+
+  <div class="steps">
+    <div class="step"><div class="n"></div><div>
+      <h3>Choisissez votre réseau et lisez l'adresse de dépôt</h3>
+      <p>Vérifiez cette adresse sur le site officiel et le dépôt du projet, jamais seulement ici.</p>
+    </div></div>
+    <div class="step"><div class="n"></div><div>
+      <h3>Envoyez vos jetons historiques à cette adresse</h3>
+      <p>Depuis votre propre portefeuille, sur le réseau d'origine.</p>
+    </div></div>
+    <div class="step"><div class="n"></div><div>
+      <h3>Renseignez le formulaire et l'empreinte du dépôt</h3>
+      <p>Le montant crédité découle du dépôt réellement constaté sur le réseau d'origine.</p>
+    </div></div>
+    <div class="step"><div class="n"></div><div>
+      <h3>Recevez votre BOSA et la preuve du transfert</h3>
+      <p>L'empreinte de la transaction sur Coinbosa Chain, vérifiable sur l'explorateur.</p>
+    </div></div>
+  </div>
+
+  <form id="f" novalidate>
+    <div class="two">
+      <div class="row">
+        <label for="prenom">Prénom</label>
+        <input id="prenom" autocomplete="given-name" />
+        <span class="hint" id="h-prenom"></span>
+      </div>
+      <div class="row">
+        <label for="nom">Nom</label>
+        <input id="nom" autocomplete="family-name" />
+        <span class="hint" id="h-nom"></span>
+      </div>
+    </div>
+
+    <div class="row">
+      <label for="reseau">Réseau d'origine</label>
+      <select id="reseau">
+        <option value="">— choisir —</option>
+        <option value="solana">Solana</option>
+        <option value="bnb">BNB Chain</option>
+      </select>
+    </div>
+
+    <div class="deposit" id="deposit" hidden>
+      Adresse officielle de dépôt <span id="reseau-nom"></span> :
+      <div class="addr" id="deposit-addr">à publier avant l'ouverture du portail</div>
+    </div>
+
+    <div class="row">
+      <label for="dest">Adresse Coinbosa Chain de destination (0x…)</label>
+      <input id="dest" class="mono" placeholder="0x…" spellcheck="false" />
+      <span class="hint" id="h-dest">Le BOSA natif y sera crédité. Vérifiez chaque caractère.</span>
+    </div>
+
+    <div class="row">
+      <label for="tx">Empreinte de la transaction de dépôt</label>
+      <input id="tx" class="mono" placeholder="empreinte sur le réseau d'origine" spellcheck="false" />
+      <span class="hint" id="h-tx"></span>
+    </div>
+
+    <button id="submit" type="submit" disabled>Soumettre la demande de migration</button>
+  </form>
+
+  <footer>
+    Migration à sens unique : les jetons déposés sont retirés de la circulation.<br />
+    Spécification complète dans <a href="../docs/MIGRATION.md">docs/MIGRATION.md</a>.
+  </footer>
+</div>
+
+<script>
+// Validation entièrement côté client. Aucune donnée n'est transmise : ce squelette
+// attend un service sécurisé (voir docs/MIGRATION.md).
+
+// Adresses de dépôt : VIDES tant qu'elles ne sont pas officiellement publiées.
+// Ne jamais coder ici une adresse non vérifiée — ce serait un vecteur de détournement.
+const DEPOSIT = { solana: '', bnb: '' };
+
+const $ = (id) => document.getElementById(id);
+
+// --- validation EIP-55 de l'adresse de destination, sans dépendance externe ---
+// keccak-256 minimal (implémentation compacte, suffisante pour la somme de contrôle)
+function keccak256(bytes) {
+  const RC = [0x0000000000000001n,0x0000000000008082n,0x800000000000808An,0x8000000080008000n,
+    0x000000000000808Bn,0x0000000080000001n,0x8000000080008081n,0x8000000000008009n,
+    0x000000000000008An,0x0000000000000088n,0x0000000080008009n,0x000000008000000An,
+    0x000000008000808Bn,0x800000000000008Bn,0x8000000000008089n,0x8000000000008003n,
+    0x8000000000008002n,0x8000000000000080n,0x000000000000800An,0x800000008000000An,
+    0x8000000080008081n,0x8000000000008080n,0x0000000080000001n,0x8000000080008008n];
+  const R = [0,1,62,28,27,36,44,6,55,20,3,10,43,25,39,41,45,15,21,8,18,2,61,56,14];
+  const M = (1n<<64n)-1n;
+  const rot = (x,n)=>((x<<BigInt(n))|(x>>(64n-BigInt(n))))&M;
+  let A = new Array(25).fill(0n);
+  const rate = 136;
+  const pad = [...bytes, 0x01];
+  while (pad.length % rate !== 0) pad.push(0);
+  pad[pad.length-1] |= 0x80;
+  for (let off=0; off<pad.length; off+=rate) {
+    for (let i=0;i<rate/8;i++){ let l=0n; for(let j=7;j>=0;j--) l=(l<<8n)|BigInt(pad[off+i*8+j]); A[i]^=l; }
+    for (let r=0;r<24;r++){
+      const C=[0n,0n,0n,0n,0n];
+      for(let x=0;x<5;x++) C[x]=A[x]^A[x+5]^A[x+10]^A[x+15]^A[x+20];
+      const D=[0n,0n,0n,0n,0n];
+      for(let x=0;x<5;x++) D[x]=C[(x+4)%5]^rot(C[(x+1)%5],1);
+      for(let x=0;x<5;x++) for(let y=0;y<25;y+=5) A[x+y]^=D[x];
+      let B=new Array(25).fill(0n);
+      for(let x=0;x<5;x++) for(let y=0;y<5;y++) B[y+((2*x+3*y)%5)*5]=rot(A[x+y*5],R[x+y*5]);
+      for(let x=0;x<5;x++) for(let y=0;y<5;y++) A[x+y*5]=B[x+y*5]^((~B[(x+1)%5+y*5])&B[(x+2)%5+y*5]);
+      A[0]^=RC[r];
+    }
+  }
+  const out=[];
+  for(let i=0;i<32;i++) out.push(Number((A[Math.floor(i/8)]>>BigInt((i%8)*8))&0xffn));
+  return out;
+}
+function isChecksumAddress(addr) {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) return false;
+  const body = addr.slice(2);
+  const lower = body.toLowerCase();
+  const hash = keccak256([...lower].map(c=>c.charCodeAt(0)));
+  const hex = hash.map(b=>b.toString(16).padStart(2,'0')).join('');
+  for (let i=0;i<40;i++){
+    const c = body[i];
+    if (!/[a-fA-F]/.test(c)) continue;
+    const up = parseInt(hex[i],16) >= 8;
+    if ((up && c !== c.toUpperCase()) || (!up && c !== c.toLowerCase())) return false;
+  }
+  return true;
+}
+
+function validate() {
+  let ok = true;
+  const setHint = (id, msg, cls) => { const h=$('h-'+id); if(h){h.textContent=msg||''; h.className='hint'+(cls?' '+cls:'');} };
+
+  const prenom = $('prenom').value.trim();
+  const nom = $('nom').value.trim();
+  if (!prenom) ok=false;
+  if (!nom) ok=false;
+
+  const reseau = $('reseau').value;
+  if (!reseau) ok=false;
+  $('deposit').hidden = !reseau;
+  if (reseau) {
+    $('reseau-nom').textContent = reseau === 'solana' ? '(Solana)' : '(BNB Chain)';
+    $('deposit-addr').textContent = DEPOSIT[reseau] || 'à publier avant l’ouverture du portail';
+  }
+
+  const dest = $('dest').value.trim();
+  const destEl = $('dest');
+  if (!dest) { setHint('dest','Le BOSA natif y sera crédité. Vérifiez chaque caractère.'); destEl.className='mono'; ok=false; }
+  else if (!/^0x[0-9a-fA-F]{40}$/.test(dest)) { setHint('dest','Format d’adresse invalide.','err'); destEl.className='mono bad'; ok=false; }
+  else if (dest === dest.toLowerCase() || dest === dest.toUpperCase()) { setHint('dest','Adresse sans casse : impossible de vérifier la somme de contrôle. Recopiez l’adresse telle qu’elle apparaît dans votre portefeuille.','err'); destEl.className='mono bad'; ok=false; }
+  else if (!isChecksumAddress(dest)) { setHint('dest','Somme de contrôle EIP-55 invalide : cette adresse comporte une erreur.','err'); destEl.className='mono bad'; ok=false; }
+  else { setHint('dest','Adresse valide.','ok'); destEl.className='mono good'; }
+
+  const tx = $('tx').value.trim();
+  if (!tx) { setHint('tx',''); ok=false; }
+  else if (reseau==='bnb' && !/^0x[0-9a-fA-F]{64}$/.test(tx)) { setHint('tx','Une empreinte BNB Chain fait 66 caractères (0x + 64).','err'); ok=false; }
+  else if (reseau==='solana' && !/^[1-9A-HJ-NP-Za-km-z]{43,88}$/.test(tx)) { setHint('tx','Empreinte Solana invalide (signature base58).','err'); ok=false; }
+  else setHint('tx','Format reconnu.','ok');
+
+  $('submit').disabled = !ok;
+  return ok;
+}
+
+for (const id of ['prenom','nom','reseau','dest','tx']) {
+  $(id).addEventListener('input', validate);
+  $(id).addEventListener('change', validate);
+}
+
+$('f').addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!validate()) return;
+  // Aperçu : aucune transmission. Le portail réel appellerait ici un service sécurisé.
+  alert('Aperçu non fonctionnel.\n\nLe portail réel vérifierait votre dépôt sur le réseau d’origine, ' +
+        'créditerait le BOSA à votre adresse, et vous remettrait l’empreinte de la transaction Coinbosa Chain comme preuve.\n\n' +
+        'Voir docs/MIGRATION.md.');
+});
+</script>

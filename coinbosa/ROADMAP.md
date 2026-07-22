@@ -20,7 +20,8 @@ sur une machine vierge. Ce qui manque relève désormais de l'exécution, pas de
 | Standard de jeton BRC20 | fait, 26 tests sur 26 |
 | Explorateur multilingue | fait, sans indexation |
 | Intégration continue | verte, de bout en bout |
-| **Genesis définitif — offre et répartition** | **à faire — bloquant** |
+| Genesis : 700 M répartis, pont purgé | fait, vérifié on-chain |
+| Mise de l'offre sous multi-signatures | à faire — bloquant |
 | Couche d'enjeu (staking, sanctions) | à faire |
 | Réseau multi-validateurs | à faire |
 | RPC public, explorateur indexé, site | à faire |
@@ -54,15 +55,17 @@ offre n'a jamais été conçue — elle est l'addition d'un héritage du réseau
 posées pour tester. Or le genesis porte désormais **l'intégralité de l'offre BOSA**, puisqu'il
 n'existe plus de jeton applicatif.
 
-- Fixer l'offre à 700 000 000 BOSA au bloc de genèse
-- Purger le solde hérité du contrat de pont du réseau amont, sans objet ici
-- Créer une adresse par poste de la répartition, et l'inscrire au genesis
-- Définir les calendriers de blocage et d'acquisition de chaque poste
-- Placer les postes significatifs sous multi-signatures
-- Regénérer, réinitialiser la chaîne, revérifier le franchissement d'epoch
+**Ce qui est fait**, vérifié sur la chaîne : l'offre vaut exactement 700 000 000 BOSA, répartie
+sur les treize postes ; le solde hérité du pont du réseau amont est purgé ; le franchissement
+d'epoch reste assuré.
 
-**Critère de réussite** — l'offre totale lue sur la chaîne vaut exactement 700 000 000 BOSA,
-répartie sur les adresses publiées, et aucun solde ne subsiste dans un contrat hérité.
+**Ce qui reste**, et qui est bloquant : remplacer les adresses de développement par de vraies
+adresses **multi-signatures** générées sur le serveur, dans `genesis/distribution-addresses.json`,
+puis publier chaque adresse. Tant que la même clé peut détenir l'offre et contrôler la liste des
+validateurs, une seule personne contrôle la monnaie et le consensus.
+
+**Critère de réussite** — chaque poste est détenu par une adresse multi-signatures publiée,
+vérifiable sur l'explorateur.
 
 ### Jalon 2 — La couche d'enjeu
 
@@ -154,7 +157,7 @@ accepte un actif vivant sur une chaîne souveraine n'a rien d'acquis. Si la rép
 faudra un déploiement canonique de BOSA sur une chaîne liquide, avec passerelle vers Coinbosa —
 ce qui change l'architecture, pas seulement le calendrier.
 
-### Jalon 8 — Ouverture extérieure
+### Jalon 9 — Ouverture extérieure
 
 - Audit de sécurité externe des contrats et du client modifié
 - Passerelle vers un réseau majeur
