@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -134,7 +135,7 @@ func (ec *Client) PeerCount(ctx context.Context) (uint64, error) {
 // BlockReceipts returns the receipts of a given block number or hash.
 func (ec *Client) BlockReceipts(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) ([]*types.Receipt, error) {
 	var r []*types.Receipt
-	err := ec.c.CallContext(ctx, &r, "eth_getBlockReceipts", blockNrOrHash.String())
+	err := ec.c.CallContext(ctx, &r, "eth_getBlockReceipts", blockNrOrHash)
 	if err == nil && r == nil {
 		return nil, ethereum.NotFound
 	}
@@ -591,9 +592,16 @@ func (ec *Client) SubscribeFilterLogs(ctx context.Context, q ethereum.FilterQuer
 }
 
 func toFilterArg(q ethereum.FilterQuery) (interface{}, error) {
-	arg := map[string]interface{}{
-		"address": q.Addresses,
-		"topics":  q.Topics,
+	arg := map[string]interface{}{}
+	// Only include "address" when there are actual address filters.
+	// An empty slice is treated the same as nil (no filter), and omitting
+	// the field avoids sending "address":[] to nodes that reject empty arrays
+	// (e.g. Hedera, some non-Geth implementations).
+	if len(q.Addresses) > 0 {
+		arg["address"] = q.Addresses
+	}
+	if q.Topics != nil {
+		arg["topics"] = q.Topics
 	}
 	if q.BlockHash != nil {
 		arg["blockHash"] = *q.BlockHash
@@ -821,9 +829,11 @@ func (ec *Client) SendRawTransactionSync(
 	rawTx []byte,
 	timeout *time.Duration,
 ) (*types.Receipt, error) {
-	var ms *hexutil.Uint64
+	var ms *uint64
 	if timeout != nil {
-		if d := hexutil.Uint64(timeout.Milliseconds()); d > 0 {
+		msInt := timeout.Milliseconds()
+		if msInt > 0 {
+			d := uint64(msInt)
 			ms = &d
 		}
 	}
@@ -861,7 +871,7 @@ func (ec *Client) HasBuilder(ctx context.Context, address common.Address) (bool,
 }
 
 // SendBid sends a bid
-func (ec *Client) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, error) {
+func (ec *Client) SendBid(ctx context.Context, args buildertypes.BidArgs) (common.Hash, error) {
 	var hash common.Hash
 	err := ec.c.CallContext(ctx, &hash, "mev_sendBid", args)
 	if err != nil {
@@ -871,7 +881,7 @@ func (ec *Client) SendBid(ctx context.Context, args types.BidArgs) (common.Hash,
 }
 
 // SendBidBlock sends a BidBlock (zero-simulate MEV path).
-func (ec *Client) SendBidBlock(ctx context.Context, args types.BidBlockArgs) (common.Hash, error) {
+func (ec *Client) SendBidBlock(ctx context.Context, args buildertypes.BidBlockArgs) (common.Hash, error) {
 	var hash common.Hash
 	err := ec.c.CallContext(ctx, &hash, "mev_sendBidBlock", args)
 	if err != nil {
@@ -911,8 +921,8 @@ func (ec *Client) BestBidGasFee(ctx context.Context, parentHash common.Hash) (*b
 }
 
 // MevParams returns the static params of mev
-func (ec *Client) MevParams(ctx context.Context) (*types.MevParams, error) {
-	var params types.MevParams
+func (ec *Client) MevParams(ctx context.Context) (*buildertypes.MevParams, error) {
+	var params buildertypes.MevParams
 	err := ec.c.CallContext(ctx, &params, "mev_params")
 	if err != nil {
 		return nil, err
@@ -1014,6 +1024,7 @@ type rpcProgress struct {
 	TxIndexFinishedBlocks  hexutil.Uint64
 	TxIndexRemainingBlocks hexutil.Uint64
 	StateIndexRemaining    hexutil.Uint64
+	TrienodeIndexRemaining hexutil.Uint64
 }
 
 func (p *rpcProgress) toSyncProgress() *ethereum.SyncProgress {
@@ -1041,6 +1052,7 @@ func (p *rpcProgress) toSyncProgress() *ethereum.SyncProgress {
 		TxIndexFinishedBlocks:  uint64(p.TxIndexFinishedBlocks),
 		TxIndexRemainingBlocks: uint64(p.TxIndexRemainingBlocks),
 		StateIndexRemaining:    uint64(p.StateIndexRemaining),
+		TrienodeIndexRemaining: uint64(p.TrienodeIndexRemaining),
 	}
 }
 
@@ -1084,6 +1096,7 @@ type SimulateCallResult struct {
 	ReturnValue []byte       `json:"returnData"`
 	Logs        []*types.Log `json:"logs"`
 	GasUsed     uint64       `json:"gasUsed"`
+	MaxUsedGas  uint64       `json:"maxUsedGas"`
 	Status      uint64       `json:"status"`
 	Error       *CallError   `json:"error,omitempty"`
 }
@@ -1091,6 +1104,7 @@ type SimulateCallResult struct {
 type simulateCallResultMarshaling struct {
 	ReturnValue hexutil.Bytes
 	GasUsed     hexutil.Uint64
+	MaxUsedGas  hexutil.Uint64
 	Status      hexutil.Uint64
 }
 

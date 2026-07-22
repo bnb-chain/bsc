@@ -9,6 +9,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
 	gokzg4844 "github.com/crate-crypto/go-eth-kzg"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/params"
@@ -74,7 +75,7 @@ func TestStartAsyncBlobValidation_InvalidProof(t *testing.T) {
 	sidecar.Proofs[0][0] ^= 0xff
 
 	tx := makeSignedBlobTx(0, sidecar)
-	bid := &types.Bid{
+	bid := &buildertypes.Bid{
 		Txs: types.Transactions{tx},
 	}
 	startAsyncBlobValidation(bid)

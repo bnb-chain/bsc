@@ -100,6 +100,9 @@ type SubPool interface {
 	// to this particular subpool.
 	Filter(tx *types.Transaction) bool
 
+	// FilterType returns whether the subpool supports the given transaction type.
+	FilterType(kind byte) bool
+
 	// Init sets the base parameters of the subpool, allowing it to load any saved
 	// transactions from disk and also permitting internal maintenance routines to
 	// start up.
@@ -151,16 +154,12 @@ type SubPool interface {
 	//
 	// The transactions can also be pre-filtered by the dynamic fee components to
 	// reduce allocations and load on downstream subsystems.
-	Pending(filter PendingFilter) map[common.Address][]*LazyTransaction
+	Pending(filter PendingFilter) (map[common.Address][]*LazyTransaction, int)
 
 	// SubscribeTransactions subscribes to new transaction events. The subscriber
 	// can decide whether to receive notifications only for newly seen transactions
 	// or also for reorged out ones.
 	SubscribeTransactions(ch chan<- core.NewTxsEvent, reorgs bool) event.Subscription
-
-	// SubscribeReannoTxsEvent should return an event subscription of
-	// ReannoTxsEvent and send events to the given channel.
-	SubscribeReannoTxsEvent(chan<- core.ReannoTxsEvent) event.Subscription
 
 	// Nonce returns the next nonce of an account, with all transactions executable
 	// by the pool already applied on top.

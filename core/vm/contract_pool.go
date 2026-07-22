@@ -14,7 +14,7 @@ var contractPool = sync.Pool{
 }
 
 // GetContract returns a contract from the pool or creates a new one
-func GetContract(caller common.Address, address common.Address, value *uint256.Int, gas uint64, jumpDests JumpDestCache) *Contract {
+func GetContract(caller common.Address, address common.Address, value *uint256.Int, gas GasBudget, jumpDests JumpDestCache) *Contract {
 	contract := contractPool.Get().(*Contract)
 
 	// Reset the contract with new values
@@ -24,7 +24,6 @@ func GetContract(caller common.Address, address common.Address, value *uint256.I
 	contract.Gas = gas
 	contract.Code = nil
 	contract.CodeHash = common.Hash{}
-	contract.CodeAddr = nil
 	contract.Input = nil
 	contract.IsDeployment = false
 	contract.IsSystemCall = false
@@ -33,7 +32,6 @@ func GetContract(caller common.Address, address common.Address, value *uint256.I
 	if jumpDests == nil {
 		jumpDests = newMapJumpDests()
 	}
-	contract.codeBitmapFunc = codeBitmap
 	contract.jumpDests = jumpDests
 	contract.analysis = nil
 

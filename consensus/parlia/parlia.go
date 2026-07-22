@@ -322,7 +322,7 @@ func (p *Parlia) IsSystemTransaction(tx *types.Transaction, header *types.Header
 	if tx.To() == nil || !isToSystemContract(*tx.To()) {
 		return false, nil
 	}
-	if tx.GasPrice().Sign() != 0 {
+	if tx.EffectiveGasPriceForBSC().Sign() != 0 {
 		return false, nil
 	}
 	sender, err := types.Sender(p.signer, tx)
@@ -2097,8 +2097,8 @@ func (p *Parlia) getSystemMessage(from, toAddress common.Address, data []byte, v
 	return &core.Message{
 		From:     from,
 		GasLimit: math.MaxUint64 / 2,
-		GasPrice: big.NewInt(0),
-		Value:    value,
+		GasPrice: new(uint256.Int),
+		Value:    uint256.MustFromBig(value),
 		To:       &toAddress,
 		Data:     data,
 	}
@@ -2114,7 +2114,7 @@ func (p *Parlia) applyTransaction(
 	tracer *tracing.Hooks,
 ) (applyErr error) {
 	nonce := state.GetNonce(msg.From)
-	expectedTx := types.NewTransaction(nonce, *msg.To, msg.Value, msg.GasLimit, msg.GasPrice, msg.Data)
+	expectedTx := types.NewTransaction(nonce, *msg.To, msg.Value.ToBig(), msg.GasLimit, msg.GasPrice.ToBig(), msg.Data)
 	expectedHash := p.signer.Hash(expectedTx)
 
 	switch mode {
@@ -2196,7 +2196,13 @@ func (p *Parlia) applyTransaction(
 		root = state.IntermediateRoot(p.chainConfig.IsEIP158(header.Number)).Bytes()
 	}
 	*usedGas += gasUsed
-	tracingReceipt = types.NewReceipt(root, false, *usedGas)
+	// Continue the receipt (refund-inclusive) chain from the previous receipt;
+	// usedGas carries the block-level (refund-exclusive, EIP-7778) chain.
+	cumulativeGasUsed := gasUsed
+	if n := len(*receipts); n > 0 {
+		cumulativeGasUsed += (*receipts)[n-1].CumulativeGasUsed
+	}
+	tracingReceipt = types.NewReceipt(root, false, cumulativeGasUsed)
 	tracingReceipt.TxHash = expectedTx.Hash()
 	tracingReceipt.GasUsed = gasUsed
 
@@ -2492,17 +2498,18 @@ func applyMessage(
 		state.ClearAccessList()
 	}
 
-	ret, returnGas, err := evm.Call(
+	gasBudget := vm.NewGasBudget(msg.GasLimit)
+	ret, leftOverGas, err := evm.Call(
 		msg.From,
 		*msg.To,
 		msg.Data,
-		msg.GasLimit,
-		uint256.MustFromBig(msg.Value),
+		gasBudget,
+		msg.Value,
 	)
 	if err != nil {
 		log.Error("apply message failed", "msg", string(ret), "err", err)
 	}
-	return msg.GasLimit - returnGas, err
+	return leftOverGas.Used(gasBudget), err
 }
 
 // proposalKey build a key which is a combination of the block number and the proposer address.

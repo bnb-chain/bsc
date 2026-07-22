@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/miner/builderclient"
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
 )
@@ -359,7 +359,7 @@ func TestBidBlockAdmission_DisabledDoesNotConsumeQuota(t *testing.T) {
 				},
 			}
 
-			_, err := miner.SendBidBlock(context.Background(), &types.BidBlockArgs{})
+			_, err := miner.SendBidBlock(context.Background(), &buildertypes.BidBlockArgs{})
 			if err == nil || !strings.Contains(err.Error(), "BidBlock disabled") {
 				t.Fatalf("expected BidBlock disabled error, got %v", err)
 			}

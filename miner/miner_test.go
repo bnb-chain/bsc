@@ -41,8 +41,9 @@ import (
 )
 
 type mockBackend struct {
-	bc     *core.BlockChain
-	txPool *txpool.TxPool
+	bc       *core.BlockChain
+	txPool   *txpool.TxPool
+	syncFeed event.Feed
 }
 
 func NewMockBackend(bc *core.BlockChain, txPool *txpool.TxPool) *mockBackend {
@@ -58,6 +59,16 @@ func (m *mockBackend) BlockChain() *core.BlockChain {
 
 func (m *mockBackend) TxPool() *txpool.TxPool {
 	return m.txPool
+}
+
+func (m *mockBackend) SubscribeSyncEvents(ch chan<- downloader.SyncEvent) event.Subscription {
+	return m.syncFeed.Subscribe(ch)
+}
+
+// postSyncEvent injects a downloader sync event into the miner update loop,
+// mirroring the TypeMux posting the tests used before.
+func (m *mockBackend) postSyncEvent(typ downloader.SyncEventType) {
+	m.syncFeed.Send(downloader.SyncEvent{Type: typ})
 }
 
 func (m *mockBackend) StateAtBlock(block *types.Block, reexec uint64, base *state.StateDB, checkLive bool, preferDisk bool) (statedb *state.StateDB, err error) {
@@ -87,8 +98,12 @@ func (bc *testBlockChain) GetBlock(hash common.Hash, number uint64) *types.Block
 	return types.NewBlock(bc.CurrentBlock(), nil, nil, trie.NewStackTrie(nil))
 }
 
-func (bc *testBlockChain) StateAt(common.Hash) (*state.StateDB, error) {
+func (bc *testBlockChain) StateAt(header *types.Header) (*state.StateDB, error) {
 	return bc.statedb, nil
+}
+
+func (bc *testBlockChain) Genesis() *types.Block {
+	return types.NewBlock(bc.CurrentBlock(), nil, nil, trie.NewStackTrie(nil))
 }
 
 func (bc *testBlockChain) HasState(root common.Hash) bool {
@@ -101,81 +116,81 @@ func (bc *testBlockChain) SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent)
 
 func TestMiner(t *testing.T) {
 	t.Parallel()
-	miner, mux, cleanup := createMiner(t)
+	miner, backend, cleanup := createMiner(t)
 	defer cleanup(false)
 
 	miner.Start()
 	waitForMiningState(t, miner, true)
 	// Start the downloader
-	mux.Post(downloader.StartEvent{})
+	backend.postSyncEvent(downloader.SyncStarted)
 	waitForMiningState(t, miner, false)
 	// Stop the downloader and wait for the update loop to run
-	mux.Post(downloader.DoneEvent{})
+	backend.postSyncEvent(downloader.SyncCompleted)
 	waitForMiningState(t, miner, true)
 
-	// Subsequent downloader events after a successful DoneEvent should not cause the
+	// Subsequent downloader events after a successful SyncCompleted should not cause the
 	// miner to start or stop. This prevents a security vulnerability
 	// that would allow entities to present fake high blocks that would
 	// stop mining operations by causing a downloader sync
 	// until it was discovered they were invalid, whereon mining would resume.
-	mux.Post(downloader.StartEvent{})
+	backend.postSyncEvent(downloader.SyncStarted)
 	waitForMiningState(t, miner, true)
 
-	mux.Post(downloader.FailedEvent{})
+	backend.postSyncEvent(downloader.SyncFailed)
 	waitForMiningState(t, miner, true)
 }
 
 // TestMinerDownloaderFirstFails tests that mining is only
-// permitted to run indefinitely once the downloader sees a DoneEvent (success).
-// An initial FailedEvent should allow mining to stop on a subsequent
-// downloader StartEvent.
+// permitted to run indefinitely once the downloader sees a SyncCompleted (success).
+// An initial SyncFailed should allow mining to stop on a subsequent
+// downloader SyncStarted.
 func TestMinerDownloaderFirstFails(t *testing.T) {
 	t.Parallel()
-	miner, mux, cleanup := createMiner(t)
+	miner, backend, cleanup := createMiner(t)
 	defer cleanup(false)
 
 	miner.Start()
 	waitForMiningState(t, miner, true)
 	// Start the downloader
-	mux.Post(downloader.StartEvent{})
+	backend.postSyncEvent(downloader.SyncStarted)
 	waitForMiningState(t, miner, false)
 
 	// Stop the downloader and wait for the update loop to run
-	mux.Post(downloader.FailedEvent{})
+	backend.postSyncEvent(downloader.SyncFailed)
 	waitForMiningState(t, miner, true)
 
-	// Since the downloader hasn't yet emitted a successful DoneEvent,
-	// we expect the miner to stop on next StartEvent.
-	mux.Post(downloader.StartEvent{})
+	// Since the downloader hasn't yet emitted a successful SyncCompleted,
+	// we expect the miner to stop on next SyncStarted.
+	backend.postSyncEvent(downloader.SyncStarted)
 	waitForMiningState(t, miner, false)
 
 	// Downloader finally succeeds.
-	mux.Post(downloader.DoneEvent{})
+	backend.postSyncEvent(downloader.SyncCompleted)
 	waitForMiningState(t, miner, true)
 
 	// Downloader starts again.
-	// Since it has achieved a DoneEvent once, we expect miner
+	// Since it has achieved a SyncCompleted once, we expect miner
 	// state to be unchanged.
-	mux.Post(downloader.StartEvent{})
+	backend.postSyncEvent(downloader.SyncStarted)
 	waitForMiningState(t, miner, true)
 
-	mux.Post(downloader.FailedEvent{})
+	backend.postSyncEvent(downloader.SyncFailed)
 	waitForMiningState(t, miner, true)
 }
 
 func TestMinerStartStopAfterDownloaderEvents(t *testing.T) {
 	t.Parallel()
-	miner, mux, cleanup := createMiner(t)
+	miner, backend, cleanup := createMiner(t)
 	defer cleanup(false)
 
 	miner.Start()
 	waitForMiningState(t, miner, true)
 	// Start the downloader
-	mux.Post(downloader.StartEvent{})
+	backend.postSyncEvent(downloader.SyncStarted)
 	waitForMiningState(t, miner, false)
 
 	// Downloader finally succeeds.
-	mux.Post(downloader.DoneEvent{})
+	backend.postSyncEvent(downloader.SyncCompleted)
 	waitForMiningState(t, miner, true)
 
 	miner.Stop()
@@ -190,13 +205,13 @@ func TestMinerStartStopAfterDownloaderEvents(t *testing.T) {
 
 func TestStartWhileDownload(t *testing.T) {
 	t.Parallel()
-	miner, mux, cleanup := createMiner(t)
+	miner, backend, cleanup := createMiner(t)
 	defer cleanup(false)
 	waitForMiningState(t, miner, false)
 	miner.Start()
 	waitForMiningState(t, miner, true)
 	// Stop the downloader and wait for the update loop to run
-	mux.Post(downloader.StartEvent{})
+	backend.postSyncEvent(downloader.SyncStarted)
 	waitForMiningState(t, miner, false)
 	// Starting the miner after the downloader should not work
 	miner.Start()
@@ -230,17 +245,17 @@ func TestCloseMiner(t *testing.T) {
 // possible at the moment
 func TestMinerSetEtherbase(t *testing.T) {
 	t.Parallel()
-	miner, mux, cleanup := createMiner(t)
+	miner, backend, cleanup := createMiner(t)
 	defer cleanup(false)
 	miner.Start()
 	waitForMiningState(t, miner, true)
 	// Start the downloader
-	mux.Post(downloader.StartEvent{})
+	backend.postSyncEvent(downloader.SyncStarted)
 	waitForMiningState(t, miner, false)
 	// Now user tries to configure proper mining address
 	miner.Start()
 	// Stop the downloader and wait for the update loop to run
-	mux.Post(downloader.DoneEvent{})
+	backend.postSyncEvent(downloader.SyncCompleted)
 	waitForMiningState(t, miner, true)
 
 	coinbase := common.HexToAddress("0xdeedbeef")
@@ -294,7 +309,7 @@ func minerTestGenesisBlock(period uint64, gasLimit uint64, faucet common.Address
 		},
 	}
 }
-func createMiner(t *testing.T) (*Miner, *event.TypeMux, func(skipMiner bool)) {
+func createMiner(t *testing.T) (*Miner, *mockBackend, func(skipMiner bool)) {
 	// Create Ethash config
 	config := minerconfig.Config{
 		Etherbase: common.HexToAddress("123456789"),
@@ -314,7 +329,7 @@ func createMiner(t *testing.T) (*Miner, *event.TypeMux, func(skipMiner bool)) {
 	if err != nil {
 		t.Fatalf("can't create new chain %v", err)
 	}
-	statedb, _ := state.New(bc.Genesis().Root(), bc.StateCache())
+	statedb, _ := state.New(bc.Genesis().Root(), state.NewDatabase(bc.TrieDB(), bc.CodeDB()))
 	blockchain := &testBlockChain{bc.Genesis().Root(), chainConfig, statedb, 10000000, new(event.Feed)}
 
 	pool := legacypool.New(testTxPoolConfig, blockchain)
@@ -333,5 +348,5 @@ func createMiner(t *testing.T) (*Miner, *event.TypeMux, func(skipMiner bool)) {
 			miner.Close()
 		}
 	}
-	return miner, mux, cleanup
+	return miner, backend, cleanup
 }

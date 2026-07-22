@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 )
 
 // RevokeReasonManual is the Reason value used when an operator manually revokes
@@ -92,10 +92,10 @@ func (m *BidBlockPermissionManager) RevokeFor(
 	}
 }
 
-func (m *BidBlockPermissionManager) GetStatus(builder common.Address) types.BidBlockPermissionStatus {
+func (m *BidBlockPermissionManager) GetStatus(builder common.Address) buildertypes.BidBlockPermissionStatus {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	status := types.BidBlockPermissionStatus{
+	status := buildertypes.BidBlockPermissionStatus{
 		Allowed: true,
 	}
 	rec, found := m.activeRecord(builder, m.clock())

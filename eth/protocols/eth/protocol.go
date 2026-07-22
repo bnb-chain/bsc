@@ -31,7 +31,7 @@ import (
 // Constants to match up protocol versions and messages
 const (
 	ETH68 = 68
-	ETH69 = 69
+	ETH70 = 70
 )
 
 // ProtocolName is the official short name of the `eth` protocol used during
@@ -40,11 +40,11 @@ const ProtocolName = "eth"
 
 // ProtocolVersions are the supported versions of the `eth` protocol (first
 // is primary).
-var ProtocolVersions = []uint{ /*ETH69,*/ ETH68} // ETH69 is disabled in bsc
+var ProtocolVersions = []uint{ETH70, ETH68}
 
 // protocolLengths are the number of implemented message corresponding to
 // different protocol versions.
-var protocolLengths = map[uint]uint64{ETH68: 17, ETH69: 18}
+var protocolLengths = map[uint]uint64{ETH68: 17, ETH70: 18}
 
 // maxMessageSize is the maximum cap on the size of a protocol message.
 const maxMessageSize = 10 * 1024 * 1024
@@ -128,10 +128,13 @@ func (p *UpgradeStatusPacket) GetExtension() (*UpgradeStatusExtension, error) {
 	return extension, nil
 }
 
-// StatusPacket69 is the network packet for the status message.
-type StatusPacket69 struct {
+// StatusPacket is the network packet for the eth/70 status message. It follows
+// upstream eth/70, except that BSC retains TD for Parlia chain synchronization.
+// Unlike eth/68, eth/70 does not exchange UpgradeStatusMsg.
+type StatusPacket struct {
 	ProtocolVersion uint32
 	NetworkID       uint64
+	TD              *big.Int
 	Genesis         common.Hash
 	ForkID          forkid.ID
 	// initial available block range
@@ -304,9 +307,23 @@ type BlockBody struct {
 // GetReceiptsRequest represents a block receipts query.
 type GetReceiptsRequest []common.Hash
 
-// GetReceiptsPacket represents a block receipts query with request ID wrapping.
-type GetReceiptsPacket struct {
+// GetReceiptsPacket68 represents a block receipts query with request ID wrapping.
+type GetReceiptsPacket68 struct {
 	RequestId uint64
+	GetReceiptsRequest
+}
+
+// ReceiptsRLPPacket68 is ReceiptsRLPResponse with request ID wrapping.
+type ReceiptsRLPPacket68 struct {
+	RequestId uint64
+	ReceiptsRLPResponse
+}
+
+// GetReceiptsPacket70 represents a block receipts query with request ID and
+// FirstBlockReceiptIndex wrapping.
+type GetReceiptsPacket70 struct {
+	RequestId              uint64
+	FirstBlockReceiptIndex uint64
 	GetReceiptsRequest
 }
 
@@ -315,7 +332,7 @@ type ReceiptsResponse []types.Receipts
 
 // ReceiptsList is a type constraint for block receceipt list types.
 type ReceiptsList interface {
-	*ReceiptList68 | *ReceiptList69
+	*ReceiptList68
 	setBuffers(*receiptListBuffers)
 	EncodeForStorage() (rlp.RawValue, error)
 	Derivable() types.DerivableList
@@ -328,14 +345,14 @@ type ReceiptsPacket[L ReceiptsList] struct {
 	List      rlp.RawList[L]
 }
 
+type ReceiptsPacket70 struct {
+	RequestId           uint64
+	LastBlockIncomplete bool
+	List                rlp.RawList[*ReceiptList]
+}
+
 // ReceiptsRLPResponse is used for receipts, when we already have it encoded
 type ReceiptsRLPResponse []rlp.RawValue
-
-// ReceiptsRLPPacket is ReceiptsRLPResponse with request ID wrapping.
-type ReceiptsRLPPacket struct {
-	RequestId uint64
-	ReceiptsRLPResponse
-}
 
 // NewPooledTransactionHashesPacket represents a transaction announcement packet on eth/68 and newer.
 type NewPooledTransactionHashesPacket struct {
@@ -383,8 +400,8 @@ type BlockRangeUpdatePacket struct {
 func (*StatusPacket68) Name() string { return "Status" }
 func (*StatusPacket68) Kind() byte   { return StatusMsg }
 
-func (*StatusPacket69) Name() string { return "Status" }
-func (*StatusPacket69) Kind() byte   { return StatusMsg }
+func (*StatusPacket) Name() string { return "Status" }
+func (*StatusPacket) Kind() byte   { return StatusMsg }
 
 func (*UpgradeStatusPacket) Name() string { return "UpgradeStatus" }
 func (*UpgradeStatusPacket) Kind() byte   { return UpgradeStatusMsg }

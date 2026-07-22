@@ -17,14 +17,14 @@
 package core
 
 import (
+	"time"
+
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
 // NewTxsEvent is posted when a batch of transactions enters the transaction pool.
 type NewTxsEvent struct{ Txs []*types.Transaction }
-
-// ReannoTxsEvent is posted when a batch of local pending transactions exceed a specified duration.
-type ReannoTxsEvent struct{ Txs []*types.Transaction }
 
 // NewSealedBlockEvent is posted when a block has been sealed.
 type NewSealedBlockEvent struct{ Block *types.Block }
@@ -52,3 +52,10 @@ type ChainHeadEvent struct {
 }
 
 type HighestVerifiedBlockEvent struct{ Header *types.Header }
+
+// NewPayloadEvent is posted when engine_newPayloadVX processes a block.
+type NewPayloadEvent struct {
+	Hash           common.Hash
+	Number         uint64
+	ProcessingTime time.Duration
+}

@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/txpool/locals"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
@@ -239,9 +240,9 @@ func (b *EthAPIBackend) StateAndHeaderByNumber(ctx context.Context, number rpc.B
 	if header == nil {
 		return nil, nil, errors.New("header not found")
 	}
-	stateDb, err := b.eth.BlockChain().StateAt(header.Root)
+	stateDb, err := b.eth.BlockChain().StateAt(header)
 	if err != nil {
-		stateDb, err = b.eth.BlockChain().HistoricState(header.Root)
+		stateDb, err = b.eth.BlockChain().HistoricState(header)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -264,9 +265,9 @@ func (b *EthAPIBackend) StateAndHeaderByNumberOrHash(ctx context.Context, blockN
 		if blockNrOrHash.RequireCanonical && b.eth.blockchain.GetCanonicalHash(header.Number.Uint64()) != hash {
 			return nil, nil, errors.New("hash is not currently canonical")
 		}
-		stateDb, err := b.eth.BlockChain().StateAt(header.Root)
+		stateDb, err := b.eth.BlockChain().StateAt(header)
 		if err != nil {
-			stateDb, err = b.eth.BlockChain().HistoricState(header.Root)
+			stateDb, err = b.eth.BlockChain().HistoricState(header)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -333,6 +334,11 @@ func (b *EthAPIBackend) SubscribeFinalizedHeaderEvent(ch chan<- core.FinalizedHe
 	return b.eth.BlockChain().SubscribeFinalizedHeaderEvent(ch)
 }
 
+// SubscribeNewPayloadEvent registers a subscription for NewPayloadEvent.
+func (b *EthAPIBackend) SubscribeNewPayloadEvent(ch chan<- core.NewPayloadEvent) event.Subscription {
+	return b.eth.BlockChain().SubscribeNewPayloadEvent(ch)
+}
+
 func (b *EthAPIBackend) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscription {
 	return b.eth.BlockChain().SubscribeLogsEvent(ch)
 }
@@ -360,7 +366,7 @@ func (b *EthAPIBackend) SendTx(ctx context.Context, signedTx *types.Transaction)
 }
 
 func (b *EthAPIBackend) GetPoolTransactions() (types.Transactions, error) {
-	pending := b.eth.txPool.Pending(txpool.PendingFilter{})
+	pending, _ := b.eth.txPool.Pending(txpool.PendingFilter{})
 	var txs types.Transactions
 	for _, batch := range pending {
 		for _, lazy := range batch {
@@ -438,9 +444,10 @@ func (b *EthAPIBackend) SyncProgress(ctx context.Context) ethereum.SyncProgress 
 		prog.TxIndexFinishedBlocks = txProg.Indexed
 		prog.TxIndexRemainingBlocks = txProg.Remaining
 	}
-	remain, err := b.eth.blockchain.StateIndexProgress()
+	stateRemain, trienodeRemain, err := b.eth.blockchain.StateIndexProgress()
 	if err == nil {
-		prog.StateIndexRemaining = remain
+		prog.StateIndexRemaining = stateRemain
+		prog.TrienodeIndexRemaining = trienodeRemain
 	}
 	return prog
 }
@@ -530,19 +537,19 @@ func (b *EthAPIBackend) StartMining() error {
 	return b.eth.StartMining()
 }
 
-func (b *EthAPIBackend) StateAtBlock(ctx context.Context, block *types.Block, reexec uint64, base *state.StateDB, readOnly bool, preferDisk bool) (*state.StateDB, tracers.StateReleaseFunc, error) {
-	return b.eth.stateAtBlock(ctx, block, reexec, base, readOnly, preferDisk)
+func (b *EthAPIBackend) StateAtBlock(ctx context.Context, block *types.Block, base *state.StateDB, readOnly bool, preferDisk bool) (*state.StateDB, tracers.StateReleaseFunc, error) {
+	return b.eth.stateAtBlock(ctx, block, base, readOnly, preferDisk)
 }
 
-func (b *EthAPIBackend) StateAtTransaction(ctx context.Context, block *types.Block, txIndex int, reexec uint64) (*types.Transaction, vm.BlockContext, *state.StateDB, tracers.StateReleaseFunc, error) {
-	return b.eth.stateAtTransaction(ctx, block, txIndex, reexec)
+func (b *EthAPIBackend) StateAtTransaction(ctx context.Context, block *types.Block, txIndex int) (*types.Transaction, vm.BlockContext, *state.StateDB, tracers.StateReleaseFunc, error) {
+	return b.eth.stateAtTransaction(ctx, block, txIndex)
 }
 
 func (b *EthAPIBackend) MevRunning() bool {
 	return b.Miner().MevRunning()
 }
 
-func (b *EthAPIBackend) MevParams() *types.MevParams {
+func (b *EthAPIBackend) MevParams() *buildertypes.MevParams {
 	return b.Miner().MevParams()
 }
 
@@ -566,15 +573,15 @@ func (b *EthAPIBackend) HasBuilder(builder common.Address) bool {
 	return b.Miner().HasBuilder(builder)
 }
 
-func (b *EthAPIBackend) GetBidBlockPermission(builder common.Address) types.BidBlockPermissionStatus {
+func (b *EthAPIBackend) GetBidBlockPermission(builder common.Address) buildertypes.BidBlockPermissionStatus {
 	return b.Miner().GetBidBlockPermission(builder)
 }
 
-func (b *EthAPIBackend) SendBid(ctx context.Context, bid *types.BidArgs) (common.Hash, error) {
+func (b *EthAPIBackend) SendBid(ctx context.Context, bid *buildertypes.BidArgs) (common.Hash, error) {
 	return b.Miner().SendBid(ctx, bid)
 }
 
-func (b *EthAPIBackend) SendBidBlock(ctx context.Context, args *types.BidBlockArgs) (common.Hash, error) {
+func (b *EthAPIBackend) SendBidBlock(ctx context.Context, args *buildertypes.BidBlockArgs) (common.Hash, error) {
 	return b.Miner().SendBidBlock(ctx, args)
 }
 

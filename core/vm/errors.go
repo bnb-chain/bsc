@@ -38,7 +38,7 @@ var (
 	ErrGasUintOverflow          = errors.New("gas uint64 overflow")
 	ErrInvalidCode              = errors.New("invalid code: must not begin with 0xef")
 	ErrNonceUintOverflow        = errors.New("nonce uint64 overflow")
-	ErrInvalidOptimizedCode     = errors.New("cannot use optimized code when optimize config is false")
+	ErrCoinbaseAsContract       = errors.New("coinbase address cannot be used as contract address")
 
 	// errStopToken is an internal token indicating interpreter loop termination,
 	// never returned to outside callers.
@@ -77,10 +77,16 @@ func (e ErrStackOverflow) Unwrap() error {
 
 // ErrInvalidOpCode wraps an evm error when an invalid opcode is encountered.
 type ErrInvalidOpCode struct {
-	opcode OpCode
+	opcode  OpCode
+	operand *byte
 }
 
-func (e *ErrInvalidOpCode) Error() string { return fmt.Sprintf("invalid opcode: %s", e.opcode) }
+func (e *ErrInvalidOpCode) Error() string {
+	if e.operand != nil {
+		return fmt.Sprintf("invalid opcode: %s (operand: 0x%02x)", e.opcode, *e.operand)
+	}
+	return fmt.Sprintf("invalid opcode: %s", e.opcode)
+}
 
 // rpcError is the same interface as the one defined in rpc/errors.go
 // but we do not want to depend on rpc package here so we redefine it.

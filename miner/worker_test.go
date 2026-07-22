@@ -33,7 +33,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/core/types"
+	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
@@ -150,6 +152,12 @@ func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine 
 func (b *testWorkerBackend) BlockChain() *core.BlockChain { return b.chain }
 func (b *testWorkerBackend) TxPool() *txpool.TxPool       { return b.txPool }
 
+// SubscribeSyncEvents subscribes to a throwaway feed that never fires; the
+// worker tests do not exercise downloader-driven start/stop behavior.
+func (b *testWorkerBackend) SubscribeSyncEvents(ch chan<- downloader.SyncEvent) event.Subscription {
+	return new(event.Feed).Subscribe(ch)
+}
+
 func (b *testWorkerBackend) newRandomTx(creation bool) *types.Transaction {
 	var tx *types.Transaction
 	gasPrice := big.NewInt(10 * params.InitialBaseFee)
@@ -244,7 +252,7 @@ func TestCommitBidBlockPreservesBuilderExecutionHeaderFields(t *testing.T) {
 	bloom[0] = 0x33
 
 	builderUncleHash := common.Hash{0xbb}
-	decoded := &types.DecodedBidBlock{
+	decoded := &buildertypes.DecodedBidBlock{
 		Header: &types.Header{
 			Number:      big.NewInt(1),
 			ParentHash:  chain.Genesis().Hash(),

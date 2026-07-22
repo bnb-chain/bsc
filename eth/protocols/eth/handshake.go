@@ -39,8 +39,8 @@ const (
 // network IDs, difficulties, head and genesis blocks.
 func (p *Peer) Handshake(networkID uint64, chain forkid.Blockchain, rangeMsg BlockRangeUpdatePacket, td *big.Int, extension *UpgradeStatusExtension) error {
 	switch p.version {
-	case ETH69:
-		return p.handshake69(networkID, chain, rangeMsg)
+	case ETH70:
+		return p.handshake70(networkID, chain, rangeMsg, td)
 	case ETH68:
 		return p.handshake68(networkID, chain, td, extension)
 	default:
@@ -75,11 +75,6 @@ func (p *Peer) handshake68(networkID uint64, chain forkid.Blockchain, td *big.In
 		return err
 	}
 	p.td, p.head = status.TD, status.Head
-	// TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
-	// larger, it will still fit within 100 bits
-	if tdlen := p.td.BitLen(); tdlen > 100 {
-		return fmt.Errorf("too large total difficulty: bitlen %d", tdlen)
-	}
 
 	var upgradeStatus UpgradeStatusPacket // safe to read after two values have been received from errc
 	if extension == nil {
@@ -128,10 +123,13 @@ func (p *Peer) readStatus68(networkID uint64, status *StatusPacket68, genesis co
 	if err := forkFilter(status.ForkID); err != nil {
 		return fmt.Errorf("%w: %v", errForkIDRejected, err)
 	}
+	if err := validateTD(status.TD); err != nil {
+		return err
+	}
 	return nil
 }
 
-func (p *Peer) handshake69(networkID uint64, chain forkid.Blockchain, rangeMsg BlockRangeUpdatePacket) error {
+func (p *Peer) handshake70(networkID uint64, chain forkid.Blockchain, rangeMsg BlockRangeUpdatePacket, td *big.Int) error {
 	var (
 		genesis    = chain.Genesis()
 		latest     = chain.CurrentHeader()
@@ -141,9 +139,10 @@ func (p *Peer) handshake69(networkID uint64, chain forkid.Blockchain, rangeMsg B
 
 	errc := make(chan error, 2)
 	go func() {
-		pkt := &StatusPacket69{
+		pkt := &StatusPacket{
 			ProtocolVersion: uint32(p.version),
 			NetworkID:       networkID,
+			TD:              td,
 			Genesis:         genesis.Hash(),
 			ForkID:          forkID,
 			EarliestBlock:   rangeMsg.EarliestBlock,
@@ -152,15 +151,19 @@ func (p *Peer) handshake69(networkID uint64, chain forkid.Blockchain, rangeMsg B
 		}
 		errc <- p2p.Send(p.rw, StatusMsg, pkt)
 	}()
-	var status StatusPacket69 // safe to read after two values have been received from errc
+	var status StatusPacket // safe to read after two values have been received from errc
 	go func() {
-		errc <- p.readStatus69(networkID, &status, genesis.Hash(), forkFilter)
+		errc <- p.readStatus70(networkID, &status, genesis.Hash(), forkFilter)
 	}()
 
-	return waitForHandshake(errc, p)
+	if err := waitForHandshake(errc, p); err != nil {
+		return err
+	}
+	p.td, p.head = status.TD, status.LatestBlockHash
+	return nil
 }
 
-func (p *Peer) readStatus69(networkID uint64, status *StatusPacket69, genesis common.Hash, forkFilter forkid.Filter) error {
+func (p *Peer) readStatus70(networkID uint64, status *StatusPacket, genesis common.Hash, forkFilter forkid.Filter) error {
 	if err := p.readStatusMsg(status); err != nil {
 		return err
 	}
@@ -176,6 +179,9 @@ func (p *Peer) readStatus69(networkID uint64, status *StatusPacket69, genesis co
 	if err := forkFilter(status.ForkID); err != nil {
 		return fmt.Errorf("%w: %v", errForkIDRejected, err)
 	}
+	if err := validateTD(status.TD); err != nil {
+		return err
+	}
 	// Handle initial block range.
 	initRange := &BlockRangeUpdatePacket{
 		EarliestBlock:   status.EarliestBlock,
@@ -186,6 +192,18 @@ func (p *Peer) readStatus69(networkID uint64, status *StatusPacket69, genesis co
 		return fmt.Errorf("%w: %v", errInvalidBlockRange, err)
 	}
 	p.lastRange.Store(initRange)
+	return nil
+}
+
+func validateTD(td *big.Int) error {
+	if td == nil {
+		return errors.New("missing total difficulty")
+	}
+	// TD at mainnet block #7753254 is 76 bits. If it becomes 100 million times
+	// larger, it will still fit within 100 bits
+	if tdlen := td.BitLen(); tdlen > 100 {
+		return fmt.Errorf("too large total difficulty: bitlen %d", tdlen)
+	}
 	return nil
 }
 
@@ -248,16 +266,16 @@ func markError(p *Peer, err error) {
 		return
 	}
 	m := meters.get(p.Inbound())
-	switch errors.Unwrap(err) {
-	case errNetworkIDMismatch:
+	switch {
+	case errors.Is(err, errNetworkIDMismatch):
 		m.networkIDMismatch.Mark(1)
-	case errProtocolVersionMismatch:
+	case errors.Is(err, errProtocolVersionMismatch):
 		m.protocolVersionMismatch.Mark(1)
-	case errGenesisMismatch:
+	case errors.Is(err, errGenesisMismatch):
 		m.genesisMismatch.Mark(1)
-	case errForkIDRejected:
+	case errors.Is(err, errForkIDRejected):
 		m.forkidRejected.Mark(1)
-	case p2p.DiscReadTimeout:
+	case errors.Is(err, p2p.DiscReadTimeout):
 		m.timeoutError.Mark(1)
 	default:
 		m.peerError.Mark(1)

@@ -32,10 +32,10 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto/keccak"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/holiman/uint256"
-	"golang.org/x/crypto/sha3"
 )
 
 func u64(val uint64) *uint64 { return &val }
@@ -399,7 +399,7 @@ func GenerateBadBlock(parent *types.Block, engine consensus.Engine, txs types.Tr
 	var receipts []*types.Receipt
 	// The post-state result doesn't need to be correct (this is a bad block), but we do need something there
 	// Preferably something unique. So let's use a combo of blocknum + txhash
-	hasher := sha3.NewLegacyKeccak256()
+	hasher := keccak.NewLegacyKeccak256()
 	hasher.Write(header.Number.Bytes())
 	var cumulativeGas uint64
 	var nBlobs int
@@ -424,6 +424,9 @@ func GenerateBadBlock(parent *types.Block, engine consensus.Engine, txs types.Tr
 		if config.IsNotInBSC() {
 			header.ParentBeaconRoot = &beaconRoot
 		}
+	}
+	if config.IsAmsterdam(header.Number, header.Time) {
+		header.SlotNumber = new(uint64)
 	}
 	// Assemble and return the final block for sealing
 	body := &types.Body{Transactions: txs}

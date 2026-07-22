@@ -24,13 +24,11 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -66,6 +64,21 @@ func TestDefaults(t *testing.T) {
 	}
 	if cfg.BlockNumber == nil {
 		t.Error("expected block number to be non nil")
+	}
+	if cfg.Random == nil {
+		t.Error("expected Random to be non nil")
+	}
+}
+
+func TestDefaultsPreserveRandom(t *testing.T) {
+	h := common.HexToHash("0x01")
+	cfg := &Config{Random: &h}
+	setDefaults(cfg)
+	if cfg.Random == nil {
+		t.Fatal("expected Random to remain non-nil")
+	}
+	if *cfg.Random != h {
+		t.Fatalf("expected Random to be preserved, got %x, want %x", *cfg.Random, h)
 	}
 }
 
@@ -685,7 +698,6 @@ func TestColdAccountAccessCost(t *testing.T) {
 						step++
 					},
 				},
-				EnableOpcodeOptimizations: false,
 			},
 		})
 		if want := tc.want; have != want {
@@ -797,185 +809,7 @@ func TestRuntimeJSTracer(t *testing.T) {
 				GasLimit: 1000000,
 				State:    statedb,
 				EVMConfig: vm.Config{
-					Tracer:                    tracer.Hooks,
-					EnableOpcodeOptimizations: false,
-				}})
-			if err != nil {
-				t.Fatal("didn't expect error", err)
-			}
-			res, err := tracer.GetResult()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if have, want := string(res), tc.results[i]; have != want {
-				t.Errorf("wrong result for tracer %d testcase %d, have \n%v\nwant\n%v\n", i, j, have, want)
-			}
-		}
-	}
-}
-
-func TestRuntimeJSTracerWithOpcodeOptimizer(t *testing.T) {
-	jsTracers := []string{
-		`{enters: 0, exits: 0, enterGas: 0, gasUsed: 0, steps:0,
-	step: function() { this.steps++}, 
-	fault: function() {}, 
-	result: function() { 
-		return [this.enters, this.exits,this.enterGas,this.gasUsed, this.steps].join(",") 
-	}, 
-	enter: function(frame) { 
-		this.enters++; 
-		this.enterGas = frame.getGas();
-	}, 
-	exit: function(res) { 
-		this.exits++; 
-		this.gasUsed = res.getGasUsed();
-	}}`,
-		`{enters: 0, exits: 0, enterGas: 0, gasUsed: 0, steps:0,
-	fault: function() {}, 
-	result: function() { 
-		return [this.enters, this.exits,this.enterGas,this.gasUsed, this.steps].join(",") 
-	}, 
-	enter: function(frame) { 
-		this.enters++; 
-		this.enterGas = frame.getGas();
-	}, 
-	exit: function(res) { 
-		this.exits++; 
-		this.gasUsed = res.getGasUsed();
-	}}`}
-	tests := []struct {
-		code []byte
-		// One result per tracer
-		results []string
-	}{
-		{
-			// CREATE
-			code: []byte{
-				// Store initcode in memory at 0x00 (5 bytes left-padded to 32 bytes)
-				byte(vm.PUSH5),
-				// Init code: PUSH1 0, PUSH1 0, RETURN (3 steps)
-				byte(vm.PUSH1), 0, byte(vm.PUSH1), 0, byte(vm.RETURN),
-				byte(vm.PUSH1), 0,
-				byte(vm.MSTORE),
-				// length, offset, value
-				byte(vm.PUSH1), 5, byte(vm.PUSH1), 27, byte(vm.PUSH1), 0,
-				byte(vm.CREATE),
-				byte(vm.POP),
-			},
-			results: []string{`"1,1,952853,6,11"`, `"1,1,952853,6,0"`},
-		},
-		{
-			// CREATE2
-			code: []byte{
-				// Store initcode in memory at 0x00 (5 bytes left-padded to 32 bytes)
-				byte(vm.PUSH5),
-				// Init code: PUSH1 0, PUSH1 0, RETURN (3 steps)
-				byte(vm.PUSH1), 0, byte(vm.PUSH1), 0, byte(vm.RETURN),
-				byte(vm.PUSH1), 0,
-				byte(vm.MSTORE),
-				// salt, length, offset, value
-				byte(vm.PUSH1), 1, byte(vm.PUSH1), 5, byte(vm.PUSH1), 27, byte(vm.PUSH1), 0,
-				byte(vm.CREATE2),
-				byte(vm.POP),
-			},
-			results: []string{`"1,1,952844,6,11"`, `"1,1,952844,6,0"`},
-		},
-		{
-			// CALL
-			code: []byte{
-				// outsize, outoffset, insize, inoffset
-				byte(vm.PUSH1), 0, byte(vm.PUSH1), 0, byte(vm.PUSH1), 0, byte(vm.PUSH1), 0,
-				byte(vm.PUSH1), 0, // value
-				byte(vm.PUSH1), 0xbb, //address
-				byte(vm.GAS), // gas
-				byte(vm.CALL),
-				byte(vm.POP),
-			},
-			results: []string{`"1,1,981796,6,9"`, `"1,1,981796,6,0"`},
-		},
-		{
-			// CALLCODE
-			code: []byte{
-				// outsize, outoffset, insize, inoffset
-				byte(vm.PUSH1), 0, byte(vm.PUSH1), 0, byte(vm.PUSH1), 0, byte(vm.PUSH1), 0,
-				byte(vm.PUSH1), 0, // value
-				byte(vm.PUSH1), 0xcc, //address
-				byte(vm.GAS), // gas
-				byte(vm.CALLCODE),
-				byte(vm.POP),
-			},
-			results: []string{`"1,1,981796,6,9"`, `"1,1,981796,6,0"`},
-		},
-		{
-			// STATICCALL
-			code: []byte{
-				// outsize, outoffset, insize, inoffset
-				byte(vm.PUSH1), 0, byte(vm.PUSH1), 0, byte(vm.PUSH1), 0, byte(vm.PUSH1), 0,
-				byte(vm.PUSH1), 0xdd, //address
-				byte(vm.GAS), // gas
-				byte(vm.STATICCALL),
-				byte(vm.POP),
-			},
-			results: []string{`"1,1,981799,6,9"`, `"1,1,981799,6,0"`},
-		},
-		{
-			// DELEGATECALL
-			code: []byte{
-				// outsize, outoffset, insize, inoffset
-				byte(vm.PUSH1), 0, byte(vm.PUSH1), 0, byte(vm.PUSH1), 0, byte(vm.PUSH1), 0,
-				byte(vm.PUSH1), 0xee, //address
-				byte(vm.GAS), // gas
-				byte(vm.DELEGATECALL),
-				byte(vm.POP),
-			},
-			results: []string{`"1,1,981799,6,9"`, `"1,1,981799,6,0"`},
-		},
-		{
-			// CALL self-destructing contract
-			code: []byte{
-				// outsize, outoffset, insize, inoffset
-				byte(vm.PUSH1), 0, byte(vm.PUSH1), 0, byte(vm.PUSH1), 0, byte(vm.PUSH1), 0,
-				byte(vm.PUSH1), 0, // value
-				byte(vm.PUSH1), 0xff, //address
-				byte(vm.GAS), // gas
-				byte(vm.CALL),
-				byte(vm.POP),
-			},
-			results: []string{`"2,2,0,5003,9"`, `"2,2,0,5003,0"`},
-		},
-	}
-	calleeCode := []byte{
-		byte(vm.PUSH1), 0,
-		byte(vm.PUSH1), 0,
-		byte(vm.RETURN),
-	}
-	depressedCode := []byte{
-		byte(vm.PUSH1), 0xaa,
-		byte(vm.SELFDESTRUCT),
-	}
-	main := common.HexToAddress("0xaa")
-	compiler.EnableOptimization()
-	for i, jsTracer := range jsTracers {
-		for j, tc := range tests {
-			statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
-			statedb.SetCode(main, tc.code, tracing.CodeChangeUnspecified)
-			statedb.SetCode(common.HexToAddress("0xbb"), calleeCode, tracing.CodeChangeUnspecified)
-			statedb.SetCode(common.HexToAddress("0xcc"), calleeCode, tracing.CodeChangeUnspecified)
-			statedb.SetCode(common.HexToAddress("0xdd"), calleeCode, tracing.CodeChangeUnspecified)
-			statedb.SetCode(common.HexToAddress("0xee"), calleeCode, tracing.CodeChangeUnspecified)
-			statedb.SetCode(common.HexToAddress("0xff"), depressedCode, tracing.CodeChangeUnspecified)
-			/* wait for optimized code to be generated */
-			time.Sleep(time.Second)
-			tracer, err := tracers.DefaultDirectory.New(jsTracer, new(tracers.Context), nil, params.MergedTestChainConfig)
-			if err != nil {
-				t.Fatal(err)
-			}
-			_, _, err = Call(main, nil, &Config{
-				GasLimit: 1000000,
-				State:    statedb,
-				EVMConfig: vm.Config{
-					Tracer:                    tracer.Hooks,
-					EnableOpcodeOptimizations: true,
+					Tracer: tracer.Hooks,
 				}})
 			if err != nil {
 				t.Fatal("didn't expect error", err)
@@ -1124,4 +958,64 @@ func TestDelegatedAccountAccessCost(t *testing.T) {
 			t.Fatalf("testcase %d, gas report wrong, step %d, have %d want %d", i, tc.step, have, want)
 		}
 	}
+}
+
+func TestManyLargeStacks(t *testing.T) {
+	// This piece of code will push 512 items to the stack, and then call itself
+	// recursively.
+	code := make([]byte, 10)
+	for i := range code {
+		code[i] = byte(vm.PUSH0)
+	}
+	code = append(code, []byte{
+		byte(vm.ADDRESS), // address to call
+		byte(vm.GAS),
+		byte(vm.CALL),
+	}...)
+
+	main := common.HexToAddress("0xbb")
+	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+	statedb.SetCode(main, code, tracing.CodeChangeUnspecified)
+
+	//tracer := logger.NewJSONLogger(nil, os.Stdout)
+	var tracer *tracing.Hooks
+	_, _, err := Call(main, nil, &Config{
+		GasLimit: 10_000_000,
+		State:    statedb,
+		EVMConfig: vm.Config{
+			Tracer: tracer,
+		}})
+	if err != nil {
+		t.Fatal("didn't expect error", err)
+	}
+}
+
+func BenchmarkLargeDeepStacks(b *testing.B) {
+	// This piece of code will push 512 items to the stack, and then call itself
+	// recursively.
+	code := make([]byte, 512)
+	for i := range code {
+		code[i] = byte(vm.PUSH0)
+	}
+	code = append(code, []byte{
+		byte(vm.ADDRESS), // address to call
+		byte(vm.GAS),
+		byte(vm.CALL),
+	}...)
+	benchmarkNonModifyingCode(10_000_000, code, "deep-large-stacks-10M", "", b)
+}
+
+func BenchmarkShortDeepStacks(b *testing.B) {
+	// This piece of code will push a few items to the stack, and then call itself
+	// recursively.
+	code := make([]byte, 8)
+	for i := range code {
+		code[i] = byte(vm.PUSH0)
+	}
+	code = append(code, []byte{
+		byte(vm.ADDRESS), // address to call
+		byte(vm.GAS),
+		byte(vm.CALL),
+	}...)
+	benchmarkNonModifyingCode(10_000_000, code, "deep-short-stacks-10M", "", b)
 }

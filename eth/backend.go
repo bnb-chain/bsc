@@ -39,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/filtermaps"
+	"github.com/ethereum/go-ethereum/core/history"
 	"github.com/ethereum/go-ethereum/core/monitor"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/pruner"
@@ -51,7 +52,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/vote"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
-	"github.com/ethereum/go-ethereum/eth/filters"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
 	"github.com/ethereum/go-ethereum/eth/protocols/bsc"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
@@ -132,7 +132,6 @@ type Ethereum struct {
 	// DB interfaces
 	chainDb ethdb.Database // Block chain database
 
-	eventMux       *event.TypeMux
 	engine         consensus.Engine
 	accountManager *accounts.Manager
 
@@ -170,6 +169,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	}
 	if !config.HistoryMode.IsValid() {
 		return nil, fmt.Errorf("invalid history mode %d", config.HistoryMode)
+	}
+	if config.DisablePeerTxBroadcast {
+		log.Warn("DisablePeerTxBroadcast is deprecated and only effective for eth/68 peers; eth/70 does not support this extension")
 	}
 	if config.Miner.GasPrice == nil || config.Miner.GasPrice.Sign() <= 0 {
 		log.Warn("Sanitizing invalid miner gas price", "provided", config.Miner.GasPrice, "updated", ethconfig.Defaults.Miner.GasPrice)
@@ -272,9 +274,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		chainConfig.BPO2Time = config.OverrideBPO2
 		overrides.OverrideBPO2 = config.OverrideBPO2
 	}
-	if config.OverrideVerkle != nil {
-		chainConfig.VerkleTime = config.OverrideVerkle
-		overrides.OverrideVerkle = config.OverrideVerkle
+	if config.OverrideUBT != nil {
+		chainConfig.UBTTime = config.OverrideUBT
+		overrides.OverrideUBT = config.OverrideUBT
 	}
 
 	// startup ancient freeze
@@ -295,7 +297,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	eth := &Ethereum{
 		config:          config,
 		chainDb:         chainDb,
-		eventMux:        stack.EventMux(),
 		accountManager:  stack.AccountManager(),
 		networkID:       networkID,
 		gasPrice:        config.Miner.GasPrice,
@@ -335,32 +336,39 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		}
 	}
 
+	histPolicy, err := history.NewPolicy(config.HistoryMode, genesisHash)
+	if err != nil {
+		return nil, err
+	}
 	var (
 		options = &core.BlockChainConfig{
-			TrieCleanLimit:        config.TrieCleanCache,
-			NoPrefetch:            config.NoPrefetch,
-			TrieDirtyLimit:        config.TrieDirtyCache,
-			ArchiveMode:           config.NoPruning,
-			TrieTimeLimit:         config.TrieTimeout,
-			NoTries:               noTries,
-			SnapshotLimit:         config.SnapshotCache,
-			TriesInMemory:         config.TriesInMemory,
-			Preimages:             config.Preimages,
-			StateHistory:          config.StateHistory,
-			StateScheme:           config.StateScheme,
-			PathSyncFlush:         config.PathSyncFlush,
-			EnableIncr:            config.EnableIncrSnapshots,
-			IncrHistoryPath:       config.IncrSnapshotPath,
-			IncrHistory:           config.IncrSnapshotBlockInterval,
-			IncrStateBuffer:       config.IncrSnapshotStateBuffer,
-			IncrKeptBlocks:        config.IncrSnapshotKeptBlocks,
-			UseRemoteIncrSnapshot: config.UseRemoteIncrSnapshot,
-			RemoteIncrURL:         config.RemoteIncrSnapshotURL,
-			ChainHistoryMode:      config.HistoryMode,
-			TxLookupLimit:         int64(min(config.TransactionHistory, math.MaxInt64)),
+			TrieCleanLimit:          config.TrieCleanCache,
+			NoPrefetch:              config.NoPrefetch,
+			TrieDirtyLimit:          config.TrieDirtyCache,
+			ArchiveMode:             config.NoPruning,
+			TrieTimeLimit:           config.TrieTimeout,
+			NoTries:                 noTries,
+			SnapshotLimit:           config.SnapshotCache,
+			TriesInMemory:           config.TriesInMemory,
+			Preimages:               config.Preimages,
+			StateHistory:            config.StateHistory,
+			TrienodeHistory:         config.TrienodeHistory,
+			NodeFullValueCheckpoint: config.NodeFullValueCheckpoint,
+			BinTrieGroupDepth:       config.BinTrieGroupDepth,
+			StateScheme:             config.StateScheme,
+			HistoryPolicy:           histPolicy,
+			TxLookupLimit:           int64(min(config.TransactionHistory, math.MaxInt64)),
+			PathSyncFlush:           config.PathSyncFlush,
+			EnableIncr:              config.EnableIncrSnapshots,
+			IncrHistoryPath:         config.IncrSnapshotPath,
+			IncrHistory:             config.IncrSnapshotBlockInterval,
+			IncrStateBuffer:         config.IncrSnapshotStateBuffer,
+			IncrKeptBlocks:          config.IncrSnapshotKeptBlocks,
+			UseRemoteIncrSnapshot:   config.UseRemoteIncrSnapshot,
+			RemoteIncrURL:           config.RemoteIncrSnapshotURL,
+
 			VmConfig: vm.Config{
-				EnablePreimageRecording:   config.EnablePreimageRecording,
-				EnableOpcodeOptimizations: config.EnableOpcodeOptimizing,
+				EnablePreimageRecording: config.EnablePreimageRecording,
 			},
 			// Enables file journaling for the trie database. The journal files will be stored
 			// within the data directory. The corresponding paths will be either:
@@ -368,6 +376,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			// - DATADIR/triedb/verkle.journal
 			TrieJournalDirectory: stack.ResolvePath("triedb"),
 			StateSizeTracking:    config.EnableStateSizeTracking,
+			SlowBlockThreshold:   config.SlowBlockThreshold,
 
 			StatelessSelfValidation: config.StatelessSelfValidation,
 			EnableWitnessStats:      config.EnableWitnessStats,
@@ -460,7 +469,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		Network:                   networkID,
 		Sync:                      config.SyncMode,
 		BloomCache:                uint64(cacheLimit),
-		EventMux:                  eth.eventMux,
 		RequiredBlocks:            config.RequiredBlocks,
 		DirectBroadcast:           config.DirectBroadcast,
 		EnableEVNFeatures:         stack.Config().EnableEVNFeatures,
@@ -476,7 +484,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 	eth.dropper = newDropper(eth.p2pServer.MaxDialedConns(), eth.p2pServer.MaxInboundConns())
 
-	eth.miner = miner.New(eth, &config.Miner, eth.EventMux(), eth.engine)
+	eth.miner = miner.New(eth, &config.Miner, eth.handler.eventMux, eth.engine)
 	eth.miner.SetExtra(makeExtraData(config.Miner.ExtraData))
 	eth.miner.SetPrioAddresses(config.TxPool.Locals)
 
@@ -577,10 +585,7 @@ func (s *Ethereum) APIs() []rpc.API {
 			Service:   NewMinerAPI(s),
 		}, {
 			Namespace: "eth",
-			Service:   downloader.NewDownloaderAPI(s.handler.downloader, s.blockchain, s.eventMux),
-		}, {
-			Namespace: "eth",
-			Service:   filters.NewFilterAPI(filters.NewFilterSystem(s.APIBackend, filters.Config{}), s.config.RangeLimit),
+			Service:   downloader.NewDownloaderAPI(s.handler.downloader, s.blockchain),
 		}, {
 			Namespace: "admin",
 			Service:   NewAdminAPI(s),
@@ -829,14 +834,19 @@ func (s *Ethereum) BlockChain() *core.BlockChain       { return s.blockchain }
 func (s *Ethereum) TxPool() *txpool.TxPool             { return s.txPool }
 func (s *Ethereum) BlobTxPool() *blobpool.BlobPool     { return s.blobTxPool }
 func (s *Ethereum) VotePool() *vote.VotePool           { return s.votePool }
-func (s *Ethereum) EventMux() *event.TypeMux           { return s.eventMux }
 func (s *Ethereum) Engine() consensus.Engine           { return s.engine }
 func (s *Ethereum) ChainDb() ethdb.Database            { return s.chainDb }
 func (s *Ethereum) IsListening() bool                  { return true } // Always listening
 func (s *Ethereum) Downloader() *downloader.Downloader { return s.handler.downloader }
-func (s *Ethereum) Synced() bool                       { return s.handler.synced.Load() }
-func (s *Ethereum) SetSynced()                         { s.handler.enableSyncedFeatures() }
-func (s *Ethereum) ArchiveMode() bool                  { return s.config.NoPruning }
+
+// SubscribeSyncEvents subscribes to downloader sync events on behalf of the
+// miner and the vote manager.
+func (s *Ethereum) SubscribeSyncEvents(ch chan<- downloader.SyncEvent) event.Subscription {
+	return s.handler.downloader.SubscribeSyncEvents(ch)
+}
+func (s *Ethereum) Synced() bool      { return s.handler.synced.Load() }
+func (s *Ethereum) SetSynced()        { s.handler.enableSyncedFeatures() }
+func (s *Ethereum) ArchiveMode() bool { return s.config.NoPruning }
 func (s *Ethereum) SyncMode() downloader.SyncMode {
 	mode, _ := s.handler.chainSync.modeAndLocalHead()
 	return mode
@@ -911,6 +921,9 @@ func (s *Ethereum) updateFilterMapsHeads() {
 		if head == nil || newHead.Hash() != head.Hash() {
 			head = newHead
 			chainView := s.newChainView(head)
+			if chainView == nil {
+				return
+			}
 			historyCutoff, _ := s.blockchain.HistoryPruningCutoff()
 			var finalBlock, currentBlock int64
 			if fb := s.blockchain.CurrentFinalBlock(); fb != nil {
@@ -1028,7 +1041,6 @@ func (s *Ethereum) Stop() error {
 	s.shutdownTracker.Stop()
 
 	s.chainDb.Close()
-	s.eventMux.Stop()
 
 	// stop report loop
 	close(s.stopCh)

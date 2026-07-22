@@ -113,11 +113,8 @@ func (b *testBackend) GetReceipts(ctx context.Context, hash common.Hash) (types.
 func (b *testBackend) Pending() (*types.Block, types.Receipts, *state.StateDB) {
 	if b.pending {
 		block := b.chain.GetBlockByNumber(testHead + 1)
-		stateDb, err := b.chain.StateAt(block.Root())
-		if err != nil {
-			return nil, nil, nil
-		}
-		return block, b.chain.GetReceiptsByHash(block.Hash()), stateDb
+		state, _ := b.chain.StateAt(block.Header())
+		return block, b.chain.GetReceiptsByHash(block.Hash()), state
 	}
 	return nil, nil, nil
 }
