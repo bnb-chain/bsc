@@ -150,6 +150,10 @@ func (t b20Token) dispatch(input []byte) ([]byte, error) {
 	if ret, err, ok := t.dispatchAdmin(sel, args); ok {
 		return ret, err
 	}
+	// permit (EIP-2612) and the *WithMemo family.
+	if ret, err, ok := t.dispatchPermitMemo(sel, args); ok {
+		return ret, err
+	}
 	return nil, ErrExecutionReverted
 }
 
