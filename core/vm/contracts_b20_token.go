@@ -45,6 +45,14 @@ func newB20Token(ctx *PrecompileContext, decimals uint8) b20Token {
 	return b20Token{ctx: ctx, s: newMeteredB20Storage(ctx), decimals: decimals}
 }
 
+// newB20TokenBootstrap returns a token in the factory's privileged bootstrap
+// mode, where role and transfer-side policy gates are skipped.
+func newB20TokenBootstrap(ctx *PrecompileContext, decimals uint8) b20Token {
+	t := newB20Token(ctx, decimals)
+	t.privileged = true
+	return t
+}
+
 // pause feature bits in the paused bitmask (slot 11).
 const (
 	b20PauseTransfer = 0

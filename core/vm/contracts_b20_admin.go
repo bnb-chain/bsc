@@ -216,7 +216,10 @@ func (t b20Token) grantRole(role common.Hash, account common.Address) error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	if !t.roleMutable() || !t.ensureAdminOf(role) {
+	if !t.privileged && !t.roleMutable() {
+		return ErrExecutionReverted
+	}
+	if !t.ensureAdminOf(role) {
 		return ErrExecutionReverted
 	}
 	if !t.s.hasRole(role, account) {
@@ -233,7 +236,10 @@ func (t b20Token) revokeRole(role common.Hash, account common.Address) error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	if !t.roleMutable() || !t.ensureAdminOf(role) {
+	if !t.privileged && !t.roleMutable() {
+		return ErrExecutionReverted
+	}
+	if !t.ensureAdminOf(role) {
 		return ErrExecutionReverted
 	}
 	// The last DEFAULT_ADMIN cannot be removed via revoke; use renounceLastAdmin.
@@ -278,7 +284,10 @@ func (t b20Token) setRoleAdmin(role, newAdminRole common.Hash) error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	if !t.roleMutable() || !t.ensureAdminOf(role) {
+	if !t.privileged && !t.roleMutable() {
+		return ErrExecutionReverted
+	}
+	if !t.ensureAdminOf(role) {
 		return ErrExecutionReverted
 	}
 	prev := t.s.roleAdmin(role)

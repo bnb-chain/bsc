@@ -58,9 +58,6 @@ var (
 	// as the storage root.
 	ErrB20DelegateCall = errors.New("b20: delegate call not allowed")
 
-	// ErrB20NotImplemented is a placeholder for the not-yet-ported dispatch/logic.
-	ErrB20NotImplemented = errors.New("b20: not implemented")
-
 	// ErrB20StatelessDispatch guards the plain Run path: B20 precompiles are
 	// stateful and must be reached through runPrecompile's stateful route. This
 	// is a defensive backstop and should never fire in practice.
@@ -146,10 +143,11 @@ func (p *b20FactoryPrecompile) RunStateful(ctx *PrecompileContext, input []byte)
 	if !ctx.DirectCall {
 		return nil, ErrB20DelegateCall
 	}
-	// TODO: decode createB20 / getB20Address / isB20 / isB20Initialized;
-	// derive address, check ActivationRegistry, write initial storage + marker,
-	// run initCalls in the privileged bootstrap window, emit B20Created.
-	return nil, ErrB20NotImplemented
+	ret, err := runB20Factory(ctx, input)
+	if ctx.OutOfGas() {
+		return nil, ErrOutOfGas
+	}
+	return ret, err
 }
 
 // b20AssetPrecompile is the Asset (RWA) variant bound to a token address.
