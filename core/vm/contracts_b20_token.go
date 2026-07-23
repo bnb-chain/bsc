@@ -34,6 +34,11 @@ type b20Token struct {
 	ctx      *PrecompileContext
 	s        b20Storage
 	decimals uint8
+
+	// privileged is set on the factory's bootstrap path, where role and
+	// transfer-side policy gates are skipped (anti-revival and MINT_RECEIVER
+	// checks are still enforced). Always false for ordinary calls.
+	privileged bool
 }
 
 func newB20Token(ctx *PrecompileContext, decimals uint8) b20Token {
@@ -140,9 +145,12 @@ func (t b20Token) dispatch(input []byte) ([]byte, error) {
 			return nil, err
 		}
 		return t.transferFrom(t.ctx.Caller, from, to, amount)
-	default:
-		return nil, ErrExecutionReverted
 	}
+	// RBAC / pause / mint-burn / configurable selectors.
+	if ret, err, ok := t.dispatchAdmin(sel, args); ok {
+		return ret, err
+	}
+	return nil, ErrExecutionReverted
 }
 
 // --- ERC-20 core ------------------------------------------------------------
