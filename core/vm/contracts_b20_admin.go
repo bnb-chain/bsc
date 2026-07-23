@@ -61,6 +61,7 @@ var (
 	selMint            = selector("mint(address,uint256)")
 	selBurn            = selector("burn(uint256)")
 	selUpdateSupplyCap = selector("updateSupplyCap(uint256)")
+	selUpdatePolicy    = selector("updatePolicy(uint8,uint64)")
 
 	b20TopicRoleGranted      = crypto.Keccak256Hash([]byte("RoleGranted(bytes32,address,address)"))
 	b20TopicRoleRevoked      = crypto.Keccak256Hash([]byte("RoleRevoked(bytes32,address,address)"))
@@ -175,6 +176,16 @@ func (t b20Token) dispatchAdmin(sel [4]byte, args []byte) (ret []byte, err error
 			return nil, err, true
 		}
 		return nil, t.updateSupplyCap(cap), true
+	case selUpdatePolicy:
+		scope, err := readWord(args, 0)
+		if err != nil {
+			return nil, err, true
+		}
+		id, err := readU256(args, 1)
+		if err != nil {
+			return nil, err, true
+		}
+		return nil, t.updatePolicy(scope[31], id.Uint64()), true
 	}
 	return nil, nil, false
 }
@@ -372,7 +383,10 @@ func (t b20Token) mint(to common.Address, amount *uint256.Int) error {
 // mintCore performs the mint accounting (supply cap + credit + Transfer) after
 // the caller has checked pause and role. Used by mint and batchMint.
 func (t b20Token) mintCore(to common.Address, amount *uint256.Int) error {
-	// TODO: MINT_RECEIVER policy (enforced even when privileged) — PolicyRegistry.
+	// MINT_RECEIVER compliance is enforced even during privileged bootstrap.
+	if !t.policyAllows(t.s.mintReceiverPolicy(), to) {
+		return ErrExecutionReverted
+	}
 	newSupply := new(uint256.Int).Add(t.s.totalSupply(), amount)
 	if newSupply.Lt(t.s.totalSupply()) || newSupply.Gt(t.s.supplyCap()) {
 		return ErrExecutionReverted // overflow or SupplyCapExceeded
@@ -417,6 +431,35 @@ func (t b20Token) updateSupplyCap(newCap *uint256.Int) error {
 	}
 	t.s.setSupplyCap(newCap)
 	// TODO: SupplyCapUpdated event.
+	return nil
+}
+
+// updatePolicy binds a policy id to one of the token's four compliance scopes.
+// The id must reference an existing registry policy (or a sentinel); binding a
+// never-created id is rejected so the read path's empty-set tolerance cannot be
+// exploited.
+func (t b20Token) updatePolicy(scope uint8, id uint64) error {
+	if t.ctx.ReadOnly {
+		return ErrWriteProtection
+	}
+	if err := t.ensureRole(roleDefaultAdmin); err != nil {
+		return err
+	}
+	if id != b20PolicyAlwaysAllow && id != b20PolicyAlwaysBlock && !newPolicyReg(t.ctx).exists(id) {
+		return ErrExecutionReverted // PolicyNotFound
+	}
+	switch scope {
+	case 0:
+		t.s.setTransferSenderPolicy(id)
+	case 1:
+		t.s.setTransferReceiverPolicy(id)
+	case 2:
+		t.s.setTransferExecutorPolicy(id)
+	case 3:
+		t.s.setMintReceiverPolicy(id)
+	default:
+		return ErrExecutionReverted
+	}
 	return nil
 }
 

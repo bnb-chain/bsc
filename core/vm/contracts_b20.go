@@ -113,6 +113,9 @@ func resolveB20(state StateDB, addr common.Address) (PrecompiledContract, bool) 
 	if addr == B20FactoryAddress {
 		return &b20FactoryPrecompile{}, true
 	}
+	if addr == B20PolicyRegistryAddress {
+		return &b20PolicyPrecompile{}, true
+	}
 	if IsB20Address(addr) {
 		return resolveB20Token(state, addr)
 	}

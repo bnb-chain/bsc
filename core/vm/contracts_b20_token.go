@@ -184,7 +184,6 @@ func (t b20Token) transfer(from, to common.Address, amount *uint256.Int) ([]byte
 	if t.isPaused(b20PauseTransfer) {
 		return nil, ErrExecutionReverted
 	}
-	// TODO: TRANSFER_SENDER / TRANSFER_RECEIVER policy checks (PolicyRegistry).
 	if err := t.move(from, to, amount); err != nil {
 		return nil, err
 	}
@@ -202,6 +201,9 @@ func (t b20Token) transferFrom(spender, from, to common.Address, amount *uint256
 	// Spend allowance unless the caller is the owner. U256::MAX is treated as
 	// an infinite, non-decreasing allowance.
 	if spender != from {
+		if !t.privileged && !t.policyAllows(t.s.transferExecutorPolicy(), spender) {
+			return nil, ErrExecutionReverted
+		}
 		allowed := t.s.allowance(from, spender)
 		if !allowed.Eq(maxU256) {
 			if allowed.Lt(amount) {
@@ -210,7 +212,6 @@ func (t b20Token) transferFrom(spender, from, to common.Address, amount *uint256
 			t.s.setAllowance(from, spender, new(uint256.Int).Sub(allowed, amount))
 		}
 	}
-	// TODO: TRANSFER_EXECUTOR policy check when spender != from.
 	if err := t.move(from, to, amount); err != nil {
 		return nil, err
 	}
@@ -218,10 +219,27 @@ func (t b20Token) transferFrom(spender, from, to common.Address, amount *uint256
 	return encBool(true), nil
 }
 
+// policyAllows reads the PolicyRegistry directly (no cross-contract CALL) to
+// decide whether account may be operated under the given policy id. Id 0
+// (ALWAYS_ALLOW) short-circuits to true.
+func (t b20Token) policyAllows(id uint64, account common.Address) bool {
+	if id == 0 {
+		return true
+	}
+	return newPolicyReg(t.ctx).isAuthorized(id, account)
+}
+
 // move debits from and credits to, reverting on insufficient balance. In a
 // consistent token the balance sum equals totalSupply, so the credit cannot
 // overflow.
 func (t b20Token) move(from, to common.Address, amount *uint256.Int) error {
+	// TRANSFER_SENDER / TRANSFER_RECEIVER compliance (skipped when privileged).
+	if !t.privileged {
+		if !t.policyAllows(t.s.transferSenderPolicy(), from) ||
+			!t.policyAllows(t.s.transferReceiverPolicy(), to) {
+			return ErrExecutionReverted
+		}
+	}
 	bal := t.s.balanceOf(from)
 	if bal.Lt(amount) {
 		return ErrExecutionReverted
