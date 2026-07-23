@@ -165,9 +165,15 @@ func (p *b20AssetPrecompile) RunStateful(ctx *PrecompileContext, input []byte) (
 	if !ctx.DirectCall {
 		return nil, ErrB20DelegateCall
 	}
-	// TODO: ABI dispatch → shared IB20 traits + Asset extensions
-	// (multiplier/announce/batchMint/extraMetadata).
-	return nil, ErrB20NotImplemented
+	// TODO: Asset decimals live in the extension storage (namespace not yet
+	// ported); 18 is a placeholder until that layer lands.
+	// TODO: Asset extension selectors (multiplier/announce/batchMint/extraMetadata)
+	// before falling back to the shared IB20 dispatch.
+	ret, err := newB20Token(ctx, 18).dispatch(input)
+	if ctx.OutOfGas() {
+		return nil, ErrOutOfGas
+	}
+	return ret, err
 }
 
 // b20StablecoinPrecompile is the Stablecoin variant bound to a token address.
@@ -183,8 +189,13 @@ func (p *b20StablecoinPrecompile) RunStateful(ctx *PrecompileContext, input []by
 	if !ctx.DirectCall {
 		return nil, ErrB20DelegateCall
 	}
-	// TODO: ABI dispatch → shared IB20 traits + Stablecoin extension (currency).
-	return nil, ErrB20NotImplemented
+	// Stablecoin decimals are fixed at 6.
+	// TODO: Stablecoin currency() selector before the shared IB20 dispatch.
+	ret, err := newB20Token(ctx, 6).dispatch(input)
+	if ctx.OutOfGas() {
+		return nil, ErrOutOfGas
+	}
+	return ret, err
 }
 
 // compile-time checks that the skeletons satisfy both the plain precompile
