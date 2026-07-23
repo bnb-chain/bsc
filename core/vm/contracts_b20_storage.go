@@ -19,7 +19,22 @@ package vm
 import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
+)
+
+// B20 storage gas schedule (v0), aligned with the EVM's own SLOAD/SSTORE
+// pricing so a token operation costs about what the equivalent Solidity
+// SSTOREs would, and repeated cold access cannot be gamed. Cost is booked in
+// RegularGas via PrecompileContext.chargeStateGas.
+//
+// TODO: exact EIP-2200/3529 committed-state refund semantics are not modelled
+// yet (no gas refunds on clear); revisit with the gas audit.
+const (
+	b20GasColdSlot    = params.ColdSloadCostEIP2929                                // 2100: first touch of a slot in the tx
+	b20GasWarmSlot    = params.WarmStorageReadCostEIP2929                          // 100:  subsequent touch / no-op write
+	b20GasSstoreSet   = params.SstoreSetGasEIP2200                                 // 20000: zero -> non-zero
+	b20GasSstoreReset = params.SstoreResetGasEIP2200 - params.ColdSloadCostEIP2929 // 2900:  non-zero -> other (cold surcharge added separately)
 )
 
 // B20 core storage layout.
@@ -106,18 +121,72 @@ func mappingSlot(base, key common.Hash) common.Hash {
 func addrKey(a common.Address) common.Hash { return common.BytesToHash(a.Bytes()) }
 
 // b20Storage is a typed view over one token's core storage, bound to the token
-// address and reading/writing through the StateDB.
+// address and reading/writing through the StateDB. When ctx is set, every slot
+// access is gas-metered; when nil (views/tests) access is free.
 type b20Storage struct {
 	state StateDB
 	token common.Address
+	ctx   *PrecompileContext
 }
 
+// newB20Storage returns an unmetered view (read-only queries, tests).
 func newB20Storage(state StateDB, token common.Address) b20Storage {
 	return b20Storage{state: state, token: token}
 }
 
-func (s b20Storage) getWord(slot common.Hash) common.Hash { return s.state.GetState(s.token, slot) }
-func (s b20Storage) setWord(slot, val common.Hash)        { s.state.SetState(s.token, slot, val) }
+// newMeteredB20Storage returns a view bound to ctx.Self that charges gas for
+// each slot access.
+func newMeteredB20Storage(ctx *PrecompileContext) b20Storage {
+	return b20Storage{state: ctx.StateDB, token: ctx.Self, ctx: ctx}
+}
+
+// chargeRead meters an SLOAD-equivalent: cold on first touch, warm after.
+func (s b20Storage) chargeRead(slot common.Hash) {
+	if s.ctx == nil {
+		return
+	}
+	if _, warm := s.state.SlotInAccessList(s.token, slot); warm {
+		s.ctx.chargeStateGas(b20GasWarmSlot)
+	} else {
+		s.state.AddSlotToAccessList(s.token, slot)
+		s.ctx.chargeStateGas(b20GasColdSlot)
+	}
+}
+
+// chargeWrite meters an SSTORE-equivalent: cold surcharge on first touch plus
+// the dirty cost (set / reset / no-op) from the current value.
+func (s b20Storage) chargeWrite(slot, cur, val common.Hash) {
+	if s.ctx == nil {
+		return
+	}
+	var cost uint64
+	if _, warm := s.state.SlotInAccessList(s.token, slot); !warm {
+		s.state.AddSlotToAccessList(s.token, slot)
+		cost += b20GasColdSlot
+	}
+	switch {
+	case cur == val:
+		cost += b20GasWarmSlot
+	case cur == (common.Hash{}):
+		cost += b20GasSstoreSet
+	default:
+		cost += b20GasSstoreReset
+	}
+	s.ctx.chargeStateGas(cost)
+}
+
+func (s b20Storage) getWord(slot common.Hash) common.Hash {
+	s.chargeRead(slot)
+	return s.state.GetState(s.token, slot)
+}
+
+func (s b20Storage) setWord(slot, val common.Hash) {
+	// The current value is read as part of SSTORE accounting and is not itself
+	// charged as an SLOAD.
+	cur := s.state.GetState(s.token, slot)
+	s.chargeWrite(slot, cur, val)
+	s.state.SetState(s.token, slot, val)
+}
 
 // --- fixed uint256 fields ---------------------------------------------------
 

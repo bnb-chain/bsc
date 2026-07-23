@@ -74,6 +74,15 @@ type PrecompileContext struct {
 	// gas points at the caller's remaining budget so UseGas can meter
 	// data-dependent cost in place.
 	gas *GasBudget
+
+	// outOfGas is set sticky once a charge cannot be covered; the dispatcher
+	// checks it and returns ErrOutOfGas.
+	outOfGas bool
+
+	// stateGasUsed accumulates the cost attributed to state operations. Today
+	// it is booked within RegularGas (the only enforced dimension); the tally
+	// keeps the accounting ready for when the StateGas reservoir is activated.
+	stateGasUsed uint64
 }
 
 // UseGas charges cost against the remaining budget. It returns false and
@@ -85,11 +94,31 @@ func (ctx *PrecompileContext) UseGas(cost GasCosts) bool {
 		ctx.gas.Exhaust()
 		return false
 	}
-	if ctx.evm.Config.Tracer != nil && ctx.evm.Config.Tracer.OnGasChange != nil {
+	if ctx.evm != nil && ctx.evm.Config.Tracer != nil && ctx.evm.Config.Tracer.OnGasChange != nil {
 		ctx.evm.Config.Tracer.OnGasChange(prior, ctx.gas.RegularGas, tracing.GasChangeCallPrecompiledContract)
 	}
 	return true
 }
+
+// chargeStateGas charges a state-operation cost against the (enforced)
+// RegularGas budget and accumulates it into the StateGas tally. On
+// insufficient gas it exhausts the budget and marks the context out of gas;
+// callers surface this via OutOfGas.
+func (ctx *PrecompileContext) chargeStateGas(cost uint64) {
+	if !ctx.UseGas(GasCosts{RegularGas: cost}) {
+		ctx.outOfGas = true
+		return
+	}
+	ctx.stateGasUsed += cost
+}
+
+// OutOfGas reports whether a charge has failed during this call. The
+// dispatcher must check it after driving the token logic and return
+// ErrOutOfGas so the frame reverts.
+func (ctx *PrecompileContext) OutOfGas() bool { return ctx.outOfGas }
+
+// StateGasUsed returns the gas attributed to state operations so far.
+func (ctx *PrecompileContext) StateGasUsed() uint64 { return ctx.stateGasUsed }
 
 // GasLeft reports the regular gas remaining in the budget.
 func (ctx *PrecompileContext) GasLeft() uint64 { return ctx.gas.RegularGas }
@@ -108,7 +137,7 @@ func (ctx *PrecompileContext) ChainID() *uint256.Int {
 // Snapshot / RevertToSnapshot expose nested journalling so a precompile can
 // make a group of mutations atomic (e.g. the factory's initCalls bootstrap or
 // the Asset variant's announce/batchMint).
-func (ctx *PrecompileContext) Snapshot() int          { return ctx.StateDB.Snapshot() }
+func (ctx *PrecompileContext) Snapshot() int           { return ctx.StateDB.Snapshot() }
 func (ctx *PrecompileContext) RevertToSnapshot(id int) { ctx.StateDB.RevertToSnapshot(id) }
 
 // AddLog emits an EVM log at the precompile's own address (Self). The
