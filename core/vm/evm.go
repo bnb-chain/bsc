@@ -44,8 +44,39 @@ type (
 )
 
 func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
-	p, ok := evm.precompiles[addr]
-	return p, ok
+	if p, ok := evm.precompiles[addr]; ok {
+		return p, ok
+	}
+	// B20 native token family: the factory has a fixed address and every token
+	// address is resolved dynamically from its prefix (there is no fixed-address
+	// entry for tokens, so they cannot live in the static precompiles map).
+	if evm.b20Enabled() {
+		return resolveB20(evm.StateDB, addr)
+	}
+	return nil, false
+}
+
+// b20Enabled reports whether the B20 native token family is active for the
+// current block.
+//
+// TODO: replace with a dedicated B20 fork flag on params.Rules; gated on
+// Pasteur for now so the reserved-address guard and dynamic dispatch activate
+// together at a single fork boundary.
+func (evm *EVM) b20Enabled() bool {
+	return evm.chainRules.IsPasteur
+}
+
+// runPrecompile dispatches a resolved precompile, routing stateful precompiles
+// (the B20 family) through runStatefulPrecompiledContract and everything else
+// through the plain, stateless RunPrecompiledContract.
+//
+// readOnly is the read-only state of the current frame; directCall is true for
+// CALL/STATICCALL and false for CALLCODE/DELEGATECALL.
+func (evm *EVM) runPrecompile(p PrecompiledContract, caller, self common.Address, input []byte, gas GasBudget, readOnly, directCall bool) ([]byte, GasBudget, error) {
+	if sp, ok := p.(StatefulPrecompiledContract); ok {
+		return runStatefulPrecompiledContract(evm, sp, caller, self, input, gas, readOnly, directCall)
+	}
+	return RunPrecompiledContract(evm.StateDB, p, self, input, gas, evm.Config.Tracer, evm.chainRules)
 }
 
 // BlockContext provides the EVM with auxiliary information. Once provided
@@ -311,7 +342,7 @@ func (evm *EVM) Call(caller common.Address, addr common.Address, input []byte, g
 	}
 
 	if isPrecompile {
-		ret, gas, err = RunPrecompiledContract(evm.StateDB, p, addr, input, gas, evm.Config.Tracer, evm.chainRules)
+		ret, gas, err = evm.runPrecompile(p, caller, addr, input, gas, evm.readOnly, true)
 	} else {
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		code := evm.resolveCode(addr)
@@ -377,7 +408,7 @@ func (evm *EVM) CallCode(caller common.Address, addr common.Address, input []byt
 
 	// It is allowed to call precompiles, even via delegatecall
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
-		ret, gas, err = RunPrecompiledContract(evm.StateDB, p, addr, input, gas, evm.Config.Tracer, evm.chainRules)
+		ret, gas, err = evm.runPrecompile(p, caller, addr, input, gas, evm.readOnly, false)
 	} else {
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
@@ -422,7 +453,7 @@ func (evm *EVM) DelegateCall(originCaller common.Address, caller common.Address,
 
 	// It is allowed to call precompiles, even via delegatecall
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
-		ret, gas, err = RunPrecompiledContract(evm.StateDB, p, addr, input, gas, evm.Config.Tracer, evm.chainRules)
+		ret, gas, err = evm.runPrecompile(p, caller, addr, input, gas, evm.readOnly, false)
 	} else {
 		// Initialise a new contract and make initialise the delegate values
 		contract := GetContract(originCaller, caller, value, gas, evm.jumpDests)
@@ -474,7 +505,7 @@ func (evm *EVM) StaticCall(caller common.Address, addr common.Address, input []b
 	evm.StateDB.AddBalance(addr, new(uint256.Int), tracing.BalanceChangeTouchAccount)
 
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
-		ret, gas, err = RunPrecompiledContract(evm.StateDB, p, addr, input, gas, evm.Config.Tracer, evm.chainRules)
+		ret, gas, err = evm.runPrecompile(p, caller, addr, input, gas, true, true)
 	} else {
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
@@ -554,6 +585,13 @@ func (evm *EVM) create(caller common.Address, code []byte, gas GasBudget, value 
 		}
 		gas.Exhaust()
 		return nil, common.Address{}, gas, ErrContractAddressCollision
+	}
+	// Reserve the B20 address space: no user CREATE/CREATE2 may deploy into it
+	// once the fork is active, otherwise token addresses could be squatted or
+	// forged (see contracts_b20.go). The factory address is outside this space.
+	if evm.b20Enabled() && IsB20Address(address) {
+		gas.Exhaust()
+		return nil, common.Address{}, gas, ErrB20AddressReserved
 	}
 	// Create a new account on the state only if the object was not present.
 	// It might be possible the contract code is deployed to a pre-existent
