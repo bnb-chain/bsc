@@ -366,6 +366,12 @@ func (t b20Token) mint(to common.Address, amount *uint256.Int) error {
 	if err := t.ensureRole(roleMint); err != nil {
 		return err
 	}
+	return t.mintCore(to, amount)
+}
+
+// mintCore performs the mint accounting (supply cap + credit + Transfer) after
+// the caller has checked pause and role. Used by mint and batchMint.
+func (t b20Token) mintCore(to common.Address, amount *uint256.Int) error {
 	// TODO: MINT_RECEIVER policy (enforced even when privileged) — PolicyRegistry.
 	newSupply := new(uint256.Int).Add(t.s.totalSupply(), amount)
 	if newSupply.Lt(t.s.totalSupply()) || newSupply.Gt(t.s.supplyCap()) {

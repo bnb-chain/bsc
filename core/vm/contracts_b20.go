@@ -163,11 +163,17 @@ func (p *b20AssetPrecompile) RunStateful(ctx *PrecompileContext, input []byte) (
 	if !ctx.DirectCall {
 		return nil, ErrB20DelegateCall
 	}
-	// TODO: Asset decimals live in the extension storage (namespace not yet
-	// ported); 18 is a placeholder until that layer lands.
-	// TODO: Asset extension selectors (multiplier/announce/batchMint/extraMetadata)
-	// before falling back to the shared IB20 dispatch.
-	ret, err := newB20Token(ctx, 18).dispatch(input)
+	// Decimals is intercepted by the Asset extension (read from extension
+	// storage), so the shared token's decimals field is unused here.
+	ext := newAssetExt(ctx)
+	tok := newB20Token(ctx, 0)
+	// Asset extension selectors (multiplier/scaled views/batchMint/…) take
+	// precedence; everything else falls back to the shared IB20 dispatch.
+	// TODO: announce / extraMetadata.
+	ret, err, ok := dispatchAsset(tok, ext, input)
+	if !ok {
+		ret, err = tok.dispatch(input)
+	}
 	if ctx.OutOfGas() {
 		return nil, ErrOutOfGas
 	}

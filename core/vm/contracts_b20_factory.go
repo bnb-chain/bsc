@@ -158,6 +158,9 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 
 	// Initial state: no supply cap; initialAdmin (if any) is the first admin.
 	tok.s.setSupplyCap(b20NoSupplyCap)
+	if variant == b20VariantAsset {
+		initAssetExtension(tokenCtx)
+	}
 	if initialAdmin != (common.Address{}) {
 		tok.s.setRole(roleDefaultAdmin, initialAdmin, true)
 		tok.s.setAdminCount(uint256.NewInt(1))
