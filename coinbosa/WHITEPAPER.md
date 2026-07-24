@@ -103,9 +103,9 @@ pas une fin en soi : elle existe pour servir ces produits.
 | Produit | Nature | État |
 |---|---|---|
 | **Coinbosa Academy** | école de formation au trading — forex, actions, puis crypto | en production |
-| **NextFuture** | place d'échange crypto — marché au comptant et contrats à terme | en construction |
+| **[NextFuture](https://nexfutur.com)** | place d'échange crypto — marché au comptant et contrats à terme | en service |
 | **Coinbosa Card** | carte prépayée et virtuelle, dépôts en crypto, dépense à l'international | à venir |
-| **bite-fast** | place d'échange crypto | externe, existante |
+| **[bite-fast](https://bite-fast.com)** | place d'échange crypto | externe, existante |
 | **Neobanq** | plateforme bancaire | existante |
 | **Coinbosa VPN** | service d'abonnement | en cours |
 
