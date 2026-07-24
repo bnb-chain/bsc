@@ -34,8 +34,8 @@ if (!VALIDATOR || !ethers.isAddress(VALIDATOR)) {
 const ZERO = '0x0000000000000000000000000000000000000000';
 const WEI = 10n ** 18n;
 const TOTAL_SUPPLY = BigInt(CONFIG.nativeCoin.totalSupply);       // 700 000 000
-const MIGRATION_RESERVE = BigInt(CONFIG.migration.reserve);      // 50 000 000
-const PROJECT_ALLOCATION = BigInt(CONFIG.projectAllocation.amount); // 650 000 000
+const MIGRATION_RESERVE = BigInt(CONFIG.migration.reserve);      // 0 (le projet contrôle tout l'historique Solana)
+const PROJECT_ALLOCATION = BigInt(CONFIG.projectAllocation.amount); // 700 000 000
 const dist = Object.entries(CONFIG.distribution).filter(([k]) => !k.startsWith('$'));
 
 // Contrôle de cohérence : réserve de migration + allocation projet = offre totale.
@@ -97,8 +97,13 @@ for (const [addr, v] of Object.entries(base.alloc)) {
   const bal = v.balance ? BigInt(v.balance) : 0n;
   if (!isSystem) { purged += bal; continue; }        // on jette les comptes de test
   const entry = { balance: '0x0' };                   // geth exige un champ balance sur chaque compte
-  if (v.code) entry.code = v.code;                    // on garde le code des contrats système
-  if (v.storage) entry.storage = v.storage;
+  // On purge le code des contrats inter-chaînes hérités du réseau amont — pont, cross-chain,
+  // light client, relayers, token manager — qui n'ont aucun objet sur une chaîne souveraine.
+  // Seuls les contrats réellement utilisés gardent leur bytecode : ValidatorSet (0x…1000,
+  // remplacé plus bas), SlashIndicator (0x…1001), SystemReward (0x…1002), GovHub (0x…1007).
+  const KEEP = ['0x0000000000000000000000000000000000001000','0x0000000000000000000000000000000000001001','0x0000000000000000000000000000000000001002','0x0000000000000000000000000000000000001007'];
+  if (v.code && KEEP.includes(addr.toLowerCase())) entry.code = v.code;
+  if (v.storage && KEEP.includes(addr.toLowerCase())) entry.storage = v.storage;
   if (bal > 0n) purged += bal;                        // on jette leur solde (pont 0x…1004)
   alloc[addr] = entry;
 }
@@ -113,17 +118,27 @@ const g = { ...base, alloc };
 let allocated = 0n;
 const table = [];
 
-// a) réserve de migration, à une adresse dédiée
-const migrationAddr = addressFor('__migration__');
-const migAmount = MIGRATION_RESERVE * WEI;
-alloc[migrationAddr] = { balance: '0x' + migAmount.toString(16) };
-allocated += migAmount;
-table.push(['réserve de migration', '', migrationAddr, MIGRATION_RESERVE]);
+// a) réserve de migration, à une adresse dédiée (uniquement si elle est non nulle)
+if (MIGRATION_RESERVE > 0n) {
+  const migrationAddr = addressFor('__migration__');
+  const migAmount = MIGRATION_RESERVE * WEI;
+  alloc[migrationAddr] = { balance: '0x' + migAmount.toString(16) };
+  allocated += migAmount;
+  table.push(['réserve de migration', '', migrationAddr, MIGRATION_RESERVE]);
+}
 
-// b) treize postes, pourcentages appliqués à l'allocation projet (650 000 000)
+// b) les postes, pourcentages appliqués à l'allocation projet
+// Garde d'unicité : deux postes partageant une adresse fusionneraient leurs soldes sans alerte,
+// détruisant la séparation comptable alors que le total resterait juste. On l'interdit.
+const seen = new Set();
 for (const [post, pct] of dist) {
   const amount = (PROJECT_ALLOCATION * BigInt(pct) / 100n) * WEI;
   const address = addressFor(post);
+  if (seen.has(address)) {
+    console.error(`ERREUR : l'adresse ${address} est utilisée par plusieurs postes (${post}). Chaque poste doit avoir sa propre adresse.`);
+    process.exit(1);
+  }
+  seen.add(address);
   if (alloc[address]) alloc[address].balance = '0x' + (BigInt(alloc[address].balance || 0) + amount).toString(16);
   else alloc[address] = { balance: '0x' + amount.toString(16) };
   allocated += amount;

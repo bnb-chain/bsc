@@ -158,13 +158,22 @@ contract CoinbosaValidatorSet {
         uint256 n = newVals.length;
         require(n > 0 && n <= MAX_VALIDATORS, "bad length");
         require(newVotes.length == n, "length mismatch");
+        // Garde anti-arret : le GOVERNOR doit rester dans le set. Sans cela, un
+        // appel qui remplace le set par des adresses dont aucune cle n'est detenue
+        // par un noeud mineur laisse le reseau sans signataire au prochain bloc
+        // d'epoch, et la chaine s'arrete irreversiblement. Le GOVERNOR etant, par
+        // construction, un validateur a cle detenue, l'exiger garantit un signataire.
+        bool governorPresent = false;
         for (uint256 i = 0; i < n; ++i) {
             require(newVals[i] != address(0), "zero address");
             require(newVotes[i].length == VOTE_ADDRESS_LENGTH, "bad vote address");
+            if (newVals[i] == GOVERNOR) governorPresent = true;
             for (uint256 j = 0; j < i; ++j) {
                 require(newVals[i] != newVals[j], "duplicate validator");
+                require(keccak256(newVotes[i]) != keccak256(newVotes[j]), "duplicate vote address");
             }
         }
+        require(governorPresent, "governor must remain a validator");
         delete validators;
         delete voteAddresses;
         for (uint256 i = 0; i < n; ++i) {

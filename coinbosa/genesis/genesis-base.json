@@ -28,8 +28,8 @@
   "shanghaiTime": 0,
   "keplerTime": 0,
   "parlia": {
-   "period": 3,
-   "epoch": 1000000000
+   "period": 5,
+   "epoch": 200
   }
  },
  "nonce": "0x0",

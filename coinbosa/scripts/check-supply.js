@@ -25,22 +25,29 @@ const EXPECTED = BigInt(config.nativeCoin.totalSupply) * 10n ** 18n;
     total += onchain;
   }
 
-  // le contrat de pont hérité doit être vide
+  // le contrat de pont hérité doit être vide en solde ET purgé de son bytecode
   const bridge = await provider.getBalance('0x0000000000000000000000000000000000001004');
+  const XCHAIN = ['0x0000000000000000000000000000000000001003','0x0000000000000000000000000000000000001004',
+                  '0x0000000000000000000000000000000000001005','0x0000000000000000000000000000000000001006',
+                  '0x0000000000000000000000000000000000001008','0x0000000000000000000000000000000000002000'];
+  const withCode = [];
+  for (const a of XCHAIN) { const c = await provider.getCode(a); if (c && c !== '0x') withCode.push(a); }
 
   const whole = (x) => (x / 10n ** 18n).toLocaleString('en-US');
   console.log(`  offre native on-chain : ${whole(total)} BOSA`);
   console.log(`  attendu               : ${whole(EXPECTED)} BOSA`);
   console.log(`  pont 0x…1004          : ${whole(bridge)} BOSA`);
+  console.log(`  contrats inter-chaînes avec code : ${withCode.length}`);
 
   let ok = true;
   if (total !== EXPECTED) { console.error(`\nECHEC : offre de ${whole(total)}, attendu ${whole(EXPECTED)}.`); ok = false; }
   if (bridge !== 0n) { console.error(`\nECHEC : le pont hérité détient encore ${whole(bridge)} BOSA.`); ok = false; }
+  if (withCode.length) { console.error(`\nECHEC : contrats inter-chaînes hérités encore présents (bytecode) : ${withCode.join(', ')}`); ok = false; }
   if (mismatches.length) {
     console.error('\nECHEC : soldes on-chain divergents du genesis :');
     mismatches.forEach((m) => console.error(`  ${m.addr} : ${whole(m.onchain)} au lieu de ${whole(m.declared)}`));
     ok = false;
   }
   if (!ok) process.exit(1);
-  console.log('\n  offre native conforme');
+  console.log('\n  offre native conforme, contrats inter-chaînes purgés');
 })().catch((e) => { console.error('ERREUR :', e.message); process.exit(1); });
