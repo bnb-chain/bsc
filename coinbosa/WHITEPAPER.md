@@ -102,12 +102,12 @@ pas une fin en soi : elle existe pour servir ces produits.
 
 | Produit | Nature | État |
 |---|---|---|
-| **Coinbosa Academy** | école de formation au trading — forex, actions, puis crypto | en production |
+| **[Coinbosa Academy](https://coinbosa-academy.com)** | école de formation au trading — forex, actions, puis crypto | en production |
 | **[NextFuture](https://nexfutur.com)** | place d'échange crypto — marché au comptant et contrats à terme | en service |
 | **[Coinbosa Card](https://coinbosa.cards)** | carte prépayée et virtuelle, dépôts en crypto, dépense à l'international | à venir |
 | **[bite-fast](https://bite-fast.com)** | place d'échange crypto | externe, existante |
 | **Neobanq** | plateforme bancaire | existante |
-| **Coinbosa VPN** | service d'abonnement | en cours |
+| **[Coinbosa VPN](https://bosavpn.com)** | service d'abonnement | en cours |
 
 **Aucun de ces produits n'est raccordé à la chaîne à la date de ce document.** Chaque
 raccordement — paiement en BOSA, cotation, adossement de la carte — sera annoncé lorsqu'il
