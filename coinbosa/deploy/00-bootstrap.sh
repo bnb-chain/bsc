@@ -14,18 +14,28 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a   # évite l'écran interactif de needrestart
 
 echo "==> Mise à jour du système"
 apt-get update -y
 apt-get upgrade -y
 
 echo "==> Paquets de base"
-apt-get install -y ufw fail2ban unattended-upgrades ca-certificates curl \
+apt-get install -y ufw fail2ban unattended-upgrades ca-certificates curl rsync \
   debian-keyring debian-archive-keyring apt-transport-https gnupg
 
 echo "==> Pare-feu UFW"
 # IMPORTANT : on AUTORISE SSH AVANT d'activer le pare-feu (sinon lock-out).
-ufw allow OpenSSH        >/dev/null 2>&1 || ufw allow 22/tcp
+# On ouvre le(s) port(s) RÉELLEMENT écouté(s) par sshd, pas seulement 22,
+# au cas où SSH aurait été déplacé sur un port non standard.
+ssh_ports="$(sshd -T 2>/dev/null | awk '/^port /{print $2}' | sort -u)"
+if [ -z "$ssh_ports" ]; then
+  ssh_ports="$(ss -tlnpH 2>/dev/null | awk '/sshd/{n=split($4,a,":"); print a[n]}' | sort -u)"
+fi
+for p in $ssh_ports; do
+  if [ -n "$p" ]; then ufw allow "${p}/tcp"; fi
+done
+ufw allow OpenSSH >/dev/null 2>&1 || ufw allow 22/tcp   # filet de sécurité
 ufw allow 80/tcp
 ufw allow 443/tcp
 ufw default deny incoming
@@ -34,8 +44,25 @@ ufw default allow outgoing
 ufw --force enable
 ufw status verbose
 
-echo "==> fail2ban (protection brute-force SSH)"
-systemctl enable --now fail2ban
+echo "==> fail2ban (anti-bruteforce SSH)"
+# Jail sshd explicite en backend systemd (Ubuntu 24.04 n'a pas /var/log/auth.log),
+# + ignoreip pour ne jamais bannir l'opérateur connecté.
+op_ip="$(echo "${SSH_CLIENT:-}" | awk '{print $1}')"
+cat > /etc/fail2ban/jail.d/coinbosa.local <<EOF
+[DEFAULT]
+backend = systemd
+ignoreip = 127.0.0.1/8 ::1 ${op_ip}
+
+[sshd]
+enabled = true
+maxretry = 5
+EOF
+systemctl enable fail2ban >/dev/null 2>&1 || true
+systemctl restart fail2ban || true
+sleep 1
+if ! fail2ban-client status sshd >/dev/null 2>&1; then
+  echo "    ⚠️  jail sshd non confirmée — vérifie : fail2ban-client status sshd"
+fi
 
 echo "==> Mises à jour de sécurité automatiques"
 # active unattended-upgrades sans interaction
@@ -54,8 +81,12 @@ if [ "${mem_kb:-0}" -lt 1600000 ] && ! swapon --show | grep -q .; then
     fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
     chmod 600 /swapfile
     mkswap /swapfile
-    swapon /swapfile
-    grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    if swapon /swapfile; then
+      grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    else
+      echo "    swap non supporté sur ce VPS (conteneur ?), on continue sans."
+      rm -f /swapfile
+    fi
   fi
 fi
 

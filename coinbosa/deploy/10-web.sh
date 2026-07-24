@@ -18,12 +18,17 @@ fi
 SITE_DOMAIN="${SITE_DOMAIN:-coinbosa.com}"
 EXPLORER_DOMAIN="${EXPLORER_DOMAIN:-explorer.coinbosa.com}"
 export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+
+echo "==> Dépendances (au cas où 10-web.sh est lancé seul)"
+apt-get update -y
+apt-get install -y curl gnupg ca-certificates apt-transport-https debian-keyring debian-archive-keyring
 
 echo "==> Installation de Caddy (dépôt officiel)"
 if ! command -v caddy >/dev/null 2>&1; then
   install -d -m 0755 /usr/share/keyrings
   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
-    | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+    | gpg --batch --yes --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
     | tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
   apt-get update -y
@@ -82,6 +87,7 @@ $EXPLORER_DOMAIN {
     header {
         Strict-Transport-Security "max-age=31536000"
         X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "DENY"
         Referrer-Policy           "strict-origin-when-cross-origin"
         -Server
     }
