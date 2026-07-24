@@ -149,8 +149,12 @@ entre l'allocation projet et la réserve de migration (voir *Réconciliation*).
 | | Montant |
 |---|---|
 | Offre Solana | 500 000 000 |
-| — détenue par le projet | 450 000 000 |
+| — détenue par le projet, sur `5pdFbZdyab9jQUnC2E4x9XGmLpAFNqoF4GyjEtpfedQf` | 450 000 000 |
 | — détenue par des tiers | 50 000 000 |
+
+> Le solde de ce portefeuille sera confirmé sur Solana au moment de l'instantané. La réserve de
+> migration vaut exactement l'offre en circulation (500 000 000) moins ce solde : si le solde est
+> bien de 450 000 000, la réserve est de 50 000 000.
 
 La migration transpose à parité les 50 000 000 détenus par des tiers : ce montant constitue la
 **réserve de migration** au sein de l'offre native. Les 650 000 000 restants sont l'**allocation

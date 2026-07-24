@@ -234,7 +234,8 @@ migration à sens unique ne permet pas de reprendre des jetons dans un portefeui
 aucune exclusion d'adresse n'est retenue.
 
 **Partage établi :** sur les 500 000 000 de jetons Solana, **450 000 000 sont détenus par le
-projet** et **50 000 000 par des tiers**. D'où :
+projet** sur le portefeuille `5pdFbZdyab9jQUnC2E4x9XGmLpAFNqoF4GyjEtpfedQf` (format base58 vérifié,
+décodage 32 octets), et **50 000 000 par des tiers**. D'où :
 
 - **réserve de migration : 50 000 000** BOSA, pour les détenteurs tiers ;
 - **allocation projet : 650 000 000** BOSA, répartie selon les treize postes ;
