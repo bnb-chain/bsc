@@ -48,17 +48,17 @@
     "$comment": "Aucune part de l'offre n'est réservée aux récompenses et aucune émission n'est créée. Sans trafic, le revenu d'un validateur est nul. Ne jamais publier de taux de rendement."
   },
   "migration": {
-    "$comment": "Migration des jetons historiques Solana vers le BOSA natif, à parité. projectWallet détient les 450 M du projet (à retirer de la circulation, non migrés). La réserve est créditée aux détenteurs tiers (50 M) à mesure des migrations.",
+    "$comment": "Le projet contrôle la totalité des 500 M de jetons Solana (consolidés sur projectWallet). Il n'y a pas de détenteurs tiers : la réserve de migration est donc nulle et le projet reçoit l'intégralité de l'offre native. Les 500 M Solana seront retirés de la circulation (non migrés) pour éviter tout double compte. Le portail reste disponible pour un éventuel détenteur résiduel (ancien contributeur), crédité depuis la réserve stratégique.",
     "sourceChain": "solana",
     "sourceContract": "8UyvxCoVXoVaftWzp7j9yo2sGL2HnHTFDV4capenyFaf",
     "sourceSupply": "500000000",
     "projectHeld": "450000000",
-    "reserve": "50000000",
+    "reserve": "0",
     "ratio": "1:1",
     "projectWallet": "5pdFbZdyab9jQUnC2E4x9XGmLpAFNqoF4GyjEtpfedQf"
   },
   "projectAllocation": {
-    "$comment": "Offre native moins la réserve de migration. C'est la base sur laquelle s'appliquent les pourcentages de distribution.",
-    "amount": "650000000"
+    "$comment": "Le projet contrôlant tout l'historique, l'allocation projet égale l'offre native. Pourcentages de distribution appliqués à ce total.",
+    "amount": "700000000"
   }
 }

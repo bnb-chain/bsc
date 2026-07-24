@@ -173,6 +173,8 @@ multilingue, critères de réception — est dans **[FRONTEND.md](FRONTEND.md)**
 
 Les décisions structurantes du projet, avec leur justification et les points encore ouverts,
 sont consignées dans **[DECISIONS.md](DECISIONS.md)**, et l'économie du jeton dans **[TOKENOMICS.md](TOKENOMICS.md)**.
+La migration des jetons historiques est décrite dans **[docs/MIGRATION.md](docs/MIGRATION.md)**, et
+l'audit de sécurité interne et le durcissement dans **[docs/SECURITY-HARDENING.md](docs/SECURITY-HARDENING.md)**.
 
 ---
 

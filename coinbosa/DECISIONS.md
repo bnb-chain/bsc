@@ -223,28 +223,22 @@ canonique, et les jetons historiques à migrer.
 n'existe plus, et l'adresse de contrat fournie était invalide : BNB Chain est écarté de la
 migration.
 
-**Modèle de réconciliation retenu :** migration à **parité** (un jeton Solana pour un BOSA natif).
-L'offre native de 700 000 000 se décompose en deux blocs : une **réserve de migration** égale au
-montant de jetons Solana détenus par des tiers, créditée aux détenteurs à mesure qu'ils migrent,
-et une **allocation projet** égale au reste, organisée selon les treize postes. Les pourcentages
-des treize postes s'appliquent donc à l'allocation projet, pas au total.
+**Partage établi, puis simplifié.** Le projet contrôle la **totalité des 500 000 000 de jetons
+Solana**, consolidés sur le portefeuille `5pdFbZdyab9jQUnC2E4x9XGmLpAFNqoF4GyjEtpfedQf` (format
+base58 vérifié, décodage 32 octets). Il n'y a **pas de détenteurs tiers** à migrer. D'où :
 
-**Anciens contributeurs :** leurs jetons sont **honorés comme ceux de tout détenteur**. La
-migration à sens unique ne permet pas de reprendre des jetons dans un portefeuille tiers, et
-aucune exclusion d'adresse n'est retenue.
+- **réserve de migration : 0** ;
+- **offre native : 700 000 000** BOSA, revenant intégralement au projet, répartie selon les
+  treize postes ;
+- vérifié on-chain.
 
-**Partage établi :** sur les 500 000 000 de jetons Solana, **450 000 000 sont détenus par le
-projet** sur le portefeuille `5pdFbZdyab9jQUnC2E4x9XGmLpAFNqoF4GyjEtpfedQf` (format base58 vérifié,
-décodage 32 octets), et **50 000 000 par des tiers**. D'où :
+**Non-double-comptage.** Les 500 000 000 de jetons Solana ne sont pas migrés — le projet reçoit
+son offre au genesis. Ils seront **retirés de la circulation sur Solana**, publiquement, pour
+prouver l'absence de double compte.
 
-- **réserve de migration : 50 000 000** BOSA, pour les détenteurs tiers ;
-- **allocation projet : 650 000 000** BOSA, répartie selon les treize postes ;
-- total : 700 000 000, vérifié on-chain.
-
-**Non-double-comptage.** Les 450 000 000 de jetons Solana du projet ne sont pas migrés — le
-projet reçoit son allocation au genesis. Ces 450 000 000 seront **retirés de la circulation sur
-Solana**, publiquement, pour prouver que le projet ne migre pas ses propres jetons en plus de son
-allocation.
+**Cas résiduel.** Si un détenteur tiers apparaissait — par exemple un ancien contributeur
+détenant encore des jetons —, sa migration serait honorée à parité et créditée depuis la réserve
+stratégique, et non depuis une réserve dédiée. Aucune exclusion d'adresse n'est pratiquée.
 
 **Conformité à ne pas éluder.** Le portail collecte des données personnelles (nom, prénom) et
 opère un transfert de valeur : protection des données, obligations anti-blanchiment et

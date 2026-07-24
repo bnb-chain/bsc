@@ -140,50 +140,36 @@ Le jeton précédemment émis sur **BNB Chain n'existe plus** et n'entre pas dan
 l'adresse de contrat fournie était par ailleurs invalide. BNB Chain est donc écarté : seule la
 migration depuis Solana est retenue.
 
-Une **part de l'offre Solana est concentrée sur un portefeuille** contrôlé par le projet ; le
-reste est détenu par des tiers. Le montant exact conservé par le projet détermine le partage
-entre l'allocation projet et la réserve de migration (voir *Réconciliation*).
+**La totalité de l'offre Solana est contrôlée par le projet**, consolidée sur le portefeuille
+`5pdFbZdyab9jQUnC2E4x9XGmLpAFNqoF4GyjEtpfedQf`. Il n'y a pas de détenteurs tiers.
 
 ## Réconciliation avec l'offre native
 
-| | Montant |
-|---|---|
-| Offre Solana | 500 000 000 |
-| — détenue par le projet, sur `5pdFbZdyab9jQUnC2E4x9XGmLpAFNqoF4GyjEtpfedQf` | 450 000 000 |
-| — détenue par des tiers | 50 000 000 |
+Le projet contrôlant les 500 000 000 de jetons Solana, **aucune réserve de migration n'est
+prélevée** sur l'offre native : les 700 000 000 BOSA reviennent intégralement au projet, répartis
+selon les treize postes de la [tokenomique](../TOKENOMICS.md).
 
-> Le solde de ce portefeuille sera confirmé sur Solana au moment de l'instantané. La réserve de
-> migration vaut exactement l'offre en circulation (500 000 000) moins ce solde : si le solde est
-> bien de 450 000 000, la réserve est de 50 000 000.
+**Non-double-comptage — mesure de transparence.** Les 500 000 000 de jetons Solana ne sont pas
+migrés : le projet reçoit son offre directement au genesis. Pour prouver qu'il ne double pas son
+offre, ces 500 000 000 seront **retirés de la circulation sur Solana** — envoyés à une adresse
+hors-usage ou détruits —, de manière publique et vérifiable. Sans cette étape, un observateur ne
+peut exclure que le projet détienne à la fois 700 000 000 BOSA natifs et 500 000 000 jetons
+Solana.
 
-La migration transpose à parité les 50 000 000 détenus par des tiers : ce montant constitue la
-**réserve de migration** au sein de l'offre native. Les 650 000 000 restants sont l'**allocation
-projet**, répartie selon les treize postes. Total : 700 000 000, vérifié on-chain.
+**Cas résiduel — anciens contributeurs.** Si un ancien contributeur détenait encore des jetons
+Solana, sa migration serait **honorée comme celle de tout détenteur**, à parité, et créditée
+depuis la réserve stratégique. Aucune exclusion d'adresse n'est pratiquée. C'est le seul cas où le
+portail ci-dessus serait utilisé.
 
-**Non-double-comptage — mesure de transparence.** Les 450 000 000 de jetons Solana du projet ne
-sont pas migrés : le projet reçoit son allocation directement au genesis. Pour prouver qu'il ne
-migre pas aussi ses propres jetons, ces 450 000 000 seront **retirés de la circulation sur
-Solana** — envoyés à une adresse hors-usage ou détruits —, de manière publique et vérifiable sur
-Solana. Sans cette étape, un observateur ne peut exclure que le projet ait doublé son allocation.
+## Ce qui doit être établi
 
-**Anciens contributeurs partis avec des jetons.** Des membres d'équipe ayant quitté le projet
-détiennent chacun environ 1 000 000 de jetons historiques, compris dans les 50 000 000 détenus
-par des tiers. Décision retenue : leur migration est **honorée comme celle de tout détenteur**.
-Une migration à sens unique ne permet pas de reprendre des jetons dans un portefeuille tiers, et
-aucune exclusion d'adresse n'est pratiquée.
+1. **L'adresse de retrait** des 500 000 000 du projet sur Solana, publiée, avec la transaction de
+   retrait vérifiable.
+2. Si le portail est ouvert pour un cas résiduel : l'**adresse officielle de dépôt** sur Solana,
+   le **taux** (la parité) et le **niveau de connaissance du client** requis.
 
-## Ce qui doit être établi avant l'ouverture
-
-1. **Confirmer le solde du portefeuille projet** sur Solana au moment de l'instantané : la
-   réserve de migration vaut exactement l'offre en circulation moins ce solde. Retenu :
-   50 000 000, sur la base d'un solde projet de 450 000 000.
-2. **Le taux de conversion** — la parité, à confirmer.
-3. **L'adresse officielle de dépôt** sur Solana.
-4. **L'adresse de retrait** des 450 000 000 du projet, publiée.
-5. **Le niveau de connaissance du client** requis, et le prestataire éventuel.
-
-Le formulaire et le déroulement ne dépendent pas de ces valeurs : ils sont construits. Mais le
-portail **ne s'ouvre au public** qu'une fois ces points établis et publiés.
+Le formulaire et le déroulement sont construits. Le portail ne s'ouvrirait au public qu'en cas de
+besoin résiduel, et seulement une fois ces points établis.
 
 ---
 

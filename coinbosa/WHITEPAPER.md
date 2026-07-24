@@ -141,27 +141,20 @@ gouvernance du réseau. Toute autre utilité dépend de raccordements qui ne son
 
 ### Détenteurs historiques sur d'autres réseaux, et migration
 
-Lors de phases antérieures, des jetons Coinbosa ont été émis sur **Solana**, et sont détenus par
-des tiers. Ces jetons sont distincts du coin natif décrit ici : ils vivent sur un autre réseau,
-et le passage à Coinbosa Chain suppose une migration. *(Des jetons avaient aussi été émis sur BNB
-Chain ; ce jeton n'existe plus et n'entre pas dans la migration.)*
+Lors de phases antérieures, des jetons Coinbosa ont été émis sur **Solana** (500 000 000). Ils
+sont aujourd'hui **détenus dans leur totalité par le projet**, consolidés sur un seul
+portefeuille. *(Des jetons avaient aussi été émis sur BNB Chain ; ce jeton n'existe plus.)*
 
-Un **portail de migration** permettra à ces détenteurs d'échanger leurs jetons historiques contre
-du BOSA natif sur Coinbosa Chain. La migration est **à sens unique** : les jetons historiques sont
-déposés à une adresse officielle et retirés de la circulation, et un montant équivalent de BOSA
-natif est crédité au détenteur. Ce sens unique est ce qui garantit qu'aucun jeton n'existe deux
-fois.
+Comme il n'existe pas de détenteurs tiers, ces jetons historiques **ne sont pas migrés** vers le
+coin natif — le projet reçoit son offre directement au genesis. Pour qu'aucun jeton ne soit
+compté deux fois, les 500 000 000 de jetons Solana seront **retirés de la circulation sur
+Solana**, de manière publique et vérifiable.
 
-Le fonctionnement du portail est décrit dans un document dédié. Dans ses grandes lignes, le
-détenteur renseigne son identité, dépose ses jetons historiques à l'adresse officielle publiée,
-indique l'adresse Coinbosa Chain sur laquelle recevoir son BOSA, et reçoit en retour la preuve
-vérifiable du transfert — l'empreinte de la transaction sur Coinbosa Chain, consultable par
-quiconque sur l'explorateur.
-
-Deux éléments seront publiés avant l'ouverture du portail, et non promis : le **montant de
-jetons Solana détenu par des tiers**, qui détermine la réserve de BOSA affectée à la migration,
-et l'**adresse officielle de dépôt** sur Solana. Tant que ces valeurs ne sont pas établies et
-vérifiables, aucune n'est avancée ici.
+Un **portail de migration** reste disponible pour le cas résiduel où un détenteur tiers
+apparaîtrait — par exemple un ancien contributeur. Il fonctionne à sens unique : le détenteur
+dépose ses jetons historiques à une adresse officielle, indique l'adresse Coinbosa Chain sur
+laquelle recevoir son BOSA, et reçoit en retour l'empreinte de la transaction comme preuve
+vérifiable. Un tel cas serait crédité depuis la réserve stratégique.
 
 ### Note de correction
 
@@ -175,34 +168,26 @@ jamais été distribué ; la structure est abandonnée au profit d'un actif uniq
 
 ## 5. Répartition de l'offre
 
-L'offre de 700 000 000 BOSA se décompose en deux blocs. Des jetons Coinbosa historiques
-existent sur Solana (500 000 000), dont 450 000 000 détenus par le projet et 50 000 000 par des
-tiers (voir la section suivante).
-
-| Bloc | Montant |
-|---|---|
-| Réserve de migration (détenteurs tiers de jetons Solana) | 50 000 000 |
-| Allocation projet (treize postes ci-dessous) | 650 000 000 |
-| **Total** | **700 000 000** |
-
-Les pourcentages ci-dessous s'appliquent à l'allocation projet de 650 000 000.
+L'offre de 700 000 000 BOSA revient intégralement au projet et se répartit comme suit. Les
+jetons Coinbosa historiques sur Solana (500 000 000) sont détenus dans leur totalité par le
+projet, et ne donnent donc lieu à aucune réserve de migration (voir la section suivante).
 
 | Poste | Part | BOSA |
 |---|---|---|
-| Développement | 20 % | 130 000 000 |
-| Technique | 10 % | 65 000 000 |
-| Recherche | 10 % | 65 000 000 |
-| Équipe | 10 % | 65 000 000 |
-| Fonds financier (dépôts Coinbosa Card) | 10 % | 65 000 000 |
-| Fonds de liquidité | 10 % | 65 000 000 |
-| Recherche en intelligence artificielle | 10 % | 65 000 000 |
-| Recherche finance et fintech | 5 % | 32 500 000 |
-| Sécurité | 3 % | 19 500 000 |
-| Audit | 2 % | 13 000 000 |
-| Événements et formation | 2 % | 13 000 000 |
-| Distribution publique et communauté | 5 % | 32 500 000 |
-| Réserve stratégique | 3 % | 19 500 000 |
-| **Total allocation projet** | **100 %** | **650 000 000** |
+| Développement | 20 % | 140 000 000 |
+| Technique | 10 % | 70 000 000 |
+| Recherche | 10 % | 70 000 000 |
+| Équipe | 10 % | 70 000 000 |
+| Fonds financier (dépôts Coinbosa Card) | 10 % | 70 000 000 |
+| Fonds de liquidité | 10 % | 70 000 000 |
+| Recherche en intelligence artificielle | 10 % | 70 000 000 |
+| Recherche finance et fintech | 5 % | 35 000 000 |
+| Sécurité | 3 % | 21 000 000 |
+| Audit | 2 % | 14 000 000 |
+| Événements et formation | 2 % | 14 000 000 |
+| Distribution publique et communauté | 5 % | 35 000 000 |
+| Réserve stratégique | 3 % | 21 000 000 |
+| **Total** | **100 %** | **700 000 000** |
 
 Aucune part n'est réservée aux récompenses de validation : celles-ci proviennent exclusivement
 des frais de transaction (voir [Modèle économique](#8-modèle-économique)).
