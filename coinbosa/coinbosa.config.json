@@ -60,5 +60,22 @@
   "projectAllocation": {
     "$comment": "Le projet contrôlant tout l'historique, l'allocation projet égale l'offre native. Pourcentages de distribution appliqués à ce total.",
     "amount": "700000000"
+  },
+  "links": {
+    "$comment": "Liens publics — réseaux sociaux, site, explorateur, livre blanc. Source de vérité ; l'explorateur (explorer/index.html, objet LINKS) et le futur site coinbosa.com les reprennent.",
+    "website": "https://coinbosa.com",
+    "explorer": "https://explorer.coinbosa.com",
+    "whitepaper": "https://github.com/Coinbosa/coinbosa-chain/blob/master/coinbosa/WHITEPAPER.md",
+    "github": "https://github.com/Coinbosa/coinbosa-chain",
+    "facebook": "https://www.facebook.com/coinbosa",
+    "twitter": "",
+    "telegram": "https://t.me/coinbosa",
+    "telegramCommunity": "https://t.me/coinbosagroup",
+    "discord": ""
+  },
+  "entity": {
+    "name": "coinbosa, Inc.",
+    "jurisdiction": "Delaware, United States",
+    "copyright": "© 2022–2026 coinbosa, Inc."
   }
 }
