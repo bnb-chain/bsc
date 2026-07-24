@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# ---------------------------------------------------------------------------
+# Coinbosa — installe Caddy (TLS auto) et sert le tier public.
+# À lancer en root SUR le VPS, avec les domaines en variables :
+#
+#   sudo SITE_DOMAIN=coinbosa.com EXPLORER_DOMAIN=explorer.coinbosa.com bash 10-web.sh
+#
+# Idempotent. Le DNS des domaines doit pointer vers ce VPS pour que Caddy
+# puisse émettre les certificats.
+# ---------------------------------------------------------------------------
+set -euo pipefail
+
+if [ "$(id -u)" -ne 0 ]; then
+  echo "Ce script doit être lancé en root (sudo ... bash 10-web.sh)." >&2
+  exit 1
+fi
+
+SITE_DOMAIN="${SITE_DOMAIN:-coinbosa.com}"
+EXPLORER_DOMAIN="${EXPLORER_DOMAIN:-explorer.coinbosa.com}"
+export DEBIAN_FRONTEND=noninteractive
+
+echo "==> Installation de Caddy (dépôt officiel)"
+if ! command -v caddy >/dev/null 2>&1; then
+  install -d -m 0755 /usr/share/keyrings
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+    | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+    | tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
+  apt-get update -y
+  apt-get install -y caddy
+else
+  echo "    Caddy déjà installé : $(caddy version)"
+fi
+
+echo "==> Arborescence web"
+install -d -o caddy -g caddy /var/www/coinbosa/site
+install -d -o caddy -g caddy /var/www/coinbosa/explorer
+install -d -o caddy -g caddy /var/www/coinbosa/whitepaper
+
+# page d'attente tant que les vrais fichiers ne sont pas poussés
+for d in site explorer whitepaper; do
+  if [ ! -f "/var/www/coinbosa/$d/index.html" ]; then
+    printf '<!doctype html><meta charset=utf-8><title>Coinbosa</title><p>Coinbosa — déploiement en cours.</p>\n' \
+      > "/var/www/coinbosa/$d/index.html"
+    chown caddy:caddy "/var/www/coinbosa/$d/index.html"
+  fi
+done
+
+echo "==> Écriture de /etc/caddy/Caddyfile (domaines : $SITE_DOMAIN / $EXPLORER_DOMAIN)"
+cat > /etc/caddy/Caddyfile <<EOF
+# Généré par 10-web.sh — Coinbosa tier public. TLS automatique (Let's Encrypt).
+
+# --- Site vitrine + livre blanc ---
+$SITE_DOMAIN, www.$SITE_DOMAIN {
+    encode gzip zstd
+
+    handle_path /whitepaper* {
+        root * /var/www/coinbosa/whitepaper
+        file_server
+    }
+
+    handle {
+        root * /var/www/coinbosa/site
+        file_server
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "DENY"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        -Server
+    }
+}
+
+# --- Explorateur ---
+$EXPLORER_DOMAIN {
+    encode gzip zstd
+    root * /var/www/coinbosa/explorer
+    file_server
+
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options    "nosniff"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        -Server
+    }
+}
+EOF
+
+echo "==> Validation de la configuration"
+caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
+echo "==> Rechargement de Caddy"
+systemctl enable caddy
+systemctl reload caddy 2>/dev/null || systemctl restart caddy
+
+echo ""
+echo "==> Tier web prêt."
+echo "    Pousse les fichiers depuis ton poste :  SERVER=<user>@<ip> bash publish-static.sh"
+echo "    Suivre l'émission des certificats :      journalctl -u caddy -f"
