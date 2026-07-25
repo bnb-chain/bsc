@@ -7,8 +7,9 @@
 //   1. remplace le contrat système 0x…1000 par CoinbosaValidatorSet — sans quoi la
 //      chaîne se fige au premier bloc d'epoch (le bytecode hérité de 2021 n'expose pas
 //      getMiningValidators()) ;
-//   2. purge tout solde hérité du réseau amont — notamment les ~180 M de coins verrouillés
-//      dans le contrat de pont 0x…1004, qui n'a aucun objet sur une chaîne souveraine ;
+//   2. purge tout solde hérité du réseau amont — notamment celui verrouillé dans le
+//      contrat de pont 0x…1004, qui n'a aucun objet sur une chaîne souveraine (le montant
+//      réel purgé est calculé puis affiché en fin de script) ;
 //   3. alloue l'intégralité de l'offre — 700 000 000 BOSA — aux adresses de la répartition,
 //      selon les parts de coinbosa.config.json, avec un contrôle que le total est exact ;
 //   4. inscrit le validateur dans l'extraData du genesis.
@@ -21,7 +22,9 @@ const VALIDATOR = process.env.VALIDATOR;
 const ALLOW_DEV = process.env.ALLOW_DEV === '1';
 const ROOT = path.join(__dirname, '..');
 const BASE = process.env.BASE || path.join(ROOT, 'genesis', 'genesis-base.json');
-const OUT = process.env.OUT || path.join(ROOT, 'genesis', 'genesis-coinbosa.json');
+// Un genesis de DEV s'ecrit sur un chemin DISTINCT : il ne doit jamais ecraser
+// ni etre confondu avec le genesis de production.
+const OUT = process.env.OUT || path.join(ROOT, 'genesis', ALLOW_DEV ? 'genesis-coinbosa-dev.json' : 'genesis-coinbosa.json');
 const SOL = path.join(ROOT, 'contracts', 'CoinbosaValidatorSet.sol');
 const CONFIG = JSON.parse(fs.readFileSync(path.join(ROOT, 'coinbosa.config.json'), 'utf8'));
 const ADDR_MAP = JSON.parse(fs.readFileSync(path.join(ROOT, 'genesis', 'distribution-addresses.json'), 'utf8'));
@@ -69,9 +72,17 @@ function addressFor(post) {
 }
 
 // --- 1. compiler le ValidatorSet avec le gouverneur voulu ---
+const GOV = ethers.getAddress(VALIDATOR); // adresse checksummee (Solidity exige EIP-55)
 let source = fs.readFileSync(SOL, 'utf8');
-source = source.replace(/address public constant GOVERNOR = 0x[0-9a-fA-F]{40};/,
-  `address public constant GOVERNOR = ${VALIDATOR};`);
+const GOV_RE = /address public constant GOVERNOR = 0x[0-9a-fA-F]{40};/;
+const srcBefore = source;
+source = source.replace(GOV_RE, `address public constant GOVERNOR = ${GOV};`);
+// Garde dure : sans confirmation du remplacement, le contrat compilerait avec le
+// GOVERNOR par defaut (0x...0001) — gouverneur silencieusement faux dans le bytecode.
+if (source === srcBefore || !source.includes(`address public constant GOVERNOR = ${GOV};`)) {
+  console.error('ERREUR : injection du GOVERNOR echouee — motif introuvable dans CoinbosaValidatorSet.sol.');
+  process.exit(1);
+}
 
 const out = JSON.parse(solc.compile(JSON.stringify({
   language: 'Solidity',
@@ -154,6 +165,11 @@ if (allocated !== target) {
 
 // --- 4. extraData : 32B vanity + 1B compteur + (20B adresse + 48B clé BLS) + 65B sceau ---
 g.extraData = '0x' + '00'.repeat(32) + '01' + VALIDATOR.slice(2).toLowerCase() + '00'.repeat(48) + '00'.repeat(65);
+
+// Marqueur : un genesis construit en mode developpement (adresses synthetiques non
+// depensables + validateur credite du 1er poste) ne doit JAMAIS partir en production.
+// start-node.sh et check-supply.js refusent un genesis portant ce marqueur.
+if (ALLOW_DEV) g.coinbosaDev = true;
 
 fs.writeFileSync(OUT, JSON.stringify(g, null, 1));
 fs.writeFileSync(path.join(ROOT, 'genesis', 'CoinbosaValidatorSet.abi.json'), JSON.stringify(contract.abi, null, 2));

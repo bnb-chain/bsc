@@ -1,7 +1,14 @@
-// Vérifie que l'offre native lue sur la chaîne vaut exactement l'offre attendue.
+// Vérifie que l'offre native inscrite au genesis vaut exactement l'offre attendue.
 //
-// C'est le contrôle qui garantit qu'aucun solde hérité (le pont du réseau amont
-// portait ~180 M de coins) ne subsiste, et que la répartition boucle sur le total.
+// Les soldes sont lus AU BLOC 0 (genesis) : cela reflète l'allocation initiale sans
+// être faussé par les frais brûlés/déposés après coup (EIP-1559), et compare le
+// genesis DÉPLOYÉ (on-chain) au fichier local, adresse par adresse.
+//
+// Garanti : aucun solde hérité (le pont du réseau amont, notamment) ne subsiste,
+// la répartition boucle sur le total, les contrats inter-chaînes sont sans code.
+// Limite : ce contrôle itère les adresses du FICHIER local ; l'intégrité complète du
+// genesis déployé (détection d'une adresse cachée absente du fichier) est garantie par
+// la comparaison du HASH du bloc 0 en intégration continue, pas par ce script seul.
 const { ethers } = require('ethers');
 const fs = require('fs');
 const path = require('path');
@@ -9,6 +16,13 @@ const path = require('path');
 const RPC = process.env.RPC || 'http://127.0.0.1:8545';
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'coinbosa.config.json'), 'utf8'));
 const genesis = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'genesis', 'genesis-coinbosa.json'), 'utf8'));
+
+// Refus dur : un genesis de développement (adresses synthétiques, validateur crédité)
+// ne doit jamais passer pour un genesis de production.
+if (genesis.coinbosaDev) {
+  console.error("ECHEC : genesis-coinbosa.json porte le marqueur coinbosaDev — genesis de DÉVELOPPEMENT, non déployable en production.");
+  process.exit(1);
+}
 
 const EXPECTED = BigInt(config.nativeCoin.totalSupply) * 10n ** 18n;
 
@@ -20,13 +34,13 @@ const EXPECTED = BigInt(config.nativeCoin.totalSupply) * 10n ** 18n;
   for (const [addr, v] of Object.entries(genesis.alloc)) {
     const declared = v.balance ? BigInt(v.balance) : 0n;
     if (declared === 0n) continue;
-    const onchain = await provider.getBalance(addr);
+    const onchain = await provider.getBalance(addr, 0); // au bloc de genèse (block 0)
     if (onchain !== declared) mismatches.push({ addr, declared, onchain });
     total += onchain;
   }
 
   // le contrat de pont hérité doit être vide en solde ET purgé de son bytecode
-  const bridge = await provider.getBalance('0x0000000000000000000000000000000000001004');
+  const bridge = await provider.getBalance('0x0000000000000000000000000000000000001004', 0);
   const XCHAIN = ['0x0000000000000000000000000000000000001003','0x0000000000000000000000000000000000001004',
                   '0x0000000000000000000000000000000000001005','0x0000000000000000000000000000000000001006',
                   '0x0000000000000000000000000000000000001008','0x0000000000000000000000000000000000002000'];

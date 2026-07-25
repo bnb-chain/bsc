@@ -28,7 +28,7 @@
     "$comment": "Le livre blanc prévoit 12 validateurs identifiés répartis sur des serveurs distincts. La liste vit dans le contrat CoinbosaValidatorSet (0x...1000) et se met à jour par updateValidatorSet()."
   },
   "distribution": {
-    "$comment": "Répartition de l'allocation projet (650 000 000 BOSA). Pourcentages appliqués à projectAllocation, pas au total. Adresses dans genesis/distribution-addresses.json.",
+    "$comment": "Répartition de l'allocation projet (700 000 000 BOSA). Pourcentages appliqués à projectAllocation, pas au total. Adresses dans genesis/distribution-addresses.json.",
     "developpement": 20,
     "technique": 10,
     "recherche": 10,
@@ -52,7 +52,7 @@
     "sourceChain": "solana",
     "sourceContract": "8UyvxCoVXoVaftWzp7j9yo2sGL2HnHTFDV4capenyFaf",
     "sourceSupply": "500000000",
-    "projectHeld": "450000000",
+    "projectHeld": "500000000",
     "reserve": "0",
     "ratio": "1:1",
     "projectWallet": "5pdFbZdyab9jQUnC2E4x9XGmLpAFNqoF4GyjEtpfedQf"

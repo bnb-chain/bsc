@@ -114,9 +114,14 @@ contract CoinbosaValidatorSet {
     // Consensus : ecriture (system tx, msg.sender = coinbase, gasPrice = 0)
     // ---------------------------------------------------------------------
 
-    /// Bloc 1 uniquement. Un revert ici rend le bloc 1 improduisible.
+    /// Bloc 1 uniquement. Un revert ici rend le bloc 1 improduisible : la garde
+    /// est donc IDEMPOTENTE (pas de require). Sans controle d'acces, n'importe qui
+    /// peut appeler init() ; si une tx utilisateur le fait avant la system-tx du
+    /// bloc 1, un `require(!alreadyInit)` ferait revert la system-tx et suiciderait
+    /// la chaine au bloc 1. Le `if (alreadyInit) return;` rend tout appel superflu
+    /// inoffensif (no-op), en conservant l'etat validators=[GOVERNOR].
     function init() external {
-        require(!alreadyInit, "already initialized");
+        if (alreadyInit) return;
         alreadyInit = true;
         validators.push(GOVERNOR);
         voteAddresses.push(GENESIS_VOTE_ADDRESS);
@@ -128,8 +133,13 @@ contract CoinbosaValidatorSet {
     /// de chaine. Qu'un tiers appelle deposit en payant est inoffensif.
     function deposit(address valAddr) external payable {
         if (msg.value > 0) {
-            incoming[valAddr] += msg.value;
-            totalInComing += msg.value;
+            // unchecked : garantit formellement l'absence de revert sur ce chemin
+            // de consensus (regle d'or). L'invariant d'offre fixe (700M BOSA)
+            // exclut tout overflow reel de ces cumuls.
+            unchecked {
+                incoming[valAddr] += msg.value;
+                totalInComing += msg.value;
+            }
             emit ValidatorDeposit(valAddr, msg.value);
         }
     }

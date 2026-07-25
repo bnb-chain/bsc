@@ -18,10 +18,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 (async () => {
   const provider = new ethers.JsonRpcProvider(RPC);
 
-  // attendre d'avoir assez de blocs pour mesurer
+  // attendre d'avoir assez de blocs pour mesurer — avec une borne d'arrêt : si la
+  // chaîne est figée, on échoue au lieu d'attendre indéfiniment.
   let head = await provider.getBlockNumber();
+  const MAX_WAIT_S = Math.max(60, EXPECTED * (SAMPLES + 2) * 4);
+  let waited = 0;
   while (head < SAMPLES + 1) {
+    if (waited >= MAX_WAIT_S) {
+      console.error(`\nECHEC : seulement ${head} bloc(s) après ${waited}s — la chaîne ne produit pas de blocs (validateur arrêté ?).`);
+      process.exit(1);
+    }
     await sleep(EXPECTED * 1000);
+    waited += EXPECTED;
     head = await provider.getBlockNumber();
   }
 
