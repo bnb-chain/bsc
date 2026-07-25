@@ -1,3 +1,4 @@
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Coinbosa Explorer</title>
 <style>
   :root{--bg:#f4f6f9;--surface:#fff;--surface-2:#f8fafc;--line:#e6e9f0;--line-2:#eef1f6;
@@ -288,7 +289,7 @@ const RPC_URL='';  // ex. 'https://rpc.coinbosa.example' — vide = déduit de l
 function resolveRpc(){
   if(RPC_URL) return RPC_URL;
   const p=new URLSearchParams(location.search).get('rpc');
-  if(p&&/^https?:\/\//.test(p)&&/^(127\.0\.0\.1|localhost)/.test(location.hostname)) return p;
+  if(p&&/^https?:\/\//.test(p)&&/^(127\.0\.0\.1|localhost|\[::1\])$/.test(location.hostname)) return p;
   const o=location.origin;
   return /:\d+$/.test(o)?o.replace(/:\d+$/, ':8545'):o+':8545';
 }
@@ -322,8 +323,8 @@ const ICON = {
 function renderFooter(){
   const soc=document.getElementById('fsoc'); if(!soc) return;
   const socials=['facebook','twitter','telegram','discord','github'];
-  soc.innerHTML=socials.filter(k=>LINKS[k]).map(k=>`<a href="${LINKS[k]}" target="_blank" rel="noopener noreferrer" title="${k}">${ICON[k]}</a>`).join('');
-  const link=(url,label)=>url?`<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`:'';
+  soc.innerHTML=socials.filter(k=>LINKS[k]).map(k=>`<a href="${esc(safeUrl(LINKS[k]))}" target="_blank" rel="noopener noreferrer" title="${esc(k)}">${ICON[k]}</a>`).join('');
+  const link=(url,label)=>url?`<a href="${esc(safeUrl(url))}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`:'';
   document.getElementById('fcol-eco').innerHTML=[link(LINKS.website,'Coinbosa.com'),link(LINKS.academy||'#','Coinbosa Academy'),link(LINKS.nextfuture||'#','NextFuture'),link(LINKS.card||'#','Coinbosa Card'),link(LINKS.vpn||'#','Coinbosa VPN')].join('');
   document.getElementById('fcol-com').innerHTML=[link(LINKS.telegram,'Telegram'),link(LINKS.telegramCommunity,'Telegram '+t('community')),link(LINKS.facebook,'Facebook'),link(LINKS.discord||'','Discord'),link(LINKS.twitter||'','X / Twitter')].join('');
   document.getElementById('fcol-res').innerHTML=[link(LINKS.whitepaper,t('readWhitepaper')),link(LINKS.github,'GitHub'),link(LINKS.explorer,t('explorer'))].join('');
@@ -359,13 +360,18 @@ addEventListener('hashchange',()=>{const v=location.hash.slice(1);if(document.ge
 async function rpc(m,p=[]){const r=await fetch(RPC,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',method:m,params:p,id:1})});const j=await r.json();if(j.error)throw new Error(j.error.message);return j.result;}
 const hex=h=>parseInt(h,16);
 const nf=()=>new Intl.NumberFormat(I18N[lang].locale);
-const short=(s,n=8)=>s?s.slice(0,n)+'…'+s.slice(-6):'';
+const short=(s,n=8)=>{s=String(s==null?'':s);return s?esc(s.slice(0,n)+'…'+s.slice(-6)):'';};
 const coinv=h=>Number(BigInt(h||'0x0')/10n**12n)/1e6;
 const ago=ts=>{const d=Math.max(0,Math.floor(Date.now()/1000)-ts);const r=new Intl.RelativeTimeFormat(I18N[lang].locale,{numeric:'auto'});return d<60?r.format(-d,'second'):r.format(-Math.floor(d/60),'minute');};
 const cssv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 // Échappement HTML : name()/symbol() d'un contrat sont contrôlés par le déployeur.
 // Sans cela, un jeton dont name()="<img src=x onerror=…>" exécuterait du script chez le visiteur.
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Validateur hex pour les contextes onclick (une valeur RPC dans une chaîne JS inline :
+// esc() ne protège pas, les entités HTML étant redécodées avant l'exécution du JS).
+const hx=s=>{s=String(s==null?'':s);return /^0x[0-9a-fA-F]{0,64}$/.test(s)?s:'';};
+// N'autorise en href qu'un schéma sûr (http/https, chemin relatif, ancre).
+const safeUrl=u=>{u=String(u==null?'':u);return /^(https?:\/\/|\/|#)/.test(u)?u:'#';};
 
 let state={blocks:[],txs:[],vals:[],sys:{},contracts:{}};
 const decStr=h=>{try{const b=h.slice(2);const off=parseInt(b.slice(0,64),16)*2;const len=parseInt(b.slice(off,off+64),16)*2;let out='';const hx=b.slice(off+64,off+64+len);for(let i=0;i<hx.length;i+=2)out+=String.fromCharCode(parseInt(hx.substr(i,2),16));return out;}catch(e){return '';}};
@@ -428,9 +434,9 @@ function renderAnalytics(){if(view!=='analytics')return;const B=[...state.blocks
   ['a1','a2','a3','a4'].forEach(p=>{const e=document.getElementById(p+'-rng');if(e)e.textContent=B.length+' '+t('block')+'s';});}
 function renderTables(){
   document.getElementById('blocks').innerHTML=state.blocks.slice(0,14).map(b=>`<div class="item"><div class="glyph">Bk</div><div><div class="l1"><a onclick="lookup('${hex(b.number)}')">${nf().format(hex(b.number))}</a></div><div class="l2">${t('validator')} <span class="mono">${short(b.miner)}</span></div></div><div class="r"><div class="l1"><span class="badge">${nf().format(b.transactions.length)} ${t('txs')}</span></div><div class="l2">${ago(hex(b.timestamp))}</div></div></div>`).join('')||`<div class="empty">—</div>`;
-  document.getElementById('txlist').innerHTML=state.txs.length?state.txs.slice(0,14).map(x=>{const k=txKind(x);return `<div class="item"><div class="glyph">Tx</div><div><div class="l1 mono"><a onclick="lookup('${x.hash}')">${short(x.hash)}</a></div><div class="l2"><span class="badge ${k.c}">${k.k}</span> <span class="mono">${short(x.from)} → ${x.to?short(x.to):'—'}</span></div></div><div class="r"><div class="l1 tnum">${nf().format(coinv(x.value))} BOSA</div><div class="l2">${ago(x.ts)}</div></div></div>`;}).join(''):`<div class="empty">${t('noTxs')}</div>`;
+  document.getElementById('txlist').innerHTML=state.txs.length?state.txs.slice(0,14).map(x=>{const k=txKind(x);return `<div class="item"><div class="glyph">Tx</div><div><div class="l1 mono"><a onclick="lookup('${hx(x.hash)}')">${short(x.hash)}</a></div><div class="l2"><span class="badge ${k.c}">${k.k}</span> <span class="mono">${short(x.from)} → ${x.to?short(x.to):'—'}</span></div></div><div class="r"><div class="l1 tnum">${nf().format(coinv(x.value))} BOSA</div><div class="l2">${ago(x.ts)}</div></div></div>`;}).join(''):`<div class="empty">${t('noTxs')}</div>`;
   document.getElementById('blocs-body').innerHTML=state.blocks.map(b=>`<tr><td><a onclick="lookup('${hex(b.number)}')" class="tnum">${nf().format(hex(b.number))}</a></td><td>${ago(hex(b.timestamp))}</td><td class="tnum">${nf().format(b.transactions.length)}</td><td class="mono">${short(b.miner)}</td><td class="tnum">${nf().format(hex(b.gasUsed||'0x0'))}</td></tr>`).join('')||`<tr><td colspan="5" class="empty">—</td></tr>`;
-  document.getElementById('txs-body').innerHTML=state.txs.length?state.txs.map(x=>{const k=txKind(x);return `<tr><td class="mono"><a onclick="lookup('${x.hash}')">${short(x.hash)}</a><button class="copy" onclick="copy('${x.hash}')">⧉</button></td><td><span class="badge ${k.c}">${k.k}</span></td><td class="tnum"><a onclick="lookup('${hex(x.blockNumber)}')">${nf().format(hex(x.blockNumber))}</a></td><td class="mono">${short(x.from)}</td><td class="mono">${x.to?short(x.to):'—'}</td><td class="tnum">${nf().format(coinv(x.value))} BOSA</td><td>${ago(x.ts)}</td></tr>`;}).join(''):`<tr><td colspan="7" class="empty">${t('noTxs')}</td></tr>`;}
+  document.getElementById('txs-body').innerHTML=state.txs.length?state.txs.map(x=>{const k=txKind(x);return `<tr><td class="mono"><a onclick="lookup('${hx(x.hash)}')">${short(x.hash)}</a><button class="copy" onclick="copy('${hx(x.hash)}')">⧉</button></td><td><span class="badge ${k.c}">${k.k}</span></td><td class="tnum"><a onclick="lookup('${hex(x.blockNumber)}')">${nf().format(hex(x.blockNumber))}</a></td><td class="mono">${short(x.from)}</td><td class="mono">${x.to?short(x.to):'—'}</td><td class="tnum">${nf().format(coinv(x.value))} BOSA</td><td>${ago(x.ts)}</td></tr>`;}).join(''):`<tr><td colspan="7" class="empty">${t('noTxs')}</td></tr>`;}
 function renderVals(){const V=state.vals.length?state.vals:[...new Set(state.blocks.map(b=>b.miner))];
   document.getElementById('vlist').innerHTML=V.length?V.map((v,i)=>`<div class="vcard"><div class="av">V${i+1}</div><div><div class="vm mono">${short(v,10)}</div><div class="vs">${t('validator')} #${i+1}</div></div><span class="pill">${t('active')}</span></div>`).join(''):`<div class="empty">—</div>`;}
 function renderContracts(){
@@ -438,17 +444,17 @@ function renderContracts(){
   const cs=Object.values(state.contracts).filter(Boolean);
   const db=document.getElementById('deployed-body');
   if(db) db.innerHTML=cs.length?cs.map(c=>`<tr>
-    <td class="mono"><a onclick="lookup('${c.address}')">${short(c.address,10)}</a></td>
+    <td class="mono"><a onclick="lookup('${hx(c.address)}')">${short(c.address,10)}</a></td>
     <td>${c.isToken?`<span class="badge tf">BRC20${c.symbol?' · '+esc(c.symbol):''}</span>`:`<span class="badge">${t('contract')}</span>`}</td>
     <td class="mono">${short(c.creator)}</td>
-    <td class="mono"><a onclick="lookup('${c.tx}')">${short(c.tx)}</a></td>
+    <td class="mono"><a onclick="lookup('${hx(c.tx)}')">${short(c.tx)}</a></td>
     <td>${ago(c.ts)}</td></tr>`).join(''):`<tr><td colspan="5" class="empty">—</td></tr>`;
   const tks=cs.filter(c=>c.isToken);
   const tb=document.getElementById('tokens-body');
   if(tb) tb.innerHTML=tks.length?tks.map(c=>`<tr>
     <td style="font-weight:600">${esc(c.name)||'?'}</td><td class="mono">${esc(c.symbol)||'?'}</td>
     <td class="tnum">${c.decimals??'—'}</td><td class="tnum">${c.supply?nf().format(Number(c.supply)):'—'}</td>
-    <td class="mono"><a onclick="lookup('${c.address}')">${short(c.address,10)}</a></td></tr>`).join(''):`<tr><td colspan="5" class="empty">${t('noTokens')}</td></tr>`;}
+    <td class="mono"><a onclick="lookup('${hx(c.address)}')">${short(c.address,10)}</a></td></tr>`).join(''):`<tr><td colspan="5" class="empty">${t('noTokens')}</td></tr>`;}
 window.lookup=v=>{document.getElementById('q').value=String(v);search();};
 
 async function refresh(){
@@ -464,7 +470,7 @@ async function refresh(){
     if(d.length)document.getElementById('s-time').textContent=(d.reduce((a,b)=>a+b,0)/d.length).toFixed(1)+' s';
     for(const b of blocks)for(const x of b.transactions)if(!state.txs.find(y=>y.hash===x.hash))state.txs.unshift({...x,ts:hex(b.timestamp)});
     state.txs=state.txs.slice(0,40);
-    try{const r=await rpc('eth_call',[{to:SYS[0][0],data:'0x4df6e0c3'},'latest']);const body=r.slice(2);const n=parseInt(body.slice(128,192),16);const vs=[];for(let i=0;i<n;i++)vs.push('0x'+body.slice(256+i*64+24,256+i*64+64));if(vs.length)state.vals=vs;}catch(e){}
+    try{const r=await rpc('eth_call',[{to:SYS[0][0],data:'0x4df6e0c3'},'latest']);const body=r.slice(2);const n=parseInt(body.slice(128,192),16);const vs=[];for(let i=0;i<n;i++)vs.push('0x'+body.slice(192+i*64+24,192+i*64+64));if(vs.length)state.vals=vs;}catch(e){}
     if(view==='contrats')for(const [a] of SYS)if(state.sys[a]==null)try{const c=await rpc('eth_getCode',[a,'latest']);state.sys[a]=(c.length-2)/2;}catch(e){}
     if(view==='contrats'||view==='tokens') await discover();
     renderAll();

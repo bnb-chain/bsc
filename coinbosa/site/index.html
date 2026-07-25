@@ -493,7 +493,7 @@ var CONTENT = {
   links: {
     website:           "https://coinbosa.com", // site principal
     explorer:          "https://explorer.coinbosa.com",   // explorateur de la chaîne (sobre, façon Solscan)
-    whitepaper:        "https://github.com/Coinbosa/coinbosa-chain/blob/main/coinbosa/WHITEPAPER.md",   // livre blanc
+    whitepaper:        "https://github.com/Coinbosa/coinbosa-chain/blob/master/coinbosa/WHITEPAPER.md",   // livre blanc
     github:            "https://github.com/Coinbosa/coinbosa-chain",   // dépôt(s)
     facebook:          "https://www.facebook.com/coinbosa",   // page Facebook
     telegram:          "https://t.me/coinbosa",   // canal Telegram officiel
@@ -654,7 +654,7 @@ var CONTENT = {
       if (hasUrl) {
         var aff = isExt(p.url) ? EXTLINK : ARROW;
         html += '<span class="card-link">Découvrir ' + aff + '</span>';
-        card.setAttribute('href', p.url);
+        card.setAttribute('href', /^(https?:\/\/|\/|#)/.test(p.url) ? p.url : '#');
         card.setAttribute('aria-label', p.name + ' — ouvrir le site' + (isExt(p.url) ? ' (nouvel onglet)' : ''));
         if (isExt(p.url)) { card.target = '_blank'; card.rel = 'noopener noreferrer'; }
       }
@@ -709,7 +709,7 @@ var CONTENT = {
         if (!L[k] || made >= 3) return;
         var primary = (made === 0);
         var a = el('a', 'btn ' + (primary ? 'btn-primary' : 'btn-ghost'));
-        a.href = L[k]; a.textContent = LABELS[k];
+        a.href = /^(https?:\/\/|\/|#)/.test(L[k]) ? L[k] : '#'; a.textContent = LABELS[k];
         if (isExt(L[k])) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
         join.appendChild(a);
         made++;
@@ -725,7 +725,7 @@ var CONTENT = {
       ['website', 'facebook', 'telegram', 'telegramCommunity', 'twitter', 'discord', 'github'].forEach(function (k) {
         if (!L[k]) return;
         var a = el('a', null, ICONS[k] || '');
-        a.href = L[k]; a.setAttribute('aria-label', LABELS[k]); a.title = LABELS[k];
+        a.href = /^(https?:\/\/|\/|#)/.test(L[k]) ? L[k] : '#'; a.setAttribute('aria-label', LABELS[k]); a.title = LABELS[k];
         if (isExt(L[k])) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
         soc.appendChild(a);
       });
@@ -744,7 +744,7 @@ var CONTENT = {
         if (!L[k]) return;
         var li = el('li');
         var a = el('a', null, esc(LABELS[k]));
-        a.href = L[k];
+        a.href = /^(https?:\/\/|\/|#)/.test(L[k]) ? L[k] : '#';
         if (isExt(L[k])) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
         li.appendChild(a); ul.appendChild(li); added++;
       });
