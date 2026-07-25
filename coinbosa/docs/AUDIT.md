@@ -66,3 +66,28 @@ retenue. **36 trouvailles brutes → 19 confirmées → correctifs ci-dessous.**
 Pour le **tier public** (site, explorateur, livre blanc) et le **code** : **prêt après ces correctifs**.
 Pour la **chaîne porteuse de valeur** : inchangé — un **audit externe**, la **mise sous multi-signatures**
 de l'offre et le **passage à plusieurs validateurs** restent des prérequis (feuille de route).
+
+---
+
+## Re-scan go-live (2ᵉ passe)
+
+Un second re-scan complet (9 chasseurs → 3 relecteurs seniors → verdict) a **re-vérifié ligne à ligne**
+le chemin de consensus et le chemin argent/genesis de production : **SAINS**, correctifs de la 1ʳᵉ passe
+confirmés. Défauts additionnels corrigés :
+
+| Sévérité | Problème | Correctif |
+|---|---|---|
+| **Majeur** | Livre blanc : la « Note de correction » affirmait que les jetons Solana/BNB « ont des détenteurs et relèvent de la migration » — contredit tout le reste (projet détient tout, non migrés). | Reformulé : sans détenteurs tiers, aucune migration (HTML + `WHITEPAPER.md`). |
+| **Verrou** | `.gitignore` n'excluait que `node1/`/`node2/` — un datadir renommé aurait pu versionner la **clé du validateur**. | `node*/`, `keystore/`, `**/keystore/`, `UTC--*`, `*.key`, `.env*`. |
+| Reco | Pages servies en direct sans `<!DOCTYPE html>` → *quirks mode*. | Doctype + `<html lang="fr">` sur site, explorateur, livre blanc. |
+| Reco | Explorateur : réponse RPC hostile pouvait geler/planter la page (`n` non borné, `coinv()` throwait). | `n` borné (≤128) ; `coinv()` renvoie 0 sur hex invalide. |
+| Reco | Lien livre blanc du site divulguait le dépôt GitHub. | Pointe vers `https://coinbosa.com/whitepaper/` (hébergé). |
+| Mineur | Cosmétique/robustesse : garde de schéma du lien explorateur (nav), echo `:8595`→`:8545`, commentaire `coinbosaDev`, `sshd -T` sous `set -e`, IP opérateur fail2ban via `sudo`. | Corrigés. |
+
+**Reste (opérationnel, non-code) :** remplir `distribution-addresses.json` avec de vraies adresses
+multi-signatures générées **sur le serveur cible** (déjà gardé : `build-genesis.js` refuse la prod sinon).
+**Post-lancement acceptable :** en-tête CSP Caddy (à ajouter après vérification du rendu en ligne),
+`Ownable2Step` + plafond de mint pour les **contrats de jeton BRC20** applicatifs (sans effet sur le coin
+natif BOSA, dont l'offre est fixée au genesis).
+
+**Verdict go-live du tier public : PRÊT.**

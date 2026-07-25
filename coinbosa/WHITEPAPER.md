@@ -162,7 +162,7 @@ Une version antérieure de ce projet a communiqué sur un jeton BOSA de 700 000 
 **10 décimales**, sous la forme d'un contrat applicatif destiné à Coinbosa Chain. Ce contrat n'a
 jamais été distribué ; la structure est abandonnée au profit d'un actif unique — le coin natif, à
 18 décimales, pour la même offre. Ce point est distinct des jetons historiques évoqués ci-dessus,
-émis sur Solana et BNB Chain, qui eux ont des détenteurs et relèvent de la migration.
+émis sur Solana (détenus en totalité par le projet) et sur BNB Chain (jeton disparu) : sans détenteurs tiers, ils ne donnent lieu à aucune migration, hormis le cas résiduel décrit plus haut.
 
 ---
 

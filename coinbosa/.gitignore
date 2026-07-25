@@ -1,12 +1,19 @@
 node_modules/
 build/
 bin/
-node1/
-node2/
-*.log
+
+# datadirs & CLÉS DE VALIDATEUR — ne JAMAIS versionner (fuite = prise de contrôle de la chaîne)
+node*/
+keystore/
+**/keystore/
+UTC--*
+*.key
 pw.txt
-.env
+
+*.log
+.env*
 
 # genesis généré : dépend de votre validateur, à reconstruire avec scripts/build-genesis.js
 genesis/genesis-coinbosa.json
+genesis/genesis-coinbosa-dev.json
 genesis/CoinbosaValidatorSet.abi.json

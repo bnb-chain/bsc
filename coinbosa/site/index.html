@@ -1,3 +1,5 @@
+<!DOCTYPE html>
+<html lang="fr">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Coinbosa — L'écosystème technologique</title>
@@ -493,7 +495,7 @@ var CONTENT = {
   links: {
     website:           "https://coinbosa.com", // site principal
     explorer:          "https://explorer.coinbosa.com",   // explorateur de la chaîne (sobre, façon Solscan)
-    whitepaper:        "https://github.com/Coinbosa/coinbosa-chain/blob/master/coinbosa/WHITEPAPER.md",   // livre blanc
+    whitepaper:        "https://coinbosa.com/whitepaper/",   // livre blanc (hébergé sur le site)
     github:            "https://github.com/Coinbosa/coinbosa-chain",   // dépôt(s)
     facebook:          "https://www.facebook.com/coinbosa",   // page Facebook
     telegram:          "https://t.me/coinbosa",   // canal Telegram officiel
@@ -690,7 +692,7 @@ var CONTENT = {
 
     // Nav : lien explorateur (si présent)
     if (L.explorer) {
-      var navHtml = '<a href="' + esc(L.explorer) + '"' + anchorAttrs(L.explorer) + '>Explorateur</a>';
+      var navHtml = '<a href="' + esc(/^(https?:\/\/|\/|#)/.test(L.explorer) ? L.explorer : '#') + '"' + anchorAttrs(L.explorer) + '>Explorateur</a>';
       var ne = document.getElementById('nav-extra');
       var mne = document.getElementById('mnav-extra');
       if (ne) ne.outerHTML = navHtml;

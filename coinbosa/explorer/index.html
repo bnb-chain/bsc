@@ -1,3 +1,5 @@
+<!DOCTYPE html>
+<html lang="fr">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Coinbosa Explorer</title>
 <style>
@@ -361,7 +363,7 @@ async function rpc(m,p=[]){const r=await fetch(RPC,{method:'POST',headers:{'Cont
 const hex=h=>parseInt(h,16);
 const nf=()=>new Intl.NumberFormat(I18N[lang].locale);
 const short=(s,n=8)=>{s=String(s==null?'':s);return s?esc(s.slice(0,n)+'…'+s.slice(-6)):'';};
-const coinv=h=>Number(BigInt(h||'0x0')/10n**12n)/1e6;
+const coinv=h=>{try{return Number(BigInt(h||'0x0')/10n**12n)/1e6;}catch(e){return 0;}};
 const ago=ts=>{const d=Math.max(0,Math.floor(Date.now()/1000)-ts);const r=new Intl.RelativeTimeFormat(I18N[lang].locale,{numeric:'auto'});return d<60?r.format(-d,'second'):r.format(-Math.floor(d/60),'minute');};
 const cssv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 // Échappement HTML : name()/symbol() d'un contrat sont contrôlés par le déployeur.
@@ -470,7 +472,7 @@ async function refresh(){
     if(d.length)document.getElementById('s-time').textContent=(d.reduce((a,b)=>a+b,0)/d.length).toFixed(1)+' s';
     for(const b of blocks)for(const x of b.transactions)if(!state.txs.find(y=>y.hash===x.hash))state.txs.unshift({...x,ts:hex(b.timestamp)});
     state.txs=state.txs.slice(0,40);
-    try{const r=await rpc('eth_call',[{to:SYS[0][0],data:'0x4df6e0c3'},'latest']);const body=r.slice(2);const n=parseInt(body.slice(128,192),16);const vs=[];for(let i=0;i<n;i++)vs.push('0x'+body.slice(192+i*64+24,192+i*64+64));if(vs.length)state.vals=vs;}catch(e){}
+    try{const r=await rpc('eth_call',[{to:SYS[0][0],data:'0x4df6e0c3'},'latest']);const body=r.slice(2);const n=parseInt(body.slice(128,192),16);if(!Number.isFinite(n)||n<0||n>128)throw 0;const vs=[];for(let i=0;i<n;i++)vs.push('0x'+body.slice(192+i*64+24,192+i*64+64));if(vs.length)state.vals=vs;}catch(e){}
     if(view==='contrats')for(const [a] of SYS)if(state.sys[a]==null)try{const c=await rpc('eth_getCode',[a,'latest']);state.sys[a]=(c.length-2)/2;}catch(e){}
     if(view==='contrats'||view==='tokens') await discover();
     renderAll();

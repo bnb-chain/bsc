@@ -168,7 +168,8 @@ g.extraData = '0x' + '00'.repeat(32) + '01' + VALIDATOR.slice(2).toLowerCase() +
 
 // Marqueur : un genesis construit en mode developpement (adresses synthetiques non
 // depensables + validateur credite du 1er poste) ne doit JAMAIS partir en production.
-// start-node.sh et check-supply.js refusent un genesis portant ce marqueur.
+// check-supply.js (la porte de production) refuse un genesis portant ce marqueur.
+// start-node.sh est lui volontairement DEV-only : il sert justement ce genesis de dev.
 if (ALLOW_DEV) g.coinbosaDev = true;
 
 fs.writeFileSync(OUT, JSON.stringify(g, null, 1));

@@ -28,7 +28,7 @@ echo "==> Pare-feu UFW"
 # IMPORTANT : on AUTORISE SSH AVANT d'activer le pare-feu (sinon lock-out).
 # On ouvre le(s) port(s) RÉELLEMENT écouté(s) par sshd, pas seulement 22,
 # au cas où SSH aurait été déplacé sur un port non standard.
-ssh_ports="$(sshd -T 2>/dev/null | awk '/^port /{print $2}' | sort -u)"
+ssh_ports="$( { sshd -T 2>/dev/null || true; } | awk '/^port /{print $2}' | sort -u)"
 if [ -z "$ssh_ports" ]; then
   ssh_ports="$(ss -tlnpH 2>/dev/null | awk '/sshd/{n=split($4,a,":"); print a[n]}' | sort -u)"
 fi
@@ -47,7 +47,7 @@ ufw status verbose
 echo "==> fail2ban (anti-bruteforce SSH)"
 # Jail sshd explicite en backend systemd (Ubuntu 24.04 n'a pas /var/log/auth.log),
 # + ignoreip pour ne jamais bannir l'opérateur connecté.
-op_ip="$(echo "${SSH_CLIENT:-}" | awk '{print $1}')"
+op_ip="$(who -m 2>/dev/null | sed -n 's/.*(\([0-9.]*\)).*/\1/p')"; [ -n "$op_ip" ] || op_ip="${SSH_CLIENT%% *}"
 cat > /etc/fail2ban/jail.d/coinbosa.local <<EOF
 [DEFAULT]
 backend = systemd
