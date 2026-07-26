@@ -41,6 +41,13 @@ if (errors.length) {
 }
 
 fs.mkdirSync(OUT, { recursive: true });
+// Garde fail-closed : refuse toute version de solc autre que celle épinglée.
+// Le bytecode du consensus dépend de la version exacte du compilateur.
+const SOLC_EXPECTED = '0.8.26';
+if (!solc.version().startsWith(SOLC_EXPECTED)) {
+  console.error(`ERREUR : solc ${solc.version()} détecté, ${SOLC_EXPECTED} attendu. Fige la version (npm ci) et recommence.`);
+  process.exit(1);
+}
 console.log('solc', solc.version());
 console.log('avertissements :', warnings.length);
 warnings.forEach((w) => console.log('  ·', w.message.split('\n')[0]));

@@ -11,7 +11,7 @@
     "explorer": "./scripts/start-explorer.sh"
   },
   "dependencies": {
-    "ethers": "^6.17.0",
+    "ethers": "6.17.0",
     "solc": "0.8.26"
   }
 }

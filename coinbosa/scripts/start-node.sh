@@ -14,7 +14,25 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-: "${VALIDATOR:?VALIDATOR manquant — passez l'adresse du validateur du genesis : VALIDATOR=0x… ./scripts/start-node.sh}"
+# GARDE DURE : ce script est DÉVELOPPEMENT LOCAL UNIQUEMENT (il déverrouille la clé de
+# scellage dans le processus RPC). Il refuse de démarrer sans COINBOSA_DEV=1, pour empêcher
+# tout usage en production par erreur. Production => docs/SECURITY-HARDENING.md (signeur
+# distant/HSM, RPC fermé, aucune clé dans le nœud).
+if [ "${COINBOSA_DEV:-}" != "1" ]; then
+  echo "refus : start-node.sh est DEV uniquement (deverrouille la cle de scellage dans le process)." >&2
+  echo "  usage dev volontaire : COINBOSA_DEV=1 ./scripts/start-node.sh" >&2
+  echo "  production : voir docs/SECURITY-HARDENING.md (signeur distant/HSM, RPC ferme, aucune cle dans le noeud)." >&2
+  exit 1
+fi
+
+umask 077                              # nouveaux secrets non lisibles par groupe/autres
+[ -f pw.txt ] && chmod 600 pw.txt      # mot de passe de la clé (F26)
+
+if [ -z "${VALIDATOR:-}" ]; then
+  echo "VALIDATOR manquant — passez l'adresse du validateur du genesis :" >&2
+  echo "  VALIDATOR=0x... ./scripts/start-node.sh" >&2
+  exit 1
+fi
 CHAIN_ID=26262
 RPC_PORT=8545          # port EVM standard, aligné sur coinbosa.config.json et l'explorateur
 

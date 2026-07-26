@@ -11,14 +11,16 @@
 
 ## Le réseau
 
-Coinbosa Network est une blockchain compatible Ethereum, sécurisée par un consensus de
-**preuve d'enjeu** : les validateurs immobilisent des jetons pour participer à la production
-des blocs, et les perdent en cas de faute.
+Coinbosa Network est une blockchain compatible Ethereum. Son moteur de consensus, **Parlia**
+(*Proof of Staked Authority*), est conçu pour la **preuve d'enjeu** : à terme, les validateurs
+immobiliseront des jetons pour produire les blocs et les perdront en cas de faute.
 
-Le moteur de consensus, Parlia, est conçu pour ce modèle — son nom même signifie *Proof of
-Staked Authority*. Il combine l'immobilisation d'un enjeu et un nombre de validateurs borné,
-ce qui permet des blocs courts et des frais très faibles, là où un consensus ouvert à tous
-impose des compromis de vitesse.
+**État réel, sans détour :** cette couche d'enjeu **n'est pas encore implémentée**. Aujourd'hui,
+le réseau fonctionne avec un **ensemble de validateurs fixe géré par un gouverneur — c'est-à-dire
+une preuve d'autorité**. Écrire la couche d'enjeu (dépôt, élection par le montant immobilisé,
+sanctions) est le chantier prioritaire — voir « Le contrat système du consensus » et la feuille
+de route. Parlia combine un enjeu (à venir) et un nombre de validateurs borné, ce qui permet des
+blocs courts et des frais très faibles.
 
 L'implémentation actuelle repose sur le client [BNB Smart Chain](https://github.com/bnb-chain/bsc)
 et son moteur de consensus **Parlia**. Voir la section « Écarts avec le livre blanc » pour les
@@ -208,7 +210,7 @@ destruction, la propriété et les événements — y compris tous les cas qui d
 
 ## État d'avancement
 
-**Vérifié sur la chaîne :** production de blocs à 3 s · franchissement des blocs d'epoch
+**Vérifié sur la chaîne :** production de blocs à 5 s (client patché) · franchissement des blocs d'epoch
 (bloc 200 scellé, chaîne poursuivie sans erreur) · transactions natives · déploiement et
 exécution de contrats · jeton complet et testé · API JSON-RPC et WebSocket · persistance de
 l'état après redémarrage.

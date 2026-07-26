@@ -40,9 +40,9 @@ jobs:
       - name: Compiler le client Coinbosa
         run: make geth
 
-      - name: Installer les dépendances
+      - name: Installer les dépendances (reproductible, depuis le lock)
         working-directory: coinbosa
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Compiler les contrats
         working-directory: coinbosa

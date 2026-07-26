@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.26;
 
 import "./IBRC20.sol";
 
@@ -20,9 +20,15 @@ contract BRC20 is IBRC20 {
     string private _symbol;
     uint8 private immutable _decimals;
     address private _owner;
+    address private _pendingOwner;
+    bool private _mintingFinished;
 
     /// @notice Émis lorsque la propriété du contrat change.
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    /// @notice Émis lorsqu'un transfert de propriété est proposé (première étape).
+    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
+    /// @notice Émis lorsque l'émission est définitivement close.
+    event MintingFinished();
 
     modifier onlyOwner() {
         require(msg.sender == _owner, "BRC20: reserve au proprietaire");
@@ -93,11 +99,21 @@ contract BRC20 is IBRC20 {
 
     // --- Émission et destruction ---
 
-    /// @notice Crée `amount` jetons et les attribue à `account`.
+    /// @notice Crée `amount` jetons et les attribue à `account` (si l'émission n'est pas close).
     function mint(address account, uint256 amount) public onlyOwner returns (bool) {
+        require(!_mintingFinished, "BRC20: emission close");
         _mint(account, amount);
         return true;
     }
+
+    /// @notice Ferme DÉFINITIVEMENT l'émission : plus aucun mint n'est ensuite possible.
+    /// Rend l'offre fixe et vérifiable — indispensable pour un jeton présenté comme tel.
+    function finishMinting() public onlyOwner {
+        _mintingFinished = true;
+        emit MintingFinished();
+    }
+
+    function mintingFinished() public view returns (bool) { return _mintingFinished; }
 
     /// @notice Détruit `amount` jetons du solde de l'appelant.
     function burn(uint256 amount) public returns (bool) {
@@ -107,16 +123,30 @@ contract BRC20 is IBRC20 {
 
     // --- Propriété ---
 
+    /// @notice Propose un nouveau propriétaire. Le transfert n'est effectif qu'après
+    /// acceptOwnership() par le destinataire — évite un transfert vers une adresse
+    /// erronée ou dont on ne détient pas la clé.
     function transferOwnership(address newOwner) public onlyOwner {
         require(newOwner != address(0), "BRC20: nouveau proprietaire nul");
-        emit OwnershipTransferred(_owner, newOwner);
-        _owner = newOwner;
+        _pendingOwner = newOwner;
+        emit OwnershipTransferStarted(_owner, newOwner);
     }
+
+    /// @notice Le propriétaire en attente confirme et prend la propriété.
+    function acceptOwnership() public {
+        require(msg.sender == _pendingOwner, "BRC20: pas le proprietaire en attente");
+        emit OwnershipTransferred(_owner, _pendingOwner);
+        _owner = _pendingOwner;
+        _pendingOwner = address(0);
+    }
+
+    function pendingOwner() public view returns (address) { return _pendingOwner; }
 
     /// @notice Abandonne définitivement la propriété. Irréversible.
     function renounceOwnership() public onlyOwner {
         emit OwnershipTransferred(_owner, address(0));
         _owner = address(0);
+        _pendingOwner = address(0);
     }
 
     // --- Interne ---
