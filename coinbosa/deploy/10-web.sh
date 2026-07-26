@@ -74,6 +74,8 @@ $SITE_DOMAIN, www.$SITE_DOMAIN {
         X-Content-Type-Options    "nosniff"
         X-Frame-Options           "DENY"
         Referrer-Policy           "strict-origin-when-cross-origin"
+        Content-Security-Policy   "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' https:; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
+        Permissions-Policy        "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
         -Server
     }
 }
@@ -89,6 +91,8 @@ $EXPLORER_DOMAIN {
         X-Content-Type-Options    "nosniff"
         X-Frame-Options           "DENY"
         Referrer-Policy           "strict-origin-when-cross-origin"
+        Content-Security-Policy   "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' https:; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
+        Permissions-Policy        "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
         -Server
     }
 }
