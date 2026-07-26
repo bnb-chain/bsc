@@ -27,12 +27,12 @@ for f in site/index.html explorer/index.html whitepaper/index.html; do
 done
 
 echo "==> Envoi des fichiers vers $SERVER"
-rsync -avz --rsync-path="$RSYNC_PATH" --chmod=D755,F644 "$BASE/site/index.html"       "$SERVER:/var/www/coinbosa/site/index.html"
-rsync -avz --rsync-path="$RSYNC_PATH" --chmod=D755,F644 "$BASE/explorer/index.html"   "$SERVER:/var/www/coinbosa/explorer/index.html"
-rsync -avz --rsync-path="$RSYNC_PATH" --chmod=D755,F644 "$BASE/whitepaper/index.html" "$SERVER:/var/www/coinbosa/whitepaper/index.html"
+rsync -avz --rsync-path="$RSYNC_PATH""$BASE/site/index.html"       "$SERVER:/var/www/coinbosa/site/index.html"
+rsync -avz --rsync-path="$RSYNC_PATH""$BASE/explorer/index.html"   "$SERVER:/var/www/coinbosa/explorer/index.html"
+rsync -avz --rsync-path="$RSYNC_PATH""$BASE/whitepaper/index.html" "$SERVER:/var/www/coinbosa/whitepaper/index.html"
 
 echo "==> Droits + rechargement de Caddy"
-ssh "$SERVER" "${SUDO} chown -R caddy:caddy /var/www/coinbosa && ${SUDO} systemctl reload caddy"
+ssh "$SERVER" "${SUDO} chown -R caddy:caddy /var/www/coinbosa && ${SUDO} chmod -R u=rwX,go=rX /var/www/coinbosa && ${SUDO} systemctl reload caddy"
 
 echo "==> Publié."
 echo "    Site       : https://coinbosa.com"
