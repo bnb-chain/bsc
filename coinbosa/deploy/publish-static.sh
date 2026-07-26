@@ -27,9 +27,15 @@ for f in site/index.html explorer/index.html whitepaper/index.html; do
 done
 
 echo "==> Envoi des fichiers vers $SERVER"
-rsync -avz --rsync-path="$RSYNC_PATH""$BASE/site/index.html"       "$SERVER:/var/www/coinbosa/site/index.html"
-rsync -avz --rsync-path="$RSYNC_PATH""$BASE/explorer/index.html"   "$SERVER:/var/www/coinbosa/explorer/index.html"
-rsync -avz --rsync-path="$RSYNC_PATH""$BASE/whitepaper/index.html" "$SERVER:/var/www/coinbosa/whitepaper/index.html"
+rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/site/index.html"       "$SERVER:/var/www/coinbosa/site/index.html"
+rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/explorer/index.html"   "$SERVER:/var/www/coinbosa/explorer/index.html"
+rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/whitepaper/index.html" "$SERVER:/var/www/coinbosa/whitepaper/index.html"
+
+# Assets SEO / partage servis à la racine (le favicon, lui, est inline dans le HTML)
+rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/assets/coinbosa-logo.jpg" "$SERVER:/var/www/coinbosa/site/og-image.jpg"
+rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/robots.txt"  "$SERVER:/var/www/coinbosa/site/robots.txt"
+rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/sitemap.xml" "$SERVER:/var/www/coinbosa/site/sitemap.xml"
+rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/robots.txt"  "$SERVER:/var/www/coinbosa/explorer/robots.txt"
 
 echo "==> Droits + rechargement de Caddy"
 ssh "$SERVER" "${SUDO} chown -R caddy:caddy /var/www/coinbosa && ${SUDO} chmod -R u=rwX,go=rX /var/www/coinbosa && ${SUDO} systemctl reload caddy"
