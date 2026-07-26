@@ -55,6 +55,17 @@ echo "==> Écriture de /etc/caddy/Caddyfile (domaines : $SITE_DOMAIN / $EXPLORER
 cat > /etc/caddy/Caddyfile <<EOF
 # Généré par 10-web.sh — Coinbosa tier public. TLS automatique (Let's Encrypt).
 
+# Options globales : délais serrés (anti-slowloris / pic de listing).
+{
+    servers {
+        timeouts {
+            read_body   10s
+            read_header 5s
+            idle        2m
+        }
+    }
+}
+
 # --- Site vitrine + livre blanc ---
 $SITE_DOMAIN, www.$SITE_DOMAIN {
     encode gzip zstd
@@ -70,12 +81,12 @@ $SITE_DOMAIN, www.$SITE_DOMAIN {
     }
 
     header {
-        Strict-Transport-Security "max-age=31536000"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
         X-Content-Type-Options    "nosniff"
         X-Frame-Options           "DENY"
         Referrer-Policy           "strict-origin-when-cross-origin"
-        Content-Security-Policy   "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' https:; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
-        Permissions-Policy        "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+        Content-Security-Policy   "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
+        Permissions-Policy        "accelerometer=(), autoplay=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), usb=(), interest-cohort=()"
         -Server
     }
 }
@@ -87,12 +98,12 @@ $EXPLORER_DOMAIN {
     file_server
 
     header {
-        Strict-Transport-Security "max-age=31536000"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
         X-Content-Type-Options    "nosniff"
         X-Frame-Options           "DENY"
         Referrer-Policy           "strict-origin-when-cross-origin"
-        Content-Security-Policy   "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' https:; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
-        Permissions-Policy        "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+        Content-Security-Policy   "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
+        Permissions-Policy        "accelerometer=(), autoplay=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), usb=(), interest-cohort=()"
         -Server
     }
 }

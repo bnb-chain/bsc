@@ -62,3 +62,15 @@ cmd/geth/geth
 cmd/rlpdump/rlpdump
 cmd/workload/workload
 cmd/keeper/keeper
+
+# ── Coinbosa : datadirs & CLÉS — ne JAMAIS versionner (fuite = prise de contrôle de la chaîne) ──
+node*/
+keystore/
+**/keystore/
+UTC--*
+**/UTC--*
+*.key
+pw.txt
+**/pw.txt
+.env
+.env*

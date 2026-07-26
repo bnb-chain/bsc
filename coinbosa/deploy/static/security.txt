@@ -1,0 +1,5 @@
+Contact: https://github.com/Coinbosa/coinbosa-chain/security/advisories/new
+Contact: mailto:security@coinbosa.com
+Expires: 2027-07-26T00:00:00Z
+Preferred-Languages: fr, en
+Canonical: https://coinbosa.com/.well-known/security.txt
