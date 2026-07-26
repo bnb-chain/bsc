@@ -31,7 +31,16 @@ rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/site/index.html"       "$SERVER:/va
 rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/explorer/index.html"   "$SERVER:/var/www/coinbosa/explorer/index.html"
 rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/whitepaper/index.html" "$SERVER:/var/www/coinbosa/whitepaper/index.html"
 
-# Assets SEO / partage servis à la racine (le favicon, lui, est inline dans le HTML)
+# Favicons — générés depuis le LOGO OFFICIEL (assets/coinbosa-logo.jpg), jamais un dessin.
+# Régénération si besoin :
+#   sips -s format png -z 32 32   assets/coinbosa-logo.jpg --out deploy/static/favicon-32.png
+#   sips -s format png -z 180 180 assets/coinbosa-logo.jpg --out deploy/static/apple-touch-icon.png
+for d in site explorer whitepaper; do
+  rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/favicon-32.png"       "$SERVER:/var/www/coinbosa/$d/favicon-32.png"
+  rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/apple-touch-icon.png" "$SERVER:/var/www/coinbosa/$d/apple-touch-icon.png"
+done
+
+# Assets SEO / partage servis à la racine
 rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/assets/coinbosa-logo.jpg" "$SERVER:/var/www/coinbosa/site/og-image.jpg"
 rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/robots.txt"  "$SERVER:/var/www/coinbosa/site/robots.txt"
 rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/sitemap.xml" "$SERVER:/var/www/coinbosa/site/sitemap.xml"
