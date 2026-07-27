@@ -35,6 +35,7 @@ const (
 	b20AssetSlotDecimals      = 0
 	b20AssetSlotMultiplier    = 1
 	b20AssetSlotAnnouncements = 2 // mapping(bytes32 id => bool used)
+	b20AssetSlotExtraMeta     = 3 // mapping(string key => string value)
 )
 
 var (
@@ -56,9 +57,13 @@ var (
 	selAnnounce             = selector("announce(bytes[],bytes32,string,string)")
 	selIsAnnouncementIdUsed = selector("isAnnouncementIdUsed(bytes32)")
 
-	b20TopicMultiplierUpdated = crypto.Keccak256Hash([]byte("MultiplierUpdated(uint256)"))
-	b20TopicAnnouncement      = crypto.Keccak256Hash([]byte("Announcement(address,bytes32,string,string)"))
-	b20TopicEndAnnouncement   = crypto.Keccak256Hash([]byte("EndAnnouncement(bytes32)"))
+	selExtraMetadata       = selector("extraMetadata(string)")
+	selUpdateExtraMetadata = selector("updateExtraMetadata(string,string)")
+
+	b20TopicMultiplierUpdated    = crypto.Keccak256Hash([]byte("MultiplierUpdated(uint256)"))
+	b20TopicAnnouncement         = crypto.Keccak256Hash([]byte("Announcement(address,bytes32,string,string)"))
+	b20TopicEndAnnouncement      = crypto.Keccak256Hash([]byte("EndAnnouncement(bytes32)"))
+	b20TopicExtraMetadataUpdated = crypto.Keccak256Hash([]byte("ExtraMetadataUpdated(string,string)"))
 )
 
 // assetExt is a gas-metered view over the Asset extension storage.
@@ -91,6 +96,18 @@ func (e assetExt) markAnnouncement(id common.Hash) {
 	var one common.Hash
 	one[31] = 1
 	e.s.setWord(mappingSlot(assetSlot(b20AssetSlotAnnouncements), id), one)
+}
+
+// extraMetaSlot is the Solidity mapping(string=>string) value slot for key:
+// keccak256(keyBytes ++ baseSlot).
+func extraMetaSlot(key string) common.Hash {
+	return crypto.Keccak256Hash([]byte(key), assetSlot(b20AssetSlotExtraMeta).Bytes())
+}
+func (e assetExt) extraMetadata(key string) string {
+	return e.s.getStringAt(extraMetaSlot(key))
+}
+func (e assetExt) setExtraMetadata(key, value string) {
+	e.s.setStringAt(extraMetaSlot(key), value)
 }
 
 // initAssetExtension seeds a new Asset token's extension storage.
@@ -174,8 +191,56 @@ func dispatchAsset(tok b20Token, ext assetExt, input []byte) (ret []byte, err er
 		return encBool(ext.announcementUsed(id)), nil, true
 	case selAnnounce:
 		return nil, announce(tok, ext, args), true
+	case selExtraMetadata:
+		key, err := readStringArg(args, 0)
+		if err != nil {
+			return nil, err, true
+		}
+		return encString(ext.extraMetadata(key)), nil, true
+	case selUpdateExtraMetadata:
+		key, err := readStringArg(args, 0)
+		if err != nil {
+			return nil, err, true
+		}
+		value, err := readStringArg(args, 1)
+		if err != nil {
+			return nil, err, true
+		}
+		return nil, updateExtraMetadata(tok, ext, key, value), true
 	}
 	return nil, nil, false
+}
+
+// updateExtraMetadata writes/clears (value == "") a custom metadata entry.
+func updateExtraMetadata(tok b20Token, ext assetExt, key, value string) error {
+	if tok.ctx.ReadOnly {
+		return ErrWriteProtection
+	}
+	if err := tok.ensureRole(roleMetadata); err != nil {
+		return err
+	}
+	if len(key) == 0 {
+		return ErrExecutionReverted // InvalidMetadataKey
+	}
+	ext.setExtraMetadata(key, value)
+	// TODO: carry key/value in ExtraMetadataUpdated event data (base-std align).
+	tok.ctx.AddLog([]common.Hash{b20TopicExtraMetadataUpdated}, nil)
+	return nil
+}
+
+// readStringArg decodes an ABI string argument at head word argIndex.
+func readStringArg(args []byte, argIndex int) (string, error) {
+	L := uint64(len(args))
+	off, ok := wordU64(args, uint64(argIndex)*32)
+	if !ok || off > L || L-off < 32 {
+		return "", ErrExecutionReverted
+	}
+	n, _ := wordU64(args, off)
+	dataPos := off + 32
+	if n > L-dataPos {
+		return "", ErrExecutionReverted
+	}
+	return string(args[dataPos : dataPos+n]), nil
 }
 
 // announce publishes a disclosure and atomically runs a bundle of internal

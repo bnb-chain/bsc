@@ -312,8 +312,14 @@ func (s b20Storage) setMintReceiverPolicy(id uint64) {
 
 // --- strings (Solidity storage encoding) ------------------------------------
 
-func (s b20Storage) getString(offset uint64) string {
-	slot := slotAt(offset)
+func (s b20Storage) getString(offset uint64) string { return s.getStringAt(slotAt(offset)) }
+func (s b20Storage) setString(offset uint64, str string) {
+	s.setStringAt(slotAt(offset), str)
+}
+
+// getStringAt / setStringAt read and write a Solidity string at an arbitrary
+// slot (used for fixed fields and for string-keyed mapping values).
+func (s b20Storage) getStringAt(slot common.Hash) string {
 	word := s.getWord(slot)
 	if word[31]&1 == 0 {
 		// short string: content in the high bytes, low byte holds 2*len.
@@ -338,8 +344,7 @@ func (s b20Storage) getString(offset uint64) string {
 // tail data slots are not cleared. Reads are length-bounded so they stay
 // correct, but the leftover nonzero slots make the state root diverge from a
 // Solidity SSTORE-zeroing reference — clear them before golden-testing writes.
-func (s b20Storage) setString(offset uint64, str string) {
-	slot := slotAt(offset)
+func (s b20Storage) setStringAt(slot common.Hash, str string) {
 	b := []byte(str)
 	if len(b) < 32 {
 		var word common.Hash

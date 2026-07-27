@@ -253,3 +253,86 @@ func TestB20Announce(t *testing.T) {
 		t.Fatal("badID must not be marked (rollback)")
 	}
 }
+
+// encodeStringCall ABI-encodes a call whose args are all strings.
+func encodeStringCall(sel [4]byte, strs ...string) []byte {
+	out := append([]byte{}, sel[:]...)
+	bodies := make([][]byte, len(strs))
+	cur := uint64(len(strs) * 32)
+	offs := make([]uint64, len(strs))
+	for i, s := range strs {
+		offs[i] = cur
+		bodies[i] = append(u256hash(uint64(len(s))).Bytes(), rightPad32([]byte(s))...)
+		cur += uint64(len(bodies[i]))
+	}
+	for _, o := range offs {
+		out = append(out, u256hash(o).Bytes()...)
+	}
+	for _, b := range bodies {
+		out = append(out, b...)
+	}
+	return out
+}
+
+func TestB20ExtraMetadata(t *testing.T) {
+	_, evm := newPasteurEVM(t)
+	creator := common.HexToAddress("0xc4ea70")
+	salt := common.HexToHash("0x0f")
+
+	call := func(caller, to common.Address, input []byte) ([]byte, error) {
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		return ret, err
+	}
+	readStr := func(to common.Address, input []byte) string {
+		t.Helper()
+		ret, err := call(creator, to, input)
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		// decode ABI string: [offset][len][data]
+		n := new(uint256.Int).SetBytes(ret[32:64]).Uint64()
+		return string(ret[64 : 64+n])
+	}
+
+	initCalls := [][]byte{b20Call(selGrantRole, roleMetadata, addrKey(creator))}
+	ret, err := call(creator, B20FactoryAddress, encodeCreateB20(b20VariantAsset, salt, creator, initCalls))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+
+	// unset key returns empty.
+	if got := readStr(token, encodeStringCall(selExtraMetadata, "category")); got != "" {
+		t.Fatalf("unset extraMetadata = %q, want empty", got)
+	}
+	// set + read a short value.
+	if _, err := call(creator, token, encodeStringCall(selUpdateExtraMetadata, "category", "fund")); err != nil {
+		t.Fatalf("updateExtraMetadata: %v", err)
+	}
+	if got := readStr(token, encodeStringCall(selExtraMetadata, "category")); got != "fund" {
+		t.Fatalf("extraMetadata(category) = %q, want fund", got)
+	}
+	// long value (> 32 bytes) exercises the long-string path at a mapping slot.
+	long := "an-international-securities-identification-number-XS1234567890"
+	if _, err := call(creator, token, encodeStringCall(selUpdateExtraMetadata, "isin", long)); err != nil {
+		t.Fatalf("updateExtraMetadata long: %v", err)
+	}
+	if got := readStr(token, encodeStringCall(selExtraMetadata, "isin")); got != long {
+		t.Fatalf("extraMetadata(isin) = %q, want %q", got, long)
+	}
+	// empty value deletes.
+	if _, err := call(creator, token, encodeStringCall(selUpdateExtraMetadata, "category", "")); err != nil {
+		t.Fatalf("delete extraMetadata: %v", err)
+	}
+	if got := readStr(token, encodeStringCall(selExtraMetadata, "category")); got != "" {
+		t.Fatalf("deleted extraMetadata = %q, want empty", got)
+	}
+	// empty key reverts.
+	if _, err := call(creator, token, encodeStringCall(selUpdateExtraMetadata, "", "x")); !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("empty key err = %v, want revert", err)
+	}
+	// non-METADATA caller reverts.
+	if _, err := call(b20Alice, token, encodeStringCall(selUpdateExtraMetadata, "k", "v")); !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("unauthorized err = %v, want revert", err)
+	}
+}
