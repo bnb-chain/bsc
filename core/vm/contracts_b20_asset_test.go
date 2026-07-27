@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"bytes"
 	"errors"
 	"math/big"
 	"testing"
@@ -147,5 +148,108 @@ func TestB20AssetExtension(t *testing.T) {
 	// mismatched array lengths revert.
 	if _, err := call(minter, token, encodeBatchMint([]common.Address{b20Bob}, []uint64{1, 2})); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("length-mismatch batchMint err = %v, want revert", err)
+	}
+}
+
+// encodeAnnounce ABI-encodes announce(bytes[],bytes32,string,string) with the
+// bytes[] placed right after the head and empty description/uri strings.
+func encodeAnnounce(calls [][]byte, id common.Hash) []byte {
+	elems := make([][]byte, len(calls))
+	for i, c := range calls {
+		elems[i] = append(u256hash(uint64(len(c))).Bytes(), rightPad32(c)...)
+	}
+	arr := append([]byte{}, u256hash(uint64(len(calls))).Bytes()...)
+	cur := uint64(len(calls) * 32)
+	for _, e := range elems {
+		arr = append(arr, u256hash(cur).Bytes()...)
+		cur += uint64(len(e))
+	}
+	for _, e := range elems {
+		arr = append(arr, e...)
+	}
+	descOff := uint64(0x80 + len(arr))
+	out := append([]byte{}, selAnnounce[:]...)
+	out = append(out, u256hash(0x80).Bytes()...)       // w0 offset -> bytes[]
+	out = append(out, id.Bytes()...)                   // w1 id
+	out = append(out, u256hash(descOff).Bytes()...)    // w2 offset -> description
+	out = append(out, u256hash(descOff+32).Bytes()...) // w3 offset -> uri
+	out = append(out, arr...)
+	out = append(out, u256hash(0).Bytes()...) // empty description
+	out = append(out, u256hash(0).Bytes()...) // empty uri
+	return out
+}
+
+func TestB20Announce(t *testing.T) {
+	_, evm := newPasteurEVM(t)
+	creator := common.HexToAddress("0xc4ea70")
+	operator := common.HexToAddress("0x09e4a704")
+	salt := common.HexToHash("0x0e")
+
+	call := func(caller, to common.Address, input []byte) ([]byte, error) {
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		return ret, err
+	}
+
+	initCalls := [][]byte{
+		b20Call(selGrantRole, roleOperator, addrKey(operator)),
+		b20Call(selGrantRole, roleMint, addrKey(operator)),
+		b20Call(selMint, addrKey(b20Alice), u256hash(1000)),
+	}
+	ret, err := call(creator, B20FactoryAddress, encodeCreateB20(b20VariantAsset, salt, creator, initCalls))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+	mul := func() uint64 {
+		r, err := call(creator, token, b20Call(selMultiplier))
+		if err != nil {
+			t.Fatalf("multiplier(): %v", err)
+		}
+		return new(uint256.Int).SetBytes(r).Uint64()
+	}
+
+	id1 := common.HexToHash("0x1111")
+
+	// happy path: announce bundling an updateMultiplier runs atomically.
+	inner := [][]byte{b20Call(selUpdateMultiplier, u256hash(1_200_000_000_000_000_000))}
+	if _, err := call(operator, token, encodeAnnounce(inner, id1)); err != nil {
+		t.Fatalf("announce: %v", err)
+	}
+	if got := mul(); got != 1_200_000_000_000_000_000 {
+		t.Fatalf("multiplier after announce = %d, want 1.2e18", got)
+	}
+	if r, _ := call(creator, token, b20Call(selIsAnnouncementIdUsed, id1)); !bytes.Equal(r, encBool(true)) {
+		t.Fatal("id1 should be marked used")
+	}
+
+	// reusing the id reverts.
+	if _, err := call(operator, token, encodeAnnounce(nil, id1)); !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("reused id err = %v, want revert", err)
+	}
+	// non-operator reverts.
+	if _, err := call(creator, token, encodeAnnounce(nil, common.HexToHash("0x2222"))); !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("non-operator announce err = %v, want revert", err)
+	}
+	// nesting announce inside announce reverts (and rolls back, id unused).
+	nestedID := common.HexToHash("0x3333")
+	nested := [][]byte{encodeAnnounce(nil, common.HexToHash("0x4444"))}
+	if _, err := call(operator, token, encodeAnnounce(nested, nestedID)); !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("nested announce err = %v, want revert", err)
+	}
+	if r, _ := call(creator, token, b20Call(selIsAnnouncementIdUsed, nestedID)); !bytes.Equal(r, encBool(false)) {
+		t.Fatal("failed announce must not mark its id (atomic rollback)")
+	}
+
+	// a failing internal call rolls the whole announce back.
+	badID := common.HexToHash("0x5555")
+	bad := [][]byte{b20Call(selUpdateMultiplier, u256hash(0))} // zero multiplier reverts
+	if _, err := call(operator, token, encodeAnnounce(bad, badID)); !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("failing internal call err = %v, want revert", err)
+	}
+	if got := mul(); got != 1_200_000_000_000_000_000 {
+		t.Fatalf("multiplier changed despite rollback = %d", got)
+	}
+	if r, _ := call(creator, token, b20Call(selIsAnnouncementIdUsed, badID)); !bytes.Equal(r, encBool(false)) {
+		t.Fatal("badID must not be marked (rollback)")
 	}
 }

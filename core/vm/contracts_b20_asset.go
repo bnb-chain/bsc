@@ -32,8 +32,9 @@ import (
 const b20AssetNamespace = "base.b20.asset"
 
 const (
-	b20AssetSlotDecimals   = 0
-	b20AssetSlotMultiplier = 1
+	b20AssetSlotDecimals      = 0
+	b20AssetSlotMultiplier    = 1
+	b20AssetSlotAnnouncements = 2 // mapping(bytes32 id => bool used)
 )
 
 var (
@@ -52,7 +53,12 @@ var (
 	selOperatorRole     = selector("OPERATOR_ROLE()")
 	selBatchMint        = selector("batchMint(address[],uint256[])")
 
+	selAnnounce             = selector("announce(bytes[],bytes32,string,string)")
+	selIsAnnouncementIdUsed = selector("isAnnouncementIdUsed(bytes32)")
+
 	b20TopicMultiplierUpdated = crypto.Keccak256Hash([]byte("MultiplierUpdated(uint256)"))
+	b20TopicAnnouncement      = crypto.Keccak256Hash([]byte("Announcement(address,bytes32,string,string)"))
+	b20TopicEndAnnouncement   = crypto.Keccak256Hash([]byte("EndAnnouncement(bytes32)"))
 )
 
 // assetExt is a gas-metered view over the Asset extension storage.
@@ -78,6 +84,14 @@ func (e assetExt) multiplier() *uint256.Int {
 func (e assetExt) setMultiplier(m *uint256.Int) {
 	e.s.setWord(assetSlot(b20AssetSlotMultiplier), common.Hash(m.Bytes32()))
 }
+func (e assetExt) announcementUsed(id common.Hash) bool {
+	return e.s.getWord(mappingSlot(assetSlot(b20AssetSlotAnnouncements), id)) != (common.Hash{})
+}
+func (e assetExt) markAnnouncement(id common.Hash) {
+	var one common.Hash
+	one[31] = 1
+	e.s.setWord(mappingSlot(assetSlot(b20AssetSlotAnnouncements), id), one)
+}
 
 // initAssetExtension seeds a new Asset token's extension storage.
 func initAssetExtension(ctx *PrecompileContext) {
@@ -95,6 +109,16 @@ func removeMultiplier(scaled, mul *uint256.Int) *uint256.Int {
 		return new(uint256.Int)
 	}
 	return new(uint256.Int).Div(new(uint256.Int).Mul(scaled, b20WAD), mul)
+}
+
+// assetDispatch routes an Asset call: extension selectors first, then the
+// shared IB20 dispatch. Used by the precompile and by announce's internal
+// calls (so a disclosure can bundle multiplier/batchMint updates).
+func assetDispatch(tok b20Token, ext assetExt, input []byte) ([]byte, error) {
+	if ret, err, ok := dispatchAsset(tok, ext, input); ok {
+		return ret, err
+	}
+	return tok.dispatch(input)
 }
 
 // dispatchAsset handles the Asset-variant selectors, returning ok=false so the
@@ -142,8 +166,60 @@ func dispatchAsset(tok b20Token, ext assetExt, input []byte) (ret []byte, err er
 		return nil, updateMultiplier(tok, ext, m), true
 	case selBatchMint:
 		return nil, batchMint(tok, args), true
+	case selIsAnnouncementIdUsed:
+		id, err := readWord(args, 0)
+		if err != nil {
+			return nil, err, true
+		}
+		return encBool(ext.announcementUsed(id)), nil, true
+	case selAnnounce:
+		return nil, announce(tok, ext, args), true
 	}
 	return nil, nil, false
+}
+
+// announce publishes a disclosure and atomically runs a bundle of internal
+// calls against this token, preserving the caller's identity (role checks
+// still apply). Any failure — malformed call, re-entrant announce, or a
+// reverting internal call — rolls back the whole disclosure.
+func announce(tok b20Token, ext assetExt, args []byte) error {
+	if tok.ctx.ReadOnly {
+		return ErrWriteProtection
+	}
+	if tok.ctx.inAnnounce {
+		return ErrExecutionReverted // AnnouncementInProgress (no nesting)
+	}
+	if err := tok.ensureRole(roleOperator); err != nil {
+		return err
+	}
+	calls, err := readBytesArray(args, 0)
+	if err != nil {
+		return err
+	}
+	id, err := readWord(args, 1)
+	if err != nil {
+		return err
+	}
+	// args 2,3 (description, uri strings) are carried only by the event.
+	if ext.announcementUsed(id) {
+		return ErrExecutionReverted // AnnouncementIdAlreadyUsed
+	}
+	ext.markAnnouncement(id) // marked before execution
+	// TODO: carry description/uri in the Announcement event data (base-std align).
+	tok.ctx.AddLog([]common.Hash{b20TopicAnnouncement, addrKey(tok.ctx.Caller), id}, nil)
+
+	tok.ctx.inAnnounce = true
+	defer func() { tok.ctx.inAnnounce = false }()
+	for _, c := range calls {
+		if len(c) < 4 {
+			return ErrExecutionReverted // InternalCallMalformed
+		}
+		if _, err := assetDispatch(tok, ext, c); err != nil {
+			return ErrExecutionReverted // InternalCallFailed (inner reason not propagated)
+		}
+	}
+	tok.ctx.AddLog([]common.Hash{b20TopicEndAnnouncement, id}, nil)
+	return nil
 }
 
 func updateMultiplier(tok b20Token, ext assetExt, newMul *uint256.Int) error {
