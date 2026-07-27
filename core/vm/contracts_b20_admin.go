@@ -60,12 +60,14 @@ var (
 	selUnpause         = selector("unpause(uint8[])")
 	selMint            = selector("mint(address,uint256)")
 	selBurn            = selector("burn(uint256)")
+	selBurnBlocked     = selector("burnBlocked(address,uint256)")
 	selUpdateSupplyCap = selector("updateSupplyCap(uint256)")
 	selUpdatePolicy    = selector("updatePolicy(uint8,uint64)")
 
 	b20TopicRoleGranted      = crypto.Keccak256Hash([]byte("RoleGranted(bytes32,address,address)"))
 	b20TopicRoleRevoked      = crypto.Keccak256Hash([]byte("RoleRevoked(bytes32,address,address)"))
 	b20TopicRoleAdminChanged = crypto.Keccak256Hash([]byte("RoleAdminChanged(bytes32,bytes32,bytes32)"))
+	b20TopicBurnedBlocked    = crypto.Keccak256Hash([]byte("BurnedBlocked(address,uint256)"))
 )
 
 // dispatchAdmin handles the RBAC / pause / mint-burn selectors. ok is false
@@ -168,6 +170,16 @@ func (t b20Token) dispatchAdmin(sel [4]byte, args []byte) (ret []byte, err error
 			return nil, err, true
 		}
 		return nil, t.burn(t.ctx.Caller, amount), true
+	case selBurnBlocked:
+		from, err := readAddress(args, 0)
+		if err != nil {
+			return nil, err, true
+		}
+		amount, err := readU256(args, 1)
+		if err != nil {
+			return nil, err, true
+		}
+		return nil, t.burnBlocked(from, amount), true
 
 	// configurable
 	case selUpdateSupplyCap:
@@ -414,6 +426,33 @@ func (t b20Token) burn(from common.Address, amount *uint256.Int) error {
 	t.s.setBalance(from, new(uint256.Int).Sub(bal, amount))
 	t.s.setTotalSupply(new(uint256.Int).Sub(t.s.totalSupply(), amount))
 	t.emit(b20TopicTransfer, from, common.Address{}, amount)
+	return nil
+}
+
+// burnBlocked seizes a blocked account's balance. It requires from to be
+// denied by the TRANSFER_SENDER policy (i.e. already blacklisted), enforcing
+// the protocol's two-step freeze-then-seize flow.
+func (t b20Token) burnBlocked(from common.Address, amount *uint256.Int) error {
+	if t.ctx.ReadOnly {
+		return ErrWriteProtection
+	}
+	if err := t.ensureRole(roleBurnBlocked); err != nil {
+		return err
+	}
+	// from must be blocked: authorized under TRANSFER_SENDER == not blocked.
+	if t.policyAllows(t.s.transferSenderPolicy(), from) {
+		return ErrExecutionReverted // AccountNotBlocked
+	}
+	bal := t.s.balanceOf(from)
+	if bal.Lt(amount) {
+		return ErrExecutionReverted
+	}
+	t.s.setBalance(from, new(uint256.Int).Sub(bal, amount))
+	t.s.setTotalSupply(new(uint256.Int).Sub(t.s.totalSupply(), amount))
+	t.emit(b20TopicTransfer, from, common.Address{}, amount)
+	ab := amount.Bytes32()
+	t.ctx.AddLog([]common.Hash{b20TopicBurnedBlocked, addrKey(from)}, ab[:])
+	// TODO: verify BurnedBlocked signature/indexing against base-std.
 	return nil
 }
 

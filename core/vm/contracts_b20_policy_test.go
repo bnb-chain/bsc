@@ -224,3 +224,56 @@ func TestB20PolicyIntegration(t *testing.T) {
 		t.Fatal("binding nonexistent policy should revert")
 	}
 }
+
+// TestB20BurnBlocked exercises the freeze-then-seize compliance flow.
+func TestB20BurnBlocked(t *testing.T) {
+	statedb, evm := newPasteurEVM(t)
+	creator := common.HexToAddress("0xc4ea70")
+	salt := common.HexToHash("0x0d")
+
+	call := func(caller, to common.Address, input []byte) ([]byte, error) {
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		return ret, err
+	}
+
+	// token: creator is admin, MINT and BURN_BLOCKED holder; 1000 minted to bob.
+	initCalls := [][]byte{
+		b20Call(selGrantRole, roleMint, addrKey(creator)),
+		b20Call(selGrantRole, roleBurnBlocked, addrKey(creator)),
+		b20Call(selMint, addrKey(b20Bob), u256hash(1000)),
+	}
+	ret, err := call(creator, B20FactoryAddress, encodeCreateB20(b20VariantAsset, salt, creator, initCalls))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+	view := newB20Storage(statedb, token)
+
+	// seizing an un-blocked account fails (must freeze first).
+	if _, err := call(creator, token, b20Call(selBurnBlocked, addrKey(b20Bob), u256hash(100))); !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("burnBlocked before freeze err = %v, want revert (AccountNotBlocked)", err)
+	}
+
+	// step 1: blacklist bob on the TRANSFER_SENDER scope.
+	ret, _ = call(creator, B20PolicyRegistryAddress, b20Call(selCreatePolicy, addrKey(creator), u256hash(b20PolicyBlocklist)))
+	blk := new(uint256.Int).SetBytes(ret).Uint64()
+	if _, err := call(creator, B20PolicyRegistryAddress, encodeUpdateList(selUpdateBlocklist, blk, true, []common.Address{b20Bob})); err != nil {
+		t.Fatalf("updateBlocklist: %v", err)
+	}
+	if _, err := call(creator, token, b20Call(selUpdatePolicy, u256hash(0), u256hash(blk))); err != nil {
+		t.Fatalf("updatePolicy(sender): %v", err)
+	}
+
+	// non-role caller cannot seize.
+	if _, err := call(b20Alice, token, b20Call(selBurnBlocked, addrKey(b20Bob), u256hash(100))); !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("unauthorized burnBlocked err = %v, want revert", err)
+	}
+
+	// step 2: seize part of the frozen balance.
+	if _, err := call(creator, token, b20Call(selBurnBlocked, addrKey(b20Bob), u256hash(400))); err != nil {
+		t.Fatalf("burnBlocked: %v", err)
+	}
+	if view.balanceOf(b20Bob).Uint64() != 600 || view.totalSupply().Uint64() != 600 {
+		t.Fatalf("after seize: bal %d supply %d, want 600/600", view.balanceOf(b20Bob).Uint64(), view.totalSupply().Uint64())
+	}
+}
