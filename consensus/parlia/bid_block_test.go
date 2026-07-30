@@ -7,10 +7,13 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/holiman/uint256"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/types"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
+	"github.com/ethereum/go-ethereum/params"
 )
 
 // sysTx builds an unsigned system-tx candidate: to=ValidatorContract, gasPrice=0,
@@ -64,6 +67,71 @@ func TestVerifyBidBlockSystemTxs(t *testing.T) {
 				t.Fatalf("VerifyBidBlockSystemTxs err=%v, wantErr=%v", err, tc.wantErr)
 			}
 		})
+	}
+}
+
+// typedSysTx builds a deposit-shaped system tx in a typed envelope, with every
+// gas price field zeroed so only the tx type distinguishes it from sysTx.
+func typedSysTx(txType byte, selector []byte) *types.Transaction {
+	to := common.HexToAddress(systemcontracts.ValidatorContract)
+	zero := uint256.NewInt(0)
+	switch txType {
+	case types.AccessListTxType:
+		return types.NewTx(&types.AccessListTx{
+			ChainID: big.NewInt(1), GasPrice: big.NewInt(0), Gas: 100000,
+			To: &to, Value: big.NewInt(5), Data: selector,
+		})
+	case types.DynamicFeeTxType:
+		return types.NewTx(&types.DynamicFeeTx{
+			ChainID: big.NewInt(1), GasTipCap: big.NewInt(0), GasFeeCap: big.NewInt(0),
+			Gas: 100000, To: &to, Value: big.NewInt(5), Data: selector,
+		})
+	case types.BlobTxType:
+		return types.NewTx(&types.BlobTx{
+			ChainID: uint256.NewInt(1), GasTipCap: zero, GasFeeCap: zero, Gas: 100000,
+			To: to, Value: uint256.NewInt(5), Data: selector,
+			BlobFeeCap: uint256.NewInt(params.GWei), BlobHashes: []common.Hash{{0x01}},
+		})
+	case types.SetCodeTxType:
+		return types.NewTx(&types.SetCodeTx{
+			ChainID: uint256.NewInt(1), GasTipCap: zero, GasFeeCap: zero, Gas: 100000,
+			To: to, Value: uint256.NewInt(5), Data: selector,
+			AuthList: []types.SetCodeAuthorization{{}},
+		})
+	default:
+		panic("unsupported tx type")
+	}
+}
+
+// Only legacy system txs may be blind-signed: a typed envelope would let a
+// builder pick fields the shape check does not bind.
+func TestBidBlockSystemTxRejectsTypedTx(t *testing.T) {
+	p := &Parlia{}
+	depositSel := signableSystemTxSelectors["deposit"]
+
+	for _, tc := range []struct {
+		name   string
+		txType byte
+	}{
+		{"blob", types.BlobTxType},
+		{"dynamic fee", types.DynamicFeeTxType},
+		{"access list", types.AccessListTxType},
+		{"set code", types.SetCodeTxType},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			typed := typedSysTx(tc.txType, depositSel[:])
+			if p.isUnsignedSystemTxCandidate(typed) {
+				t.Fatal("typed tx must not be an unsigned system-tx candidate")
+			}
+		})
+	}
+
+	// A deposit-shaped BlobTx must not define the system-tx region or GasFee.
+	// Admission rejects the BidBlock before the validator can blind-sign it.
+	txs := types.Transactions{userTx(), typedSysTx(types.BlobTxType, depositSel[:])}
+	start, fee := p.ExtractBidBlockDepositValue(txs)
+	if start != len(txs) || fee.Sign() != 0 {
+		t.Fatalf("got (start=%d, fee=%v), want (%d, 0)", start, fee, len(txs))
 	}
 }
 
