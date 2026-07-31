@@ -522,6 +522,14 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	stack.RegisterAPIs(eth.APIs())
 	stack.RegisterProtocols(eth.Protocols())
 	stack.RegisterLifecycle(eth)
+	if config.Miner.Mev.GRPCListenAddr != "" {
+		stack.RegisterLifecycle(ethapi.NewMevGRPCService(
+			config.Miner.Mev.GRPCListenAddr,
+			config.Miner.Mev.GRPCConcurrency,
+			config.Miner.Mev.GRPCRequestTimeout,
+			eth.APIBackend,
+		))
+	}
 
 	// Successful startup; push a marker and check previous unclean shutdowns.
 	eth.shutdownTracker.MarkStartup()

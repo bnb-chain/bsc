@@ -54,6 +54,8 @@ var (
 	defaultBuilderFeeCeil      = "0"
 	defaultValidatorCommission = uint64(100)
 	defaultMaxBidsPerBuilder   = uint32(2) // Simple strategy: send one bid early, another near deadline
+	defaultGRPCConcurrency     = uint32(32)
+	defaultGRPCRequestTimeout  = 10 * time.Second
 	// MEV validators accept SendBidBlock by default; the RPC stays gated on the
 	// Pasteur fork and can be disabled via Mev.BidBlockEnabled=false.
 	defaultBidBlockEnabled = true
@@ -110,6 +112,9 @@ type MevConfig struct {
 	BidSimulationLeftOver *time.Duration  `toml:",omitempty"`
 	NoInterruptLeftOver   *time.Duration  `toml:",omitempty"`
 	MaxBidsPerBuilder     *uint32         `toml:",omitempty"` // Maximum number of bids allowed per builder per block
+	GRPCListenAddr        string          `toml:",omitempty"` // Optional BEP-675 BidBlockService address; empty disables it
+	GRPCConcurrency       uint32          `toml:",omitempty"` // Maximum in-flight gRPC SendBidBlock calls; 0 uses the default
+	GRPCRequestTimeout    time.Duration   `toml:",omitempty"` // Total gRPC request timeout, including body upload; 0 uses the default
 }
 
 var DefaultMevConfig = MevConfig{
@@ -123,6 +128,9 @@ var DefaultMevConfig = MevConfig{
 	BidSimulationLeftOver: &defaultBidSimulationLeftOver,
 	NoInterruptLeftOver:   getDefaultNoInterruptLeftOver(),
 	MaxBidsPerBuilder:     &defaultMaxBidsPerBuilder,
+	GRPCListenAddr:        "",
+	GRPCConcurrency:       defaultGRPCConcurrency,
+	GRPCRequestTimeout:    defaultGRPCRequestTimeout,
 }
 
 func ApplyDefaultMinerConfig(cfg *Config) {
