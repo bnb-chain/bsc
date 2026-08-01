@@ -71,6 +71,15 @@ function addressFor(post) {
   return ethers.getAddress('0x' + ethers.id('coinbosa-dev:' + post).slice(-40));
 }
 
+// Garde fail-closed : le bytecode du contrat système 0x…1000 — donc le HASH du bloc 0,
+// donc l'identité de la chaîne — dépend de la version EXACTE de solc. On refuse toute autre
+// version que celle épinglée (même garde que compile.js).
+const SOLC_EXPECTED = '0.8.26';
+if (!solc.version().startsWith(SOLC_EXPECTED)) {
+  console.error(`ERREUR : solc ${solc.version()} détecté, ${SOLC_EXPECTED} attendu. Fige la version (npm ci) et recommence.`);
+  process.exit(1);
+}
+
 // --- 1. compiler le ValidatorSet avec le gouverneur voulu ---
 const GOV = ethers.getAddress(VALIDATOR); // adresse checksummee (Solidity exige EIP-55)
 let source = fs.readFileSync(SOL, 'utf8');

@@ -66,36 +66,40 @@ Toutes les méthodes JSON-RPC standard d'Ethereum sont disponibles, plus l'espac
 
 ---
 
-## Les deux actifs : à ne pas confondre
+## Coin natif et jetons BRC20 : à ne pas confondre
 
-C'est la source d'erreur la plus fréquente sur Coinbosa. **Deux actifs distincts portent le
-symbole BOSA.**
+C'est la source d'erreur la plus fréquente. Il n'existe **qu'un seul actif nommé BOSA** : le
+**coin natif** de la chaîne (18 décimales, 700 000 000 fixés au genesis). Le standard **BRC20**
+sert, lui, à créer des **jetons applicatifs distincts** — chacun avec son propre nom, son symbole
+et ses décimales, au même titre que l'ERC-20 sur Ethereum. Un jeton BRC20 ne doit pas être traité
+comme le coin natif.
 
-| | Coin natif | Jeton BRC20 |
+| | Coin natif BOSA | Jeton BRC20 (applicatif) |
 |---|---|---|
-| Rôle | paie le gas | actif applicatif |
-| Décimales | **18** | **10** |
+| Rôle | paie le gas, sert d'enjeu | actif applicatif, défini par son émetteur |
+| Décimales | **18** (imposées par l'EVM) | **propres au jeton — à lire via `decimals()`** |
 | Lecture du solde | `provider.getBalance()` | `token.balanceOf()` |
 | Envoi | `wallet.sendTransaction()` | `token.transfer()` |
-| Offre | fixée au genesis | 700 000 000 |
+| Offre | 700 000 000, fixée au genesis | définie par le contrat du jeton |
 
 Les 18 décimales du coin natif sont imposées par l'EVM : l'unité de base est le wei, et cette
 valeur est câblée dans le calcul du gas comme dans les wallets. Elle n'est pas modifiable.
 
-**Conséquence pratique** — n'utilisez jamais `ethers.parseEther()` pour un montant en jeton
-BRC20. Vous obtiendriez 10⁸ fois la valeur voulue.
+**Conséquence pratique** — n'utilisez jamais `ethers.parseEther()` (qui suppose 18 décimales)
+pour un montant en jeton BRC20, dont les décimales peuvent différer. Lisez toujours `decimals()`
+depuis le contrat.
 
 ```js
 // coin natif — 18 décimales
 const gas = ethers.parseEther('1.5');
 
-// jeton BRC20 — 10 décimales, toujours lues depuis le contrat
+// jeton BRC20 — décimales propres au jeton, toujours lues depuis le contrat
 const decimals = await token.decimals();
 const montant = ethers.parseUnits('1.5', decimals);
 ```
 
-Lisez `decimals()` depuis le contrat plutôt que de coder `10` en dur : votre code restera juste
-face à un autre jeton BRC20.
+Ne codez jamais le nombre de décimales en dur : lu depuis le contrat, votre code reste juste
+face à n'importe quel jeton BRC20.
 
 ---
 
@@ -145,17 +149,21 @@ contract MonJeton is BRC20 {
 
 ---
 
-## Accepter des paiements en BOSA
+## Accepter des paiements en jeton BRC20
 
 Surveillez les événements `Transfer` vers votre adresse plutôt que d'interroger les soldes en
 boucle.
 
 ```js
-const abi = ['event Transfer(address indexed from, address indexed to, uint256 value)'];
+const abi = [
+  'event Transfer(address indexed from, address indexed to, uint256 value)',
+  'function decimals() view returns (uint8)',
+];
 const token = new ethers.Contract(ADRESSE_JETON, abi, provider);
+const decimals = await token.decimals(); // lues depuis le contrat, jamais codées en dur
 
 token.on(token.filters.Transfer(null, MON_ADRESSE), (from, to, value, event) => {
-  console.log(`reçu ${ethers.formatUnits(value, 10)} BOSA de ${from}`);
+  console.log(`reçu ${ethers.formatUnits(value, decimals)} jetons de ${from}`);
   console.log(`bloc ${event.log.blockNumber}, tx ${event.log.transactionHash}`);
 });
 ```
