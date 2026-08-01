@@ -57,7 +57,7 @@ retenue. **36 trouvailles brutes → 19 confirmées → correctifs ci-dessous.**
 
 - **`start-node.sh`** est explicitement **développement uniquement** (clé déverrouillée dans le process, `eth` exposé). La configuration de production (signeur distant, RPC fermé) est décrite dans [SECURITY-HARDENING.md](SECURITY-HARDENING.md) — c'est un chantier serveur, pas un correctif de fichier.
 - **Politique de frais (EIP-1559)** : confirmer **sur la chaîne réelle** que le client patché redirige la base fee au lieu de la brûler (test on-chain : somme des soldes avant/après une transaction), sinon fixer `baseFeePerGas` au genesis et documenter la politique.
-- **Compilation & tests** : la compilation du contrat et les 26 tests BRC20 s'exécutent en **intégration continue** sur chaque push (machine vierge).
+- **Compilation & tests** : la compilation du contrat et le **banc BRC20** (métadonnées, transferts, autorisations, émission et sa clôture définitive, destruction, propriété en deux étapes et abandon, événements) s'exécutent en **intégration continue** sur chaque push (machine vierge). L'état du dernier run se lit dans l'onglet Actions — il n'est pas déclaré « vert » avant d'avoir été observé vert.
 
 ---
 

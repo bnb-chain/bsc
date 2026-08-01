@@ -126,12 +126,22 @@ async function expectRevert(name, promise) {
   await (await token.connect(alice).burn(25n * UNIT)).wait();
   check('burn réduit l’offre', await token.totalSupply(), beforeBurn - 25n * UNIT);
 
-  // --- Propriété ---
-  console.log('\nPROPRIÉTÉ');
+  // --- Propriété (transfert en DEUX étapes) ---
+  // transferOwnership ne fait que PROPOSER : le nouveau propriétaire doit appeler
+  // acceptOwnership() pour que le transfert prenne effet. Cela évite d'envoyer la
+  // propriété à une adresse erronée ou dont on ne détient pas la clé.
+  console.log('\nPROPRIÉTÉ (transfert en deux étapes)');
   await (await token.transferOwnership(alice.address)).wait();
-  check('transferOwnership change le propriétaire', await token.getOwner(), alice.address);
+  check('transferOwnership ne change pas le propriétaire immédiatement', await token.getOwner(), deployer.address);
+  check('transferOwnership enregistre le propriétaire en attente', await token.pendingOwner(), alice.address);
+  await expectRevert('acceptOwnership par un tiers rejeté', token.connect(bob).acceptOwnership());
+  await (await token.connect(alice).acceptOwnership()).wait();
+  check('acceptOwnership rend alice propriétaire', await token.getOwner(), alice.address);
+  check('le propriétaire en attente est remis à zéro après acceptation', await token.pendingOwner(), ethers.ZeroAddress);
   await expectRevert('l’ancien propriétaire ne peut plus émettre', token.mint(deployer.address, 1n));
+  // alice rend la propriété au déployeur (toujours en deux étapes)
   await (await token.connect(alice).transferOwnership(deployer.address)).wait();
+  await (await token.acceptOwnership()).wait();
   check('propriété rendue au déployeur', await token.getOwner(), deployer.address);
 
   // --- Événements ---
@@ -141,6 +151,27 @@ async function expectRevert(name, promise) {
   const parsed = rc.logs.map((l) => token.interface.parseLog(l)).filter(Boolean);
   check('un événement Transfer est émis', parsed.filter((p) => p.name === 'Transfer').length, 1);
   check('le montant de l’événement est correct', parsed[0].args[2], 7n * UNIT);
+
+  // --- Clôture définitive de l’émission ---
+  // finishMinting() rend l'offre définitivement fixe : c'est ce qui garantit
+  // qu'un jeton annoncé « à offre fixe » l'est réellement au niveau du contrat.
+  console.log('\nÉMISSION CLOSE (offre définitivement fixée)');
+  check('mintingFinished() vaut false avant clôture', await token.mintingFinished(), false);
+  await expectRevert('finishMinting par un non-propriétaire rejeté', token.connect(alice).finishMinting());
+  const supplyAtClose = await token.totalSupply();
+  await (await token.finishMinting()).wait();
+  check('mintingFinished() vaut true après clôture', await token.mintingFinished(), true);
+  await expectRevert('mint rejeté après clôture de l’émission', token.mint(deployer.address, 1n));
+  check('l’offre ne bouge plus après clôture', await token.totalSupply(), supplyAtClose);
+
+  // --- Abandon définitif de la propriété ---
+  // renounceOwnership() met le propriétaire à zéro : irréversible, plus aucune
+  // fonction onlyOwner n'est ensuite appelable (test en dernier, forcément).
+  console.log('\nABANDON DE LA PROPRIÉTÉ');
+  await expectRevert('renounceOwnership par un non-propriétaire rejeté', token.connect(alice).renounceOwnership());
+  await (await token.renounceOwnership()).wait();
+  check('renounceOwnership met le propriétaire à zéro', await token.getOwner(), ethers.ZeroAddress);
+  await expectRevert('plus aucun transfert de propriété après abandon', token.transferOwnership(deployer.address));
 
   // --- Bilan ---
   console.log(`\n${'='.repeat(52)}`);

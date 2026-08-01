@@ -308,9 +308,9 @@
             <tr><td>Consensus Parlia, blocs de 5 secondes</td><td>mesuré bloc par bloc</td></tr>
             <tr><td>Franchissement des blocs d'epoch</td><td>vérifié aux blocs 200, 400, 600, 800</td></tr>
             <tr><td>Contrat système du consensus</td><td>écrit sur mesure, en fonctionnement</td></tr>
-            <tr><td>Standard de jeton BRC20</td><td>26 tests automatisés au vert</td></tr>
+            <tr><td>Standard de jeton BRC20</td><td>banc de tests automatisé complet, rejoué en intégration continue</td></tr>
             <tr><td>Offre native de 700 000 000 BOSA</td><td>inscrite au genesis, vérifiée on-chain</td></tr>
-            <tr><td>Intégration continue</td><td>verte, de bout en bout, sur machine vierge</td></tr>
+            <tr><td>Intégration continue</td><td>rejoue le banc complet (nœud, 5 s, BRC20, epoch) à chaque push, sur machine vierge</td></tr>
           </tbody>
         </table>
       </div>
@@ -495,7 +495,7 @@
         <li>Le <strong>code du client</strong>, avec l'écart précis par rapport au réseau amont, est publié dans le dépôt du projet.</li>
         <li>Le <strong>genesis</strong> et les contrats système sont publiés ; l'offre totale de 700 000 000 BOSA se lit directement sur le réseau.</li>
         <li>Les <strong>adresses de chaque poste</strong> de la répartition seront publiées et consultables sur l'explorateur.</li>
-        <li>La <strong>procédure de reconstruction</strong> du réseau, à partir du dépôt seul, est documentée et vérifiée automatiquement en intégration continue : quiconque peut recompiler le client, régénérer le genesis, lancer un nœud et retrouver les mêmes valeurs.</li>
+        <li>La <strong>procédure de reconstruction</strong> du réseau, à partir du dépôt seul, est documentée et <strong>rejouée automatiquement à chaque push en intégration continue</strong> : quiconque peut recompiler le client, régénérer le genesis, lancer un nœud et retrouver les mêmes valeurs.</li>
       </ul>
       <p>Un projet qui demande la confiance doit donner les moyens de le vérifier sans lui. C'est ce que cette section fournit.</p>
     </section>

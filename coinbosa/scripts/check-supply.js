@@ -7,21 +7,31 @@
 // Garanti : aucun solde hérité (le pont du réseau amont, notamment) ne subsiste,
 // la répartition boucle sur le total, les contrats inter-chaînes sont sans code.
 // Limite : ce contrôle itère les adresses du FICHIER local ; l'intégrité complète du
-// genesis déployé (détection d'une adresse cachée absente du fichier) est garantie par
-// la comparaison du HASH du bloc 0 en intégration continue, pas par ce script seul.
+// genesis déployé (détection d'une adresse cachée absente du fichier) nécessiterait une
+// comparaison du HASH du bloc 0 en intégration continue — encore à implémenter (ROADMAP,
+// jalon durcissement), NON couverte par ce script seul aujourd'hui.
 const { ethers } = require('ethers');
 const fs = require('fs');
 const path = require('path');
 
 const RPC = process.env.RPC || 'http://127.0.0.1:8545';
+// Le fichier genesis à vérifier est paramétrable : la production vise genesis-coinbosa.json,
+// la vérification mécanique (CI/local) vise genesis-coinbosa-dev.json via la variable GENESIS.
+const GENESIS_FILE = process.env.GENESIS || path.join(__dirname, '..', 'genesis', 'genesis-coinbosa.json');
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'coinbosa.config.json'), 'utf8'));
-const genesis = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'genesis', 'genesis-coinbosa.json'), 'utf8'));
+const genesis = JSON.parse(fs.readFileSync(GENESIS_FILE, 'utf8'));
 
-// Refus dur : un genesis de développement (adresses synthétiques, validateur crédité)
-// ne doit jamais passer pour un genesis de production.
-if (genesis.coinbosaDev) {
-  console.error("ECHEC : genesis-coinbosa.json porte le marqueur coinbosaDev — genesis de DÉVELOPPEMENT, non déployable en production.");
+// Refus dur PAR DÉFAUT : un genesis de développement (adresses synthétiques, validateur
+// crédité) ne doit jamais passer pour un genesis de production. La seule dérogation est
+// une vérification mécanique EXPLICITE (ALLOW_DEV_SUPPLY=1) : elle prouve que la tuyauterie
+// offre/pont fonctionne, sans jamais valider un genesis de dev comme production.
+const ALLOW_DEV_SUPPLY = process.env.ALLOW_DEV_SUPPLY === '1';
+if (genesis.coinbosaDev && !ALLOW_DEV_SUPPLY) {
+  console.error(`ECHEC : ${path.basename(GENESIS_FILE)} porte le marqueur coinbosaDev — genesis de DÉVELOPPEMENT, non déployable en production.`);
   process.exit(1);
+}
+if (genesis.coinbosaDev) {
+  console.warn("⚠  MODE DÉVELOPPEMENT (ALLOW_DEV_SUPPLY=1) : contrôle mécanique sur un genesis de DÉV — NON valable comme preuve de production.");
 }
 
 const EXPECTED = BigInt(config.nativeCoin.totalSupply) * 10n ** 18n;

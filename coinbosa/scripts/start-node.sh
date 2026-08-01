@@ -36,14 +36,22 @@ fi
 CHAIN_ID=26262
 RPC_PORT=8545          # port EVM standard, aligné sur coinbosa.config.json et l'explorateur
 
-# init au premier lancement uniquement
+# Le binaire est produit par `make geth` à la racine du dépôt : build/bin/geth
+# (soit ../build/bin/geth depuis ce dossier coinbosa/). Il n'existe pas de ./bin/.
+GETH=../build/bin/geth
+if [ ! -x "$GETH" ]; then
+  echo "erreur : $GETH introuvable — compilez d'abord le client : (à la racine) make geth" >&2
+  exit 1
+fi
+
+# init au premier lancement uniquement — genesis de DÉV (ce script est DEV-only).
 if [ ! -d node1/geth ]; then
-  echo "→ initialisation du genesis Coinbosa"
-  ./bin/coinbosa-geth init --datadir node1 genesis/genesis-coinbosa.json
+  echo "→ initialisation du genesis Coinbosa (développement)"
+  "$GETH" init --datadir node1 genesis/genesis-coinbosa-dev.json
 fi
 
 echo "→ démarrage du validateur $VALIDATOR sur chainId $CHAIN_ID (RPC 127.0.0.1:$RPC_PORT)"
-exec ./bin/coinbosa-geth \
+exec "$GETH" \
   --datadir node1 --networkid "$CHAIN_ID" --port 30399 --ipcdisable \
   --http --http.addr 127.0.0.1 --http.port "$RPC_PORT" \
   --http.api eth,net,web3,parlia --http.corsdomain 'http://127.0.0.1:8080' --http.vhosts '127.0.0.1,localhost' \

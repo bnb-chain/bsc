@@ -58,9 +58,11 @@ jobs:
           echo "VALIDATOR=$VALIDATOR" >> $GITHUB_ENV
           echo "validateur : $VALIDATOR"
           # ALLOW_DEV : la CI vérifie la mécanique, pas la production. Les adresses de
-          # distribution restent des placeholders déterministes non dépensables.
+          # distribution restent des placeholders déterministes non dépensables, et le
+          # genesis produit est écrit sur un chemin DISTINCT (genesis-coinbosa-dev.json)
+          # avec le marqueur coinbosaDev — il ne peut pas être confondu avec la production.
           VALIDATOR=$VALIDATOR ALLOW_DEV=1 node scripts/build-genesis.js
-          ../build/bin/geth init --datadir node1 genesis/genesis-coinbosa.json
+          ../build/bin/geth init --datadir node1 genesis/genesis-coinbosa-dev.json
 
       - name: Démarrer le nœud
         working-directory: coinbosa
@@ -86,7 +88,9 @@ jobs:
 
       - name: Vérifier l'offre native (700 M, pont purgé)
         working-directory: coinbosa
-        run: RPC=http://127.0.0.1:8545 node scripts/check-supply.js
+        # Contrôle mécanique sur le genesis de DÉV (ALLOW_DEV_SUPPLY=1, explicite et bruyant).
+        # La porte de production reste stricte : sans ce flag, un genesis coinbosaDev est refusé.
+        run: GENESIS=genesis/genesis-coinbosa-dev.json ALLOW_DEV_SUPPLY=1 RPC=http://127.0.0.1:8545 node scripts/check-supply.js
 
       - name: Tests du standard BRC20
         working-directory: coinbosa

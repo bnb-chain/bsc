@@ -63,9 +63,9 @@ ce qui n'existe pas, sans arrondir. Tout le reste doit être lu à sa lumière.
 | Consensus Parlia, blocs de 5 secondes | mesuré bloc par bloc |
 | Franchissement des blocs d'epoch | vérifié aux blocs 200, 400, 600, 800 |
 | Contrat système du consensus | écrit sur mesure, en fonctionnement |
-| Standard de jeton BRC20 | 26 tests automatisés au vert |
+| Standard de jeton BRC20 | banc de tests automatisé complet, rejoué en intégration continue |
 | Offre native de 700 000 000 BOSA | inscrite au genesis, vérifiée on-chain |
-| Intégration continue | verte, de bout en bout, sur machine vierge |
+| Intégration continue | rejoue le banc complet (nœud, 5 s, BRC20, epoch) à chaque push, sur machine vierge |
 
 ### Ce qui n'existe pas encore
 
@@ -453,8 +453,8 @@ Tout ce qui précède est vérifiable. C'est le sens du document.
 - Les **adresses de chaque poste** de la répartition seront publiées et consultables sur
   l'explorateur.
 - La **procédure de reconstruction** du réseau, à partir du dépôt seul, est documentée et
-  vérifiée automatiquement en intégration continue : quiconque peut recompiler le client,
-  régénérer le genesis, lancer un nœud et retrouver les mêmes valeurs.
+  **rejouée automatiquement à chaque push en intégration continue** : quiconque peut recompiler
+  le client, régénérer le genesis, lancer un nœud et retrouver les mêmes valeurs.
 
 Un projet qui demande la confiance doit donner les moyens de le vérifier sans lui. C'est ce que
 cette section fournit.

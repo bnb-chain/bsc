@@ -182,16 +182,23 @@ l'audit de sécurité interne et le durcissement dans **[docs/SECURITY-HARDENING
 
 ## Démarrage
 
+Le binaire du client est produit par `make geth` **à la racine du dépôt** (→ `build/bin/geth`).
+Les commandes ci-dessous se lancent depuis ce dossier `coinbosa/`, d'où le client se trouve à
+`../build/bin/geth`.
+
 ```bash
-npm install
+npm ci                       # dépendances reproductibles (depuis le lock)
 
-# générer la clé du validateur, puis le genesis correspondant
-./build/bin/geth account new --datadir node1
-VALIDATOR=0xVotreValidateur node scripts/build-genesis.js
+# générer la clé du validateur, puis le genesis de DÉVELOPPEMENT correspondant.
+# ALLOW_DEV=1 écrit genesis/genesis-coinbosa-dev.json (adresses synthétiques non
+# dépensables + marqueur coinbosaDev) : jamais confondu avec la production, dont les
+# adresses viennent de genesis/distribution-addresses.json.
+../build/bin/geth account new --datadir node1
+VALIDATOR=0xVotreValidateur ALLOW_DEV=1 node scripts/build-genesis.js
 
-node scripts/compile.js      # compiler les contrats
-./scripts/start-node.sh      # lancer le nœud validateur
-./scripts/start-explorer.sh  # explorateur sur http://127.0.0.1:8080
+node scripts/compile.js               # compiler les contrats
+COINBOSA_DEV=1 ./scripts/start-node.sh  # lancer le nœud validateur (garde DEV explicite)
+./scripts/start-explorer.sh           # explorateur sur http://127.0.0.1:8080
 ```
 
 
@@ -200,11 +207,13 @@ node scripts/compile.js      # compiler les contrats
 La suite s'exécute contre une vraie chaîne, pas contre un simulateur.
 
 ```bash
-RPC=http://127.0.0.1:8545 node scripts/test-bos20.js
+RPC=http://127.0.0.1:8545 node scripts/test-brc20.js
 ```
 
-26 tests couvrent les métadonnées, les transferts, les autorisations, l'émission, la
-destruction, la propriété et les événements — y compris tous les cas qui doivent échouer.
+Le banc couvre les métadonnées, les transferts, les autorisations, l'émission et sa **clôture
+définitive** (`finishMinting`), la destruction, la **propriété en deux étapes** (`transferOwnership`
+puis `acceptOwnership`) et son **abandon** (`renounceOwnership`), et les événements — y compris tous
+les cas qui doivent échouer.
 
 ---
 
