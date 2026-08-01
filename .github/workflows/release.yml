@@ -1,10 +1,14 @@
 name: Release
 
+# NEUTRALISÉ pour Coinbosa. Hérité du fork BNB Chain, ce workflow publiait à chaque tag
+# `v*` une release GitHub attachant les configs mainnet/testnet de BNB Chain
+# (.github/release.env) — donc des artefacts d'un AUTRE réseau étiquetés « Coinbosa » —
+# et téléchargeait des toolchains musl depuis un bucket externe NON épinglé (r2.dev) :
+# mauvaise étiquette + risque chaîne d'approvisionnement pour une chaîne souveraine.
+# Déclenchement ramené à MANUEL. À réécrire spécifiquement pour Coinbosa (assets propres,
+# sources épinglées par checksum) avant tout usage.
 on:
-  push:
-    # Publish `v1.2.3` tags as releases.
-    tags:
-      - v*
+  workflow_dispatch:
 env:
   CGO_CFLAGS: "-O -D__BLST_PORTABLE__"
   CGO_CFLAGS_ALLOW: "-O -D__BLST_PORTABLE__"

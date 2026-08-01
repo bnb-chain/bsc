@@ -1,10 +1,11 @@
 name: Pre Release
 
+# NEUTRALISÉ pour Coinbosa (même raison que release.yml). Hérité du fork BNB Chain, ce
+# workflow publiait à chaque tag `pre-*` une pré-release attachant les configs
+# mainnet/testnet de BNB Chain et téléchargeait des toolchains musl depuis musl.cc, NON
+# épinglé. Déclenchement ramené à MANUEL. À réécrire pour Coinbosa avant tout usage.
 on:
-  push:
-    # Publish `pre-v1.2.3` tags as releases.
-    tags:
-      - 'pre-*'
+  workflow_dispatch:
 
 env:
   CGO_CFLAGS: "-O -D__BLST_PORTABLE__"

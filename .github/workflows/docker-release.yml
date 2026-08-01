@@ -1,10 +1,14 @@
 name: Docker
 
+# NEUTRALISÉ pour Coinbosa — doctrine P1942 : AUCUN conteneur, déploiement natif.
+# Hérité du fork BNB Chain, ce workflow publiait une image de CONTENEUR sur ghcr.io à
+# chaque tag `v*`. Un `git tag` de mise en production l'aurait déclenché par accident.
+# Déclenchement ramené à MANUEL (workflow_dispatch) pour empêcher toute publication
+# involontaire de conteneur. À SUPPRIMER complètement — avec Dockerfile, Dockerfile.alltools,
+# docker-compose.yaml, docker-entrypoint.sh et .dockerignore — puisque Coinbosa ne
+# déploie aucun conteneur (décision à confirmer par l'éditeur).
 on:
-  push:
-    # Publish `v1.2.3` tags as releases.
-    tags:
-      - v*
+  workflow_dispatch:
 env:
   REGISTRY: ghcr.io
   REGISTRY_IMAGE: ${{ github.repository }}
