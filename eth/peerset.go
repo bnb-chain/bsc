@@ -187,8 +187,13 @@ func (ps *peerSet) waitSnapExtension(peer *eth.Peer) (*snap.Peer, error) {
 		ps.lock.Unlock()
 		return snap, nil
 	}
-	// Otherwise wait for `snap` to connect concurrently
-	wait := make(chan *snap.Peer)
+	// Otherwise wait for `snap` to connect concurrently. The channel is given a
+	// capacity of 1 so that registerSnapExtension's delivery below can never
+	// block while holding ps.lock: registerSnapExtension deletes this entry
+	// from snapWait before sending, under the same lock, so at most one value
+	// is ever sent here, and the buffer absorbs it even if nobody is left to
+	// receive (e.g. this call already timed out or the peerset is closing).
+	wait := make(chan *snap.Peer, 1)
 	ps.snapWait[id] = wait
 	ps.lock.Unlock()
 
