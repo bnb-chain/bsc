@@ -891,7 +891,7 @@ LOOP:
 		}
 
 		// Transaction seems to fit, pull it up from the pool
-		tx := ltx.Resolve()
+		tx = ltx.Resolve()
 		if tx == nil {
 			log.Trace("Ignoring evicted transaction", "hash", ltx.Hash)
 			txs.Pop()
