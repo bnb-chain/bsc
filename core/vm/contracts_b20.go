@@ -23,34 +23,40 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-// B20 native token family (Base B-20 equivalent). Tokens deploy no bytecode:
-// the factory, the two variants and the registries are native precompiles.
-// A token is identified by its address, routed to variant code by its address
-// prefix, and isolated by the state stored under that address. See the B20
-// spec, section "B-20 地址编码".
+// B20 native token family. The factory, the two variants and the registries are
+// native precompiles; a token deploys no *executable* bytecode, only the
+// one-byte sentinel below. A token is identified by its address, routed to
+// variant code by its address prefix, and isolated by the state stored under
+// that address. See BEP-702 §3.3.
 //
 // Address layout (20 bytes):
 //
-//	byte[0]        0xb2               magic prefix
-//	byte[1..9]     0x00 (9 bytes)     namespace padding
+//	byte[0:2]      0x20B0             marker
+//	byte[2:10]     0x00 (8 bytes)     namespace padding
 //	byte[10]       variant            0x00 = Asset, 0x01 = Stablecoin
-//	byte[11..19]   keccak256(creator,salt)[:9]  identity fingerprint
+//	byte[11:20]    keccak256(creator,salt)[:9]  identity fingerprint
+var b20MarkerPrefix = [2]byte{0x20, 0xb0}
+
 const (
-	b20MagicPrefix       = 0xb2
 	b20VariantAsset      = 0x00
 	b20VariantStablecoin = 0x01
 )
 
-// B20FactoryAddress is the singleton token-creation entry point. It sits just
-// outside the 0xb2·00…00 token space (byte[1] = 0x0f), so it never collides
-// with a token address and is not matched by IsB20Address.
-var B20FactoryAddress = common.HexToAddress("0xB20f000000000000000000000000000000000000")
+// The three singletons (BEP-702 §3.1). The factory shares the 0x20B nibble
+// prefix with the token space and is separated from it by the second byte,
+// which the token space pins to 0xB0 — so no singleton is matched by
+// IsB20Address or can collide with a token.
+// B20PolicyRegistryAddress is declared in contracts_b20_policy.go.
+var (
+	B20FactoryAddress            = common.HexToAddress("0x20BF000000000000000000000000000000000000")
+	B20ActivationRegistryAddress = common.HexToAddress("0x7020000000000000000000000000000000000002")
+)
 
 var (
 	// ErrB20AddressReserved is returned when CREATE/CREATE2 targets the reserved
 	// B20 address space once the fork is active. Reserving the prefix at the
 	// protocol level is what stops anyone from squatting or forging a token
-	// address (cf. Tempo TIP-1047).
+	// address (BEP-702 §3.3).
 	ErrB20AddressReserved = errors.New("b20: reserved address space")
 
 	// ErrB20DelegateCall is returned when a token precompile is reached via a
@@ -65,14 +71,14 @@ var (
 )
 
 // IsB20Address reports whether addr falls in the reserved B20 token space:
-// byte[0] == 0xb2 and byte[1..9] all zero. It intentionally does not inspect
+// byte[0:2] == 0x20B0 and byte[2:10] all zero. It intentionally does not inspect
 // the variant byte, so addresses of future variants are still recognised as
 // B20 (matching the spec's isB20 rule).
 func IsB20Address(addr common.Address) bool {
-	if addr[0] != b20MagicPrefix {
+	if addr[0] != b20MarkerPrefix[0] || addr[1] != b20MarkerPrefix[1] {
 		return false
 	}
-	for i := 1; i < 10; i++ {
+	for i := 2; i < 10; i++ {
 		if addr[i] != 0 {
 			return false
 		}

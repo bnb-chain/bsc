@@ -29,8 +29,8 @@ import (
 // TODO: ActivationRegistry gate on writes (base.policy_registry) and alignment
 // of the storage layout / ABI / events with base-std.
 
-// B20PolicyRegistryAddress is the singleton registry precompile.
-var B20PolicyRegistryAddress = common.HexToAddress("0x8453000000000000000000000000000000000002")
+// B20PolicyRegistryAddress is the singleton registry precompile (BEP-702 §3.1).
+var B20PolicyRegistryAddress = common.HexToAddress("0x7020000000000000000000000000000000000001")
 
 const b20PolicyNamespace = "base.policyregistry"
 

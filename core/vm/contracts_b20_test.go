@@ -30,7 +30,7 @@ import (
 // byte and a one-byte identity fingerprint.
 func b20Addr(variant, id byte) common.Address {
 	var a common.Address
-	a[0] = b20MagicPrefix
+	a[0], a[1] = b20MarkerPrefix[0], b20MarkerPrefix[1]
 	a[10] = variant
 	a[19] = id
 	return a
@@ -47,7 +47,8 @@ func TestIsB20Address(t *testing.T) {
 		{"unknown variant still in space", b20Addr(0x7f, 1), true},
 		{"factory is outside token space", B20FactoryAddress, false},
 		{"wrong magic prefix", common.HexToAddress("0xb3000000000000000000ab0000000000000000ff"), false},
-		{"nonzero padding byte", common.HexToAddress("0xb2000000000100000000000000000000000000ff"), false},
+		{"nonzero padding byte", common.HexToAddress("0x20b00000000001000000000000000000000000ff"), false},
+		{"old 0xb2 prefix", common.HexToAddress("0xb2000000000000000000000000000000000000ff"), false},
 		{"zero address", common.Address{}, false},
 	}
 	for _, tc := range cases {

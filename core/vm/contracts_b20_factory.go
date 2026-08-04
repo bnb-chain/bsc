@@ -41,23 +41,29 @@ var (
 	selIsB20Initialized = selector("isB20Initialized(address)")
 )
 
-// b20MarkerCode is written to a token address on creation. It is never
-// executed (the precompile takes precedence in Call) — it only marks the
-// account as an initialized B20 token for resolution and isB20Initialized.
-var b20MarkerCode = []byte{0xB2, 0x00}
+// b20MarkerCode is the account sentinel written to a token address on creation
+// (BEP-702 §3.16). It is never executed — the precompile takes precedence in
+// Call — and serves two purposes: it marks the account as an initialized B20
+// token, and it keeps the account non-empty so EIP-161 end-of-block state
+// clearing cannot reap it together with every balance it holds.
+//
+// 0xEF is the EIP-3541 reserved prefix, which no CREATE/CREATE2 deployment can
+// produce, so the marker stays unforgeable even if the reserved-space guard
+// were weakened.
+var b20MarkerCode = []byte{0xEF}
 
 // b20NoSupplyCap is the "unlimited" sentinel: type(uint128).max.
 var b20NoSupplyCap = new(uint256.Int).Sub(new(uint256.Int).Lsh(uint256.NewInt(1), 128), uint256.NewInt(1))
 
 // b20DeriveAddress computes a token's deterministic address:
-// 0xb2 ++ 9×0x00 ++ variant ++ keccak256(creator ++ salt)[:9].
+// 0x20B0 ++ 8×0x00 ++ variant ++ keccak256(creator ++ salt)[:9].
 //
 // TODO: verify the preimage (encoding/ordering of creator and salt) against
 // base-std; routing does not depend on it, but cross-client determinism does.
 func b20DeriveAddress(variant byte, creator common.Address, salt common.Hash) common.Address {
 	h := crypto.Keccak256(creator.Bytes(), salt.Bytes())
 	var a common.Address
-	a[0] = b20MagicPrefix
+	a[0], a[1] = b20MarkerPrefix[0], b20MarkerPrefix[1]
 	a[10] = variant
 	copy(a[11:20], h[:9])
 	return a
