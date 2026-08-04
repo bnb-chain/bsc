@@ -45,7 +45,7 @@ const (
 // the layout byte-for-byte reproducible by a reference Solidity contract, so
 // the golden tests can cross-check the native precompile against base-std.
 //
-// Layout mirrors B20CoreStorage (namespace "base.b20"):
+// Layout mirrors B20CoreStorage (namespace "bsc.b20"):
 //
 //	slot 0   name (string)
 //	slot 1   symbol (string)
@@ -61,7 +61,7 @@ const (
 //	slot 11  paused (uint256 bitmask)
 //	slot 12  supplyCap (uint256)
 //	slot 13  nonces      mapping(address => uint256)
-const b20Namespace = "base.b20"
+const b20Namespace = "bsc.b20"
 
 const (
 	b20SlotName             = 0

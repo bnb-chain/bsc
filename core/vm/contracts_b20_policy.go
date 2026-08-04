@@ -26,13 +26,13 @@ import (
 // id (high byte = type, low 56 bits = global counter). Reads never revert (they
 // sit on every transfer's hot path); writes are admin-gated.
 //
-// TODO: ActivationRegistry gate on writes (base.policy_registry) and alignment
+// TODO: ActivationRegistry gate on writes (bsc.policy_registry) and alignment
 // of the storage layout / ABI / events with base-std.
 
 // B20PolicyRegistryAddress is the singleton registry precompile (BEP-702 §3.1).
 var B20PolicyRegistryAddress = common.HexToAddress("0x7020000000000000000000000000000000000001")
 
-const b20PolicyNamespace = "base.policyregistry"
+const b20PolicyNamespace = "bsc.policyregistry"
 
 const (
 	b20PolicyBlocklist = 0
@@ -217,7 +217,7 @@ func runB20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	return nil, ErrExecutionReverted
 }
 
-// TODO: gate writes on ActivationRegistry base.policy_registry.
+// TODO: gate writes on ActivationRegistry bsc.policy_registry.
 func createPolicy(ctx *PrecompileContext, reg policyReg, args []byte, withAccounts bool) ([]byte, error) {
 	if ctx.ReadOnly {
 		return nil, ErrWriteProtection

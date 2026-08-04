@@ -29,7 +29,7 @@ import (
 // TODO: verify the extension namespace and decimals param against base-std;
 // decimals defaults to 18 until createB20 carries the param.
 
-const b20AssetNamespace = "base.b20.asset"
+const b20AssetNamespace = "bsc.b20.asset"
 
 const (
 	b20AssetSlotDecimals      = 0
