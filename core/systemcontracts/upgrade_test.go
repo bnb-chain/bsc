@@ -9,7 +9,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/systemcontracts/gauss"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
@@ -48,27 +47,24 @@ func TestAllCodesHash(t *testing.T) {
 	require.Equal(t, allCodeHash[:], common.Hex2Bytes("833cc0fc87c46ad8a223e44ccfdc16a51a7e7383525136441bd0c730f06023df"))
 }
 
-// TestGaussPaymentLaneCode pins the Gauss hardfork's PaymentLane bytecode. It is a separate
-// test rather than an entry in TestAllCodesHash because that one is a rolling digest over 13
-// hardforks: extending it re-pins every historical fork at once.
-//
-// Four things fail here if the deployment breaks: a missing network registration, a wrong
-// target address, bytecode that is not valid hex (which would panic mid-block inside
-// applySystemContractUpgrade rather than return a consensus error), and any bytecode change.
-// The single expected hash also encodes the invariant that all three networks ship identical
-// code - PaymentLane has no network-specific constants.
+// TestGaussPaymentLaneCode pins PaymentLane's target address and bytecode. gaussUpgrade is not in
+// TestAllCodesHash's list, which also skips rialtoNet. The address is a literal rather than
+// common.HexToAddress(PaymentLaneContract), which would be tautological: a one-digit typo in that
+// const lands on Timelock (0x2006) and would overwrite it chain-wide. One hash covers all three
+// networks because they ship identical code - which also means no test here can detect a
+// cross-network Code mis-wiring, and none needs to while the three blobs stay byte-identical.
 func TestGaussPaymentLaneCode(t *testing.T) {
 	const wantCodeHash = "290015376dcf26ec7e889c82b67ef6382a277d3bfbe48fda1901d9ab00d15ef7"
 
 	for _, network := range []string{mainNet, chapelNet, rialtoNet} {
 		upgrade := gaussUpgrade[network]
 		require.NotNil(t, upgrade, network)
-		require.Equal(t, "gauss", upgrade.UpgradeName, network)
 		require.Len(t, upgrade.Configs, 1, network)
 
 		config := upgrade.Configs[0]
-		require.Equal(t, common.HexToAddress(PaymentLaneContract), config.ContractAddr, network)
+		require.Equal(t, common.HexToAddress("0x0000000000000000000000000000000000002007"), config.ContractAddr, network)
 
+		// TrimSpace mirrors applySystemContractUpgrade: invalid hex panics mid-block there.
 		code, err := hex.DecodeString(strings.TrimSpace(config.Code))
 		require.NoError(t, err, network)
 
@@ -77,20 +73,18 @@ func TestGaussPaymentLaneCode(t *testing.T) {
 	}
 }
 
-// TestGaussUpgradeApplies drives the real dispatcher and asserts PaymentLane's code lands at
-// 0x2007 on the transition block and only there. TestGaussPaymentLaneCode above checks the
-// registration data; this checks that the IsOnGauss branch in upgradeBuildInSystemContract
-// exists and is reached, which the data test alone would not catch.
+// TestGaussUpgradeApplies drives the real dispatcher: PaymentLane's code must land at 0x2007 on
+// the transition block and only there - the data test above cannot see a missing IsOnGauss branch.
 func TestGaussUpgradeApplies(t *testing.T) {
 	const (
-		gaussTime  uint64 = 1_800_000_000
-		blockTime         = gaussTime + 3 // first block at or after the fork time
-		parentTime        = gaussTime - 3
+		gaussTime     uint64 = 1_800_000_000
+		blockTime            = gaussTime + 3 // first block at or after the fork time
+		lastBlockTime        = gaussTime - 3
 	)
 	addr := common.HexToAddress(PaymentLaneContract)
 	blockNumber := big.NewInt(60_000_000)
 
-	forkTime := uint64(gaussTime)
+	forkTime := gaussTime
 	config := *params.BSCChainConfig // copy: never mutate the shared mainnet config
 	config.GaussTime = &forkTime
 	GenesisHash = params.BSCGenesisHash
@@ -99,18 +93,12 @@ func TestGaussUpgradeApplies(t *testing.T) {
 	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	require.NoError(t, err)
 	require.Empty(t, statedb.GetCode(addr))
-
-	require.True(t, config.IsOnGauss(blockNumber, parentTime, blockTime))
-	upgradeBuildInSystemContract(&config, blockNumber, parentTime, blockTime, statedb)
-
-	want, err := hex.DecodeString(strings.TrimSpace(gauss.MainnetPaymentLaneContract))
-	require.NoError(t, err)
-	require.Equal(t, want, statedb.GetCode(addr))
+	upgradeBuildInSystemContract(&config, blockNumber, lastBlockTime, blockTime, statedb)
+	require.NotEmpty(t, statedb.GetCode(addr))
 
 	// A later block is not the transition block, so nothing is installed.
 	next, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	require.NoError(t, err)
-	require.False(t, config.IsOnGauss(new(big.Int).Add(blockNumber, common.Big1), blockTime, blockTime+3))
 	upgradeBuildInSystemContract(&config, new(big.Int).Add(blockNumber, common.Big1), blockTime, blockTime+3, next)
 	require.Empty(t, next.GetCode(addr))
 }

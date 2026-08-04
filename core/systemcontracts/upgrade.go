@@ -1110,12 +1110,8 @@ func init() {
 		},
 	}
 
-	// PaymentLane (BEP-703) is a brand-new address: it has no code, storage or nonce on any
-	// live network, so SetCode creates the account. The contract needs no initialize() - an
-	// unwritten slot reads as its DEFAULT_* constant - which is why gauss emits no system
-	// transaction and needs no consensus-engine change. Same shape as StakingContract at
-	// Gibbs. The bytecode is identical on all three networks; PaymentLane has no
-	// network-specific constants.
+	// PaymentLane (BEP-703) needs no initialize(): it is a brand-new address whose unwritten
+	// slots each read as their DEFAULT_* constant, so Gauss ships bytecode only.
 	gaussUpgrade[mainNet] = &Upgrade{
 		UpgradeName: "gauss",
 		Configs: []*UpgradeConfig{

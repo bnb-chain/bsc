@@ -331,11 +331,11 @@ func (o *ChainOverrides) apply(cfg *params.ChainConfig) error {
 	if o.OverrideMendel != nil {
 		cfg.MendelTime = o.OverrideMendel
 	}
-	if o.OverrideGauss != nil {
-		cfg.GaussTime = o.OverrideGauss
-	}
 	if o.OverridePasteur != nil {
 		cfg.PasteurTime = o.OverridePasteur
+	}
+	if o.OverrideGauss != nil {
+		cfg.GaussTime = o.OverrideGauss
 	}
 	if o.OverrideBPO1 != nil {
 		cfg.BPO1Time = o.OverrideBPO1
