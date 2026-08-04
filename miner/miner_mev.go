@@ -114,8 +114,12 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *buildertypes.BidBloc
 		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf("parent not found: %s, bidHash=%s", parentHash.Hex(), bidHash))
 	}
 
-	// Security: validators must self-produce hard-fork activation blocks.
-	if miner.worker.chainConfig.IsOnPasteur(bb.Header.Number, parent.Time, bb.Header.Time) {
+	// Security: validators must self-produce hard-fork activation blocks. Every fork that
+	// injects or replaces system-contract bytecode belongs here - the activation block's
+	// state transition contains a SetCode the builder never simulated. Adding a fork and
+	// forgetting this line produces no compile error and no test failure.
+	if miner.worker.chainConfig.IsOnPasteur(bb.Header.Number, parent.Time, bb.Header.Time) ||
+		miner.worker.chainConfig.IsOnGauss(bb.Header.Number, parent.Time, bb.Header.Time) {
 		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf(
 			"BidBlock disabled on hard-fork activation block %d, fallback to SendBid", blockNumber))
 	}

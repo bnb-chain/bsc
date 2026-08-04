@@ -1289,6 +1289,10 @@ func overrideConfig(original *params.ChainConfig, override *params.ChainConfig) 
 		copy.MendelTime = timestamp
 		canon = false
 	}
+	if timestamp := override.GaussTime; timestamp != nil {
+		copy.GaussTime = timestamp
+		canon = false
+	}
 	if timestamp := override.PasteurTime; timestamp != nil {
 		copy.PasteurTime = timestamp
 		canon = false

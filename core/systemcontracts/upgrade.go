@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/systemcontracts/fermi"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/feynman"
 	feynmanFix "github.com/ethereum/go-ethereum/core/systemcontracts/feynman_fix"
+	"github.com/ethereum/go-ethereum/core/systemcontracts/gauss"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/gibbs"
 	haberFix "github.com/ethereum/go-ethereum/core/systemcontracts/haber_fix"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/kepler"
@@ -98,6 +99,8 @@ var (
 	fermiUpgrade = make(map[string]*Upgrade)
 
 	pasteurUpgrade = make(map[string]*Upgrade)
+
+	gaussUpgrade = make(map[string]*Upgrade)
 )
 
 func init() {
@@ -1106,6 +1109,45 @@ func init() {
 			},
 		},
 	}
+
+	// PaymentLane (BEP-703) is a brand-new address: it has no code, storage or nonce on any
+	// live network, so SetCode creates the account. The contract needs no initialize() - an
+	// unwritten slot reads as its DEFAULT_* constant - which is why gauss emits no system
+	// transaction and needs no consensus-engine change. Same shape as StakingContract at
+	// Gibbs. The bytecode is identical on all three networks; PaymentLane has no
+	// network-specific constants.
+	gaussUpgrade[mainNet] = &Upgrade{
+		UpgradeName: "gauss",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(PaymentLaneContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/384b673b14ad8d9082442273c37acddb42e890af",
+				Code:         gauss.MainnetPaymentLaneContract,
+			},
+		},
+	}
+
+	gaussUpgrade[chapelNet] = &Upgrade{
+		UpgradeName: "gauss",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(PaymentLaneContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/384b673b14ad8d9082442273c37acddb42e890af",
+				Code:         gauss.ChapelPaymentLaneContract,
+			},
+		},
+	}
+
+	gaussUpgrade[rialtoNet] = &Upgrade{
+		UpgradeName: "gauss",
+		Configs: []*UpgradeConfig{
+			{
+				ContractAddr: common.HexToAddress(PaymentLaneContract),
+				CommitUrl:    "https://github.com/bnb-chain/bsc-genesis-contract/commit/384b673b14ad8d9082442273c37acddb42e890af",
+				Code:         gauss.RialtoPaymentLaneContract,
+			},
+		},
+	}
 }
 
 func TryUpdateBuildInSystemContract(config *params.ChainConfig, blockNumber *big.Int, lastBlockTime uint64, blockTime uint64, statedb vm.StateDB, atBlockBegin bool) {
@@ -1227,6 +1269,10 @@ func upgradeBuildInSystemContract(config *params.ChainConfig, blockNumber *big.I
 
 	if config.IsOnPasteur(blockNumber, lastBlockTime, blockTime) {
 		applySystemContractUpgrade(pasteurUpgrade[network], blockNumber, statedb, logger)
+	}
+
+	if config.IsOnGauss(blockNumber, lastBlockTime, blockTime) {
+		applySystemContractUpgrade(gaussUpgrade[network], blockNumber, statedb, logger)
 	}
 
 	/*

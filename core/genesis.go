@@ -293,6 +293,7 @@ type ChainOverrides struct {
 	OverrideOsaka          *uint64
 	OverrideMendel         *uint64
 	OverridePasteur        *uint64
+	OverrideGauss          *uint64
 	OverrideBPO1           *uint64
 	OverrideBPO2           *uint64
 	OverrideUBT            *uint64
@@ -329,6 +330,9 @@ func (o *ChainOverrides) apply(cfg *params.ChainConfig) error {
 	}
 	if o.OverrideMendel != nil {
 		cfg.MendelTime = o.OverrideMendel
+	}
+	if o.OverrideGauss != nil {
+		cfg.GaussTime = o.OverrideGauss
 	}
 	if o.OverridePasteur != nil {
 		cfg.PasteurTime = o.OverridePasteur
