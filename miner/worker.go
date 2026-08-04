@@ -890,8 +890,9 @@ LOOP:
 			}
 		}
 
-		// Transaction seems to fit, pull it up from the pool
-		tx := ltx.Resolve()
+		// Transaction seems to fit, pull it up from the pool.
+		// Assign into the outer tx so txCurr (used by PrefetchMining) tracks loop progress.
+		tx = ltx.Resolve()
 		if tx == nil {
 			log.Trace("Ignoring evicted transaction", "hash", ltx.Hash)
 			txs.Pop()
