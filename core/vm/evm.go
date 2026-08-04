@@ -60,8 +60,7 @@ func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
 // current block.
 //
 // TODO: replace with a dedicated B20 fork flag on params.Rules; gated on
-// Pasteur for now so the reserved-address guard and dynamic dispatch activate
-// together at a single fork boundary.
+// Pasteur for now.
 func (evm *EVM) b20Enabled() bool {
 	return evm.chainRules.IsPasteur
 }
@@ -585,13 +584,6 @@ func (evm *EVM) create(caller common.Address, code []byte, gas GasBudget, value 
 		}
 		gas.Exhaust()
 		return nil, common.Address{}, gas, ErrContractAddressCollision
-	}
-	// Reserve the B20 address space: no user CREATE/CREATE2 may deploy into it
-	// once the fork is active, otherwise token addresses could be squatted or
-	// forged (see contracts_b20.go). The factory address is outside this space.
-	if evm.b20Enabled() && IsB20Address(address) {
-		gas.Exhaust()
-		return nil, common.Address{}, gas, ErrB20AddressReserved
 	}
 	// Create a new account on the state only if the object was not present.
 	// It might be possible the contract code is deployed to a pre-existent

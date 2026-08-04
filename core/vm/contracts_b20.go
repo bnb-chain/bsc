@@ -53,12 +53,6 @@ var (
 )
 
 var (
-	// ErrB20AddressReserved is returned when CREATE/CREATE2 targets the reserved
-	// B20 address space once the fork is active. Reserving the prefix at the
-	// protocol level is what stops anyone from squatting or forging a token
-	// address (BEP-702 §3.3).
-	ErrB20AddressReserved = errors.New("b20: reserved address space")
-
 	// ErrB20DelegateCall is returned when a token precompile is reached via a
 	// non-direct call (DELEGATECALL/CALLCODE), where Self could not be trusted
 	// as the storage root.
