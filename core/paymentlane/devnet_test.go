@@ -154,7 +154,7 @@ func TestDevnetReadPath(t *testing.T) {
 		// into block production - so the meaningful assertion is the bootstrap one:
 		// a parent carrying no commitment opens the lane at its floor.
 		size := LaneSize(p, newSignal(nil, head.GasLimit), head.GasLimit)
-		floor, ceiling := Floor(p, head.GasLimit), Ceiling(p, head.GasLimit)
+		floor, ceiling := laneFloor(p, head.GasLimit), laneCeiling(p, head.GasLimit)
 		t.Logf("gasLimit %d -> floor %d ceiling %d laneSize %d", head.GasLimit, floor, ceiling, size)
 
 		require.Equal(t, floor, size)

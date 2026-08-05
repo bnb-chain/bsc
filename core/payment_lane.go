@@ -58,12 +58,12 @@ type laneHeaderReader interface {
 // winning bid's environment.
 //
 // It deliberately does NOT store the derived quota alongside the inputs it came from.
-// Each side asks for the one thing it is entitled to: the producer calls SetQuota,
-// the importer calls CheckQuota, and both resolve to the same LaneSize call over the
-// same private inputs. Precomputing it and having the importer compare against the
-// stored copy would be a second implementation of CheckQuota with nothing keeping the
-// two agreed. For the same reason the gas limit is captured at construction rather than
-// passed in again: it is the last input a call site could have chosen differently.
+// The producer calls SetQuota, the importer calls CheckQuota, and both resolve to the
+// same LaneSize call over the same private inputs; precomputing it and having the
+// importer compare against the stored copy would be a second implementation of
+// CheckQuota with nothing keeping the two agreed. The gas limit is captured at
+// construction for the same reason: it is the last input a call site could have chosen
+// differently.
 //
 // The zero value - and a nil pointer - mean the lane does not apply, and every method
 // here is safe to call in that state, so the only branch a call site needs is around the
@@ -209,7 +209,7 @@ func (ls *LaneState) Classify(tx *types.Transaction) (paymentlane.Class, error) 
 // importing side, which is what lets Verify check the bucket sum as an identity instead
 // of as a convention. Differencing also makes rollback free - a reverted apply has
 // already restored the pool from its snapshot, so the delta is zero - and it cancels the
-// bid path's temporary PayBidTxGasLimit reservation, which would otherwise offset any
+// bid path's temporary PayBidTxGasLimit reservation, which would otherwise offset an
 // absolute reading by exactly 25,000.
 func (ls *LaneState) AccountFrom(class paymentlane.Class, gp *GasPool, usedBefore uint64) {
 	if !ls.On() {
@@ -259,9 +259,8 @@ func (ls *LaneState) QuotaIntact(shared uint64) bool {
 	return ls.Budget.IdleLane() <= shared
 }
 
-// VerifyImported is the importer's verdict, and the only authoritative one: the producer
-// and the MEV admission gate can each only attest to themselves, since a dishonest party
-// is free to present a self-consistent pair of fake buckets.
+// VerifyImported is the importer's verdict, and the only authoritative one; see
+// paymentlane.Budget.VerifyCommitment for why.
 //
 // headerGasUsed must be the locally recomputed total - the value Finalize grew - and never
 // block.GasUsed(), which is attacker-supplied. The subtraction cannot underflow because
@@ -278,30 +277,21 @@ func (ls *LaneState) VerifyImported(headerGasUsed, poolUsed uint64, c paymentlan
 }
 
 // VerifyProduced is the producer's pre-seal self-check, shared by every path that assembles
-// a block.
+// a block. Failing here costs a slot; producing anyway is worse, because the buckets go
+// into the commitment, every importer replays them and rejects, and the producer has by
+// then set its own head to the block and broadcast it.
 //
 // It reads block.GasUsed() rather than the header the caller still holds, because the
 // parlia commit path hands AssembleBlock a CopyHeader: that header keeps the
 // user-transaction total forever while the assembled block carries the system-transaction
 // gas Finalize added. The gas LIMIT comes from ls instead, the same value LaneSize was
 // derived from, so the quota and the capacity it is checked against cannot come from two
-// different headers.
-//
-// systemGasUsed is therefore the real figure, not the miner's gas reservation, and the
-// difference is load-bearing. LaneSize is clamped so the quota always fits the reserved
-// pool, which makes the inequality unfailable against the estimate - checking against it
-// could only ever catch a bucket mismatch. Against the real figure it also catches what the
-// lane newly makes reachable, system gas overrunning the reservation, which parlia's own
-// GasLimit < GasUsed guard cannot see because it has no idle-lane term.
+// different headers. That makes systemGasUsed the real figure rather than the miner's
+// reservation, which is load-bearing - see paymentlane.Budget.Verify.
 //
 // DeriveSystemGas rather than a bare subtraction: the inputs here are all local, so an
-// underflow means the accounting drifted, and it should be reported as that rather than as
-// a wrapped systemGasUsed near 2^64 under ErrViolated - the same confusion Budget.Verify
-// avoids one level down for the bucket sum.
-//
-// Failing here costs a slot. Producing anyway is worse: the buckets go into the commitment,
-// every importer replays them and rejects, and the producer has by then set its own head to
-// the block and broadcast it.
+// underflow means the accounting drifted and should be reported as that, not as a wrapped
+// systemGasUsed near 2^64 under ErrViolated.
 func (ls *LaneState) VerifyProduced(block *types.Block, poolUsed uint64) error {
 	if !ls.On() {
 		return nil

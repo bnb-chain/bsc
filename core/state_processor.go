@@ -224,15 +224,12 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		allLogs = append(allLogs, receipt.Logs...)
 	}
 
-	// BEP-703: the only authoritative check on the committed buckets. The producer can
-	// only attest to itself and so can the MEV admission gate - a dishonest party can
-	// always present a self-consistent pair of fake buckets - whereas these came from
-	// local replay.
+	// BEP-703: the only authoritative check on the committed buckets - see
+	// paymentlane.Budget.VerifyCommitment for why the producer's own check is not enough.
 	//
-	// systemGasUsed is the REAL value, not one derived from the commitment: gp is never
-	// passed to Finalize, so gasUsed grew by exactly the system-transaction gas while
-	// gp.Used() did not move. Never substitute block.GasUsed() here - that is
-	// attacker-supplied - and never DeriveSystemGas, whose inputs are the commitment.
+	// gasUsed here is the REAL system gas plus pool gas: gp is never passed to Finalize,
+	// so gasUsed grew by exactly the system-transaction gas while gp.Used() did not move.
+	// Never substitute block.GasUsed() - that is attacker-supplied.
 	if err := lane.VerifyImported(gasUsed, gp.Used(), laneCommitted); err != nil {
 		return nil, err
 	}

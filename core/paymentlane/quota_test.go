@@ -160,7 +160,7 @@ func TestLegalLatticeIsNotEmpty(t *testing.T) {
 func TestClampIsExhaustive(t *testing.T) {
 	for _, p := range legalLattice() {
 		for _, gl := range gasLimits() {
-			ceiling, floor := Ceiling(p, gl), Floor(p, gl)
+			ceiling, floor := laneCeiling(p, gl), laneFloor(p, gl)
 
 			// floor is defined against ceiling, so an empty intersection - and BEP
 			// 3.4's tie-break rule for it - cannot exist.
@@ -340,7 +340,7 @@ func TestStepSaturates(t *testing.T) {
 
 	const gl = 55_000_000
 	step := mulDivFloor(p.ExpandStep, gl, RatioDenom)
-	floor, ceiling := Floor(p, gl), Ceiling(p, gl)
+	floor, ceiling := laneFloor(p, gl), laneCeiling(p, gl)
 	require.Greater(t, step, floor, "premise: only then can a wrapped sum land in the window")
 
 	// Pick a predecessor whose naive sum wraps to a value inside the window.
@@ -373,7 +373,7 @@ func TestClampAppliesEveryBlock(t *testing.T) {
 	// Start at the ceiling for 70M and walk the gas limit down as CalcGasLimit
 	// would, by 1/1024 per block.
 	gl := uint64(70_000_000)
-	lane := Ceiling(p, gl)
+	lane := laneCeiling(p, gl)
 	require.Equal(t, uint64(5_600_000), lane)
 
 	// 70M -> 20M is 1283 decrements of 1/1024, so the bound has to allow for that;
@@ -389,7 +389,7 @@ func TestClampAppliesEveryBlock(t *testing.T) {
 		// In the band the quota does not step, so the only forces on it are the
 		// ratio ceiling and - below about 21.74M, where the system reservation
 		// leaves less room than 8% of the block - the safety clamp.
-		require.Equal(t, min(Ceiling(p, gl), satSub(gl, params.SystemTxsGasHardLimit)), lane,
+		require.Equal(t, min(laneCeiling(p, gl), satSub(gl, params.SystemTxsGasHardLimit)), lane,
 			"in the band only the ceiling and the safety clamp may move the quota, gasLimit %d", gl)
 		if gl <= 20_000_000 {
 			seenBelow = true
@@ -408,7 +408,7 @@ func TestClampAppliesEveryBlock(t *testing.T) {
 func TestBootstrapIsTheZeroSignal(t *testing.T) {
 	for _, p := range legalLattice() {
 		for _, gl := range gasLimits() {
-			want := min(Floor(p, gl), satSub(gl, params.SystemTxsGasHardLimit))
+			want := min(laneFloor(p, gl), satSub(gl, params.SystemTxsGasHardLimit))
 			require.Equal(t, want, LaneSize(p, Signal{}, gl), "params %s gasLimit %d", p, gl)
 		}
 	}
@@ -435,7 +435,7 @@ func TestBootstrapIsTheZeroSignal(t *testing.T) {
 func TestZeroSignalGuardIsWhatMakesTheSeedTheFloor(t *testing.T) {
 	p := stepAboveFloorParams()
 	const gl = 55_000_000
-	floor, step := Floor(p, gl), mulDivFloor(p.ExpandStep, gl, RatioDenom)
+	floor, step := laneFloor(p, gl), mulDivFloor(p.ExpandStep, gl, RatioDenom)
 	require.Greater(t, step, floor, "premise: only then are the two branches distinguishable")
 
 	require.True(t, gte128(0, RatioDenom, p.ExpandTrigger, 0),
@@ -444,7 +444,7 @@ func TestZeroSignalGuardIsWhatMakesTheSeedTheFloor(t *testing.T) {
 	got := LaneSize(p, Signal{}, gl)
 	require.Equal(t, floor, got)
 	// The value an unguarded implementation would produce: the step, clamped.
-	require.NotEqual(t, min(step, Ceiling(p, gl)), got)
+	require.NotEqual(t, min(step, laneCeiling(p, gl)), got)
 }
 
 // stepAboveFloorParams is a governance-legal tuple whose expansion step exceeds its
@@ -475,7 +475,7 @@ func TestNoHaltIsReachable(t *testing.T) {
 	// have no valid form at all, because the reservation alone consumes the block.
 	p := defaultParams()
 	const small = 20_000_000
-	unclamped := min(max(uint64(0), Floor(p, small)), Ceiling(p, small))
+	unclamped := min(max(uint64(0), laneFloor(p, small)), laneCeiling(p, small))
 	require.Greater(t, unclamped+params.SystemTxsGasHardLimit, uint64(small),
 		"premise: at %d gas the unclamped quota plus the reservation exceeds the block", small)
 	require.Zero(t, LaneSize(p, Signal{}, small), "the clamp must switch the lane off rather than halt the chain")
@@ -483,7 +483,7 @@ func TestNoHaltIsReachable(t *testing.T) {
 	// Production and the devnet are far above the boundary, so the clamp is inert
 	// there and the lane is genuinely exercised.
 	for _, gl := range []uint64{40_000_000, 55_000_000, 70_000_000} {
-		require.Equal(t, Floor(p, gl), LaneSize(p, Signal{}, gl), "the safety clamp must not bind at gasLimit %d", gl)
+		require.Equal(t, laneFloor(p, gl), LaneSize(p, Signal{}, gl), "the safety clamp must not bind at gasLimit %d", gl)
 	}
 }
 
@@ -707,7 +707,7 @@ func TestClampArmsHaveAbsoluteAnchors(t *testing.T) {
 		p := Params{MinRatio: 1, MaxRatio: 2_000, ExpandTrigger: 5_000, ShrinkTrigger: 2_000,
 			ExpandStep: 200, ShrinkStep: 50, MinGas: 21_000, MaxGas: 8_000_000}
 		require.True(t, contractLegal(p))
-		require.Equal(t, uint64(8_000_000), Ceiling(p, 70_000_000))
+		require.Equal(t, uint64(8_000_000), laneCeiling(p, 70_000_000))
 		require.Equal(t, uint64(14_000_000), mulDivFloor(p.MaxRatio, 70_000_000, RatioDenom),
 			"premise: the ratio arm is larger, so only MaxGas can be what binds")
 		// And through LaneSize: a predecessor above the cap must come back to it.
@@ -718,7 +718,7 @@ func TestClampArmsHaveAbsoluteAnchors(t *testing.T) {
 	t.Run("the ratio ceiling binds below the absolute cap", func(t *testing.T) {
 		p := defaultParams()
 		// 800 bps of 55M is 4,400,000, below MaxGas of 8,000,000.
-		require.Equal(t, uint64(4_400_000), Ceiling(p, 55_000_000))
+		require.Equal(t, uint64(4_400_000), laneCeiling(p, 55_000_000))
 	})
 
 	t.Run("the MinRatio arm binds above MinGas", func(t *testing.T) {
@@ -726,13 +726,13 @@ func TestClampArmsHaveAbsoluteAnchors(t *testing.T) {
 		p := Params{MinRatio: 200, MaxRatio: 800, ExpandTrigger: 8_000, ShrinkTrigger: 7_000,
 			ExpandStep: 200, ShrinkStep: 50, MinGas: 21_000, MaxGas: 8_000_000}
 		require.True(t, contractLegal(p))
-		require.Equal(t, uint64(1_100_000), Floor(p, 55_000_000))
+		require.Equal(t, uint64(1_100_000), laneFloor(p, 55_000_000))
 		require.Equal(t, uint64(1_100_000), LaneSize(p, Signal{}, 55_000_000))
 	})
 
 	t.Run("MinGas binds above the MinRatio arm", func(t *testing.T) {
 		// The shipped defaults: 200 bps of 55M is 1,100,000, below MinGas of 2,000,000.
-		require.Equal(t, uint64(2_000_000), Floor(defaultParams(), 55_000_000))
+		require.Equal(t, uint64(2_000_000), laneFloor(defaultParams(), 55_000_000))
 	})
 
 	t.Run("both arms at once, hand-computed", func(t *testing.T) {
@@ -741,8 +741,8 @@ func TestClampArmsHaveAbsoluteAnchors(t *testing.T) {
 		require.True(t, contractLegal(p))
 		// ceiling = min(2000*40M/1e4, 1e9) = min(8,000,000, 1e9) = 8,000,000
 		// floor   = min(max(1500*40M/1e4, 21000), ceiling) = min(6,000,000, 8,000,000)
-		require.Equal(t, uint64(8_000_000), Ceiling(p, 40_000_000))
-		require.Equal(t, uint64(6_000_000), Floor(p, 40_000_000))
+		require.Equal(t, uint64(8_000_000), laneCeiling(p, 40_000_000))
+		require.Equal(t, uint64(6_000_000), laneFloor(p, 40_000_000))
 		require.Equal(t, uint64(6_000_000), LaneSize(p, Signal{}, 40_000_000))
 	})
 }

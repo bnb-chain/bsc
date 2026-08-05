@@ -166,6 +166,32 @@ func Decode(h common.Hash) (Commitment, error) {
 	}, nil
 }
 
+// CheckHeaderBounds is the pair of bounds section 3.5.4 places at header verification,
+// as pure functions of the header. Neither can reject a block a correct producer made:
+// each bucket is a sum of pool deltas, and LaneSize is clamped below the gas limit.
+//
+// They matter for the blocks a correct producer did NOT make. Without them a header
+// carrying absurd buckets is decodable, so it enters the header chain and is only
+// refused once the block behind it has been fetched and executed - one free execution
+// per forged header. With them the refusal is a comparison.
+//
+// The third check 3.5.4 places here, the accounting rule on the committed values, is
+// deliberately absent: 3.5.4 derives general as header.GasUsed - paymentGasUsed, which
+// is not this file's GeneralGasUsed, so evaluating it here would enforce a different
+// inequality than the one execution enforces. See item 1(b) of the deviation table in
+// quota.go - it is the same definitional gap and it has to be settled there first.
+func (c Commitment) CheckHeaderBounds(gasUsed, gasLimit uint64) error {
+	if c.PaymentGasUsed > gasUsed {
+		return fmt.Errorf("%w: committed payment %d exceeds header gas used %d",
+			ErrUntruthy, c.PaymentGasUsed, gasUsed)
+	}
+	if c.LaneSize > gasLimit {
+		return fmt.Errorf("%w: committed lane size %d exceeds header gas limit %d",
+			ErrViolated, c.LaneSize, gasLimit)
+	}
+	return nil
+}
+
 // CheckInequality is the BEP-703 block validity rule, and the single source of
 // the verdict: the producer's pre-seal self-check, the MEV admission gate and the
 // import-side enforcement all call it, so the three cannot drift apart.

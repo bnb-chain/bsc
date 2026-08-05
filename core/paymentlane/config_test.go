@@ -505,8 +505,8 @@ func TestReadPathThroughARealTrie(t *testing.T) {
 	// And the quota computed from that configuration, through the same path a
 	// consumer would use.
 	const gasLimit = 55_000_000
-	require.Equal(t, Floor(gotParams, gasLimit), LaneSize(gotParams, Signal{}, gasLimit))
-	require.Equal(t, uint64(1_000_000), Floor(gotParams, gasLimit), "minRatio 150 of 55M is 825k, so minGas 1M is the binding floor")
+	require.Equal(t, laneFloor(gotParams, gasLimit), LaneSize(gotParams, Signal{}, gasLimit))
+	require.Equal(t, uint64(1_000_000), laneFloor(gotParams, gasLimit), "minRatio 150 of 55M is 825k, so minGas 1M is the binding floor")
 }
 
 // TestPaymentContractCountAboveUint64 covers the !ok arm of the count check, which no

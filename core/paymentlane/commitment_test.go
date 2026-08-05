@@ -186,3 +186,25 @@ func TestLaneCommitmentTagAgreesWithDecode(t *testing.T) {
 	require.False(t, types.UncleHashMatches(Encode(Commitment{}), uncles))
 	require.True(t, types.UncleHashMatches(uncles, uncles))
 }
+
+// TestCheckHeaderBoundsRejectsOnlyForgeries pins both directions: a commitment a
+// correct producer could have made must pass, and the two absurd ones must not.
+func TestCheckHeaderBoundsRejectsOnlyForgeries(t *testing.T) {
+	const gasUsed, gasLimit = 3_000_000, 55_000_000
+
+	// Every reachable shape: the buckets sum to at most gasUsed, and LaneSize is
+	// clamped below gasLimit, so the tightest legal case is equality on both.
+	for _, c := range []Commitment{
+		{},
+		{LaneSize: 2_000_000, GeneralGasUsed: 2_100_000, PaymentGasUsed: 900_000},
+		{LaneSize: gasLimit, GeneralGasUsed: 0, PaymentGasUsed: gasUsed},
+	} {
+		require.NoErrorf(t, c.CheckHeaderBounds(gasUsed, gasLimit), "reachable commitment %+v", c)
+	}
+
+	require.ErrorIs(t, Commitment{PaymentGasUsed: gasUsed + 1}.CheckHeaderBounds(gasUsed, gasLimit), ErrUntruthy)
+	require.ErrorIs(t, Commitment{LaneSize: gasLimit + 1}.CheckHeaderBounds(gasUsed, gasLimit), ErrViolated)
+	// GeneralGasUsed is deliberately unbounded here - see the doc comment on why the
+	// third 3.5.4 check cannot be evaluated at header time yet.
+	require.NoError(t, Commitment{GeneralGasUsed: gasUsed + 1}.CheckHeaderBounds(gasUsed, gasLimit))
+}

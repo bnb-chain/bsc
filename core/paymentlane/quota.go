@@ -81,9 +81,8 @@ const maxLaneRatio = 2_000
 //     is the signal (item 1) and the header payload (item 5), not the rule.
 //   - Shrink comparison: the strict signal < shrinkTrigger, so a signal landing on
 //     the threshold holds rather than shrinking, and the band is
-//     [shrinkTrigger, expandTrigger). CAVEAT: the published head still reads <=; the
-//     amendment is drafted, not pushed. Until it lands this diverges from the
-//     published text - resolve it THERE, do not "fix" the operator here.
+//     [shrinkTrigger, expandTrigger). 3.4.3 states both operators are normative and
+//     says why (an accumulator never reconverges after one boundary block).
 //
 // THE DEVIATIONS. Item 1 is ruled deliberate; items 6 and 8 were settled when they
 // were written; item 7 records an incompleteness in the text, not a difference in
@@ -94,16 +93,33 @@ const maxLaneRatio = 2_000
 // through a listed token; that is a preference, not a decision. Item 5 waits on the
 // carrier decision, which is open for its own reasons.
 //
-//  1. THE CONGESTION SIGNAL OMITS THE PAYMENT OVERFLOW TERM. Section 3.4.2 defines
-//     signalGasUsed = generalGasUsed + max(0, paymentGasUsed - paymentLaneSize).
-//     Signal carries generalGasUsed only: newSignal decodes the parent's
-//     paymentGasUsed and drops it. So the lane expands on general congestion alone,
-//     and the traffic the lane privileges can never grow it - which also means
-//     section 6's "sustained payment traffic beyond the quota does raise the signal
-//     and expand the reservation" does not hold here. RULED DELIBERATE (2026-08-05).
-//     Highest-value item in this table: the two signals differ on every block where
-//     payment overflowed its quota, and one differing block offsets the accumulator
-//     forever.
+//  1. THE CONGESTION SIGNAL DIFFERS FROM 3.4.2 IN TWO WAYS, AND THIS IS THE
+//     HIGHEST-VALUE ITEM IN THE TABLE: one differing block offsets the accumulator
+//     forever, so a second implementation that aligns on one half and not the other
+//     still forks.
+//
+//     (a) The overflow term is omitted. 3.4.2 defines signalGasUsed =
+//     generalGasUsed + max(0, paymentGasUsed - paymentLaneSize); Signal carries
+//     generalGasUsed only, because newSignal decodes the parent's paymentGasUsed and
+//     drops it. So the lane expands on general congestion alone and the traffic it
+//     privileges can never grow it - which is also why section 6's "sustained payment
+//     traffic beyond the quota does raise the signal and expand the reservation" does
+//     not hold here. RULED DELIBERATE (2026-08-05). Divergence is confined to blocks
+//     where payment overflowed its quota.
+//
+//     (b) System-transaction gas is excluded, and this half diverges on EVERY block.
+//     3.4.2 feeds on generalGasUsed, which 3.5.2 pins as header.GasUsed - payment;
+//     Parlia's system transactions are general under 3.2, so the BEP's signal
+//     includes their gas. Commitment.GeneralGasUsed deliberately does not - the
+//     buckets sum to the user-transaction pool - so this signal is short by
+//     systemGasUsed always, not only when payment overflowed. The blocks that
+//     actually diverge are those whose signal sits within systemGasUsed of either
+//     trigger, a band a few tenths of a percent of GasLimit wide around 80% and 60%
+//     fill. NOT RULED: the substitution that makes 3.3's two-term inequality
+//     identical to this file's three-term form (see the inequality item above) does
+//     NOT carry over to 3.4.2, because the signal reads general alone rather than the
+//     sum. Aligning means either adding systemGasUsed back into the signal here or
+//     amending 3.4.2 to name the user-transaction total.
 //
 //  2. A ZERO-VALUE BARE TRANSFER IS GENERAL. Section 3.2's category 1 carries no
 //     value condition - neither the table nor the pseudocode - so a value-0 call to
@@ -313,7 +329,7 @@ func newSignal(prev *Commitment, parentGasLimit uint64) Signal {
 // Note this totality is LaneSize's alone. Applies panics on a nil header and
 // ParentSignal errors on a nil parent; both are documented at their own definitions.
 //
-// The producer must not clamp the result; see Budget.
+// The producer must not clamp the result; see core.LaneState.SetQuota for why.
 func LaneSize(p Params, s Signal, gasLimit uint64) uint64 {
 	next := s.laneSize
 
@@ -384,17 +400,11 @@ func CheckLaneSize(committed uint64, p Params, s Signal, gasLimit uint64) error 
 	return nil
 }
 
-// Ceiling returns the upper clamp bound for this block.
-//
-// Used by tests and by the devnet read-path check, not by any metric: the miner reports
-// laneSize and idleLane, which are what an operator can act on, and the bounds are a pure
-// function of the parameters that anyone can recompute.
-func Ceiling(p Params, gasLimit uint64) uint64 { return laneCeiling(p, gasLimit) }
-
-// Floor returns the lower clamp bound for this block. See Ceiling on who uses these.
-// Note it is not a lower bound on LaneSize's result: the safety clamp may go below it.
-func Floor(p Params, gasLimit uint64) uint64 { return laneFloor(p, gasLimit) }
-
+// laneCeiling and laneFloor are the two clamp bounds for this block. Unexported: no
+// metric reports them - the miner reports laneSize and idleLane, which are what an
+// operator can act on - and they are a pure function of the parameters, which anyone
+// can recompute. Note laneFloor is not a lower bound on LaneSize's result: the safety
+// clamp may go below it.
 func laneCeiling(p Params, gasLimit uint64) uint64 {
 	return min(mulDivFloor(p.MaxRatio, gasLimit, RatioDenom), p.MaxGas)
 }

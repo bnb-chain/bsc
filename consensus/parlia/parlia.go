@@ -713,7 +713,9 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 		if header.UncleHash != types.EmptyUncleHash {
 			return errInvalidUncleHash
 		}
-	} else if _, err := paymentlane.Decode(header.UncleHash); err != nil {
+	} else if c, err := paymentlane.Decode(header.UncleHash); err != nil {
+		return err
+	} else if err := c.CheckHeaderBounds(header.GasUsed, header.GasLimit); err != nil {
 		return err
 	}
 
