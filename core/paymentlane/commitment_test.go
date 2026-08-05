@@ -129,3 +129,60 @@ func TestDecodeIsTheOnlyBootstrapDiscriminator(t *testing.T) {
 	_, err = Decode(corrupt)
 	require.ErrorIs(t, err, ErrBadCommitment)
 }
+
+// TestLaneCommitmentTagAgreesWithDecode is the bridge that keeps core/types' framing
+// test and Decode from drifting apart.
+//
+// The two implement the same framing test in two packages, because core/types cannot
+// import this one - and if they ever disagree the failure is asymmetric and silent:
+// a tag that is too narrow makes the body and propagation layers reject or quietly
+// drop every lane block (eth/protocols/eth logs it as an uncle problem), while a tag
+// that is too wide lets a header whose commitment Decode rejects still pass as
+// "claims no uncles". Neither shows up as a test failure anywhere else.
+func TestLaneCommitmentTagAgreesWithDecode(t *testing.T) {
+	// Equivalence over the framing bytes, exhaustively in the version byte and over
+	// every reserved position, against a fixed non-zero payload that neither side may
+	// look at.
+	var h common.Hash
+	rand.New(rand.NewSource(1)).Read(h[:])
+	for v := 0; v < 256; v++ {
+		h[24] = byte(v)
+		for i := 25; i < 32; i++ {
+			for _, b := range []byte{0, 1, 0xff} {
+				h[i] = b
+				_, err := Decode(h)
+				// h is never EmptyUncleHash here (the payload below is a fixed
+				// non-zero fill), which is what makes ClaimsNoUncles a faithful
+				// probe for the framing test rather than for the empty carrier.
+				require.NotEqual(t, types.EmptyUncleHash, h)
+				require.Equal(t, err == nil, (&types.Header{UncleHash: h}).ClaimsNoUncles(),
+					"version %d, reserved byte %d = %#x", v, i, b)
+			}
+			h[i] = 0
+		}
+	}
+
+	// Real commitments are tagged, and so is the reachable all-zero one.
+	for _, c := range []Commitment{
+		{},
+		{LaneSize: 2_000_000},
+		{LaneSize: 4_400_000, GeneralGasUsed: 49_600_000, PaymentGasUsed: 1},
+		{LaneSize: math.MaxUint64, GeneralGasUsed: math.MaxUint64, PaymentGasUsed: math.MaxUint64},
+	} {
+		encoded := Encode(c)
+		require.True(t, (&types.Header{UncleHash: encoded}).ClaimsNoUncles(), "%x", encoded)
+	}
+
+	// The carrier's own empty value must not read as a commitment, or a pre-activation
+	// header would decode as lane accounting.
+	_, err := Decode(types.EmptyUncleHash)
+	require.ErrorIs(t, err, ErrBadCommitment)
+	require.True(t, (&types.Header{UncleHash: types.EmptyUncleHash}).ClaimsNoUncles())
+
+	// A real uncle list hash is neither, and the relaxation must not reach it: the
+	// body's uncle hash is non-empty, so only exact equality can match.
+	uncles := types.CalcUncleHash([]*types.Header{{Number: common.Big1}})
+	require.False(t, (&types.Header{UncleHash: uncles}).ClaimsNoUncles())
+	require.False(t, types.UncleHashMatches(Encode(Commitment{}), uncles))
+	require.True(t, types.UncleHashMatches(uncles, uncles))
+}

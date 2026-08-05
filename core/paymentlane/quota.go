@@ -139,17 +139,20 @@ const maxLaneRatio = 2_000
 //     [24], i.e. inside the text's mandatory-zero window, so a conformant client
 //     rejects every header this produces. Committing both buckets and deriving
 //     systemGasUsed is what keeps a breathe block's system gas out of the
-//     congestion signal; see Commitment and Encode. Section 3.5.3 additionally
-//     claims header.UncleHash exclusively - this package deliberately names no
-//     carrier, so that decision stays open.
+//     congestion signal; see Commitment and Encode. Section 3.5.3's choice of
+//     header.UncleHash was adopted for BSC (2026-08-05), so the field name is no longer
+//     a deviation - the LAYOUT still is, and no conformant client accepts these headers
+//     until 3.5.2 is amended.
 //
-//  6. payBidTx IS PAYMENT CLASS. The MEV rebate transaction is an ordinary
-//     externally-signed transfer with empty calldata and no structural marker, so
-//     the mechanical predicate makes it payment on both sides. There is no
-//     consensus risk in that - both sides run the same predicate over the same
-//     bytes - only an economic leak of about 25000 gas per MEV block. A client
-//     must NOT reclassify it unilaterally: that is what would make the two sides'
-//     buckets disagree and produce a BAD_BLOCK with no indicative log.
+//  6. payBidTx IS USUALLY PAYMENT CLASS. The MEV rebate transaction is an ordinary
+//     externally-signed transfer with empty calldata and no structural marker, so the
+//     mechanical predicate decides it like any other - payment for the common shape, an
+//     EOA payee and a non-zero fee, general when the payee is a contract (a splitter or
+//     a Safe) or when the fee is zero, which is what BuilderFeeCeil defaults to. Either
+//     way there is no consensus risk - both sides run the same predicate over the same
+//     bytes - only an economic leak of about 25000 gas per MEV block. A client must NOT
+//     reclassify it unilaterally: that is what would make the two sides' buckets
+//     disagree and produce a BAD_BLOCK with no indicative log.
 //
 //  7. THE CONTRACT'S ABSOLUTE PARAMETER BOUNDS ARE NOT IN THE BEP. Section 3.6
 //     gives invariants (1)-(6), and 3.4 bounds every ratio by RatioDenom. Nothing else. The

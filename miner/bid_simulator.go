@@ -1207,6 +1207,22 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		return
 	}
 
+	// BEP-703: the builder's own transactions are committed at the top of this function
+	// without the lane admission gate that guards local packing, and the greedy merge
+	// only gates the transactions IT adds. So the invariant has to be re-established
+	// once here, at the end, with payBidTx's reservation already returned to the pool.
+	//
+	// Discarding the bid is the point: without this the violation surfaces at seal time
+	// in LaneState.VerifyProduced, and by then the only available answer is to produce no
+	// block at all for this height - every slot this builder wins, until it is jailed.
+	if !bidRuntime.env.lane.QuotaIntact(bidRuntime.env.gasPool.Gas()) {
+		err = fmt.Errorf("bid leaves no room for the payment lane quota: idle %d, gas left %d",
+			bidRuntime.env.lane.Budget.IdleLane(), bidRuntime.env.gasPool.Gas())
+		log.Warn("BidSimulator: bid rejected by the payment lane", "builder", bidRuntime.bid.Builder,
+			"bidHash", bidRuntime.bid.Hash(), "err", err)
+		return
+	}
+
 	bestBid := b.GetBestBid(parentHash)
 	simElapsed := time.Since(startTS)
 	if bestBid == nil {
@@ -1374,7 +1390,23 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 		}
 	}
 
+	// BEP-703, the SECOND apply site; worker.applyTransaction is the other, and one
+	// greedy-merged MEV block passes through both, so a change to either belongs in both.
+	// #3761 is what a one-sided change looks like here.
+	//
+	// Not identical to that site, deliberately: it reverts the gas pool on failure and
+	// this one does not. Booking below the apply but above the error return is still
+	// right, because the buckets track Used() either way, and because both callers
+	// abandon the whole bid on any error - so a bid that took this path never becomes a
+	// block.
+	class, err := env.lane.Classify(tx)
+	if err != nil {
+		return err
+	}
+	usedBefore := env.gasPool.Used()
+
 	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, core.NewReceiptBloomGenerator())
+	env.lane.AccountFrom(class, env.gasPool, usedBefore)
 	if err != nil {
 		return err
 	} else if unRevertible && receipt.Status == types.ReceiptStatusFailed {

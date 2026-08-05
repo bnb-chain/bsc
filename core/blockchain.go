@@ -39,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core/history"
 	"github.com/ethereum/go-ethereum/core/monitor"
+	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
@@ -2713,7 +2714,13 @@ func (bc *BlockChain) ProcessBlock(ctx context.Context, parentRoot common.Hash, 
 	res, err := bc.processor.Process(pctx, block, statedb, bc.cfg.VmConfig)
 	spanEnd(&err)
 	if err != nil {
-		bc.reportBadBlock(block, res, err)
+		// A lane check that could not read state, or could not resolve an ancestor
+		// header, is a local fault and not a bad block - blaming the sender here would
+		// drop every peer serving a valid chain. Same boundary the state.New failure
+		// above already draws.
+		if !errors.Is(err, paymentlane.ErrStateUnavailable) {
+			bc.reportBadBlock(block, res, err)
+		}
 		return nil, err
 	}
 	ptime := time.Since(pstart)

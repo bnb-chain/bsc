@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
+	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -92,6 +93,29 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 	if lastBlock == nil {
 		return nil, errors.New("could not get parent block")
 	}
+	// BEP-703: settle the quota before executing anything. It is a pure function of the
+	// parent header and the parent post-state, so it can be - and must be - decided here;
+	// only the buckets need replay.
+	//
+	// The exact position between the parent lookup above and the transaction loop below is
+	// free, NOT load-bearing: statedb.Reader() is pinned to originalRoot and is unaffected
+	// by every write this block makes, including the system-contract upgrade on the next
+	// line. That immunity is the security property the classifier rests on, so do not
+	// "protect" it by reordering.
+	lane, err := ResolveLaneState(config, p.chain, lastBlock, header, statedb.Reader())
+	if err != nil {
+		return nil, err
+	}
+	var laneCommitted paymentlane.Commitment
+	if lane.On() {
+		if laneCommitted, err = paymentlane.Decode(header.UncleHash); err != nil {
+			return nil, err
+		}
+		if err = lane.CheckQuota(laneCommitted.LaneSize); err != nil {
+			return nil, err
+		}
+	}
+
 	// Handle upgrade built-in system contract code
 	systemcontracts.TryUpdateBuildInSystemContract(p.chain.Config(), blockNumber, lastBlock.Time, block.Time(), statedb, true)
 
@@ -99,7 +123,6 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		context vm.BlockContext
 		signer  = types.MakeSigner(p.chain.Config(), header.Number, header.Time)
 		txNum   = len(block.Transactions())
-		err     error
 	)
 
 	// Apply pre-execution system calls.
@@ -147,18 +170,33 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 			bloomProcessors.Close()
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
+		// System transactions never reach here - they were split out above - so every
+		// classified transaction is a user transaction, and systemGasUsed stays the
+		// separate term it is in the rule. Classified before the apply, like the three
+		// producing sites, and before the span opens so this error path needs no spanEnd.
+		//
+		// No admission predicate on this side, deliberately: gp already enforces capacity
+		// and the rule is one global test in VerifyCommitment below. Adding Admits here
+		// would be redundant AND would reject blocks the rule permits, because admission
+		// is order-sensitive and the importer does not get to choose the order.
+		class, err := lane.Classify(tx)
+		if err != nil {
+			bloomProcessors.Close()
+			return nil, fmt.Errorf("could not classify tx %d [%v]: %w", i, tx.Hash().Hex(), err)
+		}
 		statedb.SetTxContext(tx.Hash(), i)
 		_, _, spanEnd := telemetry.StartSpan(ctx, "core.ApplyTransactionWithEVM",
 			telemetry.StringAttribute("tx.hash", tx.Hash().Hex()),
 			telemetry.Int64Attribute("tx.index", int64(i)),
 		)
-
+		usedBefore := gp.Used()
 		receipt, err := ApplyTransactionWithEVM(msg, gp, statedb, blockNumber, blockHash, context.Time, tx, evm, bloomProcessors)
 		if err != nil {
 			bloomProcessors.Close()
 			spanEnd(&err)
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
+		lane.AccountFrom(class, gp, usedBefore)
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)
 		spanEnd(nil)
@@ -184,6 +222,19 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 	// Add the system-tx logs appended by Finalize.
 	for _, receipt := range receipts[numUserReceipts:] {
 		allLogs = append(allLogs, receipt.Logs...)
+	}
+
+	// BEP-703: the only authoritative check on the committed buckets. The producer can
+	// only attest to itself and so can the MEV admission gate - a dishonest party can
+	// always present a self-consistent pair of fake buckets - whereas these came from
+	// local replay.
+	//
+	// systemGasUsed is the REAL value, not one derived from the commitment: gp is never
+	// passed to Finalize, so gasUsed grew by exactly the system-transaction gas while
+	// gp.Used() did not move. Never substitute block.GasUsed() here - that is
+	// attacker-supplied - and never DeriveSystemGas, whose inputs are the commitment.
+	if err := lane.VerifyImported(gasUsed, gp.Used(), laneCommitted); err != nil {
+		return nil, err
 	}
 
 	return &ProcessResult{
@@ -463,19 +514,49 @@ type blockAssembler interface {
 	FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error)
 }
 
-// AssembleBlock finalizes the state and assembles the block with provided
-// body and receipts.
-func AssembleBlock(engine consensus.Engine, chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, []*types.Receipt, error) {
+// AssembleBlock turns an executed block's parts into a sealed-ready block.
+//
+// lane carries the BEP-703 buckets. Writing the commitment here rather than at each
+// producer is deliberate: this is the choke point every sealing producer already passes
+// through - parlia's commit path, the dev generateWork path and GenerateChain - so the
+// mapping from buckets to committed fields exists in exactly one place, which is what
+// keeps it from being crossed against the importer's comparison. See
+// (*types.Block).SetUncleHash for why it happens after assembly and not earlier, and do
+// not call block.Hash() above that line.
+//
+// A nil lane means "no commitment", and it is FAIL-OPEN in both directions: no commitment
+// is written and VerifyProduced is skipped, so a post-Gauss block built that way is
+// rejected network-wide with nothing local having objected. There is exactly one caller
+// entitled to it, internal/ethapi.simulate, whose blocks are never sealed or imported;
+// any new caller on a sealing path must pass a resolved LaneState.
+func AssembleBlock(engine consensus.Engine, chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, lane *LaneState) (*types.Block, []*types.Receipt, error) {
+	var block *types.Block
 	if p, ok := engine.(blockAssembler); ok {
-		block, receipts, err := p.FinalizeAndAssemble(chain, header, state, body, receipts, nil)
+		assembled, assembledReceipts, err := p.FinalizeAndAssemble(chain, header, state, body, receipts, nil)
 		if err != nil {
 			return nil, nil, err
 		}
-		return block, receipts, nil
+		block, receipts = assembled, assembledReceipts
+	} else {
+		if err := engine.Finalize(chain, header, state, &body.Transactions, body.Uncles, body.Withdrawals, &receipts, nil, &header.GasUsed, nil); err != nil {
+			return nil, nil, err
+		}
+		header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+		block = types.NewBlock(header, body, receipts, trie.NewStackTrie(nil))
 	}
-	if err := engine.Finalize(chain, header, state, &body.Transactions, body.Uncles, body.Withdrawals, &receipts, nil, &header.GasUsed, nil); err != nil {
-		return nil, nil, err
+	if lane.On() {
+		// The two uses of the slot are mutually exclusive, and silently preferring the
+		// commitment would emit a block whose uncle list can never be verified again.
+		// Unreachable under parlia, which forbids uncles outright; reachable from
+		// GenerateChain, which still offers BlockGen.AddUncle.
+		if len(body.Uncles) != 0 {
+			return nil, nil, errors.New("payment lane and uncles cannot share the uncle hash slot")
+		}
+		block.SetUncleHash(paymentlane.Encode(paymentlane.Commitment{
+			LaneSize:       lane.Budget.LaneSize,
+			GeneralGasUsed: lane.Budget.GeneralUsed,
+			PaymentGasUsed: lane.Budget.PaymentUsed,
+		}))
 	}
-	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
-	return types.NewBlock(header, body, receipts, trie.NewStackTrie(nil)), receipts, nil
+	return block, receipts, nil
 }

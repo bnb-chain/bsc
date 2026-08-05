@@ -214,7 +214,7 @@ func (h *Header) EmptyBody() bool {
 	var (
 		emptyWithdrawals = h.WithdrawalsHash == nil || *h.WithdrawalsHash == EmptyWithdrawalsHash
 	)
-	return h.TxHash == EmptyTxsHash && h.UncleHash == EmptyUncleHash && emptyWithdrawals
+	return h.TxHash == EmptyTxsHash && h.ClaimsNoUncles() && emptyWithdrawals
 }
 
 // EmptyReceipts returns true if there are no receipts for this header/block.
@@ -509,6 +509,15 @@ func (b *Block) Size() uint64 {
 
 func (b *Block) SetRoot(root common.Hash) { b.header.Root = root }
 
+// SetUncleHash overwrites the uncle slot, which from BEP-703's activation carries the
+// payment lane commitment instead of an uncle list hash.
+//
+// A setter rather than an argument to NewBlock because NewBlock derives that field
+// from the body and must keep doing so for every chain that really has uncles. Like
+// SetRoot, this is only safe BEFORE the first Hash() call - the block hash is cached
+// with no invalidation - so it belongs immediately after assembly and nowhere else.
+func (b *Block) SetUncleHash(hash common.Hash) { b.header.UncleHash = hash }
+
 // SanityCheck can be used to prevent that unbounded fields are
 // stuffed with junk data to add processing overhead
 func (b *Block) SanityCheck() error {
@@ -536,6 +545,57 @@ func CalcUncleHash(uncles []*Header) common.Hash {
 	}
 	return rlpHash(uncles)
 }
+
+// laneCommitmentVersion is the version byte BEP-703 stamps into UncleHash[24].
+//
+// It duplicates paymentlane.commitVersion because the dependency only runs one way:
+// core/paymentlane imports this package, so this package cannot call Decode. The split
+// is deliberate rather than merely forced - this package owns the TAG, which is all the
+// body and propagation checks need, and paymentlane stays the only place that reads the
+// PAYLOAD. TestLaneCommitmentTagAgreesWithDecode bridges the two so they cannot drift.
+const laneCommitmentVersion byte = 1
+
+// isLaneCommitment reports whether these 32 bytes are a payment lane commitment
+// rather than an uncle list hash. Framing only - version byte plus the mandatory zero
+// tail - never the values, and deliberately silent on whether the lane is active:
+// paymentlane.Applies answers that, where the parent header is in scope.
+func isLaneCommitment(h common.Hash) bool {
+	if h[24] != laneCommitmentVersion {
+		return false
+	}
+	for _, b := range h[25:] {
+		if b != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// UncleHashMatches reports whether a body whose uncle list hashes to bodyUncleHash
+// belongs to a header carrying headerUncleHash.
+//
+// Two hashes rather than a *Header so the propagation path can pass Block.UncleHash()
+// instead of Block.Header(), which deep-copies the header on every propagated block.
+//
+// The relaxation is sound on every chain, not just post-activation BSC, and not because
+// any engine forbids uncles: it can only fire when the body has no uncles, since
+// bodyUncleHash == EmptyUncleHash is exactly "the list was empty". No uncle can be
+// smuggled past it, and the worst a lane-shaped uncle slot can buy on a chain that does
+// use uncles is that one block's hash goes uncompared - a block which, by that same
+// condition, has no uncles to compare.
+func UncleHashMatches(headerUncleHash, bodyUncleHash common.Hash) bool {
+	return bodyUncleHash == headerUncleHash ||
+		(bodyUncleHash == EmptyUncleHash && isLaneCommitment(headerUncleHash))
+}
+
+// ClaimsNoUncles reports whether h says its block has no uncle headers - the special
+// case of UncleHashMatches for an empty list, and the form the "must I fetch a body"
+// questions want.
+//
+// Not the same as UncleHash == EmptyUncleHash any more: a lane block claims no uncles
+// while holding 32 bytes that are not an uncle hash. Uncles stay forbidden either way,
+// since Parlia.VerifyUncles rejects any block that has one.
+func (h *Header) ClaimsNoUncles() bool { return UncleHashMatches(h.UncleHash, EmptyUncleHash) }
 
 // CalcRequestsHash creates the block requestsHash value for a list of requests.
 func CalcRequestsHash(requests [][]byte) common.Hash {

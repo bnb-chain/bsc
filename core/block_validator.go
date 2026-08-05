@@ -64,7 +64,10 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 	if err := v.bc.engine.VerifyUncles(v.bc, block); err != nil {
 		return err
 	}
-	if hash := types.CalcUncleHash(block.Uncles()); hash != header.UncleHash {
+	// UncleHashMatches, not a bare comparison: past BEP-703's activation the header's
+	// uncle slot carries the payment lane commitment. Sound for every engine, including
+	// the ones that do allow uncles - see UncleHashMatches for why.
+	if hash := types.CalcUncleHash(block.Uncles()); !types.UncleHashMatches(header.UncleHash, hash) {
 		return fmt.Errorf("uncle root hash mismatch (header value %x, calculated %x)", header.UncleHash, hash)
 	}
 

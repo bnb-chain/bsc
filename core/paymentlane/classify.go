@@ -106,11 +106,19 @@ func NewClassifier(parentRoot common.Hash, parent AccountReader, listed map[comm
 // reserved range.
 //
 // On a state-read failure it returns (ClassGeneral, err) and records err
-// stickily. ClassGeneral is the fail-shut value in both directions: a producer
-// that ignored the error would under-fill the lane, which costs revenue but still
-// yields a valid block, whereas ClassPayment would shrink IdleLane, widen general
-// headroom and over-pack. An importer that ignored it would reject the block,
-// which is a correct refusal rather than acceptance of an invalid one.
+// stickily. ClassGeneral is the conservative choice for ADMISSION - it can only
+// under-fill the lane, whereas ClassPayment would shrink IdleLane, widen general
+// headroom and over-pack. It is NOT a safe default for ACCOUNTING, so neither
+// caller may lean on the value instead of handling the error:
+//
+//	producer  the gas lands in the wrong bucket, so both committed values are
+//	          wrong and every importer replays them correctly and rejects with
+//	          ErrUntruthy. The miner also writes its own block without
+//	          re-executing it and then broadcasts, so it advances its head onto a
+//	          block nobody accepts. Err() must abort production.
+//	importer  rejecting is a correct refusal rather than acceptance of an invalid
+//	          block - but the fault is local, so it must be classified retryable
+//	          rather than reported as a bad block.
 //
 // The gates are ordered so that no state is touched until every free test has
 // passed, and so that each one dominates the next for a reason:
@@ -240,9 +248,9 @@ func (c *Classifier) destinationHasCode(addr common.Address) (bool, error) {
 // path is unreachable only because UBTTime is nil in every shipped config - i.e. it
 // goes live at the UBT fork, not never.
 //
-// Dropping the check is silent and permissive: an account whose reader omitted the
-// code hash would compare unequal to EmptyCodeHash, look coded, and its transfers
-// would leave the lane - visible only as demand that never materialised.
+// Dropping the check is silent and RESTRICTIVE: an account whose reader omitted the code
+// hash would compare unequal to EmptyCodeHash, look coded, and its transfers would leave
+// the lane - visible only as demand that never materialised.
 func hasCodeHash(codeHash []byte) bool {
 	return len(codeHash) != 0 && !bytes.Equal(codeHash, types.EmptyCodeHash.Bytes())
 }

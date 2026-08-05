@@ -168,12 +168,14 @@ func (b *Budget) Account(class Class, delta uint64) {
 // enforces "every apply was accounted for", and that is a discipline maintained
 // by people.
 //
-// Pass gasReserved as systemGasUsed. That is parlia's own estimate
-// (EstimateGasReservedForSystemTxs), and it is an empirical margin - the largest
-// values seen on mainnet, times a factor - not a bound anything enforces. So
-// "whatever passes here also passes on import" holds with the same confidence as
-// that margin, no more. It is not a new failure mode: were the real system gas to
-// exceed the reservation, the block would bust GasLimit with or without the lane.
+// Pass the REAL system gas, i.e. header.GasUsed after Finalize minus poolUsed - not
+// parlia's EstimateGasReservedForSystemTxs. The estimate is an empirical margin, the
+// largest values seen on mainnet times a factor, and nothing enforces it; worse, the
+// quota is clamped so that it always fits the reserved pool, which makes the inequality
+// unfailable against the estimate and reduces this to the bucket-sum check alone.
+// Against the real figure it also catches system gas overrunning the reservation, which
+// the lane newly makes reachable at high fill and which parlia's own
+// GasLimit < GasUsed guard cannot see, having no idle-lane term.
 func (b Budget) Verify(gasLimit, systemGasUsed, poolUsed uint64) error {
 	// bits.Add64 rather than a plain sum, to match the rest of the package. A
 	// wrapped pair is unreachable here - both buckets are accumulated from pool

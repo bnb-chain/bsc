@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -40,8 +41,22 @@ func (p *Parlia) PrepareForBidBlock(chain consensus.ChainHeaderReader, header *t
 }
 
 // FinalizeAndAssembleBidBlock assembles a BidBlock with unsigned system txs.
+//
+// This is the one production assembly path that does NOT go through
+// core.AssembleBlock, so it cannot stamp a BEP-703 commitment: finalizeAndAssemble
+// writes EmptyUncleHash and types.NewBlock re-derives it from the body, with nothing
+// afterwards to overwrite. A lane block built here would therefore be rejected
+// network-wide - after handleBidBlockResult had already signed and broadcast it.
+//
+// The refusal lives here, next to the clobber, and not only at the RPC gate in
+// miner: that gate is in another package and a reopening change would have to
+// remember it, whereas this fails the moment the path is exercised.
 func (p *Parlia) FinalizeAndAssembleBidBlock(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
 	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
+	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
+	if paymentlane.Applies(chain.Config(), parent, header) {
+		return nil, nil, errors.New("bidblock cannot carry a payment lane commitment")
+	}
 	block, receipts, err := p.finalizeAndAssemble(chain, header, state, body, receipts, tracer, systemTxPacking)
 	if err != nil {
 		return nil, nil, err

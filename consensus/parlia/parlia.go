@@ -32,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/forkid"
+	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -634,10 +635,7 @@ func (p *Parlia) VerifyUnsealedHeader(chain consensus.ChainHeaderReader, header 
 		}
 	}
 
-	// Ensure that the block doesn't contain any uncles which are meaningless in PoA
-	if header.UncleHash != types.EmptyUncleHash {
-		return errInvalidUncleHash
-	}
+	// UncleHash is checked in verifyCascadingFields: the decision needs the parent header.
 
 	bohr := chain.Config().IsBohr(header.Number, header.Time)
 	if !bohr {
@@ -701,6 +699,21 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 
 	parent, err := p.getParent(chain, header, parents)
 	if err != nil {
+		return err
+	}
+
+	// Uncles are meaningless in PoA and stay forbidden either way - VerifyUncles rejects
+	// any block that has one. What varies is the 32 bytes the header reserves for their
+	// hash: from BEP-703's activation Parlia repurposes them to carry the payment lane
+	// commitment, so past that point EmptyUncleHash is the malformed case and a
+	// well-formed commitment is required. Applies needs the parent, which is why this
+	// lives here rather than beside the standalone field checks in verifyHeader.
+	paymentLane := paymentlane.Applies(chain.Config(), parent, header)
+	if !paymentLane {
+		if header.UncleHash != types.EmptyUncleHash {
+			return errInvalidUncleHash
+		}
+	} else if _, err := paymentlane.Decode(header.UncleHash); err != nil {
 		return err
 	}
 
@@ -1591,6 +1604,9 @@ func (p *Parlia) finalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	if header.GasLimit < header.GasUsed {
 		return nil, nil, errors.New("gas consumption of system txs exceed the gas limit")
 	}
+	// Not the last word on this field: types.NewBlock below re-derives it from the body,
+	// and core.AssembleBlock then stamps the BEP-703 commitment onto the assembled block.
+	// Writing a commitment HERE would be silently discarded four lines down.
 	header.UncleHash = types.EmptyUncleHash
 	var blk *types.Block
 	var rootHash common.Hash

@@ -38,10 +38,11 @@
 // activation. Recomputing it from chain history is not merely expensive, it needs
 // every intervening block's CLASSIFIED generalGasUsed - i.e. full re-execution
 // against historical state, not headers alone - so it must be carried in the parent
-// header. This package defines how the three committed
-// values pack into 32 bytes (Encode/Decode) but deliberately does NOT name the
-// header field that carries them - that decision is open, and keeping it out of
-// here means it can be made without touching the rules.
+// header. This package defines how the three committed values pack into 32 bytes
+// (Encode/Decode) and still does not name the field, so the rules stay independent of
+// it. The carrier chosen for BSC is header.UncleHash, wired in core and core/types; the
+// only reason to know that here is that Encode's range must avoid EmptyUncleHash, which
+// is why commitVersion exists.
 //
 // # Deviations from the BEP text
 //

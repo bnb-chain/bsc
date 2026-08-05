@@ -800,7 +800,10 @@ func (q *queue) DeliverBodies(id string, hashes eth.BlockBodyHashes, bodies []et
 		if hashes.TransactionRoots[index] != header.TxHash {
 			return errInvalidBody
 		}
-		if hashes.UncleHashes[index] != header.UncleHash {
+		// The delivered body's uncle hash is EmptyUncleHash exactly when its list was
+		// empty, so UncleHashMatches admits a BEP-703 commitment in the header slot
+		// without ever admitting an uncle.
+		if !types.UncleHashMatches(header.UncleHash, hashes.UncleHashes[index]) {
 			return errInvalidBody
 		}
 		if header.WithdrawalsHash == nil {

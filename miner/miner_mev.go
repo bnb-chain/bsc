@@ -118,10 +118,22 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *buildertypes.BidBloc
 	// transition does a SetCode the builder never simulated. Add every new system-contract
 	// fork here. The check runs against the bid's own parent, not the head, so it also fires
 	// on a stale bid naming a pre-fork parent while the head is already past the fork.
+	// BEP-703 additionally disables this channel for as long as the payment lane is live,
+	// not merely on its activation block, hence IsGauss rather than IsOnGauss - which also
+	// keeps the activation block itself covered. A bidblock header is taken verbatim, so
+	// the builder authors the lane commitment, and unlike every other builder-supplied
+	// field the buckets cannot be adjudicated before signing: a cheap bound (committed
+	// payment gas <= the sum of payment-class gas limits) is free to defeat, since a bare
+	// transfer may declare a limit far above the 21,000 it uses, and full replay costs an
+	// order of magnitude more than the DelayLeftOver left after admission. Meanwhile
+	// handleBidBlockResult signs and BROADCASTS before InsertChain verifies. So an
+	// un-upgraded builder would put an invalid block on the wire under this validator's
+	// key on every slot it wins, diagnosed as a BAD_BLOCK that never mentions the lane.
+	// Reopening it is docs/bep703-wiring-plan.md section 4.3.
 	if miner.worker.chainConfig.IsOnPasteur(bb.Header.Number, parent.Time, bb.Header.Time) ||
-		miner.worker.chainConfig.IsOnGauss(bb.Header.Number, parent.Time, bb.Header.Time) {
+		miner.worker.chainConfig.IsGauss(bb.Header.Number, bb.Header.Time) {
 		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf(
-			"BidBlock disabled on hard-fork activation block %d, fallback to SendBid", blockNumber))
+			"BidBlock disabled at block %d (hard-fork activation, or the payment lane is active), fallback to SendBid", blockNumber))
 	}
 	// Reserve the quota slot atomically (check + insert under one lock).
 	if err := miner.bidSimulator.ReservePending(blockNumber, builder, bidHash); err != nil {

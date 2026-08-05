@@ -197,10 +197,17 @@ func (ec *Client) getBlock(ctx context.Context, method string, args ...interface
 	}
 
 	// Quick-verify transaction and uncle lists. This mostly helps with debugging the server.
-	if head.UncleHash == types.EmptyUncleHash && len(body.UncleHashes) > 0 {
+	//
+	// ClaimsNoUncles rather than a comparison against EmptyUncleHash: from BEP-703's
+	// activation a BSC header carries the payment lane commitment in the uncle slot, so a
+	// bare comparison fails on every block and reports it as an uncle problem. Only this
+	// copy can be fixed - third-party binaries already deployed against the old check
+	// will keep failing, which is a release-note matter and not something a node can
+	// repair.
+	if head.ClaimsNoUncles() && len(body.UncleHashes) > 0 {
 		return nil, errors.New("server returned non-empty uncle list but block header indicates no uncles")
 	}
-	if head.UncleHash != types.EmptyUncleHash && len(body.UncleHashes) == 0 {
+	if !head.ClaimsNoUncles() && len(body.UncleHashes) == 0 {
 		return nil, errors.New("server returned empty uncle list but block header indicates uncles")
 	}
 	if head.TxHash == types.EmptyTxsHash && len(body.Transactions) > 0 {

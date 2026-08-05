@@ -53,6 +53,11 @@ type BlockGen struct {
 
 	engine consensus.Engine
 
+	// lane is the BEP-703 state for this block, resolved from the parent before any
+	// transaction runs. Present here so generated chains carry real commitments and
+	// activated-lane behaviour is testable at all; nil-safe when the lane is off.
+	lane *LaneState
+
 	// extra data of block
 	sidecars types.BlobSidecars
 }
@@ -121,11 +126,17 @@ func (b *BlockGen) addTx(bc *BlockChain, vmConfig vm.Config, tx *types.Transacti
 		evm          = vm.NewEVM(blockContext, b.statedb, b.cm.config, vmConfig)
 	)
 	b.statedb.SetTxContext(tx.Hash(), len(b.txs))
+	class, err := b.lane.Classify(tx)
+	if err != nil {
+		panic(err)
+	}
+	usedBefore := b.gasPool.Used()
 	receipt, err := ApplyTransaction(evm, b.gasPool, b.statedb, b.header, tx, NewReceiptBloomGenerator())
 	if err != nil {
 		panic(err)
 	}
 	b.header.GasUsed = b.gasPool.Used()
+	b.lane.AccountFrom(class, b.gasPool, usedBefore)
 
 	// Merge the tx-local access event into the "block-local" one, in order to collect
 	// all values, so that the witness can be built.
@@ -416,6 +427,15 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			misc.ApplyDAOHardFork(statedb)
 		}
 
+		// BEP-703, before the system-contract upgrade mutates anything: statedb.Reader()
+		// is pinned to the parent root, so this sees exactly the state the importer will.
+		lane, err := ResolveLaneState(config, cm, parent.Header(), b.header, statedb.Reader())
+		if err != nil {
+			panic(err)
+		}
+		lane.SetQuota()
+		b.lane = lane
+
 		systemcontracts.TryUpdateBuildInSystemContract(config, b.header.Number, parent.Time(), b.header.Time, statedb, true)
 		if config.IsPrague(b.header.Number, b.header.Time) || config.IsUBT(b.header.Number, b.header.Time) {
 			// EIP-2935
@@ -451,9 +471,19 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			}
 		}
 		// Assemble the block for delivery.
-		block, receipts, err := AssembleBlock(b.engine, cm, b.header, statedb, &body, b.receipts)
+		block, receipts, err := AssembleBlock(b.engine, cm, b.header, statedb, &body, b.receipts, b.lane)
 		if err != nil {
 			panic(fmt.Sprintf("failed to assemble block: %v", err))
+		}
+		// Same self-check the miner runs, so a generated chain cannot quietly carry a
+		// commitment the producing side would have refused to seal. gasPool is nil until
+		// the first SetCoinbase, which for an empty block never happens.
+		var poolUsed uint64
+		if b.gasPool != nil {
+			poolUsed = b.gasPool.Used()
+		}
+		if err := b.lane.VerifyProduced(block, poolUsed); err != nil {
+			panic(fmt.Sprintf("payment lane self-check failed: %v", err))
 		}
 		if config.IsCancun(block.Number(), block.Time()) {
 			for _, s := range b.sidecars {
