@@ -58,6 +58,7 @@ const (
 	b20PauseTransfer = 0
 	b20PauseMint     = 1
 	b20PauseBurn     = 2
+	b20PauseSeize    = 3
 )
 
 func selector(sig string) (s [4]byte) {

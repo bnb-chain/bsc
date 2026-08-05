@@ -57,7 +57,7 @@ const (
 //	slot 7   roleAdmins  mapping(bytes32 => bytes32)
 //	slot 8   adminCount (uint256)
 //	slot 9   packed: transferSender|transferReceiver|transferExecutor|reserved (4×u64)
-//	slot 10  packed: mintReceiver (u64) + reserved
+//	slot 10  packed: mintReceiver|seizeHolder|seizeReceiver|reserved (4×u64)
 //	slot 11  paused (uint256 bitmask)
 //	slot 12  supplyCap (uint256)
 //	slot 13  nonces      mapping(address => uint256)
@@ -86,6 +86,8 @@ const (
 	b20OffTransferReceiver = 8
 	b20OffTransferExecutor = 16
 	b20OffMintReceiver     = 0
+	b20OffSeizeHolder      = 8
+	b20OffSeizeReceiver    = 16
 )
 
 // b20CoreRoot is the ERC-7201 root of the core storage namespace, computed once.
@@ -297,6 +299,12 @@ func (s b20Storage) transferExecutorPolicy() uint64 {
 func (s b20Storage) mintReceiverPolicy() uint64 {
 	return s.getPackedU64(b20SlotMintPolicy, b20OffMintReceiver)
 }
+func (s b20Storage) seizeHolderPolicy() uint64 {
+	return s.getPackedU64(b20SlotMintPolicy, b20OffSeizeHolder)
+}
+func (s b20Storage) seizeReceiverPolicy() uint64 {
+	return s.getPackedU64(b20SlotMintPolicy, b20OffSeizeReceiver)
+}
 func (s b20Storage) setTransferSenderPolicy(id uint64) {
 	s.setPackedU64(b20SlotTransferPolicies, b20OffTransferSender, id)
 }
@@ -308,6 +316,12 @@ func (s b20Storage) setTransferExecutorPolicy(id uint64) {
 }
 func (s b20Storage) setMintReceiverPolicy(id uint64) {
 	s.setPackedU64(b20SlotMintPolicy, b20OffMintReceiver, id)
+}
+func (s b20Storage) setSeizeHolderPolicy(id uint64) {
+	s.setPackedU64(b20SlotMintPolicy, b20OffSeizeHolder, id)
+}
+func (s b20Storage) setSeizeReceiverPolicy(id uint64) {
+	s.setPackedU64(b20SlotMintPolicy, b20OffSeizeReceiver, id)
 }
 
 // --- strings (Solidity storage encoding) ------------------------------------

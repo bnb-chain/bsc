@@ -24,7 +24,7 @@ import (
 
 // B20 RBAC roles, granular pausing, and mint/burn. Mirrors the shared IB20
 // RoleManaged/Pausable/Mintable/Burnable traits. Compliance policies
-// (MINT_RECEIVER etc.), memos and burnBlocked are layered on later.
+// (MINT_RECEIVER etc.) and memos are layered on later.
 
 // Built-in role ids. DEFAULT_ADMIN is bytes32(0); the rest are keccak of their
 // canonical names. An unset role admin (zero) therefore means DEFAULT_ADMIN.
@@ -32,7 +32,7 @@ var (
 	roleDefaultAdmin = common.Hash{}
 	roleMint         = crypto.Keccak256Hash([]byte("MINT_ROLE"))
 	roleBurn         = crypto.Keccak256Hash([]byte("BURN_ROLE"))
-	roleBurnBlocked  = crypto.Keccak256Hash([]byte("BURN_BLOCKED_ROLE"))
+	roleSeize        = crypto.Keccak256Hash([]byte("SEIZE_ROLE"))
 	rolePause        = crypto.Keccak256Hash([]byte("PAUSE_ROLE"))
 	roleUnpause      = crypto.Keccak256Hash([]byte("UNPAUSE_ROLE"))
 	roleMetadata     = crypto.Keccak256Hash([]byte("METADATA_ROLE"))
@@ -50,7 +50,7 @@ var (
 	selDefaultAdminRole = selector("DEFAULT_ADMIN_ROLE()")
 	selMintRole         = selector("MINT_ROLE()")
 	selBurnRole         = selector("BURN_ROLE()")
-	selBurnBlockedRole  = selector("BURN_BLOCKED_ROLE()")
+	selSeizeRole        = selector("SEIZE_ROLE()")
 	selPauseRole        = selector("PAUSE_ROLE()")
 	selUnpauseRole      = selector("UNPAUSE_ROLE()")
 	selMetadataRole     = selector("METADATA_ROLE()")
@@ -60,14 +60,14 @@ var (
 	selUnpause         = selector("unpause(uint8[])")
 	selMint            = selector("mint(address,uint256)")
 	selBurn            = selector("burn(uint256)")
-	selBurnBlocked     = selector("burnBlocked(address,uint256)")
+	selSeizeWithMemo   = selector("seizeWithMemo(address,address,uint256,bytes32)")
 	selUpdateSupplyCap = selector("updateSupplyCap(uint256)")
 	selUpdatePolicy    = selector("updatePolicy(uint8,uint64)")
 
 	b20TopicRoleGranted      = crypto.Keccak256Hash([]byte("RoleGranted(bytes32,address,address)"))
 	b20TopicRoleRevoked      = crypto.Keccak256Hash([]byte("RoleRevoked(bytes32,address,address)"))
 	b20TopicRoleAdminChanged = crypto.Keccak256Hash([]byte("RoleAdminChanged(bytes32,bytes32,bytes32)"))
-	b20TopicBurnedBlocked    = crypto.Keccak256Hash([]byte("BurnedBlocked(address,uint256)"))
+	b20TopicSeized           = crypto.Keccak256Hash([]byte("Seized(address,address,address,uint256)"))
 )
 
 // dispatchAdmin handles the RBAC / pause / mint-burn selectors. ok is false
@@ -81,8 +81,8 @@ func (t b20Token) dispatchAdmin(sel [4]byte, args []byte) (ret []byte, err error
 		return roleMint.Bytes(), nil, true
 	case selBurnRole:
 		return roleBurn.Bytes(), nil, true
-	case selBurnBlockedRole:
-		return roleBurnBlocked.Bytes(), nil, true
+	case selSeizeRole:
+		return roleSeize.Bytes(), nil, true
 	case selPauseRole:
 		return rolePause.Bytes(), nil, true
 	case selUnpauseRole:
@@ -170,16 +170,27 @@ func (t b20Token) dispatchAdmin(sel [4]byte, args []byte) (ret []byte, err error
 			return nil, err, true
 		}
 		return nil, t.burn(t.ctx.Caller, amount), true
-	case selBurnBlocked:
+	case selSeizeWithMemo:
 		from, err := readAddress(args, 0)
 		if err != nil {
 			return nil, err, true
 		}
-		amount, err := readU256(args, 1)
+		to, err := readAddress(args, 1)
 		if err != nil {
 			return nil, err, true
 		}
-		return nil, t.burnBlocked(from, amount), true
+		amount, err := readU256(args, 2)
+		if err != nil {
+			return nil, err, true
+		}
+		memo, err := readWord(args, 3)
+		if err != nil {
+			return nil, err, true
+		}
+		if err := t.seizeWithMemo(from, to, amount, memo); err != nil {
+			return nil, err, true
+		}
+		return encBool(true), nil, true
 
 	// configurable
 	case selUpdateSupplyCap:
@@ -362,7 +373,7 @@ func (t b20Token) setPause(args []byte, on bool) error {
 	}
 	p := t.s.paused()
 	for _, f := range features {
-		if uint(f) > b20PauseBurn {
+		if uint(f) > b20PauseSeize {
 			return ErrExecutionReverted
 		}
 		mask := new(uint256.Int).Lsh(uint256.NewInt(1), uint(f))
@@ -429,30 +440,43 @@ func (t b20Token) burn(from common.Address, amount *uint256.Int) error {
 	return nil
 }
 
-// burnBlocked seizes a blocked account's balance. It requires from to be
-// denied by the TRANSFER_SENDER policy (i.e. already blacklisted), enforcing
-// the protocol's two-step freeze-then-seize flow.
-func (t b20Token) burnBlocked(from common.Address, amount *uint256.Int) error {
+// seizeWithMemo reassigns a frozen account's balance to to. It moves value
+// rather than destroying it, so totalSupply is unchanged, and it skips the
+// allowance and the transfer policies: the seize scopes gate it instead.
+//
+// SEIZE_HOLDER is checked inverted — from is seizable only while the policy
+// does not authorize it — which is what makes freezing structurally prior to
+// seizure. An unset scope reads as ALWAYS_ALLOW, so on an unconfigured token no
+// account is seizable at all.
+func (t b20Token) seizeWithMemo(from, to common.Address, amount *uint256.Int, memo common.Hash) error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	if err := t.ensureRole(roleBurnBlocked); err != nil {
+	if t.isPaused(b20PauseSeize) {
+		return ErrExecutionReverted // ContractPaused(SEIZE)
+	}
+	if err := t.ensureRole(roleSeize); err != nil {
 		return err
 	}
-	// from must be blocked: authorized under TRANSFER_SENDER == not blocked.
-	if t.policyAllows(t.s.transferSenderPolicy(), from) {
-		return ErrExecutionReverted // AccountNotBlocked
+	if to == (common.Address{}) {
+		return ErrExecutionReverted // InvalidReceiver
+	}
+	if t.policyAllows(t.s.seizeHolderPolicy(), from) {
+		return ErrExecutionReverted // AccountNotSeizable
+	}
+	if !t.policyAllows(t.s.seizeReceiverPolicy(), to) {
+		return ErrExecutionReverted // PolicyForbids(SEIZE_RECEIVER_POLICY)
 	}
 	bal := t.s.balanceOf(from)
 	if bal.Lt(amount) {
-		return ErrExecutionReverted
+		return ErrExecutionReverted // InsufficientBalance
 	}
 	t.s.setBalance(from, new(uint256.Int).Sub(bal, amount))
-	t.s.setTotalSupply(new(uint256.Int).Sub(t.s.totalSupply(), amount))
-	t.emit(b20TopicTransfer, from, common.Address{}, amount)
+	t.s.setBalance(to, new(uint256.Int).Add(t.s.balanceOf(to), amount))
+	t.emit(b20TopicTransfer, from, to, amount)
+	t.emitMemo(memo)
 	ab := amount.Bytes32()
-	t.ctx.AddLog([]common.Hash{b20TopicBurnedBlocked, addrKey(from)}, ab[:])
-	// TODO: verify BurnedBlocked signature/indexing against base-std.
+	t.ctx.AddLog([]common.Hash{b20TopicSeized, addrKey(t.ctx.Caller), addrKey(from), addrKey(to)}, ab[:])
 	return nil
 }
 
@@ -496,6 +520,10 @@ func (t b20Token) updatePolicy(scope uint8, id uint64) error {
 		t.s.setTransferExecutorPolicy(id)
 	case 3:
 		t.s.setMintReceiverPolicy(id)
+	case 4:
+		t.s.setSeizeHolderPolicy(id)
+	case 5:
+		t.s.setSeizeReceiverPolicy(id)
 	default:
 		return ErrExecutionReverted
 	}

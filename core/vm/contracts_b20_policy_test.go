@@ -225,8 +225,8 @@ func TestB20PolicyIntegration(t *testing.T) {
 	}
 }
 
-// TestB20BurnBlocked exercises the freeze-then-seize compliance flow.
-func TestB20BurnBlocked(t *testing.T) {
+// TestB20SeizeWithMemo exercises the freeze-then-seize compliance flow.
+func TestB20SeizeWithMemo(t *testing.T) {
 	statedb, evm := newPasteurEVM(t)
 	creator := common.HexToAddress("0xc4ea70")
 	salt := common.HexToHash("0x0d")
@@ -236,10 +236,10 @@ func TestB20BurnBlocked(t *testing.T) {
 		return ret, err
 	}
 
-	// token: creator is admin, MINT and BURN_BLOCKED holder; 1000 minted to bob.
+	// token: creator is admin, MINT and SEIZE holder; 1000 minted to bob.
 	initCalls := [][]byte{
 		b20Call(selGrantRole, roleMint, addrKey(creator)),
-		b20Call(selGrantRole, roleBurnBlocked, addrKey(creator)),
+		b20Call(selGrantRole, roleSeize, addrKey(creator)),
 		b20Call(selMint, addrKey(b20Bob), u256hash(1000)),
 	}
 	ret, err := call(creator, B20FactoryAddress, encodeCreateB20(b20VariantAsset, salt, creator, initCalls))
@@ -249,31 +249,44 @@ func TestB20BurnBlocked(t *testing.T) {
 	token := common.BytesToAddress(ret)
 	view := newB20Storage(statedb, token)
 
-	// seizing an un-blocked account fails (must freeze first).
-	if _, err := call(creator, token, b20Call(selBurnBlocked, addrKey(b20Bob), u256hash(100))); !errors.Is(err, ErrExecutionReverted) {
-		t.Fatalf("burnBlocked before freeze err = %v, want revert (AccountNotBlocked)", err)
+	memo := common.HexToHash("0x5e12e")
+
+	// seizing an un-frozen account fails (must freeze first).
+	if _, err := call(creator, token, b20Call(selSeizeWithMemo, addrKey(b20Bob), addrKey(b20Alice), u256hash(100), memo)); !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("seize before freeze err = %v, want revert (AccountNotSeizable)", err)
 	}
 
-	// step 1: blacklist bob on the TRANSFER_SENDER scope.
+	// step 1: blacklist bob on the SEIZE_HOLDER scope.
 	ret, _ = call(creator, B20PolicyRegistryAddress, b20Call(selCreatePolicy, addrKey(creator), u256hash(b20PolicyBlocklist)))
 	blk := new(uint256.Int).SetBytes(ret).Uint64()
 	if _, err := call(creator, B20PolicyRegistryAddress, encodeUpdateList(selUpdateBlocklist, blk, true, []common.Address{b20Bob})); err != nil {
 		t.Fatalf("updateBlocklist: %v", err)
 	}
-	if _, err := call(creator, token, b20Call(selUpdatePolicy, u256hash(0), u256hash(blk))); err != nil {
-		t.Fatalf("updatePolicy(sender): %v", err)
+	if _, err := call(creator, token, b20Call(selUpdatePolicy, u256hash(4), u256hash(blk))); err != nil {
+		t.Fatalf("updatePolicy(seizeHolder): %v", err)
 	}
 
 	// non-role caller cannot seize.
-	if _, err := call(b20Alice, token, b20Call(selBurnBlocked, addrKey(b20Bob), u256hash(100))); !errors.Is(err, ErrExecutionReverted) {
-		t.Fatalf("unauthorized burnBlocked err = %v, want revert", err)
+	if _, err := call(b20Alice, token, b20Call(selSeizeWithMemo, addrKey(b20Bob), addrKey(b20Alice), u256hash(100), memo)); !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("unauthorized seize err = %v, want revert", err)
 	}
 
-	// step 2: seize part of the frozen balance.
-	if _, err := call(creator, token, b20Call(selBurnBlocked, addrKey(b20Bob), u256hash(400))); err != nil {
-		t.Fatalf("burnBlocked: %v", err)
+	// the zero address is never a valid destination.
+	if _, err := call(creator, token, b20Call(selSeizeWithMemo, addrKey(b20Bob), common.Hash{}, u256hash(100), memo)); !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("seize to zero err = %v, want revert (InvalidReceiver)", err)
 	}
-	if view.balanceOf(b20Bob).Uint64() != 600 || view.totalSupply().Uint64() != 600 {
-		t.Fatalf("after seize: bal %d supply %d, want 600/600", view.balanceOf(b20Bob).Uint64(), view.totalSupply().Uint64())
+
+	// step 2: seize part of the frozen balance. Value moves; supply does not.
+	if _, err := call(creator, token, b20Call(selSeizeWithMemo, addrKey(b20Bob), addrKey(b20Alice), u256hash(400), memo)); err != nil {
+		t.Fatalf("seizeWithMemo: %v", err)
+	}
+	if got := view.balanceOf(b20Bob).Uint64(); got != 600 {
+		t.Fatalf("seized account balance = %d, want 600", got)
+	}
+	if got := view.balanceOf(b20Alice).Uint64(); got != 400 {
+		t.Fatalf("destination balance = %d, want 400", got)
+	}
+	if got := view.totalSupply().Uint64(); got != 1000 {
+		t.Fatalf("totalSupply = %d, want 1000 (seizure moves value, it does not burn)", got)
 	}
 }
