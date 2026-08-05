@@ -74,9 +74,18 @@ func newParliaLaneHarness(t *testing.T) (*Parlia, *core.BlockChain, *params.Chai
 		t.Fatalf("failed to decode the PaymentLane blob: %v", err)
 	}
 
-	// CheckConfigForkOrder rejects a config that enables gauss while any earlier
-	// timestamp fork is nil - it tests enabled-ness, not values - so everything between
-	// Cancun (where ParliaTestChainConfig stops) and Pasteur has to be switched on at 0.
+	// CheckConfigForkOrder rejects a config that enables gauss while any earlier timestamp
+	// fork is nil - it tests enabled-ness, not values - so everything between Cancun (where
+	// ParliaTestChainConfig stops) and Pasteur has to be switched on at 0.
+	//
+	// core/payment_lane_test.go's laneGenesis needs none of this, and the difference is
+	// essential rather than accidental: CheckConfigForkOrder opens with
+	// "if c.IsNotInBSC() { return nil }" and IsInBSC is "Parlia != nil", so an ethash
+	// config skips the whole check. That is also why these two fixtures are deliberately
+	// NOT shared - a common helper would have to carry this branch inside it, which is
+	// worse than two explicit setups. Same for the Gauss timestamps: 5 here and 15 there,
+	// each tied to its own harness's block interval and to which block must be the
+	// activation block.
 	at0 := func() *uint64 { v := uint64(0); return &v }
 	config := *params.ParliaTestChainConfig
 	config.HaberTime, config.HaberFixTime = at0(), at0()

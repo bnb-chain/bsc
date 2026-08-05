@@ -19,6 +19,7 @@ package core
 import (
 	"crypto/ecdsa"
 	"encoding/hex"
+	"fmt"
 	"math/big"
 	"strings"
 	"testing"
@@ -27,10 +28,12 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/gauss"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/stretchr/testify/require"
 )
 
@@ -51,6 +54,11 @@ const (
 // laneGenesis builds a chain whose Gauss timestamp falls between block 1 (t=10) and
 // block 2 (t=20), so block 2 is the activation block and block 3 is the first block the
 // rules bind to.
+//
+// No fork-order boilerplate here, unlike consensus/parlia/payment_lane_test.go's harness:
+// CheckConfigForkOrder returns early for a non-BSC config (IsInBSC is "Parlia != nil"),
+// and this one is ethash. The two fixtures are deliberately not shared - see the note
+// there.
 //
 // 0x2007 is allocated rather than installed by the Gauss upgrade, because GenerateChain
 // cannot run that upgrade: chain_makers only calls TryUpdateBuildInSystemContract with
@@ -342,4 +350,159 @@ func TestPaymentLaneClassifiesAgainstTheParentState(t *testing.T) {
 	defer chain.Stop()
 	_, err = chain.InsertChain(blocks)
 	require.NoError(t, err)
+}
+
+// TestPaymentLaneAndUnclesCannotShareTheSlot covers AssembleBlock's refusal, which is
+// load-bearing in a way that only shows up outside this package.
+//
+// The two uses of the uncle slot are mutually exclusive, and silently preferring the
+// commitment would emit a block whose uncle list can never be verified again. Parlia
+// forbids uncles outright so this is unreachable in production - but GenerateChain still
+// offers AddUncle, and at least one existing harness relies on it:
+// eth/downloader/testchain_test.go's generate() attaches an uncle to every fifth block.
+// That is exactly why a lane-active variant of the downloader's chain is not a small
+// change, and it is worth knowing that this error is what one would hit.
+func TestPaymentLaneAndUnclesCannotShareTheSlot(t *testing.T) {
+	_, gspec, _ := laneGenesis(t)
+
+	var caught any
+	func() {
+		defer func() { caught = recover() }()
+		// Block 3 is the first lane block; attach an uncle to it.
+		GenerateChainWithGenesis(gspec, ethash.NewFaker(), 3, func(i int, b *BlockGen) {
+			if i+1 == 3 {
+				// AddUncle resolves the parent by ParentHash and would nil-deref without
+				// it; same shape eth/downloader's harness uses.
+				b.AddUncle(&types.Header{
+					ParentHash: b.PrevBlock(i - 2).Hash(),
+					Number:     new(big.Int).Sub(b.Number(), big.NewInt(1)),
+				})
+			}
+		})
+	}()
+	if caught == nil {
+		t.Fatal("assembling a lane block with an uncle must fail, not silently drop one of the two")
+	}
+	if msg := fmt.Sprint(caught); !strings.Contains(msg, "uncle hash slot") {
+		t.Fatalf("unexpected failure: %v", msg)
+	}
+
+	// The same chain without the uncle must still assemble, or the assertion above would
+	// pass for the wrong reason.
+	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 3, nil)
+	if _, err := paymentlane.Decode(blocks[2].UncleHash()); err != nil {
+		t.Fatalf("the uncle-free chain must still carry a commitment: %v", err)
+	}
+}
+
+// BenchmarkResolveLaneState measures what the deliberately-absent params cache costs.
+//
+// docs/bep703-wiring-plan.md defers that cache with "measure first"; this is the
+// measurement. It covers exactly what a cache would remove: the grandparent header
+// lookup, LoadParams' 8 slot reads, LoadPaymentContracts' 1+N reads, and building the
+// classifier. It does NOT cover per-transaction classification, which no cache would
+// help - that is a per-destination state read, memoised within the block already.
+func BenchmarkResolveLaneState(b *testing.B) {
+	t := &testing.T{}
+	config, gspec, _ := laneGenesis(t)
+	db, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 4, nil)
+	parent, header := blocks[2], blocks[3].Header()
+
+	sdb := state.NewDatabase(triedb.NewDatabase(db, triedb.HashDefaults), nil)
+	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), DefaultConfig())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer chain.Stop()
+	if _, err := chain.InsertChain(blocks); err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		// A fresh StateDB each iteration: reusing one would warm its reader's caches and
+		// measure the second read, not the first, which is the one a block actually pays.
+		statedb, err := state.New(parent.Root(), sdb)
+		if err != nil {
+			b.Fatal(err)
+		}
+		lane, err := ResolveLaneState(config, chain, parent.Header(), header, statedb.Reader())
+		if err != nil {
+			b.Fatal(err)
+		}
+		if !lane.On() {
+			b.Fatal("the benchmark must exercise an active lane")
+		}
+	}
+}
+
+// BenchmarkResolveLaneStateFullList is the same measurement at the largest list the
+// contract permits, MAX_PAYMENT_CONTRACTS = 256, so the cost of the 1+N reads is measured
+// rather than extrapolated from the N=0 case.
+//
+// The genesis allocation writes the OpenZeppelin EnumerableSet layout directly: slot 8
+// holds _values.length and element i lives at keccak256(bytes32(8))+i. That is the same
+// layout core/paymentlane/config.go reads, and config_test.go pins it against the
+// deployed blob - so writing it by hand here is reading the same contract, not inventing
+// one.
+func BenchmarkResolveLaneStateFullList(b *testing.B) {
+	code, err := hex.DecodeString(strings.TrimSpace(gauss.RialtoPaymentLaneContract))
+	if err != nil {
+		b.Fatal(err)
+	}
+	config := *params.AllEthashProtocolChanges
+	gaussTime := uint64(15)
+	config.GaussTime = &gaussTime
+
+	const n = 256
+	storage := map[common.Hash]common.Hash{
+		common.BytesToHash([]byte{8}): common.BigToHash(big.NewInt(n)),
+	}
+	base := new(big.Int).SetBytes(crypto.Keccak256(common.BytesToHash([]byte{8}).Bytes()))
+	for i := 0; i < n; i++ {
+		slot := common.BigToHash(new(big.Int).Add(base, big.NewInt(int64(i))))
+		storage[slot] = common.BytesToHash(common.BigToAddress(big.NewInt(int64(0x10000 + i))).Bytes())
+	}
+	gspec := &Genesis{
+		Config:   &config,
+		GasLimit: laneTestGasLimit,
+		Alloc: types.GenesisAlloc{
+			paymentlane.ContractAddress: {Code: code, Balance: common.Big0, Storage: storage},
+		},
+	}
+	db, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 4, nil)
+	parent, header := blocks[2], blocks[3].Header()
+
+	sdb := state.NewDatabase(triedb.NewDatabase(db, triedb.HashDefaults), nil)
+	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), DefaultConfig())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer chain.Stop()
+	if _, err := chain.InsertChain(blocks); err != nil {
+		b.Fatal(err)
+	}
+	// Prove the fixture: if the list did not load, this would measure the N=0 case again.
+	statedb, err := state.New(parent.Root(), sdb)
+	if err != nil {
+		b.Fatal(err)
+	}
+	listed, err := paymentlane.LoadPaymentContracts(statedb.Reader())
+	if err != nil {
+		b.Fatal(err)
+	}
+	if len(listed) != n {
+		b.Fatalf("fixture did not take: %d listed, want %d", len(listed), n)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		statedb, err := state.New(parent.Root(), sdb)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if _, err := ResolveLaneState(&config, chain, parent.Header(), header, statedb.Reader()); err != nil {
+			b.Fatal(err)
+		}
+	}
 }

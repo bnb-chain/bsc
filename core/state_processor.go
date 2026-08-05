@@ -530,6 +530,16 @@ type blockAssembler interface {
 // entitled to it, internal/ethapi.simulate, whose blocks are never sealed or imported;
 // any new caller on a sealing path must pass a resolved LaneState.
 func AssembleBlock(engine consensus.Engine, chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, lane *LaneState) (*types.Block, []*types.Receipt, error) {
+	// The two uses of the uncle slot are mutually exclusive, and silently preferring the
+	// commitment would emit a block whose uncle list can never be verified again. Checked
+	// FIRST, before any assembly work: the engine gets to the uncles before we would, and
+	// a malformed one crashes there instead of being reported here. Unreachable under
+	// parlia, which forbids uncles outright; reachable from GenerateChain, which still
+	// offers BlockGen.AddUncle - and eth/downloader's test chains use it on every fifth
+	// block, which is why a lane-active variant of that harness is not a small change.
+	if lane.On() && len(body.Uncles) != 0 {
+		return nil, nil, errors.New("payment lane and uncles cannot share the uncle hash slot")
+	}
 	var block *types.Block
 	if p, ok := engine.(blockAssembler); ok {
 		assembled, assembledReceipts, err := p.FinalizeAndAssemble(chain, header, state, body, receipts, nil)
@@ -545,13 +555,6 @@ func AssembleBlock(engine consensus.Engine, chain consensus.ChainHeaderReader, h
 		block = types.NewBlock(header, body, receipts, trie.NewStackTrie(nil))
 	}
 	if lane.On() {
-		// The two uses of the slot are mutually exclusive, and silently preferring the
-		// commitment would emit a block whose uncle list can never be verified again.
-		// Unreachable under parlia, which forbids uncles outright; reachable from
-		// GenerateChain, which still offers BlockGen.AddUncle.
-		if len(body.Uncles) != 0 {
-			return nil, nil, errors.New("payment lane and uncles cannot share the uncle hash slot")
-		}
 		block.SetUncleHash(paymentlane.Encode(paymentlane.Commitment{
 			LaneSize:       lane.Budget.LaneSize,
 			GeneralGasUsed: lane.Budget.GeneralUsed,

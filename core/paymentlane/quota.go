@@ -384,12 +384,15 @@ func CheckLaneSize(committed uint64, p Params, s Signal, gasLimit uint64) error 
 	return nil
 }
 
-// Ceiling returns the upper clamp bound for this block, for metrics and logging.
+// Ceiling returns the upper clamp bound for this block.
+//
+// Used by tests and by the devnet read-path check, not by any metric: the miner reports
+// laneSize and idleLane, which are what an operator can act on, and the bounds are a pure
+// function of the parameters that anyone can recompute.
 func Ceiling(p Params, gasLimit uint64) uint64 { return laneCeiling(p, gasLimit) }
 
-// Floor returns the lower clamp bound for this block, for metrics and logging.
-// Note it is not a lower bound on LaneSize's result: the safety clamp may go below
-// it.
+// Floor returns the lower clamp bound for this block. See Ceiling on who uses these.
+// Note it is not a lower bound on LaneSize's result: the safety clamp may go below it.
 func Floor(p Params, gasLimit uint64) uint64 { return laneFloor(p, gasLimit) }
 
 func laneCeiling(p Params, gasLimit uint64) uint64 {
