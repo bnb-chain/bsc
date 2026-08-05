@@ -93,9 +93,8 @@ const maxPaymentContractsRead = 4096
 // These are the only GOVERNANCE-SETTABLE values duplicated across the language
 // boundary, and therefore the sharpest silent cross-client divergence surface in
 // this package: a one-digit slip here still clamps, still steps, and passes every
-// Go test. (Four protocol constants are mirrored too - RatioDenom, maxLaneRatio,
-// maxReservedAddress, MaxPaymentContracts - and TestConstantsMatchDeployedBytecode
-// pins those.)
+// Go test. (The protocol constants are mirrored too, and
+// TestConstantsMatchDeployedBytecode pins every one of them against the blob.)
 // TestDefaultsMatchDeployedBytecode closes it by running the deployed blob in a
 // real EVM against empty storage and comparing. Do not change these without
 // changing the contract, and do not add a value here that the contract's
@@ -138,10 +137,8 @@ func (p Params) String() string {
 
 // StorageReader is the state capability the configuration loader needs.
 //
-// One method, and deliberately not core/state.StateReader: it documents and
-// enforces that configuration loading reads storage and nothing else, and it
-// keeps this package free of a core/state import. Both state.Reader and
-// state.StateReader satisfy it structurally.
+// One method, for the same reason AccountReader has one, and it keeps this package
+// free of a core/state import: loading configuration reads storage and nothing else.
 //
 // The reader must be bound to the PARENT block's post-state root. Reading the
 // advancing state instead would let a governance transaction inside the block
@@ -168,12 +165,12 @@ func paymentContractSlot(i uint64) common.Hash {
 
 // word64 converts a storage word to uint64.
 //
-// A parameter above 2^64-1 is not something governance can produce - every bound
-// in the contract's validator is at most 1e9 - so it can only mean the slot
-// layout has shifted and this word is really part of a mapping or an array. That
-// is deterministic (every node reading this root sees it), so it is safe to make
-// it a hard error, and it is unreachable, so it cannot halt the chain on a
-// governance action. It is a layout tripwire, not a fallback: a clamp here would
+// A parameter above 2^64-1 is not something governance can produce - the contract
+// bounds each of the eight absolutely - so it can only mean the slot layout has
+// shifted and this word is really part of a mapping or an array. Deterministic (every
+// node reading this root sees it) and unreachable, so a hard error here cannot halt
+// the chain on a governance action; the same does not hold for the length word, see
+// maxPaymentContractsRead. It is a layout tripwire, not a fallback: a clamp would
 // squash the garbage into a legal-looking value and hide exactly this failure.
 func word64(w common.Hash) (uint64, bool) {
 	for _, b := range w[:24] {
@@ -259,7 +256,7 @@ func orDefault(stored, fallback uint64) uint64 {
 // read has to abort the block before any classification happens.
 //
 // No ordering, capacity or address-range guarantee is offered to the caller and
-// none is needed. The classifier's reserved-range gate runs above its whitelist
+// none is needed. The classifier's reserved-range gate runs above its list
 // lookup, so a mis-governed reserved address in this set cannot reclassify
 // anything, which removes three validation obligations from both sides.
 func LoadPaymentContracts(r StorageReader) (map[common.Address]struct{}, error) {

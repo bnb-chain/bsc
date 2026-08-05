@@ -38,12 +38,11 @@ import (
 // its contents depend on the fork AND on rules.IsInBSC, and it grows a branch every
 // fork - none of which a fixed range does.
 //
-// The contract enforces the same bound when a contract is added to the whitelist.
-// Raising it there is safe (the contract gets stricter, this file is unaffected);
-// LOWERING it or removing the check is silently dangerous, because the contract
-// would then accept a listing that every client ignores forever, with
-// PaymentContractAdded emitted and no error anywhere. TestConstantsMatchDeployedBytecode
-// asserts the two stay equal.
+// The contract enforces the same bound when an address is listed, and
+// TestConstantsMatchDeployedBytecode asserts the two stay equal - so a raise has to
+// happen on both sides in one change. LOWERING it, or dropping the check there, is the
+// silently dangerous direction: the contract would accept a listing every client
+// ignores forever, with PaymentContractAdded emitted and no error anywhere.
 const maxReservedAddress = 0xFFFF
 
 // AccountReader is the only state capability the classifier needs.
@@ -102,7 +101,7 @@ func NewClassifier(parentRoot common.Hash, parent AccountReader, listed map[comm
 // Classify returns the lane class of a user transaction.
 //
 // Never call it for a Parlia system transaction: those are split out before
-// accounting and their gas is the separate system bucket. If one ever leaks
+// accounting and their gas is the separate systemGasUsed term. If one ever leaks
 // through, gate 4 makes it general, because every system contract is inside the
 // reserved range.
 //
@@ -117,11 +116,11 @@ func NewClassifier(parentRoot common.Hash, parent AccountReader, listed map[comm
 // passed, and so that each one dominates the next for a reason:
 //
 //	1 to == nil            CREATE has no destination to classify.
-//	2 tx type whitelist    Not a blacklist. SetCodeTx (0x04) installs its
+//	2 type allowlist       Not a blacklist. SetCodeTx (0x04) installs its
 //	                       authorizations BEFORE the top-level call and does not
 //	                       revoke them, so 320 of them are 8.02M gas of pure state
 //	                       writes at lane price; BlobTx (0x03) buys the separate
-//	                       DA dimension for 21000 gas of execution. Whitelisting
+//	                       DA dimension for 21000 gas of execution. An allowlist
 //	                       also makes every future transaction type general by
 //	                       default, which a blacklist would not.
 //	3 empty access list    Access-list entries are intrinsic gas with no code
@@ -140,16 +139,16 @@ func NewClassifier(parentRoot common.Hash, parent AccountReader, listed map[comm
 //	                       a listed token must not be payment - and above 6 and 7,
 //	                       because a real transfer() call has calldata and zero
 //	                       value, so hoisting either of those makes the entire
-//	                       whitelist dead code.
+//	                       payment-contract list dead code.
 //	6 empty calldata       Category 1 is a bare value transfer. Free slice-header
 //	                       read, so it precedes gate 7.
 //	7 non-zero value       A zero-value bare transfer is not a payment. Last of the
 //	                       static gates because Value() allocates a big.Int.
 //	8 destination has no   Category 1 proper, decided against the PARENT
-//	  code in parent state post-state. An absent account has no code. EIP-7702
-//	                       delegation designators are excluded for free, because a
-//	                       designator's code hash is keccak(0xef0100||target) and
-//	                       therefore not the empty-code hash.
+//	  code in parent state post-state. An absent account has no code. An EIP-7702
+//	                       delegation designator is classified general for free: its
+//	                       code hash is keccak(0xef0100||target), so it is not the
+//	                       empty-code hash.
 func (c *Classifier) Classify(tx *types.Transaction) (Class, error) {
 	to := tx.To() // allocates; call it once
 	if to == nil {
@@ -222,9 +221,10 @@ func (c *Classifier) destinationHasCode(addr common.Address) (bool, error) {
 	// acct == nil means the account does not exist, which means it has no code.
 	// Writing this as GetCodeHash(to) == types.EmptyCodeHash instead would
 	// misclassify every transfer to a brand-new address - first deposits and new
-	// wallets, the lane's core use case - and would do so with no error, no
-	// invalid block and no failing test. The tree still contains that exact
-	// comparison in core/txpool/legacypool.
+	// wallets, the lane's core use case - with no error, no invalid block and no
+	// failing test. That comparison shape is already in the tree (legacypool tests
+	// GetCodeHash(from) == EmptyCodeHash, for 7702 authorisations), which is exactly
+	// what makes it easy to reach for here by reflex.
 	coded := acct != nil && hasCodeHash(acct.CodeHash)
 	c.hasCode[addr] = coded
 	return coded, nil
@@ -232,19 +232,17 @@ func (c *Classifier) destinationHasCode(addr common.Address) (bool, error) {
 
 // hasCodeHash reports whether a code hash denotes an account that has code.
 //
-// The len check is load-bearing, not decoration. Two of the tree's readers normalise
-// an omitted code hash back to EmptyCodeHash - flatReader (core/state/reader.go) and
-// historicStateReader (core/state/database_history.go) - and mptTrieReader returns
-// the consensus-format leaf, whose code hash is always 32 bytes. But ubtTrieReader
-// does NOT normalise: it returns trie.BinaryTrie.GetAccount's value directly, and
-// that assigns acc.CodeHash from the CodeHash leaf unmodified, which is nil in the
-// partial-migration state its own comment describes. That path is unreachable only
-// because UBTTime is nil in every shipped config - i.e. it goes live at the UBT
-// fork, not never.
+// The len check is load-bearing, not decoration. flatReader and historicStateReader
+// normalise an omitted code hash back to EmptyCodeHash, and mptTrieReader returns the
+// consensus-format leaf, whose code hash is always 32 bytes. ubtTrieReader does NOT
+// normalise: it passes bintrie.BinaryTrie.GetAccount's value through, and that assigns
+// acc.CodeHash from the CodeHash leaf unmodified, so a missing leaf yields nil. That
+// path is unreachable only because UBTTime is nil in every shipped config - i.e. it
+// goes live at the UBT fork, not never.
 //
-// Getting this wrong is silent in the worst direction: every transfer to a fresh
-// address would leave the lane, so the lane would simply never fill, which is
-// indistinguishable from low demand.
+// Dropping the check is silent and permissive: an account whose reader omitted the
+// code hash would compare unequal to EmptyCodeHash, look coded, and its transfers
+// would leave the lane - visible only as demand that never materialised.
 func hasCodeHash(codeHash []byte) bool {
 	return len(codeHash) != 0 && !bytes.Equal(codeHash, types.EmptyCodeHash.Bytes())
 }

@@ -21,8 +21,8 @@ import (
 	"math/bits"
 )
 
-// Budget carries the two class buckets and expresses the block validity rule as
-// an admission predicate.
+// Budget carries this block's quota and the two class buckets, and expresses the
+// block validity rule as an admission predicate.
 //
 // Why not two gas pools: splitting the budget statically into general = C-L and
 // payment = L, spilling the overflow, is bin packing under first fit, and first
@@ -142,8 +142,8 @@ func (b Budget) Admits(shared uint64, class Class, gasLimit uint64) bool {
 // delta must be differenced from gasPool.Used(), never taken from
 // receipt.GasUsed and never from gasPool.CumulativeUsed(). All three are
 // plausible and only Used() is the quantity that feeds header.GasUsed on both the
-// producing and importing sides, which is what makes
-// PaymentUsed+GeneralUsed == Used() a constructive fact rather than a convention.
+// producing and importing sides - which is what lets Verify check
+// PaymentUsed+GeneralUsed == Used() as an identity instead of trusting a convention.
 // Differencing also makes rollback free: when execution fails the pool has
 // already been restored from its snapshot, so the delta is naturally zero and the
 // buckets need no separate rollback path.
@@ -198,10 +198,8 @@ func (b Budget) Verify(gasLimit, systemGasUsed, poolUsed uint64) error {
 // block cannot become canonical. Without this check "validated blocks obey the
 // rule" simply does not hold, however careful the producer side is.
 //
-// Note the asymmetry with LaneSize, which is NOT compared here: laneSize is a
-// pure function of (parent header, parent post-state), so it is checkable before
-// executing anything - including on the MEV path, before the validator signs.
-// The buckets are the part that genuinely requires replay.
+// laneSize is deliberately NOT compared here: CheckLaneSize settles it before
+// execution, from the parent alone.
 //
 // The two gas figures must come from the same place on both sides or honest
 // blocks get rejected:

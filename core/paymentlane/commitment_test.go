@@ -121,7 +121,7 @@ func TestDecodeIsTheOnlyBootstrapDiscriminator(t *testing.T) {
 	_, err := Decode(types.EmptyUncleHash)
 	require.Error(t, err)
 
-	// And a corrupt commitment is a hard error, not a seed. NewSignal only produces
+	// And a corrupt commitment is a hard error, not a seed. newSignal only produces
 	// the bootstrap signal from an explicit nil.
 	require.Equal(t, Signal{}, newSignal(nil, 55_000_000))
 	corrupt := Encode(Commitment{LaneSize: 999})

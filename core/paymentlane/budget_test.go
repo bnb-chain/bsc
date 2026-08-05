@@ -372,7 +372,7 @@ func TestInvariantAdmissionBeatsStaticPools(t *testing.T) {
 // The rule itself
 // ---------------------------------------------------------------------------
 
-// TestLaneIsFloorNotCeiling covers the boundary between the two regimes of §3.2,
+// TestLaneIsFloorNotCeiling covers the boundary between the two regimes of §3.3,
 // one case per clause of the rule text.
 func TestLaneIsFloorNotCeiling(t *testing.T) {
 	const limit, lane = 100, 20

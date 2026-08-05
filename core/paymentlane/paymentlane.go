@@ -103,12 +103,12 @@ var (
 // commitVersion keeps Encode's range clear of both common.Hash{} and any
 // all-zero-plus-sentinel value a carrier might use to mean "unset".
 //
-// This is a correctness requirement, not an extensibility hook. Commitment{0,0,0}
-// - an empty block with a zero quota, the most common shape right after
-// activation - would otherwise encode to the zero hash, which every plausible
-// carrier treats as "the caller never wrote this field". The failure mode is a
-// block that seals locally and is rejected network-wide, with nothing in the
-// header or body checks able to say why.
+// This is a correctness requirement, not an extensibility hook. Commitment{0,0,0} is
+// reachable - an empty block whose GasLimit is at or below SystemTxsGasHardLimit, so
+// the safety clamp takes the quota to zero - and would otherwise encode to the zero
+// hash, which every plausible carrier treats as "the caller never wrote this field".
+// The failure mode is a block that seals locally and is rejected network-wide, with
+// nothing in the header or body checks able to say why.
 const commitVersion byte = 1
 
 // Commitment is the per-block recursion state plus the two class buckets.
@@ -192,7 +192,7 @@ func CheckInequality(gasLimit, systemGasUsed, generalGasUsed, paymentGasUsed, la
 // general = 2^64-1 and payment = 1 the naive sum wraps to 0, passes a plain
 // "general+payment > headerGasUsed" test, and the following subtraction then
 // reports systemGasUsed as headerGasUsed itself - three checks bypassed at once.
-// Every caller that derives the system bucket FROM A COMMITMENT must come through
+// Every caller that derives systemGasUsed FROM A COMMITMENT must come through
 // here rather than writing its own subtraction. The importer is not such a caller:
 // it holds the real system gas and must not use this - see Budget.VerifyCommitment,
 // which spells out where each figure comes from.

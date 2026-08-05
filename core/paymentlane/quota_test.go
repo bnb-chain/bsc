@@ -47,9 +47,11 @@ func defaultParams() Params {
 // impossible tuples proves less, and one that ranges over too few proves nothing
 // about the boundaries. It also documents the invariants next to the code that
 // depends on them.
-// The contract's protocol constants, mirrored for contractLegal. The four that the
-// contract exposes as public getters are pinned against the deployed blob by
-// TestConstantsMatchDeployedBytecode.
+// The contract's protocol constants, mirrored for contractLegal. All seven are public
+// getters on the contract and all seven are pinned against the deployed blob by
+// TestConstantsMatchDeployedBytecode - they have to be, because a contract-side widening
+// that this file does not follow silently narrows every exhaustive test below instead of
+// failing one.
 const (
 	triggerGapMin       = 1_000
 	ratioGapMin         = 500
@@ -281,7 +283,7 @@ func TestSignalComparisonIsExactAt64BitOverflow(t *testing.T) {
 
 	// One gas below the threshold: must NOT expand.
 	require.False(t, gte128(at-1, RatioDenom, 8_000, gl))
-	// At the threshold: must expand (deviation 1: the comparison is >=).
+	// At the threshold: must expand, since the expansion comparison is >=.
 	require.True(t, gte128(at, RatioDenom, 8_000, gl))
 
 	// Cross-check the whole predicate against exact arithmetic on a spread of
@@ -298,7 +300,8 @@ func TestSignalComparisonIsExactAt64BitOverflow(t *testing.T) {
 	}
 }
 
-// TestTriggerComparisonBoundaries pins deviation 1 at the exact boundary block,
+// TestTriggerComparisonBoundaries pins both comparison operators at the exact boundary
+// block,
 // which is the only place the choice of operator is observable - and one such
 // block offsets the accumulator forever.
 func TestTriggerComparisonBoundaries(t *testing.T) {
@@ -356,7 +359,8 @@ func TestStepSaturates(t *testing.T) {
 	require.Equal(t, floor, LaneSize(p, s, gl), "shrinking from zero must not underflow")
 }
 
-// TestClampAppliesEveryBlock is deviation 4. A GasLimit walk-down alone breaks the
+// TestClampAppliesEveryBlock pins the every-block clamp (BEP 3.4.4). A GasLimit walk-down
+// alone breaks the
 // "clamp only when a step fires" reading, with no governance action involved: the
 // quota holds its gas value while the ratio ceiling falls under it, so its share of
 // the block grows past MAX_LANE_RATIO.
@@ -409,7 +413,7 @@ func TestBootstrapIsTheZeroSignal(t *testing.T) {
 		}
 	}
 
-	// NewSignal is the only way to reach it, and nil means "the parent carries no
+	// newSignal is the only way to reach it, and nil means "the parent carries no
 	// commitment" - which is true for exactly one block per network.
 	require.Equal(t, Signal{}, newSignal(nil, 55_000_000))
 
@@ -483,7 +487,8 @@ func TestNoHaltIsReachable(t *testing.T) {
 	}
 }
 
-// TestAppliesSkipsTheActivationBlock pins deviation 8. The PaymentLane code is
+// TestAppliesSkipsTheActivationBlock pins the activation semantics (BEP 3.4.5). The
+// PaymentLane code is
 // installed at the END of the Gauss block, so the rules cannot bind there.
 func TestAppliesSkipsTheActivationBlock(t *testing.T) {
 	forkTime := uint64(1_800_000_000)
@@ -535,9 +540,14 @@ func TestSignalCarriesTheParentGasLimit(t *testing.T) {
 	require.Equal(t, c.LaneSize, s.laneSize)
 	require.Equal(t, c.GeneralGasUsed, s.generalGasUsed)
 	require.Equal(t, uint64(55_000_000), s.gasLimit, "the denominator must be the parent's gas limit")
-	// PaymentGasUsed is deliberately not part of the signal: BEP 3.3's numerator is
-	// general gas only, which is what keeps a breathe block's 12.16M of system gas
-	// out of the congestion measurement.
+	// PaymentGasUsed is deliberately dropped, and this is a registered deviation, not a
+	// restatement of the BEP: section 3.4.2's numerator is
+	// general + max(0, payment - laneSize), so a second implementation following the
+	// text would expand here where this holds. See THE CONGESTION SIGNAL OMITS THE PAYMENT
+	// OVERFLOW TERM in quota.go. (What keeps
+	// a breathe block's system gas out of the measurement is a different decision - the
+	// separate systemGasUsed term - and it does not depend on this one.)
+	require.Equal(t, uint64(1_000_000), c.PaymentGasUsed, "fixture must have payment gas for the drop to be observable")
 }
 
 // TestMulDivFloorGuardBoundary covers hi == d, the exact case the doc comment names
@@ -784,8 +794,17 @@ func TestNilHeaderHandlingIsSpecified(t *testing.T) {
 	s, err := ParentSignal(&config, hdr, nil, common.Hash{})
 	require.Error(t, err)
 	require.Equal(t, Signal{}, s)
-	// And a nil grandparent stays legal, meaning "the parent is genesis".
-	s, err = ParentSignal(&config, nil, hdr, common.Hash{})
+
+	// A nil grandparent is legal for genesis and an error for anything else. Both
+	// halves matter: the second is the one that keeps an unresolved grandparent from
+	// silently becoming the bootstrap seed, which would reset the quota to the floor
+	// on a parent that had stepped, forever.
+	genesis := &types.Header{Number: common.Big0, Time: forkTime - 3, GasLimit: 55_000_000}
+	s, err = ParentSignal(&config, nil, genesis, common.Hash{})
 	require.NoError(t, err)
+	require.Equal(t, Signal{}, s)
+
+	s, err = ParentSignal(&config, nil, hdr, common.Hash{})
+	require.ErrorIs(t, err, ErrBadCommitment, "an unresolved grandparent must not be read as genesis")
 	require.Equal(t, Signal{}, s)
 }

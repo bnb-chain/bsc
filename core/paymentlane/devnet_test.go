@@ -34,7 +34,7 @@ import (
 // rpcReader is a StorageReader backed by eth_getStorageAt at a fixed block.
 //
 // It exists so the end-to-end check drives the REAL slot arithmetic - paramSlot,
-// whitelistElemSlot and the length slot - against a live chain, rather than
+// paymentContractSlot and the length slot - against a live chain, rather than
 // re-deriving the layout in the test and comparing two copies of the same guess.
 type rpcReader struct {
 	t     *testing.T
@@ -131,7 +131,7 @@ func TestDevnetReadPath(t *testing.T) {
 		require.Equal(t, numParams, r.reads, "LoadParams must cost exactly one read per parameter")
 	})
 
-	t.Run("LoadWhitelist agrees with getPaymentContracts", func(t *testing.T) {
+	t.Run("LoadPaymentContracts agrees with getPaymentContracts", func(t *testing.T) {
 		got, err := LoadPaymentContracts(r)
 		require.NoError(t, err)
 

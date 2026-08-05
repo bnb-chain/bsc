@@ -447,9 +447,9 @@ func TestMemoDoesOneReadPerDistinctDestination(t *testing.T) {
 	require.Len(t, failing.reads, 2, "errors must not be memoised")
 }
 
-// TestNilWhitelistMeansEmpty pins the contract with LoadWhitelist: nil is the
+// TestNilPaymentContractsMeansEmpty pins the contract with LoadPaymentContracts: nil is the
 // activation-day state, not a failure signal.
-func TestNilWhitelistMeansEmpty(t *testing.T) {
+func TestNilPaymentContractsMeansEmpty(t *testing.T) {
 	tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &listedDest, data: []byte{0x01}})
 	got, err := NewClassifier(common.Hash{}, forbidReads(t), nil).Classify(tx)
 	require.NoError(t, err)

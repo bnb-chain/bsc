@@ -46,6 +46,11 @@ const (
 	selMaxLaneRatio         = "4df7c732" // MAX_LANE_RATIO()
 	selTriggerGapMin        = "170da6d4" // TRIGGER_GAP_MIN()
 	selRatioGapMin          = "2bbf97d7" // RATIO_GAP_MIN()
+	selMinExpandTriggerRat  = "04b9bb05" // MIN_EXPAND_TRIGGER_RATIO()
+	selMinShrinkTriggerRat  = "393c718f" // MIN_SHRINK_TRIGGER_RATIO()
+	selMaxStepRatio         = "b5fe5373" // MAX_STEP_RATIO()
+	selMinLaneGas           = "a7c083f6" // MIN_LANE_GAS()
+	selMaxLaneGas           = "33eab21e" // MAX_LANE_GAS()
 )
 
 // mapReader is a StorageReader over a literal slot map. Absent slots read as zero,
@@ -207,6 +212,14 @@ func TestDefaultsMatchDeployedBytecode(t *testing.T) {
 //	                      whole no-reachable-halt argument.
 //	RATIO_DENOM           every ratio in the package is parts per this.
 //	MAX_PAYMENT_CONTRACTS it bounds the enumeration loop.
+//
+// The remaining five are the stage-one bounds that contractLegal reproduces so the
+// exhaustive tests range over exactly the tuples governance can produce. They have
+// one shared failure mode, and it is silent in the direction that matters: raise
+// MAX_STEP_RATIO contract-side - which the contract's own comment invites, and which
+// is what would make BEP invariant (6) reachable for the first time - and
+// contractLegal keeps rejecting the newly legal tuples, so legalLattice quietly stops
+// generating them and every exhaustive test here narrows with nothing turning red.
 func TestConstantsMatchDeployedBytecode(t *testing.T) {
 	statedb := deployedContract(t)
 	for _, tc := range []struct {
@@ -220,6 +233,11 @@ func TestConstantsMatchDeployedBytecode(t *testing.T) {
 		{"MAX_PAYMENT_CONTRACTS", selMaxPaymentContracts, MaxPaymentContracts},
 		{"TRIGGER_GAP_MIN", selTriggerGapMin, triggerGapMin},
 		{"RATIO_GAP_MIN", selRatioGapMin, ratioGapMin},
+		{"MIN_EXPAND_TRIGGER_RATIO", selMinExpandTriggerRat, minExpandTriggerRat},
+		{"MIN_SHRINK_TRIGGER_RATIO", selMinShrinkTriggerRat, minShrinkTriggerRat},
+		{"MAX_STEP_RATIO", selMaxStepRatio, maxStepRatio},
+		{"MIN_LANE_GAS", selMinLaneGas, minLaneGas},
+		{"MAX_LANE_GAS", selMaxLaneGas, maxLaneGas},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := callContract(t, statedb, tc.selector)
