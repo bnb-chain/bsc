@@ -42,6 +42,10 @@ install -d -o caddy -g caddy /var/www/coinbosa/site
 install -d -o caddy -g caddy /var/www/coinbosa/explorer
 install -d -o caddy -g caddy /var/www/coinbosa/whitepaper
 
+# Journal d'accès : indispensable pour la forensique ET comme source de la prison
+# fail2ban HTTP (21-fail2ban-web.sh). Sans journal, aucun bannissement possible.
+install -d -o caddy -g caddy -m 0750 /var/log/caddy
+
 # page d'attente tant que les vrais fichiers ne sont pas poussés
 for d in site explorer whitepaper; do
   if [ ! -f "/var/www/coinbosa/$d/index.html" ]; then
@@ -70,6 +74,14 @@ cat > /etc/caddy/Caddyfile <<EOF
 $SITE_DOMAIN, www.$SITE_DOMAIN {
     encode gzip zstd
 
+    log {
+        output file /var/log/caddy/site-access.log {
+            roll_size 50MiB
+            roll_keep 10
+        }
+        format json
+    }
+
     handle_path /whitepaper* {
         root * /var/www/coinbosa/whitepaper
         file_server
@@ -94,8 +106,39 @@ $SITE_DOMAIN, www.$SITE_DOMAIN {
 # --- Explorateur ---
 $EXPLORER_DOMAIN {
     encode gzip zstd
-    root * /var/www/coinbosa/explorer
-    file_server
+
+    log {
+        output file /var/log/caddy/explorer-access.log {
+            roll_size 50MiB
+            roll_keep 10
+        }
+        format json
+    }
+
+    # --- Relais JSON-RPC en MÊME ORIGINE ---
+    # L'explorateur appelle https://$EXPLORER_DOMAIN/rpc : même schéma, même hôte, même
+    # port (443). C'est ce qui permet de garder la CSP stricte (connect-src 'self') ET
+    # le port 8545 du nœud FERMÉ au pare-feu — le nœud n'est jamais exposé directement.
+    # Seul POST est relayé, avec un corps borné (une requête JSON-RPC légitime est petite).
+    @rpc_post {
+        path /rpc
+        method POST
+    }
+    handle @rpc_post {
+        request_body {
+            max_size 32KB
+        }
+        reverse_proxy 127.0.0.1:8545
+    }
+    # Toute autre méthode sur /rpc (GET, OPTIONS, HEAD…) est refusée.
+    handle /rpc* {
+        respond "method not allowed" 405
+    }
+
+    handle {
+        root * /var/www/coinbosa/explorer
+        file_server
+    }
 
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
