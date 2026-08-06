@@ -18,6 +18,38 @@ Le livre blanc v2 décrivait AuRa sur le client Parity / OpenEthereum. Ce dépô
 depuis le 6 novembre 2020** : bâtir dessus signifierait partir d'un logiciel mort, sans
 correctif de sécurité.
 
+### Point d'ancrage amont, épinglé par empreinte
+
+Un tag peut être redéplacé ; une empreinte de commit, non. Le point d'ancrage exact est donc
+consigné ici :
+
+| | |
+|---|---|
+| Dépôt amont | `bnb-chain/bsc` |
+| Version | `v1.7.6` |
+| **Commit amont** | **`69b3758c81ec90bb827f93fda0c00f49ebf79e25`** |
+
+Ce commit est présent dans l'historique de ce dépôt (`git cat-file -t 69b3758c…`) : la
+filiation se vérifie, elle ne se croit pas sur parole.
+
+**Écart total avec l'amont, sur le code du client** (`git diff 69b3758c..HEAD`, hors dossier
+`coinbosa/` et hors CI) : `.gitignore`, `Makefile`, `README.md`, `build/ci.go`, et **une seule
+ligne de code de consensus** —
+
+```diff
+  consensus/parlia/parlia.go
+- defaultBlockInterval uint64 = 3000 // Default block interval in milliseconds
++ defaultBlockInterval uint64 = 5000 // Coinbosa : 5 s par bloc (livre blanc). BSC amont : 3000.
+```
+
+Autrement dit : le moteur de consensus est celui de l'amont, à un paramètre près. Tout
+auditeur peut le vérifier en une commande, sans lire le reste du dépôt.
+
+**Suivi de sécurité** — parce que la base est un logiciel tiers, la veille sur les avis de
+`bnb-chain/bsc` fait partie de l'exploitation : à chaque avis publié, décider explicitement de
+rebaser ou de rétroporter le correctif, et mettre à jour l'empreinte ci-dessus. Une empreinte
+figée sans veille ne serait qu'une photo d'un logiciel qui vieillit.
+
 **Conséquence** — le code amont est en double licence : bibliothèque hors `cmd/` en LGPL-3.0,
 binaires de `cmd/` en GPL-3.0. Coinbosa distribuant un client recompilé, l'obligation de
 publier le code source correspondant s'appliquera dès qu'un binaire sera distribué à un tiers.

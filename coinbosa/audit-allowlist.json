@@ -1,0 +1,32 @@
+{
+  "$commentaire": [
+    "Dérogations d'audit npm, explicites et datées. Toute vulnérabilité ABSENTE de cette",
+    "liste fait ÉCHOUER la CI. Une dérogation exige : la preuve que le code vulnérable",
+    "n'est pas atteignable dans notre usage, et une date d'expiration qui force le réexamen.",
+    "Vérifier avec : node scripts/audit-deps.js"
+  ],
+  "derogations": [
+    {
+      "avis": "GHSA-ph9p-34f9-6g65",
+      "paquet": "tmp",
+      "severite": "high",
+      "titre": "Path traversal via prefix/postfix non assaini",
+      "pourquoi": "Non atteignable ici. 'tmp' n'est requis que par node_modules/solc/smtsolver.js (ligne 58), qui appelle tmp.fileSync({postfix:'.smt2'}) — un littéral codé en dur, jamais une entrée externe. Nos scripts (compile.js, build-genesis.js) n'utilisent que solc.compile() et solc.version() : le vérificateur SMT n'est jamais chargé. Dépendance de COMPILATION uniquement : elle ne tourne jamais sur le réseau (les nœuds exécutent geth, en Go).",
+      "pourquoi_pas_corrige": "solc 0.8.26 épingle tmp à 0.0.33 exactement. Forcer une surcharge (npm overrides) changerait l'environnement du compilateur, donc potentiellement le bytecode produit — or le bytecode du contrat système fixe le HASH DU BLOC 0, c'est-à-dire l'identité de la chaîne. On ne prend pas ce risque pour un chemin de code non atteignable.",
+      "ajoute_le": "2026-08-06",
+      "expire_le": "2026-11-06",
+      "a_reexaminer": "Lever la dérogation dès qu'une version de solc >= 0.8.26 met à jour sa dépendance tmp. Ne JAMAIS changer de version de solc sans régénérer et re-vérifier le genesis."
+    },
+    {
+      "avis": "GHSA-52f5-9888-hmc6",
+      "paquet": "tmp",
+      "severite": "low",
+      "titre": "Lien symbolique arbitraire menant à une écriture hors répertoire",
+      "pourquoi": "Même paquet, même chemin non atteignable que ci-dessus : seul solc/smtsolver.js requiert tmp, et nous ne l'appelons jamais.",
+      "pourquoi_pas_corrige": "Identique à GHSA-ph9p-34f9-6g65 : tmp est épinglé par solc, dont la version fixe l'identité de la chaîne.",
+      "ajoute_le": "2026-08-06",
+      "expire_le": "2026-11-06",
+      "a_reexaminer": "Lever en même temps que GHSA-ph9p-34f9-6g65."
+    }
+  ]
+}

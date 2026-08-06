@@ -44,6 +44,12 @@ jobs:
         working-directory: coinbosa
         run: npm ci --no-audit --no-fund
 
+      # Barrière bloquante : toute vulnérabilité npm non explicitement dérogée
+      # (avec preuve de non-atteignabilité ET date d'expiration) fait échouer la CI.
+      - name: Auditer les dépendances npm
+        working-directory: coinbosa
+        run: node scripts/audit-deps.js
+
       - name: Compiler les contrats
         working-directory: coinbosa
         run: node scripts/compile.js
@@ -91,6 +97,15 @@ jobs:
         # Contrôle mécanique sur le genesis de DÉV (ALLOW_DEV_SUPPLY=1, explicite et bruyant).
         # La porte de production reste stricte : sans ce flag, un genesis coinbosaDev est refusé.
         run: GENESIS=genesis/genesis-coinbosa-dev.json ALLOW_DEV_SUPPLY=1 RPC=http://127.0.0.1:8545 node scripts/check-supply.js
+
+      # Le stateRoot du bloc 0 engage TOUT l'état initial : le comparer à une empreinte
+      # figée détecte n'importe quelle allocation cachée. En CI le genesis est régénéré à
+      # chaque run (validateur jeté), donc l'empreinte varie : on vérifie ici que le
+      # contrôle s'exécute et on affiche les valeurs. La comparaison stricte s'applique
+      # à la production, où l'empreinte est figée dans genesis-reference.json.
+      - name: Empreinte du bloc 0 (anti-allocation cachée)
+        working-directory: coinbosa
+        run: ALLOW_DEV_HASH=1 RPC=http://127.0.0.1:8545 node scripts/check-genesis-hash.js
 
       - name: Tests du standard BRC20
         working-directory: coinbosa

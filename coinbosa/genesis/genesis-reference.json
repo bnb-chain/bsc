@@ -1,0 +1,22 @@
+{
+  "$commentaire": [
+    "Empreinte du bloc 0 du réseau de PRODUCTION, figée au moment du gel du genesis.",
+    "",
+    "Tant que 'hash' vaut 0x0, la production n'est pas figée et check-genesis-hash.js",
+    "REFUSE de valider une chaîne (sauf ALLOW_DEV_HASH=1, réservé au développement).",
+    "",
+    "À remplir une seule fois, au gel du genesis de production :",
+    "  1. générer le genesis de production (adresses multi-signatures réelles) ;",
+    "  2. initialiser un nœud et lire le bloc 0 ;",
+    "  3. recopier ici hash / stateRoot / extraData, puis committer.",
+    "",
+    "stateRoot est la racine de Merkle de TOUT l'état initial : le comparer suffit à",
+    "détecter n'importe quelle allocation cachée, même à une adresse inconnue de nous."
+  ],
+  "reseau": "Coinbosa Chain",
+  "chainId": 26262,
+  "fige_le": "",
+  "hash": "0x0",
+  "stateRoot": "0x0",
+  "extraData": ""
+}

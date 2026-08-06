@@ -8,7 +8,7 @@ on:
     workflow_dispatch: {}
     # Scan mainline branches and report all findings:
     push:
-      branches: ["master", "develop"]
+      branches: ["master", "develop", "coinbosa-**"]
 
 jobs:
   build:
@@ -28,11 +28,19 @@ jobs:
         go-version: ${{ matrix.go-version }}
     
     - name: Install Nancy
+      # Le binaire est vérifié par empreinte AVANT d'être exécuté : un scanner de
+      # sécurité téléchargé sans contrôle serait lui-même un vecteur d'attaque.
+      # Empreinte publiée par l'éditeur (nancychecksums.txt de la release v1.0.52).
+      env:
+        NANCY_SHA256: 73cf5d140491c937bc6361da0ab9e9ac4565741fa34e998c4bc0ebc0efc77f45
       run: |
-        curl -sSL -o nancy https://github.com/sonatype-nexus-community/nancy/releases/download/v1.0.52/nancy-v1.0.52-linux-amd64
+        set -euo pipefail
+        curl -sSL --retry 3 -o nancy \
+          https://github.com/sonatype-nexus-community/nancy/releases/download/v1.0.52/nancy-v1.0.52-linux-amd64
+        echo "${NANCY_SHA256}  nancy" | sha256sum -c - \
+          || { echo "::error::empreinte du binaire nancy inattendue — installation refusée"; exit 1; }
         chmod +x nancy
         sudo mv nancy /usr/local/bin/
-        file /usr/local/bin/nancy
 
     - name: Nancy Security Scan
       shell: bash

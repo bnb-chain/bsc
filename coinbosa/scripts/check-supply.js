@@ -6,10 +6,12 @@
 //
 // Garanti : aucun solde hérité (le pont du réseau amont, notamment) ne subsiste,
 // la répartition boucle sur le total, les contrats inter-chaînes sont sans code.
-// Limite : ce contrôle itère les adresses du FICHIER local ; l'intégrité complète du
-// genesis déployé (détection d'une adresse cachée absente du fichier) nécessiterait une
-// comparaison du HASH du bloc 0 en intégration continue — encore à implémenter (ROADMAP,
-// jalon durcissement), NON couverte par ce script seul aujourd'hui.
+// Limite assumée : ce contrôle itère les adresses du FICHIER local. Une adresse CACHÉE,
+// présente dans le genesis déployé mais absente du fichier, lui échapperait — aucune API
+// JSON-RPC standard ne permet d'énumérer tous les comptes d'un état.
+// C'est scripts/check-genesis-hash.js qui couvre ce cas : il compare le hash et le
+// stateRoot du bloc 0 à une empreinte figée, et le stateRoot engage TOUT l'état initial.
+// Les deux contrôles sont complémentaires — lancer les deux.
 const { ethers } = require('ethers');
 const fs = require('fs');
 const path = require('path');
