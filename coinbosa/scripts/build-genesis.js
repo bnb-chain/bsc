@@ -34,6 +34,33 @@ if (!VALIDATOR || !ethers.isAddress(VALIDATOR)) {
   process.exit(1);
 }
 
+// --- Gouverneur du contrat système : distinct de la clé de scellage en production ---
+// Le gouverneur peut modifier l'ensemble des validateurs et récupérer le surplus. La clé
+// de scellage, elle, signe un bloc toutes les 5 secondes : elle vit forcément EN LIGNE sur
+// le serveur du validateur. Les confondre reviendrait à laisser la gouvernance de la chaîne
+// sur une machine exposée en permanence — la compromission d'un serveur donnerait le
+// contrôle du consensus. En production, on exige donc deux adresses différentes, et le
+// gouverneur doit être un coffre multi-signatures (idéalement derrière un délai).
+const GOVERNOR_ENV = process.env.GOVERNOR;
+if (!ALLOW_DEV) {
+  if (!GOVERNOR_ENV || !ethers.isAddress(GOVERNOR_ENV)) {
+    console.error('ERREUR : GOVERNOR manquant ou invalide.');
+    console.error('  En production, le gouverneur doit être une adresse multi-signatures, distincte du validateur :');
+    console.error('    VALIDATOR=0x… GOVERNOR=0x… node scripts/build-genesis.js');
+    process.exit(1);
+  }
+  if (GOVERNOR_ENV.toLowerCase() === VALIDATOR.toLowerCase()) {
+    console.error('ERREUR : GOVERNOR est identique au VALIDATOR.');
+    console.error('  La clé de scellage est en ligne en permanence ; lui confier la gouvernance');
+    console.error('  signifierait qu\'un serveur compromis emporte le contrôle du consensus.');
+    console.error('  Utilisez un coffre multi-signatures distinct comme gouverneur.');
+    process.exit(1);
+  }
+}
+// En développement, le validateur fait office de gouverneur : c'est ce qui permet de
+// piloter une chaîne locale avec une seule clé jetable.
+const GOVERNOR = GOVERNOR_ENV || VALIDATOR;
+
 const ZERO = '0x0000000000000000000000000000000000000000';
 const WEI = 10n ** 18n;
 const TOTAL_SUPPLY = BigInt(CONFIG.nativeCoin.totalSupply);       // 700 000 000
@@ -81,7 +108,7 @@ if (!solc.version().startsWith(SOLC_EXPECTED)) {
 }
 
 // --- 1. compiler le ValidatorSet avec le gouverneur voulu ---
-const GOV = ethers.getAddress(VALIDATOR); // adresse checksummee (Solidity exige EIP-55)
+const GOV = ethers.getAddress(GOVERNOR); // adresse checksummee (Solidity exige EIP-55)
 let source = fs.readFileSync(SOL, 'utf8');
 const GOV_RE = /address public constant GOVERNOR = 0x[0-9a-fA-F]{40};/;
 const srcBefore = source;
@@ -186,7 +213,10 @@ fs.writeFileSync(path.join(ROOT, 'genesis', 'CoinbosaValidatorSet.abi.json'), JS
 
 const extraLen = (g.extraData.length - 2) / 2;
 console.log('solc              :', solc.version().split('+')[0]);
-console.log('gouverneur        :', VALIDATOR);
+console.log('validateur        :', ethers.getAddress(VALIDATOR), '(clé de scellage, en ligne)');
+console.log('gouverneur        :', GOV, GOV.toLowerCase() === VALIDATOR.toLowerCase()
+  ? '⚠  IDENTIQUE au validateur — développement uniquement'
+  : '(distinct du validateur)');
 console.log('code 0x…1000      :', oldSize, '->', (runtime.length - 2) / 2, 'octets');
 console.log('extraData         :', extraLen, 'octets', extraLen === 166 ? '(conforme post-Luban)' : '(INATTENDU)');
 console.log('solde hérité purgé:', (purged / WEI).toLocaleString('fr-FR'), 'coins (dont le pont 0x…1004)');
