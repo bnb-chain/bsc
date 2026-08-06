@@ -104,7 +104,7 @@ func runB20Factory(ctx *PrecompileContext, input []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		return encBool(IsB20Address(a) && b20Initialized(ctx.StateDB, a)), nil
+		return encBool(IsB20Address(a) && b20InitializedMetered(ctx, a)), nil
 	case selCreateB20:
 		return createB20(ctx, args)
 	}
@@ -140,9 +140,10 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	addr := b20DeriveAddress(variant, creator, salt)
 
 	// TODO: ActivationRegistry feature gate for the variant (P3).
-	if b20Initialized(ctx.StateDB, addr) {
+	if b20InitializedMetered(ctx, addr) {
 		return nil, revB20("TokenAlreadyExists(address)", errSelTokenExists, addrKey(addr))
 	}
+	ctx.chargeCodeWrite(addr, b20MarkerCode)
 	ctx.StateDB.SetCode(addr, b20MarkerCode, tracing.CodeChangeContractCreation)
 
 	// Bootstrap context/token bound to the new address, privileged so initCalls

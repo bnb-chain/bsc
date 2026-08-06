@@ -23,20 +23,6 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// B20 storage gas schedule (v0), aligned with the EVM's own SLOAD/SSTORE
-// pricing so a token operation costs about what the equivalent Solidity
-// SSTOREs would, and repeated cold access cannot be gamed. Cost is booked in
-// RegularGas via PrecompileContext.chargeStateGas.
-//
-// TODO: exact EIP-2200/3529 committed-state refund semantics are not modelled
-// yet (no gas refunds on clear); revisit with the gas audit.
-const (
-	b20GasColdSlot    = params.ColdSloadCostEIP2929                                // 2100: first touch of a slot in the tx
-	b20GasWarmSlot    = params.WarmStorageReadCostEIP2929                          // 100:  subsequent touch / no-op write
-	b20GasSstoreSet   = params.SstoreSetGasEIP2200                                 // 20000: zero -> non-zero
-	b20GasSstoreReset = params.SstoreResetGasEIP2200 - params.ColdSloadCostEIP2929 // 2900:  non-zero -> other (cold surcharge added separately)
-)
-
 // B20 core storage layout.
 //
 // A token's state lives in the account storage trie at the token's own
@@ -131,6 +117,16 @@ type b20Storage struct {
 	ctx   *PrecompileContext
 }
 
+// mapSlot derives mapping[key] and meters the keccak, which hashes the 64-byte
+// (key ++ base) preimage. Use it on any metered path; the bare mappingSlot
+// helper stays available for tests and unmetered views.
+func (s b20Storage) mapSlot(base, key common.Hash) common.Hash {
+	if s.ctx != nil {
+		s.ctx.chargeKeccak(64)
+	}
+	return mappingSlot(base, key)
+}
+
 // newB20Storage returns an unmetered view (read-only queries, tests).
 func newB20Storage(state StateDB, token common.Address) b20Storage {
 	return b20Storage{state: state, token: token}
@@ -142,39 +138,18 @@ func newMeteredB20Storage(ctx *PrecompileContext) b20Storage {
 	return b20Storage{state: ctx.StateDB, token: ctx.Self, ctx: ctx}
 }
 
-// chargeRead meters an SLOAD-equivalent: cold on first touch, warm after.
+// chargeRead meters an SLOAD-equivalent at EIP-2929 prices: warm always, plus
+// the cold surcharge on the first touch of the slot in this transaction.
 func (s b20Storage) chargeRead(slot common.Hash) {
 	if s.ctx == nil {
 		return
 	}
 	if _, warm := s.state.SlotInAccessList(s.token, slot); warm {
-		s.ctx.chargeStateGas(b20GasWarmSlot)
-	} else {
-		s.state.AddSlotToAccessList(s.token, slot)
-		s.ctx.chargeStateGas(b20GasColdSlot)
-	}
-}
-
-// chargeWrite meters an SSTORE-equivalent: cold surcharge on first touch plus
-// the dirty cost (set / reset / no-op) from the current value.
-func (s b20Storage) chargeWrite(slot, cur, val common.Hash) {
-	if s.ctx == nil {
+		s.ctx.chargeStateGas(params.WarmStorageReadCostEIP2929)
 		return
 	}
-	var cost uint64
-	if _, warm := s.state.SlotInAccessList(s.token, slot); !warm {
-		s.state.AddSlotToAccessList(s.token, slot)
-		cost += b20GasColdSlot
-	}
-	switch {
-	case cur == val:
-		cost += b20GasWarmSlot
-	case cur == (common.Hash{}):
-		cost += b20GasSstoreSet
-	default:
-		cost += b20GasSstoreReset
-	}
-	s.ctx.chargeStateGas(cost)
+	s.state.AddSlotToAccessList(s.token, slot)
+	s.ctx.chargeStateGas(params.ColdSloadCostEIP2929)
 }
 
 func (s b20Storage) getWord(slot common.Hash) common.Hash {
@@ -182,11 +157,14 @@ func (s b20Storage) getWord(slot common.Hash) common.Hash {
 	return s.state.GetState(s.token, slot)
 }
 
+// setWord writes a slot after metering it under EIP-2200 net metering with
+// EIP-3529 refunds (see chargeStorageWrite). A write refused by the reentrancy
+// sentry does not happen at all; the context is marked out of gas and the
+// dispatcher fails the call.
 func (s b20Storage) setWord(slot, val common.Hash) {
-	// The current value is read as part of SSTORE accounting and is not itself
-	// charged as an SLOAD.
-	cur := s.state.GetState(s.token, slot)
-	s.chargeWrite(slot, cur, val)
+	if !s.chargeStorageWrite(slot, val) {
+		return
+	}
 	s.state.SetState(s.token, slot, val)
 }
 
@@ -212,48 +190,48 @@ func (s b20Storage) setPaused(v *uint256.Int)      { s.setU256(b20SlotPaused, v)
 // --- balances / allowances / nonces ----------------------------------------
 
 func (s b20Storage) balanceOf(a common.Address) *uint256.Int {
-	slot := mappingSlot(slotAt(b20SlotBalances), addrKey(a))
+	slot := s.mapSlot(slotAt(b20SlotBalances), addrKey(a))
 	return new(uint256.Int).SetBytes(s.getWord(slot).Bytes())
 }
 
 func (s b20Storage) setBalance(a common.Address, v *uint256.Int) {
-	slot := mappingSlot(slotAt(b20SlotBalances), addrKey(a))
+	slot := s.mapSlot(slotAt(b20SlotBalances), addrKey(a))
 	s.setWord(slot, common.Hash(v.Bytes32()))
 }
 
 func (s b20Storage) allowance(owner, spender common.Address) *uint256.Int {
-	inner := mappingSlot(slotAt(b20SlotAllowances), addrKey(owner))
-	slot := mappingSlot(inner, addrKey(spender))
+	inner := s.mapSlot(slotAt(b20SlotAllowances), addrKey(owner))
+	slot := s.mapSlot(inner, addrKey(spender))
 	return new(uint256.Int).SetBytes(s.getWord(slot).Bytes())
 }
 
 func (s b20Storage) setAllowance(owner, spender common.Address, v *uint256.Int) {
-	inner := mappingSlot(slotAt(b20SlotAllowances), addrKey(owner))
-	slot := mappingSlot(inner, addrKey(spender))
+	inner := s.mapSlot(slotAt(b20SlotAllowances), addrKey(owner))
+	slot := s.mapSlot(inner, addrKey(spender))
 	s.setWord(slot, common.Hash(v.Bytes32()))
 }
 
 func (s b20Storage) nonce(owner common.Address) *uint256.Int {
-	slot := mappingSlot(slotAt(b20SlotNonces), addrKey(owner))
+	slot := s.mapSlot(slotAt(b20SlotNonces), addrKey(owner))
 	return new(uint256.Int).SetBytes(s.getWord(slot).Bytes())
 }
 
 func (s b20Storage) setNonce(owner common.Address, v *uint256.Int) {
-	slot := mappingSlot(slotAt(b20SlotNonces), addrKey(owner))
+	slot := s.mapSlot(slotAt(b20SlotNonces), addrKey(owner))
 	s.setWord(slot, common.Hash(v.Bytes32()))
 }
 
 // --- roles ------------------------------------------------------------------
 
 func (s b20Storage) hasRole(role common.Hash, a common.Address) bool {
-	inner := mappingSlot(slotAt(b20SlotRoles), role)
-	slot := mappingSlot(inner, addrKey(a))
+	inner := s.mapSlot(slotAt(b20SlotRoles), role)
+	slot := s.mapSlot(inner, addrKey(a))
 	return s.getWord(slot) != (common.Hash{})
 }
 
 func (s b20Storage) setRole(role common.Hash, a common.Address, enabled bool) {
-	inner := mappingSlot(slotAt(b20SlotRoles), role)
-	slot := mappingSlot(inner, addrKey(a))
+	inner := s.mapSlot(slotAt(b20SlotRoles), role)
+	slot := s.mapSlot(inner, addrKey(a))
 	var v common.Hash
 	if enabled {
 		v[31] = 1
@@ -262,11 +240,11 @@ func (s b20Storage) setRole(role common.Hash, a common.Address, enabled bool) {
 }
 
 func (s b20Storage) roleAdmin(role common.Hash) common.Hash {
-	return s.getWord(mappingSlot(slotAt(b20SlotRoleAdmins), role))
+	return s.getWord(s.mapSlot(slotAt(b20SlotRoleAdmins), role))
 }
 
 func (s b20Storage) setRoleAdmin(role, admin common.Hash) {
-	s.setWord(mappingSlot(slotAt(b20SlotRoleAdmins), role), admin)
+	s.setWord(s.mapSlot(slotAt(b20SlotRoleAdmins), role), admin)
 }
 
 // --- packed policy ids ------------------------------------------------------

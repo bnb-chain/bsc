@@ -90,12 +90,12 @@ func (e assetExt) setMultiplier(m *uint256.Int) {
 	e.s.setWord(assetSlot(b20AssetSlotMultiplier), common.Hash(m.Bytes32()))
 }
 func (e assetExt) announcementUsed(id common.Hash) bool {
-	return e.s.getWord(mappingSlot(assetSlot(b20AssetSlotAnnouncements), id)) != (common.Hash{})
+	return e.s.getWord(e.s.mapSlot(assetSlot(b20AssetSlotAnnouncements), id)) != (common.Hash{})
 }
 func (e assetExt) markAnnouncement(id common.Hash) {
 	var one common.Hash
 	one[31] = 1
-	e.s.setWord(mappingSlot(assetSlot(b20AssetSlotAnnouncements), id), one)
+	e.s.setWord(e.s.mapSlot(assetSlot(b20AssetSlotAnnouncements), id), one)
 }
 
 // extraMetaSlot is the Solidity mapping(string=>string) value slot for key:

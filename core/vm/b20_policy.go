@@ -102,36 +102,36 @@ func (p policyReg) setCounter(v uint64) {
 	p.s.setWord(polSlot(polSlotCounter), common.Hash(uint256.NewInt(v).Bytes32()))
 }
 func (p policyReg) exists(id uint64) bool {
-	return p.s.getWord(mappingSlot(polSlot(polSlotExists), idKey(id))) != (common.Hash{})
+	return p.s.getWord(p.s.mapSlot(polSlot(polSlotExists), idKey(id))) != (common.Hash{})
 }
 func (p policyReg) setExists(id uint64) {
 	var one common.Hash
 	one[31] = 1
-	p.s.setWord(mappingSlot(polSlot(polSlotExists), idKey(id)), one)
+	p.s.setWord(p.s.mapSlot(polSlot(polSlotExists), idKey(id)), one)
 }
 func (p policyReg) admin(id uint64) common.Address {
-	return common.BytesToAddress(p.s.getWord(mappingSlot(polSlot(polSlotAdmins), idKey(id))).Bytes())
+	return common.BytesToAddress(p.s.getWord(p.s.mapSlot(polSlot(polSlotAdmins), idKey(id))).Bytes())
 }
 func (p policyReg) setAdmin(id uint64, a common.Address) {
-	p.s.setWord(mappingSlot(polSlot(polSlotAdmins), idKey(id)), addrKey(a))
+	p.s.setWord(p.s.mapSlot(polSlot(polSlotAdmins), idKey(id)), addrKey(a))
 }
 func (p policyReg) pending(id uint64) common.Address {
-	return common.BytesToAddress(p.s.getWord(mappingSlot(polSlot(polSlotPending), idKey(id))).Bytes())
+	return common.BytesToAddress(p.s.getWord(p.s.mapSlot(polSlot(polSlotPending), idKey(id))).Bytes())
 }
 func (p policyReg) setPending(id uint64, a common.Address) {
-	p.s.setWord(mappingSlot(polSlot(polSlotPending), idKey(id)), addrKey(a))
+	p.s.setWord(p.s.mapSlot(polSlot(polSlotPending), idKey(id)), addrKey(a))
 }
 func (p policyReg) member(id uint64, account common.Address) bool {
-	inner := mappingSlot(polSlot(polSlotMembers), idKey(id))
-	return p.s.getWord(mappingSlot(inner, addrKey(account))) != (common.Hash{})
+	inner := p.s.mapSlot(polSlot(polSlotMembers), idKey(id))
+	return p.s.getWord(p.s.mapSlot(inner, addrKey(account))) != (common.Hash{})
 }
 func (p policyReg) setMember(id uint64, account common.Address, in bool) {
-	inner := mappingSlot(polSlot(polSlotMembers), idKey(id))
+	inner := p.s.mapSlot(polSlot(polSlotMembers), idKey(id))
 	var v common.Hash
 	if in {
 		v[31] = 1
 	}
-	p.s.setWord(mappingSlot(inner, addrKey(account)), v)
+	p.s.setWord(p.s.mapSlot(inner, addrKey(account)), v)
 }
 
 // isAuthorized answers whether account may be operated under policy id. It
@@ -154,10 +154,10 @@ func (p policyReg) isAuthorized(id uint64, account common.Address) bool {
 type b20PolicyPrecompile struct{ b20StatefulBase }
 
 func (p *b20PolicyPrecompile) Name() string                    { return "B20PolicyRegistry" }
-func (p *b20PolicyPrecompile) RequiredGas(input []byte) uint64 { return 0 } // TODO: gas schedule
+func (p *b20PolicyPrecompile) RequiredGas(input []byte) uint64 { return 0 } // priced inside RunStateful
 
 func (p *b20PolicyPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
-	if err := b20EnterCall(ctx); err != nil {
+	if err := b20EnterCall(ctx, input); err != nil {
 		return finishB20(nil, err)
 	}
 	ret, err := runB20Policy(ctx, input)

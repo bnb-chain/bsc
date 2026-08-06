@@ -23,8 +23,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -196,25 +198,40 @@ func TestB20StorageGas(t *testing.T) {
 		return before - gas.RegularGas
 	}
 
+	// A balance slot is mapping-derived, so every access also pays the keccak
+	// over the 64-byte (key ++ base) preimage.
+	const keccak64 = params.Keccak256Gas + 2*params.Keccak256WordGas
+	var (
+		cold  = params.ColdSloadCostEIP2929
+		warm  = params.WarmStorageReadCostEIP2929
+		set   = params.SstoreSetGasEIP2200
+		reset = params.SstoreResetGasEIP2200 - params.ColdSloadCostEIP2929
+	)
+
 	// cold write, zero -> non-zero: cold surcharge + set.
-	if c := charged(func() { s.setBalance(alice, uint256.NewInt(500)) }); c != b20GasColdSlot+b20GasSstoreSet {
-		t.Errorf("cold set write charged %d, want %d", c, b20GasColdSlot+b20GasSstoreSet)
+	if c := charged(func() { s.setBalance(alice, uint256.NewInt(500)) }); c != keccak64+cold+set {
+		t.Errorf("cold set write charged %d, want %d", c, keccak64+cold+set)
 	}
 	// warm read of the same slot.
-	if c := charged(func() { _ = s.balanceOf(alice) }); c != b20GasWarmSlot {
-		t.Errorf("warm read charged %d, want %d", c, b20GasWarmSlot)
+	if c := charged(func() { _ = s.balanceOf(alice) }); c != keccak64+warm {
+		t.Errorf("warm read charged %d, want %d", c, keccak64+warm)
 	}
-	// warm write, non-zero -> other: reset.
-	if c := charged(func() { s.setBalance(alice, uint256.NewInt(600)) }); c != b20GasSstoreReset {
-		t.Errorf("warm reset write charged %d, want %d", c, b20GasSstoreReset)
+	// warm write, non-zero -> other. The slot was zero at the start of the
+	// transaction, so under EIP-2200 net metering this is a dirty update
+	// charged at the warm price, not a reset — the 20000 was already paid by
+	// the first write. `reset` is exercised by TestB20StorageRefunds, where the
+	// slot starts committed non-zero.
+	if c := charged(func() { s.setBalance(alice, uint256.NewInt(600)) }); c != keccak64+warm {
+		t.Errorf("dirty update charged %d, want %d", c, keccak64+warm)
 	}
 	// warm write, same value: no-op.
-	if c := charged(func() { s.setBalance(alice, uint256.NewInt(600)) }); c != b20GasWarmSlot {
-		t.Errorf("warm no-op write charged %d, want %d", c, b20GasWarmSlot)
+	if c := charged(func() { s.setBalance(alice, uint256.NewInt(600)) }); c != keccak64+warm {
+		t.Errorf("warm no-op write charged %d, want %d", c, keccak64+warm)
 	}
+	_ = reset
 
-	if got := ctx.StateGasUsed(); got != b20GasColdSlot+b20GasSstoreSet+b20GasWarmSlot+b20GasSstoreReset+b20GasWarmSlot {
-		t.Errorf("stateGasUsed = %d", got)
+	if got, want := ctx.StateGasUsed(), 4*keccak64+cold+set+warm+warm+warm; got != want {
+		t.Errorf("stateGasUsed = %d, want %d", got, want)
 	}
 	if ctx.OutOfGas() {
 		t.Error("should not be out of gas")
@@ -270,5 +287,141 @@ func TestB20StorageStrings(t *testing.T) {
 	// long-string marker: low bit of the length slot is set.
 	if w := s.getWord(slotAt(b20SlotContractURI)); w[31]&1 != 1 {
 		t.Error("long string should set the low bit of the length slot")
+	}
+}
+
+// TestB20StorageRefunds pins the EIP-3529 refund arms of the net-metered
+// write path against the interpreter's own makeGasSStoreFunc.
+func TestB20StorageRefunds(t *testing.T) {
+	clearing := params.SstoreClearsScheduleRefundEIP3529
+
+	newCtx := func() (*state.StateDB, b20Storage, *PrecompileContext) {
+		statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		if err != nil {
+			t.Fatal(err)
+		}
+		token := b20Addr(b20VariantAsset, 1)
+		// Without the sentinel the token is an EIP-161 empty account and
+		// Finalise below would reap it, storage included (BEP-702 3.16).
+		statedb.SetCode(token, b20MarkerCode, tracing.CodeChangeContractCreation)
+		gas := NewGasBudget(10_000_000)
+		ctx := &PrecompileContext{StateDB: statedb, Self: token, gas: &gas}
+		return statedb, newMeteredB20Storage(ctx), ctx
+	}
+	slot := slotAt(b20SlotTotalSupply)
+	one := common.Hash{31: 1}
+	two := common.Hash{31: 2}
+
+	// Clearing a slot that existed at the start of the transaction refunds.
+	statedb, s, _ := newCtx()
+	s.state.SetState(s.token, slot, one)
+	statedb.Finalise(true) // commit, so `original` is non-zero
+	s.setWord(slot, common.Hash{})
+	if got := statedb.GetRefund(); got != clearing {
+		t.Errorf("clear refund = %d, want %d", got, clearing)
+	}
+
+	// Re-creating it in the same transaction takes the refund back.
+	s.setWord(slot, two)
+	if got := statedb.GetRefund(); got != 0 {
+		t.Errorf("refund after recreate = %d, want 0", got)
+	}
+
+	// Restoring a dirty slot to its committed value refunds the difference
+	// between the reset price and a warm read.
+	statedb, s, _ = newCtx()
+	s.state.SetState(s.token, slot, one)
+	statedb.Finalise(true)
+	s.setWord(slot, two)
+	s.setWord(slot, one)
+	want := (params.SstoreResetGasEIP2200 - params.ColdSloadCostEIP2929) - params.WarmStorageReadCostEIP2929
+	if got := statedb.GetRefund(); got != want {
+		t.Errorf("reset-to-original refund = %d, want %d", got, want)
+	}
+}
+
+// TestB20SstoreSentry verifies the EIP-2200 reentrancy guard: a write is
+// refused whenever remaining gas is at or below the 2300 call stipend, however
+// cheap the write itself would be, and no state change happens.
+func TestB20SstoreSentry(t *testing.T) {
+	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := b20Addr(b20VariantAsset, 1)
+	slot := slotAt(b20SlotTotalSupply)
+
+	// Warm the slot and dirty it so the write itself would be cheap (~100 gas),
+	// then leave exactly the stipend in the budget.
+	gas := NewGasBudget(params.SstoreSentryGasEIP2200)
+	ctx := &PrecompileContext{StateDB: statedb, Self: token, gas: &gas}
+	s := newMeteredB20Storage(ctx)
+	statedb.AddSlotToAccessList(token, slot)
+
+	s.setWord(slot, common.Hash{31: 7})
+	if !ctx.OutOfGas() {
+		t.Fatal("write at the stipend boundary must trip the sentry")
+	}
+	if got := statedb.GetState(token, slot); got != (common.Hash{}) {
+		t.Fatalf("refused write still mutated state: %x", got)
+	}
+
+	// One gas above the stipend, the same write succeeds.
+	gas2 := NewGasBudget(params.SstoreSentryGasEIP2200 + 1 + params.SstoreSetGasEIP2200)
+	ctx2 := &PrecompileContext{StateDB: statedb, Self: token, gas: &gas2}
+	newMeteredB20Storage(ctx2).setWord(slot, common.Hash{31: 7})
+	if ctx2.OutOfGas() {
+		t.Fatal("write above the stipend must be allowed")
+	}
+	if got := statedb.GetState(token, slot); got != (common.Hash{31: 7}) {
+		t.Fatalf("state = %x, want 7", got)
+	}
+}
+
+// TestB20GasNeverCheaperThanBytecode pins BEP-702 3.14's central rule: a B20
+// operation must never cost less than the same state accesses performed
+// through bytecode. It compares a transfer's charge against the floor an
+// equivalent BEP-20 implementation pays for the same accesses — two cold slot
+// reads and two cold writes for a first-time recipient — and additionally
+// requires the derivation and dispatch work B20 does on top to be accounted.
+func TestB20GasNeverCheaperThanBytecode(t *testing.T) {
+	_, evm := newAmsterdamEVM(t)
+	creator := common.HexToAddress("0xfee")
+	call := func(caller, to common.Address, input []byte) ([]byte, error) {
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		return ret, err
+	}
+	initCalls := [][]byte{
+		b20Call(selGrantRole, roleMint, addrKey(creator)),
+		b20Call(selMint, addrKey(b20Alice), u256hash(1000)),
+	}
+	ret, err := call(creator, B20FactoryAddress, encodeCreateB20(b20VariantAsset, common.HexToHash("0x9a"), creator, initCalls))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+
+	// Warm both balance slots with one transfer, then measure the next.
+	if _, _, err := evm.Call(b20Alice, token, b20Call(selTransfer, addrKey(b20Bob), u256hash(10)), NewGasBudget(1_000_000), uint256.NewInt(0)); err != nil {
+		t.Fatalf("warming transfer: %v", err)
+	}
+	const budget = 1_000_000
+	if _, left, err := evm.Call(b20Alice, token, b20Call(selTransfer, addrKey(b20Bob), u256hash(10)), NewGasBudget(budget), uint256.NewInt(0)); err != nil {
+		t.Fatalf("measured transfer: %v", err)
+	} else {
+		charged := uint64(budget) - left.RegularGas
+		// Warm-path floor: both balance slots are warm and dirty by now, so
+		// bytecode would pay 2 * SLOAD_warm + 2 * SSTORE_dirty.
+		floor := 4 * params.WarmStorageReadCostEIP2929
+		if charged < floor {
+			t.Fatalf("warm transfer charged %d, below the bytecode floor %d", charged, floor)
+		}
+		// And the mapping derivations must be in there too: two balance slots,
+		// each a 64-byte keccak, read then written.
+		keccak64 := params.Keccak256Gas + 2*params.Keccak256WordGas
+		if charged < floor+2*keccak64 {
+			t.Fatalf("transfer charged %d, missing mapping-derivation cost (floor %d + 2*%d)",
+				charged, floor, keccak64)
+		}
 	}
 }

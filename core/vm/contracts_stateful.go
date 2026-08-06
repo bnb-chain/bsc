@@ -164,6 +164,7 @@ func (ctx *PrecompileContext) RevertToSnapshot(id int) { ctx.StateDB.RevertToSna
 // remaining fields (tx hash/index, block hash, log index) are filled by the
 // StateDB at finalisation, exactly as for contract-emitted logs.
 func (ctx *PrecompileContext) AddLog(topics []common.Hash, data []byte) {
+	ctx.chargeLog(len(topics), len(data))
 	ctx.StateDB.AddLog(&types.Log{
 		Address: ctx.Self,
 		Topics:  topics,

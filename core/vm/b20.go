@@ -20,6 +20,7 @@ import (
 	"errors"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
@@ -87,20 +88,39 @@ func IsB20Address(addr common.Address) bool {
 var b20MarkerCodeHash = crypto.Keccak256Hash(b20MarkerCode)
 
 // b20Initialized reports whether a token has been created at addr: true exactly
-// when the account's code hash equals the sentinel's.
+// when the account's code hash equals the sentinel's. Unmetered; used by
+// dispatch resolution, which runs before a frame's gas context exists.
 func b20Initialized(state StateDB, addr common.Address) bool {
 	return state.GetCodeHash(addr) == b20MarkerCodeHash
 }
 
+// b20InitializedMetered is b20Initialized charged as an account access, for
+// the in-frame paths (isB20Initialized, createB20's occupancy check).
+func b20InitializedMetered(ctx *PrecompileContext, addr common.Address) bool {
+	ctx.chargeAccountAccess(addr)
+	return b20Initialized(ctx.StateDB, addr)
+}
+
+// hadNoCode reports whether addr carries no code at all — the condition under
+// which writing code owes the account-creation cost.
+func hadNoCode(state StateDB, addr common.Address) bool {
+	ch := state.GetCodeHash(addr)
+	return ch == (common.Hash{}) || ch == types.EmptyCodeHash
+}
+
 // b20EnterCall applies the guards shared by every B20 entry point: only direct
-// calls (CALL/STATICCALL) are dispatched, and every entry point is nonpayable.
-func b20EnterCall(ctx *PrecompileContext) error {
+// calls (CALL/STATICCALL) are dispatched, every entry point is nonpayable, and
+// the input is charged once (BEP-702 section 3.14). The value check precedes
+// the charge so a value-bearing call is refused before it can consume gas,
+// matching the order base-std's dispatch uses.
+func b20EnterCall(ctx *PrecompileContext, input []byte) error {
 	if !ctx.DirectCall {
 		return ErrB20DelegateCall
 	}
 	if ctx.Value != nil && !ctx.Value.IsZero() {
 		return revB20("NonPayable()", errSelNonPayable)
 	}
+	ctx.chargeCalldata(input)
 	return nil
 }
 
@@ -145,6 +165,12 @@ func resolveB20(state StateDB, addr common.Address) (PrecompiledContract, bool) 
 // (transfer/approve/mint/burn/roles/pause/permit/memo, plus variant
 // extensions) are ported on top of these in the P1 business layer.
 
+// Every B20 precompile reports RequiredGas zero. A stateful precompile cannot
+// be priced up front — the cost depends on state it has not read when the call
+// begins, such as whether a slot is cold or whether a write creates or rewrites
+// — so all metering happens inside RunStateful as the work is performed
+// (BEP-702 section 3.14, see b20_gas.go).
+
 // b20StatefulBase provides the defensive Run backstop shared by every B20
 // precompile so they satisfy PrecompiledContract; real execution always goes
 // through RunStateful.
@@ -156,10 +182,10 @@ func (b20StatefulBase) Run([]byte) ([]byte, error) { return nil, ErrB20Stateless
 type b20FactoryPrecompile struct{ b20StatefulBase }
 
 func (p *b20FactoryPrecompile) Name() string                    { return "B20Factory" }
-func (p *b20FactoryPrecompile) RequiredGas(input []byte) uint64 { return 0 } // TODO: gas schedule
+func (p *b20FactoryPrecompile) RequiredGas(input []byte) uint64 { return 0 } // priced inside RunStateful
 
 func (p *b20FactoryPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
-	if err := b20EnterCall(ctx); err != nil {
+	if err := b20EnterCall(ctx, input); err != nil {
 		return finishB20(nil, err)
 	}
 	ret, err := runB20Factory(ctx, input)
@@ -176,10 +202,10 @@ type b20AssetPrecompile struct {
 }
 
 func (p *b20AssetPrecompile) Name() string                    { return "B20Asset" }
-func (p *b20AssetPrecompile) RequiredGas(input []byte) uint64 { return 0 } // TODO: gas schedule
+func (p *b20AssetPrecompile) RequiredGas(input []byte) uint64 { return 0 } // priced inside RunStateful
 
 func (p *b20AssetPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
-	if err := b20EnterCall(ctx); err != nil {
+	if err := b20EnterCall(ctx, input); err != nil {
 		return finishB20(nil, err)
 	}
 	// Decimals is intercepted by the Asset extension (read from extension
@@ -198,10 +224,10 @@ type b20StablecoinPrecompile struct {
 }
 
 func (p *b20StablecoinPrecompile) Name() string                    { return "B20Stablecoin" }
-func (p *b20StablecoinPrecompile) RequiredGas(input []byte) uint64 { return 0 } // TODO: gas schedule
+func (p *b20StablecoinPrecompile) RequiredGas(input []byte) uint64 { return 0 } // priced inside RunStateful
 
 func (p *b20StablecoinPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
-	if err := b20EnterCall(ctx); err != nil {
+	if err := b20EnterCall(ctx, input); err != nil {
 		return finishB20(nil, err)
 	}
 	// Stablecoin decimals are fixed at 6.
