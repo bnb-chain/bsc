@@ -1,0 +1,101 @@
+{
+  "$commentaire": [
+    "Dérogations d'audit Go (govulncheck). Toute faille ATTEIGNABLE absente de cette liste",
+    "fait ÉCHOUER la CI. Vérifier avec : node coinbosa/scripts/audit-go.js (depuis la racine).",
+    "",
+    "Ces failles viennent de l'arbre de dépendances hérité de bnb-chain/bsc. Elles ont été",
+    "découvertes le 2026-08-06, au PREMIER scan Go réellement exécuté du dépôt : le workflow",
+    "nancy était sauté sur push et échouait sur PR faute d'identifiants OSS Index, l'arbre Go",
+    "n'avait donc jamais été analysé.",
+    "",
+    "Elles se concentrent dans la pile réseau P2P (QUIC / WebTransport / DTLS-STUN) et gRPC.",
+    "Le correctif consiste à remonter ces dépendances, ce qui modifie le binaire du client :",
+    "sur une chaîne en production cela impose de recompiler, revérifier le temps de bloc et le",
+    "franchissement d'epoch, puis redéployer les validateurs de façon coordonnée. À planifier",
+    "explicitement, pas à improviser — et à faire AVANT d'ouvrir la découverte de pairs."
+  ],
+  "derogations": [
+    {
+      "avis": "GO-2026-6061",
+      "module": "google.golang.org/grpc",
+      "present": "v1.80.0",
+      "corrige_dans": "v1.82.1",
+      "classe": "déni de service",
+      "pourquoi": "Moteur d'autorisation xDS RBAC et traitement HTTP/2 de gRPC. Coinbosa n'expose aucun service gRPC : la dépendance est tirée par l'arbre amont. Atteignable au sens de l'analyse statique, non exposée en pratique.",
+      "ajoute_le": "2026-08-06",
+      "expire_le": "2026-10-06"
+    },
+    {
+      "avis": "GO-2026-5970",
+      "module": "golang.org/x/text",
+      "present": "v0.38.0",
+      "corrige_dans": "v0.39.0",
+      "classe": "boucle infinie sur entrée invalide (déni de service)",
+      "pourquoi": "Déclenchable seulement en décodant du texte hostile. Le nœud ne traite pas de texte provenant d'entrées réseau non maîtrisées. Correctif mineur (v0.39.0), à intégrer à la prochaine remontée de dépendances.",
+      "ajoute_le": "2026-08-06",
+      "expire_le": "2026-10-06"
+    },
+    {
+      "avis": "GO-2026-5676",
+      "module": "github.com/quic-go/quic-go",
+      "present": "v0.49.1",
+      "corrige_dans": "v0.59.1",
+      "classe": "épuisement mémoire via les trailers QPACK HTTP/3 (déni de service)",
+      "pourquoi": "Pile QUIC tirée par la découverte de pairs de l'amont. Les validateurs Coinbosa tournent avec --nodiscover et --maxpeers 0 : la surface est nulle tant que la découverte reste désactivée.",
+      "a_reexaminer": "BLOQUANT avant d'ouvrir la découverte de pairs ou d'exposer un nœud public au P2P.",
+      "ajoute_le": "2026-08-06",
+      "expire_le": "2026-10-06"
+    },
+    {
+      "avis": "GO-2026-4488",
+      "module": "github.com/quic-go/webtransport-go",
+      "present": "v0.8.1-0.20241018022711-4ac2c9250e66",
+      "corrige_dans": "v0.10.0",
+      "classe": "blocage indéfini de CloseWithError (déni de service)",
+      "pourquoi": "WebTransport n'est utilisé par aucun chemin de Coinbosa ; dépendance transitive de la pile QUIC amont. Même condition d'exposition que GO-2026-5676.",
+      "ajoute_le": "2026-08-06",
+      "expire_le": "2026-10-06"
+    },
+    {
+      "avis": "GO-2026-4485",
+      "module": "github.com/quic-go/webtransport-go",
+      "present": "v0.8.1-0.20241018022711-4ac2c9250e66",
+      "corrige_dans": "v0.10.0",
+      "classe": "épuisement mémoire, contrôle de longueur manquant (déni de service)",
+      "pourquoi": "Idem GO-2026-4488 : même module, même remontée de version, même absence d'usage.",
+      "ajoute_le": "2026-08-06",
+      "expire_le": "2026-10-06"
+    },
+    {
+      "avis": "GO-2026-4483",
+      "module": "github.com/quic-go/webtransport-go",
+      "present": "v0.8.1-0.20241018022711-4ac2c9250e66",
+      "corrige_dans": "v0.10.0",
+      "classe": "épuisement mémoire, nettoyage de flux manquant (déni de service)",
+      "pourquoi": "Idem GO-2026-4488 : même module, même remontée de version, même absence d'usage.",
+      "ajoute_le": "2026-08-06",
+      "expire_le": "2026-10-06"
+    },
+    {
+      "avis": "GO-2026-4479",
+      "module": "github.com/pion/dtls/v2",
+      "present": "v2.2.12",
+      "corrige_dans": "AUCUN correctif publié à ce jour pour la branche v2",
+      "classe": "CRYPTOGRAPHIQUE — nonce aléatoire avec AES-GCM, risque de fuite de la clé d'authentification",
+      "pourquoi": "La plus sérieuse des huit : ce n'est PAS un déni de service mais une faiblesse cryptographique. DTLS est tiré par la pile STUN/NAT de l'amont (p2p/nat/stun.go). Elle ne concerne que des sessions DTLS réellement établies : les validateurs Coinbosa n'utilisent pas la traversée de NAT (--nodiscover, --maxpeers 0), aucune session DTLS n'est donc négociée. Aucune clé du consensus ni de trésorerie ne transite par DTLS — les clés de scellage ne touchent jamais cette pile.",
+      "a_reexaminer": "Aucune version corrigée en v2 : suivre la migration amont vers pion/dtls/v3. BLOQUANT si la traversée de NAT/STUN devait être activée sur un nœud.",
+      "ajoute_le": "2026-08-06",
+      "expire_le": "2026-10-06"
+    },
+    {
+      "avis": "GO-2025-4233",
+      "module": "github.com/quic-go/quic-go",
+      "present": "v0.49.1",
+      "corrige_dans": "v0.57.0",
+      "classe": "expansion d'en-têtes QPACK HTTP/3 (déni de service)",
+      "pourquoi": "Même pile QUIC que GO-2026-5676, corrigée par la même remontée de version.",
+      "ajoute_le": "2026-08-06",
+      "expire_le": "2026-10-06"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+name: Go vulnérabilités
+
+# Analyse les dépendances Go du client avec govulncheck, l'outil officiel de l'équipe Go.
+#
+# Il remplace nancy, qui ne fonctionnait pas ici : le job était sauté sur push (sa condition
+# `if` évaluait une expression vide hors pull_request) et échouait sur PR faute
+# d'identifiants OSS Index — l'API renvoie 401 sans compte. L'arbre Go n'avait donc JAMAIS
+# été analysé, alors que le dépôt affichait un workflow de sécurité d'apparence active.
+#
+# govulncheck ne demande aucun identifiant et fait mieux : il analyse l'ATTEIGNABILITÉ.
+# Une faille n'est signalée que si le code vulnérable est réellement appelable depuis nos
+# points d'entrée — pas simplement présent dans l'arbre de dépendances.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: ["master", "develop", "coinbosa-**"]
+  workflow_dispatch: {}
+  # Une dépendance saine aujourd'hui ne l'est pas forcément dans un mois : la base de
+  # vulnérabilités évolue même quand le code ne bouge pas.
+  schedule:
+    - cron: '17 4 * * 1'
+
+jobs:
+  govulncheck:
+    name: Dépendances Go
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Installer govulncheck
+        # Version épinglée : l'installation passe par le module Go, dont l'intégrité est
+        # vérifiée par la base de sommes de contrôle officielle (sum.golang.org).
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+
+      - name: Analyser le client (barrière bloquante)
+        # Toute faille ATTEIGNABLE absente de coinbosa/go-vuln-allowlist.json fait échouer
+        # la CI ; une dérogation expirée aussi. Voir ce fichier pour l'état des dérogations.
+        run: node coinbosa/scripts/audit-go.js
