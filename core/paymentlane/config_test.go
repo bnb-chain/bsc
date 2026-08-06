@@ -39,9 +39,7 @@ import (
 // production read path never goes through the ABI.
 const (
 	selGetPaymentLaneParams = "ff620147" // getPaymentLaneParams()
-	selGetPaymentContracts  = "2b4af15b" // getPaymentContracts()
-	selMaxReservedAddress   = "7bbeedf6" // MAX_RESERVED_ADDRESS()
-	selMaxPaymentContracts  = "daaff2c4" // MAX_PAYMENT_CONTRACTS()
+	selGetPaymentContracts  = "08fcc45a" // getPaymentContracts(uint256,uint256)
 	selRatioDenom           = "7c86be0d" // RATIO_DENOM()
 	selMaxLaneRatio         = "4df7c732" // MAX_LANE_RATIO()
 	selTriggerGapMin        = "170da6d4" // TRIGGER_GAP_MIN()
@@ -159,12 +157,14 @@ func TestLayoutMatchesDeployedBytecode(t *testing.T) {
 		for i, a := range addrs {
 			statedb.SetState(ContractAddress, paymentContractSlot(uint64(i)), common.BytesToHash(a[:]))
 		}
-		// getPaymentContracts() returns (offset, length, elems...).
-		got := callContract(t, statedb, selGetPaymentContracts)
-		require.Len(t, got, 2+len(addrs))
-		require.Equal(t, uint64(len(addrs)), got[1].Uint64())
+		// getPaymentContracts(0, 0) is "the whole list"; it returns (address[], uint256),
+		// i.e. the words (arrayOffset, totalLength, pageLength, elems...).
+		got := callContract(t, statedb, selGetPaymentContracts, make([]byte, 64)...)
+		require.Len(t, got, 3+len(addrs))
+		require.Equal(t, uint64(len(addrs)), got[1].Uint64(), "totalLength")
+		require.Equal(t, uint64(len(addrs)), got[2].Uint64(), "page length")
 		for i, a := range addrs {
-			require.Equal(t, a, common.BigToAddress(got[2+i]),
+			require.Equal(t, a, common.BigToAddress(got[3+i]),
 				"element %d is not backed by paymentContractSlot(%d)", i, i)
 		}
 	})
@@ -205,13 +205,12 @@ func TestDefaultsMatchDeployedBytecode(t *testing.T) {
 // TestConstantsMatchDeployedBytecode pins the constants this package mirrors
 // from the contract. Each has a distinct failure mode if it drifts:
 //
-//	MAX_RESERVED_ADDRESS  lowering it contract-side would let governance list an
-//	                      address every client ignores forever, with the event
-//	                      emitted and no error anywhere.
 //	MAX_LANE_RATIO        it is what bounds laneSize to GasLimit/5, which is the
 //	                      whole no-reachable-halt argument.
 //	RATIO_DENOM           every ratio in the package is parts per this.
-//	MAX_PAYMENT_CONTRACTS it bounds the enumeration loop.
+//
+// maxReservedAddress is deliberately absent: the contract does not filter listings by
+// address, so there is nothing on that side to compare against - see its comment.
 //
 // The remaining five are the stage-one bounds that contractLegal reproduces so the
 // exhaustive tests range over exactly the tuples governance can produce. They have
@@ -227,10 +226,8 @@ func TestConstantsMatchDeployedBytecode(t *testing.T) {
 		selector string
 		want     uint64
 	}{
-		{"MAX_RESERVED_ADDRESS", selMaxReservedAddress, maxReservedAddress},
 		{"MAX_LANE_RATIO", selMaxLaneRatio, maxLaneRatio},
 		{"RATIO_DENOM", selRatioDenom, RatioDenom},
-		{"MAX_PAYMENT_CONTRACTS", selMaxPaymentContracts, MaxPaymentContracts},
 		{"TRIGGER_GAP_MIN", selTriggerGapMin, triggerGapMin},
 		{"RATIO_GAP_MIN", selRatioGapMin, ratioGapMin},
 		{"MIN_EXPAND_TRIGGER_RATIO", selMinExpandTriggerRat, minExpandTriggerRat},
@@ -323,29 +320,18 @@ func TestLoadPaymentContracts(t *testing.T) {
 		require.ErrorIs(t, err, ErrCorruptConfig)
 	})
 
-	t.Run("a count above the contract bound but below ours is NOT an error", func(t *testing.T) {
-		// The asymmetry that keeps a contract-side raise of MAX_PAYMENT_CONTRACTS from
-		// halting the chain. See maxPaymentContractsRead.
-		require.Greater(t, uint64(maxPaymentContractsRead), uint64(MaxPaymentContracts))
-		slots := map[common.Hash]common.Hash{lenSlot: word(MaxPaymentContracts + 1)}
-		for i := 0; i <= MaxPaymentContracts; i++ {
+	// Nothing bounds the list contract-side, so the only bound is ours and the block
+	// that first crosses it can never be produced again. The boundary itself must
+	// therefore load, not merely values comfortably below it.
+	t.Run("exactly the read bound is accepted", func(t *testing.T) {
+		slots := map[common.Hash]common.Hash{lenSlot: word(maxPaymentContractsRead)}
+		for i := 0; i < maxPaymentContractsRead; i++ {
 			a := common.BigToAddress(big.NewInt(int64(i) + 0x10000))
 			slots[paymentContractSlot(uint64(i))] = common.BytesToHash(a[:])
 		}
 		got, err := LoadPaymentContracts(mapReader{slots: slots})
 		require.NoError(t, err)
-		require.Len(t, got, MaxPaymentContracts+1)
-	})
-
-	t.Run("exactly the contract bound is accepted", func(t *testing.T) {
-		slots := map[common.Hash]common.Hash{lenSlot: word(MaxPaymentContracts)}
-		for i := 0; i < MaxPaymentContracts; i++ {
-			a := common.BigToAddress(big.NewInt(int64(i) + 0x10000))
-			slots[paymentContractSlot(uint64(i))] = common.BytesToHash(a[:])
-		}
-		got, err := LoadPaymentContracts(mapReader{slots: slots})
-		require.NoError(t, err)
-		require.Len(t, got, MaxPaymentContracts)
+		require.Len(t, got, maxPaymentContractsRead)
 	})
 
 	t.Run("padding bytes in an element are a layout error", func(t *testing.T) {
@@ -521,10 +507,11 @@ func TestPaymentContractCountAboveUint64(t *testing.T) {
 	require.ErrorIs(t, err, ErrCorruptConfig)
 }
 
-// TestReadBoundHasRealSlack pins the MAGNITUDE of the slack, not just its direction.
-// Asserting only MaxPaymentContracts < maxPaymentContractsRead lets the slack be
-// shrunk to +1, which re-creates the halt-at-258 hazard the slack exists to prevent.
+// TestReadBoundHasRealSlack pins the MAGNITUDE of the read bound. With no contract-side
+// cap to compare against, the hazard is someone "tightening" this to a number a real
+// whitelist could reach - and the block that reaches it halts the chain forever, because
+// LoadPaymentContracts is a pure function of the parent root.
 func TestReadBoundHasRealSlack(t *testing.T) {
-	require.GreaterOrEqual(t, uint64(maxPaymentContractsRead), uint64(4*MaxPaymentContracts),
-		"the read bound must leave room for the contract's bound to be raised several times")
+	require.GreaterOrEqual(t, uint64(maxPaymentContractsRead), uint64(1024),
+		"the read bound must stay far above any list governance could vote in")
 }

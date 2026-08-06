@@ -135,12 +135,15 @@ func TestDevnetReadPath(t *testing.T) {
 		got, err := LoadPaymentContracts(r)
 		require.NoError(t, err)
 
-		ret := r.call(selGetPaymentContracts)
-		require.GreaterOrEqual(t, len(ret), 2, "getPaymentContracts returns (offset, length, elems...)")
+		// getPaymentContracts(0, 0) is "the whole list": the words come back as
+		// (arrayOffset, totalLength, pageLength, elems...).
+		ret := r.call(selGetPaymentContracts, make([]byte, 64)...)
+		require.GreaterOrEqual(t, len(ret), 3)
 		n := ret[1].Uint64()
+		require.Equal(t, n, ret[2].Uint64(), "limit 0 must return the whole list in one page")
 		require.Len(t, got, int(n), "the enumerated set size must match the contract's own length")
 		for i := uint64(0); i < n; i++ {
-			addr := common.BigToAddress(ret[2+i])
+			addr := common.BigToAddress(ret[3+i])
 			require.Contains(t, got, addr)
 		}
 		t.Logf("payment-contract whitelist: %d entries", n)

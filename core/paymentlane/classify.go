@@ -24,25 +24,26 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-// maxReservedAddress mirrors PaymentLane.MAX_RESERVED_ADDRESS.
+// maxReservedAddress is the top of the address window the lane never classifies as
+// payment, whatever governance has listed.
 //
 // Every precompile in this tree (0x01-0x11, BSC's own 0x64-0x69, and 0x100
 // p256Verify) and every Parlia system contract (up to 0x3000) is at or below it,
 // so one range test covers all of them. Note isReserved hard-codes the two-byte
 // window rather than reading this constant, so the coupling between the two is
-// enforced by test (TestReservedRangeIsExact) rather than by the compiler, and the
-// agreement with the contract by TestConstantsMatchDeployedBytecode.
+// enforced by test (TestReservedRangeIsExact) rather than by the compiler.
 //
 // A monotone address range is also why the classifier needs neither params.Rules
 // nor core/vm: vm.ActivePrecompiledContracts clones a ~25-entry map on every call,
 // its contents depend on the fork AND on rules.IsInBSC, and it grows a branch every
 // fork - none of which a fixed range does.
 //
-// The contract enforces the same bound when an address is listed, and
-// TestConstantsMatchDeployedBytecode asserts the two stay equal - so a raise has to
-// happen on both sides in one change. LOWERING it, or dropping the check there, is the
-// silently dangerous direction: the contract would accept a listing every client
-// ignores forever, with PaymentContractAdded emitted and no error anywhere.
+// The contract does NOT filter listings by address - any 20-byte value can be listed,
+// zero and precompiles included - and its own comment assigns this exclusion to the
+// client, above the whitelist lookup. So this gate is the only thing standing between a
+// mis-governed listing and either a rejecting precompile burning the whole lane or
+// Parlia's own system transactions being reclassified. Nothing on the contract side
+// would notice if it were dropped.
 const maxReservedAddress = 0xFFFF
 
 // AccountReader is the only state capability the classifier needs.

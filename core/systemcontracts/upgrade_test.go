@@ -54,7 +54,7 @@ func TestAllCodesHash(t *testing.T) {
 // networks because they ship identical code - which also means no test here can detect a
 // cross-network Code mis-wiring, and none needs to while the three blobs stay byte-identical.
 func TestGaussPaymentLaneCode(t *testing.T) {
-	const wantCodeHash = "290015376dcf26ec7e889c82b67ef6382a277d3bfbe48fda1901d9ab00d15ef7"
+	const wantCodeHash = "c4589f51dc8be028cee0512617008a34a97abb535c3e463a6ba5a5d382ee917c"
 
 	for _, network := range []string{mainNet, chapelNet, rialtoNet} {
 		upgrade := gaussUpgrade[network]

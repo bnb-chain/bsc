@@ -65,25 +65,20 @@ const (
 	numParams               = 8
 )
 
-// MaxPaymentContracts mirrors PaymentLane.MAX_PAYMENT_CONTRACTS, for the assertion
-// in TestConstantsMatchDeployedBytecode. The read path bounds itself with
-// maxPaymentContractsRead instead - see there for why the two differ.
-const MaxPaymentContracts = 256
-
 // maxPaymentContractsRead bounds the enumeration loop, so a corrupt length word
 // cannot become an unbounded allocation.
 //
-// Deliberately far above the contract's own bound, which is the OPPOSITE policy
-// from maxLaneRatio, and the asymmetry is the point. Were this an exact mirror, a
-// later fork raising the contract's limit - a plausible contract-only change, and
-// one the contract's own comment invites by noting lookup is O(1) at any size -
-// would leave every Go assertion green, and then HALT THE CHAIN the moment
-// governance added the 257th contract: LoadPaymentContracts is a pure function of
-// the parent root, so every candidate block would fail identically and forever with
-// ErrCorruptConfig. Slack turns that into a no-op. The claim that a deterministic
-// tripwire "cannot halt the chain on a governance action" holds for the parameter
-// words, whose every contract bound is at most 1e9, and does NOT transfer to a
-// length bounded only by a mirrored constant.
+// The contract caps the list at nothing at all, and this must not become a mirror of
+// any cap it later grows - the OPPOSITE policy from maxLaneRatio, and the asymmetry is
+// the point. Exceeding this is a hard ErrCorruptConfig, and LoadPaymentContracts is a
+// pure function of the parent root, so the value governance would have to cross to
+// halt the chain forever is this one. It therefore sits far above any reachable list:
+// every entry costs one governance vote, so 4096 is out of reach, while a shifted
+// layout lands on a random 256-bit word and is caught. Raising it is always safe;
+// lowering it toward a plausible list size is the dangerous direction.
+//
+// Truncating instead of erroring would be worse than either: two clients with
+// different ceilings would classify the same block differently and split.
 const maxPaymentContractsRead = 4096
 
 // The value an unwritten slot reads as, mirroring PaymentLane's DEFAULT_*
@@ -247,8 +242,23 @@ func orDefault(stored, fallback uint64) uint64 {
 //
 // Enumerated once per block rather than queried once per transaction: a
 // per-transaction membership read hashes a distinct slot for every distinct
-// recipient, so it cannot be memoised and a congested block pays thousands of trie
-// descents instead of the count plus one per listed contract.
+// recipient, and Classify tests the list above the calldata and value gates, so a
+// congested block would pay one trie descent per destination (measured 1.48us each,
+// ~300 destinations on a busy BSC block) instead of one per listed contract
+// (1.1us each). The crossover is at a list about as long as a block's distinct
+// destination count.
+//
+// TODO(bep703): this is O(list) per resolve and the list has no bound, while
+// bid_simulator calls prepareWork - and therefore ResolveLaneState - once per
+// simulated bid, so a block pays the enumeration once per bid on the deadline path.
+// Measured 279us at 256 entries, 4.95ms at 4096. The intended fix is a cache in
+// core keyed first on parent.Root (which is what collapses the per-bid multiplier)
+// and then on 0x2007's storage root (which is stable across blocks, so a hit costs
+// one 0.81us account read). A cache with an exact key is invisible to consensus;
+// the trap is that bintrie.GetAccount never fills StateAccount.Root, so on UBT
+// every list would collide on the zero hash and diverge on the first governance
+// change - a zero root must fall back to enumerating. See
+// docs/bep703-payment-lane.md section 4.
 //
 // A nil result means the set is genuinely empty, which is the state on activation
 // day - the contract has no initializer, so nothing can have been listed before
