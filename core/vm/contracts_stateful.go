@@ -88,10 +88,6 @@ type PrecompileContext struct {
 	// it is booked within RegularGas (the only enforced dimension); the tally
 	// keeps the accounting ready for when the StateGas reservoir is activated.
 	stateGasUsed uint64
-
-	// inAnnounce guards against re-entrant announce() during the Asset
-	// disclosure window.
-	inAnnounce bool
 }
 
 // UseGas charges cost against the remaining budget. It returns false and

@@ -39,6 +39,12 @@ type b20Token struct {
 	// transfer-side policy gates are skipped (anti-revival and MINT_RECEIVER
 	// checks are still enforced). Always false for ordinary calls.
 	privileged bool
+
+	// inAnnounce marks the Asset disclosure window. announce sets it on the
+	// token value it threads into the bundle's internal calls, so a nested
+	// announce sees it and reverts; the enclosing frame's own value is a copy
+	// and needs no reset.
+	inAnnounce bool
 }
 
 func newB20Token(ctx *PrecompileContext, decimals uint8) b20Token {

@@ -271,7 +271,7 @@ func announce(tok b20Token, ext assetExt, args []byte) error {
 	if tok.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	if tok.ctx.inAnnounce {
+	if tok.inAnnounce {
 		return revB20("AnnouncementInProgress()", errSelAnnounceInProgress)
 	}
 	if err := tok.ensureRole(roleOperator); err != nil {
@@ -293,8 +293,7 @@ func announce(tok b20Token, ext assetExt, args []byte) error {
 	// TODO: carry description/uri in the Announcement event data (base-std align).
 	tok.ctx.AddLog([]common.Hash{b20TopicAnnouncement, addrKey(tok.ctx.Caller), id}, nil)
 
-	tok.ctx.inAnnounce = true
-	defer func() { tok.ctx.inAnnounce = false }()
+	tok.inAnnounce = true // threaded into the internal calls below by value
 	for _, c := range calls {
 		if len(c) < 4 {
 			return revB20Bytes("InternalCallMalformed(bytes)", errSelInternalMalformed, c)
