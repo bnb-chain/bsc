@@ -55,11 +55,31 @@ sudo SITE_DOMAIN=coinbosa.com EXPLORER_DOMAIN=explorer.coinbosa.com bash 10-web.
 
 # 3. Depuis ce poste — pousser les fichiers du site/explorateur/livre blanc
 SERVER=<user>@<ip> bash publish-static.sh
+
+# 4. Sur le VPS — prisons fail2ban du tier web (après 10-web.sh, qui crée les journaux)
+sudo bash 21-fail2ban-web.sh
+
+# 5. Sur le VPS — durcissement SSH, une fois l'accès par clé confirmé (voir plus bas)
+sudo bash 20-ssh-hardening.sh
 ```
 
 À l'étape 2, Caddy tente d'émettre les certificats dès qu'il démarre : **le DNS doit
 déjà pointer** vers le VPS, sinon l'émission échoue (elle sera réessayée
 automatiquement une fois le DNS en place).
+
+### ⚠ Mise à jour d'un site DÉJÀ en ligne : publier AVANT de resserrer
+
+La politique de sécurité du contenu (CSP) interdit désormais le JavaScript en ligne
+(`script-src 'self'`), et tout le JavaScript vit dans des fichiers `app.js`.
+
+Sur un serveur déjà en service, l'ordre compte :
+
+1. **`publish-static.sh` d'abord** — les nouvelles pages et leurs `app.js`. Elles
+   fonctionnent parfaitement sous l'ancienne CSP, qui autorisait déjà `'self'`.
+2. **`10-web.sh` ensuite** — resserre la CSP.
+
+Dans l'autre sens, entre les deux commandes, les anciennes pages (script en ligne) se
+retrouveraient bloquées par la nouvelle CSP : site muet le temps de la bascule.
 
 ---
 
@@ -72,30 +92,59 @@ automatiquement une fois le DNS en place).
 - **`10-web.sh`** — installe Caddy depuis son dépôt officiel, crée
   `/var/www/coinbosa/{site,explorer,whitepaper}`, écrit `/etc/caddy/Caddyfile` à partir du
   gabarit et des domaines fournis, recharge Caddy.
-- **`publish-static.sh`** — copie (rsync) les trois fichiers HTML autonomes du dépôt vers
-  le serveur, puis recharge Caddy. À relancer à chaque mise à jour du front.
+- **`publish-static.sh`** — copie (rsync) les trois pages HTML, **leurs `app.js`**, les
+  favicons, les fichiers SEO et `security.txt` (dans `/.well-known/`), puis recharge Caddy.
+  Il **s'arrête** si un `app.js` manque : une page publiée sans son script serait morte.
+  À relancer à chaque mise à jour du front.
+- **`21-fail2ban-web.sh`** — prisons fail2ban pour le web : rafales de 4xx (balayage de
+  chemins) et abus du relais `/rpc`. Les filtres sont confrontés à un échantillon réel du
+  journal de Caddy et le script **refuse de s'activer** s'ils ne reconnaissent rien — une
+  prison inerte donnerait une fausse impression de protection.
+- **`20-ssh-hardening.sh`** — coupe l'authentification par mot de passe (voir plus bas).
 
 ---
 
 ## Après le déploiement
 
-- L'explorateur, sans nœud raccordé, affiche ses **données de démonstration** : il
-  interroge un RPC qui n'existe pas encore. Il deviendra « live » quand on déploiera un
-  nœud (périmètre séparé) et qu'on pointera son RPC dessus.
+- L'explorateur **n'invente aucune donnée**. Tant qu'aucun nœud ne répond, il affiche un
+  avis sobre (« aucun nœud public raccordé ») et des listes vides. Il devient vivant dès
+  qu'un nœud écoute en local : Caddy relaie déjà `https://explorer.coinbosa.com/rpc` vers
+  `127.0.0.1:8545`, en POST uniquement, sans jamais exposer le port 8545.
 - Option : faire pointer le lien « livre blanc » du site vers `https://coinbosa.com/whitepaper/`
   au lieu de GitHub — **une seule ligne** dans l'objet `CONTENT.links` du site (`whitepaper`).
 
 ---
 
-## Durcissement SSH (optionnel, à faire *après* avoir confirmé l'accès par clé)
+## Durcissement SSH — `20-ssh-hardening.sh`
 
-Non automatisé exprès, pour ne pas risquer de te verrouiller. Une fois que la connexion
-par clé fonctionne pour toi **et** pour ce poste, on pourra désactiver l'authentification
-par mot de passe :
+Par défaut, un VPS Ubuntu accepte le mot de passe et le login root : n'importe qui peut
+tenter sa chance en continu. Ce script coupe les deux, l'accès ne se faisant plus que par
+clé.
+
+**Il est conçu pour qu'il soit impossible de se verrouiller dehors.** Il refuse d'agir si
+aucune clé n'est installée ; il exige la **preuve**, dans le journal, que la session en
+cours est bien authentifiée par clé (et non par mot de passe) ; il vérifie que
+`sshd_config` inclut réellement `sshd_config.d/` — sans quoi le durcissement serait ignoré
+en silence ; il contrôle la configuration **effective** avec `sshd -T` plutôt que le
+fichier écrit ; il recharge sans jamais redémarrer, donc les sessions ouvertes survivent.
+
+Et surtout, il **arme un retour arrière automatique** : sans confirmation de ta part, la
+configuration d'origine revient toute seule.
 
 ```bash
-# /etc/ssh/sshd_config.d/10-hardening.conf
-PasswordAuthentication no
-PermitRootLogin prohibit-password
-# puis : sudo systemctl reload ssh
+# à lancer DEPUIS une session SSH par clé (c'est elle qui sert de preuve)
+sudo bash 20-ssh-hardening.sh
 ```
+
+Ensuite, **sans fermer la session en cours** :
+
+1. ouvrir une **deuxième** fenêtre et se connecter : `ssh root@<ip>` ;
+2. si ça marche, confirmer **depuis cette nouvelle session** :
+
+```bash
+sudo touch /run/coinbosa-ssh-confirmed && sudo systemctl stop coinbosa-ssh-rollback.timer
+```
+
+Sans cette confirmation, au bout de 15 minutes (`GRACE_MIN` pour changer le délai) le
+durcissement est annulé et l'accès par mot de passe revient. Une sauvegarde de la
+configuration est écrite dans `/root/coinbosa-sshd-backup-*.tar`.
