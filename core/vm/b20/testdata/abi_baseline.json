@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical B20 ABI surface (BEP-702). Signatures only; selectors/topics are keccak-derived by TestB20ABIBaseline, which cross-checks the Go implementation's registered signatures against this file. Source of truth: core/vm/b20std/B20Std.sol.",
+  "_comment": "Canonical B20 ABI surface (BEP-702). Signatures only; selectors/topics are keccak-derived by TestB20ABIBaseline, which cross-checks the Go implementation's registered signatures against this file. Source of truth: core/vm/b20/B20Std.sol.",
   "functions": [
     "name()",
     "symbol()",

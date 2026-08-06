@@ -14,9 +14,11 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package vm
+package b20
 
 import (
+	"github.com/ethereum/go-ethereum/core/vm"
+
 	"bytes"
 	"crypto/ecdsa"
 	"errors"
@@ -31,7 +33,7 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// newTokenWithEVM builds a token bound to a real EVM so ChainID()/BlockTime()
+// newTokenWithEVM builds a token bound to a real vm.EVM so ChainID()/BlockTime()
 // resolve (permit needs both). Any caller can submit; the seed callback runs
 // against the unmetered view.
 func newTokenWithEVM(t *testing.T, now uint64, seed func(b20Storage)) (*state.StateDB, common.Address, func(caller common.Address, input []byte) ([]byte, error)) {
@@ -44,16 +46,16 @@ func newTokenWithEVM(t *testing.T, now uint64, seed func(b20Storage)) (*state.St
 	if seed != nil {
 		seed(newB20Storage(statedb, token))
 	}
-	bc := BlockContext{
-		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
-		Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
+	bc := vm.BlockContext{
+		CanTransfer: func(vm.StateDB, common.Address, *uint256.Int) bool { return true },
+		Transfer:    func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
 		BlockNumber: big.NewInt(1),
 		Time:        now,
 	}
-	evm := NewEVM(bc, statedb, params.TestChainConfig, Config{})
+	evm := vm.NewEVM(bc, statedb, params.TestChainConfig, vm.Config{})
 	run := func(caller common.Address, input []byte) ([]byte, error) {
-		gas := NewGasBudget(2_000_000)
-		ctx := &PrecompileContext{evm: evm, StateDB: statedb, Self: token, Caller: caller, DirectCall: true, gas: &gas}
+		gas := vm.NewGasBudget(2_000_000)
+		ctx := vm.NewPrecompileContext(evm, statedb, token, caller, &gas)
 		return newB20Token(ctx, 18).dispatch(input)
 	}
 	return statedb, token, run
@@ -66,10 +68,10 @@ func TestB20Permit(t *testing.T) {
 	})
 	view := newB20Storage(statedb, token)
 
-	// Build the token used only to compute the domain separator (same EVM cfg).
-	evm := NewEVM(BlockContext{BlockNumber: big.NewInt(1), Time: now}, statedb, params.TestChainConfig, Config{})
-	gas := NewGasBudget(1)
-	domTok := newB20Token(&PrecompileContext{evm: evm, StateDB: statedb, Self: token, gas: &gas}, 18)
+	// Build the token used only to compute the domain separator (same vm.EVM cfg).
+	evm := vm.NewEVM(vm.BlockContext{BlockNumber: big.NewInt(1), Time: now}, statedb, params.TestChainConfig, vm.Config{})
+	gas := vm.NewGasBudget(1)
+	domTok := newB20Token(vm.NewPrecompileContext(evm, statedb, token, common.Address{}, &gas), 18)
 
 	sign := func(key *ecdsa.PrivateKey, owner, spender common.Address, value, deadline, nonce uint64) (byte, common.Hash, common.Hash) {
 		sh := append([]byte{}, b20PermitTypehash.Bytes()...)
@@ -107,20 +109,20 @@ func TestB20Permit(t *testing.T) {
 	}
 
 	// replay of the same signature now fails (nonce consumed).
-	if _, err := run(relayer, permitCall(owner, spender, 777, 200, v, r, s)); !errors.Is(err, ErrExecutionReverted) {
+	if _, err := run(relayer, permitCall(owner, spender, 777, 200, v, r, s)); !errors.Is(err, vm.ErrExecutionReverted) {
 		t.Fatalf("replay err = %v, want revert", err)
 	}
 
 	// expired deadline reverts.
 	v, r, s = sign(key, owner, spender, 1, 50, 1) // deadline 50 < now 100
-	if _, err := run(relayer, permitCall(owner, spender, 1, 50, v, r, s)); !errors.Is(err, ErrExecutionReverted) {
+	if _, err := run(relayer, permitCall(owner, spender, 1, 50, v, r, s)); !errors.Is(err, vm.ErrExecutionReverted) {
 		t.Fatalf("expired err = %v, want revert", err)
 	}
 
 	// signature by a different key (claiming owner) reverts.
 	other, _ := crypto.GenerateKey()
 	v, r, s = sign(other, owner, spender, 5, 200, 1)
-	if _, err := run(relayer, permitCall(owner, spender, 5, 200, v, r, s)); !errors.Is(err, ErrExecutionReverted) {
+	if _, err := run(relayer, permitCall(owner, spender, 5, 200, v, r, s)); !errors.Is(err, vm.ErrExecutionReverted) {
 		t.Fatalf("wrong-signer err = %v, want revert", err)
 	}
 

@@ -14,9 +14,11 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package vm
+package b20
 
 import (
+	"github.com/ethereum/go-ethereum/core/vm"
+
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -29,8 +31,8 @@ import (
 
 // TestB20ABIBaseline cross-checks every function / event / error signature the
 // Go implementation registers (via selector / eventTopic / b20ErrorSel) against
-// the canonical surface in testdata/b20_abi_baseline.json, whose source of
-// truth is core/vm/b20std/B20Std.sol.
+// the canonical surface in testdata/abi_baseline.json, whose source of
+// truth is core/vm/b20/B20Std.sol.
 //
 // The check is exact in both directions:
 //   - a registered signature absent from the baseline is a divergence, unless
@@ -39,7 +41,7 @@ import (
 //     an unimplemented selector cannot be forgotten silently, and implementing
 //     one forces its removal here.
 func TestB20ABIBaseline(t *testing.T) {
-	raw, err := os.ReadFile("testdata/b20_abi_baseline.json")
+	raw, err := os.ReadFile("testdata/abi_baseline.json")
 	if err != nil {
 		t.Fatalf("read baseline: %v", err)
 	}
@@ -173,13 +175,13 @@ func TestB20ABIBaseline(t *testing.T) {
 
 // TestB20RevertData verifies typed revert payloads travel end to end: a
 // business-rule failure inside a B20 precompile surfaces through evm.Call as
-// (ABI-encoded error, ErrExecutionReverted), exactly like a Solidity
+// (ABI-encoded error, vm.ErrExecutionReverted), exactly like a Solidity
 // `revert CustomError(...)`.
 func TestB20RevertData(t *testing.T) {
 	_, evm := newPasteurEVM(t)
 	creator := common.HexToAddress("0xdec0de")
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, vm.NewGasBudget(5_000_000), uint256.NewInt(0))
 		return ret, err
 	}
 
@@ -200,8 +202,8 @@ func TestB20RevertData(t *testing.T) {
 		t.Fatalf("pause: %v", err)
 	}
 	ret, err = call(b20Alice, token, b20Call(selTransfer, addrKey(b20Bob), u256hash(1)))
-	if !errors.Is(err, ErrExecutionReverted) {
-		t.Fatalf("paused transfer err = %v, want ErrExecutionReverted", err)
+	if !errors.Is(err, vm.ErrExecutionReverted) {
+		t.Fatalf("paused transfer err = %v, want vm.ErrExecutionReverted", err)
 	}
 	want := append(append([]byte{}, errSelContractPaused[:]...), wU8(b20PauseTransfer).Bytes()...)
 	if !bytes.Equal(ret, want) {
@@ -213,8 +215,8 @@ func TestB20RevertData(t *testing.T) {
 		t.Fatalf("unpause: %v", err)
 	}
 	ret, err = call(b20Alice, token, b20Call(selTransfer, addrKey(b20Bob), u256hash(1000)))
-	if !errors.Is(err, ErrExecutionReverted) {
-		t.Fatalf("over-balance transfer err = %v, want ErrExecutionReverted", err)
+	if !errors.Is(err, vm.ErrExecutionReverted) {
+		t.Fatalf("over-balance transfer err = %v, want vm.ErrExecutionReverted", err)
 	}
 	want = append([]byte{}, errSelInsufficientBalance[:]...)
 	want = append(want, addrKey(b20Alice).Bytes()...)
@@ -225,9 +227,9 @@ func TestB20RevertData(t *testing.T) {
 	}
 
 	// NonPayable(): a value-bearing call is refused across the routed space.
-	ret, _, err = evm.Call(creator, token, b20Call(selTransfer, addrKey(b20Bob), u256hash(1)), NewGasBudget(5_000_000), uint256.NewInt(7))
-	if !errors.Is(err, ErrExecutionReverted) {
-		t.Fatalf("value-bearing call err = %v, want ErrExecutionReverted", err)
+	ret, _, err = evm.Call(creator, token, b20Call(selTransfer, addrKey(b20Bob), u256hash(1)), vm.NewGasBudget(5_000_000), uint256.NewInt(7))
+	if !errors.Is(err, vm.ErrExecutionReverted) {
+		t.Fatalf("value-bearing call err = %v, want vm.ErrExecutionReverted", err)
 	}
 	if !bytes.Equal(ret, errSelNonPayable[:]) {
 		t.Fatalf("revert data = %x, want NonPayable() = %x", ret, errSelNonPayable)

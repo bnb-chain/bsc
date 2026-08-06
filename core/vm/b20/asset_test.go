@@ -14,9 +14,11 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package vm
+package b20
 
 import (
+	"github.com/ethereum/go-ethereum/core/vm"
+
 	"bytes"
 	"errors"
 	"math/big"
@@ -53,13 +55,13 @@ func TestB20AssetExtension(t *testing.T) {
 	cfg := *params.TestChainConfig
 	zero := uint64(0)
 	cfg.PasteurTime = &zero
-	bc := BlockContext{
-		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
-		Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
+	bc := vm.BlockContext{
+		CanTransfer: func(vm.StateDB, common.Address, *uint256.Int) bool { return true },
+		Transfer:    func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
 		BlockNumber: big.NewInt(1),
 		Time:        1,
 	}
-	evm := NewEVM(bc, statedb, &cfg, Config{})
+	evm := vm.NewEVM(bc, statedb, &cfg, vm.Config{})
 
 	creator := common.HexToAddress("0xc4ea70")
 	minter := common.HexToAddress("0x33333")
@@ -67,7 +69,7 @@ func TestB20AssetExtension(t *testing.T) {
 	salt := common.HexToHash("0x0a")
 
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, vm.NewGasBudget(5_000_000), uint256.NewInt(0))
 		return ret, err
 	}
 	u := func(ret []byte, err error) uint64 {
@@ -105,7 +107,7 @@ func TestB20AssetExtension(t *testing.T) {
 	}
 
 	// non-operator updateMultiplier reverts.
-	if _, err := call(minter, token, b20Call(selUpdateMultiplier, u256hash(2e18))); !errors.Is(err, ErrExecutionReverted) {
+	if _, err := call(minter, token, b20Call(selUpdateMultiplier, u256hash(2e18))); !errors.Is(err, vm.ErrExecutionReverted) {
 		t.Fatalf("non-operator updateMultiplier err = %v, want revert", err)
 	}
 	// operator sets multiplier to 1.5x.
@@ -130,7 +132,7 @@ func TestB20AssetExtension(t *testing.T) {
 		t.Errorf("balanceOf(alice) = %d, want 1000 (raw unchanged)", got)
 	}
 	// updateMultiplier to 0 reverts.
-	if _, err := call(operator, token, b20Call(selUpdateMultiplier, u256hash(0))); !errors.Is(err, ErrExecutionReverted) {
+	if _, err := call(operator, token, b20Call(selUpdateMultiplier, u256hash(0))); !errors.Is(err, vm.ErrExecutionReverted) {
 		t.Fatalf("zero multiplier err = %v, want revert", err)
 	}
 
@@ -146,7 +148,7 @@ func TestB20AssetExtension(t *testing.T) {
 		t.Errorf("supply = %d, want 1030", view.totalSupply().Uint64())
 	}
 	// mismatched array lengths revert.
-	if _, err := call(minter, token, encodeBatchMint([]common.Address{b20Bob}, []uint64{1, 2})); !errors.Is(err, ErrExecutionReverted) {
+	if _, err := call(minter, token, encodeBatchMint([]common.Address{b20Bob}, []uint64{1, 2})); !errors.Is(err, vm.ErrExecutionReverted) {
 		t.Fatalf("length-mismatch batchMint err = %v, want revert", err)
 	}
 }
@@ -186,7 +188,7 @@ func TestB20Announce(t *testing.T) {
 	salt := common.HexToHash("0x0e")
 
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, vm.NewGasBudget(5_000_000), uint256.NewInt(0))
 		return ret, err
 	}
 
@@ -223,17 +225,17 @@ func TestB20Announce(t *testing.T) {
 	}
 
 	// reusing the id reverts.
-	if _, err := call(operator, token, encodeAnnounce(nil, id1)); !errors.Is(err, ErrExecutionReverted) {
+	if _, err := call(operator, token, encodeAnnounce(nil, id1)); !errors.Is(err, vm.ErrExecutionReverted) {
 		t.Fatalf("reused id err = %v, want revert", err)
 	}
 	// non-operator reverts.
-	if _, err := call(creator, token, encodeAnnounce(nil, common.HexToHash("0x2222"))); !errors.Is(err, ErrExecutionReverted) {
+	if _, err := call(creator, token, encodeAnnounce(nil, common.HexToHash("0x2222"))); !errors.Is(err, vm.ErrExecutionReverted) {
 		t.Fatalf("non-operator announce err = %v, want revert", err)
 	}
 	// nesting announce inside announce reverts (and rolls back, id unused).
 	nestedID := common.HexToHash("0x3333")
 	nested := [][]byte{encodeAnnounce(nil, common.HexToHash("0x4444"))}
-	if _, err := call(operator, token, encodeAnnounce(nested, nestedID)); !errors.Is(err, ErrExecutionReverted) {
+	if _, err := call(operator, token, encodeAnnounce(nested, nestedID)); !errors.Is(err, vm.ErrExecutionReverted) {
 		t.Fatalf("nested announce err = %v, want revert", err)
 	}
 	if r, _ := call(creator, token, b20Call(selIsAnnouncementIdUsed, nestedID)); !bytes.Equal(r, encBool(false)) {
@@ -243,7 +245,7 @@ func TestB20Announce(t *testing.T) {
 	// a failing internal call rolls the whole announce back.
 	badID := common.HexToHash("0x5555")
 	bad := [][]byte{b20Call(selUpdateMultiplier, u256hash(0))} // zero multiplier reverts
-	if _, err := call(operator, token, encodeAnnounce(bad, badID)); !errors.Is(err, ErrExecutionReverted) {
+	if _, err := call(operator, token, encodeAnnounce(bad, badID)); !errors.Is(err, vm.ErrExecutionReverted) {
 		t.Fatalf("failing internal call err = %v, want revert", err)
 	}
 	if got := mul(); got != 1_200_000_000_000_000_000 {
@@ -280,7 +282,7 @@ func TestB20ExtraMetadata(t *testing.T) {
 	salt := common.HexToHash("0x0f")
 
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, vm.NewGasBudget(5_000_000), uint256.NewInt(0))
 		return ret, err
 	}
 	readStr := func(to common.Address, input []byte) string {
@@ -328,11 +330,11 @@ func TestB20ExtraMetadata(t *testing.T) {
 		t.Fatalf("deleted extraMetadata = %q, want empty", got)
 	}
 	// empty key reverts.
-	if _, err := call(creator, token, encodeStringCall(selUpdateExtraMetadata, "", "x")); !errors.Is(err, ErrExecutionReverted) {
+	if _, err := call(creator, token, encodeStringCall(selUpdateExtraMetadata, "", "x")); !errors.Is(err, vm.ErrExecutionReverted) {
 		t.Fatalf("empty key err = %v, want revert", err)
 	}
 	// non-METADATA caller reverts.
-	if _, err := call(b20Alice, token, encodeStringCall(selUpdateExtraMetadata, "k", "v")); !errors.Is(err, ErrExecutionReverted) {
+	if _, err := call(b20Alice, token, encodeStringCall(selUpdateExtraMetadata, "k", "v")); !errors.Is(err, vm.ErrExecutionReverted) {
 		t.Fatalf("unauthorized err = %v, want revert", err)
 	}
 }

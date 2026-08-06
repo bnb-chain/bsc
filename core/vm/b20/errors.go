@@ -14,9 +14,11 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package vm
+package b20
 
 import (
+	"github.com/ethereum/go-ethereum/core/vm"
+
 	"errors"
 	"fmt"
 
@@ -32,7 +34,7 @@ import (
 //
 // Inside the B20 code a failure is a *b20RevertError carrying the encoded
 // payload; finishB20 converts it at the precompile boundary into the
-// (returndata, ErrExecutionReverted) pair the EVM call path already knows how
+// (returndata, vm.ErrExecutionReverted) pair the EVM call path already knows how
 // to propagate. ABI *decode* failures (malformed calldata) revert with empty
 // returndata, mirroring base-std's dispatch-level AbiDecodeFailed.
 
@@ -68,16 +70,16 @@ type b20RevertError struct {
 
 func (e *b20RevertError) Error() string { return fmt.Sprintf("b20 revert: %s", e.sig) }
 
-// Is lets errors.Is(err, ErrExecutionReverted) hold before finishB20 converts
+// Is lets errors.Is(err, vm.ErrExecutionReverted) hold before finishB20 converts
 // the typed revert at the precompile boundary.
-func (e *b20RevertError) Is(target error) bool { return target == ErrExecutionReverted }
+func (e *b20RevertError) Is(target error) bool { return target == vm.ErrExecutionReverted }
 
-// finishB20 converts a typed revert into (returndata, ErrExecutionReverted) at
+// finishB20 converts a typed revert into (returndata, vm.ErrExecutionReverted) at
 // the precompile boundary. All other results pass through unchanged.
 func finishB20(ret []byte, err error) ([]byte, error) {
 	var rev *b20RevertError
 	if errors.As(err, &rev) {
-		return rev.data, ErrExecutionReverted
+		return rev.data, vm.ErrExecutionReverted
 	}
 	return ret, err
 }

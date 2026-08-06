@@ -6,7 +6,7 @@ pragma solidity ^0.8.20;
 ///         Never deployed: the implementations are stateful precompiles inside
 ///         the BSC node. This package exists so integrators compile against a
 ///         typed surface and so the ABI baseline
-///         (core/vm/testdata/b20_abi_baseline.json) has a reviewable origin.
+///         (core/vm/b20/testdata/abi_baseline.json) has a reviewable origin.
 ///         The Go implementation is cross-checked against the baseline by
 ///         TestB20ABIBaseline; keep the three in lockstep.
 

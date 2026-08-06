@@ -14,9 +14,11 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package vm
+package b20
 
 import (
+	"github.com/ethereum/go-ethereum/core/vm"
+
 	"errors"
 	"testing"
 
@@ -107,8 +109,8 @@ func TestResolveB20(t *testing.T) {
 // TestB20DelegateCallGuard checks that every variant rejects non-direct calls
 // before touching any state.
 func TestB20DelegateCallGuard(t *testing.T) {
-	ctx := &PrecompileContext{DirectCall: false}
-	precompiles := []StatefulPrecompiledContract{
+	ctx := vm.NewPrecompileContext(nil, nil, common.Address{}, common.Address{}, nil).WithDirectCall(false)
+	precompiles := []vm.StatefulPrecompiledContract{
 		&b20FactoryPrecompile{},
 		&b20AssetPrecompile{token: b20Addr(b20VariantAsset, 1)},
 		&b20StablecoinPrecompile{token: b20Addr(b20VariantStablecoin, 1)},
@@ -123,7 +125,7 @@ func TestB20DelegateCallGuard(t *testing.T) {
 // TestB20StatelessDispatchGuard checks the defensive backstop on the plain Run
 // path (should never be reached in practice, but must not silently no-op).
 func TestB20StatelessDispatchGuard(t *testing.T) {
-	var p PrecompiledContract = &b20AssetPrecompile{}
+	var p vm.PrecompiledContract = &b20AssetPrecompile{}
 	if _, err := p.Run(nil); !errors.Is(err, ErrB20StatelessDispatch) {
 		t.Errorf("Run err = %v, want ErrB20StatelessDispatch", err)
 	}

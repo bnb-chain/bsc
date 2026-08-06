@@ -14,9 +14,11 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package vm
+package b20
 
 import (
+	"github.com/ethereum/go-ethereum/core/vm"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/holiman/uint256"
 )
@@ -72,7 +74,7 @@ var (
 // policyReg is a gas-metered view over the registry's storage.
 type policyReg struct{ s b20Storage }
 
-func newPolicyReg(ctx *PrecompileContext) policyReg {
+func newPolicyReg(ctx *vm.PrecompileContext) policyReg {
 	return policyReg{s: b20Storage{state: ctx.StateDB, token: B20PolicyRegistryAddress, ctx: ctx}}
 }
 
@@ -156,22 +158,22 @@ type b20PolicyPrecompile struct{ b20StatefulBase }
 func (p *b20PolicyPrecompile) Name() string                    { return "B20PolicyRegistry" }
 func (p *b20PolicyPrecompile) RequiredGas(input []byte) uint64 { return 0 } // TODO: gas schedule
 
-func (p *b20PolicyPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
+func (p *b20PolicyPrecompile) RunStateful(ctx *vm.PrecompileContext, input []byte) ([]byte, error) {
 	if err := b20EnterCall(ctx); err != nil {
 		return finishB20(nil, err)
 	}
 	ret, err := runB20Policy(ctx, input)
 	if ctx.OutOfGas() {
-		return nil, ErrOutOfGas
+		return nil, vm.ErrOutOfGas
 	}
 	return finishB20(ret, err)
 }
 
-var _ StatefulPrecompiledContract = (*b20PolicyPrecompile)(nil)
+var _ vm.StatefulPrecompiledContract = (*b20PolicyPrecompile)(nil)
 
-func runB20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
+func runB20Policy(ctx *vm.PrecompileContext, input []byte) ([]byte, error) {
 	if len(input) < 4 {
-		return nil, ErrExecutionReverted
+		return nil, vm.ErrExecutionReverted
 	}
 	var sel [4]byte
 	copy(sel[:], input[:4])
@@ -225,13 +227,13 @@ func runB20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	case selRenounceAdmin:
 		return nil, renounceAdmin(ctx, reg, args)
 	}
-	return nil, ErrExecutionReverted
+	return nil, vm.ErrExecutionReverted
 }
 
 // TODO: gate writes on ActivationRegistry bsc.policy_registry.
-func createPolicy(ctx *PrecompileContext, reg policyReg, args []byte, withAccounts bool) ([]byte, error) {
+func createPolicy(ctx *vm.PrecompileContext, reg policyReg, args []byte, withAccounts bool) ([]byte, error) {
 	if ctx.ReadOnly {
-		return nil, ErrWriteProtection
+		return nil, vm.ErrWriteProtection
 	}
 	admin, err := readAddress(args, 0)
 	if err != nil {
@@ -272,9 +274,9 @@ func createPolicy(ctx *PrecompileContext, reg policyReg, args []byte, withAccoun
 	return encU256(uint256.NewInt(id)), nil
 }
 
-func updateMembers(ctx *PrecompileContext, reg policyReg, args []byte, wantType byte) error {
+func updateMembers(ctx *vm.PrecompileContext, reg policyReg, args []byte, wantType byte) error {
 	if ctx.ReadOnly {
-		return ErrWriteProtection
+		return vm.ErrWriteProtection
 	}
 	pid, err := readU64(args, 0)
 	if err != nil {
@@ -307,9 +309,9 @@ func updateMembers(ctx *PrecompileContext, reg policyReg, args []byte, wantType 
 	return nil
 }
 
-func stageUpdateAdmin(ctx *PrecompileContext, reg policyReg, args []byte) error {
+func stageUpdateAdmin(ctx *vm.PrecompileContext, reg policyReg, args []byte) error {
 	if ctx.ReadOnly {
-		return ErrWriteProtection
+		return vm.ErrWriteProtection
 	}
 	id, err := readU64(args, 0)
 	if err != nil {
@@ -326,9 +328,9 @@ func stageUpdateAdmin(ctx *PrecompileContext, reg policyReg, args []byte) error 
 	return nil
 }
 
-func finalizeUpdateAdmin(ctx *PrecompileContext, reg policyReg, args []byte) error {
+func finalizeUpdateAdmin(ctx *vm.PrecompileContext, reg policyReg, args []byte) error {
 	if ctx.ReadOnly {
-		return ErrWriteProtection
+		return vm.ErrWriteProtection
 	}
 	pid, err := readU64(args, 0)
 	if err != nil {
@@ -345,9 +347,9 @@ func finalizeUpdateAdmin(ctx *PrecompileContext, reg policyReg, args []byte) err
 	return nil
 }
 
-func renounceAdmin(ctx *PrecompileContext, reg policyReg, args []byte) error {
+func renounceAdmin(ctx *vm.PrecompileContext, reg policyReg, args []byte) error {
 	if ctx.ReadOnly {
-		return ErrWriteProtection
+		return vm.ErrWriteProtection
 	}
 	pid, err := readU64(args, 0)
 	if err != nil {

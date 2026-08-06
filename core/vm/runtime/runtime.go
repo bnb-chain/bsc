@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	_ "github.com/ethereum/go-ethereum/core/vm/b20" // register the B20 precompile resolver
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"

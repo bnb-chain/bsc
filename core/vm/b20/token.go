@@ -14,9 +14,11 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package vm
+package b20
 
 import (
+	"github.com/ethereum/go-ethereum/core/vm"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
@@ -31,7 +33,7 @@ import (
 // balanceOf/allowance/approve/transfer/transferFrom) plus the TRANSFER pause
 // gate. Roles, mint/burn, compliance policies and permit are follow-ups.
 type b20Token struct {
-	ctx      *PrecompileContext
+	ctx      *vm.PrecompileContext
 	s        b20Storage
 	decimals uint8
 
@@ -41,13 +43,13 @@ type b20Token struct {
 	privileged bool
 }
 
-func newB20Token(ctx *PrecompileContext, decimals uint8) b20Token {
+func newB20Token(ctx *vm.PrecompileContext, decimals uint8) b20Token {
 	return b20Token{ctx: ctx, s: newMeteredB20Storage(ctx), decimals: decimals}
 }
 
 // newB20TokenBootstrap returns a token in the factory's privileged bootstrap
 // mode, where role and transfer-side policy gates are skipped.
-func newB20TokenBootstrap(ctx *PrecompileContext, decimals uint8) b20Token {
+func newB20TokenBootstrap(ctx *vm.PrecompileContext, decimals uint8) b20Token {
 	t := newB20Token(ctx, decimals)
 	t.privileged = true
 	return t
@@ -86,11 +88,11 @@ var (
 
 // dispatch routes a call by selector. It returns the ABI-encoded result on
 // success. Business-rule failures and unknown selectors revert
-// (ErrExecutionReverted); a write reached in a read-only frame throws
-// (ErrWriteProtection), matching SSTORE-in-STATICCALL semantics.
+// (vm.ErrExecutionReverted); a write reached in a read-only frame throws
+// (vm.ErrWriteProtection), matching SSTORE-in-STATICCALL semantics.
 func (t b20Token) dispatch(input []byte) ([]byte, error) {
 	if len(input) < 4 {
-		return nil, ErrExecutionReverted
+		return nil, vm.ErrExecutionReverted
 	}
 	var sel [4]byte
 	copy(sel[:], input[:4])
@@ -164,14 +166,14 @@ func (t b20Token) dispatch(input []byte) ([]byte, error) {
 	if ret, err, ok := t.dispatchPermitMemo(sel, args); ok {
 		return ret, err
 	}
-	return nil, ErrExecutionReverted
+	return nil, vm.ErrExecutionReverted
 }
 
 // --- ERC-20 core ------------------------------------------------------------
 
 func (t b20Token) approve(owner, spender common.Address, amount *uint256.Int) ([]byte, error) {
 	if t.ctx.ReadOnly {
-		return nil, ErrWriteProtection
+		return nil, vm.ErrWriteProtection
 	}
 	if spender == (common.Address{}) {
 		return nil, revB20("InvalidSpender(address)", errSelInvalidSpender, addrKey(spender))
@@ -184,7 +186,7 @@ func (t b20Token) approve(owner, spender common.Address, amount *uint256.Int) ([
 
 func (t b20Token) transfer(from, to common.Address, amount *uint256.Int) ([]byte, error) {
 	if t.ctx.ReadOnly {
-		return nil, ErrWriteProtection
+		return nil, vm.ErrWriteProtection
 	}
 	if t.isPaused(b20PauseTransfer) {
 		return nil, revB20("ContractPaused(uint8)", errSelContractPaused, wU8(b20PauseTransfer))
@@ -198,7 +200,7 @@ func (t b20Token) transfer(from, to common.Address, amount *uint256.Int) ([]byte
 
 func (t b20Token) transferFrom(spender, from, to common.Address, amount *uint256.Int) ([]byte, error) {
 	if t.ctx.ReadOnly {
-		return nil, ErrWriteProtection
+		return nil, vm.ErrWriteProtection
 	}
 	if t.isPaused(b20PauseTransfer) {
 		return nil, revB20("ContractPaused(uint8)", errSelContractPaused, wU8(b20PauseTransfer))
@@ -282,7 +284,7 @@ func (t b20Token) emit(topic0 common.Hash, a, b common.Address, value *uint256.I
 func readWord(args []byte, i int) (common.Hash, error) {
 	off := i * 32
 	if len(args) < off+32 {
-		return common.Hash{}, ErrExecutionReverted
+		return common.Hash{}, vm.ErrExecutionReverted
 	}
 	return common.BytesToHash(args[off : off+32]), nil
 }
@@ -294,7 +296,7 @@ func readAddress(args []byte, i int) (common.Address, error) {
 	}
 	for _, b := range w[:12] { // strict ABI: an address word carries no dirty high bits
 		if b != 0 {
-			return common.Address{}, ErrExecutionReverted
+			return common.Address{}, vm.ErrExecutionReverted
 		}
 	}
 	return common.BytesToAddress(w.Bytes()), nil
@@ -308,7 +310,7 @@ func readU64(args []byte, i int) (uint64, error) {
 	}
 	for _, b := range w[:24] {
 		if b != 0 {
-			return 0, ErrExecutionReverted
+			return 0, vm.ErrExecutionReverted
 		}
 	}
 	return new(uint256.Int).SetBytes(w[24:]).Uint64(), nil
