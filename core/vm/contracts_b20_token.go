@@ -63,6 +63,7 @@ const (
 
 func selector(sig string) (s [4]byte) {
 	copy(s[:], crypto.Keccak256([]byte(sig)))
+	b20FnSigs[sig] = s
 	return s
 }
 
@@ -77,8 +78,8 @@ var (
 	selTransfer     = selector("transfer(address,uint256)")
 	selTransferFrom = selector("transferFrom(address,address,uint256)")
 
-	b20TopicTransfer = crypto.Keccak256Hash([]byte("Transfer(address,address,uint256)"))
-	b20TopicApproval = crypto.Keccak256Hash([]byte("Approval(address,address,uint256)"))
+	b20TopicTransfer = eventTopic("Transfer(address,address,uint256)")
+	b20TopicApproval = eventTopic("Approval(address,address,uint256)")
 
 	maxU256 = new(uint256.Int).Not(new(uint256.Int))
 )
@@ -172,6 +173,9 @@ func (t b20Token) approve(owner, spender common.Address, amount *uint256.Int) ([
 	if t.ctx.ReadOnly {
 		return nil, ErrWriteProtection
 	}
+	if spender == (common.Address{}) {
+		return nil, revB20("InvalidSpender(address)", errSelInvalidSpender, addrKey(spender))
+	}
 	// approve is intentionally not gated by pause or policy.
 	t.s.setAllowance(owner, spender, amount)
 	t.emit(b20TopicApproval, owner, spender, amount)
@@ -183,7 +187,7 @@ func (t b20Token) transfer(from, to common.Address, amount *uint256.Int) ([]byte
 		return nil, ErrWriteProtection
 	}
 	if t.isPaused(b20PauseTransfer) {
-		return nil, ErrExecutionReverted
+		return nil, revB20("ContractPaused(uint8)", errSelContractPaused, wU8(b20PauseTransfer))
 	}
 	if err := t.move(from, to, amount); err != nil {
 		return nil, err
@@ -197,18 +201,20 @@ func (t b20Token) transferFrom(spender, from, to common.Address, amount *uint256
 		return nil, ErrWriteProtection
 	}
 	if t.isPaused(b20PauseTransfer) {
-		return nil, ErrExecutionReverted
+		return nil, revB20("ContractPaused(uint8)", errSelContractPaused, wU8(b20PauseTransfer))
 	}
 	// Spend allowance unless the caller is the owner. U256::MAX is treated as
 	// an infinite, non-decreasing allowance.
 	if spender != from {
 		if !t.privileged && !t.policyAllows(t.s.transferExecutorPolicy(), spender) {
-			return nil, ErrExecutionReverted
+			return nil, revB20("PolicyForbids(bytes32,uint64)", errSelPolicyForbids,
+				scopeTransferExecutor, wU64(t.s.transferExecutorPolicy()))
 		}
 		allowed := t.s.allowance(from, spender)
 		if !allowed.Eq(maxU256) {
 			if allowed.Lt(amount) {
-				return nil, ErrExecutionReverted
+				return nil, revB20("InsufficientAllowance(address,uint256,uint256)", errSelInsufficientAllow,
+					addrKey(spender), wU256(allowed), wU256(amount))
 			}
 			t.s.setAllowance(from, spender, new(uint256.Int).Sub(allowed, amount))
 		}
@@ -234,16 +240,27 @@ func (t b20Token) policyAllows(id uint64, account common.Address) bool {
 // consistent token the balance sum equals totalSupply, so the credit cannot
 // overflow.
 func (t b20Token) move(from, to common.Address, amount *uint256.Int) error {
+	if to == (common.Address{}) {
+		return revB20("InvalidReceiver(address)", errSelInvalidReceiver, addrKey(to))
+	}
+	if from == (common.Address{}) {
+		return revB20("InvalidSender(address)", errSelInvalidSender, addrKey(from))
+	}
 	// TRANSFER_SENDER / TRANSFER_RECEIVER compliance (skipped when privileged).
 	if !t.privileged {
-		if !t.policyAllows(t.s.transferSenderPolicy(), from) ||
-			!t.policyAllows(t.s.transferReceiverPolicy(), to) {
-			return ErrExecutionReverted
+		if !t.policyAllows(t.s.transferSenderPolicy(), from) {
+			return revB20("PolicyForbids(bytes32,uint64)", errSelPolicyForbids,
+				scopeTransferSender, wU64(t.s.transferSenderPolicy()))
+		}
+		if !t.policyAllows(t.s.transferReceiverPolicy(), to) {
+			return revB20("PolicyForbids(bytes32,uint64)", errSelPolicyForbids,
+				scopeTransferReceiver, wU64(t.s.transferReceiverPolicy()))
 		}
 	}
 	bal := t.s.balanceOf(from)
 	if bal.Lt(amount) {
-		return ErrExecutionReverted
+		return revB20("InsufficientBalance(address,uint256,uint256)", errSelInsufficientBalance,
+			addrKey(from), wU256(bal), wU256(amount))
 	}
 	t.s.setBalance(from, new(uint256.Int).Sub(bal, amount))
 	t.s.setBalance(to, new(uint256.Int).Add(t.s.balanceOf(to), amount))
@@ -275,7 +292,26 @@ func readAddress(args []byte, i int) (common.Address, error) {
 	if err != nil {
 		return common.Address{}, err
 	}
+	for _, b := range w[:12] { // strict ABI: an address word carries no dirty high bits
+		if b != 0 {
+			return common.Address{}, ErrExecutionReverted
+		}
+	}
 	return common.BytesToAddress(w.Bytes()), nil
+}
+
+// readU64 strictly decodes a uint64 argument (upper 24 bytes must be zero).
+func readU64(args []byte, i int) (uint64, error) {
+	w, err := readWord(args, i)
+	if err != nil {
+		return 0, err
+	}
+	for _, b := range w[:24] {
+		if b != 0 {
+			return 0, ErrExecutionReverted
+		}
+	}
+	return new(uint256.Int).SetBytes(w[24:]).Uint64(), nil
 }
 
 func readU256(args []byte, i int) (*uint256.Int, error) {

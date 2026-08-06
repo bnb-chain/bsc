@@ -58,15 +58,15 @@ var b20PolicyRoot = erc7201Root(b20PolicyNamespace)
 var (
 	selCreatePolicy             = selector("createPolicy(address,uint8)")
 	selCreatePolicyWithAccounts = selector("createPolicyWithAccounts(address,uint8,address[])")
-	selUpdateAllowlist          = selector("updateAllowlist(uint256,bool,address[])")
-	selUpdateBlocklist          = selector("updateBlocklist(uint256,bool,address[])")
-	selStageUpdateAdmin         = selector("stageUpdateAdmin(uint256,address)")
-	selFinalizeUpdateAdmin      = selector("finalizeUpdateAdmin(uint256)")
-	selRenounceAdmin            = selector("renounceAdmin(uint256)")
-	selIsAuthorized             = selector("isAuthorized(uint256,address)")
-	selPolicyExists             = selector("policyExists(uint256)")
-	selPolicyAdmin              = selector("policyAdmin(uint256)")
-	selPendingPolicyAdmin       = selector("pendingPolicyAdmin(uint256)")
+	selUpdateAllowlist          = selector("updateAllowlist(uint64,bool,address[])")
+	selUpdateBlocklist          = selector("updateBlocklist(uint64,bool,address[])")
+	selStageUpdateAdmin         = selector("stageUpdateAdmin(uint64,address)")
+	selFinalizeUpdateAdmin      = selector("finalizeUpdateAdmin(uint64)")
+	selRenounceAdmin            = selector("renounceAdmin(uint64)")
+	selIsAuthorized             = selector("isAuthorized(uint64,address)")
+	selPolicyExists             = selector("policyExists(uint64)")
+	selPolicyAdmin              = selector("policyAdmin(uint64)")
+	selPendingPolicyAdmin       = selector("pendingPolicyAdmin(uint64)")
 )
 
 // policyReg is a gas-metered view over the registry's storage.
@@ -83,6 +83,17 @@ func polSlot(offset uint64) common.Hash {
 }
 
 func idKey(id uint64) common.Hash { return common.Hash(uint256.NewInt(id).Bytes32()) }
+
+// isEnumWord reports whether an ABI word strictly encodes an enum/bool value
+// in [0, max]: every byte above the last must be zero.
+func isEnumWord(w common.Hash, max byte) bool {
+	for _, b := range w[:31] {
+		if b != 0 {
+			return false
+		}
+	}
+	return w[31] <= max
+}
 
 func (p policyReg) counter() uint64 {
 	return new(uint256.Int).SetBytes(p.s.getWord(polSlot(polSlotCounter)).Bytes()).Uint64()
@@ -146,14 +157,14 @@ func (p *b20PolicyPrecompile) Name() string                    { return "B20Poli
 func (p *b20PolicyPrecompile) RequiredGas(input []byte) uint64 { return 0 } // TODO: gas schedule
 
 func (p *b20PolicyPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
-	if !ctx.DirectCall {
-		return nil, ErrB20DelegateCall
+	if err := b20EnterCall(ctx); err != nil {
+		return finishB20(nil, err)
 	}
 	ret, err := runB20Policy(ctx, input)
 	if ctx.OutOfGas() {
 		return nil, ErrOutOfGas
 	}
-	return ret, err
+	return finishB20(ret, err)
 }
 
 var _ StatefulPrecompiledContract = (*b20PolicyPrecompile)(nil)
@@ -170,7 +181,7 @@ func runB20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	switch sel {
 	// reads (allowed in read-only frames, never revert on lookup)
 	case selIsAuthorized:
-		id, err := readU256(args, 0)
+		id, err := readU64(args, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -178,25 +189,25 @@ func runB20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		return encBool(reg.isAuthorized(id.Uint64(), acct)), nil
+		return encBool(reg.isAuthorized(id, acct)), nil
 	case selPolicyExists:
-		id, err := readU256(args, 0)
+		id, err := readU64(args, 0)
 		if err != nil {
 			return nil, err
 		}
-		return encBool(reg.exists(id.Uint64())), nil
+		return encBool(reg.exists(id)), nil
 	case selPolicyAdmin:
-		id, err := readU256(args, 0)
+		id, err := readU64(args, 0)
 		if err != nil {
 			return nil, err
 		}
-		return addrKey(reg.admin(id.Uint64())).Bytes(), nil
+		return addrKey(reg.admin(id)).Bytes(), nil
 	case selPendingPolicyAdmin:
-		id, err := readU256(args, 0)
+		id, err := readU64(args, 0)
 		if err != nil {
 			return nil, err
 		}
-		return addrKey(reg.pending(id.Uint64())).Bytes(), nil
+		return addrKey(reg.pending(id)).Bytes(), nil
 
 	// writes
 	case selCreatePolicy:
@@ -231,8 +242,11 @@ func createPolicy(ctx *PrecompileContext, reg policyReg, args []byte, withAccoun
 		return nil, err
 	}
 	ptype := ptypeWord[31]
-	if admin == (common.Address{}) || ptype > b20PolicyAllowlist {
-		return nil, ErrExecutionReverted
+	if !isEnumWord(ptypeWord, b20PolicyAllowlist) {
+		return nil, revPanic(0x21)
+	}
+	if admin == (common.Address{}) {
+		return nil, revB20("ZeroAddress()", errSelZeroAddress)
 	}
 	c := reg.counter()
 	if c < b20PolicyFirstID {
@@ -249,7 +263,7 @@ func createPolicy(ctx *PrecompileContext, reg policyReg, args []byte, withAccoun
 			return nil, err
 		}
 		if len(accounts) > b20PolicyBatchMax {
-			return nil, ErrExecutionReverted
+			return nil, revB20("BatchSizeTooLarge(uint256)", errSelBatchTooLarge, wU64(b20PolicyBatchMax))
 		}
 		for _, a := range accounts {
 			reg.setMember(id, common.BytesToAddress(a.Bytes()), true)
@@ -262,7 +276,7 @@ func updateMembers(ctx *PrecompileContext, reg policyReg, args []byte, wantType 
 	if ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	id, err := readU256(args, 0)
+	pid, err := readU64(args, 0)
 	if err != nil {
 		return err
 	}
@@ -270,19 +284,21 @@ func updateMembers(ctx *PrecompileContext, reg policyReg, args []byte, wantType 
 	if err != nil {
 		return err
 	}
+	if !isEnumWord(inWord, 1) { // strict ABI bool
+		return revPanic(0x21)
+	}
 	accounts, err := readWordArray(args, 2)
 	if err != nil {
 		return err
 	}
-	pid := id.Uint64()
 	if err := requirePolicyAdmin(reg, pid, ctx.Caller); err != nil {
 		return err
 	}
 	if byte(pid>>56) != wantType {
-		return ErrExecutionReverted // IncompatiblePolicyType
+		return revB20("IncompatiblePolicyType()", errSelIncompatibleType)
 	}
 	if len(accounts) > b20PolicyBatchMax {
-		return ErrExecutionReverted // BatchSizeTooLarge
+		return revB20("BatchSizeTooLarge(uint256)", errSelBatchTooLarge, wU64(b20PolicyBatchMax))
 	}
 	in := inWord[31] != 0
 	for _, a := range accounts {
@@ -295,7 +311,7 @@ func stageUpdateAdmin(ctx *PrecompileContext, reg policyReg, args []byte) error 
 	if ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	id, err := readU256(args, 0)
+	id, err := readU64(args, 0)
 	if err != nil {
 		return err
 	}
@@ -303,10 +319,10 @@ func stageUpdateAdmin(ctx *PrecompileContext, reg policyReg, args []byte) error 
 	if err != nil {
 		return err
 	}
-	if err := requirePolicyAdmin(reg, id.Uint64(), ctx.Caller); err != nil {
+	if err := requirePolicyAdmin(reg, id, ctx.Caller); err != nil {
 		return err
 	}
-	reg.setPending(id.Uint64(), newAdmin)
+	reg.setPending(id, newAdmin)
 	return nil
 }
 
@@ -314,13 +330,15 @@ func finalizeUpdateAdmin(ctx *PrecompileContext, reg policyReg, args []byte) err
 	if ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	id, err := readU256(args, 0)
+	pid, err := readU64(args, 0)
 	if err != nil {
 		return err
 	}
-	pid := id.Uint64()
+	if reg.pending(pid) == (common.Address{}) {
+		return revB20("NoPendingAdmin()", errSelNoPendingAdmin)
+	}
 	if reg.pending(pid) != ctx.Caller || ctx.Caller == (common.Address{}) {
-		return ErrExecutionReverted
+		return revB20("Unauthorized()", errSelUnauthorized)
 	}
 	reg.setAdmin(pid, ctx.Caller)
 	reg.setPending(pid, common.Address{})
@@ -331,11 +349,10 @@ func renounceAdmin(ctx *PrecompileContext, reg policyReg, args []byte) error {
 	if ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	id, err := readU256(args, 0)
+	pid, err := readU64(args, 0)
 	if err != nil {
 		return err
 	}
-	pid := id.Uint64()
 	if err := requirePolicyAdmin(reg, pid, ctx.Caller); err != nil {
 		return err
 	}
@@ -348,7 +365,7 @@ func renounceAdmin(ctx *PrecompileContext, reg policyReg, args []byte) error {
 func requirePolicyAdmin(reg policyReg, id uint64, caller common.Address) error {
 	admin := reg.admin(id)
 	if admin == (common.Address{}) || admin != caller {
-		return ErrExecutionReverted
+		return revB20("Unauthorized()", errSelUnauthorized)
 	}
 	return nil
 }

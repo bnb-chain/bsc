@@ -54,16 +54,16 @@ var (
 	selOperatorRole     = selector("OPERATOR_ROLE()")
 	selBatchMint        = selector("batchMint(address[],uint256[])")
 
-	selAnnounce             = selector("announce(bytes[],bytes32,string,string)")
-	selIsAnnouncementIdUsed = selector("isAnnouncementIdUsed(bytes32)")
+	selAnnounce             = selector("announce(bytes[],uint256,string,string)")
+	selIsAnnouncementIdUsed = selector("isAnnouncementIdUsed(uint256)")
 
 	selExtraMetadata       = selector("extraMetadata(string)")
 	selUpdateExtraMetadata = selector("updateExtraMetadata(string,string)")
 
-	b20TopicMultiplierUpdated    = crypto.Keccak256Hash([]byte("MultiplierUpdated(uint256)"))
-	b20TopicAnnouncement         = crypto.Keccak256Hash([]byte("Announcement(address,bytes32,string,string)"))
-	b20TopicEndAnnouncement      = crypto.Keccak256Hash([]byte("EndAnnouncement(bytes32)"))
-	b20TopicExtraMetadataUpdated = crypto.Keccak256Hash([]byte("ExtraMetadataUpdated(string,string)"))
+	b20TopicMultiplierUpdated    = eventTopic("MultiplierUpdated(uint256)")
+	b20TopicAnnouncement         = eventTopic("Announcement(address,uint256,string,string)")
+	b20TopicEndAnnouncement      = eventTopic("EndAnnouncement(uint256)")
+	b20TopicExtraMetadataUpdated = eventTopic("ExtraMetadataUpdated(string,string)")
 )
 
 // assetExt is a gas-metered view over the Asset extension storage.
@@ -117,15 +117,23 @@ func initAssetExtension(ctx *PrecompileContext) {
 	e.setMultiplier(b20WAD)
 }
 
-func applyMultiplier(raw, mul *uint256.Int) *uint256.Int {
-	return new(uint256.Int).Div(new(uint256.Int).Mul(raw, mul), b20WAD)
+func applyMultiplier(raw, mul *uint256.Int) (*uint256.Int, error) {
+	p, overflow := new(uint256.Int).MulOverflow(raw, mul)
+	if overflow {
+		return nil, revPanic(0x11)
+	}
+	return p.Div(p, b20WAD), nil
 }
 
-func removeMultiplier(scaled, mul *uint256.Int) *uint256.Int {
+func removeMultiplier(scaled, mul *uint256.Int) (*uint256.Int, error) {
 	if mul.IsZero() {
-		return new(uint256.Int)
+		return new(uint256.Int), nil
 	}
-	return new(uint256.Int).Div(new(uint256.Int).Mul(scaled, b20WAD), mul)
+	p, overflow := new(uint256.Int).MulOverflow(scaled, b20WAD)
+	if overflow {
+		return nil, revPanic(0x11)
+	}
+	return p.Div(p, mul), nil
 }
 
 // assetDispatch routes an Asset call: extension selectors first, then the
@@ -162,19 +170,31 @@ func dispatchAsset(tok b20Token, ext assetExt, input []byte) (ret []byte, err er
 		if err != nil {
 			return nil, err, true
 		}
-		return encU256(applyMultiplier(tok.s.balanceOf(a), ext.multiplier())), nil, true
+		v, err := applyMultiplier(tok.s.balanceOf(a), ext.multiplier())
+		if err != nil {
+			return nil, err, true
+		}
+		return encU256(v), nil, true
 	case selToScaledBalance:
 		raw, err := readU256(args, 0)
 		if err != nil {
 			return nil, err, true
 		}
-		return encU256(applyMultiplier(raw, ext.multiplier())), nil, true
+		v, err := applyMultiplier(raw, ext.multiplier())
+		if err != nil {
+			return nil, err, true
+		}
+		return encU256(v), nil, true
 	case selToRawBalance:
 		scaled, err := readU256(args, 0)
 		if err != nil {
 			return nil, err, true
 		}
-		return encU256(removeMultiplier(scaled, ext.multiplier())), nil, true
+		v, err := removeMultiplier(scaled, ext.multiplier())
+		if err != nil {
+			return nil, err, true
+		}
+		return encU256(v), nil, true
 	case selUpdateMultiplier:
 		m, err := readU256(args, 0)
 		if err != nil {
@@ -220,7 +240,7 @@ func updateExtraMetadata(tok b20Token, ext assetExt, key, value string) error {
 		return err
 	}
 	if len(key) == 0 {
-		return ErrExecutionReverted // InvalidMetadataKey
+		return revB20("InvalidMetadataKey()", errSelInvalidMetadataKey)
 	}
 	ext.setExtraMetadata(key, value)
 	// TODO: carry key/value in ExtraMetadataUpdated event data (base-std align).
@@ -252,7 +272,7 @@ func announce(tok b20Token, ext assetExt, args []byte) error {
 		return ErrWriteProtection
 	}
 	if tok.ctx.inAnnounce {
-		return ErrExecutionReverted // AnnouncementInProgress (no nesting)
+		return revB20("AnnouncementInProgress()", errSelAnnounceInProgress)
 	}
 	if err := tok.ensureRole(roleOperator); err != nil {
 		return err
@@ -267,7 +287,7 @@ func announce(tok b20Token, ext assetExt, args []byte) error {
 	}
 	// args 2,3 (description, uri strings) are carried only by the event.
 	if ext.announcementUsed(id) {
-		return ErrExecutionReverted // AnnouncementIdAlreadyUsed
+		return revB20("AnnouncementIdAlreadyUsed(uint256)", errSelAnnounceIdUsed, id)
 	}
 	ext.markAnnouncement(id) // marked before execution
 	// TODO: carry description/uri in the Announcement event data (base-std align).
@@ -277,10 +297,10 @@ func announce(tok b20Token, ext assetExt, args []byte) error {
 	defer func() { tok.ctx.inAnnounce = false }()
 	for _, c := range calls {
 		if len(c) < 4 {
-			return ErrExecutionReverted // InternalCallMalformed
+			return revB20Bytes("InternalCallMalformed(bytes)", errSelInternalMalformed, c)
 		}
 		if _, err := assetDispatch(tok, ext, c); err != nil {
-			return ErrExecutionReverted // InternalCallFailed (inner reason not propagated)
+			return revB20Bytes("InternalCallFailed(bytes)", errSelInternalFailed, c)
 		}
 	}
 	tok.ctx.AddLog([]common.Hash{b20TopicEndAnnouncement, id}, nil)
@@ -294,8 +314,8 @@ func updateMultiplier(tok b20Token, ext assetExt, newMul *uint256.Int) error {
 	if err := tok.ensureRole(roleOperator); err != nil {
 		return err
 	}
-	if newMul.IsZero() {
-		return ErrExecutionReverted // InvalidMultiplier
+	if newMul.IsZero() || newMul.Gt(b20NoSupplyCap) { // (0, type(uint128).max]
+		return revB20("InvalidMultiplier()", errSelInvalidMultiplier)
 	}
 	ext.setMultiplier(newMul)
 	mb := newMul.Bytes32()
@@ -308,7 +328,7 @@ func batchMint(tok b20Token, args []byte) error {
 		return ErrWriteProtection
 	}
 	if tok.isPaused(b20PauseMint) {
-		return ErrExecutionReverted
+		return revB20("ContractPaused(uint8)", errSelContractPaused, wU8(b20PauseMint))
 	}
 	if err := tok.ensureRole(roleMint); err != nil {
 		return err
@@ -321,8 +341,12 @@ func batchMint(tok b20Token, args []byte) error {
 	if err != nil {
 		return err
 	}
-	if len(recipients) == 0 || len(recipients) != len(amounts) {
-		return ErrExecutionReverted // LengthMismatch / empty
+	if len(recipients) != len(amounts) {
+		return revB20("LengthMismatch(uint256,uint256)", errSelLengthMismatch,
+			wU64(uint64(len(recipients))), wU64(uint64(len(amounts))))
+	}
+	if len(recipients) == 0 {
+		return revB20("EmptyBatch()", errSelEmptyBatch)
 	}
 	for i := range recipients {
 		to := common.BytesToAddress(recipients[i].Bytes())

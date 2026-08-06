@@ -55,6 +55,23 @@ var (
 	selUnpauseRole      = selector("UNPAUSE_ROLE()")
 	selMetadataRole     = selector("METADATA_ROLE()")
 
+	// Policy scope identifiers: keccak256 of the canonical scope names
+	// (BEP-702 section 3.8).
+	scopeTransferSender   = crypto.Keccak256Hash([]byte("TRANSFER_SENDER_POLICY"))
+	scopeTransferReceiver = crypto.Keccak256Hash([]byte("TRANSFER_RECEIVER_POLICY"))
+	scopeTransferExecutor = crypto.Keccak256Hash([]byte("TRANSFER_EXECUTOR_POLICY"))
+	scopeMintReceiver     = crypto.Keccak256Hash([]byte("MINT_RECEIVER_POLICY"))
+	scopeSeizeHolder      = crypto.Keccak256Hash([]byte("SEIZE_HOLDER_POLICY"))
+	scopeSeizeReceiver    = crypto.Keccak256Hash([]byte("SEIZE_RECEIVER_POLICY"))
+
+	selTransferSenderScope   = selector("TRANSFER_SENDER_POLICY()")
+	selTransferReceiverScope = selector("TRANSFER_RECEIVER_POLICY()")
+	selTransferExecutorScope = selector("TRANSFER_EXECUTOR_POLICY()")
+	selMintReceiverScope     = selector("MINT_RECEIVER_POLICY()")
+	selSeizeHolderScope      = selector("SEIZE_HOLDER_POLICY()")
+	selSeizeReceiverScope    = selector("SEIZE_RECEIVER_POLICY()")
+	selPolicyId              = selector("policyId(bytes32)")
+
 	selIsPaused        = selector("isPaused(uint8)")
 	selPause           = selector("pause(uint8[])")
 	selUnpause         = selector("unpause(uint8[])")
@@ -62,12 +79,12 @@ var (
 	selBurn            = selector("burn(uint256)")
 	selSeizeWithMemo   = selector("seizeWithMemo(address,address,uint256,bytes32)")
 	selUpdateSupplyCap = selector("updateSupplyCap(uint256)")
-	selUpdatePolicy    = selector("updatePolicy(uint8,uint64)")
+	selUpdatePolicy    = selector("updatePolicy(bytes32,uint64)")
 
-	b20TopicRoleGranted      = crypto.Keccak256Hash([]byte("RoleGranted(bytes32,address,address)"))
-	b20TopicRoleRevoked      = crypto.Keccak256Hash([]byte("RoleRevoked(bytes32,address,address)"))
-	b20TopicRoleAdminChanged = crypto.Keccak256Hash([]byte("RoleAdminChanged(bytes32,bytes32,bytes32)"))
-	b20TopicSeized           = crypto.Keccak256Hash([]byte("Seized(address,address,address,uint256)"))
+	b20TopicRoleGranted      = eventTopic("RoleGranted(bytes32,address,address)")
+	b20TopicRoleRevoked      = eventTopic("RoleRevoked(bytes32,address,address)")
+	b20TopicRoleAdminChanged = eventTopic("RoleAdminChanged(bytes32,bytes32,bytes32)")
+	b20TopicSeized           = eventTopic("Seized(address,address,address,uint256)")
 )
 
 // dispatchAdmin handles the RBAC / pause / mint-burn selectors. ok is false
@@ -204,13 +221,54 @@ func (t b20Token) dispatchAdmin(sel [4]byte, args []byte) (ret []byte, err error
 		if err != nil {
 			return nil, err, true
 		}
-		id, err := readU256(args, 1)
+		id, err := readU64(args, 1)
 		if err != nil {
 			return nil, err, true
 		}
-		return nil, t.updatePolicy(scope[31], id.Uint64()), true
+		return nil, t.updatePolicy(scope, id), true
+	case selTransferSenderScope:
+		return scopeTransferSender.Bytes(), nil, true
+	case selTransferReceiverScope:
+		return scopeTransferReceiver.Bytes(), nil, true
+	case selTransferExecutorScope:
+		return scopeTransferExecutor.Bytes(), nil, true
+	case selMintReceiverScope:
+		return scopeMintReceiver.Bytes(), nil, true
+	case selSeizeHolderScope:
+		return scopeSeizeHolder.Bytes(), nil, true
+	case selSeizeReceiverScope:
+		return scopeSeizeReceiver.Bytes(), nil, true
+	case selPolicyId:
+		scope, err := readWord(args, 0)
+		if err != nil {
+			return nil, err, true
+		}
+		id, ok := t.policyIdByScope(scope)
+		if !ok {
+			return nil, revB20("UnsupportedPolicyType(bytes32)", errSelUnsupportedScope, scope), true
+		}
+		return encU256(uint256.NewInt(id)), nil, true
 	}
 	return nil, nil, false
+}
+
+// policyIdByScope reads the policy bound to one of the six scopes.
+func (t b20Token) policyIdByScope(scope common.Hash) (uint64, bool) {
+	switch scope {
+	case scopeTransferSender:
+		return t.s.transferSenderPolicy(), true
+	case scopeTransferReceiver:
+		return t.s.transferReceiverPolicy(), true
+	case scopeTransferExecutor:
+		return t.s.transferExecutorPolicy(), true
+	case scopeMintReceiver:
+		return t.s.mintReceiverPolicy(), true
+	case scopeSeizeHolder:
+		return t.s.seizeHolderPolicy(), true
+	case scopeSeizeReceiver:
+		return t.s.seizeReceiverPolicy(), true
+	}
+	return 0, false
 }
 
 func readRoleAccount(args []byte) (common.Hash, common.Address, error) {
@@ -250,11 +308,8 @@ func (t b20Token) grantRole(role common.Hash, account common.Address) error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	if !t.privileged && !t.roleMutable() {
-		return ErrExecutionReverted
-	}
-	if !t.ensureAdminOf(role) {
-		return ErrExecutionReverted
+	if err := t.ensureRoleMutable(role); err != nil {
+		return err
 	}
 	if !t.s.hasRole(role, account) {
 		t.s.setRole(role, account, true)
@@ -270,15 +325,12 @@ func (t b20Token) revokeRole(role common.Hash, account common.Address) error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	if !t.privileged && !t.roleMutable() {
-		return ErrExecutionReverted
-	}
-	if !t.ensureAdminOf(role) {
-		return ErrExecutionReverted
+	if err := t.ensureRoleMutable(role); err != nil {
+		return err
 	}
 	// The last DEFAULT_ADMIN cannot be removed via revoke; use renounceLastAdmin.
 	if role == roleDefaultAdmin && t.s.hasRole(role, account) && t.s.adminCount().Eq(uint256.NewInt(1)) {
-		return ErrExecutionReverted
+		return revB20("LastAdminCannotRenounce()", errSelLastAdminRenounce)
 	}
 	t.removeRole(role, account)
 	return nil
@@ -290,11 +342,11 @@ func (t b20Token) renounceRole(role common.Hash, confirmation common.Address) er
 	}
 	// Confirmation must equal the caller (OZ 5.x anti-misuse guard).
 	if confirmation != t.ctx.Caller {
-		return ErrExecutionReverted
+		return revB20("AccessControlBadConfirmation()", errSelACBadConfirmation)
 	}
 	// The sole DEFAULT_ADMIN must use renounceLastAdmin, not this path.
 	if role == roleDefaultAdmin && t.s.hasRole(role, t.ctx.Caller) && t.s.adminCount().Eq(uint256.NewInt(1)) {
-		return ErrExecutionReverted
+		return revB20("LastAdminCannotRenounce()", errSelLastAdminRenounce)
 	}
 	t.removeRole(role, t.ctx.Caller)
 	return nil
@@ -305,7 +357,7 @@ func (t b20Token) renounceLastAdmin() error {
 		return ErrWriteProtection
 	}
 	if !t.s.hasRole(roleDefaultAdmin, t.ctx.Caller) || !t.s.adminCount().Eq(uint256.NewInt(1)) {
-		return ErrExecutionReverted
+		return revB20("NotSoleAdmin()", errSelNotSoleAdmin)
 	}
 	t.s.setRole(roleDefaultAdmin, t.ctx.Caller, false)
 	t.s.setAdminCount(new(uint256.Int))
@@ -318,11 +370,8 @@ func (t b20Token) setRoleAdmin(role, newAdminRole common.Hash) error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
-	if !t.privileged && !t.roleMutable() {
-		return ErrExecutionReverted
-	}
-	if !t.ensureAdminOf(role) {
-		return ErrExecutionReverted
+	if err := t.ensureRoleMutable(role); err != nil {
+		return err
 	}
 	prev := t.s.roleAdmin(role)
 	t.s.setRoleAdmin(role, newAdminRole)
@@ -348,7 +397,23 @@ func (t b20Token) ensureRole(role common.Hash) error {
 	if t.privileged || t.s.hasRole(role, t.ctx.Caller) {
 		return nil
 	}
-	return ErrExecutionReverted
+	return revB20("AccessControlUnauthorizedAccount(address,bytes32)", errSelACUnauthorized,
+		addrKey(t.ctx.Caller), role)
+}
+
+// ensureRoleMutable applies the shared role-mutation gates: mutations are
+// impossible once the last admin is gone, and otherwise require the caller to
+// hold role's admin role.
+func (t b20Token) ensureRoleMutable(role common.Hash) error {
+	if !t.privileged && !t.roleMutable() {
+		return revB20("AccessControlUnauthorizedAccount(address,bytes32)", errSelACUnauthorized,
+			addrKey(t.ctx.Caller), t.s.roleAdmin(role))
+	}
+	if !t.ensureAdminOf(role) {
+		return revB20("AccessControlUnauthorizedAccount(address,bytes32)", errSelACUnauthorized,
+			addrKey(t.ctx.Caller), t.s.roleAdmin(role))
+	}
+	return nil
 }
 
 // --- Pausable ---------------------------------------------------------------
@@ -369,12 +434,12 @@ func (t b20Token) setPause(args []byte, on bool) error {
 		return err
 	}
 	if len(features) == 0 {
-		return ErrExecutionReverted // EmptyFeatureSet
+		return revB20("EmptyFeatureSet()", errSelEmptyFeatureSet)
 	}
 	p := t.s.paused()
 	for _, f := range features {
 		if uint(f) > b20PauseSeize {
-			return ErrExecutionReverted
+			return revPanic(0x21) // invalid enum value
 		}
 		mask := new(uint256.Int).Lsh(uint256.NewInt(1), uint(f))
 		if on {
@@ -395,7 +460,7 @@ func (t b20Token) mint(to common.Address, amount *uint256.Int) error {
 		return ErrWriteProtection
 	}
 	if t.isPaused(b20PauseMint) {
-		return ErrExecutionReverted
+		return revB20("ContractPaused(uint8)", errSelContractPaused, wU8(b20PauseMint))
 	}
 	if err := t.ensureRole(roleMint); err != nil {
 		return err
@@ -406,13 +471,21 @@ func (t b20Token) mint(to common.Address, amount *uint256.Int) error {
 // mintCore performs the mint accounting (supply cap + credit + Transfer) after
 // the caller has checked pause and role. Used by mint and batchMint.
 func (t b20Token) mintCore(to common.Address, amount *uint256.Int) error {
+	if to == (common.Address{}) {
+		return revB20("InvalidReceiver(address)", errSelInvalidReceiver, addrKey(to))
+	}
 	// MINT_RECEIVER compliance is enforced even during privileged bootstrap.
 	if !t.policyAllows(t.s.mintReceiverPolicy(), to) {
-		return ErrExecutionReverted
+		return revB20("PolicyForbids(bytes32,uint64)", errSelPolicyForbids,
+			scopeMintReceiver, wU64(t.s.mintReceiverPolicy()))
 	}
 	newSupply := new(uint256.Int).Add(t.s.totalSupply(), amount)
-	if newSupply.Lt(t.s.totalSupply()) || newSupply.Gt(t.s.supplyCap()) {
-		return ErrExecutionReverted // overflow or SupplyCapExceeded
+	if newSupply.Lt(t.s.totalSupply()) {
+		return revPanic(0x11) // supply overflow
+	}
+	if newSupply.Gt(t.s.supplyCap()) {
+		return revB20("SupplyCapExceeded(uint256,uint256)", errSelSupplyCapExceeded,
+			wU256(t.s.supplyCap()), wU256(newSupply))
 	}
 	t.s.setBalance(to, new(uint256.Int).Add(t.s.balanceOf(to), amount))
 	t.s.setTotalSupply(newSupply)
@@ -425,14 +498,15 @@ func (t b20Token) burn(from common.Address, amount *uint256.Int) error {
 		return ErrWriteProtection
 	}
 	if t.isPaused(b20PauseBurn) {
-		return ErrExecutionReverted
+		return revB20("ContractPaused(uint8)", errSelContractPaused, wU8(b20PauseBurn))
 	}
 	if err := t.ensureRole(roleBurn); err != nil {
 		return err
 	}
 	bal := t.s.balanceOf(from)
 	if bal.Lt(amount) {
-		return ErrExecutionReverted
+		return revB20("InsufficientBalance(address,uint256,uint256)", errSelInsufficientBalance,
+			addrKey(from), wU256(bal), wU256(amount))
 	}
 	t.s.setBalance(from, new(uint256.Int).Sub(bal, amount))
 	t.s.setTotalSupply(new(uint256.Int).Sub(t.s.totalSupply(), amount))
@@ -453,23 +527,25 @@ func (t b20Token) seizeWithMemo(from, to common.Address, amount *uint256.Int, me
 		return ErrWriteProtection
 	}
 	if t.isPaused(b20PauseSeize) {
-		return ErrExecutionReverted // ContractPaused(SEIZE)
+		return revB20("ContractPaused(uint8)", errSelContractPaused, wU8(b20PauseSeize))
 	}
 	if err := t.ensureRole(roleSeize); err != nil {
 		return err
 	}
 	if to == (common.Address{}) {
-		return ErrExecutionReverted // InvalidReceiver
+		return revB20("InvalidReceiver(address)", errSelInvalidReceiver, addrKey(to))
 	}
 	if t.policyAllows(t.s.seizeHolderPolicy(), from) {
-		return ErrExecutionReverted // AccountNotSeizable
+		return revB20("AccountNotSeizable(address)", errSelAccountNotSeizable, addrKey(from))
 	}
 	if !t.policyAllows(t.s.seizeReceiverPolicy(), to) {
-		return ErrExecutionReverted // PolicyForbids(SEIZE_RECEIVER_POLICY)
+		return revB20("PolicyForbids(bytes32,uint64)", errSelPolicyForbids,
+			scopeSeizeReceiver, wU64(t.s.seizeReceiverPolicy()))
 	}
 	bal := t.s.balanceOf(from)
 	if bal.Lt(amount) {
-		return ErrExecutionReverted // InsufficientBalance
+		return revB20("InsufficientBalance(address,uint256,uint256)", errSelInsufficientBalance,
+			addrKey(from), wU256(bal), wU256(amount))
 	}
 	t.s.setBalance(from, new(uint256.Int).Sub(bal, amount))
 	t.s.setBalance(to, new(uint256.Int).Add(t.s.balanceOf(to), amount))
@@ -489,8 +565,9 @@ func (t b20Token) updateSupplyCap(newCap *uint256.Int) error {
 	if err := t.ensureRole(roleDefaultAdmin); err != nil {
 		return err
 	}
-	if newCap.Lt(t.s.totalSupply()) {
-		return ErrExecutionReverted // cannot drop below current supply
+	if newCap.Lt(t.s.totalSupply()) || newCap.Gt(b20NoSupplyCap) {
+		return revB20("InvalidSupplyCap(uint256,uint256)", errSelInvalidSupplyCap,
+			wU256(t.s.totalSupply()), wU256(newCap))
 	}
 	t.s.setSupplyCap(newCap)
 	// TODO: SupplyCapUpdated event.
@@ -501,7 +578,7 @@ func (t b20Token) updateSupplyCap(newCap *uint256.Int) error {
 // The id must reference an existing registry policy (or a sentinel); binding a
 // never-created id is rejected so the read path's empty-set tolerance cannot be
 // exploited.
-func (t b20Token) updatePolicy(scope uint8, id uint64) error {
+func (t b20Token) updatePolicy(scope common.Hash, id uint64) error {
 	if t.ctx.ReadOnly {
 		return ErrWriteProtection
 	}
@@ -509,23 +586,23 @@ func (t b20Token) updatePolicy(scope uint8, id uint64) error {
 		return err
 	}
 	if id != b20PolicyAlwaysAllow && id != b20PolicyAlwaysBlock && !newPolicyReg(t.ctx).exists(id) {
-		return ErrExecutionReverted // PolicyNotFound
+		return revB20("PolicyNotFound()", errSelPolicyNotFound)
 	}
 	switch scope {
-	case 0:
+	case scopeTransferSender:
 		t.s.setTransferSenderPolicy(id)
-	case 1:
+	case scopeTransferReceiver:
 		t.s.setTransferReceiverPolicy(id)
-	case 2:
+	case scopeTransferExecutor:
 		t.s.setTransferExecutorPolicy(id)
-	case 3:
+	case scopeMintReceiver:
 		t.s.setMintReceiverPolicy(id)
-	case 4:
+	case scopeSeizeHolder:
 		t.s.setSeizeHolderPolicy(id)
-	case 5:
+	case scopeSeizeReceiver:
 		t.s.setSeizeReceiverPolicy(id)
 	default:
-		return ErrExecutionReverted
+		return revB20("UnsupportedPolicyType(bytes32)", errSelUnsupportedScope, scope)
 	}
 	return nil
 }

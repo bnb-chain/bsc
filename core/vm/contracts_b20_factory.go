@@ -134,14 +134,14 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 
 	variant := variantWord[31]
 	if variant != b20VariantAsset && variant != b20VariantStablecoin {
-		return nil, ErrExecutionReverted
+		return nil, revB20("InvalidVariant()", errSelInvalidVariant)
 	}
 	creator := ctx.Caller
 	addr := b20DeriveAddress(variant, creator, salt)
 
 	// TODO: ActivationRegistry feature gate for the variant (P3).
 	if b20Initialized(ctx.StateDB, addr) {
-		return nil, ErrExecutionReverted // AlreadyExists
+		return nil, revB20("TokenAlreadyExists(address)", errSelTokenExists, addrKey(addr))
 	}
 	ctx.StateDB.SetCode(addr, b20MarkerCode, tracing.CodeChangeContractCreation)
 
@@ -174,9 +174,15 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	}
 
 	// Privileged bootstrap: any initCall failure reverts the whole creation.
-	for _, call := range initCalls {
+	for i, call := range initCalls {
+		if len(call) < 4 {
+			return nil, revB20Bytes("InternalCallMalformed(bytes)", errSelInternalMalformed, call)
+		}
 		if _, err := tok.dispatch(call); err != nil {
-			return nil, err
+			if _, isRev := err.(*b20RevertError); !isRev && err != ErrExecutionReverted {
+				return nil, err // out-of-gas / write-protection propagate as-is
+			}
+			return nil, revB20("InitCallFailed(uint256)", errSelInitCallFailed, wU64(uint64(i)))
 		}
 	}
 	if ctx.OutOfGas() {

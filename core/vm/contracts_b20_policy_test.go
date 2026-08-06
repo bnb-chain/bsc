@@ -188,7 +188,7 @@ func TestB20PolicyIntegration(t *testing.T) {
 	if _, err := call(creator, B20PolicyRegistryAddress, encodeUpdateList(selUpdateBlocklist, blk, true, []common.Address{b20Bob})); err != nil {
 		t.Fatalf("updateBlocklist: %v", err)
 	}
-	if _, err := call(creator, token, b20Call(selUpdatePolicy, u256hash(1), u256hash(blk))); err != nil {
+	if _, err := call(creator, token, b20Call(selUpdatePolicy, scopeTransferReceiver, u256hash(blk))); err != nil {
 		t.Fatalf("updatePolicy(receiver): %v", err)
 	}
 
@@ -206,7 +206,7 @@ func TestB20PolicyIntegration(t *testing.T) {
 	if _, err := call(creator, B20PolicyRegistryAddress, encodeUpdateList(selUpdateAllowlist, al, true, []common.Address{custody})); err != nil {
 		t.Fatalf("updateAllowlist: %v", err)
 	}
-	if _, err := call(creator, token, b20Call(selUpdatePolicy, u256hash(3), u256hash(al))); err != nil {
+	if _, err := call(creator, token, b20Call(selUpdatePolicy, scopeMintReceiver, u256hash(al))); err != nil {
 		t.Fatalf("updatePolicy(mint receiver): %v", err)
 	}
 	if _, err := call(creator, token, b20Call(selMint, addrKey(b20Alice), u256hash(1))); !errors.Is(err, ErrExecutionReverted) {
@@ -220,7 +220,7 @@ func TestB20PolicyIntegration(t *testing.T) {
 		t.Fatalf("custody balance = %d, want 500", view.balanceOf(custody).Uint64())
 	}
 	// binding a never-created policy id is rejected.
-	if _, err := call(creator, token, b20Call(selUpdatePolicy, u256hash(0), u256hash(0x99999))); !errors.Is(err, ErrExecutionReverted) {
+	if _, err := call(creator, token, b20Call(selUpdatePolicy, scopeTransferSender, u256hash(0x99999))); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatal("binding nonexistent policy should revert")
 	}
 }
@@ -262,7 +262,7 @@ func TestB20SeizeWithMemo(t *testing.T) {
 	if _, err := call(creator, B20PolicyRegistryAddress, encodeUpdateList(selUpdateBlocklist, blk, true, []common.Address{b20Bob})); err != nil {
 		t.Fatalf("updateBlocklist: %v", err)
 	}
-	if _, err := call(creator, token, b20Call(selUpdatePolicy, u256hash(4), u256hash(blk))); err != nil {
+	if _, err := call(creator, token, b20Call(selUpdatePolicy, scopeSeizeHolder, u256hash(blk))); err != nil {
 		t.Fatalf("updatePolicy(seizeHolder): %v", err)
 	}
 

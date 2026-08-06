@@ -40,7 +40,7 @@ var (
 
 	b20DomainTypehash = crypto.Keccak256Hash([]byte("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"))
 	b20PermitTypehash = crypto.Keccak256Hash([]byte("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"))
-	b20TopicMemo      = crypto.Keccak256Hash([]byte("Memo(address,bytes32)"))
+	b20TopicMemo      = eventTopic("Memo(address,bytes32)")
 )
 
 // dispatchPermitMemo handles the permit and *WithMemo selectors. ok is false
@@ -195,9 +195,12 @@ func (t b20Token) permit(owner, spender common.Address, value, deadline *uint256
 	if t.ctx.ReadOnly {
 		return nil, ErrWriteProtection
 	}
+	if owner == (common.Address{}) {
+		return nil, revB20("InvalidApprover(address)", errSelInvalidApprover, addrKey(owner))
+	}
 	// Deadline is inclusive: now > deadline is expired.
 	if deadline.LtUint64(t.ctx.BlockTime()) {
-		return nil, ErrExecutionReverted // ExpiredSignature
+		return nil, revB20("ExpiredSignature(uint256)", errSelExpiredSignature, wU256(deadline))
 	}
 	nonce := t.s.nonce(owner)
 
@@ -217,7 +220,8 @@ func (t b20Token) permit(owner, spender common.Address, value, deadline *uint256
 
 	signer, ok := ecrecoverAddress(digest, v, r, s)
 	if !ok || signer != owner {
-		return nil, ErrExecutionReverted // InvalidSigner
+		return nil, revB20("InvalidSigner(address,address)", errSelInvalidSigner,
+			addrKey(signer), addrKey(owner))
 	}
 
 	t.s.setNonce(owner, new(uint256.Int).AddUint64(nonce, 1))

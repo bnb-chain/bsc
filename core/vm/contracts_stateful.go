@@ -68,6 +68,11 @@ type PrecompileContext struct {
 	// Self is always the genuine callee and can be trusted as the storage root.
 	DirectCall bool
 
+	// Value is the wei attached to the frame (nil means zero). Every B20 entry
+	// point is nonpayable and rejects a non-zero value with NonPayable
+	// (BEP-702 section 3.2).
+	Value *uint256.Int
+
 	// Rules are the chain rules active for this block.
 	Rules params.Rules
 
@@ -158,7 +163,7 @@ func (ctx *PrecompileContext) AddLog(topics []common.Hash, data []byte) {
 // runStatefulPrecompiledContract charges the flat RequiredGas, builds the
 // PrecompileContext and dispatches into the stateful precompile. It is the
 // stateful counterpart of RunPrecompiledContract.
-func runStatefulPrecompiledContract(evm *EVM, p StatefulPrecompiledContract, caller, self common.Address, input []byte, gas GasBudget, readOnly, directCall bool) (ret []byte, remaining GasBudget, err error) {
+func runStatefulPrecompiledContract(evm *EVM, p StatefulPrecompiledContract, caller, self common.Address, input []byte, gas GasBudget, readOnly, directCall bool, value *uint256.Int) (ret []byte, remaining GasBudget, err error) {
 	gasCost := p.RequiredGas(input)
 	prior, ok := gas.Charge(GasCosts{RegularGas: gasCost})
 	if !ok {
@@ -179,6 +184,7 @@ func runStatefulPrecompiledContract(evm *EVM, p StatefulPrecompiledContract, cal
 		Caller:     caller,
 		ReadOnly:   readOnly,
 		DirectCall: directCall,
+		Value:      value,
 		Rules:      evm.chainRules,
 		gas:        &gas,
 	}

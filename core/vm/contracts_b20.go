@@ -20,7 +20,7 @@ import (
 	"errors"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // B20 native token family. The factory, the two variants and the registries are
@@ -80,12 +80,28 @@ func IsB20Address(addr common.Address) bool {
 	return true
 }
 
-// b20Initialized reports whether a token has been created at addr. The factory
-// writes a marker code hash on creation; an address in the B20 space with no
-// marker is not a live token and does not resolve as a precompile.
+// b20MarkerCodeHash is keccak256(0xEF): the code hash the factory's sentinel
+// produces. Existence is an exact comparison against it, not a non-empty test
+// (BEP-702 section 3.3) — EIP-3541 makes 0xEF-prefixed code undeployable, so
+// nothing an attacker installs can hash to it.
+var b20MarkerCodeHash = crypto.Keccak256Hash(b20MarkerCode)
+
+// b20Initialized reports whether a token has been created at addr: true exactly
+// when the account's code hash equals the sentinel's.
 func b20Initialized(state StateDB, addr common.Address) bool {
-	ch := state.GetCodeHash(addr)
-	return ch != (common.Hash{}) && ch != types.EmptyCodeHash
+	return state.GetCodeHash(addr) == b20MarkerCodeHash
+}
+
+// b20EnterCall applies the guards shared by every B20 entry point: only direct
+// calls (CALL/STATICCALL) are dispatched, and every entry point is nonpayable.
+func b20EnterCall(ctx *PrecompileContext) error {
+	if !ctx.DirectCall {
+		return ErrB20DelegateCall
+	}
+	if ctx.Value != nil && !ctx.Value.IsZero() {
+		return revB20("NonPayable()", errSelNonPayable)
+	}
+	return nil
 }
 
 // resolveB20Token synthesizes the variant precompile bound to a token address.
@@ -143,14 +159,14 @@ func (p *b20FactoryPrecompile) Name() string                    { return "B20Fac
 func (p *b20FactoryPrecompile) RequiredGas(input []byte) uint64 { return 0 } // TODO: gas schedule
 
 func (p *b20FactoryPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
-	if !ctx.DirectCall {
-		return nil, ErrB20DelegateCall
+	if err := b20EnterCall(ctx); err != nil {
+		return finishB20(nil, err)
 	}
 	ret, err := runB20Factory(ctx, input)
 	if ctx.OutOfGas() {
 		return nil, ErrOutOfGas
 	}
-	return ret, err
+	return finishB20(ret, err)
 }
 
 // b20AssetPrecompile is the Asset (RWA) variant bound to a token address.
@@ -163,17 +179,16 @@ func (p *b20AssetPrecompile) Name() string                    { return "B20Asset
 func (p *b20AssetPrecompile) RequiredGas(input []byte) uint64 { return 0 } // TODO: gas schedule
 
 func (p *b20AssetPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
-	if !ctx.DirectCall {
-		return nil, ErrB20DelegateCall
+	if err := b20EnterCall(ctx); err != nil {
+		return finishB20(nil, err)
 	}
 	// Decimals is intercepted by the Asset extension (read from extension
 	// storage), so the shared token's decimals field is unused here.
-	// TODO: extraMetadata.
 	ret, err := assetDispatch(newB20Token(ctx, 0), newAssetExt(ctx), input)
 	if ctx.OutOfGas() {
 		return nil, ErrOutOfGas
 	}
-	return ret, err
+	return finishB20(ret, err)
 }
 
 // b20StablecoinPrecompile is the Stablecoin variant bound to a token address.
@@ -186,8 +201,8 @@ func (p *b20StablecoinPrecompile) Name() string                    { return "B20
 func (p *b20StablecoinPrecompile) RequiredGas(input []byte) uint64 { return 0 } // TODO: gas schedule
 
 func (p *b20StablecoinPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
-	if !ctx.DirectCall {
-		return nil, ErrB20DelegateCall
+	if err := b20EnterCall(ctx); err != nil {
+		return finishB20(nil, err)
 	}
 	// Stablecoin decimals are fixed at 6.
 	// TODO: Stablecoin currency() selector before the shared IB20 dispatch.
@@ -195,7 +210,7 @@ func (p *b20StablecoinPrecompile) RunStateful(ctx *PrecompileContext, input []by
 	if ctx.OutOfGas() {
 		return nil, ErrOutOfGas
 	}
-	return ret, err
+	return finishB20(ret, err)
 }
 
 // compile-time checks that the skeletons satisfy both the plain precompile

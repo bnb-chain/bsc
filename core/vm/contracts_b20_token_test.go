@@ -148,7 +148,7 @@ func TestB20EndToEndTransfer(t *testing.T) {
 	}
 	token := b20Addr(b20VariantAsset, 1)
 	// Simulate factory creation: initialization marker + seed balance.
-	statedb.SetCode(token, []byte{0x01}, 0)
+	statedb.SetCode(token, b20MarkerCode, 0)
 	newB20Storage(statedb, token).setBalance(b20Alice, uint256.NewInt(1000))
 
 	cfg := *params.TestChainConfig

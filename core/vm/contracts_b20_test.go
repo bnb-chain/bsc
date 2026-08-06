@@ -68,7 +68,7 @@ func TestResolveB20(t *testing.T) {
 
 	// Mark three tokens as initialized (factory writes a marker code).
 	for _, a := range []common.Address{asset, stable, unknown} {
-		statedb.SetCode(a, []byte{0x01}, tracing.CodeChangeContractCreation)
+		statedb.SetCode(a, b20MarkerCode, tracing.CodeChangeContractCreation)
 	}
 
 	// Factory resolves regardless of state.
