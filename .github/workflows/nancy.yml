@@ -12,7 +12,11 @@ on:
 
 jobs:
   build:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # Le garde-fou d'origine ne visait que les PR venant d'un fork (elles n'ont pas accès
+    # aux secrets OSS Index, le scan échouerait). Écrit sans condition sur le type
+    # d'événement, il évaluait une expression VIDE sur un push : le job était donc
+    # silencieusement SAUTÉ à chaque push, et l'arbre Go n'était jamais scanné hors PR.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     strategy:
         matrix:
           go-version: [1.25.x]
@@ -48,8 +52,16 @@ jobs:
         OSSINDEX_USERNAME: ${{ secrets.OSSINDEX_USERNAME }}
         OSSINDEX_TOKEN: ${{ secrets.OSSINDEX_TOKEN }}
       run: |
-        if [[ -z "${OSSINDEX_USERNAME:-}" || -z "${OSSINDEX_TOKEN:-}" ]]; then
-          echo "::error::Missing OSS Index credentials"
+        set -euo pipefail
+        # Les identifiants OSS Index sont un CONFORT (débit plus élevé), pas une nécessité :
+        # l'API publique répond sans compte. Les exiger revenait à ne jamais scanner l'arbre
+        # Go — aucun identifiant n'étant configuré sur ce dépôt, le scan échouait
+        # systématiquement. On les utilise s'ils existent, sinon on scanne quand même.
+        args=()
+        if [[ -n "${OSSINDEX_USERNAME:-}" && -n "${OSSINDEX_TOKEN:-}" ]]; then
+          args+=(--username "${OSSINDEX_USERNAME}" --token "${OSSINDEX_TOKEN}")
+          echo "identifiants OSS Index présents — débit complet"
+        else
+          echo "::warning::identifiants OSS Index absents : scan en débit limité (configurer les secrets OSSINDEX_USERNAME / OSSINDEX_TOKEN pour l'accélérer)"
         fi
-        
-        go list -json -deps ./... | nancy sleuth --username "${OSSINDEX_USERNAME}" --token "${OSSINDEX_TOKEN}"
+        go list -json -deps ./... | nancy sleuth ${args[@]+"${args[@]}"}
