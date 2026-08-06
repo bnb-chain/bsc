@@ -14,11 +14,9 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package b20
+package vm
 
 import (
-	"github.com/ethereum/go-ethereum/core/vm"
-
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -195,7 +193,7 @@ func (t b20Token) decodePermit(args []byte) ([]byte, error) {
 
 func (t b20Token) permit(owner, spender common.Address, value, deadline *uint256.Int, v byte, r, s common.Hash) ([]byte, error) {
 	if t.ctx.ReadOnly {
-		return nil, vm.ErrWriteProtection
+		return nil, ErrWriteProtection
 	}
 	if owner == (common.Address{}) {
 		return nil, revB20("InvalidApprover(address)", errSelInvalidApprover, addrKey(owner))

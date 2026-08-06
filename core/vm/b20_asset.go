@@ -14,11 +14,9 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package b20
+package vm
 
 import (
-	"github.com/ethereum/go-ethereum/core/vm"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
@@ -71,7 +69,7 @@ var (
 // assetExt is a gas-metered view over the Asset extension storage.
 type assetExt struct{ s b20Storage }
 
-func newAssetExt(ctx *vm.PrecompileContext) assetExt { return assetExt{s: newMeteredB20Storage(ctx)} }
+func newAssetExt(ctx *PrecompileContext) assetExt { return assetExt{s: newMeteredB20Storage(ctx)} }
 
 func assetSlot(offset uint64) common.Hash {
 	x := new(uint256.Int).SetBytes(b20AssetRoot.Bytes())
@@ -113,7 +111,7 @@ func (e assetExt) setExtraMetadata(key, value string) {
 }
 
 // initAssetExtension seeds a new Asset token's extension storage.
-func initAssetExtension(ctx *vm.PrecompileContext) {
+func initAssetExtension(ctx *PrecompileContext) {
 	e := newAssetExt(ctx)
 	e.setDecimals(18) // TODO: from createB20 decimals param.
 	e.setMultiplier(b20WAD)
@@ -236,7 +234,7 @@ func dispatchAsset(tok b20Token, ext assetExt, input []byte) (ret []byte, err er
 // updateExtraMetadata writes/clears (value == "") a custom metadata entry.
 func updateExtraMetadata(tok b20Token, ext assetExt, key, value string) error {
 	if tok.ctx.ReadOnly {
-		return vm.ErrWriteProtection
+		return ErrWriteProtection
 	}
 	if err := tok.ensureRole(roleMetadata); err != nil {
 		return err
@@ -255,12 +253,12 @@ func readStringArg(args []byte, argIndex int) (string, error) {
 	L := uint64(len(args))
 	off, ok := wordU64(args, uint64(argIndex)*32)
 	if !ok || off > L || L-off < 32 {
-		return "", vm.ErrExecutionReverted
+		return "", ErrExecutionReverted
 	}
 	n, _ := wordU64(args, off)
 	dataPos := off + 32
 	if n > L-dataPos {
-		return "", vm.ErrExecutionReverted
+		return "", ErrExecutionReverted
 	}
 	return string(args[dataPos : dataPos+n]), nil
 }
@@ -271,9 +269,9 @@ func readStringArg(args []byte, argIndex int) (string, error) {
 // reverting internal call — rolls back the whole disclosure.
 func announce(tok b20Token, ext assetExt, args []byte) error {
 	if tok.ctx.ReadOnly {
-		return vm.ErrWriteProtection
+		return ErrWriteProtection
 	}
-	if tok.ctx.InAnnounce {
+	if tok.ctx.inAnnounce {
 		return revB20("AnnouncementInProgress()", errSelAnnounceInProgress)
 	}
 	if err := tok.ensureRole(roleOperator); err != nil {
@@ -295,8 +293,8 @@ func announce(tok b20Token, ext assetExt, args []byte) error {
 	// TODO: carry description/uri in the Announcement event data (base-std align).
 	tok.ctx.AddLog([]common.Hash{b20TopicAnnouncement, addrKey(tok.ctx.Caller), id}, nil)
 
-	tok.ctx.InAnnounce = true
-	defer func() { tok.ctx.InAnnounce = false }()
+	tok.ctx.inAnnounce = true
+	defer func() { tok.ctx.inAnnounce = false }()
 	for _, c := range calls {
 		if len(c) < 4 {
 			return revB20Bytes("InternalCallMalformed(bytes)", errSelInternalMalformed, c)
@@ -311,7 +309,7 @@ func announce(tok b20Token, ext assetExt, args []byte) error {
 
 func updateMultiplier(tok b20Token, ext assetExt, newMul *uint256.Int) error {
 	if tok.ctx.ReadOnly {
-		return vm.ErrWriteProtection
+		return ErrWriteProtection
 	}
 	if err := tok.ensureRole(roleOperator); err != nil {
 		return err
@@ -327,7 +325,7 @@ func updateMultiplier(tok b20Token, ext assetExt, newMul *uint256.Int) error {
 
 func batchMint(tok b20Token, args []byte) error {
 	if tok.ctx.ReadOnly {
-		return vm.ErrWriteProtection
+		return ErrWriteProtection
 	}
 	if tok.isPaused(b20PauseMint) {
 		return revB20("ContractPaused(uint8)", errSelContractPaused, wU8(b20PauseMint))
@@ -366,12 +364,12 @@ func readWordArray(args []byte, argIndex int) ([]common.Hash, error) {
 	L := uint64(len(args))
 	base, ok := wordU64(args, uint64(argIndex)*32)
 	if !ok || base > L || L-base < 32 {
-		return nil, vm.ErrExecutionReverted
+		return nil, ErrExecutionReverted
 	}
 	n, _ := wordU64(args, base)
 	dataPos := base + 32
 	if n > (L-dataPos)/32 {
-		return nil, vm.ErrExecutionReverted
+		return nil, ErrExecutionReverted
 	}
 	out := make([]common.Hash, n)
 	for i := uint64(0); i < n; i++ {

@@ -14,11 +14,9 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package b20
+package vm
 
 import (
-	"github.com/ethereum/go-ethereum/core/vm"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -71,9 +69,9 @@ func b20DeriveAddress(variant byte, creator common.Address, salt common.Hash) co
 	return a
 }
 
-func runB20Factory(ctx *vm.PrecompileContext, input []byte) ([]byte, error) {
+func runB20Factory(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	if len(input) < 4 {
-		return nil, vm.ErrExecutionReverted
+		return nil, ErrExecutionReverted
 	}
 	var sel [4]byte
 	copy(sel[:], input[:4])
@@ -110,12 +108,12 @@ func runB20Factory(ctx *vm.PrecompileContext, input []byte) ([]byte, error) {
 	case selCreateB20:
 		return createB20(ctx, args)
 	}
-	return nil, vm.ErrExecutionReverted
+	return nil, ErrExecutionReverted
 }
 
-func createB20(ctx *vm.PrecompileContext, args []byte) ([]byte, error) {
+func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	if ctx.ReadOnly {
-		return nil, vm.ErrWriteProtection
+		return nil, ErrWriteProtection
 	}
 	variantWord, err := readWord(args, 0)
 	if err != nil {
@@ -153,7 +151,7 @@ func createB20(ctx *vm.PrecompileContext, args []byte) ([]byte, error) {
 	if variant == b20VariantStablecoin {
 		decimals = 6
 	}
-	tokenCtx := ctx.SpawnBootstrap(addr, creator)
+	tokenCtx := ctx.spawnBootstrap(addr, creator)
 	tok := newB20TokenBootstrap(tokenCtx, decimals)
 
 	// Initial state: no supply cap; initialAdmin (if any) is the first admin.
@@ -173,14 +171,14 @@ func createB20(ctx *vm.PrecompileContext, args []byte) ([]byte, error) {
 			return nil, revB20Bytes("InternalCallMalformed(bytes)", errSelInternalMalformed, call)
 		}
 		if _, err := tok.dispatch(call); err != nil {
-			if _, isRev := err.(*b20RevertError); !isRev && err != vm.ErrExecutionReverted {
+			if _, isRev := err.(*b20RevertError); !isRev && err != ErrExecutionReverted {
 				return nil, err // out-of-gas / write-protection propagate as-is
 			}
 			return nil, revB20("InitCallFailed(uint256)", errSelInitCallFailed, wU64(uint64(i)))
 		}
 	}
 	if ctx.OutOfGas() {
-		return nil, vm.ErrOutOfGas
+		return nil, ErrOutOfGas
 	}
 	// TODO: emit B20Created(token, variant, creator) once the signature is fixed.
 	return addrKey(addr).Bytes(), nil
@@ -191,24 +189,24 @@ func readBytesArray(args []byte, argIndex int) ([][]byte, error) {
 	L := uint64(len(args))
 	base, ok := wordU64(args, uint64(argIndex)*32)
 	if !ok || base > L || L-base < 32 {
-		return nil, vm.ErrExecutionReverted
+		return nil, ErrExecutionReverted
 	}
 	n, _ := wordU64(args, base)
 	arrData := base + 32
 	if n > (L-arrData)/32 {
-		return nil, vm.ErrExecutionReverted
+		return nil, ErrExecutionReverted
 	}
 	out := make([][]byte, n)
 	for i := uint64(0); i < n; i++ {
 		elemOff, _ := wordU64(args, arrData+i*32)
 		pos := arrData + elemOff
 		if elemOff > L-arrData || pos > L || L-pos < 32 {
-			return nil, vm.ErrExecutionReverted
+			return nil, ErrExecutionReverted
 		}
 		elemLen, _ := wordU64(args, pos)
 		start := pos + 32
 		if elemLen > L-start {
-			return nil, vm.ErrExecutionReverted
+			return nil, ErrExecutionReverted
 		}
 		out[i] = args[start : start+elemLen]
 	}

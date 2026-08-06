@@ -14,11 +14,9 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package b20
+package vm
 
 import (
-	"github.com/ethereum/go-ethereum/core/vm"
-
 	"bytes"
 	"errors"
 	"testing"
@@ -56,8 +54,8 @@ func TestB20AdminLifecycle(t *testing.T) {
 	view.setSupplyCap(uint256.NewInt(1_000_000))
 
 	run := func(caller common.Address, input []byte) ([]byte, error) {
-		gas := vm.NewGasBudget(2_000_000)
-		ctx := vm.NewPrecompileContext(nil, statedb, token, caller, &gas)
+		gas := NewGasBudget(2_000_000)
+		ctx := &PrecompileContext{StateDB: statedb, Self: token, Caller: caller, DirectCall: true, gas: &gas}
 		return newB20Token(ctx, 18).dispatch(input)
 	}
 	mustOK := func(what string, caller common.Address, input []byte) {
@@ -68,7 +66,7 @@ func TestB20AdminLifecycle(t *testing.T) {
 	}
 	mustRevert := func(what string, caller common.Address, input []byte) {
 		t.Helper()
-		if _, err := run(caller, input); !errors.Is(err, vm.ErrExecutionReverted) {
+		if _, err := run(caller, input); !errors.Is(err, ErrExecutionReverted) {
 			t.Fatalf("%s: err = %v, want revert", what, err)
 		}
 	}
@@ -135,17 +133,17 @@ func TestB20AdminLastAdminProtection(t *testing.T) {
 	view.setAdminCount(uint256.NewInt(1))
 
 	run := func(caller common.Address, input []byte) ([]byte, error) {
-		gas := vm.NewGasBudget(2_000_000)
-		ctx := vm.NewPrecompileContext(nil, statedb, token, caller, &gas)
+		gas := NewGasBudget(2_000_000)
+		ctx := &PrecompileContext{StateDB: statedb, Self: token, Caller: caller, DirectCall: true, gas: &gas}
 		return newB20Token(ctx, 6).dispatch(input)
 	}
 
 	// revoking the sole DEFAULT_ADMIN via revokeRole is blocked.
-	if _, err := run(admin, b20Call(selRevokeRole, roleDefaultAdmin, addrKey(admin))); !errors.Is(err, vm.ErrExecutionReverted) {
+	if _, err := run(admin, b20Call(selRevokeRole, roleDefaultAdmin, addrKey(admin))); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatal("revoking last admin should revert")
 	}
 	// renounceRole with mismatched confirmation reverts.
-	if _, err := run(admin, b20Call(selRenounceRole, roleDefaultAdmin, addrKey(b20Bob))); !errors.Is(err, vm.ErrExecutionReverted) {
+	if _, err := run(admin, b20Call(selRenounceRole, roleDefaultAdmin, addrKey(b20Bob))); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatal("bad confirmation should revert")
 	}
 	// second admin can be added, then original can renounce normally.
@@ -157,7 +155,7 @@ func TestB20AdminLastAdminProtection(t *testing.T) {
 	}
 
 	// now the sole-admin path: renounceLastAdmin only works when count == 1.
-	if _, err := run(admin, b20Call(selRenounceLastAdmin)); !errors.Is(err, vm.ErrExecutionReverted) {
+	if _, err := run(admin, b20Call(selRenounceLastAdmin)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatal("renounceLastAdmin with 2 admins should revert")
 	}
 	// bob renounces via normal path (not last).
@@ -176,7 +174,7 @@ func TestB20AdminLastAdminProtection(t *testing.T) {
 		t.Fatalf("adminCount = %d, want 0", view.adminCount().Uint64())
 	}
 	// no further role mutations are possible.
-	if _, err := run(admin, b20Call(selGrantRole, roleMint, addrKey(admin))); !errors.Is(err, vm.ErrExecutionReverted) {
+	if _, err := run(admin, b20Call(selGrantRole, roleMint, addrKey(admin))); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatal("grant after renounceLastAdmin should revert (ungovernable)")
 	}
 }

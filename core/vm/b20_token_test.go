@@ -14,11 +14,9 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package b20
+package vm
 
 import (
-	"github.com/ethereum/go-ethereum/core/vm"
-
 	"bytes"
 	"errors"
 	"math/big"
@@ -62,8 +60,8 @@ func TestB20TokenDispatch(t *testing.T) {
 	view.setBalance(b20Alice, uint256.NewInt(1000))
 
 	run := func(caller common.Address, ro bool, input []byte) ([]byte, error) {
-		gas := vm.NewGasBudget(1_000_000)
-		ctx := vm.NewPrecompileContext(nil, statedb, token, caller, &gas).WithReadOnly(ro)
+		gas := NewGasBudget(1_000_000)
+		ctx := &PrecompileContext{StateDB: statedb, Self: token, Caller: caller, DirectCall: true, ReadOnly: ro, gas: &gas}
 		return newB20Token(ctx, 18).dispatch(input)
 	}
 	readU := func(input []byte) uint64 {
@@ -109,19 +107,19 @@ func TestB20TokenDispatch(t *testing.T) {
 	wantU("allowance", readU(b20Call(selAllowance, addrKey(b20Alice), addrKey(b20Carol))), 20)
 
 	// transferFrom beyond allowance reverts.
-	if _, err := run(b20Carol, false, b20Call(selTransferFrom, addrKey(b20Alice), addrKey(b20Bob), u256hash(100))); !errors.Is(err, vm.ErrExecutionReverted) {
+	if _, err := run(b20Carol, false, b20Call(selTransferFrom, addrKey(b20Alice), addrKey(b20Bob), u256hash(100))); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("over-allowance err = %v, want revert", err)
 	}
 	// transfer beyond balance reverts.
-	if _, err := run(b20Bob, false, b20Call(selTransfer, addrKey(b20Alice), u256hash(1e9))); !errors.Is(err, vm.ErrExecutionReverted) {
+	if _, err := run(b20Bob, false, b20Call(selTransfer, addrKey(b20Alice), u256hash(1e9))); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("over-balance err = %v, want revert", err)
 	}
 	// state-mutating call in a read-only frame throws.
-	if _, err := run(b20Alice, true, b20Call(selTransfer, addrKey(b20Bob), u256hash(1))); !errors.Is(err, vm.ErrWriteProtection) {
+	if _, err := run(b20Alice, true, b20Call(selTransfer, addrKey(b20Bob), u256hash(1))); !errors.Is(err, ErrWriteProtection) {
 		t.Fatalf("readonly transfer err = %v, want write protection", err)
 	}
 	// unknown selector reverts.
-	if _, err := run(b20Alice, true, []byte{0xde, 0xad, 0xbe, 0xef}); !errors.Is(err, vm.ErrExecutionReverted) {
+	if _, err := run(b20Alice, true, []byte{0xde, 0xad, 0xbe, 0xef}); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("unknown selector err = %v, want revert", err)
 	}
 }
@@ -133,14 +131,14 @@ func TestB20TokenPauseBlocksTransfer(t *testing.T) {
 	view.setBalance(b20Alice, uint256.NewInt(100))
 	view.setPaused(uint256.NewInt(1 << b20PauseTransfer))
 
-	gas := vm.NewGasBudget(1_000_000)
-	ctx := vm.NewPrecompileContext(nil, statedb, token, b20Alice, &gas)
-	if _, err := newB20Token(ctx, 18).dispatch(b20Call(selTransfer, addrKey(b20Bob), u256hash(1))); !errors.Is(err, vm.ErrExecutionReverted) {
+	gas := NewGasBudget(1_000_000)
+	ctx := &PrecompileContext{StateDB: statedb, Self: token, Caller: b20Alice, DirectCall: true, gas: &gas}
+	if _, err := newB20Token(ctx, 18).dispatch(b20Call(selTransfer, addrKey(b20Bob), u256hash(1))); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("paused transfer err = %v, want revert", err)
 	}
 }
 
-// TestB20EndToEndTransfer drives a transfer through the full vm.EVM Call path:
+// TestB20EndToEndTransfer drives a transfer through the full EVM Call path:
 // address resolution, the stateful precompile host, dispatch, state mutation
 // and the Transfer log.
 func TestB20EndToEndTransfer(t *testing.T) {
@@ -160,20 +158,20 @@ func TestB20EndToEndTransfer(t *testing.T) {
 	txHash := common.HexToHash("0x1234")
 	statedb.SetTxContext(txHash, 0)
 
-	bc := vm.BlockContext{
+	bc := BlockContext{
 		Random:      &common.Hash{}, // post-merge rules, so IsAmsterdam resolves
-		CanTransfer: func(vm.StateDB, common.Address, *uint256.Int) bool { return true },
-		Transfer:    func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
+		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
+		Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
 		BlockNumber: big.NewInt(1),
 		Time:        1,
 	}
-	evm := vm.NewEVM(bc, statedb, &cfg, vm.Config{})
-	if !cfg.IsAmsterdam(big.NewInt(1), 1) {
+	evm := NewEVM(bc, statedb, &cfg, Config{})
+	if !evm.chainRules.IsAmsterdam {
 		t.Fatal("Amsterdam must be active for the B20 precompile to resolve")
 	}
 
 	input := b20Call(selTransfer, addrKey(b20Bob), u256hash(250))
-	ret, _, err := evm.Call(b20Alice, token, input, vm.NewGasBudget(1_000_000), uint256.NewInt(0))
+	ret, _, err := evm.Call(b20Alice, token, input, NewGasBudget(1_000_000), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("evm.Call transfer err: %v", err)
 	}

@@ -14,11 +14,9 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package b20
+package vm
 
 import (
-	"github.com/ethereum/go-ethereum/core/vm"
-
 	"math/big"
 	"strings"
 	"testing"
@@ -187,8 +185,8 @@ func TestB20StorageGas(t *testing.T) {
 		t.Fatal(err)
 	}
 	token := b20Addr(b20VariantAsset, 1)
-	gas := vm.NewGasBudget(1_000_000)
-	ctx := vm.NewPrecompileContext(nil, statedb, token, common.Address{}, &gas)
+	gas := NewGasBudget(1_000_000)
+	ctx := &PrecompileContext{StateDB: statedb, Self: token, gas: &gas}
 	s := newMeteredB20Storage(ctx)
 
 	alice := common.HexToAddress("0xa11ce")
@@ -232,8 +230,8 @@ func TestB20StorageGas(t *testing.T) {
 func TestB20StorageGasOutOfGas(t *testing.T) {
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	token := b20Addr(b20VariantAsset, 1)
-	gas := vm.NewGasBudget(100) // less than one cold access
-	ctx := vm.NewPrecompileContext(nil, statedb, token, common.Address{}, &gas)
+	gas := NewGasBudget(100) // less than one cold access
+	ctx := &PrecompileContext{StateDB: statedb, Self: token, gas: &gas}
 	s := newMeteredB20Storage(ctx)
 
 	_ = s.getWord(slotAt(b20SlotTotalSupply)) // cold read needs 2100 > 100

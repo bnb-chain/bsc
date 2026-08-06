@@ -14,11 +14,9 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package b20
+package vm
 
 import (
-	"github.com/ethereum/go-ethereum/core/vm"
-
 	"bytes"
 	"errors"
 	"math/big"
@@ -44,7 +42,7 @@ func encodeUpdateList(sel [4]byte, id uint64, flag bool, addrs []common.Address)
 	return out
 }
 
-func newAmsterdamEVM(t *testing.T) (*state.StateDB, *vm.EVM) {
+func newAmsterdamEVM(t *testing.T) (*state.StateDB, *EVM) {
 	t.Helper()
 	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	if err != nil {
@@ -53,14 +51,14 @@ func newAmsterdamEVM(t *testing.T) (*state.StateDB, *vm.EVM) {
 	cfg := *params.TestChainConfig
 	zero := uint64(0)
 	cfg.AmsterdamTime = &zero
-	bc := vm.BlockContext{
+	bc := BlockContext{
 		Random:      &common.Hash{}, // post-merge rules, so IsAmsterdam resolves
-		CanTransfer: func(vm.StateDB, common.Address, *uint256.Int) bool { return true },
-		Transfer:    func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
+		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
+		Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
 		BlockNumber: big.NewInt(1),
 		Time:        1,
 	}
-	return statedb, vm.NewEVM(bc, statedb, &cfg, vm.Config{})
+	return statedb, NewEVM(bc, statedb, &cfg, Config{})
 }
 
 func TestB20PolicyRegistry(t *testing.T) {
@@ -69,7 +67,7 @@ func TestB20PolicyRegistry(t *testing.T) {
 	reg := B20PolicyRegistryAddress
 
 	call := func(caller common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, reg, input, vm.NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, reg, input, NewGasBudget(5_000_000), uint256.NewInt(0))
 		return ret, err
 	}
 	authorized := func(id uint64, a common.Address) bool {
@@ -127,10 +125,10 @@ func TestB20PolicyRegistry(t *testing.T) {
 	}
 
 	// type mismatch and authorization guards.
-	if _, err := call(admin, encodeUpdateList(selUpdateAllowlist, block, true, []common.Address{b20Alice})); !errors.Is(err, vm.ErrExecutionReverted) {
+	if _, err := call(admin, encodeUpdateList(selUpdateAllowlist, block, true, []common.Address{b20Alice})); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatal("updateAllowlist on blocklist should revert")
 	}
-	if _, err := call(b20Bob, encodeUpdateList(selUpdateBlocklist, block, true, []common.Address{b20Alice})); !errors.Is(err, vm.ErrExecutionReverted) {
+	if _, err := call(b20Bob, encodeUpdateList(selUpdateBlocklist, block, true, []common.Address{b20Alice})); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatal("non-admin update should revert")
 	}
 
@@ -139,13 +137,13 @@ func TestB20PolicyRegistry(t *testing.T) {
 	if _, err := call(admin, b20Call(selStageUpdateAdmin, u256hash(block), addrKey(newAdmin))); err != nil {
 		t.Fatalf("stageUpdateAdmin: %v", err)
 	}
-	if _, err := call(b20Alice, b20Call(selFinalizeUpdateAdmin, u256hash(block))); !errors.Is(err, vm.ErrExecutionReverted) {
+	if _, err := call(b20Alice, b20Call(selFinalizeUpdateAdmin, u256hash(block))); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatal("finalize by non-nominee should revert")
 	}
 	if _, err := call(newAdmin, b20Call(selFinalizeUpdateAdmin, u256hash(block))); err != nil {
 		t.Fatalf("finalizeUpdateAdmin: %v", err)
 	}
-	if _, err := call(admin, encodeUpdateList(selUpdateBlocklist, block, true, []common.Address{b20Alice})); !errors.Is(err, vm.ErrExecutionReverted) {
+	if _, err := call(admin, encodeUpdateList(selUpdateBlocklist, block, true, []common.Address{b20Alice})); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatal("old admin should no longer update")
 	}
 
@@ -153,7 +151,7 @@ func TestB20PolicyRegistry(t *testing.T) {
 	if _, err := call(newAdmin, b20Call(selRenounceAdmin, u256hash(block))); err != nil {
 		t.Fatalf("renounceAdmin: %v", err)
 	}
-	if _, err := call(newAdmin, encodeUpdateList(selUpdateBlocklist, block, false, []common.Address{b20Bob})); !errors.Is(err, vm.ErrExecutionReverted) {
+	if _, err := call(newAdmin, encodeUpdateList(selUpdateBlocklist, block, false, []common.Address{b20Bob})); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatal("frozen policy should reject updates")
 	}
 	if authorized(block, b20Bob) {
@@ -170,7 +168,7 @@ func TestB20PolicyIntegration(t *testing.T) {
 	salt := common.HexToHash("0x0c")
 
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, vm.NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
 		return ret, err
 	}
 
@@ -196,7 +194,7 @@ func TestB20PolicyIntegration(t *testing.T) {
 	}
 
 	// transfer to bob (blocked receiver) reverts; to carol succeeds.
-	if _, err := call(b20Alice, token, b20Call(selTransfer, addrKey(b20Bob), u256hash(10))); !errors.Is(err, vm.ErrExecutionReverted) {
+	if _, err := call(b20Alice, token, b20Call(selTransfer, addrKey(b20Bob), u256hash(10))); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("transfer to blocked receiver err = %v, want revert", err)
 	}
 	if _, err := call(b20Alice, token, b20Call(selTransfer, addrKey(b20Carol), u256hash(10))); err != nil {
@@ -212,7 +210,7 @@ func TestB20PolicyIntegration(t *testing.T) {
 	if _, err := call(creator, token, b20Call(selUpdatePolicy, scopeMintReceiver, u256hash(al))); err != nil {
 		t.Fatalf("updatePolicy(mint receiver): %v", err)
 	}
-	if _, err := call(creator, token, b20Call(selMint, addrKey(b20Alice), u256hash(1))); !errors.Is(err, vm.ErrExecutionReverted) {
+	if _, err := call(creator, token, b20Call(selMint, addrKey(b20Alice), u256hash(1))); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("mint to non-listed err = %v, want revert", err)
 	}
 	if _, err := call(creator, token, b20Call(selMint, addrKey(custody), u256hash(500))); err != nil {
@@ -223,7 +221,7 @@ func TestB20PolicyIntegration(t *testing.T) {
 		t.Fatalf("custody balance = %d, want 500", view.balanceOf(custody).Uint64())
 	}
 	// binding a never-created policy id is rejected.
-	if _, err := call(creator, token, b20Call(selUpdatePolicy, scopeTransferSender, u256hash(0x99999))); !errors.Is(err, vm.ErrExecutionReverted) {
+	if _, err := call(creator, token, b20Call(selUpdatePolicy, scopeTransferSender, u256hash(0x99999))); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatal("binding nonexistent policy should revert")
 	}
 }
@@ -235,7 +233,7 @@ func TestB20SeizeWithMemo(t *testing.T) {
 	salt := common.HexToHash("0x0d")
 
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, vm.NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
 		return ret, err
 	}
 
@@ -255,7 +253,7 @@ func TestB20SeizeWithMemo(t *testing.T) {
 	memo := common.HexToHash("0x5e12e")
 
 	// seizing an un-frozen account fails (must freeze first).
-	if _, err := call(creator, token, b20Call(selSeizeWithMemo, addrKey(b20Bob), addrKey(b20Alice), u256hash(100), memo)); !errors.Is(err, vm.ErrExecutionReverted) {
+	if _, err := call(creator, token, b20Call(selSeizeWithMemo, addrKey(b20Bob), addrKey(b20Alice), u256hash(100), memo)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("seize before freeze err = %v, want revert (AccountNotSeizable)", err)
 	}
 
@@ -270,12 +268,12 @@ func TestB20SeizeWithMemo(t *testing.T) {
 	}
 
 	// non-role caller cannot seize.
-	if _, err := call(b20Alice, token, b20Call(selSeizeWithMemo, addrKey(b20Bob), addrKey(b20Alice), u256hash(100), memo)); !errors.Is(err, vm.ErrExecutionReverted) {
+	if _, err := call(b20Alice, token, b20Call(selSeizeWithMemo, addrKey(b20Bob), addrKey(b20Alice), u256hash(100), memo)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("unauthorized seize err = %v, want revert", err)
 	}
 
 	// the zero address is never a valid destination.
-	if _, err := call(creator, token, b20Call(selSeizeWithMemo, addrKey(b20Bob), common.Hash{}, u256hash(100), memo)); !errors.Is(err, vm.ErrExecutionReverted) {
+	if _, err := call(creator, token, b20Call(selSeizeWithMemo, addrKey(b20Bob), common.Hash{}, u256hash(100), memo)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("seize to zero err = %v, want revert (InvalidReceiver)", err)
 	}
 

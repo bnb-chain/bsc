@@ -14,11 +14,9 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package b20
+package vm
 
 import (
-	"github.com/ethereum/go-ethereum/core/vm"
-
 	"bytes"
 	"errors"
 	"math/big"
@@ -70,21 +68,21 @@ func TestB20Factory(t *testing.T) {
 	cfg := *params.TestChainConfig
 	zero := uint64(0)
 	cfg.AmsterdamTime = &zero
-	bc := vm.BlockContext{
+	bc := BlockContext{
 		Random:      &common.Hash{}, // post-merge rules, so IsAmsterdam resolves
-		CanTransfer: func(vm.StateDB, common.Address, *uint256.Int) bool { return true },
-		Transfer:    func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
+		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
+		Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
 		BlockNumber: big.NewInt(1),
 		Time:        1,
 	}
-	evm := vm.NewEVM(bc, statedb, &cfg, vm.Config{})
+	evm := NewEVM(bc, statedb, &cfg, Config{})
 
 	creator := common.HexToAddress("0xc4ea70")
 	minter := common.HexToAddress("0x33333")
 	salt := common.HexToHash("0x01")
 
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
-		ret, _, err := evm.Call(caller, to, input, vm.NewGasBudget(5_000_000), uint256.NewInt(0))
+		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
 		return ret, err
 	}
 
@@ -129,7 +127,7 @@ func TestB20Factory(t *testing.T) {
 		t.Fatal("minter should hold MINT_ROLE")
 	}
 
-	// and it behaves like a token through the vm.EVM: alice transfers to bob.
+	// and it behaves like a token through the EVM: alice transfers to bob.
 	if r, err := call(b20Alice, token, b20Call(selTransfer, addrKey(b20Bob), u256hash(400))); err != nil || !bytes.Equal(r, encBool(true)) {
 		t.Fatalf("transfer via created token: ret %x err %v", r, err)
 	}
@@ -138,7 +136,7 @@ func TestB20Factory(t *testing.T) {
 	}
 
 	// re-creating at the same salt collides.
-	if _, err := call(creator, B20FactoryAddress, encodeCreateB20(b20VariantAsset, salt, creator, nil)); !errors.Is(err, vm.ErrExecutionReverted) {
+	if _, err := call(creator, B20FactoryAddress, encodeCreateB20(b20VariantAsset, salt, creator, nil)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("duplicate createB20 err = %v, want revert", err)
 	}
 }
@@ -150,14 +148,14 @@ func TestB20FactoryOwnerless(t *testing.T) {
 	cfg := *params.TestChainConfig
 	zero := uint64(0)
 	cfg.AmsterdamTime = &zero
-	bc := vm.BlockContext{
+	bc := BlockContext{
 		Random:      &common.Hash{}, // post-merge rules, so IsAmsterdam resolves
-		CanTransfer: func(vm.StateDB, common.Address, *uint256.Int) bool { return true },
-		Transfer:    func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
+		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
+		Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
 		BlockNumber: big.NewInt(1),
 		Time:        1,
 	}
-	evm := vm.NewEVM(bc, statedb, &cfg, vm.Config{})
+	evm := NewEVM(bc, statedb, &cfg, Config{})
 	creator := common.HexToAddress("0xc4ea70")
 	salt := common.HexToHash("0x02")
 
@@ -165,7 +163,7 @@ func TestB20FactoryOwnerless(t *testing.T) {
 	initCalls := [][]byte{b20Call(selGrantRole, roleMint, addrKey(creator))}
 	ret, _, err := evm.Call(creator, B20FactoryAddress,
 		encodeCreateB20(b20VariantStablecoin, salt, common.Address{}, initCalls),
-		vm.NewGasBudget(5_000_000), uint256.NewInt(0))
+		NewGasBudget(5_000_000), uint256.NewInt(0))
 	if err != nil {
 		t.Fatalf("createB20 ownerless: %v", err)
 	}
@@ -179,7 +177,7 @@ func TestB20FactoryOwnerless(t *testing.T) {
 	}
 	// post-creation, role mutations are impossible (no admin).
 	if _, _, err := evm.Call(creator, token, b20Call(selGrantRole, roleBurn, addrKey(creator)),
-		vm.NewGasBudget(1_000_000), uint256.NewInt(0)); !errors.Is(err, vm.ErrExecutionReverted) {
+		NewGasBudget(1_000_000), uint256.NewInt(0)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("grant on ownerless token err = %v, want revert", err)
 	}
 }

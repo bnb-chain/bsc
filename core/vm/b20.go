@@ -14,11 +14,9 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package b20
+package vm
 
 import (
-	"github.com/ethereum/go-ethereum/core/vm"
-
 	"errors"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -90,13 +88,13 @@ var b20MarkerCodeHash = crypto.Keccak256Hash(b20MarkerCode)
 
 // b20Initialized reports whether a token has been created at addr: true exactly
 // when the account's code hash equals the sentinel's.
-func b20Initialized(state vm.StateDB, addr common.Address) bool {
+func b20Initialized(state StateDB, addr common.Address) bool {
 	return state.GetCodeHash(addr) == b20MarkerCodeHash
 }
 
 // b20EnterCall applies the guards shared by every B20 entry point: only direct
 // calls (CALL/STATICCALL) are dispatched, and every entry point is nonpayable.
-func b20EnterCall(ctx *vm.PrecompileContext) error {
+func b20EnterCall(ctx *PrecompileContext) error {
 	if !ctx.DirectCall {
 		return ErrB20DelegateCall
 	}
@@ -110,7 +108,7 @@ func b20EnterCall(ctx *vm.PrecompileContext) error {
 // Same variant code serves every token of that variant; the bound address is
 // the storage root. Returns false for uninitialized addresses and unknown
 // variant bytes (the latter are simply not routed).
-func resolveB20Token(state vm.StateDB, addr common.Address) (vm.PrecompiledContract, bool) {
+func resolveB20Token(state StateDB, addr common.Address) (PrecompiledContract, bool) {
 	if !b20Initialized(state, addr) {
 		return nil, false
 	}
@@ -124,17 +122,10 @@ func resolveB20Token(state vm.StateDB, addr common.Address) (vm.PrecompiledContr
 	}
 }
 
-// init installs the resolver into the vm package's dispatch hook. The hook
-// panics if an Amsterdam block executes without this package linked in, so a
-// binary cannot silently diverge by dropping the import.
-func init() {
-	vm.RegisterB20Resolver(resolveB20)
-}
-
 // resolveB20 is the "BerylLookup" equivalent: given an address, decide whether
 // it is a B20 precompile (fixed factory or a dynamic token) and return the
 // bound instance. Fork gating is the caller's responsibility.
-func resolveB20(state vm.StateDB, addr common.Address) (vm.PrecompiledContract, bool) {
+func resolveB20(state StateDB, addr common.Address) (PrecompiledContract, bool) {
 	if addr == B20FactoryAddress {
 		return &b20FactoryPrecompile{}, true
 	}
@@ -149,13 +140,13 @@ func resolveB20(state vm.StateDB, addr common.Address) (vm.PrecompiledContract, 
 
 // --- skeleton precompiles ---------------------------------------------------
 //
-// These implement the vm.StatefulPrecompiledContract host contract and the shared
+// These implement the StatefulPrecompiledContract host contract and the shared
 // guards (direct-call, read-only). The ABI dispatch and the IB20 trait logic
 // (transfer/approve/mint/burn/roles/pause/permit/memo, plus variant
 // extensions) are ported on top of these in the P1 business layer.
 
 // b20StatefulBase provides the defensive Run backstop shared by every B20
-// precompile so they satisfy vm.PrecompiledContract; real execution always goes
+// precompile so they satisfy PrecompiledContract; real execution always goes
 // through RunStateful.
 type b20StatefulBase struct{}
 
@@ -167,13 +158,13 @@ type b20FactoryPrecompile struct{ b20StatefulBase }
 func (p *b20FactoryPrecompile) Name() string                    { return "B20Factory" }
 func (p *b20FactoryPrecompile) RequiredGas(input []byte) uint64 { return 0 } // TODO: gas schedule
 
-func (p *b20FactoryPrecompile) RunStateful(ctx *vm.PrecompileContext, input []byte) ([]byte, error) {
+func (p *b20FactoryPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	if err := b20EnterCall(ctx); err != nil {
 		return finishB20(nil, err)
 	}
 	ret, err := runB20Factory(ctx, input)
 	if ctx.OutOfGas() {
-		return nil, vm.ErrOutOfGas
+		return nil, ErrOutOfGas
 	}
 	return finishB20(ret, err)
 }
@@ -187,7 +178,7 @@ type b20AssetPrecompile struct {
 func (p *b20AssetPrecompile) Name() string                    { return "B20Asset" }
 func (p *b20AssetPrecompile) RequiredGas(input []byte) uint64 { return 0 } // TODO: gas schedule
 
-func (p *b20AssetPrecompile) RunStateful(ctx *vm.PrecompileContext, input []byte) ([]byte, error) {
+func (p *b20AssetPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	if err := b20EnterCall(ctx); err != nil {
 		return finishB20(nil, err)
 	}
@@ -195,7 +186,7 @@ func (p *b20AssetPrecompile) RunStateful(ctx *vm.PrecompileContext, input []byte
 	// storage), so the shared token's decimals field is unused here.
 	ret, err := assetDispatch(newB20Token(ctx, 0), newAssetExt(ctx), input)
 	if ctx.OutOfGas() {
-		return nil, vm.ErrOutOfGas
+		return nil, ErrOutOfGas
 	}
 	return finishB20(ret, err)
 }
@@ -209,7 +200,7 @@ type b20StablecoinPrecompile struct {
 func (p *b20StablecoinPrecompile) Name() string                    { return "B20Stablecoin" }
 func (p *b20StablecoinPrecompile) RequiredGas(input []byte) uint64 { return 0 } // TODO: gas schedule
 
-func (p *b20StablecoinPrecompile) RunStateful(ctx *vm.PrecompileContext, input []byte) ([]byte, error) {
+func (p *b20StablecoinPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	if err := b20EnterCall(ctx); err != nil {
 		return finishB20(nil, err)
 	}
@@ -217,7 +208,7 @@ func (p *b20StablecoinPrecompile) RunStateful(ctx *vm.PrecompileContext, input [
 	// TODO: Stablecoin currency() selector before the shared IB20 dispatch.
 	ret, err := newB20Token(ctx, 6).dispatch(input)
 	if ctx.OutOfGas() {
-		return nil, vm.ErrOutOfGas
+		return nil, ErrOutOfGas
 	}
 	return finishB20(ret, err)
 }
@@ -225,10 +216,10 @@ func (p *b20StablecoinPrecompile) RunStateful(ctx *vm.PrecompileContext, input [
 // compile-time checks that the skeletons satisfy both the plain precompile
 // contract (so they flow through evm.precompile) and the stateful host contract.
 var (
-	_ vm.PrecompiledContract         = (*b20FactoryPrecompile)(nil)
-	_ vm.PrecompiledContract         = (*b20AssetPrecompile)(nil)
-	_ vm.PrecompiledContract         = (*b20StablecoinPrecompile)(nil)
-	_ vm.StatefulPrecompiledContract = (*b20FactoryPrecompile)(nil)
-	_ vm.StatefulPrecompiledContract = (*b20AssetPrecompile)(nil)
-	_ vm.StatefulPrecompiledContract = (*b20StablecoinPrecompile)(nil)
+	_ PrecompiledContract         = (*b20FactoryPrecompile)(nil)
+	_ PrecompiledContract         = (*b20AssetPrecompile)(nil)
+	_ PrecompiledContract         = (*b20StablecoinPrecompile)(nil)
+	_ StatefulPrecompiledContract = (*b20FactoryPrecompile)(nil)
+	_ StatefulPrecompiledContract = (*b20AssetPrecompile)(nil)
+	_ StatefulPrecompiledContract = (*b20StablecoinPrecompile)(nil)
 )

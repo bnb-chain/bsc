@@ -14,11 +14,9 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package b20
+package vm
 
 import (
-	"github.com/ethereum/go-ethereum/core/vm"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
@@ -308,7 +306,7 @@ func (t b20Token) ensureAdminOf(role common.Hash) bool {
 
 func (t b20Token) grantRole(role common.Hash, account common.Address) error {
 	if t.ctx.ReadOnly {
-		return vm.ErrWriteProtection
+		return ErrWriteProtection
 	}
 	if err := t.ensureRoleMutable(role); err != nil {
 		return err
@@ -325,7 +323,7 @@ func (t b20Token) grantRole(role common.Hash, account common.Address) error {
 
 func (t b20Token) revokeRole(role common.Hash, account common.Address) error {
 	if t.ctx.ReadOnly {
-		return vm.ErrWriteProtection
+		return ErrWriteProtection
 	}
 	if err := t.ensureRoleMutable(role); err != nil {
 		return err
@@ -340,7 +338,7 @@ func (t b20Token) revokeRole(role common.Hash, account common.Address) error {
 
 func (t b20Token) renounceRole(role common.Hash, confirmation common.Address) error {
 	if t.ctx.ReadOnly {
-		return vm.ErrWriteProtection
+		return ErrWriteProtection
 	}
 	// Confirmation must equal the caller (OZ 5.x anti-misuse guard).
 	if confirmation != t.ctx.Caller {
@@ -356,7 +354,7 @@ func (t b20Token) renounceRole(role common.Hash, confirmation common.Address) er
 
 func (t b20Token) renounceLastAdmin() error {
 	if t.ctx.ReadOnly {
-		return vm.ErrWriteProtection
+		return ErrWriteProtection
 	}
 	if !t.s.hasRole(roleDefaultAdmin, t.ctx.Caller) || !t.s.adminCount().Eq(uint256.NewInt(1)) {
 		return revB20("NotSoleAdmin()", errSelNotSoleAdmin)
@@ -370,7 +368,7 @@ func (t b20Token) renounceLastAdmin() error {
 
 func (t b20Token) setRoleAdmin(role, newAdminRole common.Hash) error {
 	if t.ctx.ReadOnly {
-		return vm.ErrWriteProtection
+		return ErrWriteProtection
 	}
 	if err := t.ensureRoleMutable(role); err != nil {
 		return err
@@ -422,7 +420,7 @@ func (t b20Token) ensureRoleMutable(role common.Hash) error {
 
 func (t b20Token) setPause(args []byte, on bool) error {
 	if t.ctx.ReadOnly {
-		return vm.ErrWriteProtection
+		return ErrWriteProtection
 	}
 	role := rolePause
 	if !on {
@@ -459,7 +457,7 @@ func (t b20Token) setPause(args []byte, on bool) error {
 
 func (t b20Token) mint(to common.Address, amount *uint256.Int) error {
 	if t.ctx.ReadOnly {
-		return vm.ErrWriteProtection
+		return ErrWriteProtection
 	}
 	if t.isPaused(b20PauseMint) {
 		return revB20("ContractPaused(uint8)", errSelContractPaused, wU8(b20PauseMint))
@@ -497,7 +495,7 @@ func (t b20Token) mintCore(to common.Address, amount *uint256.Int) error {
 
 func (t b20Token) burn(from common.Address, amount *uint256.Int) error {
 	if t.ctx.ReadOnly {
-		return vm.ErrWriteProtection
+		return ErrWriteProtection
 	}
 	if t.isPaused(b20PauseBurn) {
 		return revB20("ContractPaused(uint8)", errSelContractPaused, wU8(b20PauseBurn))
@@ -526,7 +524,7 @@ func (t b20Token) burn(from common.Address, amount *uint256.Int) error {
 // account is seizable at all.
 func (t b20Token) seizeWithMemo(from, to common.Address, amount *uint256.Int, memo common.Hash) error {
 	if t.ctx.ReadOnly {
-		return vm.ErrWriteProtection
+		return ErrWriteProtection
 	}
 	if t.isPaused(b20PauseSeize) {
 		return revB20("ContractPaused(uint8)", errSelContractPaused, wU8(b20PauseSeize))
@@ -562,7 +560,7 @@ func (t b20Token) seizeWithMemo(from, to common.Address, amount *uint256.Int, me
 
 func (t b20Token) updateSupplyCap(newCap *uint256.Int) error {
 	if t.ctx.ReadOnly {
-		return vm.ErrWriteProtection
+		return ErrWriteProtection
 	}
 	if err := t.ensureRole(roleDefaultAdmin); err != nil {
 		return err
@@ -582,7 +580,7 @@ func (t b20Token) updateSupplyCap(newCap *uint256.Int) error {
 // exploited.
 func (t b20Token) updatePolicy(scope common.Hash, id uint64) error {
 	if t.ctx.ReadOnly {
-		return vm.ErrWriteProtection
+		return ErrWriteProtection
 	}
 	if err := t.ensureRole(roleDefaultAdmin); err != nil {
 		return err
@@ -614,16 +612,16 @@ func (t b20Token) updatePolicy(scope common.Hash, id uint64) error {
 func readUint8Array(args []byte) ([]uint8, error) {
 	L := uint64(len(args))
 	if L < 32 {
-		return nil, vm.ErrExecutionReverted
+		return nil, ErrExecutionReverted
 	}
 	off := new(uint256.Int).SetBytes(args[0:32]).Uint64()
 	if off > L-32 {
-		return nil, vm.ErrExecutionReverted
+		return nil, ErrExecutionReverted
 	}
 	n := new(uint256.Int).SetBytes(args[off : off+32]).Uint64()
 	dataPos := off + 32
 	if n > (L-dataPos)/32 {
-		return nil, vm.ErrExecutionReverted
+		return nil, ErrExecutionReverted
 	}
 	out := make([]uint8, n)
 	for i := uint64(0); i < n; i++ {

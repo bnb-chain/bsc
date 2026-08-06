@@ -51,29 +51,9 @@ func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
 	// address is resolved dynamically from its prefix (there is no fixed-address
 	// entry for tokens, so they cannot live in the static precompiles map).
 	if evm.b20Enabled() {
-		if b20Resolver == nil {
-			// Fail loud: executing an Amsterdam block without the B20 package
-			// linked in would silently diverge from consensus.
-			panic("vm: B20 active but no resolver registered (import core/vm/b20)")
-		}
-		return b20Resolver(evm.StateDB, addr)
+		return resolveB20(evm.StateDB, addr)
 	}
 	return nil, false
-}
-
-// b20Resolver is installed by core/vm/b20's init. It decides whether addr is
-// a B20 precompile (a fixed singleton or a dynamic token) and returns the
-// bound instance. Kept as a registration hook so the B20 implementation can
-// live in its own package without an import cycle.
-var b20Resolver func(StateDB, common.Address) (PrecompiledContract, bool)
-
-// RegisterB20Resolver installs the B20 address resolver. Called once from
-// core/vm/b20's init; a second call panics.
-func RegisterB20Resolver(r func(StateDB, common.Address) (PrecompiledContract, bool)) {
-	if b20Resolver != nil {
-		panic("vm: B20 resolver already registered")
-	}
-	b20Resolver = r
 }
 
 // b20Enabled reports whether the B20 native token family is active for the

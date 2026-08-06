@@ -89,9 +89,9 @@ type PrecompileContext struct {
 	// keeps the accounting ready for when the StateGas reservoir is activated.
 	stateGasUsed uint64
 
-	// InAnnounce guards against re-entrant announce() during the Asset
+	// inAnnounce guards against re-entrant announce() during the Asset
 	// disclosure window.
-	InAnnounce bool
+	inAnnounce bool
 }
 
 // UseGas charges cost against the remaining budget. It returns false and
@@ -109,33 +109,10 @@ func (ctx *PrecompileContext) UseGas(cost GasCosts) bool {
 	return true
 }
 
-// chargeStateGas charges a state-operation cost against the (enforced)
-// RegularGas budget and accumulates it into the StateGas tally. On
-// insufficient gas it exhausts the budget and marks the context out of gas;
-// callers surface this via OutOfGas.
-// NewPrecompileContext builds a bare direct-call context around a live state.
-// Used by unit tests and tooling that dispatch a stateful precompile without a
-// full EVM frame; production contexts are built by runStatefulPrecompiledContract.
-func NewPrecompileContext(evm *EVM, statedb StateDB, self, caller common.Address, gas *GasBudget) *PrecompileContext {
-	return &PrecompileContext{evm: evm, StateDB: statedb, Self: self, Caller: caller, DirectCall: true, gas: gas}
-}
-
-// WithReadOnly marks the context as a read-only (STATICCALL) frame.
-func (ctx *PrecompileContext) WithReadOnly(ro bool) *PrecompileContext {
-	ctx.ReadOnly = ro
-	return ctx
-}
-
-// WithDirectCall overrides the direct-call flag (false models DELEGATECALL/CALLCODE).
-func (ctx *PrecompileContext) WithDirectCall(dc bool) *PrecompileContext {
-	ctx.DirectCall = dc
-	return ctx
-}
-
-// SpawnBootstrap derives a context bound to a different self address, sharing
+// spawnBootstrap derives a context bound to a different self address, sharing
 // this frame's state, gas budget and rules. Used by the B20 factory to run a
 // new token's initCalls inside the creating frame.
-func (ctx *PrecompileContext) SpawnBootstrap(self, caller common.Address) *PrecompileContext {
+func (ctx *PrecompileContext) spawnBootstrap(self, caller common.Address) *PrecompileContext {
 	return &PrecompileContext{
 		evm:        ctx.evm,
 		StateDB:    ctx.StateDB,
@@ -147,9 +124,11 @@ func (ctx *PrecompileContext) SpawnBootstrap(self, caller common.Address) *Preco
 	}
 }
 
-// ChargeStateGas meters state-access gas against the frame's budget,
-// setting the sticky out-of-gas flag when it cannot be covered.
-func (ctx *PrecompileContext) ChargeStateGas(cost uint64) {
+// chargeStateGas charges a state-operation cost against the (enforced)
+// RegularGas budget and accumulates it into the StateGas tally. On
+// insufficient gas it exhausts the budget and marks the context out of gas;
+// callers surface this via OutOfGas.
+func (ctx *PrecompileContext) chargeStateGas(cost uint64) {
 	if !ctx.UseGas(GasCosts{RegularGas: cost}) {
 		ctx.outOfGas = true
 		return
