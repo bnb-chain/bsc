@@ -471,19 +471,20 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			}
 		}
 		// Assemble the block for delivery.
-		block, receipts, err := AssembleBlock(b.engine, cm, b.header, statedb, &body, b.receipts, b.lane)
+		block, receipts, err := AssembleBlock(b.engine, cm, b.header, statedb, &body, b.receipts)
 		if err != nil {
 			panic(fmt.Sprintf("failed to assemble block: %v", err))
 		}
-		// Same self-check the miner runs, so a generated chain cannot quietly carry a
-		// commitment the producing side would have refused to seal. gasPool is nil until
-		// the first SetCoinbase, which for an empty block never happens.
+		// Same commitment write and self-check the miner runs, so a generated chain carries
+		// real commitments and cannot carry one the producing side would have refused to
+		// seal. gasPool is nil until the first SetCoinbase, which for an empty block never
+		// happens.
 		var poolUsed uint64
 		if b.gasPool != nil {
 			poolUsed = b.gasPool.Used()
 		}
-		if err := b.lane.VerifyProduced(block, poolUsed); err != nil {
-			panic(fmt.Sprintf("payment lane self-check failed: %v", err))
+		if err := b.lane.WriteCommitment(block, poolUsed); err != nil {
+			panic(fmt.Sprintf("payment lane commitment failed: %v", err))
 		}
 		if config.IsCancun(block.Number(), block.Time()) {
 			for _, s := range b.sidecars {

@@ -50,9 +50,9 @@ const laneGasLimit = 35_000_000
 // This exists because nothing else in the tree exercises the lane under Parlia: every
 // other lane test runs on ethash through GenerateChain. The gap matters for one ordering
 // in particular - finalizeAndAssemble writes EmptyUncleHash into the header and
-// types.NewBlock then re-derives it from the body, so core.AssembleBlock's commitment
-// write only survives because it happens to the assembled BLOCK, afterwards. Writing it
-// one step earlier is silently discarded and every block is rejected network-wide.
+// types.NewBlock then re-derives it from the body, so LaneState.WriteCommitment's write
+// only survives because it happens to the assembled BLOCK, afterwards. Writing it one
+// step earlier is silently discarded and every block is rejected network-wide.
 //
 // Fork timing: genesis is at t=0 and GenerateChain fixes the block interval at 10s, so a
 // Gauss timestamp of 5 makes block 1 the activation block (IsOnGauss fires there) and
@@ -197,26 +197,66 @@ func TestPaymentLaneCommitmentSurvivesParliaAssembly(t *testing.T) {
 	// dropped one would be indistinguishable from a correct empty block.
 	lane.Budget.PaymentUsed = 42_000
 
-	block, _, err := core.AssembleBlock(engine, chain, header, stateDB, &types.Body{}, nil, lane)
+	block, _, err := core.AssembleBlock(engine, chain, header, stateDB, &types.Body{}, nil)
 	if err != nil {
 		t.Fatalf("failed to assemble: %v", err)
 	}
+	// poolUsed must cover the bucket: WriteCommitment self-checks, and the bucket can only
+	// ever be a part of what the pool consumed. This block has no general gas, so the two
+	// are equal.
+	if err := lane.WriteCommitment(block, 42_000); err != nil {
+		t.Fatalf("failed to write the commitment: %v", err)
+	}
 	got, err := paymentlane.Decode(block.UncleHash())
 	if err != nil {
-		t.Fatalf("parlia assembly clobbered the commitment: %v (uncle slot %x)", err, block.UncleHash())
+		t.Fatalf("the commitment does not decode after a parlia assembly: %v (uncle slot %x)", err, block.UncleHash())
 	}
 	want := paymentlane.Commitment{LaneSize: 2_000_000, PaymentGasUsed: 42_000}
 	if got != want {
 		t.Fatalf("commitment: got %+v, want %+v", got, want)
 	}
-	// The block hash must already account for the commitment. SetUncleHash mutates a
-	// cached-hash struct, so anything that computed the hash between assembly and the
-	// write would leave the two disagreeing here.
-	if block.Hash() != block.Header().Hash() {
-		t.Fatal("block hash was cached before the commitment was written")
-	}
+	// No hash assertion here: WriteCommitment made that comparison itself and froze the
+	// cache, so repeating it could not fail. TestPaymentLaneRefusesAStaleBlockHash covers it.
 	if len(block.Uncles()) != 0 {
 		t.Fatal("parlia must never produce uncles")
+	}
+}
+
+// TestPaymentLaneRefusesAStaleBlockHash is the only test of the guard that keeps the
+// commitment write correct at a distance from assembly.
+//
+// It hashes the block first, exactly as a stray log line or an early sidecar loop would,
+// and requires WriteCommitment to refuse rather than emit a block whose cached hash no
+// longer matches its own header. It cannot be folded into the test above, which calls
+// WriteCommitment before ever reading block.Hash() and so can never fail this way.
+func TestPaymentLaneRefusesAStaleBlockHash(t *testing.T) {
+	engine, chain, config, parent, newHeader, newState := newParliaLaneHarness(t)
+	header, stateDB := newHeader(), newState()
+
+	lane, err := core.ResolveLaneState(config, chain, parent.Header(), header, stateDB.Reader())
+	if err != nil {
+		t.Fatalf("failed to resolve the lane state: %v", err)
+	}
+	lane.SetQuota()
+
+	block, _, err := core.AssembleBlock(engine, chain, header, stateDB, &types.Body{}, nil)
+	if err != nil {
+		t.Fatalf("failed to assemble: %v", err)
+	}
+	stale := block.Hash() // the mistake: caching the hash before the commitment is in
+
+	err = lane.WriteCommitment(block, 0)
+	if err == nil {
+		t.Fatal("WriteCommitment accepted a block whose hash was already cached")
+	}
+	if !strings.Contains(err.Error(), "cached before the commitment") {
+		t.Fatalf("unexpected refusal reason: %v", err)
+	}
+	if block.Hash() == block.Header().Hash() {
+		t.Fatal("this test proves nothing unless the cached hash really is stale")
+	}
+	if block.Hash() != stale {
+		t.Fatal("Block.Hash must be cached on first read, or the guard is unnecessary")
 	}
 }
 

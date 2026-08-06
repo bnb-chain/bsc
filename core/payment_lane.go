@@ -17,6 +17,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -69,11 +70,11 @@ type laneHeaderReader interface {
 // here is safe to call in that state, so the only branch a call site needs is around the
 // block-level prologue that decodes the parent's commitment.
 //
-// The two verdicts are methods rather than direct Budget calls for a second reason:
-// VerifyProduced also drains the classifier's sticky error, which is the only thing that
-// turns the packing loop's swallowed classification failure into a refusal to seal.
-// Budget cannot see that error, so reaching through to it would pass on a block built
-// with an unknown class.
+// The importer's verdict and the producer's commitment write are methods rather than
+// direct Budget calls for a second reason: WriteCommitment also drains the classifier's
+// sticky error, which is the only thing that turns the packing loop's swallowed
+// classification failure into a refusal to seal. Budget cannot see that error, so reaching
+// through to it would pass on a block built with an unknown class.
 type LaneState struct {
 	// Budget accumulates this block's payment total. LaneSize is filled in by SetQuota
 	// on the producing side and by CheckQuota on the importing side, never by hand.
@@ -237,7 +238,7 @@ func (ls *LaneState) Admits(shared uint64, class paymentlane.Class, gasLimit uin
 // Sticky, and the backstop for the one site that swallows a classification error: the
 // miner's packing loop drops that account and carries on, because refusing to build is
 // not a decision the loop should take. Everywhere else the error is returned where it
-// happens. VerifyProduced is what turns a swallowed one into a refusal to seal.
+// happens. WriteCommitment is what turns a swallowed one into a refusal to seal.
 func (ls *LaneState) Err() error {
 	if !ls.On() {
 		return nil
@@ -255,7 +256,7 @@ func (ls *LaneState) Err() error {
 // stays inside r. It is therefore a STRENGTHENING of the rule, not an equivalent of it: at
 // C=1000, r=25, poolUsed=990, IdleLane=15 this refuses a block the rule permits. The
 // packing loop maintains the same strengthened form, so the two sides agree, and what
-// catches the real system gas overrunning r is VerifyProduced.
+// catches the real system gas overrunning r is WriteCommitment.
 //
 // Deliberately not a per-transaction gate on the MEV path: rejecting a builder's
 // transaction because its declared LIMIT does not fit would refuse bids the rule permits,
@@ -279,10 +280,26 @@ func (ls *LaneState) VerifyImported(headerGasUsed, poolUsed uint64, c paymentlan
 	return ls.Budget.VerifyCommitment(ls.gasLimit, headerGasUsed, poolUsed, c)
 }
 
-// VerifyProduced is the producer's pre-seal self-check, shared by every path that assembles
-// a block. Failing here costs a slot; producing anyway is worse, because the payment
-// total goes into the commitment, every importer replays it and rejects, and the producer
-// has by then set its own head to the block and broadcast it.
+// WriteCommitment stamps the commitment onto an assembled block and self-checks it. It is
+// the whole of the producing side's lane business after packing, which is what keeps
+// core.AssembleBlock - upstream code - free of the lane.
+//
+// Every sealing producer must call it, and must call it before ANYTHING hashes the block:
+// the block hash is cached on first read with no invalidation (see
+// (*types.Block).SetUncleHash), so a later stamp leaves the block disagreeing with its own
+// header. The check below catches that rather than trusting the ordering, but catching it
+// costs a slot, so the call belongs next to AssembleBlock.
+//
+// Writing and checking are one method because forgetting either produces an invalid block,
+// and because it makes the order unforgettable: check-before-stamp cannot compile into
+// anything that works, since the commitment it would decode is not there yet. Failing here
+// costs a slot; producing anyway is worse, because the payment total goes into the
+// commitment, every importer replays it and rejects, and the producer has by then set its
+// own head to the block and broadcast it.
+//
+// An error means DISCARD the block, never repair it: both checks run after the stamp - the
+// stale-hash one cannot run before it without itself filling the cache - so the block it
+// refuses is already stamped.
 //
 // It reads block.GasUsed() rather than the header the caller still holds, because the
 // parlia commit path hands AssembleBlock a CopyHeader: that header keeps the
@@ -291,12 +308,31 @@ func (ls *LaneState) VerifyImported(headerGasUsed, poolUsed uint64, c paymentlan
 // here would check a different inequality than the importer will. The gas LIMIT comes from
 // ls instead, the same value LaneSize was derived from, so the quota and the capacity it
 // is checked against cannot come from two different headers.
-func (ls *LaneState) VerifyProduced(block *types.Block, poolUsed uint64) error {
+func (ls *LaneState) WriteCommitment(block *types.Block, poolUsed uint64) error {
 	if !ls.On() {
 		return nil
 	}
 	if err := ls.Err(); err != nil {
 		return err
+	}
+	// The two uses of the uncle slot are mutually exclusive, and silently preferring the
+	// commitment would emit a block whose uncle list can never be verified again.
+	// Unreachable under parlia, which forbids uncles outright; reachable from
+	// GenerateChain, which still offers BlockGen.AddUncle - and eth/downloader's test
+	// chains use it on every fifth block, which is why a lane-active variant of that
+	// harness is not a small change.
+	if len(block.Uncles()) != 0 {
+		return errors.New("payment lane and uncles cannot share the uncle hash slot")
+	}
+	block.SetUncleHash(paymentlane.Encode(paymentlane.Commitment{
+		LaneSize:       ls.Budget.LaneSize,
+		PaymentGasUsed: ls.Budget.PaymentUsed,
+	}))
+	// Hashing here also freezes the cache with the commitment already in, which is safe
+	// because every later header change goes through a copy: Seal takes block.Header() and
+	// returns WithSeal, and WithSidecars builds a new block.
+	if block.Hash() != block.Header().Hash() {
+		return errors.New("block hash was cached before the commitment was written")
 	}
 	return ls.Budget.Verify(ls.gasLimit, block.GasUsed(), poolUsed)
 }

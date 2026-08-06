@@ -1213,7 +1213,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	// once here, at the end, with payBidTx's reservation already returned to the pool.
 	//
 	// Discarding the bid is the point: without this the violation surfaces at seal time
-	// in LaneState.VerifyProduced, and by then the only available answer is to produce no
+	// in LaneState.WriteCommitment, and by then the only available answer is to produce no
 	// block at all for this height - every slot this builder wins, until it is jailed.
 	if !bidRuntime.env.lane.QuotaIntact(bidRuntime.env.gasPool.Gas()) {
 		err = fmt.Errorf("bid leaves no room for the payment lane quota: idle %d, gas left %d",

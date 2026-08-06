@@ -42,11 +42,11 @@ func (p *Parlia) PrepareForBidBlock(chain consensus.ChainHeaderReader, header *t
 
 // FinalizeAndAssembleBidBlock assembles a BidBlock with unsigned system txs.
 //
-// This is the one production assembly path that does NOT go through
-// core.AssembleBlock, so it cannot stamp a BEP-703 commitment: finalizeAndAssemble
-// writes EmptyUncleHash and types.NewBlock re-derives it from the body, with nothing
-// afterwards to overwrite. A lane block built here would therefore be rejected
-// network-wide - after handleBidBlockResult had already signed and broadcast it.
+// This path has no LaneState in reach, so it cannot stamp a BEP-703 commitment:
+// finalizeAndAssemble writes EmptyUncleHash, types.NewBlock re-derives it from the body,
+// and core.LaneState.WriteCommitment - the only thing that overwrites it - is not on this
+// path. A lane block built here would therefore be rejected network-wide - after
+// handleBidBlockResult had already signed and broadcast it.
 //
 // The refusal lives here, next to the clobber, and not only at the RPC gate in
 // miner: that gate is in another package and a reopening change would have to

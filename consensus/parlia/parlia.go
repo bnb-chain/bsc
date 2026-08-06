@@ -1606,9 +1606,10 @@ func (p *Parlia) finalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	if header.GasLimit < header.GasUsed {
 		return nil, nil, errors.New("gas consumption of system txs exceed the gas limit")
 	}
-	// Not the last word on this field: types.NewBlock below re-derives it from the body,
-	// and core.AssembleBlock then stamps the BEP-703 commitment onto the assembled block.
-	// Writing a commitment HERE would be silently discarded four lines down.
+	// Not the last word on this field: types.NewBlock below re-derives it from the body, and
+	// the producer then stamps the BEP-703 commitment onto the assembled block with
+	// core.LaneState.WriteCommitment. Writing a commitment HERE would be silently discarded
+	// four lines down.
 	header.UncleHash = types.EmptyUncleHash
 	var blk *types.Block
 	var rootHash common.Hash

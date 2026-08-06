@@ -370,8 +370,13 @@ func TestPaymentLaneClassifiesAgainstTheParentState(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestPaymentLaneAndUnclesCannotShareTheSlot covers AssembleBlock's refusal, which is
+// TestPaymentLaneAndUnclesCannotShareTheSlot covers WriteCommitment's refusal, which is
 // load-bearing in a way that only shows up outside this package.
+//
+// The refusal sits where the slot is about to be overwritten, not at AddUncle where the
+// mistake is made, because AddUncle and AssembleBlock are both upstream code and a lane
+// check in either is a divergence to re-resolve on every merge. The price is that a
+// malformed uncle crashes the engine first.
 //
 // The two uses of the uncle slot are mutually exclusive, and silently preferring the
 // commitment would emit a block whose uncle list can never be verified again. Parlia

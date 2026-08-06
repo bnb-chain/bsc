@@ -1320,11 +1320,11 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 	}
 
 	fees := work.state.GetBalance(consensus.SystemAddress)
-	block, receipts, err := core.AssembleBlock(w.engine, w.chain, work.header, work.state, &body, work.receipts, work.lane)
+	block, receipts, err := core.AssembleBlock(w.engine, w.chain, work.header, work.state, &body, work.receipts)
 	if err != nil {
 		return &newPayloadResult{err: err}
 	}
-	if err := work.lane.VerifyProduced(block, work.gasPool.Used()); err != nil {
+	if err := work.lane.WriteCommitment(block, work.gasPool.Used()); err != nil {
 		return &newPayloadResult{err: err}
 	}
 
@@ -1690,7 +1690,7 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		if env.header.EmptyWithdrawalsHash() {
 			body.Withdrawals = make([]*types.Withdrawal, 0)
 		}
-		block, receipts, err := core.AssembleBlock(w.engine, w.chain, types.CopyHeader(env.header), env.state, &body, env.receipts, env.lane)
+		block, receipts, err := core.AssembleBlock(w.engine, w.chain, types.CopyHeader(env.header), env.state, &body, env.receipts)
 		env.committed = true
 		if err != nil {
 			return err
@@ -1699,7 +1699,7 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		env.receipts = receipts
 		finalizeBlockTimer.UpdateSince(finalizeStart)
 
-		if err := env.lane.VerifyProduced(block, env.gasPool.Used()); err != nil {
+		if err := env.lane.WriteCommitment(block, env.gasPool.Used()); err != nil {
 			laneDeclineCounter.Inc(1)
 			return err
 		}

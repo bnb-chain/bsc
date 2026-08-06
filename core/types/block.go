@@ -516,6 +516,8 @@ func (b *Block) SetRoot(root common.Hash) { b.header.Root = root }
 // from the body and must keep doing so for every chain that really has uncles. Like
 // SetRoot, this is only safe BEFORE the first Hash() call - the block hash is cached
 // with no invalidation - so it belongs immediately after assembly and nowhere else.
+// core.LaneState.WriteCommitment is the one caller entitled to it, and it verifies that
+// ordering held rather than assuming it.
 func (b *Block) SetUncleHash(hash common.Hash) { b.header.UncleHash = hash }
 
 // SanityCheck can be used to prevent that unbounded fields are
