@@ -492,10 +492,10 @@ func TestVerifyCommitmentComparesThePaymentFigure(t *testing.T) {
 // TestVerifyCommitmentIgnoresLaneSize records a deliberate division of labour, so
 // nobody "fixes" it by adding the comparison here.
 //
-// The quota is a pure function of the parent header and the parent post-state, so it is
-// settled by CheckLaneSize before any transaction executes - including on the MEV
-// admission path, before a validator signs. Replay cannot adjudicate it, and a committed
-// quota that disagrees is not an accounting problem.
+// The quota is a pure function of the parent header and the parent post-state, so
+// CheckLaneSize settles it before any transaction executes, on import and on a builder's
+// block before the validator signs. Replay cannot adjudicate it, and a committed quota
+// that disagrees is not an accounting problem.
 func TestVerifyCommitmentIgnoresLaneSize(t *testing.T) {
 	b := Budget{LaneSize: 20, PaymentUsed: 20}
 	absurd := Commitment{LaneSize: 999_999, PaymentGasUsed: 20}

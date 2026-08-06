@@ -15,8 +15,10 @@ import (
 	"github.com/holiman/uint256"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	buildertypes "github.com/ethereum/go-ethereum/core/types/builder"
@@ -32,6 +34,109 @@ type bidBlockTaskInfo struct {
 }
 
 var errInvalidBidBlockBlobTx = errors.New("BidBlock blob validation failed")
+
+// verifyBidBlockLaneQuota adjudicates a builder-authored BEP-703 commitment as far as it
+// can be adjudicated without replaying the block, and must run before this validator
+// signs: a BidBlock header is adopted verbatim, and handleBidBlockResult broadcasts
+// before InsertChain.
+//
+// What admission already settled, in verifyCascadingFields: the commitment decodes at all,
+// and the block rule holds over the committed values. What is added here:
+//
+//	laneSize        Exactly. It is a pure function of the parent, the grandparent and
+//	                0x2007's parameters, so the builder does not get to choose it - and the
+//	                gas limit it derives from is the validator's own, since
+//	                preSealVerifyBidBlock pins header.GasLimit to CalcGasLimit.
+//	paymentGasUsed  From above only, and only as far as bidBlockPaymentCeiling can bound it.
+//	                Over-stating is the profitable direction, which is why an upper bound is
+//	                the right shape.
+//
+// What stays exposed: a payment total that is too low, or too high but inside the ceiling.
+// Neither is profitable, but both make a block every importer rejects with ErrUntruthy after
+// this validator signed and broadcast it, so the residual is builder BUGS - most likely a
+// builder that stamps the commitment but never calls AccountFrom, committing zero. No cheap
+// lower bound exists, since any transaction can install code at any address. Revocation on
+// the import failure is what prices it.
+//
+// Nothing here revokes the builder: ErrStateUnavailable and ErrCorruptConfig are local or
+// chain-wide, and revoking on "the lane refused it" would revoke every builder in turn on one
+// unreadable parent state. The caller falls through to the simBid comparison, so the slot can
+// still go to another bid or to the local block.
+func (w *worker) verifyBidBlockLaneQuota(decoded *buildertypes.DecodedBidBlock, local *environment) error {
+	header := decoded.Header
+	// The whole check rests on the local state being open on this bid's parent: the
+	// classifier and the parameters have to come from the root the importer will use, and
+	// the quota's denominator from the same gas limit. Both hold because the bidblock is
+	// selected by the parent hash the local work was built on - so this is the invariant
+	// asserted rather than the state re-opened.
+	if header.ParentHash != local.header.ParentHash {
+		return fmt.Errorf("bidblock parent %x is not the parent the local state is open on (%x)",
+			header.ParentHash, local.header.ParentHash)
+	}
+	parent := w.chain.GetHeaderByHash(header.ParentHash)
+	if parent == nil {
+		return consensus.ErrUnknownAncestor
+	}
+	// local.state is the advancing state of our own build, but Reader() is pinned to the
+	// root it opened on, so the classifier cannot see our block's writes. Reusing it rather
+	// than opening a second state is what keeps this affordable inside DelayLeftOver: the
+	// reader is warm, and a fresh one would enumerate the payment-contract list cold.
+	lane, err := core.ResolveLaneState(w.chainConfig, w.chain, parent, header, local.state.Reader())
+	if err != nil {
+		return err
+	}
+	if !lane.On() {
+		return nil
+	}
+	c, err := paymentlane.Decode(header.UncleHash)
+	if err != nil {
+		return err
+	}
+	if err := lane.CheckQuota(c.LaneSize); err != nil {
+		return err
+	}
+	ceiling, err := bidBlockPaymentCeiling(lane, decoded, header.GasUsed)
+	if err != nil {
+		return err
+	}
+	if c.PaymentGasUsed > ceiling {
+		return fmt.Errorf("%w: committed payment %d exceeds what these transactions can consume as payment (%d)",
+			paymentlane.ErrUntruthy, c.PaymentGasUsed, ceiling)
+	}
+	return nil
+}
+
+// bidBlockPaymentCeiling is the largest payment total the BidBlock's user transactions could
+// produce: each payment-class transaction's declared gas limit, which needs no execution
+// state. Exact on honest traffic - a bare transfer's intrinsic gas IS params.TxGas and wallets
+// declare that - so it catches a builder whose accounting is wrong; weak against one that
+// wants past it, since declaring gas is free and params.MaxTxGas is 16.7M against a lane of
+// 2-4.4M. Bounding by intrinsic gas would be tighter and is NOT sound: a payment-class
+// transfer whose destination gains code mid-block really does consume its limit, per the known
+// leak on Classify's gate 8, so it would refuse honest blocks.
+//
+// System transactions are skipped because the importer never classifies them either -
+// IsSystemTransaction splits them out first. Their addresses are also inside the reserved
+// range, but that is the weaker reason: it would stop being sufficient if the range narrowed.
+// The clamp at headerGasUsed is an overflow guard that admits nothing CheckHeaderBounds has
+// not already allowed, and admission caps every transaction here at params.MaxTxGas, so the
+// clamp is reached long before uint64 is.
+func bidBlockPaymentCeiling(lane *core.LaneState, decoded *buildertypes.DecodedBidBlock, headerGasUsed uint64) (uint64, error) {
+	var ceiling uint64
+	for _, tx := range decoded.Txs[:decoded.SystemTxStart] {
+		class, err := lane.Classify(tx)
+		if err != nil {
+			return 0, err
+		}
+		if class != paymentlane.ClassPayment {
+			continue
+		}
+		if ceiling += tx.Gas(); ceiling >= headerGasUsed {
+			return headerGasUsed, nil
+		}
+	}
+	return ceiling, nil
+}
 
 // setBidMevInfo tags header.RequestsHash with the BEP-675 block-source info
 func setBidMevInfo(header *types.Header, builder common.Address, isBidBlock bool) {
@@ -290,6 +395,16 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			"builder", task.bidBlockInfo.builder,
 			"err", insertErr)
 		bidBlockVerifyFailedGauge.Inc(1)
+		// Every other InsertChain consumer exempts ErrStateUnavailable from its verdict -
+		// core/blockchain.go does not reportBadBlock on it, eth/downloader does not treat it
+		// as an invalid chain - because it means this node could not read something, not that
+		// the block is wrong. This is the third consumer and the only one whose verdict lands
+		// on a third party, so it needs the same exemption: past Gauss a missing grandparent
+		// header or an unreadable 0x2007 surfaces here, and revoking an honest builder for
+		// the full lockout window on a local fault is the worse of the two mistakes.
+		if errors.Is(insertErr, paymentlane.ErrStateUnavailable) {
+			return
+		}
 		w.revokeBidBlockBuilder(task.bidBlockInfo.builder, fmt.Sprintf("InsertChain err: %v", insertErr), hash, block.NumberU64())
 		return
 	}

@@ -187,17 +187,18 @@ func (ls *LaneState) CheckQuota(committed uint64) error {
 
 // Classify returns tx's lane class, or ClassGeneral when the lane is off.
 //
-// It is safe to call more than once for the same transaction, and the producer does:
-// once in the packing loop's band gate and once in applyTransaction. That holds only
-// because the answer is a pure function of the transaction bytes and the parent state,
-// with the single state read memoised per destination - so the two calls cannot disagree
-// and the second is nearly free.
+// It is safe to call more than once for the same transaction, and the producer does: once in
+// the packing loop's band gate and once in applyTransaction. That holds only because the
+// answer is a pure function of the transaction bytes and the parent state, with the single
+// state read memoised per destination - so the two calls cannot disagree and the second is
+// nearly free. The bidblock pre-seal ceiling is a third caller and relies on the same
+// purity: it has no execution state, only the transaction list and the parent root.
 //
 // That is a property to preserve, not an invitation. The moment the answer depends on
 // anything else - a per-block payment cap, a rate term, a count of what is already in
-// the block - the two calls can differ, the bucket a transaction was admitted under
-// stops matching the bucket it is booked into, and every importer rejects the block.
-// Anything like that has to thread one classification through instead.
+// the block - two calls can differ, the budget a transaction was admitted against stops
+// matching the bucket it is booked into, and every importer rejects the block. Anything
+// like that has to thread one decision through instead.
 func (ls *LaneState) Classify(tx *types.Transaction) (paymentlane.Class, error) {
 	if !ls.On() {
 		return paymentlane.ClassGeneral, nil
@@ -238,7 +239,8 @@ func (ls *LaneState) Admits(shared uint64, class paymentlane.Class, gasLimit uin
 // Sticky, and the backstop for the one site that swallows a classification error: the
 // miner's packing loop drops that account and carries on, because refusing to build is
 // not a decision the loop should take. Everywhere else the error is returned where it
-// happens. WriteCommitment is what turns a swallowed one into a refusal to seal.
+// happens. WriteCommitment turns a swallowed one into a refusal to seal, and
+// VerifyPackedBid into a rejected bid - the earlier and cheaper of the two.
 func (ls *LaneState) Err() error {
 	if !ls.On() {
 		return nil
@@ -246,10 +248,13 @@ func (ls *LaneState) Err() error {
 	return ls.class.Err()
 }
 
-// QuotaIntact reports whether the whole quota still fits in what is left of the shared
-// pool - the invariant the packing loop maintains one admission at a time, restated as a
-// single end-of-block test for a path that cannot gate per transaction.
+// VerifyPackedBid is the bid path's verdict on an environment it did not pack itself. The
+// sticky error is checked here and not only at seal time because a caller that tested the
+// quota alone would pass a bid whose bucket is unknown, and the miner would then decline to
+// seal it after discarding a perfectly good local block.
 //
+// The quota half is the invariant the packing loop maintains one admission at a time,
+// restated as a single end-of-block test for a path that cannot gate per transaction.
 // With C the pool's capacity, r the miner's gas reservation and shared the remainder,
 // IdleLane <= shared is exactly poolUsed + IdleLane <= C = GasLimit - r, which implies the
 // block rule poolUsed + systemGasUsed + IdleLane <= GasLimit whenever the real system gas
@@ -261,11 +266,17 @@ func (ls *LaneState) Err() error {
 // Deliberately not a per-transaction gate on the MEV path: rejecting a builder's
 // transaction because its declared LIMIT does not fit would refuse bids the rule permits,
 // since the rule is about gas actually consumed and a bid is all-or-nothing anyway.
-func (ls *LaneState) QuotaIntact(shared uint64) bool {
+func (ls *LaneState) VerifyPackedBid(shared uint64) error {
 	if !ls.On() {
-		return true
+		return nil
 	}
-	return ls.Budget.IdleLane() <= shared
+	if err := ls.Err(); err != nil {
+		return err
+	}
+	if idle := ls.Budget.IdleLane(); idle > shared {
+		return fmt.Errorf("%w: idle lane %d exceeds the %d gas left in the pool", paymentlane.ErrViolated, idle, shared)
+	}
+	return nil
 }
 
 // VerifyImported is the importer's verdict, and the only authoritative one; see

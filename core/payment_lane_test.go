@@ -19,6 +19,7 @@ package core
 import (
 	"crypto/ecdsa"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -284,7 +285,104 @@ func TestPaymentLaneImportRejectsATamperedCommitment(t *testing.T) {
 	}
 }
 
+// TestPaymentLaneClassifiesAgainstTheParentState pins the classifier's state binding, which
+// is a security property rather than tidiness.
+//
+// Bound to the advancing StateDB instead of the parent post-state, a block producer could
+// insert one cheap contract creation ahead of a batch of transfers and thereby choose whose
+// transfers count as payments - deterministically, with every other test still green, and
+// invisible until somebody used it. So a transfer to an address that gains code IN THIS BLOCK
+// is still a payment, and only from the next block on is it general.
+//
+// That is also the leak recorded on Classify's gate 8: the transfer below executes the code
+// deployed by the transaction before it and burns its whole limit inside the payment bucket.
+// The burner is here to keep that concrete rather than theoretical - block 3 commits a payment
+// total far above 21,000 - so anyone weighing the trade again has the number in front of them.
+func TestPaymentLaneClassifiesAgainstTheParentState(t *testing.T) {
+	config, gspec, key := laneGenesis(t)
+	signer := types.LatestSigner(config)
+
+	// Deploys `JUMPDEST; PUSH1 0; JUMP`, an infinite loop, so the transfer into it halts out
+	// of gas having consumed its whole limit. burnGas clears the deployment's own ~80k so the
+	// assertion can tell executed from not, and stays under the 2M floor so the block is not
+	// quota-bound for a different reason.
+	const (
+		burnerInitCode = "0x635b6000566000526004601cf3"
+		burnGas        = 1_000_000
+	)
+	created := crypto.CreateAddress(key.addr, 0)
+
+	var nonce uint64
+	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 4, func(i int, b *BlockGen) {
+		switch i + 1 {
+		case 3:
+			deploy, err := types.SignNewTx(key.priv, signer, &types.LegacyTx{
+				Nonce: nonce, Value: common.Big0, Gas: 100_000,
+				GasPrice: big.NewInt(params.GWei), Data: common.FromHex(burnerInitCode),
+			})
+			require.NoError(t, err)
+			b.AddTx(deploy)
+			nonce++
+			b.AddTx(key.sign(t, signer, nonce, created, big.NewInt(1), burnGas, nil))
+			nonce++
+		case 4:
+			// The same transfer one block later: the code is in the parent post-state now, so
+			// gate 8 makes it general.
+			b.AddTx(key.sign(t, signer, nonce, created, big.NewInt(1), burnGas, nil))
+			nonce++
+		}
+	})
+
+	require.Len(t, blocks[2].Transactions(), 2, "block 3 must carry the deployment and the transfer")
+	sameBlock, err := paymentlane.Decode(blocks[2].UncleHash())
+	require.NoError(t, err)
+	require.EqualValues(t, burnGas, sameBlock.PaymentGasUsed,
+		"a transfer to an address created by this same block is still a payment, and it executed code")
+
+	nextBlock, err := paymentlane.Decode(blocks[3].UncleHash())
+	require.NoError(t, err)
+	require.Zero(t, nextBlock.PaymentGasUsed,
+		"once the code is in the parent post-state the same transfer is general")
+
+	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), DefaultConfig())
+	require.NoError(t, err)
+	defer chain.Stop()
+	_, err = chain.InsertChain(blocks)
+	require.NoError(t, err)
+}
+
+// TestPaymentLaneVerifyPackedBidRefusesASwallowedClassification pins the half of
+// VerifyPackedBid that has nothing to do with the quota.
+//
+// The miner's packing loop swallows a classification failure on purpose - refusing to
+// build is not the loop's decision - so on the bid path the sticky error is all that is
+// left of it. Checked only at seal time, the answer would arrive after the good local
+// block had been discarded, which is the outcome the bid gate exists to avoid.
+func TestPaymentLaneVerifyPackedBidRefusesASwallowedClassification(t *testing.T) {
+	to := common.Address{0x44}
+	ls := &LaneState{class: paymentlane.NewClassifier(common.Hash{}, failingAccountReader{}, nil)}
+
+	// Non-zero on purpose: at LaneSize 0 the quota comparison is 0 > shared, false for every
+	// argument, and deleting it would leave the whole tree green.
+	ls.Budget.LaneSize = 100
+	require.NoError(t, ls.VerifyPackedBid(100), "a quota that exactly fits is the accepting case")
+	require.ErrorIs(t, ls.VerifyPackedBid(99), paymentlane.ErrViolated,
+		"a bid that leaves less than the idle quota must be rejected")
+
+	_, err := ls.Classify(types.NewTx(&types.LegacyTx{To: &to, Value: common.Big1, Gas: paymentTxGas}))
+	require.ErrorIs(t, err, paymentlane.ErrStateUnavailable)
+	require.ErrorIs(t, ls.VerifyPackedBid(0), paymentlane.ErrStateUnavailable,
+		"a swallowed classification failure must reject the bid, not wait for the seal")
+}
+
 // --- helpers -------------------------------------------------------------------
+
+// failingAccountReader makes every classification that reaches the parent state fail.
+type failingAccountReader struct{}
+
+func (failingAccountReader) Account(common.Address) (*types.StateAccount, error) {
+	return nil, errors.New("no state")
+}
 
 type ecdsaKey struct {
 	priv *ecdsa.PrivateKey
@@ -310,64 +408,6 @@ func (k *ecdsaKey) sign(t *testing.T, signer types.Signer, nonce uint64, to comm
 	})
 	require.NoError(t, err)
 	return tx
-}
-
-// TestPaymentLaneClassifiesAgainstTheParentState pins the classifier's state binding,
-// which is a security property rather than tidiness.
-//
-// Bound to the advancing StateDB instead of the parent post-state, a block producer
-// could insert one cheap contract creation ahead of a batch of transfers and thereby
-// choose whose transfers count as payments - deterministically, with every other test
-// still green, and invisible until somebody used it. So a transfer to an address that
-// gains code IN THIS BLOCK is still a payment, and only from the next block on is it
-// general.
-func TestPaymentLaneClassifiesAgainstTheParentState(t *testing.T) {
-	config, gspec, key := laneGenesis(t)
-	signer := types.LatestSigner(config)
-
-	// Init code returning one byte, so the deployed account has a non-empty code hash.
-	deployGas := uint64(100_000)
-	created := crypto.CreateAddress(key.addr, 0)
-
-	var nonce uint64
-	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 4, func(i int, b *BlockGen) {
-		switch i + 1 {
-		case 3:
-			// Deploy, then pay INTO the address created by this very block.
-			tx, err := types.SignNewTx(key.priv, signer, &types.LegacyTx{
-				Nonce: nonce, Value: common.Big0, Gas: deployGas,
-				GasPrice: big.NewInt(params.GWei), Data: common.FromHex("0x60016000f3"),
-			})
-			require.NoError(t, err)
-			b.AddTx(tx)
-			nonce++
-			b.AddTx(key.sign(t, signer, nonce, created, big.NewInt(1), paymentTxGas, nil))
-			nonce++
-		case 4:
-			// Same transfer, one block later: now the code is in the parent post-state.
-			b.AddTx(key.sign(t, signer, nonce, created, big.NewInt(1), paymentTxGas, nil))
-			nonce++
-		}
-	})
-
-	require.NotEmpty(t, blocks[2].Transactions(), "block 3 must actually carry the deployment")
-	sameBlock, err := paymentlane.Decode(blocks[2].UncleHash())
-	require.NoError(t, err)
-	require.EqualValues(t, paymentTxGas, sameBlock.PaymentGasUsed,
-		"a transfer to an address created by this same block must still be a payment")
-
-	nextBlock, err := paymentlane.Decode(blocks[3].UncleHash())
-	require.NoError(t, err)
-	require.Zero(t, nextBlock.PaymentGasUsed,
-		"once the code is in the parent post-state the same transfer is general")
-	require.EqualValues(t, blocks[3].GasUsed(), blocks[3].GasUsed()-nextBlock.PaymentGasUsed,
-		"with no payment gas the general residual is the whole block")
-
-	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), DefaultConfig())
-	require.NoError(t, err)
-	defer chain.Stop()
-	_, err = chain.InsertChain(blocks)
-	require.NoError(t, err)
 }
 
 // TestPaymentLaneAndUnclesCannotShareTheSlot covers WriteCommitment's refusal, which is

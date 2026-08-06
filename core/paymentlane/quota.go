@@ -367,15 +367,15 @@ func LaneSize(p Params, s Signal, gasLimit uint64) uint64 {
 // CheckLaneSize reports whether a committed quota is the one the rules require.
 //
 // This is the check that makes the recursion truthful, and it is separate from
-// Budget.VerifyCommitment on purpose: the quota is a pure function of the parent
-// header and the parent post-state, so it can be settled BEFORE executing a single
-// transaction - including on the MEV admission path, before a validator signs.
-// The buckets are the part that genuinely needs replay.
+// Budget.VerifyCommitment on purpose: the quota is a pure function of the parent header
+// and the parent post-state, so it is settled before a single transaction executes - on
+// import, and on the MEV pre-seal path before a validator signs a builder's block. The
+// buckets are what genuinely needs replay.
 //
-// The distinction matters for what each check can prove. A dishonest builder can
-// always present self-consistent fake buckets, so the pre-seal gate cannot
-// adjudicate those. It CAN adjudicate the quota, because the quota is not a value
-// the builder gets to choose.
+// The distinction is what each check can prove. The quota is not a value a builder gets
+// to choose, so it is adjudicated exactly. Its payment total is not: the pre-seal gate can
+// only bound it from above, by what the block's payment-class transactions declare, and exact
+// equality waits for the importer.
 func CheckLaneSize(committed uint64, p Params, s Signal, gasLimit uint64) error {
 	if want := LaneSize(p, s, gasLimit); committed != want {
 		return fmt.Errorf("%w: committed %d, derived %d", ErrQuotaMismatch, committed, want)

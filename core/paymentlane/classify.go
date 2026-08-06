@@ -158,6 +158,15 @@ func NewClassifier(parentRoot common.Hash, parent AccountReader, listed map[comm
 //	                       delegation designator is classified general for free: its
 //	                       code hash is keccak(0xef0100||target), so it is not the
 //	                       empty-code hash.
+//
+// KNOWN LEAK, shared with the BEP text and left open on purpose. Gate 8 answers for the
+// PARENT state while the EVM resolves code from the state as it stands, so a destination that
+// acquires code earlier in the same block executes it inside a transaction this gate called
+// payment, consuming up to its declared limit instead of 21,000 - on a truthful commitment
+// that every node accepts. One deployment buys it, and what it buys is the reserved band no
+// general transaction can enter at any gas price (Budget.Headroom), so it is priority
+// inversion rather than a discount. Both ways to close it cost more than it does;
+// docs/bep703-payment-lane.md section 2.5 holds the comparison.
 func (c *Classifier) Classify(tx *types.Transaction) (Class, error) {
 	to := tx.To() // allocates; call it once
 	if to == nil {

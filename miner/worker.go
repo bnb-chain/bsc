@@ -103,6 +103,10 @@ var (
 	laneIdleGauge      = metrics.NewRegisteredGauge("paymentlane/idleLane", nil)         // gas wasted, at seal
 	laneYieldCounter   = metrics.NewRegisteredCounter("paymentlane/generalYielded", nil) // txs dropped for the quota
 	laneDeclineCounter = metrics.NewRegisteredCounter("paymentlane/produceDeclined", nil)
+	// Separate from produceDeclined: this one costs a slot's MEV rather than the block. It
+	// counts local faults as well - an unreadable parent state refuses the bid just the same
+	// - so a rise here is "bidblocks stopped being usable", not "this builder is wrong".
+	laneBidBlockDeclineCounter = metrics.NewRegisteredCounter("paymentlane/bidBlockDeclined", nil)
 
 	writeBlockTimer      = metrics.NewRegisteredTimer("worker/writeblock", nil)
 	finalizeBlockTimer   = metrics.NewRegisteredTimer("worker/finalizeblock", nil)
@@ -1598,8 +1602,17 @@ LOOP:
 
 	if bestBidBlock != nil && w.selectBidBlock(bestBidBlock, simBidBlockReward, simBidValidatorReward, bestReward) {
 		bidBlockWinGauge.Inc(1)
-		task, err := w.prepareBidBlockTask(bestBidBlock, start)
-		if err != nil {
+		// BEP-703: the last point at which the builder's commitment can still be refused
+		// for free. Here rather than at admission because bestWork's reader is already
+		// open on this bid's parent, and here rather than inside prepareBidBlockTask
+		// because that function has no state.
+		if err := w.verifyBidBlockLaneQuota(bestBidBlock, bestWork); err != nil {
+			log.Error("BidBlock rejected by the payment lane, fallback",
+				"builder", bestBidBlock.Builder,
+				"err", err)
+			laneBidBlockDeclineCounter.Inc(1)
+			bidBlockFallback = true
+		} else if task, err := w.prepareBidBlockTask(bestBidBlock, start); err != nil {
 			log.Error("Failed to prepare bid block, fallback",
 				"builder", bestBidBlock.Builder,
 				"err", err)

@@ -1212,12 +1212,11 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	// only gates the transactions IT adds. So the invariant has to be re-established
 	// once here, at the end, with payBidTx's reservation already returned to the pool.
 	//
-	// Discarding the bid is the point: without this the violation surfaces at seal time
-	// in LaneState.WriteCommitment, and by then the only available answer is to produce no
+	// Discarding the bid is the point, and it is why the same call also drains the
+	// classifier's sticky error: without either half the trouble surfaces at seal time in
+	// LaneState.WriteCommitment, and by then the only available answer is to produce no
 	// block at all for this height - every slot this builder wins, until it is jailed.
-	if !bidRuntime.env.lane.QuotaIntact(bidRuntime.env.gasPool.Gas()) {
-		err = fmt.Errorf("bid leaves no room for the payment lane quota: idle %d, gas left %d",
-			bidRuntime.env.lane.Budget.IdleLane(), bidRuntime.env.gasPool.Gas())
+	if err = bidRuntime.env.lane.VerifyPackedBid(bidRuntime.env.gasPool.Gas()); err != nil {
 		log.Warn("BidSimulator: bid rejected by the payment lane", "builder", bidRuntime.bid.Builder,
 			"bidHash", bidRuntime.bid.Hash(), "err", err)
 		return

@@ -143,6 +143,13 @@ func newParliaLaneHarness(t *testing.T) (*Parlia, *core.BlockChain, *params.Chai
 		if err != nil {
 			t.Fatalf("failed to create stateDB: %v", err)
 		}
+		// Not optional: untouched storage is byte for byte indistinguishable from an absent
+		// account and LoadParams maps a zero word to its default, so every quota assertion
+		// in this file would pass just as happily against an address where nothing was ever
+		// installed. Mutation-checked in core's harness, which carries the same guard.
+		if len(stateDB.GetCode(paymentlane.ContractAddress)) == 0 {
+			t.Fatal("0x2007 carries no code: the parameters below would be defaults by accident")
+		}
 		stateDB.SetBalance(consensus.SystemAddress, uint256.NewInt(12345), tracing.BalanceChangeUnspecified)
 		return stateDB
 	}
@@ -168,57 +175,85 @@ func TestPaymentLaneAppliesToTheBlockAfterParliaActivation(t *testing.T) {
 	}
 }
 
-// TestPaymentLaneCommitmentSurvivesParliaAssembly is the ordering test that no other
-// test in the tree can perform.
+// TestPaymentLaneCommitmentSurvivesParliaAssembly is the ordering test no other test in
+// the tree can perform, over both Parlia assemblers.
 //
 // The mutation it exists to kill: writing the commitment onto the header BEFORE
-// finalizeAndAssemble - the obvious-looking place, right where parlia sets
-// EmptyUncleHash - instead of onto the assembled block afterwards. That mutation loses
-// the commitment silently, and only a Parlia assembly can see it, because the ethash
-// path in core's tests never overwrites the uncle slot on the way.
+// finalizeAndAssemble - the obvious-looking place, right where parlia sets EmptyUncleHash -
+// instead of onto the assembled block afterwards. That mutation loses the commitment
+// silently, and only a Parlia assembly can see it, because the ethash path in core's tests
+// never overwrites the uncle slot on the way.
+//
+// Both assemblers, in one table, because "they behave the same way" is the assertion:
+// FinalizeAndAssembleBidBlock is called only from the builder binary, so nothing in this
+// repository links the two halves of that sequence, and a divergence between the two
+// assemblers would show up as builder blocks nobody accepts. What verifyCascadingFields does
+// with an unstamped block from Gauss+1 is asserted nowhere in Go - see the gap table in
+// docs/bep703-payment-lane.md.
 func TestPaymentLaneCommitmentSurvivesParliaAssembly(t *testing.T) {
-	engine, chain, config, parent, newHeader, newState := newParliaLaneHarness(t)
-	header, stateDB := newHeader(), newState()
+	// Non-zero on purpose: the all-zero commitment is a legal value, so a dropped one would
+	// be indistinguishable from a correct empty block.
+	const paymentUsed = 42_000
 
-	lane, err := core.ResolveLaneState(config, chain, parent.Header(), header, stateDB.Reader())
-	if err != nil {
-		t.Fatalf("failed to resolve the lane state: %v", err)
-	}
-	if !lane.On() {
-		t.Fatal("the lane must apply to this block, or this test asserts nothing")
-	}
-	lane.SetQuota()
-	if want := uint64(2_000_000); lane.Budget.LaneSize != want {
-		t.Fatalf("bootstrap quota: got %d, want the floor %d at a %d gas limit",
-			lane.Budget.LaneSize, want, laneGasLimit)
-	}
+	for _, tc := range []struct {
+		name     string
+		assemble func(*Parlia, *core.BlockChain, *types.Header, *state.StateDB) (*types.Block, error)
+	}{
+		{"the sealing path", func(e *Parlia, c *core.BlockChain, h *types.Header, sdb *state.StateDB) (*types.Block, error) {
+			block, _, err := core.AssembleBlock(e, c, h, sdb, &types.Body{}, nil)
+			return block, err
+		}},
+		{"the builder path", func(e *Parlia, c *core.BlockChain, h *types.Header, sdb *state.StateDB) (*types.Block, error) {
+			block, _, err := e.FinalizeAndAssembleBidBlock(c, h, sdb, &types.Body{}, nil, nil)
+			return block, err
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			engine, chain, config, parent, newHeader, newState := newParliaLaneHarness(t)
+			header, stateDB := newHeader(), newState()
 
-	// Non-zero on purpose: the all-zero commitment is a legal value now, so a
-	// dropped one would be indistinguishable from a correct empty block.
-	lane.Budget.PaymentUsed = 42_000
+			lane, err := core.ResolveLaneState(config, chain, parent.Header(), header, stateDB.Reader())
+			if err != nil {
+				t.Fatalf("failed to resolve the lane state: %v", err)
+			}
+			if !lane.On() {
+				t.Fatal("the lane must apply to this block, or this test asserts nothing")
+			}
+			lane.SetQuota()
+			if want := uint64(2_000_000); lane.Budget.LaneSize != want {
+				t.Fatalf("bootstrap quota: got %d, want the floor %d at a %d gas limit",
+					lane.Budget.LaneSize, want, laneGasLimit)
+			}
+			lane.Budget.PaymentUsed = paymentUsed
 
-	block, _, err := core.AssembleBlock(engine, chain, header, stateDB, &types.Body{}, nil)
-	if err != nil {
-		t.Fatalf("failed to assemble: %v", err)
-	}
-	// poolUsed must cover the bucket: WriteCommitment self-checks, and the bucket can only
-	// ever be a part of what the pool consumed. This block has no general gas, so the two
-	// are equal.
-	if err := lane.WriteCommitment(block, 42_000); err != nil {
-		t.Fatalf("failed to write the commitment: %v", err)
-	}
-	got, err := paymentlane.Decode(block.UncleHash())
-	if err != nil {
-		t.Fatalf("the commitment does not decode after a parlia assembly: %v (uncle slot %x)", err, block.UncleHash())
-	}
-	want := paymentlane.Commitment{LaneSize: 2_000_000, PaymentGasUsed: 42_000}
-	if got != want {
-		t.Fatalf("commitment: got %+v, want %+v", got, want)
-	}
-	// No hash assertion here: WriteCommitment made that comparison itself and froze the
-	// cache, so repeating it could not fail. TestPaymentLaneRefusesAStaleBlockHash covers it.
-	if len(block.Uncles()) != 0 {
-		t.Fatal("parlia must never produce uncles")
+			block, err := tc.assemble(engine, chain, header, stateDB)
+			if err != nil {
+				t.Fatalf("failed to assemble: %v", err)
+			}
+			if block.UncleHash() != types.EmptyUncleHash {
+				t.Fatalf("the assembler must leave the uncle slot for the stamp, got %x", block.UncleHash())
+			}
+			// poolUsed must cover the bucket: WriteCommitment self-checks, and the bucket can
+			// only ever be a part of what the pool consumed. This block has no general gas,
+			// so the two are equal.
+			if err := lane.WriteCommitment(block, paymentUsed); err != nil {
+				t.Fatalf("failed to write the commitment: %v", err)
+			}
+			got, err := paymentlane.Decode(block.UncleHash())
+			if err != nil {
+				t.Fatalf("the commitment does not decode after a parlia assembly: %v (uncle slot %x)", err, block.UncleHash())
+			}
+			want := paymentlane.Commitment{LaneSize: 2_000_000, PaymentGasUsed: paymentUsed}
+			if got != want {
+				t.Fatalf("commitment: got %+v, want %+v", got, want)
+			}
+			// No hash assertion: WriteCommitment made that comparison itself and froze the
+			// cache, so repeating it could not fail. TestPaymentLaneRefusesAStaleBlockHash
+			// covers it.
+			if len(block.Uncles()) != 0 {
+				t.Fatal("parlia must never produce uncles")
+			}
+		})
 	}
 }
 
@@ -257,27 +292,5 @@ func TestPaymentLaneRefusesAStaleBlockHash(t *testing.T) {
 	}
 	if block.Hash() != stale {
 		t.Fatal("Block.Hash must be cached on first read, or the guard is unnecessary")
-	}
-}
-
-// TestPaymentLaneRefusesBidBlockAssembly pins the fence in FinalizeAndAssembleBidBlock.
-//
-// That path is the one production assembler that does NOT go through core.AssembleBlock,
-// so it structurally cannot stamp a commitment: it would emit EmptyUncleHash on every
-// block, and handleBidBlockResult signs and broadcasts before InsertChain verifies. The
-// refusal lives in consensus code rather than only at the miner's RPC gate so that a
-// future reopening fails here instead of relying on someone reading a comment.
-func TestPaymentLaneRefusesBidBlockAssembly(t *testing.T) {
-	engine, chain, _, _, newHeader, newState := newParliaLaneHarness(t)
-
-	if _, _, err := engine.FinalizeAndAssembleBidBlock(chain, newHeader(), newState(), &types.Body{}, nil, nil); err == nil {
-		t.Fatal("BidBlock assembly must be refused while the payment lane applies")
-	} else if !strings.Contains(err.Error(), "payment lane commitment") {
-		t.Fatalf("unexpected refusal reason: %v", err)
-	}
-	// The ordinary path must still work on identical inputs, or the fence is just a
-	// broken assembler rather than a targeted refusal.
-	if _, _, err := engine.FinalizeAndAssemble(chain, newHeader(), newState(), &types.Body{}, nil, nil); err != nil {
-		t.Fatalf("the signed path must still assemble: %v", err)
 	}
 }
