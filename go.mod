@@ -2,6 +2,15 @@ module github.com/ethereum/go-ethereum
 
 go 1.25.0
 
+// Chaîne d'outils épinglée sur le dernier correctif de la série 1.25.
+// La série 1.25.0 embarque des failles connues de la BIBLIOTHÈQUE STANDARD (crypto/tls,
+// crypto/x509, net/url, net/http2, encoding/asn1, archive/tar…). Elles ne viennent d'aucune
+// dépendance : elles sont dans le compilateur lui-même, donc dans TOUT binaire produit avec
+// lui. Pour un nœud qui termine du TLS et analyse des entrées réseau hostiles, cela compte.
+// Le nombre de version (`go` ci-dessus) reste 1.25.0 : c'est la version minimale du langage,
+// on ne change pas la compatibilité, seulement le correctif utilisé pour compiler.
+toolchain go1.25.12
+
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.2.0
 	github.com/Microsoft/go-winio v0.6.2
