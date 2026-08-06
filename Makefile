@@ -2,8 +2,7 @@
 # with Go source code. If you know what GOPATH is then you probably
 # don't need to bother with make.
 
-.PHONY: geth evm faucet all test truffle-test lint fmt clean devtools help
-.PHONY: docker
+.PHONY: geth evm faucet all test lint fmt clean devtools help
 
 GOBIN = ./build/bin
 GO ?= latest
@@ -36,19 +35,6 @@ all:
 test: all
 	$(GORUN) build/ci.go test -timeout 1h
 
-#? truffle-test: Run the integration test.
-truffle-test:
-	rm -rf ./tests/truffle/storage/bsc-validator1
-	rm -rf ./tests/truffle/storage/bsc-rpc
-	docker build . -f ./docker/Dockerfile --target bsc -t bsc
-	docker build . -f ./docker/Dockerfile --target bsc-genesis -t bsc-genesis
-	docker build . -f ./docker/Dockerfile.truffle -t truffle-test
-	docker compose -f ./tests/truffle/docker-compose.yml up genesis
-	docker compose -f ./tests/truffle/docker-compose.yml up -d bsc-rpc bsc-validator1
-	sleep 60
-	docker compose -f ./tests/truffle/docker-compose.yml up --exit-code-from truffle-test truffle-test
-	docker compose -f ./tests/truffle/docker-compose.yml down
-
 #? lint: Run certain pre-selected linters.
 lint: ## Run linters.
 	$(GORUN) build/ci.go lint
@@ -73,10 +59,6 @@ devtools:
 	env GOBIN= go install ./cmd/abigen
 	@type "solc" 2> /dev/null || echo 'Please install solc'
 	@type "protoc" 2> /dev/null || echo 'Please install protoc'
-
-#? help: Build docker image
-docker:
-	docker build --pull -t bnb-chain/bsc:latest -f Dockerfile .
 
 #? help: Get more info on make commands.
 help: Makefile
