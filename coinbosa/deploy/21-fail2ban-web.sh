@@ -74,18 +74,41 @@ bantime  = 30m
 ignoreip = $IGNORE
 CONF
 
-echo "==> Vérification des filtres avant activation"
-# On refuse d'activer un filtre qui ne compile pas (sinon la prison est inerte
-# et on croirait le serveur protégé alors qu'il ne l'est pas).
-for f in caddy-status caddy-rpc; do
-  fail2ban-regex --help >/dev/null 2>&1 || break
-  if ! fail2ban-regex /dev/null "/etc/fail2ban/filter.d/$f.conf" >/dev/null 2>&1; then
-    echo "ARRÊT : le filtre $f ne compile pas — prisons non activées." >&2
-    rm -f /etc/fail2ban/jail.d/coinbosa-web.conf
+echo "==> Vérification des filtres sur de VRAIES lignes de journal"
+# Un filtre qui compile peut très bien ne rien reconnaître : la prison serait alors
+# inerte et on croirait le serveur protégé alors qu'il ne l'est pas. On exige donc
+# qu'il TROUVE l'adresse dans un échantillon représentatif du journal de Caddy.
+SAMPLE=$(mktemp)
+cat > "$SAMPLE" <<'SAMPLEEOF'
+{"level":"info","ts":1785000000.123,"logger":"http.log.access","msg":"handled request","request":{"remote_ip":"203.0.113.77","remote_port":"51234","proto":"HTTP/2.0","method":"GET","host":"explorer.coinbosa.com","uri":"/wp-login.php","headers":{}},"duration":0.001,"size":0,"status":404,"resp_headers":{}}
+{"level":"info","ts":1785000001.456,"logger":"http.log.access","msg":"handled request","request":{"remote_ip":"203.0.113.77","remote_port":"51235","proto":"HTTP/2.0","method":"POST","host":"explorer.coinbosa.com","uri":"/rpc","headers":{}},"duration":0.004,"size":88,"status":200,"resp_headers":{}}
+SAMPLEEOF
+
+verifier_filtre() {
+  local nom="$1" attendu="$2"
+  local sortie n
+  sortie=$(fail2ban-regex "$SAMPLE" "/etc/fail2ban/filter.d/${nom}.conf" 2>/dev/null || true)
+  # fail2ban-regex affiche « Lines: N lines, ... M matched »
+  n=$(printf '%s' "$sortie" | grep -oE '[0-9]+ matched' | head -1 | grep -oE '^[0-9]+' || echo 0)
+  if [ "${n:-0}" -lt "$attendu" ]; then
+    echo "ARRÊT : le filtre $nom ne reconnaît pas le journal de Caddy ($n correspondance(s), $attendu attendue(s))." >&2
+    echo "        Une prison inerte donnerait une fausse impression de protection." >&2
+    printf '%s\n' "$sortie" | tail -20 >&2
+    rm -f /etc/fail2ban/jail.d/coinbosa-web.conf "$SAMPLE"
     exit 1
   fi
-  echo "    filtre $f : OK"
-done
+  echo "    filtre $nom : $n correspondance(s) sur l'échantillon — OK"
+}
+
+if command -v fail2ban-regex >/dev/null 2>&1; then
+  verifier_filtre caddy-status 1   # la ligne 404
+  verifier_filtre caddy-rpc    1   # la ligne /rpc
+else
+  echo "ARRÊT : fail2ban-regex introuvable, impossible de PROUVER que les filtres marchent." >&2
+  rm -f /etc/fail2ban/jail.d/coinbosa-web.conf "$SAMPLE"
+  exit 1
+fi
+rm -f "$SAMPLE"
 
 systemctl enable fail2ban >/dev/null 2>&1 || true
 systemctl restart fail2ban
