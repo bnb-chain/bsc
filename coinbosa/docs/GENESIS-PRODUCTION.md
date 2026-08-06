@@ -8,9 +8,26 @@ Il n'y a donc **pas de deuxième essai**. Une adresse mal recopiée, une clé pe
 oublié : la seule correction possible serait de relancer un réseau, c'est-à-dire d'abandonner
 le premier. Ce document est la marche à suivre pour que cela n'arrive pas.
 
-> **État au 6 août 2026 : NO-GO.** Les 13 adresses de répartition valent toutes `0x0`, aucun
-> gouverneur n'est désigné, un seul validateur existe. `node scripts/preflight-genesis.js`
-> le confirme. Rien de ce qui suit ne doit être lancé avant que ce contrôle dise GO.
+> **État au 6 août 2026 : NO-GO — il manque UNE seule chose, les adresses.**
+>
+> | | |
+> |---|---|
+> | Client compilé sur le serveur | ✅ geth 1.7.6, patch 5 s vérifié |
+> | Clé de scellage du validateur | ✅ générée **sur le serveur**, jamais sortie |
+> | Adresse du validateur | `0x3986D6b31EC55043CeaAF25f5dDEa53517CBba50` |
+> | Nœud RPC + relais `/rpc` | ✅ prêts (`30-node.sh`, Caddy) |
+> | **13 adresses de répartition** | ❌ **toutes à `0x0`** |
+> | **Gouverneur** | ❌ non désigné |
+>
+> Voie retenue : **portefeuille matériel**. Une phrase de récupération générée sur
+> l'appareil, dont on n'exporte que le **xpub** (clé publique, qui ne permet pas de
+> dépenser) ; `scripts/derive-treasury-addresses.js` en dérive les 13 adresses plus le
+> gouverneur. La phrase ne touche jamais un ordinateur.
+>
+> Nombre de validateurs au lancement : **1**, avec passage à 4 ensuite. Conséquence à
+> assumer publiquement : le réseau n'a **ni tolérance aux pannes ni sécurité byzantine**,
+> et la clé de scellage vit sur le serveur qui sert aussi le site. C'est un choix de
+> vitesse, pas une architecture cible — il doit rester écrit noir sur blanc.
 
 ---
 

@@ -70,8 +70,18 @@ cibles.forEach((poste, i) => {
   console.log(`  0/${String(i).padEnd(2)}  ${poste.padEnd(26)} ${String(pct ? pct + ' %' : 'réserve').padStart(8)}  ${adresse}  ${montant.toLocaleString('fr-FR').padStart(13)} BOSA`);
 });
 
+// Le gouverneur du contrat système sur un index dédié, hors des postes de trésorerie.
+// Le placer sur le portefeuille matériel est bien plus solide qu'une clé chaude : modifier
+// l'ensemble des validateurs exigera l'appareil physique. Il est distinct de la clé de
+// scellage, qui vit en ligne sur le serveur du validateur (build-genesis.js refuse d'ailleurs
+// en production un gouverneur égal au validateur).
+const GOV_INDEX = cibles.length;
+const gouverneur = ethers.getAddress(noeud.derivePath(`0/${GOV_INDEX}`).address);
+console.log('  ' + '-'.repeat(88));
+console.log(`  0/${String(GOV_INDEX).padEnd(2)}  ${'GOUVERNEUR (contrat système)'.padEnd(26)} ${''.padStart(8)}  ${gouverneur}`);
 console.log('  ' + '='.repeat(88));
-console.log(`  ${cibles.length} adresses, toutes distinctes.`);
+console.log(`  ${cibles.length} adresses de répartition + 1 gouverneur, toutes distinctes.`);
+console.log(`\n  À utiliser au moment de produire le genesis :\n    GOVERNOR=${gouverneur}`);
 console.log('\n  AVANT DE FIGER LE GENESIS :');
 console.log('   1. vérifier CHAQUE adresse sur l\'écran de l\'appareil (index 0/0 à 0/' + (cibles.length - 1) + ')');
 console.log('   2. tester une récupération de la phrase sur un appareil vierge');
