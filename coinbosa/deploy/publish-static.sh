@@ -19,7 +19,11 @@ RSYNC_PATH="${SUDO:+sudo }rsync"
 # racine du dossier coinbosa/ (parent de deploy/)
 BASE="$(cd "$(dirname "$0")/.." && pwd)"
 
-for f in site/index.html explorer/index.html whitepaper/index.html; do
+# Le JavaScript vit dans des fichiers .js séparés (la CSP interdit le script en ligne).
+# Si un app.js n'est pas publié, la page se charge SANS son script : contrôle bloquant.
+for f in site/index.html site/app.js \
+         explorer/index.html explorer/app.js \
+         whitepaper/index.html whitepaper/app.js; do
   if [ ! -f "$BASE/$f" ]; then
     echo "Introuvable : $BASE/$f" >&2
     exit 1
@@ -28,8 +32,11 @@ done
 
 echo "==> Envoi des fichiers vers $SERVER"
 rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/site/index.html"       "$SERVER:/var/www/coinbosa/site/index.html"
+rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/site/app.js"           "$SERVER:/var/www/coinbosa/site/app.js"
 rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/explorer/index.html"   "$SERVER:/var/www/coinbosa/explorer/index.html"
+rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/explorer/app.js"       "$SERVER:/var/www/coinbosa/explorer/app.js"
 rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/whitepaper/index.html" "$SERVER:/var/www/coinbosa/whitepaper/index.html"
+rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/whitepaper/app.js"     "$SERVER:/var/www/coinbosa/whitepaper/app.js"
 
 # Favicons — générés depuis le LOGO OFFICIEL (assets/coinbosa-logo.jpg), jamais un dessin.
 # Régénération si besoin :
@@ -45,6 +52,12 @@ rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/assets/coinbosa-logo.jpg" "$SERVER:
 rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/robots.txt"  "$SERVER:/var/www/coinbosa/site/robots.txt"
 rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/sitemap.xml" "$SERVER:/var/www/coinbosa/site/sitemap.xml"
 rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/robots.txt"  "$SERVER:/var/www/coinbosa/explorer/robots.txt"
+
+# security.txt (RFC 9116) — il déclare le canal de signalement de faille. Il doit être
+# servi à l'emplacement normalisé /.well-known/, sinon personne ne le trouve.
+ssh "$SERVER" "${SUDO} install -d -o caddy -g caddy /var/www/coinbosa/site/.well-known /var/www/coinbosa/explorer/.well-known"
+rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/security.txt" "$SERVER:/var/www/coinbosa/site/.well-known/security.txt"
+rsync -avz --rsync-path="$RSYNC_PATH" "$BASE/deploy/static/security.txt" "$SERVER:/var/www/coinbosa/explorer/.well-known/security.txt"
 
 echo "==> Droits + rechargement de Caddy"
 ssh "$SERVER" "${SUDO} chown -R caddy:caddy /var/www/coinbosa && ${SUDO} chmod -R u=rwX,go=rX /var/www/coinbosa && ${SUDO} systemctl reload caddy"

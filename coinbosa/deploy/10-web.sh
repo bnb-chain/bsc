@@ -97,7 +97,14 @@ $SITE_DOMAIN, www.$SITE_DOMAIN {
         X-Content-Type-Options    "nosniff"
         X-Frame-Options           "DENY"
         Referrer-Policy           "strict-origin-when-cross-origin"
-        Content-Security-Policy   "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
+        # script-src SANS 'unsafe-inline' : tout le JavaScript est servi depuis des
+        # fichiers .js de même origine, et les gestionnaires onclick ont été remplacés
+        # par de la délégation d'événements. C'est ce qui empêche une injection HTML de
+        # devenir une exécution de code.
+        # style-src garde 'unsafe-inline' : les pages utilisent encore des attributs
+        # style="…" (55 au total). Résiduel connu, à traiter en convertissant ces
+        # attributs en classes — vecteur CSS uniquement, pas d'exécution de script.
+        Content-Security-Policy   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
         Permissions-Policy        "accelerometer=(), autoplay=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), usb=(), interest-cohort=()"
         -Server
     }
@@ -145,7 +152,14 @@ $EXPLORER_DOMAIN {
         X-Content-Type-Options    "nosniff"
         X-Frame-Options           "DENY"
         Referrer-Policy           "strict-origin-when-cross-origin"
-        Content-Security-Policy   "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
+        # script-src SANS 'unsafe-inline' : tout le JavaScript est servi depuis des
+        # fichiers .js de même origine, et les gestionnaires onclick ont été remplacés
+        # par de la délégation d'événements. C'est ce qui empêche une injection HTML de
+        # devenir une exécution de code.
+        # style-src garde 'unsafe-inline' : les pages utilisent encore des attributs
+        # style="…" (55 au total). Résiduel connu, à traiter en convertissant ces
+        # attributs en classes — vecteur CSS uniquement, pas d'exécution de script.
+        Content-Security-Policy   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
         Permissions-Policy        "accelerometer=(), autoplay=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), usb=(), interest-cohort=()"
         -Server
     }
