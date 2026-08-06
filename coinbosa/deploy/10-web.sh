@@ -169,9 +169,27 @@ EOF
 echo "==> Validation de la configuration"
 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
+# IMPORTANT : `caddy validate` s'exécute ici en ROOT et crée les fichiers de journal
+# au passage, donc en root:root. Caddy, lui, tourne sous l'utilisateur `caddy` : sans
+# cette reprise de propriété, il échoue au démarrage sur « permission denied » et le
+# site tombe. On la fait APRÈS la validation, juste avant le rechargement.
+chown -R caddy:caddy /var/log/caddy
+chmod 0750 /var/log/caddy
+chmod 0640 /var/log/caddy/*.log 2>/dev/null || true
+
 echo "==> Rechargement de Caddy"
 systemctl enable caddy
 systemctl reload caddy 2>/dev/null || systemctl restart caddy
+
+# Garde : un rechargement « réussi » peut laisser le service mort (config acceptée par
+# validate mais refusée au démarrage). On vérifie l'état réel plutôt que le code de retour.
+sleep 2
+if ! systemctl is-active --quiet caddy; then
+  echo "ERREUR : Caddy n'est pas actif après rechargement. Détail :" >&2
+  systemctl status caddy --no-pager 2>&1 | head -12 >&2
+  exit 1
+fi
+echo "    Caddy actif."
 
 echo ""
 echo "==> Tier web prêt."
