@@ -125,7 +125,7 @@ func resolveB20Token(state vm.StateDB, addr common.Address) (vm.PrecompiledContr
 }
 
 // init installs the resolver into the vm package's dispatch hook. The hook
-// panics if a Pasteur block executes without this package linked in, so a
+// panics if an Amsterdam block executes without this package linked in, so a
 // binary cannot silently diverge by dropping the import.
 func init() {
 	vm.RegisterB20Resolver(resolveB20)

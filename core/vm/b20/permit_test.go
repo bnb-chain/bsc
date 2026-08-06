@@ -47,6 +47,7 @@ func newTokenWithEVM(t *testing.T, now uint64, seed func(b20Storage)) (*state.St
 		seed(newB20Storage(statedb, token))
 	}
 	bc := vm.BlockContext{
+		Random:      &common.Hash{}, // post-merge rules, so IsAmsterdam resolves
 		CanTransfer: func(vm.StateDB, common.Address, *uint256.Int) bool { return true },
 		Transfer:    func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
 		BlockNumber: big.NewInt(1),

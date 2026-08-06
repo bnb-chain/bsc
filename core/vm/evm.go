@@ -52,7 +52,7 @@ func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
 	// entry for tokens, so they cannot live in the static precompiles map).
 	if evm.b20Enabled() {
 		if b20Resolver == nil {
-			// Fail loud: executing a Pasteur block without the B20 package
+			// Fail loud: executing an Amsterdam block without the B20 package
 			// linked in would silently diverge from consensus.
 			panic("vm: B20 active but no resolver registered (import core/vm/b20)")
 		}
@@ -80,9 +80,9 @@ func RegisterB20Resolver(r func(StateDB, common.Address) (PrecompiledContract, b
 // current block.
 //
 // TODO: replace with a dedicated B20 fork flag on params.Rules; gated on
-// Pasteur for now.
+// Amsterdam for now.
 func (evm *EVM) b20Enabled() bool {
-	return evm.chainRules.IsPasteur
+	return evm.chainRules.IsAmsterdam
 }
 
 // runPrecompile dispatches a resolved precompile, routing stateful precompiles

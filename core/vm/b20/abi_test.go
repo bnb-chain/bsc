@@ -178,7 +178,7 @@ func TestB20ABIBaseline(t *testing.T) {
 // (ABI-encoded error, vm.ErrExecutionReverted), exactly like a Solidity
 // `revert CustomError(...)`.
 func TestB20RevertData(t *testing.T) {
-	_, evm := newPasteurEVM(t)
+	_, evm := newAmsterdamEVM(t)
 	creator := common.HexToAddress("0xdec0de")
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
 		ret, _, err := evm.Call(caller, to, input, vm.NewGasBudget(5_000_000), uint256.NewInt(0))

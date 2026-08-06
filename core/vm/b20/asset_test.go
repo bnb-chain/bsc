@@ -54,8 +54,9 @@ func TestB20AssetExtension(t *testing.T) {
 	}
 	cfg := *params.TestChainConfig
 	zero := uint64(0)
-	cfg.PasteurTime = &zero
+	cfg.AmsterdamTime = &zero
 	bc := vm.BlockContext{
+		Random:      &common.Hash{}, // post-merge rules, so IsAmsterdam resolves
 		CanTransfer: func(vm.StateDB, common.Address, *uint256.Int) bool { return true },
 		Transfer:    func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
 		BlockNumber: big.NewInt(1),
@@ -182,7 +183,7 @@ func encodeAnnounce(calls [][]byte, id common.Hash) []byte {
 }
 
 func TestB20Announce(t *testing.T) {
-	_, evm := newPasteurEVM(t)
+	_, evm := newAmsterdamEVM(t)
 	creator := common.HexToAddress("0xc4ea70")
 	operator := common.HexToAddress("0x09e4a704")
 	salt := common.HexToHash("0x0e")
@@ -277,7 +278,7 @@ func encodeStringCall(sel [4]byte, strs ...string) []byte {
 }
 
 func TestB20ExtraMetadata(t *testing.T) {
-	_, evm := newPasteurEVM(t)
+	_, evm := newAmsterdamEVM(t)
 	creator := common.HexToAddress("0xc4ea70")
 	salt := common.HexToHash("0x0f")
 

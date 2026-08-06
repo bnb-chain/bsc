@@ -69,8 +69,9 @@ func TestB20Factory(t *testing.T) {
 	}
 	cfg := *params.TestChainConfig
 	zero := uint64(0)
-	cfg.PasteurTime = &zero
+	cfg.AmsterdamTime = &zero
 	bc := vm.BlockContext{
+		Random:      &common.Hash{}, // post-merge rules, so IsAmsterdam resolves
 		CanTransfer: func(vm.StateDB, common.Address, *uint256.Int) bool { return true },
 		Transfer:    func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
 		BlockNumber: big.NewInt(1),
@@ -148,8 +149,9 @@ func TestB20FactoryOwnerless(t *testing.T) {
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	cfg := *params.TestChainConfig
 	zero := uint64(0)
-	cfg.PasteurTime = &zero
+	cfg.AmsterdamTime = &zero
 	bc := vm.BlockContext{
+		Random:      &common.Hash{}, // post-merge rules, so IsAmsterdam resolves
 		CanTransfer: func(vm.StateDB, common.Address, *uint256.Int) bool { return true },
 		Transfer:    func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
 		BlockNumber: big.NewInt(1),

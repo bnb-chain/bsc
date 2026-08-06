@@ -155,20 +155,21 @@ func TestB20EndToEndTransfer(t *testing.T) {
 
 	cfg := *params.TestChainConfig
 	zero := uint64(0)
-	cfg.PasteurTime = &zero
+	cfg.AmsterdamTime = &zero
 
 	txHash := common.HexToHash("0x1234")
 	statedb.SetTxContext(txHash, 0)
 
 	bc := vm.BlockContext{
+		Random:      &common.Hash{}, // post-merge rules, so IsAmsterdam resolves
 		CanTransfer: func(vm.StateDB, common.Address, *uint256.Int) bool { return true },
 		Transfer:    func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
 		BlockNumber: big.NewInt(1),
 		Time:        1,
 	}
 	evm := vm.NewEVM(bc, statedb, &cfg, vm.Config{})
-	if !cfg.IsPasteur(big.NewInt(1), 1) {
-		t.Fatal("Pasteur must be active for the B20 precompile to resolve")
+	if !cfg.IsAmsterdam(big.NewInt(1), 1) {
+		t.Fatal("Amsterdam must be active for the B20 precompile to resolve")
 	}
 
 	input := b20Call(selTransfer, addrKey(b20Bob), u256hash(250))

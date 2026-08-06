@@ -44,7 +44,7 @@ func encodeUpdateList(sel [4]byte, id uint64, flag bool, addrs []common.Address)
 	return out
 }
 
-func newPasteurEVM(t *testing.T) (*state.StateDB, *vm.EVM) {
+func newAmsterdamEVM(t *testing.T) (*state.StateDB, *vm.EVM) {
 	t.Helper()
 	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	if err != nil {
@@ -52,8 +52,9 @@ func newPasteurEVM(t *testing.T) (*state.StateDB, *vm.EVM) {
 	}
 	cfg := *params.TestChainConfig
 	zero := uint64(0)
-	cfg.PasteurTime = &zero
+	cfg.AmsterdamTime = &zero
 	bc := vm.BlockContext{
+		Random:      &common.Hash{}, // post-merge rules, so IsAmsterdam resolves
 		CanTransfer: func(vm.StateDB, common.Address, *uint256.Int) bool { return true },
 		Transfer:    func(vm.StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
 		BlockNumber: big.NewInt(1),
@@ -63,7 +64,7 @@ func newPasteurEVM(t *testing.T) (*state.StateDB, *vm.EVM) {
 }
 
 func TestB20PolicyRegistry(t *testing.T) {
-	_, evm := newPasteurEVM(t)
+	_, evm := newAmsterdamEVM(t)
 	admin := common.HexToAddress("0xad4149")
 	reg := B20PolicyRegistryAddress
 
@@ -163,7 +164,7 @@ func TestB20PolicyRegistry(t *testing.T) {
 // TestB20PolicyIntegration binds policies to a token's compliance scopes and
 // checks they gate transfers and mints.
 func TestB20PolicyIntegration(t *testing.T) {
-	statedb, evm := newPasteurEVM(t)
+	statedb, evm := newAmsterdamEVM(t)
 	creator := common.HexToAddress("0xc4ea70")
 	custody := common.HexToAddress("0xc45d1")
 	salt := common.HexToHash("0x0c")
@@ -229,7 +230,7 @@ func TestB20PolicyIntegration(t *testing.T) {
 
 // TestB20SeizeWithMemo exercises the freeze-then-seize compliance flow.
 func TestB20SeizeWithMemo(t *testing.T) {
-	statedb, evm := newPasteurEVM(t)
+	statedb, evm := newAmsterdamEVM(t)
 	creator := common.HexToAddress("0xc4ea70")
 	salt := common.HexToHash("0x0d")
 
