@@ -546,24 +546,23 @@ func CalcUncleHash(uncles []*Header) common.Hash {
 	return rlpHash(uncles)
 }
 
-// laneCommitmentVersion is the version byte BEP-703 stamps into UncleHash[24].
+// isLaneCommitment reports whether these 32 bytes are a BEP-703 payment lane commitment
+// rather than an uncle-list hash.
 //
-// It duplicates paymentlane.commitVersion because the dependency only runs one way:
-// core/paymentlane imports this package, so this package cannot call Decode. The split
-// is deliberate rather than merely forced - this package owns the TAG, which is all the
-// body and propagation checks need, and paymentlane stays the only place that reads the
-// PAYLOAD. TestLaneCommitmentTagAgreesWithDecode bridges the two so they cannot drift.
-const laneCommitmentVersion byte = 1
-
-// isLaneCommitment reports whether these 32 bytes are a payment lane commitment
-// rather than an uncle list hash. Framing only - version byte plus the mandatory zero
-// tail - never the values, and deliberately silent on whether the lane is active:
-// paymentlane.Applies answers that, where the parent header is in scope.
+// The test is the reserved tail the encoding mandates: a commitment is two big-endian
+// uint64s followed by 16 zero bytes, so a hash whose low 16 bytes are all zero is one
+// and nothing else plausibly is. An uncle-list hash is a keccak digest, and the
+// pre-activation EmptyUncleHash in particular ends in d312451b948a7413f0a142fd40d49347.
+//
+// This package owns the TAG and core/paymentlane owns the PAYLOAD; the dependency runs
+// one way (paymentlane imports this package) so the framing has to live here. The two
+// cannot drift because they now test the same condition rather than two copies of one -
+// TestLaneCommitmentTagAgreesWithDecode holds them to that.
+//
+// Framing only, and deliberately silent on whether the lane is active: paymentlane.Applies
+// answers that, where the parent header is in scope.
 func isLaneCommitment(h common.Hash) bool {
-	if h[24] != laneCommitmentVersion {
-		return false
-	}
-	for _, b := range h[25:] {
+	for _, b := range h[16:] {
 		if b != 0 {
 			return false
 		}

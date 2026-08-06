@@ -95,7 +95,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 	}
 	// BEP-703: settle the quota before executing anything. It is a pure function of the
 	// parent header and the parent post-state, so it can be - and must be - decided here;
-	// only the buckets need replay.
+	// only the payment total needs replay.
 	//
 	// The exact position between the parent lookup above and the transaction loop below is
 	// free, NOT load-bearing: statedb.Reader() is pinned to originalRoot and is unaffected
@@ -171,9 +171,10 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
 		// System transactions never reach here - they were split out above - so every
-		// classified transaction is a user transaction, and systemGasUsed stays the
-		// separate term it is in the rule. Classified before the apply, like the three
-		// producing sites, and before the span opens so this error path needs no spanEnd.
+		// classified transaction is a user transaction, and the gas of the ones split out
+		// arrives later, in the residual Finalize adds to header.GasUsed. Classified
+		// before the apply, like the three producing sites, and before the span opens so
+		// this error path needs no spanEnd.
 		//
 		// No admission predicate on this side, deliberately: gp already enforces capacity
 		// and the rule is one global test in VerifyCommitment below. Adding Admits here
@@ -554,7 +555,6 @@ func AssembleBlock(engine consensus.Engine, chain consensus.ChainHeaderReader, h
 	if lane.On() {
 		block.SetUncleHash(paymentlane.Encode(paymentlane.Commitment{
 			LaneSize:       lane.Budget.LaneSize,
-			GeneralGasUsed: lane.Budget.GeneralUsed,
 			PaymentGasUsed: lane.Budget.PaymentUsed,
 		}))
 	}

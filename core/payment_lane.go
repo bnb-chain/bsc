@@ -50,7 +50,7 @@ type laneHeaderReader interface {
 }
 
 // LaneState is everything BEP-703 needs for one block: the recursion inputs taken
-// from the parent, plus the buckets filled in as that block executes.
+// from the parent, plus the payment total accumulated as that block executes.
 //
 // Construct exactly one per block-building or block-processing attempt, via
 // ResolveLaneState, and do not share it between goroutines - the classifier memo is a
@@ -67,12 +67,16 @@ type laneHeaderReader interface {
 //
 // The zero value - and a nil pointer - mean the lane does not apply, and every method
 // here is safe to call in that state, so the only branch a call site needs is around the
-// block-level prologue that decodes the parent's commitment. Reaching through to Budget
-// instead would not be safe: a zero Budget with a non-zero poolUsed fails Verify's
-// bucket-sum check rather than passing it, which is why the two verdicts are methods.
+// block-level prologue that decodes the parent's commitment.
+//
+// The two verdicts are methods rather than direct Budget calls for a second reason:
+// VerifyProduced also drains the classifier's sticky error, which is the only thing that
+// turns the packing loop's swallowed classification failure into a refusal to seal.
+// Budget cannot see that error, so reaching through to it would pass on a block built
+// with an unknown class.
 type LaneState struct {
-	// Budget accumulates this block's buckets. LaneSize is filled in by SetQuota on
-	// the producing side and by CheckQuota on the importing side, never by hand.
+	// Budget accumulates this block's payment total. LaneSize is filled in by SetQuota
+	// on the producing side and by CheckQuota on the importing side, never by hand.
 	Budget paymentlane.Budget
 
 	cfg      paymentlane.Params
@@ -200,14 +204,15 @@ func (ls *LaneState) Classify(tx *types.Transaction) (paymentlane.Class, error) 
 	return ls.class.Classify(tx)
 }
 
-// AccountFrom books the gas the pool has consumed since usedBefore into class's
-// bucket. Call it once per apply, with the sample taken immediately before that apply.
+// AccountFrom books the gas the pool has consumed since usedBefore, for a payment
+// transaction; a general one is a no-op, general gas being the header residual. Call it
+// once per apply, with the sample taken immediately before that apply.
 //
 // It takes the pool rather than a delta so that the only callable form is the correct
 // one. receipt.GasUsed and GasPool.CumulativeUsed() are both plausible and both wrong:
 // only Used() is the quantity that feeds header.GasUsed on the producing AND the
-// importing side, which is what lets Verify check the bucket sum as an identity instead
-// of as a convention. Differencing also makes rollback free - a reverted apply has
+// importing side, which is what lets the importer compare this figure against its own
+// replay at all. Differencing also makes rollback free - a reverted apply has
 // already restored the pool from its snapshot, so the delta is zero - and it cancels the
 // bid path's temporary PayBidTxGasLimit reservation, which would otherwise offset an
 // absolute reading by exactly 25,000.
@@ -244,10 +249,13 @@ func (ls *LaneState) Err() error {
 // pool - the invariant the packing loop maintains one admission at a time, restated as a
 // single end-of-block test for a path that cannot gate per transaction.
 //
-// With C the pool's capacity and shared its remainder, poolUsed + IdleLane <= C is exactly
-// IdleLane <= shared, and poolUsed + IdleLane <= C is the block rule with the miner's gas
-// reservation standing in for the real system gas. So this is the rule, not an
-// approximation of it, modulo that reservation.
+// With C the pool's capacity, r the miner's gas reservation and shared the remainder,
+// IdleLane <= shared is exactly poolUsed + IdleLane <= C = GasLimit - r, which implies the
+// block rule poolUsed + systemGasUsed + IdleLane <= GasLimit whenever the real system gas
+// stays inside r. It is therefore a STRENGTHENING of the rule, not an equivalent of it: at
+// C=1000, r=25, poolUsed=990, IdleLane=15 this refuses a block the rule permits. The
+// packing loop maintains the same strengthened form, so the two sides agree, and what
+// catches the real system gas overrunning r is VerifyProduced.
 //
 // Deliberately not a per-transaction gate on the MEV path: rejecting a builder's
 // transaction because its declared LIMIT does not fit would refuse bids the rule permits,
@@ -263,35 +271,26 @@ func (ls *LaneState) QuotaIntact(shared uint64) bool {
 // paymentlane.Budget.VerifyCommitment for why.
 //
 // headerGasUsed must be the locally recomputed total - the value Finalize grew - and never
-// block.GasUsed(), which is attacker-supplied. The subtraction cannot underflow because
-// the caller samples the pool first and Finalize only adds to it.
-//
-// paymentlane.DeriveSystemGas is deliberately NOT used here: it backs the figure out of
-// the buckets, and on this side the whole point is to hold an independent real value to
-// compare them against.
+// block.GasUsed(), which is attacker-supplied.
 func (ls *LaneState) VerifyImported(headerGasUsed, poolUsed uint64, c paymentlane.Commitment) error {
 	if !ls.On() {
 		return nil
 	}
-	return ls.Budget.VerifyCommitment(ls.gasLimit, headerGasUsed-poolUsed, poolUsed, c)
+	return ls.Budget.VerifyCommitment(ls.gasLimit, headerGasUsed, poolUsed, c)
 }
 
 // VerifyProduced is the producer's pre-seal self-check, shared by every path that assembles
-// a block. Failing here costs a slot; producing anyway is worse, because the buckets go
-// into the commitment, every importer replays them and rejects, and the producer has by
-// then set its own head to the block and broadcast it.
+// a block. Failing here costs a slot; producing anyway is worse, because the payment
+// total goes into the commitment, every importer replays it and rejects, and the producer
+// has by then set its own head to the block and broadcast it.
 //
 // It reads block.GasUsed() rather than the header the caller still holds, because the
 // parlia commit path hands AssembleBlock a CopyHeader: that header keeps the
 // user-transaction total forever while the assembled block carries the system-transaction
-// gas Finalize added. The gas LIMIT comes from ls instead, the same value LaneSize was
-// derived from, so the quota and the capacity it is checked against cannot come from two
-// different headers. That makes systemGasUsed the real figure rather than the miner's
-// reservation, which is load-bearing - see paymentlane.Budget.Verify.
-//
-// DeriveSystemGas rather than a bare subtraction: the inputs here are all local, so an
-// underflow means the accounting drifted and should be reported as that, not as a wrapped
-// systemGasUsed near 2^64 under ErrViolated.
+// gas Finalize added. That total is the main term of the rule, so reading the stale header
+// here would check a different inequality than the importer will. The gas LIMIT comes from
+// ls instead, the same value LaneSize was derived from, so the quota and the capacity it
+// is checked against cannot come from two different headers.
 func (ls *LaneState) VerifyProduced(block *types.Block, poolUsed uint64) error {
 	if !ls.On() {
 		return nil
@@ -299,9 +298,5 @@ func (ls *LaneState) VerifyProduced(block *types.Block, poolUsed uint64) error {
 	if err := ls.Err(); err != nil {
 		return err
 	}
-	systemGasUsed, err := paymentlane.DeriveSystemGas(block.GasUsed(), ls.Budget.GeneralUsed, ls.Budget.PaymentUsed)
-	if err != nil {
-		return err
-	}
-	return ls.Budget.Verify(ls.gasLimit, systemGasUsed, poolUsed)
+	return ls.Budget.Verify(ls.gasLimit, block.GasUsed(), poolUsed)
 }

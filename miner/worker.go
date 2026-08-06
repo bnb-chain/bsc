@@ -156,7 +156,7 @@ type environment struct {
 	//
 	// Per-env, not per-worker (prepareWork runs concurrently from mainLoop and from the
 	// bid simulator) and not a local of commitTransactions (fillTransactions calls that
-	// twice, and a local would restart the buckets on the second pass, let general
+	// twice, and a local would restart the accounting on the second pass, let general
 	// traffic eat the quota, self-check green on its own numbers, and be rejected on
 	// import as ErrUntruthy).
 	lane *core.LaneState

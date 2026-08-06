@@ -45,20 +45,16 @@ const maxLaneRatio = 2_000
 // ---------------------------------------------------------------------------
 // Deviations from the BEP-703 text.
 //
-// AUTHORITY: bnb-chain/BEPs PR #703 at its published head, read 2026-08-05. The text
-// has been amended since this table was first written, and the amendments went the
-// implementation's way: most of what the table listed is now specified rather than
-// merely unpinned. Those entries moved to PINNED BY THE BEP, because each is still
-// something a reader could "tidy up" - what changed is that doing so now contradicts
-// the text instead of filling a gap in it, and re-listing one as a deviation invites
-// an amendment that undoes what the text got right.
-//
-// Anything left implicit is a future consensus split for a second implementation: the
-// recursion has memory (see LaneSize), so one block of disagreement is permanent.
+// AUTHORITY: bnb-chain/BEPs PR #703 at its published head. The BEP is not being amended
+// to accommodate this implementation, so every entry below is a divergence a second
+// implementation would hit, and the recursion has memory (see LaneSize): one block of
+// disagreement is permanent.
 //
 // PINNED BY THE BEP - do not change without amending the text:
 //
-//   - Expansion comparison: signal >= expandTrigger (3.4.3).
+//   - Expansion comparison: signal >= expandTrigger (3.4.3). Shrink is the strict
+//     signal < shrinkTrigger, so a signal landing on the threshold holds and the band
+//     is [shrinkTrigger, expandTrigger); 3.4.3 states both operators are normative.
 //   - Multiply first, then floor-divide (3.4: "multiplies before dividing and
 //     truncates toward zero").
 //   - Which block's GasLimit: the PARENT's for the signal denominator, THIS block's
@@ -75,60 +71,39 @@ const maxLaneRatio = 2_000
 //   - Activation: the rules bind from activation+1 and the activation block is
 //     exempt in every respect, carrying no commitment (3.4.5). It must stay the ONLY
 //     exempt post-Gauss block, or ParentSignal's depth-1 discriminator breaks.
-//   - The inequality. 3.3's two-term form is this file's three-term form: under
-//     3.5.2's own definition general = header.GasUsed - payment, so
-//     system + general + max(payment, lane) is exactly what 3.3 states. What differs
-//     is the signal (item 1) and the header payload (item 5), not the rule.
-//   - Shrink comparison: the strict signal < shrinkTrigger, so a signal landing on
-//     the threshold holds rather than shrinking, and the band is
-//     [shrinkTrigger, expandTrigger). 3.4.3 states both operators are normative and
-//     says why (an accumulator never reconverges after one boundary block).
+//   - The inequality, in 3.3's two-term form. generalGasUsed is header.GasUsed less
+//     paymentGasUsed - 3.5.2 says so - so it covers Parlia's system transactions, and
+//     CheckInequality needs no third term. Do not reintroduce one: a separate
+//     systemGasUsed argument was how an earlier version came to keep system gas out of
+//     the congestion signal, which is the divergence described below.
+//   - BOTH terms of the congestion signal (3.4.2): general gas taken as the header
+//     residual, plus payment gas beyond the quota. Each guards the same structural
+//     property from a different side - a saturated block always expands, because at the
+//     rule's equality the numerator is exactly GasLimit - laneSize and invariant (5) of
+//     3.6 caps laneSize at RATIO_DENOM - EXPAND_TRIGGER_RATIO for that reason. Dropping
+//     the residual makes a breathe block read as quiet; dropping the overflow makes a
+//     payment-dominated full block read as quiet. newSignal spells both out.
+//   - The commitment layout of 3.5.2: laneSize at [0:8], paymentGasUsed at [8:16],
+//     [16:32] zero. General gas is not committed because it is derivable, and the zero
+//     tail is what tells these bytes apart from an uncle-list hash. Do not spend a byte
+//     of that window on a version tag - the reachable all-zero commitment is legal, and
+//     what rejects a header that never had one written is CheckLaneSize.
 //
-// THE DEVIATIONS. Item 1 is ruled deliberate; items 6 and 8 were settled when they
-// were written; item 7 records an incompleteness in the text, not a difference in
-// behaviour. Items 2 to 5 are RECORDED BUT NOT RULED - they are here so that a reader
-// diffing this file against the text finds them already known. For 2 to 4 the
+// THE DEVIATIONS. Items 1 to 3 are RECORDED BUT NOT RULED - they are here so that a
+// reader diffing this file against the text finds them already known. For all three the
 // expected resolution is an amendment rather than a change here, since each closes a
-// real hole and closing it for category 1 alone would leave the same hole open
-// through a listed token; that is a preference, not a decision. Item 5 waits on the
-// carrier decision, which is open for its own reasons.
+// real hole and closing it for category 1 alone would leave the same hole open through a
+// listed token; that is a preference, not a decision. Items 4 and 5 record what the text
+// does not contain at all.
 //
-//  1. THE CONGESTION SIGNAL DIFFERS FROM 3.4.2 IN TWO WAYS, AND THIS IS THE
-//     HIGHEST-VALUE ITEM IN THE TABLE: one differing block offsets the accumulator
-//     forever, so a second implementation that aligns on one half and not the other
-//     still forks.
-//
-//     (a) The overflow term is omitted. 3.4.2 defines signalGasUsed =
-//     generalGasUsed + max(0, paymentGasUsed - paymentLaneSize); Signal carries
-//     generalGasUsed only, because newSignal decodes the parent's paymentGasUsed and
-//     drops it. So the lane expands on general congestion alone and the traffic it
-//     privileges can never grow it - which is also why section 6's "sustained payment
-//     traffic beyond the quota does raise the signal and expand the reservation" does
-//     not hold here. RULED DELIBERATE (2026-08-05). Divergence is confined to blocks
-//     where payment overflowed its quota.
-//
-//     (b) System-transaction gas is excluded, and this half diverges on EVERY block.
-//     3.4.2 feeds on generalGasUsed, which 3.5.2 pins as header.GasUsed - payment;
-//     Parlia's system transactions are general under 3.2, so the BEP's signal
-//     includes their gas. Commitment.GeneralGasUsed deliberately does not - the
-//     buckets sum to the user-transaction pool - so this signal is short by
-//     systemGasUsed always, not only when payment overflowed. The blocks that
-//     actually diverge are those whose signal sits within systemGasUsed of either
-//     trigger, a band a few tenths of a percent of GasLimit wide around 80% and 60%
-//     fill. NOT RULED: the substitution that makes 3.3's two-term inequality
-//     identical to this file's three-term form (see the inequality item above) does
-//     NOT carry over to 3.4.2, because the signal reads general alone rather than the
-//     sum. Aligning means either adding systemGasUsed back into the signal here or
-//     amending 3.4.2 to name the user-transaction total.
-//
-//  2. A ZERO-VALUE BARE TRANSFER IS GENERAL. Section 3.2's category 1 carries no
+//  1. A ZERO-VALUE BARE TRANSFER IS GENERAL. Section 3.2's category 1 carries no
 //     value condition - neither the table nor the pseudocode - so a value-0 call to
 //     a code-less account is payment there and general here (Classify gate 7). A
 //     transfer that moves nothing is not a payment; the price is that this is the
 //     cheapest possible way for an implementation reading only the BEP to disagree,
 //     on traffic anyone can produce for 21000 gas.
 //
-//  3. THE RESERVED RANGE IS WIDER THAN "NOT A PRECOMPILE". Section 3.2 excludes
+//  2. THE RESERVED RANGE IS WIDER THAN "NOT A PRECOMPILE". Section 3.2 excludes
 //     precompile addresses. isReserved excludes everything at or below
 //     maxReservedAddress, which additionally covers every Parlia system contract
 //     and every unused address below 0x10000; see maxReservedAddress for why a
@@ -136,7 +111,7 @@ const maxLaneRatio = 2_000
 //     0x0, or to any code-less address in that window - payment per the text,
 //     general here.
 //
-//  4. THE LISTED-CONTRACT LOOKUP IS SUBORDINATE TO GATES 2-4. Section 3.2's
+//  3. THE LISTED-CONTRACT LOOKUP IS SUBORDINATE TO GATES 2-4. Section 3.2's
 //     pseudocode tests the payment-contract list first and unconditionally, and
 //     section 3.7 states it as "every transaction whose to is listed is a payment
 //     transaction, whatever function it calls". Here a listed destination must
@@ -148,45 +123,30 @@ const maxLaneRatio = 2_000
 //     a BlobTx but an ordinary type-0x01 or 0x02 transfer to a listed token
 //     carrying an access list: payment per the text, general here.
 //
-//  5. THE COMMITMENT CARRIES THREE VALUES AND A VERSION BYTE. Section 3.5.2 commits
-//     two - laneSize at [0:8], paymentGasUsed at [8:16], [16:32] reserved and
-//     mandatory zero - and derives generalGasUsed from header.GasUsed. Encode puts
-//     generalGasUsed at [8:16], paymentGasUsed at [16:24] and commitVersion at
-//     [24], i.e. inside the text's mandatory-zero window, so a conformant client
-//     rejects every header this produces. Committing both buckets and deriving
-//     systemGasUsed is what keeps a breathe block's system gas out of the
-//     congestion signal; see Commitment and Encode. Section 3.5.3's choice of
-//     header.UncleHash was adopted for BSC (2026-08-05), so the field name is no longer
-//     a deviation - the LAYOUT still is, and no conformant client accepts these headers
-//     until 3.5.2 is amended.
-//
-//  6. payBidTx IS USUALLY PAYMENT CLASS. The MEV rebate transaction is an ordinary
-//     externally-signed transfer with empty calldata and no structural marker, so the
-//     mechanical predicate decides it like any other - payment for the common shape, an
-//     EOA payee and a non-zero fee, general when the payee is a contract (a splitter or
-//     a Safe) or when the fee is zero, which is what BuilderFeeCeil defaults to. Either
-//     way there is no consensus risk - both sides run the same predicate over the same
-//     bytes - only an economic leak of about 25000 gas per MEV block. A client must NOT
-//     reclassify it unilaterally: that is what would make the two sides' buckets
-//     disagree and produce a BAD_BLOCK with no indicative log.
-//
-//  7. THE CONTRACT'S ABSOLUTE PARAMETER BOUNDS ARE NOT IN THE BEP. Section 3.6
-//     gives invariants (1)-(6), and 3.4 bounds every ratio by RatioDenom. Nothing else. The
-//     deployed contract also caps maxRatio at MAX_LANE_RATIO and bounds both
+//  4. THE CONTRACT'S ABSOLUTE PARAMETER BOUNDS ARE NOT IN THE BEP. Section 3.6
+//     gives invariants (1)-(6), and 3.4 bounds every ratio by RatioDenom. Nothing else.
+//     The deployed contract also caps maxRatio at MAX_LANE_RATIO and bounds both
 //     triggers, both steps and both absolute gas parameters. The no-reachable-halt
 //     argument documented on maxLaneRatio rests on the first of those, so it rests
 //     on a bound the text does not contain: an implementation reading only section
 //     3.6 would accept a governance tuple this file treats as impossible.
 //
-//  8. THE GasLimit SAFETY CLAMP IS NOT IN THE BEP AT ALL. See the last step of
+//  5. THE GasLimit SAFETY CLAMP IS NOT IN THE BEP AT ALL. See the last step of
 //     LaneSize for why it exists and why it is the smallest defence against an
-//     unrecoverable halt.
+//     unrecoverable halt. It is also what makes laneSize == 0 - and therefore the
+//     all-zero commitment - reachable, on any chain at or below SystemTxsGasHardLimit.
 //
-// Two claims this table used to make are simply false and must not come back: that
-// the type allowlist and the empty-access-list test are absent from the text (both
-// are category-1 conditions in 3.2, verbatim), and that the BEP names no header field
-// and no byte layout (3.5.2 gives both). Numbering is not stable across corrections
-// like these - reference an entry by its heading.
+// Not a deviation, but the question comes up: payBidTx is usually PAYMENT class. The MEV
+// rebate transaction is an ordinary externally-signed transfer with empty calldata and no
+// structural marker, so the mechanical predicate decides it like any other - payment for
+// the common shape, an EOA payee and a non-zero fee, general when the payee is a contract
+// or when the fee is zero, which is what BuilderFeeCeil defaults to. The BEP says the
+// same for the same shapes; only item 1 makes the zero-fee case differ. Either way there
+// is no consensus risk, both sides running the same predicate over the same bytes - but a
+// client must NOT reclassify it unilaterally, since that is what would make the two
+// sides' payment totals disagree and produce a BAD_BLOCK with no indicative log.
+//
+// Numbering is not stable across corrections - reference an entry by its heading.
 // ---------------------------------------------------------------------------
 
 // Applies reports whether the BEP-703 rules bind the block whose parent is given.
@@ -242,9 +202,9 @@ func Applies(config *params.ChainConfig, parent, header *types.Header) bool {
 // bootstrap seed), and ParentSignal given a grandparent that is not the parent's
 // parent will return a Signal built on the wrong gate.
 type Signal struct {
-	laneSize       uint64 // laneSize(n-1), the recursion state
-	generalGasUsed uint64 // signal numerator
-	gasLimit       uint64 // signal denominator; GasLimit(n-1), never GasLimit(n)
+	laneSize      uint64 // laneSize(n-1), the recursion state
+	signalGasUsed uint64 // signal numerator, per section 3.4.2
+	gasLimit      uint64 // signal denominator; GasLimit(n-1), never GasLimit(n)
 }
 
 // ParentSignal derives the recursion input for the block after parent.
@@ -293,7 +253,7 @@ func ParentSignal(config *params.ChainConfig, grandparent, parent *types.Header,
 	if err != nil {
 		return Signal{}, err
 	}
-	return newSignal(&c, parent.GasLimit), nil
+	return newSignal(&c, parent.GasUsed, parent.GasLimit), nil
 }
 
 // newSignal is the low-level constructor. Unexported: reaching it from outside
@@ -305,14 +265,37 @@ func ParentSignal(config *params.ChainConfig, grandparent, parent *types.Header,
 // special case would be a second definition of a consensus value that executes
 // once per network and therefore can never be regression-tested on the network
 // where it matters.
-func newSignal(prev *Commitment, parentGasLimit uint64) Signal {
+//
+// The numerator is section 3.4.2 verbatim: all general gas, plus the payment gas that
+// overflowed the quota. Both terms matter, and each guards a different half of one
+// structural property - that a SATURATED block always expands. Substituting the block
+// rule at equality gives signalGasUsed == GasLimit - laneSize, and invariant (5) of
+// section 3.6 caps laneSize at exactly RATIO_DENOM - EXPAND_TRIGGER_RATIO for that
+// reason, so a full block clears the expand trigger by construction.
+//
+// Drop the payment overflow and a full block whose payment traffic dominates reads as
+// quiet: general 35M plus payment 20M fills a 55M block, yet the numerator would be 35M,
+// under the 38.5M shrink trigger, and the payment floor would be cut in the very
+// congestion it exists for. Drop system gas - by taking a committed general figure that
+// excludes it instead of the header residual - and a breathe block does the same, because
+// its user pool is only GasLimit less SystemTxsGasHardLimit and can never reach the
+// trigger at all.
+//
+// satSub rather than an error on parentGasUsed < PaymentGasUsed: the pair has already
+// been through CheckHeaderBounds at header verification, so the difference cannot be
+// negative on a chain-connected parent, and ParentSignal must stay total for the same
+// reason LaneSize does.
+func newSignal(prev *Commitment, parentGasUsed, parentGasLimit uint64) Signal {
 	if prev == nil {
 		return Signal{}
 	}
 	return Signal{
-		laneSize:       prev.LaneSize,
-		generalGasUsed: prev.GeneralGasUsed,
-		gasLimit:       parentGasLimit,
+		laneSize: prev.LaneSize,
+		signalGasUsed: satAdd(
+			satSub(parentGasUsed, prev.PaymentGasUsed), // all general gas
+			satSub(prev.PaymentGasUsed, prev.LaneSize), // payment beyond the quota
+		),
+		gasLimit: parentGasLimit,
 	}
 }
 
@@ -343,9 +326,9 @@ func LaneSize(p Params, s Signal, gasLimit uint64) uint64 {
 	// whole lattice to see it.
 	if s.gasLimit != 0 {
 		switch {
-		case gte128(s.generalGasUsed, RatioDenom, p.ExpandTrigger, s.gasLimit):
+		case gte128(s.signalGasUsed, RatioDenom, p.ExpandTrigger, s.gasLimit):
 			next = satAdd(next, mulDivFloor(p.ExpandStep, gasLimit, RatioDenom))
-		case !gte128(s.generalGasUsed, RatioDenom, p.ShrinkTrigger, s.gasLimit):
+		case !gte128(s.signalGasUsed, RatioDenom, p.ShrinkTrigger, s.gasLimit):
 			next = satSub(next, mulDivFloor(p.ShrinkStep, gasLimit, RatioDenom))
 		}
 		// else: hysteresis band, the quota holds.

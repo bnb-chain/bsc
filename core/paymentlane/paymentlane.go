@@ -18,7 +18,13 @@
 //
 // The rule is one inequality per block:
 //
-//	systemGasUsed + generalGasUsed + max(paymentGasUsed, laneSize) <= GasLimit
+//	generalGasUsed + max(paymentGasUsed, laneSize) <= GasLimit
+//
+// generalGasUsed is header.GasUsed less paymentGasUsed, so it covers Parlia's system
+// transactions too - they are general transactions under section 3.2 like any other.
+// Substituting it gives the form every check here actually evaluates:
+//
+//	header.GasUsed + max(0, laneSize - paymentGasUsed) <= GasLimit
 //
 // The quota is a floor, not a ceiling: payment gas beyond the quota competes for
 // the remaining space on equal terms with general traffic. Unused quota idles and
@@ -35,14 +41,14 @@
 // # Where the commitment lives
 //
 // laneSize(n) is a recursive quantity: the accumulated sum of every +/-step since
-// activation. Recomputing it from chain history is not merely expensive, it needs
-// every intervening block's CLASSIFIED generalGasUsed - i.e. full re-execution
-// against historical state, not headers alone - so it must be carried in the parent
-// header. This package defines how the three committed values pack into 32 bytes
-// (Encode/Decode) and still does not name the field, so the rules stay independent of
-// it. The carrier chosen for BSC is header.UncleHash, wired in core and core/types; the
-// only reason to know that here is that Encode's range must avoid EmptyUncleHash, which
-// is why commitVersion exists.
+// activation. Recomputing it from chain history is not merely expensive, it needs every
+// intervening block's CLASSIFIED paymentGasUsed - i.e. full re-execution against
+// historical state, not headers alone - so it must be carried in the parent header. This
+// package defines how the two committed values pack into 32 bytes (Encode/Decode) and
+// still does not name the field, so the rules stay independent of it. The carrier chosen
+// for BSC is header.UncleHash, wired in core and core/types; the only reason to know that
+// here is that the encoding's zero tail is what tells a commitment apart from an
+// uncle-list hash, EmptyUncleHash included.
 //
 // # Deviations from the BEP text
 //
@@ -63,12 +69,12 @@ import (
 
 // Class is the lane class of a transaction.
 //
-// Parlia system transactions are not classified: core.StateProcessor splits them
-// out of the user-transaction loop before accounting, they never pass through the
-// GasPool, and their gas is added straight to header.GasUsed by Finalize. In the
-// inequality they are the separate systemGasUsed term, which is derived
-// arithmetic and never a per-transaction label - that is why there is no
-// ClassSystem here and why adding one would have nothing to tag.
+// Parlia system transactions are general transactions - they call a system contract
+// with non-empty calldata, so section 3.2 puts them in the general class like any
+// other such call - but they are never labelled: core.StateProcessor splits them out
+// of the user-transaction loop, they never pass through the GasPool, and Finalize adds
+// their gas straight to header.GasUsed. General gas is the residual there, so they are
+// counted without being tagged, and a ClassSystem would have nothing to tag.
 //
 // There are exactly two values. "Not yet classified" is not a state: the caller
 // must have settled the class before accounting, so Budget.Account cannot fail.
@@ -92,8 +98,7 @@ func (c Class) String() string {
 
 var (
 	ErrViolated         = errors.New("payment lane inequality violated")
-	ErrBucketMismatch   = errors.New("payment lane buckets do not sum to gas used")
-	ErrBucketOverflow   = errors.New("payment lane buckets exceed header gas used")
+	ErrBucketMismatch   = errors.New("payment lane payment bucket exceeds the transaction pool total")
 	ErrBadCommitment    = errors.New("payment lane commitment is malformed")
 	ErrUntruthy         = errors.New("payment lane commitment does not match replayed buckets")
 	ErrCorruptConfig    = errors.New("payment lane config storage layout mismatch")
@@ -101,85 +106,70 @@ var (
 	ErrStateUnavailable = errors.New("payment lane state unavailable")
 )
 
-// commitVersion keeps Encode's range clear of both common.Hash{} and any
-// all-zero-plus-sentinel value a carrier might use to mean "unset".
+// Commitment is the per-block recursion state plus the payment bucket, exactly the
+// two values BEP-703 section 3.5.2 commits.
 //
-// This is a correctness requirement, not an extensibility hook. Commitment{0,0,0} is
-// reachable - an empty block whose GasLimit is at or below SystemTxsGasHardLimit, so
-// the safety clamp takes the quota to zero - and would otherwise encode to the zero
-// hash, which every plausible carrier treats as "the caller never wrote this field".
-// The failure mode is a block that seals locally and is rejected network-wide, with
-// nothing in the header or body checks able to say why.
-const commitVersion byte = 1
-
-// Commitment is the per-block recursion state plus the two class buckets.
-//
-// Two explicit buckets rather than one bucket plus a derivation: a breathe block's
-// validator-set update is the largest system-transaction cost on the chain -
-// parlia records 12.16M gas as the maximum observed on mainnet - which is over 20pp
-// of a 55M block. Folding that into generalGasUsed would fake a congestion spike,
-// and therefore a quota expansion, once a day. systemGasUsed is derived instead,
-// via DeriveSystemGas.
+// generalGasUsed has no field: it is header.GasUsed less PaymentGasUsed, which makes it
+// unforgeable rather than merely redundant - a producer cannot misstate it without
+// misstating header.GasUsed, and that is already checked in consensus. Committing it
+// instead would only be necessary to keep some part of the block's gas OUT of the
+// congestion signal, and no part of it is out.
 type Commitment struct {
 	LaneSize       uint64
-	GeneralGasUsed uint64
 	PaymentGasUsed uint64
 }
 
 // Encode packs a Commitment into 32 bytes:
 //
 //	[0:8]   laneSize        uint64 big-endian
-//	[8:16]  generalGasUsed  uint64 big-endian
-//	[16:24] paymentGasUsed  uint64 big-endian
-//	[24]    version, always commitVersion
-//	[25:32] reserved, must be zero
+//	[8:16]  paymentGasUsed  uint64 big-endian
+//	[16:32] reserved, always zero
 //
 // The committed quota is the absolute gas value, not a ratio, so the recursion
 // runs in gas space and the committed number is exactly the one the producer used
 // to pack. Committing a ratio instead would add a second derived value that must
 // agree with the first, with nothing enforcing it.
+//
+// The zero tail is what distinguishes these 32 bytes from an uncle-list hash, so it is
+// load-bearing framing rather than padding; see types.UncleHashMatches.
 func Encode(c Commitment) common.Hash {
 	var h common.Hash
 	binary.BigEndian.PutUint64(h[0:8], c.LaneSize)
-	binary.BigEndian.PutUint64(h[8:16], c.GeneralGasUsed)
-	binary.BigEndian.PutUint64(h[16:24], c.PaymentGasUsed)
-	h[24] = commitVersion
+	binary.BigEndian.PutUint64(h[8:16], c.PaymentGasUsed)
 	return h
 }
 
-// Decode is the inverse of Encode. It checks the version byte and the reserved
-// bytes; without those, an unset carrier field or an unrelated future use of the
-// same 32 bytes would be silently read as lane accounting.
+// Decode is the inverse of Encode. The reserved-tail check is the whole of the
+// framing: without it an unrelated future use of the same 32 bytes, or a
+// pre-activation empty-list hash, would be read as lane accounting.
 func Decode(h common.Hash) (Commitment, error) {
-	if h[24] != commitVersion {
-		return Commitment{}, fmt.Errorf("%w: version %d", ErrBadCommitment, h[24])
-	}
-	for _, b := range h[25:32] {
+	for _, b := range h[16:] {
 		if b != 0 {
 			return Commitment{}, fmt.Errorf("%w: reserved bytes set", ErrBadCommitment)
 		}
 	}
 	return Commitment{
 		LaneSize:       binary.BigEndian.Uint64(h[0:8]),
-		GeneralGasUsed: binary.BigEndian.Uint64(h[8:16]),
-		PaymentGasUsed: binary.BigEndian.Uint64(h[16:24]),
+		PaymentGasUsed: binary.BigEndian.Uint64(h[8:16]),
 	}, nil
 }
 
-// CheckHeaderBounds is the pair of bounds section 3.5.4 places at header verification,
-// as pure functions of the header. Neither can reject a block a correct producer made:
-// each bucket is a sum of pool deltas, and LaneSize is clamped below the gas limit.
+// CheckHeaderBounds is the whole of section 3.5.4's header-verification duty: the two
+// bounds, then the accounting rule on the committed values. Every input is a field of
+// the header or of its commitment, so no execution and no state are needed.
 //
-// They matter for the blocks a correct producer did NOT make. Without them a header
-// carrying absurd buckets is decodable, so it enters the header chain and is only
-// refused once the block behind it has been fetched and executed - one free execution
-// per forged header. With them the refusal is a comparison.
+// The two bounds come first because each is the tighter, more legible error when it is
+// the one that fails. Only the first of them can change a verdict: given payment <=
+// gasUsed, an oversized quota already violates the rule, so removing the gas-limit bound
+// changes which error comes back and nothing else. That is why no mutation of it fails a
+// test, and TestTheGasLimitBoundOnlyChangesTheDiagnosis holds the claim to account.
 //
-// The third check 3.5.4 places here, the accounting rule on the committed values, is
-// deliberately absent: 3.5.4 derives general as header.GasUsed - paymentGasUsed, which
-// is not this file's GeneralGasUsed, so evaluating it here would enforce a different
-// inequality than the one execution enforces. See item 1(b) of the deviation table in
-// quota.go - it is the same definitional gap and it has to be settled there first.
+// None of the three can reject a block a correct producer made: the payment bucket is a
+// sum of pool deltas and so cannot exceed the pool total, LaneSize is clamped below the
+// gas limit, and the rule is the same inequality the producer checked before sealing.
+// What they buy is the blocks a correct producer did NOT make: without them a header
+// carrying absurd values is refused only once the block behind it has been fetched and
+// executed - one free execution per forged header.
 func (c Commitment) CheckHeaderBounds(gasUsed, gasLimit uint64) error {
 	if c.PaymentGasUsed > gasUsed {
 		return fmt.Errorf("%w: committed payment %d exceeds header gas used %d",
@@ -189,47 +179,29 @@ func (c Commitment) CheckHeaderBounds(gasUsed, gasLimit uint64) error {
 		return fmt.Errorf("%w: committed lane size %d exceeds header gas limit %d",
 			ErrViolated, c.LaneSize, gasLimit)
 	}
-	return nil
+	return CheckInequality(gasLimit, gasUsed, c.PaymentGasUsed, c.LaneSize)
 }
 
 // CheckInequality is the BEP-703 block validity rule, and the single source of
-// the verdict: the producer's pre-seal self-check, the MEV admission gate and the
-// import-side enforcement all call it, so the three cannot drift apart.
+// the verdict: the producer's pre-seal self-check, the header-verification bound and
+// the import-side enforcement all call it, so the three cannot drift apart.
 //
-// The addition must not overflow. Producer-side inputs are bounded by GasLimit,
-// but on the MEV admission path both buckets come straight from a builder-
-// controlled commitment. A wrapped sum would land on a small value and therefore
-// *pass*, which would defeat the gate entirely.
-func CheckInequality(gasLimit, systemGasUsed, generalGasUsed, paymentGasUsed, laneSize uint64) error {
-	sum, carry := bits.Add64(systemGasUsed, generalGasUsed, 0)
-	if carry == 0 {
-		sum, carry = bits.Add64(sum, max(paymentGasUsed, laneSize), 0)
-	}
+// gasUsed must be the block's real total, system-transaction gas included. That is what
+// makes the rule complete in one term: general gas never appears explicitly because it
+// is gasUsed minus payment, so there is no third bucket to keep in step.
+//
+// The addition must not overflow. Producer-side inputs are bounded by the gas limit, but
+// at header verification both committed values come straight from an attacker, and a
+// wrapped sum would land on a small value and therefore *pass*. CheckHeaderBounds bounds
+// both before calling in; the carry check is what makes that ordering unnecessary to
+// remember.
+func CheckInequality(gasLimit, gasUsed, paymentGasUsed, laneSize uint64) error {
+	sum, carry := bits.Add64(gasUsed, satSub(laneSize, paymentGasUsed), 0)
 	if carry != 0 || sum > gasLimit {
-		return fmt.Errorf("%w: system %d general %d payment %d lane %d limit %d",
-			ErrViolated, systemGasUsed, generalGasUsed, paymentGasUsed, laneSize, gasLimit)
+		return fmt.Errorf("%w: gas used %d payment %d lane %d limit %d",
+			ErrViolated, gasUsed, paymentGasUsed, laneSize, gasLimit)
 	}
 	return nil
-}
-
-// DeriveSystemGas backs systemGasUsed out of header.GasUsed and the two
-// committed buckets.
-//
-// Overflow here is a reachable attack surface, not a theoretical one: with
-// general = 2^64-1 and payment = 1 the naive sum wraps to 0, passes a plain
-// "general+payment > headerGasUsed" test, and the following subtraction then
-// reports systemGasUsed as headerGasUsed itself - three checks bypassed at once.
-// Every caller that derives systemGasUsed FROM A COMMITMENT must come through
-// here rather than writing its own subtraction. The importer is not such a caller:
-// it holds the real system gas and must not use this - see Budget.VerifyCommitment,
-// which spells out where each figure comes from.
-func DeriveSystemGas(headerGasUsed, generalGasUsed, paymentGasUsed uint64) (uint64, error) {
-	sum, carry := bits.Add64(generalGasUsed, paymentGasUsed, 0)
-	if carry != 0 || sum > headerGasUsed {
-		return 0, fmt.Errorf("%w: general %d payment %d header gas used %d",
-			ErrBucketOverflow, generalGasUsed, paymentGasUsed, headerGasUsed)
-	}
-	return headerGasUsed - sum, nil
 }
 
 // satSub is saturating subtraction; all lane arithmetic is unsigned.

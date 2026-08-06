@@ -1396,7 +1396,7 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	//
 	// Not identical to that site, deliberately: it reverts the gas pool on failure and
 	// this one does not. Booking below the apply but above the error return is still
-	// right, because the buckets track Used() either way, and because both callers
+	// right, because the payment total tracks Used() either way, and because both callers
 	// abandon the whole bid on any error - so a bid that took this path never becomes a
 	// block.
 	class, err := env.lane.Classify(tx)

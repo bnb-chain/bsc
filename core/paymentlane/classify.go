@@ -100,10 +100,10 @@ func NewClassifier(parentRoot common.Hash, parent AccountReader, listed map[comm
 
 // Classify returns the lane class of a user transaction.
 //
-// Never call it for a Parlia system transaction: those are split out before
-// accounting and their gas is the separate systemGasUsed term. If one ever leaks
-// through, gate 4 makes it general, because every system contract is inside the
-// reserved range.
+// Never call it for a Parlia system transaction: those are split out before accounting,
+// and general gas is the residual, so they are counted without being labelled. If one
+// ever leaks through, gate 4 makes it general anyway - every system contract is inside
+// the reserved range - which is the right answer under section 3.2 as well.
 //
 // On a state-read failure it returns (ClassGeneral, err) and records err
 // stickily. ClassGeneral is the conservative choice for ADMISSION - it can only

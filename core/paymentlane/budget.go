@@ -18,11 +18,16 @@ package paymentlane
 
 import (
 	"fmt"
-	"math/bits"
 )
 
-// Budget carries this block's quota and the two class buckets, and expresses the
-// block validity rule as an admission predicate.
+// Budget carries this block's quota and the payment bucket, and expresses the block
+// validity rule as an admission predicate.
+//
+// One bucket, not two. General gas is the residual - header.GasUsed less PaymentUsed -
+// so it cannot be misaccounted: forgetting to book a general transaction is not a bug
+// that exists. Payment is the only tracked figure, and it is also the only one the
+// importer compares against its own replay, so the tracked set and the enforced set are
+// the same set.
 //
 // Why not two gas pools: splitting the budget statically into general = C-L and
 // payment = L, spilling the overflow, is bin packing under first fit, which
@@ -36,7 +41,6 @@ import (
 type Budget struct {
 	LaneSize    uint64 // this block's quota, straight from LaneSize()
 	PaymentUsed uint64
-	GeneralUsed uint64
 }
 
 // IdleLane is the part of the quota that payment traffic has not consumed yet.
@@ -46,7 +50,7 @@ type Budget struct {
 //
 //	max(paymentUsed, laneSize) == paymentUsed + IdleLane
 //
-// so the rule reads system + general + payment + IdleLane <= GasLimit and IdleLane
+// so the rule reads header.GasUsed + IdleLane <= GasLimit and IdleLane
 // behaves like a fee-less transaction holding the door for payment traffic that has
 // not arrived. At seal time it is an upper bound on the capacity this block wasted.
 func (b Budget) IdleLane() uint64 { return satSub(b.LaneSize, b.PaymentUsed) }
@@ -55,7 +59,7 @@ func (b Budget) IdleLane() uint64 { return satSub(b.LaneSize, b.PaymentUsed) }
 // have right now. shared is the shared remainder; the producer passes
 // gasPool.Gas().
 //
-// With gu/pu the two buckets, C the pool capacity and L the LaneSize:
+// With gu/pu the general and payment gas, C the pool capacity and L the LaneSize:
 //
 //	general admitted <=> g <= shared - max(L-pu, 0)
 //	payment admitted <=> p <= shared
@@ -68,7 +72,7 @@ func (b Budget) IdleLane() uint64 { return satSub(b.LaneSize, b.PaymentUsed) }
 // block is still valid after this transaction burns its full limit".
 //
 // One bound is worth naming: shared >= IdleLane holds throughout only while
-// L + r <= C, where r is gas reserved outside the two buckets - the bid path carves
+// L + r <= C, where r is gas reserved outside the pool - the bid path carves
 // PayBidTxGasLimit out of the same pool, so C=1000, r=25, L=976 already has
 // shared=975 < IdleLane=976 with nothing packed. Safety does not depend on it:
 // general headroom merely saturates to zero, so general still cannot take lane
@@ -97,63 +101,64 @@ func (b Budget) Admits(shared uint64, class Class, gasLimit uint64) bool {
 	return gasLimit <= b.Headroom(shared, class)
 }
 
-// Account adds a transaction's gas to its class bucket. delta must be differenced
-// from gasPool.Used(); core.LaneState.AccountFrom is the only correct caller and
-// says why there.
+// Account adds a payment transaction's gas to the bucket, and does nothing for a general
+// one - general gas is the residual and needs no tally. delta must be differenced from
+// gasPool.Used(); core.LaneState.AccountFrom is the only correct caller and says why there.
+//
+// The class parameter stays even though only one branch does anything: the caller has to
+// have settled the class anyway to run the admission predicate, and passing it keeps the
+// "unclassified means general" default in one place rather than at each call site.
 func (b *Budget) Account(class Class, delta uint64) {
 	if class == ClassPayment {
 		b.PaymentUsed += delta
-		return
 	}
-	b.GeneralUsed += delta
 }
 
-// Verify is the producer's post-packing self-check.
+// Verify is the producer's post-packing self-check, and the second half of the
+// importer's.
 //
-// The bucket-sum check is the valuable half: it enforces "every apply was accounted
-// for", a discipline maintained by people. The inequality mostly restates what
-// admission already guaranteed.
+// gasUsed must be the block's REAL total after Finalize, never parlia's
+// EstimateGasReservedForSystemTxs. The quota is clamped to fit the reserved pool, so
+// against the estimate the inequality is unfailable; against the real figure it also
+// catches system gas overrunning the reservation, which the lane newly makes reachable
+// at high fill and which parlia's own GasLimit < GasUsed guard cannot see, having no
+// idle-lane term.
 //
-// Pass the REAL system gas - header.GasUsed after Finalize minus poolUsed - and not
-// parlia's EstimateGasReservedForSystemTxs. The quota is clamped to fit the reserved
-// pool, so against the estimate the inequality is unfailable; against the real figure
-// it also catches system gas overrunning the reservation, which the lane newly makes
-// reachable at high fill and which parlia's own GasLimit < GasUsed guard cannot see,
-// having no idle-lane term.
-func (b Budget) Verify(gasLimit, systemGasUsed, poolUsed uint64) error {
-	// bits.Add64 rather than a plain sum, to match the rest of the package. A
-	// wrapped pair is unreachable here - both buckets are accumulated from pool
-	// deltas - but with a plain sum it could compare equal to poolUsed, pass this
-	// check, and then be reported as ErrViolated by CheckInequality, pointing the
-	// reader at the inequality when the real defect is the accounting.
-	sum, carry := bits.Add64(b.PaymentUsed, b.GeneralUsed, 0)
-	if carry != 0 || sum != poolUsed {
-		return fmt.Errorf("%w: payment %d general %d pool %d",
-			ErrBucketMismatch, b.PaymentUsed, b.GeneralUsed, poolUsed)
+// The bucket bound is the cheaper half but the one that catches people: the payment
+// bucket is accumulated by hand, one call per apply, and it can only ever be a part of
+// what the pool consumed. Booking a transaction twice, or booking an out-of-band
+// reservation such as PayBidTxGasLimit, breaks it. What it cannot catch is a
+// misclassification - that leaves the bucket a legal value - and nothing local can;
+// only the importer's replay can, which is what VerifyCommitment is for.
+func (b Budget) Verify(gasLimit, gasUsed, poolUsed uint64) error {
+	if b.PaymentUsed > poolUsed {
+		return fmt.Errorf("%w: payment %d pool %d", ErrBucketMismatch, b.PaymentUsed, poolUsed)
 	}
-	return CheckInequality(gasLimit, systemGasUsed, b.GeneralUsed, b.PaymentUsed, b.LaneSize)
+	return CheckInequality(gasLimit, gasUsed, b.PaymentUsed, b.LaneSize)
 }
 
-// VerifyCommitment is the import-side check and the only authoritative enforcement
-// point for the bucket values: the producer's Verify and the MEV admission gate can
-// each only attest to themselves, since a dishonest party is free to present a
-// self-consistent pair of fake buckets that satisfies the inequality identically.
-// Here the buckets come from local replay and are compared word for word, so without
-// this check "validated blocks obey the rule" does not hold at all.
+// VerifyCommitment is the import-side check and the only authoritative enforcement point
+// for the payment figure: the producer's Verify and the MEV admission gate can each only
+// attest to themselves, since a dishonest party is free to present a self-consistent
+// value that satisfies the inequality identically. Here it comes from local replay and is
+// compared word for word, so without this check "validated blocks obey the rule" does not
+// hold at all.
 //
-// laneSize is deliberately NOT compared here: CheckLaneSize settles it before
-// execution, from the parent alone.
+// One comparison covers both classes. General gas is header.GasUsed less payment, and
+// header.GasUsed is compared against the locally recomputed total in block validation, so
+// a lie about general gas is a lie about the header total and is caught there.
 //
-// Both gas figures must come from the same place on both sides or honest blocks get
-// rejected: poolUsed is gp.Used() (user transactions only - the two sides start the
-// pool at different values but that cancels in the difference), and systemGasUsed is
-// header.GasUsed after Finalize minus poolUsed, because Parlia system transactions
-// bypass the pool. The importer holds the real value and must not reach for
-// DeriveSystemGas, whose inputs are attacker-controlled.
-func (b Budget) VerifyCommitment(gasLimit, systemGasUsed, poolUsed uint64, c Commitment) error {
-	if b.GeneralUsed != c.GeneralGasUsed || b.PaymentUsed != c.PaymentGasUsed {
-		return fmt.Errorf("%w: committed general %d payment %d, replayed general %d payment %d",
-			ErrUntruthy, c.GeneralGasUsed, c.PaymentGasUsed, b.GeneralUsed, b.PaymentUsed)
+// laneSize is deliberately NOT compared here: CheckLaneSize settles it before execution,
+// from the parent alone.
+//
+// gasUsed and poolUsed must come from the same place on both sides or honest blocks get
+// rejected: poolUsed is gp.Used(), user transactions only - the two sides start the pool
+// at different values but that cancels in the difference - and gasUsed is the total after
+// Finalize, which is where Parlia's system transactions land.
+func (b Budget) VerifyCommitment(gasLimit, gasUsed, poolUsed uint64, c Commitment) error {
+	if b.PaymentUsed != c.PaymentGasUsed {
+		return fmt.Errorf("%w: committed payment %d, replayed %d",
+			ErrUntruthy, c.PaymentGasUsed, b.PaymentUsed)
 	}
-	return b.Verify(gasLimit, systemGasUsed, poolUsed)
+	return b.Verify(gasLimit, gasUsed, poolUsed)
 }

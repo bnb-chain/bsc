@@ -25,12 +25,15 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/gauss"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/triedb"
@@ -175,11 +178,12 @@ func TestPaymentLaneRoundTripsThroughAGeneratedChain(t *testing.T) {
 		require.NoError(t, err, "block %d (%s) carries no commitment", tc.number, tc.regime)
 		require.Equal(t, paymentlane.Commitment{
 			LaneSize:       tc.laneSize,
-			GeneralGasUsed: tc.general,
 			PaymentGasUsed: tc.payment,
 		}, got, "block %d (%s)", tc.number, tc.regime)
-		// No system transactions under ethash, so the buckets must account for all of it.
-		require.Equal(t, tc.general+tc.payment, block.GasUsed(), "block %d", tc.number)
+		// General gas is the residual, so the expected count is checked against it rather
+		// than committed: tc.general comes from the protocol constants, not from the code
+		// under test, so this still pins the transaction arithmetic.
+		require.Equal(t, tc.general, block.GasUsed()-got.PaymentGasUsed, "block %d", tc.number)
 	}
 
 	// The blocks the producer built must import: this is the half that proves the two
@@ -224,12 +228,17 @@ func TestPaymentLaneImportRejectsATamperedCommitment(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "swapped buckets",
+			// The quota and the payment figure share the 32 bytes, so a producer that
+			// wrote them in the wrong order commits a payment figure of 2M against a
+			// replay of 21000. Caught as untruthful accounting, not as a bad quota,
+			// because CheckQuota runs on the value in the laneSize slot and that one is
+			// now the (correct) payment figure.
+			name: "swapped fields",
 			mutate: func(c paymentlane.Commitment) common.Hash {
-				c.GeneralGasUsed, c.PaymentGasUsed = c.PaymentGasUsed, c.GeneralGasUsed
+				c.LaneSize, c.PaymentGasUsed = c.PaymentGasUsed, c.LaneSize
 				return paymentlane.Encode(c)
 			},
-			wantErr: paymentlane.ErrUntruthy,
+			wantErr: paymentlane.ErrQuotaMismatch,
 		},
 		{
 			name: "understated payment gas",
@@ -248,9 +257,18 @@ func TestPaymentLaneImportRejectsATamperedCommitment(t *testing.T) {
 			wantErr: paymentlane.ErrQuotaMismatch,
 		},
 		{
-			name:    "carrier left empty",
+			name:    "carrier left at the pre-activation empty-list hash",
 			mutate:  func(paymentlane.Commitment) common.Hash { return types.EmptyUncleHash },
 			wantErr: paymentlane.ErrBadCommitment,
+		},
+		{
+			// The all-zero carrier is a well-formed commitment now - the version byte
+			// that used to exclude it is gone - so what rejects a header that simply
+			// never had one written is the quota comparison, not the framing. This is
+			// the case that makes dropping the version byte safe.
+			name:    "carrier left all zero",
+			mutate:  func(paymentlane.Commitment) common.Hash { return common.Hash{} },
+			wantErr: paymentlane.ErrQuotaMismatch,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -337,13 +355,13 @@ func TestPaymentLaneClassifiesAgainstTheParentState(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, paymentTxGas, sameBlock.PaymentGasUsed,
 		"a transfer to an address created by this same block must still be a payment")
-	require.EqualValues(t, blocks[2].GasUsed()-paymentTxGas, sameBlock.GeneralGasUsed)
 
 	nextBlock, err := paymentlane.Decode(blocks[3].UncleHash())
 	require.NoError(t, err)
 	require.Zero(t, nextBlock.PaymentGasUsed,
 		"once the code is in the parent post-state the same transfer is general")
-	require.EqualValues(t, blocks[3].GasUsed(), nextBlock.GeneralGasUsed)
+	require.EqualValues(t, blocks[3].GasUsed(), blocks[3].GasUsed()-nextBlock.PaymentGasUsed,
+		"with no payment gas the general residual is the whole block")
 
 	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), DefaultConfig())
 	require.NoError(t, err)
@@ -397,8 +415,8 @@ func TestPaymentLaneAndUnclesCannotShareTheSlot(t *testing.T) {
 
 // BenchmarkResolveLaneState measures what the deliberately-absent params cache costs.
 //
-// docs/bep703-wiring-plan.md defers that cache with "measure first"; this is the
-// measurement. It covers exactly what a cache would remove: the grandparent header
+// docs/bep703-payment-lane.md leaves that cache out until the listed set grows; this is
+// the measurement behind that. It covers exactly what a cache would remove: the grandparent header
 // lookup, LoadParams' 8 slot reads, LoadPaymentContracts' 1+N reads, and building the
 // classifier. It does NOT cover per-transaction classification, which no cache would
 // help - that is a per-destination state read, memoised within the block already.
@@ -505,4 +523,102 @@ func BenchmarkResolveLaneStateFullList(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+}
+
+// systemGasFaker is ethash plus a fixed amount of system-transaction gas per block.
+//
+// It exists because an ethash chain has no system transactions at all, and every other
+// lane fixture in the tree therefore runs with systemGasUsed == 0 - a value at which the
+// two candidate readings of generalGasUsed (with and without system gas) are numerically
+// identical. Without this engine the entire question is untestable: the code can be got
+// completely wrong and stay green.
+//
+// Finalize is the right seam because it is the one the two sides share. AssembleBlock
+// passes &header.GasUsed to it on the producing side (ethash implements no
+// FinalizeAndAssemble, so the else branch runs) and Process passes &gasUsed on the
+// importing side, so a block built by this engine also imports under it.
+type systemGasFaker struct {
+	consensus.Engine
+	systemGas uint64
+}
+
+func (e *systemGasFaker) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state vm.StateDB,
+	txs *[]*types.Transaction, uncles []*types.Header, withdrawals []*types.Withdrawal,
+	receipts *[]*types.Receipt, systemTxs *[]*types.Transaction, usedGas *uint64, tracer *tracing.Hooks) error {
+	if err := e.Engine.Finalize(chain, header, state, txs, uncles, withdrawals, receipts, systemTxs, usedGas, tracer); err != nil {
+		return err
+	}
+	if usedGas != nil {
+		*usedGas += e.systemGas
+	}
+	return nil
+}
+
+// TestPaymentLaneSignalCountsSystemTransactionGas pins which gas the congestion signal
+// counts, on the only chain in the tree where the answer is observable.
+//
+// The block it turns on carries 33M of user general gas and 12.16M of system gas - the
+// largest system-transaction cost parlia records on mainnet, a breathe block's
+// validator-set update. At a 55M gas limit the two readings fall on opposite sides of
+// BOTH triggers:
+//
+//	user general alone  33.00M  <  shrink 38.5M   -> the quota shrinks
+//	general + system    45.16M  >= expand 44.0M   -> the quota expands
+//
+// so a single assertion separates them, and it separates them by a full step in each
+// direction rather than by a rounding difference.
+func TestPaymentLaneSignalCountsSystemTransactionGas(t *testing.T) {
+	config, gspec, key := laneGenesis(t)
+
+	// 12_160_000 is parlia's recorded maximum for a validator-set update; see
+	// EstimateGasReservedForSystemTxs. Anything smaller than 11M would leave the two
+	// readings on the same side of the expand trigger and the test would prove nothing.
+	const systemGas = 12_160_000
+	engine := &systemGasFaker{Engine: ethash.NewFaker(), systemGas: systemGas}
+
+	// 33M of general gas: below the 38.5M shrink trigger on its own, above the 44M
+	// expand trigger once system gas joins it.
+	const wantGeneral = 33_000_000
+	nGeneral := int(wantGeneral / generalTxGas)
+
+	var nonce uint64
+	signer := types.LatestSigner(config)
+	_, blocks, _ := GenerateChainWithGenesis(gspec, engine, 5, func(i int, b *BlockGen) {
+		if i+1 != 3 {
+			return
+		}
+		for n := 0; n < nGeneral; n++ {
+			b.AddTx(key.sign(t, signer, nonce, common.Address{0xaa}, big.NewInt(1), generalTxGas, []byte{1, 2, 3, 4}))
+			nonce++
+		}
+	})
+
+	// Block 3 is the first block the rules bind to, and its parent is not a lane block,
+	// so its own quota is the bootstrap floor whichever reading is in force. Block 4 is
+	// where the readings part.
+	general := uint64(nGeneral) * generalTxGas
+	require.Greater(t, general+systemGas, uint64(44_000_000), "fixture must clear the expand trigger with system gas")
+	require.Less(t, general, uint64(38_500_000), "fixture must fall under the shrink trigger without it")
+
+	block3, block4 := blocks[2], blocks[3]
+	require.EqualValues(t, general+systemGas, block3.GasUsed(), "the faker must actually inject system gas")
+
+	c3, err := paymentlane.Decode(block3.UncleHash())
+	require.NoError(t, err)
+	require.EqualValues(t, 2_000_000, c3.LaneSize, "block 3 is the bootstrap floor")
+
+	c4, err := paymentlane.Decode(block4.UncleHash())
+	require.NoError(t, err)
+	// The signal counts the block's whole gas, so block 3 reads as 45.16M of 55M - past
+	// the expand trigger - and block 4 gets one expansion step. Counting user general gas
+	// alone would read 33M, fall under the shrink trigger, and hold block 4 at the floor;
+	// that is what this number distinguishes.
+	require.EqualValues(t, 3_100_000, c4.LaneSize,
+		"signal must count system gas too: user general alone is %d", general)
+
+	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, engine, DefaultConfig())
+	require.NoError(t, err)
+	defer chain.Stop()
+	_, err = chain.InsertChain(blocks)
+	require.NoError(t, err, "a chain with non-zero system gas must import")
 }

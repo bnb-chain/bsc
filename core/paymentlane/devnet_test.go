@@ -153,7 +153,7 @@ func TestDevnetReadPath(t *testing.T) {
 		// Nothing on this chain commits a quota yet - the scaffolding is not wired
 		// into block production - so the meaningful assertion is the bootstrap one:
 		// a parent carrying no commitment opens the lane at its floor.
-		size := LaneSize(p, newSignal(nil, head.GasLimit), head.GasLimit)
+		size := LaneSize(p, newSignal(nil, head.GasUsed, head.GasLimit), head.GasLimit)
 		floor, ceiling := laneFloor(p, head.GasLimit), laneCeiling(p, head.GasLimit)
 		t.Logf("gasLimit %d -> floor %d ceiling %d laneSize %d", head.GasLimit, floor, ceiling, size)
 

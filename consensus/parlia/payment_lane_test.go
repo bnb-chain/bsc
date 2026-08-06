@@ -193,10 +193,8 @@ func TestPaymentLaneCommitmentSurvivesParliaAssembly(t *testing.T) {
 			lane.Budget.LaneSize, want, laneGasLimit)
 	}
 
-	// Non-zero, distinct buckets on purpose: an all-zero commitment is exactly what a
-	// dropped one decodes to for the two gas figures, so equal-to-zero would not
-	// distinguish success from failure for them.
-	lane.Budget.GeneralUsed = 21_000
+	// Non-zero on purpose: the all-zero commitment is a legal value now, so a
+	// dropped one would be indistinguishable from a correct empty block.
 	lane.Budget.PaymentUsed = 42_000
 
 	block, _, err := core.AssembleBlock(engine, chain, header, stateDB, &types.Body{}, nil, lane)
@@ -207,7 +205,7 @@ func TestPaymentLaneCommitmentSurvivesParliaAssembly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parlia assembly clobbered the commitment: %v (uncle slot %x)", err, block.UncleHash())
 	}
-	want := paymentlane.Commitment{LaneSize: 2_000_000, GeneralGasUsed: 21_000, PaymentGasUsed: 42_000}
+	want := paymentlane.Commitment{LaneSize: 2_000_000, PaymentGasUsed: 42_000}
 	if got != want {
 		t.Fatalf("commitment: got %+v, want %+v", got, want)
 	}

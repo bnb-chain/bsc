@@ -122,14 +122,16 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *buildertypes.BidBloc
 	// not merely on its activation block, hence IsGauss rather than IsOnGauss - which also
 	// keeps the activation block itself covered. A bidblock header is taken verbatim, so
 	// the builder authors the lane commitment, and unlike every other builder-supplied
-	// field the buckets cannot be adjudicated before signing: a cheap bound (committed
-	// payment gas <= the sum of payment-class gas limits) is free to defeat, since a bare
-	// transfer may declare a limit far above the 21,000 it uses, and full replay costs an
-	// order of magnitude more than the DelayLeftOver left after admission. Meanwhile
+	// field the committed payment total cannot be adjudicated before signing: a cheap
+	// bound (committed payment gas <= the sum of payment-class gas limits) is free to
+	// defeat, since a bare transfer may declare a limit far above the 21,000 it uses, and
+	// full replay costs an order of magnitude more than the DelayLeftOver left after
+	// admission. Meanwhile
 	// handleBidBlockResult signs and BROADCASTS before InsertChain verifies. So an
 	// un-upgraded builder would put an invalid block on the wire under this validator's
 	// key on every slot it wins, diagnosed as a BAD_BLOCK that never mentions the lane.
-	// Reopening it is docs/bep703-wiring-plan.md section 4.3.
+	// Reopening it needs the commitment to become adjudicable before signing, which is a
+	// BEP-675 question, not a lane one - see docs/bep703-payment-lane.md section 2.9.
 	if miner.worker.chainConfig.IsOnPasteur(bb.Header.Number, parent.Time, bb.Header.Time) ||
 		miner.worker.chainConfig.IsGauss(bb.Header.Number, bb.Header.Time) {
 		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf(
