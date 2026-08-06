@@ -4,12 +4,17 @@ name: Coinbosa
 # standard BRC20 se comporte comme spécifié. Les tests tournent contre un nœud
 # Coinbosa lancé pour l'occasion — pas contre un simulateur.
 
+# Les chemins surveillés incluent tout ce qui change le BINAIRE produit, pas seulement le
+# code Coinbosa : la chaîne d'outils et les dépendances (go.mod / go.sum) et la chaîne de
+# compilation (Makefile, build/) en font partie. Sans cela, un changement de compilateur
+# — qui modifie pourtant le binaire des validateurs — passait sans qu'aucun test de chaîne
+# ne tourne : temps de bloc, franchissement d'epoch et banc BRC20 restaient non vérifiés.
 on:
   push:
     branches: [master, main, 'coinbosa-**']
-    paths: ['coinbosa/**', 'consensus/parlia/**', '.github/workflows/coinbosa.yml']
+    paths: ['coinbosa/**', 'consensus/parlia/**', 'go.mod', 'go.sum', 'Makefile', 'build/**', '.github/workflows/coinbosa.yml']
   pull_request:
-    paths: ['coinbosa/**', 'consensus/parlia/**', '.github/workflows/coinbosa.yml']
+    paths: ['coinbosa/**', 'consensus/parlia/**', 'go.mod', 'go.sum', 'Makefile', 'build/**', '.github/workflows/coinbosa.yml']
   workflow_dispatch:
 
 jobs:
