@@ -3,6 +3,7 @@ package paymentlane
 import (
 	"math"
 	"math/big"
+	"math/bits"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -242,6 +243,23 @@ func TestMulDivFloorMatchesExactArithmetic(t *testing.T) {
 	}
 	// Saturation rather than a panic when the quotient cannot be represented.
 	require.Equal(t, uint64(math.MaxUint64), mulDivFloor(math.MaxUint64, math.MaxUint64, RatioDenom))
+}
+
+// TestSignalCannotOverflow is why newSignal adds its two terms with a plain +: whatever the
+// committed values, each term is saturating and the pair cannot carry.
+func TestSignalCannotOverflow(t *testing.T) {
+	maxU := uint64(math.MaxUint64)
+	for _, gasUsed := range []uint64{0, 1, 21_000, 55_000_000, maxU / 2, maxU - 1, maxU} {
+		for _, payment := range []uint64{0, 1, 21_000, 55_000_000, maxU / 2, maxU - 1, maxU} {
+			for _, lane := range []uint64{0, 1, 55_000_000, maxU / 2, maxU} {
+				sum, carry := bits.Add64(satSub(gasUsed, payment), satSub(payment, lane), 0)
+				require.Zerof(t, carry, "gasUsed=%d payment=%d lane=%d: the terms carried", gasUsed, payment, lane)
+
+				s := newSignal(&Commitment{LaneSize: lane, PaymentGasUsed: payment}, gasUsed, 55_000_000)
+				require.Equal(t, sum, s.signalGasUsed)
+			}
+		}
+	}
 }
 
 // TestSignalComparisonIsExactAt64BitOverflow is the reason the comparison is

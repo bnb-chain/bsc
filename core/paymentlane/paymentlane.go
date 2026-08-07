@@ -6,10 +6,7 @@
 // paymentGasUsed, so Parlia's system transactions count as general gas. The subtrahend is the
 // idle quota (Budget.IdleLane), which is never reclaimed for general traffic - reclaiming it
 // would make excluding payment transactions free for the producer.
-//
-// Primitives only, so the two sides cannot disagree by construction; the wiring is in core,
-// consensus/parlia and miner. Trade-offs: docs/bep703-payment-lane.md. BEP deviations: the
-// registry atop quota.go.
+
 package paymentlane
 
 import (
@@ -22,13 +19,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// Class is the lane class of a transaction. Exactly two: Parlia system transactions are
-// general under section 3.2 and never labelled, so a third class would have nothing to tag.
 type Class uint8
 
 const (
-	// ClassGeneral must stay the zero value, so an unclassified Class under-fills the lane
-	// instead of over-packing. TestZeroValueClassIsGeneral.
 	ClassGeneral Class = iota
 	ClassPayment
 )
@@ -40,9 +33,6 @@ func (c Class) String() string {
 	return "general"
 }
 
-// ErrStateUnavailable means retry, never bad block. The rest are deterministic on the import
-// path only: producer-side, LaneState.VerifyPackedBid raises ErrViolated from a miner-local
-// bound that refuses blocks the rule permits.
 var (
 	ErrViolated           = errors.New("payment lane inequality violated")
 	ErrPaymentExceedsPool = errors.New("payment lane payment gas exceeds the block's user-transaction gas")
@@ -66,9 +56,6 @@ type Commitment struct {
 //	[0:8]   laneSize        uint64 big-endian
 //	[8:16]  paymentGasUsed  uint64 big-endian
 //	[16:32] reserved, always zero
-//
-// The zero tail is the tag that tells these bytes from an uncle-list hash, not padding, and
-// core/types owns it - never spend a byte of it on a version field.
 func Encode(c Commitment) common.Hash {
 	var h common.Hash
 	binary.BigEndian.PutUint64(h[0:8], c.LaneSize)
@@ -76,8 +63,7 @@ func Encode(c Commitment) common.Hash {
 	return h
 }
 
-// Decode is the inverse of Encode. Its reserved-tail check must stay the same condition
-// core/types tags on; TestLaneCommitmentTagAgreesWithDecode holds the two together.
+// Decode is the inverse of Encode.
 func Decode(h common.Hash) (Commitment, error) {
 	for _, b := range h[16:] {
 		if b != 0 {
@@ -91,8 +77,6 @@ func Decode(h common.Hash) (Commitment, error) {
 }
 
 // CheckHeaderBounds refuses a forged header from its fields alone, before the body is executed.
-// Reject only forgeries, never tighten it (TestCheckHeaderBoundsRejectsOnlyForgeries), and read
-// TestTheGasLimitBoundOnlyChangesTheDiagnosis before deleting the LaneSize bound as untested.
 func (c Commitment) CheckHeaderBounds(gasUsed, gasLimit uint64) error {
 	if c.PaymentGasUsed > gasUsed {
 		return fmt.Errorf("%w: committed payment %d exceeds header gas used %d",
@@ -106,9 +90,7 @@ func (c Commitment) CheckHeaderBounds(gasUsed, gasLimit uint64) error {
 }
 
 // CheckInequality is the block validity rule, called by the producer, header verification and
-// the importer alike. gasUsed must be the block's REAL total, system gas included. The carry
-// check is load-bearing: attacker-controlled values wrap to a small sum and PASS without it
-// (TestOverflowIsNotAWayIn).
+// the importer alike. gasUsed must be the block's REAL total, system gas included.
 func CheckInequality(gasLimit, gasUsed, paymentGasUsed, laneSize uint64) error {
 	sum, carry := bits.Add64(gasUsed, satSub(laneSize, paymentGasUsed), 0)
 	if carry != 0 || sum > gasLimit {

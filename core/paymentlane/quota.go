@@ -238,12 +238,12 @@ func newSignal(prev *Commitment, parentGasUsed, parentGasLimit uint64) Signal {
 	if prev == nil {
 		return Signal{}
 	}
+	// Plain +: the two saturating terms sum to at most max(parentGasUsed, PaymentGasUsed),
+	// whatever the inputs, so this cannot carry. TestSignalCannotOverflow.
 	return Signal{
 		laneSize: prev.LaneSize,
-		signalGasUsed: satAdd(
-			satSub(parentGasUsed, prev.PaymentGasUsed), // all general gas
+		signalGasUsed: satSub(parentGasUsed, prev.PaymentGasUsed) + // all general gas
 			satSub(prev.PaymentGasUsed, prev.LaneSize), // payment beyond the quota
-		),
 		gasLimit: parentGasLimit,
 	}
 }
