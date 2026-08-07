@@ -758,8 +758,6 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 	// about to make, which is a security property and not tidiness: bound to the
 	// advancing state instead, a producer could insert one cheap CREATE2 or SetCodeTx
 	// ahead of a batch of transfers and thereby choose whose transfers enter the lane.
-	// header.Time is already final here - engine.Prepare rewrote it before prepareWork
-	// called us - so the activation predicate sees the right side of the boundary.
 	lane, err := core.ResolveLaneState(w.chainConfig, w.chain, parent, header, state.Reader())
 	if err != nil {
 		return nil, err

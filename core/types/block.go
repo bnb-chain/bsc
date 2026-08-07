@@ -561,8 +561,8 @@ func CalcUncleHash(uncles []*Header) common.Hash {
 // cannot drift because they now test the same condition rather than two copies of one -
 // TestLaneCommitmentTagAgreesWithDecode holds them to that.
 //
-// Framing only, and deliberately silent on whether the lane is active: paymentlane.Applies
-// answers that, where the parent header is in scope.
+// Framing only, and deliberately silent on whether the lane is active: that is
+// ChainConfig.IsGauss on the PARENT header, asked where the parent is in scope.
 func isLaneCommitment(h common.Hash) bool {
 	for _, b := range h[16:] {
 		if b != 0 {

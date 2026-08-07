@@ -706,10 +706,10 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 	// any block that has one. What varies is the 32 bytes the header reserves for their
 	// hash: from BEP-703's activation Parlia repurposes them to carry the payment lane
 	// commitment, so past that point EmptyUncleHash is the malformed case and a
-	// well-formed commitment is required. Applies needs the parent, which is why this
-	// lives here rather than beside the standalone field checks in verifyHeader.
-	paymentLane := paymentlane.Applies(chain.Config(), parent, header)
-	if !paymentLane {
+	// well-formed commitment is required. The rules bind from Gauss+1, i.e. from the
+	// block whose PARENT is already Gauss - which is why this lives here rather than
+	// beside the standalone field checks in verifyHeader.
+	if !chain.Config().IsGauss(parent.Number, parent.Time) {
 		if header.UncleHash != types.EmptyUncleHash {
 			return errInvalidUncleHash
 		}

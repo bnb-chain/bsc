@@ -108,14 +108,30 @@ type LaneState struct {
 // every lane block, and 0x2007's storage nodes are never in the witness either because
 // Reader() bypasses the tries a witness observes. Supporting it needs a depth-2 witness
 // format, which is a separate decision.
+//
+// CAVEAT on the activation predicate, and it is a real one. Installing the contract gates
+// on IsOnGauss, which agrees with the predicate below on every chain whose Gauss timestamp
+// falls after its London block, but not unconditionally: if LondonBlock is 0 and GaussTime
+// is at or before the genesis timestamp, then IsGauss already holds at genesis, IsOnGauss
+// never fires, the contract is never installed - and the lane switches on from block 1
+// regardless. paymentlane.LoadParams cannot detect it, because an absent account and an
+// untouched one are both all-zero storage, so the chain runs the lane against a code-less
+// address on hardcoded defaults with governance unable to change them. Real networks are
+// safe (mainnet's LondonBlock is 31,302,048 and the devnet template's is 8), so this
+// constrains new chain configurations rather than being a live defect - but it must be
+// checked when Gauss is scheduled. core/paymentlane's
+// TestLaneCannotDetectAnUninstalledContract pins it.
 func ResolveLaneState(config *params.ChainConfig, hc laneHeaderReader, parent, header *types.Header, reader laneReader) (*LaneState, error) {
-	if !paymentlane.Applies(config, parent, header) {
+	// The rules bind from Gauss+1, i.e. from the block whose PARENT is already Gauss:
+	// post-Feynman the Gauss upgrade runs from Finalize/FinalizeAndAssemble, so while the
+	// activation block executes the contract has no code and no parameters can be read.
+	if !config.IsGauss(parent.Number, parent.Time) {
 		return &LaneState{}, nil
 	}
-	// The grandparent decides only one thing - whether the parent was itself a lane
-	// block, via Applies - but that one bit selects between "read the parent's
-	// commitment" and "seed from the floor", so getting it wrong at the activation
-	// boundary splits the accumulator for good. See laneHeaderReader for why the
+	// The grandparent decides only one thing - whether the parent was itself a lane block,
+	// which is the same IsGauss test one level up - but that one bit selects between "read
+	// the parent's commitment" and "seed from the floor", so getting it wrong at the
+	// activation boundary splits the accumulator for good. See laneHeaderReader for why the
 	// canonical-only lookup is not reachable from here.
 	//
 	// Genesis is passed through as a nil grandparent rather than special-cased:

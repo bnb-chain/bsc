@@ -92,7 +92,7 @@ func laneBidBlockHarness(t *testing.T) (*worker, *types.Header, *environment, ui
 		Difficulty: common.Big0,
 		BaseFee:    common.Big0,
 	}
-	require.True(t, paymentlane.Applies(&config, parent, header),
+	require.True(t, config.IsGauss(parent.Number, parent.Time),
 		"the header under test must be a lane block, or every assertion below is vacuous")
 	// LoadParams maps an unwritten word to the factory default, so an allocation at the
 	// wrong address derives the same quota and every assertion below stays green.

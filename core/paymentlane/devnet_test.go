@@ -204,7 +204,7 @@ func TestDevnetReadPath(t *testing.T) {
 		p, err := LoadParams(r)
 		require.NoError(t, err, "reading absent storage must not fail")
 		require.Equal(t, defaultParams(), p,
-			"before activation every slot is zero, so the read yields the defaults - which is exactly why Applies excludes the activation block instead of relying on this")
+			"before activation every slot is zero, so the read yields the defaults - which is exactly why the rules exclude the activation block instead of relying on this")
 	})
 
 	t.Run("every node reads the same configuration", func(t *testing.T) {

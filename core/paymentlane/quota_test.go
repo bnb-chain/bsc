@@ -487,42 +487,41 @@ func TestNoHaltIsReachable(t *testing.T) {
 	}
 }
 
-// TestAppliesSkipsTheActivationBlock pins the activation semantics (BEP 3.4.5). The
-// PaymentLane code is
-// installed at the END of the Gauss block, so the rules cannot bind there.
-func TestAppliesSkipsTheActivationBlock(t *testing.T) {
+// TestTheRulesSkipTheActivationBlock pins the activation semantics (BEP 3.4.5): the
+// PaymentLane code is installed at the END of the Gauss block, so the rules cannot bind
+// there - which is why every enforcement point asks about the PARENT.
+func TestTheRulesSkipTheActivationBlock(t *testing.T) {
 	forkTime := uint64(1_800_000_000)
 	config := *params.BSCChainConfig // copy: never mutate the shared mainnet config
 	config.GaussTime = &forkTime
 
-	// Past LondonBlock: IsGauss is gated on IsLondon, so numbers below it make
-	// Applies false for a reason that has nothing to do with the activation rule -
-	// which is exactly how this test first passed for the wrong reason.
+	// Past LondonBlock: IsGauss is gated on IsLondon, so numbers below it answer false
+	// for a reason that has nothing to do with the activation rule - which is exactly
+	// how this test first passed for the wrong reason.
 	require.NotNil(t, config.LondonBlock)
 	base := config.LondonBlock.Uint64() + 1_000_000
-	hdr := func(num uint64, time uint64) *types.Header {
-		return &types.Header{Number: new(big.Int).SetUint64(num), Time: time}
-	}
+	num := func(v uint64) *big.Int { return new(big.Int).SetUint64(v) }
 
+	// Every case names the block being judged; the arguments are its PARENT.
 	for _, tc := range []struct {
-		name          string
-		parent, child *types.Header
-		want          bool
+		name                  string
+		parentNum, parentTime uint64
+		want                  bool
 	}{
-		{"both before the fork", hdr(base, forkTime-6), hdr(base+1, forkTime-3), false},
-		{"the activation block itself", hdr(base, forkTime-3), hdr(base+1, forkTime), false},
-		{"activation + 1", hdr(base+1, forkTime), hdr(base+2, forkTime+3), true},
-		{"long after", hdr(base+500, forkTime+1000), hdr(base+501, forkTime+1003), true},
+		{"before the fork", base, forkTime - 6, false},
+		{"the activation block itself", base, forkTime - 3, false},
+		{"activation + 1", base + 1, forkTime, true},
+		{"long after", base + 500, forkTime + 1000, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, Applies(&config, tc.parent, tc.child))
+			require.Equal(t, tc.want, config.IsGauss(num(tc.parentNum), tc.parentTime))
 		})
 	}
 
 	// Unscheduled means off, on every network.
 	noGauss := *params.BSCChainConfig
 	noGauss.GaussTime = nil
-	require.False(t, Applies(&noGauss, hdr(base, forkTime-3), hdr(base+1, forkTime)))
+	require.False(t, noGauss.IsGauss(num(base), forkTime-3))
 
 	// And the inherited precondition, pinned so it cannot surprise anyone: IsGauss
 	// requires IsLondon, so a chain whose height is still below LondonBlock does not
@@ -530,7 +529,7 @@ func TestAppliesSkipsTheActivationBlock(t *testing.T) {
 	// (mainnet passed that height long ago, and the test chains set it to 0) but a
 	// short-lived custom devnet with a non-zero LondonBlock would silently never
 	// switch the lane on.
-	require.False(t, Applies(&config, hdr(0, forkTime), hdr(1, forkTime+3)),
+	require.False(t, config.IsGauss(common.Big0, forkTime),
 		"below LondonBlock the lane must not apply")
 }
 
@@ -616,11 +615,11 @@ func TestMulDivFloorGuardBoundary(t *testing.T) {
 	require.NotPanics(t, func() { LaneSize(Params{MaxRatio: RatioDenom + 1, MaxGas: 8_000_000}, Signal{}, math.MaxUint64) })
 }
 
-// TestAppliesAtTheLondonBoundary covers the IsLondon half of IsGauss, which every
-// other Applies test leaves inert by sitting far above LondonBlock. The mutation this
-// kills - passing the parent's number to IsOnGauss instead of the header's - shifts
-// activation by one block on any chain whose Gauss timestamp lands at LondonBlock.
-func TestAppliesAtTheLondonBoundary(t *testing.T) {
+// TestActivationAtTheLondonBoundary covers the IsLondon half of IsGauss, which every
+// other activation test leaves inert by sitting far above LondonBlock. On a chain whose
+// Gauss timestamp lands at LondonBlock, the boundary asserted here is the difference
+// between exempting the activation block and binding it.
+func TestActivationAtTheLondonBoundary(t *testing.T) {
 	forkTime := uint64(1_800_000_000)
 	config := *params.BSCChainConfig
 	config.GaussTime = &forkTime
@@ -628,25 +627,22 @@ func TestAppliesAtTheLondonBoundary(t *testing.T) {
 	config.LondonBlock = london
 	config.BerlinBlock = london
 
-	hdr := func(num int64, time uint64) *types.Header {
-		return &types.Header{Number: big.NewInt(num), Time: time}
-	}
 	n := london.Int64()
 	// Below London the lane never applies, whatever the timestamp says.
-	require.False(t, Applies(&config, hdr(n-2, forkTime), hdr(n-1, forkTime+3)))
+	require.False(t, config.IsGauss(big.NewInt(n-2), forkTime))
 	// The London block is the first IsGauss block here, so it is the activation block
-	// and is exempt.
-	require.False(t, Applies(&config, hdr(n-1, forkTime), hdr(n, forkTime+3)))
+	// and is exempt: as a parent it still answers false.
+	require.False(t, config.IsGauss(big.NewInt(n-1), forkTime))
 	// And the block after it is the first lane block.
-	require.True(t, Applies(&config, hdr(n, forkTime+3), hdr(n+1, forkTime+6)))
+	require.True(t, config.IsGauss(big.NewInt(n), forkTime+3))
 }
 
-// TestAppliesCannotDetectAnUninstalledContract pins the one configuration in which
+// TestLaneCannotDetectAnUninstalledContract pins the one configuration in which
 // "the rules are on" and "the contract exists" genuinely come apart.
 //
 // With LondonBlock at 0 and GaussTime at or before the genesis timestamp, IsGauss
 // already holds at genesis, so IsOnGauss never fires and upgradeBuildInSystemContract
-// never installs the code - while Applies is true from block 1. LoadParams cannot see
+// never installs the code - while the rules bind from block 1. LoadParams cannot see
 // it, because an absent account and an untouched one are both all-zero storage. The
 // chain then runs the lane on hardcoded defaults with governance unable to change
 // them, silently.
@@ -654,23 +650,20 @@ func TestAppliesAtTheLondonBoundary(t *testing.T) {
 // This is a constraint on new chain configurations, not a live defect: mainnet's
 // LondonBlock is 31,302,048 and the devnet genesis template's is 8. It is pinned so
 // that whoever schedules Gauss on a fresh chain has to confront it.
-func TestAppliesCannotDetectAnUninstalledContract(t *testing.T) {
+func TestLaneCannotDetectAnUninstalledContract(t *testing.T) {
 	zero := uint64(0)
 	config := *params.BSCChainConfig
 	config.GaussTime = &zero
 	config.LondonBlock = common.Big0
 	config.BerlinBlock = common.Big0
 
-	hdr := func(num int64, time uint64) *types.Header {
-		return &types.Header{Number: big.NewInt(num), Time: time}
-	}
 	// IsOnGauss never fires, so the Gauss upgrade never runs.
 	for n := int64(1); n <= 200; n++ {
 		require.False(t, config.IsOnGauss(big.NewInt(n), uint64(n-1), uint64(n)),
 			"block %d must not be the activation block", n)
 	}
-	// Yet the rules bind from block 1.
-	require.True(t, Applies(&config, hdr(0, 1_000), hdr(1, 1_001)))
+	// Yet the rules bind from block 1, because genesis already answers true as a parent.
+	require.True(t, config.IsGauss(common.Big0, 1_000))
 
 	// And the read path cannot tell a code-less account from an untouched one.
 	got, err := LoadParams(mapReader{})
@@ -683,8 +676,8 @@ func TestAppliesCannotDetectAnUninstalledContract(t *testing.T) {
 	sane.LondonBlock = big.NewInt(8)
 	sane.BerlinBlock = big.NewInt(8)
 	require.True(t, sane.IsOnGauss(big.NewInt(8), 7, 8), "with LondonBlock 8 the activation block is 8")
-	require.False(t, Applies(&sane, hdr(7, 7), hdr(8, 8)), "the activation block itself is exempt")
-	require.True(t, Applies(&sane, hdr(8, 8), hdr(9, 9)))
+	require.False(t, sane.IsGauss(big.NewInt(7), 7), "the activation block itself is exempt")
+	require.True(t, sane.IsGauss(big.NewInt(8), 8))
 }
 
 // TestParentSignalDerivesBothTheGateAndTheDenominator is why ParentSignal exists
@@ -826,10 +819,11 @@ func TestCheckLaneSizeUsesTheSignal(t *testing.T) {
 	require.ErrorIs(t, CheckLaneSize(LaneSize(p, Signal{}, gl), p, stepped, gl), ErrQuotaMismatch)
 }
 
-// TestNilHeaderHandlingIsSpecified covers the guards themselves, which were entirely
-// uncovered: the intended test passed for the wrong reason, because on BSCChainConfig
-// LondonBlock is 31,302,048 so IsGauss(0, .) is false and the parent-nil path was
-// never reached.
+// TestNilHeaderHandlingIsSpecified covers ParentSignal's guards themselves, which were
+// entirely uncovered: the intended test passed for the wrong reason, because on
+// BSCChainConfig LondonBlock is 31,302,048 so IsGauss(0, .) is false and the nil path
+// was never reached. A nil grandparent means two different things, and that is the whole
+// point of the guards.
 func TestNilHeaderHandlingIsSpecified(t *testing.T) {
 	forkTime := uint64(1_800_000_000)
 	config := *params.BSCChainConfig
@@ -838,14 +832,7 @@ func TestNilHeaderHandlingIsSpecified(t *testing.T) {
 	config.BerlinBlock = common.Big0
 	hdr := &types.Header{Number: big.NewInt(10), Time: forkTime + 3, GasLimit: 55_000_000}
 
-	// A nil parent is a real state - genesis - so it answers false rather than panicking.
-	require.False(t, Applies(&config, nil, hdr))
-
-	// A nil header is a caller mistake with no meaningful answer, so it panics rather
-	// than silently disabling a consensus rule.
-	require.Panics(t, func() { Applies(&config, hdr, nil) })
-
-	// ParentSignal has an error channel, so it reports a nil parent instead.
+	// A nil parent has nothing to answer, and ParentSignal has an error channel for it.
 	s, err := ParentSignal(&config, hdr, nil, common.Hash{})
 	require.Error(t, err)
 	require.Equal(t, Signal{}, s)

@@ -160,18 +160,11 @@ func newParliaLaneHarness(t *testing.T) (*Parlia, *core.BlockChain, *params.Chai
 // next block were not a lane block, the two tests below would assert nothing and stay
 // green forever.
 func TestPaymentLaneAppliesToTheBlockAfterParliaActivation(t *testing.T) {
-	_, _, config, parent, newHeader, _ := newParliaLaneHarness(t)
-	header := newHeader()
+	_, _, config, parent, _, _ := newParliaLaneHarness(t)
 
-	if paymentlane.Applies(config, nil, parent.Header()) {
-		t.Fatal("genesis cannot be a lane block")
-	}
-	if paymentlane.Applies(config, parent.Header(), header) != true {
-		t.Fatalf("block %d must be a lane block: gauss=%d parent.Time=%d header.Time=%d",
-			header.Number, *config.GaussTime, parent.Time(), header.Time)
-	}
-	if got := paymentlane.Applies(config, nil, header); got {
-		t.Fatal("Applies must answer false for an unresolved parent")
+	if !config.IsGauss(parent.Number(), parent.Time()) {
+		t.Fatalf("block %d must be a lane block: gauss=%d parent=(%d, %d)",
+			parent.NumberU64()+1, *config.GaussTime, parent.NumberU64(), parent.Time())
 	}
 }
 

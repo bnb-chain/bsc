@@ -149,50 +149,6 @@ const maxLaneRatio = 2_000
 // Numbering is not stable across corrections - reference an entry by its heading.
 // ---------------------------------------------------------------------------
 
-// Applies reports whether the BEP-703 rules bind the block whose parent is given.
-//
-// Argument order matches the tree's convention for this shape - compare
-// eip1559.VerifyEIP1559Header and eip4844.VerifyEIP4844Header, both
-// (config, parent, header) - because an inverted call compiles silently and would
-// answer for the parent block, which at the activation boundary is exactly the
-// case this function exists to catch.
-//
-// The rules start at Gauss+1, not at the activation block: post-Feynman the Gauss
-// upgrade runs from Finalize/FinalizeAndAssemble, i.e. after every user
-// transaction, so while the activation block executes the contract has no code and
-// no parameters can be read.
-//
-// A nil parent means there is no parent - the genesis header - which cannot be a
-// lane block, so the answer is false. That is a real state, not a caller mistake.
-// A nil header is a caller mistake and this panics on it, deliberately: unlike
-// "no parent", "no block being asked about" has no meaning, and silently answering
-// false there would disable a consensus rule instead of reporting a bug. Callers
-// that must tell "no parent" apart from "not a lane block" have to check first.
-//
-// header.Time must already be final: parlia's Prepare rewrites it, so evaluating
-// this earlier can gate the wrong side of the boundary.
-//
-// CAVEAT, and it is a real one. This reuses the same predicate pair that installs
-// the code (upgradeBuildInSystemContract gates on IsOnGauss), which makes the two
-// agree on every chain whose Gauss timestamp falls after its London block. It does
-// NOT make them agree unconditionally: if LondonBlock is 0 and GaussTime is at or
-// before the genesis timestamp, then IsGauss already holds at genesis, IsOnGauss
-// therefore never fires, the contract is never installed - and this function still
-// returns true from block 1. LoadParams cannot detect that, because an absent
-// account and an untouched one are both all-zero storage. The result is a chain
-// running the lane against a code-less address on hardcoded defaults, with
-// governance unable to change them. Real networks are safe (mainnet's LondonBlock
-// is 31,302,048 and the devnet template's is 8), so this is a constraint on new
-// chain configurations, not a live defect - but it must be checked when Gauss is
-// scheduled. TestAppliesCannotDetectAnUninstalledContract pins the behaviour.
-func Applies(config *params.ChainConfig, parent, header *types.Header) bool {
-	if parent == nil {
-		return false
-	}
-	return config.IsGauss(header.Number, header.Time) &&
-		!config.IsOnGauss(header.Number, parent.Time, header.Time)
-}
-
 // Signal is everything about block n-1 that laneSize(n) reads.
 //
 // The fields are unexported and ParentSignal is the only exported constructor. The
@@ -223,22 +179,22 @@ type Signal struct {
 // divergence - so they belong here rather than in a comment asking callers to be
 // careful.
 //
-// The three header arguments each have a distinct meaning when nil:
+// The three nil cases each mean something different:
 //
-//	parent nil                    the caller failed to resolve a header. An error,
-//	                              not a panic - unlike Applies, this has a channel
-//	                              for it.
+//	parent nil                    the caller failed to resolve a header.
 //	grandparent nil, parent 0     the parent is genesis. Legal, and the only case in
-//	                              which it is.
+//	                              which it is - the parent predates Gauss, so it
+//	                              carries no commitment and the recursion seeds.
 //	grandparent nil, parent > 0   the caller failed to resolve the GRANDparent. Also
 //	                              an error, and the explicit number test is the whole
-//	                              reason: Applies answers false for a nil parent, so
-//	                              otherwise this falls through to the zero Signal,
-//	                              LaneSize maps that to the floor, and the quota
-//	                              silently resets instead of the block being rejected.
+//	                              reason: without it this falls through to the zero
+//	                              Signal, LaneSize maps that to the floor, and the
+//	                              quota silently resets instead of the block being
+//	                              rejected.
 //
-// A parent the lane does not apply to yields the zero Signal, which LaneSize maps to
-// the floor - the bootstrap seed.
+// A parent the rules did not bind - Gauss not yet active for the grandparent, so the
+// parent is the activation block or older - yields the zero Signal, which LaneSize maps
+// to the floor.
 func ParentSignal(config *params.ChainConfig, grandparent, parent *types.Header, commitment common.Hash) (Signal, error) {
 	if parent == nil {
 		return Signal{}, fmt.Errorf("%w: nil parent header", ErrBadCommitment)
@@ -246,7 +202,7 @@ func ParentSignal(config *params.ChainConfig, grandparent, parent *types.Header,
 	if grandparent == nil && parent.Number.Sign() != 0 {
 		return Signal{}, fmt.Errorf("%w: nil grandparent for parent %d", ErrBadCommitment, parent.Number)
 	}
-	if !Applies(config, grandparent, parent) {
+	if grandparent == nil || !config.IsGauss(grandparent.Number, grandparent.Time) {
 		return Signal{}, nil
 	}
 	c, err := Decode(commitment)
@@ -309,8 +265,7 @@ func newSignal(prev *Commitment, parentGasUsed, parentGasLimit uint64) Signal {
 // The absence of an error return is deliberate - an error here invites a
 // caller-side fallback, and a fallback on this path is a chain split.
 //
-// Note this totality is LaneSize's alone. Applies panics on a nil header and
-// ParentSignal errors on a nil parent; both are documented at their own definitions.
+// Note this totality is LaneSize's alone: ParentSignal errors on a nil parent.
 //
 // The producer must not clamp the result; see core.LaneState.SetQuota for why.
 func LaneSize(p Params, s Signal, gasLimit uint64) uint64 {
