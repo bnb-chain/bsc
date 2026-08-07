@@ -635,8 +635,6 @@ func (p *Parlia) VerifyUnsealedHeader(chain consensus.ChainHeaderReader, header 
 		}
 	}
 
-	// UncleHash is checked in verifyCascadingFields: the decision needs the parent header.
-
 	bohr := chain.Config().IsBohr(header.Number, header.Time)
 	if !bohr {
 		if header.ParentBeaconRoot != nil {
@@ -702,13 +700,8 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 		return err
 	}
 
-	// Uncles are meaningless in PoA and stay forbidden either way - VerifyUncles rejects
-	// any block that has one. What varies is the 32 bytes the header reserves for their
-	// hash: from BEP-703's activation Parlia repurposes them to carry the payment lane
-	// commitment, so past that point EmptyUncleHash is the malformed case and a
-	// well-formed commitment is required. The rules bind from Gauss+1, i.e. from the
-	// block whose PARENT is already Gauss - which is why this lives here rather than
-	// beside the standalone field checks in verifyHeader.
+	// From Gauss+1 - the block whose PARENT is already Gauss - UncleHash carries the
+	// BEP-703 commitment instead of EmptyUncleHash, and it must be well formed.
 	if !chain.Config().IsGauss(parent.Number, parent.Time) {
 		if header.UncleHash != types.EmptyUncleHash {
 			return errInvalidUncleHash
@@ -1606,10 +1599,6 @@ func (p *Parlia) finalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	if header.GasLimit < header.GasUsed {
 		return nil, nil, errors.New("gas consumption of system txs exceed the gas limit")
 	}
-	// Not the last word on this field: types.NewBlock below re-derives it from the body, and
-	// the producer then stamps the BEP-703 commitment onto the assembled block with
-	// core.LaneState.WriteCommitment. Writing a commitment HERE would be silently discarded
-	// four lines down.
 	header.UncleHash = types.EmptyUncleHash
 	var blk *types.Block
 	var rootHash common.Hash
