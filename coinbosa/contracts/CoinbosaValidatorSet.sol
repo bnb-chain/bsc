@@ -171,8 +171,27 @@ contract CoinbosaValidatorSet {
 
     /// Rotation / ajout de validateurs SANS nouveau genesis.
     /// ATTENTION : prend effet au prochain bloc d'epoch (multiple de 200).
-    /// Le nouveau set DOIT contenir au moins un validateur dont la cle est
-    /// detenue par un noeud mineur, sinon la chaine s'arrete a l'epoch suivant.
+    ///
+    /// DANGER — CE QUE CETTE FONCTION NE PEUT PAS VERIFIER
+    /// ---------------------------------------------------
+    /// Parlia n'exige pas UN signataire : il exige ⌊N/2⌋+1 signataires DISTINCTS et
+    /// EN LIGNE (snapshot.go minerHistoryCheckLen(), parlia.go Seal -> SignRecently,
+    /// « Signed recently, must wait for others »). Un contrat ne peut pas savoir quels
+    /// noeuds tournent : AUCUNE garde ici ne peut donc garantir la liveness.
+    ///
+    /// Passer de 1 a 2 validateurs alors qu'un seul noeud scelle ARRETE la chaine au
+    /// bloc d'epoch suivant. La transaction est pourtant acceptee (status 1) et le
+    /// reseau tourne encore jusqu'a 200 blocs avant de se figer. Comme plus aucun bloc
+    /// n'est produit, aucune transaction corrective ne peut plus etre minee : cela ne
+    /// se defait pas on-chain. Reproduit au banc :
+    ///   consensus/parlia/coinbosa_halt_repro_test.go
+    ///
+    /// A noter : N=2 impose un quorum 2-sur-2 permanent — passer de 1 a 2 DEGRADE la
+    /// disponibilite. Monter par paires (1 -> 3 -> 5) evite cet etat.
+    ///
+    /// NE JAMAIS appeler cette fonction directement. Passer par
+    /// coinbosa/scripts/rotate-validators.js, qui verifie que les nouveaux validateurs
+    /// scellent REELLEMENT avant d'autoriser la rotation.
     function updateValidatorSet(address[] calldata newVals, bytes[] calldata newVotes)
         external
     {
