@@ -13,7 +13,12 @@ pw.txt
 *.log
 .env*
 
-# genesis généré : dépend de votre validateur, à reconstruire avec scripts/build-genesis.js
-genesis/genesis-coinbosa.json
+# Genesis de DÉVELOPPEMENT : dépend du validateur jetable de la machine, régénéré à volonté
+# avec scripts/build-genesis.js. Il n'a aucune valeur en dehors du poste qui l'a produit.
 genesis/genesis-coinbosa-dev.json
 genesis/CoinbosaValidatorSet.abi.json
+
+# Le genesis de PRODUCTION (genesis/genesis-coinbosa.json) est VOLONTAIREMENT versionné.
+# C'est le document public qui fixe l'offre et ses détenteurs : sans lui dans le dépôt,
+# personne ne peut recalculer le hash du bloc 0 ni vérifier qu'aucune allocation n'a été
+# ajoutée. Le garder hors du dépôt reviendrait à demander qu'on nous croie sur parole.
