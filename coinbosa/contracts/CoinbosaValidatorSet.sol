@@ -23,10 +23,22 @@ contract CoinbosaValidatorSet {
     // Parametres de deploiement (white-label : seules ces 2 constantes changent)
     // ---------------------------------------------------------------------
 
-    /// Valeur de reference, REECRITE automatiquement par scripts/build-genesis.js
-    /// avec l'adresse passee dans VALIDATOR. Ne pas la modifier a la main : elle
-    /// doit rester identique au validateur inscrit dans l'extraData du genesis.
+    /// GOUVERNANCE. REECRITE automatiquement par scripts/build-genesis.js avec
+    /// l'adresse passee dans GOVERNOR. Seule adresse autorisee a faire tourner le set
+    /// de validateurs et a balayer le surplus. Elle ne scelle AUCUN bloc : elle peut
+    /// donc vivre hors ligne (portefeuille materiel, multi-signatures).
     address public constant GOVERNOR = 0x0000000000000000000000000000000000000001;
+
+    /// VALIDATEUR DE GENESE. REECRITE automatiquement par scripts/build-genesis.js
+    /// avec l'adresse passee dans VALIDATOR. Ne pas la modifier a la main : elle doit
+    /// rester IDENTIQUE au validateur inscrit dans l'extraData du genesis, sinon le
+    /// moteur de consensus attend des blocs signes par une cle que personne ne detient.
+    ///
+    /// C'est cette adresse — et non le gouverneur — qui sert de validateur par defaut
+    /// et de garde anti-arret : elle est, par construction, la seule dont la cle de
+    /// scellage est detenue par un noeud mineur. Confondre les deux reviendrait a
+    /// exiger la presence d'une adresse incapable de produire un bloc.
+    address public constant INITIAL_VALIDATOR = 0x0000000000000000000000000000000000000002;
 
     // Doit etre byte-identique a la cle BLS presente dans l'extraData du genesis.
     bytes public constant GENESIS_VOTE_ADDRESS =
@@ -66,7 +78,7 @@ contract CoinbosaValidatorSet {
         uint256 n = validators.length;
         if (n == 0) {
             vals = new address[](1);
-            vals[0] = GOVERNOR;
+            vals[0] = INITIAL_VALIDATOR;
             votes = new bytes[](1);
             votes[0] = GENESIS_VOTE_ADDRESS;
             return (vals, votes);
@@ -84,7 +96,7 @@ contract CoinbosaValidatorSet {
         uint256 n = validators.length;
         if (n == 0) {
             vals = new address[](1);
-            vals[0] = GOVERNOR;
+            vals[0] = INITIAL_VALIDATOR;
             return vals;
         }
         vals = new address[](n);
@@ -107,7 +119,7 @@ contract CoinbosaValidatorSet {
         for (uint256 i = 0; i < n; ++i) {
             if (validators[i] == who) return true;
         }
-        return n == 0 && who == GOVERNOR;
+        return n == 0 && who == INITIAL_VALIDATOR;
     }
 
     // ---------------------------------------------------------------------
@@ -119,11 +131,11 @@ contract CoinbosaValidatorSet {
     /// peut appeler init() ; si une tx utilisateur le fait avant la system-tx du
     /// bloc 1, un `require(!alreadyInit)` ferait revert la system-tx et suiciderait
     /// la chaine au bloc 1. Le `if (alreadyInit) return;` rend tout appel superflu
-    /// inoffensif (no-op), en conservant l'etat validators=[GOVERNOR].
+    /// inoffensif (no-op), en conservant l'etat validators=[INITIAL_VALIDATOR].
     function init() external {
         if (alreadyInit) return;
         alreadyInit = true;
-        validators.push(GOVERNOR);
+        validators.push(INITIAL_VALIDATOR);
         voteAddresses.push(GENESIS_VOTE_ADDRESS);
         emit ValidatorSetUpdated(1);
     }
@@ -168,22 +180,24 @@ contract CoinbosaValidatorSet {
         uint256 n = newVals.length;
         require(n > 0 && n <= MAX_VALIDATORS, "bad length");
         require(newVotes.length == n, "length mismatch");
-        // Garde anti-arret : le GOVERNOR doit rester dans le set. Sans cela, un
+        // Garde anti-arret : INITIAL_VALIDATOR doit rester dans le set. Sans cela, un
         // appel qui remplace le set par des adresses dont aucune cle n'est detenue
         // par un noeud mineur laisse le reseau sans signataire au prochain bloc
-        // d'epoch, et la chaine s'arrete irreversiblement. Le GOVERNOR etant, par
-        // construction, un validateur a cle detenue, l'exiger garantit un signataire.
-        bool governorPresent = false;
+        // d'epoch, et la chaine s'arrete irreversiblement. C'est le validateur de
+        // genese — et non le gouverneur — qui detient une cle de scellage : exiger sa
+        // presence garantit un signataire. Exiger celle du gouverneur ne garantirait
+        // rien, puisqu'il ne produit aucun bloc.
+        bool sealerPresent = false;
         for (uint256 i = 0; i < n; ++i) {
             require(newVals[i] != address(0), "zero address");
             require(newVotes[i].length == VOTE_ADDRESS_LENGTH, "bad vote address");
-            if (newVals[i] == GOVERNOR) governorPresent = true;
+            if (newVals[i] == INITIAL_VALIDATOR) sealerPresent = true;
             for (uint256 j = 0; j < i; ++j) {
                 require(newVals[i] != newVals[j], "duplicate validator");
                 require(keccak256(newVotes[i]) != keccak256(newVotes[j]), "duplicate vote address");
             }
         }
-        require(governorPresent, "governor must remain a validator");
+        require(sealerPresent, "genesis validator must remain a validator");
         delete validators;
         delete voteAddresses;
         for (uint256 i = 0; i < n; ++i) {

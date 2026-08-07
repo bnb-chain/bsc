@@ -107,18 +107,34 @@ if (!solc.version().startsWith(SOLC_EXPECTED)) {
   process.exit(1);
 }
 
-// --- 1. compiler le ValidatorSet avec le gouverneur voulu ---
-const GOV = ethers.getAddress(GOVERNOR); // adresse checksummee (Solidity exige EIP-55)
+// --- 1. compiler le ValidatorSet avec le gouverneur et le validateur voulus ---
+// Deux adresses DISTINCTES sont injectees :
+//   GOVERNOR          — gouvernance seule, ne scelle aucun bloc, peut vivre hors ligne ;
+//   INITIAL_VALIDATOR — le validateur de genese, dont la cle de scellage est detenue par
+//                       le noeud mineur. C'est LUI que le contrat renvoie comme validateur
+//                       et qu'il exige de conserver dans le set (garde anti-arret), et il
+//                       doit etre identique au validateur inscrit dans l'extraData.
+// Les confondre — comme le faisait la version precedente — revient soit a poser la
+// gouvernance sur une cle chaude, soit a annoncer au consensus un validateur dont
+// personne ne detient la cle : dans ce second cas la chaine s'arrete au bloc d'epoch.
+const GOV = ethers.getAddress(GOVERNOR);      // adresses checksummees (Solidity exige EIP-55)
+const VAL = ethers.getAddress(VALIDATOR);
 let source = fs.readFileSync(SOL, 'utf8');
-const GOV_RE = /address public constant GOVERNOR = 0x[0-9a-fA-F]{40};/;
-const srcBefore = source;
-source = source.replace(GOV_RE, `address public constant GOVERNOR = ${GOV};`);
-// Garde dure : sans confirmation du remplacement, le contrat compilerait avec le
-// GOVERNOR par defaut (0x...0001) — gouverneur silencieusement faux dans le bytecode.
-if (source === srcBefore || !source.includes(`address public constant GOVERNOR = ${GOV};`)) {
-  console.error('ERREUR : injection du GOVERNOR echouee — motif introuvable dans CoinbosaValidatorSet.sol.');
-  process.exit(1);
+
+function injecter(nom, valeur) {
+  const motif = new RegExp(`address public constant ${nom} = 0x[0-9a-fA-F]{40};`);
+  const avant = source;
+  source = source.replace(motif, `address public constant ${nom} = ${valeur};`);
+  // Garde dure : sans confirmation du remplacement, le contrat compilerait avec la
+  // valeur par defaut — adresse silencieusement fausse, figee dans le bytecode du
+  // bloc 0, donc dans l'identite de la chaine.
+  if (source === avant || !source.includes(`address public constant ${nom} = ${valeur};`)) {
+    console.error(`ERREUR : injection de ${nom} echouee — motif introuvable dans CoinbosaValidatorSet.sol.`);
+    process.exit(1);
+  }
 }
+injecter('GOVERNOR', GOV);
+injecter('INITIAL_VALIDATOR', VAL);
 
 const out = JSON.parse(solc.compile(JSON.stringify({
   language: 'Solidity',
