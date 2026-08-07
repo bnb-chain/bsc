@@ -126,12 +126,16 @@ func b20EnterCall(ctx *PrecompileContext, input []byte) error {
 
 // resolveB20Token synthesizes the variant precompile bound to a token address.
 // Same variant code serves every token of that variant; the bound address is
-// the storage root. Returns false for uninitialized addresses and unknown
-// variant bytes (the latter are simply not routed).
+// the storage root.
+//
+// Routing keys on the address alone. Existence is deliberately not part of the
+// decision: a recognized-variant address that holds no token still reaches the
+// handler, which refuses a non-zero value with NonPayable and then reverts with
+// empty returndata (BEP-702 section 3.3). Were it left unrouted, an ordinary
+// value-bearing transfer would instead be accepted and stranded there. An
+// unrecognized variant byte is not routed at all, so a token of a future
+// variant is inert rather than misrouted.
 func resolveB20Token(state StateDB, addr common.Address) (PrecompiledContract, bool) {
-	if !b20Initialized(state, addr) {
-		return nil, false
-	}
 	switch addr[10] {
 	case b20VariantAsset:
 		return &b20AssetPrecompile{token: addr}, true
@@ -208,6 +212,9 @@ func (p *b20AssetPrecompile) RunStateful(ctx *PrecompileContext, input []byte) (
 	if err := b20EnterCall(ctx, input); err != nil {
 		return finishB20(nil, err)
 	}
+	if !b20InitializedMetered(ctx, ctx.Self) {
+		return finishB20(nil, ErrExecutionReverted) // no token here; empty returndata
+	}
 	// Decimals is intercepted by the Asset extension (read from extension
 	// storage), so the shared token's decimals field is unused here.
 	ret, err := assetDispatch(newB20Token(ctx, 0), newAssetExt(ctx), input)
@@ -229,6 +236,9 @@ func (p *b20StablecoinPrecompile) RequiredGas(input []byte) uint64 { return 0 } 
 func (p *b20StablecoinPrecompile) RunStateful(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	if err := b20EnterCall(ctx, input); err != nil {
 		return finishB20(nil, err)
+	}
+	if !b20InitializedMetered(ctx, ctx.Self) {
+		return finishB20(nil, ErrExecutionReverted) // no token here; empty returndata
 	}
 	// Stablecoin decimals are fixed at 6.
 	// TODO: Stablecoin currency() selector before the shared IB20 dispatch.

@@ -46,9 +46,14 @@ import (
 // expansion that receives it (3 + 3).
 const b20CalldataWordGas = params.CopyGas + params.MemoryGas
 
-// chargeCalldata meters the input of one dispatch. Charged once at the entry
-// point, never per selector, so nested internal calls (announce bundles,
-// factory initCalls) pay for their own payloads exactly once.
+// chargeCalldata meters the input of one call frame, at its entry point.
+//
+// Internal calls dispatched inside a frame — an announce bundle's entries, the
+// factory's initCalls — are not charged again. They perform no calldata read:
+// the bytes are already in hand, and re-dispatch is a direct Go call, not an
+// EVM frame. Their storage work is metered normally; only the call-frame
+// overhead is absent, which is the same overhead BEP-702 section 3.14 lists as
+// deliberately not charged.
 func (ctx *PrecompileContext) chargeCalldata(input []byte) {
 	words := (uint64(len(input)) + 31) / 32
 	ctx.chargeStateGas(words * b20CalldataWordGas)

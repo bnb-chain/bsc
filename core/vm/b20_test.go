@@ -20,10 +20,12 @@ import (
 	"errors"
 	"testing"
 
+	"bytes"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/holiman/uint256"
 )
 
 // b20Addr builds a token address in the reserved space with the given variant
@@ -94,9 +96,13 @@ func TestResolveB20(t *testing.T) {
 	if _, ok := resolveB20(statedb, unknown); ok {
 		t.Error("unknown variant should not resolve")
 	}
-	// Uninitialized address in the B20 space is not a live token.
-	if _, ok := resolveB20(statedb, uninit); ok {
-		t.Error("uninitialized token address should not resolve")
+	// An uninitialized address with a recognized variant is still routed:
+	// existence is checked inside the handler, not by dispatch, so a
+	// value-bearing call to it is refused rather than stranded (BEP-702 3.3).
+	if p, ok := resolveB20(statedb, uninit); !ok {
+		t.Error("uninitialized recognized-variant address should still route")
+	} else if _, ok := p.(*b20AssetPrecompile); !ok {
+		t.Errorf("uninitialized asset address resolved to %T, want *b20AssetPrecompile", p)
 	}
 	// A plain address outside the space is not a B20 precompile.
 	if _, ok := resolveB20(statedb, common.HexToAddress("0x1234")); ok {
@@ -126,5 +132,47 @@ func TestB20StatelessDispatchGuard(t *testing.T) {
 	var p PrecompiledContract = &b20AssetPrecompile{}
 	if _, err := p.Run(nil); !errors.Is(err, ErrB20StatelessDispatch) {
 		t.Errorf("Run err = %v, want ErrB20StatelessDispatch", err)
+	}
+}
+
+// TestB20UninitializedAddressBehavior pins BEP-702 3.3's dispatch table for a
+// reserved address that holds no token. It is routed to the handler, not left
+// to the ordinary account path, so a value-bearing call is refused instead of
+// being accepted and stranded at an address with no way to withdraw from.
+func TestB20UninitializedAddressBehavior(t *testing.T) {
+	_, evm := newAmsterdamEVM(t)
+	caller := common.HexToAddress("0xca11e5")
+	// A well-formed Asset address nobody has created.
+	empty := b20Addr(b20VariantAsset, 0x77)
+
+	// Zero-value call: reaches the handler, which reverts with empty
+	// returndata because no token exists there.
+	ret, _, err := evm.Call(caller, empty, b20Call(selTotalSupply), NewGasBudget(100_000), uint256.NewInt(0))
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("call to uninitialized token err = %v, want ErrExecutionReverted", err)
+	}
+	if len(ret) != 0 {
+		t.Fatalf("revert data = %x, want empty", ret)
+	}
+
+	// Value-bearing call: refused with NonPayable before anything else, so the
+	// value never lands.
+	ret, _, err = evm.Call(caller, empty, b20Call(selTotalSupply), NewGasBudget(100_000), uint256.NewInt(5))
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("value-bearing call err = %v, want ErrExecutionReverted", err)
+	}
+	if !bytes.Equal(ret, errSelNonPayable[:]) {
+		t.Fatalf("revert data = %x, want NonPayable() = %x", ret, errSelNonPayable)
+	}
+
+	// An unrecognized variant is the other case: not routed at all, so the
+	// ordinary account path applies and the call succeeds trivially.
+	future := b20Addr(0x02, 0x77)
+	ret, _, err = evm.Call(caller, future, b20Call(selTotalSupply), NewGasBudget(100_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("call to a future-variant address err = %v, want success", err)
+	}
+	if len(ret) != 0 {
+		t.Fatalf("future-variant call returned %x, want empty", ret)
 	}
 }
