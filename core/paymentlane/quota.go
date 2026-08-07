@@ -21,9 +21,8 @@ const RatioDenom = 10_000
 // so what this exists for is TestConstantsMatchDeployedBytecode, the only thing that
 // would notice a contract-side widening.
 //
-// An exact mirror, deliberately without the slack maxPaymentContractsRead is given:
-// widening this to 4000 moves the halt boundary from 25M to 33.3M of GasLimit, so a
-// mismatch must fail the test rather than be absorbed.
+// An exact mirror, deliberately: widening this to 4000 moves the halt boundary from 25M
+// to 33.3M of GasLimit, so a mismatch must fail the test rather than be absorbed.
 const maxLaneRatio = 2_000
 
 // ---------------------------------------------------------------------------
@@ -75,37 +74,47 @@ const maxLaneRatio = 2_000
 //
 // THE DEVIATIONS. Items 1 to 3 are RECORDED BUT NOT RULED - they are here so that a
 // reader diffing this file against the text finds them already known. For all three the
-// expected resolution is an amendment rather than a change here, since each closes a
-// real hole and closing it for category 1 alone would leave the same hole open through a
-// listed token; that is a preference, not a decision. Items 4 and 5 record what the text
-// does not contain at all.
+// expected resolution is an amendment rather than a change here: 1 and 3 close a hole the
+// text leaves open, and closing it for category 1 alone would leave the same hole open
+// through a listed token, while 2 declines a clause whose hole the text leaves open
+// elsewhere anyway. That is a preference, not a decision. Items 4 and 5 record what the
+// text does not contain at all.
 //
 //  1. A ZERO-VALUE BARE TRANSFER IS GENERAL. Section 3.2's category 1 carries no
 //     value condition - neither the table nor the pseudocode - so a value-0 call to
-//     a code-less account is payment there and general here (Classify gate 7). A
+//     a code-less account is payment there and general here (Classify gate 6). A
 //     transfer that moves nothing is not a payment; the price is that this is the
 //     cheapest possible way for an implementation reading only the BEP to disagree,
 //     on traffic anyone can produce for 21000 gas.
 //
-//  2. THE RESERVED RANGE IS WIDER THAN "NOT A PRECOMPILE". Section 3.2 excludes
-//     precompile addresses. isReserved excludes everything at or below
-//     maxReservedAddress, which additionally covers every Parlia system contract
-//     and every unused address below 0x10000; see maxReservedAddress for why a
-//     monotone range beats the precompile set. Reachable divergence: one wei to
-//     0x0, or to any code-less address in that window - payment per the text,
-//     general here.
+//  2. THERE IS NO PRECOMPILE EXCLUSION. Section 3.2 requires "to is not a precompile
+//     address", because a precompile holds no code yet a call to one runs it, and a
+//     precompile that rejects its input consumes every unit handed to it. There is no
+//     such gate here, so one wei to 0x09 with empty data is general per the text and
+//     PAYMENT here. The clause belongs to the same family as gates 2 and 3 - keep shapes
+//     that are not payments out of a pool general traffic cannot enter at any price - and
+//     the reason to decline this one and keep those is what the shape buys the sender. A
+//     BlobTx buys DA and a SetCodeTx buys authorisations, both at lane priority, which is
+//     worth attacking for; a call to a rejecting precompile buys nothing but burnt gas at
+//     full price, so the only payoff is denying the lane to other payments - and section 6
+//     already accepts exactly that denial by a flood of ordinary transfers at that same
+//     price. Against that, every implementable form of the clause costs something real:
+//     the exact set is fork-dependent and IsInBSC-dependent and grows a branch every fork,
+//     and an address-range approximation of it swallows every code-less address below its
+//     top, which was this entry's previous content. Expected resolution is an amendment
+//     striking the clause from 3.2, which also wants a word on category 1's prose
+//     definition, since "executes no contract code" is what the clause implements.
 //
-//  3. THE LISTED-CONTRACT LOOKUP IS SUBORDINATE TO GATES 2-4. Section 3.2's
+//  3. THE LISTED-CONTRACT LOOKUP IS SUBORDINATE TO GATES 2 AND 3. Section 3.2's
 //     pseudocode tests the payment-contract list first and unconditionally, and
 //     section 3.7 states it as "every transaction whose to is listed is a payment
-//     transaction, whatever function it calls". Here a listed destination must
-//     still pass the transaction-type allowlist, the empty-access-list test and the
-//     reserved range. Each of those closes a way to consume the whole lane without
-//     executing bytecode - bulk 7702 authorisations, DA space at lane price,
-//     intrinsic access-list gas - and closing them for category 1 only would leave
-//     every one of them open through a listed token. The everyday divergence is not
-//     a BlobTx but an ordinary type-0x01 or 0x02 transfer to a listed token
-//     carrying an access list: payment per the text, general here.
+//     transaction, whatever function it calls". Here a listed destination must still
+//     pass the transaction-type allowlist and the empty-access-list test. Both close a
+//     way to consume the whole lane without executing bytecode - bulk 7702
+//     authorisations, DA space at lane price, intrinsic access-list gas - and closing
+//     them for category 1 only would leave both open through a listed token. The
+//     everyday divergence is not a BlobTx but an ordinary type-0x01 or 0x02 transfer to
+//     a listed token carrying an access list: payment per the text, general here.
 //
 //  4. THE CONTRACT'S ABSOLUTE PARAMETER BOUNDS ARE NOT IN THE BEP. Section 3.6
 //     gives invariants (1)-(6), and 3.4 bounds every ratio by RatioDenom. Nothing else.

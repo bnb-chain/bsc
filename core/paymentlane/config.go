@@ -49,22 +49,6 @@ const (
 	numParams               = 8
 )
 
-// maxPaymentContractsRead bounds the enumeration loop, so a corrupt length word
-// cannot become an unbounded allocation.
-//
-// The contract caps the list at nothing at all, and this must not become a mirror of
-// any cap it later grows - the OPPOSITE policy from maxLaneRatio, and the asymmetry is
-// the point. Exceeding this is a hard ErrCorruptConfig, and LoadPaymentContracts is a
-// pure function of the parent root, so the value governance would have to cross to
-// halt the chain forever is this one. It therefore sits far above any reachable list:
-// every entry costs one governance vote, so 4096 is out of reach, while a shifted
-// layout lands on a random 256-bit word and is caught. Raising it is always safe;
-// lowering it toward a plausible list size is the dangerous direction.
-//
-// Truncating instead of erroring would be worse than either: two clients with
-// different ceilings would classify the same block differently and split.
-const maxPaymentContractsRead = 4096
-
 // The value an unwritten slot reads as, mirroring PaymentLane's DEFAULT_*
 // constants. The contract has no initializer: all-zero storage already IS the
 // shipped configuration, so these are a live fallback rather than a genesis seed.
@@ -135,8 +119,8 @@ func paramSlot(i int) common.Hash {
 // array: keccak256(bytes32(paymentContractsLenSlot)) + i.
 //
 // The addition is modulo 2^256, matching the EVM's unchecked add, so it agrees with
-// Solidity even in the astronomically unlikely case that the keccak base is within
-// maxPaymentContractsRead of wrapping.
+// Solidity even in the astronomically unlikely case that the keccak base is close enough
+// to 2^256 for a list to wrap it.
 func paymentContractSlot(i uint64) common.Hash {
 	base := new(uint256.Int).SetBytes32(crypto.Keccak256(common.Hash{31: paymentContractsLenSlot}.Bytes()))
 	return base.AddUint64(base, i).Bytes32()
@@ -147,10 +131,11 @@ func paymentContractSlot(i uint64) common.Hash {
 // A parameter above 2^64-1 is not something governance can produce - the contract
 // bounds each of the eight absolutely - so it can only mean the slot layout has
 // shifted and this word is really part of a mapping or an array. Deterministic (every
-// node reading this root sees it) and unreachable, so a hard error here cannot halt
-// the chain on a governance action; the same does not hold for the length word, see
-// maxPaymentContractsRead. It is a layout tripwire, not a fallback: a clamp would
-// squash the garbage into a legal-looking value and hide exactly this failure.
+// node reading this root sees it) and unreachable, so a hard error here cannot halt the
+// chain on a governance action - which is the test every hard error in this file has to
+// pass, and the reason the payment-contract count has no ceiling of its own. It is a
+// layout tripwire, not a fallback: a clamp would squash the garbage into a legal-looking
+// value and hide exactly this failure.
 func word64(w common.Hash) (uint64, bool) {
 	for _, b := range w[:24] {
 		if b != 0 {
@@ -249,23 +234,32 @@ func orDefault(stored, fallback uint64) uint64 {
 // its code existed. Callers must never use nil to signal a failed read: a failed
 // read has to abort the block before any classification happens.
 //
-// No ordering, capacity or address-range guarantee is offered to the caller and
-// none is needed. The classifier's reserved-range gate runs above its list
-// lookup, so a mis-governed reserved address in this set cannot reclassify
-// anything, which removes three validation obligations from both sides.
+// No ordering, capacity or address-range guarantee is offered to the caller and none is
+// needed: the list is governance-written, every listing is reversible by the same vote,
+// and the classifier takes membership as decided. Neither side validates the address, so
+// a listing that should not have been made is undone the way it was made.
+//
+// NOTHING BOUNDS THE LENGTH here, deliberately, because the contract does not bound it
+// either and this function is a pure function of the parent root: a ceiling of our own
+// would be a chain halt at the block that first crossed it, with no protocol path out.
+// So the length word is trusted up to what a uint64 holds, and what protects the loop
+// against a shifted storage layout is shape rather than magnitude - the padding check
+// below, and the duplicate check that follows from the contract's own set semantics. A
+// length that is really some other parameter's value reads elements from unwritten slots,
+// which are all zero, so it stops on the second element rather than spinning.
 func LoadPaymentContracts(r StorageReader) (map[common.Address]struct{}, error) {
 	w, err := r.Storage(ContractAddress, common.Hash{31: paymentContractsLenSlot})
 	if err != nil {
 		return nil, fmt.Errorf("%w: payment-contract count: %w", ErrStateUnavailable, err)
 	}
 	n, ok := word64(w)
-	if !ok || n > maxPaymentContractsRead {
+	if !ok {
 		return nil, fmt.Errorf("%w: payment-contract count = %#x", ErrCorruptConfig, w)
 	}
 	if n == 0 {
 		return nil, nil
 	}
-	set := make(map[common.Address]struct{}, n)
+	set := make(map[common.Address]struct{})
 	for i := uint64(0); i < n; i++ {
 		w, err := r.Storage(ContractAddress, paymentContractSlot(i))
 		if err != nil {
@@ -278,7 +272,14 @@ func LoadPaymentContracts(r StorageReader) (map[common.Address]struct{}, error) 
 				return nil, fmt.Errorf("%w: payment contract %d = %#x", ErrCorruptConfig, i, w)
 			}
 		}
-		set[common.BytesToAddress(w[12:])] = struct{}{}
+		addr := common.BytesToAddress(w[12:])
+		// OpenZeppelin's EnumerableSet cannot hold a duplicate - add reverts on one, and
+		// remove swaps the last element down - so a repeat is proof this is not that array.
+		// It is what makes the unbounded loop safe: garbage cannot be enumerated for long.
+		if _, dup := set[addr]; dup {
+			return nil, fmt.Errorf("%w: payment contract %d = %x is a duplicate", ErrCorruptConfig, i, addr)
+		}
+		set[addr] = struct{}{}
 	}
 	return set, nil
 }

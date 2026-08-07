@@ -113,7 +113,7 @@ func (w *worker) verifyBidBlockLaneQuota(decoded *buildertypes.DecodedBidBlock, 
 // wants past it, since declaring gas is free and params.MaxTxGas is 16.7M against a lane of
 // 2-4.4M. Bounding by intrinsic gas would be tighter and is NOT sound: a payment-class
 // transfer whose destination gains code mid-block really does consume its limit, per the known
-// leak on Classify's gate 8, so it would refuse honest blocks.
+// leak on Classify's gate 7, so it would refuse honest blocks.
 //
 // System transactions are skipped because the importer never classifies them either -
 // IsSystemTransaction splits them out first. Their addresses are also inside the reserved

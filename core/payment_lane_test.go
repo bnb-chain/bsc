@@ -278,7 +278,7 @@ func TestPaymentLaneImportRejectsATamperedCommitment(t *testing.T) {
 // invisible until somebody used it. So a transfer to an address that gains code IN THIS BLOCK
 // is still a payment, and only from the next block on is it general.
 //
-// That is also the leak recorded on Classify's gate 8: the transfer below executes the code
+// That is also the leak recorded on Classify's gate 7: the transfer below executes the code
 // deployed by the transaction before it and burns its whole limit inside the payment bucket.
 // The burner is here to keep that concrete rather than theoretical - block 3 commits a payment
 // total far above 21,000 - so anyone weighing the trade again has the number in front of them.
@@ -311,7 +311,7 @@ func TestPaymentLaneClassifiesAgainstTheParentState(t *testing.T) {
 			nonce++
 		case 4:
 			// The same transfer one block later: the code is in the parent post-state now, so
-			// gate 8 makes it general.
+			// gate 7 makes it general.
 			b.AddTx(key.sign(t, signer, nonce, created, big.NewInt(1), burnGas, nil))
 			nonce++
 		}
@@ -483,9 +483,9 @@ func BenchmarkResolveLaneState(b *testing.B) {
 	}
 }
 
-// BenchmarkResolveLaneStateFullList is the same measurement at the largest list the
-// contract permits, MAX_PAYMENT_CONTRACTS = 256, so the cost of the 1+N reads is measured
-// rather than extrapolated from the N=0 case.
+// BenchmarkResolveLaneStateFullList is the same measurement at a 256-entry list, so the
+// cost of the 1+N reads is measured rather than extrapolated from the N=0 case. Nothing
+// bounds the list on either side, so 256 is a plausible size, not a ceiling.
 //
 // The genesis allocation writes the OpenZeppelin EnumerableSet layout directly: slot 8
 // holds _values.length and element i lives at keccak256(bytes32(8))+i. That is the same

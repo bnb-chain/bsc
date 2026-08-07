@@ -178,7 +178,7 @@ func TestVerifyBidBlockLaneQuota(t *testing.T) {
 //
 // Bounding by intrinsic gas would be tighter and is what an earlier version did, but it is
 // not sound - a payment-class transfer whose destination gains code mid-block executes it and
-// really does consume its limit (the leak recorded on Classify's gate 8), so an intrinsic-gas
+// really does consume its limit (the leak recorded on Classify's gate 7), so an intrinsic-gas
 // ceiling would refuse honest blocks. The mutation this kills is that tightening.
 func TestVerifyBidBlockLaneQuotaBoundsByDeclaredLimits(t *testing.T) {
 	w, header, local, laneSize := laneBidBlockHarness(t)
@@ -210,9 +210,10 @@ func TestVerifyBidBlockLaneQuotaSkipsTheSystemTxRegion(t *testing.T) {
 
 	stranger := common.Address{0xbe, 0xef}
 	transfer := types.NewTx(&types.LegacyTx{To: &stranger, Value: common.Big1, Gas: params.TxGas})
-	// Deliberately NOT addressed to a system contract: one that is would be general anyway
-	// by the reserved-range gate, so widening the slice would not raise the ceiling and the
-	// mutation would survive. This is the shape that makes the slice bound load-bearing.
+	// Deliberately a plain code-less destination: one carrying calldata, or one whose
+	// account has code, would be general anyway, so widening the slice would not raise the
+	// ceiling and the mutation would survive. This is the shape that makes the slice bound
+	// load-bearing.
 	trailing := types.NewTx(&types.LegacyTx{To: &stranger, Nonce: 1, Value: common.Big1, Gas: params.TxGas})
 
 	h := types.CopyHeader(header)

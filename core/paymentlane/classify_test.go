@@ -109,14 +109,16 @@ func makeTx(t *testing.T, o txOpts) *types.Transaction {
 // The first half is what keeps the tail of the packing loop cheap - a reordering
 // that hoists the state read turns each rejected account into a trie query. The
 // second half kills every gate-order mutation that changes a CLASS, which is all of
-// the correctness-relevant ones. Two reorderings survive it and are meant to:
-// swapping gates 3 and 4, or gates 6 and 7, changes only which free test runs first,
-// so no observable behaviour differs.
+// the correctness-relevant ones. What survives it, and is meant to, is any reordering
+// among the gates that all answer general - the type allowlist against the
+// access-list test, the calldata test against the value test - since those change only
+// which free test runs first. Every swap that crosses gate 4 or gate 7 dies here - on the
+// class it produces, or on the state read it moves.
 func TestNoStateReadUntilEveryStaticGatePasses(t *testing.T) {
 	oneEntryAccessList := types.AccessList{{Address: plainDest}}
-	// ContractAddress is in the set on purpose: without a reserved address here,
-	// swapping gates 4 and 5 leaves every expectation below unchanged and survives
-	// this test. It stays general because gate 4 dominates.
+	// ContractAddress is listed on purpose: membership decides regardless of the
+	// address, so this row is the one that fails if a filter is ever reintroduced above
+	// the lookup.
 	listed := listedSet(listedDest, ContractAddress)
 
 	for _, txType := range []byte{
@@ -128,7 +130,7 @@ func TestNoStateReadUntilEveryStaticGatePasses(t *testing.T) {
 			addr *common.Address
 		}{
 			{"nil", nil},
-			{"reserved", &ContractAddress},
+			{"listed-system", &ContractAddress},
 			{"listed", &listedDest},
 			{"plain", &plainDest},
 		} {
@@ -154,19 +156,20 @@ func TestNoStateReadUntilEveryStaticGatePasses(t *testing.T) {
 						tx := makeTx(t, o)
 
 						typeOK := txType == types.LegacyTxType || txType == types.AccessListTxType || txType == types.DynamicFeeTxType
+						isListed := dest.name == "listed" || dest.name == "listed-system"
 						wantRead := dest.addr != nil && typeOK && !withAL &&
-							dest.name != "reserved" && dest.name != "listed" && !withData && withValue
+							!isListed && !withData && withValue
 
 						var wantClass Class
 						switch {
-						case dest.addr == nil, !typeOK, withAL, dest.name == "reserved":
+						case dest.addr == nil, !typeOK, withAL:
 							wantClass = ClassGeneral
-						case dest.name == "listed":
+						case isListed:
 							wantClass = ClassPayment
 						case withData, !withValue:
 							wantClass = ClassGeneral
 						default:
-							wantClass = ClassPayment // reaches gate 8; the account is absent below
+							wantClass = ClassPayment // reaches gate 7; the account is absent below
 						}
 
 						reader := absentAccounts()
@@ -184,62 +187,29 @@ func TestNoStateReadUntilEveryStaticGatePasses(t *testing.T) {
 	}
 }
 
-// TestReservedRangeIsExact walks the whole reserved range and its boundary, and
-// cross-checks that every real precompile and system contract falls inside it -
-// which is what makes it safe for the classifier to depend on an address range
-// instead of on params.Rules and the fork-dependent precompile tables.
-func TestReservedRangeIsExact(t *testing.T) {
-	for n := 0; n <= maxReservedAddress; n++ {
-		addr := common.BigToAddress(big.NewInt(int64(n)))
-		require.True(t, isReserved(addr), "%x should be reserved", addr)
-	}
-	// One past the range, and every single-bit perturbation above the low two bytes.
-	require.False(t, isReserved(common.BigToAddress(big.NewInt(maxReservedAddress+1))))
-	for i := 0; i < common.AddressLength-2; i++ {
-		for bit := 0; bit < 8; bit++ {
-			var addr common.Address
-			addr[i] = 1 << bit
-			require.False(t, isReserved(addr), "byte %d bit %d must escape the range", i, bit)
-		}
-	}
-
-	// Every precompile active under any fork rule set this tree can produce.
-	for _, rules := range []params.Rules{
-		{IsHomestead: true},
-		{IsHomestead: true, IsByzantium: true},
-		{IsHomestead: true, IsByzantium: true, IsIstanbul: true},
-		{IsHomestead: true, IsByzantium: true, IsIstanbul: true, IsBerlin: true, IsCancun: true},
-		{IsHomestead: true, IsByzantium: true, IsIstanbul: true, IsBerlin: true, IsCancun: true, IsPrague: true},
-		{IsHomestead: true, IsByzantium: true, IsIstanbul: true, IsBerlin: true, IsCancun: true, IsPrague: true, IsOsaka: true},
-		{IsHomestead: true, IsByzantium: true, IsIstanbul: true, IsBerlin: true, IsCancun: true, IsPrague: true, IsOsaka: true, IsInBSC: true},
-		{IsPasteur: true},
-		// Note vm.ActivePrecompiles has no IsUBT branch - unlike the unexported
-		// activePrecompiledContracts - so an {IsUBT: true} row would silently
-		// duplicate the Homestead set rather than test anything.
-	} {
-		for _, addr := range vm.ActivePrecompiles(rules) {
-			require.True(t, isReserved(addr),
-				"precompile %x is outside the reserved range: it would be classified payment and could exhaust the lane", addr)
-		}
-	}
-
-	// And every Parlia system contract, so a leaked system transaction is general.
-	for _, s := range []string{
-		systemcontracts.ValidatorContract, systemcontracts.SlashContract, systemcontracts.SystemRewardContract,
-		systemcontracts.LightClientContract, systemcontracts.TokenHubContract, systemcontracts.RelayerIncentivizeContract,
-		systemcontracts.RelayerHubContract, systemcontracts.GovHubContract, systemcontracts.TokenManagerContract,
-		systemcontracts.CrossChainContract, systemcontracts.StakingContract, systemcontracts.StakeHubContract,
-		systemcontracts.StakeCreditContract, systemcontracts.GovernorContract, systemcontracts.GovTokenContract,
-		systemcontracts.TimelockContract, systemcontracts.TokenRecoverPortalContract,
-		systemcontracts.PaymentLaneContract,
-	} {
-		require.True(t, isReserved(common.HexToAddress(s)), "system contract %s is outside the reserved range", s)
+// TestPrecompileDestinationIsPayment pins deviation 2 of quota.go's registry: section 3.2
+// excludes precompile addresses and this implementation has no such gate, so one wei to a
+// precompile with empty data is payment class here and general to a conformant client.
+//
+// It is not an oversight, and it is not free either; the registry entry holds the
+// argument. What this test does is make sure a reader who reintroduces the exclusion has
+// to delete an assertion that says so out loud, rather than turning a documented
+// divergence into an undocumented one.
+func TestPrecompileDestinationIsPayment(t *testing.T) {
+	for _, addr := range vm.ActivePrecompiles(params.Rules{
+		IsHomestead: true, IsByzantium: true, IsIstanbul: true, IsBerlin: true,
+		IsCancun: true, IsPrague: true, IsOsaka: true, IsInBSC: true,
+	}) {
+		tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &addr, value: big.NewInt(1)})
+		got, err := NewClassifier(common.Hash{}, absentAccounts(), nil).Classify(tx)
+		require.NoError(t, err)
+		require.Equal(t, ClassPayment, got, "precompile %x", addr)
 	}
 }
 
 // TestAbsentAccountIsPayment guards the highest-value silent bug in the package.
 //
-// Writing gate 8 as codeHash == types.EmptyCodeHash instead misclassifies every
+// Writing gate 7 as codeHash == types.EmptyCodeHash instead misclassifies every
 // transfer to a brand-new address - first deposits and new wallets, which is the
 // lane's core use case. The symptom is not an error: it is a lane that quietly
 // never fills, indistinguishable from low demand.
@@ -277,7 +247,7 @@ func TestCodeHashBoundaryCases(t *testing.T) {
 }
 
 // TestDelegationDesignatorIsGeneral covers EIP-7702. A delegated account's code
-// hash is keccak(0xef0100||target), so gate 8 excludes it without any special
+// hash is keccak(0xef0100||target), so gate 7 excludes it without any special
 // case - and the AccountReader interface has no code accessor, so an
 // implementation cannot be tempted to follow the delegation instead.
 func TestDelegationDesignatorIsGeneral(t *testing.T) {
@@ -322,18 +292,22 @@ func TestBlobAndSetCodeToListedContractAreGeneral(t *testing.T) {
 	}
 }
 
-// TestReservedListingCannotBecomePayment documents why the classifier neither
-// copies nor validates the caller's set: the reserved-range gate dominates the
-// membership lookup, so one mis-governed listing cannot reclassify traffic to
-// Parlia's own contracts.
-func TestReservedListingCannotBecomePayment(t *testing.T) {
+// TestAnyListedAddressIsPayment pins that membership decides, whatever the address is.
+//
+// The classifier neither copies nor validates the set: governance writes it, the same
+// vote undoes any entry, and neither the contract nor this package filters by address.
+// A client that reintroduced a filter would reject blocks every conformant client
+// accepts, and nothing on the contract side would show governance that its listing did
+// nothing - which is why the two system addresses below, the least plausible listings
+// there are, still come out payment.
+func TestAnyListedAddressIsPayment(t *testing.T) {
 	timelock := common.HexToAddress(systemcontracts.TimelockContract)
 	listed := listedSet(ContractAddress, timelock)
 	for _, dest := range []common.Address{ContractAddress, timelock} {
 		tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &dest, value: big.NewInt(1), data: []byte{0x01}})
 		got, err := NewClassifier(common.Hash{}, forbidReads(t), listed).Classify(tx)
 		require.NoError(t, err)
-		require.Equal(t, ClassGeneral, got, "destination %x", dest)
+		require.Equal(t, ClassPayment, got, "destination %x", dest)
 	}
 }
 

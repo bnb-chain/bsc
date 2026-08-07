@@ -193,9 +193,6 @@ func TestDefaultsMatchDeployedBytecode(t *testing.T) {
 //	                      whole no-reachable-halt argument.
 //	RATIO_DENOM           every ratio in the package is parts per this.
 //
-// maxReservedAddress is deliberately absent: the contract does not filter listings by
-// address, so there is nothing on that side to compare against - see its comment.
-//
 // The remaining five are the stage-one bounds that contractLegal reproduces so the
 // exhaustive tests range over exactly the tuples governance can produce. They have
 // one shared failure mode, and it is silent in the direction that matters: raise
@@ -298,24 +295,16 @@ func TestLoadPaymentContracts(t *testing.T) {
 		}
 	})
 
-	t.Run("a count above the read bound is a layout error, not an allocation", func(t *testing.T) {
-		r := mapReader{slots: map[common.Hash]common.Hash{lenSlot: word(maxPaymentContractsRead + 1)}}
+	// The guard that replaced the length ceiling; TestNoLengthCeilingIsReintroduced covers
+	// the other half, that a long list is not an error. A length word that is really some other
+	// parameter's value points the loop at unwritten slots, which all read as zero, so
+	// the second element repeats address(0) and the walk stops there instead of spinning
+	// through however many iterations the garbage asked for.
+	t.Run("a repeated element is a layout error", func(t *testing.T) {
+		r := mapReader{slots: map[common.Hash]common.Hash{lenSlot: word(1_000_000_000)}}
 		_, err := LoadPaymentContracts(r)
 		require.ErrorIs(t, err, ErrCorruptConfig)
-	})
-
-	// Nothing bounds the list contract-side, so the only bound is ours and the block
-	// that first crosses it can never be produced again. The boundary itself must
-	// therefore load, not merely values comfortably below it.
-	t.Run("exactly the read bound is accepted", func(t *testing.T) {
-		slots := map[common.Hash]common.Hash{lenSlot: word(maxPaymentContractsRead)}
-		for i := 0; i < maxPaymentContractsRead; i++ {
-			a := common.BigToAddress(big.NewInt(int64(i) + 0x10000))
-			slots[paymentContractSlot(uint64(i))] = common.BytesToHash(a[:])
-		}
-		got, err := LoadPaymentContracts(mapReader{slots: slots})
-		require.NoError(t, err)
-		require.Len(t, got, maxPaymentContractsRead)
+		require.ErrorContains(t, err, "duplicate")
 	})
 
 	t.Run("padding bytes in an element are a layout error", func(t *testing.T) {
@@ -491,11 +480,22 @@ func TestPaymentContractCountAboveUint64(t *testing.T) {
 	require.ErrorIs(t, err, ErrCorruptConfig)
 }
 
-// TestReadBoundHasRealSlack pins the MAGNITUDE of the read bound. With no contract-side
-// cap to compare against, the hazard is someone "tightening" this to a number a real
-// whitelist could reach - and the block that reaches it halts the chain forever, because
-// LoadPaymentContracts is a pure function of the parent root.
-func TestReadBoundHasRealSlack(t *testing.T) {
-	require.GreaterOrEqual(t, uint64(maxPaymentContractsRead), uint64(1024),
-		"the read bound must stay far above any list governance could vote in")
+// TestNoLengthCeilingIsReintroduced states the rule a constant cannot: every hard error
+// LoadPaymentContracts can return must be unreachable by governance, because it is a pure
+// function of the parent root and the block that first triggered one could never be
+// produced again. A length ceiling fails that test at whatever value it is set to, so the
+// three lengths below - each past a plausible "surely nobody would list more than this" -
+// must all load.
+func TestNoLengthCeilingIsReintroduced(t *testing.T) {
+	lenSlot := common.Hash{31: paymentContractsLenSlot}
+	for _, n := range []uint64{257, 1025, 4097} {
+		slots := map[common.Hash]common.Hash{lenSlot: word(n)}
+		for i := uint64(0); i < n; i++ {
+			a := common.BigToAddress(new(big.Int).SetUint64(i + 0x10000))
+			slots[paymentContractSlot(i)] = common.BytesToHash(a[:])
+		}
+		got, err := LoadPaymentContracts(mapReader{slots: slots})
+		require.NoError(t, err, "a %d-entry list must load", n)
+		require.Len(t, got, int(n))
+	}
 }

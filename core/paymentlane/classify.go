@@ -8,28 +8,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-// maxReservedAddress is the top of the address window the lane never classifies as
-// payment, whatever governance has listed.
-//
-// Every precompile in this tree (0x01-0x11, BSC's own 0x64-0x69, and 0x100
-// p256Verify) and every Parlia system contract (up to 0x3000) is at or below it,
-// so one range test covers all of them. Note isReserved hard-codes the two-byte
-// window rather than reading this constant, so the coupling between the two is
-// enforced by test (TestReservedRangeIsExact) rather than by the compiler.
-//
-// A monotone address range is also why the classifier needs neither params.Rules
-// nor core/vm: vm.ActivePrecompiledContracts clones a ~25-entry map on every call,
-// its contents depend on the fork AND on rules.IsInBSC, and it grows a branch every
-// fork - none of which a fixed range does.
-//
-// The contract does NOT filter listings by address - any 20-byte value can be listed,
-// zero and precompiles included - and its own comment assigns this exclusion to the
-// client, above the whitelist lookup. So this gate is the only thing standing between a
-// mis-governed listing and either a rejecting precompile burning the whole lane or
-// Parlia's own system transactions being reclassified. Nothing on the contract side
-// would notice if it were dropped.
-const maxReservedAddress = 0xFFFF
-
 // AccountReader is the only state capability the classifier needs.
 //
 // One method, and deliberately not core/state.StateReader: it makes "classifying
@@ -86,9 +64,10 @@ func NewClassifier(parentRoot common.Hash, parent AccountReader, listed map[comm
 // Classify returns the lane class of a user transaction.
 //
 // Never call it for a Parlia system transaction: those are split out before accounting,
-// and general gas is the residual, so they are counted without being labelled. If one
-// ever leaks through, gate 4 makes it general anyway - every system contract is inside
-// the reserved range - which is the right answer under section 3.2 as well.
+// and general gas is the residual, so they are counted without being labelled. If one ever
+// leaks through, gate 7 makes it general - having code is the only property all system
+// contracts share, since distributeToSystem is a bare value transfer with nil data - which
+// is the right answer under section 3.2 as well.
 //
 // On a state-read failure it returns (ClassGeneral, err) and records err
 // stickily. ClassGeneral is the conservative choice for ADMISSION - it can only
@@ -118,39 +97,35 @@ func NewClassifier(parentRoot common.Hash, parent AccountReader, listed map[comm
 //	                       default, which a blacklist would not.
 //	3 empty access list    Access-list entries are intrinsic gas with no code
 //	                       execution: to=EOA, data empty, 3300 addresses is ~8M
-//	                       gas. AccessList() is a free slice-header read, so this
-//	                       is cheaper than gate 4.
-//	4 not reserved         Precompiles have no code in state but do execute, and a
-//	                       precompile returning a non-revert error burns all the
-//	                       gas handed to it - so to=0x65 with empty data and the
-//	                       maximum gas would be payment class and would exhaust the
-//	                       whole lane in one transaction. Placed above gate 5 so a
-//	                       mis-governed reserved listing cannot reclassify
-//	                       anything, which is why this file neither copies nor
-//	                       validates the caller's set.
-//	5 listed               Categories 2 and 3. Must be below 2 to 4 - a BlobTx to
-//	                       a listed token must not be payment - and above 6 and 7,
-//	                       because a real transfer() call has calldata and zero
-//	                       value, so hoisting either of those makes the entire
-//	                       payment-contract list dead code.
-//	6 empty calldata       Category 1 is a bare value transfer. Free slice-header
-//	                       read, so it precedes gate 7.
-//	7 non-zero value       A zero-value bare transfer is not a payment. Last of the
+//	                       gas. AccessList() is a free slice-header read.
+//	4 listed               Categories 2 and 3. The set is governance-written and
+//	                       every listing is reversible by the same vote, so it is
+//	                       taken as given: this file neither copies nor validates
+//	                       it, and any address can be in it. Must be below 2 and 3
+//	                       - a BlobTx to a listed token must not be payment - and
+//	                       above 5 and 6, because a real transfer() call has
+//	                       calldata and zero value, so hoisting either of those
+//	                       makes the entire payment-contract list dead code.
+//	5 empty calldata       Category 1 is a bare value transfer. Free slice-header
+//	                       read, so it precedes gate 6.
+//	6 non-zero value       A zero-value bare transfer is not a payment. Last of the
 //	                       static gates because Value() allocates a big.Int.
-//	8 destination has no   Category 1 proper, decided against the PARENT
+//	7 destination has no   Category 1 proper, decided against the PARENT
 //	  code in parent state post-state. An absent account has no code. An EIP-7702
 //	                       delegation designator is classified general for free: its
 //	                       code hash is keccak(0xef0100||target), so it is not the
 //	                       empty-code hash.
 //
-// KNOWN LEAK, shared with the BEP text and left open on purpose. Gate 8 answers for the
+// KNOWN LEAK, shared with the BEP text and left open on purpose. Gate 7 answers for the
 // PARENT state while the EVM resolves code from the state as it stands, so a destination that
 // acquires code earlier in the same block executes it inside a transaction this gate called
 // payment, consuming up to its declared limit instead of 21,000 - on a truthful commitment
 // that every node accepts. One deployment buys it, and what it buys is the reserved band no
 // general transaction can enter at any gas price (Budget.MaxAvailableGas), so it is priority
 // inversion rather than a discount. Both ways to close it cost more than it does;
-// docs/bep703-payment-lane.md section 2.5 holds the comparison.
+// docs/bep703-payment-lane.md section 2.5 holds the comparison. A precompile destination
+// reaches the same place without the deployment, which section 3.2 excludes and this
+// implementation does not; deviation 2 of quota.go's registry holds that argument.
 func (c *Classifier) Classify(tx *types.Transaction) (Class, error) {
 	to := tx.To() // allocates; call it once
 	if to == nil {
@@ -162,9 +137,6 @@ func (c *Classifier) Classify(tx *types.Transaction) (Class, error) {
 		return ClassGeneral, nil
 	}
 	if len(tx.AccessList()) != 0 {
-		return ClassGeneral, nil
-	}
-	if isReserved(*to) {
 		return ClassGeneral, nil
 	}
 	if _, ok := c.listed[*to]; ok {
@@ -193,17 +165,6 @@ func (c *Classifier) Classify(tx *types.Transaction) (Class, error) {
 // is the backstop that makes a call site which does not still unable to produce a
 // block. Assert it alongside Budget.Verify before assembling.
 func (c *Classifier) Err() error { return c.err }
-
-// isReserved reports whether addr is at or below maxReservedAddress, i.e. whether
-// bytes 0..17 of the 20-byte address are all zero.
-func isReserved(addr common.Address) bool {
-	for _, b := range addr[:common.AddressLength-2] {
-		if b != 0 {
-			return false
-		}
-	}
-	return true
-}
 
 // destinationHasCode reports whether addr has code in the parent post-state.
 func (c *Classifier) destinationHasCode(addr common.Address) (bool, error) {
