@@ -8,9 +8,11 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// TODO: ABI + Cache
+// TODO(bep703): cache both reads per parent root; belongs in core, and section 4 of
+// docs/bep703-payment-lane.md has the key and the UBT trap.
 
-// ContractAddress is the PaymentLane system contract, installed by the Gauss fork.
+// ContractAddress is the PaymentLane system contract, installed by the Gauss fork. Spelled out
+// rather than taken from systemcontracts, which would stop this package being a leaf.
 var ContractAddress = common.HexToAddress("0x0000000000000000000000000000000000002007")
 
 // The consensus surface of the PaymentLane contract is its STORAGE LAYOUT, not its ABI:

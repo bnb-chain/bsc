@@ -37,6 +37,11 @@ func NewClassifier(parentRoot common.Hash, parentAccountReader AccountReader, li
 // BEP-703 section 3.2 gates, statically over declared fields plus the parent post-state, so
 // nothing executes and the gates are ordered to touch state last. It fails shut to
 // ClassGeneral. Deviations from the section are registered at the top of quota.go.
+//
+// Other files cite these gates by number, so renumbering means fixing them too:
+//
+//	1 to == nil        2 type allowlist    3 empty access list   4 listed destination
+//	5 empty calldata   6 non-zero value    7 no code in the parent state
 func (c *Classifier) Classify(tx *types.Transaction) (Class, error) {
 	to := tx.To()
 	if to == nil {

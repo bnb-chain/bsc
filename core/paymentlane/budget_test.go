@@ -395,10 +395,10 @@ func TestVerifyFailureTriggers(t *testing.T) {
 		wantErr           error
 	}{
 		{"consistent and valid", Budget{LaneSize: 20, PaymentUsed: 20}, 80, 80, nil},
-		{"payment booked beyond the pool total", Budget{LaneSize: 20, PaymentUsed: 81}, 80, 80, ErrBucketMismatch},
+		{"payment booked beyond the pool total", Budget{LaneSize: 20, PaymentUsed: 81}, 80, 80, ErrPaymentExceedsPool},
 		{"accounting consistent but the quota does not fit this block", Budget{LaneSize: 200}, 0, 0, ErrViolated},
 		{"system gas overran the reservation and burst the block", Budget{LaneSize: 20, PaymentUsed: 20}, 101, 80, ErrViolated},
-		{"when both fail, the pool bound is reported first (it names the cause)", Budget{LaneSize: 200, PaymentUsed: 100}, 99, 99, ErrBucketMismatch},
+		{"when both fail, the pool bound is reported first (it names the cause)", Budget{LaneSize: 200, PaymentUsed: 100}, 99, 99, ErrPaymentExceedsPool},
 	} {
 		err := tc.b.Verify(100, tc.gasUsed, tc.poolUsed)
 		if tc.wantErr == nil {

@@ -6,7 +6,8 @@ import (
 
 // Budget states the block validity rule as an admission predicate. Payment is the only
 // tracked figure - general gas is the residual, header.GasUsed less PaymentUsed - and
-// capacity is not stored, so the GasPool passed in as shared stays the only authority.
+// capacity is not stored here: admission takes the shared remainder (gasPool.Gas()) per call
+// and the checks take the gas limit per call, so no stale capacity can be held.
 type Budget struct {
 	LaneSize    uint64 // this block's quota, straight from LaneSize()
 	PaymentUsed uint64
@@ -41,7 +42,7 @@ func (b *Budget) RecordUsed(class Class, delta uint64) {
 // gasUsed is the block's real total after Finalize.
 func (b Budget) Verify(gasLimit, gasUsed, poolUsed uint64) error {
 	if b.PaymentUsed > poolUsed {
-		return fmt.Errorf("%w: payment %d pool %d", ErrBucketMismatch, b.PaymentUsed, poolUsed)
+		return fmt.Errorf("%w: payment %d pool %d", ErrPaymentExceedsPool, b.PaymentUsed, poolUsed)
 	}
 	return CheckInequality(gasLimit, gasUsed, b.PaymentUsed, b.LaneSize)
 }

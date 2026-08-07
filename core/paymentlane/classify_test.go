@@ -199,7 +199,8 @@ func TestAbsentAccountIsPayment(t *testing.T) {
 }
 
 // TestCodeHashBoundaryCases covers every encoding of "no code" this tree can hand the
-// classifier - flatReader normalises to EmptyCodeHash, mptTrieReader does not.
+// classifier - flatReader normalises to EmptyCodeHash, the UBT reader passes the raw leaf
+// through - so neither row below is hypothetical.
 func TestCodeHashBoundaryCases(t *testing.T) {
 	tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &plainDest, value: big.NewInt(1)})
 	for _, tc := range []struct {

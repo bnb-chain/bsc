@@ -318,7 +318,7 @@ func LaneSize(p Params, s Signal, gasLimit uint64) uint64 {
 // Budget.VerifyCommitment on purpose: the quota is a pure function of the parent header
 // and the parent post-state, so it is settled before a single transaction executes - on
 // import, and on the MEV pre-seal path before a validator signs a builder's block. The
-// buckets are what genuinely needs replay.
+// payment total is what genuinely needs replay.
 //
 // The distinction is what each check can prove. The quota is not a value a builder gets
 // to choose, so it is adjudicated exactly. Its payment total is not: the pre-seal gate can
