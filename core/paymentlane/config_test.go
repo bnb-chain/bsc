@@ -19,8 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ABI selectors of the PaymentLane getters. Only the tests use these: the
-// production read path never goes through the ABI.
+// ABI selectors of the PaymentLane getters - tests only, the production path reads slots.
 const (
 	selGetPaymentLaneParams = "ff620147" // getPaymentLaneParams()
 	selGetPaymentContracts  = "08fcc45a" // getPaymentContracts(uint256,uint256)
@@ -35,8 +34,11 @@ const (
 	selMaxLaneGas           = "33eab21e" // MAX_LANE_GAS()
 )
 
-// mapReader is a StorageReader over a literal slot map. Absent slots read as zero,
-// which is exactly what state.Reader guarantees for an unwritten slot.
+// lenSlot is where the payment-contract array's length lives.
+var lenSlot = common.Hash{31: paymentContractsLenSlot}
+
+// mapReader is a StorageReader over a literal slot map; absent slots read as zero, which is
+// what state.Reader guarantees for an unwritten one.
 type mapReader struct {
 	slots map[common.Hash]common.Hash
 	err   error // when non-nil, every read fails: the nondeterministic case
@@ -54,15 +56,13 @@ func (r mapReader) Storage(addr common.Address, slot common.Hash) (common.Hash, 
 
 func word(v uint64) common.Hash { return common.BigToHash(new(big.Int).SetUint64(v)) }
 
-// deployedContract loads the Gauss bytecode into a fresh StateDB at the real
-// PaymentLane address, so every test below runs against the blob the fork actually
-// installs rather than against a recompile.
+// deployedContract loads the Gauss bytecode at the real PaymentLane address, so the tests
+// below run against the blob the fork installs rather than a recompile.
 func deployedContract(t *testing.T) *state.StateDB {
 	t.Helper()
 	code, err := hex.DecodeString(strings.TrimSpace(gauss.RialtoPaymentLaneContract))
 	require.NoError(t, err)
-	// All three networks ship byte-identical code; assert that here so this test
-	// keeps covering mainnet and chapel too, and fails loudly the day they diverge.
+	// All three networks ship identical code, so testing one covers all three - until it does not.
 	require.Equal(t, strings.TrimSpace(gauss.MainnetPaymentLaneContract), strings.TrimSpace(gauss.RialtoPaymentLaneContract))
 	require.Equal(t, strings.TrimSpace(gauss.ChapelPaymentLaneContract), strings.TrimSpace(gauss.RialtoPaymentLaneContract))
 
@@ -72,8 +72,7 @@ func deployedContract(t *testing.T) *state.StateDB {
 	return statedb
 }
 
-// callContract does a read-only call into the deployed contract and returns the
-// return data split into 32-byte words.
+// callContract calls the deployed contract read-only and returns the 32-byte return words.
 func callContract(t *testing.T, statedb *state.StateDB, selector string, args ...byte) []*big.Int {
 	t.Helper()
 	input, err := hex.DecodeString(selector)
@@ -104,21 +103,14 @@ func callContract(t *testing.T, statedb *state.StateDB, selector string, args ..
 	return out
 }
 
-// TestLayoutMatchesDeployedBytecode is the layout tripwire, and the only thing
-// standing between a contract-side field insertion and every Go client silently
-// reading the wrong slot.
-//
-// It plants sentinels using this package's OWN slot arithmetic and reads them back
-// through the contract's getters, so it pins the production functions rather than
-// re-deriving the layout. Inserting or reordering a field in PaymentLane.sol shifts
-// every Solidity read together - leaving all Solidity getters and all Foundry
-// tests green - and breaks only this.
+// TestLayoutMatchesDeployedBytecode is the layout tripwire: it plants sentinels through this
+// package's OWN slot arithmetic and reads them back through the contract's getters, so a
+// field inserted in PaymentLane.sol - which keeps every Solidity read consistent, and every
+// Foundry test green - breaks only here.
 func TestLayoutMatchesDeployedBytecode(t *testing.T) {
 	t.Run("params occupy slots 0..7 in declaration order", func(t *testing.T) {
 		statedb := deployedContract(t)
-		// Distinct, non-zero sentinels so the contract's DEFAULT_* fallback cannot
-		// mask a wrong slot by coincidence. The getter does no validation, so the
-		// values need not satisfy any invariant.
+		// Distinct and non-zero, so the DEFAULT_* fallback cannot mask a wrong slot.
 		for i := 0; i < numParams; i++ {
 			statedb.SetState(ContractAddress, paramSlot(i), word(uint64(1000+i)))
 		}
@@ -137,12 +129,12 @@ func TestLayoutMatchesDeployedBytecode(t *testing.T) {
 			common.HexToAddress("0x2222222222222222222222222222222222222222"),
 			common.HexToAddress("0x3333333333333333333333333333333333333333"),
 		}
-		statedb.SetState(ContractAddress, common.Hash{31: paymentContractsLenSlot}, word(uint64(len(addrs))))
+		statedb.SetState(ContractAddress, lenSlot, word(uint64(len(addrs))))
 		for i, a := range addrs {
 			statedb.SetState(ContractAddress, paymentContractSlot(uint64(i)), common.BytesToHash(a[:]))
 		}
-		// getPaymentContracts(0, 0) is "the whole list"; it returns (address[], uint256),
-		// i.e. the words (arrayOffset, totalLength, pageLength, elems...).
+		// getPaymentContracts(0, 0) is the whole list, returned as the words
+		// (arrayOffset, totalLength, pageLength, elems...).
 		got := callContract(t, statedb, selGetPaymentContracts, make([]byte, 64)...)
 		require.Len(t, got, 3+len(addrs))
 		require.Equal(t, uint64(len(addrs)), got[1].Uint64(), "totalLength")
@@ -155,14 +147,10 @@ func TestLayoutMatchesDeployedBytecode(t *testing.T) {
 
 }
 
-// TestDefaultsMatchDeployedBytecode closes the one place a value is duplicated
-// across the language boundary.
-//
-// A one-digit slip in the Go DEFAULT_* mirror still clamps, still steps, and
-// passes every other test in this package - while a second client reading only the
-// Solidity gets the right number, so the two split on the first block where the
-// affected parameter binds. Nothing but a comparison against the real blob catches
-// that.
+// TestDefaultsMatchDeployedBytecode closes the one place a value is duplicated across the
+// language boundary: a slip in the Go mirror passes every other test here while a client
+// reading only the Solidity gets the right number, so the two split on the first block where
+// that parameter binds.
 func TestDefaultsMatchDeployedBytecode(t *testing.T) {
 	statedb := deployedContract(t) // storage untouched: every slot reads as zero
 	got := callContract(t, statedb, selGetPaymentLaneParams)
@@ -176,8 +164,7 @@ func TestDefaultsMatchDeployedBytecode(t *testing.T) {
 		require.Equal(t, w, got[i].Uint64(), "Go default %d disagrees with the deployed contract", i)
 	}
 
-	// And the same tuple must come out of the production read path, which is what
-	// actually runs. This is the end-to-end version of the check above.
+	// And the same tuple must come out of the production read path.
 	params, err := LoadParams(mapReader{})
 	require.NoError(t, err)
 	require.Equal(t, Params{
@@ -186,20 +173,10 @@ func TestDefaultsMatchDeployedBytecode(t *testing.T) {
 	}, params)
 }
 
-// TestConstantsMatchDeployedBytecode pins the constants this package mirrors
-// from the contract. Each has a distinct failure mode if it drifts:
-//
-//	MAX_LANE_RATIO        it is what bounds laneSize to GasLimit/5, which is the
-//	                      whole no-reachable-halt argument.
-//	RATIO_DENOM           every ratio in the package is parts per this.
-//
-// The remaining five are the stage-one bounds that contractLegal reproduces so the
-// exhaustive tests range over exactly the tuples governance can produce. They have
-// one shared failure mode, and it is silent in the direction that matters: raise
-// MAX_STEP_RATIO contract-side - which the contract's own comment invites, and which
-// is what would make BEP invariant (6) reachable for the first time - and
-// contractLegal keeps rejecting the newly legal tuples, so legalLattice quietly stops
-// generating them and every exhaustive test here narrows with nothing turning red.
+// TestConstantsMatchDeployedBytecode pins every constant this package mirrors from the
+// contract. The dangerous drift is silent: the bounds contractLegal reproduces decide which
+// tuples legalLattice generates, so a bound raised contract-side would quietly narrow every
+// exhaustive test here with nothing turning red.
 func TestConstantsMatchDeployedBytecode(t *testing.T) {
 	statedb := deployedContract(t)
 	for _, tc := range []struct {
@@ -239,9 +216,8 @@ func TestLoadParams(t *testing.T) {
 	})
 
 	t.Run("the fallback is per field, mirroring _loadParams", func(t *testing.T) {
-		// Unreachable on chain - the contract writes all eight slots on every
-		// accepted update - but the read path must still mirror the contract rather
-		// than assume the reachable states.
+		// Unreachable on chain, since the contract writes all eight slots at once, but the
+		// read path must mirror the contract rather than the reachable states.
 		r := mapReader{slots: map[common.Hash]common.Hash{paramSlot(4): word(999)}}
 		got, err := LoadParams(r)
 		require.NoError(t, err)
@@ -270,8 +246,6 @@ func TestLoadParams(t *testing.T) {
 }
 
 func TestLoadPaymentContracts(t *testing.T) {
-	lenSlot := common.Hash{31: paymentContractsLenSlot}
-
 	t.Run("empty means empty, not failed", func(t *testing.T) {
 		got, err := LoadPaymentContracts(mapReader{})
 		require.NoError(t, err)
@@ -295,26 +269,14 @@ func TestLoadPaymentContracts(t *testing.T) {
 		}
 	})
 
-	// The guard that replaced the length ceiling; TestNoLengthCeilingIsReintroduced covers
-	// the other half, that a long list is not an error. A length word that is really some other
-	// parameter's value points the loop at unwritten slots, which all read as zero, so
-	// the second element repeats address(0) and the walk stops there instead of spinning
-	// through however many iterations the garbage asked for.
+	// The guard that replaced the length ceiling: a garbage length points the loop at
+	// unwritten slots, so the second element repeats address(0) and the walk stops there
+	// instead of spinning. TestNoLengthCeilingIsReintroduced covers the other half.
 	t.Run("a repeated element is a layout error", func(t *testing.T) {
 		r := mapReader{slots: map[common.Hash]common.Hash{lenSlot: word(1_000_000_000)}}
 		_, err := LoadPaymentContracts(r)
 		require.ErrorIs(t, err, ErrCorruptConfig)
 		require.ErrorContains(t, err, "duplicate")
-	})
-
-	t.Run("padding bytes in an element are a layout error", func(t *testing.T) {
-		dirty := common.BytesToHash(common.HexToAddress("0xdead000000000000000000000000000000000001").Bytes())
-		dirty[0] = 0xff // above the 20 address bytes
-		r := mapReader{slots: map[common.Hash]common.Hash{
-			lenSlot: word(1), paymentContractSlot(0): dirty,
-		}}
-		_, err := LoadPaymentContracts(r)
-		require.ErrorIs(t, err, ErrCorruptConfig)
 	})
 
 	t.Run("a read failure propagates", func(t *testing.T) {
@@ -325,29 +287,20 @@ func TestLoadPaymentContracts(t *testing.T) {
 	})
 }
 
-// TestContractAddressIsTheLiteralOne guards the one-digit typo that would point
-// the whole feature at a different system contract. Comparing against
-// common.HexToAddress(systemcontracts.PaymentLaneContract) would be tautological;
-// 0x2006 is Timelock.
+// TestContractAddressIsTheLiteralOne guards the one-digit typo that would point the feature
+// at another system contract - 0x2006 is Timelock.
 func TestContractAddressIsTheLiteralOne(t *testing.T) {
 	require.Equal(t, common.HexToAddress("0x0000000000000000000000000000000000002007"), ContractAddress)
 }
 
-// TestContractAddressMatchesSystemContracts closes the one duplication introduced by
-// keeping this package a leaf: ContractAddress is spelled out in config.go rather
-// than derived from systemcontracts.PaymentLaneContract, so that core/systemcontracts
-// (and through it core/state, core/vm, trie, triedb) stays out of the production
-// import graph. The constant is imported here, in the test binary only.
+// TestContractAddressMatchesSystemContracts closes the duplication that keeps this package a
+// leaf, importing systemcontracts in the test binary only.
 func TestContractAddressMatchesSystemContracts(t *testing.T) {
 	require.Equal(t, common.HexToAddress(systemcontracts.PaymentLaneContract), ContractAddress)
 }
 
-// TestWordTripwireBoundaryByte covers the highest byte the tripwire must reject.
-//
-// Byte 23 is the boundary: bits 64 to 71, the first bits that do not fit in a
-// uint64. A check written as w[:23] accepts a word of exactly 2^64+200 and silently
-// truncates it to 200 - which is precisely the shifted-layout reading the tripwire
-// exists to catch, and no other test plants a value there.
+// TestWordTripwireBoundaryByte covers byte 23, bits 64..71 - the first that do not fit a
+// uint64. Written as w[:23] the check would truncate 2^64+200 to 200, silently.
 func TestWordTripwireBoundaryByte(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -370,10 +323,9 @@ func TestWordTripwireBoundaryByte(t *testing.T) {
 	}
 }
 
-// TestPaymentContractPaddingBoundaryByte covers byte 11, the last padding byte above
-// the 20 address bytes. A check written as w[:11] would let it through.
+// TestPaymentContractPaddingBoundaryByte covers byte 11, the last padding byte above the 20
+// address bytes; written as w[:11] the check would let it through.
 func TestPaymentContractPaddingBoundaryByte(t *testing.T) {
-	lenSlot := common.Hash{31: paymentContractsLenSlot}
 	for _, byteIdx := range []int{0, 11} {
 		var elem common.Hash
 		elem[byteIdx] = 0xff
@@ -393,25 +345,17 @@ func TestPaymentContractPaddingBoundaryByte(t *testing.T) {
 	require.Contains(t, got, common.BytesToAddress(elem[12:]))
 }
 
-// TestReadPathThroughARealTrie exercises the production read path against a
-// committed state trie rather than a map, with a non-empty payment-contract set.
-//
-// This closes the one gap neither the other unit tests nor the devnet cover. The
-// mapReader tests drive the slot arithmetic but not the reader; the devnet drives a
-// real trie but its set is empty, so the enumeration loop never runs there. Here the
-// state is written, COMMITTED, and reopened at the resulting root - so the reader is
-// the same multiStateReader production uses, and the values come back through the
-// trie encoding.
-//
-// It also demonstrates the property the classifier's security argument rests on: a
-// reader taken before the writes does not observe them.
+// TestReadPathThroughARealTrie runs the production read path against a committed trie with a
+// non-empty set, which nothing else covers: the mapReader tests drive the slot arithmetic but
+// not the reader, and the devnet's set is empty so its enumeration loop never runs. It also
+// shows the property the classifier's security argument rests on - a reader taken before the
+// writes does not observe them.
 func TestReadPathThroughARealTrie(t *testing.T) {
 	db := state.NewDatabaseForTesting()
 	statedb, err := state.New(types.EmptyRootHash, db)
 	require.NoError(t, err)
 
-	// A governance-written configuration, deliberately not the defaults, so a read
-	// that silently fell back would be visible.
+	// Deliberately not the defaults, so a read that silently fell back is visible.
 	want := Params{
 		MinRatio: 150, MaxRatio: 900, ExpandTrigger: 9_000, ShrinkTrigger: 2_500,
 		ExpandStep: 300, ShrinkStep: 25, MinGas: 1_000_000, MaxGas: 9_000_000,
@@ -429,14 +373,12 @@ func TestReadPathThroughARealTrie(t *testing.T) {
 		common.HexToAddress("0x00000000000000000000000000000000000a0004"),
 		common.HexToAddress("0x00000000000000000000000000000000000a0005"),
 	}
-	statedb.SetState(ContractAddress, common.Hash{31: paymentContractsLenSlot}, word(uint64(len(listed))))
+	statedb.SetState(ContractAddress, lenSlot, word(uint64(len(listed))))
 	for i, a := range listed {
 		statedb.SetState(ContractAddress, paymentContractSlot(uint64(i)), common.BytesToHash(a[:]))
 	}
 
-	// A reader taken now is pinned to the pre-write root and must see none of it -
-	// this is what makes handing the classifier a parent-root reader safe even while
-	// the block advances.
+	// A reader taken now is pinned to the pre-write root and must see none of it.
 	stale := statedb.Reader()
 	staleParams, err := LoadParams(stale)
 	require.NoError(t, err)
@@ -461,33 +403,26 @@ func TestReadPathThroughARealTrie(t *testing.T) {
 		require.Contains(t, gotSet, a)
 	}
 
-	// And the quota computed from that configuration, through the same path a
-	// consumer would use.
+	// And the quota that configuration produces, through the path a consumer uses.
 	const gasLimit = 55_000_000
 	require.Equal(t, laneFloor(gotParams, gasLimit), LaneSize(gotParams, Signal{}, gasLimit))
 	require.Equal(t, uint64(1_000_000), laneFloor(gotParams, gasLimit), "minRatio 150 of 55M is 825k, so minGas 1M is the binding floor")
 }
 
-// TestPaymentContractCountAboveUint64 covers the !ok arm of the count check, which no
-// other test reaches. Dropping it turns a shifted storage layout from a loud
-// ErrCorruptConfig into a silently EMPTY payment-contract set.
+// TestPaymentContractCountAboveUint64 covers the !ok arm of the count check, which no other
+// test reaches: without it a shifted layout reads as a silently EMPTY set.
 func TestPaymentContractCountAboveUint64(t *testing.T) {
 	var huge common.Hash
 	huge[0] = 1 // bit 255
-	_, err := LoadPaymentContracts(mapReader{slots: map[common.Hash]common.Hash{
-		common.Hash{31: paymentContractsLenSlot}: huge,
-	}})
+	_, err := LoadPaymentContracts(mapReader{slots: map[common.Hash]common.Hash{lenSlot: huge}})
 	require.ErrorIs(t, err, ErrCorruptConfig)
 }
 
-// TestNoLengthCeilingIsReintroduced states the rule a constant cannot: every hard error
-// LoadPaymentContracts can return must be unreachable by governance, because it is a pure
-// function of the parent root and the block that first triggered one could never be
-// produced again. A length ceiling fails that test at whatever value it is set to, so the
-// three lengths below - each past a plausible "surely nobody would list more than this" -
-// must all load.
+// TestNoLengthCeilingIsReintroduced states the rule no constant can: every hard error here
+// must be unreachable by governance, since the read is a pure function of the parent root and
+// the block that first tripped one could never be produced again. A ceiling fails that at
+// whatever value it is set to, so all three lengths below must load.
 func TestNoLengthCeilingIsReintroduced(t *testing.T) {
-	lenSlot := common.Hash{31: paymentContractsLenSlot}
 	for _, n := range []uint64{257, 1025, 4097} {
 		slots := map[common.Hash]common.Hash{lenSlot: word(n)}
 		for i := uint64(0); i < n; i++ {
