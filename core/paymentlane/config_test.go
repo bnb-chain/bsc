@@ -405,7 +405,7 @@ func TestReadPathThroughARealTrie(t *testing.T) {
 
 	// And the quota that configuration produces, through the path a consumer uses.
 	const gasLimit = 55_000_000
-	require.Equal(t, laneFloor(gotParams, gasLimit), LaneSize(gotParams, Signal{}, gasLimit))
+	require.Equal(t, laneFloor(gotParams, gasLimit), Signal{}.NextLaneSize(gotParams, gasLimit))
 	require.Equal(t, uint64(1_000_000), laneFloor(gotParams, gasLimit), "minRatio 150 of 55M is 825k, so minGas 1M is the binding floor")
 }
 

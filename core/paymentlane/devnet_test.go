@@ -140,7 +140,7 @@ func TestDevnetReadPath(t *testing.T) {
 		// Nothing on this chain commits a quota yet - the scaffolding is not wired
 		// into block production - so the meaningful assertion is the bootstrap one:
 		// a parent carrying no commitment opens the lane at its floor.
-		size := LaneSize(p, newSignal(nil, head.GasUsed, head.GasLimit), head.GasLimit)
+		size := newSignal(nil, head.GasUsed, head.GasLimit).NextLaneSize(p, head.GasLimit)
 		floor, ceiling := laneFloor(p, head.GasLimit), laneCeiling(p, head.GasLimit)
 		t.Logf("gasLimit %d -> floor %d ceiling %d laneSize %d", head.GasLimit, floor, ceiling, size)
 
@@ -223,10 +223,9 @@ func TestDevnetReadPath(t *testing.T) {
 	})
 
 	t.Run("the rounding rule is NOT covered here", func(t *testing.T) {
-		// Recorded, not asserted. The multiply-first rule only diverges from
-		// divide-first when GasLimit is not a multiple of RatioDenom, and a devnet
-		// settles on its GasCeil, which is round. So this harness structurally cannot
-		// catch that bug and TestRoundingIsMultiplyFirst is the only thing that does.
+		// Recorded, not asserted. Multiply-first only diverges from divide-first when GasLimit
+		// is not a multiple of RatioDenom, and a devnet settles on its round GasCeil - so this
+		// harness structurally cannot catch that bug; the unit tests over gasLimits() do.
 		if head.GasLimit%RatioDenom == 0 {
 			t.Logf("gasLimit %d is a multiple of %d: the rounding divergence is invisible on this chain",
 				head.GasLimit, RatioDenom)

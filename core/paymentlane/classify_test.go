@@ -175,8 +175,8 @@ func TestNoStateReadUntilEveryStaticGatePasses(t *testing.T) {
 	}
 }
 
-// TestPrecompileDestinationIsPayment pins deviation 2 of quota.go's registry: one wei to a
-// precompile is payment here and general to a conformant client.
+// TestPrecompileDestinationIsPayment pins the registered deviation THERE IS NO PRECOMPILE
+// EXCLUSION: one wei to a precompile is payment here and general to a conformant client.
 func TestPrecompileDestinationIsPayment(t *testing.T) {
 	for _, addr := range vm.ActivePrecompiles(params.Rules{
 		IsHomestead: true, IsByzantium: true, IsIstanbul: true, IsBerlin: true,

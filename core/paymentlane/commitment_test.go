@@ -36,7 +36,7 @@ func TestCommitmentRoundTrip(t *testing.T) {
 // range clear of the zero hash, on the theory that a 32-byte carrier might read zero as
 // "never written". Two things retire that: the reserved tail is now the framing test, so
 // the zero hash is recognised as a commitment rather than mistaken for an empty field;
-// and nothing accepts a wrong quota anyway, because CheckLaneSize compares the committed
+// and nothing accepts a wrong quota anyway, because CheckNextLaneSize compares the committed
 // value against the one derived from the parent. The version byte protected only what
 // that comparison already protects, at the cost of sitting inside the sixteen bytes the
 // BEP requires to be zero.
@@ -54,8 +54,8 @@ func TestTheAllZeroCommitmentIsLegal(t *testing.T) {
 	// It is still not a licence to omit the field: a zero quota only verifies where the
 	// derivation says zero.
 	p := defaultParams()
-	require.ErrorIs(t, CheckLaneSize(0, p, Signal{}, 55_000_000), ErrQuotaMismatch)
-	require.NoError(t, CheckLaneSize(0, p, Signal{}, params.SystemTxsGasHardLimit))
+	require.ErrorIs(t, Signal{}.CheckNextLaneSize(0, p, 55_000_000), ErrQuotaMismatch)
+	require.NoError(t, Signal{}.CheckNextLaneSize(0, p, params.SystemTxsGasHardLimit))
 }
 
 // TestDecodeRejectsMalformed walks every reserved byte over every bit, so the framing

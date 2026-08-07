@@ -22,7 +22,7 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// laneGasLimit must stay above params.SystemTxsGasHardLimit, or LaneSize's final safety
+// laneGasLimit must stay above params.SystemTxsGasHardLimit, or NextLaneSize's final safety
 // clamp - min(size, gasLimit-SystemTxsGasHardLimit) - takes the quota to zero and every
 // assertion below passes against a lane that is doing nothing. 35M is the devnet's limit
 // and gives floor 2,000,000 / ceiling 2,800,000 under the factory defaults.

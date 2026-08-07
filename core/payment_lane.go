@@ -119,7 +119,7 @@ func ResolveLaneState(config *params.ChainConfig, hc laneHeaderReader, parent, h
 	// canonical-only lookup is not reachable from here.
 	//
 	// Genesis is passed through as a nil grandparent rather than special-cased:
-	// ParentSignal distinguishes "the parent is genesis" from "the caller could not
+	// NewSignalFromParent distinguishes "the parent is genesis" from "the caller could not
 	// resolve the grandparent" itself, and duplicating that judgement here is how the
 	// two answers get conflated. The explicit number test is what keeps this from
 	// reaching for GetHeader(hash, number-1), which underflows to MaxUint64 at genesis.
@@ -140,7 +140,7 @@ func ResolveLaneState(config *params.ChainConfig, hc laneHeaderReader, parent, h
 	if err != nil {
 		return nil, err
 	}
-	signal, err := paymentlane.ParentSignal(config, grandparent, parent, parent.UncleHash)
+	signal, err := paymentlane.NewSignalFromParent(config, grandparent, parent, parent.UncleHash)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +167,7 @@ func (ls *LaneState) SetQuota() {
 	if !ls.On() {
 		return
 	}
-	ls.Budget.LaneSize = paymentlane.LaneSize(ls.cfg, ls.signal, ls.gasLimit)
+	ls.Budget.LaneSize = ls.signal.NextLaneSize(ls.cfg, ls.gasLimit)
 }
 
 // CheckQuota verifies a committed quota and adopts it, for the importing side.
@@ -178,7 +178,7 @@ func (ls *LaneState) CheckQuota(committed uint64) error {
 	if !ls.On() {
 		return nil
 	}
-	if err := paymentlane.CheckLaneSize(committed, ls.cfg, ls.signal, ls.gasLimit); err != nil {
+	if err := ls.signal.CheckNextLaneSize(committed, ls.cfg, ls.gasLimit); err != nil {
 		return err
 	}
 	ls.Budget.LaneSize = committed

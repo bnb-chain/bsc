@@ -435,17 +435,17 @@ func TestVerifyCommitmentComparesThePaymentFigure(t *testing.T) {
 
 // TestVerifyCommitmentIgnoresLaneSize records a deliberate division of labour, so nobody
 // "fixes" it by adding the comparison here: the quota is a pure function of the parent, so
-// CheckLaneSize settles it before any transaction executes. Replay cannot adjudicate it.
+// CheckNextLaneSize settles it before any transaction executes. Replay cannot adjudicate it.
 func TestVerifyCommitmentIgnoresLaneSize(t *testing.T) {
 	b := Budget{LaneSize: 20, PaymentUsed: 20}
 	absurd := Commitment{LaneSize: 999_999, PaymentGasUsed: 20}
 	require.NoError(t, b.VerifyCommitment(100, 80, 80, absurd),
-		"VerifyCommitment must not police LaneSize; CheckLaneSize does")
+		"VerifyCommitment must not police LaneSize; CheckNextLaneSize does")
 
 	// And the check that does police it rejects exactly that.
 	p, s := defaultParams(), Signal{}
-	require.ErrorIs(t, CheckLaneSize(absurd.LaneSize, p, s, 55_000_000), ErrQuotaMismatch)
-	require.NoError(t, CheckLaneSize(LaneSize(p, s, 55_000_000), p, s, 55_000_000))
+	require.ErrorIs(t, s.CheckNextLaneSize(absurd.LaneSize, p, 55_000_000), ErrQuotaMismatch)
+	require.NoError(t, s.CheckNextLaneSize(s.NextLaneSize(p, 55_000_000), p, 55_000_000))
 }
 
 // TestVerifyCommitmentStillEnforcesTheRule: agreeing with a lie is not enough, the

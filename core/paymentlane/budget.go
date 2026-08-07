@@ -9,7 +9,7 @@ import (
 // capacity is not stored here: admission takes the shared remainder (gasPool.Gas()) per call
 // and the checks take the gas limit per call, so no stale capacity can be held.
 type Budget struct {
-	LaneSize    uint64 // this block's quota, straight from LaneSize()
+	LaneSize    uint64 // this block's quota, straight from NextLaneSize
 	PaymentUsed uint64
 }
 
@@ -50,7 +50,7 @@ func (b Budget) Verify(gasLimit, gasUsed, poolUsed uint64) error {
 // VerifyCommitment is the only authoritative check on the committed payment figure: it
 // compares it against local replay, which no self-check can do. poolUsed is gp.Used() over
 // user transactions and must be read the same way on both sides, or honest blocks get
-// rejected. LaneSize is CheckLaneSize's job, not this one.
+// rejected. LaneSize is CheckNextLaneSize's job, not this one.
 func (b Budget) VerifyCommitment(gasLimit, gasUsed, poolUsed uint64, c Commitment) error {
 	if b.PaymentUsed != c.PaymentGasUsed {
 		return fmt.Errorf("%w: committed payment %d, replayed %d",

@@ -8,8 +8,9 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// TODO(bep703): cache both reads per parent root; belongs in core, and section 4 of
-// docs/bep703-payment-lane.md has the key and the UBT trap.
+// TODO(bep703): cache both reads per parent root, in core rather than here. Key it on
+// parent.Root then 0x2007's storage root, and fall back to enumerating on a zero storage root or
+// UBT nodes diverge.
 
 // ContractAddress is the PaymentLane system contract, installed by the Gauss fork. Spelled out
 // rather than taken from systemcontracts, which would stop this package being a leaf.

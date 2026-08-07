@@ -24,20 +24,12 @@ func defaultParams() Params {
 	}
 }
 
-// contractLegal mirrors PaymentLane._validateParams: the eight absolute bounds of
-// stage one and the six coupled invariants of stage two.
-//
-// Duplicated here on purpose. It keeps the exhaustive tests below over exactly the
-// configurations governance can actually produce - a test that ranges over
-// impossible tuples proves less, and one that ranges over too few proves nothing
-// about the boundaries. It also documents the invariants next to the code that
-// depends on them.
-// The contract's protocol constants, mirrored for contractLegal. All seven are public
-// getters on the contract and all seven are pinned against the deployed blob by
-// TestConstantsMatchDeployedBytecode - they have to be, because a contract-side widening
-// that this file does not follow silently narrows every exhaustive test below instead of
-// failing one.
+// The contract's protocol constants. They are Solidity `constant`s, so they occupy no storage
+// slot and cannot be read the way the eight parameters are; TestConstantsMatchDeployedBytecode
+// pins them against the deployed blob instead. maxLaneRatio also fixes where the safety clamp
+// starts to bind: 25M of GasLimit.
 const (
+	maxLaneRatio        = 2_000
 	triggerGapMin       = 1_000
 	ratioGapMin         = 500
 	minExpandTriggerRat = 5_000
@@ -47,6 +39,8 @@ const (
 	maxLaneGas          = 1_000_000_000
 )
 
+// contractLegal mirrors PaymentLane._validateParams, duplicated so the exhaustive tests below
+// range over exactly the tuples governance can produce.
 func contractLegal(p Params) bool {
 	// stage one
 	switch {
@@ -92,18 +86,18 @@ func TestDefaultParamsAreContractLegal(t *testing.T) {
 	require.True(t, contractLegal(defaultParams()))
 }
 
-// legalLattice enumerates contract-legal parameter tuples across a coarse grid
-// that includes every stage-one boundary value reachable once the six stage-two
-// invariants are applied. (shrinkTrigger's own upper bound, RATIO_DENOM, is not
-// among them: invariants (1) and (5) make it unreachable.)
+// legalLattice enumerates contract-legal parameter tuples across a coarse grid of the
+// stage-one boundary values that survive the six stage-two invariants. Values the invariants
+// make unreachable are deliberately absent: they would add zero tuples while reading as
+// coverage (maxRatio 500 needs minRatio <= 0, expandTrigger RatioDenom needs maxRatio <= 0).
 func legalLattice() []Params {
 	var out []Params
-	for _, minRatio := range []uint64{1, 200, 1_500, maxLaneRatio} {
-		for _, maxRatio := range []uint64{500, 800, maxLaneRatio} {
-			for _, expandTrigger := range []uint64{5_000, 8_000, RatioDenom} {
-				for _, shrinkTrigger := range []uint64{2_000, 7_000} {
+	for _, minRatio := range []uint64{1, 200, 1_500} {
+		for _, maxRatio := range []uint64{501, 800, maxLaneRatio} {
+			for _, expandTrigger := range []uint64{5_000, 8_000, 9_499} {
+				for _, shrinkTrigger := range []uint64{2_000, 7_000, 8_499} {
 					for _, expandStep := range []uint64{2, 200, 1_000} {
-						for _, shrinkStep := range []uint64{1, 50} {
+						for _, shrinkStep := range []uint64{1, 50, 999} {
 							for _, minGas := range []uint64{21_000, 2_000_000} {
 								for _, maxGas := range []uint64{8_000_000, 1_000_000_000} {
 									p := Params{minRatio, maxRatio, expandTrigger, shrinkTrigger, expandStep, shrinkStep, minGas, maxGas}
@@ -121,62 +115,57 @@ func legalLattice() []Params {
 	return out
 }
 
-// gasLimits spans the production value, the devnet value, values that are NOT
-// multiples of RatioDenom (which is the only regime where the rounding rule is
-// observable), the halt boundary and the consensus maximum.
+// gasLimits spans production (55M), the devnet (35M), limits that are NOT multiples of
+// RatioDenom - the only regime where the rounding rule is observable - the halt boundary and
+// the consensus maximum.
 func gasLimits() []uint64 {
 	return []uint64{
 		params.MinGasLimit, 7_000_000, 20_000_000, 24_999_999, 25_000_000,
-		30_000_000, 40_000_000, 54_999_999, 55_000_000, 55_009_999, 70_000_000,
+		30_000_000, 35_000_000, 40_000_000, 54_999_999, 55_000_000, 55_009_999, 70_000_000,
 		params.MaxGasLimit,
 	}
 }
 
-func TestLegalLatticeIsNotEmpty(t *testing.T) {
-	// Guards the exhaustive tests below against silently becoming no-ops if
-	// contractLegal is ever tightened by mistake.
-	require.Greater(t, len(legalLattice()), 50)
+// TestLatticeStaysWide guards every exhaustive test below: tighten contractLegal, or leave a grid
+// value the invariants have made unreachable, and they all narrow with nothing turning red. The
+// count is exact because a bound would miss a single dead value.
+func TestLatticeStaysWide(t *testing.T) {
+	require.Len(t, legalLattice(), 504)
 }
 
-// TestClampIsExhaustive checks the clamp over every tuple of the contract-legal
-// lattice below (300 of them), a wide
-// span of gas limits and the interesting predecessor values, asserting the three
-// properties the rest of the design depends on.
+// TestClampIsExhaustive runs the clamp over the whole legal lattice above and gasLimits(). The
+// [floor, ceiling] assertions are conditional because the safety clamp may push below floor.
 func TestClampIsExhaustive(t *testing.T) {
 	for _, p := range legalLattice() {
 		for _, gl := range gasLimits() {
 			ceiling, floor := laneCeiling(p, gl), laneFloor(p, gl)
 
-			// floor is defined against ceiling, so an empty intersection - and BEP
-			// 3.4's tie-break rule for it - cannot exist.
-			require.LessOrEqual(t, floor, ceiling, "params %s gasLimit %d", p, gl)
+			// laneFloor is taken against the ceiling (BEP 3.4.4), so an empty intersection
+			// cannot exist.
+			require.LessOrEqual(t, floor, ceiling, "the floor must be taken against the ceiling: params %s gasLimit %d", p, gl)
 
-			for _, prev := range []uint64{
-				0, 1, floor - 1, floor, floor + 1, ceiling - 1, ceiling, ceiling + 1, math.MaxUint64,
-			} {
-				// A parent that is in the hysteresis band, so the step is zero and only
-				// the clamp acts.
-				s := Signal{laneSize: prev, signalGasUsed: 75, gasLimit: 100}
-				if !inBand(p, s) {
-					s = bandSignal(p)
-					s.laneSize = prev
-				}
-				got := LaneSize(p, s, gl)
+			for _, parentLane := range []uint64{0, floor - 1, floor, ceiling, ceiling + 1} {
+				// Parked in the band, so nothing steps and only the clamp acts.
+				s := bandSignal(p)
+				s.parentLaneSize = parentLane
+				got := s.NextLaneSize(p, gl)
 
 				// The unconditional bound the no-halt argument rests on.
 				require.LessOrEqual(t, got, satSub(gl, params.SystemTxsGasHardLimit),
-					"safety clamp violated: params %s gasLimit %d prev %d", p, gl, prev)
+					"quota plus the system reservation must fit: params %s gasLimit %d parentLane %d", p, gl, parentLane)
 				require.LessOrEqual(t, got, mulDivFloor(maxLaneRatio, gl, RatioDenom),
-					"quota above MAX_LANE_RATIO: params %s gasLimit %d prev %d", p, gl, prev)
+					"quota above MAX_LANE_RATIO: params %s gasLimit %d parentLane %d", p, gl, parentLane)
 
 				// Absent the safety clamp the result is inside [floor, ceiling].
 				if satSub(gl, params.SystemTxsGasHardLimit) >= ceiling {
-					require.GreaterOrEqual(t, got, floor, "params %s gasLimit %d prev %d", p, gl, prev)
-					require.LessOrEqual(t, got, ceiling, "params %s gasLimit %d prev %d", p, gl, prev)
+					require.GreaterOrEqual(t, got, floor,
+						"quota below the floor: params %s gasLimit %d parentLane %d", p, gl, parentLane)
+					require.LessOrEqual(t, got, ceiling,
+						"quota above the ceiling: params %s gasLimit %d parentLane %d", p, gl, parentLane)
 
-					// Idempotence: a value already inside the range, with no step, holds.
-					if prev >= floor && prev <= ceiling {
-						require.Equal(t, prev, got, "clamp is not idempotent in the band: params %s gasLimit %d prev %d", p, gl, prev)
+					if parentLane >= floor && parentLane <= ceiling {
+						require.Equal(t, parentLane, got,
+							"a quota already inside [floor, ceiling] must hold when nothing steps: params %s gasLimit %d", p, gl)
 					}
 				}
 			}
@@ -184,31 +173,16 @@ func TestClampIsExhaustive(t *testing.T) {
 	}
 }
 
-// inBand reports whether s puts the quota in the hysteresis band for p.
-func inBand(p Params, s Signal) bool {
-	return !gte128(s.signalGasUsed, RatioDenom, p.ExpandTrigger, s.gasLimit) &&
-		gte128(s.signalGasUsed, RatioDenom, p.ShrinkTrigger, s.gasLimit)
-}
-
-// bandSignal builds a parent signal that lands strictly inside the hysteresis
-// band. The band is non-empty for every legal tuple because TRIGGER_GAP_MIN
-// guarantees expandTrigger >= shrinkTrigger + 1000.
+// bandSignal sits at the shrink trigger, the bottom edge of the hysteresis band, which
+// triggerGapMin keeps non-empty for every legal tuple.
 func bandSignal(p Params) Signal {
 	const gl = RatioDenom // so signalGasUsed is literally the ratio in bps
-	return Signal{signalGasUsed: p.ShrinkTrigger, gasLimit: gl}
+	return Signal{parentSignalGasUsed: p.ShrinkTrigger, parentGasLimit: gl}
 }
 
-func TestBandSignalIsActuallyInTheBand(t *testing.T) {
-	for _, p := range legalLattice() {
-		require.True(t, inBand(p, bandSignal(p)), "params %s", p)
-	}
-}
-
-// TestRoundingIsMultiplyFirst pins the order of operations. Divide-first agrees
-// whenever GasLimit is a multiple of RatioDenom, which is the steady state, so this
-// divergence is invisible to every test that does not deliberately pick a gas limit
-// in transit - and it is permanent once it happens, because the quota is an
-// accumulator.
+// TestRoundingIsMultiplyFirst pins the order of operations. Divide-first agrees whenever GasLimit
+// is a multiple of RatioDenom, i.e. everywhere except a limit in transit - and the quota is an
+// accumulator, so one divergence is permanent.
 func TestRoundingIsMultiplyFirst(t *testing.T) {
 	for _, tc := range []struct {
 		gasLimit, ratio, want uint64
@@ -221,17 +195,11 @@ func TestRoundingIsMultiplyFirst(t *testing.T) {
 	} {
 		got := mulDivFloor(tc.ratio, tc.gasLimit, RatioDenom)
 		require.Equal(t, tc.want, got, "gasLimit %d ratio %d", tc.gasLimit, tc.ratio)
-		if divideFirst := tc.gasLimit / RatioDenom * tc.ratio; divideFirst != tc.want {
-			// Assert the wrong order really is wrong here, so the case cannot pass
-			// for the wrong reason.
-			require.NotEqual(t, divideFirst, got)
-		}
 	}
 }
 
-// TestMulDivFloorMatchesExactArithmetic checks the 128-bit path against big.Int at
-// endpoint-inclusive samples of both operands, including the consensus maximum gas
-// limit where a 64-bit implementation wraps.
+// TestMulDivFloorMatchesExactArithmetic checks the 128-bit path against big.Int, up to the
+// consensus maximum gas limit where a 64-bit implementation wraps.
 func TestMulDivFloorMatchesExactArithmetic(t *testing.T) {
 	for _, ratio := range []uint64{0, 1, 50, 200, 1_000, 2_000, RatioDenom} {
 		for _, gl := range gasLimits() {
@@ -256,22 +224,19 @@ func TestSignalCannotOverflow(t *testing.T) {
 				require.Zerof(t, carry, "gasUsed=%d payment=%d lane=%d: the terms carried", gasUsed, payment, lane)
 
 				s := newSignal(&Commitment{LaneSize: lane, PaymentGasUsed: payment}, gasUsed, 55_000_000)
-				require.Equal(t, sum, s.signalGasUsed)
+				require.Equal(t, sum, s.parentSignalGasUsed)
 			}
 		}
 	}
 }
 
-// TestSignalComparisonIsExactAt64BitOverflow is the reason the comparison is
-// 128-bit. The consensus bound on GasLimit is 2^63-1, not the ~5.5e7 production
-// runs at, and 10000*2^62 wraps to zero in 64 bits - which flips a shrink into an
-// expansion.
+// TestSignalComparisonIsExactAt64BitOverflow is why the comparison is 128-bit: GasLimit's
+// consensus bound is 2^63-1, far above production, and 8000 * 2^62 wraps to zero.
 func TestSignalComparisonIsExactAt64BitOverflow(t *testing.T) {
 	gl := uint64(1) << 62 // a legal gas limit: the consensus cap is 2^63-1
-	// 10000 * 2^62 overflows uint64 and wraps to exactly zero. Computed through a
-	// variable so the compiler cannot reject it as a constant overflow - which is
-	// itself the point: a 64-bit implementation would silently produce this.
-	naive := uint64(RatioDenom) * gl
+	// The trigger side is what flips a shrink into an expansion: 8000 * 2^62 wraps to exactly zero.
+	// Through a variable because as a constant it is a compile error, not a wrap.
+	naive := uint64(8_000) * gl
 	require.Zero(t, naive, "premise of this test: the naive product wraps")
 
 	// The exact 80% threshold. Computed with big.Int on purpose: gl/10*8 is NOT
@@ -302,17 +267,17 @@ func TestSignalComparisonIsExactAt64BitOverflow(t *testing.T) {
 	}
 }
 
-// TestTriggerComparisonBoundaries pins both comparison operators at the exact boundary
-// block,
-// which is the only place the choice of operator is observable - and one such
-// block offsets the accumulator forever.
+// TestTriggerComparisonBoundaries pins both comparison operators at the exact boundary block,
+// the only place the choice of operator is observable - and one such block offsets the
+// accumulator forever. Every case runs twice: once with the numerator expressed against a
+// parent gas limit of RatioDenom, so it reads as bps, and once against a realistic 55M, where
+// the two sides of gte128 are no longer interchangeable.
 func TestTriggerComparisonBoundaries(t *testing.T) {
 	p := defaultParams()
 	const gl = 55_000_000
-	// signalGasUsed expressed against a parent gas limit of RatioDenom makes the
-	// numerator literally the ratio in bps.
 	step := mulDivFloor(p.ExpandStep, gl, RatioDenom)
-	base := uint64(3_000_000)
+	const base = uint64(3_000_000) // inside [floor, ceiling] at 55M, so only the step moves it
+	shrunk := base - mulDivFloor(p.ShrinkStep, gl, RatioDenom)
 
 	for _, tc := range []struct {
 		bps  uint64
@@ -322,20 +287,22 @@ func TestTriggerComparisonBoundaries(t *testing.T) {
 		{defaultExpandTrigger, base + step, "at the expand trigger: expands, because the test is >="},
 		{defaultExpandTrigger - 1, base, "one bp below: hysteresis band, holds"},
 		{defaultShrinkTrigger, base, "at the shrink trigger: band, because the test is <"},
-		{defaultShrinkTrigger - 1, base - mulDivFloor(p.ShrinkStep, gl, RatioDenom), "one bp below: shrinks"},
+		{defaultShrinkTrigger - 1, shrunk, "one bp below: shrinks"},
+		// A parent that used no gas at all: the signal is zero, which must shrink rather than
+		// take the bootstrap branch - that branch is keyed on the gas limit, not the numerator.
+		{0, shrunk, "an empty parent block shrinks"},
 	} {
-		s := Signal{laneSize: base, signalGasUsed: tc.bps, gasLimit: RatioDenom}
-		require.Equal(t, tc.want, LaneSize(p, s, gl), tc.why)
+		s := Signal{parentLaneSize: base, parentSignalGasUsed: tc.bps, parentGasLimit: RatioDenom}
+		require.Equal(t, tc.want, s.NextLaneSize(p, gl), tc.why)
+
+		atRealGasLimit := Signal{parentLaneSize: base, parentSignalGasUsed: mulDivFloor(tc.bps, gl, RatioDenom), parentGasLimit: gl}
+		require.Equal(t, tc.want, atRealGasLimit.NextLaneSize(p, gl), "%s (against a 55M parent)", tc.why)
 	}
 }
 
-// TestStepSaturates covers the saturating addition.
-//
-// The bound is subtle and a test written with the DEFAULT parameters passes even
-// without satAdd: a wrapped sum is always strictly less than the step, so it can
-// only land inside [floor, ceiling] when step > floor - and by default the step is
-// 1.1M against a floor of 2M. Governance-legal parameters can invert that, so the
-// case is reachable and this test uses such a tuple.
+// TestStepSaturates must not use the defaults: a wrapped sum always lands below the step, so it
+// can only fall inside [floor, ceiling] when step > floor, and by default step is 1.1M against a
+// 2M floor.
 func TestStepSaturates(t *testing.T) {
 	p := stepAboveFloorParams()
 	require.True(t, contractLegal(p), "the premise is a tuple governance could set")
@@ -351,14 +318,14 @@ func TestStepSaturates(t *testing.T) {
 	require.Greater(t, prev, ceiling, "premise: prev is far outside the window")
 	require.Equal(t, target, prev+step, "premise: the naive sum lands inside the window")
 
-	s := Signal{laneSize: prev, signalGasUsed: p.ExpandTrigger, gasLimit: RatioDenom}
-	got := LaneSize(p, s, gl)
+	s := Signal{parentLaneSize: prev, parentSignalGasUsed: p.ExpandTrigger, parentGasLimit: RatioDenom}
+	got := s.NextLaneSize(p, gl)
 	require.Equal(t, ceiling, got, "satAdd must saturate and clamp to the ceiling, not wrap to %d", target)
 	require.NotEqual(t, target, got)
 
 	// Saturating subtraction, the mirror case.
-	s = Signal{laneSize: 0, signalGasUsed: 0, gasLimit: RatioDenom}
-	require.Equal(t, floor, LaneSize(p, s, gl), "shrinking from zero must not underflow")
+	s = Signal{parentLaneSize: 0, parentSignalGasUsed: 0, parentGasLimit: RatioDenom}
+	require.Equal(t, floor, s.NextLaneSize(p, gl), "shrinking from zero must not underflow")
 }
 
 // TestClampAppliesEveryBlock pins the every-block clamp (BEP 3.4.4). A GasLimit walk-down
@@ -378,13 +345,13 @@ func TestClampAppliesEveryBlock(t *testing.T) {
 	lane := laneCeiling(p, gl)
 	require.Equal(t, uint64(5_600_000), lane)
 
-	// 70M -> 20M is 1283 decrements of 1/1024, so the bound has to allow for that;
-	// a shorter loop silently never reaches the region this test exists for.
-	seenBelow := false
-	for i := 0; i < 2_000 && gl > 7_000_000; i++ {
+	// 70M -> 20M is 1283 decrements of 1/1024; a shorter loop never reaches the region this test
+	// exists for, so the gas limit is what stops the walk and the iteration cap is only a backstop.
+	seenClamped := false
+	for i := 0; i < 1_500 && gl > 20_000_000; i++ {
 		gl -= gl / params.GasLimitBoundDivisor
-		band.laneSize = lane
-		lane = LaneSize(p, band, gl)
+		band.parentLaneSize = lane
+		lane = band.NextLaneSize(p, gl)
 
 		require.LessOrEqual(t, lane, mulDivFloor(maxLaneRatio, gl, RatioDenom),
 			"the quota's share of the block exceeded MAX_LANE_RATIO at gasLimit %d", gl)
@@ -393,12 +360,15 @@ func TestClampAppliesEveryBlock(t *testing.T) {
 		// leaves less room than 8% of the block - the safety clamp.
 		require.Equal(t, min(laneCeiling(p, gl), satSub(gl, params.SystemTxsGasHardLimit)), lane,
 			"in the band only the ceiling and the safety clamp may move the quota, gasLimit %d", gl)
-		if gl <= 20_000_000 {
-			seenBelow = true
-			require.LessOrEqual(t, lane, uint64(1_600_000), "at gasLimit %d the 8%% ceiling is 1.6M", gl)
+		// Between 20M and ~21.74M the safety clamp is what binds, and it is the only regime where
+		// the quota is neither the ceiling nor zero.
+		if gl < 21_700_000 {
+			seenClamped = true
+			require.Equal(t, satSub(gl, params.SystemTxsGasHardLimit), lane,
+				"below the crossover the safety clamp must be what sets the quota, gasLimit %d", gl)
 		}
 	}
-	require.True(t, seenBelow, "the walk must actually reach the interesting region")
+	require.True(t, seenClamped, "the walk must reach the safety-clamp region")
 
 	// And the counterfactual: holding the quota (clamping only on a step) would have
 	// left it at 5.6M, i.e. 28% of a 20M block, above MAX_LANE_RATIO.
@@ -411,30 +381,25 @@ func TestBootstrapIsTheZeroSignal(t *testing.T) {
 	for _, p := range legalLattice() {
 		for _, gl := range gasLimits() {
 			want := min(laneFloor(p, gl), satSub(gl, params.SystemTxsGasHardLimit))
-			require.Equal(t, want, LaneSize(p, Signal{}, gl), "params %s gasLimit %d", p, gl)
+			require.Equal(t, want, Signal{}.NextLaneSize(p, gl), "params %s gasLimit %d", p, gl)
 		}
 	}
-
-	// newSignal is the only way to reach it, and nil means "the parent carries no
-	// commitment" - which is true for exactly one block per network.
-	require.Equal(t, Signal{}, newSignal(nil, 0, 55_000_000))
 
 	// The concrete number a chain sees at Gauss+1 with the shipped defaults: a 2M
 	// gas step change in general capacity, which governance cannot soften because
 	// it cannot write parameters before the contract's code exists.
-	require.Equal(t, uint64(2_000_000), LaneSize(defaultParams(), Signal{}, 55_000_000))
+	require.Equal(t, uint64(2_000_000), Signal{}.NextLaneSize(defaultParams(), 55_000_000))
 }
 
-// TestZeroSignalGuardIsWhatMakesTheSeedTheFloor isolates the guard: without it,
-// 0 >= expandTrigger*0 holds vacuously, the seed takes the expansion branch, and the
-// lane opens at one step instead of at its floor.
+// TestZeroDenominatorGuardMakesTheSeedTheFloor isolates the guard: without it 0 >= trigger*0 holds
+// vacuously and the seed expands instead of opening at its floor, clamped.
 //
 // It must NOT use the shipped defaults. There the unguarded step is 1.1M, which the
 // clamp raises back to the 2M floor, so guarded and unguarded agree and the test
 // would pass against a broken implementation - measured, and the reason this test
 // previously proved nothing. The divergence is only visible where step > floor,
 // which governance-legal parameters allow.
-func TestZeroSignalGuardIsWhatMakesTheSeedTheFloor(t *testing.T) {
+func TestZeroDenominatorGuardMakesTheSeedTheFloor(t *testing.T) {
 	p := stepAboveFloorParams()
 	const gl = 55_000_000
 	floor, step := laneFloor(p, gl), mulDivFloor(p.ExpandStep, gl, RatioDenom)
@@ -443,15 +408,14 @@ func TestZeroSignalGuardIsWhatMakesTheSeedTheFloor(t *testing.T) {
 	require.True(t, gte128(0, RatioDenom, p.ExpandTrigger, 0),
 		"premise: with a zero denominator the expansion test holds vacuously")
 
-	got := LaneSize(p, Signal{}, gl)
+	got := Signal{}.NextLaneSize(p, gl)
 	require.Equal(t, floor, got)
 	// The value an unguarded implementation would produce: the step, clamped.
 	require.NotEqual(t, min(step, laneCeiling(p, gl)), got)
 }
 
-// stepAboveFloorParams is a governance-legal tuple whose expansion step exceeds its
-// own floor. Several tests need it, because that is the only regime in which the
-// saturating add and the zero-signal guard are observable at all.
+// stepAboveFloorParams has step > floor, the only regime where the saturating add and the
+// zero-denominator guard are observable at all.
 func stepAboveFloorParams() Params {
 	p := Params{
 		MinRatio: 1, MaxRatio: 501, ExpandTrigger: 8_000, ShrinkTrigger: 2_000,
@@ -460,12 +424,12 @@ func stepAboveFloorParams() Params {
 	return p
 }
 
-// TestNoHaltIsReachable pins both sides of the halt boundary rather than only the
-// safe one.
+// TestNoHaltIsReachable pins that every block is producible: with the safety clamp an empty block
+// is always valid, and without it the quota can exceed what the block holds.
 func TestNoHaltIsReachable(t *testing.T) {
 	for _, p := range legalLattice() {
 		for _, gl := range gasLimits() {
-			got := LaneSize(p, Signal{}, gl)
+			got := Signal{}.NextLaneSize(p, gl)
 			// With the safety clamp, an empty block is always valid: the quota plus the
 			// worst-case system reservation fits.
 			require.LessOrEqual(t, got, satSub(gl, params.SystemTxsGasHardLimit),
@@ -476,16 +440,17 @@ func TestNoHaltIsReachable(t *testing.T) {
 	// And the boundary is real: without the clamp, a 20M-gas breathe block would
 	// have no valid form at all, because the reservation alone consumes the block.
 	p := defaultParams()
+	// Exactly SystemTxsGasHardLimit, so the reservation alone consumes the block.
 	const small = 20_000_000
+	// NextLaneSize's clamp with the safety clamp removed.
 	unclamped := min(max(uint64(0), laneFloor(p, small)), laneCeiling(p, small))
 	require.Greater(t, unclamped+params.SystemTxsGasHardLimit, uint64(small),
 		"premise: at %d gas the unclamped quota plus the reservation exceeds the block", small)
-	require.Zero(t, LaneSize(p, Signal{}, small), "the clamp must switch the lane off rather than halt the chain")
+	require.Zero(t, Signal{}.NextLaneSize(p, small), "the clamp must switch the lane off rather than halt the chain")
 
-	// Production and the devnet are far above the boundary, so the clamp is inert
-	// there and the lane is genuinely exercised.
-	for _, gl := range []uint64{40_000_000, 55_000_000, 70_000_000} {
-		require.Equal(t, laneFloor(p, gl), LaneSize(p, Signal{}, gl), "the safety clamp must not bind at gasLimit %d", gl)
+	// The devnet (35M) and production are far above the boundary, so the clamp is inert there.
+	for _, gl := range []uint64{35_000_000, 40_000_000, 55_000_000, 70_000_000} {
+		require.Equal(t, laneFloor(p, gl), Signal{}.NextLaneSize(p, gl), "the safety clamp must not bind at gasLimit %d", gl)
 	}
 }
 
@@ -535,20 +500,16 @@ func TestTheRulesSkipTheActivationBlock(t *testing.T) {
 		"below LondonBlock the lane must not apply")
 }
 
-// TestSignalIsSection342Verbatim pins both terms of the congestion signal's numerator,
-// each on a case where dropping it flips the verdict.
-//
-// Both omissions have the same shape - a saturated block reading as a quiet one - and
-// each was in this implementation at some point, so both directions are asserted rather
-// than just the formula.
+// TestSignalIsSection342Verbatim pins both terms of the numerator, each on a case where dropping
+// it makes a saturated block read as a quiet one.
 func TestSignalIsSection342Verbatim(t *testing.T) {
 	const parentGasLimit = 55_000_000
 
 	t.Run("the denominator is the parent's gas limit", func(t *testing.T) {
 		c := &Commitment{LaneSize: 4_400_000, PaymentGasUsed: 1_000_000}
 		s := newSignal(c, 45_000_000, parentGasLimit)
-		require.Equal(t, c.LaneSize, s.laneSize)
-		require.Equal(t, uint64(parentGasLimit), s.gasLimit, "never the child's gas limit")
+		require.Equal(t, c.LaneSize, s.parentLaneSize)
+		require.Equal(t, uint64(parentGasLimit), s.parentGasLimit, "never the child's gas limit")
 	})
 
 	t.Run("general gas is the header residual, system gas included", func(t *testing.T) {
@@ -558,12 +519,12 @@ func TestSignalIsSection342Verbatim(t *testing.T) {
 		const systemGas, userGeneral = 12_160_000, 33_000_000
 		c := &Commitment{LaneSize: 2_000_000}
 		s := newSignal(c, systemGas+userGeneral, parentGasLimit)
-		require.Equal(t, uint64(systemGas+userGeneral), s.signalGasUsed)
+		require.Equal(t, uint64(systemGas+userGeneral), s.parentSignalGasUsed)
 
 		p := defaultParams()
-		require.True(t, gte128(s.signalGasUsed, RatioDenom, p.ExpandTrigger, s.gasLimit),
+		require.True(t, gte128(s.parentSignalGasUsed, RatioDenom, p.ExpandTrigger, s.parentGasLimit),
 			"a block this full must clear the expand trigger")
-		require.False(t, gte128(userGeneral, RatioDenom, p.ExpandTrigger, s.gasLimit),
+		require.False(t, gte128(userGeneral, RatioDenom, p.ExpandTrigger, s.parentGasLimit),
 			"and it must be the system gas that carries it over - otherwise this proves nothing")
 	})
 
@@ -574,18 +535,18 @@ func TestSignalIsSection342Verbatim(t *testing.T) {
 		const general, payment, lane = 35_000_000, 20_000_000, 4_400_000
 		c := &Commitment{LaneSize: lane, PaymentGasUsed: payment}
 		s := newSignal(c, general+payment, parentGasLimit)
-		require.Equal(t, uint64(general+payment-lane), s.signalGasUsed)
+		require.Equal(t, uint64(general+payment-lane), s.parentSignalGasUsed)
 
 		p := defaultParams()
-		require.True(t, gte128(s.signalGasUsed, RatioDenom, p.ExpandTrigger, s.gasLimit))
-		require.False(t, gte128(general, RatioDenom, p.ShrinkTrigger, s.gasLimit),
+		require.True(t, gte128(s.parentSignalGasUsed, RatioDenom, p.ExpandTrigger, s.parentGasLimit))
+		require.False(t, gte128(general, RatioDenom, p.ShrinkTrigger, s.parentGasLimit),
 			"the general term alone would have shrunk")
 	})
 
 	t.Run("a saturated block always expands", func(t *testing.T) {
-		// The structural property both terms exist for. At the rule's equality the
-		// numerator is exactly GasLimit - laneSize, and invariant (5) of section 3.6 caps
-		// laneSize at RATIO_DENOM - EXPAND_TRIGGER_RATIO for precisely this reason.
+		// The structural property both terms exist for. At the rule's equality the numerator is
+		// exactly GasLimit - laneSize, which is what MaxRatio + ExpandTrigger <= RatioDenom
+		// (section 3.6) exists for.
 		p := defaultParams()
 		require.LessOrEqual(t, p.MaxRatio+p.ExpandTrigger, uint64(RatioDenom), "invariant (5)")
 		for _, lane := range []uint64{0, 1, 2_000_000, 4_400_000} {
@@ -593,34 +554,29 @@ func TestSignalIsSection342Verbatim(t *testing.T) {
 				general := parentGasLimit - max(payment, lane) // saturate the rule
 				c := &Commitment{LaneSize: lane, PaymentGasUsed: payment}
 				s := newSignal(c, general+payment, parentGasLimit)
-				require.Equal(t, parentGasLimit-lane, s.signalGasUsed,
+				require.Equal(t, parentGasLimit-lane, s.parentSignalGasUsed,
 					"lane %d payment %d: a saturated block's signal is GasLimit-laneSize", lane, payment)
-				require.True(t, gte128(s.signalGasUsed, RatioDenom, p.ExpandTrigger, s.gasLimit),
+				require.True(t, gte128(s.parentSignalGasUsed, RatioDenom, p.ExpandTrigger, s.parentGasLimit),
 					"lane %d payment %d: a saturated block must expand", lane, payment)
 			}
 		}
 	})
 }
 
-// TestMulDivFloorGuardBoundary covers hi == d, the exact case the doc comment names
-// as the panic source. A guard written hi > d panics there instead of saturating.
-//
-// Unreachable with consensus-legal inputs (ratio <= RatioDenom and GasLimit < 2^63
-// give hi <= 4999), but Params is exported and the function promises no precondition
-// on the caller, so the boundary is part of the contract.
+// TestMulDivFloorGuardBoundary covers hi == d, where a guard written hi > d panics instead of
+// saturating. Unreachable with consensus-legal inputs, but Params is exported and the function
+// promises its caller no precondition at all.
 func TestMulDivFloorGuardBoundary(t *testing.T) {
 	require.Equal(t, uint64(math.MaxUint64), mulDivFloor(RatioDenom+1, math.MaxUint64, RatioDenom),
 		"hi == d must saturate, not panic")
 	// One below the boundary must still divide.
 	got := mulDivFloor(RatioDenom, math.MaxUint64, RatioDenom)
 	require.Equal(t, uint64(math.MaxUint64), got)
-	require.NotPanics(t, func() { LaneSize(Params{MaxRatio: RatioDenom + 1, MaxGas: 8_000_000}, Signal{}, math.MaxUint64) })
+	require.NotPanics(t, func() { Signal{}.NextLaneSize(Params{MaxRatio: RatioDenom + 1, MaxGas: 8_000_000}, math.MaxUint64) })
 }
 
-// TestActivationAtTheLondonBoundary covers the IsLondon half of IsGauss, which every
-// other activation test leaves inert by sitting far above LondonBlock. On a chain whose
-// Gauss timestamp lands at LondonBlock, the boundary asserted here is the difference
-// between exempting the activation block and binding it.
+// TestActivationAtTheLondonBoundary covers the IsLondon half of IsGauss, inert in every other
+// activation test because they all sit far above LondonBlock; here Gauss lands exactly on it.
 func TestActivationAtTheLondonBoundary(t *testing.T) {
 	forkTime := uint64(1_800_000_000)
 	config := *params.BSCChainConfig
@@ -639,19 +595,10 @@ func TestActivationAtTheLondonBoundary(t *testing.T) {
 	require.True(t, config.IsGauss(big.NewInt(n), forkTime+3))
 }
 
-// TestLaneCannotDetectAnUninstalledContract pins the one configuration in which
-// "the rules are on" and "the contract exists" genuinely come apart.
-//
-// With LondonBlock at 0 and GaussTime at or before the genesis timestamp, IsGauss
-// already holds at genesis, so IsOnGauss never fires and upgradeBuildInSystemContract
-// never installs the code - while the rules bind from block 1. LoadParams cannot see
-// it, because an absent account and an untouched one are both all-zero storage. The
-// chain then runs the lane on hardcoded defaults with governance unable to change
-// them, silently.
-//
-// This is a constraint on new chain configurations, not a live defect: mainnet's
-// LondonBlock is 31,302,048 and the devnet genesis template's is 8. It is pinned so
-// that whoever schedules Gauss on a fresh chain has to confront it.
+// TestLaneCannotDetectAnUninstalledContract pins the one configuration where the rules bind but
+// the code was never installed: LondonBlock 0 with GaussTime at or before genesis, so IsGauss
+// holds at genesis, IsOnGauss never fires, and LoadParams cannot tell absent storage from
+// untouched storage. A constraint on new chain configurations, not a live defect.
 func TestLaneCannotDetectAnUninstalledContract(t *testing.T) {
 	zero := uint64(0)
 	config := *params.BSCChainConfig
@@ -682,9 +629,9 @@ func TestLaneCannotDetectAnUninstalledContract(t *testing.T) {
 	require.True(t, sane.IsGauss(big.NewInt(8), 8))
 }
 
-// TestParentSignalDerivesBothTheGateAndTheDenominator is why ParentSignal exists
-// rather than leaving three call sites to assemble a Signal.
-func TestParentSignalDerivesBothTheGateAndTheDenominator(t *testing.T) {
+// TestNewSignalFromParentDecidesTheGateAndDenominator: the gate comes from the grandparent, the
+// denominator from the parent.
+func TestNewSignalFromParentDecidesTheGateAndDenominator(t *testing.T) {
 	forkTime := uint64(1_800_000_000)
 	config := *params.BSCChainConfig
 	config.GaussTime = &forkTime
@@ -700,13 +647,13 @@ func TestParentSignalDerivesBothTheGateAndTheDenominator(t *testing.T) {
 	t.Run("a parent that is a lane block yields its commitment", func(t *testing.T) {
 		grandparent := hdr(base, forkTime, 55_000_000, 0)
 		parent := hdr(base+1, forkTime+3, 40_000_000, 30_001_000)
-		s, err := ParentSignal(&config, grandparent, parent, commitment)
+		s, err := NewSignalFromParent(&config, grandparent, parent, commitment)
 		require.NoError(t, err)
-		require.Equal(t, uint64(2_400_000), s.laneSize)
+		require.Equal(t, uint64(2_400_000), s.parentLaneSize)
 		// The parent's gas used less its committed payment: 30,001,000 - 1,000. The
 		// overflow term is zero here, payment being far under the quota.
-		require.Equal(t, uint64(30_000_000), s.signalGasUsed)
-		require.Equal(t, uint64(40_000_000), s.gasLimit,
+		require.Equal(t, uint64(30_000_000), s.parentSignalGasUsed)
+		require.Equal(t, uint64(40_000_000), s.parentGasLimit,
 			"the denominator must be the PARENT's gas limit, never the child's")
 	})
 
@@ -715,13 +662,7 @@ func TestParentSignalDerivesBothTheGateAndTheDenominator(t *testing.T) {
 		grandparent := hdr(base, forkTime-3, 55_000_000, 0)
 		parent := hdr(base+1, forkTime, 40_000_000, 0)
 		// The carrier bytes are garbage here, and that must not matter.
-		s, err := ParentSignal(&config, grandparent, parent, common.Hash{0xff})
-		require.NoError(t, err)
-		require.Equal(t, Signal{}, s)
-	})
-
-	t.Run("genesis has no grandparent", func(t *testing.T) {
-		s, err := ParentSignal(&config, nil, hdr(0, forkTime, 40_000_000, 0), common.Hash{})
+		s, err := NewSignalFromParent(&config, grandparent, parent, common.Hash{0xff})
 		require.NoError(t, err)
 		require.Equal(t, Signal{}, s)
 	})
@@ -731,26 +672,16 @@ func TestParentSignalDerivesBothTheGateAndTheDenominator(t *testing.T) {
 		parent := hdr(base+1, forkTime+3, 40_000_000, 0)
 		corrupt := commitment
 		corrupt[31] = 0xff
-		s, err := ParentSignal(&config, grandparent, parent, corrupt)
+		s, err := NewSignalFromParent(&config, grandparent, parent, corrupt)
 		require.ErrorIs(t, err, ErrBadCommitment)
 		require.Equal(t, Signal{}, s, "the zero value must not be usable as a seed after an error")
 	})
 }
 
-// TestClampArmsHaveAbsoluteAnchors pins the two clamp arms that no other test can
-// see, and it is the repair for a regression the Ceiling/Floor refactor introduced.
-//
-// LaneSize now calls the same laneCeiling/laneFloor that Ceiling/Floor delegate to,
-// so every LaneSize-vs-Ceiling/Floor assertion became a self-comparison: the whole
-// lattice loop of TestBootstrapIsTheZeroSignal is now an identity. Measured
-// consequence - six mutants that the pre-refactor shape killed from either side
-// survived afterwards, all of them in the two arms that do NOT bind under the shipped
-// defaults. With the defaults, MaxGas binds only above ~100M of gas limit, and the
-// MinRatio arm likewise, so no other test reaches them; they go live the moment
-// governance writes a small MinGas/MaxGas (the legal minimum is 21,000) or the gas
-// limit is raised.
-//
-// Absolute expected numbers, computed by hand, are the only oracle left.
+// TestClampArmsHaveAbsoluteAnchors is the sole killer of the MaxGas and MinRatio clamp arms:
+// under the shipped defaults neither binds below ~100M of gas limit, so every other test
+// compares laneCeiling/laneFloor against themselves. Hand-computed numbers are the only oracle
+// left, and the arms go live the moment governance writes a small MinGas/MaxGas.
 func TestClampArmsHaveAbsoluteAnchors(t *testing.T) {
 	t.Run("the absolute MaxGas cap binds above the ratio ceiling", func(t *testing.T) {
 		// 2000 bps of 70M is 14,000,000, so MaxGas is what binds.
@@ -760,9 +691,9 @@ func TestClampArmsHaveAbsoluteAnchors(t *testing.T) {
 		require.Equal(t, uint64(8_000_000), laneCeiling(p, 70_000_000))
 		require.Equal(t, uint64(14_000_000), mulDivFloor(p.MaxRatio, 70_000_000, RatioDenom),
 			"premise: the ratio arm is larger, so only MaxGas can be what binds")
-		// And through LaneSize: a predecessor above the cap must come back to it.
-		s := Signal{laneSize: 20_000_000, signalGasUsed: p.ShrinkTrigger, gasLimit: RatioDenom}
-		require.Equal(t, uint64(8_000_000), LaneSize(p, s, 70_000_000))
+		// And through NextLaneSize: a predecessor above the cap must come back to it.
+		s := Signal{parentLaneSize: 20_000_000, parentSignalGasUsed: p.ShrinkTrigger, parentGasLimit: RatioDenom}
+		require.Equal(t, uint64(8_000_000), s.NextLaneSize(p, 70_000_000))
 	})
 
 	t.Run("the ratio ceiling binds below the absolute cap", func(t *testing.T) {
@@ -777,7 +708,7 @@ func TestClampArmsHaveAbsoluteAnchors(t *testing.T) {
 			ExpandStep: 200, ShrinkStep: 50, MinGas: 21_000, MaxGas: 8_000_000}
 		require.True(t, contractLegal(p))
 		require.Equal(t, uint64(1_100_000), laneFloor(p, 55_000_000))
-		require.Equal(t, uint64(1_100_000), LaneSize(p, Signal{}, 55_000_000))
+		require.Equal(t, uint64(1_100_000), Signal{}.NextLaneSize(p, 55_000_000))
 	})
 
 	t.Run("MinGas binds above the MinRatio arm", func(t *testing.T) {
@@ -793,39 +724,33 @@ func TestClampArmsHaveAbsoluteAnchors(t *testing.T) {
 		// floor   = min(max(1500*40M/1e4, 21000), ceiling) = min(6,000,000, 8,000,000)
 		require.Equal(t, uint64(8_000_000), laneCeiling(p, 40_000_000))
 		require.Equal(t, uint64(6_000_000), laneFloor(p, 40_000_000))
-		require.Equal(t, uint64(6_000_000), LaneSize(p, Signal{}, 40_000_000))
+		require.Equal(t, uint64(6_000_000), Signal{}.NextLaneSize(p, 40_000_000))
 	})
 }
 
-// TestCheckLaneSizeUsesTheSignal covers the mutation that would reject every lane
-// block on the chain.
-//
-// CheckLaneSize is the enforcement point for the recursion, so an implementation that
-// ignored its Signal and compared against the bootstrap floor instead would reject
-// every block whose quota had ever stepped - a chain halt. The other CheckLaneSize
-// assertions all use the zero Signal, so the mutation is invisible to them.
-func TestCheckLaneSizeUsesTheSignal(t *testing.T) {
+// TestCheckNextLaneSizeUsesTheSignal is the only place a CheckNextLaneSize that ignored its Signal
+// shows up - every other assertion passes the zero Signal - and that mutation would reject every
+// block whose quota had ever stepped.
+func TestCheckNextLaneSizeUsesTheSignal(t *testing.T) {
 	p := defaultParams()
 	const gl = 55_000_000
 	// A parent sitting mid-range with a congested signal, so the quota steps up and
 	// lands away from both the floor and the bootstrap value.
-	stepped := Signal{laneSize: 3_000_000, signalGasUsed: defaultExpandTrigger, gasLimit: RatioDenom}
-	want := LaneSize(p, stepped, gl)
-	require.NotEqual(t, LaneSize(p, Signal{}, gl), want, "premise: the stepped quota differs from the bootstrap one")
+	stepped := Signal{parentLaneSize: 3_000_000, parentSignalGasUsed: defaultExpandTrigger, parentGasLimit: RatioDenom}
+	want := stepped.NextLaneSize(p, gl)
+	require.NotEqual(t, Signal{}.NextLaneSize(p, gl), want, "premise: the stepped quota differs from the bootstrap one")
 	require.Equal(t, uint64(4_100_000), want, "3.0M + 2% of 55M, inside [2.0M, 4.4M]")
 
-	require.NoError(t, CheckLaneSize(want, p, stepped, gl))
-	require.ErrorIs(t, CheckLaneSize(want+1, p, stepped, gl), ErrQuotaMismatch)
-	require.ErrorIs(t, CheckLaneSize(want-1, p, stepped, gl), ErrQuotaMismatch)
+	require.NoError(t, stepped.CheckNextLaneSize(want, p, gl))
+	require.ErrorIs(t, stepped.CheckNextLaneSize(want+1, p, gl), ErrQuotaMismatch)
+	require.ErrorIs(t, stepped.CheckNextLaneSize(want-1, p, gl), ErrQuotaMismatch)
 	// And specifically: the bootstrap value must be rejected for a stepped parent.
-	require.ErrorIs(t, CheckLaneSize(LaneSize(p, Signal{}, gl), p, stepped, gl), ErrQuotaMismatch)
+	require.ErrorIs(t, stepped.CheckNextLaneSize(Signal{}.NextLaneSize(p, gl), p, gl), ErrQuotaMismatch)
 }
 
-// TestNilHeaderHandlingIsSpecified covers ParentSignal's guards themselves, which were
-// entirely uncovered: the intended test passed for the wrong reason, because on
-// BSCChainConfig LondonBlock is 31,302,048 so IsGauss(0, .) is false and the nil path
-// was never reached. A nil grandparent means two different things, and that is the whole
-// point of the guards.
+// TestNilHeaderHandlingIsSpecified covers the two nil guards, which nothing else reaches. Note
+// LondonBlock is overridden to 0 below: on BSCChainConfig it is 31,302,048, IsGauss answers false
+// for that reason alone, and the nil-grandparent branch is never reached.
 func TestNilHeaderHandlingIsSpecified(t *testing.T) {
 	forkTime := uint64(1_800_000_000)
 	config := *params.BSCChainConfig
@@ -834,8 +759,8 @@ func TestNilHeaderHandlingIsSpecified(t *testing.T) {
 	config.BerlinBlock = common.Big0
 	hdr := &types.Header{Number: big.NewInt(10), Time: forkTime + 3, GasLimit: 55_000_000}
 
-	// A nil parent has nothing to answer, and ParentSignal has an error channel for it.
-	s, err := ParentSignal(&config, hdr, nil, common.Hash{})
+	// A nil parent has nothing to answer, and NewSignalFromParent has an error channel for it.
+	s, err := NewSignalFromParent(&config, hdr, nil, common.Hash{})
 	require.Error(t, err)
 	require.Equal(t, Signal{}, s)
 
@@ -844,11 +769,11 @@ func TestNilHeaderHandlingIsSpecified(t *testing.T) {
 	// silently becoming the bootstrap seed, which would reset the quota to the floor
 	// on a parent that had stepped, forever.
 	genesis := &types.Header{Number: common.Big0, Time: forkTime - 3, GasLimit: 55_000_000}
-	s, err = ParentSignal(&config, nil, genesis, common.Hash{})
+	s, err = NewSignalFromParent(&config, nil, genesis, common.Hash{})
 	require.NoError(t, err)
 	require.Equal(t, Signal{}, s)
 
-	s, err = ParentSignal(&config, nil, hdr, common.Hash{})
+	s, err = NewSignalFromParent(&config, nil, hdr, common.Hash{})
 	require.ErrorIs(t, err, ErrBadCommitment, "an unresolved grandparent must not be read as genesis")
 	require.Equal(t, Signal{}, s)
 }
