@@ -853,7 +853,7 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction, recei
 	env.header.GasUsed = env.gasPool.Used()
 	// Books zero on the failure path above, because Set restored all three pool fields
 	// bit for bit; no separate bucket rollback is needed.
-	env.lane.AccountFrom(class, env.gasPool, usedBefore)
+	env.lane.RecordUsedFrom(class, env.gasPool, usedBefore)
 	return receipt, err
 }
 
@@ -980,7 +980,7 @@ LOOP:
 		// BEP-703: general traffic must yield the unused part of the quota, payment
 		// traffic must not. The pool test above (gasPool.Gas() < ltx.Gas) is already
 		// exactly the payment-class predicate, so only a transaction that fits the pool
-		// but not the general headroom has an answer that depends on its class - a band
+		// but not general's MaxAvailableGas has an answer that depends on its class - a band
 		// as wide as IdleLane. Everything outside it is admitted or dropped without
 		// touching state, which keeps the classifier off the skip path.
 		if !env.lane.Admits(env.gasPool.Gas(), paymentlane.ClassGeneral, tx.Gas()) {

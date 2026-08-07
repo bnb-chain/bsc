@@ -92,8 +92,8 @@ func NewClassifier(parentRoot common.Hash, parent AccountReader, listed map[comm
 //
 // On a state-read failure it returns (ClassGeneral, err) and records err
 // stickily. ClassGeneral is the conservative choice for ADMISSION - it can only
-// under-fill the lane, whereas ClassPayment would shrink IdleLane, widen general
-// headroom and over-pack. It is NOT a safe default for ACCOUNTING, so neither
+// under-fill the lane, whereas ClassPayment would shrink IdleLane, widen general's
+// MaxAvailableGas and over-pack. It is NOT a safe default for ACCOUNTING, so neither
 // caller may lean on the value instead of handling the error:
 //
 //	producer  the gas lands in the wrong bucket, so both committed values are
@@ -148,7 +148,7 @@ func NewClassifier(parentRoot common.Hash, parent AccountReader, listed map[comm
 // acquires code earlier in the same block executes it inside a transaction this gate called
 // payment, consuming up to its declared limit instead of 21,000 - on a truthful commitment
 // that every node accepts. One deployment buys it, and what it buys is the reserved band no
-// general transaction can enter at any gas price (Budget.Headroom), so it is priority
+// general transaction can enter at any gas price (Budget.MaxAvailableGas), so it is priority
 // inversion rather than a discount. Both ways to close it cost more than it does;
 // docs/bep703-payment-lane.md section 2.5 holds the comparison.
 func (c *Classifier) Classify(tx *types.Transaction) (Class, error) {

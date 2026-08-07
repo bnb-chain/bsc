@@ -61,7 +61,7 @@ import (
 // counted without being tagged, and a ClassSystem would have nothing to tag.
 //
 // There are exactly two values. "Not yet classified" is not a state: the caller
-// must have settled the class before accounting, so Budget.Account cannot fail.
+// must have settled the class before accounting, so Budget.RecordUsed cannot fail.
 type Class uint8
 
 const (

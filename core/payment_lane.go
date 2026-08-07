@@ -206,7 +206,7 @@ func (ls *LaneState) Classify(tx *types.Transaction) (paymentlane.Class, error) 
 	return ls.class.Classify(tx)
 }
 
-// AccountFrom books the gas the pool has consumed since usedBefore, for a payment
+// RecordUsedFrom books the gas the pool has consumed since usedBefore, for a payment
 // transaction; a general one is a no-op, general gas being the header residual. Call it
 // once per apply, with the sample taken immediately before that apply.
 //
@@ -218,20 +218,20 @@ func (ls *LaneState) Classify(tx *types.Transaction) (paymentlane.Class, error) 
 // already restored the pool from its snapshot, so the delta is zero - and it cancels the
 // bid path's temporary PayBidTxGasLimit reservation, which would otherwise offset an
 // absolute reading by exactly 25,000.
-func (ls *LaneState) AccountFrom(class paymentlane.Class, gp *GasPool, usedBefore uint64) {
+func (ls *LaneState) RecordUsedFrom(class paymentlane.Class, gp *GasPool, usedBefore uint64) {
 	if !ls.On() {
 		return
 	}
-	ls.Budget.Account(class, gp.Used()-usedBefore)
+	ls.Budget.RecordUsed(class, gp.Used()-usedBefore)
 }
 
-// Admits reports whether a transaction of this class and gas limit may still be
-// included. shared is the shared remainder, i.e. gasPool.Gas().
-func (ls *LaneState) Admits(shared uint64, class paymentlane.Class, gasLimit uint64) bool {
+// Admits reports whether this transaction may still be included, and admits everything
+// while the lane is off. shared is the shared remainder, i.e. gasPool.Gas().
+func (ls *LaneState) Admits(shared uint64, class paymentlane.Class, txGasLimit uint64) bool {
 	if !ls.On() {
 		return true
 	}
-	return ls.Budget.Admits(shared, class, gasLimit)
+	return ls.Budget.Admits(shared, class, txGasLimit)
 }
 
 // Err reports the first classifier state-read failure, if any.

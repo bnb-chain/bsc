@@ -197,7 +197,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 			spanEnd(&err)
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
-		lane.AccountFrom(class, gp, usedBefore)
+		lane.RecordUsedFrom(class, gp, usedBefore)
 		commonTxs = append(commonTxs, tx)
 		receipts = append(receipts, receipt)
 		spanEnd(nil)

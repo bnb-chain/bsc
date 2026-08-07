@@ -136,7 +136,7 @@ func (b *BlockGen) addTx(bc *BlockChain, vmConfig vm.Config, tx *types.Transacti
 		panic(err)
 	}
 	b.header.GasUsed = b.gasPool.Used()
-	b.lane.AccountFrom(class, b.gasPool, usedBefore)
+	b.lane.RecordUsedFrom(class, b.gasPool, usedBefore)
 
 	// Merge the tx-local access event into the "block-local" one, in order to collect
 	// all values, so that the witness can be built.

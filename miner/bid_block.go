@@ -54,7 +54,7 @@ var errInvalidBidBlockBlobTx = errors.New("BidBlock blob validation failed")
 // What stays exposed: a payment total that is too low, or too high but inside the ceiling.
 // Neither is profitable, but both make a block every importer rejects with ErrUntruthy after
 // this validator signed and broadcast it, so the residual is builder BUGS - most likely a
-// builder that stamps the commitment but never calls AccountFrom, committing zero. No cheap
+// builder that stamps the commitment but never calls RecordUsedFrom, committing zero. No cheap
 // lower bound exists, since any transaction can install code at any address. Revocation on
 // the import failure is what prices it.
 //

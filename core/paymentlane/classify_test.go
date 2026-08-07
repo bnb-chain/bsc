@@ -368,7 +368,7 @@ func TestTypeGateAcceptsExactlyThreeTypes(t *testing.T) {
 //
 // Fail-shut must be ClassGeneral: a producer that ignored the error would
 // under-fill the lane, costing revenue but still producing a valid block, whereas
-// ClassPayment would shrink IdleLane, widen general headroom and over-pack into an
+// ClassPayment would shrink IdleLane, widen general's MaxAvailableGas and over-pack into an
 // invalid block.
 func TestErrorPropagatesFailShutAndSticks(t *testing.T) {
 	boom := errors.New("snapshot not covered yet")
