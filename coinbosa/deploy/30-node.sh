@@ -60,6 +60,8 @@ else
   echo "    déjà initialisé"
 fi
 
+PEER_LINE=""
+
 echo "==> Service systemd"
 # --http.addr 127.0.0.1 : le RPC n'est JAMAIS exposé directement. Caddy le relaie sur
 #   https://explorer.…/rpc, en POST uniquement, et le pare-feu garde 8545 fermé.
@@ -87,6 +89,7 @@ ExecStart=$GETH \\
   --verbosity 3
 Restart=on-failure
 RestartSec=5
+${PEER_LINE}
 # Durcissement : le nœud ne doit pouvoir écrire que dans son répertoire de données.
 NoNewPrivileges=true
 PrivateTmp=true
@@ -106,6 +109,63 @@ UNIT
 systemctl daemon-reload
 systemctl enable coinbosa-node
 systemctl restart coinbosa-node
+
+# --- Appairage PERSISTANT et auto-réparateur -------------------------------------
+# admin.addPeer() ne survit pas à un redémarrage, et une tentative depuis le service
+# lui-même échoue silencieusement (le bac à sable systemd du nœud interdit l'accès).
+# Un nœud RPC isolé continue de répondre en affichant une hauteur FIGÉE : l'explorateur
+# montrerait une chaîne arrêtée sans qu'aucune alerte ne se déclenche. C'est précisément
+# le genre de panne muette qu'il faut rendre impossible.
+# Ce service surveille donc l'appairage en continu et le rétablit, ce qui couvre aussi
+# les déconnexions passagères, pas seulement les redémarrages.
+VALIDATOR_IPC="${VALIDATOR_IPC:-/var/lib/coinbosa/validator/geth.ipc}"
+if [ -S "$VALIDATOR_IPC" ]; then
+  echo "==> Surveillance de l'appairage avec le validateur"
+  cat > /usr/local/bin/coinbosa-peer-check <<PEERSH
+#!/usr/bin/env bash
+# Rétablit l'appairage nœud RPC <-> validateur si nécessaire. Idempotent.
+set -uo pipefail
+GETH=$GETH
+NODE_IPC=$DATADIR/geth.ipc
+VAL_IPC=$VALIDATOR_IPC
+[ -S "\$NODE_IPC" ] && [ -S "\$VAL_IPC" ] || exit 0
+n=\$(sudo -u coinbosa "\$GETH" attach --exec 'net.peerCount' "\$NODE_IPC" 2>/dev/null || echo 0)
+[ "\${n:-0}" -gt 0 ] 2>/dev/null && exit 0
+enode=\$(sudo -u coinbosa "\$GETH" attach --exec 'admin.nodeInfo.enode' "\$VAL_IPC" 2>/dev/null | tr -d '"')
+[ -n "\$enode" ] || exit 0
+sudo -u coinbosa "\$GETH" attach --exec "admin.addPeer(\\"\$enode\\")" "\$NODE_IPC" >/dev/null 2>&1
+logger -t coinbosa "appairage nœud RPC <-> validateur retabli"
+PEERSH
+  chmod 0755 /usr/local/bin/coinbosa-peer-check
+
+  cat > /etc/systemd/system/coinbosa-peer.service <<'UNIT'
+[Unit]
+Description=Coinbosa — maintient l'appairage entre le nœud RPC et le validateur
+After=coinbosa-node.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/coinbosa-peer-check
+UNIT
+
+  cat > /etc/systemd/system/coinbosa-peer.timer <<'UNIT'
+[Unit]
+Description=Coinbosa — vérifie l'appairage toutes les minutes
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=60s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
+UNIT
+  systemctl daemon-reload
+  systemctl enable --now coinbosa-peer.timer >/dev/null 2>&1
+  systemctl start coinbosa-peer.service >/dev/null 2>&1 || true
+else
+  echo "==> Validateur absent de cette machine — pas de surveillance d'appairage local."
+fi
 
 echo "==> Vérification"
 sleep 5
