@@ -103,7 +103,14 @@ if (!liste.length) {
   const uniques = new Set(liste.map((a) => a.toLowerCase()));
   if (uniques.size !== liste.length) X('la liste des validateurs contient des doublons — chaque validateur doit avoir sa propre clé');
   if (uniques.size < MIN_VALIDATORS) X(`${uniques.size} validateur(s) distinct(s), ${MIN_VALIDATORS} exigés au minimum`);
-  else A(`${uniques.size} validateurs distincts`);
+  else A(`${uniques.size} validateur(s) distinct(s)`);
+  // Abaisser le seuil est possible, mais ne doit JAMAIS ressembler à un contrôle propre :
+  // un réseau à moins de 4 validateurs n'a ni tolérance aux pannes ni sécurité byzantine.
+  if (MIN_VALIDATORS < 4) {
+    W(`seuil de validateurs ABAISSÉ à ${MIN_VALIDATORS} (défaut : 4). Avec ${uniques.size} validateur(s), ` +
+      'le réseau s\'arrête si la machine tombe et un seul opérateur produit tous les blocs. ' +
+      'Ce n\'est PAS un réseau décentralisé : cela doit être écrit publiquement, pas découvert par un tiers.');
+  }
 }
 
 // ── 5. Compilateur ───────────────────────────────────────────────────────────
