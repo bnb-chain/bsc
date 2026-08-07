@@ -40,13 +40,6 @@ func (p *Parlia) PrepareForBidBlock(chain consensus.ChainHeaderReader, header *t
 }
 
 // FinalizeAndAssembleBidBlock assembles a BidBlock with unsigned system txs.
-//
-// Called only by the builder, which owns the packing loop and therefore the BEP-703
-// buckets. Like every other assembler this one writes EmptyUncleHash and types.NewBlock
-// re-derives it from the body, so from Gauss+1 - not on the activation block, which carries
-// no commitment - the builder must stamp it onto the returned block with
-// core.LaneState.WriteCommitment, before anything hashes it. Otherwise it emits a block the
-// network rejects after the validator that adopted it has signed and broadcast it.
 func (p *Parlia) FinalizeAndAssembleBidBlock(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB,
 	body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error) {
 	block, receipts, err := p.finalizeAndAssemble(chain, header, state, body, receipts, tracer, systemTxPacking)
