@@ -15,8 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// accountFn is an AccountReader backed by a function, so each test states exactly
-// what the parent state looks like.
+// accountFn is an AccountReader backed by a function, so each test states its own parent state.
 type accountFn struct {
 	fn    func(common.Address) (*types.StateAccount, error)
 	reads []common.Address // every address actually read, in order
@@ -102,23 +101,12 @@ func makeTx(t *testing.T, o txOpts) *types.Transaction {
 	}
 }
 
-// TestNoStateReadUntilEveryStaticGatePasses walks the whole static gate space and
-// asserts two things at once: which combinations reach the state read, and what
-// class every combination produces.
-//
-// The first half is what keeps the tail of the packing loop cheap - a reordering
-// that hoists the state read turns each rejected account into a trie query. The
-// second half kills every gate-order mutation that changes a CLASS, which is all of
-// the correctness-relevant ones. What survives it, and is meant to, is any reordering
-// among the gates that all answer general - the type allowlist against the
-// access-list test, the calldata test against the value test - since those change only
-// which free test runs first. Every swap that crosses gate 4 or gate 7 dies here - on the
-// class it produces, or on the state read it moves.
+// TestNoStateReadUntilEveryStaticGatePasses walks the whole static gate space, asserting both
+// the class produced and whether state was read, so any gate reorder that crosses gate 4 or
+// gate 7 fails here.
 func TestNoStateReadUntilEveryStaticGatePasses(t *testing.T) {
 	oneEntryAccessList := types.AccessList{{Address: plainDest}}
-	// ContractAddress is listed on purpose: membership decides regardless of the
-	// address, so this row is the one that fails if a filter is ever reintroduced above
-	// the lookup.
+	// ContractAddress is listed on purpose: membership decides whatever the address is.
 	listed := listedSet(listedDest, ContractAddress)
 
 	for _, txType := range []byte{
@@ -187,14 +175,8 @@ func TestNoStateReadUntilEveryStaticGatePasses(t *testing.T) {
 	}
 }
 
-// TestPrecompileDestinationIsPayment pins deviation 2 of quota.go's registry: section 3.2
-// excludes precompile addresses and this implementation has no such gate, so one wei to a
-// precompile with empty data is payment class here and general to a conformant client.
-//
-// It is not an oversight, and it is not free either; the registry entry holds the
-// argument. What this test does is make sure a reader who reintroduces the exclusion has
-// to delete an assertion that says so out loud, rather than turning a documented
-// divergence into an undocumented one.
+// TestPrecompileDestinationIsPayment pins deviation 2 of quota.go's registry: one wei to a
+// precompile is payment here and general to a conformant client.
 func TestPrecompileDestinationIsPayment(t *testing.T) {
 	for _, addr := range vm.ActivePrecompiles(params.Rules{
 		IsHomestead: true, IsByzantium: true, IsIstanbul: true, IsBerlin: true,
@@ -207,12 +189,8 @@ func TestPrecompileDestinationIsPayment(t *testing.T) {
 	}
 }
 
-// TestAbsentAccountIsPayment guards the highest-value silent bug in the package.
-//
-// Writing gate 7 as codeHash == types.EmptyCodeHash instead misclassifies every
-// transfer to a brand-new address - first deposits and new wallets, which is the
-// lane's core use case. The symptom is not an error: it is a lane that quietly
-// never fills, indistinguishable from low demand.
+// TestAbsentAccountIsPayment guards the package's highest-value silent bug: writing gate 7 as
+// codeHash == types.EmptyCodeHash misclassifies every transfer to a brand-new address.
 func TestAbsentAccountIsPayment(t *testing.T) {
 	tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &plainDest, value: big.NewInt(1)})
 	got, err := NewClassifier(common.Hash{}, absentAccounts(), nil).Classify(tx)
@@ -220,10 +198,8 @@ func TestAbsentAccountIsPayment(t *testing.T) {
 	require.Equal(t, ClassPayment, got)
 }
 
-// TestCodeHashBoundaryCases covers the three encodings of "no code" that exist in
-// this tree. flatReader normalises an existing code-less account to EmptyCodeHash,
-// mptTrieReader does not, and StateDB.GetCodeHash returns the zero hash for an
-// absent account - so the same state can reach the classifier in different shapes.
+// TestCodeHashBoundaryCases covers every encoding of "no code" this tree can hand the
+// classifier - flatReader normalises to EmptyCodeHash, mptTrieReader does not.
 func TestCodeHashBoundaryCases(t *testing.T) {
 	tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &plainDest, value: big.NewInt(1)})
 	for _, tc := range []struct {
@@ -246,10 +222,8 @@ func TestCodeHashBoundaryCases(t *testing.T) {
 	}
 }
 
-// TestDelegationDesignatorIsGeneral covers EIP-7702. A delegated account's code
-// hash is keccak(0xef0100||target), so gate 7 excludes it without any special
-// case - and the AccountReader interface has no code accessor, so an
-// implementation cannot be tempted to follow the delegation instead.
+// TestDelegationDesignatorIsGeneral covers EIP-7702: a designator's code hash is
+// keccak(0xef0100||target), so gate 7 excludes it with no special case.
 func TestDelegationDesignatorIsGeneral(t *testing.T) {
 	designator := types.AddressToDelegation(common.HexToAddress("0x00000000000000000000000000000000000f0009"))
 	r := &accountFn{fn: func(common.Address) (*types.StateAccount, error) {
@@ -261,11 +235,8 @@ func TestDelegationDesignatorIsGeneral(t *testing.T) {
 	require.Equal(t, ClassGeneral, got)
 }
 
-// TestListedContractSurvivesDataAndValueGates is the test that keeps the whitelist
-// from becoming dead code. Every real ERC-20 transfer has calldata and zero value,
-// so hoisting either of those gates above the whitelist lookup silently disables
-// the entire second and third BEP-703 categories, with no error and no other
-// failing test.
+// TestListedContractSurvivesDataAndValueGates keeps the listed set from becoming dead code:
+// every real ERC-20 transfer has calldata and zero value, so gate 4 must stay above 5 and 6.
 func TestListedContractSurvivesDataAndValueGates(t *testing.T) {
 	// transfer(address,uint256) with a recipient and an amount: 68 bytes, no value.
 	calldata := make([]byte, 68)
@@ -279,10 +250,8 @@ func TestListedContractSurvivesDataAndValueGates(t *testing.T) {
 	}
 }
 
-// TestBlobAndSetCodeToListedContractAreGeneral keeps the type whitelist above the
-// membership lookup. Otherwise the type gate can be bypassed through the listed
-// path, which re-opens 7702 bulk authorisation - 8.02M gas of pure state writes -
-// at lane price.
+// TestBlobAndSetCodeToListedContractAreGeneral keeps gate 2 above gate 4, or the listed path
+// reopens 7702 bulk authorisation - 8.02M gas of pure state writes - at lane price.
 func TestBlobAndSetCodeToListedContractAreGeneral(t *testing.T) {
 	for _, txType := range []byte{types.BlobTxType, types.SetCodeTxType} {
 		tx := makeTx(t, txOpts{txType: txType, to: &listedDest, value: big.NewInt(1)})
@@ -292,14 +261,8 @@ func TestBlobAndSetCodeToListedContractAreGeneral(t *testing.T) {
 	}
 }
 
-// TestAnyListedAddressIsPayment pins that membership decides, whatever the address is.
-//
-// The classifier neither copies nor validates the set: governance writes it, the same
-// vote undoes any entry, and neither the contract nor this package filters by address.
-// A client that reintroduced a filter would reject blocks every conformant client
-// accepts, and nothing on the contract side would show governance that its listing did
-// nothing - which is why the two system addresses below, the least plausible listings
-// there are, still come out payment.
+// TestAnyListedAddressIsPayment pins that membership alone decides: a client that filtered the
+// governance-written set by address would reject blocks every conformant client accepts.
 func TestAnyListedAddressIsPayment(t *testing.T) {
 	timelock := common.HexToAddress(systemcontracts.TimelockContract)
 	listed := listedSet(ContractAddress, timelock)
@@ -311,13 +274,8 @@ func TestAnyListedAddressIsPayment(t *testing.T) {
 	}
 }
 
-// TestTypeGateAcceptsExactlyThreeTypes pins the whitelist over every type this tree
-// can construct.
-//
-// Types beyond 0x04 do not exist yet, so no test can construct one; they are
-// covered structurally by the switch's default branch. That is precisely why the
-// gate must stay a whitelist - a blacklist would compile, pass this test, and
-// silently admit whatever type BSC adopts next.
+// TestTypeGateAcceptsExactlyThreeTypes pins the allowlist over every type this tree can
+// construct; a blacklist would pass this test and admit whatever type BSC adopts next.
 func TestTypeGateAcceptsExactlyThreeTypes(t *testing.T) {
 	for _, tc := range []struct {
 		txType byte
@@ -338,12 +296,8 @@ func TestTypeGateAcceptsExactlyThreeTypes(t *testing.T) {
 		"a new transaction type has appeared: confirm the gate is still a whitelist and extend this table")
 }
 
-// TestErrorPropagatesFailShutAndSticks covers the failure path.
-//
-// Fail-shut must be ClassGeneral: a producer that ignored the error would
-// under-fill the lane, costing revenue but still producing a valid block, whereas
-// ClassPayment would shrink IdleLane, widen general's MaxAvailableGas and over-pack into an
-// invalid block.
+// TestErrorPropagatesFailShutAndSticks covers the failure path: fail-shut must be ClassGeneral,
+// since ClassPayment would widen general's MaxAvailableGas and over-pack into an invalid block.
 func TestErrorPropagatesFailShutAndSticks(t *testing.T) {
 	boom := errors.New("snapshot not covered yet")
 	calls := 0
@@ -364,8 +318,7 @@ func TestErrorPropagatesFailShutAndSticks(t *testing.T) {
 	require.Equal(t, ClassGeneral, got, "the failure value must be general, not payment")
 	require.Error(t, c.Err())
 
-	// A subsequent success must not clear the sticky error, or a caller that only
-	// checks at the end would produce a block built on one bad classification.
+	// A later success must not clear the sticky error.
 	other := common.HexToAddress("0x00000000000000000000000000000000000f000a")
 	got, err = c.Classify(makeTx(t, txOpts{txType: types.LegacyTxType, to: &other, value: big.NewInt(1)}))
 	require.NoError(t, err)
