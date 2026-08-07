@@ -132,10 +132,21 @@ $EXPLORER_DOMAIN {
         method POST
     }
     handle @rpc_post {
+        # geth sert son API JSON-RPC à la RACINE (/), pas sur /rpc. Sans cette réécriture,
+        # Caddy lui transmet le chemin /rpc tel quel et geth répond 404 : le relais semble
+        # branché (il l'est) mais ne renvoie jamais de résultat.
+        rewrite * /
         request_body {
             max_size 32KB
         }
-        reverse_proxy 127.0.0.1:8545
+        reverse_proxy 127.0.0.1:8545 {
+            # geth vérifie l'en-tête Host (--http.vhosts) pour se protéger du
+            # « DNS rebinding ». On garde cette protection stricte côté nœud et c'est
+            # Caddy qui pose le Host attendu ; sans cela geth répond « invalid host
+            # specified ». Le nœud n'accepte donc toujours que des requêtes venant
+            # de la boucle locale, quel que soit le domaine appelé de l'extérieur.
+            header_up Host {upstream_hostport}
+        }
     }
     # Toute autre méthode sur /rpc (GET, OPTIONS, HEAD…) est refusée.
     handle /rpc* {
