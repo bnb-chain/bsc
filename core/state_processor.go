@@ -490,26 +490,20 @@ type blockAssembler interface {
 	FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt, tracer *tracing.Hooks) (*types.Block, []*types.Receipt, error)
 }
 
-// AssembleBlock turns an executed block's parts into a sealed-ready block.
-//
-// Upstream code, whose premise is that assembly is consensus-agnostic and validations
-// belong to the caller (go-ethereum #34726). Nothing about the payment lane belongs in
-// this signature or this body: a producer stamps the commitment onto the assembled block
-// afterwards, with LaneState.WriteCommitment.
+// AssembleBlock finalizes the state and assembles the block with provided
+// body and receipts. The payment lane commitment is stamped onto the assembled
+// block afterwards, by LaneState.WriteCommitment, and not here.
 func AssembleBlock(engine consensus.Engine, chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, []*types.Receipt, error) {
-	var block *types.Block
 	if p, ok := engine.(blockAssembler); ok {
-		assembled, assembledReceipts, err := p.FinalizeAndAssemble(chain, header, state, body, receipts, nil)
+		block, receipts, err := p.FinalizeAndAssemble(chain, header, state, body, receipts, nil)
 		if err != nil {
 			return nil, nil, err
 		}
-		block, receipts = assembled, assembledReceipts
-	} else {
-		if err := engine.Finalize(chain, header, state, &body.Transactions, body.Uncles, body.Withdrawals, &receipts, nil, &header.GasUsed, nil); err != nil {
-			return nil, nil, err
-		}
-		header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
-		block = types.NewBlock(header, body, receipts, trie.NewStackTrie(nil))
+		return block, receipts, nil
 	}
-	return block, receipts, nil
+	if err := engine.Finalize(chain, header, state, &body.Transactions, body.Uncles, body.Withdrawals, &receipts, nil, &header.GasUsed, nil); err != nil {
+		return nil, nil, err
+	}
+	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+	return types.NewBlock(header, body, receipts, trie.NewStackTrie(nil)), receipts, nil
 }
