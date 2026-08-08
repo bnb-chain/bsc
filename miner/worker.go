@@ -1559,10 +1559,6 @@ LOOP:
 
 	if bestBidBlock != nil && w.selectBidBlock(bestBidBlock, simBidBlockReward, simBidValidatorReward, bestReward) {
 		bidBlockWinGauge.Inc(1)
-		// BEP-703: the last point at which the builder's commitment can still be refused
-		// for free. Here rather than at admission because bestWork's reader is already
-		// open on this bid's parent, and here rather than inside prepareBidBlockTask
-		// because that function has no state.
 		if err := w.verifyBidBlockLaneQuota(bestBidBlock, bestWork); err != nil {
 			log.Error("BidBlock rejected by the payment lane, fallback",
 				"builder", bestBidBlock.Builder,
@@ -1618,11 +1614,6 @@ LOOP:
 		}
 	}
 
-	// The returned error used to be discarded here. It must not be: a failed commit
-	// silently produces nothing for this height, and the lane's self-check can decline to
-	// seal - the correct response, but one that must be visible, or a validator that has
-	// stopped producing looks merely idle. paymentlane/produceDeclined counts the lane's
-	// share of that.
 	if err := w.commit(bestWork, w.fullTaskHook, start); err != nil {
 		log.Error("Failed to commit sealing work", "number", bestWork.header.Number, "err", err)
 	}

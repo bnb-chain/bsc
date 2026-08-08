@@ -86,8 +86,7 @@ func (w *worker) verifyBidBlockLaneQuota(decoded *buildertypes.DecodedBidBlock, 
 }
 
 // bidBlockPaymentCeiling is the largest payment total the BidBlock's user transactions could
-// produce: each payment-class transaction's declared gas limit, which needs no execution
-// state.
+// produce: each payment-class transaction's declared gas limit, which needs no execution state.
 func bidBlockPaymentCeiling(lane *core.LaneState, decoded *buildertypes.DecodedBidBlock, headerGasUsed uint64) (uint64, error) {
 	var ceiling uint64
 	for _, tx := range decoded.Txs[:decoded.SystemTxStart] {
