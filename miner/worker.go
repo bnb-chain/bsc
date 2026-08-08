@@ -35,7 +35,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/stateless"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
@@ -89,23 +88,11 @@ var (
 	// bidBlockRevokedBuildersGauge snapshots how many builders are revoked, taken at each revoke.
 	bidBlockRevokedBuildersGauge = metrics.NewRegisteredGauge("worker/bidBlockRevokedBuilders", nil)
 
-	// BEP-703. Fixed cardinality on purpose: never keyed by address, destination or
-	// builder, because the packing loop lets an attacker mint thousands of label values
-	// per block for free. Counters and gauges only - this tree has already been OOM'd by
-	// unbounded ResettingTimer growth under --metrics with no scraper.
-	// No gauge for paymentGasUsed: it is already in the header commitment, consensus
-	// checked and queryable for any block, whereas a gauge would only ever hold the last
-	// block THIS node sealed - stale most of the time under validator rotation, and easy
-	// to misread as a chain-wide figure. laneSize and idleLane do earn their place: they
-	// answer "what is this node's quota right now, and how much is going to waste". The
-	// two counters have no on-chain equivalent at all.
-	laneSizeGauge      = metrics.NewRegisteredGauge("paymentlane/laneSize", nil)         // gas, at seal
-	laneIdleGauge      = metrics.NewRegisteredGauge("paymentlane/idleLane", nil)         // gas wasted, at seal
-	laneYieldCounter   = metrics.NewRegisteredCounter("paymentlane/generalYielded", nil) // txs dropped for the quota
-	laneDeclineCounter = metrics.NewRegisteredCounter("paymentlane/produceDeclined", nil)
-	// Separate from produceDeclined: this one costs a slot's MEV rather than the block. It
-	// counts local faults as well - an unreadable parent state refuses the bid just the same
-	// - so a rise here is "bidblocks stopped being usable", not "this builder is wrong".
+	// paymentlane metrics
+	laneSizeGauge              = metrics.NewRegisteredGauge("paymentlane/laneSize", nil)         // gas, at seal
+	laneIdleGauge              = metrics.NewRegisteredGauge("paymentlane/idleLane", nil)         // gas wasted, at seal
+	laneYieldCounter           = metrics.NewRegisteredCounter("paymentlane/generalYielded", nil) // txs dropped for the quota
+	laneDeclineCounter         = metrics.NewRegisteredCounter("paymentlane/produceDeclined", nil)
 	laneBidBlockDeclineCounter = metrics.NewRegisteredCounter("paymentlane/bidBlockDeclined", nil)
 
 	writeBlockTimer      = metrics.NewRegisteredTimer("worker/writeblock", nil)
@@ -157,12 +144,6 @@ type environment struct {
 	fromBid bool
 
 	// lane is this block's BEP-703 state, resolved from the parent in makeEnv.
-	//
-	// Per-env, not per-worker (prepareWork runs concurrently from mainLoop and from the
-	// bid simulator) and not a local of commitTransactions (fillTransactions calls that
-	// twice, and a local would restart the accounting on the second pass, let general
-	// traffic eat the quota, self-check green on its own numbers, and be rejected on
-	// import as ErrUntruthy).
 	lane *core.LaneState
 }
 
@@ -753,11 +734,7 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		}
 		log.Debug("makeEnv", "number", header.Number.Uint64(), "time", header.Time, "EstimateGasReservedForSystemTxs", gasReserved)
 	}
-	// BEP-703: resolve the quota from the parent header and the parent post-state.
-	// state.Reader() is pinned to parent.Root and immune to the writes this block is
-	// about to make, which is a security property and not tidiness: bound to the
-	// advancing state instead, a producer could insert one cheap CREATE2 or SetCodeTx
-	// ahead of a batch of transfers and thereby choose whose transfers enter the lane.
+
 	lane, err := core.ResolveLaneState(w.chainConfig, w.chain, parent, header, state.Reader())
 	if err != nil {
 		return nil, err
@@ -829,12 +806,6 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, 
 
 // applyTransaction runs the transaction. If execution fails, state and gas pool are reverted.
 func (w *worker) applyTransaction(env *environment, tx *types.Transaction, receiptProcessors ...core.ReceiptProcessor) (*types.Receipt, error) {
-	// Classify BEFORE running it: the class comes from the parent state so the order does
-	// not change the answer, but a failure afterwards would leave the state mutated with
-	// only the gas pool restored below. BidRuntime.commitTransaction is the OTHER apply
-	// site and needs the same two calls - one greedy-merged MEV block passes through
-	// both, and the two drifting apart is exactly how #3761 shipped a bid path that had
-	// stopped writing header.GasUsed.
 	class, err := env.lane.Classify(tx)
 	if err != nil {
 		return nil, err
@@ -851,8 +822,6 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction, recei
 		env.gasPool.Set(gp)
 	}
 	env.header.GasUsed = env.gasPool.Used()
-	// Books zero on the failure path above, because Set restored all three pool fields
-	// bit for bit; no separate bucket rollback is needed.
 	env.lane.RecordUsedFrom(class, env.gasPool, usedBefore)
 	return receipt, err
 }
@@ -977,27 +946,17 @@ LOOP:
 		}
 		prefetchCurr.Store(tx)
 
-		// BEP-703: general traffic must yield the unused part of the quota, payment
-		// traffic must not. The pool test above (gasPool.Gas() < ltx.Gas) is already
-		// exactly the payment-class predicate, so only a transaction that fits the pool
-		// but not general's MaxAvailableGas has an answer that depends on its class - a band
-		// as wide as IdleLane. Everything outside it is admitted or dropped without
-		// touching state, which keeps the classifier off the skip path.
-		if !env.lane.Admits(env.gasPool.Gas(), paymentlane.ClassGeneral, tx.Gas()) {
-			class, err := env.lane.Classify(tx)
-			if err != nil {
-				// Sticky in the classifier, so the seal-time check refuses to produce
-				// this block; dropping the account here just stops the loop spinning.
-				log.Debug("Payment lane classification failed", "hash", ltx.Hash, "err", err)
-				txs.Pop()
-				continue
-			}
-			if class != paymentlane.ClassPayment {
-				laneYieldCounter.Inc(1)
-				log.Trace("Yielding idle payment lane", "hash", ltx.Hash, "left", env.gasPool.Gas(), "idle", env.lane.Budget.IdleLane())
-				txs.Pop()
-				continue
-			}
+		class, err := env.lane.Classify(tx)
+		if err != nil {
+			log.Warn("Payment lane classification failed", "hash", ltx.Hash, "err", err)
+			txs.Pop()
+			continue
+		}
+		if !env.lane.Admits(env.gasPool.Gas(), class, tx.Gas()) {
+			laneYieldCounter.Inc(1)
+			log.Trace("Yielding idle payment lane", "hash", ltx.Hash, "left", env.gasPool.Gas(), "idle", env.lane.Budget.IdleLane())
+			txs.Pop()
+			continue
 		}
 
 		// if inclusion of the transaction would put the block size over the
@@ -1019,7 +978,7 @@ LOOP:
 		// Start executing the transaction
 		env.state.SetTxContext(tx.Hash(), env.tcount)
 
-		_, err := w.commitTransaction(env, tx, bloomProcessors)
+		_, err = w.commitTransaction(env, tx, bloomProcessors)
 		switch {
 		case errors.Is(err, core.ErrNonceTooLow):
 			// New head notification data race between the transaction pool and miner, shift

@@ -34,15 +34,8 @@ type LaneState struct {
 	gasLimit uint64
 }
 
-// ResolveLaneState derives one block's lane inputs from the parent header, the grandparent and
-// the parent post-state. One implementation for the importer and the producer on purpose: every
-// input is a choice the two must make identically.
-//
-// reader must be bound to the parent post-state root, never the advancing StateDB - with the
-// advancing state a producer inserts one cheap CREATE2 or SetCodeTx and thereby picks whose
-// transfers enter the lane. Pass statedb.Reader(): pinned to originalRoot, and it inherits the
-// reader dispatch the caller already got right, so archive, fastnode and UBT nodes are correct
-// for free. Stateless execution is out of scope and fails closed, at the configuration read.
+// ResolveLaneState derives one block's lane. One implementation for the importer and
+// the producer on purpose: every input is a choice the two must make identically.
 func ResolveLaneState(config *params.ChainConfig, hc laneHeaderReader, parent, header *types.Header, reader laneReader) (*LaneState, error) {
 	if !config.IsGauss(parent.Number, parent.Time) {
 		return &LaneState{}, nil

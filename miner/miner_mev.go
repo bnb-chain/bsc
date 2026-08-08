@@ -114,13 +114,7 @@ func (miner *Miner) SendBidBlock(ctx context.Context, args *buildertypes.BidBloc
 		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf("parent not found: %s, bidHash=%s", parentHash.Hex(), bidHash))
 	}
 
-	// Security: validators must self-produce hard-fork activation blocks, whose state
-	// transition does a SetCode the builder never simulated. Add every new system-contract
-	// fork here. The check runs against the bid's own parent, not the head, so it also fires
-	// on a stale bid naming a pre-fork parent while the head is already past the fork.
-	// BEP-703 needs nothing beyond this: from Gauss+1 the builder authors the lane
-	// commitment itself, and what a validator can check before signing it does check -
-	// see verifyBidBlockLaneQuota.
+	// Security: validators must self-produce hard-fork activation blocks.
 	if miner.worker.chainConfig.IsOnPasteur(bb.Header.Number, parent.Time, bb.Header.Time) ||
 		miner.worker.chainConfig.IsOnGauss(bb.Header.Number, parent.Time, bb.Header.Time) {
 		return common.Hash{}, buildertypes.NewInvalidBidError(fmt.Sprintf(
