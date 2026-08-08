@@ -53,8 +53,6 @@ type BlockGen struct {
 
 	engine consensus.Engine
 
-	// lane is the BEP-703 state for this block, resolved from the parent before any
-	// transaction runs.
 	lane *LaneState
 
 	// extra data of block
@@ -426,8 +424,6 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			misc.ApplyDAOHardFork(statedb)
 		}
 
-		// BEP-703, before the system-contract upgrade mutates anything: statedb.Reader()
-		// is pinned to the parent root, so this sees exactly the state the importer will.
 		lane, err := ResolveLaneState(config, cm, parent.Header(), b.header, statedb.Reader())
 		if err != nil {
 			panic(err)
@@ -474,10 +470,9 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 		if err != nil {
 			panic(fmt.Sprintf("failed to assemble block: %v", err))
 		}
-		// Same commitment write and self-check the miner runs, so a generated chain carries
-		// real commitments and cannot carry one the producing side would have refused to
-		// seal. gasPool is nil until the first SetCoinbase, which for an empty block never
-		// happens.
+
+		// Same commitment write and self-check the miner runs. gasPool is nil for a block
+		// that never added a transaction, and then PaymentUsed is necessarily zero too.
 		var poolUsed uint64
 		if b.gasPool != nil {
 			poolUsed = b.gasPool.Used()
