@@ -444,14 +444,6 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 	chainHeadReader := &simChainHeadReader{ctx, sim.b}
 
 	// Assemble the block
-	//
-	// The one assembly here that skips LaneState.WriteCommitment: a simulated block is never
-	// sealed, propagated or imported, so it carries no BEP-703 commitment and its uncle slot
-	// stays EmptyUncleHash even past Gauss. Verified on a live post-Gauss chain in both
-	// validation modes - nothing here decodes the slot, because simulation does not run
-	// core.Process. The only consequence is that the block this returns has a shape the chain
-	// would reject, which matters solely to a caller that treats eth_simulateV1 output as
-	// chain-shaped.
 	b, _, err := core.AssembleBlock(sim.b.Engine(), chainHeadReader, header, sim.state, blockBody, receipts)
 	if err != nil {
 		return nil, nil, nil, err
