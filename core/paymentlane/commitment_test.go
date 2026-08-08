@@ -49,7 +49,7 @@ func TestTheAllZeroCommitmentIsLegal(t *testing.T) {
 	got, err := Decode(common.Hash{})
 	require.NoError(t, err, "the all-zero commitment must decode, not fail")
 	require.Equal(t, Commitment{}, got)
-	require.True(t, (&types.Header{}).ClaimsNoUncles(), "and it must be tagged as a commitment")
+	require.True(t, (&types.Header{}).IsEmptyUncleHash(), "and it must be tagged as a commitment")
 
 	// It is still not a licence to omit the field: a zero quota only verifies where the
 	// derivation says zero.
@@ -127,7 +127,7 @@ func TestLaneCommitmentTagAgreesWithDecode(t *testing.T) {
 				}
 				h[i] = b
 				_, err := Decode(h)
-				require.Equal(t, err == nil, (&types.Header{UncleHash: h}).ClaimsNoUncles(),
+				require.Equal(t, err == nil, (&types.Header{UncleHash: h}).IsEmptyUncleHash(),
 					"reserved byte %d = %#x on payload %x", i, b, h[:16])
 			}
 		}
@@ -141,7 +141,7 @@ func TestLaneCommitmentTagAgreesWithDecode(t *testing.T) {
 		{LaneSize: math.MaxUint64, PaymentGasUsed: math.MaxUint64},
 	} {
 		encoded := Encode(c)
-		require.True(t, (&types.Header{UncleHash: encoded}).ClaimsNoUncles(), "%x", encoded)
+		require.True(t, (&types.Header{UncleHash: encoded}).IsEmptyUncleHash(), "%x", encoded)
 	}
 
 	// The carrier's own empty value must not read as a commitment, or a pre-activation
@@ -149,11 +149,11 @@ func TestLaneCommitmentTagAgreesWithDecode(t *testing.T) {
 	// does by plain equality.
 	_, err := Decode(types.EmptyUncleHash)
 	require.ErrorIs(t, err, ErrBadCommitment)
-	require.True(t, (&types.Header{UncleHash: types.EmptyUncleHash}).ClaimsNoUncles())
+	require.True(t, (&types.Header{UncleHash: types.EmptyUncleHash}).IsEmptyUncleHash())
 
 	// A real uncle list hash is neither, and the relaxation must not reach it.
 	uncles := types.CalcUncleHash([]*types.Header{{Number: common.Big1}})
-	require.False(t, (&types.Header{UncleHash: uncles}).ClaimsNoUncles())
+	require.False(t, (&types.Header{UncleHash: uncles}).IsEmptyUncleHash())
 	require.False(t, types.UncleHashMatches(Encode(Commitment{LaneSize: 1}), uncles))
 	require.True(t, types.UncleHashMatches(uncles, uncles))
 }

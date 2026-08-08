@@ -214,7 +214,7 @@ func (h *Header) EmptyBody() bool {
 	var (
 		emptyWithdrawals = h.WithdrawalsHash == nil || *h.WithdrawalsHash == EmptyWithdrawalsHash
 	)
-	return h.TxHash == EmptyTxsHash && h.ClaimsNoUncles() && emptyWithdrawals
+	return h.TxHash == EmptyTxsHash && h.IsEmptyUncleHash() && emptyWithdrawals
 }
 
 // EmptyReceipts returns true if there are no receipts for this header/block.
@@ -511,13 +511,6 @@ func (b *Block) SetRoot(root common.Hash) { b.header.Root = root }
 
 // SetUncleHash overwrites the uncle slot, which from BEP-703's activation carries the
 // payment lane commitment instead of an uncle list hash.
-//
-// A setter rather than an argument to NewBlock because NewBlock derives that field
-// from the body and must keep doing so for every chain that really has uncles. Like
-// SetRoot, this is only safe BEFORE the first Hash() call - the block hash is cached
-// with no invalidation - so it belongs immediately after assembly and nowhere else.
-// core.LaneState.WriteCommitment is the one caller entitled to it, and it verifies that
-// ordering held rather than assuming it.
 func (b *Block) SetUncleHash(hash common.Hash) { b.header.UncleHash = hash }
 
 // SanityCheck can be used to prevent that unbounded fields are
@@ -548,21 +541,7 @@ func CalcUncleHash(uncles []*Header) common.Hash {
 	return rlpHash(uncles)
 }
 
-// isLaneCommitment reports whether these 32 bytes are a BEP-703 payment lane commitment
-// rather than an uncle-list hash.
-//
-// The test is the reserved tail the encoding mandates: a commitment is two big-endian
-// uint64s followed by 16 zero bytes, so a hash whose low 16 bytes are all zero is one
-// and nothing else plausibly is. An uncle-list hash is a keccak digest, and the
-// pre-activation EmptyUncleHash in particular ends in d312451b948a7413f0a142fd40d49347.
-//
-// This package owns the TAG and core/paymentlane owns the PAYLOAD; the dependency runs
-// one way (paymentlane imports this package) so the framing has to live here. The two
-// cannot drift because they now test the same condition rather than two copies of one -
-// TestLaneCommitmentTagAgreesWithDecode holds them to that.
-//
-// Framing only, and deliberately silent on whether the lane is active: that is
-// ChainConfig.IsGauss on the PARENT header, asked where the parent is in scope.
+// isLaneCommitment checks if the hash is a BEP-703 lane commitment.
 func isLaneCommitment(h common.Hash) bool {
 	for _, b := range h[16:] {
 		if b != 0 {
@@ -572,31 +551,14 @@ func isLaneCommitment(h common.Hash) bool {
 	return true
 }
 
-// UncleHashMatches reports whether a body whose uncle list hashes to bodyUncleHash
-// belongs to a header carrying headerUncleHash.
-//
-// Two hashes rather than a *Header so the propagation path can pass Block.UncleHash()
-// instead of Block.Header(), which deep-copies the header on every propagated block.
-//
-// The relaxation is sound on every chain, not just post-activation BSC, and not because
-// any engine forbids uncles: it can only fire when the body has no uncles, since
-// bodyUncleHash == EmptyUncleHash is exactly "the list was empty". No uncle can be
-// smuggled past it, and the worst a lane-shaped uncle slot can buy on a chain that does
-// use uncles is that one block's hash goes uncompared - a block which, by that same
-// condition, has no uncles to compare.
+// UncleHashMatches replace `UncleHash == UncleHash` check and compatible with BEP-703 lane commitment.
 func UncleHashMatches(headerUncleHash, bodyUncleHash common.Hash) bool {
 	return bodyUncleHash == headerUncleHash ||
 		(bodyUncleHash == EmptyUncleHash && isLaneCommitment(headerUncleHash))
 }
 
-// ClaimsNoUncles reports whether h says its block has no uncle headers - the special
-// case of UncleHashMatches for an empty list, and the form the "must I fetch a body"
-// questions want.
-//
-// Not the same as UncleHash == EmptyUncleHash any more: a lane block claims no uncles
-// while holding 32 bytes that are not an uncle hash. Uncles stay forbidden either way,
-// since Parlia.VerifyUncles rejects any block that has one.
-func (h *Header) ClaimsNoUncles() bool { return UncleHashMatches(h.UncleHash, EmptyUncleHash) }
+// IsEmptyUncleHash replace `UncleHash == EmptyUncleHash` check and compatible with BEP-703 lane commitment.
+func (h *Header) IsEmptyUncleHash() bool { return UncleHashMatches(h.UncleHash, EmptyUncleHash) }
 
 // CalcRequestsHash creates the block requestsHash value for a list of requests.
 func CalcRequestsHash(requests [][]byte) common.Hash {
