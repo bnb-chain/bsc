@@ -25,13 +25,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Gas costs of the two transaction shapes this file builds. Protocol constants, not
-// values read back from the implementation - the assertions would prove nothing if the
-// expected buckets were derived from the buckets.
-// 55M is mainnet's gas limit and, more to the point, the smallest round figure at which
-// the accumulator is not degenerate. An expansion is only observable when
-// floor + expandStep < ceiling, i.e. 2M + 2%*G < 8%*G, i.e. G > 33.3M; below that both
-// the expand and the hold branch land on the ceiling and a test cannot tell them apart.
+// 55M is mainnet's gas limit and the smallest round figure at which the accumulator is not
+// degenerate: an expansion is observable only when floor + expandStep < ceiling, i.e. G > 33.3M.
 const (
 	laneTestGasLimit = 55_000_000
 	laneTestData     = 4 // non-zero calldata bytes on a general transaction
@@ -39,30 +34,17 @@ const (
 	generalTxGas     = params.TxGas + laneTestData*params.TxDataNonZeroGasEIP2028
 )
 
-// laneGenesis builds a chain whose Gauss timestamp falls between block 1 (t=10) and
-// block 2 (t=20), so block 2 is the activation block and block 3 is the first block the
-// rules bind to.
+// laneGenesis builds a chain whose Gauss timestamp falls between block 1 (t=10) and block 2
+// (t=20), so block 2 activates and block 3 is the first block the rules bind to.
 //
-// No fork-order boilerplate here, unlike consensus/parlia/payment_lane_test.go's harness:
-// CheckConfigForkOrder returns early for a non-BSC config (IsInBSC is "Parlia != nil"),
-// and this one is ethash. The two fixtures are deliberately not shared - see the note
-// there.
+// 0x2007 is allocated rather than installed, because GenerateChain cannot run the Gauss upgrade
+// (a test genesis resolves to defaultNet, whose gaussUpgrade entry is nil, and the miss is only
+// logged at Info). Faithful for lane purposes - from Gauss+1 the real chain also has the code in
+// the parent post-state - but it does not cover the installation; TestGaussUpgradeApplies does.
 //
-// 0x2007 is allocated rather than installed by the Gauss upgrade, because GenerateChain
-// cannot run that upgrade: chain_makers only calls TryUpdateBuildInSystemContract with
-// atBlockBegin=true, and a test genesis hash resolves to defaultNet, whose gaussUpgrade
-// entry is nil - a miss reported at Info level, so it would never turn a test red. (On a
-// real BSC config the post-Feynman branch would skip it as well.) Substituting the
-// allocation is faithful for lane purposes, because from Gauss+1 onwards the real chain
-// also has the code in the parent post-state; what it cannot cover is the installation
-// itself, which is TestGaussUpgradeApplies in core/systemcontracts.
-//
-// Engine is ethash, so there are no system transactions and systemGasUsed is zero -
-// which is what lets these tests assert the buckets against block.GasUsed() directly.
-// One artefact to know about rather than fix: ethash derives difficulty from
-// "parent.UncleHash != EmptyUncleHash", so every lane block's child is scored as though
-// its parent had uncles. It is symmetric between makeHeader and verifyHeader, so nothing
-// diverges; it simply does not happen under parlia, where the lane actually runs.
+// Engine is ethash, so there are no system transactions and systemGasUsed is zero, which is what
+// lets these tests read the buckets off block.GasUsed(). Harmless artefact: ethash scores every
+// lane block's child as though its parent had uncles, symmetrically in make and verify.
 func laneGenesis(t testing.TB) (*params.ChainConfig, *Genesis, *ecdsaKey) {
 	t.Helper()
 	code, err := hex.DecodeString(strings.TrimSpace(gauss.RialtoPaymentLaneContract))
@@ -84,25 +66,19 @@ func laneGenesis(t testing.TB) (*params.ChainConfig, *Genesis, *ecdsaKey) {
 	return &config, gspec, key
 }
 
-// TestPaymentLaneRoundTripsThroughAGeneratedChain is the end-to-end proof for the
-// wiring: a producer writes the commitment, an importer replays the block and accepts
-// it, and the quota moves through all three regimes of the recursion on the way.
+// TestPaymentLaneRoundTripsThroughAGeneratedChain is the end-to-end proof: a producer writes the
+// commitment, an importer replays and accepts it, and the quota passes through all three regimes.
 //
-// A test in which laneSize never leaves its floor would pass against an implementation
-// that ignored the signal entirely - the zero signal maps to the floor and so does
-// every quiet block - so the chain below is shaped to expand, then hold inside the
-// hysteresis band, then shrink to a value that is neither the floor nor the ceiling.
-// Likewise it carries payment-class transactions, because ClassGeneral is the zero
-// value and a run with no payment traffic cannot tell a working classifier from one
-// hard-coded to answer general.
+// Shaped that way because a floor-only chain would pass against an implementation that ignored
+// the signal, and it carries payment traffic because ClassGeneral is the zero value - a run with
+// none cannot tell a working classifier from one hard-coded to answer general.
 func TestPaymentLaneRoundTripsThroughAGeneratedChain(t *testing.T) {
 	config, gspec, key := laneGenesis(t)
 
-	// Quota arithmetic at 55M under the factory defaults, worked out from the contract
-	// constants rather than from the code under test:
+	// Quota arithmetic at 55M under the factory defaults, from the contract constants:
 	//   ceiling = min(8% * 55M, 8M) = 4.4M      floor = min(max(2% * 55M, 2M), 4.4M) = 2M
 	//   expandStep = 2% * 55M = 1.1M            shrinkStep = 0.5% * 55M = 275k
-	//   expand when parent general >= 80% of the parent gas limit, shrink below 70%
+	//   expand at parent general >= 80% of the parent gas limit, shrink below 70%
 	const (
 		wantFloor    = 2_000_000
 		wantExpanded = wantFloor + 1_100_000 // 3.1M, strictly inside (floor, ceiling)
@@ -143,8 +119,7 @@ func TestPaymentLaneRoundTripsThroughAGeneratedChain(t *testing.T) {
 		}
 	})
 
-	// What each lane block must commit. Block 3 is the bootstrap: the lane did not
-	// apply to its parent, so the signal is zero and the quota is the floor.
+	// What each lane block must commit.
 	for _, tc := range []struct {
 		number   int
 		laneSize uint64
@@ -165,14 +140,11 @@ func TestPaymentLaneRoundTripsThroughAGeneratedChain(t *testing.T) {
 			LaneSize:       tc.laneSize,
 			PaymentGasUsed: tc.payment,
 		}, got, "block %d (%s)", tc.number, tc.regime)
-		// General gas is the residual, so the expected count is checked against it rather
-		// than committed: tc.general comes from the protocol constants, not from the code
-		// under test, so this still pins the transaction arithmetic.
+		// General gas is the residual, so it is checked against GasUsed rather than committed.
 		require.Equal(t, tc.general, block.GasUsed()-got.PaymentGasUsed, "block %d", tc.number)
 	}
 
-	// The blocks the producer built must import: this is the half that proves the two
-	// sides agree, rather than that each is self-consistent.
+	// The import half is what proves the two sides agree rather than each being self-consistent.
 	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), DefaultConfig())
 	require.NoError(t, err)
 	defer chain.Stop()
@@ -180,19 +152,15 @@ func TestPaymentLaneRoundTripsThroughAGeneratedChain(t *testing.T) {
 	require.NoError(t, err, "inserted %d of %d", n, len(blocks))
 	require.EqualValues(t, blocks[len(blocks)-1].NumberU64(), chain.CurrentBlock().Number.Uint64())
 
-	// Last, and not optional: untouched storage is byte for byte indistinguishable from
-	// an absent account and LoadParams maps a zero word to its default, so every quota
-	// assertion above would pass just as happily against an address where nothing was
-	// ever installed. Mutation-checked - moving the allocation to 0x2008 leaves the rest
-	// of this test green.
+	// Not optional: an absent account reads as all-zero storage and LoadParams maps zero to its
+	// default, so every assertion above passes with the allocation moved to 0x2008. Mutation-checked.
 	sdb, err := chain.State()
 	require.NoError(t, err)
 	require.NotEmpty(t, sdb.GetCode(paymentlane.ContractAddress))
 }
 
-// TestPaymentLaneImportRejectsATamperedCommitment covers the checks that make the
-// commitment worth anything: a producer can always be self-consistent, so only the
-// importer's replay can catch a lie.
+// TestPaymentLaneImportRejectsATamperedCommitment covers what makes the commitment worth
+// anything: a producer can always be self-consistent, so only the importer's replay catches a lie.
 func TestPaymentLaneImportRejectsATamperedCommitment(t *testing.T) {
 	config, gspec, key := laneGenesis(t)
 	signer := types.LatestSigner(config)
@@ -213,11 +181,8 @@ func TestPaymentLaneImportRejectsATamperedCommitment(t *testing.T) {
 		wantErr error
 	}{
 		{
-			// The quota and the payment figure share the 32 bytes, so a producer that
-			// wrote them in the wrong order commits a payment figure of 2M against a
-			// replay of 21000. Caught as a bad quota rather than as untruthful
-			// accounting: CheckQuota runs first, on the laneSize slot, which now holds
-			// the payment figure instead of the quota.
+			// Caught as a bad quota rather than as untruthful accounting: CheckQuota runs
+			// first, on the laneSize slot, which now holds the payment figure.
 			name: "swapped fields",
 			mutate: func(c paymentlane.Commitment) common.Hash {
 				c.LaneSize, c.PaymentGasUsed = c.PaymentGasUsed, c.LaneSize
@@ -247,10 +212,9 @@ func TestPaymentLaneImportRejectsATamperedCommitment(t *testing.T) {
 			wantErr: paymentlane.ErrBadCommitment,
 		},
 		{
-			// The all-zero carrier is a well-formed commitment now - the version byte
-			// that used to exclude it is gone - so what rejects a header that simply
-			// never had one written is the quota comparison, not the framing. This is
-			// the case that makes dropping the version byte safe.
+			// The all-zero carrier is well formed now that the version byte is gone, so what
+			// rejects a header that never had one written is the quota, not the framing. This
+			// case is what makes dropping the version byte safe.
 			name:    "carrier left all zero",
 			mutate:  func(paymentlane.Commitment) common.Hash { return common.Hash{} },
 			wantErr: paymentlane.ErrQuotaMismatch,
@@ -269,27 +233,20 @@ func TestPaymentLaneImportRejectsATamperedCommitment(t *testing.T) {
 	}
 }
 
-// TestPaymentLaneClassifiesAgainstTheParentState pins the classifier's state binding, which
-// is a security property rather than tidiness.
+// TestPaymentLaneClassifiesAgainstTheParentState pins the classifier's state binding, a security
+// property: bound to the advancing StateDB instead, a producer could insert one cheap contract
+// creation ahead of a batch of transfers and thereby choose whose transfers count as payments.
 //
-// Bound to the advancing StateDB instead of the parent post-state, a block producer could
-// insert one cheap contract creation ahead of a batch of transfers and thereby choose whose
-// transfers count as payments - deterministically, with every other test still green, and
-// invisible until somebody used it. So a transfer to an address that gains code IN THIS BLOCK
-// is still a payment, and only from the next block on is it general.
-//
-// That is also the leak recorded on Classify's gate 7: the transfer below executes the code
-// deployed by the transaction before it and burns its whole limit inside the payment bucket.
-// The burner is here to keep that concrete rather than theoretical - block 3 commits a payment
-// total far above 21,000 - so anyone weighing the trade again has the number in front of them.
+// It also makes the leak on Classify's gate 7 concrete rather than theoretical - the transfer
+// below executes code deployed by the transaction before it and burns its whole limit inside the
+// payment bucket - so anyone weighing that trade again has the number in front of them.
 func TestPaymentLaneClassifiesAgainstTheParentState(t *testing.T) {
 	config, gspec, key := laneGenesis(t)
 	signer := types.LatestSigner(config)
 
-	// Deploys `JUMPDEST; PUSH1 0; JUMP`, an infinite loop, so the transfer into it halts out
-	// of gas having consumed its whole limit. burnGas clears the deployment's own ~80k so the
-	// assertion can tell executed from not, and stays under the 2M floor so the block is not
-	// quota-bound for a different reason.
+	// Deploys `JUMPDEST; PUSH1 0; JUMP`, so the transfer into it halts out of gas having consumed
+	// its whole limit. burnGas clears the deployment's own ~80k, and stays under the 2M floor so
+	// the block is not quota-bound for a different reason.
 	const (
 		burnerInitCode = "0x635b6000566000526004601cf3"
 		burnGas        = 1_000_000
@@ -335,19 +292,14 @@ func TestPaymentLaneClassifiesAgainstTheParentState(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestPaymentLaneVerifyPackedBidRefusesASwallowedClassification pins the half of
-// VerifyPackedBid that has nothing to do with the quota.
-//
-// The miner's packing loop swallows a classification failure on purpose - refusing to
-// build is not the loop's decision - so on the bid path the sticky error is all that is
-// left of it. Checked only at seal time, the answer would arrive after the good local
-// block had been discarded, which is the outcome the bid gate exists to avoid.
+// TestPaymentLaneVerifyPackedBidRefusesASwallowedClassification pins the bid gate: the packing
+// loop swallows a classification failure on purpose, so the sticky error is all that is left of
+// it, and checking only at seal time would answer after the good local block was discarded.
 func TestPaymentLaneVerifyPackedBidRefusesASwallowedClassification(t *testing.T) {
 	to := common.Address{0x44}
 	ls := &LaneState{class: paymentlane.NewClassifier(common.Hash{}, failingAccountReader{}, nil)}
 
-	// Non-zero on purpose: at LaneSize 0 the quota comparison is 0 > shared, false for every
-	// argument, and deleting it would leave the whole tree green.
+	// Non-zero on purpose: at LaneSize 0 the comparison is 0 > shared, false for every argument.
 	ls.Budget.LaneSize = 100
 	require.NoError(t, ls.VerifyPackedBid(100), "a quota that exactly fits is the accepting case")
 	require.ErrorIs(t, ls.VerifyPackedBid(99), paymentlane.ErrViolated,
@@ -360,10 +312,8 @@ func TestPaymentLaneVerifyPackedBidRefusesASwallowedClassification(t *testing.T)
 }
 
 // TestPaymentLaneCheckQuotaAdoptsTheQuota pins the assignment at the end of CheckQuota, which no
-// end-to-end test can see: drop it and the importer replays with LaneSize 0, the idle-lane term of
-// the rule vanishes, and a block that over-packs general traffic into the quota is accepted. In
-// production parlia's own header gate covers the same ground from the committed value, so nothing
-// here is the only defence - but this is the only thing that pins THIS half.
+// end-to-end test sees: drop it and the importer replays with LaneSize 0, the idle-lane term
+// vanishes, and a block that over-packs general traffic into the quota is accepted.
 func TestPaymentLaneCheckQuotaAdoptsTheQuota(t *testing.T) {
 	// Zero signal, so the derivation is the floor: min(max(2% of 55M, 2M), min(8% of 55M, 8M)) = 2M.
 	ls := &LaneState{
@@ -375,15 +325,13 @@ func TestPaymentLaneCheckQuotaAdoptsTheQuota(t *testing.T) {
 	require.NoError(t, ls.CheckQuota(want))
 	require.EqualValues(t, want, ls.Budget.LaneSize, "the checked quota must be adopted")
 
-	// One gas short of the limit leaves no room for the idle quota, so the rule is violated - but
-	// only if the quota was adopted.
+	// One gas short of the limit leaves no room for the idle quota - but only if it was adopted.
 	err := ls.VerifyImported(laneTestGasLimit-1, laneTestGasLimit-1, paymentlane.Commitment{LaneSize: want})
 	require.ErrorIs(t, err, paymentlane.ErrViolated)
 }
 
-// TestPaymentLaneWriteCommitmentRefusesASwallowedClassification is the seal-time half of the
-// sticky-error backstop; VerifyPackedBid above is the bid-time half. Both are needed: the bid gate
-// is not on the local producing path at all.
+// TestPaymentLaneWriteCommitmentRefusesASwallowedClassification is the seal-time half of the same
+// backstop. Both halves are needed: the bid gate is not on the local producing path at all.
 func TestPaymentLaneWriteCommitmentRefusesASwallowedClassification(t *testing.T) {
 	to := common.Address{0x44}
 	ls := &LaneState{class: paymentlane.NewClassifier(common.Hash{}, failingAccountReader{}, nil)}
@@ -431,21 +379,13 @@ func (k *ecdsaKey) sign(t *testing.T, signer types.Signer, nonce uint64, to comm
 	return tx
 }
 
-// TestPaymentLaneAndUnclesCannotShareTheSlot covers WriteCommitment's refusal, which is
-// load-bearing in a way that only shows up outside this package.
+// TestPaymentLaneAndUnclesCannotShareTheSlot covers WriteCommitment's refusal. It sits where the
+// slot is overwritten rather than at AddUncle, because AddUncle and AssembleBlock are upstream
+// code and a lane check in either is a divergence to re-resolve on every merge.
 //
-// The refusal sits where the slot is about to be overwritten, not at AddUncle where the
-// mistake is made, because AddUncle and AssembleBlock are both upstream code and a lane
-// check in either is a divergence to re-resolve on every merge. The price is that a
-// malformed uncle crashes the engine first.
-//
-// The two uses of the uncle slot are mutually exclusive, and silently preferring the
-// commitment would emit a block whose uncle list can never be verified again. Parlia
-// forbids uncles outright so this is unreachable in production - but GenerateChain still
-// offers AddUncle, and at least one existing harness relies on it:
-// eth/downloader/testchain_test.go's generate() attaches an uncle to every fifth block.
-// That is exactly why a lane-active variant of the downloader's chain is not a small
-// change, and it is worth knowing that this error is what one would hit.
+// Parlia forbids uncles so this is unreachable in production, but GenerateChain still offers
+// AddUncle and eth/downloader/testchain_test.go attaches one to every fifth block - which is why
+// a lane-active variant of that harness is not a small change, and this is the error it would hit.
 func TestPaymentLaneAndUnclesCannotShareTheSlot(t *testing.T) {
 	_, gspec, _ := laneGenesis(t)
 
@@ -455,8 +395,8 @@ func TestPaymentLaneAndUnclesCannotShareTheSlot(t *testing.T) {
 		// Block 3 is the first lane block; attach an uncle to it.
 		GenerateChainWithGenesis(gspec, ethash.NewFaker(), 3, func(i int, b *BlockGen) {
 			if i+1 == 3 {
-				// AddUncle resolves the parent by ParentHash and would nil-deref without
-				// it; same shape eth/downloader's harness uses.
+				// AddUncle resolves the parent by ParentHash and would nil-deref without it;
+				// same shape eth/downloader's harness uses.
 				b.AddUncle(&types.Header{
 					ParentHash: b.PrevBlock(i - 2).Hash(),
 					Number:     new(big.Int).Sub(b.Number(), big.NewInt(1)),
@@ -471,21 +411,17 @@ func TestPaymentLaneAndUnclesCannotShareTheSlot(t *testing.T) {
 		t.Fatalf("unexpected failure: %v", msg)
 	}
 
-	// The same chain without the uncle must still assemble, or the assertion above would
-	// pass for the wrong reason.
+	// Without the uncle it must still assemble, or the assertion above passes for the wrong reason.
 	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 3, nil)
 	if _, err := paymentlane.Decode(blocks[2].UncleHash()); err != nil {
 		t.Fatalf("the uncle-free chain must still carry a commitment: %v", err)
 	}
 }
 
-// BenchmarkResolveLaneState measures what the deliberately-absent params cache costs.
-//
-// docs/bep703-payment-lane.md leaves that cache out until the listed set grows; this is
-// the measurement behind that. It covers exactly what a cache would remove: the grandparent header
-// lookup, LoadParams' 8 slot reads, LoadPaymentContracts' 1+N reads, and building the
-// classifier. It does NOT cover per-transaction classification, which no cache would
-// help - that is a per-destination state read, memoised within the block already.
+// BenchmarkResolveLaneState measures what the deliberately-absent params cache costs: the
+// grandparent lookup, LoadParams' 8 slot reads, LoadPaymentContracts' 1+N reads and building the
+// classifier. Not per-transaction classification, which no cache would help - that read is
+// memoised within the block already.
 func BenchmarkResolveLaneState(b *testing.B) {
 	config, gspec, _ := laneGenesis(b)
 	db, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 4, nil)
@@ -503,8 +439,7 @@ func BenchmarkResolveLaneState(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		// A fresh StateDB each iteration: reusing one would warm its reader's caches and
-		// measure the second read, not the first, which is the one a block actually pays.
+		// A fresh StateDB each iteration: reusing one measures the second read, not the first.
 		statedb, err := state.New(parent.Root(), sdb)
 		if err != nil {
 			b.Fatal(err)
@@ -519,15 +454,13 @@ func BenchmarkResolveLaneState(b *testing.B) {
 	}
 }
 
-// BenchmarkResolveLaneStateFullList is the same measurement at a 256-entry list, so the
-// cost of the 1+N reads is measured rather than extrapolated from the N=0 case. Nothing
-// bounds the list on either side, so 256 is a plausible size, not a ceiling.
+// BenchmarkResolveLaneStateFullList is the same measurement at a 256-entry list, so the 1+N reads
+// are measured rather than extrapolated from N=0. Nothing bounds the list on either side, so 256
+// is a plausible size, not a ceiling.
 //
-// The genesis allocation writes the OpenZeppelin EnumerableSet layout directly: slot 8
-// holds _values.length and element i lives at keccak256(bytes32(8))+i. That is the same
-// layout core/paymentlane/config.go reads, and config_test.go pins it against the
-// deployed blob - so writing it by hand here is reading the same contract, not inventing
-// one.
+// The allocation writes the EnumerableSet layout by hand - slot 8 holds _values.length, element i
+// at keccak256(bytes32(8))+i - which is the layout config.go reads and config_test.go pins against
+// the deployed blob.
 func BenchmarkResolveLaneStateFullList(b *testing.B) {
 	code, err := hex.DecodeString(strings.TrimSpace(gauss.RialtoPaymentLaneContract))
 	if err != nil {
@@ -590,18 +523,12 @@ func BenchmarkResolveLaneStateFullList(b *testing.B) {
 	}
 }
 
-// systemGasFaker is ethash plus a fixed amount of system-transaction gas per block.
+// systemGasFaker is ethash plus a fixed amount of system-transaction gas per block. Without it
+// every lane fixture in the tree runs at systemGasUsed == 0, where the two candidate readings of
+// generalGasUsed are numerically identical and the question is untestable.
 //
-// It exists because an ethash chain has no system transactions at all, and every other
-// lane fixture in the tree therefore runs with systemGasUsed == 0 - a value at which the
-// two candidate readings of generalGasUsed (with and without system gas) are numerically
-// identical. Without this engine the entire question is untestable: the code can be got
-// completely wrong and stay green.
-//
-// Finalize is the right seam because it is the one the two sides share. AssembleBlock
-// passes &header.GasUsed to it on the producing side (ethash implements no
-// FinalizeAndAssemble, so the else branch runs) and Process passes &gasUsed on the
-// importing side, so a block built by this engine also imports under it.
+// Finalize is the seam the two sides share: AssembleBlock passes &header.GasUsed to it (ethash has
+// no FinalizeAndAssemble) and Process passes &gasUsed, so a block built here also imports here.
 type systemGasFaker struct {
 	consensus.Engine
 	systemGas uint64
@@ -619,30 +546,20 @@ func (e *systemGasFaker) Finalize(chain consensus.ChainHeaderReader, header *typ
 	return nil
 }
 
-// TestPaymentLaneSignalCountsSystemTransactionGas pins which gas the congestion signal
-// counts, on the only chain in the tree where the answer is observable.
-//
-// The block it turns on carries 33M of user general gas and 12.16M of system gas - the
-// largest system-transaction cost parlia records on mainnet, a breathe block's
-// validator-set update. At a 55M gas limit the two readings fall on opposite sides of
-// BOTH triggers:
+// TestPaymentLaneSignalCountsSystemTransactionGas pins which gas the congestion signal counts, on
+// the only chain in the tree where the answer is observable. At a 55M limit the two readings fall
+// on opposite sides of BOTH triggers, a full step apart in each direction:
 //
 //	user general alone  33.00M  <  shrink 38.5M   -> the quota shrinks
 //	general + system    45.16M  >= expand 44.0M   -> the quota expands
-//
-// so a single assertion separates them, and it separates them by a full step in each
-// direction rather than by a rounding difference.
 func TestPaymentLaneSignalCountsSystemTransactionGas(t *testing.T) {
 	config, gspec, key := laneGenesis(t)
 
-	// 12_160_000 is parlia's recorded maximum for a validator-set update; see
-	// EstimateGasReservedForSystemTxs. Anything smaller than 11M would leave the two
-	// readings on the same side of the expand trigger and the test would prove nothing.
+	// Parlia's recorded maximum for a validator-set update (EstimateGasReservedForSystemTxs).
+	// Anything under 11M leaves both readings on the same side of the expand trigger.
 	const systemGas = 12_160_000
 	engine := &systemGasFaker{Engine: ethash.NewFaker(), systemGas: systemGas}
 
-	// 33M of general gas: below the 38.5M shrink trigger on its own, above the 44M
-	// expand trigger once system gas joins it.
 	const wantGeneral = 33_000_000
 	nGeneral := int(wantGeneral / generalTxGas)
 
@@ -658,13 +575,11 @@ func TestPaymentLaneSignalCountsSystemTransactionGas(t *testing.T) {
 		}
 	})
 
-	// Block 3 is the first block the rules bind to, and its parent is not a lane block,
-	// so its own quota is the bootstrap floor whichever reading is in force. Block 4 is
-	// where the readings part.
 	general := uint64(nGeneral) * generalTxGas
 	require.Greater(t, general+systemGas, uint64(44_000_000), "fixture must clear the expand trigger with system gas")
 	require.Less(t, general, uint64(38_500_000), "fixture must fall under the shrink trigger without it")
 
+	// Block 3's own quota is the bootstrap floor under either reading; block 4 is where they part.
 	block3, block4 := blocks[2], blocks[3]
 	require.EqualValues(t, general+systemGas, block3.GasUsed(), "the faker must actually inject system gas")
 
@@ -674,10 +589,8 @@ func TestPaymentLaneSignalCountsSystemTransactionGas(t *testing.T) {
 
 	c4, err := paymentlane.Decode(block4.UncleHash())
 	require.NoError(t, err)
-	// The signal counts the block's whole gas, so block 3 reads as 45.16M of 55M - past
-	// the expand trigger - and block 4 gets one expansion step. Counting user general gas
-	// alone would read 33M, fall under the shrink trigger, and hold block 4 at the floor;
-	// that is what this number distinguishes.
+	// Counting the whole block, 45.16M of 55M expands block 4 by one step; counting user general
+	// alone would read 33M, fall under the shrink trigger, and hold it at the floor.
 	require.EqualValues(t, 3_100_000, c4.LaneSize,
 		"signal must count system gas too: user general alone is %d", general)
 
