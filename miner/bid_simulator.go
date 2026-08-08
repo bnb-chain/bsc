@@ -1207,15 +1207,6 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		return
 	}
 
-	// BEP-703: the builder's own transactions are committed at the top of this function
-	// without the lane admission gate that guards local packing, and the greedy merge
-	// only gates the transactions IT adds. So the invariant has to be re-established
-	// once here, at the end, with payBidTx's reservation already returned to the pool.
-	//
-	// Discarding the bid is the point, and it is why the same call also drains the
-	// classifier's sticky error: without either half the trouble surfaces at seal time in
-	// LaneState.WriteCommitment, and by then the only available answer is to produce no
-	// block at all for this height - every slot this builder wins, until it is jailed.
 	if err = bidRuntime.env.lane.VerifyPackedBid(bidRuntime.env.gasPool.Gas()); err != nil {
 		log.Warn("BidSimulator: bid rejected by the payment lane", "builder", bidRuntime.bid.Builder,
 			"bidHash", bidRuntime.bid.Hash(), "err", err)
@@ -1389,15 +1380,6 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 		}
 	}
 
-	// BEP-703, the SECOND apply site; worker.applyTransaction is the other, and one
-	// greedy-merged MEV block passes through both, so a change to either belongs in both.
-	// #3761 is what a one-sided change looks like here.
-	//
-	// Not identical to that site, deliberately: it reverts the gas pool on failure and
-	// this one does not. Booking below the apply but above the error return is still
-	// right, because the payment total tracks Used() either way, and because both callers
-	// abandon the whole bid on any error - so a bid that took this path never becomes a
-	// block.
 	class, err := env.lane.Classify(tx)
 	if err != nil {
 		return err

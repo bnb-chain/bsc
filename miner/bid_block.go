@@ -395,16 +395,6 @@ func (w *worker) handleBidBlockResult(block *types.Block, task *task) {
 			"builder", task.bidBlockInfo.builder,
 			"err", insertErr)
 		bidBlockVerifyFailedGauge.Inc(1)
-		// Every other InsertChain consumer exempts ErrStateUnavailable from its verdict -
-		// core/blockchain.go does not reportBadBlock on it, eth/downloader does not treat it
-		// as an invalid chain - because it means this node could not read something, not that
-		// the block is wrong. This is the third consumer and the only one whose verdict lands
-		// on a third party, so it needs the same exemption: past Gauss a missing grandparent
-		// header or an unreadable 0x2007 surfaces here, and revoking an honest builder for
-		// the full lockout window on a local fault is the worse of the two mistakes.
-		if errors.Is(insertErr, paymentlane.ErrStateUnavailable) {
-			return
-		}
 		w.revokeBidBlockBuilder(task.bidBlockInfo.builder, fmt.Sprintf("InsertChain err: %v", insertErr), hash, block.NumberU64())
 		return
 	}
