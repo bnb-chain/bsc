@@ -88,6 +88,15 @@ ExecStart=$GETH \\
   --verbosity 3
 Restart=on-failure
 RestartSec=5
+# ARRÊT PROPRE — indispensable. geth garde l'état récent en mémoire et ne l'écrit sur
+# disque qu'à l'arrêt (ou périodiquement). Tué trop vite, il redémarre sur un état
+# incomplet : « Unclean shutdown detected », puis rembobinage — jusqu'au genesis dans le
+# pire des cas. Le validateur reminerait alors une chaîne concurrente.
+# geth traite SIGINT comme une demande d'arrêt propre et vide son état ; on lui laisse
+# largement le temps de le faire.
+KillSignal=SIGINT
+TimeoutStopSec=300
+SendSIGKILL=yes
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
