@@ -10,58 +10,35 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-// laneReader is the state capability BEP-703 needs: account presence for
-// classification, storage words for the parameters. core/state.Reader satisfies it;
-// taking the two paymentlane interfaces instead makes "the lane never loads code" a
-// compile-time fact rather than a review comment. WHICH root the reader is bound to is
-// a separate obligation, on ResolveLaneState's callers.
+// laneReader is the lane's whole state capability: accounts for classification, storage words for
+// the parameters. Deliberately no Code method - the lane must never load code - and *state.StateDB
+// satisfies neither half, which is what keeps the advancing state out structurally. See
+// ResolveLaneState.
 type laneReader interface {
 	paymentlane.AccountReader
 	paymentlane.StorageReader
 }
 
-// laneHeaderReader resolves the grandparent. Both *HeaderChain and *BlockChain
-// satisfy it, which is what lets the importer and the miner share one resolver.
-//
-// One method, deliberately. The wrong way to resolve an ancestor is
-// GetHeaderByNumber, which is canonical-only: on a reorg it answers with whatever
-// header currently occupies that height rather than with this parent's parent, and the
-// result is a divergence that no linear-chain test can see because every test chain is
-// canonical. Narrowing the interface to the by-hash lookup makes that call unavailable
-// instead of merely discouraged - a structural guard where a comment or a test would
-// both be weaker.
+// laneHeaderReader resolves the grandparent, and has one method deliberately: *HeaderChain,
+// *BlockChain and chainMaker all satisfy it, while canonical-only GetHeaderByNumber stays out of
+// reach - on a reorg it answers with whatever header now occupies that height, a divergence no
+// linear test chain can see. Do not widen it.
 type laneHeaderReader interface {
 	GetHeaderByHash(common.Hash) *types.Header
 }
 
-// LaneState is everything BEP-703 needs for one block: the recursion inputs taken
-// from the parent, plus the payment total accumulated as that block executes.
+// LaneState is one block's lane state: the recursion inputs read from the parent, plus the
+// payment total accumulated as the block executes. Build exactly one per block-building or
+// block-processing attempt, via ResolveLaneState, and keep it on one goroutine - the classifier
+// memo is a plain map. Sequential hand-off is fine and does happen, when the miner adopts a
+// winning bid.
 //
-// Construct exactly one per block-building or block-processing attempt, via
-// ResolveLaneState, and do not share it between goroutines - the classifier memo is a
-// plain map. Sequential hand-off is fine and does happen, when the miner adopts a
-// winning bid's environment.
-//
-// It deliberately does NOT store the derived quota alongside the inputs it came from.
-// The producer calls SetQuota, the importer calls CheckQuota, and both resolve to the
-// same LaneSize call over the same private inputs; precomputing it and having the
-// importer compare against the stored copy would be a second implementation of
-// CheckQuota with nothing keeping the two agreed. The gas limit is captured at
-// construction for the same reason: it is the last input a call site could have chosen
-// differently.
-//
-// The zero value - and a nil pointer - mean the lane does not apply, and every method
-// here is safe to call in that state, so the only branch a call site needs is around the
-// block-level prologue that decodes the parent's commitment.
-//
-// The importer's verdict and the producer's commitment write are methods rather than
-// direct Budget calls for a second reason: WriteCommitment also drains the classifier's
-// sticky error, which is the only thing that turns the packing loop's swallowed
-// classification failure into a refusal to seal. Budget cannot see that error, so reaching
-// through to it would pass on a block built with an unknown class.
+// The zero value - and a nil pointer - mean the lane is off, and every method is safe in that
+// state, so the only lane branch a call site needs is around the parent's commitment.
 type LaneState struct {
-	// Budget accumulates this block's payment total. LaneSize is filled in by SetQuota
-	// on the producing side and by CheckQuota on the importing side, never by hand.
+	// Budget accumulates this block's payment total. LaneSize is derived, never assigned by hand
+	// in production code: SetQuota on the producing side, CheckQuota on the importing side, both
+	// resolving to one paymentlane.Signal.NextLaneSize call over the same private inputs.
 	Budget paymentlane.Budget
 
 	cfg      paymentlane.Params
@@ -70,65 +47,35 @@ type LaneState struct {
 	gasLimit uint64
 }
 
-// ResolveLaneState derives the per-block lane inputs from the parent header, the
-// grandparent header and the parent post-state.
+// ResolveLaneState derives one block's lane inputs from the parent header, the grandparent and
+// the parent post-state. One implementation for the importer and the producer on purpose: every
+// input is a choice the two must make identically, and the recursion has memory, so one block of
+// disagreement offsets the accumulator forever instead of healing.
 //
-// One implementation for both the importer and the producer, on purpose. Every input
-// is a choice the two sides must make identically - which header, which state root,
-// which gas limit - and the recursion has memory, so a single block of disagreement
-// offsets the accumulator forever instead of healing. Two call sites each making those
-// choices is exactly how that happens.
+// reader must be bound to the parent post-state root, never the advancing StateDB - with the
+// advancing state a producer inserts one cheap CREATE2 or SetCodeTx and thereby picks whose
+// transfers enter the lane. Pass statedb.Reader(): pinned to originalRoot, and it inherits the
+// reader dispatch the caller already got right, so archive, fastnode and UBT nodes are correct
+// for free. Stateless execution is out of scope and fails closed, at the configuration read.
 //
-// reader must be bound to the parent post-state root and must never be the advancing
-// StateDB: with the advancing state a producer inserts one cheap CREATE2 or SetCodeTx
-// ahead of a batch of transfers and thereby chooses whose transfers enter the lane.
-// Pass statedb.Reader() - it is pinned to originalRoot, immune to writes made during
-// this block, and inherits whatever reader dispatch the caller already got right, so
-// archive, fastnode and UBT nodes are correct for free. Reaching for a
-// blockchain-level State* helper instead reintroduces the MPT-hardcoded path.
-//
-// Witness/stateless execution is out of scope and fails closed here: a witness records
-// only the parent header, so the grandparent lookup below returns ErrStateUnavailable on
-// every lane block, and 0x2007's storage nodes are never in the witness either because
-// Reader() bypasses the tries a witness observes. Supporting it needs a depth-2 witness
-// format, which is a separate decision.
-//
-// CAVEAT on the activation predicate, and it is a real one. Installing the contract gates
-// on IsOnGauss, which agrees with the predicate below on every chain whose Gauss timestamp
-// falls after its London block, but not unconditionally: if LondonBlock is 0 and GaussTime
-// is at or before the genesis timestamp, then IsGauss already holds at genesis, IsOnGauss
-// never fires, the contract is never installed - and the lane switches on from block 1
-// regardless. paymentlane.LoadParams cannot detect it, because an absent account and an
-// untouched one are both all-zero storage, so the chain runs the lane against a code-less
-// address on hardcoded defaults with governance unable to change them. Real networks are
-// safe (mainnet's LondonBlock is 31,302,048 and the devnet template's is 8), so this
-// constrains new chain configurations rather than being a live defect - but it must be
-// checked when Gauss is scheduled. core/paymentlane's
+// Scheduling Gauss on a NEW chain has a config-level trap - the lane can bind before the contract
+// is installed, undetectably. docs/bep703-payment-lane.md section 4 has it, and
 // TestLaneCannotDetectAnUninstalledContract pins it.
 func ResolveLaneState(config *params.ChainConfig, hc laneHeaderReader, parent, header *types.Header, reader laneReader) (*LaneState, error) {
-	// The rules bind from Gauss+1, i.e. from the block whose PARENT is already Gauss:
-	// post-Feynman the Gauss upgrade runs from Finalize/FinalizeAndAssemble, so while the
-	// activation block executes the contract has no code and no parameters can be read.
+	// The rules bind from Gauss+1, the block whose PARENT is already Gauss: post-Feynman the Gauss
+	// upgrade runs from Finalize, so while the activation block executes 0x2007 has no code yet.
 	if !config.IsGauss(parent.Number, parent.Time) {
 		return &LaneState{}, nil
 	}
-	// The grandparent decides only one thing - whether the parent was itself a lane block,
-	// which is the same IsGauss test one level up - but that one bit selects between "read
-	// the parent's commitment" and "seed from the floor", so getting it wrong at the
-	// activation boundary splits the accumulator for good. See laneHeaderReader for why the
-	// canonical-only lookup is not reachable from here.
-	//
-	// Genesis is passed through as a nil grandparent rather than special-cased:
-	// NewSignalFromParent distinguishes "the parent is genesis" from "the caller could not
-	// resolve the grandparent" itself, and duplicating that judgement here is how the
-	// two answers get conflated. The explicit number test is what keeps this from
-	// reaching for GetHeader(hash, number-1), which underflows to MaxUint64 at genesis.
+	// The grandparent decides one bit - whether the parent was itself a lane block - but that bit
+	// selects between reading the parent's commitment and seeding from the floor, so getting it
+	// wrong at the activation boundary splits the accumulator for good. Genesis passes through as
+	// a nil grandparent, which NewSignalFromParent tells apart from an unresolved one; the
+	// explicit number test is also what avoids GetHeader(hash, number-1) underflowing there.
 	var grandparent *types.Header
 	if parent.Number.Sign() != 0 {
 		if grandparent = hc.GetHeaderByHash(parent.ParentHash); grandparent == nil {
-			// Local fault, not a bad block: this node may simply not have the header
-			// yet. Reporting it as unavailable state is what stops a transient miss
-			// from being blamed on whoever sent the block.
+			// Local fault, not a bad block: this node may simply not have the header yet.
 			return nil, fmt.Errorf("%w: grandparent %x of block %d", paymentlane.ErrStateUnavailable, parent.ParentHash, header.Number)
 		}
 	}
@@ -152,17 +99,15 @@ func ResolveLaneState(config *params.ChainConfig, hc laneHeaderReader, parent, h
 	}, nil
 }
 
-// On reports whether the lane binds this block. Nil-safe, so callers that never
-// resolved a state can still ask.
+// On reports whether the lane binds this block.
 func (ls *LaneState) On() bool { return ls != nil && ls.class != nil }
 
 // SetQuota records the quota this block must reserve, for the producing side.
 //
-// The result must NOT be clamped by the caller. The only quantity available to clamp
-// against on that side is the miner-local gas reservation, which the validator cannot
-// see: clamping shrinks IdleLane, general gets over-packed, and the block is invalid -
-// while the producer's own self-check uses the same clamped value and therefore cannot
-// notice.
+// The result must NOT be clamped by the caller. The only quantity available to clamp against is
+// the miner-local gas reservation, and the importer cannot see it: it derives the unclamped quota
+// and rejects the block with ErrQuotaMismatch, while the producer's own self-check, run on the
+// same clamped value, cannot notice.
 func (ls *LaneState) SetQuota() {
 	if !ls.On() {
 		return
@@ -170,10 +115,8 @@ func (ls *LaneState) SetQuota() {
 	ls.Budget.LaneSize = ls.signal.NextLaneSize(ls.cfg, ls.gasLimit)
 }
 
-// CheckQuota verifies a committed quota and adopts it, for the importing side.
-//
-// Adopting the committed value rather than the derived one is safe precisely because
-// they were just proved equal, and it keeps one value in play instead of two.
+// CheckQuota verifies a committed quota against the parent derivation and adopts it, for the
+// importing side. Adopting keeps one quota in play instead of two.
 func (ls *LaneState) CheckQuota(committed uint64) error {
 	if !ls.On() {
 		return nil
@@ -187,18 +130,14 @@ func (ls *LaneState) CheckQuota(committed uint64) error {
 
 // Classify returns tx's lane class, or ClassGeneral when the lane is off.
 //
-// It is safe to call more than once for the same transaction, and the producer does: once in
-// the packing loop's band gate and once in applyTransaction. That holds only because the
-// answer is a pure function of the transaction bytes and the parent state, with the single
-// state read memoised per destination - so the two calls cannot disagree and the second is
-// nearly free. The bidblock pre-seal ceiling is a third caller and relies on the same
-// purity: it has no execution state, only the transaction list and the parent root.
+// Safe to call twice for one transaction, and the producer does - the packing loop's band gate,
+// then applyTransaction - because the answer is a pure function of the transaction bytes and the
+// parent state, with the single state read memoised per destination once it succeeds. A failed
+// read is deliberately not memoised, and the sticky error is what keeps that from mattering.
 //
-// That is a property to preserve, not an invitation. The moment the answer depends on
-// anything else - a per-block payment cap, a rate term, a count of what is already in
-// the block - two calls can differ, the budget a transaction was admitted against stops
-// matching the bucket it is booked into, and every importer rejects the block. Anything
-// like that has to thread one decision through instead.
+// Preserve that purity. The moment the answer depends on block-local state - a payment cap, a
+// rate term, a count of what is already packed - two calls can differ, the budget a transaction
+// was admitted against stops matching the bucket it is booked into, and every importer rejects.
 func (ls *LaneState) Classify(tx *types.Transaction) (paymentlane.Class, error) {
 	if !ls.On() {
 		return paymentlane.ClassGeneral, nil
@@ -206,18 +145,15 @@ func (ls *LaneState) Classify(tx *types.Transaction) (paymentlane.Class, error) 
 	return ls.class.Classify(tx)
 }
 
-// RecordUsedFrom books the gas the pool has consumed since usedBefore, for a payment
-// transaction; a general one is a no-op, general gas being the header residual. Call it
-// once per apply, with the sample taken immediately before that apply.
+// RecordUsedFrom books the gas the pool consumed since usedBefore, for a payment transaction; a
+// general one is a no-op, general gas being the header residual. Call it once per apply, with the
+// sample taken immediately before that apply.
 //
-// It takes the pool rather than a delta so that the only callable form is the correct
-// one. receipt.GasUsed and GasPool.CumulativeUsed() are both plausible and both wrong:
-// only Used() is the quantity that feeds header.GasUsed on the producing AND the
-// importing side, which is what lets the importer compare this figure against its own
-// replay at all. Differencing also makes rollback free - a reverted apply has
-// already restored the pool from its snapshot, so the delta is zero - and it cancels the
-// bid path's temporary PayBidTxGasLimit reservation, which would otherwise offset an
-// absolute reading by exactly 25,000.
+// It takes the pool rather than a delta so that the only callable form is the correct one:
+// receipt.GasUsed and GasPool.CumulativeUsed() are both plausible and both wrong, and only Used()
+// is the quantity that feeds header.GasUsed on the producing AND the importing side. Differencing
+// also books zero for a reverted apply, which has already restored the pool, and cancels the bid
+// path's temporary PayBidTxGasLimit reservation.
 func (ls *LaneState) RecordUsedFrom(class paymentlane.Class, gp *GasPool, usedBefore uint64) {
 	if !ls.On() {
 		return
@@ -225,8 +161,8 @@ func (ls *LaneState) RecordUsedFrom(class paymentlane.Class, gp *GasPool, usedBe
 	ls.Budget.RecordUsed(class, gp.Used()-usedBefore)
 }
 
-// Admits reports whether this transaction may still be included, and admits everything
-// while the lane is off. shared is the shared remainder, i.e. gasPool.Gas().
+// Admits reports whether this transaction may still be included, and admits everything while the
+// lane is off. shared is the shared remainder, i.e. gasPool.Gas().
 func (ls *LaneState) Admits(shared uint64, class paymentlane.Class, txGasLimit uint64) bool {
 	if !ls.On() {
 		return true
@@ -234,43 +170,33 @@ func (ls *LaneState) Admits(shared uint64, class paymentlane.Class, txGasLimit u
 	return ls.Budget.Admits(shared, class, txGasLimit)
 }
 
-// Err reports the first classifier state-read failure, if any.
+// stickyErr reports the first classifier state-read failure, and is the backstop for the one site
+// that swallows a classification error: the miner's packing loop, which drops that account and
+// carries on. Everywhere else the error is returned where it happens. VerifyPackedBid and
+// WriteCommitment turn a swallowed one into a rejected bid and a refusal to seal.
 //
-// Sticky, and the backstop for the one site that swallows a classification error: the
-// miner's packing loop drops that account and carries on, because refusing to build is
-// not a decision the loop should take. Everywhere else the error is returned where it
-// happens. WriteCommitment turns a swallowed one into a refusal to seal, and
-// VerifyPackedBid into a rejected bid - the earlier and cheaper of the two.
-func (ls *LaneState) Err() error {
-	if !ls.On() {
-		return nil
-	}
-	return ls.class.Err()
-}
+// Unexported so nothing outside can pull the error out and decide to ignore it. Callers must
+// already be past On().
+func (ls *LaneState) stickyErr() error { return ls.class.Err() }
 
-// VerifyPackedBid is the bid path's verdict on an environment it did not pack itself. The
-// sticky error is checked here and not only at seal time because a caller that tested the
-// quota alone would pass a bid whose bucket is unknown, and the miner would then decline to
-// seal it after discarding a perfectly good local block.
+// VerifyPackedBid is the bid path's verdict on an environment it did not pack: quota and sticky
+// error together, because a caller that tested the quota alone would pass a bid whose bucket is
+// unknown, and the miner would then decline to seal it after discarding a good local block.
 //
-// The quota half is the invariant the packing loop maintains one admission at a time,
-// restated as a single end-of-block test for a path that cannot gate per transaction.
-// With C the pool's capacity, r the miner's gas reservation and shared the remainder,
-// IdleLane <= shared is exactly poolUsed + IdleLane <= C = GasLimit - r, which implies the
-// block rule poolUsed + systemGasUsed + IdleLane <= GasLimit whenever the real system gas
-// stays inside r. It is therefore a STRENGTHENING of the rule, not an equivalent of it: at
-// C=1000, r=25, poolUsed=990, IdleLane=15 this refuses a block the rule permits. The
-// packing loop maintains the same strengthened form, so the two sides agree, and what
-// catches the real system gas overrunning r is WriteCommitment.
+// IdleLane <= shared STRENGTHENS the block rule rather than restating it - it spends the miner's
+// gas reservation, which the rule does not - and it is the same strengthened form the packing
+// loop maintains one admission at a time, so the two sides agree. What catches the real system
+// gas overrunning that reservation is WriteCommitment; docs/bep703-payment-lane.md carries the
+// derivation.
 //
-// Deliberately not a per-transaction gate on the MEV path: rejecting a builder's
-// transaction because its declared LIMIT does not fit would refuse bids the rule permits,
-// since the rule is about gas actually consumed and a bid is all-or-nothing anyway.
+// Deliberately not a per-transaction gate on the MEV path: refusing a builder's transaction
+// because its declared LIMIT does not fit would reject bids the rule permits, the rule being
+// about gas actually consumed and a bid being all-or-nothing anyway.
 func (ls *LaneState) VerifyPackedBid(shared uint64) error {
 	if !ls.On() {
 		return nil
 	}
-	if err := ls.Err(); err != nil {
+	if err := ls.stickyErr(); err != nil {
 		return err
 	}
 	if idle := ls.Budget.IdleLane(); idle > shared {
@@ -280,10 +206,8 @@ func (ls *LaneState) VerifyPackedBid(shared uint64) error {
 }
 
 // VerifyImported is the importer's verdict, and the only authoritative one; see
-// paymentlane.Budget.VerifyCommitment for why.
-//
-// headerGasUsed must be the locally recomputed total - the value Finalize grew - and never
-// block.GasUsed(), which is attacker-supplied.
+// paymentlane.Budget.VerifyCommitment for why. headerGasUsed must be the locally recomputed
+// total - the value Finalize grew - and never block.GasUsed(), which is attacker-supplied.
 func (ls *LaneState) VerifyImported(headerGasUsed, poolUsed uint64, c paymentlane.Commitment) error {
 	if !ls.On() {
 		return nil
@@ -291,47 +215,32 @@ func (ls *LaneState) VerifyImported(headerGasUsed, poolUsed uint64, c paymentlan
 	return ls.Budget.VerifyCommitment(ls.gasLimit, headerGasUsed, poolUsed, c)
 }
 
-// WriteCommitment stamps the commitment onto an assembled block and self-checks it. It is
-// the whole of the producing side's lane business after packing, which is what keeps
-// core.AssembleBlock - upstream code - free of the lane.
+// WriteCommitment stamps the commitment onto an assembled block and self-checks it - the whole of
+// the producing side's lane business after packing, which is what keeps core.AssembleBlock free of
+// the lane. An error means DISCARD the block, never repair it: the hash and inequality checks can
+// only run after the stamp, so the block they refuse already carries it.
 //
-// Every sealing producer must call it, and must call it before ANYTHING hashes the block:
-// the block hash is cached on first read with no invalidation (see
-// (*types.Block).SetUncleHash), so a later stamp leaves the block disagreeing with its own
-// header. The check below catches that rather than trusting the ordering, but catching it
-// costs a slot, so the call belongs next to AssembleBlock.
+// Every sealing producer must call it, and must call it before ANYTHING hashes the block: the
+// block hash is cached on first read with no invalidation ((*types.Block).Hash), so a later stamp
+// leaves the block disagreeing with its own header. The hash check catches that rather than
+// trusting the ordering, but catching it costs a slot, so the call belongs next to AssembleBlock.
 //
-// Writing and checking are one method because forgetting either produces an invalid block,
-// and because it makes the order unforgettable: check-before-stamp cannot compile into
-// anything that works, since the commitment it would decode is not there yet. Failing here
-// costs a slot; producing anyway is worse, because the payment total goes into the
-// commitment, every importer replays it and rejects, and the producer has by then set its
-// own head to the block and broadcast it.
-//
-// An error means DISCARD the block, never repair it: both checks run after the stamp - the
-// stale-hash one cannot run before it without itself filling the cache - so the block it
-// refuses is already stamped.
-//
-// It reads block.GasUsed() rather than the header the caller still holds, because the
-// parlia commit path hands AssembleBlock a CopyHeader: that header keeps the
-// user-transaction total forever while the assembled block carries the system-transaction
-// gas Finalize added. That total is the main term of the rule, so reading the stale header
-// here would check a different inequality than the importer will. The gas LIMIT comes from
-// ls instead, the same value LaneSize was derived from, so the quota and the capacity it
-// is checked against cannot come from two different headers.
+// It reads block.GasUsed(), not the header the caller still holds, because the parlia commit path
+// hands AssembleBlock a CopyHeader: that header keeps the user-transaction total while the
+// assembled block carries the system-transaction gas Finalize added - the main term of the rule.
+// The gas LIMIT comes from ls, the same value LaneSize was derived from, so the quota and the
+// capacity it is checked against cannot come from two different headers.
 func (ls *LaneState) WriteCommitment(block *types.Block, poolUsed uint64) error {
 	if !ls.On() {
 		return nil
 	}
-	if err := ls.Err(); err != nil {
+	if err := ls.stickyErr(); err != nil {
 		return err
 	}
-	// The two uses of the uncle slot are mutually exclusive, and silently preferring the
-	// commitment would emit a block whose uncle list can never be verified again.
-	// Unreachable under parlia, which forbids uncles outright; reachable from
-	// GenerateChain, which still offers BlockGen.AddUncle - and eth/downloader's test
-	// chains use it on every fifth block, which is why a lane-active variant of that
-	// harness is not a small change.
+	// The two uses of the uncle slot are mutually exclusive, and preferring the commitment would
+	// emit a block whose uncle list can never be verified again. Unreachable under parlia, which
+	// forbids uncles outright; reachable from GenerateChain, whose downloader test chains add an
+	// uncle every fifth block.
 	if len(block.Uncles()) != 0 {
 		return errors.New("payment lane and uncles cannot share the uncle hash slot")
 	}
@@ -339,9 +248,9 @@ func (ls *LaneState) WriteCommitment(block *types.Block, poolUsed uint64) error 
 		LaneSize:       ls.Budget.LaneSize,
 		PaymentGasUsed: ls.Budget.PaymentUsed,
 	}))
-	// Hashing here also freezes the cache with the commitment already in, which is safe
-	// because every later header change goes through a copy: Seal takes block.Header() and
-	// returns WithSeal, and WithSidecars builds a new block.
+	// Hashing here freezes the cache with the commitment already in, which is safe because nothing
+	// changes the header afterwards: Seal works on a copy (WithSeal), and WithSidecars only
+	// aliases it.
 	if block.Hash() != block.Header().Hash() {
 		return errors.New("block hash was cached before the commitment was written")
 	}

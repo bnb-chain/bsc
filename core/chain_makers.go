@@ -54,8 +54,7 @@ type BlockGen struct {
 	engine consensus.Engine
 
 	// lane is the BEP-703 state for this block, resolved from the parent before any
-	// transaction runs. Present here so generated chains carry real commitments and
-	// activated-lane behaviour is testable at all; nil-safe when the lane is off.
+	// transaction runs.
 	lane *LaneState
 
 	// extra data of block

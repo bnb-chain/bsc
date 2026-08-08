@@ -63,7 +63,7 @@ const (
 // "parent.UncleHash != EmptyUncleHash", so every lane block's child is scored as though
 // its parent had uncles. It is symmetric between makeHeader and verifyHeader, so nothing
 // diverges; it simply does not happen under parlia, where the lane actually runs.
-func laneGenesis(t *testing.T) (*params.ChainConfig, *Genesis, *ecdsaKey) {
+func laneGenesis(t testing.TB) (*params.ChainConfig, *Genesis, *ecdsaKey) {
 	t.Helper()
 	code, err := hex.DecodeString(strings.TrimSpace(gauss.RialtoPaymentLaneContract))
 	require.NoError(t, err)
@@ -215,9 +215,9 @@ func TestPaymentLaneImportRejectsATamperedCommitment(t *testing.T) {
 		{
 			// The quota and the payment figure share the 32 bytes, so a producer that
 			// wrote them in the wrong order commits a payment figure of 2M against a
-			// replay of 21000. Caught as untruthful accounting, not as a bad quota,
-			// because CheckQuota runs on the value in the laneSize slot and that one is
-			// now the (correct) payment figure.
+			// replay of 21000. Caught as a bad quota rather than as untruthful
+			// accounting: CheckQuota runs first, on the laneSize slot, which now holds
+			// the payment figure instead of the quota.
 			name: "swapped fields",
 			mutate: func(c paymentlane.Commitment) common.Hash {
 				c.LaneSize, c.PaymentGasUsed = c.PaymentGasUsed, c.LaneSize
@@ -234,7 +234,7 @@ func TestPaymentLaneImportRejectsATamperedCommitment(t *testing.T) {
 			wantErr: paymentlane.ErrUntruthy,
 		},
 		{
-			name: "quota one step above the derivation",
+			name: "quota above the derivation",
 			mutate: func(c paymentlane.Commitment) common.Hash {
 				c.LaneSize += 150_000
 				return paymentlane.Encode(c)
@@ -359,6 +359,43 @@ func TestPaymentLaneVerifyPackedBidRefusesASwallowedClassification(t *testing.T)
 		"a swallowed classification failure must reject the bid, not wait for the seal")
 }
 
+// TestPaymentLaneCheckQuotaAdoptsTheQuota pins the assignment at the end of CheckQuota, which no
+// end-to-end test can see: drop it and the importer replays with LaneSize 0, the idle-lane term of
+// the rule vanishes, and a block that over-packs general traffic into the quota is accepted. In
+// production parlia's own header gate covers the same ground from the committed value, so nothing
+// here is the only defence - but this is the only thing that pins THIS half.
+func TestPaymentLaneCheckQuotaAdoptsTheQuota(t *testing.T) {
+	// Zero signal, so the derivation is the floor: min(max(2% of 55M, 2M), min(8% of 55M, 8M)) = 2M.
+	ls := &LaneState{
+		cfg:      paymentlane.Params{MinRatio: 200, MaxRatio: 800, MinGas: 2_000_000, MaxGas: 8_000_000},
+		gasLimit: laneTestGasLimit,
+		class:    paymentlane.NewClassifier(common.Hash{}, failingAccountReader{}, nil),
+	}
+	const want = 2_000_000
+	require.NoError(t, ls.CheckQuota(want))
+	require.EqualValues(t, want, ls.Budget.LaneSize, "the checked quota must be adopted")
+
+	// One gas short of the limit leaves no room for the idle quota, so the rule is violated - but
+	// only if the quota was adopted.
+	err := ls.VerifyImported(laneTestGasLimit-1, laneTestGasLimit-1, paymentlane.Commitment{LaneSize: want})
+	require.ErrorIs(t, err, paymentlane.ErrViolated)
+}
+
+// TestPaymentLaneWriteCommitmentRefusesASwallowedClassification is the seal-time half of the
+// sticky-error backstop; VerifyPackedBid above is the bid-time half. Both are needed: the bid gate
+// is not on the local producing path at all.
+func TestPaymentLaneWriteCommitmentRefusesASwallowedClassification(t *testing.T) {
+	to := common.Address{0x44}
+	ls := &LaneState{class: paymentlane.NewClassifier(common.Hash{}, failingAccountReader{}, nil)}
+	_, err := ls.Classify(types.NewTx(&types.LegacyTx{To: &to, Value: common.Big1, Gas: paymentTxGas}))
+	require.ErrorIs(t, err, paymentlane.ErrStateUnavailable)
+
+	block := types.NewBlockWithHeader(&types.Header{Number: big.NewInt(1), UncleHash: types.EmptyUncleHash})
+	require.ErrorIs(t, ls.WriteCommitment(block, 0), paymentlane.ErrStateUnavailable,
+		"a block built with an unknown class must not be sealed")
+	require.Equal(t, types.EmptyUncleHash, block.UncleHash(), "and it must refuse before stamping")
+}
+
 // --- helpers -------------------------------------------------------------------
 
 // failingAccountReader makes every classification that reaches the parent state fail.
@@ -373,7 +410,7 @@ type ecdsaKey struct {
 	addr common.Address
 }
 
-func newKey(t *testing.T) *ecdsaKey {
+func newKey(t testing.TB) *ecdsaKey {
 	t.Helper()
 	priv, err := crypto.GenerateKey()
 	require.NoError(t, err)
@@ -450,8 +487,7 @@ func TestPaymentLaneAndUnclesCannotShareTheSlot(t *testing.T) {
 // classifier. It does NOT cover per-transaction classification, which no cache would
 // help - that is a per-destination state read, memoised within the block already.
 func BenchmarkResolveLaneState(b *testing.B) {
-	t := &testing.T{}
-	config, gspec, _ := laneGenesis(t)
+	config, gspec, _ := laneGenesis(b)
 	db, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 4, nil)
 	parent, header := blocks[2], blocks[3].Header()
 
