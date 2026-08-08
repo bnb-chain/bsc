@@ -66,9 +66,14 @@ filter   = caddy-rpc
 logpath  = /var/log/caddy/explorer-access.log
 backend  = auto
 port     = http,https
-# Limite de débit effective du relais JSON-RPC : au-delà de 240 requêtes/minute
-# depuis une même IP, on bannit. L'explorateur en fait ~10 toutes les 5 s.
-maxretry = 240
+# Seuil calibré sur l'usage RÉEL de l'explorateur, pas sur une intuition.
+# Un visiteur consomme ~21 appels JSON-RPC toutes les 5 s (hauteur, prix du gas, les
+# derniers blocs, la liste des validateurs), soit ~252 requetes/minute. Un seuil a 240
+# bannissait donc CHAQUE visiteur au bout d'une minute de navigation — un deni de
+# service contre nos propres utilisateurs, invisible tant que personne ne reste.
+# 1500/min laisse passer plusieurs onglets ouverts par la meme IP (bureau partage,
+# NAT d'entreprise) tout en arretant un flood reel, qui se compte en milliers.
+maxretry = 1500
 findtime = 60
 bantime  = 30m
 ignoreip = $IGNORE

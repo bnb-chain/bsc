@@ -196,8 +196,16 @@ async function refresh(){
     document.getElementById('dot').classList.remove('off');document.getElementById('netstate').textContent=t('online');{const n=document.getElementById('nonode');if(n)n.hidden=true;}
     document.getElementById('hh').textContent='#'+nf().format(hex(bn));
     document.getElementById('hg').textContent=(hex(gp)/1e9).toFixed(1)+' gwei';document.getElementById('s-gas').textContent=(hex(gp)/1e9).toFixed(1)+' gwei';
+    // On ne redemande QUE les blocs qu'on n'a pas deja. Redemander les 18 derniers
+    // toutes les 5 s coutait ~252 requetes/minute par visiteur — de quoi declencher la
+    // limite de debit du serveur contre nos propres utilisateurs, et charger le noeud
+    // pour rien. En regime etabli, un seul bloc est nouveau a chaque tour.
     const head=hex(bn),nums=[];for(let i=head;i>Math.max(-1,head-18);i--)nums.push(i);
-    const blocks=(await Promise.all(nums.map(n=>rpc('eth_getBlockByNumber',['0x'+n.toString(16),true])))).filter(Boolean);
+    const cache=new Map((state.blocks||[]).map(b=>[hex(b.number),b]));
+    const manquants=nums.filter(n=>!cache.has(n));
+    const frais=(await Promise.all(manquants.map(n=>rpc('eth_getBlockByNumber',['0x'+n.toString(16),true])))).filter(Boolean);
+    frais.forEach(b=>cache.set(hex(b.number),b));
+    const blocks=nums.map(n=>cache.get(n)).filter(Boolean);
     state.blocks=blocks;
     const tsr=blocks.map(b=>hex(b.timestamp)),d=[];for(let i=0;i<tsr.length-1;i++)d.push(tsr[i]-tsr[i+1]);
     if(d.length)document.getElementById('s-time').textContent=(d.reduce((a,b)=>a+b,0)/d.length).toFixed(1)+' s';
