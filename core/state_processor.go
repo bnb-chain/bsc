@@ -93,21 +93,13 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 	if lastBlock == nil {
 		return nil, errors.New("could not get parent block")
 	}
-	// BEP-703: settle the quota before executing anything. It is a pure function of the
-	// parent header and the parent post-state, so it can be - and must be - decided here;
-	// only the payment total needs replay.
-	//
-	// The exact position between the parent lookup above and the transaction loop below is
-	// free, NOT load-bearing: statedb.Reader() is pinned to originalRoot and is unaffected
-	// by every write this block makes, including the system-contract upgrade on the next
-	// line. That immunity is the security property the classifier rests on, so do not
-	// "protect" it by reordering.
+
 	lane, err := ResolveLaneState(config, p.chain, lastBlock, header, statedb.Reader())
 	if err != nil {
 		return nil, err
 	}
 	var laneCommitted paymentlane.Commitment
-	if lane.On() {
+	if lane.On() { // verify the commitment
 		if laneCommitted, err = paymentlane.Decode(header.UncleHash); err != nil {
 			return nil, err
 		}
@@ -170,16 +162,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 			bloomProcessors.Close()
 			return nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
-		// System transactions never reach here - they were split out above - so every
-		// classified transaction is a user transaction, and the gas of the ones split out
-		// arrives later, in the residual Finalize adds to header.GasUsed. Classified
-		// before the apply, like the three producing sites, and before the span opens so
-		// this error path needs no spanEnd.
-		//
-		// No admission predicate on this side, deliberately: gp already enforces capacity
-		// and the rule is one global test in VerifyCommitment below. Adding Admits here
-		// would be redundant AND would reject blocks the rule permits, because admission
-		// is order-sensitive and the importer does not get to choose the order.
+		// System transactions never reach here
 		class, err := lane.Classify(tx)
 		if err != nil {
 			bloomProcessors.Close()
@@ -225,12 +208,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		allLogs = append(allLogs, receipt.Logs...)
 	}
 
-	// BEP-703: the only authoritative check on the committed buckets - see
-	// paymentlane.Budget.VerifyCommitment for why the producer's own check is not enough.
-	//
-	// gasUsed here is the REAL system gas plus pool gas: gp is never passed to Finalize,
-	// so gasUsed grew by exactly the system-transaction gas while gp.Used() did not move.
-	// Never substitute block.GasUsed() - that is attacker-supplied.
+	// verify the payment used is correct
 	if err := lane.VerifyImported(gasUsed, gp.Used(), laneCommitted); err != nil {
 		return nil, err
 	}
