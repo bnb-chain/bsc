@@ -33,6 +33,21 @@ GETH="$REPO/build/bin/geth"
 [ -f "$GENESIS" ] || { echo "ERREUR : genesis introuvable : $GENESIS" >&2; exit 1; }
 [ -f "$DATADIR/pw.txt" ] || { echo "ERREUR : $DATADIR/pw.txt introuvable (mot de passe de la clé)." >&2; exit 1; }
 
+# Utilisateur DÉDIÉ au validateur, distinct de celui du nœud RPC.
+# Séparer les processus ne suffit pas : tant que les deux tournent sous le même compte,
+# une compromission du nœud exposé à Internet donne la lecture du keystore ET du mot de
+# passe du validateur — donc la clé qui produit les blocs. La séparation des identités
+# est ce qui rend la séparation des processus réellement utile.
+VAL_USER="${VAL_USER:-coinbosa-val}"
+id "$VAL_USER" >/dev/null 2>&1 || useradd --system --home /var/lib/coinbosa --shell /usr/sbin/nologin "$VAL_USER"
+# Le parent doit rester TRAVERSABLE par les deux comptes, sinon le validateur ne peut
+# meme pas atteindre son propre repertoire. Les donnees sensibles sont protegees par
+# le 0700 des sous-dossiers, pas par le parent.
+chmod 0755 "$(dirname "$DATADIR")"
+chown -R "$VAL_USER":"$VAL_USER" "$DATADIR"
+chmod 0700 "$DATADIR"
+echo "==> Utilisateur du validateur : $VAL_USER (le nœud RPC ne peut pas lire ce répertoire)"
+
 # L'adresse du validateur est lue depuis le keystore : on ne la code jamais en dur,
 # et on refuse de démarrer si le keystore est vide ou en contient plusieurs.
 mapfile -t KEYS < <(ls "$DATADIR/keystore/" 2>/dev/null | grep '^UTC--' || true)
@@ -55,7 +70,7 @@ echo "    conforme à l'extraData du genesis ✓"
 
 echo "==> Initialisation (au premier lancement seulement)"
 if [ ! -d "$DATADIR/geth/chaindata" ]; then
-  sudo -u coinbosa "$GETH" init --datadir "$DATADIR" "$GENESIS" 2>&1 | grep -i "genesis block hash" || true
+  sudo -u "$VAL_USER" "$GETH" init --datadir "$DATADIR" "$GENESIS" 2>&1 | grep -i "genesis block hash" || true
 else
   echo "    déjà initialisé"
 fi
@@ -71,8 +86,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=coinbosa
-Group=coinbosa
+User=$VAL_USER
+Group=$VAL_USER
 ExecStart=$GETH \\
   --datadir $DATADIR \\
   --networkid $CHAIN_ID \\
@@ -125,16 +140,16 @@ systemctl is-active --quiet coinbosa-validator || {
 }
 
 # On ne se fie pas au statut du service : on exige que la hauteur AVANCE réellement.
-h1=$(sudo -u coinbosa "$GETH" attach --exec 'eth.blockNumber' "$DATADIR/geth.ipc" 2>/dev/null || echo "")
+h1=$(sudo -u "$VAL_USER" "$GETH" attach --exec 'eth.blockNumber' "$DATADIR/geth.ipc" 2>/dev/null || echo "")
 echo "    hauteur observée : ${h1:-?}"
 for i in $(seq 1 12); do
   sleep 6
-  h2=$(sudo -u coinbosa "$GETH" attach --exec 'eth.blockNumber' "$DATADIR/geth.ipc" 2>/dev/null || echo "")
+  h2=$(sudo -u "$VAL_USER" "$GETH" attach --exec 'eth.blockNumber' "$DATADIR/geth.ipc" 2>/dev/null || echo "")
   if [ -n "${h2:-}" ] && [ -n "${h1:-}" ] && [ "$h2" -gt "$h1" ] 2>/dev/null; then
     echo "    la chaîne AVANCE : $h1 -> $h2 ✓"
     echo ""
     echo "==> Validateur en service. enode pour l'appairage local :"
-    sudo -u coinbosa "$GETH" attach --exec 'admin.nodeInfo.enode' "$DATADIR/geth.ipc" 2>/dev/null
+    sudo -u "$VAL_USER" "$GETH" attach --exec 'admin.nodeInfo.enode' "$DATADIR/geth.ipc" 2>/dev/null
     exit 0
   fi
 done

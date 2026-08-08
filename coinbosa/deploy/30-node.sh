@@ -51,7 +51,11 @@ fi
 
 echo "==> Utilisateur de service (sans shell, sans privilèges)"
 id coinbosa >/dev/null 2>&1 || useradd --system --home /var/lib/coinbosa --shell /usr/sbin/nologin coinbosa
-install -d -o coinbosa -g coinbosa -m 0750 /var/lib/coinbosa "$DATADIR"
+# Le parent est PARTAGE avec le validateur, qui tourne sous un autre compte : il doit
+# rester traversable (0755), sinon le validateur ne peut plus atteindre son propre
+# repertoire. Les secrets sont proteges par le 0700 des sous-dossiers.
+install -d -o root -g root -m 0755 /var/lib/coinbosa
+install -d -o coinbosa -g coinbosa -m 0750 "$DATADIR"
 
 echo "==> Initialisation du genesis (au premier lancement seulement)"
 if [ ! -d "$DATADIR/geth" ]; then
@@ -128,6 +132,8 @@ systemctl restart coinbosa-node
 # Ce service surveille donc l'appairage en continu et le rétablit, ce qui couvre aussi
 # les déconnexions passagères, pas seulement les redémarrages.
 VALIDATOR_IPC="${VALIDATOR_IPC:-/var/lib/coinbosa/validator/geth.ipc}"
+NODE_USER="${NODE_USER:-coinbosa}"
+VAL_USER="${VAL_USER:-coinbosa-val}"
 if [ -S "$VALIDATOR_IPC" ]; then
   echo "==> Surveillance de l'appairage avec le validateur"
   cat > /usr/local/bin/coinbosa-peer-check <<PEERSH
@@ -137,12 +143,23 @@ set -uo pipefail
 GETH=$GETH
 NODE_IPC=$DATADIR/geth.ipc
 VAL_IPC=$VALIDATOR_IPC
+# Chaque noeud tourne sous SON utilisateur : le repertoire du validateur est en 0700 et
+# le compte du noeud RPC ne peut pas le lire. Ce script tourne en root et bascule donc
+# sur le bon compte pour chaque socket.
+NODE_USER=$NODE_USER
+VAL_USER=$VAL_USER
 [ -S "\$NODE_IPC" ] && [ -S "\$VAL_IPC" ] || exit 0
-n=\$(sudo -u coinbosa "\$GETH" attach --exec 'net.peerCount' "\$NODE_IPC" 2>/dev/null || echo 0)
+n=\$(sudo -u "\$NODE_USER" "\$GETH" attach --exec 'net.peerCount' "\$NODE_IPC" 2>/dev/null || echo 0)
 [ "\${n:-0}" -gt 0 ] 2>/dev/null && exit 0
-enode=\$(sudo -u coinbosa "\$GETH" attach --exec 'admin.nodeInfo.enode' "\$VAL_IPC" 2>/dev/null | tr -d '"')
-[ -n "\$enode" ] || exit 0
-sudo -u coinbosa "\$GETH" attach --exec "admin.addPeer(\\"\$enode\\")" "\$NODE_IPC" >/dev/null 2>&1
+enode=\$(sudo -u "\$VAL_USER" "\$GETH" attach --exec 'admin.nodeInfo.enode' "\$VAL_IPC" 2>/dev/null | tr -d '"')
+# Valider la FORME avant usage : en cas d'echec, geth ecrit son message d'erreur sur la
+# sortie standard. Sans ce controle, ce message etait passe tel quel a addPeer() et le
+# script annoncait « appairage retabli » alors qu'il n'avait rien fait.
+case "\$enode" in
+  enode://*) ;;
+  *) logger -t coinbosa "appairage impossible : enode du validateur illisible"; exit 0 ;;
+esac
+sudo -u "\$NODE_USER" "\$GETH" attach --exec "admin.addPeer(\\"\$enode\\")" "\$NODE_IPC" >/dev/null 2>&1
 logger -t coinbosa "appairage nœud RPC <-> validateur retabli"
 PEERSH
   chmod 0755 /usr/local/bin/coinbosa-peer-check
