@@ -57,8 +57,6 @@ ce qui n'existe pas, sans arrondir. Tout le reste doit être lu à sa lumière.
 
 ### Ce qui fonctionne, et a été mesuré
 
-| Élément | État |
-|---|---|
 Le réseau est **en production depuis le 7 août 2026**. Tout ce qui suit est vérifiable par
 quiconque sur le point d'accès public.
 
@@ -74,10 +72,14 @@ quiconque sur le point d'accès public.
 | Point d'accès JSON-RPC public | `https://explorer.coinbosa.com/rpc` (lecture et envoi) |
 | Intégration continue | rejoue le banc complet (nœud, 5 s, BRC20, epoch) à chaque push, sur machine vierge |
 
-**Débit.** Le plafond dur se calcule et ne se promet pas : `gasLimit / coût d'un transfert /
-temps de bloc`, soit 55 000 000 / 21 000 / 5,018 ≈ **522 transferts simples par seconde**.
-C'est un maximum théorique, pas une mesure sous charge : aucun test de charge n'a été mené sur
-le réseau de production. Toute valeur supérieure annoncée ailleurs serait fausse.
+**Débit.** Le plafond dur se calcule et ne se promet pas. Sur les 55 000 000 de gas d'un
+bloc, le moteur Parlia en **réserve 20 000 000 pour ses transactions système** — cette
+réserve est appliquée à chaque bloc tant que le fork Feynman n'est pas activé, ce qui est
+le cas ici. Il reste donc 35 000 000 pour les transactions des utilisateurs :
+35 000 000 / 21 000 / 5,018 ≈ **332 transferts simples par seconde**.
+
+C'est un maximum théorique, pas une mesure sous charge : aucun test de charge n'a été mené
+sur le réseau de production. Toute valeur supérieure annoncée ailleurs serait fausse.
 
 ### Ce qui n'existe pas encore
 
