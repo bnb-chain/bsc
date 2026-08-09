@@ -100,6 +100,7 @@ ExecStart=$GETH \\
   --password $DATADIR/pw.txt \\
   --allow-insecure-unlock \\
   --syncmode full --gcmode full \\
+  --pathdb.sync \\
   --verbosity 3
 Restart=on-failure
 RestartSec=5
@@ -112,6 +113,23 @@ RestartSec=5
 KillSignal=SIGINT
 TimeoutStopSec=300
 SendSIGKILL=yes
+# L'arrêt propre ci-dessus ne couvre QUE ce que systemd pilote. Un SIGKILL du noyau —
+# tueur de mémoire, coupure de courant, panne d'hyperviseur — le contourne entièrement.
+# Or geth stocke l'état en schéma « path », et dans ce mode il SAUTE tout vidage
+# périodique (core/blockchain.go:1981 : « skip explicit gc operation »). Sur une chaîne
+# peu active comme celle-ci, la racine d'état ne bouge quasiment jamais : le tampon de
+# 64 Mo ne se remplit donc pour ainsi dire jamais, et la couche disque peut rester très
+# en retard sur la tête. Un arrêt brutal ferait repartir le validateur loin en arrière,
+# où il reminerait une chaîne concurrente — c'est exactement l'incident déjà vécu.
+# --pathdb.sync (dans ExecStart) écrit l'état de façon synchrone et supprime cet écart.
+#
+# OOMScoreAdjust : le noyau ne doit jamais choisir le validateur en premier quand il
+# manque de mémoire. C'est le processus le plus critique de la machine.
+OOMScoreAdjust=-900
+# Un redémarrage en boucle sur une base corrompue empilerait les dégâts : au-delà de 5
+# tentatives en 10 minutes, on s'arrête et on laisse la sonde alerter.
+StartLimitIntervalSec=600
+StartLimitBurst=5
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
