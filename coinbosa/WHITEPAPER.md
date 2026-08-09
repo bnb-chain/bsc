@@ -5,7 +5,7 @@
 
   **Version 3 · juillet 2026**
 
-  Chaîne EVM souveraine · Consensus par preuve d'enjeu · Jeton BOSA
+  Chaîne EVM souveraine · Consensus Parlia — preuve d'autorité aujourd'hui · Jeton BOSA
 </div>
 
 ---
@@ -59,13 +59,25 @@ ce qui n'existe pas, sans arrondir. Tout le reste doit être lu à sa lumière.
 
 | Élément | État |
 |---|---|
-| Chaîne EVM souveraine, chainId 26262 | en fonctionnement |
-| Consensus Parlia, blocs de 5 secondes | mesuré bloc par bloc |
-| Franchissement des blocs d'epoch | vérifié aux blocs 200, 400, 600, 800 |
+Le réseau est **en production depuis le 7 août 2026**. Tout ce qui suit est vérifiable par
+quiconque sur le point d'accès public.
+
+| Élément | État |
+|---|---|
+| Chaîne EVM souveraine, chainId 26262 | en production |
+| Hash du bloc 0 | `0x8dcdadc247a98f33728cae944e20ce7c49c74b35cfba31495f85e98979018da6` |
+| Temps de bloc | **5,018 s mesurés** sur 500 blocs consécutifs (cible : 5 s) |
+| Franchissement des blocs d'epoch | franchi en production, la chaîne poursuit |
 | Contrat système du consensus | écrit sur mesure, en fonctionnement |
 | Standard de jeton BRC20 | banc de tests automatisé complet, rejoué en intégration continue |
 | Offre native de 700 000 000 BOSA | inscrite au genesis, vérifiée on-chain |
+| Point d'accès JSON-RPC public | `https://explorer.coinbosa.com/rpc` (lecture et envoi) |
 | Intégration continue | rejoue le banc complet (nœud, 5 s, BRC20, epoch) à chaque push, sur machine vierge |
+
+**Débit.** Le plafond dur se calcule et ne se promet pas : `gasLimit / coût d'un transfert /
+temps de bloc`, soit 55 000 000 / 21 000 / 5,018 ≈ **522 transferts simples par seconde**.
+C'est un maximum théorique, pas une mesure sous charge : aucun test de charge n'a été mené sur
+le réseau de production. Toute valeur supérieure annoncée ailleurs serait fausse.
 
 ### Ce qui n'existe pas encore
 
@@ -75,8 +87,12 @@ ce qui n'existe pas, sans arrondir. Tout le reste doit être lu à sa lumière.
   implémentée. Le contrat système expose aujourd'hui un ensemble de validateurs fixe.
 - La **finalité rapide** est inactive : les clés de vote sont à zéro. La finalité est
   probabiliste.
-- Il n'existe **ni point d'accès public**, ni explorateur indexé, ni passerelle vers un autre
-  réseau, ni audit externe.
+- L'explorateur **n'indexe rien** : il interroge le réseau en direct. Il n'y a donc ni
+  historique par adresse, ni recherche sur les transactions passées, ni vérification de code
+  source publiée.
+- Il n'existe **ni passerelle vers un autre réseau, ni audit externe**.
+- Le validateur unique et le nœud d'accès public tournent sur **une seule machine**. Sa perte
+  arrête le réseau ; la chaîne redémarre avec elle, mais il n'y a aucune redondance.
 
 Aucun de ces manques n'est masqué ailleurs dans le document. Ils sont le programme de travail de
 la [feuille de route](#13-feuille-de-route).

@@ -254,6 +254,7 @@
       <span class="chip">Offre <b>700 000 000</b> BOSA · fixe</span>
       <span class="chip">Non audité</span>
       <span class="chip">1 validateur</span>
+      <span class="chip">En production</span>
     </div>
   </div>
 </header>
@@ -304,8 +305,10 @@
         <table>
           <thead><tr><th>Élément</th><th>État</th></tr></thead>
           <tbody>
-            <tr><td>Chaîne EVM souveraine, chainId 26262</td><td>en fonctionnement</td></tr>
-            <tr><td>Consensus Parlia, blocs de 5 secondes</td><td>mesuré bloc par bloc</td></tr>
+            <tr><td>Chaîne EVM souveraine, chainId 26262</td><td>en production depuis le 7 août 2026</td></tr>
+            <tr><td>Consensus Parlia, temps de bloc</td><td><strong>5,018 s mesurés</strong> sur 500 blocs consécutifs (cible : 5 s)</td></tr>
+            <tr><td>Hash du bloc 0</td><td><code>0x8dcdadc247a98f33728cae944e20ce7c49c74b35cfba31495f85e98979018da6</code></td></tr>
+            <tr><td>Point d'accès JSON-RPC public</td><td><code>https://explorer.coinbosa.com/rpc</code></td></tr>
             <tr><td>Franchissement des blocs d'epoch</td><td>vérifié aux blocs 200, 400, 600, 800</td></tr>
             <tr><td>Contrat système du consensus</td><td>écrit sur mesure, en fonctionnement</td></tr>
             <tr><td>Standard de jeton BRC20</td><td>banc de tests automatisé complet, rejoué en intégration continue</td></tr>
@@ -319,7 +322,9 @@
         <li>Le réseau est produit par <strong>un seul validateur</strong>. Il n'a donc ni tolérance aux pannes, ni sécurité byzantine.</li>
         <li>La <strong>couche d'enjeu</strong> — dépôt, élection par le montant immobilisé, sanctions — n'est pas implémentée. Le contrat système expose aujourd'hui un ensemble de validateurs fixe.</li>
         <li>La <strong>finalité rapide</strong> est inactive : les clés de vote sont à zéro. La finalité est probabiliste.</li>
-        <li>Il n'existe <strong>ni point d'accès public</strong>, ni explorateur indexé, ni passerelle vers un autre réseau, ni audit externe.</li>
+        <li>L'explorateur <strong>n'indexe rien</strong> : il interroge le réseau en direct. Il n'y a donc ni historique par adresse, ni recherche sur les transactions passées, ni vérification de code source publiée.</li>
+        <li>Il n'existe <strong>ni passerelle vers un autre réseau, ni audit externe</strong>.</li>
+        <li>Le validateur unique et le nœud d'accès public tournent sur <strong>une seule machine</strong>. Sa perte arrête le réseau ; la chaîne redémarre avec elle, mais il n'y a aucune redondance.</li>
       </ul>
       <p>Aucun de ces manques n'est masqué ailleurs dans le document. Ils sont le programme de travail de la <a href="#sec-13">feuille de route</a>.</p>
     </section>
