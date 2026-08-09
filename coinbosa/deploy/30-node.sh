@@ -69,6 +69,10 @@ PEER_LINE=""
 echo "==> Service systemd"
 # --http.addr 127.0.0.1 : le RPC n'est JAMAIS exposé directement. Caddy le relaie sur
 #   https://explorer.…/rpc, en POST uniquement, et le pare-feu garde 8545 fermé.
+# --rpc.batch-request-limit : par defaut geth accepte 1000 appels JSON-RPC dans UNE
+#   seule requete HTTP. La limite de debit du serveur web comptant les requetes HTTP,
+#   un lot la contournait d'un facteur 1000. 50 couvre largement l'explorateur (18 au
+#   maximum) tout en fermant ce contournement.
 # --http.api eth,net,web3 : surface minimale. Ni admin, ni personal, ni debug, ni txpool —
 #   ces espaces de noms permettent d'inspecter ou de piloter le nœud.
 cat > /etc/systemd/system/coinbosa-node.service <<UNIT
@@ -86,6 +90,8 @@ ExecStart=$GETH \\
   --port 30303 \\
   --http --http.addr 127.0.0.1 --http.port $RPC_PORT \\
   --http.api eth,net,web3 \\
+  --rpc.batch-request-limit 50 \\
+  --rpc.batch-response-max-size 5000000 \\
   --http.corsdomain "https://explorer.coinbosa.com" \\
   --http.vhosts "localhost,127.0.0.1" \\
   --syncmode full --gcmode full \\
