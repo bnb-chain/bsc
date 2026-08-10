@@ -150,6 +150,10 @@ var (
 	errSelZeroAddress         = b20ErrorSel("ZeroAddress()")
 	errSelAccountNotSeizable  = b20ErrorSel("AccountNotSeizable(address)")
 	errSelPanic               = b20ErrorSel("Panic(uint256)")
+	errSelFeatureNotActive    = b20ErrorSel("FeatureNotActivated(bytes32)")
+	errSelAlreadyActivated    = b20ErrorSel("AlreadyActivated(bytes32)")
+	errSelUnauthorizedAddr    = b20ErrorSel("Unauthorized(address)")
+	errSelZeroAdminAddress    = b20ErrorSel("ZeroAdminAddress()")
 )
 
 // revPanic mirrors Solidity's Panic(code): 0x11 arithmetic over/underflow,

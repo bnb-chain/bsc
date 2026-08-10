@@ -26,8 +26,7 @@ import (
 // id (high byte = type, low 56 bits = global counter). Reads never revert (they
 // sit on every transfer's hot path); writes are admin-gated.
 //
-// TODO: ActivationRegistry gate on writes (bsc.policy_registry) and alignment
-// of the storage layout / ABI / events with base-std.
+// TODO: align the storage layout / ABI / events with base-std.
 
 // B20PolicyRegistryAddress is the singleton registry precompile (BEP-702 §3.1).
 var B20PolicyRegistryAddress = common.HexToAddress("0x7020000000000000000000000000000000000001")
@@ -76,11 +75,7 @@ func newPolicyReg(ctx *PrecompileContext) policyReg {
 	return policyReg{s: b20Storage{state: ctx.StateDB, token: B20PolicyRegistryAddress, ctx: ctx}}
 }
 
-func polSlot(offset uint64) common.Hash {
-	x := new(uint256.Int).SetBytes(b20PolicyRoot.Bytes())
-	x.AddUint64(x, offset)
-	return common.Hash(x.Bytes32())
-}
+func polSlot(offset uint64) common.Hash { return offsetSlot(b20PolicyRoot, offset) }
 
 func idKey(id uint64) common.Hash { return common.Hash(uint256.NewInt(id).Bytes32()) }
 
@@ -209,7 +204,28 @@ func runB20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 		}
 		return addrKey(reg.pending(id)).Bytes(), nil
 
-	// writes
+	}
+
+	// Writes. Recognize the selector first, so an unknown one still reverts as
+	// an unknown selector rather than as an inactive feature, then apply the
+	// activation gate: every non-view method sits behind it, so a deactivation
+	// freezes membership and admin changes on policies that already exist
+	// (BEP-702 section 3.15).
+	switch sel {
+	case selCreatePolicy, selCreatePolicyWithAccounts, selUpdateAllowlist,
+		selUpdateBlocklist, selStageUpdateAdmin, selFinalizeUpdateAdmin, selRenounceAdmin:
+		if ctx.ReadOnly {
+			return nil, ErrWriteProtection
+		}
+		if err := ensureFeatureActivated(ctx, featurePolicyRegistry); err != nil {
+			return nil, err
+		}
+		ctx.ensureSentinel()
+	default:
+		return nil, ErrExecutionReverted // unknown selector
+	}
+
+	switch sel {
 	case selCreatePolicy:
 		return createPolicy(ctx, reg, args, false)
 	case selCreatePolicyWithAccounts:
@@ -225,10 +241,9 @@ func runB20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	case selRenounceAdmin:
 		return nil, renounceAdmin(ctx, reg, args)
 	}
-	return nil, ErrExecutionReverted
+	return nil, ErrExecutionReverted // unreachable: the gate above is exhaustive
 }
 
-// TODO: gate writes on ActivationRegistry bsc.policy_registry.
 func createPolicy(ctx *PrecompileContext, reg policyReg, args []byte, withAccounts bool) ([]byte, error) {
 	if ctx.ReadOnly {
 		return nil, ErrWriteProtection

@@ -74,13 +74,6 @@ func TestB20ABIBaseline(t *testing.T) {
 		"currency()",
 		"variantOf(address)",
 		"createB20(uint8,bytes32,bytes,bytes[])",
-		// ActivationRegistry is not implemented at all yet.
-		"isActivated(bytes32)",
-		"checkActivated(bytes32)",
-		"admin()",
-		"setAdmin(address)",
-		"activate(bytes32)",
-		"deactivate(bytes32)",
 	}
 	pendingEvents := []string{
 		"NameUpdated(string)",
@@ -97,9 +90,6 @@ func TestB20ABIBaseline(t *testing.T) {
 		"PolicyAdminStaged(uint64,address)",
 		"PolicyAdminUpdated(uint64,address,address)",
 		"MembersUpdated(uint64,address,bool,address[])",
-		"FeatureActivated(bytes32,address)",
-		"FeatureDeactivated(bytes32,address)",
-		"AdminChanged(address,address,address)",
 	}
 	pendingErrors := []string{
 		"UnsupportedVersion(uint8,uint8)",
@@ -107,10 +97,6 @@ func TestB20ABIBaseline(t *testing.T) {
 		"MissingRequiredField(string)",
 		"InvalidCurrency(string)",
 		"PolicyNotFound(uint64)",
-		"Unauthorized(address)",
-		"FeatureNotActivated(bytes32)",
-		"AlreadyActivated(bytes32)",
-		"ZeroAdminAddress()",
 	}
 
 	check := func(kind string, baselineSigs []string, registered map[string]bool, pending []string, divergent map[string]string) {

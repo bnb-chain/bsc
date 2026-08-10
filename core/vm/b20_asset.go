@@ -71,11 +71,7 @@ type assetExt struct{ s b20Storage }
 
 func newAssetExt(ctx *PrecompileContext) assetExt { return assetExt{s: newMeteredB20Storage(ctx)} }
 
-func assetSlot(offset uint64) common.Hash {
-	x := new(uint256.Int).SetBytes(b20AssetRoot.Bytes())
-	x.AddUint64(x, offset)
-	return common.Hash(x.Bytes32())
-}
+func assetSlot(offset uint64) common.Hash { return offsetSlot(b20AssetRoot, offset) }
 
 func (e assetExt) decimals() uint8 {
 	return uint8(new(uint256.Int).SetBytes(e.s.getWord(assetSlot(b20AssetSlotDecimals)).Bytes()).Uint64())

@@ -75,6 +75,7 @@ func TestB20Factory(t *testing.T) {
 		BlockNumber: big.NewInt(1),
 		Time:        1,
 	}
+	seedActivation(statedb, b20ActivationAdmin)
 	evm := NewEVM(bc, statedb, &cfg, Config{})
 
 	creator := common.HexToAddress("0xc4ea70")
@@ -155,6 +156,7 @@ func TestB20FactoryOwnerless(t *testing.T) {
 		BlockNumber: big.NewInt(1),
 		Time:        1,
 	}
+	seedActivation(statedb, b20ActivationAdmin)
 	evm := NewEVM(bc, statedb, &cfg, Config{})
 	creator := common.HexToAddress("0xc4ea70")
 	salt := common.HexToHash("0x02")

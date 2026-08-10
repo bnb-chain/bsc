@@ -20,6 +20,7 @@ import (
 	"errors"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -95,10 +96,22 @@ func b20Initialized(state StateDB, addr common.Address) bool {
 }
 
 // b20InitializedMetered is b20Initialized charged as an account access, for
-// the in-frame paths (isB20Initialized, createB20's occupancy check).
+// the in-frame existence query (isB20Initialized).
+//
+// It is NOT the factory's occupancy check: existence asks "is a B20 token
+// here", which only the sentinel answers, while occupancy asks "is this
+// address free", which any code denies. Use b20AddressOccupied for the latter.
 func b20InitializedMetered(ctx *PrecompileContext, addr common.Address) bool {
 	ctx.chargeAccountAccess(addr)
 	return b20Initialized(ctx.StateDB, addr)
+}
+
+// b20AddressOccupied reports whether a derived address is already taken, by a
+// token or by anything else. createB20 must reject on any code, not only on
+// the sentinel: overwriting foreign code would destroy it (BEP-702 3.4).
+func b20AddressOccupied(ctx *PrecompileContext, addr common.Address) bool {
+	ctx.chargeAccountAccess(addr)
+	return !hadNoCode(ctx.StateDB, addr)
 }
 
 // hadNoCode reports whether addr carries no code at all — the condition under
@@ -106,6 +119,26 @@ func b20InitializedMetered(ctx *PrecompileContext, addr common.Address) bool {
 func hadNoCode(state StateDB, addr common.Address) bool {
 	ch := state.GetCodeHash(addr)
 	return ch == (common.Hash{}) || ch == types.EmptyCodeHash
+}
+
+// ensureSentinel plants the account sentinel on this precompile's own address
+// if it is not already there, mirroring Base's __initialize().
+//
+// Tokens get theirs from createB20, but the registries have no factory: they
+// come into existence through their first governance or issuer write. Storage
+// alone does not make an account non-empty, so without this a clearing pass
+// would reap the registry and every policy or flag it holds (BEP-702 3.16).
+// Idempotent, and charged as a code write the first time only. It plants only
+// on an account with no code at all: BEP-702 3.16 forbids planting over
+// existing code, and an account that already carries any code is already
+// non-empty, so the reaping hazard the sentinel exists for does not apply.
+func (ctx *PrecompileContext) ensureSentinel() {
+	ctx.chargeAccountAccess(ctx.Self)
+	if !hadNoCode(ctx.StateDB, ctx.Self) {
+		return
+	}
+	ctx.chargeCodeWrite(ctx.Self, b20MarkerCode)
+	ctx.StateDB.SetCode(ctx.Self, b20MarkerCode, tracing.CodeChangeContractCreation)
 }
 
 // b20EnterCall applies the guards shared by every B20 entry point: only direct
@@ -155,6 +188,9 @@ func resolveB20(state StateDB, addr common.Address) (PrecompiledContract, bool) 
 	}
 	if addr == B20PolicyRegistryAddress {
 		return &b20PolicyPrecompile{}, true
+	}
+	if addr == B20ActivationRegistryAddress {
+		return &b20ActivationPrecompile{}, true
 	}
 	if IsB20Address(addr) {
 		return resolveB20Token(state, addr)
@@ -255,6 +291,7 @@ var (
 	_ PrecompiledContract         = (*b20FactoryPrecompile)(nil)
 	_ PrecompiledContract         = (*b20AssetPrecompile)(nil)
 	_ PrecompiledContract         = (*b20StablecoinPrecompile)(nil)
+	_ StatefulPrecompiledContract = (*b20ActivationPrecompile)(nil)
 	_ StatefulPrecompiledContract = (*b20FactoryPrecompile)(nil)
 	_ StatefulPrecompiledContract = (*b20AssetPrecompile)(nil)
 	_ StatefulPrecompiledContract = (*b20StablecoinPrecompile)(nil)

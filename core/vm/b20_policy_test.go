@@ -24,6 +24,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
@@ -58,7 +59,25 @@ func newAmsterdamEVM(t *testing.T) (*state.StateDB, *EVM) {
 		BlockNumber: big.NewInt(1),
 		Time:        1,
 	}
+	seedActivation(statedb, b20ActivationAdmin)
 	return statedb, NewEVM(bc, statedb, &cfg, Config{})
+}
+
+// b20ActivationAdmin is the activation admin the test harness seeds.
+var b20ActivationAdmin = common.HexToAddress("0x60feed")
+
+// seedActivation opens every feature and installs the activation admin by
+// writing the registry's storage directly — what the activating fork does on a
+// live network, since the registry starts with no admin and everything shut.
+// The sentinel goes on with it: storage alone leaves the account EIP-161-empty
+// and a clearing pass would take the flags with it (BEP-702 3.16).
+func seedActivation(statedb *state.StateDB, admin common.Address) {
+	statedb.SetCode(B20ActivationRegistryAddress, b20MarkerCode, tracing.CodeChangeContractCreation)
+	reg := b20Storage{state: statedb, token: B20ActivationRegistryAddress}
+	for _, f := range []common.Hash{featureB20Asset, featureB20Stablecoin, featurePolicyRegistry} {
+		reg.setWord(mappingSlot(actSlot(actSlotFeatures), f), common.Hash{31: 1})
+	}
+	reg.setWord(actSlot(actSlotAdmin), addrKey(admin))
 }
 
 func TestB20PolicyRegistry(t *testing.T) {

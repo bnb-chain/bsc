@@ -136,11 +136,17 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	if variant != b20VariantAsset && variant != b20VariantStablecoin {
 		return nil, revB20("InvalidVariant()", errSelInvalidVariant)
 	}
+	feature, ok := variantFeature(variant)
+	if !ok {
+		return nil, revB20("InvalidVariant()", errSelInvalidVariant)
+	}
+	if err := ensureFeatureActivated(ctx, feature); err != nil {
+		return nil, err
+	}
 	creator := ctx.Caller
 	addr := b20DeriveAddress(variant, creator, salt)
 
-	// TODO: ActivationRegistry feature gate for the variant (P3).
-	if b20InitializedMetered(ctx, addr) {
+	if b20AddressOccupied(ctx, addr) {
 		return nil, revB20("TokenAlreadyExists(address)", errSelTokenExists, addrKey(addr))
 	}
 	ctx.chargeCodeWrite(addr, b20MarkerCode)

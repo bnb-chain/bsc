@@ -99,6 +99,14 @@ func slotAt(offset uint64) common.Hash {
 	return common.Hash(s.Bytes32())
 }
 
+// offsetSlot returns the slot at root+offset, the fixed-field addressing every
+// B20 namespace uses.
+func offsetSlot(root common.Hash, offset uint64) common.Hash {
+	x := new(uint256.Int).SetBytes(root.Bytes())
+	x.AddUint64(x, offset)
+	return common.Hash(x.Bytes32())
+}
+
 // mappingSlot returns the Solidity storage slot of mapping[key] where the
 // mapping is declared at base: keccak256(pad32(key) ++ base).
 func mappingSlot(base, key common.Hash) common.Hash {

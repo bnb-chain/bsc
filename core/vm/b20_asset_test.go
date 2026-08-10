@@ -60,6 +60,7 @@ func TestB20AssetExtension(t *testing.T) {
 		BlockNumber: big.NewInt(1),
 		Time:        1,
 	}
+	seedActivation(statedb, b20ActivationAdmin)
 	evm := NewEVM(bc, statedb, &cfg, Config{})
 
 	creator := common.HexToAddress("0xc4ea70")
