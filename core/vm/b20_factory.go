@@ -28,8 +28,6 @@ import (
 // initialization marker, then runs initCalls in a privileged bootstrap window
 // (role and transfer-side policy gates skipped) so a token can be fully
 // configured — roles granted, initial supply minted — in one transaction.
-//
-// TODO: verify the address preimage against base-std before golden testing.
 
 // b20ParamsVersion is the encoding version every create-params struct carries
 // as its leading field. A struct that does not match is rejected before any
@@ -79,12 +77,16 @@ var b20MarkerCode = []byte{0xEF}
 var b20NoSupplyCap = new(uint256.Int).Sub(new(uint256.Int).Lsh(uint256.NewInt(1), 128), uint256.NewInt(1))
 
 // b20DeriveAddress computes a token's deterministic address:
-// 0x20B0 ++ 8×0x00 ++ variant ++ keccak256(creator ++ salt)[:9].
+// 0x20B0 ++ 8×0x00 ++ variant ++ keccak256(abi.encode(creator, salt))[:9].
 //
-// TODO: verify the preimage (encoding/ordering of creator and salt) against
-// base-std; routing does not depend on it, but cross-client determinism does.
+// The preimage is abi.encode, not packed concatenation: the creator is
+// left-padded to a full word, so the hash is over 64 bytes rather than 52. That
+// is what base-std's precompile does — verified by calling getB20Address on Base
+// mainnet and Sepolia, which both return the abi.encode fingerprint
+// (TestB20DeriveAddressMatchesBaseStd pins the vector). base-std's own docs write
+// it as `keccak256(deployer, salt)`, which is ambiguous between the two.
 func b20DeriveAddress(variant byte, creator common.Address, salt common.Hash) common.Address {
-	h := crypto.Keccak256(creator.Bytes(), salt.Bytes())
+	h := crypto.Keccak256(common.LeftPadBytes(creator.Bytes(), 32), salt.Bytes())
 	var a common.Address
 	a[0], a[1] = b20MarkerPrefix[0], b20MarkerPrefix[1]
 	a[10] = variant
