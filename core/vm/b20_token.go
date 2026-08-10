@@ -275,6 +275,13 @@ func (t b20Token) move(from, to common.Address, amount *uint256.Int) error {
 		}
 	}
 	// Each balance slot is derived once and reused for its read and its write.
+	//
+	// Both writes happen unconditionally, including when from == to or amount is
+	// zero and neither balance ends up changing. Bytecode performs them anyway,
+	// and BEP-702 3.14 requires a B20 operation never to be cheaper than the same
+	// accesses through bytecode — so skipping them would make a native token
+	// cheaper than the contract it replaces. TestB20GasNeverCheaperThanBytecode
+	// holds all four shapes to that floor.
 	fromSlot := t.s.balanceSlot(from)
 	bal := t.s.getU256At(fromSlot)
 	if bal.Lt(amount) {

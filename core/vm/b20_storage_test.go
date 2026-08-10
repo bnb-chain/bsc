@@ -685,27 +685,55 @@ func TestB20GasNeverCheaperThanBytecode(t *testing.T) {
 	}
 	token := common.BytesToAddress(ret)
 
-	// Warm both balance slots with one transfer, then measure the next.
-	if _, _, err := evm.Call(b20Alice, token, b20Call(selTransfer, addrKey(b20Bob), u256hash(10)), NewGasBudget(1_000_000), uint256.NewInt(0)); err != nil {
-		t.Fatalf("warming transfer: %v", err)
-	}
 	const budget = 1_000_000
-	if _, left, err := evm.Call(b20Alice, token, b20Call(selTransfer, addrKey(b20Bob), u256hash(10)), NewGasBudget(budget), uint256.NewInt(0)); err != nil {
-		t.Fatalf("measured transfer: %v", err)
-	} else {
-		charged := uint64(budget) - left.RegularGas
-		// Warm-path floor: both balance slots are warm and dirty by now, so
-		// bytecode would pay 2 * SLOAD_warm + 2 * SSTORE_dirty.
-		floor := 4 * params.WarmStorageReadCostEIP2929
-		if charged < floor {
-			t.Fatalf("warm transfer charged %d, below the bytecode floor %d", charged, floor)
+	measure := func(to common.Address, amount uint64) uint64 {
+		t.Helper()
+		in := b20Call(selTransfer, addrKey(to), u256hash(amount))
+		// Warm the slots first, then measure the second call.
+		if _, _, err := evm.Call(b20Alice, token, in, NewGasBudget(budget), uint256.NewInt(0)); err != nil {
+			t.Fatalf("warming transfer: %v", err)
 		}
-		// And the mapping derivations must be in there too: two balance slots,
-		// each a 64-byte keccak, read then written.
-		keccak64 := params.Keccak256Gas + 2*params.Keccak256WordGas
-		if charged < floor+2*keccak64 {
-			t.Fatalf("transfer charged %d, missing mapping-derivation cost (floor %d + 2*%d)",
-				charged, floor, keccak64)
+		_, left, err := evm.Call(b20Alice, token, in, NewGasBudget(budget), uint256.NewInt(0))
+		if err != nil {
+			t.Fatalf("measured transfer: %v", err)
+		}
+		return uint64(budget) - left.RegularGas
+	}
+
+	// Warm-path floor: both balance slots are warm and dirty by now, so bytecode
+	// would pay 2 * SLOAD_warm + 2 * SSTORE_dirty, plus a 64-byte keccak per
+	// balance slot to derive it.
+	keccak64 := params.Keccak256Gas + 2*params.Keccak256WordGas
+	floor := 4*params.WarmStorageReadCostEIP2929 + 2*keccak64
+
+	ordinary := measure(b20Bob, 10)
+	if ordinary < floor {
+		t.Fatalf("warm transfer charged %d, below the bytecode floor %d", ordinary, floor)
+	}
+
+	// The degenerate shapes must cost exactly what an ordinary transfer costs.
+	// A self-transfer and a zero-value transfer look like free wins — no balance
+	// ends up different — but bytecode performs both assignments regardless, so
+	// skipping them would make a native token cheaper than the contract it
+	// replaces, which BEP-702 3.14 forbids outright.
+	//
+	// The floor above is far too loose to catch that on its own: the balance
+	// accesses are a few hundred gas out of a few thousand, so dropping two
+	// writes still clears it. Equality with the ordinary shape is what actually
+	// pins it, and this is precisely the "optimisation" a later reader would
+	// reach for.
+	for _, tc := range []struct {
+		what   string
+		to     common.Address
+		amount uint64
+	}{
+		{"self-transfer", b20Alice, 10},
+		{"zero-value transfer", b20Bob, 0},
+		{"zero-value self-transfer", b20Alice, 0},
+	} {
+		if charged := measure(tc.to, tc.amount); charged != ordinary {
+			t.Errorf("%s charged %d, want %d — the same accesses bytecode would perform",
+				tc.what, charged, ordinary)
 		}
 	}
 }
