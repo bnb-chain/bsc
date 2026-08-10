@@ -317,6 +317,17 @@ func (s b20Storage) setString(offset uint64, str string) {
 	s.setStringAt(slotAt(offset), str)
 }
 
+// stringDataRoot derives the slot a long string's data begins at, keccak256 of
+// the length slot, and meters the hash of that 32-byte preimage. Deriving a
+// mapping slot is metered the same way (see mapSlot); a long string's data root
+// is no less a runtime keccak just because the preimage is one word.
+func (s b20Storage) stringDataRoot(slot common.Hash) *uint256.Int {
+	if s.ctx != nil {
+		s.ctx.chargeKeccak(32)
+	}
+	return new(uint256.Int).SetBytes(crypto.Keccak256(slot.Bytes()))
+}
+
 // getStringAt / setStringAt read and write a Solidity string at an arbitrary
 // slot (used for fixed fields and for string-keyed mapping values).
 func (s b20Storage) getStringAt(slot common.Hash) string {
@@ -328,7 +339,7 @@ func (s b20Storage) getStringAt(slot common.Hash) string {
 	}
 	// long string: slot holds 2*len+1; content starts at keccak256(slot).
 	length := (new(uint256.Int).SetBytes(word.Bytes()).Uint64() - 1) / 2
-	base := new(uint256.Int).SetBytes(crypto.Keccak256(slot.Bytes()))
+	base := s.stringDataRoot(slot)
 	out := make([]byte, 0, length)
 	for i := uint64(0); i < length; i += 32 {
 		chunkSlot := common.Hash(new(uint256.Int).AddUint64(base, i/32).Bytes32())
@@ -338,29 +349,53 @@ func (s b20Storage) getStringAt(slot common.Hash) string {
 	return string(out[:length])
 }
 
-// setString writes a fresh string value.
+// setStringAt writes a string, releasing whatever the previous value held.
 //
-// TODO: when overwriting a previous long string with a shorter one, the stale
-// tail data slots are not cleared. Reads are length-bounded so they stay
-// correct, but the leftover nonzero slots make the state root diverge from a
-// Solidity SSTORE-zeroing reference — clear them before golden-testing writes.
+// Solidity's string assignment zeroes the tail slots the old value occupied and
+// no longer needs. Skipping that would leave the state root diverging from a
+// Solidity reference implementation and forfeit the clearing refunds — which
+// only became reachable once name, symbol and contractURI turned mutable.
 func (s b20Storage) setStringAt(slot common.Hash, str string) {
 	b := []byte(str)
+	oldChunks := s.stringChunks(slot)
+	newChunks := uint64(0)
+	if len(b) >= 32 {
+		newChunks = uint64((len(b) + 31) / 32)
+	}
+
 	if len(b) < 32 {
 		var word common.Hash
 		copy(word[:], b)
 		word[31] = byte(len(b) * 2)
 		s.setWord(slot, word)
-		return
+	} else {
+		s.setWord(slot, common.Hash(uint256.NewInt(uint64(len(b)*2+1)).Bytes32()))
 	}
-	s.setWord(slot, common.Hash(uint256.NewInt(uint64(len(b)*2+1)).Bytes32()))
-	base := new(uint256.Int).SetBytes(crypto.Keccak256(slot.Bytes()))
-	for i := 0; i < len(b); i += 32 {
+	if newChunks == 0 && oldChunks == 0 {
+		return // wholly inline, before and after: no data region exists
+	}
+	// One keccak covers writing the new chunks and releasing the old ones, as
+	// it would in Solidity — deriving the root twice would overcharge.
+	base := s.stringDataRoot(slot)
+	for i := uint64(0); i < newChunks; i++ {
 		var chunk common.Hash
-		copy(chunk[:], b[i:])
-		chunkSlot := common.Hash(new(uint256.Int).AddUint64(base, uint64(i/32)).Bytes32())
-		s.setWord(chunkSlot, chunk)
+		copy(chunk[:], b[i*32:])
+		s.setWord(common.Hash(new(uint256.Int).AddUint64(base, i).Bytes32()), chunk)
 	}
+	for i := newChunks; i < oldChunks; i++ {
+		s.setWord(common.Hash(new(uint256.Int).AddUint64(base, i).Bytes32()), common.Hash{})
+	}
+}
+
+// stringChunks reports how many tail slots the string currently at slot
+// occupies. A short string is held inline and occupies none.
+func (s b20Storage) stringChunks(slot common.Hash) uint64 {
+	word := s.getWord(slot)
+	if word[31]&1 == 0 {
+		return 0
+	}
+	length := (new(uint256.Int).SetBytes(word.Bytes()).Uint64() - 1) / 2
+	return (length + 31) / 32
 }
 
 func (s b20Storage) name() string            { return s.getString(b20SlotName) }

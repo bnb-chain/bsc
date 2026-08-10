@@ -124,7 +124,11 @@ func (s b20Storage) chargeStorageWrite(slot, value common.Hash) bool {
 		return true
 	}
 	if !s.ctx.sstoreSentry() {
-		s.ctx.outOfGas = true
+		// Propagate, do not assign: the sentry refuses the write without
+		// draining the budget, so a spawner that only saw its own flag would
+		// still have gas in hand and report success over a write that never
+		// happened.
+		s.ctx.markOutOfGas()
 		return false
 	}
 	var (

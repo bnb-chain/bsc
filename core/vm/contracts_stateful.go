@@ -81,8 +81,17 @@ type PrecompileContext struct {
 	gas *GasBudget
 
 	// outOfGas is set sticky once a charge cannot be covered; the dispatcher
-	// checks it and returns ErrOutOfGas.
+	// checks it and returns ErrOutOfGas. Set it only through markOutOfGas —
+	// assigning it directly leaves a spawned frame's exhaustion invisible to the
+	// spawner that actually checks it.
 	outOfGas bool
+
+	// spawner is the context this one was derived from, or nil for a top-level
+	// frame. A spawned context shares the gas budget, so exhausting it must be
+	// visible to whoever checks OutOfGas — which is the spawner's dispatcher,
+	// never the child's. markOutOfGas walks this link to keep the flag and the
+	// budget in agreement.
+	spawner *PrecompileContext
 
 	// stateGasUsed accumulates the cost attributed to state operations. Today
 	// it is booked within RegularGas (the only enforced dimension); the tally
@@ -117,6 +126,18 @@ func (ctx *PrecompileContext) spawnBootstrap(self, caller common.Address) *Preco
 		DirectCall: true,
 		Rules:      ctx.Rules,
 		gas:        ctx.gas,
+		spawner:    ctx,
+	}
+}
+
+// markOutOfGas records exhaustion on this context and every context it was
+// spawned from. The budget is shared by pointer, so a child that drains it
+// leaves the parent unable to pay for anything either; without propagating the
+// flag the parent's dispatcher would see a full-looking context over an empty
+// budget and report success.
+func (ctx *PrecompileContext) markOutOfGas() {
+	for c := ctx; c != nil; c = c.spawner {
+		c.outOfGas = true
 	}
 }
 
@@ -126,7 +147,7 @@ func (ctx *PrecompileContext) spawnBootstrap(self, caller common.Address) *Preco
 // callers surface this via OutOfGas.
 func (ctx *PrecompileContext) chargeStateGas(cost uint64) {
 	if !ctx.UseGas(GasCosts{RegularGas: cost}) {
-		ctx.outOfGas = true
+		ctx.markOutOfGas()
 		return
 	}
 	ctx.stateGasUsed += cost

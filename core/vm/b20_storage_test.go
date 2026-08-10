@@ -290,6 +290,166 @@ func TestB20StorageStrings(t *testing.T) {
 	}
 }
 
+// TestB20StorageStringShrink pins that rewriting a string releases the tail
+// slots it no longer needs, as a Solidity assignment would. Reads are
+// length-bounded and would look correct either way, so the check is on the raw
+// slots: a leftover word diverges the state root from a Solidity reference.
+func TestB20StorageStringShrink(t *testing.T) {
+	s := newTestStorage(t)
+	tailSlot := func(i uint64) common.Hash {
+		base := new(uint256.Int).SetBytes(crypto.Keccak256(slotAt(b20SlotName).Bytes()))
+		return common.Hash(base.AddUint64(base, i).Bytes32())
+	}
+
+	// 100 bytes spans four tail slots.
+	s.setName(strings.Repeat("x", 100))
+	for i := uint64(0); i < 4; i++ {
+		if s.getWord(tailSlot(i)) == (common.Hash{}) {
+			t.Fatalf("tail slot %d empty after writing a 100-byte name", i)
+		}
+	}
+
+	// Shrink to a long-but-shorter value: slots 2 and 3 must be released.
+	s.setName(strings.Repeat("y", 40))
+	if got := s.name(); got != strings.Repeat("y", 40) {
+		t.Errorf("name = %q, want 40 y's", got)
+	}
+	for i := uint64(2); i < 4; i++ {
+		if got := s.getWord(tailSlot(i)); got != (common.Hash{}) {
+			t.Errorf("tail slot %d = %x after shrink, want cleared", i, got)
+		}
+	}
+
+	// Shrink to an inline short string: every tail slot must be released.
+	s.setName("USD")
+	if got := s.name(); got != "USD" {
+		t.Errorf("name = %q, want USD", got)
+	}
+	for i := uint64(0); i < 4; i++ {
+		if got := s.getWord(tailSlot(i)); got != (common.Hash{}) {
+			t.Errorf("tail slot %d = %x after shrink to short, want cleared", i, got)
+		}
+	}
+}
+
+// TestB20LongStringGas pins the cost of a long string's keccak-derived data
+// region. Deriving that root is a runtime keccak exactly as a mapping slot is,
+// and leaving it unmetered would donate the computation on every long name,
+// symbol or contractURI access.
+func TestB20LongStringGas(t *testing.T) {
+	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+	token := b20Addr(b20VariantAsset, 1)
+	gas := NewGasBudget(10_000_000)
+	ctx := &PrecompileContext{StateDB: statedb, Self: token, gas: &gas}
+	s := newMeteredB20Storage(ctx)
+
+	charged := func(fn func()) uint64 {
+		before := gas.RegularGas
+		fn()
+		return before - gas.RegularGas
+	}
+	const (
+		keccak32 = params.Keccak256Gas + params.Keccak256WordGas // 32-byte preimage
+		cold     = params.ColdSloadCostEIP2929
+		warm     = params.WarmStorageReadCostEIP2929
+		set      = params.SstoreSetGasEIP2200
+	)
+
+	// A short string lives inline: one slot, no data region, no keccak.
+	if c := charged(func() { s.setName("USD Coin") }); c != cold+set {
+		t.Errorf("short-string write charged %d, want %d", c, cold+set)
+	}
+	if c := charged(func() { _ = s.name() }); c != warm {
+		t.Errorf("short-string read charged %d, want %d", c, warm)
+	}
+
+	// 100 bytes spans four data slots. The write pays: reading the old length to
+	// see what has to be released, rewriting the length slot, one keccak for the
+	// data root, and four cold sets. Both length-slot touches are warm dirty
+	// updates — the slot was written above in the same transaction.
+	long := strings.Repeat("x", 100)
+	if c := charged(func() { s.setName(long) }); c != 2*warm+keccak32+4*(cold+set) {
+		t.Errorf("long-string write charged %d, want %d", c, 2*warm+keccak32+4*(cold+set))
+	}
+	// The read pays the length slot, the same single keccak, and four warm reads.
+	if c := charged(func() { _ = s.name() }); c != warm+keccak32+4*warm {
+		t.Errorf("long-string read charged %d, want %d", c, warm+keccak32+4*warm)
+	}
+
+	// Shrinking back to inline releases the four data slots, and must derive the
+	// data root only once for the whole operation — a second derivation would
+	// show up here as an extra keccak32.
+	if c := charged(func() { s.setName("USD") }); c != 2*warm+keccak32+4*warm {
+		t.Errorf("shrink-to-short charged %d, want %d", c, 2*warm+keccak32+4*warm)
+	}
+	if got := s.name(); got != "USD" {
+		t.Errorf("name = %q, want USD", got)
+	}
+}
+
+// TestB20SpawnedContextPropagatesOutOfGas pins that exhausting a spawned
+// context's budget is visible to the context it was spawned from. The budget is
+// shared by pointer, so only the flag can go missing — and it is the spawner's
+// dispatcher, never the child's, that checks it before reporting success.
+func TestB20SpawnedContextPropagatesOutOfGas(t *testing.T) {
+	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+	gas := NewGasBudget(100)
+	parent := &PrecompileContext{
+		StateDB: statedb, Self: b20Addr(b20VariantAsset, 1),
+		Caller: b20Alice, DirectCall: true, gas: &gas,
+	}
+	child := parent.spawnBootstrap(b20Addr(b20VariantAsset, 2), b20Alice)
+
+	if parent.OutOfGas() || child.OutOfGas() {
+		t.Fatal("fresh contexts must not report out of gas")
+	}
+	child.chargeStateGas(1_000_000) // more than the shared budget holds
+
+	if !child.OutOfGas() {
+		t.Error("child does not report out of gas after an unaffordable charge")
+	}
+	if !parent.OutOfGas() {
+		t.Error("spawner does not see the child's exhaustion — it would report success over an empty budget")
+	}
+	if got := parent.GasLeft(); got != 0 {
+		t.Errorf("shared budget = %d, want 0", got)
+	}
+}
+
+// TestB20SpawnedContextPropagatesSentryRefusal covers the other way a spawned
+// frame stops being able to write: the EIP-2200 reentrancy sentry refuses an
+// SSTORE while gas remains. Nothing drains the budget here, so unlike an
+// unaffordable charge this cannot be caught downstream by a later failing
+// charge — the spawner would hold gas in hand and report success over a write
+// that never landed.
+func TestB20SpawnedContextPropagatesSentryRefusal(t *testing.T) {
+	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+	// Above zero but at or below the 2300 stipend, so the sentry refuses.
+	gas := NewGasBudget(params.SstoreSentryGasEIP2200)
+	parent := &PrecompileContext{
+		StateDB: statedb, Self: b20Addr(b20VariantAsset, 1),
+		Caller: b20Alice, DirectCall: true, gas: &gas,
+	}
+	token := b20Addr(b20VariantAsset, 2)
+	child := parent.spawnBootstrap(token, b20Alice)
+
+	b20Storage{state: statedb, token: token, ctx: child}.
+		setWord(common.Hash{31: 7}, common.Hash{31: 1})
+
+	if !child.OutOfGas() {
+		t.Error("child does not report out of gas after a sentry-refused write")
+	}
+	if !parent.OutOfGas() {
+		t.Error("spawner does not see the sentry refusal — it would report success over a skipped write")
+	}
+	if got := statedb.GetState(token, common.Hash{31: 7}); got != (common.Hash{}) {
+		t.Errorf("refused write landed anyway: slot = %x", got)
+	}
+	if parent.GasLeft() == 0 {
+		t.Error("sentry refusal should not itself drain the budget; the test would prove nothing")
+	}
+}
+
 // TestB20StorageRefunds pins the EIP-3529 refund arms of the net-metered
 // write path against the interpreter's own makeGasSStoreFunc.
 func TestB20StorageRefunds(t *testing.T) {
