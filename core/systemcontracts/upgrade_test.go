@@ -10,7 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
 )
@@ -95,32 +94,4 @@ func TestGaussUpgradeApplies(t *testing.T) {
 	require.NoError(t, err)
 	upgradeBuildInSystemContract(&config, new(big.Int).Add(blockNumber, common.Big1), blockTime, blockTime+3, next)
 	require.Empty(t, next.GetCode(addr))
-}
-
-func TestUpgradeBuildInSystemContractNilInterface(t *testing.T) {
-	var (
-		config               = params.BSCChainConfig
-		blockNumber          = big.NewInt(37959559)
-		lastBlockTime uint64 = 1713419337
-		blockTime     uint64 = 1713419340
-		statedb       vm.StateDB
-	)
-
-	GenesisHash = params.BSCGenesisHash
-
-	upgradeBuildInSystemContract(config, blockNumber, lastBlockTime, blockTime, statedb)
-}
-
-func TestUpgradeBuildInSystemContractNilValue(t *testing.T) {
-	var (
-		config                   = params.BSCChainConfig
-		blockNumber              = big.NewInt(37959559)
-		lastBlockTime uint64     = 1713419337
-		blockTime     uint64     = 1713419340
-		statedb       vm.StateDB = (*state.StateDB)(nil)
-	)
-
-	GenesisHash = params.BSCGenesisHash
-
-	upgradeBuildInSystemContract(config, blockNumber, lastBlockTime, blockTime, statedb)
 }

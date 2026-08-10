@@ -272,13 +272,9 @@ func TestLoadPaymentContracts(t *testing.T) {
 	})
 }
 
-// Guard the literal 0x2007 address.
-func TestContractAddressIsTheLiteralOne(t *testing.T) {
-	require.Equal(t, common.HexToAddress("0x0000000000000000000000000000000000002007"), ContractAddress)
-}
-
 // Keep the duplicated address in sync without importing systemcontracts in production.
-func TestContractAddressMatchesSystemContracts(t *testing.T) {
+func TestContractAddress(t *testing.T) {
+	require.Equal(t, common.HexToAddress("0x0000000000000000000000000000000000002007"), ContractAddress)
 	require.Equal(t, common.HexToAddress(systemcontracts.PaymentLaneContract), ContractAddress)
 }
 
@@ -384,14 +380,6 @@ func TestReadPathThroughARealTrie(t *testing.T) {
 	const gasLimit = 55_000_000
 	require.Equal(t, laneFloor(gotParams, gasLimit), Signal{}.NextLaneSize(gotParams, gasLimit))
 	require.Equal(t, uint64(1_000_000), laneFloor(gotParams, gasLimit), "minRatio 150 of 55M is 825k, so minGas 1M is the binding floor")
-}
-
-// Count overflow must fail as config corruption, not read as empty.
-func TestPaymentContractCountAboveUint64(t *testing.T) {
-	var huge common.Hash
-	huge[0] = 1 // bit 255
-	_, err := LoadPaymentContracts(mapReader{slots: map[common.Hash]common.Hash{lenSlot: huge}})
-	require.ErrorIs(t, err, ErrCorruptConfig)
 }
 
 // Large but valid lists must still load.

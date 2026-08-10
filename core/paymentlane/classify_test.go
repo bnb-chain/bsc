@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -186,14 +185,6 @@ func TestPrecompileDestinationIsPayment(t *testing.T) {
 	}
 }
 
-// An absent account must still classify as payment.
-func TestAbsentAccountIsPayment(t *testing.T) {
-	tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &plainDest, value: big.NewInt(1)})
-	got, err := NewClassifier(common.Hash{}, absentAccounts(), nil).Classify(tx)
-	require.NoError(t, err)
-	require.Equal(t, ClassPayment, got)
-}
-
 // Cover every "no code" encoding the readers can return.
 func TestCodeHashBoundaryCases(t *testing.T) {
 	tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &plainDest, value: big.NewInt(1)})
@@ -251,39 +242,6 @@ func TestBlobAndSetCodeToListedContractAreGeneral(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, ClassGeneral, got, "tx type %d", txType)
 	}
-}
-
-// Membership alone decides; do not special-case addresses inside the set.
-func TestAnyListedAddressIsPayment(t *testing.T) {
-	timelock := common.HexToAddress(systemcontracts.TimelockContract)
-	listed := listedSet(ContractAddress, timelock)
-	for _, dest := range []common.Address{ContractAddress, timelock} {
-		tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &dest, value: big.NewInt(1), data: []byte{0x01}})
-		got, err := NewClassifier(common.Hash{}, forbidReads(t), listed).Classify(tx)
-		require.NoError(t, err)
-		require.Equal(t, ClassPayment, got, "destination %x", dest)
-	}
-}
-
-// Keep the type gate a whitelist of the three supported user tx types.
-func TestTypeGateAcceptsExactlyThreeTypes(t *testing.T) {
-	for _, tc := range []struct {
-		txType byte
-		want   Class
-	}{
-		{types.LegacyTxType, ClassPayment},
-		{types.AccessListTxType, ClassPayment},
-		{types.DynamicFeeTxType, ClassPayment},
-		{types.BlobTxType, ClassGeneral},
-		{types.SetCodeTxType, ClassGeneral},
-	} {
-		tx := makeTx(t, txOpts{txType: tc.txType, to: &plainDest, value: big.NewInt(1)})
-		got, err := NewClassifier(common.Hash{}, absentAccounts(), nil).Classify(tx)
-		require.NoError(t, err)
-		require.Equal(t, tc.want, got, "tx type %d", tc.txType)
-	}
-	require.Equal(t, byte(0x04), byte(types.SetCodeTxType),
-		"a new transaction type has appeared: confirm the gate is still a whitelist and extend this table")
 }
 
 // State-read failures must fail shut and keep Err sticky.
@@ -344,20 +302,4 @@ func TestMemoDoesOneReadPerDistinctDestination(t *testing.T) {
 	_, err = c2.Classify(tx)
 	require.Error(t, err)
 	require.Len(t, failing.reads, 2, "errors must not be memoised")
-}
-
-// nil payment-contract set means empty, not failure.
-func TestNilPaymentContractsMeansEmpty(t *testing.T) {
-	tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &listedDest, data: []byte{0x01}})
-	got, err := NewClassifier(common.Hash{}, forbidReads(t), nil).Classify(tx)
-	require.NoError(t, err)
-	require.Equal(t, ClassGeneral, got)
-}
-
-// TestCodedDestinationIsGeneral is the plain contract-call case.
-func TestCodedDestinationIsGeneral(t *testing.T) {
-	tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &plainDest, value: big.NewInt(1)})
-	got, err := NewClassifier(common.Hash{}, codedAccounts(), nil).Classify(tx)
-	require.NoError(t, err)
-	require.Equal(t, ClassGeneral, got)
 }

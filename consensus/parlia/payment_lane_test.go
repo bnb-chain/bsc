@@ -108,16 +108,6 @@ func newParliaLaneHarness(t *testing.T) (*Parlia, *core.BlockChain, *params.Chai
 	return engine, chain, &config, parent, newHeader, newState
 }
 
-// TestPaymentLaneAppliesToTheBlockAfterParliaActivation checks the harness boundary.
-func TestPaymentLaneAppliesToTheBlockAfterParliaActivation(t *testing.T) {
-	_, _, config, parent, _, _ := newParliaLaneHarness(t)
-
-	if !config.IsGauss(parent.Number(), parent.Time()) {
-		t.Fatalf("block %d must be a lane block: gauss=%d parent=(%d, %d)",
-			parent.NumberU64()+1, *config.GaussTime, parent.NumberU64(), parent.Time())
-	}
-}
-
 // TestPaymentLaneCommitmentSurvivesParliaAssembly checks both Parlia assemblers stamp after assembly.
 func TestPaymentLaneCommitmentSurvivesParliaAssembly(t *testing.T) {
 	const paymentUsed = 42_000

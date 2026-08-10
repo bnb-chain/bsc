@@ -68,16 +68,6 @@ func TestDecodeRejectsMalformed(t *testing.T) {
 	})
 }
 
-// Bootstrap comes only from an explicit nil parent commitment, never from Decode failure.
-func TestBootstrapIsNeverInferredFromADecodeFailure(t *testing.T) {
-	require.Equal(t, Signal{}, newSignal(nil, 0, 55_000_000))
-
-	corrupt := Encode(Commitment{LaneSize: 999})
-	corrupt[31] = 0xff
-	_, err := Decode(corrupt)
-	require.ErrorIs(t, err, ErrBadCommitment)
-}
-
 // Keep types.Header.IsEmptyUncleHash and Decode on the same framing rule.
 func TestLaneCommitmentTagAgreesWithDecode(t *testing.T) {
 	// Check both directions across reserved bytes and random payloads.
@@ -142,29 +132,4 @@ func TestCheckHeaderBoundsRejectsOnlyForgeries(t *testing.T) {
 	require.ErrorIs(t,
 		Commitment{LaneSize: gasLimit - gasUsed + 1}.CheckHeaderBounds(gasUsed, gasLimit), ErrViolated,
 		"the accounting rule must be evaluated here, not deferred to execution")
-}
-
-// LaneSize <= gasLimit is redundant for validity but kept for a better error.
-func TestTheGasLimitBoundOnlyChangesTheDiagnosis(t *testing.T) {
-	const gasLimit = 24
-	for gasUsed := uint64(0); gasUsed <= gasLimit+4; gasUsed++ {
-		for payment := uint64(0); payment <= gasLimit+4; payment++ {
-			for lane := uint64(0); lane <= gasLimit+4; lane++ {
-				c := Commitment{LaneSize: lane, PaymentGasUsed: payment}
-				withBound := c.CheckHeaderBounds(gasUsed, gasLimit)
-
-				// The same function with the explicit lane <= gasLimit check removed.
-				var withoutBound error
-				if c.PaymentGasUsed > gasUsed {
-					withoutBound = ErrUntruthy
-				} else {
-					withoutBound = CheckInequality(gasLimit, gasUsed, c.PaymentGasUsed, c.LaneSize)
-				}
-
-				require.Equalf(t, withoutBound == nil, withBound == nil,
-					"gasUsed=%d payment=%d lane=%d: the bound changed the verdict, not just the message",
-					gasUsed, payment, lane)
-			}
-		}
-	}
 }

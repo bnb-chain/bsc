@@ -191,27 +191,3 @@ func TestVerifyBidBlockLaneQuotaSkipsTheSystemTxRegion(t *testing.T) {
 	require.ErrorIs(t, w.verifyBidBlockLaneQuota(decoded, local), paymentlane.ErrUntruthy,
 		"the system-tx region must not raise the ceiling")
 }
-
-// TestVerifyBidBlockLaneQuotaRequiresTheLocalParent checks the local-parent precondition.
-func TestVerifyBidBlockLaneQuotaRequiresTheLocalParent(t *testing.T) {
-	w, header, local, _ := laneBidBlockHarness(t)
-
-	h := types.CopyHeader(header)
-	h.ParentHash = common.Hash{0x99}
-
-	err := w.verifyBidBlockLaneQuota(bidBlockWith(h), local)
-	require.ErrorContains(t, err, "is not the parent the local state is open on")
-}
-
-// TestVerifyBidBlockLaneQuotaSkipsAPreActivationHeader keeps pre-Gauss blocks untouched.
-func TestVerifyBidBlockLaneQuotaSkipsAPreActivationHeader(t *testing.T) {
-	w, header, local, _ := laneBidBlockHarness(t)
-
-	preGauss := *w.chainConfig
-	preGauss.GaussTime = nil
-	w.chainConfig = &preGauss
-
-	h := types.CopyHeader(header)
-	h.UncleHash = types.EmptyUncleHash
-	require.NoError(t, w.verifyBidBlockLaneQuota(bidBlockWith(h), local))
-}

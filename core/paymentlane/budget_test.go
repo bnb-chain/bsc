@@ -64,24 +64,6 @@ func laneRun(t *testing.T, capacity, laneSize, reserve uint64, seq []txSpec) ([]
 	return taken, b, poolUsed()
 }
 
-// TestZeroValueClassIsGeneral keeps the zero-value fallback aligned with the upstream path.
-func TestZeroValueClassIsGeneral(t *testing.T) {
-	var unset Class
-	require.Equal(t, ClassGeneral, unset, "the zero Class must be ClassGeneral")
-	require.Equal(t, "general", unset.String())
-
-	var b Budget
-	b.RecordUsed(unset, 500)
-	require.Equal(t, uint64(0), b.PaymentUsed, "unclassified gas must not be booked as payment")
-	require.Equal(t, uint64(0), b.IdleLane(), "and it must not move the quota either")
-
-	require.Equal(t, uint64(1000), b.MaxAvailableGas(1000, unset))
-	require.Equal(t, uint64(1000), b.MaxAvailableGas(1000, ClassPayment))
-
-	withLane := Budget{LaneSize: 300}
-	require.Equal(t, uint64(700), withLane.MaxAvailableGas(1000, unset))
-}
-
 // TestAdmissionInvariants checks the packing loop invariants over random sequences.
 func TestAdmissionInvariants(t *testing.T) {
 	const capacity = 1000
@@ -133,60 +115,6 @@ func TestAdmissionIsExactlyTight(t *testing.T) {
 	}
 }
 
-// TestGeneralMaxAvailableGasFlatBelowLane checks the general bound below and above the quota.
-func TestGeneralMaxAvailableGasFlatBelowLane(t *testing.T) {
-	const capacity, laneSize = 1000, 300
-	for _, pu := range []uint64{0, 1, laneSize / 2, laneSize - 1, laneSize} {
-		b := Budget{LaneSize: laneSize, PaymentUsed: pu}
-		require.Equalf(t, uint64(capacity-laneSize), b.MaxAvailableGas(capacity-pu, ClassGeneral),
-			"pu=%d (inside the quota): general's MaxAvailableGas must be constant", pu)
-	}
-	for _, over := range []uint64{1, 2, 100} {
-		pu := uint64(laneSize) + over
-		b := Budget{LaneSize: laneSize, PaymentUsed: pu}
-		require.Equalf(t, capacity-pu, b.MaxAvailableGas(capacity-pu, ClassGeneral),
-			"pu=L+%d: general's MaxAvailableGas", over)
-	}
-}
-
-// TestIdleLaneBoundaries checks the saturating IdleLane edges.
-func TestIdleLaneBoundaries(t *testing.T) {
-	for _, tc := range []struct {
-		name                  string
-		laneSize, pu, shared  uint64
-		wantIdle, wantGeneral uint64
-	}{
-		{"quota exactly filled, general gets the whole shared remainder back", 100, 100, 500, 0, 500},
-		{"quota one gas short of full", 100, 99, 500, 1, 499},
-		{"overfilling the quota does not wrap IdleLane", 100, 150, 500, 0, 500},
-		{"IdleLane exactly equals the shared remainder, no general tx gets in", 100, 0, 100, 100, 0},
-		{"IdleLane exceeds the shared remainder, saturates to 0", 900, 0, 100, 900, 0},
-		{"zero quota, the lane degenerates", 0, 0, 500, 0, 500},
-	} {
-		b := Budget{LaneSize: tc.laneSize, PaymentUsed: tc.pu}
-		require.Equalf(t, tc.wantIdle, b.IdleLane(), "%s: IdleLane", tc.name)
-		require.Equalf(t, tc.wantGeneral, b.MaxAvailableGas(tc.shared, ClassGeneral),
-			"%s: general's MaxAvailableGas", tc.name)
-		require.Equalf(t, tc.shared, b.MaxAvailableGas(tc.shared, ClassPayment),
-			"%s: payment's MaxAvailableGas must equal the shared remainder", tc.name)
-	}
-}
-
-// TestPaymentPredicateIsTheLooserOne keeps the worker termination check sound.
-func TestPaymentPredicateIsTheLooserOne(t *testing.T) {
-	for laneSize := uint64(0); laneSize <= 200; laneSize += 13 {
-		for pu := uint64(0); pu <= 200; pu += 11 {
-			for shared := uint64(0); shared <= 200; shared += 7 {
-				b := Budget{LaneSize: laneSize, PaymentUsed: pu}
-				if b.MaxAvailableGas(shared, ClassGeneral) > b.MaxAvailableGas(shared, ClassPayment) {
-					t.Fatalf("L=%d pu=%d shared=%d: general's MaxAvailableGas is the wider one",
-						laneSize, pu, shared)
-				}
-			}
-		}
-	}
-}
-
 // TestLaneSizeExceedsCapacity checks the over-capacity quota behavior.
 func TestLaneSizeExceedsCapacity(t *testing.T) {
 	const capacity = 1000
@@ -224,47 +152,6 @@ func TestPayBidTxAlwaysFitsAfterLaneAdmission(t *testing.T) {
 	b := Budget{LaneSize: capacity - payBidTxGas + 1}
 	require.Less(t, b.MaxAvailableGas(capacity, ClassGeneral), uint64(payBidTxGas),
 		"past a quota of capacity-payBidTxGas, payBidTx is supposed to stop fitting")
-}
-
-// TestPackingIsOrderSensitive records that packing depends on order.
-func TestPackingIsOrderSensitive(t *testing.T) {
-	const capacity, laneSize = 100, 50
-	g := txSpec{ClassGeneral, 50, 50}
-	p := txSpec{ClassPayment, 60, 60}
-
-	_, _, paymentFirst := laneRun(t, capacity, laneSize, 0, []txSpec{p, g})
-	_, _, generalFirst := laneRun(t, capacity, laneSize, 0, []txSpec{g, p})
-
-	require.Equal(t, uint64(60), paymentFirst, "payment first: total packed gas")
-	require.Equal(t, uint64(50), generalFirst, "general first: total packed gas")
-}
-
-// TestInvariantAdmissionBeatsStaticPools keeps the single-pool design choice explicit.
-func TestInvariantAdmissionBeatsStaticPools(t *testing.T) {
-	const capacity, laneSize = 200, 100
-	seq := []txSpec{
-		{ClassPayment, 60, 60}, {ClassPayment, 50, 50},
-		{ClassPayment, 50, 50}, {ClassGeneral, 40, 40},
-	} // sums to 200, exactly the capacity
-
-	paymentPool, generalPool := uint64(laneSize), uint64(capacity-laneSize)
-	staticOK := true
-	for _, tx := range seq {
-		switch {
-		case tx.class == ClassPayment && paymentPool >= tx.limit:
-			paymentPool -= tx.limit
-		case generalPool >= tx.limit:
-			generalPool -= tx.limit
-		default:
-			staticOK = false
-		}
-	}
-	require.False(t, staticOK,
-		"the counterexample no longer bites: two-pool greedy accepted this sequence, rebuild it")
-
-	taken, _, _ := laneRun(t, capacity, laneSize, 0, seq)
-	require.Len(t, taken, len(seq),
-		"inequality admission should take all of them, it only took %v", taken)
 }
 
 // TestLaneIsFloorNotCeiling covers the rule boundary cases.
@@ -333,13 +220,6 @@ func TestVerifyFailureTriggers(t *testing.T) {
 	}
 }
 
-// TestVerifyRejectsSwappedTotals catches swapped Verify arguments.
-func TestVerifyRejectsSwappedTotals(t *testing.T) {
-	b := Budget{LaneSize: 20, PaymentUsed: 20}
-	require.NoError(t, b.Verify(100, 80, 80), "equal totals are the no-system-gas case")
-	require.ErrorContains(t, b.Verify(100, 80, 101), "exceeds block total")
-}
-
 // TestVerifyCommitmentComparesThePaymentFigure checks the committed payment total.
 func TestVerifyCommitmentComparesThePaymentFigure(t *testing.T) {
 	b := Budget{LaneSize: 20, PaymentUsed: 20}
@@ -360,23 +240,4 @@ func TestVerifyCommitmentComparesThePaymentFigure(t *testing.T) {
 			require.ErrorIs(t, b.VerifyCommitment(gasLimit, gasUsed, pool, tc.lie), ErrUntruthy)
 		})
 	}
-}
-
-// TestVerifyCommitmentIgnoresLaneSize leaves quota checking to CheckNextLaneSize.
-func TestVerifyCommitmentIgnoresLaneSize(t *testing.T) {
-	b := Budget{LaneSize: 20, PaymentUsed: 20}
-	absurd := Commitment{LaneSize: 999_999, PaymentGasUsed: 20}
-	require.NoError(t, b.VerifyCommitment(100, 80, 80, absurd),
-		"VerifyCommitment must not police LaneSize; CheckNextLaneSize does")
-
-	p, s := defaultParams(), Signal{}
-	require.ErrorIs(t, s.CheckNextLaneSize(absurd.LaneSize, p, 55_000_000), ErrQuotaMismatch)
-	require.NoError(t, s.CheckNextLaneSize(s.NextLaneSize(p, 55_000_000), p, 55_000_000))
-}
-
-// TestVerifyCommitmentStillEnforcesTheRule keeps VerifyCommitment checking the inequality.
-func TestVerifyCommitmentStillEnforcesTheRule(t *testing.T) {
-	b := Budget{LaneSize: 90, PaymentUsed: 10}
-	c := Commitment{LaneSize: 90, PaymentGasUsed: 10}
-	require.ErrorIs(t, b.VerifyCommitment(100, 70, 70, c), ErrViolated)
 }

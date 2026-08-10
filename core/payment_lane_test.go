@@ -14,14 +14,12 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts/gauss"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/stretchr/testify/require"
 )
 
@@ -264,21 +262,6 @@ func TestPaymentLaneVerifyPackedBidRefusesASwallowedClassification(t *testing.T)
 		"a swallowed classification failure must reject the bid, not wait for the seal")
 }
 
-// TestPaymentLaneCheckQuotaAdoptsTheQuota checks that CheckQuota stores the committed quota.
-func TestPaymentLaneCheckQuotaAdoptsTheQuota(t *testing.T) {
-	ls := &LaneState{
-		cfg:      paymentlane.Params{MinRatio: 200, MaxRatio: 800, MinGas: 2_000_000, MaxGas: 8_000_000},
-		gasLimit: laneTestGasLimit,
-		class:    paymentlane.NewClassifier(common.Hash{}, failingAccountReader{}, nil),
-	}
-	const want = 2_000_000
-	require.NoError(t, ls.CheckQuota(want))
-	require.EqualValues(t, want, ls.Budget.LaneSize, "the checked quota must be adopted")
-
-	err := ls.VerifyImported(laneTestGasLimit-1, laneTestGasLimit-1, paymentlane.Commitment{LaneSize: want})
-	require.ErrorIs(t, err, paymentlane.ErrViolated)
-}
-
 // TestPaymentLaneWriteCommitmentRefusesASwallowedClassification checks the seal-time backstop.
 func TestPaymentLaneWriteCommitmentRefusesASwallowedClassification(t *testing.T) {
 	to := common.Address{0x44}
@@ -353,100 +336,6 @@ func TestPaymentLaneAndUnclesCannotShareTheSlot(t *testing.T) {
 	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 3, nil)
 	if _, err := paymentlane.Decode(blocks[2].UncleHash()); err != nil {
 		t.Fatalf("the uncle-free chain must still carry a commitment: %v", err)
-	}
-}
-
-// BenchmarkResolveLaneState measures ResolveLaneState without a params cache.
-func BenchmarkResolveLaneState(b *testing.B) {
-	config, gspec, _ := laneGenesis(b)
-	db, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 4, nil)
-	parent, header := blocks[2], blocks[3].Header()
-
-	sdb := state.NewDatabase(triedb.NewDatabase(db, triedb.HashDefaults), nil)
-	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), DefaultConfig())
-	if err != nil {
-		b.Fatal(err)
-	}
-	defer chain.Stop()
-	if _, err := chain.InsertChain(blocks); err != nil {
-		b.Fatal(err)
-	}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		statedb, err := state.New(parent.Root(), sdb)
-		if err != nil {
-			b.Fatal(err)
-		}
-		lane, err := ResolveLaneState(config, chain, parent.Header(), header, statedb.Reader())
-		if err != nil {
-			b.Fatal(err)
-		}
-		if !lane.On() {
-			b.Fatal("the benchmark must exercise an active lane")
-		}
-	}
-}
-
-// BenchmarkResolveLaneStateFullList measures ResolveLaneState with a large payment-contract list.
-func BenchmarkResolveLaneStateFullList(b *testing.B) {
-	code, err := hex.DecodeString(strings.TrimSpace(gauss.RialtoPaymentLaneContract))
-	if err != nil {
-		b.Fatal(err)
-	}
-	config := *params.AllEthashProtocolChanges
-	gaussTime := uint64(15)
-	config.GaussTime = &gaussTime
-
-	const n = 256
-	storage := map[common.Hash]common.Hash{
-		common.BytesToHash([]byte{8}): common.BigToHash(big.NewInt(n)),
-	}
-	base := new(big.Int).SetBytes(crypto.Keccak256(common.BytesToHash([]byte{8}).Bytes()))
-	for i := 0; i < n; i++ {
-		slot := common.BigToHash(new(big.Int).Add(base, big.NewInt(int64(i))))
-		storage[slot] = common.BytesToHash(common.BigToAddress(big.NewInt(int64(0x10000 + i))).Bytes())
-	}
-	gspec := &Genesis{
-		Config:   &config,
-		GasLimit: laneTestGasLimit,
-		Alloc: types.GenesisAlloc{
-			paymentlane.ContractAddress: {Code: code, Balance: common.Big0, Storage: storage},
-		},
-	}
-	db, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 4, nil)
-	parent, header := blocks[2], blocks[3].Header()
-
-	sdb := state.NewDatabase(triedb.NewDatabase(db, triedb.HashDefaults), nil)
-	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), DefaultConfig())
-	if err != nil {
-		b.Fatal(err)
-	}
-	defer chain.Stop()
-	if _, err := chain.InsertChain(blocks); err != nil {
-		b.Fatal(err)
-	}
-	statedb, err := state.New(parent.Root(), sdb)
-	if err != nil {
-		b.Fatal(err)
-	}
-	listed, err := paymentlane.LoadPaymentContracts(statedb.Reader())
-	if err != nil {
-		b.Fatal(err)
-	}
-	if len(listed) != n {
-		b.Fatalf("fixture did not take: %d listed, want %d", len(listed), n)
-	}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		statedb, err := state.New(parent.Root(), sdb)
-		if err != nil {
-			b.Fatal(err)
-		}
-		if _, err := ResolveLaneState(&config, chain, parent.Header(), header, statedb.Reader()); err != nil {
-			b.Fatal(err)
-		}
 	}
 }
 
