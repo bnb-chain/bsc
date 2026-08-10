@@ -1125,7 +1125,14 @@ func TryUpdateBuildInSystemContract(config *params.ChainConfig, blockNumber *big
 		// later, plus the sentinel that keeps the registry accounts from being
 		// reaped (BEP-702 3.15, 3.16).
 		if config.IsInBSC() && config.IsOnAmsterdam(blockNumber, lastBlockTime, blockTime) {
-			admin := common.HexToAddress(TimelockContract)
+			// The admin comes from chain configuration rather than being fixed here
+			// (BEP-702 3.15), so a QA network can hold the switch with a key it
+			// controls while the public networks name their timelock. A nil setting
+			// seeds the sentinels and leaves the switch shut.
+			var admin common.Address
+			if config.B20ActivationAdmin != nil {
+				admin = *config.B20ActivationAdmin
+			}
 			vm.SeedB20Activation(statedb, admin)
 			log.Info("Seeded B20 activation registry", "blockNumber", blockNumber.Int64(),
 				"blockTime", blockTime, "activationAdmin", admin)

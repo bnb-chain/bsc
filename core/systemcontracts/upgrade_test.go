@@ -73,6 +73,50 @@ func TestUpgradeBuildInSystemContractNilValue(t *testing.T) {
 	upgradeBuildInSystemContract(config, blockNumber, lastBlockTime, blockTime, statedb)
 }
 
+// TestB20ActivationAdminIsConfigured pins that the seeded admin comes from chain
+// configuration (BEP-702 3.15) rather than being fixed in the fork hook. It has
+// to: the public networks name a governance timelock, which is a contract and so
+// cannot sign anything, while a QA network needs the switch held by a key it can
+// actually transact from. Hard-coding the timelock made the post-activation path
+// reachable only through a governance proposal or a state override.
+func TestB20ActivationAdminIsConfigured(t *testing.T) {
+	const forkTime = 1000
+	postLondon := big.NewInt(50_000_000)
+
+	seedWith := func(admin *common.Address) common.Address {
+		statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg := *params.BSCChainConfig
+		ft := uint64(forkTime)
+		cfg.AmsterdamTime = &ft
+		cfg.B20ActivationAdmin = admin
+		TryUpdateBuildInSystemContract(&cfg, postLondon, forkTime-1, forkTime, statedb, true)
+		return vm.B20ActivationAdmin(statedb)
+	}
+
+	// The public configs name their timelock, and it is what gets installed.
+	if params.BSCChainConfig.B20ActivationAdmin == nil {
+		t.Error("BSCChainConfig names no activation admin — B20 would ship inert on mainnet")
+	}
+	if got := seedWith(params.BSCChainConfig.B20ActivationAdmin); got != params.BSCTimelockAddress {
+		t.Errorf("seeded admin = %s, want the timelock %s", got.Hex(), params.BSCTimelockAddress.Hex())
+	}
+
+	// A QA network can hold the switch with an ordinary account.
+	qa := common.HexToAddress("0x0ead11")
+	if got := seedWith(&qa); got != qa {
+		t.Errorf("seeded admin = %s, want the configured %s", got.Hex(), qa.Hex())
+	}
+
+	// And an unset setting ships the code with the switch shut, which is a valid
+	// choice rather than an error.
+	if got := seedWith(nil); got != (common.Address{}) {
+		t.Errorf("seeded admin = %s, want zero when unconfigured", got.Hex())
+	}
+}
+
 // TestB20ActivationSeededAtAmsterdam covers the fork wiring, not the seeding
 // itself: that the boundary predicate fires on exactly the first Amsterdam
 // block, that it is gated to BSC, and that the timelock is what gets installed.

@@ -264,6 +264,7 @@ var (
 			Osaka:     DefaultOsakaBlobConfigBSC,
 			Amsterdam: DefaultAmsterdamBlobConfigBSC,
 		},
+		B20ActivationAdmin: &BSCTimelockAddress,
 	}
 
 	ChapelChainConfig = &ChainConfig{
@@ -319,6 +320,7 @@ var (
 			Osaka:     DefaultOsakaBlobConfigBSC,
 			Amsterdam: DefaultAmsterdamBlobConfigBSC,
 		},
+		B20ActivationAdmin: &BSCTimelockAddress,
 	}
 
 	// used to test hard fork upgrade, following https://github.com/bnb-chain/bsc-genesis-contract/blob/master/genesis.json
@@ -376,6 +378,7 @@ var (
 			Osaka:     DefaultOsakaBlobConfigBSC,
 			Amsterdam: DefaultAmsterdamBlobConfigBSC,
 		},
+		B20ActivationAdmin: &BSCTimelockAddress,
 	}
 
 	ParliaTestChainConfig = &ChainConfig{
@@ -738,7 +741,19 @@ type ChainConfig struct {
 	BPO4Time       *uint64 `json:"bpo4Time,omitempty"`       // BPO4 switch time (nil = no fork, 0 = already on bpo4)
 	BPO5Time       *uint64 `json:"bpo5Time,omitempty"`       // BPO5 switch time (nil = no fork, 0 = already on bpo5)
 	AmsterdamTime  *uint64 `json:"amsterdamTime,omitempty"`  // Amsterdam switch time (nil = no fork, 0 = already on amsterdam)
-	UBTTime        *uint64 `json:"ubtTime,omitempty"`        // UBT switch time (nil = no fork, 0 = already on UBT)
+
+	// B20ActivationAdmin is the account the B20 ActivationRegistry is seeded with
+	// at the fork that ships the precompiles (BEP-702 3.15). It is the only
+	// account that can ever open a B20 feature, and it is rotatable through
+	// setAdmin from activation onward, so a compromised key needs no hard fork to
+	// replace.
+	//
+	// nil, or the zero address, ships the code with the switch welded shut: the
+	// registries are still given their sentinels, but nothing on that network can
+	// be activated. That is a valid configuration, not an error — a network can
+	// adopt the fork and decide later.
+	B20ActivationAdmin *common.Address `json:"b20ActivationAdmin,omitempty"`
+	UBTTime            *uint64         `json:"ubtTime,omitempty"` // UBT switch time (nil = no fork, 0 = already on UBT)
 
 	// TerminalTotalDifficulty is the amount of total difficulty reached by
 	// the network that triggers the consensus upgrade.
