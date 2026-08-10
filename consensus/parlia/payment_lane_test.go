@@ -129,7 +129,7 @@ func TestPaymentLaneCommitmentSurvivesParliaAssembly(t *testing.T) {
 			engine, chain, config, parent, newHeader, newState := newParliaLaneHarness(t)
 			header, stateDB := newHeader(), newState()
 
-			lane, err := core.ResolveLaneState(config, chain, parent.Header(), header, stateDB.Reader())
+			lane, err := core.ResolveLaneState(config, parent.Header(), header, stateDB.Reader())
 			if err != nil {
 				t.Fatalf("failed to resolve the lane state: %v", err)
 			}
@@ -174,7 +174,7 @@ func TestPaymentLaneRefusesAStaleBlockHash(t *testing.T) {
 	engine, chain, config, parent, newHeader, newState := newParliaLaneHarness(t)
 	header, stateDB := newHeader(), newState()
 
-	lane, err := core.ResolveLaneState(config, chain, parent.Header(), header, stateDB.Reader())
+	lane, err := core.ResolveLaneState(config, parent.Header(), header, stateDB.Reader())
 	if err != nil {
 		t.Fatalf("failed to resolve the lane state: %v", err)
 	}

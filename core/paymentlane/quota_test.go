@@ -377,24 +377,22 @@ func TestTheRulesSkipTheActivationBlock(t *testing.T) {
 		"below LondonBlock the lane must not apply")
 }
 
-// TestNewSignalFromParentDecidesTheGateAndDenominator checks fork gating and parent-derived inputs.
-func TestNewSignalFromParentDecidesTheGateAndDenominator(t *testing.T) {
-	forkTime := uint64(1_800_000_000)
-	config := *params.BSCChainConfig
-	config.GaussTime = &forkTime
-	base := config.LondonBlock.Uint64() + 1_000_000
+// TestNewSignalFromParentDecidesTheBoundaryAndDenominator checks the boundary test and the
+// parent-derived inputs.
+func TestNewSignalFromParentDecidesTheBoundaryAndDenominator(t *testing.T) {
+	// The boundary test rests on this: the sentinel and a commitment cannot collide.
+	_, err := Decode(types.EmptyUncleHash)
+	require.ErrorIs(t, err, ErrBadCommitment, "EmptyUncleHash must never decode as a commitment")
 
-	hdr := func(num, time, gasLimit, gasUsed uint64) *types.Header {
+	hdr := func(uncleHash common.Hash, gasLimit, gasUsed uint64) *types.Header {
 		return &types.Header{
-			Number: new(big.Int).SetUint64(num), Time: time, GasLimit: gasLimit, GasUsed: gasUsed,
+			Number: big.NewInt(1_000_000), GasLimit: gasLimit, GasUsed: gasUsed, UncleHash: uncleHash,
 		}
 	}
 	commitment := Encode(Commitment{LaneSize: 2_400_000, PaymentGasUsed: 1_000})
 
 	t.Run("a parent that is a lane block yields its commitment", func(t *testing.T) {
-		grandparent := hdr(base, forkTime, 55_000_000, 0)
-		parent := hdr(base+1, forkTime+3, 40_000_000, 30_001_000)
-		s, err := NewSignalFromParent(&config, grandparent, parent, commitment)
+		s, err := NewSignalFromParent(hdr(commitment, 40_000_000, 30_001_000))
 		require.NoError(t, err)
 		require.Equal(t, uint64(2_400_000), s.parentLaneSize)
 		require.Equal(t, uint64(30_000_000), s.parentSignalGasUsed)
@@ -402,44 +400,28 @@ func TestNewSignalFromParentDecidesTheGateAndDenominator(t *testing.T) {
 			"the denominator must be the PARENT's gas limit, never the child's")
 	})
 
-	t.Run("the activation block carries no commitment", func(t *testing.T) {
-		grandparent := hdr(base, forkTime-3, 55_000_000, 0)
-		parent := hdr(base+1, forkTime, 40_000_000, 0)
-		s, err := NewSignalFromParent(&config, grandparent, parent, common.Hash{0xff})
-		require.NoError(t, err)
-		require.Equal(t, Signal{}, s)
+	t.Run("a parent outside the mechanism is the bootstrap seed", func(t *testing.T) {
+		for name, parent := range map[string]*types.Header{
+			"the activation block": hdr(types.EmptyUncleHash, 40_000_000, 30_000_000),
+			"genesis":              {Number: common.Big0, GasLimit: 55_000_000, UncleHash: types.EmptyUncleHash},
+		} {
+			s, err := NewSignalFromParent(parent)
+			require.NoError(t, err, name)
+			require.Equal(t, Signal{}, s, name)
+		}
 	})
 
 	t.Run("a corrupt commitment is an error, never a seed", func(t *testing.T) {
-		grandparent := hdr(base, forkTime, 55_000_000, 0)
-		parent := hdr(base+1, forkTime+3, 40_000_000, 0)
 		corrupt := commitment
 		corrupt[31] = 0xff
-		s, err := NewSignalFromParent(&config, grandparent, parent, corrupt)
+		s, err := NewSignalFromParent(hdr(corrupt, 40_000_000, 0))
 		require.ErrorIs(t, err, ErrBadCommitment)
 		require.Equal(t, Signal{}, s, "the zero value must not be usable as a seed after an error")
 	})
-}
 
-// TestNilHeaderHandlingIsSpecified checks the nil parent and nil grandparent guards.
-func TestNilHeaderHandlingIsSpecified(t *testing.T) {
-	forkTime := uint64(1_800_000_000)
-	config := *params.BSCChainConfig
-	config.GaussTime = &forkTime
-	config.LondonBlock = common.Big0
-	config.BerlinBlock = common.Big0
-	hdr := &types.Header{Number: big.NewInt(10), Time: forkTime + 3, GasLimit: 55_000_000}
-
-	s, err := NewSignalFromParent(&config, hdr, nil, common.Hash{})
-	require.Error(t, err)
-	require.Equal(t, Signal{}, s)
-
-	genesis := &types.Header{Number: common.Big0, Time: forkTime - 3, GasLimit: 55_000_000}
-	s, err = NewSignalFromParent(&config, nil, genesis, common.Hash{})
-	require.NoError(t, err)
-	require.Equal(t, Signal{}, s)
-
-	s, err = NewSignalFromParent(&config, nil, hdr, common.Hash{})
-	require.ErrorIs(t, err, ErrBadCommitment, "an unresolved grandparent must not be read as genesis")
-	require.Equal(t, Signal{}, s)
+	t.Run("a nil parent is an error", func(t *testing.T) {
+		s, err := NewSignalFromParent(nil)
+		require.ErrorIs(t, err, ErrBadCommitment)
+		require.Equal(t, Signal{}, s)
+	})
 }

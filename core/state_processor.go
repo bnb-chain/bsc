@@ -94,7 +94,7 @@ func (p *StateProcessor) Process(ctx context.Context, block *types.Block, stated
 		return nil, errors.New("could not get parent block")
 	}
 
-	lane, err := ResolveLaneState(config, p.chain, lastBlock, header, statedb.Reader())
+	lane, err := ResolveLaneState(config, lastBlock, header, statedb.Reader())
 	if err != nil {
 		return nil, err
 	}

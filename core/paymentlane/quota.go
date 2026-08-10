@@ -5,7 +5,6 @@ import (
 	"math"
 	"math/bits"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -21,29 +20,23 @@ type Signal struct {
 	parentGasLimit      uint64
 }
 
-// NewSignalFromParent reads the parent's congestion off the chain, as the Signal NextLaneSize
-// turns into the next block's quota: the quota and payment gas the parent committed, its gas
-// used, and its own gas limit as the denominator.
+// NewSignalFromParent reads the parent's congestion off its own header, as the Signal
+// NextLaneSize turns into the next block's quota: the quota and payment gas the parent
+// committed, its gas used, and its own gas limit as the denominator.
 //
-// Whether the parent carries a commitment at all is decided by the GRANDparent's activation,
-// never by whether decoding succeeded. A nil grandparent is legal only for a genesis parent -
-// anywhere else it is an unresolved header, and treating it as bootstrap would silently reset the
-// quota to the floor.
-func NewSignalFromParent(
-	config *params.ChainConfig,
-	grandparent, parent *types.Header,
-	parentCommitment common.Hash,
-) (Signal, error) {
+// Whether the parent carries a commitment at all is a fork-boundary fact, and must NOT be
+// inferred from whether decoding succeeded - reading a failure as bootstrap would silently
+// reset the quota to the floor. The test is positive about the boundary instead: a block
+// outside the mechanism carries EmptyUncleHash (BEP 3.4.5), which no commitment can equal,
+// its reserved bytes being non-zero. That covers a genesis parent too.
+func NewSignalFromParent(parent *types.Header) (Signal, error) {
 	if parent == nil {
 		return Signal{}, fmt.Errorf("%w: nil parent header", ErrBadCommitment)
 	}
-	if grandparent == nil && parent.Number.Sign() != 0 {
-		return Signal{}, fmt.Errorf("%w: nil grandparent for parent %d", ErrBadCommitment, parent.Number)
-	}
-	if grandparent == nil || !config.IsGauss(grandparent.Number, grandparent.Time) {
+	if parent.UncleHash == types.EmptyUncleHash {
 		return Signal{}, nil
 	}
-	c, err := Decode(parentCommitment)
+	c, err := Decode(parent.UncleHash)
 	if err != nil {
 		return Signal{}, err
 	}

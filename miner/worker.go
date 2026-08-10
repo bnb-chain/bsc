@@ -720,7 +720,7 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		}
 	}
 	// Before StartPrefetcher: an error after it would leave a prefetcher with no env to discard it.
-	lane, err := core.ResolveLaneState(w.chainConfig, w.chain, parent, header, state.Reader())
+	lane, err := core.ResolveLaneState(w.chainConfig, parent, header, state.Reader())
 	if err != nil {
 		return nil, err
 	}

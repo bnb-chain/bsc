@@ -60,7 +60,7 @@ func (w *worker) verifyBidBlockLaneQuota(decoded *buildertypes.DecodedBidBlock, 
 	if parent == nil {
 		return consensus.ErrUnknownAncestor
 	}
-	lane, err := core.ResolveLaneState(w.chainConfig, w.chain, parent, header, local.state.Reader())
+	lane, err := core.ResolveLaneState(w.chainConfig, parent, header, local.state.Reader())
 	if err != nil {
 		return err
 	}

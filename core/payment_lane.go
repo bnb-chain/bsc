@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/paymentlane"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -15,11 +14,6 @@ import (
 type laneReader interface {
 	paymentlane.AccountReader
 	paymentlane.StorageReader
-}
-
-// laneHeaderReader resolves the header chain.
-type laneHeaderReader interface {
-	GetHeaderByHash(common.Hash) *types.Header
 }
 
 // LaneState is one block's lane state: the recursion inputs read from the parent, plus the
@@ -36,16 +30,9 @@ type LaneState struct {
 
 // ResolveLaneState derives one block's lane. One implementation for the importer and
 // the producer on purpose: every input is a choice the two must make identically.
-func ResolveLaneState(config *params.ChainConfig, hc laneHeaderReader, parent, header *types.Header, reader laneReader) (*LaneState, error) {
+func ResolveLaneState(config *params.ChainConfig, parent, header *types.Header, reader laneReader) (*LaneState, error) {
 	if !config.IsGauss(parent.Number, parent.Time) {
 		return &LaneState{}, nil
-	}
-	var grandparent *types.Header
-	if parent.Number.Sign() != 0 {
-		if grandparent = hc.GetHeaderByHash(parent.ParentHash); grandparent == nil {
-			// Local fault, not the peer's: this node may simply not have the header yet.
-			return nil, fmt.Errorf("%w: grandparent %x of block %d", paymentlane.ErrStateUnavailable, parent.ParentHash, header.Number)
-		}
 	}
 	cfg, err := paymentlane.LoadParams(reader)
 	if err != nil {
@@ -55,7 +42,7 @@ func ResolveLaneState(config *params.ChainConfig, hc laneHeaderReader, parent, h
 	if err != nil {
 		return nil, err
 	}
-	signal, err := paymentlane.NewSignalFromParent(config, grandparent, parent, parent.UncleHash)
+	signal, err := paymentlane.NewSignalFromParent(parent)
 	if err != nil {
 		return nil, err
 	}

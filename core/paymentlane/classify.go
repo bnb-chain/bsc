@@ -36,8 +36,6 @@ func NewClassifier(parentRoot common.Hash, parentAccountReader AccountReader, li
 // Classify returns the lane class of a user transaction (never a Parlia system one): the
 // BEP-703 section 3.2 gates, statically over declared fields plus the parent post-state, so
 // nothing executes and the gates are ordered to touch state last. It fails shut to ClassGeneral.
-// Three deviations from section 3.2: no precompile exclusion, gate 6 makes a zero-value transfer
-// general, and gate 4 is subordinate to gates 2 and 3 rather than unconditional.
 //
 // Other files cite these gates by number, so renumbering means fixing them too:
 //
