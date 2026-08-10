@@ -29,10 +29,10 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// newUnseededAmsterdamEVM builds an Amsterdam EVM whose registries have NOT been
+// newUnseededB20EVM builds a B20-enabled EVM whose registries have NOT been
 // seeded, which is the state a node is in between shipping the code and running
 // the fork's seeding.
-func newUnseededAmsterdamEVM(t *testing.T) (*state.StateDB, *EVM) {
+func newUnseededB20EVM(t *testing.T) (*state.StateDB, *EVM) {
 	t.Helper()
 	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	if err != nil {
@@ -52,7 +52,7 @@ func newUnseededAmsterdamEVM(t *testing.T) (*state.StateDB, *EVM) {
 // TestSeedB20Activation covers what the fork installs, and why each piece has to
 // be installed by the fork rather than by a later call.
 func TestSeedB20Activation(t *testing.T) {
-	statedb, evm := newUnseededAmsterdamEVM(t)
+	statedb, evm := newUnseededB20EVM(t)
 	timelock := common.HexToAddress("0x0000000000000000000000000000000000002006")
 	creator := common.HexToAddress("0xdec0de")
 
@@ -113,7 +113,7 @@ func TestSeedB20Activation(t *testing.T) {
 // undo governance. Replaying the fork block must not reinstate the configured
 // admin over one that setAdmin has since replaced.
 func TestSeedB20ActivationIdempotent(t *testing.T) {
-	statedb, evm := newUnseededAmsterdamEVM(t)
+	statedb, evm := newUnseededB20EVM(t)
 	timelock := common.HexToAddress("0x0000000000000000000000000000000000002006")
 	rotated := common.HexToAddress("0x0ead11")
 
@@ -136,7 +136,7 @@ func TestSeedB20ActivationIdempotent(t *testing.T) {
 // network ships the code with the switch welded shut. The sentinels still go on,
 // so the accounts survive state clearing and a later fork can install an admin.
 func TestSeedB20ActivationZeroAdmin(t *testing.T) {
-	statedb, _ := newUnseededAmsterdamEVM(t)
+	statedb, _ := newUnseededB20EVM(t)
 
 	SeedB20Activation(statedb, common.Address{})
 

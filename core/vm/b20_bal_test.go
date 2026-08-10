@@ -28,9 +28,10 @@ import (
 
 // Which accounts a token reads is about to stop being an implementation detail.
 // EIP-7928 puts the block's access list in the header, and BSC schedules it at
-// Amsterdam — the same fork B20 is gated on. From the first block B20 exists,
-// every account it reads is consensus data, and a chain-wide singleton read by
-// every transfer is also what serialises parallel execution.
+// Amsterdam. B20 activates on its own fork rather than that one (see
+// b20Enabled), but the two will coexist: once BAL is live, every account a token
+// reads is consensus data, and a chain-wide singleton read by every transfer is
+// also what serialises parallel execution.
 //
 // The PolicyRegistry is the only account a token reads besides its own. The tests
 // below pin when that read happens and when it does not.
@@ -105,7 +106,7 @@ func TestB20RealPolicyReadsRegistry(t *testing.T) {
 // no matter what their policies said, and would appear as one account in the
 // block access list.
 func TestB20TokenStorageIsPerToken(t *testing.T) {
-	statedb, evm := newAmsterdamEVM(t)
+	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xdec0de")
 	create := func(salt common.Hash) common.Address {
 		init := [][]byte{

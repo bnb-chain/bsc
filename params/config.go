@@ -1482,16 +1482,6 @@ func (c *ChainConfig) IsOnPasteur(currentBlockNumber *big.Int, lastBlockTime uin
 	return !c.IsPasteur(lastBlockNumber, lastBlockTime) && c.IsPasteur(currentBlockNumber, currentBlockTime)
 }
 
-// IsOnAmsterdam returns whether the given block is the first one at or after the
-// Amsterdam fork time.
-func (c *ChainConfig) IsOnAmsterdam(currentBlockNumber *big.Int, lastBlockTime uint64, currentBlockTime uint64) bool {
-	lastBlockNumber := new(big.Int)
-	if currentBlockNumber.Cmp(big.NewInt(1)) >= 0 {
-		lastBlockNumber.Sub(currentBlockNumber, big.NewInt(1))
-	}
-	return !c.IsAmsterdam(lastBlockNumber, lastBlockTime) && c.IsAmsterdam(currentBlockNumber, currentBlockTime)
-}
-
 // IsBPO1 returns whether time is either equal to the BPO1 fork time or greater.
 func (c *ChainConfig) IsBPO1(num *big.Int, time uint64) bool {
 	return c.IsLondon(num) && isTimestampForked(c.BPO1Time, time)

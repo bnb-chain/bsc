@@ -1124,7 +1124,7 @@ func TryUpdateBuildInSystemContract(config *params.ChainConfig, blockNumber *big
 		// feature; it only installs the switch that lets governance open one
 		// later, plus the sentinel that keeps the registry accounts from being
 		// reaped (BEP-702 3.15, 3.16).
-		if config.IsInBSC() && config.IsOnAmsterdam(blockNumber, lastBlockTime, blockTime) {
+		if config.IsInBSC() && config.IsOnPasteur(blockNumber, lastBlockTime, blockTime) {
 			// The admin comes from chain configuration rather than being fixed here
 			// (BEP-702 3.15), so a QA network can hold the switch with a key it
 			// controls while the public networks name their timelock. A nil setting

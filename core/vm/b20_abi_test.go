@@ -127,7 +127,7 @@ func TestB20ABIBaseline(t *testing.T) {
 // (ABI-encoded error, ErrExecutionReverted), exactly like a Solidity
 // `revert CustomError(...)`.
 func TestB20RevertData(t *testing.T) {
-	_, evm := newAmsterdamEVM(t)
+	_, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xdec0de")
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
 		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
@@ -195,7 +195,7 @@ func TestB20RevertData(t *testing.T) {
 // one implementation's error strings consensus data — and four bytes would be
 // worse than none, being shaped exactly like an argument-less custom error.
 func TestB20UndecodableCalldataRevertsEmpty(t *testing.T) {
-	_, evm := newAmsterdamEVM(t)
+	_, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xdec0de")
 	call := func(to common.Address, input []byte) ([]byte, error) {
 		ret, _, err := evm.Call(creator, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))

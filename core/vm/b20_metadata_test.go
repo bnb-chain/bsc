@@ -148,7 +148,7 @@ func TestB20MetadataUpdates(t *testing.T) {
 // updateName init call and asserts the rename took effect), and it is what lets
 // a creator finish configuring a token before any role holder exists.
 func TestB20MetadataDuringBootstrap(t *testing.T) {
-	statedb, evm := newAmsterdamEVM(t)
+	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xdec0de")
 
 	input := encodeCreateB20(b20VariantAsset, common.HexToHash("0xc0"), creator,

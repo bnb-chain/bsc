@@ -31,13 +31,13 @@ import (
 )
 
 // b20TestChainConfig returns a chain config B20 is actually active under:
-// Amsterdam scheduled, and Parlia set so IsInBSC holds. The BSC gate matters —
+// Pasteur scheduled, and Parlia set so IsInBSC holds. The BSC gate matters —
 // params.TestChainConfig alone has no Parlia, so a harness built on it would
 // exercise B20 on a chain where production never enables it.
 func b20TestChainConfig() *params.ChainConfig {
 	cfg := *params.TestChainConfig
 	zero := uint64(0)
-	cfg.AmsterdamTime = &zero
+	cfg.PasteurTime = &zero
 	cfg.Parlia = &params.ParliaConfig{}
 	return &cfg
 }
@@ -141,7 +141,7 @@ func TestResolveB20(t *testing.T) {
 // unlike isB20: the return is an enum, so an unrecognized variant must revert
 // rather than hand back a value the caller's own decoder would reject.
 func TestB20VariantOf(t *testing.T) {
-	_, evm := newAmsterdamEVM(t)
+	_, evm := newB20EVM(t)
 	call := func(to common.Address) ([]byte, error) {
 		ret, _, err := evm.Call(b20Alice, B20FactoryAddress,
 			b20Call(selVariantOf, addrKey(to)), NewGasBudget(1_000_000), uint256.NewInt(0))
@@ -216,7 +216,7 @@ func TestB20StatelessDispatchGuard(t *testing.T) {
 // to the ordinary account path, so a value-bearing call is refused instead of
 // being accepted and stranded at an address with no way to withdraw from.
 func TestB20UninitializedAddressBehavior(t *testing.T) {
-	_, evm := newAmsterdamEVM(t)
+	_, evm := newB20EVM(t)
 	caller := common.HexToAddress("0xca11e5")
 	// A well-formed Asset address nobody has created.
 	empty := b20Addr(b20VariantAsset, 0x77)
@@ -254,9 +254,9 @@ func TestB20UninitializedAddressBehavior(t *testing.T) {
 }
 
 // TestB20GateIsBSCOnly pins that the B20 address space is routed only on BSC.
-// IsAmsterdam is derived as (isMerge || IsInBSC) && ..., so a post-merge non-BSC
-// config that scheduled Amsterdam would otherwise hijack the reserved space —
-// and its registries would never be seeded, since that runs from a BSC-gated
+// The fork flag alone is not enough: IsPasteur asks only for London, so any
+// non-BSC config that set pasteurTime would otherwise hijack the reserved space
+// — and its registries would never be seeded, since that runs from a BSC-gated
 // fork hook. Reserved addresses would stop behaving like ordinary accounts on a
 // chain where no token can ever be created.
 func TestB20GateIsBSCOnly(t *testing.T) {
@@ -266,7 +266,7 @@ func TestB20GateIsBSCOnly(t *testing.T) {
 			t.Fatal(err)
 		}
 		bc := BlockContext{
-			Random:      &common.Hash{}, // post-merge, so IsAmsterdam can resolve without Parlia
+			Random:      &common.Hash{}, // post-merge rules, matching a live BSC chain
 			CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
 			Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
 			BlockNumber: big.NewInt(1),
@@ -276,26 +276,26 @@ func TestB20GateIsBSCOnly(t *testing.T) {
 	}
 
 	bsc := newEVM(b20TestChainConfig())
-	if !bsc.chainRules.IsAmsterdam || !bsc.chainRules.IsInBSC {
-		t.Fatal("the BSC harness must have both Amsterdam and IsInBSC")
+	if !bsc.chainRules.IsPasteur || !bsc.chainRules.IsInBSC {
+		t.Fatal("the BSC harness must have both the B20 fork flag and IsInBSC")
 	}
 	if !bsc.b20Enabled() {
-		t.Error("B20 must be enabled on a BSC chain at Amsterdam")
+		t.Error("B20 must be enabled on a BSC chain past the fork")
 	}
 
-	// Same fork time, no Parlia: post-merge is enough for IsAmsterdam, so this is
-	// exactly the configuration the gate has to exclude.
+	// Same fork time, no Parlia: the fork flag still resolves, so this is exactly
+	// the configuration the gate has to exclude.
 	nonBSCCfg := *b20TestChainConfig()
 	nonBSCCfg.Parlia = nil
 	nonBSC := newEVM(&nonBSCCfg)
-	if !nonBSC.chainRules.IsAmsterdam {
-		t.Fatal("expected IsAmsterdam to still hold post-merge without Parlia")
+	if !nonBSC.chainRules.IsPasteur {
+		t.Fatal("expected the fork flag to still hold without Parlia")
 	}
 	if nonBSC.chainRules.IsInBSC {
 		t.Fatal("a config without Parlia must not report IsInBSC")
 	}
 	if nonBSC.b20Enabled() {
-		t.Error("B20 must not be enabled off BSC, even at Amsterdam")
+		t.Error("B20 must not be enabled off BSC, even past the fork")
 	}
 	// And the reserved space must resolve to nothing there.
 	for _, addr := range []common.Address{

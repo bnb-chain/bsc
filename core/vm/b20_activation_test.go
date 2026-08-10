@@ -33,7 +33,7 @@ import (
 // writes are admin-only, no-op governance actions are surfaced, and the admin
 // is rotatable.
 func TestB20ActivationRegistry(t *testing.T) {
-	_, evm := newAmsterdamEVM(t)
+	_, evm := newB20EVM(t)
 	reg := B20ActivationRegistryAddress
 	admin := b20ActivationAdmin
 	stranger := common.HexToAddress("0x5747a9e")
@@ -109,7 +109,7 @@ func TestB20ActivationRegistry(t *testing.T) {
 // TestB20ActivationGates checks what the switch reaches: creation of tokens and
 // policies, and nothing on a token that already exists (BEP-702 3.15).
 func TestB20ActivationGates(t *testing.T) {
-	statedb, evm := newAmsterdamEVM(t)
+	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
 	admin := b20ActivationAdmin
 
@@ -169,7 +169,7 @@ func TestB20ActivationGates(t *testing.T) {
 // Storage alone leaves the account EIP-161-empty, and a clearing pass would
 // take every flag and policy with it (BEP-702 3.16).
 func TestB20RegistrySentinel(t *testing.T) {
-	statedb, evm := newAmsterdamEVM(t)
+	statedb, evm := newB20EVM(t)
 	admin := b20ActivationAdmin
 	creator := common.HexToAddress("0xc0ffee")
 
@@ -259,7 +259,7 @@ func TestB20EnsureSentinelIdempotent(t *testing.T) {
 // already carries code is occupied, whoever put it there. createB20 must refuse
 // it rather than plant the sentinel over it, and a registry must not either.
 func TestB20NeverOverwritesForeignCode(t *testing.T) {
-	statedb, evm := newAmsterdamEVM(t)
+	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc0de")
 	foreign := []byte{0x60, 0x00, 0x60, 0x00, 0xf3} // a plausible runtime stub
 

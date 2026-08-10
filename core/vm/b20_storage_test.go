@@ -669,7 +669,7 @@ func TestB20SstoreSentry(t *testing.T) {
 // reads and two cold writes for a first-time recipient — and additionally
 // requires the derivation and dispatch work B20 does on top to be accounted.
 func TestB20GasNeverCheaperThanBytecode(t *testing.T) {
-	_, evm := newAmsterdamEVM(t)
+	_, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xfee")
 	call := func(caller, to common.Address, input []byte) ([]byte, error) {
 		ret, _, err := evm.Call(caller, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))

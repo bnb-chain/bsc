@@ -52,7 +52,7 @@ func TestB20AssetExtension(t *testing.T) {
 	}
 	cfg := *b20TestChainConfig()
 	bc := BlockContext{
-		Random:      &common.Hash{}, // post-merge rules, so IsAmsterdam resolves
+		Random:      &common.Hash{}, // post-merge rules, matching a live BSC chain
 		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
 		Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
 		BlockNumber: big.NewInt(1),
@@ -180,7 +180,7 @@ func encodeAnnounce(calls [][]byte, id common.Hash) []byte {
 }
 
 func TestB20Announce(t *testing.T) {
-	_, evm := newAmsterdamEVM(t)
+	_, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
 	operator := common.HexToAddress("0x09e4a704")
 	salt := common.HexToHash("0x0e")
@@ -275,7 +275,7 @@ func encodeStringCall(sel [4]byte, strs ...string) []byte {
 }
 
 func TestB20ExtraMetadata(t *testing.T) {
-	_, evm := newAmsterdamEVM(t)
+	_, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
 	salt := common.HexToHash("0x0f")
 

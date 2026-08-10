@@ -45,7 +45,7 @@ func newTokenWithEVM(t *testing.T, now uint64, seed func(b20Storage)) (*state.St
 		seed(newB20Storage(statedb, token))
 	}
 	bc := BlockContext{
-		Random:      &common.Hash{}, // post-merge rules, so IsAmsterdam resolves
+		Random:      &common.Hash{}, // post-merge rules, matching a live BSC chain
 		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
 		Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
 		BlockNumber: big.NewInt(1),

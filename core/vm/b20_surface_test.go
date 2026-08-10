@@ -94,7 +94,7 @@ func TestB20ConstantGetters(t *testing.T) {
 
 	// OPERATOR_ROLE belongs to the Asset variant's own surface, so it is reached
 	// through a real Asset token rather than the shared dispatch.
-	_, evm := newAmsterdamEVM(t)
+	_, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xdec0de")
 	ret, _, err := evm.Call(creator, B20FactoryAddress,
 		encodeCreateB20(b20VariantAsset, common.HexToHash("0x0b"), creator, nil),
@@ -306,7 +306,7 @@ func TestB20MiscViews(t *testing.T) {
 
 	// isB20 is the factory's syntactic check: prefix only, ignoring the variant
 	// byte and saying nothing about whether a token exists there.
-	_, evm := newAmsterdamEVM(t)
+	_, evm := newB20EVM(t)
 	askIsB20 := func(a common.Address) bool {
 		ret, _, err := evm.Call(b20Alice, B20FactoryAddress, b20Call(selIsB20, addrKey(a)),
 			NewGasBudget(1_000_000), uint256.NewInt(0))

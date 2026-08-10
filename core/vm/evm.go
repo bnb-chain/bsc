@@ -59,17 +59,22 @@ func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
 // b20Enabled reports whether the B20 native token family is active for the
 // current block.
 //
-// BSC-only, and not merely because B20 is a BSC feature: IsAmsterdam is derived
-// as (isMerge || IsInBSC) && ..., so a post-merge non-BSC config that scheduled
-// Amsterdam would otherwise route the whole reserved address space to B20
-// handlers. Its registries would never be seeded either — that runs from the
-// BSC-gated fork hook — leaving reserved addresses that no longer behave like
-// ordinary accounts and where no token can ever be created.
+// BSC-only, and not merely because B20 is a BSC feature: IsPasteur only requires
+// London, so any non-BSC config that set pasteurTime would otherwise route the
+// whole reserved address space to B20 handlers. Its registries would never be
+// seeded either — that runs from the BSC-gated fork hook — leaving reserved
+// addresses that no longer behave like ordinary accounts and where no token can
+// ever be created.
 //
-// TODO: replace with a dedicated B20 fork flag on params.Rules; gated on
-// Amsterdam for now.
+// Pasteur is a placeholder for a dedicated B20 fork, not a shipping decision:
+// Pasteur is already past on Chapel, so on that network the seeding hook can no
+// longer fire and B20 would be permanently inert. Amsterdam is not an option
+// either — it schedules EIP-7928 on this tree, whose header field is only
+// scaffolded here, so activating it halts block production at the fork block.
+//
+// TODO: replace with a dedicated B20 fork flag on params.Rules.
 func (evm *EVM) b20Enabled() bool {
-	return evm.chainRules.IsInBSC && evm.chainRules.IsAmsterdam
+	return evm.chainRules.IsInBSC && evm.chainRules.IsPasteur
 }
 
 // runPrecompile dispatches a resolved precompile, routing stateful precompiles

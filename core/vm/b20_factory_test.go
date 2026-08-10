@@ -100,7 +100,7 @@ func TestB20Factory(t *testing.T) {
 	}
 	cfg := *b20TestChainConfig()
 	bc := BlockContext{
-		Random:      &common.Hash{}, // post-merge rules, so IsAmsterdam resolves
+		Random:      &common.Hash{}, // post-merge rules, matching a live BSC chain
 		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
 		Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
 		BlockNumber: big.NewInt(1),
@@ -179,7 +179,7 @@ func TestB20FactoryOwnerless(t *testing.T) {
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	cfg := *b20TestChainConfig()
 	bc := BlockContext{
-		Random:      &common.Hash{}, // post-merge rules, so IsAmsterdam resolves
+		Random:      &common.Hash{}, // post-merge rules, matching a live BSC chain
 		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
 		Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
 		BlockNumber: big.NewInt(1),
@@ -217,7 +217,7 @@ func TestB20FactoryOwnerless(t *testing.T) {
 // precedes every field check, the per-variant validation, and the metadata the
 // token ends up carrying.
 func TestB20CreateParams(t *testing.T) {
-	statedb, evm := newAmsterdamEVM(t)
+	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
 	call := func(input []byte) ([]byte, error) {
 		ret, _, err := evm.Call(creator, B20FactoryAddress, input, NewGasBudget(5_000_000), uint256.NewInt(0))
@@ -296,7 +296,7 @@ func TestB20CreateParams(t *testing.T) {
 // TestB20CreatedEvent pins the creation event's topics and payload: an indexer
 // must be able to build a token index from the factory address alone.
 func TestB20CreatedEvent(t *testing.T) {
-	statedb, evm := newAmsterdamEVM(t)
+	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xe7e17")
 	statedb.SetTxContext(common.HexToHash("0xbeef"), 0)
 
@@ -359,7 +359,7 @@ func TestB20CreatedEvent(t *testing.T) {
 //	w6  0x01   name length,   w7 "A"
 //	w8  0x01   symbol length, w9 "B"
 func TestB20CreateParamsCanonicalEncoding(t *testing.T) {
-	statedb, evm := newAmsterdamEVM(t)
+	statedb, evm := newB20EVM(t)
 	admin := common.HexToAddress("0xad3111")
 
 	word := func(v uint64) []byte { return u256hash(v).Bytes() }
@@ -398,7 +398,7 @@ func TestB20CreateParamsCanonicalEncoding(t *testing.T) {
 // encodings, reported as a bare revert rather than decoded into something
 // plausible.
 func TestB20CreateParamsRejectsMalformed(t *testing.T) {
-	_, evm := newAmsterdamEVM(t)
+	_, evm := newB20EVM(t)
 	admin := common.HexToAddress("0xad3111")
 	call := func(salt common.Hash, blob []byte) error {
 		_, _, err := evm.Call(admin, B20FactoryAddress,
@@ -444,7 +444,7 @@ func TestB20CreateParamsRejectsMalformed(t *testing.T) {
 // duplicate salt is reported as TokenAlreadyExists even when the currency in
 // the same call is invalid, because the occupancy check runs first.
 func TestB20CurrencyValidationFollowsOccupancy(t *testing.T) {
-	_, evm := newAmsterdamEVM(t)
+	_, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xdup)")
 	call := func(salt common.Hash, currency string) ([]byte, error) {
 		params := b20StablecoinParams("N", "S", creator, currency)

@@ -90,7 +90,7 @@ func TestB20ActivationAdminIsConfigured(t *testing.T) {
 		}
 		cfg := *params.BSCChainConfig
 		ft := uint64(forkTime)
-		cfg.AmsterdamTime = &ft
+		cfg.PasteurTime = &ft
 		cfg.B20ActivationAdmin = admin
 		TryUpdateBuildInSystemContract(&cfg, postLondon, forkTime-1, forkTime, statedb, true)
 		return vm.B20ActivationAdmin(statedb)
@@ -117,13 +117,13 @@ func TestB20ActivationAdminIsConfigured(t *testing.T) {
 	}
 }
 
-// TestB20ActivationSeededAtAmsterdam covers the fork wiring, not the seeding
-// itself: that the boundary predicate fires on exactly the first Amsterdam
+// TestB20ActivationSeededAtFork covers the fork wiring, not the seeding
+// itself: that the boundary predicate fires on exactly the first activating
 // block, that it is gated to BSC, and that the timelock is what gets installed.
 // Without this the seeding could silently never run and B20 would ship inert.
-func TestB20ActivationSeededAtAmsterdam(t *testing.T) {
+func TestB20ActivationSeededAtFork(t *testing.T) {
 	const forkTime = 1000
-	// Amsterdam is timestamp-based but still requires London, which on BSC is at
+	// The fork is timestamp-based but still requires London, which on BSC is at
 	// block 31302048 — a block number below it would make the predicate false for
 	// reasons that have nothing to do with the fork under test.
 	postLondon := big.NewInt(50_000_000)
@@ -138,7 +138,7 @@ func TestB20ActivationSeededAtAmsterdam(t *testing.T) {
 	bscConfig := func() *params.ChainConfig {
 		cfg := *params.BSCChainConfig
 		ft := uint64(forkTime)
-		cfg.AmsterdamTime = &ft
+		cfg.PasteurTime = &ft
 		return &cfg
 	}
 	timelock := common.HexToAddress(TimelockContract)
@@ -179,7 +179,7 @@ func TestB20ActivationSeededAtAmsterdam(t *testing.T) {
 	statedb = newState()
 	nonBSC := *params.BSCChainConfig
 	ft := uint64(forkTime)
-	nonBSC.AmsterdamTime = &ft
+	nonBSC.PasteurTime = &ft
 	nonBSC.Parlia = nil
 	TryUpdateBuildInSystemContract(&nonBSC, postLondon, forkTime-1, forkTime, statedb, true)
 	if got := vm.B20ActivationAdmin(statedb); got != (common.Address{}) {

@@ -44,7 +44,7 @@ func encodeUpdateList(sel [4]byte, id uint64, flag bool, addrs []common.Address)
 	return out
 }
 
-func newAmsterdamEVM(t *testing.T) (*state.StateDB, *EVM) {
+func newB20EVM(t *testing.T) (*state.StateDB, *EVM) {
 	t.Helper()
 	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	if err != nil {
@@ -52,7 +52,7 @@ func newAmsterdamEVM(t *testing.T) (*state.StateDB, *EVM) {
 	}
 	cfg := *b20TestChainConfig()
 	bc := BlockContext{
-		Random:      &common.Hash{}, // post-merge rules, so IsAmsterdam resolves
+		Random:      &common.Hash{}, // post-merge rules, matching a live BSC chain
 		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
 		Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
 		BlockNumber: big.NewInt(1),
@@ -80,7 +80,7 @@ func seedActivation(statedb *state.StateDB, admin common.Address) {
 }
 
 func TestB20PolicyRegistry(t *testing.T) {
-	_, evm := newAmsterdamEVM(t)
+	_, evm := newB20EVM(t)
 	admin := common.HexToAddress("0xad4149")
 	reg := B20PolicyRegistryAddress
 
@@ -180,7 +180,7 @@ func TestB20PolicyRegistry(t *testing.T) {
 // TestB20PolicyIntegration binds policies to a token's compliance scopes and
 // checks they gate transfers and mints.
 func TestB20PolicyIntegration(t *testing.T) {
-	statedb, evm := newAmsterdamEVM(t)
+	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
 	custody := common.HexToAddress("0xc45d1")
 	salt := common.HexToHash("0x0c")
@@ -246,7 +246,7 @@ func TestB20PolicyIntegration(t *testing.T) {
 
 // TestB20SeizeWithMemo exercises the freeze-then-seize compliance flow.
 func TestB20SeizeWithMemo(t *testing.T) {
-	statedb, evm := newAmsterdamEVM(t)
+	statedb, evm := newB20EVM(t)
 	creator := common.HexToAddress("0xc4ea70")
 	salt := common.HexToHash("0x0d")
 
@@ -315,7 +315,7 @@ func TestB20SeizeWithMemo(t *testing.T) {
 // existence-and-admin word. These are consensus-visible, so the assertions are
 // on raw slots rather than on what the ABI reports.
 func TestB20PolicyStorageLayout(t *testing.T) {
-	statedb, evm := newAmsterdamEVM(t)
+	statedb, evm := newB20EVM(t)
 	admin := common.HexToAddress("0xad4149")
 
 	// Slot order, mirroring base-std: policies, members, pendingAdmins, counter,
@@ -369,7 +369,7 @@ func TestB20PolicyStorageLayout(t *testing.T) {
 // authorization from their id alone, so they are correct before any policy has
 // been created and no membership write can redefine them.
 func TestB20PolicySentinels(t *testing.T) {
-	_, evm := newAmsterdamEVM(t)
+	_, evm := newB20EVM(t)
 	caller := common.HexToAddress("0xad4149")
 	ask := func(sel [4]byte, args ...common.Hash) []byte {
 		ret, _, err := evm.Call(caller, B20PolicyRegistryAddress, b20Call(sel, args...),
@@ -429,7 +429,7 @@ func TestB20PolicySentinels(t *testing.T) {
 // The order is observable through which error a caller receives, so base-std's
 // canonical existence -> type -> admin -> batch sequence is part of the surface.
 func TestB20PolicyCheckOrder(t *testing.T) {
-	_, evm := newAmsterdamEVM(t)
+	_, evm := newB20EVM(t)
 	admin := common.HexToAddress("0xad4149")
 	stranger := common.HexToAddress("0x57ra9e")
 	call := func(caller common.Address, input []byte) ([]byte, error) {
@@ -490,7 +490,7 @@ func TestB20PolicyCheckOrder(t *testing.T) {
 // sentinel id, which a counter that carried into the type byte could do.
 // Answering from the id makes them constant by construction.
 func TestB20PolicySentinelsIgnoreMembership(t *testing.T) {
-	statedb, evm := newAmsterdamEVM(t)
+	statedb, evm := newB20EVM(t)
 
 	// Plant membership under both sentinels, bypassing the ABI entirely.
 	view := policyReg{s: newB20Storage(statedb, B20PolicyRegistryAddress)}
@@ -520,7 +520,7 @@ func TestB20PolicySentinelsIgnoreMembership(t *testing.T) {
 // than allowed to carry into the type byte, where an id would change type,
 // collide with another type's policy, or land on a sentinel.
 func TestB20PolicyCounterExhaustion(t *testing.T) {
-	statedb, evm := newAmsterdamEVM(t)
+	statedb, evm := newB20EVM(t)
 	admin := common.HexToAddress("0xad4149")
 	view := policyReg{s: newB20Storage(statedb, B20PolicyRegistryAddress)}
 
@@ -559,7 +559,7 @@ func TestB20PolicyCounterExhaustion(t *testing.T) {
 // go-ethereum's own ABI packer — a head/tail mistake in that shape would
 // otherwise be invisible to an expectation built with the same encoder.
 func TestB20PolicyEvents(t *testing.T) {
-	statedb, evm := newAmsterdamEVM(t)
+	statedb, evm := newB20EVM(t)
 	admin := common.HexToAddress("0xad4149")
 	heir := common.HexToAddress("0x8e14")
 
