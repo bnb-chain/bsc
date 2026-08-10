@@ -171,9 +171,9 @@ func b20EnterCall(ctx *PrecompileContext, input []byte) error {
 func resolveB20Token(state StateDB, addr common.Address) (PrecompiledContract, bool) {
 	switch addr[10] {
 	case b20VariantAsset:
-		return &b20AssetPrecompile{token: addr}, true
+		return b20Asset, true
 	case b20VariantStablecoin:
-		return &b20StablecoinPrecompile{token: addr}, true
+		return b20Stablecoin, true
 	default:
 		return nil, false
 	}
@@ -183,20 +183,30 @@ func resolveB20Token(state StateDB, addr common.Address) (PrecompiledContract, b
 // it is a B20 precompile (fixed factory or a dynamic token) and return the
 // bound instance. Fork gating is the caller's responsibility.
 func resolveB20(state StateDB, addr common.Address) (PrecompiledContract, bool) {
-	if addr == B20FactoryAddress {
-		return &b20FactoryPrecompile{}, true
-	}
-	if addr == B20PolicyRegistryAddress {
-		return &b20PolicyPrecompile{}, true
-	}
-	if addr == B20ActivationRegistryAddress {
-		return &b20ActivationPrecompile{}, true
+	switch addr {
+	case B20FactoryAddress:
+		return b20Factory, true
+	case B20PolicyRegistryAddress:
+		return b20Policy, true
+	case B20ActivationRegistryAddress:
+		return b20Activation, true
 	}
 	if IsB20Address(addr) {
 		return resolveB20Token(state, addr)
 	}
 	return nil, false
 }
+
+// The five precompiles hold no per-address state — every handler takes its
+// target from ctx.Self — so resolution hands back shared values rather than
+// allocating one per call, exactly as the stateless precompile map does.
+var (
+	b20Factory    = &b20FactoryPrecompile{}
+	b20Policy     = &b20PolicyPrecompile{}
+	b20Activation = &b20ActivationPrecompile{}
+	b20Asset      = &b20AssetPrecompile{}
+	b20Stablecoin = &b20StablecoinPrecompile{}
+)
 
 // --- skeleton precompiles ---------------------------------------------------
 //
@@ -235,11 +245,9 @@ func (p *b20FactoryPrecompile) RunStateful(ctx *PrecompileContext, input []byte)
 	return finishB20(ret, err)
 }
 
-// b20AssetPrecompile is the Asset (RWA) variant bound to a token address.
-type b20AssetPrecompile struct {
-	b20StatefulBase
-	token common.Address
-}
+// b20AssetPrecompile is the Asset (RWA) variant. It is stateless: the token it
+// acts on comes from ctx.Self, so one value serves every Asset address.
+type b20AssetPrecompile struct{ b20StatefulBase }
 
 func (p *b20AssetPrecompile) Name() string                    { return "B20Asset" }
 func (p *b20AssetPrecompile) RequiredGas(input []byte) uint64 { return 0 } // priced inside RunStateful
@@ -260,11 +268,9 @@ func (p *b20AssetPrecompile) RunStateful(ctx *PrecompileContext, input []byte) (
 	return finishB20(ret, err)
 }
 
-// b20StablecoinPrecompile is the Stablecoin variant bound to a token address.
-type b20StablecoinPrecompile struct {
-	b20StatefulBase
-	token common.Address
-}
+// b20StablecoinPrecompile is the Stablecoin variant, stateless for the same
+// reason as the Asset one.
+type b20StablecoinPrecompile struct{ b20StatefulBase }
 
 func (p *b20StablecoinPrecompile) Name() string                    { return "B20Stablecoin" }
 func (p *b20StablecoinPrecompile) RequiredGas(input []byte) uint64 { return 0 } // priced inside RunStateful

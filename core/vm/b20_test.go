@@ -181,11 +181,7 @@ func TestB20VariantOf(t *testing.T) {
 // before touching any state.
 func TestB20DelegateCallGuard(t *testing.T) {
 	ctx := &PrecompileContext{DirectCall: false}
-	precompiles := []StatefulPrecompiledContract{
-		&b20FactoryPrecompile{},
-		&b20AssetPrecompile{token: b20Addr(b20VariantAsset, 1)},
-		&b20StablecoinPrecompile{token: b20Addr(b20VariantStablecoin, 1)},
-	}
+	precompiles := []StatefulPrecompiledContract{b20Factory, b20Asset, b20Stablecoin, b20Policy, b20Activation}
 	for _, p := range precompiles {
 		if _, err := p.RunStateful(ctx, nil); !errors.Is(err, ErrB20DelegateCall) {
 			t.Errorf("%T: err = %v, want ErrB20DelegateCall", p, err)
