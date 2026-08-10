@@ -59,10 +59,17 @@ func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
 // b20Enabled reports whether the B20 native token family is active for the
 // current block.
 //
+// BSC-only, and not merely because B20 is a BSC feature: IsAmsterdam is derived
+// as (isMerge || IsInBSC) && ..., so a post-merge non-BSC config that scheduled
+// Amsterdam would otherwise route the whole reserved address space to B20
+// handlers. Its registries would never be seeded either — that runs from the
+// BSC-gated fork hook — leaving reserved addresses that no longer behave like
+// ordinary accounts and where no token can ever be created.
+//
 // TODO: replace with a dedicated B20 fork flag on params.Rules; gated on
 // Amsterdam for now.
 func (evm *EVM) b20Enabled() bool {
-	return evm.chainRules.IsAmsterdam
+	return evm.chainRules.IsInBSC && evm.chainRules.IsAmsterdam
 }
 
 // runPrecompile dispatches a resolved precompile, routing stateful precompiles

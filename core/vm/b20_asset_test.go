@@ -50,9 +50,7 @@ func TestB20AssetExtension(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := *params.TestChainConfig
-	zero := uint64(0)
-	cfg.AmsterdamTime = &zero
+	cfg := *b20TestChainConfig()
 	bc := BlockContext{
 		Random:      &common.Hash{}, // post-merge rules, so IsAmsterdam resolves
 		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },

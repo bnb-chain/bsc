@@ -151,9 +151,7 @@ func TestB20EndToEndTransfer(t *testing.T) {
 	statedb.SetCode(token, b20MarkerCode, 0)
 	newB20Storage(statedb, token).setBalance(b20Alice, uint256.NewInt(1000))
 
-	cfg := *params.TestChainConfig
-	zero := uint64(0)
-	cfg.AmsterdamTime = &zero
+	cfg := *b20TestChainConfig()
 
 	txHash := common.HexToHash("0x1234")
 	statedb.SetTxContext(txHash, 0)

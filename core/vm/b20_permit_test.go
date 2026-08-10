@@ -51,7 +51,7 @@ func newTokenWithEVM(t *testing.T, now uint64, seed func(b20Storage)) (*state.St
 		BlockNumber: big.NewInt(1),
 		Time:        now,
 	}
-	evm := NewEVM(bc, statedb, params.TestChainConfig, Config{})
+	evm := NewEVM(bc, statedb, b20TestChainConfig(), Config{})
 	run := func(caller common.Address, input []byte) ([]byte, error) {
 		gas := NewGasBudget(2_000_000)
 		ctx := &PrecompileContext{evm: evm, StateDB: statedb, Self: token, Caller: caller, DirectCall: true, gas: &gas}
@@ -68,7 +68,7 @@ func TestB20Permit(t *testing.T) {
 	view := newB20Storage(statedb, token)
 
 	// Build the token used only to compute the domain separator (same EVM cfg).
-	evm := NewEVM(BlockContext{BlockNumber: big.NewInt(1), Time: now}, statedb, params.TestChainConfig, Config{})
+	evm := NewEVM(BlockContext{BlockNumber: big.NewInt(1), Time: now}, statedb, b20TestChainConfig(), Config{})
 	gas := NewGasBudget(1)
 	domTok := newB20Token(&PrecompileContext{evm: evm, StateDB: statedb, Self: token, gas: &gas}, 18)
 

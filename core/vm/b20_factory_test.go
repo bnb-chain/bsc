@@ -98,9 +98,7 @@ func TestB20Factory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := *params.TestChainConfig
-	zero := uint64(0)
-	cfg.AmsterdamTime = &zero
+	cfg := *b20TestChainConfig()
 	bc := BlockContext{
 		Random:      &common.Hash{}, // post-merge rules, so IsAmsterdam resolves
 		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
@@ -179,9 +177,7 @@ func TestB20Factory(t *testing.T) {
 // up during the privileged bootstrap and the token is then ungovernable.
 func TestB20FactoryOwnerless(t *testing.T) {
 	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
-	cfg := *params.TestChainConfig
-	zero := uint64(0)
-	cfg.AmsterdamTime = &zero
+	cfg := *b20TestChainConfig()
 	bc := BlockContext{
 		Random:      &common.Hash{}, // post-merge rules, so IsAmsterdam resolves
 		CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },

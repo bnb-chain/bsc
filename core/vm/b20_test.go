@@ -19,14 +19,28 @@ package vm
 import (
 	"bytes"
 	"errors"
+	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
+
+// b20TestChainConfig returns a chain config B20 is actually active under:
+// Amsterdam scheduled, and Parlia set so IsInBSC holds. The BSC gate matters —
+// params.TestChainConfig alone has no Parlia, so a harness built on it would
+// exercise B20 on a chain where production never enables it.
+func b20TestChainConfig() *params.ChainConfig {
+	cfg := *params.TestChainConfig
+	zero := uint64(0)
+	cfg.AmsterdamTime = &zero
+	cfg.Parlia = &params.ParliaConfig{}
+	return &cfg
+}
 
 // b20Addr builds a token address in the reserved space with the given variant
 // byte and a one-byte identity fingerprint.
@@ -237,5 +251,60 @@ func TestB20UninitializedAddressBehavior(t *testing.T) {
 	}
 	if len(ret) != 0 {
 		t.Fatalf("future-variant call returned %x, want empty", ret)
+	}
+}
+
+// TestB20GateIsBSCOnly pins that the B20 address space is routed only on BSC.
+// IsAmsterdam is derived as (isMerge || IsInBSC) && ..., so a post-merge non-BSC
+// config that scheduled Amsterdam would otherwise hijack the reserved space —
+// and its registries would never be seeded, since that runs from a BSC-gated
+// fork hook. Reserved addresses would stop behaving like ordinary accounts on a
+// chain where no token can ever be created.
+func TestB20GateIsBSCOnly(t *testing.T) {
+	newEVM := func(cfg *params.ChainConfig) *EVM {
+		statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		if err != nil {
+			t.Fatal(err)
+		}
+		bc := BlockContext{
+			Random:      &common.Hash{}, // post-merge, so IsAmsterdam can resolve without Parlia
+			CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
+			Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int, *params.Rules) {},
+			BlockNumber: big.NewInt(1),
+			Time:        1,
+		}
+		return NewEVM(bc, statedb, cfg, Config{})
+	}
+
+	bsc := newEVM(b20TestChainConfig())
+	if !bsc.chainRules.IsAmsterdam || !bsc.chainRules.IsInBSC {
+		t.Fatal("the BSC harness must have both Amsterdam and IsInBSC")
+	}
+	if !bsc.b20Enabled() {
+		t.Error("B20 must be enabled on a BSC chain at Amsterdam")
+	}
+
+	// Same fork time, no Parlia: post-merge is enough for IsAmsterdam, so this is
+	// exactly the configuration the gate has to exclude.
+	nonBSCCfg := *b20TestChainConfig()
+	nonBSCCfg.Parlia = nil
+	nonBSC := newEVM(&nonBSCCfg)
+	if !nonBSC.chainRules.IsAmsterdam {
+		t.Fatal("expected IsAmsterdam to still hold post-merge without Parlia")
+	}
+	if nonBSC.chainRules.IsInBSC {
+		t.Fatal("a config without Parlia must not report IsInBSC")
+	}
+	if nonBSC.b20Enabled() {
+		t.Error("B20 must not be enabled off BSC, even at Amsterdam")
+	}
+	// And the reserved space must resolve to nothing there.
+	for _, addr := range []common.Address{
+		B20FactoryAddress, B20PolicyRegistryAddress, B20ActivationRegistryAddress,
+		b20Addr(b20VariantAsset, 1),
+	} {
+		if _, ok := nonBSC.precompile(addr); ok {
+			t.Errorf("%s resolved to a precompile off BSC", addr.Hex())
+		}
 	}
 }
