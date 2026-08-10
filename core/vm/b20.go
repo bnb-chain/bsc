@@ -48,10 +48,10 @@ const (
 // prefix with the token space and is separated from it by the second byte,
 // which the token space pins to 0xB0 — so no singleton is matched by
 // IsB20Address or can collide with a token.
-// B20PolicyRegistryAddress is declared in contracts_b20_policy.go.
+// B20PolicyRegistryAddress is declared in b20_policy.go.
 var (
 	B20FactoryAddress            = common.HexToAddress("0x20BF000000000000000000000000000000000000")
-	B20ActivationRegistryAddress = common.HexToAddress("0x7020000000000000000000000000000000000002")
+	B20ActivationRegistryAddress = common.HexToAddress("0x7020000000000000000000000000000000000001")
 )
 
 var (

@@ -27,7 +27,7 @@ import (
 // sit on every transfer's hot path); writes are admin-gated.
 
 // B20PolicyRegistryAddress is the singleton registry precompile (BEP-702 §3.1).
-var B20PolicyRegistryAddress = common.HexToAddress("0x7020000000000000000000000000000000000001")
+var B20PolicyRegistryAddress = common.HexToAddress("0x7020000000000000000000000000000000000002")
 
 const b20PolicyNamespace = "bsc.policy_registry"
 
