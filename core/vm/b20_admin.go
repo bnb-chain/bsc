@@ -85,6 +85,12 @@ var (
 	b20TopicRoleRevoked      = eventTopic("RoleRevoked(bytes32,address,address)")
 	b20TopicRoleAdminChanged = eventTopic("RoleAdminChanged(bytes32,bytes32,bytes32)")
 	b20TopicSeized           = eventTopic("Seized(address,address,address,uint256)")
+
+	b20TopicLastAdminRenounced = eventTopic("LastAdminRenounced(address)")
+	b20TopicPolicyUpdated      = eventTopic("PolicyUpdated(bytes32,uint64)")
+	b20TopicPaused             = eventTopic("Paused(address,uint8[])")
+	b20TopicUnpaused           = eventTopic("Unpaused(address,uint8[])")
+	b20TopicSupplyCapUpdated   = eventTopic("SupplyCapUpdated(uint256,uint256)")
 )
 
 // dispatchAdmin handles the RBAC / pause / mint-burn selectors. ok is false
@@ -362,7 +368,9 @@ func (t b20Token) renounceLastAdmin() error {
 	t.s.setRole(roleDefaultAdmin, t.ctx.Caller, false)
 	t.s.setAdminCount(new(uint256.Int))
 	t.ctx.AddLog([]common.Hash{b20TopicRoleRevoked, roleDefaultAdmin, addrKey(t.ctx.Caller), addrKey(t.ctx.Caller)}, nil)
-	// TODO: LastAdminRenounced(address) — verify indexing against base-std.
+	// The dedicated event marks the transition an indexer cannot infer from
+	// RoleRevoked alone: the token is now permanently ungovernable.
+	t.ctx.AddLog([]common.Hash{b20TopicLastAdminRenounced, addrKey(t.ctx.Caller)}, nil)
 	return nil
 }
 
@@ -437,10 +445,12 @@ func (t b20Token) setPause(args []byte, on bool) error {
 		return revB20("EmptyFeatureSet()", errSelEmptyFeatureSet)
 	}
 	p := t.s.paused()
-	for _, f := range features {
+	words := make([]common.Hash, len(features))
+	for i, f := range features {
 		if uint(f) > b20PauseSeize {
 			return revPanic(0x21) // invalid enum value
 		}
+		words[i] = wU8(f)
 		mask := new(uint256.Int).Lsh(uint256.NewInt(1), uint(f))
 		if on {
 			p.Or(p, mask)
@@ -449,7 +459,14 @@ func (t b20Token) setPause(args []byte, on bool) error {
 		}
 	}
 	t.s.setPaused(p)
-	// TODO: Paused/Unpaused events — verify signatures against base-std.
+	topic := b20TopicPaused
+	if !on {
+		topic = b20TopicUnpaused
+	}
+	// The event carries the requested feature list, not the resulting mask: it
+	// records the action taken, so re-pausing an already-paused feature is
+	// visible rather than indistinguishable from a no-op.
+	t.ctx.AddLog([]common.Hash{topic, addrKey(t.ctx.Caller)}, encodeTuple(abiWordArray(words)))
 	return nil
 }
 
@@ -569,8 +586,10 @@ func (t b20Token) updateSupplyCap(newCap *uint256.Int) error {
 		return revB20("InvalidSupplyCap(uint256,uint256)", errSelInvalidSupplyCap,
 			wU256(t.s.totalSupply()), wU256(newCap))
 	}
+	previous := t.s.supplyCap()
 	t.s.setSupplyCap(newCap)
-	// TODO: SupplyCapUpdated event.
+	t.ctx.AddLog([]common.Hash{b20TopicSupplyCapUpdated},
+		append(wU256(previous).Bytes(), wU256(newCap).Bytes()...))
 	return nil
 }
 
@@ -604,28 +623,40 @@ func (t b20Token) updatePolicy(scope common.Hash, id uint64) error {
 	default:
 		return revB20("UnsupportedPolicyType(bytes32)", errSelUnsupportedScope, scope)
 	}
+	t.ctx.AddLog([]common.Hash{b20TopicPolicyUpdated, scope}, wU64(id).Bytes())
 	return nil
 }
 
 // --- ABI: dynamic uint8[] ---------------------------------------------------
 
+// readUint8Array decodes a dynamic uint8[] argument. Offsets, the length and
+// every element are read strictly: a word with dirty high bits is a malformed
+// encoding, not a value to be truncated into something plausible. Truncating an
+// element would be the worst of the three — 0x0100 would silently become
+// feature 0 and pause a feature the caller never named.
 func readUint8Array(args []byte) ([]uint8, error) {
 	L := uint64(len(args))
-	if L < 32 {
+	off, ok := wordU64(args, 0)
+	if !ok || off > L || L-off < 32 {
 		return nil, ErrExecutionReverted
 	}
-	off := new(uint256.Int).SetBytes(args[0:32]).Uint64()
-	if off > L-32 {
+	n, ok := wordU64(args, off)
+	if !ok {
 		return nil, ErrExecutionReverted
 	}
-	n := new(uint256.Int).SetBytes(args[off : off+32]).Uint64()
 	dataPos := off + 32
 	if n > (L-dataPos)/32 {
 		return nil, ErrExecutionReverted
 	}
 	out := make([]uint8, n)
 	for i := uint64(0); i < n; i++ {
-		out[i] = args[dataPos+i*32+31]
+		// Byte-addressed, not word-indexed: the head offset is caller-supplied
+		// and need not be 32-aligned.
+		v, ok := wordU64(args, dataPos+i*32)
+		if !ok || v > 0xff {
+			return nil, ErrExecutionReverted
+		}
+		out[i] = byte(v)
 	}
 	return out, nil
 }

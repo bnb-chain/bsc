@@ -38,6 +38,51 @@ func b20CallU8Array(sel [4]byte, vals ...byte) []byte {
 	return out
 }
 
+// TestB20PauseRejectsMalformedArray pins strict uint8[] decoding. A truncating
+// decoder is worse than a permissive one here: 0x0100 would silently become
+// feature 0 and pause a feature the caller never named.
+func TestB20PauseRejectsMalformedArray(t *testing.T) {
+	admin := common.HexToAddress("0xad4149")
+	_, _, run := newTokenWithEVM(t, 1, func(s b20Storage) {
+		s.setRole(rolePause, admin, true)
+	})
+
+	word := func(v uint64) []byte { return u256hash(v).Bytes() }
+	dirty := func(hi byte) []byte { // a word with a nonzero byte above the low one
+		var w common.Hash
+		w[0], w[31] = hi, 0
+		return w.Bytes()
+	}
+
+	cases := []struct {
+		name string
+		args []byte
+	}{
+		{"element above uint8 range",
+			append(append(word(0x20), word(1)...), word(0x100)...)},
+		{"element with dirty high bytes",
+			append(append(word(0x20), word(1)...), dirty(1)...)},
+		{"length word with dirty high bytes",
+			append(append(word(0x20), dirty(1)...), word(0)...)},
+		{"head offset with dirty high bytes",
+			append(append(dirty(1), word(1)...), word(0)...)},
+		{"head offset past the end",
+			append(append(word(0x4000), word(1)...), word(0)...)},
+	}
+	for _, tc := range cases {
+		input := append(append([]byte{}, selPause[:]...), tc.args...)
+		if _, err := run(admin, input); !errors.Is(err, ErrExecutionReverted) {
+			t.Errorf("%s: err = %v, want revert", tc.name, err)
+		}
+	}
+
+	// The well-formed equivalent still works, so the checks are not just
+	// rejecting everything.
+	if _, err := run(admin, b20CallU8Array(selPause, byte(b20PauseTransfer))); err != nil {
+		t.Errorf("well-formed pause: %v", err)
+	}
+}
+
 func TestB20AdminLifecycle(t *testing.T) {
 	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	if err != nil {
@@ -167,11 +212,25 @@ func TestB20AdminLastAdminProtection(t *testing.T) {
 	}
 
 	// sole admin renounces permanently; token becomes ungovernable.
+	statedb.SetTxContext(common.HexToHash("0x1a57"), 0)
 	if _, err := run(admin, b20Call(selRenounceLastAdmin)); err != nil {
 		t.Fatalf("renounceLastAdmin: %v", err)
 	}
 	if !view.adminCount().IsZero() {
 		t.Fatalf("adminCount = %d, want 0", view.adminCount().Uint64())
+	}
+	// RoleRevoked alone cannot express that no admin can ever exist again, so a
+	// dedicated event names the departing admin.
+	logs := statedb.GetLogs(common.HexToHash("0x1a57"), 1, common.Hash{}, 1)
+	if len(logs) != 2 {
+		t.Fatalf("renounceLastAdmin emitted %d logs, want 2 (RoleRevoked, LastAdminRenounced)", len(logs))
+	}
+	last := logs[1]
+	if len(last.Topics) != 2 || last.Topics[0] != b20TopicLastAdminRenounced || last.Topics[1] != addrKey(admin) {
+		t.Errorf("LastAdminRenounced topics = %v, want [LastAdminRenounced, admin]", last.Topics)
+	}
+	if len(last.Data) != 0 {
+		t.Errorf("LastAdminRenounced data = %x, want empty", last.Data)
 	}
 	// no further role mutations are possible.
 	if _, err := run(admin, b20Call(selGrantRole, roleMint, addrKey(admin))); !errors.Is(err, ErrExecutionReverted) {

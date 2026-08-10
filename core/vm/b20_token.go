@@ -166,6 +166,10 @@ func (t b20Token) dispatch(input []byte) ([]byte, error) {
 	if ret, err, ok := t.dispatchAdmin(sel, args); ok {
 		return ret, err
 	}
+	// Mutable metadata and the configuration views.
+	if ret, err, ok := t.dispatchMetadata(sel, args); ok {
+		return ret, err
+	}
 	// permit (EIP-2612) and the *WithMemo family.
 	if ret, err, ok := t.dispatchPermitMemo(sel, args); ok {
 		return ret, err
@@ -381,6 +385,18 @@ func abiBytes(b []byte) abiPart {
 }
 
 func abiString(s string) abiPart { return abiBytes([]byte(s)) }
+
+// abiWordArray encodes a dynamic array whose members are static words
+// (uint8[], uint256[], address[]): a length word followed by the members.
+func abiWordArray(words []common.Hash) abiPart {
+	tail := make([]byte, 0, 32*(len(words)+1))
+	l := uint256.NewInt(uint64(len(words))).Bytes32()
+	tail = append(tail, l[:]...)
+	for _, w := range words {
+		tail = append(tail, w[:]...)
+	}
+	return abiPart{dynamic: true, tail: tail}
+}
 
 // encodeTuple lays out parts as ABI head/tail: static members inline, dynamic
 // members as an offset into the tail section.

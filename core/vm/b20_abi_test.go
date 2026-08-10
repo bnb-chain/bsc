@@ -60,34 +60,15 @@ func TestB20ABIBaseline(t *testing.T) {
 
 	// Baseline signatures with no implementation yet. Implementing one MUST
 	// remove it from this list.
-	pendingFunctions := []string{
-		"contractURI()",
-		"updateName(string)",
-		"updateSymbol(string)",
-		"updateContractURI(string)",
-		"pausedFeatures()",
-		"supplyCap()",
-		"eip712Domain()",
-		"variantOf(address)",
-	}
+	pendingFunctions := []string{}
 	pendingEvents := []string{
-		"NameUpdated(string)",
-		"SymbolUpdated(string)",
-		"ContractURIUpdated()",
-		"LastAdminRenounced(address)",
-		"PolicyUpdated(bytes32,uint64)",
-		"Paused(address,uint8[])",
-		"Unpaused(address,uint8[])",
-		"SupplyCapUpdated(uint256,uint256)",
-		"EIP712DomainChanged()",
 		"PolicyCreated(uint64,address,uint8)",
-		"PolicyAdminStaged(uint64,address)",
+		"PolicyAdminStaged(uint64,address,address)",
 		"PolicyAdminUpdated(uint64,address,address)",
-		"MembersUpdated(uint64,address,bool,address[])",
+		"AllowlistUpdated(uint64,address,bool,address[])",
+		"BlocklistUpdated(uint64,address,bool,address[])",
 	}
-	pendingErrors := []string{
-		"PolicyNotFound(uint64)",
-	}
+	pendingErrors := []string{}
 
 	check := func(kind string, baselineSigs []string, registered map[string]bool, pending []string, divergent map[string]string) {
 		base := map[string]bool{}

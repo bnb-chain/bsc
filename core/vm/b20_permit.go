@@ -29,6 +29,10 @@ import (
 // updateName automatically invalidates outstanding permit signatures — there
 // is no cached separator to roll.
 
+// b20EIP712Version is the domain's version field. DOMAIN_SEPARATOR() hashes it
+// and eip712Domain() reports it, so the two cannot drift apart.
+const b20EIP712Version = "1"
+
 var (
 	selDomainSeparator      = selector("DOMAIN_SEPARATOR()")
 	selNonces               = selector("nonces(address)")
@@ -147,7 +151,7 @@ func readToAmountMemo(args []byte) (common.Address, *uint256.Int, common.Hash, e
 // name, version "1", chain id and the token address.
 func (t b20Token) domainSeparator() common.Hash {
 	nameHash := crypto.Keccak256Hash([]byte(t.s.name()))
-	versionHash := crypto.Keccak256Hash([]byte("1"))
+	versionHash := crypto.Keccak256Hash([]byte(b20EIP712Version))
 	chainID := t.ctx.ChainID().Bytes32()
 
 	enc := make([]byte, 0, 160)

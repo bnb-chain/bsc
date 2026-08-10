@@ -17,10 +17,10 @@
 package vm
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 
-	"bytes"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -56,6 +56,20 @@ func TestIsB20Address(t *testing.T) {
 	for _, tc := range cases {
 		if got := IsB20Address(tc.addr); got != tc.want {
 			t.Errorf("%s: IsB20Address(%s) = %v, want %v", tc.name, tc.addr.Hex(), got, tc.want)
+		}
+	}
+}
+
+// TestB20VariantSetsAgree pins b20VariantRecognized to the set resolveB20Token
+// actually routes. They are separate switches, so a variant added to one and
+// not the other would let variantOf name a variant that reaches no handler.
+func TestB20VariantSetsAgree(t *testing.T) {
+	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+	for v := 0; v < 256; v++ {
+		variant := byte(v)
+		_, routed := resolveB20Token(statedb, b20Addr(variant, 1))
+		if got := b20VariantRecognized(variant); got != routed {
+			t.Errorf("variant 0x%02x: b20VariantRecognized = %v, routed = %v", variant, got, routed)
 		}
 	}
 }
@@ -107,6 +121,59 @@ func TestResolveB20(t *testing.T) {
 	// A plain address outside the space is not a B20 precompile.
 	if _, ok := resolveB20(statedb, common.HexToAddress("0x1234")); ok {
 		t.Error("non-B20 address should not resolve")
+	}
+}
+
+// TestB20VariantOf covers the factory view. It validates the variant byte,
+// unlike isB20: the return is an enum, so an unrecognized variant must revert
+// rather than hand back a value the caller's own decoder would reject.
+func TestB20VariantOf(t *testing.T) {
+	_, evm := newAmsterdamEVM(t)
+	call := func(to common.Address) ([]byte, error) {
+		ret, _, err := evm.Call(b20Alice, B20FactoryAddress,
+			b20Call(selVariantOf, addrKey(to)), NewGasBudget(1_000_000), uint256.NewInt(0))
+		return ret, err
+	}
+
+	for _, tc := range []struct {
+		name string
+		addr common.Address
+		want byte
+	}{
+		{"asset", b20Addr(b20VariantAsset, 1), b20VariantAsset},
+		{"stablecoin", b20Addr(b20VariantStablecoin, 1), b20VariantStablecoin},
+	} {
+		ret, err := call(tc.addr)
+		if err != nil {
+			t.Fatalf("%s: variantOf err %v", tc.name, err)
+		}
+		if !bytes.Equal(ret, wU8(tc.want).Bytes()) {
+			t.Errorf("%s: variantOf = %x, want %x", tc.name, ret, wU8(tc.want).Bytes())
+		}
+	}
+
+	// Existence is irrelevant: the answer is derived from the address alone, so
+	// an address no createB20 has produced still reports its variant.
+	if _, err := call(b20Addr(b20VariantAsset, 0xfe)); err != nil {
+		t.Errorf("variantOf on an uncreated address err = %v, want success", err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		addr common.Address
+	}{
+		{"unrecognized variant", b20Addr(0x7f, 1)},
+		{"outside the token space", common.HexToAddress("0x1234")},
+		{"the factory itself", B20FactoryAddress},
+		{"zero address", common.Address{}},
+	} {
+		ret, err := call(tc.addr)
+		if !errors.Is(err, ErrExecutionReverted) {
+			t.Errorf("%s: variantOf err = %v, want revert", tc.name, err)
+		}
+		if !bytes.Equal(ret, errSelInvalidVariant[:]) {
+			t.Errorf("%s: revert data = %x, want InvalidVariant()", tc.name, ret)
+		}
 	}
 }
 

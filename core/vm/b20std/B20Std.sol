@@ -217,16 +217,18 @@ interface IPolicyRegistry {
     enum PolicyType { BLOCKLIST, ALLOWLIST }
 
     event PolicyCreated(uint64 indexed policyId, address indexed creator, PolicyType policyType);
-    event PolicyAdminStaged(uint64 indexed policyId, address indexed nominee);
+    event PolicyAdminStaged(uint64 indexed policyId, address indexed currentAdmin, address indexed pendingAdmin);
     event PolicyAdminUpdated(uint64 indexed policyId, address indexed previousAdmin, address indexed newAdmin);
-    event MembersUpdated(uint64 indexed policyId, address indexed updater, bool included, address[] accounts);
+    /// @dev Membership changes are reported per policy type rather than through one
+    /// merged event, so a consumer can subscribe to just the list it cares about.
+    event AllowlistUpdated(uint64 indexed policyId, address indexed updater, bool allowed, address[] accounts);
+    event BlocklistUpdated(uint64 indexed policyId, address indexed updater, bool blocked, address[] accounts);
 
     error Unauthorized();
     error ZeroAddress();
     error IncompatiblePolicyType();
     error BatchSizeTooLarge(uint256 maxBatchSize);
     error NoPendingAdmin();
-    error PolicyNotFound(uint64 policyId);
 
     function createPolicy(address admin, PolicyType policyType) external returns (uint64 policyId);
     function createPolicyWithAccounts(address admin, PolicyType policyType, address[] calldata accounts)

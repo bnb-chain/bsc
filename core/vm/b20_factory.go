@@ -48,8 +48,21 @@ var (
 	selCreateB20        = selector("createB20(uint8,bytes32,bytes,bytes[])")
 	selGetB20Address    = selector("getB20Address(uint8,address,bytes32)")
 	selIsB20            = selector("isB20(address)")
+	selVariantOf        = selector("variantOf(address)")
 	selIsB20Initialized = selector("isB20Initialized(address)")
 )
+
+// b20VariantRecognized reports whether the active fork knows this variant. It
+// must accept exactly the set resolveB20Token routes, so variantOf can never
+// name a variant that would not reach a handler; TestB20VariantSetsAgree pins
+// the two together.
+func b20VariantRecognized(variant byte) bool {
+	switch variant {
+	case b20VariantAsset, b20VariantStablecoin:
+		return true
+	}
+	return false
+}
 
 // b20MarkerCode is the account sentinel written to a token address on creation
 // (BEP-702 §3.16). It is never executed — the precompile takes precedence in
@@ -109,6 +122,19 @@ func runB20Factory(ctx *PrecompileContext, input []byte) ([]byte, error) {
 			return nil, err
 		}
 		return encBool(IsB20Address(a)), nil
+	case selVariantOf:
+		a, err := readAddress(args, 0)
+		if err != nil {
+			return nil, err
+		}
+		// Unlike isB20, this one validates the variant byte: the return type is
+		// an enum, so naming an unrecognized variant would hand the caller a
+		// value its own ABI decoder rejects. base-std's variant_of is likewise
+		// defined over addresses that resolve to a known variant.
+		if !IsB20Address(a) || !b20VariantRecognized(a[10]) {
+			return nil, revB20("InvalidVariant()", errSelInvalidVariant)
+		}
+		return wU8(a[10]).Bytes(), nil
 	case selIsB20Initialized:
 		a, err := readAddress(args, 0)
 		if err != nil {
