@@ -101,7 +101,46 @@ var (
 	selPolicyExists             = selector("policyExists(uint64)")
 	selPolicyAdmin              = selector("policyAdmin(uint64)")
 	selPendingPolicyAdmin       = selector("pendingPolicyAdmin(uint64)")
+
+	b20TopicPolicyCreated      = eventTopic("PolicyCreated(uint64,address,uint8)")
+	b20TopicPolicyAdminStaged  = eventTopic("PolicyAdminStaged(uint64,address,address)")
+	b20TopicPolicyAdminUpdated = eventTopic("PolicyAdminUpdated(uint64,address,address)")
+	b20TopicAllowlistUpdated   = eventTopic("AllowlistUpdated(uint64,address,bool,address[])")
+	b20TopicBlocklistUpdated   = eventTopic("BlocklistUpdated(uint64,address,bool,address[])")
 )
+
+// emitPolicyAdminUpdated logs an admin transition. Creation, handover and
+// renunciation all report through this one event, so a policy's whole admin
+// history is one filter: creation is (0 -> initial admin) and renunciation is
+// (admin -> 0).
+func emitPolicyAdminUpdated(ctx *PrecompileContext, id uint64, previous, next common.Address) {
+	ctx.AddLog([]common.Hash{
+		b20TopicPolicyAdminUpdated, idKey(id), addrKey(previous), addrKey(next),
+	}, nil)
+}
+
+// emitMembersUpdated logs a membership change under the event belonging to the
+// policy's own type. base-std reports allowlists and blocklists separately
+// rather than through one merged event, so a consumer can subscribe to just the
+// list it cares about.
+func emitMembersUpdated(ctx *PrecompileContext, ptype byte, id uint64, updater common.Address, included bool, accounts []common.Hash) {
+	topic := b20TopicBlocklistUpdated
+	if ptype == b20PolicyAllowlist {
+		topic = b20TopicAllowlistUpdated
+	}
+	ctx.AddLog(
+		[]common.Hash{topic, idKey(id), addrKey(updater)},
+		encodeTuple(abiWord(boolWord(included)), abiWordArray(accounts)),
+	)
+}
+
+func boolWord(b bool) common.Hash {
+	var w common.Hash
+	if b {
+		w[31] = 1
+	}
+	return w
+}
 
 // policyReg is a gas-metered view over the registry's storage.
 type policyReg struct{ s b20Storage }
@@ -383,9 +422,17 @@ func createPolicy(ctx *PrecompileContext, reg policyReg, args []byte, withAccoun
 	id := uint64(ptype)<<56 | c
 	reg.setCounter(c + 1)
 	reg.setPolicyAdmin(id, admin)
+	ctx.AddLog([]common.Hash{b20TopicPolicyCreated, idKey(id), addrKey(ctx.Caller)}, wU8(ptype).Bytes())
+	// The initial admin is reported as a transition from nobody, so it lands in
+	// the same event stream as every later handover.
+	emitPolicyAdminUpdated(ctx, id, common.Address{}, admin)
 
-	for _, a := range accounts {
-		reg.setMember(id, common.BytesToAddress(a.Bytes()), true)
+	if withAccounts {
+		for _, a := range accounts {
+			reg.setMember(id, common.BytesToAddress(a.Bytes()), true)
+		}
+		// Emitted even for an empty batch: the call form is part of the record.
+		emitMembersUpdated(ctx, ptype, id, ctx.Caller, true, accounts)
 	}
 	return encU256(uint256.NewInt(id)), nil
 }
@@ -427,6 +474,7 @@ func updateMembers(ctx *PrecompileContext, reg policyReg, args []byte, wantType 
 	for _, a := range accounts {
 		reg.setMember(pid, common.BytesToAddress(a.Bytes()), in)
 	}
+	emitMembersUpdated(ctx, wantType, pid, ctx.Caller, in, accounts)
 	return nil
 }
 
@@ -446,6 +494,11 @@ func stageUpdateAdmin(ctx *PrecompileContext, reg policyReg, args []byte) error 
 		return err
 	}
 	reg.setPending(id, newAdmin)
+	// Emitted for a cancellation too, where newAdmin is zero: withdrawing a
+	// nomination is a governance action and should not be a silent one.
+	ctx.AddLog([]common.Hash{
+		b20TopicPolicyAdminStaged, idKey(id), addrKey(ctx.Caller), addrKey(newAdmin),
+	}, nil)
 	return nil
 }
 
@@ -467,8 +520,10 @@ func finalizeUpdateAdmin(ctx *PrecompileContext, reg policyReg, args []byte) err
 	if pending != ctx.Caller || ctx.Caller == (common.Address{}) {
 		return revB20("Unauthorized()", errSelUnauthorized)
 	}
+	previous := reg.admin(pid)
 	reg.setPolicyAdmin(pid, ctx.Caller)
 	reg.setPending(pid, common.Address{})
+	emitPolicyAdminUpdated(ctx, pid, previous, ctx.Caller)
 	return nil
 }
 
@@ -488,6 +543,7 @@ func renounceAdmin(ctx *PrecompileContext, reg policyReg, args []byte) error {
 	// answering reads.
 	reg.setPolicyAdmin(pid, common.Address{})
 	reg.setPending(pid, common.Address{})
+	emitPolicyAdminUpdated(ctx, pid, ctx.Caller, common.Address{})
 	return nil
 }
 

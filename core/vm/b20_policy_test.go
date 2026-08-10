@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -552,4 +553,169 @@ func TestB20PolicyCounterExhaustion(t *testing.T) {
 	if !bytes.Equal(ret, want) {
 		t.Errorf("revert data = %x, want Panic(0x11) = %x", ret, want)
 	}
+}
+
+// TestB20PolicyEvents pins the registry's log surface: which events each write
+// emits, in what order, and with what payload. The membership events mix a
+// static bool with a dynamic address[], so their data is also checked against
+// go-ethereum's own ABI packer — a head/tail mistake in that shape would
+// otherwise be invisible to an expectation built with the same encoder.
+func TestB20PolicyEvents(t *testing.T) {
+	statedb, evm := newAmsterdamEVM(t)
+	admin := common.HexToAddress("0xad4149")
+	heir := common.HexToAddress("0x8e14")
+
+	txSeq := 0
+	logsOf := func(caller common.Address, input []byte) []*types.Log {
+		t.Helper()
+		txSeq++
+		hash := common.BigToHash(new(big.Int).SetUint64(uint64(txSeq)))
+		statedb.SetTxContext(hash, txSeq)
+		if _, _, err := evm.Call(caller, B20PolicyRegistryAddress, input,
+			NewGasBudget(5_000_000), uint256.NewInt(0)); err != nil {
+			t.Fatalf("call: %v", err)
+		}
+		return statedb.GetLogs(hash, 1, common.Hash{}, 1)
+	}
+	wantTopics := func(what string, got *types.Log, expect ...common.Hash) {
+		t.Helper()
+		if len(got.Topics) != len(expect) {
+			t.Errorf("%s: %d topics, want %d", what, len(got.Topics), len(expect))
+			return
+		}
+		for i := range expect {
+			if got.Topics[i] != expect[i] {
+				t.Errorf("%s: topic %d = %s, want %s", what, i, got.Topics[i].Hex(), expect[i].Hex())
+			}
+		}
+	}
+
+	// createPolicy: PolicyCreated then the initial admin as a transition from
+	// nobody, so creation lands in the same stream as every later handover.
+	logs := logsOf(admin, b20Call(selCreatePolicy, addrKey(admin), u256hash(b20PolicyBlocklist)))
+	if len(logs) != 2 {
+		t.Fatalf("createPolicy emitted %d logs, want 2", len(logs))
+	}
+	block := uint64(b20PolicyBlocklist)<<56 | 2
+	wantTopics("PolicyCreated", logs[0], b20TopicPolicyCreated, idKey(block), addrKey(admin))
+	if !bytes.Equal(logs[0].Data, wU8(b20PolicyBlocklist).Bytes()) {
+		t.Errorf("PolicyCreated data = %x, want the type byte", logs[0].Data)
+	}
+	wantTopics("PolicyAdminUpdated", logs[1],
+		b20TopicPolicyAdminUpdated, idKey(block), addrKey(common.Address{}), addrKey(admin))
+	if len(logs[1].Data) != 0 {
+		t.Errorf("PolicyAdminUpdated data = %x, want empty", logs[1].Data)
+	}
+
+	// creator is the caller, not the nominated admin: a policy created on someone
+	// else's behalf must name whoever sent the transaction. base-std's
+	// create_policy_inner reads storage.caller() for this field.
+	logs = logsOf(b20Alice, b20Call(selCreatePolicy, addrKey(heir), u256hash(b20PolicyBlocklist)))
+	if len(logs) != 2 {
+		t.Fatalf("createPolicy (third party) emitted %d logs, want 2", len(logs))
+	}
+	third := uint64(b20PolicyBlocklist)<<56 | 3
+	wantTopics("PolicyCreated (third party)", logs[0],
+		b20TopicPolicyCreated, idKey(third), addrKey(b20Alice))
+	wantTopics("PolicyAdminUpdated (third party)", logs[1],
+		b20TopicPolicyAdminUpdated, idKey(third), addrKey(common.Address{}), addrKey(heir))
+
+	// updateBlocklist: one log under the blocklist event, carrying the flag and
+	// the accounts.
+	accounts := []common.Address{b20Bob, b20Carol}
+	logs = logsOf(admin, encodeUpdateList(selUpdateBlocklist, block, true, accounts))
+	if len(logs) != 1 {
+		t.Fatalf("updateBlocklist emitted %d logs, want 1", len(logs))
+	}
+	wantTopics("BlocklistUpdated", logs[0], b20TopicBlocklistUpdated, idKey(block), addrKey(admin))
+
+	boolType, err := abi.NewType("bool", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	addrsType, err := abi.NewType("address[]", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oracle, err := abi.Arguments{{Type: boolType}, {Type: addrsType}}.Pack(true, accounts)
+	if err != nil {
+		t.Fatalf("pack membership payload: %v", err)
+	}
+	if !bytes.Equal(logs[0].Data, oracle) {
+		t.Errorf("BlocklistUpdated data\n got = %x\nwant = %x", logs[0].Data, oracle)
+	}
+
+	// An allowlist reports under its own event, not the blocklist one.
+	ret, _, err := evm.Call(admin, B20PolicyRegistryAddress,
+		b20Call(selCreatePolicy, addrKey(admin), u256hash(b20PolicyAllowlist)),
+		NewGasBudget(5_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("createPolicy allowlist: %v", err)
+	}
+	allow := new(uint256.Int).SetBytes(ret).Uint64()
+	logs = logsOf(admin, encodeUpdateList(selUpdateAllowlist, allow, false, accounts))
+	if len(logs) != 1 || logs[0].Topics[0] != b20TopicAllowlistUpdated {
+		t.Fatalf("updateAllowlist logs = %v", logs)
+	}
+	oracle, _ = abi.Arguments{{Type: boolType}, {Type: addrsType}}.Pack(false, accounts)
+	if !bytes.Equal(logs[0].Data, oracle) {
+		t.Errorf("AllowlistUpdated data\n got = %x\nwant = %x", logs[0].Data, oracle)
+	}
+
+	// createPolicyWithAccounts emits the seed membership event too — including
+	// for an empty batch, since the call form is part of the record.
+	logs = logsOf(admin, encodeCreatePolicyWithAccounts(admin, b20PolicyAllowlist, nil))
+	if len(logs) != 3 {
+		t.Fatalf("createPolicyWithAccounts emitted %d logs, want 3", len(logs))
+	}
+	if logs[2].Topics[0] != b20TopicAllowlistUpdated {
+		t.Errorf("third log = %s, want AllowlistUpdated", logs[2].Topics[0].Hex())
+	}
+	oracle, _ = abi.Arguments{{Type: boolType}, {Type: addrsType}}.Pack(true, []common.Address{})
+	if !bytes.Equal(logs[2].Data, oracle) {
+		t.Errorf("seed AllowlistUpdated data\n got = %x\nwant = %x", logs[2].Data, oracle)
+	}
+
+	// The handover pair, then renunciation. Staging names the incumbent as well
+	// as the nominee, so a stage log is self-contained.
+	logs = logsOf(admin, b20Call(selStageUpdateAdmin, u256hash(block), addrKey(heir)))
+	if len(logs) != 1 {
+		t.Fatalf("stageUpdateAdmin emitted %d logs, want 1", len(logs))
+	}
+	wantTopics("PolicyAdminStaged", logs[0],
+		b20TopicPolicyAdminStaged, idKey(block), addrKey(admin), addrKey(heir))
+
+	// Withdrawing a nomination is a governance action, not a silent one.
+	logs = logsOf(admin, b20Call(selStageUpdateAdmin, u256hash(block), addrKey(common.Address{})))
+	wantTopics("PolicyAdminStaged (cancel)", logs[0],
+		b20TopicPolicyAdminStaged, idKey(block), addrKey(admin), addrKey(common.Address{}))
+
+	// Re-nominate, then the nominee takes over.
+	logsOf(admin, b20Call(selStageUpdateAdmin, u256hash(block), addrKey(heir)))
+	logs = logsOf(heir, b20Call(selFinalizeUpdateAdmin, u256hash(block)))
+	if len(logs) != 1 {
+		t.Fatalf("finalizeUpdateAdmin emitted %d logs, want 1", len(logs))
+	}
+	wantTopics("PolicyAdminUpdated (finalize)", logs[0],
+		b20TopicPolicyAdminUpdated, idKey(block), addrKey(admin), addrKey(heir))
+
+	logs = logsOf(heir, b20Call(selRenounceAdmin, u256hash(block)))
+	if len(logs) != 1 {
+		t.Fatalf("renounceAdmin emitted %d logs, want 1", len(logs))
+	}
+	wantTopics("PolicyAdminUpdated (renounce)", logs[0],
+		b20TopicPolicyAdminUpdated, idKey(block), addrKey(heir), addrKey(common.Address{}))
+}
+
+// encodeCreatePolicyWithAccounts ABI-encodes createPolicyWithAccounts(address,uint8,address[]).
+func encodeCreatePolicyWithAccounts(admin common.Address, ptype byte, accounts []common.Address) []byte {
+	out := append([]byte{}, selCreatePolicyWithAccounts[:]...)
+	out = append(out, addrKey(admin).Bytes()...)
+	out = append(out, u256hash(uint64(ptype)).Bytes()...)
+	out = append(out, u256hash(0x60).Bytes()...) // offset past the 3-word head
+	out = append(out, u256hash(uint64(len(accounts))).Bytes()...)
+	for _, a := range accounts {
+		out = append(out, addrKey(a).Bytes()...)
+	}
+	return out
 }
