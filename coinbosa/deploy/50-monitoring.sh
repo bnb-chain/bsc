@@ -59,6 +59,7 @@ ETAT=/var/lib/coinbosa-monitoring/derniere-hauteur
 DOMAINE=explorer.coinbosa.com
 DISQUE_SEUIL=85
 CERT_JOURS=21
+STAGNATION_MAX=60   # 12 blocs manques a 5 s : au-dela, la chaine est reellement arretee
 DSN=$(cat /etc/coinbosa-sentry-dsn 2>/dev/null || true)
 
 alerte() {  # $1=niveau  $2=titre  $3=détail
@@ -74,10 +75,19 @@ alerte() {  # $1=niveau  $2=titre  $3=détail
   local charge
   charge=$(printf '{"level":"%s","logger":"coinbosa-watchdog","platform":"other","server_name":"%s","message":{"formatted":"%s — %s"},"tags":{"composant":"chaine","reseau":"coinbosa"}}' \
     "$niveau" "$(hostname)" "$titre" "$detail")
-  curl -sS --max-time 10 -X POST "$url" \
+  # On VÉRIFIE que Sentry a accepté. Un canal d'alerte dont personne n'a prouvé qu'il
+  # fonctionne est un placebo : le jour de la panne, le silence serait pris pour « tout va
+  # bien ». Un envoi refusé est donc journalisé comme une panne à part entière.
+  local code
+  code=$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' -X POST "$url" \
     -H "Content-Type: application/json" \
     -H "X-Sentry-Auth: Sentry sentry_version=7, sentry_client=coinbosa-watchdog/1.0, sentry_key=$cle" \
-    --data "$charge" >/dev/null 2>&1 || true
+    --data "$charge" 2>/dev/null || echo 000)
+  case "$code" in
+    200|201|202) ;;
+    *) logger -t coinbosa-watchdog -p daemon.crit \
+         "CANAL D ALERTE HORS SERVICE — Sentry a repondu $code. Les alertes ne partent PAS." ;;
+  esac
 }
 
 hauteur() { sudo -u "$2" "$GETH" attach --exec 'eth.blockNumber' "$1" 2>/dev/null | tr -cd '0-9'; }
@@ -89,13 +99,28 @@ hn=$(hauteur "$NODE_IPC" "$NODE_USER")
 if [ -z "${hv:-}" ]; then
   alerte error "validateur injoignable" "aucune reponse sur $VAL_IPC"
 else
-  precedent=$(cat "$ETAT" 2>/dev/null || echo "")
-  echo "$hv" > "$ETAT"
-  if [ -n "$precedent" ] && [ "$hv" -le "$precedent" ] 2>/dev/null; then
-    alerte fatal "LA CHAINE N AVANCE PLUS" "hauteur bloquee a $hv depuis le dernier controle"
-  fi
+  # On memorise la hauteur ET l'instant. Comparer deux mesures sans regarder le temps
+  # ecoule produit un faux positif des qu'on releve deux fois en moins de 5 s : aucun bloc
+  # n'a pu naitre entre les deux. Une sonde qui crie au loup finit par etre ignoree, donc
+  # elle ne doit alerter que sur une stagnation REELLE.
+  precedent=$(cut -d' ' -f1 "$ETAT" 2>/dev/null || echo "")
+  quand=$(cut -d' ' -f2 "$ETAT" 2>/dev/null || echo "")
+  maintenant=$(date +%s)
+
   if [ -n "$precedent" ] && [ "$hv" -lt "$precedent" ] 2>/dev/null; then
+    # Un recul est anormal a tout instant : on alerte sans attendre.
     alerte fatal "REMBOBINAGE DETECTE" "hauteur passee de $precedent a $hv — fork probable"
+    echo "$hv $maintenant" > "$ETAT"
+  elif [ -n "$precedent" ] && [ "$hv" -eq "$precedent" ] 2>/dev/null; then
+    # Stagnation : on ne crie qu'au-dela de STAGNATION_MAX (12 blocs manques).
+    ecoule=$(( maintenant - ${quand:-$maintenant} ))
+    if [ "$ecoule" -ge "$STAGNATION_MAX" ]; then
+      alerte fatal "LA CHAINE N AVANCE PLUS" "hauteur bloquee a $hv depuis ${ecoule}s"
+    fi
+    # On NE met PAS a jour l'horodatage : sinon le compteur repartirait de zero a chaque
+    # passage et la stagnation ne serait jamais detectee.
+  else
+    echo "$hv $maintenant" > "$ETAT"
   fi
 fi
 
@@ -128,6 +153,17 @@ fin=$(echo | timeout 15 openssl s_client -connect "$DOMAINE:443" -servername "$D
 if [ -n "${fin:-}" ]; then
   reste=$(( ( $(date -d "$fin" +%s 2>/dev/null || echo 0) - $(date +%s) ) / 86400 ))
   [ "$reste" -lt "$CERT_JOURS" ] 2>/dev/null && alerte error "certificat TLS expire bientot" "$reste jours restants ($DOMAINE)"
+fi
+
+# Battement de coeur quotidien. Sans lui, l'absence d'alerte est ambigue : canal muet
+# parce que tout va bien, ou parce qu'il est casse ? Un evenement de niveau info par jour
+# permet de distinguer les deux — s'il manque, c'est la supervision elle-meme qui est morte.
+BATTEMENT=/var/lib/coinbosa-monitoring/dernier-battement
+hier=$(date -d 'yesterday' +%Y-%m-%d 2>/dev/null || echo "")
+aujourdhui=$(date +%Y-%m-%d)
+if [ "$(cat "$BATTEMENT" 2>/dev/null)" != "$aujourdhui" ]; then
+  echo "$aujourdhui" > "$BATTEMENT"
+  alerte info "battement quotidien" "chaine a $(hauteur "$VAL_IPC" "$VAL_USER") — supervision operationnelle"
 fi
 
 exit 0
@@ -166,6 +202,22 @@ echo "==> Premier passage"
 
 echo ""
 echo "==> Surveillance active (toutes les 2 minutes)."
-[ -n "$DSN" ] && echo "    alertes envoyées à Sentry" || echo "    ⚠ aucun DSN Sentry : alertes en JOURNAL uniquement"
+if [ -n "$DSN" ]; then
+  echo "==> Épreuve du canal d'alerte (on ne se contente pas d'écrire le DSN)"
+  proto="${DSN%%://*}"; reste="${DSN#*://}"; cle="${reste%%@*}"; reste="${reste#*@}"
+  hote="${reste%%/*}"; projet="${reste##*/}"
+  code=$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' -X POST "$proto://$hote/api/$projet/store/" \
+    -H "Content-Type: application/json" \
+    -H "X-Sentry-Auth: Sentry sentry_version=7, sentry_client=coinbosa-watchdog/1.0, sentry_key=$cle" \
+    --data '{"level":"info","logger":"coinbosa-watchdog","platform":"other","message":{"formatted":"epreuve d installation — si tu lis ceci, le canal d alerte fonctionne"}}' 2>/dev/null || echo 000)
+  case "$code" in
+    200|201|202) echo "    ✓ Sentry a répondu $code — le canal FONCTIONNE, va voir l'événement d'épreuve" ;;
+    401|403)     echo "    ✗ Sentry a répondu $code — DSN refusé (clé invalide ou révoquée). Alertes en journal seulement." >&2 ;;
+    000)         echo "    ✗ Sentry injoignable — réseau bloqué ou hôte erroné. Alertes en journal seulement." >&2 ;;
+    *)           echo "    ✗ Sentry a répondu $code — canal NON fonctionnel. Alertes en journal seulement." >&2 ;;
+  esac
+else
+  echo "    ⚠ aucun DSN Sentry : alertes en JOURNAL uniquement (journalctl -t coinbosa-watchdog)"
+fi
 echo "    voir les alertes : journalctl -t coinbosa-watchdog -f"
 echo "    état du minuteur : systemctl list-timers coinbosa-watchdog.timer"
