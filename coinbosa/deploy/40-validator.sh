@@ -76,6 +76,11 @@ else
 fi
 
 echo "==> Service systemd"
+# --miner.gaslimit : SANS ce drapeau, geth fait deriver la limite de gas vers sa cible par
+#   defaut. Elle est ainsi passee de 40 000 000 (genesis) a 55 000 000 sans decision de
+#   personne. Or le debit annonce dans le livre blanc se calcule a partir de cette valeur :
+#   la laisser deriver rendrait ce chiffre faux sans que rien ne le signale. On la fige donc
+#   a la valeur en vigueur. La changer un jour impose de recalculer et republier le debit.
 # Aucun --http, aucun --ws : ce processus n'est joignable que par IPC (fichier local)
 # et par P2P sur la boucle locale. --netrestrict borne les pairs à localhost tant que
 # le validateur et le nœud RPC partagent la machine.
@@ -102,6 +107,7 @@ ExecStart=$GETH \\
   --netrestrict 127.0.0.0/8 \\
   --mine \\
   --miner.etherbase $VALIDATOR \\
+  --miner.gaslimit 55000000 \\
   --unlock $VALIDATOR \\
   --password $DATADIR/pw.txt \\
   --allow-insecure-unlock \\
