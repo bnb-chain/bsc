@@ -168,7 +168,7 @@ func b20EnterCall(ctx *PrecompileContext, input []byte) error {
 // value-bearing transfer would instead be accepted and stranded there. An
 // unrecognized variant byte is not routed at all, so a token of a future
 // variant is inert rather than misrouted.
-func resolveB20Token(state StateDB, addr common.Address) (PrecompiledContract, bool) {
+func resolveB20Token(addr common.Address) (PrecompiledContract, bool) {
 	switch addr[10] {
 	case b20VariantAsset:
 		return b20Asset, true
@@ -182,7 +182,7 @@ func resolveB20Token(state StateDB, addr common.Address) (PrecompiledContract, b
 // resolveB20 is the "BerylLookup" equivalent: given an address, decide whether
 // it is a B20 precompile (fixed factory or a dynamic token) and return the
 // bound instance. Fork gating is the caller's responsibility.
-func resolveB20(state StateDB, addr common.Address) (PrecompiledContract, bool) {
+func resolveB20(addr common.Address) (PrecompiledContract, bool) {
 	switch addr {
 	case B20FactoryAddress:
 		return b20Factory, true
@@ -192,7 +192,7 @@ func resolveB20(state StateDB, addr common.Address) (PrecompiledContract, bool) 
 		return b20Activation, true
 	}
 	if IsB20Address(addr) {
-		return resolveB20Token(state, addr)
+		return resolveB20Token(addr)
 	}
 	return nil, false
 }

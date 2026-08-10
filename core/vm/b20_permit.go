@@ -180,7 +180,9 @@ func (t b20Token) decodePermit(args []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	vWord, err := readWord(args, 4)
+	// v is a uint8: a word with dirty high bytes is a malformed encoding, not a
+	// signature to be truncated and then blamed on the signer.
+	v, err := readStrictUint8(args, 4)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +194,7 @@ func (t b20Token) decodePermit(args []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return t.permit(owner, spender, value, deadline, vWord[31], r, s)
+	return t.permit(owner, spender, value, deadline, v, r, s)
 }
 
 func (t b20Token) permit(owner, spender common.Address, value, deadline *uint256.Int, v byte, r, s common.Hash) ([]byte, error) {

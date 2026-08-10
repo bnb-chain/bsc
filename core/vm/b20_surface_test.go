@@ -18,6 +18,7 @@ package vm
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -328,6 +329,125 @@ func TestB20MiscViews(t *testing.T) {
 	} {
 		if got := askIsB20(tc.addr); got != tc.want {
 			t.Errorf("isB20(%s) [%s] = %v, want %v", tc.addr.Hex(), tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestB20StrictScalarDecoding covers the two scalar uint8 arguments that used to
+// be truncated instead of validated. Both now match how uint8[] elements,
+// addresses and uint64s are already decoded: a word carrying anything above its
+// own width is a malformed encoding, not a value.
+func TestB20StrictScalarDecoding(t *testing.T) {
+	admin := common.HexToAddress("0xad4149")
+	statedb, token, run := newTokenWithEVM(t, 1, func(s b20Storage) {
+		s.setRole(roleDefaultAdmin, admin, true)
+		s.setAdminCount(uint256.NewInt(1))
+		s.setPaused(uint256.NewInt(1 << b20PauseBurn))
+	})
+	_ = statedb
+	_ = token
+
+	dirty := func(sel [4]byte, low byte) []byte {
+		var w common.Hash
+		w[0], w[31] = 1, low // a nonzero byte above the uint8
+		return append(append([]byte{}, sel[:]...), w.Bytes()...)
+	}
+
+	// isPaused: dirty high bytes are malformed, so an empty revert. Converted at
+	// the boundary — without it a typed revert also arrives as (nil, err) and
+	// satisfies both assertions, so an implementation reporting malformed padding
+	// as Panic(0x21) would pass.
+	ret, err := finishB20(run(admin, dirty(selIsPaused, byte(b20PauseBurn))))
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Errorf("isPaused with dirty word err = %v, want revert", err)
+	}
+	if len(ret) != 0 {
+		t.Errorf("isPaused with dirty word returned %x, want empty, not a typed error", ret)
+	}
+	// A clean word outside the enum is Panic(0x21), as pause()/unpause() report it.
+	// This harness dispatches directly, so the typed revert is converted here the
+	// way the precompile boundary would.
+	ret, err = finishB20(run(admin, b20Call(selIsPaused, wU8(b20PauseSeize+1))))
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Errorf("isPaused(out of range) err = %v, want revert", err)
+	}
+	wantPanic := append(append([]byte{}, errSelPanic[:]...), wU8(0x21).Bytes()...)
+	if !bytes.Equal(ret, wantPanic) {
+		t.Errorf("isPaused(out of range) = %x, want Panic(0x21) = %x", ret, wantPanic)
+	}
+	// A clean in-range word still answers.
+	if ret, err := run(admin, b20Call(selIsPaused, wU8(b20PauseBurn))); err != nil ||
+		!bytes.Equal(ret, encBool(true)) {
+		t.Errorf("isPaused(BURN) = %x err %v, want true", ret, err)
+	}
+
+	// permit's v: a dirty word is malformed rather than a signature to blame on
+	// the signer, so it reverts empty instead of reporting InvalidSigner.
+	permitArgs := append([]byte{}, selPermit[:]...)
+	permitArgs = append(permitArgs, addrKey(b20Alice).Bytes()...) // owner
+	permitArgs = append(permitArgs, addrKey(b20Bob).Bytes()...)   // spender
+	permitArgs = append(permitArgs, u256hash(1).Bytes()...)       // value
+	permitArgs = append(permitArgs, u256hash(1<<40).Bytes()...)   // deadline
+	var vDirty common.Hash
+	vDirty[0], vDirty[31] = 1, 27
+	permitArgs = append(permitArgs, vDirty.Bytes()...)             // v, dirty
+	permitArgs = append(permitArgs, common.Hash{31: 1}.Bytes()...) // r
+	permitArgs = append(permitArgs, common.Hash{31: 1}.Bytes()...) // s
+	// Converted at the boundary, as above: a truncating decoder would reach
+	// ecrecover and come back with an InvalidSigner payload, which is exactly what
+	// distinguishes it from a malformed-encoding revert.
+	ret, err = finishB20(run(b20Alice, permitArgs))
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Errorf("permit with dirty v err = %v, want revert", err)
+	}
+	if len(ret) != 0 {
+		t.Errorf("permit with dirty v returned %x, want empty (not InvalidSigner)", ret)
+	}
+}
+
+// TestB20RoleMutationsRefusedReadOnly pins that the read-only guard still covers
+// every role mutation after being folded into ensureRoleMutable. The point of
+// holding it there is that a mutation added later is guarded by default; the
+// point of this test is that the three existing ones did not lose it.
+func TestB20RoleMutationsRefusedReadOnly(t *testing.T) {
+	admin := common.HexToAddress("0xad4149")
+	statedb, token, _ := newTokenWithEVM(t, 1, func(s b20Storage) {
+		s.setRole(roleDefaultAdmin, admin, true)
+		s.setAdminCount(uint256.NewInt(1))
+	})
+
+	// Seed a role so revokeRole has something to remove; without it a refused
+	// revoke and a successful one look alike.
+	view := newB20Storage(statedb, token)
+	view.setRole(roleMint, b20Bob, true)
+
+	// The error alone is not enough: a write followed by ErrWriteProtection would
+	// satisfy it. The invariant is that the frame changed no state at all, so it is
+	// checked against the state root rather than against a hand-picked set of
+	// slots — enumerating slots is guessing which ones a regression would touch.
+	take := func() common.Hash { return statedb.IntermediateRoot(false) }
+	before := take()
+
+	for _, tc := range []struct {
+		what  string
+		input []byte
+	}{
+		{"grantRole", b20Call(selGrantRole, roleMint, addrKey(b20Carol))},
+		{"revokeRole", b20Call(selRevokeRole, roleMint, addrKey(b20Bob))},
+		{"setRoleAdmin", b20Call(selSetRoleAdmin, roleMint, roleMetadata)},
+		{"renounceRole", b20Call(selRenounceRole, roleDefaultAdmin, addrKey(admin))},
+		{"renounceLastAdmin", b20Call(selRenounceLastAdmin)},
+	} {
+		gas := NewGasBudget(1_000_000)
+		ctx := &PrecompileContext{
+			StateDB: statedb, Self: token, Caller: admin,
+			DirectCall: true, ReadOnly: true, gas: &gas,
+		}
+		if _, err := newB20Token(ctx, 18).dispatch(tc.input); !errors.Is(err, ErrWriteProtection) {
+			t.Errorf("read-only %s err = %v, want write protection", tc.what, err)
+		}
+		if got := take(); got != before {
+			t.Errorf("read-only %s changed state: root %s -> %s", tc.what, before.Hex(), got.Hex())
 		}
 	}
 }

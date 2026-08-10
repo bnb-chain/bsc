@@ -78,10 +78,9 @@ func TestIsB20Address(t *testing.T) {
 // actually routes. They are separate switches, so a variant added to one and
 // not the other would let variantOf name a variant that reaches no handler.
 func TestB20VariantSetsAgree(t *testing.T) {
-	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	for v := 0; v < 256; v++ {
 		variant := byte(v)
-		_, routed := resolveB20Token(statedb, b20Addr(variant, 1))
+		_, routed := resolveB20Token(b20Addr(variant, 1))
 		if got := b20VariantRecognized(variant); got != routed {
 			t.Errorf("variant 0x%02x: b20VariantRecognized = %v, routed = %v", variant, got, routed)
 		}
@@ -102,38 +101,38 @@ func TestResolveB20(t *testing.T) {
 	}
 
 	// Factory resolves regardless of state.
-	if p, ok := resolveB20(statedb, B20FactoryAddress); !ok {
+	if p, ok := resolveB20(B20FactoryAddress); !ok {
 		t.Fatal("factory address should resolve")
 	} else if _, ok := p.(*b20FactoryPrecompile); !ok {
 		t.Fatalf("factory resolved to %T, want *b20FactoryPrecompile", p)
 	}
 
 	// Initialized Asset / Stablecoin route to the right variant.
-	if p, ok := resolveB20(statedb, asset); !ok {
+	if p, ok := resolveB20(asset); !ok {
 		t.Fatal("initialized asset token should resolve")
 	} else if _, ok := p.(*b20AssetPrecompile); !ok {
 		t.Fatalf("asset resolved to %T, want *b20AssetPrecompile", p)
 	}
-	if p, ok := resolveB20(statedb, stable); !ok {
+	if p, ok := resolveB20(stable); !ok {
 		t.Fatal("initialized stablecoin token should resolve")
 	} else if _, ok := p.(*b20StablecoinPrecompile); !ok {
 		t.Fatalf("stablecoin resolved to %T, want *b20StablecoinPrecompile", p)
 	}
 
 	// Unknown variant byte is not routed even when initialized.
-	if _, ok := resolveB20(statedb, unknown); ok {
+	if _, ok := resolveB20(unknown); ok {
 		t.Error("unknown variant should not resolve")
 	}
 	// An uninitialized address with a recognized variant is still routed:
 	// existence is checked inside the handler, not by dispatch, so a
 	// value-bearing call to it is refused rather than stranded (BEP-702 3.3).
-	if p, ok := resolveB20(statedb, uninit); !ok {
+	if p, ok := resolveB20(uninit); !ok {
 		t.Error("uninitialized recognized-variant address should still route")
 	} else if _, ok := p.(*b20AssetPrecompile); !ok {
 		t.Errorf("uninitialized asset address resolved to %T, want *b20AssetPrecompile", p)
 	}
 	// A plain address outside the space is not a B20 precompile.
-	if _, ok := resolveB20(statedb, common.HexToAddress("0x1234")); ok {
+	if _, ok := resolveB20(common.HexToAddress("0x1234")); ok {
 		t.Error("non-B20 address should not resolve")
 	}
 }

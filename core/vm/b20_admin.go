@@ -166,11 +166,20 @@ func (t b20Token) dispatchAdmin(sel [4]byte, args []byte) (ret []byte, err error
 
 	// pause
 	case selIsPaused:
-		f, err := readU256(args, 0)
+		// Decoded exactly as pause()/unpause() decode their elements: a word with
+		// dirty high bytes is a malformed encoding, and a well-formed value
+		// outside the enum is Panic(0x21).
+		w, err := readWord(args, 0)
 		if err != nil {
 			return nil, err, true
 		}
-		return encBool(t.isPaused(uint(f.Uint64()))), nil, true
+		if !isEnumWord(w, 0xff) {
+			return nil, ErrExecutionReverted, true
+		}
+		if uint(w[31]) > b20PauseSeize {
+			return nil, revPanic(0x21), true
+		}
+		return encBool(t.isPaused(uint(w[31]))), nil, true
 	case selPause:
 		return nil, t.setPause(args, true), true
 	case selUnpause:
@@ -311,9 +320,6 @@ func (t b20Token) ensureAdminOf(role common.Hash) bool {
 }
 
 func (t b20Token) grantRole(role common.Hash, account common.Address) error {
-	if t.ctx.ReadOnly {
-		return ErrWriteProtection
-	}
 	if err := t.ensureRoleMutable(role); err != nil {
 		return err
 	}
@@ -328,9 +334,6 @@ func (t b20Token) grantRole(role common.Hash, account common.Address) error {
 }
 
 func (t b20Token) revokeRole(role common.Hash, account common.Address) error {
-	if t.ctx.ReadOnly {
-		return ErrWriteProtection
-	}
 	if err := t.ensureRoleMutable(role); err != nil {
 		return err
 	}
@@ -375,9 +378,6 @@ func (t b20Token) renounceLastAdmin() error {
 }
 
 func (t b20Token) setRoleAdmin(role, newAdminRole common.Hash) error {
-	if t.ctx.ReadOnly {
-		return ErrWriteProtection
-	}
 	if err := t.ensureRoleMutable(role); err != nil {
 		return err
 	}
@@ -409,10 +409,15 @@ func (t b20Token) ensureRole(role common.Hash) error {
 		addrKey(t.ctx.Caller), role)
 }
 
-// ensureRoleMutable applies the shared role-mutation gates: mutations are
-// impossible once the last admin is gone, and otherwise require the caller to
-// hold role's admin role.
+// ensureRoleMutable applies the shared role-mutation gates: a write is refused
+// in a read-only frame, mutations are impossible once the last admin is gone,
+// and otherwise the caller must hold role's admin role. Holding the read-only
+// check here rather than at each call site means a role-mutation entry point
+// added later is guarded by default.
 func (t b20Token) ensureRoleMutable(role common.Hash) error {
+	if t.ctx.ReadOnly {
+		return ErrWriteProtection
+	}
 	if !t.privileged && !t.roleMutable() {
 		return revB20("AccessControlUnauthorizedAccount(address,bytes32)", errSelACUnauthorized,
 			addrKey(t.ctx.Caller), t.s.roleAdmin(role))

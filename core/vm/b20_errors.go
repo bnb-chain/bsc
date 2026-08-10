@@ -116,14 +116,7 @@ func revB20(sig string, sel [4]byte, words ...common.Hash) error {
 // revB20Bytes builds a typed revert for an error with a single dynamic
 // `bytes`/`string` argument.
 func revB20Bytes(sig string, sel [4]byte, payload []byte) error {
-	padded := (len(payload) + 31) / 32 * 32
-	data := make([]byte, 4+64+padded)
-	copy(data, sel[:])
-	data[4+31] = 0x20
-	l := uint256.NewInt(uint64(len(payload))).Bytes32()
-	copy(data[4+32:4+64], l[:])
-	copy(data[4+64:], payload)
-	return &b20RevertError{sig: sig, data: data}
+	return &b20RevertError{sig: sig, data: append(sel[:], encodeTuple(abiBytes(payload))...)}
 }
 
 // Word-building helpers.

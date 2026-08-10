@@ -362,18 +362,9 @@ func encBool(b bool) []byte {
 	return out
 }
 
-// encString ABI-encodes a string: head offset (0x20), length word, then the
-// data right-padded to a 32-byte boundary.
-func encString(s string) []byte {
-	data := []byte(s)
-	padded := (len(data) + 31) / 32 * 32
-	out := make([]byte, 64+padded)
-	out[31] = 0x20
-	lenWord := uint256.NewInt(uint64(len(data))).Bytes32()
-	copy(out[32:64], lenWord[:])
-	copy(out[64:], data)
-	return out
-}
+// encString ABI-encodes a string as a complete return value: one dynamic member
+// in a tuple, so a head offset followed by the length-prefixed data.
+func encString(s string) []byte { return encodeTuple(abiString(s)) }
 
 // --- ABI encoding primitives ------------------------------------------------
 //

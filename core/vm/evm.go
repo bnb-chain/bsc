@@ -51,7 +51,7 @@ func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
 	// address is resolved dynamically from its prefix (there is no fixed-address
 	// entry for tokens, so they cannot live in the static precompiles map).
 	if evm.b20Enabled() {
-		return resolveB20(evm.StateDB, addr)
+		return resolveB20(addr)
 	}
 	return nil, false
 }
