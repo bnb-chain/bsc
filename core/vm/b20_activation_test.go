@@ -178,8 +178,11 @@ func TestB20RegistrySentinel(t *testing.T) {
 		return ret, err
 	}
 
-	// The PolicyRegistry starts bare: the harness seeds only the activation
-	// registry, exactly as a fork that seeds activation alone would.
+	// Strip the sentinel the fork planted, so the registry is bare going in. This
+	// is deliberately a state the fork never leaves behind — the point is that the
+	// guard does not depend on the fork having run, which is what makes it a
+	// backstop rather than a duplicate of the seeding.
+	statedb.SetCode(B20PolicyRegistryAddress, nil, tracing.CodeChangeContractCreation)
 	if got := statedb.GetCodeHash(B20PolicyRegistryAddress); got == b20MarkerCodeHash {
 		t.Fatal("precondition: the policy registry should start without a sentinel")
 	}
