@@ -40,9 +40,28 @@ fichier ne sera plus répliqué :
 
 Récupérer le CID obtenu, de la forme `bafybei…`.
 
-### 2. Renseigner le CID
+### 2. Renseigner le CID, puis le VÉRIFIER
 
-Ouvrir `coinbosa.json` et remplacer `REMPLACER_PAR_LE_CID` par le CID.
+Ouvrir `coinbosa.json` et y mettre le CID, puis **contrôler qu'il est réellement servi** :
+
+```bash
+bash verifier-icone.sh
+```
+
+Ce contrôle interroge quatre passerelles publiques et compare l'empreinte du fichier reçu
+à celle du logo officiel. Il ne suffit pas que Pinata affiche le fichier : le registre est
+public et durable, et un CID que personne ne peut résoudre afficherait une icône cassée
+dans tous les portefeuilles, sans moyen simple de la corriger ensuite.
+
+**Piège fréquent — le fichier privé.** Pinata place les nouveaux fichiers dans un espace
+**privé** par défaut. Un fichier privé n'est jamais servi par les passerelles publiques,
+donc jamais visible dans un portefeuille, alors qu'il s'affiche parfaitement dans
+l'interface de Pinata. Il faut choisir explicitement le réseau **public**, et vérifier
+que le fichier est **épinglé** (« pinned ») — sinon il finit par disparaître, et le logo
+avec lui.
+
+Le CID change quand on re-téléverse en public : reporter le nouveau, puis relancer le
+contrôle.
 
 ### 3. Proposer la modification
 
