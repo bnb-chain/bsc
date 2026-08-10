@@ -1119,6 +1119,17 @@ func TryUpdateBuildInSystemContract(config *params.ChainConfig, blockNumber *big
 			statedb.SetNonce(params.HistoryStorageAddress, 1, tracing.NonceChangeNewContract)
 			log.Info("Set code for HistoryStorageAddress", "blockNumber", blockNumber.Int64(), "blockTime", blockTime)
 		}
+		// The B20 registries are precompiles, not upgradeable contracts, so they
+		// are seeded here rather than through an Upgrade config. The fork opens no
+		// feature; it only installs the switch that lets governance open one
+		// later, plus the sentinel that keeps the registry accounts from being
+		// reaped (BEP-702 3.15, 3.16).
+		if config.IsInBSC() && config.IsOnAmsterdam(blockNumber, lastBlockTime, blockTime) {
+			admin := common.HexToAddress(TimelockContract)
+			vm.SeedB20Activation(statedb, admin)
+			log.Info("Seeded B20 activation registry", "blockNumber", blockNumber.Int64(),
+				"blockTime", blockTime, "activationAdmin", admin)
+		}
 	} else {
 		if config.IsFeynman(blockNumber, lastBlockTime) {
 			upgradeBuildInSystemContract(config, blockNumber, lastBlockTime, blockTime, statedb)
