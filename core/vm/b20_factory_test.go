@@ -35,29 +35,62 @@ func rightPad32(b []byte) []byte {
 	return out
 }
 
-// encodeCreateB20 ABI-encodes createB20(uint8,bytes32,address,bytes[]).
-func encodeCreateB20(variant byte, salt common.Hash, admin common.Address, calls [][]byte) []byte {
-	out := append([]byte{}, selCreateB20[:]...)
-	out = append(out, u256hash(uint64(variant)).Bytes()...) // w0 variant
-	out = append(out, salt.Bytes()...)                      // w1 salt
-	out = append(out, addrKey(admin).Bytes()...)            // w2 initialAdmin
-	out = append(out, u256hash(0x80).Bytes()...)            // w3 offset to bytes[]
+// b20AssetParams encodes B20AssetCreateParams{version,name,symbol,initialAdmin,decimals}.
+func b20AssetParams(name, symbol string, admin common.Address, decimals byte) []byte {
+	return abiEncodeStruct(
+		abiWord(wU8(b20ParamsVersion)),
+		abiString(name),
+		abiString(symbol),
+		abiWord(addrKey(admin)),
+		abiWord(wU8(decimals)),
+	)
+}
 
-	// array region: length, offsets table, elements.
+// b20StablecoinParams encodes B20StablecoinCreateParams{version,name,symbol,initialAdmin,currency}.
+func b20StablecoinParams(name, symbol string, admin common.Address, currency string) []byte {
+	return abiEncodeStruct(
+		abiWord(wU8(b20ParamsVersion)),
+		abiString(name),
+		abiString(symbol),
+		abiWord(addrKey(admin)),
+		abiString(currency),
+	)
+}
+
+// encodeCreateB20 ABI-encodes createB20(uint8,bytes32,bytes,bytes[]) with the
+// variant's default params, which is what most tests want.
+func encodeCreateB20(variant byte, salt common.Hash, admin common.Address, calls [][]byte) []byte {
+	params := b20AssetParams("Test Token", "TT", admin, 18)
+	if variant == b20VariantStablecoin {
+		params = b20StablecoinParams("Test Stable", "TS", admin, "USD")
+	}
+	return encodeCreateB20WithParams(variant, salt, params, calls)
+}
+
+// encodeCreateB20WithParams is encodeCreateB20 with an explicit params blob,
+// for tests that exercise the validation paths.
+func encodeCreateB20WithParams(variant byte, salt common.Hash, params []byte, calls [][]byte) []byte {
 	elems := make([][]byte, len(calls))
 	for i, c := range calls {
 		elems[i] = append(u256hash(uint64(len(c))).Bytes(), rightPad32(c)...)
 	}
-	out = append(out, u256hash(uint64(len(calls))).Bytes()...)
+	arr := append([]byte{}, u256hash(uint64(len(calls))).Bytes()...)
 	cur := uint64(len(calls) * 32) // element offsets are relative to just after the length word
 	for _, e := range elems {
-		out = append(out, u256hash(cur).Bytes()...)
+		arr = append(arr, u256hash(cur).Bytes()...)
 		cur += uint64(len(e))
 	}
 	for _, e := range elems {
-		out = append(out, e...)
+		arr = append(arr, e...)
 	}
-	return out
+
+	out := append([]byte{}, selCreateB20[:]...)
+	return append(out, encodeTuple(
+		abiWord(u256hash(uint64(variant))),
+		abiWord(salt),
+		abiBytes(params),
+		abiPart{dynamic: true, tail: arr},
+	)...)
 }
 
 func TestB20Factory(t *testing.T) {
@@ -181,5 +214,260 @@ func TestB20FactoryOwnerless(t *testing.T) {
 	if _, _, err := evm.Call(creator, token, b20Call(selGrantRole, roleBurn, addrKey(creator)),
 		NewGasBudget(1_000_000), uint256.NewInt(0)); !errors.Is(err, ErrExecutionReverted) {
 		t.Fatalf("grant on ownerless token err = %v, want revert", err)
+	}
+}
+
+// TestB20CreateParams exercises the create-params blob: the version gate that
+// precedes every field check, the per-variant validation, and the metadata the
+// token ends up carrying.
+func TestB20CreateParams(t *testing.T) {
+	statedb, evm := newAmsterdamEVM(t)
+	creator := common.HexToAddress("0xc4ea70")
+	call := func(input []byte) ([]byte, error) {
+		ret, _, err := evm.Call(creator, B20FactoryAddress, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		return ret, err
+	}
+	salt := func(n uint64) common.Hash { return u256hash(n) }
+
+	// An unsupported version is reported before any field is looked at, so a
+	// blob that is also invalid downstream still fails on the version.
+	bad := abiEncodeStruct(abiWord(wU8(2)), abiString("N"), abiString("S"), abiWord(addrKey(creator)), abiWord(wU8(3)))
+	ret, err := call(encodeCreateB20WithParams(b20VariantAsset, salt(1), bad, nil))
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("bad version err = %v, want revert", err)
+	}
+	want := append(append([]byte{}, errSelUnsupportedVersion[:]...), wU8(2).Bytes()...)
+	want = append(want, wU8(b20VariantAsset).Bytes()...)
+	if !bytes.Equal(ret, want) {
+		t.Fatalf("revert data = %x, want UnsupportedVersion(2, ASSET) = %x", ret, want)
+	}
+
+	// Asset decimals are bounded.
+	for _, d := range []byte{5, 19} {
+		p := b20AssetParams("N", "S", creator, d)
+		ret, err := call(encodeCreateB20WithParams(b20VariantAsset, salt(uint64(d)), p, nil))
+		if !errors.Is(err, ErrExecutionReverted) {
+			t.Fatalf("decimals %d err = %v, want revert", d, err)
+		}
+		want := append(append([]byte{}, errSelInvalidDecimals[:]...), wU8(d).Bytes()...)
+		if !bytes.Equal(ret, want) {
+			t.Fatalf("decimals %d revert data = %x, want InvalidDecimals", d, ret)
+		}
+	}
+
+	// Stablecoin currency must be present and uppercase A-Z.
+	if _, err := call(encodeCreateB20WithParams(b20VariantStablecoin, salt(20), b20StablecoinParams("N", "S", creator, ""), nil)); !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("empty currency err = %v, want MissingRequiredField", err)
+	}
+	if _, err := call(encodeCreateB20WithParams(b20VariantStablecoin, salt(21), b20StablecoinParams("N", "S", creator, "usd"), nil)); !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("lowercase currency err = %v, want InvalidCurrency", err)
+	}
+
+	// A valid Asset carries its metadata and its chosen decimals.
+	ret, err = call(encodeCreateB20WithParams(b20VariantAsset, salt(30), b20AssetParams("Gold Fund", "GLD", creator, 8), nil))
+	if err != nil {
+		t.Fatalf("createB20 asset: %v", err)
+	}
+	asset := common.BytesToAddress(ret)
+	view := newB20Storage(statedb, asset)
+	if got := view.name(); got != "Gold Fund" {
+		t.Fatalf("name = %q, want Gold Fund", got)
+	}
+	if got := view.symbol(); got != "GLD" {
+		t.Fatalf("symbol = %q, want GLD", got)
+	}
+	dec, _, err := evm.Call(creator, asset, b20Call(selDecimals), NewGasBudget(200_000), uint256.NewInt(0))
+	if err != nil || !bytes.Equal(dec, u256hash(8).Bytes()) {
+		t.Fatalf("decimals() = %x (err %v), want 8", dec, err)
+	}
+
+	// A valid Stablecoin exposes its immutable currency and fixed 6 decimals.
+	ret, err = call(encodeCreateB20WithParams(b20VariantStablecoin, salt(31), b20StablecoinParams("Euro Coin", "EURC", creator, "EUR"), nil))
+	if err != nil {
+		t.Fatalf("createB20 stablecoin: %v", err)
+	}
+	stable := common.BytesToAddress(ret)
+	cur, _, err := evm.Call(creator, stable, b20Call(selCurrency), NewGasBudget(200_000), uint256.NewInt(0))
+	if err != nil || !bytes.Equal(cur, encString("EUR")) {
+		t.Fatalf("currency() = %x (err %v), want EUR", cur, err)
+	}
+	dec, _, err = evm.Call(creator, stable, b20Call(selDecimals), NewGasBudget(200_000), uint256.NewInt(0))
+	if err != nil || !bytes.Equal(dec, u256hash(6).Bytes()) {
+		t.Fatalf("stablecoin decimals() = %x (err %v), want 6", dec, err)
+	}
+}
+
+// TestB20CreatedEvent pins the creation event's topics and payload: an indexer
+// must be able to build a token index from the factory address alone.
+func TestB20CreatedEvent(t *testing.T) {
+	statedb, evm := newAmsterdamEVM(t)
+	creator := common.HexToAddress("0xe7e17")
+	statedb.SetTxContext(common.HexToHash("0xbeef"), 0)
+
+	params := b20StablecoinParams("Dollar Coin", "USDX", creator, "USD")
+	ret, _, err := evm.Call(creator, B20FactoryAddress,
+		encodeCreateB20WithParams(b20VariantStablecoin, common.HexToHash("0x77"), params, nil),
+		NewGasBudget(5_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+
+	var created *types.Log
+	for _, l := range statedb.Logs() {
+		if len(l.Topics) > 0 && l.Topics[0] == b20TopicB20Created {
+			created = l
+		}
+	}
+	if created == nil {
+		t.Fatal("no B20Created log emitted")
+	}
+	if created.Address != B20FactoryAddress {
+		t.Fatalf("emitted by %x, want the factory %x", created.Address, B20FactoryAddress)
+	}
+	if len(created.Topics) != 3 {
+		t.Fatalf("topics = %d, want 3 (signature, token, variant)", len(created.Topics))
+	}
+	if created.Topics[1] != addrKey(token) {
+		t.Fatalf("indexed token = %x, want %x", created.Topics[1], addrKey(token))
+	}
+	if created.Topics[2] != wU8(b20VariantStablecoin) {
+		t.Fatalf("indexed variant = %x, want STABLECOIN", created.Topics[2])
+	}
+
+	// Data is (name, symbol, decimals, variantEventParams); the last carries
+	// the versioned currency struct for a Stablecoin.
+	wantParams := abiEncodeStruct(abiWord(wU8(b20ParamsVersion)), abiString("USD"))
+	wantData := encodeTuple(
+		abiString("Dollar Coin"), abiString("USDX"), abiWord(wU8(6)), abiBytes(wantParams),
+	)
+	if !bytes.Equal(created.Data, wantData) {
+		t.Fatalf("event data = %x\nwant                = %x", created.Data, wantData)
+	}
+}
+
+// TestB20CreateParamsCanonicalEncoding decodes a params blob written out by
+// hand, byte for byte, as `abi.encode(B20AssetCreateParams{...})` would produce
+// it. The other tests build their input with the same helper the expected
+// output uses, so a shared mistake in that helper would pass unnoticed; this
+// vector is independent of it.
+//
+// Layout of abi.encode(struct{uint8,string,string,address,uint8}):
+//
+//	w0  0x20   offset to the struct (single-value encoding wraps it)
+//	w1  0x01   version
+//	w2  0xa0   offset to name, relative to the struct start (5 head words)
+//	w3  0xe0   offset to symbol
+//	w4  admin
+//	w5  0x12   decimals (18)
+//	w6  0x01   name length,   w7 "A"
+//	w8  0x01   symbol length, w9 "B"
+func TestB20CreateParamsCanonicalEncoding(t *testing.T) {
+	statedb, evm := newAmsterdamEVM(t)
+	admin := common.HexToAddress("0xad3111")
+
+	word := func(v uint64) []byte { return u256hash(v).Bytes() }
+	var blob []byte
+	blob = append(blob, word(0x20)...)             // w0 outer offset
+	blob = append(blob, word(1)...)                // w1 version
+	blob = append(blob, word(0xa0)...)             // w2 name offset
+	blob = append(blob, word(0xe0)...)             // w3 symbol offset
+	blob = append(blob, addrKey(admin).Bytes()...) // w4 initialAdmin
+	blob = append(blob, word(18)...)               // w5 decimals
+	blob = append(blob, word(1)...)                // w6 name length
+	blob = append(blob, rightPad32([]byte("A"))...)
+	blob = append(blob, word(1)...) // w8 symbol length
+	blob = append(blob, rightPad32([]byte("B"))...)
+
+	// The helper must agree with the hand-written vector; if it does not, every
+	// other params test is measuring the helper against itself.
+	if got := b20AssetParams("A", "B", admin, 18); !bytes.Equal(got, blob) {
+		t.Fatalf("b20AssetParams disagrees with the canonical encoding:\n got %x\nwant %x", got, blob)
+	}
+
+	ret, _, err := evm.Call(admin, B20FactoryAddress,
+		encodeCreateB20WithParams(b20VariantAsset, common.HexToHash("0xcafe"), blob, nil),
+		NewGasBudget(5_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("createB20 with a canonically encoded blob: %v", err)
+	}
+	view := newB20Storage(statedb, common.BytesToAddress(ret))
+	if view.name() != "A" || view.symbol() != "B" {
+		t.Fatalf("name/symbol = %q/%q, want A/B", view.name(), view.symbol())
+	}
+}
+
+// TestB20CreateParamsRejectsMalformed covers the decoder's strictness: dirty
+// high bits in a uint8 field or an out-of-range offset are malformed
+// encodings, reported as a bare revert rather than decoded into something
+// plausible.
+func TestB20CreateParamsRejectsMalformed(t *testing.T) {
+	_, evm := newAmsterdamEVM(t)
+	admin := common.HexToAddress("0xad3111")
+	call := func(salt common.Hash, blob []byte) error {
+		_, _, err := evm.Call(admin, B20FactoryAddress,
+			encodeCreateB20WithParams(b20VariantAsset, salt, blob, nil),
+			NewGasBudget(5_000_000), uint256.NewInt(0))
+		return err
+	}
+
+	// A version word carrying dirty high bits.
+	dirty := b20AssetParams("A", "B", admin, 18)
+	dirty[32] = 0xff // first byte of the version word, inside the struct
+	if err := call(common.HexToHash("0x1"), dirty); !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("dirty version word err = %v, want revert", err)
+	}
+
+	// An outer offset pointing past the end of the blob.
+	bad := b20AssetParams("A", "B", admin, 18)
+	copy(bad[:32], u256hash(uint64(len(bad)+32)).Bytes())
+	if err := call(common.HexToHash("0x2"), bad); !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("out-of-range offset err = %v, want revert", err)
+	}
+
+	// A dirty length word on a dynamic field. Truncating it to uint64 would
+	// silently read a zero-length name; it must fail the decode instead.
+	// The name length sits at the start of the first string tail: outer offset
+	// (1 word) + 5 struct head words = word 6.
+	dirtyLen := b20AssetParams("A", "B", admin, 18)
+	dirtyLen[6*32] = 0x01 // high byte of the length word
+	ret, _, err := evm.Call(admin, B20FactoryAddress,
+		encodeCreateB20WithParams(b20VariantAsset, common.HexToHash("0x3"), dirtyLen, nil),
+		NewGasBudget(5_000_000), uint256.NewInt(0))
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("dirty length word err = %v, want revert", err)
+	}
+	// A malformed encoding reverts bare, the way an ABI decode failure does —
+	// it is not a business-rule error and carries no typed payload.
+	if len(ret) != 0 {
+		t.Fatalf("malformed encoding revert data = %x, want empty", ret)
+	}
+}
+
+// TestB20CurrencyValidationFollowsOccupancy pins the precedence Base has: a
+// duplicate salt is reported as TokenAlreadyExists even when the currency in
+// the same call is invalid, because the occupancy check runs first.
+func TestB20CurrencyValidationFollowsOccupancy(t *testing.T) {
+	_, evm := newAmsterdamEVM(t)
+	creator := common.HexToAddress("0xdup)")
+	call := func(salt common.Hash, currency string) ([]byte, error) {
+		params := b20StablecoinParams("N", "S", creator, currency)
+		ret, _, err := evm.Call(creator, B20FactoryAddress,
+			encodeCreateB20WithParams(b20VariantStablecoin, salt, params, nil),
+			NewGasBudget(5_000_000), uint256.NewInt(0))
+		return ret, err
+	}
+	salt := common.HexToHash("0x5a17")
+
+	if _, err := call(salt, "USD"); err != nil {
+		t.Fatalf("first create: %v", err)
+	}
+	// Same salt, invalid currency: occupancy wins.
+	ret, err := call(salt, "usd")
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("duplicate salt err = %v, want revert", err)
+	}
+	if len(ret) < 4 || [4]byte(ret[:4]) != errSelTokenExists {
+		t.Fatalf("revert selector = %x, want TokenAlreadyExists %x", ret[:min(4, len(ret))], errSelTokenExists)
 	}
 }

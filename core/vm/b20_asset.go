@@ -106,10 +106,11 @@ func (e assetExt) setExtraMetadata(key, value string) {
 	e.s.setStringAt(extraMetaSlot(key), value)
 }
 
-// initAssetExtension seeds a new Asset token's extension storage.
-func initAssetExtension(ctx *PrecompileContext) {
+// initAssetExtension seeds a new Asset token's extension storage. decimals is
+// fixed at creation and never changes (BEP-702 section 4.10).
+func initAssetExtension(ctx *PrecompileContext, decimals byte) {
 	e := newAssetExt(ctx)
-	e.setDecimals(18) // TODO: from createB20 decimals param.
+	e.setDecimals(decimals)
 	e.setMultiplier(b20WAD)
 }
 
@@ -251,7 +252,10 @@ func readStringArg(args []byte, argIndex int) (string, error) {
 	if !ok || off > L || L-off < 32 {
 		return "", ErrExecutionReverted
 	}
-	n, _ := wordU64(args, off)
+	n, ok2 := wordU64(args, off)
+	if !ok2 {
+		return "", ErrExecutionReverted // malformed length word
+	}
 	dataPos := off + 32
 	if n > L-dataPos {
 		return "", ErrExecutionReverted
@@ -361,7 +365,10 @@ func readWordArray(args []byte, argIndex int) ([]common.Hash, error) {
 	if !ok || base > L || L-base < 32 {
 		return nil, ErrExecutionReverted
 	}
-	n, _ := wordU64(args, base)
+	n, ok2 := wordU64(args, base)
+	if !ok2 {
+		return nil, ErrExecutionReverted // malformed length word
+	}
 	dataPos := base + 32
 	if n > (L-dataPos)/32 {
 		return nil, ErrExecutionReverted

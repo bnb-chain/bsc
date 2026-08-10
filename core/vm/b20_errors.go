@@ -154,6 +154,10 @@ var (
 	errSelAlreadyActivated    = b20ErrorSel("AlreadyActivated(bytes32)")
 	errSelUnauthorizedAddr    = b20ErrorSel("Unauthorized(address)")
 	errSelZeroAdminAddress    = b20ErrorSel("ZeroAdminAddress()")
+	errSelUnsupportedVersion  = b20ErrorSel("UnsupportedVersion(uint8,uint8)")
+	errSelInvalidDecimals     = b20ErrorSel("InvalidDecimals(uint8)")
+	errSelMissingField        = b20ErrorSel("MissingRequiredField(string)")
+	errSelInvalidCurrency     = b20ErrorSel("InvalidCurrency(string)")
 )
 
 // revPanic mirrors Solidity's Panic(code): 0x11 arithmetic over/underflow,

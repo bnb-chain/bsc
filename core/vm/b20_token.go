@@ -353,3 +353,67 @@ func encString(s string) []byte {
 	copy(out[64:], data)
 	return out
 }
+
+// --- ABI encoding primitives ------------------------------------------------
+//
+// Enough of the encoder to build event payloads and nested structs: a head/tail
+// tuple over static words and dynamic byte strings. Types beyond these are not
+// needed by any B20 surface.
+
+// abiPart is one encoded tuple member: a static head word, or a dynamic value
+// whose head is an offset and whose tail carries length-prefixed data.
+type abiPart struct {
+	word    common.Hash
+	dynamic bool
+	tail    []byte
+}
+
+func abiWord(w common.Hash) abiPart { return abiPart{word: w} }
+
+// abiBytes encodes a dynamic byte string: length word then right-padded data.
+func abiBytes(b []byte) abiPart {
+	padded := (len(b) + 31) / 32 * 32
+	tail := make([]byte, 32+padded)
+	l := uint256.NewInt(uint64(len(b))).Bytes32()
+	copy(tail[:32], l[:])
+	copy(tail[32:], b)
+	return abiPart{dynamic: true, tail: tail}
+}
+
+func abiString(s string) abiPart { return abiBytes([]byte(s)) }
+
+// encodeTuple lays out parts as ABI head/tail: static members inline, dynamic
+// members as an offset into the tail section.
+func encodeTuple(parts ...abiPart) []byte {
+	head := make([]byte, 0, 32*len(parts))
+	tail := make([]byte, 0)
+	tailStart := uint64(32 * len(parts))
+	for _, p := range parts {
+		if !p.dynamic {
+			head = append(head, p.word[:]...)
+			continue
+		}
+		off := uint256.NewInt(tailStart + uint64(len(tail))).Bytes32()
+		head = append(head, off[:]...)
+		tail = append(tail, p.tail...)
+	}
+	return append(head, tail...)
+}
+
+// abiEncodeStruct produces abi.encode(s) for one dynamic struct. Encoding a
+// single value wraps it in a one-element tuple, so the result opens with an
+// offset word (0x20) and only then carries the struct's own head/tail. Getting
+// this wrapper wrong is invisible to a test that encodes and decodes with the
+// same helper, so it is spelled out here once and used everywhere.
+func abiEncodeStruct(members ...abiPart) []byte {
+	return encodeTuple(abiPart{dynamic: true, tail: encodeTuple(members...)})
+}
+
+// readBytesArg decodes a dynamic `bytes` argument at head word argIndex.
+func readBytesArg(args []byte, argIndex int) ([]byte, error) {
+	s, err := readStringArg(args, argIndex)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(s), nil
+}

@@ -192,8 +192,8 @@ interface IB20Factory {
     }
 
     event B20Created(
-        address indexed token, address indexed creator, Variant variant,
-        string name, string symbol, bytes variantEventParams
+        address indexed token, Variant indexed variant,
+        string name, string symbol, uint8 decimals, bytes variantEventParams
     );
 
     error InvalidVariant();

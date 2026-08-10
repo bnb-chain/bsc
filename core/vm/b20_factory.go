@@ -29,13 +29,23 @@ import (
 // (role and transfer-side policy gates skipped) so a token can be fully
 // configured — roles granted, initial supply minted — in one transaction.
 //
-// TODO: this uses an internal calldata layout for createB20 and does not yet
-// carry name/symbol/decimals/currency params, an ActivationRegistry gate, or
-// the B20Created event. Align the external ABI, params tuple, address preimage
-// and event with base-std before golden testing.
+// TODO: verify the address preimage against base-std before golden testing.
+
+// b20ParamsVersion is the encoding version every create-params struct carries
+// as its leading field. A struct that does not match is rejected before any
+// field is looked at, so a version error always takes precedence.
+const b20ParamsVersion = 1
+
+// Asset decimals bounds (BEP-702 section 4.10).
+const (
+	b20MinDecimals = 6
+	b20MaxDecimals = 18
+)
 
 var (
-	selCreateB20        = selector("createB20(uint8,bytes32,address,bytes[])")
+	b20TopicB20Created = eventTopic("B20Created(address,uint8,string,string,uint8,bytes)")
+
+	selCreateB20        = selector("createB20(uint8,bytes32,bytes,bytes[])")
 	selGetB20Address    = selector("getB20Address(uint8,address,bytes32)")
 	selIsB20            = selector("isB20(address)")
 	selIsB20Initialized = selector("isB20Initialized(address)")
@@ -123,7 +133,7 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	initialAdmin, err := readAddress(args, 2)
+	params, err := readBytesArg(args, 2)
 	if err != nil {
 		return nil, err
 	}
@@ -132,15 +142,22 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	variant := variantWord[31]
-	if variant != b20VariantAsset && variant != b20VariantStablecoin {
+	// Order follows BEP-702 section 3.4, and base-std: the variant is resolved
+	// and its feature gate applied before the variant-specific params blob is
+	// decoded, so a closed feature is reported as such whatever the payload.
+	if !isEnumWord(variantWord, b20VariantStablecoin) {
 		return nil, revB20("InvalidVariant()", errSelInvalidVariant)
 	}
+	variant := variantWord[31]
 	feature, ok := variantFeature(variant)
 	if !ok {
 		return nil, revB20("InvalidVariant()", errSelInvalidVariant)
 	}
 	if err := ensureFeatureActivated(ctx, feature); err != nil {
+		return nil, err
+	}
+	create, err := decodeCreateParams(variant, params)
+	if err != nil {
 		return nil, err
 	}
 	creator := ctx.Caller
@@ -154,18 +171,23 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 
 	// Bootstrap context/token bound to the new address, privileged so initCalls
 	// can grant roles and mint before any role holder exists.
-	decimals := byte(18) // TODO: Asset decimals param -> extension storage.
-	if variant == b20VariantStablecoin {
-		decimals = 6
-	}
+	decimals := create.decimals
 	tokenCtx := ctx.spawnBootstrap(addr, creator)
 	tok := newB20TokenBootstrap(tokenCtx, decimals)
 
-	// Initial state: no supply cap; initialAdmin (if any) is the first admin.
+	// Initial state: metadata, no supply cap, and the variant's own storage.
+	tok.s.setName(create.name)
+	tok.s.setSymbol(create.symbol)
 	tok.s.setSupplyCap(b20NoSupplyCap)
 	if variant == b20VariantAsset {
-		initAssetExtension(tokenCtx)
+		initAssetExtension(tokenCtx, create.decimals)
+	} else {
+		if err := validateCurrency(create.currency); err != nil {
+			return nil, err
+		}
+		newStablecoinExt(tokenCtx).setCurrency(create.currency)
 	}
+	initialAdmin := create.initialAdmin
 	if initialAdmin != (common.Address{}) {
 		tok.s.setRole(roleDefaultAdmin, initialAdmin, true)
 		tok.s.setAdminCount(uint256.NewInt(1))
@@ -187,8 +209,130 @@ func createB20(ctx *PrecompileContext, args []byte) ([]byte, error) {
 	if ctx.OutOfGas() {
 		return nil, ErrOutOfGas
 	}
-	// TODO: emit B20Created(token, variant, creator) once the signature is fixed.
+	// B20Created is emitted by the factory, not the token, so an indexer can
+	// follow creation from one address. variantEventParams carries the
+	// variant's immutable identity data: empty for Asset, the versioned
+	// currency struct for Stablecoin.
+	ctx.AddLog(
+		[]common.Hash{b20TopicB20Created, addrKey(addr), wU8(variant)},
+		encodeB20CreatedData(create),
+	)
 	return addrKey(addr).Bytes(), nil
+}
+
+// b20CreateParams is the decoded, validated content of a createB20 params blob.
+// decimals is resolved for both variants: Stablecoin's is fixed at 6 rather
+// than carried on the wire.
+type b20CreateParams struct {
+	variant      byte
+	name         string
+	symbol       string
+	initialAdmin common.Address
+	decimals     byte
+	currency     string // Stablecoin only
+}
+
+// decodeCreateParams decodes and validates the variant's create-params struct.
+// The version check precedes every field check, so an unsupported encoding is
+// always reported as such (base-std does the same).
+func decodeCreateParams(variant byte, params []byte) (b20CreateParams, error) {
+	out := b20CreateParams{variant: variant}
+
+	// abi.encode of a single dynamic struct wraps it in a one-element tuple, so
+	// the blob opens with an offset to the struct's own encoding rather than
+	// with its first field. Read through it before touching any field.
+	off, ok := wordU64(params, 0)
+	if !ok || off > uint64(len(params)) {
+		return out, ErrExecutionReverted // malformed encoding
+	}
+	body := params[off:]
+
+	// A uint8 field with dirty high bits is a malformed encoding, which the
+	// decode reports as such — Panic(0x21) is for an out-of-range enum, and
+	// version and decimals are plain integers.
+	version, err := readStrictUint8(body, 0)
+	if err != nil {
+		return out, err
+	}
+	if version != b20ParamsVersion {
+		return out, revB20("UnsupportedVersion(uint8,uint8)", errSelUnsupportedVersion,
+			wU8(version), wU8(variant))
+	}
+	if out.name, err = readStringArg(body, 1); err != nil {
+		return out, err
+	}
+	if out.symbol, err = readStringArg(body, 2); err != nil {
+		return out, err
+	}
+	if out.initialAdmin, err = readAddress(body, 3); err != nil {
+		return out, err
+	}
+
+	if variant == b20VariantAsset {
+		if out.decimals, err = readStrictUint8(body, 4); err != nil {
+			return out, err
+		}
+		if out.decimals < b20MinDecimals || out.decimals > b20MaxDecimals {
+			return out, revB20("InvalidDecimals(uint8)", errSelInvalidDecimals, wU8(out.decimals))
+		}
+		return out, nil
+	}
+
+	// Stablecoin: decimals are fixed and not carried on the wire. The currency
+	// is only decoded here; its content is checked at initialization, after the
+	// occupancy check, matching where base-std validates it.
+	out.decimals = 6
+	if out.currency, err = readStringArg(body, 4); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+// validateCurrency is the Stablecoin content check, applied at initialization
+// so that a duplicate salt reports TokenAlreadyExists ahead of it, as on Base.
+func validateCurrency(code string) error {
+	if code == "" {
+		return revB20Bytes("MissingRequiredField(string)", errSelMissingField, []byte("currency"))
+	}
+	if !validCurrency(code) {
+		return revB20Bytes("InvalidCurrency(string)", errSelInvalidCurrency, []byte(code))
+	}
+	return nil
+}
+
+// readStrictUint8 decodes a uint8 field: every byte above the last must be
+// zero, or the encoding is malformed.
+func readStrictUint8(args []byte, i int) (byte, error) {
+	w, err := readWord(args, i)
+	if err != nil {
+		return 0, err
+	}
+	for _, b := range w[:31] {
+		if b != 0 {
+			return 0, ErrExecutionReverted // malformed encoding
+		}
+	}
+	return w[31], nil
+}
+
+// encodeB20CreatedData ABI-encodes the non-indexed fields of B20Created:
+// (string name, string symbol, uint8 decimals, bytes variantEventParams).
+func encodeB20CreatedData(c b20CreateParams) []byte {
+	var variantParams []byte
+	if c.variant == b20VariantStablecoin {
+		// abi.encode(B20StablecoinEventParams{version, currency}) — a single
+		// dynamic struct, so it carries the same outer offset wrapper.
+		variantParams = abiEncodeStruct(
+			abiWord(wU8(b20ParamsVersion)),
+			abiString(c.currency),
+		)
+	}
+	return encodeTuple(
+		abiString(c.name),
+		abiString(c.symbol),
+		abiWord(wU8(c.decimals)),
+		abiBytes(variantParams),
+	)
 }
 
 // readBytesArray decodes an ABI `bytes[]` argument at head word argIndex.
@@ -198,19 +342,28 @@ func readBytesArray(args []byte, argIndex int) ([][]byte, error) {
 	if !ok || base > L || L-base < 32 {
 		return nil, ErrExecutionReverted
 	}
-	n, _ := wordU64(args, base)
+	n, ok2 := wordU64(args, base)
+	if !ok2 {
+		return nil, ErrExecutionReverted // malformed length word
+	}
 	arrData := base + 32
 	if n > (L-arrData)/32 {
 		return nil, ErrExecutionReverted
 	}
 	out := make([][]byte, n)
 	for i := uint64(0); i < n; i++ {
-		elemOff, _ := wordU64(args, arrData+i*32)
+		elemOff, ok2 := wordU64(args, arrData+i*32)
+		if !ok2 {
+			return nil, ErrExecutionReverted // malformed element offset
+		}
 		pos := arrData + elemOff
 		if elemOff > L-arrData || pos > L || L-pos < 32 {
 			return nil, ErrExecutionReverted
 		}
-		elemLen, _ := wordU64(args, pos)
+		elemLen, ok3 := wordU64(args, pos)
+		if !ok3 {
+			return nil, ErrExecutionReverted // malformed element length
+		}
 		start := pos + 32
 		if elemLen > L-start {
 			return nil, ErrExecutionReverted
@@ -220,11 +373,18 @@ func readBytesArray(args []byte, argIndex int) ([][]byte, error) {
 	return out, nil
 }
 
-// wordU64 reads the 32-byte word at byte position pos as a uint64 (truncating
-// the high bits), reporting false when the word is out of range.
+// wordU64 reads the 32-byte word at byte position pos as a uint64. It reports
+// false when the word is out of range or does not fit a uint64: an offset or
+// length with dirty high bits is a malformed encoding, not a large number to
+// be truncated into something plausible.
 func wordU64(args []byte, pos uint64) (uint64, bool) {
 	if pos > uint64(len(args)) || uint64(len(args))-pos < 32 {
 		return 0, false
 	}
-	return new(uint256.Int).SetBytes(args[pos : pos+32]).Uint64(), true
+	for _, b := range args[pos : pos+24] {
+		if b != 0 {
+			return 0, false
+		}
+	}
+	return new(uint256.Int).SetBytes(args[pos+24 : pos+32]).Uint64(), true
 }

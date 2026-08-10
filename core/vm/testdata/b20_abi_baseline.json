@@ -110,7 +110,7 @@
     "Announcement(address,uint256,string,string)",
     "EndAnnouncement(uint256)",
     "ExtraMetadataUpdated(string,string)",
-    "B20Created(address,address,uint8,string,string,bytes)",
+    "B20Created(address,uint8,string,string,uint8,bytes)",
     "PolicyCreated(uint64,address,uint8)",
     "PolicyAdminStaged(uint64,address)",
     "PolicyAdminUpdated(uint64,address,address)",

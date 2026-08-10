@@ -55,11 +55,8 @@ func TestB20ABIBaseline(t *testing.T) {
 	// Implemented signatures that intentionally differ from the baseline while
 	// a work package is in flight. Key: what the Go code registers today;
 	// value: the baseline signature it must converge to.
-	knownDivergent := map[string]string{
-		// The factory still takes initialAdmin directly; the BEP takes an
-		// ABI-encoded create-params struct (typed params work package).
-		"createB20(uint8,bytes32,address,bytes[])": "createB20(uint8,bytes32,bytes,bytes[])",
-	}
+	// No implemented signature currently diverges from the baseline.
+	knownDivergent := map[string]string{}
 
 	// Baseline signatures with no implementation yet. Implementing one MUST
 	// remove it from this list.
@@ -71,9 +68,7 @@ func TestB20ABIBaseline(t *testing.T) {
 		"pausedFeatures()",
 		"supplyCap()",
 		"eip712Domain()",
-		"currency()",
 		"variantOf(address)",
-		"createB20(uint8,bytes32,bytes,bytes[])",
 	}
 	pendingEvents := []string{
 		"NameUpdated(string)",
@@ -85,17 +80,12 @@ func TestB20ABIBaseline(t *testing.T) {
 		"Unpaused(address,uint8[])",
 		"SupplyCapUpdated(uint256,uint256)",
 		"EIP712DomainChanged()",
-		"B20Created(address,address,uint8,string,string,bytes)",
 		"PolicyCreated(uint64,address,uint8)",
 		"PolicyAdminStaged(uint64,address)",
 		"PolicyAdminUpdated(uint64,address,address)",
 		"MembersUpdated(uint64,address,bool,address[])",
 	}
 	pendingErrors := []string{
-		"UnsupportedVersion(uint8,uint8)",
-		"InvalidDecimals(uint8)",
-		"MissingRequiredField(string)",
-		"InvalidCurrency(string)",
 		"PolicyNotFound(uint64)",
 	}
 

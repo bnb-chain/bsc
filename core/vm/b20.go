@@ -277,8 +277,7 @@ func (p *b20StablecoinPrecompile) RunStateful(ctx *PrecompileContext, input []by
 		return finishB20(nil, ErrExecutionReverted) // no token here; empty returndata
 	}
 	// Stablecoin decimals are fixed at 6.
-	// TODO: Stablecoin currency() selector before the shared IB20 dispatch.
-	ret, err := newB20Token(ctx, 6).dispatch(input)
+	ret, err := stablecoinDispatch(newB20Token(ctx, 6), newStablecoinExt(ctx), input)
 	if ctx.OutOfGas() {
 		return nil, ErrOutOfGas
 	}
