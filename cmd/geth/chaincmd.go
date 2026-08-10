@@ -76,7 +76,6 @@ var (
 			utils.OverrideOsaka,
 			utils.OverrideMendel,
 			utils.OverridePasteur,
-			utils.OverrideAmsterdam,
 			utils.OverrideB20ActivationAdmin,
 			utils.OverrideBPO1,
 			utils.OverrideBPO2,
@@ -374,10 +373,6 @@ func initGenesis(ctx *cli.Context) error {
 	if ctx.IsSet(utils.OverridePasteur.Name) {
 		v := ctx.Uint64(utils.OverridePasteur.Name)
 		overrides.OverridePasteur = &v
-	}
-	if ctx.IsSet(utils.OverrideAmsterdam.Name) {
-		v := ctx.Uint64(utils.OverrideAmsterdam.Name)
-		overrides.OverrideAmsterdam = &v
 	}
 	if ctx.IsSet(utils.OverrideB20ActivationAdmin.Name) {
 		v := common.HexToAddress(ctx.String(utils.OverrideB20ActivationAdmin.Name))

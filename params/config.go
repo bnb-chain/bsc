@@ -259,10 +259,9 @@ var (
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
-			Cancun:    DefaultCancunBlobConfig,
-			Prague:    DefaultPragueBlobConfigBSC,
-			Osaka:     DefaultOsakaBlobConfigBSC,
-			Amsterdam: DefaultAmsterdamBlobConfigBSC,
+			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfigBSC,
+			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
 		B20ActivationAdmin: &BSCTimelockAddress,
 	}
@@ -315,10 +314,9 @@ var (
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
-			Cancun:    DefaultCancunBlobConfig,
-			Prague:    DefaultPragueBlobConfigBSC,
-			Osaka:     DefaultOsakaBlobConfigBSC,
-			Amsterdam: DefaultAmsterdamBlobConfigBSC,
+			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfigBSC,
+			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
 		B20ActivationAdmin: &BSCTimelockAddress,
 	}
@@ -373,10 +371,9 @@ var (
 
 		Parlia: &ParliaConfig{},
 		BlobScheduleConfig: &BlobScheduleConfig{
-			Cancun:    DefaultCancunBlobConfig,
-			Prague:    DefaultPragueBlobConfigBSC,
-			Osaka:     DefaultOsakaBlobConfigBSC,
-			Amsterdam: DefaultAmsterdamBlobConfigBSC,
+			Cancun: DefaultCancunBlobConfig,
+			Prague: DefaultPragueBlobConfigBSC,
+			Osaka:  DefaultOsakaBlobConfigBSC,
 		},
 		B20ActivationAdmin: &BSCTimelockAddress,
 	}
@@ -670,12 +667,6 @@ var (
 
 	DefaultPragueBlobConfigBSC = DefaultCancunBlobConfig
 	DefaultOsakaBlobConfigBSC  = DefaultCancunBlobConfig
-
-	// DefaultAmsterdamBlobConfigBSC exists so that Amsterdam can be scheduled on
-	// BSC at all: CheckConfigForkOrder refuses a configuration that sets a fork's
-	// timestamp without a blobSchedule entry for it. BSC carries Cancun's blob
-	// parameters forward, as it does for Prague and Osaka.
-	DefaultAmsterdamBlobConfigBSC = DefaultCancunBlobConfig
 )
 
 // NetworkNames are user friendly names to use in the chain spec banner.

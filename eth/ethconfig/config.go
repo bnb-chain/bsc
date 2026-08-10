@@ -256,9 +256,6 @@ type Config struct {
 	// OverridePasteur (TODO: remove after the fork)
 	OverridePasteur *uint64 `toml:",omitempty"`
 
-	// OverrideAmsterdam (TODO: remove after the fork)
-	OverrideAmsterdam *uint64 `toml:",omitempty"`
-
 	// OverrideB20ActivationAdmin lets a network name the B20 activation admin
 	// without editing a built-in config. A QA cluster registers its own genesis
 	// hash as the Rialto hash, so LoadChainConfig hands it RialtoChainConfig and

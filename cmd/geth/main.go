@@ -73,7 +73,6 @@ var (
 		utils.OverrideOsaka,
 		utils.OverrideMendel,
 		utils.OverridePasteur,
-		utils.OverrideAmsterdam,
 		utils.OverrideB20ActivationAdmin,
 		utils.OverrideBPO1,
 		utils.OverrideBPO2,
