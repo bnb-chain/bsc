@@ -124,7 +124,11 @@ async function discover(){
           rpc('eth_call',[{to:addr,data:'0x18160ddd'},'latest']).catch(()=>null),
           rpc('eth_call',[{to:addr,data:'0x06fdde03'},'latest']).catch(()=>null)]);
         if(sym&&dec&&sup&&sym!=='0x'&&dec!=='0x'){ c.isToken=true; c.symbol=(decStr(sym)||'?').slice(0,24); c.name=(decStr(nam)||'?').slice(0,48);
-          c.decimals=parseInt(dec,16); c.supply=(BigInt(sup)/10n**BigInt(c.decimals||0)).toString(); }
+          // decimals() vient d'un contrat QUELCONQUE : le deploiement est libre et coute quelques
+          // gwei. Une valeur enorme ferait calculer 10n**enorme et figerait l'onglet du visiteur.
+          // On borne a 36 (au-dela d'ERC-20, deja tres large) et on refuse ce qui n'est pas un nombre.
+          const d=parseInt(dec,16); c.decimals=(Number.isFinite(d)&&d>=0&&d<=36)?d:18;
+          c.supply=(BigInt(sup)/10n**BigInt(c.decimals)).toString(); }
       }catch(e){}
       state.contracts[x.hash]=c;
     }catch(e){ state.contracts[x.hash]=null; }
@@ -202,7 +206,7 @@ async function refresh(){
     const fige=ageTete>60;
     document.getElementById('dot').classList.toggle('off',fige);
     document.getElementById('netstate').textContent=fige?t('stalled').replace('{n}',String(Math.floor(ageTete)))
-                                                        :t('online');{const n=document.getElementById('nonode');if(n)n.hidden=true;}
+                                                        :t('online');state.echecs=0;{const n=document.getElementById('nonode');if(n)n.hidden=true;}
     document.getElementById('hh').textContent='#'+nf().format(hex(bn));
     document.getElementById('hg').textContent=(hex(gp)/1e9).toFixed(1)+' gwei';document.getElementById('s-gas').textContent=(hex(gp)/1e9).toFixed(1)+' gwei';
     // On ne redemande QUE les blocs qu'on n'a pas deja. Redemander les 18 derniers
@@ -224,7 +228,14 @@ async function refresh(){
     if(view==='contrats')for(const [a] of SYS)if(state.sys[a]==null)try{const c=await rpc('eth_getCode',[a,'latest']);state.sys[a]=(c.length-2)/2;}catch(e){}
     if(view==='contrats'||view==='tokens') await discover();
     renderAll();
-  }catch(e){document.getElementById('dot').classList.add('off');document.getElementById('netstate').textContent=t('offline');{const n=document.getElementById('nonode');if(n)n.hidden=false;}renderAll();}
+  }catch(e){
+    // Tout le cycle etait dans un seul try : n'importe quel echec isole — un 429 du
+    // limiteur, un 502 passager sur l'une des ~20 requetes — faisait afficher « hors ligne »
+    // et « aucun noeud raccorde », c'est-a-dire une affirmation FAUSSE sur l'etat du reseau.
+    // On ne declare la chaine injoignable qu'apres 3 cycles consecutifs en echec.
+    state.echecs=(state.echecs||0)+1;
+    if(state.echecs<3){renderAll();return;}
+    document.getElementById('dot').classList.add('off');document.getElementById('netstate').textContent=t('offline');{const n=document.getElementById('nonode');if(n)n.hidden=false;}renderAll();}
 }
 async function search(){const v=document.getElementById('q').value.trim(),out=document.getElementById('result'),body=document.getElementById('result-body');
   if(!v){out.classList.add('hide');return;}out.classList.remove('hide');body.textContent=t('searching');
@@ -245,4 +256,9 @@ document.addEventListener('click',function(e){
   const l=e.target.closest('[data-lookup]'); if(l){lookup(l.getAttribute('data-lookup'));return;}
   const c=e.target.closest('[data-copy]');   if(c){copy(c.getAttribute('data-copy'));return;}
 });
-applyLang();showView(view);refresh();setInterval(refresh,5000);
+// Garde anti-chevauchement : si un cycle depasse 5 s (noeud charge, limitation de debit,
+// reseau lent), setInterval en lancait un second par-dessus. Les cycles s'empilaient et un
+// seul onglet produisait une rafale contre le RPC — exactement ce qu'on cherche a eviter.
+let cycleEnCours=false;
+async function cycle(){ if(cycleEnCours) return; cycleEnCours=true; try{ await refresh(); } finally { cycleEnCours=false; } }
+applyLang();showView(view);cycle();setInterval(cycle,5000);

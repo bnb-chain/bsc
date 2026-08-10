@@ -69,6 +69,13 @@ PEER_LINE=""
 echo "==> Service systemd"
 # --http.addr 127.0.0.1 : le RPC n'est JAMAIS exposé directement. Caddy le relaie sur
 #   https://explorer.…/rpc, en POST uniquement, et le pare-feu garde 8545 fermé.
+# --rangelimit : arme le plafond de 5 000 blocs sur eth_getLogs (eth/filters/filter.go:37).
+#   Sans lui, une requete de 200 octets peut demander un balayage de TOUTE la chaine, et son
+#   cout croit indefiniment avec l'age du reseau : le desequilibre effort/cout est le propre
+#   d'un vecteur de deni de service. Le drapeau existe dans geth mais n'est jamais actif par
+#   defaut.
+# --rpc.logquerylimit : borne le nombre d'adresses ou de sujets alternatifs par position de
+#   recherche, pour eviter qu'un filtre unique ne demande des milliers de combinaisons.
 # --rpc.batch-request-limit : par defaut geth accepte 1000 appels JSON-RPC dans UNE
 #   seule requete HTTP. La limite de debit du serveur web comptant les requetes HTTP,
 #   un lot la contournait d'un facteur 1000. 50 couvre largement l'explorateur (18 au
@@ -92,6 +99,8 @@ ExecStart=$GETH \\
   --http.api eth,net,web3 \\
   --rpc.batch-request-limit 50 \\
   --rpc.batch-response-max-size 5000000 \\
+  --rangelimit \\
+  --rpc.logquerylimit 20 \\
   --http.corsdomain "https://explorer.coinbosa.com" \\
   --http.vhosts "localhost,127.0.0.1" \\
   --syncmode full --gcmode full \\
