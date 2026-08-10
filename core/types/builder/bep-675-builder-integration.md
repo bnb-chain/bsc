@@ -20,6 +20,10 @@ parent header / state
         executes and appends unsigned system tx
         returns the complete block
 
+  → core.LaneState.WriteCommitment(block, gasPool.Used())    [Gauss+1 onward]
+        stamps the BEP-703 commitment onto that block
+        MUST happen before anything reads block.Hash()
+
   → block → builder.BidBlock
         Header       = block.Header()
         Transactions = tx.MarshalBinary()
@@ -53,6 +57,31 @@ err := parliaEngine.PrepareForBidBlock(chain, header)
 ## 2. Execute User Transactions
 
 Transaction selection and EVM execution are entirely builder-driven; this specification does not constrain them. The builder runs selected user transactions against the parent state and maintains `state` / `receipts` / `body.Transactions` / `sidecars`.
+
+From the block after the Gauss activation block, BEP-703 constrains how much of the block may be general traffic, and the builder authors the commitment that says so. Both obligations are the builder's, because only the builder runs the packing loop. (The activation block itself carries no commitment, but a builder never builds one: `mev_sendBidBlock` refuses it with `-38001` and the builder falls back to `mev_sendBid`.)
+
+```go
+lane, err := core.ResolveLaneState(chainConfig, chain, parent, header, state.Reader())  // once per block
+if err != nil {
+    return err  // never ignore: a nil lane no-ops silently and the block ships unstamped
+}
+lane.SetQuota()                                    // derives the quota this block must commit
+
+class, err := lane.Classify(tx)                    // before each apply
+if err != nil {
+    return err  // swallowing it only defers the refusal to WriteCommitment
+}
+if !lane.Admits(gasPool.Gas(), class, tx.Gas()) {  // general must leave the quota intact
+    continue
+}
+usedBefore := gasPool.Used()
+// ... apply tx ...
+lane.RecordUsedFrom(class, gasPool, usedBefore)
+```
+
+`state.Reader()` and not `state`: the reader is pinned to the parent root, and `Classify` must give the validator's replay the same answer it gave here. The parent root is the only state both sides share.
+
+A block whose `header.GasUsed + lane.Budget.IdleLane()` exceeds `GasLimit` is invalid — the block rule, term for term. `FinalizeAndAssembleBidBlock` will not say so; `WriteCommitment` in step 3b will, and so will the validator at admission, since the committed values alone decide it.
 
 ## 3. Finalize (generate unsigned system tx)
 
@@ -90,6 +119,30 @@ block, receipts, err := parliaEngine.FinalizeAndAssembleBidBlock(
 Signing does not affect EVM state transitions, so the execution results are identical whether the system transactions are signed (validator-mining path) or unsigned (builder packing path). The validator bind-signs these unsigned system txs at seal time and recomputes `TxHash`.
 
 `GasFee` is not a wire field of `BidBlock`. The validator derives it from the `value` of the trailing `deposit` system transaction and uses it to rank competing BidBlocks for the same parent.
+
+## 3b. Stamp the Commitment
+
+`FinalizeAndAssembleBidBlock` writes `EmptyUncleHash` and `types.NewBlock` re-derives it from the body, so from Gauss+1 the commitment has to be stamped onto the block it returns:
+
+```go
+// block is the one step 3 returned
+if err := lane.WriteCommitment(block, gasPool.Used()); err != nil {
+    return err  // discard the block; never repair it
+}
+```
+
+Two things this is strict about:
+
+- **Before anything hashes the block.** `Block.Hash()` is cached on first read and never invalidated, so a stray log line, a sidecar loop or a metric that reads it first leaves the block disagreeing with its own header. `WriteCommitment` detects that and refuses rather than emitting it.
+- **`poolUsed` is `gasPool.Used()`** — not `header.GasUsed`, and not a sum of receipts.
+
+No wrong commitment is ever accepted, but where it is caught — and whether the builder is told at all — varies:
+
+| what is wrong | where it is caught | what the builder sees |
+|---|---|---|
+| no commitment, malformed, or the block rule fails on the committed values | admission, before the validator signs | `mev_sendBidBlock` → `-38007` |
+| `laneSize` is not the derived quota, or the payment total exceeds the sum of the block's payment-class transactions' declared gas limits | after admission has already returned success, when the validator picks the block | **nothing** — no RPC error, no revoke; the bid is dropped and the slot goes to another bid or to the validator's own block |
+| the payment total is wrong but within that bound (understated, most likely by never calling `RecordUsedFrom`) | the importer, after the validator has signed and broadcast | the builder's permission is revoked |
 
 ## 4. Assemble the BidBlock Payload
 
@@ -149,6 +202,7 @@ The main BidBlock failure modes have dedicated JSON-RPC codes; match by code whe
 | Error message contains | JSON-RPC code | Builder action |
 | --- | --- | --- |
 | `BidBlock disabled, fallback to SendBid` | -38001 | fallback to `mev_sendBid` |
+| `BidBlock disabled at block N (hard-fork activation block)` | -38001 | validators self-produce fork activation blocks; fallback to `mev_sendBid` |
 | `builder BidBlock permission revoked, fallback to SendBid` | -38006 | permission not allowed; fallback to `mev_sendBid` |
 | `pre-seal verify failed: ...` | -38007 | **fix build logic; do NOT retry the same BidBlock** |
 | `too late, expected before ...` | -38008 | dropped; next slot |
@@ -183,3 +237,4 @@ The transmission latency on the wire is not constant: the number of transactions
 5. Permission must be polled continuously (every 5–10 seconds is recommended); the cache is also invalidated whenever `mev_sendBidBlock` returns "permission revoked". When `mev_params.BidBlockEnabled == false`, treat it the same as permission denied.
 6. The builder must handle BidBlock failure paths: (1) `mev_sendBidBlock` may return a direct error; (2) permission may be revoked, with the reason exposed by `mev_getBidBlockPermission`; (3) validator admin or local policy changes may later restore or revoke permission.
 7. **Send the BidBlock as close to `BidMustBefore` as possible** (leaving the ≈100µs buffer noted above) — a later send leaves more time for transaction selection and execution, maximizing the value packed into the block.
+8. From Gauss+1 the builder owns the BEP-703 lane: honour `Admits` while packing, then `WriteCommitment` before anything hashes the block. A wrong commitment is always refused, sometimes with no RPC error at all (see [Stamp the Commitment](#3b-stamp-the-commitment)).

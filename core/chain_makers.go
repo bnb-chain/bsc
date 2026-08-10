@@ -471,8 +471,8 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 			panic(fmt.Sprintf("failed to assemble block: %v", err))
 		}
 
-		// Same commitment write and self-check the miner runs. gasPool is nil for a block
-		// that never added a transaction, and then PaymentUsed is necessarily zero too.
+		// Same commitment write and self-check the miner runs. A zero poolUsed is exact, not
+		// merely safe: PaymentUsed only ever moves in addTx, which allocates the pool.
 		var poolUsed uint64
 		if b.gasPool != nil {
 			poolUsed = b.gasPool.Used()
@@ -706,6 +706,11 @@ func (cm *chainMaker) GetHeaderByNumber(number uint64) *types.Header {
 func (cm *chainMaker) GetHeaderByHash(hash common.Hash) *types.Header {
 	b := cm.chainByHash[hash]
 	if b == nil {
+		// chainByHash holds only generated blocks, and blockByNumber answers for bottom, so
+		// without this a Gauss-from-genesis chain cannot resolve its own grandparent.
+		if cm.bottom != nil && cm.bottom.Hash() == hash {
+			return cm.bottom.Header()
+		}
 		return nil
 	}
 	return b.Header()

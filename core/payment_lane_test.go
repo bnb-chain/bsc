@@ -600,3 +600,35 @@ func TestPaymentLaneSignalCountsSystemTransactionGas(t *testing.T) {
 	_, err = chain.InsertChain(blocks)
 	require.NoError(t, err, "a chain with non-zero system gas must import")
 }
+
+// TestPaymentLaneActivatesFromGenesis covers the only boundary at which the lane's grandparent
+// is the genesis block, and so the only case in which ResolveLaneState asks the header chain for
+// a block the generator did not produce. Every other lane fixture puts Gauss after block 1 and
+// never asks.
+func TestPaymentLaneActivatesFromGenesis(t *testing.T) {
+	config, gspec, key := laneGenesis(t)
+	zero := uint64(0)
+	config.GaussTime = &zero
+	require.True(t, config.IsGauss(common.Big0, gspec.Timestamp),
+		"the lane must bind from block 1, or the grandparent is never the genesis block")
+
+	signer := types.LatestSigner(config)
+	var nonce uint64
+	_, blocks, _ := GenerateChainWithGenesis(gspec, ethash.NewFaker(), 3, func(i int, b *BlockGen) {
+		b.AddTx(key.sign(t, signer, nonce, common.Address{0xaa}, big.NewInt(1), params.TxGas, nil))
+		nonce++
+	})
+	require.Len(t, blocks, 3)
+	for _, b := range blocks {
+		c, err := paymentlane.Decode(b.UncleHash())
+		require.NoError(t, err, "block %d must carry a commitment", b.NumberU64())
+		require.EqualValues(t, 2_000_000, c.LaneSize, "block %d holds at the floor", b.NumberU64())
+		require.EqualValues(t, params.TxGas, c.PaymentGasUsed, "block %d", b.NumberU64())
+	}
+
+	chain, err := NewBlockChain(rawdb.NewMemoryDatabase(), gspec, ethash.NewFaker(), DefaultConfig())
+	require.NoError(t, err)
+	defer chain.Stop()
+	_, err = chain.InsertChain(blocks)
+	require.NoError(t, err, "a chain whose lane binds from block 1 must import")
+}

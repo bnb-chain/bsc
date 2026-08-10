@@ -38,9 +38,13 @@ func (b *Budget) RecordUsed(class Class, delta uint64) {
 	}
 }
 
-// Verify checks a finished block: PaymentUsed <= poolUsed, then the rule inequality.
-// gasUsed is the block's real total after Finalize.
+// Verify checks a finished block: poolUsed <= gasUsed, PaymentUsed <= poolUsed, then the rule
+// inequality. gasUsed is the block's real total after Finalize.
 func (b Budget) Verify(gasLimit, gasUsed, poolUsed uint64) error {
+	// Unreachable in order, so it catches a swapped call; no sentinel - it indicts our own wiring.
+	if poolUsed > gasUsed {
+		return fmt.Errorf("payment lane pool used %d exceeds block total %d", poolUsed, gasUsed)
+	}
 	if b.PaymentUsed > poolUsed {
 		return fmt.Errorf("%w: payment %d pool %d", ErrPaymentExceedsPool, b.PaymentUsed, poolUsed)
 	}

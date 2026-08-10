@@ -409,6 +409,15 @@ func TestVerifyFailureTriggers(t *testing.T) {
 	}
 }
 
+// TestVerifyRejectsSwappedTotals keeps the argument-order tripwire from being deleted as dead
+// code. poolUsed is gasUsed less system gas, so nothing but a swapped call can reach it - which
+// is exactly the mistake that would otherwise evaluate the rule against too small a total.
+func TestVerifyRejectsSwappedTotals(t *testing.T) {
+	b := Budget{LaneSize: 20, PaymentUsed: 20}
+	require.NoError(t, b.Verify(100, 80, 80), "equal totals are the no-system-gas case")
+	require.ErrorContains(t, b.Verify(100, 80, 101), "exceeds block total")
+}
+
 // TestVerifyCommitmentComparesThePaymentFigure covers the only authoritative check on the
 // committed accounting. One comparison is the whole of it: general gas is header.GasUsed less
 // payment, so a lie about it is a lie about the header total, which block validation catches.

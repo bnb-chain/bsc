@@ -541,7 +541,8 @@ func CalcUncleHash(uncles []*Header) common.Hash {
 	return rlpHash(uncles)
 }
 
-// isLaneCommitment checks if the hash is a BEP-703 lane commitment.
+// isLaneCommitment reports whether h has the shape of a BEP-703 commitment - a zero reserved
+// tail. A shape test only: the all-zero hash passes, and validity is core/paymentlane's job.
 func isLaneCommitment(h common.Hash) bool {
 	for _, b := range h[16:] {
 		if b != 0 {
@@ -551,14 +552,15 @@ func isLaneCommitment(h common.Hash) bool {
 	return true
 }
 
-// UncleHashMatches replace `UncleHash == UncleHash` check and compatible with BEP-703 lane commitment.
-func UncleHashMatches(headerUncleHash, bodyUncleHash common.Hash) bool {
-	return bodyUncleHash == headerUncleHash ||
-		(bodyUncleHash == EmptyUncleHash && isLaneCommitment(headerUncleHash))
+// UncleHashMatches reports whether a delivered uncle list hash is the one this header commits to.
+// From BEP-703's activation the header slot may carry a lane commitment, which means no uncles.
+func (h *Header) UncleHashMatches(bodyUncleHash common.Hash) bool {
+	return bodyUncleHash == h.UncleHash ||
+		(bodyUncleHash == EmptyUncleHash && isLaneCommitment(h.UncleHash))
 }
 
-// IsEmptyUncleHash replace `UncleHash == EmptyUncleHash` check and compatible with BEP-703 lane commitment.
-func (h *Header) IsEmptyUncleHash() bool { return UncleHashMatches(h.UncleHash, EmptyUncleHash) }
+// IsEmptyUncleHash reports whether this header commits to no uncles.
+func (h *Header) IsEmptyUncleHash() bool { return h.UncleHashMatches(EmptyUncleHash) }
 
 // CalcRequestsHash creates the block requestsHash value for a list of requests.
 func CalcRequestsHash(requests [][]byte) common.Hash {

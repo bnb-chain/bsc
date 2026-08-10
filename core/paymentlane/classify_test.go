@@ -175,8 +175,8 @@ func TestNoStateReadUntilEveryStaticGatePasses(t *testing.T) {
 	}
 }
 
-// TestPrecompileDestinationIsPayment pins the registered deviation THERE IS NO PRECOMPILE
-// EXCLUSION: one wei to a precompile is payment here and general to a conformant client.
+// TestPrecompileDestinationIsPayment pins one of Classify's deviations from section 3.2: with no
+// precompile exclusion, one wei to a precompile is payment here and general to a conformant client.
 func TestPrecompileDestinationIsPayment(t *testing.T) {
 	for _, addr := range vm.ActivePrecompiles(params.Rules{
 		IsHomestead: true, IsByzantium: true, IsIstanbul: true, IsBerlin: true,

@@ -1,6 +1,7 @@
 package miner
 
 import (
+	"crypto/ecdsa"
 	"encoding/hex"
 	"math/big"
 	"strings"
@@ -18,24 +19,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// laneBidBlockHarness builds a chain whose head is a lane block's parent, and returns the
-// pieces verifyBidBlockLaneQuota needs: a worker, a header for the block under test, a
-// local environment standing in for the validator's own build, and the quota that header
-// must commit.
+// laneMinerChain builds the chain every miner-side lane test runs on, and returns the worker, the
+// config, the head, a candidate header for the block after it, and a funded key.
 //
-// The worker and the environment are filled in by hand rather than started: the function
-// under test reads the chain, the config, the local header's parent and the local state's
-// reader, and a real miner would drag in a Parlia-formatted genesis for no gain. The lane
-// runs on ethash for the same reason every core-side lane test does - GenerateChain cannot
-// run the system-contract upgrade, so 0x2007 goes into the genesis allocation instead.
+// The worker is filled in by hand rather than started: the functions under test read the chain,
+// the config, a header's parent and a state reader, and a real miner would drag in a
+// Parlia-formatted genesis for no gain. The lane runs on ethash for the same reason every
+// core-side lane test does - GenerateChain cannot run the system-contract upgrade, so 0x2007 goes
+// into the genesis allocation instead.
 //
-// Fork timing: genesis is at t=0 with a 10s block interval, so Gauss at 15 makes block 2
-// the activation block and block 3 the first block the rules bind. The chain is two blocks
-// long and the header under test is block 3.
+// Fork timing: genesis is at t=0 with a 10s block interval, so Gauss at 15 makes block 2 the
+// activation block and block 3 the first block the rules bind. The chain is two blocks long and
+// the candidate header is block 3.
 //
-// 55M matches core's harness, so the derived floor is the same 2M. Nothing here exercises
-// expand or shrink, for which anything above 33.3M would do.
-func laneBidBlockHarness(t *testing.T) (*worker, *types.Header, *environment, uint64) {
+// 55M matches core's harness, so the derived floor is the same 2M. Nothing here exercises expand
+// or shrink, for which anything above 33.3M would do.
+//
+// corruptParams writes 0x2007's first slot wide, which is LoadParams' layout tripwire: the only
+// lane resolution failure that needs neither a pruned state nor a missing header.
+func laneMinerChain(t *testing.T, corruptParams bool) (*worker, *params.ChainConfig, *types.Header, *types.Header, *ecdsa.PrivateKey) {
 	t.Helper()
 
 	code, err := hex.DecodeString(strings.TrimSpace(gauss.RialtoPaymentLaneContract))
@@ -47,11 +49,15 @@ func laneBidBlockHarness(t *testing.T) (*worker, *types.Header, *environment, ui
 	gaussTime := uint64(15)
 	config.GaussTime = &gaussTime
 
+	lane := types.Account{Code: code, Balance: common.Big0}
+	if corruptParams {
+		lane.Storage = map[common.Hash]common.Hash{{}: {0: 1}}
+	}
 	gspec := &core.Genesis{
 		Config:   &config,
 		GasLimit: 55_000_000,
 		Alloc: types.GenesisAlloc{
-			paymentlane.ContractAddress:           {Code: code, Balance: common.Big0},
+			paymentlane.ContractAddress:           lane,
 			crypto.PubkeyToAddress(key.PublicKey): {Balance: new(big.Int).Mul(big.NewInt(1e18), big.NewInt(1e6))},
 		},
 	}
@@ -63,11 +69,10 @@ func laneBidBlockHarness(t *testing.T) (*worker, *types.Header, *environment, ui
 	require.NoError(t, err)
 
 	parent := blocks[len(blocks)-1].Header()
-	parentState, err := chain.StateAt(parent)
-	require.NoError(t, err)
+	require.True(t, config.IsGauss(parent.Number, parent.Time),
+		"the candidate must be a lane block, or every assertion built on it is vacuous")
 
-	w := &worker{chain: chain, chainConfig: &config}
-	header := &types.Header{
+	return &worker{chain: chain, chainConfig: &config}, &config, parent, &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     new(big.Int).Add(parent.Number, common.Big1),
 		GasLimit:   parent.GasLimit,
@@ -75,9 +80,17 @@ func laneBidBlockHarness(t *testing.T) (*worker, *types.Header, *environment, ui
 		// Header.Size() dereferences both, and the packing loop's size accounting reads it.
 		Difficulty: common.Big0,
 		BaseFee:    common.Big0,
-	}
-	require.True(t, config.IsGauss(parent.Number, parent.Time),
-		"the header under test must be a lane block, or every assertion below is vacuous")
+	}, key
+}
+
+// laneBidBlockHarness adds what verifyBidBlockLaneQuota needs on top of laneMinerChain: a local
+// environment standing in for the validator's own build, and the quota the header must commit.
+func laneBidBlockHarness(t *testing.T) (*worker, *types.Header, *environment, uint64) {
+	t.Helper()
+
+	w, _, parent, header, _ := laneMinerChain(t, false)
+	parentState, err := w.chain.StateAt(parent)
+	require.NoError(t, err)
 	// LoadParams maps an unwritten word to the factory default, so an allocation at the
 	// wrong address derives the same quota and every assertion below stays green.
 	require.NotEmpty(t, parentState.GetCode(paymentlane.ContractAddress),

@@ -394,7 +394,7 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 		return err
 	}
 
-	if hash := types.CalcUncleHash(ann.Block.Uncles()); !types.UncleHashMatches(ann.Block.UncleHash(), hash) {
+	if hash := types.CalcUncleHash(ann.Block.Uncles()); !ann.Block.Header().UncleHashMatches(hash) {
 		log.Warn("Propagated block has invalid uncles", "have", hash, "exp", ann.Block.UncleHash())
 		return nil // TODO(karalabe): return error eventually, but wait a few releases
 	}

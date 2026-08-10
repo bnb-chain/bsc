@@ -140,11 +140,11 @@ func (ls *LaneState) VerifyPackedBid(shared uint64) error {
 }
 
 // VerifyImported is the importer's verdict, and the only authoritative one.
-func (ls *LaneState) VerifyImported(headerGasUsed, poolUsed uint64, c paymentlane.Commitment) error {
+func (ls *LaneState) VerifyImported(totalGasUsed, poolUsed uint64, c paymentlane.Commitment) error {
 	if !ls.On() {
 		return nil
 	}
-	return ls.Budget.VerifyCommitment(ls.gasLimit, headerGasUsed, poolUsed, c)
+	return ls.Budget.VerifyCommitment(ls.gasLimit, totalGasUsed, poolUsed, c)
 }
 
 // WriteCommitment stamps the commitment onto an assembled block and self-checks it - the whole of

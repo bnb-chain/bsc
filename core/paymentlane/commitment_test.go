@@ -154,8 +154,8 @@ func TestLaneCommitmentTagAgreesWithDecode(t *testing.T) {
 	// A real uncle list hash is neither, and the relaxation must not reach it.
 	uncles := types.CalcUncleHash([]*types.Header{{Number: common.Big1}})
 	require.False(t, (&types.Header{UncleHash: uncles}).IsEmptyUncleHash())
-	require.False(t, types.UncleHashMatches(Encode(Commitment{LaneSize: 1}), uncles))
-	require.True(t, types.UncleHashMatches(uncles, uncles))
+	require.False(t, (&types.Header{UncleHash: Encode(Commitment{LaneSize: 1})}).UncleHashMatches(uncles))
+	require.True(t, (&types.Header{UncleHash: uncles}).UncleHashMatches(uncles))
 }
 
 // TestCheckHeaderBoundsRejectsOnlyForgeries pins both directions: a commitment a

@@ -719,6 +719,13 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 			return nil, err
 		}
 	}
+	// Before StartPrefetcher: an error after it would leave a prefetcher with no env to discard it.
+	lane, err := core.ResolveLaneState(w.chainConfig, w.chain, parent, header, state.Reader())
+	if err != nil {
+		return nil, err
+	}
+	lane.SetQuota()
+
 	state.StartPrefetcher("miner", bundle)
 	// Parlia reserves gas for the system txs it applies in FinalizeAndAssemble,
 	// so user txs must leave room for them. Initialise the gas pool at
@@ -734,12 +741,6 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		}
 		log.Debug("makeEnv", "number", header.Number.Uint64(), "time", header.Time, "EstimateGasReservedForSystemTxs", gasReserved)
 	}
-
-	lane, err := core.ResolveLaneState(w.chainConfig, w.chain, parent, header, state.Reader())
-	if err != nil {
-		return nil, err
-	}
-	lane.SetQuota()
 
 	// Note the passed coinbase may be different with header.Coinbase.
 	env := &environment{

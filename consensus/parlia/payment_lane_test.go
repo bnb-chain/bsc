@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/require"
 )
 
 // laneGasLimit must stay above params.SystemTxsGasHardLimit, or NextLaneSize's final safety
@@ -165,8 +166,7 @@ func TestPaymentLaneAppliesToTheBlockAfterParliaActivation(t *testing.T) {
 // FinalizeAndAssembleBidBlock is called only from the builder binary, so nothing in this
 // repository links the two halves of that sequence, and a divergence between the two
 // assemblers would show up as builder blocks nobody accepts. What verifyCascadingFields does
-// with an unstamped block from Gauss+1 is asserted nowhere in Go - see the gap table in
-// docs/bep703-payment-lane.md.
+// with an unstamped block from Gauss+1 is TestVerifyCascadingFieldsGatesTheLaneCommitment's job.
 func TestPaymentLaneCommitmentSurvivesParliaAssembly(t *testing.T) {
 	// Non-zero on purpose: the all-zero commitment is a legal value, so a dropped one would
 	// be indistinguishable from a correct empty block.
@@ -202,6 +202,9 @@ func TestPaymentLaneCommitmentSurvivesParliaAssembly(t *testing.T) {
 					lane.Budget.LaneSize, want, laneGasLimit)
 			}
 			lane.Budget.PaymentUsed = paymentUsed
+			// The gas the bucket claims must also show up in the block total, as it would
+			// after a real apply; the mock engine's Finalize does not touch usedGas.
+			header.GasUsed = paymentUsed
 
 			block, err := tc.assemble(engine, chain, header, stateDB)
 			if err != nil {
@@ -269,5 +272,101 @@ func TestPaymentLaneRefusesAStaleBlockHash(t *testing.T) {
 	}
 	if block.Hash() != stale {
 		t.Fatal("Block.Hash must be cached on first read, or the guard is unnecessary")
+	}
+}
+
+// authorizeLaneValidator lets verifyCascadingFields past its snapshot checks for the block
+// after parent. Injected into recentSnaps, which p.snapshot consults first, because the
+// harness chain carries no epoch header to derive a validator set from.
+func authorizeLaneValidator(engine *Parlia, parent *types.Header, validator common.Address) {
+	engine.recentSnaps.Add(parent.Hash(), newSnapshot(engine.config, engine.signatures,
+		parent.Number.Uint64(), parent.Hash(), []common.Address{validator}, nil, nil))
+}
+
+// laneVerifiableHeader completes the fields verifyCascadingFields checks after the lane gate,
+// so a truthful commitment yields nil and the accept cases below are not vacuous.
+func laneVerifiableHeader(base, parent *types.Header) *types.Header {
+	h := types.CopyHeader(base)
+	h.ParentHash = parent.Hash()
+	h.Number = new(big.Int).Add(parent.Number, common.Big1)
+	h.Time = parent.Time + 15 // clears BlockInterval + backOffTime in blockTimeVerifyForRamanujanFork
+	h.BaseFee = common.Big0
+	zero := uint64(0)
+	h.BlobGasUsed, h.ExcessBlobGas = &zero, &zero
+	wh := types.EmptyWithdrawalsHash
+	h.WithdrawalsHash = &wh
+	return h
+}
+
+// TestVerifyCascadingFieldsGatesTheLaneCommitment is the only test of the header gate itself.
+// Everything else in this file stops at assembly, and the gate sits behind p.snapshot, so no
+// GenerateChain-based fixture reaches it.
+//
+// The gate is where a forged commitment is refused before any body is executed, and it is also
+// where the fork boundary is decided: the parent's Gauss status, not the header's.
+func TestVerifyCascadingFieldsGatesTheLaneCommitment(t *testing.T) {
+	engine, chain, config, laneParent, newHeader, _ := newParliaLaneHarness(t)
+	base := newHeader()
+	postGauss, preGauss := laneParent.Header(), chain.GetHeaderByNumber(0)
+	authorizeLaneValidator(engine, postGauss, base.Coinbase)
+	authorizeLaneValidator(engine, preGauss, base.Coinbase)
+	require.False(t, config.IsGauss(preGauss.Number, preGauss.Time),
+		"the genesis must be pre-Gauss, or the boundary cases below test one regime twice")
+
+	for _, tc := range []struct {
+		name      string
+		parent    *types.Header
+		gasUsed   uint64
+		uncleHash common.Hash
+		wantErr   error
+	}{
+		{
+			// GasUsed well under the limit and a non-zero bucket on purpose: it makes the
+			// argument order load-bearing, since CheckHeaderBounds(GasLimit, GasUsed) would
+			// then read the 2M quota as exceeding a 1M limit.
+			name:      "a truthful commitment passes",
+			parent:    postGauss,
+			gasUsed:   1_000_000,
+			uncleHash: paymentlane.Encode(paymentlane.Commitment{LaneSize: 2_000_000, PaymentGasUsed: 500_000}),
+		},
+		{
+			name:      "an unstamped uncle slot is refused",
+			parent:    postGauss,
+			uncleHash: types.EmptyUncleHash,
+			wantErr:   paymentlane.ErrBadCommitment,
+		},
+		{
+			name:      "a commitment that breaks the block rule is refused",
+			parent:    postGauss,
+			gasUsed:   1_000_000,
+			uncleHash: paymentlane.Encode(paymentlane.Commitment{LaneSize: laneGasLimit + 1}),
+			wantErr:   paymentlane.ErrViolated,
+		},
+		{
+			// The activation block is the only place the parent's and the header's Gauss
+			// answers differ, so it is the only place that pins which one the gate asks.
+			name:      "the activation block still carries an empty uncle hash",
+			parent:    preGauss,
+			uncleHash: types.EmptyUncleHash,
+		},
+		{
+			name:      "a commitment before activation is refused",
+			parent:    preGauss,
+			uncleHash: paymentlane.Encode(paymentlane.Commitment{LaneSize: 2_000_000}),
+			wantErr:   errInvalidUncleHash,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			header := laneVerifiableHeader(base, tc.parent)
+			header.GasUsed, header.UncleHash = tc.gasUsed, tc.uncleHash
+			require.True(t, config.IsGauss(header.Number, header.Time), "every header here is at or past activation")
+
+			err := engine.verifyCascadingFields(chain, header, nil)
+			if tc.wantErr == nil {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorIs(t, err, tc.wantErr)
+		})
 	}
 }
