@@ -197,26 +197,42 @@ func (s b20Storage) setPaused(v *uint256.Int)      { s.setU256(b20SlotPaused, v)
 
 // --- balances / allowances / nonces ----------------------------------------
 
-func (s b20Storage) balanceOf(a common.Address) *uint256.Int {
-	slot := s.mapSlot(slotAt(b20SlotBalances), addrKey(a))
+// Deriving a mapping slot is a metered keccak, so a read-modify-write that goes
+// through balanceOf then setBalance pays for the hash twice where a Solidity
+// implementation computes it once. The slot-taking forms below let a caller
+// derive once and reuse; the address-taking forms remain for single accesses,
+// views and tests.
+
+func (s b20Storage) balanceSlot(a common.Address) common.Hash {
+	return s.mapSlot(slotAt(b20SlotBalances), addrKey(a))
+}
+
+func (s b20Storage) allowanceSlot(owner, spender common.Address) common.Hash {
+	return s.mapSlot(s.mapSlot(slotAt(b20SlotAllowances), addrKey(owner)), addrKey(spender))
+}
+
+func (s b20Storage) getU256At(slot common.Hash) *uint256.Int {
 	return new(uint256.Int).SetBytes(s.getWord(slot).Bytes())
+}
+
+func (s b20Storage) setU256At(slot common.Hash, v *uint256.Int) {
+	s.setWord(slot, common.Hash(v.Bytes32()))
+}
+
+func (s b20Storage) balanceOf(a common.Address) *uint256.Int {
+	return s.getU256At(s.balanceSlot(a))
 }
 
 func (s b20Storage) setBalance(a common.Address, v *uint256.Int) {
-	slot := s.mapSlot(slotAt(b20SlotBalances), addrKey(a))
-	s.setWord(slot, common.Hash(v.Bytes32()))
+	s.setU256At(s.balanceSlot(a), v)
 }
 
 func (s b20Storage) allowance(owner, spender common.Address) *uint256.Int {
-	inner := s.mapSlot(slotAt(b20SlotAllowances), addrKey(owner))
-	slot := s.mapSlot(inner, addrKey(spender))
-	return new(uint256.Int).SetBytes(s.getWord(slot).Bytes())
+	return s.getU256At(s.allowanceSlot(owner, spender))
 }
 
 func (s b20Storage) setAllowance(owner, spender common.Address, v *uint256.Int) {
-	inner := s.mapSlot(slotAt(b20SlotAllowances), addrKey(owner))
-	slot := s.mapSlot(inner, addrKey(spender))
-	s.setWord(slot, common.Hash(v.Bytes32()))
+	s.setU256At(s.allowanceSlot(owner, spender), v)
 }
 
 func (s b20Storage) nonce(owner common.Address) *uint256.Int {
@@ -271,6 +287,26 @@ func (s b20Storage) setPackedU64(offset uint64, byteOff uint, v uint64) {
 	word.And(word, lane.Not(lane))
 	word.Or(word, new(uint256.Int).Lsh(uint256.NewInt(v), byteOff*8))
 	s.setWord(slot, common.Hash(word.Bytes32()))
+}
+
+// transferPolicies reads all three transfer-side ids with one storage access:
+// they share a slot, so reading them separately pays for the same slot three
+// times. mintPolicies does the same for the mint and seize lanes.
+func (s b20Storage) transferPolicies() (sender, receiver, executor uint64) {
+	w := s.getU256At(slotAt(b20SlotTransferPolicies))
+	return packedLane(w, b20OffTransferSender), packedLane(w, b20OffTransferReceiver),
+		packedLane(w, b20OffTransferExecutor)
+}
+
+func (s b20Storage) mintPolicies() (mintReceiver, seizeHolder, seizeReceiver uint64) {
+	w := s.getU256At(slotAt(b20SlotMintPolicy))
+	return packedLane(w, b20OffMintReceiver), packedLane(w, b20OffSeizeHolder),
+		packedLane(w, b20OffSeizeReceiver)
+}
+
+// packedLane extracts the u64 lane at byteOff from an already-read slot value.
+func packedLane(word *uint256.Int, byteOff uint) uint64 {
+	return new(uint256.Int).Rsh(word, byteOff*8).Uint64()
 }
 
 func (s b20Storage) transferSenderPolicy() uint64 {

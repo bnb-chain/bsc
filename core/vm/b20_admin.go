@@ -491,20 +491,24 @@ func (t b20Token) mintCore(to common.Address, amount *uint256.Int) error {
 	if to == (common.Address{}) {
 		return revB20("InvalidReceiver(address)", errSelInvalidReceiver, addrKey(to))
 	}
-	// MINT_RECEIVER compliance is enforced even during privileged bootstrap.
-	if !t.policyAllows(t.s.mintReceiverPolicy(), to) {
+	// MINT_RECEIVER compliance is enforced even during privileged bootstrap. Each
+	// value below is read once and reused, the revert payloads included.
+	mintReceiver, _, _ := t.s.mintPolicies()
+	if !t.policyAllows(mintReceiver, to) {
 		return revB20("PolicyForbids(bytes32,uint64)", errSelPolicyForbids,
-			scopeMintReceiver, wU64(t.s.mintReceiverPolicy()))
+			scopeMintReceiver, wU64(mintReceiver))
 	}
-	newSupply := new(uint256.Int).Add(t.s.totalSupply(), amount)
-	if newSupply.Lt(t.s.totalSupply()) {
+	supply := t.s.totalSupply()
+	newSupply := new(uint256.Int).Add(supply, amount)
+	if newSupply.Lt(supply) {
 		return revPanic(0x11) // supply overflow
 	}
-	if newSupply.Gt(t.s.supplyCap()) {
+	if cap := t.s.supplyCap(); newSupply.Gt(cap) {
 		return revB20("SupplyCapExceeded(uint256,uint256)", errSelSupplyCapExceeded,
-			wU256(t.s.supplyCap()), wU256(newSupply))
+			wU256(cap), wU256(newSupply))
 	}
-	t.s.setBalance(to, new(uint256.Int).Add(t.s.balanceOf(to), amount))
+	toSlot := t.s.balanceSlot(to)
+	t.s.setU256At(toSlot, new(uint256.Int).Add(t.s.getU256At(toSlot), amount))
 	t.s.setTotalSupply(newSupply)
 	t.emit(b20TopicTransfer, common.Address{}, to, amount)
 	return nil
@@ -520,12 +524,13 @@ func (t b20Token) burn(from common.Address, amount *uint256.Int) error {
 	if err := t.ensureRole(roleBurn); err != nil {
 		return err
 	}
-	bal := t.s.balanceOf(from)
+	fromSlot := t.s.balanceSlot(from)
+	bal := t.s.getU256At(fromSlot)
 	if bal.Lt(amount) {
 		return revB20("InsufficientBalance(address,uint256,uint256)", errSelInsufficientBalance,
 			addrKey(from), wU256(bal), wU256(amount))
 	}
-	t.s.setBalance(from, new(uint256.Int).Sub(bal, amount))
+	t.s.setU256At(fromSlot, new(uint256.Int).Sub(bal, amount))
 	t.s.setTotalSupply(new(uint256.Int).Sub(t.s.totalSupply(), amount))
 	t.emit(b20TopicTransfer, from, common.Address{}, amount)
 	return nil
@@ -552,20 +557,24 @@ func (t b20Token) seizeWithMemo(from, to common.Address, amount *uint256.Int, me
 	if to == (common.Address{}) {
 		return revB20("InvalidReceiver(address)", errSelInvalidReceiver, addrKey(to))
 	}
-	if t.policyAllows(t.s.seizeHolderPolicy(), from) {
+	// Both seize ids share a slot, so they are read together.
+	_, seizeHolder, seizeReceiver := t.s.mintPolicies()
+	if t.policyAllows(seizeHolder, from) {
 		return revB20("AccountNotSeizable(address)", errSelAccountNotSeizable, addrKey(from))
 	}
-	if !t.policyAllows(t.s.seizeReceiverPolicy(), to) {
+	if !t.policyAllows(seizeReceiver, to) {
 		return revB20("PolicyForbids(bytes32,uint64)", errSelPolicyForbids,
-			scopeSeizeReceiver, wU64(t.s.seizeReceiverPolicy()))
+			scopeSeizeReceiver, wU64(seizeReceiver))
 	}
-	bal := t.s.balanceOf(from)
+	fromSlot := t.s.balanceSlot(from)
+	bal := t.s.getU256At(fromSlot)
 	if bal.Lt(amount) {
 		return revB20("InsufficientBalance(address,uint256,uint256)", errSelInsufficientBalance,
 			addrKey(from), wU256(bal), wU256(amount))
 	}
-	t.s.setBalance(from, new(uint256.Int).Sub(bal, amount))
-	t.s.setBalance(to, new(uint256.Int).Add(t.s.balanceOf(to), amount))
+	t.s.setU256At(fromSlot, new(uint256.Int).Sub(bal, amount))
+	toSlot := t.s.balanceSlot(to)
+	t.s.setU256At(toSlot, new(uint256.Int).Add(t.s.getU256At(toSlot), amount))
 	t.emit(b20TopicTransfer, from, to, amount)
 	t.emitMemo(memo)
 	ab := amount.Bytes32()
@@ -582,9 +591,9 @@ func (t b20Token) updateSupplyCap(newCap *uint256.Int) error {
 	if err := t.ensureRole(roleDefaultAdmin); err != nil {
 		return err
 	}
-	if newCap.Lt(t.s.totalSupply()) || newCap.Gt(b20NoSupplyCap) {
+	if supply := t.s.totalSupply(); newCap.Lt(supply) || newCap.Gt(b20NoSupplyCap) {
 		return revB20("InvalidSupplyCap(uint256,uint256)", errSelInvalidSupplyCap,
-			wU256(t.s.totalSupply()), wU256(newCap))
+			wU256(supply), wU256(newCap))
 	}
 	previous := t.s.supplyCap()
 	t.s.setSupplyCap(newCap)

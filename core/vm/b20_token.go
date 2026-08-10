@@ -216,17 +216,21 @@ func (t b20Token) transferFrom(spender, from, to common.Address, amount *uint256
 	// Spend allowance unless the caller is the owner. U256::MAX is treated as
 	// an infinite, non-decreasing allowance.
 	if spender != from {
-		if !t.privileged && !t.policyAllows(t.s.transferExecutorPolicy(), spender) {
-			return nil, revB20("PolicyForbids(bytes32,uint64)", errSelPolicyForbids,
-				scopeTransferExecutor, wU64(t.s.transferExecutorPolicy()))
+		if !t.privileged {
+			if _, _, executor := t.s.transferPolicies(); !t.policyAllows(executor, spender) {
+				return nil, revB20("PolicyForbids(bytes32,uint64)", errSelPolicyForbids,
+					scopeTransferExecutor, wU64(executor))
+			}
 		}
-		allowed := t.s.allowance(from, spender)
+		// The allowance slot is two nested mapping levels; derive it once.
+		slot := t.s.allowanceSlot(from, spender)
+		allowed := t.s.getU256At(slot)
 		if !allowed.Eq(maxU256) {
 			if allowed.Lt(amount) {
 				return nil, revB20("InsufficientAllowance(address,uint256,uint256)", errSelInsufficientAllow,
 					addrKey(spender), wU256(allowed), wU256(amount))
 			}
-			t.s.setAllowance(from, spender, new(uint256.Int).Sub(allowed, amount))
+			t.s.setU256At(slot, new(uint256.Int).Sub(allowed, amount))
 		}
 	}
 	if err := t.move(from, to, amount); err != nil {
@@ -257,23 +261,29 @@ func (t b20Token) move(from, to common.Address, amount *uint256.Int) error {
 		return revB20("InvalidSender(address)", errSelInvalidSender, addrKey(from))
 	}
 	// TRANSFER_SENDER / TRANSFER_RECEIVER compliance (skipped when privileged).
+	// Both ids share one slot, and the revert payload reuses the id already read
+	// rather than reading it again.
 	if !t.privileged {
-		if !t.policyAllows(t.s.transferSenderPolicy(), from) {
+		sender, receiver, _ := t.s.transferPolicies()
+		if !t.policyAllows(sender, from) {
 			return revB20("PolicyForbids(bytes32,uint64)", errSelPolicyForbids,
-				scopeTransferSender, wU64(t.s.transferSenderPolicy()))
+				scopeTransferSender, wU64(sender))
 		}
-		if !t.policyAllows(t.s.transferReceiverPolicy(), to) {
+		if !t.policyAllows(receiver, to) {
 			return revB20("PolicyForbids(bytes32,uint64)", errSelPolicyForbids,
-				scopeTransferReceiver, wU64(t.s.transferReceiverPolicy()))
+				scopeTransferReceiver, wU64(receiver))
 		}
 	}
-	bal := t.s.balanceOf(from)
+	// Each balance slot is derived once and reused for its read and its write.
+	fromSlot := t.s.balanceSlot(from)
+	bal := t.s.getU256At(fromSlot)
 	if bal.Lt(amount) {
 		return revB20("InsufficientBalance(address,uint256,uint256)", errSelInsufficientBalance,
 			addrKey(from), wU256(bal), wU256(amount))
 	}
-	t.s.setBalance(from, new(uint256.Int).Sub(bal, amount))
-	t.s.setBalance(to, new(uint256.Int).Add(t.s.balanceOf(to), amount))
+	t.s.setU256At(fromSlot, new(uint256.Int).Sub(bal, amount))
+	toSlot := t.s.balanceSlot(to)
+	t.s.setU256At(toSlot, new(uint256.Int).Add(t.s.getU256At(toSlot), amount))
 	return nil
 }
 

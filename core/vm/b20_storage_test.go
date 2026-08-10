@@ -110,6 +110,39 @@ func TestB20StorageMappings(t *testing.T) {
 	if got := s.nonce(alice).Uint64(); got != 7 {
 		t.Errorf("nonce = %d", got)
 	}
+
+	// Raw-slot checks, spelling out Solidity's derivation independently of the
+	// helpers. Round-tripping through the accessors cannot catch a wrong layout:
+	// a nested mapping whose two keys are swapped is self-consistent, so reads
+	// and writes still agree with each other while diverging from every
+	// reference implementation. Only the slot the value actually lands in tells
+	// them apart.
+	pad := func(b []byte) []byte { return common.BytesToHash(b).Bytes() }
+	solMap := func(key, base []byte) []byte { return crypto.Keccak256(pad(key), pad(base)) }
+
+	balSlot := solMap(alice.Bytes(), slotAt(b20SlotBalances).Bytes())
+	if got := s.getWord(common.BytesToHash(balSlot)); new(uint256.Int).SetBytes(got.Bytes()).Uint64() != 500 {
+		t.Errorf("balance is not at keccak256(alice ++ balancesBase)")
+	}
+
+	// allowances[owner][spender]: owner is the OUTER key, spender the inner one.
+	inner := solMap(alice.Bytes(), slotAt(b20SlotAllowances).Bytes())
+	allowSlot := solMap(bob.Bytes(), inner)
+	if got := s.getWord(common.BytesToHash(allowSlot)); new(uint256.Int).SetBytes(got.Bytes()).Uint64() != 42 {
+		t.Error("allowance is not at keccak256(spender ++ keccak256(owner ++ base)) — nesting order is wrong")
+	}
+	// The swapped nesting must be empty, which is what distinguishes the two.
+	swappedInner := solMap(bob.Bytes(), slotAt(b20SlotAllowances).Bytes())
+	if got := s.getWord(common.BytesToHash(solMap(alice.Bytes(), swappedInner))); got != (common.Hash{}) {
+		t.Error("allowance also landed under the swapped nesting order")
+	}
+
+	// roles[role][account] nests the same way: role outer, account inner.
+	s.setRole(roleMint, alice, true)
+	roleInner := solMap(roleMint.Bytes(), slotAt(b20SlotRoles).Bytes())
+	if got := s.getWord(common.BytesToHash(solMap(alice.Bytes(), roleInner))); got == (common.Hash{}) {
+		t.Error("role is not at keccak256(account ++ keccak256(role ++ base))")
+	}
 }
 
 func TestB20StorageRoles(t *testing.T) {
