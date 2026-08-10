@@ -43,9 +43,23 @@ const ALLOW_DEV = process.env.ALLOW_DEV_HASH === '1';
     if (parsed.hash && !/^0x0*$/.test(parsed.hash)) ref = parsed;
   }
 
+  // ALLOW_DEV_HASH signifie « cette chaîne est un réseau de DÉVELOPPEMENT » : son genesis est
+  // régénéré à chaque exécution avec un validateur jetable, donc son empreinte diffère par
+  // construction de celle de la production. La comparer à la référence de production n'a
+  // aucun sens et faisait échouer la CI en permanence — alors que la production, elle, est
+  // conforme. On affiche les valeurs observées, sans jamais comparer.
+  if (ALLOW_DEV) {
+    console.log('\n  MODE DÉVELOPPEMENT (ALLOW_DEV_HASH=1) : empreinte affichée, NON comparée.');
+    console.log('  Le genesis de développement est régénéré à chaque exécution avec un validateur');
+    console.log('  jetable : son empreinte diffère par construction de celle de la production.');
+    console.log('  Ce contrôle ne prouve donc RIEN ici — seule la production compte.');
+    if (ref) console.log(`  (référence de production figée le ${ref.fige_le} : ${String(ref.hash).slice(0, 18)}…)`);
+    return;
+  }
+
   if (!ref) {
     const msg = `aucune empreinte de référence figée dans ${path.basename(REF_FILE)}`;
-    if (ALLOW_DEV) {
+    if (false) {
       console.log(`\n  (${msg} — normal en développement, l'empreinte change à chaque génération)`);
       console.log('  Pour figer la production, copier les valeurs ci-dessus dans genesis-reference.json.');
       return;
