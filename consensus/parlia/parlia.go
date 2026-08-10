@@ -704,6 +704,10 @@ func (p *Parlia) verifyCascadingFields(chain consensus.ChainHeaderReader, header
 		return err
 	}
 
+	if diff := new(big.Int).Sub(header.Number, parent.Number); diff.Cmp(big.NewInt(1)) != 0 {
+		return consensus.ErrInvalidNumber
+	}
+
 	err = p.blockTimeVerifyForRamanujanFork(snap, header, parent)
 	if err != nil {
 		return err
