@@ -92,6 +92,19 @@ $SITE_DOMAIN, www.$SITE_DOMAIN {
         file_server
     }
 
+    # Idem : une 404 doit porter les memes protections et ne rien divulguer.
+    handle_errors {
+        header {
+            Strict-Transport-Security "max-age=31536000; includeSubDomains"
+            X-Content-Type-Options    "nosniff"
+            X-Frame-Options           "DENY"
+            Referrer-Policy           "strict-origin-when-cross-origin"
+            Content-Security-Policy   "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+            -Server
+        }
+        respond "{err.status_code}" {err.status_code}
+    }
+
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
         X-Content-Type-Options    "nosniff"
@@ -156,6 +169,21 @@ $EXPLORER_DOMAIN {
     handle {
         root * /var/www/coinbosa/explorer
         file_server
+    }
+
+    # Les reponses d'erreur sortaient SANS aucun en-tete de securite et en annoncant
+    # « server: Caddy ». Une page 404 est une reponse comme une autre : elle doit porter
+    # les memes protections et ne rien dire de l'infrastructure.
+    handle_errors {
+        header {
+            Strict-Transport-Security "max-age=31536000; includeSubDomains"
+            X-Content-Type-Options    "nosniff"
+            X-Frame-Options           "DENY"
+            Referrer-Policy           "strict-origin-when-cross-origin"
+            Content-Security-Policy   "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+            -Server
+        }
+        respond "{err.status_code}" {err.status_code}
     }
 
     header {

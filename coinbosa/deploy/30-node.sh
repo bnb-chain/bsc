@@ -69,6 +69,13 @@ PEER_LINE=""
 echo "==> Service systemd"
 # --http.addr 127.0.0.1 : le RPC n'est JAMAIS exposé directement. Caddy le relaie sur
 #   https://explorer.…/rpc, en POST uniquement, et le pare-feu garde 8545 fermé.
+# --nodiscover : ce noeud n'a AUCUN pair a decouvrir. Son unique pair est le validateur
+#   local, ajoute explicitement par le minuteur d'appairage. Laisser la decouverte active
+#   ouvrait un port UDP au monde et faisait tourner la pile QUIC/DTLS de l'amont — celle-la
+#   meme dont go-vuln-allowlist.json derogeait deux failles EN AFFIRMANT que la decouverte
+#   etait desactivee. La premisse etait fausse pour ce noeud : elle est desormais vraie.
+#   Le jour ou d'autres noeuds publics existeront, cela se reevalue avec les deux failles.
+# --maxpeers 4 : un seul pair est attendu ; une marge suffit.
 # --rangelimit : arme le plafond de 5 000 blocs sur eth_getLogs (eth/filters/filter.go:37).
 #   Sans lui, une requete de 200 octets peut demander un balayage de TOUTE la chaine, et son
 #   cout croit indefiniment avec l'age du reseau : le desequilibre effort/cout est le propre
@@ -80,7 +87,13 @@ echo "==> Service systemd"
 #   seule requete HTTP. La limite de debit du serveur web comptant les requetes HTTP,
 #   un lot la contournait d'un facteur 1000. 50 couvre largement l'explorateur (18 au
 #   maximum) tout en fermant ce contournement.
-# --http.api eth,net,web3 : surface minimale. Ni admin, ni personal, ni debug, ni txpool —
+# --http.api eth,net : web3 est RETIRE. web3_clientVersion divulguait la version exacte du
+#   client, son commit et sa version de Go — soit, combine au fichier public
+#   go-vuln-allowlist.json qui liste les failles connues de cette version, une liste de
+#   cibles prete a l'emploi. Aucune de nos pages ni aucun de nos scripts n'utilise web3_*,
+#   et l'ajout d'un reseau dans un portefeuille repose sur eth_chainId et net_version, tous
+#   deux conserves.
+# Surface minimale. Ni admin, ni personal, ni debug, ni txpool —
 #   ces espaces de noms permettent d'inspecter ou de piloter le nœud.
 cat > /etc/systemd/system/coinbosa-node.service <<UNIT
 [Unit]
@@ -96,7 +109,7 @@ ExecStart=$GETH \\
   --networkid $CHAIN_ID \\
   --port 30303 \\
   --http --http.addr 127.0.0.1 --http.port $RPC_PORT \\
-  --http.api eth,net,web3 \\
+  --http.api eth,net \\
   --rpc.batch-request-limit 50 \\
   --rpc.batch-response-max-size 5000000 \\
   --rangelimit \\
@@ -104,7 +117,8 @@ ExecStart=$GETH \\
   --http.corsdomain "https://explorer.coinbosa.com" \\
   --http.vhosts "localhost,127.0.0.1" \\
   --syncmode full --gcmode full \\
-  --maxpeers 25 \\
+  --nodiscover \\
+  --maxpeers 4 \\
   --verbosity 3
 Restart=on-failure
 RestartSec=5

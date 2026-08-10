@@ -84,6 +84,12 @@ cat > /etc/systemd/system/coinbosa-validator.service <<UNIT
 Description=Coinbosa Chain — validateur (production de blocs)
 After=network-online.target
 Wants=network-online.target
+# Un redémarrage en boucle sur une base corrompue empilerait les dégâts : au-delà de 5
+# tentatives en 10 minutes, on s'arrête et on laisse la sonde alerter.
+# Ces deux directives appartiennent à [Unit] : placées dans [Service], systemd les
+# IGNORE silencieusement — le garde anti-boucle ne servait alors à rien.
+StartLimitIntervalSec=600
+StartLimitBurst=5
 
 [Service]
 User=$VAL_USER
@@ -126,10 +132,7 @@ SendSIGKILL=yes
 # OOMScoreAdjust : le noyau ne doit jamais choisir le validateur en premier quand il
 # manque de mémoire. C'est le processus le plus critique de la machine.
 OOMScoreAdjust=-900
-# Un redémarrage en boucle sur une base corrompue empilerait les dégâts : au-delà de 5
-# tentatives en 10 minutes, on s'arrête et on laisse la sonde alerter.
-StartLimitIntervalSec=600
-StartLimitBurst=5
+
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

@@ -41,7 +41,7 @@
       "present": "v0.49.1",
       "corrige_dans": "v0.59.1",
       "classe": "épuisement mémoire via les trailers QPACK HTTP/3 (déni de service)",
-      "pourquoi": "Pile QUIC tirée par la découverte de pairs de l'amont. Les validateurs Coinbosa tournent avec --nodiscover et --maxpeers 0 : la surface est nulle tant que la découverte reste désactivée.",
+      "pourquoi": "Pile QUIC tirée par la découverte de pairs de l'amont. Les DEUX nœuds — validateur et nœud RPC public — tournent avec --nodiscover : aucun port de découverte n'est ouvert et la pile QUIC n'est jamais sollicitée. Cette dérogation ne vaut QUE tant que c'est vrai des deux ; l'audit du 2026-08-10 a justement trouvé que le nœud RPC faisait encore de la découverte, ce qui rendait cette justification fausse. Corrigé.",
       "a_reexaminer": "BLOQUANT avant d'ouvrir la découverte de pairs ou d'exposer un nœud public au P2P.",
       "ajoute_le": "2026-08-06",
       "expire_le": "2026-10-06"

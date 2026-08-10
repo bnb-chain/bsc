@@ -36,7 +36,11 @@ const RPC=resolveRpc();
 const LINKS = {
   website:            'https://coinbosa.com',
   explorer:           'https://explorer.coinbosa.com',
-  whitepaper:         'https://github.com/Coinbosa/coinbosa-chain/blob/master/coinbosa/WHITEPAPER.md',
+  // Pointer vers la page PUBLIÉE, jamais vers une branche du dépôt. Le lien visait
+  // master, dont le livre blanc annonce encore « preuve d'enjeu » — alors que la chaîne
+  // fonctionne en preuve d'AUTORITÉ — et nie l'existence du point d'accès public, qui
+  // existe. Un visiteur cliquant depuis l'explorateur lisait donc une version fausse.
+  whitepaper:         'https://coinbosa.com/whitepaper/',
   github:             'https://github.com/Coinbosa/coinbosa-chain',
   facebook:           'https://www.facebook.com/coinbosa',
   twitter:            '',                               // à remplir
