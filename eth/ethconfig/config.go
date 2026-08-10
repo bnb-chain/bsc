@@ -259,6 +259,12 @@ type Config struct {
 	// OverrideAmsterdam (TODO: remove after the fork)
 	OverrideAmsterdam *uint64 `toml:",omitempty"`
 
+	// OverrideB20ActivationAdmin lets a network name the B20 activation admin
+	// without editing a built-in config. A QA cluster registers its own genesis
+	// hash as the Rialto hash, so LoadChainConfig hands it RialtoChainConfig and
+	// its genesis JSON cannot express a different admin.
+	OverrideB20ActivationAdmin *common.Address `toml:",omitempty"`
+
 	// OverrideBPO1 (TODO: remove after the fork)
 	OverrideBPO1 *uint64 `toml:",omitempty"`
 

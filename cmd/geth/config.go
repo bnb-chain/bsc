@@ -282,6 +282,10 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		v := ctx.Uint64(utils.OverridePasteur.Name)
 		cfg.Eth.OverridePasteur = &v
 	}
+	if ctx.IsSet(utils.OverrideB20ActivationAdmin.Name) {
+		v := common.HexToAddress(ctx.String(utils.OverrideB20ActivationAdmin.Name))
+		cfg.Eth.OverrideB20ActivationAdmin = &v
+	}
 	if ctx.IsSet(utils.OverrideAmsterdam.Name) {
 		v := ctx.Uint64(utils.OverrideAmsterdam.Name)
 		cfg.Eth.OverrideAmsterdam = &v

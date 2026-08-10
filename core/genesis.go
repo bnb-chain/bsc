@@ -286,17 +286,18 @@ func (e *GenesisMismatchError) Error() string {
 // ChainOverrides contains the changes to chain config
 // Typically, these modifications involve hardforks that are not enabled on the BSC mainnet, intended for testing purposes.
 type ChainOverrides struct {
-	OverridePassedForkTime *uint64
-	OverrideLorentz        *uint64
-	OverrideMaxwell        *uint64
-	OverrideFermi          *uint64
-	OverrideOsaka          *uint64
-	OverrideMendel         *uint64
-	OverridePasteur        *uint64
-	OverrideAmsterdam      *uint64
-	OverrideBPO1           *uint64
-	OverrideBPO2           *uint64
-	OverrideUBT            *uint64
+	OverridePassedForkTime     *uint64
+	OverrideLorentz            *uint64
+	OverrideMaxwell            *uint64
+	OverrideFermi              *uint64
+	OverrideOsaka              *uint64
+	OverrideMendel             *uint64
+	OverridePasteur            *uint64
+	OverrideAmsterdam          *uint64
+	OverrideB20ActivationAdmin *common.Address
+	OverrideBPO1               *uint64
+	OverrideBPO2               *uint64
+	OverrideUBT                *uint64
 }
 
 // apply applies the chain overrides on the supplied chain config.
@@ -336,6 +337,9 @@ func (o *ChainOverrides) apply(cfg *params.ChainConfig) error {
 	}
 	if o.OverrideAmsterdam != nil {
 		cfg.AmsterdamTime = o.OverrideAmsterdam
+	}
+	if o.OverrideB20ActivationAdmin != nil {
+		cfg.B20ActivationAdmin = o.OverrideB20ActivationAdmin
 	}
 	if o.OverrideBPO1 != nil {
 		cfg.BPO1Time = o.OverrideBPO1

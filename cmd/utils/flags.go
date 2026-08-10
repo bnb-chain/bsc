@@ -319,6 +319,11 @@ var (
 		Usage:    "Manually specify the Pasteur fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
+	OverrideB20ActivationAdmin = &cli.StringFlag{
+		Name:     "override.b20activationadmin",
+		Usage:    "Manually specify the B20 activation admin, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
 	OverrideAmsterdam = &cli.Uint64Flag{
 		Name:     "override.amsterdam",
 		Usage:    "Manually specify the Amsterdam fork timestamp, overriding the bundled setting",
