@@ -34,6 +34,7 @@ const VALSET = '0x0000000000000000000000000000000000001000';
 const FORCER = process.env.JE_COMPRENDS_LE_RISQUE === '1';
 
 const ABI = [
+  'function updateValidatorSet(address[] newVals, bytes[] newVotes)',
   'function getValidators() view returns (address[])',
   'function numOfValidators() view returns (uint256)',
   'function getTurnLength() view returns (uint256)',
@@ -47,6 +48,7 @@ const ABI = [
 
   const actuels = await c.getValidators();
   const gouverneur = await c.GOVERNOR();
+  const GOUVERNEUR = gouverneur;
   const initial = await c.INITIAL_VALIDATOR();
   const turn = Number(await c.getTurnLength());
 
@@ -101,11 +103,27 @@ const ABI = [
   console.log(`\n  parmi l'ensemble demandé : ${actifs.length} scellent déjà, ${inactifs.length} n'ont jamais scellé`);
   inactifs.forEach((a) => console.log(`      JAMAIS VU SCELLER : ${ethers.getAddress(a)}`));
 
-  if (actifs.length < requisEnLigne) {
+  // Un candidat ne PEUT PAS avoir déjà scellé : on ne scelle qu'une fois membre de
+  // l'ensemble. Exiger le contraire — ce que faisait la version précédente — rendait toute
+  // extension impossible, y compris légitime. On distingue donc deux choses :
+  //   · les SORTANTS qui doivent rester actifs (verifiable on-chain) ;
+  //   · les ENTRANTS, dont on ne peut rien prouver ici, et qui exigent une attestation.
+  const entrants = [...vus].filter((a) => !actuels.some((x) => x.toLowerCase() === a));
+  const sortantsActifs = actifs.filter((a) => actuels.some((x) => x.toLowerCase() === a));
+
+  if (sortantsActifs.length === 0 && actuels.length > 0) {
+    bloquants.push('aucun validateur ACTUELLEMENT actif ne figure dans le nouvel ensemble : plus personne ne pourrait sceller.');
+  }
+  if (entrants.length && !FORCER) {
     bloquants.push(
-      `seuls ${actifs.length} validateur(s) de l'ensemble demandé scellent réellement, ${requisEnLigne} exigés. ` +
-      'La chaîne s\'ARRÊTERAIT au prochain bloc d\'epoch, et aucune transaction corrective ne pourrait plus être minée.'
+      `${entrants.length} validateur(s) ENTRANT(S) n'ont jamais scellé — c'est normal, on ne scelle qu'une fois dans ` +
+      'l\'ensemble. Mais Parlia exige ⌊N/2⌋+1 signataires EN LIGNE dès le prochain bloc d\'epoch : leurs nœuds ' +
+      'doivent DÉJÀ tourner, être synchronisés et détenir leur clé. Impossible à prouver depuis la chaîne. ' +
+      'Vérifie-le toi-même, puis relance avec JE_COMPRENDS_LE_RISQUE=1.'
     );
+  }
+  if (entrants.length && FORCER) {
+    avertissements.push(`${entrants.length} entrant(s) acceptés sous ta responsabilité (JE_COMPRENDS_LE_RISQUE=1) : leurs nœuds DOIVENT déjà tourner et être synchronisés.`);
   }
 
   // --- 3. transitions connues pour dégrader la disponibilité ---
@@ -129,13 +147,54 @@ const ABI = [
     process.exit(1);
   }
 
-  console.log('\n  VERDICT : rotation jugée SÛRE sur les points vérifiables.');
-  console.log('\n  Le contrat n\'ayant pas de garde de liveness, RIEN ne rattrapera une erreur ici.');
-  console.log('  Transaction à envoyer DEPUIS LE GOUVERNEUR (hors ligne / matériel) :');
+  // --- 4. adresses de vote : elles doivent être DISTINCTES ---
+  // Le contrat refuse deux clés de vote identiques (CoinbosaValidatorSet.sol:216). Or la
+  // finalité rapide est inactive, donc la clé « naturelle » est 48 octets nuls — la même
+  // pour tous. Envoyer cela pour N≥2 provoquait un REVERT GARANTI, et c'est exactement ce
+  // que ce script conseillait de faire. On dérive donc une valeur unique par validateur.
+  // Ces clés ne servent à rien tant que la finalité rapide est inactive : ce sont des
+  // marque-places, mais ils doivent être uniques pour passer la garde du contrat.
+  const listeVals = [...vus].map((a) => ethers.getAddress(a));
+  const listeVotes = listeVals.map((a) => '0x' + ethers.keccak256(a).slice(2).padEnd(96, '0').slice(0, 96));
+  const distincts = new Set(listeVotes).size === listeVotes.length;
+  if (!distincts) bloquants.push('collision improbable sur les clés de vote dérivées — ne pas envoyer.');
+
+  // --- 5. SIMULATION : on demande à la chaîne ce qui se passerait ---
+  // C'est le seul contrôle qui ne peut pas se tromper : il exécute la transaction sans la
+  // publier. Il aurait attrapé seul le revert « duplicate vote address ».
+  let simulationOk = false, motifRevert = '';
+  if (GOUVERNEUR && ethers.isAddress(GOUVERNEUR)) {
+    const iface = new ethers.Interface(ABI);
+    const data = iface.encodeFunctionData('updateValidatorSet', [listeVals, listeVotes]);
+    try {
+      await provider.call({ from: gouverneur, to: VALSET, data });
+      simulationOk = true;
+    } catch (e) {
+      motifRevert = (e.shortMessage || e.message || '').slice(0, 160);
+      bloquants.push(`la chaîne REJETTE cette rotation : ${motifRevert}`);
+    }
+  }
+
+  console.log('\n  ' + '='.repeat(72));
+  if (avertissements.length) {
+    console.log('  À CONSIDÉRER :');
+    avertissements.forEach((a) => console.log(`    ~ ${a}`));
+  }
+  if (bloquants.length) {
+    console.error('\n  BLOQUANTS :');
+    bloquants.forEach((b) => console.error(`    ✗ ${b}`));
+    console.error('\n  VERDICT : NE PAS EFFECTUER CETTE ROTATION.\n');
+    process.exit(1);
+  }
+
+  console.log('  SIMULATION on-chain : la transaction PASSE (eth_call, rien n\'a été publié).');
+  console.log('\n  VERDICT : rotation sûre sur tout ce qui est vérifiable.');
+  console.log('\n  À envoyer DEPUIS LE GOUVERNEUR (hors ligne / matériel) :');
   console.log(`    contrat : ${VALSET}`);
   console.log('    méthode : updateValidatorSet(address[] newVals, bytes[] newVotes)');
-  console.log(`    newVals : [${[...vus].map((a) => ethers.getAddress(a)).join(', ')}]`);
-  console.log(`    newVotes: ${N} entrées de 48 octets à zéro (la finalité rapide est inactive)`);
+  console.log(`    newVals : [${listeVals.join(', ')}]`);
+  console.log('    newVotes :');
+  listeVotes.forEach((v, k) => console.log(`      ${listeVals[k]} -> ${v.slice(0, 26)}…`));
   console.log('\n  Après envoi : surveiller le PROCHAIN bloc d\'epoch (multiple de 200).');
-  console.log('  Si la hauteur cesse d\'avancer à ce bloc, démarrer immédiatement les nœuds manquants.\n');
+  console.log('  Si la hauteur cesse d\'avancer, démarrer immédiatement les nœuds manquants.\n');
 })().catch((e) => { console.error('ERREUR :', e.message); process.exit(1); });
