@@ -347,6 +347,15 @@ func runB20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 	// activation gate: every non-view method sits behind it, so a deactivation
 	// freezes membership and admin changes on policies that already exist
 	// (BEP-702 section 3.15).
+	//
+	// Two orderings here differ from base-std, both deliberately. Write
+	// protection is checked before anything else, where base-std leaves it to the
+	// storage layer: a caller in a static frame is refused for that reason alone,
+	// rather than being told its feature is closed or its arguments are bad. And
+	// the activation gate precedes argument decoding, so a closed feature reports
+	// itself whatever the payload — base-std validates the encoding first, which
+	// on a closed feature surfaces a decode failure instead. Ours reports the
+	// condition the caller can act on, and reverts on the same set of inputs.
 	switch sel {
 	case selCreatePolicy, selCreatePolicyWithAccounts, selUpdateAllowlist,
 		selUpdateBlocklist, selStageUpdateAdmin, selFinalizeUpdateAdmin, selRenounceAdmin:

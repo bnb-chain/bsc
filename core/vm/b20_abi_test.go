@@ -184,3 +184,57 @@ func TestB20RevertData(t *testing.T) {
 		t.Fatalf("revert data = %x, want NonPayable() = %x", ret, errSelNonPayable)
 	}
 }
+
+// TestB20UndecodableCalldataRevertsEmpty pins BEP-702 3.2's second failure kind:
+// calldata that cannot be decoded reverts with no returndata at all, across
+// every entry point.
+//
+// This is a deliberate divergence from base-std, which echoes the caller's four
+// selector bytes for an unknown selector and a selector plus a UTF-8 diagnostic
+// for a decode failure. Neither is ABI-encoded, so reproducing them would make
+// one implementation's error strings consensus data — and four bytes would be
+// worse than none, being shaped exactly like an argument-less custom error.
+func TestB20UndecodableCalldataRevertsEmpty(t *testing.T) {
+	_, evm := newAmsterdamEVM(t)
+	creator := common.HexToAddress("0xdec0de")
+	call := func(to common.Address, input []byte) ([]byte, error) {
+		ret, _, err := evm.Call(creator, to, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		return ret, err
+	}
+
+	// Open the Asset feature and create a token so the token path is live too.
+	if _, err := call(B20ActivationRegistryAddress, b20Call(selActivate, featureB20Asset)); err != nil {
+		// The harness seeds every feature already; activating again is fine to skip.
+		_ = err
+	}
+	ret, err := call(B20FactoryAddress, encodeCreateB20(b20VariantAsset, common.HexToHash("0xd0"), creator, nil))
+	if err != nil {
+		t.Fatalf("createB20: %v", err)
+	}
+	token := common.BytesToAddress(ret)
+
+	targets := map[string]common.Address{
+		"factory":             B20FactoryAddress,
+		"policy registry":     B20PolicyRegistryAddress,
+		"activation registry": B20ActivationRegistryAddress,
+		"token":               token,
+	}
+	inputs := map[string][]byte{
+		"unknown selector":      {0xde, 0xad, 0xbe, 0xef},
+		"empty calldata":        {},
+		"shorter than selector": {0x01, 0x02, 0x03},
+		"selector, no args":     append([]byte{}, selBalanceOf[:]...),
+	}
+	for tname, to := range targets {
+		for iname, input := range inputs {
+			got, err := call(to, input)
+			if !errors.Is(err, ErrExecutionReverted) {
+				t.Errorf("%s / %s: err = %v, want revert", tname, iname, err)
+				continue
+			}
+			if len(got) != 0 {
+				t.Errorf("%s / %s: returndata = %x, want empty", tname, iname, got)
+			}
+		}
+	}
+}

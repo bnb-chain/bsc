@@ -33,8 +33,16 @@ import (
 // Inside the B20 code a failure is a *b20RevertError carrying the encoded
 // payload; finishB20 converts it at the precompile boundary into the
 // (returndata, ErrExecutionReverted) pair the EVM call path already knows how
-// to propagate. ABI *decode* failures (malformed calldata) revert with empty
-// returndata, mirroring base-std's dispatch-level AbiDecodeFailed.
+// to propagate.
+//
+// Calldata that cannot be decoded at all, an unknown selector included, reverts
+// with empty returndata (BEP-702 3.2). This is a deliberate divergence from
+// base-std, which returns the caller's own four selector bytes for an unknown
+// selector and a selector followed by a UTF-8 diagnostic for a decode failure.
+// Neither is ABI-encoded, so neither is decodable by the caller; reproducing
+// them would make one implementation's error strings consensus data that every
+// other client had to match byte for byte. Four bytes would also be worse than
+// none, being indistinguishable in shape from an argument-less custom error.
 
 // b20SigRegistry accumulates every function / event / error signature the B20
 // implementation registers, for the ABI-baseline conformance test.
