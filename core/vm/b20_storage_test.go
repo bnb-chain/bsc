@@ -332,6 +332,58 @@ func TestB20StorageStringShrink(t *testing.T) {
 	}
 }
 
+// TestB20StringBoundaryMatrix walks every directed transition between the
+// lengths where the storage encoding changes shape: empty, inline, the 31/32
+// inline-to-long boundary, and the 32-byte chunk boundaries. For each it checks
+// the value round-trips, the length slot carries the right short/long marker,
+// and the data region holds exactly the chunks the new value needs — no stale
+// slot left behind by the old one.
+func TestB20StringBoundaryMatrix(t *testing.T) {
+	lengths := []int{0, 1, 31, 32, 33, 64, 65}
+	// A generous scan bound: the largest case needs 3 chunks, so 8 proves that
+	// nothing lingers past the end as well.
+	const scan = 8
+
+	for _, from := range lengths {
+		for _, to := range lengths {
+			s := newTestStorage(t)
+			slot := slotAt(b20SlotName)
+			dataSlot := func(i uint64) common.Hash {
+				base := new(uint256.Int).SetBytes(crypto.Keccak256(slot.Bytes()))
+				return common.Hash(base.AddUint64(base, i).Bytes32())
+			}
+			// Distinct fill bytes so a stale chunk cannot masquerade as fresh.
+			before, after := strings.Repeat("a", from), strings.Repeat("b", to)
+
+			s.setName(before)
+			s.setName(after)
+
+			if got := s.name(); got != after {
+				t.Errorf("%d->%d: name = %q (len %d), want len %d", from, to, got, len(got), to)
+			}
+			word := s.getWord(slot)
+			wantLong := to >= 32
+			if isLong := word[31]&1 == 1; isLong != wantLong {
+				t.Errorf("%d->%d: length slot long-marker = %v, want %v", from, to, isLong, wantLong)
+			}
+			if !wantLong && int(word[31]) != to*2 {
+				t.Errorf("%d->%d: inline length byte = %d, want %d", from, to, word[31], to*2)
+			}
+			wantChunks := 0
+			if wantLong {
+				wantChunks = (to + 31) / 32
+			}
+			for i := uint64(0); i < scan; i++ {
+				occupied := s.getWord(dataSlot(i)) != (common.Hash{})
+				if want := i < uint64(wantChunks); occupied != want {
+					t.Errorf("%d->%d: data slot %d occupied = %v, want %v (stale tail not released)",
+						from, to, i, occupied, want)
+				}
+			}
+		}
+	}
+}
+
 // TestB20LongStringGas pins the cost of a long string's keccak-derived data
 // region. Deriving that root is a runtime keccak exactly as a mapping slot is,
 // and leaving it unmetered would donate the computation on every long name,
@@ -427,6 +479,31 @@ func TestB20SpawnedContextPropagatesOutOfGas(t *testing.T) {
 	p2.chargeStateGas(1_000_000)
 	if !c2.OutOfGas() {
 		t.Error("child spawned before the spawner's exhaustion does not observe it")
+	}
+}
+
+// TestB20SpawnedContextSharesStateGasTally pins that state gas charged inside a
+// bootstrap child counts toward the frame's total. A bootstrap is the same EVM
+// frame with a different Self — it shares the enforced budget — so a tally that
+// dropped its charges would under-report the frame once the StateGas reservoir
+// is enforced rather than merely recorded.
+func TestB20SpawnedContextSharesStateGasTally(t *testing.T) {
+	statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+	gas := NewGasBudget(10_000_000)
+	parent := &PrecompileContext{
+		StateDB: statedb, Self: b20Addr(b20VariantAsset, 1),
+		Caller: b20Alice, DirectCall: true, gas: &gas,
+	}
+	child := parent.spawnBootstrap(b20Addr(b20VariantAsset, 2), b20Alice)
+
+	parent.chargeStateGas(700)
+	child.chargeStateGas(300)
+
+	if got := parent.StateGasUsed(); got != 1000 {
+		t.Errorf("spawner StateGasUsed = %d, want 1000 — the child's charges are missing", got)
+	}
+	if got := child.StateGasUsed(); got != 1000 {
+		t.Errorf("child StateGasUsed = %d, want 1000 — the tally is not frame-wide", got)
 	}
 }
 
