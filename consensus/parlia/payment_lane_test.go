@@ -23,27 +23,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// laneGasLimit must stay above params.SystemTxsGasHardLimit, or NextLaneSize's final safety
-// clamp - min(size, gasLimit-SystemTxsGasHardLimit) - takes the quota to zero and every
-// assertion below passes against a lane that is doing nothing. 35M is the devnet's limit
-// and gives floor 2,000,000 / ceiling 2,800,000 under the factory defaults.
+// laneGasLimit must stay above the system reservation so the lane remains active.
 const laneGasLimit = 35_000_000
 
-// newParliaLaneHarness builds a Parlia chain whose NEXT block is a payment lane block,
-// and hands back the pieces needed to assemble it.
-//
-// This exists because nothing else in the tree exercises the lane under Parlia: every
-// other lane test runs on ethash through GenerateChain. The gap matters for one ordering
-// in particular - finalizeAndAssemble writes EmptyUncleHash into the header and
-// types.NewBlock then re-derives it from the body, so LaneState.WriteCommitment's write
-// only survives because it happens to the assembled BLOCK, afterwards. Writing it one
-// step earlier is silently discarded and every block is rejected network-wide.
-//
-// Fork timing: genesis is at t=0 and GenerateChain fixes the block interval at 10s, so a
-// Gauss timestamp of 5 makes block 1 the activation block (IsOnGauss fires there) and
-// block 2 the first block the rules bind to. 0x2007 goes into the genesis allocation for
-// the same reason it does in core's tests - GenerateChain cannot run the system-contract
-// upgrade - which is faithful from Gauss+1 onwards, where this harness operates.
+// newParliaLaneHarness builds a lane-active Parlia chain and preallocates 0x2007.
 func newParliaLaneHarness(t *testing.T) (*Parlia, *core.BlockChain, *params.ChainConfig, *types.Block, func() *types.Header, func() *state.StateDB) {
 	t.Helper()
 
@@ -59,18 +42,7 @@ func newParliaLaneHarness(t *testing.T) (*Parlia, *core.BlockChain, *params.Chai
 		t.Fatalf("failed to decode the PaymentLane blob: %v", err)
 	}
 
-	// CheckConfigForkOrder rejects a config that enables gauss while any earlier timestamp
-	// fork is nil - it tests enabled-ness, not values - so everything between Cancun (where
-	// ParliaTestChainConfig stops) and Pasteur has to be switched on at 0.
-	//
-	// core/payment_lane_test.go's laneGenesis needs none of this, and the difference is
-	// essential rather than accidental: CheckConfigForkOrder opens with
-	// "if c.IsNotInBSC() { return nil }" and IsInBSC is "Parlia != nil", so an ethash
-	// config skips the whole check. That is also why these two fixtures are deliberately
-	// NOT shared - a common helper would have to carry this branch inside it, which is
-	// worse than two explicit setups. Same for the Gauss timestamps: 5 here and 15 there,
-	// each tied to its own harness's block interval and to which block must be the
-	// activation block.
+	// Parlia configs must enable the earlier timestamp forks before Gauss.
 	at0 := func() *uint64 { v := uint64(0); return &v }
 	config := *params.ParliaTestChainConfig
 	config.HaberTime, config.HaberFixTime = at0(), at0()
@@ -79,7 +51,6 @@ func newParliaLaneHarness(t *testing.T) (*Parlia, *core.BlockChain, *params.Chai
 	config.OsakaTime, config.MendelTime, config.PasteurTime = at0(), at0(), at0()
 	gaussTime := uint64(5)
 	config.GaussTime = &gaussTime
-	// Enabling prague/osaka above makes their blobSchedule entries mandatory.
 	config.BlobScheduleConfig = &params.BlobScheduleConfig{
 		Cancun: params.DefaultCancunBlobConfig,
 		Prague: params.DefaultPragueBlobConfig,
@@ -128,10 +99,6 @@ func newParliaLaneHarness(t *testing.T) (*Parlia, *core.BlockChain, *params.Chai
 		if err != nil {
 			t.Fatalf("failed to create stateDB: %v", err)
 		}
-		// Not optional: untouched storage is byte for byte indistinguishable from an absent
-		// account and LoadParams maps a zero word to its default, so every quota assertion
-		// in this file would pass just as happily against an address where nothing was ever
-		// installed. Mutation-checked in core's harness, which carries the same guard.
 		if len(stateDB.GetCode(paymentlane.ContractAddress)) == 0 {
 			t.Fatal("0x2007 carries no code: the parameters below would be defaults by accident")
 		}
@@ -141,9 +108,7 @@ func newParliaLaneHarness(t *testing.T) (*Parlia, *core.BlockChain, *params.Chai
 	return engine, chain, &config, parent, newHeader, newState
 }
 
-// TestPaymentLaneAppliesToTheBlockAfterParliaActivation pins the harness itself: if the
-// next block were not a lane block, the two tests below would assert nothing and stay
-// green forever.
+// TestPaymentLaneAppliesToTheBlockAfterParliaActivation checks the harness boundary.
 func TestPaymentLaneAppliesToTheBlockAfterParliaActivation(t *testing.T) {
 	_, _, config, parent, _, _ := newParliaLaneHarness(t)
 
@@ -153,23 +118,8 @@ func TestPaymentLaneAppliesToTheBlockAfterParliaActivation(t *testing.T) {
 	}
 }
 
-// TestPaymentLaneCommitmentSurvivesParliaAssembly is the ordering test no other test in
-// the tree can perform, over both Parlia assemblers.
-//
-// The mutation it exists to kill: writing the commitment onto the header BEFORE
-// finalizeAndAssemble - the obvious-looking place, right where parlia sets EmptyUncleHash -
-// instead of onto the assembled block afterwards. That mutation loses the commitment
-// silently, and only a Parlia assembly can see it, because the ethash path in core's tests
-// never overwrites the uncle slot on the way.
-//
-// Both assemblers, in one table, because "they behave the same way" is the assertion:
-// FinalizeAndAssembleBidBlock is called only from the builder binary, so nothing in this
-// repository links the two halves of that sequence, and a divergence between the two
-// assemblers would show up as builder blocks nobody accepts. What verifyCascadingFields does
-// with an unstamped block from Gauss+1 is TestVerifyCascadingFieldsGatesTheLaneCommitment's job.
+// TestPaymentLaneCommitmentSurvivesParliaAssembly checks both Parlia assemblers stamp after assembly.
 func TestPaymentLaneCommitmentSurvivesParliaAssembly(t *testing.T) {
-	// Non-zero on purpose: the all-zero commitment is a legal value, so a dropped one would
-	// be indistinguishable from a correct empty block.
 	const paymentUsed = 42_000
 
 	for _, tc := range []struct {
@@ -202,8 +152,6 @@ func TestPaymentLaneCommitmentSurvivesParliaAssembly(t *testing.T) {
 					lane.Budget.LaneSize, want, laneGasLimit)
 			}
 			lane.Budget.PaymentUsed = paymentUsed
-			// The gas the bucket claims must also show up in the block total, as it would
-			// after a real apply; the mock engine's Finalize does not touch usedGas.
 			header.GasUsed = paymentUsed
 
 			block, err := tc.assemble(engine, chain, header, stateDB)
@@ -213,9 +161,6 @@ func TestPaymentLaneCommitmentSurvivesParliaAssembly(t *testing.T) {
 			if block.UncleHash() != types.EmptyUncleHash {
 				t.Fatalf("the assembler must leave the uncle slot for the stamp, got %x", block.UncleHash())
 			}
-			// poolUsed must cover the bucket: WriteCommitment self-checks, and the bucket can
-			// only ever be a part of what the pool consumed. This block has no general gas,
-			// so the two are equal.
 			if err := lane.WriteCommitment(block, paymentUsed); err != nil {
 				t.Fatalf("failed to write the commitment: %v", err)
 			}
@@ -227,9 +172,6 @@ func TestPaymentLaneCommitmentSurvivesParliaAssembly(t *testing.T) {
 			if got != want {
 				t.Fatalf("commitment: got %+v, want %+v", got, want)
 			}
-			// No hash assertion: WriteCommitment made that comparison itself and froze the
-			// cache, so repeating it could not fail. TestPaymentLaneRefusesAStaleBlockHash
-			// covers it.
 			if len(block.Uncles()) != 0 {
 				t.Fatal("parlia must never produce uncles")
 			}
@@ -237,13 +179,7 @@ func TestPaymentLaneCommitmentSurvivesParliaAssembly(t *testing.T) {
 	}
 }
 
-// TestPaymentLaneRefusesAStaleBlockHash is the only test of the guard that keeps the
-// commitment write correct at a distance from assembly.
-//
-// It hashes the block first, exactly as a stray log line or an early sidecar loop would,
-// and requires WriteCommitment to refuse rather than emit a block whose cached hash no
-// longer matches its own header. It cannot be folded into the test above, which calls
-// WriteCommitment before ever reading block.Hash() and so can never fail this way.
+// TestPaymentLaneRefusesAStaleBlockHash checks the cached-hash guard in WriteCommitment.
 func TestPaymentLaneRefusesAStaleBlockHash(t *testing.T) {
 	engine, chain, config, parent, newHeader, newState := newParliaLaneHarness(t)
 	header, stateDB := newHeader(), newState()
@@ -258,7 +194,7 @@ func TestPaymentLaneRefusesAStaleBlockHash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to assemble: %v", err)
 	}
-	stale := block.Hash() // the mistake: caching the hash before the commitment is in
+	stale := block.Hash()
 
 	err = lane.WriteCommitment(block, 0)
 	if err == nil {
@@ -275,16 +211,13 @@ func TestPaymentLaneRefusesAStaleBlockHash(t *testing.T) {
 	}
 }
 
-// authorizeLaneValidator lets verifyCascadingFields past its snapshot checks for the block
-// after parent. Injected into recentSnaps, which p.snapshot consults first, because the
-// harness chain carries no epoch header to derive a validator set from.
+// authorizeLaneValidator seeds recentSnaps for verifyCascadingFields.
 func authorizeLaneValidator(engine *Parlia, parent *types.Header, validator common.Address) {
 	engine.recentSnaps.Add(parent.Hash(), newSnapshot(engine.config, engine.signatures,
 		parent.Number.Uint64(), parent.Hash(), []common.Address{validator}, nil, nil))
 }
 
-// laneVerifiableHeader completes the fields verifyCascadingFields checks after the lane gate,
-// so a truthful commitment yields nil and the accept cases below are not vacuous.
+// laneVerifiableHeader fills the non-lane fields verifyCascadingFields expects.
 func laneVerifiableHeader(base, parent *types.Header) *types.Header {
 	h := types.CopyHeader(base)
 	h.ParentHash = parent.Hash()
@@ -298,12 +231,7 @@ func laneVerifiableHeader(base, parent *types.Header) *types.Header {
 	return h
 }
 
-// TestVerifyCascadingFieldsGatesTheLaneCommitment is the only test of the header gate itself.
-// Everything else in this file stops at assembly, and the gate sits behind p.snapshot, so no
-// GenerateChain-based fixture reaches it.
-//
-// The gate is where a forged commitment is refused before any body is executed, and it is also
-// where the fork boundary is decided: the parent's Gauss status, not the header's.
+// TestVerifyCascadingFieldsGatesTheLaneCommitment checks the header gate before execution.
 func TestVerifyCascadingFieldsGatesTheLaneCommitment(t *testing.T) {
 	engine, chain, config, laneParent, newHeader, _ := newParliaLaneHarness(t)
 	base := newHeader()
@@ -321,9 +249,6 @@ func TestVerifyCascadingFieldsGatesTheLaneCommitment(t *testing.T) {
 		wantErr   error
 	}{
 		{
-			// GasUsed well under the limit and a non-zero bucket on purpose: it makes the
-			// argument order load-bearing, since CheckHeaderBounds(GasLimit, GasUsed) would
-			// then read the 2M quota as exceeding a 1M limit.
 			name:      "a truthful commitment passes",
 			parent:    postGauss,
 			gasUsed:   1_000_000,
@@ -343,8 +268,7 @@ func TestVerifyCascadingFieldsGatesTheLaneCommitment(t *testing.T) {
 			wantErr:   paymentlane.ErrViolated,
 		},
 		{
-			// The activation block is the only place the parent's and the header's Gauss
-			// answers differ, so it is the only place that pins which one the gate asks.
+			// The activation block is the only parent/header boundary case.
 			name:      "the activation block still carries an empty uncle hash",
 			parent:    preGauss,
 			uncleHash: types.EmptyUncleHash,

@@ -43,7 +43,7 @@ func ResolveLaneState(config *params.ChainConfig, hc laneHeaderReader, parent, h
 	var grandparent *types.Header
 	if parent.Number.Sign() != 0 {
 		if grandparent = hc.GetHeaderByHash(parent.ParentHash); grandparent == nil {
-			// Local fault, not a bad block: this node may simply not have the header yet.
+			// Local fault, not the peer's: this node may simply not have the header yet.
 			return nil, fmt.Errorf("%w: grandparent %x of block %d", paymentlane.ErrStateUnavailable, parent.ParentHash, header.Number)
 		}
 	}

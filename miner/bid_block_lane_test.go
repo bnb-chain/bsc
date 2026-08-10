@@ -19,24 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// laneMinerChain builds the chain every miner-side lane test runs on, and returns the worker, the
-// config, the head, a candidate header for the block after it, and a funded key.
-//
-// The worker is filled in by hand rather than started: the functions under test read the chain,
-// the config, a header's parent and a state reader, and a real miner would drag in a
-// Parlia-formatted genesis for no gain. The lane runs on ethash for the same reason every
-// core-side lane test does - GenerateChain cannot run the system-contract upgrade, so 0x2007 goes
-// into the genesis allocation instead.
-//
-// Fork timing: genesis is at t=0 with a 10s block interval, so Gauss at 15 makes block 2 the
-// activation block and block 3 the first block the rules bind. The chain is two blocks long and
-// the candidate header is block 3.
-//
-// 55M matches core's harness, so the derived floor is the same 2M. Nothing here exercises expand
-// or shrink, for which anything above 33.3M would do.
-//
-// corruptParams writes 0x2007's first slot wide, which is LoadParams' layout tripwire: the only
-// lane resolution failure that needs neither a pruned state nor a missing header.
+// laneMinerChain builds the ethash-backed lane harness and preallocates 0x2007.
 func laneMinerChain(t *testing.T, corruptParams bool) (*worker, *params.ChainConfig, *types.Header, *types.Header, *ecdsa.PrivateKey) {
 	t.Helper()
 
@@ -77,35 +60,28 @@ func laneMinerChain(t *testing.T, corruptParams bool) (*worker, *params.ChainCon
 		Number:     new(big.Int).Add(parent.Number, common.Big1),
 		GasLimit:   parent.GasLimit,
 		Time:       parent.Time + 10,
-		// Header.Size() dereferences both, and the packing loop's size accounting reads it.
 		Difficulty: common.Big0,
 		BaseFee:    common.Big0,
 	}, key
 }
 
-// laneBidBlockHarness adds what verifyBidBlockLaneQuota needs on top of laneMinerChain: a local
-// environment standing in for the validator's own build, and the quota the header must commit.
+// laneBidBlockHarness adds the local validator environment and expected quota.
 func laneBidBlockHarness(t *testing.T) (*worker, *types.Header, *environment, uint64) {
 	t.Helper()
 
 	w, _, parent, header, _ := laneMinerChain(t, false)
 	parentState, err := w.chain.StateAt(parent)
 	require.NoError(t, err)
-	// LoadParams maps an unwritten word to the factory default, so an allocation at the
-	// wrong address derives the same quota and every assertion below stays green.
 	require.NotEmpty(t, parentState.GetCode(paymentlane.ContractAddress),
 		"0x2007 must carry code, or the parameters are defaults by accident")
 
-	// The local build the validator would fall back to: same parent, same state root.
 	local := &environment{header: types.CopyHeader(header), state: parentState}
 
-	// The floor at a 55M limit under the factory defaults, derived from the contract
-	// constants rather than from the code under test: min(max(2%*55M, 2M), min(8%*55M, 8M)).
 	const wantLaneSize = 2_000_000
 	return w, header, local, wantLaneSize
 }
 
-// bidBlockWith wraps a header and transactions the way admission would have left them.
+// bidBlockWith wraps a header and transactions as admission would leave them.
 func bidBlockWith(header *types.Header, txs ...*types.Transaction) *buildertypes.DecodedBidBlock {
 	return &buildertypes.DecodedBidBlock{
 		Header:        header,
@@ -114,11 +90,7 @@ func bidBlockWith(header *types.Header, txs ...*types.Transaction) *buildertypes
 	}
 }
 
-// TestVerifyBidBlockLaneQuota covers the last point at which a builder-authored commitment
-// can be refused for free, which matters because a BidBlock header is adopted verbatim and
-// handleBidBlockResult broadcasts before InsertChain.
-//
-// Each case is a commitment a validator must not sign, plus the truthful one it must.
+// TestVerifyBidBlockLaneQuota checks the cheap validator-side quota gate.
 func TestVerifyBidBlockLaneQuota(t *testing.T) {
 	w, header, local, laneSize := laneBidBlockHarness(t)
 
@@ -133,9 +105,6 @@ func TestVerifyBidBlockLaneQuota(t *testing.T) {
 		wantErr    error
 	}{
 		{
-			// gasUsed is a plausible block total rather than the transfer's own gas: at
-			// gasUsed == 21000 the ceiling would reach the clamp on its first step and the
-			// case would prove only that the clamp exists.
 			name:       "a truthful commitment is accepted",
 			commitment: paymentlane.Encode(paymentlane.Commitment{LaneSize: laneSize, PaymentGasUsed: params.TxGas}),
 			gasUsed:    laneSize,
@@ -152,8 +121,6 @@ func TestVerifyBidBlockLaneQuota(t *testing.T) {
 			wantErr:    paymentlane.ErrQuotaMismatch,
 		},
 		{
-			// The profitable lie: claiming the lane was spent collapses the reserved term
-			// and frees its gas for general traffic.
 			name:       "more payment gas than these transactions can consume is refused",
 			commitment: paymentlane.Encode(paymentlane.Commitment{LaneSize: laneSize, PaymentGasUsed: 2 * params.TxGas}),
 			gasUsed:    laneSize,
@@ -161,10 +128,6 @@ func TestVerifyBidBlockLaneQuota(t *testing.T) {
 			wantErr:    paymentlane.ErrUntruthy,
 		},
 		{
-			// Under-stating is not caught here and cannot be: no cheap lower bound on the
-			// bucket exists, since any transaction can install code at any address. Such a
-			// block IS invalid - the importer demands exact equality - so this pins a known
-			// residual exposure, not a property.
 			name:       "understated payment gas is beyond what this check can see",
 			commitment: paymentlane.Encode(paymentlane.Commitment{LaneSize: laneSize}),
 			gasUsed:    params.TxGas,
@@ -186,18 +149,10 @@ func TestVerifyBidBlockLaneQuota(t *testing.T) {
 	}
 }
 
-// TestVerifyBidBlockLaneQuotaBoundsByDeclaredLimits pins what the ceiling is made of, and
-// therefore how weak it is: each payment-class transaction's declared gas limit.
-//
-// Bounding by intrinsic gas would be tighter and is what an earlier version did, but it is
-// not sound - a payment-class transfer whose destination gains code mid-block executes it and
-// really does consume its limit (the leak recorded on Classify's gate 7), so an intrinsic-gas
-// ceiling would refuse honest blocks. The mutation this kills is that tightening.
+// TestVerifyBidBlockLaneQuotaBoundsByDeclaredLimits checks the declared-gas ceiling.
 func TestVerifyBidBlockLaneQuotaBoundsByDeclaredLimits(t *testing.T) {
 	w, header, local, laneSize := laneBidBlockHarness(t)
 
-	// One bare transfer declaring far more than a transfer can use. 5M is past the 4.4M
-	// ceiling, so nothing else in the block bounds it either.
 	stranger := common.Address{0xbe, 0xef}
 	fat := types.NewTx(&types.LegacyTx{To: &stranger, Value: common.Big1, Gas: 5_000_000})
 
@@ -212,21 +167,12 @@ func TestVerifyBidBlockLaneQuotaBoundsByDeclaredLimits(t *testing.T) {
 		"one gas past every declared limit in the block is still refused")
 }
 
-// TestVerifyBidBlockLaneQuotaSkipsTheSystemTxRegion pins the slice bound on the ceiling
-// loop, which every other fixture leaves at the full transaction list.
-//
-// Everything at or after SystemTxStart is gas the importer never classifies - it splits
-// system transactions out before the loop that books buckets - so counting it would let a
-// builder commit payment gas no transaction of its block can produce.
+// TestVerifyBidBlockLaneQuotaSkipsTheSystemTxRegion ignores the system-tx suffix.
 func TestVerifyBidBlockLaneQuotaSkipsTheSystemTxRegion(t *testing.T) {
 	w, header, local, laneSize := laneBidBlockHarness(t)
 
 	stranger := common.Address{0xbe, 0xef}
 	transfer := types.NewTx(&types.LegacyTx{To: &stranger, Value: common.Big1, Gas: params.TxGas})
-	// Deliberately a plain code-less destination: one carrying calldata, or one whose
-	// account has code, would be general anyway, so widening the slice would not raise the
-	// ceiling and the mutation would survive. This is the shape that makes the slice bound
-	// load-bearing.
 	trailing := types.NewTx(&types.LegacyTx{To: &stranger, Nonce: 1, Value: common.Big1, Gas: params.TxGas})
 
 	h := types.CopyHeader(header)
@@ -246,10 +192,7 @@ func TestVerifyBidBlockLaneQuotaSkipsTheSystemTxRegion(t *testing.T) {
 		"the system-tx region must not raise the ceiling")
 }
 
-// TestVerifyBidBlockLaneQuotaRequiresTheLocalParent pins the precondition the whole check
-// rests on: the local state must be open on the bid's own parent, or the classifier and the
-// parameters come from a different block's post-state than the importer will use, and every
-// honest bid is refused with no test able to see why.
+// TestVerifyBidBlockLaneQuotaRequiresTheLocalParent checks the local-parent precondition.
 func TestVerifyBidBlockLaneQuotaRequiresTheLocalParent(t *testing.T) {
 	w, header, local, _ := laneBidBlockHarness(t)
 
@@ -260,9 +203,7 @@ func TestVerifyBidBlockLaneQuotaRequiresTheLocalParent(t *testing.T) {
 	require.ErrorContains(t, err, "is not the parent the local state is open on")
 }
 
-// TestVerifyBidBlockLaneQuotaSkipsAPreActivationHeader keeps the check from answering for
-// blocks the lane does not bind, where EmptyUncleHash is the correct carrier value and a
-// refusal would close the channel for every pre-Gauss block.
+// TestVerifyBidBlockLaneQuotaSkipsAPreActivationHeader keeps pre-Gauss blocks untouched.
 func TestVerifyBidBlockLaneQuotaSkipsAPreActivationHeader(t *testing.T) {
 	w, header, local, _ := laneBidBlockHarness(t)
 

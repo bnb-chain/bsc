@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// accountFn is an AccountReader backed by a function, so each test states its own parent state.
+// accountFn lets each test define its own parent-state lookup.
 type accountFn struct {
 	fn    func(common.Address) (*types.StateAccount, error)
 	reads []common.Address // every address actually read, in order
@@ -35,7 +35,7 @@ func forbidReads(t *testing.T) *accountFn {
 	}}
 }
 
-// absentAccounts is the common case: the destination has never been seen.
+// absentAccounts models the common "destination never seen" case.
 func absentAccounts() *accountFn {
 	return &accountFn{fn: func(common.Address) (*types.StateAccount, error) { return nil, nil }}
 }
@@ -59,7 +59,7 @@ func listedSet(addrs ...common.Address) map[common.Address]struct{} {
 	return set
 }
 
-// txOpts describes a transaction along the axes the classifier actually looks at.
+// txOpts covers only the fields Classify inspects.
 type txOpts struct {
 	txType     byte
 	to         *common.Address
@@ -101,12 +101,10 @@ func makeTx(t *testing.T, o txOpts) *types.Transaction {
 	}
 }
 
-// TestNoStateReadUntilEveryStaticGatePasses walks the whole static gate space, asserting both
-// the class produced and whether state was read, so any gate reorder that crosses gate 4 or
-// gate 7 fails here.
+// Walk the static gates and assert both class and whether state was read.
 func TestNoStateReadUntilEveryStaticGatePasses(t *testing.T) {
 	oneEntryAccessList := types.AccessList{{Address: plainDest}}
-	// ContractAddress is listed on purpose: membership decides whatever the address is.
+	// ContractAddress is listed on purpose: membership alone decides.
 	listed := listedSet(listedDest, ContractAddress)
 
 	for _, txType := range []byte{
@@ -175,8 +173,7 @@ func TestNoStateReadUntilEveryStaticGatePasses(t *testing.T) {
 	}
 }
 
-// TestPrecompileDestinationIsPayment pins one of Classify's deviations from section 3.2: with no
-// precompile exclusion, one wei to a precompile is payment here and general to a conformant client.
+// Precompiles are still payment destinations here.
 func TestPrecompileDestinationIsPayment(t *testing.T) {
 	for _, addr := range vm.ActivePrecompiles(params.Rules{
 		IsHomestead: true, IsByzantium: true, IsIstanbul: true, IsBerlin: true,
@@ -189,8 +186,7 @@ func TestPrecompileDestinationIsPayment(t *testing.T) {
 	}
 }
 
-// TestAbsentAccountIsPayment guards the package's highest-value silent bug: writing gate 7 as
-// codeHash == types.EmptyCodeHash misclassifies every transfer to a brand-new address.
+// An absent account must still classify as payment.
 func TestAbsentAccountIsPayment(t *testing.T) {
 	tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &plainDest, value: big.NewInt(1)})
 	got, err := NewClassifier(common.Hash{}, absentAccounts(), nil).Classify(tx)
@@ -198,9 +194,7 @@ func TestAbsentAccountIsPayment(t *testing.T) {
 	require.Equal(t, ClassPayment, got)
 }
 
-// TestCodeHashBoundaryCases covers every encoding of "no code" this tree can hand the
-// classifier - flatReader normalises to EmptyCodeHash, the UBT reader passes the raw leaf
-// through - so neither row below is hypothetical.
+// Cover every "no code" encoding the readers can return.
 func TestCodeHashBoundaryCases(t *testing.T) {
 	tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &plainDest, value: big.NewInt(1)})
 	for _, tc := range []struct {
@@ -223,8 +217,7 @@ func TestCodeHashBoundaryCases(t *testing.T) {
 	}
 }
 
-// TestDelegationDesignatorIsGeneral covers EIP-7702: a designator's code hash is
-// keccak(0xef0100||target), so gate 7 excludes it with no special case.
+// EIP-7702 designators must stay general.
 func TestDelegationDesignatorIsGeneral(t *testing.T) {
 	designator := types.AddressToDelegation(common.HexToAddress("0x00000000000000000000000000000000000f0009"))
 	r := &accountFn{fn: func(common.Address) (*types.StateAccount, error) {
@@ -236,10 +229,9 @@ func TestDelegationDesignatorIsGeneral(t *testing.T) {
 	require.Equal(t, ClassGeneral, got)
 }
 
-// TestListedContractSurvivesDataAndValueGates keeps the listed set from becoming dead code:
-// every real ERC-20 transfer has calldata and zero value, so gate 4 must stay above 5 and 6.
+// Listed membership must win over calldata/value heuristics.
 func TestListedContractSurvivesDataAndValueGates(t *testing.T) {
-	// transfer(address,uint256) with a recipient and an amount: 68 bytes, no value.
+	// ERC-20 transfer(address,uint256): calldata present, zero value.
 	calldata := make([]byte, 68)
 	copy(calldata, []byte{0xa9, 0x05, 0x9c, 0xbb})
 
@@ -251,8 +243,7 @@ func TestListedContractSurvivesDataAndValueGates(t *testing.T) {
 	}
 }
 
-// TestBlobAndSetCodeToListedContractAreGeneral keeps gate 2 above gate 4, or the listed path
-// reopens 7702 bulk authorisation - 8.02M gas of pure state writes - at lane price.
+// Blob and SetCode must stay general even to listed destinations.
 func TestBlobAndSetCodeToListedContractAreGeneral(t *testing.T) {
 	for _, txType := range []byte{types.BlobTxType, types.SetCodeTxType} {
 		tx := makeTx(t, txOpts{txType: txType, to: &listedDest, value: big.NewInt(1)})
@@ -262,8 +253,7 @@ func TestBlobAndSetCodeToListedContractAreGeneral(t *testing.T) {
 	}
 }
 
-// TestAnyListedAddressIsPayment pins that membership alone decides: a client that filtered the
-// governance-written set by address would reject blocks every conformant client accepts.
+// Membership alone decides; do not special-case addresses inside the set.
 func TestAnyListedAddressIsPayment(t *testing.T) {
 	timelock := common.HexToAddress(systemcontracts.TimelockContract)
 	listed := listedSet(ContractAddress, timelock)
@@ -275,8 +265,7 @@ func TestAnyListedAddressIsPayment(t *testing.T) {
 	}
 }
 
-// TestTypeGateAcceptsExactlyThreeTypes pins the allowlist over every type this tree can
-// construct; a blacklist would pass this test and admit whatever type BSC adopts next.
+// Keep the type gate a whitelist of the three supported user tx types.
 func TestTypeGateAcceptsExactlyThreeTypes(t *testing.T) {
 	for _, tc := range []struct {
 		txType byte
@@ -297,8 +286,7 @@ func TestTypeGateAcceptsExactlyThreeTypes(t *testing.T) {
 		"a new transaction type has appeared: confirm the gate is still a whitelist and extend this table")
 }
 
-// TestErrorPropagatesFailShutAndSticks covers the failure path: fail-shut must be ClassGeneral,
-// since ClassPayment would widen general's MaxAvailableGas and over-pack into an invalid block.
+// State-read failures must fail shut and keep Err sticky.
 func TestErrorPropagatesFailShutAndSticks(t *testing.T) {
 	boom := errors.New("snapshot not covered yet")
 	calls := 0
@@ -328,8 +316,7 @@ func TestErrorPropagatesFailShutAndSticks(t *testing.T) {
 	require.ErrorIs(t, c.Err(), boom)
 }
 
-// TestMemoDoesOneReadPerDistinctDestination pins both the memo and the decision not
-// to memoise failures.
+// Memoize successful reads per destination, but never memoize failures.
 func TestMemoDoesOneReadPerDistinctDestination(t *testing.T) {
 	dests := []common.Address{
 		common.HexToAddress("0x00000000000000000000000000000000000f0011"),
@@ -346,7 +333,7 @@ func TestMemoDoesOneReadPerDistinctDestination(t *testing.T) {
 	}
 	require.Len(t, r.reads, len(dests), "absent accounts must be memoised too - they are the hot path")
 
-	// A failed read must not be cached: the retry has to reach the reader again.
+	// A failed read must not be cached.
 	failing := &accountFn{fn: func(common.Address) (*types.StateAccount, error) {
 		return nil, errors.New("missing trie node")
 	}}
@@ -359,8 +346,7 @@ func TestMemoDoesOneReadPerDistinctDestination(t *testing.T) {
 	require.Len(t, failing.reads, 2, "errors must not be memoised")
 }
 
-// TestNilPaymentContractsMeansEmpty pins the contract with LoadPaymentContracts: nil is the
-// activation-day state, not a failure signal.
+// nil payment-contract set means empty, not failure.
 func TestNilPaymentContractsMeansEmpty(t *testing.T) {
 	tx := makeTx(t, txOpts{txType: types.LegacyTxType, to: &listedDest, data: []byte{0x01}})
 	got, err := NewClassifier(common.Hash{}, forbidReads(t), nil).Classify(tx)

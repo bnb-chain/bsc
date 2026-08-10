@@ -47,12 +47,7 @@ func TestAllCodesHash(t *testing.T) {
 	require.Equal(t, allCodeHash[:], common.Hex2Bytes("833cc0fc87c46ad8a223e44ccfdc16a51a7e7383525136441bd0c730f06023df"))
 }
 
-// TestGaussPaymentLaneCode pins PaymentLane's target address and bytecode. gaussUpgrade is not in
-// TestAllCodesHash's list, which also skips rialtoNet. The address is a literal rather than
-// common.HexToAddress(PaymentLaneContract), which would be tautological: a one-digit typo in that
-// const lands on Timelock (0x2006) and would overwrite it chain-wide. One hash covers all three
-// networks because they ship identical code - which also means no test here can detect a
-// cross-network Code mis-wiring, and none needs to while the three blobs stay byte-identical.
+// Pin the Gauss payment-lane address and bytecode on all three networks.
 func TestGaussPaymentLaneCode(t *testing.T) {
 	const wantCodeHash = "c4589f51dc8be028cee0512617008a34a97abb535c3e463a6ba5a5d382ee917c"
 
@@ -64,7 +59,7 @@ func TestGaussPaymentLaneCode(t *testing.T) {
 		config := upgrade.Configs[0]
 		require.Equal(t, common.HexToAddress("0x0000000000000000000000000000000000002007"), config.ContractAddr, network)
 
-		// TrimSpace mirrors applySystemContractUpgrade: invalid hex panics mid-block there.
+		// applySystemContractUpgrade trims before decoding too.
 		code, err := hex.DecodeString(strings.TrimSpace(config.Code))
 		require.NoError(t, err, network)
 
@@ -73,8 +68,7 @@ func TestGaussPaymentLaneCode(t *testing.T) {
 	}
 }
 
-// TestGaussUpgradeApplies drives the real dispatcher: PaymentLane's code must land at 0x2007 on
-// the transition block and only there - the data test above cannot see a missing IsOnGauss branch.
+// Drive the real dispatcher so a missing IsOnGauss branch is caught.
 func TestGaussUpgradeApplies(t *testing.T) {
 	const (
 		gaussTime     uint64 = 1_800_000_000
@@ -89,14 +83,14 @@ func TestGaussUpgradeApplies(t *testing.T) {
 	config.GaussTime = &forkTime
 	GenesisHash = params.BSCGenesisHash
 
-	// The transition block installs the code onto a previously non-existent account.
+	// The transition block installs the code.
 	statedb, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	require.NoError(t, err)
 	require.Empty(t, statedb.GetCode(addr))
 	upgradeBuildInSystemContract(&config, blockNumber, lastBlockTime, blockTime, statedb)
 	require.NotEmpty(t, statedb.GetCode(addr))
 
-	// A later block is not the transition block, so nothing is installed.
+	// Later blocks do not reinstall it.
 	next, err := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	require.NoError(t, err)
 	upgradeBuildInSystemContract(&config, new(big.Int).Add(blockNumber, common.Big1), blockTime, blockTime+3, next)

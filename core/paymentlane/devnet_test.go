@@ -15,11 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// rpcReader is a StorageReader backed by eth_getStorageAt at a fixed block.
-//
-// It exists so the end-to-end check drives the REAL slot arithmetic - paramSlot,
-// paymentContractSlot and the length slot - against a live chain, rather than
-// re-deriving the layout in the test and comparing two copies of the same guess.
+// rpcReader backs StorageReader with eth_getStorageAt at a fixed block.
 type rpcReader struct {
 	t     *testing.T
 	c     *ethclient.Client
@@ -56,17 +52,9 @@ func (r *rpcReader) call(selector string, args ...byte) []*big.Int {
 	return out
 }
 
-// TestDevnetReadPath drives the production configuration read path against a live
-// chain that is past the Gauss activation, and cross-checks every value against the
-// contract's own getters over eth_call.
+// Cross-check the production read path against a live post-Gauss devnet.
 //
-// The unit tests pin the layout against the deployed bytecode in a synthetic
-// StateDB. This is the other half: it proves the same arithmetic still lands on the
-// right slots when the contract was installed by the real fork mechanism, through a
-// real trie, on a chain built by three independent validators. A slot-arithmetic
-// mistake that a synthetic StateDB happens to tolerate shows up here.
-//
-// Run it against the node-deploy devnet:
+// Run with:
 //
 //	PAYMENTLANE_DEVNET_RPC=http://127.0.0.1:8545 go test ./core/paymentlane/ -run TestDevnet -v
 func TestDevnetReadPath(t *testing.T) {
@@ -86,7 +74,7 @@ func TestDevnetReadPath(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("head #%d gasLimit %d", head.Number, head.GasLimit)
 
-	// The lane rules only bind from Gauss+1, so the contract must already have code.
+	// The contract must already be installed at head.
 	code, err := client.CodeAt(ctx, ContractAddress, head.Number)
 	require.NoError(t, err)
 	require.NotEmpty(t, code, "no code at %s: the chain has not passed Gauss", ContractAddress)
@@ -110,8 +98,7 @@ func TestDevnetReadPath(t *testing.T) {
 		require.Equal(t, want[6].Uint64(), got.MinGas)
 		require.Equal(t, want[7].Uint64(), got.MaxGas)
 
-		// Eight slot reads and not one more: a per-transaction read pattern would
-		// show up here as a much larger number.
+		// LoadParams should read exactly the eight parameter slots.
 		require.Equal(t, numParams, r.reads, "LoadParams must cost exactly one read per parameter")
 	})
 
@@ -119,8 +106,7 @@ func TestDevnetReadPath(t *testing.T) {
 		got, err := LoadPaymentContracts(r)
 		require.NoError(t, err)
 
-		// getPaymentContracts(0, 0) is "the whole list": the words come back as
-		// (arrayOffset, totalLength, pageLength, elems...).
+		// getPaymentContracts(0, 0) returns the full list.
 		ret := r.call(selGetPaymentContracts, make([]byte, 64)...)
 		require.GreaterOrEqual(t, len(ret), 3)
 		n := ret[1].Uint64()
@@ -137,31 +123,24 @@ func TestDevnetReadPath(t *testing.T) {
 		p, err := LoadParams(r)
 		require.NoError(t, err)
 
-		// Nothing on this chain commits a quota yet - the scaffolding is not wired
-		// into block production - so the meaningful assertion is the bootstrap one:
-		// a parent carrying no commitment opens the lane at its floor.
+		// This devnet does not commit quotas yet, so only the bootstrap case is observable here.
 		size := newSignal(nil, head.GasUsed, head.GasLimit).NextLaneSize(p, head.GasLimit)
 		floor, ceiling := laneFloor(p, head.GasLimit), laneCeiling(p, head.GasLimit)
 		t.Logf("gasLimit %d -> floor %d ceiling %d laneSize %d", head.GasLimit, floor, ceiling, size)
 
 		require.Equal(t, floor, size)
 		require.LessOrEqual(t, size, ceiling)
-		// The devnet must sit above the safety-clamp boundary, or the lane would be
-		// silently switched off on the only multi-node harness available and the
-		// end-to-end run would prove nothing about it.
+		// Below the safety-clamp boundary this harness would exercise an inert lane.
 		require.Greater(t, head.GasLimit, uint64(25_000_000),
 			"devnet gasLimit %d is below the safety-clamp boundary: raise it or the lane is inert here", head.GasLimit)
 	})
 
 	t.Run("the activation boundary is exact", func(t *testing.T) {
-		// Needs archive mode; skip rather than fail when history has been pruned.
+		// Needs archive mode; skip if historical state is gone.
 		if _, err := client.CodeAt(ctx, ContractAddress, common.Big1); err != nil {
 			t.Skipf("historical state unavailable (%v); run the devnet with GCMODE=archive", err)
 		}
-		// Binary search for the first height with code. Searching rather than
-		// hardcoding matters: the activation height depends on the fork timestamp and
-		// the block rate, and an earlier version of this test clamped its lower bound
-		// to genesis and so only proved that block 0 has no code - which is vacuous.
+		// Search for the first block with code instead of hardcoding a height.
 		lo, hi := uint64(0), head.Number.Uint64()
 		for lo+1 < hi {
 			mid := lo + (hi-lo)/2
@@ -181,9 +160,7 @@ func TestDevnetReadPath(t *testing.T) {
 		require.NotEmpty(t, after, "block #%d must have the PaymentLane code", hi)
 		t.Logf("activation boundary: no code at #%d, %d bytes at #%d", lo, len(after), hi)
 
-		// The parameters are unreadable at the activation block, which is why the
-		// rules only bind from the block after it: the code lands in that block's
-		// POST-state, so a reader at its parent root sees nothing.
+		// The activation block installs code into post-state only, so its parent root still reads defaults.
 		r := &rpcReader{t: t, c: client, block: new(big.Int).SetUint64(lo)}
 		p, err := LoadParams(r)
 		require.NoError(t, err, "reading absent storage must not fail")
@@ -195,10 +172,7 @@ func TestDevnetReadPath(t *testing.T) {
 		if len(endpoints) < 2 {
 			t.Skip("pass several comma-separated endpoints to compare nodes")
 		}
-		// The only property here that a single node cannot establish: three
-		// independently built chains must agree on the configuration at the same
-		// block, which is what "no node-local input reaches the read" means in
-		// practice.
+		// Multi-node agreement is the only property a single endpoint cannot show.
 		want, err := LoadParams(&rpcReader{t: t, c: client, block: head.Number})
 		require.NoError(t, err)
 		for _, ep := range endpoints[1:] {
@@ -223,9 +197,7 @@ func TestDevnetReadPath(t *testing.T) {
 	})
 
 	t.Run("the rounding rule is NOT covered here", func(t *testing.T) {
-		// Recorded, not asserted. Multiply-first only diverges from divide-first when GasLimit
-		// is not a multiple of RatioDenom, and a devnet settles on its round GasCeil - so this
-		// harness structurally cannot catch that bug; the unit tests over gasLimits() do.
+		// Record, don't assert: a round gas limit hides the rounding difference.
 		if head.GasLimit%RatioDenom == 0 {
 			t.Logf("gasLimit %d is a multiple of %d: the rounding divergence is invisible on this chain",
 				head.GasLimit, RatioDenom)

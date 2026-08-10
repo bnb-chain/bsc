@@ -8,25 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ---------------------------------------------------------------------------
-// Shared scaffolding: the producer's packing loop over a bare Budget. The real parlia
-// path cannot be driven from a unit test (worker_test.go's engine switch only knows
-// clique/ethash), so the admission algebra is pinned here instead.
-// ---------------------------------------------------------------------------
-
 type txSpec struct {
 	class  Class
 	limit  uint64 // gas limit, what admission is decided on
 	actual uint64 // gas actually burned, what is accounted (<= limit, models a refund)
 }
 
-// laneRun feeds seq to the admission predicate in order, skipping whatever does not fit
-// (the equivalent of txs.Pop()), and asserts the four invariants at every step. It returns
-// the accepted indices, the final Budget and the pool total.
-//
-// reserve models the bid path's SubGas(PayBidTxGasLimit), a reservation belonging to
-// neither class. General gas is tracked here because Budget does not carry it - on the real
-// paths it is header.GasUsed less payment.
+// laneRun simulates admission over a synthetic sequence; reserve models bid-path gas reservation.
 func laneRun(t *testing.T, capacity, laneSize, reserve uint64, seq []txSpec) ([]int, Budget, uint64) {
 	t.Helper()
 	b := Budget{LaneSize: laneSize}
@@ -46,22 +34,18 @@ func laneRun(t *testing.T, capacity, laneSize, reserve uint64, seq []txSpec) ([]
 		}
 		taken = append(taken, i)
 
-		// (1) the accounted gas agrees with what the pool consumed.
+		// Accounting must match the pool.
 		require.Equalf(t, capacity-reserve-shared(), poolUsed(),
 			"tx %d: accounting disagrees with the pool: payment=%d general=%d shared=%d",
 			i, b.PaymentUsed, generalUsed, shared())
 
-		// (2) every prefix is a valid block - interruptCh may cut commitTransactions short
-		//     on any iteration and hand the partial result to the engine. Guarded because
-		//     a quota that does not fit has no valid block at all, not even an empty one;
-		//     the producer's self-check is what catches that.
+		// Every accepted prefix must stay valid when the quota fits.
 		if laneSize+reserve <= capacity {
 			require.NoErrorf(t, CheckInequality(capacity, poolUsed(), b.PaymentUsed, laneSize),
 				"tx %d: prefix is not a valid block", i)
 		}
 
-		// (3) both bounds are monotonically non-increasing - this is what makes
-		//     Pop(), which drops the account permanently, correct.
+		// MaxAvailableGas must never increase.
 		for _, c := range []Class{ClassGeneral, ClassPayment} {
 			m := b.MaxAvailableGas(shared(), c)
 			require.LessOrEqualf(t, m, prev[c],
@@ -70,7 +54,7 @@ func laneRun(t *testing.T, capacity, laneSize, reserve uint64, seq []txSpec) ([]
 			prev[c] = m
 		}
 
-		// (4) while L+reserve <= capacity, general traffic cannot steal lane space.
+		// General traffic must not consume idle lane space.
 		if laneSize+reserve <= capacity {
 			require.GreaterOrEqualf(t, shared(), b.IdleLane(),
 				"tx %d: shared(%d) < IdleLane(%d), lane space was taken over",
@@ -80,42 +64,29 @@ func laneRun(t *testing.T, capacity, laneSize, reserve uint64, seq []txSpec) ([]
 	return taken, b, poolUsed()
 }
 
-// ---------------------------------------------------------------------------
-// Admission algebra
-// ---------------------------------------------------------------------------
-
-// TestZeroValueClassIsGeneral pins the iota order in paymentlane.go, which nothing else
-// in the suite can see: every other test names its classes. The zero-regression property
-// rests on it - before activation, and on any path that forgot to classify, a zero Budget
-// and a zero Class must degrade into the upstream predicate with nothing booked as payment.
+// TestZeroValueClassIsGeneral keeps the zero-value fallback aligned with the upstream path.
 func TestZeroValueClassIsGeneral(t *testing.T) {
 	var unset Class
 	require.Equal(t, ClassGeneral, unset, "the zero Class must be ClassGeneral")
 	require.Equal(t, "general", unset.String())
 
-	// Unclassified gas must not land in PaymentUsed: that would shrink IdleLane, widen
-	// general's MaxAvailableGas and let the producer overpack a block the validator rejects.
 	var b Budget
 	b.RecordUsed(unset, 500)
 	require.Equal(t, uint64(0), b.PaymentUsed, "unclassified gas must not be booked as payment")
 	require.Equal(t, uint64(0), b.IdleLane(), "and it must not move the quota either")
 
-	// A zero Budget is the upstream predicate for both classes.
 	require.Equal(t, uint64(1000), b.MaxAvailableGas(1000, unset))
 	require.Equal(t, uint64(1000), b.MaxAvailableGas(1000, ClassPayment))
 
-	// And with a quota present, the zero class is the one that has to yield it.
 	withLane := Budget{LaneSize: 300}
 	require.Equal(t, uint64(700), withLane.MaxAvailableGas(1000, unset))
 }
 
-// TestAdmissionInvariants is where the whole safety argument for the packing loop
-// lands: random sequences, asserted step by step.
+// TestAdmissionInvariants checks the packing loop invariants over random sequences.
 func TestAdmissionInvariants(t *testing.T) {
 	const capacity = 1000
 	for seed := int64(0); seed < 3000; seed++ {
 		rng := rand.New(rand.NewSource(seed))
-		// Covers both degenerate endpoints of laneSize, 0 and capacity.
 		laneSize := uint64(rng.Intn(capacity + 1))
 		seq := make([]txSpec, 200)
 		for i := range seq {
@@ -130,19 +101,14 @@ func TestAdmissionInvariants(t *testing.T) {
 	}
 }
 
-// TestAdmissionIsExactlyTight proves exhaustively that Admits agrees bit for bit with "the
-// block is still valid after this transaction burns its full gas limit". TestAdmissionInvariants
-// rules out only false accepts; what this adds is the absence of false rejects, which raise no
-// error at all and show up merely as validator revenue quietly going missing.
+// TestAdmissionIsExactlyTight checks that Admits matches post-transaction validity exactly.
 func TestAdmissionIsExactlyTight(t *testing.T) {
 	const capacity = 40
 	for laneSize := uint64(0); laneSize <= capacity; laneSize += 7 {
 		for pu := uint64(0); pu <= capacity; pu += 3 {
 			for gu := uint64(0); gu+pu <= capacity; gu += 3 {
 				b := Budget{LaneSize: laneSize, PaymentUsed: pu}
-				// Reachable states only: exactness makes no sense from an already
-				// invalid state. At L=7, say, gu=36 cannot be reached - general
-				// admission pins gu at C-L=33.
+				// Skip unreachable states.
 				if CheckInequality(capacity, gu+pu, pu, laneSize) != nil {
 					continue
 				}
@@ -167,9 +133,7 @@ func TestAdmissionIsExactlyTight(t *testing.T) {
 	}
 }
 
-// TestGeneralMaxAvailableGasFlatBelowLane pins how "the quota is a floor" shows up in
-// the admission algebra: payment growth inside the quota does not squeeze general at
-// all, and only past the quota do the two classes compete gas for gas.
+// TestGeneralMaxAvailableGasFlatBelowLane checks the general bound below and above the quota.
 func TestGeneralMaxAvailableGasFlatBelowLane(t *testing.T) {
 	const capacity, laneSize = 1000, 300
 	for _, pu := range []uint64{0, 1, laneSize / 2, laneSize - 1, laneSize} {
@@ -177,7 +141,6 @@ func TestGeneralMaxAvailableGasFlatBelowLane(t *testing.T) {
 		require.Equalf(t, uint64(capacity-laneSize), b.MaxAvailableGas(capacity-pu, ClassGeneral),
 			"pu=%d (inside the quota): general's MaxAvailableGas must be constant", pu)
 	}
-	// Past the quota, every extra gas payment burns takes one gas from general.
 	for _, over := range []uint64{1, 2, 100} {
 		pu := uint64(laneSize) + over
 		b := Budget{LaneSize: laneSize, PaymentUsed: pu}
@@ -186,9 +149,7 @@ func TestGeneralMaxAvailableGasFlatBelowLane(t *testing.T) {
 	}
 }
 
-// TestIdleLaneBoundaries covers the endpoints of IdleLane, above all IdleLane > shared:
-// there the saturating subtraction must floor the bound at 0, where a bare subtraction
-// would underflow to near 2^64 and the predicate would stop meaning anything.
+// TestIdleLaneBoundaries checks the saturating IdleLane edges.
 func TestIdleLaneBoundaries(t *testing.T) {
 	for _, tc := range []struct {
 		name                  string
@@ -211,10 +172,7 @@ func TestIdleLaneBoundaries(t *testing.T) {
 	}
 }
 
-// TestPaymentPredicateIsTheLooserOne guards worker.go's untouched termination test,
-// upstream's `gasPool.Gas() < params.TxGas`. It is only equivalent to "neither class can
-// fit TxGas" while MaxAvailableGas(general) <= MaxAvailableGas(payment) holds always; break
-// that and the termination test has to change with it.
+// TestPaymentPredicateIsTheLooserOne keeps the worker termination check sound.
 func TestPaymentPredicateIsTheLooserOne(t *testing.T) {
 	for laneSize := uint64(0); laneSize <= 200; laneSize += 13 {
 		for pu := uint64(0); pu <= 200; pu += 11 {
@@ -229,10 +187,7 @@ func TestPaymentPredicateIsTheLooserOne(t *testing.T) {
 	}
 }
 
-// TestLaneSizeExceedsCapacity covers a quota larger than this block's budget. The producer
-// must not clamp - the only quantity to clamp against is the miner-local gasReserved, which
-// the validator cannot see - so two things have to hold instead: general is squeezed out
-// entirely, and the self-check can tell that this block cannot be produced.
+// TestLaneSizeExceedsCapacity checks the over-capacity quota behavior.
 func TestLaneSizeExceedsCapacity(t *testing.T) {
 	const capacity = 1000
 	taken, b, poolUsed := laneRun(t, capacity, capacity+1, 0, []txSpec{
@@ -242,28 +197,18 @@ func TestLaneSizeExceedsCapacity(t *testing.T) {
 	})
 	require.Equal(t, []int{1}, taken, "only the payment transaction should have been admitted")
 
-	// The self-check treats capacity as the gasLimit: a quota that does not fit means
-	// refusing to produce, i.e. giving up the slot rather than sealing a bad block.
 	require.ErrorIs(t, b.Verify(capacity, poolUsed, poolUsed), ErrViolated,
 		"a quota larger than capacity must make the self-check report ErrViolated")
 
-	// A quota exactly equal to capacity: the empty block is still valid.
 	require.NoError(t, (Budget{LaneSize: capacity}).Verify(capacity, 0, 0),
 		"with the quota exactly equal to capacity the empty block must be valid")
 }
 
-// TestPayBidTxAlwaysFitsAfterLaneAdmission pins the algebraic closure of the bid path: the
-// SubGas(PayBidTxGasLimit) reservation held during the loop guarantees payBidTx still fits
-// once AddGas gives it back.
-//
-// payBidTx is not special-cased, the classifier decides (bid_simulator.go argues why), so in
-// reality it is payment and fits unconditionally. Asserted here is the stronger general case,
-// where the threshold below is the precondition the quota has to satisfy.
+// TestPayBidTxAlwaysFitsAfterLaneAdmission checks that the reserved gas comes back for payBidTx.
 func TestPayBidTxAlwaysFitsAfterLaneAdmission(t *testing.T) {
 	const capacity, payBidTxGas = 1000, 25
 	for seed := int64(0); seed < 2000; seed++ {
 		rng := rand.New(rand.NewSource(seed))
-		// The quota must leave room for payBidTx itself; see the threshold assertion below.
 		laneSize := uint64(rng.Intn(capacity - payBidTxGas + 1))
 		seq := make([]txSpec, 100)
 		for i := range seq {
@@ -272,20 +217,16 @@ func TestPayBidTxAlwaysFitsAfterLaneAdmission(t *testing.T) {
 		}
 		_, b, poolUsed := laneRun(t, capacity, laneSize, payBidTxGas, seq)
 
-		// After AddGas returns the reservation.
 		shared := capacity - poolUsed
 		require.GreaterOrEqualf(t, b.MaxAvailableGas(shared, ClassGeneral), uint64(payBidTxGas),
 			"seed %d: payBidTx no longer fits at L=%d", seed, laneSize)
 	}
-	// The threshold sits exactly at capacity - payBidTxGas.
 	b := Budget{LaneSize: capacity - payBidTxGas + 1}
 	require.Less(t, b.MaxAvailableGas(capacity, ClassGeneral), uint64(payBidTxGas),
 		"past a quota of capacity-payBidTxGas, payBidTx is supposed to stop fitting")
 }
 
-// TestPackingIsOrderSensitive records that the same transactions pack to a different total
-// depending on arrival order. Not a bug (builders fix bid order, the tip sort fixes local
-// order), but no reasoning may assume the total can be recomputed in another order.
+// TestPackingIsOrderSensitive records that packing depends on order.
 func TestPackingIsOrderSensitive(t *testing.T) {
 	const capacity, laneSize = 100, 50
 	g := txSpec{ClassGeneral, 50, 50}
@@ -298,9 +239,7 @@ func TestPackingIsOrderSensitive(t *testing.T) {
 	require.Equal(t, uint64(50), generalFirst, "general first: total packed gas")
 }
 
-// TestInvariantAdmissionBeatsStaticPools pins the counterexample behind choosing
-// "one pool plus an inequality predicate" over "two gas pools": a static split is
-// bin packing under first fit, and first fit rejects blocks the rule permits.
+// TestInvariantAdmissionBeatsStaticPools keeps the single-pool design choice explicit.
 func TestInvariantAdmissionBeatsStaticPools(t *testing.T) {
 	const capacity, laneSize = 200, 100
 	seq := []txSpec{
@@ -308,8 +247,6 @@ func TestInvariantAdmissionBeatsStaticPools(t *testing.T) {
 		{ClassPayment, 50, 50}, {ClassGeneral, 40, 40},
 	} // sums to 200, exactly the capacity
 
-	// Two-pool greedy: 60 -> payment (40 left), 50 does not fit payment -> general
-	// (50 left), 50 -> general (0 left), 40 has nowhere to go -> fails.
 	paymentPool, generalPool := uint64(laneSize), uint64(capacity-laneSize)
 	staticOK := true
 	for _, tx := range seq {
@@ -330,12 +267,7 @@ func TestInvariantAdmissionBeatsStaticPools(t *testing.T) {
 		"inequality admission should take all of them, it only took %v", taken)
 }
 
-// ---------------------------------------------------------------------------
-// The rule itself
-// ---------------------------------------------------------------------------
-
-// TestLaneIsFloorNotCeiling covers the boundary between the two regimes of §3.3,
-// one case per clause of the rule text.
+// TestLaneIsFloorNotCeiling covers the rule boundary cases.
 func TestLaneIsFloorNotCeiling(t *testing.T) {
 	const limit, lane = 100, 20
 	for _, tc := range []struct {
@@ -359,10 +291,7 @@ func TestLaneIsFloorNotCeiling(t *testing.T) {
 	}
 }
 
-// TestOverflowIsNotAWayIn guards the overflow surface of the header-verification check. Both
-// committed values come straight out of 32 attacker-controlled header bytes, and under naive
-// addition a gasUsed near 2^64 wraps back to a small value and *passes*, retiring the whole
-// "reject a rule-violating header before executing it" gate.
+// TestOverflowIsNotAWayIn checks the overflow-sensitive header cases.
 func TestOverflowIsNotAWayIn(t *testing.T) {
 	const gasLimit = 70_000_000
 	maxU := uint64(math.MaxUint64)
@@ -378,15 +307,10 @@ func TestOverflowIsNotAWayIn(t *testing.T) {
 			tc.gasUsed, tc.payment, tc.lane)
 	}
 
-	// A quota at 2^64-1 with payment right behind it must not saturate its way to a
-	// pass: satSub gives zero, so the verdict has to come from gasUsed alone.
 	require.NoError(t, CheckInequality(gasLimit, 1000, maxU, maxU))
 }
 
-// TestVerifyFailureTriggers fixes which accounting mistake maps to which error, and is the
-// only test exercising the PaymentUsed <= poolUsed bound - the admission tests keep the two
-// in step by construction. That bound enforces "no apply booked twice, no out-of-band
-// reservation booked at all", a discipline people maintain rather than the type system.
+// TestVerifyFailureTriggers keeps the Verify error mapping stable.
 func TestVerifyFailureTriggers(t *testing.T) {
 	for _, tc := range []struct {
 		name              string
@@ -409,18 +333,14 @@ func TestVerifyFailureTriggers(t *testing.T) {
 	}
 }
 
-// TestVerifyRejectsSwappedTotals keeps the argument-order tripwire from being deleted as dead
-// code. poolUsed is gasUsed less system gas, so nothing but a swapped call can reach it - which
-// is exactly the mistake that would otherwise evaluate the rule against too small a total.
+// TestVerifyRejectsSwappedTotals catches swapped Verify arguments.
 func TestVerifyRejectsSwappedTotals(t *testing.T) {
 	b := Budget{LaneSize: 20, PaymentUsed: 20}
 	require.NoError(t, b.Verify(100, 80, 80), "equal totals are the no-system-gas case")
 	require.ErrorContains(t, b.Verify(100, 80, 101), "exceeds block total")
 }
 
-// TestVerifyCommitmentComparesThePaymentFigure covers the only authoritative check on the
-// committed accounting. One comparison is the whole of it: general gas is header.GasUsed less
-// payment, so a lie about it is a lie about the header total, which block validation catches.
+// TestVerifyCommitmentComparesThePaymentFigure checks the committed payment total.
 func TestVerifyCommitmentComparesThePaymentFigure(t *testing.T) {
 	b := Budget{LaneSize: 20, PaymentUsed: 20}
 	const gasLimit, gasUsed, pool = 100, 80, 80
@@ -442,26 +362,21 @@ func TestVerifyCommitmentComparesThePaymentFigure(t *testing.T) {
 	}
 }
 
-// TestVerifyCommitmentIgnoresLaneSize records a deliberate division of labour, so nobody
-// "fixes" it by adding the comparison here: the quota is a pure function of the parent, so
-// CheckNextLaneSize settles it before any transaction executes. Replay cannot adjudicate it.
+// TestVerifyCommitmentIgnoresLaneSize leaves quota checking to CheckNextLaneSize.
 func TestVerifyCommitmentIgnoresLaneSize(t *testing.T) {
 	b := Budget{LaneSize: 20, PaymentUsed: 20}
 	absurd := Commitment{LaneSize: 999_999, PaymentGasUsed: 20}
 	require.NoError(t, b.VerifyCommitment(100, 80, 80, absurd),
 		"VerifyCommitment must not police LaneSize; CheckNextLaneSize does")
 
-	// And the check that does police it rejects exactly that.
 	p, s := defaultParams(), Signal{}
 	require.ErrorIs(t, s.CheckNextLaneSize(absurd.LaneSize, p, 55_000_000), ErrQuotaMismatch)
 	require.NoError(t, s.CheckNextLaneSize(s.NextLaneSize(p, 55_000_000), p, 55_000_000))
 }
 
-// TestVerifyCommitmentStillEnforcesTheRule: agreeing with a lie is not enough, the
-// agreed-upon numbers must also satisfy the inequality.
+// TestVerifyCommitmentStillEnforcesTheRule keeps VerifyCommitment checking the inequality.
 func TestVerifyCommitmentStillEnforcesTheRule(t *testing.T) {
 	b := Budget{LaneSize: 90, PaymentUsed: 10}
 	c := Commitment{LaneSize: 90, PaymentGasUsed: 10}
-	// gasUsed 70 + max(0, 90-10) = 150 > 100.
 	require.ErrorIs(t, b.VerifyCommitment(100, 70, 70, c), ErrViolated)
 }

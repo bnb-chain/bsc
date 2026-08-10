@@ -13,16 +13,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestMakeEnvLeavesNoPrefetcherWhenTheLaneFails pins the ordering that keeps makeEnv's error
-// paths leak-free: all of them must precede StartPrefetcher, because a nil environment has no
-// discard() to stop the prefetcher goroutine that would otherwise be running. Lane resolution is
-// the only step in makeEnv that reads state and can fail, and prepareWork calls makeEnv once per
-// bid, so the leak is unbounded.
+// Lane resolution is the only makeEnv state read that can fail; it must happen before StartPrefetcher.
 func TestMakeEnvLeavesNoPrefetcherWhenTheLaneFails(t *testing.T) {
 	w, _, parent, header, _ := laneMinerChain(t, true)
 
-	// One failed call leaks exactly one subfetcher goroutine, so count them: a threshold below
-	// the iteration count cannot be met by an implementation that starts the prefetcher first.
+	// One leaked prefetcher per failure would show up well above this threshold.
 	const iterations = 20
 	before := runtime.NumGoroutine()
 	for i := 0; i < iterations; i++ {
@@ -35,11 +30,7 @@ func TestMakeEnvLeavesNoPrefetcherWhenTheLaneFails(t *testing.T) {
 		"makeEnv leaked prefetcher goroutines on the lane error path")
 }
 
-// TestBidCommitTransactionBooksNothingForAFailedTransaction pins the bid path's accounting
-// against the one input that separates it from the other three sites: core.ApplyTransaction can
-// fail AFTER buyGas has drawn tx.Gas() from the pool, and the bid path - unlike
-// worker.applyTransaction - does not revert the pool. Booking before the error check would credit
-// the lane with the whole declared gas of a transaction that never ran.
+// Failed bid-path transactions must not book lane gas even if buyGas already ran.
 func TestBidCommitTransactionBooksNothingForAFailedTransaction(t *testing.T) {
 	w, config, parent, header, key := laneMinerChain(t, false)
 
@@ -47,8 +38,7 @@ func TestBidCommitTransactionBooksNothingForAFailedTransaction(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, env.lane.On(), "the lane must bind, or the assertion below is vacuous")
 
-	// A bare transfer to a codeless account is payment class, and 20,000 gas is below the
-	// intrinsic floor, so it is bought and then rejected.
+	// 20,000 gas buys successfully but fails intrinsic gas.
 	tx, err := types.SignTx(types.NewTransaction(0, common.Address{0xaa}, big.NewInt(1), 20_000, common.Big0, nil),
 		types.LatestSigner(config), key)
 	require.NoError(t, err)
