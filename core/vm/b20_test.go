@@ -308,3 +308,40 @@ func TestB20GateIsBSCOnly(t *testing.T) {
 		}
 	}
 }
+
+// TestB20UninitializedExitReportsOutOfGas covers the exit taken when a routed
+// address holds no token. That exit reverts with empty returndata, but the
+// existence check it just performed charged an account access — so when that
+// charge is what exhausted the budget, the call is out of gas and not a revert.
+// The two differ in what the enclosing frame is told and what a tracer records.
+func TestB20UninitializedExitReportsOutOfGas(t *testing.T) {
+	call := func(budget uint64) (*PrecompileContext, error) {
+		statedb, _ := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
+		gas := NewGasBudget(budget)
+		ctx := &PrecompileContext{
+			StateDB: statedb, Self: b20Addr(b20VariantAsset, 9),
+			Caller: b20Alice, DirectCall: true, gas: &gas,
+		}
+		_, err := b20Asset.RunStateful(ctx, b20Call(selBalanceOf, addrKey(b20Alice)))
+		return ctx, err
+	}
+
+	// Enough for the calldata charge but not the cold account access: the
+	// existence check cannot be paid for.
+	ctx, err := call(params.ColdAccountAccessCostEIP2929 - 1)
+	if !ctx.OutOfGas() {
+		t.Fatal("expected the account access to exhaust this budget")
+	}
+	if !errors.Is(err, ErrOutOfGas) {
+		t.Errorf("err = %v, want ErrOutOfGas — an unaffordable charge is not a revert", err)
+	}
+
+	// With room to pay for it, the same exit is an ordinary empty revert.
+	ctx, err = call(1_000_000)
+	if ctx.OutOfGas() {
+		t.Fatal("did not expect exhaustion with a generous budget")
+	}
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Errorf("err = %v, want ErrExecutionReverted for an uninitialized token", err)
+	}
+}

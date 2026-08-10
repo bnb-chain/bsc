@@ -90,6 +90,19 @@ func finishB20(ret []byte, err error) ([]byte, error) {
 	return ret, err
 }
 
+// finishB20Metered is finishB20 for a call that has already charged gas. An
+// exhausted budget outranks whatever the logic returned: a charge that could not
+// be covered is an out-of-gas exception, not a revert, however the handler
+// reported it. Guards that run before any charge — a delegated call, a
+// value-bearing one — can use finishB20 directly, since there is nothing to have
+// exhausted yet.
+func finishB20Metered(ctx *PrecompileContext, ret []byte, err error) ([]byte, error) {
+	if ctx.OutOfGas() {
+		return nil, ErrOutOfGas
+	}
+	return finishB20(ret, err)
+}
+
 // revB20 builds a typed revert from a registered selector and static 32-byte words.
 func revB20(sig string, sel [4]byte, words ...common.Hash) error {
 	data := make([]byte, 4+32*len(words))

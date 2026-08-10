@@ -114,10 +114,7 @@ func (p *b20ActivationPrecompile) RunStateful(ctx *PrecompileContext, input []by
 		return finishB20(nil, err)
 	}
 	ret, err := runB20Activation(ctx, input)
-	if ctx.OutOfGas() {
-		return nil, ErrOutOfGas
-	}
-	return finishB20(ret, err)
+	return finishB20Metered(ctx, ret, err)
 }
 
 var _ StatefulPrecompiledContract = (*b20ActivationPrecompile)(nil)

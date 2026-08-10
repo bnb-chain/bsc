@@ -239,10 +239,7 @@ func (p *b20FactoryPrecompile) RunStateful(ctx *PrecompileContext, input []byte)
 		return finishB20(nil, err)
 	}
 	ret, err := runB20Factory(ctx, input)
-	if ctx.OutOfGas() {
-		return nil, ErrOutOfGas
-	}
-	return finishB20(ret, err)
+	return finishB20Metered(ctx, ret, err)
 }
 
 // b20AssetPrecompile is the Asset (RWA) variant. It is stateless: the token it
@@ -257,15 +254,15 @@ func (p *b20AssetPrecompile) RunStateful(ctx *PrecompileContext, input []byte) (
 		return finishB20(nil, err)
 	}
 	if !b20InitializedMetered(ctx, ctx.Self) {
-		return finishB20(nil, ErrExecutionReverted) // no token here; empty returndata
+		// The existence check above charged an account access, so route the exit
+		// through the metered finisher: if that charge is what exhausted the
+		// budget, this is out of gas rather than a revert.
+		return finishB20Metered(ctx, nil, ErrExecutionReverted)
 	}
 	// Decimals is intercepted by the Asset extension (read from extension
 	// storage), so the shared token's decimals field is unused here.
 	ret, err := assetDispatch(newB20Token(ctx, 0), newAssetExt(ctx), input)
-	if ctx.OutOfGas() {
-		return nil, ErrOutOfGas
-	}
-	return finishB20(ret, err)
+	return finishB20Metered(ctx, ret, err)
 }
 
 // b20StablecoinPrecompile is the Stablecoin variant, stateless for the same
@@ -280,14 +277,14 @@ func (p *b20StablecoinPrecompile) RunStateful(ctx *PrecompileContext, input []by
 		return finishB20(nil, err)
 	}
 	if !b20InitializedMetered(ctx, ctx.Self) {
-		return finishB20(nil, ErrExecutionReverted) // no token here; empty returndata
+		// The existence check above charged an account access, so route the exit
+		// through the metered finisher: if that charge is what exhausted the
+		// budget, this is out of gas rather than a revert.
+		return finishB20Metered(ctx, nil, ErrExecutionReverted)
 	}
 	// Stablecoin decimals are fixed at 6.
 	ret, err := stablecoinDispatch(newB20Token(ctx, 6), newStablecoinExt(ctx), input)
-	if ctx.OutOfGas() {
-		return nil, ErrOutOfGas
-	}
-	return finishB20(ret, err)
+	return finishB20Metered(ctx, ret, err)
 }
 
 // compile-time checks that the skeletons satisfy both the plain precompile
