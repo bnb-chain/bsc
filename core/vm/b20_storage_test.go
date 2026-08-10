@@ -414,6 +414,20 @@ func TestB20SpawnedContextPropagatesOutOfGas(t *testing.T) {
 	if got := parent.GasLeft(); got != 0 {
 		t.Errorf("shared budget = %d, want 0", got)
 	}
+
+	// The flag is one shared cell, not a copy kept in step, so it travels the
+	// other way too: a context spawned after exhaustion starts exhausted.
+	if later := parent.spawnBootstrap(b20Addr(b20VariantAsset, 3), b20Alice); !later.OutOfGas() {
+		t.Error("a context spawned from an exhausted frame does not start exhausted")
+	}
+	// And a charge failing in the parent is visible to a child spawned earlier.
+	gas2 := NewGasBudget(100)
+	p2 := &PrecompileContext{StateDB: statedb, Self: b20Addr(b20VariantAsset, 4), gas: &gas2}
+	c2 := p2.spawnBootstrap(b20Addr(b20VariantAsset, 5), b20Alice)
+	p2.chargeStateGas(1_000_000)
+	if !c2.OutOfGas() {
+		t.Error("child spawned before the spawner's exhaustion does not observe it")
+	}
 }
 
 // TestB20SpawnedContextPropagatesSentryRefusal covers the other way a spawned

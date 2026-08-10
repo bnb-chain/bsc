@@ -81,17 +81,15 @@ type PrecompileContext struct {
 	gas *GasBudget
 
 	// outOfGas is set sticky once a charge cannot be covered; the dispatcher
-	// checks it and returns ErrOutOfGas. Set it only through markOutOfGas —
-	// assigning it directly leaves a spawned frame's exhaustion invisible to the
-	// spawner that actually checks it.
-	outOfGas bool
-
-	// spawner is the context this one was derived from, or nil for a top-level
-	// frame. A spawned context shares the gas budget, so exhausting it must be
-	// visible to whoever checks OutOfGas — which is the spawner's dispatcher,
-	// never the child's. markOutOfGas walks this link to keep the flag and the
-	// budget in agreement.
-	spawner *PrecompileContext
+	// checks it and returns ErrOutOfGas.
+	//
+	// It is a pointer because a spawned context shares this frame's gas budget,
+	// and a flag that could disagree with the budget would let the spawner report
+	// success over writes its child was never able to pay for. Sharing the flag
+	// itself, rather than copying it and propagating changes, means there is no
+	// propagation step to get wrong: `ctx.outOfGas = true` does not compile, so
+	// markOutOfGas is the only way to set it. nil means not yet exhausted.
+	outOfGas *bool
 
 	// stateGasUsed accumulates the cost attributed to state operations. Today
 	// it is booked within RegularGas (the only enforced dimension); the tally
@@ -115,8 +113,8 @@ func (ctx *PrecompileContext) UseGas(cost GasCosts) bool {
 }
 
 // spawnBootstrap derives a context bound to a different self address, sharing
-// this frame's state, gas budget and rules. Used by the B20 factory to run a
-// new token's initCalls inside the creating frame.
+// this frame's state, gas budget, rules and out-of-gas flag. Used by the B20
+// factory to run a new token's initCalls inside the creating frame.
 func (ctx *PrecompileContext) spawnBootstrap(self, caller common.Address) *PrecompileContext {
 	return &PrecompileContext{
 		evm:        ctx.evm,
@@ -126,20 +124,22 @@ func (ctx *PrecompileContext) spawnBootstrap(self, caller common.Address) *Preco
 		DirectCall: true,
 		Rules:      ctx.Rules,
 		gas:        ctx.gas,
-		spawner:    ctx,
+		outOfGas:   ctx.oogFlag(),
 	}
 }
 
-// markOutOfGas records exhaustion on this context and every context it was
-// spawned from. The budget is shared by pointer, so a child that drains it
-// leaves the parent unable to pay for anything either; without propagating the
-// flag the parent's dispatcher would see a full-looking context over an empty
-// budget and report success.
-func (ctx *PrecompileContext) markOutOfGas() {
-	for c := ctx; c != nil; c = c.spawner {
-		c.outOfGas = true
+// oogFlag returns the shared out-of-gas cell, allocating it on first use so a
+// context built as a plain struct literal needs no initialisation.
+func (ctx *PrecompileContext) oogFlag() *bool {
+	if ctx.outOfGas == nil {
+		ctx.outOfGas = new(bool)
 	}
+	return ctx.outOfGas
 }
+
+// markOutOfGas records exhaustion. Every context spawned from this one — and the
+// one it was spawned from — observes it, because they hold the same cell.
+func (ctx *PrecompileContext) markOutOfGas() { *ctx.oogFlag() = true }
 
 // chargeStateGas charges a state-operation cost against the (enforced)
 // RegularGas budget and accumulates it into the StateGas tally. On
@@ -156,7 +156,7 @@ func (ctx *PrecompileContext) chargeStateGas(cost uint64) {
 // OutOfGas reports whether a charge has failed during this call. The
 // dispatcher must check it after driving the token logic and return
 // ErrOutOfGas so the frame reverts.
-func (ctx *PrecompileContext) OutOfGas() bool { return ctx.outOfGas }
+func (ctx *PrecompileContext) OutOfGas() bool { return ctx.outOfGas != nil && *ctx.outOfGas }
 
 // StateGasUsed returns the gas attributed to state operations so far.
 func (ctx *PrecompileContext) StateGasUsed() uint64 { return ctx.stateGasUsed }
