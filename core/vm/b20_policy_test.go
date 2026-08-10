@@ -310,3 +310,246 @@ func TestB20SeizeWithMemo(t *testing.T) {
 		t.Fatalf("totalSupply = %d, want 1000 (seizure moves value, it does not burn)", got)
 	}
 }
+
+// TestB20PolicyStorageLayout pins the registry's storage against base-std's
+// PolicyRegistryStorage: the namespaced root, the slot order, and the packed
+// existence-and-admin word. These are consensus-visible, so the assertions are
+// on raw slots rather than on what the ABI reports.
+func TestB20PolicyStorageLayout(t *testing.T) {
+	statedb, evm := newAmsterdamEVM(t)
+	admin := common.HexToAddress("0xad4149")
+
+	// Slot order, mirroring base-std: policies, members, pendingAdmins, counter,
+	// then a reserved slot for composite children.
+	root := new(uint256.Int).SetBytes(erc7201Root("bsc.policy_registry").Bytes())
+	for offset, want := range map[uint64]uint64{
+		polSlotPolicies: 0, polSlotMembers: 1, polSlotPendingAdmins: 2, polSlotCounter: 3,
+	} {
+		if offset != want {
+			t.Errorf("slot constant = %d, want %d", offset, want)
+		}
+		got := new(uint256.Int).SetBytes(polSlot(offset).Bytes())
+		if exp := new(uint256.Int).AddUint64(root, offset); !got.Eq(exp) {
+			t.Errorf("slot %d = %x, want root+%d = %x", offset, got, offset, exp)
+		}
+	}
+
+	ret, _, err := evm.Call(admin, B20PolicyRegistryAddress,
+		b20Call(selCreatePolicy, addrKey(admin), u256hash(b20PolicyAllowlist)),
+		NewGasBudget(5_000_000), uint256.NewInt(0))
+	if err != nil {
+		t.Fatalf("createPolicy: %v", err)
+	}
+	id := new(uint256.Int).SetBytes(ret).Uint64()
+
+	view := newB20Storage(statedb, B20PolicyRegistryAddress)
+	word := view.getWord(mappingSlot(polSlot(polSlotPolicies), idKey(id)))
+	if word[0]&0x80 == 0 {
+		t.Errorf("policy word %x has no exists bit", word)
+	}
+	if got := common.BytesToAddress(word[12:]); got != admin {
+		t.Errorf("packed admin = %s, want %s", got.Hex(), admin.Hex())
+	}
+	for _, b := range word[1:12] { // bits 254:160 are reserved and must stay zero
+		if b != 0 {
+			t.Errorf("policy word %x has dirty reserved bits", word)
+			break
+		}
+	}
+	// Two sentinels are seeded first, so the first caller id draws counter 2 and
+	// the counter lands on 3 — the same value base-std's own layout test asserts.
+	if got := new(uint256.Int).SetBytes(view.getWord(polSlot(polSlotCounter)).Bytes()).Uint64(); got != 3 {
+		t.Errorf("counter = %d, want 3", got)
+	}
+	if id != uint64(b20PolicyAllowlist)<<56|2 {
+		t.Errorf("first allowlist id = %#x, want type 1 counter 2", id)
+	}
+}
+
+// TestB20PolicySentinels pins the sentinel semantics: they exist and answer
+// authorization from their id alone, so they are correct before any policy has
+// been created and no membership write can redefine them.
+func TestB20PolicySentinels(t *testing.T) {
+	_, evm := newAmsterdamEVM(t)
+	caller := common.HexToAddress("0xad4149")
+	ask := func(sel [4]byte, args ...common.Hash) []byte {
+		ret, _, err := evm.Call(caller, B20PolicyRegistryAddress, b20Call(sel, args...),
+			NewGasBudget(5_000_000), uint256.NewInt(0))
+		if err != nil {
+			t.Fatalf("call: %v", err)
+		}
+		return ret
+	}
+
+	// Before anything is created: both sentinels report as existing, and their
+	// authorization is fixed. ALWAYS_ALLOW is the value every unset policy field
+	// holds, so it has to be right at this point in particular.
+	for _, id := range []uint64{b20PolicyAlwaysAllow, b20PolicyAlwaysBlock} {
+		if !bytes.Equal(ask(selPolicyExists, u256hash(id)), encBool(true)) {
+			t.Errorf("policyExists(%#x) = false, want true", id)
+		}
+		if got := common.BytesToAddress(ask(selPolicyAdmin, u256hash(id))); got != (common.Address{}) {
+			t.Errorf("policyAdmin(%#x) = %s, want zero", id, got.Hex())
+		}
+		if got := common.BytesToAddress(ask(selPendingPolicyAdmin, u256hash(id))); got != (common.Address{}) {
+			t.Errorf("pendingPolicyAdmin(%#x) = %s, want zero", id, got.Hex())
+		}
+	}
+	if !bytes.Equal(ask(selIsAuthorized, u256hash(b20PolicyAlwaysAllow), addrKey(b20Bob)), encBool(true)) {
+		t.Error("ALWAYS_ALLOW must authorize")
+	}
+	if !bytes.Equal(ask(selIsAuthorized, u256hash(b20PolicyAlwaysBlock), addrKey(b20Bob)), encBool(false)) {
+		t.Error("ALWAYS_BLOCK must refuse")
+	}
+
+	// A malformed type byte is not a policy: it never exists, never authorizes,
+	// and has no admin.
+	bad := uint64(5) << 56
+	if !bytes.Equal(ask(selPolicyExists, u256hash(bad)), encBool(false)) {
+		t.Error("a malformed type byte must not exist")
+	}
+	if !bytes.Equal(ask(selIsAuthorized, u256hash(bad), addrKey(b20Bob)), encBool(false)) {
+		t.Error("a malformed type byte must not authorize")
+	}
+	if got := common.BytesToAddress(ask(selPolicyAdmin, u256hash(bad))); got != (common.Address{}) {
+		t.Errorf("policyAdmin(malformed) = %s, want zero", got.Hex())
+	}
+
+	// Neither sentinel can be administered: both are seeded with a zero admin.
+	for _, id := range []uint64{b20PolicyAlwaysAllow, b20PolicyAlwaysBlock} {
+		_, _, err := evm.Call(caller, B20PolicyRegistryAddress,
+			b20Call(selStageUpdateAdmin, u256hash(id), addrKey(caller)),
+			NewGasBudget(5_000_000), uint256.NewInt(0))
+		if !errors.Is(err, ErrExecutionReverted) {
+			t.Errorf("stageUpdateAdmin(%#x) err = %v, want revert", id, err)
+		}
+	}
+}
+
+// TestB20PolicyCheckOrder pins the order a membership update applies its checks.
+// The order is observable through which error a caller receives, so base-std's
+// canonical existence -> type -> admin -> batch sequence is part of the surface.
+func TestB20PolicyCheckOrder(t *testing.T) {
+	_, evm := newAmsterdamEVM(t)
+	admin := common.HexToAddress("0xad4149")
+	stranger := common.HexToAddress("0x57ra9e")
+	call := func(caller common.Address, input []byte) ([]byte, error) {
+		ret, _, err := evm.Call(caller, B20PolicyRegistryAddress, input, NewGasBudget(5_000_000), uint256.NewInt(0))
+		return ret, err
+	}
+	revertsWith := func(what string, caller common.Address, input []byte, sel [4]byte) {
+		t.Helper()
+		ret, err := call(caller, input)
+		if !errors.Is(err, ErrExecutionReverted) {
+			t.Errorf("%s: err = %v, want revert", what, err)
+			return
+		}
+		if len(ret) < 4 || !bytes.Equal(ret[:4], sel[:]) {
+			t.Errorf("%s: revert data %x, want selector %x", what, ret, sel)
+		}
+	}
+
+	// An id no createPolicy produced: existence is checked first, so this is
+	// PolicyNotFound and not Unauthorized.
+	ghost := uint64(b20PolicyAllowlist)<<56 | 999
+	revertsWith("nonexistent policy", stranger,
+		encodeUpdateList(selUpdateAllowlist, ghost, true, []common.Address{b20Bob}), errSelPolicyNotFound)
+
+	ret, err := call(admin, b20Call(selCreatePolicy, addrKey(admin), u256hash(b20PolicyBlocklist)))
+	if err != nil {
+		t.Fatalf("createPolicy: %v", err)
+	}
+	block := new(uint256.Int).SetBytes(ret).Uint64()
+
+	// Type is checked before admin, so a stranger calling the wrong method on a
+	// real policy sees IncompatiblePolicyType rather than Unauthorized.
+	revertsWith("wrong type, wrong caller", stranger,
+		encodeUpdateList(selUpdateAllowlist, block, true, []common.Address{b20Bob}), errSelIncompatibleType)
+	// Right method, wrong caller: now admin is what fails.
+	revertsWith("right type, wrong caller", stranger,
+		encodeUpdateList(selUpdateBlocklist, block, true, []common.Address{b20Bob}), errSelUnauthorized)
+	// Admin passes, so an oversized batch is what fails, last.
+	oversized := make([]common.Address, b20PolicyBatchMax+1)
+	for i := range oversized {
+		oversized[i] = common.BigToAddress(new(big.Int).SetUint64(uint64(i + 1)))
+	}
+	revertsWith("oversized batch", admin,
+		encodeUpdateList(selUpdateBlocklist, block, true, oversized), errSelBatchTooLarge)
+
+	// The same ordering applies to the admin-handover paths.
+	revertsWith("stage on nonexistent", stranger,
+		b20Call(selStageUpdateAdmin, u256hash(ghost), addrKey(stranger)), errSelPolicyNotFound)
+	revertsWith("finalize on nonexistent", stranger,
+		b20Call(selFinalizeUpdateAdmin, u256hash(ghost)), errSelPolicyNotFound)
+	revertsWith("renounce on nonexistent", stranger,
+		b20Call(selRenounceAdmin, u256hash(ghost)), errSelPolicyNotFound)
+}
+
+// TestB20PolicySentinelsIgnoreMembership pins why the sentinel fast-paths exist.
+// Their emptiness alone would give the same answers, so a membership-derived
+// implementation looks correct — until something writes membership under a
+// sentinel id, which a counter that carried into the type byte could do.
+// Answering from the id makes them constant by construction.
+func TestB20PolicySentinelsIgnoreMembership(t *testing.T) {
+	statedb, evm := newAmsterdamEVM(t)
+
+	// Plant membership under both sentinels, bypassing the ABI entirely.
+	view := policyReg{s: newB20Storage(statedb, B20PolicyRegistryAddress)}
+	view.setMember(b20PolicyAlwaysAllow, b20Bob, true) // "block bob" on ALWAYS_ALLOW
+	view.setMember(b20PolicyAlwaysBlock, b20Bob, true) // "allow bob" on ALWAYS_BLOCK
+
+	ask := func(id uint64) []byte {
+		ret, _, err := evm.Call(b20Alice, B20PolicyRegistryAddress,
+			b20Call(selIsAuthorized, u256hash(id), addrKey(b20Bob)),
+			NewGasBudget(5_000_000), uint256.NewInt(0))
+		if err != nil {
+			t.Fatalf("isAuthorized: %v", err)
+		}
+		return ret
+	}
+	if !bytes.Equal(ask(b20PolicyAlwaysAllow), encBool(true)) {
+		t.Error("ALWAYS_ALLOW stopped authorizing after a membership write — it is not constant")
+	}
+	if !bytes.Equal(ask(b20PolicyAlwaysBlock), encBool(false)) {
+		t.Error("ALWAYS_BLOCK started authorizing after a membership write — it is not constant")
+	}
+}
+
+// TestB20PolicyCounterExhaustion pins the 56-bit counter bound. Reaching it
+// takes more createPolicy calls than any chain will see, so the counter is
+// driven there directly; what matters is that the boundary is refused rather
+// than allowed to carry into the type byte, where an id would change type,
+// collide with another type's policy, or land on a sentinel.
+func TestB20PolicyCounterExhaustion(t *testing.T) {
+	statedb, evm := newAmsterdamEVM(t)
+	admin := common.HexToAddress("0xad4149")
+	view := policyReg{s: newB20Storage(statedb, B20PolicyRegistryAddress)}
+
+	create := func() ([]byte, error) {
+		ret, _, err := evm.Call(admin, B20PolicyRegistryAddress,
+			b20Call(selCreatePolicy, addrKey(admin), u256hash(b20PolicyBlocklist)),
+			NewGasBudget(5_000_000), uint256.NewInt(0))
+		return ret, err
+	}
+
+	// One short of the bound still works, and stays inside its own type space.
+	view.setCounter(b20PolicyCounterMax - 1)
+	ret, err := create()
+	if err != nil {
+		t.Fatalf("createPolicy at counter max-1: %v", err)
+	}
+	if id := new(uint256.Int).SetBytes(ret).Uint64(); polIDType(id) != b20PolicyBlocklist {
+		t.Errorf("id %#x escaped its type byte", id)
+	}
+
+	// At the bound, creation is refused: Panic(0x11), the arithmetic-overflow code.
+	view.setCounter(b20PolicyCounterMax)
+	ret, err = create()
+	if !errors.Is(err, ErrExecutionReverted) {
+		t.Fatalf("createPolicy at counter max err = %v, want revert", err)
+	}
+	want := append(append([]byte{}, errSelPanic[:]...), wU8(0x11).Bytes()...)
+	if !bytes.Equal(ret, want) {
+		t.Errorf("revert data = %x, want Panic(0x11) = %x", ret, want)
+	}
+}

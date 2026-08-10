@@ -604,7 +604,9 @@ func (t b20Token) updatePolicy(scope common.Hash, id uint64) error {
 	if err := t.ensureRole(roleDefaultAdmin); err != nil {
 		return err
 	}
-	if id != b20PolicyAlwaysAllow && id != b20PolicyAlwaysBlock && !newPolicyReg(t.ctx).exists(id) {
+	// policyExists answers for the sentinels itself, so binding one needs no
+	// special case here (BEP-702 3.8).
+	if !newPolicyReg(t.ctx).policyExists(id) {
 		return revB20("PolicyNotFound()", errSelPolicyNotFound)
 	}
 	switch scope {

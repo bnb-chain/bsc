@@ -25,32 +25,67 @@ import (
 // of addresses plus a type, referenced by tokens via a self-describing uint64
 // id (high byte = type, low 56 bits = global counter). Reads never revert (they
 // sit on every transfer's hot path); writes are admin-gated.
-//
-// TODO: align the storage layout / ABI / events with base-std.
 
 // B20PolicyRegistryAddress is the singleton registry precompile (BEP-702 §3.1).
 var B20PolicyRegistryAddress = common.HexToAddress("0x7020000000000000000000000000000000000001")
 
-const b20PolicyNamespace = "bsc.policyregistry"
+const b20PolicyNamespace = "bsc.policy_registry"
 
 const (
 	b20PolicyBlocklist = 0
 	b20PolicyAllowlist = 1
 	b20PolicyBatchMax  = 64
-	b20PolicyFirstID   = 2 // ids 0/1's counter slots are reserved for the sentinels
+	b20PolicyFirstID   = 2 // counters 0 and 1 belong to the two sentinels
 
-	// Sentinel policy ids (never created; valid to bind).
+	// Sentinel policy ids, seeded at initialization and always valid to bind.
 	b20PolicyAlwaysAllow = 0                 // blocklist type, empty -> allow all
 	b20PolicyAlwaysBlock = uint64(1)<<56 | 1 // allowlist type, empty -> block all
+
+	// b20PolicyCounterMax bounds the 56-bit counter space. Creation is refused at
+	// the boundary rather than allowed to carry into the type byte, where it
+	// would collide ids across types and could reach a sentinel.
+	b20PolicyCounterMax = uint64(1)<<56 - 1
 )
 
+// Storage layout, mirroring base-std's PolicyRegistryStorage. Slots are
+// append-only: never reorder them across forks.
 const (
-	polSlotCounter = 0 // global counter (uint256)
-	polSlotExists  = 1 // mapping(uint64 => bool)
-	polSlotAdmins  = 2 // mapping(uint64 => address)
-	polSlotPending = 3 // mapping(uint64 => address)
-	polSlotMembers = 4 // mapping(uint64 => mapping(address => bool))
+	polSlotPolicies      = 0 // mapping(uint64 => packed word)
+	polSlotMembers       = 1 // mapping(uint64 => mapping(address => bool))
+	polSlotPendingAdmins = 2 // mapping(uint64 => address)
+	polSlotCounter       = 3 // uint64
+	// Slot 4 is reserved for composite-policy children, which base-std adds in a
+	// later logic version. Nothing may reuse it.
 )
+
+// A policy's existence and its admin share one storage word:
+//
+//	bit 255      exists
+//	bits 254:160 reserved, zero
+//	bits 159:0   admin
+//
+// The exists bit is set on every write, which is what lets one word carry both:
+// the zero word is an unambiguous "never written" even for a policy whose admin
+// has been renounced to the zero address.
+var polExistsBit = new(uint256.Int).Lsh(uint256.NewInt(1), 255)
+
+func packPolicy(admin common.Address) common.Hash {
+	w := new(uint256.Int).SetBytes(admin.Bytes())
+	return common.Hash(w.Or(w, polExistsBit).Bytes32())
+}
+
+func polWordExists(w common.Hash) bool          { return w[0]&0x80 != 0 }
+func polWordAdmin(w common.Hash) common.Address { return common.BytesToAddress(w[12:]) }
+
+// polIDType returns the type byte a policy id encodes.
+func polIDType(id uint64) byte { return byte(id >> 56) }
+
+// polIDWellFormed reports whether an id's type byte names a real policy type.
+func polIDWellFormed(id uint64) bool { return polIDType(id) <= b20PolicyAllowlist }
+
+func isSentinelPolicy(id uint64) bool {
+	return id == b20PolicyAlwaysAllow || id == b20PolicyAlwaysBlock
+}
 
 var b20PolicyRoot = erc7201Root(b20PolicyNamespace)
 
@@ -96,25 +131,27 @@ func (p policyReg) counter() uint64 {
 func (p policyReg) setCounter(v uint64) {
 	p.s.setWord(polSlot(polSlotCounter), common.Hash(uint256.NewInt(v).Bytes32()))
 }
-func (p policyReg) exists(id uint64) bool {
-	return p.s.getWord(p.s.mapSlot(polSlot(polSlotExists), idKey(id))) != (common.Hash{})
+
+// policyWord reads a policy's packed existence-and-admin word.
+func (p policyReg) policyWord(id uint64) common.Hash {
+	return p.s.getWord(p.s.mapSlot(polSlot(polSlotPolicies), idKey(id)))
 }
-func (p policyReg) setExists(id uint64) {
-	var one common.Hash
-	one[31] = 1
-	p.s.setWord(p.s.mapSlot(polSlot(polSlotExists), idKey(id)), one)
+
+// setPolicyAdmin writes the packed word, which marks the policy as existing.
+// Renouncing goes through here too, with the zero address: the exists bit stays
+// set, so a renounced policy remains distinguishable from one never created.
+func (p policyReg) setPolicyAdmin(id uint64, a common.Address) {
+	p.s.setWord(p.s.mapSlot(polSlot(polSlotPolicies), idKey(id)), packPolicy(a))
 }
-func (p policyReg) admin(id uint64) common.Address {
-	return common.BytesToAddress(p.s.getWord(p.s.mapSlot(polSlot(polSlotAdmins), idKey(id))).Bytes())
-}
-func (p policyReg) setAdmin(id uint64, a common.Address) {
-	p.s.setWord(p.s.mapSlot(polSlot(polSlotAdmins), idKey(id)), addrKey(a))
-}
+
+func (p policyReg) exists(id uint64) bool          { return polWordExists(p.policyWord(id)) }
+func (p policyReg) admin(id uint64) common.Address { return polWordAdmin(p.policyWord(id)) }
+
 func (p policyReg) pending(id uint64) common.Address {
-	return common.BytesToAddress(p.s.getWord(p.s.mapSlot(polSlot(polSlotPending), idKey(id))).Bytes())
+	return common.BytesToAddress(p.s.getWord(p.s.mapSlot(polSlot(polSlotPendingAdmins), idKey(id))).Bytes())
 }
 func (p policyReg) setPending(id uint64, a common.Address) {
-	p.s.setWord(p.s.mapSlot(polSlot(polSlotPending), idKey(id)), addrKey(a))
+	p.s.setWord(p.s.mapSlot(polSlot(polSlotPendingAdmins), idKey(id)), addrKey(a))
 }
 func (p policyReg) member(id uint64, account common.Address) bool {
 	inner := p.s.mapSlot(polSlot(polSlotMembers), idKey(id))
@@ -131,18 +168,78 @@ func (p policyReg) setMember(id uint64, account common.Address, in bool) {
 
 // isAuthorized answers whether account may be operated under policy id. It
 // never reverts: a malformed or never-created id collapses to empty-set
-// semantics (blocklist → allow all, allowlist → block all). ALWAYS_ALLOW (0)
-// and ALWAYS_BLOCK (allowlist, empty) fall out of this naturally.
+// semantics (blocklist → allow all, allowlist → block all).
+//
+// The two sentinels answer from their id alone rather than from membership.
+// Their emptiness would give the same answer, but ALWAYS_ALLOW is the value
+// every unset policy field holds, so it has to be right before initialization
+// has run — and answering constantly also means no membership write can ever
+// change what a sentinel means.
 func (p policyReg) isAuthorized(id uint64, account common.Address) bool {
-	typeByte := byte(id >> 56)
-	if typeByte > b20PolicyAllowlist {
+	if !polIDWellFormed(id) {
+		return false
+	}
+	switch id {
+	case b20PolicyAlwaysAllow:
+		return true
+	case b20PolicyAlwaysBlock:
 		return false
 	}
 	member := p.member(id, account)
-	if typeByte == b20PolicyAllowlist {
+	if polIDType(id) == b20PolicyAllowlist {
 		return member
 	}
 	return !member
+}
+
+// policyExists is the ABI view. A malformed id never exists; the sentinels
+// always do, before initialization included.
+func (p policyReg) policyExists(id uint64) bool {
+	if !polIDWellFormed(id) {
+		return false
+	}
+	if isSentinelPolicy(id) {
+		return true
+	}
+	return p.exists(id)
+}
+
+// policyAdminOf is the ABI view: zero for a malformed id and for any policy that
+// does not exist, so a caller cannot mistake an unwritten slot for an admin.
+func (p policyReg) policyAdminOf(id uint64) common.Address {
+	if !polIDWellFormed(id) {
+		return common.Address{}
+	}
+	w := p.policyWord(id)
+	if !polWordExists(w) {
+		return common.Address{}
+	}
+	return polWordAdmin(w)
+}
+
+// pendingPolicyAdminOf is the ABI view. The sentinels can never have a pending
+// admin, so their slot is never even read.
+func (p policyReg) pendingPolicyAdminOf(id uint64) common.Address {
+	if !polIDWellFormed(id) || isSentinelPolicy(id) {
+		return common.Address{}
+	}
+	return p.pending(id)
+}
+
+// ensureInitialized seeds the two sentinel policies and leaves the counter on
+// the first id available to callers. Like base-std it gates on the counter, not
+// on the sentinel words, so a harness that pre-warms the account's bytecode
+// cannot cause the seeding to be skipped.
+func (p policyReg) ensureInitialized() uint64 {
+	c := p.counter()
+	if c >= b20PolicyFirstID {
+		return c
+	}
+	// Both sentinels are born renounced: they exist, and nobody administers them.
+	p.setPolicyAdmin(b20PolicyAlwaysAllow, common.Address{})
+	p.setPolicyAdmin(b20PolicyAlwaysBlock, common.Address{})
+	p.setCounter(b20PolicyFirstID)
+	return b20PolicyFirstID
 }
 
 // b20PolicyPrecompile is the singleton registry precompile.
@@ -190,19 +287,19 @@ func runB20Policy(ctx *PrecompileContext, input []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		return encBool(reg.exists(id)), nil
+		return encBool(reg.policyExists(id)), nil
 	case selPolicyAdmin:
 		id, err := readU64(args, 0)
 		if err != nil {
 			return nil, err
 		}
-		return addrKey(reg.admin(id)).Bytes(), nil
+		return addrKey(reg.policyAdminOf(id)).Bytes(), nil
 	case selPendingPolicyAdmin:
 		id, err := readU64(args, 0)
 		if err != nil {
 			return nil, err
 		}
-		return addrKey(reg.pending(id)).Bytes(), nil
+		return addrKey(reg.pendingPolicyAdminOf(id)).Bytes(), nil
 
 	}
 
@@ -263,26 +360,32 @@ func createPolicy(ctx *PrecompileContext, reg policyReg, args []byte, withAccoun
 	if admin == (common.Address{}) {
 		return nil, revB20("ZeroAddress()", errSelZeroAddress)
 	}
-	c := reg.counter()
-	if c < b20PolicyFirstID {
-		c = b20PolicyFirstID
-	}
-	id := uint64(ptype)<<56 | c
-	reg.setCounter(c + 1)
-	reg.setExists(id)
-	reg.setAdmin(id, admin)
 
+	// The batch is decoded and bounded before any state is written, matching
+	// base-std. An enclosing revert would discard premature writes anyway, but it
+	// would not give back the gas they were metered at.
+	var accounts []common.Hash
 	if withAccounts {
-		accounts, err := readWordArray(args, 2)
-		if err != nil {
+		if accounts, err = readWordArray(args, 2); err != nil {
 			return nil, err
 		}
 		if len(accounts) > b20PolicyBatchMax {
 			return nil, revB20("BatchSizeTooLarge(uint256)", errSelBatchTooLarge, wU64(b20PolicyBatchMax))
 		}
-		for _, a := range accounts {
-			reg.setMember(id, common.BytesToAddress(a.Bytes()), true)
-		}
+	}
+
+	c := reg.ensureInitialized()
+	// The counter shares its 56 bits across both types, so exhausting it must be
+	// refused rather than allowed to carry into the type byte.
+	if c >= b20PolicyCounterMax {
+		return nil, revPanic(0x11)
+	}
+	id := uint64(ptype)<<56 | c
+	reg.setCounter(c + 1)
+	reg.setPolicyAdmin(id, admin)
+
+	for _, a := range accounts {
+		reg.setMember(id, common.BytesToAddress(a.Bytes()), true)
 	}
 	return encU256(uint256.NewInt(id)), nil
 }
@@ -306,11 +409,16 @@ func updateMembers(ctx *PrecompileContext, reg policyReg, args []byte, wantType 
 	if err != nil {
 		return err
 	}
-	if err := requirePolicyAdmin(reg, pid, ctx.Caller); err != nil {
+	// Order matters: it is observable through which error the caller receives, so
+	// it follows base-std's canonical existence -> type -> admin -> batch.
+	if err := requireCustomPolicy(reg, pid); err != nil {
 		return err
 	}
-	if byte(pid>>56) != wantType {
+	if polIDType(pid) != wantType {
 		return revB20("IncompatiblePolicyType()", errSelIncompatibleType)
+	}
+	if err := requirePolicyAdmin(reg, pid, ctx.Caller); err != nil {
+		return err
 	}
 	if len(accounts) > b20PolicyBatchMax {
 		return revB20("BatchSizeTooLarge(uint256)", errSelBatchTooLarge, wU64(b20PolicyBatchMax))
@@ -349,13 +457,17 @@ func finalizeUpdateAdmin(ctx *PrecompileContext, reg policyReg, args []byte) err
 	if err != nil {
 		return err
 	}
-	if reg.pending(pid) == (common.Address{}) {
+	if err := requireCustomPolicy(reg, pid); err != nil {
+		return err
+	}
+	pending := reg.pending(pid)
+	if pending == (common.Address{}) {
 		return revB20("NoPendingAdmin()", errSelNoPendingAdmin)
 	}
-	if reg.pending(pid) != ctx.Caller || ctx.Caller == (common.Address{}) {
+	if pending != ctx.Caller || ctx.Caller == (common.Address{}) {
 		return revB20("Unauthorized()", errSelUnauthorized)
 	}
-	reg.setAdmin(pid, ctx.Caller)
+	reg.setPolicyAdmin(pid, ctx.Caller)
 	reg.setPending(pid, common.Address{})
 	return nil
 }
@@ -371,15 +483,34 @@ func renounceAdmin(ctx *PrecompileContext, reg policyReg, args []byte) error {
 	if err := requirePolicyAdmin(reg, pid, ctx.Caller); err != nil {
 		return err
 	}
-	reg.setAdmin(pid, common.Address{}) // frozen; policy still exists
+	// Frozen, not deleted: the packed word keeps its exists bit, so the policy
+	// stays distinguishable from one never created and its membership keeps
+	// answering reads.
+	reg.setPolicyAdmin(pid, common.Address{})
 	reg.setPending(pid, common.Address{})
 	return nil
 }
 
-// requirePolicyAdmin reverts unless caller is the (non-zero) admin of the policy.
+// requireCustomPolicy reverts PolicyNotFound unless the policy has been written.
+// The sentinels pass: they are seeded with the exists bit set, and it is their
+// zero admin that keeps them un-administrable.
+func requireCustomPolicy(reg policyReg, id uint64) error {
+	if !polIDWellFormed(id) || !reg.exists(id) {
+		return revB20("PolicyNotFound()", errSelPolicyNotFound)
+	}
+	return nil
+}
+
+// requirePolicyAdmin reverts unless the policy exists and caller is its admin.
+//
+// The zero-admin guard is stricter than base-std, which relies on the caller
+// never being the zero address to keep a renounced policy frozen. Both refuse
+// every reachable call; this way the freeze does not depend on that assumption.
 func requirePolicyAdmin(reg policyReg, id uint64, caller common.Address) error {
-	admin := reg.admin(id)
-	if admin == (common.Address{}) || admin != caller {
+	if err := requireCustomPolicy(reg, id); err != nil {
+		return err
+	}
+	if admin := reg.admin(id); admin == (common.Address{}) || admin != caller {
 		return revB20("Unauthorized()", errSelUnauthorized)
 	}
 	return nil
