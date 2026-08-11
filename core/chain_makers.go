@@ -477,7 +477,7 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 		if b.gasPool != nil {
 			poolUsed = b.gasPool.Used()
 		}
-		if err := b.lane.WriteCommitment(block, poolUsed); err != nil {
+		if err := b.lane.WriteCommitmentAndVerify(block, poolUsed); err != nil {
 			panic(fmt.Sprintf("payment lane commitment failed: %v", err))
 		}
 		if config.IsCancun(block.Number(), block.Time()) {

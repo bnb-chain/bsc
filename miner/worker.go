@@ -1286,7 +1286,7 @@ func (w *worker) generateWork(genParam *generateParams, witness bool) *newPayloa
 	if err != nil {
 		return &newPayloadResult{err: err}
 	}
-	if err := work.lane.WriteCommitment(block, work.gasPool.Used()); err != nil {
+	if err := work.lane.WriteCommitmentAndVerify(block, work.gasPool.Used()); err != nil {
 		return &newPayloadResult{err: err}
 	}
 
@@ -1661,7 +1661,7 @@ func (w *worker) commit(env *environment, interval func(), start time.Time) erro
 		env.receipts = receipts
 		finalizeBlockTimer.UpdateSince(finalizeStart)
 
-		if err := env.lane.WriteCommitment(block, env.gasPool.Used()); err != nil {
+		if err := env.lane.WriteCommitmentAndVerify(block, env.gasPool.Used()); err != nil {
 			laneDeclineCounter.Inc(1)
 			return err
 		}

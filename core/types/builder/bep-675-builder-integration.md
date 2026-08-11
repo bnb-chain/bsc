@@ -20,7 +20,7 @@ parent header / state
         executes and appends unsigned system tx
         returns the complete block
 
-  → core.LaneState.WriteCommitment(block, gasPool.Used())    [Gauss+1 onward]
+  → core.LaneState.WriteCommitmentAndVerify(block, gasPool.Used())    [Gauss+1 onward]
         stamps the BEP-703 commitment onto that block
         MUST happen before anything reads block.Hash()
 
@@ -69,7 +69,7 @@ lane.SetQuota()                                    // derives the quota this blo
 
 class, err := lane.Classify(tx)                    // before each apply
 if err != nil {
-    return err  // swallowing it only defers the refusal to WriteCommitment
+    return err  // swallowing it only defers the refusal to WriteCommitmentAndVerify
 }
 if !lane.Admits(gasPool.Gas(), class, tx.Gas()) {  // general must leave the quota intact
     continue
@@ -81,7 +81,7 @@ lane.RecordUsedFrom(class, gasPool, usedBefore)
 
 `state.Reader()` and not `state`: the reader is pinned to the parent root, and `Classify` must give the validator's replay the same answer it gave here. The parent root is the only state both sides share.
 
-A block whose `header.GasUsed + lane.Budget.IdleLane()` exceeds `GasLimit` is invalid — the block rule, term for term. `FinalizeAndAssembleBidBlock` will not say so; `WriteCommitment` in step 3b will, and so will the validator at admission, since the committed values alone decide it.
+A block whose `header.GasUsed + lane.Budget.IdleLane()` exceeds `GasLimit` is invalid — the block rule, term for term. `FinalizeAndAssembleBidBlock` will not say so; `WriteCommitmentAndVerify` in step 3b will, and so will the validator at admission, since the committed values alone decide it.
 
 ## 3. Finalize (generate unsigned system tx)
 
@@ -126,14 +126,14 @@ Signing does not affect EVM state transitions, so the execution results are iden
 
 ```go
 // block is the one step 3 returned
-if err := lane.WriteCommitment(block, gasPool.Used()); err != nil {
+if err := lane.WriteCommitmentAndVerify(block, gasPool.Used()); err != nil {
     return err  // discard the block; never repair it
 }
 ```
 
 Two things this is strict about:
 
-- **Before anything hashes the block.** `Block.Hash()` is cached on first read and never invalidated, so a stray log line, a sidecar loop or a metric that reads it first leaves the block disagreeing with its own header. `WriteCommitment` detects that and refuses rather than emitting it.
+- **Before anything hashes the block.** `Block.Hash()` is cached on first read and never invalidated, so a stray log line, a sidecar loop or a metric that reads it first leaves the block disagreeing with its own header. `WriteCommitmentAndVerify` detects that and refuses rather than emitting it.
 - **`poolUsed` is `gasPool.Used()`** — not `header.GasUsed`, and not a sum of receipts.
 
 No wrong commitment is ever accepted, but where it is caught — and whether the builder is told at all — varies:
@@ -237,4 +237,4 @@ The transmission latency on the wire is not constant: the number of transactions
 5. Permission must be polled continuously (every 5–10 seconds is recommended); the cache is also invalidated whenever `mev_sendBidBlock` returns "permission revoked". When `mev_params.BidBlockEnabled == false`, treat it the same as permission denied.
 6. The builder must handle BidBlock failure paths: (1) `mev_sendBidBlock` may return a direct error; (2) permission may be revoked, with the reason exposed by `mev_getBidBlockPermission`; (3) validator admin or local policy changes may later restore or revoke permission.
 7. **Send the BidBlock as close to `BidMustBefore` as possible** (leaving the ≈100µs buffer noted above) — a later send leaves more time for transaction selection and execution, maximizing the value packed into the block.
-8. From Gauss+1 the builder owns the BEP-703 lane: honour `Admits` while packing, then `WriteCommitment` before anything hashes the block. A wrong commitment is always refused, sometimes with no RPC error at all (see [Stamp the Commitment](#3b-stamp-the-commitment)).
+8. From Gauss+1 the builder owns the BEP-703 lane: honour `Admits` while packing, then `WriteCommitmentAndVerify` before anything hashes the block. A wrong commitment is always refused, sometimes with no RPC error at all (see [Stamp the Commitment](#3b-stamp-the-commitment)).

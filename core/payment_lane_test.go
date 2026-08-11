@@ -262,15 +262,15 @@ func TestPaymentLaneVerifyPackedBidRefusesASwallowedClassification(t *testing.T)
 		"a swallowed classification failure must reject the bid, not wait for the seal")
 }
 
-// TestPaymentLaneWriteCommitmentRefusesASwallowedClassification checks the seal-time backstop.
-func TestPaymentLaneWriteCommitmentRefusesASwallowedClassification(t *testing.T) {
+// TestPaymentLaneWriteCommitmentAndVerifyRefusesASwallowedClassification checks the seal-time backstop.
+func TestPaymentLaneWriteCommitmentAndVerifyRefusesASwallowedClassification(t *testing.T) {
 	to := common.Address{0x44}
 	ls := &LaneState{class: paymentlane.NewClassifier(common.Hash{}, failingAccountReader{}, nil)}
 	_, err := ls.Classify(types.NewTx(&types.LegacyTx{To: &to, Value: common.Big1, Gas: paymentTxGas}))
 	require.ErrorIs(t, err, paymentlane.ErrStateUnavailable)
 
 	block := types.NewBlockWithHeader(&types.Header{Number: big.NewInt(1), UncleHash: types.EmptyUncleHash})
-	require.ErrorIs(t, ls.WriteCommitment(block, 0), paymentlane.ErrStateUnavailable,
+	require.ErrorIs(t, ls.WriteCommitmentAndVerify(block, 0), paymentlane.ErrStateUnavailable,
 		"a block built with an unknown class must not be sealed")
 	require.Equal(t, types.EmptyUncleHash, block.UncleHash(), "and it must refuse before stamping")
 }
@@ -310,7 +310,7 @@ func (k *ecdsaKey) sign(t *testing.T, signer types.Signer, nonce uint64, to comm
 	return tx
 }
 
-// TestPaymentLaneAndUnclesCannotShareTheSlot checks WriteCommitment's shared-slot refusal.
+// TestPaymentLaneAndUnclesCannotShareTheSlot checks WriteCommitmentAndVerify's shared-slot refusal.
 func TestPaymentLaneAndUnclesCannotShareTheSlot(t *testing.T) {
 	_, gspec, _ := laneGenesis(t)
 

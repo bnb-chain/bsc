@@ -151,7 +151,7 @@ func TestPaymentLaneCommitmentSurvivesParliaAssembly(t *testing.T) {
 			if block.UncleHash() != types.EmptyUncleHash {
 				t.Fatalf("the assembler must leave the uncle slot for the stamp, got %x", block.UncleHash())
 			}
-			if err := lane.WriteCommitment(block, paymentUsed); err != nil {
+			if err := lane.WriteCommitmentAndVerify(block, paymentUsed); err != nil {
 				t.Fatalf("failed to write the commitment: %v", err)
 			}
 			got, err := paymentlane.Decode(block.UncleHash())
@@ -169,7 +169,7 @@ func TestPaymentLaneCommitmentSurvivesParliaAssembly(t *testing.T) {
 	}
 }
 
-// TestPaymentLaneRefusesAStaleBlockHash checks the cached-hash guard in WriteCommitment.
+// TestPaymentLaneRefusesAStaleBlockHash checks the cached-hash guard in WriteCommitmentAndVerify.
 func TestPaymentLaneRefusesAStaleBlockHash(t *testing.T) {
 	engine, chain, config, parent, newHeader, newState := newParliaLaneHarness(t)
 	header, stateDB := newHeader(), newState()
@@ -186,9 +186,9 @@ func TestPaymentLaneRefusesAStaleBlockHash(t *testing.T) {
 	}
 	stale := block.Hash()
 
-	err = lane.WriteCommitment(block, 0)
+	err = lane.WriteCommitmentAndVerify(block, 0)
 	if err == nil {
-		t.Fatal("WriteCommitment accepted a block whose hash was already cached")
+		t.Fatal("WriteCommitmentAndVerify accepted a block whose hash was already cached")
 	}
 	if !strings.Contains(err.Error(), "cached before the commitment") {
 		t.Fatalf("unexpected refusal reason: %v", err)

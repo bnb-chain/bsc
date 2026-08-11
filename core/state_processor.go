@@ -492,7 +492,7 @@ type blockAssembler interface {
 
 // AssembleBlock finalizes the state and assembles the block with provided
 // body and receipts. The payment lane commitment is stamped onto the assembled
-// block afterwards, by LaneState.WriteCommitment, and not here.
+// block afterwards, by LaneState.WriteCommitmentAndVerify, and not here.
 func AssembleBlock(engine consensus.Engine, chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, body *types.Body, receipts []*types.Receipt) (*types.Block, []*types.Receipt, error) {
 	if p, ok := engine.(blockAssembler); ok {
 		block, receipts, err := p.FinalizeAndAssemble(chain, header, state, body, receipts, nil)

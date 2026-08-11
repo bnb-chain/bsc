@@ -107,7 +107,7 @@ func (ls *LaneState) Admits(shared uint64, class paymentlane.Class, txGasLimit u
 // stickyErr reports the first classifier state-read failure, and is the backstop for the one site
 // that swallows a classification error: the miner's packing loop, which drops that account and
 // carries on. Everywhere else the error is returned where it happens. VerifyPackedBid and
-// WriteCommitment turn a swallowed one into a rejected bid and a refusal to seal.
+// WriteCommitmentAndVerify turn a swallowed one into a rejected bid and a refusal to seal.
 func (ls *LaneState) stickyErr() error { return ls.class.Err() }
 
 // VerifyPackedBid is the bid path's verdict on an environment it did not pack: quota and sticky
@@ -134,10 +134,8 @@ func (ls *LaneState) VerifyImported(totalGasUsed, poolUsed uint64, c paymentlane
 	return ls.Budget.VerifyCommitment(ls.gasLimit, totalGasUsed, poolUsed, c)
 }
 
-// WriteCommitment stamps the commitment onto an assembled block and self-checks it - the whole of
-// the producing side's lane business after packing, which is what keeps core.AssembleBlock free of
-// the lane.
-func (ls *LaneState) WriteCommitment(block *types.Block, poolUsed uint64) error {
+// WriteCommitmentAndVerify stamps the commitment onto an assembled block and verify it.
+func (ls *LaneState) WriteCommitmentAndVerify(block *types.Block, poolUsed uint64) error {
 	if !ls.On() {
 		return nil
 	}
