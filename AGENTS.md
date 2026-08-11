@@ -19,6 +19,7 @@ n'ont pas de « deuxième essai » :
 | **Aucune fonction du chemin de consensus ne peut `revert`** | Un `revert` rend le bloc improduisible : la chaîne s'arrête. | règle de conception de `CoinbosaValidatorSet.sol` |
 | **Gouverneur ≠ clé de scellage** | La clé de scellage vit en ligne en permanence ; lui confier la gouvernance ferait qu'un serveur compromis emporte le consensus. | refus en production dans `build-genesis.js` |
 | **Aucune clé privée dans le dépôt** | `.gitignore` couvre `node*/`, `keystore/`, `UTC--*`, `*.key`, `pw.txt`, `.env*`. | à ne pas contourner |
+| **Clé du gouverneur irremplaçable** | `GOVERNOR` est `constant` et aucune fonction ne le change. Sa perte fige l'ensemble des validateurs à vie ; sa compromission donne le consensus. | impossible à corriger — voir `docs/GENESIS-PRODUCTION.md` |
 | **Empreinte du bloc 0 figée** | `stateRoot` engage tout l'état initial : c'est ce qui rend vérifiable l'absence d'allocation cachée. | `genesis-reference.json` + `check-genesis-hash.js` |
 
 ## Contraintes de projet

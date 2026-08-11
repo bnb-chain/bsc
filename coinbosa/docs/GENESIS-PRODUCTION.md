@@ -181,3 +181,43 @@ promesse ne serait qu'une affirmation.
 | Marqueur `coinbosaDev` | `check-supply.js` | déployer un genesis de développement en production |
 | Empreinte du bloc 0 | `check-genesis-hash.js` | une allocation cachée, ou une chaîne substituée |
 | Verdict GO / NO-GO | `preflight-genesis.js` | lancer la création avec une condition non remplie |
+
+---
+
+## La clé du gouverneur ne peut JAMAIS être remplacée
+
+`GOVERNOR` est déclaré `constant` dans le contrat système, et aucune fonction ne permet de
+le changer. Le contrat vivant dans le genesis, son bytecode n'est pas modifiable : **cette
+adresse gouverne la chaîne pour toute sa durée de vie**.
+
+Gouverneur actuel : `0x1EEf3830833d83AcD3152A511853fd04a0b4082A`
+
+### Ce que la perte de cette clé entraîne
+
+L'ensemble des validateurs devient **définitivement figé**. Plus aucune rotation, plus
+aucun ajout, plus aucun retrait — pour toujours. Si le validateur unique tombe ensuite, la
+chaîne s'arrête sans recours possible : la seule sortie serait de relancer un autre réseau,
+c'est-à-dire d'abandonner celui-ci.
+
+### Ce que la compromission de cette clé entraîne
+
+Son détenteur peut remplacer l'ensemble des validateurs par des adresses qu'il contrôle, et
+prendre la production des blocs. Il peut aussi appeler `sweepSurplus`.
+
+### Ce qu'il faut faire, faute de pouvoir corriger le code
+
+- **Sauvegarder la phrase de récupération sur papier**, en deux endroits physiques
+  distincts. Jamais de photo, jamais de fichier, jamais de gestionnaire de mots de passe
+  synchronisé.
+- **Tester la restauration** sur un appareil vierge, au moins une fois — une sauvegarde
+  jamais testée n'est pas une sauvegarde.
+- **Ne jamais utiliser cette clé pour autre chose.** Elle ne détient aucun fonds
+  (vérifié : solde nul) et ne doit jamais en détenir : elle gouverne, elle ne transporte pas
+  de valeur.
+- **Ne la connecter à aucun site.** Ses seules transactions légitimes sont
+  `updateValidatorSet` et `sweepSurplus`, préparées par
+  `scripts/rotate-validators.js` et simulées avant envoi.
+
+Cette limite était évitable au moment de la conception — un gouverneur modifiable par
+lui-même, derrière un délai, aurait permis une cérémonie de remplacement. Elle ne l'est
+plus. Elle est donc consignée ici plutôt que passée sous silence.
