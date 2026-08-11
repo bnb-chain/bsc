@@ -109,7 +109,6 @@ cat > "$DROPIN" <<'CONF'
 # L'accès se fait EXCLUSIVEMENT par clé publique.
 PasswordAuthentication no
 KbdInteractiveAuthentication no
-ChallengeResponseAuthentication no
 PermitRootLogin prohibit-password
 PermitEmptyPasswords no
 MaxAuthTries 3
@@ -126,15 +125,27 @@ fi
 # sshd -T dit ce que le serveur appliquera VRAIMENT (ordre des Include compris).
 # On ne se fie jamais au seul contenu du fichier écrit.
 EFF=$(sshd -T 2>/dev/null || true)
+# $2 peut contenir plusieurs écritures acceptables, séparées par |.
+# C'est nécessaire : OpenSSH NORMALISE certaines valeurs dans « sshd -T ». Écrire
+# « PermitRootLogin prohibit-password » produit « permitrootlogin without-password » en
+# sortie — le synonyme historique. Une garde qui exigeait la chaîne littérale refusait donc
+# un durcissement pourtant correctement appliqué.
 check_eff() {
-  echo "$EFF" | grep -qiE "^$1 $2\$" || {
+  local cle="$1" attendues="$2" obtenue
+  obtenue=$(printf '%s\n' "$EFF" | grep -i "^${cle} " | awk '{print $2}' | head -1)
+  local ok=1 v
+  local IFS='|'
+  for v in $attendues; do [ "${obtenue,,}" = "${v,,}" ] && ok=0; done
+  unset IFS
+  if [ "$ok" -ne 0 ]; then
     rm -f "$DROPIN"
-    die "la configuration effective ne prend PAS '$1 $2' (une directive antérieure gagne).
+    die "la configuration effective donne '$cle $obtenue', attendu '$attendues'.
      Durcissement annulé, rien n'a changé. Vérifie l'ordre des directives dans /etc/ssh/sshd_config."
-  }
+  fi
+  echo "    $cle = $obtenue"
 }
 check_eff passwordauthentication no
-check_eff permitrootlogin prohibit-password
+check_eff permitrootlogin 'prohibit-password|without-password'
 check_eff kbdinteractiveauthentication no
 echo "    configuration effective conforme (mot de passe désactivé, root par clé uniquement)"
 
