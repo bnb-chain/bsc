@@ -29,10 +29,28 @@ die() { echo "ARRÊT : $*" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || die "à lancer en root (sudo bash 20-ssh-hardening.sh)."
 
 # --- Le service SSH s'appelle 'ssh' (Debian/Ubuntu) ou 'sshd' (RHEL) ---------
-SSH_UNIT=ssh
-systemctl list-unit-files 2>/dev/null | grep -q '^ssh\.service' || SSH_UNIT=sshd
-systemctl list-unit-files 2>/dev/null | grep -q "^${SSH_UNIT}\.service" \
-  || die "aucun service ssh/sshd trouvé — serveur inattendu, on ne touche à rien."
+# ATTENTION AU PIEGE : `systemctl … | grep -q` sous `set -o pipefail` echoue meme quand
+# grep TROUVE. grep -q s'arrete au premier resultat et ferme le tuyau ; systemctl recoit
+# alors SIGPIPE et sort en erreur, ce que pipefail propage. On capture donc la sortie
+# AVANT de la filtrer. Ce defaut avait fait conclure a tort « aucun service ssh trouve »
+# sur un serveur ou ssh.service etait bel et bien actif.
+UNITES=$(systemctl list-unit-files --no-pager 2>/dev/null || true)
+if printf '%s\n' "$UNITES" | grep -q '^ssh\.service'; then
+  SSH_UNIT=ssh
+elif printf '%s\n' "$UNITES" | grep -q '^sshd\.service'; then
+  SSH_UNIT=sshd
+else
+  die "aucun service ssh/sshd trouvé — serveur inattendu, on ne touche à rien."
+fi
+echo "==> Service SSH détecté : ${SSH_UNIT}.service"
+
+# Ubuntu 24.04 active SSH PAR SOCKET : ssh.service est « disabled » mais ssh.socket est
+# « enabled », et chaque connexion lance une instance neuve. La configuration s'applique
+# donc aux NOUVELLES connexions sans rechargement — c'est plus sur, mais il faut recharger
+# la socket, pas seulement le service.
+SSH_SOCKET=""
+printf '%s\n' "$UNITES" | grep -q '^ssh\.socket' && SSH_SOCKET=ssh.socket
+[ -n "$SSH_SOCKET" ] && echo "    activation par socket détectée ($SSH_SOCKET)"
 
 echo "==> 1/7  Vérification : au moins une clé publique autorisée"
 KEYCOUNT=0
@@ -58,8 +76,9 @@ CLIENT_PORT=$(echo "$SSH_CONNECTION" | awk '{print $2}')
 echo "    session : ${CLIENT_IP}:${CLIENT_PORT}"
 
 AUTH_OK=0
-if journalctl -u "$SSH_UNIT" --since "-24h" --no-pager 2>/dev/null \
-     | grep -qE "Accepted publickey for .* from ${CLIENT_IP} port ${CLIENT_PORT}\b"; then
+# Meme precaution qu'au-dessus : on capture avant de filtrer.
+JOURNAL=$(journalctl -u "$SSH_UNIT" --since "-24h" --no-pager 2>/dev/null || true)
+if printf '%s\n' "$JOURNAL" | grep -qE "Accepted publickey for .* from ${CLIENT_IP} port ${CLIENT_PORT}\b"; then
   AUTH_OK=1
 elif [ -f /var/log/auth.log ] \
      && grep -qE "Accepted publickey for .* from ${CLIENT_IP} port ${CLIENT_PORT}\b" /var/log/auth.log 2>/dev/null; then
@@ -123,12 +142,15 @@ echo "==> 6/7  Armement du retour arrière automatique (${GRACE_MIN} min)"
 rm -f "$SENTINEL"
 systemctl stop "${ROLLBACK_UNIT}.timer" 2>/dev/null || true
 systemd-run --quiet --unit="$ROLLBACK_UNIT" --on-active="${GRACE_MIN}min" \
-  /bin/bash -c "[ -f '$SENTINEL' ] || { rm -f '$DROPIN'; systemctl reload $SSH_UNIT; logger -t coinbosa 'durcissement SSH annule automatiquement (non confirme)'; }" \
+  /bin/bash -c "[ -f '$SENTINEL' ] || { rm -f '$DROPIN'; systemctl reload $SSH_UNIT 2>/dev/null || systemctl reload-or-restart $SSH_UNIT; [ -n '$SSH_SOCKET' ] && systemctl restart $SSH_SOCKET 2>/dev/null; logger -t coinbosa 'durcissement SSH annule automatiquement (non confirme)'; }" \
   || die "impossible d'armer le retour arrière (systemd-run). Durcissement NON appliqué."
 echo "    si tu ne confirmes pas, la configuration d'origine revient toute seule"
 
 echo "==> 7/7  Rechargement de SSH (reload, jamais restart : les sessions ouvertes survivent)"
-systemctl reload "$SSH_UNIT"
+systemctl reload "$SSH_UNIT" 2>/dev/null || systemctl reload-or-restart "$SSH_UNIT"
+# Avec l'activation par socket, chaque nouvelle connexion lance une instance neuve qui
+# relit la configuration : on recharge aussi la socket pour que ce soit immediat.
+[ -n "$SSH_SOCKET" ] && systemctl restart "$SSH_SOCKET" 2>/dev/null || true
 
 cat <<EOF
 
