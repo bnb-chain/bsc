@@ -307,6 +307,17 @@
             <tr><td>Intégration continue</td><td>rejoue le banc complet (nœud, 5 s, BRC20, epoch) à chaque push, sur machine vierge</td></tr>
           </tbody>
         </table>
+
+      <p><strong>Débit.</strong> Le plafond dur se calcule, il ne se promet pas. Sur les
+      55 000 000 de gas d'un bloc, le moteur Parlia en <strong>réserve 20 000 000 pour ses
+      transactions système</strong> — cette réserve s'applique à chaque bloc tant que le fork
+      Feynman n'est pas activé, ce qui est le cas ici. Il reste 35 000 000 pour les
+      transactions des utilisateurs, soit 35 000 000 / 21 000 / 5,018 ≈
+      <strong>332 transferts simples par seconde</strong>.</p>
+
+      <p>C'est un maximum théorique, pas une mesure sous charge : aucun test de charge n'a été
+      mené sur le réseau de production. Toute valeur supérieure annoncée ailleurs serait
+      fausse.</p>
       </div>
       <h3>Ce qui n'existe pas encore</h3>
       <ul>
