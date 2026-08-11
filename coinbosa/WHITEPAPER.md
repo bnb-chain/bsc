@@ -10,28 +10,6 @@
 
 ---
 
-## Avertissements
-
-Ce livre blanc n'a été approuvé par aucune autorité compétente, dans aucun pays. L'éditeur du
-jeton en est seul responsable.
-
-Ce document n'est pas un prospectus ni une invitation à investir. Il décrit un réseau technique
-et son jeton natif. Toute décision les concernant doit se fonder sur la lecture du document
-entier.
-
-Le jeton BOSA peut perdre tout ou partie de sa valeur. Il peut se révéler non transférable, et
-il peut manquer de liquidité. Il n'est couvert par aucun système de garantie des dépôts ni
-d'indemnisation des investisseurs.
-
-Le réseau décrit ici **n'a pas fait l'objet d'un audit de sécurité externe** à la date de
-publication. Il ne doit porter aucune valeur réelle tant que cet audit n'a pas eu lieu.
-
-Ce document contient des orientations sur des travaux à venir. Une orientation n'est pas une
-promesse. Les descriptions au présent portent sur l'état vérifié du réseau ; les descriptions au
-futur portent sur des travaux qui peuvent ne pas aboutir, ou aboutir autrement.
-
----
-
 ## Sommaire
 
 1. [État vérifié du réseau](#1-état-vérifié-du-réseau)
