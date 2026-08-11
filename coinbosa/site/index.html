@@ -36,7 +36,7 @@
     --panel-2:   #10202f;
     --text:      #eaf1f8;
     --muted:     #9fb2c4;
-    --faint:     #8193a8; /* éclairci pour ≥4.5:1 sur les fonds sombres (hero-note/socle-note/soon) */
+    --faint:     #8193a8; /* éclairci pour ≥4.5:1 sur les fonds sombres (hero-note/soon) */
     --border:    rgba(255,255,255,0.09);
     --border-2:  rgba(255,255,255,0.16);
     --gold:      #CB9211;
@@ -62,7 +62,7 @@
     --panel-2:   #f3f7fb;
     --text:      #0c1a28;
     --muted:     #43566a;
-    --faint:     #566a7e; /* assombri pour ≥4.5:1 sur les fonds clairs (hero-note/socle-note/soon) */
+    --faint:     #566a7e; /* assombri pour ≥4.5:1 sur les fonds clairs (hero-note/soon) */
     --border:    rgba(9,24,40,0.12);
     --border-2:  rgba(9,24,40,0.22);
     --gold:      #8f6409;
@@ -396,30 +396,6 @@
   .stat .v small { display: block; font-size: .82rem; font-weight: 600; letter-spacing: 0; color: var(--muted); margin-top: 6px; }
   .stat.hl { border-color: color-mix(in srgb, var(--gold) 42%, transparent); background: color-mix(in srgb, var(--panel) 82%, var(--card-hover)); }
   .stat.hl .v { color: var(--gold-soft); }
-  .socle-note {
-    margin-top: 24px; color: var(--faint); font-size: .9rem;
-    display: flex; align-items: flex-start; gap: 10px; max-width: 720px;
-  }
-  .socle-note svg { width: 16px; height: 16px; flex: 0 0 auto; margin-top: 3px; color: var(--blue-soft); }
-
-  /* ---------- TRANSPARENCE ---------- */
-  .transp {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 22px;
-    padding: clamp(30px, 5vw, 52px);
-  }
-  .transp-list { list-style: none; margin: 26px 0 0; padding: 0; display: grid; gap: 16px; }
-  .transp-list li { display: flex; align-items: flex-start; gap: 14px; color: var(--muted); font-size: 1.04rem; }
-  .transp-list .mk {
-    flex: 0 0 auto; width: 26px; height: 26px; border-radius: 8px;
-    display: grid; place-items: center; margin-top: 2px;
-    background: color-mix(in srgb, var(--blue) 18%, transparent);
-    color: var(--blue-soft);
-  }
-  .transp-list .mk svg { width: 15px; height: 15px; }
-  .transp-list b { color: var(--text); font-weight: 700; }
-
   /* ---------- CTA REJOINDRE ---------- */
   .join {
     position: relative; overflow: hidden;
@@ -500,7 +476,6 @@
     <nav class="nav" aria-label="Navigation principale">
       <a href="#ecosysteme">Écosystème</a>
       <a href="#socle">Le socle</a>
-      <a href="#transparence">Transparence</a>
       <span id="nav-extra"></span>
     </nav>
 
@@ -519,7 +494,6 @@
   <div class="mobile-menu" id="mobile-menu">
     <a href="#ecosysteme">Écosystème</a>
     <a href="#socle">Le socle</a>
-    <a href="#transparence">Transparence</a>
     <span id="mnav-extra"></span>
     <a class="btn btn-primary" href="#rejoindre">Rejoindre l'écosystème</a>
   </div>
@@ -610,38 +584,6 @@
         </p>
       </div>
       <div class="stat-grid reveal" id="stat-grid"><!-- rendu depuis CONTENT.network --></div>
-      <p class="socle-note reveal">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01" stroke-linecap="round"/></svg>
-        <span>Offre fixe de BOSA, sans émission programmée. Aucun prix, cotation, capitalisation ou rendement n'est affiché sur ce site.</span>
-      </p>
-    </div>
-  </section>
-
-  <!-- ============ TRANSPARENCE ============ -->
-  <section class="scene" id="transparence" aria-label="Transparence">
-    <div class="wrap">
-      <div class="transp reveal">
-        <span class="eyebrow">Transparence</span>
-        <h2 style="font-size:clamp(1.8rem,4.4vw,2.8rem);margin-top:16px">Ce que nous ne prétendons pas.</h2>
-        <ul class="transp-list">
-          <li>
-            <span class="mk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12l4 4L19 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-            <span>Le réseau <b>n'est pas présenté comme décentralisé</b> : un seul validateur opère la chaîne aujourd'hui.</span>
-          </li>
-          <li>
-            <span class="mk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12l4 4L19 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-            <span><b>Aucun audit externe</b> n'a été réalisé à ce jour.</span>
-          </li>
-          <li>
-            <span class="mk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12l4 4L19 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-            <span>Les produits de l'écosystème <b>ne sont pas encore raccordés</b> à la chaîne : c'est une feuille de route, pas un état de fait.</span>
-          </li>
-          <li>
-            <span class="mk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12l4 4L19 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-            <span><b>Aucun chiffre de marché inventé</b> : ni prix, ni capitalisation, ni TVL, ni rendement.</span>
-          </li>
-        </ul>
-      </div>
     </div>
   </section>
 
@@ -694,7 +636,6 @@
       <p id="ft-copyright"><!-- rendu depuis CONTENT.entity --></p>
       <div class="legal">
         <p id="ft-entity"><!-- rendu depuis CONTENT.entity --></p>
-        <p><a href="#transparence">Note de transparence</a></p>
       </div>
     </div>
   </div>
